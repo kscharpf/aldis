@@ -23,6 +23,7 @@ All notable changes to Aldis are recorded here. The format follows [Keep a Chang
 - `fuzz/` (M0 WP-6, VER-022): cargo-fuzz targets `bits_roundtrip`, `crc_variants`, `oid_forms`, `counter_classify`, `container_model`, `layout_ranges`.
 - CI jobs `exerciser` (link check and canary on three targets, QEMU vector run on Cortex-M4) and `coverage`; `layers` also runs `cargo xtask symbols`; `fmt` and `clippy` cover the exerciser and fuzz workspaces. Nightly jobs: fuzzing (600 s per target; crashes open an issue), stack sizes, and mutation testing (report only).
 - `tooling-nightly`: the one nightly date used by tooling (RS-002, OI-14).
+- `docs/verification/mutants-triage.md`: first mutation-testing triage. Three test gaps in `aldis-core` closed (`FixedQueue::is_full`, `FixedVec::is_empty`, `SecurityLayout::is_none`); six equivalent mutants recorded.
 
 ### Changed
 - The nightly big-endian bare-metal build uses the pinned `tooling-nightly` instead of a floating nightly.
