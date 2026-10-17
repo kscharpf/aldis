@@ -4,14 +4,11 @@ Surviving mutants from `cargo mutants -p aldis-core --all-features` (cargo-mutan
 
 ## 2026-10-17, branch `m1/core` (M1 WP-0)
 
-`cargo mutants -p aldis-core --all-features --file crates/aldis-core/src/anomaly.rs --file crates/aldis-core/src/mode.rs`: 41 mutants: 19 caught, 20 unviable, 0 missed, 2 timeouts.
+`cargo mutants -p aldis-core --all-features --file crates/aldis-core/src/anomaly.rs --file crates/aldis-core/src/mode.rs`
 
-| Mutant | Verdict | Action |
-|---|---|---|
-| `anomaly.rs:142` `!=` → `==` in `Iter::next` (`while self.bits != 0`) | Caught by timeout: on the empty set the loop never ends (`trailing_zeros` is 32, `from_bit` rejects it, and the bits stay 0), so `empty_and_default` hangs | None needed |
-| `anomaly.rs:144` `&=` → `\|=` in `Iter::next` (clearing the lowest set bit) | Caught by timeout: the bits never shrink, so every non-empty iteration hangs | None needed |
+First run (`3b51e87`): 41 mutants: 19 caught, 20 unviable, 0 missed, 2 timeouts. Both timeouts were in `Iter::next` (`while self.bits != 0` → `==`, and `&=` → `|=` when clearing the lowest bit). Each one turned the loop into an infinite one, so the tests hung instead of failing.
 
-The GEN-022 bound on this loop (inspection, 32 passes) depends on exactly these two operators; the timeouts show that the tests exercise it.
+[Review round 1](reviews/m1-core.md) finding 7 asked for the loop to be bounded by its structure. `Iter` now keeps a position that only rises over `0..CAPACITY`, so no mutant can make an iteration endless. Re-run after the fix: 53 mutants: 32 caught, 21 unviable, 0 missed, 0 timeouts.
 
 ## 2026-10-16, branch `m0/gates`
 

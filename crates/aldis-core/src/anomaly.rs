@@ -1,26 +1,132 @@
 //! Lenient-mode anomaly flags (GEN-043, API-032, GEN-081).
 //!
 //! A decoder in [`DecodeMode::Lenient`](crate::mode::DecodeMode::Lenient) returns an
-//! [`AnomalySet`] alongside a successful result. Each codec crate defines its own
-//! `#[non_exhaustive]` flag enum (GEN-081) and implements [`Anomaly`] for it, giving every flag
-//! a stable bit index. The indices are listed in each standard document (API-033) and are
-//! shared with the C ABI, so a flag is never renumbered. A strict decoder always returns
-//! [`AnomalySet::empty`].
+//! [`AnomalySet`] alongside a successful result. Each codec crate declares its own flag enum
+//! with [`anomaly_flags!`](crate::anomaly_flags), which makes the enum `#[non_exhaustive]`
+//! (GEN-081) and implements [`Anomaly`] from one table of bit indices. The indices are listed
+//! in each standard document (API-033) and are shared with the C ABI, so a flag is never
+//! renumbered. A strict decoder always returns [`AnomalySet::empty`].
 
 use core::fmt;
 use core::hash::Hash;
+use core::iter::FusedIterator;
 use core::marker::PhantomData;
 
+/// Number of distinct bit indices an [`AnomalySet`] can hold.
+pub const CAPACITY: u8 = 32;
+
 /// A lenient-mode anomaly flag with a stable bit index (GEN-043).
+///
+/// Implementations must keep three invariants, which [`anomaly_flags!`](crate::anomaly_flags)
+/// guarantees at compile time:
+/// - every flag's index is below [`CAPACITY`];
+/// - no two flags share an index;
+/// - `from_bit(f.bit()) == Some(f)` for every flag `f`, and `from_bit` returns `None` for an
+///   index no flag uses.
+///
+/// If they are broken, [`AnomalySet::insert`] drops a flag whose index is too large, and
+/// [`AnomalySet::iter`] skips set bits that `from_bit` does not map back to a flag, so `iter`
+/// and `Debug` disagree with `len`, `is_empty`, and `bits`.
 pub trait Anomaly: Copy + Eq + Hash + fmt::Debug {
-    /// The flag's bit index, 0 to [`AnomalySet::CAPACITY`] − 1. Stable: never renumbered.
+    /// The flag's bit index, below [`CAPACITY`]. Stable: never renumbered.
     fn bit(self) -> u8;
 
     /// The flag with bit index `bit`, or `None` if no flag uses it.
     fn from_bit(bit: u8) -> Option<Self>;
 }
 
-/// A set of up to 32 anomaly flags of type `A`, stored as a `u32` bit set (GEN-043).
+/// Declares a `#[non_exhaustive]` anomaly flag enum and its [`Anomaly`] implementation from one
+/// table of stable bit indices (GEN-043, GEN-081).
+///
+/// Each index must be a literal below [`CAPACITY`] and unique within the enum; otherwise the
+/// crate does not compile. The enum also gets `ALL`, every flag in declaration order.
+///
+/// ```
+/// aldis_core::anomaly_flags! {
+///     /// Flags of a hypothetical codec.
+///     pub enum DemoAnomaly {
+///         /// Bit 0.
+///         SpareBitSet = 0,
+///         /// Bit 1.
+///         ConventionalZeroSet = 1,
+///     }
+/// }
+/// # use aldis_core::Anomaly;
+/// assert_eq!(DemoAnomaly::from_bit(1), Some(DemoAnomaly::ConventionalZeroSet));
+/// ```
+///
+/// An index of 32 or more, or one used twice, fails const evaluation:
+///
+/// ```compile_fail,E0080
+/// aldis_core::anomaly_flags! {
+///     /// Out of range.
+///     pub enum TooHigh {
+///         /// Bit 32.
+///         Flag = 32,
+///     }
+/// }
+/// ```
+///
+/// ```compile_fail,E0080
+/// aldis_core::anomaly_flags! {
+///     /// Duplicate index.
+///     pub enum Twice {
+///         /// Bit 3.
+///         First = 3,
+///         /// Bit 3 again.
+///         Second = 3,
+///     }
+/// }
+/// ```
+#[macro_export]
+macro_rules! anomaly_flags {
+    (
+        $(#[$meta:meta])*
+        $vis:vis enum $name:ident {
+            $( $(#[$flag_meta:meta])* $flag:ident = $bit:literal ),+ $(,)?
+        }
+    ) => {
+        $(#[$meta])*
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+        #[non_exhaustive]
+        $vis enum $name {
+            $( $(#[$flag_meta])* $flag, )+
+        }
+
+        impl $name {
+            /// Every flag, in declaration order.
+            $vis const ALL: &'static [$name] = &[$($name::$flag),+];
+        }
+
+        impl $crate::anomaly::Anomaly for $name {
+            fn bit(self) -> u8 {
+                match self {
+                    $( $name::$flag => $bit, )+
+                }
+            }
+
+            fn from_bit(bit: u8) -> ::core::option::Option<$name> {
+                match bit {
+                    $( $bit => ::core::option::Option::Some($name::$flag), )+
+                    _ => ::core::option::Option::None,
+                }
+            }
+        }
+
+        // Compile-time check of the `Anomaly` invariants: every index in range and unique.
+        const _: () = {
+            let mut seen: u32 = 0;
+            $(
+                assert!($bit < $crate::anomaly::CAPACITY, "anomaly bit index must be below 32");
+                assert!(seen & (1 << $bit) == 0, "anomaly bit index used twice");
+                seen |= 1 << $bit;
+            )+
+            let _ = seen;
+        };
+    };
+}
+
+/// A set of up to [`CAPACITY`] anomaly flags of type `A`, stored as a `u32` bit set (GEN-043).
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct AnomalySet<A> {
     bits: u32,
@@ -28,9 +134,6 @@ pub struct AnomalySet<A> {
 }
 
 impl<A> AnomalySet<A> {
-    /// Number of distinct bit indices a set can hold.
-    pub const CAPACITY: u8 = 32;
-
     /// The empty set, which every strict decode returns.
     #[must_use]
     pub const fn empty() -> AnomalySet<A> {
@@ -40,16 +143,16 @@ impl<A> AnomalySet<A> {
         }
     }
 
-    /// Whether no flag is set.
+    /// Whether no bit is set.
     #[must_use]
     pub const fn is_empty(&self) -> bool {
         self.bits == 0
     }
 
-    /// Number of flags set.
+    /// Number of bits set; equal to the number of flags while the [`Anomaly`] invariants hold.
     #[must_use]
-    pub const fn len(&self) -> u32 {
-        self.bits.count_ones()
+    pub fn len(&self) -> usize {
+        usize::try_from(self.bits.count_ones()).unwrap_or(usize::MAX)
     }
 
     /// The raw bit set: bit `n` is set when the flag with index `n` is present.
@@ -59,14 +162,29 @@ impl<A> AnomalySet<A> {
     }
 }
 
-/// The single-bit mask for `flag`; 0 if its index is not below [`AnomalySet::CAPACITY`].
+/// The single-bit mask for index `bit`; 0 if `bit` is not below [`CAPACITY`].
+fn bit_mask(bit: u8) -> u32 {
+    1_u32.checked_shl(u32::from(bit)).unwrap_or(0)
+}
+
+/// The single-bit mask for `flag`; 0 if its index is not below [`CAPACITY`].
 fn mask<A: Anomaly>(flag: A) -> u32 {
-    1_u32.checked_shl(u32::from(flag.bit())).unwrap_or(0)
+    bit_mask(flag.bit())
 }
 
 impl<A: Anomaly> AnomalySet<A> {
-    /// Adds `flag`. A flag whose index is not below [`CAPACITY`](Self::CAPACITY) cannot be
-    /// represented and is ignored.
+    /// The set holding each of `flags`.
+    #[must_use]
+    pub fn from_flags(flags: &[A]) -> AnomalySet<A> {
+        let mut set = AnomalySet::empty();
+        for &flag in flags {
+            set.insert(flag);
+        }
+        set
+    }
+
+    /// Adds `flag`. A flag whose index is not below [`CAPACITY`] cannot be represented and is
+    /// ignored.
     pub fn insert(&mut self, flag: A) {
         self.bits |= mask(flag);
     }
@@ -82,6 +200,7 @@ impl<A: Anomaly> AnomalySet<A> {
     pub fn iter(&self) -> Iter<A> {
         Iter {
             bits: self.bits,
+            next: 0,
             flags: PhantomData,
         }
     }
@@ -96,16 +215,6 @@ impl<A> Default for AnomalySet<A> {
 impl<A: Anomaly> fmt::Debug for AnomalySet<A> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_set().entries(self.iter()).finish()
-    }
-}
-
-impl<A: Anomaly> FromIterator<A> for AnomalySet<A> {
-    fn from_iter<I: IntoIterator<Item = A>>(flags: I) -> AnomalySet<A> {
-        let mut set = AnomalySet::empty();
-        for flag in flags {
-            set.insert(flag);
-        }
-        set
     }
 }
 
@@ -131,6 +240,8 @@ impl<A: Anomaly> IntoIterator for &AnomalySet<A> {
 #[derive(Debug, Clone)]
 pub struct Iter<A> {
     bits: u32,
+    /// Lowest index not yet visited; only rises, up to [`CAPACITY`].
+    next: u8,
     flags: PhantomData<A>,
 }
 
@@ -138,24 +249,49 @@ impl<A: Anomaly> Iterator for Iter<A> {
     type Item = A;
 
     fn next(&mut self) -> Option<A> {
-        // Each pass clears the lowest set bit: at most 32 passes (GEN-022).
-        while self.bits != 0 {
-            let low = self.bits.trailing_zeros();
-            self.bits &= self.bits.wrapping_sub(1);
-            if let Some(flag) = u8::try_from(low).ok().and_then(A::from_bit) {
+        // `next` rises on every pass and stops at CAPACITY, so a whole iteration visits each
+        // index at most once (GEN-022).
+        for bit in self.next..CAPACITY {
+            self.next = bit.saturating_add(1);
+            if self.bits & bit_mask(bit) != 0
+                && let Some(flag) = A::from_bit(bit)
+            {
                 return Some(flag);
             }
         }
         None
     }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let unvisited = u32::MAX.checked_shl(u32::from(self.next)).unwrap_or(0);
+        (
+            0,
+            usize::try_from((self.bits & unvisited).count_ones()).ok(),
+        )
+    }
 }
+
+impl<A: Anomaly> FusedIterator for Iter<A> {}
 
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
-    use super::{Anomaly, AnomalySet};
+    use super::{Anomaly, AnomalySet, CAPACITY};
 
-    /// A flag type whose index is its value, so any index (including ≥ 32) can be tried.
+    crate::anomaly_flags! {
+        /// Flags declared through the macro, with indices out of declaration order.
+        enum Demo {
+            /// Bit 4.
+            Four = 4,
+            /// Bit 0.
+            Zero = 0,
+            /// Bit 31.
+            Last = 31,
+        }
+    }
+
+    /// A hand-written flag type whose index is its value, so any index (including ≥ 32) can be
+    /// tried. It breaks the first invariant on purpose.
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
     struct Flag(u8);
 
@@ -165,11 +301,11 @@ mod tests {
         }
 
         fn from_bit(bit: u8) -> Option<Flag> {
-            (bit < AnomalySet::<Flag>::CAPACITY).then_some(Flag(bit))
+            (bit < CAPACITY).then_some(Flag(bit))
         }
     }
 
-    /// Only even indices are flags: odd bits, if ever set, are skipped by the iterator.
+    /// Only even indices map back: breaks the third invariant on purpose.
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
     struct Even(u8);
 
@@ -183,6 +319,36 @@ mod tests {
         }
     }
 
+    /// No index maps back.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+    struct Unknown(u8);
+
+    impl Anomaly for Unknown {
+        fn bit(self) -> u8 {
+            self.0
+        }
+
+        fn from_bit(_: u8) -> Option<Unknown> {
+            None
+        }
+    }
+
+    #[test]
+    fn macro_keeps_the_invariants() {
+        // req: GEN-043, GEN-081
+        assert_eq!(Demo::ALL, [Demo::Four, Demo::Zero, Demo::Last]);
+        for (&flag, bit) in Demo::ALL.iter().zip([4, 0, 31]) {
+            assert_eq!(flag.bit(), bit);
+            assert_eq!(Demo::from_bit(bit), Some(flag));
+        }
+        for bit in (0..=u8::MAX).filter(|b| ![0, 4, 31].contains(b)) {
+            assert_eq!(Demo::from_bit(bit), None);
+        }
+        let set = AnomalySet::from_flags(Demo::ALL);
+        assert_eq!(set.bits(), 0x8000_0011);
+        assert!(set.iter().eq([Demo::Zero, Demo::Four, Demo::Last]));
+    }
+
     #[test]
     fn empty_and_default() {
         // req: GEN-043
@@ -190,8 +356,10 @@ mod tests {
         assert!(set.is_empty());
         assert_eq!(set.len(), 0);
         assert_eq!(set.bits(), 0);
+        assert_eq!(set.iter().size_hint(), (0, Some(0)));
         assert_eq!(set.iter().next(), None);
         assert_eq!(set, AnomalySet::default());
+        assert_eq!(set, AnomalySet::from_flags(&[]));
         assert!(!set.contains(Flag(0)));
     }
 
@@ -208,6 +376,10 @@ mod tests {
         assert_eq!(set.bits(), 0x8000_0021);
         assert!(set.contains(Flag(0)) && set.contains(Flag(5)) && set.contains(Flag(31)));
         assert!(!set.contains(Flag(1)) && !set.contains(Flag(30)));
+        assert_eq!(
+            set,
+            AnomalySet::from_flags(&[Flag(5), Flag(31), Flag(0), Flag(5)])
+        );
         let mut one = AnomalySet::empty();
         one.insert(Flag(1));
         assert_eq!(one.bits(), 0b10);
@@ -228,29 +400,40 @@ mod tests {
     #[test]
     fn iterates_in_bit_order() {
         // req: GEN-043
-        let set: AnomalySet<Flag> = [Flag(31), Flag(2), Flag(17), Flag(0)].into_iter().collect();
+        let set = AnomalySet::from_flags(&[Flag(31), Flag(2), Flag(17), Flag(0)]);
         let mut it = set.iter();
+        assert_eq!(it.size_hint(), (0, Some(4)));
         assert_eq!(it.next(), Some(Flag(0)));
+        assert_eq!(it.size_hint(), (0, Some(3)));
         assert_eq!(it.next(), Some(Flag(2)));
         assert_eq!(it.next(), Some(Flag(17)));
         assert_eq!(it.next(), Some(Flag(31)));
+        assert_eq!(it.size_hint(), (0, Some(0)));
         assert_eq!(it.next(), None);
         assert_eq!(it.next(), None);
         assert_eq!((&set).into_iter().count(), 4);
         assert_eq!(set.into_iter().count(), 4);
-        let all: AnomalySet<Flag> = (0..32).map(Flag).collect();
-        assert_eq!(all.bits(), u32::MAX);
-        assert!(all.iter().map(|f| f.0).eq(0..32));
+        let all: [Flag; 32] = core::array::from_fn(|i| Flag(u8::try_from(i).unwrap()));
+        let full = AnomalySet::from_flags(&all);
+        assert_eq!(full.bits(), u32::MAX);
+        assert_eq!(full.len(), 32);
+        assert!(full.iter().eq(all));
     }
 
     #[test]
-    fn iterator_skips_unknown_bits() {
-        // req: GEN-043
-        let set: AnomalySet<Even> = [Even(1), Even(2), Even(3), Even(4)].into_iter().collect();
+    fn iterator_skips_unmapped_bits() {
+        // req: GEN-043, GEN-022
+        let set = AnomalySet::from_flags(&[Even(1), Even(2), Even(3), Even(4)]);
         assert_eq!(set.len(), 4);
         assert!(set.iter().eq([Even(2), Even(4)]));
-        let odd: AnomalySet<Even> = [Even(7)].into_iter().collect();
-        assert_eq!(odd.iter().next(), None);
+        assert_eq!(AnomalySet::from_flags(&[Even(7)]).iter().next(), None);
+        // All 32 bits set and none maps back: the loop runs its full bound and ends.
+        let all: [Unknown; 32] = core::array::from_fn(|i| Unknown(u8::try_from(i).unwrap()));
+        let unknown = AnomalySet::from_flags(&all);
+        assert_eq!(unknown.bits(), u32::MAX);
+        let mut it = unknown.iter();
+        assert_eq!(it.next(), None);
+        assert_eq!(it.size_hint(), (0, Some(0)));
     }
 
     #[test]
@@ -258,7 +441,7 @@ mod tests {
         // req: GEN-043
         extern crate std;
         use std::format;
-        let set: AnomalySet<Flag> = [Flag(3), Flag(1)].into_iter().collect();
+        let set = AnomalySet::from_flags(&[Flag(3), Flag(1)]);
         assert_eq!(format!("{set:?}"), "{Flag(1), Flag(3)}");
         assert_eq!(format!("{:?}", AnomalySet::<Flag>::empty()), "{}");
     }
@@ -266,7 +449,7 @@ mod tests {
     #[test]
     fn equality_and_copy() {
         // req: GEN-043
-        let a: AnomalySet<Flag> = [Flag(4)].into_iter().collect();
+        let a = AnomalySet::from_flags(&[Flag(4)]);
         let b = a;
         assert_eq!(a, b);
         assert_ne!(a, AnomalySet::empty());

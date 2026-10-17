@@ -132,8 +132,9 @@ jobs:
       - uses: taiki-e/install-action@8cca0918f8471c33515202b73f56ab27f2bed283 # v2.87.29
         with:
           tool: cargo-mutants@27.1.0
-      # Exit 2 (missed mutants) and 3 (timeouts) are reported, not failed, in M0; anything
-      # else (e.g. 4, the unmutated tests fail) is a real failure.
+      # Exit 2 (missed mutants) and 3 (timeouts) are reported, not failed: survivors are triaged
+      # in docs/verification/mutants-triage.md before each release (VER-025). Anything else
+      # (e.g. 4, the unmutated tests fail) is a real failure.
       - run: |
           code=0
           cargo mutants -p aldis-core --all-features || code=$?

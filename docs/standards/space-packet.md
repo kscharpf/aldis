@@ -41,7 +41,7 @@ Total packet length is 7 to 65 542 octets (§4.1.2.2).
 
 | Bit | Flag | Deviation | Source |
 |---|---|---|---|
-| 0 | `IdleWithSecondaryHeader` | Idle Packet (APID 2047) with Secondary Header Flag = 1 (SPP-004) | 133.0 §4.1.3.3.3.4 |
+| 0 | `IdleWithSecondaryHeader` | Idle Packet (APID 2047) with Secondary Header Flag = 1 (SPP-004; provisional, OI-16) | 133.0 §4.1.3.3.3.4 |
 
 ## 4. Test-vector categories
 

@@ -39,7 +39,7 @@ EPI `000` is the Idle Packet, `110` means "use the Protocol ID Extension", and `
 |---|---|---|---|
 | 0 | `NonZeroEpiExtension` | Non-zero Protocol ID Extension with EPI ≠ `110` (EPP-006) | 133.1 §4.1.2.6.3 |
 | 1 | `NonZeroCcsdsDefined` | Non-zero CCSDS Defined Field (EPP-007) | 133.1 §4.1.2.7.2 |
-| 2 | `EmptyNonIdle` | Encapsulated Data Field absent with EPI ≠ `000` (EPP-005) | 133.1 §4.1.3.1.4–5 |
+| 2 | `EmptyNonIdle` | Encapsulated Data Field absent with EPI ≠ `000` (EPP-005; provisional, OI-16) | 133.1 §4.1.3.1.4–5 |
 
 ## 4. Test-vector categories
 

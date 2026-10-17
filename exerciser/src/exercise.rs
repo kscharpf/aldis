@@ -6,7 +6,7 @@
 use core::fmt::Write as _;
 use core::hint::black_box as bb;
 
-use aldis_core::anomaly::{Anomaly, AnomalySet};
+use aldis_core::anomaly::{Anomaly, AnomalySet, CAPACITY};
 use aldis_core::bits;
 use aldis_core::container::{ByteQueue, FixedQueue, FixedVec};
 use aldis_core::counter::{Continuity, ModCounter};
@@ -360,7 +360,7 @@ impl Anomaly for Flag {
     }
 
     fn from_bit(bit: u8) -> Option<Flag> {
-        (bit < AnomalySet::<Flag>::CAPACITY).then_some(Flag(bit))
+        (bit < CAPACITY).then_some(Flag(bit))
     }
 }
 
@@ -378,7 +378,8 @@ fn apis_mode_anomaly(tally: &mut Tally) {
     tally.check(set.contains(bb(Flag(3))) && !set.contains(bb(Flag(32))) && set.len() == 2);
     tally.check(set.bits() == 0x8000_0008 && !set.is_empty());
     tally.check(set.iter().map(|f| f.0).eq([3, 31]) && (&set).into_iter().count() == 2);
-    let rebuilt: AnomalySet<Flag> = set.into_iter().collect();
+    tally.check(set.iter().size_hint() == (0, Some(2)) && set.into_iter().count() == 2);
+    let rebuilt = AnomalySet::from_flags(bb(&[Flag(31), Flag(3)]));
     tally.check(rebuilt == set && rebuilt != AnomalySet::empty());
     let mut text = Text {
         buf: [0; 96],

@@ -69,6 +69,6 @@ TAI↔UTC conversion requires a leap-second table that changes over a mission's 
 
 | Bit | Flag | Deviation | Source |
 |---|---|---|---|
-| 0 | `ReservedTimeCodeId` | P-field time code ID `000`, `011`, or `111` (TIME-002) | 301.0 §3.1.1 |
-| 1 | `ReservedSubmsCode` | CDS submillisecond length code `11` (TIME-020) | 301.0 §3.3.2 |
-| 2 | `NonZeroDoyHighNibble` | CCS day-of-year segment with a non-zero high nibble (TIME-030) | 301.0 §3.4.1.2 |
+| 0 | `ReservedTimeCodeId` | P-field time code ID `000`, `011`, or `111` (TIME-002; provisional, OI-15) | 301.0 §3.1.1 |
+| 1 | `ReservedSubmsCode` | CDS submillisecond length code `11` (TIME-020; provisional, OI-15) | 301.0 §3.3.2 |
+| 2 | `NonZeroDoyHighNibble` | CCS day-of-year segment with a non-zero high nibble (no requirement yet, OI-15) | 301.0 §3.4.1.2 |
