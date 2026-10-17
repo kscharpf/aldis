@@ -350,9 +350,11 @@ mod tests {
     fn queue_basics_and_zero_capacity() {
         // req: GEN-010, GEN-011, API-051
         let mut q: FixedQueue<u8, 2> = FixedQueue::default();
-        assert_eq!((q.capacity(), q.peek()), (2, None));
+        assert_eq!((q.capacity(), q.peek(), q.is_full()), (2, None, false));
         assert_eq!(q.push(1), Ok(()));
+        assert!(!q.is_full());
         assert_eq!(q.push(2), Ok(()));
+        assert!(q.is_full());
         assert_eq!(q.push(3), Err(3));
         assert_eq!(q.peek(), Some(&1));
         assert_eq!(q.pop(), Some(1));
@@ -410,6 +412,7 @@ mod tests {
     fn fixed_vec() {
         // req: GEN-010
         let mut v: FixedVec<u16, 2> = FixedVec::default();
+        assert!(v.is_empty());
         v.push(7).unwrap();
         v.push(8).unwrap();
         assert_eq!(v.push(9).unwrap_err().kind(), ErrorKind::CapacityExceeded);
@@ -419,6 +422,7 @@ mod tests {
         );
         assert_eq!(v.pop(), Some(8));
         v.clear();
+        assert!(v.is_empty());
         assert_eq!(v.pop(), None);
         assert_eq!(v.as_slice(), &[] as &[u16]);
     }

@@ -154,7 +154,7 @@ Notes from implementation:
 
 - **Coverage.** `cargo xtask coverage` runs `cargo llvm-cov --branch` (≥ 0.9) on the pinned tooling nightly. It gates all four metrics, because `cargo llvm-cov` has no branch threshold, and fails if no branch data is produced, so an old tool cannot pass it vacuously. Test modules carry `#[cfg_attr(coverage_nightly, coverage(off))]`, so only library code counts. Result: 784/784 regions, 145/145 functions, 680/680 lines, 60/60 branches, with no waivers. Planting one untested function and one oversized waiver each failed the gate. Two findings along the way: cargo-llvm-cov 0.6 with the older nightly reported no branch data at all; and objects left by an older build-directory layout were still passed to `llvm-cov` and showed up as misses, so the command starts from a clean `target/llvm-cov-target`.
 - **Fuzzing.** `fuzz/` is a separate workspace that builds and lints on stable (RS-002); only `cargo fuzz run` needs nightly. Each target checks `aldis-core` against an independent model (bit-by-bit fields, `u128` modular arithmetic, `VecDeque` containers, recomputed layouts) and checks that rejected inputs change nothing (GEN-042). Local smoke run: 20 s per target, 0.3–9 M executions each, no findings.
-- **Mutation testing** (VER-025, report only): nightly job `mutants`.
+- **Mutation testing** (VER-025, report only): nightly job `mutants`. The first run (288 mutants, 6 min) found three test gaps that 100 % coverage had missed; they are closed now. The six remaining survivors are equivalent mutants ([triage](../verification/mutants-triage.md)).
 
 ## 4. Exit criteria
 

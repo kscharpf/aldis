@@ -227,6 +227,9 @@ mod tests {
             (l.header_len(), l.trailer_len(), l.is_none()),
             (64, 16, false)
         );
+        // Either length alone makes the layout non-empty.
+        assert!(!SecurityLayout::new(6, 0).unwrap().is_none());
+        assert!(!SecurityLayout::new(0, 16).unwrap().is_none());
         assert_eq!(
             SecurityLayout::new(65, 0).unwrap_err().kind(),
             ErrorKind::InvalidConfig
