@@ -97,7 +97,10 @@ fn scope_ids(spec: &Spec, scope: &str) -> Result<BTreeSet<String>, String> {
     let areas = spec.area_set();
     let mut ids = BTreeSet::new();
     for t in tables(&repo::read(&file)?) {
-        if t.header == ["Area", "Criteria"] {
+        // Further columns (e.g. results at the exit review) are allowed; only Criteria is read.
+        if t.header
+            .starts_with(&["Area".to_owned(), "Criteria".to_owned()])
+        {
             for (_, row) in t.rows {
                 for r in scan_ids(row.get(1).map_or("", String::as_str), &areas) {
                     ids.extend(spec.expand(&r.area, r.number, r.range_end));

@@ -4,7 +4,7 @@
 
 | Milestone | Content | Exit criteria |
 |---|---|---|
-| **M0 Foundations** ([plan](milestones/m0-foundations.md)) | Repository + GitHub Actions CI, lint set, exerciser/panic-link check, vector harness, `xtask` trace/spec tooling, `aldis-core` (errors, bit fields, IDs, time, CRC-16, OID generator, counters, containers, security hooks, frame layout) | Exit criteria in the plan §4 |
+| **M0 Foundations** ([plan](milestones/m0-foundations.md)) | Repository + GitHub Actions CI, lint set, exerciser/panic-link check, vector harness, `xtask` trace/spec tooling, `aldis-core` (errors, bit fields, IDs, time, CRC-16, OID generator, counters, containers, security hooks, frame layout) | **Complete** (2026-10-16, `v0.1.0-m0`); exit criteria in the plan §4 |
 | **M1 Packets & time** | `aldis-time`, `aldis-spp`, `aldis-epp` | All TIME/SPP/EPP requirements traced; fuzz targets running |
 | **M2 Frame codecs** | `aldis-tm`, `aldis-tc` (incl. CLCW, delimiting, validation), `aldis-aos` (incl. FHEC, editions), `aldis-uslp` (incl. truncated) | All TM/TC/AOS/USLP requirements traced; 100 % coverage |
 | **M3 COP-1** | `aldis-cop1` FOP-1 + FARM-1, state tables as data, closed-loop tests | One vector per table cell; two-person table review recorded |
