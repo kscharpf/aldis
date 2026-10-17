@@ -1,0 +1,3 @@
+[alias]
+# Project tooling (docs/milestones/m0-foundations.md WP-2): `cargo xtask help`
+xtask = "run --quiet --package xtask --"

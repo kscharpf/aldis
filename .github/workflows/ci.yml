@@ -96,7 +96,27 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-rust
-      - run: cargo metadata --format-version 1 --no-deps | python3 -I .github/scripts/check_layers.py
+      - run: cargo xtask layers
+
+  spec:
+    name: spec, links, vectors, trace (VER-020, TV-001..003)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup-rust
+        with:
+          cache-key: xtask
+      - run: cargo xtask spec-lint
+      - run: cargo xtask links
+      - run: cargo xtask vectors validate
+      - run: cargo xtask vectors schema --check
+      # Report-only until the milestone exit review, which runs it with --strict.
+      - run: cargo xtask trace --scope m0
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: trace-m0
+          path: target/spec/
+          if-no-files-found: error
 
   deny:
     name: licenses, advisories, sources (VER-003)

@@ -116,7 +116,7 @@ engine.poll_timeout()         -> Option<Instant>               // earliest deadl
 | API-052 | If an input would overflow an output queue, the engine SHALL reject the input with `WouldBlock` and SHALL NOT change state (GEN-042). The exception is an input defined by CCSDS to cause a protocol-level reaction to resource exhaustion, which SHALL produce that reaction instead (e.g. FARM-1 Wait state, [COP-1](standards/cop1.md) §4). | 232.1 §6.1.2 | T |
 | API-053 | `poll_timeout` SHALL return the earliest instant at which `handle_timeout` must be called for correct behavior, or `None`. Calling `handle_timeout` early or repeatedly SHALL be harmless. | — | T |
 | API-054 | Every engine output that crosses the engine boundary SHALL carry enough metadata (VC/MAP, sequence numbers, request handle, QoS) for the caller to correlate it with inputs, without inspecting octets. | — | T |
-| API-055 | A `Transmit` that represents a frame requiring Lower-Procedure acknowledgement (the COP-1 AD/BC/BD Out flags) SHALL carry a **transmit handle**. The caller SHALL report completion with `transmit_done(handle, accepted|rejected)`. | 232.1 §5.1.6 | T/V |
+| API-055 | A `Transmit` that represents a frame requiring Lower-Procedure acknowledgement (the COP-1 AD/BC/BD Out flags) SHALL carry a **transmit handle**. The caller SHALL report completion with `transmit_done(handle, accepted\|rejected)`. | 232.1 §5.1.6 | T/V |
 | API-056 | Engines SHALL expose read-only **status snapshots** (state, counters, queue occupancy) for housekeeping telemetry, without side effects. | — | T |
 
 ### 5.1 Why sans-I/O

@@ -107,3 +107,4 @@ unimplemented = "deny"
 | ID | Requirement | Source | Verif. |
 |---|---|---|---|
 | RS-016 | A lint SHALL be relaxed only locally, on the smallest item, with `#[expect(clippy::<lint>, reason = "<justification>")]`. Crate-wide or workspace-wide `allow`s of `all`, `pedantic`, or the restriction lints above SHALL NOT be added without updating this section. `#[allow]` SHALL NOT be used for these lints, because `#[expect]` fails when the exception becomes unnecessary. | VER-001 | A |
+| RS-017 | **Tooling crates** (`aldis-testkit`, `xtask`, and future test/fuzz support crates) are `std`-only, `publish = false`, and never part of a flight build. They SHALL use the *tooling lint profile*: `unsafe_code = "forbid"`, `missing_docs = "deny"`, and Clippy `all` + `pedantic` denied, without the flight-code restriction lints (tools and tests fail loudly by design). Library crates SHALL use tooling crates only as dev-dependencies (checked by `cargo xtask layers`). | GEN-001 | A |

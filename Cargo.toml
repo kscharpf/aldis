@@ -14,6 +14,9 @@ members = [
     "crates/aldis-framework",
     "crates/aldis",
     "crates/aldis-ffi",
+    # Tooling (std, dev-only; not part of the layered library)
+    "crates/aldis-testkit",
+    "xtask",
 ]
 
 [workspace.package]

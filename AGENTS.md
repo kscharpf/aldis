@@ -30,6 +30,7 @@ cargo fmt --all --check
 cargo clippy --workspace --all-features --all-targets
 cargo test --workspace --all-features
 cargo clippy -p aldis --no-default-features --features full --target thumbv7em-none-eabihf
+cargo xtask ci        # spec lint, links, layering, vector validation, schema check, M0 trace
 ```
 
 Clippy runs with the `all` and `pedantic` groups denied, plus restriction lints ([docs/profiles/rust.md](docs/profiles/rust.md) §5). To relax a lint, use a local `#[expect(clippy::<lint>, reason = "…")]` on the smallest item (RS-016). Never use crate-wide `allow`.
@@ -37,6 +38,7 @@ Clippy runs with the `all` and `pedantic` groups denied, plus restriction lints 
 ## Conventions
 
 - **Traceability:** every public item's docs cite the CCSDS clause and requirement IDs it implements (RS-015). Every test names the requirements it covers with a `// req: <ID>` comment (VER-020).
+- **Verification records:** requirements verified by a CI check or by review (method A/I) are listed in [docs/verification/analysis-records.md](docs/verification/analysis-records.md).
 - **Test vectors** in [`test-vectors/`](test-vectors/README.md) are shared with future C/C++ and binding implementations. Follow [docs/07-test-vectors.md](docs/07-test-vectors.md). Record provenance, and never edit a released vector: add a new case and mark the old one `superseded`.
 - **Errors** use the stable catalogue in [docs/03-api-model.md](docs/03-api-model.md) §9. Do not renumber error codes.
 - **C ABI names** use the `aldis_` / `ALDIS_` prefix ([docs/profiles/c-abi.md](docs/profiles/c-abi.md)).

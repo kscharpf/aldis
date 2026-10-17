@@ -1,0 +1,28 @@
+[package]
+name = "aldis-testkit"
+description = "Test-vector model, loader, and runner shared by all Aldis test suites (tooling, dev-only)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+schemars = { version = "1.2.3", optional = true }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+
+[features]
+# JSON Schema generation for the vector model (used by xtask).
+schema = ["dep:schemars"]
+
+# Tooling lint profile (docs/profiles/rust.md RS-017): all + pedantic, no flight-code
+# restriction lints; tests and tools fail loudly by design.
+[lints.rust]
+unsafe_code = "forbid"
+missing_docs = "deny"
+
+[lints.clippy]
+all = { level = "deny", priority = -1 }
+pedantic = { level = "deny", priority = -1 }

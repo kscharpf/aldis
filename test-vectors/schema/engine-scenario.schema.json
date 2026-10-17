@@ -1,0 +1,183 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ScenarioFile",
+  "description": "A scripted sequence of inputs and expected outputs for one engine (TV-010…TV-012).",
+  "type": "object",
+  "properties": {
+    "config": {
+      "description": "Engine configuration (managed parameters).",
+      "type": "object",
+      "additionalProperties": true
+    },
+    "description": {
+      "description": "Human-readable description.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "engine": {
+      "description": "Engine name (e.g. `fop1`, `farm1`, `packet-extractor`).",
+      "type": "string"
+    },
+    "id": {
+      "description": "Globally unique scenario identifier.",
+      "type": "string"
+    },
+    "kind": {
+      "description": "Always `\"engine-scenario\"`.",
+      "$ref": "#/$defs/ScenarioKind"
+    },
+    "provenance": {
+      "description": "Origin of the expected values.",
+      "$ref": "#/$defs/Provenance"
+    },
+    "provenance_note": {
+      "description": "Derivation or cross-check details.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "requirements": {
+      "description": "Requirement IDs the scenario verifies (TV-003).",
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "steps": {
+      "description": "Ordered steps.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Step"
+      }
+    },
+    "superseded": {
+      "description": "Present when this released scenario has been replaced.",
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Superseded"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    }
+  },
+  "additionalProperties": false,
+  "required": [
+    "kind",
+    "engine",
+    "id",
+    "requirements",
+    "provenance",
+    "config",
+    "steps"
+  ],
+  "$defs": {
+    "Provenance": {
+      "description": "Where a vector file's expected values come from (TV-020).",
+      "oneOf": [
+        {
+          "description": "Example printed in a CCSDS Blue Book.",
+          "type": "string",
+          "const": "blue-book-example"
+        },
+        {
+          "description": "Derived by hand from the standard; `provenance_note` explains the derivation.",
+          "type": "string",
+          "const": "hand-derived"
+        },
+        {
+          "description": "Agreed with an independent implementation named in `provenance_note`.",
+          "type": "string",
+          "const": "cross-checked"
+        },
+        {
+          "description": "Regression case produced by fuzzing.",
+          "type": "string",
+          "const": "fuzz-regression"
+        }
+      ]
+    },
+    "ScenarioKind": {
+      "description": "Value of the `kind` field of an engine scenario file.",
+      "oneOf": [
+        {
+          "description": "The only value: `\"engine-scenario\"`.",
+          "type": "string",
+          "const": "engine-scenario"
+        }
+      ]
+    },
+    "Step": {
+      "description": "One scenario step: one input at an absolute instant, and the complete ordered outputs.",
+      "type": "object",
+      "properties": {
+        "at_us": {
+          "description": "Absolute instant in microseconds (`Instant`).",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        },
+        "expect": {
+          "description": "Complete, ordered outputs expected before the next step; anything else is a failure.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        },
+        "expect_state": {
+          "description": "Expected engine state after the step.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "expect_timeout_us": {
+          "description": "Expected `poll_timeout` after the step, in microseconds.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0
+        },
+        "input": {
+          "description": "The single input of this step.",
+          "type": "object",
+          "additionalProperties": true
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "at_us",
+        "input",
+        "expect"
+      ]
+    },
+    "Superseded": {
+      "description": "Marks a released case as replaced; released cases are never edited (TV-021).",
+      "type": "object",
+      "properties": {
+        "by": {
+          "description": "Identifier of the replacing case, if any.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "reason": {
+          "description": "Why the case was superseded.",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "reason"
+      ]
+    }
+  }
+}

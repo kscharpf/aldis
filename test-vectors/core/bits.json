@@ -1,0 +1,374 @@
+{
+  "kind": "codec",
+  "standard": "Bit numbering convention common to all v1 Blue Books (e.g. 133.0-B-2 \u00a71.6.3)",
+  "provenance": "hand-derived",
+  "provenance_note": "Bit 0 is the first transmitted bit and the MSB; values computed by big-integer shifting in an independent Python reference.",
+  "cases": [
+    {
+      "id": "bits-get-spp-version",
+      "requirements": [
+        "GEN-050",
+        "GEN-051"
+      ],
+      "description": "Space Packet version (bits 0-2)",
+      "operation": "bits_get",
+      "input_hex": "0001C0000000AB",
+      "params": {
+        "bit_offset": 0,
+        "width": 3
+      },
+      "expect": {
+        "ok": true,
+        "value": 0
+      }
+    },
+    {
+      "id": "bits-get-spp-type",
+      "requirements": [
+        "GEN-050",
+        "GEN-051"
+      ],
+      "description": "Packet type (bit 3)",
+      "operation": "bits_get",
+      "input_hex": "0001C0000000AB",
+      "params": {
+        "bit_offset": 3,
+        "width": 1
+      },
+      "expect": {
+        "ok": true,
+        "value": 0
+      }
+    },
+    {
+      "id": "bits-get-spp-shf",
+      "requirements": [
+        "GEN-050",
+        "GEN-051"
+      ],
+      "description": "Secondary header flag (bit 4)",
+      "operation": "bits_get",
+      "input_hex": "0001C0000000AB",
+      "params": {
+        "bit_offset": 4,
+        "width": 1
+      },
+      "expect": {
+        "ok": true,
+        "value": 0
+      }
+    },
+    {
+      "id": "bits-get-spp-apid",
+      "requirements": [
+        "GEN-050",
+        "GEN-051"
+      ],
+      "description": "APID (bits 5-15)",
+      "operation": "bits_get",
+      "input_hex": "0001C0000000AB",
+      "params": {
+        "bit_offset": 5,
+        "width": 11
+      },
+      "expect": {
+        "ok": true,
+        "value": 1
+      }
+    },
+    {
+      "id": "bits-get-spp-seqflags",
+      "requirements": [
+        "GEN-050",
+        "GEN-051"
+      ],
+      "description": "Sequence flags (bits 16-17)",
+      "operation": "bits_get",
+      "input_hex": "0001C0000000AB",
+      "params": {
+        "bit_offset": 16,
+        "width": 2
+      },
+      "expect": {
+        "ok": true,
+        "value": 3
+      }
+    },
+    {
+      "id": "bits-get-spp-count",
+      "requirements": [
+        "GEN-050",
+        "GEN-051"
+      ],
+      "description": "Sequence count (bits 18-31)",
+      "operation": "bits_get",
+      "input_hex": "0001C0000000AB",
+      "params": {
+        "bit_offset": 18,
+        "width": 14
+      },
+      "expect": {
+        "ok": true,
+        "value": 0
+      }
+    },
+    {
+      "id": "bits-get-spp-length",
+      "requirements": [
+        "GEN-050",
+        "GEN-051"
+      ],
+      "description": "Packet data length (bits 32-47)",
+      "operation": "bits_get",
+      "input_hex": "0001C0000000AB",
+      "params": {
+        "bit_offset": 32,
+        "width": 16
+      },
+      "expect": {
+        "ok": true,
+        "value": 0
+      }
+    },
+    {
+      "id": "bits-get-single-bit-last",
+      "requirements": [
+        "GEN-050",
+        "GEN-051"
+      ],
+      "description": "Last bit of an octet",
+      "operation": "bits_get",
+      "input_hex": "01",
+      "params": {
+        "bit_offset": 7,
+        "width": 1
+      },
+      "expect": {
+        "ok": true,
+        "value": 1
+      }
+    },
+    {
+      "id": "bits-get-u64-aligned",
+      "requirements": [
+        "GEN-050",
+        "GEN-051"
+      ],
+      "description": "Full 64-bit aligned field",
+      "operation": "bits_get",
+      "input_hex": "0123456789ABCDEF",
+      "params": {
+        "bit_offset": 0,
+        "width": 64
+      },
+      "expect": {
+        "ok": true,
+        "value": 81985529216486895
+      }
+    },
+    {
+      "id": "bits-get-u64-unaligned",
+      "requirements": [
+        "GEN-050",
+        "GEN-051"
+      ],
+      "description": "64-bit field starting at bit 4 (spans 9 octets)",
+      "operation": "bits_get",
+      "input_hex": "F0123456789ABCDEF0",
+      "params": {
+        "bit_offset": 4,
+        "width": 64
+      },
+      "expect": {
+        "ok": true,
+        "value": 81985529216486895
+      }
+    },
+    {
+      "id": "bits-get-cross-octet-12",
+      "requirements": [
+        "GEN-050",
+        "GEN-051"
+      ],
+      "description": "12-bit field across an octet boundary",
+      "operation": "bits_get",
+      "input_hex": "ABCD",
+      "params": {
+        "bit_offset": 2,
+        "width": 12
+      },
+      "expect": {
+        "ok": true,
+        "value": 2803
+      }
+    },
+    {
+      "id": "bits-set-apid-all-ones",
+      "requirements": [
+        "GEN-050",
+        "GEN-051"
+      ],
+      "description": "Set APID to 2047 in a zeroed header",
+      "operation": "bits_set",
+      "input_hex": "000000000000",
+      "params": {
+        "bit_offset": 5,
+        "width": 11,
+        "value": 2047
+      },
+      "expect": {
+        "ok": true,
+        "output_hex": "07FF00000000"
+      }
+    },
+    {
+      "id": "bits-set-preserves-neighbours",
+      "requirements": [
+        "GEN-050",
+        "GEN-051"
+      ],
+      "description": "Clearing a middle field leaves other bits set",
+      "operation": "bits_set",
+      "input_hex": "FFFF",
+      "params": {
+        "bit_offset": 4,
+        "width": 8,
+        "value": 0
+      },
+      "expect": {
+        "ok": true,
+        "output_hex": "F00F"
+      }
+    },
+    {
+      "id": "bits-set-u64-unaligned",
+      "requirements": [
+        "GEN-050",
+        "GEN-051"
+      ],
+      "description": "Write 64 bits at bit offset 4",
+      "operation": "bits_set",
+      "input_hex": "000000000000000000",
+      "params": {
+        "bit_offset": 4,
+        "width": 64,
+        "value": 81985529216486895
+      },
+      "expect": {
+        "ok": true,
+        "output_hex": "00123456789ABCDEF0"
+      }
+    },
+    {
+      "id": "bits-set-tm-fhp-oid",
+      "requirements": [
+        "GEN-050",
+        "GEN-051"
+      ],
+      "description": "TM First Header Pointer = 0x7FE (OID) in the low 11 bits",
+      "operation": "bits_set",
+      "input_hex": "0000",
+      "params": {
+        "bit_offset": 5,
+        "width": 11,
+        "value": 2046
+      },
+      "expect": {
+        "ok": true,
+        "output_hex": "07FE"
+      }
+    },
+    {
+      "id": "bits-err-get-beyond-end",
+      "requirements": [
+        "GEN-020",
+        "GEN-051"
+      ],
+      "description": "Field ends past the buffer",
+      "operation": "bits_get",
+      "input_hex": "0000",
+      "params": {
+        "bit_offset": 9,
+        "width": 8
+      },
+      "expect": {
+        "ok": false,
+        "error": "OutOfRange"
+      }
+    },
+    {
+      "id": "bits-err-get-width-zero",
+      "requirements": [
+        "GEN-020",
+        "GEN-051"
+      ],
+      "description": "Zero-width field",
+      "operation": "bits_get",
+      "input_hex": "0000",
+      "params": {
+        "bit_offset": 0,
+        "width": 0
+      },
+      "expect": {
+        "ok": false,
+        "error": "OutOfRange"
+      }
+    },
+    {
+      "id": "bits-err-get-width-65",
+      "requirements": [
+        "GEN-020",
+        "GEN-051"
+      ],
+      "description": "Field wider than 64 bits",
+      "operation": "bits_get",
+      "input_hex": "000000000000000000",
+      "params": {
+        "bit_offset": 0,
+        "width": 65
+      },
+      "expect": {
+        "ok": false,
+        "error": "OutOfRange"
+      }
+    },
+    {
+      "id": "bits-err-set-value-too-wide",
+      "requirements": [
+        "GEN-020",
+        "GEN-051"
+      ],
+      "description": "Value does not fit in 4 bits",
+      "operation": "bits_set",
+      "input_hex": "0000",
+      "params": {
+        "bit_offset": 0,
+        "width": 4,
+        "value": 16
+      },
+      "expect": {
+        "ok": false,
+        "error": "OutOfRange"
+      }
+    },
+    {
+      "id": "bits-err-set-beyond-end",
+      "requirements": [
+        "GEN-020",
+        "GEN-051"
+      ],
+      "description": "Field ends past the buffer",
+      "operation": "bits_set",
+      "input_hex": "00",
+      "params": {
+        "bit_offset": 4,
+        "width": 8,
+        "value": 1
+      },
+      "expect": {
+        "ok": false,
+        "error": "OutOfRange"
+      }
+    }
+  ]
+}

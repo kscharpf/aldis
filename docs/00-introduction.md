@@ -72,7 +72,7 @@ Each requirement has a stable ID: `<AREA>-<NNN>`. IDs are never reused. A delete
 
 | Area | Document |
 |---|---|
-| GEN | [02 Design rules](02-design-rules.md) |
+| GEN | [01 Architecture](01-architecture.md), [02 Design rules](02-design-rules.md) |
 | API | [03 API model](03-api-model.md) |
 | LNK | [04 Engines](04-engines.md) |
 | FW | [05 Framework](05-framework.md) |
