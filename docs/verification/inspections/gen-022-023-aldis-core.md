@@ -7,7 +7,7 @@
 | Inspected | 2026-10-16, prepared by Claude Code |
 | Approved | 2026-10-16, maintainer |
 | Repeat | when `aldis-core` gains a loop or a call between its own functions, and before each release |
-| Revised | 2026-10-17 (M1 WP-0): `mode` and `anomaly` added; approved 2026-10-17 maintainer. Revised again 2026-10-17 after [review round 1](../reviews/m1-core.md) finding 1: `FromIterator` (unbounded caller iterator) replaced by `AnomalySet::from_flags(&[A])`, and `Iter::next` bounded by a forward-only position over `0..CAPACITY`; awaiting maintainer approval |
+| Revised | 2026-10-17 (M1 WP-0): `mode` and `anomaly` added; approved 2026-10-17 maintainer. Revised again 2026-10-17 after [review round 1](../reviews/m1-core.md) finding 1: `FromIterator` (unbounded caller iterator) replaced by `AnomalySet::from_flags(&[A])`, and `Iter::next` bounded by a forward-only position over `0..CAPACITY`; approved 2026-10-17 maintainer |
 
 ## Loops
 
