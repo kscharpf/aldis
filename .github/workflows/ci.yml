@@ -1,0 +1,110 @@
+# CI for Aldis (docs/milestones/m0-foundations.md WP-1; docs/06-verification.md).
+# Actions are pinned by commit SHA; Rust comes from rust-toolchain.toml only (RS-001).
+# CCSDS documents are never downloaded here (specs/README.md).
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: -D warnings
+  RUSTDOCFLAGS: -D warnings
+
+jobs:
+  fmt:
+    name: fmt (VER-004)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup-rust
+      - run: cargo fmt --all --check
+
+  clippy:
+    name: clippy (VER-001, VER-002)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup-rust
+        with:
+          cache-key: clippy
+      - run: cargo clippy --workspace --all-features --all-targets
+      - run: cargo doc --workspace --all-features --no-deps
+
+  test:
+    name: test (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup-rust
+        with:
+          cache-key: test
+      - run: cargo test --workspace --all-features
+
+  no-std:
+    name: no_std ${{ matrix.target }} (GEN-005)
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [thumbv7em-none-eabihf, armv7r-none-eabihf, riscv32imac-unknown-none-elf]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup-rust
+        with:
+          cache-key: no-std-${{ matrix.target }}
+      - name: Library, no features
+        run: cargo build -p aldis --no-default-features --features full --target ${{ matrix.target }}
+      - name: Clippy, no features
+        run: cargo clippy -p aldis --no-default-features --features full --target ${{ matrix.target }}
+      - name: C ABI static library
+        # A cdylib cannot be built for bare metal; Cargo's notice about dropping it is
+        # not a compiler warning and does not trip RUSTFLAGS=-D warnings.
+        run: cargo build -p aldis-ffi --no-default-features --features panic-handler --target ${{ matrix.target }} --release
+
+  big-endian:
+    name: big-endian tests (VER-030, GEN-007)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup-rust
+        with:
+          extra-targets: s390x-unknown-linux-gnu
+          cache-key: big-endian
+      - uses: taiki-e/install-action@8cca0918f8471c33515202b73f56ab27f2bed283 # v2.87.29
+        with:
+          tool: cross
+      - run: cross test --workspace --all-features --target s390x-unknown-linux-gnu
+
+  layers:
+    name: dependency layering (GEN-001..004)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup-rust
+      - run: cargo metadata --format-version 1 --no-deps | python3 -I .github/scripts/check_layers.py
+
+  deny:
+    name: licenses, advisories, sources (VER-003)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup-rust
+      - uses: taiki-e/install-action@8cca0918f8471c33515202b73f56ab27f2bed283 # v2.87.29
+        with:
+          tool: cargo-deny
+      - run: cargo deny --all-features check

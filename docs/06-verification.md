@@ -8,7 +8,7 @@
 |---|---|---|---|
 | VER-001 | All crates SHALL build warning-free with `#![deny(warnings)]` in CI. They SHALL also pass Clippy with the workspace lint set in [profiles/rust.md §5](profiles/rust.md#5-lint-configuration): the `clippy::all` and `clippy::pedantic` groups denied, plus the restriction lints `unwrap_used`, `expect_used`, `panic`, `indexing_slicing`, `arithmetic_side_effects`, `cast_possible_truncation`, `unreachable`, `todo`, and `unimplemented`. `as_conversions` is also denied outside the `aldis-core` bit primitives. Exceptions follow RS-016. | GEN-020 | A |
 | VER-002 | `#![forbid(unsafe_code)]` SHALL be present in every crate except `aldis-ffi` (GEN-070). | GEN-070 | A |
-| VER-003 | Dependency policy SHALL be enforced by a license, advisory, and source check (`cargo-deny` and `cargo-audit`). Layers 0–2 SHALL have zero non-dev dependencies (GEN-001). | GEN-001 | A |
+| VER-003 | Dependency policy SHALL be enforced by a license, advisory (RustSec), and source check: `cargo-deny`, configured in `deny.toml`. Layers 0–2 SHALL have zero non-dev dependencies (GEN-001), checked by the CI `layers` job. | GEN-001 | A |
 | VER-004 | Formatting SHALL be enforced (`rustfmt`, and `clang-format` for C artefacts). | — | A |
 
 ## 2. Panic freedom and bounded resources

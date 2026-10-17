@@ -1,5 +1,7 @@
 # Aldis
 
+[![CI](https://github.com/kscharpf/aldis/actions/workflows/ci.yml/badge.svg)](https://github.com/kscharpf/aldis/actions/workflows/ci.yml)
+
 Libraries that add CCSDS protocol support to spacecraft flight software and ground systems. The reference implementation is in Rust (`no_std`, no heap, panic-free), with a C ABI for C and C++ applications. Other languages are planned on top of that ABI.
 
 **Status:** specification draft 0.1 and workspace skeleton. No protocol code is implemented yet.

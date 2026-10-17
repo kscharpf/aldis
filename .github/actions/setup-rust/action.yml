@@ -1,0 +1,34 @@
+name: Set up pinned Rust toolchain
+description: >
+  Installs the toolchain, components, and targets pinned in rust-toolchain.toml
+  (RS-001) and restores the Cargo cache. Never installs a floating version.
+
+inputs:
+  extra-targets:
+    description: Space-separated additional targets for the pinned toolchain
+    required: false
+    default: ""
+  cache-key:
+    description: Extra key to separate caches between jobs
+    required: false
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    - name: Install pinned toolchain (rust-toolchain.toml)
+      shell: bash
+      run: |
+        rustup --version
+        # rustup >= 1.28 installs the toolchain named in rust-toolchain.toml with no arguments.
+        rustup toolchain install
+        if [ -n "${{ inputs.extra-targets }}" ]; then
+          rustup target add ${{ inputs.extra-targets }}
+        fi
+        rustup show active-toolchain
+        rustc --version --verbose
+
+    - name: Cargo cache
+      uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      with:
+        key: ${{ inputs.cache-key }}

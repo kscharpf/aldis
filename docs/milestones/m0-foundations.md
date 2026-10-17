@@ -25,7 +25,7 @@
 | D4 | Bare-metal execution | Cortex-M (`thumbv7em-none-eabihf`): exerciser **runs** under QEMU (`qemu-system-arm`, semihosting). Cortex-R and RISC-V: build + panic-link check only in M0; QEMU execution added in M1 | Proposed |
 | D5 | Big-endian testing (VER-030) | Host test suite on `s390x-unknown-linux-gnu` via `cross` (QEMU user mode). `armebv7r-none-eabihf` has no prebuilt `core` for 1.99.1 (checked), so a big-endian **bare-metal** build runs only in `nightly.yml` with `-Z build-std` | Proposed |
 | D6 | Vector parsing | `serde` + `serde_json` as **dev-dependencies** of a test-support crate only (GEN-001 permits dev-dependencies). Bare-metal runs use vectors compiled into Rust arrays by `xtask` | Proposed |
-| D7 | CCSDS PDFs in CI | Never downloaded in CI. Tests rely only on vectors (see [specs/README.md](../../specs/README.md)) | **Decided** |
+| D7 | CCSDS PDFs in CI | Never downloaded in CI. Tests rely only on vectors (see [specs/README.md](../../specs/README.md)). The nightly URL check uses HTTP HEAD only (`fetch.sh --check-urls`) | **Decided** |
 
 ## 3. Work packages
 
@@ -61,12 +61,15 @@ WP-0 repo ──▶ WP-1 CI ──────────────▶ WP-6 c
 | `no-std` | ubuntu | matrix `thumbv7em-none-eabihf`, `armv7r-none-eabihf`, `riscv32imac-unknown-none-elf`: `cargo build -p aldis --no-default-features --features full --target $T` | GEN-005 |
 | `big-endian` | ubuntu | `cross test --target s390x-unknown-linux-gnu --workspace` | VER-030, GEN-007 |
 | `minimal-build` | ubuntu | build `aldis-spp` alone; `xtask symbols` asserts no frame-protocol symbols | GEN-003, VER-031 |
-| `deny` | ubuntu | `cargo deny check` (licenses: MIT-compatible only; advisories; sources) + `cargo audit` | VER-003, GEN-001 |
+| `layers` | ubuntu | `.github/scripts/check_layers.py` on `cargo metadata`: no third-party runtime deps in L0–2, layering order, `aldis-spp` closure (moves into `xtask` in WP-2) | GEN-001…004 |
+| `deny` | ubuntu | `cargo deny --all-features check` (licenses: MIT-compatible only; RustSec advisories; sources) | VER-003, GEN-001 |
 | `spec` | ubuntu | `xtask spec-lint`, `xtask links`, `xtask vectors validate` | TV-001…003 |
 | `exerciser` | ubuntu | WP-5 panic-link check (all bare-metal targets); QEMU run (Cortex-M) | VER-010, GEN-021 |
 | `coverage` | ubuntu | WP-6 | VER-024 |
 
-A separate `nightly.yml` runs on a schedule: fuzzing (WP-6), the big-endian bare-metal build (`cargo +nightly build -Z build-std=core --target armebv7r-none-eabihf`), mutation testing (`cargo-mutants`, VER-025, report only in M0), and a `specs/fetch.sh --verify-only` dry check against the live CCSDS site. That last job only alerts when URLs or checksums go stale. It never commits PDFs.
+A separate `nightly.yml` runs on a schedule: fuzzing (WP-6), the big-endian bare-metal build (`cargo +nightly build -Z build-std=core --target armebv7r-none-eabihf`), mutation testing (`cargo-mutants`, VER-025, report only in M0), and `specs/fetch.sh --all --check-urls` against the live CCSDS site (HEAD requests only, nothing downloaded). That last job alerts when URLs go stale.
+
+**Status:** `fmt`, `clippy` (+ `cargo doc`), `test`, `no-std`, `big-endian`, `layers`, `deny`, and `nightly.yml` are implemented (`.github/workflows/`). `minimal-build` is covered for now by the `layers` job's dependency-closure check (symbol inspection follows in WP-2). `spec`, `exerciser`, and `coverage` are added with WP-2, WP-5, and WP-6.
 
 **Done when:** every job above passes on the skeleton, and a deliberate lint violation, panic, or formatting error each fail the right job (checked once, then reverted).
 
