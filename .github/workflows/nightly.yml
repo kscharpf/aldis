@@ -77,7 +77,10 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - run: |
           echo "NIGHTLY=$(cat ../tooling-nightly)" >> "$GITHUB_ENV"
-      - run: rustup toolchain install "$NIGHTLY" --profile minimal
+      # One retry: a transient download failure must not look like a fuzz failure.
+      - run: |
+          rustup toolchain install "$NIGHTLY" --profile minimal \
+            || { sleep 30; rustup toolchain install "$NIGHTLY" --profile minimal; }
       - uses: taiki-e/install-action@8cca0918f8471c33515202b73f56ab27f2bed283 # v2.87.29
         with:
           tool: cargo-fuzz@0.13.2
@@ -88,17 +91,21 @@ jobs:
           key: fuzz-corpus-${{ matrix.target }}-${{ github.run_id }}
           restore-keys: fuzz-corpus-${{ matrix.target }}-
       - name: Fuzz
+        # The prebuilt cargo-fuzz is a musl binary and defaults --target to its own triple,
+        # which has no std for the nightly and cannot use AddressSanitizer.
         run: >
-          cargo +"$NIGHTLY" fuzz run ${{ matrix.target }} --
+          cargo +"$NIGHTLY" fuzz run --target x86_64-unknown-linux-gnu ${{ matrix.target }} --
           -max_total_time=${{ inputs.fuzz-seconds || '600' }}
+      # Crash handling runs only when libFuzzer saved an input: a setup or build failure fails
+      # the job without opening an issue.
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        if: failure()
+        if: failure() && hashFiles(format('fuzz/artifacts/{0}/*', matrix.target)) != ''
         with:
           name: fuzz-crash-${{ matrix.target }}
           path: fuzz/artifacts/${{ matrix.target }}/
       - name: Open an issue for the crash
         # Every crash becomes a regression vector (VER-022); one open issue per target.
-        if: failure()
+        if: failure() && hashFiles(format('fuzz/artifacts/{0}/*', matrix.target)) != ''
         env:
           GH_TOKEN: ${{ github.token }}
           TITLE: "fuzz: ${{ matrix.target }} found a failing input"
@@ -108,7 +115,7 @@ jobs:
             gh issue create --title "$TITLE" --body "Nightly fuzzing failed: $RUN
 
           Download the \`fuzz-crash-${{ matrix.target }}\` artefact, reproduce with
-          \`cargo +$NIGHTLY fuzz run ${{ matrix.target }} <file>\`, fix, and add the input as a
+          \`cargo +$NIGHTLY fuzz run ${{ matrix.target }} <file>\` in \`fuzz/\`, fix, and add the input as a
           regression vector (VER-022)."
           fi
 

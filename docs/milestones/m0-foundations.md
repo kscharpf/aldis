@@ -3,6 +3,8 @@
 **Goal:** a working repository, CI, and verification tooling, plus a complete, verified `aldis-core`. Every later milestone builds on this unchanged.
 **Roadmap entry:** [08-roadmap.md](../08-roadmap.md) §1 · **CI host:** GitHub Actions
 
+**Status: complete (2026-10-16), release `v0.1.0-m0`.** All exit criteria (§4) are met on `main`; see the results column there.
+
 ## 1. Starting point
 
 | Already in place | Not yet started |
@@ -123,7 +125,7 @@ Each module is done when its requirements are covered by tests annotated `// req
 
 Also in WP-4: `aldis-core` crate docs. Every public item cites its clauses and requirement IDs (RS-015).
 
-**Status (2026-10-16): implemented** on branch `m0/core`. All ten modules; 36 tests (unit, property-based with `proptest`, model-based for the containers) plus every core vector file run against the real code (77 cases). Coverage with `cargo llvm-cov`: **100 % of regions, functions, and lines** in every module, with no waivers. Reaching it meant restructuring code instead of adding waivers: provably-safe arithmetic uses `wrapping_*`, unreachable fallbacks were merged into tested arms, and `Display` no longer has untestable `?` paths. Branch coverage needs nightly instrumentation (`--branch`), which reported no branch data; making that measurement work is part of WP-6.
+**Status (2026-10-16): implemented** (merged). All ten modules; 36 tests (unit, property-based with `proptest`, model-based for the containers) plus every core vector file run against the real code (77 cases). Coverage with `cargo llvm-cov`: **100 % of regions, functions, and lines** in every module, with no waivers. Reaching it meant restructuring code instead of adding waivers: provably-safe arithmetic uses `wrapping_*`, unreachable fallbacks were merged into tested arms, and `Display` no longer has untestable `?` paths. Branch coverage needs nightly instrumentation (`--branch`), which reported no branch data; making that measurement work is part of WP-6.
 
 Notes from implementation:
 - The OID Galois form (CMN-022) is defined in 132.0 Annex D only by its seed and a figure. Its wiring (shift right, output bit 0, XOR `0x8020_0003` on a 1) was found by a search over candidate tap sets. Only that configuration reproduces the Annex D sequence. It is checked equal to the Fibonacci form over 10⁷ bits (Python) and 10⁶ octets (Rust test).
@@ -140,7 +142,7 @@ Notes from implementation:
 
 **Done when:** the exerciser links on all three bare-metal targets. Introducing an `unwrap()` into `aldis-core` makes the link fail (verified once).
 
-**Status (2026-10-16): implemented** on branch `m0/gates`. `exerciser/` is a separate workspace (a `no_main` binary cannot build for the host). It needs no runtime crate: a 15-entry vector table and the semihosting exit are written by hand, so the only dependency is `aldis-core`. `build.rs` generates the vector cases from `test-vectors/core/` with `aldis-testkit`. All 77 vector cases plus direct calls to every other public API, with inputs through `black_box` so nothing is constant-folded away. Release builds link on all three targets with zero Clippy findings. The `inject-panic` feature plants one reachable `unwrap()`; CI requires that build to fail on `aldis_panic_is_unreachable`, which it does on all three targets. Under QEMU the exerciser exits 0, and exits 1 when a vector is corrupted. Stack sizes: 19 functions after LTO, largest frame 552 bytes (thumbv7em).
+**Status (2026-10-16): implemented** (merged). `exerciser/` is a separate workspace (a `no_main` binary cannot build for the host). It needs no runtime crate: a 15-entry vector table and the semihosting exit are written by hand, so the only dependency is `aldis-core`. `build.rs` generates the vector cases from `test-vectors/core/` with `aldis-testkit`. All 77 vector cases plus direct calls to every other public API, with inputs through `black_box` so nothing is constant-folded away. Release builds link on all three targets with zero Clippy findings. The `inject-panic` feature plants one reachable `unwrap()`; CI requires that build to fail on `aldis_panic_is_unreachable`, which it does on all three targets. Under QEMU the exerciser exits 0, and exits 1 when a vector is corrupted. Stack sizes: 19 functions after LTO, largest frame 552 bytes (thumbv7em).
 
 ### WP-6 Coverage and fuzzing gates (S) — VER-022, VER-024
 
@@ -150,7 +152,7 @@ Notes from implementation:
 | `fuzz/` (cargo-fuzz): targets `bits_roundtrip`, `crc_variants`, `oid_forms`, `counter_classify`, `container_model`, `layout_ranges` | targets |
 | `nightly.yml`: each target ≥ 10 CPU-minutes per night (≥ 1 CPU-hour before a release, VER-022); crashes open an issue automatically and become regression vectors | workflow |
 
-**Status (2026-10-16): implemented** on branch `m0/gates`.
+**Status (2026-10-16): implemented** (merged).
 
 - **Coverage.** `cargo xtask coverage` runs `cargo llvm-cov --branch` (≥ 0.9) on the pinned tooling nightly. It gates all four metrics, because `cargo llvm-cov` has no branch threshold, and fails if no branch data is produced, so an old tool cannot pass it vacuously. Test modules carry `#[cfg_attr(coverage_nightly, coverage(off))]`, so only library code counts. Result: 784/784 regions, 145/145 functions, 680/680 lines, 60/60 branches, with no waivers. Planting one untested function and one oversized waiver each failed the gate. Two findings along the way: cargo-llvm-cov 0.6 with the older nightly reported no branch data at all; and objects left by an older build-directory layout were still passed to `llvm-cov` and showed up as misses, so the command starts from a clean `target/llvm-cov-target`.
 - **Fuzzing.** `fuzz/` is a separate workspace that builds and lints on stable (RS-002); only `cargo fuzz run` needs nightly. Each target checks `aldis-core` against an independent model (bit-by-bit fields, `u128` modular arithmetic, `VecDeque` containers, recomputed layouts) and checks that rejected inputs change nothing (GEN-042). Local smoke run: 20 s per target, 0.3–9 M executions each, no findings.
@@ -160,15 +162,15 @@ Notes from implementation:
 
 M0 is complete when every item below is green on `main`:
 
-| Area | Criteria |
-|---|---|
-| Static | VER-001, VER-002, VER-003, VER-004 |
-| Panic freedom | VER-010, GEN-020, GEN-021 (exerciser links on all bare-metal targets) |
-| Portability | GEN-005, GEN-007, VER-030 (big-endian), VER-031 / GEN-003 (minimal build) |
-| `aldis-core` requirements | GEN-010…012, GEN-022…024, GEN-040…042, GEN-050, GEN-051, API-001…003, API-070, API-071, API-073, CMN-001…004, CMN-020…023, CMN-030…031, CMN-040…041, RS-010, RS-011, RS-015, RS-016, RS-018 |
-| Vectors and trace | TV-001…003, TV-012, TV-020…022, VER-020 (`xtask trace --scope m0` has no gaps), VER-021 |
-| Gates | VER-022 (fuzz targets exist and run nightly), VER-024 (100 % coverage for `aldis-core`) |
-| Docs | Roadmap updated; `CHANGELOG.md` entry for 0.1.0-m0; open issues updated |
+| Area | Criteria | Result |
+|---|---|---|
+| Static | VER-001, VER-002, VER-003, VER-004 | CI `fmt`, `clippy`, `deny` |
+| Panic freedom | VER-010, GEN-020, GEN-021 (exerciser links on all bare-metal targets) | CI `exerciser`, 3 targets; canary fails as required |
+| Portability | GEN-005, GEN-007, VER-030 (big-endian), VER-031 / GEN-003 (minimal build) | CI `no-std`, `big-endian`, `layers` (+ `symbols`) |
+| `aldis-core` requirements | GEN-010…012, GEN-022…024, GEN-040…042, GEN-050, GEN-051, API-001…003, API-070, API-071, API-073, CMN-001…004, CMN-020…023, CMN-030…031, CMN-040…041, RS-010, RS-011, RS-015, RS-016, RS-018 | Tests, vectors, fuzz targets; GEN-022/023 by [inspection](../verification/inspections/gen-022-023-aldis-core.md) |
+| Vectors and trace | TV-001…003, TV-012, TV-020…022, VER-020 (`xtask trace --scope m0` has no gaps), VER-021 | 57/57 traced; CI `spec` now runs `--strict` |
+| Gates | VER-022 (fuzz targets exist and run nightly), VER-024 (100 % coverage for `aldis-core`) | 6 targets in `nightly.yml`; CI `coverage` 784/784 regions, 60/60 branches |
+| Docs | Roadmap updated; `CHANGELOG.md` entry for 0.1.0-m0; open issues updated | Done (OI-14 added) |
 
 Moved out of M0 scope (2026-10-16) because they are codec or engine behavior, not `aldis-core`: API-072 and API-074 (frame codecs and engines, M2/M4), GEN-043, GEN-052, GEN-053 (codecs, M1/M2), TV-010 (engine scenarios, M3).
 

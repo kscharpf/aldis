@@ -4,6 +4,10 @@ All notable changes to Aldis are recorded here. The format follows [Keep a Chang
 
 ## [Unreleased]
 
+## [0.1.0-m0] — 2026-10-16
+
+Milestone 0, Foundations: repository, CI, verification tooling, and a verified `aldis-core` ([plan](docs/milestones/m0-foundations.md)).
+
 ### Added
 - `xtask` tooling (`cargo xtask help`): `spec-lint` (requirement tables and every ID reference), `trace [--scope m0] [--strict]` (requirement → artefact matrix), `vectors validate`, `vectors schema [--check]`, `links`, `layers`, and `ci`.
 - `aldis-testkit`: test-vector model, loader, and exact-match runner; JSON Schemas for vector files generated from the model (`test-vectors/schema/`).
