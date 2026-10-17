@@ -37,7 +37,11 @@ Total packet length is 7 to 65 542 octets (§4.1.2.2).
 
 ## 3. Anomaly flags (lenient mode)
 
-`SppAnomaly::{IdleWithSecondaryHeader}`. Version ≠ 0 remains an error in both modes.
+`SppAnomaly` flags. The bit index is the flag's position in `AnomalySet::bits()` and is shared with the C ABI. It never changes. Version ≠ 0 remains an error in both modes.
+
+| Bit | Flag | Deviation | Source |
+|---|---|---|---|
+| 0 | `IdleWithSecondaryHeader` | Idle Packet (APID 2047) with Secondary Header Flag = 1 (SPP-004) | 133.0 §4.1.3.3.3.4 |
 
 ## 4. Test-vector categories
 

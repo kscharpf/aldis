@@ -66,6 +66,7 @@ jobs:
           - counter_classify
           - container_model
           - layout_ranges
+          - anomaly_set_model
     runs-on: ubuntu-24.04
     permissions:
       contents: read

@@ -70,3 +70,10 @@ path = "fuzz_targets/layout_ranges.rs"
 test = false
 doc = false
 bench = false
+
+[[bin]]
+name = "anomaly_set_model"
+path = "fuzz_targets/anomaly_set_model.rs"
+test = false
+doc = false
+bench = false

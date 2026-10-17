@@ -65,4 +65,10 @@ TAI↔UTC conversion requires a leap-second table that changes over a mission's 
 
 ## 7. Anomaly flags (lenient mode)
 
-`TimeAnomaly::{ReservedTimeCodeId, ReservedSubmsCode, NonZeroDoyHighNibble}`
+`TimeAnomaly` flags. The bit index is the flag's position in `AnomalySet::bits()` and is shared with the C ABI. It never changes.
+
+| Bit | Flag | Deviation | Source |
+|---|---|---|---|
+| 0 | `ReservedTimeCodeId` | P-field time code ID `000`, `011`, or `111` (TIME-002) | 301.0 §3.1.1 |
+| 1 | `ReservedSubmsCode` | CDS submillisecond length code `11` (TIME-020) | 301.0 §3.3.2 |
+| 2 | `NonZeroDoyHighNibble` | CCS day-of-year segment with a non-zero high nibble (TIME-030) | 301.0 §3.4.1.2 |

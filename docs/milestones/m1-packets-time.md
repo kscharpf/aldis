@@ -3,7 +3,7 @@
 **Goal:** complete, verified Layer 1 codecs for time codes, Space Packets, and Encapsulation Packets: `aldis-time`, `aldis-spp`, and `aldis-epp`. They are verified to the same standard as `aldis-core` in M0: vectors, panic freedom on bare metal, 100 % coverage, fuzzing, and cross-checks.
 **Roadmap entry:** [08-roadmap.md](../08-roadmap.md) §1 · **Builds on:** [M0](m0-foundations.md) (`v0.1.0-m0`) · **Release:** `v0.2.0-m1`
 
-**Status: planned (2026-10-17).** `cargo xtask trace --scope m1` puts 87 requirements in scope; the 24 traced so far are `aldis-core` and CI artefacts from M0.
+**Status: in progress (2026-10-17).** Decisions D1–D8 accepted 2026-10-17; WP-0 under way on `m1/core`. `cargo xtask trace --scope m1` puts 87 requirements in scope; the 24 traced so far are `aldis-core` and CI artefacts from M0.
 
 ## 1. Starting point
 
@@ -21,14 +21,14 @@
 
 | # | Decision | Choice | Status |
 |---|---|---|---|
-| D1 | Decode mode and anomaly set | Add `DecodeMode` (default `Strict`) and `AnomalySet<A>` (a `Copy` bit set over a `#[non_exhaustive]` anomaly enum of up to 32 flags) to `aldis-core`. The change is additive (GEN-080); the `aldis-core` gates run again on the new code | Proposed |
-| D2 | CUC fine time | Store fine time as a left-aligned `u128` fraction of a second (up to 80 bits used, TIME-011). Embedded targets lower `u128` through `compiler_builtins`; WP-5 measures the stack cost. Alternative: `[u8; 10]` with octet arithmetic | Proposed |
-| D3 | Calendar conversion (TIME-033) | Closed-form civil-from-days and days-from-civil (Hinnant), with no loops or tables (GEN-022). Leap seconds pass through as second 60; no time-scale change (§6 of the spec). A CDS value with an agency epoch (P-field bit 4 = 1) converts only if the caller supplies the epoch day; otherwise `InvalidConfig` | Proposed |
-| D4 | SANA values (OI-06) | M1 embeds **no** SANA registry. Valid EPI and extended-EPI sets are caller-supplied managed parameters (EPP-010). OI-06 stays open for USLP and the link layer | Proposed |
-| D5 | Independent cross-checks (VER-040) | A separate `crosscheck/` workspace (dev-only, like `fuzz/`) that runs each vector file through an independent implementation and reports disagreements. First candidate: the Rust `spacepackets` crate (SPP, CUC, CDS); its license and coverage are checked in WP-4. Where no independent implementation exists (expected for EPP, CCS, ASCII), the vectors are `hand-derived` with the derivation written down, plus the Blue Book examples | Proposed |
-| D6 | Bare-metal execution | Run the exerciser under QEMU on all three targets: RISC-V on `qemu-system-riscv32 -machine virt` with semihosting; Cortex-R on a QEMU Cortex-R machine (candidate `mps3-an536`, Cortex-R52, which needs a newer QEMU than Ubuntu 24.04 ships; confirmed in WP-5). If no Cortex-R machine works in CI, Cortex-R stays at link-check only and the reason is recorded | Proposed |
-| D7 | Exerciser structure | One exerciser workspace links all M1 crates, with one test group per crate. VER-010 asks for an exerciser "for each crate". One binary that calls every public API of every crate gives the same link-time proof, and keeps one QEMU job per target | Proposed |
-| D8 | Trace scope | Add `--scope m1` from §4 below. CI keeps `--scope m0 --strict` and runs `--scope m1` without `--strict` until the M1 exit, then switches it to `--strict` | Proposed |
+| D1 | Decode mode and anomaly set | Add `DecodeMode` (default `Strict`) and `AnomalySet<A>` (a `Copy` bit set over a `#[non_exhaustive]` anomaly enum of up to 32 flags) to `aldis-core`. The change is additive (GEN-080); the `aldis-core` gates run again on the new code | Accepted (2026-10-17) |
+| D2 | CUC fine time | Store fine time as a left-aligned `u128` fraction of a second (up to 80 bits used, TIME-011). Embedded targets lower `u128` through `compiler_builtins`; WP-5 measures the stack cost. Alternative: `[u8; 10]` with octet arithmetic | Accepted (2026-10-17) |
+| D3 | Calendar conversion (TIME-033) | Closed-form civil-from-days and days-from-civil (Hinnant), with no loops or tables (GEN-022). Leap seconds pass through as second 60; no time-scale change (§6 of the spec). A CDS value with an agency epoch (P-field bit 4 = 1) converts only if the caller supplies the epoch day; otherwise `InvalidConfig` | Accepted (2026-10-17) |
+| D4 | SANA values (OI-06) | M1 embeds **no** SANA registry. Valid EPI and extended-EPI sets are caller-supplied managed parameters (EPP-010). OI-06 stays open for USLP and the link layer | Accepted (2026-10-17) |
+| D5 | Independent cross-checks (VER-040) | A separate `crosscheck/` workspace (dev-only, like `fuzz/`) that runs each vector file through an independent implementation and reports disagreements. First candidate: the Rust `spacepackets` crate (SPP, CUC, CDS); its license and coverage are checked in WP-4. Where no independent implementation exists (expected for EPP, CCS, ASCII), the vectors are `hand-derived` with the derivation written down, plus the Blue Book examples | Accepted (2026-10-17) |
+| D6 | Bare-metal execution | Run the exerciser under QEMU on all three targets: RISC-V on `qemu-system-riscv32 -machine virt` with semihosting; Cortex-R on a QEMU Cortex-R machine (candidate `mps3-an536`, Cortex-R52, which needs a newer QEMU than Ubuntu 24.04 ships; confirmed in WP-5). If no Cortex-R machine works in CI, Cortex-R stays at link-check only and the reason is recorded | Accepted (2026-10-17) |
+| D7 | Exerciser structure | One exerciser workspace links all M1 crates, with one test group per crate. VER-010 asks for an exerciser "for each crate". One binary that calls every public API of every crate gives the same link-time proof, and keeps one QEMU job per target | Accepted (2026-10-17) |
+| D8 | Trace scope | Add `--scope m1` from §4 below. CI keeps `--scope m0 --strict` and runs `--scope m1` without `--strict` until the M1 exit, then switches it to `--strict` | Accepted (2026-10-17) |
 
 ## 3. Work packages
 

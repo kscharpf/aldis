@@ -5,6 +5,10 @@ All notable changes to Aldis are recorded here. The format follows [Keep a Chang
 ## [Unreleased]
 
 ### Added
+- `aldis-core::mode`: `DecodeMode { Strict, Lenient }`, default `Strict` (API-030; M1 D1).
+- `aldis-core::anomaly`: `Anomaly` trait (stable bit index per flag) and `AnomalySet<A>`, a `Copy` bit set of up to 32 flags with `empty`, `insert`, `contains`, `iter`, `is_empty`, `len`, `bits` (GEN-043; M1 D1). Re-exported at the crate root with `DecodeMode`.
+- Anomaly flag enums `TimeAnomaly`, `SppAnomaly`, and `EppAnomaly` (`#[non_exhaustive]`, GEN-081) in the codec crates, with bit indices listed in the standard documents (API-033).
+- Fuzz target `anomaly_set_model` (VER-022).
 - `aldis-core::bits`: big-endian `read_u32`, `write_u32`, `read_u64`, `write_u64` octet helpers alongside `read_u16`/`write_u16`.
 - `aldis-core::crc`: `PRESET` constant and incremental `crc16_update`, `crc16_update_bitwise`, `crc16_update_table` functions (CMN-001…004).
 - `aldis-core::ids`: `MAX` constants and `From<Id>` conversions for `Apid`, `SeqCount`, `FrameSeqNum`, and `PacketVersion`; infallible `SeqCount::classify`, `FrameSeqNum::classify`, and `From<{SeqCount, FrameSeqNum}> for ModCounter` (CMN-031).

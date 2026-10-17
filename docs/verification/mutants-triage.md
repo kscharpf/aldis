@@ -2,6 +2,17 @@
 
 Surviving mutants from `cargo mutants -p aldis-core --all-features` (cargo-mutants 27.1.0), triaged per VER-025. The nightly job `mutants` publishes the full report. Update this file when a new survivor appears.
 
+## 2026-10-17, branch `m1/core` (M1 WP-0)
+
+`cargo mutants -p aldis-core --all-features --file crates/aldis-core/src/anomaly.rs --file crates/aldis-core/src/mode.rs`: 41 mutants: 19 caught, 20 unviable, 0 missed, 2 timeouts.
+
+| Mutant | Verdict | Action |
+|---|---|---|
+| `anomaly.rs:142` `!=` → `==` in `Iter::next` (`while self.bits != 0`) | Caught by timeout: on the empty set the loop never ends (`trailing_zeros` is 32, `from_bit` rejects it, and the bits stay 0), so `empty_and_default` hangs | None needed |
+| `anomaly.rs:144` `&=` → `\|=` in `Iter::next` (clearing the lowest set bit) | Caught by timeout: the bits never shrink, so every non-empty iteration hangs | None needed |
+
+The GEN-022 bound on this loop (inspection, 32 passes) depends on exactly these two operators; the timeouts show that the tests exercise it.
+
 ## 2026-10-16, branch `m0/gates`
 
 288 mutants: 198 caught, 81 unviable (do not compile), 9 missed, 0 timeouts.
