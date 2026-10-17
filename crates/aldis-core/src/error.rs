@@ -135,6 +135,15 @@ impl FieldId {
     }
 }
 
+/// Converts a `usize` count or offset to `u64` for [`ErrorDetail::Expected`].
+#[expect(
+    clippy::as_conversions,
+    reason = "supported targets are 32- or 64-bit, so usize fits in u64"
+)]
+pub(crate) const fn as_u64(n: usize) -> u64 {
+    n as u64
+}
+
 /// Additional detail carried by an error, without allocation (GEN-041).
 #[non_exhaustive]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

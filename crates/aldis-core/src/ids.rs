@@ -149,9 +149,8 @@ impl SeqCount {
 
     /// Classifies `next` as received after `self` modulo 16384 (133.0 §4.1.3.4.3, CMN-031).
     #[must_use]
-    #[expect(clippy::as_conversions, reason = "widening u16 to u64 in const fn")]
-    pub const fn classify(self, next: SeqCount) -> Continuity {
-        classify_masked(14, self.0 as u64, next.0 as u64)
+    pub fn classify(self, next: SeqCount) -> Continuity {
+        classify_masked(14, u64::from(self.0), u64::from(next.0))
     }
 }
 
@@ -179,7 +178,7 @@ impl From<SeqCount> for ModCounter {
 
 /// TC Frame Sequence Number N(S), and COP-1 V(S) / V(R): 0–255, wrapping (232.0 §4.1.2.8).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
-pub struct FrameSeqNum(u8);
+pub struct FrameSeqNum(pub u8);
 
 impl FrameSeqNum {
     /// Largest value.
@@ -187,8 +186,8 @@ impl FrameSeqNum {
 
     /// The sequence number (`0..=255` all fit in 8 bits).
     #[must_use]
-    pub const fn new(value: u8) -> Option<FrameSeqNum> {
-        Some(FrameSeqNum(value))
+    pub const fn new(value: u8) -> FrameSeqNum {
+        FrameSeqNum(value)
     }
 
     /// The numeric value.
@@ -205,9 +204,8 @@ impl FrameSeqNum {
 
     /// Classifies `next` as received after `self` modulo 256 (CMN-031).
     #[must_use]
-    #[expect(clippy::as_conversions, reason = "widening u8 to u64 in const fn")]
-    pub const fn classify(self, next: FrameSeqNum) -> Continuity {
-        classify_masked(8, self.0 as u64, next.0 as u64)
+    pub fn classify(self, next: FrameSeqNum) -> Continuity {
+        classify_masked(8, u64::from(self.0), u64::from(next.0))
     }
 }
 
@@ -343,11 +341,11 @@ mod tests {
             ErrorKind::OutOfRange
         );
         assert_eq!(SeqCount::try_from(1).map(SeqCount::get), Ok(1));
-        let f_max = FrameSeqNum::new(FrameSeqNum::MAX).unwrap();
+        let f_max = FrameSeqNum::new(FrameSeqNum::MAX);
         assert_eq!(f_max.get(), 255);
         assert_eq!(f_max.next(), FrameSeqNum::from(0));
         assert_eq!(u8::from(f_max.next()), 0);
-        assert_eq!(f_max.classify(FrameSeqNum::from(0)), Continuity::InSequence);
+        assert_eq!(f_max.classify(FrameSeqNum(0)), Continuity::InSequence);
         assert_eq!(ModCounter::from(f_max).value(), 255);
         assert_eq!(PacketVersion::SPACE_PACKET.get(), 0);
         assert_eq!(u8::from(PacketVersion::ENCAPSULATION), 7);

@@ -204,8 +204,8 @@ impl<const N: usize> ByteQueue<N> {
             .ok_or_else(|| {
                 Error::out_of_range(
                     "record_len",
-                    u64::try_from(N.saturating_sub(PREFIX)).unwrap_or(u64::MAX),
-                    u64::try_from(data.len()).unwrap_or(u64::MAX),
+                    crate::error::as_u64(N.saturating_sub(PREFIX)),
+                    crate::error::as_u64(data.len()),
                 )
             })?;
         if need > self.free() {

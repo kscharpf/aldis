@@ -11,7 +11,7 @@ List a requirement here only when the artefact actually checks it. Remove the ro
 | VER-003 | A | CI job `deny`: `cargo deny --all-features check` with `deny.toml` |
 | VER-004 | A | CI job `fmt`: `cargo fmt --all --check` |
 | GEN-001, GEN-002, GEN-003, GEN-004 | A | CI job `layers`: `cargo xtask layers` (`xtask/src/layers.rs`) |
-| VER-031 | A | CI job `layers`: `cargo xtask symbols` builds `aldis-spp --release --all-features` and inspects all `libaldis_*.rlib` archives in `target/symbols/release/deps/` with `llvm-nm`, verifying that `aldis_core::` symbols are present and that no `aldis_tm`, `aldis_tc`, `aldis_aos`, `aldis_uslp`, `aldis_link`, or `aldis_cop1` archive or symbol is present (`xtask/src/binaries.rs`) |
+| VER-031 | A | CI job `layers`: `cargo xtask symbols` builds `aldis-spp --release --all-features --message-format=json` and inspects the emitted `libaldis_*.rlib` archives with `llvm-nm`, checking that no `aldis_tm`, `aldis_tc`, `aldis_aos`, `aldis_uslp`, `aldis_link`, or `aldis_cop1` symbol is defined (`xtask/src/binaries.rs`). Vacuous until the frame crates have code (M2); the dependency-closure check in `layers` covers the same property meanwhile |
 | GEN-005 | A | CI job `no-std`: `-p aldis --no-default-features --features full` for thumbv7em, armv7r, riscv32imac |
 | GEN-010, GEN-012 | A, I | `#![no_std]` in `crates/aldis-core/src/lib.rs`, with `alloc` gated behind an optional feature and unused by the fixed-capacity containers (`crates/aldis-core/src/container.rs`); verified by the `no-std` CI builds and the bare-metal exerciser link |
 | GEN-051 | A, I | No `#[repr(C)]` wire-format structs in `crates/aldis-core`; all wire-field reads and writes go through `crates/aldis-core/src/bits.rs` |

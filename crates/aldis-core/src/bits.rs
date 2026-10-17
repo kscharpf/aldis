@@ -9,15 +9,7 @@
 //! (1–64). Every function is total: out-of-range arguments return [`ErrorKind::OutOfRange`](crate::error::ErrorKind::OutOfRange)
 //! and never panic (GEN-020).
 
-use crate::error::{Error, Result};
-
-#[expect(
-    clippy::as_conversions,
-    reason = "usize fits in u64 on all supported targets"
-)]
-const fn as_u64(n: usize) -> u64 {
-    n as u64
-}
+use crate::error::{Error, Result, as_u64};
 
 /// Octets covered by a field, and the shift that right-aligns it.
 struct Span {

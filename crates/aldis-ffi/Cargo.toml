@@ -17,7 +17,7 @@ aldis = { path = "../aldis", default-features = false, features = ["full"] }
 [features]
 default = ["std"]
 # Hosted builds (ground). Embedded builds use --no-default-features --features panic-handler.
-std = []
+std = ["aldis/std"]
 # Provides a minimal #[panic_handler] for no_std staticlib builds. GEN-020/VER-010 require
 # that no panic path is reachable, so this handler only satisfies the linker.
 panic-handler = []

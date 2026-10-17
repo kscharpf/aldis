@@ -28,7 +28,7 @@ Every loop in library code, with its bound. `ids`, `layout`, `counter`, and `tim
 
 ## Recursion
 
-No function calls itself, directly or through another `aldis-core` function. A scan for self-calls flagged only same-named methods of other types: `bits::get` calls `<[u8]>::get`, `SecurityLayout::new` calls `Error::new`, and `Instant`/`Duration::saturating_add` call `u64::saturating_add`. The internal call graph is acyclic and at most three deep (for example `fill` → `next_octet` → `next_bit`, `clear` → `pop`, `crc16` → `crc16_table` → `crc16_update_table`).
+No function calls itself, directly or through another `aldis-core` function. A scan for self-calls flagged only same-named methods of other types: `bits::get` calls `<[u8]>::get`, `SecurityLayout::new` calls `Error::new`, and `Instant`/`Duration::saturating_add` call `u64::saturating_add`. The internal call graph is acyclic and at most three deep (for example `fill` → `next_octet` → `next_bit`, `clear` → `pop`, `crc16` → `crc16_update` → `crc16_update_table`).
 
 ## Blocking
 

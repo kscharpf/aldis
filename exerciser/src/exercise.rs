@@ -197,9 +197,7 @@ fn apis_errors_ids(tally: &mut Tally) {
         Apid::new(bb(2047)).is_some_and(Apid::is_idle) && u16::from(Apid::IDLE) == Apid::MAX,
     );
     tally.check(Apid::try_from(bb(4096_u16)).is_err() && Apid::IDLE.get() == 2047);
-    let seq = SeqCount::new(bb(SeqCount::MAX)).unwrap_or(SeqCount::new(0).unwrap_or_else(|| loop {
-        core::hint::spin_loop();
-    }));
+    let seq = SeqCount::new(bb(SeqCount::MAX)).unwrap_or_default();
     tally.check(
         seq.next().get() == 0
             && u16::from(seq) == SeqCount::MAX
@@ -209,8 +207,8 @@ fn apis_errors_ids(tally: &mut Tally) {
     );
     let fsn = FrameSeqNum::from(bb(FrameSeqNum::MAX));
     tally.check(
-        FrameSeqNum::new(bb(0)).map(FrameSeqNum::get) == Some(0)
-            && fsn.next() == FrameSeqNum::from(0)
+        FrameSeqNum::new(bb(0)).get() == 0
+            && fsn.next() == FrameSeqNum(0)
             && u8::from(fsn) == 255
             && ModCounter::from(fsn).value() == 255
             && fsn.classify(bb(fsn.next())) == Continuity::InSequence,
@@ -305,8 +303,13 @@ fn apis_containers_security(tally: &mut Tally) {
     if let Some(first) = vec.as_mut_slice().first_mut() {
         *first = bb(10);
     }
-    let other = vec;
-    tally.check(vec == other && vec.pop() == Some(10));
+    let mut other: FixedVec<u8, 2> = FixedVec::default();
+    let _ = other.push(bb(10));
+    let _ = other.push(bb(99));
+    let _ = other.pop();
+    let mut diff: FixedVec<u8, 2> = FixedVec::default();
+    let _ = diff.push(bb(11));
+    tally.check(vec == other && vec != diff && vec.pop() == Some(10));
     vec.clear();
 
     // security

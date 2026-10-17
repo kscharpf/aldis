@@ -14,7 +14,7 @@ aldis-link = { path = "../aldis-link", default-features = false }
 aldis-cop1 = { path = "../aldis-cop1", default-features = false }
 
 [features]
-std = ["aldis-core/std"]
+std = ["aldis-core/std", "aldis-link/std", "aldis-cop1/std"]
 std-udp = ["std"]
 std-tcp = ["std"]
 trace = []

@@ -108,100 +108,117 @@ pub fn run() -> Result<usize, String> {
 
     let mut problems = 0;
     for krate in GATED {
-        // Objects left by an older build or a previous crate in the loop are still passed to
-        // `llvm-cov` and would bleed into this crate's report, so each crate starts clean.
-        if cov_dir.exists() {
-            std::fs::remove_dir_all(&cov_dir)
-                .map_err(|e| format!("{}: {e}", repo::rel(&cov_dir)))?;
-        }
-        let json = out_dir.join(format!("coverage-{krate}.json"));
-        let status = Command::new("rustup")
-            .args(["run", &nightly, "cargo", "llvm-cov", "-p", krate])
-            .args(["--all-features", "--branch", "--json", "--summary-only"])
-            .arg("--output-path")
-            .arg(&json)
-            .current_dir(repo::root())
-            .status()
-            .map_err(|e| format!("cargo llvm-cov: {e} (install cargo-llvm-cov >= 0.9)"))?;
-        if !status.success() {
-            return Err(format!("cargo llvm-cov -p {krate} failed"));
-        }
-        let report: Value = serde_json::from_str(&repo::read(&json)?)
-            .map_err(|e| format!("{}: {e}", repo::rel(&json)))?;
-        let data = report
-            .pointer("/data/0")
-            .ok_or_else(|| format!("{}: no data", repo::rel(&json)))?;
-        let waived = waivers(krate)?;
+        problems += check_crate(krate, &nightly, &out_dir, &cov_dir)?;
+    }
+    Ok(problems)
+}
 
-        let mut md = format!(
-            "# Coverage — `{krate}` (VER-024)\n\n\
-             `cargo llvm-cov --branch` on `{nightly}`; test modules excluded.\n\n\
-             | File | Regions | Functions | Lines | Branches |\n|---|---:|---:|---:|---:|\n"
-        );
-        let cell =
-            |s: &Value, m: &str| format!("{}/{}", count(s, m, "covered"), count(s, m, "count"));
-        let prefix = format!("crates/{krate}/");
-        let mut covered_totals = [0_u64; 4];
-        let mut count_totals = [0_u64; 4];
-        for file in data
-            .get("files")
-            .and_then(Value::as_array)
-            .into_iter()
-            .flatten()
-        {
-            let name = file.get("filename").and_then(Value::as_str).unwrap_or("?");
-            let name = repo::rel(std::path::Path::new(name));
-            if !name.starts_with(&prefix) {
-                continue;
-            }
-            let s = file.get("summary").unwrap_or(&Value::Null);
-            for (i, m) in METRICS.iter().enumerate() {
-                covered_totals[i] += count(s, m, "covered");
-                count_totals[i] += count(s, m, "count");
-            }
-            let cells: Vec<String> = METRICS.iter().map(|m| cell(s, m)).collect();
-            let _ = writeln!(md, "| `{name}` | {} |", cells.join(" | "));
-        }
-        let cells: Vec<String> = (0..METRICS.len())
-            .map(|i| format!("{}/{}", covered_totals[i], count_totals[i]))
-            .collect();
-        let _ = writeln!(md, "| **total** | {} |", cells.join(" | "));
+fn check_crate(
+    krate: &str,
+    nightly: &str,
+    out_dir: &std::path::Path,
+    cov_dir: &std::path::Path,
+) -> Result<usize, String> {
+    // Objects left by an older build or a previous crate in the loop are still passed to
+    // `llvm-cov` and would bleed into this crate's report, so each crate starts clean.
+    if cov_dir.exists() {
+        std::fs::remove_dir_all(cov_dir).map_err(|e| format!("{}: {e}", repo::rel(cov_dir)))?;
+    }
+    let json = out_dir.join(format!("coverage-{krate}.json"));
+    let status = Command::new("rustup")
+        .args(["run", nightly, "cargo", "llvm-cov", "-p", krate])
+        .args(["--all-features", "--branch", "--json", "--summary-only"])
+        .arg("--output-path")
+        .arg(&json)
+        .current_dir(repo::root())
+        .status()
+        .map_err(|e| format!("cargo llvm-cov: {e} (install cargo-llvm-cov >= 0.9)"))?;
+    if !status.success() {
+        return Err(format!("cargo llvm-cov -p {krate} failed"));
+    }
+    let report: Value = serde_json::from_str(&repo::read(&json)?)
+        .map_err(|e| format!("{}: {e}", repo::rel(&json)))?;
+    let data = report
+        .pointer("/data/0")
+        .ok_or_else(|| format!("{}: no data", repo::rel(&json)))?;
+    let waived = waivers(krate)?;
 
-        let mut line = format!("coverage {krate}:");
-        for (i, (metric, allowed)) in METRICS.iter().zip(waived).enumerate() {
-            let total = count_totals[i];
-            let missed = total.saturating_sub(covered_totals[i]);
-            let _ = write!(line, " {metric} {missed}/{total} missed");
-            if allowed > 0 {
-                let _ = write!(line, " ({allowed} waived)");
-            }
-            if missed > allowed {
-                println!(
-                    "error: VER-024 {krate} {metric}: {missed} missed, {allowed} waived; \
-                     see target/spec/coverage-{krate}.md"
-                );
-                problems += 1;
-            }
-            if missed < allowed {
-                println!(
-                    "error: VER-024 {krate} {metric}: {allowed} waived but only {missed} missed; \
-                     shrink the waiver"
-                );
-                problems += 1;
-            }
+    let mut md = format!(
+        "# Coverage — `{krate}` (VER-024)\n\n\
+         `cargo llvm-cov --branch` on `{nightly}`; test modules excluded.\n\n\
+         | File | Regions | Functions | Lines | Branches |\n|---|---:|---:|---:|---:|\n"
+    );
+    let cell = |s: &Value, m: &str| format!("{}/{}", count(s, m, "covered"), count(s, m, "count"));
+    let prefix = format!("crates/{krate}/");
+    let mut matched_files = 0_usize;
+    let mut covered_totals = [0_u64; 4];
+    let mut count_totals = [0_u64; 4];
+    for file in data
+        .get("files")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+    {
+        let name = file.get("filename").and_then(Value::as_str).unwrap_or("?");
+        let name = repo::rel(std::path::Path::new(name));
+        if !name.starts_with(&prefix) {
+            continue;
         }
-        // An instrumentation without branch data (old cargo-llvm-cov or stable rustc) would
-        // pass the branch gate vacuously.
-        if count_totals[3] == 0 {
+        matched_files += 1;
+        let s = file.get("summary").unwrap_or(&Value::Null);
+        for (i, m) in METRICS.iter().enumerate() {
+            covered_totals[i] += count(s, m, "covered");
+            count_totals[i] += count(s, m, "count");
+        }
+        let cells: Vec<String> = METRICS.iter().map(|m| cell(s, m)).collect();
+        let _ = writeln!(md, "| `{name}` | {} |", cells.join(" | "));
+    }
+    if matched_files == 0 {
+        return Err(format!(
+            "VER-024 {krate}: no source files matched `{prefix}` in {}",
+            repo::rel(&json)
+        ));
+    }
+    let cells: Vec<String> = (0..METRICS.len())
+        .map(|i| format!("{}/{}", covered_totals[i], count_totals[i]))
+        .collect();
+    let _ = writeln!(md, "| **total** | {} |", cells.join(" | "));
+
+    let mut problems = 0;
+    let mut line = format!("coverage {krate}:");
+    for (i, (metric, allowed)) in METRICS.iter().zip(waived).enumerate() {
+        let total = count_totals[i];
+        let missed = total.saturating_sub(covered_totals[i]);
+        let _ = write!(line, " {metric} {missed}/{total} missed");
+        if allowed > 0 {
+            let _ = write!(line, " ({allowed} waived)");
+        }
+        if missed > allowed {
             println!(
-                "error: VER-024 {krate}: no branch data; needs cargo-llvm-cov >= 0.9 and {nightly}"
+                "error: VER-024 {krate} {metric}: {missed} missed, {allowed} waived; \
+                 see target/spec/coverage-{krate}.md"
             );
             problems += 1;
         }
-        println!("{line}");
-        let file = out_dir.join(format!("coverage-{krate}.md"));
-        std::fs::write(&file, md).map_err(|e| e.to_string())?;
-        println!("coverage report: {}", repo::rel(&file));
+        if missed < allowed {
+            println!(
+                "error: VER-024 {krate} {metric}: {allowed} waived but only {missed} missed; \
+                 shrink the waiver"
+            );
+            problems += 1;
+        }
     }
+    // An instrumentation without branch data (old cargo-llvm-cov or stable rustc) would
+    // pass the branch gate vacuously.
+    if count_totals[3] == 0 {
+        println!(
+            "error: VER-024 {krate}: no branch data; needs cargo-llvm-cov >= 0.9 and {nightly}"
+        );
+        problems += 1;
+    }
+    println!("{line}");
+    let file = out_dir.join(format!("coverage-{krate}.md"));
+    std::fs::write(&file, md).map_err(|e| e.to_string())?;
+    println!("coverage report: {}", repo::rel(&file));
     Ok(problems)
 }

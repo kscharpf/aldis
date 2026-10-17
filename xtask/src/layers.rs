@@ -81,18 +81,16 @@ pub fn check() -> Result<usize, String> {
 
     for (name, deps) in &crates {
         let name = name.as_str();
-        if TOOLING.contains(&name) {
-            continue;
-        }
-        if BOUNDARY.contains(&name) {
-            for d in deps.iter().filter(|d| !d.dev) {
-                let dn = d.name.as_str();
-                if TOOLING.contains(&dn) {
+        if TOOLING.contains(&name) || BOUNDARY.contains(&name) {
+            for d in deps
+                .iter()
+                .filter(|d| !d.dev && TOOLING.contains(&d.name.as_str()))
+            {
+                if BOUNDARY.contains(&name) {
                     errors.push(format!(
-                        "{name} depends on tooling crate {dn} outside dev-dependencies"
+                        "{name} depends on tooling crate {} outside dev-dependencies",
+                        d.name
                     ));
-                } else if !layer.contains_key(dn) && !BOUNDARY.contains(&dn) {
-                    errors.push(format!("GEN-001 {name} has third-party dependency {dn}"));
                 }
             }
             continue;

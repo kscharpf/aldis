@@ -8,7 +8,7 @@
 
 use aldis_core::counter::{Continuity, ModCounter};
 use aldis_core::crc::{crc16, crc16_bitwise};
-use aldis_core::error::{ErrorDetail, ErrorKind};
+use aldis_core::error::ErrorKind;
 use aldis_core::layout::{FrameLayout, LayoutSpec};
 use aldis_core::oid::{OidGenerator, OidGeneratorGalois};
 use aldis_core::security::SecurityLayout;
@@ -48,23 +48,7 @@ fn ok(value: &Value) -> Outcome {
 fn outcome(result: Result<Value, Error>) -> Outcome {
     match result {
         Ok(v) => ok(&v),
-        Err(e) => {
-            let mut details = Map::new();
-            if let Some(f) = e.field() {
-                details.insert("field".to_owned(), json!(f.name()));
-            }
-            match e.detail() {
-                ErrorDetail::Needed(n) => {
-                    details.insert("needed".to_owned(), json!(n));
-                }
-                ErrorDetail::Expected { expected, found } => {
-                    details.insert("expected".to_owned(), json!(expected));
-                    details.insert("found".to_owned(), json!(found));
-                }
-                ErrorDetail::None | _ => {}
-            }
-            Outcome::ErrWith(e.kind().name().to_owned(), details)
-        }
+        Err(e) => Outcome::Err(e.kind().name().to_owned()),
     }
 }
 

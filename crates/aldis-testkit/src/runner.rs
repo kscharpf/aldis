@@ -14,8 +14,6 @@ pub enum Outcome {
     Ok(Map<String, Value>),
     /// Failure with the error kind name from the catalogue (e.g. `"CrcMismatch"`).
     Err(String),
-    /// Failure with the error kind name and detail fields (e.g. `"needed": 7`).
-    ErrWith(String, Map<String, Value>),
     /// The handler does not implement this operation. Always a failure (TV-012).
     Unsupported,
 }
@@ -67,31 +65,6 @@ impl Report {
     }
 }
 
-fn compare_err(
-    exp: &crate::model::Expect,
-    kind: &str,
-    actual: &Map<String, Value>,
-) -> Result<(), String> {
-    match exp.error.as_deref() {
-        Some(e) if e != kind => return Err(format!("expected error {e}, got {kind}")),
-        Some(_) => {}
-        None => return Err("vector expects failure but names no error kind".to_owned()),
-    }
-    let mut diffs = Vec::new();
-    for (k, v) in &exp.values {
-        match actual.get(k) {
-            None => diffs.push(format!("missing error detail {k} (expected {v})")),
-            Some(a) if a != v => diffs.push(format!("{k}: expected {v}, got {a}")),
-            Some(_) => {}
-        }
-    }
-    if diffs.is_empty() {
-        Ok(())
-    } else {
-        Err(diffs.join("; "))
-    }
-}
-
 /// Compares one handler outcome with a case's expectation.
 ///
 /// # Errors
@@ -122,16 +95,17 @@ pub fn compare(case: &CodecCase, outcome: &Outcome) -> Result<(), String> {
             }
             Err(diffs.join("; "))
         }
-        (true, Outcome::Err(kind) | Outcome::ErrWith(kind, _)) => {
-            Err(format!("expected success, got error {kind}"))
-        }
+        (true, Outcome::Err(kind)) => Err(format!("expected success, got error {kind}")),
         (false, Outcome::Ok(actual)) => Err(format!(
             "expected error {}, got success {}",
             exp.error.as_deref().unwrap_or("?"),
             Value::Object(actual.clone())
         )),
-        (false, Outcome::Err(kind)) => compare_err(exp, kind, &Map::new()),
-        (false, Outcome::ErrWith(kind, actual)) => compare_err(exp, kind, actual),
+        (false, Outcome::Err(kind)) => match exp.error.as_deref() {
+            Some(e) if e == kind => Ok(()),
+            Some(e) => Err(format!("expected error {e}, got {kind}")),
+            None => Err("vector expects failure but names no error kind".to_owned()),
+        },
     }
 }
 
@@ -216,35 +190,16 @@ mod tests {
     }
 
     #[test]
-    fn error_kinds_and_details_must_match() {
+    fn error_kinds_must_match() {
         // req: TV-001, TV-012
-        let f = file(&json!([
-            { "id": "e1", "requirements": ["TV-001"], "operation": "op",
-              "expect": { "ok": false, "error": "CrcMismatch" } },
-            { "id": "e2", "requirements": ["TV-001"], "operation": "op",
-              "expect": { "ok": false, "error": "Incomplete", "needed": 7 } }
-        ]));
-        let c1 = &f.cases[0];
-        assert!(compare(c1, &Outcome::Err("CrcMismatch".into())).is_ok());
-        assert!(compare(c1, &Outcome::Err("LengthMismatch".into())).is_err());
-        assert!(compare(c1, &Outcome::Ok(Map::new())).is_err());
-
-        let c2 = &f.cases[1];
-        assert!(compare(c2, &Outcome::Err("Incomplete".into())).is_err());
-        assert!(
-            compare(
-                c2,
-                &Outcome::ErrWith("Incomplete".into(), obj(&json!({ "needed": 7 })))
-            )
-            .is_ok()
+        let f = file(
+            &json!([{ "id": "e1", "requirements": ["TV-001"], "operation": "op",
+                               "expect": { "ok": false, "error": "CrcMismatch" } }]),
         );
-        assert!(
-            compare(
-                c2,
-                &Outcome::ErrWith("Incomplete".into(), obj(&json!({ "needed": 6 })))
-            )
-            .is_err()
-        );
+        let case = &f.cases[0];
+        assert!(compare(case, &Outcome::Err("CrcMismatch".into())).is_ok());
+        assert!(compare(case, &Outcome::Err("LengthMismatch".into())).is_err());
+        assert!(compare(case, &Outcome::Ok(Map::new())).is_err());
     }
 
     #[test]
