@@ -1,9 +1,22 @@
 //! Foundation types and shared algorithms for Aldis.
 //!
-//! Layer 0 of Aldis. Specification: `docs/standards/common-link-features.md`.
+//! Layer 0 of Aldis. Specification: `docs/standards/common-link-features.md`,
+//! `docs/02-design-rules.md`, and `docs/03-api-model.md`.
 //!
-//! **Status:** skeleton. Modules are declared but not yet implemented.
-//! Requirements are traced by ID in each module's documentation.
+//! | Module | Contents | Requirements |
+//! |---|---|---|
+//! | [`error`] | Stable error catalogue, `Error` | GEN-040, GEN-041, RS-011 |
+//! | [`bits`] | Big-endian bit-field primitives | GEN-050, GEN-051 |
+//! | [`ids`] | Range-checked identifiers | API-001, API-002, RS-010 |
+//! | [`time`] | `Instant`, `Duration` | API-003 |
+//! | [`crc`] | FECF CRC-16 | CMN-001…CMN-004 |
+//! | [`oid`] | OID pseudo-noise generators | CMN-020…CMN-023 |
+//! | [`counter`] | Modular counters, gap classification | CMN-030, CMN-031 |
+//! | [`container`] | Fixed-capacity queues and vectors | GEN-010…GEN-012, API-061 |
+//! | [`security`] | SDLS reservation hooks | API-070…API-074 |
+//! | [`layout`] | Frame field layout | CMN-040, CMN-041 |
+//!
+//! `no_std`, no allocation, no `unsafe`, and no panics on any input (GEN-010, GEN-020, GEN-070).
 #![no_std]
 #![cfg_attr(docsrs, feature(doc_auto_cfg))]
 
@@ -22,3 +35,5 @@ pub mod layout;
 pub mod oid;
 pub mod security;
 pub mod time;
+
+pub use error::{Error, ErrorDetail, ErrorKind, FieldId, Result};

@@ -123,6 +123,12 @@ Each module is done when its requirements are covered by tests annotated `// req
 
 Also in WP-4: `aldis-core` crate docs. Every public item cites its clauses and requirement IDs (RS-015).
 
+**Status (2026-10-16): implemented** on branch `m0/core`. All ten modules; 36 tests (unit, property-based with `proptest`, model-based for the containers) plus every core vector file run against the real code (77 cases). Coverage with `cargo llvm-cov`: **100 % of regions, functions, and lines** in every module, with no waivers. Reaching it meant restructuring code instead of adding waivers: provably-safe arithmetic uses `wrapping_*`, unreachable fallbacks were merged into tested arms, and `Display` no longer has untestable `?` paths. Branch coverage needs nightly instrumentation (`--branch`), which reported no branch data; making that measurement work is part of WP-6.
+
+Notes from implementation:
+- The OID Galois form (CMN-022) is defined in 132.0 Annex D only by its seed and a figure. Its wiring (shift right, output bit 0, XOR `0x8020_0003` on a 1) was found by a search over candidate tap sets. Only that configuration reproduces the Annex D sequence. It is checked equal to the Fibonacci form over 10⁷ bits (Python) and 10⁶ octets (Rust test).
+- Test code uses the exemptions of RS-018 (`clippy.toml`, plus `#[expect]` for test arithmetic).
+
 ### WP-5 Exerciser and panic-freedom check (M) — VER-010, GEN-021, VER-011
 
 | Task | Output |
@@ -151,10 +157,12 @@ M0 is complete when every item below is green on `main`:
 | Static | VER-001, VER-002, VER-003, VER-004 |
 | Panic freedom | VER-010, GEN-020, GEN-021 (exerciser links on all bare-metal targets) |
 | Portability | GEN-005, GEN-007, VER-030 (big-endian), VER-031 / GEN-003 (minimal build) |
-| `aldis-core` requirements | GEN-010…012, GEN-022…024, GEN-040…043, GEN-050…053, API-001…003, API-070…074, CMN-001…004, CMN-020…023, CMN-030…031, CMN-040…041, RS-010, RS-011, RS-015, RS-016 |
-| Vectors and trace | TV-001…003, TV-010, TV-012, TV-020…022, VER-020 (`xtask trace --scope m0` has no gaps), VER-021 |
+| `aldis-core` requirements | GEN-010…012, GEN-022…024, GEN-040…042, GEN-050, GEN-051, API-001…003, API-070, API-071, API-073, CMN-001…004, CMN-020…023, CMN-030…031, CMN-040…041, RS-010, RS-011, RS-015, RS-016, RS-018 |
+| Vectors and trace | TV-001…003, TV-012, TV-020…022, VER-020 (`xtask trace --scope m0` has no gaps), VER-021 |
 | Gates | VER-022 (fuzz targets exist and run nightly), VER-024 (100 % coverage for `aldis-core`) |
 | Docs | Roadmap updated; `CHANGELOG.md` entry for 0.1.0-m0; open issues updated |
+
+Moved out of M0 scope (2026-10-16) because they are codec or engine behavior, not `aldis-core`: API-072 and API-074 (frame codecs and engines, M2/M4), GEN-043, GEN-052, GEN-053 (codecs, M1/M2), TV-010 (engine scenarios, M3).
 
 Deferred from M0 on purpose: VER-012 (WCET documentation, first needed by engines in M3/M4), VER-025 gating (report only), VER-026 and VER-050…052 (FFI and C side, M5), and VER-040 cross-checks for frame codecs (M1/M2).
 
