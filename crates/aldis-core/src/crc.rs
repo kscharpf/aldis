@@ -8,7 +8,7 @@
 //! The bitwise implementation is the default. Feature `crc-table` selects a 256-entry table in
 //! read-only memory; both produce identical results (CMN-004).
 
-use crate::error::{Error, ErrorKind, Result};
+use crate::error::{Error, ErrorKind, Result, u8_to_u16};
 
 const POLY: u16 = 0x1021;
 /// Initial CRC-16 register value (all ones, 132.0 §4.1.6.2; CMN-001).
@@ -16,7 +16,7 @@ pub const PRESET: u16 = 0xFFFF;
 
 /// One bitwise CRC step for one octet.
 const fn step_bitwise(mut crc: u16, octet: u8) -> u16 {
-    crc ^= u16::from_be_bytes([octet, 0]);
+    crc ^= u8_to_u16(octet) << 8;
     let mut bit = 0_u8;
     while bit < 8 {
         crc = if crc & 0x8000 != 0 {

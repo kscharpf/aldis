@@ -22,7 +22,7 @@ List a requirement here only when the artefact actually checks it. Remove the ro
 | RS-016, RS-017, RS-018 | A, I | `clippy.toml` (test exemptions), `cargo xtask layers` (tooling crate isolation), and lint tables in `Cargo.toml`, `crates/aldis-ffi/Cargo.toml`, `crates/aldis-testkit/Cargo.toml`, `xtask/Cargo.toml`; reviewed in each PR touching them |
 | VER-020 | A | CI job `spec`: `cargo xtask trace --scope m0 --strict`; matrix uploaded as artefact |
 | TV-001, TV-002, TV-003, TV-020 | A, I | CI job `spec`: `cargo xtask vectors validate` (model in `crates/aldis-testkit/src/model.rs`; schemas in `test-vectors/schema/`); PR review of vector fields and derivation notes |
-| TV-021 | I | Review of every PR that touches `test-vectors/` (PR template checklist) |
+| TV-021 | A, I | CI job `spec`: `cargo xtask vectors validate` checks `superseded` metadata (`by` targets must exist and not be superseded) and compares released tags (`v*`) against current vector files (`xtask/src/vectors.rs`); review of every PR that touches `test-vectors/` (PR template checklist) |
 | GEN-022, GEN-023 | I | [Inspection of `aldis-core`](inspections/gen-022-023-aldis-core.md), approved by the maintainer 2026-10-16: no recursion; every loop is bounded by an input length, a const-generic capacity, or a constant; nothing blocks |
 | RS-015 | A, I | `missing_docs = "deny"` in every library crate (analysis); clause and requirement citations in `aldis-core` module and item docs reviewed in M0 WP-4 (inspection) |
 | VER-030, GEN-007 | A | CI job `big-endian`: full test suite on `s390x-unknown-linux-gnu`; becomes a full vector check as crates add vector-driven tests |

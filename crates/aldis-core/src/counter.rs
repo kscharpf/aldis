@@ -5,7 +5,7 @@
 //! §4.1.2.12), and Space Packet sequence counts (14 bits, 133.0 §4.1.3.4.3). The width is a
 //! run-time value because USLP signals the count length in every frame header.
 
-use crate::error::{Error, Result};
+use crate::error::{Error, Result, u8_to_u64};
 
 /// Continuity of a received count relative to the previous one (CMN-031).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -59,8 +59,11 @@ impl ModCounter {
     /// # Errors
     /// `OutOfRange` if `bits` is not 1–64 or `value` needs more than `bits` bits.
     pub fn new(bits: u8, value: u64) -> Result<ModCounter> {
-        if bits == 0 || bits > 64 {
-            return Err(Error::out_of_range("bits", 64, u64::from(bits)));
+        if bits == 0 {
+            return Err(Error::out_of_range("bits", 1, 0));
+        }
+        if bits > 64 {
+            return Err(Error::out_of_range("bits", 64, u8_to_u64(bits)));
         }
         if value & !mask(bits) != 0 {
             return Err(Error::out_of_range("value", mask(bits), value));
@@ -122,7 +125,7 @@ impl ModCounter {
 )]
 mod tests {
     use super::{Continuity, ModCounter};
-    use crate::error::ErrorKind;
+    use crate::error::{ErrorDetail, ErrorKind};
     use proptest::prelude::*;
 
     #[test]
@@ -162,11 +165,10 @@ mod tests {
             ModCounter::new(64, 0).unwrap().classify((1 << 63) + 1),
             Ok(Continuity::Backwards)
         );
-        for (bits, value) in [(0, 0), (65, 0), (8, 256)] {
-            assert_eq!(
-                ModCounter::new(bits, value).unwrap_err().kind(),
-                ErrorKind::OutOfRange
-            );
+        for (bits, value, expected, found) in [(0, 0, 1, 0), (65, 0, 64, 65), (8, 256, 255, 256)] {
+            let e = ModCounter::new(bits, value).unwrap_err();
+            assert_eq!(e.kind(), ErrorKind::OutOfRange);
+            assert_eq!(e.detail(), ErrorDetail::Expected { expected, found });
         }
         assert_eq!(
             ModCounter::new(8, 1)

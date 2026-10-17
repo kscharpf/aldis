@@ -13,8 +13,8 @@ use crate::error::{Error, ErrorKind, Result};
 /// Lengths of the Security Header and Trailer on one VC or MAP (API-070, API-071).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub struct SecurityLayout {
-    header_len: usize,
-    trailer_len: usize,
+    header_len: u8,
+    trailer_len: u16,
 }
 
 impl SecurityLayout {
@@ -23,9 +23,10 @@ impl SecurityLayout {
         header_len: 0,
         trailer_len: 0,
     };
-    /// Largest Security Header, in octets (355.0 §4.1.1.1.4).
+    /// Largest Security Header, in octets (355.0 §4.1.1.1.4; API-070, API-071).
     pub const MAX_HEADER_LEN: usize = 64;
-    const MAX_TRAILER_LEN: usize = 0xFFFF;
+    /// Largest Security Trailer, in octets (API-070, API-071).
+    pub const MAX_TRAILER_LEN: usize = 0xFFFF;
     /// Fixed layout for SDLS on USLP truncated frames: 6-octet header, 16-octet trailer
     /// (732.1 Annex D1.2.3; API-075).
     pub const USLP_TRUNCATED: SecurityLayout = SecurityLayout {
@@ -37,6 +38,11 @@ impl SecurityLayout {
     ///
     /// # Errors
     /// `InvalidConfig` if the header exceeds 64 octets or the trailer exceeds 65 535 octets.
+    #[expect(
+        clippy::as_conversions,
+        clippy::cast_possible_truncation,
+        reason = "header_len <= 64 fits in u8; trailer_len <= 0xFFFF fits in u16"
+    )]
     pub const fn new(header_len: usize, trailer_len: usize) -> Result<SecurityLayout> {
         if header_len > SecurityLayout::MAX_HEADER_LEN {
             return Err(Error::new(ErrorKind::InvalidConfig)
@@ -47,21 +53,26 @@ impl SecurityLayout {
                 .with_field(crate::error::FieldId::new("security_trailer_len")));
         }
         Ok(SecurityLayout {
-            header_len,
-            trailer_len,
+            header_len: header_len as u8,
+            trailer_len: trailer_len as u16,
         })
     }
 
     /// Security Header length in octets.
     #[must_use]
+    #[expect(clippy::as_conversions, reason = "u8 always fits in usize")]
     pub const fn header_len(self) -> usize {
-        self.header_len
+        self.header_len as usize
     }
 
     /// Security Trailer length in octets.
     #[must_use]
+    #[expect(
+        clippy::as_conversions,
+        reason = "u16 always fits in usize on 16-bit+ targets"
+    )]
     pub const fn trailer_len(self) -> usize {
-        self.trailer_len
+        self.trailer_len as usize
     }
 
     /// Whether both lengths are zero.
@@ -220,12 +231,17 @@ mod tests {
     #[test]
     fn layout_limits() {
         // req: API-070, API-071, API-075
+        const _: () = assert!(core::mem::size_of::<SecurityLayout>() == 4);
         assert!(SecurityLayout::NONE.is_none());
         assert_eq!(SecurityLayout::default(), SecurityLayout::NONE);
-        let l = SecurityLayout::new(64, 16).unwrap();
+        let l = SecurityLayout::new(
+            SecurityLayout::MAX_HEADER_LEN,
+            SecurityLayout::MAX_TRAILER_LEN,
+        )
+        .unwrap();
         assert_eq!(
             (l.header_len(), l.trailer_len(), l.is_none()),
-            (64, 16, false)
+            (64, 0xFFFF, false)
         );
         // Either length alone makes the layout non-empty.
         assert!(!SecurityLayout::new(6, 0).unwrap().is_none());

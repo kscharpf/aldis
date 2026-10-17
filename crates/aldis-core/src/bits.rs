@@ -9,7 +9,7 @@
 //! (1–64). Every function is total: out-of-range arguments return [`ErrorKind::OutOfRange`](crate::error::ErrorKind::OutOfRange)
 //! and never panic (GEN-020).
 
-use crate::error::{Error, Result, as_u64};
+use crate::error::{Error, Result, as_u64, u8_to_u64};
 
 /// Octets covered by a field, and the shift that right-aligns it.
 struct Span {
@@ -26,19 +26,23 @@ impl Span {
         reason = "`span_bits` is at most 72 (a 64-bit field spans at most 9 octets), so it fits in u32"
     )]
     fn new(buf_len: usize, bit_offset: usize, width: u8) -> Result<Span> {
-        if width == 0 || width > 64 {
-            return Err(Error::out_of_range("width", 64, u64::from(width)));
+        if width == 0 {
+            return Err(Error::out_of_range("width", 1, 0));
+        }
+        if width > 64 {
+            return Err(Error::out_of_range("width", 64, u8_to_u64(width)));
         }
         let total_bits = buf_len.saturating_mul(8);
+        let width_bits = usize::from(width);
         let end_bit = bit_offset
-            .checked_add(usize::from(width))
+            .checked_add(width_bits)
             .filter(|&end| end <= total_bits)
             .ok_or_else(|| {
-                Error::out_of_range(
-                    "bit_offset",
-                    as_u64(total_bits.saturating_sub(usize::from(width))),
-                    as_u64(bit_offset),
-                )
+                if let Some(max_offset) = total_bits.checked_sub(width_bits) {
+                    Error::out_of_range("bit_offset", as_u64(max_offset), as_u64(bit_offset))
+                } else {
+                    Error::out_of_range("buf_len", as_u64(width_bits), as_u64(total_bits))
+                }
             })?;
         // end_bit >= width >= 1 and end_bit <= total_bits, so all of these are in range.
         let first = bit_offset >> 3;
@@ -104,6 +108,14 @@ pub fn set(buf: &mut [u8], bit_offset: usize, width: u8, value: u64) -> Result<(
     Ok(())
 }
 
+fn octet_err(buf_len: usize, offset: usize, width: usize) -> Error {
+    if let Some(max_offset) = buf_len.checked_sub(width) {
+        Error::out_of_range("offset", as_u64(max_offset), as_u64(offset))
+    } else {
+        Error::out_of_range("buf_len", as_u64(width), as_u64(buf_len))
+    }
+}
+
 macro_rules! octet_int {
     ($read_doc:literal, $read:ident, $write_doc:literal, $write:ident, $ty:ty, $n:literal) => {
         #[doc = $read_doc]
@@ -115,13 +127,7 @@ macro_rules! octet_int {
                 .checked_add($n)
                 .and_then(|end| buf.get(offset..end))
                 .and_then(|s| <[u8; $n]>::try_from(s).ok())
-                .ok_or_else(|| {
-                    Error::out_of_range(
-                        "offset",
-                        as_u64(buf.len().saturating_sub($n)),
-                        as_u64(offset),
-                    )
-                })?;
+                .ok_or_else(|| octet_err(buf.len(), offset, $n))?;
             Ok(<$ty>::from_be_bytes(bytes))
         }
 
@@ -134,9 +140,7 @@ macro_rules! octet_int {
             let dest = offset
                 .checked_add($n)
                 .and_then(|end| buf.get_mut(offset..end))
-                .ok_or_else(|| {
-                    Error::out_of_range("offset", as_u64(len.saturating_sub($n)), as_u64(offset))
-                })?;
+                .ok_or_else(|| octet_err(len, offset, $n))?;
             dest.copy_from_slice(&value.to_be_bytes());
             Ok(())
         }
@@ -206,10 +210,31 @@ mod tests {
             assert_eq!(b, [0xAA, 0xAA]);
         }
         assert_eq!(
+            get(&b, 0, 0).unwrap_err().detail(),
+            ErrorDetail::Expected {
+                expected: 1,
+                found: 0
+            }
+        );
+        assert_eq!(
+            get(&b, 0, 65).unwrap_err().detail(),
+            ErrorDetail::Expected {
+                expected: 64,
+                found: 65
+            }
+        );
+        assert_eq!(
             get(&b, 9, 8).unwrap_err().detail(),
             ErrorDetail::Expected {
                 expected: 8,
                 found: 9
+            }
+        );
+        assert_eq!(
+            get(&[0], 0, 16).unwrap_err().detail(),
+            ErrorDetail::Expected {
+                expected: 16,
+                found: 8
             }
         );
         assert_eq!(
@@ -243,6 +268,22 @@ mod tests {
         write_u32(&mut b, 1, 0x1234_5678).unwrap();
         assert_eq!(read_u32(&b, 1), Ok(0x1234_5678));
         assert_eq!(read_u32(&b, 6).unwrap_err().kind(), ErrorKind::OutOfRange);
+        let short32 = read_u32(&[0; 2], 0).unwrap_err();
+        assert_eq!(short32.kind(), ErrorKind::OutOfRange);
+        assert_eq!(
+            short32.detail(),
+            ErrorDetail::Expected {
+                expected: 4,
+                found: 2
+            }
+        );
+        assert_eq!(
+            write_u32(&mut [0; 2], 0, 0).unwrap_err().detail(),
+            ErrorDetail::Expected {
+                expected: 4,
+                found: 2
+            }
+        );
         assert_eq!(
             write_u32(&mut b, usize::MAX, 0).unwrap_err().kind(),
             ErrorKind::OutOfRange

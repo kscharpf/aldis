@@ -6,7 +6,7 @@
 //! (AOS Issue ≤4), and `SpacecraftId<16>` (USLP).
 
 use crate::counter::{Continuity, ModCounter, classify_masked, from_valid};
-use crate::error::{Error, Result};
+use crate::error::{Error, Result, u8_to_u64, u16_to_u64};
 
 /// Defines an unsigned identifier whose valid values are `0..=2^BITS - 1`.
 macro_rules! width_id {
@@ -115,15 +115,6 @@ impl From<Apid> for u16 {
     fn from(id: Apid) -> u16 {
         id.0
     }
-}
-
-const fn u8_to_u64(n: u8) -> u64 {
-    u64::from_be_bytes([0, 0, 0, 0, 0, 0, 0, n])
-}
-
-const fn u16_to_u64(n: u16) -> u64 {
-    let [hi, lo] = n.to_be_bytes();
-    u64::from_be_bytes([0, 0, 0, 0, 0, 0, hi, lo])
 }
 
 /// Space Packet Sequence Count or Packet Name, 0–16383, wrapping (133.0 §4.1.3.4.3).

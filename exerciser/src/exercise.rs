@@ -180,9 +180,12 @@ fn apis_errors_ids(tally: &mut Tally) {
             && bits::write_u64(bb(&mut octets), bb(0), bb(0x0102_0304_0506_0708)).is_ok()
             && bits::read_u64(bb(&octets), bb(0)) == Ok(0x0102_0304_0506_0708),
     );
+    let mut short = [0_u8; 2];
     tally.check(
         bits::read_u16(bb(&octets), bb(7)).is_err()
             && bits::write_u32(bb(&mut octets), bb(5), 0).is_err()
+            && bits::read_u32(bb(&short), bb(0)).is_err()
+            && bits::write_u32(bb(&mut short), bb(0), 0).is_err()
             && bits::read_u64(bb(&octets), bb(1)).is_err()
             && bits::write_u64(bb(&mut octets), bb(1), 0).is_err(),
     );
@@ -335,7 +338,14 @@ fn apis_containers_security(tally: &mut Tally) {
     let layout = SecurityLayout::new(bb(6), bb(16));
     tally.check(layout == Ok(SecurityLayout::USLP_TRUNCATED) && SecurityLayout::NONE.is_none());
     tally.check(layout.is_ok_and(|l| l.header_len() == 6 && l.trailer_len() == 16));
-    tally.check(SecurityLayout::new(bb(65), 0).is_err());
+    tally.check(
+        SecurityLayout::new(
+            bb(SecurityLayout::MAX_HEADER_LEN),
+            SecurityLayout::MAX_TRAILER_LEN,
+        )
+        .is_ok()
+            && SecurityLayout::new(bb(65), 0).is_err(),
+    );
 }
 
 /// Runs everything; returns the tally.

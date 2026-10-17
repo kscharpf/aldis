@@ -135,6 +135,24 @@ impl FieldId {
     }
 }
 
+/// Widens `u8` to `u16` in `const` context (`From` is not yet `const`).
+#[expect(clippy::as_conversions, reason = "lossless widening u8 -> u16")]
+pub(crate) const fn u8_to_u16(n: u8) -> u16 {
+    n as u16
+}
+
+/// Widens `u8` to `u64` in `const` context (`From` is not yet `const`).
+#[expect(clippy::as_conversions, reason = "lossless widening u8 -> u64")]
+pub(crate) const fn u8_to_u64(n: u8) -> u64 {
+    n as u64
+}
+
+/// Widens `u16` to `u64` in `const` context (`From` is not yet `const`).
+#[expect(clippy::as_conversions, reason = "lossless widening u16 -> u64")]
+pub(crate) const fn u16_to_u64(n: u16) -> u64 {
+    n as u64
+}
+
 /// Converts a `usize` count or offset to `u64` for [`ErrorDetail::Expected`].
 #[expect(
     clippy::as_conversions,

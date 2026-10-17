@@ -93,5 +93,5 @@ The hex strings in the illustration above are examples of the format. Real vecto
 | ID | Requirement | Source | Verif. |
 |---|---|---|---|
 | TV-020 | Each vector file SHALL record its provenance: `blue-book-example`, `hand-derived` (with a worked derivation note), `cross-checked` (with the independent implementation and version), or `fuzz-regression`. | VER-040 | I |
-| TV-021 | Vectors SHALL be immutable once released. Corrections SHALL add a new case and mark the old one `superseded`, with a reason. | — | I |
+| TV-021 | Vectors SHALL be immutable once released. Corrections SHALL add a new case and mark the old one `superseded`, with a reason. | — | A/I |
 | TV-022 | Seed vectors already verified during specification work: `core/crc16.json` (`"123456789"` → `29B1`, CMN-002) and `core/oid.json` (first 20 octets, CMN-020). | CMN-002, CMN-020 | V |

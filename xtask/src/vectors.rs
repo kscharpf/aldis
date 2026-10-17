@@ -1,8 +1,9 @@
 //! `xtask vectors validate` and `xtask vectors schema [--check]` (TV-001…003, TV-020…021).
 
 use std::collections::BTreeMap;
+use std::process::Command;
 
-use aldis_testkit::{CodecCase, CodecFile, Provenance, ScenarioFile, VectorFile, hex};
+use aldis_testkit::{CodecCase, CodecFile, Provenance, ScenarioFile, Superseded, VectorFile, hex};
 use serde_json::Value;
 
 use crate::md::scan_ids;
@@ -42,8 +43,137 @@ fn check_requirements(ids: &[String], spec: &Spec, at: &str, problems: &mut Vec<
     }
 }
 
-fn check_codec_case(c: &CodecCase, spec: &Spec, at: &str, problems: &mut Vec<String>) {
+fn check_superseded(
+    superseded: Option<&Superseded>,
+    at: &str,
+    by_links: &mut Vec<(String, String)>,
+    problems: &mut Vec<String>,
+) {
+    let Some(s) = superseded else {
+        return;
+    };
+    if s.reason.trim().is_empty() {
+        problems.push(format!("{at}: superseded.reason is empty (TV-021)"));
+    }
+    if let Some(by) = &s.by {
+        by_links.push((at.to_owned(), by.clone()));
+    }
+}
+
+fn check_by_links(
+    ids: &BTreeMap<String, (String, bool)>,
+    by_links: &[(String, String)],
+    problems: &mut Vec<String>,
+) {
+    for (at, by) in by_links {
+        match ids.get(by) {
+            None => problems.push(format!(
+                "{at}: superseded.by {by:?} does not name an existing case (TV-021)"
+            )),
+            Some((target_at, true)) => problems.push(format!(
+                "{at}: superseded.by {by:?} ({target_at}) is itself superseded (TV-021)"
+            )),
+            Some((_, false)) => {}
+        }
+    }
+}
+
+fn check_against_released(
+    rel: &str,
+    tag: &str,
+    released: &VectorFile,
+    current: &VectorFile,
+    problems: &mut Vec<String>,
+) {
+    match (released, current) {
+        (VectorFile::Codec(old_file), VectorFile::Codec(cur_file)) => {
+            let cur_by_id: BTreeMap<&str, &CodecCase> =
+                cur_file.cases.iter().map(|c| (c.id.as_str(), c)).collect();
+            for old in &old_file.cases {
+                let at = format!("{rel}#{}", old.id);
+                let Some(&now) = cur_by_id.get(old.id.as_str()) else {
+                    problems.push(format!("{at}: case released in {tag} was removed (TV-021)"));
+                    continue;
+                };
+                let mut now_base = now.clone();
+                now_base.superseded.clone_from(&old.superseded);
+                if now_base != *old
+                    || (old.superseded.is_some() && now.superseded != old.superseded)
+                {
+                    problems.push(format!(
+                        "{at}: case released in {tag} was modified in place (TV-021)"
+                    ));
+                }
+            }
+        }
+        (VectorFile::EngineScenario(old), VectorFile::EngineScenario(now)) => {
+            let at = format!("{rel}#{}", old.id);
+            let mut now_base = now.clone();
+            now_base.superseded.clone_from(&old.superseded);
+            if now_base != *old || (old.superseded.is_some() && now.superseded != old.superseded) {
+                problems.push(format!(
+                    "{at}: scenario released in {tag} was modified in place (TV-021)"
+                ));
+            }
+        }
+        _ => problems.push(format!(
+            "{rel}: vector file kind changed since {tag} (TV-021)"
+        )),
+    }
+}
+
+fn release_tags() -> Vec<String> {
+    let Ok(out) = Command::new("git")
+        .args(["tag", "--list", "v*"])
+        .current_dir(repo::root())
+        .output()
+    else {
+        return Vec::new();
+    };
+    if !out.status.success() {
+        return Vec::new();
+    }
+    String::from_utf8_lossy(&out.stdout)
+        .lines()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_owned)
+        .collect()
+}
+
+fn check_released_tags(
+    rel: &str,
+    tags: &[String],
+    current: &VectorFile,
+    problems: &mut Vec<String>,
+) {
+    for tag in tags {
+        let Ok(out) = Command::new("git")
+            .args(["show", &format!("{tag}:{rel}")])
+            .current_dir(repo::root())
+            .output()
+        else {
+            continue;
+        };
+        if !out.status.success() {
+            continue;
+        }
+        let text = String::from_utf8_lossy(&out.stdout);
+        if let Ok(released) = VectorFile::from_json(&text) {
+            check_against_released(rel, tag, &released, current, problems);
+        }
+    }
+}
+
+fn check_codec_case(
+    c: &CodecCase,
+    spec: &Spec,
+    at: &str,
+    by_links: &mut Vec<(String, String)>,
+    problems: &mut Vec<String>,
+) {
     check_requirements(&c.requirements, spec, at, problems);
+    check_superseded(c.superseded.as_ref(), at, by_links, problems);
     if let Some(h) = &c.input_hex
         && let Err(e) = hex::decode(h)
     {
@@ -79,8 +209,10 @@ fn check_codec_case(c: &CodecCase, spec: &Spec, at: &str, problems: &mut Vec<Str
 /// Validates all vector files; returns the number of problems.
 pub fn validate() -> Result<usize, String> {
     let spec = Spec::load()?;
+    let tags = release_tags();
     let mut problems = Vec::new();
-    let mut ids: BTreeMap<String, String> = BTreeMap::new();
+    let mut ids: BTreeMap<String, (String, bool)> = BTreeMap::new();
+    let mut by_links: Vec<(String, String)> = Vec::new();
     let mut files = 0;
     let mut cases = 0;
 
@@ -90,12 +222,16 @@ pub fn validate() -> Result<usize, String> {
             continue;
         }
         files += 1;
-        let mut unique = |id: &str, at: &str, problems: &mut Vec<String>| {
-            if let Some(prev) = ids.insert(id.to_owned(), at.to_owned()) {
+        let mut unique = |id: &str, at: &str, is_superseded: bool, problems: &mut Vec<String>| {
+            if let Some((prev, _)) = ids.insert(id.to_owned(), (at.to_owned(), is_superseded)) {
                 problems.push(format!("{at}: duplicate id {id:?} (also {prev})"));
             }
         };
-        match VectorFile::from_json(&repo::read(&path)?) {
+        let parsed = VectorFile::from_json(&repo::read(&path)?);
+        if let Ok(ref vf) = parsed {
+            check_released_tags(&rel, &tags, vf, &mut problems);
+        }
+        match parsed {
             Err(e) => problems.push(format!("{rel}: {e}")),
             Ok(VectorFile::Codec(CodecFile {
                 provenance,
@@ -111,8 +247,8 @@ pub fn validate() -> Result<usize, String> {
                 for c in &list {
                     cases += 1;
                     let at = format!("{rel}#{}", c.id);
-                    unique(&c.id, &at, &mut problems);
-                    check_codec_case(c, &spec, &at, &mut problems);
+                    unique(&c.id, &at, c.superseded.is_some(), &mut problems);
+                    check_codec_case(c, &spec, &at, &mut by_links, &mut problems);
                 }
             }
             Ok(VectorFile::EngineScenario(ScenarioFile {
@@ -122,12 +258,14 @@ pub fn validate() -> Result<usize, String> {
                 provenance_note,
                 config,
                 steps,
+                superseded,
                 ..
             })) => {
                 cases += 1;
                 let at = format!("{rel}#{id}");
-                unique(&id, &at, &mut problems);
+                unique(&id, &at, superseded.is_some(), &mut problems);
                 check_requirements(&requirements, &spec, &at, &mut problems);
+                check_superseded(superseded.as_ref(), &at, &mut by_links, &mut problems);
                 if needs_note(provenance) && provenance_note.is_none() {
                     problems.push(format!(
                         "{at}: provenance {provenance:?} requires provenance_note (TV-020)"
@@ -147,6 +285,8 @@ pub fn validate() -> Result<usize, String> {
             }
         }
     }
+
+    check_by_links(&ids, &by_links, &mut problems);
 
     for p in &problems {
         println!("error: {p}");
@@ -192,4 +332,73 @@ pub fn schema(check: bool) -> Result<usize, String> {
         println!("vectors schema: up to date");
     }
     Ok(stale)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{check_against_released, check_by_links};
+    use aldis_testkit::{Superseded, VectorFile};
+    use std::collections::BTreeMap;
+
+    #[test]
+    fn superseded_links_and_released_immutability() {
+        // req: TV-021
+        let mut ids = BTreeMap::new();
+        ids.insert("old-001".to_owned(), ("f.json#old-001".to_owned(), true));
+        ids.insert("new-002".to_owned(), ("f.json#new-002".to_owned(), false));
+
+        let mut problems = Vec::new();
+        check_by_links(
+            &ids,
+            &[
+                ("f.json#old-001".to_owned(), "new-002".to_owned()),
+                ("f.json#old-001".to_owned(), "typo-002".to_owned()),
+                ("f.json#old-001".to_owned(), "old-001".to_owned()),
+            ],
+            &mut problems,
+        );
+        assert_eq!(problems.len(), 2);
+
+        let base_json = r#"{
+            "kind": "codec",
+            "standard": "132.0-B-3",
+            "provenance": "blue-book-example",
+            "cases": [{
+                "id": "c-001",
+                "requirements": ["CMN-001"],
+                "operation": "crc16",
+                "input_hex": "3132",
+                "expect": { "ok": true }
+            }]
+        }"#;
+        let released = VectorFile::from_json(base_json).unwrap();
+        let VectorFile::Codec(mut superseded_ok) = released.clone() else {
+            panic!("expected codec");
+        };
+        superseded_ok.cases[0].superseded = Some(Superseded {
+            reason: "expanded".to_owned(),
+            by: Some("c-002".to_owned()),
+        });
+        let mut p_ok = Vec::new();
+        check_against_released(
+            "f.json",
+            "v0.1.0-m0",
+            &released,
+            &VectorFile::Codec(superseded_ok.clone()),
+            &mut p_ok,
+        );
+        assert!(p_ok.is_empty(), "{p_ok:?}");
+
+        let mut edited = superseded_ok;
+        edited.cases[0].requirements.push("CMN-002".to_owned());
+        let mut p_edit = Vec::new();
+        check_against_released(
+            "f.json",
+            "v0.1.0-m0",
+            &released,
+            &VectorFile::Codec(edited),
+            &mut p_edit,
+        );
+        assert_eq!(p_edit.len(), 1);
+    }
 }
