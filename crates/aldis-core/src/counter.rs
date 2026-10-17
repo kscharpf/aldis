@@ -34,13 +34,35 @@ const fn mask(bits: u8) -> u64 {
     u64::MAX >> (64_u8.wrapping_sub(bits))
 }
 
+/// Constructs a counter from already-validated `bits` (1–64) and `value` (`<= mask(bits)`).
+pub(crate) const fn from_valid(bits: u8, value: u64) -> ModCounter {
+    ModCounter { bits, value }
+}
+
+/// Classifies `next` as received after `prev` (both masked to `bits`, 1–64; CMN-031).
+pub(crate) const fn classify_masked(bits: u8, prev: u64, next: u64) -> Continuity {
+    let d = next.wrapping_sub(prev) & mask(bits);
+    let half = 1_u64 << (bits.wrapping_sub(1));
+    match d {
+        0 => Continuity::Repeat,
+        1 => Continuity::InSequence,
+        d if d <= half => Continuity::Gap {
+            missing: d.wrapping_sub(1),
+        },
+        _ => Continuity::Backwards,
+    }
+}
+
 impl ModCounter {
     /// A counter of `bits` width holding `value`.
     ///
     /// # Errors
     /// `OutOfRange` if `bits` is not 1–64 or `value` needs more than `bits` bits.
     pub fn new(bits: u8, value: u64) -> Result<ModCounter> {
-        if bits == 0 || bits > 64 {
+        if bits == 0 {
+            return Err(Error::out_of_range("bits", 1, 0));
+        }
+        if bits > 64 {
             return Err(Error::out_of_range("bits", 64, u64::from(bits)));
         }
         if value & !mask(bits) != 0 {
@@ -80,8 +102,8 @@ impl ModCounter {
     /// # Errors
     /// `OutOfRange` if `later` needs more than `bits` bits.
     pub fn distance_to(self, later: u64) -> Result<u64> {
-        let later = ModCounter::new(self.bits, later)?;
-        Ok(later.value.wrapping_sub(self.value) & mask(self.bits))
+        ModCounter::new(self.bits, later)
+            .map(|later| later.value.wrapping_sub(self.value) & mask(self.bits))
     }
 
     /// Classifies `next` as received after `self` (CMN-031): distance 1 in sequence,
@@ -90,24 +112,21 @@ impl ModCounter {
     /// # Errors
     /// `OutOfRange` if `next` needs more than `bits` bits.
     pub fn classify(self, next: u64) -> Result<Continuity> {
-        let d = self.distance_to(next)?;
-        let half = 1_u64 << (self.bits.wrapping_sub(1));
-        Ok(match d {
-            0 => Continuity::Repeat,
-            1 => Continuity::InSequence,
-            d if d <= half => Continuity::Gap {
-                missing: d.wrapping_sub(1),
-            },
-            _ => Continuity::Backwards,
-        })
+        ModCounter::new(self.bits, next)
+            .map(|later| classify_masked(self.bits, self.value, later.value))
     }
 }
 
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]
+#[expect(
+    clippy::arithmetic_side_effects,
+    reason = "test bookkeeping on bounded values and u128 modular model (RS-018)"
+)]
 mod tests {
     use super::{Continuity, ModCounter};
-    use crate::error::ErrorKind;
+    use crate::error::{ErrorDetail, ErrorKind};
+    use proptest::prelude::*;
 
     #[test]
     fn exhaustive_8_bit() {
@@ -116,6 +135,7 @@ mod tests {
             let c = ModCounter::new(8, prev).unwrap();
             for next in 0..=255_u64 {
                 let d = (next + 256 - prev) % 256;
+                assert_eq!(c.distance_to(next), Ok(d));
                 let expected = match d {
                     0 => Continuity::Repeat,
                     1 => Continuity::InSequence,
@@ -145,12 +165,19 @@ mod tests {
             ModCounter::new(64, 0).unwrap().classify((1 << 63) + 1),
             Ok(Continuity::Backwards)
         );
-        for (bits, value) in [(0, 0), (65, 0), (8, 256)] {
-            assert_eq!(
-                ModCounter::new(bits, value).unwrap_err().kind(),
-                ErrorKind::OutOfRange
-            );
+        for (bits, value, expected, found) in [(0, 0, 1, 0), (65, 0, 64, 65), (8, 256, 255, 256)] {
+            let e = ModCounter::new(bits, value).unwrap_err();
+            assert_eq!(e.kind(), ErrorKind::OutOfRange);
+            assert_eq!(e.detail(), ErrorDetail::Expected { expected, found });
         }
+        assert_eq!(
+            ModCounter::new(8, 1)
+                .unwrap()
+                .distance_to(300)
+                .unwrap_err()
+                .kind(),
+            ErrorKind::OutOfRange
+        );
         assert_eq!(
             ModCounter::new(8, 1)
                 .unwrap()
@@ -159,5 +186,29 @@ mod tests {
                 .kind(),
             ErrorKind::OutOfRange
         );
+    }
+
+    proptest! {
+        #[test]
+        fn wider_counters_match_u128_model(bits in 1_u8..=64, raw_prev in any::<u64>(), raw_next in any::<u64>()) {
+            // req: CMN-030, CMN-031, GEN-024, VER-023
+            let modulus = 1_u128 << bits;
+            let mask = u64::MAX >> (64 - bits);
+            let prev = raw_prev & mask;
+            let next = raw_next & mask;
+            let c = ModCounter::new(bits, prev).unwrap();
+            prop_assert_eq!(u128::from(c.next().value()), (u128::from(prev) + 1) % modulus);
+            let dist = (u128::from(next) + modulus - u128::from(prev)) % modulus;
+            prop_assert_eq!(u128::from(c.distance_to(next).unwrap()), dist);
+            let expected = match dist {
+                0 => Continuity::Repeat,
+                1 => Continuity::InSequence,
+                d if d <= modulus / 2 => Continuity::Gap {
+                    missing: u64::try_from(d - 1).unwrap(),
+                },
+                _ => Continuity::Backwards,
+            };
+            prop_assert_eq!(c.classify(next), Ok(expected));
+        }
     }
 }

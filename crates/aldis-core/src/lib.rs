@@ -13,7 +13,7 @@
 //! | [`oid`] | OID pseudo-noise generators | CMN-020…CMN-023 |
 //! | [`counter`] | Modular counters, gap classification | CMN-030, CMN-031 |
 //! | [`container`] | Fixed-capacity queues and vectors | GEN-010…GEN-012, API-061 |
-//! | [`security`] | SDLS reservation hooks | API-070…API-074 |
+//! | [`security`] | SDLS reservation hooks | API-070…API-075 |
 //! | [`layout`] | Frame field layout | CMN-040, CMN-041 |
 //!
 //! `no_std`, no allocation, no `unsafe`, and no panics on any input (GEN-010, GEN-020, GEN-070).

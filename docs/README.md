@@ -28,6 +28,7 @@ This directory holds the specification for a family of libraries that add CCSDS 
 | Document | Milestone |
 |---|---|
 | [M0 Foundations](milestones/m0-foundations.md) | Repository, CI, verification tooling, `aldis-core` |
+| [M1 Packets and time](milestones/m1-packets-time.md) | `aldis-time`, `aldis-spp`, `aldis-epp` (planned) |
 
 ### Per-standard specifications ([`standards/`](standards/))
 

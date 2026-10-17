@@ -23,7 +23,7 @@ pub extern "C" fn _start() -> ! {
     exit(tally.failures == 0 && tally.cases > 0)
 }
 
-#[cfg(target_arch = "arm")]
+#[cfg(cortex_m)]
 fn exit(success: bool) -> ! {
     // ARM semihosting SYS_EXIT (0x18): ADP_Stopped_ApplicationExit or RunTimeErrorUnknown.
     let reason: u32 = if success { 0x2_0026 } else { 0x2_0023 };
@@ -35,7 +35,7 @@ fn exit(success: bool) -> ! {
     halt()
 }
 
-#[cfg(not(target_arch = "arm"))]
+#[cfg(not(cortex_m))]
 fn exit(_success: bool) -> ! {
     halt()
 }

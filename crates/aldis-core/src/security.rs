@@ -8,7 +8,9 @@
 
 use core::ops::Range;
 
-use crate::error::{Error, ErrorKind, Result};
+use crate::error::{
+    Error, ErrorKind, Result, u8_to_usize, u16_to_usize, usize_to_u8, usize_to_u16,
+};
 
 /// Lengths of the Security Header and Trailer on one VC or MAP (API-070, API-071).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
@@ -23,8 +25,10 @@ impl SecurityLayout {
         header_len: 0,
         trailer_len: 0,
     };
-    /// Largest Security Header, in octets (355.0 §4.1.1.1.4).
+    /// Largest Security Header, in octets (355.0 §4.1.1.1.4; API-070, API-071).
     pub const MAX_HEADER_LEN: usize = 64;
+    /// Largest Security Trailer, in octets (API-070, API-071).
+    pub const MAX_TRAILER_LEN: usize = 0xFFFF;
     /// Fixed layout for SDLS on USLP truncated frames: 6-octet header, 16-octet trailer
     /// (732.1 Annex D1.2.3; API-075).
     pub const USLP_TRUNCATED: SecurityLayout = SecurityLayout {
@@ -36,34 +40,31 @@ impl SecurityLayout {
     ///
     /// # Errors
     /// `InvalidConfig` if the header exceeds 64 octets or the trailer exceeds 65 535 octets.
-    pub fn new(header_len: usize, trailer_len: usize) -> Result<SecurityLayout> {
-        let header = u8::try_from(header_len)
-            .ok()
-            .filter(|&h| usize::from(h) <= SecurityLayout::MAX_HEADER_LEN)
-            .ok_or_else(|| {
-                Error::new(ErrorKind::InvalidConfig)
-                    .with_field(crate::error::FieldId::new("security_header_len"))
-            })?;
-        let trailer = u16::try_from(trailer_len).map_err(|_| {
-            Error::new(ErrorKind::InvalidConfig)
-                .with_field(crate::error::FieldId::new("security_trailer_len"))
-        })?;
+    pub const fn new(header_len: usize, trailer_len: usize) -> Result<SecurityLayout> {
+        let Some(header_len) = usize_to_u8(header_len, SecurityLayout::MAX_HEADER_LEN) else {
+            return Err(Error::new(ErrorKind::InvalidConfig)
+                .with_field(crate::error::FieldId::new("security_header_len")));
+        };
+        let Some(trailer_len) = usize_to_u16(trailer_len, SecurityLayout::MAX_TRAILER_LEN) else {
+            return Err(Error::new(ErrorKind::InvalidConfig)
+                .with_field(crate::error::FieldId::new("security_trailer_len")));
+        };
         Ok(SecurityLayout {
-            header_len: header,
-            trailer_len: trailer,
+            header_len,
+            trailer_len,
         })
     }
 
     /// Security Header length in octets.
     #[must_use]
     pub const fn header_len(self) -> usize {
-        self.header_len as usize
+        u8_to_usize(self.header_len)
     }
 
     /// Security Trailer length in octets.
     #[must_use]
     pub const fn trailer_len(self) -> usize {
-        self.trailer_len as usize
+        u16_to_usize(self.trailer_len)
     }
 
     /// Whether both lengths are zero.
@@ -73,7 +74,8 @@ impl SecurityLayout {
     }
 }
 
-/// Data link protocol of a frame.
+/// Data link protocol of a frame (355.0-B-2 §4.1; API-073, GEN-081).
+#[non_exhaustive]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Protocol {
     /// TM Space Data Link Protocol (132.0-B-3).
@@ -86,7 +88,8 @@ pub enum Protocol {
     Uslp,
 }
 
-/// Identifies the channel a frame belongs to, for selecting a Security Association.
+/// Identifies the channel a frame belongs to, for selecting a Security Association
+/// (355.0-B-2 §2.2.3, §4.1; API-073).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct FrameCtx {
     /// Data link protocol.
@@ -99,7 +102,7 @@ pub struct FrameCtx {
     pub map_id: Option<u8>,
 }
 
-/// Octet ranges of the secured fields within a frame buffer.
+/// Octet ranges of the secured fields within a frame buffer (355.0-B-2 §4.1; API-070, API-073).
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct SecuredFields {
     /// Security Header.
@@ -220,12 +223,17 @@ mod tests {
     #[test]
     fn layout_limits() {
         // req: API-070, API-071, API-075
+        const _: () = assert!(core::mem::size_of::<SecurityLayout>() == 4);
         assert!(SecurityLayout::NONE.is_none());
         assert_eq!(SecurityLayout::default(), SecurityLayout::NONE);
-        let l = SecurityLayout::new(64, 16).unwrap();
+        let l = SecurityLayout::new(
+            SecurityLayout::MAX_HEADER_LEN,
+            SecurityLayout::MAX_TRAILER_LEN,
+        )
+        .unwrap();
         assert_eq!(
             (l.header_len(), l.trailer_len(), l.is_none()),
-            (64, 16, false)
+            (64, 0xFFFF, false)
         );
         // Either length alone makes the layout non-empty.
         assert!(!SecurityLayout::new(6, 0).unwrap().is_none());

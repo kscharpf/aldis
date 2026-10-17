@@ -11,6 +11,7 @@ Shared, language-neutral vectors that every implementation must pass: Rust, the 
 | `core/errors.json` | Stable numeric code of every error kind, and its C ABI value (GEN-040, CABI-020) | Hand-derived from the catalogue in `docs/03-api-model.md` §9 |
 | `core/bits.json` | Big-endian bit-field get/set, including unaligned 64-bit fields and out-of-range errors (GEN-050, GEN-051) | Hand-derived; values from an independent Python big-integer reference |
 | `core/counters.json` | Modular increment and gap classification for 1- to 64-bit counters (CMN-030, CMN-031) | Hand-derived from CMN-031; independent Python reference |
+| `core/layout.json` | Frame field byte ranges with and without secondary header, security, OCF, and FECF (CMN-040, CMN-041, API-075) | Hand-derived from 132.0/232.0/732.0/732.1 §4.1 and 355.0-B-2 §4.1 |
 
 Validate with `cargo xtask vectors validate`. The JSON Schemas in `schema/` are generated from the Rust model (`cargo xtask vectors schema`), so other implementations can validate the same files.
 

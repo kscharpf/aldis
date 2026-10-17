@@ -5,11 +5,12 @@
 //! (API-002): for example `SpacecraftId<10>` (TM, TC, AOS Issue 5), `SpacecraftId<8>`
 //! (AOS Issue ≤4), and `SpacecraftId<16>` (USLP).
 
-use crate::error::{Error, Result};
+use crate::counter::{Continuity, ModCounter, classify_masked, from_valid};
+use crate::error::{Error, Result, u8_to_u64, u16_to_u64};
 
 /// Defines an unsigned identifier whose valid values are `0..=2^BITS - 1`.
 macro_rules! width_id {
-    ($(#[$doc:meta])* $name:ident, $repr:ty, $max_bits:literal) => {
+    ($(#[$doc:meta])* $name:ident, $field:literal, $repr:ty, $max_bits:literal) => {
         $(#[$doc])*
         #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
         pub struct $name<const BITS: u32>($repr);
@@ -41,7 +42,7 @@ macro_rules! width_id {
 
             fn try_from(value: $repr) -> Result<Self> {
                 Self::new(value).ok_or_else(|| {
-                    Error::out_of_range(stringify!($name), u64::from(Self::MAX), u64::from(value))
+                    Error::out_of_range($field, u64::from(Self::MAX), u64::from(value))
                 })
             }
         }
@@ -57,15 +58,15 @@ macro_rules! width_id {
 width_id!(
     /// Spacecraft Identifier of `BITS` width (132.0 §4.1.2.2.3, 232.0 §4.1.2.5, 732.0 §4.1.2.2.3,
     /// 732.1 §4.1.2.2.3).
-    SpacecraftId, u16, 16
+    SpacecraftId, "spacecraft_id", u16, 16
 );
 width_id!(
     /// Virtual Channel Identifier of `BITS` width: 3 (TM) or 6 (TC, AOS, USLP).
-    VcId, u8, 8
+    VcId, "vc_id", u8, 8
 );
 width_id!(
     /// Multiplexer Access Point Identifier of `BITS` width: 6 (TC Segment Header) or 4 (USLP).
-    MapId, u8, 8
+    MapId, "map_id", u8, 8
 );
 
 /// Application Process Identifier, 0–2047 (133.0 §4.1.3.3.4).
@@ -110,6 +111,12 @@ impl TryFrom<u16> for Apid {
     }
 }
 
+impl From<Apid> for u16 {
+    fn from(id: Apid) -> u16 {
+        id.0
+    }
+}
+
 /// Space Packet Sequence Count or Packet Name, 0–16383, wrapping (133.0 §4.1.3.4.3).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
 pub struct SeqCount(u16);
@@ -139,6 +146,12 @@ impl SeqCount {
     pub const fn next(self) -> SeqCount {
         SeqCount(self.0.wrapping_add(1) & SeqCount::MAX)
     }
+
+    /// Classifies `next` as received after `self` modulo 16384 (133.0 §4.1.3.4.3, CMN-031).
+    #[must_use]
+    pub const fn classify(self, next: SeqCount) -> Continuity {
+        classify_masked(14, u16_to_u64(self.0), u16_to_u64(next.0))
+    }
 }
 
 impl TryFrom<u16> for SeqCount {
@@ -151,15 +164,66 @@ impl TryFrom<u16> for SeqCount {
     }
 }
 
+impl From<SeqCount> for u16 {
+    fn from(count: SeqCount) -> u16 {
+        count.0
+    }
+}
+
+impl From<SeqCount> for ModCounter {
+    fn from(count: SeqCount) -> ModCounter {
+        from_valid(14, u64::from(count.0))
+    }
+}
+
 /// TC Frame Sequence Number N(S), and COP-1 V(S) / V(R): 0–255, wrapping (232.0 §4.1.2.8).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
-pub struct FrameSeqNum(pub u8);
+pub struct FrameSeqNum(u8);
 
 impl FrameSeqNum {
+    /// Largest value.
+    pub const MAX: u8 = u8::MAX;
+
+    /// The sequence number (`0..=255` all fit in 8 bits).
+    #[must_use]
+    pub const fn new(value: u8) -> FrameSeqNum {
+        FrameSeqNum(value)
+    }
+
+    /// The numeric value.
+    #[must_use]
+    pub const fn get(self) -> u8 {
+        self.0
+    }
+
     /// The next number, modulo 256.
     #[must_use]
     pub const fn next(self) -> FrameSeqNum {
         FrameSeqNum(self.0.wrapping_add(1))
+    }
+
+    /// Classifies `next` as received after `self` modulo 256 (CMN-031).
+    #[must_use]
+    pub const fn classify(self, next: FrameSeqNum) -> Continuity {
+        classify_masked(8, u8_to_u64(self.0), u8_to_u64(next.0))
+    }
+}
+
+impl From<u8> for FrameSeqNum {
+    fn from(value: u8) -> FrameSeqNum {
+        FrameSeqNum(value)
+    }
+}
+
+impl From<FrameSeqNum> for u8 {
+    fn from(seq: FrameSeqNum) -> u8 {
+        seq.0
+    }
+}
+
+impl From<FrameSeqNum> for ModCounter {
+    fn from(seq: FrameSeqNum) -> ModCounter {
+        from_valid(8, u64::from(seq.0))
     }
 }
 
@@ -169,6 +233,8 @@ impl FrameSeqNum {
 pub struct PacketVersion(u8);
 
 impl PacketVersion {
+    /// Largest value.
+    pub const MAX: u8 = 7;
     /// Version-1 CCSDS Packet (Space Packet), binary `000`.
     pub const SPACE_PACKET: PacketVersion = PacketVersion(0);
     /// Version-8 CCSDS Packet (Encapsulation Packet), binary `111`.
@@ -177,7 +243,7 @@ impl PacketVersion {
     /// The version, or `None` if `value` exceeds 3 bits.
     #[must_use]
     pub const fn new(value: u8) -> Option<PacketVersion> {
-        if value <= 7 {
+        if value <= PacketVersion::MAX {
             Some(PacketVersion(value))
         } else {
             None
@@ -195,8 +261,19 @@ impl TryFrom<u8> for PacketVersion {
     type Error = Error;
 
     fn try_from(value: u8) -> Result<PacketVersion> {
-        PacketVersion::new(value)
-            .ok_or_else(|| Error::out_of_range("packet_version", 7, u64::from(value)))
+        PacketVersion::new(value).ok_or_else(|| {
+            Error::out_of_range(
+                "packet_version",
+                u64::from(PacketVersion::MAX),
+                u64::from(value),
+            )
+        })
+    }
+}
+
+impl From<PacketVersion> for u8 {
+    fn from(version: PacketVersion) -> u8 {
+        version.0
     }
 }
 
@@ -204,7 +281,8 @@ impl TryFrom<u8> for PacketVersion {
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::{Apid, FrameSeqNum, MapId, PacketVersion, SeqCount, SpacecraftId, VcId};
-    use crate::error::ErrorKind;
+    use crate::counter::{Continuity, ModCounter};
+    use crate::error::{ErrorKind, FieldId};
 
     #[test]
     fn widths_are_enforced() {
@@ -223,34 +301,61 @@ mod tests {
         assert!(MapId::<6>::new(64).is_none());
         let e = SpacecraftId::<10>::try_from(2000).unwrap_err();
         assert_eq!(e.kind(), ErrorKind::OutOfRange);
+        assert_eq!(e.field(), Some(FieldId::new("spacecraft_id")));
+        assert_eq!(
+            VcId::<3>::try_from(8).unwrap_err().field(),
+            Some(FieldId::new("vc_id"))
+        );
+        assert_eq!(
+            MapId::<4>::try_from(16).unwrap_err().field(),
+            Some(FieldId::new("map_id"))
+        );
         assert_eq!(u16::from(SpacecraftId::<10>::try_from(42).unwrap()), 42);
         assert_eq!(VcId::<6>::new(5).map(VcId::get), Some(5));
+        assert_eq!(u8::from(VcId::<6>::try_from(5).unwrap()), 5);
+        assert_eq!(MapId::<4>::new(3).map(MapId::get), Some(3));
         assert_eq!(u8::from(MapId::<4>::try_from(3).unwrap()), 3);
     }
 
     #[test]
     fn packet_identifiers() {
-        // req: API-001
+        // req: API-001, CMN-031
+        const SEQ_CONT: Continuity = SeqCount::new(SeqCount::MAX)
+            .unwrap()
+            .classify(SeqCount::new(0).unwrap());
+        const FSN_CONT: Continuity =
+            FrameSeqNum::new(FrameSeqNum::MAX).classify(FrameSeqNum::new(0));
+        assert_eq!(SEQ_CONT, Continuity::InSequence);
+        assert_eq!(FSN_CONT, Continuity::InSequence);
         assert!(Apid::new(2047).is_some_and(Apid::is_idle));
         assert!(!Apid::new(0).unwrap().is_idle());
         assert!(Apid::new(2048).is_none());
-        assert_eq!(Apid::IDLE.get(), 2047);
+        assert_eq!(u16::from(Apid::IDLE), 2047);
         assert_eq!(
             Apid::try_from(4096).unwrap_err().kind(),
             ErrorKind::OutOfRange
         );
         assert_eq!(Apid::try_from(7).map(Apid::get), Ok(7));
-        assert_eq!(SeqCount::new(SeqCount::MAX).unwrap().next().get(), 0);
-        assert_eq!(SeqCount::new(5).unwrap().next().get(), 6);
+        let s_max = SeqCount::new(SeqCount::MAX).unwrap();
+        let s0 = SeqCount::new(0).unwrap();
+        assert_eq!(s_max.next(), s0);
+        assert_eq!(s_max.classify(s0), Continuity::InSequence);
+        assert_eq!(ModCounter::from(s_max).value(), u64::from(SeqCount::MAX));
+        assert_eq!(u16::from(SeqCount::new(5).unwrap().next()), 6);
         assert!(SeqCount::new(16384).is_none());
         assert_eq!(
             SeqCount::try_from(20000).unwrap_err().kind(),
             ErrorKind::OutOfRange
         );
         assert_eq!(SeqCount::try_from(1).map(SeqCount::get), Ok(1));
-        assert_eq!(FrameSeqNum(255).next(), FrameSeqNum(0));
+        let f_max = FrameSeqNum::new(FrameSeqNum::MAX);
+        assert_eq!(f_max.get(), 255);
+        assert_eq!(f_max.next(), FrameSeqNum::from(0));
+        assert_eq!(u8::from(f_max.next()), 0);
+        assert_eq!(f_max.classify(FrameSeqNum::new(0)), Continuity::InSequence);
+        assert_eq!(ModCounter::from(f_max).value(), 255);
         assert_eq!(PacketVersion::SPACE_PACKET.get(), 0);
-        assert_eq!(PacketVersion::ENCAPSULATION.get(), 7);
+        assert_eq!(u8::from(PacketVersion::ENCAPSULATION), 7);
         assert!(PacketVersion::new(8).is_none());
         assert_eq!(
             PacketVersion::try_from(9).unwrap_err().kind(),

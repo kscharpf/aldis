@@ -7,10 +7,10 @@
 )]
 
 use aldis_core::counter::{Continuity, ModCounter};
-use aldis_core::crc::crc16;
+use aldis_core::crc::{crc16, crc16_bitwise};
 use aldis_core::error::ErrorKind;
 use aldis_core::layout::{FrameLayout, LayoutSpec};
-use aldis_core::oid::OidGenerator;
+use aldis_core::oid::{OidGenerator, OidGeneratorGalois};
 use aldis_core::security::SecurityLayout;
 use aldis_core::{Error, bits};
 use aldis_testkit::{CodecCase, Outcome, hex, run_codec_file};
@@ -54,21 +54,37 @@ fn outcome(result: Result<Value, Error>) -> Outcome {
 
 fn handle(case: &CodecCase) -> Outcome {
     match case.operation.as_str() {
-        "crc16" => ok(&json!({ "value_hex": format!("{:04X}", crc16(&input(case))) })),
+        "crc16" => {
+            let data = input(case);
+            let val = crc16(&data);
+            assert_eq!(crc16_bitwise(&data), val);
+            #[cfg(feature = "crc-table")]
+            assert_eq!(aldis_core::crc::crc16_table(&data), val);
+            ok(&json!({ "value_hex": format!("{val:04X}") }))
+        }
         "oid_fill" => {
-            let mut out = vec![0; param_usize(case, "octets")];
+            let len = param_usize(case, "octets");
+            let mut out = vec![0; len];
             OidGenerator::new().fill(&mut out);
+            let mut gal = vec![0; len];
+            OidGeneratorGalois::new().fill(&mut gal);
+            assert_eq!(out, gal);
             ok(&json!({ "output_hex": hex::encode(&out) }))
         }
         "oid_fill_sequence" => {
             let mut g = OidGenerator::new();
+            let mut gal = OidGeneratorGalois::new();
             let outputs: Vec<String> = param(case, "fills")
                 .as_array()
                 .unwrap()
                 .iter()
                 .map(|n| {
-                    let mut out = vec![0; usize::try_from(n.as_u64().unwrap()).unwrap()];
+                    let len = usize::try_from(n.as_u64().unwrap()).unwrap();
+                    let mut out = vec![0; len];
+                    let mut out_gal = vec![0; len];
                     g.fill(&mut out);
+                    gal.fill(&mut out_gal);
+                    assert_eq!(out, out_gal);
                     hex::encode(&out)
                 })
                 .collect();
@@ -117,42 +133,44 @@ fn handle(case: &CodecCase) -> Outcome {
                     Continuity::Backwards => json!({ "class": "backwards" }),
                 }),
         ),
-        "frame_layout" => {
-            let flag = |name: &str| param(case, name).as_bool().unwrap();
-            let spec = SecurityLayout::new(
-                param_usize(case, "security_header_len"),
-                param_usize(case, "security_trailer_len"),
-            )
-            .map(|security| LayoutSpec {
-                frame_len: param_usize(case, "frame_len"),
-                primary_header_len: param_usize(case, "primary_header_len"),
-                secondary_len: param_usize(case, "secondary_len"),
-                security,
-                ocf: flag("ocf"),
-                fecf: flag("fecf"),
-            });
-            outcome(spec.and_then(|s| FrameLayout::compute(&s)).map(|l| {
-                let r = |x: &core::ops::Range<usize>| json!([x.start, x.end]);
-                json!({
-                    "primary_header": r(&l.primary_header), "secondary": r(&l.secondary),
-                    "security_header": r(&l.security_header), "data": r(&l.data),
-                    "security_trailer": r(&l.security_trailer), "ocf": r(&l.ocf), "fecf": r(&l.fecf),
-                })
-            }))
-        }
+        "frame_layout" => handle_layout(case),
         _ => Outcome::Unsupported,
     }
 }
 
+fn handle_layout(case: &CodecCase) -> Outcome {
+    let flag = |name: &str| param(case, name).as_bool().unwrap();
+    let spec = SecurityLayout::new(
+        param_usize(case, "security_header_len"),
+        param_usize(case, "security_trailer_len"),
+    )
+    .map(|security| LayoutSpec {
+        frame_len: param_usize(case, "frame_len"),
+        primary_header_len: param_usize(case, "primary_header_len"),
+        secondary_len: param_usize(case, "secondary_len"),
+        security,
+        ocf: flag("ocf"),
+        fecf: flag("fecf"),
+    });
+    outcome(spec.and_then(|s| FrameLayout::compute(&s)).map(|l| {
+        let r = |x: &core::ops::Range<usize>| json!([x.start, x.end]);
+        json!({
+            "primary_header": r(&l.primary_header), "secondary": r(&l.secondary),
+            "security_header": r(&l.security_header), "data": r(&l.data),
+            "security_trailer": r(&l.security_trailer), "ocf": r(&l.ocf), "fecf": r(&l.fecf),
+        })
+    }))
+}
+
 #[test]
 fn crc16_vectors() {
-    // req: CMN-001, CMN-002, TV-022, VER-021
+    // req: CMN-001, CMN-002, CMN-004, TV-022, VER-021
     run_codec_file("core/crc16.json", handle).assert_passed();
 }
 
 #[test]
 fn oid_vectors() {
-    // req: CMN-020, CMN-021, CMN-023, TV-022, VER-021
+    // req: CMN-020, CMN-021, CMN-022, CMN-023, TV-022, VER-021
     run_codec_file("core/oid.json", handle).assert_passed();
 }
 
@@ -189,11 +207,16 @@ fn corrupted_vector_fails() {
     else {
         panic!("core/crc16.json is not a codec file");
     };
-    file.cases[0]
-        .expect
+    let case = file
+        .cases
+        .iter_mut()
+        .find(|c| c.superseded.is_none())
+        .unwrap();
+    let expected_id = case.id.clone();
+    case.expect
         .values
         .insert("value_hex".to_owned(), json!("0000"));
     let report = aldis_testkit::run_codec(&file, &path, handle);
     assert_eq!(report.failures.len(), 1);
-    assert_eq!(report.failures[0].case_id, "crc16-check-001");
+    assert_eq!(report.failures[0].case_id, expected_id);
 }

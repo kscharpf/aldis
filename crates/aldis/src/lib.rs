@@ -1,6 +1,8 @@
 //! Facade crate re-exporting the Aldis crates behind feature flags.
 //!
-//! Specification: `docs/01-architecture.md` §2. Enable `full` for everything.
+//! Specification: `docs/01-architecture.md` §2 and `docs/profiles/rust.md` §2. No features are
+//! enabled by default; enable individual crate features (e.g. `core`, `spp`) or `full` for
+//! everything.
 #![no_std]
 
 #[cfg(feature = "aos")]

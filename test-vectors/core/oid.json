@@ -10,11 +10,35 @@
       "description": "First 20 octets after device start-up",
       "operation": "oid_fill",
       "params": { "octets": 20 },
-      "expect": { "ok": true, "output_hex": "FFFFFFFF6DB6D861451F11F19716723CBE7E00B1" }
+      "expect": { "ok": true, "output_hex": "FFFFFFFF6DB6D861451F11F19716723CBE7E00B1" },
+      "superseded": {
+        "reason": "added CMN-022 requirement traceability",
+        "by": "oid-start-002"
+      }
     },
     {
       "id": "oid-continuation-001",
       "requirements": ["CMN-021", "CMN-023"],
+      "description": "Two fills of 10 octets continue the sequence without restart",
+      "operation": "oid_fill_sequence",
+      "params": { "fills": [10, 10] },
+      "expect": { "ok": true, "outputs_hex": ["FFFFFFFF6DB6D861451F", "11F19716723CBE7E00B1"] },
+      "superseded": {
+        "reason": "added CMN-022 requirement traceability",
+        "by": "oid-continuation-002"
+      }
+    },
+    {
+      "id": "oid-start-002",
+      "requirements": ["CMN-020", "CMN-022", "CMN-023"],
+      "description": "First 20 octets after device start-up",
+      "operation": "oid_fill",
+      "params": { "octets": 20 },
+      "expect": { "ok": true, "output_hex": "FFFFFFFF6DB6D861451F11F19716723CBE7E00B1" }
+    },
+    {
+      "id": "oid-continuation-002",
+      "requirements": ["CMN-021", "CMN-022", "CMN-023"],
       "description": "Two fills of 10 octets continue the sequence without restart",
       "operation": "oid_fill_sequence",
       "params": { "fills": [10, 10] },

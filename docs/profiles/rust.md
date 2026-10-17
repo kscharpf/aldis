@@ -18,10 +18,10 @@ This profile binds the language-neutral specification to Rust. The Rust crates a
 | `aldis-spp` | — | `time` (typed secondary-header time codes), `alloc`, `std` |
 | `aldis-epp`, `aldis-tm`, `aldis-tc`, `aldis-aos`, `aldis-uslp` | — | `alloc`, `std` |
 | `aldis-link` | — | `tm`, `tc`, `aos`, `uslp`, `spp`, `epp`, `alloc`, `std` |
-| `aldis-cop1` | `tc` | `uslp`, `std` |
-| `aldis-framework` | — | `std`, `std-udp`, `std-tcp`, `embedded-nal`, `trace`, `async` |
-| `aldis` (facade) | — | one feature per crate, plus `full` |
-| `aldis-ffi` | — | mirrors the facade; capacities via build-time config ([C ABI §5](c-abi.md#5-memory-model)) |
+| `aldis-cop1` | `tc` | `uslp`, `alloc`, `std` |
+| `aldis-framework` | — | `alloc`, `std`, `std-udp`, `std-tcp`, `embedded-nal`, `trace`, `async` |
+| `aldis` (facade) | — | one feature per crate, `alloc`, `std`, `full` |
+| `aldis-ffi` | `std` | `std`, `panic-handler`; enables `aldis/full`; capacities via build-time config ([C ABI §5](c-abi.md#5-memory-model)) |
 
 ## 3. API shapes
 
@@ -66,7 +66,7 @@ impl<const SENT: usize, const MAX_FRAME: usize> Fop1<SENT, MAX_FRAME> {
 
 | ID | Requirement | Source | Verif. |
 |---|---|---|---|
-| RS-010 | Identifier types (API-001) SHALL be newtypes constructed only through validating functions (`TryFrom<u16/u32>`, `const fn new(..) -> Option<Self>`). The public API SHALL NOT provide unchecked constructors. | API-001 | T |
+| RS-010 | Identifier types (API-001) SHALL be newtypes with private fields. Sub-width identifiers SHALL be constructed only through validating functions (`TryFrom<u8/u16/u32>`, `const fn new(..) -> Option<Self>`); full-width identifiers (such as `FrameSeqNum`) SHALL provide `const fn new(..) -> Self` and `From`. The public API SHALL NOT provide unchecked constructors that can produce an out-of-range value. | API-001 | T |
 | RS-011 | `Error` SHALL be a small `Copy` struct `{ kind: ErrorKind, field: Option<FieldId>, detail: ErrorDetail }` with `#[non_exhaustive]` enums (GEN-041, GEN-081). With `std`, it SHALL implement `std::error::Error`. With `core`, it SHALL implement `core::error::Error` (Rust ≥ 1.81). | GEN-040 | T |
 | RS-012 | Configuration types SHALL have private fields, validated constructors or builders, and `Clone + PartialEq + Debug`. They SHALL be constructible in `const` context where the validation is `const`-evaluable. | GEN-060, API-041 | T |
 | RS-013 | Engines SHALL implement `Send` when their contents do. They SHALL NOT implement `Sync`-dependent interior mutability (GEN-033). | GEN-033 | A |
@@ -99,6 +99,7 @@ panic = "deny"
 indexing_slicing = "deny"
 arithmetic_side_effects = "deny"
 cast_possible_truncation = "deny"
+as_conversions = "deny"
 unreachable = "deny"
 todo = "deny"
 unimplemented = "deny"

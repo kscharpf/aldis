@@ -4,6 +4,19 @@ All notable changes to Aldis are recorded here. The format follows [Keep a Chang
 
 ## [Unreleased]
 
+### Added
+- `aldis-core::bits`: big-endian `read_u32`, `write_u32`, `read_u64`, `write_u64` octet helpers alongside `read_u16`/`write_u16`.
+- `aldis-core::crc`: `PRESET` constant and incremental `crc16_update`, `crc16_update_bitwise`, `crc16_update_table` functions (CMN-001…004).
+- `aldis-core::ids`: `MAX` constants and `From<Id>` conversions for `Apid`, `SeqCount`, `FrameSeqNum`, and `PacketVersion`; infallible `SeqCount::classify`, `FrameSeqNum::classify`, and `From<{SeqCount, FrameSeqNum}> for ModCounter` (CMN-031).
+- `aldis-core::container`: `FixedVec::{as_mut_slice, capacity, is_full}`, `PartialEq`/`Eq` on `FixedVec`, and `ByteQueue::clear`.
+- `as_conversions = "deny"` in `[workspace.lints.clippy]` (VER-001).
+
+### Changed
+- **Breaking:** `aldis` facade crate no longer enables `core` by default (`default = []`), matching `docs/profiles/rust.md` §2; enable `core` or `full` explicitly.
+- **Breaking:** `aldis-core::ids`: `FrameSeqNum`'s inner `u8` field is now private (use `FrameSeqNum::new` or `From<u8>`, and `FrameSeqNum::get` or `u8::from`), matching the other identifier types (RS-010); `SpacecraftId`, `VcId`, and `MapId` `TryFrom` errors now report snake_case `FieldId`s (`"spacecraft_id"`, `"vc_id"`, `"map_id"`) instead of type names (API-041).
+- `aldis-core::security`: `SecurityLayout::new` is now a `const fn` (RS-012), `SecurityLayout::MAX_TRAILER_LEN` is public alongside `MAX_HEADER_LEN` (API-070, API-071), and `Protocol` is `#[non_exhaustive]` (GEN-081).
+- Forwarded `alloc`, `std`, and protocol sub-features across `aldis`, `aldis-spp`, `aldis-link`, `aldis-cop1`, `aldis-framework`, and `aldis-ffi`.
+
 ## [0.1.0-m0] — 2026-10-16
 
 Milestone 0, Foundations: repository, CI, verification tooling, and a verified `aldis-core` ([plan](docs/milestones/m0-foundations.md)).

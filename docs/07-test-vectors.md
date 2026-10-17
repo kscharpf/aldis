@@ -7,8 +7,8 @@ The vectors are the **contract between implementations**. The Rust reference imp
 ```
 test-vectors/
   schema/            JSON Schemas generated from the model in crates/aldis-testkit (cargo xtask vectors schema)
-  core/              crc16.json, oid.json, counters.json
-  time/              cuc.json, cds.json, ccs.json, ascii.json
+  core/              crc16.json, oid.json, errors.json, bits.json, counters.json, layout.json
+  time/              cuc.json, cds.json, ccs.json, ascii.json, convert.json
   spp/  epp/  tm/  tc/  aos/  uslp/
   cop1/              fop1_table.json, farm1_table.json, scenarios/*.json
   link/              packet_generator/*.json, extractor/*.json, mux/*.json, segmenter/*.json
@@ -20,6 +20,8 @@ test-vectors/
 {
   "kind": "codec",
   "standard": "133.0-B-2",
+  "provenance": "hand-derived",
+  "provenance_note": "Worked from 133.0-B-2 §4.1.3",
   "cases": [
     {
       "id": "spp-decode-001",
@@ -91,5 +93,5 @@ The hex strings in the illustration above are examples of the format. Real vecto
 | ID | Requirement | Source | Verif. |
 |---|---|---|---|
 | TV-020 | Each vector file SHALL record its provenance: `blue-book-example`, `hand-derived` (with a worked derivation note), `cross-checked` (with the independent implementation and version), or `fuzz-regression`. | VER-040 | I |
-| TV-021 | Vectors SHALL be immutable once released. Corrections SHALL add a new case and mark the old one `superseded`, with a reason. | — | I |
+| TV-021 | Vectors SHALL be immutable once released. Corrections SHALL add a new case and mark the old one `superseded`, with a reason. | — | A/I |
 | TV-022 | Seed vectors already verified during specification work: `core/crc16.json` (`"123456789"` → `29B1`, CMN-002) and `core/oid.json` (first 20 octets, CMN-020). | CMN-002, CMN-020 | V |

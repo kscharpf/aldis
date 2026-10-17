@@ -16,9 +16,9 @@ Every loop in library code, with its bound. `ids`, `layout`, `counter`, and `tim
 |---|---|---|
 | `bits.rs` `get`, `set` | fold over the field's octets; reverse write-back in `set` | ≤ 9 octets (a field of ≤ 64 bits spans at most 9) |
 | `crc.rs` `step_bitwise` | `while bit < 8` | constant 8 |
-| `crc.rs` `crc16_bitwise` | `while let [octet, tail @ ..]` | input length; the slice shrinks by one octet per pass |
+| `crc.rs` `crc16_update_bitwise` | `while let [octet, tail @ ..]` | input length; the slice shrinks by one octet per pass |
 | `crc.rs` `TABLE` | `while i < 256` | constant 256; evaluated at compile time |
-| `crc.rs` `crc16_table` | fold over `data` | input length |
+| `crc.rs` `crc16_update_table` | fold over `data` | input length |
 | `oid.rs` `next_octet` (both forms) | `(0..8)` | constant 8 |
 | `oid.rs` `fill` (both forms) | over `buf` | output length |
 | `container.rs` `FixedQueue::clear` | `while self.pop().is_some()` | ≤ N: each `pop` lowers `len`, and `len` ≤ N |
@@ -28,7 +28,7 @@ Every loop in library code, with its bound. `ids`, `layout`, `counter`, and `tim
 
 ## Recursion
 
-No function calls itself, directly or through another `aldis-core` function. A scan for self-calls flagged only same-named methods of other types: `bits::get` calls `<[u8]>::get`, `SecurityLayout::new` calls `Error::new`, and `Instant`/`Duration::saturating_add` call `u64::saturating_add`. The internal call graph is acyclic and at most three deep (for example `fill` → `next_octet` → `next_bit`, `clear` → `pop`, `crc16` → `crc16_table`).
+No function calls itself, directly or through another `aldis-core` function. A scan for self-calls flagged only same-named methods of other types: `bits::get` calls `<[u8]>::get`, `SecurityLayout::new` calls `Error::new`, and `Instant`/`Duration::saturating_add` call `u64::saturating_add`. The internal call graph is acyclic and at most three deep (for example `fill` → `next_octet` → `next_bit`, `clear` → `pop`, `crc16` → `crc16_update` → `crc16_update_table`).
 
 ## Blocking
 

@@ -191,7 +191,7 @@ mod tests {
 
     #[test]
     fn error_kinds_must_match() {
-        // req: TV-001
+        // req: TV-001, TV-012
         let f = file(
             &json!([{ "id": "e1", "requirements": ["TV-001"], "operation": "op",
                                "expect": { "ok": false, "error": "CrcMismatch" } }]),
