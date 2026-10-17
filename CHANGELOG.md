@@ -5,6 +5,19 @@ All notable changes to Aldis are recorded here. The format follows [Keep a Chang
 ## [Unreleased]
 
 ### Added
+- `xtask` tooling (`cargo xtask help`): `spec-lint` (requirement tables and every ID reference), `trace [--scope m0] [--strict]` (requirement → artefact matrix), `vectors validate`, `vectors schema [--check]`, `links`, `layers`, and `ci`.
+- `aldis-testkit`: test-vector model, loader, and exact-match runner; JSON Schemas for vector files generated from the model (`test-vectors/schema/`).
+- Core vectors: `errors.json`, `bits.json`, `counters.json` (hand-derived, independent Python reference).
+- `docs/verification/analysis-records.md` for requirements verified by analysis or inspection.
+- RS-017: tooling lint profile.
+- CI job `spec`: spec lint, links, vector validation, schema check, and M0 trace matrix (artefact `trace-m0`).
+
+### Changed
+- CI `layers` job runs `cargo xtask layers` (replaces `.github/scripts/check_layers.py`) and also checks that tooling crates are only dev-dependencies.
+
+### Fixed
+- Requirement rows API-055 and EPP-008 contained unescaped `|` in code spans, which split the table cells (also mis-rendered on GitHub).
+- GEN area now maps to both `01-architecture.md` and `02-design-rules.md`, where its requirements are defined.
 - GitHub Actions CI: formatting, Clippy (`all` + `pedantic` + restriction lints), tests on Linux and macOS, `no_std` builds for Cortex-M, Cortex-R and RISC-V, big-endian tests (s390x), dependency layering check, and `cargo-deny`.
 - Nightly workflow: big-endian bare-metal build and a CCSDS document URL check.
 - `specs/fetch.sh --check-urls` (HEAD-only check; downloads nothing).

@@ -19,6 +19,10 @@ This directory holds the specification for a family of libraries that add CCSDS 
 | 08 | [Roadmap](08-roadmap.md) | Milestones for v1, later standards, language rollout |
 | 09 | [Open issues](09-open-issues.md) | Decisions and verifications still pending |
 
+### Verification records
+
+[`verification/analysis-records.md`](verification/analysis-records.md): requirements verified by analysis or inspection (method A/I), read by `cargo xtask trace`.
+
 ### Milestone plans ([`milestones/`](milestones/))
 
 | Document | Milestone |

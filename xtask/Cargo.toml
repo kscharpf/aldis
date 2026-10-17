@@ -1,0 +1,22 @@
+[package]
+name = "xtask"
+description = "Project tooling for Aldis: spec lint, traceability, vectors, links, layering"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+aldis-testkit = { path = "../crates/aldis-testkit", features = ["schema"] }
+serde_json = "1.0.154"
+
+# Tooling lint profile (RS-017).
+[lints.rust]
+unsafe_code = "forbid"
+missing_docs = "deny"
+
+[lints.clippy]
+all = { level = "deny", priority = -1 }
+pedantic = { level = "deny", priority = -1 }

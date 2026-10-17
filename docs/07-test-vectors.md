@@ -6,7 +6,7 @@ The vectors are the **contract between implementations**. The Rust reference imp
 
 ```
 test-vectors/
-  schema/            JSON Schemas for each vector kind
+  schema/            JSON Schemas generated from the model in crates/aldis-testkit (cargo xtask vectors schema)
   core/              crc16.json, oid.json, counters.json
   time/              cuc.json, cds.json, ccs.json, ascii.json
   spp/  epp/  tm/  tc/  aos/  uslp/
@@ -62,6 +62,10 @@ The hex strings in the illustration above are examples of the format. Real vecto
 {
   "kind": "engine-scenario",
   "engine": "fop1",
+  "id": "fop1-initiate-and-first-ad",
+  "requirements": ["COP-001", "COP-010", "COP-013"],
+  "provenance": "hand-derived",
+  "provenance_note": "Derived from 232.1-B-2 Table 5-1 (E23, E19)",
   "config": { "frame_target": "tc", "scid": 42, "vcid": 1, "t1_initial_us": 2000000,
               "transmission_limit": 3, "timeout_type": 0, "k": 8, "fecf": true },
   "steps": [

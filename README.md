@@ -27,7 +27,9 @@ code/
 │   ├── aldis-cop1        L2  232.1 FOP-1 / FARM-1
 │   ├── aldis-framework   L3  optional transport/clock traits and stacks
 │   ├── aldis             facade (feature-gated re-exports)
-│   └── aldis-ffi         C ABI (staticlib/cdylib, cbindgen, build-time capacities)
+│   ├── aldis-ffi         C ABI (staticlib/cdylib, cbindgen, build-time capacities)
+│   └── aldis-testkit     tooling: test-vector model, loader, runner (dev-only)
+├── xtask/                tooling: `cargo xtask help` (spec lint, trace, vectors, links, layers)
 └── test-vectors/         shared, language-neutral conformance vectors
 ```
 

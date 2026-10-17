@@ -1,0 +1,219 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "CodecFile",
+  "description": "A file of stateless codec cases (TV-001…TV-003).",
+  "type": "object",
+  "properties": {
+    "cases": {
+      "description": "The cases.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/CodecCase"
+      }
+    },
+    "kind": {
+      "description": "Always `\"codec\"`.",
+      "$ref": "#/$defs/CodecKind"
+    },
+    "provenance": {
+      "description": "Origin of the expected values.",
+      "$ref": "#/$defs/Provenance"
+    },
+    "provenance_note": {
+      "description": "Derivation or cross-check details; required unless provenance is `blue-book-example`\nor `fuzz-regression` (checked by `xtask vectors validate`).",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "standard": {
+      "description": "CCSDS document(s) and clause(s) the cases exercise.",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "required": [
+    "kind",
+    "standard",
+    "provenance",
+    "cases"
+  ],
+  "$defs": {
+    "CodecCase": {
+      "description": "One codec case.",
+      "type": "object",
+      "properties": {
+        "config": {
+          "description": "Managed parameters (configuration) for the operation.",
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": true
+        },
+        "description": {
+          "description": "Human-readable description.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "expect": {
+          "description": "Expected outcome.",
+          "$ref": "#/$defs/Expect"
+        },
+        "id": {
+          "description": "Globally unique case identifier.",
+          "type": "string"
+        },
+        "input_hex": {
+          "description": "Input octets as upper- or lower-case hex without separators.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "mode": {
+          "description": "Decoding mode; strict when absent.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Mode"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "operation": {
+          "description": "Operation name, interpreted by the crate's test handler.",
+          "type": "string"
+        },
+        "params": {
+          "description": "Operation parameters that are not configuration.",
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": true
+        },
+        "requirements": {
+          "description": "Requirement IDs the case verifies (TV-003).",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "superseded": {
+          "description": "Present when this released case has been replaced.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Superseded"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "requirements",
+        "operation",
+        "expect"
+      ]
+    },
+    "CodecKind": {
+      "description": "Value of the `kind` field of a codec vector file.",
+      "oneOf": [
+        {
+          "description": "The only value: `\"codec\"`.",
+          "type": "string",
+          "const": "codec"
+        }
+      ]
+    },
+    "Expect": {
+      "description": "Expected outcome of a codec case.\n\nWhen `ok` is true, every other key is an expected output value and the handler's output\nmust match them **exactly**: no missing and no extra keys (TV-002, TV-012). When `ok` is\nfalse, `error` names the expected error kind from the catalogue (03-api-model.md §9).",
+      "type": "object",
+      "properties": {
+        "error": {
+          "description": "Expected error kind when `ok` is false.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "ok": {
+          "description": "Whether the operation succeeds.",
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": true,
+      "required": [
+        "ok"
+      ]
+    },
+    "Mode": {
+      "description": "Decoding mode of a codec case (API-030).",
+      "oneOf": [
+        {
+          "description": "Reject any deviation from the standard (default).",
+          "type": "string",
+          "const": "strict"
+        },
+        {
+          "description": "Accept reserved-field deviations and report anomalies.",
+          "type": "string",
+          "const": "lenient"
+        }
+      ]
+    },
+    "Provenance": {
+      "description": "Where a vector file's expected values come from (TV-020).",
+      "oneOf": [
+        {
+          "description": "Example printed in a CCSDS Blue Book.",
+          "type": "string",
+          "const": "blue-book-example"
+        },
+        {
+          "description": "Derived by hand from the standard; `provenance_note` explains the derivation.",
+          "type": "string",
+          "const": "hand-derived"
+        },
+        {
+          "description": "Agreed with an independent implementation named in `provenance_note`.",
+          "type": "string",
+          "const": "cross-checked"
+        },
+        {
+          "description": "Regression case produced by fuzzing.",
+          "type": "string",
+          "const": "fuzz-regression"
+        }
+      ]
+    },
+    "Superseded": {
+      "description": "Marks a released case as replaced; released cases are never edited (TV-021).",
+      "type": "object",
+      "properties": {
+        "by": {
+          "description": "Identifier of the replacing case, if any.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "reason": {
+          "description": "Why the case was superseded.",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "reason"
+      ]
+    }
+  }
+}

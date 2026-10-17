@@ -1,0 +1,63 @@
+//! Repository paths and file walking.
+
+use std::path::{Path, PathBuf};
+
+/// Repository root (parent of the `xtask` crate).
+pub fn root() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .map_or_else(|| PathBuf::from("."), Path::to_path_buf)
+}
+
+/// Directories never scanned: build output, VCS data, and the git-ignored CCSDS documents.
+const SKIP: &[&str] = &["target", ".git", "specs/pdf"];
+
+/// All files under `dir` (relative to the root) whose extension is in `exts`, sorted.
+pub fn files(dir: &str, exts: &[&str]) -> Vec<PathBuf> {
+    let root = root();
+    let mut out = Vec::new();
+    let mut stack = vec![root.join(dir)];
+    while let Some(d) = stack.pop() {
+        let Ok(entries) = std::fs::read_dir(&d) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let rel = path
+                .strip_prefix(&root)
+                .unwrap_or(&path)
+                .to_string_lossy()
+                .replace('\\', "/");
+            if SKIP
+                .iter()
+                .any(|s| rel == *s || rel.starts_with(&format!("{s}/")))
+            {
+                continue;
+            }
+            if path.is_dir() {
+                stack.push(path);
+            } else if path
+                .extension()
+                .and_then(|e| e.to_str())
+                .is_some_and(|e| exts.contains(&e))
+            {
+                out.push(path);
+            }
+        }
+    }
+    out.sort();
+    out
+}
+
+/// Path relative to the repository root, with forward slashes.
+pub fn rel(path: &Path) -> String {
+    path.strip_prefix(root())
+        .unwrap_or(path)
+        .to_string_lossy()
+        .replace('\\', "/")
+}
+
+/// Reads a file as UTF-8, reporting the path on failure.
+pub fn read(path: &Path) -> Result<String, String> {
+    std::fs::read_to_string(path).map_err(|e| format!("{}: {e}", rel(path)))
+}

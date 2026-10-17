@@ -1,0 +1,297 @@
+{
+  "kind": "codec",
+  "standard": "Aldis error catalogue (docs/03-api-model.md \u00a79); C ABI mapping CABI-020",
+  "provenance": "hand-derived",
+  "provenance_note": "Codes copied from the catalogue table. The C ABI returns the negated code (CABI-020).",
+  "cases": [
+    {
+      "id": "error-code-BufferTooSmall",
+      "requirements": [
+        "GEN-040",
+        "CABI-020"
+      ],
+      "description": "BufferTooSmall has stable code 1",
+      "operation": "error_code",
+      "params": {
+        "kind": "BufferTooSmall"
+      },
+      "expect": {
+        "ok": true,
+        "code": 1,
+        "c_abi": -1
+      }
+    },
+    {
+      "id": "error-code-Incomplete",
+      "requirements": [
+        "GEN-040",
+        "CABI-020"
+      ],
+      "description": "Incomplete has stable code 2",
+      "operation": "error_code",
+      "params": {
+        "kind": "Incomplete"
+      },
+      "expect": {
+        "ok": true,
+        "code": 2,
+        "c_abi": -2
+      }
+    },
+    {
+      "id": "error-code-LengthMismatch",
+      "requirements": [
+        "GEN-040",
+        "CABI-020"
+      ],
+      "description": "LengthMismatch has stable code 3",
+      "operation": "error_code",
+      "params": {
+        "kind": "LengthMismatch"
+      },
+      "expect": {
+        "ok": true,
+        "code": 3,
+        "c_abi": -3
+      }
+    },
+    {
+      "id": "error-code-UnsupportedVersion",
+      "requirements": [
+        "GEN-040",
+        "CABI-020"
+      ],
+      "description": "UnsupportedVersion has stable code 4",
+      "operation": "error_code",
+      "params": {
+        "kind": "UnsupportedVersion"
+      },
+      "expect": {
+        "ok": true,
+        "code": 4,
+        "c_abi": -4
+      }
+    },
+    {
+      "id": "error-code-OutOfRange",
+      "requirements": [
+        "GEN-040",
+        "CABI-020"
+      ],
+      "description": "OutOfRange has stable code 5",
+      "operation": "error_code",
+      "params": {
+        "kind": "OutOfRange"
+      },
+      "expect": {
+        "ok": true,
+        "code": 5,
+        "c_abi": -5
+      }
+    },
+    {
+      "id": "error-code-InvalidField",
+      "requirements": [
+        "GEN-040",
+        "CABI-020"
+      ],
+      "description": "InvalidField has stable code 6",
+      "operation": "error_code",
+      "params": {
+        "kind": "InvalidField"
+      },
+      "expect": {
+        "ok": true,
+        "code": 6,
+        "c_abi": -6
+      }
+    },
+    {
+      "id": "error-code-ReservedValue",
+      "requirements": [
+        "GEN-040",
+        "CABI-020"
+      ],
+      "description": "ReservedValue has stable code 7",
+      "operation": "error_code",
+      "params": {
+        "kind": "ReservedValue"
+      },
+      "expect": {
+        "ok": true,
+        "code": 7,
+        "c_abi": -7
+      }
+    },
+    {
+      "id": "error-code-CrcMismatch",
+      "requirements": [
+        "GEN-040",
+        "CABI-020"
+      ],
+      "description": "CrcMismatch has stable code 8",
+      "operation": "error_code",
+      "params": {
+        "kind": "CrcMismatch"
+      },
+      "expect": {
+        "ok": true,
+        "code": 8,
+        "c_abi": -8
+      }
+    },
+    {
+      "id": "error-code-HeaderUncorrectable",
+      "requirements": [
+        "GEN-040",
+        "CABI-020"
+      ],
+      "description": "HeaderUncorrectable has stable code 9",
+      "operation": "error_code",
+      "params": {
+        "kind": "HeaderUncorrectable"
+      },
+      "expect": {
+        "ok": true,
+        "code": 9,
+        "c_abi": -9
+      }
+    },
+    {
+      "id": "error-code-UnknownChannel",
+      "requirements": [
+        "GEN-040",
+        "CABI-020"
+      ],
+      "description": "UnknownChannel has stable code 10",
+      "operation": "error_code",
+      "params": {
+        "kind": "UnknownChannel"
+      },
+      "expect": {
+        "ok": true,
+        "code": 10,
+        "c_abi": -10
+      }
+    },
+    {
+      "id": "error-code-InvalidConfig",
+      "requirements": [
+        "GEN-040",
+        "CABI-020"
+      ],
+      "description": "InvalidConfig has stable code 11",
+      "operation": "error_code",
+      "params": {
+        "kind": "InvalidConfig"
+      },
+      "expect": {
+        "ok": true,
+        "code": 11,
+        "c_abi": -11
+      }
+    },
+    {
+      "id": "error-code-WouldBlock",
+      "requirements": [
+        "GEN-040",
+        "CABI-020"
+      ],
+      "description": "WouldBlock has stable code 12",
+      "operation": "error_code",
+      "params": {
+        "kind": "WouldBlock"
+      },
+      "expect": {
+        "ok": true,
+        "code": 12,
+        "c_abi": -12
+      }
+    },
+    {
+      "id": "error-code-InvalidState",
+      "requirements": [
+        "GEN-040",
+        "CABI-020"
+      ],
+      "description": "InvalidState has stable code 13",
+      "operation": "error_code",
+      "params": {
+        "kind": "InvalidState"
+      },
+      "expect": {
+        "ok": true,
+        "code": 13,
+        "c_abi": -13
+      }
+    },
+    {
+      "id": "error-code-Security",
+      "requirements": [
+        "GEN-040",
+        "CABI-020"
+      ],
+      "description": "Security has stable code 14",
+      "operation": "error_code",
+      "params": {
+        "kind": "Security"
+      },
+      "expect": {
+        "ok": true,
+        "code": 14,
+        "c_abi": -14
+      }
+    },
+    {
+      "id": "error-code-CapacityExceeded",
+      "requirements": [
+        "GEN-040",
+        "CABI-020"
+      ],
+      "description": "CapacityExceeded has stable code 15",
+      "operation": "error_code",
+      "params": {
+        "kind": "CapacityExceeded"
+      },
+      "expect": {
+        "ok": true,
+        "code": 15,
+        "c_abi": -15
+      }
+    },
+    {
+      "id": "error-code-InvalidHandle",
+      "requirements": [
+        "GEN-040",
+        "CABI-020"
+      ],
+      "description": "InvalidHandle has stable code 16",
+      "operation": "error_code",
+      "params": {
+        "kind": "InvalidHandle"
+      },
+      "expect": {
+        "ok": true,
+        "code": 16,
+        "c_abi": -16
+      }
+    },
+    {
+      "id": "error-code-Malformed",
+      "requirements": [
+        "GEN-040",
+        "CABI-020"
+      ],
+      "description": "Malformed has stable code 17",
+      "operation": "error_code",
+      "params": {
+        "kind": "Malformed"
+      },
+      "expect": {
+        "ok": true,
+        "code": 17,
+        "c_abi": -17
+      }
+    }
+  ]
+}

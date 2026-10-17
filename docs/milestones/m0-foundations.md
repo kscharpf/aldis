@@ -61,9 +61,9 @@ WP-0 repo ──▶ WP-1 CI ──────────────▶ WP-6 c
 | `no-std` | ubuntu | matrix `thumbv7em-none-eabihf`, `armv7r-none-eabihf`, `riscv32imac-unknown-none-elf`: `cargo build -p aldis --no-default-features --features full --target $T` | GEN-005 |
 | `big-endian` | ubuntu | `cross test --target s390x-unknown-linux-gnu --workspace` | VER-030, GEN-007 |
 | `minimal-build` | ubuntu | build `aldis-spp` alone; `xtask symbols` asserts no frame-protocol symbols | GEN-003, VER-031 |
-| `layers` | ubuntu | `.github/scripts/check_layers.py` on `cargo metadata`: no third-party runtime deps in L0–2, layering order, `aldis-spp` closure (moves into `xtask` in WP-2) | GEN-001…004 |
+| `layers` | ubuntu | `cargo xtask layers`: no third-party runtime deps in L0–2, layering order, `aldis-spp` closure, tooling crates only as dev-dependencies | GEN-001…004, RS-017 |
 | `deny` | ubuntu | `cargo deny --all-features check` (licenses: MIT-compatible only; RustSec advisories; sources) | VER-003, GEN-001 |
-| `spec` | ubuntu | `xtask spec-lint`, `xtask links`, `xtask vectors validate` | TV-001…003 |
+| `spec` | ubuntu | `xtask spec-lint`, `links`, `vectors validate`, `vectors schema --check`, `trace --scope m0` (report uploaded as artefact `trace-m0`) | VER-020, TV-001…003 |
 | `exerciser` | ubuntu | WP-5 panic-link check (all bare-metal targets); QEMU run (Cortex-M) | VER-010, GEN-021 |
 | `coverage` | ubuntu | WP-6 | VER-024 |
 
@@ -72,6 +72,8 @@ A separate `nightly.yml` runs on a schedule: fuzzing (WP-6), the big-endian bare
 **Status:** `fmt`, `clippy` (+ `cargo doc`), `test`, `no-std`, `big-endian`, `layers`, `deny`, and `nightly.yml` are implemented (`.github/workflows/`). `minimal-build` is covered for now by the `layers` job's dependency-closure check (symbol inspection follows in WP-2). `spec`, `exerciser`, and `coverage` are added with WP-2, WP-5, and WP-6.
 
 **Done when:** every job above passes on the skeleton, and a deliberate lint violation, panic, or formatting error each fail the right job (checked once, then reverted).
+
+**Result (2026-10-16): done.** First CI run green on all 10 jobs (run 38988749918). Negative checks run locally with the CI commands on a throwaway worktree. Each planted violation failed: formatting; `unwrap_used`; `panic`; `indexing_slicing`; `arithmetic_side_effects`; pedantic `doc_markdown`; rustc warning under `-D warnings`; `std` use in a `no_std` build; a third-party dependency in `aldis-core` (GEN-001); a failing test. Branch protection on `main` requires all 10 checks.
 
 ### WP-2 `xtask` tooling (M) — VER-020, TV-003
 
@@ -88,15 +90,19 @@ A separate `nightly.yml` runs on a schedule: fuzzing (WP-6), the big-endian bare
 
 **Done when:** `spec-lint` passes on the current docs, and `trace --scope m0` lists every in-scope ID (initially all unverified).
 
+**Status:** implemented in `xtask/` (commands `spec-lint`, `trace`, `vectors validate`, `vectors schema [--check]`, `links`, `layers`, `ci`). `vectors codegen` moves to WP-5 and `symbols` to WP-5 (no symbols exist before WP-4). Its first run found real defects: two requirement rows broken by unescaped `|` (also mis-rendered on GitHub), GEN rows outside their mapped area document, and an undefined RS-017 (now added).
+
 ### WP-3 Vector harness (M) — TV-001…012, VER-021
 
 | Task | Output |
 |---|---|
 | JSON Schemas: `codec.schema.json`, `engine-scenario.schema.json`, common definitions (hex strings, error kinds, provenance) | `test-vectors/schema/` |
 | Test-support crate `crates/aldis-testkit` (`publish = false`, `std`, dev-only): loads vectors, dispatches `operation` to handlers registered by each crate's tests, asserts **no unexpected outputs** (TV-012) | crate |
-| Convert the two seed vectors to the final schema; add `core/counters.json`, `core/bits.json`, `core/layout.json`, `core/errors.json` (code ↔ kind table) | vectors |
+| Convert the two seed vectors to the final schema; add `core/counters.json`, `core/bits.json`, `core/errors.json` (code ↔ kind table). `core/layout.json` is added with WP-4 module 10, when the layout rules are implemented | vectors |
 
 **Done when:** `cargo test` runs every core vector through `aldis-testkit`, and a corrupted vector fails the run.
+
+**Status:** the model, loader, exact-match runner, and generated schemas are in place, and the runner's self-tests cover exact matching, error kinds, superseded cases, and rejection of unknown fields. Running the core vectors needs `aldis-core` handlers (WP-4). The engine-scenario *runner* arrives with the first engine (M3); its schema exists now.
 
 ### WP-4 `aldis-core` implementation (L)
 
