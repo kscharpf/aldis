@@ -1,1 +1,301 @@
-//! Error kinds and details shared by all crates (03 §9, GEN-040).
+//! Error kinds and details shared by all crates.
+//!
+//! Implements the stable error catalogue of `docs/03-api-model.md` §9 (GEN-040), errors with
+//! field and value detail without allocation (GEN-041), and extensible enums (GEN-081, RS-011).
+
+use core::fmt;
+
+/// Error kind with a stable numeric code shared by all profiles (03-api-model.md §9).
+///
+/// The C ABI returns the negated code (CABI-020). Codes are never renumbered.
+#[non_exhaustive]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[repr(u16)]
+pub enum ErrorKind {
+    /// Output buffer too small (detail: `Needed`).
+    BufferTooSmall = 1,
+    /// Input shorter than required (detail: `Needed`).
+    Incomplete = 2,
+    /// Length field, configured length, and buffer length disagree.
+    LengthMismatch = 3,
+    /// Version number field is not the one this codec handles.
+    UnsupportedVersion = 4,
+    /// A value exceeds its field range or a configured limit.
+    OutOfRange = 5,
+    /// A field holds a value the Blue Book forbids.
+    InvalidField = 6,
+    /// A field holds a value CCSDS reserves (strict mode).
+    ReservedValue = 7,
+    /// FECF check failed.
+    CrcMismatch = 8,
+    /// AOS Frame Header Error Control detected an uncorrectable error.
+    HeaderUncorrectable = 9,
+    /// SCID, VCID, MAP ID, or APID not in the configuration.
+    UnknownChannel = 10,
+    /// Configuration violates a Blue Book constraint.
+    InvalidConfig = 11,
+    /// Engine queue full; input rejected without state change.
+    WouldBlock = 12,
+    /// Operation not permitted in the engine's current state.
+    InvalidState = 13,
+    /// Security hook reported failure.
+    Security = 14,
+    /// Configuration exceeds a compile-time capacity.
+    CapacityExceeded = 15,
+    /// Unknown or stale transmit or request handle.
+    InvalidHandle = 16,
+    /// Structurally impossible input.
+    Malformed = 17,
+}
+
+impl ErrorKind {
+    /// Every kind, in code order.
+    pub const ALL: [ErrorKind; 17] = [
+        ErrorKind::BufferTooSmall,
+        ErrorKind::Incomplete,
+        ErrorKind::LengthMismatch,
+        ErrorKind::UnsupportedVersion,
+        ErrorKind::OutOfRange,
+        ErrorKind::InvalidField,
+        ErrorKind::ReservedValue,
+        ErrorKind::CrcMismatch,
+        ErrorKind::HeaderUncorrectable,
+        ErrorKind::UnknownChannel,
+        ErrorKind::InvalidConfig,
+        ErrorKind::WouldBlock,
+        ErrorKind::InvalidState,
+        ErrorKind::Security,
+        ErrorKind::CapacityExceeded,
+        ErrorKind::InvalidHandle,
+        ErrorKind::Malformed,
+    ];
+
+    /// The stable numeric code (GEN-040).
+    #[must_use]
+    pub const fn code(self) -> u16 {
+        self as u16
+    }
+
+    /// The kind for a numeric code, if defined.
+    #[must_use]
+    pub fn from_code(code: u16) -> Option<ErrorKind> {
+        ErrorKind::ALL.into_iter().find(|k| k.code() == code)
+    }
+
+    /// The catalogue name, e.g. `"CrcMismatch"`.
+    #[must_use]
+    pub const fn name(self) -> &'static str {
+        match self {
+            ErrorKind::BufferTooSmall => "BufferTooSmall",
+            ErrorKind::Incomplete => "Incomplete",
+            ErrorKind::LengthMismatch => "LengthMismatch",
+            ErrorKind::UnsupportedVersion => "UnsupportedVersion",
+            ErrorKind::OutOfRange => "OutOfRange",
+            ErrorKind::InvalidField => "InvalidField",
+            ErrorKind::ReservedValue => "ReservedValue",
+            ErrorKind::CrcMismatch => "CrcMismatch",
+            ErrorKind::HeaderUncorrectable => "HeaderUncorrectable",
+            ErrorKind::UnknownChannel => "UnknownChannel",
+            ErrorKind::InvalidConfig => "InvalidConfig",
+            ErrorKind::WouldBlock => "WouldBlock",
+            ErrorKind::InvalidState => "InvalidState",
+            ErrorKind::Security => "Security",
+            ErrorKind::CapacityExceeded => "CapacityExceeded",
+            ErrorKind::InvalidHandle => "InvalidHandle",
+            ErrorKind::Malformed => "Malformed",
+        }
+    }
+
+    /// The kind with a catalogue name, if defined.
+    #[must_use]
+    pub fn from_name(name: &str) -> Option<ErrorKind> {
+        ErrorKind::ALL.into_iter().find(|k| k.name() == name)
+    }
+}
+
+/// Identifies the field an error refers to, e.g. `FieldId::new("apid")` (GEN-041).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct FieldId(&'static str);
+
+impl FieldId {
+    /// A field identifier with a static name.
+    #[must_use]
+    pub const fn new(name: &'static str) -> FieldId {
+        FieldId(name)
+    }
+
+    /// The field name.
+    #[must_use]
+    pub const fn name(self) -> &'static str {
+        self.0
+    }
+}
+
+/// Additional detail carried by an error, without allocation (GEN-041).
+#[non_exhaustive]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ErrorDetail {
+    /// No further detail.
+    None,
+    /// Octets (or bits, where documented) required.
+    Needed(usize),
+    /// The value found, and the value or limit expected.
+    Expected {
+        /// What the standard or configuration requires.
+        expected: u64,
+        /// What was found.
+        found: u64,
+    },
+}
+
+/// An error: kind, optional field, and detail (RS-011).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct Error {
+    kind: ErrorKind,
+    field: Option<FieldId>,
+    detail: ErrorDetail,
+}
+
+impl Error {
+    /// An error of `kind` with no field or detail.
+    #[must_use]
+    pub const fn new(kind: ErrorKind) -> Error {
+        Error {
+            kind,
+            field: None,
+            detail: ErrorDetail::None,
+        }
+    }
+
+    /// `BufferTooSmall` with the number of octets needed (API-022, API-061).
+    #[must_use]
+    pub const fn buffer_too_small(needed: usize) -> Error {
+        Error::new(ErrorKind::BufferTooSmall).with_detail(ErrorDetail::Needed(needed))
+    }
+
+    /// `Incomplete` with the number of octets needed (API-013).
+    #[must_use]
+    pub const fn incomplete(needed: usize) -> Error {
+        Error::new(ErrorKind::Incomplete).with_detail(ErrorDetail::Needed(needed))
+    }
+
+    /// `OutOfRange` for `field`, with the limit and the value found.
+    #[must_use]
+    pub const fn out_of_range(field: &'static str, limit: u64, found: u64) -> Error {
+        Error::new(ErrorKind::OutOfRange)
+            .with_field(FieldId::new(field))
+            .with_detail(ErrorDetail::Expected {
+                expected: limit,
+                found,
+            })
+    }
+
+    /// The same error, naming `field`.
+    #[must_use]
+    pub const fn with_field(self, field: FieldId) -> Error {
+        Error {
+            field: Some(field),
+            ..self
+        }
+    }
+
+    /// The same error, with `detail`.
+    #[must_use]
+    pub const fn with_detail(self, detail: ErrorDetail) -> Error {
+        Error { detail, ..self }
+    }
+
+    /// The error kind.
+    #[must_use]
+    pub const fn kind(&self) -> ErrorKind {
+        self.kind
+    }
+
+    /// The field, if known.
+    #[must_use]
+    pub const fn field(&self) -> Option<FieldId> {
+        self.field
+    }
+
+    /// The detail.
+    #[must_use]
+    pub const fn detail(&self) -> ErrorDetail {
+        self.detail
+    }
+}
+
+impl From<ErrorKind> for Error {
+    fn from(kind: ErrorKind) -> Error {
+        Error::new(kind)
+    }
+}
+
+impl fmt::Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let kind = self.kind.name();
+        // One write per case: no intermediate `?` paths (formatting into `f` is infallible
+        // for every sink used in practice, and untestable when it is not).
+        let (open, field, close) = self.field.map_or(("", "", ""), |id| (" (", id.name(), ")"));
+        match self.detail {
+            ErrorDetail::None => write!(f, "{kind}{open}{field}{close}"),
+            ErrorDetail::Needed(n) => write!(f, "{kind}{open}{field}{close}: {n} needed"),
+            ErrorDetail::Expected { expected, found } => {
+                write!(
+                    f,
+                    "{kind}{open}{field}{close}: expected {expected}, found {found}"
+                )
+            }
+        }
+    }
+}
+
+impl core::error::Error for Error {}
+
+/// Result with this crate's [`Error`].
+pub type Result<T> = core::result::Result<T, Error>;
+
+#[cfg(test)]
+mod tests {
+    use super::{Error, ErrorDetail, ErrorKind, FieldId};
+
+    #[test]
+    fn codes_are_dense_and_round_trip() {
+        // req: GEN-040
+        for (i, kind) in ErrorKind::ALL.into_iter().enumerate() {
+            assert_eq!(usize::from(kind.code()), i + 1);
+            assert_eq!(ErrorKind::from_code(kind.code()), Some(kind));
+            assert_eq!(ErrorKind::from_name(kind.name()), Some(kind));
+        }
+        assert_eq!(ErrorKind::from_code(0), None);
+        assert_eq!(ErrorKind::from_code(18), None);
+        assert_eq!(ErrorKind::from_name("NoSuchKind"), None);
+    }
+
+    #[test]
+    fn detail_and_display() {
+        // req: GEN-041, RS-011
+        extern crate std;
+        use std::string::ToString;
+        let e = Error::out_of_range("apid", 2047, 4096);
+        assert_eq!(e.kind(), ErrorKind::OutOfRange);
+        assert_eq!(e.field(), Some(FieldId::new("apid")));
+        assert_eq!(
+            e.detail(),
+            ErrorDetail::Expected {
+                expected: 2047,
+                found: 4096
+            }
+        );
+        assert_eq!(
+            e.to_string(),
+            "OutOfRange (apid): expected 2047, found 4096"
+        );
+        assert_eq!(
+            Error::buffer_too_small(9).to_string(),
+            "BufferTooSmall: 9 needed"
+        );
+        assert_eq!(Error::incomplete(3).detail(), ErrorDetail::Needed(3));
+        assert_eq!(Error::from(ErrorKind::Malformed).to_string(), "Malformed");
+        let _: &dyn core::error::Error = &e;
+    }
+}

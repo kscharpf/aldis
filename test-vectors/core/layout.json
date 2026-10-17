@@ -1,0 +1,414 @@
+{
+  "kind": "codec",
+  "standard": "Field order of 132.0-B-3 \u00a74.1/\u00a76.3, 232.0-B-4 \u00a74.1/\u00a76.3, 732.0-B-5 \u00a74.1/\u00a76.3, 732.1-B-3 \u00a74.1/\u00a76.3 and Annex D",
+  "provenance": "hand-derived",
+  "provenance_note": "Ranges computed by an independent Python function from the CMN-040 field order (primary header, secondary, security header, data, security trailer, OCF, FECF). Ranges are [start, end) octet offsets.",
+  "cases": [
+    {
+      "id": "layout-tm-minimal",
+      "requirements": [
+        "CMN-040",
+        "API-070"
+      ],
+      "description": "TM: 6-octet header, no FSH/OCF/FECF/SDLS",
+      "operation": "frame_layout",
+      "params": {
+        "frame_len": 1115,
+        "primary_header_len": 6,
+        "secondary_len": 0,
+        "security_header_len": 0,
+        "security_trailer_len": 0,
+        "ocf": false,
+        "fecf": false
+      },
+      "expect": {
+        "ok": true,
+        "primary_header": [
+          0,
+          6
+        ],
+        "secondary": [
+          6,
+          6
+        ],
+        "security_header": [
+          6,
+          6
+        ],
+        "data": [
+          6,
+          1115
+        ],
+        "security_trailer": [
+          1115,
+          1115
+        ],
+        "ocf": [
+          1115,
+          1115
+        ],
+        "fecf": [
+          1115,
+          1115
+        ]
+      }
+    },
+    {
+      "id": "layout-tm-all-fields",
+      "requirements": [
+        "CMN-040",
+        "API-070"
+      ],
+      "description": "TM: FSH 8, SDLS 6/8, OCF, FECF",
+      "operation": "frame_layout",
+      "params": {
+        "frame_len": 1115,
+        "primary_header_len": 6,
+        "secondary_len": 8,
+        "security_header_len": 6,
+        "security_trailer_len": 8,
+        "ocf": true,
+        "fecf": true
+      },
+      "expect": {
+        "ok": true,
+        "primary_header": [
+          0,
+          6
+        ],
+        "secondary": [
+          6,
+          14
+        ],
+        "security_header": [
+          14,
+          20
+        ],
+        "data": [
+          20,
+          1101
+        ],
+        "security_trailer": [
+          1101,
+          1109
+        ],
+        "ocf": [
+          1109,
+          1113
+        ],
+        "fecf": [
+          1113,
+          1115
+        ]
+      }
+    },
+    {
+      "id": "layout-tc-segment-header-fecf",
+      "requirements": [
+        "CMN-040",
+        "API-070"
+      ],
+      "description": "TC: 5-octet header, Segment Header, FECF (no OCF)",
+      "operation": "frame_layout",
+      "params": {
+        "frame_len": 1024,
+        "primary_header_len": 5,
+        "secondary_len": 1,
+        "security_header_len": 0,
+        "security_trailer_len": 0,
+        "ocf": false,
+        "fecf": true
+      },
+      "expect": {
+        "ok": true,
+        "primary_header": [
+          0,
+          5
+        ],
+        "secondary": [
+          5,
+          6
+        ],
+        "security_header": [
+          6,
+          6
+        ],
+        "data": [
+          6,
+          1022
+        ],
+        "security_trailer": [
+          1022,
+          1022
+        ],
+        "ocf": [
+          1022,
+          1022
+        ],
+        "fecf": [
+          1022,
+          1024
+        ]
+      }
+    },
+    {
+      "id": "layout-tc-sdls",
+      "requirements": [
+        "CMN-040",
+        "API-070"
+      ],
+      "description": "TC: Segment Header then SDLS header 18 / trailer 16 (232.0 \u00a76.3.4)",
+      "operation": "frame_layout",
+      "params": {
+        "frame_len": 200,
+        "primary_header_len": 5,
+        "secondary_len": 1,
+        "security_header_len": 18,
+        "security_trailer_len": 16,
+        "ocf": false,
+        "fecf": true
+      },
+      "expect": {
+        "ok": true,
+        "primary_header": [
+          0,
+          5
+        ],
+        "secondary": [
+          5,
+          6
+        ],
+        "security_header": [
+          6,
+          24
+        ],
+        "data": [
+          24,
+          182
+        ],
+        "security_trailer": [
+          182,
+          198
+        ],
+        "ocf": [
+          198,
+          198
+        ],
+        "fecf": [
+          198,
+          200
+        ]
+      }
+    },
+    {
+      "id": "layout-aos-insert-zone",
+      "requirements": [
+        "CMN-040",
+        "API-070"
+      ],
+      "description": "AOS: 6-octet header + FHEC (8), insert zone 12, OCF, FECF",
+      "operation": "frame_layout",
+      "params": {
+        "frame_len": 1024,
+        "primary_header_len": 8,
+        "secondary_len": 12,
+        "security_header_len": 0,
+        "security_trailer_len": 0,
+        "ocf": true,
+        "fecf": true
+      },
+      "expect": {
+        "ok": true,
+        "primary_header": [
+          0,
+          8
+        ],
+        "secondary": [
+          8,
+          20
+        ],
+        "security_header": [
+          20,
+          20
+        ],
+        "data": [
+          20,
+          1018
+        ],
+        "security_trailer": [
+          1018,
+          1018
+        ],
+        "ocf": [
+          1018,
+          1022
+        ],
+        "fecf": [
+          1022,
+          1024
+        ]
+      }
+    },
+    {
+      "id": "layout-uslp-truncated-sdls",
+      "requirements": [
+        "CMN-040",
+        "API-070"
+      ],
+      "description": "USLP truncated: 4-octet header, SDLS 6/16, no OCF/FECF (Annex D1.2.3)",
+      "operation": "frame_layout",
+      "params": {
+        "frame_len": 28,
+        "primary_header_len": 4,
+        "secondary_len": 0,
+        "security_header_len": 6,
+        "security_trailer_len": 16,
+        "ocf": false,
+        "fecf": false
+      },
+      "expect": {
+        "ok": true,
+        "primary_header": [
+          0,
+          4
+        ],
+        "secondary": [
+          4,
+          4
+        ],
+        "security_header": [
+          4,
+          10
+        ],
+        "data": [
+          10,
+          12
+        ],
+        "security_trailer": [
+          12,
+          28
+        ],
+        "ocf": [
+          28,
+          28
+        ],
+        "fecf": [
+          28,
+          28
+        ]
+      }
+    },
+    {
+      "id": "layout-one-octet-data",
+      "requirements": [
+        "CMN-040",
+        "API-070"
+      ],
+      "description": "Smallest valid data field: exactly 1 octet",
+      "operation": "frame_layout",
+      "params": {
+        "frame_len": 13,
+        "primary_header_len": 6,
+        "secondary_len": 0,
+        "security_header_len": 0,
+        "security_trailer_len": 0,
+        "ocf": true,
+        "fecf": true
+      },
+      "expect": {
+        "ok": true,
+        "primary_header": [
+          0,
+          6
+        ],
+        "secondary": [
+          6,
+          6
+        ],
+        "security_header": [
+          6,
+          6
+        ],
+        "data": [
+          6,
+          7
+        ],
+        "security_trailer": [
+          7,
+          7
+        ],
+        "ocf": [
+          7,
+          11
+        ],
+        "fecf": [
+          11,
+          13
+        ]
+      }
+    },
+    {
+      "id": "layout-err-zero-data",
+      "requirements": [
+        "CMN-041"
+      ],
+      "description": "Fields leave no data octet",
+      "operation": "frame_layout",
+      "params": {
+        "frame_len": 12,
+        "primary_header_len": 6,
+        "secondary_len": 0,
+        "security_header_len": 0,
+        "security_trailer_len": 0,
+        "ocf": true,
+        "fecf": true
+      },
+      "expect": {
+        "ok": false,
+        "error": "InvalidConfig"
+      }
+    },
+    {
+      "id": "layout-err-uslp-truncated-sdls-too-short",
+      "requirements": [
+        "CMN-041"
+      ],
+      "description": "Truncated frame shorter than 28 octets cannot carry SDLS (Annex D1.2.4)",
+      "operation": "frame_layout",
+      "params": {
+        "frame_len": 26,
+        "primary_header_len": 4,
+        "secondary_len": 0,
+        "security_header_len": 6,
+        "security_trailer_len": 16,
+        "ocf": false,
+        "fecf": false
+      },
+      "expect": {
+        "ok": false,
+        "error": "InvalidConfig"
+      }
+    },
+    {
+      "id": "layout-err-frame-shorter-than-header",
+      "requirements": [
+        "CMN-041"
+      ],
+      "description": "Frame shorter than its header",
+      "operation": "frame_layout",
+      "params": {
+        "frame_len": 3,
+        "primary_header_len": 6,
+        "secondary_len": 0,
+        "security_header_len": 0,
+        "security_trailer_len": 0,
+        "ocf": false,
+        "fecf": false
+      },
+      "expect": {
+        "ok": false,
+        "error": "InvalidConfig"
+      }
+    }
+  ]
+}

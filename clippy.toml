@@ -1,0 +1,6 @@
+# Test code may fail loudly: these restriction lints do not apply inside #[test] / #[cfg(test)]
+# code (docs/profiles/rust.md RS-018). Library code remains subject to all of them (GEN-020).
+allow-unwrap-in-tests = true
+allow-expect-in-tests = true
+allow-panic-in-tests = true
+allow-indexing-slicing-in-tests = true
