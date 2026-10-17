@@ -8,7 +8,7 @@
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
 pub struct Instant(u64);
 
-/// A span of time in microseconds.
+/// A span of time in microseconds (API-003).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
 pub struct Duration(u64);
 

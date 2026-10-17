@@ -32,6 +32,7 @@ fn artefacts(spec: &Spec) -> Result<BTreeMap<String, BTreeSet<String>>, String> 
     let mut map = BTreeMap::new();
 
     for dir in ["crates", "xtask", "fuzz", "exerciser"] {
+        let kind = if dir == "fuzz" { "fuzz" } else { "test" };
         for path in repo::files(dir, &["rs"]) {
             let text = repo::read(&path)?;
             for (n, line) in text.lines().enumerate() {
@@ -41,7 +42,7 @@ fn artefacts(spec: &Spec) -> Result<BTreeMap<String, BTreeSet<String>>, String> 
                         &mut map,
                         spec,
                         &refs,
-                        &format!("test {}:{}", repo::rel(&path), n + 1),
+                        &format!("{kind} {}:{}", repo::rel(&path), n + 1),
                     );
                 }
             }
@@ -61,8 +62,10 @@ fn artefacts(spec: &Spec) -> Result<BTreeMap<String, BTreeSet<String>>, String> 
                 }
             }
             Ok(VectorFile::EngineScenario(s)) => {
-                let refs = scan_ids(&s.requirements.join(" "), &areas);
-                add(&mut map, spec, &refs, &format!("vector {rel}#{}", s.id));
+                if s.superseded.is_none() {
+                    let refs = scan_ids(&s.requirements.join(" "), &areas);
+                    add(&mut map, spec, &refs, &format!("vector {rel}#{}", s.id));
+                }
             }
             Err(e) => return Err(format!("{rel}: {e} (run `cargo xtask vectors validate`)")),
         }

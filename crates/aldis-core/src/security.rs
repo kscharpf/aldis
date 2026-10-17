@@ -36,32 +36,36 @@ impl SecurityLayout {
     ///
     /// # Errors
     /// `InvalidConfig` if the header exceeds 64 octets or the trailer exceeds 65 535 octets.
-    pub fn new(header_len: usize, trailer_len: usize) -> Result<SecurityLayout> {
-        let header = u8::try_from(header_len)
-            .ok()
-            .filter(|&h| usize::from(h) <= SecurityLayout::MAX_HEADER_LEN)
-            .ok_or_else(|| {
-                Error::new(ErrorKind::InvalidConfig)
-                    .with_field(crate::error::FieldId::new("security_header_len"))
-            })?;
-        let trailer = u16::try_from(trailer_len).map_err(|_| {
-            Error::new(ErrorKind::InvalidConfig)
-                .with_field(crate::error::FieldId::new("security_trailer_len"))
-        })?;
+    #[expect(
+        clippy::as_conversions,
+        clippy::cast_possible_truncation,
+        reason = "checked: header_len <= 64 fits in u8 and trailer_len <= u16::MAX fits in u16"
+    )]
+    pub const fn new(header_len: usize, trailer_len: usize) -> Result<SecurityLayout> {
+        if header_len > SecurityLayout::MAX_HEADER_LEN {
+            return Err(Error::new(ErrorKind::InvalidConfig)
+                .with_field(crate::error::FieldId::new("security_header_len")));
+        }
+        if trailer_len > u16::MAX as usize {
+            return Err(Error::new(ErrorKind::InvalidConfig)
+                .with_field(crate::error::FieldId::new("security_trailer_len")));
+        }
         Ok(SecurityLayout {
-            header_len: header,
-            trailer_len: trailer,
+            header_len: header_len as u8,
+            trailer_len: trailer_len as u16,
         })
     }
 
     /// Security Header length in octets.
     #[must_use]
+    #[expect(clippy::as_conversions, reason = "widening u8 to usize in const fn")]
     pub const fn header_len(self) -> usize {
         self.header_len as usize
     }
 
     /// Security Trailer length in octets.
     #[must_use]
+    #[expect(clippy::as_conversions, reason = "widening u16 to usize in const fn")]
     pub const fn trailer_len(self) -> usize {
         self.trailer_len as usize
     }
@@ -73,7 +77,8 @@ impl SecurityLayout {
     }
 }
 
-/// Data link protocol of a frame.
+/// Data link protocol of a frame (355.0-B-2 §4.1; API-073, GEN-081).
+#[non_exhaustive]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Protocol {
     /// TM Space Data Link Protocol (132.0-B-3).
@@ -86,7 +91,8 @@ pub enum Protocol {
     Uslp,
 }
 
-/// Identifies the channel a frame belongs to, for selecting a Security Association.
+/// Identifies the channel a frame belongs to, for selecting a Security Association
+/// (355.0-B-2 §2.2.3, §4.1; API-073).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct FrameCtx {
     /// Data link protocol.
@@ -99,7 +105,7 @@ pub struct FrameCtx {
     pub map_id: Option<u8>,
 }
 
-/// Octet ranges of the secured fields within a frame buffer.
+/// Octet ranges of the secured fields within a frame buffer (355.0-B-2 §4.1; API-070, API-073).
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct SecuredFields {
     /// Security Header.

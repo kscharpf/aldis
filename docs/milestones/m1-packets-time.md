@@ -3,7 +3,7 @@
 **Goal:** complete, verified Layer 1 codecs for time codes, Space Packets, and Encapsulation Packets: `aldis-time`, `aldis-spp`, and `aldis-epp`. They are verified to the same standard as `aldis-core` in M0: vectors, panic freedom on bare metal, 100 % coverage, fuzzing, and cross-checks.
 **Roadmap entry:** [08-roadmap.md](../08-roadmap.md) §1 · **Builds on:** [M0](m0-foundations.md) (`v0.1.0-m0`) · **Release:** `v0.2.0-m1`
 
-**Status: planned (2026-10-17).** `cargo xtask trace --scope m1` puts 86 requirements in scope; the 21 traced so far are `aldis-core` and CI artefacts from M0.
+**Status: planned (2026-10-17).** `cargo xtask trace --scope m1` puts 87 requirements in scope; the 24 traced so far are `aldis-core` and CI artefacts from M0.
 
 ## 1. Starting point
 
@@ -142,7 +142,7 @@ M1 is complete when every item below is green on `main`:
 | Time codes | TIME-001…004, TIME-010…014, TIME-020…022, TIME-030…033 |
 | Space Packet | SPP-001…013 |
 | Encapsulation Packet | EPP-001…011 |
-| Codec contract | API-010, API-011, API-013, API-014, API-020…023, API-030…033, API-040, API-041, GEN-013, GEN-014, GEN-043, GEN-052, GEN-053, GEN-060, GEN-061, RS-012 |
+| Codec contract | API-010, API-011, API-013, API-014, API-020…023, API-030…033, API-040, API-041, GEN-013, GEN-014, GEN-043, GEN-052, GEN-053, GEN-060, GEN-061, GEN-081, RS-012 |
 | Panic freedom and resources | VER-010, GEN-020…024 (exerciser runs on all three bare-metal targets, or links where D6 records why it cannot run), VER-011 |
 | Portability | GEN-005, GEN-006, GEN-007, VER-030, VER-031 |
 | Gates | VER-022 (all WP-5 fuzz targets, ≥ 1 CPU-hour each before the release), VER-023, VER-024 (100 % for the three crates), VER-025 (triaged) |

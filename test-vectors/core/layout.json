@@ -253,7 +253,8 @@
       "id": "layout-uslp-truncated-sdls",
       "requirements": [
         "CMN-040",
-        "API-070"
+        "API-070",
+        "API-075"
       ],
       "description": "USLP truncated: 4-octet header, SDLS 6/16, no OCF/FECF (Annex D1.2.3)",
       "operation": "frame_layout",
@@ -371,7 +372,8 @@
     {
       "id": "layout-err-uslp-truncated-sdls-too-short",
       "requirements": [
-        "CMN-041"
+        "CMN-041",
+        "API-075"
       ],
       "description": "Truncated frame shorter than 28 octets cannot carry SDLS (Annex D1.2.4)",
       "operation": "frame_layout",

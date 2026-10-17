@@ -11,11 +11,12 @@
 use crate::error::{Error, ErrorKind, Result};
 
 const POLY: u16 = 0x1021;
-const PRESET: u16 = 0xFFFF;
+/// Initial CRC-16 register value (all ones, 132.0 §4.1.6.2; CMN-001).
+pub const PRESET: u16 = 0xFFFF;
 
 /// One bitwise CRC step for one octet.
 const fn step_bitwise(mut crc: u16, octet: u8) -> u16 {
-    crc ^= (octet as u16) << 8;
+    crc ^= u16::from_be_bytes([octet, 0]);
     let mut bit = 0_u8;
     while bit < 8 {
         crc = if crc & 0x8000 != 0 {
@@ -28,10 +29,9 @@ const fn step_bitwise(mut crc: u16, octet: u8) -> u16 {
     crc
 }
 
-/// CRC-16 of `data`, computed bit by bit.
+/// Updates an in-progress CRC-16 `crc` (initially [`PRESET`]) over `data`, bit by bit (CMN-001).
 #[must_use]
-pub const fn crc16_bitwise(data: &[u8]) -> u16 {
-    let mut crc = PRESET;
+pub const fn crc16_update_bitwise(mut crc: u16, data: &[u8]) -> u16 {
     let mut rest = data;
     while let [octet, tail @ ..] = rest {
         crc = step_bitwise(crc, *octet);
@@ -40,13 +40,23 @@ pub const fn crc16_bitwise(data: &[u8]) -> u16 {
     crc
 }
 
+/// CRC-16 of `data`, computed bit by bit (CMN-001, CMN-004).
+#[must_use]
+pub const fn crc16_bitwise(data: &[u8]) -> u16 {
+    crc16_update_bitwise(PRESET, data)
+}
+
 /// Lookup table: the CRC register contribution of each possible leading octet.
 #[cfg(feature = "crc-table")]
 static TABLE: [u16; 256] = {
     let mut table = [0_u16; 256];
     let mut i = 0_usize;
     while i < 256 {
-        #[expect(clippy::cast_possible_truncation, reason = "i < 256 fits in u8")]
+        #[expect(
+            clippy::as_conversions,
+            clippy::cast_possible_truncation,
+            reason = "i < 256 fits in u8"
+        )]
         let entry = step_bitwise(0, i as u8);
         #[expect(clippy::indexing_slicing, reason = "i < 256, the table length")]
         {
@@ -57,12 +67,14 @@ static TABLE: [u16; 256] = {
     table
 };
 
-/// CRC-16 of `data`, computed with the 256-entry table.
+/// Updates an in-progress CRC-16 `crc` (initially [`PRESET`]) over `data` with the 256-entry
+/// table (CMN-001, CMN-004).
 #[cfg(feature = "crc-table")]
 #[must_use]
-pub fn crc16_table(data: &[u8]) -> u16 {
-    data.iter().fold(PRESET, |crc, &octet| {
-        let index = usize::from((crc >> 8) as u8 ^ octet);
+pub fn crc16_update_table(crc: u16, data: &[u8]) -> u16 {
+    data.iter().fold(crc, |crc, &octet| {
+        let [hi, _] = crc.to_be_bytes();
+        let index = usize::from(hi ^ octet);
         #[expect(
             clippy::indexing_slicing,
             reason = "a u8 index is always within the 256-entry table"
@@ -72,17 +84,31 @@ pub fn crc16_table(data: &[u8]) -> u16 {
     })
 }
 
-/// CRC-16 of `data` with the implementation selected at build time (CMN-001, CMN-004).
+/// CRC-16 of `data`, computed with the 256-entry table (CMN-001, CMN-004).
+#[cfg(feature = "crc-table")]
 #[must_use]
-pub fn crc16(data: &[u8]) -> u16 {
+pub fn crc16_table(data: &[u8]) -> u16 {
+    crc16_update_table(PRESET, data)
+}
+
+/// Updates an in-progress CRC-16 `crc` (initially [`PRESET`]) over `data` with the
+/// implementation selected at build time (CMN-001, CMN-004).
+#[must_use]
+pub fn crc16_update(crc: u16, data: &[u8]) -> u16 {
     #[cfg(feature = "crc-table")]
     {
-        crc16_table(data)
+        crc16_update_table(crc, data)
     }
     #[cfg(not(feature = "crc-table"))]
     {
-        crc16_bitwise(data)
+        crc16_update_bitwise(crc, data)
     }
+}
+
+/// CRC-16 of `data` with the implementation selected at build time (CMN-001, CMN-004).
+#[must_use]
+pub fn crc16(data: &[u8]) -> u16 {
+    crc16_update(PRESET, data)
 }
 
 /// Splits a frame into the covered octets and its trailing FECF.
@@ -140,17 +166,26 @@ pub fn write_fecf(frame: &mut [u8]) -> Result<()> {
     reason = "test bookkeeping on small bounded values (RS-018)"
 )]
 mod tests {
-    use super::{crc16, crc16_bitwise, syndrome, verify_fecf, write_fecf};
+    use super::{
+        PRESET, crc16, crc16_bitwise, crc16_update, crc16_update_bitwise, syndrome, verify_fecf,
+        write_fecf,
+    };
     use crate::error::ErrorKind;
     use proptest::prelude::*;
 
     #[test]
-    fn check_value() {
+    fn check_value_and_incremental() {
         // req: CMN-001, CMN-002
         const _: () = assert!(crc16_bitwise(b"123456789") == 0x29B1);
         assert_eq!(crc16_bitwise(b"123456789"), 0x29B1);
         assert_eq!(crc16(b"123456789"), 0x29B1);
-        assert_eq!(crc16(&[]), 0xFFFF);
+        assert_eq!(crc16(&[]), PRESET);
+        let mid = crc16_update(PRESET, b"1234");
+        assert_eq!(crc16_update(mid, b"56789"), 0x29B1);
+        assert_eq!(
+            crc16_update_bitwise(crc16_update_bitwise(PRESET, b"1234"), b"56789"),
+            0x29B1
+        );
     }
 
     #[test]

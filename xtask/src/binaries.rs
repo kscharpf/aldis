@@ -132,50 +132,72 @@ const FRAME_CRATES: &[&str] = &[
     "aldis_cop1",
 ];
 
-/// `xtask symbols`: builds `aldis-spp` as a static library (which bundles all of its
-/// dependencies' code) and checks that no frame-protocol symbol is present (VER-031).
+/// `xtask symbols`: builds `aldis-spp` with all features and inspects the resulting `.rlib`
+/// archives in `target/symbols/release/deps/` to verify that `aldis_core` symbols are present
+/// and no frame-protocol crate or symbol is pulled in (VER-031, GEN-003).
 pub fn symbols() -> Result<usize, String> {
     let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".to_owned());
     let target_dir = repo::root().join("target/symbols");
+    if target_dir.exists() {
+        std::fs::remove_dir_all(&target_dir)
+            .map_err(|e| format!("{}: {e}", repo::rel(&target_dir)))?;
+    }
     run(
         Command::new(cargo)
-            .args([
-                "rustc",
-                "-p",
-                "aldis-spp",
-                "--release",
-                "--features",
-                "std",
-                "--crate-type",
-                "staticlib",
-            ])
+            .args(["build", "-p", "aldis-spp", "--release", "--all-features"])
             .env("CARGO_TARGET_DIR", &target_dir),
-        "aldis-spp staticlib build",
+        "aldis-spp release build",
     )?;
-    let lib = target_dir.join("release/libaldis_spp.a");
-    let names = run(
-        Command::new(llvm_tool("llvm-nm")?)
-            .args(["--demangle", "--defined-only"])
-            .arg(&lib),
-        "llvm-nm",
-    )?;
+    let deps_dir = target_dir.join("release/deps");
+    let mut rlibs: Vec<PathBuf> = std::fs::read_dir(&deps_dir)
+        .map_err(|e| format!("{}: {e}", repo::rel(&deps_dir)))?
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| {
+            p.extension().and_then(|e| e.to_str()) == Some("rlib")
+                && p.file_name()
+                    .and_then(|n| n.to_str())
+                    .is_some_and(|n| n.starts_with("libaldis_"))
+        })
+        .collect();
+    rlibs.sort();
+    if rlibs.is_empty() {
+        return Err("no libaldis_*.rlib archives produced for aldis-spp".to_owned());
+    }
+    let mut cmd = Command::new(llvm_tool("llvm-nm")?);
+    cmd.args(["--demangle", "--defined-only"]).args(&rlibs);
+    let names = run(&mut cmd, "llvm-nm")?;
     let mut problems = 0;
     for krate in FRAME_CRATES {
+        let rlib_prefix = format!("lib{krate}-");
+        let rlib_hit = rlibs.iter().any(|p| {
+            p.file_name()
+                .and_then(|n| n.to_str())
+                .is_some_and(|n| n.starts_with(&rlib_prefix))
+        });
         let hits = names
             .lines()
             .filter(|l| l.contains(&format!("{krate}::")))
             .count();
-        if hits > 0 {
-            println!("error: GEN-003 {hits} symbol(s) from {krate} in a build of aldis-spp alone");
+        if rlib_hit || hits > 0 {
+            println!(
+                "error: GEN-003 {krate} present in a build of aldis-spp alone ({hits} symbol(s))"
+            );
             problems += 1;
         }
+    }
+    let core_hits = names.lines().filter(|l| l.contains("aldis_core::")).count();
+    if core_hits == 0 {
+        println!("error: VER-031 no aldis_core:: symbols found in aldis-spp rlib closure");
+        problems += 1;
     }
     let total = names
         .lines()
         .filter(|l| !l.trim().is_empty() && !l.ends_with(':'))
         .count();
     println!(
-        "symbols: {total} defined symbol(s) in libaldis_spp.a, {problems} frame-protocol crate(s) found"
+        "symbols: {total} defined symbol(s) across {} rlib(s) ({core_hits} aldis_core), {problems} problem(s)",
+        rlibs.len()
     );
     Ok(problems)
 }

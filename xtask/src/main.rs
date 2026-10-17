@@ -30,8 +30,9 @@ commands:
   stack-sizes <target>         per-function stack usage of the exerciser (VER-011; tooling nightly)
   coverage                     100 % region/function/line/branch gate for aldis-core (VER-024;
                                tooling nightly + cargo-llvm-cov >= 0.9)
-  ci                           everything CI runs: spec-lint, links, layers, vectors
-                               validate, vectors schema --check, trace --scope m0
+  ci                           everything CI runs: spec-lint, links, layers, symbols,
+                               vectors validate, vectors schema --check,
+                               trace --scope m0 --strict
 ";
 
 fn run(args: &[&str]) -> Result<usize, String> {
@@ -59,9 +60,10 @@ fn run(args: &[&str]) -> Result<usize, String> {
                 spec::lint as fn() -> Result<usize, String>,
                 links::check,
                 layers::check,
+                binaries::symbols,
                 vectors::validate,
                 || vectors::schema(true),
-                || trace::run(Some("m0"), false),
+                || trace::run(Some("m0"), true),
             ] {
                 failed += step()?;
             }

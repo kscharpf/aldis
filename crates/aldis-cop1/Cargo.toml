@@ -17,7 +17,7 @@ aldis-uslp = { path = "../aldis-uslp", default-features = false, optional = true
 default = ["tc"]
 tc = []
 uslp = ["dep:aldis-uslp"]
-std = ["aldis-core/std"]
+std = ["aldis-core/std", "aldis-tc/std", "aldis-uslp?/std"]
 
 [lints]
 workspace = true

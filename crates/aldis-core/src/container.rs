@@ -130,6 +130,10 @@ const PREFIX: usize = 4;
 
 impl<const N: usize> ByteQueue<N> {
     /// Record lengths are stored in a 4-octet prefix, so the capacity must fit in `u32`.
+    #[expect(
+        clippy::as_conversions,
+        reason = "u32::MAX fits in usize on 32- and 64-bit targets"
+    )]
     const CAPACITY_FITS_PREFIX: () =
         assert!(N <= u32::MAX as usize, "ByteQueue capacity must fit in u32");
 
@@ -200,8 +204,8 @@ impl<const N: usize> ByteQueue<N> {
             .ok_or_else(|| {
                 Error::out_of_range(
                     "record_len",
-                    N.saturating_sub(PREFIX) as u64,
-                    data.len() as u64,
+                    u64::try_from(N.saturating_sub(PREFIX)).unwrap_or(u64::MAX),
+                    u64::try_from(data.len()).unwrap_or(u64::MAX),
                 )
             })?;
         if need > self.free() {
@@ -256,6 +260,13 @@ impl<const N: usize> ByteQueue<N> {
         self.records = self.records.wrapping_sub(1);
         Some(len)
     }
+
+    /// Removes all records.
+    pub fn clear(&mut self) {
+        self.head = 0;
+        self.used = 0;
+        self.records = 0;
+    }
 }
 
 impl<const N: usize> Default for ByteQueue<N> {
@@ -308,10 +319,22 @@ impl<T: Copy + Default, const N: usize> FixedVec<T, N> {
         self.items.get(..self.len).unwrap_or_default()
     }
 
+    /// Mutable access to the stored items.
+    #[must_use]
+    pub fn as_mut_slice(&mut self) -> &mut [T] {
+        self.items.get_mut(..self.len).unwrap_or_default()
+    }
+
     /// Number of stored items.
     #[must_use]
     pub const fn len(&self) -> usize {
         self.len
+    }
+
+    /// The capacity `N`.
+    #[must_use]
+    pub const fn capacity(&self) -> usize {
+        N
     }
 
     /// Whether no item is stored.
@@ -320,11 +343,25 @@ impl<T: Copy + Default, const N: usize> FixedVec<T, N> {
         self.len == 0
     }
 
+    /// Whether `N` items are stored.
+    #[must_use]
+    pub const fn is_full(&self) -> bool {
+        self.len >= N
+    }
+
     /// Removes all items.
     pub fn clear(&mut self) {
         self.len = 0;
     }
 }
+
+impl<T: Copy + Default + PartialEq, const N: usize> PartialEq for FixedVec<T, N> {
+    fn eq(&self, other: &Self) -> bool {
+        self.as_slice() == other.as_slice()
+    }
+}
+
+impl<T: Copy + Default + Eq, const N: usize> Eq for FixedVec<T, N> {}
 
 impl<T: Copy + Default, const N: usize> Default for FixedVec<T, N> {
     fn default() -> FixedVec<T, N> {
@@ -390,6 +427,8 @@ mod tests {
         assert_eq!(q.discard(), None);
         q.push(&[]).unwrap();
         assert_eq!(q.discard(), Some(0));
+        q.push(&[1]).unwrap();
+        q.clear();
         assert!(q.is_empty());
         assert_eq!(
             ByteQueue::<0>::new().push(&[]).unwrap_err().kind(),
@@ -410,21 +449,28 @@ mod tests {
 
     #[test]
     fn fixed_vec() {
-        // req: GEN-010
+        // req: GEN-010, RS-012
         let mut v: FixedVec<u16, 2> = FixedVec::default();
-        assert!(v.is_empty());
+        assert_eq!((v.capacity(), v.is_empty(), v.is_full()), (2, true, false));
         v.push(7).unwrap();
         v.push(8).unwrap();
+        assert!(v.is_full());
         assert_eq!(v.push(9).unwrap_err().kind(), ErrorKind::CapacityExceeded);
         assert_eq!(
             (v.as_slice(), v.len(), v.is_empty()),
             (&[7, 8][..], 2, false)
         );
+        v.as_mut_slice()[0] = 6;
+        assert_eq!(v.as_slice(), &[6, 8]);
         assert_eq!(v.pop(), Some(8));
+        let mut v2: FixedVec<u16, 2> = FixedVec::new();
+        v2.push(6).unwrap();
+        // Equality compares only active elements (0..len), ignoring popped slots.
+        assert_eq!(v, v2);
         v.clear();
         assert!(v.is_empty());
         assert_eq!(v.pop(), None);
-        assert_eq!(v.as_slice(), &[] as &[u16]);
+        assert_eq!(v.as_slice(), &[][..]);
     }
 
     #[derive(Debug, Clone)]

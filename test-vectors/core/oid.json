@@ -6,7 +6,7 @@
   "cases": [
     {
       "id": "oid-start-001",
-      "requirements": ["CMN-020", "CMN-023"],
+      "requirements": ["CMN-020", "CMN-022", "CMN-023"],
       "description": "First 20 octets after device start-up",
       "operation": "oid_fill",
       "params": { "octets": 20 },
@@ -14,7 +14,7 @@
     },
     {
       "id": "oid-continuation-001",
-      "requirements": ["CMN-021", "CMN-023"],
+      "requirements": ["CMN-021", "CMN-022", "CMN-023"],
       "description": "Two fills of 10 octets continue the sequence without restart",
       "operation": "oid_fill_sequence",
       "params": { "fills": [10, 10] },

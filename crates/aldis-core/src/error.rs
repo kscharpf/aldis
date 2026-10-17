@@ -72,6 +72,10 @@ impl ErrorKind {
 
     /// The stable numeric code (GEN-040).
     #[must_use]
+    #[expect(
+        clippy::as_conversions,
+        reason = "#[repr(u16)] discriminant to its u16 code"
+    )]
     pub const fn code(self) -> u16 {
         self as u16
     }

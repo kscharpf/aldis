@@ -5,6 +5,7 @@
 //! **Status:** skeleton. Modules are declared but not yet implemented.
 //! Requirements are traced by ID in each module's documentation.
 #![no_std]
+#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 #![cfg_attr(docsrs, feature(doc_auto_cfg))]
 
 #[cfg(feature = "alloc")]

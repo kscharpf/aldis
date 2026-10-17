@@ -9,7 +9,10 @@ use core::hint::black_box as bb;
 use aldis_core::bits;
 use aldis_core::container::{ByteQueue, FixedQueue, FixedVec};
 use aldis_core::counter::{Continuity, ModCounter};
-use aldis_core::crc::{crc16, crc16_bitwise, crc16_table, syndrome, verify_fecf, write_fecf};
+use aldis_core::crc::{
+    PRESET, crc16, crc16_bitwise, crc16_table, crc16_update, crc16_update_bitwise,
+    crc16_update_table, syndrome, verify_fecf, write_fecf,
+};
 use aldis_core::error::{Error, ErrorDetail, ErrorKind, FieldId};
 use aldis_core::ids::{Apid, FrameSeqNum, MapId, PacketVersion, SeqCount, SpacecraftId, VcId};
 use aldis_core::layout::{FrameLayout, LayoutSpec};
@@ -167,20 +170,56 @@ fn apis_errors_ids(tally: &mut Tally) {
     }
     tally.check(ErrorKind::ALL.len() == 17);
 
+    // bits octet helpers
+    let mut octets = [0_u8; 8];
+    tally.check(
+        bits::write_u16(bb(&mut octets), bb(0), bb(0xCAFE)).is_ok()
+            && bits::read_u16(bb(&octets), bb(0)) == Ok(0xCAFE)
+            && bits::write_u32(bb(&mut octets), bb(2), bb(0x0102_0304)).is_ok()
+            && bits::read_u32(bb(&octets), bb(2)) == Ok(0x0102_0304)
+            && bits::write_u64(bb(&mut octets), bb(0), bb(0x0102_0304_0506_0708)).is_ok()
+            && bits::read_u64(bb(&octets), bb(0)) == Ok(0x0102_0304_0506_0708),
+    );
+    tally.check(
+        bits::read_u16(bb(&octets), bb(7)).is_err()
+            && bits::write_u32(bb(&mut octets), bb(5), 0).is_err()
+            && bits::read_u64(bb(&octets), bb(1)).is_err()
+            && bits::write_u64(bb(&mut octets), bb(1), 0).is_err(),
+    );
+
     // ids
     tally.check(SpacecraftId::<10>::new(bb(1023)).map(SpacecraftId::get) == Some(1023));
     tally.check(SpacecraftId::<8>::try_from(bb(256_u16)).is_err());
     tally.check(SpacecraftId::<16>::try_from(bb(7_u16)).map(u16::from) == Ok(7));
     tally.check(VcId::<3>::new(bb(8)).is_none() && VcId::<6>::try_from(bb(63_u8)).is_ok());
     tally.check(MapId::<4>::new(bb(15)).map(u8::from) == Some(15) && MapId::<6>::MAX == 63);
-    tally.check(Apid::new(bb(2047)).is_some_and(Apid::is_idle) && Apid::IDLE.get() == 2047);
-    tally.check(Apid::try_from(bb(4096_u16)).is_err());
-    tally.check(SeqCount::new(bb(16383)).map(|s| s.next().get()) == Some(0));
-    tally.check(SeqCount::try_from(bb(1_u16)).is_ok());
-    tally.check(FrameSeqNum(bb(255)).next() == FrameSeqNum(0));
+    tally.check(
+        Apid::new(bb(2047)).is_some_and(Apid::is_idle) && u16::from(Apid::IDLE) == Apid::MAX,
+    );
+    tally.check(Apid::try_from(bb(4096_u16)).is_err() && Apid::IDLE.get() == 2047);
+    let seq = SeqCount::new(bb(SeqCount::MAX)).unwrap_or(SeqCount::new(0).unwrap_or_else(|| loop {
+        core::hint::spin_loop();
+    }));
+    tally.check(
+        seq.next().get() == 0
+            && u16::from(seq) == SeqCount::MAX
+            && ModCounter::from(seq).value() == u64::from(SeqCount::MAX)
+            && seq.classify(bb(seq.next())) == Continuity::InSequence
+            && SeqCount::try_from(bb(1_u16)).is_ok(),
+    );
+    let fsn = FrameSeqNum::from(bb(FrameSeqNum::MAX));
+    tally.check(
+        FrameSeqNum::new(bb(0)).map(FrameSeqNum::get) == Some(0)
+            && fsn.next() == FrameSeqNum::from(0)
+            && u8::from(fsn) == 255
+            && ModCounter::from(fsn).value() == 255
+            && fsn.classify(bb(fsn.next())) == Continuity::InSequence,
+    );
     tally.check(PacketVersion::new(bb(7)) == Some(PacketVersion::ENCAPSULATION));
     tally.check(
-        PacketVersion::try_from(bb(9_u8)).is_err() && PacketVersion::SPACE_PACKET.get() == 0,
+        PacketVersion::try_from(bb(9_u8)).is_err()
+            && PacketVersion::SPACE_PACKET.get() == 0
+            && u8::from(PacketVersion::ENCAPSULATION) == PacketVersion::MAX,
     );
 }
 
@@ -202,6 +241,11 @@ fn apis_time_crc_oid_counter(tally: &mut Tally) {
         write_fecf(bb(&mut frame)).is_ok()
             && verify_fecf(bb(&frame)).is_ok()
             && syndrome(bb(&frame)) == 0,
+    );
+    tally.check(
+        crc16_update(bb(PRESET), bb(&frame)) == 0
+            && crc16_update_bitwise(bb(PRESET), bb(&frame)) == 0
+            && crc16_update_table(bb(PRESET), bb(&frame)) == 0,
     );
     tally.check(verify_fecf(bb(&[0])).is_err() && write_fecf(bb(&mut [0])).is_err());
 
@@ -248,11 +292,21 @@ fn apis_containers_security(tally: &mut Tally) {
     );
     let mut out = [0_u8; 8];
     tally.check(bytes.pop_into(bb(&mut out)) == Ok(Some(3)) && bytes.discard() == Some(1));
+    bytes.clear();
     let mut vec: FixedVec<u8, 2> = FixedVec::default();
     tally.check(
-        vec.push(bb(9)).is_ok() && vec.as_slice() == [9] && vec.len() == 1 && !vec.is_empty(),
+        vec.push(bb(9)).is_ok()
+            && vec.as_slice() == [9]
+            && vec.len() == 1
+            && vec.capacity() == 2
+            && !vec.is_empty()
+            && !vec.is_full(),
     );
-    tally.check(vec.pop() == Some(9));
+    if let Some(first) = vec.as_mut_slice().first_mut() {
+        *first = bb(10);
+    }
+    let other = vec;
+    tally.check(vec == other && vec.pop() == Some(10));
     vec.clear();
 
     // security

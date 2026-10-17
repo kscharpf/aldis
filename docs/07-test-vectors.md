@@ -7,8 +7,8 @@ The vectors are the **contract between implementations**. The Rust reference imp
 ```
 test-vectors/
   schema/            JSON Schemas generated from the model in crates/aldis-testkit (cargo xtask vectors schema)
-  core/              crc16.json, oid.json, counters.json
-  time/              cuc.json, cds.json, ccs.json, ascii.json
+  core/              crc16.json, oid.json, errors.json, bits.json, counters.json, layout.json
+  time/              cuc.json, cds.json, ccs.json, ascii.json, convert.json
   spp/  epp/  tm/  tc/  aos/  uslp/
   cop1/              fop1_table.json, farm1_table.json, scenarios/*.json
   link/              packet_generator/*.json, extractor/*.json, mux/*.json, segmenter/*.json
@@ -20,6 +20,8 @@ test-vectors/
 {
   "kind": "codec",
   "standard": "133.0-B-2",
+  "provenance": "hand-derived",
+  "provenance_note": "Worked from 133.0-B-2 §4.1.3",
   "cases": [
     {
       "id": "spp-decode-001",

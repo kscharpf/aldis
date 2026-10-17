@@ -118,9 +118,9 @@ Each module is done when its requirements are covered by tests annotated `// req
 | 4 | `time` | `Instant(u64 µs)`, `Duration`, saturating arithmetic, "backwards = zero elapsed" | API-003 | |
 | 5 | `crc` | CRC-16 bitwise (default) and table (`crc-table` feature); incremental API; FECF verify both ways | CMN-001…004 | Vectors pass for both variants; property test: both equal on random input |
 | 6 | `oid` | `OidGenerator` Fibonacci (reference) and Galois forms; `fill(&mut [u8])` | CMN-020…023 | Property test: forms identical over 10⁶ octets; cross-fill continuity |
-| 7 | `counter` | `ModCounter<BITS>` 1–64 bits; `increment`, `distance`, `classify → InSequence / Gap{missing} / Repeat / Backwards` | CMN-030, CMN-031, GEN-024 | Exhaustive tests for 8-bit; property tests for wider |
+| 7 | `counter` | `ModCounter` 1–64 bits; `increment`, `distance`, `classify → InSequence / Gap{missing} / Repeat / Backwards` | CMN-030, CMN-031, GEN-024 | Exhaustive tests for 8-bit; property tests for wider |
 | 8 | `container` | `FixedQueue<T, N>`, `ByteQueue<N>` (variable-length records in one byte ring), `FixedVec<T, N>` | GEN-010, GEN-011, GEN-012, API-051, API-061 | No `alloc`; `WouldBlock` on full; fuzz push/pop against a model |
-| 9 | `security` | `SecurityLayout` (header ≤ 64), `SecurityHook` trait, `NoSecurity`, `FixedPatternSecurity` (test feature) | API-070…074 | Trait shape reviewed against 355.0 §2.3 / §4.1 |
+| 9 | `security` | `SecurityLayout` (header ≤ 64), `SecurityHook` trait, `NoSecurity`, `FixedPatternSecurity` (test feature) | API-070…075 | Trait shape reviewed against 355.0 §2.3 / §4.1 |
 | 10 | `layout` | `FrameLayout`: ordered, non-overlapping ranges for all frame fields per protocol; rejects empty data field | CMN-040, CMN-041 | Property test: ranges contiguous and cover the frame |
 
 Also in WP-4: `aldis-core` crate docs. Every public item cites its clauses and requirement IDs (RS-015).
@@ -167,12 +167,12 @@ M0 is complete when every item below is green on `main`:
 | Static | VER-001, VER-002, VER-003, VER-004 | CI `fmt`, `clippy`, `deny` |
 | Panic freedom | VER-010, GEN-020, GEN-021 (exerciser links on all bare-metal targets) | CI `exerciser`, 3 targets; canary fails as required |
 | Portability | GEN-005, GEN-007, VER-030 (big-endian), VER-031 / GEN-003 (minimal build) | CI `no-std`, `big-endian`, `layers` (+ `symbols`) |
-| `aldis-core` requirements | GEN-010…012, GEN-022…024, GEN-040…042, GEN-050, GEN-051, API-001…003, API-070, API-071, API-073, CMN-001…004, CMN-020…023, CMN-030…031, CMN-040…041, RS-010, RS-011, RS-015, RS-016, RS-018 | Tests, vectors, fuzz targets; GEN-022/023 by [inspection](../verification/inspections/gen-022-023-aldis-core.md) |
-| Vectors and trace | TV-001…003, TV-012, TV-020…022, VER-020 (`xtask trace --scope m0` has no gaps), VER-021 | 57/57 traced; CI `spec` now runs `--strict` |
-| Gates | VER-022 (fuzz targets exist and run nightly), VER-024 (100 % coverage for `aldis-core`) | 6 targets in `nightly.yml`; CI `coverage` 784/784 regions, 60/60 branches |
+| `aldis-core` requirements | GEN-010…012, GEN-022…024, GEN-040…042, GEN-050, GEN-051, GEN-081, API-001…003, API-070, API-071, API-073, API-075, CMN-001…004, CMN-020…023, CMN-030…031, CMN-040…041, RS-010, RS-011, RS-012, RS-015, RS-016, RS-018 | Tests, vectors, fuzz targets; GEN-022/023 by [inspection](../verification/inspections/gen-022-023-aldis-core.md) |
+| Vectors and trace | TV-001…003, TV-012, TV-020…022, VER-020 (`xtask trace --scope m0` has no gaps), VER-021 | 60/60 traced; CI `spec` now runs `--strict` |
+| Gates | VER-022 (fuzz targets exist and run nightly), VER-024 (100 % coverage for `aldis-core`) | 6 targets in `nightly.yml`; CI `coverage` 100 % regions/functions/lines/branches |
 | Docs | Roadmap updated; `CHANGELOG.md` entry for 0.1.0-m0; open issues updated | Done (OI-14 added) |
 
-Moved out of M0 scope (2026-10-16) because they are codec or engine behavior, not `aldis-core`: API-072 and API-074 (frame codecs and engines, M2/M4), GEN-043, GEN-052, GEN-053 (codecs, M1/M2), TV-010 (engine scenarios, M3).
+Moved out of M0 scope (2026-10-16) because they are codec or engine behavior, not `aldis-core`: API-072 and API-074 (frame codecs and engines, M2/M4), CMN-010 and CMN-011 (frame FECF configuration and strict/lenient modes, M2), GEN-043, GEN-052, GEN-053 (codecs, M1/M2), TV-010 (engine scenarios, M3).
 
 Deferred from M0 on purpose: VER-012 (WCET documentation, first needed by engines in M3/M4), VER-025 gating (report only), VER-026 and VER-050…052 (FFI and C side, M5), and VER-040 cross-checks for frame codecs (M1/M2).
 
@@ -184,4 +184,4 @@ Deferred from M0 on purpose: VER-012 (WCET documentation, first needed by engine
 | 100 % branch coverage is hard for defensive branches | Design APIs so impossible states are unrepresentable; justify the remainder in the waiver file (reviewed per release) |
 | QEMU semihosting flakiness in CI | Timeouts and a retry around the QEMU step only; a link-only check still gates |
 | Pedantic Clippy churn on toolchain updates | The toolchain is pinned (RS-001); bump deliberately, in a PR that fixes new findings |
-| CCSDS site URLs change | Nightly `fetch.sh --verify-only` alert; manual steps in `specs/README.md` |
+| CCSDS site URLs change | Nightly `fetch.sh --all --check-urls` alert; manual steps in `specs/README.md` |

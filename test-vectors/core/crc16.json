@@ -6,7 +6,7 @@
   "cases": [
     {
       "id": "crc16-check-001",
-      "requirements": ["CMN-001", "CMN-002"],
+      "requirements": ["CMN-001", "CMN-002", "CMN-004"],
       "description": "Standard check string \"123456789\"",
       "operation": "crc16",
       "input_hex": "313233343536373839",
@@ -14,7 +14,7 @@
     },
     {
       "id": "crc16-empty-001",
-      "requirements": ["CMN-001"],
+      "requirements": ["CMN-001", "CMN-004"],
       "description": "Empty input returns the preset register value",
       "operation": "crc16",
       "input_hex": "",

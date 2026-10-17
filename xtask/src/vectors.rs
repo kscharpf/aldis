@@ -2,7 +2,7 @@
 
 use std::collections::BTreeMap;
 
-use aldis_testkit::{CodecFile, Provenance, ScenarioFile, VectorFile, hex};
+use aldis_testkit::{CodecCase, CodecFile, Provenance, ScenarioFile, VectorFile, hex};
 use serde_json::Value;
 
 use crate::md::scan_ids;
@@ -42,6 +42,40 @@ fn check_requirements(ids: &[String], spec: &Spec, at: &str, problems: &mut Vec<
     }
 }
 
+fn check_codec_case(c: &CodecCase, spec: &Spec, at: &str, problems: &mut Vec<String>) {
+    check_requirements(&c.requirements, spec, at, problems);
+    if let Some(h) = &c.input_hex
+        && let Err(e) = hex::decode(h)
+    {
+        problems.push(format!("{at}: input_hex: {e}"));
+    }
+    match (c.expect.ok, c.expect.error.as_deref()) {
+        (true, Some(_)) => {
+            problems.push(format!("{at}: expect.ok is true but an error is named"));
+        }
+        (false, None) => {
+            problems.push(format!(
+                "{at}: expect.ok is false but no error kind is named"
+            ));
+        }
+        (false, Some(kind)) if !spec.error_kinds.contains(kind) => {
+            problems.push(format!(
+                "{at}: error {kind:?} is not in the catalogue (03-api-model.md §9)"
+            ));
+        }
+        _ => {}
+    }
+    for (k, v) in c
+        .expect
+        .values
+        .iter()
+        .chain(c.params.iter().flatten())
+        .chain(c.config.iter().flatten())
+    {
+        check_hex(v, k, at, problems);
+    }
+}
+
 /// Validates all vector files; returns the number of problems.
 pub fn validate() -> Result<usize, String> {
     let spec = Spec::load()?;
@@ -78,29 +112,7 @@ pub fn validate() -> Result<usize, String> {
                     cases += 1;
                     let at = format!("{rel}#{}", c.id);
                     unique(&c.id, &at, &mut problems);
-                    check_requirements(&c.requirements, &spec, &at, &mut problems);
-                    if let Some(h) = &c.input_hex
-                        && let Err(e) = hex::decode(h)
-                    {
-                        problems.push(format!("{at}: input_hex: {e}"));
-                    }
-                    match (c.expect.ok, c.expect.error.as_deref()) {
-                        (true, Some(_)) => {
-                            problems.push(format!("{at}: expect.ok is true but an error is named"));
-                        }
-                        (false, None) => problems.push(format!(
-                            "{at}: expect.ok is false but no error kind is named"
-                        )),
-                        (false, Some(kind)) if !spec.error_kinds.contains(kind) => {
-                            problems.push(format!(
-                                "{at}: error {kind:?} is not in the catalogue (03-api-model.md §9)"
-                            ));
-                        }
-                        _ => {}
-                    }
-                    for (k, v) in c.expect.values.iter().chain(c.params.iter().flatten()) {
-                        check_hex(v, k, &at, &mut problems);
-                    }
+                    check_codec_case(c, &spec, &at, &mut problems);
                 }
             }
             Ok(VectorFile::EngineScenario(ScenarioFile {
@@ -108,6 +120,7 @@ pub fn validate() -> Result<usize, String> {
                 requirements,
                 provenance,
                 provenance_note,
+                config,
                 steps,
                 ..
             })) => {
@@ -122,6 +135,14 @@ pub fn validate() -> Result<usize, String> {
                 }
                 if steps.windows(2).any(|w| w[1].at_us < w[0].at_us) {
                     problems.push(format!("{at}: step instants must not decrease (TV-010)"));
+                }
+                for (k, v) in &config {
+                    check_hex(v, k, &at, &mut problems);
+                }
+                for step in &steps {
+                    for (k, v) in step.input.iter().chain(step.expect.iter().flatten()) {
+                        check_hex(v, k, &at, &mut problems);
+                    }
                 }
             }
         }

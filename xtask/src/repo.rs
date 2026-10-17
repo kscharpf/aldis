@@ -10,7 +10,17 @@ pub fn root() -> PathBuf {
 }
 
 /// Directories never scanned: build output, VCS data, and the git-ignored CCSDS documents.
-const SKIP: &[&str] = &["target", ".git", "specs/pdf"];
+const SKIP: &[&str] = &[
+    "target",
+    ".git",
+    "specs/pdf",
+    "exerciser/target",
+    "fuzz/target",
+    "fuzz/corpus",
+    "fuzz/artifacts",
+    "mutants.out",
+    "mutants.out.old",
+];
 
 /// All files under `dir` (relative to the root) whose extension is in `exts`, sorted.
 pub fn files(dir: &str, exts: &[&str]) -> Vec<PathBuf> {

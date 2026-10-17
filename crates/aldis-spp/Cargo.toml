@@ -14,8 +14,8 @@ aldis-time = { path = "../aldis-time", default-features = false, optional = true
 
 [features]
 time = ["dep:aldis-time"]
-alloc = ["aldis-core/alloc"]
-std = ["alloc", "aldis-core/std"]
+alloc = ["aldis-core/alloc", "aldis-time?/alloc"]
+std = ["alloc", "aldis-core/std", "aldis-time?/std"]
 
 [lints]
 workspace = true
