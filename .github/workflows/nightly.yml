@@ -1,0 +1,36 @@
+# Scheduled checks (docs/milestones/m0-foundations.md WP-1, WP-6).
+# Fuzzing and mutation testing are added here when their targets exist (WP-6).
+name: Nightly
+
+on:
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  big-endian-bare-metal:
+    name: big-endian bare metal (armebv7r, -Z build-std)
+    # armebv7r-none-eabihf has no prebuilt core for the pinned stable toolchain, so it
+    # is built with nightly + build-std. Nightly is tooling only (RS-002).
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: rustup toolchain install nightly --profile minimal --component rust-src
+      - run: >
+          cargo +nightly build -Z build-std=core
+          -p aldis --no-default-features --features full
+          --target armebv7r-none-eabihf
+
+  ccsds-urls:
+    name: CCSDS document URLs still answer
+    # HEAD requests only; the documents are never downloaded in CI (specs/README.md).
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: specs/fetch.sh --all --check-urls
