@@ -1,7 +1,8 @@
 # Code review: `m0/post-review`
 
-Three rounds: [Round 1](#round-1) reviews the branch as first submitted; [Round 2](#round-2)
-re-checks it after the fixes in `812deb1`; [Round 3](#round-3) re-checks the fixes for Round 2.
+Four rounds: [Round 1](#round-1) reviews the branch as first submitted; [Round 2](#round-2)
+re-checks it after the fixes in `812deb1`; [Round 3](#round-3) re-checks the fixes for Round 2
+(committed as `4162d92`); [Round 4](#round-4) re-checks the fixes for Round 3 in `2dbe2eb`.
 
 ## Round 1
 
@@ -474,3 +475,185 @@ Callers can see one limit of `SecurityLayout::new` but not the other.
 (for example an M2 configuration loader) can use `SecurityLayout::MAX_HEADER_LEN` but has to
 hard-code 65535 for the trailer, and that copy can drift from the real check. Make it
 `pub const MAX_TRAILER_LEN` with a doc comment citing the requirement, like `MAX_HEADER_LEN`.
+
+## Round 4
+
+- **Date:** 2026-10-17
+- **Scope:** commit `2dbe2eb` (round 3 resolution, 13 files), checked against R3-1 to R3-9, plus
+  another pass over the full branch against `main`. The behaviour of the released-vector and
+  feature-graph checks was tried out on a scratch clone, not in the repo.
+- **Checks at `2dbe2eb`, all passing with zero warnings:**
+  - `cargo fmt --all --check`, `cargo clippy --workspace --all-features --all-targets`,
+    `cargo test --workspace --all-features`, and the 4 tests in `cargo test -p xtask`
+  - bare-metal clippy for `aldis --features full` on thumbv7em
+  - `cargo xtask ci`: 0 layering violations; 6 vector files, 83 cases, 0 problems; trace m0 60/60
+  - `cargo xtask coverage`: 0 misses (regions 899, functions 170, lines 772, branches 68)
+  - exerciser built from scratch in a fresh target dir (`--locked`): the release link and clippy
+    pass, and the QEMU mps2-an386 run exits 0
+  - fuzz clippy
+
+Of the 9 items, 7 are fully fixed, R3-1 is fixed with caveats, and R3-2 is only partly fixed. The
+library code has settled down. Most findings in this round are in the released-vector check that
+R3-2 added. The most serious is that this check never runs in CI (R4-1), so the TV-021 entry in
+`analysis-records.md` claims a check that doesn't actually run.
+
+### Status of Round 3 items
+
+| # | Item | Status | Evidence |
+|---|---|---|---|
+| R3-1 | Short buffer reports `expected: 0, found: 0` | Fixed, with caveats | `bits.rs:29-46` and `:111-117` report width 0 as (1, 0) and a short buffer as `buf_len` (needed, have), and keep the largest-offset report otherwise. `counter.rs:62-67` reports bits 0 as (1, 0). Tested at `bits.rs:212-239`, `:271-286`, `counter.rs:168-172`, `exercise.rs:183-189`. Caveats: `Span::new` reports `buf_len` in bits rather than octets (R4-6), and `container.rs:207` still has the same pattern (R4-7). |
+| R3-2 | TV-021 validation doesn't check `superseded.by` or catch edits | Partly fixed | On a scratch clone, a dangling `by`, a `by` pointing at a superseded case, an edit to a live released case and an edit to the body of a superseded case are each rejected. But the check silently passes in the shallow, tag-less checkout CI uses (R4-1), and misses deleted or renamed files, edits to file-level fields (R4-2) and a superseded case with no `by` (R4-5). |
+| R3-3 | Feature and dependency names mixed | Fixed | `layers.rs:72-78` keeps them in separate sets; the collision case is tested at `layers.rs:221-224`. |
+| R3-4 | GEN-004 feature-graph code untested | Fixed | `layers.rs:211-254` covers `dep:`, `x/f`, weak `x?/f`, recursion, the fallback, renames (via `parse_deps`) and the name collision. `x/f` turning on the feature named `x` is not covered (R4-4). |
+| R3-5 | FrameSeqNum contradicts RS-010 | Fixed | `rust.md:69` rewords RS-010 for identifiers that use the full width of their type, and `FrameSeqNum::new` is a `const fn` returning `Self`. |
+| R3-6 | aldis-ffi row says it mirrors the facade | Fixed | `rust.md:24` now says "enables `aldis/full`". |
+| R3-7 | SecurityLayout widened to `usize` | Fixed | The fields are u8/u16 again (`security.rs:16-17`), with a size-4 assertion at `security.rs:234`. |
+| R3-8 | Third style of widening helper | Fixed | Shared helpers in `error.rs:138-154` are used by ids, counter and crc. Small leftovers in R4-9 and R4-10. |
+| R3-9 | `MAX_TRAILER_LEN` private | Fixed | `security.rs:28-29` makes it public with a doc comment; the CHANGELOG is updated. |
+
+### Findings
+
+R4-1 and R4-2 together make the TV-021 analysis record (method A, CI job `spec`) untrue, and are
+worth fixing before merge. R4-4 is a real gap in the GEN-004 check, but nothing triggers it until a
+Layer-3 crate takes a third-party dependency (M2). The rest can be follow-up issues.
+
+#### R4-1. TV-021 released-vector check silently skipped in CI
+
+`xtask/src/vectors.rs:125` · correctness
+
+The released-vector check silently does nothing when the checkout has no tags. That is what CI's
+default `actions/checkout` gives, so the CI enforcement claimed in `analysis-records.md` never runs.
+
+**Failure scenario:** No job in `.github/workflows/ci.yml` sets `fetch-depth` or `fetch-tags`, so
+the `spec` job gets a depth-1 checkout with no tags. `git tag --list v*` returns nothing,
+`release_tags()` returns an empty list, and `check_released_tags` never runs. Reproduced: in
+`git clone --depth 1 --no-tags`, adding CMN-004 to the requirements of released case
+bits-get-spp-version gives `vectors validate: ... 0 problem(s)`, while the same edit in a full clone
+is rejected. `analysis-records.md:25` says CI job `spec` performs this comparison. Fix: set
+`fetch-depth: 0` and `fetch-tags: true` on that job, and fail rather than skip when no `v*` tag is
+found or git fails.
+
+#### R4-2. Deleting or renaming a released vector file passes
+
+`xtask/src/vectors.rs:144` · correctness
+
+The check only looks at vector files that still exist under the same path, and for codec files it
+only compares cases. Deleting or renaming a released file, or editing its file-level fields, passes.
+
+**Failure scenario:** Reproduced on a scratch clone with the `v0.1.0-m0` tag: after
+`git rm test-vectors/core/oid.json`, validate reports 5 files and 0 problems; after
+`git mv oid.json oid2.json`, 0 problems; after setting crc16.json's `standard` to `"bogus"`,
+`provenance` to blue-book-example and changing `provenance_note`, 0 problems. All three change
+released vectors, which TV-021 forbids. Fix: walk `git ls-tree -r <tag> test-vectors/` instead of
+the current files, and compare the whole file with only each case's `superseded` field normalized.
+
+#### R4-3. Unreadable released file silently skips the check
+
+`xtask/src/vectors.rs:162` · correctness
+
+A released file that the current testkit model can't parse is silently skipped. Any future schema
+change therefore turns off immutability checking for every released file, with no warning.
+
+**Failure scenario:** `CodecFile` and `CodecCase` use `deny_unknown_fields`. If a later milestone
+adds a required field, or renames or removes one, `VectorFile::from_json` fails on the tag's copy,
+the `if let Ok(released)` branch is skipped, and released cases can be edited freely while CI stays
+green. The same happens when `git show` fails (lines 152-158 just `continue`). Fix: compare raw
+`serde_json::Value` trees, or at least report a problem when the released copy can't be parsed.
+
+#### R4-4. GEN-004 misses dependencies turned on through feature `x` from `x/f`
+
+`xtask/src/layers.rs:68` · correctness
+
+`default_enabled_deps` doesn't follow the feature named `x` when a default feature lists `x/f`, but
+Cargo does activate that feature. So GEN-004 misses some dependencies that are on by default.
+
+**Failure scenario:** Verified with a scratch crate: given `default = ["x/std"]` and
+`x = ["dep:x", "dep:y"]`, `cargo tree` shows both x and y on by default, but
+`default_enabled_deps` returns only `{x}`. A third-party optional dependency `y` in aldis-framework
+would therefore pass `cargo xtask layers` although it is on by default. Fix: in the `x/f` branch
+(when the dependency name has no `?`), also queue `x` if `table.contains_key(x)`, and add a test
+case for it.
+
+#### R4-5. Released case can be superseded without a `by`
+
+`xtask/src/vectors.rs:58` · correctness
+
+A case can be marked superseded without a `by`, and validation accepts it, so a released case can be
+retired with no replacement and its coverage silently disappears.
+
+**Failure scenario:** Reproduced: adding `"superseded": {"reason": "x"}` to released case
+bits-get-spp-version passes validate with 0 problems. The runner, trace and the exerciser's
+`build.rs` all skip superseded cases, so that vector stops running everywhere. TV-021 says
+corrections SHALL add a new case. Fix: require `by` (or a separate retirement reason) when a case
+released in a tag becomes superseded.
+
+#### R4-6. `buf_len` reported in bits in one place, octets in another
+
+`crates/aldis-core/src/bits.rs:44` · correctness
+
+`Span::new` reports the `buf_len` field in bits, while `octet_err` reports the same field in
+octets, so one `FieldId` has two units.
+
+**Failure scenario:** `get(&[0], 0, 16)` returns `OutOfRange { field: buf_len, expected: 16,
+found: 8 }` although the buffer is 1 octet long, while `read_u32(&[0; 2], 0)` returns `buf_len`
+expected 4, found 2, in octets. A caller (or a future vector) that compares `found` to `buf.len()`
+gets the wrong answer for the bit-field API. Fix: report octets (`width.div_ceil(8)` plus offset
+bytes against `buf_len`), or name the field `buf_bits`.
+
+#### R4-7. `ByteQueue` smaller than 4 octets still reports `expected: 0, found: 0`
+
+`crates/aldis-core/src/container.rs:207` · correctness
+
+`ByteQueue::push` still uses the saturating "largest valid" limit that R3-1 flagged, so a queue
+smaller than the 4-octet prefix reports expected 0, found 0.
+
+**Failure scenario:** `ByteQueue::<2>::new().push(&[])` returns `OutOfRange { record_len,
+expected: 0, found: 0 }`. Under the inclusive-maximum meaning that looks like a valid call, so the
+caller can't tell that the capacity itself is too small. N < 4 is not rejected at compile time
+(only `N <= u32::MAX` is asserted). Fix: add a const assert that `N >= PREFIX`, or report the needed
+capacity (len + 4) against N when `N < PREFIX`, as `bits.rs` now does.
+
+#### R4-8. One `git show` per vector file per tag
+
+`xtask/src/vectors.rs:151` · efficiency
+
+`check_released_tags` starts one `git show` per vector file per tag on every validate run, so the
+cost grows with files × tags.
+
+**Failure scenario:** With 6 files and 1 tag that is 6 extra processes. Once milestones add dozens
+of vector files and several `v*` tags, `xtask vectors validate` (run by `xtask ci` and the CI `spec`
+job) spends most of its time starting git processes. One `git ls-tree -r --name-only <tag>
+test-vectors` plus `git cat-file --batch` per tag reads all released blobs in two processes, and
+also makes the missing-file check in R4-2 cheap.
+
+#### R4-9. Const-only cast helper used where `u64::from` works
+
+`crates/aldis-core/src/bits.rs:33` · simplification
+
+`u8_to_u64`, an `as`-cast helper meant for `const` code, is now used in non-const functions that
+used the lossless `u64::from` before.
+
+**Failure scenario:** `Span::new` (`bits.rs:33`) and `ModCounter::new` (`counter.rs:66`) are not
+`const fn`s, and the helper's own doc says it exists because `From` is not yet const. Swapping
+`u64::from(width)` and `u64::from(bits)` for it puts an `as_conversions` cast into code that
+didn't need one. Revert those two calls to `u64::from`.
+
+#### R4-10. SecurityLayout still uses its own `as` casts
+
+`crates/aldis-core/src/security.rs:65` · simplification
+
+SecurityLayout's getters and `new` use their own `#[expect]`-annotated `as` casts instead of
+shared helpers in `error.rs`, so some of the separate conversion styles R3-8 asked to remove are
+still there.
+
+**Failure scenario:** `security.rs:56-57`, `:65` and `:75` each carry their own
+`#[expect(clippy::as_conversions)]`, next to the new `pub(crate)` widening helpers in
+`error.rs:138-154`. The next u8/u16 to usize widening in Layers 1-2 will copy this pattern again.
+Fix: add `u8_to_usize` and `u16_to_usize` (and one checked narrowing helper) next to `as_u64`, and
+use them here.
+
+### Recommendation
+
+Fix R4-1 (CI checkout plus fail-instead-of-skip) before merge, since without it the TV-021 analysis
+record is untrue. R4-2, R4-3 and R4-5 are worth doing in the same change if time allows. Track
+R4-4 and R4-6 to R4-10 as follow-up issues rather than another review round.
