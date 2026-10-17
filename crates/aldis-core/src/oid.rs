@@ -100,6 +100,7 @@ impl Default for OidGeneratorGalois {
 }
 
 #[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::{OidGenerator, OidGeneratorGalois};
 

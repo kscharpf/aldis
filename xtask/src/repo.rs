@@ -61,3 +61,16 @@ pub fn rel(path: &Path) -> String {
 pub fn read(path: &Path) -> Result<String, String> {
     std::fs::read_to_string(path).map_err(|e| format!("{}: {e}", rel(path)))
 }
+
+/// The pinned nightly used for tooling only (RS-002), from the `tooling-nightly` file.
+pub fn tooling_nightly() -> Result<String, String> {
+    let pin = read(&root().join("tooling-nightly"))?;
+    let pin = pin.trim();
+    if pin.starts_with("nightly-") && !pin.contains(char::is_whitespace) {
+        Ok(pin.to_owned())
+    } else {
+        Err(format!(
+            "tooling-nightly: expected `nightly-YYYY-MM-DD`, found `{pin}`"
+        ))
+    }
+}

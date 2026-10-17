@@ -333,6 +333,7 @@ impl<T: Copy + Default, const N: usize> Default for FixedVec<T, N> {
 }
 
 #[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
 #[expect(
     clippy::arithmetic_side_effects,
     reason = "test bookkeeping on small bounded values (RS-018)"

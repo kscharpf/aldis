@@ -1,5 +1,7 @@
 [workspace]
 resolver = "3"
+# Own workspaces: bare-metal exerciser (WP-5) and cargo-fuzz targets (WP-6).
+exclude = ["exerciser", "fuzz"]
 members = [
     "crates/aldis-core",
     "crates/aldis-time",
@@ -32,6 +34,8 @@ repository = "https://github.com/kscharpf/aldis"
 unsafe_code = "forbid"
 missing_docs = "deny"
 unreachable_pub = "warn"
+# cargo-llvm-cov sets cfg(coverage_nightly) so test modules can be excluded from coverage (VER-024).
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(coverage_nightly)"] }
 
 [workspace.lints.clippy]
 # Lint groups first (lowest priority) so the individual lints below can refine them.

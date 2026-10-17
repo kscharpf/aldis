@@ -134,6 +134,7 @@ pub fn write_fecf(frame: &mut [u8]) -> Result<()> {
 }
 
 #[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
 #[expect(
     clippy::arithmetic_side_effects,
     reason = "test bookkeeping on small bounded values (RS-018)"

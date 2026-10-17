@@ -201,6 +201,7 @@ impl TryFrom<u8> for PacketVersion {
 }
 
 #[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::{Apid, FrameSeqNum, MapId, PacketVersion, SeqCount, SpacecraftId, VcId};
     use crate::error::ErrorKind;

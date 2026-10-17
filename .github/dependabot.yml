@@ -10,7 +10,8 @@ updates:
         patterns: ["*"]
 
   # Dev-dependencies only; Layers 0-2 have no runtime dependencies (GEN-001).
+  # The exerciser and fuzz targets are separate workspaces with their own lock files.
   - package-ecosystem: cargo
-    directory: "/"
+    directories: ["/", "/exerciser", "/fuzz"]
     schedule:
       interval: weekly

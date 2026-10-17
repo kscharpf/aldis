@@ -1,11 +1,16 @@
-# Scheduled checks (docs/milestones/m0-foundations.md WP-1, WP-6).
-# Fuzzing and mutation testing are added here when their targets exist (WP-6).
+# Scheduled checks (docs/milestones/m0-foundations.md WP-1, WP-5, WP-6).
+# Nightly Rust is tooling only (RS-002) and always the date pinned in `tooling-nightly`.
 name: Nightly
 
 on:
   schedule:
     - cron: "17 3 * * *"
   workflow_dispatch:
+    inputs:
+      fuzz-seconds:
+        description: Seconds per fuzz target (600 nightly; 3600 before a release, VER-022)
+        required: false
+        default: "600"
 
 permissions:
   contents: read
@@ -17,15 +22,120 @@ jobs:
   big-endian-bare-metal:
     name: big-endian bare metal (armebv7r, -Z build-std)
     # armebv7r-none-eabihf has no prebuilt core for the pinned stable toolchain, so it
-    # is built with nightly + build-std. Nightly is tooling only (RS-002).
+    # is built with the tooling nightly + build-std.
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - run: rustup toolchain install nightly --profile minimal --component rust-src
+      - run: |
+          echo "NIGHTLY=$(cat tooling-nightly)" >> "$GITHUB_ENV"
+      - run: rustup toolchain install "$NIGHTLY" --profile minimal --component rust-src
       - run: >
-          cargo +nightly build -Z build-std=core
+          cargo +"$NIGHTLY" build -Z build-std=core
           -p aldis --no-default-features --features full
           --target armebv7r-none-eabihf
+
+  stack-sizes:
+    name: stack usage ${{ matrix.target }} (VER-011)
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [thumbv7em-none-eabihf, armv7r-none-eabihf, riscv32imac-unknown-none-elf]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup-rust
+      - run: |
+          rustup toolchain install "$(cat tooling-nightly)" --profile minimal \
+            --target ${{ matrix.target }}
+      - run: cargo xtask stack-sizes ${{ matrix.target }}
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: stack-sizes-${{ matrix.target }}
+          path: target/spec/stack-sizes-${{ matrix.target }}.md
+          if-no-files-found: error
+
+  fuzz:
+    name: fuzz ${{ matrix.target }} (VER-022)
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - bits_roundtrip
+          - crc_variants
+          - oid_forms
+          - counter_classify
+          - container_model
+          - layout_ranges
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      issues: write
+    defaults:
+      run:
+        working-directory: fuzz
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: |
+          echo "NIGHTLY=$(cat ../tooling-nightly)" >> "$GITHUB_ENV"
+      - run: rustup toolchain install "$NIGHTLY" --profile minimal
+      - uses: taiki-e/install-action@8cca0918f8471c33515202b73f56ab27f2bed283 # v2.87.29
+        with:
+          tool: cargo-fuzz@0.13.2
+      # The corpus carries over between nights; it is never committed (.gitignore).
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: fuzz/corpus/${{ matrix.target }}
+          key: fuzz-corpus-${{ matrix.target }}-${{ github.run_id }}
+          restore-keys: fuzz-corpus-${{ matrix.target }}-
+      - name: Fuzz
+        run: >
+          cargo +"$NIGHTLY" fuzz run ${{ matrix.target }} --
+          -max_total_time=${{ inputs.fuzz-seconds || '600' }}
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: failure()
+        with:
+          name: fuzz-crash-${{ matrix.target }}
+          path: fuzz/artifacts/${{ matrix.target }}/
+      - name: Open an issue for the crash
+        # Every crash becomes a regression vector (VER-022); one open issue per target.
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TITLE: "fuzz: ${{ matrix.target }} found a failing input"
+          RUN: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          if [ -z "$(gh issue list --state open --search "in:title \"$TITLE\"" --json number --jq '.[].number')" ]; then
+            gh issue create --title "$TITLE" --body "Nightly fuzzing failed: $RUN
+
+          Download the \`fuzz-crash-${{ matrix.target }}\` artefact, reproduce with
+          \`cargo +$NIGHTLY fuzz run ${{ matrix.target }} <file>\`, fix, and add the input as a
+          regression vector (VER-022)."
+          fi
+
+  mutants:
+    name: mutation testing aldis-core (VER-025, report only)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup-rust
+        with:
+          cache-key: mutants
+      - uses: taiki-e/install-action@8cca0918f8471c33515202b73f56ab27f2bed283 # v2.87.29
+        with:
+          tool: cargo-mutants@27.1.0
+      # Exit 2 (missed mutants) and 3 (timeouts) are reported, not failed, in M0; anything
+      # else (e.g. 4, the unmutated tests fail) is a real failure.
+      - run: |
+          code=0
+          cargo mutants -p aldis-core --all-features || code=$?
+          echo "cargo-mutants exit code $code"
+          [ "$code" -eq 0 ] || [ "$code" -eq 2 ] || [ "$code" -eq 3 ]
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: mutants-aldis-core
+          path: mutants.out/
 
   ccsds-urls:
     name: CCSDS document URLs still answer

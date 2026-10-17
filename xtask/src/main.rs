@@ -2,6 +2,8 @@
 //!
 //! Run with `cargo xtask <command>`; see `cargo xtask help`.
 
+mod binaries;
+mod coverage;
 mod layers;
 mod links;
 mod md;
@@ -24,6 +26,10 @@ commands:
   vectors schema [--check]     (re)generate test-vectors/schema/, or check it is current
   links                        relative Markdown links resolve inside the repository
   layers                       crate dependency rules (GEN-001..004)
+  symbols                      no frame-protocol code in a build of aldis-spp alone (VER-031)
+  stack-sizes <target>         per-function stack usage of the exerciser (VER-011; tooling nightly)
+  coverage                     100 % region/function/line/branch gate for aldis-core (VER-024;
+                               tooling nightly + cargo-llvm-cov >= 0.9)
   ci                           everything CI runs: spec-lint, links, layers, vectors
                                validate, vectors schema --check, trace --scope m0
 ";
@@ -44,6 +50,9 @@ fn run(args: &[&str]) -> Result<usize, String> {
         ["vectors", "schema", "--check"] => vectors::schema(true),
         ["links"] => links::check(),
         ["layers"] => layers::check(),
+        ["symbols"] => binaries::symbols(),
+        ["stack-sizes", target] => binaries::stack_sizes(target),
+        ["coverage"] => coverage::run(),
         ["ci"] => {
             let mut failed = 0;
             for step in [

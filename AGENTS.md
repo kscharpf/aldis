@@ -33,6 +33,16 @@ cargo clippy -p aldis --no-default-features --features full --target thumbv7em-n
 cargo xtask ci        # spec lint, links, layering, vector validation, schema check, M0 trace
 ```
 
+When you change `aldis-core`, also run:
+
+```sh
+cargo xtask coverage                                   # 100 % regions/functions/lines/branches (VER-024)
+(cd exerciser && cargo build --release --target thumbv7em-none-eabihf)  # panic-freedom link check (VER-010)
+cargo clippy --manifest-path fuzz/Cargo.toml --all-targets               # fuzz targets still compile
+```
+
+A failed exerciser link with `undefined symbol: aldis_panic_is_unreachable` means a panic path is reachable in `aldis-core`. Remove it; do not work around the check. Mark new test modules `#[cfg_attr(coverage_nightly, coverage(off))]`.
+
 Clippy runs with the `all` and `pedantic` groups denied, plus restriction lints ([docs/profiles/rust.md](docs/profiles/rust.md) §5). To relax a lint, use a local `#[expect(clippy::<lint>, reason = "…")]` on the smallest item (RS-016). Never use crate-wide `allow`.
 
 ## Conventions

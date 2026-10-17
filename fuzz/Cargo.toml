@@ -1,0 +1,72 @@
+[package]
+name = "aldis-fuzz"
+description = "cargo-fuzz targets for Aldis (VER-022)"
+version = "0.0.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+# Separate workspace: the targets need nightly and libFuzzer, which the main workspace must not
+# depend on (RS-002). Run with `cargo +$(cat ../tooling-nightly) fuzz run <target>`.
+[workspace]
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+aldis-core = { path = "../crates/aldis-core", features = ["crc-table", "test-hooks"] }
+libfuzzer-sys = "0.4.13"
+
+# Tooling lint profile (RS-017): assertions are how a fuzz target reports a failure.
+[lints.rust]
+unsafe_code = "deny"
+missing_docs = "deny"
+
+[lints.clippy]
+all = { level = "deny", priority = -1 }
+pedantic = { level = "deny", priority = -1 }
+
+[profile.release]
+debug = 1
+
+[[bin]]
+name = "bits_roundtrip"
+path = "fuzz_targets/bits_roundtrip.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "crc_variants"
+path = "fuzz_targets/crc_variants.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "oid_forms"
+path = "fuzz_targets/oid_forms.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "counter_classify"
+path = "fuzz_targets/counter_classify.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "container_model"
+path = "fuzz_targets/container_model.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "layout_ranges"
+path = "fuzz_targets/layout_ranges.rs"
+test = false
+doc = false
+bench = false
