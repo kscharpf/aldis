@@ -1,0 +1,24 @@
+{
+  "kind": "codec",
+  "standard": "132.0-B-3 §4.1.6 / 232.0-B-4 §4.1.4 / 732.0-B-5 §4.1.6 / 732.1-B-3 Annex B",
+  "provenance": "hand-derived",
+  "provenance_note": "CRC-16 with G(X)=X^16+X^12+X^5+1, register preset to all ones, MSB first, no reflection, no final XOR. Check value computed independently during specification work.",
+  "cases": [
+    {
+      "id": "crc16-check-001",
+      "requirements": ["CMN-001", "CMN-002"],
+      "description": "Standard check string \"123456789\"",
+      "operation": "crc16",
+      "input_hex": "313233343536373839",
+      "expect": { "ok": true, "value_hex": "29B1" }
+    },
+    {
+      "id": "crc16-empty-001",
+      "requirements": ["CMN-001"],
+      "description": "Empty input returns the preset register value",
+      "operation": "crc16",
+      "input_hex": "",
+      "expect": { "ok": true, "value_hex": "FFFF" }
+    }
+  ]
+}

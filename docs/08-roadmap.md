@@ -1,0 +1,39 @@
+# 08 — Roadmap
+
+## 1. v1 milestones (Rust reference + C ABI)
+
+| Milestone | Content | Exit criteria |
+|---|---|---|
+| **M0 Foundations** ([plan](milestones/m0-foundations.md)) | Repository + GitHub Actions CI, lint set, exerciser/panic-link check, vector harness, `xtask` trace/spec tooling, `aldis-core` (errors, bit fields, IDs, time, CRC-16, OID generator, counters, containers, security hooks, frame layout) | Exit criteria in the plan §4 |
+| **M1 Packets & time** | `aldis-time`, `aldis-spp`, `aldis-epp` | All TIME/SPP/EPP requirements traced; fuzz targets running |
+| **M2 Frame codecs** | `aldis-tm`, `aldis-tc` (incl. CLCW, delimiting, validation), `aldis-aos` (incl. FHEC, editions), `aldis-uslp` (incl. truncated) | All TM/TC/AOS/USLP requirements traced; 100 % coverage |
+| **M3 COP-1** | `aldis-cop1` FOP-1 + FARM-1, state tables as data, closed-loop tests | One vector per table cell; two-person table review recorded |
+| **M4 Link engines** | `aldis-link` generators, mux, receiver, extractor, segmenter/reassembler, CLTU packer | LNK requirements traced; property tests for FHP placement and reassembly |
+| **M5 C ABI** | `aldis-ffi`, generated header, capacities config, C test harness (sanitizers), C++ header-only wrapper | CABI requirements traced; vectors pass via the C ABI |
+| **M6 Framework** | `aldis-framework` traits, stacks, loopback, std adapters, trace/replay | FW requirements traced; end-to-end ground↔flight demo over loopback |
+| **v1.0 release** | Docs, trace matrix, coverage waivers, stack-usage tables, changelog | All requirements verified |
+
+## 2. Later standards (proposed order)
+
+| Release | Standards | Rationale |
+|---|---|---|
+| v1.1 | Minimal sync/coding: ASM attach/search, CLTU (BCH) build/parse, PN randomizers (131.0 §9–10, 231.0 §3, §5–6), and the UTC/TAI leap-second table trait | Lets v1 frames reach real radios without an external modem library |
+| v2 | 355.0/355.1 SDLS + 352.0 algorithms (with pluggable crypto providers, HSM-friendly) | Hooks already reserved in v1 (API-070…075) |
+| v2 | 727.0 CFDP (Class 1 and Class 2, sans-I/O, filestore trait) | Highest-demand application protocol |
+| v3 | 131.0 full FEC (RS, convolutional, LDPC, turbo), 231.0 LDPC; 211.x Proximity-1 + COP-P | Compute-heavy; needs per-target optimization |
+| v3 | 734.x DTN (BP/LTP), 702.1 IPoC | Networking |
+| v4 | Ground formats: 502–509 navigation messages, 660.0 XTCE; SLE/CSTS (911–922, 913.1) | Ground segment; `std` likely |
+
+## 3. Language rollout
+
+| Phase | Language | Approach |
+|---|---|---|
+| 1 | Rust | Reference implementation (v1) |
+| 1 | C / C++ | C ABI over Rust (`aldis-ffi`) + header-only C++ wrapper (M5) |
+| 2 | Python | Bindings over the C ABI (or PyO3 over the Rust crates) with an idiomatic API; vectors run under pytest |
+| 2 | Go | cgo bindings over the C ABI |
+| 2 | Java / C# | Panama (FFM) or JNI / P/Invoke over the C ABI |
+| 3 | C (native) | Full native implementation of this specification; same header (CABI-070) |
+| 3 | C++ (native) | Full native implementation; same C++ wrapper API (CABI-072) |
+
+Every phase is gated on passing the shared vector suite (TV-*).

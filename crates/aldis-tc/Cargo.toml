@@ -1,0 +1,19 @@
+[package]
+name = "aldis-tc"
+description = "CCSDS 232.0-B-4 TC Space Data Link Protocol frame codec and CLCW"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+aldis-core = { path = "../aldis-core", default-features = false }
+
+[features]
+alloc = ["aldis-core/alloc"]
+std = ["alloc", "aldis-core/std"]
+
+[lints]
+workspace = true

@@ -1,0 +1,91 @@
+# 07 — Conformance test vectors
+
+The vectors are the **contract between implementations**. The Rust reference implementation, the C ABI, every language binding, and the future native C/C++ implementations SHALL all pass the same files. They live in [`../test-vectors/`](../test-vectors/).
+
+## 1. Layout
+
+```
+test-vectors/
+  schema/            JSON Schemas for each vector kind
+  core/              crc16.json, oid.json, counters.json
+  time/              cuc.json, cds.json, ccs.json, ascii.json
+  spp/  epp/  tm/  tc/  aos/  uslp/
+  cop1/              fop1_table.json, farm1_table.json, scenarios/*.json
+  link/              packet_generator/*.json, extractor/*.json, mux/*.json, segmenter/*.json
+```
+
+## 2. Codec vectors
+
+```json
+{
+  "kind": "codec",
+  "standard": "133.0-B-2",
+  "cases": [
+    {
+      "id": "spp-decode-001",
+      "requirements": ["SPP-002", "SPP-009"],
+      "description": "Telemetry packet, no secondary header, 1-octet data field",
+      "operation": "decode",
+      "mode": "strict",
+      "config": {},
+      "input_hex": "0001C0000000AB",
+      "expect": {
+        "ok": true,
+        "consumed": 7,
+        "fields": { "version": 0, "packet_type": "tm", "sec_hdr_flag": false, "apid": 1,
+                    "seq_flags": "unsegmented", "seq_count": 0, "data_len": 1 },
+        "anomalies": []
+      }
+    },
+    {
+      "id": "spp-decode-err-001",
+      "requirements": ["SPP-001"],
+      "operation": "decode",
+      "input_hex": "2001C0000000AB",
+      "expect": { "ok": false, "error": "UnsupportedVersion" }
+    }
+  ]
+}
+```
+
+The hex strings in the illustration above are examples of the format. Real vector content SHALL be produced and checked as described in §4.
+
+| ID | Requirement | Source | Verif. |
+|---|---|---|---|
+| TV-001 | Each codec case SHALL specify `operation` (`decode`, `encode`, `roundtrip`, `peek_length`, `validate`), `mode`, `config` (managed parameters, JSON), the input, and the expected outcome: fields + consumed length + anomalies, or the error kind from the [error catalogue](03-api-model.md#9-error-catalogue). | — | I |
+| TV-002 | Encode cases SHALL give expected output as exact hex. Decode cases SHALL list every field the view exposes. | API-020 | I |
+| TV-003 | Every case SHALL list the requirement IDs it verifies (feeds VER-020). | VER-020 | A |
+
+## 3. Engine scenario vectors
+
+```json
+{
+  "kind": "engine-scenario",
+  "engine": "fop1",
+  "config": { "frame_target": "tc", "scid": 42, "vcid": 1, "t1_initial_us": 2000000,
+              "transmission_limit": 3, "timeout_type": 0, "k": 8, "fecf": true },
+  "steps": [
+    { "at_us": 0,       "input": { "directive": "initiate_ad_without_clcw_check" },
+      "expect": [ { "event": "directive_notify", "handle": 1, "type": "accept" },
+                  { "event": "directive_notify", "handle": 1, "type": "positive_confirm" } ],
+      "expect_state": "S1" },
+    { "at_us": 10,      "input": { "request_ad": "AABBCC" },
+      "expect": [ { "transmit": { "kind": "AD", "ns": 0, "frame_hex": "…" } } ],
+      "expect_timeout_us": 2000010 }
+  ]
+}
+```
+
+| ID | Requirement | Source | Verif. |
+|---|---|---|---|
+| TV-010 | Scenario steps SHALL supply an absolute `at_us` instant and one input. They SHALL list the **complete, ordered** set of outputs expected before the next step: transmits, deliveries, and events. They MAY assert state and the next timeout. | GEN-030 | I |
+| TV-011 | The state-table vectors (`fop1_table.json`, `farm1_table.json`) SHALL contain one case per table cell. Each case gives a setup sequence that reaches the cell's state, the triggering event, and the expected actions and next state (COP-005). | COP-005 | V |
+| TV-012 | Harnesses SHALL fail on any **unexpected** output, not only on missing ones. | — | T |
+
+## 4. Provenance
+
+| ID | Requirement | Source | Verif. |
+|---|---|---|---|
+| TV-020 | Each vector file SHALL record its provenance: `blue-book-example`, `hand-derived` (with a worked derivation note), `cross-checked` (with the independent implementation and version), or `fuzz-regression`. | VER-040 | I |
+| TV-021 | Vectors SHALL be immutable once released. Corrections SHALL add a new case and mark the old one `superseded`, with a reason. | — | I |
+| TV-022 | Seed vectors already verified during specification work: `core/crc16.json` (`"123456789"` → `29B1`, CMN-002) and `core/oid.json` (first 20 octets, CMN-020). | CMN-002, CMN-020 | V |

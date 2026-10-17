@@ -1,0 +1,19 @@
+# 09 — Open issues
+
+Decisions and verifications that are still pending. Each item names its owner (to be assigned) and the requirements it affects.
+
+| ID | Issue | Affects | Proposed resolution / default | Status |
+|---|---|---|---|---|
+| OI-01 | **License.** | all crates | **MIT** for all crates, test vectors, and documentation (`code/LICENSE`) | Resolved |
+| OI-02 | **Crate names.** | all | Project and crate prefix **`aldis`**: crates `aldis-*` (facade `aldis`), C prefix `aldis_` / `ALDIS_`, header `include/aldis/aldis.h`, C library `libaldis_ffi`. `aldis`, `aldis-core`, `aldis-ffi`, `aldis-tm` were unclaimed on crates.io and `aldis` on PyPI as of 2026-10-16. Reserve them before first publish. | Resolved (reserve names) |
+| OI-03 | **Repository hosting, domain, trademark.** | — | Repository: <https://github.com/kscharpf/aldis> (root = `code/`, CI on GitHub Actions). Still open: domain and a trademark search for "Aldis" | Partly resolved |
+| OI-04 | **AOS Issue ≤4 M_PDU format.** AOS-003 assumes 5 spare bits + 11-bit FHP (`0x7FF`/`0x7FE`) for Issue ≤4. 732.0-B-4 is superseded and not in the downloaded set (Silver Books). | AOS-003 | Download 732.0-B-4 from the CCSDS Silver Books and confirm before implementing `Issue4Compatible` | **Verify** |
+| OI-05 | **USLP TFDF header length.** 732.1 §4.1.4.2.4.1 calls the pointer "optional" and "used only" for rules `000`/`001`/`010`. USLP-005 interprets this as *present iff rule ∈ {000, 001, 010}*. | USLP-005 | Confirm against the USLP Green Book / CCSDS SLS-SLP WG and an independent implementation; if confirmed, cite the confirmation | **Verify** |
+| OI-06 | **SANA registries.** UPID values (USLP), Encapsulation Protocol IDs, Packet Version Numbers, and Time Systems must come from SANA, not from memory. | USLP-007, EPP-010, LNK-010 | Add a `tools/sana-import` step that fetches registries into generated Rust tables with recorded retrieval dates | Open |
+| OI-07 | **Toolchain.** | RS-001, RS-002 | Pinned to stable **Rust 1.99.1** (released 2026-10-15) in `rust-toolchain.toml`, with the embedded targets of the CI matrix. MSRV = 1.99.1 (single qualified compiler). Lower the MSRV only if a mission needs an older qualified compiler. | Resolved |
+| OI-08 | **LEON/SPARC support.** `sparc-unknown-none-elf` is Rust tier 3. | VER (CI matrix) | Treat as best-effort in v1; the native C implementation (phase 3) is the primary LEON path if Rust support is insufficient | Open |
+| OI-09 | **MC/DC coverage and certification standard.** The mission-grade target excludes MC/DC. | VER-024 | Decide per first customer mission (NPR 7150.2 / ECSS / DO-178C) | Deferred |
+| OI-10 | **Leap seconds / UTC↔TAI.** | TIME §6 | `LeapSecondTable` trait in v1.1 with caller-supplied table | Deferred to v1.1 |
+| OI-11 | **TM idle strategy when no packets are available.** OID frame vs. frame containing an Idle Packet. Both are allowed (132.0 §4.1.4.6 vs §4.1.4.3). | LNK-014, LNK-030 | Make it a per-VC policy; default OID frame on the dedicated idle VC per 132.0 note 2 | Open |
+| OI-12 | **Minimum sync/coding in v1.** v1 excludes 131.x/231.0, but ASM/CLTU/randomizer support is small and makes v1 directly usable with radios. | scope | Proposed for v1.1 (see [roadmap](08-roadmap.md)); could be pulled into v1 | Decide |
+| OI-13 | **Python binding route.** C ABI + cffi, or PyO3 directly on the Rust crates. | roadmap phase 2 | PyO3 gives a better API; the C ABI keeps one binding surface. Decide at phase 2 | Deferred |

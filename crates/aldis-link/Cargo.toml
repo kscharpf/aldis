@@ -1,0 +1,31 @@
+[package]
+name = "aldis-link"
+description = "Sans-I/O sending and receiving engines for CCSDS packets and frames"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+aldis-core = { path = "../aldis-core", default-features = false }
+aldis-spp = { path = "../aldis-spp", default-features = false, optional = true }
+aldis-epp = { path = "../aldis-epp", default-features = false, optional = true }
+aldis-tm = { path = "../aldis-tm", default-features = false, optional = true }
+aldis-tc = { path = "../aldis-tc", default-features = false, optional = true }
+aldis-aos = { path = "../aldis-aos", default-features = false, optional = true }
+aldis-uslp = { path = "../aldis-uslp", default-features = false, optional = true }
+
+[features]
+spp = ["dep:aldis-spp"]
+epp = ["dep:aldis-epp"]
+tm = ["dep:aldis-tm"]
+tc = ["dep:aldis-tc"]
+aos = ["dep:aldis-aos"]
+uslp = ["dep:aldis-uslp"]
+alloc = ["aldis-core/alloc"]
+std = ["alloc", "aldis-core/std"]
+
+[lints]
+workspace = true

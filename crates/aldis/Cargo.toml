@@ -1,0 +1,40 @@
+[package]
+name = "aldis"
+description = "Facade re-exporting the Aldis crates behind feature flags"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+aldis-core = { path = "../aldis-core", default-features = false, optional = true }
+aldis-time = { path = "../aldis-time", default-features = false, optional = true }
+aldis-spp = { path = "../aldis-spp", default-features = false, optional = true }
+aldis-epp = { path = "../aldis-epp", default-features = false, optional = true }
+aldis-tm = { path = "../aldis-tm", default-features = false, optional = true }
+aldis-tc = { path = "../aldis-tc", default-features = false, optional = true }
+aldis-aos = { path = "../aldis-aos", default-features = false, optional = true }
+aldis-uslp = { path = "../aldis-uslp", default-features = false, optional = true }
+aldis-link = { path = "../aldis-link", default-features = false, optional = true }
+aldis-cop1 = { path = "../aldis-cop1", default-features = false, optional = true }
+aldis-framework = { path = "../aldis-framework", default-features = false, optional = true }
+
+[features]
+default = ["core"]
+core = ["dep:aldis-core"]
+time = ["dep:aldis-time"]
+spp = ["dep:aldis-spp"]
+epp = ["dep:aldis-epp"]
+tm = ["dep:aldis-tm"]
+tc = ["dep:aldis-tc"]
+aos = ["dep:aldis-aos"]
+uslp = ["dep:aldis-uslp"]
+link = ["dep:aldis-link"]
+cop1 = ["dep:aldis-cop1"]
+framework = ["dep:aldis-framework"]
+full = ["core", "time", "spp", "epp", "tm", "tc", "aos", "uslp", "link", "cop1", "framework"]
+
+[lints]
+workspace = true

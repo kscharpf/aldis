@@ -1,0 +1,11 @@
+# Pinned stable toolchain (RS-001, OI-07). Nightly is used only for tooling (RS-002).
+[toolchain]
+channel = "1.99.1"
+profile = "minimal"
+components = ["clippy", "rustfmt", "llvm-tools"]
+# Bare-metal targets from the CI matrix (docs/06-verification.md §4).
+targets = [
+    "thumbv7em-none-eabihf",
+    "armv7r-none-eabihf",
+    "riscv32imac-unknown-none-elf",
+]

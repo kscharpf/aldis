@@ -1,0 +1,23 @@
+[package]
+name = "aldis-cop1"
+description = "CCSDS 232.1-B-2 COP-1 (FOP-1 and FARM-1) as sans-I/O engines"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+aldis-core = { path = "../aldis-core", default-features = false }
+aldis-tc = { path = "../aldis-tc", default-features = false }
+aldis-uslp = { path = "../aldis-uslp", default-features = false, optional = true }
+
+[features]
+default = ["tc"]
+tc = []
+uslp = ["dep:aldis-uslp"]
+std = ["aldis-core/std"]
+
+[lints]
+workspace = true

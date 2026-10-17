@@ -1,0 +1,19 @@
+[package]
+name = "aldis-uslp"
+description = "CCSDS 732.1-B-3 Unified Space Data Link Protocol frame codec"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+aldis-core = { path = "../aldis-core", default-features = false }
+
+[features]
+alloc = ["aldis-core/alloc"]
+std = ["alloc", "aldis-core/std"]
+
+[lints]
+workspace = true

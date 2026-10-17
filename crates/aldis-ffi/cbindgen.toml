@@ -1,0 +1,15 @@
+# cbindgen configuration (CABI-002, CABI-003). Generate with:
+#   cbindgen --config cbindgen.toml --crate aldis-ffi --output include/aldis/aldis.h
+language = "C"
+cpp_compat = true
+include_guard = "ALDIS_H"
+sys_includes = ["stdint.h", "stddef.h", "stdbool.h"]
+no_includes = true
+style = "type"
+
+[export]
+prefix = ""
+
+[enum]
+rename_variants = "ScreamingSnakeCase"
+prefix_with_name = true

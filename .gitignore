@@ -1,0 +1,6 @@
+# Build output
+/target/
+
+# CCSDS documents are fetched locally (specs/fetch.sh), never committed
+/specs/pdf/
+*.pdf

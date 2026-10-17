@@ -1,0 +1,51 @@
+[workspace]
+resolver = "3"
+members = [
+    "crates/aldis-core",
+    "crates/aldis-time",
+    "crates/aldis-spp",
+    "crates/aldis-epp",
+    "crates/aldis-tm",
+    "crates/aldis-tc",
+    "crates/aldis-aos",
+    "crates/aldis-uslp",
+    "crates/aldis-link",
+    "crates/aldis-cop1",
+    "crates/aldis-framework",
+    "crates/aldis",
+    "crates/aldis-ffi",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.99.1"        # RS-001: equals rust-toolchain.toml (OI-07)
+license = "MIT"                # OI-01 (resolved)
+repository = "https://github.com/kscharpf/aldis"
+
+# Lint set required by docs/profiles/rust.md §5 and docs/06-verification.md VER-001.
+# aldis-ffi defines its own table (unsafe "deny" instead of "forbid", GEN-071).
+[workspace.lints.rust]
+unsafe_code = "forbid"
+missing_docs = "deny"
+unreachable_pub = "warn"
+
+[workspace.lints.clippy]
+# Lint groups first (lowest priority) so the individual lints below can refine them.
+all = { level = "deny", priority = -1 }
+pedantic = { level = "deny", priority = -1 }
+# Selected restriction lints (GEN-020: no panics, bounded arithmetic).
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+indexing_slicing = "deny"
+arithmetic_side_effects = "deny"
+cast_possible_truncation = "deny"
+unreachable = "deny"
+todo = "deny"
+unimplemented = "deny"
+
+[profile.release]
+panic = "abort"
+lto = true
+codegen-units = 1

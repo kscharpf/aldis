@@ -1,0 +1,20 @@
+[package]
+name = "aldis-core"
+description = "Foundation types and shared algorithms for Aldis"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+
+
+[features]
+alloc = []
+std = ["alloc"]
+crc-table = []
+
+[lints]
+workspace = true

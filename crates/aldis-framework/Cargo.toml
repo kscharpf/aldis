@@ -1,0 +1,23 @@
+[package]
+name = "aldis-framework"
+description = "Optional framework: transport/clock traits and protocol stacks driving the engines"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+aldis-core = { path = "../aldis-core", default-features = false }
+aldis-link = { path = "../aldis-link", default-features = false }
+aldis-cop1 = { path = "../aldis-cop1", default-features = false }
+
+[features]
+std = ["aldis-core/std"]
+std-udp = ["std"]
+std-tcp = ["std"]
+trace = []
+
+[lints]
+workspace = true

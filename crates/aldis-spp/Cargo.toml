@@ -1,0 +1,21 @@
+[package]
+name = "aldis-spp"
+description = "CCSDS 133.0-B-2 Space Packet Protocol codec"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+aldis-core = { path = "../aldis-core", default-features = false }
+aldis-time = { path = "../aldis-time", default-features = false, optional = true }
+
+[features]
+time = ["dep:aldis-time"]
+alloc = ["aldis-core/alloc"]
+std = ["alloc", "aldis-core/std"]
+
+[lints]
+workspace = true

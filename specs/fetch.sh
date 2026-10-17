@@ -1,0 +1,67 @@
+#!/usr/bin/env bash
+# Download the CCSDS reference documents listed in manifest.tsv into specs/pdf/
+# and verify each against its SHA-256 checksum. The documents are published by
+# CCSDS (https://ccsds.org) and are not redistributed in this repository.
+#
+# Usage: specs/fetch.sh [--all | --group v1|ref] [--verify-only]
+#   default: --group v1 (the standards implemented in v1)
+set -euo pipefail
+
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+manifest="$here/manifest.tsv"
+dest="$here/pdf"
+group="v1"
+verify_only=0
+
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --all) group="" ;;
+        --group) shift; group="${1:?--group needs a value}" ;;
+        --verify-only) verify_only=1 ;;
+        -h|--help) sed -n '2,8p' "$0"; exit 0 ;;
+        *) echo "unknown option: $1" >&2; exit 2 ;;
+    esac
+    shift
+done
+
+if command -v sha256sum >/dev/null 2>&1; then
+    sha256() { sha256sum "$1" | cut -d' ' -f1; }
+elif command -v shasum >/dev/null 2>&1; then
+    sha256() { shasum -a 256 "$1" | cut -d' ' -f1; }
+else
+    echo "error: need sha256sum or shasum" >&2; exit 2
+fi
+if [ "$verify_only" -eq 0 ] && ! command -v curl >/dev/null 2>&1; then
+    echo "error: need curl" >&2; exit 2
+fi
+
+mkdir -p "$dest"
+ok=0; failed=0; mismatched=0
+
+while IFS=$'\t' read -r g doc file sum url title; do
+    case "$g" in ''|'#'*) continue ;; esac
+    if [ -n "$group" ] && [ "$g" != "$group" ]; then continue; fi
+    target="$dest/$file"
+
+    if [ "$verify_only" -eq 0 ] && { [ ! -f "$target" ] || [ "$(sha256 "$target")" != "$sum" ]; }; then
+        printf 'fetch   %-24s %s\n' "$doc" "$file"
+        if ! curl -fsSL --retry 3 -o "$target.part" "$url"; then
+            rm -f "$target.part"
+            printf 'FAILED  %-24s download failed; get "%s" manually (see specs/README.md)\n' "$doc" "$title"
+            failed=$((failed + 1)); continue
+        fi
+        mv "$target.part" "$target"
+    fi
+
+    if [ ! -f "$target" ]; then
+        printf 'MISSING %-24s %s\n' "$doc" "$file"; failed=$((failed + 1))
+    elif [ "$(sha256 "$target")" = "$sum" ]; then
+        printf 'ok      %-24s %s\n' "$doc" "$file"; ok=$((ok + 1))
+    else
+        printf 'CHANGED %-24s %s: checksum differs from manifest (CCSDS may have issued an editorial update)\n' "$doc" "$file"
+        mismatched=$((mismatched + 1))
+    fi
+done < "$manifest"
+
+echo "verified: $ok, failed/missing: $failed, checksum changed: $mismatched"
+[ "$failed" -eq 0 ] && [ "$mismatched" -eq 0 ]

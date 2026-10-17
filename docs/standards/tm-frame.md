@@ -1,0 +1,58 @@
+# TM Transfer Frame — CCSDS 132.0-B-3
+
+**Crate:** `aldis-tm` · **Reference:** `specs/pdf/132x0b3.pdf` ([how to download](../../specs/README.md))
+
+## 1. Wire format (§4.1)
+
+```
+Primary Header (6) ‖ [Secondary Header (2–64)] ‖ [Security Header] ‖ Data Field ‖ [Security Trailer] ‖ [OCF (4)] ‖ [FECF (2)]
+```
+
+| Bits | Field | Size | Notes |
+|---|---|---|---|
+| 0–1 | Transfer Frame Version Number | 2 | `00` |
+| 2–11 | Spacecraft ID | 10 | |
+| 12–14 | Virtual Channel ID | 3 | 0–7 |
+| 15 | OCF Flag | 1 | static per MC/VC |
+| 16–23 | Master Channel Frame Count | 8 | mod 256 |
+| 24–31 | Virtual Channel Frame Count | 8 | mod 256 |
+| 32 | Secondary Header Flag | 1 | static per MC/VC |
+| 33 | Synchronization Flag | 1 | 0 = packets/idle (octet-synchronized, forward-ordered), 1 = VCA_SDU |
+| 34 | Packet Order Flag | 1 | `0` (reserved) when Sync = 0; undefined when Sync = 1 |
+| 35–36 | Segment Length ID | 2 | `11` when Sync = 0; undefined when Sync = 1 |
+| 37–47 | First Header Pointer | 11 | offset of first packet header; `0x7FF` no packet starts; `0x7FE` OID frame |
+
+Secondary Header: ID octet = version `00` (2 bits) ‖ length − 1 (6 bits), followed by 1–63 data octets (total 2–64, fixed per MC/VC).
+
+## 2. Configuration (managed parameters, §5)
+
+| Level | Parameters |
+|---|---|
+| Physical channel | frame length (fixed), FECF present, valid SCIDs, MC multiplexing policy |
+| Master channel | SCID, valid VCIDs (0–7), MC_FSH present/length (2–64), MC_OCF present |
+| Virtual channel | VCID, data field content (Packets / VCA_SDU), VC_FSH present/length, VC_OCF present, `SecurityLayout` |
+| Packet transfer | valid PVNs, max packet length, deliver incomplete packets |
+
+## 3. Requirements
+
+| ID | Requirement | Source | Verif. |
+|---|---|---|---|
+| TM-001 | The decoder SHALL require the configured fixed frame length and the configured FECF presence (API-012). | §4.1.1.2, §4.1.6.1.2 | V |
+| TM-002 | The decoder SHALL reject TFVN ≠ `00` with `UnsupportedVersion`. | §4.1.2.2.2.2 | V |
+| TM-003 | If the Secondary Header Flag is set, the decoder SHALL read the FSH length from its ID octet. It SHALL reject FSH version ≠ `00`, and an FSH that would overrun the frame. | §4.1.3.2 | V |
+| TM-004 | If the OCF Flag is set, the decoder SHALL expose the 4 OCF octets ([common §2](common-link-features.md#2-operational-control-field)). | §4.1.5 | V |
+| TM-005 | If the FECF is configured, the decoder SHALL verify it before returning a view and SHALL fail with `CrcMismatch` on error. A separate `decode_unchecked` SHALL exist for diagnostics. | §4.1.6 | V |
+| TM-006 | The data field length SHALL be computed as frame length − 6 − FSH − security header − security trailer − OCF − FECF (CMN-040). | §4.1.4.2, §6.3.5.2 | V |
+| TM-007 | With Sync Flag = 0, strict mode SHALL require Packet Order Flag = 0 and Segment Length ID = `11`. Lenient mode SHALL flag deviations. With Sync Flag = 1, these fields SHALL be exposed raw and not validated. | §4.1.2.7.4–5 | V |
+| TM-008 | The view SHALL classify the FHP as `PacketStartsAt(n)` (n < data field length), `NoPacketStart` (`0x7FF`), or `OnlyIdleData` (`0x7FE`). Any other n ≥ data field length SHALL be `Malformed` in strict mode. | §4.1.2.7.6 | V |
+| TM-009 | The writer SHALL compute the FSH ID octet, the OCF flag (from configuration), and the FECF. It SHALL accept MC/VC frame counts, the sync flag, and the FHP as inputs (counts are owned by engines, [04](../04-engines.md)). | §4.1.2–6 | V |
+| TM-010 | An OID writer SHALL set FHP = `0x7FE` and fill the data field from a supplied `OidGenerator` (CMN-020). It SHALL use a VCID that is configured for packets. FSH and OCF MAY carry valid data. | §4.1.4.6 | V |
+| TM-011 | `validate(&MasterChannelConfig)` SHALL check SCID and VCID against the configuration. It SHALL check that the OCF Flag and FSH presence and length match the configured MC/VC parameters, and that the Sync Flag matches the VC data field content. | §5; §4.1.2.4.3; §4.1.2.7.3.3 | V |
+
+## 4. Anomaly flags (lenient mode)
+
+`TmAnomaly::{PacketOrderFlagSet, SegmentLengthIdNot11, FhpBeyondDataField}`
+
+## 5. Test-vector categories
+
+`tm/minimal` (no FSH/OCF/FECF), `tm/fsh_ocf_fecf`, `tm/fhp_values`, `tm/oid_sequence` (two consecutive OID frames continue the PN sequence), `tm/security_layout` (FixedPatternSecurity), `tm/invalid`.

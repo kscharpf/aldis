@@ -1,0 +1,19 @@
+[package]
+name = "aldis-time"
+description = "CCSDS 301.0-B-4 Time Code Formats (CUC, CDS, CCS, ASCII)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+aldis-core = { path = "../aldis-core", default-features = false }
+
+[features]
+alloc = ["aldis-core/alloc"]
+std = ["alloc", "aldis-core/std"]
+
+[lints]
+workspace = true
