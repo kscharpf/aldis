@@ -1,0 +1,14 @@
+# Coverage waivers (VER-024), checked by `cargo xtask coverage`.
+#
+# The gate requires 100 % of regions, functions, lines, and branches. Each waiver allows a
+# number of misses for one crate and metric, and says why the code cannot be covered. A
+# waiver larger than the actual misses also fails, so waivers shrink as tests improve.
+# Waivers are reviewed per release.
+#
+# [[waiver]]
+# crate = "aldis-core"
+# metric = "branches"          # regions | functions | lines | branches
+# count = 1
+# justification = "src/x.rs:12 — why this cannot be reached by a test"
+#
+# No waivers: aldis-core is fully covered.

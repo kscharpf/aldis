@@ -1,0 +1,55 @@
+[package]
+name = "aldis-exerciser"
+description = "Bare-metal exerciser: panic-freedom link check (VER-010) and on-target vector run"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.99.1"
+license = "MIT"
+publish = false
+build = "build.rs"
+
+# Separate workspace: a no_std/no_main binary cannot be built for the host, so it is not a
+# member of the main workspace (docs/milestones/m0-foundations.md WP-5).
+[workspace]
+
+[[bin]]
+name = "exerciser"
+path = "src/main.rs"
+test = false
+bench = false
+
+[dependencies]
+aldis-core = { path = "../crates/aldis-core", default-features = false, features = ["crc-table", "test-hooks"] }
+
+[build-dependencies]
+aldis-testkit = { path = "../crates/aldis-testkit" }
+serde_json = "1.0.154"
+
+[features]
+# Canary: plants a reachable panic so CI can prove the link check fails when it should.
+inject-panic = []
+
+[profile.release]
+panic = "abort"
+lto = true
+codegen-units = 1
+opt-level = "s"
+
+[profile.dev]
+panic = "abort"
+
+[lints.rust]
+# `#[unsafe(no_mangle)]`, the vector table section, and the semihosting `bkpt` need unsafe;
+# each use carries #[expect] and a SAFETY comment.
+unsafe_code = "deny"
+missing_docs = "deny"
+
+[lints.clippy]
+all = { level = "deny", priority = -1 }
+pedantic = { level = "deny", priority = -1 }
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+indexing_slicing = "deny"
+arithmetic_side_effects = "deny"
+undocumented_unsafe_blocks = "deny"

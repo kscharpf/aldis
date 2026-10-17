@@ -1,0 +1,306 @@
+//! Calls every public `aldis-core` API and checks every embedded vector case (VER-010).
+//!
+//! Inputs pass through `black_box`, so the optimizer cannot fold a case to a constant and
+//! drop panic paths that other inputs could reach. Failures are counted, never panicked on.
+
+use core::fmt::Write as _;
+use core::hint::black_box as bb;
+
+use aldis_core::bits;
+use aldis_core::container::{ByteQueue, FixedQueue, FixedVec};
+use aldis_core::counter::{Continuity, ModCounter};
+use aldis_core::crc::{crc16, crc16_bitwise, crc16_table, syndrome, verify_fecf, write_fecf};
+use aldis_core::error::{Error, ErrorDetail, ErrorKind, FieldId};
+use aldis_core::ids::{Apid, FrameSeqNum, MapId, PacketVersion, SeqCount, SpacecraftId, VcId};
+use aldis_core::layout::{FrameLayout, LayoutSpec};
+use aldis_core::oid::{OidGenerator, OidGeneratorGalois};
+use aldis_core::security::{
+    FixedPatternSecurity, FrameCtx, NoSecurity, Protocol, SecuredFields, SecurityHook,
+    SecurityLayout,
+};
+use aldis_core::time::{Duration, Instant};
+
+use crate::cases::{BITS_GET, BITS_SET, COUNTERS, CRC, CounterExpect, ERRORS, LAYOUTS, OID_START};
+
+/// Failure counter.
+#[derive(Default)]
+pub struct Tally {
+    pub cases: u32,
+    pub failures: u32,
+}
+
+impl Tally {
+    fn check(&mut self, ok: bool) {
+        self.cases = self.cases.saturating_add(1);
+        if !ok {
+            self.failures = self.failures.saturating_add(1);
+        }
+    }
+}
+
+/// A fixed-size `fmt::Write` sink (no allocation).
+struct Text {
+    buf: [u8; 96],
+    len: usize,
+}
+
+impl core::fmt::Write for Text {
+    fn write_str(&mut self, s: &str) -> core::fmt::Result {
+        let end = self.len.checked_add(s.len()).ok_or(core::fmt::Error)?;
+        self.buf
+            .get_mut(self.len..end)
+            .ok_or(core::fmt::Error)?
+            .copy_from_slice(s.as_bytes());
+        self.len = end;
+        Ok(())
+    }
+}
+
+fn vectors(t: &mut Tally) {
+    for c in CRC {
+        t.check(crc16(bb(c.input)) == c.value);
+        t.check(crc16_bitwise(bb(c.input)) == c.value);
+        t.check(crc16_table(bb(c.input)) == c.value);
+    }
+    let (mut fib, mut gal) = (OidGenerator::new(), OidGeneratorGalois::new());
+    for &expected in OID_START {
+        t.check(fib.next_octet() == expected);
+        t.check(gal.next_octet() == expected);
+    }
+    for c in ERRORS {
+        let kind = ErrorKind::from_name(bb(c.name));
+        t.check(kind.map(ErrorKind::code) == Some(c.code));
+        t.check(
+            kind.is_some_and(|k| ErrorKind::from_code(k.code()) == Some(k) && k.name() == c.name),
+        );
+    }
+    for c in BITS_GET {
+        t.check(bits::get(bb(c.input), bb(c.offset), bb(c.width)).ok() == c.expect);
+    }
+    for c in BITS_SET {
+        let mut buf = [0_u8; 16];
+        let Some(dst) = buf.get_mut(..c.input.len()) else {
+            t.check(false);
+            continue;
+        };
+        dst.copy_from_slice(c.input);
+        let r = bits::set(bb(dst), bb(c.offset), bb(c.width), bb(c.value));
+        match c.expect {
+            Some(out) => t.check(r.is_ok() && *dst == *out),
+            None => {
+                t.check(r.is_err_and(|e| e.kind() == ErrorKind::OutOfRange) && *dst == *c.input);
+            }
+        }
+    }
+    for c in COUNTERS {
+        let counter = ModCounter::new(bb(c.bits), bb(c.a));
+        let ok = match (&c.expect, c.classify) {
+            (CounterExpect::OutOfRange, _) => {
+                counter.is_err() || counter.is_ok_and(|k| k.classify(bb(c.b)).is_err())
+            }
+            (CounterExpect::Value(v), false) => counter.is_ok_and(|k| k.next().value() == *v),
+            (expect, true) => {
+                counter
+                    .and_then(|k| k.classify(bb(c.b)))
+                    .is_ok_and(|got| match (expect, got) {
+                        (CounterExpect::InSequence, Continuity::InSequence)
+                        | (CounterExpect::Repeat, Continuity::Repeat)
+                        | (CounterExpect::Backwards, Continuity::Backwards) => true,
+                        (CounterExpect::Gap(m), Continuity::Gap { missing }) => *m == missing,
+                        _ => false,
+                    })
+            }
+            _ => false,
+        };
+        t.check(ok);
+    }
+    for c in LAYOUTS {
+        let [frame_len, primary_header_len, secondary_len, sh, st] = c.sizes;
+        let got = SecurityLayout::new(bb(sh), bb(st)).and_then(|security| {
+            FrameLayout::compute(&LayoutSpec {
+                frame_len: bb(frame_len),
+                primary_header_len: bb(primary_header_len),
+                secondary_len: bb(secondary_len),
+                security,
+                ocf: bb(c.ocf),
+                fecf: bb(c.fecf),
+            })
+        });
+        match (got, c.expect) {
+            (Ok(l), Some(expected)) => {
+                let mut flat = [0_usize; 14];
+                for (pair, r) in flat.as_chunks_mut::<2>().0.iter_mut().zip(l.ranges()) {
+                    pair.copy_from_slice(&[r.start, r.end]);
+                }
+                t.check(flat == expected);
+            }
+            (Err(e), None) => t.check(e.kind() == ErrorKind::InvalidConfig),
+            _ => t.check(false),
+        }
+    }
+}
+
+fn apis_errors_ids(tally: &mut Tally) {
+    // error
+    let err0 = Error::out_of_range(bb("apid"), 2047, bb(4096))
+        .with_field(FieldId::new("apid"))
+        .with_detail(ErrorDetail::Expected {
+            expected: 2047,
+            found: 4096,
+        });
+    tally.check(
+        err0.kind() == ErrorKind::OutOfRange && err0.field().map(FieldId::name) == Some("apid"),
+    );
+    tally.check(err0.detail() != ErrorDetail::None);
+    tally.check(Error::from(ErrorKind::Malformed) == Error::new(ErrorKind::Malformed));
+    for err in [
+        err0,
+        Error::buffer_too_small(bb(9)),
+        Error::incomplete(bb(3)),
+        Error::new(ErrorKind::Security),
+    ] {
+        let mut text = Text {
+            buf: [0; 96],
+            len: 0,
+        };
+        tally.check(write!(text, "{err}").is_ok() && text.len > 0);
+    }
+    tally.check(ErrorKind::ALL.len() == 17);
+
+    // ids
+    tally.check(SpacecraftId::<10>::new(bb(1023)).map(SpacecraftId::get) == Some(1023));
+    tally.check(SpacecraftId::<8>::try_from(bb(256_u16)).is_err());
+    tally.check(SpacecraftId::<16>::try_from(bb(7_u16)).map(u16::from) == Ok(7));
+    tally.check(VcId::<3>::new(bb(8)).is_none() && VcId::<6>::try_from(bb(63_u8)).is_ok());
+    tally.check(MapId::<4>::new(bb(15)).map(u8::from) == Some(15) && MapId::<6>::MAX == 63);
+    tally.check(Apid::new(bb(2047)).is_some_and(Apid::is_idle) && Apid::IDLE.get() == 2047);
+    tally.check(Apid::try_from(bb(4096_u16)).is_err());
+    tally.check(SeqCount::new(bb(16383)).map(|s| s.next().get()) == Some(0));
+    tally.check(SeqCount::try_from(bb(1_u16)).is_ok());
+    tally.check(FrameSeqNum(bb(255)).next() == FrameSeqNum(0));
+    tally.check(PacketVersion::new(bb(7)) == Some(PacketVersion::ENCAPSULATION));
+    tally.check(
+        PacketVersion::try_from(bb(9_u8)).is_err() && PacketVersion::SPACE_PACKET.get() == 0,
+    );
+}
+
+fn apis_time_crc_oid_counter(tally: &mut Tally) {
+    // time
+    let now = Instant::from_micros(bb(10));
+    let later =
+        now.saturating_add(Duration::from_millis(bb(2)).saturating_add(Duration::from_secs(bb(1))));
+    tally.check(
+        later.duration_since(now).as_micros() == 1_002_000
+            && now.duration_since(later) == Duration::ZERO,
+    );
+    tally.check(later.as_micros() == 1_002_010 && Duration::from_micros(bb(5)).as_micros() == 5);
+    tally.check(Duration::MAX.saturating_add(Duration::from_micros(bb(1))) == Duration::MAX);
+
+    // crc
+    let mut frame = [0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39, 0, 0];
+    tally.check(
+        write_fecf(bb(&mut frame)).is_ok()
+            && verify_fecf(bb(&frame)).is_ok()
+            && syndrome(bb(&frame)) == 0,
+    );
+    tally.check(verify_fecf(bb(&[0])).is_err() && write_fecf(bb(&mut [0])).is_err());
+
+    // oid
+    let mut fill = [0_u8; 5];
+    let mut gen_fib = OidGenerator::default();
+    gen_fib.fill(bb(&mut fill));
+    tally.check(fill.first() == Some(&0xFF) && gen_fib.next_bit() <= 1);
+    let mut gg = OidGeneratorGalois::default();
+    gg.fill(bb(&mut fill));
+    tally.check(gg.next_bit() <= 1);
+
+    // counter
+    if let Ok(mut counter) = ModCounter::new(bb(24), bb(16_777_215)) {
+        counter.increment();
+        tally.check(
+            counter.value() == 0 && counter.bits() == 24 && counter.distance_to(bb(5)) == Ok(5),
+        );
+    } else {
+        tally.check(false);
+    }
+}
+
+fn apis_containers_security(tally: &mut Tally) {
+    // containers
+    let mut queue: FixedQueue<u16, 4> = FixedQueue::default();
+    tally.check(
+        queue.push(bb(1)).is_ok()
+            && queue.peek() == Some(&1)
+            && queue.len() == 1
+            && !queue.is_full(),
+    );
+    tally.check(queue.pop() == Some(1) && queue.is_empty() && queue.capacity() == 4);
+    queue.clear();
+    let mut bytes: ByteQueue<64> = ByteQueue::default();
+    tally.check(
+        bytes.push(bb(&[1, 2, 3])).is_ok() && bytes.push(bb(&[4])).is_ok() && bytes.records() == 2,
+    );
+    tally.check(
+        bytes.peek_len() == Some(3)
+            && bytes.free() == 64 - 12
+            && bytes.capacity() == 64
+            && !bytes.is_empty(),
+    );
+    let mut out = [0_u8; 8];
+    tally.check(bytes.pop_into(bb(&mut out)) == Ok(Some(3)) && bytes.discard() == Some(1));
+    let mut vec: FixedVec<u8, 2> = FixedVec::default();
+    tally.check(
+        vec.push(bb(9)).is_ok() && vec.as_slice() == [9] && vec.len() == 1 && !vec.is_empty(),
+    );
+    tally.check(vec.pop() == Some(9));
+    vec.clear();
+
+    // security
+    let ctx = FrameCtx {
+        protocol: bb(Protocol::Uslp),
+        scid: 1,
+        vcid: 2,
+        map_id: Some(3),
+    };
+    let fields = SecuredFields {
+        header: 0..2,
+        data: 2..4,
+        trailer: 4..6,
+    };
+    let mut buf = [0_u8; 6];
+    tally.check(NoSecurity.protect(&ctx, bb(&mut buf), &fields).is_ok());
+    tally.check(NoSecurity.verify(&ctx, bb(&mut buf), &fields) == Ok(2..4));
+    let mut hook = FixedPatternSecurity;
+    tally.check(
+        hook.protect(&ctx, bb(&mut buf), &fields).is_ok()
+            && hook.verify(&ctx, bb(&mut buf), &fields).is_ok(),
+    );
+    let layout = SecurityLayout::new(bb(6), bb(16));
+    tally.check(layout == Ok(SecurityLayout::USLP_TRUNCATED) && SecurityLayout::NONE.is_none());
+    tally.check(layout.is_ok_and(|l| l.header_len() == 6 && l.trailer_len() == 16));
+    tally.check(SecurityLayout::new(bb(65), 0).is_err());
+}
+
+/// Runs everything; returns the tally.
+pub fn run() -> Tally {
+    let mut t = Tally::default();
+    vectors(&mut t);
+    apis_errors_ids(&mut t);
+    apis_time_crc_oid_counter(&mut t);
+    apis_containers_security(&mut t);
+    #[cfg(feature = "inject-panic")]
+    canary(&mut t);
+    t
+}
+
+/// Canary for the link check: a panic the optimizer cannot remove (feature `inject-panic`).
+#[cfg(feature = "inject-panic")]
+#[expect(
+    clippy::panic,
+    reason = "deliberate panic: the link check must fail with this feature"
+)]
+fn canary(t: &mut Tally) {
+    if bb(t.cases) == u32::MAX {
+        panic!("canary");
+    }
+}

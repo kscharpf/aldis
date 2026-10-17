@@ -29,7 +29,9 @@ code/
 │   ├── aldis             facade (feature-gated re-exports)
 │   ├── aldis-ffi         C ABI (staticlib/cdylib, cbindgen, build-time capacities)
 │   └── aldis-testkit     tooling: test-vector model, loader, runner (dev-only)
-├── xtask/                tooling: `cargo xtask help` (spec lint, trace, vectors, links, layers)
+├── xtask/                tooling: `cargo xtask help` (spec lint, trace, vectors, layers, symbols, coverage)
+├── exerciser/            bare-metal panic-freedom check and on-target vector run (separate workspace)
+├── fuzz/                 cargo-fuzz targets (separate workspace; run on the tooling nightly)
 └── test-vectors/         shared, language-neutral conformance vectors
 ```
 
@@ -43,6 +45,14 @@ cargo clippy --workspace --all-features                                     # li
 cargo check -p aldis --no-default-features --features full --target thumbv7em-none-eabihf   # bare metal (GEN-005)
 cargo build -p aldis-ffi --no-default-features --features panic-handler \
             --target thumbv7em-none-eabihf --release                        # C static library for bare metal
+```
+
+Nightly Rust is used only for tooling, at the date pinned in `tooling-nightly`:
+
+```sh
+cargo xtask coverage                                   # VER-024 gate; needs cargo-llvm-cov >= 0.9
+(cd exerciser && cargo run --release --target thumbv7em-none-eabihf)   # vectors under QEMU (stable)
+(cd fuzz && cargo +$(cat ../tooling-nightly) fuzz run crc_variants)    # needs cargo-fuzz
 ```
 
 ## License

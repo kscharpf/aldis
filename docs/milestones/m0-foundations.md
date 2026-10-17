@@ -69,7 +69,7 @@ WP-0 repo ──▶ WP-1 CI ──────────────▶ WP-6 c
 
 A separate `nightly.yml` runs on a schedule: fuzzing (WP-6), the big-endian bare-metal build (`cargo +nightly build -Z build-std=core --target armebv7r-none-eabihf`), mutation testing (`cargo-mutants`, VER-025, report only in M0), and `specs/fetch.sh --all --check-urls` against the live CCSDS site (HEAD requests only, nothing downloaded). That last job alerts when URLs go stale.
 
-**Status:** `fmt`, `clippy` (+ `cargo doc`), `test`, `no-std`, `big-endian`, `layers`, `deny`, and `nightly.yml` are implemented (`.github/workflows/`). `minimal-build` is covered for now by the `layers` job's dependency-closure check (symbol inspection follows in WP-2). `spec`, `exerciser`, and `coverage` are added with WP-2, WP-5, and WP-6.
+**Status:** all jobs are implemented (`.github/workflows/`): `fmt`, `clippy` (+ `cargo doc`), `test`, `no-std`, `big-endian`, `layers`, `deny`, `spec` (WP-2), `exerciser` (WP-5), and `coverage` (WP-6). `minimal-build` is part of the `layers` job: the dependency-closure check plus `cargo xtask symbols` (VER-031). `nightly.yml` runs the big-endian bare-metal build, stack-size reports, fuzzing, mutation testing, and the CCSDS URL check, all on the nightly pinned in `tooling-nightly` (OI-14).
 
 **Done when:** every job above passes on the skeleton, and a deliberate lint violation, panic, or formatting error each fail the right job (checked once, then reverted).
 
@@ -135,18 +135,26 @@ Notes from implementation:
 |---|---|
 | `exerciser/` (binary crate, `no_std`, `no_main`, workspace member excluded from default build): calls every public `aldis-core` API with the codegen'd vectors | crate |
 | Link-time panic proof: a `#[panic_handler]` calls `extern "C" { fn aldis_panic_is_unreachable() -> !; }`, which is never defined. A release build with `panic = "abort"` and LTO links only if no panic path survives | CI job `exerciser` |
-| Cortex-M run: `cortex-m-rt` + semihosting under `qemu-system-arm -machine mps2-an500`; exit code reports vector pass/fail | CI job |
+| Cortex-M run: semihosting under `qemu-system-arm -machine mps2-an386` (Cortex-M4F, matching `thumbv7em-none-eabihf`); exit code reports vector pass/fail | CI job |
 | Stack usage: record `-Z emit-stack-sizes` output (nightly tooling, RS-002) for `aldis-core` functions; publish as a CI artefact | VER-011 report |
 
 **Done when:** the exerciser links on all three bare-metal targets. Introducing an `unwrap()` into `aldis-core` makes the link fail (verified once).
+
+**Status (2026-10-16): implemented** on branch `m0/gates`. `exerciser/` is a separate workspace (a `no_main` binary cannot build for the host). It needs no runtime crate: a 15-entry vector table and the semihosting exit are written by hand, so the only dependency is `aldis-core`. `build.rs` generates the vector cases from `test-vectors/core/` with `aldis-testkit`. All 77 vector cases plus direct calls to every other public API, with inputs through `black_box` so nothing is constant-folded away. Release builds link on all three targets with zero Clippy findings. The `inject-panic` feature plants one reachable `unwrap()`; CI requires that build to fail on `aldis_panic_is_unreachable`, which it does on all three targets. Under QEMU the exerciser exits 0, and exits 1 when a vector is corrupted. Stack sizes: 19 functions after LTO, largest frame 552 bytes (thumbv7em).
 
 ### WP-6 Coverage and fuzzing gates (S) — VER-022, VER-024
 
 | Task | Output |
 |---|---|
-| `cargo llvm-cov` job: 100 % line and branch coverage required for `aldis-core`; waivers in `coverage-waivers.toml` with justification | CI gate |
+| `cargo llvm-cov` job: 100 % region, function, line, and branch coverage required for `aldis-core`; waivers in `coverage-waivers.toml` with justification | CI gate |
 | `fuzz/` (cargo-fuzz): targets `bits_roundtrip`, `crc_variants`, `oid_forms`, `counter_classify`, `container_model`, `layout_ranges` | targets |
 | `nightly.yml`: each target ≥ 10 CPU-minutes per night (≥ 1 CPU-hour before a release, VER-022); crashes open an issue automatically and become regression vectors | workflow |
+
+**Status (2026-10-16): implemented** on branch `m0/gates`.
+
+- **Coverage.** `cargo xtask coverage` runs `cargo llvm-cov --branch` (≥ 0.9) on the pinned tooling nightly. It gates all four metrics, because `cargo llvm-cov` has no branch threshold, and fails if no branch data is produced, so an old tool cannot pass it vacuously. Test modules carry `#[cfg_attr(coverage_nightly, coverage(off))]`, so only library code counts. Result: 784/784 regions, 145/145 functions, 680/680 lines, 60/60 branches, with no waivers. Planting one untested function and one oversized waiver each failed the gate. Two findings along the way: cargo-llvm-cov 0.6 with the older nightly reported no branch data at all; and objects left by an older build-directory layout were still passed to `llvm-cov` and showed up as misses, so the command starts from a clean `target/llvm-cov-target`.
+- **Fuzzing.** `fuzz/` is a separate workspace that builds and lints on stable (RS-002); only `cargo fuzz run` needs nightly. Each target checks `aldis-core` against an independent model (bit-by-bit fields, `u128` modular arithmetic, `VecDeque` containers, recomputed layouts) and checks that rejected inputs change nothing (GEN-042). Local smoke run: 20 s per target, 0.3–9 M executions each, no findings.
+- **Mutation testing** (VER-025, report only): nightly job `mutants`.
 
 ## 4. Exit criteria
 

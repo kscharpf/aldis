@@ -255,6 +255,7 @@ impl core::error::Error for Error {}
 pub type Result<T> = core::result::Result<T, Error>;
 
 #[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::{Error, ErrorDetail, ErrorKind, FieldId};
 
