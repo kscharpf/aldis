@@ -68,6 +68,9 @@ fn default_enabled_deps(features: &Value) -> BTreeSet<String> {
             } else if let Some((dep, _)) = entry.split_once('/') {
                 if !dep.ends_with('?') {
                     deps.insert(dep.to_owned());
+                    if table.contains_key(dep) && visited.insert(dep.to_owned()) {
+                        queue.push(dep.to_owned());
+                    }
                 }
             } else if table.contains_key(entry) {
                 if visited.insert(entry.to_owned()) {
@@ -230,6 +233,10 @@ mod tests {
             (
                 json!({ "default": ["a/std", "b?/std", "chain"], "chain": ["dep:c", "unexpanded"] }),
                 &["a", "c", "unexpanded"][..],
+            ),
+            (
+                json!({ "default": ["x/std"], "x": ["dep:x", "dep:y"] }),
+                &["x", "y"][..],
             ),
         ];
         for (features, expected) in cases {

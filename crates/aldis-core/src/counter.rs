@@ -5,7 +5,7 @@
 //! §4.1.2.12), and Space Packet sequence counts (14 bits, 133.0 §4.1.3.4.3). The width is a
 //! run-time value because USLP signals the count length in every frame header.
 
-use crate::error::{Error, Result, u8_to_u64};
+use crate::error::{Error, Result};
 
 /// Continuity of a received count relative to the previous one (CMN-031).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -63,7 +63,7 @@ impl ModCounter {
             return Err(Error::out_of_range("bits", 1, 0));
         }
         if bits > 64 {
-            return Err(Error::out_of_range("bits", 64, u8_to_u64(bits)));
+            return Err(Error::out_of_range("bits", 64, u64::from(bits)));
         }
         if value & !mask(bits) != 0 {
             return Err(Error::out_of_range("value", mask(bits), value));

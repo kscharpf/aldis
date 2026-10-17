@@ -8,7 +8,9 @@
 
 use core::ops::Range;
 
-use crate::error::{Error, ErrorKind, Result};
+use crate::error::{
+    Error, ErrorKind, Result, u8_to_usize, u16_to_usize, usize_to_u8, usize_to_u16,
+};
 
 /// Lengths of the Security Header and Trailer on one VC or MAP (API-070, API-071).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
@@ -38,41 +40,31 @@ impl SecurityLayout {
     ///
     /// # Errors
     /// `InvalidConfig` if the header exceeds 64 octets or the trailer exceeds 65 535 octets.
-    #[expect(
-        clippy::as_conversions,
-        clippy::cast_possible_truncation,
-        reason = "header_len <= 64 fits in u8; trailer_len <= 0xFFFF fits in u16"
-    )]
     pub const fn new(header_len: usize, trailer_len: usize) -> Result<SecurityLayout> {
-        if header_len > SecurityLayout::MAX_HEADER_LEN {
+        let Some(header_len) = usize_to_u8(header_len, SecurityLayout::MAX_HEADER_LEN) else {
             return Err(Error::new(ErrorKind::InvalidConfig)
                 .with_field(crate::error::FieldId::new("security_header_len")));
-        }
-        if trailer_len > SecurityLayout::MAX_TRAILER_LEN {
+        };
+        let Some(trailer_len) = usize_to_u16(trailer_len, SecurityLayout::MAX_TRAILER_LEN) else {
             return Err(Error::new(ErrorKind::InvalidConfig)
                 .with_field(crate::error::FieldId::new("security_trailer_len")));
-        }
+        };
         Ok(SecurityLayout {
-            header_len: header_len as u8,
-            trailer_len: trailer_len as u16,
+            header_len,
+            trailer_len,
         })
     }
 
     /// Security Header length in octets.
     #[must_use]
-    #[expect(clippy::as_conversions, reason = "u8 always fits in usize")]
     pub const fn header_len(self) -> usize {
-        self.header_len as usize
+        u8_to_usize(self.header_len)
     }
 
     /// Security Trailer length in octets.
     #[must_use]
-    #[expect(
-        clippy::as_conversions,
-        reason = "u16 always fits in usize on 16-bit+ targets"
-    )]
     pub const fn trailer_len(self) -> usize {
-        self.trailer_len as usize
+        u16_to_usize(self.trailer_len)
     }
 
     /// Whether both lengths are zero.

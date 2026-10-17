@@ -9,7 +9,7 @@
 //! (1–64). Every function is total: out-of-range arguments return [`ErrorKind::OutOfRange`](crate::error::ErrorKind::OutOfRange)
 //! and never panic (GEN-020).
 
-use crate::error::{Error, Result, as_u64, u8_to_u64};
+use crate::error::{Error, Result, as_u64};
 
 /// Octets covered by a field, and the shift that right-aligns it.
 struct Span {
@@ -30,7 +30,7 @@ impl Span {
             return Err(Error::out_of_range("width", 1, 0));
         }
         if width > 64 {
-            return Err(Error::out_of_range("width", 64, u8_to_u64(width)));
+            return Err(Error::out_of_range("width", 64, u64::from(width)));
         }
         let total_bits = buf_len.saturating_mul(8);
         let width_bits = usize::from(width);
@@ -41,7 +41,7 @@ impl Span {
                 if let Some(max_offset) = total_bits.checked_sub(width_bits) {
                     Error::out_of_range("bit_offset", as_u64(max_offset), as_u64(bit_offset))
                 } else {
-                    Error::out_of_range("buf_len", as_u64(width_bits), as_u64(total_bits))
+                    Error::out_of_range("buf_bits", as_u64(width_bits), as_u64(total_bits))
                 }
             })?;
         // end_bit >= width >= 1 and end_bit <= total_bits, so all of these are in range.
@@ -180,7 +180,7 @@ octet_int!(
 )]
 mod tests {
     use super::{get, read_u16, read_u32, read_u64, set, write_u16, write_u32, write_u64};
-    use crate::error::{ErrorDetail, ErrorKind};
+    use crate::error::{ErrorDetail, ErrorKind, FieldId};
     use proptest::prelude::*;
 
     #[test]
@@ -230,8 +230,10 @@ mod tests {
                 found: 9
             }
         );
+        let short_bits = get(&[0], 0, 16).unwrap_err();
+        assert_eq!(short_bits.field(), Some(FieldId::new("buf_bits")));
         assert_eq!(
-            get(&[0], 0, 16).unwrap_err().detail(),
+            short_bits.detail(),
             ErrorDetail::Expected {
                 expected: 16,
                 found: 8

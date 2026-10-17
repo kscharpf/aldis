@@ -153,6 +153,41 @@ pub(crate) const fn u16_to_u64(n: u16) -> u64 {
     n as u64
 }
 
+/// Widens `u8` to `usize` in `const` context (`From` is not yet `const`).
+#[expect(clippy::as_conversions, reason = "lossless widening u8 -> usize")]
+pub(crate) const fn u8_to_usize(n: u8) -> usize {
+    n as usize
+}
+
+/// Widens `u16` to `usize` in `const` context (`From` is not yet `const`).
+#[expect(
+    clippy::as_conversions,
+    reason = "lossless widening u16 -> usize on 16-bit+ targets"
+)]
+pub(crate) const fn u16_to_usize(n: u16) -> usize {
+    n as usize
+}
+
+/// Narrows `n` to `u8` in `const` context if `n <= max` (`max <= u8::MAX as usize`).
+#[expect(
+    clippy::as_conversions,
+    clippy::cast_possible_truncation,
+    reason = "checked against max <= u8::MAX before narrowing"
+)]
+pub(crate) const fn usize_to_u8(n: usize, max: usize) -> Option<u8> {
+    if n <= max { Some(n as u8) } else { None }
+}
+
+/// Narrows `n` to `u16` in `const` context if `n <= max` (`max <= u16::MAX as usize`).
+#[expect(
+    clippy::as_conversions,
+    clippy::cast_possible_truncation,
+    reason = "checked against max <= u16::MAX before narrowing"
+)]
+pub(crate) const fn usize_to_u16(n: usize, max: usize) -> Option<u16> {
+    if n <= max { Some(n as u16) } else { None }
+}
+
 /// Converts a `usize` count or offset to `u64` for [`ErrorDetail::Expected`].
 #[expect(
     clippy::as_conversions,

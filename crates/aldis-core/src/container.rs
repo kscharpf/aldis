@@ -128,6 +128,22 @@ pub struct ByteQueue<const N: usize> {
 
 const PREFIX: usize = 4;
 
+fn record_len_err(cap: usize, len: usize) -> Error {
+    if let Some(max_len) = cap.checked_sub(PREFIX) {
+        Error::out_of_range(
+            "record_len",
+            crate::error::as_u64(max_len),
+            crate::error::as_u64(len),
+        )
+    } else {
+        Error::out_of_range(
+            "capacity",
+            crate::error::as_u64(PREFIX),
+            crate::error::as_u64(cap),
+        )
+    }
+}
+
 impl<const N: usize> ByteQueue<N> {
     /// Record lengths are stored in a 4-octet prefix, so the capacity must fit in `u32`.
     #[expect(
@@ -201,13 +217,7 @@ impl<const N: usize> ByteQueue<N> {
             .len()
             .checked_add(PREFIX)
             .filter(|&n| n <= N)
-            .ok_or_else(|| {
-                Error::out_of_range(
-                    "record_len",
-                    crate::error::as_u64(N.saturating_sub(PREFIX)),
-                    crate::error::as_u64(data.len()),
-                )
-            })?;
+            .ok_or_else(|| record_len_err(N, data.len()))?;
         if need > self.free() {
             return Err(Error::new(ErrorKind::WouldBlock));
         }
@@ -410,7 +420,15 @@ mod tests {
         // req: API-061, GEN-042
         let mut q: ByteQueue<16> = ByteQueue::default();
         assert_eq!(q.capacity(), 16);
-        assert_eq!(q.push(&[0; 13]).unwrap_err().kind(), ErrorKind::OutOfRange);
+        let too_long = q.push(&[0; 13]).unwrap_err();
+        assert_eq!(too_long.kind(), ErrorKind::OutOfRange);
+        assert_eq!(
+            too_long.detail(),
+            ErrorDetail::Expected {
+                expected: 12,
+                found: 13
+            }
+        );
         q.push(&[1, 2, 3]).unwrap();
         assert_eq!(q.push(&[0; 9]).unwrap_err().kind(), ErrorKind::WouldBlock);
         let mut small = [0_u8; 2];
@@ -430,9 +448,14 @@ mod tests {
         q.push(&[1]).unwrap();
         q.clear();
         assert!(q.is_empty());
+        let tiny = ByteQueue::<0>::new().push(&[]).unwrap_err();
+        assert_eq!(tiny.kind(), ErrorKind::OutOfRange);
         assert_eq!(
-            ByteQueue::<0>::new().push(&[]).unwrap_err().kind(),
-            ErrorKind::OutOfRange
+            tiny.detail(),
+            ErrorDetail::Expected {
+                expected: 4,
+                found: 0
+            }
         );
     }
 
