@@ -3,11 +3,11 @@
 | | |
 |---|---|
 | Requirements | GEN-022 (every loop bounded by an input length, a compile-time capacity, or a constant; no recursion), GEN-023 (time bounded by O(input length + capacities); nothing blocks or waits) |
-| Scope | `crates/aldis-core/src/*.rs`, library code only (test modules excluded), at `main` 6dd89b7 |
+| Scope | `crates/aldis-core/src/*.rs`, library code only (test modules excluded), at `main` 6dd89b7; revised at `m1/core` 3b51e87 |
 | Inspected | 2026-10-16, prepared by Claude Code |
 | Approved | 2026-10-16, maintainer |
 | Repeat | when `aldis-core` gains a loop or a call between its own functions, and before each release |
-| Revised | 2026-10-17 (M1 WP-0): `mode` and `anomaly` added; awaiting maintainer approval |
+| Revised | 2026-10-17 (M1 WP-0): `mode` and `anomaly` added; approved 2026-10-17 maintainer |
 
 ## Loops
 
