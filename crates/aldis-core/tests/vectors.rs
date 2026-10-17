@@ -207,11 +207,16 @@ fn corrupted_vector_fails() {
     else {
         panic!("core/crc16.json is not a codec file");
     };
-    file.cases[0]
-        .expect
+    let case = file
+        .cases
+        .iter_mut()
+        .find(|c| c.superseded.is_none())
+        .unwrap();
+    let expected_id = case.id.clone();
+    case.expect
         .values
         .insert("value_hex".to_owned(), json!("0000"));
     let report = aldis_testkit::run_codec(&file, &path, handle);
     assert_eq!(report.failures.len(), 1);
-    assert_eq!(report.failures[0].case_id, "crc16-check-001");
+    assert_eq!(report.failures[0].case_id, expected_id);
 }

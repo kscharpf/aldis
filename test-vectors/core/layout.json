@@ -253,6 +253,59 @@
       "id": "layout-uslp-truncated-sdls",
       "requirements": [
         "CMN-040",
+        "API-070"
+      ],
+      "description": "USLP truncated: 4-octet header, SDLS 6/16, no OCF/FECF (Annex D1.2.3)",
+      "operation": "frame_layout",
+      "params": {
+        "frame_len": 28,
+        "primary_header_len": 4,
+        "secondary_len": 0,
+        "security_header_len": 6,
+        "security_trailer_len": 16,
+        "ocf": false,
+        "fecf": false
+      },
+      "expect": {
+        "ok": true,
+        "primary_header": [
+          0,
+          4
+        ],
+        "secondary": [
+          4,
+          4
+        ],
+        "security_header": [
+          4,
+          10
+        ],
+        "data": [
+          10,
+          12
+        ],
+        "security_trailer": [
+          12,
+          28
+        ],
+        "ocf": [
+          28,
+          28
+        ],
+        "fecf": [
+          28,
+          28
+        ]
+      },
+      "superseded": {
+        "reason": "added API-075 requirement traceability",
+        "by": "layout-uslp-truncated-sdls-002"
+      }
+    },
+    {
+      "id": "layout-uslp-truncated-sdls-002",
+      "requirements": [
+        "CMN-040",
         "API-070",
         "API-075"
       ],
@@ -371,6 +424,31 @@
     },
     {
       "id": "layout-err-uslp-truncated-sdls-too-short",
+      "requirements": [
+        "CMN-041"
+      ],
+      "description": "Truncated frame shorter than 28 octets cannot carry SDLS (Annex D1.2.4)",
+      "operation": "frame_layout",
+      "params": {
+        "frame_len": 26,
+        "primary_header_len": 4,
+        "secondary_len": 0,
+        "security_header_len": 6,
+        "security_trailer_len": 16,
+        "ocf": false,
+        "fecf": false
+      },
+      "expect": {
+        "ok": false,
+        "error": "InvalidConfig"
+      },
+      "superseded": {
+        "reason": "added API-075 requirement traceability",
+        "by": "layout-err-uslp-truncated-sdls-too-short-002"
+      }
+    },
+    {
+      "id": "layout-err-uslp-truncated-sdls-too-short-002",
       "requirements": [
         "CMN-041",
         "API-075"

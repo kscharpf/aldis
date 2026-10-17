@@ -1,7 +1,7 @@
 # Code review: `m0/post-review`
 
-Two rounds: [Round 1](#round-1) reviews the branch as first submitted; [Round 2](#round-2) re-checks
-it after the fixes in `812deb1`.
+Three rounds: [Round 1](#round-1) reviews the branch as first submitted; [Round 2](#round-2)
+re-checks it after the fixes in `812deb1`; [Round 3](#round-3) re-checks the fixes for Round 2.
 
 ## Round 1
 
@@ -311,3 +311,166 @@ enable alloc on the aldis-tc that cop1 pulls in.
 types. aldis-tc is compiled without `alloc`, because `?/` features apply only when the facade's own
 `tc` feature is on, and cop1 has no `alloc` feature to pass through. Once aldis-tc gates APIs behind
 `alloc` (M2), they are silently missing.
+
+## Round 3
+
+- **Date:** 2026-10-17
+- **Scope:** the fixes for Round 2, reviewed as uncommitted working-tree changes on top of `db60c2c`
+  (16 files). Each was checked against R2-1 to R2-10 and the two Round 1 items left partly fixed
+  (7 and 10), followed by another pass over the full branch against `main`.
+- **Checks on the working tree, all passing:**
+  - `cargo test -p aldis-core -p aldis-testkit --all-features` and `cargo test --workspace --all-features`
+  - `cargo xtask layers` (0 violations), `cargo xtask symbols` (3 rlibs, 0 frame crates found),
+    `cargo xtask ci` (6 vector files, 83 cases, trace m0 60/60)
+  - `cargo xtask coverage`: 0 misses for regions, functions, lines and branches (896, 168, 768, 64)
+  - `cargo fmt --check` (workspace and exerciser); workspace clippy with all features in a fresh
+    target dir; bare-metal clippy for `aldis --features full` on thumbv7em. Fuzz clippy was cached.
+  - **Exerciser rebuilt from scratch** (fresh target dir, `--locked`): the thumbv7em release link
+    and clippy pass, the injected-panic canary fails to link with `aldis_panic_is_unreachable` as
+    it should, and the QEMU mps2-an386 run exits 0. Earlier rounds only had a cached build.
+
+Of the 12 items, 10 are fully fixed, R2-3 is fixed with caveats, and R2-5 is only partly fixed. No
+crash or wrong-output bug was found in `aldis-core`. The new findings are smaller than in earlier
+rounds: one remaining error-detail bug (R3-1), two gaps in the tooling (R3-2 to R3-4), and docs and
+cleanup items.
+
+### Status of Round 2 items
+
+| # | Item | Status | Evidence |
+|---|---|---|---|
+| R2-1 | Released vectors edited in place | Fixed | A field-by-field JSON comparison shows all 6 released cases match the `v0.1.0-m0` tag, apart from the added `superseded { reason, by }` block. The extra traceability lives only in new cases: `crc16-check-002`, `crc16-empty-002`, `oid-start-002`, `oid-continuation-002`, `layout-uslp-truncated-sdls-002`, `layout-err-uslp-truncated-sdls-too-short-002`. The trace tool, the runner and the exerciser's `build.rs` skip superseded cases. `tests/vectors.rs:210-221` now picks the first live case. |
+| R2-2 | VER-031 checks nothing | Fixed | `binaries.rs:188-203` restores the rlib-presence check next to the symbol check, and `analysis-records.md:14` no longer says "vacuous". |
+| R2-3 | GEN-004 ignores default features | Fixed, with caveats | `layers.rs:46-82` follows the `default` feature through the feature graph, and `layers.rs:166` uses the result. The new code is untested and can report false errors (R3-3, R3-4). |
+| R2-4 | Compile errors hidden | Fixed | `binaries.rs:149` uses `--message-format=json-render-diagnostics`. |
+| R2-5 | "found" below the limit | Partly fixed | `bits.rs:39`, `:121` and `:138` now report the largest valid offset, but it saturates to 0 when the buffer is shorter than the field (R3-1). |
+| R2-6 | `classify` no longer const | Fixed | `ids.rs:161` and `ids.rs:216` are `const fn` again, and a const test at `ids.rs:332-338` keeps them that way. |
+| R2-7 | `rust.md` feature table | Fixed | `rust.md:21-24` lists the new `alloc` and `std` features and shows aldis-ffi's default as `std`. |
+| R2-8 | FrameSeqNum has too many forms | Fixed | The field is private (`ids.rs:190`), the CHANGELOG has a **Breaking** entry, and the call sites now use `new`. |
+| R2-9 | Loop in `layers.rs` that does nothing | Fixed | `layers.rs:131-146`: tooling crates are skipped first, and boundary crates have their own branch. |
+| R2-10 | Facade `alloc` misses aldis-tc | Fixed | cop1 and framework gained an `alloc` feature and the facade forwards to both. `cargo tree` confirms `aldis --features cop1,alloc` turns on alloc in aldis-tc. |
+| R1-7 | VER-031 check | Fixed | Resolved by the R2-2 change. |
+| R1-10 | usize-to-u64 conversions | Fixed | The `as` casts in `security.rs` are gone because the fields are now `usize`. Two new widening helpers were added in `ids.rs` (R3-7, R3-8). |
+
+### Findings
+
+#### R3-1. Short buffer reports `expected: 0, found: 0` (R2-5 only partly fixed)
+
+`crates/aldis-core/src/bits.rs:121` · correctness
+
+When the buffer (or bit span) is shorter than the field, the saturating "largest valid offset"
+becomes 0, so the error reports found equal to expected and looks valid.
+
+**Failure scenario:** `read_u32(&[0; 2], 0)` returns `OutOfRange { field: offset, expected: 0,
+found: 0 }`, and `get(&[0; 1], 0, 16)` (`Span::new`, line 39) also gives expected 0, found 0. Under
+the new inclusive-maximum meaning, found <= expected says the call should have worked, so the
+caller still can't tell why it failed, which is the problem R2-5 described. No offset is valid in
+this case, so the detail should report the needed length against the buffer length (for example
+`ErrorDetail::Needed`, or expected = N, found = len). No test covers the short-buffer case. The
+width check at line 30 (width 0 gives expected 64, found 0) and `counter.rs:63` (bits 0) have the
+same found-below-limit problem.
+
+#### R3-2. TV-021 validation doesn't check `superseded.by` or catch edits
+
+`xtask/src/vectors.rs:112` · correctness
+
+`vectors validate` claims to check TV-021, but it never checks that `superseded.by` names an
+existing, live case, and nothing automated stops a released case from being edited.
+
+**Failure scenario:** A typo such as `"by": "crc16-check-02"`, or a `by` that points to a case that
+is itself superseded, passes validation and `xtask ci`. The superseded case is then skipped
+everywhere (runner, trace, exerciser `build.rs`), so its coverage silently disappears. Nothing
+would have caught R2-1 either: editing the requirements of a released case passes every check.
+Instead of relying on review, resolve each `by` against the id map validate already builds, and
+compare cases that are not superseded against the last release tag
+(`git show v0.1.0-m0:test-vectors/...`).
+
+#### R3-3. GEN-004 check mixes feature names and dependency names
+
+`xtask/src/layers.rs:74` · correctness
+
+`default_enabled_deps` puts feature names and dependency names into one set, so a default feature
+that only shares a dependency's name marks that dependency as on by default.
+
+**Failure scenario:** With `{"default": ["serde"], "serde": [], "json": ["dep:serde"]}` the function
+returns `{default, serde}`. A Layer-3 crate with a default `serde` feature that does not pull in the
+optional `serde` dependency (only the non-default `json` feature does) then gets a false GEN-004
+error in `cargo xtask layers` and in CI. Keep features (for the traversal) and dependency names
+(from `dep:` and `x/feat` entries, plus implicit `name = ["dep:name"]` features) in separate sets.
+
+#### R3-4. New GEN-004 feature-graph code is untested
+
+`xtask/src/layers.rs:47` · test-coverage
+
+The new feature-graph code has no tests, and no workspace crate exercises it, because no Layer-3
+crate has a third-party dependency yet.
+
+**Failure scenario:** `default_enabled_deps` handles `dep:`, weak `x?/f`, `x/f`, renames and
+recursive features, but `cargo xtask layers` passes whatever it returns, because aldis-framework has
+no third-party dependencies. A regression, such as treating `x?/f` as enabling x or ignoring
+renames, would go unnoticed until M2 adds embedded-nal and the GEN-004 analysis record (method A)
+is relied on. xtask already has a `#[cfg(test)]` pattern in `md.rs`; add table-driven tests over
+small JSON feature maps.
+
+#### R3-5. FrameSeqNum contradicts RS-010 as written
+
+`docs/profiles/rust.md:69` · docs
+
+The CHANGELOG justifies the FrameSeqNum change with RS-010, but RS-010 requires
+`const fn new(..) -> Option<Self>`, and `FrameSeqNum::new` returns `Self`. `From<u8>` is also an
+unchecked constructor, which RS-010 forbids in the public API.
+
+**Failure scenario:** Someone checking the code against the spec (method T) finds that FrameSeqNum
+breaks RS-010 as written, while `CHANGELOG.md:16` says it complies. The infallible design is right,
+because all 256 values are valid. RS-010 should be reworded in the same change (AGENTS.md: "update
+the requirement table in the same change") to exempt identifiers that use the full width of their
+type.
+
+#### R3-6. aldis-ffi row says it mirrors the facade, but it doesn't
+
+`docs/profiles/rust.md:24` · docs
+
+The aldis-ffi row edited for R2-7 still says it "mirrors the facade", but aldis-ffi has no
+per-crate features and always turns on `aldis/full`.
+
+**Failure scenario:** A reader of §2 expects to build aldis-ffi with only, say, `spp`, as the facade
+allows. In fact `crates/aldis-ffi/Cargo.toml` enables `aldis` with `features = ["full"]` and offers
+only `std` and `panic-handler`, so every FFI build compiles every protocol crate. Either drop
+"mirrors the facade" or add the forwarding features.
+
+#### R3-7. SecurityLayout fields widened to `usize` to avoid casts
+
+`crates/aldis-core/src/security.rs:16` · efficiency
+
+Widening SecurityLayout's fields from u8/u16 to usize to avoid `as` casts makes the struct 4x
+larger on 64-bit targets and 2x larger on 32-bit targets. The type is stored per VC or MAP in
+fixed-capacity configs.
+
+**Failure scenario:** SecurityLayout grows from 4 to 16 bytes on hosts and from 4 to 8 bytes on
+thumbv7em, and the growth repeats in every LayoutSpec and per-channel config table. GEN-010/011
+emphasise small, fixed memory, and the change only avoids a cast. Keeping u8/u16 storage with one
+checked const narrowing helper (or the existing `#[expect]`-justified casts) keeps both the size and
+the const fn.
+
+#### R3-8. A third style of integer-widening helper
+
+`crates/aldis-core/src/ids.rs:120` · simplification
+
+The new private `u8_to_u64` and `u16_to_u64` helpers add another way to widen integers, next to
+`error::as_u64` (an `as` cast with `#[expect]`) and the `from_be_bytes` trick in `crc.rs`.
+
+**Failure scenario:** R1-10 asked for one shared conversion helper. The crate now has `as_u64` in
+`error.rs`, two byte-shuffling helpers private to `ids.rs`, and `from_be_bytes` in
+`crc.rs::step_bitwise`, so the next module that needs a const widening will write its own again.
+Move these next to `as_u64` in `error.rs` as `pub(crate) const fn`s (or into a small `widen` module)
+and reuse them in counter, ids and crc.
+
+#### R3-9. `MAX_TRAILER_LEN` is private while `MAX_HEADER_LEN` is public
+
+`crates/aldis-core/src/security.rs:28` · api
+
+Callers can see one limit of `SecurityLayout::new` but not the other.
+
+**Failure scenario:** Code that checks SDLS trailer lengths before calling `SecurityLayout::new`
+(for example an M2 configuration loader) can use `SecurityLayout::MAX_HEADER_LEN` but has to
+hard-code 65535 for the trailer, and that copy can drift from the real check. Make it
+`pub const MAX_TRAILER_LEN` with a doc comment citing the requirement, like `MAX_HEADER_LEN`.

@@ -13,8 +13,8 @@ use crate::error::{Error, ErrorKind, Result};
 /// Lengths of the Security Header and Trailer on one VC or MAP (API-070, API-071).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub struct SecurityLayout {
-    header_len: u8,
-    trailer_len: u16,
+    header_len: usize,
+    trailer_len: usize,
 }
 
 impl SecurityLayout {
@@ -25,6 +25,7 @@ impl SecurityLayout {
     };
     /// Largest Security Header, in octets (355.0 §4.1.1.1.4).
     pub const MAX_HEADER_LEN: usize = 64;
+    const MAX_TRAILER_LEN: usize = 0xFFFF;
     /// Fixed layout for SDLS on USLP truncated frames: 6-octet header, 16-octet trailer
     /// (732.1 Annex D1.2.3; API-075).
     pub const USLP_TRUNCATED: SecurityLayout = SecurityLayout {
@@ -36,38 +37,31 @@ impl SecurityLayout {
     ///
     /// # Errors
     /// `InvalidConfig` if the header exceeds 64 octets or the trailer exceeds 65 535 octets.
-    #[expect(
-        clippy::as_conversions,
-        clippy::cast_possible_truncation,
-        reason = "checked: header_len <= 64 fits in u8 and trailer_len <= u16::MAX fits in u16"
-    )]
     pub const fn new(header_len: usize, trailer_len: usize) -> Result<SecurityLayout> {
         if header_len > SecurityLayout::MAX_HEADER_LEN {
             return Err(Error::new(ErrorKind::InvalidConfig)
                 .with_field(crate::error::FieldId::new("security_header_len")));
         }
-        if trailer_len > u16::MAX as usize {
+        if trailer_len > SecurityLayout::MAX_TRAILER_LEN {
             return Err(Error::new(ErrorKind::InvalidConfig)
                 .with_field(crate::error::FieldId::new("security_trailer_len")));
         }
         Ok(SecurityLayout {
-            header_len: header_len as u8,
-            trailer_len: trailer_len as u16,
+            header_len,
+            trailer_len,
         })
     }
 
     /// Security Header length in octets.
     #[must_use]
-    #[expect(clippy::as_conversions, reason = "widening u8 to usize in const fn")]
     pub const fn header_len(self) -> usize {
-        self.header_len as usize
+        self.header_len
     }
 
     /// Security Trailer length in octets.
     #[must_use]
-    #[expect(clippy::as_conversions, reason = "widening u16 to usize in const fn")]
     pub const fn trailer_len(self) -> usize {
-        self.trailer_len as usize
+        self.trailer_len
     }
 
     /// Whether both lengths are zero.

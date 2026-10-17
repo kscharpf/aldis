@@ -3,7 +3,7 @@
 //! GEN-001  Layers 0–2: no third-party runtime (normal/build) dependencies.
 //! GEN-002  A crate may depend only on lower layers (exception: aldis-spp → aldis-time).
 //! GEN-003  aldis-spp alone pulls in no frame-protocol crate.
-//! GEN-004  Layer 3: third-party runtime dependencies only if optional.
+//! GEN-004  Layer 3: third-party runtime dependencies only behind non-default features.
 //! Tooling crates (std, dev-only) may be used by library crates only as dev-dependencies.
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -40,6 +40,45 @@ struct Dep {
     name: String,
     dev: bool,
     optional: bool,
+    default_feature: bool,
+}
+
+/// Dependency names transitively enabled by the package's `default` feature.
+fn default_enabled_deps(features: &Value) -> BTreeSet<String> {
+    let Some(table) = features.as_object() else {
+        return BTreeSet::new();
+    };
+    let mut visited = BTreeSet::new();
+    let mut deps = BTreeSet::new();
+    let mut queue = Vec::new();
+    if table.contains_key("default") {
+        visited.insert("default".to_owned());
+        queue.push("default".to_owned());
+    }
+    while let Some(feat) = queue.pop() {
+        deps.insert(feat.clone());
+        for entry in table
+            .get(&feat)
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .filter_map(Value::as_str)
+        {
+            if let Some(dep) = entry.strip_prefix("dep:") {
+                deps.insert(dep.to_owned());
+            } else if let Some((dep, _)) = entry.split_once('/') {
+                if !dep.ends_with('?') {
+                    deps.insert(dep.to_owned());
+                }
+            } else {
+                deps.insert(entry.to_owned());
+                if visited.insert(entry.to_owned()) {
+                    queue.push(entry.to_owned());
+                }
+            }
+        }
+    }
+    deps
 }
 
 fn workspace() -> Result<BTreeMap<String, Vec<Dep>>, String> {
@@ -58,14 +97,22 @@ fn workspace() -> Result<BTreeMap<String, Vec<Dep>>, String> {
     let meta: Value = serde_json::from_slice(&out.stdout).map_err(|e| e.to_string())?;
     let mut crates = BTreeMap::new();
     for p in meta["packages"].as_array().into_iter().flatten() {
+        let default_deps = default_enabled_deps(&p["features"]);
         let deps = p["dependencies"]
             .as_array()
             .into_iter()
             .flatten()
-            .map(|d| Dep {
-                name: d["name"].as_str().unwrap_or_default().to_owned(),
-                dev: d["kind"].as_str() == Some("dev"),
-                optional: d["optional"].as_bool().unwrap_or(false),
+            .map(|d| {
+                let name = d["name"].as_str().unwrap_or_default().to_owned();
+                let rename = d["rename"].as_str();
+                let default_feature = default_deps.contains(name.as_str())
+                    || rename.is_some_and(|r| default_deps.contains(r));
+                Dep {
+                    name,
+                    dev: d["kind"].as_str() == Some("dev"),
+                    optional: d["optional"].as_bool().unwrap_or(false),
+                    default_feature,
+                }
             })
             .collect();
         crates.insert(p["name"].as_str().unwrap_or_default().to_owned(), deps);
@@ -81,17 +128,18 @@ pub fn check() -> Result<usize, String> {
 
     for (name, deps) in &crates {
         let name = name.as_str();
-        if TOOLING.contains(&name) || BOUNDARY.contains(&name) {
+        if TOOLING.contains(&name) {
+            continue;
+        }
+        if BOUNDARY.contains(&name) {
             for d in deps
                 .iter()
                 .filter(|d| !d.dev && TOOLING.contains(&d.name.as_str()))
             {
-                if BOUNDARY.contains(&name) {
-                    errors.push(format!(
-                        "{name} depends on tooling crate {} outside dev-dependencies",
-                        d.name
-                    ));
-                }
+                errors.push(format!(
+                    "{name} depends on tooling crate {} outside dev-dependencies",
+                    d.name
+                ));
             }
             continue;
         }
@@ -115,9 +163,9 @@ pub fn check() -> Result<usize, String> {
                 errors.push(format!(
                     "GEN-001 {name} (L{l}) has third-party dependency {dn}"
                 ));
-            } else if !d.optional {
+            } else if !d.optional || d.default_feature {
                 errors.push(format!(
-                    "GEN-004 {name} (L{l}) has non-optional third-party dependency {dn}"
+                    "GEN-004 {name} (L{l}) has third-party dependency {dn} not gated behind a non-default feature"
                 ));
             }
         }

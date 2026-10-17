@@ -208,7 +208,7 @@ fn apis_errors_ids(tally: &mut Tally) {
     let fsn = FrameSeqNum::from(bb(FrameSeqNum::MAX));
     tally.check(
         FrameSeqNum::new(bb(0)).get() == 0
-            && fsn.next() == FrameSeqNum(0)
+            && fsn.next() == FrameSeqNum::new(0)
             && u8::from(fsn) == 255
             && ModCounter::from(fsn).value() == 255
             && fsn.classify(bb(fsn.next())) == Continuity::InSequence,

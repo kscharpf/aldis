@@ -18,10 +18,10 @@ This profile binds the language-neutral specification to Rust. The Rust crates a
 | `aldis-spp` | — | `time` (typed secondary-header time codes), `alloc`, `std` |
 | `aldis-epp`, `aldis-tm`, `aldis-tc`, `aldis-aos`, `aldis-uslp` | — | `alloc`, `std` |
 | `aldis-link` | — | `tm`, `tc`, `aos`, `uslp`, `spp`, `epp`, `alloc`, `std` |
-| `aldis-cop1` | `tc` | `uslp`, `std` |
-| `aldis-framework` | — | `std`, `std-udp`, `std-tcp`, `embedded-nal`, `trace`, `async` |
-| `aldis` (facade) | — | one feature per crate, plus `full` |
-| `aldis-ffi` | — | mirrors the facade; capacities via build-time config ([C ABI §5](c-abi.md#5-memory-model)) |
+| `aldis-cop1` | `tc` | `uslp`, `alloc`, `std` |
+| `aldis-framework` | — | `alloc`, `std`, `std-udp`, `std-tcp`, `embedded-nal`, `trace`, `async` |
+| `aldis` (facade) | — | one feature per crate, `alloc`, `std`, `full` |
+| `aldis-ffi` | `std` | `std`, `panic-handler`; mirrors the facade; capacities via build-time config ([C ABI §5](c-abi.md#5-memory-model)) |
 
 ## 3. API shapes
 

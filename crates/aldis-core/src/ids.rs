@@ -117,6 +117,15 @@ impl From<Apid> for u16 {
     }
 }
 
+const fn u8_to_u64(n: u8) -> u64 {
+    u64::from_be_bytes([0, 0, 0, 0, 0, 0, 0, n])
+}
+
+const fn u16_to_u64(n: u16) -> u64 {
+    let [hi, lo] = n.to_be_bytes();
+    u64::from_be_bytes([0, 0, 0, 0, 0, 0, hi, lo])
+}
+
 /// Space Packet Sequence Count or Packet Name, 0–16383, wrapping (133.0 §4.1.3.4.3).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
 pub struct SeqCount(u16);
@@ -149,8 +158,8 @@ impl SeqCount {
 
     /// Classifies `next` as received after `self` modulo 16384 (133.0 §4.1.3.4.3, CMN-031).
     #[must_use]
-    pub fn classify(self, next: SeqCount) -> Continuity {
-        classify_masked(14, u64::from(self.0), u64::from(next.0))
+    pub const fn classify(self, next: SeqCount) -> Continuity {
+        classify_masked(14, u16_to_u64(self.0), u16_to_u64(next.0))
     }
 }
 
@@ -178,7 +187,7 @@ impl From<SeqCount> for ModCounter {
 
 /// TC Frame Sequence Number N(S), and COP-1 V(S) / V(R): 0–255, wrapping (232.0 §4.1.2.8).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
-pub struct FrameSeqNum(pub u8);
+pub struct FrameSeqNum(u8);
 
 impl FrameSeqNum {
     /// Largest value.
@@ -204,8 +213,8 @@ impl FrameSeqNum {
 
     /// Classifies `next` as received after `self` modulo 256 (CMN-031).
     #[must_use]
-    pub fn classify(self, next: FrameSeqNum) -> Continuity {
-        classify_masked(8, u64::from(self.0), u64::from(next.0))
+    pub const fn classify(self, next: FrameSeqNum) -> Continuity {
+        classify_masked(8, u8_to_u64(self.0), u8_to_u64(next.0))
     }
 }
 
@@ -320,6 +329,13 @@ mod tests {
     #[test]
     fn packet_identifiers() {
         // req: API-001, CMN-031
+        const SEQ_CONT: Continuity = SeqCount::new(SeqCount::MAX)
+            .unwrap()
+            .classify(SeqCount::new(0).unwrap());
+        const FSN_CONT: Continuity =
+            FrameSeqNum::new(FrameSeqNum::MAX).classify(FrameSeqNum::new(0));
+        assert_eq!(SEQ_CONT, Continuity::InSequence);
+        assert_eq!(FSN_CONT, Continuity::InSequence);
         assert!(Apid::new(2047).is_some_and(Apid::is_idle));
         assert!(!Apid::new(0).unwrap().is_idle());
         assert!(Apid::new(2048).is_none());
@@ -345,7 +361,7 @@ mod tests {
         assert_eq!(f_max.get(), 255);
         assert_eq!(f_max.next(), FrameSeqNum::from(0));
         assert_eq!(u8::from(f_max.next()), 0);
-        assert_eq!(f_max.classify(FrameSeqNum(0)), Continuity::InSequence);
+        assert_eq!(f_max.classify(FrameSeqNum::new(0)), Continuity::InSequence);
         assert_eq!(ModCounter::from(f_max).value(), 255);
         assert_eq!(PacketVersion::SPACE_PACKET.get(), 0);
         assert_eq!(u8::from(PacketVersion::ENCAPSULATION), 7);

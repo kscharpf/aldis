@@ -43,6 +43,8 @@ alloc = [
     "aldis-aos?/alloc",
     "aldis-uslp?/alloc",
     "aldis-link?/alloc",
+    "aldis-cop1?/alloc",
+    "aldis-framework?/alloc",
 ]
 std = [
     "alloc",

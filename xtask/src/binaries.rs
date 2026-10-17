@@ -133,8 +133,8 @@ const FRAME_CRATES: &[&str] = &[
 ];
 
 /// `xtask symbols`: builds `aldis-spp` with all features, collects the `.rlib` archives
-/// emitted by `cargo build --message-format=json`, and checks with `llvm-nm` that no
-/// frame-protocol symbol is present (VER-031, GEN-003).
+/// emitted by `cargo build --message-format=json-render-diagnostics`, and checks that no
+/// frame-protocol archive or symbol (`llvm-nm`) is present (VER-031, GEN-003).
 pub fn symbols() -> Result<usize, String> {
     let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".to_owned());
     let target_dir = repo::root().join("target/symbols");
@@ -146,7 +146,7 @@ pub fn symbols() -> Result<usize, String> {
                 "aldis-spp",
                 "--release",
                 "--all-features",
-                "--message-format=json",
+                "--message-format=json-render-diagnostics",
             ])
             .env("CARGO_TARGET_DIR", &target_dir),
         "aldis-spp release build",
@@ -185,12 +185,20 @@ pub fn symbols() -> Result<usize, String> {
     let names = run(&mut cmd, "llvm-nm")?;
     let mut problems = 0;
     for krate in FRAME_CRATES {
+        let rlib_prefix = format!("lib{krate}-");
+        let rlib_hit = rlibs.iter().any(|p| {
+            p.file_name()
+                .and_then(|n| n.to_str())
+                .is_some_and(|n| n.starts_with(&rlib_prefix))
+        });
         let hits = names
             .lines()
             .filter(|l| l.contains(&format!("{krate}::")))
             .count();
-        if hits > 0 {
-            println!("error: GEN-003 {hits} symbol(s) from {krate} in a build of aldis-spp alone");
+        if rlib_hit || hits > 0 {
+            println!(
+                "error: GEN-003 {krate} present in a build of aldis-spp alone ({hits} symbol(s))"
+            );
             problems += 1;
         }
     }
