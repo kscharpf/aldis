@@ -2,6 +2,14 @@
 
 Surviving mutants from `cargo mutants -p aldis-core --all-features` (cargo-mutants 27.1.0), triaged per VER-025. The nightly job `mutants` publishes the full report. Update this file when a new survivor appears.
 
+## 2026-10-17, branch `m1/core` (M1 WP-0)
+
+`cargo mutants -p aldis-core --all-features --file crates/aldis-core/src/anomaly.rs --file crates/aldis-core/src/mode.rs`
+
+First run (`3b51e87`): 41 mutants: 19 caught, 20 unviable, 0 missed, 2 timeouts. Both timeouts were in `Iter::next` (`while self.bits != 0` → `==`, and `&=` → `|=` when clearing the lowest bit). Each one turned the loop into an infinite one, so the tests hung instead of failing.
+
+[Review round 1](reviews/m1-core.md) finding 7 asked for the loop to be bounded by its structure. `Iter` now keeps a position that only rises over `0..CAPACITY`, so no mutant can make an iteration endless. Re-run after the fix: 53 mutants: 32 caught, 21 unviable, 0 missed, 0 timeouts.
+
 ## 2026-10-16, branch `m0/gates`
 
 288 mutants: 198 caught, 81 unviable (do not compile), 9 missed, 0 timeouts.

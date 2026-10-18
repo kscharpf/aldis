@@ -3,7 +3,7 @@
 **Goal:** complete, verified Layer 1 codecs for time codes, Space Packets, and Encapsulation Packets: `aldis-time`, `aldis-spp`, and `aldis-epp`. They are verified to the same standard as `aldis-core` in M0: vectors, panic freedom on bare metal, 100 % coverage, fuzzing, and cross-checks.
 **Roadmap entry:** [08-roadmap.md](../08-roadmap.md) §1 · **Builds on:** [M0](m0-foundations.md) (`v0.1.0-m0`) · **Release:** `v0.2.0-m1`
 
-**Status: planned (2026-10-17).** `cargo xtask trace --scope m1` puts 87 requirements in scope; the 24 traced so far are `aldis-core` and CI artefacts from M0.
+**Status: in progress (2026-10-17).** Decisions D1–D8 accepted 2026-10-17. WP-0 is implemented on `m1/core` (PR #17, in review). OI-15 and OI-16 resolved 2026-10-18. `cargo xtask trace --scope m1` puts 88 requirements in scope; 27 are traced: the M0 `aldis-core` and CI artefacts, plus API-030, API-033, and GEN-043 from WP-0.
 
 ## 1. Starting point
 
@@ -21,14 +21,14 @@
 
 | # | Decision | Choice | Status |
 |---|---|---|---|
-| D1 | Decode mode and anomaly set | Add `DecodeMode` (default `Strict`) and `AnomalySet<A>` (a `Copy` bit set over a `#[non_exhaustive]` anomaly enum of up to 32 flags) to `aldis-core`. The change is additive (GEN-080); the `aldis-core` gates run again on the new code | Proposed |
-| D2 | CUC fine time | Store fine time as a left-aligned `u128` fraction of a second (up to 80 bits used, TIME-011). Embedded targets lower `u128` through `compiler_builtins`; WP-5 measures the stack cost. Alternative: `[u8; 10]` with octet arithmetic | Proposed |
-| D3 | Calendar conversion (TIME-033) | Closed-form civil-from-days and days-from-civil (Hinnant), with no loops or tables (GEN-022). Leap seconds pass through as second 60; no time-scale change (§6 of the spec). A CDS value with an agency epoch (P-field bit 4 = 1) converts only if the caller supplies the epoch day; otherwise `InvalidConfig` | Proposed |
-| D4 | SANA values (OI-06) | M1 embeds **no** SANA registry. Valid EPI and extended-EPI sets are caller-supplied managed parameters (EPP-010). OI-06 stays open for USLP and the link layer | Proposed |
-| D5 | Independent cross-checks (VER-040) | A separate `crosscheck/` workspace (dev-only, like `fuzz/`) that runs each vector file through an independent implementation and reports disagreements. First candidate: the Rust `spacepackets` crate (SPP, CUC, CDS); its license and coverage are checked in WP-4. Where no independent implementation exists (expected for EPP, CCS, ASCII), the vectors are `hand-derived` with the derivation written down, plus the Blue Book examples | Proposed |
-| D6 | Bare-metal execution | Run the exerciser under QEMU on all three targets: RISC-V on `qemu-system-riscv32 -machine virt` with semihosting; Cortex-R on a QEMU Cortex-R machine (candidate `mps3-an536`, Cortex-R52, which needs a newer QEMU than Ubuntu 24.04 ships; confirmed in WP-5). If no Cortex-R machine works in CI, Cortex-R stays at link-check only and the reason is recorded | Proposed |
-| D7 | Exerciser structure | One exerciser workspace links all M1 crates, with one test group per crate. VER-010 asks for an exerciser "for each crate". One binary that calls every public API of every crate gives the same link-time proof, and keeps one QEMU job per target | Proposed |
-| D8 | Trace scope | Add `--scope m1` from §4 below. CI keeps `--scope m0 --strict` and runs `--scope m1` without `--strict` until the M1 exit, then switches it to `--strict` | Proposed |
+| D1 | Decode mode and anomaly set | Add `DecodeMode` (default `Strict`) and `AnomalySet<A>` (a `Copy` bit set over a `#[non_exhaustive]` anomaly enum of up to 32 flags) to `aldis-core`. The change is additive (GEN-080); the `aldis-core` gates run again on the new code | Accepted (2026-10-17) |
+| D2 | CUC fine time | Store fine time as a left-aligned `u128` fraction of a second (up to 80 bits used, TIME-011). Embedded targets lower `u128` through `compiler_builtins`; WP-5 measures the stack cost. Alternative: `[u8; 10]` with octet arithmetic | Accepted (2026-10-17) |
+| D3 | Calendar conversion (TIME-033) | Closed-form civil-from-days and days-from-civil (Hinnant), with no loops or tables (GEN-022). Leap seconds pass through as second 60; no time-scale change (§6 of the spec). A CDS value with an agency epoch (P-field bit 4 = 1) converts only if the caller supplies the epoch day; otherwise `InvalidConfig` | Accepted (2026-10-17) |
+| D4 | SANA values (OI-06) | M1 embeds **no** SANA registry. Valid EPI and extended-EPI sets are caller-supplied managed parameters (EPP-010). OI-06 stays open for USLP and the link layer | Accepted (2026-10-17) |
+| D5 | Independent cross-checks (VER-040) | A separate `crosscheck/` workspace (dev-only, like `fuzz/`) that runs each vector file through an independent implementation and reports disagreements. First candidate: the Rust `spacepackets` crate (SPP, CUC, CDS); its license and coverage are checked in WP-4. Where no independent implementation exists (expected for EPP, CCS, ASCII), the vectors are `hand-derived` with the derivation written down, plus the Blue Book examples | Accepted (2026-10-17) |
+| D6 | Bare-metal execution | Run the exerciser under QEMU on all three targets: RISC-V on `qemu-system-riscv32 -machine virt` with semihosting; Cortex-R on a QEMU Cortex-R machine (candidate `mps3-an536`, Cortex-R52, which needs a newer QEMU than Ubuntu 24.04 ships; confirmed in WP-5). If no Cortex-R machine works in CI, Cortex-R stays at link-check only and the reason is recorded | Accepted (2026-10-17) |
+| D7 | Exerciser structure | One exerciser workspace links all M1 crates, with one test group per crate. VER-010 asks for an exerciser "for each crate". One binary that calls every public API of every crate gives the same link-time proof, and keeps one QEMU job per target | Accepted (2026-10-17) |
+| D8 | Trace scope | Add `--scope m1` from §4 below. CI keeps `--scope m0 --strict` and runs `--scope m1` without `--strict` until the M1 exit, then switches it to `--strict` | Accepted (2026-10-17) |
 
 ## 3. Work packages
 
@@ -62,10 +62,10 @@ Each codec module is done when:
 
 | Order | Module | Content | Requirements |
 |---|---|---|---|
-| 1 | `pfield` | P-field parse/build: extension chain, time code ID, strict/lenient handling of reserved IDs. `decode_with_pfield` and `decode_implicit` entry points report the consumed length | TIME-001, TIME-002, TIME-003 |
+| 1 | `pfield` | P-field parse/build: extension chain, time code ID, strict/lenient handling of reserved IDs (lenient: P-field only, OI-15). `decode_with_pfield` and `decode_implicit` entry points report the consumed length | TIME-001, TIME-002, TIME-003 |
 | 2 | `cuc` | `CucFormat` (1–7 coarse, 0–10 fine; octet 2 when needed), `CucValue`, ns conversions (truncate down, ceiling up), `OutOfRange` on overflow, mission bits preserved | TIME-010…014 |
 | 3 | `cds` | 16/24-bit day, ms of day, none/µs/ps sub-ms; strict range checks including the leap second; reserved sub-ms code | TIME-020…022 |
-| 4 | `ccs` | BCD validation, month/day and day-of-year variations, leap-year day ranges, 0–6 sub-second octets | TIME-030 |
+| 4 | `ccs` | BCD validation, month/day and day-of-year variations, DOY high nibble, leap-year day ranges, 0–6 sub-second octets | TIME-030, TIME-034 |
 | 5 | `ascii` | Parse and format A and B, 0–12 fraction digits, optional `Z` preserved, second 60. Subset parsing behind `AsciiSubset`. Formatting writes into a caller buffer (no `alloc`) | TIME-031, TIME-032 |
 | 6 | conversions | CDS ↔ CCS ↔ ASCII for the same UTC instant (D3) | TIME-033 |
 
@@ -92,7 +92,7 @@ Also: crate docs. TIME-004, TIME-014, and TIME-022 are verified by inspection an
 | Order | Module | Content | Requirements |
 |---|---|---|---|
 | 1 | `header`, `view`, `writer` | All four header lengths, mixed in one stream; total-length semantics (not length − 1); 1-octet idle; checks on the Protocol ID Extension and CCSDS Defined Field; `HeaderSize::{Auto, Fixed}` | EPP-001…008, EPP-011, API-021 |
-| 2 | `anomaly` | `EppAnomaly::{NonZeroEpiExtension, NonZeroCcsdsDefined, EmptyNonIdle}` | EPP-005…007, API-032 |
+| 2 | `anomaly` | `EppAnomaly::{NonZeroEpiExtension, NonZeroCcsdsDefined}`; EPP-005 is an error in both modes (OI-16) | EPP-005…007, API-032 |
 | 3 | `idle` | `idle(total_len)` for any length ≥ 1, smallest header that fits | EPP-009 |
 | 4 | `config` | `EppConfig`: min/max data unit length and valid EPI / extended-EPI sets (D4); `validate` | EPP-010, GEN-060, GEN-061, RS-012, API-040, API-041 |
 
@@ -139,7 +139,7 @@ M1 is complete when every item below is green on `main`:
 
 | Area | Criteria |
 |---|---|
-| Time codes | TIME-001…004, TIME-010…014, TIME-020…022, TIME-030…033 |
+| Time codes | TIME-001…004, TIME-010…014, TIME-020…022, TIME-030…034 |
 | Space Packet | SPP-001…013 |
 | Encapsulation Packet | EPP-001…011 |
 | Codec contract | API-010, API-011, API-013, API-014, API-020…023, API-030…033, API-040, API-041, GEN-013, GEN-014, GEN-043, GEN-052, GEN-053, GEN-060, GEN-061, GEN-081, RS-012 |

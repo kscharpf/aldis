@@ -71,7 +71,7 @@ w.finish(payload_len) -> Result<usize, Error>
 |---|---|---|---|
 | API-030 | Every decoder SHALL support `Strict` (default) and `Lenient` modes. | — | T |
 | API-031 | In `Strict` mode, any violation of a SHALL in the Blue Book that is checkable from the octets and the supplied configuration SHALL be an error. | — | V |
-| API-032 | In `Lenient` mode, deviations limited to **reserved/spare bits, fields CCSDS declares "undefined", and conventional-zero fields** (e.g. EPP CCSDS Defined Field, TM Packet Order Flag when Sync Flag = 1) SHALL be accepted. They SHALL be reported as anomaly flags. Version numbers, lengths, and FECF/FHEC failures SHALL remain errors in both modes. | e.g. 133.1 §4.1.2.7.2; 132.0 §4.1.2.7.4–5 | V |
+| API-032 | In `Lenient` mode, deviations limited to **reserved/spare bits, fields CCSDS declares "undefined", conventional-zero fields, and fixed-value fields of idle data units** (e.g. EPP CCSDS Defined Field, TM Packet Order Flag when Sync Flag = 1, Secondary Header Flag of an Idle Packet), plus a reserved P-field time code ID decoded as TIME-002 specifies, SHALL be accepted. They SHALL be reported as anomaly flags. Version numbers, lengths, and FECF/FHEC failures SHALL remain errors in both modes (OI-15, OI-16). | e.g. 133.1 §4.1.2.7.2; 132.0 §4.1.2.7.4–5; 133.0 §4.1.3.3.3.4 | V |
 | API-033 | Each standard document SHALL list the anomaly flags its decoder can raise. | — | I |
 
 ## 4. Configuration objects

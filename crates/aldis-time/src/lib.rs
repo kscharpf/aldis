@@ -13,6 +13,7 @@ extern crate alloc;
 #[cfg(feature = "std")]
 extern crate std;
 
+pub mod anomaly;
 pub mod ascii;
 pub mod ccs;
 pub mod cds;

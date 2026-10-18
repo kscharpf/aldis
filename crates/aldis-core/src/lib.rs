@@ -6,6 +6,8 @@
 //! | Module | Contents | Requirements |
 //! |---|---|---|
 //! | [`error`] | Stable error catalogue, `Error` | GEN-040, GEN-041, RS-011 |
+//! | [`mode`] | `DecodeMode` (strict/lenient) | API-030…API-032 |
+//! | [`anomaly`] | Lenient-mode anomaly flags, `AnomalySet` | GEN-043, GEN-081 |
 //! | [`bits`] | Big-endian bit-field primitives | GEN-050, GEN-051 |
 //! | [`ids`] | Range-checked identifiers | API-001, API-002, RS-010 |
 //! | [`time`] | `Instant`, `Duration` | API-003 |
@@ -27,6 +29,7 @@ extern crate alloc;
 #[cfg(feature = "std")]
 extern crate std;
 
+pub mod anomaly;
 pub mod bits;
 pub mod container;
 pub mod counter;
@@ -34,8 +37,11 @@ pub mod crc;
 pub mod error;
 pub mod ids;
 pub mod layout;
+pub mod mode;
 pub mod oid;
 pub mod security;
 pub mod time;
 
+pub use anomaly::{Anomaly, AnomalySet};
 pub use error::{Error, ErrorDetail, ErrorKind, FieldId, Result};
+pub use mode::DecodeMode;

@@ -6,6 +6,7 @@
 use core::fmt::Write as _;
 use core::hint::black_box as bb;
 
+use aldis_core::anomaly::{Anomaly, AnomalySet, CAPACITY};
 use aldis_core::bits;
 use aldis_core::container::{ByteQueue, FixedQueue, FixedVec};
 use aldis_core::counter::{Continuity, ModCounter};
@@ -16,6 +17,7 @@ use aldis_core::crc::{
 use aldis_core::error::{Error, ErrorDetail, ErrorKind, FieldId};
 use aldis_core::ids::{Apid, FrameSeqNum, MapId, PacketVersion, SeqCount, SpacecraftId, VcId};
 use aldis_core::layout::{FrameLayout, LayoutSpec};
+use aldis_core::mode::DecodeMode;
 use aldis_core::oid::{OidGenerator, OidGeneratorGalois};
 use aldis_core::security::{
     FixedPatternSecurity, FrameCtx, NoSecurity, Protocol, SecuredFields, SecurityHook,
@@ -348,6 +350,44 @@ fn apis_containers_security(tally: &mut Tally) {
     );
 }
 
+/// A flag type whose index is its value, so out-of-range indices reach `AnomalySet` too.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+struct Flag(u8);
+
+impl Anomaly for Flag {
+    fn bit(self) -> u8 {
+        self.0
+    }
+
+    fn from_bit(bit: u8) -> Option<Flag> {
+        (bit < CAPACITY).then_some(Flag(bit))
+    }
+}
+
+fn apis_mode_anomaly(tally: &mut Tally) {
+    // mode
+    tally.check(bb(DecodeMode::default()) == DecodeMode::Strict);
+    tally.check(bb(DecodeMode::Lenient) != DecodeMode::Strict);
+
+    // anomaly
+    let mut set: AnomalySet<Flag> = AnomalySet::default();
+    tally.check(set.is_empty() && set.bits() == 0);
+    set.insert(bb(Flag(3)));
+    set.insert(bb(Flag(31)));
+    set.insert(bb(Flag(32)));
+    tally.check(set.contains(bb(Flag(3))) && !set.contains(bb(Flag(32))) && set.len() == 2);
+    tally.check(set.bits() == 0x8000_0008 && !set.is_empty());
+    tally.check(set.iter().map(|f| f.0).eq([3, 31]) && (&set).into_iter().count() == 2);
+    tally.check(set.iter().size_hint() == (0, Some(2)) && set.into_iter().count() == 2);
+    let rebuilt = AnomalySet::from_flags(bb(&[Flag(31), Flag(3)]));
+    tally.check(rebuilt == set && rebuilt != AnomalySet::empty());
+    let mut text = Text {
+        buf: [0; 96],
+        len: 0,
+    };
+    tally.check(write!(text, "{set:?}").is_ok() && text.len > 0);
+}
+
 /// Runs everything; returns the tally.
 pub fn run() -> Tally {
     let mut t = Tally::default();
@@ -355,6 +395,7 @@ pub fn run() -> Tally {
     apis_errors_ids(&mut t);
     apis_time_crc_oid_counter(&mut t);
     apis_containers_security(&mut t);
+    apis_mode_anomaly(&mut t);
     #[cfg(feature = "inject-panic")]
     canary(&mut t);
     t
