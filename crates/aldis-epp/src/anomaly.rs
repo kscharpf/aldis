@@ -1,7 +1,7 @@
 //! Lenient-mode anomaly flags (API-032, GEN-043, GEN-081).
 //!
 //! The flags and their bit indices are listed in `docs/standards/encapsulation-packet.md` §3
-//! (API-033). Bit 2 is provisional until OI-16 is resolved.
+//! (API-033). Bit 2 is reserved and never raised (OI-16).
 
 aldis_core::anomaly_flags! {
     /// A deviation a lenient Encapsulation Packet decoder accepts and reports (API-032).
@@ -12,9 +12,6 @@ aldis_core::anomaly_flags! {
         /// Bit 1. Non-zero CCSDS Defined Field, by convention all zeros (133.1 §4.1.2.7.2,
         /// EPP-007).
         NonZeroCcsdsDefined = 1,
-        /// Bit 2. Encapsulated Data Field absent while the EPI is not `000` (idle), which 133.1
-        /// §4.1.3.1.4–5 forbid (EPP-005).
-        EmptyNonIdle = 2,
     }
 }
 
@@ -31,13 +28,13 @@ mod tests {
             EppAnomaly::ALL,
             [
                 EppAnomaly::NonZeroEpiExtension,
-                EppAnomaly::NonZeroCcsdsDefined,
-                EppAnomaly::EmptyNonIdle,
+                EppAnomaly::NonZeroCcsdsDefined
             ]
         );
-        assert!(EppAnomaly::ALL.iter().map(|f| f.bit()).eq([0, 1, 2]));
+        assert!(EppAnomaly::ALL.iter().map(|f| f.bit()).eq([0, 1]));
+        assert_eq!(EppAnomaly::from_bit(2), None, "bit 2 is reserved (OI-16)");
         let set = AnomalySet::from_flags(EppAnomaly::ALL);
-        assert_eq!(set.bits(), 0b111);
+        assert_eq!(set.bits(), 0b11);
         assert!(set.iter().eq(EppAnomaly::ALL.iter().copied()));
     }
 }

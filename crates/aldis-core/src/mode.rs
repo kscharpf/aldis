@@ -3,7 +3,8 @@
 //! Every decoder takes a [`DecodeMode`]. In [`Strict`](DecodeMode::Strict) mode a violation of
 //! a Blue Book SHALL that is checkable from the octets and the configuration is an error. In
 //! [`Lenient`](DecodeMode::Lenient) mode, deviations in reserved/spare bits, fields CCSDS
-//! declares "undefined", and conventional-zero fields are accepted and reported in an
+//! declares "undefined", conventional-zero fields, and fixed-value fields of idle data units,
+//! plus a reserved time code ID (TIME-002), are accepted and reported in an
 //! [`AnomalySet`](crate::anomaly::AnomalySet) (GEN-043). Version numbers, lengths, and
 //! FECF/FHEC failures are errors in both modes.
 

@@ -23,7 +23,7 @@ EPI `000` is the Idle Packet, `110` means "use the Protocol ID Extension", and `
 | EPP-002 | The decoder SHALL accept all four header lengths, whether a stream uses one fixed size or a mix (variable). | §4.1.2.1.2 | V |
 | EPP-003 | The decoder SHALL reject Packet Length < header length, or Packet Length > available octets (`Incomplete`). | §4.1.2.8.2, Table 4-2 | V |
 | EPP-004 | If Length of Length = `00`, the decoder SHALL require EPI = `000` and SHALL report a 1-octet Idle Packet. | §4.1.2.4.4 | V |
-| EPP-005 | If the Encapsulated Data Field is absent (Packet Length = header length), the decoder SHALL require EPI = `000` (strict). | §4.1.3.1.4–5 | V |
+| EPP-005 | If the Encapsulated Data Field is absent (Packet Length = header length), the decoder SHALL require EPI = `000` in both modes (OI-16). | §4.1.3.1.4–5 | V |
 | EPP-006 | If EPI ≠ `110`, a non-zero Protocol ID Extension SHALL be an error in strict mode and an anomaly in lenient mode. | §4.1.2.6.3 | V |
 | EPP-007 | A non-zero CCSDS Defined Field SHALL be an anomaly (lenient) or `ReservedValue` (strict). The value SHALL be exposed. | §4.1.2.7.2 | V |
 | EPP-008 | The encoder SHALL support a `HeaderSize::{Auto, Fixed(1\|2\|4\|8)}` policy. `Auto` SHALL choose the smallest header that can represent the total length (with the 1-octet header reserved for idle). `Fixed` SHALL fail with `OutOfRange` if the length does not fit. | §4.1.2.1.2 note | V |
@@ -39,7 +39,7 @@ EPI `000` is the Idle Packet, `110` means "use the Protocol ID Extension", and `
 |---|---|---|---|
 | 0 | `NonZeroEpiExtension` | Non-zero Protocol ID Extension with EPI ≠ `110` (EPP-006) | 133.1 §4.1.2.6.3 |
 | 1 | `NonZeroCcsdsDefined` | Non-zero CCSDS Defined Field (EPP-007) | 133.1 §4.1.2.7.2 |
-| 2 | `EmptyNonIdle` | Encapsulated Data Field absent with EPI ≠ `000` (EPP-005; provisional, OI-16) | 133.1 §4.1.3.1.4–5 |
+| 2 | — | Reserved, never raised. Was `EmptyNonIdle`, withdrawn by OI-16 before release: an absent Encapsulated Data Field with EPI ≠ `000` is an error in both modes (EPP-005) | — |
 
 ## 4. Test-vector categories
 

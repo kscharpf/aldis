@@ -8,7 +8,8 @@ All notable changes to Aldis are recorded here. The format follows [Keep a Chang
 - `aldis-core::mode`: `DecodeMode { Strict, Lenient }`, default `Strict` (API-030; M1 D1).
 - `aldis-core::anomaly`: `Anomaly` trait (stable bit index per flag), `CAPACITY` (32), and `AnomalySet<A>`, a `Copy` bit set with `empty`, `from_flags`, `insert`, `contains`, `iter`, `is_empty`, `len`, `bits` (GEN-043; M1 D1). Re-exported at the crate root with `DecodeMode`.
 - `aldis_core::anomaly_flags!`: declares a `#[non_exhaustive]` flag enum (GEN-081) with its `Anomaly` impl and `ALL` from one table; out-of-range or duplicate bit indices fail to compile.
-- Anomaly flag enums `TimeAnomaly`, `SppAnomaly`, and `EppAnomaly` in the codec crates, with bit indices listed in the standard documents (API-033); some flags are provisional pending OI-15 and OI-16.
+- Anomaly flag enums `TimeAnomaly`, `SppAnomaly`, and `EppAnomaly` in the codec crates, with bit indices listed in the standard documents (API-033). Bit 1 of `TimeAnomaly` and bit 2 of `EppAnomaly` are reserved and never raised (OI-15, OI-16).
+- TIME-034 (CCS day-of-year high nibble). TIME-002, TIME-003, TIME-020, SPP-004, EPP-005, and API-032 clarified by OI-15 and OI-16.
 - Fuzz target `anomaly_set_model` (VER-022).
 - `aldis-core::bits`: big-endian `read_u32`, `write_u32`, `read_u64`, `write_u64` octet helpers alongside `read_u16`/`write_u16`.
 - `aldis-core::crc`: `PRESET` constant and incremental `crc16_update`, `crc16_update_bitwise`, `crc16_update_table` functions (CMN-001…004).

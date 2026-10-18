@@ -24,7 +24,7 @@ Total packet length is 7 to 65 542 octets (§4.1.2.2).
 | SPP-001 | The decoder SHALL reject a version number ≠ `000` with `UnsupportedVersion`. | §4.1.3.2.2 | V |
 | SPP-002 | The decoder SHALL compute total length = 7 + Packet Data Length. It SHALL return `Incomplete{needed}` if the buffer is shorter, and SHALL consume exactly that length if the buffer is longer (API-011). | §4.1.3.5 | V |
 | SPP-003 | `peek_length` SHALL need only the first 6 octets. | §4.1.3.5 | T |
-| SPP-004 | For an Idle Packet (APID = 2047), strict mode SHALL reject Secondary Header Flag = 1. | §4.1.3.3.3.4 | V |
+| SPP-004 | For an Idle Packet (APID = 2047), strict mode SHALL reject Secondary Header Flag = 1; lenient mode SHALL accept it and raise `IdleWithSecondaryHeader` (API-032, OI-16). | §4.1.3.3.3.4 | V |
 | SPP-005 | The encoder SHALL reject an empty Packet Data Field. It SHALL reject Secondary Header Flag = 0 with an empty User Data Field, and Secondary Header Flag = 1 with a zero-length secondary header. | §4.1.4.1.2, §4.1.4.2.1.2, §4.1.4.3.2 | V |
 | SPP-006 | The encoder SHALL reject a total packet length above the configured `max_packet_len` (managed parameter, ≤ 65 542) with `OutOfRange`. | §5.2 Table 5-1 | T |
 | SPP-007 | Secondary header length is a managed parameter per APID. When it is supplied, the view SHALL split the Packet Data Field into `secondary_header()` and `user_data()`; otherwise it SHALL expose only `data_field()`. | §4.1.4.2.1.4 | T |
@@ -41,7 +41,7 @@ Total packet length is 7 to 65 542 octets (§4.1.2.2).
 
 | Bit | Flag | Deviation | Source |
 |---|---|---|---|
-| 0 | `IdleWithSecondaryHeader` | Idle Packet (APID 2047) with Secondary Header Flag = 1 (SPP-004; provisional, OI-16) | 133.0 §4.1.3.3.3.4 |
+| 0 | `IdleWithSecondaryHeader` | Idle Packet (APID 2047) with Secondary Header Flag = 1 (SPP-004) | 133.0 §4.1.3.3.3.4 |
 
 ## 4. Test-vector categories
 

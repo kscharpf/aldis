@@ -1,7 +1,7 @@
 //! Lenient-mode anomaly flags (API-032, GEN-043, GEN-081).
 //!
 //! The flags and their bit indices are listed in `docs/standards/space-packet.md` §3 (API-033).
-//! Bit 0 is provisional until OI-16 is resolved.
+//! Bit 0 is kept by OI-16: API-032 covers fixed-value fields of idle data units.
 
 aldis_core::anomaly_flags! {
     /// A deviation a lenient Space Packet decoder accepts and reports (API-032).

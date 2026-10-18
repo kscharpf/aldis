@@ -18,8 +18,8 @@ encode(&TimeCode, include_pfield, out) -> len
 | ID | Requirement | Source | Verif. |
 |---|---|---|---|
 | TIME-001 | P-field octet 1 SHALL be decoded as: bit 0 extension flag; bits 1–3 time code ID; bits 4–7 code-specific detail. If the extension flag is set, the following octet SHALL be part of the P-field, which repeats while each octet's bit 0 is set. | 301.0 §3.1 | V |
-| TIME-002 | Time code IDs `000`, `011`, and `111` SHALL be rejected as `ReservedValue` in strict mode, and decoded as `Agency/Unknown` raw in lenient mode. | 301.0 §3.1 | V |
-| TIME-003 | Decoders SHALL report the total consumed length (P-field + T-field) so a time code can be followed by other data, e.g. in a Space Packet secondary header. | 133.0 §4.1.4.2.2 | T |
+| TIME-002 | Time code IDs `000`, `011`, and `111` SHALL be rejected as `ReservedValue` in strict mode. In lenient mode the decoder SHALL return the P-field as an `Unknown` time code, raise `ReservedTimeCodeId`, and report only the P-field octets as consumed, because the T-field length is not defined; the caller parses the T-field (OI-15). | 301.0 §3.1.1 | V |
+| TIME-003 | Decoders SHALL report the total consumed length (P-field + T-field; P-field only for an `Unknown` time code, TIME-002) so a time code can be followed by other data, e.g. in a Space Packet secondary header. | 133.0 §4.1.4.2.2 | T |
 | TIME-004 | No time code operation SHALL depend on the host clock or time zone (GEN-031). | — | I |
 
 ## 3. CUC — CCSDS Unsegmented Code (§3.2)
@@ -42,7 +42,7 @@ T-field: day (16/24 bits) ‖ milliseconds of day (32 bits) ‖ sub-milliseconds
 
 | ID | Requirement | Source | Verif. |
 |---|---|---|---|
-| TIME-020 | The CDS codec SHALL implement all valid combinations of day length (16/24) and sub-millisecond resolution (none/µs/ps). Sub-ms code `11` SHALL be `ReservedValue`. | 301.0 §3.3 | V |
+| TIME-020 | The CDS codec SHALL implement all valid combinations of day length (16/24) and sub-millisecond resolution (none/µs/ps). Sub-ms code `11` SHALL be `ReservedValue` in both modes: it sets the segment length, which is then unknown (OI-15). | 301.0 §3.3.2 | V |
 | TIME-021 | Strict decoding SHALL reject milliseconds-of-day ≥ 86 401 000 (allowing one positive leap second), µs sub-segment ≥ 1000, and ps sub-segment ≥ 10⁹. | 301.0 §3.3 (UTC-based) | V |
 | TIME-022 | CDS SHALL be documented as UTC-based (leap seconds apply). Leap-second handling is the caller's responsibility in v1 (see §6). | 301.0 §3.3 | I |
 
@@ -58,6 +58,7 @@ ASCII Time Code A `YYYY-MM-DDThh:mm:ss.d…dZ` and B `YYYY-DDDThh:mm:ss.d…dZ`.
 | TIME-031 | The ASCII codec SHALL parse and format both variations with 0 to 12 fractional digits (configurable maximum). It SHALL accept the optional `Z` and preserve its presence on round trip. Seconds value 60 SHALL be accepted (leap second). | 301.0 §3.5.1.1–2 | V |
 | TIME-032 | ASCII subsets (calendar-only, time-only, truncated subfields, §3.5.1.3) SHALL be supported for **parsing** behind an explicit `AsciiSubset` option. Formatting subsets is optional in v1. | 301.0 §3.5.1.3 | V |
 | TIME-033 | The library SHALL provide conversions between CDS, CCS, and ASCII representations of the same UTC instant, with no time-scale change. | — | V |
+| TIME-034 | In the CCS day-of-year variation, a non-zero value in the four most significant bits of the 16-bit DOY segment SHALL be `ReservedValue` in strict mode and SHALL raise `NonZeroDoyHighNibble` in lenient mode. The encoder SHALL write them as zero (OI-15). | 301.0 §3.4.1.2 | V |
 
 ## 6. Time scales (deferred)
 
@@ -69,6 +70,6 @@ TAI↔UTC conversion requires a leap-second table that changes over a mission's 
 
 | Bit | Flag | Deviation | Source |
 |---|---|---|---|
-| 0 | `ReservedTimeCodeId` | P-field time code ID `000`, `011`, or `111` (TIME-002; provisional, OI-15) | 301.0 §3.1.1 |
-| 1 | `ReservedSubmsCode` | CDS submillisecond length code `11` (TIME-020; provisional, OI-15) | 301.0 §3.3.2 |
-| 2 | `NonZeroDoyHighNibble` | CCS day-of-year segment with a non-zero high nibble (no requirement yet, OI-15) | 301.0 §3.4.1.2 |
+| 0 | `ReservedTimeCodeId` | P-field time code ID `000`, `011`, or `111`; only the P-field is consumed (TIME-002) | 301.0 §3.1.1 |
+| 1 | — | Reserved, never raised. Was `ReservedSubmsCode`, withdrawn by OI-15 before release: CDS sub-ms code `11` is an error in both modes (TIME-020) | — |
+| 2 | `NonZeroDoyHighNibble` | CCS day-of-year segment with a non-zero high nibble (TIME-034) | 301.0 §3.4.1.2 |
