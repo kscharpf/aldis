@@ -8,6 +8,7 @@ mod coverage;
 mod layers;
 mod links;
 mod md;
+mod refapp;
 mod repo;
 mod spec;
 mod trace;
@@ -27,6 +28,8 @@ commands:
   vectors schema [--check]     (re)generate test-vectors/schema/, or check it is current
   links                        relative Markdown links resolve inside the repository
   layers                       crate dependency rules (GEN-001..004)
+  refapp-deps                  refapp/ uses Aldis only through the `aldis` facade and
+                               forbids unsafe code (APP-100, APP-105)
   symbols                      no frame-protocol code in a build of aldis-spp alone (VER-031)
   stack-sizes <target>         per-function stack usage of the exerciser (VER-011; tooling nightly)
   coverage                     100 % region/function/line/branch gate for aldis-core (VER-024;
@@ -35,9 +38,9 @@ commands:
   changelog show               print the unreleased changes as the next release will list them
   changelog release <version> <YYYY-MM-DD>
                                move every fragment into a new section of CHANGELOG.md
-  ci                           everything CI runs: spec-lint, links, layers, vectors
-                               validate, vectors schema --check, trace --scope m0 --strict,
-                               changelog check
+  ci                           everything CI runs: spec-lint, links, layers, refapp-deps,
+                               vectors validate, vectors schema --check,
+                               trace --scope m0 --strict, changelog check
 ";
 
 fn run(args: &[&str]) -> Result<usize, String> {
@@ -56,6 +59,7 @@ fn run(args: &[&str]) -> Result<usize, String> {
         ["vectors", "schema", "--check"] => vectors::schema(true),
         ["links"] => links::check(),
         ["layers"] => layers::check(),
+        ["refapp-deps"] => refapp::check(),
         ["symbols"] => binaries::symbols(),
         ["stack-sizes", target] => binaries::stack_sizes(target),
         ["coverage"] => coverage::run(),
@@ -68,6 +72,7 @@ fn run(args: &[&str]) -> Result<usize, String> {
                 spec::lint as fn() -> Result<usize, String>,
                 links::check,
                 layers::check,
+                refapp::check,
                 vectors::validate,
                 || vectors::schema(true),
                 || trace::run(Some("m0"), true),

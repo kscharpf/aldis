@@ -3,7 +3,7 @@
 **Goal:** a reviewed specification of the reference application's scenario, in a new document `docs/reference-application.md` with requirement area APP, and a `refapp/` workspace skeleton built in CI. The scenario is designed once, here, so that A1 to A6 each extend it and never replace it, and so that every implementation can reproduce its golden traces byte for byte (GEN-030).
 **Roadmap entry:** [08-roadmap.md](../08-roadmap.md) §3 (track A) · **Builds on:** [M0](m0-foundations.md) (`v0.1.0-m0`) tooling and CI only; A0 has no entry gate · **Track:** A, owns `refapp/`
 
-**Status: plan approved (2026-10-19).** Entry gate: none (roadmap §3). Decisions D1–D16 accepted by the maintainer 2026-10-19. WP-0 and WP-1: [`docs/reference-application.md`](../reference-application.md) with area APP (APP-001…APP-108) is in review; its APP IDs are in the exit table (§4). OI-23 to OI-26 stay open for the WP-4 review.
+**Status: plan approved (2026-10-19).** Entry gate: none (roadmap §3). Decisions D1–D16 accepted by the maintainer 2026-10-19. WP-0 and WP-1: [`docs/reference-application.md`](../reference-application.md) with area APP (APP-001…APP-108) is in review; its APP IDs are in the exit table (§4). WP-2 and WP-3: the `refapp/` skeleton, `cargo xtask refapp-deps`, trace scanning of `refapp/`, and the CI job `refapp` are in review. OI-23 to OI-26 stay open for the WP-4 review.
 
 ## 1. Starting point
 
@@ -127,6 +127,8 @@ Every protocol value in the document cites its Blue Book clause, read from the B
 
 **Done when:** the workspace builds and tests on the host, `refapp-flight` builds for `thumbv7em-none-eabihf`, and a header-only run of an empty case writes a canonical trace that the comparator accepts.
 
+**Status (2026-10-19): in review.** All tasks done; the case `a0-empty` is reproduced against `refapp/golden/a0-empty.jsonl`. Choices within D11, D13, and D14: the node interface (`Node`, `StepInput`, `Output`) lives in `refapp-scenario`, which both nodes and the harness use, so `refapp-scenario` is `no_std` (the flight node depends on it) while keeping the tooling lint profile of D14; the scenario file's model, schema generator, and code generator live in `refapp-harness` (serde and schemars stay out of the flight build), and the generated files are checked in and checked current in CI rather than built by a build script, so they can be reviewed. The scheduler implements slots, delay, and the tie order of §6.2 and is tested with scripted test nodes; ops scripts (A1), faults (A2), and the node protocol (A5) are not implemented. API feedback: none so far (the skeleton uses only `Instant` and `Apid` from `aldis-core`).
+
 ### WP-3 Tooling and CI (S) — VER-001, VER-004, VER-055
 
 | Task | Output |
@@ -137,6 +139,8 @@ Every protocol value in the document cites its Blue Book clause, read from the B
 | `xtask trace` scans `refapp/` for `// req:` and reads the requirement IDs in golden-trace headers (D16) | `xtask` |
 
 **Done when:** the `refapp` job is green on `main`, and a planted dependency on `aldis-testkit` fails the dependency check (checked once, then reverted).
+
+**Status (2026-10-19): in review.** `cargo xtask refapp-deps` (also part of `cargo xtask ci`; CI job `layers`) enforces D15 and `#![forbid(unsafe_code)]` at every crate root; a planted `aldis-testkit` dev-dependency of `refapp-ground` failed it (`APP-100 refapp-ground (dev dependency aldis-testkit)`) and was reverted. `cargo xtask trace` scans `refapp/` and the golden-trace headers; `spec-lint` checks requirement IDs in `.jsonl` files too. `cargo deny` runs over `refapp/` in the CI job `deny`.
 
 ### WP-4 Review and exit (S)
 

@@ -169,7 +169,10 @@ impl Spec {
 
 /// Text files scanned for references to requirement IDs.
 pub fn referencing_files() -> Vec<std::path::PathBuf> {
-    let mut files = repo::files(".", &["md", "rs", "json", "yml", "yaml", "toml", "py"]);
+    let mut files = repo::files(
+        ".",
+        &["md", "rs", "json", "jsonl", "yml", "yaml", "toml", "py"],
+    );
     files.retain(|p| !repo::rel(p).starts_with("test-vectors/schema/"));
     files
 }

@@ -1,0 +1,450 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Scenario",
+  "description": "The whole scenario (docs/reference-application.md).",
+  "type": "object",
+  "properties": {
+    "scenario": {
+      "description": "Scenario identifier, always `aldis-refapp` (§7.2).",
+      "type": "string"
+    },
+    "scenario_version": {
+      "description": "Scenario version (§7.2, APP-002).",
+      "type": "integer",
+      "format": "uint16",
+      "minimum": 0,
+      "maximum": 65535
+    },
+    "spacecraft_id": {
+      "description": "Spacecraft ID of every frame (§3.4, APP-026); fictional (OI-26).",
+      "type": "integer",
+      "format": "uint16",
+      "minimum": 0,
+      "maximum": 1023
+    },
+    "time": {
+      "description": "Time model (§5).",
+      "$ref": "#/$defs/Time"
+    },
+    "link": {
+      "description": "Link model (§6.1).",
+      "$ref": "#/$defs/Link"
+    },
+    "apid": {
+      "description": "APIDs (§3.1).",
+      "$ref": "#/$defs/Apids"
+    },
+    "tm": {
+      "description": "TM downlink (§4.1).",
+      "$ref": "#/$defs/Tm"
+    },
+    "tc": {
+      "description": "TC uplink (§4.2).",
+      "$ref": "#/$defs/Tc"
+    },
+    "cop1": {
+      "description": "COP-1 parameters (§4.2).",
+      "$ref": "#/$defs/Cop1"
+    },
+    "cases": {
+      "description": "Cases (§6.4).",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Case"
+      }
+    }
+  },
+  "additionalProperties": false,
+  "required": [
+    "scenario",
+    "scenario_version",
+    "spacecraft_id",
+    "time",
+    "link",
+    "apid",
+    "tm",
+    "tc",
+    "cop1",
+    "cases"
+  ],
+  "$defs": {
+    "Time": {
+      "description": "Time model (§5, APP-060).",
+      "type": "object",
+      "properties": {
+        "t0_coarse_s": {
+          "description": "CUC coarse time of the run's start, seconds since 1958-01-01 TAI.",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        },
+        "cuc_coarse_octets": {
+          "description": "CUC coarse octets.",
+          "type": "integer",
+          "format": "uint8",
+          "minimum": 1,
+          "maximum": 4
+        },
+        "cuc_fine_octets": {
+          "description": "CUC fractional octets.",
+          "type": "integer",
+          "format": "uint8",
+          "minimum": 0,
+          "maximum": 3
+        },
+        "cuc_explicit_pfield": {
+          "description": "Explicit P-field octet (301.0 §3.2.2).",
+          "type": "integer",
+          "format": "uint8",
+          "minimum": 0,
+          "maximum": 255
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "t0_coarse_s",
+        "cuc_coarse_octets",
+        "cuc_fine_octets",
+        "cuc_explicit_pfield"
+      ]
+    },
+    "Link": {
+      "description": "Link model (§6.1, APP-071, APP-072).",
+      "type": "object",
+      "properties": {
+        "one_way_delay_us": {
+          "description": "One-way delay, both directions, µs.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        },
+        "frame_slot_us": {
+          "description": "Downlink frame slot period, µs (A2 on).",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 1
+        },
+        "uplink_slot_us": {
+          "description": "Uplink slot period, µs (A2 on).",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 1
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "one_way_delay_us",
+        "frame_slot_us",
+        "uplink_slot_us"
+      ]
+    },
+    "Apids": {
+      "description": "APIDs (§3.1, APP-020).",
+      "type": "object",
+      "properties": {
+        "housekeeping": {
+          "description": "Housekeeping.",
+          "type": "integer",
+          "format": "uint16",
+          "minimum": 0,
+          "maximum": 2046
+        },
+        "events": {
+          "description": "Event reports.",
+          "type": "integer",
+          "format": "uint16",
+          "minimum": 0,
+          "maximum": 2046
+        },
+        "payload": {
+          "description": "Payload science.",
+          "type": "integer",
+          "format": "uint16",
+          "minimum": 0,
+          "maximum": 2046
+        },
+        "dump": {
+          "description": "Memory dump.",
+          "type": "integer",
+          "format": "uint16",
+          "minimum": 0,
+          "maximum": 2046
+        },
+        "commands": {
+          "description": "Commands.",
+          "type": "integer",
+          "format": "uint16",
+          "minimum": 0,
+          "maximum": 2046
+        },
+        "table_upload": {
+          "description": "Table upload.",
+          "type": "integer",
+          "format": "uint16",
+          "minimum": 0,
+          "maximum": 2046
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "housekeeping",
+        "events",
+        "payload",
+        "dump",
+        "commands",
+        "table_upload"
+      ]
+    },
+    "Tm": {
+      "description": "TM downlink (§4.1, APP-030…APP-034).",
+      "type": "object",
+      "properties": {
+        "frame_length": {
+          "description": "Transfer frame length, octets.",
+          "type": "integer",
+          "format": "uint16",
+          "minimum": 0,
+          "maximum": 2048
+        },
+        "fecf": {
+          "description": "FECF present.",
+          "type": "boolean"
+        },
+        "vcid_realtime": {
+          "description": "VC of housekeeping and events.",
+          "type": "integer",
+          "format": "uint8",
+          "minimum": 0,
+          "maximum": 7
+        },
+        "vcid_payload": {
+          "description": "VC of payload and dump.",
+          "type": "integer",
+          "format": "uint8",
+          "minimum": 0,
+          "maximum": 7
+        },
+        "vcid_idle": {
+          "description": "VC of OID frames.",
+          "type": "integer",
+          "format": "uint8",
+          "minimum": 0,
+          "maximum": 7
+        },
+        "release_deadline_realtime_us": {
+          "description": "Release deadline of the real-time VC, µs.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        },
+        "release_deadline_payload_us": {
+          "description": "Release deadline of the payload VC, µs.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        },
+        "max_packet_length": {
+          "description": "Maximum packet length, octets.",
+          "type": "integer",
+          "format": "uint16",
+          "minimum": 0,
+          "maximum": 65535
+        },
+        "idle_pattern": {
+          "description": "Idle Packet data octet.",
+          "type": "integer",
+          "format": "uint8",
+          "minimum": 0,
+          "maximum": 255
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "frame_length",
+        "fecf",
+        "vcid_realtime",
+        "vcid_payload",
+        "vcid_idle",
+        "release_deadline_realtime_us",
+        "release_deadline_payload_us",
+        "max_packet_length",
+        "idle_pattern"
+      ]
+    },
+    "Tc": {
+      "description": "TC uplink (§4.2, APP-040…APP-042).",
+      "type": "object",
+      "properties": {
+        "max_frame_length": {
+          "description": "Maximum transfer frame length, octets.",
+          "type": "integer",
+          "format": "uint16",
+          "minimum": 0,
+          "maximum": 1024
+        },
+        "fecf": {
+          "description": "FECF present.",
+          "type": "boolean"
+        },
+        "vcid": {
+          "description": "The uplink VC.",
+          "type": "integer",
+          "format": "uint8",
+          "minimum": 0,
+          "maximum": 63
+        },
+        "map_commands": {
+          "description": "MAP of real-time commands.",
+          "type": "integer",
+          "format": "uint8",
+          "minimum": 0,
+          "maximum": 63
+        },
+        "map_table_upload": {
+          "description": "MAP of the table upload.",
+          "type": "integer",
+          "format": "uint8",
+          "minimum": 0,
+          "maximum": 63
+        },
+        "max_fdu_length": {
+          "description": "Maximum frame data unit length, octets.",
+          "type": "integer",
+          "format": "uint16",
+          "minimum": 0,
+          "maximum": 1019
+        },
+        "max_packet_length": {
+          "description": "Maximum packet length, octets.",
+          "type": "integer",
+          "format": "uint16",
+          "minimum": 0,
+          "maximum": 65535
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "max_frame_length",
+        "fecf",
+        "vcid",
+        "map_commands",
+        "map_table_upload",
+        "max_fdu_length",
+        "max_packet_length"
+      ]
+    },
+    "Cop1": {
+      "description": "COP-1 parameters (§4.2, APP-044).",
+      "type": "object",
+      "properties": {
+        "k": {
+          "description": "FOP sliding window width K.",
+          "type": "integer",
+          "format": "uint8",
+          "minimum": 1,
+          "maximum": 255
+        },
+        "w": {
+          "description": "FARM sliding window width W.",
+          "type": "integer",
+          "format": "uint8",
+          "minimum": 2,
+          "maximum": 254
+        },
+        "t1_initial_us": {
+          "description": "`T1_Initial`, µs.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        },
+        "transmission_limit": {
+          "description": "`Transmission_Limit`.",
+          "type": "integer",
+          "format": "uint8",
+          "minimum": 1,
+          "maximum": 255
+        },
+        "timeout_type": {
+          "description": "`Timeout_Type` (0 or 1).",
+          "type": "integer",
+          "format": "uint8",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "farm_buffer_depth": {
+          "description": "FARM-1 internal buffer depth (COP-032).",
+          "type": "integer",
+          "format": "uint8",
+          "minimum": 1,
+          "maximum": 255
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "k",
+        "w",
+        "t1_initial_us",
+        "transmission_limit",
+        "timeout_type",
+        "farm_buffer_depth"
+      ]
+    },
+    "Case": {
+      "description": "One case (§6.4, APP-076).",
+      "type": "object",
+      "properties": {
+        "id": {
+          "description": "Case ID, also the golden-trace file name.",
+          "type": "string",
+          "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"
+        },
+        "level": {
+          "description": "Link level.",
+          "$ref": "#/$defs/Level"
+        },
+        "end_us": {
+          "description": "End instant, exclusive, µs.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        },
+        "trace_version": {
+          "description": "Version of the case's golden trace (§7.5, APP-087).",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 1
+        },
+        "requirements": {
+          "description": "Requirement IDs the case verifies, sorted (§7.2).",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "level",
+        "end_us",
+        "trace_version",
+        "requirements"
+      ]
+    },
+    "Level": {
+      "description": "Link level of a case (§1, §6.1).",
+      "oneOf": [
+        {
+          "description": "A1: one Space Packet per link unit, sent when output.",
+          "type": "string",
+          "const": "packets"
+        },
+        {
+          "description": "A2 on: one frame per slot.",
+          "type": "string",
+          "const": "frames"
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,17 @@
+[package]
+name = "refapp-flight"
+description = "Reference application: the flight node (no_std, no heap)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+aldis = { workspace = true, features = ["core"] }
+refapp-scenario = { workspace = true }
+
+# Flight lint set (VER-001, APP-102).
+[lints]
+workspace = true
