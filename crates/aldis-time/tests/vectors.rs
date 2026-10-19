@@ -11,8 +11,9 @@ use aldis_core::{DecodeMode, Error};
 use aldis_testkit::{CodecCase, Mode, Outcome, hex, run_codec_file};
 use aldis_time::{
     Agency, AgencyFormat, CalendarDate, Ccs, CcsFormat, CcsValue, CcsVariation, Cds, CdsDayLen,
-    CdsEpoch, CdsFormat, CdsSubMs, CdsValue, Cuc, CucEpoch, CucFormat, CucValue, Decoded,
-    PFieldTail, TimeCode, TimeFormat, decode_implicit, decode_with_pfield,
+    CdsEpoch, CdsFormat, CdsSubMs, CdsValue, Cuc, CucEpoch, CucFormat, CucValue, Decoded, Hour,
+    Micros, Minute, Month, MsOfDay, PFieldTail, Picos, Second, SubMillis, TimeCode, TimeFormat,
+    Year, decode_implicit, decode_with_pfield,
 };
 use serde_json::{Map, Value, json};
 
@@ -142,30 +143,43 @@ fn code_of(format: TimeFormat, v: &Value) -> Result<TimeCode, Error> {
                 CucValue::new(u64_of(v, "coarse"), fine_left(&raw)),
             )?)
         }
-        TimeFormat::Cds(f) => TimeCode::Cds(Cds::new(
-            f,
-            CdsValue {
-                day: u32::try_from(u64_of(v, "day")).unwrap(),
-                ms_of_day: u32::try_from(u64_of(v, "ms_of_day")).unwrap(),
-                subms: u32::try_from(u64_of(v, "subms")).unwrap(),
-            },
-        )?),
-        TimeFormat::Ccs(f) => {
-            let date = match get(v, "day_of_year").as_u64() {
-                Some(doy) => CalendarDate::DayOfYear(u16::try_from(doy).unwrap()),
-                None => CalendarDate::MonthDay {
-                    month: u8_of(v, "month"),
-                    day: u8_of(v, "day"),
+        TimeFormat::Cds(f) => {
+            // Each field is parsed into its type; the vector's raw value may be invalid.
+            let raw = u32::try_from(u64_of(v, "subms")).unwrap();
+            let subms = match f.subms() {
+                CdsSubMs::None => SubMillis::None,
+                CdsSubMs::Micros => {
+                    SubMillis::Micros(Micros::try_from(u16::try_from(raw).unwrap_or(u16::MAX))?)
+                }
+                CdsSubMs::Picos => SubMillis::Picos(Picos::try_from(raw)?),
+            };
+            let ms = u32::try_from(u64_of(v, "ms_of_day")).unwrap();
+            TimeCode::Cds(Cds::new(
+                f,
+                CdsValue {
+                    day: u32::try_from(u64_of(v, "day")).unwrap(),
+                    ms_of_day: MsOfDay::try_from(ms)?,
+                    subms,
                 },
+            )?)
+        }
+        TimeFormat::Ccs(f) => {
+            let year = Year::try_from(u16::try_from(u64_of(v, "year")).unwrap())?;
+            let date = match get(v, "day_of_year").as_u64() {
+                Some(doy) => CalendarDate::from_day_of_year(year, u16::try_from(doy).unwrap())?,
+                None => CalendarDate::from_month_day(
+                    year,
+                    Month::try_from(u8_of(v, "month"))?,
+                    u8_of(v, "day"),
+                )?,
             };
             TimeCode::Ccs(Ccs::new(
                 f,
                 CcsValue {
-                    year: u16::try_from(u64_of(v, "year")).unwrap(),
                     date,
-                    hour: u8_of(v, "hour"),
-                    minute: u8_of(v, "minute"),
-                    second: u8_of(v, "second"),
+                    hour: Hour::try_from(u8_of(v, "hour"))?,
+                    minute: Minute::try_from(u8_of(v, "minute"))?,
+                    second: Second::try_from(u8_of(v, "second"))?,
                     subsecond: u64_of(v, "subsecond"),
                 },
             )?)
@@ -208,16 +222,19 @@ fn describe(code: &TimeCode) -> (&'static str, Value, Value) {
                     "subms": match f.subms() { CdsSubMs::None => "none", CdsSubMs::Micros => "us", CdsSubMs::Picos => "ps" },
                     "pfield_tail_hex": tail_hex(f.tail()),
                 }),
-                json!({ "day": c.value().day, "ms_of_day": c.value().ms_of_day, "subms": c.value().subms }),
+                json!({ "day": c.value().day, "ms_of_day": c.value().ms_of_day.get(), "subms": c.value().subms.get() }),
             )
         }
         TimeCode::Ccs(c) => {
             let f = c.format();
             let v = c.value();
-            let (month, day, doy) = match v.date {
-                CalendarDate::MonthDay { month, day } => (json!(month), json!(day), Value::Null),
-                CalendarDate::DayOfYear(d) => (Value::Null, Value::Null, json!(d)),
-            };
+            let (month, day) = v
+                .date
+                .month_day()
+                .map_or((Value::Null, Value::Null), |(m, d)| {
+                    (json!(m.get()), json!(d))
+                });
+            let doy = v.date.day_of_year().map_or(Value::Null, |d| json!(d));
             (
                 "ccs",
                 json!({
@@ -226,8 +243,8 @@ fn describe(code: &TimeCode) -> (&'static str, Value, Value) {
                     "pfield_tail_hex": tail_hex(f.tail()),
                 }),
                 json!({
-                    "year": v.year, "month": month, "day": day, "day_of_year": doy,
-                    "hour": v.hour, "minute": v.minute, "second": v.second, "subsecond": v.subsecond,
+                    "year": v.date.year().get(), "month": month, "day": day, "day_of_year": doy,
+                    "hour": v.hour.get(), "minute": v.minute.get(), "second": v.second.get(), "subsecond": v.subsecond,
                 }),
             )
         }

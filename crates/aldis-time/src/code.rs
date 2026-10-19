@@ -401,8 +401,11 @@ mod tests {
         Agency, AgencyFormat, Decoded, TimeCode, TimeFormat, decode_implicit, decode_with_pfield,
     };
     use crate::anomaly::TimeAnomaly;
-    use crate::ccs::{CalendarDate, Ccs, CcsFormat, CcsValue, CcsVariation};
-    use crate::cds::{Cds, CdsDayLen, CdsEpoch, CdsFormat, CdsSubMs, CdsValue};
+    use crate::calendar::{CalendarDate, Hour, Minute, Month, Second, Year};
+    use crate::ccs::{Ccs, CcsFormat, CcsValue, CcsVariation};
+    use crate::cds::{
+        Cds, CdsDayLen, CdsEpoch, CdsFormat, CdsSubMs, CdsValue, MsOfDay, Picos, SubMillis,
+    };
     use crate::cuc::{Cuc, CucEpoch, CucFormat, CucValue};
     use crate::pfield::{PField, PFieldTail};
     use aldis_core::{DecodeMode, ErrorDetail, ErrorKind, FieldId};
@@ -422,8 +425,8 @@ mod tests {
                     cds,
                     CdsValue {
                         day: 5,
-                        ms_of_day: 6,
-                        subms: 7,
+                        ms_of_day: MsOfDay::new(6).unwrap(),
+                        subms: SubMillis::Picos(Picos::new(7).unwrap()),
                     },
                 )
                 .unwrap(),
@@ -432,11 +435,15 @@ mod tests {
                 Ccs::new(
                     ccs,
                     CcsValue {
-                        year: 2001,
-                        date: CalendarDate::MonthDay { month: 2, day: 3 },
-                        hour: 4,
-                        minute: 5,
-                        second: 6,
+                        date: CalendarDate::from_month_day(
+                            Year::new(2001).unwrap(),
+                            Month::new(2).unwrap(),
+                            3,
+                        )
+                        .unwrap(),
+                        hour: Hour::new(4).unwrap(),
+                        minute: Minute::new(5).unwrap(),
+                        second: Second::new(6).unwrap(),
                         subsecond: 78,
                     },
                 )

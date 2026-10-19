@@ -7,10 +7,11 @@
 | Inspected | 2026-10-18, prepared by Claude Code |
 | Approved | 2026-10-19, maintainer |
 | Repeat | when `aldis-time` gains a loop or a call between its own functions (the ASCII codec and conversions will), and before each release |
+| Revised | 2026-10-19, value types (parse, don't validate): new module `calendar.rs` (range-checked `Year`, `Month`, `Hour`, `Minute`, `Second`, `CalendarDate`; the leap-year rules moved here from `util.rs`) and the `bounded!` macro in `util.rs` add no loop and no recursion. `ccs.rs` `validate` is removed; `Ccs::from_t` and `Cds::from_t` call the field constructors directly. Loops unchanged. Awaiting maintainer confirmation |
 
 ## Loops
 
-Every loop in library code, with its bound. `util.rs` and `anomaly.rs` contain none.
+Every loop in library code, with its bound. `util.rs`, `calendar.rs`, and `anomaly.rs` contain none.
 
 | Location | Loop | Bound |
 |---|---|---|
@@ -30,7 +31,7 @@ Every loop in library code, with its bound. `util.rs` and `anomaly.rs` contain n
 
 ## Recursion
 
-No function calls itself, directly or through another `aldis-time` function. The internal call graph is acyclic and at most four deep, for example `decode_with_pfield` → `decode_t` → `Ccs::from_t` → `Ccs::new` → `validate`, and `TimeCode::encode` → `TimeCode::pfield` → `CucFormat::pfield` → `PField::build`.
+No function calls itself, directly or through another `aldis-time` function. The internal call graph is acyclic and at most four deep, for example `decode_with_pfield` → `decode_t` → `Ccs::from_t` → `CalendarDate::from_month_day` → `days_in_month` → `is_leap`, and `TimeCode::encode` → `TimeCode::pfield` → `CucFormat::pfield` → `PField::build`.
 
 ## Blocking
 

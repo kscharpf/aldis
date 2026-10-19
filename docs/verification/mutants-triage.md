@@ -2,6 +2,15 @@
 
 Surviving mutants from `cargo mutants` (`-p aldis-core -p aldis-time -p aldis-epp --all-features`) (cargo-mutants 27.1.0), triaged per VER-025. The nightly job `mutants` publishes the full report. Update this file when a new survivor appears.
 
+## 2026-10-19, branch `m1/time-types` (parse, don't validate)
+
+`cargo mutants -p aldis-time --all-features` on `calendar.rs`, `ccs.rs`, `cds.rs`, `util.rs`: 152 mutants: 118 caught, 26 unviable, 8 missed.
+
+| Mutant | Verdict | Action |
+|---|---|---|
+| `util.rs` `out_of_bounds` `<` → `<=` (`if value < min`) | Equivalent: the helper is called only for out-of-range values, so `value == min` never occurs and both comparisons choose the same bound | None possible |
+| `\|` → `^` (7) in `ccs.rs` and `cds.rs` | The equivalent disjoint-bit mutants already listed below | None possible |
+
 ## 2026-10-18, branch `m1/time` (M1 WP-1 part 1)
 
 `cargo mutants -p aldis-time --all-features`: 365 mutants: 275 caught, 74 unviable, 16 missed, 0 timeouts.

@@ -8,6 +8,7 @@
 //! | [`code`] | `decode_with_pfield`, `decode_implicit`, `TimeCode`, `TimeFormat`, agency-defined codes | TIME-001…TIME-003, TIME-005, TIME-006 |
 //! | [`cuc`] | CCSDS Unsegmented Code, nanosecond conversions | TIME-010…TIME-014 |
 //! | [`cds`] | CCSDS Day Segmented Code | TIME-020…TIME-022 |
+//! | [`calendar`] | Range-checked `Year`, `Month`, `Hour`, `Minute`, `Second`; `CalendarDate` | TIME-030 |
 //! | [`ccs`] | CCSDS Calendar Segmented Code | TIME-030, TIME-034 |
 //! | [`ascii`] | ASCII time codes A and B (M1 WP-1, second part) | TIME-031, TIME-032 |
 //! | [`anomaly`] | `TimeAnomaly` lenient-mode flags | API-032, GEN-043 |
@@ -29,6 +30,7 @@ extern crate std;
 
 pub mod anomaly;
 pub mod ascii;
+pub mod calendar;
 pub mod ccs;
 pub mod cds;
 pub mod code;
@@ -37,8 +39,11 @@ pub mod pfield;
 mod util;
 
 pub use anomaly::TimeAnomaly;
-pub use ccs::{CalendarDate, Ccs, CcsFormat, CcsValue, CcsVariation};
-pub use cds::{Cds, CdsDayLen, CdsEpoch, CdsFormat, CdsSubMs, CdsValue};
+pub use calendar::{CalendarDate, Hour, Minute, Month, Second, Year};
+pub use ccs::{Ccs, CcsFormat, CcsValue, CcsVariation};
+pub use cds::{
+    Cds, CdsDayLen, CdsEpoch, CdsFormat, CdsSubMs, CdsValue, Micros, MsOfDay, Picos, SubMillis,
+};
 pub use code::{
     Agency, AgencyFormat, Decoded, TimeCode, TimeFormat, decode_implicit, decode_with_pfield,
 };

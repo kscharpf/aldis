@@ -5,7 +5,9 @@
 // req: TIME-020, TIME-021, GEN-020, API-020, VER-022
 
 use aldis_core::DecodeMode;
-use aldis_time::{CdsDayLen, CdsEpoch, CdsFormat, CdsSubMs, TimeCode, TimeFormat, decode_implicit};
+use aldis_time::{
+    CdsDayLen, CdsEpoch, CdsFormat, CdsSubMs, MsOfDay, TimeCode, TimeFormat, decode_implicit,
+};
 use libfuzzer_sys::fuzz_target;
 
 fuzz_target!(|data: &[u8]| {
@@ -30,7 +32,8 @@ fuzz_target!(|data: &[u8]| {
         panic!("not CDS")
     };
     let v = c.value();
-    assert!(v.ms_of_day <= 86_400_999 && v.subms <= subms.max());
+    assert!(v.ms_of_day.get() <= MsOfDay::MAX && v.subms.get() <= subms.max());
+    assert_eq!(v.subms.resolution(), subms);
     let mut out = [0_u8; 16];
     let n = d.code().encode(false, &mut out).unwrap();
     assert_eq!(&out[..n], &t[..d.len()]);
