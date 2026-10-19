@@ -203,6 +203,12 @@ impl Ccs {
         Ok(Ccs { format, value })
     }
 
+    /// A code whose value the caller already knows fits the format: the date is in the
+    /// format's variation and the sub-second value has at most its digits (conversions).
+    pub(crate) const fn from_parts_unchecked(format: CcsFormat, value: CcsValue) -> Ccs {
+        Ccs { format, value }
+    }
+
     /// The format (301.0 §3.4).
     #[must_use]
     pub const fn format(&self) -> CcsFormat {

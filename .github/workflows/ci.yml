@@ -105,6 +105,35 @@ jobs:
           cache-key: layers
       - run: cargo xtask layers
       - run: cargo xtask symbols
+      # refapp/ uses Aldis only through the facade and forbids unsafe (APP-100, APP-105).
+      - run: cargo xtask refapp-deps
+
+  refapp:
+    name: refapp (APP-102..APP-107, VER-001, VER-004)
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        # refapp/ is its own workspace (docs/reference-application.md §9, APP-106).
+        working-directory: refapp
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup-rust
+        with:
+          cache-key: refapp
+          workspaces: refapp -> target
+      - run: cargo fmt --all --check
+      - run: cargo clippy --workspace --all-targets --locked
+      - run: cargo test --workspace --locked
+      - name: Flight node, bare metal (APP-102)
+        run: |
+          cargo build -p refapp-flight --target thumbv7em-none-eabihf --locked
+          cargo clippy -p refapp-flight --target thumbv7em-none-eabihf --locked
+      - name: Generated scenario files are current (APP-107)
+        run: cargo run -p refapp-harness --locked -- gen-scenario --check
+      - name: Golden traces are canonical and reproduced (APP-080, APP-085)
+        run: |
+          cargo run -p refapp-harness --locked -- check-golden
+          cargo run -p refapp-harness --locked -- compare
 
   exerciser:
     name: exerciser ${{ matrix.target }} (VER-010, GEN-021)
@@ -201,3 +230,6 @@ jobs:
         with:
           tool: cargo-deny
       - run: cargo deny --all-features check
+      # The reference application's own workspace, same policy (APP-106): cargo-deny finds the
+      # root deny.toml by searching upwards from refapp/Cargo.toml.
+      - run: cargo deny --manifest-path refapp/Cargo.toml --all-features --log-level info check

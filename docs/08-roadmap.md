@@ -22,7 +22,7 @@ Every milestone defines the **C ABI for what it adds**: a codec milestone adds i
 | **M3 COP-1** | `aldis-cop1` FOP-1 + FARM-1, state tables as data, closed-loop tests; FOP-1/FARM-1 handles in the C ABI, with the capacities configuration (CABI-030) | M2 | One vector per table cell; two-person table review recorded |
 | **M4 Link engines** | `aldis-link` generators, mux, receiver, extractor, segmenter/reassembler, CLTU packer, each with its C ABI handle | M3 | LNK requirements traced; property tests for FHP placement and reassembly |
 | **M5 C ABI completion** | C test harness with sanitizers and Miri (VER-026), header compile checks (VER-050), ABI versioning (CABI-060), and the header-only C++ wrapper `aldis.hpp` (CABI-072) | M4 | All CABI requirements traced; vectors pass via the C ABI and via `aldis.hpp` |
-| **M6 Framework** | `aldis-framework` traits, stacks, loopback, std adapters, trace/replay | M5 | FW requirements traced; loopback stack tested end to end (the reference application, A6, is the full demo) |
+| **M6 Framework** | `aldis-framework` traits, stacks, loopback, std adapters, trace/replay (the FW-013 trace format extractable from, or sharing the record encoding of, the reference application's golden traces, OI-25) | M5 | FW requirements traced; loopback stack tested end to end (the reference application, A6, is the full demo) |
 
 Layer 3 (`aldis-framework`) is Rust-only in v1. Native C++ users drive the engines from their own executive, as legacy flight software already does.
 
@@ -41,11 +41,11 @@ Each C++ milestone ports a Rust milestone that has already exited, so the C++ tr
 
 ## 3. Track A — Reference application (A0–A6)
 
-The reference application lives in its own workspace, `refapp/`, and uses only the public APIs, as an integrator would. Its flight and ground sides talk over an in-process loopback link. The engines are deterministic (GEN-030), so each run of a scenario produces a **golden trace** of every data unit exchanged. Each implementation must reproduce the trace byte for byte.
+The reference application lives in its own workspace, `refapp/`, and uses only the public APIs, as an integrator would. Its scenario is specified in [reference-application.md](reference-application.md) (area APP). Its flight and ground sides talk over a loopback link owned by a harness: the Rust nodes run in-process, and the A5 C++ and A6 QEMU flight nodes run as child processes over a lockstep node protocol ([OI-24](09-open-issues.md), [reference-application.md](reference-application.md) §8.2). The engines are deterministic (GEN-030), so each run of a scenario produces a **golden trace** of every data unit exchanged. Each implementation must reproduce the trace byte for byte.
 
 | Milestone | Content | Entry gate | Exit criteria |
 |---|---|---|---|
-| **A0 Scenario** | The scenario specification, a new document `docs/reference-application.md` with requirement area APP: flight and ground roles, APIDs, virtual channels, rates, injected faults, and the golden-trace format. `refapp/` workspace skeleton with a CI build job | — | Scenario approved by the maintainer |
+| **A0 Scenario** ([plan](milestones/a0-scenario.md)) | The scenario specification, a new document [`docs/reference-application.md`](reference-application.md) with requirement area APP: flight and ground roles, APIDs, virtual channels, rates, injected faults, and the golden-trace format. `refapp/` workspace skeleton with a CI build job | — | Scenario approved by the maintainer |
 | **A1 Packets** | Flight side produces housekeeping Space Packets with CUC time stamps; ground side decodes them; first golden trace | A0; M1 | Trace reproduced in CI |
 | **A2 Frames** | Downlink TM frames and uplink TC frames, multiplexed and demultiplexed by hand-written loops in the application | A1; M2 | Trace reproduced in CI; API issues found are filed |
 | **A3 COP-1** | FOP-1 on the ground, FARM-1 on the flight side, CLCW in the OCF; injected frame loss exercises retransmission | A2; M3 | Trace reproduced in CI, including the fault cases |

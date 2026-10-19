@@ -1,0 +1,755 @@
+{
+  "kind": "codec",
+  "standard": "301.0-B-4 \u00a73.3-3.5, Annex A",
+  "provenance": "hand-derived",
+  "provenance_note": "Hand-derived from TIME-033 and docs/standards/time-codes.md \u00a75.2 (D3, OI-18, OI-29). Expected values computed with Python's datetime ordinal arithmetic, independent of the closed-form day conversion in the Rust code.",
+  "cases": [
+    {
+      "id": "time-conv-001",
+      "requirements": [
+        "TIME-033"
+      ],
+      "description": "CDS epoch day to CCS month/day",
+      "operation": "convert",
+      "params": {
+        "from": {
+          "code": "cds",
+          "format": {
+            "epoch": "ccsds",
+            "day_bits": 16,
+            "subms": "none"
+          },
+          "value": {
+            "day": 0,
+            "ms_of_day": 0,
+            "subms": 0
+          }
+        },
+        "to": {
+          "code": "ccs",
+          "variation": "month_day",
+          "subsecond_octets": 0
+        }
+      },
+      "expect": {
+        "ok": true,
+        "value": {
+          "year": 1958,
+          "month": 1,
+          "day": 1,
+          "day_of_year": null,
+          "hour": 0,
+          "minute": 0,
+          "second": 0,
+          "subsecond": 0
+        }
+      }
+    },
+    {
+      "id": "time-conv-002",
+      "requirements": [
+        "TIME-033"
+      ],
+      "description": "CDS microseconds to CCS day-of-year with 3 sub-second octets",
+      "operation": "convert",
+      "params": {
+        "from": {
+          "code": "cds",
+          "format": {
+            "epoch": "ccsds",
+            "day_bits": 16,
+            "subms": "us"
+          },
+          "value": {
+            "day": 23131,
+            "ms_of_day": 62443123,
+            "subms": 456
+          }
+        },
+        "to": {
+          "code": "ccs",
+          "variation": "day_of_year",
+          "subsecond_octets": 3
+        }
+      },
+      "expect": {
+        "ok": true,
+        "value": {
+          "year": 2021,
+          "month": null,
+          "day": null,
+          "day_of_year": 121,
+          "hour": 17,
+          "minute": 20,
+          "second": 43,
+          "subsecond": 123456
+        }
+      }
+    },
+    {
+      "id": "time-conv-003",
+      "requirements": [
+        "TIME-033",
+        "TIME-022"
+      ],
+      "description": "CDS leap-second milliseconds to ASCII 23:59:60",
+      "operation": "convert",
+      "params": {
+        "from": {
+          "code": "cds",
+          "format": {
+            "epoch": "ccsds",
+            "day_bits": 16,
+            "subms": "us"
+          },
+          "value": {
+            "day": 0,
+            "ms_of_day": 86400500,
+            "subms": 7
+          }
+        },
+        "to": {
+          "code": "ascii",
+          "variation": "A",
+          "fraction_digits": 6,
+          "z": true
+        }
+      },
+      "expect": {
+        "ok": true,
+        "text": "1958-01-01T23:59:60.500007Z"
+      }
+    },
+    {
+      "id": "time-conv-004",
+      "requirements": [
+        "TIME-033"
+      ],
+      "description": "CCS to CDS picoseconds",
+      "operation": "convert",
+      "params": {
+        "from": {
+          "code": "ccs",
+          "format": {
+            "variation": "month_day",
+            "subsecond_octets": 6
+          },
+          "value": {
+            "year": 1988,
+            "month": 1,
+            "day": 18,
+            "day_of_year": null,
+            "hour": 17,
+            "minute": 20,
+            "second": 43,
+            "subsecond": 123456789012
+          }
+        },
+        "to": {
+          "code": "cds",
+          "epoch": "ccsds",
+          "day_bits": 16,
+          "subms": "ps"
+        }
+      },
+      "expect": {
+        "ok": true,
+        "value": {
+          "day": 10974,
+          "ms_of_day": 62443123,
+          "subms": 456789012
+        }
+      }
+    },
+    {
+      "id": "time-conv-005",
+      "requirements": [
+        "TIME-033"
+      ],
+      "description": "ASCII 12 digits to CDS microseconds truncates",
+      "operation": "convert",
+      "params": {
+        "from": {
+          "code": "ascii",
+          "text": "1988-01-18T17:20:43.123456999999"
+        },
+        "to": {
+          "code": "cds",
+          "epoch": "ccsds",
+          "day_bits": 16,
+          "subms": "us"
+        }
+      },
+      "expect": {
+        "ok": true,
+        "value": {
+          "day": 10974,
+          "ms_of_day": 62443123,
+          "subms": 456
+        }
+      }
+    },
+    {
+      "id": "time-conv-006",
+      "requirements": [
+        "TIME-033"
+      ],
+      "description": "CDS picoseconds to CCS with 2 octets truncates",
+      "operation": "convert",
+      "params": {
+        "from": {
+          "code": "cds",
+          "format": {
+            "epoch": "ccsds",
+            "day_bits": 16,
+            "subms": "ps"
+          },
+          "value": {
+            "day": 10,
+            "ms_of_day": 1,
+            "subms": 999999999
+          }
+        },
+        "to": {
+          "code": "ccs",
+          "variation": "month_day",
+          "subsecond_octets": 2
+        }
+      },
+      "expect": {
+        "ok": true,
+        "value": {
+          "year": 1958,
+          "month": 1,
+          "day": 11,
+          "day_of_year": null,
+          "hour": 0,
+          "minute": 0,
+          "second": 0,
+          "subsecond": 19
+        }
+      }
+    },
+    {
+      "id": "time-conv-007",
+      "requirements": [
+        "TIME-033"
+      ],
+      "description": "ASCII before the CDS epoch: OutOfRange",
+      "operation": "convert",
+      "params": {
+        "from": {
+          "code": "ascii",
+          "text": "1957-12-31T23:59:59"
+        },
+        "to": {
+          "code": "cds",
+          "epoch": "ccsds",
+          "day_bits": 16,
+          "subms": "none"
+        }
+      },
+      "expect": {
+        "ok": false,
+        "error": "OutOfRange"
+      }
+    },
+    {
+      "id": "time-conv-008",
+      "requirements": [
+        "TIME-033"
+      ],
+      "description": "Day 65 536 does not fit a 16-bit day segment: OutOfRange",
+      "operation": "convert",
+      "params": {
+        "from": {
+          "code": "ascii",
+          "text": "2137-06-07T00:00:00"
+        },
+        "to": {
+          "code": "cds",
+          "epoch": "ccsds",
+          "day_bits": 16,
+          "subms": "none"
+        }
+      },
+      "expect": {
+        "ok": false,
+        "error": "OutOfRange"
+      }
+    },
+    {
+      "id": "time-conv-009",
+      "requirements": [
+        "TIME-033"
+      ],
+      "description": "The same date fits a 24-bit day segment",
+      "operation": "convert",
+      "params": {
+        "from": {
+          "code": "ascii",
+          "text": "2137-06-07T00:00:00"
+        },
+        "to": {
+          "code": "cds",
+          "epoch": "ccsds",
+          "day_bits": 24,
+          "subms": "none"
+        }
+      },
+      "expect": {
+        "ok": true,
+        "value": {
+          "day": 65536,
+          "ms_of_day": 0,
+          "subms": 0
+        }
+      }
+    },
+    {
+      "id": "time-conv-010",
+      "requirements": [
+        "TIME-033"
+      ],
+      "description": "Last 16-bit CDS day",
+      "operation": "convert",
+      "params": {
+        "from": {
+          "code": "cds",
+          "format": {
+            "epoch": "ccsds",
+            "day_bits": 16,
+            "subms": "none"
+          },
+          "value": {
+            "day": 65535,
+            "ms_of_day": 0,
+            "subms": 0
+          }
+        },
+        "to": {
+          "code": "ascii",
+          "variation": "B",
+          "fraction_digits": 0,
+          "z": false
+        }
+      },
+      "expect": {
+        "ok": true,
+        "text": "2137-157T00:00:00"
+      }
+    },
+    {
+      "id": "time-conv-011",
+      "requirements": [
+        "TIME-033"
+      ],
+      "description": "CDS 24-bit day beyond year 9999: OutOfRange",
+      "operation": "convert",
+      "params": {
+        "from": {
+          "code": "cds",
+          "format": {
+            "epoch": "ccsds",
+            "day_bits": 24,
+            "subms": "none"
+          },
+          "value": {
+            "day": 16777215,
+            "ms_of_day": 0,
+            "subms": 0
+          }
+        },
+        "to": {
+          "code": "ccs",
+          "variation": "month_day",
+          "subsecond_octets": 0
+        }
+      },
+      "expect": {
+        "ok": false,
+        "error": "OutOfRange"
+      }
+    },
+    {
+      "id": "time-conv-012",
+      "requirements": [
+        "TIME-033"
+      ],
+      "description": "Agency epoch without an epoch date: InvalidConfig",
+      "operation": "convert",
+      "params": {
+        "from": {
+          "code": "cds",
+          "format": {
+            "epoch": "agency",
+            "day_bits": 16,
+            "subms": "none"
+          },
+          "value": {
+            "day": 1,
+            "ms_of_day": 0,
+            "subms": 0
+          }
+        },
+        "to": {
+          "code": "ccs",
+          "variation": "month_day",
+          "subsecond_octets": 0
+        }
+      },
+      "expect": {
+        "ok": false,
+        "error": "InvalidConfig"
+      }
+    },
+    {
+      "id": "time-conv-013",
+      "requirements": [
+        "TIME-033"
+      ],
+      "description": "Agency epoch with the epoch date 2000-01-01",
+      "operation": "convert",
+      "params": {
+        "from": {
+          "code": "cds",
+          "format": {
+            "epoch": "agency",
+            "day_bits": 16,
+            "subms": "none"
+          },
+          "value": {
+            "day": 366,
+            "ms_of_day": 3600000,
+            "subms": 0
+          }
+        },
+        "to": {
+          "code": "ascii",
+          "variation": "A",
+          "fraction_digits": 0,
+          "z": false
+        },
+        "epoch": {
+          "year": 2000,
+          "month": 1,
+          "day": 1
+        }
+      },
+      "expect": {
+        "ok": true,
+        "text": "2001-01-01T01:00:00"
+      }
+    },
+    {
+      "id": "time-conv-014",
+      "requirements": [
+        "TIME-033"
+      ],
+      "description": "To an agency-epoch CDS code with the epoch date",
+      "operation": "convert",
+      "params": {
+        "from": {
+          "code": "ascii",
+          "text": "2000-01-02T00:00:01"
+        },
+        "to": {
+          "code": "cds",
+          "epoch": "agency",
+          "day_bits": 16,
+          "subms": "none"
+        },
+        "epoch": {
+          "year": 2000,
+          "month": 1,
+          "day": 1
+        }
+      },
+      "expect": {
+        "ok": true,
+        "value": {
+          "day": 1,
+          "ms_of_day": 1000,
+          "subms": 0
+        }
+      }
+    },
+    {
+      "id": "time-conv-015",
+      "requirements": [
+        "TIME-033"
+      ],
+      "description": "Second 60 at 12:30 cannot become CDS: OutOfRange (OI-29)",
+      "operation": "convert",
+      "params": {
+        "from": {
+          "code": "ccs",
+          "format": {
+            "variation": "month_day",
+            "subsecond_octets": 0
+          },
+          "value": {
+            "year": 2016,
+            "month": 6,
+            "day": 30,
+            "day_of_year": null,
+            "hour": 12,
+            "minute": 30,
+            "second": 60,
+            "subsecond": 0
+          }
+        },
+        "to": {
+          "code": "cds",
+          "epoch": "ccsds",
+          "day_bits": 16,
+          "subms": "none"
+        }
+      },
+      "expect": {
+        "ok": false,
+        "error": "OutOfRange"
+      }
+    },
+    {
+      "id": "time-conv-016",
+      "requirements": [
+        "TIME-033"
+      ],
+      "description": "Second 60 at 12:30 converts CCS to ASCII unchanged",
+      "operation": "convert",
+      "params": {
+        "from": {
+          "code": "ccs",
+          "format": {
+            "variation": "month_day",
+            "subsecond_octets": 0
+          },
+          "value": {
+            "year": 2016,
+            "month": 6,
+            "day": 30,
+            "day_of_year": null,
+            "hour": 12,
+            "minute": 30,
+            "second": 60,
+            "subsecond": 0
+          }
+        },
+        "to": {
+          "code": "ascii",
+          "variation": "A",
+          "fraction_digits": 0,
+          "z": false
+        }
+      },
+      "expect": {
+        "ok": true,
+        "text": "2016-06-30T12:30:60"
+      }
+    },
+    {
+      "id": "time-conv-017",
+      "requirements": [
+        "TIME-033"
+      ],
+      "description": "23:59:60.999 to CDS milliseconds 86 400 999",
+      "operation": "convert",
+      "params": {
+        "from": {
+          "code": "ascii",
+          "text": "2016-12-31T23:59:60.999"
+        },
+        "to": {
+          "code": "cds",
+          "epoch": "ccsds",
+          "day_bits": 16,
+          "subms": "none"
+        }
+      },
+      "expect": {
+        "ok": true,
+        "value": {
+          "day": 21549,
+          "ms_of_day": 86400999,
+          "subms": 0
+        }
+      }
+    },
+    {
+      "id": "time-conv-018",
+      "requirements": [
+        "TIME-033"
+      ],
+      "description": "Month/day to day of year",
+      "operation": "convert",
+      "params": {
+        "from": {
+          "code": "ccs",
+          "format": {
+            "variation": "month_day",
+            "subsecond_octets": 0
+          },
+          "value": {
+            "year": 2024,
+            "month": 12,
+            "day": 31,
+            "day_of_year": null,
+            "hour": 0,
+            "minute": 0,
+            "second": 0,
+            "subsecond": 0
+          }
+        },
+        "to": {
+          "code": "ccs",
+          "variation": "day_of_year",
+          "subsecond_octets": 0
+        }
+      },
+      "expect": {
+        "ok": true,
+        "value": {
+          "year": 2024,
+          "month": null,
+          "day": null,
+          "day_of_year": 366,
+          "hour": 0,
+          "minute": 0,
+          "second": 0,
+          "subsecond": 0
+        }
+      }
+    },
+    {
+      "id": "time-conv-019",
+      "requirements": [
+        "TIME-033"
+      ],
+      "description": "Day of year to month/day in a leap year",
+      "operation": "convert",
+      "params": {
+        "from": {
+          "code": "ccs",
+          "format": {
+            "variation": "day_of_year",
+            "subsecond_octets": 0
+          },
+          "value": {
+            "year": 2024,
+            "month": null,
+            "day": null,
+            "day_of_year": 60,
+            "hour": 1,
+            "minute": 0,
+            "second": 0,
+            "subsecond": 0
+          }
+        },
+        "to": {
+          "code": "ascii",
+          "variation": "A",
+          "fraction_digits": 0,
+          "z": false
+        }
+      },
+      "expect": {
+        "ok": true,
+        "text": "2024-02-29T01:00:00"
+      }
+    },
+    {
+      "id": "time-conv-020",
+      "requirements": [
+        "TIME-033"
+      ],
+      "description": "ASCII code B to CCS month/day",
+      "operation": "convert",
+      "params": {
+        "from": {
+          "code": "ascii",
+          "text": "2023-059T10:00:00.5"
+        },
+        "to": {
+          "code": "ccs",
+          "variation": "month_day",
+          "subsecond_octets": 1
+        }
+      },
+      "expect": {
+        "ok": true,
+        "value": {
+          "year": 2023,
+          "month": 2,
+          "day": 28,
+          "day_of_year": null,
+          "hour": 10,
+          "minute": 0,
+          "second": 0,
+          "subsecond": 50
+        }
+      }
+    },
+    {
+      "id": "time-conv-021",
+      "requirements": [
+        "TIME-033"
+      ],
+      "description": "ASCII to ASCII changes variation and digits (truncates)",
+      "operation": "convert",
+      "params": {
+        "from": {
+          "code": "ascii",
+          "text": "1988-01-18T17:20:43.987654Z"
+        },
+        "to": {
+          "code": "ascii",
+          "variation": "B",
+          "fraction_digits": 2,
+          "z": false
+        }
+      },
+      "expect": {
+        "ok": true,
+        "text": "1988-018T17:20:43.98"
+      }
+    },
+    {
+      "id": "time-conv-022",
+      "requirements": [
+        "TIME-033"
+      ],
+      "description": "CDS to CDS changes resolution: picoseconds to none",
+      "operation": "convert",
+      "params": {
+        "from": {
+          "code": "cds",
+          "format": {
+            "epoch": "ccsds",
+            "day_bits": 16,
+            "subms": "ps"
+          },
+          "value": {
+            "day": 5,
+            "ms_of_day": 1234,
+            "subms": 999999999
+          }
+        },
+        "to": {
+          "code": "cds",
+          "epoch": "ccsds",
+          "day_bits": 16,
+          "subms": "none"
+        }
+      },
+      "expect": {
+        "ok": true,
+        "value": {
+          "day": 5,
+          "ms_of_day": 1234,
+          "subms": 0
+        }
+      }
+    }
+  ]
+}

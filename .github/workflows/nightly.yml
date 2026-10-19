@@ -73,6 +73,7 @@ jobs:
           - time_cuc
           - time_cds
           - time_ccs
+          - time_ascii
     runs-on: ubuntu-24.04
     permissions:
       contents: read

@@ -90,6 +90,7 @@ Each requirement has a stable ID: `<AREA>-<NNN>`. IDs are never reused. A delete
 | RS | [Rust profile](profiles/rust.md) |
 | CABI | [C ABI profile](profiles/c-abi.md) |
 | CPP | [C++ profile](profiles/cpp.md) |
+| APP | [Reference application](reference-application.md) |
 
 ### 5.3 Requirement tables
 

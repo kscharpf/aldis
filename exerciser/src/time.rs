@@ -4,10 +4,12 @@ use core::hint::black_box as bb;
 
 use aldis_core::{DecodeMode, ErrorKind};
 use aldis_time::{
-    Agency, AgencyFormat, CalendarDate, Ccs, CcsFormat, CcsValue, CcsVariation, Cds, CdsDayLen,
-    CdsEpoch, CdsFormat, CdsSubMs, CdsValue, Cuc, CucEpoch, CucFormat, CucValue, Hour, Micros,
+    Agency, AgencyFormat, AsciiFormat, AsciiOptions, AsciiSubset, AsciiTime, CalendarDate, Ccs,
+    CcsFormat, CcsValue, CcsVariation, Cds, CdsDayLen, CdsEpoch, CdsFormat, CdsSubMs, CdsValue,
+    Cuc, CucEpoch, CucFormat, CucValue, Fraction, Hour, MAX_ASCII_LEN, MAX_FRACTION_DIGITS, Micros,
     Minute, Month, MsOfDay, PField, PFieldTail, Picos, ReservedPField, Second, SubMillis,
-    TimeAnomaly, TimeCode, TimeCodeId, TimeFormat, Year, decode_implicit, decode_with_pfield,
+    TimeAnomaly, TimeCode, TimeCodeId, TimeFormat, UtcInstant, Year, decode_implicit,
+    decode_with_pfield,
 };
 
 use crate::exercise::Tally;
@@ -242,6 +244,120 @@ fn agency_codes(t: &mut Tally) {
     t.check(decode_implicit(bb(&[0; 3]), &fmt, DecodeMode::Strict).is_err());
 }
 
+fn ascii_codes(t: &mut Tally) {
+    let opts = AsciiOptions::default();
+    t.check(opts == AsciiOptions::DEFAULT && opts.max_fraction_digits() == MAX_FRACTION_DIGITS);
+    t.check(AsciiOptions::new(bb(13)).is_err());
+    let f = Fraction::new(bb(123), 3);
+    t.check(f.is_some_and(|f| f.digits() == 3 && f.value() == 123 && f.picos() == 123_000_000_000));
+    t.check(Fraction::new(bb(1000), 3).is_none() && Fraction::NONE == Fraction::default());
+    let text = bb(b"1988-01-18T17:20:43.123456Z".as_slice());
+    match AsciiTime::parse(text, &opts) {
+        Ok(a) => {
+            t.check(a.hour.get() == 17 && a.minute.get() == 20 && a.second.get() == 43 && a.utc);
+            t.check(
+                a.date
+                    .month_day()
+                    .is_some_and(|(m, d)| m.get() == 1 && d == 18),
+            );
+            let mut out = [0_u8; MAX_ASCII_LEN];
+            t.check(
+                a.encode(&mut out)
+                    .is_ok_and(|n| n == a.encoded_len() && out.get(..n) == Some(text)),
+            );
+            t.check(
+                a.encode(bb(&mut out[..4]))
+                    .is_err_and(|e| e.kind() == ErrorKind::BufferTooSmall),
+            );
+            conversions(t, a);
+        }
+        Err(_) => t.check(false),
+    }
+    t.check(
+        AsciiTime::parse(bb(b"1988-018T17:20:60"), &opts)
+            .is_ok_and(|a| a.date.day_of_year() == Some(18)),
+    );
+    t.check(
+        AsciiTime::parse(bb(b"1988-13-18T17:20:43"), &opts)
+            .is_err_and(|e| e.kind() == ErrorKind::OutOfRange),
+    );
+    t.check(
+        AsciiTime::parse(bb(b"1988-01-18"), &opts).is_err_and(|e| e.kind() == ErrorKind::Malformed),
+    );
+    match AsciiSubset::parse(bb(b"-01-18T17:20Z"), &opts) {
+        Ok(s) => {
+            t.check(s.variation() == Some(CcsVariation::MonthDay) && s.year().is_none() && s.utc());
+            t.check(
+                s.month().map(Month::get) == Some(1)
+                    && s.day() == Some(18)
+                    && s.day_of_year().is_none(),
+            );
+            t.check(s.hour().map(Hour::get) == Some(17) && s.minute().map(Minute::get) == Some(20));
+            t.check(s.second().is_none() && s.fraction().is_none());
+        }
+        Err(_) => t.check(false),
+    }
+    t.check(AsciiSubset::parse(bb(b"1988-018"), &opts).is_ok_and(|s| s.day_of_year() == Some(18)));
+    t.check(AsciiSubset::parse(bb(b"::43.5"), &opts).is_ok_and(|s| {
+        s.second().map(Second::get) == Some(43) && s.fraction() == Fraction::new(5, 1)
+    }));
+    t.check(
+        AsciiSubset::parse(bb(b"1988Z"), &opts).is_err_and(|e| e.kind() == ErrorKind::Malformed),
+    );
+}
+
+fn conversions(t: &mut Tally, a: AsciiTime) {
+    let instant = UtcInstant::from_ascii(&a);
+    t.check(instant.picos() == 123_456_000_000 && instant.hour() == a.hour);
+    t.check(instant.minute() == a.minute && instant.second() == a.second);
+    t.check(
+        instant
+            .date(CcsVariation::DayOfYear)
+            .is_ok_and(|d| d.day_of_year() == Some(18)),
+    );
+    let cds = CdsFormat::new(CdsEpoch::Ccsds1958, CdsDayLen::Bits16, CdsSubMs::Micros);
+    match instant.to_cds(cds, None) {
+        Ok(c) => {
+            t.check(c.value().day == 10_974 && c.value().ms_of_day.get() == 62_443_123);
+            t.check(UtcInstant::from_cds(&c, None) == Ok(instant));
+        }
+        Err(_) => t.check(false),
+    }
+    let agency = CdsFormat::new(CdsEpoch::Agency, CdsDayLen::Bits16, CdsSubMs::None);
+    t.check(
+        instant
+            .to_cds(agency, None)
+            .is_err_and(|e| e.kind() == ErrorKind::InvalidConfig),
+    );
+    t.check(
+        instant
+            .to_cds(agency, Some(a.date))
+            .is_ok_and(|c| c.value().day == 0),
+    );
+    match CcsFormat::new(CcsVariation::MonthDay, bb(3)) {
+        Ok(f) => {
+            t.check(instant.to_ccs(f).is_ok_and(|c| {
+                c.value().subsecond == 123_456 && UtcInstant::from_ccs(&c) == instant
+            }));
+        }
+        Err(_) => t.check(false),
+    }
+    match AsciiFormat::new(CcsVariation::DayOfYear, bb(2), false) {
+        Ok(f) => {
+            t.check(
+                f.variation() == CcsVariation::DayOfYear && f.fraction_digits() == 2 && !f.utc(),
+            );
+            t.check(
+                instant
+                    .to_ascii(f)
+                    .is_ok_and(|b| b.fraction == Fraction::new(12, 2).unwrap_or_default()),
+            );
+        }
+        Err(_) => t.check(false),
+    }
+    t.check(AsciiFormat::new(CcsVariation::MonthDay, bb(13), true).is_err());
+}
+
 /// Runs the `aldis-time` group.
 pub fn run(t: &mut Tally) {
     pfield(t);
@@ -249,4 +365,5 @@ pub fn run(t: &mut Tally) {
     cds_codes(t);
     ccs_codes(t);
     agency_codes(t);
+    ascii_codes(t);
 }

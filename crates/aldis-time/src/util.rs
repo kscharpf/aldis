@@ -75,6 +75,13 @@ macro_rules! bounded {
             }
         }
 
+        impl Default for $name {
+            /// The smallest valid value.
+            fn default() -> $name {
+                $name($min)
+            }
+        }
+
         impl From<$name> for $repr {
             fn from(field: $name) -> $repr {
                 field.0

@@ -1,0 +1,13 @@
+{"kind":"header","scenario":"aldis-refapp","scenario_version":1,"case":"sample","trace_version":1,"requirements":["APP-080","APP-082"]}
+{"t_us":0,"kind":"packet_out","node":"flight","apid":16,"hex":"0810C00000057D2B75000000"}
+{"t_us":0,"kind":"unit_sent","dir":"down","index":0,"hex":"0810C00000057D2B75000000"}
+{"t_us":10000,"kind":"unit_delivered","dir":"down","index":0,"copy":0}
+{"t_us":10000,"kind":"packet_in","node":"ground","apid":16,"hex":"0810C00000057D2B75000000"}
+{"t_us":10000,"kind":"app_event","node":"ground","code":1,"name":"seq_gap","args":[16,2]}
+{"t_us":1000000,"kind":"packet_out","node":"ground","apid":128,"hex":"1880C000000701017D2B75060000"}
+{"t_us":1000000,"kind":"fault","dir":"up","index":0,"fault":"duplicate","args":[]}
+{"t_us":1000000,"kind":"unit_sent","dir":"up","index":0,"hex":"1880C000000701017D2B75060000"}
+{"t_us":1010000,"kind":"unit_delivered","dir":"up","index":0,"copy":0}
+{"t_us":1010000,"kind":"unit_delivered","dir":"up","index":0,"copy":1}
+{"t_us":1010000,"kind":"packet_in","node":"flight","apid":128,"hex":"1880C000000701017D2B75060000"}
+{"t_us":1010000,"kind":"app_event","node":"flight","code":20,"name":"cmd_received","args":[1,0]}

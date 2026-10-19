@@ -172,7 +172,10 @@ pub const CPP_EXTENSIONS: &[&str] = &["hpp", "cpp", "h"];
 
 /// Text files scanned for references to requirement IDs.
 pub fn referencing_files() -> Vec<std::path::PathBuf> {
-    let mut files = repo::files(".", &["md", "rs", "json", "yml", "yaml", "toml", "py"]);
+    let mut files = repo::files(
+        ".",
+        &["md", "rs", "json", "jsonl", "yml", "yaml", "toml", "py"],
+    );
     // C++ sources and headers, so a C++ test cannot cite an undefined ID (CPP-057).
     files.extend(repo::files(".", CPP_EXTENSIONS));
     files.retain(|p| !repo::rel(p).starts_with("test-vectors/schema/"));

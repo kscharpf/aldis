@@ -60,6 +60,13 @@ cargo xtask cpp layers target/cpp/host-gcc     # CMake target graph (CPP-010)
 
 CI (`.github/workflows/cpp.yml`) also runs clang-format, clang-tidy, the sanitizers, s390x, and the bare-metal builds. Suppress a warning or clang-tidy finding only on the smallest region, naming the check (CPP-042).
 
+When you change `refapp/` (track A), also run, from `refapp/` (see [refapp/README.md](refapp/README.md)):
+
+```sh
+cargo fmt --all --check && cargo clippy --workspace --all-targets && cargo test --workspace
+cargo build -p refapp-flight --target thumbv7em-none-eabihf
+```
+
 Clippy runs with the `all` and `pedantic` groups denied, plus restriction lints and selected nursery lints ([docs/profiles/rust.md](docs/profiles/rust.md) §5). Do not enable the whole `nursery` group; adopt a nursery lint only after checking its findings, and record the decision there (RS-019). To relax a lint, use a local `#[expect(clippy::<lint>, reason = "…")]` on the smallest item (RS-016). Never use crate-wide `allow`.
 
 ## Conventions

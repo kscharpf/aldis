@@ -18,6 +18,7 @@ const SKIP: &[&str] = &[
     "fuzz/target",
     "fuzz/corpus",
     "fuzz/artifacts",
+    "refapp/target",
     "mutants.out",
     "mutants.out.old",
     // Git worktrees that Claude Code creates for parallel sessions: other branches, not this one.

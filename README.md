@@ -32,6 +32,8 @@ code/
 ├── xtask/                tooling: `cargo xtask help` (spec lint, trace, vectors, layers, symbols, coverage)
 ├── exerciser/            bare-metal panic-freedom check and on-target vector run (separate workspace)
 ├── fuzz/                 cargo-fuzz targets (separate workspace; run on the tooling nightly)
+├── refapp/               reference application: flight and ground nodes, harness, golden traces
+│                         (separate workspace; docs/reference-application.md)
 └── test-vectors/         shared, language-neutral conformance vectors
 ```
 

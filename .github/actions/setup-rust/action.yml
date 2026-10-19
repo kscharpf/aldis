@@ -12,6 +12,10 @@ inputs:
     description: Extra key to separate caches between jobs
     required: false
     default: ""
+  workspaces:
+    description: Cargo workspaces to cache, as rust-cache's `workspaces` input ("dir -> target")
+    required: false
+    default: ". -> target"
 
 runs:
   using: composite
@@ -32,3 +36,4 @@ runs:
       uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
       with:
         key: ${{ inputs.cache-key }}
+        workspaces: ${{ inputs.workspaces }}
