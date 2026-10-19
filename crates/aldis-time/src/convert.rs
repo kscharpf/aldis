@@ -51,8 +51,9 @@ const fn epoch_day(epoch: CdsEpoch, agency_epoch: Option<CalendarDate>) -> Resul
 
 /// One UTC instant: a day, a time of day that may be a leap second, and picoseconds (TIME-033).
 ///
-/// Built only from a CDS, CCS, or ASCII code, so every field is valid (RS-020).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+/// Built only from a CDS, CCS, or ASCII code, so every field is valid (RS-020). Instants order
+/// chronologically; a leap second 23:59:60 falls between 23:59:59 and the next day's 00:00:00.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct UtcInstant {
     day: u32,
     hour: Hour,
@@ -127,7 +128,10 @@ impl UtcInstant {
     ///
     /// # Errors
     /// - `InvalidConfig` (`agency_epoch`) for an agency-defined epoch without `agency_epoch`.
-    /// - `OutOfRange` (`day`) before the epoch or beyond the format's day segment.
+    /// - `OutOfRange` (`day`) beyond the format's day segment, with the segment's largest day
+    ///   and the day found (GEN-041).
+    /// - `OutOfRange` (`day`) before the epoch, with no detail: the day relative to the epoch
+    ///   is negative, so no unsigned expected/found pair would describe it.
     /// - `OutOfRange` (`second`) for second 60 at a minute other than 23:59, which CDS cannot
     ///   represent (OI-29).
     pub fn to_cds(&self, format: CdsFormat, agency_epoch: Option<CalendarDate>) -> Result<Cds> {
@@ -198,7 +202,7 @@ impl UtcInstant {
             hour: self.hour,
             minute: self.minute,
             second: self.second,
-            fraction: Fraction::from_picos(self.picos, format.fraction_digits()),
+            fraction: Fraction::from_picos(self.picos, format),
             utc: format.utc(),
         })
     }
@@ -260,7 +264,7 @@ mod tests {
     use crate::cds::{
         Cds, CdsDayLen, CdsEpoch, CdsFormat, CdsSubMs, CdsValue, Micros, MsOfDay, Picos, SubMillis,
     };
-    use aldis_core::{ErrorKind, FieldId};
+    use aldis_core::{ErrorDetail, ErrorKind, FieldId};
     use proptest::prelude::*;
 
     fn cds_fmt(day: CdsDayLen, subms: CdsSubMs, epoch: CdsEpoch) -> CdsFormat {
@@ -338,6 +342,34 @@ mod tests {
         );
         let inst = UtcInstant::from_cds(&agency_cds, Some(epoch(2000, 1, 1))).unwrap();
         assert_eq!(inst.date(CcsVariation::MonthDay), Ok(epoch(2001, 1, 1)));
+    }
+
+    #[test]
+    fn instants_order_chronologically_and_errors_carry_detail() {
+        // req: TIME-033, GEN-041
+        let order = [
+            "1999-12-31T23:59:59.999999999999",
+            "1999-12-31T23:59:60",
+            "1999-365T23:59:60.5",
+            "2000-01-01T00:00:00",
+            "2000-001T00:00:00.000000000001",
+            "2000-01-01T00:00:01",
+        ]
+        .map(|text| UtcInstant::from_ascii(&ascii(text)));
+        for pair in order.windows(2) {
+            assert!(pair[0] < pair[1], "{pair:?}");
+        }
+        let fmt = cds_fmt(CdsDayLen::Bits16, CdsSubMs::None, CdsEpoch::Ccsds1958);
+        let early = UtcInstant::from_ascii(&ascii("1957-12-31T23:59:59")).to_cds(fmt, None);
+        assert_eq!(early.unwrap_err().detail(), ErrorDetail::None);
+        let late = UtcInstant::from_ascii(&ascii("2137-06-07T00:00:00")).to_cds(fmt, None);
+        assert_eq!(
+            late.unwrap_err().detail(),
+            ErrorDetail::Expected {
+                expected: 65_535,
+                found: 65_536
+            }
+        );
     }
 
     #[test]

@@ -93,9 +93,10 @@ impl Fraction {
             .wrapping_mul(pow10(MAX_FRACTION_DIGITS.wrapping_sub(self.digits)))
     }
 
-    /// The fraction of `digits` digits (at most 12) for `picos` (below 10¹²), truncated toward
-    /// zero (TIME-033).
-    pub(crate) fn from_picos(picos: u64, digits: u8) -> Fraction {
+    /// The fraction with `format`'s digits for `picos` (below 10¹²), truncated toward zero
+    /// (TIME-033). Taking the format, not a digit count, keeps the count at most 12 (RS-020).
+    pub(crate) fn from_picos(picos: u64, format: AsciiFormat) -> Fraction {
+        let digits = format.fraction_digits;
         Fraction {
             digits,
             value: picos
@@ -882,11 +883,16 @@ mod tests {
             (Fraction::NONE, Fraction::default().picos()),
             (Fraction::new(0, 0).unwrap(), 0)
         );
+        let format = |digits| AsciiFormat::new(CcsVariation::MonthDay, digits, false).unwrap();
         assert_eq!(
-            Fraction::from_picos(123_456_789_012, 3),
+            Fraction::from_picos(123_456_789_012, format(3)),
             Fraction::new(123, 3).unwrap()
         );
-        assert_eq!(Fraction::from_picos(5, 0), Fraction::NONE);
+        assert_eq!(Fraction::from_picos(5, format(0)), Fraction::NONE);
+        assert_eq!(
+            Fraction::from_picos(999_999_999_999, format(12)),
+            Fraction::new(999_999_999_999, 12).unwrap()
+        );
         for n in 0..=12_u8 {
             assert_eq!(pow10(n), 10_u64.pow(u32::from(n)));
         }
