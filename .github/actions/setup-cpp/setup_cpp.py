@@ -181,6 +181,7 @@ def tools(lock: dict[str, str]) -> dict[str, Tool]:
                 "CODEQL_VERSION",
                 [Archive("CODEQL"), Archive("CODEQL_PACKS", strip_top=False)],
                 env="ALDIS_CODEQL_ROOT",
+                bin_dir=".",  # the bundle keeps the `codeql` launcher at its top level
                 version_cmds=[["codeql", "version", "--format=terse"]],
             ),
         ]
