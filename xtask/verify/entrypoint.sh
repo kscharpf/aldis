@@ -18,7 +18,9 @@ commit="$1"
 shift
 
 # Every check sees the same flags, so no check rebuilds another's artefacts (ci.yml `env`).
-export CARGO_HOME=/cache/cargo CARGO_TERM_COLOR=never RUSTFLAGS="-D warnings" \
+# The verification run is what the spec calls CI (§7), so CI-only refusals apply: for example
+# AldisToolchainCheck.cmake refuses ALDIS_ALLOW_UNPINNED_COMPILER when CI is set.
+export CI=true CARGO_HOME=/cache/cargo CARGO_TERM_COLOR=never RUSTFLAGS="-D warnings" \
   RUSTDOCFLAGS="-D warnings" ALDIS_VERIFY_INSIDE=1
 mkdir -p "$CARGO_HOME"
 
