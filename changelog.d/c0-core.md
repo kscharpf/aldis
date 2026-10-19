@@ -10,3 +10,4 @@
 
 ### Fixed
 - `cargo xtask verify` failed with `reference is not a tree` when HEAD was detached on a commit that no branch or tag reaches; the container now fetches the commit itself as well.
+- Concurrent `cargo xtask verify` runs on one machine shared the C++ build directories in the cache volume, so a run could delete another's build output or pass checks against objects built from another commit. A run now holds a lock on the volume and waits for any run already in progress.

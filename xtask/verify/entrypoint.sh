@@ -32,6 +32,15 @@ git fetch -q /repo '+refs/heads/*:refs/remotes/origin/*' '+refs/tags/*:refs/tags
 git fetch -q /repo "$commit"
 git -c advice.detachedHead=false checkout -q "$commit"
 
+# Runs on one host share the cache volume, and every run builds C++ at the same paths: hold the
+# volume until this run ends (the descriptor stays open across the exec below), so that no run
+# deletes or reuses another's build output.
+exec 9> /cache/verify.lock
+if ! flock -n 9; then
+  echo "verify: waiting for another verification run to release the cache volume" >&2
+  flock 9
+fi
+
 # Rust build output persists between runs in the cache volume; C++ builds start clean.
 for dir in target refapp/target exerciser/target fuzz/target; do
   cache="/cache/${dir//\//-}"
