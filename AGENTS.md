@@ -30,7 +30,25 @@ The rules and checks below are written for the Rust crates. The native C++ code 
 
 The toolchain is pinned to Rust **1.99.1** in `rust-toolchain.toml`. Do not change it without updating RS-001 and OI-07.
 
-Run all of these before declaring work done. All must pass with **zero warnings**:
+**The merge gate is local** ([docs/06-verification.md](docs/06-verification.md) §7, OI-31). GitHub Actions runs only at night (VER-059). A pull request merges when its head commit contains the tip of `main` and has a published, passing record of the verification run (VER-058):
+
+```sh
+git push                            # the commit must be on GitHub before its status can be set
+cargo xtask verify --publish        # every check, in the pinned image; then the git note and status aldis/verify
+cargo xtask verify check            # re-check the published record of HEAD
+```
+
+If you cannot run it locally, start the same run on a GitHub-hosted runner instead (VER-060). It takes 20 to 30 minutes, publishes the same record and status, and names the run they came from:
+
+```sh
+git push
+gh workflow run verify.yml --ref <branch>   # or "Run workflow" on the Actions tab
+gh run watch                                # then: cargo xtask verify check
+```
+
+`cargo xtask verify` needs podman or Docker Engine with about 20 GB of free disk and 6 GB of memory for the engine's VM (`podman machine set --memory 6144`). The first run builds the image (several GB of downloads). A podman VM keeps the disk space the build frees until it is trimmed: run `podman machine ssh sudo fstrim -av` after the build (it returned about 20 GB on macOS). It refuses a dirty working tree, runs every check in a fresh checkout of HEAD, and writes `target/verify/<commit>/record.json` and one log per check. `cargo xtask verify list` names the checks, and `--only <check>,...` runs some of them while you work; such a record never passes the gate. A record is tied to the commit's tree, so any new commit, including a merge from `main`, needs a new run.
+
+While you work, run these. All must pass with **zero warnings**:
 
 ```sh
 cargo fmt --all --check
@@ -58,7 +76,7 @@ cargo xtask cpp unsafe-optouts                 # bounds opt-outs only in aldis/c
 cargo xtask cpp layers target/cpp/host-gcc     # CMake target graph (CPP-010)
 ```
 
-CI (`.github/workflows/cpp.yml`) also runs clang-format, clang-tidy, the sanitizers, s390x, and the bare-metal builds. On a pull request it runs only when the change touches `cpp/`, `test-vectors/`, `xtask/`, or the C++ workflow and setup action; extend the `changes` job's pattern when the C++ build starts reading something new. Suppress a warning or clang-tidy finding only on the smallest region, naming the check (CPP-042).
+`cargo xtask verify` also runs clang-format, clang-tidy, the sanitizers, s390x, and the bare-metal builds. It skips the C++ checks when the change touches none of `cpp/`, `test-vectors/`, `xtask/`, or the C++ setup action; extend `CPP_PATHS` in `xtask/src/verify/mod.rs` when the C++ build starts reading something new. Suppress a warning or clang-tidy finding only on the smallest region, naming the check (CPP-042).
 
 When you change `refapp/` (track A), also run, from `refapp/` (see [refapp/README.md](refapp/README.md)):
 
@@ -72,7 +90,7 @@ Clippy runs with the `all` and `pedantic` groups denied, plus restriction lints 
 ## Conventions
 
 - **Traceability:** every public item's docs cite the CCSDS clause and requirement IDs it implements (RS-015). Every test names the requirements it covers with a `// req: <ID>` comment (VER-020).
-- **Verification records:** requirements verified by a CI check or by review (method A/I) are listed in [docs/verification/analysis-records.md](docs/verification/analysis-records.md).
+- **Verification records:** requirements verified by a check of `cargo xtask verify` or by review (method A/I) are listed in [docs/verification/analysis-records.md](docs/verification/analysis-records.md).
 - **Test vectors** in [`test-vectors/`](test-vectors/README.md) are shared with future C/C++ and binding implementations. Follow [docs/07-test-vectors.md](docs/07-test-vectors.md). Record provenance, and never edit a released vector: add a new case and mark the old one `superseded`.
 - **Changelog:** never edit `CHANGELOG.md` in a pull request. Add one fragment file to [`changelog.d/`](changelog.d/README.md), named after the branch; `cargo xtask changelog check` validates it.
 - **Errors** use the stable catalogue in [docs/03-api-model.md](docs/03-api-model.md) §9. Do not renumber error codes.

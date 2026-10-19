@@ -11,6 +11,7 @@ publish = false
 [dependencies]
 aldis-testkit = { path = "../crates/aldis-testkit", features = ["schema"] }
 serde_json = "1.0.154"
+sha2 = "0.11.1"
 
 # Tooling lint profile (RS-017).
 [lints.rust]

@@ -14,6 +14,7 @@ mod repo;
 mod spec;
 mod trace;
 mod vectors;
+mod verify;
 
 use std::process::ExitCode;
 
@@ -68,6 +69,7 @@ fn run(args: &[&str]) -> Result<usize, String> {
         ["stack-sizes", target] => binaries::stack_sizes(target),
         ["coverage"] => coverage::run(),
         ["cpp", rest @ ..] => cpp::run(rest),
+        ["verify", rest @ ..] => verify::run(rest),
         ["changelog", "check"] => changelog::check(),
         ["changelog", "show"] => changelog::show(),
         ["changelog", "release", version, date] => changelog::release(version, date),
@@ -91,13 +93,14 @@ fn run(args: &[&str]) -> Result<usize, String> {
             Ok(failed)
         }
         [] | ["help" | "-h" | "--help"] => {
-            print!("{HELP}{}", cpp::HELP);
+            print!("{HELP}{}\n{}", cpp::HELP, verify::HELP);
             Ok(0)
         }
         _ => Err(format!(
-            "unknown command: {}\n\n{HELP}{}",
+            "unknown command: {}\n\n{HELP}{}\n{}",
             args.join(" "),
-            cpp::HELP
+            cpp::HELP,
+            verify::HELP
         )),
     }
 }

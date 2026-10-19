@@ -12,6 +12,8 @@ commands:
   cache-keys TOOL...   print "<tool>=<key>" for each requested archive tool available on this
                        host, for $GITHUB_OUTPUT (the key changes whenever a checksum changes)
   install TOOL...      download, verify, unpack or apt-install, and check versions
+  versions TOOL...     check the versions of tools already installed and on PATH (the
+                       verification image, VER-056)
 
 tools: llvm gcc gcc-s390x arm-gnu riscv-gnu bcc2 cmake ninja qemu codeql, or "all" for every
 tool the lock file provides for this host's architecture.
@@ -319,12 +321,17 @@ def export(path_dirs: list[Path], env: dict[str, str]) -> None:
             f.writelines(f"{k}={v}\n" for k, v in env.items())
 
 
+def sudo() -> list[str]:
+    """`sudo` on a runner; nothing as root (the verification image, VER-056)."""
+    return [] if os.geteuid() == 0 else ["sudo"]
+
+
 def apt_install(tool: Tool, lock: dict[str, str]) -> None:
     packages = lock[tool.apt_packages_key].split()
     version = lock.get(tool.apt_version_key, "") if tool.apt_version_key else ""
     specs = [f"{p}={version}" if version else p for p in packages]
     run(
-        ["sudo", "apt-get", "install", "-y", "-q", "--no-install-recommends", "--allow-downgrades",
+        [*sudo(), "apt-get", "install", "-y", "-q", "--no-install-recommends", "--allow-downgrades",
          *specs],
         env={**os.environ, "DEBIAN_FRONTEND": "noninteractive"},
     )
@@ -355,7 +362,7 @@ def check_versions(tool: Tool, lock: dict[str, str]) -> list[str]:
 
 def install(selected: list[Tool], lock: dict[str, str], arch: str, downloads: Path, root: Path) -> None:
     if any(t.apt_packages_key for t in selected):
-        run(["sudo", "apt-get", "update", "-q"])
+        run([*sudo(), "apt-get", "update", "-q"])
     for tool in selected:
         if tool.apt_packages_key:
             apt_install(tool, lock)
@@ -379,7 +386,7 @@ def main(argv: list[str]) -> int:
     parser.add_argument("--downloads", type=Path, default=Path.home() / ".cache" / "aldis-cpp")
     default_root = Path(os.environ.get("RUNNER_TOOL_CACHE", Path.home() / ".local")) / "aldis-cpp"
     parser.add_argument("--tools-dir", type=Path, default=default_root)
-    parser.add_argument("command", choices=["check-lock", "cache-keys", "install"])
+    parser.add_argument("command", choices=["check-lock", "cache-keys", "install", "versions"])
     parser.add_argument("tools", nargs="*")
     args = parser.parse_args(argv)
     sys.stdout.reconfigure(line_buffering=True)  # keep progress and errors in order in CI logs
@@ -397,6 +404,11 @@ def main(argv: list[str]) -> int:
                 if tool.archives:
                     shas = [lock[f"{a.prefix}_{arch}_SHA256"] for a in tool.archives]
                     print(f"{tool.name}={arch.lower()}-{'-'.join(shas)}")
+            return 0
+        if args.command == "versions":
+            print("setup-cpp: versions on PATH (all match cpp/toolchains.lock)")
+            for line in (line for tool in selected for line in check_versions(tool, lock)):
+                print(f"  {line}")
             return 0
         install(selected, lock, arch, args.downloads, args.tools_dir)
         return 0

@@ -1,0 +1,452 @@
+//! `cargo xtask verify`: the verification run and the merge gate (docs/06-verification.md §7,
+//! VER-056…VER-058).
+//!
+//! The host side checks that the working tree is clean, decides whether the C++ checks apply,
+//! builds the verification image if it is missing (`image.rs`), runs the container checks in it
+//! (`inside.rs`), runs the host-bound checks, and writes the evidence record (`record.rs`) to
+//! `target/verify/<commit>/record.json`. `--publish` stores it as a git note and sets the commit
+//! status (`publish.rs`).
+
+mod checks;
+mod image;
+mod inside;
+mod publish;
+mod record;
+
+use std::fs::File;
+use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
+use std::time::Instant;
+
+use serde_json::{Map, Value, json};
+
+use checks::{Check, Host};
+use record::Outcome;
+
+use crate::repo;
+
+/// Paths whose change makes the C++ checks apply: what the C++ build, tests, or tooling read
+/// (formerly the `changes` job of `.github/workflows/cpp.yml`). Extend when C1 adds
+/// `difftest/` and `aldis.h`.
+const CPP_PATHS: &[&str] = &[
+    "cpp/",
+    "test-vectors/",
+    "xtask/",
+    ".github/actions/setup-cpp/",
+    ".github/workflows/cpp.yml",
+];
+
+/// Flags shared with the RUSTFLAGS of every check (the former `ci.yml` `env`).
+const CHECK_ENV: &[(&str, &str)] = &[
+    ("CARGO_TERM_COLOR", "never"),
+    ("RUSTFLAGS", "-D warnings"),
+    ("RUSTDOCFLAGS", "-D warnings"),
+];
+
+pub const HELP: &str = "\
+Verification run and merge gate (docs/06-verification.md §7):
+  verify [--only <check>,...] [--all-cpp] [--publish]
+                               run every check on HEAD in the verification image (podman or
+                               Docker; ALDIS_VERIFY_ENGINE picks one) and write the evidence
+                               record to target/verify/<commit>/record.json (VER-056, VER-057);
+                               --only runs a subset (such a record never passes the gate);
+                               --all-cpp runs the C++ checks even if C++ is untouched;
+                               --publish then publishes it, as `verify publish` does
+  verify publish [<rev>]       push the passing record of <rev> (default HEAD) as a git note
+                               under refs/notes/verify and set the commit status aldis/verify
+                               (VER-058)
+  verify check [<rev>]         check the published record of <rev> against the merge gate
+  verify image                 build the verification image for HEAD
+  verify list                  list the checks
+";
+
+/// Which checks a run executes.
+#[derive(Debug, Default)]
+pub struct Options {
+    only: Option<Vec<String>>,
+    skip_cpp: bool,
+}
+
+/// Dispatches `cargo xtask verify ...`.
+pub fn run(args: &[&str]) -> Result<usize, String> {
+    match args {
+        ["inside", "--out", out, rest @ ..] => {
+            let opts = parse_options(rest)?.0;
+            inside::run(Path::new(out), &opts)
+        }
+        ["publish"] => publish::publish(&git(&["rev-parse", "HEAD"])?),
+        ["publish", rev] => publish::publish(&git(&["rev-parse", rev])?),
+        ["check"] => publish::check("HEAD"),
+        ["check", rev] => publish::check(rev),
+        ["image"] => {
+            let engine = image::Engine::detect()?;
+            let commit = git(&["rev-parse", "HEAD"])?;
+            let (tag, id) = engine.ensure_image(&commit)?;
+            println!("verify: image {tag} ({id})");
+            Ok(0)
+        }
+        ["list"] => {
+            for c in checks::all() {
+                let gating = if c.gating { "" } else { ", non-gating" };
+                let cpp = if c.cpp { ", C++" } else { "" };
+                println!("{:42} {}{cpp}{gating}", c.name, c.host.name());
+            }
+            Ok(0)
+        }
+        rest => {
+            let (opts, flags) = parse_options(rest)?;
+            verify(
+                opts,
+                flags.contains(&"--all-cpp"),
+                flags.contains(&"--publish"),
+            )
+        }
+    }
+}
+
+/// Parses `--only a,b` and `--skip-cpp`; returns the other flags.
+fn parse_options<'a>(args: &[&'a str]) -> Result<(Options, Vec<&'a str>), String> {
+    let mut opts = Options::default();
+    let mut flags = Vec::new();
+    let mut it = args.iter();
+    while let Some(arg) = it.next() {
+        match *arg {
+            "--only" => {
+                let list = it.next().ok_or("--only needs a list of checks")?;
+                let names: Vec<String> = list.split(',').map(str::to_owned).collect();
+                let known: Vec<String> = checks::all().into_iter().map(|c| c.name).collect();
+                if let Some(bad) = names.iter().find(|n| !known.contains(n)) {
+                    return Err(format!(
+                        "unknown check `{bad}`; see `cargo xtask verify list`"
+                    ));
+                }
+                opts.only = Some(names);
+            }
+            "--skip-cpp" => opts.skip_cpp = true,
+            "--all-cpp" | "--publish" => flags.push(*arg),
+            other => return Err(format!("unknown argument `{other}`\n\n{HELP}")),
+        }
+    }
+    Ok((opts, flags))
+}
+
+/// Runs git in the repository root; returns its trimmed standard output.
+fn git(args: &[&str]) -> Result<String, String> {
+    let out = Command::new("git")
+        .args(args)
+        .current_dir(repo::root())
+        .output()
+        .map_err(|e| format!("git: {e}"))?;
+    if out.status.success() {
+        Ok(String::from_utf8_lossy(&out.stdout).trim().to_owned())
+    } else {
+        Err(format!(
+            "git {}: {}",
+            args.join(" "),
+            String::from_utf8_lossy(&out.stderr).trim()
+        ))
+    }
+}
+
+/// The result entry of a check that did not run.
+fn outcome(check: &Check, outcome: Outcome, reason: Option<&str>) -> Value {
+    json!({
+        "name": check.name,
+        "result": outcome.name(),
+        "reason": reason,
+        "duration_ms": 0,
+        "log_sha256": null,
+    })
+}
+
+/// The result entry of a check that `opts` leaves out, if it does.
+fn skipped(check: &Check, opts: &Options) -> Option<Value> {
+    if opts.only.as_ref().is_some_and(|o| !o.contains(&check.name)) {
+        Some(outcome(
+            check,
+            Outcome::NotRun,
+            Some("not selected with --only"),
+        ))
+    } else if check.cpp && opts.skip_cpp {
+        Some(outcome(
+            check,
+            Outcome::Skipped,
+            Some("the change does not touch the C++ inputs"),
+        ))
+    } else {
+        None
+    }
+}
+
+/// Runs one check from `cwd` with an empty `RUNNER_TEMP` at `temp`, its output in
+/// `<logs>/<name>.log`; returns its result entry.
+fn run_check(
+    check: &Check,
+    cwd: &Path,
+    temp: &Path,
+    logs: &Path,
+    env: &[(&str, &str)],
+) -> Result<Value, String> {
+    let _ = std::fs::remove_dir_all(temp);
+    std::fs::create_dir_all(temp).map_err(|e| format!("{}: {e}", temp.display()))?;
+    let log_path = logs.join(format!("{}.log", check.name));
+    let log = File::create(&log_path).map_err(|e| format!("{}: {e}", log_path.display()))?;
+    let log_err = log
+        .try_clone()
+        .map_err(|e| format!("{}: {e}", log_path.display()))?;
+    print!("verify: {:42} ", check.name);
+    let start = Instant::now();
+    let status = Command::new("bash")
+        .args(["-euo", "pipefail", "-c", &check.script])
+        .current_dir(cwd)
+        .env("RUNNER_TEMP", temp)
+        .envs(env.iter().copied())
+        .stdin(Stdio::null())
+        .stdout(log)
+        .stderr(log_err)
+        .status()
+        .map_err(|e| format!("bash: {e}"))?;
+    let ms = u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX);
+    let bytes = std::fs::read(&log_path).map_err(|e| format!("{}: {e}", log_path.display()))?;
+    let result = if status.success() {
+        Outcome::Pass
+    } else {
+        Outcome::Fail
+    };
+    println!("{:7} {:>7.1} s", result.name(), Duration(ms));
+    if result == Outcome::Fail {
+        let text = String::from_utf8_lossy(&bytes);
+        let lines: Vec<&str> = text.lines().collect();
+        for line in &lines[lines.len().saturating_sub(30)..] {
+            println!("    | {line}");
+        }
+        println!("    (full log: {})", log_path.display());
+    }
+    Ok(json!({
+        "name": check.name,
+        "result": result.name(),
+        "reason": null,
+        "duration_ms": ms,
+        "log_sha256": record::sha256_hex(&bytes),
+    }))
+}
+
+/// Milliseconds shown as seconds with one decimal.
+struct Duration(u64);
+
+impl std::fmt::Display for Duration {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}.{}", self.0 / 1000, self.0 % 1000 / 100)
+    }
+}
+
+/// Whether the C++ checks apply to `commit` (VER-056), with what the record says about it.
+fn cpp_scope(commit: &str, all_cpp: bool) -> Value {
+    let scope = |affected: bool, base: Option<&str>, reason: &str| json!({"affected": affected, "base": base, "paths": CPP_PATHS, "reason": reason});
+    if all_cpp {
+        return scope(true, None, "--all-cpp");
+    }
+    if git(&["fetch", "-q", "origin", "main"]).is_err() {
+        return scope(true, None, "origin/main could not be fetched");
+    }
+    let Ok(base) = git(&["merge-base", commit, "origin/main"]) else {
+        return scope(true, None, "no merge base with origin/main");
+    };
+    if base == commit {
+        return scope(true, Some(&base), "the commit is on main");
+    }
+    let changed = git(&["diff", "--name-only", &base, commit]).unwrap_or_default();
+    let touched: Vec<&str> = changed
+        .lines()
+        .filter(|f| CPP_PATHS.iter().any(|p| f.starts_with(p)))
+        .collect();
+    if touched.is_empty() {
+        scope(false, Some(&base), "no changed path matches")
+    } else {
+        let first: Vec<&str> = touched.iter().take(3).copied().collect();
+        let more = touched.len() - first.len();
+        let more = if more > 0 {
+            format!(" and {more} more")
+        } else {
+            String::new()
+        };
+        scope(
+            true,
+            Some(&base),
+            &format!("changes {}{more}", first.join(", ")),
+        )
+    }
+}
+
+/// Where the run is made (VER-057): the GitHub Actions run of VER-060, or the contributor's
+/// machine.
+fn source() -> Value {
+    let var = |k: &str| std::env::var(k).ok().filter(|v| !v.is_empty());
+    if var("GITHUB_ACTIONS").as_deref() == Some("true")
+        && let (Some(server), Some(repo), Some(run), Some(attempt)) = (
+            var("GITHUB_SERVER_URL"),
+            var("GITHUB_REPOSITORY"),
+            var("GITHUB_RUN_ID"),
+            var("GITHUB_RUN_ATTEMPT"),
+        )
+    {
+        return json!({
+            "kind": "github-actions",
+            "run": format!("{server}/{repo}/actions/runs/{run}/attempts/{attempt}"),
+            "workflow": var("GITHUB_WORKFLOW"),
+        });
+    }
+    json!({"kind": "local"})
+}
+
+/// `target/verify/<commit>`, emptied.
+fn out_dir(commit: &str) -> Result<PathBuf, String> {
+    let out = repo::root().join("target/verify").join(commit);
+    let _ = std::fs::remove_dir_all(&out);
+    std::fs::create_dir_all(out.join("logs")).map_err(|e| format!("{}: {e}", out.display()))?;
+    Ok(out)
+}
+
+/// The host-bound checks run outside the image: a clean checkout of `commit` under
+/// `target/verify/host-src`, built into `target/verify/host-target`.
+fn host_checks(commit: &str, out: &Path, opts: &Options) -> Result<(Vec<Value>, Value), String> {
+    let root = repo::root();
+    let src = root.join("target/verify/host-src");
+    let host_checks: Vec<Check> = checks::all()
+        .into_iter()
+        .filter(|c| c.host == Host::MacOs)
+        .collect();
+    let mut results = Vec::new();
+    let mut prepared = false;
+    for check in &host_checks {
+        if let Some(r) = skipped(check, opts) {
+            results.push(r);
+            continue;
+        }
+        if std::env::consts::OS != "macos" {
+            results.push(outcome(check, Outcome::NotRun, Some("needs a macOS host")));
+            continue;
+        }
+        if !prepared {
+            let _ = std::fs::remove_dir_all(&src);
+            let src_str = src.to_string_lossy();
+            git(&["clone", "-q", "--shared", "--no-checkout", ".", &src_str])?;
+            git(&[
+                "-C",
+                &src_str,
+                "-c",
+                "advice.detachedHead=false",
+                "checkout",
+                "-q",
+                commit,
+            ])?;
+            prepared = true;
+        }
+        let target = root.join("target/verify/host-target");
+        let target = target.to_string_lossy();
+        let mut env = CHECK_ENV.to_vec();
+        env.push(("CARGO_TARGET_DIR", &target));
+        let temp = root.join("target/verify/host-tmp").join(&check.name);
+        results.push(run_check(check, &src, &temp, &out.join("logs"), &env)?);
+    }
+    let rustc = if prepared {
+        inside::first_line(&["rustc".to_owned(), "-V".to_owned()], &src)
+    } else {
+        "unused".to_owned()
+    };
+    Ok((results, json!({ "host-rustc": rustc })))
+}
+
+/// The whole run on HEAD; returns the number of merge-gate problems.
+fn verify(mut opts: Options, all_cpp: bool, publish: bool) -> Result<usize, String> {
+    let dirty = git(&["status", "--porcelain"])?;
+    if !dirty.is_empty() {
+        return Err(format!(
+            "the working tree has uncommitted or untracked changes; commit them first \
+             (VER-056):\n{dirty}"
+        ));
+    }
+    let commit = git(&["rev-parse", "HEAD"])?;
+    let tree = git(&["rev-parse", "HEAD^{tree}"])?;
+    let cpp = cpp_scope(&commit, all_cpp);
+    opts.skip_cpp = cpp.get("affected") == Some(&Value::Bool(false));
+    let engine = image::Engine::detect()?;
+    let (tag, id) = engine.ensure_image(&commit)?;
+    let out = out_dir(&commit)?;
+    let started = record::utc_now();
+    println!("verify: {commit} in {tag}");
+    let container = engine.run_checks(&tag, &commit, &out, &opts)?;
+    let (host_results, host_tools) = host_checks(&commit, &out, &opts)?;
+    let mut tools = container.get("tools").cloned().unwrap_or_else(|| json!({}));
+    if let (Some(t), Value::Object(h)) = (tools.as_object_mut(), host_tools) {
+        t.extend(h);
+    }
+    let results = merge_results(&container, host_results)?;
+    let record = json!({
+        "format": record::FORMAT,
+        "commit": commit,
+        "tree": tree,
+        "started": started,
+        "finished": record::utc_now(),
+        "source": source(),
+        "host": {
+            "os": std::env::consts::OS,
+            "arch": std::env::consts::ARCH,
+            "container_arch": container.get("arch"),
+            "engine": engine.version(),
+        },
+        "image": {"tag": tag, "id": id},
+        "tools": tools,
+        "packages": container.get("packages"),
+        "cpp": cpp,
+        "checks": results,
+    });
+    let text = record::canonical(&record);
+    let path = out.join("record.json");
+    std::fs::write(&path, &text).map_err(|e| format!("{}: {e}", path.display()))?;
+    let problems = record::gate_problems(&record);
+    println!(
+        "verify: record {} (sha256 {})",
+        repo::rel(&path),
+        record::sha256_hex(text.as_bytes())
+    );
+    if problems.is_empty() {
+        println!("verify: the record passes the merge gate (VER-058)");
+        if publish {
+            return publish::publish(&commit);
+        }
+    } else {
+        for p in &problems {
+            println!("verify: gate: {p}");
+        }
+    }
+    Ok(problems.len())
+}
+
+/// Every check's result entry, in table order, with its host, gating, and script added.
+fn merge_results(container: &Value, host: Vec<Value>) -> Result<Vec<Value>, String> {
+    let mut by_name: Map<String, Value> = Map::new();
+    let from_container = container
+        .get("checks")
+        .and_then(Value::as_array)
+        .ok_or("container.json has no checks")?;
+    for r in from_container.iter().cloned().chain(host) {
+        if let Some(name) = r.get("name").and_then(Value::as_str) {
+            by_name.insert(name.to_owned(), r);
+        }
+    }
+    checks::all()
+        .into_iter()
+        .map(|c| {
+            let mut entry = by_name
+                .remove(&c.name)
+                .ok_or_else(|| format!("no result for check {}", c.name))?;
+            if let Some(obj) = entry.as_object_mut() {
+                obj.insert("host".to_owned(), json!(c.host.name()));
+                obj.insert("gating".to_owned(), json!(c.gating));
+                obj.insert("script".to_owned(), json!(c.script));
+            }
+            Ok(entry)
+        })
+        .collect()
+}
