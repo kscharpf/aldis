@@ -10,7 +10,7 @@
 | Flight applications | On-board time, housekeeping (1 Hz), event reporter, payload (0.5 Hz, packets longer than a frame), memory dump (segmented packets), command handler (immediate and time-tagged), table store | §2.1 |
 | Ground applications | Telemetry reception and decoding, packet-sequence tracking, time-stamp decoding, dump reassembly, scripted operations (the ops script); FOP-1 from A3 | §2.2 |
 | APIDs | `0x010` HK, `0x011` events, `0x020` payload, `0x021` dump, `0x080` commands, `0x081` table upload, `2047` idle | §3.1 |
-| Spacecraft ID | `0x155` (341), **proposed, fictional**, awaiting OI-26 | §3.4 |
+| Spacecraft ID | `0x155` (341), **fictional**, confirmed by the maintainer (OI-26) | §3.4 |
 | Downlink | TM, 223-octet frames, FECF, MC_OCF with the CLCW, VC 0 (HK, events), VC 1 (payload, dump), VC 7 (OID frames only), fixed-priority mux, 8 frames/s | §4.1 |
 | Uplink | TC, frames ≤ 128 octets, FECF, one VC with Segment Header, MAP 0 commands (blocking), MAP 1 table upload (segmentation); Type-BD in A2; COP-1 from A3 (K = 4, W = 8, T1_Initial = 1 s, Transmission_Limit = 3) | §4.2 |
 | Time | CUC Level 1, 4 coarse + 2 fractional octets, T0 = 2 100 000 000 s, no drift | §5 |
@@ -19,7 +19,7 @@
 | Node interface | `step(now, inputs) -> outputs + next deadline`; in-process for Rust, a lockstep stdin/stdout protocol for the A5 C++ and A6 QEMU flight nodes (OI-24) | §8 |
 | Code rules | `aldis` facade only; flight node `no_std`, no heap, flight lint set; `forbid(unsafe_code)` everywhere | §9 |
 
-**Open items that affect this document:** OI-26 (spacecraft ID), OI-24 (out-of-process nodes, §8.2), OI-23 (golden traces and vectors, §7.5), OI-25 (framework trace, §7.5), OI-11 (OID frames, §4.1), OI-06 (SANA registries, §3.1, §4.3). Every protocol value below cites the Blue Book clause it was read from.
+**Open items that affect this document:** OI-11 (OID frames, §4.1). Resolved 2026-10-19: OI-23 (golden traces and vectors, §7.5), OI-24 (out-of-process nodes, §8.2), OI-25 (framework trace, §7.5), OI-26 (spacecraft ID, §3.4), OI-06 (SANA registries, §3.1, §4.3). Every protocol value below cites the Blue Book clause it was read from.
 
 **How to read the requirements.** Requirement IDs follow [00 §5](00-introduction.md#5-requirement-conventions), grouped in decades per section. **T** means a golden-trace reproduction test or a harness test in `refapp/` annotated `// req:`, and the header of each golden trace lists the IDs its case verifies (§7.2). **I** means review of this document or of `refapp/`. **A** means a CI check. Requirements name the library requirements they exercise.
 
@@ -206,7 +206,7 @@ Table ID (u8, 1…255) ‖ length L (u16, 1…512) ‖ L table octets. The nomin
 
 ### 3.4 Spacecraft ID
 
-TM, TC, AOS, and USLP frames carry a spacecraft ID assigned through CCSDS 320.0 and SANA (00 §6). The public SANA spacecraft ID registry was checked on 2026-10-19 and showed no value set aside for testing or documentation. **Proposed:** SCID `0x155` (341), whose alternating bit pattern (`01 0101 0101`) makes a misplaced or shifted SCID field visible in a hex dump. It fits the 10-bit TM and TC fields (132.0 §4.1.2.2.3; 232.0 §4.1.2.5) and the AOS and USLP fields. The value is fictional: the maintainer confirms it against the full registry or picks another (OI-26), and `refapp/README.md` and every golden-trace case description label it as fictional.
+TM, TC, AOS, and USLP frames carry a spacecraft ID assigned through CCSDS 320.0 and SANA (00 §6). The public SANA spacecraft ID registry was checked on 2026-10-19 and showed no value set aside for testing or documentation. **Chosen:** SCID `0x155` (341), whose alternating bit pattern (`01 0101 0101`) makes a misplaced or shifted SCID field visible in a hex dump. It fits the 10-bit TM and TC fields (132.0 §4.1.2.2.3; 232.0 §4.1.2.5) and the AOS and USLP fields. The value is fictional, confirmed by the maintainer on 2026-10-19 (OI-26); `refapp/README.md` and every golden-trace case description label it as fictional.
 
 | ID | Requirement | Source | Verif. |
 |---|---|---|---|
@@ -216,7 +216,7 @@ TM, TC, AOS, and USLP frames carry a spacecraft ID assigned through CCSDS 320.0 
 | APP-023 | Housekeeping, event, payload, and dump packets SHALL have the user data of §3.3.1–3.3.4. | — | T |
 | APP-024 | Command and table-upload packets SHALL have the user data of §3.3.5 and §3.3.6. A command whose length does not match its function code SHALL be rejected with reason 3. | — | T |
 | APP-025 | Event codes (§3.3.2) and command function codes (§3.3.5) SHALL never be renumbered or reused; new ones take the next free value. | — | I |
-| APP-026 | Every frame of the scenario SHALL carry the spacecraft ID of §3.4, the same for downlink and uplink. Until OI-26 is resolved the value is provisional and SHALL be labelled fictional. | 132.0 §4.1.2.2.3; 232.0 §4.1.2.5 | I |
+| APP-026 | Every frame of the scenario SHALL carry the spacecraft ID of §3.4, the same for downlink and uplink. The value is fictional and SHALL be labelled so wherever the scenario is published (OI-26). | 132.0 §4.1.2.2.3; 232.0 §4.1.2.5 | I |
 
 ## 4. Link plan
 
