@@ -5,7 +5,7 @@
 | Requirements | GEN-022 (every loop bounded by an input length, a compile-time capacity, or a constant; no recursion), GEN-023 (time bounded by O(input length + capacities); nothing blocks or waits) |
 | Scope | `crates/aldis-time/src/*.rs`, library code only (test modules excluded), on branch `m1/time` (M1 WP-1 part 1: `pfield`, `code`, `cuc`, `cds`, `ccs`, `util`), based on `main` b817d0f. `ascii.rs` is still a skeleton |
 | Inspected | 2026-10-18, prepared by Claude Code |
-| Approved | awaiting maintainer approval |
+| Approved | 2026-10-19, maintainer |
 | Repeat | when `aldis-time` gains a loop or a call between its own functions (the ASCII codec and conversions will), and before each release |
 
 ## Loops
