@@ -1,6 +1,6 @@
 # Aldis: Specification
 
-**Status:** Draft 0.1 · **Scope:** v1 (core packets and links) · **Applies to:** Rust reference implementation, C ABI, and future native C/C++ ports
+**Status:** Draft 0.1 · **Scope:** v1 (core packets and links) · **Applies to:** Rust reference implementation, C ABI, native C++ implementation, and future native C port
 
 This directory holds the specification for a family of libraries that add CCSDS protocol support to spacecraft flight software and ground systems. The specification is **language-neutral**. Language-specific *profiles* define how each implementation exposes it. A shared **conformance test-vector suite** keeps every implementation behaving the same.
 
@@ -50,6 +50,7 @@ This directory holds the specification for a family of libraries that add CCSDS 
 |---|---|
 | [Rust profile](profiles/rust.md) | Crate names, API shapes, feature flags, MSRV, lint configuration |
 | [C ABI profile](profiles/c-abi.md) | C linkage, naming, memory model (caller-owned storage), status codes, header generation, C++ wrapper guidance, rules for native C/C++ ports |
+| [C++ profile](profiles/cpp.md) | Native C++ implementation: language subset, API shapes, build, lint configuration, verification, differential testing against the Rust reference (draft) |
 
 ## Source material
 
