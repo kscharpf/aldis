@@ -2,7 +2,7 @@
 
 This profile binds the language-neutral specification to the **native C++ implementation**. The Rust crates remain the reference implementation and the recommended choice. The native C++ library exists for legacy flight software that cannot easily take a Rust toolchain. It exposes the same C ABI (CABI-070) and the same C++ wrapper API (CABI-072) as the Rust-backed library, so an application can switch between them without source changes.
 
-**Status:** Draft, 2026-10-19. No C++ code exists yet. The language standard (OI-19), capacities in the C++ API (OI-20), the C ABI for the M1 codecs (OI-21), and the static analysis tools (OI-22) are open.
+**Status:** Draft, 2026-10-19. No C++ code exists yet; the work is planned as track C of the [roadmap](../08-roadmap.md) §2. The language is C++20 (OI-19) and engine capacities are template parameters (OI-20). The static analysis tools (OI-22) are open.
 
 ## 0. How the C++ implementation is assured
 
@@ -17,7 +17,7 @@ The evidence for the C++ library comes from two places, and neither replaces the
 
 | ID | Requirement | Source | Verif. |
 |---|---|---|---|
-| CPP-001 | The C++ language standard SHALL be the one chosen in OI-19 (proposed: C++20), set in the CMake presets and not overridable by a consumer's settings. The library SHALL build with pinned versions of both GCC and Clang. Changing the standard or a pinned compiler version is a configuration-controlled change recorded in the changelog. | — | A |
+| CPP-001 | The C++ language standard SHALL be C++20 (OI-19), set in the CMake presets and not overridable by a consumer's settings. The library SHALL build with pinned versions of both GCC and Clang. Changing the standard or a pinned compiler version is a configuration-controlled change recorded in the changelog. | — | A |
 | CPP-002 | Layers 0–2 SHALL be compiled with `-fno-exceptions -fno-rtti`. They SHALL include only standard headers on an allowlist of header-only, allocation-free headers (initially `<array>`, `<bit>`, `<concepts>`, `<cstddef>`, `<cstdint>`, `<limits>`, `<optional>`, `<span>`, `<type_traits>`, `<utility>`). The C ABI layer MAY also include `<new>` for placement new (CPP-035). CI SHALL reject any other include. | GEN-001, GEN-010 | A |
 | CPP-003 | Layers 0–2 SHALL have no third-party runtime dependencies. Dev-only dependencies (test framework, fuzzing and property-test libraries, JSON parser for the vector runner) SHALL be pinned to a commit hash. | GEN-001 | A |
 
@@ -84,7 +84,7 @@ public:
 
 namespace aldis::cop1 {
 
-// Engines: capacities as template parameters (subject to OI-20), hooks as concepts (CPP-024).
+// Engines: capacities as template parameters (OI-20), hooks as concepts (CPP-024).
 template <std::size_t Sent, std::size_t MaxFrame, core::SecurityHook H = core::NoSecurity>
 class Fop1 {
 public:
@@ -108,9 +108,9 @@ public:
 |---|---|---|---|
 | CPP-020 | Identifier types SHALL be classes with a private representation. Sub-width identifiers SHALL be constructed only through a `static constexpr` factory that returns `Result`. Full-width identifiers SHALL provide a `constexpr explicit` constructor. No identifier SHALL convert implicitly to or from an integer type, and the public API SHALL NOT provide an unchecked constructor that can produce an out-of-range value. | API-001 | T |
 | CPP-021 | `Error` SHALL be a trivially copyable struct of `ErrorKind`, an optional field identifier, and `ErrorDetail`, mirroring RS-011. `ErrorKind` SHALL be an `enum class` with a fixed underlying type whose enumerators carry the codes of the [error catalogue](../03-api-model.md#9-error-catalogue). `Result<T>` SHALL be `[[nodiscard]]`, and no accessor SHALL throw, abort, or have undefined behavior when called in the wrong state. | GEN-040, GEN-041 | T |
-| CPP-022 | Decoders SHALL take input as `std::span<const std::byte>` (or the form chosen in OI-19) marked `ALDIS_LIFETIMEBOUND`, and return views whose sub-spans lie within that input. Overloads that would bind a view to a temporary owning container SHALL be deleted. | GEN-013, API-010 | T |
+| CPP-022 | Decoders SHALL take input as `std::span<const std::byte>` marked `ALDIS_LIFETIMEBOUND`, and return views whose sub-spans lie within that input. Overloads that would bind a view to a temporary owning container SHALL be deleted. | GEN-013, API-010 | T |
 | CPP-023 | **Parse, don't validate**, as RS-020 states it for Rust: a public type SHALL be able to hold only values valid for it; data members of types with an invariant SHALL be private; untrusted input SHALL be checked once, by the factory or decoder that produces the type. | API-001, GEN-060 | I |
-| CPP-024 | Engines SHALL be class templates whose capacities are template parameters (subject to OI-20), so that `sizeof` gives their footprint. Security hooks SHALL be a template parameter constrained by a `SecurityHook` concept, defaulting to `NoSecurity`, with no virtual dispatch. An engine SHALL be initializable in caller-provided storage, without a temporary copy of the engine on the stack. | GEN-011, GEN-012, API-073 | T |
+| CPP-024 | Engines SHALL be class templates whose capacities are template parameters (OI-20), so that `sizeof` gives their footprint. Security hooks SHALL be a template parameter constrained by a `SecurityHook` concept, defaulting to `NoSecurity`, with no virtual dispatch. An engine SHALL be initializable in caller-provided storage, without a temporary copy of the engine on the stack. | GEN-011, GEN-012, API-073 | T |
 | CPP-025 | Configuration types SHALL have private data members, validating factories, a defaulted `operator==`, and no pointer or reference members. They SHALL be trivially copyable, and constructible in constant evaluation where their validation is. | GEN-060, API-041 | T |
 | CPP-026 | Every public function SHALL be `noexcept`. | GEN-020 | I |
 

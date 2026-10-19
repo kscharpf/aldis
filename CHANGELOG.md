@@ -5,6 +5,7 @@ All notable changes to Aldis are recorded here. The format follows [Keep a Chang
 ## [Unreleased]
 
 ### Added
+- Unified roadmap ([docs/08-roadmap.md](docs/08-roadmap.md)): three v1 tracks, Rust reference (M0–M6), native C++ (C0–C5), and reference application (A0–A6), with entry gates, an overlap table, release rules, and rules for working on the tracks in parallel. `AGENTS.md` points contributors and agents to their track.
 - Spec: a native C++ implementation is developed alongside the Rust crates for legacy flight software; the Rust crates stay the reference and the recommended choice. New draft [C++ profile](docs/profiles/cpp.md) (area CPP: CPP-001…CPP-061), VER-053 (differential testing of native implementations against the Rust reference), VER-054 (shared property-test strategies), and OI-19…OI-22 (C++ standard, capacities in the C++ API, C ABI for the M1 codecs, C++ static analysis tools).
 - RS-020 (Rust profile) and an `AGENTS.md` rule: parse, don't validate. Existing violations are tracked in #22.
 - `aldis-time` value types follow parse, don't validate: every field of `CcsValue` and `CdsValue` is a type that can hold only values 301.0 allows, decoders parse each field into its type as they read it, and `Ccs::new` / `Cds::new` check only the fit to the format (variation, sub-second digits, day segment length, resolution).
@@ -28,6 +29,8 @@ All notable changes to Aldis are recorded here. The format follows [Keep a Chang
 - Selected Clippy nursery lints denied in every lint table: `missing_const_for_fn`, `derive_partial_eq_without_eq`, `too_long_first_doc_paragraph`, `redundant_clone`. The nursery group stays off, and each lint considered is recorded with its decision in `docs/profiles/rust.md` §5 (RS-019).
 
 ### Changed
+- Roadmap: every Rust milestone defines the C ABI for what it adds (engine handles from M3, not M5); M2 WP-0 adds the M1 codecs' C ABI and the shared strategies (VER-054); M5 becomes C ABI completion; the end-to-end demo moves from M6 to the reference application (A6).
+- OI-19, OI-20, and OI-21 resolved (maintainer): C++20, engine capacities as template parameters, and the M1 C ABI slice in M2 WP-0. CPP-001, CPP-022, CPP-024, and CABI-072 updated; the C++11 form of CABI-072 is dropped.
 - Spec for the native C++ track: CABI-070 (native C++ also exposes `aldis.h`, used by the differential tests), CABI-071 (native implementations pass VER-053), CABI-072 (`alignas` storage instead of the deprecated `std::aligned_storage`; standard and capacities open in OI-19/OI-20), VER-052 (MISRA C++:2023), VER-023 (inputs from the shared strategies), GEN-071, VER-002, and RS-017 (`unsafe` allowed in the dev-only differential-test bridge). Roadmap: native C++ moves to phase 1, and the codec part of the C ABI is defined with each codec's milestone (§3.1).
 - **Breaking:** `aldis` facade crate no longer enables `core` by default (`default = []`), matching `docs/profiles/rust.md` §2; enable `core` or `full` explicitly.
 - **Breaking:** `aldis-core::ids`: `FrameSeqNum`'s inner `u8` field is now private (use `FrameSeqNum::new` or `From<u8>`, and `FrameSeqNum::get` or `u8::from`), matching the other identifier types (RS-010); `SpacecraftId`, `VcId`, and `MapId` `TryFrom` errors now report snake_case `FieldId`s (`"spacecraft_id"`, `"vc_id"`, `"map_id"`) instead of type names (API-041).
