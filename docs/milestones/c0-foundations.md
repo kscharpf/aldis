@@ -3,7 +3,7 @@
 **Goal:** a C++ project, CI, and verification tooling for the native C++ implementation, plus a complete, verified `aldis_core` that matches `aldis-core` on the shared vectors. Every later C++ milestone builds on this.
 **Roadmap entry:** [08-roadmap.md](../08-roadmap.md) §2 (track C) · **Builds on:** [M0](m0-foundations.md) (`aldis-core`, `v0.1.0-m0`) · **Profile:** [C++ profile](../profiles/cpp.md) · **Release:** none (track C milestones do not cut releases, roadmap §5)
 
-**Status: plan approved (2026-10-19).** Entry gate: none (roadmap §2). Decisions D1–D19 accepted by the maintainer 2026-10-19 (D19 with OI-28). No C++ code exists yet.
+**Status: in progress (2026-10-19).** Entry gate: none (roadmap §2). Decisions D1–D19 accepted by the maintainer 2026-10-19 (D19 with OI-28). WP-0 (toolchains) is in review.
 
 ## 1. Starting point
 

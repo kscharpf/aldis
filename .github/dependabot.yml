@@ -2,7 +2,7 @@ version: 2
 updates:
   # Keeps SHA-pinned actions current (the version comment is updated too).
   - package-ecosystem: github-actions
-    directories: ["/", "/.github/actions/setup-rust"]
+    directories: ["/", "/.github/actions/setup-rust", "/.github/actions/setup-cpp"]
     schedule:
       interval: weekly
     groups:

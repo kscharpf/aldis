@@ -1,0 +1,82 @@
+# CI for the native C++ implementation (docs/milestones/c0-foundations.md D17; docs/profiles/cpp.md).
+# A separate workflow so that track C and track R do not edit the same file. No path filters:
+# its checks can be required without hanging on PRs that do not touch cpp/. Job IDs carry a
+# `cpp-` prefix and never change once required. Actions are pinned by commit SHA; every C++
+# tool comes from cpp/toolchains.lock through .github/actions/setup-cpp (CPP-001).
+name: C++
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cpp-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  cpp-toolchains:
+    name: cpp toolchains ${{ matrix.os }} (CPP-001, CPP-003)
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Lock file is well formed
+        run: python3 -I .github/actions/setup-cpp/setup_cpp.py check-lock
+      - name: Install every pinned tool for this architecture
+        uses: ./.github/actions/setup-cpp
+        with:
+          tools: all
+      - name: A changed checksum fails the install
+        run: |
+          # Change the last hex digit of the Ninja checksum (the smallest archive).
+          python3 -I - "$RUNNER_TEMP/changed.lock" <<'EOF'
+          import platform, sys
+          key = "NINJA_" + ("X64" if platform.machine() == "x86_64" else "ARM64") + "_SHA256="
+          lines = open("cpp/toolchains.lock", encoding="utf-8").read().splitlines()
+          for i, line in enumerate(lines):
+              if line.startswith(key):
+                  lines[i] = line[:-1] + ("1" if line[-1] == "0" else "0")
+          open(sys.argv[1], "w", encoding="utf-8").write("\n".join(lines) + "\n")
+          EOF
+          if cmp -s cpp/toolchains.lock "$RUNNER_TEMP/changed.lock"; then
+            echo "::error::the test did not change the checksum"
+            exit 1
+          fi
+          if python3 -I .github/actions/setup-cpp/setup_cpp.py --lock "$RUNNER_TEMP/changed.lock" \
+               --downloads "$RUNNER_TEMP/downloads" --tools-dir "$RUNNER_TEMP/tools" \
+               install ninja 2> "$RUNNER_TEMP/changed.log"; then
+            echo "::error::setup-cpp accepted an archive whose checksum differs from the lock"
+            exit 1
+          fi
+          cat "$RUNNER_TEMP/changed.log"
+          grep -q "checksum mismatch" "$RUNNER_TEMP/changed.log"
+          echo "the changed checksum was rejected, as it should be"
+      - name: Configure-time compiler check accepts the pinned compilers
+        run: |
+          cmake -S cpp/cmake/selftest/toolchain-check -B "$RUNNER_TEMP/tc-gcc" -G Ninja \
+            -DCMAKE_CXX_COMPILER=g++-14 -DALDIS_TOOLCHAIN=GCC
+          cmake -S cpp/cmake/selftest/toolchain-check -B "$RUNNER_TEMP/tc-clang" -G Ninja \
+            -DCMAKE_CXX_COMPILER=clang++ -DALDIS_TOOLCHAIN=LLVM
+      - name: Configure-time compiler check rejects other compilers and versions
+        run: |
+          sed -E 's/^GCC_VERSION=.*/GCC_VERSION=14.1.0/' cpp/toolchains.lock > "$RUNNER_TEMP/old-gcc.lock"
+          for args in "-DCMAKE_CXX_COMPILER=g++-14 -DALDIS_TOOLCHAIN=LLVM" \
+                      "-DCMAKE_CXX_COMPILER=clang++ -DALDIS_TOOLCHAIN=GCC" \
+                      "-DCMAKE_CXX_COMPILER=g++-14 -DALDIS_TOOLCHAIN=GCC -DALDIS_TOOLCHAINS_LOCK=$RUNNER_TEMP/old-gcc.lock" \
+                      "-DCMAKE_CXX_COMPILER=g++-14 -DALDIS_TOOLCHAIN=LLVM -DALDIS_ALLOW_UNPINNED_COMPILER=ON"; do
+            rm -rf "$RUNNER_TEMP/tc-bad"
+            # args is split into words on purpose.
+            if cmake -S cpp/cmake/selftest/toolchain-check -B "$RUNNER_TEMP/tc-bad" -G Ninja $args; then
+              echo "::error::configure accepted a compiler that differs from the lock ($args)"
+              exit 1
+            fi
+          done
+          echo "every mismatching compiler was rejected, as it should be (the override is refused in CI)"
