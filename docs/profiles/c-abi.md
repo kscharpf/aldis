@@ -34,7 +34,7 @@ This profile defines the C interface. The Rust reference implementation exposes 
 | ID | Requirement | Source | Verif. |
 |---|---|---|---|
 | CABI-020 | Every fallible function SHALL return `int32_t`: `0` (`ALDIS_OK`) for success, or `-code` using the [error catalogue](../03-api-model.md#9-error-catalogue). For example, `ALDIS_ERR_BUFFER_TOO_SMALL = -1`. | GEN-040 | V |
-| CABI-021 | Additional error detail (field ID, `needed` octets, expected/found) SHALL be available through an optional `aldis_error_detail_t *` out-parameter. Passing `NULL` SHALL be allowed. | GEN-041 | T |
+| CABI-021 | Additional error detail (field code (API-082), `needed` octets, expected/found) SHALL be available through an optional `aldis_error_detail_t *` out-parameter. Passing `NULL` SHALL be allowed. | GEN-041 | T |
 | CABI-022 | Every pointer parameter SHALL be checked for `NULL`, and every length for consistency. Violations SHALL return `ALDIS_ERR_INVALID_FIELD`. They SHALL never cause undefined behavior inside the library. | GEN-020 | T |
 
 ## 5. Memory model

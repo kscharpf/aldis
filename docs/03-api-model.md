@@ -184,3 +184,11 @@ Numeric codes are stable across profiles. In the C ABI, `0` is success and error
 | 15 | `CapacityExceeded` | Configuration exceeds compile-time capacity |
 | 16 | `InvalidHandle` | Unknown or stale transmit/request handle |
 | 17 | `Malformed` | Structurally impossible input (e.g. pointer beyond data field) |
+
+### 9.1 Field codes
+
+An error that names a field (GEN-041), such as `InvalidField`, carries a **field code**: a stable number shared by all profiles, so that the C ABI can carry it (CABI-010, CABI-021) and the differential tests can compare it (VER-053). Profiles may also expose the field's name for display. The catalogue table is created in M2 WP-0 ([roadmap](08-roadmap.md) §1, OI-27), listing every field identifier the codecs use, and grows with each codec.
+
+| ID | Requirement | Source | Verif. |
+|---|---|---|---|
+| API-082 | Every field identifier SHALL have a numeric code (16 bits) listed in the field catalogue of this section and shared by all profiles. Codes SHALL never be renumbered or reused; a new field takes the next free code. The C ABI SHALL carry the code. Profiles MAY also expose the field name, which is for display only and SHALL NOT be compared by tests or tools. | GEN-041 | T |
