@@ -1,0 +1,2 @@
+### Changed
+- Verification: the merge gate is a local verification run instead of GitHub Actions (OI-31). New `docs/06-verification.md` §7: `cargo xtask verify` runs every gating check in pinned containers (VER-056) and writes an evidence record tied to the commit's tree (VER-057); a pull request merges on a published passing record and the commit status `aldis/verify` (VER-058); GitHub Actions runs every check nightly (VER-059). "In CI" in the specification now means the verification run. The pull-request workflows stay the gate until `cargo xtask verify` is implemented.
