@@ -6,13 +6,13 @@
 //! |---|---|---|
 //! | [`header`] | `PacketType`, `SequenceFlags`, `PacketFields`, owned `SpacePacketHeader` | SPP-001…SPP-003, SPP-009, API-014, API-021 |
 //! | [`view`] | Zero-copy `SpacePacket` decoder, `peek_length` | SPP-001…SPP-004, SPP-009, API-010, API-011, API-013 |
-//! | [`secondary`] | `SecondaryHeaderLayout` per APID and the split into `SplitPacket` | SPP-007 |
+//! | [`secondary`] | `SecondaryHeaderLayout` per APID, `TimeHeaderLayout` (feature `time`), and the split into `SplitPacket` | SPP-007, SPP-008 |
 //! | [`writer`] | One-shot `encode`, two-phase `SpacePacketWriter` | SPP-005, SPP-006, API-020…API-023 |
 //! | [`config`] | `SppConfig` (Maximum Packet Length), the checked `PacketData` | SPP-005, SPP-006, GEN-060 |
 //! | [`idle`] | `IdlePacket` builder | SPP-010 |
 //! | [`sequence`] | `SequenceCounter`, `SequenceTracker` | SPP-011, GEN-011, GEN-024 |
 //! | [`octet`] | `OctetStringEncoder` (Octet String service) | SPP-012 |
-//! | [`segment`] | Segmentation and reassembly (not yet implemented) | SPP-013 |
+//! | [`segment`] | `Segmenter`, `Reassembler` with its `Outcome`, `Status`, and `Discard` | SPP-013 |
 //! | [`anomaly`] | `SppAnomaly` lenient-mode flags | API-032, GEN-043 |
 //!
 //! The Packet Data Length field holds the data field length minus one (133.0 §4.1.3.5); the API
@@ -48,7 +48,10 @@ pub use header::{
 };
 pub use idle::IdlePacket;
 pub use octet::OctetStringEncoder;
+#[cfg(feature = "time")]
+pub use secondary::TimeHeaderLayout;
 pub use secondary::{SecondaryHeaderLayout, SplitPacket};
+pub use segment::{Discard, Outcome, Reassembler, Segmenter, Status};
 pub use sequence::{SequenceCounter, SequenceTracker, Tracked};
 pub use view::SpacePacket;
 pub use writer::{SpacePacketWriter, encode};

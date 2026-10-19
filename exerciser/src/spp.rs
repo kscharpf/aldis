@@ -7,10 +7,12 @@ use aldis_core::counter::Continuity;
 use aldis_core::ids::{Apid, SeqCount};
 use aldis_core::{DecodeMode, ErrorKind};
 use aldis_spp::{
-    IdlePacket, MAX_PACKET_LEN, MIN_PACKET_LEN, OctetStringEncoder, PRIMARY_HEADER_LEN,
-    PacketFields, PacketType, SecondaryHeaderLayout, SequenceCounter, SequenceFlags,
-    SequenceTracker, SpacePacket, SpacePacketWriter, SppAnomaly, SppConfig, Tracked, encode,
+    Discard, IdlePacket, MAX_PACKET_LEN, MIN_PACKET_LEN, OctetStringEncoder, Outcome,
+    PRIMARY_HEADER_LEN, PacketFields, PacketType, Reassembler, SecondaryHeaderLayout, Segmenter,
+    SequenceCounter, SequenceFlags, SequenceTracker, SpacePacket, SpacePacketWriter, SppAnomaly,
+    SppConfig, Status, TimeHeaderLayout, Tracked, encode,
 };
+use aldis_time::{CcsFormat, CcsVariation, CucEpoch, CucFormat, TimeFormat};
 
 use crate::exercise::Tally;
 
@@ -180,10 +182,112 @@ fn sequences(t: &mut Tally) {
     t.check(tracker.last(one).is_none() && tracker.track(three, count(1)) == Ok(Tracked::First));
 }
 
+/// Encodes one packet with `user` data, decodes it, and pushes it into `ra`.
+fn push_one(
+    ra: &mut Reassembler<'_>,
+    cfg: SppConfig,
+    fields: PacketFields,
+    user: &[u8],
+) -> Option<Outcome> {
+    let packet = cfg.packet(fields, &[], user).ok()?;
+    let mut out = [0_u8; 16];
+    let n = encode(&packet, &mut out).ok()?;
+    let p = SpacePacket::decode(out.get(..n)?, DecodeMode::Strict).ok()?;
+    ra.push(&p.header(), p.data_field()).ok()
+}
+
+fn segments(t: &mut Tally) {
+    let cfg = SppConfig::DEFAULT;
+    let Some(apid) = Apid::new(bb(0x050)) else {
+        t.check(false);
+        return;
+    };
+    t.check(Segmenter::new(&cfg, PacketType::Telemetry, apid, bb(&[]), 4).is_err());
+    t.check(Segmenter::new(&cfg, PacketType::Telemetry, Apid::IDLE, bb(&[1]), 4).is_err());
+    let sdu = bb([1_u8, 2, 3, 4, 5]);
+    let mut buf = [0_u8; 8];
+    let mut ra = Reassembler::new(apid, &mut buf);
+    t.check(ra.apid() == apid && ra.capacity() == 8 && !ra.is_assembling());
+    match Segmenter::new(&cfg, PacketType::Telemetry, apid, &sdu, bb(2)) {
+        Ok(mut seg) => {
+            let mut counter = SequenceCounter::default();
+            let mut out = [0_u8; 16];
+            let mut last = None;
+            while let Ok(Some(n)) = seg.next_packet(&mut counter, &[], &mut out) {
+                if let Ok(p) =
+                    SpacePacket::decode(bb(out.get(..n).unwrap_or_default()), DecodeMode::Strict)
+                {
+                    last = ra.push(&p.header(), p.data_field()).ok();
+                }
+            }
+            t.check(seg.is_done() && seg.remaining() == 0 && counter.peek().get() == 3);
+            t.check(
+                last == Some(Outcome {
+                    discarded: None,
+                    status: Status::Complete(5),
+                }),
+            );
+            t.check(ra.sdu() == sdu);
+        }
+        Err(_) => t.check(false),
+    }
+    let fields = |sequence_flags| PacketFields {
+        packet_type: PacketType::Telemetry,
+        apid,
+        sequence_flags,
+        sequence_count: SeqCount::default(),
+    };
+    let orphan = push_one(&mut ra, cfg, fields(SequenceFlags::Continuation), bb(&[9]));
+    t.check(orphan.is_some_and(|o| o.status == Status::Dropped(Discard::Orphan)));
+    let first = push_one(&mut ra, cfg, fields(SequenceFlags::First), bb(&[8]));
+    t.check(first.is_some_and(|o| o.status == Status::InProgress) && ra.is_assembling());
+    ra.reset();
+    t.check(!ra.is_assembling() && ra.sdu().is_empty());
+}
+
+fn time_header(t: &mut Tally) {
+    let Ok(cuc) = CucFormat::new(CucEpoch::Tai1958, bb(4), bb(2)) else {
+        t.check(false);
+        return;
+    };
+    let format = TimeFormat::Cuc(cuc);
+    match TimeHeaderLayout::new(format, bb(true), bb(1)) {
+        Ok(layout) => {
+            t.check(
+                layout.format() == format && layout.has_pfield() && layout.ancillary_len() == 1,
+            );
+            // Secondary header: CUC 4+2 P-field 0x1E, T-field, 1 ancillary octet; then user data.
+            let bytes = bb([
+                0x08, 0x60, 0xC0, 0x00, 0x00, 0x08, 0x1E, 0x12, 0x34, 0x56, 0x78, 0x80, 0x00, 0xAB,
+                0x01,
+            ]);
+            match SpacePacket::decode(&bytes, DecodeMode::Strict) {
+                Ok(p) => {
+                    let split = p.split(&SecondaryHeaderLayout::Time(layout));
+                    t.check(split.is_ok_and(|s| {
+                        s.ancillary_data() == [0xAB]
+                            && s.user_data() == [0x01]
+                            && s.time_code()
+                                .is_some_and(|c| c.len() == 7 && c.pfield().is_some())
+                    }));
+                }
+                Err(_) => t.check(false),
+            }
+        }
+        Err(_) => t.check(false),
+    }
+    let ccs = CcsFormat::new(CcsVariation::MonthDay, 0).map(TimeFormat::Ccs);
+    t.check(ccs.is_ok_and(|f| {
+        TimeHeaderLayout::new(f, false, 0).is_err_and(|e| e.kind() == ErrorKind::InvalidConfig)
+    }));
+}
+
 /// Runs the `aldis-spp` group.
 pub fn run(t: &mut Tally) {
     decode(t);
     encoders(t);
     idle_and_octets(t);
     sequences(t);
+    segments(t);
+    time_header(t);
 }

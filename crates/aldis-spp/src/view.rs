@@ -9,10 +9,14 @@ use crate::header::{PRIMARY_HEADER_LEN, PacketType, SequenceFlags, SpacePacketHe
 use crate::secondary::{SecondaryHeaderLayout, SplitPacket};
 
 /// A decoded Space Packet borrowing its data field from the input (GEN-013).
+///
+/// The view keeps its decode mode, which [`split`](Self::split) applies to a time code; two
+/// views of the same octets decoded in different modes are not equal.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SpacePacket<'a> {
     header: SpacePacketHeader,
     data: &'a [u8],
+    mode: DecodeMode,
     anomalies: AnomalySet<SppAnomaly>,
 }
 
@@ -43,6 +47,7 @@ impl<'a> SpacePacket<'a> {
         Ok(SpacePacket {
             header,
             data,
+            mode,
             anomalies,
         })
     }
@@ -58,16 +63,19 @@ impl<'a> SpacePacket<'a> {
     }
 
     /// Splits the data field into the secondary header and the user data with the APID's
-    /// layout, which the caller looks up (SPP-007, OI-30).
+    /// layout, which the caller looks up (SPP-007, SPP-008, OI-30). A time code is decoded
+    /// in this packet's decode mode.
     ///
     /// # Errors
     /// - `InvalidField` (`secondary_header_flag`) if the Secondary Header Flag disagrees with
     ///   the layout: set with [`SecondaryHeaderLayout::Absent`], or clear with a secondary
     ///   header. 133.0 §4.1.3.3.3.3 fixes the flag per APID, so this holds in both modes.
     /// - `LengthMismatch` (`secondary_header`) if the data field is shorter than the secondary
-    ///   header.
+    ///   header, including a time code cut off inside its P-field or T-field.
+    /// - With a time layout: `InvalidField` (`time_code_id`) for a P-field with another time
+    ///   code ID than the configured one, and the other errors of the time code decoder.
     pub fn split(&self, layout: &SecondaryHeaderLayout) -> Result<SplitPacket<'a>> {
-        layout.split(self.header.has_secondary_header(), self.data)
+        layout.split(self.header.has_secondary_header(), self.data, self.mode)
     }
 
     /// The header as plain values (API-014).
@@ -212,7 +220,8 @@ mod tests {
             let strict = SpacePacket::decode(&bytes, DecodeMode::Strict);
             let lenient = SpacePacket::decode(&bytes, DecodeMode::Lenient);
             if let Ok(s) = strict {
-                prop_assert_eq!(lenient, Ok(s));
+                let l = lenient.unwrap();
+                prop_assert_eq!((l.header(), l.data_field(), l.anomalies()), (s.header(), s.data_field(), s.anomalies()));
                 prop_assert!(s.anomalies().is_empty());
             }
             if let Ok(l) = lenient {

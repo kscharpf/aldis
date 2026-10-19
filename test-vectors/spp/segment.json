@@ -1,0 +1,275 @@
+{
+  "kind": "codec",
+  "standard": "133.0-B-2 \u00a74.1, \u00a75",
+  "provenance": "hand-derived",
+  "provenance_note": "Hand-derived from 133.0-B-2 \u00a74.1.3.4.2 and \u00a74.1.4.2 and 301.0-B-4 \u00a73.1\u20133.3 (P-field and T-field layouts of CUC and CDS), with the rules of docs/standards/space-packet.md \u00a75.4\u20135.5 (OI-30). 133.0 prints no worked example packets. Expected values computed by an independent Python model, written before the Rust code.",
+  "cases": [
+    {
+      "id": "spp-seg-001",
+      "requirements": [
+        "SPP-013",
+        "SPP-005"
+      ],
+      "description": "SDU that fits one packet: flags 11",
+      "operation": "segment",
+      "params": {
+        "packet_type": 0,
+        "apid": 80,
+        "sdu_hex": "0102030405060708090A",
+        "max_user_len": 16,
+        "sequence_count": 7,
+        "secondary_header_hex": ""
+      },
+      "expect": {
+        "ok": true,
+        "packets_hex": [
+          "0050C00700090102030405060708090A"
+        ],
+        "next_count": 8
+      }
+    },
+    {
+      "id": "spp-seg-002",
+      "requirements": [
+        "SPP-013",
+        "SPP-005"
+      ],
+      "description": "10 octets in segments of 4: 01, 00, 10 (4 + 4 + 2)",
+      "operation": "segment",
+      "params": {
+        "packet_type": 0,
+        "apid": 80,
+        "sdu_hex": "0102030405060708090A",
+        "max_user_len": 4,
+        "sequence_count": 100,
+        "secondary_header_hex": ""
+      },
+      "expect": {
+        "ok": true,
+        "packets_hex": [
+          "00504064000301020304",
+          "00500065000305060708",
+          "005080660001090A"
+        ],
+        "next_count": 103
+      }
+    },
+    {
+      "id": "spp-seg-003",
+      "requirements": [
+        "SPP-013",
+        "SPP-005"
+      ],
+      "description": "Exact multiple: 8 octets in segments of 4: 01, 10",
+      "operation": "segment",
+      "params": {
+        "packet_type": 0,
+        "apid": 80,
+        "sdu_hex": "0102030405060708",
+        "max_user_len": 4,
+        "sequence_count": 0,
+        "secondary_header_hex": ""
+      },
+      "expect": {
+        "ok": true,
+        "packets_hex": [
+          "00504000000301020304",
+          "00508001000305060708"
+        ],
+        "next_count": 2
+      }
+    },
+    {
+      "id": "spp-seg-004",
+      "requirements": [
+        "SPP-013",
+        "SPP-005"
+      ],
+      "description": "Counts wrap from 16 383 to 0 across segments",
+      "operation": "segment",
+      "params": {
+        "packet_type": 0,
+        "apid": 81,
+        "sdu_hex": "0102030405060708090A",
+        "max_user_len": 5,
+        "sequence_count": 16383,
+        "secondary_header_hex": ""
+      },
+      "expect": {
+        "ok": true,
+        "packets_hex": [
+          "00517FFF00040102030405",
+          "005180000004060708090A"
+        ],
+        "next_count": 1
+      }
+    },
+    {
+      "id": "spp-seg-005",
+      "requirements": [
+        "SPP-013",
+        "SPP-005"
+      ],
+      "description": "A secondary header in every packet",
+      "operation": "segment",
+      "params": {
+        "packet_type": 1,
+        "apid": 82,
+        "sdu_hex": "0102030405060708090A",
+        "max_user_len": 6,
+        "sequence_count": 3,
+        "secondary_header_hex": "A0A1"
+      },
+      "expect": {
+        "ok": true,
+        "packets_hex": [
+          "185240030007A0A1010203040506",
+          "185280040005A0A10708090A"
+        ],
+        "next_count": 5
+      }
+    },
+    {
+      "id": "spp-seg-006",
+      "requirements": [
+        "SPP-013",
+        "SPP-005"
+      ],
+      "description": "Segments of 1 octet",
+      "operation": "segment",
+      "params": {
+        "packet_type": 0,
+        "apid": 83,
+        "sdu_hex": "010203",
+        "max_user_len": 1,
+        "sequence_count": 0,
+        "secondary_header_hex": ""
+      },
+      "expect": {
+        "ok": true,
+        "packets_hex": [
+          "00534000000001",
+          "00530001000002",
+          "00538002000003"
+        ],
+        "next_count": 3
+      }
+    },
+    {
+      "id": "spp-seg-007",
+      "requirements": [
+        "SPP-013",
+        "SPP-005"
+      ],
+      "description": "Empty SDU is InvalidField",
+      "operation": "segment",
+      "params": {
+        "packet_type": 0,
+        "apid": 80,
+        "sdu_hex": "",
+        "max_user_len": 4,
+        "sequence_count": 0,
+        "secondary_header_hex": ""
+      },
+      "expect": {
+        "ok": false,
+        "error": "InvalidField"
+      }
+    },
+    {
+      "id": "spp-seg-008",
+      "requirements": [
+        "SPP-013",
+        "SPP-005"
+      ],
+      "description": "Maximum user length 0 is OutOfRange",
+      "operation": "segment",
+      "params": {
+        "packet_type": 0,
+        "apid": 80,
+        "sdu_hex": "0102030405060708090A",
+        "max_user_len": 0,
+        "sequence_count": 0,
+        "secondary_header_hex": ""
+      },
+      "expect": {
+        "ok": false,
+        "error": "OutOfRange"
+      }
+    },
+    {
+      "id": "spp-seg-009",
+      "requirements": [
+        "SPP-013",
+        "SPP-005"
+      ],
+      "description": "APID 2047 is InvalidField (Idle Packets carry Idle Data)",
+      "operation": "segment",
+      "params": {
+        "packet_type": 0,
+        "apid": 2047,
+        "sdu_hex": "0102030405060708090A",
+        "max_user_len": 4,
+        "sequence_count": 0,
+        "secondary_header_hex": ""
+      },
+      "expect": {
+        "ok": false,
+        "error": "InvalidField"
+      }
+    },
+    {
+      "id": "spp-seg-010",
+      "requirements": [
+        "SPP-013",
+        "SPP-005"
+      ],
+      "description": "A segment above max_packet_len is OutOfRange",
+      "operation": "segment",
+      "config": {
+        "max_packet_len": 10
+      },
+      "params": {
+        "packet_type": 0,
+        "apid": 80,
+        "sdu_hex": "0102030405060708090A",
+        "max_user_len": 5,
+        "sequence_count": 0,
+        "secondary_header_hex": ""
+      },
+      "expect": {
+        "ok": false,
+        "error": "OutOfRange"
+      }
+    },
+    {
+      "id": "spp-seg-011",
+      "requirements": [
+        "SPP-013",
+        "SPP-005"
+      ],
+      "description": "Segments exactly at max_packet_len",
+      "operation": "segment",
+      "config": {
+        "max_packet_len": 10
+      },
+      "params": {
+        "packet_type": 0,
+        "apid": 80,
+        "sdu_hex": "0102030405060708090A",
+        "max_user_len": 4,
+        "sequence_count": 0,
+        "secondary_header_hex": ""
+      },
+      "expect": {
+        "ok": true,
+        "packets_hex": [
+          "00504000000301020304",
+          "00500001000305060708",
+          "005080020001090A"
+        ],
+        "next_count": 3
+      }
+    }
+  ]
+}

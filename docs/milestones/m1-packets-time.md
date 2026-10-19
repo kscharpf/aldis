@@ -3,7 +3,7 @@
 **Goal:** complete, verified Layer 1 codecs for time codes, Space Packets, and Encapsulation Packets: `aldis-time`, `aldis-spp`, and `aldis-epp`. They are verified to the same standard as `aldis-core` in M0: vectors, panic freedom on bare metal, 100 % coverage, fuzzing, and cross-checks.
 **Roadmap entry:** [08-roadmap.md](../08-roadmap.md) §1 · **Builds on:** [M0](m0-foundations.md) (`v0.1.0-m0`) · **Release:** `v0.2.0-m1`
 
-**Status: in progress (2026-10-17).** Decisions D1–D8 accepted 2026-10-17. WP-0 merged 2026-10-18 (PR #17). OI-15 and OI-16 resolved 2026-10-18. WP-3 (`aldis-epp`) merged 2026-10-19 (PR #18). WP-1 part 1 (P-field, CUC, CDS, CCS) merged 2026-10-19 (PR #19); WP-1 part 2 (ASCII codes and conversions; OI-29 resolved 2026-10-19) merged 2026-10-19 (PR #30). WP-2 part 1 (`aldis-spp` primary header, view, writers, idle, sequence counts, Octet String, opaque secondary header; OI-30 resolved 2026-10-19) is implemented on `m1/spp`; segmentation (SPP-013) and the time secondary header (SPP-008) follow. `cargo xtask trace --scope m1` puts 91 requirements in scope; 87 are traced: the M0 `aldis-core` and CI artefacts, WP-0, WP-3 (EPP-001…EPP-012 and the codec contract requirements its tests cover), WP-1 (TIME-001…TIME-006, TIME-010…TIME-014, TIME-020…TIME-022, TIME-030…TIME-034), and WP-2 part 1 (SPP-001…SPP-007, SPP-009…SPP-012, GEN-053).
+**Status: in progress (2026-10-17).** Decisions D1–D8 accepted 2026-10-17. WP-0 merged 2026-10-18 (PR #17). OI-15 and OI-16 resolved 2026-10-18. WP-3 (`aldis-epp`) merged 2026-10-19 (PR #18). WP-1 part 1 (P-field, CUC, CDS, CCS) merged 2026-10-19 (PR #19); WP-1 part 2 (ASCII codes and conversions; OI-29 resolved 2026-10-19) merged 2026-10-19 (PR #30). WP-2 part 1 (`aldis-spp` primary header, view, writers, idle, sequence counts, Octet String, opaque secondary header; OI-30 resolved 2026-10-19) is on `m1/spp` (PR #38). WP-2 part 2 (segmentation and reassembly, SPP-013; time secondary header, SPP-008) is implemented on `m1/spp-part2`. `cargo xtask trace --scope m1` puts 91 requirements in scope; 89 are traced: the M0 `aldis-core` and CI artefacts, WP-0, WP-3 (EPP-001…EPP-012 and the codec contract requirements its tests cover), WP-1 (TIME-001…TIME-006, TIME-010…TIME-014, TIME-020…TIME-022, TIME-030…TIME-034), and WP-2 (SPP-001…SPP-013, GEN-053).
 
 ## 1. Starting point
 
@@ -129,7 +129,7 @@ Also: crate docs. TIME-004, TIME-014, and TIME-022 are verified by inspection an
 | Task | Output |
 |---|---|
 | `--scope m1` in CI (D8); `--strict` at the exit | `ci.yml` |
-| Crate docs cite clauses and requirement IDs (RS-015); the facade's `time`, `spp`, `epp` features documented | rustdoc |
+| Crate docs cite clauses and requirement IDs (RS-015); the facade's `time`, `spp`, `epp` features documented; a facade feature that enables `aldis-spp/time`, so the time secondary header (SPP-008) is reachable through `aldis` (maintainer decision 2026-10-19) | rustdoc |
 | `README.md` status, `CHANGELOG.md` `0.2.0-m1` (`cargo xtask changelog release 0.2.0-m1 <date>`), roadmap row, workspace version `0.2.0` | docs |
 | Open issues: D4 recorded against OI-06, any new spec questions as new OIs | `09-open-issues.md` |
 

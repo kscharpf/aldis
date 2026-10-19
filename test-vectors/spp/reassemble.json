@@ -1,0 +1,451 @@
+{
+  "kind": "codec",
+  "standard": "133.0-B-2 \u00a74.1, \u00a75",
+  "provenance": "hand-derived",
+  "provenance_note": "Hand-derived from 133.0-B-2 \u00a74.1.3.4.2 and \u00a74.1.4.2 and 301.0-B-4 \u00a73.1\u20133.3 (P-field and T-field layouts of CUC and CDS), with the rules of docs/standards/space-packet.md \u00a75.4\u20135.5 (OI-30). 133.0 prints no worked example packets. Expected values computed by an independent Python model, written before the Rust code.",
+  "cases": [
+    {
+      "id": "spp-ras-001",
+      "requirements": [
+        "SPP-013"
+      ],
+      "description": "01, 00, 10 in sequence: complete SDU",
+      "operation": "reassemble",
+      "params": {
+        "apid": 160,
+        "buffer_len": 16,
+        "packets_hex": [
+          "00A0400500010102",
+          "00A00006000003",
+          "00A0800700010405"
+        ]
+      },
+      "expect": {
+        "ok": true,
+        "results": [
+          {
+            "discarded": null,
+            "status": "InProgress"
+          },
+          {
+            "discarded": null,
+            "status": "InProgress"
+          },
+          {
+            "discarded": null,
+            "status": "Complete",
+            "sdu_hex": "0102030405"
+          }
+        ]
+      }
+    },
+    {
+      "id": "spp-ras-002",
+      "requirements": [
+        "SPP-013"
+      ],
+      "description": "Unsegmented packet delivered whole",
+      "operation": "reassemble",
+      "params": {
+        "apid": 160,
+        "buffer_len": 16,
+        "packets_hex": [
+          "00A0C00000010908"
+        ]
+      },
+      "expect": {
+        "ok": true,
+        "results": [
+          {
+            "discarded": null,
+            "status": "Complete",
+            "sdu_hex": "0908"
+          }
+        ]
+      }
+    },
+    {
+      "id": "spp-ras-003",
+      "requirements": [
+        "SPP-013"
+      ],
+      "description": "Gap mid-SDU: partial discarded (Gap); the 10 is then an orphan",
+      "operation": "reassemble",
+      "params": {
+        "apid": 160,
+        "buffer_len": 16,
+        "packets_hex": [
+          "00A04005000001",
+          "00A00007000002",
+          "00A08008000003"
+        ]
+      },
+      "expect": {
+        "ok": true,
+        "results": [
+          {
+            "discarded": null,
+            "status": "InProgress"
+          },
+          {
+            "discarded": "Gap",
+            "status": "Dropped",
+            "reason": "Orphan"
+          },
+          {
+            "discarded": null,
+            "status": "Dropped",
+            "reason": "Orphan"
+          }
+        ]
+      }
+    },
+    {
+      "id": "spp-ras-004",
+      "requirements": [
+        "SPP-013"
+      ],
+      "description": "Gap then 01: the new SDU starts and completes",
+      "operation": "reassemble",
+      "params": {
+        "apid": 160,
+        "buffer_len": 16,
+        "packets_hex": [
+          "00A04005000001",
+          "00A0400900000A",
+          "00A0800A00000B"
+        ]
+      },
+      "expect": {
+        "ok": true,
+        "results": [
+          {
+            "discarded": null,
+            "status": "InProgress"
+          },
+          {
+            "discarded": "Gap",
+            "status": "InProgress"
+          },
+          {
+            "discarded": null,
+            "status": "Complete",
+            "sdu_hex": "0A0B"
+          }
+        ]
+      }
+    },
+    {
+      "id": "spp-ras-005",
+      "requirements": [
+        "SPP-013"
+      ],
+      "description": "01 while assembling: Restarted",
+      "operation": "reassemble",
+      "params": {
+        "apid": 160,
+        "buffer_len": 16,
+        "packets_hex": [
+          "00A04001000001",
+          "00A04002000002",
+          "00A08003000003"
+        ]
+      },
+      "expect": {
+        "ok": true,
+        "results": [
+          {
+            "discarded": null,
+            "status": "InProgress"
+          },
+          {
+            "discarded": "Restarted",
+            "status": "InProgress"
+          },
+          {
+            "discarded": null,
+            "status": "Complete",
+            "sdu_hex": "0203"
+          }
+        ]
+      }
+    },
+    {
+      "id": "spp-ras-006",
+      "requirements": [
+        "SPP-013"
+      ],
+      "description": "11 while assembling: Interrupted, delivered whole",
+      "operation": "reassemble",
+      "params": {
+        "apid": 160,
+        "buffer_len": 16,
+        "packets_hex": [
+          "00A04001000001",
+          "00A0C00200010707"
+        ]
+      },
+      "expect": {
+        "ok": true,
+        "results": [
+          {
+            "discarded": null,
+            "status": "InProgress"
+          },
+          {
+            "discarded": "Interrupted",
+            "status": "Complete",
+            "sdu_hex": "0707"
+          }
+        ]
+      }
+    },
+    {
+      "id": "spp-ras-007",
+      "requirements": [
+        "SPP-013"
+      ],
+      "description": "00 and 10 with nothing in progress: Orphan",
+      "operation": "reassemble",
+      "params": {
+        "apid": 160,
+        "buffer_len": 16,
+        "packets_hex": [
+          "00A00001000001",
+          "00A08002000002"
+        ]
+      },
+      "expect": {
+        "ok": true,
+        "results": [
+          {
+            "discarded": null,
+            "status": "Dropped",
+            "reason": "Orphan"
+          },
+          {
+            "discarded": null,
+            "status": "Dropped",
+            "reason": "Orphan"
+          }
+        ]
+      }
+    },
+    {
+      "id": "spp-ras-008",
+      "requirements": [
+        "SPP-013"
+      ],
+      "description": "Continuation overflows the buffer: partial and packet dropped (Overflow)",
+      "operation": "reassemble",
+      "params": {
+        "apid": 160,
+        "buffer_len": 4,
+        "packets_hex": [
+          "00A040010002010203",
+          "00A0000200010405",
+          "00A08003000006"
+        ]
+      },
+      "expect": {
+        "ok": true,
+        "results": [
+          {
+            "discarded": null,
+            "status": "InProgress"
+          },
+          {
+            "discarded": "Overflow",
+            "status": "Dropped",
+            "reason": "Overflow"
+          },
+          {
+            "discarded": null,
+            "status": "Dropped",
+            "reason": "Orphan"
+          }
+        ]
+      }
+    },
+    {
+      "id": "spp-ras-009",
+      "requirements": [
+        "SPP-013"
+      ],
+      "description": "First segment larger than the buffer: dropped (Overflow)",
+      "operation": "reassemble",
+      "params": {
+        "apid": 160,
+        "buffer_len": 2,
+        "packets_hex": [
+          "00A040010002010203",
+          "00A08002000004"
+        ]
+      },
+      "expect": {
+        "ok": true,
+        "results": [
+          {
+            "discarded": null,
+            "status": "Dropped",
+            "reason": "Overflow"
+          },
+          {
+            "discarded": null,
+            "status": "Dropped",
+            "reason": "Orphan"
+          }
+        ]
+      }
+    },
+    {
+      "id": "spp-ras-010",
+      "requirements": [
+        "SPP-013"
+      ],
+      "description": "Unsegmented packet larger than the buffer: dropped (Overflow)",
+      "operation": "reassemble",
+      "params": {
+        "apid": 160,
+        "buffer_len": 1,
+        "packets_hex": [
+          "00A0C00100010102"
+        ]
+      },
+      "expect": {
+        "ok": true,
+        "results": [
+          {
+            "discarded": null,
+            "status": "Dropped",
+            "reason": "Overflow"
+          }
+        ]
+      }
+    },
+    {
+      "id": "spp-ras-011",
+      "requirements": [
+        "SPP-013"
+      ],
+      "description": "Packet of another APID is InvalidField and changes nothing",
+      "operation": "reassemble",
+      "params": {
+        "apid": 160,
+        "buffer_len": 16,
+        "packets_hex": [
+          "00A04001000001",
+          "00A10002000002",
+          "00A08002000003"
+        ]
+      },
+      "expect": {
+        "ok": true,
+        "results": [
+          {
+            "discarded": null,
+            "status": "InProgress"
+          },
+          {
+            "error": "InvalidField"
+          },
+          {
+            "discarded": null,
+            "status": "Complete",
+            "sdu_hex": "0103"
+          }
+        ]
+      }
+    },
+    {
+      "id": "spp-ras-012",
+      "requirements": [
+        "SPP-013"
+      ],
+      "description": "Repeated count mid-SDU is a gap (any continuity but InSequence)",
+      "operation": "reassemble",
+      "params": {
+        "apid": 160,
+        "buffer_len": 16,
+        "packets_hex": [
+          "00A04004000001",
+          "00A00004000002"
+        ]
+      },
+      "expect": {
+        "ok": true,
+        "results": [
+          {
+            "discarded": null,
+            "status": "InProgress"
+          },
+          {
+            "discarded": "Gap",
+            "status": "Dropped",
+            "reason": "Orphan"
+          }
+        ]
+      }
+    },
+    {
+      "id": "spp-ras-013",
+      "requirements": [
+        "SPP-013"
+      ],
+      "description": "Counts wrap 16 383 to 0 in sequence",
+      "operation": "reassemble",
+      "params": {
+        "apid": 160,
+        "buffer_len": 16,
+        "packets_hex": [
+          "00A07FFF000001",
+          "00A08000000002"
+        ]
+      },
+      "expect": {
+        "ok": true,
+        "results": [
+          {
+            "discarded": null,
+            "status": "InProgress"
+          },
+          {
+            "discarded": null,
+            "status": "Complete",
+            "sdu_hex": "0102"
+          }
+        ]
+      }
+    },
+    {
+      "id": "spp-ras-014",
+      "requirements": [
+        "SPP-013"
+      ],
+      "description": "SDU filling the buffer exactly",
+      "operation": "reassemble",
+      "params": {
+        "apid": 160,
+        "buffer_len": 3,
+        "packets_hex": [
+          "00A0400100010102",
+          "00A08002000003"
+        ]
+      },
+      "expect": {
+        "ok": true,
+        "results": [
+          {
+            "discarded": null,
+            "status": "InProgress"
+          },
+          {
+            "discarded": null,
+            "status": "Complete",
+            "sdu_hex": "010203"
+          }
+        ]
+      }
+    }
+  ]
+}

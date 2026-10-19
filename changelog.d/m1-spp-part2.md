@@ -1,0 +1,4 @@
+### Added
+- `aldis-spp` segmentation and reassembly (M1 WP-2, part 2): `Segmenter` splits an SDU across packets of one APID (flags `11`, or `01`, `00`…, `10`); `Reassembler` rejoins them into a caller buffer, detects sequence gaps, and never gets stuck: each `Outcome` reports the discarded partial SDU (`Discard`) and the packet's `Status`. SPP-013.
+- `aldis-spp` time secondary header (feature `time`): `TimeHeaderLayout` (CUC or CDS, with or without its P-field, then an Ancillary Data Field) as `SecondaryHeaderLayout::Time`; `SplitPacket::time_code` and `ancillary_data`. With a P-field the time code ID must match the configured code (OI-30). SPP-008.
+- Vectors `test-vectors/spp/{segment,reassemble,secondary_header_time}.json`; fuzz targets `spp_segment_reassemble` and `spp_time_header`; the exerciser enables `aldis-spp/time`.

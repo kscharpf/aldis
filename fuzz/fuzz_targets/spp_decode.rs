@@ -24,7 +24,10 @@ fuzz_target!(|data: &[u8]| {
     match strict {
         Err(_) => assert!(flagged),
         Ok(s) => {
-            assert_eq!(s, lenient);
+            assert_eq!(
+                (s.header(), s.data_field(), s.anomalies()),
+                (lenient.header(), lenient.data_field(), lenient.anomalies())
+            );
             // The data field is opaque here: put it all in the user data or, with the flag
             // set, all in the secondary header. Either way the octets must come back.
             let field = s.data_field();

@@ -2,6 +2,16 @@
 
 Surviving mutants from `cargo mutants` (`-p aldis-core -p aldis-time -p aldis-epp --all-features`) (cargo-mutants 27.1.0), triaged per VER-025. The nightly job `mutants` publishes the full report. Update this file when a new survivor appears.
 
+## 2026-10-19, branch `m1/spp-part2` (M1 WP-2 part 2)
+
+`cargo mutants -p aldis-spp --all-features` on `segment.rs`, `secondary.rs`, and `view.rs`: 81 mutants: 46 caught, 34 unviable, 1 missed.
+
+| Mutant | Verdict | Action |
+|---|---|---|
+| `secondary.rs` `TimeHeaderLayout::has_pfield` → `true` | Test gap: `has_pfield` was checked only on a layout with a P-field | `layouts_hold_only_cuc_or_cds` checks a layout without one; caught |
+
+After the fix, a re-run on `secondary.rs` (24 mutants: 10 caught, 14 unviable) found no survivors.
+
 ## 2026-10-19, branch `m1/spp` (M1 WP-2 part 1)
 
 `cargo mutants -p aldis-spp --all-features`: 157 mutants: 99 caught, 52 unviable, 6 missed, 0 timeouts.
