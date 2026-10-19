@@ -41,6 +41,8 @@ TEST(Error, CodesAreDenseAndRoundTrip) {
     EXPECT_EQ(error::from_name(chars("")), std::nullopt);
     EXPECT_EQ(str(error::name(ErrorKind::CrcMismatch)), "CrcMismatch");
     // A value outside the catalogue has no name (GEN-081).
+    // An out-of-catalogue value is the point of this check.
+    // NOLINTNEXTLINE(clang-analyzer-optin.core.EnumCastOutOfRange)
     EXPECT_EQ(str(error::name(static_cast<ErrorKind>(99))), "");
 }
 
@@ -97,7 +99,7 @@ TEST(Result, AccessorsAreNullInTheWrongState) {
     // req: CPP-021
     const Result<int> ok = 7;
     ASSERT_NE(ok.ok(), nullptr);
-    EXPECT_EQ(*ok.ok(), 7);
+    EXPECT_EQ(aldis::test::deref(ok.ok()), 7);
     EXPECT_EQ(ok.error(), nullptr);
     EXPECT_TRUE(ok.is_ok());
     EXPECT_EQ(ok.value_or(1), 7);
@@ -105,7 +107,7 @@ TEST(Result, AccessorsAreNullInTheWrongState) {
     const Result<int> err = Error{ErrorKind::Security};
     EXPECT_EQ(err.ok(), nullptr);
     ASSERT_NE(err.error(), nullptr);
-    EXPECT_EQ(err.error()->kind(), ErrorKind::Security);
+    EXPECT_EQ(aldis::test::deref(err.error()).kind(), ErrorKind::Security);
     EXPECT_FALSE(err.is_ok());
     EXPECT_EQ(err.value_or(1), 1);
 
@@ -115,7 +117,7 @@ TEST(Result, AccessorsAreNullInTheWrongState) {
     const Result<void> failed = Error{ErrorKind::WouldBlock};
     EXPECT_FALSE(failed.is_ok());
     ASSERT_NE(failed.error(), nullptr);
-    EXPECT_EQ(failed.error()->kind(), ErrorKind::WouldBlock);
+    EXPECT_EQ(aldis::test::deref(failed.error()).kind(), ErrorKind::WouldBlock);
 }
 
 TEST(Result, IsTriviallyCopyableAndConstexpr) {

@@ -1,6 +1,7 @@
 // Tests of aldis/core/bytes.hpp, the audited byte- and element-access module (D9).
 
 #include "aldis/core/bytes.hpp"
+#include "aldis/core/error.hpp"
 
 #include "support/support.hpp"
 
@@ -10,7 +11,6 @@
 #include <cstddef>
 #include <cstdint>
 #include <span>
-#include <vector>
 
 namespace {
 
@@ -31,7 +31,7 @@ TEST(Bytes, ElementAccessIsChecked) {
     std::array<int, 3> a{1, 2, 3};
     const std::span<int> s{a};
     ASSERT_NE(bytes::at(s, 2), nullptr);
-    EXPECT_EQ(*bytes::at(s, 2), 3);
+    EXPECT_EQ(aldis::test::deref(bytes::at(s, 2)), 3);
     EXPECT_EQ(bytes::at(s, 3), nullptr);
     EXPECT_EQ(bytes::at(std::span<int>{}, 0), nullptr);
     EXPECT_EQ(bytes::get_or(std::span<const int>{a}, 1, -1), 2);

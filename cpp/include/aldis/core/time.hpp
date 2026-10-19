@@ -15,6 +15,15 @@
 
 namespace aldis::core {
 
+namespace time {
+
+/// Microseconds per millisecond.
+inline constexpr std::uint64_t micros_per_milli = 1'000;
+/// Microseconds per second.
+inline constexpr std::uint64_t micros_per_sec = 1'000'000;
+
+} // namespace time
+
 /// A span of time in microseconds (API-003). Value-initialized, it is zero.
 class Duration {
 public:
@@ -38,12 +47,12 @@ public:
 
     /// A duration of `millis` milliseconds, saturating.
     [[nodiscard]] static constexpr Duration from_millis(std::uint64_t millis) noexcept {
-        return from_micros(arith::saturating_mul(millis, std::uint64_t{1'000}));
+        return from_micros(arith::saturating_mul(millis, time::micros_per_milli));
     }
 
     /// A duration of `secs` seconds, saturating.
     [[nodiscard]] static constexpr Duration from_secs(std::uint64_t secs) noexcept {
-        return from_micros(arith::saturating_mul(secs, std::uint64_t{1'000'000}));
+        return from_micros(arith::saturating_mul(secs, time::micros_per_sec));
     }
 
     /// The duration in microseconds.

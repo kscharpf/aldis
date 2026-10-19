@@ -19,6 +19,21 @@
 
 namespace aldis::core {
 
+namespace ids {
+
+/// Width of the APID field, in bits (133.0 §4.1.3.3.4).
+inline constexpr unsigned apid_bits = 11;
+/// Width of the Packet Sequence Count field, in bits (133.0 §4.1.3.4.3).
+inline constexpr unsigned seq_count_bits = 14;
+/// Width of the TC Frame Sequence Number, in bits (232.0 §4.1.2.8).
+inline constexpr unsigned frame_seq_bits = 8;
+/// Width of the Packet Version Number field, in bits (133.0 §4.1.3.2).
+inline constexpr unsigned packet_version_bits = 3;
+/// Packet Version Number of the Encapsulation Packet, binary `111` (SANA registry; 133.1 §4.1.2.2).
+inline constexpr std::uint8_t encapsulation_version = 0b111;
+
+} // namespace ids
+
 namespace detail {
 
 /// An unsigned identifier of `Bits` bits (1 ≤ Bits ≤ digits of `Rep`), valid values
@@ -35,7 +50,9 @@ public:
 
     friend constexpr bool operator==(Self a, Self b) noexcept { return a.value() == b.value(); }
 
-protected:
+private:
+    friend Self;
+
     constexpr explicit WidthId(Rep raw) noexcept : raw_{raw} {}
 
     /// `Self` holding `raw`, or `OutOfRange` (field `field`) if it needs more than `Bits` bits.
@@ -46,7 +63,6 @@ protected:
         return Self{raw};
     }
 
-private:
     Rep raw_;
 };
 
@@ -101,8 +117,8 @@ private:
 };
 
 /// Application Process Identifier, 0–2047 (133.0 §4.1.3.3.4; API-001).
-class Apid : public detail::WidthId<Apid, std::uint16_t, 11> {
-    using Base = detail::WidthId<Apid, std::uint16_t, 11>;
+class Apid : public detail::WidthId<Apid, std::uint16_t, ids::apid_bits> {
+    using Base = detail::WidthId<Apid, std::uint16_t, ids::apid_bits>;
     friend Base;
 
 public:
@@ -123,8 +139,8 @@ private:
 
 /// Space Packet Sequence Count or Packet Name, 0–16383, wrapping (133.0 §4.1.3.4.3; API-001).
 /// Value-initialized, it is 0.
-class SeqCount : public detail::WidthId<SeqCount, std::uint16_t, 14> {
-    using Base = detail::WidthId<SeqCount, std::uint16_t, 14>;
+class SeqCount : public detail::WidthId<SeqCount, std::uint16_t, ids::seq_count_bits> {
+    using Base = detail::WidthId<SeqCount, std::uint16_t, ids::seq_count_bits>;
     friend Base;
 
 public:
@@ -138,17 +154,17 @@ public:
 
     /// The next count, modulo 16384 (133.0 §4.1.3.4.3.4; GEN-024).
     [[nodiscard]] constexpr SeqCount next() const noexcept {
-        return SeqCount{arith::wrapping_add<14>(value(), std::uint16_t{1})};
+        return SeqCount{arith::wrapping_add<ids::seq_count_bits>(value(), std::uint16_t{1})};
     }
 
     /// Classifies `next` as received after this count, modulo 16384 (133.0 §4.1.3.4.3, CMN-031).
     [[nodiscard]] constexpr Continuity classify(SeqCount next) const noexcept {
-        return detail::classify_masked(14, value(), next.value());
+        return detail::classify_masked(ids::seq_count_bits, value(), next.value());
     }
 
     /// The count as a 14-bit `ModCounter` (CMN-030).
     [[nodiscard]] constexpr ModCounter counter() const noexcept {
-        return detail::counter_from_valid(14, value());
+        return detail::counter_from_valid(ids::seq_count_bits, value());
     }
 
 private:
@@ -173,17 +189,17 @@ public:
 
     /// The next number, modulo 256 (GEN-024).
     [[nodiscard]] constexpr FrameSeqNum next() const noexcept {
-        return FrameSeqNum{arith::wrapping_add<8>(raw_, std::uint8_t{1})};
+        return FrameSeqNum{arith::wrapping_add<ids::frame_seq_bits>(raw_, std::uint8_t{1})};
     }
 
     /// Classifies `next` as received after this number, modulo 256 (CMN-031).
     [[nodiscard]] constexpr Continuity classify(FrameSeqNum next) const noexcept {
-        return detail::classify_masked(8, raw_, next.raw_);
+        return detail::classify_masked(ids::frame_seq_bits, raw_, next.raw_);
     }
 
     /// The number as an 8-bit `ModCounter` (CMN-030).
     [[nodiscard]] constexpr ModCounter counter() const noexcept {
-        return detail::counter_from_valid(8, raw_);
+        return detail::counter_from_valid(ids::frame_seq_bits, raw_);
     }
 
     friend constexpr bool operator==(FrameSeqNum, FrameSeqNum) noexcept = default;
@@ -194,8 +210,9 @@ private:
 
 /// Packet Version Number, 0–7 (SANA Packet Version Number registry; 133.0 §4.1.3.2, 133.1
 /// §4.1.2.2; API-001).
-class PacketVersion : public detail::WidthId<PacketVersion, std::uint8_t, 3> {
-    using Base = detail::WidthId<PacketVersion, std::uint8_t, 3>;
+class PacketVersion
+    : public detail::WidthId<PacketVersion, std::uint8_t, ids::packet_version_bits> {
+    using Base = detail::WidthId<PacketVersion, std::uint8_t, ids::packet_version_bits>;
     friend Base;
 
 public:
@@ -211,7 +228,7 @@ public:
 
     /// Version-8 CCSDS Packet (Encapsulation Packet), binary `111`.
     [[nodiscard]] static constexpr PacketVersion encapsulation() noexcept {
-        return PacketVersion{7};
+        return PacketVersion{ids::encapsulation_version};
     }
 
 private:

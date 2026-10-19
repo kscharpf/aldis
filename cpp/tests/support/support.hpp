@@ -64,6 +64,15 @@ template <typename T> core::Error unwrap_err(const core::Result<T>& r) {
     return *r.error();
 }
 
+/// `*p`; throws (failing the test) if `p` is null. Keeps GCC's -Wnull-dereference quiet where an
+/// assertion has already checked the pointer.
+template <typename T> const T& deref(const T* p) {
+    if (p == nullptr) {
+        throw std::logic_error("null pointer");
+    }
+    return *p;
+}
+
 /// SplitMix64: a small, seeded, deterministic generator for randomized tests.
 class Rng {
 public:
@@ -79,7 +88,7 @@ public:
 
     /// A value in `[lo, hi]`.
     ALDIS_TEST_WRAPS std::uint64_t range(std::uint64_t lo, std::uint64_t hi) {
-        return lo + next() % (hi - lo + 1U);
+        return lo + (next() % (hi - lo + 1U));
     }
 
     /// `n` random octets.

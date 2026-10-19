@@ -81,7 +81,8 @@ template <typename T> [[nodiscard]] constexpr T* at(std::span<T> s, std::size_t 
 #ifdef __clang__
 #pragma clang unsafe_buffer_usage begin
 #endif
-    // NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access): checked above
+    // index < s.size(), checked above.
+    // NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
     return &s[index];
 #ifdef __clang__
 #pragma clang unsafe_buffer_usage end
@@ -146,7 +147,8 @@ template <typename T>
 #ifdef __clang__
 #pragma clang unsafe_buffer_usage begin
 #endif
-        // NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access): i < size
+        // i < a.size() == b.size().
+        // NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
         if (!(a[i] == b[i])) {
             return false;
         }
@@ -168,8 +170,8 @@ template <typename T>
 #ifdef __clang__
 #pragma clang unsafe_buffer_usage begin
 #endif
-        // NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access): i <
-        // src.size() <= dst.size()
+        // i < src.size() <= dst.size().
+        // NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
         dst[i] = src[i];
 #ifdef __clang__
 #pragma clang unsafe_buffer_usage end
@@ -197,7 +199,7 @@ constexpr Result<T> from_be(const Result<std::span<const std::byte>>& octets) no
     }
     std::uint64_t value = 0;
     for (const std::byte b : *octets.ok()) {
-        value = arith::bit_or(arith::shl(value, 8U),
+        value = arith::bit_or(arith::shl(value, arith::octet_bits),
                               arith::widen<std::uint64_t>(std::to_integer<std::uint8_t>(b)));
     }
     return arith::truncate<T>(value);
@@ -208,7 +210,7 @@ template <arith::Unsigned T> constexpr std::array<std::byte, sizeof(T)> to_be(T 
     std::array<std::byte, sizeof(T)> octets{};
     unsigned shift = arith::digits<T>;
     for (std::byte& b : octets) {
-        shift -= 8U; // digits<T> is a multiple of 8, so this stops at 0
+        shift -= arith::octet_bits; // digits<T> is a whole number of octets: stops at 0
         b = std::byte{arith::truncate<std::uint8_t>(arith::shr(value, shift))};
     }
     return octets;

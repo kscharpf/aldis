@@ -1,6 +1,7 @@
 // Tests of aldis/core/arith.hpp, the C++-only arithmetic helpers (D10).
 
 #include "aldis/core/arith.hpp"
+#include "aldis/core/error.hpp"
 
 #include "support/support.hpp"
 

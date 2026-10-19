@@ -30,15 +30,18 @@ std::same_as<T, bool>;
 template <Unsigned T>
 inline constexpr unsigned digits = static_cast<unsigned>(std::numeric_limits<T>::digits);
 
+/// Bits in an octet.
+inline constexpr unsigned octet_bits = 8;
+
 /// The low `bits` bits set: `2^bits - 1`, all ones for `bits >= 64`, 0 for `bits == 0`.
 [[nodiscard]] constexpr std::uint64_t low_mask(unsigned bits) noexcept {
     if (bits == 0) {
         return 0;
     }
-    if (bits >= 64) {
+    if (bits >= digits<std::uint64_t>) {
         return std::numeric_limits<std::uint64_t>::max();
     }
-    return std::numeric_limits<std::uint64_t>::max() >> (64U - bits);
+    return std::numeric_limits<std::uint64_t>::max() >> (digits<std::uint64_t> - bits);
 }
 
 /// `value` reduced modulo `2^digits<To>`: the low bits, kept deliberately (GEN-024).

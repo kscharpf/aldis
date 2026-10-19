@@ -153,6 +153,8 @@ WarningsAsErrors: '*'
 | Disabled check | Reason |
 |---|---|
 | `modernize-use-trailing-return-type` | Style only: it would rewrite every declaration into `auto f() -> T`, which the API shapes of §3 do not use. No safety rule depends on it |
+| `readability-identifier-length` | Style only: it rejects one- and two-letter names such as `a`, `b`, `i`, `n`, and `s` in short scopes, which the code shares with `aldis-core` (and with the arithmetic it implements). Neither CERT C++ nor AUTOSAR C++14 sets a minimum length |
+| `bugprone-easily-swappable-parameters` | Arithmetic and range helpers take operands of one type by nature (`checked_add(a, b)`, `wrapping_sub(a, b, bits)`), and the codec signatures mirror `aldis-core`. Where a mix-up matters, the parameters already have distinct types (identifiers, `OctetRange`, `SecurityLayout`), and the tests and vectors cover the order |
 
 Tests and tools (`cpp/tests/.clang-tidy`, which inherits the configuration above) also disable the checks below, mostly because GoogleTest's `TEST` macros expand to code they flag. Library code never has these exemptions.
 

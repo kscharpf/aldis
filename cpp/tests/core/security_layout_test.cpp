@@ -1,6 +1,9 @@
 // Tests of aldis/core/security.hpp and layout.hpp, ported from aldis-core `security.rs` and
 // `layout.rs`. The Rust property test of the layout becomes a seeded randomized test (D4).
 
+#include "aldis/core/bytes.hpp"
+#include "aldis/core/error.hpp"
+#include "aldis/core/ids.hpp"
 #include "aldis/core/layout.hpp"
 #include "aldis/core/security.hpp"
 #include "aldis/core/testing/fixed_pattern_security.hpp"
@@ -43,7 +46,9 @@ OctetRange range(std::size_t start, std::size_t end) {
     return unwrap(OctetRange::make(start, end));
 }
 
-const FrameCtx ctx = FrameCtx::tm(unwrap(SpacecraftId<10>::make(42)), unwrap(VcId<3>::make(1)));
+FrameCtx tm_ctx() {
+    return FrameCtx::tm(unwrap(SpacecraftId<10>::make(42)), unwrap(VcId<3>::make(1)));
+}
 
 TEST(Security, FrameContextsCarryTypedIds) {
     // req: API-002, API-073, CPP-023
@@ -57,6 +62,7 @@ TEST(Security, FrameContextsCarryTypedIds) {
         FrameCtx::uslp(unwrap(SpacecraftId<16>::make(7)), unwrap(VcId<6>::make(6)), std::nullopt);
     const FrameCtx tc_vc =
         FrameCtx::tc(unwrap(SpacecraftId<10>::make(9)), unwrap(VcId<6>::make(2)), std::nullopt);
+    const FrameCtx ctx = tm_ctx();
     EXPECT_EQ(ctx.protocol(), Protocol::Tm);
     EXPECT_EQ(ctx.scid(), 42U);
     EXPECT_EQ(ctx.vcid(), 1U);
@@ -94,8 +100,10 @@ TEST(Security, SecuredFieldsAreOrderedAndAdjacent) {
         OctetRange d;
         OctetRange t;
     };
-    for (const Case c : {Case{range(1, 3), range(4, 5), range(5, 7)},
-                         Case{range(1, 3), range(3, 5), range(6, 7)}}) {
+    for (const Case c : {
+             Case{.h = range(1, 3), .d = range(4, 5), .t = range(5, 7)},
+             Case{.h = range(1, 3), .d = range(3, 5), .t = range(6, 7)},
+         }) {
         const auto e = unwrap_err(SecuredFields::make(c.h, c.d, c.t));
         EXPECT_EQ(e.kind(), ErrorKind::InvalidField);
         EXPECT_EQ(e.field(), FieldId{"secured_fields"});
@@ -146,6 +154,7 @@ TEST(Security, Hooks) {
     static_assert(SecurityHook<NoSecurity>);
     static_assert(SecurityHook<FixedPatternSecurity>);
     static_assert(!SecurityHook<int>);
+    const FrameCtx ctx = tm_ctx();
     const SecuredFields fields = unwrap(SecuredFields::make(range(1, 3), range(3, 5), range(5, 7)));
     std::array<std::byte, 8> frame{};
     NoSecurity none;
@@ -184,9 +193,10 @@ TEST(Layout, TmFrameWithEverything) {
         .fecf = true,
     };
     const FrameLayout l = unwrap(FrameLayout::compute(spec));
-    const std::array expected{range(0, 6),      range(6, 14),      range(14, 20),
-                              range(20, 1101),  range(1101, 1109), range(1109, 1113),
-                              range(1113, 1115)};
+    const std::array expected{
+        range(0, 6),       range(6, 14),      range(14, 20),     range(20, 1101),
+        range(1101, 1109), range(1109, 1113), range(1113, 1115),
+    };
     EXPECT_EQ(l.ranges(), expected);
     EXPECT_EQ(l.primary_header(), range(0, 6));
     EXPECT_EQ(l.secondary(), range(6, 14));
@@ -234,7 +244,14 @@ TEST(Layout, RangesAreContiguousAndCoverTheFrame) {
         const std::size_t st = rng.range(0, 39);
         const bool ocf = rng.range(0, 1) == 1;
         const bool fecf = rng.range(0, 1) == 1;
-        const LayoutSpec spec{frame_len, ph, sec, unwrap(SecurityLayout::make(sh, st)), ocf, fecf};
+        const LayoutSpec spec{
+            .frame_len = frame_len,
+            .primary_header_len = ph,
+            .secondary_len = sec,
+            .security = unwrap(SecurityLayout::make(sh, st)),
+            .ocf = ocf,
+            .fecf = fecf,
+        };
         const std::size_t fixed = ph + sec + sh + st + (ocf ? 4 : 0) + (fecf ? 2 : 0);
         const auto result = FrameLayout::compute(spec);
         if (result.is_ok()) {

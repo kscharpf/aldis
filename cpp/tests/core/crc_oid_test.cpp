@@ -3,6 +3,7 @@
 // OID octets of 132.0 Annex D); the shared vectors check both again in WP-4.
 
 #include "aldis/core/crc.hpp"
+#include "aldis/core/error.hpp"
 #include "aldis/core/oid.hpp"
 
 #include "support/support.hpp"
@@ -87,7 +88,7 @@ TEST(Crc, BothVerificationMethodsAgree) {
         ASSERT_TRUE(crc::write_fecf(frame).is_ok());
         EXPECT_EQ(crc::syndrome(frame), 0U);
         EXPECT_TRUE(crc::verify_fecf(frame).is_ok());
-        const std::size_t bit = rng.range(0, frame.size() * 8 - 1);
+        const std::size_t bit = rng.range(0, (frame.size() * 8) - 1);
         frame.at(bit / 8) ^= std::byte{static_cast<std::uint8_t>(0x80U >> (bit % 8))};
         EXPECT_EQ(crc::verify_fecf(frame).is_ok(), crc::syndrome(frame) == 0);
     }

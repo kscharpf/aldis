@@ -3,6 +3,7 @@
 // randomized test against a model that needs no 128-bit integer (D4).
 
 #include "aldis/core/counter.hpp"
+#include "aldis/core/error.hpp"
 #include "aldis/core/ids.hpp"
 #include "aldis/core/time.hpp"
 
@@ -12,6 +13,7 @@
 
 #include <cstdint>
 #include <limits>
+#include <optional>
 #include <type_traits>
 
 namespace {
@@ -180,7 +182,11 @@ TEST(Counter, WidthsWrapAndValidate) {
         std::uint64_t expected;
         std::uint64_t found;
     };
-    for (const Case k : {Case{0, 0, 1, 0}, Case{65, 0, 64, 65}, Case{8, 256, 255, 256}}) {
+    for (const Case k : {
+             Case{.bits = 0, .value = 0, .expected = 1, .found = 0},
+             Case{.bits = 65, .value = 0, .expected = 64, .found = 65},
+             Case{.bits = 8, .value = 256, .expected = 255, .found = 256},
+         }) {
         const auto e = unwrap_err(ModCounter::make(k.bits, k.value));
         EXPECT_EQ(e.kind(), ErrorKind::OutOfRange);
         EXPECT_EQ(e.detail(), ErrorDetail::expected(k.expected, k.found));

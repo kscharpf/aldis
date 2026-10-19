@@ -2,6 +2,7 @@
 // tests become seeded randomized tests against a std::deque model (D4).
 
 #include "aldis/core/container.hpp"
+#include "aldis/core/error.hpp"
 
 #include "support/support.hpp"
 
@@ -41,7 +42,7 @@ TEST(Container, QueueBasicsAndZeroCapacity) {
     EXPECT_TRUE(q.is_full());
     EXPECT_EQ(unwrap_err(q.push(3)).kind(), ErrorKind::WouldBlock);
     ASSERT_NE(q.peek(), nullptr);
-    EXPECT_EQ(*q.peek(), 1U);
+    EXPECT_EQ(aldis::test::deref(q.peek()), 1U);
     EXPECT_EQ(q.pop(), std::uint8_t{1});
     EXPECT_TRUE(q.push(3).is_ok());
     EXPECT_EQ(q.len(), 2U);
@@ -106,9 +107,11 @@ TEST(Container, FixedVec) {
     EXPECT_EQ(vec(v.as_span()), (std::vector<std::uint16_t>{7, 8}));
     EXPECT_EQ(v.len(), 2U);
     EXPECT_FALSE(v.is_empty());
-    v.as_mut_span().front() = 6;
-    EXPECT_EQ(vec(v.as_span()), (std::vector<std::uint16_t>{6, 8}));
-    EXPECT_EQ(v.pop(), std::uint16_t{8});
+    for (std::uint16_t& x : v.as_mut_span()) {
+        x = static_cast<std::uint16_t>(x - 1);
+    }
+    EXPECT_EQ(vec(v.as_span()), (std::vector<std::uint16_t>{6, 7}));
+    EXPECT_EQ(v.pop(), std::uint16_t{7});
     FixedVec<std::uint16_t, 2> v2;
     ASSERT_TRUE(v2.push(6).is_ok());
     // Equality compares only active elements, ignoring popped slots.
@@ -152,8 +155,8 @@ TEST(Container, ByteQueueMatchesModel) {
                 if (model.empty()) {
                     EXPECT_EQ(got, std::nullopt);
                 } else {
-                    ASSERT_TRUE(got.has_value());
-                    EXPECT_EQ(vec(std::span<const std::byte>{out}.first(*got)), model.front());
+                    EXPECT_EQ(vec(std::span<const std::byte>{out}.first(got.value())),
+                              model.front());
                     used -= model.front().size() + 4;
                     model.pop_front();
                 }
@@ -206,7 +209,7 @@ TEST(Container, FixedQueueMatchesModel) {
                 EXPECT_EQ(q.peek(), nullptr);
             } else {
                 ASSERT_NE(q.peek(), nullptr);
-                EXPECT_EQ(*q.peek(), model.front());
+                EXPECT_EQ(aldis::test::deref(q.peek()), model.front());
             }
         }
     }

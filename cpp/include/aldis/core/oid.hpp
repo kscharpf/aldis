@@ -39,7 +39,7 @@ public:
     /// The next octet, MSB first.
     constexpr std::uint8_t next_octet() noexcept {
         std::uint32_t octet = 0;
-        for (unsigned i = 0; i < 8U; ++i) {
+        for (unsigned i = 0; i < arith::octet_bits; ++i) {
             octet = arith::shl(octet, 1U) | next_bit();
         }
         return arith::truncate<std::uint8_t>(octet);
@@ -55,7 +55,9 @@ public:
     friend constexpr bool operator==(const OidGenerator&, const OidGenerator&) noexcept = default;
 
 private:
-    std::uint32_t register_{0xFFFF'FFFFU};
+    static constexpr std::uint32_t seed = 0xFFFF'FFFFU; // x(0) … x(31) = 1
+
+    std::uint32_t register_{seed};
 };
 
 /// Galois form (CMN-022) of the OID generator.
@@ -81,7 +83,7 @@ public:
     /// The next octet, MSB first.
     constexpr std::uint8_t next_octet() noexcept {
         std::uint32_t octet = 0;
-        for (unsigned i = 0; i < 8U; ++i) {
+        for (unsigned i = 0; i < arith::octet_bits; ++i) {
             octet = arith::shl(octet, 1U) | next_bit();
         }
         return arith::truncate<std::uint8_t>(octet);

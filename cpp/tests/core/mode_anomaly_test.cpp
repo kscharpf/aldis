@@ -8,7 +8,6 @@
 #include <gtest/gtest.h>
 
 #include <array>
-#include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <vector>
@@ -43,9 +42,9 @@ enum class NoTraits : std::uint8_t { X };
 
 template <> struct aldis::core::AnomalyTraits<Demo> {
     static constexpr std::array<AnomalyFlag<Demo>, 3> flags{{
-        {Demo::Four, 4},
-        {Demo::Zero, 0},
-        {Demo::Last, 31},
+        {.flag = Demo::Four, .bit = 4},
+        {.flag = Demo::Zero, .bit = 0},
+        {.flag = Demo::Last, .bit = 31},
     }};
 };
 
@@ -54,7 +53,7 @@ template <> struct aldis::core::AnomalyTraits<Flag> {
         std::array<AnomalyFlag<Flag>, 32> table{};
         std::uint8_t bit = 0;
         for (AnomalyFlag<Flag>& f : table) {
-            f = {static_cast<Flag>(bit), bit};
+            f = {.flag = static_cast<Flag>(bit), .bit = bit};
             ++bit;
         }
         return table;
@@ -62,7 +61,8 @@ template <> struct aldis::core::AnomalyTraits<Flag> {
 };
 
 template <> struct aldis::core::AnomalyTraits<TooHigh> {
-    static constexpr std::array<AnomalyFlag<TooHigh>, 1> flags{{{TooHigh::Flag, 32}}};
+    static constexpr std::array<AnomalyFlag<TooHigh>, 1> flags{
+        {{.flag = TooHigh::Flag, .bit = 32}}};
 };
 
 template <> struct aldis::core::AnomalyTraits<Twice> {
@@ -71,8 +71,10 @@ template <> struct aldis::core::AnomalyTraits<Twice> {
 };
 
 template <> struct aldis::core::AnomalyTraits<Repeated> {
-    static constexpr std::array<AnomalyFlag<Repeated>, 2> flags{
-        {{Repeated::Only, 1}, {Repeated::Only, 2}}};
+    static constexpr std::array<AnomalyFlag<Repeated>, 2> flags{{
+        {.flag = Repeated::Only, .bit = 1},
+        {.flag = Repeated::Only, .bit = 2},
+    }};
 };
 
 namespace {
@@ -111,10 +113,14 @@ TEST(Anomaly, TableMapsBothWays) {
     EXPECT_EQ(anomaly::bit(Demo::Last), 31U);
     for (unsigned b = 0; b < 256; ++b) {
         const auto bit = static_cast<std::uint8_t>(b);
-        const std::optional<Demo> expected = b == 4    ? std::optional{Demo::Four}
-                                             : b == 0  ? std::optional{Demo::Zero}
-                                             : b == 31 ? std::optional{Demo::Last}
-                                                       : std::nullopt;
+        std::optional<Demo> expected;
+        if (b == 4) {
+            expected = Demo::Four;
+        } else if (b == 0) {
+            expected = Demo::Zero;
+        } else if (b == 31) {
+            expected = Demo::Last;
+        }
         EXPECT_EQ(anomaly::from_bit<Demo>(bit), expected) << b;
     }
     const std::array all{Demo::Four, Demo::Zero, Demo::Last};

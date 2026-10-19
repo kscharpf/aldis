@@ -6,9 +6,7 @@
 
 #include <gtest/gtest.h>
 
-#include <array>
 #include <cstddef>
-#include <cstdint>
 #include <span>
 #include <type_traits>
 #include <utility>

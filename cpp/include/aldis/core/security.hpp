@@ -25,6 +25,28 @@
 
 namespace aldis::core {
 
+namespace security {
+
+/// Identifier widths per protocol, in bits (API-002): TM SCID and VCID (132.0 §4.1.2.2–3), TC
+/// SCID, VCID, and MAP ID (232.0 §4.1.2.5–6, §4.2.2.2), AOS (732.0 §4.1.2.2.3), USLP (732.1
+/// §4.1.2.2.3, §4.1.2.4–5).
+inline constexpr unsigned tm_scid_bits = 10;
+inline constexpr unsigned tm_vcid_bits = 3;
+inline constexpr unsigned tc_scid_bits = 10;
+inline constexpr unsigned tc_vcid_bits = 6;
+inline constexpr unsigned tc_map_id_bits = 6;
+inline constexpr unsigned aos_scid_bits = 10;
+inline constexpr unsigned aos_vcid_bits = 6;
+inline constexpr unsigned uslp_scid_bits = 16;
+inline constexpr unsigned uslp_vcid_bits = 6;
+inline constexpr unsigned uslp_map_id_bits = 4;
+
+/// Security Header and Trailer of SDLS on USLP truncated frames, in octets (732.1 Annex D1.2.3).
+inline constexpr std::uint8_t uslp_truncated_header_len = 6;
+inline constexpr std::uint16_t uslp_truncated_trailer_len = 16;
+
+} // namespace security
+
 /// Lengths of the Security Header and Trailer on one VC or MAP (API-070, API-071). A
 /// configuration type: private data, a validating factory, trivially copyable (CPP-025).
 /// Value-initialized, it is `none()`.
@@ -44,7 +66,8 @@ public:
     /// Fixed layout for SDLS on USLP truncated frames: 6-octet header, 16-octet trailer
     /// (732.1 Annex D1.2.3; API-075).
     [[nodiscard]] static constexpr SecurityLayout uslp_truncated() noexcept {
-        return SecurityLayout{6, 16};
+        return SecurityLayout{security::uslp_truncated_header_len,
+                              security::uslp_truncated_trailer_len};
     }
 
     /// A layout with the given lengths; `InvalidConfig` if the header exceeds 64 octets (field
@@ -109,27 +132,31 @@ enum class Protocol : std::uint8_t {
 class FrameCtx {
 public:
     /// TM frame: 10-bit SCID, 3-bit VCID (132.0 §4.1.2.2–3).
-    [[nodiscard]] static constexpr FrameCtx tm(SpacecraftId<10> scid, VcId<3> vcid) noexcept {
+    [[nodiscard]] static constexpr FrameCtx tm(SpacecraftId<security::tm_scid_bits> scid,
+                                               VcId<security::tm_vcid_bits> vcid) noexcept {
         return FrameCtx{Protocol::Tm, scid.value(), vcid.value(), std::nullopt};
     }
 
     /// TC frame: 10-bit SCID, 6-bit VCID, and the MAP ID when SDLS is applied per MAP (232.0
     /// §4.1.2.5–6, §4.2.2.2).
-    [[nodiscard]] static constexpr FrameCtx tc(SpacecraftId<10> scid, VcId<6> vcid,
-                                               std::optional<MapId<6>> map_id) noexcept {
+    [[nodiscard]] static constexpr FrameCtx
+    tc(SpacecraftId<security::tc_scid_bits> scid, VcId<security::tc_vcid_bits> vcid,
+       std::optional<MapId<security::tc_map_id_bits>> map_id) noexcept {
         return FrameCtx{Protocol::Tc, scid.value(), vcid.value(), map_value(map_id)};
     }
 
     /// AOS frame: 6-bit VCID and a 10-bit SCID (732.0 §4.1.2.2.3); Issue ≤4 SCIDs are 8 bits and
     /// fit unchanged.
-    [[nodiscard]] static constexpr FrameCtx aos(SpacecraftId<10> scid, VcId<6> vcid) noexcept {
+    [[nodiscard]] static constexpr FrameCtx aos(SpacecraftId<security::aos_scid_bits> scid,
+                                                VcId<security::aos_vcid_bits> vcid) noexcept {
         return FrameCtx{Protocol::Aos, scid.value(), vcid.value(), std::nullopt};
     }
 
     /// USLP frame: 16-bit SCID, 6-bit VCID, and the MAP ID when SDLS is applied per MAP (732.1
     /// §4.1.2.2.3, §4.1.2.4–5).
-    [[nodiscard]] static constexpr FrameCtx uslp(SpacecraftId<16> scid, VcId<6> vcid,
-                                                 std::optional<MapId<4>> map_id) noexcept {
+    [[nodiscard]] static constexpr FrameCtx
+    uslp(SpacecraftId<security::uslp_scid_bits> scid, VcId<security::uslp_vcid_bits> vcid,
+         std::optional<MapId<security::uslp_map_id_bits>> map_id) noexcept {
         return FrameCtx{Protocol::Uslp, scid.value(), vcid.value(), map_value(map_id)};
     }
 

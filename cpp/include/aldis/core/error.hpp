@@ -21,6 +21,8 @@ namespace aldis::core {
 /// Error kind with a stable numeric code shared by all profiles (03-api-model.md §9; GEN-040,
 /// CPP-021). The C ABI returns the negated code (CABI-020). Codes are never renumbered, and
 /// consumers handle values they do not know (GEN-081).
+// The codes are 16-bit in every profile, so the type is fixed (GEN-040, CABI-020).
+// NOLINTNEXTLINE(performance-enum-size)
 enum class ErrorKind : std::uint16_t {
     /// Output buffer too small (detail: `needed`).
     BufferTooSmall = 1,
@@ -66,8 +68,8 @@ inline constexpr std::size_t max_name_len = 32;
 /// A view of the string literal `name`, without its terminating NUL.
 template <std::size_t N>
     requires(N >= 1 && N <= max_name_len + 1)
-// NOLINTNEXTLINE(cppcoreguidelines-avoid-c-arrays,hicpp-avoid-c-arrays,modernize-avoid-c-arrays): a
-// string literal is a C array; consteval keeps it a literal
+// A string literal is a C array; the reference keeps its length.
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-c-arrays,hicpp-avoid-c-arrays,modernize-avoid-c-arrays)
 constexpr std::span<const char> literal(const char (&name)[N]) noexcept {
     return std::span<const char, N>{name}.template first<N - 1>();
 }
@@ -100,8 +102,8 @@ public:
     /// A field identifier naming the string literal `name` (at most 32 characters).
     template <std::size_t N>
         requires(N >= 1 && N <= detail::max_name_len + 1)
-    // NOLINTNEXTLINE(hicpp-explicit-conversions,cppcoreguidelines-avoid-c-arrays,hicpp-avoid-c-arrays,modernize-avoid-c-arrays):
-    // a string literal is a C array; consteval keeps it a literal
+    // Implicit from a string literal (a C array), and only at compile time (consteval).
+    // NOLINTNEXTLINE(misc-explicit-constructor,cppcoreguidelines-explicit-constructor,hicpp-explicit-conversions,cppcoreguidelines-avoid-c-arrays,hicpp-avoid-c-arrays,modernize-avoid-c-arrays)
     consteval FieldId(const char (&name)[N]) noexcept : name_{detail::literal(name)} {}
 
     /// The field name, without a terminating NUL.
@@ -160,7 +162,7 @@ public:
                                                         std::uint64_t found) noexcept {
         ErrorDetail d;
         d.kind_ = Kind::Expected;
-        d.expected_ = Expected{expected, found};
+        d.expected_ = Expected{.expected = expected, .found = found};
         return d;
     }
 
@@ -188,7 +190,7 @@ public:
 private:
     Kind kind_{Kind::None};
     std::size_t needed_{0};
-    Expected expected_{0, 0};
+    Expected expected_{.expected = 0, .found = 0};
 };
 
 /// An error: kind, optional field, and detail (RS-011, CPP-021). Trivially copyable.
@@ -262,24 +264,26 @@ template <typename T> class [[nodiscard]] Result {
     static_assert(ResultValue<T>, "Result<T> needs a trivially copyable and destructible T (D8)");
 
 public:
-    /// A success holding `value`.
-    // NOLINTNEXTLINE(hicpp-explicit-conversions): implicit by design (D8)
-    constexpr Result(T value) noexcept : is_ok_{true}, value_{value} {}
+    /// A success holding `value`. Implicit by design (D8).
+    // NOLINTNEXTLINE(misc-explicit-constructor,cppcoreguidelines-explicit-constructor,hicpp-explicit-conversions)
+    constexpr Result(T value) noexcept : is_ok_{true}, storage_{.value = value} {}
 
-    /// A failure holding `error`.
-    // NOLINTNEXTLINE(hicpp-explicit-conversions): implicit by design (D8)
-    constexpr Result(Error error) noexcept : is_ok_{false}, error_{error} {}
+    /// A failure holding `error`. Implicit by design (D8).
+    // NOLINTNEXTLINE(misc-explicit-constructor,cppcoreguidelines-explicit-constructor,hicpp-explicit-conversions)
+    constexpr Result(Error error) noexcept : is_ok_{false}, storage_{.error = error} {}
 
     /// The value, or `nullptr` if this is an error.
     [[nodiscard]] constexpr const T* ok() const noexcept {
-        // NOLINTNEXTLINE(cppcoreguidelines-pro-type-union-access): guarded by the tag
-        return is_ok_ ? &value_ : nullptr;
+        // The tag says which member is active.
+        // NOLINTNEXTLINE(cppcoreguidelines-pro-type-union-access)
+        return is_ok_ ? &storage_.value : nullptr;
     }
 
     /// The error, or `nullptr` if this is a success.
     [[nodiscard]] constexpr const Error* error() const noexcept {
-        // NOLINTNEXTLINE(cppcoreguidelines-pro-type-union-access): guarded by the tag
-        return is_ok_ ? nullptr : &error_;
+        // The tag says which member is active.
+        // NOLINTNEXTLINE(cppcoreguidelines-pro-type-union-access)
+        return is_ok_ ? nullptr : &storage_.error;
     }
 
     /// Whether this holds a value.
@@ -292,11 +296,13 @@ public:
     }
 
 private:
-    bool is_ok_;
-    union {
-        T value_;
-        Error error_;
+    union Storage {
+        T value;
+        Error error;
     };
+
+    bool is_ok_;
+    Storage storage_;
 };
 
 /// The success or failure of an operation without a value (CPP-021).
@@ -305,8 +311,8 @@ public:
     /// Success.
     constexpr Result() noexcept = default;
 
-    /// A failure holding `error`.
-    // NOLINTNEXTLINE(hicpp-explicit-conversions): implicit by design (D8)
+    /// A failure holding `error`. Implicit by design (D8).
+    // NOLINTNEXTLINE(misc-explicit-constructor,cppcoreguidelines-explicit-constructor,hicpp-explicit-conversions)
     constexpr Result(Error error) noexcept : error_{error} {}
 
     /// The error, or `nullptr` on success.

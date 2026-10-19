@@ -2,6 +2,7 @@
 // a seeded randomized test (D4).
 
 #include "aldis/core/bits.hpp"
+#include "aldis/core/error.hpp"
 
 #include "support/support.hpp"
 
@@ -55,8 +56,13 @@ TEST(Bits, RejectsBadArgumentsWithoutWriting) {
         std::uint8_t width;
         std::uint64_t value;
     };
-    for (const Case c :
-         {Case{0, 0, 0}, Case{0, 65, 0}, Case{9, 8, 0}, Case{SIZE_MAX, 8, 0}, Case{0, 4, 16}}) {
+    for (const Case c : {
+             Case{.offset = 0, .width = 0, .value = 0},
+             Case{.offset = 0, .width = 65, .value = 0},
+             Case{.offset = 9, .width = 8, .value = 0},
+             Case{.offset = SIZE_MAX, .width = 8, .value = 0},
+             Case{.offset = 0, .width = 4, .value = 16},
+         }) {
         const auto e = unwrap_err(bits::set(b, c.offset, c.width, c.value));
         EXPECT_EQ(e.kind(), ErrorKind::OutOfRange);
         EXPECT_EQ(vec(std::span<const std::byte>{b}), vec(octets(0xAA, 0xAA)));

@@ -103,6 +103,9 @@ constexpr ModCounter counter_from_valid(std::uint8_t bits, std::uint64_t value) 
 /// A counter value of 1–64 bits (CMN-030). Holds only values that fit its width (CPP-023).
 class ModCounter {
 public:
+    /// Widest counter, in bits.
+    static constexpr std::uint8_t max_bits = 64;
+
     /// A counter of `bits` width holding `value`; `OutOfRange` if `bits` is not 1–64 (`bits`) or
     /// `value` needs more than `bits` bits (`value`).
     [[nodiscard]] static constexpr Result<ModCounter> make(std::uint8_t bits,
@@ -110,8 +113,8 @@ public:
         if (bits == 0) {
             return Error::out_of_range(FieldId{"bits"}, 1, 0);
         }
-        if (bits > 64) {
-            return Error::out_of_range(FieldId{"bits"}, 64, bits);
+        if (bits > max_bits) {
+            return Error::out_of_range(FieldId{"bits"}, max_bits, bits);
         }
         if (value > arith::low_mask(bits)) {
             return Error::out_of_range(FieldId{"value"}, arith::low_mask(bits), value);

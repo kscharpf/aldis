@@ -25,7 +25,13 @@
 
 namespace aldis::core::bits {
 
+/// Widest field, in bits.
+inline constexpr std::uint8_t max_width = 64;
+
 namespace detail {
+
+/// Mask of the bit position within an octet.
+inline constexpr std::size_t octet_bit_mask = arith::octet_bits - 1U;
 
 /// Octets covered by a field: the first and last octet, and the bits of the first octet before
 /// the field (`lead`) and of the last octet after it (`trail`).
@@ -43,10 +49,10 @@ constexpr Result<FieldSpan> field_span(std::size_t buf_len, std::size_t bit_offs
     if (width == 0) {
         return Error::out_of_range(FieldId{"width"}, 1, 0);
     }
-    if (width > 64) {
-        return Error::out_of_range(FieldId{"width"}, 64, width);
+    if (width > max_width) {
+        return Error::out_of_range(FieldId{"width"}, max_width, width);
     }
-    const std::size_t total_bits = arith::saturating_mul(buf_len, std::size_t{8});
+    const std::size_t total_bits = arith::saturating_mul(buf_len, std::size_t{arith::octet_bits});
     const auto width_bits = arith::widen<std::size_t>(width);
     const Result<std::size_t> end = arith::checked_add(bit_offset, width_bits);
     if (end.ok() == nullptr || *end.ok() > total_bits) {
@@ -64,9 +70,10 @@ constexpr Result<FieldSpan> field_span(std::size_t buf_len, std::size_t bit_offs
     return FieldSpan{
         .first = arith::shr(bit_offset, 3U),
         .last = arith::shr(last_bit, 3U),
-        .lead = arith::truncate<unsigned>(arith::bit_and(bit_offset, std::size_t{7})),
+        .lead = arith::truncate<unsigned>(arith::bit_and(bit_offset, octet_bit_mask)),
         .trail = arith::saturating_sub(
-            7U, arith::truncate<unsigned>(arith::bit_and(last_bit, std::size_t{7}))),
+            arith::octet_bits - 1U,
+            arith::truncate<unsigned>(arith::bit_and(last_bit, octet_bit_mask))),
     };
 }
 
@@ -88,8 +95,10 @@ struct OctetPart {
 constexpr OctetPart octet_part(const FieldSpan& span, std::size_t index) noexcept {
     const unsigned high = index == span.first ? span.lead : 0U;
     const unsigned low = index == span.last ? span.trail : 0U;
-    return OctetPart{.count = arith::saturating_sub(arith::saturating_sub(8U, high), low),
-                     .shift = low}; // high + low <= 7
+    return OctetPart{
+        .count = arith::saturating_sub(arith::saturating_sub(arith::octet_bits, high), low),
+        .shift = low,
+    }; // high + low <= 7
 }
 
 } // namespace detail

@@ -37,13 +37,19 @@ inline constexpr std::size_t fecf_len = 2;
 
 namespace detail {
 
+/// Entries of the lookup table: one per octet value.
+inline constexpr std::size_t table_len = 256;
+
+/// Bit 15, the register bit shifted out next.
+inline constexpr unsigned msb = 15;
+
 /// One bitwise CRC step for one octet.
 [[nodiscard]] constexpr std::uint16_t step_bitwise(std::uint16_t crc, std::uint8_t octet) noexcept {
-    crc = arith::bit_xor(crc, arith::shl(arith::widen<std::uint16_t>(octet), 8U));
-    for (unsigned bit = 0; bit < 8U; ++bit) {
-        const bool msb = arith::shr(crc, 15U) != 0U;
+    crc = arith::bit_xor(crc, arith::shl(arith::widen<std::uint16_t>(octet), arith::octet_bits));
+    for (unsigned bit = 0; bit < arith::octet_bits; ++bit) {
+        const bool top = arith::shr(crc, msb) != 0U;
         crc = arith::shl(crc, 1U);
-        if (msb) {
+        if (top) {
             crc = arith::bit_xor(crc, poly);
         }
     }
@@ -51,8 +57,8 @@ namespace detail {
 }
 
 /// The CRC register contribution of each possible leading octet.
-[[nodiscard]] consteval std::array<std::uint16_t, 256> make_table() noexcept {
-    std::array<std::uint16_t, 256> table{};
+[[nodiscard]] consteval std::array<std::uint16_t, table_len> make_table() noexcept {
+    std::array<std::uint16_t, table_len> table{};
     std::uint8_t index = 0;
     for (std::uint16_t& entry : table) {
         entry = step_bitwise(0, index);
@@ -62,7 +68,7 @@ namespace detail {
 }
 
 /// The 256-entry lookup table (CMN-004).
-inline constexpr std::array<std::uint16_t, 256> table = make_table();
+inline constexpr std::array<std::uint16_t, table_len> table = make_table();
 
 } // namespace detail
 
@@ -86,12 +92,12 @@ crc16_update_bitwise(std::uint16_t crc, std::span<const std::byte> data) noexcep
                                                          std::span<const std::byte> data) noexcept {
     for (const std::byte octet : data) {
         const std::uint8_t index =
-            arith::bit_xor(arith::truncate<std::uint8_t>(arith::shr(crc, 8U)),
+            arith::bit_xor(arith::truncate<std::uint8_t>(arith::shr(crc, arith::octet_bits)),
                            std::to_integer<std::uint8_t>(octet));
         // A uint8_t index is always inside the 256-entry table.
         const std::uint16_t entry =
             bytes::get_or(std::span<const std::uint16_t>{detail::table}, index, std::uint16_t{0});
-        crc = arith::bit_xor(arith::shl(crc, 8U), entry);
+        crc = arith::bit_xor(arith::shl(crc, arith::octet_bits), entry);
     }
     return crc;
 }

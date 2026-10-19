@@ -115,10 +115,11 @@ public:
     /// Iterates the flags that are set, in ascending bit order.
     class Iterator {
     public:
+        // The member types an iterator has, named as the standard library names them.
         /// Flags.
-        using value_type = A;
+        using value_type = A; // NOLINT(readability-identifier-naming)
         /// Distance between iterators.
-        using difference_type = std::ptrdiff_t;
+        using difference_type = std::ptrdiff_t; // NOLINT(readability-identifier-naming)
 
         /// The end iterator.
         constexpr Iterator() noexcept = default;

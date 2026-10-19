@@ -29,6 +29,8 @@ namespace layout {
 inline constexpr std::size_t ocf_len = 4;
 /// Length of the Frame Error Control Field, in octets (CMN-040).
 inline constexpr std::size_t fecf_len = 2;
+/// Number of fields in a frame layout, in wire order (CMN-040).
+inline constexpr std::size_t field_count = 7;
 
 } // namespace layout
 
@@ -42,7 +44,7 @@ struct LayoutSpec {
     /// Length of the protocol-specific secondary slot (FSH, Insert Zone, or Segment Header).
     std::size_t secondary_len{0};
     /// Security Header and Trailer lengths (API-070).
-    SecurityLayout security{};
+    SecurityLayout security;
     /// Whether the OCF is present.
     bool ocf{false};
     /// Whether the FECF is present.
@@ -112,7 +114,7 @@ public:
     [[nodiscard]] constexpr std::size_t frame_len() const noexcept { return fecf_.end(); }
 
     /// The ranges in wire order (CMN-040).
-    [[nodiscard]] constexpr std::array<OctetRange, 7> ranges() const noexcept {
+    [[nodiscard]] constexpr std::array<OctetRange, layout::field_count> ranges() const noexcept {
         return {
             primary_header_, secondary_, security_header_, data_, security_trailer_, ocf_, fecf_};
     }
