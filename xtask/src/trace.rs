@@ -1,6 +1,7 @@
 //! `xtask trace`: requirement → verification artefact matrix (VER-020).
 //!
-//! Artefacts are collected from `// req: <IDs>` annotations in Rust sources, the
+//! Artefacts are collected from `// req: <IDs>` annotations in Rust sources and in the C++
+//! sources and headers under `cpp/` (labelled `test (C++)`, CPP-057), the
 //! `requirements` fields of test vectors, and `docs/verification/analysis-records.md`.
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -11,7 +12,7 @@ use serde_json::json;
 
 use crate::md::{scan_ids, tables};
 use crate::repo;
-use crate::spec::Spec;
+use crate::spec::{CPP_EXTENSIONS, Spec};
 
 fn add(
     map: &mut BTreeMap<String, BTreeSet<String>>,
@@ -24,6 +25,16 @@ fn add(
             map.entry(id).or_default().insert(artefact.to_owned());
         }
     }
+}
+
+/// Artefact label of a `// req:` annotation in a C++ source or header (CPP-057).
+const CPP_LABEL: &str = "test (C++)";
+
+/// The `// req:` annotations of a C++ source: 1-based line and the text after `// req:`.
+fn req_annotations(text: &str) -> impl Iterator<Item = (usize, &str)> {
+    text.lines()
+        .enumerate()
+        .filter_map(|(n, line)| line.split_once("// req:").map(|(_, ids)| (n + 1, ids)))
 }
 
 /// Collects artefacts for every requirement.
@@ -46,6 +57,16 @@ fn artefacts(spec: &Spec) -> Result<BTreeMap<String, BTreeSet<String>>, String> 
                     );
                 }
             }
+        }
+    }
+
+    // C++ sources and headers of the native implementation (CPP-057).
+    for path in repo::files("cpp", CPP_EXTENSIONS) {
+        let text = repo::read(&path)?;
+        for (line, ids) in req_annotations(&text) {
+            let refs = scan_ids(ids, &areas);
+            let artefact = format!("{CPP_LABEL} {}:{line}", repo::rel(&path));
+            add(&mut map, spec, &refs, &artefact);
         }
     }
 
@@ -166,4 +187,25 @@ pub fn run(scope: Option<&str>, strict: bool) -> Result<usize, String> {
         println!("untraced: {}", untraced.join(", "));
     }
     Ok(if strict { untraced.len() } else { 0 })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{CPP_LABEL, req_annotations};
+    use crate::md::{IdRef, scan_ids};
+    use crate::spec::CPP_EXTENSIONS;
+
+    #[test]
+    fn cpp_annotations_are_traced() {
+        // req: CPP-057, VER-020
+        assert_eq!(CPP_LABEL, "test (C++)");
+        assert_eq!(CPP_EXTENSIONS, ["hpp", "cpp", "h"]);
+        let text =
+            "TEST(Bytes, Reader) {\n    // req: CPP-031, GEN-013\n    EXPECT_TRUE(true);\n}\n";
+        let found: Vec<(usize, &str)> = req_annotations(text).collect();
+        assert_eq!(found, [(2, " CPP-031, GEN-013")]);
+        let areas = ["CPP", "GEN"].iter().map(|a| (*a).to_owned()).collect();
+        let ids: Vec<String> = scan_ids(found[0].1, &areas).iter().map(IdRef::id).collect();
+        assert_eq!(ids, ["CPP-031", "GEN-013"]);
+    }
 }

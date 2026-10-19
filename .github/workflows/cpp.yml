@@ -219,3 +219,22 @@ jobs:
         run: |
           cmake --preset leon3-gcc
           cmake --build --preset leon3-gcc
+
+  cpp-layers:
+    name: cpp layers and bounds opt-outs (CPP-010, CPP-031, CPP-042)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup-rust
+        with:
+          cache-key: xtask
+      - uses: ./.github/actions/setup-cpp
+        with:
+          tools: cmake ninja gcc
+      - name: Bounds-checking opt-outs only in aldis/core/bytes.hpp; every NOLINT names its check
+        run: cargo xtask cpp unsafe-optouts
+      - name: Configure
+        working-directory: cpp
+        run: cmake --preset host-gcc
+      - name: CMake target graph against the layer rules
+        run: cargo xtask cpp layers target/cpp/host-gcc

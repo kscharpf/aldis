@@ -5,6 +5,7 @@
 mod binaries;
 mod changelog;
 mod coverage;
+mod cpp;
 mod layers;
 mod links;
 mod md;
@@ -35,9 +36,12 @@ commands:
   changelog show               print the unreleased changes as the next release will list them
   changelog release <version> <YYYY-MM-DD>
                                move every fragment into a new section of CHANGELOG.md
-  ci                           everything CI runs: spec-lint, links, layers, vectors
-                               validate, vectors schema --check, trace --scope m0 --strict,
-                               changelog check
+  ci                           everything CI runs without a C++ build: spec-lint, links,
+                               layers, vectors validate, vectors schema --check, trace --scope
+                               m0 --strict, trace --scope c0, changelog check, cpp
+                               unsafe-optouts
+
+C++ checks (docs/milestones/c0-foundations.md D12):
 ";
 
 fn run(args: &[&str]) -> Result<usize, String> {
@@ -59,6 +63,7 @@ fn run(args: &[&str]) -> Result<usize, String> {
         ["symbols"] => binaries::symbols(),
         ["stack-sizes", target] => binaries::stack_sizes(target),
         ["coverage"] => coverage::run(),
+        ["cpp", rest @ ..] => cpp::run(rest),
         ["changelog", "check"] => changelog::check(),
         ["changelog", "show"] => changelog::show(),
         ["changelog", "release", version, date] => changelog::release(version, date),
@@ -71,17 +76,24 @@ fn run(args: &[&str]) -> Result<usize, String> {
                 vectors::validate,
                 || vectors::schema(true),
                 || trace::run(Some("m0"), true),
+                // C0 is open: report its trace without failing (strict at the C0 exit, D17).
+                || trace::run(Some("c0"), false),
                 changelog::check,
+                cpp::optouts::check,
             ] {
                 failed += step()?;
             }
             Ok(failed)
         }
         [] | ["help" | "-h" | "--help"] => {
-            print!("{HELP}");
+            print!("{HELP}{}", cpp::HELP);
             Ok(0)
         }
-        _ => Err(format!("unknown command: {}\n\n{HELP}", args.join(" "))),
+        _ => Err(format!(
+            "unknown command: {}\n\n{HELP}{}",
+            args.join(" "),
+            cpp::HELP
+        )),
     }
 }
 
