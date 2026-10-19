@@ -1,0 +1,165 @@
+//! Publishing an evidence record and checking a published one (VER-057, VER-058).
+//!
+//! A record is published as a git note on the verified commit under `refs/notes/verify`, pushed
+//! to `origin`. A passing record then sets the commit status `aldis/verify`, which branch
+//! protection on `main` requires.
+
+use std::process::{Command, Stdio};
+
+use serde_json::Value;
+
+use super::{git, record};
+use crate::repo;
+
+/// The notes ref that holds the records.
+const NOTES: &str = "refs/notes/verify";
+/// Where `origin`'s notes are fetched to before a merge or a check.
+const NOTES_ORIGIN: &str = "refs/notes/verify-origin";
+/// The commit status a passing record sets.
+const CONTEXT: &str = "aldis/verify";
+
+/// Reads and parses a record; checks that it is for `commit` and its tree.
+fn load(text: &str, commit: &str) -> Result<Value, String> {
+    let record: Value = serde_json::from_str(text.trim()).map_err(|e| format!("record: {e}"))?;
+    let tree = git(&["rev-parse", &format!("{commit}^{{tree}}")])?;
+    let field = |k: &str| record.get(k).and_then(Value::as_str).unwrap_or("");
+    if field("commit") != commit {
+        return Err(format!(
+            "the record is for commit {}, not {commit}",
+            field("commit")
+        ));
+    }
+    if field("tree") != tree {
+        return Err(format!(
+            "the record is for tree {}, not {tree}",
+            field("tree")
+        ));
+    }
+    Ok(record)
+}
+
+/// Fetches `origin`'s notes into [`NOTES_ORIGIN`]; false if `origin` has none yet.
+fn fetch_notes() -> Result<bool, String> {
+    let exists = Command::new("git")
+        .args(["ls-remote", "--exit-code", "origin", NOTES])
+        .current_dir(repo::root())
+        .stdout(Stdio::null())
+        .status()
+        .map_err(|e| format!("git: {e}"))?;
+    if !exists.success() {
+        return Ok(false);
+    }
+    git(&["fetch", "-q", "origin", &format!("+{NOTES}:{NOTES_ORIGIN}")])?;
+    Ok(true)
+}
+
+/// Adds the record as a note on `commit` on top of `origin`'s notes and pushes them.
+fn push_note(commit: &str, path: &str) -> Result<(), String> {
+    let mut last = String::new();
+    for _ in 0..3 {
+        if fetch_notes()? {
+            // Start from origin's notes; a local note on the same commit is replaced below.
+            git(&["update-ref", NOTES, NOTES_ORIGIN])?;
+        }
+        git(&[
+            "notes",
+            &format!("--ref={NOTES}"),
+            "add",
+            "-f",
+            "-F",
+            path,
+            commit,
+        ])?;
+        match git(&["push", "-q", "origin", NOTES]) {
+            Ok(_) => return Ok(()),
+            // Someone else pushed a note in between: fetch theirs and add ours again.
+            Err(e) => last = e,
+        }
+    }
+    Err(last)
+}
+
+/// Publishes the local record of `commit` from `target/verify/<commit>/record.json`.
+pub fn publish(commit: &str) -> Result<usize, String> {
+    let path = repo::root()
+        .join("target/verify")
+        .join(commit)
+        .join("record.json");
+    let text = repo::read(&path)
+        .map_err(|e| format!("{e}\nrun `cargo xtask verify` on {commit} first"))?;
+    let record = load(&text, commit)?;
+    let problems = record::gate_problems(&record);
+    if !problems.is_empty() {
+        return Err(format!(
+            "the record does not pass the merge gate, so it is not published:\n  {}",
+            problems.join("\n  ")
+        ));
+    }
+    git(&["fetch", "-q", "origin", "main"])?;
+    if git(&["merge-base", "--is-ancestor", "origin/main", commit]).is_err() {
+        return Err(format!(
+            "{commit} does not contain the tip of origin/main: merge or rebase onto main, then \
+             verify again (VER-058)"
+        ));
+    }
+    let on_github = Command::new("gh")
+        .args([
+            "api",
+            "--silent",
+            &format!("repos/{{owner}}/{{repo}}/commits/{commit}"),
+        ])
+        .current_dir(repo::root())
+        .stderr(Stdio::null())
+        .status()
+        .map_err(|e| format!("gh: {e}"))?;
+    if !on_github.success() {
+        return Err(format!(
+            "{commit} is not on GitHub yet: push the branch first"
+        ));
+    }
+    push_note(commit, &path.to_string_lossy())?;
+    let sha = record::sha256_hex(text.trim().as_bytes());
+    let status = Command::new("gh")
+        .args(["api", "--silent", "-X", "POST"])
+        .arg(format!("repos/{{owner}}/{{repo}}/statuses/{commit}"))
+        .args(["-f", "state=success", "-f", &format!("context={CONTEXT}")])
+        .args(["-f", &format!("description=record sha256:{sha}")])
+        .current_dir(repo::root())
+        .status()
+        .map_err(|e| format!("gh: {e}"))?;
+    if !status.success() {
+        return Err(format!(
+            "setting the commit status {CONTEXT} on {commit} failed"
+        ));
+    }
+    println!("verify: published the record of {commit} ({NOTES}, sha256 {sha})");
+    println!("verify: commit status {CONTEXT} = success");
+    Ok(0)
+}
+
+/// Checks the record of `rev` published on `origin` against the merge gate.
+pub fn check(rev: &str) -> Result<usize, String> {
+    let commit = git(&["rev-parse", rev])?;
+    if !fetch_notes()? {
+        return Err(format!("origin has no {NOTES} yet"));
+    }
+    let text = git(&["notes", &format!("--ref={NOTES_ORIGIN}"), "show", &commit])
+        .map_err(|_| format!("origin has no published record for {commit}"))?;
+    let record = load(&text, &commit)?;
+    let problems = record::gate_problems(&record);
+    println!(
+        "verify: record of {commit}, sha256 {}, finished {}",
+        record::sha256_hex(text.trim().as_bytes()),
+        record
+            .get("finished")
+            .and_then(Value::as_str)
+            .unwrap_or("?")
+    );
+    for p in &problems {
+        println!("verify: gate: {p}");
+    }
+    if problems.is_empty() {
+        println!("verify: the record passes the merge gate (VER-058)");
+    }
+    Ok(problems.len())
+}

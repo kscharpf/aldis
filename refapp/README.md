@@ -44,7 +44,7 @@ A golden trace changes only on purpose (APP-087):
 
 ## Checks
 
-The CI job `refapp` runs these; run them before pushing a change here:
+The verification check `refapp` (`cargo xtask verify`) runs these; run them before pushing a change here:
 
 ```sh
 cargo fmt --all --check

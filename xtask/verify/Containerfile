@@ -1,0 +1,56 @@
+# Image of the verification run, `cargo xtask verify` (docs/06-verification.md §7, VER-056).
+#
+# Built for the host's native architecture from the files of the commit under test; its tag is a
+# hash of this file, entrypoint.sh, rust-toolchain.toml, tooling-nightly, cpp/toolchains.lock,
+# and setup_cpp.py, so a change to any pin builds a new image. The base image is pinned by
+# digest, the C++ tools come from cpp/toolchains.lock through setup_cpp.py (CPP-001), and Rust
+# from rust-toolchain.toml and tooling-nightly (RS-001, RS-002). The other Ubuntu packages are
+# utilities (git, Python, archivers); their versions are listed in every evidence record.
+FROM docker.io/library/ubuntu:24.04@sha256:68ee22004a9109b44973313b02ff7b1de250f1de0f5ecb628d73f579aaff33ac
+
+ARG TARGETARCH
+ENV DEBIAN_FRONTEND=noninteractive LANG=C.UTF-8
+
+RUN apt-get update -q \
+ && apt-get install -y -q --no-install-recommends \
+      ca-certificates curl git python3 xz-utils zstd unzip \
+ && rm -rf /var/lib/apt/lists/* \
+ && git config --system --add safe.directory '*'
+
+# C++ tools, every version from the lock file. setup_cpp.py finds the lock relative to itself, so
+# both keep their repository paths under /opt/aldis. It records the tool directories and root
+# variables in the GITHUB_PATH and GITHUB_ENV files; entrypoint.sh applies them.
+COPY cpp/toolchains.lock /opt/aldis/cpp/
+COPY .github/actions/setup-cpp/setup_cpp.py /opt/aldis/.github/actions/setup-cpp/
+RUN mkdir -p /opt/aldis-cpp \
+ && GITHUB_PATH=/opt/aldis-cpp/path GITHUB_ENV=/opt/aldis-cpp/env \
+      python3 -I /opt/aldis/.github/actions/setup-cpp/setup_cpp.py \
+        --downloads /tmp/aldis-cpp-downloads --tools-dir /opt/aldis-cpp/tools install all \
+ && rm -rf /tmp/aldis-cpp-downloads /var/lib/apt/lists/* \
+ && ln -s "$(command -v gcc-14)" /usr/local/bin/cc \
+ && ln -s "$(command -v g++-14)" /usr/local/bin/c++
+
+# Rust: rustup-init 1.29.1, checked against its published SHA-256, then the pinned toolchains.
+ENV RUSTUP_HOME=/opt/rustup CARGO_HOME=/opt/cargo PATH=/opt/cargo/bin:$PATH
+RUN case "$TARGETARCH" in \
+      amd64) triple=x86_64-unknown-linux-gnu; sha=dda7234360b7f578ca8b0ddcb80145646fa61a67c1720a5abc7051b35c9fcb71 ;; \
+      arm64) triple=aarch64-unknown-linux-gnu; sha=15f6e4ce9f583b929c996c91562bad6d4454f3281de858b02cdfdef615fac433 ;; \
+      *) echo "unsupported architecture $TARGETARCH" >&2; exit 1 ;; \
+    esac \
+ && curl -fsSL -o /tmp/rustup-init "https://static.rust-lang.org/rustup/archive/1.29.1/$triple/rustup-init" \
+ && echo "$sha  /tmp/rustup-init" | sha256sum -c - \
+ && chmod +x /tmp/rustup-init \
+ && /tmp/rustup-init -y -q --no-modify-path --profile minimal --default-toolchain none \
+ && rm /tmp/rustup-init
+COPY rust-toolchain.toml tooling-nightly /opt/aldis-rust/
+RUN cd /opt/aldis-rust \
+ && rustup toolchain install \
+ && rustup target add s390x-unknown-linux-gnu \
+ && rustup toolchain install "$(cat tooling-nightly)" --profile minimal \
+      --component llvm-tools --component rust-src \
+ && cargo install --locked --root /opt/cargo cargo-llvm-cov@0.9.1 cargo-deny@0.20.2 \
+ && rm -rf /opt/cargo/registry /opt/cargo/git
+
+COPY xtask/verify/entrypoint.sh /usr/local/bin/aldis-verify
+RUN chmod 0755 /usr/local/bin/aldis-verify
+ENTRYPOINT ["/usr/local/bin/aldis-verify"]

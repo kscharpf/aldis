@@ -1,17 +1,16 @@
-# CI for the native C++ implementation (docs/milestones/c0-foundations.md D17; docs/profiles/cpp.md).
-# A separate workflow so that track C and track R do not edit the same file. A pull request
-# that touches nothing the C++ build reads skips every C++ job (the `changes` gate); pushes to
-# main and manual runs always build everything. There are no workflow path filters, so the
-# workflow always reports: `cpp-ok` passes when every job passed or was skipped, and it is the
-# check to require in branch protection. Job IDs carry a `cpp-` prefix and never change once
-# required. Actions are pinned by commit SHA; every C++
-# tool comes from cpp/toolchains.lock through .github/actions/setup-cpp (CPP-001).
+# Nightly native C++ jobs (docs/milestones/c0-foundations.md D17; docs/profiles/cpp.md;
+# docs/06-verification.md §7, VER-059). Pull requests merge on a local `cargo xtask verify` record
+# (VER-058), whose C++ checks carry these job names; this workflow repeats them each night on
+# GitHub's runners, on both architectures and without the verification image, and opens an issue
+# on a failure. A separate workflow so that track C and track R do not edit the same file. Job IDs
+# carry a `cpp-` prefix.
+# Actions are pinned by commit SHA; every C++ tool comes from cpp/toolchains.lock through
+# .github/actions/setup-cpp (CPP-001).
 name: C++
 
 on:
-  push:
-    branches: [main]
-  pull_request:
+  schedule:
+    - cron: "47 2 * * *"
   workflow_dispatch:
 
 permissions:
@@ -19,43 +18,10 @@ permissions:
 
 concurrency:
   group: cpp-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  changes:
-    name: cpp changes
-    runs-on: ubuntu-24.04
-    outputs:
-      cpp: ${{ steps.filter.outputs.cpp }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 0
-      - name: Does this change touch what the C++ build, tests, or tooling read?
-        id: filter
-        env:
-          EVENT: ${{ github.event_name }}
-          BASE: ${{ github.event.pull_request.base.sha }}
-        run: |
-          if [ "$EVENT" != "pull_request" ]; then
-            echo "cpp=true" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          # The C++ sources, the shared vectors its runner reads, xtask (cpp subcommands, trace),
-          # and this workflow and its setup action. Extend when C1 adds difftest/ and aldis.h.
-          pattern='^(cpp/|test-vectors/|xtask/|\.github/workflows/cpp\.yml$|\.github/actions/setup-cpp/)'
-          changed=$(git diff --name-only "$BASE"...HEAD)
-          printf '%s\n' "$changed"
-          if printf '%s\n' "$changed" | grep -qE "$pattern"; then
-            echo "cpp=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "cpp=false" >> "$GITHUB_OUTPUT"
-          fi
-
   cpp-toolchains:
     name: cpp toolchains ${{ matrix.os }} (CPP-001, CPP-003)
-    needs: changes
-    if: needs.changes.outputs.cpp == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -118,8 +84,6 @@ jobs:
 
   cpp-format:
     name: cpp format (CPP-044)
-    needs: changes
-    if: needs.changes.outputs.cpp == 'true'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -131,8 +95,6 @@ jobs:
 
   cpp-build:
     name: cpp build ${{ matrix.compiler }} ${{ matrix.os }} (CPP-001, CPP-012, CPP-040)
-    needs: changes
-    if: needs.changes.outputs.cpp == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -168,8 +130,6 @@ jobs:
 
   cpp-tidy:
     name: cpp clang-tidy (CPP-041, CPP-042, CPP-002)
-    needs: changes
-    if: needs.changes.outputs.cpp == 'true'
     runs-on: ubuntu-24.04
     defaults:
       run:
@@ -186,8 +146,6 @@ jobs:
 
   cpp-sanitize:
     name: cpp sanitizers (CPP-051)
-    needs: changes
-    if: needs.changes.outputs.cpp == 'true'
     runs-on: ubuntu-24.04
     defaults:
       run:
@@ -203,8 +161,6 @@ jobs:
 
   cpp-big-endian:
     name: cpp big-endian s390x (VER-030, GEN-007)
-    needs: changes
-    if: needs.changes.outputs.cpp == 'true'
     runs-on: ubuntu-24.04
     defaults:
       run:
@@ -220,8 +176,6 @@ jobs:
 
   cpp-bare-metal:
     name: cpp bare metal ${{ matrix.target }} ${{ matrix.compiler }} (CPP-011, CPP-040)
-    needs: changes
-    if: needs.changes.outputs.cpp == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -251,8 +205,6 @@ jobs:
 
   cpp-leon3:
     name: cpp LEON3 BCC2 (non-gating, OI-08)
-    needs: changes
-    if: needs.changes.outputs.cpp == 'true'
     runs-on: ubuntu-24.04
     # Reported against OI-08, never a gate (c0 plan D2).
     continue-on-error: true
@@ -271,8 +223,6 @@ jobs:
 
   cpp-layers:
     name: cpp layers and bounds opt-outs (CPP-010, CPP-031, CPP-042)
-    needs: changes
-    if: needs.changes.outputs.cpp == 'true'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -290,17 +240,25 @@ jobs:
       - name: CMake target graph against the layer rules
         run: cargo xtask cpp layers target/cpp/host-gcc
 
-  cpp-ok:
-    name: cpp ok
-    if: always()
-    needs: [changes, cpp-toolchains, cpp-format, cpp-build, cpp-tidy, cpp-sanitize, cpp-big-endian, cpp-bare-metal, cpp-layers]
+  issue:
+    name: open an issue on a nightly failure (VER-059)
+    needs: [cpp-toolchains, cpp-format, cpp-build, cpp-tidy, cpp-sanitize, cpp-big-endian, cpp-bare-metal, cpp-layers, cpp-leon3]
+    if: failure() && github.event_name == 'schedule'
     runs-on: ubuntu-24.04
+    permissions:
+      issues: write
     steps:
-      - name: Every C++ job passed, or was skipped because the change does not touch C++
+      - name: One open issue per workflow
         env:
-          RESULTS: ${{ join(needs.*.result, ' ') }}
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          TITLE: "nightly: C++ failed"
+          RUN: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
-          echo "$RESULTS"
-          case " $RESULTS " in
-            *" failure "* | *" cancelled "*) exit 1 ;;
-          esac
+          if [ -z "$(gh issue list --repo "$REPO" --state open --search "in:title \"$TITLE\"" --json number --jq '.[].number')" ]; then
+            gh issue create --repo "$REPO" --title "$TITLE" --body "The nightly run failed: $RUN
+
+          A failure on a commit whose published record passed (\`cargo xtask verify check <commit>\`) is a
+          defect in the code, the verification image, or \`cargo xtask verify\` until the cause is found
+          (VER-059)."
+          fi

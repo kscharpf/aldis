@@ -1,12 +1,14 @@
-# CI for Aldis (docs/milestones/m0-foundations.md WP-1; docs/06-verification.md).
-# Actions are pinned by commit SHA; Rust comes from rust-toolchain.toml only (RS-001).
+# Nightly native Rust jobs (docs/06-verification.md §7, VER-059; m0 plan WP-1).
+# Pull requests merge on a local `cargo xtask verify` record (VER-058), whose checks carry these
+# job names; this workflow repeats them each night on GitHub's runners, without the verification
+# image, and opens an issue on a failure. Actions are pinned by commit SHA; Rust comes from
+# rust-toolchain.toml only (RS-001).
 # CCSDS documents are never downloaded here (specs/README.md).
 name: CI
 
 on:
-  push:
-    branches: [main]
-  pull_request:
+  schedule:
+    - cron: "17 2 * * *"
   workflow_dispatch:
 
 permissions:
@@ -14,7 +16,6 @@ permissions:
 
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   CARGO_TERM_COLOR: always
@@ -233,3 +234,26 @@ jobs:
       # The reference application's own workspace, same policy (APP-106): cargo-deny finds the
       # root deny.toml by searching upwards from refapp/Cargo.toml.
       - run: cargo deny --manifest-path refapp/Cargo.toml --all-features --log-level info check
+
+  issue:
+    name: open an issue on a nightly failure (VER-059)
+    needs: [fmt, clippy, test, no-std, big-endian, layers, refapp, exerciser, coverage, spec, deny]
+    if: failure() && github.event_name == 'schedule'
+    runs-on: ubuntu-24.04
+    permissions:
+      issues: write
+    steps:
+      - name: One open issue per workflow
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          TITLE: "nightly: CI failed"
+          RUN: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          if [ -z "$(gh issue list --repo "$REPO" --state open --search "in:title \"$TITLE\"" --json number --jq '.[].number')" ]; then
+            gh issue create --repo "$REPO" --title "$TITLE" --body "The nightly run failed: $RUN
+
+          A failure on a commit whose published record passed (\`cargo xtask verify check <commit>\`) is a
+          defect in the code, the verification image, or \`cargo xtask verify\` until the cause is found
+          (VER-059)."
+          fi

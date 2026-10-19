@@ -53,6 +53,7 @@ Nightly Rust is used only for tooling, at the date pinned in `tooling-nightly`:
 
 ```sh
 cargo xtask coverage                                   # VER-024 gate; needs cargo-llvm-cov >= 0.9
+cargo xtask verify                                     # every check in the pinned image: the merge gate (VER-056)
 (cd exerciser && cargo run --release --target thumbv7em-none-eabihf)   # vectors under QEMU (stable)
 (cd fuzz && cargo +$(cat ../tooling-nightly) fuzz run crc_variants)    # needs cargo-fuzz
 ```
