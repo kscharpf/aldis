@@ -1,6 +1,6 @@
 # 02 — Design rules
 
-These rules apply to every crate in Layers 0–2, and to the C ABI. Layer 3 follows them too, except where [05](05-framework.md) states otherwise. Future native C/C++ implementations SHALL meet the same rules in their own language (see [C ABI profile §9](profiles/c-abi.md#9-rules-for-native-cc-implementations)).
+These rules apply to every crate in Layers 0–2, and to the C ABI. Layer 3 follows them too, except where [05](05-framework.md) states otherwise. Native C and C++ implementations SHALL meet the same rules in their own language (see [C ABI profile §9](profiles/c-abi.md#9-rules-for-native-cc-implementations) and the [C++ profile](profiles/cpp.md)).
 
 ## 1. Memory
 
@@ -64,7 +64,7 @@ All CCSDS standards in scope use the same convention, which these rules restate.
 | ID | Requirement | Source | Verif. |
 |---|---|---|---|
 | GEN-070 | Layers 0–3 SHALL forbid `unsafe` code (`#![forbid(unsafe_code)]`). | — | A |
-| GEN-071 | `unsafe` is permitted only in `aldis-ffi`. Every `unsafe` block SHALL carry a `// SAFETY:` justification, and the crate SHALL be tested under Miri. | — | A/I |
+| GEN-071 | `unsafe` is permitted only in `aldis-ffi` and in the dev-only differential-test bridge (`difftest/`, VER-053), which calls a native implementation through its C ABI and is never part of a flight build. Every `unsafe` block SHALL carry a `// SAFETY:` justification. `aldis-ffi` SHALL be tested under Miri. | — | A/I |
 
 ## 8. Versioning and compatibility
 

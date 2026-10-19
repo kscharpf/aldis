@@ -1,6 +1,6 @@
 # 07 — Conformance test vectors
 
-The vectors are the **contract between implementations**. The Rust reference implementation, the C ABI, every language binding, and the future native C/C++ implementations SHALL all pass the same files. They live in [`../test-vectors/`](../test-vectors/).
+The vectors are the **contract between implementations**. The Rust reference implementation, the C ABI, every language binding, the native C++ implementation, and the future native C implementation SHALL all pass the same files. They live in [`../test-vectors/`](../test-vectors/).
 
 ## 1. Layout
 
