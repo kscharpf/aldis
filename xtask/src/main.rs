@@ -3,6 +3,7 @@
 //! Run with `cargo xtask <command>`; see `cargo xtask help`.
 
 mod binaries;
+mod changelog;
 mod coverage;
 mod layers;
 mod links;
@@ -30,8 +31,13 @@ commands:
   stack-sizes <target>         per-function stack usage of the exerciser (VER-011; tooling nightly)
   coverage                     100 % region/function/line/branch gate for aldis-core (VER-024;
                                tooling nightly + cargo-llvm-cov >= 0.9)
+  changelog check              every fragment in changelog.d/ is well formed (GEN-080)
+  changelog show               print the unreleased changes as the next release will list them
+  changelog release <version> <YYYY-MM-DD>
+                               move every fragment into a new section of CHANGELOG.md
   ci                           everything CI runs: spec-lint, links, layers, vectors
-                               validate, vectors schema --check, trace --scope m0 --strict
+                               validate, vectors schema --check, trace --scope m0 --strict,
+                               changelog check
 ";
 
 fn run(args: &[&str]) -> Result<usize, String> {
@@ -53,6 +59,9 @@ fn run(args: &[&str]) -> Result<usize, String> {
         ["symbols"] => binaries::symbols(),
         ["stack-sizes", target] => binaries::stack_sizes(target),
         ["coverage"] => coverage::run(),
+        ["changelog", "check"] => changelog::check(),
+        ["changelog", "show"] => changelog::show(),
+        ["changelog", "release", version, date] => changelog::release(version, date),
         ["ci"] => {
             let mut failed = 0;
             for step in [
@@ -62,6 +71,7 @@ fn run(args: &[&str]) -> Result<usize, String> {
                 vectors::validate,
                 || vectors::schema(true),
                 || trace::run(Some("m0"), true),
+                changelog::check,
             ] {
                 failed += step()?;
             }

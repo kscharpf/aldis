@@ -57,6 +57,7 @@ Clippy runs with the `all` and `pedantic` groups denied, plus restriction lints 
 - **Traceability:** every public item's docs cite the CCSDS clause and requirement IDs it implements (RS-015). Every test names the requirements it covers with a `// req: <ID>` comment (VER-020).
 - **Verification records:** requirements verified by a CI check or by review (method A/I) are listed in [docs/verification/analysis-records.md](docs/verification/analysis-records.md).
 - **Test vectors** in [`test-vectors/`](test-vectors/README.md) are shared with future C/C++ and binding implementations. Follow [docs/07-test-vectors.md](docs/07-test-vectors.md). Record provenance, and never edit a released vector: add a new case and mark the old one `superseded`.
+- **Changelog:** never edit `CHANGELOG.md` in a pull request. Add one fragment file to [`changelog.d/`](changelog.d/README.md), named after the branch; `cargo xtask changelog check` validates it.
 - **Errors** use the stable catalogue in [docs/03-api-model.md](docs/03-api-model.md) §9. Do not renumber error codes.
 - **C ABI names** use the `aldis_` / `ALDIS_` prefix ([docs/profiles/c-abi.md](docs/profiles/c-abi.md)).
 - **Spec changes:** when behavior changes, update the requirement table in the same change. New requirements get the next free ID in their area; IDs are never reused.

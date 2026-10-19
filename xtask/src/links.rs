@@ -9,7 +9,14 @@ pub fn check() -> Result<usize, String> {
     let mut count = 0;
     for path in repo::files(".", &["md"]) {
         let text = repo::read(&path)?;
-        let dir = path.parent().unwrap_or(&root).to_path_buf();
+        // Changelog fragments are copied into the root `CHANGELOG.md`, so their links are
+        // written relative to the root.
+        let rel = repo::rel(&path);
+        let dir = if rel.starts_with("changelog.d/") && rel != "changelog.d/README.md" {
+            root.clone()
+        } else {
+            path.parent().unwrap_or(&root).to_path_buf()
+        };
         for (n, line) in text.lines().enumerate() {
             let mut rest = line;
             while let Some(start) = rest.find("](") {

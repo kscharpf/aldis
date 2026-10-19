@@ -4,45 +4,7 @@ All notable changes to Aldis are recorded here. The format follows [Keep a Chang
 
 ## [Unreleased]
 
-### Added
-- VER-055: every tool and document the specification depends on is free for this project; no commercial tools or purchased documents. PR template checklist item.
-- Unified roadmap ([docs/08-roadmap.md](docs/08-roadmap.md)): three v1 tracks, Rust reference (M0–M6), native C++ (C0–C5), and reference application (A0–A6), with entry gates, an overlap table, release rules, and rules for working on the tracks in parallel. `AGENTS.md` points contributors and agents to their track.
-- Spec: a native C++ implementation is developed alongside the Rust crates for legacy flight software; the Rust crates stay the reference and the recommended choice. New draft [C++ profile](docs/profiles/cpp.md) (area CPP: CPP-001…CPP-061), VER-053 (differential testing of native implementations against the Rust reference), VER-054 (shared property-test strategies), and OI-19…OI-22 (C++ standard, capacities in the C++ API, C ABI for the M1 codecs, C++ static analysis tools).
-- RS-020 (Rust profile) and an `AGENTS.md` rule: parse, don't validate. The violations found by the audit (#22) are fixed; see **Changed**.
-- `aldis-epp`: `DataUnit`, a user data unit checked against the managed parameters by `EppConfig::data_unit`; `EppConfig::header` sizes a checked packet's header from its length. `encode` takes a `&DataUnit` and `EncapsulationWriter::begin` takes the `EppConfig`, so the sending-end check of 133.1 §4.2.1.1.2 cannot be skipped (EPP-010). `EncapsulationFields` has private fields and the constructors `new`, `extended`, `with_user_defined`, and `from_parts`; `EpiSet::from_bits`, `ExtendedEpiSet::from_bits`.
-- `aldis-time`: `ReservedPField` (wrapped by `TimeCode::Unknown`), `TimeCodeId::{Reserved000, Reserved011, Reserved111}` and `is_reserved`, and `Cuc::from_seconds_nanos` returning a `Cuc` (replacing `CucValue::from_seconds_nanos`).
-- `aldis-time` value types follow parse, don't validate: every field of `CcsValue` and `CdsValue` is a type that can hold only values 301.0 allows, decoders parse each field into its type as they read it, and `Ccs::new` / `Cds::new` check only the fit to the format (variation, sub-second digits, day segment length, resolution).
-- `aldis-time` binary codes (M1 WP-1, part 1): P-field parsing with undefined-extension handling (`PField`, `PFieldTail`, `TimeCodeId`); CUC (`CucFormat`, `CucValue` with left-aligned fine time and nanosecond conversions, `Cuc`); CDS (`CdsFormat`, `CdsValue`, `Cds`, with range-checked `MsOfDay`, `Micros`, `Picos`, and `SubMillis`); CCS (`CcsFormat`, `CcsValue`, `Ccs`); range-checked calendar fields `Year`, `Month`, `Hour`, `Minute`, `Second`, and `CalendarDate`, which exists only for real dates (module `calendar`); agency-defined codes (`AgencyFormat`, `Agency`); `decode_with_pfield`, `decode_implicit`, `TimeCode::encode`. TIME-001…TIME-006, TIME-010…TIME-014, TIME-020…TIME-022, TIME-030, TIME-034.
-- TIME-005, TIME-006, and `TimeAnomaly::UndefinedPFieldExtension` (bit 3); TIME-021, TIME-030, and TIME-033 clarified (OI-18).
-- Vectors `test-vectors/time/{pfield,cuc,cds,ccs}.json`; fuzz targets `time_pfield`, `time_cuc`, `time_cds`, `time_ccs`; `aldis-time` joins the coverage gate, the nightly mutants job, and the exerciser.
-- `aldis-epp` (M1 WP-3): CCSDS 133.1-B-3 Encapsulation Packet codec. Zero-copy `EncapsulationPacket::decode` (strict and lenient) and `peek_length` for all four header lengths; owned `EncapsulationHeader`; one-shot `encode` with the `HeaderSize::{Auto, Fixed}` policy, the two-phase `EncapsulationWriter`, and `idle`; managed parameters `EppConfig` with caller-supplied `EpiSet` and `ExtendedEpiSet` (no SANA registry, D4). EPP-001…EPP-012.
-- EPP-012 and the EPP-008/EPP-010 clarifications recorded in OI-17.
-- Vectors `test-vectors/epp/` (8 files, hand-derived from an independent model of 133.1-B-3); fuzz targets `epp_decode` and `epp_roundtrip`; `aldis-epp` joins the coverage gate, the nightly mutants job, and the exerciser.
-- `aldis-core::mode`: `DecodeMode { Strict, Lenient }`, default `Strict` (API-030; M1 D1).
-- `aldis-core::anomaly`: `Anomaly` trait (stable bit index per flag), `CAPACITY` (32), and `AnomalySet<A>`, a `Copy` bit set with `empty`, `from_flags`, `insert`, `contains`, `iter`, `is_empty`, `len`, `bits` (GEN-043; M1 D1). Re-exported at the crate root with `DecodeMode`.
-- `aldis_core::anomaly_flags!`: declares a `#[non_exhaustive]` flag enum (GEN-081) with its `Anomaly` impl and `ALL` from one table; out-of-range or duplicate bit indices fail to compile.
-- Anomaly flag enums `TimeAnomaly`, `SppAnomaly`, and `EppAnomaly` in the codec crates, with bit indices listed in the standard documents (API-033). Bit 1 of `TimeAnomaly` and bit 2 of `EppAnomaly` are reserved and never raised (OI-15, OI-16).
-- TIME-034 (CCS day-of-year high nibble). TIME-002, TIME-003, TIME-020, SPP-004, EPP-005, and API-032 clarified by OI-15 and OI-16.
-- Fuzz target `anomaly_set_model` (VER-022).
-- `aldis-core::bits`: big-endian `read_u32`, `write_u32`, `read_u64`, `write_u64` octet helpers alongside `read_u16`/`write_u16`.
-- `aldis-core::crc`: `PRESET` constant and incremental `crc16_update`, `crc16_update_bitwise`, `crc16_update_table` functions (CMN-001…004).
-- `aldis-core::ids`: `MAX` constants and `From<Id>` conversions for `Apid`, `SeqCount`, `FrameSeqNum`, and `PacketVersion`; infallible `SeqCount::classify`, `FrameSeqNum::classify`, and `From<{SeqCount, FrameSeqNum}> for ModCounter` (CMN-031).
-- `aldis-core::container`: `FixedVec::{as_mut_slice, capacity, is_full}`, `PartialEq`/`Eq` on `FixedVec`, and `ByteQueue::clear`.
-- `as_conversions = "deny"` in `[workspace.lints.clippy]` (VER-001).
-- Selected Clippy nursery lints denied in every lint table: `missing_const_for_fn`, `derive_partial_eq_without_eq`, `too_long_first_doc_paragraph`, `redundant_clone`. The nursery group stays off, and each lint considered is recorded with its decision in `docs/profiles/rust.md` §5 (RS-019).
-
-### Changed
-- **Breaking (RS-020):** `aldis-core::security::FrameCtx` is a `#[non_exhaustive]` enum with one variant per protocol carrying typed `SpacecraftId`, `VcId`, and `MapId` (accessors `protocol`, `scid`, `vcid`, `map_id`); `SecuredFields` has private ranges with `new` (checks order and adjacency) and `from_layout`; `FrameLayout` has private fields with accessors and `frame_len`; the `Anomaly` trait is sealed, implemented by `anomaly_flags!`.
-- OI-22 resolved (maintainer): free tooling only. VER-052 now requires SEI CERT C++ and AUTOSAR C++14 instead of MISRA C++:2023, and VER-051 SEI CERT C instead of MISRA C:2012. CPP-043 names the CodeQL Coding Standards packs and clang-tidy `cert-*`; NASA IKOS is evaluated in C0.
-- Roadmap: every Rust milestone defines the C ABI for what it adds (engine handles from M3, not M5); M2 WP-0 adds the M1 codecs' C ABI and the shared strategies (VER-054); M5 becomes C ABI completion; the end-to-end demo moves from M6 to the reference application (A6).
-- OI-19, OI-20, and OI-21 resolved (maintainer): C++20, engine capacities as template parameters, and the M1 C ABI slice in M2 WP-0. CPP-001, CPP-022, CPP-024, and CABI-072 updated; the C++11 form of CABI-072 is dropped.
-- Spec for the native C++ track: CABI-070 (native C++ also exposes `aldis.h`, used by the differential tests), CABI-071 (native implementations pass VER-053), CABI-072 (`alignas` storage instead of the deprecated `std::aligned_storage`; standard and capacities open in OI-19/OI-20), VER-052 (MISRA C++:2023), VER-023 (inputs from the shared strategies), GEN-071, VER-002, and RS-017 (`unsafe` allowed in the dev-only differential-test bridge). Roadmap: native C++ moves to phase 1, and the codec part of the C ABI is defined with each codec's milestone (§3.1).
-- **Breaking:** `aldis` facade crate no longer enables `core` by default (`default = []`), matching `docs/profiles/rust.md` §2; enable `core` or `full` explicitly.
-- **Breaking:** `aldis-core::ids`: `FrameSeqNum`'s inner `u8` field is now private (use `FrameSeqNum::new` or `From<u8>`, and `FrameSeqNum::get` or `u8::from`), matching the other identifier types (RS-010); `SpacecraftId`, `VcId`, and `MapId` `TryFrom` errors now report snake_case `FieldId`s (`"spacecraft_id"`, `"vc_id"`, `"map_id"`) instead of type names (API-041).
-- `aldis-core::security`: `SecurityLayout::new` is now a `const fn` (RS-012), `SecurityLayout::MAX_TRAILER_LEN` is public alongside `MAX_HEADER_LEN` (API-070, API-071), and `Protocol` is `#[non_exhaustive]` (GEN-081).
-- Now `const fn`: `AnomalySet::iter`, `ByteQueue::clear`, `FixedVec::clear`, and `ModCounter::increment` in `aldis-core`; `CdsFormat::t_len` and `TimeCode::format` in `aldis-time` (RS-019).
-- `aldis-testkit` model and runner types now derive `Eq` (RS-019).
-- Forwarded `alloc`, `std`, and protocol sub-features across `aldis`, `aldis-spp`, `aldis-link`, `aldis-cop1`, `aldis-framework`, and `aldis-ffi`.
+Changes merged since the last release are kept as one file per pull request in [`changelog.d/`](changelog.d/README.md). `cargo xtask changelog show` lists them; `cargo xtask changelog release` moves them here.
 
 ## [0.1.0-m0] — 2026-10-16
 
