@@ -3,7 +3,7 @@
 
 use aldis_core::{Error, Result};
 
-use crate::header::{EncapsulationFields, EncapsulationHeader, HeaderSize, invalid};
+use crate::header::{EncapsulationFields, EncapsulationHeader, HeaderSize, invalid, len_u64};
 
 /// Encodes one packet carrying `data` into the start of `out`; returns the total length
 /// (EPP-008, API-020, API-021).
@@ -20,7 +20,7 @@ pub fn encode(
     let header = EncapsulationHeader::for_data(fields, size, data.len())?;
     let total = header.header_len().octets().saturating_add(data.len());
     let dst = out.get_mut(..total).ok_or(Error::buffer_too_small(total))?;
-    put_header(dst, &header);
+    header.write_to(dst);
     for (d, s) in dst.iter_mut().skip(header.header_len().octets()).zip(data) {
         *d = *s;
     }
@@ -38,7 +38,7 @@ pub fn idle(total_len: usize, fill: u8, out: &mut [u8]) -> Result<usize> {
     let dst = out
         .get_mut(..total_len)
         .ok_or(Error::buffer_too_small(total_len))?;
-    put_header(dst, &header);
+    header.write_to(dst);
     for d in dst.iter_mut().skip(header.header_len().octets()) {
         *d = fill;
     }
@@ -58,39 +58,26 @@ pub struct EncapsulationWriter<'b> {
     max_data_len: usize,
 }
 
-/// Copies the octets of `header` into the start of `out`, which the caller has sized.
-fn put_header(out: &mut [u8], header: &EncapsulationHeader) {
-    let n = header.header_len().octets();
-    for (d, s) in out.iter_mut().zip(header.octets()).take(n) {
-        *d = s;
-    }
-}
-
 impl<'b> EncapsulationWriter<'b> {
     /// Reserves a packet with `fields` and room for up to `max_data_len` data octets. Under
     /// [`HeaderSize::Auto`] the header is the smallest that fits `max_data_len`.
     ///
     /// # Errors
-    /// As for [`EncapsulationHeader::for_data`] with `max_data_len` (at least 1 for a non-idle
-    /// EPI), and `BufferTooSmall` if `out` cannot hold the header and `max_data_len` data
-    /// octets. On error `out` is unchanged.
+    /// As for [`EncapsulationHeader::for_data`] with `max_data_len`, so `InvalidField` (`epi`) if
+    /// `max_data_len` is 0 for a non-idle EPI, which could never finish (EPP-005); and
+    /// `BufferTooSmall` if `out` cannot hold the header and `max_data_len` data octets. On error
+    /// `out` is unchanged.
     pub fn begin(
         out: &'b mut [u8],
         fields: EncapsulationFields,
         size: HeaderSize,
         max_data_len: usize,
     ) -> Result<EncapsulationWriter<'b>> {
-        // `finish` rejects an empty non-idle packet; size the header for at least one octet.
-        let sized_for = if fields.epi.is_idle() {
-            max_data_len
-        } else {
-            max_data_len.max(1)
-        };
-        let header = EncapsulationHeader::for_data(fields, size, sized_for)?;
+        let header = EncapsulationHeader::for_data(fields, size, max_data_len)?;
         let total = header.header_len().octets().saturating_add(max_data_len);
         let buf = out.get_mut(..total).ok_or(Error::buffer_too_small(total))?;
         // Packet Length 0 until `finish` (API-023).
-        put_header(buf, &header.with_packet_len(0));
+        header.with_packet_len(0).write_to(buf);
         Ok(EncapsulationWriter {
             out,
             header,
@@ -98,7 +85,8 @@ impl<'b> EncapsulationWriter<'b> {
         })
     }
 
-    /// The data field to fill: `max_data_len` octets after the header.
+    /// The data field to fill in place: `max_data_len` octets after the header (API-020,
+    /// GEN-014).
     pub fn data_mut(&mut self) -> &mut [u8] {
         let start = self.header.header_len().octets();
         let end = start.saturating_add(self.max_data_len);
@@ -115,8 +103,8 @@ impl<'b> EncapsulationWriter<'b> {
         if data_len > self.max_data_len {
             return Err(Error::out_of_range(
                 "data_len",
-                u64::try_from(self.max_data_len).unwrap_or(u64::MAX),
-                u64::try_from(data_len).unwrap_or(u64::MAX),
+                len_u64(self.max_data_len),
+                len_u64(data_len),
             ));
         }
         if data_len == 0 && !self.header.epi().is_idle() {
@@ -125,7 +113,7 @@ impl<'b> EncapsulationWriter<'b> {
         // Fits: `begin` checked the header against `max_data_len` ≥ `data_len`.
         let total = self.header.header_len().octets().saturating_add(data_len);
         let packet_len = u32::try_from(total).unwrap_or(u32::MAX);
-        put_header(self.out, &self.header.with_packet_len(packet_len));
+        self.header.with_packet_len(packet_len).write_to(self.out);
         Ok(total)
     }
 }
@@ -207,7 +195,13 @@ mod tests {
                 }
             )
         );
-        let w = EncapsulationWriter::begin(&mut out, MISSION, HeaderSize::Auto, 0).unwrap();
+        // A non-idle reservation of 0 octets could never finish: rejected up front (EPP-005).
+        let e = EncapsulationWriter::begin(&mut out, MISSION, HeaderSize::Auto, 0).unwrap_err();
+        assert_eq!(
+            (e.kind(), e.field().map(aldis_core::FieldId::name)),
+            (ErrorKind::InvalidField, Some("epi"))
+        );
+        let w = EncapsulationWriter::begin(&mut out, MISSION, HeaderSize::Auto, 2).unwrap();
         assert_eq!(w.finish(0).unwrap_err().kind(), ErrorKind::InvalidField);
         let idle_fields = EncapsulationFields::new(Epi::IDLE);
         let w = EncapsulationWriter::begin(&mut out, idle_fields, HeaderSize::Auto, 0).unwrap();

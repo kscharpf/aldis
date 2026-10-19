@@ -118,6 +118,11 @@ fn run(case: &CodecCase) -> Result<Value, Error> {
             let bytes = input(case);
             EncapsulationPacket::decode(&bytes, mode(case)).map(|p| decoded(&p))
         }
+        "reencode_header" => {
+            let bytes = input(case);
+            let p = EncapsulationPacket::decode(&bytes, mode(case))?;
+            Ok(json!({ "header_hex": header_hex(&p.header()) }))
+        }
         "peek_length" => {
             EncapsulationPacket::peek_length(&input(case)).map(|n| json!({ "len": n }))
         }

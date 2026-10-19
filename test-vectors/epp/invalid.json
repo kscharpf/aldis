@@ -246,6 +246,20 @@
       }
     },
     {
+      "id": "epp-inv-026",
+      "requirements": [
+        "API-013",
+        "EPP-005"
+      ],
+      "description": "peek_length rejects an empty data field with EPI 001, as decode does",
+      "operation": "peek_length",
+      "input_hex": "E502",
+      "expect": {
+        "ok": false,
+        "error": "InvalidField"
+      }
+    },
+    {
       "id": "epp-inv-015",
       "requirements": [
         "API-013"

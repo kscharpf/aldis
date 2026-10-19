@@ -157,6 +157,37 @@
       }
     },
     {
+      "id": "epp-h8-reenc-001",
+      "requirements": [
+        "GEN-052",
+        "EPP-006",
+        "EPP-007"
+      ],
+      "description": "Lenient header with extension 1 under EPI 001 and CCSDS Defined 0x1234 re-encodes with both zero",
+      "operation": "reencode_header",
+      "mode": "lenient",
+      "input_hex": "E70112340000000901",
+      "expect": {
+        "ok": true,
+        "header_hex": "E700000000000009"
+      }
+    },
+    {
+      "id": "epp-h8-reenc-002",
+      "requirements": [
+        "GEN-052",
+        "EPP-007"
+      ],
+      "description": "EPI 110 keeps its extension on re-encode; the CCSDS Defined Field is zeroed",
+      "operation": "reencode_header",
+      "mode": "lenient",
+      "input_hex": "FB0500010000000901",
+      "expect": {
+        "ok": true,
+        "header_hex": "FB05000000000009"
+      }
+    },
+    {
       "id": "epp-h8-enc-001",
       "requirements": [
         "EPP-008",

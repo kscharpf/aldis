@@ -3,7 +3,7 @@
 **Goal:** complete, verified Layer 1 codecs for time codes, Space Packets, and Encapsulation Packets: `aldis-time`, `aldis-spp`, and `aldis-epp`. They are verified to the same standard as `aldis-core` in M0: vectors, panic freedom on bare metal, 100 % coverage, fuzzing, and cross-checks.
 **Roadmap entry:** [08-roadmap.md](../08-roadmap.md) §1 · **Builds on:** [M0](m0-foundations.md) (`v0.1.0-m0`) · **Release:** `v0.2.0-m1`
 
-**Status: in progress (2026-10-17).** Decisions D1–D8 accepted 2026-10-17. WP-0 is implemented on `m1/core` (PR #17, in review). OI-15 and OI-16 resolved 2026-10-18. WP-3 (`aldis-epp`) is implemented on `m1/epp` (PR #18). WP-1 part 1 (P-field, CUC, CDS, CCS) is implemented on `m1/time`; ASCII and conversions follow. `cargo xtask trace --scope m1` puts 89 requirements in scope; 27 are traced: the M0 `aldis-core` and CI artefacts, plus API-030, API-033, and GEN-043 from WP-0.
+**Status: in progress (2026-10-17).** Decisions D1–D8 accepted 2026-10-17. WP-0 is implemented on `m1/core` (PR #17, in review). OI-15 and OI-16 resolved 2026-10-18. WP-3 (`aldis-epp`) is implemented on `m1/epp` (PR #18). WP-1 part 1 (P-field, CUC, CDS, CCS) is implemented on `m1/time` (PR #19); ASCII and conversions follow. `cargo xtask trace --scope m1` puts 91 requirements in scope; 72 are traced: the M0 `aldis-core` and CI artefacts, WP-0, WP-3 (EPP-001…EPP-012 and the codec contract requirements its tests cover), and WP-1 part 1 (TIME-001…TIME-006, TIME-010…TIME-014, TIME-020…TIME-022, TIME-030, TIME-034).
 
 ## 1. Starting point
 
