@@ -247,11 +247,14 @@ private:
     ErrorDetail detail_;
 };
 
-/// A type `Result<T>` can hold: trivially copyable and destructible, so `Result` stays a literal,
-/// trivially copyable type (D8).
+/// Trivially copyable and destructible, so that a `Result` holding it stays a literal, trivially
+/// copyable type (D8).
 template <typename T>
-concept ResultValue = std::is_trivially_copyable_v<T> && std::is_trivially_destructible_v<T> && !
-std::is_reference_v<T> && !std::is_same_v<std::remove_cv_t<T>, Error>;
+concept TrivialValue = std::is_trivially_copyable_v<T> && std::is_trivially_destructible_v<T>;
+
+/// A type `Result<T>` holds as its value: trivial, and neither a reference nor `Error` (D8).
+template <typename T>
+concept ResultValue = TrivialValue<T> && !std::is_reference_v<T> && !std::is_same_v<T, Error>;
 
 /// The value of a fallible operation, or its `Error` (CPP-021, GEN-040).
 ///

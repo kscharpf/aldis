@@ -99,11 +99,11 @@ TEST(Anomaly, ConceptKeepsTheInvariants) {
     static_assert(!Anomaly<NoTraits>, "a type without a table is rejected");
     static_assert(!Anomaly<int>);
     // The same checks at run time, so that coverage sees them.
-    EXPECT_TRUE(aldis::core::detail::valid_anomaly_table<Demo>());
-    EXPECT_TRUE(aldis::core::detail::valid_anomaly_table<Flag>());
-    EXPECT_FALSE(aldis::core::detail::valid_anomaly_table<TooHigh>());
-    EXPECT_FALSE(aldis::core::detail::valid_anomaly_table<Twice>());
-    EXPECT_FALSE(aldis::core::detail::valid_anomaly_table<Repeated>());
+    EXPECT_TRUE(aldis::core::detail::valid_table<Demo>());
+    EXPECT_TRUE(aldis::core::detail::valid_table<Flag>());
+    EXPECT_FALSE(aldis::core::detail::valid_table<TooHigh>());
+    EXPECT_FALSE(aldis::core::detail::valid_table<Twice>());
+    EXPECT_FALSE(aldis::core::detail::valid_table<Repeated>());
 }
 
 TEST(Anomaly, TableMapsBothWays) {

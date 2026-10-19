@@ -240,13 +240,9 @@ private:
 template <typename H>
 concept SecurityHook = requires(H& hook, const FrameCtx& ctx, std::span<std::byte> frame,
                                 const SecuredFields& fields) {
-                           {
-                               hook.protect(ctx, frame, fields)
-                               } noexcept -> std::same_as<Result<void>>;
-                           {
-                               hook.verify(ctx, frame, fields)
-                               } noexcept -> std::same_as<Result<OctetRange>>;
-                       };
+    { hook.protect(ctx, frame, fields) } noexcept -> std::same_as<Result<void>>;
+    { hook.verify(ctx, frame, fields) } noexcept -> std::same_as<Result<OctetRange>>;
+};
 
 /// The identity hook for channels without SDLS (layout 0/0; API-073).
 class NoSecurity {

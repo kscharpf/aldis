@@ -45,7 +45,7 @@ template <typename A> struct AnomalyTraits;
 namespace detail {
 
 /// Whether the table of `A` keeps the invariants: every index below 32, no index or flag twice.
-template <typename A> constexpr bool valid_anomaly_table() noexcept {
+template <typename A> constexpr bool valid_table() noexcept {
     std::uint32_t seen = 0;
     const auto& flags = AnomalyTraits<A>::flags;
     std::size_t i = 0;
@@ -72,13 +72,20 @@ template <typename A> constexpr bool valid_anomaly_table() noexcept {
 
 } // namespace detail
 
+namespace detail {
+
+/// Whether `AnomalyTraits<A>` is specialized with a `flags` table.
+template <typename A, typename = void>
+inline constexpr bool has_anomaly_table = false;
+
+template <typename A>
+inline constexpr bool has_anomaly_table<A, std::void_t<decltype(AnomalyTraits<A>::flags)>> = true;
+
+} // namespace detail
+
 /// A lenient-mode anomaly flag: an `enum class` with a valid `AnomalyTraits` table (GEN-043).
 template <typename A>
-concept Anomaly = std::is_enum_v<A> && requires {
-                                           {
-                                               AnomalyTraits<A>::flags.size()
-                                               } -> std::convertible_to<std::size_t>;
-                                       } && detail::valid_anomaly_table<A>();
+concept Anomaly = std::is_enum_v<A> && detail::has_anomaly_table<A> && detail::valid_table<A>();
 
 namespace anomaly {
 

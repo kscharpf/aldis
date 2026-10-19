@@ -23,8 +23,7 @@ namespace aldis::core::arith {
 
 /// An unsigned integer type other than `bool`.
 template <typename T>
-concept Unsigned = std::unsigned_integral<T> && !
-std::same_as<T, bool>;
+concept Unsigned = std::unsigned_integral<T> && !std::same_as<T, bool>;
 
 /// Number of value bits of `T`.
 template <Unsigned T>

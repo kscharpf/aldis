@@ -18,7 +18,6 @@
 #include "aldis/core/error.hpp"
 
 #include <array>
-#include <concepts>
 #include <cstddef>
 #include <cstdint>
 #include <limits>
@@ -303,12 +302,9 @@ public:
     /// Removes all items.
     constexpr void clear() noexcept { len_ = 0; }
 
-    /// Equal when the stored items are equal; slots beyond `len()` are ignored.
-    friend constexpr bool operator==(const FixedVec& a, const FixedVec& b) noexcept
-        requires requires(const T& x) {
-                     { x == x } -> std::convertible_to<bool>;
-                 }
-    {
+    /// Equal when the stored items are equal; slots beyond `len()` are ignored. Needs `T == T`
+    /// only where it is used.
+    friend constexpr bool operator==(const FixedVec& a, const FixedVec& b) noexcept {
         return bytes::equal(a.as_span(), b.as_span());
     }
 
