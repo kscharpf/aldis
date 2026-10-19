@@ -18,6 +18,7 @@ Never write protocol values from memory. Look them up in the Blue Book. Registry
 - No `unsafe` outside `aldis-ffi` (GEN-070). Every `unsafe` block there needs a `// SAFETY:` comment.
 - No third-party runtime dependencies in Layers 0–2 (GEN-001).
 - Layering: a crate may depend only on lower layers ([docs/01-architecture.md](docs/01-architecture.md) §2).
+- **Parse, don't validate** (RS-020): make invalid values unrepresentable. Give every field with a restricted range its own type with a checked constructor, keep fields private when a constraint spans them, and check untrusted input once, where it becomes the type. A constructor may check only the relation between values that are each already valid, such as a value fitting a format. Do not add `validate`/`check` functions that re-examine a value the type could have guaranteed.
 
 ## Toolchain and checks
 
