@@ -5,6 +5,7 @@ All notable changes to Aldis are recorded here. The format follows [Keep a Chang
 ## [Unreleased]
 
 ### Added
+- VER-055: every tool and document the specification depends on is free for this project; no commercial tools or purchased documents. PR template checklist item.
 - Unified roadmap ([docs/08-roadmap.md](docs/08-roadmap.md)): three v1 tracks, Rust reference (M0–M6), native C++ (C0–C5), and reference application (A0–A6), with entry gates, an overlap table, release rules, and rules for working on the tracks in parallel. `AGENTS.md` points contributors and agents to their track.
 - Spec: a native C++ implementation is developed alongside the Rust crates for legacy flight software; the Rust crates stay the reference and the recommended choice. New draft [C++ profile](docs/profiles/cpp.md) (area CPP: CPP-001…CPP-061), VER-053 (differential testing of native implementations against the Rust reference), VER-054 (shared property-test strategies), and OI-19…OI-22 (C++ standard, capacities in the C++ API, C ABI for the M1 codecs, C++ static analysis tools).
 - RS-020 (Rust profile) and an `AGENTS.md` rule: parse, don't validate. The violations found by the audit (#22) are fixed; see **Changed**.
@@ -32,6 +33,7 @@ All notable changes to Aldis are recorded here. The format follows [Keep a Chang
 
 ### Changed
 - **Breaking (RS-020):** `aldis-core::security::FrameCtx` is a `#[non_exhaustive]` enum with one variant per protocol carrying typed `SpacecraftId`, `VcId`, and `MapId` (accessors `protocol`, `scid`, `vcid`, `map_id`); `SecuredFields` has private ranges with `new` (checks order and adjacency) and `from_layout`; `FrameLayout` has private fields with accessors and `frame_len`; the `Anomaly` trait is sealed, implemented by `anomaly_flags!`.
+- OI-22 resolved (maintainer): free tooling only. VER-052 now requires SEI CERT C++ and AUTOSAR C++14 instead of MISRA C++:2023, and VER-051 SEI CERT C instead of MISRA C:2012. CPP-043 names the CodeQL Coding Standards packs and clang-tidy `cert-*`; NASA IKOS is evaluated in C0.
 - Roadmap: every Rust milestone defines the C ABI for what it adds (engine handles from M3, not M5); M2 WP-0 adds the M1 codecs' C ABI and the shared strategies (VER-054); M5 becomes C ABI completion; the end-to-end demo moves from M6 to the reference application (A6).
 - OI-19, OI-20, and OI-21 resolved (maintainer): C++20, engine capacities as template parameters, and the M1 C ABI slice in M2 WP-0. CPP-001, CPP-022, CPP-024, and CABI-072 updated; the C++11 form of CABI-072 is dropped.
 - Spec for the native C++ track: CABI-070 (native C++ also exposes `aldis.h`, used by the differential tests), CABI-071 (native implementations pass VER-053), CABI-072 (`alignas` storage instead of the deprecated `std::aligned_storage`; standard and capacities open in OI-19/OI-20), VER-052 (MISRA C++:2023), VER-023 (inputs from the shared strategies), GEN-071, VER-002, and RS-017 (`unsafe` allowed in the dev-only differential-test bridge). Roadmap: native C++ moves to phase 1, and the codec part of the C ABI is defined with each codec's milestone (§3.1).
