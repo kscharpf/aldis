@@ -167,12 +167,17 @@ impl Spec {
     }
 }
 
+/// Extensions of C++ sources and headers (CPP-057).
+pub const CPP_EXTENSIONS: &[&str] = &["hpp", "cpp", "h"];
+
 /// Text files scanned for references to requirement IDs.
 pub fn referencing_files() -> Vec<std::path::PathBuf> {
     let mut files = repo::files(
         ".",
         &["md", "rs", "json", "jsonl", "yml", "yaml", "toml", "py"],
     );
+    // C++ sources and headers, so a C++ test cannot cite an undefined ID (CPP-057).
+    files.extend(repo::files(".", CPP_EXTENSIONS));
     files.retain(|p| !repo::rel(p).starts_with("test-vectors/schema/"));
     files
 }
@@ -251,4 +256,25 @@ pub fn lint() -> Result<usize, String> {
         problems.len()
     );
     Ok(problems.len())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{CPP_EXTENSIONS, referencing_files};
+    use crate::repo;
+
+    #[test]
+    fn cpp_sources_are_checked_for_requirement_ids() {
+        // req: CPP-057
+        let scanned: Vec<String> = referencing_files().iter().map(|p| repo::rel(p)).collect();
+        let cpp = repo::files("cpp", CPP_EXTENSIONS);
+        assert!(!cpp.is_empty(), "no C++ files under cpp/");
+        for path in cpp {
+            assert!(
+                scanned.contains(&repo::rel(&path)),
+                "{} not scanned",
+                repo::rel(&path)
+            );
+        }
+    }
 }

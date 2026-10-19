@@ -5,13 +5,17 @@
 //! GEN-003  aldis-spp alone pulls in no frame-protocol crate.
 //! GEN-004  Layer 3: third-party runtime dependencies only behind non-default features.
 //! Tooling crates (std, dev-only) may be used by library crates only as dev-dependencies.
+//!
+//! The layer table is shared with `xtask cpp layers`, which applies the same rules to the C++
+//! modules (CPP-010).
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::process::Command;
 
 use serde_json::Value;
 
-const LAYERS: &[(&str, u8)] = &[
+/// Layer of each library crate (docs/01-architecture.md §2).
+pub const LAYERS: &[(&str, u8)] = &[
     ("aldis-core", 0),
     ("aldis-time", 1),
     ("aldis-spp", 1),
@@ -24,9 +28,11 @@ const LAYERS: &[(&str, u8)] = &[
     ("aldis-cop1", 2),
     ("aldis-framework", 3),
 ];
-const BOUNDARY: &[&str] = &["aldis", "aldis-ffi"];
+/// Boundary crates: they may depend on every layer, and nothing depends on them.
+pub const BOUNDARY: &[&str] = &["aldis", "aldis-ffi"];
 const TOOLING: &[&str] = &["aldis-testkit", "xtask"];
-const SAME_LAYER_ALLOWED: &[(&str, &str)] = &[("aldis-spp", "aldis-time")];
+/// The GEN-002 exceptions: same-layer dependencies that are allowed.
+pub const SAME_LAYER_ALLOWED: &[(&str, &str)] = &[("aldis-spp", "aldis-time")];
 const FRAME_CRATES: &[&str] = &[
     "aldis-tm",
     "aldis-tc",

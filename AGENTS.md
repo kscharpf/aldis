@@ -50,6 +50,16 @@ cargo clippy --manifest-path fuzz/Cargo.toml --all-targets               # fuzz 
 
 A failed exerciser link with `undefined symbol: aldis_panic_is_unreachable` means a panic path is reachable in `aldis-core`. Remove it; do not work around the check. Mark new test modules `#[cfg_attr(coverage_nightly, coverage(off))]`.
 
+When you change `cpp/` (the native C++ implementation, [C++ profile](docs/profiles/cpp.md)), use the toolchains pinned in `cpp/toolchains.lock`; every preset refuses another compiler. Also run:
+
+```sh
+(cd cpp && cmake --preset host-gcc && cmake --build --preset host-gcc && ctest --preset host-gcc)  # and host-clang
+cargo xtask cpp unsafe-optouts                 # bounds opt-outs only in aldis/core/bytes.hpp (CPP-031)
+cargo xtask cpp layers target/cpp/host-gcc     # CMake target graph (CPP-010)
+```
+
+CI (`.github/workflows/cpp.yml`) also runs clang-format, clang-tidy, the sanitizers, s390x, and the bare-metal builds. Suppress a warning or clang-tidy finding only on the smallest region, naming the check (CPP-042).
+
 When you change `refapp/` (track A), also run, from `refapp/` (see [refapp/README.md](refapp/README.md)):
 
 ```sh
@@ -83,3 +93,4 @@ Clippy runs with the `all` and `pedantic` groups denied, plus restriction lints 
 | Reference application (track A) | `refapp/` |
 | Requirements and design | `docs/` |
 | Conformance data | `test-vectors/` |
+| Native C++ implementation (track C) | `cpp/` ([cpp/README.md](cpp/README.md)) |

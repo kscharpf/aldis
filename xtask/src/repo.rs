@@ -62,6 +62,37 @@ pub fn files(dir: &str, exts: &[&str]) -> Vec<PathBuf> {
     out
 }
 
+/// All files under `dir` (relative to the root) whatever their name, sorted, skipping the
+/// same directories as [`files`] (used by `xtask cpp unsafe-optouts` for `.clang-tidy` and
+/// `CMakeLists.txt`).
+pub fn all_files(dir: &str) -> Vec<PathBuf> {
+    let root = root();
+    let mut out = Vec::new();
+    let mut stack = vec![root.join(dir)];
+    while let Some(d) = stack.pop() {
+        let Ok(entries) = std::fs::read_dir(&d) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let rel = rel(&path);
+            if SKIP
+                .iter()
+                .any(|s| rel == *s || rel.starts_with(&format!("{s}/")))
+            {
+                continue;
+            }
+            if path.is_dir() {
+                stack.push(path);
+            } else {
+                out.push(path);
+            }
+        }
+    }
+    out.sort();
+    out
+}
+
 /// Path relative to the repository root, with forward slashes.
 pub fn rel(path: &Path) -> String {
     path.strip_prefix(root())
