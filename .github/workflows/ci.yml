@@ -234,6 +234,9 @@ jobs:
       # The reference application's own workspace, same policy (APP-106): cargo-deny finds the
       # root deny.toml by searching upwards from refapp/Cargo.toml.
       - run: cargo deny --manifest-path refapp/Cargo.toml --all-features --log-level info check
+      # The cross-check workspace finds its own crosscheck/deny.toml first: the root policy plus
+      # the exceptions recorded in docs/verification/cross-checks.md §1.
+      - run: cargo deny --manifest-path crosscheck/Cargo.toml --all-features --log-level info check
 
   issue:
     name: open an issue on a nightly failure (VER-059)
