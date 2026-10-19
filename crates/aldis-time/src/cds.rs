@@ -7,7 +7,7 @@
 use aldis_core::{Error, ErrorKind, FieldId, Result};
 
 use crate::pfield::{PField, PFieldTail, TimeCodeId};
-use crate::util::{bounded, wide};
+use crate::util::{bounded, wide, widen16};
 
 /// Milliseconds of day allow one positive leap second: 0 to 86 400 999 (301.0 Annex A).
 pub const MAX_MS_OF_DAY: u32 = 86_400_999;
@@ -51,10 +51,10 @@ impl SubMillis {
 
     /// The segment value: microseconds, picoseconds, or 0 (301.0 §3.3.1).
     #[must_use]
-    pub fn get(self) -> u32 {
+    pub const fn get(self) -> u32 {
         match self {
             SubMillis::None => 0,
-            SubMillis::Micros(us) => u32::from(us.get()),
+            SubMillis::Micros(us) => widen16(us.get()),
             SubMillis::Picos(ps) => ps.get(),
         }
     }

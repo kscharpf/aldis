@@ -9,7 +9,7 @@
 use aldis_core::Result;
 
 use crate::ccs::CcsVariation;
-use crate::util::{bounded, out_of_bounds};
+use crate::util::{bounded, out_of_bounds, wide8, wide16};
 
 /// Gregorian leap year: divisible by 4, except centuries not divisible by 400 (301.0 Annex A).
 pub(crate) const fn is_leap(year: u16) -> bool {
@@ -65,6 +65,11 @@ enum Day {
 
 /// A date that exists: a year with a valid month and day of month, or a valid day of year
 /// (301.0 §3.4.1, Annex A; TIME-030).
+///
+/// Equality keeps the calendar variation: the same day built with
+/// [`from_month_day`](Self::from_month_day) and with
+/// [`from_day_of_year`](Self::from_day_of_year) compares unequal, because a CCS code carries the
+/// variation on the wire (301.0 §3.4.2 bit 4). It is not a chronological comparison.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct CalendarDate {
     year: Year,
@@ -77,10 +82,10 @@ impl CalendarDate {
     /// # Errors
     /// `OutOfRange` (`day`) unless `day` is 1 to the number of days in that month, with leap
     /// years for February (301.0 Annex A, TIME-030).
-    pub fn from_month_day(year: Year, month: Month, day: u8) -> Result<CalendarDate> {
+    pub const fn from_month_day(year: Year, month: Month, day: u8) -> Result<CalendarDate> {
         let last = days_in_month(year.0, month.0);
         if day == 0 || day > last {
-            return Err(out_of_bounds("day", day.into(), 1, last.into()));
+            return Err(out_of_bounds("day", wide8(day), 1, wide8(last)));
         }
         Ok(CalendarDate {
             year,
@@ -93,14 +98,14 @@ impl CalendarDate {
     /// # Errors
     /// `OutOfRange` (`day_of_year`) unless it is 1 to 365, or 366 in a leap year (301.0 Annex
     /// A, TIME-030).
-    pub fn from_day_of_year(year: Year, day_of_year: u16) -> Result<CalendarDate> {
+    pub const fn from_day_of_year(year: Year, day_of_year: u16) -> Result<CalendarDate> {
         let last = days_in_year(year.0);
         if day_of_year == 0 || day_of_year > last {
             return Err(out_of_bounds(
                 "day_of_year",
-                day_of_year.into(),
+                wide16(day_of_year),
                 1,
-                last.into(),
+                wide16(last),
             ));
         }
         Ok(CalendarDate {

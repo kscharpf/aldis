@@ -10,16 +10,19 @@ use crate::calendar::{CalendarDate, Hour, Minute, Month, Second, Year};
 use crate::pfield::{PField, PFieldTail, TimeCodeId};
 use crate::util::wide8;
 
-/// 10ⁿ for n = 0, 2, 4, …, 12: one past the largest sub-second value for 0–6 octets.
-const SUBSECOND_LIMIT: [u64; 7] = [
-    1,
-    100,
-    10_000,
-    1_000_000,
-    100_000_000,
-    10_000_000_000,
-    1_000_000_000_000,
-];
+/// One past the largest sub-second value for `octets` sub-second octets: 10^(2 × octets), for
+/// 0–6 octets (301.0 §3.4.2).
+const fn subsecond_limit(octets: u8) -> u64 {
+    match octets {
+        0 => 1,
+        1 => 100,
+        2 => 10_000,
+        3 => 1_000_000,
+        4 => 100_000_000,
+        5 => 10_000_000_000,
+        _ => 1_000_000_000_000,
+    }
+}
 
 /// Calendar variation (301.0 §3.4.2 bit 4).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -181,14 +184,15 @@ impl Ccs {
     /// `InvalidField` (`date`) if the date is not expressed in the format's calendar variation;
     /// `OutOfRange` (`subsecond`) if the sub-second value has more digits than the format's
     /// sub-second octets hold.
-    pub fn new(format: CcsFormat, value: CcsValue) -> Result<Ccs> {
-        if value.date.variation() != format.variation {
+    pub const fn new(format: CcsFormat, value: CcsValue) -> Result<Ccs> {
+        if !matches!(
+            (value.date.variation(), format.variation),
+            (CcsVariation::MonthDay, CcsVariation::MonthDay)
+                | (CcsVariation::DayOfYear, CcsVariation::DayOfYear)
+        ) {
             return Err(Error::new(ErrorKind::InvalidField).with_field(FieldId::new("date")));
         }
-        let limit = SUBSECOND_LIMIT
-            .get(usize::from(format.subsecond))
-            .copied()
-            .unwrap_or(1);
+        let limit = subsecond_limit(format.subsecond);
         if value.subsecond >= limit {
             return Err(Error::out_of_range(
                 "subsecond",
@@ -333,7 +337,7 @@ impl Ccs {
     reason = "test models on bounded values (RS-018)"
 )]
 mod tests {
-    use super::{Ccs, CcsFormat, CcsValue, CcsVariation, from_bcd, to_bcd};
+    use super::{Ccs, CcsFormat, CcsValue, CcsVariation, from_bcd, subsecond_limit, to_bcd};
     use crate::anomaly::TimeAnomaly;
     use crate::calendar::{CalendarDate, Hour, Minute, Month, Second, Year};
     use crate::pfield::{PField, PFieldTail};
@@ -481,6 +485,50 @@ mod tests {
                 found: 366
             }
         );
+    }
+
+    #[test]
+    fn subsecond_limits() {
+        // req: TIME-030
+        for octets in 0..=6_u8 {
+            assert_eq!(subsecond_limit(octets), 10_u64.pow(2 * u32::from(octets)));
+        }
+    }
+
+    #[test]
+    fn ccs_codes_are_const_constructible() {
+        // req: TIME-030, RS-012
+        const DATE: Result<CalendarDate, aldis_core::Error> = match (Year::new(2024), Month::new(2))
+        {
+            (Some(year), Some(month)) => CalendarDate::from_month_day(year, month, 29),
+            _ => panic!("valid fields"),
+        };
+        const CODE: Result<Ccs, aldis_core::Error> = match (
+            CcsFormat::new(CcsVariation::MonthDay, 0),
+            DATE,
+            Hour::new(0),
+            Minute::new(0),
+            Second::new(0),
+        ) {
+            (Ok(format), Ok(date), Some(hour), Some(minute), Some(second)) => Ccs::new(
+                format,
+                CcsValue {
+                    date,
+                    hour,
+                    minute,
+                    second,
+                    subsecond: 0,
+                },
+            ),
+            _ => panic!("valid parts"),
+        };
+        const ORDINAL: Result<CalendarDate, aldis_core::Error> = match Year::new(2024) {
+            Some(year) => CalendarDate::from_day_of_year(year, 366),
+            None => panic!("valid year"),
+        };
+        assert_eq!(CODE.map(|c| c.value().date), Ok(md(2024, 2, 29)));
+        assert_eq!(ORDINAL, Ok(doy(2024, 366)));
+        assert_ne!(md(2024, 1, 1), doy(2024, 1), "equality keeps the variation");
     }
 
     #[test]

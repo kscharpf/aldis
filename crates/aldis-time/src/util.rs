@@ -8,6 +8,18 @@ pub(crate) const fn wide(n: u32) -> u64 {
     n as u64
 }
 
+/// Widens `u16` to `u64` in `const` context.
+#[expect(clippy::as_conversions, reason = "lossless widening u16 -> u64")]
+pub(crate) const fn wide16(n: u16) -> u64 {
+    n as u64
+}
+
+/// Widens `u16` to `u32` in `const` context.
+#[expect(clippy::as_conversions, reason = "lossless widening u16 -> u32")]
+pub(crate) const fn widen16(n: u16) -> u32 {
+    n as u32
+}
+
 /// Widens `u8` to `u64` in `const` context.
 #[expect(clippy::as_conversions, reason = "lossless widening u8 -> u64")]
 pub(crate) const fn wide8(n: u8) -> u64 {
@@ -76,11 +88,12 @@ pub(crate) use bounded;
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
-    use super::{wide, wide8};
+    use super::{wide, wide8, wide16, widen16};
 
     #[test]
     fn widening() {
         // req: GEN-020
         assert_eq!((wide(u32::MAX), wide8(255)), (u64::from(u32::MAX), 255));
+        assert_eq!((wide16(u16::MAX), widen16(u16::MAX)), (65_535, 65_535));
     }
 }
