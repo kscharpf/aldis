@@ -58,7 +58,7 @@ cargo xtask cpp unsafe-optouts                 # bounds opt-outs only in aldis/c
 cargo xtask cpp layers target/cpp/host-gcc     # CMake target graph (CPP-010)
 ```
 
-CI (`.github/workflows/cpp.yml`) also runs clang-format, clang-tidy, the sanitizers, s390x, and the bare-metal builds. Suppress a warning or clang-tidy finding only on the smallest region, naming the check (CPP-042).
+CI (`.github/workflows/cpp.yml`) also runs clang-format, clang-tidy, the sanitizers, s390x, and the bare-metal builds. On a pull request it runs only when the change touches `cpp/`, `test-vectors/`, `xtask/`, or the C++ workflow and setup action; extend the `changes` job's pattern when the C++ build starts reading something new. Suppress a warning or clang-tidy finding only on the smallest region, naming the check (CPP-042).
 
 When you change `refapp/` (track A), also run, from `refapp/` (see [refapp/README.md](refapp/README.md)):
 
