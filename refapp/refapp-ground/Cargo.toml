@@ -1,0 +1,18 @@
+[package]
+name = "refapp-ground"
+description = "Reference application: the ground node"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+aldis = { workspace = true, features = ["core"] }
+refapp-scenario = { workspace = true }
+
+# The flight lint set, restriction lints included: the ground node parses untrusted downlink
+# (APP-103). It may use `std`.
+[lints]
+workspace = true

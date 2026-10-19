@@ -1,7 +1,8 @@
 [workspace]
 resolver = "3"
-# Own workspaces: bare-metal exerciser (WP-5) and cargo-fuzz targets (WP-6).
-exclude = ["exerciser", "fuzz"]
+# Own workspaces: bare-metal exerciser (WP-5), cargo-fuzz targets (WP-6), and the reference
+# application (track A, docs/reference-application.md).
+exclude = ["exerciser", "fuzz", "refapp"]
 members = [
     "crates/aldis-core",
     "crates/aldis-time",

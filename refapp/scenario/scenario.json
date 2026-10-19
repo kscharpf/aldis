@@ -1,0 +1,61 @@
+{
+  "scenario": "aldis-refapp",
+  "scenario_version": 1,
+  "spacecraft_id": 341,
+  "time": {
+    "t0_coarse_s": 2100000000,
+    "cuc_coarse_octets": 4,
+    "cuc_fine_octets": 2,
+    "cuc_explicit_pfield": 30
+  },
+  "link": {
+    "one_way_delay_us": 10000,
+    "frame_slot_us": 125000,
+    "uplink_slot_us": 250000
+  },
+  "apid": {
+    "housekeeping": 16,
+    "events": 17,
+    "payload": 32,
+    "dump": 33,
+    "commands": 128,
+    "table_upload": 129
+  },
+  "tm": {
+    "frame_length": 223,
+    "fecf": true,
+    "vcid_realtime": 0,
+    "vcid_payload": 1,
+    "vcid_idle": 7,
+    "release_deadline_realtime_us": 250000,
+    "release_deadline_payload_us": 1000000,
+    "max_packet_length": 512,
+    "idle_pattern": 0
+  },
+  "tc": {
+    "max_frame_length": 128,
+    "fecf": true,
+    "vcid": 0,
+    "map_commands": 0,
+    "map_table_upload": 1,
+    "max_fdu_length": 121,
+    "max_packet_length": 512
+  },
+  "cop1": {
+    "k": 4,
+    "w": 8,
+    "t1_initial_us": 1000000,
+    "transmission_limit": 3,
+    "timeout_type": 0,
+    "farm_buffer_depth": 2
+  },
+  "cases": [
+    {
+      "id": "a0-empty",
+      "level": "packets",
+      "end_us": 0,
+      "trace_version": 1,
+      "requirements": ["APP-080", "APP-081", "APP-085"]
+    }
+  ]
+}

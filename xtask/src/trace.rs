@@ -1,7 +1,9 @@
 //! `xtask trace`: requirement → verification artefact matrix (VER-020).
 //!
-//! Artefacts are collected from `// req: <IDs>` annotations in Rust sources, the
-//! `requirements` fields of test vectors, and `docs/verification/analysis-records.md`.
+//! Artefacts are collected from `// req: <IDs>` annotations in Rust sources (including the
+//! reference application in `refapp/`), the `requirements` fields of test vectors and of
+//! golden-trace headers (`refapp/golden/*.jsonl`, docs/reference-application.md §7.2), and
+//! `docs/verification/analysis-records.md`.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
@@ -31,7 +33,7 @@ fn artefacts(spec: &Spec) -> Result<BTreeMap<String, BTreeSet<String>>, String> 
     let areas = spec.area_set();
     let mut map = BTreeMap::new();
 
-    for dir in ["crates", "xtask", "fuzz", "exerciser"] {
+    for dir in ["crates", "xtask", "fuzz", "exerciser", "refapp"] {
         let kind = if dir == "fuzz" { "fuzz" } else { "test" };
         for path in repo::files(dir, &["rs"]) {
             let text = repo::read(&path)?;
@@ -71,6 +73,14 @@ fn artefacts(spec: &Spec) -> Result<BTreeMap<String, BTreeSet<String>>, String> 
         }
     }
 
+    for path in repo::files("refapp/golden", &["jsonl"]) {
+        let rel = repo::rel(&path);
+        let ids = golden_requirements(&repo::read(&path)?)
+            .map_err(|e| format!("{rel}: {e} (run the refapp harness `check-golden`)"))?;
+        let refs = scan_ids(&ids.join(" "), &areas);
+        add(&mut map, spec, &refs, &format!("golden {rel}"));
+    }
+
     let records = repo::root().join("docs/verification/analysis-records.md");
     if records.exists() {
         for t in tables(&repo::read(&records)?) {
@@ -85,6 +95,25 @@ fn artefacts(spec: &Spec) -> Result<BTreeMap<String, BTreeSet<String>>, String> 
         }
     }
     Ok(map)
+}
+
+/// The `requirements` of a golden trace's header line (docs/reference-application.md §7.2).
+fn golden_requirements(text: &str) -> Result<Vec<String>, String> {
+    let header: serde_json::Value = serde_json::from_str(text.lines().next().unwrap_or_default())
+        .map_err(|e| format!("header: {e}"))?;
+    if header["kind"] != "header" {
+        return Err("line 1 is not a header".to_owned());
+    }
+    header["requirements"]
+        .as_array()
+        .ok_or("header has no `requirements` array")?
+        .iter()
+        .map(|v| {
+            v.as_str()
+                .map(str::to_owned)
+                .ok_or_else(|| "`requirements` must hold strings".to_owned())
+        })
+        .collect()
 }
 
 /// Requirement IDs in scope of a milestone: the exit-criteria table of `docs/milestones/<scope>-*.md`.
@@ -166,4 +195,19 @@ pub fn run(scope: Option<&str>, strict: bool) -> Result<usize, String> {
         println!("untraced: {}", untraced.join(", "));
     }
     Ok(if strict { untraced.len() } else { 0 })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::golden_requirements;
+
+    #[test]
+    fn golden_headers() {
+        // req: APP-108
+        let ok = "{\"kind\":\"header\",\"requirements\":[\"APP-080\",\"APP-081\"]}\n{\"t_us\":0}\n";
+        assert_eq!(golden_requirements(ok).unwrap(), ["APP-080", "APP-081"]);
+        assert!(golden_requirements("{\"kind\":\"unit_sent\"}\n").is_err());
+        assert!(golden_requirements("{\"kind\":\"header\"}\n").is_err());
+        assert!(golden_requirements("").is_err());
+    }
 }

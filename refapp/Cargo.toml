@@ -1,0 +1,57 @@
+# Reference application (track A): docs/reference-application.md, docs/milestones/a0-scenario.md.
+# A separate workspace, like exerciser/ and fuzz/: it uses Aldis only through the `aldis`
+# facade, as an integrator would (APP-100), and is not part of the library workspace.
+[workspace]
+resolver = "3"
+members = ["refapp-scenario", "refapp-flight", "refapp-ground", "refapp-harness"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.99.1"        # RS-001: equals rust-toolchain.toml at the repository root
+license = "MIT"
+repository = "https://github.com/kscharpf/aldis"
+publish = false
+
+[workspace.dependencies]
+# The facade only, by path, default features off; each crate enables the features it uses
+# (APP-100, checked by `cargo xtask refapp-deps`).
+aldis = { path = "../crates/aldis", default-features = false }
+refapp-scenario = { path = "refapp-scenario" }
+refapp-flight = { path = "refapp-flight" }
+refapp-ground = { path = "refapp-ground" }
+schemars = "1.2.3"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+
+# Flight lint set (VER-001, docs/profiles/rust.md §5), used by refapp-flight (APP-102) and
+# refapp-ground (APP-103). refapp-scenario and refapp-harness define the tooling profile
+# (RS-017, APP-104) in their own manifests.
+[workspace.lints.rust]
+unsafe_code = "forbid"
+missing_docs = "deny"
+unreachable_pub = "warn"
+
+[workspace.lints.clippy]
+all = { level = "deny", priority = -1 }
+pedantic = { level = "deny", priority = -1 }
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+indexing_slicing = "deny"
+arithmetic_side_effects = "deny"
+cast_possible_truncation = "deny"
+as_conversions = "deny"
+unreachable = "deny"
+todo = "deny"
+unimplemented = "deny"
+# Selected nursery lints (RS-019). The nursery group itself stays off.
+missing_const_for_fn = "deny"
+derive_partial_eq_without_eq = "deny"
+too_long_first_doc_paragraph = "deny"
+redundant_clone = "deny"
+
+[profile.release]
+panic = "abort"
+lto = true
+codegen-units = 1
