@@ -1,0 +1,4 @@
+### Added
+- `aldis-time` ASCII codes and conversions (M1 WP-1, part 2): `AsciiTime` parses and formats complete codes A and B with up to 12 fractional digits (`Fraction`, `AsciiOptions`, `MAX_ASCII_LEN`, `MAX_FRACTION_DIGITS`); `AsciiSubset` parses any subset of 301.0 §3.5.1.3; `UtcInstant` converts between CDS, CCS, and ASCII (`AsciiFormat`), truncating toward zero, with the CDS leap-second millisecond mapped to 23:59:60. The day arithmetic is closed-form (M1 D3). Bounded calendar fields implement `Default` (their smallest value). TIME-031…TIME-033.
+- OI-29 (ASCII grammar details and second 60 in conversions), resolved; [time-codes.md](docs/standards/time-codes.md) §5.1 and §5.2 record the grammar and conversion rules.
+- Vectors `test-vectors/time/{ascii,convert}.json`; fuzz target `time_ascii`.

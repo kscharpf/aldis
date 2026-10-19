@@ -126,3 +126,10 @@ path = "fuzz_targets/time_ccs.rs"
 test = false
 doc = false
 bench = false
+
+[[bin]]
+name = "time_ascii"
+path = "fuzz_targets/time_ascii.rs"
+test = false
+doc = false
+bench = false
