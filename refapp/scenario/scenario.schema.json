@@ -16,7 +16,7 @@
       "maximum": 65535
     },
     "spacecraft_id": {
-      "description": "Spacecraft ID of every frame (§3.4, APP-026; provisional until OI-26 is resolved).",
+      "description": "Spacecraft ID of every frame (§3.4, APP-026); fictional (OI-26).",
       "type": "integer",
       "format": "uint16",
       "minimum": 0,

@@ -23,7 +23,7 @@ pub struct Scenario {
     pub scenario: String,
     /// Scenario version (§7.2, APP-002).
     pub scenario_version: u16,
-    /// Spacecraft ID of every frame (§3.4, APP-026; provisional until OI-26 is resolved).
+    /// Spacecraft ID of every frame (§3.4, APP-026); fictional (OI-26).
     #[schemars(range(max = 1023))]
     pub spacecraft_id: u16,
     /// Time model (§5).
@@ -357,7 +357,7 @@ pub fn rust_constants(s: &Scenario) -> String {
          pub const SCENARIO: &str = {:?};\n\n\
          /// Scenario version (§7.2, APP-002).\n\
          pub const SCENARIO_VERSION: u16 = {};\n\n\
-         /// Spacecraft ID of every frame (§3.4, APP-026); provisional and fictional until OI-26.\n\
+         /// Spacecraft ID of every frame (§3.4, APP-026); fictional (OI-26).\n\
          pub const SPACECRAFT_ID: u16 = {};",
         s.scenario,
         n(s.scenario_version.into()),

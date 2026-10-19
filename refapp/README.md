@@ -4,7 +4,7 @@ An end-to-end flight↔ground application that uses Aldis only through its publi
 
 **Status: A0 skeleton.** The nodes have no applications yet (they arrive in A1, after M1). The harness, trace writer, canonical-form check, comparator, and scenario generator work, and the header-only case `a0-empty` is reproduced in CI.
 
-The spacecraft ID in [scenario/scenario.json](scenario/scenario.json) (`341`, `0x155`) is **fictional** and provisional until OI-26 is resolved ([open issues](../docs/09-open-issues.md)).
+The spacecraft ID in [scenario/scenario.json](scenario/scenario.json) (`341`, `0x155`) is **fictional**, confirmed by the maintainer on 2026-10-19 ([OI-26](../docs/09-open-issues.md)).
 
 ## Layout
 

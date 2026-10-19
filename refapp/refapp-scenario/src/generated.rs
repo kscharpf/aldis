@@ -9,7 +9,7 @@ pub const SCENARIO: &str = "aldis-refapp";
 /// Scenario version (§7.2, APP-002).
 pub const SCENARIO_VERSION: u16 = 1;
 
-/// Spacecraft ID of every frame (§3.4, APP-026); provisional and fictional until OI-26.
+/// Spacecraft ID of every frame (§3.4, APP-026); fictional (OI-26).
 pub const SPACECRAFT_ID: u16 = 341;
 
 /// Time model (§5, APP-060).
