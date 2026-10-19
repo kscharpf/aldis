@@ -7,7 +7,8 @@
 
 use aldis_core::DecodeMode;
 use aldis_time::{
-    CalendarDate, CcsFormat, CcsVariation, TimeAnomaly, TimeCode, TimeFormat, decode_implicit,
+    CalendarDate, CcsFormat, CcsVariation, Hour, Minute, Second, TimeAnomaly, TimeCode, TimeFormat,
+    decode_implicit,
 };
 use libfuzzer_sys::fuzz_target;
 
@@ -29,14 +30,19 @@ fuzz_target!(|data: &[u8]| {
     let TimeCode::Ccs(c) = d.code() else {
         panic!("not CCS")
     };
+    // The decoded fields are typed; the date must rebuild from its own parts (TIME-030).
     let v = c.value();
-    assert!((1..=9999).contains(&v.year) && v.hour < 24 && v.minute < 60 && v.second <= 60);
-    match v.date {
-        CalendarDate::MonthDay { month, day } => {
-            assert!((1..=12).contains(&month) && (1..=31).contains(&day));
-        }
-        CalendarDate::DayOfYear(doy) => assert!((1..=366).contains(&doy)),
-    }
+    let year = v.date.year();
+    let rebuilt = match (v.date.month_day(), v.date.day_of_year()) {
+        (Some((month, day)), _) => CalendarDate::from_month_day(year, month, day),
+        (None, Some(doy)) => CalendarDate::from_day_of_year(year, doy),
+        (None, None) => panic!("a date has a month and day or a day of year"),
+    };
+    assert_eq!(rebuilt, Ok(v.date));
+    assert_eq!(v.date.variation(), variation);
+    assert!(
+        v.hour.get() <= Hour::MAX && v.minute.get() <= Minute::MAX && v.second.get() <= Second::MAX
+    );
     let mut out = [0_u8; 16];
     let n = d.code().encode(false, &mut out).unwrap();
     if d.anomalies().contains(TimeAnomaly::NonZeroDoyHighNibble) {

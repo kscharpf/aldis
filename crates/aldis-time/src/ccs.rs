@@ -6,19 +6,23 @@
 use aldis_core::{AnomalySet, DecodeMode, Error, ErrorKind, FieldId, Result};
 
 use crate::anomaly::TimeAnomaly;
+use crate::calendar::{CalendarDate, Hour, Minute, Month, Second, Year};
 use crate::pfield::{PField, PFieldTail, TimeCodeId};
-use crate::util::{days_in_month, days_in_year, wide8};
+use crate::util::wide8;
 
-/// 10ⁿ for n = 0, 2, 4, …, 12: one past the largest sub-second value for 0–6 octets.
-const SUBSECOND_LIMIT: [u64; 7] = [
-    1,
-    100,
-    10_000,
-    1_000_000,
-    100_000_000,
-    10_000_000_000,
-    1_000_000_000_000,
-];
+/// One past the largest sub-second value for `octets` sub-second octets: 10^(2 × octets), for
+/// 0–6 octets (301.0 §3.4.2).
+const fn subsecond_limit(octets: u8) -> u64 {
+    match octets {
+        0 => 1,
+        1 => 100,
+        2 => 10_000,
+        3 => 1_000_000,
+        4 => 100_000_000,
+        5 => 10_000_000_000,
+        _ => 1_000_000_000_000,
+    }
+}
 
 /// Calendar variation (301.0 §3.4.2 bit 4).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -129,91 +133,30 @@ impl CcsFormat {
     }
 }
 
-/// The date part of a CCS value; its kind must match the format's variation (301.0 §3.4.1.1–2).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum CalendarDate {
-    /// Month 1–12 and day of month 1–31 (301.0 §3.4.1.1, Annex A).
-    MonthDay {
-        /// Month of year.
-        month: u8,
-        /// Day of month.
-        day: u8,
-    },
-    /// Day of year, 1–366 (301.0 §3.4.1.2, Annex A).
-    DayOfYear(u16),
-}
-
-/// A CCS value with plain decimal fields (301.0 §3.4.1, TIME-030).
+/// A CCS value (301.0 §3.4.1, TIME-030).
+///
+/// Every field holds only values 301.0 allows; whether the value fits a particular
+/// [`CcsFormat`] is checked by [`Ccs::new`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct CcsValue {
-    /// Year A.D., 1–9999 (301.0 Annex A, TIME-030).
-    pub year: u16,
-    /// Month and day, or day of year (301.0 §3.4.1, TIME-030).
+    /// The date, as month and day or as day of year (301.0 §3.4.1, TIME-030).
     pub date: CalendarDate,
-    /// Hour, 0–23 (301.0 Annex A, TIME-030).
-    pub hour: u8,
-    /// Minute, 0–59 (301.0 Annex A, TIME-030).
-    pub minute: u8,
-    /// Second, 0–60 (60 for a leap second) (301.0 Annex A, TIME-030).
-    pub second: u8,
-    /// Sub-second digits as an integer: with `n` sub-second octets, the value of the `2n` (301.0
-    /// §3.4.2, TIME-030)
-    /// decimal digits after the point (e.g. `1234` with 2 octets is 0.1234 s).
+    /// Hour (301.0 Annex A, TIME-030).
+    pub hour: Hour,
+    /// Minute (301.0 Annex A, TIME-030).
+    pub minute: Minute,
+    /// Second, 60 for a leap second (301.0 Annex A, TIME-030).
+    pub second: Second,
+    /// The sub-second digits as one integer (301.0 §3.4.2, TIME-030): with `n` sub-second
+    /// octets, the `2n` decimal digits after the point, e.g. `1234` with 2 octets is 0.1234 s.
     pub subsecond: u64,
 }
 
-/// A CCS time code: format and a valid value (301.0 §3.4).
+/// A CCS time code: a format and a value that fits it (301.0 §3.4).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Ccs {
     format: CcsFormat,
     value: CcsValue,
-}
-
-/// `OutOfRange` for `field` with the limit and the value found.
-const fn range(field: &'static str, limit: u64, found: u64) -> Error {
-    Error::out_of_range(field, limit, found)
-}
-
-/// `Ok` if `value` is in `1..=max`; otherwise `OutOfRange` naming the violated bound, 1 or
-/// `max` (GEN-041).
-fn one_based(field: &'static str, value: u16, max: u16) -> Result<()> {
-    match value {
-        0 => Err(range(field, 1, 0)),
-        v if v > max => Err(range(field, max.into(), v.into())),
-        _ => Ok(()),
-    }
-}
-
-/// Checks `value` against `format` and the calendar (TIME-030).
-fn validate(format: &CcsFormat, value: &CcsValue) -> Result<()> {
-    one_based("year", value.year, 9999)?;
-    match (format.variation, value.date) {
-        (CcsVariation::MonthDay, CalendarDate::MonthDay { month, day }) => {
-            one_based("month", month.into(), 12)?;
-            one_based("day", day.into(), days_in_month(value.year, month).into())?;
-        }
-        (CcsVariation::DayOfYear, CalendarDate::DayOfYear(doy)) => {
-            one_based("day_of_year", doy, days_in_year(value.year))?;
-        }
-        _ => return Err(Error::new(ErrorKind::InvalidField).with_field(FieldId::new("date"))),
-    }
-    if value.hour > 23 {
-        return Err(range("hour", 23, value.hour.into()));
-    }
-    if value.minute > 59 {
-        return Err(range("minute", 59, value.minute.into()));
-    }
-    if value.second > 60 {
-        return Err(range("second", 60, value.second.into()));
-    }
-    let limit = SUBSECOND_LIMIT
-        .get(usize::from(format.subsecond))
-        .copied()
-        .unwrap_or(1);
-    if value.subsecond >= limit {
-        return Err(range("subsecond", limit.saturating_sub(1), value.subsecond));
-    }
-    Ok(())
 }
 
 /// Two BCD digits for `n` (0–99).
@@ -234,15 +177,29 @@ const fn from_bcd(octet: u8, field: &'static str) -> Result<u8> {
 }
 
 impl Ccs {
-    /// A CCS code.
+    /// A CCS code from a format and a value that fits it. The fields of `value` are valid by
+    /// construction; only the fit to `format` is checked here (TIME-030).
     ///
     /// # Errors
-    /// `OutOfRange` naming the field for a calendar or clock value outside its range, including
-    /// a day that does not exist in the month or year, and a sub-second value with more digits
-    /// than the format has; `InvalidField` (`date`) if the date kind does not match the
-    /// variation (TIME-030).
-    pub fn new(format: CcsFormat, value: CcsValue) -> Result<Ccs> {
-        validate(&format, &value)?;
+    /// `InvalidField` (`date`) if the date is not expressed in the format's calendar variation;
+    /// `OutOfRange` (`subsecond`) if the sub-second value has more digits than the format's
+    /// sub-second octets hold.
+    pub const fn new(format: CcsFormat, value: CcsValue) -> Result<Ccs> {
+        if !matches!(
+            (value.date.variation(), format.variation),
+            (CcsVariation::MonthDay, CcsVariation::MonthDay)
+                | (CcsVariation::DayOfYear, CcsVariation::DayOfYear)
+        ) {
+            return Err(Error::new(ErrorKind::InvalidField).with_field(FieldId::new("date")));
+        }
+        let limit = subsecond_limit(format.subsecond);
+        if value.subsecond >= limit {
+            return Err(Error::out_of_range(
+                "subsecond",
+                limit.saturating_sub(1),
+                value.subsecond,
+            ));
+        }
         Ok(Ccs { format, value })
     }
 
@@ -262,14 +219,18 @@ impl Ccs {
     /// day-of-year segment is written as zero (TIME-034).
     pub(crate) fn t_octets(&self) -> [u8; 13] {
         let v = &self.value;
-        let century = u8::try_from(v.year / 100).unwrap_or(0);
-        let year = u8::try_from(v.year % 100).unwrap_or(0);
-        let (a, b) = match v.date {
-            CalendarDate::MonthDay { month, day } => (to_bcd(month), to_bcd(day)),
-            CalendarDate::DayOfYear(doy) => (
-                u8::try_from(doy / 100).unwrap_or(0),
-                to_bcd(u8::try_from(doy % 100).unwrap_or(0)),
-            ),
+        let year = v.date.year().get();
+        let century = u8::try_from(year / 100).unwrap_or(0);
+        let year = u8::try_from(year % 100).unwrap_or(0);
+        let (a, b) = match (v.date.month_day(), v.date.day_of_year()) {
+            (Some((month, day)), _) => (to_bcd(month.get()), to_bcd(day)),
+            (None, doy) => {
+                let doy = doy.unwrap_or(0);
+                (
+                    u8::try_from(doy / 100).unwrap_or(0),
+                    to_bcd(u8::try_from(doy % 100).unwrap_or(0)),
+                )
+            }
         };
         let mut sub = [0_u8; 6];
         let mut rest = v.subsecond;
@@ -287,9 +248,9 @@ impl Ccs {
             to_bcd(year),
             a,
             b,
-            to_bcd(v.hour),
-            to_bcd(v.minute),
-            to_bcd(v.second),
+            to_bcd(v.hour.get()),
+            to_bcd(v.minute.get()),
+            to_bcd(v.second.get()),
             s0,
             s1,
             s2,
@@ -304,7 +265,8 @@ impl Ccs {
     /// # Errors
     /// `InvalidField` for a nibble above 9; `ReservedValue` (`day_of_year`) in strict mode for a
     /// non-zero day-of-year high nibble, which lenient mode reports as
-    /// [`TimeAnomaly::NonZeroDoyHighNibble`]; and the range errors of [`Ccs::new`].
+    /// [`TimeAnomaly::NonZeroDoyHighNibble`]; and `OutOfRange` from the field types for a value
+    /// outside its range or a day that does not exist.
     pub(crate) fn from_t(
         format: CcsFormat,
         t: &[u8],
@@ -313,14 +275,19 @@ impl Ccs {
     ) -> Result<Ccs> {
         let mut octets = t.iter().copied();
         let mut next = || octets.next().unwrap_or(0);
+        // Each field is parsed into its type as it is read (TIME-030).
         let century = from_bcd(next(), "year")?;
-        let year = from_bcd(next(), "year")?;
+        let year = Year::try_from(
+            u16::from(century)
+                .wrapping_mul(100)
+                .wrapping_add(u16::from(from_bcd(next(), "year")?)),
+        )?;
         let (a, b) = (next(), next());
         let date = match format.variation {
-            CcsVariation::MonthDay => CalendarDate::MonthDay {
-                month: from_bcd(a, "month")?,
-                day: from_bcd(b, "day")?,
-            },
+            CcsVariation::MonthDay => {
+                let month = Month::try_from(from_bcd(a, "month")?)?;
+                CalendarDate::from_month_day(year, month, from_bcd(b, "day")?)?
+            }
             CcsVariation::DayOfYear => {
                 if a >> 4 != 0 {
                     match mode {
@@ -333,34 +300,33 @@ impl Ccs {
                 }
                 let hundreds = from_bcd(a & 0x0F, "day_of_year")?;
                 let rest = from_bcd(b, "day_of_year")?;
-                CalendarDate::DayOfYear(
+                CalendarDate::from_day_of_year(
+                    year,
                     u16::from(hundreds)
                         .wrapping_mul(100)
                         .wrapping_add(u16::from(rest)),
-                )
+                )?
             }
         };
-        let hour = from_bcd(next(), "hour")?;
-        let minute = from_bcd(next(), "minute")?;
-        let second = from_bcd(next(), "second")?;
+        let hour = Hour::try_from(from_bcd(next(), "hour")?)?;
+        let minute = Minute::try_from(from_bcd(next(), "minute")?)?;
+        let second = Second::try_from(from_bcd(next(), "second")?)?;
         let mut subsecond: u64 = 0;
         for _ in 0..format.subsecond {
             let digits = from_bcd(next(), "subsecond")?;
             subsecond = subsecond.wrapping_mul(100).wrapping_add(u64::from(digits));
         }
-        Ccs::new(
+        // The value has at most 2n digits for n octets, so it always fits the format.
+        Ok(Ccs {
             format,
-            CcsValue {
-                year: u16::from(century)
-                    .wrapping_mul(100)
-                    .wrapping_add(u16::from(year)),
+            value: CcsValue {
                 date,
                 hour,
                 minute,
                 second,
                 subsecond,
             },
-        )
+        })
     }
 }
 
@@ -371,24 +337,29 @@ impl Ccs {
     reason = "test models on bounded values (RS-018)"
 )]
 mod tests {
-    use super::{CalendarDate, Ccs, CcsFormat, CcsValue, CcsVariation, from_bcd, to_bcd};
+    use super::{Ccs, CcsFormat, CcsValue, CcsVariation, from_bcd, subsecond_limit, to_bcd};
     use crate::anomaly::TimeAnomaly;
+    use crate::calendar::{CalendarDate, Hour, Minute, Month, Second, Year};
     use crate::pfield::{PField, PFieldTail};
-    use aldis_core::{AnomalySet, DecodeMode, ErrorKind, FieldId};
+    use aldis_core::{AnomalySet, DecodeMode, ErrorDetail, ErrorKind, FieldId};
     use proptest::prelude::*;
 
-    fn md(month: u8, day: u8) -> CalendarDate {
-        CalendarDate::MonthDay { month, day }
+    fn md(year: u16, month: u8, day: u8) -> CalendarDate {
+        CalendarDate::from_month_day(Year::new(year).unwrap(), Month::new(month).unwrap(), day)
+            .unwrap()
     }
 
-    fn value(year: u16, date: CalendarDate) -> CcsValue {
+    fn doy(year: u16, day: u16) -> CalendarDate {
+        CalendarDate::from_day_of_year(Year::new(year).unwrap(), day).unwrap()
+    }
+
+    fn value(date: CalendarDate, subsecond: u64) -> CcsValue {
         CcsValue {
-            year,
             date,
-            hour: 12,
-            minute: 30,
-            second: 45,
-            subsecond: 0,
+            hour: Hour::new(12).unwrap(),
+            minute: Minute::new(30).unwrap(),
+            second: Second::new(45).unwrap(),
+            subsecond,
         }
     }
 
@@ -414,14 +385,11 @@ mod tests {
                 }
             }
         }
+        let f = CcsFormat::new(CcsVariation::DayOfYear, 3).unwrap();
         assert_eq!(
-            CcsFormat::new(CcsVariation::DayOfYear, 3).unwrap().tail(),
-            PFieldTail::EMPTY
+            (f.tail(), f.with_tail(tail).tail()),
+            (PFieldTail::EMPTY, tail)
         );
-        let with = CcsFormat::new(CcsVariation::DayOfYear, 3)
-            .unwrap()
-            .with_tail(tail);
-        assert_eq!(with.tail(), tail);
         let e = CcsFormat::from_pfield(&PField::parse(&[0x57]).unwrap()).unwrap_err();
         assert_eq!(
             (e.kind(), e.field().map(FieldId::name)),
@@ -430,76 +398,15 @@ mod tests {
     }
 
     #[test]
-    fn calendar_checks() {
-        // req: TIME-030
+    fn value_must_fit_the_format() {
+        // req: TIME-030, GEN-041
         let mdf = CcsFormat::new(CcsVariation::MonthDay, 1).unwrap();
         let doyf = CcsFormat::new(CcsVariation::DayOfYear, 0).unwrap();
-        let ok = Ccs::new(
-            mdf,
-            CcsValue {
-                subsecond: 99,
-                ..value(2024, md(2, 29))
-            },
-        )
-        .unwrap();
-        assert_eq!((ok.format(), ok.value().year), (mdf, 2024));
-        let cases = [
-            (mdf, value(0, md(1, 1)), "year"),
-            (mdf, value(10_000, md(1, 1)), "year"),
-            (mdf, value(2023, md(0, 1)), "month"),
-            (mdf, value(2023, md(13, 1)), "month"),
-            (mdf, value(2023, md(2, 29)), "day"),
-            (mdf, value(2023, md(1, 0)), "day"),
-            (
-                doyf,
-                value(2023, CalendarDate::DayOfYear(366)),
-                "day_of_year",
-            ),
-            (doyf, value(2023, CalendarDate::DayOfYear(0)), "day_of_year"),
-            (
-                mdf,
-                CcsValue {
-                    hour: 24,
-                    ..value(2023, md(1, 1))
-                },
-                "hour",
-            ),
-            (
-                mdf,
-                CcsValue {
-                    minute: 60,
-                    ..value(2023, md(1, 1))
-                },
-                "minute",
-            ),
-            (
-                mdf,
-                CcsValue {
-                    second: 61,
-                    ..value(2023, md(1, 1))
-                },
-                "second",
-            ),
-            (
-                mdf,
-                CcsValue {
-                    subsecond: 100,
-                    ..value(2023, md(1, 1))
-                },
-                "subsecond",
-            ),
-        ];
-        for (f, v, field) in cases {
-            let e = Ccs::new(f, v).unwrap_err();
-            assert_eq!(
-                (e.kind(), e.field().map(FieldId::name)),
-                (ErrorKind::OutOfRange, Some(field)),
-                "{v:?}"
-            );
-        }
+        let ok = Ccs::new(mdf, value(md(2024, 2, 29), 99)).unwrap();
+        assert_eq!((ok.format(), ok.value().subsecond), (mdf, 99));
         for (f, v) in [
-            (mdf, value(2023, CalendarDate::DayOfYear(1))),
-            (doyf, value(2023, md(1, 1))),
+            (mdf, value(doy(2023, 1), 0)),
+            (doyf, value(md(2023, 1, 1), 0)),
         ] {
             let e = Ccs::new(f, v).unwrap_err();
             assert_eq!(
@@ -507,41 +414,121 @@ mod tests {
                 (ErrorKind::InvalidField, Some("date"))
             );
         }
-        assert!(
-            Ccs::new(
-                doyf,
-                CcsValue {
-                    second: 60,
-                    ..value(2024, CalendarDate::DayOfYear(366))
-                }
-            )
-            .is_ok()
+        let e = Ccs::new(mdf, value(md(2023, 1, 1), 100)).unwrap_err();
+        assert_eq!(e.field().map(FieldId::name), Some("subsecond"));
+        assert_eq!(
+            e.detail(),
+            ErrorDetail::Expected {
+                expected: 99,
+                found: 100
+            }
+        );
+        let e = Ccs::new(doyf, value(doy(2023, 1), 1)).unwrap_err();
+        assert_eq!(
+            e.detail(),
+            ErrorDetail::Expected {
+                expected: 0,
+                found: 1
+            }
+        );
+        assert!(Ccs::new(doyf, value(doy(2024, 366), 0)).is_ok());
+    }
+
+    #[test]
+    fn decoding_parses_every_field() {
+        // req: TIME-030, GEN-041
+        let f = CcsFormat::new(CcsVariation::MonthDay, 0).unwrap();
+        let ok = [0x20, 0x24, 0x02, 0x29, 0x23, 0x59, 0x60];
+        let mut flags = AnomalySet::empty();
+        let c = Ccs::from_t(f, &ok, DecodeMode::Strict, &mut flags).unwrap();
+        assert_eq!(c.value().date, md(2024, 2, 29));
+        assert_eq!(
+            (
+                c.value().hour.get(),
+                c.value().minute.get(),
+                c.value().second.get()
+            ),
+            (23, 59, 60)
+        );
+        for (t, field, expected, found) in [
+            ([0x00, 0x00, 0x01, 0x01, 0, 0, 0], "year", 1, 0),
+            ([0x20, 0x23, 0x13, 0x01, 0, 0, 0], "month", 12, 13),
+            ([0x20, 0x23, 0x00, 0x01, 0, 0, 0], "month", 1, 0),
+            ([0x20, 0x23, 0x02, 0x29, 0, 0, 0], "day", 28, 29),
+            ([0x20, 0x23, 0x01, 0x01, 0x24, 0, 0], "hour", 23, 24),
+            ([0x20, 0x23, 0x01, 0x01, 0, 0x60, 0], "minute", 59, 60),
+            ([0x20, 0x23, 0x01, 0x01, 0, 0, 0x61], "second", 60, 61),
+        ] {
+            let e = Ccs::from_t(f, &t, DecodeMode::Lenient, &mut flags).unwrap_err();
+            assert_eq!(
+                (e.kind(), e.field().map(FieldId::name)),
+                (ErrorKind::OutOfRange, Some(field))
+            );
+            assert_eq!(
+                e.detail(),
+                ErrorDetail::Expected { expected, found },
+                "{t:02X?}"
+            );
+        }
+        let doyf = CcsFormat::new(CcsVariation::DayOfYear, 0).unwrap();
+        let e = Ccs::from_t(
+            doyf,
+            &[0x20, 0x23, 0x03, 0x66, 0, 0, 0],
+            DecodeMode::Strict,
+            &mut flags,
+        )
+        .unwrap_err();
+        assert_eq!(
+            e.detail(),
+            ErrorDetail::Expected {
+                expected: 365,
+                found: 366
+            }
         );
     }
 
     #[test]
-    fn errors_report_the_violated_bound() {
-        // req: TIME-030, GEN-041
-        use aldis_core::ErrorDetail;
-        let mdf = CcsFormat::new(CcsVariation::MonthDay, 0).unwrap();
-        let doyf = CcsFormat::new(CcsVariation::DayOfYear, 0).unwrap();
-        for (f, v, expected, found) in [
-            (mdf, value(0, md(1, 1)), 1, 0),
-            (mdf, value(10_000, md(1, 1)), 9999, 10_000),
-            (mdf, value(2023, md(0, 1)), 1, 0),
-            (mdf, value(2023, md(13, 1)), 12, 13),
-            (mdf, value(2023, md(4, 0)), 1, 0),
-            (mdf, value(2023, md(4, 31)), 30, 31),
-            (doyf, value(2023, CalendarDate::DayOfYear(0)), 1, 0),
-            (doyf, value(2023, CalendarDate::DayOfYear(366)), 365, 366),
-        ] {
-            let e = Ccs::new(f, v).unwrap_err();
-            assert_eq!(
-                e.detail(),
-                ErrorDetail::Expected { expected, found },
-                "{v:?}"
-            );
+    fn subsecond_limits() {
+        // req: TIME-030
+        for octets in 0..=6_u8 {
+            assert_eq!(subsecond_limit(octets), 10_u64.pow(2 * u32::from(octets)));
         }
+    }
+
+    #[test]
+    fn ccs_codes_are_const_constructible() {
+        // req: TIME-030, RS-012
+        const DATE: Result<CalendarDate, aldis_core::Error> = match (Year::new(2024), Month::new(2))
+        {
+            (Some(year), Some(month)) => CalendarDate::from_month_day(year, month, 29),
+            _ => panic!("valid fields"),
+        };
+        const CODE: Result<Ccs, aldis_core::Error> = match (
+            CcsFormat::new(CcsVariation::MonthDay, 0),
+            DATE,
+            Hour::new(0),
+            Minute::new(0),
+            Second::new(0),
+        ) {
+            (Ok(format), Ok(date), Some(hour), Some(minute), Some(second)) => Ccs::new(
+                format,
+                CcsValue {
+                    date,
+                    hour,
+                    minute,
+                    second,
+                    subsecond: 0,
+                },
+            ),
+            _ => panic!("valid parts"),
+        };
+        const ORDINAL: Result<CalendarDate, aldis_core::Error> = match Year::new(2024) {
+            Some(year) => CalendarDate::from_day_of_year(year, 366),
+            None => panic!("valid year"),
+        };
+        assert_eq!(CODE.map(|c| c.value().date), Ok(md(2024, 2, 29)));
+        assert_eq!(ORDINAL, Ok(doy(2024, 366)));
+        assert_ne!(md(2024, 1, 1), doy(2024, 1), "equality keeps the variation");
     }
 
     #[test]
@@ -572,7 +559,7 @@ mod tests {
             (ErrorKind::ReservedValue, true)
         );
         let c = Ccs::from_t(f, &t, DecodeMode::Lenient, &mut flags).unwrap();
-        assert_eq!(c.value().date, CalendarDate::DayOfYear(100));
+        assert_eq!(c.value().date, doy(2016, 100));
         assert!(flags.contains(TimeAnomaly::NonZeroDoyHighNibble));
         let bad = [0x20, 0x16, 0x0A, 0x00, 0x00, 0x00, 0x00];
         assert_eq!(
@@ -632,35 +619,36 @@ mod tests {
             0_u8..=60,
             any::<u64>(),
         )
-            .prop_map(|(doy, n, year, month, day, hour, minute, second, sub)| {
-                let variation = if doy {
-                    CcsVariation::DayOfYear
-                } else {
-                    CcsVariation::MonthDay
-                };
-                let format = CcsFormat::new(variation, n).unwrap();
-                let date = if doy {
-                    CalendarDate::DayOfYear(day.min(crate::util::days_in_year(year)))
-                } else {
-                    let last = crate::util::days_in_month(year, month);
-                    CalendarDate::MonthDay {
-                        month,
-                        day: u8::try_from(day).unwrap_or(1).clamp(1, last),
+            .prop_map(
+                |(ordinal, n, year, month, day, hour, minute, second, sub)| {
+                    let variation = if ordinal {
+                        CcsVariation::DayOfYear
+                    } else {
+                        CcsVariation::MonthDay
+                    };
+                    let y = Year::new(year).unwrap();
+                    let date = if ordinal {
+                        CalendarDate::from_day_of_year(
+                            y,
+                            day.min(crate::calendar::days_in_year(year)),
+                        )
+                    } else {
+                        let last = crate::calendar::days_in_month(year, month);
+                        let day = u8::try_from(day).unwrap_or(1).clamp(1, last);
+                        CalendarDate::from_month_day(y, Month::new(month).unwrap(), day)
                     }
-                };
-                let limit = 10_u64.pow(2 * u32::from(n));
-                (
-                    format,
-                    CcsValue {
-                        year,
+                    .unwrap();
+                    let limit = 10_u64.pow(2 * u32::from(n));
+                    let value = CcsValue {
                         date,
-                        hour,
-                        minute,
-                        second,
+                        hour: Hour::new(hour).unwrap(),
+                        minute: Minute::new(minute).unwrap(),
+                        second: Second::new(second).unwrap(),
                         subsecond: sub % limit,
-                    },
-                )
-            })
+                    };
+                    (CcsFormat::new(variation, n).unwrap(), value)
+                },
+            )
     }
 
     proptest! {

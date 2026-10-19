@@ -7,10 +7,58 @@
 use aldis_core::{Error, ErrorKind, FieldId, Result};
 
 use crate::pfield::{PField, PFieldTail, TimeCodeId};
-use crate::util::wide;
+use crate::util::{bounded, wide, widen16};
 
 /// Milliseconds of day allow one positive leap second: 0 to 86 400 999 (301.0 Annex A).
 pub const MAX_MS_OF_DAY: u32 = 86_400_999;
+
+bounded!(
+    /// Milliseconds of day, 0 to 86 400 999: one positive leap second is allowed (301.0 Annex
+    /// A, TIME-021).
+    MsOfDay, u32, "ms_of_day", 0, 86_400_999
+);
+bounded!(
+    /// Microseconds of millisecond, 0–999 (301.0 Annex A, TIME-021).
+    Micros, u16, "subms", 0, 999
+);
+bounded!(
+    /// Picoseconds of millisecond, 0–999 999 999 (301.0 Annex A, TIME-021).
+    Picos, u32, "subms", 0, 999_999_999
+);
+
+/// The submillisecond segment of a CDS value; its resolution must match the format's
+/// (301.0 §3.3.1, TIME-020).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum SubMillis {
+    /// No submillisecond segment.
+    None,
+    /// Microseconds of the millisecond.
+    Micros(Micros),
+    /// Picoseconds of the millisecond.
+    Picos(Picos),
+}
+
+impl SubMillis {
+    /// The resolution this segment has (301.0 §3.3.2 bits 6–7).
+    #[must_use]
+    pub const fn resolution(self) -> CdsSubMs {
+        match self {
+            SubMillis::None => CdsSubMs::None,
+            SubMillis::Micros(_) => CdsSubMs::Micros,
+            SubMillis::Picos(_) => CdsSubMs::Picos,
+        }
+    }
+
+    /// The segment value: microseconds, picoseconds, or 0 (301.0 §3.3.1).
+    #[must_use]
+    pub const fn get(self) -> u32 {
+        match self {
+            SubMillis::None => 0,
+            SubMillis::Micros(us) => widen16(us.get()),
+            SubMillis::Picos(ps) => ps.get(),
+        }
+    }
+}
 
 /// The epoch of a CDS code (301.0 §3.3.2 bit 4).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -184,20 +232,22 @@ impl CdsFormat {
     }
 }
 
-/// A CDS value: day count, milliseconds of day, and submilliseconds (0 when the format has (301.0
-/// §3.3.1)
-/// none).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+/// A CDS value (301.0 §3.3.1).
+///
+/// The millisecond and submillisecond fields hold only values 301.0 allows; whether the value
+/// fits a particular [`CdsFormat`] (day segment length and resolution) is checked by
+/// [`Cds::new`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct CdsValue {
     /// Days since the epoch (301.0 §3.3.1, Annex A).
     pub day: u32,
-    /// Milliseconds of the day, 0 to [`MAX_MS_OF_DAY`] (301.0 Annex A, TIME-021).
-    pub ms_of_day: u32,
-    /// Microseconds or picoseconds of the millisecond, per the format (301.0 Annex A, TIME-021).
-    pub subms: u32,
+    /// Milliseconds of the day (301.0 Annex A, TIME-021).
+    pub ms_of_day: MsOfDay,
+    /// Microseconds or picoseconds of the millisecond, or none (301.0 Annex A, TIME-021).
+    pub subms: SubMillis,
 }
 
-/// A CDS time code: format and a value that fits it (301.0 §3.3).
+/// A CDS time code: a format and a value that fits it (301.0 §3.3).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Cds {
     format: CdsFormat,
@@ -205,12 +255,12 @@ pub struct Cds {
 }
 
 impl Cds {
-    /// A CDS code.
+    /// A CDS code from a format and a value that fits it. The fields of `value` are valid by
+    /// construction; only the fit to `format` is checked here (TIME-020, TIME-021).
     ///
     /// # Errors
-    /// `OutOfRange` (`day`) if the day does not fit the day segment; `OutOfRange`
-    /// (`ms_of_day`) above [`MAX_MS_OF_DAY`]; `OutOfRange` (`subms`) above the resolution's
-    /// maximum (TIME-021).
+    /// `OutOfRange` (`day`) if the day does not fit the 16- or 24-bit day segment;
+    /// `InvalidField` (`subms`) if the value's submillisecond resolution is not the format's.
     pub const fn new(format: CdsFormat, value: CdsValue) -> Result<Cds> {
         let max_day = match format.day {
             CdsDayLen::Bits16 => 0xFFFF,
@@ -219,19 +269,13 @@ impl Cds {
         if value.day > max_day {
             return Err(Error::out_of_range("day", wide(max_day), wide(value.day)));
         }
-        if value.ms_of_day > MAX_MS_OF_DAY {
-            return Err(Error::out_of_range(
-                "ms_of_day",
-                wide(MAX_MS_OF_DAY),
-                wide(value.ms_of_day),
-            ));
-        }
-        if value.subms > format.subms.max() {
-            return Err(Error::out_of_range(
-                "subms",
-                wide(format.subms.max()),
-                wide(value.subms),
-            ));
+        if !matches!(
+            (value.subms, format.subms),
+            (SubMillis::None, CdsSubMs::None)
+                | (SubMillis::Micros(_), CdsSubMs::Micros)
+                | (SubMillis::Picos(_), CdsSubMs::Picos)
+        ) {
+            return Err(Error::new(ErrorKind::InvalidField).with_field(FieldId::new("subms")));
         }
         Ok(Cds { format, value })
     }
@@ -252,8 +296,8 @@ impl Cds {
     pub(crate) fn t_octets(&self) -> [u8; 11] {
         let mut out = [0_u8; 11];
         let day = self.value.day.to_be_bytes();
-        let ms = self.value.ms_of_day.to_be_bytes();
-        let sub = self.value.subms.to_be_bytes();
+        let ms = self.value.ms_of_day.get().to_be_bytes();
+        let sub = self.value.subms.get().to_be_bytes();
         let octets = day
             .iter()
             .skip(4_usize.wrapping_sub(self.format.day_octets()))
@@ -268,8 +312,11 @@ impl Cds {
         out
     }
 
-    /// Decodes a T-field of exactly [`CdsFormat::t_len`] octets and checks its ranges in both
-    /// modes (TIME-021).
+    /// Decodes a T-field of exactly [`CdsFormat::t_len`] octets, parsing each segment into its
+    /// type; the ranges apply in both modes (TIME-021).
+    ///
+    /// # Errors
+    /// `OutOfRange` (`day`, `ms_of_day`, or `subms`) for a segment outside its range.
     pub(crate) fn from_t(format: CdsFormat, t: &[u8]) -> Result<Cds> {
         let mut octets = t.iter();
         let mut take = |n: usize| {
@@ -279,27 +326,46 @@ impl Cds {
                 .fold(0_u32, |acc, &b| (acc << 8) | u32::from(b))
         };
         let day = take(format.day_octets());
-        let ms_of_day = take(4);
-        let subms = take(format.subms.octets());
-        Cds::new(
+        let ms_of_day = MsOfDay::try_from(take(4))?;
+        let raw = take(format.subms.octets());
+        let subms = match format.subms {
+            CdsSubMs::None => SubMillis::None,
+            CdsSubMs::Micros => {
+                SubMillis::Micros(Micros::try_from(u16::try_from(raw).unwrap_or(u16::MAX))?)
+            }
+            CdsSubMs::Picos => SubMillis::Picos(Picos::try_from(raw)?),
+        };
+        // The day has at most the format's octets, and the resolution comes from the format.
+        Ok(Cds {
             format,
-            CdsValue {
+            value: CdsValue {
                 day,
                 ms_of_day,
                 subms,
             },
-        )
+        })
     }
 }
 
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
-    use super::{Cds, CdsDayLen, CdsEpoch, CdsFormat, CdsSubMs, CdsValue, MAX_MS_OF_DAY};
+    use super::{
+        Cds, CdsDayLen, CdsEpoch, CdsFormat, CdsSubMs, CdsValue, MAX_MS_OF_DAY, Micros, MsOfDay,
+        Picos, SubMillis,
+    };
     use crate::pfield::{PField, PFieldTail};
-    use aldis_core::{ErrorKind, FieldId};
+    use aldis_core::{ErrorDetail, ErrorKind, FieldId};
 
     const SUBMS: [CdsSubMs; 3] = [CdsSubMs::None, CdsSubMs::Micros, CdsSubMs::Picos];
+
+    fn max_subms(resolution: CdsSubMs) -> SubMillis {
+        match resolution {
+            CdsSubMs::None => SubMillis::None,
+            CdsSubMs::Micros => SubMillis::Micros(Micros::new(Micros::MAX).unwrap()),
+            CdsSubMs::Picos => SubMillis::Picos(Picos::new(Picos::MAX).unwrap()),
+        }
+    }
 
     #[test]
     fn formats_round_trip_through_the_pfield() {
@@ -330,71 +396,146 @@ mod tests {
     }
 
     #[test]
-    fn values_are_range_checked() {
-        // req: TIME-021
-        let f16 = CdsFormat::new(CdsEpoch::Ccsds1958, CdsDayLen::Bits16, CdsSubMs::Micros);
-        let f24 = CdsFormat::new(CdsEpoch::Ccsds1958, CdsDayLen::Bits24, CdsSubMs::None);
-        let ok = CdsValue {
-            day: 0xFFFF,
-            ms_of_day: MAX_MS_OF_DAY,
-            subms: 999,
-        };
-        let c = Cds::new(f16, ok).unwrap();
-        assert_eq!((c.format(), c.value()), (f16, ok));
-        for (format, value, field) in [
+    fn segments_hold_only_valid_values() {
+        // req: TIME-021, GEN-041
+        assert_eq!(
+            MsOfDay::new(MAX_MS_OF_DAY).map(MsOfDay::get),
+            Some(MAX_MS_OF_DAY)
+        );
+        assert_eq!(MsOfDay::new(MAX_MS_OF_DAY + 1), None);
+        assert_eq!(
+            (Micros::new(999).map(u16::from), Micros::new(1000)),
+            (Some(999), None)
+        );
+        assert_eq!(Picos::new(1_000_000_000), None);
+        for (e, field, expected, found) in [
             (
-                f16,
-                CdsValue {
-                    day: 0x1_0000,
-                    ..ok
-                },
-                "day",
-            ),
-            (
-                f24,
-                CdsValue {
-                    day: 0x100_0000,
-                    ms_of_day: 0,
-                    subms: 0,
-                },
-                "day",
-            ),
-            (
-                f16,
-                CdsValue {
-                    ms_of_day: MAX_MS_OF_DAY + 1,
-                    ..ok
-                },
+                MsOfDay::try_from(86_401_000).unwrap_err(),
                 "ms_of_day",
+                86_400_999,
+                86_401_000,
             ),
-            (f16, CdsValue { subms: 1000, ..ok }, "subms"),
+            (Micros::try_from(1000).unwrap_err(), "subms", 999, 1000),
             (
-                f24,
-                CdsValue {
-                    day: 1,
-                    ms_of_day: 0,
-                    subms: 1,
-                },
+                Picos::try_from(1_000_000_000).unwrap_err(),
                 "subms",
+                999_999_999,
+                1_000_000_000,
             ),
         ] {
-            let e = Cds::new(format, value).unwrap_err();
             assert_eq!(
                 (e.kind(), e.field().map(FieldId::name)),
                 (ErrorKind::OutOfRange, Some(field))
             );
+            assert_eq!(e.detail(), ErrorDetail::Expected { expected, found });
         }
+        for resolution in SUBMS {
+            let s = max_subms(resolution);
+            assert_eq!((s.resolution(), s.get()), (resolution, resolution.max()));
+        }
+    }
+
+    #[test]
+    fn value_must_fit_the_format() {
+        // req: TIME-020, TIME-021
+        let f16 = CdsFormat::new(CdsEpoch::Ccsds1958, CdsDayLen::Bits16, CdsSubMs::Micros);
+        let f24 = CdsFormat::new(CdsEpoch::Ccsds1958, CdsDayLen::Bits24, CdsSubMs::None);
+        let ms = MsOfDay::new(MAX_MS_OF_DAY).unwrap();
+        let ok = CdsValue {
+            day: 0xFFFF,
+            ms_of_day: ms,
+            subms: max_subms(CdsSubMs::Micros),
+        };
+        let c = Cds::new(f16, ok).unwrap();
+        assert_eq!((c.format(), c.value()), (f16, ok));
+        let e = Cds::new(
+            f16,
+            CdsValue {
+                day: 0x1_0000,
+                ..ok
+            },
+        )
+        .unwrap_err();
+        assert_eq!(
+            (e.field().map(FieldId::name), e.detail()),
+            (
+                Some("day"),
+                ErrorDetail::Expected {
+                    expected: 0xFFFF,
+                    found: 0x1_0000
+                }
+            )
+        );
+        let none = CdsValue {
+            day: 0x100_0000,
+            ms_of_day: ms,
+            subms: SubMillis::None,
+        };
+        assert_eq!(
+            Cds::new(f24, none).unwrap_err().kind(),
+            ErrorKind::OutOfRange
+        );
         assert!(
             Cds::new(
                 f24,
                 CdsValue {
                     day: 0xFF_FFFF,
-                    ms_of_day: 0,
-                    subms: 0
+                    ..none
                 }
             )
             .is_ok()
         );
+        for (format, subms) in [
+            (f16, SubMillis::None),
+            (f24, max_subms(CdsSubMs::Picos)),
+            (f16, max_subms(CdsSubMs::Picos)),
+        ] {
+            let e = Cds::new(
+                format,
+                CdsValue {
+                    day: 1,
+                    ms_of_day: ms,
+                    subms,
+                },
+            )
+            .unwrap_err();
+            assert_eq!(
+                (e.kind(), e.field().map(FieldId::name)),
+                (ErrorKind::InvalidField, Some("subms"))
+            );
+        }
+    }
+
+    #[test]
+    fn decoding_parses_every_segment() {
+        // req: TIME-021, GEN-041
+        let fu = CdsFormat::new(CdsEpoch::Ccsds1958, CdsDayLen::Bits16, CdsSubMs::Micros);
+        let fp = CdsFormat::new(CdsEpoch::Ccsds1958, CdsDayLen::Bits16, CdsSubMs::Picos);
+        for (f, t, field, expected, found) in [
+            (
+                fu,
+                &[0, 0, 0x05, 0x26, 0x5F, 0xE8, 0, 0][..],
+                "ms_of_day",
+                86_400_999,
+                86_401_000,
+            ),
+            (fu, &[0, 0, 0, 0, 0, 0, 0x03, 0xE8], "subms", 999, 1000),
+            (fu, &[0, 0, 0, 0, 0, 0, 0xFF, 0xFF], "subms", 999, 65_535),
+            (
+                fp,
+                &[0, 0, 0, 0, 0, 0, 0x3B, 0x9A, 0xCA, 0x00],
+                "subms",
+                999_999_999,
+                1_000_000_000,
+            ),
+        ] {
+            let e = Cds::from_t(f, t).unwrap_err();
+            assert_eq!(
+                (e.kind(), e.field().map(FieldId::name)),
+                (ErrorKind::OutOfRange, Some(field))
+            );
+            assert_eq!(e.detail(), ErrorDetail::Expected { expected, found });
+        }
     }
 
     #[test]
@@ -405,8 +546,8 @@ mod tests {
                 let f = CdsFormat::new(CdsEpoch::Agency, day, subms);
                 let v = CdsValue {
                     day: 0xBEEF,
-                    ms_of_day: 86_399_999,
-                    subms: subms.max(),
+                    ms_of_day: MsOfDay::new(86_399_999).unwrap(),
+                    subms: max_subms(subms),
                 };
                 let c = Cds::new(f, v).unwrap();
                 let t = c.t_octets();

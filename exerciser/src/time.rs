@@ -5,8 +5,9 @@ use core::hint::black_box as bb;
 use aldis_core::{DecodeMode, ErrorKind};
 use aldis_time::{
     Agency, AgencyFormat, CalendarDate, Ccs, CcsFormat, CcsValue, CcsVariation, Cds, CdsDayLen,
-    CdsEpoch, CdsFormat, CdsSubMs, CdsValue, Cuc, CucEpoch, CucFormat, CucValue, PField,
-    PFieldTail, TimeAnomaly, TimeCode, TimeCodeId, TimeFormat, decode_implicit, decode_with_pfield,
+    CdsEpoch, CdsFormat, CdsSubMs, CdsValue, Cuc, CucEpoch, CucFormat, CucValue, Hour, Micros,
+    Minute, Month, MsOfDay, PField, PFieldTail, Picos, Second, SubMillis, TimeAnomaly, TimeCode,
+    TimeCodeId, TimeFormat, Year, decode_implicit, decode_with_pfield,
 };
 
 use crate::exercise::Tally;
@@ -62,7 +63,7 @@ fn pfield(t: &mut Tally) {
     t.check(decode_with_pfield(bb(&[0x30]), DecodeMode::Strict).is_err());
 }
 
-fn codes(t: &mut Tally) {
+fn cuc_codes(t: &mut Tally) {
     let cuc =
         CucFormat::new(CucEpoch::Tai1958, bb(5), bb(4)).and_then(|f| f.with_mission_bits(bb(2)));
     if let Ok(f) = cuc {
@@ -85,7 +86,9 @@ fn codes(t: &mut Tally) {
         t.check(false);
     }
     t.check(CucFormat::new(CucEpoch::Agency, bb(8), 0).is_err());
+}
 
+fn cds_codes(t: &mut Tally) {
     let cds = CdsFormat::new(CdsEpoch::Agency, CdsDayLen::Bits24, CdsSubMs::Picos);
     t.check(
         cds.epoch() == CdsEpoch::Agency && cds.day_len() == CdsDayLen::Bits24 && cds.t_len() == 11,
@@ -93,62 +96,126 @@ fn codes(t: &mut Tally) {
     t.check(
         cds.subms() == CdsSubMs::Picos && cds.subms().max() == 999_999_999 && cds.tail().is_empty(),
     );
-    let value = CdsValue {
-        day: bb(1),
-        ms_of_day: bb(86_400_999),
-        subms: bb(5),
-    };
-    match Cds::new(cds.with_tail(PFieldTail::EMPTY), value) {
-        Ok(c) => {
-            t.check(c.format() == cds && c.value() == value);
-            round_trip(t, TimeCode::Cds(c));
-        }
-        Err(_) => t.check(false),
-    }
-    t.check(
-        Cds::new(
-            cds,
-            CdsValue {
-                ms_of_day: bb(86_401_000),
-                ..value
-            },
-        )
-        .is_err(),
-    );
-
-    match CcsFormat::new(CcsVariation::DayOfYear, bb(2)) {
-        Ok(f) => {
-            t.check(f.variation() == CcsVariation::DayOfYear && f.subsecond_octets() == 2);
-            t.check(f.t_len() == 9 && f.tail().is_empty() && f.with_tail(PFieldTail::EMPTY) == f);
-            let v = CcsValue {
-                year: bb(2024),
-                date: CalendarDate::DayOfYear(bb(366)),
-                hour: 23,
-                minute: 59,
-                second: bb(60),
-                subsecond: 1234,
+    t.check(Picos::try_from(bb(1_000_000_000)).is_err() && Picos::MAX == 999_999_999);
+    t.check(Micros::new(bb(999)).map(u16::from) == Some(999) && Micros::new(bb(1000)).is_none());
+    t.check(MsOfDay::new(bb(86_401_000)).is_none() && MsOfDay::MIN == 0);
+    match (MsOfDay::try_from(bb(86_400_999)), Picos::new(bb(5))) {
+        (Ok(ms), Some(ps)) => {
+            let subms = SubMillis::Picos(ps);
+            t.check(
+                ms.get() == MsOfDay::MAX
+                    && subms.resolution() == CdsSubMs::Picos
+                    && subms.get() == 5,
+            );
+            t.check(SubMillis::None.get() == 0 && SubMillis::None.resolution() == CdsSubMs::None);
+            let value = CdsValue {
+                day: bb(1),
+                ms_of_day: ms,
+                subms,
             };
-            match Ccs::new(f, v) {
+            match Cds::new(cds.with_tail(PFieldTail::EMPTY), value) {
                 Ok(c) => {
-                    t.check(c.format() == f && c.value() == v);
-                    round_trip(t, TimeCode::Ccs(c));
+                    t.check(c.format() == cds && c.value() == value);
+                    round_trip(t, TimeCode::Cds(c));
                 }
                 Err(_) => t.check(false),
             }
             t.check(
-                Ccs::new(
-                    f,
-                    CcsValue {
-                        year: bb(2023),
-                        ..v
+                Cds::new(
+                    cds,
+                    CdsValue {
+                        day: bb(0x100_0000),
+                        ..value
+                    },
+                )
+                .is_err(),
+            );
+            t.check(
+                Cds::new(
+                    cds,
+                    CdsValue {
+                        subms: SubMillis::None,
+                        ..value
                     },
                 )
                 .is_err(),
             );
         }
-        Err(_) => t.check(false),
+        _ => t.check(false),
     }
+}
 
+fn ccs_codes(t: &mut Tally) {
+    t.check(
+        Year::new(bb(0)).is_none() && Year::try_from(bb(10_000_u16)).is_err() && Year::MAX == 9999,
+    );
+    t.check(
+        Month::new(bb(13)).is_none()
+            && Hour::new(bb(24)).is_none()
+            && Minute::new(bb(60)).is_none(),
+    );
+    t.check(Second::new(bb(61)).is_none() && Second::MAX == 60);
+    let parts = (
+        CcsFormat::new(CcsVariation::DayOfYear, bb(2)),
+        Year::try_from(bb(2024_u16)),
+        Hour::try_from(bb(23_u8)),
+        Minute::try_from(bb(59_u8)),
+        Second::try_from(bb(60_u8)),
+    );
+    match parts {
+        (Ok(f), Ok(year), Ok(hour), Ok(minute), Ok(second)) => {
+            t.check(f.variation() == CcsVariation::DayOfYear && f.subsecond_octets() == 2);
+            t.check(f.t_len() == 9 && f.tail().is_empty() && f.with_tail(PFieldTail::EMPTY) == f);
+            t.check(
+                year.get() == 2024 && hour.get() == 23 && minute.get() == 59 && second.get() == 60,
+            );
+            t.check(CalendarDate::from_day_of_year(year, bb(367)).is_err());
+            let leap = Month::new(bb(2)).map(|feb| CalendarDate::from_month_day(year, feb, bb(29)));
+            t.check(leap.is_some_and(|d| {
+                d.is_ok_and(|d| {
+                    d.month_day()
+                        .is_some_and(|(m, day)| m.get() == 2 && day == 29)
+                })
+            }));
+            match CalendarDate::from_day_of_year(year, bb(366)) {
+                Ok(date) => {
+                    t.check(date.year() == year && date.day_of_year() == Some(366));
+                    t.check(
+                        date.month_day().is_none() && date.variation() == CcsVariation::DayOfYear,
+                    );
+                    let v = CcsValue {
+                        date,
+                        hour,
+                        minute,
+                        second,
+                        subsecond: 1234,
+                    };
+                    match Ccs::new(f, v) {
+                        Ok(c) => {
+                            t.check(c.format() == f && c.value() == v);
+                            round_trip(t, TimeCode::Ccs(c));
+                        }
+                        Err(_) => t.check(false),
+                    }
+                    t.check(
+                        Ccs::new(
+                            f,
+                            CcsValue {
+                                subsecond: bb(10_000),
+                                ..v
+                            },
+                        )
+                        .is_err(),
+                    );
+                }
+                Err(_) => t.check(false),
+            }
+        }
+        _ => t.check(false),
+    }
+}
+
+fn agency_codes(t: &mut Tally) {
     match AgencyFormat::new(bb(3)) {
         Ok(f) => {
             t.check(f.t_len() == 3 && f.tail().is_empty() && f.with_tail(PFieldTail::EMPTY) == f);
@@ -164,12 +231,19 @@ fn codes(t: &mut Tally) {
         Err(_) => t.check(false),
     }
     t.check(AgencyFormat::new(bb(17)).is_err());
-    let fmt = TimeFormat::Cds(cds);
+    let fmt = TimeFormat::Cds(CdsFormat::new(
+        CdsEpoch::Ccsds1958,
+        CdsDayLen::Bits16,
+        CdsSubMs::None,
+    ));
     t.check(decode_implicit(bb(&[0; 3]), &fmt, DecodeMode::Strict).is_err());
 }
 
 /// Runs the `aldis-time` group.
 pub fn run(t: &mut Tally) {
     pfield(t);
-    codes(t);
+    cuc_codes(t);
+    cds_codes(t);
+    ccs_codes(t);
+    agency_codes(t);
 }
