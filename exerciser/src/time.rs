@@ -6,8 +6,8 @@ use aldis_core::{DecodeMode, ErrorKind};
 use aldis_time::{
     Agency, AgencyFormat, CalendarDate, Ccs, CcsFormat, CcsValue, CcsVariation, Cds, CdsDayLen,
     CdsEpoch, CdsFormat, CdsSubMs, CdsValue, Cuc, CucEpoch, CucFormat, CucValue, Hour, Micros,
-    Minute, Month, MsOfDay, PField, PFieldTail, Picos, Second, SubMillis, TimeAnomaly, TimeCode,
-    TimeCodeId, TimeFormat, Year, decode_implicit, decode_with_pfield,
+    Minute, Month, MsOfDay, PField, PFieldTail, Picos, ReservedPField, Second, SubMillis,
+    TimeAnomaly, TimeCode, TimeCodeId, TimeFormat, Year, decode_implicit, decode_with_pfield,
 };
 
 use crate::exercise::Tally;
@@ -49,13 +49,16 @@ fn pfield(t: &mut Tally) {
     }));
     t.check(p.is_ok_and(|p| p.id() == TimeCodeId::CucLevel1 && p.id().bits() == 1));
     t.check(PField::parse(bb(&[0x80; 9])).is_err_and(|e| e.kind() == ErrorKind::Malformed));
-    t.check(TimeCodeId::from_octet(bb(0x70)) == TimeCodeId::Reserved(7));
+    t.check(
+        TimeCodeId::from_octet(bb(0x70)) == TimeCodeId::Reserved111
+            && TimeCodeId::Reserved011.is_reserved(),
+    );
     let tail = PFieldTail::new(bb(&[0x81, 0x02]));
     t.check(tail.is_ok_and(|x| x.as_bytes() == [0x81, 0x02] && x.len() == 2 && !x.is_empty()));
     t.check(PFieldTail::new(bb(&[0x80])).is_err() && PFieldTail::EMPTY.is_empty());
     let unknown = decode_with_pfield(bb(&[0x30, 0x00]), DecodeMode::Lenient);
     t.check(unknown.is_ok_and(|d| {
-        matches!(d.code(), TimeCode::Unknown(_))
+        matches!(d.code(), TimeCode::Unknown(r) if r.pfield().id().is_reserved())
             && d.len() == 1
             && d.anomalies().contains(TimeAnomaly::ReservedTimeCodeId)
             && d.code().format().is_none()
@@ -70,12 +73,12 @@ fn cuc_codes(t: &mut Tally) {
         t.check(f.epoch() == CucEpoch::Tai1958 && f.coarse_octets() == 5 && f.fine_octets() == 4);
         t.check(f.mission_bits() == 2 && f.has_octet2() && f.tail().is_empty() && f.t_len() == 9);
         t.check(f.with_octet2() == f && f.with_tail(PFieldTail::EMPTY).is_ok());
-        let v = CucValue::from_seconds_nanos(bb(1_000), bb(500_000_000), &f);
-        t.check(
-            v.is_ok_and(|v| v.to_seconds_nanos() == (1_000, 500_000_000) && v.coarse() == 1_000),
-        );
-        t.check(v.is_ok_and(|v| v.fine() == 1 << 127));
-        if let Ok(c) = v.and_then(|v| Cuc::new(f, v)) {
+        let from_ns = Cuc::from_seconds_nanos(f, bb(1_000), bb(500_000_000));
+        t.check(from_ns.is_ok_and(|c| {
+            c.value().to_seconds_nanos() == (1_000, 500_000_000) && c.value().fine() == 1 << 127
+        }));
+        t.check(PField::parse(bb(&[0x1E])).is_ok_and(|p| ReservedPField::new(p).is_none()));
+        if let Ok(c) = from_ns.and_then(|c| Cuc::new(f, c.value())) {
             t.check(c.format() == f && c.value().coarse() == 1_000);
             round_trip(t, TimeCode::Cuc(c));
         } else {

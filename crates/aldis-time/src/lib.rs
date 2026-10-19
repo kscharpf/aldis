@@ -48,4 +48,4 @@ pub use code::{
     Agency, AgencyFormat, Decoded, TimeCode, TimeFormat, decode_implicit, decode_with_pfield,
 };
 pub use cuc::{Cuc, CucEpoch, CucFormat, CucValue};
-pub use pfield::{PField, PFieldTail, TimeCodeId};
+pub use pfield::{PField, PFieldTail, ReservedPField, TimeCodeId};

@@ -7,7 +7,7 @@ use crate::anomaly::TimeAnomaly;
 use crate::ccs::{Ccs, CcsFormat};
 use crate::cds::{Cds, CdsFormat};
 use crate::cuc::{Cuc, CucFormat};
-use crate::pfield::{MAX_PFIELD_LEN, PField, PFieldTail, TimeCodeId};
+use crate::pfield::{MAX_PFIELD_LEN, PField, PFieldTail, ReservedPField, TimeCodeId};
 use crate::util::wide8;
 
 /// Longest agency-defined T-field, 16 octets (301.0 §3.6.2).
@@ -183,7 +183,7 @@ pub enum TimeCode {
     Agency(Agency),
     /// A reserved time code ID, returned in lenient mode with its P-field only; the T-field
     /// length is undefined, so the caller parses it (TIME-002).
-    Unknown(PField),
+    Unknown(ReservedPField),
 }
 
 /// A successful decode: the code, the octets consumed, and lenient-mode anomalies (TIME-003,
@@ -274,12 +274,12 @@ pub fn decode_with_pfield(bytes: &[u8], mode: DecodeMode) -> Result<Decoded> {
             TimeCodeId::Cds => TimeFormat::Cds(CdsFormat::from_pfield(&pfield)?),
             TimeCodeId::Ccs => TimeFormat::Ccs(CcsFormat::from_pfield(&pfield)?),
             TimeCodeId::Agency => TimeFormat::Agency(AgencyFormat::from_pfield(&pfield)),
-            TimeCodeId::Reserved(_) => {
+            TimeCodeId::Reserved000 | TimeCodeId::Reserved011 | TimeCodeId::Reserved111 => {
                 return match mode {
                     DecodeMode::Strict => Err(Error::new(ErrorKind::ReservedValue)
                         .with_field(FieldId::new("time_code_id"))),
                     DecodeMode::Lenient => Ok(Decoded {
-                        code: TimeCode::Unknown(pfield),
+                        code: TimeCode::Unknown(ReservedPField::from_reserved(pfield)),
                         pfield: Some(pfield),
                         len: pfield.len(),
                         anomalies: AnomalySet::from_flags(&[TimeAnomaly::ReservedTimeCodeId]),
@@ -343,7 +343,7 @@ impl TimeCode {
             TimeCode::Cds(c) => c.format().pfield(),
             TimeCode::Ccs(c) => c.format().pfield(),
             TimeCode::Agency(c) => c.format().pfield(),
-            TimeCode::Unknown(p) => *p,
+            TimeCode::Unknown(p) => p.pfield(),
         }
     }
 
@@ -556,9 +556,10 @@ mod tests {
         let d: Decoded = decode_with_pfield(&[0xB0, 0x01, 0xFF], DecodeMode::Lenient).unwrap();
         assert_eq!(d.len(), 2);
         assert!(d.anomalies().contains(TimeAnomaly::ReservedTimeCodeId));
-        let TimeCode::Unknown(p) = d.code() else {
+        let TimeCode::Unknown(reserved) = d.code() else {
             panic!("not unknown")
         };
+        let p = reserved.pfield();
         assert_eq!(d.code().format(), None);
         assert_eq!(d.code().pfield(), p);
         let mut out = [0_u8; 4];

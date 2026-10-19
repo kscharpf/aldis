@@ -37,7 +37,8 @@ fn run(u: &mut Unstructured<'_>) -> Result<()> {
     assert!(u128::from(ns) == coarse_model || u128::from(ns) == coarse_model + 1);
     assert!(ns < 1_000_000_000);
     let bits = 8 * u32::from(format.fine_octets());
-    if let Ok(v) = CucValue::from_seconds_nanos(coarse, nanos, &format) {
+    if let Ok(c) = Cuc::from_seconds_nanos(format, coarse, nanos) {
+        let v = c.value();
         let ceil = (u128::from(nanos) << bits).div_ceil(1_000_000_000);
         let expect_coarse = if ceil == 1 << bits {
             coarse + 1
@@ -45,7 +46,7 @@ fn run(u: &mut Unstructured<'_>) -> Result<()> {
             coarse
         };
         assert_eq!(v.coarse(), expect_coarse);
-        assert!(Cuc::new(format, v).is_ok());
+        assert_eq!(Cuc::new(format, v), Ok(c));
     }
 
     // Round trip of a representable value.

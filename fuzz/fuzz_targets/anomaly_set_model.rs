@@ -15,6 +15,9 @@ struct Flag(u8);
 
 const HOLES: [u8; 2] = [7, 30];
 
+// A deliberately unconstrained test double: implements the sealing trait directly.
+impl aldis_core::anomaly::__private::Sealed for Flag {}
+
 impl Anomaly for Flag {
     fn bit(self) -> u8 {
         self.0

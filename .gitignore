@@ -6,6 +6,8 @@ target/
 # cargo-mutants output (VER-025)
 mutants.out/
 mutants.out.old/
+# Git worktrees created by Claude Code for parallel sessions
+/.claude/worktrees/
 # Editor swap and backup files
 *.swp
 *~

@@ -20,6 +20,8 @@ const SKIP: &[&str] = &[
     "fuzz/artifacts",
     "mutants.out",
     "mutants.out.old",
+    // Git worktrees that Claude Code creates for parallel sessions: other branches, not this one.
+    ".claude/worktrees",
 ];
 
 /// All files under `dir` (relative to the root) whose extension is in `exts`, sorted.

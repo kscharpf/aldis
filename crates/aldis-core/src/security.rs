@@ -11,6 +11,8 @@ use core::ops::Range;
 use crate::error::{
     Error, ErrorKind, Result, u8_to_usize, u16_to_usize, usize_to_u8, usize_to_u16,
 };
+use crate::ids::{MapId, SpacecraftId, VcId};
+use crate::layout::FrameLayout;
 
 /// Lengths of the Security Header and Trailer on one VC or MAP (API-070, API-071).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
@@ -90,27 +92,159 @@ pub enum Protocol {
 
 /// Identifies the channel a frame belongs to, for selecting a Security Association
 /// (355.0-B-2 §2.2.3, §4.1; API-073).
+///
+/// One variant per protocol carries that protocol's identifier widths, so a context can hold
+/// only identifiers its protocol allows (API-002, RS-020).
+#[non_exhaustive]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct FrameCtx {
-    /// Data link protocol.
-    pub protocol: Protocol,
-    /// Spacecraft ID.
-    pub scid: u16,
-    /// Virtual Channel ID.
-    pub vcid: u8,
-    /// MAP ID, where SDLS is applied per MAP (TC, USLP).
-    pub map_id: Option<u8>,
+pub enum FrameCtx {
+    /// TM frame: 10-bit SCID, 3-bit VCID (132.0 §4.1.2.2–3).
+    Tm {
+        /// Spacecraft ID.
+        scid: SpacecraftId<10>,
+        /// Virtual Channel ID.
+        vcid: VcId<3>,
+    },
+    /// TC frame: 10-bit SCID, 6-bit VCID, and the MAP ID when SDLS is applied per MAP (232.0
+    /// §4.1.2.5–6, §4.2.2.2).
+    Tc {
+        /// Spacecraft ID.
+        scid: SpacecraftId<10>,
+        /// Virtual Channel ID.
+        vcid: VcId<6>,
+        /// MAP ID, if security is applied per MAP.
+        map_id: Option<MapId<6>>,
+    },
+    /// AOS frame: 6-bit VCID and a 10-bit SCID (732.0 §4.1.2.2.3); Issue ≤4 SCIDs are 8 bits
+    /// and fit unchanged.
+    Aos {
+        /// Spacecraft ID.
+        scid: SpacecraftId<10>,
+        /// Virtual Channel ID.
+        vcid: VcId<6>,
+    },
+    /// USLP frame: 16-bit SCID, 6-bit VCID, and the MAP ID when SDLS is applied per MAP (732.1
+    /// §4.1.2.2.3, §4.1.2.4–5).
+    Uslp {
+        /// Spacecraft ID.
+        scid: SpacecraftId<16>,
+        /// Virtual Channel ID.
+        vcid: VcId<6>,
+        /// MAP ID, if security is applied per MAP.
+        map_id: Option<MapId<4>>,
+    },
 }
 
-/// Octet ranges of the secured fields within a frame buffer (355.0-B-2 §4.1; API-070, API-073).
+impl FrameCtx {
+    /// The data link protocol (API-073).
+    #[must_use]
+    pub const fn protocol(&self) -> Protocol {
+        match self {
+            FrameCtx::Tm { .. } => Protocol::Tm,
+            FrameCtx::Tc { .. } => Protocol::Tc,
+            FrameCtx::Aos { .. } => Protocol::Aos,
+            FrameCtx::Uslp { .. } => Protocol::Uslp,
+        }
+    }
+
+    /// The Spacecraft ID as a number (API-073).
+    #[must_use]
+    pub const fn scid(&self) -> u16 {
+        match self {
+            FrameCtx::Tm { scid, .. } | FrameCtx::Tc { scid, .. } | FrameCtx::Aos { scid, .. } => {
+                scid.get()
+            }
+            FrameCtx::Uslp { scid, .. } => scid.get(),
+        }
+    }
+
+    /// The Virtual Channel ID as a number (API-073).
+    #[must_use]
+    pub const fn vcid(&self) -> u8 {
+        match self {
+            FrameCtx::Tm { vcid, .. } => vcid.get(),
+            FrameCtx::Tc { vcid, .. }
+            | FrameCtx::Aos { vcid, .. }
+            | FrameCtx::Uslp { vcid, .. } => vcid.get(),
+        }
+    }
+
+    /// The MAP ID as a number, for TC and USLP contexts that carry one (API-073).
+    #[must_use]
+    pub const fn map_id(&self) -> Option<u8> {
+        match self {
+            FrameCtx::Tc {
+                map_id: Some(map), ..
+            } => Some(map.get()),
+            FrameCtx::Uslp {
+                map_id: Some(map), ..
+            } => Some(map.get()),
+            _ => None,
+        }
+    }
+}
+
+/// Octet ranges of the secured fields within a frame buffer: Security Header, data field, and
+/// Security Trailer, in order and adjacent (355.0-B-2 §4.1; API-070, API-073, RS-020).
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct SecuredFields {
-    /// Security Header.
-    pub header: Range<usize>,
-    /// Data field protected by the hook.
-    pub data: Range<usize>,
-    /// Security Trailer.
-    pub trailer: Range<usize>,
+    header: Range<usize>,
+    data: Range<usize>,
+    trailer: Range<usize>,
+}
+
+impl SecuredFields {
+    /// The secured fields from three ranges.
+    ///
+    /// # Errors
+    /// `InvalidField` (`secured_fields`) unless each range has `start <= end`, the data field
+    /// starts where the header ends, and the trailer starts where the data field ends.
+    pub const fn new(
+        header: Range<usize>,
+        data: Range<usize>,
+        trailer: Range<usize>,
+    ) -> Result<Self> {
+        let ordered =
+            header.start <= header.end && data.start <= data.end && trailer.start <= trailer.end;
+        if !ordered || header.end != data.start || data.end != trailer.start {
+            return Err(Error::new(ErrorKind::InvalidField)
+                .with_field(crate::error::FieldId::new("secured_fields")));
+        }
+        Ok(SecuredFields {
+            header,
+            data,
+            trailer,
+        })
+    }
+
+    /// The secured fields of a computed frame layout, which are adjacent by construction
+    /// (CMN-040, API-070).
+    #[must_use]
+    pub fn from_layout(layout: &FrameLayout) -> SecuredFields {
+        SecuredFields {
+            header: layout.security_header(),
+            data: layout.data(),
+            trailer: layout.security_trailer(),
+        }
+    }
+
+    /// Security Header (355.0-B-2 §4.1.1).
+    #[must_use]
+    pub fn header(&self) -> Range<usize> {
+        self.header.clone()
+    }
+
+    /// Data field protected by the hook (355.0-B-2 §4.1).
+    #[must_use]
+    pub fn data(&self) -> Range<usize> {
+        self.data.clone()
+    }
+
+    /// Security Trailer (355.0-B-2 §4.1.2).
+    #[must_use]
+    pub fn trailer(&self) -> Range<usize> {
+        self.trailer.clone()
+    }
 }
 
 /// Applies and checks link-layer security (API-073, API-074).
@@ -149,7 +283,7 @@ impl SecurityHook for NoSecurity {
         _: &mut [u8],
         fields: &SecuredFields,
     ) -> Result<Range<usize>> {
-        Ok(fields.data.clone())
+        Ok(fields.data())
     }
 }
 
@@ -174,11 +308,11 @@ impl FixedPatternSecurity {
 impl SecurityHook for FixedPatternSecurity {
     fn protect(&mut self, _: &FrameCtx, frame: &mut [u8], fields: &SecuredFields) -> Result<()> {
         for (range, pattern) in [
-            (&fields.header, FixedPatternSecurity::HEADER_PATTERN),
-            (&fields.trailer, FixedPatternSecurity::TRAILER_PATTERN),
+            (fields.header(), FixedPatternSecurity::HEADER_PATTERN),
+            (fields.trailer(), FixedPatternSecurity::TRAILER_PATTERN),
         ] {
             frame
-                .get_mut(range.clone())
+                .get_mut(range)
                 .ok_or(Error::new(ErrorKind::Security))?
                 .fill(pattern);
         }
@@ -191,15 +325,15 @@ impl SecurityHook for FixedPatternSecurity {
         frame: &mut [u8],
         fields: &SecuredFields,
     ) -> Result<Range<usize>> {
-        let ok = |range: &Range<usize>, pattern: u8| {
+        let ok = |range: Range<usize>, pattern: u8| {
             frame
-                .get(range.clone())
+                .get(range)
                 .is_some_and(|s| s.iter().all(|&b| b == pattern))
         };
-        if ok(&fields.header, FixedPatternSecurity::HEADER_PATTERN)
-            && ok(&fields.trailer, FixedPatternSecurity::TRAILER_PATTERN)
+        if ok(fields.header(), FixedPatternSecurity::HEADER_PATTERN)
+            && ok(fields.trailer(), FixedPatternSecurity::TRAILER_PATTERN)
         {
-            Ok(fields.data.clone())
+            Ok(fields.data())
         } else {
             Err(Error::new(ErrorKind::Security))
         }
@@ -213,14 +347,112 @@ mod tests {
         FixedPatternSecurity, FrameCtx, NoSecurity, Protocol, SecuredFields, SecurityHook,
         SecurityLayout,
     };
-    use crate::error::ErrorKind;
+    use crate::error::{ErrorKind, FieldId};
+    use crate::ids::{MapId, SpacecraftId, VcId};
+    use crate::layout::{FrameLayout, LayoutSpec};
 
-    const CTX: FrameCtx = FrameCtx {
-        protocol: Protocol::Tm,
-        scid: 42,
-        vcid: 1,
-        map_id: None,
+    const CTX: FrameCtx = FrameCtx::Tm {
+        scid: match SpacecraftId::<10>::new(42) {
+            Some(id) => id,
+            None => panic!("valid SCID"),
+        },
+        vcid: match VcId::<3>::new(1) {
+            Some(id) => id,
+            None => panic!("valid VCID"),
+        },
     };
+
+    #[test]
+    fn frame_contexts_carry_typed_ids() {
+        // req: API-002, API-073
+        let tc = FrameCtx::Tc {
+            scid: SpacecraftId::new(1023).unwrap(),
+            vcid: VcId::new(63).unwrap(),
+            map_id: Some(MapId::new(63).unwrap()),
+        };
+        let aos = FrameCtx::Aos {
+            scid: SpacecraftId::new(255).unwrap(),
+            vcid: VcId::new(62).unwrap(),
+        };
+        let uslp = FrameCtx::Uslp {
+            scid: SpacecraftId::new(65_535).unwrap(),
+            vcid: VcId::new(5).unwrap(),
+            map_id: Some(MapId::new(15).unwrap()),
+        };
+        let uslp_vc = FrameCtx::Uslp {
+            scid: SpacecraftId::new(7).unwrap(),
+            vcid: VcId::new(6).unwrap(),
+            map_id: None,
+        };
+        let tc_vc = FrameCtx::Tc {
+            scid: SpacecraftId::new(9).unwrap(),
+            vcid: VcId::new(2).unwrap(),
+            map_id: None,
+        };
+        assert_eq!(
+            (CTX.protocol(), CTX.scid(), CTX.vcid(), CTX.map_id()),
+            (Protocol::Tm, 42, 1, None)
+        );
+        assert_eq!(
+            (tc.protocol(), tc.scid(), tc.vcid(), tc.map_id()),
+            (Protocol::Tc, 1023, 63, Some(63))
+        );
+        assert_eq!(
+            (aos.protocol(), aos.scid(), aos.vcid(), aos.map_id()),
+            (Protocol::Aos, 255, 62, None)
+        );
+        assert_eq!(
+            (uslp.protocol(), uslp.scid(), uslp.vcid(), uslp.map_id()),
+            (Protocol::Uslp, 65_535, 5, Some(15))
+        );
+        assert_eq!(
+            (
+                uslp_vc.map_id(),
+                tc_vc.map_id(),
+                tc_vc.vcid(),
+                uslp_vc.scid()
+            ),
+            (None, None, 2, 7)
+        );
+    }
+
+    #[test]
+    fn secured_fields_are_ordered_and_adjacent() {
+        // req: API-070, API-073
+        let f = SecuredFields::new(1..3, 3..5, 5..7).unwrap();
+        assert_eq!((f.header(), f.data(), f.trailer()), (1..3, 3..5, 5..7));
+        assert!(SecuredFields::new(0..0, 0..4, 4..4).is_ok());
+        #[expect(
+            clippy::reversed_empty_ranges,
+            reason = "testing that reversed ranges are rejected"
+        )]
+        let bad = [
+            (1..3, 4..5, 5..7),
+            (1..3, 3..5, 6..7),
+            (3..1, 1..5, 5..7),
+            (1..3, 3..2, 2..7),
+            (1..3, 3..5, 5..4),
+        ];
+        for (h, d, t) in bad {
+            let e = SecuredFields::new(h.clone(), d.clone(), t.clone()).unwrap_err();
+            assert_eq!(
+                (e.kind(), e.field().map(FieldId::name)),
+                (ErrorKind::InvalidField, Some("secured_fields")),
+                "{h:?} {d:?} {t:?}"
+            );
+        }
+        let layout = FrameLayout::compute(&LayoutSpec {
+            frame_len: 20,
+            primary_header_len: 6,
+            secondary_len: 0,
+            security: SecurityLayout::new(2, 3).unwrap(),
+            ocf: false,
+            fecf: true,
+        })
+        .unwrap();
+        let f = SecuredFields::from_layout(&layout);
+        assert_eq!((f.header(), f.data(), f.trailer()), (6..8, 8..15, 15..18));
+    }
 
     #[test]
     fn layout_limits() {
@@ -261,11 +493,7 @@ mod tests {
     #[test]
     fn hooks() {
         // req: API-073
-        let fields = SecuredFields {
-            header: 1..3,
-            data: 3..5,
-            trailer: 5..7,
-        };
+        let fields = SecuredFields::new(1..3, 3..5, 5..7).unwrap();
         let mut frame = [0_u8; 8];
         NoSecurity.protect(&CTX, &mut frame, &fields).unwrap();
         assert_eq!(frame, [0; 8]);
@@ -279,11 +507,7 @@ mod tests {
             hook.verify(&CTX, &mut frame, &fields).unwrap_err().kind(),
             ErrorKind::Security
         );
-        let outside = SecuredFields {
-            header: 7..9,
-            data: 0..0,
-            trailer: 0..0,
-        };
+        let outside = SecuredFields::new(7..9, 9..9, 9..9).unwrap();
         assert_eq!(
             hook.protect(&CTX, &mut frame, &outside).unwrap_err().kind(),
             ErrorKind::Security

@@ -15,10 +15,20 @@ use core::marker::PhantomData;
 /// Number of distinct bit indices an [`AnomalySet`] can hold.
 pub const CAPACITY: u8 = 32;
 
+/// Sealing for [`Anomaly`]: implemented by [`anomaly_flags!`](crate::anomaly_flags).
+///
+/// Not part of the public API. Only the macro and deliberately broken test doubles in Aldis's own
+/// tests, fuzz targets, and exerciser implement it (RS-020).
+#[doc(hidden)]
+pub mod __private {
+    /// Supertrait that seals [`Anomaly`](super::Anomaly).
+    pub trait Sealed {}
+}
+
 /// A lenient-mode anomaly flag with a stable bit index (GEN-043).
 ///
-/// Implementations must keep three invariants, which [`anomaly_flags!`](crate::anomaly_flags)
-/// guarantees at compile time:
+/// The trait is sealed: declare flag types with [`anomaly_flags!`](crate::anomaly_flags), which
+/// implements it and guarantees its invariants at compile time (RS-020). The invariants are:
 /// - every flag's index is below [`CAPACITY`];
 /// - no two flags share an index;
 /// - `from_bit(f.bit()) == Some(f)` for every flag `f`, and `from_bit` returns `None` for an
@@ -27,7 +37,7 @@ pub const CAPACITY: u8 = 32;
 /// If they are broken, [`AnomalySet::insert`] drops a flag whose index is too large, and
 /// [`AnomalySet::iter`] skips set bits that `from_bit` does not map back to a flag, so `iter`
 /// and `Debug` disagree with `len`, `is_empty`, and `bits`.
-pub trait Anomaly: Copy + Eq + Hash + fmt::Debug {
+pub trait Anomaly: __private::Sealed + Copy + Eq + Hash + fmt::Debug {
     /// The flag's bit index, below [`CAPACITY`]. Stable: never renumbered.
     fn bit(self) -> u8;
 
@@ -97,6 +107,8 @@ macro_rules! anomaly_flags {
             /// Every flag, in declaration order.
             $vis const ALL: &'static [$name] = &[$($name::$flag),+];
         }
+
+        impl $crate::anomaly::__private::Sealed for $name {}
 
         impl $crate::anomaly::Anomaly for $name {
             fn bit(self) -> u8 {
@@ -295,6 +307,8 @@ mod tests {
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
     struct Flag(u8);
 
+    impl super::__private::Sealed for Flag {}
+
     impl Anomaly for Flag {
         fn bit(self) -> u8 {
             self.0
@@ -309,6 +323,8 @@ mod tests {
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
     struct Even(u8);
 
+    impl super::__private::Sealed for Even {}
+
     impl Anomaly for Even {
         fn bit(self) -> u8 {
             self.0
@@ -322,6 +338,8 @@ mod tests {
     /// No index maps back.
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
     struct Unknown(u8);
+
+    impl super::__private::Sealed for Unknown {}
 
     impl Anomaly for Unknown {
         fn bit(self) -> u8 {

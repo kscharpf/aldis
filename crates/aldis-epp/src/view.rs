@@ -169,6 +169,7 @@ mod tests {
 
     use super::EncapsulationPacket;
     use crate::anomaly::EppAnomaly;
+    use crate::config::ANY;
     use crate::header::{
         EncapsulationFields, Epi, EpiExtension, HeaderLen, HeaderSize, UserDefined,
     };
@@ -245,10 +246,14 @@ mod tests {
     }
 
     fn fields() -> impl Strategy<Value = EncapsulationFields> {
-        (0_u8..8, 0_u8..16, 0_u8..16).prop_map(|(epi, ext, user)| EncapsulationFields {
-            epi: Epi::new(epi).unwrap(),
-            extension: EpiExtension::new(if epi == 6 { ext } else { 0 }).unwrap(),
-            user_defined: UserDefined::new(user).unwrap(),
+        (0_u8..8, 0_u8..16, 0_u8..16).prop_map(|(epi, ext, user)| {
+            let user = UserDefined::new(user).unwrap();
+            if epi == 6 {
+                EncapsulationFields::extended(EpiExtension::new(ext).unwrap())
+                    .with_user_defined(user)
+            } else {
+                EncapsulationFields::new(Epi::new(epi).unwrap()).with_user_defined(user)
+            }
         })
     }
 
@@ -272,17 +277,18 @@ mod tests {
         ) {
             // req: API-020, API-011, EPP-002, VER-023
             let mut out = vec![0_u8; data.len() + 8];
-            let Ok(n) = encode(f, s, &data, &mut out) else { return Ok(()) };
+            let Ok(unit) = ANY.data_unit(f, &data) else { return Ok(()) };
+            let Ok(n) = encode(&unit, s, &mut out) else { return Ok(()) };
             out.truncate(n);
             out.extend_from_slice(&tail);
             let p = EncapsulationPacket::decode(&out, DecodeMode::Strict).unwrap();
-            prop_assert_eq!(p.epi(), f.epi);
+            prop_assert_eq!(p.epi(), f.epi());
             prop_assert_eq!(p.data(), data.as_slice());
             prop_assert_eq!(p.len(), n);
             prop_assert_eq!(EncapsulationPacket::peek_length(&out), Ok(n));
             if p.header_len().has_extension() {
-                prop_assert_eq!(p.extension(), Some(f.extension));
-                prop_assert_eq!(p.user_defined(), Some(f.user_defined));
+                prop_assert_eq!(p.extension(), Some(f.extension()));
+                prop_assert_eq!(p.user_defined(), Some(f.user_defined()));
             }
         }
 
@@ -290,13 +296,15 @@ mod tests {
         fn strict_decode_re_encodes_exactly(bytes in proptest::collection::vec(any::<u8>(), 0..64)) {
             // req: API-020, API-010, GEN-020, VER-023
             let Ok(p) = EncapsulationPacket::decode(&bytes, DecodeMode::Strict) else { return Ok(()) };
-            let fields = EncapsulationFields {
-                epi: p.epi(),
-                extension: p.extension().unwrap_or_default(),
-                user_defined: p.user_defined().unwrap_or_default(),
-            };
+            let fields = EncapsulationFields::from_parts(
+                p.epi(),
+                p.extension().unwrap_or_default(),
+                p.user_defined().unwrap_or_default(),
+            )
+            .unwrap();
             let mut out = vec![0_u8; p.len()];
-            let n = encode(fields, HeaderSize::Fixed(p.header_len()), p.data(), &mut out).unwrap();
+            let unit = ANY.data_unit(fields, p.data()).unwrap();
+            let n = encode(&unit, HeaderSize::Fixed(p.header_len()), &mut out).unwrap();
             prop_assert_eq!(&out[..n], &bytes[..p.len()]);
             let lenient = EncapsulationPacket::decode(&bytes, DecodeMode::Lenient).unwrap();
             prop_assert_eq!(lenient, p);
