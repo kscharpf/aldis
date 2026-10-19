@@ -30,6 +30,7 @@ This directory holds the specification for a family of libraries that add CCSDS 
 | [M0 Foundations](milestones/m0-foundations.md) | Repository, CI, verification tooling, `aldis-core` |
 | [M1 Packets and time](milestones/m1-packets-time.md) | `aldis-time`, `aldis-spp`, `aldis-epp` (planned) |
 | [C0 Foundations (native C++)](milestones/c0-foundations.md) | `cpp/` CMake project, C++ CI and verification tooling, `aldis_core` (plan proposed) |
+| [A0 Scenario](milestones/a0-scenario.md) | Reference application: scenario specification (area APP) and `refapp/` skeleton (proposed) |
 
 ### Per-standard specifications ([`standards/`](standards/))
 
