@@ -6,7 +6,7 @@
 
 use aldis_core::{Error, ErrorDetail, ErrorKind, FieldId, Result};
 
-use crate::header::{Epi, EpiExtension};
+use crate::header::{Epi, EpiExtension, len_u64};
 
 /// Widens `u32` to `u64` in `const` context (`From` is not yet `const`).
 #[expect(clippy::as_conversions, reason = "lossless widening u32 -> u64")]
@@ -17,54 +17,57 @@ const fn wide(n: u32) -> u64 {
 /// Largest Encapsulated Data Field, 2³² − 9 octets (133.1 Table 4-2).
 pub const MAX_DATA_LEN: u32 = u32::MAX - 8;
 
-/// A set of Encapsulation Protocol IDs (3-bit values).
+/// A set of Encapsulation Protocol IDs, 3-bit values: the managed parameter "Valid
+/// Encapsulation Protocol Identifiers" (133.1 Table 5-1, EPP-010).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub struct EpiSet(u8);
 
 impl EpiSet {
-    /// The empty set.
+    /// The empty set (EPP-010).
     pub const EMPTY: EpiSet = EpiSet(0);
 
-    /// The set with `epi` added.
+    /// The set with `epi` added (EPP-010).
     #[must_use]
     pub const fn with(self, epi: Epi) -> EpiSet {
         EpiSet(self.0 | (1 << epi.get()))
     }
 
-    /// Whether `epi` is in the set.
+    /// Whether `epi` is in the set (EPP-010).
     #[must_use]
     pub const fn contains(self, epi: Epi) -> bool {
         self.0 & (1 << epi.get()) != 0
     }
 
-    /// The set as a bit mask: bit `n` is set when EPI `n` is a member.
+    /// The set as a bit mask: bit `n` is set when EPI `n` is a member (EPP-010).
     #[must_use]
     pub const fn bits(self) -> u8 {
         self.0
     }
 }
 
-/// A set of extended Encapsulation Protocol IDs (4-bit Protocol ID Extension values).
+/// A set of extended Encapsulation Protocol IDs, 4-bit Protocol ID Extension values: the
+/// managed parameter "Valid Extended Encapsulation Protocol Identifiers" (133.1 Table 5-1,
+/// EPP-010).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub struct ExtendedEpiSet(u16);
 
 impl ExtendedEpiSet {
-    /// The empty set.
+    /// The empty set (EPP-010).
     pub const EMPTY: ExtendedEpiSet = ExtendedEpiSet(0);
 
-    /// The set with `extension` added.
+    /// The set with `extension` added (EPP-010).
     #[must_use]
     pub const fn with(self, extension: EpiExtension) -> ExtendedEpiSet {
         ExtendedEpiSet(self.0 | (1 << extension.get()))
     }
 
-    /// Whether `extension` is in the set.
+    /// Whether `extension` is in the set (EPP-010).
     #[must_use]
     pub const fn contains(self, extension: EpiExtension) -> bool {
         self.0 & (1 << extension.get()) != 0
     }
 
-    /// The set as a bit mask: bit `n` is set when extended EPI `n` is a member.
+    /// The set as a bit mask: bit `n` is set when extended EPI `n` is a member (EPP-010).
     #[must_use]
     pub const fn bits(self) -> u16 {
         self.0
@@ -118,25 +121,25 @@ impl EppConfig {
         })
     }
 
-    /// Minimum data unit length in octets.
+    /// Minimum data unit length in octets (133.1 Table 5-1, EPP-010).
     #[must_use]
     pub const fn min_data_len(&self) -> u32 {
         self.min_data_len
     }
 
-    /// Maximum data unit length in octets.
+    /// Maximum data unit length in octets (133.1 Table 5-1, EPP-010).
     #[must_use]
     pub const fn max_data_len(&self) -> u32 {
         self.max_data_len
     }
 
-    /// Valid Encapsulation Protocol IDs.
+    /// Valid Encapsulation Protocol IDs (133.1 Table 5-1, EPP-010).
     #[must_use]
     pub const fn valid_epis(&self) -> EpiSet {
         self.valid_epis
     }
 
-    /// Valid extended Encapsulation Protocol IDs.
+    /// Valid extended Encapsulation Protocol IDs (133.1 Table 5-1, EPP-010).
     #[must_use]
     pub const fn valid_extended_epis(&self) -> ExtendedEpiSet {
         self.valid_extended_epis
@@ -165,7 +168,7 @@ impl EppConfig {
                 Error::new(ErrorKind::UnknownChannel).with_field(FieldId::new("epi_extension"))
             );
         }
-        let len = u64::try_from(data_len).unwrap_or(u64::MAX);
+        let len = len_u64(data_len);
         if len < u64::from(self.min_data_len) {
             return Err(Error::out_of_range(
                 "data_len",

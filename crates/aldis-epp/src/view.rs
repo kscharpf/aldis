@@ -5,7 +5,7 @@ use aldis_core::{AnomalySet, DecodeMode, Error, ErrorDetail, ErrorKind, FieldId,
 
 use crate::anomaly::EppAnomaly;
 use crate::config::EppConfig;
-use crate::header::{EncapsulationHeader, Epi, EpiExtension, HeaderLen, UserDefined, invalid};
+use crate::header::{EncapsulationHeader, Epi, EpiExtension, HeaderLen, UserDefined};
 
 /// A decoded Encapsulation Packet borrowing its data field from the input (GEN-013).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -43,9 +43,6 @@ impl<'a> EncapsulationPacket<'a> {
         let data = bytes
             .get(header.header_len().octets()..total)
             .ok_or(Error::incomplete(total))?;
-        if data.is_empty() && !header.epi().is_idle() {
-            return Err(invalid("epi"));
-        }
         let mut anomalies = AnomalySet::empty();
         if let Some(ext) = header.extension()
             && ext.get() != 0
@@ -71,11 +68,14 @@ impl<'a> EncapsulationPacket<'a> {
         })
     }
 
-    /// Total length of the packet that starts `prefix`, from its header alone (API-013).
+    /// Total length of the packet that starts `prefix`, from its header alone (API-013). It
+    /// applies every check of [`decode`](Self::decode) that needs only the header and holds in
+    /// both modes, so the two never disagree on a header.
     ///
     /// # Errors
     /// `Incomplete` if `prefix` is shorter than the header; `UnsupportedVersion`,
-    /// `InvalidField`, or `LengthMismatch` as for [`decode`](Self::decode).
+    /// `InvalidField` (EPP-004, EPP-005, EPP-012), or `LengthMismatch` as for
+    /// [`decode`](Self::decode).
     pub fn peek_length(prefix: &[u8]) -> Result<usize> {
         let header = EncapsulationHeader::parse(prefix)?;
         Ok(usize::try_from(header.packet_len()).unwrap_or(usize::MAX))
@@ -95,13 +95,13 @@ impl<'a> EncapsulationPacket<'a> {
         self.header
     }
 
-    /// Encapsulation Protocol ID.
+    /// Encapsulation Protocol ID (133.1 §4.1.2.3, EPP-011).
     #[must_use]
     pub const fn epi(&self) -> Epi {
         self.header.epi()
     }
 
-    /// Whether this is an Encapsulation Idle Packet (EPI `000`).
+    /// Whether this is an Encapsulation Idle Packet, EPI `000` (133.1 §4.1.3.1.3, EPP-011).
     #[must_use]
     pub const fn is_idle(&self) -> bool {
         self.header.epi().is_idle()
@@ -125,7 +125,7 @@ impl<'a> EncapsulationPacket<'a> {
         self.header.ccsds_defined()
     }
 
-    /// Header length.
+    /// Header length (133.1 §4.1.2.4, EPP-011).
     #[must_use]
     pub const fn header_len(&self) -> HeaderLen {
         self.header.header_len()
@@ -140,14 +140,11 @@ impl<'a> EncapsulationPacket<'a> {
 
     /// Octets consumed from the input: the total packet length (API-011).
     #[must_use]
-    pub const fn len(&self) -> usize {
-        self.header
-            .header_len()
-            .octets()
-            .saturating_add(self.data.len())
+    pub fn len(&self) -> usize {
+        usize::try_from(self.header.packet_len()).unwrap_or(usize::MAX)
     }
 
-    /// Always `false`: a packet has at least a 1-octet header.
+    /// Always `false`: a packet has at least a 1-octet header (133.1 §4.1.1.2).
     #[must_use]
     pub const fn is_empty(&self) -> bool {
         false

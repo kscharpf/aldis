@@ -14,16 +14,16 @@ macro_rules! small_id {
         pub struct $name(u8);
 
         impl $name {
-            /// Largest valid value.
+            /// Largest valid value (API-001).
             pub const MAX: u8 = $max;
 
-            /// The value, or `None` if it does not fit the field.
+            /// The value, or `None` if it does not fit the field (API-001).
             #[must_use]
             pub const fn new(value: u8) -> Option<$name> {
                 if value <= $name::MAX { Some($name(value)) } else { None }
             }
 
-            /// The numeric value.
+            /// The numeric value (API-001).
             #[must_use]
             pub const fn get(self) -> u8 {
                 self.0
@@ -73,7 +73,7 @@ impl Epi {
     /// `111`: mission-specific, privately defined data (133.1 §4.1.2.3 note 3).
     pub const MISSION_SPECIFIC: Epi = Epi(0b111);
 
-    /// Whether this is the idle EPI.
+    /// Whether this is the idle EPI `000` (133.1 §4.1.2.3 note 1).
     #[must_use]
     pub const fn is_idle(self) -> bool {
         self.0 == Epi::IDLE.0
@@ -83,18 +83,21 @@ impl Epi {
 /// Length of the Packet Header, set by the Length of Length field (133.1 Table 4-1).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum HeaderLen {
-    /// 1 octet, Length of Length `00`: Idle Packet of total length 1.
+    /// 1 octet, Length of Length `00`: Idle Packet of total length 1 (§4.1.2.4.4, EPP-004).
     One,
-    /// 2 octets, Length of Length `01`: 1-octet Packet Length, total 2–255.
+    /// 2 octets, Length of Length `01`: 1-octet Packet Length, total 2–255 (Table 4-2).
     Two,
-    /// 4 octets, Length of Length `10`: User Defined, Extension, 2-octet Packet Length.
+    /// 4 octets, Length of Length `10`: User Defined, Extension, 2-octet Packet Length
+    /// (Figure 4-2, Table 4-2).
     Four,
-    /// 8 octets, Length of Length `11`: adds the CCSDS Defined Field and a 4-octet length.
+    /// 8 octets, Length of Length `11`: adds the CCSDS Defined Field and a 4-octet length
+    /// (Figure 4-2, Table 4-2).
     Eight,
 }
 
 impl HeaderLen {
-    /// The header length for a Length of Length value; only the two low bits are used.
+    /// The header length for a Length of Length value; only the two low bits are used
+    /// (133.1 Table 4-1, EPP-002).
     #[must_use]
     pub const fn from_length_of_length(lol: u8) -> HeaderLen {
         match lol & 0b11 {
@@ -105,7 +108,7 @@ impl HeaderLen {
         }
     }
 
-    /// The Length of Length field value.
+    /// The Length of Length field value (133.1 §4.1.2.4, API-021).
     #[must_use]
     pub const fn length_of_length(self) -> u8 {
         match self {
@@ -116,7 +119,7 @@ impl HeaderLen {
         }
     }
 
-    /// Header length in octets.
+    /// Header length in octets (133.1 §4.1.2.1.1).
     #[must_use]
     pub const fn octets(self) -> usize {
         match self {
@@ -138,7 +141,8 @@ impl HeaderLen {
         }
     }
 
-    /// Whether the header has the User Defined and Protocol ID Extension fields.
+    /// Whether the header has the User Defined and Protocol ID Extension fields (133.1
+    /// §4.1.2.1.1 d–e).
     #[must_use]
     pub const fn has_extension(self) -> bool {
         matches!(self, HeaderLen::Four | HeaderLen::Eight)
@@ -162,17 +166,17 @@ pub enum HeaderSize {
 /// written as zero (API-021, GEN-052).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub struct EncapsulationFields {
-    /// Encapsulation Protocol ID.
+    /// Encapsulation Protocol ID (133.1 §4.1.2.3, API-014).
     pub epi: Epi,
     /// Protocol ID Extension; must be zero unless `epi` is [`Epi::EXTENDED`] (133.1
     /// §4.1.2.6.3).
     pub extension: EpiExtension,
-    /// User Defined field; a non-zero value needs a 4- or 8-octet header.
+    /// User Defined field; a non-zero value needs a 4- or 8-octet header (§4.1.2.5, EPP-008).
     pub user_defined: UserDefined,
 }
 
 impl EncapsulationFields {
-    /// Fields with `epi` and zero extension and user-defined bits.
+    /// Fields with `epi` and zero extension and user-defined bits (EPP-008).
     #[must_use]
     pub const fn new(epi: Epi) -> EncapsulationFields {
         EncapsulationFields {
@@ -204,7 +208,7 @@ pub struct EncapsulationHeader {
 }
 
 /// Converts a length to `u64` for error details, saturating.
-fn len_u64(n: usize) -> u64 {
+pub(crate) fn len_u64(n: usize) -> u64 {
     u64::try_from(n).unwrap_or(u64::MAX)
 }
 
@@ -299,13 +303,15 @@ impl EncapsulationHeader {
     /// (EPP-009).
     ///
     /// # Errors
-    /// `OutOfRange` (`packet_len`) if `total_len` is 0 or above `u32::MAX`.
+    /// `OutOfRange` (`packet_len`) if `total_len` is 0 (limit 1) or above `u32::MAX` (limit
+    /// `u32::MAX`), GEN-041.
     pub fn idle(total_len: usize) -> Result<EncapsulationHeader> {
         let found = len_u64(total_len);
+        if total_len == 0 {
+            return Err(Error::out_of_range("packet_len", 1, 0));
+        }
         let packet_len = u32::try_from(total_len)
-            .ok()
-            .filter(|&t| t >= 1)
-            .ok_or_else(|| Error::out_of_range("packet_len", u64::from(u32::MAX), found))?;
+            .map_err(|_| Error::out_of_range("packet_len", u64::from(u32::MAX), found))?;
         let header_len = match packet_len {
             1 => HeaderLen::One,
             2..=0xFF => HeaderLen::Two,
@@ -324,7 +330,9 @@ impl EncapsulationHeader {
 
     /// Parses the header at the start of `bytes` (133.1 §4.1.2). Checks the version
     /// (EPP-001), the EPI of a 1-octet header (EPP-004), EPI `110` in a 2-octet header
-    /// (EPP-012), and Packet Length ≥ header length (EPP-003). Does not check the extension, the CCSDS Defined Field, or the data field.
+    /// (EPP-012), Packet Length ≥ header length (EPP-003), and the idle EPI when the data field
+    /// is absent (EPP-005). Does not check the extension or the CCSDS Defined Field, which are
+    /// mode-dependent, or that the data field is present in `bytes`.
     pub(crate) fn parse(bytes: &[u8]) -> Result<EncapsulationHeader> {
         let Some(&octet0) = bytes.first() else {
             return Err(Error::incomplete(1));
@@ -360,14 +368,18 @@ impl EncapsulationHeader {
         if header_len == HeaderLen::Two && epi == Epi::EXTENDED {
             return Err(invalid("epi"));
         }
-        let header_octets = header_len.octets();
-        if len_u64(header_octets) > u64::from(packet_len) {
+        let header_octets = len_u64(header_len.octets());
+        if header_octets > u64::from(packet_len) {
             return Err(Error::new(ErrorKind::LengthMismatch)
                 .with_field(FieldId::new("packet_len"))
                 .with_detail(ErrorDetail::Expected {
-                    expected: len_u64(header_octets),
+                    expected: header_octets,
                     found: u64::from(packet_len),
                 }));
+        }
+        // An absent data field requires the idle EPI, in both modes (EPP-005, OI-16).
+        if header_octets == u64::from(packet_len) && !epi.is_idle() {
+            return Err(invalid("epi"));
         }
         Ok(EncapsulationHeader {
             epi,
@@ -384,46 +396,61 @@ impl EncapsulationHeader {
         EncapsulationHeader { packet_len, ..self }
     }
 
-    /// The header octets: the first [`HeaderLen::octets`] of the returned array are used.
-    pub(crate) fn octets(&self) -> [u8; 8] {
+    /// The header octets as an encoder writes them: the first [`HeaderLen::octets`] are used.
+    /// The CCSDS Defined Field is written as zero, and the Protocol ID Extension as zero unless
+    /// the EPI is `110`, so a header taken from a lenient decode re-encodes conformant (GEN-052,
+    /// 133.1 §4.1.2.6.3, §4.1.2.7.2).
+    fn octets(&self) -> [u8; 8] {
         let octet0 = (VERSION << 5) | (self.epi.0 << 2) | self.header_len.length_of_length();
-        let octet1 = (self.user_defined.0 << 4) | self.extension.0;
-        let [c0, c1] = self.ccsds_defined.to_be_bytes();
+        let extension = if self.epi == Epi::EXTENDED {
+            self.extension.0
+        } else {
+            0
+        };
+        let octet1 = (self.user_defined.0 << 4) | extension;
         let [l0, l1, l2, l3] = self.packet_len.to_be_bytes();
         match self.header_len {
             HeaderLen::One => [octet0, 0, 0, 0, 0, 0, 0, 0],
             HeaderLen::Two => [octet0, l3, 0, 0, 0, 0, 0, 0],
             HeaderLen::Four => [octet0, octet1, l2, l3, 0, 0, 0, 0],
-            HeaderLen::Eight => [octet0, octet1, c0, c1, l0, l1, l2, l3],
+            HeaderLen::Eight => [octet0, octet1, 0, 0, l0, l1, l2, l3],
         }
     }
 
-    /// Writes the header octets to the start of `out`; returns the header length.
+    /// Copies the header octets into the start of `out`, which the caller has sized; the single
+    /// header writer behind [`encode`](Self::encode) and the [`writer`](crate::writer) module.
+    pub(crate) fn write_to(&self, out: &mut [u8]) {
+        let n = self.header_len.octets();
+        for (d, s) in out.iter_mut().zip(self.octets()).take(n) {
+            *d = s;
+        }
+    }
+
+    /// Writes the header octets to the start of `out`; returns the header length. Reserved
+    /// fields are written as zero (GEN-052, see `octets`).
     ///
     /// # Errors
     /// `BufferTooSmall` if `out` is shorter than the header; `out` is then unchanged.
     pub fn encode(&self, out: &mut [u8]) -> Result<usize> {
         let n = self.header_len.octets();
         let dst = out.get_mut(..n).ok_or(Error::buffer_too_small(n))?;
-        for (d, s) in dst.iter_mut().zip(self.octets()) {
-            *d = s;
-        }
+        self.write_to(dst);
         Ok(n)
     }
 
-    /// Encapsulation Protocol ID.
+    /// Encapsulation Protocol ID (133.1 §4.1.2.3, API-014).
     #[must_use]
     pub const fn epi(&self) -> Epi {
         self.epi
     }
 
-    /// Header length.
+    /// Header length (133.1 §4.1.2.4, API-014).
     #[must_use]
     pub const fn header_len(&self) -> HeaderLen {
         self.header_len
     }
 
-    /// Protocol ID Extension, if the header has one.
+    /// Protocol ID Extension, if the header has one (133.1 §4.1.2.6, API-014).
     #[must_use]
     pub const fn extension(&self) -> Option<EpiExtension> {
         if self.header_len.has_extension() {
@@ -433,7 +460,7 @@ impl EncapsulationHeader {
         }
     }
 
-    /// User Defined field, if the header has one.
+    /// User Defined field, if the header has one (133.1 §4.1.2.5, API-014).
     #[must_use]
     pub const fn user_defined(&self) -> Option<UserDefined> {
         if self.header_len.has_extension() {
@@ -458,7 +485,7 @@ impl EncapsulationHeader {
         self.packet_len
     }
 
-    /// Length of the Encapsulated Data Field in octets.
+    /// Length of the Encapsulated Data Field in octets (133.1 Table 4-2, API-014).
     #[must_use]
     pub fn data_len(&self) -> usize {
         usize::try_from(self.packet_len)
@@ -643,9 +670,16 @@ mod tests {
                 found: u64::MAX
             }
         );
+        let e = EncapsulationHeader::idle(0).unwrap_err();
         assert_eq!(
-            EncapsulationHeader::idle(0).unwrap_err().kind(),
-            ErrorKind::OutOfRange
+            (e.kind(), e.detail()),
+            (
+                ErrorKind::OutOfRange,
+                ErrorDetail::Expected {
+                    expected: 1,
+                    found: 0
+                }
+            )
         );
         assert_eq!(
             EncapsulationHeader::idle(usize::MAX).unwrap_err().kind(),
@@ -684,6 +718,44 @@ mod tests {
         let mut out = [0_u8; 4];
         assert_eq!(h.encode(&mut out), Ok(4));
         assert_eq!(out, [0xE2, 0x00, 0x01, 0x2C]);
+    }
+
+    #[test]
+    fn encode_zeroes_reserved_fields_of_a_lenient_header() {
+        // req: GEN-052, EPP-006, EPP-007
+        let bytes = [0xE7, 0x01, 0x00, 0x01, 0, 0, 0, 9, 0xAB];
+        let h = EncapsulationHeader::parse(&bytes).unwrap();
+        assert_eq!(
+            (h.extension().map(EpiExtension::get), h.ccsds_defined()),
+            (Some(1), Some(1))
+        );
+        let mut out = [0_u8; 8];
+        assert_eq!(h.encode(&mut out), Ok(8));
+        assert_eq!(out, [0xE7, 0x00, 0x00, 0x00, 0, 0, 0, 9]);
+        // EPI 110 keeps its extension; the CCSDS Defined Field is still zeroed.
+        let h = EncapsulationHeader::parse(&[0xFB, 0x51, 0xBE, 0xEF, 0, 0, 0, 9, 0xAB]).unwrap();
+        assert_eq!(h.encode(&mut out), Ok(8));
+        assert_eq!(out, [0xFB, 0x51, 0x00, 0x00, 0, 0, 0, 9]);
+    }
+
+    #[test]
+    fn parse_rejects_an_empty_non_idle_packet() {
+        // req: EPP-005
+        for bytes in [
+            &[0xE5, 0x02][..],
+            &[0xE6, 0x00, 0x00, 0x04],
+            &[0xE7, 0, 0, 0, 0, 0, 0, 8],
+        ] {
+            let e = EncapsulationHeader::parse(bytes).unwrap_err();
+            assert_eq!(
+                (e.kind(), e.field().map(aldis_core::FieldId::name)),
+                (ErrorKind::InvalidField, Some("epi"))
+            );
+        }
+        assert_eq!(
+            EncapsulationHeader::parse(&[0xE1, 0x02]).map(|h| h.packet_len()),
+            Ok(2)
+        );
     }
 
     #[test]

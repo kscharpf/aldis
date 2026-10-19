@@ -3,7 +3,7 @@
 //! re-encodes to the same octets (GEN-020, API-010, API-020, API-030, GEN-042).
 #![no_main]
 
-// req: GEN-020, API-010, API-020, API-030, API-032, GEN-042, VER-022
+// req: GEN-020, API-010, API-013, API-020, API-030, API-032, EPP-005, GEN-042, VER-022
 
 use aldis_core::{DecodeMode, ErrorKind};
 use aldis_epp::{EncapsulationFields, EncapsulationPacket, HeaderSize, encode};
@@ -21,6 +21,16 @@ fuzz_target!(|data: &[u8]| {
             assert!(!l.anomalies().is_empty());
         }
         (Err(s), Err(l)) => assert_eq!(s, l),
+    }
+    // Every mode-independent check needs only the header, so `peek_length` and a lenient
+    // decode agree whenever the whole packet is present (API-013, EPP-005).
+    if let Ok(n) = peek
+        && n <= data.len()
+    {
+        assert!(
+            lenient.is_ok(),
+            "peek_length accepted {n} octets that decode rejects"
+        );
     }
     if let Ok(p) = lenient {
         assert!(p.len() <= data.len());
