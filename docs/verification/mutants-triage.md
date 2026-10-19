@@ -2,6 +2,18 @@
 
 Surviving mutants from `cargo mutants` (`-p aldis-core -p aldis-time -p aldis-epp --all-features`) (cargo-mutants 27.1.0), triaged per VER-025. The nightly job `mutants` publishes the full report. Update this file when a new survivor appears.
 
+## 2026-10-19, branch `m1/spp` (M1 WP-2 part 1)
+
+`cargo mutants -p aldis-spp --all-features`: 157 mutants: 99 caught, 52 unviable, 6 missed, 0 timeouts.
+
+| Mutant | Verdict | Action |
+|---|---|---|
+| `sequence.rs` `SequenceTracker::is_empty` → `true` | Test gap: `is_empty` was checked only on an empty tracker | `tracker_paths` checks it after tracking an APID; caught |
+| `writer.rs` `SpacePacketWriter::begin` `!=` → `==` (the unfinished header's Secondary Header Flag) | Test gap: the unfinished-state test checked only the version and length octets | `unfinished_writer_leaves_an_invalid_packet` checks all 6 octets; caught |
+| `header.rs` `SpacePacketHeader::octets_with_version` `\|` → `^` (4): the Packet Identification and Packet Sequence Control words | Equivalent: version (bits 13–15), type (12), flag (11), and APID (0–10) are disjoint, as are the flags (14–15) and the count (0–13), so OR and XOR agree | None possible |
+
+After the fixes, a re-run on `writer.rs` and `sequence.rs` (35 mutants: 25 caught, 10 unviable) found no survivors. The four equivalent mutants remain and are expected in every report.
+
 ## 2026-10-19, branch `m1/time-ascii` (M1 WP-1 part 2)
 
 `cargo mutants -p aldis-time --all-features` on `ascii.rs`, `convert.rs`, `calendar.rs`, `util.rs`: 313 mutants: 270 caught, 42 unviable, 1 missed. The one missed is the equivalent `util.rs` `out_of_bounds` `<` → `<=` already listed below; no new survivor.

@@ -1,0 +1,156 @@
+{
+  "kind": "codec",
+  "standard": "133.0-B-2 \u00a74.1, \u00a75",
+  "provenance": "hand-derived",
+  "provenance_note": "Hand-derived from 133.0-B-2 \u00a74.1 (Figure 4-2, \u00a74.1.3\u20134.1.4), \u00a73.4, and Table 5-1, with the rules of docs/standards/space-packet.md \u00a75 (OI-16, OI-30). 133.0 prints no worked example packets. Expected values computed by an independent Python model of the Blue Book text, written before the Rust codec. Decode outputs list every view field; packet_name is null for telemetry packets.",
+  "cases": [
+    {
+      "id": "spp-str-001",
+      "requirements": [
+        "SPP-002",
+        "API-011"
+      ],
+      "description": "Three packets back to back",
+      "operation": "decode_stream",
+      "input_hex": "0010C001000101021820C00200000307FFC0030002000000",
+      "expect": {
+        "ok": true,
+        "packets": [
+          {
+            "apid": 16,
+            "sequence_count": 1,
+            "consumed": 8,
+            "anomalies": []
+          },
+          {
+            "apid": 32,
+            "sequence_count": 2,
+            "consumed": 7,
+            "anomalies": []
+          },
+          {
+            "apid": 2047,
+            "sequence_count": 3,
+            "consumed": 9,
+            "anomalies": []
+          }
+        ],
+        "stop_error": null,
+        "offset": 24
+      }
+    },
+    {
+      "id": "spp-str-002",
+      "requirements": [
+        "SPP-002",
+        "API-011"
+      ],
+      "description": "Two packets then a truncated third: Incomplete at offset 13",
+      "operation": "decode_stream",
+      "input_hex": "0010C001000101021820C00200000307FFC00300",
+      "expect": {
+        "ok": true,
+        "packets": [
+          {
+            "apid": 16,
+            "sequence_count": 1,
+            "consumed": 8,
+            "anomalies": []
+          },
+          {
+            "apid": 32,
+            "sequence_count": 2,
+            "consumed": 7,
+            "anomalies": []
+          }
+        ],
+        "stop_error": "Incomplete",
+        "offset": 15
+      }
+    },
+    {
+      "id": "spp-str-003",
+      "requirements": [
+        "SPP-001",
+        "API-011"
+      ],
+      "description": "A packet then a wrong version",
+      "operation": "decode_stream",
+      "input_hex": "0010C001000101022001C000000000",
+      "expect": {
+        "ok": true,
+        "packets": [
+          {
+            "apid": 16,
+            "sequence_count": 1,
+            "consumed": 8,
+            "anomalies": []
+          }
+        ],
+        "stop_error": "UnsupportedVersion",
+        "offset": 8
+      }
+    },
+    {
+      "id": "spp-str-004",
+      "requirements": [
+        "SPP-004",
+        "API-011"
+      ],
+      "description": "Strict: idle packet with flag 1 stops the stream",
+      "operation": "decode_stream",
+      "input_hex": "0010C001000101020FFFC0040000001820C002000003",
+      "expect": {
+        "ok": true,
+        "packets": [
+          {
+            "apid": 16,
+            "sequence_count": 1,
+            "consumed": 8,
+            "anomalies": []
+          }
+        ],
+        "stop_error": "InvalidField",
+        "offset": 8
+      }
+    },
+    {
+      "id": "spp-str-005",
+      "requirements": [
+        "SPP-004",
+        "API-011"
+      ],
+      "description": "Lenient: the same stream decodes, flagging the idle packet",
+      "operation": "decode_stream",
+      "mode": "lenient",
+      "input_hex": "0010C001000101020FFFC0040000001820C002000003",
+      "expect": {
+        "ok": true,
+        "packets": [
+          {
+            "apid": 16,
+            "sequence_count": 1,
+            "consumed": 8,
+            "anomalies": []
+          },
+          {
+            "apid": 2047,
+            "sequence_count": 4,
+            "consumed": 7,
+            "anomalies": [
+              "IdleWithSecondaryHeader"
+            ]
+          },
+          {
+            "apid": 32,
+            "sequence_count": 2,
+            "consumed": 7,
+            "anomalies": []
+          }
+        ],
+        "stop_error": null,
+        "offset": 22
+      }
+    }
+  ]
+}

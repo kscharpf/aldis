@@ -88,7 +88,10 @@ name = "aldis-spp"
 version = "0.1.0"
 dependencies = [
  "aldis-core",
+ "aldis-testkit",
  "aldis-time",
+ "proptest",
+ "serde_json",
 ]
 
 [[package]]
