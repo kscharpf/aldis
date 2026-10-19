@@ -10,7 +10,8 @@
 //! | [`cds`] | CCSDS Day Segmented Code | TIME-020…TIME-022 |
 //! | [`calendar`] | Range-checked `Year`, `Month`, `Hour`, `Minute`, `Second`; `CalendarDate` | TIME-030 |
 //! | [`ccs`] | CCSDS Calendar Segmented Code | TIME-030, TIME-034 |
-//! | [`ascii`] | ASCII time codes A and B (M1 WP-1, second part) | TIME-031, TIME-032 |
+//! | [`ascii`] | ASCII time codes A and B and their subsets: `AsciiTime`, `AsciiSubset`, `AsciiFormat`, `Fraction` | TIME-031, TIME-032 |
+//! | [`convert`] | `UtcInstant`: conversions between CDS, CCS, and ASCII | TIME-033 |
 //! | [`anomaly`] | `TimeAnomaly` lenient-mode flags | API-032, GEN-043 |
 //!
 //! No operation reads a clock or a time zone (TIME-004). CUC Level 1 is TAI-based with no leap
@@ -34,11 +35,15 @@ pub mod calendar;
 pub mod ccs;
 pub mod cds;
 pub mod code;
+pub mod convert;
 pub mod cuc;
 pub mod pfield;
 mod util;
 
 pub use anomaly::TimeAnomaly;
+pub use ascii::{
+    AsciiFormat, AsciiOptions, AsciiSubset, AsciiTime, Fraction, MAX_ASCII_LEN, MAX_FRACTION_DIGITS,
+};
 pub use calendar::{CalendarDate, Hour, Minute, Month, Second, Year};
 pub use ccs::{Ccs, CcsFormat, CcsValue, CcsVariation};
 pub use cds::{
@@ -47,5 +52,6 @@ pub use cds::{
 pub use code::{
     Agency, AgencyFormat, Decoded, TimeCode, TimeFormat, decode_implicit, decode_with_pfield,
 };
+pub use convert::UtcInstant;
 pub use cuc::{Cuc, CucEpoch, CucFormat, CucValue};
 pub use pfield::{PField, PFieldTail, ReservedPField, TimeCodeId};

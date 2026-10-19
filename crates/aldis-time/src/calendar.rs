@@ -32,6 +32,74 @@ pub(crate) const fn days_in_year(year: u16) -> u16 {
     if is_leap(year) { 366 } else { 365 }
 }
 
+/// Days from 0000-03-01 to `year`-`month`-`day` in the proleptic Gregorian calendar, by
+/// Hinnant's closed-form `days_from_civil`: no loops or tables (M1 D3, GEN-022). Valid for
+/// years 1–9999 and months 1–12; every intermediate stays far below `u32::MAX`.
+#[expect(
+    clippy::as_conversions,
+    reason = "lossless widening u16/u8 -> u32 in const context"
+)]
+pub(crate) const fn day_number(year: u16, month: u8, day: u8) -> u32 {
+    // March-based year: January and February count with the previous year.
+    let y = if month <= 2 {
+        (year as u32).wrapping_sub(1)
+    } else {
+        year as u32
+    };
+    let m = month as u32;
+    let era = y / 400;
+    let yoe = y % 400;
+    let mp = if m > 2 {
+        m.wrapping_sub(3)
+    } else {
+        m.wrapping_add(9)
+    };
+    let doy =
+        ((153_u32.wrapping_mul(mp).wrapping_add(2)) / 5).wrapping_add((day as u32).wrapping_sub(1));
+    let doe = yoe
+        .wrapping_mul(365)
+        .wrapping_add(yoe / 4)
+        .wrapping_sub(yoe / 100)
+        .wrapping_add(doy);
+    era.wrapping_mul(146_097).wrapping_add(doe)
+}
+
+/// The civil date of day number `day` (days from 0000-03-01), by Hinnant's closed-form
+/// `civil_from_days` (M1 D3, GEN-022). The year may exceed 9999 for large CDS day counts; the
+/// caller checks it.
+pub(crate) const fn civil(day: u32) -> (u32, u8, u8) {
+    let era = day / 146_097;
+    let doe = day % 146_097;
+    let yoe = doe
+        .wrapping_sub(doe / 1460)
+        .wrapping_add(doe / 36_524)
+        .wrapping_sub(doe / 146_096)
+        / 365;
+    let doy = doe.wrapping_sub(
+        365_u32
+            .wrapping_mul(yoe)
+            .wrapping_add(yoe / 4)
+            .wrapping_sub(yoe / 100),
+    );
+    let mp = (5_u32.wrapping_mul(doy).wrapping_add(2)) / 153;
+    let d = doy
+        .wrapping_sub((153_u32.wrapping_mul(mp).wrapping_add(2)) / 5)
+        .wrapping_add(1);
+    let m = if mp < 10 {
+        mp.wrapping_add(3)
+    } else {
+        mp.wrapping_sub(9)
+    };
+    let y = yoe.wrapping_add(era.wrapping_mul(400));
+    let y = if m <= 2 { y.wrapping_add(1) } else { y };
+    #[expect(
+        clippy::as_conversions,
+        clippy::cast_possible_truncation,
+        reason = "month is 1-12 and day 1-31 by construction of the algorithm"
+    )]
+    (y, m as u8, d as u8)
+}
+
 bounded!(
     /// Year A.D., 1–9999 (301.0 Annex A, §3.5.1; TIME-030).
     Year, u16, "year", 1, 9999
@@ -112,6 +180,40 @@ impl CalendarDate {
             year,
             day: Day::Ordinal(day_of_year),
         })
+    }
+
+    /// A month/day date the caller already knows exists (conversions, from [`civil`]).
+    pub(crate) const fn from_month_day_unchecked(
+        year: Year,
+        month: Month,
+        day: u8,
+    ) -> CalendarDate {
+        CalendarDate {
+            year,
+            day: Day::MonthDay(month, day),
+        }
+    }
+
+    /// A day-of-year date the caller already knows exists (conversions).
+    pub(crate) const fn from_day_of_year_unchecked(year: Year, day_of_year: u16) -> CalendarDate {
+        CalendarDate {
+            year,
+            day: Day::Ordinal(day_of_year),
+        }
+    }
+
+    /// The day number of this date (days from 0000-03-01, see [`day_number`]).
+    #[expect(
+        clippy::as_conversions,
+        reason = "lossless widening u16 -> u32 in const context"
+    )]
+    pub(crate) const fn day_number(self) -> u32 {
+        match self.day {
+            Day::MonthDay(month, day) => day_number(self.year.0, month.0, day),
+            Day::Ordinal(doy) => day_number(self.year.0, 1, 1)
+                .wrapping_add(doy as u32)
+                .wrapping_sub(1),
+        }
     }
 
     /// The year (TIME-030).
@@ -202,6 +304,47 @@ mod tests {
             assert_eq!(e.detail(), ErrorDetail::Expected { expected, found });
         }
         assert_eq!(Hour::try_from(0).map(Hour::get), Ok(0));
+    }
+
+    #[test]
+    fn day_numbers_are_a_bijection_over_years_1_to_9999() {
+        // req: TIME-033, GEN-022
+        use super::{civil, day_number};
+        // An independent day-by-day walk checks the closed-form functions (M1 D3).
+        let mut expected = day_number(1, 1, 1);
+        for year in 1..=9999_u16 {
+            for month in 1..=12_u8 {
+                for day in 1..=days_in_month(year, month) {
+                    assert_eq!(
+                        day_number(year, month, day),
+                        expected,
+                        "{year}-{month}-{day}"
+                    );
+                    assert_eq!(civil(expected), (u32::from(year), month, day));
+                    expected += 1;
+                }
+            }
+        }
+        assert_eq!(day_number(1970, 1, 1) - day_number(1958, 1, 1), 4383);
+        let (y, m, d) = civil(day_number(9999, 12, 31) + 1);
+        assert_eq!(
+            (y, m, d),
+            (10_000, 1, 1),
+            "the year can pass 9999; callers check it"
+        );
+        let date = CalendarDate::from_day_of_year(Year::new(2024).unwrap(), 60).unwrap();
+        assert_eq!(date.day_number(), day_number(2024, 2, 29));
+        assert_eq!(
+            CalendarDate::from_day_of_year_unchecked(Year::new(2024).unwrap(), 60),
+            date
+        );
+        let md = CalendarDate::from_month_day_unchecked(
+            Year::new(2024).unwrap(),
+            Month::new(2).unwrap(),
+            29,
+        );
+        assert_eq!(md.day_number(), date.day_number());
+        assert_eq!((Year::default().get(), Hour::default().get()), (1, 0));
     }
 
     #[test]

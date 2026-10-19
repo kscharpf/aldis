@@ -10,10 +10,11 @@
 use aldis_core::{DecodeMode, Error};
 use aldis_testkit::{CodecCase, Mode, Outcome, hex, run_codec_file};
 use aldis_time::{
-    Agency, AgencyFormat, CalendarDate, Ccs, CcsFormat, CcsValue, CcsVariation, Cds, CdsDayLen,
-    CdsEpoch, CdsFormat, CdsSubMs, CdsValue, Cuc, CucEpoch, CucFormat, CucValue, Decoded, Hour,
-    Micros, Minute, Month, MsOfDay, PFieldTail, Picos, Second, SubMillis, TimeCode, TimeFormat,
-    Year, decode_implicit, decode_with_pfield,
+    Agency, AgencyFormat, AsciiFormat, AsciiOptions, AsciiSubset, AsciiTime, CalendarDate, Ccs,
+    CcsFormat, CcsValue, CcsVariation, Cds, CdsDayLen, CdsEpoch, CdsFormat, CdsSubMs, CdsValue,
+    Cuc, CucEpoch, CucFormat, CucValue, Decoded, Fraction, Hour, Micros, Minute, Month, MsOfDay,
+    PFieldTail, Picos, Second, SubMillis, TimeCode, TimeFormat, UtcInstant, Year, decode_implicit,
+    decode_with_pfield,
 };
 use serde_json::{Map, Value, json};
 
@@ -274,6 +275,126 @@ fn decoded(d: &Decoded) -> Value {
     })
 }
 
+fn options(case: &CodecCase) -> AsciiOptions {
+    case.params
+        .as_ref()
+        .and_then(|p| p.get("max_fraction_digits"))
+        .map_or(AsciiOptions::DEFAULT, |n| {
+            AsciiOptions::new(u8::try_from(n.as_u64().unwrap()).unwrap()).unwrap()
+        })
+}
+
+fn ascii_fields(t: &AsciiTime) -> Value {
+    let (month, day) = t
+        .date
+        .month_day()
+        .map_or((Value::Null, Value::Null), |(m, d)| {
+            (json!(m.get()), json!(d))
+        });
+    json!({
+        "variation": if t.date.month_day().is_some() { "A" } else { "B" },
+        "year": t.date.year().get(), "month": month, "day": day,
+        "day_of_year": t.date.day_of_year(),
+        "hour": t.hour.get(), "minute": t.minute.get(), "second": t.second.get(),
+        "fraction_digits": t.fraction.digits(), "fraction": t.fraction.value(), "z": t.utc,
+    })
+}
+
+fn ascii_from_fields(v: &Value) -> Result<AsciiTime, Error> {
+    let year = Year::try_from(u16::try_from(u64_of(v, "year")).unwrap())?;
+    let date = if str_of(v, "variation") == "A" {
+        CalendarDate::from_month_day(year, Month::try_from(u8_of(v, "month"))?, u8_of(v, "day"))?
+    } else {
+        CalendarDate::from_day_of_year(year, u16::try_from(u64_of(v, "day_of_year")).unwrap())?
+    };
+    Ok(AsciiTime {
+        date,
+        hour: Hour::try_from(u8_of(v, "hour"))?,
+        minute: Minute::try_from(u8_of(v, "minute"))?,
+        second: Second::try_from(u8_of(v, "second"))?,
+        fraction: Fraction::new(u64_of(v, "fraction"), u8_of(v, "fraction_digits")).unwrap(),
+        utc: get(v, "z").as_bool().unwrap(),
+    })
+}
+
+fn subset_fields(s: &AsciiSubset) -> Value {
+    let variation = match s.variation() {
+        Some(CcsVariation::MonthDay) => json!("A"),
+        Some(CcsVariation::DayOfYear) => json!("B"),
+        None => Value::Null,
+    };
+    json!({
+        "variation": variation,
+        "year": s.year().map(Year::get), "month": s.month().map(Month::get),
+        "day": s.day(), "day_of_year": s.day_of_year(),
+        "hour": s.hour().map(Hour::get), "minute": s.minute().map(Minute::get),
+        "second": s.second().map(Second::get),
+        "fraction_digits": s.fraction().map(|f| f.digits()),
+        "fraction": s.fraction().map(|f| f.value()),
+        "z": s.utc(),
+    })
+}
+
+/// A format object for `format_of`, with its `code` added.
+fn with_code(format: &Value, code: &str) -> Value {
+    let mut f = format.clone();
+    f.as_object_mut()
+        .unwrap()
+        .insert("code".to_owned(), json!(code));
+    f
+}
+
+fn convert(case: &CodecCase) -> Result<Value, Error> {
+    let epoch = case.params.as_ref().and_then(|p| p.get("epoch")).map(|e| {
+        let year = Year::new(u16::try_from(u64_of(e, "year")).unwrap()).unwrap();
+        CalendarDate::from_month_day(
+            year,
+            Month::new(u8_of(e, "month")).unwrap(),
+            u8_of(e, "day"),
+        )
+        .unwrap()
+    });
+    let from = param(case, "from");
+    let instant = match str_of(from, "code") {
+        "ascii" => {
+            let text = str_of(from, "text").as_bytes();
+            UtcInstant::from_ascii(&AsciiTime::parse(text, &AsciiOptions::DEFAULT)?)
+        }
+        code => {
+            let format = format_of(&with_code(get(from, "format"), code))?;
+            match code_of(format, get(from, "value"))? {
+                TimeCode::Cds(c) => UtcInstant::from_cds(&c, epoch)?,
+                TimeCode::Ccs(c) => UtcInstant::from_ccs(&c),
+                other => panic!("{}: cannot convert {other:?}", case.id),
+            }
+        }
+    };
+    let to = param(case, "to");
+    Ok(if str_of(to, "code") == "ascii" {
+        let variation = if str_of(to, "variation") == "A" {
+            CcsVariation::MonthDay
+        } else {
+            CcsVariation::DayOfYear
+        };
+        let format = AsciiFormat::new(
+            variation,
+            u8_of(to, "fraction_digits"),
+            get(to, "z").as_bool().unwrap(),
+        )?;
+        let t = instant.to_ascii(format)?;
+        let mut out = [0_u8; 33];
+        let n = t.encode(&mut out).unwrap();
+        json!({ "text": String::from_utf8(out[..n].to_vec()).unwrap() })
+    } else {
+        let code = match format_of(to)? {
+            TimeFormat::Cds(f) => TimeCode::Cds(instant.to_cds(f, epoch)?),
+            TimeFormat::Ccs(f) => TimeCode::Ccs(instant.to_ccs(f)?),
+            other => panic!("{}: cannot convert to {other:?}", case.id),
+        };
+        json!({ "value": describe(&code).2 })
+    })
+}
+
 fn run(case: &CodecCase) -> Result<Value, Error> {
     match case.operation.as_str() {
         "decode" => {
@@ -313,6 +434,32 @@ fn run(case: &CodecCase) -> Result<Value, Error> {
             .value();
             Ok(json!({ "coarse": v.coarse(), "fine_hex": fine_raw(v.fine(), f.fine_octets()) }))
         }
+        "ascii_parse" => {
+            let text = param(case, "text").as_str().unwrap().as_bytes();
+            let t = AsciiTime::parse(text, &options(case))?;
+            // The formatted code is the input again (TIME-031 round trip).
+            let mut out = [0_u8; 33];
+            let n = t.encode(&mut out).unwrap();
+            assert_eq!(
+                &out[..n],
+                text,
+                "{}: format differs from the input",
+                case.id
+            );
+            assert_eq!(t.encoded_len(), n);
+            Ok(ascii_fields(&t))
+        }
+        "ascii_format" => {
+            let t = ascii_from_fields(param(case, "value"))?;
+            let mut out = [0_u8; 33];
+            let n = t.encode(&mut out)?;
+            Ok(json!({ "text": String::from_utf8(out[..n].to_vec()).unwrap() }))
+        }
+        "ascii_subset" => {
+            let text = param(case, "text").as_str().unwrap().as_bytes();
+            AsciiSubset::parse(text, &options(case)).map(|s| subset_fields(&s))
+        }
+        "convert" => convert(case),
         op => panic!("{}: unsupported operation {op}", case.id),
     }
 }
@@ -338,3 +485,5 @@ vector_test!(pfield, "pfield");
 vector_test!(cuc, "cuc");
 vector_test!(cds, "cds");
 vector_test!(ccs, "ccs");
+vector_test!(ascii, "ascii");
+vector_test!(convert_codes, "convert");

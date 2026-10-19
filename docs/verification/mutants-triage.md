@@ -2,6 +2,10 @@
 
 Surviving mutants from `cargo mutants` (`-p aldis-core -p aldis-time -p aldis-epp --all-features`) (cargo-mutants 27.1.0), triaged per VER-025. The nightly job `mutants` publishes the full report. Update this file when a new survivor appears.
 
+## 2026-10-19, branch `m1/time-ascii` (M1 WP-1 part 2)
+
+`cargo mutants -p aldis-time --all-features` on `ascii.rs`, `convert.rs`, `calendar.rs`, `util.rs`: 313 mutants: 270 caught, 42 unviable, 1 missed. The one missed is the equivalent `util.rs` `out_of_bounds` `<` → `<=` already listed below; no new survivor.
+
 ## 2026-10-19, branch `fix/rs-020` (issue #22)
 
 `cargo mutants --all-features` on the changed files: `aldis-core` `security.rs`, `layout.rs`, `anomaly.rs` (180 mutants: 58 caught, 122 unviable, 0 missed); `aldis-epp` `config.rs`, `header.rs`, `writer.rs` (187: 150 caught, 34 unviable, 3 missed); `aldis-time` `pfield.rs`, `cuc.rs`, `code.rs` (215: 150 caught, 58 unviable, 7 missed). All 10 missed are the disjoint-bit `|` → `^` equivalents already listed for these files (`EncapsulationHeader::octets`; `CucFormat::pfield`, `AgencyFormat::pfield`, `Cuc::from_t`); no new survivor.

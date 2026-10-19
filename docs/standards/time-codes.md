@@ -63,6 +63,22 @@ ASCII Time Code A `YYYY-MM-DDThh:mm:ss.d…dZ` and B `YYYY-DDDThh:mm:ss.d…dZ`.
 | TIME-033 | The library SHALL provide conversions between CDS, CCS, and ASCII representations of the same UTC instant, with no time-scale change. When the target format has coarser sub-second resolution than the source, the conversion SHALL truncate toward zero. A value the target cannot represent (before the CDS epoch, beyond the CDS day count, or outside years 1–9999) SHALL be `OutOfRange` (OI-18). | — | V |
 | TIME-034 | In the CCS day-of-year variation, a non-zero value in the four most significant bits of the 16-bit DOY segment SHALL be `ReservedValue` in strict mode and SHALL raise `NonZeroDoyHighNibble` in lenient mode. The encoder SHALL write them as zero (OI-15). | 301.0 §3.4.1.2 | V |
 
+### 5.1 ASCII grammar (TIME-031, TIME-032; OI-29)
+
+**Complete codes** (TIME-031): A is `YYYY-MM-DDThh:mm:ss[.d…][Z]` and B is `YYYY-DDDThh:mm:ss[.d…][Z]`. Every subfield has exactly its digit count, with leading zeros. With zero fractional digits the period is absent; a period SHALL be followed by at least one digit. The fraction has at most a configurable maximum of 0–12 digits (default 12); more is `OutOfRange` (`fraction`). `T` and `Z` are upper case. The input SHALL be exactly the code, with no leading or trailing octets. Errors: a separator, length, or trailing-octet problem is `Malformed`; a non-digit in a digit subfield is `InvalidField` naming the subfield; a value out of range (year 1–9999, day valid for the month or year, hour, minute, second 0–60) is `OutOfRange`. Formatting writes the same grammar into a caller buffer without `core::fmt`; the longest code is 33 octets.
+
+**Subsets** (TIME-032, parsing only, through an explicit subset parser) follow 301.0 §3.5.1.3:
+- The calendar subfields are `YYYY`, `MM`, `DD` (A) or `YYYY`, `DDD` (B), separated by `-`; the time subfields are `hh`, `mm`, `ss`, and the fraction, separated by `:`, `:`, `.`.
+- A subset keeps a contiguous run of subfields. A subfield deleted on the left keeps the separator that followed it (`-MM-DD`, `--DD`, `-MM`, `:mm:ss`, `::ss.d`); one deleted on the right drops its separator (`YYYY-MM`, `hh:mm`).
+- A calendar subset alone or a time subset alone has no `T`. Joined with `T`, the calendar part SHALL end with its last subfield (`DD` or `DDD`) and the time part SHALL start with `hh`.
+- A after `YYYY-`, two digits are a month and three a day of year; a left-truncated `-DDD` and `-MM` are told apart the same way.
+- `Z` is allowed only when a time part is present (OI-29).
+- Ranges that need missing context use the widest case: a day of month without a month is 1–31; with a month but no year it may be the 29th of February; a day of year without a year is 1–366.
+
+### 5.2 Conversions (TIME-033; D3, OI-18, OI-29)
+
+Conversions go through an exact UTC instant with picosecond resolution, the finest of the three codes, so only the target's resolution can lose precision; it truncates toward zero. The CDS day count is days since 1958 January 1 (Level 1). A CDS code with an agency-defined epoch converts only when the caller supplies the epoch date (D3); otherwise `InvalidConfig`. Milliseconds of day 86 400 000–86 400 999 convert to and from 23:59:60; second 60 at any other minute is `OutOfRange` (`second`) for a CDS target, because CDS cannot represent it (OI-29), while CCS and ASCII carry it unchanged. A date before the CDS epoch, a day count beyond the target's day segment, or a year above 9999 is `OutOfRange` (TIME-033). Month/day and day-of-year forms convert exactly into each other.
+
 ## 6. Time scales (deferred)
 
 TAI↔UTC conversion requires a leap-second table that changes over a mission's lifetime. v1 SHALL NOT embed such a table. A `LeapSecondTable` trait, with caller-supplied data, is reserved for v1.x ([open issues](../09-open-issues.md)).

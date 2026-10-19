@@ -1,0 +1,1333 @@
+{
+  "kind": "codec",
+  "standard": "301.0-B-4 \u00a73.5",
+  "provenance": "hand-derived",
+  "provenance_note": "Hand-derived from 301.0-B-4 \u00a73.5.1 (cases time-ascii-001 and -002 are the two examples printed there) and the grammar in docs/standards/time-codes.md \u00a75.1 (OI-29). Expected values computed by an independent Python model (regular shapes and Python's datetime calendar), written before the Rust codec.",
+  "cases": [
+    {
+      "id": "time-ascii-001",
+      "requirements": [
+        "TIME-031"
+      ],
+      "description": "301.0 \u00a73.5.1.1 example, code A",
+      "operation": "ascii_parse",
+      "params": {
+        "text": "1988-01-18T17:20:43.123456Z"
+      },
+      "expect": {
+        "ok": true,
+        "variation": "A",
+        "year": 1988,
+        "month": 1,
+        "day": 18,
+        "day_of_year": null,
+        "hour": 17,
+        "minute": 20,
+        "second": 43,
+        "fraction_digits": 6,
+        "fraction": 123456,
+        "z": true
+      }
+    },
+    {
+      "id": "time-ascii-002",
+      "requirements": [
+        "TIME-031"
+      ],
+      "description": "301.0 \u00a73.5.1.2 example, code B",
+      "operation": "ascii_parse",
+      "params": {
+        "text": "1988-018T17:20:43.123456Z"
+      },
+      "expect": {
+        "ok": true,
+        "variation": "B",
+        "year": 1988,
+        "month": null,
+        "day": null,
+        "day_of_year": 18,
+        "hour": 17,
+        "minute": 20,
+        "second": 43,
+        "fraction_digits": 6,
+        "fraction": 123456,
+        "z": true
+      }
+    },
+    {
+      "id": "time-ascii-003",
+      "requirements": [
+        "TIME-031"
+      ],
+      "description": "No fraction, no Z",
+      "operation": "ascii_parse",
+      "params": {
+        "text": "2024-02-29T00:00:00"
+      },
+      "expect": {
+        "ok": true,
+        "variation": "A",
+        "year": 2024,
+        "month": 2,
+        "day": 29,
+        "day_of_year": null,
+        "hour": 0,
+        "minute": 0,
+        "second": 0,
+        "fraction_digits": 0,
+        "fraction": 0,
+        "z": false
+      }
+    },
+    {
+      "id": "time-ascii-004",
+      "requirements": [
+        "TIME-031"
+      ],
+      "description": "12 fractional digits",
+      "operation": "ascii_parse",
+      "params": {
+        "text": "2024-12-31T23:59:59.999999999999"
+      },
+      "expect": {
+        "ok": true,
+        "variation": "A",
+        "year": 2024,
+        "month": 12,
+        "day": 31,
+        "day_of_year": null,
+        "hour": 23,
+        "minute": 59,
+        "second": 59,
+        "fraction_digits": 12,
+        "fraction": 999999999999,
+        "z": false
+      }
+    },
+    {
+      "id": "time-ascii-005",
+      "requirements": [
+        "TIME-031"
+      ],
+      "description": "1 fractional digit and Z",
+      "operation": "ascii_parse",
+      "params": {
+        "text": "0001-01-01T00:00:00.5Z"
+      },
+      "expect": {
+        "ok": true,
+        "variation": "A",
+        "year": 1,
+        "month": 1,
+        "day": 1,
+        "day_of_year": null,
+        "hour": 0,
+        "minute": 0,
+        "second": 0,
+        "fraction_digits": 1,
+        "fraction": 5,
+        "z": true
+      }
+    },
+    {
+      "id": "time-ascii-006",
+      "requirements": [
+        "TIME-031",
+        "TIME-022"
+      ],
+      "description": "Leap second 23:59:60",
+      "operation": "ascii_parse",
+      "params": {
+        "text": "2016-12-31T23:59:60Z"
+      },
+      "expect": {
+        "ok": true,
+        "variation": "A",
+        "year": 2016,
+        "month": 12,
+        "day": 31,
+        "day_of_year": null,
+        "hour": 23,
+        "minute": 59,
+        "second": 60,
+        "fraction_digits": 0,
+        "fraction": 0,
+        "z": true
+      }
+    },
+    {
+      "id": "time-ascii-007",
+      "requirements": [
+        "TIME-031"
+      ],
+      "description": "Code B, day 366 of a leap year",
+      "operation": "ascii_parse",
+      "params": {
+        "text": "2024-366T12:00:00"
+      },
+      "expect": {
+        "ok": true,
+        "variation": "B",
+        "year": 2024,
+        "month": null,
+        "day": null,
+        "day_of_year": 366,
+        "hour": 12,
+        "minute": 0,
+        "second": 0,
+        "fraction_digits": 0,
+        "fraction": 0,
+        "z": false
+      }
+    },
+    {
+      "id": "time-ascii-008",
+      "requirements": [
+        "TIME-031"
+      ],
+      "description": "Year 9999",
+      "operation": "ascii_parse",
+      "params": {
+        "text": "9999-12-31T23:59:59Z"
+      },
+      "expect": {
+        "ok": true,
+        "variation": "A",
+        "year": 9999,
+        "month": 12,
+        "day": 31,
+        "day_of_year": null,
+        "hour": 23,
+        "minute": 59,
+        "second": 59,
+        "fraction_digits": 0,
+        "fraction": 0,
+        "z": true
+      }
+    },
+    {
+      "id": "time-ascii-009",
+      "requirements": [
+        "TIME-031"
+      ],
+      "description": "Second 60 at a minute other than 23:59 is accepted (TIME-022)",
+      "operation": "ascii_parse",
+      "params": {
+        "text": "2016-06-30T12:30:60"
+      },
+      "expect": {
+        "ok": true,
+        "variation": "A",
+        "year": 2016,
+        "month": 6,
+        "day": 30,
+        "day_of_year": null,
+        "hour": 12,
+        "minute": 30,
+        "second": 60,
+        "fraction_digits": 0,
+        "fraction": 0,
+        "z": false
+      }
+    },
+    {
+      "id": "time-ascii-010",
+      "requirements": [
+        "TIME-031"
+      ],
+      "description": "13 fractional digits: OutOfRange",
+      "operation": "ascii_parse",
+      "params": {
+        "text": "2024-01-01T00:00:00.1234567890123"
+      },
+      "expect": {
+        "ok": false,
+        "error": "OutOfRange"
+      }
+    },
+    {
+      "id": "time-ascii-011",
+      "requirements": [
+        "TIME-031"
+      ],
+      "description": "4 digits with a configured maximum of 3: OutOfRange",
+      "operation": "ascii_parse",
+      "params": {
+        "text": "2024-01-01T00:00:00.1234",
+        "max_fraction_digits": 3
+      },
+      "expect": {
+        "ok": false,
+        "error": "OutOfRange"
+      }
+    },
+    {
+      "id": "time-ascii-012",
+      "requirements": [
+        "TIME-031"
+      ],
+      "description": "3 digits with a configured maximum of 3",
+      "operation": "ascii_parse",
+      "params": {
+        "text": "2024-01-01T00:00:00.123",
+        "max_fraction_digits": 3
+      },
+      "expect": {
+        "ok": true,
+        "variation": "A",
+        "year": 2024,
+        "month": 1,
+        "day": 1,
+        "day_of_year": null,
+        "hour": 0,
+        "minute": 0,
+        "second": 0,
+        "fraction_digits": 3,
+        "fraction": 123,
+        "z": false
+      }
+    },
+    {
+      "id": "time-ascii-013",
+      "requirements": [
+        "TIME-031"
+      ],
+      "description": "Period without digits: Malformed",
+      "operation": "ascii_parse",
+      "params": {
+        "text": "2024-01-01T00:00:00."
+      },
+      "expect": {
+        "ok": false,
+        "error": "Malformed"
+      }
+    },
+    {
+      "id": "time-ascii-014",
+      "requirements": [
+        "TIME-031"
+      ],
+      "description": "Lower-case t: Malformed",
+      "operation": "ascii_parse",
+      "params": {
+        "text": "2024-01-01t00:00:00"
+      },
+      "expect": {
+        "ok": false,
+        "error": "Malformed"
+      }
+    },
+    {
+      "id": "time-ascii-015",
+      "requirements": [
+        "TIME-031"
+      ],
+      "description": "Lower-case z: Malformed",
+      "operation": "ascii_parse",
+      "params": {
+        "text": "2024-01-01T00:00:00z"
+      },
+      "expect": {
+        "ok": false,
+        "error": "Malformed"
+      }
+    },
+    {
+      "id": "time-ascii-016",
+      "requirements": [
+        "TIME-031"
+      ],
+      "description": "Trailing space: Malformed",
+      "operation": "ascii_parse",
+      "params": {
+        "text": "2024-01-01T00:00:00 "
+      },
+      "expect": {
+        "ok": false,
+        "error": "Malformed"
+      }
+    },
+    {
+      "id": "time-ascii-017",
+      "requirements": [
+        "TIME-031"
+      ],
+      "description": "Letter O in the month: InvalidField",
+      "operation": "ascii_parse",
+      "params": {
+        "text": "2024-O1-01T00:00:00"
+      },
+      "expect": {
+        "ok": false,
+        "error": "InvalidField"
+      }
+    },
+    {
+      "id": "time-ascii-018",
+      "requirements": [
+        "TIME-031"
+      ],
+      "description": "Non-digit in the fraction: InvalidField",
+      "operation": "ascii_parse",
+      "params": {
+        "text": "2024-01-01T00:00:00.1x"
+      },
+      "expect": {
+        "ok": false,
+        "error": "InvalidField"
+      }
+    },
+    {
+      "id": "time-ascii-019",
+      "requirements": [
+        "TIME-031"
+      ],
+      "description": "Month 13: OutOfRange",
+      "operation": "ascii_parse",
+      "params": {
+        "text": "2024-13-01T00:00:00"
+      },
+      "expect": {
+        "ok": false,
+        "error": "OutOfRange"
+      }
+    },
+    {
+      "id": "time-ascii-020",
+      "requirements": [
+        "TIME-031"
+      ],
+      "description": "2023-02-29: OutOfRange",
+      "operation": "ascii_parse",
+      "params": {
+        "text": "2023-02-29T00:00:00"
+      },
+      "expect": {
+        "ok": false,
+        "error": "OutOfRange"
+      }
+    },
+    {
+      "id": "time-ascii-021",
+      "requirements": [
+        "TIME-031"
+      ],
+      "description": "Hour 24: OutOfRange",
+      "operation": "ascii_parse",
+      "params": {
+        "text": "2024-01-01T24:00:00"
+      },
+      "expect": {
+        "ok": false,
+        "error": "OutOfRange"
+      }
+    },
+    {
+      "id": "time-ascii-022",
+      "requirements": [
+        "TIME-031"
+      ],
+      "description": "Second 61: OutOfRange",
+      "operation": "ascii_parse",
+      "params": {
+        "text": "2024-01-01T00:00:61"
+      },
+      "expect": {
+        "ok": false,
+        "error": "OutOfRange"
+      }
+    },
+    {
+      "id": "time-ascii-023",
+      "requirements": [
+        "TIME-031"
+      ],
+      "description": "Year 0000: OutOfRange",
+      "operation": "ascii_parse",
+      "params": {
+        "text": "0000-01-01T00:00:00"
+      },
+      "expect": {
+        "ok": false,
+        "error": "OutOfRange"
+      }
+    },
+    {
+      "id": "time-ascii-024",
+      "requirements": [
+        "TIME-031"
+      ],
+      "description": "Day 366 of a common year: OutOfRange",
+      "operation": "ascii_parse",
+      "params": {
+        "text": "2023-366T00:00:00"
+      },
+      "expect": {
+        "ok": false,
+        "error": "OutOfRange"
+      }
+    },
+    {
+      "id": "time-ascii-025",
+      "requirements": [
+        "TIME-031"
+      ],
+      "description": "Empty input: Malformed",
+      "operation": "ascii_parse",
+      "params": {
+        "text": ""
+      },
+      "expect": {
+        "ok": false,
+        "error": "Malformed"
+      }
+    },
+    {
+      "id": "time-ascii-026",
+      "requirements": [
+        "TIME-031"
+      ],
+      "description": "Truncated: Malformed",
+      "operation": "ascii_parse",
+      "params": {
+        "text": "2024-01-01T00:00"
+      },
+      "expect": {
+        "ok": false,
+        "error": "Malformed"
+      }
+    },
+    {
+      "id": "time-ascii-027",
+      "requirements": [
+        "TIME-031"
+      ],
+      "description": "Missing T: Malformed",
+      "operation": "ascii_parse",
+      "params": {
+        "text": "2024-01-01 00:00:00"
+      },
+      "expect": {
+        "ok": false,
+        "error": "Malformed"
+      }
+    },
+    {
+      "id": "time-ascii-028",
+      "requirements": [
+        "TIME-031"
+      ],
+      "description": "Z followed by another octet: Malformed",
+      "operation": "ascii_parse",
+      "params": {
+        "text": "2024-01-01T00:00:00Z0"
+      },
+      "expect": {
+        "ok": false,
+        "error": "Malformed"
+      }
+    },
+    {
+      "id": "time-ascii-029",
+      "requirements": [
+        "TIME-031",
+        "API-020"
+      ],
+      "description": "Format code A with 6 digits and Z",
+      "operation": "ascii_format",
+      "params": {
+        "value": {
+          "variation": "A",
+          "year": 1988,
+          "month": 1,
+          "day": 18,
+          "day_of_year": null,
+          "hour": 17,
+          "minute": 20,
+          "second": 43,
+          "fraction_digits": 6,
+          "fraction": 123456,
+          "z": true
+        }
+      },
+      "expect": {
+        "ok": true,
+        "text": "1988-01-18T17:20:43.123456Z"
+      }
+    },
+    {
+      "id": "time-ascii-030",
+      "requirements": [
+        "TIME-031",
+        "API-020"
+      ],
+      "description": "Format code B without fraction or Z",
+      "operation": "ascii_format",
+      "params": {
+        "value": {
+          "variation": "B",
+          "year": 1988,
+          "month": null,
+          "day": null,
+          "day_of_year": 18,
+          "hour": 17,
+          "minute": 20,
+          "second": 43,
+          "fraction_digits": 0,
+          "fraction": 0,
+          "z": false
+        }
+      },
+      "expect": {
+        "ok": true,
+        "text": "1988-018T17:20:43"
+      }
+    },
+    {
+      "id": "time-ascii-031",
+      "requirements": [
+        "TIME-031",
+        "API-020"
+      ],
+      "description": "Format leading zeros in the fraction",
+      "operation": "ascii_format",
+      "params": {
+        "value": {
+          "variation": "A",
+          "year": 2000,
+          "month": 1,
+          "day": 1,
+          "day_of_year": null,
+          "hour": 0,
+          "minute": 0,
+          "second": 0,
+          "fraction_digits": 6,
+          "fraction": 1,
+          "z": false
+        }
+      },
+      "expect": {
+        "ok": true,
+        "text": "2000-01-01T00:00:00.000001"
+      }
+    },
+    {
+      "id": "time-ascii-032",
+      "requirements": [
+        "TIME-031",
+        "API-020"
+      ],
+      "description": "Format 12 digits and a leap second",
+      "operation": "ascii_format",
+      "params": {
+        "value": {
+          "variation": "A",
+          "year": 2016,
+          "month": 12,
+          "day": 31,
+          "day_of_year": null,
+          "hour": 23,
+          "minute": 59,
+          "second": 60,
+          "fraction_digits": 12,
+          "fraction": 999999999999,
+          "z": true
+        }
+      },
+      "expect": {
+        "ok": true,
+        "text": "2016-12-31T23:59:60.999999999999Z"
+      }
+    },
+    {
+      "id": "time-ascii-033",
+      "requirements": [
+        "TIME-032"
+      ],
+      "description": "Calendar subset A",
+      "operation": "ascii_subset",
+      "params": {
+        "text": "1988-01-18"
+      },
+      "expect": {
+        "ok": true,
+        "variation": "A",
+        "year": 1988,
+        "month": 1,
+        "day": 18,
+        "day_of_year": null,
+        "hour": null,
+        "minute": null,
+        "second": null,
+        "fraction_digits": null,
+        "fraction": null,
+        "z": false
+      }
+    },
+    {
+      "id": "time-ascii-034",
+      "requirements": [
+        "TIME-032"
+      ],
+      "description": "Calendar truncated on the right: year and month",
+      "operation": "ascii_subset",
+      "params": {
+        "text": "1988-01"
+      },
+      "expect": {
+        "ok": true,
+        "variation": "A",
+        "year": 1988,
+        "month": 1,
+        "day": null,
+        "day_of_year": null,
+        "hour": null,
+        "minute": null,
+        "second": null,
+        "fraction_digits": null,
+        "fraction": null,
+        "z": false
+      }
+    },
+    {
+      "id": "time-ascii-035",
+      "requirements": [
+        "TIME-032"
+      ],
+      "description": "Year only (variation unknown)",
+      "operation": "ascii_subset",
+      "params": {
+        "text": "1988"
+      },
+      "expect": {
+        "ok": true,
+        "variation": null,
+        "year": 1988,
+        "month": null,
+        "day": null,
+        "day_of_year": null,
+        "hour": null,
+        "minute": null,
+        "second": null,
+        "fraction_digits": null,
+        "fraction": null,
+        "z": false
+      }
+    },
+    {
+      "id": "time-ascii-036",
+      "requirements": [
+        "TIME-032"
+      ],
+      "description": "Calendar truncated on the left keeps the separator",
+      "operation": "ascii_subset",
+      "params": {
+        "text": "-01-18"
+      },
+      "expect": {
+        "ok": true,
+        "variation": "A",
+        "year": null,
+        "month": 1,
+        "day": 18,
+        "day_of_year": null,
+        "hour": null,
+        "minute": null,
+        "second": null,
+        "fraction_digits": null,
+        "fraction": null,
+        "z": false
+      }
+    },
+    {
+      "id": "time-ascii-037",
+      "requirements": [
+        "TIME-032"
+      ],
+      "description": "Day of month only",
+      "operation": "ascii_subset",
+      "params": {
+        "text": "--18"
+      },
+      "expect": {
+        "ok": true,
+        "variation": "A",
+        "year": null,
+        "month": null,
+        "day": 18,
+        "day_of_year": null,
+        "hour": null,
+        "minute": null,
+        "second": null,
+        "fraction_digits": null,
+        "fraction": null,
+        "z": false
+      }
+    },
+    {
+      "id": "time-ascii-038",
+      "requirements": [
+        "TIME-032"
+      ],
+      "description": "Month only",
+      "operation": "ascii_subset",
+      "params": {
+        "text": "-01"
+      },
+      "expect": {
+        "ok": true,
+        "variation": "A",
+        "year": null,
+        "month": 1,
+        "day": null,
+        "day_of_year": null,
+        "hour": null,
+        "minute": null,
+        "second": null,
+        "fraction_digits": null,
+        "fraction": null,
+        "z": false
+      }
+    },
+    {
+      "id": "time-ascii-039",
+      "requirements": [
+        "TIME-032"
+      ],
+      "description": "Calendar subset B",
+      "operation": "ascii_subset",
+      "params": {
+        "text": "1988-018"
+      },
+      "expect": {
+        "ok": true,
+        "variation": "B",
+        "year": 1988,
+        "month": null,
+        "day": null,
+        "day_of_year": 18,
+        "hour": null,
+        "minute": null,
+        "second": null,
+        "fraction_digits": null,
+        "fraction": null,
+        "z": false
+      }
+    },
+    {
+      "id": "time-ascii-040",
+      "requirements": [
+        "TIME-032"
+      ],
+      "description": "Day of year only",
+      "operation": "ascii_subset",
+      "params": {
+        "text": "-018"
+      },
+      "expect": {
+        "ok": true,
+        "variation": "B",
+        "year": null,
+        "month": null,
+        "day": null,
+        "day_of_year": 18,
+        "hour": null,
+        "minute": null,
+        "second": null,
+        "fraction_digits": null,
+        "fraction": null,
+        "z": false
+      }
+    },
+    {
+      "id": "time-ascii-041",
+      "requirements": [
+        "TIME-032"
+      ],
+      "description": "Time subset with fraction",
+      "operation": "ascii_subset",
+      "params": {
+        "text": "17:20:43.12"
+      },
+      "expect": {
+        "ok": true,
+        "variation": null,
+        "year": null,
+        "month": null,
+        "day": null,
+        "day_of_year": null,
+        "hour": 17,
+        "minute": 20,
+        "second": 43,
+        "fraction_digits": 2,
+        "fraction": 12,
+        "z": false
+      }
+    },
+    {
+      "id": "time-ascii-042",
+      "requirements": [
+        "TIME-032"
+      ],
+      "description": "Hour and minute",
+      "operation": "ascii_subset",
+      "params": {
+        "text": "17:20"
+      },
+      "expect": {
+        "ok": true,
+        "variation": null,
+        "year": null,
+        "month": null,
+        "day": null,
+        "day_of_year": null,
+        "hour": 17,
+        "minute": 20,
+        "second": null,
+        "fraction_digits": null,
+        "fraction": null,
+        "z": false
+      }
+    },
+    {
+      "id": "time-ascii-043",
+      "requirements": [
+        "TIME-032"
+      ],
+      "description": "Hour only",
+      "operation": "ascii_subset",
+      "params": {
+        "text": "17"
+      },
+      "expect": {
+        "ok": true,
+        "variation": null,
+        "year": null,
+        "month": null,
+        "day": null,
+        "day_of_year": null,
+        "hour": 17,
+        "minute": null,
+        "second": null,
+        "fraction_digits": null,
+        "fraction": null,
+        "z": false
+      }
+    },
+    {
+      "id": "time-ascii-044",
+      "requirements": [
+        "TIME-032"
+      ],
+      "description": "Time truncated on the left",
+      "operation": "ascii_subset",
+      "params": {
+        "text": ":20:43"
+      },
+      "expect": {
+        "ok": true,
+        "variation": null,
+        "year": null,
+        "month": null,
+        "day": null,
+        "day_of_year": null,
+        "hour": null,
+        "minute": 20,
+        "second": 43,
+        "fraction_digits": null,
+        "fraction": null,
+        "z": false
+      }
+    },
+    {
+      "id": "time-ascii-045",
+      "requirements": [
+        "TIME-032"
+      ],
+      "description": "Seconds and fraction only",
+      "operation": "ascii_subset",
+      "params": {
+        "text": "::43.5"
+      },
+      "expect": {
+        "ok": true,
+        "variation": null,
+        "year": null,
+        "month": null,
+        "day": null,
+        "day_of_year": null,
+        "hour": null,
+        "minute": null,
+        "second": 43,
+        "fraction_digits": 1,
+        "fraction": 5,
+        "z": false
+      }
+    },
+    {
+      "id": "time-ascii-046",
+      "requirements": [
+        "TIME-032"
+      ],
+      "description": "Fraction only",
+      "operation": "ascii_subset",
+      "params": {
+        "text": "::.25"
+      },
+      "expect": {
+        "ok": true,
+        "variation": null,
+        "year": null,
+        "month": null,
+        "day": null,
+        "day_of_year": null,
+        "hour": null,
+        "minute": null,
+        "second": null,
+        "fraction_digits": 2,
+        "fraction": 25,
+        "z": false
+      }
+    },
+    {
+      "id": "time-ascii-047",
+      "requirements": [
+        "TIME-032"
+      ],
+      "description": "Joined calendar and time truncated on the right",
+      "operation": "ascii_subset",
+      "params": {
+        "text": "1988-01-18T17"
+      },
+      "expect": {
+        "ok": true,
+        "variation": "A",
+        "year": 1988,
+        "month": 1,
+        "day": 18,
+        "day_of_year": null,
+        "hour": 17,
+        "minute": null,
+        "second": null,
+        "fraction_digits": null,
+        "fraction": null,
+        "z": false
+      }
+    },
+    {
+      "id": "time-ascii-048",
+      "requirements": [
+        "TIME-032"
+      ],
+      "description": "Left-truncated calendar joined with time, Z",
+      "operation": "ascii_subset",
+      "params": {
+        "text": "-01-18T17:20Z"
+      },
+      "expect": {
+        "ok": true,
+        "variation": "A",
+        "year": null,
+        "month": 1,
+        "day": 18,
+        "day_of_year": null,
+        "hour": 17,
+        "minute": 20,
+        "second": null,
+        "fraction_digits": null,
+        "fraction": null,
+        "z": true
+      }
+    },
+    {
+      "id": "time-ascii-049",
+      "requirements": [
+        "TIME-032"
+      ],
+      "description": "Time subset with Z",
+      "operation": "ascii_subset",
+      "params": {
+        "text": "17:20Z"
+      },
+      "expect": {
+        "ok": true,
+        "variation": null,
+        "year": null,
+        "month": null,
+        "day": null,
+        "day_of_year": null,
+        "hour": 17,
+        "minute": 20,
+        "second": null,
+        "fraction_digits": null,
+        "fraction": null,
+        "z": true
+      }
+    },
+    {
+      "id": "time-ascii-050",
+      "requirements": [
+        "TIME-032"
+      ],
+      "description": "Feb 29 without a year is allowed",
+      "operation": "ascii_subset",
+      "params": {
+        "text": "-02-29"
+      },
+      "expect": {
+        "ok": true,
+        "variation": "A",
+        "year": null,
+        "month": 2,
+        "day": 29,
+        "day_of_year": null,
+        "hour": null,
+        "minute": null,
+        "second": null,
+        "fraction_digits": null,
+        "fraction": null,
+        "z": false
+      }
+    },
+    {
+      "id": "time-ascii-051",
+      "requirements": [
+        "TIME-032"
+      ],
+      "description": "Day 31 without a month is allowed",
+      "operation": "ascii_subset",
+      "params": {
+        "text": "--31"
+      },
+      "expect": {
+        "ok": true,
+        "variation": "A",
+        "year": null,
+        "month": null,
+        "day": 31,
+        "day_of_year": null,
+        "hour": null,
+        "minute": null,
+        "second": null,
+        "fraction_digits": null,
+        "fraction": null,
+        "z": false
+      }
+    },
+    {
+      "id": "time-ascii-052",
+      "requirements": [
+        "TIME-032"
+      ],
+      "description": "Feb 30 without a year: OutOfRange",
+      "operation": "ascii_subset",
+      "params": {
+        "text": "-02-30"
+      },
+      "expect": {
+        "ok": false,
+        "error": "OutOfRange"
+      }
+    },
+    {
+      "id": "time-ascii-053",
+      "requirements": [
+        "TIME-032"
+      ],
+      "description": "Day of year 366 without a year is allowed",
+      "operation": "ascii_subset",
+      "params": {
+        "text": "-366"
+      },
+      "expect": {
+        "ok": true,
+        "variation": "B",
+        "year": null,
+        "month": null,
+        "day": null,
+        "day_of_year": 366,
+        "hour": null,
+        "minute": null,
+        "second": null,
+        "fraction_digits": null,
+        "fraction": null,
+        "z": false
+      }
+    },
+    {
+      "id": "time-ascii-054",
+      "requirements": [
+        "TIME-032"
+      ],
+      "description": "Calendar-only subset with Z: Malformed (OI-29)",
+      "operation": "ascii_subset",
+      "params": {
+        "text": "1988-01-18Z"
+      },
+      "expect": {
+        "ok": false,
+        "error": "Malformed"
+      }
+    },
+    {
+      "id": "time-ascii-055",
+      "requirements": [
+        "TIME-032"
+      ],
+      "description": "Joined calendar truncated on the right: Malformed",
+      "operation": "ascii_subset",
+      "params": {
+        "text": "1988-01T17"
+      },
+      "expect": {
+        "ok": false,
+        "error": "Malformed"
+      }
+    },
+    {
+      "id": "time-ascii-056",
+      "requirements": [
+        "TIME-032"
+      ],
+      "description": "Joined time truncated on the left: Malformed",
+      "operation": "ascii_subset",
+      "params": {
+        "text": "1988-01-18T:20"
+      },
+      "expect": {
+        "ok": false,
+        "error": "Malformed"
+      }
+    },
+    {
+      "id": "time-ascii-057",
+      "requirements": [
+        "TIME-032"
+      ],
+      "description": "Separators only: Malformed",
+      "operation": "ascii_subset",
+      "params": {
+        "text": "::"
+      },
+      "expect": {
+        "ok": false,
+        "error": "Malformed"
+      }
+    },
+    {
+      "id": "time-ascii-058",
+      "requirements": [
+        "TIME-032"
+      ],
+      "description": "Fraction after a minute: Malformed",
+      "operation": "ascii_subset",
+      "params": {
+        "text": "17:.5"
+      },
+      "expect": {
+        "ok": false,
+        "error": "Malformed"
+      }
+    },
+    {
+      "id": "time-ascii-059",
+      "requirements": [
+        "TIME-032"
+      ],
+      "description": "Complete code through the subset parser",
+      "operation": "ascii_subset",
+      "params": {
+        "text": "1988-01-18T17:20:43.123456Z"
+      },
+      "expect": {
+        "ok": true,
+        "variation": "A",
+        "year": 1988,
+        "month": 1,
+        "day": 18,
+        "day_of_year": null,
+        "hour": 17,
+        "minute": 20,
+        "second": 43,
+        "fraction_digits": 6,
+        "fraction": 123456,
+        "z": true
+      }
+    },
+    {
+      "id": "time-ascii-060",
+      "requirements": [
+        "TIME-032"
+      ],
+      "description": "Two T separators: Malformed",
+      "operation": "ascii_subset",
+      "params": {
+        "text": "1988-01-18T17T20"
+      },
+      "expect": {
+        "ok": false,
+        "error": "Malformed"
+      }
+    },
+    {
+      "id": "time-ascii-061",
+      "requirements": [
+        "TIME-032"
+      ],
+      "description": "Minute 60: OutOfRange",
+      "operation": "ascii_subset",
+      "params": {
+        "text": ":60"
+      },
+      "expect": {
+        "ok": false,
+        "error": "OutOfRange"
+      }
+    },
+    {
+      "id": "time-ascii-062",
+      "requirements": [
+        "TIME-032"
+      ],
+      "description": "Non-digit in the hour: InvalidField",
+      "operation": "ascii_subset",
+      "params": {
+        "text": "1a:20"
+      },
+      "expect": {
+        "ok": false,
+        "error": "InvalidField"
+      }
+    },
+    {
+      "id": "time-ascii-063",
+      "requirements": [
+        "TIME-032"
+      ],
+      "description": "Z inside the fraction: Malformed, as in complete codes",
+      "operation": "ascii_subset",
+      "params": {
+        "text": "17:20:43.1Z2"
+      },
+      "expect": {
+        "ok": false,
+        "error": "Malformed"
+      }
+    },
+    {
+      "id": "time-ascii-064",
+      "requirements": [
+        "TIME-032"
+      ],
+      "description": "13 fractional digits: OutOfRange",
+      "operation": "ascii_subset",
+      "params": {
+        "text": "::00.1234567890123"
+      },
+      "expect": {
+        "ok": false,
+        "error": "OutOfRange"
+      }
+    }
+  ]
+}
