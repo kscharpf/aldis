@@ -6,7 +6,9 @@
 
 use aldis_core::{Error, ErrorDetail, ErrorKind, FieldId, Result};
 
-use crate::header::{Epi, EpiExtension, len_u64};
+use crate::header::{
+    EncapsulationFields, EncapsulationHeader, Epi, EpiExtension, HeaderSize, invalid, len_u64,
+};
 
 /// Widens `u32` to `u64` in `const` context (`From` is not yet `const`).
 #[expect(clippy::as_conversions, reason = "lossless widening u32 -> u64")]
@@ -25,6 +27,12 @@ pub struct EpiSet(u8);
 impl EpiSet {
     /// The empty set (EPP-010).
     pub const EMPTY: EpiSet = EpiSet(0);
+
+    /// The set whose bit `n` is set for each member EPI `n`; every `u8` is a valid set (EPP-010).
+    #[must_use]
+    pub const fn from_bits(bits: u8) -> EpiSet {
+        EpiSet(bits)
+    }
 
     /// The set with `epi` added (EPP-010).
     #[must_use]
@@ -54,6 +62,13 @@ pub struct ExtendedEpiSet(u16);
 impl ExtendedEpiSet {
     /// The empty set (EPP-010).
     pub const EMPTY: ExtendedEpiSet = ExtendedEpiSet(0);
+
+    /// The set whose bit `n` is set for each member extended EPI `n`; every `u16` is a valid set
+    /// (EPP-010).
+    #[must_use]
+    pub const fn from_bits(bits: u16) -> ExtendedEpiSet {
+        ExtendedEpiSet(bits)
+    }
 
     /// The set with `extension` added (EPP-010).
     #[must_use]
@@ -145,9 +160,12 @@ impl EppConfig {
         self.valid_extended_epis
     }
 
-    /// Checks a data unit against the managed parameters, at the sending end before encoding
-    /// (133.1 §4.2.1.1.2) or the receiving end after decoding (EPP-010). An Idle Packet carries
-    /// no data unit for a user (133.1 §4.1.3.1.3, §4.3.1.1.3) and always passes.
+    /// Checks a data unit's protocol identifiers and length against the managed parameters
+    /// (EPP-010). Used at the receiving end by
+    /// [`EncapsulationPacket::validate`](crate::view::EncapsulationPacket::validate); the
+    /// sending end goes through [`data_unit`](Self::data_unit) or [`header`](Self::header),
+    /// which encoders require (133.1 §4.2.1.1.2). An Idle Packet carries no data unit for a user
+    /// (133.1 §4.1.3.1.3, §4.3.1.1.3) and always passes.
     ///
     /// # Errors
     /// - `UnknownChannel` (`epi`) if the EPI is not in the valid set.
@@ -158,6 +176,12 @@ impl EppConfig {
         if epi.is_idle() {
             return Ok(());
         }
+        self.check_ids(epi, extension)?;
+        self.check_len(data_len)
+    }
+
+    /// The identifier part of [`check`](Self::check) for a non-idle EPI.
+    fn check_ids(&self, epi: Epi, extension: Option<EpiExtension>) -> Result<()> {
         if !self.valid_epis.contains(epi) {
             return Err(Error::new(ErrorKind::UnknownChannel).with_field(FieldId::new("epi")));
         }
@@ -168,6 +192,11 @@ impl EppConfig {
                 Error::new(ErrorKind::UnknownChannel).with_field(FieldId::new("epi_extension"))
             );
         }
+        Ok(())
+    }
+
+    /// The length part of [`check`](Self::check) for a non-idle EPI.
+    pub(crate) fn check_len(&self, data_len: usize) -> Result<()> {
         let len = len_u64(data_len);
         if len < u64::from(self.min_data_len) {
             return Err(Error::out_of_range(
@@ -185,7 +214,87 @@ impl EppConfig {
         }
         Ok(())
     }
+
+    /// Checks the identifiers in `fields` for the sending end (133.1 §4.2.1.1.2); idle fields
+    /// always pass.
+    pub(crate) fn check_fields(&self, fields: EncapsulationFields) -> Result<()> {
+        if fields.epi().is_idle() {
+            return Ok(());
+        }
+        self.check_ids(fields.epi(), Some(fields.extension()))
+    }
+
+    /// A data unit ready for encoding: `fields` and `data` checked once against the managed
+    /// parameters at the sending end (133.1 §4.2.1.1.2, EPP-010, RS-020).
+    ///
+    /// # Errors
+    /// The errors of [`check`](Self::check), and `InvalidField` (`epi`) for an empty data field
+    /// with a non-idle EPI (EPP-005).
+    pub fn data_unit<'a>(
+        &self,
+        fields: EncapsulationFields,
+        data: &'a [u8],
+    ) -> Result<DataUnit<'a>> {
+        self.check(fields.epi(), Some(fields.extension()), data.len())?;
+        if data.is_empty() && !fields.epi().is_idle() {
+            return Err(invalid("epi"));
+        }
+        Ok(DataUnit { fields, data })
+    }
+
+    /// The header for a checked data unit of `data_len` octets, without the data: for streaming
+    /// encoders and for lengths too large to hold in memory (133.1 §4.2.1.1.2, EPP-008,
+    /// EPP-010).
+    ///
+    /// # Errors
+    /// The errors of [`check`](Self::check), and those of the header size policy: `InvalidField`
+    /// (`epi`) for an empty non-idle data field or `Fixed(One)` with a non-idle EPI;
+    /// `InvalidField` (`header_size`) for a header too small for the fields; `OutOfRange`
+    /// (`packet_len`) when the total length does not fit.
+    pub fn header(
+        &self,
+        fields: EncapsulationFields,
+        size: HeaderSize,
+        data_len: usize,
+    ) -> Result<EncapsulationHeader> {
+        self.check(fields.epi(), Some(fields.extension()), data_len)?;
+        EncapsulationHeader::for_data(fields, size, data_len)
+    }
 }
+
+/// A user data unit checked against the managed parameters (133.1 §4.2.1.1.2, EPP-010).
+///
+/// Built only by [`EppConfig::data_unit`], so holding one proves its EPI, extended EPI, and length
+/// are valid for the configuration (RS-020). [`encode`](crate::writer::encode) requires one.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct DataUnit<'a> {
+    fields: EncapsulationFields,
+    data: &'a [u8],
+}
+
+impl<'a> DataUnit<'a> {
+    /// The header fields (EPP-008).
+    #[must_use]
+    pub const fn fields(&self) -> EncapsulationFields {
+        self.fields
+    }
+
+    /// The data to encapsulate (133.1 §4.1.3).
+    #[must_use]
+    pub const fn data(&self) -> &'a [u8] {
+        self.data
+    }
+}
+
+/// Accepts every EPI, every extended EPI, and every data unit length: for encoder tests that
+/// are not about the managed parameters.
+#[cfg(test)]
+pub(crate) const ANY: EppConfig = EppConfig {
+    min_data_len: 0,
+    max_data_len: MAX_DATA_LEN,
+    valid_epis: EpiSet(0xFF),
+    valid_extended_epis: ExtendedEpiSet(0xFFFF),
+};
 
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]
@@ -209,6 +318,15 @@ mod tests {
         let x = ExtendedEpiSet::default().with(EXT9);
         assert_eq!(x.bits(), 1 << 9);
         assert_eq!(x.with(EXT9), x, "adding a member again keeps it");
+        assert_eq!(EpiSet::from_bits(0b1000_0001), s);
+        assert_eq!(ExtendedEpiSet::from_bits(1 << 9), x);
+        assert_eq!(
+            (
+                EpiSet::from_bits(0xFF).bits(),
+                ExtendedEpiSet::from_bits(0xFFFF).bits()
+            ),
+            (0xFF, 0xFFFF)
+        );
         assert!(x.contains(EXT9) && !x.contains(EpiExtension::default()));
     }
 
@@ -238,6 +356,83 @@ mod tests {
         let e =
             EppConfig::new(0, MAX_DATA_LEN + 1, EpiSet::EMPTY, ExtendedEpiSet::EMPTY).unwrap_err();
         assert_eq!(e.field().map(FieldId::name), Some("max_data_len"));
+    }
+
+    #[test]
+    fn data_units_and_headers_are_checked_at_the_sending_end() {
+        // req: EPP-010, EPP-005, RS-020
+        use crate::header::{EncapsulationFields, HeaderLen, HeaderSize};
+        let cfg = EppConfig::new(
+            1,
+            4,
+            EpiSet::EMPTY
+                .with(Epi::EXTENDED)
+                .with(Epi::MISSION_SPECIFIC),
+            ExtendedEpiSet::EMPTY.with(EXT9),
+        )
+        .unwrap();
+        let mission = EncapsulationFields::new(Epi::MISSION_SPECIFIC);
+        let unit = cfg.data_unit(mission, &[1, 2]).unwrap();
+        assert_eq!((unit.fields(), unit.data()), (mission, &[1, 2][..]));
+        let idle = EncapsulationFields::new(Epi::IDLE);
+        assert!(
+            cfg.data_unit(idle, &[0; 9]).is_ok(),
+            "idle data is not a user data unit"
+        );
+        assert!(cfg.data_unit(idle, &[]).is_ok());
+        for (fields, data, kind, field) in [
+            (
+                EncapsulationFields::new(Epi::new(1).unwrap()),
+                &[1][..],
+                ErrorKind::UnknownChannel,
+                "epi",
+            ),
+            (
+                EncapsulationFields::new(Epi::EXTENDED),
+                &[1][..],
+                ErrorKind::UnknownChannel,
+                "epi_extension",
+            ),
+            (
+                mission,
+                &[1, 2, 3, 4, 5][..],
+                ErrorKind::OutOfRange,
+                "data_len",
+            ),
+            (mission, &[][..], ErrorKind::OutOfRange, "data_len"),
+        ] {
+            let e = cfg.data_unit(fields, data).unwrap_err();
+            assert_eq!(
+                (e.kind(), e.field().map(FieldId::name)),
+                (kind, Some(field))
+            );
+        }
+        let any_len = EppConfig::new(
+            0,
+            4,
+            EpiSet::EMPTY.with(Epi::MISSION_SPECIFIC),
+            ExtendedEpiSet::EMPTY,
+        )
+        .unwrap();
+        let e = any_len.data_unit(mission, &[]).unwrap_err();
+        assert_eq!(
+            (e.kind(), e.field().map(FieldId::name)),
+            (ErrorKind::InvalidField, Some("epi"))
+        );
+        let h = cfg
+            .header(EncapsulationFields::extended(EXT9), HeaderSize::Auto, 4)
+            .unwrap();
+        assert_eq!((h.header_len(), h.packet_len()), (HeaderLen::Four, 8));
+        assert_eq!(
+            cfg.header(mission, HeaderSize::Auto, 5).unwrap_err().kind(),
+            ErrorKind::OutOfRange
+        );
+        assert_eq!(
+            cfg.header(mission, HeaderSize::Fixed(HeaderLen::One), 1)
+                .unwrap_err()
+                .kind(),
+            ErrorKind::InvalidField
+        );
     }
 
     #[test]

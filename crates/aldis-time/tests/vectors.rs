@@ -305,11 +305,12 @@ fn run(case: &CodecCase) -> Result<Value, Error> {
                 u8_of(&params, "coarse_octets"),
                 u8_of(&params, "fine_octets"),
             )?;
-            let v = CucValue::from_seconds_nanos(
+            let v = Cuc::from_seconds_nanos(
+                f,
                 u64_of(&params, "seconds"),
                 u32::try_from(u64_of(&params, "nanoseconds")).unwrap(),
-                &f,
-            )?;
+            )?
+            .value();
             Ok(json!({ "coarse": v.coarse(), "fine_hex": fine_raw(v.fine(), f.fine_octets()) }))
         }
         op => panic!("{}: unsupported operation {op}", case.id),

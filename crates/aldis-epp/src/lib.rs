@@ -7,7 +7,7 @@
 //! | [`header`] | `Epi`, `EpiExtension`, `UserDefined`, `HeaderLen`, `HeaderSize`, owned `EncapsulationHeader` | EPP-001…EPP-008, API-014, API-021 |
 //! | [`view`] | Zero-copy `EncapsulationPacket` decoder, `peek_length` | EPP-001…EPP-007, EPP-011, API-010, API-011, API-013 |
 //! | [`writer`] | One-shot `encode`, two-phase `EncapsulationWriter`, `idle` | EPP-008, EPP-009, API-020…API-023 |
-//! | [`config`] | `EppConfig` managed parameters, `EpiSet`, `ExtendedEpiSet` | EPP-010, GEN-060, GEN-061 |
+//! | [`config`] | `EppConfig` managed parameters, `EpiSet`, `ExtendedEpiSet`, the checked `DataUnit` | EPP-010, GEN-060, GEN-061 |
 //! | [`anomaly`] | `EppAnomaly` lenient-mode flags | API-032, GEN-043 |
 //!
 //! Unlike the Space Packet, the Packet Length field holds the **total** packet length,
@@ -31,7 +31,7 @@ pub mod view;
 pub mod writer;
 
 pub use anomaly::EppAnomaly;
-pub use config::{EpiSet, EppConfig, ExtendedEpiSet};
+pub use config::{DataUnit, EpiSet, EppConfig, ExtendedEpiSet};
 pub use header::{
     EncapsulationFields, EncapsulationHeader, Epi, EpiExtension, HeaderLen, HeaderSize, UserDefined,
 };
