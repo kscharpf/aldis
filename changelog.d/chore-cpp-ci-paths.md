@@ -1,0 +1,2 @@
+### Changed
+- C++ CI (`.github/workflows/cpp.yml`) no longer runs on pull requests that change only Rust or documentation. A `changes` job skips every C++ job unless the change touches `cpp/`, `test-vectors/`, `xtask/`, or the C++ workflow and setup action; pushes to `main` and manual runs build everything. A new `cpp-ok` job summarises the result and is the check to require in branch protection. C0 plan D17 amended.
