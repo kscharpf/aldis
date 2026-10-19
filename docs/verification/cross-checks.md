@@ -20,7 +20,7 @@ Evaluated 2026-10-19 for SPP, CUC, and CDS.
 
 ## 2. Coverage
 
-What `spacepackets` 0.18.0 can check, by vector file. The harness (`cargo run --manifest-path crosscheck/Cargo.toml`, a step of the `spec` check of `cargo xtask verify` and of the nightly CI) checks only the cases in scope, prints every case it skips with the reason, and fails on any disagreement. A check compares only the values `spacepackets` produces; the expected values it cannot produce are listed under "Out of scope".
+What `spacepackets` 0.18.0 can check, by vector file. The harness (`cargo run --manifest-path crosscheck/Cargo.toml`, a step of the `spec` check of `cargo xtask verify` and of the nightly CI, after the harness's own tests) checks only the cases in scope, prints every case it skips with the reason, and fails on any disagreement. A check compares only the values `spacepackets` produces; the expected values it cannot produce are listed under "Out of scope".
 
 | Vector files | Checked | Out of scope, and why |
 |---|---|---|
@@ -28,7 +28,7 @@ What `spacepackets` 0.18.0 can check, by vector file. The harness (`cargo run --
 | `peek_length` cases | `SpHeader::from_be_bytes`: `len`; fewer than 6 octets rejected | `UnsupportedVersion` |
 | `spp/stream` | Packet by packet: `apid`, `sequence_count`, `consumed` of each, `stop_error` (none or `Incomplete`), `offset` | `anomalies`; streams that stop at an error it does not detect |
 | `spp/encode`, `spp/octet_string` | `CcsdsPacketCreator` builds the packet from the parameters; `output_hex` must match. A data field above 65 536 octets must be rejected | `next_count`. The rejection rules it does not have: empty data field, idle APID, `max_packet_len`. Its creator underflows on an empty data field (§3), so that input is never passed to it |
-| `spp/idle` | The expected octets decode to APID 2047, Secondary Header Flag 0, Sequence Flags `11`, the given count and total length (133.0 §4.1.3.3.4.4, §4.1.4.3.4) | The idle pattern; rejections (no Idle Packet builder) |
+| `spp/idle` | The expected octets decode to APID 2047, Secondary Header Flag 0, Sequence Flags `11`, the given count and total length (133.0 §4.1.3.3.4.4, §4.1.3.3.3.4; the Sequence Flags by SPP-010, as 133.0 sets none for Idle Packets) | The idle pattern; rejections (no Idle Packet builder) |
 | `spp/segment` | Each expected packet decodes to the given type, APID, Secondary Header Flag, and count + index modulo 2^14, and its length field covers exactly its octets | Sequence Flags and the split of the SDU (no segmentation logic); `next_count`; rejections |
 | `spp/reassemble`, `spp/sequence_tracker`, `spp/split` | — | No reassembler, sequence tracker, or managed secondary header layout |
 | `spp/secondary_header_time` | The Time Code Field, where its format is in scope for CUC or CDS below | The split and the ancillary field |

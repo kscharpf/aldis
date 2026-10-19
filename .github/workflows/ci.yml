@@ -212,7 +212,9 @@ jobs:
       - run: cargo xtask links
       - run: cargo xtask vectors validate
       - run: cargo xtask vectors schema --check
-      # Independent cross-check of the vectors (VER-040); fails on any disagreement.
+      # Independent cross-check of the vectors (VER-040); fails on any disagreement. Its own
+      # tests first: the harness must report a difference it is shown.
+      - run: cargo test --manifest-path crosscheck/Cargo.toml
       - run: cargo run --manifest-path crosscheck/Cargo.toml
       - run: cargo xtask changelog check
       # M0 is closed: every in-scope requirement must keep an artefact (VER-020).

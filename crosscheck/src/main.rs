@@ -53,6 +53,7 @@ const NOT_CHECKED: &[(&str, &str)] = &[
     ),
 ];
 
+// req: VER-040
 fn main() -> ExitCode {
     let reports: Vec<FileReport> = CHECKED
         .iter()

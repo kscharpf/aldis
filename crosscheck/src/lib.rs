@@ -75,9 +75,13 @@ pub fn check_file(file: &'static str, check: Check) -> FileReport {
 /// Compares the values an implementation produced with the case's expected values.
 ///
 /// Only the produced keys are compared: the expectation may hold more (cross-checks.md §2
-/// lists them). A produced key the expectation lacks is a disagreement.
+/// lists them). A produced key the expectation lacks is a disagreement, and so is producing
+/// nothing, which would otherwise agree with any case.
 #[must_use]
 pub fn compare_produced(case: &CodecCase, produced: &Map<String, Value>) -> Verdict {
+    if produced.is_empty() {
+        return Verdict::Disagree("no values produced".to_owned());
+    }
     let diffs: Vec<String> = produced
         .iter()
         .filter_map(|(key, got)| match case.expect.values.get(key) {
@@ -149,4 +153,47 @@ pub fn expected<'a>(case: &'a CodecCase, key: &str) -> &'a Value {
         .values
         .get(key)
         .unwrap_or_else(|| panic!("{}: no expected {key}", case.id))
+}
+
+#[cfg(test)]
+mod tests {
+    use serde_json::{Map, Value, json};
+
+    use super::{CodecCase, Verdict, compare_produced};
+
+    fn case(expect: &Value) -> CodecCase {
+        serde_json::from_value(json!({
+            "id": "test-001",
+            "requirements": [],
+            "operation": "decode",
+            "expect": expect,
+        }))
+        .unwrap()
+    }
+
+    fn map(value: &Value) -> Map<String, Value> {
+        value.as_object().unwrap().clone()
+    }
+
+    #[test]
+    fn compare_produced_reports_every_difference() {
+        // req: VER-040
+        let case = case(&json!({"ok": true, "apid": 5, "sequence_count": 7, "idle": false}));
+        assert_eq!(
+            compare_produced(&case, &map(&json!({"apid": 5, "sequence_count": 7}))),
+            Verdict::Agree
+        );
+        assert_eq!(
+            compare_produced(&case, &map(&json!({"apid": 6, "sequence_count": 7}))),
+            Verdict::Disagree("apid: expected 5, produced 6".to_owned())
+        );
+        assert_eq!(
+            compare_produced(&case, &map(&json!({"apid": 5, "data_len": 1}))),
+            Verdict::Disagree("data_len: not in the vector, produced 1".to_owned())
+        );
+        assert_eq!(
+            compare_produced(&case, &Map::new()),
+            Verdict::Disagree("no values produced".to_owned())
+        );
+    }
 }

@@ -1,8 +1,8 @@
 //! `xtask trace`: requirement → verification artefact matrix (VER-020).
 //!
 //! Artefacts are collected from `// req: <IDs>` annotations in Rust sources (including the
-//! reference application in `refapp/`) and in the C++ sources and headers under `cpp/`
-//! (labelled `test (C++)`, CPP-057), the `requirements` fields of test vectors and of
+//! reference application in `refapp/` and the cross-checks in `crosscheck/`) and in the C++
+//! sources and headers under `cpp/` (labelled `test (C++)`, CPP-057), the `requirements` fields of test vectors and of
 //! golden-trace headers (`refapp/golden/*.jsonl`, docs/reference-application.md §7.2), and
 //! `docs/verification/analysis-records.md`.
 
@@ -44,7 +44,14 @@ fn artefacts(spec: &Spec) -> Result<BTreeMap<String, BTreeSet<String>>, String> 
     let areas = spec.area_set();
     let mut map = BTreeMap::new();
 
-    for dir in ["crates", "xtask", "fuzz", "exerciser", "refapp"] {
+    for dir in [
+        "crates",
+        "xtask",
+        "fuzz",
+        "exerciser",
+        "refapp",
+        "crosscheck",
+    ] {
         let kind = if dir == "fuzz" { "fuzz" } else { "test" };
         for path in repo::files(dir, &["rs"]) {
             let text = repo::read(&path)?;

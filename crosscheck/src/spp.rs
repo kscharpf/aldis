@@ -291,8 +291,13 @@ fn decoded_fields(output: &[u8], want: &[(&str, u64)]) -> Result<(), String> {
     let got = packet_values(&packet);
     let diffs: Vec<String> = want
         .iter()
-        .filter(|(key, value)| got.get(*key) != Some(&json!(value)))
-        .map(|(key, value)| format!("{key}: expected {value}, produced {}", got[*key]))
+        .filter_map(|(key, value)| match got.get(*key) {
+            None => Some(format!("{key}: expected {value}, not produced")),
+            Some(produced) if *produced != json!(value) => {
+                Some(format!("{key}: expected {value}, produced {produced}"))
+            }
+            Some(_) => None,
+        })
         .collect();
     if packet.packet_len() != output.len() {
         return Err(format!(
@@ -320,7 +325,8 @@ fn idle(case: &CodecCase) -> Verdict {
         return Verdict::Skip("spacepackets has no Idle Packet builder".to_owned());
     }
     let output = hex_value(case, expected(case, "output_hex"));
-    // 133.0 §4.1.3.3.4.4, §4.1.4.3.4: APID 2047, no secondary header, unsegmented.
+    // APID 2047 (133.0 §4.1.3.3.4.4), no secondary header (§4.1.3.3.3.4). 133.0 sets no Sequence
+    // Flags for Idle Packets; `11` is the SPP-010 choice the vectors encode.
     let want = [
         ("apid", 2047),
         ("secondary_header_flag", 0),
@@ -360,5 +366,44 @@ fn segment(case: &CodecCase) -> Verdict {
         Verdict::Agree
     } else {
         Verdict::Disagree(diffs.join("; "))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::decoded_fields;
+
+    /// Telemetry, APID 5, unsegmented, count 7, one data octet.
+    const PACKET: [u8; 7] = [0x00, 0x05, 0xC0, 0x07, 0x00, 0x00, 0xAB];
+
+    #[test]
+    fn decoded_fields_reports_every_difference() {
+        // req: VER-040
+        let want = [
+            ("apid", 5),
+            ("sequence_flags", 0b11),
+            ("sequence_count", 7),
+            ("packet_len", 7),
+        ];
+        assert_eq!(decoded_fields(&PACKET, &want), Ok(()));
+        assert_eq!(
+            decoded_fields(&PACKET, &[("apid", 6), ("sequence_count", 7)]),
+            Err("apid: expected 6, produced 5".to_owned())
+        );
+        assert_eq!(
+            decoded_fields(&PACKET, &[("no_such_field", 1)]),
+            Err("no_such_field: expected 1, not produced".to_owned())
+        );
+        let mut longer = PACKET.to_vec();
+        longer.push(0);
+        assert_eq!(
+            decoded_fields(&longer, &want),
+            Err("spacepackets reads 7 of 8 octets".to_owned())
+        );
+        assert!(
+            decoded_fields(&PACKET[..6], &want)
+                .unwrap_err()
+                .starts_with("spacepackets rejects")
+        );
     }
 }
