@@ -1,6 +1,6 @@
 # C ABI profile
 
-This profile defines the C interface. The Rust reference implementation exposes it through `aldis-ffi`, and future native C/C++ implementations SHALL expose the same interface. Because both expose one interface, a C or C++ application can link either library without source changes.
+This profile defines the C interface. The Rust reference implementation exposes it through `aldis-ffi`, and the native C++ and C implementations SHALL expose the same interface. Because both expose one interface, a C or C++ application can link either library without source changes.
 
 ## 1. Linkage and artefacts
 
@@ -86,6 +86,6 @@ void    aldis_fop1_deinit(aldis_fop1_t *h);   /* no-op for memory; marks handle 
 
 | ID | Requirement | Source | Verif. |
 |---|---|---|---|
-| CABI-070 | A native C implementation SHALL expose this exact header, generated or hand-maintained, verified by an ABI comparison against the Rust-generated header in CI. | — | A |
-| CABI-071 | Native implementations SHALL meet the [design rules](../02-design-rules.md) in their language. That means no heap, no recursion, bounded loops, and no undefined behavior (verified with sanitizers and static analysis, VER-051/052). They SHALL pass the full [test-vector suite](../07-test-vectors.md). | — | V |
-| CABI-072 | The C++ API SHALL be a header-only, idiomatic wrapper (`aldis.hpp`) over the C ABI: RAII handle types with storage in `std::aligned_storage`-like members, `std::span`-style views (C++20) or pointer/size pairs (C++11), and `expected`-like results. It SHALL NOT use exceptions. A native C++ implementation, when it exists, SHALL keep the same C++ wrapper API. | — | T |
+| CABI-070 | A native C or C++ implementation SHALL expose this exact header, generated or hand-maintained, verified by an ABI comparison against the Rust-generated header in CI. A native C++ implementation SHALL provide it as an `extern "C"` layer over its C++ API. The header is also the interface through which the differential tests call the native implementation (VER-053). | — | A |
+| CABI-071 | Native implementations SHALL meet the [design rules](../02-design-rules.md) in their language. That means no heap, no recursion, bounded loops, and no undefined behavior (verified with sanitizers and static analysis, VER-051/052). They SHALL pass the full [test-vector suite](../07-test-vectors.md) and the differential tests against the Rust reference (VER-053). | — | V |
+| CABI-072 | The C++ API SHALL be a header-only, idiomatic wrapper (`aldis.hpp`) over the C ABI: RAII handle types with storage in `alignas(N) std::byte[N]` members (`std::aligned_storage` is deprecated in C++23), `std::span`-style views (C++20) or pointer/size pairs (C++11), and `expected`-like results. It SHALL NOT use exceptions. The native C++ implementation ([C++ profile](cpp.md)) SHALL keep the same C++ wrapper API. The C++ standard of that API and how it expresses engine capacities are open ([open issues](../09-open-issues.md) OI-19, OI-20). | — | T |

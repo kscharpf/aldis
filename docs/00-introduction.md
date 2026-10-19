@@ -7,7 +7,7 @@ These libraries add **CCSDS space data system protocols** to two kinds of applic
 - **Flight software:** bare-metal and RTOS spacecraft processors with static memory and no heap.
 - **Ground systems:** mission control systems, ground-station front ends, simulators, test equipment, and analysis tools.
 
-A single **Rust reference implementation** is the source of truth for behavior. It is exposed to C and C++ through a stable **C ABI**, and later to Java, C#, Python, and Go through bindings over that ABI. Full **native C and C++ implementations** are planned so that single-language applications don't need a Rust toolchain. They must implement this same specification and pass the same conformance vectors (see [07](07-test-vectors.md)).
+A single **Rust reference implementation** is the source of truth for behavior, and it is the recommended choice: it carries the strongest correctness evidence. It is exposed to C and C++ through a stable **C ABI**, and later to Java, C#, Python, and Go through bindings over that ABI. A **native C++ implementation** is developed alongside it for legacy flight software that cannot easily take a Rust toolchain; a **native C implementation** is planned later. Native implementations must implement this same specification, pass the same conformance vectors (see [07](07-test-vectors.md)), and match the Rust reference in differential tests (VER-053).
 
 ## 2. v1 scope
 
@@ -57,7 +57,7 @@ CCSDS terms (Transfer Frame, Virtual Channel, MAP, FHP, OCF, FECF, CLCW, …) ar
 | **Framework** | Optional Layer 3 that drives engines using caller-implemented transport and clock traits. |
 | **Managed parameter** | A CCSDS parameter set by management, not signalled in-band, e.g. frame length or FECF presence. Represented as validated **configuration** objects. |
 | **Strict / Lenient decoding** | Strict rejects any deviation from the standard. Lenient accepts deviations in fields the standard says are reserved or ignored, and reports them as **anomalies**. |
-| **Profile** | A language-specific binding of this specification (Rust, C ABI, …). |
+| **Profile** | A language-specific binding of this specification (Rust, C ABI, C++, …). |
 | **Instant** | Caller-supplied monotonic time: unsigned 64-bit microseconds since an arbitrary epoch. |
 
 ## 5. Requirement conventions
@@ -89,6 +89,7 @@ Each requirement has a stable ID: `<AREA>-<NNN>`. IDs are never reused. A delete
 | COP | [COP-1](standards/cop1.md) |
 | RS | [Rust profile](profiles/rust.md) |
 | CABI | [C ABI profile](profiles/c-abi.md) |
+| CPP | [C++ profile](profiles/cpp.md) |
 
 ### 5.3 Requirement tables
 
