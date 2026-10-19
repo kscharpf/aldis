@@ -100,7 +100,7 @@ The outcome of each packet has two parts:
 - **No configuration in the decoder:** `decode` takes no configuration and exposes the whole Packet Data Field. The caller looks up the APID's layout and splits the packet with it.
 - **Layouts:** none, opaque (a fixed length ≥ 1), or a time code (feature `time`) with an optional P-field and an ancillary length.
 - **Flag mismatch:** a flag that disagrees with the layout (flag 1 with no layout, flag 0 with a layout) is `InvalidField` (`secondary_header_flag`) in both modes, since §4.1.3.3.3.3 fixes the flag per APID.
-- **Too short:** a data field shorter than the secondary header is `LengthMismatch` (`secondary_header`). This includes a data field that ends inside the time code's P-field or T-field.
+- **Too short:** a data field shorter than the secondary header is `LengthMismatch` (`secondary_header`). This includes a data field that ends inside the time code's P-field or T-field. The `expected` length includes the Ancillary Data Field; when the data field ends inside a P-field extension, the time code's length is not yet known and `expected` is a lower bound.
 - **Time codes:** only CUC and CDS are allowed (133.0 §4.1.4.2.2.2: the "segmented binary or unsegmented binary" codes of 301.0; CCS is BCD). Configuring another code is `InvalidConfig` (`time_code`).
 - **With a P-field:** the code's characteristics come from the P-field (§4.1.4.2.2.4), but its time code ID must equal the configured code's (§4.1.4.2.2.3); otherwise `InvalidField` (`time_code_id`).
 - **Without a P-field:** the configured format is used.
