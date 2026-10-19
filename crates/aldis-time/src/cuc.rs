@@ -534,6 +534,16 @@ mod tests {
     }
 
     #[test]
+    fn cuc_round_trips_through_seconds_and_nanos() {
+        // req: TIME-011
+        let carried = Cuc::from_seconds_nanos(fmt(1, 1), 5, 999_999_999).unwrap();
+        assert_eq!(carried.to_seconds_nanos(), (6, 0));
+        let half = Cuc::from_seconds_nanos(fmt(1, 1), 5, 500_000_000).unwrap();
+        assert_eq!(half.to_seconds_nanos(), (5, 500_000_000));
+        assert_eq!(half.to_seconds_nanos(), half.value().to_seconds_nanos());
+    }
+
+    #[test]
     fn cuc_checks_the_value() {
         // req: TIME-012
         assert_eq!(
