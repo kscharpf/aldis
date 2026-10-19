@@ -38,6 +38,16 @@ fn load(text: &str, commit: &str) -> Result<Value, String> {
     Ok(record)
 }
 
+/// The GitHub Actions run that made the record (VER-060), if it was not made locally.
+fn run_url(record: &Value) -> Option<&str> {
+    let source = record.get("source")?;
+    if source.get("kind")?.as_str()? == "github-actions" {
+        source.get("run")?.as_str()
+    } else {
+        None
+    }
+}
+
 /// Fetches `origin`'s notes into [`NOTES_ORIGIN`]; false if `origin` has none yet.
 fn fetch_notes() -> Result<bool, String> {
     let exists = Command::new("git")
@@ -119,11 +129,20 @@ pub fn publish(commit: &str) -> Result<usize, String> {
     }
     push_note(commit, &path.to_string_lossy())?;
     let sha = record::sha256_hex(text.trim().as_bytes());
-    let status = Command::new("gh")
-        .args(["api", "--silent", "-X", "POST"])
+    let mut gh = Command::new("gh");
+    gh.args(["api", "--silent", "-X", "POST"])
         .arg(format!("repos/{{owner}}/{{repo}}/statuses/{commit}"))
-        .args(["-f", "state=success", "-f", &format!("context={CONTEXT}")])
-        .args(["-f", &format!("description=record sha256:{sha}")])
+        .args(["-f", "state=success", "-f", &format!("context={CONTEXT}")]);
+    if let Some(url) = run_url(&record) {
+        gh.args([
+            "-f",
+            &format!("description=record sha256:{sha} (GitHub Actions)"),
+        ])
+        .args(["-f", &format!("target_url={url}")]);
+    } else {
+        gh.args(["-f", &format!("description=record sha256:{sha}")]);
+    }
+    let status = gh
         .current_dir(repo::root())
         .status()
         .map_err(|e| format!("gh: {e}"))?;
@@ -155,6 +174,10 @@ pub fn check(rev: &str) -> Result<usize, String> {
             .and_then(Value::as_str)
             .unwrap_or("?")
     );
+    match run_url(&record) {
+        Some(url) => println!("verify: made by GitHub Actions run {url}"),
+        None => println!("verify: made locally"),
+    }
     for p in &problems {
         println!("verify: gate: {p}");
     }
@@ -162,4 +185,20 @@ pub fn check(rev: &str) -> Result<usize, String> {
         println!("verify: the record passes the merge gate (VER-058)");
     }
     Ok(problems.len())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    // req: VER-057, VER-060
+    #[test]
+    fn run_url_only_for_a_github_actions_record() {
+        let url = "https://github.com/o/r/actions/runs/7/attempts/1";
+        let ci = json!({"source": {"kind": "github-actions", "run": url}});
+        assert_eq!(run_url(&ci), Some(url));
+        assert_eq!(run_url(&json!({"source": {"kind": "local"}})), None);
+        assert_eq!(run_url(&json!({})), None);
+    }
 }

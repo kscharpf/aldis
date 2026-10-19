@@ -38,6 +38,14 @@ cargo xtask verify --publish        # every check, in the pinned image; then the
 cargo xtask verify check            # re-check the published record of HEAD
 ```
 
+If you cannot run it locally, start the same run on a GitHub-hosted runner instead (VER-060). It takes 20 to 30 minutes, publishes the same record and status, and names the run they came from:
+
+```sh
+git push
+gh workflow run verify.yml --ref <branch>   # or "Run workflow" on the Actions tab
+gh run watch                                # then: cargo xtask verify check
+```
+
 `cargo xtask verify` needs podman or Docker Engine with about 20 GB of free disk and 6 GB of memory for the engine's VM (`podman machine set --memory 6144`). The first run builds the image (several GB of downloads). A podman VM keeps the disk space the build frees until it is trimmed: run `podman machine ssh sudo fstrim -av` after the build (it returned about 20 GB on macOS). It refuses a dirty working tree, runs every check in a fresh checkout of HEAD, and writes `target/verify/<commit>/record.json` and one log per check. `cargo xtask verify list` names the checks, and `--only <check>,...` runs some of them while you work; such a record never passes the gate. A record is tied to the commit's tree, so any new commit, including a merge from `main`, needs a new run.
 
 While you work, run these. All must pass with **zero warnings**:

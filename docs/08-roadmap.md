@@ -89,7 +89,7 @@ These rules let separate contributors, or separate agents, each own one track.
 6. **Vectors.** Any track may add vectors, following [07](07-test-vectors.md). A vector merges only with the Rust crates passing it.
 7. **IDs.** Area CPP belongs to track C and area APP to track A; the other areas are shared. Requirement and OI numbers are allocated when a PR is written. If two open PRs take the same number, the one that merges second renumbers (`cargo xtask spec-lint` reports duplicates).
 8. **Open issues.** A track that hits an open spec question adds or updates an OI in [09](09-open-issues.md) instead of choosing silently in code.
-9. **Merge gate.** A PR merges on the published record of a passing local verification run, `cargo xtask verify` ([06 §7](06-verification.md#7-verification-runs-and-the-merge-gate), VER-058); GitHub Actions repeats every check each night (VER-059). How to run it: [AGENTS.md](../AGENTS.md#toolchain-and-checks).
+9. **Merge gate.** A PR merges on the published record of a passing verification run, `cargo xtask verify` on the contributor's machine or the `verify` workflow started by hand ([06 §7](06-verification.md#7-verification-runs-and-the-merge-gate), VER-058, VER-060); GitHub Actions repeats every check each night (VER-059). How to run it: [AGENTS.md](../AGENTS.md#toolchain-and-checks).
 
 ## 7. Later standards (proposed order)
 

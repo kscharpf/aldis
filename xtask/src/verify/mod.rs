@@ -278,6 +278,27 @@ fn cpp_scope(commit: &str, all_cpp: bool) -> Value {
     }
 }
 
+/// Where the run is made (VER-057): the GitHub Actions run of VER-060, or the contributor's
+/// machine.
+fn source() -> Value {
+    let var = |k: &str| std::env::var(k).ok().filter(|v| !v.is_empty());
+    if var("GITHUB_ACTIONS").as_deref() == Some("true")
+        && let (Some(server), Some(repo), Some(run), Some(attempt)) = (
+            var("GITHUB_SERVER_URL"),
+            var("GITHUB_REPOSITORY"),
+            var("GITHUB_RUN_ID"),
+            var("GITHUB_RUN_ATTEMPT"),
+        )
+    {
+        return json!({
+            "kind": "github-actions",
+            "run": format!("{server}/{repo}/actions/runs/{run}/attempts/{attempt}"),
+            "workflow": var("GITHUB_WORKFLOW"),
+        });
+    }
+    json!({"kind": "local"})
+}
+
 /// `target/verify/<commit>`, emptied.
 fn out_dir(commit: &str) -> Result<PathBuf, String> {
     let out = repo::root().join("target/verify").join(commit);
@@ -367,6 +388,7 @@ fn verify(mut opts: Options, all_cpp: bool, publish: bool) -> Result<usize, Stri
         "tree": tree,
         "started": started,
         "finished": record::utc_now(),
+        "source": source(),
         "host": {
             "os": std::env::consts::OS,
             "arch": std::env::consts::ARCH,

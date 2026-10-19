@@ -14,5 +14,5 @@
 - [ ] No released test vector edited (new case + `superseded` instead)
 - [ ] No CCSDS documents or text copied from them committed
 - [ ] Any tool or document this change depends on is free for this project (VER-055)
-- [ ] `cargo xtask verify --publish` passed on the head commit, which contains the tip of `main` (VER-058; see AGENTS.md)
+- [ ] `cargo xtask verify --publish` passed on the head commit, which contains the tip of `main`, locally or through the `verify` workflow (VER-058, VER-060; see AGENTS.md)
 - [ ] A fragment added in `changelog.d/` if behavior, public API, or the spec changed (see `changelog.d/README.md`)
