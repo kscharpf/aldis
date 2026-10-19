@@ -155,7 +155,8 @@ TEST(Container, ByteQueueMatchesModel) {
                 if (model.empty()) {
                     EXPECT_EQ(got, std::nullopt);
                 } else {
-                    EXPECT_EQ(vec(std::span<const std::byte>{out}.first(got.value())),
+                    ASSERT_EQ(got, model.front().size());
+                    EXPECT_EQ(vec(std::span<const std::byte>{out}.first(model.front().size())),
                               model.front());
                     used -= model.front().size() + 4;
                     model.pop_front();

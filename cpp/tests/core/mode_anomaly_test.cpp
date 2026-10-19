@@ -41,11 +41,13 @@ enum class NoTraits : std::uint8_t { X };
 } // namespace
 
 template <> struct aldis::core::AnomalyTraits<Demo> {
-    static constexpr std::array<AnomalyFlag<Demo>, 3> flags{{
-        {.flag = Demo::Four, .bit = 4},
-        {.flag = Demo::Zero, .bit = 0},
-        {.flag = Demo::Last, .bit = 31},
-    }};
+    static constexpr std::array<AnomalyFlag<Demo>, 3> flags{
+        {
+            {.flag = Demo::Four, .bit = 4},
+            {.flag = Demo::Zero, .bit = 0},
+            {.flag = Demo::Last, .bit = 31},
+        },
+    };
 };
 
 template <> struct aldis::core::AnomalyTraits<Flag> {
@@ -62,19 +64,23 @@ template <> struct aldis::core::AnomalyTraits<Flag> {
 
 template <> struct aldis::core::AnomalyTraits<TooHigh> {
     static constexpr std::array<AnomalyFlag<TooHigh>, 1> flags{
-        {{.flag = TooHigh::Flag, .bit = 32}}};
+        {{.flag = TooHigh::Flag, .bit = 32}},
+    };
 };
 
 template <> struct aldis::core::AnomalyTraits<Twice> {
     static constexpr std::array<AnomalyFlag<Twice>, 2> flags{
-        {{Twice::First, 3}, {Twice::Second, 3}}};
+        {{.flag = Twice::First, .bit = 3}, {.flag = Twice::Second, .bit = 3}},
+    };
 };
 
 template <> struct aldis::core::AnomalyTraits<Repeated> {
-    static constexpr std::array<AnomalyFlag<Repeated>, 2> flags{{
-        {.flag = Repeated::Only, .bit = 1},
-        {.flag = Repeated::Only, .bit = 2},
-    }};
+    static constexpr std::array<AnomalyFlag<Repeated>, 2> flags{
+        {
+            {.flag = Repeated::Only, .bit = 1},
+            {.flag = Repeated::Only, .bit = 2},
+        },
+    };
 };
 
 namespace {

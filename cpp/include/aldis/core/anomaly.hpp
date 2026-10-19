@@ -70,13 +70,8 @@ template <typename A> constexpr bool valid_table() noexcept {
     return true;
 }
 
-} // namespace detail
-
-namespace detail {
-
 /// Whether `AnomalyTraits<A>` is specialized with a `flags` table.
-template <typename A, typename = void>
-inline constexpr bool has_anomaly_table = false;
+template <typename A, typename = void> inline constexpr bool has_anomaly_table = false;
 
 template <typename A>
 inline constexpr bool has_anomaly_table<A, std::void_t<decltype(AnomalyTraits<A>::flags)>> = true;

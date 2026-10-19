@@ -161,6 +161,10 @@ template <typename T>
 
 /// Copies `src` into the start of `dst`; `BufferTooSmall` (needed: `src.size()`) and no write if
 /// `dst` is shorter (GEN-042).
+///
+/// `dst` and `src` must not overlap, as Rust's borrow rules guarantee for `copy_from_slice`. The
+/// copy runs forward one element at a time, so with overlapping spans where `dst` starts after
+/// `src`, later source elements are read after they were overwritten: defined, but not a move.
 template <typename T>
 [[nodiscard]] constexpr Result<void> copy(std::span<T> dst, std::span<const T> src) noexcept {
     if (dst.size() < src.size()) {

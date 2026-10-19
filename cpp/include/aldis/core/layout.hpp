@@ -43,8 +43,9 @@ struct LayoutSpec {
     std::size_t primary_header_len{0};
     /// Length of the protocol-specific secondary slot (FSH, Insert Zone, or Segment Header).
     std::size_t secondary_len{0};
-    /// Security Header and Trailer lengths (API-070).
-    SecurityLayout security;
+    /// Security Header and Trailer lengths (API-070); none unless given, so a designated
+    /// initializer may leave it out like the other fields.
+    SecurityLayout security{SecurityLayout::none()};
     /// Whether the OCF is present.
     bool ocf{false};
     /// Whether the FECF is present.
@@ -116,7 +117,8 @@ public:
     /// The ranges in wire order (CMN-040).
     [[nodiscard]] constexpr std::array<OctetRange, layout::field_count> ranges() const noexcept {
         return {
-            primary_header_, secondary_, security_header_, data_, security_trailer_, ocf_, fecf_};
+            primary_header_, secondary_, security_header_, data_, security_trailer_, ocf_, fecf_,
+        };
     }
 
     /// The secured fields of this layout, adjacent by construction (CMN-040, API-070; Rust

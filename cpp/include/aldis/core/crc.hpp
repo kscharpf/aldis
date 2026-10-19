@@ -62,7 +62,7 @@ inline constexpr unsigned msb = 15;
     std::uint8_t index = 0;
     for (std::uint16_t& entry : table) {
         entry = step_bitwise(0, index);
-        index = arith::wrapping_add<8>(index, std::uint8_t{1});
+        index = arith::wrapping_add<arith::octet_bits>(index, std::uint8_t{1});
     }
     return table;
 }

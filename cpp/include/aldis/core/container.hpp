@@ -63,12 +63,11 @@ public:
 
     /// Appends `item`; `WouldBlock` and no change if the queue is full (API-052).
     [[nodiscard]] constexpr Result<void> push(const T& item) noexcept {
-        // With N == 0 there is no slot at all; when full, the tail wraps onto the head.
-        T* slot = bytes::at(std::span<T>{slots_}, detail::wrap_add(head_, len_, N));
-        if (slot == nullptr || is_full()) {
+        if (is_full()) {
             return Error{ErrorKind::WouldBlock};
         }
-        *slot = item;
+        // len_ < N, so N > 0 (as wrap_add requires) and the tail index is inside the array.
+        static_cast<void>(bytes::put(std::span<T>{slots_}, detail::wrap_add(head_, len_, N), item));
         len_ = arith::saturating_add(len_, std::size_t{1});
         return {};
     }
