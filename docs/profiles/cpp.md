@@ -2,7 +2,7 @@
 
 This profile binds the language-neutral specification to the **native C++ implementation**. The Rust crates remain the reference implementation and the recommended choice. The native C++ library exists for legacy flight software that cannot easily take a Rust toolchain. It exposes the same C ABI (CABI-070) and the same C++ wrapper API (CABI-072) as the Rust-backed library, so an application can switch between them without source changes.
 
-**Status:** Draft, 2026-10-19. No C++ code exists yet; the work is planned as track C of the [roadmap](../08-roadmap.md) §2. The language is C++20 (OI-19) and engine capacities are template parameters (OI-20). The static analysis tools (OI-22) are open.
+**Status:** Draft, 2026-10-19. No C++ code exists yet; the work is planned as track C of the [roadmap](../08-roadmap.md) §2. The language is C++20 (OI-19) and engine capacities are template parameters (OI-20). Every tool is free (VER-055); the coding guidelines are CERT C++ and AUTOSAR C++14 (VER-052, OI-22).
 
 ## 0. How the C++ implementation is assured
 
@@ -159,14 +159,14 @@ WarningsAsErrors: '*'
 | CPP-040 | Every module SHALL build without warnings on both pinned compilers with the flags above. | VER-001 | A |
 | CPP-041 | clang-tidy SHALL run in CI on every module with `cpp/.clang-tidy`, with all findings treated as errors. A check SHALL be disabled for the whole code base only by adding it, with its reason, to the table above. | VER-001 | A |
 | CPP-042 | A warning or clang-tidy finding SHALL be suppressed only on the smallest region, with `// NOLINT(<check>): <reason>` or a `NOLINTBEGIN`/`NOLINTEND` pair naming the check, or the compiler's diagnostic push/pop. File-, directory-, or build-wide suppressions SHALL NOT be added without updating this section. | VER-001 | A/I |
-| CPP-043 | A MISRA C++:2023 checker (OI-22) SHALL run in CI on Layers 0–2 and the C ABI layer. Deviations SHALL be recorded in a deviation log under `docs/verification/` (VER-052). | VER-052 | A |
+| CPP-043 | The CodeQL Coding Standards query packs for AUTOSAR C++14 and CERT C++ SHALL run in CI on Layers 0–2 and the C ABI layer, with every finding fixed or recorded in a deviation log under `docs/verification/` (VER-052). Findings on C++20-only constructs, which the packs are not qualified for, SHALL be reviewed by hand. | VER-052, VER-055 | A |
 | CPP-044 | C++ sources SHALL be formatted with `clang-format` using `cpp/.clang-format`, checked in CI. | VER-004 | A |
 
 ## 6. Verification
 
 | ID | Requirement | Source | Verif. |
 |---|---|---|---|
-| CPP-050 | For each bare-metal target, CI SHALL build a freestanding C++ **exerciser** that calls every public API with inputs from the vectors. It SHALL link with no definition of `operator new`/`delete`, `__cxa_throw`, `__cxa_allocate_exception`, `__cxa_guard_acquire`/`release`, `__cxa_pure_virtual`, `abort`, the assertion handlers, or the unwinder personality routines. A successful link shows that no allocation, exception, abort, or guarded static is reachable. A canary build that calls one of them SHALL fail to link. The check does not show the absence of undefined behavior, which rests on CPP-031, CPP-032, CPP-051, and static analysis (OI-22). | GEN-020, GEN-021 | A |
+| CPP-050 | For each bare-metal target, CI SHALL build a freestanding C++ **exerciser** that calls every public API with inputs from the vectors. It SHALL link with no definition of `operator new`/`delete`, `__cxa_throw`, `__cxa_allocate_exception`, `__cxa_guard_acquire`/`release`, `__cxa_pure_virtual`, `abort`, the assertion handlers, or the unwinder personality routines. A successful link shows that no allocation, exception, abort, or guarded static is reachable. A canary build that calls one of them SHALL fail to link. The check does not show the absence of undefined behavior, which rests on CPP-031, CPP-032, CPP-051, and static analysis (CPP-043; IKOS is evaluated in C0, OI-22). | GEN-020, GEN-021 | A |
 | CPP-051 | All host tests, the vector runner, and the fuzz and property tests SHALL also run under AddressSanitizer and UndefinedBehaviorSanitizer with recovery disabled, under Clang's `integer` and `implicit-conversion` sanitizers, and with the standard library's hardening assertions enabled. The `aldis_core` wrapping helpers SHALL be the only functions exempt from the unsigned-overflow check. | GEN-020, CABI-071 | T |
 | CPP-052 | Coverage of Layers 0–2 SHALL meet VER-024 (100 % statement and branch), measured with Clang source-based coverage on the host, with waivers as VER-024 defines. An MC/DC report SHALL be published with each release for information (OI-09). | VER-024 | A |
 | CPP-053 | A C++ vector runner SHALL run the full shared vector suite on every CI target. On bare-metal targets, the vectors SHALL be converted at build time into constant data and checked by a freestanding runner under QEMU. | VER-021, CABI-071 | V |

@@ -13,5 +13,6 @@
 - [ ] Tests carry `// req: <ID>` annotations; test vectors added or extended where marked V
 - [ ] No released test vector edited (new case + `superseded` instead)
 - [ ] No CCSDS documents or text copied from them committed
+- [ ] Any tool or document this change depends on is free for this project (VER-055)
 - [ ] `cargo fmt`, `cargo clippy`, `cargo test` and the bare-metal build pass locally (see AGENTS.md)
 - [ ] `CHANGELOG.md` updated if behavior or public API changed
