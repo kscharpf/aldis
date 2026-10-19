@@ -1,0 +1,116 @@
+{
+  "kind": "codec",
+  "standard": "133.1-B-3 \u00a74.1, \u00a75",
+  "provenance": "hand-derived",
+  "provenance_note": "Hand-derived from 133.1-B-3 \u00a74.1.2 (Figure 4-2, Tables 4-1 and 4-2), \u00a74.1.3, and Table 5-1, with the decisions recorded in docs/standards/encapsulation-packet.md (OI-16: EPP-005 is an error in both modes). Expected values computed by an independent Python model of the Blue Book text, written before the Rust codec. Decode outputs list every view field; fields absent from the header size are null.",
+  "cases": [
+    {
+      "id": "epp-h1-dec-001",
+      "requirements": [
+        "EPP-004",
+        "EPP-002",
+        "EPP-011",
+        "API-010",
+        "API-011",
+        "GEN-013"
+      ],
+      "description": "1-octet Idle Packet",
+      "operation": "decode",
+      "input_hex": "E0",
+      "expect": {
+        "ok": true,
+        "epi": 0,
+        "user_defined": null,
+        "epi_extension": null,
+        "ccsds_defined": null,
+        "header_len": 1,
+        "packet_len": 1,
+        "data_hex": "",
+        "consumed": 1,
+        "anomalies": []
+      }
+    },
+    {
+      "id": "epp-h1-dec-002",
+      "requirements": [
+        "EPP-004",
+        "API-011",
+        "EPP-002",
+        "EPP-011",
+        "API-010",
+        "API-011",
+        "GEN-013"
+      ],
+      "description": "1-octet Idle Packet followed by another packet: consumes 1",
+      "operation": "decode",
+      "input_hex": "E0E102",
+      "expect": {
+        "ok": true,
+        "epi": 0,
+        "user_defined": null,
+        "epi_extension": null,
+        "ccsds_defined": null,
+        "header_len": 1,
+        "packet_len": 1,
+        "data_hex": "",
+        "consumed": 1,
+        "anomalies": []
+      }
+    },
+    {
+      "id": "epp-h1-peek-001",
+      "requirements": [
+        "API-013"
+      ],
+      "description": "peek_length of a 1-octet header",
+      "operation": "peek_length",
+      "input_hex": "E0",
+      "expect": {
+        "ok": true,
+        "len": 1
+      }
+    },
+    {
+      "id": "epp-h1-enc-001",
+      "requirements": [
+        "EPP-008",
+        "API-020",
+        "API-021"
+      ],
+      "description": "Fixed(1) idle with no data",
+      "operation": "encode",
+      "params": {
+        "epi": 0,
+        "user_defined": 0,
+        "epi_extension": 0,
+        "header_size": 1,
+        "data_hex": ""
+      },
+      "expect": {
+        "ok": true,
+        "output_hex": "E0"
+      }
+    },
+    {
+      "id": "epp-h1-enc-002",
+      "requirements": [
+        "EPP-008",
+        "API-020",
+        "API-021"
+      ],
+      "description": "Auto chooses the 1-octet header for idle with no data",
+      "operation": "encode",
+      "params": {
+        "epi": 0,
+        "user_defined": 0,
+        "epi_extension": 0,
+        "header_size": "auto",
+        "data_hex": ""
+      },
+      "expect": {
+        "ok": true,
+        "output_hex": "E0"
+      }
+    }
+  ]
+}

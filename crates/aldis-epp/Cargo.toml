@@ -17,3 +17,8 @@ std = ["alloc", "aldis-core/std"]
 
 [lints]
 workspace = true
+
+[dev-dependencies]
+aldis-testkit = { path = "../aldis-testkit" }
+proptest = "1.12.0"
+serde_json = "1.0.154"

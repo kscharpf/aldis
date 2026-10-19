@@ -20,6 +20,7 @@ bench = false
 
 [dependencies]
 aldis-core = { path = "../crates/aldis-core", default-features = false, features = ["crc-table", "test-hooks"] }
+aldis-epp = { path = "../crates/aldis-epp", default-features = false }
 
 [build-dependencies]
 aldis-testkit = { path = "../crates/aldis-testkit" }

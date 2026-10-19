@@ -3,7 +3,7 @@
 **Goal:** complete, verified Layer 1 codecs for time codes, Space Packets, and Encapsulation Packets: `aldis-time`, `aldis-spp`, and `aldis-epp`. They are verified to the same standard as `aldis-core` in M0: vectors, panic freedom on bare metal, 100 % coverage, fuzzing, and cross-checks.
 **Roadmap entry:** [08-roadmap.md](../08-roadmap.md) §1 · **Builds on:** [M0](m0-foundations.md) (`v0.1.0-m0`) · **Release:** `v0.2.0-m1`
 
-**Status: in progress (2026-10-17).** Decisions D1–D8 accepted 2026-10-17. WP-0 is implemented on `m1/core` (PR #17, in review). OI-15 and OI-16 resolved 2026-10-18. `cargo xtask trace --scope m1` puts 88 requirements in scope; 27 are traced: the M0 `aldis-core` and CI artefacts, plus API-030, API-033, and GEN-043 from WP-0.
+**Status: in progress (2026-10-17).** Decisions D1–D8 accepted 2026-10-17. WP-0 is implemented on `m1/core` (PR #17, in review). OI-15 and OI-16 resolved 2026-10-18. WP-3 (`aldis-epp`) is implemented on `m1/epp`. `cargo xtask trace --scope m1` puts 89 requirements in scope; 56 are traced: the M0 `aldis-core` and CI artefacts, WP-0, and WP-3 (EPP-001…EPP-012 and the codec contract requirements its tests cover).
 
 ## 1. Starting point
 
@@ -87,11 +87,11 @@ Also: crate docs. TIME-004, TIME-014, and TIME-022 are verified by inspection an
 
 **Done when:** every SPP requirement is traced, and `spp/decode_valid`, `decode_invalid`, `encode`, `idle`, `sequence_tracker`, `secondary_header_time`, and `stream` pass. `aldis-spp` without `time` still builds and passes VER-031.
 
-### WP-3 `aldis-epp` (M) — EPP-001…011
+### WP-3 `aldis-epp` (M) — EPP-001…012
 
 | Order | Module | Content | Requirements |
 |---|---|---|---|
-| 1 | `header`, `view`, `writer` | All four header lengths, mixed in one stream; total-length semantics (not length − 1); 1-octet idle; checks on the Protocol ID Extension and CCSDS Defined Field; `HeaderSize::{Auto, Fixed}` | EPP-001…008, EPP-011, API-021 |
+| 1 | `header`, `view`, `writer` | All four header lengths, mixed in one stream; total-length semantics (not length − 1); 1-octet idle; checks on the Protocol ID Extension and CCSDS Defined Field; EPI `110` only with an extension field (OI-17); `HeaderSize::{Auto, Fixed}` | EPP-001…008, EPP-011, EPP-012, API-021 |
 | 2 | `anomaly` | `EppAnomaly::{NonZeroEpiExtension, NonZeroCcsdsDefined}`; EPP-005 is an error in both modes (OI-16) | EPP-005…007, API-032 |
 | 3 | `idle` | `idle(total_len)` for any length ≥ 1, smallest header that fits | EPP-009 |
 | 4 | `config` | `EppConfig`: min/max data unit length and valid EPI / extended-EPI sets (D4); `validate` | EPP-010, GEN-060, GEN-061, RS-012, API-040, API-041 |
@@ -141,7 +141,7 @@ M1 is complete when every item below is green on `main`:
 |---|---|
 | Time codes | TIME-001…004, TIME-010…014, TIME-020…022, TIME-030…034 |
 | Space Packet | SPP-001…013 |
-| Encapsulation Packet | EPP-001…011 |
+| Encapsulation Packet | EPP-001…012 |
 | Codec contract | API-010, API-011, API-013, API-014, API-020…023, API-030…033, API-040, API-041, GEN-013, GEN-014, GEN-043, GEN-052, GEN-053, GEN-060, GEN-061, GEN-081, RS-012 |
 | Panic freedom and resources | VER-010, GEN-020…024 (exerciser runs on all three bare-metal targets, or links where D6 records why it cannot run), VER-011 |
 | Portability | GEN-005, GEN-006, GEN-007, VER-030, VER-031 |

@@ -1,0 +1,257 @@
+{
+  "kind": "codec",
+  "standard": "133.1-B-3 \u00a74.1, \u00a75",
+  "provenance": "hand-derived",
+  "provenance_note": "Hand-derived from 133.1-B-3 \u00a74.1.2 (Figure 4-2, Tables 4-1 and 4-2), \u00a74.1.3, and Table 5-1, with the decisions recorded in docs/standards/encapsulation-packet.md (OI-16: EPP-005 is an error in both modes). Expected values computed by an independent Python model of the Blue Book text, written before the Rust codec. Decode outputs list every view field; fields absent from the header size are null.",
+  "cases": [
+    {
+      "id": "epp-auto-001",
+      "requirements": [
+        "EPP-008",
+        "API-021"
+      ],
+      "description": "253 data octets: total 255 fits the 2-octet header",
+      "operation": "encode_header",
+      "params": {
+        "epi": 1,
+        "user_defined": 0,
+        "epi_extension": 0,
+        "header_size": "auto",
+        "data_len": 253
+      },
+      "expect": {
+        "ok": true,
+        "header_hex": "E5FF",
+        "total_len": 255
+      }
+    },
+    {
+      "id": "epp-auto-002",
+      "requirements": [
+        "EPP-008",
+        "API-021"
+      ],
+      "description": "254 data octets: total 256 needs the 4-octet header (total 258)",
+      "operation": "encode_header",
+      "params": {
+        "epi": 1,
+        "user_defined": 0,
+        "epi_extension": 0,
+        "header_size": "auto",
+        "data_len": 254
+      },
+      "expect": {
+        "ok": true,
+        "header_hex": "E6000102",
+        "total_len": 258
+      }
+    },
+    {
+      "id": "epp-auto-003",
+      "requirements": [
+        "EPP-008",
+        "API-021"
+      ],
+      "description": "65 531 data octets: total 65 535 fits the 4-octet header",
+      "operation": "encode_header",
+      "params": {
+        "epi": 1,
+        "user_defined": 0,
+        "epi_extension": 0,
+        "header_size": "auto",
+        "data_len": 65531
+      },
+      "expect": {
+        "ok": true,
+        "header_hex": "E600FFFF",
+        "total_len": 65535
+      }
+    },
+    {
+      "id": "epp-auto-004",
+      "requirements": [
+        "EPP-008",
+        "API-021"
+      ],
+      "description": "65 532 data octets: needs the 8-octet header (total 65 540)",
+      "operation": "encode_header",
+      "params": {
+        "epi": 1,
+        "user_defined": 0,
+        "epi_extension": 0,
+        "header_size": "auto",
+        "data_len": 65532
+      },
+      "expect": {
+        "ok": true,
+        "header_hex": "E700000000010004",
+        "total_len": 65540
+      }
+    },
+    {
+      "id": "epp-auto-005",
+      "requirements": [
+        "EPP-008",
+        "API-021"
+      ],
+      "description": "Maximum data field 4 294 967 287 with the 8-octet header",
+      "operation": "encode_header",
+      "params": {
+        "epi": 1,
+        "user_defined": 0,
+        "epi_extension": 0,
+        "header_size": "auto",
+        "data_len": 4294967287
+      },
+      "expect": {
+        "ok": true,
+        "header_hex": "E7000000FFFFFFFF",
+        "total_len": 4294967295
+      }
+    },
+    {
+      "id": "epp-auto-006",
+      "requirements": [
+        "EPP-008",
+        "API-021"
+      ],
+      "description": "4 294 967 288 data octets do not fit any header",
+      "operation": "encode_header",
+      "params": {
+        "epi": 1,
+        "user_defined": 0,
+        "epi_extension": 0,
+        "header_size": "auto",
+        "data_len": 4294967288
+      },
+      "expect": {
+        "ok": false,
+        "error": "OutOfRange"
+      }
+    },
+    {
+      "id": "epp-auto-007",
+      "requirements": [
+        "EPP-008",
+        "API-021"
+      ],
+      "description": "Fixed(2) with total 256 is OutOfRange",
+      "operation": "encode_header",
+      "params": {
+        "epi": 1,
+        "user_defined": 0,
+        "epi_extension": 0,
+        "header_size": 2,
+        "data_len": 254
+      },
+      "expect": {
+        "ok": false,
+        "error": "OutOfRange"
+      }
+    },
+    {
+      "id": "epp-auto-008",
+      "requirements": [
+        "EPP-008",
+        "API-021"
+      ],
+      "description": "Fixed(4) with total 65 536 is OutOfRange",
+      "operation": "encode_header",
+      "params": {
+        "epi": 1,
+        "user_defined": 0,
+        "epi_extension": 0,
+        "header_size": 4,
+        "data_len": 65532
+      },
+      "expect": {
+        "ok": false,
+        "error": "OutOfRange"
+      }
+    },
+    {
+      "id": "epp-auto-009",
+      "requirements": [
+        "EPP-008",
+        "API-021"
+      ],
+      "description": "Fixed(4) at total 65 535",
+      "operation": "encode_header",
+      "params": {
+        "epi": 1,
+        "user_defined": 0,
+        "epi_extension": 0,
+        "header_size": 4,
+        "data_len": 65531
+      },
+      "expect": {
+        "ok": true,
+        "header_hex": "E600FFFF",
+        "total_len": 65535
+      }
+    },
+    {
+      "id": "epp-auto-010",
+      "requirements": [
+        "EPP-008",
+        "API-021"
+      ],
+      "description": "Fixed(8) for 1 data octet",
+      "operation": "encode_header",
+      "params": {
+        "epi": 1,
+        "user_defined": 0,
+        "epi_extension": 0,
+        "header_size": 8,
+        "data_len": 1
+      },
+      "expect": {
+        "ok": true,
+        "header_hex": "E700000000000009",
+        "total_len": 9
+      }
+    },
+    {
+      "id": "epp-auto-011",
+      "requirements": [
+        "EPP-008",
+        "API-021"
+      ],
+      "description": "Auto, user defined set: 4-octet header even for 1 data octet",
+      "operation": "encode_header",
+      "params": {
+        "epi": 1,
+        "user_defined": 1,
+        "epi_extension": 0,
+        "header_size": "auto",
+        "data_len": 1
+      },
+      "expect": {
+        "ok": true,
+        "header_hex": "E6100005",
+        "total_len": 5
+      }
+    },
+    {
+      "id": "epp-auto-012",
+      "requirements": [
+        "EPP-008",
+        "API-021"
+      ],
+      "description": "Auto, idle EPI with 253 data octets: 2-octet header",
+      "operation": "encode_header",
+      "params": {
+        "epi": 0,
+        "user_defined": 0,
+        "epi_extension": 0,
+        "header_size": "auto",
+        "data_len": 253
+      },
+      "expect": {
+        "ok": true,
+        "header_hex": "E1FF",
+        "total_len": 255
+      }
+    }
+  ]
+}

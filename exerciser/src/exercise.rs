@@ -35,7 +35,7 @@ pub struct Tally {
 }
 
 impl Tally {
-    fn check(&mut self, ok: bool) {
+    pub(crate) fn check(&mut self, ok: bool) {
         self.cases = self.cases.saturating_add(1);
         if !ok {
             self.failures = self.failures.saturating_add(1);
@@ -396,6 +396,7 @@ pub fn run() -> Tally {
     apis_time_crc_oid_counter(&mut t);
     apis_containers_security(&mut t);
     apis_mode_anomaly(&mut t);
+    crate::epp::run(&mut t);
     #[cfg(feature = "inject-panic")]
     canary(&mut t);
     t
