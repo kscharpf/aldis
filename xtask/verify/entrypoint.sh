@@ -42,7 +42,7 @@ if ! flock -n 9; then
 fi
 
 # Rust build output persists between runs in the cache volume; C++ builds start clean.
-for dir in target refapp/target exerciser/target fuzz/target; do
+for dir in target refapp/target exerciser/target fuzz/target crosscheck/target; do
   cache="/cache/${dir//\//-}"
   mkdir -p "$cache"
   ln -s "$cache" "$dir"

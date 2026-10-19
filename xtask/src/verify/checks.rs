@@ -186,9 +186,10 @@ fn cpp() -> Vec<Check> {
 
 const FMT: &str = "\
 cargo fmt --all --check
-# The exerciser and fuzz targets are separate workspaces.
+# The exerciser, fuzz targets, and cross-checks are separate workspaces.
 cargo fmt --all --check --manifest-path exerciser/Cargo.toml
 cargo fmt --all --check --manifest-path fuzz/Cargo.toml
+cargo fmt --all --check --manifest-path crosscheck/Cargo.toml
 ";
 
 const CLIPPY: &str = "\
@@ -196,6 +197,7 @@ cargo clippy --workspace --all-features --all-targets
 cargo doc --workspace --all-features --no-deps
 # Fuzz targets build on stable; only running them needs nightly (RS-002).
 cargo clippy --manifest-path fuzz/Cargo.toml --all-targets
+cargo clippy --manifest-path crosscheck/Cargo.toml --all-targets
 ";
 
 const TEST: &str = "cargo test --workspace --all-features\n";
@@ -235,6 +237,8 @@ cargo xtask spec-lint
 cargo xtask links
 cargo xtask vectors validate
 cargo xtask vectors schema --check
+# Independent cross-check of the vectors (VER-040); fails on any disagreement.
+cargo run --manifest-path crosscheck/Cargo.toml
 cargo xtask changelog check
 # M0 is closed: every in-scope requirement must keep an artefact (VER-020).
 cargo xtask trace --scope m0 --strict
@@ -246,6 +250,9 @@ const DENY: &str = "\
 cargo deny --all-features check
 # The reference application's own workspace, same policy (APP-106).
 cargo deny --manifest-path refapp/Cargo.toml --all-features --log-level info check
+# The cross-check workspace's own deny.toml: the root policy plus the exceptions recorded in
+# docs/verification/cross-checks.md §1.
+cargo deny --manifest-path crosscheck/Cargo.toml --all-features --log-level info check
 ";
 
 const CPP_TOOLCHAINS: &str = r#"
