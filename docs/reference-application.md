@@ -355,7 +355,7 @@ The harness advances to the earliest of: frame and uplink slots, link arrivals, 
 | Step | Action |
 |---|---|
 | 1 | Deliver every unit arriving at t, ordered by (send instant, downlink before uplink, unit index, copy); record `unit_delivered` |
-| 2 | Step the ground node if it has deliveries, ops-script entries, an uplink slot, or a deadline at or before t; record its outputs in output order; send its unit, if any |
+| 2 | Step the ground node at t = 0 (the start of the run), and whenever it has deliveries, ops-script entries, an uplink slot, or a deadline at or before t; record its outputs in output order; send its unit, if any |
 | 3 | Step the flight node likewise, with the downlink slot |
 
 Step instants are not recorded: an implementation that asks for extra wake-ups produces the same trace, so a node SHALL behave the same whether or not it is stepped at an instant where nothing is due.
@@ -376,7 +376,7 @@ Faults are **scripted** per case, not seeded: each entry addresses one link unit
 
 | Case | Level | Faults | Purpose |
 |---|---|---|---|
-| `a0-empty` | — | none | Harness self-test: no applications, end instant 0, header-only trace |
+| `a0-empty` | A1 rules (packets) | none | Harness self-test: no applications, end instant 0, header-only trace |
 | `a1-nominal` | A1 | none | The timeline of §2.4 (end 35 s) |
 | `a1-immediate` | A1 | none | `a1-nominal` plus immediate commands (outside APP-003); defined in A1 |
 | `a2-nominal` | A2 | none | Same timeline over TM/TC frames |
@@ -485,7 +485,7 @@ step(now, input) -> outputs, next_deadline
   outputs = ordered list of: unit(octets) | packet_out(apid, octets) | packet_in(apid, octets) | app_event(code, args)
 ```
 
-At A1, `tx_slot` is true in every step and a node may output any number of units. From A2, the flight node outputs exactly one unit when `tx_slot` is true and none otherwise; the ground node outputs at most one unit when `tx_slot` is true and none otherwise. `next_deadline` is the earliest instant at which the node needs a step, or none. Rust nodes (A1–A4) implement this as a trait in-process.
+At A1, `tx_slot` is true in every step and a node may output any number of units. From A2, the flight node outputs exactly one unit when `tx_slot` is true and none otherwise; the ground node outputs at most one unit when `tx_slot` is true and none otherwise. `next_deadline` is the earliest instant after `now` at which the node needs a step, or none; a deadline not after `now` breaks the contract and ends the run with an error. Rust nodes (A1–A4) implement this as a trait in-process.
 
 ### 8.2 Node protocol (A5, A6; OI-24)
 
