@@ -29,7 +29,8 @@ pub enum SecondaryHeaderLayout {
 }
 
 /// `LengthMismatch` (`secondary_header`): the data field holds `found` octets but the secondary
-/// header needs `expected`.
+/// header needs `expected`, or at least `expected` when it ends inside a time code's P-field
+/// extension.
 fn too_short(expected: usize, found: usize) -> Error {
     Error::new(ErrorKind::LengthMismatch)
         .with_field(FieldId::new("secondary_header"))
@@ -95,8 +96,11 @@ impl TimeHeaderLayout {
 
     /// Decodes the Time Code Field at the start of `data` (SPP-008, OI-30).
     fn decode(&self, data: &[u8], mode: DecodeMode) -> Result<Decoded> {
+        // `needed` counts the time code only; the Ancillary Data Field follows it.
         let short = |e: Error| match (e.kind(), e.detail()) {
-            (ErrorKind::Incomplete, ErrorDetail::Needed(needed)) => too_short(needed, data.len()),
+            (ErrorKind::Incomplete, ErrorDetail::Needed(needed)) => {
+                too_short(needed.saturating_add(self.ancillary_len), data.len())
+            }
             _ => e,
         };
         if !self.pfield {
@@ -358,10 +362,13 @@ mod tests {
                     found: 4
                 }
             );
-            // Cut off in the T-field, in the P-field extension, and in the ancillary field.
+            // Cut off in the T-field, in the P-field extension, and in the ancillary field;
+            // `expected` includes the ancillary octets wherever the cut falls.
             for (lay, d, expected) in [
                 (layout(cuc(4, 2), false, 0), &data[..3], 6),
+                (layout(cuc(4, 2), false, 4), &data[..3], 10),
                 (layout(cuc(5, 3), true, 0), &[0x9E][..], 2),
+                (layout(cuc(5, 3), true, 2), &[0x9E][..], 4),
                 (layout(cuc(4, 2), false, 4), &data[..7], 10),
             ] {
                 let e = lay.split(true, d, STRICT).unwrap_err();
