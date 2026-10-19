@@ -1,0 +1,139 @@
+{
+  "kind": "codec",
+  "standard": "133.0-B-2 \u00a74.1, \u00a75",
+  "provenance": "hand-derived",
+  "provenance_note": "Hand-derived from 133.0-B-2 \u00a74.1 (Figure 4-2, \u00a74.1.3\u20134.1.4), \u00a73.4, and Table 5-1, with the rules of docs/standards/space-packet.md \u00a75 (OI-16, OI-30). 133.0 prints no worked example packets. Expected values computed by an independent Python model of the Blue Book text, written before the Rust codec. Decode outputs list every view field; packet_name is null for telemetry packets.",
+  "cases": [
+    {
+      "id": "spp-oct-001",
+      "requirements": [
+        "SPP-012",
+        "SPP-005",
+        "API-021"
+      ],
+      "description": "Telemetry octet string, indicator 0, count 0",
+      "operation": "octet_string",
+      "params": {
+        "packet_type": 0,
+        "apid": 256,
+        "secondary_header_indicator": false,
+        "octets_hex": "0102",
+        "sequence_count": 0
+      },
+      "expect": {
+        "ok": true,
+        "output_hex": "0100C00000010102",
+        "next_count": 1
+      }
+    },
+    {
+      "id": "spp-oct-002",
+      "requirements": [
+        "SPP-012",
+        "SPP-005",
+        "API-021"
+      ],
+      "description": "Indicator 1 sets the Secondary Header Flag",
+      "operation": "octet_string",
+      "params": {
+        "packet_type": 1,
+        "apid": 257,
+        "secondary_header_indicator": true,
+        "octets_hex": "A001",
+        "sequence_count": 7
+      },
+      "expect": {
+        "ok": true,
+        "output_hex": "1901C0070001A001",
+        "next_count": 8
+      }
+    },
+    {
+      "id": "spp-oct-003",
+      "requirements": [
+        "SPP-012",
+        "SPP-005",
+        "API-021"
+      ],
+      "description": "Count 16 383 wraps to 0",
+      "operation": "octet_string",
+      "params": {
+        "packet_type": 0,
+        "apid": 258,
+        "secondary_header_indicator": false,
+        "octets_hex": "01",
+        "sequence_count": 16383
+      },
+      "expect": {
+        "ok": true,
+        "output_hex": "0102FFFF000001",
+        "next_count": 0
+      }
+    },
+    {
+      "id": "spp-oct-004",
+      "requirements": [
+        "SPP-012",
+        "SPP-005",
+        "API-021"
+      ],
+      "description": "Empty octet string is InvalidField",
+      "operation": "octet_string",
+      "params": {
+        "packet_type": 0,
+        "apid": 259,
+        "secondary_header_indicator": false,
+        "octets_hex": "",
+        "sequence_count": 3
+      },
+      "expect": {
+        "ok": false,
+        "error": "InvalidField"
+      }
+    },
+    {
+      "id": "spp-oct-005",
+      "requirements": [
+        "SPP-012",
+        "SPP-005",
+        "API-021"
+      ],
+      "description": "APID 2047 is InvalidField (idle packets come from the idle builder)",
+      "operation": "octet_string",
+      "params": {
+        "packet_type": 0,
+        "apid": 2047,
+        "secondary_header_indicator": false,
+        "octets_hex": "00",
+        "sequence_count": 0
+      },
+      "expect": {
+        "ok": false,
+        "error": "InvalidField"
+      }
+    },
+    {
+      "id": "spp-oct-006",
+      "requirements": [
+        "SPP-012",
+        "SPP-006"
+      ],
+      "description": "Above max_packet_len is OutOfRange",
+      "operation": "octet_string",
+      "config": {
+        "max_packet_len": 10
+      },
+      "params": {
+        "packet_type": 0,
+        "apid": 260,
+        "secondary_header_indicator": false,
+        "octets_hex": "0000000000",
+        "sequence_count": 0
+      },
+      "expect": {
+        "ok": false,
+        "error": "OutOfRange"
+      }
+    }
+  ]
+}

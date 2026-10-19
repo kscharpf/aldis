@@ -14,6 +14,7 @@
 mod cases;
 mod epp;
 mod exercise;
+mod spp;
 mod time;
 
 /// Entry point (reset handler on Cortex-M).

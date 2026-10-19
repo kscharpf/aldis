@@ -1,0 +1,143 @@
+{
+  "kind": "codec",
+  "standard": "133.0-B-2 \u00a74.1, \u00a75",
+  "provenance": "hand-derived",
+  "provenance_note": "Hand-derived from 133.0-B-2 \u00a74.1 (Figure 4-2, \u00a74.1.3\u20134.1.4), \u00a73.4, and Table 5-1, with the rules of docs/standards/space-packet.md \u00a75 (OI-16, OI-30). 133.0 prints no worked example packets. Expected values computed by an independent Python model of the Blue Book text, written before the Rust codec. Decode outputs list every view field; packet_name is null for telemetry packets.",
+  "cases": [
+    {
+      "id": "spp-inv-001",
+      "requirements": [
+        "SPP-001"
+      ],
+      "description": "Version 001 is UnsupportedVersion",
+      "operation": "decode",
+      "input_hex": "2001C000000000",
+      "expect": {
+        "ok": false,
+        "error": "UnsupportedVersion"
+      }
+    },
+    {
+      "id": "spp-inv-002",
+      "requirements": [
+        "SPP-001"
+      ],
+      "description": "Version 111 (an Encapsulation Packet) is UnsupportedVersion",
+      "operation": "decode",
+      "input_hex": "E001C000000000",
+      "expect": {
+        "ok": false,
+        "error": "UnsupportedVersion"
+      }
+    },
+    {
+      "id": "spp-inv-003",
+      "requirements": [
+        "SPP-001",
+        "API-031"
+      ],
+      "description": "Version 100 is UnsupportedVersion in lenient mode too",
+      "operation": "decode",
+      "mode": "lenient",
+      "input_hex": "8001C000000000",
+      "expect": {
+        "ok": false,
+        "error": "UnsupportedVersion"
+      }
+    },
+    {
+      "id": "spp-inv-004",
+      "requirements": [
+        "SPP-002",
+        "API-011"
+      ],
+      "description": "Empty input is Incomplete",
+      "operation": "decode",
+      "input_hex": "",
+      "expect": {
+        "ok": false,
+        "error": "Incomplete"
+      }
+    },
+    {
+      "id": "spp-inv-005",
+      "requirements": [
+        "SPP-002"
+      ],
+      "description": "5 octets: Incomplete (the header needs 6)",
+      "operation": "decode",
+      "input_hex": "0001C00000",
+      "expect": {
+        "ok": false,
+        "error": "Incomplete"
+      }
+    },
+    {
+      "id": "spp-inv-006",
+      "requirements": [
+        "SPP-002"
+      ],
+      "description": "Header only, no data field: Incomplete (needs 7)",
+      "operation": "decode",
+      "input_hex": "0001C0000000",
+      "expect": {
+        "ok": false,
+        "error": "Incomplete"
+      }
+    },
+    {
+      "id": "spp-inv-007",
+      "requirements": [
+        "SPP-002"
+      ],
+      "description": "Data field shorter than the Packet Data Length: Incomplete",
+      "operation": "decode",
+      "input_hex": "0001C0000009000000000000000000",
+      "expect": {
+        "ok": false,
+        "error": "Incomplete"
+      }
+    },
+    {
+      "id": "spp-inv-008",
+      "requirements": [
+        "SPP-004"
+      ],
+      "description": "Strict: Idle Packet with flag 1 is InvalidField",
+      "operation": "decode",
+      "input_hex": "0FFFC00000010000",
+      "expect": {
+        "ok": false,
+        "error": "InvalidField"
+      }
+    },
+    {
+      "id": "spp-inv-009",
+      "requirements": [
+        "SPP-003",
+        "API-013"
+      ],
+      "description": "peek_length of 5 octets is Incomplete",
+      "operation": "peek_length",
+      "input_hex": "0001C00000",
+      "expect": {
+        "ok": false,
+        "error": "Incomplete"
+      }
+    },
+    {
+      "id": "spp-inv-010",
+      "requirements": [
+        "SPP-001",
+        "API-013"
+      ],
+      "description": "peek_length rejects version 010",
+      "operation": "peek_length",
+      "input_hex": "4001C0000000",
+      "expect": {
+        "ok": false,
+        "error": "UnsupportedVersion"
+      }
+    }
+  ]
+}

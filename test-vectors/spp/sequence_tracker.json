@@ -1,0 +1,314 @@
+{
+  "kind": "codec",
+  "standard": "133.0-B-2 \u00a74.1, \u00a75",
+  "provenance": "hand-derived",
+  "provenance_note": "Hand-derived from 133.0-B-2 \u00a74.1 (Figure 4-2, \u00a74.1.3\u20134.1.4), \u00a73.4, and Table 5-1, with the rules of docs/standards/space-packet.md \u00a75 (OI-16, OI-30). 133.0 prints no worked example packets. Expected values computed by an independent Python model of the Blue Book text, written before the Rust codec. Decode outputs list every view field; packet_name is null for telemetry packets.",
+  "cases": [
+    {
+      "id": "spp-trk-001",
+      "requirements": [
+        "SPP-011",
+        "GEN-011",
+        "GEN-024"
+      ],
+      "description": "First, in sequence, gap of 3, repeat, backwards",
+      "operation": "track",
+      "params": {
+        "capacity": 2,
+        "events": [
+          {
+            "op": "track",
+            "apid": 5,
+            "count": 10
+          },
+          {
+            "op": "track",
+            "apid": 5,
+            "count": 11
+          },
+          {
+            "op": "track",
+            "apid": 5,
+            "count": 15
+          },
+          {
+            "op": "track",
+            "apid": 5,
+            "count": 15
+          },
+          {
+            "op": "track",
+            "apid": 5,
+            "count": 2
+          }
+        ]
+      },
+      "expect": {
+        "ok": true,
+        "results": [
+          {
+            "continuity": "First"
+          },
+          {
+            "continuity": "InSequence"
+          },
+          {
+            "continuity": "Gap",
+            "missing": 3
+          },
+          {
+            "continuity": "Repeat"
+          },
+          {
+            "continuity": "Backwards"
+          }
+        ]
+      }
+    },
+    {
+      "id": "spp-trk-002",
+      "requirements": [
+        "SPP-011",
+        "GEN-011",
+        "GEN-024"
+      ],
+      "description": "Wrap from 16 383 to 0 is in sequence",
+      "operation": "track",
+      "params": {
+        "capacity": 1,
+        "events": [
+          {
+            "op": "track",
+            "apid": 1,
+            "count": 16383
+          },
+          {
+            "op": "track",
+            "apid": 1,
+            "count": 0
+          }
+        ]
+      },
+      "expect": {
+        "ok": true,
+        "results": [
+          {
+            "continuity": "First"
+          },
+          {
+            "continuity": "InSequence"
+          }
+        ]
+      }
+    },
+    {
+      "id": "spp-trk-003",
+      "requirements": [
+        "SPP-011",
+        "GEN-011",
+        "GEN-024"
+      ],
+      "description": "Two APIDs tracked independently",
+      "operation": "track",
+      "params": {
+        "capacity": 2,
+        "events": [
+          {
+            "op": "track",
+            "apid": 1,
+            "count": 0
+          },
+          {
+            "op": "track",
+            "apid": 2,
+            "count": 100
+          },
+          {
+            "op": "track",
+            "apid": 1,
+            "count": 1
+          },
+          {
+            "op": "track",
+            "apid": 2,
+            "count": 102
+          }
+        ]
+      },
+      "expect": {
+        "ok": true,
+        "results": [
+          {
+            "continuity": "First"
+          },
+          {
+            "continuity": "First"
+          },
+          {
+            "continuity": "InSequence"
+          },
+          {
+            "continuity": "Gap",
+            "missing": 1
+          }
+        ]
+      }
+    },
+    {
+      "id": "spp-trk-004",
+      "requirements": [
+        "SPP-011",
+        "GEN-011",
+        "GEN-024"
+      ],
+      "description": "Capacity 1: a second APID is CapacityExceeded and changes nothing",
+      "operation": "track",
+      "params": {
+        "capacity": 1,
+        "events": [
+          {
+            "op": "track",
+            "apid": 1,
+            "count": 0
+          },
+          {
+            "op": "track",
+            "apid": 2,
+            "count": 0
+          },
+          {
+            "op": "track",
+            "apid": 1,
+            "count": 1
+          }
+        ]
+      },
+      "expect": {
+        "ok": true,
+        "results": [
+          {
+            "continuity": "First"
+          },
+          {
+            "error": "CapacityExceeded"
+          },
+          {
+            "continuity": "InSequence"
+          }
+        ]
+      }
+    },
+    {
+      "id": "spp-trk-005",
+      "requirements": [
+        "SPP-011",
+        "GEN-011",
+        "GEN-024"
+      ],
+      "description": "forget frees a slot",
+      "operation": "track",
+      "params": {
+        "capacity": 1,
+        "events": [
+          {
+            "op": "track",
+            "apid": 1,
+            "count": 0
+          },
+          {
+            "op": "forget",
+            "apid": 1
+          },
+          {
+            "op": "forget",
+            "apid": 1
+          },
+          {
+            "op": "track",
+            "apid": 2,
+            "count": 50
+          },
+          {
+            "op": "track",
+            "apid": 1,
+            "count": 7
+          }
+        ]
+      },
+      "expect": {
+        "ok": true,
+        "results": [
+          {
+            "continuity": "First"
+          },
+          {
+            "forgot": true
+          },
+          {
+            "forgot": false
+          },
+          {
+            "continuity": "First"
+          },
+          {
+            "error": "CapacityExceeded"
+          }
+        ]
+      }
+    },
+    {
+      "id": "spp-trk-006",
+      "requirements": [
+        "SPP-011",
+        "GEN-011",
+        "GEN-024"
+      ],
+      "description": "Gap of 8 191 missing (distance 8 192) and distance 8 193 is backwards",
+      "operation": "track",
+      "params": {
+        "capacity": 1,
+        "events": [
+          {
+            "op": "track",
+            "apid": 3,
+            "count": 0
+          },
+          {
+            "op": "track",
+            "apid": 3,
+            "count": 8192
+          },
+          {
+            "op": "track",
+            "apid": 3,
+            "count": 0
+          },
+          {
+            "op": "track",
+            "apid": 3,
+            "count": 8193
+          }
+        ]
+      },
+      "expect": {
+        "ok": true,
+        "results": [
+          {
+            "continuity": "First"
+          },
+          {
+            "continuity": "Gap",
+            "missing": 8191
+          },
+          {
+            "continuity": "Gap",
+            "missing": 8191
+          },
+          {
+            "continuity": "Backwards"
+          }
+        ]
+      }
+    }
+  ]
+}

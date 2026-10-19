@@ -19,9 +19,17 @@ version = "0.1.0"
 dependencies = [
  "aldis-core",
  "aldis-epp",
+ "aldis-spp",
  "aldis-testkit",
  "aldis-time",
  "serde_json",
+]
+
+[[package]]
+name = "aldis-spp"
+version = "0.1.0"
+dependencies = [
+ "aldis-core",
 ]
 
 [[package]]

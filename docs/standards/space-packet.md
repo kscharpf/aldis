@@ -45,4 +45,56 @@ Total packet length is 7 to 65 542 octets (§4.1.2.2).
 
 ## 4. Test-vector categories
 
-`spp/decode_valid`, `spp/decode_invalid` (each error), `spp/encode` (round trip), `spp/idle`, `spp/sequence_tracker`, `spp/secondary_header_time` (with `aldis-time`), `spp/stream` (several concatenated packets in one buffer).
+`spp/decode_valid`, `spp/decode_invalid` (each error), `spp/encode` (round trip), `spp/idle`, `spp/sequence_tracker`, `spp/secondary_header_time` (with `aldis-time`), `spp/stream` (several concatenated packets in one buffer), `spp/octet_string` (SPP-012), `spp/split` (opaque secondary header, SPP-007).
+
+## 5. Behavior details (OI-30)
+
+These rules fill in what the requirements leave to the implementation. 133.0 is silent on them, or they are decisions recorded in OI-30.
+
+### 5.1 Decoding (SPP-001…004, SPP-009)
+
+- **Order of checks:** fewer than 6 octets → `Incomplete` (`needed` = 6); version ≠ `000` → `UnsupportedVersion`; fewer than 7 + Packet Data Length octets → `Incomplete` (`needed` = that total); then the idle check of SPP-004.
+- **SPP-004 in strict mode:** `InvalidField` (`secondary_header_flag`).
+- **`peek_length`:** applies every check that needs only the 6-octet primary header and holds in both modes, so it never disagrees with `decode` on a header.
+- **`packet_name()`:** returns the 14-bit field for telecommand packets and nothing for telemetry packets; `sequence_count()` returns it for both (SPP-009).
+
+### 5.2 Encoding (SPP-005, SPP-006, SPP-010, SPP-012)
+
+- **Secondary Header Flag:** the encoder takes the secondary header and the user data separately and sets the flag from whether the secondary header is present. A flag of 1 with a zero-length secondary header cannot be expressed (SPP-005, API-021). An empty Packet Data Field is `InvalidField` (`data_field`).
+- **Idle Packets:** a packet with APID 2047 and a secondary header is `InvalidField` (`secondary_header_flag`) in every encoder (§4.1.3.3.3.4).
+- **`max_packet_len`:** a managed parameter of 7–65 542 octets (default 65 542); a larger packet is `OutOfRange` (`packet_len`, SPP-006).
+- **Two-phase writer, before `finish`:** the version field holds `111` and the Packet Data Length is 0, so every decoder rejects the buffer with `UnsupportedVersion` (API-023).
+- **Idle builder:** sets APID 2047, Secondary Header Flag 0, Sequence Flags `11`, a caller-supplied sequence count (default 0), and fills the User Data Field by repeating a caller-supplied pattern (default the single octet `0x00`; SPP-010).
+- **Octet String encoder:** sets the Secondary Header Flag from the Secondary Header Indicator (§3.4.2.3) and the Sequence Flags to `11` (§4.1.3.4.2.3). It takes the count from its `SequenceCounter`, which advances only when a packet is written (SPP-012). APID 2047 is `InvalidField` (`apid`): Idle Packets come from the idle builder.
+
+### 5.3 Sequence counts (SPP-011; OI-30 point 3)
+
+- **`SequenceCounter`:** yields the current count and advances modulo 16 384 (GEN-024). Use one counter per APID.
+- **`SequenceTracker<N>`:** tracks up to N APIDs.
+  - The first packet of an APID returns `First`.
+  - Later packets return the `aldis-core` `Continuity` of CMN-031; `Backwards` is the "reset" of SPP-011.
+  - A new APID while N APIDs are tracked is `CapacityExceeded` and changes nothing; `forget(apid)` frees a slot.
+
+### 5.4 Segmentation and reassembly (SPP-013; OI-30 point 4)
+
+- **Segmenter:** splits a non-empty SDU into User Data Fields of at most a given length. A single segment is sent as `11`; otherwise the flags are `01`, `00`…, `10`. Each packet takes the next count of the caller's `SequenceCounter`.
+- **Reassembler:** handles one APID and assembles into the caller's buffer. A packet of another APID is `InvalidField` (`apid`). Otherwise the reassembler never fails or gets stuck: the partial SDU is discarded and the outcome says why, then the current packet is handled as if nothing were in progress:
+
+| Situation | Discard reason | Current packet |
+|---|---|---|
+| Sequence gap (any continuity but `InSequence`) while assembling | `Gap` | `01` starts a new SDU; `11` is delivered; `00`/`10` is dropped |
+| `01` while assembling | `Restarted` | starts a new SDU |
+| `11` while assembling | `Interrupted` | delivered whole |
+| `00` or `10` with nothing in progress | `Orphan` | dropped |
+| SDU would exceed the buffer | `Overflow` | dropped, with the partial SDU |
+
+### 5.5 Secondary header layouts (SPP-007, SPP-008; OI-30 points 1 and 2)
+
+- **No configuration in the decoder:** `decode` takes no configuration and exposes the whole Packet Data Field. The caller looks up the APID's layout and splits the packet with it.
+- **Layouts:** none, opaque (a fixed length ≥ 1), or a time code (feature `time`) with an optional P-field and an ancillary length.
+- **Flag mismatch:** a flag that disagrees with the layout (flag 1 with no layout, flag 0 with a layout) is `InvalidField` (`secondary_header_flag`) in both modes, since §4.1.3.3.3.3 fixes the flag per APID.
+- **Too short:** a data field shorter than the secondary header is `LengthMismatch`.
+- **Time codes:** only CUC and CDS are allowed (133.0 §4.1.4.2.2.2: the "segmented binary or unsegmented binary" codes of 301.0; CCS is BCD). Configuring another code is `InvalidConfig` (`time_code`).
+- **With a P-field:** the code's characteristics come from the P-field (§4.1.4.2.2.4), but its time code ID must equal the configured code's (§4.1.4.2.2.3); otherwise `InvalidField` (`time_code_id`).
+- **Without a P-field:** the configured format is used.
+- **Ancillary Data Field:** the configured ancillary length follows the time code.
