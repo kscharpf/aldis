@@ -8,7 +8,7 @@ use serde_json::{Map, Value};
 use crate::model::{CodecCase, CodecFile, VectorFile};
 
 /// What a crate's handler produced for one case.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Outcome {
     /// Success with the output values (compared exactly with `expect`).
     Ok(Map<String, Value>),
@@ -19,7 +19,7 @@ pub enum Outcome {
 }
 
 /// One failed case.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Failure {
     /// Case identifier.
     pub case_id: String,
@@ -28,7 +28,7 @@ pub struct Failure {
 }
 
 /// Result of running one vector file.
-#[derive(Debug, Clone, PartialEq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Report {
     /// The vector file.
     pub file: PathBuf,

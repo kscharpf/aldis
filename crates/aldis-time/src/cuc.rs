@@ -34,7 +34,7 @@ pub struct CucFormat {
 }
 
 /// `OutOfRange` for `field` with its limit and the value found.
-fn range(field: &'static str, limit: u64, found: u64) -> Error {
+const fn range(field: &'static str, limit: u64, found: u64) -> Error {
     Error::out_of_range(field, limit, found)
 }
 

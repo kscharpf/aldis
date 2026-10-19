@@ -94,6 +94,13 @@ pub fn crc16_table(data: &[u8]) -> u16 {
 /// Updates an in-progress CRC-16 `crc` (initially [`PRESET`]) over `data` with the
 /// implementation selected at build time (CMN-001, CMN-004).
 #[must_use]
+#[cfg_attr(
+    not(feature = "crc-table"),
+    expect(
+        clippy::missing_const_for_fn,
+        reason = "the `crc-table` path is not const, and `const` must not depend on a feature (RS-019)"
+    )
+)]
 pub fn crc16_update(crc: u16, data: &[u8]) -> u16 {
     #[cfg(feature = "crc-table")]
     {
@@ -216,7 +223,7 @@ mod tests {
         #[test]
         fn both_verification_methods_agree(data in proptest::collection::vec(any::<u8>(), 0..300), flip in any::<u16>()) {
             // req: CMN-003
-            let mut frame = data.clone();
+            let mut frame = data;
             frame.extend_from_slice(&[0, 0]);
             write_fecf(&mut frame).unwrap();
             prop_assert_eq!(syndrome(&frame), 0);

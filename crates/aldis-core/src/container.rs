@@ -128,7 +128,7 @@ pub struct ByteQueue<const N: usize> {
 
 const PREFIX: usize = 4;
 
-fn record_len_err(cap: usize, len: usize) -> Error {
+const fn record_len_err(cap: usize, len: usize) -> Error {
     if let Some(max_len) = cap.checked_sub(PREFIX) {
         Error::out_of_range(
             "record_len",
@@ -272,7 +272,7 @@ impl<const N: usize> ByteQueue<N> {
     }
 
     /// Removes all records.
-    pub fn clear(&mut self) {
+    pub const fn clear(&mut self) {
         self.head = 0;
         self.used = 0;
         self.records = 0;
@@ -360,7 +360,7 @@ impl<T: Copy + Default, const N: usize> FixedVec<T, N> {
     }
 
     /// Removes all items.
-    pub fn clear(&mut self) {
+    pub const fn clear(&mut self) {
         self.len = 0;
     }
 }

@@ -49,10 +49,12 @@ impl Default for OidGenerator {
     }
 }
 
-/// Galois form (CMN-022), seeded with `0b00000000001111111111111111111101` (132.0 Annex D,
-/// figure D-2): output the low bit, shift right, and XOR `0x8020_0003` when the output bit is 1.
-/// The wiring was derived by searching for the configuration that reproduces the Annex D
-/// sequence, then checked equal to [`OidGenerator`] over 10⁷ bits.
+/// Galois form (CMN-022) of the OID generator.
+///
+/// Seeded with `0b00000000001111111111111111111101` (132.0 Annex D, figure D-2): output the
+/// low bit, shift right, and XOR `0x8020_0003` when the output bit is 1. The wiring was
+/// derived by searching for the configuration that reproduces the Annex D sequence, then
+/// checked equal to [`OidGenerator`] over 10⁷ bits.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OidGeneratorGalois {
     register: u32,

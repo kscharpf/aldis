@@ -197,7 +197,7 @@ impl<A: Anomaly> AnomalySet<A> {
 
     /// The flags that are set, in ascending bit order.
     #[must_use]
-    pub fn iter(&self) -> Iter<A> {
+    pub const fn iter(&self) -> Iter<A> {
         Iter {
             bits: self.bits,
             next: 0,

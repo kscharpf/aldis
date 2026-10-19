@@ -22,11 +22,14 @@ All notable changes to Aldis are recorded here. The format follows [Keep a Chang
 - `aldis-core::ids`: `MAX` constants and `From<Id>` conversions for `Apid`, `SeqCount`, `FrameSeqNum`, and `PacketVersion`; infallible `SeqCount::classify`, `FrameSeqNum::classify`, and `From<{SeqCount, FrameSeqNum}> for ModCounter` (CMN-031).
 - `aldis-core::container`: `FixedVec::{as_mut_slice, capacity, is_full}`, `PartialEq`/`Eq` on `FixedVec`, and `ByteQueue::clear`.
 - `as_conversions = "deny"` in `[workspace.lints.clippy]` (VER-001).
+- Selected Clippy nursery lints denied in every lint table: `missing_const_for_fn`, `derive_partial_eq_without_eq`, `too_long_first_doc_paragraph`, `redundant_clone`. The nursery group stays off, and each lint considered is recorded with its decision in `docs/profiles/rust.md` §5 (RS-019).
 
 ### Changed
 - **Breaking:** `aldis` facade crate no longer enables `core` by default (`default = []`), matching `docs/profiles/rust.md` §2; enable `core` or `full` explicitly.
 - **Breaking:** `aldis-core::ids`: `FrameSeqNum`'s inner `u8` field is now private (use `FrameSeqNum::new` or `From<u8>`, and `FrameSeqNum::get` or `u8::from`), matching the other identifier types (RS-010); `SpacecraftId`, `VcId`, and `MapId` `TryFrom` errors now report snake_case `FieldId`s (`"spacecraft_id"`, `"vc_id"`, `"map_id"`) instead of type names (API-041).
 - `aldis-core::security`: `SecurityLayout::new` is now a `const fn` (RS-012), `SecurityLayout::MAX_TRAILER_LEN` is public alongside `MAX_HEADER_LEN` (API-070, API-071), and `Protocol` is `#[non_exhaustive]` (GEN-081).
+- Now `const fn`: `AnomalySet::iter`, `ByteQueue::clear`, `FixedVec::clear`, and `ModCounter::increment` in `aldis-core`; `CdsFormat::t_len` and `TimeCode::format` in `aldis-time` (RS-019).
+- `aldis-testkit` model and runner types now derive `Eq` (RS-019).
 - Forwarded `alloc`, `std`, and protocol sub-features across `aldis`, `aldis-spp`, `aldis-link`, `aldis-cop1`, `aldis-framework`, and `aldis-ffi`.
 
 ## [0.1.0-m0] — 2026-10-16

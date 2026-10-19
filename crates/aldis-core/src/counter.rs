@@ -93,7 +93,7 @@ impl ModCounter {
     }
 
     /// Advances the counter by one, modulo 2^bits.
-    pub fn increment(&mut self) {
+    pub const fn increment(&mut self) {
         *self = self.next();
     }
 

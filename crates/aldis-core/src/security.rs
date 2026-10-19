@@ -153,9 +153,11 @@ impl SecurityHook for NoSecurity {
     }
 }
 
-/// Test-only hook: writes `0xA5` into the Security Header and `0x5A` into the Trailer, and
-/// checks them on verify. Exercises length accounting and field placement (API-073). Never
-/// enable feature `test-hooks` in a flight build.
+/// Test-only hook that writes and checks fixed patterns (API-073).
+///
+/// Writes `0xA5` into the Security Header and `0x5A` into the Trailer, and checks them on
+/// verify. Exercises length accounting and field placement. Never enable feature `test-hooks`
+/// in a flight build.
 #[cfg(any(test, feature = "test-hooks"))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct FixedPatternSecurity;

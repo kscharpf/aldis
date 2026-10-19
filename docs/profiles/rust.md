@@ -81,7 +81,7 @@ Each codec crate uses the layout `src/{lib.rs, header.rs, view.rs, writer.rs, co
 
 The workspace `Cargo.toml` defines `[workspace.lints]`, and every crate inherits them (`[lints] workspace = true`). `aldis-ffi` repeats the same table with `unsafe_code = "deny"` (GEN-071).
 
-The Clippy `all` and `pedantic` groups are denied at the lowest priority (`-1`). The individual restriction lints listed after them refine those groups.
+The Clippy `all` and `pedantic` groups are denied at the lowest priority (`-1`). The individual restriction lints and selected nursery lints listed after them refine those groups.
 
 ```toml
 [workspace.lints.rust]
@@ -103,10 +103,29 @@ as_conversions = "deny"
 unreachable = "deny"
 todo = "deny"
 unimplemented = "deny"
+# Selected nursery lints (RS-019). The nursery group itself stays off.
+missing_const_for_fn = "deny"
+derive_partial_eq_without_eq = "deny"
+too_long_first_doc_paragraph = "deny"
+redundant_clone = "deny"
 ```
+
+The Clippy `nursery` group holds lints that are still under development and may report false positives, so it is not enabled as a group. Individual nursery lints are adopted once they have been checked against this code base (RS-019):
+
+| Nursery lint | Decision | Reason |
+|---|---|---|
+| `missing_const_for_fn` | Denied | Extends the `const` constructors of RS-010 and RS-012: functions are `const fn` wherever the language allows. If a function can be `const` only for some feature combinations, it stays non-`const` and carries a `cfg_attr`-gated `#[expect]`, because constness must not depend on a feature. |
+| `derive_partial_eq_without_eq` | Denied | Types with total equality derive `Eq`, so callers can use them as keys and in `assert_eq!` of containing types. |
+| `too_long_first_doc_paragraph` | Denied | rustdoc shows the first paragraph as the item summary, so it is one short sentence. |
+| `redundant_clone` | Denied | A clone whose original is never used again is dead work. |
+| `redundant_pub_crate` | Not adopted | Conflicts with `unreachable_pub`: in a private module it asks for `pub`, which `unreachable_pub` then reports. |
+| `or_fun_call` | Not adopted | The arguments it flags are `const fn` error constructors with no side effects that return a small `Copy` value (RS-011). Eager construction costs nothing, and a closure adds a coverage region (VER-024). |
+| `option_if_let_else` | Not adopted | The suggested `map_or_else` takes closures, which a `const fn` cannot call, so it conflicts with `missing_const_for_fn`. Elsewhere it does not improve readability. |
+| `use_self` | Deferred | Style only. The code mostly names the type rather than writing `Self`. Adopting it is a separate, mechanical change. |
 
 | ID | Requirement | Source | Verif. |
 |---|---|---|---|
-| RS-016 | A lint SHALL be relaxed only locally, on the smallest item, with `#[expect(clippy::<lint>, reason = "<justification>")]`. Crate-wide or workspace-wide `allow`s of `all`, `pedantic`, or the restriction lints above SHALL NOT be added without updating this section. `#[allow]` SHALL NOT be used for these lints, because `#[expect]` fails when the exception becomes unnecessary. | VER-001 | A |
-| RS-017 | **Tooling crates** (`aldis-testkit`, `xtask`, and future test/fuzz support crates) are `std`-only, `publish = false`, and never part of a flight build. They SHALL use the *tooling lint profile*: `unsafe_code = "forbid"`, `missing_docs = "deny"`, and Clippy `all` + `pedantic` denied, without the flight-code restriction lints (tools and tests fail loudly by design). Library crates SHALL use tooling crates only as dev-dependencies (checked by `cargo xtask layers`). | GEN-001 | A |
+| RS-016 | A lint SHALL be relaxed only locally, on the smallest item, with `#[expect(clippy::<lint>, reason = "<justification>")]`. Crate-wide or workspace-wide `allow`s of `all`, `pedantic`, the restriction lints, or the selected nursery lints above SHALL NOT be added without updating this section. `#[allow]` SHALL NOT be used for these lints, because `#[expect]` fails when the exception becomes unnecessary. | VER-001 | A |
+| RS-017 | **Tooling crates** (`aldis-testkit`, `xtask`, and future test/fuzz support crates) are `std`-only, `publish = false`, and never part of a flight build. They SHALL use the *tooling lint profile*: `unsafe_code = "forbid"`, `missing_docs = "deny"`, and Clippy `all` + `pedantic` + the selected nursery lints (RS-019) denied, without the flight-code restriction lints (tools and tests fail loudly by design). Library crates SHALL use tooling crates only as dev-dependencies (checked by `cargo xtask layers`). | GEN-001 | A |
 | RS-018 | **Test code** may fail loudly. `clippy.toml` exempts `#[test]` functions and `#[cfg(test)]` modules from `unwrap_used`, `expect_used`, `panic`, and `indexing_slicing`. Test modules that need integer arithmetic, and integration-test crates whose helper functions sit outside `#[test]`, SHALL use a module- or crate-level `#[expect(…, reason = "… (RS-018)")]`. Library code remains subject to every lint (GEN-020). | GEN-020 | A |
+| RS-019 | The Clippy `nursery` group SHALL NOT be enabled as a group. Each nursery lint marked *Denied* in the table above SHALL be denied in every lint table: the workspace, `aldis-ffi`, the exerciser, and the tooling crates. A nursery lint SHALL be adopted only after its findings on this code base have been checked to be correct, and this section SHALL record each one considered and the decision. When the pinned toolchain changes (RS-001), the workspace SHALL be checked once with `-W clippy::nursery` to review newly matured lints. | VER-001 | A |

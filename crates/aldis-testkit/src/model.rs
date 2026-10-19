@@ -56,7 +56,7 @@ pub enum CodecKind {
 }
 
 /// A file of stateless codec cases (TV-001…TV-003).
-#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(deny_unknown_fields)]
 pub struct CodecFile {
@@ -75,7 +75,7 @@ pub struct CodecFile {
 }
 
 /// One codec case.
-#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(deny_unknown_fields)]
 pub struct CodecCase {
@@ -112,7 +112,7 @@ pub struct CodecCase {
 /// When `ok` is true, every other key is an expected output value and the handler's output
 /// must match them **exactly**: no missing and no extra keys (TV-002, TV-012). When `ok` is
 /// false, `error` names the expected error kind from the catalogue (03-api-model.md §9).
-#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct Expect {
     /// Whether the operation succeeds.
@@ -135,7 +135,7 @@ pub enum ScenarioKind {
 }
 
 /// A scripted sequence of inputs and expected outputs for one engine (TV-010…TV-012).
-#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(deny_unknown_fields)]
 pub struct ScenarioFile {
@@ -165,7 +165,7 @@ pub struct ScenarioFile {
 }
 
 /// One scenario step: one input at an absolute instant, and the complete ordered outputs.
-#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(deny_unknown_fields)]
 pub struct Step {
@@ -184,7 +184,7 @@ pub struct Step {
 }
 
 /// Any vector file.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum VectorFile {
     /// Codec cases.
     Codec(CodecFile),

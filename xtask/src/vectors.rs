@@ -13,7 +13,7 @@ use crate::spec::Spec;
 
 const SCHEMA_DIR: &str = "test-vectors/schema";
 
-fn needs_note(p: Provenance) -> bool {
+const fn needs_note(p: Provenance) -> bool {
     matches!(p, Provenance::HandDerived | Provenance::CrossChecked)
 }
 

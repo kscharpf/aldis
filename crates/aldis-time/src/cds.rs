@@ -124,7 +124,7 @@ impl CdsFormat {
 
     /// T-field length in octets (301.0 §3.3.1, TIME-003).
     #[must_use]
-    pub fn t_len(&self) -> usize {
+    pub const fn t_len(&self) -> usize {
         self.day_octets()
             .wrapping_add(4)
             .wrapping_add(self.subms.octets())
