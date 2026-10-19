@@ -7,7 +7,7 @@
 | Inspected | 2026-10-18, prepared by Claude Code |
 | Approved | 2026-10-19, maintainer |
 | Repeat | when `aldis-time` gains a loop or a call between its own functions (the ASCII codec and conversions will), and before each release |
-| Revised | 2026-10-19, value types (parse, don't validate): new module `calendar.rs` (range-checked `Year`, `Month`, `Hour`, `Minute`, `Second`, `CalendarDate`; the leap-year rules moved here from `util.rs`) and the `bounded!` macro in `util.rs` add no loop and no recursion. `ccs.rs` `validate` is removed; `Ccs::from_t` and `Cds::from_t` call the field constructors directly. Loops unchanged. Awaiting maintainer confirmation |
+| Revised | 2026-10-19, value types (parse, don't validate): new module `calendar.rs` (range-checked `Year`, `Month`, `Hour`, `Minute`, `Second`, `CalendarDate`; the leap-year rules moved here from `util.rs`) and the `bounded!` macro in `util.rs` add no loop and no recursion. `ccs.rs` `validate` is removed; `Ccs::from_t` and `Cds::from_t` call the field constructors directly. Loops unchanged. Confirmed 2026-10-19, maintainer |
 
 ## Loops
 
