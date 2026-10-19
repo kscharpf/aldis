@@ -10,6 +10,12 @@ Guide for coding agents working on **Aldis**. Read [README.md](README.md) first 
 
 Never write protocol values from memory. Look them up in the Blue Book. Registry values (UPIDs, EPIs, PVNs, time systems) come from SANA (OI-06).
 
+## Tracks
+
+v1 is built in three tracks: **R** (Rust reference, milestones M0–M6), **C** (native C++, C0–C5), and **A** (reference application, A0–A6). Before starting work, find your track and milestone in [docs/08-roadmap.md](docs/08-roadmap.md), check that its entry gate is met on `main`, and follow the parallel-work rules in §6: one track's directories per PR, branch prefix `m<N>/`, `c<N>/`, or `a<N>/`, and the Rust crates as the reference when implementations disagree.
+
+The rules and checks below are written for the Rust crates. The native C++ code follows [docs/profiles/cpp.md](docs/profiles/cpp.md) instead; its checks are set up in milestone C0.
+
 ## Non-negotiable rules (Layers 0–2)
 
 - `no_std`, **no heap**: fixed capacities via const generics (GEN-010, GEN-011).
@@ -64,5 +70,8 @@ Clippy runs with the `all` and `pedantic` groups denied, plus restriction lints 
 | Stateful protocol behavior | `crates/aldis-link`, or `crates/aldis-cop1` for COP-1 |
 | Transports, run loop, adapters | `crates/aldis-framework` |
 | C interface | `crates/aldis-ffi` (capacities in `capacities.toml`) |
+| Native C++ implementation (track C) | `cpp/` |
+| Differential tests, Rust vs. native (VER-053) | `difftest/` |
+| Reference application (track A) | `refapp/` |
 | Requirements and design | `docs/` |
 | Conformance data | `test-vectors/` |
