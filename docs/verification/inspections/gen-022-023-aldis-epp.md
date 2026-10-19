@@ -5,7 +5,7 @@
 | Requirements | GEN-022 (every loop bounded by an input length, a compile-time capacity, or a constant; no recursion), GEN-023 (time bounded by O(input length + capacities); nothing blocks or waits) |
 | Scope | `crates/aldis-epp/src/*.rs`, library code only (test modules excluded), on branch `m1/epp` (M1 WP-3), based on `main` b817d0f |
 | Inspected | 2026-10-18, prepared by Claude Code |
-| Approved | awaiting maintainer approval |
+| Approved | 2026-10-18, maintainer |
 | Repeat | when `aldis-epp` gains a loop or a call between its own functions, and before each release |
 
 ## Loops
