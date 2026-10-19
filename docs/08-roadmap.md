@@ -41,11 +41,11 @@ Each C++ milestone ports a Rust milestone that has already exited, so the C++ tr
 
 ## 3. Track A — Reference application (A0–A6)
 
-The reference application lives in its own workspace, `refapp/`, and uses only the public APIs, as an integrator would. Its flight and ground sides talk over an in-process loopback link. The engines are deterministic (GEN-030), so each run of a scenario produces a **golden trace** of every data unit exchanged. Each implementation must reproduce the trace byte for byte.
+The reference application lives in its own workspace, `refapp/`, and uses only the public APIs, as an integrator would. Its scenario is specified in [reference-application.md](reference-application.md) (area APP). Its flight and ground sides talk over a loopback link owned by a harness: the Rust nodes run in-process; whether the A5 C++ and A6 QEMU flight nodes run as child processes over a lockstep node protocol is open ([OI-24](09-open-issues.md), [reference-application.md](reference-application.md) §8.2). The engines are deterministic (GEN-030), so each run of a scenario produces a **golden trace** of every data unit exchanged. Each implementation must reproduce the trace byte for byte.
 
 | Milestone | Content | Entry gate | Exit criteria |
 |---|---|---|---|
-| **A0 Scenario** | The scenario specification, a new document `docs/reference-application.md` with requirement area APP: flight and ground roles, APIDs, virtual channels, rates, injected faults, and the golden-trace format. `refapp/` workspace skeleton with a CI build job | — | Scenario approved by the maintainer |
+| **A0 Scenario** ([plan](milestones/a0-scenario.md)) | The scenario specification, a new document [`docs/reference-application.md`](reference-application.md) with requirement area APP: flight and ground roles, APIDs, virtual channels, rates, injected faults, and the golden-trace format. `refapp/` workspace skeleton with a CI build job | — | Scenario approved by the maintainer |
 | **A1 Packets** | Flight side produces housekeeping Space Packets with CUC time stamps; ground side decodes them; first golden trace | A0; M1 | Trace reproduced in CI |
 | **A2 Frames** | Downlink TM frames and uplink TC frames, multiplexed and demultiplexed by hand-written loops in the application | A1; M2 | Trace reproduced in CI; API issues found are filed |
 | **A3 COP-1** | FOP-1 on the ground, FARM-1 on the flight side, CLCW in the OCF; injected frame loss exercises retransmission | A2; M3 | Trace reproduced in CI, including the fault cases |
