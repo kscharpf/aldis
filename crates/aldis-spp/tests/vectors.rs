@@ -14,11 +14,15 @@ use aldis_core::counter::Continuity;
 use aldis_core::ids::{Apid, SeqCount};
 use aldis_core::{DecodeMode, Error};
 use aldis_spp::{
-    IdlePacket, OctetStringEncoder, PacketFields, PacketType, SecondaryHeaderLayout,
-    SequenceCounter, SequenceFlags, SequenceTracker, SpacePacket, SpacePacketWriter, SppConfig,
-    Tracked, encode,
+    Discard, IdlePacket, OctetStringEncoder, PacketFields, PacketType, Reassembler,
+    SecondaryHeaderLayout, Segmenter, SequenceCounter, SequenceFlags, SequenceTracker, SpacePacket,
+    SpacePacketWriter, SppConfig, Status, TimeHeaderLayout, Tracked, encode,
 };
 use aldis_testkit::{CodecCase, Mode, Outcome, hex, run_codec_file};
+use aldis_time::{
+    CcsFormat, CcsVariation, CdsDayLen, CdsEpoch, CdsFormat, CdsSubMs, CucEpoch, CucFormat,
+    TimeFormat,
+};
 use serde_json::{Map, Value, json};
 
 fn value<'a>(map: Option<&'a Map<String, Value>>, case: &CodecCase, name: &str) -> &'a Value {
@@ -192,6 +196,138 @@ fn decode_stream(case: &CodecCase) -> Value {
     json!({ "packets": packets, "stop_error": stop, "offset": at })
 }
 
+fn segment_case(case: &CodecCase) -> Result<Value, Error> {
+    let sdu = hex_param(case, "sdu_hex");
+    let sec = hex_param(case, "secondary_header_hex");
+    let ptype = packet_type(param(case, "packet_type"));
+    let mut seg = Segmenter::new(
+        &config(case)?,
+        ptype,
+        apid(case),
+        &sdu,
+        usize_param(case, "max_user_len"),
+    )?;
+    let mut counter = SequenceCounter::new(count(param(case, "sequence_count")));
+    let mut packets = Vec::new();
+    let mut out = vec![0_u8; 70_000];
+    while let Some(n) = seg.next_packet(&mut counter, &sec, &mut out)? {
+        packets.push(json!(hex::encode(&out[..n])));
+        assert_eq!(seg.remaining() == 0, seg.is_done(), "{}", case.id);
+    }
+    assert!(seg.is_done());
+    Ok(json!({ "packets_hex": packets, "next_count": counter.peek().get() }))
+}
+
+fn discard_name(d: Discard) -> &'static str {
+    match d {
+        Discard::Gap => "Gap",
+        Discard::Restarted => "Restarted",
+        Discard::Interrupted => "Interrupted",
+        Discard::Orphan => "Orphan",
+        Discard::Overflow => "Overflow",
+        _ => panic!("unknown discard reason"),
+    }
+}
+
+fn reassemble_case(case: &CodecCase) -> Value {
+    let mut buf = vec![0_u8; usize_param(case, "buffer_len")];
+    let mut ra = Reassembler::new(apid(case), &mut buf);
+    let results: Vec<Value> = param(case, "packets_hex")
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|h| {
+            let bytes = hex::decode(h.as_str().unwrap()).unwrap();
+            let p = SpacePacket::decode(&bytes, DecodeMode::Strict).unwrap();
+            match ra.push(&p.header(), p.data_field()) {
+                Err(e) => json!({ "error": e.kind().name() }),
+                Ok(o) => {
+                    let discarded = o.discarded.map(discard_name);
+                    match o.status {
+                        Status::InProgress => json!({ "discarded": discarded, "status": "InProgress" }),
+                        Status::Complete(n) => {
+                            assert_eq!(ra.sdu().len(), n);
+                            json!({ "discarded": discarded, "status": "Complete", "sdu_hex": hex::encode(ra.sdu()) })
+                        }
+                        Status::Dropped(why) => {
+                            assert_eq!(ra.sdu(), <&[u8]>::default());
+                            json!({ "discarded": discarded, "status": "Dropped", "reason": discard_name(why) })
+                        }
+                    }
+                }
+            }
+        })
+        .collect();
+    json!({ "results": results })
+}
+
+fn time_format(f: &Value) -> TimeFormat {
+    let u8_of = |name: &str| u8::try_from(u64_of(&f[name])).unwrap();
+    match f["code"].as_str().unwrap() {
+        "cuc" => TimeFormat::Cuc(
+            CucFormat::new(
+                if f["level2"].as_bool().unwrap() {
+                    CucEpoch::Agency
+                } else {
+                    CucEpoch::Tai1958
+                },
+                u8_of("coarse"),
+                u8_of("fine"),
+            )
+            .unwrap(),
+        ),
+        "cds" => TimeFormat::Cds(CdsFormat::new(
+            if f["agency_epoch"].as_bool().unwrap() {
+                CdsEpoch::Agency
+            } else {
+                CdsEpoch::Ccsds1958
+            },
+            if f["day24"].as_bool().unwrap() {
+                CdsDayLen::Bits24
+            } else {
+                CdsDayLen::Bits16
+            },
+            match u8_of("subms") {
+                0 => CdsSubMs::None,
+                1 => CdsSubMs::Micros,
+                _ => CdsSubMs::Picos,
+            },
+        )),
+        "ccs" => TimeFormat::Ccs(
+            CcsFormat::new(CcsVariation::MonthDay, u8_of("subsecond_octets")).unwrap(),
+        ),
+        code => panic!("time code {code}"),
+    }
+}
+
+fn split_time_case(case: &CodecCase) -> Result<Value, Error> {
+    let l = param(case, "layout");
+    let layout = TimeHeaderLayout::new(
+        time_format(&l["format"]),
+        l["pfield"].as_bool().unwrap(),
+        usize::try_from(u64_of(&l["ancillary_len"])).unwrap(),
+    )?;
+    let bytes = input(case);
+    let s = SpacePacket::decode(&bytes, mode(case))?.split(&SecondaryHeaderLayout::Time(layout))?;
+    let t = s.time_code().unwrap();
+    let time_code = &s.secondary_header()[..t.len()];
+    // The decoded code re-encodes to the received octets (API-020).
+    let mut out = [0_u8; 32];
+    let n = t.code().encode(t.pfield().is_some(), &mut out).unwrap();
+    assert_eq!(
+        &out[..n],
+        time_code,
+        "{}: time code re-encodes differently",
+        case.id
+    );
+    Ok(json!({
+        "secondary_header_hex": hex::encode(s.secondary_header()),
+        "user_data_hex": hex::encode(s.user_data()),
+        "time_code_hex": hex::encode(time_code),
+        "ancillary_hex": hex::encode(s.ancillary_data()),
+    }))
+}
+
 fn run(case: &CodecCase) -> Result<Value, Error> {
     match case.operation.as_str() {
         "decode" => {
@@ -245,6 +381,9 @@ fn run(case: &CodecCase) -> Result<Value, Error> {
                 "user_data_hex": hex::encode(s.user_data()),
             }))
         }
+        "segment" => segment_case(case),
+        "reassemble" => Ok(reassemble_case(case)),
+        "split_time" => split_time_case(case),
         op => panic!("{}: unsupported operation {op}", case.id),
     }
 }
@@ -274,3 +413,6 @@ vector_test!(octet_string, "octet_string");
 vector_test!(sequence_tracker, "sequence_tracker");
 vector_test!(stream, "stream");
 vector_test!(split, "split");
+vector_test!(segment, "segment");
+vector_test!(reassemble, "reassemble");
+vector_test!(secondary_header_time, "secondary_header_time");

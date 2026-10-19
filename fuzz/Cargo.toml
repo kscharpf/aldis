@@ -16,7 +16,7 @@ cargo-fuzz = true
 [dependencies]
 aldis-core = { path = "../crates/aldis-core", features = ["crc-table", "test-hooks"] }
 aldis-epp = { path = "../crates/aldis-epp" }
-aldis-spp = { path = "../crates/aldis-spp" }
+aldis-spp = { path = "../crates/aldis-spp", features = ["time"] }
 aldis-time = { path = "../crates/aldis-time" }
 libfuzzer-sys = "0.4.13"
 
@@ -159,6 +159,20 @@ bench = false
 [[bin]]
 name = "spp_tracker_model"
 path = "fuzz_targets/spp_tracker_model.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "spp_segment_reassemble"
+path = "fuzz_targets/spp_segment_reassemble.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "spp_time_header"
+path = "fuzz_targets/spp_time_header.rs"
 test = false
 doc = false
 bench = false

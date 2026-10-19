@@ -1,0 +1,502 @@
+{
+  "kind": "codec",
+  "standard": "133.0-B-2 \u00a74.1, \u00a75; 301.0-B-4 \u00a73.1\u20133.3",
+  "provenance": "hand-derived",
+  "provenance_note": "Hand-derived from 133.0-B-2 \u00a74.1.3.4.2 and \u00a74.1.4.2 and 301.0-B-4 \u00a73.1\u20133.3 (P-field and T-field layouts of CUC and CDS), with the rules of docs/standards/space-packet.md \u00a75.4\u20135.5 (OI-30). 133.0 prints no worked example packets. Expected values computed by an independent Python model, written before the Rust code.",
+  "cases": [
+    {
+      "id": "spp-tsh-001",
+      "requirements": [
+        "SPP-008",
+        "SPP-007"
+      ],
+      "description": "CUC 4+2, implicit P-field, no ancillary",
+      "operation": "split_time",
+      "params": {
+        "layout": {
+          "format": {
+            "code": "cuc",
+            "coarse": 4,
+            "fine": 2,
+            "level2": false
+          },
+          "pfield": false,
+          "ancillary_len": 0
+        }
+      },
+      "input_hex": "0860C0000006123456788000EE",
+      "expect": {
+        "ok": true,
+        "secondary_header_hex": "123456788000",
+        "user_data_hex": "EE",
+        "time_code_hex": "123456788000",
+        "ancillary_hex": ""
+      }
+    },
+    {
+      "id": "spp-tsh-002",
+      "requirements": [
+        "SPP-008",
+        "SPP-007"
+      ],
+      "description": "CUC 4+2 with its P-field and 2 ancillary octets",
+      "operation": "split_time",
+      "params": {
+        "layout": {
+          "format": {
+            "code": "cuc",
+            "coarse": 4,
+            "fine": 2,
+            "level2": false
+          },
+          "pfield": true,
+          "ancillary_len": 2
+        }
+      },
+      "input_hex": "0860C000000A1E123456788000ABCD0102",
+      "expect": {
+        "ok": true,
+        "secondary_header_hex": "1E123456788000ABCD",
+        "user_data_hex": "0102",
+        "time_code_hex": "1E123456788000",
+        "ancillary_hex": "ABCD"
+      }
+    },
+    {
+      "id": "spp-tsh-003",
+      "requirements": [
+        "SPP-008",
+        "SPP-007"
+      ],
+      "description": "P-field says CUC 5+3 (characteristics may change): decoded as the P-field says",
+      "operation": "split_time",
+      "params": {
+        "layout": {
+          "format": {
+            "code": "cuc",
+            "coarse": 4,
+            "fine": 2,
+            "level2": false
+          },
+          "pfield": true,
+          "ancillary_len": 0
+        }
+      },
+      "input_hex": "0860C000000A9F20000000000000000001",
+      "expect": {
+        "ok": true,
+        "secondary_header_hex": "9F200000000000000000",
+        "user_data_hex": "01",
+        "time_code_hex": "9F200000000000000000",
+        "ancillary_hex": ""
+      }
+    },
+    {
+      "id": "spp-tsh-004",
+      "requirements": [
+        "SPP-008",
+        "SPP-007"
+      ],
+      "description": "CDS 16-bit day with microseconds, implicit",
+      "operation": "split_time",
+      "params": {
+        "layout": {
+          "format": {
+            "code": "cds",
+            "agency_epoch": false,
+            "day24": false,
+            "subms": 1
+          },
+          "pfield": false,
+          "ancillary_len": 0
+        }
+      },
+      "input_hex": "0860C00000082ADE03B8A5F001F355",
+      "expect": {
+        "ok": true,
+        "secondary_header_hex": "2ADE03B8A5F001F3",
+        "user_data_hex": "55",
+        "time_code_hex": "2ADE03B8A5F001F3",
+        "ancillary_hex": ""
+      }
+    },
+    {
+      "id": "spp-tsh-005",
+      "requirements": [
+        "SPP-008",
+        "SPP-007"
+      ],
+      "description": "CDS with its P-field, 24-bit day, no sub-ms, 1 ancillary octet",
+      "operation": "split_time",
+      "params": {
+        "layout": {
+          "format": {
+            "code": "cds",
+            "agency_epoch": false,
+            "day24": true,
+            "subms": 0
+          },
+          "pfield": true,
+          "ancillary_len": 1
+        }
+      },
+      "input_hex": "0860C000000844002ADE0000000077",
+      "expect": {
+        "ok": true,
+        "secondary_header_hex": "44002ADE0000000077",
+        "user_data_hex": "",
+        "time_code_hex": "44002ADE00000000",
+        "ancillary_hex": "77"
+      }
+    },
+    {
+      "id": "spp-tsh-006",
+      "requirements": [
+        "SPP-008",
+        "SPP-007"
+      ],
+      "description": "Secondary header only (no user data)",
+      "operation": "split_time",
+      "params": {
+        "layout": {
+          "format": {
+            "code": "cuc",
+            "coarse": 4,
+            "fine": 2,
+            "level2": false
+          },
+          "pfield": false,
+          "ancillary_len": 0
+        }
+      },
+      "input_hex": "0860C0000005123456788000",
+      "expect": {
+        "ok": true,
+        "secondary_header_hex": "123456788000",
+        "user_data_hex": "",
+        "time_code_hex": "123456788000",
+        "ancillary_hex": ""
+      }
+    },
+    {
+      "id": "spp-tsh-007",
+      "requirements": [
+        "SPP-008",
+        "SPP-007"
+      ],
+      "description": "Configured CCS is InvalidConfig",
+      "operation": "split_time",
+      "params": {
+        "layout": {
+          "format": {
+            "code": "ccs",
+            "variation": "month_day",
+            "subsecond_octets": 0
+          },
+          "pfield": false,
+          "ancillary_len": 0
+        }
+      },
+      "input_hex": "0860C00000070000000000000000",
+      "expect": {
+        "ok": false,
+        "error": "InvalidConfig"
+      }
+    },
+    {
+      "id": "spp-tsh-008",
+      "requirements": [
+        "SPP-008",
+        "SPP-007"
+      ],
+      "description": "P-field with the CDS ID when CUC is configured: InvalidField",
+      "operation": "split_time",
+      "params": {
+        "layout": {
+          "format": {
+            "code": "cuc",
+            "coarse": 4,
+            "fine": 2,
+            "level2": false
+          },
+          "pfield": true,
+          "ancillary_len": 0
+        }
+      },
+      "input_hex": "0860C00000074000000000000001",
+      "expect": {
+        "ok": false,
+        "error": "InvalidField"
+      }
+    },
+    {
+      "id": "spp-tsh-009",
+      "requirements": [
+        "SPP-008",
+        "SPP-007"
+      ],
+      "description": "CUC Level 2 P-field when Level 1 is configured: InvalidField",
+      "operation": "split_time",
+      "params": {
+        "layout": {
+          "format": {
+            "code": "cuc",
+            "coarse": 4,
+            "fine": 2,
+            "level2": false
+          },
+          "pfield": true,
+          "ancillary_len": 0
+        }
+      },
+      "input_hex": "0860C00000062E123456788000",
+      "expect": {
+        "ok": false,
+        "error": "InvalidField"
+      }
+    },
+    {
+      "id": "spp-tsh-010",
+      "requirements": [
+        "SPP-008",
+        "SPP-007"
+      ],
+      "description": "CUC Level 2 configured and received",
+      "operation": "split_time",
+      "params": {
+        "layout": {
+          "format": {
+            "code": "cuc",
+            "coarse": 4,
+            "fine": 2,
+            "level2": true
+          },
+          "pfield": true,
+          "ancillary_len": 0
+        }
+      },
+      "input_hex": "0860C00000062E123456788000",
+      "expect": {
+        "ok": true,
+        "secondary_header_hex": "2E123456788000",
+        "user_data_hex": "",
+        "time_code_hex": "2E123456788000",
+        "ancillary_hex": ""
+      }
+    },
+    {
+      "id": "spp-tsh-011",
+      "requirements": [
+        "SPP-008",
+        "SPP-007"
+      ],
+      "description": "Data field ends inside the T-field: LengthMismatch",
+      "operation": "split_time",
+      "params": {
+        "layout": {
+          "format": {
+            "code": "cuc",
+            "coarse": 4,
+            "fine": 2,
+            "level2": false
+          },
+          "pfield": false,
+          "ancillary_len": 0
+        }
+      },
+      "input_hex": "0860C000000312345678",
+      "expect": {
+        "ok": false,
+        "error": "LengthMismatch"
+      }
+    },
+    {
+      "id": "spp-tsh-012",
+      "requirements": [
+        "SPP-008",
+        "SPP-007"
+      ],
+      "description": "Data field ends inside the ancillary field: LengthMismatch",
+      "operation": "split_time",
+      "params": {
+        "layout": {
+          "format": {
+            "code": "cuc",
+            "coarse": 4,
+            "fine": 2,
+            "level2": false
+          },
+          "pfield": false,
+          "ancillary_len": 2
+        }
+      },
+      "input_hex": "0860C000000612345678800001",
+      "expect": {
+        "ok": false,
+        "error": "LengthMismatch"
+      }
+    },
+    {
+      "id": "spp-tsh-013",
+      "requirements": [
+        "SPP-008",
+        "SPP-007"
+      ],
+      "description": "Data field ends inside the P-field extension: LengthMismatch",
+      "operation": "split_time",
+      "params": {
+        "layout": {
+          "format": {
+            "code": "cuc",
+            "coarse": 5,
+            "fine": 3,
+            "level2": false
+          },
+          "pfield": true,
+          "ancillary_len": 0
+        }
+      },
+      "input_hex": "0860C00000009F",
+      "expect": {
+        "ok": false,
+        "error": "LengthMismatch"
+      }
+    },
+    {
+      "id": "spp-tsh-014",
+      "requirements": [
+        "SPP-008",
+        "SPP-007"
+      ],
+      "description": "Flag 0 with a time layout: InvalidField",
+      "operation": "split_time",
+      "params": {
+        "layout": {
+          "format": {
+            "code": "cuc",
+            "coarse": 4,
+            "fine": 2,
+            "level2": false
+          },
+          "pfield": false,
+          "ancillary_len": 0
+        }
+      },
+      "input_hex": "0060C0000005123456788000",
+      "expect": {
+        "ok": false,
+        "error": "InvalidField"
+      }
+    },
+    {
+      "id": "spp-tsh-015",
+      "requirements": [
+        "SPP-008",
+        "SPP-007"
+      ],
+      "description": "CDS millisecond of day above 86 400 999: OutOfRange",
+      "operation": "split_time",
+      "params": {
+        "layout": {
+          "format": {
+            "code": "cds",
+            "agency_epoch": false,
+            "day24": false,
+            "subms": 1
+          },
+          "pfield": false,
+          "ancillary_len": 0
+        }
+      },
+      "input_hex": "0860C0000007000105265FE80000",
+      "expect": {
+        "ok": false,
+        "error": "OutOfRange"
+      }
+    },
+    {
+      "id": "spp-tsh-016",
+      "requirements": [
+        "SPP-008",
+        "SPP-007"
+      ],
+      "description": "CDS millisecond 86 400 999 (leap second day) is valid",
+      "operation": "split_time",
+      "params": {
+        "layout": {
+          "format": {
+            "code": "cds",
+            "agency_epoch": false,
+            "day24": false,
+            "subms": 1
+          },
+          "pfield": false,
+          "ancillary_len": 0
+        }
+      },
+      "input_hex": "0860C0000007000105265FE703E7",
+      "expect": {
+        "ok": true,
+        "secondary_header_hex": "000105265FE703E7",
+        "user_data_hex": "",
+        "time_code_hex": "000105265FE703E7",
+        "ancillary_hex": ""
+      }
+    },
+    {
+      "id": "spp-tsh-017",
+      "requirements": [
+        "SPP-008",
+        "SPP-007"
+      ],
+      "description": "CDS P-field with reserved sub-ms code 11: ReservedValue",
+      "operation": "split_time",
+      "params": {
+        "layout": {
+          "format": {
+            "code": "cds",
+            "agency_epoch": false,
+            "day24": false,
+            "subms": 1
+          },
+          "pfield": true,
+          "ancillary_len": 0
+        }
+      },
+      "input_hex": "0860C000000A4300000000000000000000",
+      "expect": {
+        "ok": false,
+        "error": "ReservedValue"
+      }
+    },
+    {
+      "id": "spp-tsh-018",
+      "requirements": [
+        "SPP-008",
+        "SPP-007"
+      ],
+      "description": "CUC 5+3 configured: P-field with its extension octet",
+      "operation": "split_time",
+      "params": {
+        "layout": {
+          "format": {
+            "code": "cuc",
+            "coarse": 5,
+            "fine": 3,
+            "level2": false
+          },
+          "pfield": true,
+          "ancillary_len": 1
+        }
+      },
+      "input_hex": "0860C000000A9F200001020304050607F0",
+      "expect": {
+        "ok": true,
+        "secondary_header_hex": "9F200001020304050607F0",
+        "user_data_hex": "",
+        "time_code_hex": "9F200001020304050607",
+        "ancillary_hex": "F0"
+      }
+    }
+  ]
+}

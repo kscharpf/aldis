@@ -30,6 +30,7 @@ name = "aldis-spp"
 version = "0.1.0"
 dependencies = [
  "aldis-core",
+ "aldis-time",
 ]
 
 [[package]]

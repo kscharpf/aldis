@@ -77,7 +77,10 @@ These rules fill in what the requirements leave to the implementation. 133.0 is 
 
 ### 5.4 Segmentation and reassembly (SPP-013; OI-30 point 4)
 
-- **Segmenter:** splits a non-empty SDU into User Data Fields of at most a given length. A single segment is sent as `11`; otherwise the flags are `01`, `00`…, `10`. Each packet takes the next count of the caller's `SequenceCounter`.
+- **Segmenter:** splits a non-empty SDU into User Data Fields of at most a given length. A single segment is sent as `11`; otherwise the flags are `01`, `00`…, `10`. Each packet takes the next count of the caller's `SequenceCounter`, which advances only when a packet is written, and may carry a secondary header the caller supplies per packet.
+  - An empty SDU is `InvalidField` (`sdu`); a maximum of 0 user data octets is `OutOfRange` (`max_user_len`).
+  - APID 2047 is `InvalidField` (`apid`): an Idle Packet carries Idle Data, not user data (§4.1.4.3.4).
+  - Each packet is checked like any other (SPP-005, SPP-006).
 - **Reassembler:** handles one APID and assembles into the caller's buffer. A packet of another APID is `InvalidField` (`apid`). Otherwise the reassembler never fails or gets stuck: the partial SDU is discarded and the outcome says why, then the current packet is handled as if nothing were in progress:
 
 | Situation | Discard reason | Current packet |
@@ -88,13 +91,18 @@ These rules fill in what the requirements leave to the implementation. 133.0 is 
 | `00` or `10` with nothing in progress | `Orphan` | dropped |
 | SDU would exceed the buffer | `Overflow` | dropped, with the partial SDU |
 
+The outcome of each packet has two parts:
+- **Discarded:** why a partial SDU was thrown away, if one was: `Gap`, `Restarted`, `Interrupted`, or `Overflow`.
+- **Status of the current packet:** in progress, complete (the SDU length; the SDU stays readable until the next packet), or dropped with its reason. The reason is `Orphan` for a `00` or `10` with nothing in progress, which includes one whose SDU a gap has just discarded, or `Overflow`.
+
 ### 5.5 Secondary header layouts (SPP-007, SPP-008; OI-30 points 1 and 2)
 
 - **No configuration in the decoder:** `decode` takes no configuration and exposes the whole Packet Data Field. The caller looks up the APID's layout and splits the packet with it.
 - **Layouts:** none, opaque (a fixed length ≥ 1), or a time code (feature `time`) with an optional P-field and an ancillary length.
 - **Flag mismatch:** a flag that disagrees with the layout (flag 1 with no layout, flag 0 with a layout) is `InvalidField` (`secondary_header_flag`) in both modes, since §4.1.3.3.3.3 fixes the flag per APID.
-- **Too short:** a data field shorter than the secondary header is `LengthMismatch`.
+- **Too short:** a data field shorter than the secondary header is `LengthMismatch` (`secondary_header`). This includes a data field that ends inside the time code's P-field or T-field.
 - **Time codes:** only CUC and CDS are allowed (133.0 §4.1.4.2.2.2: the "segmented binary or unsegmented binary" codes of 301.0; CCS is BCD). Configuring another code is `InvalidConfig` (`time_code`).
 - **With a P-field:** the code's characteristics come from the P-field (§4.1.4.2.2.4), but its time code ID must equal the configured code's (§4.1.4.2.2.3); otherwise `InvalidField` (`time_code_id`).
 - **Without a P-field:** the configured format is used.
-- **Ancillary Data Field:** the configured ancillary length follows the time code.
+- **Ancillary Data Field:** the configured ancillary length follows the time code. With an opaque layout, the whole secondary header counts as ancillary data (§4.1.4.2.1.5 b).
+- **Time code errors:** the other errors of the time code decoder, such as `OutOfRange` for a CDS millisecond of day above 86 400 999, are returned as they are, under the packet's decode mode.

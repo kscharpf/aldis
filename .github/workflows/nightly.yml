@@ -78,6 +78,8 @@ jobs:
           - spp_stream
           - spp_roundtrip
           - spp_tracker_model
+          - spp_segment_reassemble
+          - spp_time_header
     runs-on: ubuntu-24.04
     permissions:
       contents: read
