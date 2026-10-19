@@ -12,6 +12,9 @@ aldis_core::anomaly_flags! {
         /// Bit 2. Non-zero high nibble of the CCS day-of-year segment, "not used and set to
         /// zero" by 301.0 §3.4.1.2 (TIME-034).
         NonZeroDoyHighNibble = 2,
+        /// Bit 3. P-field extension octet that 301.0 does not define for the code (§3.1.1); kept
+        /// raw for round trip (TIME-005).
+        UndefinedPFieldExtension = 3,
     }
 }
 
@@ -29,12 +32,13 @@ mod tests {
             [
                 TimeAnomaly::ReservedTimeCodeId,
                 TimeAnomaly::NonZeroDoyHighNibble,
+                TimeAnomaly::UndefinedPFieldExtension,
             ]
         );
-        assert!(TimeAnomaly::ALL.iter().map(|f| f.bit()).eq([0, 2]));
+        assert!(TimeAnomaly::ALL.iter().map(|f| f.bit()).eq([0, 2, 3]));
         assert_eq!(TimeAnomaly::from_bit(1), None, "bit 1 is reserved (OI-15)");
         let set = AnomalySet::from_flags(TimeAnomaly::ALL);
-        assert_eq!(set.bits(), 0b101);
+        assert_eq!(set.bits(), 0b1101);
         assert!(set.iter().eq(TimeAnomaly::ALL.iter().copied()));
     }
 }

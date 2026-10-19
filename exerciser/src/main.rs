@@ -14,6 +14,7 @@
 mod cases;
 mod epp;
 mod exercise;
+mod time;
 
 /// Entry point (reset handler on Cortex-M).
 #[expect(unsafe_code, reason = "the entry symbol must not be mangled")]

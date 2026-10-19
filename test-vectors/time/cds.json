@@ -1,0 +1,542 @@
+{
+  "kind": "codec",
+  "standard": "301.0-B-4 \u00a73.3, Annex A",
+  "provenance": "hand-derived",
+  "provenance_note": "Hand-derived from 301.0-B-4 \u00a73.3, Annex A with the decisions in docs/standards/time-codes.md (OI-15, OI-18). Expected values computed by an independent Python model of the Blue Book text, written before the Rust codec. CCSDS bit 0 is the most significant bit. Decode outputs list the P-field, the format, and every value field; fields that do not apply are null. CUC fine time is given as its raw octets.",
+  "cases": [
+    {
+      "id": "time-cds-001",
+      "requirements": [
+        "TIME-020",
+        "TIME-001",
+        "TIME-003"
+      ],
+      "description": "16-bit day, ms only",
+      "operation": "decode",
+      "input_hex": "405A5B00000100",
+      "expect": {
+        "ok": true,
+        "code": "cds",
+        "pfield_hex": "40",
+        "format": {
+          "epoch": "ccsds",
+          "day_bits": 16,
+          "subms": "none",
+          "pfield_tail_hex": ""
+        },
+        "value": {
+          "day": 23131,
+          "ms_of_day": 256,
+          "subms": 0
+        },
+        "consumed": 7,
+        "anomalies": []
+      }
+    },
+    {
+      "id": "time-cds-002",
+      "requirements": [
+        "TIME-020",
+        "TIME-001",
+        "TIME-003"
+      ],
+      "description": "24-bit day, microseconds",
+      "operation": "decode",
+      "input_hex": "4501020305265BFF03E7",
+      "expect": {
+        "ok": true,
+        "code": "cds",
+        "pfield_hex": "45",
+        "format": {
+          "epoch": "ccsds",
+          "day_bits": 24,
+          "subms": "us",
+          "pfield_tail_hex": ""
+        },
+        "value": {
+          "day": 66051,
+          "ms_of_day": 86399999,
+          "subms": 999
+        },
+        "consumed": 10,
+        "anomalies": []
+      }
+    },
+    {
+      "id": "time-cds-003",
+      "requirements": [
+        "TIME-020",
+        "TIME-001",
+        "TIME-003"
+      ],
+      "description": "16-bit day, picoseconds, agency epoch",
+      "operation": "decode",
+      "input_hex": "4A0001000000013B9AC9FF",
+      "expect": {
+        "ok": true,
+        "code": "cds",
+        "pfield_hex": "4A",
+        "format": {
+          "epoch": "agency",
+          "day_bits": 16,
+          "subms": "ps",
+          "pfield_tail_hex": ""
+        },
+        "value": {
+          "day": 1,
+          "ms_of_day": 1,
+          "subms": 999999999
+        },
+        "consumed": 11,
+        "anomalies": []
+      }
+    },
+    {
+      "id": "time-cds-004",
+      "requirements": [
+        "TIME-020"
+      ],
+      "description": "Sub-ms code 11: ReservedValue",
+      "operation": "decode",
+      "input_hex": "43000000000000",
+      "expect": {
+        "ok": false,
+        "error": "ReservedValue"
+      }
+    },
+    {
+      "id": "time-cds-005",
+      "requirements": [
+        "TIME-020"
+      ],
+      "description": "Sub-ms code 11: ReservedValue in lenient mode too",
+      "operation": "decode",
+      "mode": "lenient",
+      "input_hex": "43000000000000",
+      "expect": {
+        "ok": false,
+        "error": "ReservedValue"
+      }
+    },
+    {
+      "id": "time-cds-006",
+      "requirements": [
+        "TIME-021",
+        "TIME-022"
+      ],
+      "description": "ms of day 86 400 999 (leap second) is accepted",
+      "operation": "decode",
+      "input_hex": "40000005265FE7",
+      "expect": {
+        "ok": true,
+        "code": "cds",
+        "pfield_hex": "40",
+        "format": {
+          "epoch": "ccsds",
+          "day_bits": 16,
+          "subms": "none",
+          "pfield_tail_hex": ""
+        },
+        "value": {
+          "day": 0,
+          "ms_of_day": 86400999,
+          "subms": 0
+        },
+        "consumed": 7,
+        "anomalies": []
+      }
+    },
+    {
+      "id": "time-cds-007",
+      "requirements": [
+        "TIME-021"
+      ],
+      "description": "ms of day 86 401 000: OutOfRange",
+      "operation": "decode",
+      "input_hex": "40000005265FE8",
+      "expect": {
+        "ok": false,
+        "error": "OutOfRange"
+      }
+    },
+    {
+      "id": "time-cds-008",
+      "requirements": [
+        "TIME-021"
+      ],
+      "description": "ms of day 86 401 000: OutOfRange in lenient mode too",
+      "operation": "decode",
+      "mode": "lenient",
+      "input_hex": "40000005265FE8",
+      "expect": {
+        "ok": false,
+        "error": "OutOfRange"
+      }
+    },
+    {
+      "id": "time-cds-009",
+      "requirements": [
+        "TIME-021"
+      ],
+      "description": "Microseconds 1000: OutOfRange",
+      "operation": "decode",
+      "input_hex": "4100000000000003E8",
+      "expect": {
+        "ok": false,
+        "error": "OutOfRange"
+      }
+    },
+    {
+      "id": "time-cds-010",
+      "requirements": [
+        "TIME-021"
+      ],
+      "description": "Picoseconds 10^9: OutOfRange",
+      "operation": "decode",
+      "input_hex": "420000000000003B9ACA00",
+      "expect": {
+        "ok": false,
+        "error": "OutOfRange"
+      }
+    },
+    {
+      "id": "time-cds-011",
+      "requirements": [
+        "TIME-003"
+      ],
+      "description": "Truncated T-field: Incomplete",
+      "operation": "decode",
+      "input_hex": "460000000000",
+      "expect": {
+        "ok": false,
+        "error": "Incomplete"
+      }
+    },
+    {
+      "id": "time-cds-012-enc",
+      "requirements": [
+        "TIME-020",
+        "TIME-001",
+        "TIME-003",
+        "API-020"
+      ],
+      "description": "16-bit day, ms (encode)",
+      "operation": "encode",
+      "params": {
+        "format": {
+          "code": "cds",
+          "epoch": "ccsds",
+          "day_bits": 16,
+          "subms": "none",
+          "pfield_tail_hex": ""
+        },
+        "value": {
+          "day": 23130,
+          "ms_of_day": 256,
+          "subms": 0
+        },
+        "include_pfield": true
+      },
+      "expect": {
+        "ok": true,
+        "output_hex": "405A5A00000100"
+      }
+    },
+    {
+      "id": "time-cds-012-dec",
+      "requirements": [
+        "TIME-020",
+        "TIME-001",
+        "TIME-003",
+        "API-020"
+      ],
+      "description": "16-bit day, ms (decode)",
+      "operation": "decode",
+      "input_hex": "405A5A00000100",
+      "expect": {
+        "ok": true,
+        "code": "cds",
+        "pfield_hex": "40",
+        "format": {
+          "epoch": "ccsds",
+          "day_bits": 16,
+          "subms": "none",
+          "pfield_tail_hex": ""
+        },
+        "value": {
+          "day": 23130,
+          "ms_of_day": 256,
+          "subms": 0
+        },
+        "consumed": 7,
+        "anomalies": []
+      }
+    },
+    {
+      "id": "time-cds-013-enc",
+      "requirements": [
+        "TIME-020",
+        "TIME-001",
+        "TIME-003",
+        "API-020"
+      ],
+      "description": "24-bit day, microseconds (encode)",
+      "operation": "encode",
+      "params": {
+        "format": {
+          "code": "cds",
+          "epoch": "ccsds",
+          "day_bits": 24,
+          "subms": "us",
+          "pfield_tail_hex": ""
+        },
+        "value": {
+          "day": 16777215,
+          "ms_of_day": 86399999,
+          "subms": 999
+        },
+        "include_pfield": true
+      },
+      "expect": {
+        "ok": true,
+        "output_hex": "45FFFFFF05265BFF03E7"
+      }
+    },
+    {
+      "id": "time-cds-013-dec",
+      "requirements": [
+        "TIME-020",
+        "TIME-001",
+        "TIME-003",
+        "API-020"
+      ],
+      "description": "24-bit day, microseconds (decode)",
+      "operation": "decode",
+      "input_hex": "45FFFFFF05265BFF03E7",
+      "expect": {
+        "ok": true,
+        "code": "cds",
+        "pfield_hex": "45",
+        "format": {
+          "epoch": "ccsds",
+          "day_bits": 24,
+          "subms": "us",
+          "pfield_tail_hex": ""
+        },
+        "value": {
+          "day": 16777215,
+          "ms_of_day": 86399999,
+          "subms": 999
+        },
+        "consumed": 10,
+        "anomalies": []
+      }
+    },
+    {
+      "id": "time-cds-014-enc",
+      "requirements": [
+        "TIME-020",
+        "TIME-001",
+        "TIME-003",
+        "API-020"
+      ],
+      "description": "Picoseconds, agency epoch (encode)",
+      "operation": "encode",
+      "params": {
+        "format": {
+          "code": "cds",
+          "epoch": "agency",
+          "day_bits": 16,
+          "subms": "ps",
+          "pfield_tail_hex": ""
+        },
+        "value": {
+          "day": 1,
+          "ms_of_day": 0,
+          "subms": 999999999
+        },
+        "include_pfield": true
+      },
+      "expect": {
+        "ok": true,
+        "output_hex": "4A0001000000003B9AC9FF"
+      }
+    },
+    {
+      "id": "time-cds-014-dec",
+      "requirements": [
+        "TIME-020",
+        "TIME-001",
+        "TIME-003",
+        "API-020"
+      ],
+      "description": "Picoseconds, agency epoch (decode)",
+      "operation": "decode",
+      "input_hex": "4A0001000000003B9AC9FF",
+      "expect": {
+        "ok": true,
+        "code": "cds",
+        "pfield_hex": "4A",
+        "format": {
+          "epoch": "agency",
+          "day_bits": 16,
+          "subms": "ps",
+          "pfield_tail_hex": ""
+        },
+        "value": {
+          "day": 1,
+          "ms_of_day": 0,
+          "subms": 999999999
+        },
+        "consumed": 11,
+        "anomalies": []
+      }
+    },
+    {
+      "id": "time-cds-015",
+      "requirements": [
+        "TIME-021"
+      ],
+      "description": "Encoder rejects ms of day 86 401 000",
+      "operation": "encode",
+      "params": {
+        "format": {
+          "code": "cds",
+          "epoch": "ccsds",
+          "day_bits": 16,
+          "subms": "none",
+          "pfield_tail_hex": ""
+        },
+        "value": {
+          "day": 0,
+          "ms_of_day": 86401000,
+          "subms": 0
+        },
+        "include_pfield": true
+      },
+      "expect": {
+        "ok": false,
+        "error": "OutOfRange"
+      }
+    },
+    {
+      "id": "time-cds-016",
+      "requirements": [
+        "TIME-020"
+      ],
+      "description": "Encoder rejects day 65 536 in a 16-bit day segment",
+      "operation": "encode",
+      "params": {
+        "format": {
+          "code": "cds",
+          "epoch": "ccsds",
+          "day_bits": 16,
+          "subms": "none",
+          "pfield_tail_hex": ""
+        },
+        "value": {
+          "day": 65536,
+          "ms_of_day": 0,
+          "subms": 0
+        },
+        "include_pfield": true
+      },
+      "expect": {
+        "ok": false,
+        "error": "OutOfRange"
+      }
+    },
+    {
+      "id": "time-cds-017",
+      "requirements": [
+        "TIME-021"
+      ],
+      "description": "Encoder rejects 1000 microseconds",
+      "operation": "encode",
+      "params": {
+        "format": {
+          "code": "cds",
+          "epoch": "ccsds",
+          "day_bits": 16,
+          "subms": "us",
+          "pfield_tail_hex": ""
+        },
+        "value": {
+          "day": 0,
+          "ms_of_day": 0,
+          "subms": 1000
+        },
+        "include_pfield": true
+      },
+      "expect": {
+        "ok": false,
+        "error": "OutOfRange"
+      }
+    },
+    {
+      "id": "time-cds-018",
+      "requirements": [
+        "TIME-020",
+        "API-020"
+      ],
+      "description": "Implicit P-field: T-field only",
+      "operation": "encode",
+      "params": {
+        "format": {
+          "code": "cds",
+          "epoch": "ccsds",
+          "day_bits": 24,
+          "subms": "ps",
+          "pfield_tail_hex": ""
+        },
+        "value": {
+          "day": 2,
+          "ms_of_day": 3,
+          "subms": 4
+        },
+        "include_pfield": false
+      },
+      "expect": {
+        "ok": true,
+        "output_hex": "0000020000000300000004"
+      }
+    },
+    {
+      "id": "time-cds-019",
+      "requirements": [
+        "TIME-020",
+        "TIME-001",
+        "TIME-003"
+      ],
+      "description": "Implicit 24-bit day with picoseconds",
+      "operation": "decode_implicit",
+      "params": {
+        "format": {
+          "code": "cds",
+          "epoch": "ccsds",
+          "day_bits": 24,
+          "subms": "ps"
+        }
+      },
+      "input_hex": "0000020000000300000004FF",
+      "expect": {
+        "ok": true,
+        "code": "cds",
+        "pfield_hex": "",
+        "format": {
+          "epoch": "ccsds",
+          "day_bits": 24,
+          "subms": "ps",
+          "pfield_tail_hex": ""
+        },
+        "value": {
+          "day": 2,
+          "ms_of_day": 3,
+          "subms": 4
+        },
+        "consumed": 11,
+        "anomalies": []
+      }
+    }
+  ]
+}

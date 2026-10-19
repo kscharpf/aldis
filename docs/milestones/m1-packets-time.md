@@ -3,7 +3,7 @@
 **Goal:** complete, verified Layer 1 codecs for time codes, Space Packets, and Encapsulation Packets: `aldis-time`, `aldis-spp`, and `aldis-epp`. They are verified to the same standard as `aldis-core` in M0: vectors, panic freedom on bare metal, 100 % coverage, fuzzing, and cross-checks.
 **Roadmap entry:** [08-roadmap.md](../08-roadmap.md) §1 · **Builds on:** [M0](m0-foundations.md) (`v0.1.0-m0`) · **Release:** `v0.2.0-m1`
 
-**Status: in progress (2026-10-17).** Decisions D1–D8 accepted 2026-10-17. WP-0 is implemented on `m1/core` (PR #17, in review). OI-15 and OI-16 resolved 2026-10-18. WP-3 (`aldis-epp`) is implemented on `m1/epp`. `cargo xtask trace --scope m1` puts 89 requirements in scope; 27 are traced: the M0 `aldis-core` and CI artefacts, plus API-030, API-033, and GEN-043 from WP-0.
+**Status: in progress (2026-10-17).** Decisions D1–D8 accepted 2026-10-17. WP-0 is implemented on `m1/core` (PR #17, in review). OI-15 and OI-16 resolved 2026-10-18. WP-3 (`aldis-epp`) is implemented on `m1/epp` (PR #18). WP-1 part 1 (P-field, CUC, CDS, CCS) is implemented on `m1/time`; ASCII and conversions follow. `cargo xtask trace --scope m1` puts 89 requirements in scope; 27 are traced: the M0 `aldis-core` and CI artefacts, plus API-030, API-033, and GEN-043 from WP-0.
 
 ## 1. Starting point
 
@@ -62,7 +62,7 @@ Each codec module is done when:
 
 | Order | Module | Content | Requirements |
 |---|---|---|---|
-| 1 | `pfield` | P-field parse/build: extension chain, time code ID, strict/lenient handling of reserved IDs (lenient: P-field only, OI-15). `decode_with_pfield` and `decode_implicit` entry points report the consumed length | TIME-001, TIME-002, TIME-003 |
+| 1 | `pfield` | P-field parse/build: extension chain (at most 8 octets, undefined octets per TIME-005), time code ID, strict/lenient handling of reserved IDs (lenient: P-field only, OI-15), agency-defined codes (TIME-006). `decode_with_pfield` and `decode_implicit` entry points report the consumed length | TIME-001…003, TIME-005, TIME-006 |
 | 2 | `cuc` | `CucFormat` (1–7 coarse, 0–10 fine; octet 2 when needed), `CucValue`, ns conversions (truncate down, ceiling up), `OutOfRange` on overflow, mission bits preserved | TIME-010…014 |
 | 3 | `cds` | 16/24-bit day, ms of day, none/µs/ps sub-ms; strict range checks including the leap second; reserved sub-ms code | TIME-020…022 |
 | 4 | `ccs` | BCD validation, month/day and day-of-year variations, DOY high nibble, leap-year day ranges, 0–6 sub-second octets | TIME-030, TIME-034 |
@@ -139,7 +139,7 @@ M1 is complete when every item below is green on `main`:
 
 | Area | Criteria |
 |---|---|
-| Time codes | TIME-001…004, TIME-010…014, TIME-020…022, TIME-030…034 |
+| Time codes | TIME-001…006, TIME-010…014, TIME-020…022, TIME-030…034 |
 | Space Packet | SPP-001…013 |
 | Encapsulation Packet | EPP-001…012 |
 | Codec contract | API-010, API-011, API-013, API-014, API-020…023, API-030…033, API-040, API-041, GEN-013, GEN-014, GEN-043, GEN-052, GEN-053, GEN-060, GEN-061, GEN-081, RS-012 |

@@ -5,6 +5,9 @@ All notable changes to Aldis are recorded here. The format follows [Keep a Chang
 ## [Unreleased]
 
 ### Added
+- `aldis-time` binary codes (M1 WP-1, part 1): P-field parsing with undefined-extension handling (`PField`, `PFieldTail`, `TimeCodeId`); CUC (`CucFormat`, `CucValue` with left-aligned fine time and nanosecond conversions, `Cuc`); CDS (`CdsFormat`, `CdsValue`, `Cds`); CCS (`CcsFormat`, `CcsValue`, `CalendarDate`, `Ccs`); agency-defined codes (`AgencyFormat`, `Agency`); `decode_with_pfield`, `decode_implicit`, `TimeCode::encode`. TIME-001…TIME-006, TIME-010…TIME-014, TIME-020…TIME-022, TIME-030, TIME-034.
+- TIME-005, TIME-006, and `TimeAnomaly::UndefinedPFieldExtension` (bit 3); TIME-021, TIME-030, and TIME-033 clarified (OI-18).
+- Vectors `test-vectors/time/{pfield,cuc,cds,ccs}.json`; fuzz targets `time_pfield`, `time_cuc`, `time_cds`, `time_ccs`; `aldis-time` joins the coverage gate, the nightly mutants job, and the exerciser.
 - `aldis-epp` (M1 WP-3): CCSDS 133.1-B-3 Encapsulation Packet codec. Zero-copy `EncapsulationPacket::decode` (strict and lenient) and `peek_length` for all four header lengths; owned `EncapsulationHeader`; one-shot `encode` with the `HeaderSize::{Auto, Fixed}` policy, the two-phase `EncapsulationWriter`, and `idle`; managed parameters `EppConfig` with caller-supplied `EpiSet` and `ExtendedEpiSet` (no SANA registry, D4). EPP-001…EPP-012.
 - EPP-012 and the EPP-008/EPP-010 clarifications recorded in OI-17.
 - Vectors `test-vectors/epp/` (8 files, hand-derived from an independent model of 133.1-B-3); fuzz targets `epp_decode` and `epp_roundtrip`; `aldis-epp` joins the coverage gate, the nightly mutants job, and the exerciser.

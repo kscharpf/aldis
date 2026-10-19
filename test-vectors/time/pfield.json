@@ -1,0 +1,497 @@
+{
+  "kind": "codec",
+  "standard": "301.0-B-4 \u00a73.1, \u00a73.2.2, \u00a73.6",
+  "provenance": "hand-derived",
+  "provenance_note": "Hand-derived from 301.0-B-4 \u00a73.1, \u00a73.2.2, \u00a73.6 with the decisions in docs/standards/time-codes.md (OI-15, OI-18). Expected values computed by an independent Python model of the Blue Book text, written before the Rust codec. CCSDS bit 0 is the most significant bit. Decode outputs list the P-field, the format, and every value field; fields that do not apply are null. CUC fine time is given as its raw octets.",
+  "cases": [
+    {
+      "id": "time-pf-001",
+      "requirements": [
+        "TIME-001",
+        "TIME-003",
+        "API-010"
+      ],
+      "description": "CUC Level 1 one-octet P-field, 4 coarse + 2 fine octets",
+      "operation": "decode",
+      "input_hex": "1E000000018000",
+      "expect": {
+        "ok": true,
+        "code": "cuc",
+        "pfield_hex": "1E",
+        "format": {
+          "epoch": "level1",
+          "coarse_octets": 4,
+          "fine_octets": 2,
+          "mission_bits": 0,
+          "octet2": false,
+          "pfield_tail_hex": ""
+        },
+        "value": {
+          "coarse": 1,
+          "fine_hex": "8000"
+        },
+        "consumed": 7,
+        "anomalies": []
+      }
+    },
+    {
+      "id": "time-pf-002",
+      "requirements": [
+        "TIME-001",
+        "TIME-003",
+        "API-010"
+      ],
+      "description": "Trailing octets after the T-field are not consumed (TIME-003)",
+      "operation": "decode",
+      "input_hex": "1E000000018000EEEE",
+      "expect": {
+        "ok": true,
+        "code": "cuc",
+        "pfield_hex": "1E",
+        "format": {
+          "epoch": "level1",
+          "coarse_octets": 4,
+          "fine_octets": 2,
+          "mission_bits": 0,
+          "octet2": false,
+          "pfield_tail_hex": ""
+        },
+        "value": {
+          "coarse": 1,
+          "fine_hex": "8000"
+        },
+        "consumed": 7,
+        "anomalies": []
+      }
+    },
+    {
+      "id": "time-pf-003",
+      "requirements": [
+        "TIME-001",
+        "TIME-003",
+        "API-010",
+        "TIME-010"
+      ],
+      "description": "Two-octet CUC P-field: 7 coarse + 10 fine octets, mission bits 10",
+      "operation": "decode",
+      "input_hex": "9F7E0102030405060708090A0B0C0D0E0F1011",
+      "expect": {
+        "ok": true,
+        "code": "cuc",
+        "pfield_hex": "9F7E",
+        "format": {
+          "epoch": "level1",
+          "coarse_octets": 7,
+          "fine_octets": 10,
+          "mission_bits": 2,
+          "octet2": true,
+          "pfield_tail_hex": ""
+        },
+        "value": {
+          "coarse": 283686952306183,
+          "fine_hex": "08090A0B0C0D0E0F1011"
+        },
+        "consumed": 19,
+        "anomalies": []
+      }
+    },
+    {
+      "id": "time-pf-004",
+      "requirements": [
+        "TIME-005"
+      ],
+      "description": "CUC octet 2 with its extension flag set: octet 3 is undefined (strict)",
+      "operation": "decode",
+      "input_hex": "90800142",
+      "expect": {
+        "ok": false,
+        "error": "ReservedValue"
+      }
+    },
+    {
+      "id": "time-pf-005",
+      "requirements": [
+        "TIME-005",
+        "API-032"
+      ],
+      "description": "Lenient: undefined CUC octet 3 kept and flagged",
+      "operation": "decode",
+      "mode": "lenient",
+      "input_hex": "90800142",
+      "expect": {
+        "ok": true,
+        "code": "cuc",
+        "pfield_hex": "908001",
+        "format": {
+          "epoch": "level1",
+          "coarse_octets": 1,
+          "fine_octets": 0,
+          "mission_bits": 0,
+          "octet2": true,
+          "pfield_tail_hex": "01"
+        },
+        "value": {
+          "coarse": 66,
+          "fine_hex": ""
+        },
+        "consumed": 4,
+        "anomalies": [
+          "UndefinedPFieldExtension"
+        ]
+      }
+    },
+    {
+      "id": "time-pf-006",
+      "requirements": [
+        "TIME-005"
+      ],
+      "description": "CDS with seven undefined extension octets (8-octet P-field), lenient",
+      "operation": "decode",
+      "mode": "lenient",
+      "input_hex": "C080808080808000000100000002",
+      "expect": {
+        "ok": true,
+        "code": "cds",
+        "pfield_hex": "C080808080808000",
+        "format": {
+          "epoch": "ccsds",
+          "day_bits": 16,
+          "subms": "none",
+          "pfield_tail_hex": "80808080808000"
+        },
+        "value": {
+          "day": 1,
+          "ms_of_day": 2,
+          "subms": 0
+        },
+        "consumed": 14,
+        "anomalies": [
+          "UndefinedPFieldExtension"
+        ]
+      }
+    },
+    {
+      "id": "time-pf-007",
+      "requirements": [
+        "TIME-005"
+      ],
+      "description": "P-field chain longer than 8 octets is Malformed",
+      "operation": "decode",
+      "mode": "lenient",
+      "input_hex": "C08080808080808000",
+      "expect": {
+        "ok": false,
+        "error": "Malformed"
+      }
+    },
+    {
+      "id": "time-pf-008",
+      "requirements": [
+        "TIME-001"
+      ],
+      "description": "Extension flag set on the last available octet: Incomplete",
+      "operation": "decode",
+      "input_hex": "C0",
+      "expect": {
+        "ok": false,
+        "error": "Incomplete"
+      }
+    },
+    {
+      "id": "time-pf-009",
+      "requirements": [
+        "TIME-001"
+      ],
+      "description": "Empty input: Incomplete",
+      "operation": "decode",
+      "input_hex": "",
+      "expect": {
+        "ok": false,
+        "error": "Incomplete"
+      }
+    },
+    {
+      "id": "time-pf-010",
+      "requirements": [
+        "TIME-002"
+      ],
+      "description": "Reserved time code ID 000: strict ReservedValue",
+      "operation": "decode",
+      "input_hex": "00AA",
+      "expect": {
+        "ok": false,
+        "error": "ReservedValue"
+      }
+    },
+    {
+      "id": "time-pf-011",
+      "requirements": [
+        "TIME-002"
+      ],
+      "description": "Reserved time code ID 011: strict ReservedValue",
+      "operation": "decode",
+      "input_hex": "30AA",
+      "expect": {
+        "ok": false,
+        "error": "ReservedValue"
+      }
+    },
+    {
+      "id": "time-pf-012",
+      "requirements": [
+        "TIME-002"
+      ],
+      "description": "Reserved time code ID 111: strict ReservedValue",
+      "operation": "decode",
+      "input_hex": "70AA",
+      "expect": {
+        "ok": false,
+        "error": "ReservedValue"
+      }
+    },
+    {
+      "id": "time-pf-013",
+      "requirements": [
+        "TIME-002",
+        "TIME-003",
+        "API-032"
+      ],
+      "description": "Lenient: reserved ID 011 returns the P-field only",
+      "operation": "decode",
+      "mode": "lenient",
+      "input_hex": "3FAABB",
+      "expect": {
+        "ok": true,
+        "code": "unknown",
+        "pfield_hex": "3F",
+        "format": null,
+        "value": null,
+        "consumed": 1,
+        "anomalies": [
+          "ReservedTimeCodeId"
+        ]
+      }
+    },
+    {
+      "id": "time-pf-014",
+      "requirements": [
+        "TIME-002",
+        "TIME-003"
+      ],
+      "description": "Lenient: reserved ID 111 with a two-octet P-field consumes both octets",
+      "operation": "decode",
+      "mode": "lenient",
+      "input_hex": "F512AA",
+      "expect": {
+        "ok": true,
+        "code": "unknown",
+        "pfield_hex": "F512",
+        "format": null,
+        "value": null,
+        "consumed": 2,
+        "anomalies": [
+          "ReservedTimeCodeId"
+        ]
+      }
+    },
+    {
+      "id": "time-pf-015",
+      "requirements": [
+        "TIME-006"
+      ],
+      "description": "Agency-defined code, T-field length 4",
+      "operation": "decode",
+      "input_hex": "630102030405",
+      "expect": {
+        "ok": true,
+        "code": "agency",
+        "pfield_hex": "63",
+        "format": {
+          "t_len": 4,
+          "pfield_tail_hex": ""
+        },
+        "value": {
+          "tfield_hex": "01020304"
+        },
+        "consumed": 5,
+        "anomalies": []
+      }
+    },
+    {
+      "id": "time-pf-016",
+      "requirements": [
+        "TIME-006"
+      ],
+      "description": "Agency-defined code, T-field length 16",
+      "operation": "decode",
+      "input_hex": "6F000102030405060708090A0B0C0D0E0F",
+      "expect": {
+        "ok": true,
+        "code": "agency",
+        "pfield_hex": "6F",
+        "format": {
+          "t_len": 16,
+          "pfield_tail_hex": ""
+        },
+        "value": {
+          "tfield_hex": "000102030405060708090A0B0C0D0E0F"
+        },
+        "consumed": 17,
+        "anomalies": []
+      }
+    },
+    {
+      "id": "time-pf-017",
+      "requirements": [
+        "TIME-006"
+      ],
+      "description": "Agency-defined code, T-field length 1",
+      "operation": "decode",
+      "input_hex": "6099",
+      "expect": {
+        "ok": true,
+        "code": "agency",
+        "pfield_hex": "60",
+        "format": {
+          "t_len": 1,
+          "pfield_tail_hex": ""
+        },
+        "value": {
+          "tfield_hex": "99"
+        },
+        "consumed": 2,
+        "anomalies": []
+      }
+    },
+    {
+      "id": "time-pf-018",
+      "requirements": [
+        "TIME-005",
+        "TIME-006"
+      ],
+      "description": "Agency-defined code with an extension octet: strict ReservedValue",
+      "operation": "decode",
+      "input_hex": "E00099",
+      "expect": {
+        "ok": false,
+        "error": "ReservedValue"
+      }
+    },
+    {
+      "id": "time-pf-019",
+      "requirements": [
+        "TIME-005",
+        "TIME-006"
+      ],
+      "description": "Agency-defined code with an extension octet: lenient keeps it",
+      "operation": "decode",
+      "mode": "lenient",
+      "input_hex": "E00099",
+      "expect": {
+        "ok": true,
+        "code": "agency",
+        "pfield_hex": "E000",
+        "format": {
+          "t_len": 1,
+          "pfield_tail_hex": "00"
+        },
+        "value": {
+          "tfield_hex": "99"
+        },
+        "consumed": 3,
+        "anomalies": [
+          "UndefinedPFieldExtension"
+        ]
+      }
+    },
+    {
+      "id": "time-pf-020",
+      "requirements": [
+        "TIME-003"
+      ],
+      "description": "T-field shorter than the P-field announces: Incomplete",
+      "operation": "decode",
+      "input_hex": "630102",
+      "expect": {
+        "ok": false,
+        "error": "Incomplete"
+      }
+    },
+    {
+      "id": "time-pf-021-enc",
+      "requirements": [
+        "TIME-006",
+        "API-020"
+      ],
+      "description": "Agency-defined code (encode)",
+      "operation": "encode",
+      "params": {
+        "format": {
+          "code": "agency",
+          "t_len": 3,
+          "pfield_tail_hex": ""
+        },
+        "value": {
+          "tfield_hex": "0A0B0C"
+        },
+        "include_pfield": true
+      },
+      "expect": {
+        "ok": true,
+        "output_hex": "620A0B0C"
+      }
+    },
+    {
+      "id": "time-pf-021-dec",
+      "requirements": [
+        "TIME-006",
+        "API-020"
+      ],
+      "description": "Agency-defined code (decode)",
+      "operation": "decode",
+      "input_hex": "620A0B0C",
+      "expect": {
+        "ok": true,
+        "code": "agency",
+        "pfield_hex": "62",
+        "format": {
+          "t_len": 3,
+          "pfield_tail_hex": ""
+        },
+        "value": {
+          "tfield_hex": "0A0B0C"
+        },
+        "consumed": 4,
+        "anomalies": []
+      }
+    },
+    {
+      "id": "time-pf-022",
+      "requirements": [
+        "TIME-005",
+        "API-020"
+      ],
+      "description": "Kept extension octets are written back",
+      "operation": "encode",
+      "params": {
+        "format": {
+          "code": "cds",
+          "epoch": "ccsds",
+          "day_bits": 16,
+          "subms": "none",
+          "pfield_tail_hex": "8000"
+        },
+        "value": {
+          "day": 1,
+          "ms_of_day": 2,
+          "subms": 0
+        },
+        "include_pfield": true
+      },
+      "expect": {
+        "ok": true,
+        "output_hex": "C08000000100000002"
+      }
+    }
+  ]
+}

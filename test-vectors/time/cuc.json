@@ -1,0 +1,865 @@
+{
+  "kind": "codec",
+  "standard": "301.0-B-4 \u00a73.2",
+  "provenance": "hand-derived",
+  "provenance_note": "Hand-derived from 301.0-B-4 \u00a73.2 with the decisions in docs/standards/time-codes.md (OI-15, OI-18). Expected values computed by an independent Python model of the Blue Book text, written before the Rust codec. CCSDS bit 0 is the most significant bit. Decode outputs list the P-field, the format, and every value field; fields that do not apply are null. CUC fine time is given as its raw octets.",
+  "cases": [
+    {
+      "id": "time-cuc-001",
+      "requirements": [
+        "TIME-010",
+        "TIME-001",
+        "TIME-003"
+      ],
+      "description": "1 coarse octet, no fine octets",
+      "operation": "decode",
+      "input_hex": "107F",
+      "expect": {
+        "ok": true,
+        "code": "cuc",
+        "pfield_hex": "10",
+        "format": {
+          "epoch": "level1",
+          "coarse_octets": 1,
+          "fine_octets": 0,
+          "mission_bits": 0,
+          "octet2": false,
+          "pfield_tail_hex": ""
+        },
+        "value": {
+          "coarse": 127,
+          "fine_hex": ""
+        },
+        "consumed": 2,
+        "anomalies": []
+      }
+    },
+    {
+      "id": "time-cuc-002",
+      "requirements": [
+        "TIME-010",
+        "TIME-001",
+        "TIME-003"
+      ],
+      "description": "Level 2 (agency epoch), 4 coarse + 3 fine",
+      "operation": "decode",
+      "input_hex": "2F01020304050607",
+      "expect": {
+        "ok": true,
+        "code": "cuc",
+        "pfield_hex": "2F",
+        "format": {
+          "epoch": "agency",
+          "coarse_octets": 4,
+          "fine_octets": 3,
+          "mission_bits": 0,
+          "octet2": false,
+          "pfield_tail_hex": ""
+        },
+        "value": {
+          "coarse": 16909060,
+          "fine_hex": "050607"
+        },
+        "consumed": 8,
+        "anomalies": []
+      }
+    },
+    {
+      "id": "time-cuc-003",
+      "requirements": [
+        "TIME-010",
+        "TIME-001",
+        "TIME-003"
+      ],
+      "description": "5 coarse octets need P-field octet 2",
+      "operation": "decode",
+      "input_hex": "9C200102030405",
+      "expect": {
+        "ok": true,
+        "code": "cuc",
+        "pfield_hex": "9C20",
+        "format": {
+          "epoch": "level1",
+          "coarse_octets": 5,
+          "fine_octets": 0,
+          "mission_bits": 0,
+          "octet2": true,
+          "pfield_tail_hex": ""
+        },
+        "value": {
+          "coarse": 4328719365,
+          "fine_hex": ""
+        },
+        "consumed": 7,
+        "anomalies": []
+      }
+    },
+    {
+      "id": "time-cuc-004",
+      "requirements": [
+        "TIME-010",
+        "TIME-001",
+        "TIME-003",
+        "TIME-013"
+      ],
+      "description": "Octet 2 with no extra octets but mission bits 11",
+      "operation": "decode",
+      "input_hex": "91030908",
+      "expect": {
+        "ok": true,
+        "code": "cuc",
+        "pfield_hex": "9103",
+        "format": {
+          "epoch": "level1",
+          "coarse_octets": 1,
+          "fine_octets": 1,
+          "mission_bits": 3,
+          "octet2": true,
+          "pfield_tail_hex": ""
+        },
+        "value": {
+          "coarse": 9,
+          "fine_hex": "08"
+        },
+        "consumed": 4,
+        "anomalies": []
+      }
+    },
+    {
+      "id": "time-cuc-005",
+      "requirements": [
+        "TIME-010",
+        "TIME-001",
+        "TIME-003"
+      ],
+      "description": "Octet 2 present with all-zero additions",
+      "operation": "decode",
+      "input_hex": "91000908",
+      "expect": {
+        "ok": true,
+        "code": "cuc",
+        "pfield_hex": "9100",
+        "format": {
+          "epoch": "level1",
+          "coarse_octets": 1,
+          "fine_octets": 1,
+          "mission_bits": 0,
+          "octet2": true,
+          "pfield_tail_hex": ""
+        },
+        "value": {
+          "coarse": 9,
+          "fine_hex": "08"
+        },
+        "consumed": 4,
+        "anomalies": []
+      }
+    },
+    {
+      "id": "time-cuc-006-enc",
+      "requirements": [
+        "TIME-010",
+        "TIME-001",
+        "TIME-003",
+        "API-020"
+      ],
+      "description": "4 coarse + 2 fine, one-octet P-field (encode)",
+      "operation": "encode",
+      "params": {
+        "format": {
+          "code": "cuc",
+          "epoch": "level1",
+          "coarse_octets": 4,
+          "fine_octets": 2,
+          "mission_bits": 0,
+          "octet2": false,
+          "pfield_tail_hex": ""
+        },
+        "value": {
+          "coarse": 16909060,
+          "fine_hex": "8000"
+        },
+        "include_pfield": true
+      },
+      "expect": {
+        "ok": true,
+        "output_hex": "1E010203048000"
+      }
+    },
+    {
+      "id": "time-cuc-006-dec",
+      "requirements": [
+        "TIME-010",
+        "TIME-001",
+        "TIME-003",
+        "API-020"
+      ],
+      "description": "4 coarse + 2 fine, one-octet P-field (decode)",
+      "operation": "decode",
+      "input_hex": "1E010203048000",
+      "expect": {
+        "ok": true,
+        "code": "cuc",
+        "pfield_hex": "1E",
+        "format": {
+          "epoch": "level1",
+          "coarse_octets": 4,
+          "fine_octets": 2,
+          "mission_bits": 0,
+          "octet2": false,
+          "pfield_tail_hex": ""
+        },
+        "value": {
+          "coarse": 16909060,
+          "fine_hex": "8000"
+        },
+        "consumed": 7,
+        "anomalies": []
+      }
+    },
+    {
+      "id": "time-cuc-007-enc",
+      "requirements": [
+        "TIME-010",
+        "TIME-001",
+        "TIME-003",
+        "API-020"
+      ],
+      "description": "7 coarse + 10 fine (encode)",
+      "operation": "encode",
+      "params": {
+        "format": {
+          "code": "cuc",
+          "epoch": "level1",
+          "coarse_octets": 7,
+          "fine_octets": 10,
+          "mission_bits": 0,
+          "octet2": false,
+          "pfield_tail_hex": ""
+        },
+        "value": {
+          "coarse": 72057594037927935,
+          "fine_hex": "FFFFFFFFFFFFFFFFFFFF"
+        },
+        "include_pfield": true
+      },
+      "expect": {
+        "ok": true,
+        "output_hex": "9F7CFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF"
+      }
+    },
+    {
+      "id": "time-cuc-007-dec",
+      "requirements": [
+        "TIME-010",
+        "TIME-001",
+        "TIME-003",
+        "API-020"
+      ],
+      "description": "7 coarse + 10 fine (decode)",
+      "operation": "decode",
+      "input_hex": "9F7CFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF",
+      "expect": {
+        "ok": true,
+        "code": "cuc",
+        "pfield_hex": "9F7C",
+        "format": {
+          "epoch": "level1",
+          "coarse_octets": 7,
+          "fine_octets": 10,
+          "mission_bits": 0,
+          "octet2": true,
+          "pfield_tail_hex": ""
+        },
+        "value": {
+          "coarse": 72057594037927935,
+          "fine_hex": "FFFFFFFFFFFFFFFFFFFF"
+        },
+        "consumed": 19,
+        "anomalies": []
+      }
+    },
+    {
+      "id": "time-cuc-008-enc",
+      "requirements": [
+        "TIME-010",
+        "TIME-001",
+        "TIME-003",
+        "TIME-013",
+        "API-020"
+      ],
+      "description": "Mission bits force octet 2 (encode)",
+      "operation": "encode",
+      "params": {
+        "format": {
+          "code": "cuc",
+          "epoch": "level1",
+          "coarse_octets": 2,
+          "fine_octets": 0,
+          "mission_bits": 1,
+          "octet2": false,
+          "pfield_tail_hex": ""
+        },
+        "value": {
+          "coarse": 513,
+          "fine_hex": ""
+        },
+        "include_pfield": true
+      },
+      "expect": {
+        "ok": true,
+        "output_hex": "94010201"
+      }
+    },
+    {
+      "id": "time-cuc-008-dec",
+      "requirements": [
+        "TIME-010",
+        "TIME-001",
+        "TIME-003",
+        "TIME-013",
+        "API-020"
+      ],
+      "description": "Mission bits force octet 2 (decode)",
+      "operation": "decode",
+      "input_hex": "94010201",
+      "expect": {
+        "ok": true,
+        "code": "cuc",
+        "pfield_hex": "9401",
+        "format": {
+          "epoch": "level1",
+          "coarse_octets": 2,
+          "fine_octets": 0,
+          "mission_bits": 1,
+          "octet2": true,
+          "pfield_tail_hex": ""
+        },
+        "value": {
+          "coarse": 513,
+          "fine_hex": ""
+        },
+        "consumed": 4,
+        "anomalies": []
+      }
+    },
+    {
+      "id": "time-cuc-009-enc",
+      "requirements": [
+        "TIME-010",
+        "TIME-001",
+        "TIME-003",
+        "API-020"
+      ],
+      "description": "Requested octet 2 with zero additions is kept (encode)",
+      "operation": "encode",
+      "params": {
+        "format": {
+          "code": "cuc",
+          "epoch": "level1",
+          "coarse_octets": 2,
+          "fine_octets": 1,
+          "mission_bits": 0,
+          "octet2": true,
+          "pfield_tail_hex": ""
+        },
+        "value": {
+          "coarse": 1,
+          "fine_hex": "01"
+        },
+        "include_pfield": true
+      },
+      "expect": {
+        "ok": true,
+        "output_hex": "9500000101"
+      }
+    },
+    {
+      "id": "time-cuc-009-dec",
+      "requirements": [
+        "TIME-010",
+        "TIME-001",
+        "TIME-003",
+        "API-020"
+      ],
+      "description": "Requested octet 2 with zero additions is kept (decode)",
+      "operation": "decode",
+      "input_hex": "9500000101",
+      "expect": {
+        "ok": true,
+        "code": "cuc",
+        "pfield_hex": "9500",
+        "format": {
+          "epoch": "level1",
+          "coarse_octets": 2,
+          "fine_octets": 1,
+          "mission_bits": 0,
+          "octet2": true,
+          "pfield_tail_hex": ""
+        },
+        "value": {
+          "coarse": 1,
+          "fine_hex": "01"
+        },
+        "consumed": 5,
+        "anomalies": []
+      }
+    },
+    {
+      "id": "time-cuc-010-enc",
+      "requirements": [
+        "TIME-010",
+        "TIME-001",
+        "TIME-003",
+        "API-020"
+      ],
+      "description": "Level 2, 3 coarse + 4 fine (octet 2 for the 4th fine octet) (encode)",
+      "operation": "encode",
+      "params": {
+        "format": {
+          "code": "cuc",
+          "epoch": "agency",
+          "coarse_octets": 3,
+          "fine_octets": 4,
+          "mission_bits": 0,
+          "octet2": false,
+          "pfield_tail_hex": ""
+        },
+        "value": {
+          "coarse": 11259375,
+          "fine_hex": "12345678"
+        },
+        "include_pfield": true
+      },
+      "expect": {
+        "ok": true,
+        "output_hex": "AB04ABCDEF12345678"
+      }
+    },
+    {
+      "id": "time-cuc-010-dec",
+      "requirements": [
+        "TIME-010",
+        "TIME-001",
+        "TIME-003",
+        "API-020"
+      ],
+      "description": "Level 2, 3 coarse + 4 fine (octet 2 for the 4th fine octet) (decode)",
+      "operation": "decode",
+      "input_hex": "AB04ABCDEF12345678",
+      "expect": {
+        "ok": true,
+        "code": "cuc",
+        "pfield_hex": "AB04",
+        "format": {
+          "epoch": "agency",
+          "coarse_octets": 3,
+          "fine_octets": 4,
+          "mission_bits": 0,
+          "octet2": true,
+          "pfield_tail_hex": ""
+        },
+        "value": {
+          "coarse": 11259375,
+          "fine_hex": "12345678"
+        },
+        "consumed": 9,
+        "anomalies": []
+      }
+    },
+    {
+      "id": "time-cuc-011",
+      "requirements": [
+        "TIME-012"
+      ],
+      "description": "Coarse time 256 does not fit 1 octet: OutOfRange",
+      "operation": "encode",
+      "params": {
+        "format": {
+          "code": "cuc",
+          "epoch": "level1",
+          "coarse_octets": 1,
+          "fine_octets": 0,
+          "mission_bits": 0,
+          "octet2": false,
+          "pfield_tail_hex": ""
+        },
+        "value": {
+          "coarse": 256,
+          "fine_hex": ""
+        },
+        "include_pfield": true
+      },
+      "expect": {
+        "ok": false,
+        "error": "OutOfRange"
+      }
+    },
+    {
+      "id": "time-cuc-012",
+      "requirements": [
+        "TIME-010",
+        "API-020"
+      ],
+      "description": "Implicit P-field: T-field only",
+      "operation": "encode",
+      "params": {
+        "format": {
+          "code": "cuc",
+          "epoch": "level1",
+          "coarse_octets": 2,
+          "fine_octets": 1,
+          "mission_bits": 0,
+          "octet2": false,
+          "pfield_tail_hex": ""
+        },
+        "value": {
+          "coarse": 258,
+          "fine_hex": "03"
+        },
+        "include_pfield": false
+      },
+      "expect": {
+        "ok": true,
+        "output_hex": "010203"
+      }
+    },
+    {
+      "id": "time-cuc-013",
+      "requirements": [
+        "TIME-010",
+        "TIME-001",
+        "TIME-003"
+      ],
+      "description": "Implicit format 2 coarse + 1 fine",
+      "operation": "decode_implicit",
+      "params": {
+        "format": {
+          "code": "cuc",
+          "epoch": "level1",
+          "coarse_octets": 2,
+          "fine_octets": 1,
+          "mission_bits": 0,
+          "octet2": false
+        }
+      },
+      "input_hex": "01020304",
+      "expect": {
+        "ok": true,
+        "code": "cuc",
+        "pfield_hex": "",
+        "format": {
+          "epoch": "level1",
+          "coarse_octets": 2,
+          "fine_octets": 1,
+          "mission_bits": 0,
+          "octet2": false,
+          "pfield_tail_hex": ""
+        },
+        "value": {
+          "coarse": 258,
+          "fine_hex": "03"
+        },
+        "consumed": 3,
+        "anomalies": []
+      }
+    },
+    {
+      "id": "time-cuc-014",
+      "requirements": [
+        "TIME-010",
+        "TIME-001",
+        "TIME-003"
+      ],
+      "description": "Implicit format, input too short: Incomplete",
+      "operation": "decode_implicit",
+      "params": {
+        "format": {
+          "code": "cuc",
+          "epoch": "level1",
+          "coarse_octets": 2,
+          "fine_octets": 1,
+          "mission_bits": 0,
+          "octet2": false
+        }
+      },
+      "input_hex": "0102",
+      "expect": {
+        "ok": false,
+        "error": "Incomplete"
+      }
+    },
+    {
+      "id": "time-cuc-015",
+      "requirements": [
+        "TIME-011"
+      ],
+      "description": "Fine 0x80 of 1 octet is 0.5 s",
+      "operation": "cuc_to_ns",
+      "params": {
+        "coarse": 7,
+        "fine_hex": "80"
+      },
+      "expect": {
+        "ok": true,
+        "seconds": 7,
+        "nanoseconds": 500000000
+      }
+    },
+    {
+      "id": "time-cuc-016",
+      "requirements": [
+        "TIME-011"
+      ],
+      "description": "3 fine octets all ones truncate to 999 999 940 ns",
+      "operation": "cuc_to_ns",
+      "params": {
+        "coarse": 0,
+        "fine_hex": "FFFFFF"
+      },
+      "expect": {
+        "ok": true,
+        "seconds": 0,
+        "nanoseconds": 999999940
+      }
+    },
+    {
+      "id": "time-cuc-017",
+      "requirements": [
+        "TIME-011"
+      ],
+      "description": "10 fine octets all ones truncate to 999 999 999 ns",
+      "operation": "cuc_to_ns",
+      "params": {
+        "coarse": 1,
+        "fine_hex": "FFFFFFFFFFFFFFFFFFFF"
+      },
+      "expect": {
+        "ok": true,
+        "seconds": 1,
+        "nanoseconds": 999999999
+      }
+    },
+    {
+      "id": "time-cuc-018",
+      "requirements": [
+        "TIME-011"
+      ],
+      "description": "No fine octets",
+      "operation": "cuc_to_ns",
+      "params": {
+        "coarse": 42,
+        "fine_hex": ""
+      },
+      "expect": {
+        "ok": true,
+        "seconds": 42,
+        "nanoseconds": 0
+      }
+    },
+    {
+      "id": "time-cuc-019",
+      "requirements": [
+        "TIME-011"
+      ],
+      "description": "4 fine octets, smallest step truncates to 0 ns",
+      "operation": "cuc_to_ns",
+      "params": {
+        "coarse": 0,
+        "fine_hex": "00000001"
+      },
+      "expect": {
+        "ok": true,
+        "seconds": 0,
+        "nanoseconds": 0
+      }
+    },
+    {
+      "id": "time-cuc-020",
+      "requirements": [
+        "TIME-011",
+        "TIME-012"
+      ],
+      "description": "1 ns rounds up to the smallest 1-octet fraction",
+      "operation": "cuc_from_ns",
+      "params": {
+        "seconds": 0,
+        "nanoseconds": 1,
+        "coarse_octets": 1,
+        "fine_octets": 1
+      },
+      "expect": {
+        "ok": true,
+        "coarse": 0,
+        "fine_hex": "01"
+      }
+    },
+    {
+      "id": "time-cuc-021",
+      "requirements": [
+        "TIME-011",
+        "TIME-012"
+      ],
+      "description": "0.5 s exactly in 1 fine octet",
+      "operation": "cuc_from_ns",
+      "params": {
+        "seconds": 5,
+        "nanoseconds": 500000000,
+        "coarse_octets": 1,
+        "fine_octets": 1
+      },
+      "expect": {
+        "ok": true,
+        "coarse": 5,
+        "fine_hex": "80"
+      }
+    },
+    {
+      "id": "time-cuc-022",
+      "requirements": [
+        "TIME-011",
+        "TIME-012"
+      ],
+      "description": "999 999 999 ns rounds up into the next second",
+      "operation": "cuc_from_ns",
+      "params": {
+        "seconds": 5,
+        "nanoseconds": 999999999,
+        "coarse_octets": 1,
+        "fine_octets": 1
+      },
+      "expect": {
+        "ok": true,
+        "coarse": 6,
+        "fine_hex": "00"
+      }
+    },
+    {
+      "id": "time-cuc-023",
+      "requirements": [
+        "TIME-011",
+        "TIME-012"
+      ],
+      "description": "Carry out of the largest 1-octet coarse time: OutOfRange",
+      "operation": "cuc_from_ns",
+      "params": {
+        "seconds": 255,
+        "nanoseconds": 999999999,
+        "coarse_octets": 1,
+        "fine_octets": 1
+      },
+      "expect": {
+        "ok": false,
+        "error": "OutOfRange"
+      }
+    },
+    {
+      "id": "time-cuc-024",
+      "requirements": [
+        "TIME-011",
+        "TIME-012"
+      ],
+      "description": "1 000 000 000 ns is not a fraction: OutOfRange",
+      "operation": "cuc_from_ns",
+      "params": {
+        "seconds": 0,
+        "nanoseconds": 1000000000,
+        "coarse_octets": 4,
+        "fine_octets": 3
+      },
+      "expect": {
+        "ok": false,
+        "error": "OutOfRange"
+      }
+    },
+    {
+      "id": "time-cuc-025",
+      "requirements": [
+        "TIME-011",
+        "TIME-012"
+      ],
+      "description": "Round trip of time-cuc-016 is exact for 3 fine octets",
+      "operation": "cuc_from_ns",
+      "params": {
+        "seconds": 0,
+        "nanoseconds": 999999940,
+        "coarse_octets": 4,
+        "fine_octets": 3
+      },
+      "expect": {
+        "ok": true,
+        "coarse": 0,
+        "fine_hex": "FFFFFF"
+      }
+    },
+    {
+      "id": "time-cuc-026",
+      "requirements": [
+        "TIME-011",
+        "TIME-012"
+      ],
+      "description": "10 fine octets, 123 456 789 ns",
+      "operation": "cuc_from_ns",
+      "params": {
+        "seconds": 3,
+        "nanoseconds": 123456789,
+        "coarse_octets": 4,
+        "fine_octets": 10
+      },
+      "expect": {
+        "ok": true,
+        "coarse": 3,
+        "fine_hex": "1F9ADD3739635F312421"
+      }
+    },
+    {
+      "id": "time-cuc-027",
+      "requirements": [
+        "TIME-011",
+        "TIME-012"
+      ],
+      "description": "Coarse time too large for the format: OutOfRange",
+      "operation": "cuc_from_ns",
+      "params": {
+        "seconds": 65536,
+        "nanoseconds": 0,
+        "coarse_octets": 2,
+        "fine_octets": 0
+      },
+      "expect": {
+        "ok": false,
+        "error": "OutOfRange"
+      }
+    },
+    {
+      "id": "time-cuc-028",
+      "requirements": [
+        "TIME-010",
+        "TIME-001",
+        "TIME-003"
+      ],
+      "description": "Non-canonical split: 0 fine octets in octet 1 plus 1 in octet 2 (same format as 1 + 0)",
+      "operation": "decode",
+      "input_hex": "90041234",
+      "expect": {
+        "ok": true,
+        "code": "cuc",
+        "pfield_hex": "9004",
+        "format": {
+          "epoch": "level1",
+          "coarse_octets": 1,
+          "fine_octets": 1,
+          "mission_bits": 0,
+          "octet2": true,
+          "pfield_tail_hex": ""
+        },
+        "value": {
+          "coarse": 18,
+          "fine_hex": "34"
+        },
+        "consumed": 4,
+        "anomalies": []
+      }
+    }
+  ]
+}

@@ -1,0 +1,786 @@
+{
+  "kind": "codec",
+  "standard": "301.0-B-4 \u00a73.4, Annex A",
+  "provenance": "hand-derived",
+  "provenance_note": "Hand-derived from 301.0-B-4 \u00a73.4, Annex A with the decisions in docs/standards/time-codes.md (OI-15, OI-18). Expected values computed by an independent Python model of the Blue Book text, written before the Rust codec. CCSDS bit 0 is the most significant bit. Decode outputs list the P-field, the format, and every value field; fields that do not apply are null. CUC fine time is given as its raw octets.",
+  "cases": [
+    {
+      "id": "time-ccs-001",
+      "requirements": [
+        "TIME-030",
+        "TIME-001",
+        "TIME-003"
+      ],
+      "description": "1988-01-18 17:20:43, month/day",
+      "operation": "decode",
+      "input_hex": "5019880118172043",
+      "expect": {
+        "ok": true,
+        "code": "ccs",
+        "pfield_hex": "50",
+        "format": {
+          "variation": "month_day",
+          "subsecond_octets": 0,
+          "pfield_tail_hex": ""
+        },
+        "value": {
+          "year": 1988,
+          "month": 1,
+          "day": 18,
+          "day_of_year": null,
+          "hour": 17,
+          "minute": 20,
+          "second": 43,
+          "subsecond": 0
+        },
+        "consumed": 8,
+        "anomalies": []
+      }
+    },
+    {
+      "id": "time-ccs-002",
+      "requirements": [
+        "TIME-030",
+        "TIME-001",
+        "TIME-003"
+      ],
+      "description": "1988 day 018 17:20:43.123456, day-of-year, 3 sub-second octets",
+      "operation": "decode",
+      "input_hex": "5B19880018172043123456",
+      "expect": {
+        "ok": true,
+        "code": "ccs",
+        "pfield_hex": "5B",
+        "format": {
+          "variation": "day_of_year",
+          "subsecond_octets": 3,
+          "pfield_tail_hex": ""
+        },
+        "value": {
+          "year": 1988,
+          "month": null,
+          "day": null,
+          "day_of_year": 18,
+          "hour": 17,
+          "minute": 20,
+          "second": 43,
+          "subsecond": 123456
+        },
+        "consumed": 11,
+        "anomalies": []
+      }
+    },
+    {
+      "id": "time-ccs-003",
+      "requirements": [
+        "TIME-030",
+        "TIME-001",
+        "TIME-003"
+      ],
+      "description": "6 sub-second octets (10^-12 s)",
+      "operation": "decode",
+      "input_hex": "5620241231235959999999999999",
+      "expect": {
+        "ok": true,
+        "code": "ccs",
+        "pfield_hex": "56",
+        "format": {
+          "variation": "month_day",
+          "subsecond_octets": 6,
+          "pfield_tail_hex": ""
+        },
+        "value": {
+          "year": 2024,
+          "month": 12,
+          "day": 31,
+          "day_of_year": null,
+          "hour": 23,
+          "minute": 59,
+          "second": 59,
+          "subsecond": 999999999999
+        },
+        "consumed": 14,
+        "anomalies": []
+      }
+    },
+    {
+      "id": "time-ccs-004",
+      "requirements": [
+        "TIME-030",
+        "TIME-001",
+        "TIME-003"
+      ],
+      "description": "Leap year: 2024-02-29",
+      "operation": "decode",
+      "input_hex": "5020240229000000",
+      "expect": {
+        "ok": true,
+        "code": "ccs",
+        "pfield_hex": "50",
+        "format": {
+          "variation": "month_day",
+          "subsecond_octets": 0,
+          "pfield_tail_hex": ""
+        },
+        "value": {
+          "year": 2024,
+          "month": 2,
+          "day": 29,
+          "day_of_year": null,
+          "hour": 0,
+          "minute": 0,
+          "second": 0,
+          "subsecond": 0
+        },
+        "consumed": 8,
+        "anomalies": []
+      }
+    },
+    {
+      "id": "time-ccs-005",
+      "requirements": [
+        "TIME-030"
+      ],
+      "description": "Not a leap year: 2023-02-29 is OutOfRange",
+      "operation": "decode",
+      "input_hex": "5020230229000000",
+      "expect": {
+        "ok": false,
+        "error": "OutOfRange"
+      }
+    },
+    {
+      "id": "time-ccs-006",
+      "requirements": [
+        "TIME-030"
+      ],
+      "description": "Century rule: 1900-02-29 is OutOfRange",
+      "operation": "decode",
+      "input_hex": "5019000229000000",
+      "expect": {
+        "ok": false,
+        "error": "OutOfRange"
+      }
+    },
+    {
+      "id": "time-ccs-007",
+      "requirements": [
+        "TIME-030",
+        "TIME-001",
+        "TIME-003"
+      ],
+      "description": "400-year rule: 2000-02-29 is valid",
+      "operation": "decode",
+      "input_hex": "5020000229000000",
+      "expect": {
+        "ok": true,
+        "code": "ccs",
+        "pfield_hex": "50",
+        "format": {
+          "variation": "month_day",
+          "subsecond_octets": 0,
+          "pfield_tail_hex": ""
+        },
+        "value": {
+          "year": 2000,
+          "month": 2,
+          "day": 29,
+          "day_of_year": null,
+          "hour": 0,
+          "minute": 0,
+          "second": 0,
+          "subsecond": 0
+        },
+        "consumed": 8,
+        "anomalies": []
+      }
+    },
+    {
+      "id": "time-ccs-008",
+      "requirements": [
+        "TIME-030",
+        "TIME-001",
+        "TIME-003"
+      ],
+      "description": "Day of year 366 in a leap year",
+      "operation": "decode",
+      "input_hex": "5820240366000000",
+      "expect": {
+        "ok": true,
+        "code": "ccs",
+        "pfield_hex": "58",
+        "format": {
+          "variation": "day_of_year",
+          "subsecond_octets": 0,
+          "pfield_tail_hex": ""
+        },
+        "value": {
+          "year": 2024,
+          "month": null,
+          "day": null,
+          "day_of_year": 366,
+          "hour": 0,
+          "minute": 0,
+          "second": 0,
+          "subsecond": 0
+        },
+        "consumed": 8,
+        "anomalies": []
+      }
+    },
+    {
+      "id": "time-ccs-009",
+      "requirements": [
+        "TIME-030"
+      ],
+      "description": "Day of year 366 in a common year: OutOfRange",
+      "operation": "decode",
+      "input_hex": "5820230366000000",
+      "expect": {
+        "ok": false,
+        "error": "OutOfRange"
+      }
+    },
+    {
+      "id": "time-ccs-010",
+      "requirements": [
+        "TIME-030"
+      ],
+      "description": "Day of year 0: OutOfRange",
+      "operation": "decode",
+      "input_hex": "5820230000000000",
+      "expect": {
+        "ok": false,
+        "error": "OutOfRange"
+      }
+    },
+    {
+      "id": "time-ccs-011",
+      "requirements": [
+        "TIME-030",
+        "TIME-001",
+        "TIME-003"
+      ],
+      "description": "Leap second 23:59:60",
+      "operation": "decode",
+      "input_hex": "5020161231235960",
+      "expect": {
+        "ok": true,
+        "code": "ccs",
+        "pfield_hex": "50",
+        "format": {
+          "variation": "month_day",
+          "subsecond_octets": 0,
+          "pfield_tail_hex": ""
+        },
+        "value": {
+          "year": 2016,
+          "month": 12,
+          "day": 31,
+          "day_of_year": null,
+          "hour": 23,
+          "minute": 59,
+          "second": 60,
+          "subsecond": 0
+        },
+        "consumed": 8,
+        "anomalies": []
+      }
+    },
+    {
+      "id": "time-ccs-012",
+      "requirements": [
+        "TIME-030"
+      ],
+      "description": "Second 61: OutOfRange",
+      "operation": "decode",
+      "input_hex": "5020161231235961",
+      "expect": {
+        "ok": false,
+        "error": "OutOfRange"
+      }
+    },
+    {
+      "id": "time-ccs-013",
+      "requirements": [
+        "TIME-030"
+      ],
+      "description": "Hour 24: OutOfRange",
+      "operation": "decode",
+      "input_hex": "5020160101240000",
+      "expect": {
+        "ok": false,
+        "error": "OutOfRange"
+      }
+    },
+    {
+      "id": "time-ccs-014",
+      "requirements": [
+        "TIME-030"
+      ],
+      "description": "Minute 60: OutOfRange",
+      "operation": "decode",
+      "input_hex": "5020160101006000",
+      "expect": {
+        "ok": false,
+        "error": "OutOfRange"
+      }
+    },
+    {
+      "id": "time-ccs-015",
+      "requirements": [
+        "TIME-030"
+      ],
+      "description": "Month 13: OutOfRange",
+      "operation": "decode",
+      "input_hex": "5020161301000000",
+      "expect": {
+        "ok": false,
+        "error": "OutOfRange"
+      }
+    },
+    {
+      "id": "time-ccs-016",
+      "requirements": [
+        "TIME-030"
+      ],
+      "description": "Month 00: OutOfRange",
+      "operation": "decode",
+      "input_hex": "5020160001000000",
+      "expect": {
+        "ok": false,
+        "error": "OutOfRange"
+      }
+    },
+    {
+      "id": "time-ccs-017",
+      "requirements": [
+        "TIME-030"
+      ],
+      "description": "April 31: OutOfRange",
+      "operation": "decode",
+      "input_hex": "5020160431000000",
+      "expect": {
+        "ok": false,
+        "error": "OutOfRange"
+      }
+    },
+    {
+      "id": "time-ccs-018",
+      "requirements": [
+        "TIME-030"
+      ],
+      "description": "Year 0000: OutOfRange",
+      "operation": "decode",
+      "input_hex": "5000000101000000",
+      "expect": {
+        "ok": false,
+        "error": "OutOfRange"
+      }
+    },
+    {
+      "id": "time-ccs-019",
+      "requirements": [
+        "TIME-030"
+      ],
+      "description": "BCD nibble A in the minute: InvalidField",
+      "operation": "decode",
+      "input_hex": "5020160101000A00",
+      "expect": {
+        "ok": false,
+        "error": "InvalidField"
+      }
+    },
+    {
+      "id": "time-ccs-020",
+      "requirements": [
+        "TIME-030"
+      ],
+      "description": "BCD nibble A in a sub-second octet: InvalidField",
+      "operation": "decode",
+      "input_hex": "5120160101000000A0",
+      "expect": {
+        "ok": false,
+        "error": "InvalidField"
+      }
+    },
+    {
+      "id": "time-ccs-021",
+      "requirements": [
+        "TIME-034"
+      ],
+      "description": "Non-zero DOY high nibble: strict ReservedValue",
+      "operation": "decode",
+      "input_hex": "5820161100000000",
+      "expect": {
+        "ok": false,
+        "error": "ReservedValue"
+      }
+    },
+    {
+      "id": "time-ccs-022",
+      "requirements": [
+        "TIME-034",
+        "API-032"
+      ],
+      "description": "Non-zero DOY high nibble: lenient flag",
+      "operation": "decode",
+      "mode": "lenient",
+      "input_hex": "5820161100000000",
+      "expect": {
+        "ok": true,
+        "code": "ccs",
+        "pfield_hex": "58",
+        "format": {
+          "variation": "day_of_year",
+          "subsecond_octets": 0,
+          "pfield_tail_hex": ""
+        },
+        "value": {
+          "year": 2016,
+          "month": null,
+          "day": null,
+          "day_of_year": 100,
+          "hour": 0,
+          "minute": 0,
+          "second": 0,
+          "subsecond": 0
+        },
+        "consumed": 8,
+        "anomalies": [
+          "NonZeroDoyHighNibble"
+        ]
+      }
+    },
+    {
+      "id": "time-ccs-023",
+      "requirements": [
+        "TIME-030"
+      ],
+      "description": "Resolution code 111: ReservedValue",
+      "operation": "decode",
+      "input_hex": "5720160101000000",
+      "expect": {
+        "ok": false,
+        "error": "ReservedValue"
+      }
+    },
+    {
+      "id": "time-ccs-024",
+      "requirements": [
+        "TIME-030"
+      ],
+      "description": "Resolution code 111: ReservedValue in lenient mode too",
+      "operation": "decode",
+      "mode": "lenient",
+      "input_hex": "5720160101000000",
+      "expect": {
+        "ok": false,
+        "error": "ReservedValue"
+      }
+    },
+    {
+      "id": "time-ccs-025",
+      "requirements": [
+        "TIME-030"
+      ],
+      "description": "Year 9999 is valid",
+      "operation": "decode",
+      "input_hex": "5099991231000000",
+      "expect": {
+        "ok": true,
+        "code": "ccs",
+        "pfield_hex": "50",
+        "format": {
+          "variation": "month_day",
+          "subsecond_octets": 0,
+          "pfield_tail_hex": ""
+        },
+        "value": {
+          "year": 9999,
+          "month": 12,
+          "day": 31,
+          "day_of_year": null,
+          "hour": 0,
+          "minute": 0,
+          "second": 0,
+          "subsecond": 0
+        },
+        "consumed": 8,
+        "anomalies": []
+      }
+    },
+    {
+      "id": "time-ccs-026-enc",
+      "requirements": [
+        "TIME-030",
+        "TIME-001",
+        "TIME-003",
+        "API-020"
+      ],
+      "description": "Month/day with 2 sub-second octets (encode)",
+      "operation": "encode",
+      "params": {
+        "format": {
+          "code": "ccs",
+          "variation": "month_day",
+          "subsecond_octets": 2,
+          "pfield_tail_hex": ""
+        },
+        "value": {
+          "year": 1988,
+          "month": 1,
+          "day": 18,
+          "day_of_year": null,
+          "hour": 17,
+          "minute": 20,
+          "second": 43,
+          "subsecond": 1234
+        },
+        "include_pfield": true
+      },
+      "expect": {
+        "ok": true,
+        "output_hex": "52198801181720431234"
+      }
+    },
+    {
+      "id": "time-ccs-026-dec",
+      "requirements": [
+        "TIME-030",
+        "TIME-001",
+        "TIME-003",
+        "API-020"
+      ],
+      "description": "Month/day with 2 sub-second octets (decode)",
+      "operation": "decode",
+      "input_hex": "52198801181720431234",
+      "expect": {
+        "ok": true,
+        "code": "ccs",
+        "pfield_hex": "52",
+        "format": {
+          "variation": "month_day",
+          "subsecond_octets": 2,
+          "pfield_tail_hex": ""
+        },
+        "value": {
+          "year": 1988,
+          "month": 1,
+          "day": 18,
+          "day_of_year": null,
+          "hour": 17,
+          "minute": 20,
+          "second": 43,
+          "subsecond": 1234
+        },
+        "consumed": 10,
+        "anomalies": []
+      }
+    },
+    {
+      "id": "time-ccs-027-enc",
+      "requirements": [
+        "TIME-030",
+        "TIME-001",
+        "TIME-003",
+        "TIME-034",
+        "API-020"
+      ],
+      "description": "Day of year, written with a zero high nibble (encode)",
+      "operation": "encode",
+      "params": {
+        "format": {
+          "code": "ccs",
+          "variation": "day_of_year",
+          "subsecond_octets": 0,
+          "pfield_tail_hex": ""
+        },
+        "value": {
+          "year": 2024,
+          "month": null,
+          "day": null,
+          "day_of_year": 366,
+          "hour": 23,
+          "minute": 59,
+          "second": 60,
+          "subsecond": 0
+        },
+        "include_pfield": true
+      },
+      "expect": {
+        "ok": true,
+        "output_hex": "5820240366235960"
+      }
+    },
+    {
+      "id": "time-ccs-027-dec",
+      "requirements": [
+        "TIME-030",
+        "TIME-001",
+        "TIME-003",
+        "TIME-034",
+        "API-020"
+      ],
+      "description": "Day of year, written with a zero high nibble (decode)",
+      "operation": "decode",
+      "input_hex": "5820240366235960",
+      "expect": {
+        "ok": true,
+        "code": "ccs",
+        "pfield_hex": "58",
+        "format": {
+          "variation": "day_of_year",
+          "subsecond_octets": 0,
+          "pfield_tail_hex": ""
+        },
+        "value": {
+          "year": 2024,
+          "month": null,
+          "day": null,
+          "day_of_year": 366,
+          "hour": 23,
+          "minute": 59,
+          "second": 60,
+          "subsecond": 0
+        },
+        "consumed": 8,
+        "anomalies": []
+      }
+    },
+    {
+      "id": "time-ccs-028",
+      "requirements": [
+        "TIME-030"
+      ],
+      "description": "Encoder rejects 2023-02-29",
+      "operation": "encode",
+      "params": {
+        "format": {
+          "code": "ccs",
+          "variation": "month_day",
+          "subsecond_octets": 0,
+          "pfield_tail_hex": ""
+        },
+        "value": {
+          "year": 2023,
+          "month": 2,
+          "day": 29,
+          "day_of_year": null,
+          "hour": 0,
+          "minute": 0,
+          "second": 0,
+          "subsecond": 0
+        },
+        "include_pfield": true
+      },
+      "expect": {
+        "ok": false,
+        "error": "OutOfRange"
+      }
+    },
+    {
+      "id": "time-ccs-029",
+      "requirements": [
+        "TIME-030"
+      ],
+      "description": "Encoder rejects a sub-second value with too many digits",
+      "operation": "encode",
+      "params": {
+        "format": {
+          "code": "ccs",
+          "variation": "month_day",
+          "subsecond_octets": 1,
+          "pfield_tail_hex": ""
+        },
+        "value": {
+          "year": 2023,
+          "month": 1,
+          "day": 1,
+          "day_of_year": null,
+          "hour": 0,
+          "minute": 0,
+          "second": 0,
+          "subsecond": 100
+        },
+        "include_pfield": true
+      },
+      "expect": {
+        "ok": false,
+        "error": "OutOfRange"
+      }
+    },
+    {
+      "id": "time-ccs-030",
+      "requirements": [
+        "TIME-030",
+        "API-020"
+      ],
+      "description": "Implicit P-field: T-field only",
+      "operation": "encode",
+      "params": {
+        "format": {
+          "code": "ccs",
+          "variation": "day_of_year",
+          "subsecond_octets": 1,
+          "pfield_tail_hex": ""
+        },
+        "value": {
+          "year": 2001,
+          "month": null,
+          "day": null,
+          "day_of_year": 1,
+          "hour": 0,
+          "minute": 0,
+          "second": 0,
+          "subsecond": 5
+        },
+        "include_pfield": false
+      },
+      "expect": {
+        "ok": true,
+        "output_hex": "2001000100000005"
+      }
+    },
+    {
+      "id": "time-ccs-031",
+      "requirements": [
+        "TIME-030",
+        "TIME-001",
+        "TIME-003"
+      ],
+      "description": "Implicit month/day format",
+      "operation": "decode_implicit",
+      "params": {
+        "format": {
+          "code": "ccs",
+          "variation": "month_day",
+          "subsecond_octets": 0
+        }
+      },
+      "input_hex": "19991231235959",
+      "expect": {
+        "ok": true,
+        "code": "ccs",
+        "pfield_hex": "",
+        "format": {
+          "variation": "month_day",
+          "subsecond_octets": 0,
+          "pfield_tail_hex": ""
+        },
+        "value": {
+          "year": 1999,
+          "month": 12,
+          "day": 31,
+          "day_of_year": null,
+          "hour": 23,
+          "minute": 59,
+          "second": 59,
+          "subsecond": 0
+        },
+        "consumed": 7,
+        "anomalies": []
+      }
+    }
+  ]
+}
