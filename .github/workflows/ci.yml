@@ -228,5 +228,6 @@ jobs:
         with:
           tool: cargo-deny
       - run: cargo deny --all-features check
-      # The reference application's own workspace, same policy (APP-106).
-      - run: cargo deny --manifest-path refapp/Cargo.toml --all-features check --config deny.toml
+      # The reference application's own workspace, same policy (APP-106): cargo-deny finds the
+      # root deny.toml by searching upwards from refapp/Cargo.toml.
+      - run: cargo deny --manifest-path refapp/Cargo.toml --all-features --log-level info check
