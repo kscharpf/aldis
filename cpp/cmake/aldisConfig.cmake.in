@@ -1,0 +1,13 @@
+# CMake package of the native C++ Aldis library (CPP-012):
+#
+#   find_package(aldis 0.1 REQUIRED)
+#   target_link_libraries(app PRIVATE aldis::core)
+#
+# Each module is one imported target (aldis::core, ...). The targets require C++20 (cxx_std_20);
+# a later standard is accepted but not verified (CPP-001, OI-28). The C ABI library, aldis.h,
+# and aldis.hpp join the package in C1 and C5.
+
+@PACKAGE_INIT@
+
+include("${CMAKE_CURRENT_LIST_DIR}/aldisTargets.cmake")
+check_required_components(aldis)

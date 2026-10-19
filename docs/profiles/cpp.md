@@ -152,7 +152,19 @@ WarningsAsErrors: '*'
 
 | Disabled check | Reason |
 |---|---|
-| *(none yet)* | |
+| `modernize-use-trailing-return-type` | Style only: it would rewrite every declaration into `auto f() -> T`, which the API shapes of §3 do not use. No safety rule depends on it |
+
+Tests and tools (`cpp/tests/.clang-tidy`, which inherits the configuration above) also disable the checks below, mostly because GoogleTest's `TEST` macros expand to code they flag. Library code never has these exemptions.
+
+| Disabled in tests and tools | Reason |
+|---|---|
+| `cert-err58-cpp` | `TEST` registers each test through a static object whose initialization may throw; tests run with exceptions enabled (D4 of the [C0 plan](../milestones/c0-foundations.md)) |
+| `cppcoreguidelines-avoid-non-const-global-variables` | `TEST` defines a mutable static `test_info_` per test |
+| `cppcoreguidelines-owning-memory` | `TEST` allocates its test factory with `new` |
+| `cppcoreguidelines-special-member-functions`, `hicpp-special-member-functions` | `TEST` classes delete copy operations without declaring move operations |
+| `cppcoreguidelines-avoid-magic-numbers`, `readability-magic-numbers` | Test inputs and expected values are literal by design, often copied from the Rust tests or a vector |
+| `readability-function-cognitive-complexity` | Each `EXPECT_*` expands to branches, so a test with many expectations exceeds the threshold without being complex |
+| `portability-restrict-system-includes` (allow-list widened to `*`) | Tests and tools use the test framework, the JSON parser, and the hosted standard library (D4, D12) |
 
 | ID | Requirement | Source | Verif. |
 |---|---|---|---|

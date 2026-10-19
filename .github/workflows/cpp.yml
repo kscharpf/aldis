@@ -80,3 +80,142 @@ jobs:
             fi
           done
           echo "every mismatching compiler was rejected, as it should be (the override is refused in CI)"
+
+  cpp-format:
+    name: cpp format (CPP-044)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup-cpp
+        with:
+          tools: llvm
+      - name: clang-format --dry-run --Werror (cpp/.clang-format)
+        run: git ls-files -z -- 'cpp/*.hpp' 'cpp/*.cpp' 'cpp/*.h' | xargs -0 --no-run-if-empty clang-format --dry-run --Werror
+
+  cpp-build:
+    name: cpp build ${{ matrix.compiler }} ${{ matrix.os }} (CPP-001, CPP-012, CPP-040)
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, ubuntu-24.04-arm]
+        compiler: [gcc, clang]
+        include:
+          - compiler: gcc
+            tools: cmake ninja gcc
+            cxx: g++-14
+          - compiler: clang
+            # Host Clang uses the pinned GCC's libstdc++ (D16).
+            tools: cmake ninja gcc llvm
+            cxx: clang++
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: cpp
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup-cpp
+        with:
+          tools: ${{ matrix.tools }}
+      - run: cmake --preset host-${{ matrix.compiler }}
+      - run: cmake --build --preset host-${{ matrix.compiler }}
+      - run: ctest --preset host-${{ matrix.compiler }}
+      - name: Install, then build and run a consumer of the package (CPP-012)
+        run: |
+          cmake --install ../target/cpp/host-${{ matrix.compiler }} --prefix "$RUNNER_TEMP/aldis"
+          cmake -S tests/package -B "$RUNNER_TEMP/consumer" -G Ninja \
+            -DCMAKE_CXX_COMPILER=${{ matrix.cxx }} -DCMAKE_PREFIX_PATH="$RUNNER_TEMP/aldis"
+          cmake --build "$RUNNER_TEMP/consumer"
+          "$RUNNER_TEMP/consumer/consumer"
+
+  cpp-tidy:
+    name: cpp clang-tidy (CPP-041, CPP-042, CPP-002)
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: cpp
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup-cpp
+        with:
+          tools: cmake ninja gcc llvm
+      - run: cmake --preset host-clang
+      - name: clang-tidy on every header (self-containment TUs) and every test
+        # Findings are errors (WarningsAsErrors in cpp/.clang-tidy); GoogleTest is not analysed.
+        run: run-clang-tidy -quiet -p ../target/cpp/host-clang '/header_check/|/cpp/tests/'
+
+  cpp-sanitize:
+    name: cpp sanitizers (CPP-051)
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: cpp
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup-cpp
+        with:
+          tools: cmake ninja gcc llvm
+      - run: cmake --preset host-clang-sanitize
+      - run: cmake --build --preset host-clang-sanitize
+      - run: ctest --preset host-clang-sanitize
+
+  cpp-big-endian:
+    name: cpp big-endian s390x (VER-030, GEN-007)
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: cpp
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup-cpp
+        with:
+          tools: cmake ninja gcc-s390x qemu
+      - run: cmake --preset s390x-gcc
+      - run: cmake --build --preset s390x-gcc
+      - run: ctest --preset s390x-gcc
+
+  cpp-bare-metal:
+    name: cpp bare metal ${{ matrix.target }} ${{ matrix.compiler }} (CPP-011, CPP-040)
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [cortex-m4f, cortex-r5f, rv32imac]
+        compiler: [gcc, clang]
+        include:
+          - target: cortex-m4f
+            gnu: arm-gnu
+          - target: cortex-r5f
+            gnu: arm-gnu
+          - target: rv32imac
+            gnu: riscv-gnu
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: cpp
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup-cpp
+        with:
+          # Clang builds use the GCC toolchain's headers (D2).
+          tools: cmake ninja ${{ matrix.gnu }} ${{ matrix.compiler == 'clang' && 'llvm' || '' }}
+      - name: Build (header checks; the exerciser, link check, and QEMU join in WP-5)
+        run: |
+          cmake --preset ${{ matrix.target }}-${{ matrix.compiler }}
+          cmake --build --preset ${{ matrix.target }}-${{ matrix.compiler }}
+
+  cpp-leon3:
+    name: cpp LEON3 BCC2 (non-gating, OI-08)
+    runs-on: ubuntu-24.04
+    # Reported against OI-08, never a gate (c0 plan D2).
+    continue-on-error: true
+    defaults:
+      run:
+        working-directory: cpp
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup-cpp
+        with:
+          tools: cmake ninja bcc2
+      - name: Build (header checks)
+        run: |
+          cmake --preset leon3-gcc
+          cmake --build --preset leon3-gcc
