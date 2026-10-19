@@ -332,6 +332,14 @@ impl Cuc {
         })
     }
 
+    /// The code as whole seconds and nanoseconds, truncated toward zero; the counterpart of
+    /// [`from_seconds_nanos`](Self::from_seconds_nanos) (TIME-011). See
+    /// [`CucValue::to_seconds_nanos`].
+    #[must_use]
+    pub fn to_seconds_nanos(&self) -> (u64, u32) {
+        self.value.to_seconds_nanos()
+    }
+
     /// The format (301.0 §3.2).
     #[must_use]
     pub const fn format(&self) -> CucFormat {

@@ -289,6 +289,12 @@ impl ReservedPField {
     }
 }
 
+impl From<ReservedPField> for PField {
+    fn from(reserved: ReservedPField) -> PField {
+        reserved.0
+    }
+}
+
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
@@ -327,6 +333,7 @@ mod tests {
         let reserved = PField::parse(&[0xB0, 0x01]).unwrap();
         let r = ReservedPField::new(reserved).unwrap();
         assert_eq!(r.pfield(), reserved);
+        assert_eq!(PField::from(r), reserved);
         assert_eq!(ReservedPField::new(PField::parse(&[0x1E]).unwrap()), None);
         assert_eq!(ReservedPField::from_reserved(reserved), r);
     }
