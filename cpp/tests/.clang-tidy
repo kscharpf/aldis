@@ -1,0 +1,16 @@
+# clang-tidy for tests and tools (CPP-041, CPP-042; docs/milestones/c0-foundations.md D12):
+# the library configuration, relaxed only as the second table of docs/profiles/cpp.md §5 lists.
+---
+InheritParentConfig: true
+Checks: >
+  -cert-err58-cpp,
+  -cppcoreguidelines-avoid-non-const-global-variables,
+  -cppcoreguidelines-owning-memory,
+  -cppcoreguidelines-special-member-functions,
+  -hicpp-special-member-functions,
+  -cppcoreguidelines-avoid-magic-numbers,
+  -readability-magic-numbers,
+  -readability-function-cognitive-complexity
+CheckOptions:
+  # Tests use the test framework and the standard library freely (D4, D12).
+  portability-restrict-system-includes.Includes: '*'

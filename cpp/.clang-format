@@ -1,0 +1,10 @@
+# clang-format configuration of the native C++ implementation (CPP-044; docs/profiles/cpp.md §5).
+# LLVM style with 100 columns to match rustfmt, the indentation and pointer style of the
+# profile's examples (cpp.md §3), and braces around every controlled statement.
+BasedOnStyle: LLVM
+ColumnLimit: 100
+IndentWidth: 4
+AccessModifierOffset: -4
+PointerAlignment: Left
+DerivePointerAlignment: false
+InsertBraces: true

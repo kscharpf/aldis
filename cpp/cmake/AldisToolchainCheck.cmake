@@ -78,4 +78,27 @@ function(aldis_check_toolchain)
     message(WARNING ${msg} " Continuing because ALDIS_ALLOW_UNPINNED_COMPILER is ON: "
                     "this build verifies nothing.")
   endforeach()
+
+  # Host Clang builds use the pinned GCC's libstdc++, so both compilers see the same standard
+  # library headers (D16).
+  if(ALDIS_TOOLCHAIN STREQUAL "LLVM" AND NOT CMAKE_CROSSCOMPILING AND "CXX" IN_LIST languages)
+    string(REGEX MATCH "^[0-9]+" gcc_major "${lock_GCC_VERSION}")
+    include(CheckCXXSourceCompiles)
+    set(CMAKE_REQUIRED_QUIET ON)
+    check_cxx_source_compiles("
+      #include <cstddef>
+      #if !defined(_GLIBCXX_RELEASE) || _GLIBCXX_RELEASE != ${gcc_major}
+      #error not the pinned libstdc++
+      #endif
+      int main() { return 0; }" ALDIS_LIBSTDCXX_IS_PINNED_GCC)
+    if(NOT ALDIS_LIBSTDCXX_IS_PINNED_GCC)
+      set(msg "Aldis: host Clang does not use the libstdc++ of GCC ${gcc_major} (D16).")
+      if(NOT ALDIS_ALLOW_UNPINNED_COMPILER OR DEFINED ENV{CI} OR DEFINED ENV{GITHUB_ACTIONS})
+        message(FATAL_ERROR ${msg})
+      endif()
+      message(WARNING ${msg} " Continuing because ALDIS_ALLOW_UNPINNED_COMPILER is ON.")
+    else()
+      message(STATUS "Aldis: host Clang uses the libstdc++ of GCC ${gcc_major}")
+    endif()
+  endif()
 endfunction()
