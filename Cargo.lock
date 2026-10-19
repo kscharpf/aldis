@@ -112,6 +112,9 @@ name = "aldis-time"
 version = "0.1.0"
 dependencies = [
  "aldis-core",
+ "aldis-testkit",
+ "proptest",
+ "serde_json",
 ]
 
 [[package]]

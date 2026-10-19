@@ -16,6 +16,7 @@ cargo-fuzz = true
 [dependencies]
 aldis-core = { path = "../crates/aldis-core", features = ["crc-table", "test-hooks"] }
 aldis-epp = { path = "../crates/aldis-epp" }
+aldis-time = { path = "../crates/aldis-time" }
 libfuzzer-sys = "0.4.13"
 
 # Tooling lint profile (RS-017): assertions are how a fuzz target reports a failure.
@@ -89,6 +90,34 @@ bench = false
 [[bin]]
 name = "epp_roundtrip"
 path = "fuzz_targets/epp_roundtrip.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "time_pfield"
+path = "fuzz_targets/time_pfield.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "time_cuc"
+path = "fuzz_targets/time_cuc.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "time_cds"
+path = "fuzz_targets/time_cds.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "time_ccs"
+path = "fuzz_targets/time_ccs.rs"
 test = false
 doc = false
 bench = false

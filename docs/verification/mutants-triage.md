@@ -1,6 +1,18 @@
 # Mutation testing triage (VER-025)
 
-Surviving mutants from `cargo mutants` (`-p aldis-core -p aldis-epp --all-features`) (cargo-mutants 27.1.0), triaged per VER-025. The nightly job `mutants` publishes the full report. Update this file when a new survivor appears.
+Surviving mutants from `cargo mutants` (`-p aldis-core -p aldis-time -p aldis-epp --all-features`) (cargo-mutants 27.1.0), triaged per VER-025. The nightly job `mutants` publishes the full report. Update this file when a new survivor appears.
+
+## 2026-10-18, branch `m1/time` (M1 WP-1 part 1)
+
+`cargo mutants -p aldis-time --all-features`: 365 mutants: 275 caught, 74 unviable, 16 missed, 0 timeouts.
+
+| Mutant | Verdict | Action |
+|---|---|---|
+| `ccs.rs` `CcsFormat::with_tail`: delete field `tail` | Test gap: the round-trip test compared two formats that both lost the tail | `formats` checks `with_tail(t).tail() == t`; caught |
+| `cuc.rs` `CucFormat::with_tail` `>` → `>=` | Test gap: no test accepted the largest tail, 6 octets | `format_limits_and_accessors` accepts a 6-octet tail; caught |
+| `\|` → `^` (14): P-field octet 1 of CUC, CDS, CCS, and agency codes (`*::pfield`); CUC octet 2; `ccs.rs` `to_bcd`; the big-endian folds in `Cuc::from_t` and `Cds::from_t` | Equivalent: each combines fields in disjoint bits (for example CUC octet 2 puts its three fields in bits 5–6, 2–4, and 0–1), so OR and XOR agree | None possible |
+
+After the fixes, a re-run on `ccs.rs` and `cuc.rs` (187 mutants: 158 caught, 20 unviable) left only the 9 equivalent mutants in those files. The 14 equivalent mutants are expected in every report.
 
 ## 2026-10-18, branch `m1/epp` (M1 WP-3)
 

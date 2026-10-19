@@ -11,6 +11,7 @@ Shared, language-neutral vectors that every implementation must pass: Rust, the 
 | `core/errors.json` | Stable numeric code of every error kind, and its C ABI value (GEN-040, CABI-020) | Hand-derived from the catalogue in `docs/03-api-model.md` §9 |
 | `core/bits.json` | Big-endian bit-field get/set, including unaligned 64-bit fields and out-of-range errors (GEN-050, GEN-051) | Hand-derived; values from an independent Python big-integer reference |
 | `core/counters.json` | Modular increment and gap classification for 1- to 64-bit counters (CMN-030, CMN-031) | Hand-derived from CMN-031; independent Python reference |
+| `time/{pfield,cuc,cds,ccs}.json` | P-field chains and reserved IDs, agency-defined codes, CUC (including nanosecond conversions), CDS, and CCS decode/encode and errors (TIME-001…TIME-006, TIME-010…TIME-013, TIME-020, TIME-021, TIME-030, TIME-034) | Hand-derived from 301.0-B-4 §3.1–3.4, §3.6, and Annex A; values from an independent Python model of the Blue Book text, written before the Rust codec |
 | `epp/*.json` | Encapsulation Packet decode, `peek_length`, encode, idle, `Auto` header-size boundaries, errors, and managed parameters (EPP-001…EPP-012) | Hand-derived from 133.1-B-3 §4.1 and Table 5-1; values from an independent Python model of the Blue Book text, written before the Rust codec |
 | `core/layout.json` | Frame field byte ranges with and without secondary header, security, OCF, and FECF (CMN-040, CMN-041, API-075) | Hand-derived from 132.0/232.0/732.0/732.1 §4.1 and 355.0-B-2 §4.1 |
 
