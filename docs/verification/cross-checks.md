@@ -31,13 +31,13 @@ What `spacepackets` 0.18.0 can check, by vector file. The harness (`cargo run --
 | `spp/idle` | The expected octets decode to APID 2047, Secondary Header Flag 0, Sequence Flags `11`, the given count and total length (133.0 §4.1.3.3.4.4, §4.1.4.3.4) | The idle pattern; rejections (no Idle Packet builder) |
 | `spp/segment` | Each expected packet decodes to the given type, APID, Secondary Header Flag, and count + index modulo 2^14, and its length field covers exactly its octets | Sequence Flags and the split of the SDU (no segmentation logic); `next_count`; rejections |
 | `spp/reassemble`, `spp/sequence_tracker`, `spp/split` | — | No reassembler, sequence tracker, or managed secondary header layout |
-
-**Result, 2026-10-19:** 45 agree, 21 skipped, 0 disagreements over the seven checked `spp/` files. The harness was confirmed to fail on a corrupted vector: an APID changed in `spp-dec-001` and an octet changed in `spp-enc-001` were each reported as a disagreement, with a failing exit status.
 | `spp/secondary_header_time` | The Time Code Field, where its format is in scope for CUC or CDS below | The split and the ancillary field |
 | `time/cuc` | Decode and encode with 1–4 coarse and 0–3 fine octets, a one-octet P-field, and the CCSDS epoch | 5–7 coarse or 4–10 fine octets, P-field extensions (its decoder ignores the extension bit, 301.0 §3.2.2), the agency epoch. `cuc_to_ns`, `cuc_from_ns`: see §3 |
 | `time/cds` | Decode and encode with 16- and 24-bit day segments, no, µs, or ps sub-millisecond field, and the CCSDS epoch | The agency epoch; range errors (it does not check the millisecond of day) |
 | `time/ascii` | Formatting of codes A and B at the fixed precision `chrono` produces | Parsing, subsets, second 60 |
 | `time/pfield`, `time/ccs`, `time/convert`, `epp/*` | — | No implementation (§4) |
+
+**Result, 2026-10-19:** 45 agree, 21 skipped, 0 disagreements over the seven checked `spp/` files. The harness was confirmed to fail on a corrupted vector: an APID changed in `spp-dec-001` and an octet changed in `spp-enc-001` were each reported as a disagreement, with a failing exit status.
 
 ## 3. Discrepancies
 
