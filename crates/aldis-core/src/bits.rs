@@ -108,7 +108,7 @@ pub fn set(buf: &mut [u8], bit_offset: usize, width: u8, value: u64) -> Result<(
     Ok(())
 }
 
-fn octet_err(buf_len: usize, offset: usize, width: usize) -> Error {
+const fn octet_err(buf_len: usize, offset: usize, width: usize) -> Error {
     if let Some(max_offset) = buf_len.checked_sub(width) {
         Error::out_of_range("offset", as_u64(max_offset), as_u64(offset))
     } else {

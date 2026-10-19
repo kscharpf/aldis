@@ -35,7 +35,7 @@ pub struct Tally {
 }
 
 impl Tally {
-    pub(crate) fn check(&mut self, ok: bool) {
+    pub(crate) const fn check(&mut self, ok: bool) {
         self.cases = self.cases.saturating_add(1);
         if !ok {
             self.failures = self.failures.saturating_add(1);

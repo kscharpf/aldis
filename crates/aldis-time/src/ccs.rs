@@ -170,7 +170,7 @@ pub struct Ccs {
 }
 
 /// `OutOfRange` for `field` with the limit and the value found.
-fn range(field: &'static str, limit: u64, found: u64) -> Error {
+const fn range(field: &'static str, limit: u64, found: u64) -> Error {
     Error::out_of_range(field, limit, found)
 }
 
@@ -225,7 +225,7 @@ const fn to_bcd(n: u8) -> u8 {
 ///
 /// # Errors
 /// `InvalidField` (`field`) if either nibble is above 9 (TIME-030).
-fn from_bcd(octet: u8, field: &'static str) -> Result<u8> {
+const fn from_bcd(octet: u8, field: &'static str) -> Result<u8> {
     let (hi, lo) = (octet >> 4, octet & 0xF);
     if hi > 9 || lo > 9 {
         return Err(Error::new(ErrorKind::InvalidField).with_field(FieldId::new(field)));

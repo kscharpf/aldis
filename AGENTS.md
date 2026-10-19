@@ -43,7 +43,7 @@ cargo clippy --manifest-path fuzz/Cargo.toml --all-targets               # fuzz 
 
 A failed exerciser link with `undefined symbol: aldis_panic_is_unreachable` means a panic path is reachable in `aldis-core`. Remove it; do not work around the check. Mark new test modules `#[cfg_attr(coverage_nightly, coverage(off))]`.
 
-Clippy runs with the `all` and `pedantic` groups denied, plus restriction lints ([docs/profiles/rust.md](docs/profiles/rust.md) §5). To relax a lint, use a local `#[expect(clippy::<lint>, reason = "…")]` on the smallest item (RS-016). Never use crate-wide `allow`.
+Clippy runs with the `all` and `pedantic` groups denied, plus restriction lints and selected nursery lints ([docs/profiles/rust.md](docs/profiles/rust.md) §5). Do not enable the whole `nursery` group; adopt a nursery lint only after checking its findings, and record the decision there (RS-019). To relax a lint, use a local `#[expect(clippy::<lint>, reason = "…")]` on the smallest item (RS-016). Never use crate-wide `allow`.
 
 ## Conventions
 

@@ -161,9 +161,10 @@ pub enum HeaderSize {
     Fixed(HeaderLen),
 }
 
-/// The header fields a caller chooses when encoding (EPP-008). Derived fields (Length of
-/// Length, Packet Length) are computed by the encoder, and the CCSDS Defined Field is always
-/// written as zero (API-021, GEN-052).
+/// The header fields a caller chooses when encoding (EPP-008).
+///
+/// Derived fields (Length of Length, Packet Length) are computed by the encoder, and the CCSDS
+/// Defined Field is always written as zero (API-021, GEN-052).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub struct EncapsulationFields {
     /// Encapsulation Protocol ID (133.1 §4.1.2.3, API-014).

@@ -160,7 +160,7 @@ impl TimeFormat {
     }
 
     /// Whether the format carries undefined P-field octets (TIME-005).
-    fn has_tail(&self) -> bool {
+    const fn has_tail(&self) -> bool {
         match self {
             TimeFormat::Cuc(f) => !f.tail().is_empty(),
             TimeFormat::Cds(f) => !f.tail().is_empty(),
@@ -325,7 +325,7 @@ pub fn decode_implicit(bytes: &[u8], format: &TimeFormat, mode: DecodeMode) -> R
 impl TimeCode {
     /// The format, or `None` for [`TimeCode::Unknown`] (TIME-001).
     #[must_use]
-    pub fn format(&self) -> Option<TimeFormat> {
+    pub const fn format(&self) -> Option<TimeFormat> {
         match self {
             TimeCode::Cuc(c) => Some(TimeFormat::Cuc(c.format())),
             TimeCode::Cds(c) => Some(TimeFormat::Cds(c.format())),

@@ -16,7 +16,7 @@ pub struct EncapsulationPacket<'a> {
 }
 
 /// `ReservedValue` for a field that must be zero, with the value found.
-fn reserved(field: &'static str, found: u64) -> Error {
+const fn reserved(field: &'static str, found: u64) -> Error {
     Error::new(ErrorKind::ReservedValue)
         .with_field(FieldId::new(field))
         .with_detail(ErrorDetail::Expected { expected: 0, found })

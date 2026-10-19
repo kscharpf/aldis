@@ -56,7 +56,7 @@ pub struct FrameLayout {
     pub fecf: Range<usize>,
 }
 
-fn take(at: &mut usize, len: usize) -> Range<usize> {
+const fn take(at: &mut usize, len: usize) -> Range<usize> {
     let start = *at;
     *at = start.saturating_add(len);
     start..*at
