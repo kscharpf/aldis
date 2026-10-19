@@ -24,8 +24,12 @@ pub enum TimeCodeId {
     Ccs,
     /// `110`: agency-defined code, Level 3 or 4 (§3.6.2).
     Agency,
-    /// `000`, `011`, or `111`: reserved for future application (§3.1.1, TIME-002).
-    Reserved(u8),
+    /// `000`: reserved for future application (§3.1.1, TIME-002).
+    Reserved000,
+    /// `011`: reserved for future application (§3.1.1, TIME-002).
+    Reserved011,
+    /// `111`: reserved for future application (§3.1.1, TIME-002).
+    Reserved111,
 }
 
 impl TimeCodeId {
@@ -38,8 +42,19 @@ impl TimeCodeId {
             0b100 => TimeCodeId::Cds,
             0b101 => TimeCodeId::Ccs,
             0b110 => TimeCodeId::Agency,
-            other => TimeCodeId::Reserved(other),
+            0b000 => TimeCodeId::Reserved000,
+            0b011 => TimeCodeId::Reserved011,
+            _ => TimeCodeId::Reserved111,
         }
+    }
+
+    /// Whether the identification is reserved (301.0 §3.1.1, TIME-002).
+    #[must_use]
+    pub const fn is_reserved(self) -> bool {
+        matches!(
+            self,
+            TimeCodeId::Reserved000 | TimeCodeId::Reserved011 | TimeCodeId::Reserved111
+        )
     }
 
     /// The 3-bit field value (301.0 §3.1.1, TIME-001).
@@ -51,7 +66,9 @@ impl TimeCodeId {
             TimeCodeId::Cds => 0b100,
             TimeCodeId::Ccs => 0b101,
             TimeCodeId::Agency => 0b110,
-            TimeCodeId::Reserved(bits) => bits & 0b111,
+            TimeCodeId::Reserved000 => 0b000,
+            TimeCodeId::Reserved011 => 0b011,
+            TimeCodeId::Reserved111 => 0b111,
         }
     }
 }
@@ -243,30 +260,75 @@ impl PFieldTail {
     }
 }
 
+/// A P-field whose time code ID is reserved (`000`, `011`, or `111`): what a lenient decode
+/// returns as [`TimeCode::Unknown`](crate::code::TimeCode::Unknown) (301.0 §3.1.1, TIME-002,
+/// RS-020).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct ReservedPField(PField);
+
+impl ReservedPField {
+    /// `pfield` if its time code ID is reserved, else `None` (TIME-002).
+    #[must_use]
+    pub const fn new(pfield: PField) -> Option<ReservedPField> {
+        if pfield.id().is_reserved() {
+            Some(ReservedPField(pfield))
+        } else {
+            None
+        }
+    }
+
+    /// Wraps a P-field the caller has already found to have a reserved ID (decoder side).
+    pub(crate) const fn from_reserved(pfield: PField) -> ReservedPField {
+        ReservedPField(pfield)
+    }
+
+    /// The P-field (TIME-002).
+    #[must_use]
+    pub const fn pfield(&self) -> PField {
+        self.0
+    }
+}
+
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
-    use super::{EXTENSION, MAX_PFIELD_LEN, PField, PFieldTail, TimeCodeId};
+    use super::{EXTENSION, MAX_PFIELD_LEN, PField, PFieldTail, ReservedPField, TimeCodeId};
     use aldis_core::{ErrorDetail, ErrorKind};
 
     #[test]
     fn time_code_ids() {
         // req: TIME-001, TIME-002
         for (bits, id) in [
-            (0b000, TimeCodeId::Reserved(0)),
+            (0b000, TimeCodeId::Reserved000),
             (0b001, TimeCodeId::CucLevel1),
             (0b010, TimeCodeId::CucLevel2),
-            (0b011, TimeCodeId::Reserved(3)),
+            (0b011, TimeCodeId::Reserved011),
             (0b100, TimeCodeId::Cds),
             (0b101, TimeCodeId::Ccs),
             (0b110, TimeCodeId::Agency),
-            (0b111, TimeCodeId::Reserved(7)),
+            (0b111, TimeCodeId::Reserved111),
         ] {
             assert_eq!(TimeCodeId::from_octet(bits << 4), id);
             assert_eq!(TimeCodeId::from_octet((bits << 4) | 0x8F), id);
             assert_eq!(id.bits(), bits);
         }
-        assert_eq!(TimeCodeId::Reserved(0xFB).bits(), 0b011);
+        let reserved = [
+            TimeCodeId::Reserved000,
+            TimeCodeId::Reserved011,
+            TimeCodeId::Reserved111,
+        ];
+        assert!(reserved.iter().all(|id| id.is_reserved()));
+        assert!(!TimeCodeId::CucLevel1.is_reserved() && !TimeCodeId::Agency.is_reserved());
+    }
+
+    #[test]
+    fn reserved_pfields_hold_only_reserved_ids() {
+        // req: TIME-002, RS-020
+        let reserved = PField::parse(&[0xB0, 0x01]).unwrap();
+        let r = ReservedPField::new(reserved).unwrap();
+        assert_eq!(r.pfield(), reserved);
+        assert_eq!(ReservedPField::new(PField::parse(&[0x1E]).unwrap()), None);
+        assert_eq!(ReservedPField::from_reserved(reserved), r);
     }
 
     #[test]

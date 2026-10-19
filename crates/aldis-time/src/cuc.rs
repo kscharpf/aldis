@@ -246,9 +246,9 @@ impl CucValue {
 
     /// The value as whole seconds and nanoseconds, truncated toward zero (TIME-011).
     ///
-    /// For 0–3 fine octets the round trip through [`from_seconds_nanos`](Self::from_seconds_nanos)
-    /// is exact. With 4 or more fine octets the fraction is finer than a nanosecond, so the round
-    /// trip is exact only to the nanosecond.
+    /// For 0–3 fine octets the round trip through [`Cuc::from_seconds_nanos`] is exact. With 4
+    /// or more fine octets the fraction is finer than a nanosecond, so the round trip is exact
+    /// only to the nanosecond.
     #[must_use]
     pub fn to_seconds_nanos(&self) -> (u64, u32) {
         // floor(fine × 10⁹ / 2¹²⁸) from the two 64-bit halves; each product is below 2⁹⁴.
@@ -259,35 +259,6 @@ impl CucValue {
             .wrapping_mul(nanos)
             .wrapping_add(lo.wrapping_mul(nanos) >> 64);
         (self.coarse, u32::try_from(sum >> 64).unwrap_or(u32::MAX))
-    }
-
-    /// The value for `seconds` and `nanos` in `format`: the fraction is rounded **up** to the
-    /// next representable value (TIME-011), and a carry adds one to the coarse time.
-    ///
-    /// # Errors
-    /// `OutOfRange` (`nanoseconds`) if `nanos` ≥ 10⁹; `OutOfRange` (`coarse`) if the coarse time,
-    /// after any carry, does not fit the format (TIME-012).
-    pub fn from_seconds_nanos(seconds: u64, nanos: u32, format: &CucFormat) -> Result<CucValue> {
-        if nanos >= NANOS {
-            return Err(range("nanoseconds", 999_999_999, u64::from(nanos)));
-        }
-        let bits = u32::from(format.fine).wrapping_mul(8);
-        // nanos < 2³⁰ and bits ≤ 80, so the shifted value stays below 2¹¹⁰.
-        let scaled = (u128::from(nanos) << bits).div_ceil(u128::from(NANOS));
-        let (coarse, raw) = if scaled == 1_u128 << bits {
-            let carried = seconds
-                .checked_add(1)
-                .ok_or_else(|| range("coarse", u64::MAX, u64::MAX))?;
-            (carried, 0)
-        } else {
-            (seconds, scaled)
-        };
-        let value = CucValue {
-            coarse,
-            fine: raw.checked_shl(128_u32.wrapping_sub(bits)).unwrap_or(0),
-        };
-        check_coarse(format, coarse)?;
-        Ok(value)
     }
 }
 
@@ -326,6 +297,39 @@ impl Cuc {
             return Err(Error::new(ErrorKind::OutOfRange).with_field(FieldId::new("fine")));
         }
         Ok(Cuc { format, value })
+    }
+
+    /// The code for `seconds` and `nanos` in `format`: the fraction is rounded **up** to the
+    /// next representable value (TIME-011), and a carry adds one to the coarse time. Returns a
+    /// [`Cuc`], so the fit to the format is established once (RS-020).
+    ///
+    /// # Errors
+    /// `OutOfRange` (`nanoseconds`) if `nanos` ≥ 10⁹; `OutOfRange` (`coarse`) if the coarse time,
+    /// after any carry, does not fit the format (TIME-012).
+    pub fn from_seconds_nanos(format: CucFormat, seconds: u64, nanos: u32) -> Result<Cuc> {
+        if nanos >= NANOS {
+            return Err(range("nanoseconds", 999_999_999, u64::from(nanos)));
+        }
+        let bits = u32::from(format.fine).wrapping_mul(8);
+        // nanos < 2³⁰ and bits ≤ 80, so the shifted value stays below 2¹¹⁰.
+        let scaled = (u128::from(nanos) << bits).div_ceil(u128::from(NANOS));
+        let (coarse, raw) = if scaled == 1_u128 << bits {
+            let carried = seconds
+                .checked_add(1)
+                .ok_or_else(|| range("coarse", u64::MAX, u64::MAX))?;
+            (carried, 0)
+        } else {
+            (seconds, scaled)
+        };
+        check_coarse(&format, coarse)?;
+        // The rounded fraction has no bits below the format's resolution.
+        Ok(Cuc {
+            format,
+            value: CucValue {
+                coarse,
+                fine: raw.checked_shl(128_u32.wrapping_sub(bits)).unwrap_or(0),
+            },
+        })
     }
 
     /// The format (301.0 §3.2).
@@ -488,33 +492,37 @@ mod tests {
             (0, 999_999_999)
         );
         assert_eq!(CucValue::default().to_seconds_nanos(), (0, 0));
-        let v = CucValue::from_seconds_nanos(5, 999_999_999, &fmt(1, 1)).unwrap();
-        assert_eq!((v.coarse(), v.fine()), (6, 0));
-        let v = CucValue::from_seconds_nanos(5, 1, &fmt(1, 0)).unwrap();
+        let c = Cuc::from_seconds_nanos(fmt(1, 1), 5, 999_999_999).unwrap();
+        assert_eq!(
+            (c.format(), c.value().coarse(), c.value().fine()),
+            (fmt(1, 1), 6, 0)
+        );
+        let v = Cuc::from_seconds_nanos(fmt(1, 0), 5, 1).unwrap().value();
         assert_eq!(
             (v.coarse(), v.fine()),
             (6, 0),
             "no fine octets: any fraction rounds up"
         );
         assert_eq!(
-            CucValue::from_seconds_nanos(5, 0, &fmt(1, 0))
+            Cuc::from_seconds_nanos(fmt(1, 0), 5, 0)
                 .unwrap()
+                .value()
                 .coarse(),
             5
         );
-        let e = CucValue::from_seconds_nanos(u64::MAX, 999_999_999, &fmt(7, 1)).unwrap_err();
+        let e = Cuc::from_seconds_nanos(fmt(7, 1), u64::MAX, 999_999_999).unwrap_err();
         assert_eq!(e.kind(), ErrorKind::OutOfRange);
-        let e = CucValue::from_seconds_nanos(0, 1_000_000_000, &fmt(7, 1)).unwrap_err();
+        let e = Cuc::from_seconds_nanos(fmt(7, 1), 0, 1_000_000_000).unwrap_err();
         assert_eq!(e.kind(), ErrorKind::OutOfRange);
-        let e = CucValue::from_seconds_nanos(256, 0, &fmt(1, 0)).unwrap_err();
+        let e = Cuc::from_seconds_nanos(fmt(1, 0), 256, 0).unwrap_err();
         assert_eq!(e.kind(), ErrorKind::OutOfRange);
         assert_eq!(
-            CucValue::from_seconds_nanos(1 << 56, 0, &fmt(7, 0))
+            Cuc::from_seconds_nanos(fmt(7, 0), 1 << 56, 0)
                 .unwrap_err()
                 .kind(),
             ErrorKind::OutOfRange
         );
-        assert!(CucValue::from_seconds_nanos((1 << 56) - 1, 0, &fmt(7, 0)).is_ok());
+        assert!(Cuc::from_seconds_nanos(fmt(7, 0), (1 << 56) - 1, 0).is_ok());
     }
 
     #[test]
@@ -550,9 +558,9 @@ mod tests {
             // req: TIME-011, VER-023
             let f = fmt(co, fo);
             let secs = secs >> (64 - 8 * u32::from(co));
-            let Ok(v) = CucValue::from_seconds_nanos(secs, ns, &f) else { return Ok(()) };
-            prop_assert!(Cuc::new(f, v).is_ok(), "rounded value is representable");
-            let (s2, ns2) = v.to_seconds_nanos();
+            let Ok(c) = Cuc::from_seconds_nanos(f, secs, ns) else { return Ok(()) };
+            prop_assert_eq!(Cuc::new(f, c.value()), Ok(c), "rounded value is representable");
+            let (s2, ns2) = c.value().to_seconds_nanos();
             // Rounding up never lowers the time, and moves it by less than one fine step.
             let before = u128::from(secs) * 1_000_000_000 + u128::from(ns);
             let after = u128::from(s2) * 1_000_000_000 + u128::from(ns2);
@@ -561,7 +569,7 @@ mod tests {
             prop_assert!(after <= before + step.max(1));
             if fo <= 3 {
                 // Exact round trip of the value through nanoseconds (TIME-011).
-                prop_assert_eq!(CucValue::from_seconds_nanos(s2, ns2, &f).unwrap(), v);
+                prop_assert_eq!(Cuc::from_seconds_nanos(f, s2, ns2), Ok(c));
             }
         }
     }

@@ -38,22 +38,18 @@ pub struct LayoutSpec {
 }
 
 /// Contiguous, non-overlapping octet ranges covering a frame exactly, in wire order (CMN-040).
+///
+/// Built only by [`FrameLayout::compute`], so holding one proves the ranges start at 0, follow
+/// each other without gaps, and leave a non-empty data field (CMN-041, RS-020).
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct FrameLayout {
-    /// Primary header.
-    pub primary_header: Range<usize>,
-    /// Secondary header, Insert Zone, or Segment Header (empty if absent).
-    pub secondary: Range<usize>,
-    /// Security Header (empty without SDLS).
-    pub security_header: Range<usize>,
-    /// Data field.
-    pub data: Range<usize>,
-    /// Security Trailer (empty without SDLS).
-    pub security_trailer: Range<usize>,
-    /// Operational Control Field (empty if absent).
-    pub ocf: Range<usize>,
-    /// Frame Error Control Field (empty if absent).
-    pub fecf: Range<usize>,
+    primary_header: Range<usize>,
+    secondary: Range<usize>,
+    security_header: Range<usize>,
+    data: Range<usize>,
+    security_trailer: Range<usize>,
+    ocf: Range<usize>,
+    fecf: Range<usize>,
 }
 
 const fn take(at: &mut usize, len: usize) -> Range<usize> {
@@ -96,7 +92,55 @@ impl FrameLayout {
         })
     }
 
-    /// The ranges in wire order.
+    /// Primary header (CMN-040).
+    #[must_use]
+    pub fn primary_header(&self) -> Range<usize> {
+        self.primary_header.clone()
+    }
+
+    /// Secondary header, Insert Zone, or Segment Header; empty if absent (CMN-040).
+    #[must_use]
+    pub fn secondary(&self) -> Range<usize> {
+        self.secondary.clone()
+    }
+
+    /// Security Header; empty without SDLS (CMN-040, API-070).
+    #[must_use]
+    pub fn security_header(&self) -> Range<usize> {
+        self.security_header.clone()
+    }
+
+    /// Data field, never empty (CMN-040, CMN-041).
+    #[must_use]
+    pub fn data(&self) -> Range<usize> {
+        self.data.clone()
+    }
+
+    /// Security Trailer; empty without SDLS (CMN-040, API-070).
+    #[must_use]
+    pub fn security_trailer(&self) -> Range<usize> {
+        self.security_trailer.clone()
+    }
+
+    /// Operational Control Field; empty if absent (CMN-040).
+    #[must_use]
+    pub fn ocf(&self) -> Range<usize> {
+        self.ocf.clone()
+    }
+
+    /// Frame Error Control Field; empty if absent (CMN-040).
+    #[must_use]
+    pub fn fecf(&self) -> Range<usize> {
+        self.fecf.clone()
+    }
+
+    /// Frame length: the end of the last range (CMN-040).
+    #[must_use]
+    pub const fn frame_len(&self) -> usize {
+        self.fecf.end
+    }
+
+    /// The ranges in wire order (CMN-040).
     #[must_use]
     pub fn ranges(&self) -> [Range<usize>; 7] {
         [
@@ -168,7 +212,7 @@ mod tests {
             frame_len: 13,
             ..spec
         };
-        assert_eq!(FrameLayout::compute(&spec).unwrap().data, 6..7);
+        assert_eq!(FrameLayout::compute(&spec).unwrap().data(), 6..7);
         let spec = LayoutSpec {
             frame_len: 3,
             ..spec
@@ -195,8 +239,9 @@ mod tests {
                     prop_assert_eq!(r[0].start, 0);
                     for w in r.windows(2) { prop_assert_eq!(w[0].end, w[1].start); }
                     prop_assert_eq!(r[6].end, frame_len);
-                    prop_assert_eq!(l.data.len(), frame_len - fixed);
-                    prop_assert!(!l.data.is_empty());
+                    prop_assert_eq!(l.data().len(), frame_len - fixed);
+                    prop_assert_eq!(l.frame_len(), frame_len);
+                    prop_assert!(!l.data().is_empty());
                 }
                 Err(e) => {
                     prop_assert_eq!(e.kind(), ErrorKind::InvalidConfig);

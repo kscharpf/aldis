@@ -49,12 +49,23 @@ fn mode(case: &CodecCase) -> DecodeMode {
     }
 }
 
-fn fields(case: &CodecCase) -> EncapsulationFields {
-    EncapsulationFields {
-        epi: Epi::new(u8_param(case, "epi")).unwrap(),
-        extension: EpiExtension::new(u8_param(case, "epi_extension")).unwrap(),
-        user_defined: UserDefined::new(u8_param(case, "user_defined")).unwrap(),
-    }
+/// The header fields of an encode case, parsed from raw values (RS-020).
+fn fields(case: &CodecCase) -> Result<EncapsulationFields, Error> {
+    EncapsulationFields::from_parts(
+        Epi::new(u8_param(case, "epi")).unwrap(),
+        EpiExtension::new(u8_param(case, "epi_extension")).unwrap(),
+        UserDefined::new(u8_param(case, "user_defined")).unwrap(),
+    )
+}
+
+/// Managed parameters that accept every EPI, extended EPI, and length: encode cases exercise
+/// the header size policy, not the configuration (that is `epp/config.json`).
+fn any_config() -> EppConfig {
+    let epis = (0..=7).fold(EpiSet::EMPTY, |s, e| s.with(Epi::new(e).unwrap()));
+    let ext = (0..=15).fold(ExtendedEpiSet::EMPTY, |s, e| {
+        s.with(EpiExtension::new(e).unwrap())
+    });
+    EppConfig::new(0, aldis_epp::config::MAX_DATA_LEN, epis, ext).unwrap()
 }
 
 fn header_size(case: &CodecCase) -> HeaderSize {
@@ -129,20 +140,27 @@ fn run(case: &CodecCase) -> Result<Value, Error> {
         "encode" => {
             let data = hex::decode(param(case, "data_hex").as_str().unwrap()).unwrap();
             let mut out = vec![0_u8; data.len() + 8];
-            let n = encode(fields(case), header_size(case), &data, &mut out)?;
+            let cfg = any_config();
+            let unit = cfg.data_unit(fields(case)?, &data)?;
+            let n = encode(&unit, header_size(case), &mut out)?;
             // The two-phase writer must produce the same octets (API-020).
             let mut two = vec![0_u8; data.len() + 8];
-            let mut w =
-                EncapsulationWriter::begin(&mut two, fields(case), header_size(case), data.len())
-                    .unwrap();
+            let mut w = EncapsulationWriter::begin(
+                &mut two,
+                &cfg,
+                unit.fields(),
+                header_size(case),
+                data.len(),
+            )
+            .unwrap();
             w.data_mut().copy_from_slice(&data);
             assert_eq!(w.finish(data.len()), Ok(n), "{}", case.id);
             assert_eq!(two[..n], out[..n], "{}: two-phase writer differs", case.id);
             Ok(json!({ "output_hex": hex::encode(&out[..n]) }))
         }
         "encode_header" => {
-            let h = EncapsulationHeader::for_data(
-                fields(case),
+            let h = any_config().header(
+                fields(case)?,
                 header_size(case),
                 usize_param(case, "data_len"),
             )?;

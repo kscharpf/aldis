@@ -155,9 +155,9 @@ fn handle_layout(case: &CodecCase) -> Outcome {
     outcome(spec.and_then(|s| FrameLayout::compute(&s)).map(|l| {
         let r = |x: &core::ops::Range<usize>| json!([x.start, x.end]);
         json!({
-            "primary_header": r(&l.primary_header), "secondary": r(&l.secondary),
-            "security_header": r(&l.security_header), "data": r(&l.data),
-            "security_trailer": r(&l.security_trailer), "ocf": r(&l.ocf), "fecf": r(&l.fecf),
+            "primary_header": r(&l.primary_header()), "secondary": r(&l.secondary()),
+            "security_header": r(&l.security_header()), "data": r(&l.data()),
+            "security_trailer": r(&l.security_trailer()), "ocf": r(&l.ocf()), "fecf": r(&l.fecf()),
         })
     }))
 }

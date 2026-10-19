@@ -131,6 +131,18 @@ fn vectors(t: &mut Tally) {
                 fecf: bb(c.fecf),
             })
         });
+        if let Ok(l) = &got {
+            let accessors = [
+                l.primary_header(),
+                l.secondary(),
+                l.security_header(),
+                l.data(),
+                l.security_trailer(),
+                l.ocf(),
+                l.fecf(),
+            ];
+            tally_layout(t, l, &accessors);
+        }
         match (got, c.expect) {
             (Ok(l), Some(expected)) => {
                 let mut flat = [0_usize; 14];
@@ -143,6 +155,15 @@ fn vectors(t: &mut Tally) {
             _ => t.check(false),
         }
     }
+}
+
+/// The named `FrameLayout` accessors agree with `ranges()`, and the secured fields derived from
+/// the layout match its security and data ranges.
+fn tally_layout(t: &mut Tally, l: &FrameLayout, accessors: &[core::ops::Range<usize>; 7]) {
+    t.check(*accessors == l.ranges() && l.frame_len() == l.fecf().end);
+    let s = SecuredFields::from_layout(l);
+    t.check(s.header() == l.security_header() && s.data() == l.data());
+    t.check(s.trailer() == l.security_trailer());
 }
 
 fn apis_errors_ids(tally: &mut Tally) {
@@ -318,17 +339,27 @@ fn apis_containers_security(tally: &mut Tally) {
     vec.clear();
 
     // security
-    let ctx = FrameCtx {
-        protocol: bb(Protocol::Uslp),
-        scid: 1,
-        vcid: 2,
-        map_id: Some(3),
+    let (Some(scid), Some(vcid), Some(map)) = (
+        SpacecraftId::<16>::new(bb(1)),
+        VcId::<6>::new(bb(2)),
+        MapId::<4>::new(bb(3)),
+    ) else {
+        tally.check(false);
+        return;
     };
-    let fields = SecuredFields {
-        header: 0..2,
-        data: 2..4,
-        trailer: 4..6,
+    let ctx = FrameCtx::Uslp {
+        scid,
+        vcid,
+        map_id: Some(map),
     };
+    tally.check(ctx.protocol() == bb(Protocol::Uslp) && ctx.scid() == 1 && ctx.vcid() == 2);
+    tally.check(ctx.map_id() == Some(3));
+    let Ok(fields) = SecuredFields::new(bb(0..2), 2..4, 4..6) else {
+        tally.check(false);
+        return;
+    };
+    tally.check(fields.header() == (0..2) && fields.data() == (2..4) && fields.trailer() == (4..6));
+    tally.check(SecuredFields::new(bb(0..2), 3..4, 4..6).is_err());
     let mut buf = [0_u8; 6];
     tally.check(NoSecurity.protect(&ctx, bb(&mut buf), &fields).is_ok());
     tally.check(NoSecurity.verify(&ctx, bb(&mut buf), &fields) == Ok(2..4));
@@ -353,6 +384,9 @@ fn apis_containers_security(tally: &mut Tally) {
 /// A flag type whose index is its value, so out-of-range indices reach `AnomalySet` too.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 struct Flag(u8);
+
+// A deliberately unconstrained test double: implements the sealing trait directly.
+impl aldis_core::anomaly::__private::Sealed for Flag {}
 
 impl Anomaly for Flag {
     fn bit(self) -> u8 {

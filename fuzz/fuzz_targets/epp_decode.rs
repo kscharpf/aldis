@@ -6,7 +6,10 @@
 // req: GEN-020, API-010, API-013, API-020, API-030, API-032, EPP-005, GEN-042, VER-022
 
 use aldis_core::{DecodeMode, ErrorKind};
-use aldis_epp::{EncapsulationFields, EncapsulationPacket, HeaderSize, encode};
+use aldis_epp::{
+    EncapsulationFields, EncapsulationPacket, Epi, EpiSet, EppConfig, ExtendedEpiSet, HeaderSize,
+    config::MAX_DATA_LEN, encode,
+};
 use libfuzzer_sys::fuzz_target;
 
 fuzz_target!(|data: &[u8]| {
@@ -41,19 +44,18 @@ fuzz_target!(|data: &[u8]| {
     }
     if let Ok(p) = strict {
         assert!(p.anomalies().is_empty());
-        let fields = EncapsulationFields {
-            epi: p.epi(),
-            extension: p.extension().unwrap_or_default(),
-            user_defined: p.user_defined().unwrap_or_default(),
-        };
-        let mut out = vec![0_u8; p.len()];
-        let n = encode(
-            fields,
-            HeaderSize::Fixed(p.header_len()),
-            p.data(),
-            &mut out,
+        let fields = EncapsulationFields::from_parts(
+            p.epi(),
+            p.extension().unwrap_or_default(),
+            p.user_defined().unwrap_or_default(),
         )
         .unwrap();
+        let epis = (0..=7).fold(EpiSet::EMPTY, |s, e| s.with(Epi::new(e).unwrap()));
+        let config =
+            EppConfig::new(0, MAX_DATA_LEN, epis, ExtendedEpiSet::from_bits(u16::MAX)).unwrap();
+        let unit = config.data_unit(fields, p.data()).unwrap();
+        let mut out = vec![0_u8; p.len()];
+        let n = encode(&unit, HeaderSize::Fixed(p.header_len()), &mut out).unwrap();
         assert_eq!(&out[..n], &data[..p.len()]);
     }
 });

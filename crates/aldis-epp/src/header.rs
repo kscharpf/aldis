@@ -164,20 +164,18 @@ pub enum HeaderSize {
 /// The header fields a caller chooses when encoding (EPP-008).
 ///
 /// Derived fields (Length of Length, Packet Length) are computed by the encoder, and the CCSDS
-/// Defined Field is always written as zero (API-021, GEN-052).
+/// Defined Field is always written as zero (API-021, GEN-052). The fields are private, so the
+/// Protocol ID Extension is non-zero only with EPI `110` (133.1 §4.1.2.6.3, RS-020).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub struct EncapsulationFields {
-    /// Encapsulation Protocol ID (133.1 §4.1.2.3, API-014).
-    pub epi: Epi,
-    /// Protocol ID Extension; must be zero unless `epi` is [`Epi::EXTENDED`] (133.1
-    /// §4.1.2.6.3).
-    pub extension: EpiExtension,
-    /// User Defined field; a non-zero value needs a 4- or 8-octet header (§4.1.2.5, EPP-008).
-    pub user_defined: UserDefined,
+    epi: Epi,
+    extension: EpiExtension,
+    user_defined: UserDefined,
 }
 
 impl EncapsulationFields {
-    /// Fields with `epi` and zero extension and user-defined bits (EPP-008).
+    /// Fields with `epi`, a zero extension, and zero user-defined bits; valid for every EPI,
+    /// including `110` with extended EPI 0 (EPP-008).
     #[must_use]
     pub const fn new(epi: Epi) -> EncapsulationFields {
         EncapsulationFields {
@@ -187,10 +185,68 @@ impl EncapsulationFields {
         }
     }
 
+    /// Fields with EPI `110`, whose Protocol ID Extension `extension` identifies the protocol
+    /// (133.1 §4.1.2.6.2, EPP-008).
+    #[must_use]
+    pub const fn extended(extension: EpiExtension) -> EncapsulationFields {
+        EncapsulationFields {
+            epi: Epi::EXTENDED,
+            extension,
+            user_defined: UserDefined(0),
+        }
+    }
+
+    /// The same fields with User Defined bits `user_defined`; a non-zero value needs a 4- or
+    /// 8-octet header (133.1 §4.1.2.5, EPP-008).
+    #[must_use]
+    pub const fn with_user_defined(self, user_defined: UserDefined) -> EncapsulationFields {
+        EncapsulationFields {
+            user_defined,
+            ..self
+        }
+    }
+
+    /// Fields from separately supplied values, for callers that hold them raw.
+    ///
+    /// # Errors
+    /// `InvalidField` (`epi_extension`) for a non-zero extension when `epi` is not `110`
+    /// (133.1 §4.1.2.6.3, EPP-008).
+    pub const fn from_parts(
+        epi: Epi,
+        extension: EpiExtension,
+        user_defined: UserDefined,
+    ) -> Result<EncapsulationFields> {
+        if extension.0 != 0 && epi.0 != Epi::EXTENDED.0 {
+            return Err(invalid("epi_extension"));
+        }
+        Ok(EncapsulationFields {
+            epi,
+            extension,
+            user_defined,
+        })
+    }
+
+    /// Encapsulation Protocol ID (133.1 §4.1.2.3).
+    #[must_use]
+    pub const fn epi(&self) -> Epi {
+        self.epi
+    }
+
+    /// Protocol ID Extension; zero unless the EPI is `110` (133.1 §4.1.2.6).
+    #[must_use]
+    pub const fn extension(&self) -> EpiExtension {
+        self.extension
+    }
+
+    /// User Defined field (133.1 §4.1.2.5).
+    #[must_use]
+    pub const fn user_defined(&self) -> UserDefined {
+        self.user_defined
+    }
+
     /// Whether the fields need a header with the User Defined and Extension fields: EPI
     /// `110`, whose protocol the extension identifies, or non-zero user-defined bits (133.1
-    /// §4.1.2.1.1 d–e, §4.1.2.6.2). Callers have already rejected a non-zero extension with
-    /// any other EPI.
+    /// §4.1.2.1.1 d–e, §4.1.2.6.2). A non-zero extension implies EPI `110`.
     const fn needs_extension(self) -> bool {
         self.epi.0 == Epi::EXTENDED.0 || self.user_defined.0 != 0
     }
@@ -220,24 +276,22 @@ pub(crate) const fn invalid(field: &'static str) -> Error {
 
 impl EncapsulationHeader {
     /// The header for a packet with `fields` and `data_len` data octets under `size`
-    /// (EPP-005, EPP-006, EPP-008, API-021).
+    /// (EPP-005, EPP-008, API-021). Crate-internal: callers size a user packet's header through
+    /// [`EppConfig::header`](crate::config::EppConfig::header), which also applies the managed
+    /// parameters (EPP-010).
     ///
     /// # Errors
-    /// - `InvalidField` (`epi_extension`) for a non-zero extension when the EPI is not `110`.
     /// - `InvalidField` (`epi`) for an empty data field when the EPI is not idle (EPP-005), or
     ///   for `Fixed(One)` with a non-idle EPI.
     /// - `InvalidField` (`header_size`) for `Fixed(One | Two)` when the fields need a 4- or
     ///   8-octet header.
     /// - `OutOfRange` (`packet_len`) when the total length does not fit the chosen header,
     ///   or no header under `Auto`.
-    pub fn for_data(
+    pub(crate) fn for_data(
         fields: EncapsulationFields,
         size: HeaderSize,
         data_len: usize,
     ) -> Result<EncapsulationHeader> {
-        if fields.extension.0 != 0 && fields.epi.0 != Epi::EXTENDED.0 {
-            return Err(invalid("epi_extension"));
-        }
         if data_len == 0 && !fields.epi.is_idle() {
             return Err(invalid("epi"));
         }
@@ -586,21 +640,45 @@ mod tests {
     }
 
     #[test]
+    fn fields_cannot_hold_an_extension_without_epi_110() {
+        // req: EPP-006, EPP-008, RS-020
+        let ext = EpiExtension::new(9).unwrap();
+        let user = UserDefined::new(3).unwrap();
+        let x = EncapsulationFields::extended(ext).with_user_defined(user);
+        assert_eq!(
+            (x.epi(), x.extension(), x.user_defined()),
+            (Epi::EXTENDED, ext, user)
+        );
+        let m = EncapsulationFields::new(Epi::MISSION_SPECIFIC);
+        assert_eq!(
+            (m.epi(), m.extension().get(), m.user_defined().get()),
+            (Epi::MISSION_SPECIFIC, 0, 0)
+        );
+        assert_eq!(
+            EncapsulationFields::from_parts(Epi::EXTENDED, ext, user),
+            Ok(x)
+        );
+        assert_eq!(
+            EncapsulationFields::from_parts(
+                Epi::MISSION_SPECIFIC,
+                EpiExtension::default(),
+                UserDefined::default()
+            ),
+            Ok(m)
+        );
+        let e = EncapsulationFields::from_parts(Epi::MISSION_SPECIFIC, ext, user).unwrap_err();
+        assert_eq!(
+            (e.kind(), e.field().map(aldis_core::FieldId::name)),
+            (ErrorKind::InvalidField, Some("epi_extension"))
+        );
+    }
+
+    #[test]
     fn for_data_rejections() {
         // req: EPP-005, EPP-006, EPP-008, API-021
-        let ext1 = EpiExtension::new(1).unwrap();
         let user1 = UserDefined::new(1).unwrap();
         let mission = EncapsulationFields::new(Epi::MISSION_SPECIFIC);
         let cases = [
-            (
-                EncapsulationFields {
-                    extension: ext1,
-                    ..mission
-                },
-                HeaderSize::Auto,
-                1,
-                "epi_extension",
-            ),
             (mission, HeaderSize::Auto, 0, "epi"),
             (mission, HeaderSize::Fixed(HeaderLen::One), 1, "epi"),
             (

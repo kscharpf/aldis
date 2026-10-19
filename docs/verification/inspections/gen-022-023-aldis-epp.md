@@ -8,6 +8,7 @@
 | Approved | 2026-10-18, maintainer |
 | Repeat | when `aldis-epp` gains a loop or a call between its own functions, and before each release |
 | Revised | 2026-10-18, PR #18 review: the header-copy loop of `writer.rs` `put_header` and of `EncapsulationHeader::encode` is now the single `EncapsulationHeader::write_to` (same loop, same bound); `EncapsulationWriter::begin` no longer adjusts `max_data_len`. No loop added. Confirmed 2026-10-18, maintainer |
+| Revised | 2026-10-19, issue #22 (RS-020): `EppConfig::data_unit` and `EppConfig::header` call `check` → `check_ids` / `check_len`, then (`header`) `EncapsulationHeader::for_data`; `EncapsulationWriter::begin` calls `check_fields` → `check_ids`, and `finish` calls `check_len`; `EncapsulationFields` constructors are straight-line. No loop and no recursion added. Awaiting maintainer confirmation |
 
 ## Loops
 

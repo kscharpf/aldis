@@ -11,6 +11,17 @@ use aldis_epp::{
 
 use crate::exercise::Tally;
 
+/// Managed parameters that accept every EPI, extended EPI, and data unit length.
+fn any_config() -> Option<EppConfig> {
+    let epis = (0..=7).fold(EpiSet::EMPTY, |s, e| {
+        s.with(Epi::new(e).unwrap_or_default())
+    });
+    let ext = (0..=15).fold(ExtendedEpiSet::EMPTY, |s, e| {
+        s.with(EpiExtension::new(e).unwrap_or_default())
+    });
+    EppConfig::new(0, aldis_epp::config::MAX_DATA_LEN, epis, ext).ok()
+}
+
 fn ids_and_header(t: &mut Tally) {
     let ext = EpiExtension::new(bb(9)).unwrap_or_default();
     let user = UserDefined::try_from(bb(5_u8)).unwrap_or_default();
@@ -23,12 +34,17 @@ fn ids_and_header(t: &mut Tally) {
         t.check(len.length_of_length() == lol && len.octets() >= 1 && len.max_packet_len() >= 1);
         t.check(len.has_extension() == (lol >= 2));
     }
-    let fields = EncapsulationFields {
-        epi: Epi::EXTENDED,
-        extension: ext,
-        user_defined: user,
+    let fields = EncapsulationFields::extended(bb(ext)).with_user_defined(bb(user));
+    t.check(
+        fields.epi() == Epi::EXTENDED && fields.extension() == ext && fields.user_defined() == user,
+    );
+    t.check(EncapsulationFields::from_parts(Epi::MISSION_SPECIFIC, bb(ext), user).is_err());
+    t.check(EncapsulationFields::from_parts(Epi::EXTENDED, bb(ext), user) == Ok(fields));
+    let Some(any) = any_config() else {
+        t.check(false);
+        return;
     };
-    let header = EncapsulationHeader::for_data(bb(fields), bb(HeaderSize::Auto), bb(3));
+    let header = any.header(bb(fields), bb(HeaderSize::Auto), bb(3));
     t.check(header.is_ok_and(|h| {
         h.header_len() == HeaderLen::Four
             && h.epi() == Epi::EXTENDED
@@ -44,7 +60,7 @@ fn ids_and_header(t: &mut Tally) {
         EncapsulationHeader::idle(bb(70_000)).is_ok_and(|h| h.header_len() == HeaderLen::Eight),
     );
     t.check(EncapsulationHeader::idle(bb(0)).is_err());
-    let e = EncapsulationHeader::for_data(
+    let e = any.header(
         EncapsulationFields::new(Epi::MISSION_SPECIFIC),
         HeaderSize::Fixed(HeaderLen::Two),
         bb(usize::MAX),
@@ -83,13 +99,25 @@ fn view_and_writers(t: &mut Tally) {
     t.check(EncapsulationPacket::peek_length(bb(&bytes[..3])).is_err());
 
     let mission = EncapsulationFields::new(Epi::MISSION_SPECIFIC);
+    let Some(any) = any_config() else {
+        t.check(false);
+        return;
+    };
     let mut out = [0_u8; 16];
-    t.check(encode(bb(mission), HeaderSize::Auto, bb(&[1, 2]), &mut out) == Ok(4));
+    match any.data_unit(bb(mission), bb(&[1, 2])) {
+        Ok(unit) => {
+            t.check(unit.fields() == mission && unit.data() == [1, 2]);
+            t.check(encode(&unit, HeaderSize::Auto, &mut out) == Ok(4));
+        }
+        Err(_) => t.check(false),
+    }
     t.check(out[..4] == [0xFD, 4, 1, 2]);
-    t.check(encode(bb(mission), HeaderSize::Auto, bb(&[0; 20]), &mut out).is_err());
+    let big = any.data_unit(bb(mission), bb(&[0; 20]));
+    t.check(big.is_ok_and(|unit| encode(&unit, HeaderSize::Auto, &mut out).is_err()));
+    t.check(any.data_unit(bb(mission), bb(&[])).is_err());
     t.check(idle(bb(5), bb(0x55), &mut out) == Ok(5) && out[..5] == [0xE1, 5, 0x55, 0x55, 0x55]);
     let mut two = [0_u8; 16];
-    match EncapsulationWriter::begin(&mut two, bb(mission), HeaderSize::Auto, bb(4)) {
+    match EncapsulationWriter::begin(&mut two, &any, bb(mission), HeaderSize::Auto, bb(4)) {
         Ok(mut w) => {
             if let Some(d) = w.data_mut().first_mut() {
                 *d = bb(0x42);
@@ -99,6 +127,10 @@ fn view_and_writers(t: &mut Tally) {
         Err(_) => t.check(false),
     }
     t.check(two[..3] == [0xFD, 3, 0x42]);
+    let narrow = EppConfig::new(bb(2), bb(3), EpiSet::EMPTY, ExtendedEpiSet::EMPTY);
+    t.check(narrow.is_ok_and(|c| {
+        EncapsulationWriter::begin(&mut two, &c, mission, HeaderSize::Auto, 3).is_err()
+    }));
 }
 
 fn config(t: &mut Tally) {
