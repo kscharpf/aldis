@@ -116,6 +116,10 @@ impl<'b> SpacePacketWriter<'b> {
 
     /// Completes the packet with `user_len` octets of user data; returns the total length.
     ///
+    /// The packet is the first `total` octets of the buffer. When `user_len` is below the
+    /// reservation, the reserved octets after the packet are left as they are; use only
+    /// `out[..total]`.
+    ///
     /// # Errors
     /// `OutOfRange` (`user_len`) above the reservation; `InvalidField` (`data_field`) if the
     /// packet would have no data field (SPP-005). On error the buffer keeps its unfinished
