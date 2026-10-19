@@ -1,7 +1,7 @@
 //! Time codes with an explicit or implicit P-field: decode, encode, agency-defined codes
 //! (301.0 §3, §3.6; TIME-001…TIME-006).
 
-use aldis_core::{AnomalySet, DecodeMode, Error, ErrorKind, FieldId, Result};
+use aldis_core::{AnomalySet, DecodeMode, Error, ErrorDetail, ErrorKind, FieldId, Result};
 
 use crate::anomaly::TimeAnomaly;
 use crate::ccs::{Ccs, CcsFormat};
@@ -24,17 +24,15 @@ pub struct AgencyFormat {
 }
 
 impl AgencyFormat {
-    /// A format with a T-field of `t_len` octets, 1–16.
+    /// A format with a T-field of `t_len` octets, 1–16 (301.0 §3.6.2, TIME-006).
     ///
     /// # Errors
     /// `OutOfRange` (`t_len`) outside 1–16.
     pub const fn new(t_len: u8) -> Result<AgencyFormat> {
         if t_len == 0 || t_len > MAX_AGENCY_LEN {
-            return Err(Error::out_of_range(
-                "t_len",
-                wide8(MAX_AGENCY_LEN),
-                wide8(t_len),
-            ));
+            // Report the violated bound: 1 for zero, the maximum otherwise (GEN-041).
+            let limit = if t_len == 0 { 1 } else { MAX_AGENCY_LEN };
+            return Err(Error::out_of_range("t_len", wide8(limit), wide8(t_len)));
         }
         Ok(AgencyFormat {
             t_len,
@@ -48,7 +46,7 @@ impl AgencyFormat {
         AgencyFormat { tail, ..self }
     }
 
-    /// T-field length in octets.
+    /// T-field length in octets (TIME-006).
     #[must_use]
     pub fn t_len(&self) -> usize {
         usize::from(self.t_len)
@@ -87,13 +85,18 @@ pub struct Agency {
 }
 
 impl Agency {
-    /// An agency-defined code with T-field `t`.
+    /// An agency-defined code with T-field `t` (TIME-006).
     ///
     /// # Errors
     /// `LengthMismatch` (`tfield`) if `t` is not exactly the format's T-field length.
     pub fn new(format: AgencyFormat, t: &[u8]) -> Result<Agency> {
         if t.len() != format.t_len() {
-            return Err(Error::new(ErrorKind::LengthMismatch).with_field(FieldId::new("tfield")));
+            return Err(Error::new(ErrorKind::LengthMismatch)
+                .with_field(FieldId::new("tfield"))
+                .with_detail(ErrorDetail::Expected {
+                    expected: u64::from(format.t_len),
+                    found: u64::try_from(t.len()).unwrap_or(u64::MAX),
+                }));
         }
         Ok(Agency::from_t(format, t))
     }
@@ -107,20 +110,20 @@ impl Agency {
         Agency { format, t: octets }
     }
 
-    /// The format.
+    /// The format (301.0 §3.6).
     #[must_use]
     pub const fn format(&self) -> AgencyFormat {
         self.format
     }
 
-    /// The raw T-field.
+    /// The raw T-field (301.0 §3.6.1, TIME-006).
     #[must_use]
     pub fn tfield(&self) -> &[u8] {
         self.t.get(..self.format.t_len()).unwrap_or_default()
     }
 }
 
-/// The layout of a binary time code, for decoding with an implicit P-field.
+/// The layout of a binary time code, for decoding with an implicit P-field (301.0 §3.1.1).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum TimeFormat {
     /// CUC (§3.2).
@@ -134,7 +137,7 @@ pub enum TimeFormat {
 }
 
 impl TimeFormat {
-    /// T-field length in octets.
+    /// T-field length in octets (TIME-003).
     #[must_use]
     pub fn t_len(&self) -> usize {
         match self {
@@ -145,7 +148,7 @@ impl TimeFormat {
         }
     }
 
-    /// The P-field describing this format.
+    /// The P-field describing this format (TIME-001).
     #[must_use]
     pub fn pfield(&self) -> PField {
         match self {
@@ -170,20 +173,21 @@ impl TimeFormat {
 /// A binary time code (301.0 §3.2–3.4, §3.6).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum TimeCode {
-    /// CUC.
+    /// CUC (301.0 §3.2).
     Cuc(Cuc),
-    /// CDS.
+    /// CDS (301.0 §3.3).
     Cds(Cds),
-    /// CCS.
+    /// CCS (301.0 §3.4).
     Ccs(Ccs),
-    /// Agency-defined.
+    /// Agency-defined (301.0 §3.6, TIME-006).
     Agency(Agency),
     /// A reserved time code ID, returned in lenient mode with its P-field only; the T-field
     /// length is undefined, so the caller parses it (TIME-002).
     Unknown(PField),
 }
 
-/// A successful decode: the code, the octets consumed, and lenient-mode anomalies.
+/// A successful decode: the code, the octets consumed, and lenient-mode anomalies (TIME-003,
+/// GEN-043).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Decoded {
     code: TimeCode,
@@ -193,13 +197,13 @@ pub struct Decoded {
 }
 
 impl Decoded {
-    /// The time code.
+    /// The time code (TIME-001).
     #[must_use]
     pub const fn code(&self) -> TimeCode {
         self.code
     }
 
-    /// The P-field exactly as received, for [`decode_with_pfield`]; `None` for
+    /// The P-field exactly as received, for [`decode_with_pfield`]; `None` for (TIME-001, TIME-005)
     /// [`decode_implicit`]. [`TimeCode::pfield`] gives the canonical P-field of the code, which
     /// differs only for a CUC P-field that splits its octet counts non-canonically.
     #[must_use]
@@ -214,7 +218,7 @@ impl Decoded {
         self.len
     }
 
-    /// Always `false`: a decode consumes at least one octet.
+    /// Always `false`: a decode consumes at least one octet (TIME-003).
     #[must_use]
     pub const fn is_empty(&self) -> bool {
         false
@@ -319,7 +323,7 @@ pub fn decode_implicit(bytes: &[u8], format: &TimeFormat, mode: DecodeMode) -> R
 }
 
 impl TimeCode {
-    /// The format, or `None` for [`TimeCode::Unknown`].
+    /// The format, or `None` for [`TimeCode::Unknown`] (TIME-001).
     #[must_use]
     pub fn format(&self) -> Option<TimeFormat> {
         match self {
@@ -331,7 +335,7 @@ impl TimeCode {
         }
     }
 
-    /// The P-field that describes this code.
+    /// The P-field that describes this code (TIME-001, TIME-002).
     #[must_use]
     pub fn pfield(&self) -> PField {
         match self {
@@ -463,6 +467,29 @@ mod tests {
         );
         let a = Agency::new(AgencyFormat::new(2).unwrap(), &[1, 2]).unwrap();
         assert_eq!((a.tfield(), a.format().t_len()), (&[1, 2][..], 2));
+    }
+
+    #[test]
+    fn errors_report_the_violated_bound() {
+        // req: TIME-006, GEN-041
+        for (t_len, expected) in [(0, 1), (17, 16)] {
+            let e = AgencyFormat::new(t_len).unwrap_err();
+            assert_eq!(
+                e.detail(),
+                ErrorDetail::Expected {
+                    expected,
+                    found: u64::from(t_len)
+                }
+            );
+        }
+        let e = Agency::new(AgencyFormat::new(4).unwrap(), &[1, 2]).unwrap_err();
+        assert_eq!(
+            e.detail(),
+            ErrorDetail::Expected {
+                expected: 4,
+                found: 2
+            }
+        );
     }
 
     #[test]

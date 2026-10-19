@@ -38,10 +38,10 @@ pub struct CcsFormat {
 }
 
 impl CcsFormat {
-    /// Most sub-second octets: 6, down to 10⁻¹² s.
+    /// Most sub-second octets: 6, down to 10⁻¹² s (301.0 §3.4.2, TIME-030).
     pub const MAX_SUBSECOND_OCTETS: u8 = 6;
 
-    /// A format with `subsecond_octets` (0–6) octets of 10⁻², 10⁻⁴, … s.
+    /// A format with `subsecond_octets` (0–6) octets of 10⁻², 10⁻⁴, … s (301.0 §3.4.2, TIME-030).
     ///
     /// # Errors
     /// `OutOfRange` (`subsecond_octets`) above 6.
@@ -66,13 +66,13 @@ impl CcsFormat {
         CcsFormat { tail, ..self }
     }
 
-    /// The calendar variation.
+    /// The calendar variation (301.0 §3.4.2).
     #[must_use]
     pub const fn variation(&self) -> CcsVariation {
         self.variation
     }
 
-    /// Number of sub-second octets.
+    /// Number of sub-second octets (301.0 §3.4.2, TIME-030).
     #[must_use]
     pub const fn subsecond_octets(&self) -> u8 {
         self.subsecond
@@ -84,7 +84,7 @@ impl CcsFormat {
         self.tail
     }
 
-    /// T-field length in octets: 7 plus the sub-second octets.
+    /// T-field length in octets: 7 plus the sub-second octets (301.0 §3.4.1, TIME-003).
     #[must_use]
     pub fn t_len(&self) -> usize {
         usize::from(self.subsecond).wrapping_add(7)
@@ -129,34 +129,35 @@ impl CcsFormat {
     }
 }
 
-/// The date part of a CCS value; its kind must match the format's variation.
+/// The date part of a CCS value; its kind must match the format's variation (301.0 §3.4.1.1–2).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum CalendarDate {
-    /// Month 1–12 and day of month 1–31.
+    /// Month 1–12 and day of month 1–31 (301.0 §3.4.1.1, Annex A).
     MonthDay {
         /// Month of year.
         month: u8,
         /// Day of month.
         day: u8,
     },
-    /// Day of year, 1–366.
+    /// Day of year, 1–366 (301.0 §3.4.1.2, Annex A).
     DayOfYear(u16),
 }
 
-/// A CCS value with plain decimal fields.
+/// A CCS value with plain decimal fields (301.0 §3.4.1, TIME-030).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct CcsValue {
-    /// Year A.D., 1–9999.
+    /// Year A.D., 1–9999 (301.0 Annex A, TIME-030).
     pub year: u16,
-    /// Month and day, or day of year.
+    /// Month and day, or day of year (301.0 §3.4.1, TIME-030).
     pub date: CalendarDate,
-    /// Hour, 0–23.
+    /// Hour, 0–23 (301.0 Annex A, TIME-030).
     pub hour: u8,
-    /// Minute, 0–59.
+    /// Minute, 0–59 (301.0 Annex A, TIME-030).
     pub minute: u8,
-    /// Second, 0–60 (60 for a leap second).
+    /// Second, 0–60 (60 for a leap second) (301.0 Annex A, TIME-030).
     pub second: u8,
-    /// Sub-second digits as an integer: with `n` sub-second octets, the value of the `2n`
+    /// Sub-second digits as an integer: with `n` sub-second octets, the value of the `2n` (301.0
+    /// §3.4.2, TIME-030)
     /// decimal digits after the point (e.g. `1234` with 2 octets is 0.1234 s).
     pub subsecond: u64,
 }
@@ -173,26 +174,26 @@ fn range(field: &'static str, limit: u64, found: u64) -> Error {
     Error::out_of_range(field, limit, found)
 }
 
+/// `Ok` if `value` is in `1..=max`; otherwise `OutOfRange` naming the violated bound, 1 or
+/// `max` (GEN-041).
+fn one_based(field: &'static str, value: u16, max: u16) -> Result<()> {
+    match value {
+        0 => Err(range(field, 1, 0)),
+        v if v > max => Err(range(field, max.into(), v.into())),
+        _ => Ok(()),
+    }
+}
+
 /// Checks `value` against `format` and the calendar (TIME-030).
 fn validate(format: &CcsFormat, value: &CcsValue) -> Result<()> {
-    if value.year == 0 || value.year > 9999 {
-        return Err(range("year", 9999, value.year.into()));
-    }
+    one_based("year", value.year, 9999)?;
     match (format.variation, value.date) {
         (CcsVariation::MonthDay, CalendarDate::MonthDay { month, day }) => {
-            if month == 0 || month > 12 {
-                return Err(range("month", 12, month.into()));
-            }
-            let last = days_in_month(value.year, month);
-            if day == 0 || day > last {
-                return Err(range("day", last.into(), day.into()));
-            }
+            one_based("month", month.into(), 12)?;
+            one_based("day", day.into(), days_in_month(value.year, month).into())?;
         }
         (CcsVariation::DayOfYear, CalendarDate::DayOfYear(doy)) => {
-            let last = days_in_year(value.year);
-            if doy == 0 || doy > last {
-                return Err(range("day_of_year", last.into(), doy.into()));
-            }
+            one_based("day_of_year", doy, days_in_year(value.year))?;
         }
         _ => return Err(Error::new(ErrorKind::InvalidField).with_field(FieldId::new("date"))),
     }
@@ -245,13 +246,13 @@ impl Ccs {
         Ok(Ccs { format, value })
     }
 
-    /// The format.
+    /// The format (301.0 §3.4).
     #[must_use]
     pub const fn format(&self) -> CcsFormat {
         self.format
     }
 
-    /// The value.
+    /// The value (301.0 §3.4).
     #[must_use]
     pub const fn value(&self) -> CcsValue {
         self.value
@@ -516,6 +517,31 @@ mod tests {
             )
             .is_ok()
         );
+    }
+
+    #[test]
+    fn errors_report_the_violated_bound() {
+        // req: TIME-030, GEN-041
+        use aldis_core::ErrorDetail;
+        let mdf = CcsFormat::new(CcsVariation::MonthDay, 0).unwrap();
+        let doyf = CcsFormat::new(CcsVariation::DayOfYear, 0).unwrap();
+        for (f, v, expected, found) in [
+            (mdf, value(0, md(1, 1)), 1, 0),
+            (mdf, value(10_000, md(1, 1)), 9999, 10_000),
+            (mdf, value(2023, md(0, 1)), 1, 0),
+            (mdf, value(2023, md(13, 1)), 12, 13),
+            (mdf, value(2023, md(4, 0)), 1, 0),
+            (mdf, value(2023, md(4, 31)), 30, 31),
+            (doyf, value(2023, CalendarDate::DayOfYear(0)), 1, 0),
+            (doyf, value(2023, CalendarDate::DayOfYear(366)), 365, 366),
+        ] {
+            let e = Ccs::new(f, v).unwrap_err();
+            assert_eq!(
+                e.detail(),
+                ErrorDetail::Expected { expected, found },
+                "{v:?}"
+            );
+        }
     }
 
     #[test]

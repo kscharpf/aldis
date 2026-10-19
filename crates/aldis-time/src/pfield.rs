@@ -29,7 +29,7 @@ pub enum TimeCodeId {
 }
 
 impl TimeCodeId {
-    /// The identification in bits 1–3 of `octet`.
+    /// The identification in bits 1–3 of `octet` (301.0 §3.1.1, TIME-001).
     #[must_use]
     pub const fn from_octet(octet: u8) -> TimeCodeId {
         match (octet >> 4) & 0b111 {
@@ -42,7 +42,7 @@ impl TimeCodeId {
         }
     }
 
-    /// The 3-bit field value.
+    /// The 3-bit field value (301.0 §3.1.1, TIME-001).
     #[must_use]
     pub const fn bits(self) -> u8 {
         match self {
@@ -101,13 +101,13 @@ impl PField {
         }
     }
 
-    /// Octet 1.
+    /// Octet 1 (301.0 §3.1.1, TIME-001).
     #[must_use]
     pub const fn first(&self) -> u8 {
         self.first
     }
 
-    /// The extension octets after octet 1.
+    /// The extension octets after octet 1 (TIME-001, TIME-005).
     #[must_use]
     pub fn rest(&self) -> &[u8] {
         self.rest
@@ -115,19 +115,19 @@ impl PField {
             .unwrap_or_default()
     }
 
-    /// Length in octets, 1 to [`MAX_PFIELD_LEN`].
+    /// Length in octets, 1 to [`MAX_PFIELD_LEN`] (TIME-003, TIME-005).
     #[must_use]
     pub fn len(&self) -> usize {
         usize::from(self.rest_len).wrapping_add(1)
     }
 
-    /// Always `false`: a P-field has at least octet 1.
+    /// Always `false`: a P-field has at least octet 1 (TIME-001).
     #[must_use]
     pub const fn is_empty(&self) -> bool {
         false
     }
 
-    /// The time code identification.
+    /// The time code identification (301.0 §3.1.1, TIME-001, TIME-002).
     #[must_use]
     pub const fn id(&self) -> TimeCodeId {
         TimeCodeId::from_octet(self.first)
@@ -185,13 +185,13 @@ pub struct PFieldTail {
 }
 
 impl PFieldTail {
-    /// No undefined octets.
+    /// No undefined octets (TIME-005).
     pub const EMPTY: PFieldTail = PFieldTail {
         octets: [0; MAX_PFIELD_LEN - 1],
         len: 0,
     };
 
-    /// A tail of `octets`, up to 7.
+    /// A tail of `octets`, up to 7 (TIME-005).
     ///
     /// # Errors
     /// `InvalidField` (`pfield_tail`) if there are more than 7 octets, or the extension flags do
@@ -224,19 +224,19 @@ impl PFieldTail {
         tail
     }
 
-    /// The octets.
+    /// The octets (TIME-005).
     #[must_use]
     pub fn as_bytes(&self) -> &[u8] {
         self.octets.get(..usize::from(self.len)).unwrap_or_default()
     }
 
-    /// Number of octets.
+    /// Number of octets (TIME-005).
     #[must_use]
     pub fn len(&self) -> usize {
         usize::from(self.len)
     }
 
-    /// Whether there are no undefined octets.
+    /// Whether there are no undefined octets (TIME-005).
     #[must_use]
     pub const fn is_empty(&self) -> bool {
         self.len == 0

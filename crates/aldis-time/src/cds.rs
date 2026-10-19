@@ -15,18 +15,18 @@ pub const MAX_MS_OF_DAY: u32 = 86_400_999;
 /// The epoch of a CDS code (301.0 §3.3.2 bit 4).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum CdsEpoch {
-    /// 1958 January 1 (Level 1).
+    /// 1958 January 1 (Level 1) (301.0 §3.3.2).
     Ccsds1958,
-    /// Agency-defined epoch (Level 2).
+    /// Agency-defined epoch (Level 2) (301.0 §3.3.2).
     Agency,
 }
 
 /// Length of the day segment (301.0 §3.3.2 bit 5).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum CdsDayLen {
-    /// 16-bit day count.
+    /// 16-bit day count (301.0 §3.3.2, TIME-020).
     Bits16,
-    /// 24-bit day count.
+    /// 24-bit day count (301.0 §3.3.2, TIME-020).
     Bits24,
 }
 
@@ -34,11 +34,11 @@ pub enum CdsDayLen {
 /// is an error in both modes (TIME-020).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum CdsSubMs {
-    /// No submillisecond segment.
+    /// No submillisecond segment (301.0 §3.3.2, TIME-020).
     None,
-    /// 16-bit microseconds of millisecond, 0–999.
+    /// 16-bit microseconds of millisecond, 0–999 (301.0 Annex A, TIME-020).
     Micros,
-    /// 32-bit picoseconds of millisecond, 0–999 999 999.
+    /// 32-bit picoseconds of millisecond, 0–999 999 999 (301.0 Annex A, TIME-020).
     Picos,
 }
 
@@ -90,19 +90,19 @@ impl CdsFormat {
         CdsFormat { tail, ..self }
     }
 
-    /// The epoch.
+    /// The epoch (301.0 §3.3.2, TIME-020).
     #[must_use]
     pub const fn epoch(&self) -> CdsEpoch {
         self.epoch
     }
 
-    /// The day segment length.
+    /// The day segment length (301.0 §3.3.2, TIME-020).
     #[must_use]
     pub const fn day_len(&self) -> CdsDayLen {
         self.day
     }
 
-    /// The submillisecond resolution.
+    /// The submillisecond resolution (301.0 §3.3.2, TIME-020).
     #[must_use]
     pub const fn subms(&self) -> CdsSubMs {
         self.subms
@@ -122,7 +122,7 @@ impl CdsFormat {
         }
     }
 
-    /// T-field length in octets.
+    /// T-field length in octets (301.0 §3.3.1, TIME-003).
     #[must_use]
     pub fn t_len(&self) -> usize {
         self.day_octets()
@@ -184,15 +184,16 @@ impl CdsFormat {
     }
 }
 
-/// A CDS value: day count, milliseconds of day, and submilliseconds (0 when the format has
+/// A CDS value: day count, milliseconds of day, and submilliseconds (0 when the format has (301.0
+/// §3.3.1)
 /// none).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub struct CdsValue {
-    /// Days since the epoch.
+    /// Days since the epoch (301.0 §3.3.1, Annex A).
     pub day: u32,
-    /// Milliseconds of the day, 0 to [`MAX_MS_OF_DAY`].
+    /// Milliseconds of the day, 0 to [`MAX_MS_OF_DAY`] (301.0 Annex A, TIME-021).
     pub ms_of_day: u32,
-    /// Microseconds or picoseconds of the millisecond, per the format.
+    /// Microseconds or picoseconds of the millisecond, per the format (301.0 Annex A, TIME-021).
     pub subms: u32,
 }
 
@@ -235,13 +236,13 @@ impl Cds {
         Ok(Cds { format, value })
     }
 
-    /// The format.
+    /// The format (301.0 §3.3).
     #[must_use]
     pub const fn format(&self) -> CdsFormat {
         self.format
     }
 
-    /// The value.
+    /// The value (301.0 §3.3).
     #[must_use]
     pub const fn value(&self) -> CdsValue {
         self.value

@@ -15,9 +15,9 @@ const NANOS: u32 = 1_000_000_000;
 /// The epoch of a CUC code (301.0 §3.2.2).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum CucEpoch {
-    /// 1958 January 1 TAI, Level 1 (time code ID `001`).
+    /// 1958 January 1 TAI, Level 1 (time code ID `001`) (301.0 §3.2.2, TIME-014).
     Tai1958,
-    /// Agency-defined epoch, Level 2 (time code ID `010`).
+    /// Agency-defined epoch, Level 2 (time code ID `010`) (301.0 §3.2.2).
     Agency,
 }
 
@@ -39,9 +39,9 @@ fn range(field: &'static str, limit: u64, found: u64) -> Error {
 }
 
 impl CucFormat {
-    /// Most coarse (basic time) octets: 4 in octet 1, 3 more in octet 2.
+    /// Most coarse (basic time) octets: 4 in octet 1, 3 more in octet 2 (301.0 §3.2.2, TIME-010).
     pub const MAX_COARSE: u8 = 7;
-    /// Most fine (fractional) octets: 3 in octet 1, 7 more in octet 2.
+    /// Most fine (fractional) octets: 3 in octet 1, 7 more in octet 2 (301.0 §3.2.2, TIME-010).
     pub const MAX_FINE: u8 = 10;
 
     /// A format with `coarse_octets` (1–7) and `fine_octets` (0–10). P-field octet 2 is used
@@ -51,9 +51,15 @@ impl CucFormat {
     /// `OutOfRange` (`coarse_octets` or `fine_octets`) outside those ranges (TIME-010).
     pub const fn new(epoch: CucEpoch, coarse_octets: u8, fine_octets: u8) -> Result<CucFormat> {
         if coarse_octets == 0 || coarse_octets > CucFormat::MAX_COARSE {
+            // Report the violated bound: 1 for zero, the maximum otherwise (GEN-041).
+            let limit = if coarse_octets == 0 {
+                1
+            } else {
+                CucFormat::MAX_COARSE
+            };
             return Err(Error::out_of_range(
                 "coarse_octets",
-                wide8(CucFormat::MAX_COARSE),
+                wide8(limit),
                 wide8(coarse_octets),
             ));
         }
@@ -90,7 +96,8 @@ impl CucFormat {
         })
     }
 
-    /// The same format with P-field octet 2 present even if the counts do not need it.
+    /// The same format with P-field octet 2 present even if the counts do not need it (301.0
+    /// §3.2.2, TIME-013).
     #[must_use]
     pub const fn with_octet2(self) -> CucFormat {
         CucFormat {
@@ -116,19 +123,19 @@ impl CucFormat {
         })
     }
 
-    /// The epoch.
+    /// The epoch (301.0 §3.2.2).
     #[must_use]
     pub const fn epoch(&self) -> CucEpoch {
         self.epoch
     }
 
-    /// Number of coarse octets, 1–7.
+    /// Number of coarse octets, 1–7 (TIME-010).
     #[must_use]
     pub const fn coarse_octets(&self) -> u8 {
         self.coarse
     }
 
-    /// Number of fine octets, 0–10.
+    /// Number of fine octets, 0–10 (TIME-010).
     #[must_use]
     pub const fn fine_octets(&self) -> u8 {
         self.fine
@@ -140,7 +147,7 @@ impl CucFormat {
         self.mission
     }
 
-    /// Whether the P-field has octet 2.
+    /// Whether the P-field has octet 2 (301.0 §3.2.2, TIME-010).
     #[must_use]
     pub const fn has_octet2(&self) -> bool {
         self.octet2
@@ -152,7 +159,7 @@ impl CucFormat {
         self.tail
     }
 
-    /// T-field length in octets.
+    /// T-field length in octets (301.0 §3.2.1, TIME-003).
     #[must_use]
     pub fn t_len(&self) -> usize {
         usize::from(self.coarse).wrapping_add(usize::from(self.fine))
@@ -219,19 +226,19 @@ pub struct CucValue {
 }
 
 impl CucValue {
-    /// A value of `coarse` units and the left-aligned fraction `fine`.
+    /// A value of `coarse` units and the left-aligned fraction `fine` (TIME-011).
     #[must_use]
     pub const fn new(coarse: u64, fine: u128) -> CucValue {
         CucValue { coarse, fine }
     }
 
-    /// Coarse time.
+    /// Coarse time (TIME-011).
     #[must_use]
     pub const fn coarse(&self) -> u64 {
         self.coarse
     }
 
-    /// Left-aligned fraction.
+    /// Left-aligned fraction (TIME-011).
     #[must_use]
     pub const fn fine(&self) -> u128 {
         self.fine
@@ -321,13 +328,13 @@ impl Cuc {
         Ok(Cuc { format, value })
     }
 
-    /// The format.
+    /// The format (301.0 §3.2).
     #[must_use]
     pub const fn format(&self) -> CucFormat {
         self.format
     }
 
-    /// The value.
+    /// The value (301.0 §3.2).
     #[must_use]
     pub const fn value(&self) -> CucValue {
         self.value
@@ -431,6 +438,20 @@ mod tests {
         let t = PFieldTail::new(&[0x01]).unwrap();
         let ft = fmt(1, 0).with_tail(t).unwrap();
         assert!(ft.has_octet2() && ft.tail() == t);
+    }
+
+    #[test]
+    fn errors_report_the_violated_bound() {
+        // req: TIME-010, GEN-041
+        use aldis_core::ErrorDetail;
+        for (co, fo, expected, found) in [(0, 0, 1, 0), (8, 0, 7, 8), (1, 11, 10, 11)] {
+            let e = CucFormat::new(CucEpoch::Tai1958, co, fo).unwrap_err();
+            assert_eq!(
+                e.detail(),
+                ErrorDetail::Expected { expected, found },
+                "{co} {fo}"
+            );
+        }
     }
 
     #[test]
