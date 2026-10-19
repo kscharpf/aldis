@@ -7,3 +7,6 @@
 ### Changed
 - `docs/profiles/cpp.md` §5: `readability-identifier-length` and `bugprone-easily-swappable-parameters` disabled for the whole C++ code base, each with its reason (CPP-041); `cpp/.clang-format` keeps `NOLINT` comments on one line.
 - `docs/milestones/c0-foundations.md` §6 lists the API differences between `aldis_core` and `aldis-core`; no behaviour divergence was found.
+
+### Fixed
+- `cargo xtask verify` failed with `reference is not a tree` when HEAD was detached on a commit that no branch or tag reaches; the container now fetches the commit itself as well.

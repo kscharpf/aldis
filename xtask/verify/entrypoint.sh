@@ -28,6 +28,8 @@ mkdir -p /work/src
 cd /work/src
 git init -q
 git fetch -q /repo '+refs/heads/*:refs/remotes/origin/*' '+refs/tags/*:refs/tags/*'
+# The commit itself too: a detached HEAD, in this or another worktree, is on no branch or tag.
+git fetch -q /repo "$commit"
 git -c advice.detachedHead=false checkout -q "$commit"
 
 # Rust build output persists between runs in the cache volume; C++ builds start clean.
