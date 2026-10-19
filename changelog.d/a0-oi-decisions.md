@@ -1,0 +1,2 @@
+### Changed
+- OI-23…OI-26 resolved (maintainer), as proposed: golden traces are not conformance vectors (APP-087, APP-088); the A5 C++ and A6 QEMU flight nodes run as child processes over the lockstep node protocol of `docs/reference-application.md` §8.2, so `refapp/` needs no `unsafe` and GEN-071 is unchanged; M6 defines the FW-013 trace format to match the golden traces; spacecraft ID `0x155`, fictional (APP-026 reworded). Roadmap §3 and the M6 row updated.

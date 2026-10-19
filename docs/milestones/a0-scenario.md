@@ -38,7 +38,7 @@ All decisions were accepted by the maintainer on 2026-10-19. Values marked *indi
 | D15 | Public API only, and API feedback | `refapp/` depends on the **`aldis` facade** only, by path, default features off, each node enabling just the features it uses; at A5 the C++ node uses only `aldis.h` and `aldis.hpp`. Never `aldis-testkit`, `test-hooks` features, or items hidden from the docs. A tooling check (WP-3) enforces the dependency rule. Every API pain point becomes a GitHub issue labelled `api-feedback` for track R (roadmap §6 rule 2), the workaround in `refapp/` cites the issue, and each A-milestone plan lists its findings. `refapp/` never asks for an application-specific API | Accepted (2026-10-19) |
 | D16 | Area APP: numbering, verification, CI | `APP-NNN` IDs grouped in **decades per section** of `docs/reference-application.md`, as GEN, TIME, and LNK are (roles, applications and APIDs, link plan, time, link model and faults, golden traces, node protocol, implementation rules). Same table columns as every area; Source cites the constraining CCSDS clause or `—`; each requirement names the library requirements it exercises. Verification: **T** by a golden-trace reproduction test annotated `// req:` in `refapp/`, and the header of each golden trace lists the IDs its case verifies; **I** by review for scenario rules. `xtask trace` learns to read both (WP-3). CI job `refapp`: fmt, Clippy, tests, and a `thumbv7em-none-eabihf` build of `refapp-flight`; from A1 on it reproduces every golden trace | Accepted (2026-10-19) |
 
-Raised with this plan: **OI-23** (golden traces and the vector suite), **OI-24** (out-of-process nodes and GEN-071), **OI-25** (FW-013 trace format), and **OI-26** (spacecraft ID for the scenario) in [09-open-issues.md](../09-open-issues.md). The scenario also depends on **OI-11** (TM idle strategy, D4) and **OI-06** (SANA registries: no Encapsulation Packet user data until an EPI is available, so EPP appears only as Idle Packets in the USLP variant, LNK-013).
+Raised with this plan: **OI-23** (golden traces and the vector suite), **OI-24** (out-of-process nodes and GEN-071), **OI-25** (FW-013 trace format), and **OI-26** (spacecraft ID for the scenario), all four resolved by the maintainer as proposed on 2026-10-19 in [09-open-issues.md](../09-open-issues.md). The scenario also depends on **OI-11** (TM idle strategy, D4) and **OI-06** (SANA registries: no Encapsulation Packet user data until an EPI is available, so EPP appears only as Idle Packets in the USLP variant, LNK-013).
 
 ### 2.1 What each milestone adds (D2)
 
@@ -73,7 +73,7 @@ Raised with this plan: **OI-23** (golden traces and the vector suite), **OI-24**
 | TC VC 0, MAP 0 | Real-time commands | Blocking permitted |
 | TC VC 0, MAP 1 | Table upload | Segmentation permitted |
 
-The spacecraft ID is open (OI-26).
+The spacecraft ID is `0x155`, fictional (OI-26, resolved 2026-10-19).
 
 ## 3. Work packages
 
