@@ -30,4 +30,10 @@ static_assert(__cplusplus >= 202002L, "Aldis requires C++20 or later (CPP-001)")
 #define ALDIS_LIFETIMEBOUND
 #endif
 
+// PLANTED VIOLATIONS (C0 WP-1 done-when): each must fail its CI job; never merge.
+#include <vector>                                           // CPP-002 allow-list: cpp-tidy
+inline int aldis_planted_warning(long v) { return v; }      // -Wconversion: cpp-build
+inline int aldis_planted_tidy() { return 42; }              // magic number: cpp-tidy
+inline    int   aldis_planted_format( ) { return 0 ; }      // formatting: cpp-format
+
 #endif // ALDIS_CORE_CONFIG_HPP
