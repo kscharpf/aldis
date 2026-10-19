@@ -1,0 +1,150 @@
+{
+  "kind": "codec",
+  "standard": "133.1-B-3 \u00a74.1, \u00a75",
+  "provenance": "hand-derived",
+  "provenance_note": "Hand-derived from 133.1-B-3 \u00a74.1.2 (Figure 4-2, Tables 4-1 and 4-2), \u00a74.1.3, and Table 5-1, with the decisions recorded in docs/standards/encapsulation-packet.md (OI-16: EPP-005 is an error in both modes). Expected values computed by an independent Python model of the Blue Book text, written before the Rust codec. Decode outputs list every view field; fields absent from the header size are null.",
+  "cases": [
+    {
+      "id": "epp-idle-001",
+      "requirements": [
+        "EPP-009"
+      ],
+      "description": "Total length 1: 1-octet header",
+      "operation": "idle",
+      "params": {
+        "total_len": 1,
+        "fill": 85
+      },
+      "expect": {
+        "ok": true,
+        "output_hex": "E0"
+      }
+    },
+    {
+      "id": "epp-idle-002",
+      "requirements": [
+        "EPP-009"
+      ],
+      "description": "Total length 2: 2-octet header, no data",
+      "operation": "idle",
+      "params": {
+        "total_len": 2,
+        "fill": 85
+      },
+      "expect": {
+        "ok": true,
+        "output_hex": "E102"
+      }
+    },
+    {
+      "id": "epp-idle-003",
+      "requirements": [
+        "EPP-009"
+      ],
+      "description": "Total length 5: 2-octet header, fill 0xC3",
+      "operation": "idle",
+      "params": {
+        "total_len": 5,
+        "fill": 195
+      },
+      "expect": {
+        "ok": true,
+        "output_hex": "E105C3C3C3"
+      }
+    },
+    {
+      "id": "epp-idle-004",
+      "requirements": [
+        "EPP-009"
+      ],
+      "description": "Total length 255: largest 2-octet idle",
+      "operation": "idle",
+      "params": {
+        "total_len": 255,
+        "fill": 0
+      },
+      "expect": {
+        "ok": true,
+        "output_hex": "E1FF00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      }
+    },
+    {
+      "id": "epp-idle-005",
+      "requirements": [
+        "EPP-009"
+      ],
+      "description": "Total length 256: 4-octet header",
+      "operation": "idle",
+      "params": {
+        "total_len": 256,
+        "fill": 255
+      },
+      "expect": {
+        "ok": true,
+        "output_hex": "E2000100FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF"
+      }
+    },
+    {
+      "id": "epp-idle-006",
+      "requirements": [
+        "EPP-009"
+      ],
+      "description": "Total length 65 535: largest 4-octet idle",
+      "operation": "idle_header",
+      "params": {
+        "total_len": 65535
+      },
+      "expect": {
+        "ok": true,
+        "header_hex": "E200FFFF",
+        "total_len": 65535
+      }
+    },
+    {
+      "id": "epp-idle-007",
+      "requirements": [
+        "EPP-009"
+      ],
+      "description": "Total length 65 536: 8-octet header",
+      "operation": "idle_header",
+      "params": {
+        "total_len": 65536
+      },
+      "expect": {
+        "ok": true,
+        "header_hex": "E300000000010000",
+        "total_len": 65536
+      }
+    },
+    {
+      "id": "epp-idle-008",
+      "requirements": [
+        "EPP-009"
+      ],
+      "description": "Total length 0 is OutOfRange",
+      "operation": "idle_header",
+      "params": {
+        "total_len": 0
+      },
+      "expect": {
+        "ok": false,
+        "error": "OutOfRange"
+      }
+    },
+    {
+      "id": "epp-idle-009",
+      "requirements": [
+        "EPP-009"
+      ],
+      "description": "Total length 2^32 is OutOfRange",
+      "operation": "idle_header",
+      "params": {
+        "total_len": 4294967296
+      },
+      "expect": {
+        "ok": false,
+        "error": "OutOfRange"
+      }
+    }
+  ]
+}

@@ -1,0 +1,182 @@
+{
+  "kind": "codec",
+  "standard": "133.1-B-3 \u00a74.1, \u00a75",
+  "provenance": "hand-derived",
+  "provenance_note": "Hand-derived from 133.1-B-3 \u00a74.1.2 (Figure 4-2, Tables 4-1 and 4-2), \u00a74.1.3, and Table 5-1, with the decisions recorded in docs/standards/encapsulation-packet.md (OI-16: EPP-005 is an error in both modes). Expected values computed by an independent Python model of the Blue Book text, written before the Rust codec. Decode outputs list every view field; fields absent from the header size are null.",
+  "cases": [
+    {
+      "id": "epp-h8-dec-001",
+      "requirements": [
+        "EPP-003",
+        "EPP-002",
+        "EPP-011",
+        "API-010",
+        "API-011",
+        "GEN-013"
+      ],
+      "description": "8-octet header, small packet",
+      "operation": "decode",
+      "input_hex": "F31000000000000AABCD",
+      "expect": {
+        "ok": true,
+        "epi": 4,
+        "user_defined": 1,
+        "epi_extension": 0,
+        "ccsds_defined": 0,
+        "header_len": 8,
+        "packet_len": 10,
+        "data_hex": "ABCD",
+        "consumed": 10,
+        "anomalies": []
+      }
+    },
+    {
+      "id": "epp-h8-dec-002",
+      "requirements": [
+        "EPP-007",
+        "EPP-002",
+        "EPP-011",
+        "API-010",
+        "API-011",
+        "GEN-013"
+      ],
+      "description": "Lenient: non-zero CCSDS Defined Field raises NonZeroCcsdsDefined and is exposed",
+      "operation": "decode",
+      "mode": "lenient",
+      "input_hex": "F30012340000000901",
+      "expect": {
+        "ok": true,
+        "epi": 4,
+        "user_defined": 0,
+        "epi_extension": 0,
+        "ccsds_defined": 4660,
+        "header_len": 8,
+        "packet_len": 9,
+        "data_hex": "01",
+        "consumed": 9,
+        "anomalies": [
+          "NonZeroCcsdsDefined"
+        ]
+      }
+    },
+    {
+      "id": "epp-h8-dec-003",
+      "requirements": [
+        "EPP-007",
+        "API-031"
+      ],
+      "description": "Strict: non-zero CCSDS Defined Field is ReservedValue",
+      "operation": "decode",
+      "input_hex": "F30012340000000901",
+      "expect": {
+        "ok": false,
+        "error": "ReservedValue"
+      }
+    },
+    {
+      "id": "epp-h8-dec-004",
+      "requirements": [
+        "EPP-006",
+        "EPP-007",
+        "EPP-002",
+        "EPP-011",
+        "API-010",
+        "API-011",
+        "GEN-013"
+      ],
+      "description": "Lenient: both anomalies at once",
+      "operation": "decode",
+      "mode": "lenient",
+      "input_hex": "EB0100010000000901",
+      "expect": {
+        "ok": true,
+        "epi": 2,
+        "user_defined": 0,
+        "epi_extension": 1,
+        "ccsds_defined": 1,
+        "header_len": 8,
+        "packet_len": 9,
+        "data_hex": "01",
+        "consumed": 9,
+        "anomalies": [
+          "NonZeroEpiExtension",
+          "NonZeroCcsdsDefined"
+        ]
+      }
+    },
+    {
+      "id": "epp-h8-dec-005",
+      "requirements": [
+        "EPP-005",
+        "EPP-002",
+        "EPP-011",
+        "API-010",
+        "API-011",
+        "GEN-013"
+      ],
+      "description": "8-octet idle header with no data field",
+      "operation": "decode",
+      "input_hex": "E300000000000008",
+      "expect": {
+        "ok": true,
+        "epi": 0,
+        "user_defined": 0,
+        "epi_extension": 0,
+        "ccsds_defined": 0,
+        "header_len": 8,
+        "packet_len": 8,
+        "data_hex": "",
+        "consumed": 8,
+        "anomalies": []
+      }
+    },
+    {
+      "id": "epp-h8-peek-001",
+      "requirements": [
+        "API-013"
+      ],
+      "description": "peek_length at the 8-octet maximum",
+      "operation": "peek_length",
+      "input_hex": "FF000000FFFFFFFF",
+      "expect": {
+        "ok": true,
+        "len": 4294967295
+      }
+    },
+    {
+      "id": "epp-h8-peek-002",
+      "requirements": [
+        "API-013"
+      ],
+      "description": "peek_length needs all 8 octets",
+      "operation": "peek_length",
+      "input_hex": "FF000000000000",
+      "expect": {
+        "ok": false,
+        "error": "Incomplete"
+      }
+    },
+    {
+      "id": "epp-h8-enc-001",
+      "requirements": [
+        "EPP-008",
+        "API-020",
+        "API-021",
+        "GEN-052"
+      ],
+      "description": "Fixed(8): CCSDS Defined Field written as zero",
+      "operation": "encode",
+      "params": {
+        "epi": 1,
+        "user_defined": 0,
+        "epi_extension": 0,
+        "header_size": 8,
+        "data_hex": "42"
+      },
+      "expect": {
+        "ok": true,
+        "output_hex": "E70000000000000942"
+      }
+    }
+  ]
+}

@@ -1,0 +1,378 @@
+{
+  "kind": "codec",
+  "standard": "133.1-B-3 \u00a74.1, \u00a75",
+  "provenance": "hand-derived",
+  "provenance_note": "Hand-derived from 133.1-B-3 \u00a74.1.2 (Figure 4-2, Tables 4-1 and 4-2), \u00a74.1.3, and Table 5-1, with the decisions recorded in docs/standards/encapsulation-packet.md (OI-16: EPP-005 is an error in both modes). Expected values computed by an independent Python model of the Blue Book text, written before the Rust codec. Decode outputs list every view field; fields absent from the header size are null.",
+  "cases": [
+    {
+      "id": "epp-inv-001",
+      "requirements": [
+        "EPP-001"
+      ],
+      "description": "Version 000 (a Space Packet) is UnsupportedVersion",
+      "operation": "decode",
+      "input_hex": "0001",
+      "expect": {
+        "ok": false,
+        "error": "UnsupportedVersion"
+      }
+    },
+    {
+      "id": "epp-inv-002",
+      "requirements": [
+        "EPP-001"
+      ],
+      "description": "Version 110 is UnsupportedVersion",
+      "operation": "decode",
+      "input_hex": "C102",
+      "expect": {
+        "ok": false,
+        "error": "UnsupportedVersion"
+      }
+    },
+    {
+      "id": "epp-inv-003",
+      "requirements": [
+        "API-011"
+      ],
+      "description": "Empty input is Incomplete",
+      "operation": "decode",
+      "input_hex": "",
+      "expect": {
+        "ok": false,
+        "error": "Incomplete"
+      }
+    },
+    {
+      "id": "epp-inv-004",
+      "requirements": [
+        "EPP-003"
+      ],
+      "description": "4-octet header truncated is Incomplete",
+      "operation": "decode",
+      "input_hex": "E60000",
+      "expect": {
+        "ok": false,
+        "error": "Incomplete"
+      }
+    },
+    {
+      "id": "epp-inv-005",
+      "requirements": [
+        "EPP-003"
+      ],
+      "description": "Packet Length 1 below the 2-octet header length is LengthMismatch",
+      "operation": "decode",
+      "input_hex": "E50100",
+      "expect": {
+        "ok": false,
+        "error": "LengthMismatch"
+      }
+    },
+    {
+      "id": "epp-inv-006",
+      "requirements": [
+        "EPP-003"
+      ],
+      "description": "Packet Length 3 below the 4-octet header length is LengthMismatch",
+      "operation": "decode",
+      "input_hex": "E600000300",
+      "expect": {
+        "ok": false,
+        "error": "LengthMismatch"
+      }
+    },
+    {
+      "id": "epp-inv-007",
+      "requirements": [
+        "EPP-003"
+      ],
+      "description": "Packet Length 7 below the 8-octet header length is LengthMismatch",
+      "operation": "decode",
+      "input_hex": "E700000000000007",
+      "expect": {
+        "ok": false,
+        "error": "LengthMismatch"
+      }
+    },
+    {
+      "id": "epp-inv-008",
+      "requirements": [
+        "EPP-003"
+      ],
+      "description": "Packet Length exceeds the input: Incomplete",
+      "operation": "decode",
+      "input_hex": "E50A0102",
+      "expect": {
+        "ok": false,
+        "error": "Incomplete"
+      }
+    },
+    {
+      "id": "epp-inv-009",
+      "requirements": [
+        "EPP-004"
+      ],
+      "description": "Length of Length 00 with EPI 001 is InvalidField",
+      "operation": "decode",
+      "input_hex": "E4",
+      "expect": {
+        "ok": false,
+        "error": "InvalidField"
+      }
+    },
+    {
+      "id": "epp-inv-010",
+      "requirements": [
+        "EPP-004"
+      ],
+      "description": "Length of Length 00 with EPI 001 is InvalidField in lenient mode too",
+      "operation": "decode",
+      "mode": "lenient",
+      "input_hex": "E4",
+      "expect": {
+        "ok": false,
+        "error": "InvalidField"
+      }
+    },
+    {
+      "id": "epp-inv-011",
+      "requirements": [
+        "EPP-005"
+      ],
+      "description": "No data field with EPI 001 is InvalidField",
+      "operation": "decode",
+      "input_hex": "E502",
+      "expect": {
+        "ok": false,
+        "error": "InvalidField"
+      }
+    },
+    {
+      "id": "epp-inv-012",
+      "requirements": [
+        "EPP-005"
+      ],
+      "description": "No data field with EPI 110 is InvalidField in lenient mode too (OI-16)",
+      "operation": "decode",
+      "mode": "lenient",
+      "input_hex": "FA010004",
+      "expect": {
+        "ok": false,
+        "error": "InvalidField"
+      }
+    },
+    {
+      "id": "epp-inv-013",
+      "requirements": [
+        "API-013",
+        "EPP-001"
+      ],
+      "description": "peek_length rejects a wrong version",
+      "operation": "peek_length",
+      "input_hex": "10",
+      "expect": {
+        "ok": false,
+        "error": "UnsupportedVersion"
+      }
+    },
+    {
+      "id": "epp-inv-014",
+      "requirements": [
+        "API-013",
+        "EPP-003"
+      ],
+      "description": "peek_length rejects Packet Length below the header length",
+      "operation": "peek_length",
+      "input_hex": "E6000002",
+      "expect": {
+        "ok": false,
+        "error": "LengthMismatch"
+      }
+    },
+    {
+      "id": "epp-inv-022",
+      "requirements": [
+        "API-013",
+        "EPP-004"
+      ],
+      "description": "peek_length rejects Length of Length 00 with EPI 001",
+      "operation": "peek_length",
+      "input_hex": "E4",
+      "expect": {
+        "ok": false,
+        "error": "InvalidField"
+      }
+    },
+    {
+      "id": "epp-inv-023",
+      "requirements": [
+        "EPP-012"
+      ],
+      "description": "EPI 110 in a 2-octet header (no extension field) is InvalidField",
+      "operation": "decode",
+      "input_hex": "F90301",
+      "expect": {
+        "ok": false,
+        "error": "InvalidField"
+      }
+    },
+    {
+      "id": "epp-inv-024",
+      "requirements": [
+        "EPP-012"
+      ],
+      "description": "EPI 110 in a 2-octet header is InvalidField in lenient mode too",
+      "operation": "decode",
+      "mode": "lenient",
+      "input_hex": "F90301",
+      "expect": {
+        "ok": false,
+        "error": "InvalidField"
+      }
+    },
+    {
+      "id": "epp-inv-025",
+      "requirements": [
+        "API-013",
+        "EPP-012"
+      ],
+      "description": "peek_length rejects EPI 110 in a 2-octet header",
+      "operation": "peek_length",
+      "input_hex": "F903",
+      "expect": {
+        "ok": false,
+        "error": "InvalidField"
+      }
+    },
+    {
+      "id": "epp-inv-015",
+      "requirements": [
+        "API-013"
+      ],
+      "description": "peek_length of an empty prefix is Incomplete",
+      "operation": "peek_length",
+      "input_hex": "",
+      "expect": {
+        "ok": false,
+        "error": "Incomplete"
+      }
+    },
+    {
+      "id": "epp-inv-016",
+      "requirements": [
+        "EPP-005",
+        "API-021"
+      ],
+      "description": "Encoder rejects an empty data field with EPI 001",
+      "operation": "encode",
+      "params": {
+        "epi": 1,
+        "user_defined": 0,
+        "epi_extension": 0,
+        "header_size": "auto",
+        "data_hex": ""
+      },
+      "expect": {
+        "ok": false,
+        "error": "InvalidField"
+      }
+    },
+    {
+      "id": "epp-inv-017",
+      "requirements": [
+        "EPP-006",
+        "GEN-052"
+      ],
+      "description": "Encoder rejects a non-zero extension with EPI 001",
+      "operation": "encode",
+      "params": {
+        "epi": 1,
+        "user_defined": 0,
+        "epi_extension": 2,
+        "header_size": "auto",
+        "data_hex": "01"
+      },
+      "expect": {
+        "ok": false,
+        "error": "InvalidField"
+      }
+    },
+    {
+      "id": "epp-inv-018",
+      "requirements": [
+        "EPP-008"
+      ],
+      "description": "Fixed(2) cannot carry EPI 110's extension",
+      "operation": "encode",
+      "params": {
+        "epi": 6,
+        "user_defined": 0,
+        "epi_extension": 1,
+        "header_size": 2,
+        "data_hex": "01"
+      },
+      "expect": {
+        "ok": false,
+        "error": "InvalidField"
+      }
+    },
+    {
+      "id": "epp-inv-019",
+      "requirements": [
+        "EPP-008"
+      ],
+      "description": "Fixed(2) cannot carry user defined bits",
+      "operation": "encode",
+      "params": {
+        "epi": 1,
+        "user_defined": 4,
+        "epi_extension": 0,
+        "header_size": 2,
+        "data_hex": "01"
+      },
+      "expect": {
+        "ok": false,
+        "error": "InvalidField"
+      }
+    },
+    {
+      "id": "epp-inv-020",
+      "requirements": [
+        "EPP-008"
+      ],
+      "description": "Fixed(1) cannot carry data",
+      "operation": "encode",
+      "params": {
+        "epi": 0,
+        "user_defined": 0,
+        "epi_extension": 0,
+        "header_size": 1,
+        "data_hex": "00"
+      },
+      "expect": {
+        "ok": false,
+        "error": "OutOfRange"
+      }
+    },
+    {
+      "id": "epp-inv-021",
+      "requirements": [
+        "EPP-008"
+      ],
+      "description": "Fixed(1) is only for idle",
+      "operation": "encode",
+      "params": {
+        "epi": 1,
+        "user_defined": 0,
+        "epi_extension": 0,
+        "header_size": 1,
+        "data_hex": ""
+      },
+      "expect": {
+        "ok": false,
+        "error": "InvalidField"
+      }
+    }
+  ]
+}

@@ -1,0 +1,281 @@
+{
+  "kind": "codec",
+  "standard": "133.1-B-3 \u00a74.1, \u00a75",
+  "provenance": "hand-derived",
+  "provenance_note": "Hand-derived from 133.1-B-3 \u00a74.1.2 (Figure 4-2, Tables 4-1 and 4-2), \u00a74.1.3, and Table 5-1, with the decisions recorded in docs/standards/encapsulation-packet.md (OI-16: EPP-005 is an error in both modes). Expected values computed by an independent Python model of the Blue Book text, written before the Rust codec. Decode outputs list every view field; fields absent from the header size are null.",
+  "cases": [
+    {
+      "id": "epp-cfg-001",
+      "requirements": [
+        "EPP-010"
+      ],
+      "description": "Valid EPI and data length",
+      "operation": "validate",
+      "config": {
+        "min_data_len": 1,
+        "max_data_len": 16,
+        "valid_epis": [
+          2,
+          6,
+          7
+        ],
+        "valid_extended_epis": [
+          9
+        ]
+      },
+      "input_hex": "E9040102",
+      "expect": {
+        "ok": true
+      }
+    },
+    {
+      "id": "epp-cfg-002",
+      "requirements": [
+        "EPP-010"
+      ],
+      "description": "EPI 001 not in the valid set: UnknownChannel",
+      "operation": "validate",
+      "config": {
+        "min_data_len": 1,
+        "max_data_len": 16,
+        "valid_epis": [
+          2,
+          6,
+          7
+        ],
+        "valid_extended_epis": [
+          9
+        ]
+      },
+      "input_hex": "E50301",
+      "expect": {
+        "ok": false,
+        "error": "UnknownChannel"
+      }
+    },
+    {
+      "id": "epp-cfg-003",
+      "requirements": [
+        "EPP-010"
+      ],
+      "description": "EPI 110 with a valid extended EPI",
+      "operation": "validate",
+      "config": {
+        "min_data_len": 1,
+        "max_data_len": 16,
+        "valid_epis": [
+          2,
+          6,
+          7
+        ],
+        "valid_extended_epis": [
+          9
+        ]
+      },
+      "input_hex": "FA09000501",
+      "expect": {
+        "ok": true
+      }
+    },
+    {
+      "id": "epp-cfg-004",
+      "requirements": [
+        "EPP-010"
+      ],
+      "description": "EPI 110 with an extended EPI not in the set: UnknownChannel",
+      "operation": "validate",
+      "config": {
+        "min_data_len": 1,
+        "max_data_len": 16,
+        "valid_epis": [
+          2,
+          6,
+          7
+        ],
+        "valid_extended_epis": [
+          9
+        ]
+      },
+      "input_hex": "FA08000501",
+      "expect": {
+        "ok": false,
+        "error": "UnknownChannel"
+      }
+    },
+    {
+      "id": "epp-cfg-005",
+      "requirements": [
+        "EPP-010"
+      ],
+      "description": "Data unit longer than the maximum: OutOfRange",
+      "operation": "validate",
+      "config": {
+        "min_data_len": 1,
+        "max_data_len": 16,
+        "valid_epis": [
+          2,
+          6,
+          7
+        ],
+        "valid_extended_epis": [
+          9
+        ]
+      },
+      "input_hex": "FD130000000000000000000000000000000000",
+      "expect": {
+        "ok": false,
+        "error": "OutOfRange"
+      }
+    },
+    {
+      "id": "epp-cfg-006",
+      "requirements": [
+        "EPP-010"
+      ],
+      "description": "Data unit at the maximum",
+      "operation": "validate",
+      "config": {
+        "min_data_len": 1,
+        "max_data_len": 16,
+        "valid_epis": [
+          2,
+          6,
+          7
+        ],
+        "valid_extended_epis": [
+          9
+        ]
+      },
+      "input_hex": "FD1200000000000000000000000000000000",
+      "expect": {
+        "ok": true
+      }
+    },
+    {
+      "id": "epp-cfg-007",
+      "requirements": [
+        "EPP-010"
+      ],
+      "description": "Data unit shorter than the minimum: OutOfRange",
+      "operation": "validate",
+      "config": {
+        "min_data_len": 3,
+        "max_data_len": 16,
+        "valid_epis": [
+          2,
+          6,
+          7
+        ],
+        "valid_extended_epis": [
+          9
+        ]
+      },
+      "input_hex": "E9040102",
+      "expect": {
+        "ok": false,
+        "error": "OutOfRange"
+      }
+    },
+    {
+      "id": "epp-cfg-008",
+      "requirements": [
+        "EPP-010"
+      ],
+      "description": "Idle packets carry no data unit and are always valid",
+      "operation": "validate",
+      "config": {
+        "min_data_len": 1,
+        "max_data_len": 16,
+        "valid_epis": [
+          2,
+          6,
+          7
+        ],
+        "valid_extended_epis": [
+          9
+        ]
+      },
+      "input_hex": "E1280000000000000000000000000000000000000000000000000000000000000000000000000000",
+      "expect": {
+        "ok": true
+      }
+    },
+    {
+      "id": "epp-cfg-009",
+      "requirements": [
+        "EPP-010",
+        "API-040",
+        "GEN-060"
+      ],
+      "description": "Minimum above maximum: InvalidConfig",
+      "operation": "config",
+      "config": {
+        "min_data_len": 17,
+        "max_data_len": 16,
+        "valid_epis": [
+          2,
+          6,
+          7
+        ],
+        "valid_extended_epis": [
+          9
+        ]
+      },
+      "expect": {
+        "ok": false,
+        "error": "InvalidConfig"
+      }
+    },
+    {
+      "id": "epp-cfg-010",
+      "requirements": [
+        "EPP-010",
+        "API-040",
+        "GEN-060"
+      ],
+      "description": "Maximum above the 8-octet data field limit: InvalidConfig",
+      "operation": "config",
+      "config": {
+        "min_data_len": 1,
+        "max_data_len": 4294967288,
+        "valid_epis": [
+          2,
+          6,
+          7
+        ],
+        "valid_extended_epis": [
+          9
+        ]
+      },
+      "expect": {
+        "ok": false,
+        "error": "InvalidConfig"
+      }
+    },
+    {
+      "id": "epp-cfg-011",
+      "requirements": [
+        "EPP-010",
+        "API-040",
+        "GEN-060"
+      ],
+      "description": "Maximum at the 8-octet data field limit",
+      "operation": "config",
+      "config": {
+        "min_data_len": 1,
+        "max_data_len": 4294967287,
+        "valid_epis": [
+          2,
+          6,
+          7
+        ],
+        "valid_extended_epis": [
+          9
+        ]
+      },
+      "expect": {
+        "ok": true
+      }
+    }
+  ]
+}

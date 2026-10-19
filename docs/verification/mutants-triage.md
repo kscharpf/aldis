@@ -1,6 +1,18 @@
 # Mutation testing triage (VER-025)
 
-Surviving mutants from `cargo mutants -p aldis-core --all-features` (cargo-mutants 27.1.0), triaged per VER-025. The nightly job `mutants` publishes the full report. Update this file when a new survivor appears.
+Surviving mutants from `cargo mutants` (`-p aldis-core -p aldis-epp --all-features`) (cargo-mutants 27.1.0), triaged per VER-025. The nightly job `mutants` publishes the full report. Update this file when a new survivor appears.
+
+## 2026-10-18, branch `m1/epp` (M1 WP-3)
+
+`cargo mutants -p aldis-epp --all-features`: 199 mutants: 156 caught, 37 unviable, 6 missed, 0 timeouts.
+
+| Mutant | Verdict | Action |
+|---|---|---|
+| `config.rs` `EpiSet::with`, `ExtendedEpiSet::with` `\|` → `^` | Test gap: no test added a member that was already present, which `^` would remove | `sets_hold_members` adds a member twice; caught |
+| `config.rs` `EppConfig::min_data_len` → `1` | Test gap: the test configuration used a minimum of 1 | `config_is_const_constructible_and_validated` uses a minimum of 3; caught |
+| `header.rs` `EncapsulationHeader::octets` `\|` → `^` (three: octet 0 version/EPI/Length of Length, octet 1 User Defined/Extension) | Equivalent: the combined fields occupy disjoint bits, so OR and XOR agree | None possible |
+
+After the fixes, a re-run on `config.rs` found no survivors (45 mutants: 40 caught, 5 unviable). The three equivalent mutants remain and are expected in every report.
 
 ## 2026-10-17, branch `m1/core` (M1 WP-0)
 

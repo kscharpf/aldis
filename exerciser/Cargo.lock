@@ -7,10 +7,18 @@ name = "aldis-core"
 version = "0.1.0"
 
 [[package]]
+name = "aldis-epp"
+version = "0.1.0"
+dependencies = [
+ "aldis-core",
+]
+
+[[package]]
 name = "aldis-exerciser"
 version = "0.1.0"
 dependencies = [
  "aldis-core",
+ "aldis-epp",
  "aldis-testkit",
  "serde_json",
 ]

@@ -145,7 +145,7 @@ jobs:
             || timeout 120 cargo run --release --locked --target ${{ matrix.target }}
 
   coverage:
-    name: coverage aldis-core (VER-024)
+    name: coverage (VER-024)
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -161,7 +161,7 @@ jobs:
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
-          name: coverage-aldis-core
+          name: coverage
           path: target/spec/coverage-*
           if-no-files-found: error
 

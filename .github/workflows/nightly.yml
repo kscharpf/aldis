@@ -67,6 +67,8 @@ jobs:
           - container_model
           - layout_ranges
           - anomaly_set_model
+          - epp_decode
+          - epp_roundtrip
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -121,7 +123,7 @@ jobs:
           fi
 
   mutants:
-    name: mutation testing aldis-core (VER-025, report only)
+    name: mutation testing (VER-025, report only)
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     steps:
@@ -137,13 +139,13 @@ jobs:
       # (e.g. 4, the unmutated tests fail) is a real failure.
       - run: |
           code=0
-          cargo mutants -p aldis-core --all-features || code=$?
+          cargo mutants -p aldis-core -p aldis-epp --all-features || code=$?
           echo "cargo-mutants exit code $code"
           [ "$code" -eq 0 ] || [ "$code" -eq 2 ] || [ "$code" -eq 3 ]
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
-          name: mutants-aldis-core
+          name: mutants
           path: mutants.out/
 
   ccsds-urls:
