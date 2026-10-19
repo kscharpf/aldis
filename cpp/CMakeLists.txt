@@ -29,6 +29,8 @@ include(AldisModule)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
+# No C++20 modules: scanning for them would only add module-map flags that clang-tidy rejects.
+set(CMAKE_CXX_SCAN_FOR_MODULES OFF)
 
 option(ALDIS_BUILD_TESTS "Build the host tests (GoogleTest)" ${PROJECT_IS_TOP_LEVEL})
 option(ALDIS_BUILD_EXERCISER "Build the freestanding exerciser (CPP-050, WP-5)" OFF)

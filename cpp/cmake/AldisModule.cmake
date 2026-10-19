@@ -45,7 +45,7 @@ function(aldis_add_module name)
       file(RELATIVE_PATH rel "${ALDIS_SOURCE_DIR}/include" "${header}")
       set(tu "${CMAKE_CURRENT_BINARY_DIR}/header_check/${rel}.cpp")
       file(GENERATE OUTPUT "${tu}" CONTENT
-        "// Generated: ${rel} must compile on its own (docs/milestones/c0-foundations.md D7).\n#include \"${rel}\"\n")
+        "// Generated: ${rel} must compile on its own (docs/milestones/c0-foundations.md D7).\n#include \"${rel}\" // IWYU pragma: keep\n")
       list(APPEND tus "${tu}")
     endforeach()
     # clang-tidy reads the configuration nearest to the translation unit, and these TUs live
