@@ -130,7 +130,7 @@ Also: crate docs. TIME-004, TIME-014, and TIME-022 are verified by inspection an
 |---|---|
 | `--scope m1` in CI (D8); `--strict` at the exit | `ci.yml` |
 | Crate docs cite clauses and requirement IDs (RS-015); the facade's `time`, `spp`, `epp` features documented | rustdoc |
-| `README.md` status, `CHANGELOG.md` `0.2.0-m1`, roadmap row, workspace version `0.2.0` | docs |
+| `README.md` status, `CHANGELOG.md` `0.2.0-m1` (`cargo xtask changelog release 0.2.0-m1 <date>`), roadmap row, workspace version `0.2.0` | docs |
 | Open issues: D4 recorded against OI-06, any new spec questions as new OIs | `09-open-issues.md` |
 
 ## 4. Exit criteria
