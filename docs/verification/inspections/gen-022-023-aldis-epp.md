@@ -7,7 +7,7 @@
 | Inspected | 2026-10-18, prepared by Claude Code |
 | Approved | 2026-10-18, maintainer |
 | Repeat | when `aldis-epp` gains a loop or a call between its own functions, and before each release |
-| Revised | 2026-10-18, PR #18 review: the header-copy loop of `writer.rs` `put_header` and of `EncapsulationHeader::encode` is now the single `EncapsulationHeader::write_to` (same loop, same bound); `EncapsulationWriter::begin` no longer adjusts `max_data_len`. No loop added. Awaiting maintainer confirmation |
+| Revised | 2026-10-18, PR #18 review: the header-copy loop of `writer.rs` `put_header` and of `EncapsulationHeader::encode` is now the single `EncapsulationHeader::write_to` (same loop, same bound); `EncapsulationWriter::begin` no longer adjusts `max_data_len`. No loop added. Confirmed 2026-10-18, maintainer |
 
 ## Loops
 
