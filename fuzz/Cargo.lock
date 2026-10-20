@@ -4,11 +4,11 @@ version = 4
 
 [[package]]
 name = "aldis-core"
-version = "0.1.0"
+version = "0.2.0"
 
 [[package]]
 name = "aldis-epp"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "aldis-core",
 ]
@@ -26,7 +26,7 @@ dependencies = [
 
 [[package]]
 name = "aldis-spp"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "aldis-core",
  "aldis-time",
@@ -34,7 +34,7 @@ dependencies = [
 
 [[package]]
 name = "aldis-time"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "aldis-core",
 ]

@@ -4,7 +4,7 @@ version = 4
 
 [[package]]
 name = "aldis"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "aldis-aos",
  "aldis-cop1",
@@ -21,14 +21,14 @@ dependencies = [
 
 [[package]]
 name = "aldis-aos"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "aldis-core",
 ]
 
 [[package]]
 name = "aldis-cop1"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "aldis-core",
  "aldis-tc",
@@ -37,7 +37,7 @@ dependencies = [
 
 [[package]]
 name = "aldis-core"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "aldis-testkit",
  "proptest",
@@ -46,7 +46,7 @@ dependencies = [
 
 [[package]]
 name = "aldis-epp"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "aldis-core",
  "aldis-testkit",
@@ -56,14 +56,14 @@ dependencies = [
 
 [[package]]
 name = "aldis-ffi"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "aldis",
 ]
 
 [[package]]
 name = "aldis-framework"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "aldis-cop1",
  "aldis-core",
@@ -72,7 +72,7 @@ dependencies = [
 
 [[package]]
 name = "aldis-link"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "aldis-aos",
  "aldis-core",
@@ -85,7 +85,7 @@ dependencies = [
 
 [[package]]
 name = "aldis-spp"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "aldis-core",
  "aldis-testkit",
@@ -96,14 +96,14 @@ dependencies = [
 
 [[package]]
 name = "aldis-tc"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "aldis-core",
 ]
 
 [[package]]
 name = "aldis-testkit"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "schemars",
  "serde",
@@ -112,7 +112,7 @@ dependencies = [
 
 [[package]]
 name = "aldis-time"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "aldis-core",
  "aldis-testkit",
@@ -122,14 +122,14 @@ dependencies = [
 
 [[package]]
 name = "aldis-tm"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "aldis-core",
 ]
 
 [[package]]
 name = "aldis-uslp"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "aldis-core",
 ]
@@ -710,7 +710,7 @@ dependencies = [
 
 [[package]]
 name = "xtask"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "aldis-testkit",
  "serde_json",
