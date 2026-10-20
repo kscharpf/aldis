@@ -46,8 +46,8 @@ commands:
                                move every fragment into a new section of CHANGELOG.md
   ci                           everything CI runs without a C++ build: spec-lint, links,
                                layers, refapp-deps, vectors validate, vectors schema --check,
-                               trace --scope m0 --strict, trace --scope c0, changelog check,
-                               cpp unsafe-optouts
+                               trace --scope m0 --strict, trace --scope m1, trace --scope c0,
+                               changelog check, cpp unsafe-optouts
 
 C++ checks (docs/milestones/c0-foundations.md D12):
 ";
@@ -88,6 +88,8 @@ fn run(args: &[&str]) -> Result<usize, String> {
                 vectors::validate,
                 || vectors::schema(true),
                 || trace::run(Some("m0"), true),
+                // M1 is open: report its trace without failing (strict at the M1 exit, D8).
+                || trace::run(Some("m1"), false),
                 // C0 is open: report its trace without failing (strict at the C0 exit, D17).
                 || trace::run(Some("c0"), false),
                 changelog::check,

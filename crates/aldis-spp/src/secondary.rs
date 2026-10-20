@@ -76,19 +76,19 @@ impl TimeHeaderLayout {
     }
 
     /// The configured time code format; with a P-field, its time code ID is the one packets
-    /// must carry (133.0 §4.1.4.2.2.3).
+    /// must carry (133.0 §4.1.4.2.2.3, SPP-008).
     #[must_use]
     pub const fn format(&self) -> TimeFormat {
         self.format
     }
 
-    /// Whether the Time Code Field starts with its P-field (133.0 §4.1.4.2.2.5).
+    /// Whether the Time Code Field starts with its P-field (133.0 §4.1.4.2.2.5, SPP-008).
     #[must_use]
     pub const fn has_pfield(&self) -> bool {
         self.pfield
     }
 
-    /// Length of the Ancillary Data Field in octets (133.0 §4.1.4.2.3).
+    /// Length of the Ancillary Data Field in octets (133.0 §4.1.4.2.3, SPP-008).
     #[must_use]
     pub const fn ancillary_len(&self) -> usize {
         self.ancillary_len
@@ -179,8 +179,8 @@ impl SecondaryHeaderLayout {
     }
 }
 
-/// A Packet Data Field split by its layout, borrowing from the input (SPP-007, SPP-008,
-/// GEN-013).
+/// A Packet Data Field split by its layout, borrowing from the input (133.0 §4.1.4; SPP-007,
+/// SPP-008, GEN-013).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SplitPacket<'a> {
     secondary_header: &'a [u8],
@@ -206,7 +206,7 @@ impl<'a> SplitPacket<'a> {
     }
 
     /// The Ancillary Data Field: the secondary header after the Time Code Field, or the whole
-    /// secondary header with an opaque layout (133.0 §4.1.4.2.1.5, §4.1.4.2.3).
+    /// secondary header with an opaque layout (133.0 §4.1.4.2.1.5, §4.1.4.2.3; SPP-007, SPP-008).
     #[must_use]
     pub fn ancillary_data(&self) -> &'a [u8] {
         self.secondary_header
@@ -214,8 +214,8 @@ impl<'a> SplitPacket<'a> {
             .unwrap_or_default()
     }
 
-    /// The decoded Time Code Field, with a time layout (SPP-008); its length includes the
-    /// P-field when present.
+    /// The decoded Time Code Field, with a time layout (133.0 §4.1.4.2.2, SPP-008); its length
+    /// includes the P-field when present.
     #[cfg(feature = "time")]
     #[must_use]
     pub const fn time_code(&self) -> Option<Decoded> {

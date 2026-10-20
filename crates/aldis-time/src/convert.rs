@@ -1,5 +1,5 @@
-//! Conversions between CDS, CCS, and ASCII representations of one UTC instant (TIME-033;
-//! `docs/standards/time-codes.md` §5.2, M1 D3, OI-18, OI-29).
+//! Conversions between CDS, CCS, and ASCII representations of one UTC instant (301.0 §3.3–3.5,
+//! Annex A; TIME-033; `docs/standards/time-codes.md` §5.2, M1 D3, OI-18, OI-29).
 //!
 //! Every conversion goes through [`UtcInstant`], which keeps picoseconds, the finest resolution
 //! of the three codes, so only the target can lose precision; it truncates toward zero. There is
@@ -49,7 +49,8 @@ const fn epoch_day(epoch: CdsEpoch, agency_epoch: Option<CalendarDate>) -> Resul
     }
 }
 
-/// One UTC instant: a day, a time of day that may be a leap second, and picoseconds (TIME-033).
+/// One UTC instant: a day, a time of day that may be a leap second, and picoseconds (301.0
+/// §3.3–3.5, TIME-033).
 ///
 /// Built only from a CDS, CCS, or ASCII code, so every field is valid (RS-020). Instants order
 /// chronologically; a leap second 23:59:60 falls between 23:59:59 and the next day's 00:00:00.
@@ -97,7 +98,7 @@ impl UtcInstant {
         })
     }
 
-    /// The instant of a CCS code (TIME-033).
+    /// The instant of a CCS code (301.0 §3.4, TIME-033).
     #[must_use]
     pub const fn from_ccs(ccs: &Ccs) -> UtcInstant {
         let value = ccs.value();
@@ -112,7 +113,7 @@ impl UtcInstant {
         }
     }
 
-    /// The instant of an ASCII code (TIME-033).
+    /// The instant of an ASCII code (301.0 §3.5, TIME-033).
     #[must_use]
     pub const fn from_ascii(ascii: &AsciiTime) -> UtcInstant {
         UtcInstant {
@@ -124,7 +125,8 @@ impl UtcInstant {
         }
     }
 
-    /// The instant as a CDS code in `format`, sub-milliseconds truncated toward zero (TIME-033).
+    /// The instant as a CDS code in `format`, sub-milliseconds truncated toward zero (301.0 §3.3,
+    /// TIME-033).
     ///
     /// # Errors
     /// - `InvalidConfig` (`agency_epoch`) for an agency-defined epoch without `agency_epoch`.
@@ -172,7 +174,7 @@ impl UtcInstant {
     }
 
     /// The instant as a CCS code in `format`, the sub-second value truncated toward zero
-    /// (TIME-033).
+    /// (301.0 §3.4, TIME-033).
     ///
     /// # Errors
     /// `OutOfRange` (`year`) after year 9999.
@@ -192,7 +194,8 @@ impl UtcInstant {
         Ok(Ccs::from_parts_unchecked(format, value))
     }
 
-    /// The instant as an ASCII code in `format`, the fraction truncated toward zero (TIME-033).
+    /// The instant as an ASCII code in `format`, the fraction truncated toward zero (301.0 §3.5,
+    /// TIME-033).
     ///
     /// # Errors
     /// `OutOfRange` (`year`) after year 9999.
@@ -207,7 +210,7 @@ impl UtcInstant {
         })
     }
 
-    /// The date of the instant in `variation` (TIME-033).
+    /// The date of the instant in `variation` (301.0 §3.4.1, §3.5.1, TIME-033).
     ///
     /// # Errors
     /// `OutOfRange` (`year`) after year 9999.
@@ -229,25 +232,25 @@ impl UtcInstant {
         })
     }
 
-    /// Hour (TIME-033).
+    /// Hour (301.0 Annex A, TIME-033).
     #[must_use]
     pub const fn hour(&self) -> Hour {
         self.hour
     }
 
-    /// Minute (TIME-033).
+    /// Minute (301.0 Annex A, TIME-033).
     #[must_use]
     pub const fn minute(&self) -> Minute {
         self.minute
     }
 
-    /// Second, 60 for a leap second (TIME-033).
+    /// Second, 60 for a leap second (301.0 Annex A, TIME-033).
     #[must_use]
     pub const fn second(&self) -> Second {
         self.second
     }
 
-    /// Picoseconds of the second, below 10¹² (TIME-033).
+    /// Picoseconds of the second, below 10¹² (301.0 Annex A, TIME-033).
     #[must_use]
     pub const fn picos(&self) -> u64 {
         self.picos

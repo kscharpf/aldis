@@ -8,7 +8,8 @@ use crate::anomaly::SppAnomaly;
 use crate::header::{PRIMARY_HEADER_LEN, PacketType, SequenceFlags, SpacePacketHeader, invalid};
 use crate::secondary::{SecondaryHeaderLayout, SplitPacket};
 
-/// A decoded Space Packet borrowing its data field from the input (GEN-013).
+/// A decoded Space Packet borrowing its data field from the input (133.0 §4.1; SPP-001…SPP-004,
+/// API-010, GEN-013).
 ///
 /// The view keeps its decode mode, which [`split`](Self::split) applies to a time code; two
 /// views of the same octets decoded in different modes are not equal.
@@ -21,8 +22,8 @@ pub struct SpacePacket<'a> {
 }
 
 impl<'a> SpacePacket<'a> {
-    /// Decodes one packet from the start of `bytes`; any octets after it are ignored, so a
-    /// stream can be parsed packet by packet with [`len`](Self::len) (SPP-002, API-011).
+    /// Decodes one packet from the start of `bytes`; any octets after it are ignored, so a stream
+    /// can be parsed packet by packet with [`len`](Self::len) (133.0 §4.1.3.5; SPP-002, API-011).
     ///
     /// # Errors
     /// - `Incomplete` (`needed` = 6) if `bytes` is shorter than the primary header, then
@@ -52,9 +53,9 @@ impl<'a> SpacePacket<'a> {
         })
     }
 
-    /// Total length of the packet that starts `prefix`, from its first 6 octets (SPP-003,
-    /// API-013). It applies every check of [`decode`](Self::decode) that needs only the header
-    /// and holds in both modes.
+    /// Total length of the packet that starts `prefix`, from its first 6 octets (133.0 §4.1.3.5;
+    /// SPP-003, API-013). It applies every check of [`decode`](Self::decode) that needs only the
+    /// header and holds in both modes.
     ///
     /// # Errors
     /// `Incomplete` (`needed` = 6) if `prefix` is shorter; `UnsupportedVersion` (SPP-001).
@@ -78,7 +79,7 @@ impl<'a> SpacePacket<'a> {
         layout.split(self.header.has_secondary_header(), self.data, self.mode)
     }
 
-    /// The header as plain values (API-014).
+    /// The header as plain values (133.0 §4.1.3, API-014).
     #[must_use]
     pub const fn header(&self) -> SpacePacketHeader {
         self.header
@@ -90,61 +91,62 @@ impl<'a> SpacePacket<'a> {
         self.header.packet_type()
     }
 
-    /// Secondary Header Flag (133.0 §4.1.3.3.3).
+    /// Secondary Header Flag (133.0 §4.1.3.3.3; SPP-004, SPP-007).
     #[must_use]
     pub const fn has_secondary_header(&self) -> bool {
         self.header.has_secondary_header()
     }
 
-    /// Application Process Identifier (133.0 §4.1.3.3.4).
+    /// Application Process Identifier (133.0 §4.1.3.3.4, API-010).
     #[must_use]
     pub const fn apid(&self) -> Apid {
         self.header.apid()
     }
 
-    /// Whether this is an Idle Packet, APID 2047 (133.0 §4.1.3.3.4.4).
+    /// Whether this is an Idle Packet, APID 2047 (133.0 §4.1.3.3.4.4, SPP-004).
     #[must_use]
     pub const fn is_idle(&self) -> bool {
         self.header.is_idle()
     }
 
-    /// Sequence Flags (133.0 §4.1.3.4.2).
+    /// Sequence Flags (133.0 §4.1.3.4.2, SPP-013).
     #[must_use]
     pub const fn sequence_flags(&self) -> SequenceFlags {
         self.header.sequence_flags()
     }
 
-    /// The 14-bit Packet Sequence Count or Packet Name (SPP-009).
+    /// The 14-bit Packet Sequence Count or Packet Name (133.0 §4.1.3.4.3.2, SPP-009).
     #[must_use]
     pub const fn sequence_count(&self) -> SeqCount {
         self.header.sequence_count()
     }
 
-    /// The Packet Name of a telecommand packet; `None` for telemetry (SPP-009).
+    /// The Packet Name of a telecommand packet; `None` for telemetry (133.0 §4.1.3.4.3.2, SPP-009).
     #[must_use]
     pub const fn packet_name(&self) -> Option<SeqCount> {
         self.header.packet_name()
     }
 
-    /// The whole Packet Data Field, borrowed from the input (SPP-007, GEN-013).
+    /// The whole Packet Data Field, borrowed from the input (133.0 §4.1.4; SPP-007, GEN-013).
     #[must_use]
     pub const fn data_field(&self) -> &'a [u8] {
         self.data
     }
 
-    /// Octets consumed from the input: the total packet length (SPP-002, API-011).
+    /// Octets consumed from the input: the total packet length (133.0 §4.1.3.5; SPP-002, API-011).
     #[must_use]
     pub fn len(&self) -> usize {
         self.header.packet_len()
     }
 
-    /// Always `false`: a packet has at least 7 octets (133.0 §4.1.2.2).
+    /// Always `false`: a packet has at least 7 octets (133.0 §4.1.2.2, SPP-002).
     #[must_use]
     pub const fn is_empty(&self) -> bool {
         false
     }
 
-    /// Lenient-mode anomalies; always empty after a strict decode (API-032, GEN-043).
+    /// Lenient-mode anomalies; always empty after a strict decode (133.0 §4.1.3.3.3.4; API-032,
+    /// GEN-043).
     #[must_use]
     pub const fn anomalies(&self) -> AnomalySet<SppAnomaly> {
         self.anomalies

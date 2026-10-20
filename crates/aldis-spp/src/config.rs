@@ -24,7 +24,7 @@ impl Default for SppConfig {
 }
 
 impl SppConfig {
-    /// The largest packet 133.0 allows, 65 542 octets (§4.1.2.2).
+    /// The largest packet 133.0 allows, 65 542 octets (133.0 §4.1.2.2, SPP-006).
     pub const DEFAULT: SppConfig = SppConfig {
         max_packet_len: MAX_PACKET_LEN,
     };
@@ -42,7 +42,7 @@ impl SppConfig {
         Ok(SppConfig { max_packet_len })
     }
 
-    /// Maximum Packet Length in octets (133.0 Table 5-1).
+    /// Maximum Packet Length in octets (133.0 §5.2 Table 5-1, SPP-006).
     #[must_use]
     pub const fn max_packet_len(&self) -> usize {
         self.max_packet_len
@@ -106,7 +106,8 @@ pub(crate) const fn check_parts(
     Ok(())
 }
 
-/// The parts of one packet, checked against 133.0 and an [`SppConfig`] (SPP-005, SPP-006).
+/// The parts of one packet, checked against 133.0 and an [`SppConfig`] (133.0 §4.1; SPP-005,
+/// SPP-006).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PacketData<'a> {
     fields: PacketFields,
@@ -115,25 +116,26 @@ pub struct PacketData<'a> {
 }
 
 impl<'a> PacketData<'a> {
-    /// The sender-chosen header fields.
+    /// The sender-chosen header fields (133.0 §4.1.3; SPP-005, API-021).
     #[must_use]
     pub const fn fields(&self) -> PacketFields {
         self.fields
     }
 
-    /// The Packet Secondary Header; empty when the packet has none (133.0 §4.1.4.2).
+    /// The Packet Secondary Header; empty when the packet has none (133.0 §4.1.4.2, SPP-005).
     #[must_use]
     pub const fn secondary_header(&self) -> &'a [u8] {
         self.secondary_header
     }
 
-    /// The User Data Field; may be empty when a secondary header is present (133.0 §4.1.4.3).
+    /// The User Data Field; may be empty when a secondary header is present (133.0 §4.1.4.3,
+    /// SPP-005).
     #[must_use]
     pub const fn user_data(&self) -> &'a [u8] {
         self.user_data
     }
 
-    /// Total packet length in octets (133.0 §4.1.2.2).
+    /// Total packet length in octets (133.0 §4.1.2.2, SPP-006).
     #[must_use]
     pub const fn packet_len(&self) -> usize {
         PRIMARY_HEADER_LEN

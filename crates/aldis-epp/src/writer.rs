@@ -44,8 +44,9 @@ pub fn idle(total_len: usize, fill: u8, out: &mut [u8]) -> Result<usize> {
     Ok(total_len)
 }
 
-/// Two-phase writer: the header is reserved in [`begin`](Self::begin), the caller fills the
-/// data field in place, and [`finish`](Self::finish) writes the Packet Length (API-020…023).
+/// Two-phase writer: the header is reserved in [`begin`](Self::begin), the caller fills the data
+/// field in place, and [`finish`](Self::finish) writes the Packet Length (133.1 §4.1.2.8;
+/// API-020…023).
 ///
 /// Until `finish` is called, the buffer holds a header whose Packet Length is 0 (for 2-, 4-,
 /// and 8-octet headers), which every decoder rejects with `LengthMismatch`, so an unfinished
@@ -90,15 +91,16 @@ impl<'b> EncapsulationWriter<'b> {
         })
     }
 
-    /// The data field to fill in place: `max_data_len` octets after the header (API-020,
-    /// GEN-014).
+    /// The data field to fill in place: `max_data_len` octets after the header (133.1 §4.1.3;
+    /// API-020, GEN-014).
     pub fn data_mut(&mut self) -> &mut [u8] {
         let start = self.header.header_len().octets();
         let end = start.saturating_add(self.max_data_len);
         self.out.get_mut(start..end).unwrap_or_default()
     }
 
-    /// Completes the packet with `data_len` octets of data; returns the total length.
+    /// Completes the packet with `data_len` octets of data; returns the total length (133.1
+    /// §4.1.2.8.2; EPP-008, API-020, API-023).
     ///
     /// # Errors
     /// `OutOfRange` (`data_len`) if `data_len` exceeds the reservation or, for a non-idle EPI,

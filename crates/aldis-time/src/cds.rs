@@ -9,7 +9,7 @@ use aldis_core::{Error, ErrorKind, FieldId, Result};
 use crate::pfield::{PField, PFieldTail, TimeCodeId};
 use crate::util::{bounded, wide, widen16};
 
-/// Milliseconds of day allow one positive leap second: 0 to 86 400 999 (301.0 Annex A).
+/// Milliseconds of day allow one positive leap second: 0 to 86 400 999 (301.0 Annex A, TIME-021).
 pub const MAX_MS_OF_DAY: u32 = 86_400_999;
 
 bounded!(
@@ -39,7 +39,7 @@ pub enum SubMillis {
 }
 
 impl SubMillis {
-    /// The resolution this segment has (301.0 §3.3.2 bits 6–7).
+    /// The resolution this segment has (301.0 §3.3.2 bits 6–7, TIME-020).
     #[must_use]
     pub const fn resolution(self) -> CdsSubMs {
         match self {
@@ -49,7 +49,7 @@ impl SubMillis {
         }
     }
 
-    /// The segment value: microseconds, picoseconds, or 0 (301.0 §3.3.1).
+    /// The segment value: microseconds, picoseconds, or 0 (301.0 §3.3.1, TIME-021).
     #[must_use]
     pub const fn get(self) -> u32 {
         match self {
@@ -60,7 +60,7 @@ impl SubMillis {
     }
 }
 
-/// The epoch of a CDS code (301.0 §3.3.2 bit 4).
+/// The epoch of a CDS code (301.0 §3.3.2 bit 4, TIME-020).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum CdsEpoch {
     /// 1958 January 1 (Level 1) (301.0 §3.3.2).
@@ -69,7 +69,7 @@ pub enum CdsEpoch {
     Agency,
 }
 
-/// Length of the day segment (301.0 §3.3.2 bit 5).
+/// Length of the day segment (301.0 §3.3.2 bit 5, TIME-020).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum CdsDayLen {
     /// 16-bit day count (301.0 §3.3.2, TIME-020).
@@ -100,7 +100,7 @@ impl CdsSubMs {
         }
     }
 
-    /// Largest valid segment value (301.0 Annex A).
+    /// Largest valid segment value (301.0 Annex A, TIME-021).
     #[must_use]
     pub const fn max(self) -> u32 {
         match self {
@@ -111,7 +111,7 @@ impl CdsSubMs {
     }
 }
 
-/// CDS layout (TIME-020).
+/// CDS layout (301.0 §3.3.2, TIME-020).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct CdsFormat {
     epoch: CdsEpoch,
@@ -121,7 +121,7 @@ pub struct CdsFormat {
 }
 
 impl CdsFormat {
-    /// A format; every combination of day length and resolution is valid (TIME-020).
+    /// A format; every combination of day length and resolution is valid (301.0 §3.3.2, TIME-020).
     #[must_use]
     pub const fn new(epoch: CdsEpoch, day: CdsDayLen, subms: CdsSubMs) -> CdsFormat {
         CdsFormat {
@@ -132,7 +132,7 @@ impl CdsFormat {
         }
     }
 
-    /// The same format with undefined P-field octets after octet 1 (TIME-005).
+    /// The same format with undefined P-field octets after octet 1 (301.0 §3.3.2, TIME-005).
     #[must_use]
     pub const fn with_tail(self, tail: PFieldTail) -> CdsFormat {
         CdsFormat { tail, ..self }
@@ -156,7 +156,7 @@ impl CdsFormat {
         self.subms
     }
 
-    /// Undefined P-field octets (TIME-005).
+    /// Undefined P-field octets (301.0 §3.3.2, TIME-005).
     #[must_use]
     pub const fn tail(&self) -> PFieldTail {
         self.tail
@@ -178,7 +178,7 @@ impl CdsFormat {
             .wrapping_add(self.subms.octets())
     }
 
-    /// The P-field for this format (301.0 §3.3.2).
+    /// The P-field for this format (301.0 §3.3.2, TIME-020).
     #[must_use]
     pub fn pfield(&self) -> PField {
         let epoch = match self.epoch {
@@ -232,14 +232,14 @@ impl CdsFormat {
     }
 }
 
-/// A CDS value (301.0 §3.3.1).
+/// A CDS value (301.0 §3.3.1, TIME-020, TIME-021).
 ///
 /// The millisecond and submillisecond fields hold only values 301.0 allows; whether the value
 /// fits a particular [`CdsFormat`] (day segment length and resolution) is checked by
 /// [`Cds::new`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct CdsValue {
-    /// Days since the epoch (301.0 §3.3.1, Annex A).
+    /// Days since the epoch (301.0 §3.3.1, Annex A; TIME-020).
     pub day: u32,
     /// Milliseconds of the day (301.0 Annex A, TIME-021).
     pub ms_of_day: MsOfDay,
@@ -247,7 +247,7 @@ pub struct CdsValue {
     pub subms: SubMillis,
 }
 
-/// A CDS time code: a format and a value that fits it (301.0 §3.3).
+/// A CDS time code: a format and a value that fits it (301.0 §3.3, TIME-020…TIME-022).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Cds {
     format: CdsFormat,
@@ -256,7 +256,7 @@ pub struct Cds {
 
 impl Cds {
     /// A CDS code from a format and a value that fits it. The fields of `value` are valid by
-    /// construction; only the fit to `format` is checked here (TIME-020, TIME-021).
+    /// construction; only the fit to `format` is checked here (301.0 §3.3.1; TIME-020, TIME-021).
     ///
     /// # Errors
     /// `OutOfRange` (`day`) if the day does not fit the 16- or 24-bit day segment;
@@ -280,13 +280,13 @@ impl Cds {
         Ok(Cds { format, value })
     }
 
-    /// The format (301.0 §3.3).
+    /// The format (301.0 §3.3, TIME-020, TIME-021).
     #[must_use]
     pub const fn format(&self) -> CdsFormat {
         self.format
     }
 
-    /// The value (301.0 §3.3).
+    /// The value (301.0 §3.3, TIME-020, TIME-021).
     #[must_use]
     pub const fn value(&self) -> CdsValue {
         self.value

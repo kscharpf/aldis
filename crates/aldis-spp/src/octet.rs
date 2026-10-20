@@ -23,7 +23,7 @@ pub struct OctetStringEncoder {
 }
 
 impl OctetStringEncoder {
-    /// An encoder for `apid`, whose packets take counts from `counter` (SPP-012).
+    /// An encoder for `apid`, whose packets take counts from `counter` (133.0 §4.2.2, SPP-012).
     ///
     /// # Errors
     /// `InvalidField` (`apid`) for APID 2047: Idle Packets come from
@@ -45,8 +45,8 @@ impl OctetStringEncoder {
         })
     }
 
-    /// Encodes `octets` as the data field of one packet into the start of `out`; the
-    /// Secondary Header Flag is `secondary_header_indicator` (133.0 §3.4.2.3). Returns the total
+    /// Encodes `octets` as the data field of one packet into the start of `out`; the Secondary
+    /// Header Flag is `secondary_header_indicator` (133.0 §3.4.2.3, SPP-012). Returns the total
     /// length. The counter advances only when a packet is written.
     ///
     /// # Errors
@@ -74,7 +74,7 @@ impl OctetStringEncoder {
         Ok(total)
     }
 
-    /// The counter, whose next count the next packet takes.
+    /// The counter, whose next count the next packet takes (133.0 §4.1.3.4.3.4; SPP-011, SPP-012).
     #[must_use]
     pub const fn counter(&self) -> SequenceCounter {
         self.counter

@@ -16,7 +16,7 @@ const fn wide(n: u32) -> u64 {
     n as u64
 }
 
-/// Largest Encapsulated Data Field, 2³² − 9 octets (133.1 Table 4-2).
+/// Largest Encapsulated Data Field, 2³² − 9 octets (133.1 §4.1.2.8, Table 4-2; EPP-003, EPP-010).
 pub const MAX_DATA_LEN: u32 = u32::MAX - 8;
 
 /// A set of Encapsulation Protocol IDs, 3-bit values: the managed parameter "Valid
@@ -25,28 +25,30 @@ pub const MAX_DATA_LEN: u32 = u32::MAX - 8;
 pub struct EpiSet(u8);
 
 impl EpiSet {
-    /// The empty set (EPP-010).
+    /// The empty set (133.1 §5 Table 5-1, EPP-010).
     pub const EMPTY: EpiSet = EpiSet(0);
 
-    /// The set whose bit `n` is set for each member EPI `n`; every `u8` is a valid set (EPP-010).
+    /// The set whose bit `n` is set for each member EPI `n`; every `u8` is a valid set (133.1 §5
+    /// Table 5-1, EPP-010).
     #[must_use]
     pub const fn from_bits(bits: u8) -> EpiSet {
         EpiSet(bits)
     }
 
-    /// The set with `epi` added (EPP-010).
+    /// The set with `epi` added (133.1 §5 Table 5-1, EPP-010).
     #[must_use]
     pub const fn with(self, epi: Epi) -> EpiSet {
         EpiSet(self.0 | (1 << epi.get()))
     }
 
-    /// Whether `epi` is in the set (EPP-010).
+    /// Whether `epi` is in the set (133.1 §5 Table 5-1, EPP-010).
     #[must_use]
     pub const fn contains(self, epi: Epi) -> bool {
         self.0 & (1 << epi.get()) != 0
     }
 
-    /// The set as a bit mask: bit `n` is set when EPI `n` is a member (EPP-010).
+    /// The set as a bit mask: bit `n` is set when EPI `n` is a member (133.1 §5 Table 5-1,
+    /// EPP-010).
     #[must_use]
     pub const fn bits(self) -> u8 {
         self.0
@@ -60,29 +62,30 @@ impl EpiSet {
 pub struct ExtendedEpiSet(u16);
 
 impl ExtendedEpiSet {
-    /// The empty set (EPP-010).
+    /// The empty set (133.1 §5 Table 5-1, EPP-010).
     pub const EMPTY: ExtendedEpiSet = ExtendedEpiSet(0);
 
     /// The set whose bit `n` is set for each member extended EPI `n`; every `u16` is a valid set
-    /// (EPP-010).
+    /// (133.1 §5 Table 5-1, EPP-010).
     #[must_use]
     pub const fn from_bits(bits: u16) -> ExtendedEpiSet {
         ExtendedEpiSet(bits)
     }
 
-    /// The set with `extension` added (EPP-010).
+    /// The set with `extension` added (133.1 §5 Table 5-1, EPP-010).
     #[must_use]
     pub const fn with(self, extension: EpiExtension) -> ExtendedEpiSet {
         ExtendedEpiSet(self.0 | (1 << extension.get()))
     }
 
-    /// Whether `extension` is in the set (EPP-010).
+    /// Whether `extension` is in the set (133.1 §5 Table 5-1, EPP-010).
     #[must_use]
     pub const fn contains(self, extension: EpiExtension) -> bool {
         self.0 & (1 << extension.get()) != 0
     }
 
-    /// The set as a bit mask: bit `n` is set when extended EPI `n` is a member (EPP-010).
+    /// The set as a bit mask: bit `n` is set when extended EPI `n` is a member (133.1 §5 Table 5-1,
+    /// EPP-010).
     #[must_use]
     pub const fn bits(self) -> u16 {
         self.0
@@ -100,8 +103,9 @@ pub struct EppConfig {
 }
 
 impl EppConfig {
-    /// A configuration accepting data units of `min_data_len..=max_data_len` octets whose EPI
-    /// is in `valid_epis` and, for EPI `110`, whose extension is in `valid_extended_epis`.
+    /// A configuration accepting data units of `min_data_len..=max_data_len` octets whose EPI is in
+    /// `valid_epis` and, for EPI `110`, whose extension is in `valid_extended_epis` (133.1 §5 Table
+    /// 5-1; EPP-010, GEN-060).
     ///
     /// # Errors
     /// `InvalidConfig` if `min_data_len > max_data_len` or `max_data_len` exceeds
@@ -273,13 +277,13 @@ pub struct DataUnit<'a> {
 }
 
 impl<'a> DataUnit<'a> {
-    /// The header fields (EPP-008).
+    /// The header fields (133.1 §4.1.2, EPP-008).
     #[must_use]
     pub const fn fields(&self) -> EncapsulationFields {
         self.fields
     }
 
-    /// The data to encapsulate (133.1 §4.1.3).
+    /// The data to encapsulate (133.1 §4.1.3, EPP-010).
     #[must_use]
     pub const fn data(&self) -> &'a [u8] {
         self.data

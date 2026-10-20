@@ -25,7 +25,8 @@ pub struct IdlePacket<'p> {
 }
 
 impl<'p> IdlePacket<'p> {
-    /// An Idle Packet of `total_len` octets with count 0 and the pattern `0x00` (SPP-010).
+    /// An Idle Packet of `total_len` octets with count 0 and the pattern `0x00` (133.0
+    /// §4.1.3.3.4.4, SPP-010).
     ///
     /// # Errors
     /// `OutOfRange` (`packet_len`) below 7 octets or above `config`'s maximum (SPP-006).
@@ -45,7 +46,7 @@ impl<'p> IdlePacket<'p> {
         })
     }
 
-    /// The same packet with Packet Sequence Count `count` (133.0 §4.1.3.4.3).
+    /// The same packet with Packet Sequence Count `count` (133.0 §4.1.3.4.3; SPP-010, SPP-011).
     #[must_use]
     pub const fn with_sequence_count(self, count: SeqCount) -> IdlePacket<'p> {
         IdlePacket {
@@ -55,7 +56,7 @@ impl<'p> IdlePacket<'p> {
     }
 
     /// The same packet with Idle Data repeating `pattern`; an empty pattern means the default
-    /// `0x00` (SPP-010).
+    /// `0x00` (133.0 §4.1.4.3.4, SPP-010).
     #[must_use]
     pub const fn with_pattern(self, pattern: &'p [u8]) -> IdlePacket<'p> {
         IdlePacket {
@@ -68,13 +69,14 @@ impl<'p> IdlePacket<'p> {
         }
     }
 
-    /// Total packet length in octets.
+    /// Total packet length in octets (133.0 §4.1.2.2, SPP-010).
     #[must_use]
     pub const fn total_len(&self) -> usize {
         self.total_len
     }
 
-    /// Encodes the packet into the start of `out`; returns the total length (SPP-010).
+    /// Encodes the packet into the start of `out`; returns the total length (133.0 §4.1.3.3.4.4,
+    /// §4.1.4.3.4, SPP-010).
     ///
     /// # Errors
     /// `BufferTooSmall` (`needed` = total length) if `out` is too short; `out` is then unchanged

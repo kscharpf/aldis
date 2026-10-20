@@ -5,13 +5,13 @@
 
 use aldis_core::{Error, ErrorKind, FieldId, Result};
 
-/// Largest P-field Aldis accepts, in octets (TIME-005).
+/// Largest P-field Aldis accepts, in octets (301.0 §3.1.1, TIME-005).
 pub const MAX_PFIELD_LEN: usize = 8;
 
 /// The extension flag, bit 0 of every P-field octet (301.0 §3.1.1).
 pub(crate) const EXTENSION: u8 = 0x80;
 
-/// Time code identification, P-field octet 1 bits 1–3 (301.0 §3.1.1).
+/// Time code identification, P-field octet 1 bits 1–3 (301.0 §3.1.1, TIME-001).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum TimeCodeId {
     /// `001`: CUC with the 1958 January 1 epoch (Level 1, §3.2.2).
@@ -73,7 +73,8 @@ impl TimeCodeId {
     }
 }
 
-/// A P-field as received: octet 1 and up to seven extension octets (TIME-001, TIME-005).
+/// A P-field as received: octet 1 and up to seven extension octets (301.0 §3.1.1; TIME-001,
+/// TIME-005).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct PField {
     first: u8,
@@ -83,7 +84,7 @@ pub struct PField {
 
 impl PField {
     /// Parses the P-field at the start of `bytes`: octet 1, then one more octet for as long
-    /// as the previous one has its extension flag (bit 0) set (TIME-001).
+    /// as the previous one has its extension flag (bit 0) set (301.0 §3.1.1, TIME-001).
     ///
     /// # Errors
     /// - `Incomplete` (`needed` = octets required so far) if `bytes` ends inside the chain.
@@ -124,7 +125,7 @@ impl PField {
         self.first
     }
 
-    /// The extension octets after octet 1 (TIME-001, TIME-005).
+    /// The extension octets after octet 1 (301.0 §3.1.1; TIME-001, TIME-005).
     #[must_use]
     pub fn rest(&self) -> &[u8] {
         self.rest
@@ -132,13 +133,13 @@ impl PField {
             .unwrap_or_default()
     }
 
-    /// Length in octets, 1 to [`MAX_PFIELD_LEN`] (TIME-003, TIME-005).
+    /// Length in octets, 1 to [`MAX_PFIELD_LEN`] (301.0 §3.1.1; TIME-003, TIME-005).
     #[must_use]
     pub fn len(&self) -> usize {
         usize::from(self.rest_len).wrapping_add(1)
     }
 
-    /// Always `false`: a P-field has at least octet 1 (TIME-001).
+    /// Always `false`: a P-field has at least octet 1 (301.0 §3.1.1, TIME-001).
     #[must_use]
     pub const fn is_empty(&self) -> bool {
         false
@@ -193,8 +194,9 @@ impl PField {
     }
 }
 
-/// P-field extension octets that 301.0 does not define for a code, kept raw so a lenient
-/// decode re-encodes unchanged (TIME-005). Each octet but the last has its extension flag set.
+/// P-field extension octets that 301.0 does not define for a code, kept raw so a lenient decode
+/// re-encodes unchanged (301.0 §3.1.1, TIME-005). Each octet but the last has its extension flag
+/// set.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub struct PFieldTail {
     octets: [u8; MAX_PFIELD_LEN - 1],
@@ -202,13 +204,13 @@ pub struct PFieldTail {
 }
 
 impl PFieldTail {
-    /// No undefined octets (TIME-005).
+    /// No undefined octets (301.0 §3.1.1, TIME-005).
     pub const EMPTY: PFieldTail = PFieldTail {
         octets: [0; MAX_PFIELD_LEN - 1],
         len: 0,
     };
 
-    /// A tail of `octets`, up to 7 (TIME-005).
+    /// A tail of `octets`, up to 7 (301.0 §3.1.1, TIME-005).
     ///
     /// # Errors
     /// `InvalidField` (`pfield_tail`) if there are more than 7 octets, or the extension flags do
@@ -241,19 +243,19 @@ impl PFieldTail {
         tail
     }
 
-    /// The octets (TIME-005).
+    /// The octets (301.0 §3.1.1, TIME-005).
     #[must_use]
     pub fn as_bytes(&self) -> &[u8] {
         self.octets.get(..usize::from(self.len)).unwrap_or_default()
     }
 
-    /// Number of octets (TIME-005).
+    /// Number of octets (301.0 §3.1.1, TIME-005).
     #[must_use]
     pub fn len(&self) -> usize {
         usize::from(self.len)
     }
 
-    /// Whether there are no undefined octets (TIME-005).
+    /// Whether there are no undefined octets (301.0 §3.1.1, TIME-005).
     #[must_use]
     pub const fn is_empty(&self) -> bool {
         self.len == 0
@@ -267,7 +269,7 @@ impl PFieldTail {
 pub struct ReservedPField(PField);
 
 impl ReservedPField {
-    /// `pfield` if its time code ID is reserved, else `None` (TIME-002).
+    /// `pfield` if its time code ID is reserved, else `None` (301.0 §3.1.1, TIME-002).
     #[must_use]
     pub const fn new(pfield: PField) -> Option<ReservedPField> {
         if pfield.id().is_reserved() {
@@ -282,7 +284,7 @@ impl ReservedPField {
         ReservedPField(pfield)
     }
 
-    /// The P-field (TIME-002).
+    /// The P-field (301.0 §3.1.1, TIME-002).
     #[must_use]
     pub const fn pfield(&self) -> PField {
         self.0

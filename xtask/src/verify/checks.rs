@@ -246,6 +246,8 @@ cargo run --manifest-path crosscheck/Cargo.toml
 cargo xtask changelog check
 # M0 is closed: every in-scope requirement must keep an artefact (VER-020).
 cargo xtask trace --scope m0 --strict
+# M1 is open: its trace is reported, and becomes --strict at the M1 exit (m1 plan D8).
+cargo xtask trace --scope m1
 # C0 is open: its trace is reported, and becomes --strict at the C0 exit (c0 plan D17).
 cargo xtask trace --scope c0
 ";

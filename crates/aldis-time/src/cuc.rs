@@ -12,7 +12,7 @@ use crate::util::wide8;
 /// Nanoseconds per second.
 const NANOS: u32 = 1_000_000_000;
 
-/// The epoch of a CUC code (301.0 §3.2.2).
+/// The epoch of a CUC code (301.0 §3.2.2, TIME-010, TIME-014).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum CucEpoch {
     /// 1958 January 1 TAI, Level 1 (time code ID `001`) (301.0 §3.2.2, TIME-014).
@@ -21,8 +21,8 @@ pub enum CucEpoch {
     Agency,
 }
 
-/// CUC layout: epoch, coarse and fine octet counts, and the P-field details (TIME-010,
-/// TIME-013).
+/// CUC layout: epoch, coarse and fine octet counts, and the P-field details (301.0 §3.2.2;
+/// TIME-010, TIME-013).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct CucFormat {
     epoch: CucEpoch,
@@ -48,7 +48,8 @@ impl CucFormat {
     /// only when the counts need it (above 4 coarse or 3 fine octets).
     ///
     /// # Errors
-    /// `OutOfRange` (`coarse_octets` or `fine_octets`) outside those ranges (TIME-010).
+    /// `OutOfRange` (`coarse_octets` or `fine_octets`) outside those ranges (301.0 §3.2.2,
+    /// TIME-010).
     pub const fn new(epoch: CucEpoch, coarse_octets: u8, fine_octets: u8) -> Result<CucFormat> {
         if coarse_octets == 0 || coarse_octets > CucFormat::MAX_COARSE {
             // Report the violated bound: 1 for zero, the maximum otherwise (GEN-041).
@@ -81,7 +82,7 @@ impl CucFormat {
     }
 
     /// The same format with the mission-defined bits of P-field octet 2 (0–3), which forces
-    /// octet 2 (TIME-013).
+    /// octet 2 (301.0 §3.2.2, TIME-013).
     ///
     /// # Errors
     /// `OutOfRange` (`mission_bits`) above 3.
@@ -107,7 +108,7 @@ impl CucFormat {
     }
 
     /// The same format with undefined P-field octets after octet 2, which forces octet 2
-    /// (TIME-005).
+    /// (301.0 §3.2.2, TIME-005).
     ///
     /// # Errors
     /// `InvalidField` (`pfield_tail`) if the tail is longer than 6 octets, which would make the
@@ -123,25 +124,25 @@ impl CucFormat {
         })
     }
 
-    /// The epoch (301.0 §3.2.2).
+    /// The epoch (301.0 §3.2.2, TIME-010).
     #[must_use]
     pub const fn epoch(&self) -> CucEpoch {
         self.epoch
     }
 
-    /// Number of coarse octets, 1–7 (TIME-010).
+    /// Number of coarse octets, 1–7 (301.0 §3.2.2, TIME-010).
     #[must_use]
     pub const fn coarse_octets(&self) -> u8 {
         self.coarse
     }
 
-    /// Number of fine octets, 0–10 (TIME-010).
+    /// Number of fine octets, 0–10 (301.0 §3.2.2, TIME-010).
     #[must_use]
     pub const fn fine_octets(&self) -> u8 {
         self.fine
     }
 
-    /// Mission-defined bits of P-field octet 2 (TIME-013).
+    /// Mission-defined bits of P-field octet 2 (301.0 §3.2.2, TIME-013).
     #[must_use]
     pub const fn mission_bits(&self) -> u8 {
         self.mission
@@ -153,7 +154,7 @@ impl CucFormat {
         self.octet2
     }
 
-    /// Undefined P-field octets after octet 2 (TIME-005).
+    /// Undefined P-field octets after octet 2 (301.0 §3.2.2, TIME-005).
     #[must_use]
     pub const fn tail(&self) -> PFieldTail {
         self.tail
@@ -165,9 +166,10 @@ impl CucFormat {
         usize::from(self.coarse).wrapping_add(usize::from(self.fine))
     }
 
-    /// The P-field for this format (301.0 §3.2.2). Octet 1 carries as many coarse (up to 4) and
-    /// fine (up to 3) octets as it can and octet 2 the rest. A received P-field that splits the
-    /// counts differently decodes to the same format and re-encodes in this canonical form.
+    /// The P-field for this format (301.0 §3.2.2, TIME-010, TIME-013). Octet 1 carries as many
+    /// coarse (up to 4) and fine (up to 3) octets as it can and octet 2 the rest. A received
+    /// P-field that splits the counts differently decodes to the same format and re-encodes in this
+    /// canonical form.
     #[must_use]
     pub fn pfield(&self) -> PField {
         let id = match self.epoch {
@@ -217,8 +219,9 @@ impl CucFormat {
     }
 }
 
-/// A CUC value: coarse time and a left-aligned binary fraction of the basic time unit (TIME-011,
-/// M1 D2). Fraction bit 127 is worth ½; a format with `n` fine octets uses the top `8n` bits.
+/// A CUC value: coarse time and a left-aligned binary fraction of the basic time unit (301.0
+/// §3.2.1; TIME-011, M1 D2). Fraction bit 127 is worth ½; a format with `n` fine octets uses the
+/// top `8n` bits.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub struct CucValue {
     coarse: u64,
@@ -226,25 +229,25 @@ pub struct CucValue {
 }
 
 impl CucValue {
-    /// A value of `coarse` units and the left-aligned fraction `fine` (TIME-011).
+    /// A value of `coarse` units and the left-aligned fraction `fine` (301.0 §3.2.1, TIME-011).
     #[must_use]
     pub const fn new(coarse: u64, fine: u128) -> CucValue {
         CucValue { coarse, fine }
     }
 
-    /// Coarse time (TIME-011).
+    /// Coarse time (301.0 §3.2.1, TIME-011).
     #[must_use]
     pub const fn coarse(&self) -> u64 {
         self.coarse
     }
 
-    /// Left-aligned fraction (TIME-011).
+    /// Left-aligned fraction (301.0 §3.2.1, TIME-011).
     #[must_use]
     pub const fn fine(&self) -> u128 {
         self.fine
     }
 
-    /// The value as whole seconds and nanoseconds, truncated toward zero (TIME-011).
+    /// The value as whole seconds and nanoseconds, truncated toward zero (301.0 §3.2.1, TIME-011).
     ///
     /// For 0–3 fine octets the round trip through [`Cuc::from_seconds_nanos`] is exact. With 4
     /// or more fine octets the fraction is finer than a nanosecond, so the round trip is exact
@@ -274,7 +277,7 @@ fn check_coarse(format: &CucFormat, coarse: u64) -> Result<()> {
     Ok(())
 }
 
-/// A CUC time code: format and value (301.0 §3.2).
+/// A CUC time code: format and value (301.0 §3.2, TIME-010, TIME-011).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Cuc {
     format: CucFormat,
@@ -282,7 +285,8 @@ pub struct Cuc {
 }
 
 impl Cuc {
-    /// A CUC code; the value must be representable in the format.
+    /// A CUC code; the value must be representable in the format (301.0 §3.2.1; TIME-011,
+    /// TIME-012).
     ///
     /// # Errors
     /// `OutOfRange` (`coarse`) if the coarse time needs more octets than the format has; it is
@@ -299,9 +303,9 @@ impl Cuc {
         Ok(Cuc { format, value })
     }
 
-    /// The code for `seconds` and `nanos` in `format`: the fraction is rounded **up** to the
-    /// next representable value (TIME-011), and a carry adds one to the coarse time. Returns a
-    /// [`Cuc`], so the fit to the format is established once (RS-020).
+    /// The code for `seconds` and `nanos` in `format`: the fraction is rounded **up** to the next
+    /// representable value (301.0 §3.2.1, TIME-011), and a carry adds one to the coarse time.
+    /// Returns a [`Cuc`], so the fit to the format is established once (RS-020).
     ///
     /// # Errors
     /// `OutOfRange` (`nanoseconds`) if `nanos` ≥ 10⁹; `OutOfRange` (`coarse`) if the coarse time,
@@ -333,20 +337,20 @@ impl Cuc {
     }
 
     /// The code as whole seconds and nanoseconds, truncated toward zero; the counterpart of
-    /// [`from_seconds_nanos`](Self::from_seconds_nanos) (TIME-011). See
+    /// [`from_seconds_nanos`](Self::from_seconds_nanos) (301.0 §3.2.1, TIME-011). See
     /// [`CucValue::to_seconds_nanos`].
     #[must_use]
     pub fn to_seconds_nanos(&self) -> (u64, u32) {
         self.value.to_seconds_nanos()
     }
 
-    /// The format (301.0 §3.2).
+    /// The format (301.0 §3.2, TIME-010, TIME-011).
     #[must_use]
     pub const fn format(&self) -> CucFormat {
         self.format
     }
 
-    /// The value (301.0 §3.2).
+    /// The value (301.0 §3.2, TIME-010, TIME-011).
     #[must_use]
     pub const fn value(&self) -> CucValue {
         self.value

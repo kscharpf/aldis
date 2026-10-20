@@ -7,7 +7,8 @@ use crate::anomaly::EppAnomaly;
 use crate::config::EppConfig;
 use crate::header::{EncapsulationHeader, Epi, EpiExtension, HeaderLen, UserDefined};
 
-/// A decoded Encapsulation Packet borrowing its data field from the input (GEN-013).
+/// A decoded Encapsulation Packet borrowing its data field from the input (133.1 §4.1;
+/// EPP-001…EPP-007, EPP-011, GEN-013).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct EncapsulationPacket<'a> {
     header: EncapsulationHeader,
@@ -23,8 +24,8 @@ const fn reserved(field: &'static str, found: u64) -> Error {
 }
 
 impl<'a> EncapsulationPacket<'a> {
-    /// Decodes one packet from the start of `bytes`; any octets after it are ignored, so a
-    /// stream can be parsed packet by packet with [`len`](Self::len) (API-011, EPP-002).
+    /// Decodes one packet from the start of `bytes`; any octets after it are ignored, so a stream
+    /// can be parsed packet by packet with [`len`](Self::len) (133.1 §4.1.2; API-011, EPP-002).
     ///
     /// # Errors
     /// - `Incomplete` (`needed` = total octets required) if `bytes` is shorter than the header
@@ -68,9 +69,9 @@ impl<'a> EncapsulationPacket<'a> {
         })
     }
 
-    /// Total length of the packet that starts `prefix`, from its header alone (API-013). It
-    /// applies every check of [`decode`](Self::decode) that needs only the header and holds in
-    /// both modes, so the two never disagree on a header.
+    /// Total length of the packet that starts `prefix`, from its header alone (133.1 §4.1.2.8,
+    /// API-013). It applies every check of [`decode`](Self::decode) that needs only the header and
+    /// holds in both modes, so the two never disagree on a header.
     ///
     /// # Errors
     /// `Incomplete` if `prefix` is shorter than the header; `UnsupportedVersion`,
@@ -81,7 +82,8 @@ impl<'a> EncapsulationPacket<'a> {
         Ok(usize::try_from(header.packet_len()).unwrap_or(usize::MAX))
     }
 
-    /// Checks the packet against the managed parameters (EPP-010); see [`EppConfig::check`].
+    /// Checks the packet against the managed parameters (133.1 §4.3.1.1.3, §5 Table 5-1, EPP-010);
+    /// see [`EppConfig::check`].
     ///
     /// # Errors
     /// As for [`EppConfig::check`].
@@ -89,7 +91,7 @@ impl<'a> EncapsulationPacket<'a> {
         config.check(self.epi(), self.extension(), self.data.len())
     }
 
-    /// The header as plain values (API-014).
+    /// The header as plain values (133.1 §4.1.2, API-014).
     #[must_use]
     pub const fn header(&self) -> EncapsulationHeader {
         self.header
@@ -107,19 +109,20 @@ impl<'a> EncapsulationPacket<'a> {
         self.header.epi().is_idle()
     }
 
-    /// Protocol ID Extension, if the header has one (EPP-011).
+    /// Protocol ID Extension, if the header has one (133.1 §4.1.2.6, EPP-011).
     #[must_use]
     pub const fn extension(&self) -> Option<EpiExtension> {
         self.header.extension()
     }
 
-    /// User Defined field, if the header has one (EPP-011).
+    /// User Defined field, if the header has one (133.1 §4.1.2.5, EPP-011).
     #[must_use]
     pub const fn user_defined(&self) -> Option<UserDefined> {
         self.header.user_defined()
     }
 
-    /// CCSDS Defined Field, if the header has one; exposed even when non-zero (EPP-007).
+    /// CCSDS Defined Field, if the header has one; exposed even when non-zero (133.1 §4.1.2.7,
+    /// EPP-007).
     #[must_use]
     pub const fn ccsds_defined(&self) -> Option<u16> {
         self.header.ccsds_defined()
@@ -131,26 +134,27 @@ impl<'a> EncapsulationPacket<'a> {
         self.header.header_len()
     }
 
-    /// The Encapsulated Data Field, borrowed from the input (GEN-013); empty for idle packets
-    /// without data.
+    /// The Encapsulated Data Field, borrowed from the input (133.1 §4.1.3; EPP-011, GEN-013); empty
+    /// for idle packets without data.
     #[must_use]
     pub const fn data(&self) -> &'a [u8] {
         self.data
     }
 
-    /// Octets consumed from the input: the total packet length (API-011).
+    /// Octets consumed from the input: the total packet length (133.1 §4.1.2.8.2, API-011).
     #[must_use]
     pub fn len(&self) -> usize {
         usize::try_from(self.header.packet_len()).unwrap_or(usize::MAX)
     }
 
-    /// Always `false`: a packet has at least a 1-octet header (133.1 §4.1.1.2).
+    /// Always `false`: a packet has at least a 1-octet header (133.1 §4.1.1.2, API-011).
     #[must_use]
     pub const fn is_empty(&self) -> bool {
         false
     }
 
-    /// Lenient-mode anomalies; always empty after a strict decode (API-032, GEN-043).
+    /// Lenient-mode anomalies; always empty after a strict decode (133.1 §4.1.2.6.3, §4.1.2.7.2;
+    /// API-032, GEN-043).
     #[must_use]
     pub const fn anomalies(&self) -> AnomalySet<EppAnomaly> {
         self.anomalies

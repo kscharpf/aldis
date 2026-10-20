@@ -41,12 +41,12 @@ macro_rules! bounded {
         pub struct $name($repr);
 
         impl $name {
-            /// Smallest valid value.
+            /// Smallest valid value (301.0 Annex A; TIME-030, RS-020).
             pub const MIN: $repr = $min;
-            /// Largest valid value.
+            /// Largest valid value (301.0 Annex A; TIME-030, RS-020).
             pub const MAX: $repr = $max;
 
-            /// The field, or `None` outside its range.
+            /// The field, or `None` outside its range (301.0 Annex A; TIME-030, RS-020).
             #[must_use]
             pub const fn new(value: $repr) -> Option<$name> {
                 if matches!(value, $min..=$max) {
@@ -56,7 +56,7 @@ macro_rules! bounded {
                 }
             }
 
-            /// The numeric value.
+            /// The numeric value (301.0 Annex A, TIME-030).
             #[must_use]
             pub const fn get(self) -> $repr {
                 self.0
