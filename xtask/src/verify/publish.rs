@@ -4,11 +4,12 @@
 //! to `origin`. A passing record then sets the commit status `aldis/verify`, which branch
 //! protection on `main` requires.
 
+use std::path::Path;
 use std::process::{Command, Stdio};
 
 use serde_json::Value;
 
-use super::{git, record};
+use super::{checks, git, git_in, record, scope};
 use crate::repo;
 
 /// The notes ref that holds the records.
@@ -48,26 +49,40 @@ fn run_url(record: &Value) -> Option<&str> {
     }
 }
 
-/// Fetches `origin`'s notes into [`NOTES_ORIGIN`]; false if `origin` has none yet.
-fn fetch_notes() -> Result<bool, String> {
+/// Fetches `origin`'s notes into [`NOTES_ORIGIN`] in the repository at `dir`; false if
+/// `origin` has none yet.
+pub fn fetch_notes(dir: &Path) -> Result<bool, String> {
     let exists = Command::new("git")
         .args(["ls-remote", "--exit-code", "origin", NOTES])
-        .current_dir(repo::root())
+        .current_dir(dir)
         .stdout(Stdio::null())
+        .stderr(Stdio::null())
         .status()
         .map_err(|e| format!("git: {e}"))?;
     if !exists.success() {
         return Ok(false);
     }
-    git(&["fetch", "-q", "origin", &format!("+{NOTES}:{NOTES_ORIGIN}")])?;
+    git_in(
+        dir,
+        &["fetch", "-q", "origin", &format!("+{NOTES}:{NOTES_ORIGIN}")],
+    )?;
     Ok(true)
+}
+
+/// The record of `commit` published on `origin`, as last fetched by [`fetch_notes`].
+pub fn published(dir: &Path, commit: &str) -> Option<String> {
+    git_in(
+        dir,
+        &["notes", &format!("--ref={NOTES_ORIGIN}"), "show", commit],
+    )
+    .ok()
 }
 
 /// Adds the record as a note on `commit` on top of `origin`'s notes and pushes them.
 fn push_note(commit: &str, path: &str) -> Result<(), String> {
     let mut last = String::new();
     for _ in 0..3 {
-        if fetch_notes()? {
+        if fetch_notes(&repo::root())? {
             // Start from origin's notes; a local note on the same commit is replaced below.
             git(&["update-ref", NOTES, NOTES_ORIGIN])?;
         }
@@ -89,6 +104,14 @@ fn push_note(commit: &str, path: &str) -> Result<(), String> {
     Err(last)
 }
 
+/// Why a record of the commit it names does not meet the merge gate (VER-058): the record's own
+/// rules, and its skips re-derived from git rather than trusted.
+fn problems(record: &Value) -> Vec<String> {
+    let mut problems = record::gate_problems(record);
+    problems.extend(scope::recheck(&repo::root(), record, &checks::all()));
+    problems
+}
+
 /// Publishes the local record of `commit` from `target/verify/<commit>/record.json`.
 pub fn publish(commit: &str) -> Result<usize, String> {
     let path = repo::root()
@@ -98,7 +121,7 @@ pub fn publish(commit: &str) -> Result<usize, String> {
     let text = repo::read(&path)
         .map_err(|e| format!("{e}\nrun `cargo xtask verify` on {commit} first"))?;
     let record = load(&text, commit)?;
-    let problems = record::gate_problems(&record);
+    let problems = problems(&record);
     if !problems.is_empty() {
         return Err(format!(
             "the record does not pass the merge gate, so it is not published:\n  {}",
@@ -159,13 +182,13 @@ pub fn publish(commit: &str) -> Result<usize, String> {
 /// Checks the record of `rev` published on `origin` against the merge gate.
 pub fn check(rev: &str) -> Result<usize, String> {
     let commit = git(&["rev-parse", rev])?;
-    if !fetch_notes()? {
+    if !fetch_notes(&repo::root())? {
         return Err(format!("origin has no {NOTES} yet"));
     }
-    let text = git(&["notes", &format!("--ref={NOTES_ORIGIN}"), "show", &commit])
-        .map_err(|_| format!("origin has no published record for {commit}"))?;
+    let text = published(&repo::root(), &commit)
+        .ok_or_else(|| format!("origin has no published record for {commit}"))?;
     let record = load(&text, &commit)?;
-    let problems = record::gate_problems(&record);
+    let problems = problems(&record);
     println!(
         "verify: record of {commit}, sha256 {}, finished {}",
         record::sha256_hex(text.trim().as_bytes()),
@@ -177,6 +200,13 @@ pub fn check(rev: &str) -> Result<usize, String> {
     match run_url(&record) {
         Some(url) => println!("verify: made by GitHub Actions run {url}"),
         None => println!("verify: made locally"),
+    }
+    let skipped = record
+        .get("checks")
+        .and_then(Value::as_array)
+        .map_or(0, |c| c.iter().filter(|e| e["result"] == "skipped").count());
+    if skipped > 0 {
+        println!("verify: {skipped} check(s) skipped; their skips re-derived from git (VER-058)");
     }
     for p in &problems {
         println!("verify: gate: {p}");

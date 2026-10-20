@@ -1,17 +1,18 @@
 //! `cargo xtask verify`: the verification run and the merge gate (docs/06-verification.md §7,
 //! VER-056…VER-058).
 //!
-//! The host side checks that the working tree is clean, decides whether the C++ checks apply,
-//! builds the verification image if it is missing (`image.rs`), runs the container checks in it
-//! (`inside.rs`), runs the host-bound checks, and writes the evidence record (`record.rs`) to
-//! `target/verify/<commit>/record.json`. `--publish` stores it as a git note and sets the commit
-//! status (`publish.rs`).
+//! The host side checks that the working tree is clean, decides which checks the change needs
+//! (`scope.rs`, from the inputs of each check in `checks.rs`), builds the verification image if
+//! it is missing (`image.rs`), runs the container checks in it (`inside.rs`), runs the host-bound
+//! checks, and writes the evidence record (`record.rs`) to `target/verify/<commit>/record.json`.
+//! `--publish` stores it as a git note and sets the commit status (`publish.rs`).
 
 mod checks;
 mod image;
 mod inside;
 mod publish;
 mod record;
+mod scope;
 
 use std::fs::File;
 use std::path::{Path, PathBuf};
@@ -25,17 +26,6 @@ use record::Outcome;
 
 use crate::repo;
 
-/// Paths whose change makes the C++ checks apply: what the C++ build, tests, or tooling read
-/// (formerly the `changes` job of `.github/workflows/cpp.yml`). Extend when C1 adds
-/// `difftest/` and `aldis.h`.
-const CPP_PATHS: &[&str] = &[
-    "cpp/",
-    "test-vectors/",
-    "xtask/",
-    ".github/actions/setup-cpp/",
-    ".github/workflows/cpp.yml",
-];
-
 /// Flags shared with the RUSTFLAGS of every check (the former `ci.yml` `env`).
 const CHECK_ENV: &[(&str, &str)] = &[
     ("CARGO_TERM_COLOR", "never"),
@@ -45,26 +35,36 @@ const CHECK_ENV: &[(&str, &str)] = &[
 
 pub const HELP: &str = "\
 Verification run and merge gate (docs/06-verification.md §7):
-  verify [--only <check>,...] [--all-cpp] [--publish]
-                               run every check on HEAD in the verification image (podman or
-                               Docker; ALDIS_VERIFY_ENGINE picks one) and write the evidence
-                               record to target/verify/<commit>/record.json (VER-056, VER-057);
-                               --only runs a subset (such a record never passes the gate);
-                               --all-cpp runs the C++ checks even if C++ is untouched;
-                               --publish then publishes it, as `verify publish` does
+  verify [--only <check>,...] [--all | --all-cpp] [--publish]
+                               run the checks the change needs on HEAD in the verification
+                               image (podman or Docker; ALDIS_VERIFY_ENGINE picks one) and write
+                               the evidence record to target/verify/<commit>/record.json
+                               (VER-056, VER-057): a check whose inputs did not change against
+                               the merge base with origin/main is skipped (`verify list` shows
+                               which); --all runs every check; --all-cpp runs the C++ checks
+                               even if their inputs are untouched; --only runs a subset (such a
+                               record never passes the gate); --publish then publishes it, as
+                               `verify publish` does
   verify publish [<rev>]       push the passing record of <rev> (default HEAD) as a git note
                                under refs/notes/verify and set the commit status aldis/verify
                                (VER-058)
-  verify check [<rev>]         check the published record of <rev> against the merge gate
+  verify check [<rev>]         check the published record of <rev> against the merge gate,
+                               re-deriving its skipped checks from git
   verify image                 build the verification image for HEAD
-  verify list                  list the checks
+  verify list                  list the checks and their inputs, and which of them HEAD needs
+  verify scope [<rev>] [--main <rev>]
+                               which checks <rev> (default HEAD) needs, against origin/main or
+                               against the given tip of main (for past commits)
 ";
 
 /// Which checks a run executes.
 #[derive(Debug, Default)]
 pub struct Options {
     only: Option<Vec<String>>,
-    skip_cpp: bool,
+    /// Skipped by the input rule (VER-056).
+    skip: Vec<String>,
+    /// The base the skips are measured against.
+    base: Option<String>,
 }
 
 /// Dispatches `cargo xtask verify ...`.
@@ -85,60 +85,68 @@ pub fn run(args: &[&str]) -> Result<usize, String> {
             println!("verify: image {tag} ({id})");
             Ok(0)
         }
-        ["list"] => {
-            for c in checks::all() {
-                let gating = if c.gating { "" } else { ", non-gating" };
-                let cpp = if c.cpp { ", C++" } else { "" };
-                println!("{:42} {}{cpp}{gating}", c.name, c.host.name());
-            }
-            Ok(0)
-        }
+        ["list" | "scope"] => show("HEAD", scope::Main::Origin),
+        ["scope", "--main", main] => show("HEAD", scope::Main::Rev(main)),
+        ["scope", rev] => show(rev, scope::Main::Origin),
+        ["scope", rev, "--main", main] => show(rev, scope::Main::Rev(main)),
         rest => {
             let (opts, flags) = parse_options(rest)?;
-            verify(
-                opts,
-                flags.contains(&"--all-cpp"),
-                flags.contains(&"--publish"),
-            )
+            let force = scope::Force {
+                all: flags.contains(&"--all"),
+                cpp: flags.contains(&"--all-cpp"),
+            };
+            verify(opts, force, flags.contains(&"--publish"))
         }
     }
 }
 
-/// Parses `--only a,b` and `--skip-cpp`; returns the other flags.
+/// Parses a comma-separated list of check names.
+fn check_names(list: Option<&&str>, flag: &str) -> Result<Vec<String>, String> {
+    let list = list.ok_or_else(|| format!("{flag} needs a list of checks"))?;
+    let names: Vec<String> = list
+        .split(',')
+        .filter(|n| !n.is_empty())
+        .map(str::to_owned)
+        .collect();
+    let known: Vec<String> = checks::all().into_iter().map(|c| c.name).collect();
+    if let Some(bad) = names.iter().find(|n| !known.contains(n)) {
+        return Err(format!(
+            "unknown check `{bad}`; see `cargo xtask verify list`"
+        ));
+    }
+    Ok(names)
+}
+
+/// Parses `--only a,b` and, for `verify inside`, `--skip a,b --base <commit>`; returns the
+/// other flags.
 fn parse_options<'a>(args: &[&'a str]) -> Result<(Options, Vec<&'a str>), String> {
     let mut opts = Options::default();
     let mut flags = Vec::new();
     let mut it = args.iter();
     while let Some(arg) = it.next() {
         match *arg {
-            "--only" => {
-                let list = it.next().ok_or("--only needs a list of checks")?;
-                let names: Vec<String> = list.split(',').map(str::to_owned).collect();
-                let known: Vec<String> = checks::all().into_iter().map(|c| c.name).collect();
-                if let Some(bad) = names.iter().find(|n| !known.contains(n)) {
-                    return Err(format!(
-                        "unknown check `{bad}`; see `cargo xtask verify list`"
-                    ));
-                }
-                opts.only = Some(names);
-            }
-            "--skip-cpp" => opts.skip_cpp = true,
-            "--all-cpp" | "--publish" => flags.push(*arg),
+            "--only" => opts.only = Some(check_names(it.next(), "--only")?),
+            "--skip" => opts.skip = check_names(it.next(), "--skip")?,
+            "--base" => opts.base = Some((*it.next().ok_or("--base needs a commit")?).to_owned()),
+            "--all" | "--all-cpp" | "--publish" => flags.push(*arg),
             other => return Err(format!("unknown argument `{other}`\n\n{HELP}")),
         }
+    }
+    if !opts.skip.is_empty() && opts.base.is_none() {
+        return Err("--skip needs --base".to_owned());
     }
     Ok((opts, flags))
 }
 
-/// Runs git in the repository root; returns its trimmed standard output.
-fn git(args: &[&str]) -> Result<String, String> {
+/// Runs git in `dir`; returns its standard output.
+fn git_bytes(dir: &Path, args: &[&str]) -> Result<Vec<u8>, String> {
     let out = Command::new("git")
         .args(args)
-        .current_dir(repo::root())
+        .current_dir(dir)
         .output()
         .map_err(|e| format!("git: {e}"))?;
     if out.status.success() {
-        Ok(String::from_utf8_lossy(&out.stdout).trim().to_owned())
+        Ok(out.stdout)
     } else {
         Err(format!(
             "git {}: {}",
@@ -146,6 +154,32 @@ fn git(args: &[&str]) -> Result<String, String> {
             String::from_utf8_lossy(&out.stderr).trim()
         ))
     }
+}
+
+/// Runs git in `dir`; returns its trimmed standard output.
+fn git_in(dir: &Path, args: &[&str]) -> Result<String, String> {
+    git_bytes(dir, args).map(|out| String::from_utf8_lossy(&out).trim().to_owned())
+}
+
+/// Runs git in the repository root; returns its trimmed standard output.
+fn git(args: &[&str]) -> Result<String, String> {
+    git_in(&repo::root(), args)
+}
+
+/// Prints the checks, their inputs, and which of them `rev` needs (VER-056).
+fn show(rev: &str, main: scope::Main) -> Result<usize, String> {
+    let commit = git(&["rev-parse", rev])?;
+    let root = repo::root();
+    let checks = checks::all();
+    let change = scope::change(&root, &commit, main);
+    let plan = scope::plan(&checks, &change, scope::Force::default(), |b| {
+        scope::covering_record(&root, b)
+    });
+    println!("verify: scope of {commit}");
+    for line in scope::describe(&plan, &checks) {
+        println!("verify: {line}");
+    }
+    Ok(0)
 }
 
 /// The result entry of a check that did not run.
@@ -167,11 +201,11 @@ fn skipped(check: &Check, opts: &Options) -> Option<Value> {
             Outcome::NotRun,
             Some("not selected with --only"),
         ))
-    } else if check.cpp && opts.skip_cpp {
+    } else if let (true, Some(base)) = (opts.skip.contains(&check.name), &opts.base) {
         Some(outcome(
             check,
             Outcome::Skipped,
-            Some("the change does not touch the C++ inputs"),
+            Some(&scope::skip_reason(base)),
         ))
     } else {
         None
@@ -237,44 +271,6 @@ struct Duration(u64);
 impl std::fmt::Display for Duration {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}.{}", self.0 / 1000, self.0 % 1000 / 100)
-    }
-}
-
-/// Whether the C++ checks apply to `commit` (VER-056), with what the record says about it.
-fn cpp_scope(commit: &str, all_cpp: bool) -> Value {
-    let scope = |affected: bool, base: Option<&str>, reason: &str| json!({"affected": affected, "base": base, "paths": CPP_PATHS, "reason": reason});
-    if all_cpp {
-        return scope(true, None, "--all-cpp");
-    }
-    if git(&["fetch", "-q", "origin", "main"]).is_err() {
-        return scope(true, None, "origin/main could not be fetched");
-    }
-    let Ok(base) = git(&["merge-base", commit, "origin/main"]) else {
-        return scope(true, None, "no merge base with origin/main");
-    };
-    if base == commit {
-        return scope(true, Some(&base), "the commit is on main");
-    }
-    let changed = git(&["diff", "--name-only", &base, commit]).unwrap_or_default();
-    let touched: Vec<&str> = changed
-        .lines()
-        .filter(|f| CPP_PATHS.iter().any(|p| f.starts_with(p)))
-        .collect();
-    if touched.is_empty() {
-        scope(false, Some(&base), "no changed path matches")
-    } else {
-        let first: Vec<&str> = touched.iter().take(3).copied().collect();
-        let more = touched.len() - first.len();
-        let more = if more > 0 {
-            format!(" and {more} more")
-        } else {
-            String::new()
-        };
-        scope(
-            true,
-            Some(&base),
-            &format!("changes {}{more}", first.join(", ")),
-        )
     }
 }
 
@@ -358,7 +354,7 @@ fn host_checks(commit: &str, out: &Path, opts: &Options) -> Result<(Vec<Value>, 
 }
 
 /// The whole run on HEAD; returns the number of merge-gate problems.
-fn verify(mut opts: Options, all_cpp: bool, publish: bool) -> Result<usize, String> {
+fn verify(mut opts: Options, force: scope::Force, publish: bool) -> Result<usize, String> {
     let dirty = git(&["status", "--porcelain"])?;
     if !dirty.is_empty() {
         return Err(format!(
@@ -366,10 +362,22 @@ fn verify(mut opts: Options, all_cpp: bool, publish: bool) -> Result<usize, Stri
              (VER-056):\n{dirty}"
         ));
     }
+    let root = repo::root();
     let commit = git(&["rev-parse", "HEAD"])?;
     let tree = git(&["rev-parse", "HEAD^{tree}"])?;
-    let cpp = cpp_scope(&commit, all_cpp);
-    opts.skip_cpp = cpp.get("affected") == Some(&Value::Bool(false));
+    let all = checks::all();
+    let change = scope::change(&root, &commit, scope::Main::Origin);
+    let plan = scope::plan(&all, &change, force, |b| scope::covering_record(&root, b));
+    for line in scope::describe(&plan, &all) {
+        println!("verify: {line}");
+    }
+    opts.skip = plan
+        .checks
+        .iter()
+        .filter(|d| !d.run)
+        .map(|d| d.name.clone())
+        .collect();
+    opts.base.clone_from(&plan.base);
     let engine = image::Engine::detect()?;
     let (tag, id) = engine.ensure_image(&commit)?;
     let out = out_dir(&commit)?;
@@ -398,13 +406,14 @@ fn verify(mut opts: Options, all_cpp: bool, publish: bool) -> Result<usize, Stri
         "image": {"tag": tag, "id": id},
         "tools": tools,
         "packages": container.get("packages"),
-        "cpp": cpp,
+        "scope": scope::to_json(&plan, &all),
         "checks": results,
     });
     let text = record::canonical(&record);
     let path = out.join("record.json");
     std::fs::write(&path, &text).map_err(|e| format!("{}: {e}", path.display()))?;
-    let problems = record::gate_problems(&record);
+    let mut problems = record::gate_problems(&record);
+    problems.extend(scope::recheck(&root, &record, &all));
     println!(
         "verify: record {} (sha256 {})",
         repo::rel(&path),

@@ -57,10 +57,10 @@ jobs:
         run: |
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
           df -h /
-      - name: Every check, C++ included
+      - name: Every check, whatever the change against main (VER-059)
         env:
           ALDIS_VERIFY_ENGINE: docker
-        run: cargo xtask verify --all-cpp
+        run: cargo xtask verify --all
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
