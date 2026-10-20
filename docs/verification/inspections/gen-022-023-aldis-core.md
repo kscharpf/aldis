@@ -10,10 +10,11 @@
 | History | First inspected 2026-10-16 at `main` 6dd89b7, approved 2026-10-16 maintainer; revised since at `m1/core` 3b51e87 and later as below |
 | Revised | 2026-10-17 (M1 WP-0): `mode` and `anomaly` added; approved 2026-10-17 maintainer. Revised again 2026-10-17 after [review round 1](../reviews/m1-core.md) finding 1: `FromIterator` (unbounded caller iterator) replaced by `AnomalySet::from_flags(&[A])`, and `Iter::next` bounded by a forward-only position over `0..CAPACITY`; approved 2026-10-17 maintainer |
 | Revised | 2026-10-19, issue #22 (RS-020): `FrameCtx` is an enum and its accessors are single `match`es; `SecuredFields::new` is straight-line; `SecuredFields::from_layout` calls the new `FrameLayout` accessors, which clone one field each; the sealed `Anomaly` trait adds no code. No loop and no recursion added; the call graph stays acyclic. Confirmed 2026-10-19, maintainer |
+| Revised | 2026-10-20, branch `m2/wp0a-field-codes` (M2 WP-0a, API-082), prepared by Claude Code: `error.rs` and the new, generated `field.rs`. `FieldId` holds a `NonZeroU16` code and a name; `FieldId::catalogued` is a `const fn` whose code check is an inline `const` block, evaluated at compile time, and is called only by the `const` items of `field.rs`, so it runs at compile time; `code` and `name` return a field; the manual `PartialEq::eq` compares one `NonZeroU16` and `Hash::hash` hashes one, so the derived `PartialEq`/`Hash` of `Error` stay straight-line. `field.rs` holds only `const` items: 64 `FieldId` constants and the array `ALL`, with no run-time code. `Error::out_of_range` takes a `FieldId` and calls `with_field`, no longer `FieldId::new`; `bits.rs`, `container.rs`, `counter.rs`, `ids.rs`, `layout.rs`, and `security.rs` pass constants where they passed names. No loop and no recursion added; the call graph stays acyclic. **Pending maintainer approval** |
 
 ## Loops
 
-Every loop in library code, with its bound. `ids`, `layout`, `counter`, `time`, and `mode` contain none. Copies and comparisons of fixed-size arrays (`to_be_bytes`, derived `Clone`/`PartialEq`/`Hash`) run over a constant length and are listed only where the length is a capacity.
+Every loop in library code, with its bound. `ids`, `layout`, `counter`, `time`, `mode`, and `field` contain none. Copies and comparisons of fixed-size arrays (`to_be_bytes`, derived `Clone`/`PartialEq`/`Hash`) run over a constant length and are listed only where the length is a capacity.
 
 | Location | Loop | Bound |
 |---|---|---|
