@@ -2,7 +2,7 @@
 
 Tooling crate: the data model of the shared test-vector files, their loader, and the runner that checks a crate against them.
 
-**Status:** in use since Milestone 0. Milestone 2, work package 0, adds the shared property-test strategies of VER-054 ([roadmap](../../docs/08-roadmap.md) §1).
+**Status:** in use since Milestone 0. Milestone 2, work package 0, is planned to add the shared property-test strategies of VER-054 ([roadmap](../../docs/08-roadmap.md) §1).
 
 ## Where it sits
 

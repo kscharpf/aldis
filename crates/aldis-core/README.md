@@ -2,7 +2,7 @@
 
 Foundation types and shared algorithms of Aldis: the error catalogue, decode modes, bit-field access, range-checked identifiers, the Frame Error Control Field CRC-16, the Only-Idle-Data generator, modular counters, fixed-capacity containers, and the reserved SDLS hooks. Each algorithm that several CCSDS data link protocols share is implemented here once ([common link features](../../docs/standards/common-link-features.md)).
 
-**Status:** implemented in Milestone 0, release `v0.1.0-m0` ([plan](../../docs/milestones/m0-foundations.md)). Milestone 1 added the decode mode and the anomaly set ([M1 plan](../../docs/milestones/m1-packets-time.md) WP-0, release `v0.2.0-m1`). Milestone 2, work package 0, adds the numeric field codes to `FieldId` (API-082, OI-27; [roadmap](../../docs/08-roadmap.md) §1).
+**Status:** implemented in Milestone 0, release `v0.1.0-m0` ([plan](../../docs/milestones/m0-foundations.md)). Milestone 1 added the decode mode and the anomaly set ([M1 plan](../../docs/milestones/m1-packets-time.md) WP-0, release `v0.2.0-m1`). Milestone 2, work package 0, is planned to add the numeric field codes to `FieldId` (API-082, OI-27; [roadmap](../../docs/08-roadmap.md) §1).
 
 ## Where it sits
 
@@ -70,5 +70,5 @@ The evidence is in the exit tables of the [M0 plan](../../docs/milestones/m0-fou
 
 - [docs/standards/common-link-features.md](../../docs/standards/common-link-features.md): requirement area CMN (CRC-16, OID, counters, field placement with SDLS).
 - [docs/02-design-rules.md](../../docs/02-design-rules.md) and [docs/03-api-model.md](../../docs/03-api-model.md): the GEN and API requirements this crate implements, including the error catalogue.
-- [docs/09-open-issues.md](../../docs/09-open-issues.md): OI-27 (resolved: numeric field codes, added in M2).
+- [docs/09-open-issues.md](../../docs/09-open-issues.md): OI-27 (resolved: numeric field codes, to be added in M2).
 - [docs/README.md](../../docs/README.md): the index of the specification.
