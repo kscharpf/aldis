@@ -7,3 +7,5 @@
   flag, and the rounding from nanoseconds to fine time (`docs/verification/cross-checks.md` §3).
   §4 there records, for each feature `spacepackets` does not cover, what was searched and which
   candidates qualify.
+- `docs/09-open-issues.md`: OI-32 records the independent implementations M1 found but does not
+  run (VER-040), targeted at M2.

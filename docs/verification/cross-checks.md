@@ -88,7 +88,7 @@ Observed in `spacepackets`, not discrepancies in a checked value:
 
 The features `spacepackets` does not cover (§2), searched 2026-10-20. Search covered crates.io (the `ccsds` query and the crates it lists), PyPI, GitHub, and agency and mission tools. A candidate qualifies when it is open source under a license that allows running it as a test oracle, shares no code or authors with Aldis, and implements the feature as 301.0 or 133.1 define it. Candidates were read at source level unless the entry says otherwise.
 
-Every candidate below is independent of Aldis. None is run yet: each that qualifies needs a JVM, Python, or a Prolog runtime in `crosscheck/`, or is a single-maintainer beta crate. Adding one is a maintainer decision, against VER-040's "where one is available". Until then the vectors of these features stay `hand-derived`, with the derivation written down (D5).
+Every candidate below is independent of Aldis. None is run yet: each that qualifies needs a JVM, Python, or a Prolog runtime in `crosscheck/`, or is a single-maintainer beta crate. Maintainer decision 2026-10-20: M1 closes with the `spacepackets` checks above, and running these candidates is [OI-32](../09-open-issues.md), targeted at M2. Until then the vectors of these features stay `hand-derived`, with the derivation written down (D5).
 
 ### 4.1 CUC P-field octet 2 and the agency epoch (Level 2)
 
