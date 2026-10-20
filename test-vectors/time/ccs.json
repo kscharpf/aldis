@@ -2,7 +2,7 @@
   "kind": "codec",
   "standard": "301.0-B-4 \u00a73.4, Annex A",
   "provenance": "hand-derived",
-  "provenance_note": "Hand-derived from 301.0-B-4 \u00a73.4, Annex A with the decisions in docs/standards/time-codes.md (OI-15, OI-18). Expected values computed by an independent Python model of the Blue Book text, written before the Rust codec. CCSDS bit 0 is the most significant bit. Decode outputs list the P-field, the format, and every value field; fields that do not apply are null. CUC fine time is given as its raw octets.",
+  "provenance_note": "Hand-derived from 301.0-B-4 \u00a73.4, Annex A with the decisions in docs/standards/time-codes.md (OI-15, OI-18). Expected values computed by an independent Python model of the Blue Book text, written before the Rust codec. CCSDS bit 0 is the most significant bit. Decode outputs list the P-field, the format, and every value field; fields that do not apply are null.",
   "cases": [
     {
       "id": "time-ccs-001",

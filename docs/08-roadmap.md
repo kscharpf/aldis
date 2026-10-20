@@ -17,7 +17,7 @@ Every milestone defines the **C ABI for what it adds**: a codec milestone adds i
 | Milestone | Content | Entry gate | Exit criteria |
 |---|---|---|---|
 | **M0 Foundations** ([plan](milestones/m0-foundations.md)) | Repository + GitHub Actions CI, lint set, exerciser/panic-link check, vector harness, `xtask` trace/spec tooling, `aldis-core` (errors, bit fields, IDs, time, CRC-16, OID generator, counters, containers, security hooks, frame layout) | — | **Complete** (2026-10-16, `v0.1.0-m0`); exit criteria in the plan §4 |
-| **M1 Packets & time** ([plan](milestones/m1-packets-time.md)) | `aldis-time`, `aldis-spp`, `aldis-epp` | M0 | All TIME/SPP/EPP requirements traced; fuzz targets running; exit criteria in the plan §4 |
+| **M1 Packets & time** ([plan](milestones/m1-packets-time.md)) | `aldis-time`, `aldis-spp`, `aldis-epp` | M0 | **Complete** (2026-10-20, `v0.2.0-m1`); exit criteria in the plan §4 |
 | **M2 Frame codecs** | **WP-0:** the M1 codecs' part of the C ABI (time, SPP, EPP: `aldis-ffi` functions and generated header, OI-21), the field-code catalogue with `FieldId` carrying its code (API-082, OI-27), and the shared property-test strategies in `aldis-testkit` (VER-054). Then `aldis-tm`, `aldis-tc` (incl. CLCW, delimiting, validation), `aldis-aos` (incl. FHEC, editions), `aldis-uslp` (incl. truncated), each with its C ABI functions | M1 | All TM/TC/AOS/USLP requirements traced; 100 % coverage; vectors pass via the C ABI for every codec |
 | **M3 COP-1** | `aldis-cop1` FOP-1 + FARM-1, state tables as data, closed-loop tests; FOP-1/FARM-1 handles in the C ABI, with the capacities configuration (CABI-030) | M2 | One vector per table cell; two-person table review recorded |
 | **M4 Link engines** | `aldis-link` generators, mux, receiver, extractor, segmenter/reassembler, CLTU packer, each with its C ABI handle | M3 | LNK requirements traced; property tests for FHP placement and reassembly |
@@ -59,8 +59,8 @@ Each row is a set of milestones expected to run at the same time. The rows are n
 
 | Stage | Track R | Track C | Track A |
 |---|---|---|---|
-| 1 | M1 (in progress) | C0 | A0 |
-| 2 | M2 | C1 (after M2 WP-0) | A1 |
+| 1 | M1 (complete, `v0.2.0-m1`) | C0 | A0 |
+| 2 | M2 (next) | C1 (after M2 WP-0) | A1 |
 | 3 | M3 | C2 | A2 |
 | 4 | M4 | C3 | A3 |
 | 5 | M5 | C4 | A4 |

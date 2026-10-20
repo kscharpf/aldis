@@ -191,75 +191,6 @@
       }
     },
     {
-      "id": "epp-inv-022",
-      "requirements": [
-        "API-013",
-        "EPP-004"
-      ],
-      "description": "peek_length rejects Length of Length 00 with EPI 001",
-      "operation": "peek_length",
-      "input_hex": "E4",
-      "expect": {
-        "ok": false,
-        "error": "InvalidField"
-      }
-    },
-    {
-      "id": "epp-inv-023",
-      "requirements": [
-        "EPP-012"
-      ],
-      "description": "EPI 110 in a 2-octet header (no extension field) is InvalidField",
-      "operation": "decode",
-      "input_hex": "F90301",
-      "expect": {
-        "ok": false,
-        "error": "InvalidField"
-      }
-    },
-    {
-      "id": "epp-inv-024",
-      "requirements": [
-        "EPP-012"
-      ],
-      "description": "EPI 110 in a 2-octet header is InvalidField in lenient mode too",
-      "operation": "decode",
-      "mode": "lenient",
-      "input_hex": "F90301",
-      "expect": {
-        "ok": false,
-        "error": "InvalidField"
-      }
-    },
-    {
-      "id": "epp-inv-025",
-      "requirements": [
-        "API-013",
-        "EPP-012"
-      ],
-      "description": "peek_length rejects EPI 110 in a 2-octet header",
-      "operation": "peek_length",
-      "input_hex": "F903",
-      "expect": {
-        "ok": false,
-        "error": "InvalidField"
-      }
-    },
-    {
-      "id": "epp-inv-026",
-      "requirements": [
-        "API-013",
-        "EPP-005"
-      ],
-      "description": "peek_length rejects an empty data field with EPI 001, as decode does",
-      "operation": "peek_length",
-      "input_hex": "E502",
-      "expect": {
-        "ok": false,
-        "error": "InvalidField"
-      }
-    },
-    {
       "id": "epp-inv-015",
       "requirements": [
         "API-013"
@@ -383,6 +314,75 @@
         "header_size": 1,
         "data_hex": ""
       },
+      "expect": {
+        "ok": false,
+        "error": "InvalidField"
+      }
+    },
+    {
+      "id": "epp-inv-022",
+      "requirements": [
+        "API-013",
+        "EPP-004"
+      ],
+      "description": "peek_length rejects Length of Length 00 with EPI 001",
+      "operation": "peek_length",
+      "input_hex": "E4",
+      "expect": {
+        "ok": false,
+        "error": "InvalidField"
+      }
+    },
+    {
+      "id": "epp-inv-023",
+      "requirements": [
+        "EPP-012"
+      ],
+      "description": "EPI 110 in a 2-octet header (no extension field) is InvalidField",
+      "operation": "decode",
+      "input_hex": "F90301",
+      "expect": {
+        "ok": false,
+        "error": "InvalidField"
+      }
+    },
+    {
+      "id": "epp-inv-024",
+      "requirements": [
+        "EPP-012"
+      ],
+      "description": "EPI 110 in a 2-octet header is InvalidField in lenient mode too",
+      "operation": "decode",
+      "mode": "lenient",
+      "input_hex": "F90301",
+      "expect": {
+        "ok": false,
+        "error": "InvalidField"
+      }
+    },
+    {
+      "id": "epp-inv-025",
+      "requirements": [
+        "API-013",
+        "EPP-012"
+      ],
+      "description": "peek_length rejects EPI 110 in a 2-octet header",
+      "operation": "peek_length",
+      "input_hex": "F903",
+      "expect": {
+        "ok": false,
+        "error": "InvalidField"
+      }
+    },
+    {
+      "id": "epp-inv-026",
+      "requirements": [
+        "API-013",
+        "EPP-005"
+      ],
+      "description": "peek_length rejects an empty data field with EPI 001, as decode does",
+      "operation": "peek_length",
+      "input_hex": "E502",
       "expect": {
         "ok": false,
         "error": "InvalidField"
