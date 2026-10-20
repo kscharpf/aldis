@@ -37,8 +37,9 @@ CCSDS re-uploads documents when it issues editorial changes or corrigenda, so th
 | ref | CCSDS 355.0-B-2 | Space Data Link Security Protocol (SDLS hooks) | `specs/pdf/355x0b2.pdf` |
 | ref | CCSDS 131.0-B-6 | TM Synchronization and Channel Coding | `specs/pdf/131x0b6ec1.pdf` |
 | ref | CCSDS 231.0-B-4 | TC Synchronization and Channel Coding | `specs/pdf/231x0b4e1c1.pdf` |
+| ref | CCSDS 732.0-B-4 (Silver Book) | AOS Space Data Link Protocol, superseded Issue 4, for `Issue4Compatible` (OI-04, AOS-002, AOS-003) | `specs/pdf/732x0b4s.pdf` |
 
-Not in the manifest: **CCSDS 732.0-B-4** (superseded AOS Issue 4), which is needed for open issue OI-04. Get it from the CCSDS Silver Books (historical documents): <https://ccsds.org/publications/silverbooks/>.
+CCSDS 732.0-B-4 is a superseded issue, published with the other historical documents in the CCSDS Silver Books (<https://ccsds.org/publications/silverbooks/>).
 
 ## Rules
 

@@ -32,7 +32,8 @@ This directory holds the specification for a family of libraries that add CCSDS 
 | Document | Milestone |
 |---|---|
 | [M0 Foundations](milestones/m0-foundations.md) | Repository, CI, verification tooling, `aldis-core` |
-| [M1 Packets and time](milestones/m1-packets-time.md) | `aldis-time`, `aldis-spp`, `aldis-epp` (planned) |
+| [M1 Packets and time](milestones/m1-packets-time.md) | `aldis-time`, `aldis-spp`, `aldis-epp` (complete) |
+| [M2 Frame codecs](milestones/m2-frame-codecs.md) | C ABI for the M1 codecs, field codes, shared property-test strategies; `aldis-tm`, `aldis-tc`, `aldis-aos`, `aldis-uslp` (planned) |
 | [C0 Foundations (native C++)](milestones/c0-foundations.md) | `cpp/` CMake project, C++ CI and verification tooling, `aldis_core` (plan approved) |
 | [A0 Scenario](milestones/a0-scenario.md) | Reference application: scenario specification (area APP) and `refapp/` skeleton (plan approved) |
 
