@@ -449,7 +449,8 @@ pub fn run() -> Tally {
 #[cfg(feature = "inject-panic")]
 #[expect(
     clippy::panic,
-    reason = "deliberate panic: the link check must fail with this feature"
+    clippy::manual_assert,
+    reason = "deliberate if-then panic: the link check must fail with this feature"
 )]
 fn canary(t: &mut Tally) {
     if bb(t.cases) == u32::MAX {

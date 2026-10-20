@@ -210,7 +210,9 @@ impl Params for Map {
 /// Collects a handler's output values and compares them with the expected object exactly.
 pub struct Out {
     expect: Map,
-    seen: usize,
+    /// Bit `i` is set once the key at index `i` of `expect` has been produced. An object with
+    /// more than 64 keys cannot be tracked and fails the comparison (the vectors have at most 13).
+    seen: u64,
     ok: bool,
 }
 
@@ -223,15 +225,20 @@ impl Out {
         }
     }
 
-    /// The expected value of `key`; a key that is not expected fails the comparison.
+    /// The expected value of `key`. A key that is not expected, or one produced twice, fails the
+    /// comparison.
     fn take(&mut self, key: &str) -> Option<Val> {
-        let v = get(self.expect, key);
-        if v.is_some() {
-            self.seen = self.seen.saturating_add(1);
-        } else {
+        let found = self.expect.iter().enumerate().find(|(_, (k, _))| *k == key);
+        let Some((index, &(_, v))) = found else {
             self.ok = false;
+            return None;
+        };
+        let bit = u32::try_from(index).ok().and_then(|i| 1_u64.checked_shl(i));
+        match bit {
+            Some(bit) if self.seen & bit == 0 => self.seen |= bit,
+            _ => self.ok = false,
         }
-        v
+        Some(v)
     }
 
     const fn agree(&mut self, ok: bool) {
@@ -318,9 +325,9 @@ impl Out {
         self.agree(list.ok && list.next == list.items.len());
     }
 
-    /// Every expected key was produced, and every produced value matched.
-    pub const fn finish(&self) -> bool {
-        self.ok && self.seen == self.expect.len()
+    /// Every expected key was produced exactly once, and every produced value matched.
+    pub fn finish(&self) -> bool {
+        self.ok && usize::try_from(self.seen.count_ones()).is_ok_and(|n| n == self.expect.len())
     }
 }
 
