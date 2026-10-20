@@ -168,24 +168,34 @@ pub(crate) const fn u16_to_usize(n: u16) -> usize {
     n as usize
 }
 
-/// Narrows `n` to `u8` in `const` context if `n <= max` (`max <= u8::MAX as usize`).
+/// Narrows `n` to `u8` in `const` context if `n <= max` and `n <= u8::MAX`, so a `max` above
+/// `u8::MAX` can never truncate (GEN-020).
 #[expect(
     clippy::as_conversions,
     clippy::cast_possible_truncation,
-    reason = "checked against max <= u8::MAX before narrowing"
+    reason = "checked against u8::MAX before narrowing"
 )]
 pub(crate) const fn usize_to_u8(n: usize, max: usize) -> Option<u8> {
-    if n <= max { Some(n as u8) } else { None }
+    if n <= max && n <= u8_to_usize(u8::MAX) {
+        Some(n as u8)
+    } else {
+        None
+    }
 }
 
-/// Narrows `n` to `u16` in `const` context if `n <= max` (`max <= u16::MAX as usize`).
+/// Narrows `n` to `u16` in `const` context if `n <= max` and `n <= u16::MAX`, so a `max` above
+/// `u16::MAX` can never truncate (GEN-020).
 #[expect(
     clippy::as_conversions,
     clippy::cast_possible_truncation,
-    reason = "checked against max <= u16::MAX before narrowing"
+    reason = "checked against u16::MAX before narrowing"
 )]
 pub(crate) const fn usize_to_u16(n: usize, max: usize) -> Option<u16> {
-    if n <= max { Some(n as u16) } else { None }
+    if n <= max && n <= u16_to_usize(u16::MAX) {
+        Some(n as u16)
+    } else {
+        None
+    }
 }
 
 /// Converts a `usize` count or offset to `u64` for [`ErrorDetail::Expected`].
@@ -323,7 +333,25 @@ pub type Result<T> = core::result::Result<T, Error>;
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
-    use super::{Error, ErrorDetail, ErrorKind, FieldId};
+    use super::{Error, ErrorDetail, ErrorKind, FieldId, usize_to_u8, usize_to_u16};
+
+    #[test]
+    fn narrowing_never_truncates() {
+        // req: GEN-020
+        assert_eq!(usize_to_u8(7, 8), Some(7));
+        assert_eq!(usize_to_u8(8, 8), Some(8));
+        assert_eq!(usize_to_u8(9, 8), None);
+        assert_eq!(usize_to_u8(255, 300), Some(255));
+        assert_eq!(usize_to_u8(256, 300), None);
+        assert_eq!(usize_to_u8(300, 300), None);
+        assert_eq!(usize_to_u8(usize::MAX, usize::MAX), None);
+        assert_eq!(usize_to_u16(512, 1024), Some(512));
+        assert_eq!(usize_to_u16(1025, 1024), None);
+        assert_eq!(usize_to_u16(65_535, 70_000), Some(65_535));
+        assert_eq!(usize_to_u16(65_536, 70_000), None);
+        assert_eq!(usize_to_u16(70_000, 70_000), None);
+        assert_eq!(usize_to_u16(usize::MAX, usize::MAX), None);
+    }
 
     #[test]
     fn codes_are_dense_and_round_trip() {
