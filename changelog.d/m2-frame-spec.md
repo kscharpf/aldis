@@ -19,5 +19,6 @@
 - Specification: USLP-002 and the USLP configuration allow truncated frames only on
   variable-length VCs (Annex D1.2.1; OI-35 item 2). USLP-005 is no longer an interpretation: OI-05 is
   resolved from 732.1 §4.1.4.2 and confirmed by 700.1-G-1 and Yamcs 5.13.7.
-- Open issues: OI-35 items 1 and 8 (the truncated frame's rule and UPID, and how truncated frames
-  are delimited) have proposed answers for the maintainer.
+- OI-35 items 1 and 8 resolved by the maintainer 2026-10-20: a truncated frame's construction rule
+  and UPID are exposed and not checked (USLP-002); `FrameDelimiter` delimits successive frames and
+  takes a truncated frame's length from its VC's configuration (USLP-015). OI-35 is resolved.
