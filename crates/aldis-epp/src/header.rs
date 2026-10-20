@@ -1,6 +1,7 @@
 //! Encapsulation Packet header: identifiers, header lengths, and the owned header type
 //! (133.1 §4.1.2; EPP-001…EPP-008, API-014, API-021).
 
+use crate::field;
 use aldis_core::{Error, ErrorDetail, ErrorKind, FieldId, Result};
 
 /// Packet Version Number of the Encapsulation Packet, `111` (133.1 §4.1.2.2.2).
@@ -8,7 +9,7 @@ pub(crate) const VERSION: u8 = 0b111;
 
 /// Defines a range-checked identifier of `$bits` bits (API-001).
 macro_rules! small_id {
-    ($(#[$doc:meta])* $name:ident, $field:literal, $max:literal) => {
+    ($(#[$doc:meta])* $name:ident, $field:expr, $max:literal) => {
         $(#[$doc])*
         #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
         pub struct $name(u8);
@@ -52,17 +53,17 @@ small_id!(
     /// Encapsulation Protocol ID, 3 bits (133.1 §4.1.2.3). Values other than the three
     /// constants are assigned by SANA and are checked against a caller-supplied set
     /// ([`EppConfig`](crate::config::EppConfig), EPP-010).
-    Epi, "epi", 0b111
+    Epi, field::EPI, 0b111
 );
 small_id!(
     /// Encapsulation Protocol ID Extension, 4 bits; present in 4- and 8-octet headers
     /// (133.1 §4.1.2.6; EPP-006, EPP-008, EPP-011).
-    EpiExtension, "epi_extension", 0xF
+    EpiExtension, field::EPI_EXTENSION, 0xF
 );
 small_id!(
     /// User Defined field, 4 bits of mission-specific header data; present in 4- and 8-octet
     /// headers (133.1 §4.1.2.5; EPP-008, EPP-011).
-    UserDefined, "user_defined", 0xF
+    UserDefined, field::USER_DEFINED, 0xF
 );
 
 impl Epi {
@@ -219,7 +220,7 @@ impl EncapsulationFields {
         user_defined: UserDefined,
     ) -> Result<EncapsulationFields> {
         if extension.0 != 0 && epi.0 != Epi::EXTENDED.0 {
-            return Err(invalid("epi_extension"));
+            return Err(invalid(field::EPI_EXTENSION));
         }
         Ok(EncapsulationFields {
             epi,
@@ -272,8 +273,8 @@ pub(crate) fn len_u64(n: usize) -> u64 {
 }
 
 /// `InvalidField` naming `field`.
-pub(crate) const fn invalid(field: &'static str) -> Error {
-    Error::new(ErrorKind::InvalidField).with_field(FieldId::new(field))
+pub(crate) const fn invalid(field: FieldId) -> Error {
+    Error::new(ErrorKind::InvalidField).with_field(field)
 }
 
 impl EncapsulationHeader {
@@ -295,16 +296,16 @@ impl EncapsulationHeader {
         data_len: usize,
     ) -> Result<EncapsulationHeader> {
         if data_len == 0 && !fields.epi.is_idle() {
-            return Err(invalid("epi"));
+            return Err(invalid(field::EPI));
         }
         let header_len = match size {
             HeaderSize::Auto => Self::auto_len(fields, data_len)?,
             HeaderSize::Fixed(len) => {
                 if len == HeaderLen::One && !fields.epi.is_idle() {
-                    return Err(invalid("epi"));
+                    return Err(invalid(field::EPI));
                 }
                 if !len.has_extension() && fields.needs_extension() {
-                    return Err(invalid("header_size"));
+                    return Err(invalid(field::HEADER_SIZE));
                 }
                 len
             }
@@ -321,7 +322,7 @@ impl EncapsulationHeader {
                 packet_len,
             }),
             _ => Err(Error::out_of_range(
-                "packet_len",
+                field::PACKET_LEN,
                 u64::from(max),
                 total.map_or(u64::MAX, len_u64),
             )),
@@ -349,7 +350,7 @@ impl EncapsulationHeader {
             })
             .ok_or_else(|| {
                 Error::out_of_range(
-                    "packet_len",
+                    field::PACKET_LEN,
                     u64::from(u32::MAX),
                     len_u64(data_len).saturating_add(8),
                 )
@@ -365,10 +366,10 @@ impl EncapsulationHeader {
     pub fn idle(total_len: usize) -> Result<EncapsulationHeader> {
         let found = len_u64(total_len);
         if total_len == 0 {
-            return Err(Error::out_of_range("packet_len", 1, 0));
+            return Err(Error::out_of_range(field::PACKET_LEN, 1, 0));
         }
         let packet_len = u32::try_from(total_len)
-            .map_err(|_| Error::out_of_range("packet_len", u64::from(u32::MAX), found))?;
+            .map_err(|_| Error::out_of_range(field::PACKET_LEN, u64::from(u32::MAX), found))?;
         let header_len = match packet_len {
             1 => HeaderLen::One,
             2..=0xFF => HeaderLen::Two,
@@ -397,7 +398,7 @@ impl EncapsulationHeader {
         let version = octet0 >> 5;
         if version != VERSION {
             return Err(Error::new(ErrorKind::UnsupportedVersion)
-                .with_field(FieldId::new("version"))
+                .with_field(field::PACKET_VERSION)
                 .with_detail(ErrorDetail::Expected {
                     expected: u64::from(VERSION),
                     found: u64::from(version),
@@ -419,16 +420,16 @@ impl EncapsulationHeader {
             _ => return Err(Error::incomplete(header_len.octets())),
         };
         if header_len == HeaderLen::One && !epi.is_idle() {
-            return Err(invalid("epi"));
+            return Err(invalid(field::EPI));
         }
         // EPI 110 needs the Protocol ID Extension to identify the protocol (EPP-012).
         if header_len == HeaderLen::Two && epi == Epi::EXTENDED {
-            return Err(invalid("epi"));
+            return Err(invalid(field::EPI));
         }
         let header_octets = len_u64(header_len.octets());
         if header_octets > u64::from(packet_len) {
             return Err(Error::new(ErrorKind::LengthMismatch)
-                .with_field(FieldId::new("packet_len"))
+                .with_field(field::PACKET_LEN)
                 .with_detail(ErrorDetail::Expected {
                     expected: header_octets,
                     found: u64::from(packet_len),
@@ -436,7 +437,7 @@ impl EncapsulationHeader {
         }
         // An absent data field requires the idle EPI, in both modes (EPP-005, OI-16).
         if header_octets == u64::from(packet_len) && !epi.is_idle() {
-            return Err(invalid("epi"));
+            return Err(invalid(field::EPI));
         }
         Ok(EncapsulationHeader {
             epi,
@@ -558,6 +559,7 @@ mod tests {
         EncapsulationFields, EncapsulationHeader, Epi, EpiExtension, HeaderLen, HeaderSize,
         UserDefined,
     };
+    use crate::field;
     use aldis_core::{ErrorDetail, ErrorKind};
 
     #[test]
@@ -670,8 +672,8 @@ mod tests {
         );
         let e = EncapsulationFields::from_parts(Epi::MISSION_SPECIFIC, ext, user).unwrap_err();
         assert_eq!(
-            (e.kind(), e.field().map(aldis_core::FieldId::name)),
-            (ErrorKind::InvalidField, Some("epi_extension"))
+            (e.kind(), e.field()),
+            (ErrorKind::InvalidField, Some(field::EPI_EXTENSION))
         );
     }
 
@@ -681,8 +683,8 @@ mod tests {
         let user1 = UserDefined::new(1).unwrap();
         let mission = EncapsulationFields::new(Epi::MISSION_SPECIFIC);
         let cases = [
-            (mission, HeaderSize::Auto, 0, "epi"),
-            (mission, HeaderSize::Fixed(HeaderLen::One), 1, "epi"),
+            (mission, HeaderSize::Auto, 0, field::EPI),
+            (mission, HeaderSize::Fixed(HeaderLen::One), 1, field::EPI),
             (
                 EncapsulationFields {
                     user_defined: user1,
@@ -690,19 +692,19 @@ mod tests {
                 },
                 HeaderSize::Fixed(HeaderLen::Two),
                 1,
-                "header_size",
+                field::HEADER_SIZE,
             ),
             (
                 EncapsulationFields::new(Epi::EXTENDED),
                 HeaderSize::Fixed(HeaderLen::One),
                 1,
-                "epi",
+                field::EPI,
             ),
         ];
         for (fields, size, len, field) in cases {
             let e = EncapsulationHeader::for_data(fields, size, len).unwrap_err();
             assert_eq!(e.kind(), ErrorKind::InvalidField, "{fields:?} {size:?}");
-            assert_eq!(e.field().map(aldis_core::FieldId::name), Some(field));
+            assert_eq!(e.field(), Some(field));
         }
         let idle = EncapsulationFields::new(Epi::IDLE);
         let h = EncapsulationHeader::for_data(idle, HeaderSize::Auto, 0).unwrap();
@@ -829,8 +831,8 @@ mod tests {
         ] {
             let e = EncapsulationHeader::parse(bytes).unwrap_err();
             assert_eq!(
-                (e.kind(), e.field().map(aldis_core::FieldId::name)),
-                (ErrorKind::InvalidField, Some("epi"))
+                (e.kind(), e.field()),
+                (ErrorKind::InvalidField, Some(field::EPI))
             );
         }
         assert_eq!(
@@ -844,7 +846,7 @@ mod tests {
         // req: EPP-001, GEN-041
         let e = EncapsulationHeader::parse(&[0x20]).unwrap_err();
         assert_eq!(e.kind(), ErrorKind::UnsupportedVersion);
-        assert_eq!(e.field().map(aldis_core::FieldId::name), Some("version"));
+        assert_eq!(e.field(), Some(field::PACKET_VERSION));
         assert_eq!(
             e.detail(),
             ErrorDetail::Expected {
@@ -860,6 +862,6 @@ mod tests {
                 found: 1
             }
         );
-        assert_eq!(e.field().map(aldis_core::FieldId::name), Some("packet_len"));
+        assert_eq!(e.field(), Some(field::PACKET_LEN));
     }
 }

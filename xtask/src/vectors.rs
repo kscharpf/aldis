@@ -5,9 +5,12 @@ use std::io::{BufRead, BufReader, Write};
 use std::path::Path;
 use std::process::{Command, Stdio};
 
-use aldis_testkit::{CodecCase, CodecFile, Provenance, ScenarioFile, Superseded, VectorFile, hex};
+use aldis_testkit::{
+    CodecCase, CodecFile, FieldCatalogue, Provenance, ScenarioFile, Superseded, VectorFile, hex,
+};
 use serde_json::{Map, Value};
 
+use crate::fields;
 use crate::md::scan_ids;
 use crate::repo;
 use crate::spec::Spec;
@@ -185,11 +188,13 @@ fn check_against_released(
 }
 
 /// Whether `rel` (relative to the repository root) is a vector file: a `.json` file under
-/// `test-vectors/` outside the schema directory. The extension is matched exactly, as
-/// [`repo::files`] matches it, so the released and the current side see the same files.
-fn is_vector_file(rel: &str) -> bool {
+/// `test-vectors/` outside the schema directory, other than the generated field catalogue
+/// (checked by `cargo xtask fields`). The extension is matched exactly, as [`repo::files`]
+/// matches it, so the released and the current side see the same files.
+pub fn is_vector_file(rel: &str) -> bool {
     rel.starts_with("test-vectors/")
         && !rel.starts_with(&format!("{SCHEMA_DIR}/"))
+        && rel != fields::JSON
         && Path::new(rel).extension().is_some_and(|ext| ext == "json")
 }
 
@@ -403,6 +408,7 @@ fn check_released(
 fn check_codec_case(
     c: &CodecCase,
     spec: &Spec,
+    field_codes: &BTreeMap<u16, String>,
     at: &str,
     by_links: &mut Vec<(String, String)>,
     problems: &mut Vec<String>,
@@ -430,6 +436,20 @@ fn check_codec_case(
         }
         _ => {}
     }
+    // A field code names the field of an expected error, and must be catalogued (API-082, D3).
+    match c.expect.field {
+        Some(code) if c.expect.ok => {
+            problems.push(format!(
+                "{at}: expect.ok is true but a field code ({code}) is given"
+            ));
+        }
+        Some(code) if !field_codes.contains_key(&code.get()) => {
+            problems.push(format!(
+                "{at}: field code {code} is not in the catalogue (03-api-model.md §9.1)"
+            ));
+        }
+        _ => {}
+    }
     for (k, v) in c
         .expect
         .values
@@ -445,6 +465,8 @@ fn check_codec_case(
 pub fn validate() -> Result<usize, String> {
     let spec = Spec::load()?;
     let mut problems = Vec::new();
+    // A broken catalogue is reported by `cargo xtask fields`; here every code is then unknown.
+    let field_codes = fields::load().unwrap_or_default();
     let mut ids: BTreeMap<String, (String, bool)> = BTreeMap::new();
     let mut by_links: Vec<(String, String)> = Vec::new();
     let mut current_raw: BTreeMap<String, Option<Value>> = BTreeMap::new();
@@ -488,7 +510,7 @@ pub fn validate() -> Result<usize, String> {
                     cases += 1;
                     let at = format!("{rel}#{}", c.id);
                     unique(&c.id, &at, c.superseded.is_some(), &mut problems);
-                    check_codec_case(c, &spec, &at, &mut by_links, &mut problems);
+                    check_codec_case(c, &spec, &field_codes, &at, &mut by_links, &mut problems);
                 }
             }
             Ok(VectorFile::EngineScenario(ScenarioFile {
@@ -551,6 +573,10 @@ pub fn schema(check: bool) -> Result<usize, String> {
         (
             "engine-scenario.schema.json",
             aldis_testkit::schemars::schema_for!(ScenarioFile),
+        ),
+        (
+            "fields.schema.json",
+            aldis_testkit::schemars::schema_for!(FieldCatalogue),
         ),
     ];
     let mut stale = 0;

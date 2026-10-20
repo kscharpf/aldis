@@ -1,0 +1,73 @@
+{
+  "kind": "codec",
+  "standard": "133.0-B-2 §4.1.2.2, §4.1.3.2.2, §4.1.3.3.3.4",
+  "provenance": "hand-derived",
+  "provenance_note": "Hand-derived from 133.0-B-2 with the field catalogue of docs/03-api-model.md §9.1 (M2 plan D3). The inputs are those of the released cases spp-inv-001, spp-inv-008, spp-inv-010, and spp-idle-005, whose outcomes are unchanged; these cases add the code of the field each error names: the Packet Version Number (code 4, §4.1.3.2.2: a Space Packet has version 000), the Secondary Header Flag (code 48, §4.1.3.3.3.4: 0 for an Idle Packet), and the packet length (code 52, §4.1.2.2: at least 7 octets).",
+  "cases": [
+    {
+      "id": "spp-field-001",
+      "requirements": [
+        "SPP-001",
+        "API-082"
+      ],
+      "description": "Version 001 is UnsupportedVersion naming packet_version",
+      "operation": "decode",
+      "input_hex": "2001C000000000",
+      "expect": {
+        "ok": false,
+        "error": "UnsupportedVersion",
+        "field": 4
+      }
+    },
+    {
+      "id": "spp-field-002",
+      "requirements": [
+        "SPP-004",
+        "API-082"
+      ],
+      "description": "Strict: Idle Packet with flag 1 is InvalidField naming secondary_header_flag",
+      "operation": "decode",
+      "input_hex": "0FFFC00000010000",
+      "expect": {
+        "ok": false,
+        "error": "InvalidField",
+        "field": 48
+      }
+    },
+    {
+      "id": "spp-field-003",
+      "requirements": [
+        "SPP-001",
+        "API-013",
+        "API-082"
+      ],
+      "description": "peek_length rejects version 010, naming packet_version",
+      "operation": "peek_length",
+      "input_hex": "4001C0000000",
+      "expect": {
+        "ok": false,
+        "error": "UnsupportedVersion",
+        "field": 4
+      }
+    },
+    {
+      "id": "spp-field-004",
+      "requirements": [
+        "SPP-010",
+        "API-082"
+      ],
+      "description": "Idle Packet of total length 6 is OutOfRange naming packet_len",
+      "operation": "idle",
+      "params": {
+        "total_len": 6,
+        "sequence_count": 0,
+        "pattern_hex": "00"
+      },
+      "expect": {
+        "ok": false,
+        "error": "OutOfRange",
+        "field": 52
+      }
+    }
+  ]
+}

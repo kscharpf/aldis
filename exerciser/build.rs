@@ -141,7 +141,12 @@ impl Codec {
                 .error
                 .as_deref()
                 .unwrap_or_else(|| panic!("{}: no error kind", c.id));
-            format!("Expect::Err({kind:?})")
+            // The field code is compared only when the case gives one (M2 plan D3).
+            let field = c
+                .expect
+                .field
+                .map_or_else(|| "None".to_owned(), |f| format!("Some({f})"));
+            format!("Expect::Err({kind:?}, {field})")
         };
         let _ = writeln!(
             self.out,

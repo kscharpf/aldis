@@ -4,6 +4,7 @@ use aldis_core::Result;
 use aldis_core::ids::Apid;
 
 use crate::config::{SppConfig, check_parts};
+use crate::field;
 use crate::header::{
     PRIMARY_HEADER_LEN, PacketFields, PacketType, SequenceFlags, SpacePacketHeader, invalid,
 };
@@ -35,7 +36,7 @@ impl OctetStringEncoder {
         counter: SequenceCounter,
     ) -> Result<OctetStringEncoder> {
         if apid.is_idle() {
-            return Err(invalid("apid"));
+            return Err(invalid(field::APID));
         }
         Ok(OctetStringEncoder {
             config: *config,
@@ -86,11 +87,12 @@ impl OctetStringEncoder {
 mod tests {
     use super::OctetStringEncoder;
     use crate::config::SppConfig;
+    use crate::field;
     use crate::header::{PacketType, SequenceFlags};
     use crate::sequence::SequenceCounter;
     use crate::view::SpacePacket;
     use aldis_core::ids::{Apid, SeqCount};
-    use aldis_core::{DecodeMode, ErrorKind, FieldId};
+    use aldis_core::{DecodeMode, ErrorKind};
 
     #[test]
     fn octet_strings() {
@@ -101,8 +103,8 @@ mod tests {
         let e =
             OctetStringEncoder::new(&cfg, PacketType::Telemetry, Apid::IDLE, counter).unwrap_err();
         assert_eq!(
-            (e.kind(), e.field().map(FieldId::name)),
-            (ErrorKind::InvalidField, Some("apid"))
+            (e.kind(), e.field()),
+            (ErrorKind::InvalidField, Some(field::APID))
         );
         let mut enc =
             OctetStringEncoder::new(&cfg, PacketType::Telecommand, apid, counter).unwrap();

@@ -1,5 +1,6 @@
 //! Packet Primary Header (133.0 §4.1.3; SPP-001…003, SPP-009, API-014, API-021).
 
+use crate::field;
 use aldis_core::ids::{Apid, SeqCount};
 use aldis_core::{Error, ErrorDetail, ErrorKind, FieldId, Result};
 
@@ -85,8 +86,8 @@ pub struct PacketFields {
 }
 
 /// `InvalidField` naming `field`.
-pub(crate) const fn invalid(field: &'static str) -> Error {
-    Error::new(ErrorKind::InvalidField).with_field(FieldId::new(field))
+pub(crate) const fn invalid(field: FieldId) -> Error {
+    Error::new(ErrorKind::InvalidField).with_field(field)
 }
 
 /// `usize` → `u64` for error details; saturates on (hypothetical) wider targets.
@@ -125,7 +126,7 @@ impl SpacePacketHeader {
         let version = b0 >> 5;
         if version != VERSION {
             return Err(Error::new(ErrorKind::UnsupportedVersion)
-                .with_field(FieldId::new("version"))
+                .with_field(field::PACKET_VERSION)
                 .with_detail(ErrorDetail::Expected {
                     expected: 0,
                     found: version.into(),
@@ -244,8 +245,9 @@ impl SpacePacketHeader {
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::{PacketFields, PacketType, SequenceFlags, SpacePacketHeader};
+    use crate::field;
     use aldis_core::ids::{Apid, SeqCount};
-    use aldis_core::{ErrorDetail, ErrorKind, FieldId};
+    use aldis_core::{ErrorDetail, ErrorKind};
 
     fn tc_idle() -> PacketFields {
         PacketFields {
@@ -310,8 +312,8 @@ mod tests {
         );
         let e = SpacePacketHeader::parse(&[0xA0, 0, 0, 0, 0, 0]).unwrap_err();
         assert_eq!(
-            (e.kind(), e.field().map(FieldId::name)),
-            (ErrorKind::UnsupportedVersion, Some("version"))
+            (e.kind(), e.field()),
+            (ErrorKind::UnsupportedVersion, Some(field::PACKET_VERSION))
         );
         assert_eq!(
             e.detail(),

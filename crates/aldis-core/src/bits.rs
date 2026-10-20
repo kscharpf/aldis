@@ -10,6 +10,7 @@
 //! and never panic (GEN-020).
 
 use crate::error::{Error, Result, as_u64};
+use crate::field;
 
 /// Octets covered by a field, and the shift that right-aligns it.
 struct Span {
@@ -27,10 +28,10 @@ impl Span {
     )]
     fn new(buf_len: usize, bit_offset: usize, width: u8) -> Result<Span> {
         if width == 0 {
-            return Err(Error::out_of_range("width", 1, 0));
+            return Err(Error::out_of_range(field::WIDTH, 1, 0));
         }
         if width > 64 {
-            return Err(Error::out_of_range("width", 64, u64::from(width)));
+            return Err(Error::out_of_range(field::WIDTH, 64, u64::from(width)));
         }
         let total_bits = buf_len.saturating_mul(8);
         let width_bits = usize::from(width);
@@ -39,9 +40,9 @@ impl Span {
             .filter(|&end| end <= total_bits)
             .ok_or_else(|| {
                 if let Some(max_offset) = total_bits.checked_sub(width_bits) {
-                    Error::out_of_range("bit_offset", as_u64(max_offset), as_u64(bit_offset))
+                    Error::out_of_range(field::BIT_OFFSET, as_u64(max_offset), as_u64(bit_offset))
                 } else {
-                    Error::out_of_range("buf_bits", as_u64(width_bits), as_u64(total_bits))
+                    Error::out_of_range(field::BUF_BITS, as_u64(width_bits), as_u64(total_bits))
                 }
             })?;
         // end_bit >= width >= 1 and end_bit <= total_bits, so all of these are in range.
@@ -93,7 +94,7 @@ pub fn get(buf: &[u8], bit_offset: usize, width: u8) -> Result<u64> {
 pub fn set(buf: &mut [u8], bit_offset: usize, width: u8, value: u64) -> Result<()> {
     let span = Span::new(buf.len(), bit_offset, width)?;
     if value & !span.mask != 0 {
-        return Err(Error::out_of_range("value", span.mask, value));
+        return Err(Error::out_of_range(field::VALUE, span.mask, value));
     }
     let octets = buf.get_mut(span.first..=span.last).unwrap_or_default();
     let acc = octets
@@ -110,9 +111,9 @@ pub fn set(buf: &mut [u8], bit_offset: usize, width: u8, value: u64) -> Result<(
 
 const fn octet_err(buf_len: usize, offset: usize, width: usize) -> Error {
     if let Some(max_offset) = buf_len.checked_sub(width) {
-        Error::out_of_range("offset", as_u64(max_offset), as_u64(offset))
+        Error::out_of_range(field::OFFSET, as_u64(max_offset), as_u64(offset))
     } else {
-        Error::out_of_range("buf_len", as_u64(width), as_u64(buf_len))
+        Error::out_of_range(field::BUF_LEN, as_u64(width), as_u64(buf_len))
     }
 }
 
@@ -180,7 +181,8 @@ octet_int!(
 )]
 mod tests {
     use super::{get, read_u16, read_u32, read_u64, set, write_u16, write_u32, write_u64};
-    use crate::error::{ErrorDetail, ErrorKind, FieldId};
+    use crate::error::{ErrorDetail, ErrorKind};
+    use crate::field;
     use proptest::prelude::*;
 
     #[test]
@@ -231,7 +233,7 @@ mod tests {
             }
         );
         let short_bits = get(&[0], 0, 16).unwrap_err();
-        assert_eq!(short_bits.field(), Some(FieldId::new("buf_bits")));
+        assert_eq!(short_bits.field(), Some(field::BUF_BITS));
         assert_eq!(
             short_bits.detail(),
             ErrorDetail::Expected {
