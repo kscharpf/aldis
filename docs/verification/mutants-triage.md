@@ -1,6 +1,20 @@
 # Mutation testing triage (VER-025)
 
-Surviving mutants from `cargo mutants` (`-p aldis-core -p aldis-time -p aldis-epp --all-features`) (cargo-mutants 27.1.0), triaged per VER-025. The nightly job `mutants` publishes the full report. Update this file when a new survivor appears.
+Surviving mutants from `cargo mutants` (`-p aldis-core -p aldis-time -p aldis-epp -p aldis-spp --all-features`) (cargo-mutants 27.1.0), triaged per VER-025. The nightly job `mutants` publishes the full report. Update this file when a new survivor appears.
+
+## 2026-10-20, Nightly run 39442459267 on `main` 5f40e8b (M1 release triage)
+
+The full report of the `mutants` job ([run 39442459267](https://github.com/kscharpf/aldis/actions/runs/39442459267), the M1 pre-release run) over all four crates: 1553 mutants: 1096 caught, 424 unviable, 33 missed, 0 timeouts. 28 of the missed are the equivalent mutants already listed below: the disjoint-bit `|` → `^` mutants (`aldis-core` `bits.rs` and `oid.rs`; `aldis-epp` `EncapsulationHeader::octets`; `aldis-spp` `SpacePacketHeader::octets_with_version`; `aldis-time` `ccs.rs`, `cds.rs`, `code.rs`, `cuc.rs`) and `aldis-time` `util.rs` `out_of_bounds` `<` → `<=`. The other 5 are new, all in `aldis-core`, whose own tests checked these items only with values the mutant also returns:
+
+| Mutant | Verdict | Action |
+|---|---|---|
+| `container.rs` `FixedVec::eq` → `true` | Test gap: `fixed_vec` compared only equal vectors | `fixed_vec` checks that vectors with different contents are unequal; caught |
+| `ids.rs` `SeqCount::get` → `1` | Test gap: `get` was checked only on the count 1 | `packet_identifiers` checks `get` on `SeqCount::MAX`; caught |
+| `ids.rs` `From<u8> for FrameSeqNum` → `Default::default()` | Test gap: the conversion was checked only from 0 | `packet_identifiers` converts 200; caught |
+| `ids.rs` `From<FrameSeqNum> for u8` → `0` | Test gap: the conversion was checked only on 0 | `packet_identifiers` converts `FrameSeqNum::MAX`; caught |
+| `ids.rs` `PacketVersion::get` → `0` | Test gap: `get` was checked only on `SPACE_PACKET` (0) | `packet_identifiers` checks `ENCAPSULATION.get()` is 7; caught |
+
+After the fixes, a re-run on `ids.rs` and `container.rs` (106 mutants: 91 caught, 15 unviable) found no survivors. With them, every surviving mutant of the four crates is equivalent.
 
 ## 2026-10-19, branch `m1/spp-part2` (M1 WP-2 part 2)
 

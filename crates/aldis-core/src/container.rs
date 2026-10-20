@@ -490,6 +490,8 @@ mod tests {
         v2.push(6).unwrap();
         // Equality compares only active elements (0..len), ignoring popped slots.
         assert_eq!(v, v2);
+        v2.push(7).unwrap();
+        assert_ne!(v, v2);
         v.clear();
         assert!(v.is_empty());
         assert_eq!(v.pop(), None);
