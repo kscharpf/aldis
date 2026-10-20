@@ -63,6 +63,16 @@ jobs:
           cache-key: test
       - run: cargo test --workspace --all-features
 
+  features:
+    name: additive alloc and std features (GEN-006)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup-rust
+        with:
+          cache-key: features
+      - run: cargo xtask features
+
   no-std:
     name: no_std ${{ matrix.target }} (GEN-005)
     strategy:
@@ -246,7 +256,7 @@ jobs:
 
   issue:
     name: open an issue on a nightly failure (VER-059)
-    needs: [fmt, clippy, test, no-std, big-endian, layers, refapp, exerciser, coverage, spec, deny]
+    needs: [fmt, clippy, test, features, no-std, big-endian, layers, refapp, exerciser, coverage, spec, deny]
     if: failure() && github.event_name == 'schedule'
     runs-on: ubuntu-24.04
     permissions:

@@ -75,6 +75,8 @@ fn rust() -> Vec<Check> {
         check("clippy", c, false, CLIPPY),
         check("test", c, false, TEST),
         check("test-macos", Host::MacOs, false, TEST),
+        // The alloc and std features are additive (GEN-006).
+        check("features", c, false, "cargo xtask features\n"),
     ];
     for t in RUST_BARE_METAL {
         out.push(check(
