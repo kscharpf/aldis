@@ -14,6 +14,9 @@ publish = false
 [dependencies]
 # The vector model and loader only; no Aldis codec is linked.
 aldis-testkit = { path = "../crates/aldis-testkit" }
+# The date types that spacepackets' ASCII formatting takes, which it does not re-export. Already
+# in its dependency tree (its `std` feature enables `chrono`), so this adds no crate.
+chrono = { version = "0.4.45", default-features = false }
 # The u11/u14 field types in spacepackets' API, which it does not re-export.
 arbitrary-int = "2.2.0"
 serde_json = "1.0.154"

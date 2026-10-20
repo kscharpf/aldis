@@ -162,7 +162,7 @@ fn decode_stream(case: &CodecCase) -> Verdict {
     values.insert("offset".into(), json!(offset));
     match compare_produced(case, &values) {
         Verdict::Disagree(diff) => diffs.push(diff),
-        Verdict::Agree | Verdict::Skip(_) => {}
+        Verdict::Agree | Verdict::Skip(_) | Verdict::Known(_) => {}
     }
     if diffs.is_empty() {
         Verdict::Agree
