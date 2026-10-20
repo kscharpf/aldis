@@ -134,6 +134,8 @@ Milestone 1, Packets and time: the time code, Space Packet, and Encapsulation Pa
 - `AGENTS.md`: the checks to run when changing `cpp/`.
 - `docs/profiles/cpp.md` §5: `readability-identifier-length` and `bugprone-easily-swappable-parameters` disabled for the whole C++ code base, each with its reason (CPP-041); `cpp/.clang-format` keeps `NOLINT` comments on one line.
 - `docs/milestones/c0-foundations.md` §6 lists the API differences between `aldis_core` and `aldis-core`; no behaviour divergence was found.
+- C0 plan D6: the native C++ exerciser runs on the QEMU machines M1 WP-5 settled on, naming the
+  Cortex-R one: QEMU's `none` machine with `-cpu cortex-r5f` (M1 D6, PR #50).
 - Milestone A0 plan approved (maintainer, 2026-10-19): decisions D1–D16 accepted; its exit table lists the APP requirements A0 verifies.
 - Roadmap §3 links the A0 plan and the scenario, and names the in-process or out-of-process question for the A5 and A6 nodes as open (OI-24).
 - OI-06, OI-11, and OI-23 to OI-26 cross-reference the scenario; OI-26 records the SANA registry check and the proposed spacecraft ID.
