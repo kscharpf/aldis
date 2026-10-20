@@ -5,6 +5,7 @@
 //! standard, and every case they skip, are listed in `docs/verification/cross-checks.md`.
 
 pub mod spp;
+pub mod time;
 
 use aldis_testkit::{CodecCase, VectorFile, hex};
 use serde_json::{Map, Value};
@@ -16,6 +17,10 @@ pub enum Verdict {
     Agree,
     /// The case is outside the implementation's scope (cross-checks.md §2), with the reason.
     Skip(String),
+    /// The implementation differs from the vector exactly as a discrepancy recorded in
+    /// cross-checks.md §3 describes, with its identifier. Each check names the precise
+    /// condition under which it returns this; any other difference is a [`Verdict::Disagree`].
+    Known(String),
     /// The implementation disagrees with the vector, with the differences.
     Disagree(String),
 }
@@ -34,6 +39,8 @@ pub struct FileReport {
     pub superseded: usize,
     /// Skipped cases: identifier and reason.
     pub skipped: Vec<(String, String)>,
+    /// Known discrepancies (cross-checks.md §3): identifier and description.
+    pub known: Vec<(String, String)>,
     /// Disagreements: identifier and differences.
     pub disagreements: Vec<(String, String)>,
 }
@@ -56,6 +63,7 @@ pub fn check_file(file: &'static str, check: Check) -> FileReport {
         agreed: 0,
         superseded: 0,
         skipped: Vec::new(),
+        known: Vec::new(),
         disagreements: Vec::new(),
     };
     for case in &cases {
@@ -66,6 +74,7 @@ pub fn check_file(file: &'static str, check: Check) -> FileReport {
         match check(case) {
             Verdict::Agree => report.agreed += 1,
             Verdict::Skip(reason) => report.skipped.push((case.id.clone(), reason)),
+            Verdict::Known(entry) => report.known.push((case.id.clone(), entry)),
             Verdict::Disagree(diff) => report.disagreements.push((case.id.clone(), diff)),
         }
     }
@@ -75,8 +84,9 @@ pub fn check_file(file: &'static str, check: Check) -> FileReport {
 /// Compares the values an implementation produced with the case's expected values.
 ///
 /// Only the produced keys are compared: the expectation may hold more (cross-checks.md §2
-/// lists them). A produced key the expectation lacks is a disagreement, and so is producing
-/// nothing, which would otherwise agree with any case.
+/// lists them). A key `a.b` names the member `b` of the expected object `a`. A produced key
+/// the expectation lacks is a disagreement, and so is producing nothing, which would
+/// otherwise agree with any case.
 #[must_use]
 pub fn compare_produced(case: &CodecCase, produced: &Map<String, Value>) -> Verdict {
     if produced.is_empty() {
@@ -84,7 +94,7 @@ pub fn compare_produced(case: &CodecCase, produced: &Map<String, Value>) -> Verd
     }
     let diffs: Vec<String> = produced
         .iter()
-        .filter_map(|(key, got)| match case.expect.values.get(key) {
+        .filter_map(|(key, got)| match expected_at(case, key) {
             None => Some(format!("{key}: not in the vector, produced {got}")),
             Some(want) if want != got => Some(format!("{key}: expected {want}, produced {got}")),
             Some(_) => None,
@@ -95,6 +105,13 @@ pub fn compare_produced(case: &CodecCase, produced: &Map<String, Value>) -> Verd
     } else {
         Verdict::Disagree(diffs.join("; "))
     }
+}
+
+/// The expected value at `key`, where `a.b` names the member `b` of the expected object `a`.
+fn expected_at<'a>(case: &'a CodecCase, key: &str) -> Option<&'a Value> {
+    let mut parts = key.split('.');
+    let first = case.expect.values.get(parts.next()?)?;
+    parts.try_fold(first, |value, part| value.get(part))
 }
 
 /// The case's `input_hex` as octets; empty when absent.
@@ -194,6 +211,28 @@ mod tests {
         assert_eq!(
             compare_produced(&case, &Map::new()),
             Verdict::Disagree("no values produced".to_owned())
+        );
+    }
+
+    #[test]
+    fn compare_produced_reaches_into_objects() {
+        // req: VER-040
+        let case = case(&json!({"ok": true, "value": {"day": 3, "ms_of_day": 4}, "consumed": 7}));
+        assert_eq!(
+            compare_produced(&case, &map(&json!({"value.day": 3, "consumed": 7}))),
+            Verdict::Agree
+        );
+        assert_eq!(
+            compare_produced(&case, &map(&json!({"value.day": 2}))),
+            Verdict::Disagree("value.day: expected 3, produced 2".to_owned())
+        );
+        assert_eq!(
+            compare_produced(&case, &map(&json!({"value.subms": 0}))),
+            Verdict::Disagree("value.subms: not in the vector, produced 0".to_owned())
+        );
+        assert_eq!(
+            compare_produced(&case, &map(&json!({"consumed.x": 7}))),
+            Verdict::Disagree("consumed.x: not in the vector, produced 7".to_owned())
         );
     }
 }
