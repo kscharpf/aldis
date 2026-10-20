@@ -5,7 +5,7 @@
 | Requirements | GEN-022 (every loop bounded by an input length, a compile-time capacity, or a constant; no recursion), GEN-023 (time bounded by O(input length + capacities); nothing blocks or waits) |
 | Scope | `crates/aldis-epp/src/*.rs`, library code only (test modules excluded), at `main` 5f40e8b: the whole crate as released in `v0.2.0-m1`, including the RS-020 changes (issue #22) and the documentation pass of M1 WP-6 (990a4cf, comments only) |
 | Inspected | 2026-10-20, prepared by Claude Code: pre-release re-inspection for `v0.2.0-m1` (M1 exit). Every loop, every call between the crate's own functions, and every blocking construct re-checked; the table and the call graph below are confirmed. No unbounded loop, no recursion |
-| Approved | pending maintainer review |
+| Approved | 2026-10-20, maintainer |
 | Repeat | when `aldis-epp` gains a loop or a call between its own functions, and before each release |
 | History | First inspected 2026-10-18 on branch `m1/epp` (M1 WP-3, based on `main` b817d0f), approved 2026-10-18 maintainer; revised since as below |
 | Revised | 2026-10-18, PR #18 review: the header-copy loop of `writer.rs` `put_header` and of `EncapsulationHeader::encode` is now the single `EncapsulationHeader::write_to` (same loop, same bound); `EncapsulationWriter::begin` no longer adjusts `max_data_len`. No loop added. Confirmed 2026-10-18, maintainer |

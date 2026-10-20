@@ -5,7 +5,7 @@
 | Requirements | GEN-022 (every loop bounded by an input length, a compile-time capacity, or a constant; no recursion), GEN-023 (time bounded by O(input length + capacities); nothing blocks or waits) |
 | Scope | `crates/aldis-core/src/*.rs`, library code only (test modules excluded), at `main` 5f40e8b: the crate as released in `v0.2.0-m1`. Its library code last changed in 0655f2a (issue #22), which the last revision below covers |
 | Inspected | 2026-10-20, prepared by Claude Code: pre-release re-inspection for `v0.2.0-m1` (M1 exit). Every loop, every call between the crate's own functions, and every blocking construct re-checked; the table and the call graph below are confirmed and made more complete. No unbounded loop, no recursion |
-| Approved | pending maintainer review |
+| Approved | 2026-10-20, maintainer |
 | Repeat | when `aldis-core` gains a loop or a call between its own functions, and before each release |
 | History | First inspected 2026-10-16 at `main` 6dd89b7, approved 2026-10-16 maintainer; revised since at `m1/core` 3b51e87 and later as below |
 | Revised | 2026-10-17 (M1 WP-0): `mode` and `anomaly` added; approved 2026-10-17 maintainer. Revised again 2026-10-17 after [review round 1](../reviews/m1-core.md) finding 1: `FromIterator` (unbounded caller iterator) replaced by `AnomalySet::from_flags(&[A])`, and `Iter::next` bounded by a forward-only position over `0..CAPACITY`; approved 2026-10-17 maintainer |
