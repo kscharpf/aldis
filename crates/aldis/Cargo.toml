@@ -26,6 +26,9 @@ core = ["dep:aldis-core"]
 time = ["dep:aldis-time"]
 spp = ["dep:aldis-spp"]
 epp = ["dep:aldis-epp"]
+# The typed time secondary header of the Space Packet (SPP-008): `spp` and `time`, plus
+# `aldis-spp/time`, without `full`.
+spp-time = ["spp", "time", "aldis-spp/time"]
 tm = ["dep:aldis-tm"]
 tc = ["dep:aldis-tc"]
 aos = ["dep:aldis-aos"]
@@ -64,7 +67,7 @@ full = [
     "core",
     "time",
     "spp",
-    "aldis-spp/time",
+    "spp-time",
     "epp",
     "tm",
     "tc",
