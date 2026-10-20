@@ -155,7 +155,7 @@ Not in M1: frame codecs and their requirements (M2), including API-012 (fixed-le
 
 | Risk | Mitigation |
 |---|---|
-| The Blue Books print few complete worked examples, so most vectors are hand-derived and can share a misreading with the code | Write vectors from the Blue Book text before writing the code; cross-check SPP, CUC, and CDS against an independent implementation (D5); ask a second person to review the hand-derived notes for EPP, CCS, and ASCII |
+| The Blue Books print few complete worked examples, so most vectors are hand-derived and can share a misreading with the code | Write vectors from the Blue Book text before writing the code; cross-check SPP, CUC, and CDS against an independent implementation (D5); ask a second person to review the hand-derived notes for EPP, CCS, and ASCII. **Done 2026-10-20:** [review](../verification/reviews/m1-vectors.md) by Gemini, independent of the sessions that derived the vectors; approved, with two corrections to unreleased files |
 | No CI-usable QEMU machine for Cortex-R | D6 fallback: link check only, recorded as a deviation from VER-010 execution, revisited in M5. Did not occur: QEMU 8.2 runs the Cortex-R5F on its `none` machine (D6) |
 | `u128` arithmetic or ASCII formatting brings in `core` code with panic paths (e.g. formatting machinery) | Format digits by hand, without `core::fmt`; the exerciser link check catches regressions, and WP-5 runs early, alongside WP-1 module 2 |
 | Time-code edge cases (leap seconds, 24-bit days, 10 fractional octets) multiply the vector count | Property tests generate the combinations; vectors cover each boundary once |

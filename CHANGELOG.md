@@ -67,6 +67,9 @@ Milestone 1, Packets and time: the time code, Space Packet, and Encapsulation Pa
   `exerciser-<target>` and the nightly `exerciser` job run all three, with one retry.
 - Exerciser (M1 WP-5, D7): `build.rs` embeds every live case of `test-vectors/{time,spp,epp}/`,
   and a handler per crate compares every output exactly, as the host suites do (TV-012).
+- [Review of the hand-derived M1 vectors](docs/verification/reviews/m1-vectors.md) (EPP, CCS,
+  ASCII; M1 risk table): approved, with two corrections to files not yet released, the
+  provenance note of `time/ccs.json` and the case order of `epp/invalid.json`.
 - Changelog fragments: each pull request adds one file to [`changelog.d/`](changelog.d/README.md) instead of editing `CHANGELOG.md`, so parallel pull requests do not conflict. `cargo xtask changelog check` (part of `cargo xtask ci`), `show`, and `release <version> <date>`. The entries that were under **Unreleased** moved to `changelog.d/unreleased-before-fragments.md`.
 - `cargo xtask verify` (`xtask/src/verify/`): the verification run that gates merges (VER-056…VER-058, OI-31). It runs one check per former pull-request job of `ci.yml` and `cpp.yml`, under the same names, in a pinned image (`xtask/verify/Containerfile`) on a fresh checkout of HEAD. It writes an evidence record to `target/verify/<commit>/record.json`; `--publish` pushes the record as a git note under `refs/notes/verify` and sets the commit status `aldis/verify`. `verify check` re-checks a published record.
 - `.github/workflows/verify.yml` (VER-060): the same verification run on a GitHub-hosted runner, started only by hand on a branch (`gh workflow run verify.yml --ref <branch>`). It publishes the record and status like a local run; the record's new `source` field and the status's link name the run.
