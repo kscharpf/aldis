@@ -1,5 +1,8 @@
 //! Runs the shared conformance vectors in `test-vectors/spp/` against `aldis-spp` (VER-021,
 //! TV-012). Every case's outputs must match exactly; unknown operations fail.
+//!
+//! Without the `time` feature, every file runs except `secondary_header_time`, whose layouts
+//! need it; `cargo xtask features` runs the suite with and without it (GEN-006).
 #![expect(
     clippy::unwrap_used,
     clippy::panic,
@@ -13,12 +16,15 @@ use core::num::NonZeroUsize;
 use aldis_core::counter::Continuity;
 use aldis_core::ids::{Apid, SeqCount};
 use aldis_core::{DecodeMode, Error};
+#[cfg(feature = "time")]
+use aldis_spp::TimeHeaderLayout;
 use aldis_spp::{
     Discard, IdlePacket, OctetStringEncoder, PacketFields, PacketType, Reassembler,
     SecondaryHeaderLayout, Segmenter, SequenceCounter, SequenceFlags, SequenceTracker, SpacePacket,
-    SpacePacketWriter, SppConfig, Status, TimeHeaderLayout, Tracked, encode,
+    SpacePacketWriter, SppConfig, Status, Tracked, encode,
 };
 use aldis_testkit::{CodecCase, Mode, Outcome, hex, run_codec_file};
+#[cfg(feature = "time")]
 use aldis_time::{
     CcsFormat, CcsVariation, CdsDayLen, CdsEpoch, CdsFormat, CdsSubMs, CucEpoch, CucFormat,
     TimeFormat,
@@ -261,6 +267,7 @@ fn reassemble_case(case: &CodecCase) -> Value {
     json!({ "results": results })
 }
 
+#[cfg(feature = "time")]
 fn time_format(f: &Value) -> TimeFormat {
     let u8_of = |name: &str| u8::try_from(u64_of(&f[name])).unwrap();
     match f["code"].as_str().unwrap() {
@@ -300,6 +307,7 @@ fn time_format(f: &Value) -> TimeFormat {
     }
 }
 
+#[cfg(feature = "time")]
 fn split_time_case(case: &CodecCase) -> Result<Value, Error> {
     let l = param(case, "layout");
     let layout = TimeHeaderLayout::new(
@@ -383,6 +391,7 @@ fn run(case: &CodecCase) -> Result<Value, Error> {
         }
         "segment" => segment_case(case),
         "reassemble" => Ok(reassemble_case(case)),
+        #[cfg(feature = "time")]
         "split_time" => split_time_case(case),
         op => panic!("{}: unsupported operation {op}", case.id),
     }
@@ -415,4 +424,5 @@ vector_test!(stream, "stream");
 vector_test!(split, "split");
 vector_test!(segment, "segment");
 vector_test!(reassemble, "reassemble");
+#[cfg(feature = "time")]
 vector_test!(secondary_header_time, "secondary_header_time");
