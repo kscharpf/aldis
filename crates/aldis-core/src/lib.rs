@@ -45,3 +45,8 @@ pub mod time;
 pub use anomaly::{Anomaly, AnomalySet};
 pub use error::{Error, ErrorDetail, ErrorKind, FieldId, Result};
 pub use mode::DecodeMode;
+
+/// Compiles and runs the examples in `README.md` as doctests; not part of the API.
+#[cfg(doctest)]
+#[doc = include_str!("../README.md")]
+struct ReadmeDoctests;
