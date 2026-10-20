@@ -1,10 +1,11 @@
-//! Lenient-mode anomaly flags (API-032, GEN-043, GEN-081).
+//! Lenient-mode anomaly flags (133.1 §4.1.2.6.3, §4.1.2.7.2; API-032, GEN-043, GEN-081).
 //!
 //! The flags and their bit indices are listed in `docs/standards/encapsulation-packet.md` §3
 //! (API-033). Bit 2 is reserved and never raised (OI-16).
 
 aldis_core::anomaly_flags! {
-    /// A deviation a lenient Encapsulation Packet decoder accepts and reports (API-032).
+    /// A deviation a lenient Encapsulation Packet decoder accepts and reports (133.1 §4.1.2.6.3,
+    /// §4.1.2.7.2; API-032).
     pub enum EppAnomaly {
         /// Bit 0. Non-zero Protocol ID Extension while the EPI is not `110`, which 133.1
         /// §4.1.2.6.3 forbids (EPP-006).

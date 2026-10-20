@@ -1,10 +1,11 @@
-//! Lenient-mode anomaly flags (API-032, GEN-043, GEN-081).
+//! Lenient-mode anomaly flags (301.0 §3.1.1, §3.4.1.2; API-032, GEN-043, GEN-081).
 //!
 //! The flags and their bit indices are listed in `docs/standards/time-codes.md` §7 (API-033).
 //! Bit 1 is reserved and never raised (OI-15).
 
 aldis_core::anomaly_flags! {
-    /// A deviation a lenient time-code decoder accepts and reports (API-032).
+    /// A deviation a lenient time-code decoder accepts and reports (301.0 §3.1.1, §3.4.1.2;
+    /// API-032).
     pub enum TimeAnomaly {
         /// Bit 0. P-field time code ID `000`, `011`, or `111`, reserved by 301.0 §3.1.1. The
         /// decoder returns the P-field as `Unknown` and consumes only the P-field (TIME-002).

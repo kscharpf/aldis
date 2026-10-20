@@ -10,13 +10,13 @@ use crate::cuc::{Cuc, CucFormat};
 use crate::pfield::{MAX_PFIELD_LEN, PField, PFieldTail, ReservedPField, TimeCodeId};
 use crate::util::wide8;
 
-/// Longest agency-defined T-field, 16 octets (301.0 §3.6.2).
+/// Longest agency-defined T-field, 16 octets (301.0 §3.6.2, TIME-006).
 pub const MAX_AGENCY_LEN: u8 = 16;
 
 /// Longest T-field of any supported code: CUC with 7 + 10 octets.
 const MAX_T_LEN: usize = 17;
 
-/// Layout of an agency-defined code: its T-field length (TIME-006).
+/// Layout of an agency-defined code: its T-field length (301.0 §3.6.2, TIME-006).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct AgencyFormat {
     t_len: u8,
@@ -40,25 +40,25 @@ impl AgencyFormat {
         })
     }
 
-    /// The same format with undefined P-field octets after octet 1 (TIME-005).
+    /// The same format with undefined P-field octets after octet 1 (301.0 §3.6.2, TIME-005).
     #[must_use]
     pub const fn with_tail(self, tail: PFieldTail) -> AgencyFormat {
         AgencyFormat { tail, ..self }
     }
 
-    /// T-field length in octets (TIME-006).
+    /// T-field length in octets (301.0 §3.6.2, TIME-006).
     #[must_use]
     pub fn t_len(&self) -> usize {
         usize::from(self.t_len)
     }
 
-    /// Undefined P-field octets (TIME-005).
+    /// Undefined P-field octets (301.0 §3.6.2, TIME-005).
     #[must_use]
     pub const fn tail(&self) -> PFieldTail {
         self.tail
     }
 
-    /// The P-field: bits 4–7 hold the T-field length minus one (301.0 §3.6.2).
+    /// The P-field: bits 4–7 hold the T-field length minus one (301.0 §3.6.2, TIME-006).
     #[must_use]
     pub fn pfield(&self) -> PField {
         PField::build(
@@ -85,7 +85,7 @@ pub struct Agency {
 }
 
 impl Agency {
-    /// An agency-defined code with T-field `t` (TIME-006).
+    /// An agency-defined code with T-field `t` (301.0 §3.6.1, TIME-006).
     ///
     /// # Errors
     /// `LengthMismatch` (`tfield`) if `t` is not exactly the format's T-field length.
@@ -110,7 +110,7 @@ impl Agency {
         Agency { format, t: octets }
     }
 
-    /// The format (301.0 §3.6).
+    /// The format (301.0 §3.6, TIME-006).
     #[must_use]
     pub const fn format(&self) -> AgencyFormat {
         self.format
@@ -123,7 +123,8 @@ impl Agency {
     }
 }
 
-/// The layout of a binary time code, for decoding with an implicit P-field (301.0 §3.1.1).
+/// The layout of a binary time code, for decoding with an implicit P-field (301.0 §3.1.1, TIME-001,
+/// TIME-003).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum TimeFormat {
     /// CUC (§3.2).
@@ -137,7 +138,7 @@ pub enum TimeFormat {
 }
 
 impl TimeFormat {
-    /// T-field length in octets (TIME-003).
+    /// T-field length in octets (301.0 §3.1.2, TIME-003).
     #[must_use]
     pub fn t_len(&self) -> usize {
         match self {
@@ -148,7 +149,7 @@ impl TimeFormat {
         }
     }
 
-    /// The P-field describing this format (TIME-001).
+    /// The P-field describing this format (301.0 §3.1.1, TIME-001).
     #[must_use]
     pub fn pfield(&self) -> PField {
         match self {
@@ -170,7 +171,7 @@ impl TimeFormat {
     }
 }
 
-/// A binary time code (301.0 §3.2–3.4, §3.6).
+/// A binary time code (301.0 §3.2–3.4, §3.6; TIME-001, TIME-002, TIME-006).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum TimeCode {
     /// CUC (301.0 §3.2).
@@ -186,8 +187,8 @@ pub enum TimeCode {
     Unknown(ReservedPField),
 }
 
-/// A successful decode: the code, the octets consumed, and lenient-mode anomalies (TIME-003,
-/// GEN-043).
+/// A successful decode: the code, the octets consumed, and lenient-mode anomalies (301.0 §3.1;
+/// TIME-003, GEN-043).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Decoded {
     code: TimeCode,
@@ -197,34 +198,35 @@ pub struct Decoded {
 }
 
 impl Decoded {
-    /// The time code (TIME-001).
+    /// The time code (301.0 §3.1.1, TIME-001).
     #[must_use]
     pub const fn code(&self) -> TimeCode {
         self.code
     }
 
-    /// The P-field exactly as received, for [`decode_with_pfield`]; `None` for (TIME-001, TIME-005)
-    /// [`decode_implicit`]. [`TimeCode::pfield`] gives the canonical P-field of the code, which
-    /// differs only for a CUC P-field that splits its octet counts non-canonically.
+    /// The P-field exactly as received, for [`decode_with_pfield`]; `None` for [`decode_implicit`]
+    /// (301.0 §3.1.1; TIME-001, TIME-005). [`TimeCode::pfield`] gives the canonical P-field of the
+    /// code, which differs only for a CUC P-field that splits its octet counts non-canonically.
     #[must_use]
     pub const fn pfield(&self) -> Option<PField> {
         self.pfield
     }
 
     /// Octets consumed: P-field (if explicit) plus T-field, or the P-field alone for
-    /// [`TimeCode::Unknown`] (TIME-003).
+    /// [`TimeCode::Unknown`] (301.0 §3.1, TIME-003).
     #[must_use]
     pub const fn len(&self) -> usize {
         self.len
     }
 
-    /// Always `false`: a decode consumes at least one octet (TIME-003).
+    /// Always `false`: a decode consumes at least one octet (301.0 §3.1, TIME-003).
     #[must_use]
     pub const fn is_empty(&self) -> bool {
         false
     }
 
-    /// Lenient-mode anomalies; always empty after a strict decode (API-032, GEN-043).
+    /// Lenient-mode anomalies; always empty after a strict decode (301.0 §3.1.1, §3.4.1.2; API-032,
+    /// GEN-043).
     #[must_use]
     pub const fn anomalies(&self) -> AnomalySet<TimeAnomaly> {
         self.anomalies
@@ -253,7 +255,7 @@ fn t_field(bytes: &[u8], start: usize, len: usize) -> Result<&[u8]> {
 }
 
 /// Decodes a time code whose P-field is present at the start of `bytes`; octets after the
-/// T-field are ignored (TIME-001…TIME-003, TIME-005, TIME-006).
+/// T-field are ignored (301.0 §3.1; TIME-001…TIME-003, TIME-005, TIME-006).
 ///
 /// # Errors
 /// - `Incomplete` if `bytes` ends inside the P-field or the T-field.
@@ -323,7 +325,7 @@ pub fn decode_implicit(bytes: &[u8], format: &TimeFormat, mode: DecodeMode) -> R
 }
 
 impl TimeCode {
-    /// The format, or `None` for [`TimeCode::Unknown`] (TIME-001).
+    /// The format, or `None` for [`TimeCode::Unknown`] (301.0 §3.1.1, TIME-001).
     #[must_use]
     pub const fn format(&self) -> Option<TimeFormat> {
         match self {
@@ -335,7 +337,7 @@ impl TimeCode {
         }
     }
 
-    /// The P-field that describes this code (TIME-001, TIME-002).
+    /// The P-field that describes this code (301.0 §3.1.1; TIME-001, TIME-002).
     #[must_use]
     pub fn pfield(&self) -> PField {
         match self {
@@ -365,7 +367,7 @@ impl TimeCode {
 
     /// Encodes the code into the start of `out`, with its P-field first if `include_pfield`;
     /// returns the length written. Undefined P-field octets kept by a lenient decode are written
-    /// back (TIME-005).
+    /// back (301.0 §3.1, TIME-005).
     ///
     /// # Errors
     /// `BufferTooSmall` if `out` is too short (`out` is then unchanged); `InvalidField`

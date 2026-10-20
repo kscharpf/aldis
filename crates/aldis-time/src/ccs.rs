@@ -24,7 +24,7 @@ const fn subsecond_limit(octets: u8) -> u64 {
     }
 }
 
-/// Calendar variation (301.0 §3.4.2 bit 4).
+/// Calendar variation (301.0 §3.4.2 bit 4, TIME-030).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum CcsVariation {
     /// Month of year and day of month (§3.4.1.1).
@@ -33,7 +33,7 @@ pub enum CcsVariation {
     DayOfYear,
 }
 
-/// CCS layout: calendar variation and number of sub-second octets (TIME-030).
+/// CCS layout: calendar variation and number of sub-second octets (301.0 §3.4.2, TIME-030).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct CcsFormat {
     variation: CcsVariation,
@@ -64,13 +64,13 @@ impl CcsFormat {
         })
     }
 
-    /// The same format with undefined P-field octets after octet 1 (TIME-005).
+    /// The same format with undefined P-field octets after octet 1 (301.0 §3.4.2, TIME-005).
     #[must_use]
     pub const fn with_tail(self, tail: PFieldTail) -> CcsFormat {
         CcsFormat { tail, ..self }
     }
 
-    /// The calendar variation (301.0 §3.4.2).
+    /// The calendar variation (301.0 §3.4.2, TIME-030).
     #[must_use]
     pub const fn variation(&self) -> CcsVariation {
         self.variation
@@ -82,7 +82,7 @@ impl CcsFormat {
         self.subsecond
     }
 
-    /// Undefined P-field octets (TIME-005).
+    /// Undefined P-field octets (301.0 §3.4.2, TIME-005).
     #[must_use]
     pub const fn tail(&self) -> PFieldTail {
         self.tail
@@ -94,7 +94,7 @@ impl CcsFormat {
         usize::from(self.subsecond).wrapping_add(7)
     }
 
-    /// The P-field for this format (301.0 §3.4.2).
+    /// The P-field for this format (301.0 §3.4.2, TIME-030).
     #[must_use]
     pub fn pfield(&self) -> PField {
         let variation = match self.variation {
@@ -152,7 +152,7 @@ pub struct CcsValue {
     pub subsecond: u64,
 }
 
-/// A CCS time code: a format and a value that fits it (301.0 §3.4).
+/// A CCS time code: a format and a value that fits it (301.0 §3.4, TIME-030, TIME-034).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Ccs {
     format: CcsFormat,
@@ -178,7 +178,7 @@ const fn from_bcd(octet: u8, field: &'static str) -> Result<u8> {
 
 impl Ccs {
     /// A CCS code from a format and a value that fits it. The fields of `value` are valid by
-    /// construction; only the fit to `format` is checked here (TIME-030).
+    /// construction; only the fit to `format` is checked here (301.0 §3.4.1, TIME-030).
     ///
     /// # Errors
     /// `InvalidField` (`date`) if the date is not expressed in the format's calendar variation;
@@ -209,13 +209,13 @@ impl Ccs {
         Ccs { format, value }
     }
 
-    /// The format (301.0 §3.4).
+    /// The format (301.0 §3.4, TIME-030, TIME-034).
     #[must_use]
     pub const fn format(&self) -> CcsFormat {
         self.format
     }
 
-    /// The value (301.0 §3.4).
+    /// The value (301.0 §3.4, TIME-030, TIME-034).
     #[must_use]
     pub const fn value(&self) -> CcsValue {
         self.value

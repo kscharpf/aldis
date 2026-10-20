@@ -2,21 +2,31 @@
 //!
 //! Layer 1 of Aldis. Specification: `docs/standards/space-packet.md`.
 //!
-//! | Module | Contents | Requirements |
-//! |---|---|---|
-//! | [`header`] | `PacketType`, `SequenceFlags`, `PacketFields`, owned `SpacePacketHeader` | SPP-001…SPP-003, SPP-009, API-014, API-021 |
-//! | [`view`] | Zero-copy `SpacePacket` decoder, `peek_length` | SPP-001…SPP-004, SPP-009, API-010, API-011, API-013 |
-//! | [`secondary`] | `SecondaryHeaderLayout` per APID, `TimeHeaderLayout` (feature `time`), and the split into `SplitPacket` | SPP-007, SPP-008 |
-//! | [`writer`] | One-shot `encode`, two-phase `SpacePacketWriter` | SPP-005, SPP-006, API-020…API-023 |
-//! | [`config`] | `SppConfig` (Maximum Packet Length), the checked `PacketData` | SPP-005, SPP-006, GEN-060 |
-//! | [`idle`] | `IdlePacket` builder | SPP-010 |
-//! | [`sequence`] | `SequenceCounter`, `SequenceTracker` | SPP-011, GEN-011, GEN-024 |
-//! | [`octet`] | `OctetStringEncoder` (Octet String service) | SPP-012 |
-//! | [`segment`] | `Segmenter`, `Reassembler` with its `Outcome`, `Status`, and `Discard` | SPP-013 |
-//! | [`anomaly`] | `SppAnomaly` lenient-mode flags | API-032, GEN-043 |
+//! | Module | Contents | Clauses | Requirements |
+//! |---|---|---|---|
+//! | [`header`] | `PacketType`, `SequenceFlags`, `PacketFields`, owned `SpacePacketHeader` | 133.0 §4.1.3 | SPP-001…SPP-003, SPP-009, API-014, API-021 |
+//! | [`view`] | Zero-copy `SpacePacket` decoder, `peek_length` | 133.0 §4.1.2, §4.1.3 | SPP-001…SPP-004, SPP-009, API-010, API-011, API-013 |
+//! | [`secondary`] | `SecondaryHeaderLayout` per APID, `TimeHeaderLayout` (feature `time`), and the split into `SplitPacket` | 133.0 §4.1.4.2 | SPP-007, SPP-008 |
+//! | [`writer`] | One-shot `encode`, two-phase `SpacePacketWriter` | 133.0 §4.1 | SPP-005, SPP-006, API-020…API-023 |
+//! | [`config`] | `SppConfig` (Maximum Packet Length), the checked `PacketData` | 133.0 §5.2 Table 5-1 | SPP-005, SPP-006, GEN-060 |
+//! | [`idle`] | `IdlePacket` builder | 133.0 §4.1.3.3.4.4, §4.1.4.3.4 | SPP-010 |
+//! | [`sequence`] | `SequenceCounter`, `SequenceTracker` | 133.0 §4.1.3.4.3, §4.3.2.2 | SPP-011, GEN-011, GEN-024 |
+//! | [`octet`] | `OctetStringEncoder` (Octet String service) | 133.0 §3.4, §4.2.2 | SPP-012 |
+//! | [`segment`] | `Segmenter`, `Reassembler` with its `Outcome`, `Status`, and `Discard` | 133.0 §4.1.3.4.2 note | SPP-013 |
+//! | [`anomaly`] | `SppAnomaly` lenient-mode flags | 133.0 §4.1.3.3.3.4 | API-032, GEN-043 |
 //!
 //! The Packet Data Length field holds the data field length minus one (133.0 §4.1.3.5); the API
 //! works in data field and total packet lengths and converts at the wire.
+//!
+//! # Features
+//!
+//! None by default (GEN-005).
+//!
+//! - `time`: the typed time secondary header, `SecondaryHeaderLayout::Time` with
+//!   `TimeHeaderLayout`, whose Time Code Field is decoded with `aldis-time` (133.0 §4.1.4.2.2,
+//!   SPP-008). Without it a secondary header is opaque octets (133.0 §4.1.4.2.1, SPP-007), and
+//!   the crate does not depend on `aldis-time`.
+//! - `alloc`, `std`: strictly additive; they change no behaviour and no wire output (GEN-006).
 //!
 //! `no_std`, no allocation, no `unsafe`, and no panics on any input (GEN-010, GEN-020,
 //! GEN-070).

@@ -14,19 +14,20 @@ pub struct SequenceCounter {
 }
 
 impl SequenceCounter {
-    /// A counter whose next count is `start`.
+    /// A counter whose next count is `start` (133.0 §4.1.3.4.3.4, SPP-011).
     #[must_use]
     pub const fn new(start: SeqCount) -> SequenceCounter {
         SequenceCounter { next: start }
     }
 
-    /// The count the next packet will take.
+    /// The count the next packet will take (133.0 §4.1.3.4.3.4, SPP-011).
     #[must_use]
     pub const fn peek(&self) -> SeqCount {
         self.next
     }
 
-    /// Takes the next count and advances, wrapping from 16 383 to 0 (SPP-011, GEN-024).
+    /// Takes the next count and advances, wrapping from 16 383 to 0 (133.0 §4.1.3.4.3.4; SPP-011,
+    /// GEN-024).
     pub const fn advance(&mut self) -> SeqCount {
         let count = self.next;
         self.next = count.next();
@@ -34,7 +35,7 @@ impl SequenceCounter {
     }
 }
 
-/// The result of [`SequenceTracker::track`] (SPP-011).
+/// The result of [`SequenceTracker::track`] (133.0 §4.3.2.2, SPP-011).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Tracked {
     /// The first count seen for this APID; tracking starts with it (OI-30).
@@ -65,7 +66,7 @@ impl<const N: usize> Default for SequenceTracker<N> {
 }
 
 impl<const N: usize> SequenceTracker<N> {
-    /// An empty tracker.
+    /// An empty tracker (133.0 §4.3.2.2; SPP-011, GEN-011).
     #[must_use]
     pub fn new() -> SequenceTracker<N> {
         SequenceTracker {
@@ -73,8 +74,8 @@ impl<const N: usize> SequenceTracker<N> {
         }
     }
 
-    /// Records `count` for `apid` and classifies it against the previous count (SPP-011).
-    /// The previous count becomes `count` in every case except an error.
+    /// Records `count` for `apid` and classifies it against the previous count (133.0 §4.3.2.2,
+    /// SPP-011). The previous count becomes `count` in every case except an error.
     ///
     /// # Errors
     /// `CapacityExceeded` (`apid`) for a new APID when `N` APIDs are tracked; nothing changes,
@@ -107,7 +108,7 @@ impl<const N: usize> SequenceTracker<N> {
         Ok(Tracked::First)
     }
 
-    /// Stops tracking `apid`; returns whether it was tracked.
+    /// Stops tracking `apid`; returns whether it was tracked (133.0 §4.3.2.2, SPP-011).
     pub fn forget(&mut self, apid: Apid) -> bool {
         let slice = self.entries.as_mut_slice();
         let Some(at) = slice.iter().position(|e| e.apid == apid.get()) else {
@@ -118,7 +119,7 @@ impl<const N: usize> SequenceTracker<N> {
         self.entries.pop().is_some()
     }
 
-    /// The last count recorded for `apid`, if it is tracked.
+    /// The last count recorded for `apid`, if it is tracked (133.0 §4.3.2.2, SPP-011).
     #[must_use]
     pub fn last(&self, apid: Apid) -> Option<SeqCount> {
         self.entries
@@ -128,19 +129,19 @@ impl<const N: usize> SequenceTracker<N> {
             .map(|e| e.last)
     }
 
-    /// Number of APIDs tracked.
+    /// Number of APIDs tracked (133.0 §4.3.2.2, SPP-011).
     #[must_use]
     pub const fn len(&self) -> usize {
         self.entries.len()
     }
 
-    /// Whether no APID is tracked.
+    /// Whether no APID is tracked (133.0 §4.3.2.2, SPP-011).
     #[must_use]
     pub const fn is_empty(&self) -> bool {
         self.entries.is_empty()
     }
 
-    /// The compile-time capacity `N` (GEN-011).
+    /// The compile-time capacity `N` (133.0 §4.3.2.2; SPP-011, GEN-011).
     #[must_use]
     pub const fn capacity(&self) -> usize {
         N

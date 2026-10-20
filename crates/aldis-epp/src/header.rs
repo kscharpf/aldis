@@ -14,16 +14,16 @@ macro_rules! small_id {
         pub struct $name(u8);
 
         impl $name {
-            /// Largest valid value (API-001).
+            /// Largest valid value (133.1 §4.1.2, API-001).
             pub const MAX: u8 = $max;
 
-            /// The value, or `None` if it does not fit the field (API-001).
+            /// The value, or `None` if it does not fit the field (133.1 §4.1.2, API-001).
             #[must_use]
             pub const fn new(value: u8) -> Option<$name> {
                 if value <= $name::MAX { Some($name(value)) } else { None }
             }
 
-            /// The numeric value (API-001).
+            /// The numeric value (133.1 §4.1.2, API-001).
             #[must_use]
             pub const fn get(self) -> u8 {
                 self.0
@@ -56,31 +56,33 @@ small_id!(
 );
 small_id!(
     /// Encapsulation Protocol ID Extension, 4 bits; present in 4- and 8-octet headers
-    /// (133.1 §4.1.2.6).
+    /// (133.1 §4.1.2.6; EPP-006, EPP-008, EPP-011).
     EpiExtension, "epi_extension", 0xF
 );
 small_id!(
     /// User Defined field, 4 bits of mission-specific header data; present in 4- and 8-octet
-    /// headers (133.1 §4.1.2.5).
+    /// headers (133.1 §4.1.2.5; EPP-008, EPP-011).
     UserDefined, "user_defined", 0xF
 );
 
 impl Epi {
-    /// `000`: Encapsulation Idle Packet (133.1 §4.1.2.3 note 1).
+    /// `000`: Encapsulation Idle Packet (133.1 §4.1.2.3 note 1; EPP-004, EPP-009).
     pub const IDLE: Epi = Epi(0b000);
-    /// `110`: the Protocol ID Extension identifies the protocol (133.1 §4.1.2.3 note 2).
+    /// `110`: the Protocol ID Extension identifies the protocol (133.1 §4.1.2.3 note 2; EPP-006,
+    /// EPP-012).
     pub const EXTENDED: Epi = Epi(0b110);
-    /// `111`: mission-specific, privately defined data (133.1 §4.1.2.3 note 3).
+    /// `111`: mission-specific, privately defined data (133.1 §4.1.2.3 note 3, EPP-011).
     pub const MISSION_SPECIFIC: Epi = Epi(0b111);
 
-    /// Whether this is the idle EPI `000` (133.1 §4.1.2.3 note 1).
+    /// Whether this is the idle EPI `000` (133.1 §4.1.2.3 note 1; EPP-004, EPP-005).
     #[must_use]
     pub const fn is_idle(self) -> bool {
         self.0 == Epi::IDLE.0
     }
 }
 
-/// Length of the Packet Header, set by the Length of Length field (133.1 Table 4-1).
+/// Length of the Packet Header, set by the Length of Length field (133.1 §4.1.2.4, Table 4-1;
+/// EPP-002).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum HeaderLen {
     /// 1 octet, Length of Length `00`: Idle Packet of total length 1 (§4.1.2.4.4, EPP-004).
@@ -119,7 +121,7 @@ impl HeaderLen {
         }
     }
 
-    /// Header length in octets (133.1 §4.1.2.1.1).
+    /// Header length in octets (133.1 §4.1.2.1.1, EPP-002).
     #[must_use]
     pub const fn octets(self) -> usize {
         match self {
@@ -130,7 +132,7 @@ impl HeaderLen {
         }
     }
 
-    /// Largest total packet length this header can describe (133.1 Table 4-2).
+    /// Largest total packet length this header can describe (133.1 Table 4-2, EPP-008).
     #[must_use]
     pub const fn max_packet_len(self) -> u32 {
         match self {
@@ -142,14 +144,14 @@ impl HeaderLen {
     }
 
     /// Whether the header has the User Defined and Protocol ID Extension fields (133.1
-    /// §4.1.2.1.1 d–e).
+    /// §4.1.2.1.1 d–e; EPP-008).
     #[must_use]
     pub const fn has_extension(self) -> bool {
         matches!(self, HeaderLen::Four | HeaderLen::Eight)
     }
 }
 
-/// Header size policy of the encoder (EPP-008).
+/// Header size policy of the encoder (133.1 §4.1.2.1.1, EPP-008).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum HeaderSize {
     /// The smallest header that can carry the fields and the total length. The 1-octet header
@@ -175,7 +177,7 @@ pub struct EncapsulationFields {
 
 impl EncapsulationFields {
     /// Fields with `epi`, a zero extension, and zero user-defined bits; valid for every EPI,
-    /// including `110` with extended EPI 0 (EPP-008).
+    /// including `110` with extended EPI 0 (133.1 §4.1.2, EPP-008).
     #[must_use]
     pub const fn new(epi: Epi) -> EncapsulationFields {
         EncapsulationFields {
@@ -226,19 +228,19 @@ impl EncapsulationFields {
         })
     }
 
-    /// Encapsulation Protocol ID (133.1 §4.1.2.3).
+    /// Encapsulation Protocol ID (133.1 §4.1.2.3, EPP-008).
     #[must_use]
     pub const fn epi(&self) -> Epi {
         self.epi
     }
 
-    /// Protocol ID Extension; zero unless the EPI is `110` (133.1 §4.1.2.6).
+    /// Protocol ID Extension; zero unless the EPI is `110` (133.1 §4.1.2.6; EPP-006, EPP-008).
     #[must_use]
     pub const fn extension(&self) -> EpiExtension {
         self.extension
     }
 
-    /// User Defined field (133.1 §4.1.2.5).
+    /// User Defined field (133.1 §4.1.2.5, EPP-008).
     #[must_use]
     pub const fn user_defined(&self) -> UserDefined {
         self.user_defined
@@ -252,8 +254,8 @@ impl EncapsulationFields {
     }
 }
 
-/// An Encapsulation Packet header as plain values (API-014). Fields absent from the header
-/// length read as `None`.
+/// An Encapsulation Packet header as plain values (133.1 §4.1.2, API-014). Fields absent from the
+/// header length read as `None`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct EncapsulationHeader {
     epi: Epi,
@@ -355,7 +357,7 @@ impl EncapsulationHeader {
     }
 
     /// The header of an Idle Packet of `total_len` octets, with the smallest header that fits
-    /// (EPP-009).
+    /// (133.1 §4.1.3.1.3, EPP-009).
     ///
     /// # Errors
     /// `OutOfRange` (`packet_len`) if `total_len` is 0 (limit 1) or above `u32::MAX` (limit
@@ -482,7 +484,7 @@ impl EncapsulationHeader {
     }
 
     /// Writes the header octets to the start of `out`; returns the header length. Reserved
-    /// fields are written as zero (GEN-052, see `octets`).
+    /// fields are written as zero (133.1 §4.1.2.7.2; EPP-008, GEN-052; see `octets`).
     ///
     /// # Errors
     /// `BufferTooSmall` if `out` is shorter than the header; `out` is then unchanged.
@@ -525,7 +527,7 @@ impl EncapsulationHeader {
         }
     }
 
-    /// CCSDS Defined Field, if the header has one (8-octet header; EPP-007).
+    /// CCSDS Defined Field, if the header has one (8-octet header; 133.1 §4.1.2.7, EPP-007).
     #[must_use]
     pub const fn ccsds_defined(&self) -> Option<u16> {
         match self.header_len {
@@ -534,7 +536,7 @@ impl EncapsulationHeader {
         }
     }
 
-    /// Total packet length in octets, header included (133.1 §4.1.2.8.2).
+    /// Total packet length in octets, header included (133.1 §4.1.2.8.2; EPP-003, API-014).
     #[must_use]
     pub const fn packet_len(&self) -> u32 {
         self.packet_len

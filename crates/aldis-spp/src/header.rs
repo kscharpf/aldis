@@ -3,13 +3,14 @@
 use aldis_core::ids::{Apid, SeqCount};
 use aldis_core::{Error, ErrorDetail, ErrorKind, FieldId, Result};
 
-/// Length of the Packet Primary Header in octets (133.0 §4.1.3.1).
+/// Length of the Packet Primary Header in octets (133.0 §4.1.3.1, SPP-003).
 pub const PRIMARY_HEADER_LEN: usize = 6;
 
-/// Shortest Space Packet: the primary header and one data octet (133.0 §4.1.2.2).
+/// Shortest Space Packet: the primary header and one data octet (133.0 §4.1.2.2, SPP-002).
 pub const MIN_PACKET_LEN: usize = 7;
 
-/// Longest Space Packet: the primary header and 65 536 data octets (133.0 §4.1.2.2).
+/// Longest Space Packet: the primary header and 65 536 data octets (133.0 §4.1.2.2; SPP-002,
+/// SPP-006).
 pub const MAX_PACKET_LEN: usize = 65_542;
 
 /// Longest Packet Data Field (133.0 §4.1.3.5).
@@ -31,7 +32,7 @@ pub enum PacketType {
     Telecommand,
 }
 
-/// Sequence Flags (133.0 §4.1.3.4.2).
+/// Sequence Flags (133.0 §4.1.3.4.2; SPP-012, SPP-013).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum SequenceFlags {
     /// `00`: a continuation segment of user data.
@@ -45,7 +46,8 @@ pub enum SequenceFlags {
 }
 
 impl SequenceFlags {
-    /// The flags in the low two bits of `bits`; the other bits are ignored (133.0 §4.1.3.4.2).
+    /// The flags in the low two bits of `bits`; the other bits are ignored (133.0 §4.1.3.4.2,
+    /// SPP-013).
     #[must_use]
     pub const fn from_bits(bits: u8) -> SequenceFlags {
         match bits & 0b11 {
@@ -56,7 +58,7 @@ impl SequenceFlags {
         }
     }
 
-    /// The 2-bit field value (133.0 §4.1.3.4.2).
+    /// The 2-bit field value (133.0 §4.1.3.4.2, SPP-013).
     #[must_use]
     pub const fn bits(self) -> u8 {
         match self {
@@ -72,13 +74,13 @@ impl SequenceFlags {
 /// the Packet Data Length are derived by the encoders (API-021).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct PacketFields {
-    /// Packet Type (133.0 §4.1.3.3.2).
+    /// Packet Type (133.0 §4.1.3.3.2; SPP-009, API-021).
     pub packet_type: PacketType,
-    /// Application Process Identifier (133.0 §4.1.3.3.4).
+    /// Application Process Identifier (133.0 §4.1.3.3.4, API-021).
     pub apid: Apid,
-    /// Sequence Flags (133.0 §4.1.3.4.2).
+    /// Sequence Flags (133.0 §4.1.3.4.2; SPP-013, API-021).
     pub sequence_flags: SequenceFlags,
-    /// Packet Sequence Count or Packet Name (133.0 §4.1.3.4.3).
+    /// Packet Sequence Count or Packet Name (133.0 §4.1.3.4.3; SPP-011, API-021).
     pub sequence_count: SeqCount,
 }
 
@@ -92,8 +94,8 @@ pub(crate) fn len_u64(n: usize) -> u64 {
     u64::try_from(n).unwrap_or(u64::MAX)
 }
 
-/// A Packet Primary Header as plain values (API-014). The Packet Data Length is stored as the
-/// data field length it encodes, 1–65 536 octets.
+/// A Packet Primary Header as plain values (133.0 §4.1.3, API-014). The Packet Data Length is
+/// stored as the data field length it encodes, 1–65 536 octets.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct SpacePacketHeader {
     fields: PacketFields,
@@ -171,7 +173,7 @@ impl SpacePacketHeader {
         self.octets_with_version(VERSION)
     }
 
-    /// The sender-chosen fields (133.0 §4.1.3).
+    /// The sender-chosen fields (133.0 §4.1.3; API-014, API-021).
     #[must_use]
     pub const fn fields(&self) -> PacketFields {
         self.fields
@@ -183,25 +185,25 @@ impl SpacePacketHeader {
         self.fields.packet_type
     }
 
-    /// Secondary Header Flag (133.0 §4.1.3.3.3).
+    /// Secondary Header Flag (133.0 §4.1.3.3.3; SPP-005, API-014).
     #[must_use]
     pub const fn has_secondary_header(&self) -> bool {
         self.secondary_header
     }
 
-    /// Application Process Identifier (133.0 §4.1.3.3.4).
+    /// Application Process Identifier (133.0 §4.1.3.3.4, API-014).
     #[must_use]
     pub const fn apid(&self) -> Apid {
         self.fields.apid
     }
 
-    /// Whether this is an Idle Packet, APID 2047 (133.0 §4.1.3.3.4.4).
+    /// Whether this is an Idle Packet, APID 2047 (133.0 §4.1.3.3.4.4; SPP-004, SPP-010).
     #[must_use]
     pub const fn is_idle(&self) -> bool {
         self.fields.apid.is_idle()
     }
 
-    /// Sequence Flags (133.0 §4.1.3.4.2).
+    /// Sequence Flags (133.0 §4.1.3.4.2; SPP-013, API-014).
     #[must_use]
     pub const fn sequence_flags(&self) -> SequenceFlags {
         self.fields.sequence_flags

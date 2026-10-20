@@ -216,14 +216,14 @@ impl CalendarDate {
         }
     }
 
-    /// The year (TIME-030).
+    /// The year (301.0 Annex A, TIME-030).
     #[must_use]
     pub const fn year(&self) -> Year {
         self.year
     }
 
     /// Month and day of month, for a date built with
-    /// [`from_month_day`](Self::from_month_day) (301.0 §3.4.1.1).
+    /// [`from_month_day`](Self::from_month_day) (301.0 §3.4.1.1, TIME-030).
     #[must_use]
     pub const fn month_day(&self) -> Option<(Month, u8)> {
         match self.day {
@@ -233,7 +233,7 @@ impl CalendarDate {
     }
 
     /// Day of year, for a date built with [`from_day_of_year`](Self::from_day_of_year) (301.0
-    /// §3.4.1.2).
+    /// §3.4.1.2, TIME-030).
     #[must_use]
     pub const fn day_of_year(&self) -> Option<u16> {
         match self.day {
@@ -242,7 +242,7 @@ impl CalendarDate {
         }
     }
 
-    /// The CCS calendar variation this date is expressed in (301.0 §3.4.2 bit 4).
+    /// The CCS calendar variation this date is expressed in (301.0 §3.4.2 bit 4, TIME-030).
     #[must_use]
     pub const fn variation(&self) -> CcsVariation {
         match self.day {

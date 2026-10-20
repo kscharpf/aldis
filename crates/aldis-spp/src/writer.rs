@@ -29,7 +29,7 @@ pub(crate) fn write_packet(
     Ok(total)
 }
 
-/// Encodes a checked packet into the start of `out`; returns the total length (SPP-005,
+/// Encodes a checked packet into the start of `out`; returns the total length (133.0 §4.1; SPP-005,
 /// SPP-006, API-020, API-021). The Secondary Header Flag and Packet Data Length are derived
 /// from the parts.
 ///
@@ -46,7 +46,7 @@ pub fn encode(packet: &PacketData<'_>, out: &mut [u8]) -> Result<usize> {
 
 /// Two-phase writer: [`begin`](Self::begin) reserves the header, the secondary header, and up
 /// to a maximum of user data; the caller fills both in place; [`finish`](Self::finish) writes
-/// the header (API-020…API-023).
+/// the header (133.0 §4.1.3.5; API-020…API-023).
 ///
 /// Until `finish`, the buffer holds a header whose version field is `111` and whose Packet Data
 /// Length is 0, which every decoder rejects with `UnsupportedVersion`, so an unfinished packet
@@ -61,7 +61,7 @@ pub struct SpacePacketWriter<'b> {
 
 impl<'b> SpacePacketWriter<'b> {
     /// Reserves a packet with a secondary header of `secondary_len` octets (0 for none) and room
-    /// for up to `max_user_len` user data octets.
+    /// for up to `max_user_len` user data octets (133.0 §4.1; SPP-005, SPP-006, API-020).
     ///
     /// # Errors
     /// - `InvalidField` (`data_field`) if both lengths are 0, since such a packet could never
@@ -99,7 +99,7 @@ impl<'b> SpacePacketWriter<'b> {
         })
     }
 
-    /// The secondary header to fill in place, `secondary_len` octets (GEN-014).
+    /// The secondary header to fill in place, `secondary_len` octets (133.0 §4.1.4.2, GEN-014).
     pub fn secondary_header_mut(&mut self) -> &mut [u8] {
         let end = PRIMARY_HEADER_LEN.saturating_add(self.secondary_len);
         self.out
@@ -107,14 +107,15 @@ impl<'b> SpacePacketWriter<'b> {
             .unwrap_or_default()
     }
 
-    /// The user data field to fill in place, `max_user_len` octets (GEN-014).
+    /// The user data field to fill in place, `max_user_len` octets (133.0 §4.1.4.3, GEN-014).
     pub fn user_data_mut(&mut self) -> &mut [u8] {
         let start = PRIMARY_HEADER_LEN.saturating_add(self.secondary_len);
         let end = start.saturating_add(self.max_user_len);
         self.out.get_mut(start..end).unwrap_or_default()
     }
 
-    /// Completes the packet with `user_len` octets of user data; returns the total length.
+    /// Completes the packet with `user_len` octets of user data; returns the total length (133.0
+    /// §4.1.3.5; SPP-005, API-020, API-023).
     ///
     /// The packet is the first `total` octets of the buffer. When `user_len` is below the
     /// reservation, the reserved octets after the packet are left as they are; use only

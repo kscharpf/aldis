@@ -13,10 +13,11 @@ use crate::calendar::{CalendarDate, Hour, Minute, Month, Second, Year, days_in_m
 use crate::ccs::CcsVariation;
 use crate::util::{out_of_bounds, wide8};
 
-/// Most fractional digits: 12, down to 10⁻¹² s (TIME-031).
+/// Most fractional digits: 12, down to 10⁻¹² s (301.0 §3.5.1, TIME-031).
 pub const MAX_FRACTION_DIGITS: u8 = 12;
 
-/// Longest complete ASCII code in octets: `YYYY-MM-DDThh:mm:ss.`, 12 digits, and `Z` (§5.1).
+/// Longest complete ASCII code in octets: `YYYY-MM-DDThh:mm:ss.`, 12 digits, and `Z` (301.0
+/// §3.5.1.1; TIME-031; grammar: time-codes.md §5.1).
 pub const MAX_ASCII_LEN: usize = 33;
 
 /// `Malformed` for a structural problem: length, separators, or stray octets (§5.1).
@@ -48,8 +49,8 @@ const fn pow10(n: u8) -> u64 {
     }
 }
 
-/// The decimal fraction of a second: up to 12 digits and a value that fits them (TIME-031,
-/// RS-020). `1234` with 4 digits is 0.1234 s; leading zeros count as digits.
+/// The decimal fraction of a second: up to 12 digits and a value that fits them (301.0 §3.5.1;
+/// TIME-031, RS-020). `1234` with 4 digits is 0.1234 s; leading zeros count as digits.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub struct Fraction {
     digits: u8,
@@ -57,14 +58,14 @@ pub struct Fraction {
 }
 
 impl Fraction {
-    /// No fractional digits: the code has no period (TIME-031).
+    /// No fractional digits: the code has no period (301.0 §3.5.1, TIME-031).
     pub const NONE: Fraction = Fraction {
         digits: 0,
         value: 0,
     };
 
     /// A fraction of `digits` digits (0–12) whose value `value` is below 10^`digits`, or `None`
-    /// (TIME-031).
+    /// (301.0 §3.5.1, TIME-031).
     #[must_use]
     pub const fn new(value: u64, digits: u8) -> Option<Fraction> {
         if digits <= MAX_FRACTION_DIGITS && value < pow10(digits) {
@@ -74,19 +75,19 @@ impl Fraction {
         }
     }
 
-    /// Number of digits (TIME-031).
+    /// Number of digits (301.0 §3.5.1, TIME-031).
     #[must_use]
     pub const fn digits(&self) -> u8 {
         self.digits
     }
 
-    /// The digits as an integer (TIME-031).
+    /// The digits as an integer (301.0 §3.5.1, TIME-031).
     #[must_use]
     pub const fn value(&self) -> u64 {
         self.value
     }
 
-    /// The fraction in picoseconds, exactly (TIME-033).
+    /// The fraction in picoseconds, exactly (301.0 §3.5.1, TIME-033).
     #[must_use]
     pub const fn picos(&self) -> u64 {
         self.value
@@ -106,20 +107,20 @@ impl Fraction {
     }
 }
 
-/// Parsing options (TIME-031).
+/// Parsing options (301.0 §3.5.1, TIME-031).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct AsciiOptions {
     max_fraction_digits: u8,
 }
 
 impl AsciiOptions {
-    /// Up to 12 fractional digits (TIME-031).
+    /// Up to 12 fractional digits (301.0 §3.5.1, TIME-031).
     pub const DEFAULT: AsciiOptions = AsciiOptions {
         max_fraction_digits: MAX_FRACTION_DIGITS,
     };
 
     /// Options accepting at most `max_fraction_digits` fractional digits: the configurable
-    /// maximum of TIME-031.
+    /// maximum of TIME-031 (301.0 §3.5.1).
     ///
     /// # Errors
     /// `OutOfRange` (`max_fraction_digits`) above 12.
@@ -136,7 +137,7 @@ impl AsciiOptions {
         })
     }
 
-    /// The maximum number of fractional digits (TIME-031).
+    /// The maximum number of fractional digits (301.0 §3.5.1, TIME-031).
     #[must_use]
     pub const fn max_fraction_digits(&self) -> u8 {
         self.max_fraction_digits
@@ -150,7 +151,7 @@ impl Default for AsciiOptions {
 }
 
 /// The layout of an ASCII code to produce: code A or B, fractional digits, and `Z`
-/// (TIME-031, TIME-033).
+/// (301.0 §3.5.1; TIME-031, TIME-033).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct AsciiFormat {
     variation: CcsVariation,
@@ -160,7 +161,7 @@ pub struct AsciiFormat {
 
 impl AsciiFormat {
     /// Code A (`MonthDay`) or B (`DayOfYear`) with `fraction_digits` digits (0–12), ending
-    /// with `Z` if `utc` (TIME-031).
+    /// with `Z` if `utc` (301.0 §3.5.1.1–2, TIME-031).
     ///
     /// # Errors
     /// `OutOfRange` (`fraction_digits`) above 12.
@@ -183,19 +184,19 @@ impl AsciiFormat {
         })
     }
 
-    /// Code A or B (TIME-031).
+    /// Code A or B (301.0 §3.5.1.1–2, TIME-031).
     #[must_use]
     pub const fn variation(&self) -> CcsVariation {
         self.variation
     }
 
-    /// Fractional digits (TIME-031).
+    /// Fractional digits (301.0 §3.5.1, TIME-031).
     #[must_use]
     pub const fn fraction_digits(&self) -> u8 {
         self.fraction_digits
     }
 
-    /// Whether the code ends with `Z` (TIME-031).
+    /// Whether the code ends with `Z` (301.0 §3.5.1, TIME-031).
     #[must_use]
     pub const fn utc(&self) -> bool {
         self.utc
@@ -294,15 +295,17 @@ fn dec12(mut n: u64) -> [u8; 12] {
 pub struct AsciiTime {
     /// The date: month and day for code A, day of year for code B (301.0 §3.5.1, TIME-031).
     pub date: CalendarDate,
-    /// Hour (301.0 §3.5.1.1).
+    /// Hour (301.0 §3.5.1.1, TIME-031).
     pub hour: Hour,
-    /// Minute (301.0 §3.5.1.1).
+    /// Minute (301.0 §3.5.1.1, TIME-031).
     pub minute: Minute,
     /// Second, 60 for a leap second (301.0 §3.5.1.1, TIME-031).
     pub second: Second,
-    /// Decimal fraction of the second; [`Fraction::NONE`] writes no period (TIME-031).
+    /// Decimal fraction of the second; [`Fraction::NONE`] writes no period (301.0 §3.5.1,
+    /// TIME-031).
     pub fraction: Fraction,
-    /// Whether the code ends with the optional `Z`, preserved on round trip (TIME-031).
+    /// Whether the code ends with the optional `Z`, preserved on round trip (301.0 §3.5.1,
+    /// TIME-031).
     pub utc: bool,
 }
 
@@ -313,7 +316,8 @@ enum DateDigits {
 }
 
 impl AsciiTime {
-    /// Parses a complete code A or B; the input must be exactly the code (TIME-031, §5.1).
+    /// Parses a complete code A or B; the input must be exactly the code (301.0 §3.5.1.1–2,
+    /// TIME-031; grammar: time-codes.md §5.1).
     ///
     /// # Errors
     /// `Malformed` for a separator, length, or trailing-octet problem; `InvalidField` naming a
@@ -376,7 +380,7 @@ impl AsciiTime {
         })
     }
 
-    /// Length of the encoded code in octets, at most [`MAX_ASCII_LEN`] (TIME-031).
+    /// Length of the encoded code in octets, at most [`MAX_ASCII_LEN`] (301.0 §3.5.1, TIME-031).
     #[must_use]
     pub fn encoded_len(&self) -> usize {
         let date: usize = if self.date.month_day().is_some() {
@@ -396,7 +400,7 @@ impl AsciiTime {
     }
 
     /// Writes the code into the start of `out`, without `core::fmt`; returns its length
-    /// (TIME-031, API-022).
+    /// (301.0 §3.5.1; TIME-031, API-022).
     ///
     /// # Errors
     /// `BufferTooSmall` (`needed` = [`encoded_len`](Self::encoded_len)) if `out` is too short;
@@ -779,61 +783,61 @@ impl AsciiSubset {
         })
     }
 
-    /// Code A (month/day) or B (day of year), if the subset shows which (TIME-032).
+    /// Code A (month/day) or B (day of year), if the subset shows which (301.0 §3.5.1.3, TIME-032).
     #[must_use]
     pub const fn variation(&self) -> Option<CcsVariation> {
         self.variation
     }
 
-    /// Year, if present (TIME-032).
+    /// Year, if present (301.0 §3.5.1.3, TIME-032).
     #[must_use]
     pub const fn year(&self) -> Option<Year> {
         self.year
     }
 
-    /// Month, if present (TIME-032).
+    /// Month, if present (301.0 §3.5.1.3, TIME-032).
     #[must_use]
     pub const fn month(&self) -> Option<Month> {
         self.month
     }
 
-    /// Day of month, if present (TIME-032).
+    /// Day of month, if present (301.0 §3.5.1.3, TIME-032).
     #[must_use]
     pub const fn day(&self) -> Option<u8> {
         self.day
     }
 
-    /// Day of year, if present (TIME-032).
+    /// Day of year, if present (301.0 §3.5.1.3, TIME-032).
     #[must_use]
     pub const fn day_of_year(&self) -> Option<u16> {
         self.day_of_year
     }
 
-    /// Hour, if present (TIME-032).
+    /// Hour, if present (301.0 §3.5.1.3, TIME-032).
     #[must_use]
     pub const fn hour(&self) -> Option<Hour> {
         self.hour
     }
 
-    /// Minute, if present (TIME-032).
+    /// Minute, if present (301.0 §3.5.1.3, TIME-032).
     #[must_use]
     pub const fn minute(&self) -> Option<Minute> {
         self.minute
     }
 
-    /// Second, if present (TIME-032).
+    /// Second, if present (301.0 §3.5.1.3, TIME-032).
     #[must_use]
     pub const fn second(&self) -> Option<Second> {
         self.second
     }
 
-    /// Fraction of the second, if present (TIME-032).
+    /// Fraction of the second, if present (301.0 §3.5.1.3, TIME-032).
     #[must_use]
     pub const fn fraction(&self) -> Option<Fraction> {
         self.fraction
     }
 
-    /// Whether the code ends with `Z` (TIME-032, OI-29).
+    /// Whether the code ends with `Z` (301.0 §3.5.1.3; TIME-032, OI-29).
     #[must_use]
     pub const fn utc(&self) -> bool {
         self.utc

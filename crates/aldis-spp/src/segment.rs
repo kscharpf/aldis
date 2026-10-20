@@ -12,7 +12,7 @@ use crate::header::{PacketFields, PacketType, SequenceFlags, SpacePacketHeader, 
 use crate::sequence::SequenceCounter;
 use crate::writer::encode;
 
-/// Splits one SDU across consecutive packets of one APID (SPP-013).
+/// Splits one SDU across consecutive packets of one APID (133.0 §4.1.3.4.2, SPP-013).
 ///
 /// A single segment is sent with Sequence Flags `11`; otherwise the flags are `01`, `00`…,
 /// `10`. Each packet takes the next count of the caller's [`SequenceCounter`].
@@ -27,7 +27,8 @@ pub struct Segmenter<'s> {
 }
 
 impl<'s> Segmenter<'s> {
-    /// A segmenter for `sdu` with at most `max_user_len` user data octets per packet (SPP-013).
+    /// A segmenter for `sdu` with at most `max_user_len` user data octets per packet (133.0
+    /// §4.1.3.4.2, SPP-013).
     ///
     /// # Errors
     /// - `InvalidField` (`sdu`) for an empty SDU.
@@ -65,7 +66,7 @@ impl<'s> Segmenter<'s> {
 
     /// Encodes the next segment into the start of `out` with `secondary_header` (empty for
     /// none) and the next count of `counter`; returns its length, or `None` when the SDU is
-    /// done (SPP-013).
+    /// done (133.0 §4.1.3.4.2, SPP-013).
     ///
     /// # Errors
     /// `OutOfRange` (`packet_len`) if the segment exceeds the configured maximum (SPP-006);
@@ -104,20 +105,20 @@ impl<'s> Segmenter<'s> {
         Ok(Some(len))
     }
 
-    /// Whether every segment has been written.
+    /// Whether every segment has been written (133.0 §4.1.3.4.2, SPP-013).
     #[must_use]
     pub const fn is_done(&self) -> bool {
         self.offset >= self.sdu.len()
     }
 
-    /// SDU octets not yet written.
+    /// SDU octets not yet written (133.0 §4.1.3.4.2, SPP-013).
     #[must_use]
     pub const fn remaining(&self) -> usize {
         self.sdu.len().saturating_sub(self.offset)
     }
 }
 
-/// Why the reassembler threw data away (SPP-013, OI-30).
+/// Why the reassembler threw data away (133.0 §4.1.3.4.2; SPP-013, OI-30).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[non_exhaustive]
 pub enum Discard {
@@ -133,7 +134,7 @@ pub enum Discard {
     Overflow,
 }
 
-/// What happened to the packet just pushed (SPP-013).
+/// What happened to the packet just pushed (133.0 §4.1.3.4.2, SPP-013).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Status {
     /// The packet's segment was stored; the SDU is not complete yet.
@@ -145,18 +146,19 @@ pub enum Status {
     Dropped(Discard),
 }
 
-/// The outcome of [`Reassembler::push`] (SPP-013, `docs/standards/space-packet.md` §5.4).
+/// The outcome of [`Reassembler::push`] (133.0 §4.1.3.4.2; SPP-013,
+/// `docs/standards/space-packet.md` §5.4).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Outcome {
     /// Why a partial SDU was thrown away, if one was: `Gap`, `Restarted`, `Interrupted`, or
-    /// `Overflow`.
+    /// `Overflow` (133.0 §4.1.3.4.2, SPP-013).
     pub discarded: Option<Discard>,
-    /// What happened to the packet itself.
+    /// What happened to the packet itself (133.0 §4.1.3.4.2, SPP-013).
     pub status: Status,
 }
 
 /// Rejoins the segments of one APID into the caller's buffer, detecting sequence gaps
-/// (SPP-013).
+/// (133.0 §4.1.3.4.2, SPP-013).
 ///
 /// It never fails or gets stuck on segment order: a partial SDU that cannot be completed is
 /// discarded, the [`Outcome`] says why, and the packet is then handled as if nothing were in
@@ -172,7 +174,8 @@ pub struct Reassembler<'b> {
 }
 
 impl<'b> Reassembler<'b> {
-    /// A reassembler for `apid` that assembles SDUs of up to `buf.len()` octets.
+    /// A reassembler for `apid` that assembles SDUs of up to `buf.len()` octets (133.0 §4.1.3.4.2,
+    /// SPP-013).
     #[must_use]
     pub const fn new(apid: Apid, buf: &'b mut [u8]) -> Reassembler<'b> {
         Reassembler {
@@ -185,7 +188,8 @@ impl<'b> Reassembler<'b> {
         }
     }
 
-    /// Adds the user data of one packet, whose primary header is `header` (SPP-013).
+    /// Adds the user data of one packet, whose primary header is `header` (133.0 §4.1.3.4.2,
+    /// SPP-013).
     ///
     /// # Errors
     /// `InvalidField` (`apid`) for a packet of another APID; nothing changes.
@@ -266,31 +270,32 @@ impl<'b> Reassembler<'b> {
         true
     }
 
-    /// The SDU completed by the last push; empty after any other outcome (SPP-013).
+    /// The SDU completed by the last push; empty after any other outcome (133.0 §4.1.3.4.2,
+    /// SPP-013).
     #[must_use]
     pub fn sdu(&self) -> &[u8] {
         self.buf.get(..self.complete).unwrap_or_default()
     }
 
-    /// Whether a partial SDU is in progress.
+    /// Whether a partial SDU is in progress (133.0 §4.1.3.4.2, SPP-013).
     #[must_use]
     pub const fn is_assembling(&self) -> bool {
         self.assembling
     }
 
-    /// The APID this reassembler accepts.
+    /// The APID this reassembler accepts (133.0 §4.1.3.4.2, SPP-013).
     #[must_use]
     pub const fn apid(&self) -> Apid {
         self.apid
     }
 
-    /// The largest SDU the buffer holds.
+    /// The largest SDU the buffer holds (133.0 §4.1.3.4.2, SPP-013).
     #[must_use]
     pub const fn capacity(&self) -> usize {
         self.buf.len()
     }
 
-    /// Discards any partial SDU and forgets the last count.
+    /// Discards any partial SDU and forgets the last count (133.0 §4.1.3.4.2, SPP-013).
     pub const fn reset(&mut self) {
         self.filled = 0;
         self.assembling = false;
