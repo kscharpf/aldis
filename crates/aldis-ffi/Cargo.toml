@@ -1,6 +1,7 @@
 [package]
 name = "aldis-ffi"
 description = "C ABI for Aldis"
+readme = "README.md"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

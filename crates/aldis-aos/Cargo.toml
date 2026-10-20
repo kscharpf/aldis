@@ -1,6 +1,7 @@
 [package]
 name = "aldis-aos"
 description = "CCSDS 732.0-B-5 AOS Space Data Link Protocol frame codec"
+readme = "README.md"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

@@ -1,6 +1,7 @@
 [package]
 name = "aldis-tc"
 description = "CCSDS 232.0-B-4 TC Space Data Link Protocol frame codec and CLCW"
+readme = "README.md"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

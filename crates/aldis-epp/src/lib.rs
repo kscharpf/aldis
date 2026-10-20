@@ -46,3 +46,8 @@ pub use header::{
 };
 pub use view::EncapsulationPacket;
 pub use writer::{EncapsulationWriter, encode, idle};
+
+/// Compiles and runs the examples in `README.md` as doctests; not part of the API.
+#[cfg(doctest)]
+#[doc = include_str!("../README.md")]
+struct ReadmeDoctests;

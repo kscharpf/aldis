@@ -1,6 +1,7 @@
 [package]
 name = "aldis-testkit"
 description = "Test-vector model, loader, and runner shared by all Aldis test suites (tooling, dev-only)"
+readme = "README.md"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
