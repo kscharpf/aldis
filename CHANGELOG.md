@@ -118,6 +118,9 @@ Milestone 1, Packets and time: the time code, Space Packet, and Encapsulation Pa
 - `aldis-time`, `aldis-spp`, `aldis-epp`, `aldis`: every public item's docs cite its CCSDS
   clause and requirement IDs (RS-015); the crate docs list the clauses of each module and
   document the features. `docs/09-open-issues.md` records M1 D4 against OI-06, which stays open.
+- `aldis-core` tests: five mutants that survived the M1 pre-release mutation run are now caught
+  (`FixedVec::eq`, `SeqCount::get`, both `FrameSeqNum` conversions, `PacketVersion::get`), and
+  `docs/verification/mutants-triage.md` records the full run over all four M1 crates (VER-025).
 - M1 exit: `cargo xtask trace --scope m1` runs with `--strict` in the `spec` check of
   `cargo xtask verify`, in `cargo xtask ci`, and in the nightly CI, so every M1 requirement must
   keep an artefact (VER-020, M1 D8); all 91 are traced.
