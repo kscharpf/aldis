@@ -34,6 +34,153 @@ impl Host {
     }
 }
 
+/// A named list of path patterns: `*` matches within one path segment, `**` any number of
+/// segments (`scope::matches`).
+#[derive(Debug, PartialEq, Eq)]
+pub struct PathList {
+    /// Shown by `cargo xtask verify list`.
+    pub name: &'static str,
+    /// The patterns, relative to the repository root.
+    pub patterns: &'static [&'static str],
+}
+
+// The inputs of the checks (VER-056): every path a check builds, reads, or is run by. A check
+// runs when a changed path matches one of its inputs, and a changed path that matches no check's
+// inputs and is not in `DOCS` runs every check. Precision never at the cost of soundness: when a
+// check starts reading a new path, add the path here in the same change; when unsure, include it.
+//
+// The differential tests of track C (`difftest/`, VER-053, milestone C1) will read both the Rust
+// crates and `cpp/`: their checks take `Inputs::Paths(&[&RUN, &RUST, &CPP, &DIFFTEST])`, with a
+// `DIFFTEST` list naming `difftest/**` and whatever else they read.
+
+/// Read by every check: the verification run itself. `xtask/` holds the harness that runs and
+/// judges every check, the image definition (`xtask/verify/`), and every `cargo xtask` command;
+/// building xtask reads the workspace manifests, `.cargo/`, and `aldis-testkit`; the image is
+/// built from the files of `image::INPUTS`.
+pub const RUN: PathList = PathList {
+    name: "run",
+    patterns: &[
+        "xtask/**",
+        "Cargo.toml",
+        "Cargo.lock",
+        ".cargo/**",
+        "crates/*/Cargo.toml",
+        "crates/aldis-testkit/**",
+        "rust-toolchain.toml",
+        "tooling-nightly",
+        "cpp/toolchains.lock",
+        ".github/actions/setup-cpp/setup_cpp.py",
+    ],
+};
+
+/// Read by every Rust check: the crates and the separate workspaces (`exerciser/`, `fuzz/`,
+/// `refapp/`, `crosscheck/`), their lint, format, licence, and coverage settings, the vectors that
+/// their tests and the exerciser load, and the Rust setup of the workflows. One list for all of
+/// them: a finer split would save little and risk missing a path.
+pub const RUST: PathList = PathList {
+    name: "rust",
+    patterns: &[
+        "crates/**",
+        "exerciser/**",
+        "fuzz/**",
+        "refapp/**",
+        "crosscheck/**",
+        "test-vectors/**",
+        "clippy.toml",
+        "rustfmt.toml",
+        ".rustfmt.toml",
+        "deny.toml",
+        "coverage-waivers.toml",
+        "LICENSE",
+        ".github/actions/setup-rust/**",
+        ".github/workflows/**",
+    ],
+};
+
+/// Also read by the checks that run the xtask unit tests (`test`, `test-macos`, `big-endian`):
+/// `spec::tests::cpp_sources_are_checked_for_requirement_ids` lists the C++ files (CPP-057).
+pub const XTASK_TESTS: PathList = PathList {
+    name: "xtask-tests",
+    patterns: &["cpp/**"],
+};
+
+/// Read by the C++ checks: the C++ tree, the vectors (read by the C++ tests from C1), and the
+/// C++ setup action and workflow (formerly the `changes` job of `cpp.yml`).
+pub const CPP: PathList = PathList {
+    name: "cpp",
+    patterns: &[
+        "cpp/**",
+        "test-vectors/**",
+        ".github/actions/setup-cpp/**",
+        ".github/workflows/cpp.yml",
+    ],
+};
+
+/// Documentation: read by `spec` only (spec lint, links, vectors, traces, changelog check), so a
+/// change to these paths alone runs only `spec`. Not documentation: the crate READMEs, which are
+/// doctests, `test-vectors/README.md`, which lies under the Rust and C++ input `test-vectors/`,
+/// and every other `.md` file outside these paths, such as `cpp/README.md` (installed by the C++
+/// build) and `refapp/golden/CHANGES.md`.
+pub const DOCS: PathList = PathList {
+    name: "docs",
+    patterns: &[
+        "docs/**",
+        "changelog.d/**",
+        "*.md",
+        "specs/README.md",
+        "specs/manifest.tsv",
+    ],
+};
+
+/// What a check reads (VER-056).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Inputs {
+    /// Every path of the repository: the check runs on every change.
+    Everything,
+    /// The paths that match a pattern of one of these lists.
+    Paths(&'static [&'static PathList]),
+}
+
+impl Inputs {
+    /// Whether `path` is one of them.
+    pub fn contains(self, path: &str) -> bool {
+        match self {
+            Self::Everything => true,
+            Self::Paths(lists) => lists.iter().any(|l| l.contains(path)),
+        }
+    }
+
+    /// Every pattern, as the record lists them.
+    pub fn patterns(self) -> Vec<&'static str> {
+        match self {
+            Self::Everything => vec!["**"],
+            Self::Paths(lists) => lists
+                .iter()
+                .flat_map(|l| l.patterns.iter().copied())
+                .collect(),
+        }
+    }
+
+    /// The names of the lists, for `cargo xtask verify list`.
+    pub fn label(self) -> String {
+        match self {
+            Self::Everything => "every path".to_owned(),
+            Self::Paths(lists) => lists.iter().map(|l| l.name).collect::<Vec<_>>().join("+"),
+        }
+    }
+}
+
+impl PathList {
+    /// Whether `path` matches one of the patterns.
+    pub fn contains(&self, path: &str) -> bool {
+        self.patterns.iter().any(|p| super::scope::matches(p, path))
+    }
+}
+
+const RUST_INPUTS: Inputs = Inputs::Paths(&[&RUN, &RUST]);
+const RUST_TEST_INPUTS: Inputs = Inputs::Paths(&[&RUN, &RUST, &XTASK_TESTS]);
+const CPP_INPUTS: Inputs = Inputs::Paths(&[&RUN, &CPP]);
+
 /// One check of the verification run.
 #[derive(Clone, Debug)]
 pub struct Check {
@@ -41,8 +188,10 @@ pub struct Check {
     pub name: String,
     /// Where it runs.
     pub host: Host,
-    /// A C++ check, skipped when the change does not touch the C++ inputs (VER-056).
+    /// A C++ check: `--all-cpp` runs it even when none of its inputs changed.
     pub cpp: bool,
+    /// What it reads: it is skipped when none of these changed (VER-056).
+    pub inputs: Inputs,
     /// A failure fails the run. Only the LEON3 build is reported without gating (OI-08).
     pub gating: bool,
     /// The Bash script.
@@ -54,9 +203,15 @@ fn check(name: impl Into<String>, host: Host, cpp: bool, script: impl Into<Strin
         name: name.into(),
         host,
         cpp,
+        inputs: if cpp { CPP_INPUTS } else { RUST_INPUTS },
         gating: true,
         script: script.into(),
     }
+}
+
+/// `check` with other inputs than its kind's.
+fn reading(inputs: Inputs, check: Check) -> Check {
+    Check { inputs, ..check }
 }
 
 /// Every check, in the order they run.
@@ -71,8 +226,11 @@ fn rust() -> Vec<Check> {
     let mut out = vec![
         check("fmt", c, false, FMT),
         check("clippy", c, false, CLIPPY),
-        check("test", c, false, TEST),
-        check("test-macos", Host::MacOs, false, TEST),
+        reading(RUST_TEST_INPUTS, check("test", c, false, TEST)),
+        reading(
+            RUST_TEST_INPUTS,
+            check("test-macos", Host::MacOs, false, TEST),
+        ),
         // The alloc and std features are additive (GEN-006).
         check("features", c, false, "cargo xtask features\n"),
     ];
@@ -90,7 +248,7 @@ fn rust() -> Vec<Check> {
         ));
     }
     out.extend([
-        check("big-endian", c, false, BIG_ENDIAN),
+        reading(RUST_TEST_INPUTS, check("big-endian", c, false, BIG_ENDIAN)),
         check("layers", c, false, LAYERS),
         check("refapp", c, false, REFAPP),
     ]);
@@ -99,7 +257,8 @@ fn rust() -> Vec<Check> {
     }
     out.extend([
         check("coverage", c, false, "cargo xtask coverage\n"),
-        check("spec", c, false, SPEC),
+        // Spec lint, links, vectors, traces, and changelog: it reads every part of the tree.
+        reading(Inputs::Everything, check("spec", c, false, SPEC)),
         check("deny", c, false, DENY),
     ]);
     out
@@ -373,6 +532,119 @@ mod tests {
             .map(|c| c.name)
             .collect();
         assert_eq!(non_gating, ["cpp-leon3"]);
+    }
+
+    // req: VER-056
+    #[test]
+    fn inputs_of_every_check() {
+        for c in all() {
+            let lists: &[&PathList] = match c.inputs {
+                Inputs::Everything => {
+                    assert_eq!(c.name, "spec");
+                    continue;
+                }
+                Inputs::Paths(lists) => lists,
+            };
+            assert!(lists.contains(&&RUN), "{}", c.name);
+            assert!(!lists.contains(&&DOCS), "{}", c.name);
+            assert_eq!(lists.contains(&&CPP), c.cpp, "{}", c.name);
+            assert_eq!(lists.contains(&&RUST), !c.cpp, "{}", c.name);
+            let tests = matches!(c.name.as_str(), "test" | "test-macos" | "big-endian");
+            assert_eq!(lists.contains(&&XTASK_TESTS), tests, "{}", c.name);
+        }
+    }
+
+    // req: VER-056
+    #[test]
+    fn every_check_reads_the_image_inputs() {
+        for path in super::super::image::INPUTS {
+            assert!(RUN.contains(path), "{path}");
+        }
+    }
+
+    // req: VER-056
+    #[test]
+    fn documentation_is_an_input_of_spec_only() {
+        let docs = [
+            "docs/06-verification.md",
+            "docs/milestones/m2-plan.md",
+            "changelog.d/chore-x.md",
+            "README.md",
+            "AGENTS.md",
+            "CHANGELOG.md",
+            "specs/README.md",
+            "specs/manifest.tsv",
+        ];
+        for path in docs {
+            assert!(DOCS.contains(path), "{path}");
+            for c in all() {
+                assert_eq!(
+                    c.inputs.contains(path),
+                    c.name == "spec",
+                    "{path}: {}",
+                    c.name
+                );
+            }
+        }
+        let not_docs = [
+            "crates/aldis-spp/README.md",
+            "cpp/README.md",
+            "refapp/README.md",
+            "refapp/golden/CHANGES.md",
+            "test-vectors/README.md",
+            "exerciser/README.md",
+            "xtask/README.md",
+            "specs/fetch.sh",
+            ".github/pull_request_template.md",
+            "docs.md/x",
+        ];
+        for path in not_docs {
+            assert!(!DOCS.contains(path), "{path}");
+        }
+    }
+
+    /// `path` with `.` and `..` resolved lexically, relative to the repository root.
+    fn normalize(path: &std::path::Path) -> String {
+        let mut out = std::path::PathBuf::new();
+        for part in path.components() {
+            match part {
+                std::path::Component::ParentDir => {
+                    out.pop();
+                }
+                std::path::Component::CurDir => {}
+                other => out.push(other),
+            }
+        }
+        crate::repo::rel(&out)
+    }
+
+    // req: VER-056
+    #[test]
+    fn every_included_file_is_an_input_of_the_rust_checks() {
+        // A file that Rust code includes is read by every check that builds it.
+        let rust = Inputs::Paths(&[&RUN, &RUST]);
+        let macros = [
+            concat!("include_", "str!(\""),
+            concat!("include_", "bytes!(\""),
+        ];
+        let mut seen = 0;
+        for file in crate::repo::files(".", &["rs"]) {
+            if DOCS.contains(&crate::repo::rel(&file)) {
+                continue;
+            }
+            let text = std::fs::read_to_string(&file).unwrap_or_default();
+            for mac in macros {
+                for (at, _) in text.match_indices(mac) {
+                    let tail = &text[at + mac.len()..];
+                    let Some(end) = tail.find('"') else { continue };
+                    let dir = file.parent().unwrap_or(&file);
+                    let target = normalize(&dir.join(&tail[..end]));
+                    assert!(rust.contains(&target), "{}: {target}", file.display());
+                    seen += 1;
+                }
+            }
+        }
+        assert!(seen > 0, "no include_str! found");
     }
 
     // req: VER-010, GEN-021

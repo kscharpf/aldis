@@ -14,7 +14,7 @@ use super::{Options, git};
 use crate::repo;
 
 /// The files the image is built from, at their repository paths.
-const INPUTS: &[&str] = &[
+pub const INPUTS: &[&str] = &[
     ".github/actions/setup-cpp/setup_cpp.py",
     "cpp/toolchains.lock",
     "rust-toolchain.toml",
@@ -171,8 +171,13 @@ impl Engine {
             "--out".to_owned(),
             "/out".to_owned(),
         ];
-        if opts.skip_cpp {
-            args.push("--skip-cpp".to_owned());
+        if let (false, Some(base)) = (opts.skip.is_empty(), &opts.base) {
+            args.extend([
+                "--skip".to_owned(),
+                opts.skip.join(","),
+                "--base".to_owned(),
+                base.clone(),
+            ]);
         }
         if let Some(only) = &opts.only {
             args.extend(["--only".to_owned(), only.join(",")]);
