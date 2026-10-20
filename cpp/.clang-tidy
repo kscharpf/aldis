@@ -15,7 +15,9 @@ Checks: >
   performance-*,
   portability-*,
   readability-*,
-  -modernize-use-trailing-return-type
+  -modernize-use-trailing-return-type,
+  -readability-identifier-length,
+  -bugprone-easily-swappable-parameters
 WarningsAsErrors: '*'
 HeaderFilterRegex: '.*/cpp/(include|tests|vectors|exerciser)/.*'
 SystemHeaders: false

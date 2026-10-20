@@ -3,7 +3,7 @@
 **Goal:** a C++ project, CI, and verification tooling for the native C++ implementation, plus a complete, verified `aldis_core` that matches `aldis-core` on the shared vectors. Every later C++ milestone builds on this.
 **Roadmap entry:** [08-roadmap.md](../08-roadmap.md) §2 (track C) · **Builds on:** [M0](m0-foundations.md) (`aldis-core`, `v0.1.0-m0`) · **Profile:** [C++ profile](../profiles/cpp.md) · **Release:** none (track C milestones do not cut releases, roadmap §5)
 
-**Status: in progress (2026-10-19).** Entry gate: none (roadmap §2). Decisions D1–D19 accepted by the maintainer 2026-10-19 (D19 with OI-28). WP-0 (toolchains), WP-1 (CMake project), and WP-2 (xtask) are in review.
+**Status: in progress (2026-10-19).** Entry gate: none (roadmap §2). Decisions D1–D19 accepted by the maintainer 2026-10-19 (D19 with OI-28). WP-0 to WP-2 merged (#32, #34, #36); WP-3 (`aldis_core`) is in review.
 
 ## 1. Starting point
 
@@ -200,4 +200,22 @@ Roadmap §6.5: divergences from the Rust crates found during C0 are listed here 
 
 | Item | Status |
 |---|---|
-| *(none yet)* | |
+| *(no behaviour divergence found)* | |
+
+API differences from `aldis-core` (no behaviour change), recorded so that the C++ API can be reviewed against the Rust one (WP-3, port of `0655f2a`):
+
+| `aldis-core` | `aldis_core` | Reason |
+|---|---|---|
+| `Ident::new` (`Option`) and `TryFrom` (`Result`) | `Ident::make` (`Result`) only; `get()` is `value()` | D8, cpp.md §3 |
+| `#[derive(Ord)]` on identifiers | Equality only | `<compare>` is not on the CPP-002 allow-list |
+| `FieldId(&'static str)` | `FieldId` holds a `std::span<const char>` of a string literal (pointer and length, like `&str`), built by a `consteval` constructor and compared by content, bounded by 32 characters | D8; a length makes the comparison need no unchecked access |
+| `impl Display for Error` | None | No formatting or I/O in Layers 0–2; callers use `error::name()` and the accessors |
+| `ErrorDetail`, `Continuity` (enums with data) | Classes with a `kind()` and `std::optional` accessors | No accessor may have UB in the wrong state (CPP-021) |
+| `anomaly_flags!` macro; tests of deliberately broken `Anomaly` impls | `AnomalyTraits<A>` table checked by the `Anomaly` concept; broken tables are compile-time negative tests | WP-3 table, row 6 |
+| `Range<usize>` | `OctetRange` (start ≤ end by construction), defined in `bytes.hpp` beside `bytes::subspan`, not in `layout.hpp` | `security.hpp` and `layout.hpp` both need it, and `layout.hpp` needs `SecurityLayout`, so `layout.hpp` cannot be below `security.hpp` |
+| `SecuredFields::from_layout(&layout)` | `FrameLayout::secured_fields()` | Same include order: `security.hpp` cannot see `FrameLayout` |
+| `crc16_table` and `crc16_update_table` behind feature `crc-table` | Always declared (a `constexpr` table is emitted only if used); `ALDIS_CRC_TABLE` selects the form `crc16` uses | Both forms stay testable in every build (CMN-004) |
+| `FixedQueue::push` returns the item when full | `WouldBlock` | D11 |
+| `FixedPatternSecurity::protect` may fill the header before failing on the trailer | Checks both ranges first, then writes | Test hook only; no write on failure (GEN-042) |
+| `bits::get`/`set` use a 128-bit accumulator | Each octet contributes only its field bits | No 128-bit integer in C++20 |
+| — | `Result::value_or`, `bytes::*`, `ByteReader`/`ByteWriter`, `arith::*` | C++-only modules (CPP-031, CPP-032) |

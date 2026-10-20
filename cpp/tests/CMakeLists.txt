@@ -18,8 +18,19 @@ endfunction()
 
 aldis_add_test(aldis_core_tests
   SOURCES
+    core/api_test.cpp
+    core/arith_test.cpp
+    core/bits_test.cpp
+    core/bytes_test.cpp
     core/config_test.cpp
-  LIBS aldis::core)
+    core/container_test.cpp
+    core/crc_oid_test.cpp
+    core/error_test.cpp
+    core/ids_time_counter_test.cpp
+    core/mode_anomaly_test.cpp
+    core/security_layout_test.cpp
+  LIBS aldis::core aldis::core_test_hooks)
+target_include_directories(aldis_core_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
 
 # CPP-001, OI-28: the headers reject a standard older than C++20 at compile time.
 add_test(NAME aldis_core_rejects_cxx17

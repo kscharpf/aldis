@@ -75,10 +75,32 @@ endfunction()
 
 aldis_add_module(core
   HEADERS
+    include/aldis/core/anomaly.hpp
+    include/aldis/core/arith.hpp
+    include/aldis/core/bits.hpp
+    include/aldis/core/bytes.hpp
     include/aldis/core/config.hpp
-    include/aldis/core/core.hpp)
+    include/aldis/core/container.hpp
+    include/aldis/core/core.hpp
+    include/aldis/core/counter.hpp
+    include/aldis/core/crc.hpp
+    include/aldis/core/error.hpp
+    include/aldis/core/ids.hpp
+    include/aldis/core/layout.hpp
+    include/aldis/core/mode.hpp
+    include/aldis/core/oid.hpp
+    include/aldis/core/security.hpp
+    include/aldis/core/time.hpp)
 if(ALDIS_CRC_TABLE)
   target_compile_definitions(aldis_core INTERFACE ALDIS_CRC_TABLE)
+endif()
+
+# Test-only security hook, the counterpart of the test-hooks feature (API-073). Never installed.
+if(ALDIS_TEST_HOOKS OR ALDIS_BUILD_TESTS)
+  add_library(aldis_core_test_hooks INTERFACE)
+  add_library(aldis::core_test_hooks ALIAS aldis_core_test_hooks)
+  target_include_directories(aldis_core_test_hooks INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}/testing/include")
+  target_link_libraries(aldis_core_test_hooks INTERFACE aldis_core)
 endif()
 
 # --- Tests ---

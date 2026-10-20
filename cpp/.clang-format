@@ -8,3 +8,5 @@ AccessModifierOffset: -4
 PointerAlignment: Left
 DerivePointerAlignment: false
 InsertBraces: true
+# Keep suppression comments on one line, next to the code they apply to (CPP-042).
+CommentPragmas: '^ (IWYU pragma:|NOLINT)'
