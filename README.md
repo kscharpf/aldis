@@ -2,6 +2,16 @@
 
 [![CI](https://github.com/kscharpf/aldis/actions/workflows/ci.yml/badge.svg)](https://github.com/kscharpf/aldis/actions/workflows/ci.yml)
 
+> [!WARNING]
+> **Pre-release, under active development.** Aldis is not ready for use:
+> - Most of v1 is still to be built (see **Status** below).
+> - It has not been qualified or certified for flight or any other mission-critical use.
+> - Its API may change in any 0.x release (Semantic Versioning, GEN-080); the [changelog](CHANGELOG.md) lists the breaking changes.
+> - The crates are not published to crates.io.
+> - Outside contributions are not being accepted yet.
+>
+> The repository is public so that the free tools it relies on for open-source projects can be used (VER-055, OI-22).
+
 Libraries that add CCSDS protocol support to spacecraft flight software and ground systems. The reference implementation is in Rust (`no_std`, no heap, panic-free), with a C ABI for C and C++ applications. Other languages are planned on top of that ABI.
 
 **Status:** Milestone 1 (`v0.2.0-m1`) complete: the specification, verification tooling, and `aldis-core` (Layer 0, Milestone 0, `v0.1.0-m0`), and the Layer 1 codecs for time codes, Space Packets, and Encapsulation Packets (`aldis-time`, `aldis-spp`, `aldis-epp`). The frame codecs (the rest of Layer 1) and Layers 2–3 are skeletons pending Milestones 2–6. The native C++ foundations (C0) and the reference application scenario (A0) are in progress ([roadmap](docs/08-roadmap.md)).
