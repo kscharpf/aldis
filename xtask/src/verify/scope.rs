@@ -35,7 +35,7 @@ const BRANCH_DEPTH: usize = 20;
 const ORIGIN_DEPTH: usize = 20;
 
 /// Whether `s` is a full object name, never an option or a revision expression.
-fn is_hash(s: &str) -> bool {
+pub(super) fn is_hash(s: &str) -> bool {
     matches!(s.len(), 40 | 64) && s.bytes().all(|b| b.is_ascii_hexdigit())
 }
 

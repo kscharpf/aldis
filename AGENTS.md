@@ -38,7 +38,7 @@ cargo xtask verify --publish        # every check, in the pinned image; then the
 cargo xtask verify check            # re-check the published record of HEAD
 ```
 
-If you cannot run it locally, start the same run on a GitHub-hosted runner instead (VER-060). It takes 20 to 30 minutes, publishes the same record and status, and names the run they came from:
+If you cannot run it locally, start the same run on a GitHub-hosted runner instead (VER-060). It takes 20 to 30 minutes when it has to build the image, and less when a workflow has already pushed the image for the same pins to `ghcr.io/kscharpf/aldis-verify` (VER-060). It publishes the same record and status, and names the run they came from:
 
 ```sh
 git push

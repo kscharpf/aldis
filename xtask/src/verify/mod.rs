@@ -54,7 +54,11 @@ Verification run and merge gate (docs/06-verification.md §7):
   verify check [<rev>]         check the published record of <rev> against the merge gate,
                                re-deriving its skipped and reused checks from git and the
                                sources' published records
-  verify image                 build the verification image for HEAD
+  verify image [--push <repository>]
+                               build the verification image for HEAD, or pull it from the
+                               registry repository named in ALDIS_VERIFY_PULL when its labels
+                               hold (VER-060); --push then pushes an image built here to
+                               <repository>, from GitHub Actions only
   verify list                  list the checks and their inputs, and which of them HEAD needs
   verify scope [<rev>] [--main <rev>]
                                which checks <rev> (default HEAD) needs, against origin/main or
@@ -82,11 +86,18 @@ pub fn run(args: &[&str]) -> Result<usize, String> {
         ["publish", rev] => publish::publish(&git(&["rev-parse", rev])?),
         ["check"] => publish::check("HEAD"),
         ["check", rev] => publish::check(rev),
-        ["image"] => {
+        ["image", rest @ ..] => {
             let engine = image::Engine::detect()?;
             let commit = git(&["rev-parse", "HEAD"])?;
-            let (tag, id) = engine.ensure_image(&commit)?;
-            println!("verify: image {tag} ({id})");
+            let image = match rest {
+                [] => engine.ensure_image(&commit)?,
+                ["--push", repository] => engine.push(&commit, repository)?,
+                _ => return Err(format!("unknown arguments {rest:?}\n\n{HELP}")),
+            };
+            println!(
+                "verify: image {} ({}), {}",
+                image.tag, image.id, image.source
+            );
             Ok(0)
         }
         ["list" | "scope"] => show("HEAD", scope::Main::Origin),
@@ -403,11 +414,12 @@ fn verify(mut opts: Options, force: scope::Force, publish: bool) -> Result<usize
         .collect();
     opts.base.clone_from(&plan.base);
     let engine = image::Engine::detect()?;
-    let (tag, id) = engine.ensure_image(&commit)?;
+    let image = engine.ensure_image(&commit)?;
+    let tag = image.tag.as_str();
     let out = out_dir(&commit)?;
     let started = record::utc_now();
     println!("verify: {commit} in {tag}");
-    let container = engine.run_checks(&tag, &commit, &out, &opts)?;
+    let container = engine.run_checks(tag, &commit, &out, &opts)?;
     let (host_results, host_tools) = host_checks(&commit, &out, &opts)?;
     let mut tools = container.get("tools").cloned().unwrap_or_else(|| json!({}));
     if let (Some(t), Value::Object(h)) = (tools.as_object_mut(), host_tools) {
@@ -438,7 +450,7 @@ fn verify(mut opts: Options, force: scope::Force, publish: bool) -> Result<usize
             "container_arch": container.get("arch"),
             "engine": engine.version(),
         },
-        "image": {"tag": tag, "id": id},
+        "image": image.to_json(),
         "tools": tools,
         "packages": container.get("packages"),
         "scope": scope::to_json(&plan, &all),

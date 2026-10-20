@@ -8,7 +8,14 @@
   `source`, the commit and record SHA-256 of the run in which it actually passed, and `verify
   check` and `--publish` re-derive every skip and reuse from git and that record (VER-058).
 - Records are now format `aldis-verify-record/3` (VER-057). Formats 1 and 2 are still read, and
-  a tool that knows only those refuses format 3.
+  a tool that knows only those refuses format 3. The record's `image` names the input hash and
+  where the image came from: `built`, or `pulled` with its reference, digest, and revision.
+- The `verify` workflow (VER-060) pulls the verification image from
+  `ghcr.io/kscharpf/aldis-verify`, tagged by the hash of its inputs and architecture, instead of
+  building it, when the image's labels name the same input hash and a commit whose image inputs
+  hash to it; otherwise it builds the image and pushes it. The nightly run builds the image and
+  pushes it for `main`. `cargo xtask verify image --push <repository>` pushes from GitHub Actions
+  only; `ALDIS_VERIFY_PULL=<repository>` opts a local run in to pulling.
 
 ### Fixed
 - `cargo xtask verify` no longer skips a check because the record covering the base skipped it
