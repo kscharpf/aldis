@@ -6,6 +6,7 @@ mod binaries;
 mod changelog;
 mod coverage;
 mod cpp;
+mod features;
 mod layers;
 mod links;
 mod md;
@@ -34,6 +35,9 @@ commands:
                                forbids unsafe code (APP-100, APP-105)
   symbols                      no frame-protocol code in a build of aldis-spp alone (VER-031)
   stack-sizes <target>         per-function stack usage of the exerciser (VER-011; tooling nightly)
+  features                     `alloc` and `std` are additive: no API gated on them, and every
+                               test passes alike without them, with `alloc`, and with `std`
+                               (GEN-006)
   coverage                     100 % region/function/line/branch gate for aldis-core (VER-024;
                                tooling nightly + cargo-llvm-cov >= 0.9)
   changelog check              every fragment in changelog.d/ is well formed (GEN-080)
@@ -68,6 +72,7 @@ fn run(args: &[&str]) -> Result<usize, String> {
         ["symbols"] => binaries::symbols(),
         ["stack-sizes", target] => binaries::stack_sizes(target),
         ["coverage"] => coverage::run(),
+        ["features"] => features::check(),
         ["cpp", rest @ ..] => cpp::run(rest),
         ["verify", rest @ ..] => verify::run(rest),
         ["changelog", "check"] => changelog::check(),
