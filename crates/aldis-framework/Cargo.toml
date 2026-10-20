@@ -1,6 +1,7 @@
 [package]
 name = "aldis-framework"
 description = "Optional framework: transport/clock traits and protocol stacks driving the engines"
+readme = "README.md"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
