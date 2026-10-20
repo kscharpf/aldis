@@ -5,7 +5,7 @@ MEMORY
   CODE : ORIGIN = 0x00000000, LENGTH = 4M
   RAM  : ORIGIN = 0x20000000, LENGTH = 256K
 }
-ENTRY(_start)
+ENTRY(aldis_exerciser_main)
 _stack_top = ORIGIN(RAM) + LENGTH(RAM);
 
 SECTIONS

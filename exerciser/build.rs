@@ -232,17 +232,19 @@ fn main() {
     let out_dir = PathBuf::from(std::env::var("OUT_DIR").unwrap_or_default());
     std::fs::write(out_dir.join("vectors.rs"), out).unwrap_or_else(|e| panic!("vectors.rs: {e}"));
 
+    // One start-up, semihosting trap, and linker script per architecture (M1 D6).
     let target = std::env::var("TARGET").unwrap_or_default();
-    let cortex_m = target.starts_with("thumbv");
-    println!("cargo::rustc-check-cfg=cfg(cortex_m)");
-    if cortex_m {
-        println!("cargo::rustc-cfg=cortex_m");
-    }
-    let script = if cortex_m {
-        "link-cortex-m.x"
+    println!("cargo::rustc-check-cfg=cfg(cortex_m, cortex_r, riscv)");
+    let (cfg, script) = if target.starts_with("thumbv") {
+        ("cortex_m", "link-cortex-m.x")
+    } else if target.starts_with("armv7r") {
+        ("cortex_r", "link-cortex-r.x")
+    } else if target.starts_with("riscv32") {
+        ("riscv", "link-riscv.x")
     } else {
-        "link-generic.x"
+        panic!("{target}: no start-up code for this target (exerciser/src/target.rs)")
     };
+    println!("cargo::rustc-cfg={cfg}");
     println!("cargo:rerun-if-changed={script}");
     println!("cargo:rustc-link-arg=-T{}", manifest.join(script).display());
 }

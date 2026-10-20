@@ -5,8 +5,6 @@
 //! Each check is a Bash script run with `-euo pipefail` from the root of the checkout, with
 //! `RUNNER_TEMP` set to an empty directory of its own.
 
-use std::fmt::Write as _;
-
 /// Bare-metal Rust targets of the matrix (docs/06-verification.md §4).
 const RUST_BARE_METAL: &[&str] = &[
     "thumbv7em-none-eabihf",
@@ -107,8 +105,11 @@ fn rust() -> Vec<Check> {
     out
 }
 
+/// The exerciser check of one bare-metal target: the panic-freedom link check, its canary, and
+/// the vector run under QEMU (VER-010, M1 D6). The QEMU command of each target is its runner in
+/// `exerciser/.cargo/config.toml`.
 fn exerciser(target: &str) -> String {
-    let mut s = format!(
+    format!(
         "cd exerciser\n\
          # Panic-freedom link check (VER-010).\n\
          cargo build --release --locked --target {target}\n\
@@ -120,17 +121,12 @@ fn exerciser(target: &str) -> String {
          \x20 exit 1\n\
          fi\n\
          grep -q aldis_panic_is_unreachable \"$RUNNER_TEMP/canary.log\"\n\
-         echo 'canary failed to link, as it should'\n"
-    );
-    if target == "thumbv7em-none-eabihf" {
-        // A link-only check still gates if QEMU misbehaves (m0 plan risk table); one retry.
-        let _ = write!(
-            s,
-            "timeout 120 cargo run --release --locked --target {target} \\\n\
-             \x20 || timeout 120 cargo run --release --locked --target {target}\n"
-        );
-    }
-    s
+         echo 'canary failed to link, as it should'\n\
+         # Every vector case on the target under QEMU, through semihosting (M1 D6). QEMU can\n\
+         # misbehave on a busy host (m0 plan risk table): one retry, each run time-limited.\n\
+         timeout 120 cargo run --release --locked --target {target} \\\n\
+         \x20 || timeout 120 cargo run --release --locked --target {target}\n"
+    )
 }
 
 fn cpp() -> Vec<Check> {
@@ -377,5 +373,22 @@ mod tests {
             .map(|c| c.name)
             .collect();
         assert_eq!(non_gating, ["cpp-leon3"]);
+    }
+
+    // req: VER-010, GEN-021
+    #[test]
+    fn every_exerciser_check_links_the_canary_and_runs_under_qemu() {
+        for target in RUST_BARE_METAL {
+            let name = format!("exerciser-{target}");
+            let check = all().into_iter().find(|c| c.name == name);
+            let script = check.map(|c| c.script).unwrap_or_default();
+            assert!(script.contains("--features inject-panic"), "{name}");
+            assert!(
+                script.contains(&format!(
+                    "timeout 120 cargo run --release --locked --target {target}"
+                )),
+                "{name}"
+            );
+        }
     }
 }

@@ -177,11 +177,15 @@ jobs:
           grep -q aldis_panic_is_unreachable canary.log
           echo "canary failed to link, as it should"
       - name: Install QEMU
-        if: matrix.target == 'thumbv7em-none-eabihf'
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends qemu-system-arm
-      - name: Vectors on Cortex-M4 (QEMU mps2-an386)
-        if: matrix.target == 'thumbv7em-none-eabihf'
-        # A link-only check still gates if QEMU misbehaves (m0 plan risk table); one retry.
+        # Ubuntu 24.04 packages: qemu-system-arm (Cortex-M, Cortex-R), qemu-system-misc (RISC-V).
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends qemu-system-arm qemu-system-misc
+          qemu-system-arm --version
+      - name: Vectors on target (QEMU, M1 D6)
+        # The QEMU command of each target is its runner in exerciser/.cargo/config.toml:
+        # mps2-an386 (Cortex-M4), none + cortex-r5f (Cortex-R5F), virt (RV32).
+        # QEMU can misbehave on a busy runner (m0 plan risk table); one retry.
         run: |
           timeout 120 cargo run --release --locked --target ${{ matrix.target }} \
             || timeout 120 cargo run --release --locked --target ${{ matrix.target }}
