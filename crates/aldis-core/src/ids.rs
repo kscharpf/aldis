@@ -348,13 +348,17 @@ mod tests {
             ErrorKind::OutOfRange
         );
         assert_eq!(SeqCount::try_from(1).map(SeqCount::get), Ok(1));
+        assert_eq!(s_max.get(), SeqCount::MAX);
         let f_max = FrameSeqNum::new(FrameSeqNum::MAX);
         assert_eq!(f_max.get(), 255);
         assert_eq!(f_max.next(), FrameSeqNum::from(0));
         assert_eq!(u8::from(f_max.next()), 0);
+        assert_eq!(FrameSeqNum::from(200).get(), 200);
+        assert_eq!(u8::from(f_max), 255);
         assert_eq!(f_max.classify(FrameSeqNum::new(0)), Continuity::InSequence);
         assert_eq!(ModCounter::from(f_max).value(), 255);
         assert_eq!(PacketVersion::SPACE_PACKET.get(), 0);
+        assert_eq!(PacketVersion::ENCAPSULATION.get(), 7);
         assert_eq!(u8::from(PacketVersion::ENCAPSULATION), 7);
         assert!(PacketVersion::new(8).is_none());
         assert_eq!(
