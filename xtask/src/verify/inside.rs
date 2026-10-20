@@ -41,6 +41,10 @@ fn tool_commands() -> Result<Vec<(&'static str, Vec<String>)>, String> {
         ("cmake", cmd(&["cmake", "--version"])),
         ("ninja", cmd(&["ninja", "--version"])),
         ("qemu-system-arm", cmd(&["qemu-system-arm", "--version"])),
+        (
+            "qemu-system-riscv32",
+            cmd(&["qemu-system-riscv32", "--version"]),
+        ),
         ("qemu-s390x", cmd(&["qemu-s390x", "--version"])),
         ("python3", cmd(&["python3", "--version"])),
         ("git", cmd(&["git", "--version"])),

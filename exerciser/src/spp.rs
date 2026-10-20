@@ -1,4 +1,5 @@
-//! Calls every public `aldis-spp` API (VER-010, M1 D7). Inputs pass through `black_box`.
+//! Calls every public `aldis-spp` API (VER-010, M1 D7) and runs every `test-vectors/spp/` case
+//! (`vector`). Inputs pass through `black_box`.
 
 use core::hint::black_box as bb;
 use core::num::NonZeroUsize;
@@ -12,9 +13,13 @@ use aldis_spp::{
     SequenceCounter, SequenceFlags, SequenceTracker, SpacePacket, SpacePacketWriter, SppAnomaly,
     SppConfig, Status, TimeHeaderLayout, Tracked, encode,
 };
-use aldis_time::{CcsFormat, CcsVariation, CucEpoch, CucFormat, TimeFormat};
+use aldis_time::{
+    CcsFormat, CcsVariation, CdsDayLen, CdsEpoch, CdsFormat, CdsSubMs, CucEpoch, CucFormat,
+    TimeFormat,
+};
 
 use crate::exercise::Tally;
+use crate::vectors::{Case, Fail, Map, Out, Params as _, Run, Scratch, Val, copy, fresh, need};
 
 fn fields(apid: u16, count: u16) -> Option<PacketFields> {
     Some(PacketFields {
@@ -290,4 +295,369 @@ pub fn run(t: &mut Tally) {
     sequences(t);
     segments(t);
     time_header(t);
+}
+
+/// A `usize` as reported by the host suites.
+fn wide(n: usize) -> u64 {
+    u64::try_from(n).unwrap_or(u64::MAX)
+}
+
+fn spp_config(case: &Case) -> Result<SppConfig, Fail> {
+    if case.config.is_empty() {
+        return Ok(SppConfig::DEFAULT);
+    }
+    Ok(SppConfig::new(bb(case.config.size("max_packet_len")?))?)
+}
+
+fn packet_type(p: Map) -> Result<PacketType, Fail> {
+    Ok(if p.num::<u64>("packet_type")? == 0 {
+        PacketType::Telemetry
+    } else {
+        PacketType::Telecommand
+    })
+}
+
+fn apid_of(v: Option<u64>) -> Result<Apid, Fail> {
+    need(v.and_then(|n| Apid::new(u16::try_from(n).ok()?)))
+}
+
+fn count_of(v: Option<u64>) -> Result<SeqCount, Fail> {
+    need(v.and_then(|n| SeqCount::new(u16::try_from(n).ok()?)))
+}
+
+/// The sender-chosen fields of an encode case, parsed from raw values (RS-020).
+fn packet_fields(p: Map) -> Result<PacketFields, Fail> {
+    Ok(PacketFields {
+        packet_type: packet_type(p)?,
+        apid: apid_of(p.val("apid")?.num())?,
+        sequence_flags: SequenceFlags::from_bits(bb(p.num("sequence_flags")?)),
+        sequence_count: count_of(p.val("sequence_count")?.num())?,
+    })
+}
+
+fn decoded(o: &mut Out, p: &SpacePacket<'_>) {
+    o.num(
+        "packet_type",
+        match p.packet_type() {
+            PacketType::Telemetry => 0_u8,
+            PacketType::Telecommand => 1,
+        },
+    );
+    o.num("secondary_header_flag", u8::from(p.has_secondary_header()));
+    o.num("apid", p.apid().get());
+    o.flag("idle", p.is_idle());
+    o.num("sequence_flags", p.sequence_flags().bits());
+    o.num("sequence_count", p.sequence_count().get());
+    o.opt_num("packet_name", p.packet_name().map(SeqCount::get));
+    o.num("data_len", wide(p.header().data_len()));
+    o.num("packet_len", wide(p.header().packet_len()));
+    o.bytes("data_hex", p.data_field());
+    o.num("consumed", wide(p.len()));
+    o.names("anomalies", p.anomalies().iter());
+}
+
+fn encode_case(case: &Case, out: &mut Out, scratch: &mut Scratch) -> Run {
+    let p = case.params;
+    let cfg = spp_config(case)?;
+    let (sec, user) = (p.bytes("secondary_header_hex")?, p.bytes("user_data_hex")?);
+    let packet = cfg.packet(packet_fields(p)?, bb(sec), bb(user))?;
+    let n = encode(&packet, bb(fresh(&mut scratch.a, packet.packet_len())?))?;
+    // The two-phase writer must produce the same octets (API-020).
+    let mut w = SpacePacketWriter::begin(
+        bb(fresh(&mut scratch.b, n)?),
+        &cfg,
+        packet_fields(p)?,
+        sec.len(),
+        user.len(),
+    )?;
+    if !copy(w.secondary_header_mut(), sec)
+        || !copy(w.user_data_mut(), user)
+        || w.finish(bb(user.len())) != Ok(n)
+    {
+        return Err(Fail::Vector);
+    }
+    let (written, two) = (need(scratch.a.get(..n))?, need(scratch.b.get(..n))?);
+    if written != two {
+        return Err(Fail::Vector);
+    }
+    out.bytes("output_hex", written);
+    Ok(())
+}
+
+fn decode_stream(case: &Case, o: &mut Out) {
+    let mode = mode(case);
+    let (mut at, mut stop) = (0_usize, None);
+    let mut packets = o.list("packets");
+    while let Some(rest) = case.input.get(at..).filter(|r| !r.is_empty()) {
+        match SpacePacket::decode(bb(rest), mode) {
+            Ok(p) => {
+                packets.obj(|x| {
+                    x.num("apid", p.apid().get());
+                    x.num("sequence_count", p.sequence_count().get());
+                    x.num("consumed", wide(p.len()));
+                    x.names("anomalies", p.anomalies().iter());
+                });
+                at = at.saturating_add(p.len());
+            }
+            Err(e) => {
+                stop = Some(e.kind().name());
+                break;
+            }
+        }
+    }
+    o.end(&packets);
+    o.opt_text("stop_error", stop);
+    o.num("offset", wide(at));
+}
+
+fn segment_case(case: &Case, o: &mut Out, s: &mut Scratch) -> Run {
+    let p = case.params;
+    let (sdu, sec) = (p.bytes("sdu_hex")?, p.bytes("secondary_header_hex")?);
+    let mut seg = Segmenter::new(
+        &spp_config(case)?,
+        packet_type(p)?,
+        apid_of(p.val("apid")?.num())?,
+        bb(sdu),
+        bb(p.size("max_user_len")?),
+    )?;
+    let mut counter = SequenceCounter::new(count_of(p.val("sequence_count")?.num())?);
+    let mut packets = o.list("packets_hex");
+    while let Some(n) = seg.next_packet(&mut counter, bb(sec), bb(&mut s.a))? {
+        packets.bytes(need(s.a.get(..n))?);
+        if (seg.remaining() == 0) != seg.is_done() {
+            return Err(Fail::Vector);
+        }
+    }
+    o.end(&packets);
+    if !seg.is_done() {
+        return Err(Fail::Vector);
+    }
+    o.num("next_count", counter.peek().get());
+    Ok(())
+}
+
+const fn discard_name(d: Discard) -> Option<&'static str> {
+    Some(match d {
+        Discard::Gap => "Gap",
+        Discard::Restarted => "Restarted",
+        Discard::Interrupted => "Interrupted",
+        Discard::Orphan => "Orphan",
+        Discard::Overflow => "Overflow",
+        _ => return None,
+    })
+}
+
+fn reassemble_case(case: &Case, o: &mut Out, s: &mut Scratch) -> Run {
+    let p = case.params;
+    let mut ra = Reassembler::new(
+        apid_of(p.val("apid")?.num())?,
+        bb(fresh(&mut s.a, p.size("buffer_len")?)?),
+    );
+    let mut results = o.list("results");
+    for item in p.list("packets_hex")? {
+        let bytes = need(item.bytes())?;
+        let packet =
+            SpacePacket::decode(bb(bytes), DecodeMode::Strict).map_err(|_| Fail::Vector)?;
+        let pushed = ra.push(&packet.header(), packet.data_field());
+        let mut consistent = true;
+        results.obj(|x| match pushed {
+            Err(e) => x.text("error", e.kind().name()),
+            Ok(Outcome { discarded, status }) => {
+                consistent &= discarded.is_none_or(|d| discard_name(d).is_some());
+                x.opt_text("discarded", discarded.and_then(discard_name));
+                match status {
+                    Status::InProgress => x.text("status", "InProgress"),
+                    Status::Complete(n) => {
+                        consistent &= ra.sdu().len() == n;
+                        x.text("status", "Complete");
+                        x.bytes("sdu_hex", ra.sdu());
+                    }
+                    Status::Dropped(why) => {
+                        consistent &= ra.sdu().is_empty() && discard_name(why).is_some();
+                        x.text("status", "Dropped");
+                        x.opt_text("reason", discard_name(why));
+                    }
+                }
+            }
+        });
+        if !consistent {
+            return Err(Fail::Vector);
+        }
+    }
+    o.end(&results);
+    Ok(())
+}
+
+fn continuity(x: &mut Out, t: Tracked) {
+    let name = match t {
+        Tracked::First => "First",
+        Tracked::Next(Continuity::InSequence) => "InSequence",
+        Tracked::Next(Continuity::Repeat) => "Repeat",
+        Tracked::Next(Continuity::Backwards) => "Backwards",
+        Tracked::Next(Continuity::Gap { missing }) => {
+            x.num("missing", missing);
+            "Gap"
+        }
+    };
+    x.text("continuity", name);
+}
+
+fn track_events<const N: usize>(events: &'static [Val], o: &mut Out) -> Run {
+    let mut tracker = SequenceTracker::<N>::new();
+    let mut results = o.list("results");
+    for e in events {
+        let e = need(e.obj())?;
+        let apid = apid_of(e.val("apid")?.num())?;
+        match e.text("op")? {
+            "track" => {
+                let outcome = tracker.track(bb(apid), count_of(e.val("count")?.num())?);
+                results.obj(|x| match outcome {
+                    Ok(t) => continuity(x, t),
+                    Err(err) => x.text("error", err.kind().name()),
+                });
+            }
+            "forget" => {
+                let forgot = tracker.forget(bb(apid));
+                results.obj(|x| x.flag("forgot", forgot));
+            }
+            _ => return Err(Fail::Vector),
+        }
+    }
+    o.end(&results);
+    Ok(())
+}
+
+fn time_format(f: Map) -> Result<TimeFormat, Fail> {
+    Ok(match f.text("code")? {
+        "cuc" => TimeFormat::Cuc(
+            CucFormat::new(
+                if f.flag("level2")? {
+                    CucEpoch::Agency
+                } else {
+                    CucEpoch::Tai1958
+                },
+                f.num("coarse")?,
+                f.num("fine")?,
+            )
+            .map_err(|_| Fail::Vector)?,
+        ),
+        "cds" => TimeFormat::Cds(CdsFormat::new(
+            if f.flag("agency_epoch")? {
+                CdsEpoch::Agency
+            } else {
+                CdsEpoch::Ccsds1958
+            },
+            if f.flag("day24")? {
+                CdsDayLen::Bits24
+            } else {
+                CdsDayLen::Bits16
+            },
+            match f.num::<u8>("subms")? {
+                0 => CdsSubMs::None,
+                1 => CdsSubMs::Micros,
+                _ => CdsSubMs::Picos,
+            },
+        )),
+        "ccs" => TimeFormat::Ccs(
+            CcsFormat::new(CcsVariation::MonthDay, f.num("subsecond_octets")?)
+                .map_err(|_| Fail::Vector)?,
+        ),
+        _ => return Err(Fail::Vector),
+    })
+}
+
+fn split_time_case(case: &Case, out: &mut Out) -> Run {
+    let l = case.params.obj("layout")?;
+    let layout = TimeHeaderLayout::new(
+        time_format(l.obj("format")?)?,
+        bb(l.flag("pfield")?),
+        bb(l.size("ancillary_len")?),
+    )?;
+    let packet = SpacePacket::decode(bb(case.input), mode(case))?;
+    let split = packet.split(bb(&SecondaryHeaderLayout::Time(layout)))?;
+    let t = need(split.time_code())?;
+    let time_code = need(split.secondary_header().get(..t.len()))?;
+    // The decoded code re-encodes to the received octets (API-020).
+    let mut buf = [0_u8; 32];
+    let n = t
+        .code()
+        .encode(t.pfield().is_some(), bb(&mut buf))
+        .map_err(|_| Fail::Vector)?;
+    if buf.get(..n) != Some(time_code) {
+        return Err(Fail::Vector);
+    }
+    out.bytes("secondary_header_hex", split.secondary_header());
+    out.bytes("user_data_hex", split.user_data());
+    out.bytes("time_code_hex", time_code);
+    out.bytes("ancillary_hex", split.ancillary_data());
+    Ok(())
+}
+
+const fn mode(case: &Case) -> DecodeMode {
+    if case.lenient {
+        DecodeMode::Lenient
+    } else {
+        DecodeMode::Strict
+    }
+}
+
+/// One `test-vectors/spp/` case, as `crates/aldis-spp/tests/vectors.rs` runs it.
+pub fn vector(case: &Case, o: &mut Out, s: &mut Scratch) -> Run {
+    let p = case.params;
+    match case.op {
+        "decode" => decoded(o, &SpacePacket::decode(bb(case.input), bb(mode(case)))?),
+        "peek_length" => o.num("len", wide(SpacePacket::peek_length(bb(case.input))?)),
+        "encode" => encode_case(case, o, s)?,
+        "idle" => {
+            let idle = IdlePacket::new(&spp_config(case)?, bb(p.size("total_len")?))?
+                .with_sequence_count(count_of(p.val("sequence_count")?.num())?)
+                .with_pattern(bb(p.bytes("pattern_hex")?));
+            let n = idle.encode(bb(fresh(&mut s.a, idle.total_len())?))?;
+            o.bytes("output_hex", need(s.a.get(..n))?);
+        }
+        "octet_string" => {
+            let octets = p.bytes("octets_hex")?;
+            let counter = SequenceCounter::new(count_of(p.val("sequence_count")?.num())?);
+            let mut enc = OctetStringEncoder::new(
+                &spp_config(case)?,
+                packet_type(p)?,
+                apid_of(p.val("apid")?.num())?,
+                counter,
+            )?;
+            let len = need(octets.len().checked_add(6))?;
+            let n = enc.encode(
+                bb(p.flag("secondary_header_indicator")?),
+                bb(octets),
+                bb(fresh(&mut s.a, len)?),
+            )?;
+            o.bytes("output_hex", need(s.a.get(..n))?);
+            o.num("next_count", enc.counter().peek().get());
+        }
+        "track" => {
+            let events = p.list("events")?;
+            match p.size("capacity")? {
+                1 => track_events::<1>(events, o)?,
+                2 => track_events::<2>(events, o)?,
+                _ => return Err(Fail::Vector),
+            }
+        }
+        "decode_stream" => decode_stream(case, o),
+        "split" => {
+            let len = p.val("secondary_header_len")?;
+            let layout = if len.is_null() {
+                SecondaryHeaderLayout::Absent
+            } else {
+                let n = need(len.num().and_then(|n| usize::try_from(n).ok()))?;
+                SecondaryHeaderLayout::Opaque(need(NonZeroUsize::new(n))?)
+            };
+            let s = SpacePacket::decode(bb(case.input), mode(case))?.split(bb(&layout))?;
+            o.bytes("secondary_header_hex", s.secondary_header());
+            o.bytes("user_data_hex", s.user_data());
+        }
+        "segment" => segment_case(case, o, s)?,
+        "reassemble" => reassemble_case(case, o, s)?,
+        "split_time" => split_time_case(case, o)?,
+        _ => return Err(Fail::Vector),
+    }
+    Ok(())
 }

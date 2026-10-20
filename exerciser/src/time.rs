@@ -1,4 +1,5 @@
-//! Calls every public `aldis-time` API (VER-010, M1 D7). Inputs pass through `black_box`.
+//! Calls every public `aldis-time` API (VER-010, M1 D7) and runs every `test-vectors/time/`
+//! case (`vector`). Inputs pass through `black_box`.
 
 use core::hint::black_box as bb;
 
@@ -6,13 +7,14 @@ use aldis_core::{DecodeMode, ErrorKind};
 use aldis_time::{
     Agency, AgencyFormat, AsciiFormat, AsciiOptions, AsciiSubset, AsciiTime, CalendarDate, Ccs,
     CcsFormat, CcsValue, CcsVariation, Cds, CdsDayLen, CdsEpoch, CdsFormat, CdsSubMs, CdsValue,
-    Cuc, CucEpoch, CucFormat, CucValue, Fraction, Hour, MAX_ASCII_LEN, MAX_FRACTION_DIGITS, Micros,
-    Minute, Month, MsOfDay, PField, PFieldTail, Picos, ReservedPField, Second, SubMillis,
-    TimeAnomaly, TimeCode, TimeCodeId, TimeFormat, UtcInstant, Year, decode_implicit,
-    decode_with_pfield,
+    Cuc, CucEpoch, CucFormat, CucValue, Decoded, Fraction, Hour, MAX_ASCII_LEN,
+    MAX_FRACTION_DIGITS, Micros, Minute, Month, MsOfDay, PField, PFieldTail, Picos, ReservedPField,
+    Second, SubMillis, TimeAnomaly, TimeCode, TimeCodeId, TimeFormat, UtcInstant, Year,
+    decode_implicit, decode_with_pfield,
 };
 
 use crate::exercise::Tally;
+use crate::vectors::{Case, Fail, Map, Out, Params as _, Run, Scratch, Val, copy, get, need};
 
 fn round_trip(t: &mut Tally, code: TimeCode) {
     let mut out = [0_u8; 32];
@@ -358,6 +360,46 @@ fn conversions(t: &mut Tally, a: AsciiTime) {
     t.check(AsciiFormat::new(CcsVariation::MonthDay, bb(13), true).is_err());
 }
 
+/// Bounded fields (conversion to the integer, default, `get`), and the P-field of each format
+/// built directly as well as through `TimeFormat`.
+fn fields_and_formats(t: &mut Tally) {
+    t.check(Year::new(bb(2024)).map(u16::from) == Some(2024) && Year::default().get() == Year::MIN);
+    t.check(Month::new(bb(12)).map(u8::from) == Some(12) && Month::default().get() == Month::MIN);
+    t.check(Hour::new(bb(23)).map(u8::from) == Some(23) && Hour::default().get() == Hour::MIN);
+    t.check(
+        Minute::new(bb(59)).map(u8::from) == Some(59) && Minute::default().get() == Minute::MIN,
+    );
+    t.check(
+        Second::new(bb(60)).map(u8::from) == Some(60) && Second::default().get() == Second::MIN,
+    );
+    t.check(
+        MsOfDay::new(bb(5)).map(u32::from) == Some(5) && MsOfDay::default().get() == MsOfDay::MIN,
+    );
+    t.check(Picos::new(bb(7)).is_some_and(|p| p.get() == 7 && u32::from(p) == 7));
+    t.check(Micros::default().get() == Micros::MIN && Picos::default().get() == Picos::MIN);
+    let formats = (
+        CucFormat::new(CucEpoch::Tai1958, bb(4), bb(2)),
+        CcsFormat::new(CcsVariation::MonthDay, bb(1)),
+        AgencyFormat::new(bb(2)),
+    );
+    if let (Ok(cuc), Ok(ccs), Ok(agency)) = formats {
+        let cds = CdsFormat::new(CdsEpoch::Ccsds1958, CdsDayLen::Bits16, CdsSubMs::Micros);
+        t.check(cuc.pfield() == TimeFormat::Cuc(cuc).pfield());
+        t.check(cds.pfield() == TimeFormat::Cds(cds).pfield());
+        t.check(ccs.pfield() == TimeFormat::Ccs(ccs).pfield());
+        t.check(agency.pfield() == TimeFormat::Agency(agency).pfield());
+    } else {
+        t.check(false);
+    }
+    // A reserved time code ID: the P-field converts back from its reserved wrapper.
+    let reserved = PField::parse(bb(&[0x30]))
+        .ok()
+        .and_then(ReservedPField::new);
+    t.check(
+        reserved.is_some_and(|r| PField::from(r) == r.pfield() && r.pfield().id().is_reserved()),
+    );
+}
+
 /// Runs the `aldis-time` group.
 pub fn run(t: &mut Tally) {
     pfield(t);
@@ -366,4 +408,477 @@ pub fn run(t: &mut Tally) {
     ccs_codes(t);
     agency_codes(t);
     ascii_codes(t);
+    fields_and_formats(t);
+}
+
+/// A `usize` as reported by the host suites.
+fn wide(n: usize) -> u64 {
+    u64::try_from(n).unwrap_or(u64::MAX)
+}
+
+const fn mode(case: &Case) -> DecodeMode {
+    if case.lenient {
+        DecodeMode::Lenient
+    } else {
+        DecodeMode::Strict
+    }
+}
+
+/// The P-field extension of a format object (`pfield_tail_hex`, empty when absent).
+fn tail(obj: Map) -> Result<PFieldTail, Fail> {
+    let octets = get(obj, "pfield_tail_hex").map_or(Some(&[][..]), Val::bytes);
+    PFieldTail::new(bb(need(octets)?)).map_err(|_| Fail::Vector)
+}
+
+/// Left-aligns raw fine octets.
+fn fine_left(raw: &[u8]) -> Result<u128, Fail> {
+    let mut buf = [0_u8; 16];
+    if !copy(need(buf.get_mut(..raw.len()))?, raw) {
+        return Err(Fail::Vector);
+    }
+    Ok(u128::from_be_bytes(buf))
+}
+
+/// The leading `octets` octets of a left-aligned fine time.
+fn fine_raw(o: &mut Out, key: &str, fine: u128, octets: u8) {
+    let bytes = fine.to_be_bytes();
+    match bytes.get(..usize::from(octets)) {
+        Some(raw) => o.bytes(key, raw),
+        None => o.null(key),
+    }
+}
+
+/// A format object; `code` names the time code.
+fn format_of(code: &str, obj: Map) -> Result<TimeFormat, Fail> {
+    Ok(match code {
+        "cuc" => {
+            let epoch = if obj.text("epoch")? == "level1" {
+                CucEpoch::Tai1958
+            } else {
+                CucEpoch::Agency
+            };
+            let mut f = CucFormat::new(
+                epoch,
+                bb(obj.num("coarse_octets")?),
+                bb(obj.num("fine_octets")?),
+            )?;
+            let mission: u8 = obj.num("mission_bits")?;
+            if mission != 0 {
+                f = f.with_mission_bits(bb(mission))?;
+            }
+            if obj.flag("octet2")? {
+                f = f.with_octet2();
+            }
+            let t = tail(obj)?;
+            if !t.is_empty() {
+                f = f.with_tail(t)?;
+            }
+            TimeFormat::Cuc(f)
+        }
+        "cds" => TimeFormat::Cds(
+            CdsFormat::new(
+                if obj.text("epoch")? == "ccsds" {
+                    CdsEpoch::Ccsds1958
+                } else {
+                    CdsEpoch::Agency
+                },
+                if obj.num::<u64>("day_bits")? == 16 {
+                    CdsDayLen::Bits16
+                } else {
+                    CdsDayLen::Bits24
+                },
+                match obj.text("subms")? {
+                    "none" => CdsSubMs::None,
+                    "us" => CdsSubMs::Micros,
+                    _ => CdsSubMs::Picos,
+                },
+            )
+            .with_tail(tail(obj)?),
+        ),
+        "ccs" => TimeFormat::Ccs(
+            CcsFormat::new(
+                if obj.text("variation")? == "month_day" {
+                    CcsVariation::MonthDay
+                } else {
+                    CcsVariation::DayOfYear
+                },
+                bb(obj.num("subsecond_octets")?),
+            )?
+            .with_tail(tail(obj)?),
+        ),
+        "agency" => {
+            TimeFormat::Agency(AgencyFormat::new(bb(obj.num("t_len")?))?.with_tail(tail(obj)?))
+        }
+        _ => return Err(Fail::Vector),
+    })
+}
+
+/// A date from `year` and either `day_of_year` or `month` and `day`.
+fn date_of(v: Map, year: Year, by_day_of_year: bool) -> Result<CalendarDate, Fail> {
+    Ok(if by_day_of_year {
+        CalendarDate::from_day_of_year(year, bb(v.num("day_of_year")?))?
+    } else {
+        CalendarDate::from_month_day(
+            year,
+            Month::try_from(bb(v.num::<u8>("month")?))?,
+            bb(v.num("day")?),
+        )?
+    })
+}
+
+fn code_of(format: TimeFormat, v: Map) -> Result<TimeCode, Fail> {
+    Ok(match format {
+        TimeFormat::Cuc(f) => {
+            let fine = fine_left(v.bytes("fine_hex")?)?;
+            TimeCode::Cuc(Cuc::new(f, CucValue::new(bb(v.num("coarse")?), bb(fine)))?)
+        }
+        TimeFormat::Cds(f) => {
+            // Each field is parsed into its type; the vector's raw value may be invalid.
+            let raw: u32 = v.num("subms")?;
+            let subms = match f.subms() {
+                CdsSubMs::None => SubMillis::None,
+                CdsSubMs::Micros => SubMillis::Micros(Micros::try_from(bb(
+                    u16::try_from(raw).unwrap_or(u16::MAX)
+                ))?),
+                CdsSubMs::Picos => SubMillis::Picos(Picos::try_from(bb(raw))?),
+            };
+            TimeCode::Cds(Cds::new(
+                f,
+                CdsValue {
+                    day: bb(v.num("day")?),
+                    ms_of_day: MsOfDay::try_from(bb(v.num::<u32>("ms_of_day")?))?,
+                    subms,
+                },
+            )?)
+        }
+        TimeFormat::Ccs(f) => {
+            let year = Year::try_from(bb(v.num::<u16>("year")?))?;
+            let by_day_of_year = !v.val("day_of_year")?.is_null();
+            TimeCode::Ccs(Ccs::new(
+                f,
+                CcsValue {
+                    date: date_of(v, year, by_day_of_year)?,
+                    hour: Hour::try_from(bb(v.num::<u8>("hour")?))?,
+                    minute: Minute::try_from(bb(v.num::<u8>("minute")?))?,
+                    second: Second::try_from(bb(v.num::<u8>("second")?))?,
+                    subsecond: bb(v.num("subsecond")?),
+                },
+            )?)
+        }
+        TimeFormat::Agency(f) => TimeCode::Agency(Agency::new(f, bb(v.bytes("tfield_hex")?))?),
+    })
+}
+
+const fn code_name(code: &TimeCode) -> &'static str {
+    match code {
+        TimeCode::Cuc(_) => "cuc",
+        TimeCode::Cds(_) => "cds",
+        TimeCode::Ccs(_) => "ccs",
+        TimeCode::Agency(_) => "agency",
+        TimeCode::Unknown(_) => "unknown",
+    }
+}
+
+/// The `format` object of a decoded code (`null` for an unknown code).
+fn format_fields(o: &mut Out, key: &str, code: &TimeCode) {
+    let fill = |x: &mut Out| match code {
+        TimeCode::Cuc(c) => {
+            let f = c.format();
+            x.text(
+                "epoch",
+                match f.epoch() {
+                    CucEpoch::Tai1958 => "level1",
+                    CucEpoch::Agency => "agency",
+                },
+            );
+            x.num("coarse_octets", f.coarse_octets());
+            x.num("fine_octets", f.fine_octets());
+            x.num("mission_bits", f.mission_bits());
+            x.flag("octet2", f.has_octet2());
+            x.bytes("pfield_tail_hex", f.tail().as_bytes());
+        }
+        TimeCode::Cds(c) => {
+            let f = c.format();
+            x.text(
+                "epoch",
+                match f.epoch() {
+                    CdsEpoch::Ccsds1958 => "ccsds",
+                    CdsEpoch::Agency => "agency",
+                },
+            );
+            x.num(
+                "day_bits",
+                match f.day_len() {
+                    CdsDayLen::Bits16 => 16_u8,
+                    CdsDayLen::Bits24 => 24,
+                },
+            );
+            x.text(
+                "subms",
+                match f.subms() {
+                    CdsSubMs::None => "none",
+                    CdsSubMs::Micros => "us",
+                    CdsSubMs::Picos => "ps",
+                },
+            );
+            x.bytes("pfield_tail_hex", f.tail().as_bytes());
+        }
+        TimeCode::Ccs(c) => {
+            let f = c.format();
+            x.text(
+                "variation",
+                match f.variation() {
+                    CcsVariation::MonthDay => "month_day",
+                    CcsVariation::DayOfYear => "day_of_year",
+                },
+            );
+            x.num("subsecond_octets", f.subsecond_octets());
+            x.bytes("pfield_tail_hex", f.tail().as_bytes());
+        }
+        TimeCode::Agency(c) => {
+            x.num("t_len", wide(c.format().t_len()));
+            x.bytes("pfield_tail_hex", c.format().tail().as_bytes());
+        }
+        TimeCode::Unknown(_) => {}
+    };
+    if matches!(code, TimeCode::Unknown(_)) {
+        o.null(key);
+    } else {
+        o.obj(key, fill);
+    }
+}
+
+/// The `value` object of a code (`null` for an unknown code).
+fn value_fields(o: &mut Out, key: &str, code: &TimeCode) {
+    let fill = |x: &mut Out| match code {
+        TimeCode::Cuc(c) => {
+            x.num("coarse", c.value().coarse());
+            fine_raw(x, "fine_hex", c.value().fine(), c.format().fine_octets());
+        }
+        TimeCode::Cds(c) => {
+            x.num("day", c.value().day);
+            x.num("ms_of_day", c.value().ms_of_day.get());
+            x.num("subms", c.value().subms.get());
+        }
+        TimeCode::Ccs(c) => {
+            let v = c.value();
+            x.num("year", v.date.year().get());
+            x.opt_num("month", v.date.month_day().map(|(m, _)| m.get()));
+            x.opt_num("day", v.date.month_day().map(|(_, d)| d));
+            x.opt_num("day_of_year", v.date.day_of_year());
+            x.num("hour", v.hour.get());
+            x.num("minute", v.minute.get());
+            x.num("second", v.second.get());
+            x.num("subsecond", v.subsecond);
+        }
+        TimeCode::Agency(c) => x.bytes("tfield_hex", c.tfield()),
+        TimeCode::Unknown(_) => {}
+    };
+    if matches!(code, TimeCode::Unknown(_)) {
+        o.null(key);
+    } else {
+        o.obj(key, fill);
+    }
+}
+
+fn decoded(o: &mut Out, d: &Decoded) {
+    let code = d.code();
+    o.text("code", code_name(&code));
+    let mut pfield = [0_u8; 8];
+    let len = d.pfield().map_or(0, |p| {
+        let mut n = 0_usize;
+        for (slot, octet) in pfield
+            .iter_mut()
+            .zip(core::iter::once(p.first()).chain(p.rest().iter().copied()))
+        {
+            *slot = octet;
+            n = n.saturating_add(1);
+        }
+        n
+    });
+    o.bytes("pfield_hex", pfield.get(..len).unwrap_or_default());
+    format_fields(o, "format", &code);
+    value_fields(o, "value", &code);
+    o.num("consumed", wide(d.len()));
+    o.names("anomalies", d.anomalies().iter());
+}
+
+fn options(p: Map) -> Result<AsciiOptions, Fail> {
+    match get(p, "max_fraction_digits") {
+        None => Ok(AsciiOptions::DEFAULT),
+        Some(n) => {
+            let digits = need(n.num().and_then(|n| u8::try_from(n).ok()))?;
+            AsciiOptions::new(bb(digits)).map_err(|_| Fail::Vector)
+        }
+    }
+}
+
+fn ascii_fields(o: &mut Out, t: &AsciiTime) {
+    let md = t.date.month_day();
+    o.text("variation", if md.is_some() { "A" } else { "B" });
+    o.num("year", t.date.year().get());
+    o.opt_num("month", md.map(|(m, _)| m.get()));
+    o.opt_num("day", md.map(|(_, d)| d));
+    o.opt_num("day_of_year", t.date.day_of_year());
+    o.num("hour", t.hour.get());
+    o.num("minute", t.minute.get());
+    o.num("second", t.second.get());
+    o.num("fraction_digits", t.fraction.digits());
+    o.num("fraction", t.fraction.value());
+    o.flag("z", t.utc);
+}
+
+fn ascii_from_fields(v: Map) -> Result<AsciiTime, Fail> {
+    let year = Year::try_from(bb(v.num::<u16>("year")?))?;
+    Ok(AsciiTime {
+        date: date_of(v, year, v.text("variation")? != "A")?,
+        hour: Hour::try_from(bb(v.num::<u8>("hour")?))?,
+        minute: Minute::try_from(bb(v.num::<u8>("minute")?))?,
+        second: Second::try_from(bb(v.num::<u8>("second")?))?,
+        fraction: need(Fraction::new(
+            bb(v.num("fraction")?),
+            bb(v.num("fraction_digits")?),
+        ))?,
+        utc: v.flag("z")?,
+    })
+}
+
+fn subset_fields(o: &mut Out, s: &AsciiSubset) {
+    o.opt_text(
+        "variation",
+        s.variation().map(|v| match v {
+            CcsVariation::MonthDay => "A",
+            CcsVariation::DayOfYear => "B",
+        }),
+    );
+    o.opt_num("year", s.year().map(Year::get));
+    o.opt_num("month", s.month().map(Month::get));
+    o.opt_num("day", s.day());
+    o.opt_num("day_of_year", s.day_of_year());
+    o.opt_num("hour", s.hour().map(Hour::get));
+    o.opt_num("minute", s.minute().map(Minute::get));
+    o.opt_num("second", s.second().map(Second::get));
+    o.opt_num("fraction_digits", s.fraction().map(|f| f.digits()));
+    o.opt_num("fraction", s.fraction().map(|f| f.value()));
+    o.flag("z", s.utc());
+}
+
+/// Formats `t` and reports it as `text`.
+fn ascii_text(o: &mut Out, t: &AsciiTime) -> Run {
+    let mut out = [0_u8; MAX_ASCII_LEN];
+    let n = t.encode(bb(&mut out))?;
+    o.bytes("text", need(out.get(..n))?);
+    Ok(())
+}
+
+fn convert(case: &Case, o: &mut Out) -> Run {
+    let p = case.params;
+    let epoch = match get(p, "epoch") {
+        None => None,
+        Some(e) => {
+            let e = need(e.obj())?;
+            let year = need(Year::new(e.num("year")?))?;
+            let month = need(Month::new(e.num("month")?))?;
+            Some(
+                CalendarDate::from_month_day(year, month, e.num("day")?)
+                    .map_err(|_| Fail::Vector)?,
+            )
+        }
+    };
+    let from = p.obj("from")?;
+    let instant = match from.text("code")? {
+        "ascii" => UtcInstant::from_ascii(&AsciiTime::parse(
+            bb(from.text("text")?.as_bytes()),
+            &AsciiOptions::DEFAULT,
+        )?),
+        code => match code_of(format_of(code, from.obj("format")?)?, from.obj("value")?)? {
+            TimeCode::Cds(c) => UtcInstant::from_cds(&c, bb(epoch))?,
+            TimeCode::Ccs(c) => UtcInstant::from_ccs(&c),
+            _ => return Err(Fail::Vector),
+        },
+    };
+    let to = p.obj("to")?;
+    match to.text("code")? {
+        "ascii" => {
+            let variation = if to.text("variation")? == "A" {
+                CcsVariation::MonthDay
+            } else {
+                CcsVariation::DayOfYear
+            };
+            let format =
+                AsciiFormat::new(variation, bb(to.num("fraction_digits")?), to.flag("z")?)?;
+            let t = instant.to_ascii(bb(format))?;
+            ascii_text(o, &t).map_err(|_| Fail::Vector)
+        }
+        code => {
+            let code = match format_of(code, to)? {
+                TimeFormat::Cds(f) => TimeCode::Cds(instant.to_cds(bb(f), bb(epoch))?),
+                TimeFormat::Ccs(f) => TimeCode::Ccs(instant.to_ccs(bb(f))?),
+                _ => return Err(Fail::Vector),
+            };
+            value_fields(o, "value", &code);
+            Ok(())
+        }
+    }
+}
+
+/// One `test-vectors/time/` case, as `crates/aldis-time/tests/vectors.rs` runs it.
+pub fn vector(case: &Case, o: &mut Out, _: &mut Scratch) -> Run {
+    let p = case.params;
+    match case.op {
+        "decode" => decoded(o, &decode_with_pfield(bb(case.input), bb(mode(case)))?),
+        "decode_implicit" => {
+            let f = p.obj("format")?;
+            let format = format_of(f.text("code")?, f)?;
+            decoded(
+                o,
+                &decode_implicit(bb(case.input), &format, bb(mode(case)))?,
+            );
+        }
+        "encode" => {
+            let f = p.obj("format")?;
+            let code = code_of(format_of(f.text("code")?, f)?, p.obj("value")?)?;
+            let mut out = [0_u8; 32];
+            let n = code.encode(bb(p.flag("include_pfield")?), bb(&mut out))?;
+            o.bytes("output_hex", need(out.get(..n))?);
+        }
+        "cuc_to_ns" => {
+            let fine = fine_left(p.bytes("fine_hex")?)?;
+            let (s, ns) = CucValue::new(bb(p.num("coarse")?), bb(fine)).to_seconds_nanos();
+            o.num("seconds", s);
+            o.num("nanoseconds", ns);
+        }
+        "cuc_from_ns" => {
+            let f = CucFormat::new(
+                CucEpoch::Tai1958,
+                bb(p.num("coarse_octets")?),
+                bb(p.num("fine_octets")?),
+            )?;
+            let c = Cuc::from_seconds_nanos(f, bb(p.num("seconds")?), bb(p.num("nanoseconds")?))?;
+            if c.to_seconds_nanos() != c.value().to_seconds_nanos() {
+                return Err(Fail::Vector);
+            }
+            o.num("coarse", c.value().coarse());
+            fine_raw(o, "fine_hex", c.value().fine(), f.fine_octets());
+        }
+        "ascii_parse" => {
+            let text = p.text("text")?.as_bytes();
+            let t = AsciiTime::parse(bb(text), &options(p)?)?;
+            // The formatted code is the input again (TIME-031 round trip).
+            let mut out = [0_u8; MAX_ASCII_LEN];
+            let n = t.encode(bb(&mut out)).map_err(|_| Fail::Vector)?;
+            if out.get(..n) != Some(text) || t.encoded_len() != n {
+                return Err(Fail::Vector);
+            }
+            ascii_fields(o, &t);
+        }
+        "ascii_format" => ascii_text(o, &ascii_from_fields(p.obj("value")?)?)?,
+        "ascii_subset" => {
+            let s = AsciiSubset::parse(bb(p.text("text")?.as_bytes()), &options(p)?)?;
+            subset_fields(o, &s);
+        }
+        "convert" => convert(case, o)?,
+        _ => return Err(Fail::Vector),
+    }
+    Ok(())
 }

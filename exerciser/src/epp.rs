@@ -1,4 +1,5 @@
-//! Calls every public `aldis-epp` API (VER-010, M1 D7). Inputs pass through `black_box`.
+//! Calls every public `aldis-epp` API (VER-010, M1 D7) and runs every `test-vectors/epp/` case
+//! (`vector`). Inputs pass through `black_box`.
 
 use core::hint::black_box as bb;
 
@@ -10,6 +11,7 @@ use aldis_epp::{
 };
 
 use crate::exercise::Tally;
+use crate::vectors::{Case, Fail, Map, Out, Params as _, Run, Scratch, copy, fresh, need};
 
 /// Managed parameters that accept every EPI, extended EPI, and data unit length.
 fn any_config() -> Option<EppConfig> {
@@ -139,6 +141,9 @@ fn config(t: &mut Tally) {
     let xset = ExtendedEpiSet::EMPTY.with(ext);
     t.check(set.contains(Epi::EXTENDED) && set.bits() == 0x40 && xset.bits() == 0x08);
     t.check(xset.contains(ext) && !EpiSet::default().contains(Epi::IDLE));
+    t.check(EpiSet::from_bits(bb(set.bits())) == set);
+    t.check(ExtendedEpiSet::from_bits(bb(xset.bits())) == xset);
+    t.check(UserDefined::new(bb(15)).map(u8::from) == Some(15));
     match EppConfig::new(bb(0), bb(8), set, xset) {
         Ok(c) => {
             t.check(c.min_data_len() == 0 && c.max_data_len() == 8);
@@ -158,4 +163,147 @@ pub fn run(t: &mut Tally) {
     ids_and_header(t);
     view_and_writers(t);
     config(t);
+}
+
+/// The encapsulation fields of an encode case, parsed from raw values (RS-020).
+fn fields(p: Map) -> Result<EncapsulationFields, Fail> {
+    Ok(EncapsulationFields::from_parts(
+        need(Epi::new(bb(p.num("epi")?)))?,
+        need(EpiExtension::new(bb(p.num("epi_extension")?)))?,
+        need(UserDefined::new(bb(p.num("user_defined")?)))?,
+    )?)
+}
+
+fn header_size(p: Map) -> Result<HeaderSize, Fail> {
+    let v = p.val("header_size")?;
+    if v.str() == Some("auto") {
+        return Ok(HeaderSize::Auto);
+    }
+    Ok(HeaderSize::Fixed(match need(v.num())? {
+        1 => HeaderLen::One,
+        2 => HeaderLen::Two,
+        4 => HeaderLen::Four,
+        8 => HeaderLen::Eight,
+        _ => return Err(Fail::Vector),
+    }))
+}
+
+/// The managed parameters of a `config` or `validate` case.
+fn config_of(c: Map) -> Result<EppConfig, Fail> {
+    let mut epis = EpiSet::EMPTY;
+    for e in c.list("valid_epis")? {
+        epis = epis.with(need(e.num().and_then(|n| Epi::new(u8::try_from(n).ok()?)))?);
+    }
+    let mut ext = ExtendedEpiSet::EMPTY;
+    for e in c.list("valid_extended_epis")? {
+        ext = ext.with(need(
+            e.num()
+                .and_then(|n| EpiExtension::new(u8::try_from(n).ok()?)),
+        )?);
+    }
+    Ok(EppConfig::new(
+        bb(c.num("min_data_len")?),
+        bb(c.num("max_data_len")?),
+        bb(epis),
+        bb(ext),
+    )?)
+}
+
+fn header_hex(o: &mut Out, key: &str, header: &EncapsulationHeader) -> Run {
+    let mut buf = [0_u8; 8];
+    let n = header.encode(bb(&mut buf)).map_err(|_| Fail::Vector)?;
+    o.bytes(key, need(buf.get(..n))?);
+    Ok(())
+}
+
+fn decoded(o: &mut Out, p: &EncapsulationPacket<'_>) {
+    o.num("epi", p.epi().get());
+    o.opt_num("user_defined", p.user_defined().map(UserDefined::get));
+    o.opt_num("epi_extension", p.extension().map(EpiExtension::get));
+    o.opt_num("ccsds_defined", p.ccsds_defined());
+    o.num("header_len", wide(p.header_len().octets()));
+    o.num("packet_len", p.header().packet_len());
+    o.bytes("data_hex", p.data());
+    o.num("consumed", wide(p.len()));
+    o.names("anomalies", p.anomalies().iter());
+}
+
+/// A `usize` as reported by the host suites.
+fn wide(n: usize) -> u64 {
+    u64::try_from(n).unwrap_or(u64::MAX)
+}
+
+/// One `test-vectors/epp/` case, as `crates/aldis-epp/tests/vectors.rs` runs it.
+pub fn vector(case: &Case, out: &mut Out, scratch: &mut Scratch) -> Run {
+    let p = case.params;
+    let mode = if case.lenient {
+        DecodeMode::Lenient
+    } else {
+        DecodeMode::Strict
+    };
+    match case.op {
+        "decode" => decoded(out, &EncapsulationPacket::decode(bb(case.input), bb(mode))?),
+        "reencode_header" => {
+            let packet = EncapsulationPacket::decode(bb(case.input), bb(mode))?;
+            header_hex(out, "header_hex", &packet.header())?;
+        }
+        "peek_length" => out.num(
+            "len",
+            wide(EncapsulationPacket::peek_length(bb(case.input))?),
+        ),
+        "encode" => {
+            let data = p.bytes("data_hex")?;
+            let cfg = need(any_config())?;
+            let unit = cfg.data_unit(fields(p)?, bb(data))?;
+            let len = need(data.len().checked_add(8))?;
+            let n = encode(&unit, header_size(p)?, bb(fresh(&mut scratch.a, len)?))?;
+            // The two-phase writer must produce the same octets (API-020).
+            let mut w = EncapsulationWriter::begin(
+                bb(fresh(&mut scratch.b, len)?),
+                &cfg,
+                unit.fields(),
+                header_size(p)?,
+                data.len(),
+            )
+            .map_err(|_| Fail::Vector)?;
+            if !copy(w.data_mut(), data) || w.finish(bb(data.len())) != Ok(n) {
+                return Err(Fail::Vector);
+            }
+            let (written, two) = (need(scratch.a.get(..n))?, need(scratch.b.get(..n))?);
+            if written != two {
+                return Err(Fail::Vector);
+            }
+            out.bytes("output_hex", written);
+        }
+        "encode_header" => {
+            let cfg = need(any_config())?;
+            let h = cfg.header(fields(p)?, header_size(p)?, bb(p.size("data_len")?))?;
+            header_hex(out, "header_hex", &h)?;
+            out.num("total_len", h.packet_len());
+        }
+        "idle" => {
+            let total = p.size("total_len")?;
+            let n = idle(
+                bb(total),
+                bb(p.num("fill")?),
+                bb(fresh(&mut scratch.a, total)?),
+            )?;
+            out.bytes("output_hex", need(scratch.a.get(..n))?);
+        }
+        "idle_header" => {
+            let h = EncapsulationHeader::idle(bb(p.size("total_len")?))?;
+            header_hex(out, "header_hex", &h)?;
+            out.num("total_len", h.packet_len());
+        }
+        "validate" => {
+            let cfg = config_of(case.config)?;
+            let packet = EncapsulationPacket::decode(bb(case.input), DecodeMode::Strict)?;
+            packet.validate(bb(&cfg))?;
+        }
+        "config" => {
+            config_of(case.config)?;
+        }
+        _ => return Err(Fail::Vector),
+    }
+    Ok(())
 }

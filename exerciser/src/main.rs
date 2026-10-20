@@ -1,13 +1,17 @@
-//! Bare-metal exerciser for Aldis (docs/milestones/m0-foundations.md WP-5).
+//! Bare-metal exerciser for Aldis (docs/milestones/m0-foundations.md WP-5,
+//! docs/milestones/m1-packets-time.md WP-5, D6, D7).
 //!
 //! **Panic-freedom proof (VER-010, GEN-021):** the panic handler calls
 //! `aldis_panic_is_unreachable`, a symbol that is defined nowhere. A release build (LTO,
 //! `panic = "abort"`) links only if no panic path survives optimization in any code the
-//! exerciser reaches, which is every public `aldis-core` API. Feature `inject-panic` plants a
-//! reachable panic to show that the check fails when it should.
+//! exerciser reaches, which is every public API of `aldis-core`, `aldis-time`, `aldis-spp`
+//! (with `time`), and `aldis-epp`. Feature `inject-panic` plants a reachable panic to show that
+//! the check fails when it should.
 //!
-//! **On-target run:** on Cortex-M the exerciser also checks every core vector case and reports
-//! the result through semihosting: `cargo run --release --target thumbv7em-none-eabihf` (QEMU).
+//! **On-target run (M1 D6):** on every bare-metal target the exerciser also checks every
+//! embedded vector case and reports the result through semihosting: one line with the case
+//! count, then `SYS_EXIT` with success only if no case failed. `cargo run --release --target <t>`
+//! runs it under QEMU (`exerciser/.cargo/config.toml`).
 #![no_std]
 #![no_main]
 
@@ -15,58 +19,31 @@ mod cases;
 mod epp;
 mod exercise;
 mod spp;
+mod target;
 mod time;
+mod vectors;
 
-/// Entry point (reset handler on Cortex-M).
+/// The Rust entry point: the reset handler on Cortex-M, called by the start-up code of
+/// `target.rs` on Cortex-R and RISC-V once the stack is set.
 #[expect(unsafe_code, reason = "the entry symbol must not be mangled")]
-// SAFETY: `_start` is the only definition of this symbol in the image.
+// SAFETY: `aldis_exerciser_main` is the only definition of this symbol in the image.
 #[unsafe(no_mangle)]
-pub extern "C" fn _start() -> ! {
+pub extern "C" fn aldis_exerciser_main() -> ! {
     let tally = exercise::run();
-    exit(tally.failures == 0 && tally.cases > 0)
+    target::report(tally.cases, tally.failures, tally.not_representable);
+    target::exit(tally.failures == 0 && tally.cases > 0)
 }
 
-#[cfg(cortex_m)]
-fn exit(success: bool) -> ! {
-    // ARM semihosting SYS_EXIT (0x18): ADP_Stopped_ApplicationExit or RunTimeErrorUnknown.
-    let reason: u32 = if success { 0x2_0026 } else { 0x2_0023 };
-    #[expect(unsafe_code, reason = "semihosting call")]
-    // SAFETY: `bkpt 0xAB` with r0 = SYS_EXIT is the semihosting exit call; it touches no memory.
-    unsafe {
-        core::arch::asm!("bkpt 0xAB", in("r0") 0x18_u32, in("r1") reason, options(nomem, nostack));
-    }
-    halt()
-}
-
-#[cfg(not(cortex_m))]
-fn exit(_success: bool) -> ! {
-    halt()
-}
-
-fn halt() -> ! {
-    loop {
-        core::hint::spin_loop();
-    }
-}
-
-/// Cortex-M exception vectors after the initial stack pointer: reset, then NMI … `SysTick`.
-/// Every fault exits with failure, so a crash cannot hang the run.
-#[cfg(cortex_m)]
+/// Every unexpected exception or trap lands here (vector tables in `target.rs`), so a crash
+/// exits with failure instead of hanging the run.
 #[expect(
     unsafe_code,
-    reason = "the vector table must be placed in its linker section"
+    reason = "the fault symbol is referenced from the vector tables"
 )]
-// SAFETY: the section is placed at the vector table address by link-cortex-m.x.
-#[unsafe(link_section = ".vector_table.exceptions")]
-#[used]
-static EXCEPTIONS: [extern "C" fn() -> !; 15] = [
-    _start, fault, fault, fault, fault, fault, fault, fault, fault, fault, fault, fault, fault,
-    fault, fault,
-];
-
-#[cfg(cortex_m)]
-extern "C" fn fault() -> ! {
-    exit(false)
+// SAFETY: `aldis_exerciser_fault` is the only definition of this symbol in the image.
+#[unsafe(no_mangle)]
+pub extern "C" fn aldis_exerciser_fault() -> ! {
+    target::exit(false)
 }
 
 #[panic_handler]

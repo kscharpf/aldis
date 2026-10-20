@@ -1,3 +1,23 @@
-# `cargo run --release --target thumbv7em-none-eabihf` executes the exerciser under QEMU.
+# `cargo run --release --target <t>` executes the exerciser under QEMU with semihosting
+# (M1 D6). QEMU's exit status is the result: 0 only when every vector case passed. Each
+# runner works with QEMU 8.2 (Ubuntu 24.04, the verification image).
+
+# Cortex-M4 on the MPS2 AN386 board.
 [target.thumbv7em-none-eabihf]
 runner = "qemu-system-arm -cpu cortex-m4 -machine mps2-an386 -nographic -semihosting-config enable=on,target=native -kernel"
+
+# Cortex-R5F (ARMv7-R, the ISA of the target) on QEMU's board-less `none` machine: the CPU and
+# 1 GiB of RAM from address 0. That machine takes no -kernel, so the generic loader device
+# loads the ELF and sets the PC; `sh -c` puts the path cargo appends ($0) into its option.
+# With QEMU >= 9.0 the same image also runs on the Cortex-R52 board (ARMv8-R):
+#   qemu-system-arm -machine mps3-an536 -nographic -semihosting-config enable=on,target=native -kernel <elf>
+[target.armv7r-none-eabihf]
+runner = [
+    "sh",
+    "-c",
+    "exec qemu-system-arm -machine none -cpu cortex-r5f -m 1G -nographic -monitor none -semihosting-config enable=on,target=native -device loader,file=\"$0\",cpu-num=0",
+]
+
+# RV32 on the virt board, machine mode, no firmware.
+[target.riscv32imac-unknown-none-elf]
+runner = "qemu-system-riscv32 -machine virt -bios none -nographic -semihosting-config enable=on,target=native -kernel"
