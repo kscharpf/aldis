@@ -65,3 +65,9 @@ pub use aldis_tm as tm;
 /// Unified Space Data Link Protocol frames (732.1; USLP-001…USLP-013). Feature `uslp`.
 #[cfg(feature = "uslp")]
 pub use aldis_uslp as uslp;
+
+/// Compiles and runs the example in `README.md` as a doctest; not part of the API. The example
+/// uses the modules `core` and `spp`.
+#[cfg(all(doctest, feature = "core", feature = "spp"))]
+#[doc = include_str!("../README.md")]
+struct ReadmeDoctests;

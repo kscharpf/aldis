@@ -60,3 +60,8 @@ pub use code::{
 pub use convert::UtcInstant;
 pub use cuc::{Cuc, CucEpoch, CucFormat, CucValue};
 pub use pfield::{PField, PFieldTail, ReservedPField, TimeCodeId};
+
+/// Compiles and runs the examples in `README.md` as doctests; not part of the API.
+#[cfg(doctest)]
+#[doc = include_str!("../README.md")]
+struct ReadmeDoctests;

@@ -1,6 +1,7 @@
 [package]
 name = "aldis-time"
 description = "CCSDS 301.0-B-4 Time Code Formats (CUC, CDS, CCS, ASCII)"
+readme = "README.md"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
