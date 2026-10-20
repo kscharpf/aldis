@@ -1,10 +1,12 @@
-//! Runs the cross-checks and prints every agreement count, skip, and disagreement (VER-040).
+//! Runs the cross-checks and prints every agreement count, skip, known discrepancy, and
+//! disagreement (VER-040).
 //!
-//! Exits with failure on any disagreement. Run: `cargo run --manifest-path crosscheck/Cargo.toml`.
+//! Exits with failure on any disagreement; a known discrepancy (cross-checks.md §3) does not
+//! fail the run. Run: `cargo run --manifest-path crosscheck/Cargo.toml`.
 
 use std::process::ExitCode;
 
-use aldis_crosscheck::{Check, FileReport, check_file, spp};
+use aldis_crosscheck::{Check, FileReport, check_file, spp, time};
 
 /// The vector files each implementation checks.
 const CHECKED: &[(&str, Check)] = &[
@@ -15,6 +17,14 @@ const CHECKED: &[(&str, Check)] = &[
     ("spp/idle.json", spp::check),
     ("spp/octet_string.json", spp::check),
     ("spp/segment.json", spp::check),
+    (
+        "spp/secondary_header_time.json",
+        time::check_secondary_header,
+    ),
+    ("time/pfield.json", time::check_pfield),
+    ("time/cuc.json", time::check_cuc),
+    ("time/cds.json", time::check_cds),
+    ("time/ascii.json", time::check_ascii),
 ];
 
 /// The vector files no implementation checks yet, and why (cross-checks.md §2, §4).
@@ -27,17 +37,6 @@ const NOT_CHECKED: &[(&str, &str)] = &[
     (
         "spp/split.json",
         "spacepackets has no secondary header layouts",
-    ),
-    (
-        "spp/secondary_header_time.json",
-        "time code checks not yet written",
-    ),
-    ("time/cuc.json", "time code checks not yet written"),
-    ("time/cds.json", "time code checks not yet written"),
-    ("time/ascii.json", "time code checks not yet written"),
-    (
-        "time/pfield.json",
-        "no independent implementation (cross-checks.md §4)",
     ),
     (
         "time/ccs.json",
@@ -62,10 +61,11 @@ fn main() -> ExitCode {
     println!("Cross-check against spacepackets 0.18.0 (docs/verification/cross-checks.md)\n");
     for r in &reports {
         println!(
-            "{:34} {:3} agree  {:3} skipped  {:3} disagree{}",
+            "{:34} {:3} agree  {:3} skipped  {:3} known  {:3} disagree{}",
             r.file,
             r.agreed,
             r.skipped.len(),
+            r.known.len(),
             r.disagreements.len(),
             if r.superseded > 0 {
                 format!("  ({} superseded)", r.superseded)
@@ -81,6 +81,12 @@ fn main() -> ExitCode {
     for r in &reports {
         for (id, reason) in &r.skipped {
             println!("  {id}: {reason}");
+        }
+    }
+    println!("\nKnown discrepancies (cross-checks.md §3):");
+    for r in &reports {
+        for (id, entry) in &r.known {
+            println!("  {id}: {entry}");
         }
     }
     let disagreements: usize = reports.iter().map(|r| r.disagreements.len()).sum();

@@ -8,6 +8,7 @@ version = "0.0.0"
 dependencies = [
  "aldis-testkit",
  "arbitrary-int",
+ "chrono",
  "serde_json",
  "spacepackets",
 ]
