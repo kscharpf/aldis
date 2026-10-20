@@ -33,7 +33,7 @@ Issue 5 extended the SCID to 10 bits using former spare bits 42–43, and the M_
 |---|---|---|---|
 | AOS-001 | The physical-channel configuration SHALL carry `AosEdition::{Issue5, Issue4Compatible}`, defaulting to `Issue5` (GEN-062). | §4.1.2.2.3 notes | T |
 | AOS-002 | In `Issue4Compatible`, the SCID SHALL be 8 bits. Bits 42–43 SHALL be written as `00` and checked as reserved spare on decode. | §4.1.2.2.3 note 1 | V |
-| AOS-003 | In `Issue4Compatible`, the M_PDU header SHALL be 5 spare bits followed by an 11-bit FHP (`0x7FF` none, `0x7FE` idle). **To be confirmed against 732.0-B-4**; see [open issues](../09-open-issues.md) OI-04. | 732.0-B-4 (superseded) | V |
+| AOS-003 | In `Issue4Compatible`, the M_PDU header SHALL be 5 spare bits followed by an 11-bit FHP (`0x7FF` none, `0x7FE` idle). Confirmed against 732.0-B-4 ([open issues](../09-open-issues.md) OI-04). | 732.0-B-4 §4.1.4.2.2, §4.1.4.2.3 (superseded) | V |
 
 ## 3. Configuration (managed parameters, §5)
 

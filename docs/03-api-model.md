@@ -41,7 +41,7 @@ View.len() -> usize                  // octets consumed from `bytes`
 | API-010 | A successful `decode` SHALL guarantee that every accessor on the view returns a value without further checks, and that every sub-slice lies within the input. | — | T/F |
 | API-011 | `decode` SHALL accept an input longer than the data unit wherever the data unit is self-delimiting (Space Packet, Encapsulation Packet, TC frame, variable-length USLP frame). It SHALL report the consumed length so callers can parse streams. | 133.0 §4.1.3.5; 133.1 §4.1.2.8; 232.0 §4.1.2.7; 732.1 §4.1.2.7 | T |
 | API-012 | For fixed-length frames (TM, AOS, fixed-length USLP), `decode` SHALL require the configured frame length and SHALL reject inputs of any other length with `LengthMismatch`. | 132.0 §4.1.1.2; 732.0 §4.1.1.2; 732.1 §4.1.2.7 | T |
-| API-013 | Every codec SHALL provide a `peek_length(prefix)` that returns the total length of the data unit from the minimum header prefix, or `Incomplete{needed}` if the prefix is too short. | — | T |
+| API-013 | Every codec SHALL provide a `peek_length(prefix)` that returns the total length of the data unit from the minimum header prefix, or `Incomplete{needed}` if the prefix is too short. A codec whose length depends on managed parameters (TM, AOS, and USLP for fixed-length and truncated frames) SHALL also take the channel configuration that sets it. | — | T |
 | API-014 | Views SHALL offer a conversion to an owned **header** value type (plain fields, no borrow) for storage and comparison. | — | T |
 
 ### 2.2 Writers (encoding)
