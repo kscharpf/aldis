@@ -201,12 +201,18 @@ pub fn check(rev: &str) -> Result<usize, String> {
         Some(url) => println!("verify: made by GitHub Actions run {url}"),
         None => println!("verify: made locally"),
     }
-    let skipped = record
-        .get("checks")
-        .and_then(Value::as_array)
-        .map_or(0, |c| c.iter().filter(|e| e["result"] == "skipped").count());
-    if skipped > 0 {
-        println!("verify: {skipped} check(s) skipped; their skips re-derived from git (VER-058)");
+    let count = |result: &str| {
+        record
+            .get("checks")
+            .and_then(Value::as_array)
+            .map_or(0, |c| c.iter().filter(|e| e["result"] == result).count())
+    };
+    let (skipped, reused) = (count("skipped"), count("reused"));
+    if skipped + reused > 0 {
+        println!(
+            "verify: {skipped} check(s) skipped, {reused} reused; each re-derived from git and \
+             the source's published record (VER-058)"
+        );
     }
     for p in &problems {
         println!("verify: gate: {p}");

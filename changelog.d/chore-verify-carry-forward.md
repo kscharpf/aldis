@@ -1,0 +1,17 @@
+### Changed
+- `cargo xtask verify` takes a check's result from an earlier published record when the check's
+  inputs are unchanged (VER-056): besides the record covering the merge base with `origin/main`,
+  it searches the records of the branch's earlier commits (first-parent ancestors not on `main`,
+  nearest first, at most 20). After a branch merges `main`, a check whose inputs the commits from
+  `main` did not touch is `reused` from the branch's previous record instead of run; a check whose
+  inputs did not change against the base is `skipped` as before. Each such check names its
+  `source`, the commit and record SHA-256 of the run in which it actually passed, and `verify
+  check` and `--publish` re-derive every skip and reuse from git and that record (VER-058).
+- Records are now format `aldis-verify-record/3` (VER-057). Formats 1 and 2 are still read, and
+  a tool that knows only those refuses format 3.
+
+### Fixed
+- `cargo xtask verify` no longer skips a check because the record covering the base skipped it
+  under an older rule: a result is taken only from the record in which the check ran, with inputs
+  identical to the commit's. Before, a C++ check skipped by a format 1 record (whose C++ paths did
+  not list `crates/*/Cargo.toml`, an input of every check since VER-056) could keep being skipped.

@@ -39,8 +39,11 @@ Verification run and merge gate (docs/06-verification.md §7):
                                run the checks the change needs on HEAD in the verification
                                image (podman or Docker; ALDIS_VERIFY_ENGINE picks one) and write
                                the evidence record to target/verify/<commit>/record.json
-                               (VER-056, VER-057): a check whose inputs did not change against
-                               the merge base with origin/main is skipped (`verify list` shows
+                               (VER-056, VER-057): a check whose inputs are those of an earlier
+                               commit whose published record it passed in is not run and takes
+                               that result: `skipped` when its inputs did not change against
+                               the merge base with origin/main either, `reused` when they are
+                               those of an earlier commit of the branch (`verify list` shows
                                which); --all runs every check; --all-cpp runs the C++ checks
                                even if their inputs are untouched; --only runs a subset (such a
                                record never passes the gate); --publish then publishes it, as
@@ -49,7 +52,8 @@ Verification run and merge gate (docs/06-verification.md §7):
                                under refs/notes/verify and set the commit status aldis/verify
                                (VER-058)
   verify check [<rev>]         check the published record of <rev> against the merge gate,
-                               re-deriving its skipped checks from git
+                               re-deriving its skipped and reused checks from git and the
+                               sources' published records
   verify image                 build the verification image for HEAD
   verify list                  list the checks and their inputs, and which of them HEAD needs
   verify scope [<rev>] [--main <rev>]
@@ -172,8 +176,12 @@ fn show(rev: &str, main: scope::Main) -> Result<usize, String> {
     let root = repo::root();
     let checks = checks::all();
     let change = scope::change(&root, &commit, main);
+    let tip = match main {
+        scope::Main::Origin => "origin/main",
+        scope::Main::Rev(rev) => rev,
+    };
     let plan = scope::plan(&checks, &change, scope::Force::default(), |b| {
-        scope::covering_record(&root, b)
+        scope::sources(&root, &commit, b, tip, &checks)
     });
     println!("verify: scope of {commit}");
     for line in scope::describe(&plan, &checks) {
@@ -191,6 +199,20 @@ fn outcome(check: &Check, outcome: Outcome, reason: Option<&str>) -> Value {
         "duration_ms": 0,
         "log_sha256": null,
     })
+}
+
+/// The result entry of a check that the input rule does not run: skipped or reused, with the
+/// record it takes its result from (VER-056, VER-057).
+fn carried(check: &Check, decision: &scope::Decision) -> Option<Value> {
+    let (outcome, source) = (decision.outcome()?, decision.source.as_ref()?);
+    Some(json!({
+        "name": check.name,
+        "result": outcome.name(),
+        "reason": decision.why,
+        "source": source.to_json(),
+        "duration_ms": 0,
+        "log_sha256": null,
+    }))
 }
 
 /// The result entry of a check that `opts` leaves out, if it does.
@@ -367,7 +389,9 @@ fn verify(mut opts: Options, force: scope::Force, publish: bool) -> Result<usize
     let tree = git(&["rev-parse", "HEAD^{tree}"])?;
     let all = checks::all();
     let change = scope::change(&root, &commit, scope::Main::Origin);
-    let plan = scope::plan(&all, &change, force, |b| scope::covering_record(&root, b));
+    let plan = scope::plan(&all, &change, force, |b| {
+        scope::sources(&root, &commit, b, "origin/main", &all)
+    });
     for line in scope::describe(&plan, &all) {
         println!("verify: {line}");
     }
@@ -389,7 +413,18 @@ fn verify(mut opts: Options, force: scope::Force, publish: bool) -> Result<usize
     if let (Some(t), Value::Object(h)) = (tools.as_object_mut(), host_tools) {
         t.extend(h);
     }
-    let results = merge_results(&container, host_results)?;
+    // A check the rule does not run takes its result from its source; one that --only leaves
+    // out stays not run, so that such a record never passes (VER-058).
+    let carried = plan
+        .checks
+        .iter()
+        .zip(&all)
+        .filter(|(_, c)| opts.only.as_ref().is_none_or(|o| o.contains(&c.name)))
+        .filter_map(|(d, c)| carried(c, d));
+    let results = merge_results(
+        &container,
+        host_results.into_iter().chain(carried).collect(),
+    )?;
     let record = json!({
         "format": record::FORMAT,
         "commit": commit,
