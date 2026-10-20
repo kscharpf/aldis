@@ -159,18 +159,18 @@
       ]
     },
     "Superseded": {
-      "description": "Marks a released case as replaced; released cases are never edited (TV-021).",
+      "description": "Marks a released case as replaced or retired; released cases are never edited (TV-021).",
       "type": "object",
       "properties": {
         "by": {
-          "description": "Identifier of the replacing case, if any.",
+          "description": "Identifier of the replacing case, if there is one. When present it must name an\nexisting case that is not itself superseded; a wrong case with no correct replacement\nleaves it out.",
           "type": [
             "string",
             "null"
           ]
         },
         "reason": {
-          "description": "Why the case was superseded.",
+          "description": "Why the case was superseded; required and not empty.",
           "type": "string"
         }
       },

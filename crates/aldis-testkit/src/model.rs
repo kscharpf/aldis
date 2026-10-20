@@ -34,14 +34,16 @@ pub enum Mode {
     Lenient,
 }
 
-/// Marks a released case as replaced; released cases are never edited (TV-021).
+/// Marks a released case as replaced or retired; released cases are never edited (TV-021).
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(deny_unknown_fields)]
 pub struct Superseded {
-    /// Why the case was superseded.
+    /// Why the case was superseded; required and not empty.
     pub reason: String,
-    /// Identifier of the replacing case, if any.
+    /// Identifier of the replacing case, if there is one. When present it must name an
+    /// existing case that is not itself superseded; a wrong case with no correct replacement
+    /// leaves it out.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub by: Option<String>,
 }
