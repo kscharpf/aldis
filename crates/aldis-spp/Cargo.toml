@@ -1,6 +1,7 @@
 [package]
 name = "aldis-spp"
 description = "CCSDS 133.0-B-2 Space Packet Protocol codec"
+readme = "README.md"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

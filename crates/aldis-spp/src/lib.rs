@@ -65,3 +65,8 @@ pub use segment::{Discard, Outcome, Reassembler, Segmenter, Status};
 pub use sequence::{SequenceCounter, SequenceTracker, Tracked};
 pub use view::SpacePacket;
 pub use writer::{SpacePacketWriter, encode};
+
+/// Compiles and runs the examples in `README.md` as doctests; not part of the API.
+#[cfg(doctest)]
+#[doc = include_str!("../README.md")]
+struct ReadmeDoctests;

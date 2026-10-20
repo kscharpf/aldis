@@ -1,6 +1,7 @@
 [package]
 name = "aldis"
 description = "Facade re-exporting the Aldis crates behind feature flags"
+readme = "README.md"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
