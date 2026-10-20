@@ -11,8 +11,13 @@ use sha2::{Digest as _, Sha256};
 
 use super::checks::Host;
 
-/// The `format` value of every record this version of the tool writes.
-pub const FORMAT: &str = "aldis-verify-record/1";
+/// The `format` value of every record this version of the tool writes: with the `scope` of the
+/// input rule (VER-056). A tool that knows only format 1 refuses it rather than accept its skips.
+pub const FORMAT: &str = "aldis-verify-record/2";
+
+/// The format of the records written before the input rule, with only the C++ scope `cpp`.
+/// Still read: a skip in one is accepted for a C++ check whose scope says C++ was not affected.
+pub const FORMAT_1: &str = "aldis-verify-record/1";
 
 /// Result of one check.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -23,7 +28,7 @@ pub enum Outcome {
     Fail,
     /// Not run: host-bound to a host this is not, or not selected with `--only`.
     NotRun,
-    /// Not run: a C++ check, and the change does not touch the C++ inputs.
+    /// Not run: none of the check's inputs changed against the base (VER-056).
     Skipped,
 }
 
@@ -121,12 +126,40 @@ fn write_canonical(value: &Value, out: &mut String) {
     }
 }
 
+/// Whether `record`'s own scope skips the check `name`: in format 2, its decision in `scope`,
+/// for a base covered by a record; in format 1, a C++ check when C++ was not affected.
+fn skip_recorded(record: &Value, name: &str) -> bool {
+    match record.get("format").and_then(Value::as_str) {
+        Some(FORMAT) => {
+            let scope = record.get("scope");
+            let field = |k: &str| scope.and_then(|s| s.get(k));
+            field("base").is_some_and(Value::is_string)
+                && field("base_record").is_some_and(Value::is_string)
+                && field("checks")
+                    .and_then(|c| c.get(name))
+                    .and_then(|d| d.get("run"))
+                    == Some(&Value::Bool(false))
+        }
+        Some(FORMAT_1) => {
+            let cpp = record.get("cpp");
+            name.starts_with("cpp-")
+                && cpp.and_then(|c| c.get("affected")) == Some(&Value::Bool(false))
+                && cpp
+                    .and_then(|c| c.get("base"))
+                    .is_some_and(Value::is_string)
+        }
+        _ => false,
+    }
+}
+
 /// Why `record` does not meet the merge gate (VER-058); empty when it does. Checks the record
-/// only: that it belongs to the commit under review is the caller's part.
+/// only: that it belongs to the commit under review, and that its skips hold in git
+/// (`scope::recheck`), is the caller's part.
 pub fn gate_problems(record: &Value) -> Vec<String> {
     let mut problems = Vec::new();
-    if record.get("format").and_then(Value::as_str) != Some(FORMAT) {
-        problems.push(format!("not a `{FORMAT}` record"));
+    let format = record.get("format").and_then(Value::as_str);
+    if format != Some(FORMAT) && format != Some(FORMAT_1) {
+        problems.push(format!("not a `{FORMAT}` or `{FORMAT_1}` record"));
     }
     let Some(checks) = record.get("checks").and_then(Value::as_array) else {
         problems.push("no checks".to_owned());
@@ -143,7 +176,9 @@ pub fn gate_problems(record: &Value) -> Vec<String> {
             continue;
         }
         match result {
-            "pass" | "skipped" => {}
+            "pass" => {}
+            "skipped" if skip_recorded(record, name) => {}
+            "skipped" => problems.push(format!("{name}: skipped, but the record's scope runs it")),
             // Only a portable check must run; a host-bound one may be left to the nightly runs.
             "not-run" if field("host") != Host::Container.name() => {}
             "not-run" => problems.push(format!("{name}: portable check not run")),
@@ -183,7 +218,9 @@ mod tests {
     }
 
     fn record(checks: &Value) -> Value {
-        json!({"format": FORMAT, "checks": checks})
+        json!({"format": FORMAT, "checks": checks, "scope": {
+            "base": "b", "base_record": "c", "checks": {"cpp-tidy": {"run": false}, "fmt": {"run": true}},
+        }})
     }
 
     // req: VER-058
@@ -196,6 +233,34 @@ mod tests {
             {"name": "cpp-leon3", "host": "container-x86_64", "gating": false, "result": "fail"},
         ]));
         assert_eq!(gate_problems(&ok), Vec::<String>::new());
+
+        // A skip needs the record's scope to skip that check, for a covered base.
+        let mut forged = record(&json!([
+            {"name": "fmt", "host": "container", "gating": true, "result": "skipped"},
+            {"name": "cpp-tidy", "host": "container", "gating": true, "result": "skipped"},
+        ]));
+        assert_eq!(
+            gate_problems(&forged),
+            ["fmt: skipped, but the record's scope runs it"]
+        );
+        forged["scope"]["base_record"] = Value::Null;
+        assert_eq!(gate_problems(&forged).len(), 2);
+
+        // Format 1: a C++ check skipped by the C++ scope.
+        let old = |affected: bool, name: &str| {
+            json!({"format": FORMAT_1, "cpp": {"affected": affected, "base": "b"}, "checks": [
+                {"name": name, "host": "container", "gating": true, "result": "skipped"},
+            ]})
+        };
+        assert_eq!(gate_problems(&old(false, "cpp-tidy")), Vec::<String>::new());
+        assert_eq!(gate_problems(&old(true, "cpp-tidy")).len(), 1);
+        assert_eq!(gate_problems(&old(false, "clippy")).len(), 1);
+        // A record of --only never passes: its portable checks are not run.
+        let only = record(&json!([
+            {"name": "fmt", "host": "container", "gating": true, "result": "pass"},
+            {"name": "clippy", "host": "container", "gating": true, "result": "not-run"},
+        ]));
+        assert_eq!(gate_problems(&only), ["clippy: portable check not run"]);
 
         let bad = record(&json!([
             {"name": "fmt", "host": "container", "gating": true, "result": "fail"},
@@ -215,7 +280,7 @@ mod tests {
             gate_problems(
                 &json!({"checks": [{"name": "fmt", "host": "container", "gating": true, "result": "pass"}]})
             ),
-            ["not a `aldis-verify-record/1` record"]
+            ["not a `aldis-verify-record/2` or `aldis-verify-record/1` record"]
         );
     }
 }

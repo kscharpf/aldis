@@ -76,7 +76,7 @@ cargo xtask cpp unsafe-optouts                 # bounds opt-outs only in aldis/c
 cargo xtask cpp layers target/cpp/host-gcc     # CMake target graph (CPP-010)
 ```
 
-`cargo xtask verify` also runs clang-format, clang-tidy, the sanitizers, s390x, and the bare-metal builds. It skips the C++ checks when the change touches none of `cpp/`, `test-vectors/`, `xtask/`, or the C++ setup action; extend `CPP_PATHS` in `xtask/src/verify/mod.rs` when the C++ build starts reading something new. Suppress a warning or clang-tidy finding only on the smallest region, naming the check (CPP-042).
+`cargo xtask verify` also runs clang-format, clang-tidy, the sanitizers, s390x, and the bare-metal builds. Each check declares its inputs in `xtask/src/verify/checks.rs` and is skipped when none of them changed against the merge base with `main` (`cargo xtask verify list` shows which checks HEAD needs; `--all` runs every check): a change to documentation only (`docs/`, `changelog.d/`, the root `*.md`, `specs/README.md`, `specs/manifest.tsv`) runs only `spec`, a change to `xtask/` runs everything, and so does a path that no list names. When a check starts reading a new path, add the path to its inputs in the same change (as `CPP` for the C++ build). Suppress a warning or clang-tidy finding only on the smallest region, naming the check (CPP-042).
 
 When you change `refapp/` (track A), also run, from `refapp/` (see [refapp/README.md](refapp/README.md)):
 
