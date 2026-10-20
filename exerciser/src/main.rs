@@ -21,6 +21,7 @@ mod exercise;
 mod spp;
 mod target;
 mod time;
+mod vectors;
 
 /// The Rust entry point: the reset handler on Cortex-M, called by the start-up code of
 /// `target.rs` on Cortex-R and RISC-V once the stack is set.
@@ -29,7 +30,7 @@ mod time;
 #[unsafe(no_mangle)]
 pub extern "C" fn aldis_exerciser_main() -> ! {
     let tally = exercise::run();
-    target::report(tally.cases, tally.failures);
+    target::report(tally.cases, tally.failures, tally.not_representable);
     target::exit(tally.failures == 0 && tally.cases > 0)
 }
 

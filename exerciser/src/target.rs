@@ -21,22 +21,27 @@ const APPLICATION_EXIT: usize = 0x2_0026;
 /// `ADP_Stopped_RunTimeErrorUnknown`: QEMU exits with status 1.
 const RUNTIME_ERROR: usize = 0x2_0023;
 
-/// Writes `aldis-exerciser: <cases> cases, <failures> failed` to the semihosting console.
-pub fn report(cases: u32, failures: u32) {
-    let mut line = Line {
-        buf: [0; 64],
-        len: 0,
-    };
+/// Writes `aldis-exerciser: <cases> cases, <failures> failed, <n> not representable` to
+/// the semihosting console.
+pub fn report(cases: u32, failures: u32, not_representable: u32) {
+    let mut line = Line::new();
     line.push(b"aldis-exerciser: ");
     line.number(cases);
     line.push(b" cases, ");
     line.number(failures);
-    line.push(b" failed\n");
-    // The buffer is zero-initialized and never filled to its last octet, so the text is
-    // NUL-terminated as SYS_WRITE0 requires.
-    if line.len < line.buf.len() {
-        let _ = arch::call(SYS_WRITE0, line.buf.as_ptr().addr());
-    }
+    line.push(b" failed, ");
+    line.number(not_representable);
+    line.push(b" not representable\n");
+    line.write();
+}
+
+/// Writes `FAILED <id>` for a vector case that failed.
+pub fn failed(id: &str) {
+    let mut line = Line::new();
+    line.push(b"FAILED ");
+    line.push(id.as_bytes());
+    line.push(b"\n");
+    line.write();
 }
 
 /// Ends the run through semihosting `SYS_EXIT`; QEMU's exit status is 0 only on `success`.
@@ -55,11 +60,26 @@ pub fn exit(success: bool) -> ! {
 
 /// A fixed-size text buffer (no allocation, no `core::fmt`).
 struct Line {
-    buf: [u8; 64],
+    buf: [u8; 96],
     len: usize,
 }
 
 impl Line {
+    const fn new() -> Line {
+        Line {
+            buf: [0; 96],
+            len: 0,
+        }
+    }
+
+    /// Writes the line. The buffer is zero-initialized and never filled to its last octet, so
+    /// the text is NUL-terminated as `SYS_WRITE0` requires.
+    fn write(&self) {
+        if self.len < self.buf.len() {
+            let _ = arch::call(SYS_WRITE0, self.buf.as_ptr().addr());
+        }
+    }
+
     /// Appends `text`, keeping the last octet free for the terminating NUL.
     fn push(&mut self, text: &[u8]) {
         let Some(end) = self.len.checked_add(text.len()) else {

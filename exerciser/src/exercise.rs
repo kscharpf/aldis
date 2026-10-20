@@ -32,9 +32,15 @@ use crate::cases::{BITS_GET, BITS_SET, COUNTERS, CRC, CounterExpect, ERRORS, LAY
 pub struct Tally {
     pub cases: u32,
     pub failures: u32,
+    /// Vector cases whose length parameter does not fit in this target's `usize`.
+    pub not_representable: u32,
 }
 
 impl Tally {
+    pub(crate) const fn not_representable(&mut self) {
+        self.not_representable = self.not_representable.saturating_add(1);
+    }
+
     pub(crate) const fn check(&mut self, ok: bool) {
         self.cases = self.cases.saturating_add(1);
         if !ok {
@@ -433,6 +439,7 @@ pub fn run() -> Tally {
     crate::epp::run(&mut t);
     crate::spp::run(&mut t);
     crate::time::run(&mut t);
+    crate::vectors::run(&mut t);
     #[cfg(feature = "inject-panic")]
     canary(&mut t);
     t
