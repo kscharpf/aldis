@@ -165,7 +165,7 @@ The harness was confirmed to fail on a corrupted vector on 2026-10-21: the APID 
 
 ## 3. Discrepancies
 
-No discrepancy is resolved against the vectors or Aldis. Four are known differences in `spacepackets`, each resolved against the Blue Book text; the harness reports them under their identifiers (§2). cFE `MSG` v7.0.1 has none: on every value it produces it agrees with the vectors and with `aldis-spp` (2026-10-21).
+No discrepancy is resolved against the vectors or Aldis. Four are known differences in `spacepackets`, each resolved against the Blue Book text; the harness reports them under their identifiers (§2). cFE `MSG` v7.0.1 has none: on every value it produces it agrees with the vectors and with `aldis-spp` (2026-10-21). A human review of the four readings against 301.0, made without this section's reasoning, is recorded in [reviews/human-301-discrepancies.md](reviews/human-301-discrepancies.md).
 
 **D1. CUC fine time to nanoseconds** (`time-cuc-015`, `-016`). `spacepackets` divides the fine time counter of n octets by 2^(8n) − 1, deliberately (`fractional_res_to_div`, `convert_fractional_part_to_ns`). 301.0 §3.2.1 defines the fine time octets as the elapsed binary fraction of the basic time unit, each octet the state of 8 consecutive bits of a binary counter that rolls over at a modulo of 256, cascaded with the coarse octets. A fraction of n octets therefore counts units of 2^(−8n) s, and the divisor is 2^(8n), as TIME-011 specifies. The two readings differ by one part in 2^(8n) − 1; at the largest counter, `spacepackets` reports a sub-second part of a full 1 000 000 000 ns (`time-cuc-016`). **Resolved in favour of Aldis**; the vectors stand.
 
