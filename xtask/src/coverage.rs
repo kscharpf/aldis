@@ -3,7 +3,9 @@
 //!
 //! Test modules carry `#[cfg_attr(coverage_nightly, coverage(off))]`, so only library code is
 //! measured. Uncovered code is justified in `coverage-waivers.toml`; the gate accepts a crate
-//! only if every miss is waived there.
+//! only if every miss is waived there. The crates in [`REPORTED`] are measured and reported the
+//! same way but not gated: VER-024 covers Layers 0–2, and `aldis-ffi` is above them (M2 plan
+//! D16).
 
 use std::fmt::Write as _;
 use std::process::Command;
@@ -14,6 +16,9 @@ use crate::repo;
 
 /// Crates gated in M0 (Layer 0). Layers 1–2 join as they gain code (VER-024).
 const GATED: &[&str] = &["aldis-core", "aldis-time", "aldis-epp", "aldis-spp"];
+
+/// Crates measured and reported, not gated (M2 plan D16).
+const REPORTED: &[&str] = &["aldis-ffi"];
 
 /// The four metrics reported by `llvm-cov`, in report order.
 const METRICS: &[&str] = &["regions", "functions", "lines", "branches"];
@@ -108,7 +113,10 @@ pub fn run() -> Result<usize, String> {
 
     let mut problems = 0;
     for krate in GATED {
-        problems += check_crate(krate, &nightly, &out_dir, &cov_dir)?;
+        problems += check_crate(krate, &nightly, &out_dir, &cov_dir, true)?;
+    }
+    for krate in REPORTED {
+        check_crate(krate, &nightly, &out_dir, &cov_dir, false)?;
     }
     Ok(problems)
 }
@@ -118,6 +126,7 @@ fn check_crate(
     nightly: &str,
     out_dir: &std::path::Path,
     cov_dir: &std::path::Path,
+    gated: bool,
 ) -> Result<usize, String> {
     // Objects left by an older build or a previous crate in the loop are still passed to
     // `llvm-cov` and would bleed into this crate's report, so each crate starts clean.
@@ -141,11 +150,16 @@ fn check_crate(
     let data = report
         .pointer("/data/0")
         .ok_or_else(|| format!("{}: no data", repo::rel(&json)))?;
-    let waived = waivers(krate)?;
+    let waived = if gated { waivers(krate)? } else { [0; 4] };
 
+    let status = if gated {
+        "gated at 100 %"
+    } else {
+        "reported, not gated (M2 plan D16)"
+    };
     let mut md = format!(
         "# Coverage — `{krate}` (VER-024)\n\n\
-         `cargo llvm-cov --branch` on `{nightly}`; test modules excluded.\n\n\
+         `cargo llvm-cov --branch` on `{nightly}`; test modules excluded; {status}.\n\n\
          | File | Regions | Functions | Lines | Branches |\n|---|---:|---:|---:|---:|\n"
     );
     let cell = |s: &Value, m: &str| format!("{}/{}", count(s, m, "covered"), count(s, m, "count"));
@@ -184,14 +198,45 @@ fn check_crate(
         .collect();
     let _ = writeln!(md, "| **total** | {} |", cells.join(" | "));
 
+    let (mut problems, line) = judge(krate, covered_totals, count_totals, waived, gated);
+    // An instrumentation without branch data (old cargo-llvm-cov or stable rustc) would
+    // pass the branch gate vacuously.
+    if count_totals[3] == 0 {
+        println!(
+            "error: VER-024 {krate}: no branch data; needs cargo-llvm-cov >= 0.9 and {nightly}"
+        );
+        problems += 1;
+    }
+    println!("{line}");
+    let file = out_dir.join(format!("coverage-{krate}.md"));
+    std::fs::write(&file, md).map_err(|e| e.to_string())?;
+    println!("coverage report: {}", repo::rel(&file));
+    Ok(problems)
+}
+
+/// The summary line of a crate and, when it is `gated`, the number of metrics whose misses
+/// differ from the waived count.
+fn judge(
+    krate: &str,
+    covered_totals: [u64; 4],
+    count_totals: [u64; 4],
+    waived: [u64; 4],
+    gated: bool,
+) -> (usize, String) {
     let mut problems = 0;
-    let mut line = format!("coverage {krate}:");
+    let mut line = format!(
+        "coverage {krate}{}:",
+        if gated { "" } else { " (reported)" }
+    );
     for (i, (metric, allowed)) in METRICS.iter().zip(waived).enumerate() {
         let total = count_totals[i];
         let missed = total.saturating_sub(covered_totals[i]);
         let _ = write!(line, " {metric} {missed}/{total} missed");
         if allowed > 0 {
             let _ = write!(line, " ({allowed} waived)");
+        }
+        if !gated {
+            continue;
         }
         if missed > allowed {
             println!(
@@ -208,17 +253,5 @@ fn check_crate(
             problems += 1;
         }
     }
-    // An instrumentation without branch data (old cargo-llvm-cov or stable rustc) would
-    // pass the branch gate vacuously.
-    if count_totals[3] == 0 {
-        println!(
-            "error: VER-024 {krate}: no branch data; needs cargo-llvm-cov >= 0.9 and {nightly}"
-        );
-        problems += 1;
-    }
-    println!("{line}");
-    let file = out_dir.join(format!("coverage-{krate}.md"));
-    std::fs::write(&file, md).map_err(|e| e.to_string())?;
-    println!("coverage report: {}", repo::rel(&file));
-    Ok(problems)
+    (problems, line)
 }

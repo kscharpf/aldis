@@ -5,8 +5,10 @@
 //! `aldis_panic_is_unreachable`, a symbol that is defined nowhere. A release build (LTO,
 //! `panic = "abort"`) links only if no panic path survives optimization in any code the
 //! exerciser reaches, which is every public API of `aldis-core`, `aldis-time`, `aldis-spp`
-//! (with `time`), and `aldis-epp`. Feature `inject-panic` plants a reachable panic to show that
-//! the check fails when it should.
+//! (with `time`), and `aldis-epp`, and every function `aldis-ffi` exports (M2 plan D16). The
+//! handler is `aldis-ffi`'s, with its feature `panic-unreachable`, because `aldis-ffi` is also
+//! built as a static library and so needs one of its own. Feature `inject-panic` plants a
+//! reachable panic to show that the check fails when it should.
 //!
 //! **On-target run (M1 D6):** on every bare-metal target the exerciser also checks every
 //! embedded vector case and reports the result through semihosting: one line with the case
@@ -18,6 +20,7 @@
 mod cases;
 mod epp;
 mod exercise;
+mod ffi;
 mod spp;
 mod target;
 mod time;
@@ -44,19 +47,4 @@ pub extern "C" fn aldis_exerciser_main() -> ! {
 #[unsafe(no_mangle)]
 pub extern "C" fn aldis_exerciser_fault() -> ! {
     target::exit(false)
-}
-
-#[panic_handler]
-#[expect(
-    unsafe_code,
-    reason = "declares the deliberately undefined symbol of the link check"
-)]
-fn panic(_: &core::panic::PanicInfo<'_>) -> ! {
-    // SAFETY: never called in a successful build: the symbol does not exist, so a reachable
-    // call fails the link.
-    unsafe extern "C" {
-        /// Defined nowhere: any reachable panic makes the final link fail (VER-010).
-        safe fn aldis_panic_is_unreachable() -> !;
-    }
-    aldis_panic_is_unreachable()
 }

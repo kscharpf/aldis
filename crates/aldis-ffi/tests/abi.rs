@@ -717,3 +717,48 @@ fn reassembly_takes_the_buffer_on_every_push() {
         assert_eq!(aldis_spp_reassembler_reset(h, null_mut()), ALDIS_OK);
     }
 }
+
+#[test]
+fn counts_and_epi_checks() {
+    // req: SPP-011, EPP-010, CABI-020
+    let mut next = 0_u16;
+    let mut d = aldis_error_detail_t::default();
+    let cfg = aldis_ffi::epp::aldis_epp_config_t {
+        struct_size: size::<aldis_ffi::epp::aldis_epp_config_t>(),
+        min_data_len: 1,
+        max_data_len: 8,
+        valid_epis: 1 << 2,
+        valid_extended_epis: 0,
+    };
+    // SAFETY: every pointer is to a live local.
+    unsafe {
+        assert_eq!(
+            aldis_spp_sequence_count_next(16_383, &raw mut next, null_mut()),
+            ALDIS_OK
+        );
+        assert_eq!(next, 0);
+        assert_eq!(
+            aldis_spp_sequence_count_next(16_384, &raw mut next, &raw mut d),
+            ALDIS_ERR_OUT_OF_RANGE
+        );
+        assert_eq!(d.field, aldis_ffi::field::ALDIS_FIELD_SEQUENCE_COUNT);
+        assert_eq!(
+            aldis_ffi::epp::aldis_epp_check(&raw const cfg, 2, false, 0, 4, null_mut()),
+            ALDIS_OK
+        );
+        assert_eq!(
+            aldis_ffi::epp::aldis_epp_check(&raw const cfg, 3, false, 0, 4, &raw mut d),
+            ALDIS_ERR_UNKNOWN_CHANNEL
+        );
+        assert_eq!(d.field, aldis_ffi::field::ALDIS_FIELD_EPI);
+        assert_eq!(
+            aldis_ffi::epp::aldis_epp_check(&raw const cfg, 2, true, 16, 4, &raw mut d),
+            ALDIS_ERR_OUT_OF_RANGE
+        );
+        assert_eq!(
+            aldis_ffi::epp::aldis_epp_check(&raw const cfg, 2, false, 0, 9, &raw mut d),
+            ALDIS_ERR_OUT_OF_RANGE
+        );
+        assert_eq!(d.field, aldis_ffi::field::ALDIS_FIELD_DATA_LEN);
+    }
+}

@@ -24,3 +24,8 @@
   buffer, for callers that cannot keep the borrow between calls (API-060).
 - An `aldis-ffi` integration test runs every live case of `test-vectors/{time,spp,epp}/`
   through the C ABI with the testkit runner.
+- The exerciser calls every function `aldis-ffi` exports, so the panic-freedom link check
+  covers the C ABI on all three bare-metal targets (VER-010, M2 plan D16); its panic handler
+  is now `aldis-ffi`'s, with the new feature `panic-unreachable`. The fuzz target `ffi_decode`
+  checks that the C ABI decoders agree with the Rust decoders. `cargo xtask coverage` measures
+  and reports `aldis-ffi` without gating it.

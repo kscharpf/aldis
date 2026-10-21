@@ -21,6 +21,9 @@ bench = false
 [dependencies]
 aldis-core = { path = "../crates/aldis-core", default-features = false, features = ["crc-table", "test-hooks"] }
 aldis-epp = { path = "../crates/aldis-epp", default-features = false }
+# The C ABI (M2 plan D16), with its panic handler for the link check: it calls the undefined
+# aldis_panic_is_unreachable (VER-010), and is the only panic handler of the image.
+aldis-ffi = { path = "../crates/aldis-ffi", default-features = false, features = ["panic-unreachable"] }
 aldis-spp = { path = "../crates/aldis-spp", default-features = false, features = ["time"] }
 aldis-time = { path = "../crates/aldis-time", default-features = false }
 

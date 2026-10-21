@@ -441,6 +441,7 @@ pub fn run() -> Tally {
     apis_containers_security(&mut t);
     apis_mode_anomaly(&mut t);
     crate::epp::run(&mut t);
+    crate::ffi::run(&mut t);
     crate::spp::run(&mut t);
     crate::time::run(&mut t);
     crate::vectors::run(&mut t);
