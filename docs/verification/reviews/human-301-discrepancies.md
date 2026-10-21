@@ -60,7 +60,7 @@ Record every reading, including "agrees". A reading you would have made differen
 - Fixed by 301.0, or left open: the code is reserved by §3.3.2; what a decoder does with it is the reading above.
 - Vector cases agree with your results (yes / no, which): results above, from the reading (2026-10-21); not yet compared with the vector file.
 - After reading cross-checks.md §3 D2 — agree with Aldis / `spacepackets` / neither / unsure: not yet compared.
-- Notes: the coordinator (an AI) did not discuss Q2 before this reading was given. The automated review of PR #80 answers Q2; whether it was read first belongs in the sign-off.
+- Notes: the coordinator (an AI) did not discuss Q2 before this reading was given. The reviewer did not read the automated review of PR #80, which answers Q2.
 
 ## Q3. The P-field extension flag
 
@@ -109,7 +109,7 @@ Record every reading, including "agrees". A reading you would have made differen
 - After reading cross-checks.md §3 D4 — agree with Aldis / `spacepackets` / neither / unsure: not yet compared.
 - Notes:
   - **Differs from Aldis**, which rounds up (TIME-011). Under round-down the carry into the coarse time (`time-cuc-022`) and the overflow (`time-cuc-023`) cannot happen. Raised as [OI-40](../../09-open-issues.md); Aldis keeps its behaviour until OI-40 is decided.
-  - Not primed: the coordinator did not discuss Q4 before this reading was given. The automated review of PR #80 answers Q4; whether it was read first belongs in the sign-off.
+  - Not primed: the coordinator did not discuss Q4 before this reading was given, and the reviewer did not read the automated review of PR #80, which answers it.
 
 ## Sign-off
 
@@ -117,6 +117,6 @@ Record every reading, including "agrees". A reading you would have made differen
 - Date(s):
 - Document read (edition, and corrigenda checked on the CCSDS site):
 - Time spent:
-- Had you seen any AI's answers to these questions before writing yours (an automated review of the pull request that added this packet, PR #80, works all four)? Which questions:
+- Had you seen any AI's answers to these questions before writing yours (an automated review of the pull request that added this packet, PR #80, works all four)? Which questions: no automated review was read. The coordinator's discussion primed Q1's final reading and, in part, Q3's (see their notes); Q2 and Q4 were not primed. (2026-10-21)
 - Findings that need a change (none, or the questions):
 - Questions to pass to a CCSDS expert: Q3 (OI-39). Q4 (OI-40) is a project rule, so it needs no expert.
