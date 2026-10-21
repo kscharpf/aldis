@@ -1,6 +1,6 @@
 # COP-1 (FOP-1 and FARM-1) — CCSDS 232.1-B-2 (+ Cor. 1)
 
-**Crate:** `aldis-cop1` (Layer 2 engine) · **Reference:** `specs/pdf/232x1b2e2c1.pdf` ([how to download](../../specs/README.md))
+**Crate:** `aldis-cop1` (Layer 2 engine) · **Reference:** `specs/pdf/232x1b2e2c1.pdf` ([how to download](../../specs/README.md)) · **Acronyms:** [glossary](../glossary.md)
 
 COP-1 provides the Sequence-Controlled (AD) and Expedited (BD) services of TC and of USLP. **FOP-1** runs at the sending end, typically the ground. **FARM-1** runs at the receiving end, typically the spacecraft. One instance of each runs per Virtual Channel.
 
