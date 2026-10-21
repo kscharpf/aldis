@@ -1,9 +1,19 @@
 //! Cross-checks the Aldis test vectors against independent implementations (VER-040, M1 D5).
 //!
-//! Each standard module turns one vector case into a [`Verdict`] using only the independent
-//! implementation and the case's own parameters. No Aldis codec is linked. The checks per
-//! standard, and every case they skip, are listed in `docs/verification/cross-checks.md`.
+//! Each module turns one vector case into a [`Verdict`]. The `spacepackets` checks ([`spp`],
+//! [`time`]) use only the independent implementation and the case's own parameters. The NASA
+//! cFE checks ([`cfe`], [`cfe_properties`]) also compare cFE with `aldis-spp` on the same
+//! packets. The checks per implementation, and every case they skip, are listed in
+//! `docs/verification/cross-checks.md`.
 
+pub mod cfe;
+#[expect(
+    unsafe_code,
+    reason = "the bindings to the cFE MSG module, the only unsafe code of the cross-checks; each \
+              block states why it is sound"
+)]
+pub mod cfe_msg;
+pub mod cfe_properties;
 pub mod spp;
 pub mod time;
 

@@ -1,6 +1,8 @@
 # Independent cross-checks (VER-040)
 
-The `crosscheck/` workspace runs the vector files under `test-vectors/` through independent, existing implementations and reports every disagreement (M1 D5, WP-4). Each discrepancy is resolved against the Blue Book text and recorded in §3. This file also lists, per standard, what has no independent implementation and what was searched (§4).
+The `crosscheck/` workspace runs the vector files under `test-vectors/` through independent, existing implementations and reports every disagreement (M1 D5, WP-4; M2 D15, WP-6). Each discrepancy is resolved against the Blue Book text and recorded in §3. This file also lists, per standard, what has no independent implementation and what was searched (§4).
+
+Two implementations are run: `spacepackets` (Rust) against the vectors only, and NASA cFE's `MSG` module (C) against the vectors and against `aldis-spp` on the same packets, including random ones.
 
 ## 1. Implementations
 
@@ -19,7 +21,31 @@ Evaluated 2026-10-19 for SPP, CUC, and CDS, and 2026-10-20 for the P-field and A
 
 **Exception RUSTSEC-2024-0436** (maintainer decision 2026-10-19). The advisory reports that `paste` 1.0.15, a required dependency of `spacepackets`, is unmaintained. It reports no vulnerability. `paste` is a build-time macro helper, and `crosscheck/` is a dev-only workspace that is never shipped. The exception therefore lives in `crosscheck/deny.toml` only, which repeats the root policy and adds this one `ignore`. The root `deny.toml`, which governs the shipped crates, is unchanged. The `deny` check of `cargo xtask verify` (and of the nightly CI) checks `crosscheck/` with its own file.
 
+### NASA cFE `MSG` v7.0.1 (C, GitHub `nasa/cFE`)
+
+Evaluated and added 2026-10-21 for the Space Packet primary header and cFE's telemetry time (maintainer's choice; M2 D15, OI-32).
+
+| Check | Result |
+|---|---|
+| Independence | NASA Goddard's core Flight Executive, the framework of the core Flight System. Written independently of Aldis; shares no code, authors, or ancestry with it, nor with `spacepackets` |
+| License | Apache-2.0: the repository's `LICENSE`, and the header of every file used (NASA Docket No. GSC-19,200-1, "cFS Draco", copyright the United States Government as represented by the NASA Administrator). The repository has no `NOTICE` file. Running it as a test oracle is permitted and costs nothing (VER-055). Vendoring is redistribution: Apache-2.0 §4 asks for a copy of the license, which `crosscheck/vendor/cfe/LICENSE` is, and notice of changes, of which there are none |
+| Version | Release "cFS - v7.0.1" of 2026-05-14, the latest (`gh release list -R nasa/cFE`); tag `v7.0.1`, a lightweight tag on commit `c5fb2b4d540bd55eb6c3707da7dd13eee679d4dd` (`git ls-remote --tags https://github.com/nasa/cFE.git`). The archive `https://github.com/nasa/cFE/archive/c5fb2b4d540bd55eb6c3707da7dd13eee679d4dd.tar.gz` had SHA-256 `8eab93d9bb09854605487665d44f1b5f446f07641ec5f7fd954d19ec3cdbb2f4` on 2026-10-21, and every vendored file matches its copy in that archive. An upgrade re-runs this evaluation |
+| Files used | Unmodified, at their repository paths under `crosscheck/vendor/cfe/`, each with its SHA-256 in `SHA256SUMS` (check with `shasum -a 256 -c SHA256SUMS` in that directory, or against a checkout of the tag): `modules/msg/fsw/src/` `cfe_msg_ccsdspri.c`, `cfe_msg_init.c`, `cfe_msg_initdefaulthdr_pri.c`, `cfe_msg_msgid_v1.c`, `cfe_msg_sechdr_time.c`, `cfe_msg_priv.h`, `cfe_msg_defaults.h`; `modules/msg/fsw/inc/ccsds_hdr.h`; `modules/msg/option_inc/` `default_cfe_msg_hdr_pri.h`, `default_cfe_msg_sechdr.h`; `modules/core_api/fsw/inc/` `cfe_msg.h`, `cfe_msg_api_typedefs.h`, `cfe_error.h`. That is the selection of `modules/msg/CMakeLists.txt` without `MISSION_INCLUDE_CCSDSEXT_HEADER`, less the files the harness does not call (integrity actions, function code, checksum, the shared message-identifier helper, the object table) |
+| Stubs | `crosscheck/cfe-stubs/`, Aldis's own code (MIT), each file marked as a stub: OSAL's `common_types.h` (the `<stdint.h>` types) and `osapi.h`; the configuration wrappers `cfe_msg_hdr.h` and `cfe_msg_sechdr.h`, which cFE's build generates (`modules/msg/mission_build.cmake`) and which include the default layouts; empty `cfe_mission_cfg.h` and `cfe_platform_cfg.h`, so that `cfe_msg_defaults.h` applies its defaults (Packet Version Number 0, default APID 0); an empty `cfe_es_api_typedefs.h`; `cfe_sb_api_typedefs.h` and `cfe_sb.h` with the message identifier and the three Software Bus helpers that `CFE_MSG_Init` and `CFE_MSG_SetMsgId` call, as cFE defines them without EDS; `cfe_time_api_typedefs.h` and `cfe_time.h` with `CFE_TIME_SysTime_t`. `abi_check.c` fails the build if a type size or a status code that the Rust declarations assume differs from the vendored headers |
+| Build | `crosscheck/build.rs` compiles the five sources and `abi_check.c` with the `cc` crate (1.9.0, MIT OR Apache-2.0; with its dependencies `shlex` and `find-msvc-tools` it was already in `crosscheck/Cargo.lock`, as a build dependency of `chrono`'s `iana-time-zone-haiku`, which builds only for Haiku) as C11, with `-Wall -Wextra` and warnings as errors, into a static library. The host C compiler is used: in the image of `cargo xtask verify`, `cc` is the pinned GCC 14 (`cpp/toolchains.lock`); on macOS, Apple clang |
+| Bindings | `crosscheck/src/cfe_msg.rs`, the only module of `crosscheck/` that may use `unsafe` (`unsafe_code` is denied for the crate and expected for that module; GEN-071, VER-002, RS-017). Each `unsafe` block states why it is sound: every call gets a buffer of at least `sizeof(CFE_MSG_TelemetryHeader_t)`, 16 octets, because cFE reads and writes a fixed number of octets without knowing the buffer's length |
+
+**How the source reaches the gate.** The `spec` check of `cargo xtask verify` runs `crosscheck` inside the image, so the cFE source must be there without a network fetch at check time. Of the two options, the sources are vendored (option b) rather than downloaded into the image by the `Containerfile` (option a), because:
+
+- they are 13 C files of about 3 400 lines in all, and the license, which the pull request shows and review can read, against an archive of the whole cFE repository;
+- the check is the same everywhere: in the image, in the nightly CI, which runs `crosscheck` outside the image, and by hand, with no download, no environment variable, and nothing to keep in step;
+- the image is unchanged, so no new image is built and pushed for it, and the C++ track's image pins stay where they are.
+
+The cost is third-party C code in the repository, kept unmodified under its own license. `ALDIS_CFE_SRC` may name a cFE checkout to compile from instead of `vendor/cfe/`, to try another cFE release before re-vendoring. If a file is missing, from either place, the build of `crosscheck` fails, so the gate never skips the check for want of its source.
+
 ## 2. Coverage
+
+### `spacepackets` 0.18.0
 
 What `spacepackets` 0.18.0 can check, by vector file. The harness (`cargo run --manifest-path crosscheck/Cargo.toml`, a step of the `spec` check of `cargo xtask verify` and of the nightly CI, after the harness's own tests) checks only the cases in scope, prints every case it skips with the reason, and fails on any disagreement. A check compares only the values `spacepackets` produces; the expected values it cannot produce are listed under "Out of scope". A key such as `format.day_bits` names the member `day_bits` of the expected object `format`.
 
@@ -65,9 +91,80 @@ The time code skips: `spp-tsh-007` (CCS), `-010` (Level 2), `-012` (ancillary fi
 
 The harness was confirmed to fail on a corrupted vector, in two runs. 2026-10-19: an APID changed in `spp-dec-001` and an octet changed in `spp-enc-001`. 2026-10-20: the day of `time-cds-001`, the expected nanoseconds of `time-cuc-015` (a D1 case, which shows that a known discrepancy does not hide a wrong vector), the day of year in the text of `time-ascii-030`, and one octet of `time_code_hex` in `spp-tsh-001`. Each was reported as a disagreement, with a failing exit status, and the vectors were restored.
 
+### NASA cFE `MSG` v7.0.1
+
+cFE's `MSG` module reads and writes the fields of a message through `CFE_MSG_Get*` and `CFE_MSG_Set*`, and `CFE_MSG_Init` clears a message and sets its size and default header. It is a message library for cFS applications, not a codec: it trusts its callers (see below). The harness (`crosscheck/src/cfe.rs`, `cfe_properties.rs`) runs it in three parts, after the `spacepackets` checks in the same run, and fails on any disagreement in any part.
+
+1. **Packets.** Every well-formed packet in each `spp/` file: the case's input, its expected `output_hex`, and its expected or given `packets_hex`, each walked packet by packet as far as `aldis-spp` decodes it in lenient mode. cFE and `aldis-spp` must read the same primary header (all seven values of the first table below), and cFE must build the same octets from Aldis's fields and data field (`CFE_MSG_Init` for the total size, then each setter, then the data field copied after the header). A case with no such packet is skipped.
+2. **Expected values.** The values of a case that cFE can produce, compared with the vector as for `spacepackets`; the second table lists them.
+3. **Properties.** Random packets from `aldis_testkit::strategies::spp`, built by `aldis-spp`'s encoder, drawn with a fixed ChaCha seed so that each run checks the same cases: 2000 packets with up to 46 data field octets, 200 with up to 65 536, both compared field by field and octet by octet as in part 1; and 2000 telemetry packets with a user APID whose secondary header is a CUC 4+2 time code without a P-field, encoded by `aldis-time` and `aldis-spp`, which `CFE_MSG_GetMsgTime` must read as the same seconds and fraction, and `CFE_MSG_SetMsgTime` must write into a packet cFE built as the same octets.
+
+**What cFE reads and writes**, by field (`cfe_msg_ccsdspri.c`, `cfe_msg_init.c`, `cfe_msg_sechdr_time.c`; the extended header and the command secondary header from `cfe_msg_ccsdsext.c`, `cfe_msg_sechdr_fc.c`, `cfe_msg_sechdr_checksum.c`, and the `option_inc/` variants):
+
+| 133.0 field, or cFE item | cFE API | Compared |
+|---|---|---|
+| Packet Version Number (§4.1.3.2) | `Get`/`SetHeaderVersion` (3 bits) | Yes: `000` on every packet and set when building. Other values only as skips: Aldis rejects them, cFE reads them and rejects none |
+| Packet Type (§4.1.3.3.2) | `Get`/`SetType` (`Tlm`, `Cmd`) | Yes |
+| Secondary Header Flag (§4.1.3.3.3) | `Get`/`SetHasSecondaryHeader` | Yes |
+| APID (§4.1.3.3.4) | `Get`/`SetApId` (rejects more than 11 bits) | Yes, the idle APID included |
+| Sequence Flags (§4.1.3.4.2) | `Get`/`SetSegmentationFlag` (all four values) | Yes |
+| Packet Sequence Count (§4.1.3.4.3) | `Get`/`SetSequenceCount` (rejects more than 14 bits); `GetNextSequenceCount` (increment modulo 2^14) | Yes; the next count against `next_count` of `spp/octet_string` and `spp/segment` |
+| Packet Data Length (§4.1.3.5) and total length | `GetSize`, `SetSize` through `CFE_MSG_Init` (total 7–65 542 octets) | Yes; `SetSize`'s range against the empty data field (SPP-005) and the 65 537-octet data field |
+| Packet Data Field (§4.1.4) | none: an application writes its payload into the structure | The octets of the built packet |
+| Message identifier, version 1 | `Get`/`SetMsgId`: the first 16 bits as a routing key | No: a cFE Software Bus key, not a 133.0 field. Linked because `CFE_MSG_Init` calls `SetMsgId`; the harness passes `CFE_SB_INVALID_MSG_ID`, which skips it |
+| CCSDS extended header: subsystem, system, EDS version, endian, playback | `cfe_msg_ccsdsext.c` with `default_cfe_msg_hdr_priext.h`: 4 octets right after the primary header | No: mission-specific, and not compiled. For 133.0 it is the start of the Packet Secondary Header, which Aldis treats as opaque octets (§4.1.4.2.1.5 b; SPP-007) |
+| Telemetry time | `Get`/`SetMsgTime`: 4 octets of seconds, then the upper 16 bits of the 32-bit subseconds (units of 2^-32 s), big-endian, right after the primary header | Yes, as a CUC T-field of 4 coarse and 2 fine octets without a P-field (301.0 §3.2; 133.0 §4.1.4.2.2.4 allows the P-field to be left out when the code's characteristics are fixed), Aldis's `TimeHeaderLayout` with that format and `pfield` false: the fine octets are the binary fraction of a second, so cFE's subseconds are Aldis's left-aligned fraction shifted right by 96 bits. cFE truncates the subseconds to 16 bits when writing. The epoch is a cFE mission setting, outside the packet, so the octets do not say whether the code is Level 1 or Level 2 |
+| `Spare[4]` of `CFE_MSG_TelemetryHeader_t` | none: alignment padding of the C structure (primary header only), not read or written by `MSG` | No. For Aldis, 4 octets of Ancillary Data Field after the time code (§4.1.4.2.3) |
+| Command secondary header: function code, checksum | `cfe_msg_sechdr_fc.c`, `cfe_msg_sechdr_checksum.c` | No: cFE's own convention, not 133.0; for Aldis opaque secondary header octets. Not compiled |
+
+**By vector file:**
+
+| Vector files | Packets (part 1) | Expected values (part 2) | Out of scope, and why |
+|---|---|---|---|
+| `spp/decode_valid`, `spp/decode_invalid`, `spp/field_codes` (`decode`, `peek_length`) | Each input packet | `decode`: `packet_type`, `secondary_header_flag`, `apid`, `sequence_flags`, `sequence_count`, `packet_len`, `consumed`, `data_len`, `data_hex`. `peek_length`: `len` | `idle`, `packet_name`, `anomalies`. Every rejection: cFE rejects no version (`UnsupportedVersion`), does not compare the length with the buffer (`Incomplete`), and has no Idle Packet rule (SPP-004) |
+| `spp/stream` | Each packet of the stream | The stream split by `CFE_MSG_GetSize`: `apid`, `sequence_count`, `consumed` of each packet, `stop_error` (none or `Incomplete`), `offset` | `anomalies`; streams that stop at an error cFE does not detect |
+| `spp/encode`, `spp/octet_string` | The expected packet | Built with `CFE_MSG_Init` and the setters from the parameters: `output_hex`, and `next_count` for the Octet String; for `encode` also `aldis-spp`'s encoder on the same parts. An empty data field and one above 65 536 octets must be rejected (`CFE_MSG_BAD_ARGUMENT`) | The rejection rules cFE does not have: an Idle Packet with a secondary header (SPP-005), the idle APID for the Octet String (SPP-012), `max_packet_len` (SPP-006) |
+| `spp/idle` | The expected packet, which cFE also builds from Aldis's fields and the pattern | Read by cFE: APID 2047, Secondary Header Flag 0, Sequence Flags `11`, the given count and total length. A total length below 7 must be rejected | The idle pattern; `max_packet_len` |
+| `spp/segment` | Each expected packet | Read by cFE: the type, APID, Secondary Header Flag, count (advanced with `CFE_MSG_GetNextSequenceCount`), and length of each; `next_count` | The split of the SDU; rejections (no segmentation logic) |
+| `spp/reassemble`, `spp/split` | Each packet | — | No reassembler; no secondary header length, which in cFE is set by the application's C structures |
+| `spp/sequence_tracker` | — (no packets) | — | No sequence tracker |
+| `spp/secondary_header_time` (`split_time`) | Each input packet | With cFE's layout (CUC 4+2, no P-field; any ancillary length): `CFE_MSG_GetMsgTime` gives `time_code_hex`, `CFE_MSG_SetMsgTime` writes the expected time code into the packet with that field cleared, and `aldis-spp`'s split reads the same value. Secondary Header Flag 0 must be rejected (`CFE_MSG_WRONG_MSG_TYPE`) | Other layouts: CDS, CCS, other CUC sizes, an explicit P-field. `LengthMismatch`: cFE does not compare the time with the Packet Data Length. The split into secondary header, ancillary data, and user data. A telecommand (none in the file): cFE defines the time for telemetry only |
+| `time/cuc` (`decode`, `decode_implicit`, `encode`) | — | With 4 coarse and 2 fine octets: the T-field (after the expected P-field) in a telemetry packet cFE built, read by `CFE_MSG_GetMsgTime` as `value.coarse` and `value.fine_hex`; `encode` written by `CFE_MSG_SetMsgTime`, which must give the last 6 octets of `output_hex` (cFE writes no P-field) | Every other format; rejections (cFE's seconds are a `uint32` and it checks no value); `cuc_to_ns` and `cuc_from_ns` (`CFE_MSG` converts nothing; `CFE_TIME` is not examined, §4.7) |
+| Properties | — | Part 3 | — |
+
+**What cFE does not check.** It trusts its callers, so these differences are skips, never disagreements, and none is a discrepancy in a checked value:
+
+- No function knows the length of the buffer. The getters read the 6 header octets, `CFE_MSG_GetMsgTime` and `CFE_MSG_SetMsgTime` 12 octets, and `CFE_MSG_Init` clears `Size` octets before it checks `Size`. The harness gives every call a buffer of at least 16 octets and of at least `Size`, and checks a short packet's time only where the vector expects one.
+- No length check on reading: `CFE_MSG_GetSize` returns the Packet Data Length plus 7, whatever follows (SPP-002).
+- No version check, except that `CFE_MSG_GetMsgTime` and `SetMsgTime` require version `000` (`CFE_MISSION_CCSDSVER`), telemetry, and the Secondary Header Flag (SPP-001).
+- No Idle Packet rule: APID 2047 with a secondary header is read and built (SPP-004, SPP-005, SPP-010).
+- No rule between the Secondary Header Flag and the data field: cFE builds the flag with any data field of at least one octet (SPP-005), and has no maximum packet length below 65 542 (SPP-006).
+
+**Result, 2026-10-21:** part 1, 78 agree, 36 skipped, 0 known, 0 disagreements over twelve files; part 2, 49 agree, 72 skipped, 0 known, 0 disagreements over ten files; part 3, 4200 agree, 0 disagreements.
+
+| Vector file | Packets: agree | skipped | Values: agree | skipped |
+|---|---|---|---|---|
+| `spp/decode_valid` | 10 | 3 (`peek_length` header only) | 13 | 0 |
+| `spp/decode_invalid` | 1 (`spp-inv-008`, lenient) | 9 | 0 | 10 |
+| `spp/field_codes` | 1 | 3 | 1 | 3 |
+| `spp/stream` | 5 | 0 | 3 | 2 |
+| `spp/encode` | 7 | 6 | 9 | 4 |
+| `spp/idle` | 6 | 2 | 7 | 1 |
+| `spp/octet_string` | 3 | 3 | 4 | 2 |
+| `spp/segment` | 7 | 4 | 7 | 4 |
+| `spp/reassemble` | 14 | 0 | — | — |
+| `spp/sequence_tracker` | 0 | 6 | — | — |
+| `spp/split` | 6 | 0 | — | — |
+| `spp/secondary_header_time` | 18 | 0 | 3 (`spp-tsh-001`, `-006`, `-014`) | 15 |
+| `time/cuc` | — | — | 2 (`time-cuc-006-enc`, `-006-dec`) | 31 |
+
+The value skips: `spp-inv-001`…`-010`, `spp-field-001`…`-003` (rejections cFE does not make); `spp-str-003`, `-004` (stops at `UnsupportedVersion` and `InvalidField`); `spp-enc-005`, `-008`, `-009`, `-010`, `spp-idle-006`, `spp-oct-005`, `-006` (rules cFE does not have); `spp-seg-007`…`-010` (segmentation rules); `spp-tsh-011`, `-012` (`LengthMismatch`) and the 13 other `spp-tsh` cases whose layout is not cFE's; the 31 `time/cuc` cases of other formats, of `OutOfRange` (`time-cuc-011`), or of the nanosecond conversions. Every skip is printed with its reason.
+
+The harness was confirmed to fail on a corrupted vector on 2026-10-21: the APID of `spp-dec-001`, the last octet of `spp-enc-001`, one octet of `time_code_hex` in `spp-tsh-001`, and `value.coarse` of `time-cuc-006-dec` were each reported as a disagreement by cFE and by `spacepackets`, with a failing exit status, and the vectors were restored. Its tests (`crosscheck/src/cfe.rs`) show the same for a wrong decoding, encoding, and time vector.
+
 ## 3. Discrepancies
 
-No discrepancy is resolved against the vectors or Aldis. Four are known differences in `spacepackets`, each resolved against the Blue Book text; the harness reports them under their identifiers (§2).
+No discrepancy is resolved against the vectors or Aldis. Four are known differences in `spacepackets`, each resolved against the Blue Book text; the harness reports them under their identifiers (§2). cFE `MSG` v7.0.1 has none: on every value it produces it agrees with the vectors and with `aldis-spp` (2026-10-21).
 
 **D1. CUC fine time to nanoseconds** (`time-cuc-015`, `-016`). `spacepackets` divides the fine time counter of n octets by 2^(8n) − 1, deliberately (`fractional_res_to_div`, `convert_fractional_part_to_ns`). 301.0 §3.2.1 defines the fine time octets as the elapsed binary fraction of the basic time unit, each octet the state of 8 consecutive bits of a binary counter that rolls over at a modulo of 256, cascaded with the coarse octets. A fraction of n octets therefore counts units of 2^(−8n) s, and the divisor is 2^(8n), as TIME-011 specifies. The two readings differ by one part in 2^(8n) − 1; at the largest counter, `spacepackets` reports a sub-second part of a full 1 000 000 000 ns (`time-cuc-016`). **Resolved in favour of Aldis**; the vectors stand.
 
@@ -84,9 +181,16 @@ Observed in `spacepackets`, not discrepancies in a checked value:
 - `CcsdsPacketCreator` computes the Packet Data Length as `len − 1` without checking for an empty data field. That subtraction underflows: it panics in a debug build and wraps in a release build. 133.0 §4.1.4.1.2 requires at least one octet of Packet Data Field, which Aldis enforces (`InvalidField`, `spp-enc-004`). The harness never passes that input.
 - Its CDS readers and constructors check no range: a millisecond of day of 86 401 000 or more, a microsecond segment of 1000 or more, and a picosecond segment of 10^9 or more are accepted. Aldis rejects them in both modes (TIME-021). The cases are skipped as a rule `spacepackets` does not have.
 
+Observed in cFE `MSG` v7.0.1, not discrepancies in a checked value (its unchecked inputs are listed in §2):
+
+- `CFE_MSG_Init` clears `Size` octets of the caller's buffer before `CFE_MSG_SetSize` checks `Size`, so a size above the buffer overruns it even when the call then fails. The harness's buffers are never shorter than the size.
+- `CFE_MSG_SetMsgTime` keeps only the upper 16 bits of the subseconds: it truncates a time to 2^-16 s, the resolution of 2 fine octets (301.0 §3.2.1).
+- Without the extended header, `CFE_MSG_TelemetryHeader_t` has 4 spare octets after the time, so a cFE application's payload starts 16 octets into the packet; with the extended header the time follows the 4 extended header octets and there is no spare. Either way, for 133.0 these octets are Packet Secondary Header content, which `aldis-spp` describes with an Ancillary Data Field or an opaque layout.
+- cFE defines its time for telemetry only; a command's secondary header holds a function code and a checksum instead. 133.0 §4.1.4.2.1.5 allows a Time Code Field in the secondary header of any packet, and §4.1.4.2.1.6 fixes the choice per managed data path, which cFE's convention conforms to.
+
 ## 4. Standards with no independent implementation
 
-The features `spacepackets` does not cover (§2), searched 2026-10-20. Search covered crates.io (the `ccsds` query and the crates it lists), PyPI, GitHub, and agency and mission tools. A candidate qualifies when it is open source under a license that allows running it as a test oracle, shares no code or authors with Aldis, and implements the feature as 301.0 or 133.1 define it. Candidates were read at source level unless the entry says otherwise.
+The features `spacepackets` does not cover (§2), searched 2026-10-20. cFE `MSG` (§1, run since 2026-10-21) adds a second implementation of the primary header and of CUC 4+2 time codes without a P-field, which `spacepackets` already covers, and of the count increment modulo 2^14 (§4.6); it covers none of the features below otherwise. Search covered crates.io (the `ccsds` query and the crates it lists), PyPI, GitHub, and agency and mission tools. A candidate qualifies when it is open source under a license that allows running it as a test oracle, shares no code or authors with Aldis, and implements the feature as 301.0 or 133.1 define it. Candidates were read at source level unless the entry says otherwise.
 
 Every candidate below is independent of Aldis. None is run yet: each that qualifies needs a JVM, Python, or a Prolog runtime in `crosscheck/`, or is a single-maintainer beta crate. Maintainer decision 2026-10-20: M1 closes with the `spacepackets` checks above, and running these candidates is [OI-32](../09-open-issues.md), targeted at M2. Until then the vectors of these features stay `hand-derived`, with the derivation written down (D5).
 
@@ -161,10 +265,11 @@ No implementation of the subset rules of §3.5.1.3 was found.
 | `space_packet_parser` (Python, LASP; [PyPI](https://pypi.org/project/space-packet-parser/)), `combine_segmented_packets` | BSD-3-Clause | Reassembles per APID, drops an orphan continuation, and drops a group with a count gap; its policy is its own, not SPP-013's | Qualifies for reassembly, where the policies coincide |
 | `ccsds` crate (bmflynn) | MIT OR Apache-2.0 | Counts sequence gaps with wrap-around; groups packets without checking their flags | Partial: gap counting |
 | F Prime `Svc/Ccsds/ApidManager` ([repository](https://github.com/nasa/fprime)) | Apache-2.0 | Generates and checks counts per APID | Partial |
+| NASA cFE `MSG` v7.0.1 `CFE_MSG_GetNextSequenceCount` (§1) | Apache-2.0 | The next count modulo 2^14; no tracker, segmentation, or reassembly | Run (§2) for `next_count` of `spp/octet_string` and `spp/segment` |
 | `ccsdspy` (NASA), `minspp` | BSD-3-Clause, GPL-3.0 | Sequence warnings and an assembler, not read at source level | Not verified |
 
 No sender-side segmentation was found: libraries expose the Sequence Flags but do not split an SDU.
 
 ### 4.7 Not available
 
-ESA SCOS-2000, EGOS, and libgcs are not published as open source. OpenC3 COSMOS is not under an OSI license and has only day, millisecond, and microsecond helpers. `satrs` and `tmtccmd` share authors with `spacepackets`. Not examined: NASA cFE `CFE_TIME`, AMMOS MMTC, SpacePy, astropy, libCSP, and Go or JavaScript packages.
+ESA SCOS-2000, EGOS, and libgcs are not published as open source. OpenC3 COSMOS is not under an OSI license and has only day, millisecond, and microsecond helpers. `satrs` and `tmtccmd` share authors with `spacepackets`. NASA cFE's `MSG` module is run (§1, §2); its `CFE_TIME` module, which converts and formats times, is not examined. Not examined either: AMMOS MMTC, SpacePy, astropy, libCSP, and Go or JavaScript packages.
