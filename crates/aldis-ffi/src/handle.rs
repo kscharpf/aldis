@@ -1,9 +1,9 @@
 //! Caller-owned storage for the stateful helpers (c-abi.md §5; CABI-031, CABI-032; M2 plan D5).
 //!
-//! A helper's state lives in a [`Slot`] at the start of storage the caller provides, of at
+//! A helper's state lives in a `Slot` at the start of storage the caller provides, of at
 //! least the helper's `ALDIS_*_STORAGE_SIZE` octets and aligned to its `ALDIS_*_STORAGE_ALIGN`.
 //! `_init` checks both (CABI-031) and writes the slot's tag: a magic number per helper, the
-//! [`GENERATION`] of the slot layout, and the slot's own address. Every later call checks the
+//! generation of the slot layout, and the slot's own address. Every later call checks the
 //! tag and fails with `ALDIS_ERR_INVALID_HANDLE` on uninitialized, deinitialized, foreign, or
 //! copied storage (CABI-032). `_deinit` clears the magic. The state is read by value at the
 //! start of a call and written back at its end, so no Rust reference to caller storage lives

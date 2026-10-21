@@ -108,6 +108,8 @@ jobs:
         # A cdylib cannot be built for bare metal; Cargo's notice about dropping it is
         # not a compiler warning and does not trip RUSTFLAGS=-D warnings.
         run: cargo build -p aldis-ffi --no-default-features --features panic-handler --target ${{ matrix.target }} --release
+      - name: No heap, threads, or C runtime needed (CABI-004)
+        run: cargo xtask ffi-imports ${{ matrix.target }}
 
   big-endian:
     name: big-endian tests (VER-030, GEN-007)

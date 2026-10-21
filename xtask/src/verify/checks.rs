@@ -256,7 +256,9 @@ fn rust() -> Vec<Check> {
                 "cargo build -p aldis --no-default-features --features full --target {t}\n\
                  cargo clippy -p aldis --no-default-features --features full --target {t}\n\
                  cargo build -p aldis-ffi --no-default-features --features panic-handler \
-                 --target {t} --release\n"
+                 --target {t} --release\n\
+                 # The C ABI static library needs no heap, threads, or C runtime (CABI-004).\n\
+                 cargo xtask ffi-imports {t}\n"
             ),
         ));
     }

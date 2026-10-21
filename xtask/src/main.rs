@@ -44,6 +44,8 @@ commands:
   refapp-deps                  refapp/ uses Aldis only through the `aldis` facade and
                                forbids unsafe code (APP-100, APP-105)
   symbols                      no frame-protocol code in a build of aldis-spp alone (VER-031)
+  ffi-imports <target>         the bare-metal aldis-ffi static library needs nothing from the
+                               integrator beyond memcpy/memset equivalents (CABI-004)
   stack-sizes <target>         per-function stack usage of the exerciser (VER-011; tooling nightly)
   features                     `alloc` and `std` are additive: no API gated on them, and every
                                test passes alike without them, with `alloc`, and with `std`
@@ -86,6 +88,7 @@ fn run(args: &[&str]) -> Result<usize, String> {
         ["layers"] => layers::check(),
         ["refapp-deps"] => refapp::check(),
         ["symbols"] => binaries::symbols(),
+        ["ffi-imports", target] => binaries::ffi_imports(target),
         ["stack-sizes", target] => binaries::stack_sizes(target),
         ["coverage"] => coverage::run(),
         ["features"] => features::check(),
