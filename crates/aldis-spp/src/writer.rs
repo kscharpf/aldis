@@ -154,7 +154,6 @@ mod tests {
     use crate::view::SpacePacket;
     use aldis_core::ids::{Apid, SeqCount};
     use aldis_core::{DecodeMode, ErrorDetail, ErrorKind};
-    use proptest::prelude::*;
 
     fn fields(apid: u16, count: u16) -> PacketFields {
         PacketFields {
@@ -231,32 +230,5 @@ mod tests {
         assert_eq!(w.finish(0), Ok(8));
         let p = SpacePacket::decode(&out, DecodeMode::Strict).unwrap();
         assert!(p.has_secondary_header() && p.data_field() == [7, 8] && p.len() == 8);
-    }
-
-    proptest! {
-        #[test]
-        fn encode_then_decode_round_trips(
-            apid in 0_u16..=0x7FE, count in 0_u16..=0x3FFF, tc in any::<bool>(), flags in 0_u8..4,
-            sec in proptest::collection::vec(any::<u8>(), 0..8),
-            user in proptest::collection::vec(any::<u8>(), 0..40),
-        ) {
-            // req: API-020, API-021, SPP-002, SPP-005, VER-023
-            prop_assume!(!sec.is_empty() || !user.is_empty());
-            let f = PacketFields {
-                packet_type: if tc { PacketType::Telecommand } else { PacketType::Telemetry },
-                apid: Apid::new(apid).unwrap(),
-                sequence_flags: SequenceFlags::from_bits(flags),
-                sequence_count: SeqCount::new(count).unwrap(),
-            };
-            let p = SppConfig::DEFAULT.packet(f, &sec, &user).unwrap();
-            let mut out = [0_u8; 64];
-            let n = encode(&p, &mut out).unwrap();
-            let d = SpacePacket::decode(&out[..n], DecodeMode::Strict).unwrap();
-            prop_assert_eq!(d.header().fields(), f);
-            prop_assert_eq!(d.has_secondary_header(), !sec.is_empty());
-            let data = [sec.as_slice(), user.as_slice()].concat();
-            prop_assert_eq!(d.data_field(), data.as_slice());
-            prop_assert_eq!(d.header().octets(), <[u8; 6]>::try_from(&out[..6]).unwrap());
-        }
     }
 }

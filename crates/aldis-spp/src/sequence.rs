@@ -157,7 +157,6 @@ mod tests {
     use aldis_core::counter::Continuity;
     use aldis_core::ids::{Apid, SeqCount};
     use aldis_core::{ErrorDetail, ErrorKind};
-    use proptest::prelude::*;
 
     fn apid(n: u16) -> Apid {
         Apid::new(n).unwrap()
@@ -220,36 +219,5 @@ mod tests {
                 .kind(),
             ErrorKind::CapacityExceeded
         );
-    }
-
-    proptest! {
-        #[test]
-        fn tracker_matches_a_model(events in proptest::collection::vec((0_u16..4, 0_u16..=0x3FFF, any::<bool>()), 0..60)) {
-            // req: SPP-011, CMN-031, VER-023
-            let mut t = SequenceTracker::<3>::new();
-            let mut model: [Option<u16>; 4] = [None; 4];
-            for (a, c, forget) in events {
-                let slot = usize::from(a);
-                if forget {
-                    prop_assert_eq!(t.forget(apid(a)), model[slot].take().is_some());
-                    continue;
-                }
-                let r = t.track(apid(a), count(c));
-                match model[slot] {
-                    Some(prev) => {
-                        prop_assert_eq!(r, Ok(Tracked::Next(count(prev).classify(count(c)))));
-                        model[slot] = Some(c);
-                    }
-                    None if model.iter().flatten().count() == 3 => {
-                        prop_assert_eq!(r.unwrap_err().kind(), ErrorKind::CapacityExceeded);
-                    }
-                    None => {
-                        prop_assert_eq!(r, Ok(Tracked::First));
-                        model[slot] = Some(c);
-                    }
-                }
-                prop_assert_eq!(t.len(), model.iter().flatten().count());
-            }
-        }
     }
 }

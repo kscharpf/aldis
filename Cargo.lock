@@ -40,7 +40,6 @@ name = "aldis-core"
 version = "0.2.0"
 dependencies = [
  "aldis-testkit",
- "proptest",
  "serde_json",
 ]
 
@@ -50,7 +49,6 @@ version = "0.2.0"
 dependencies = [
  "aldis-core",
  "aldis-testkit",
- "proptest",
  "serde_json",
 ]
 
@@ -90,7 +88,6 @@ dependencies = [
  "aldis-core",
  "aldis-testkit",
  "aldis-time",
- "proptest",
  "serde_json",
 ]
 
@@ -105,6 +102,11 @@ dependencies = [
 name = "aldis-testkit"
 version = "0.2.0"
 dependencies = [
+ "aldis-core",
+ "aldis-epp",
+ "aldis-spp",
+ "aldis-time",
+ "proptest",
  "schemars",
  "serde",
  "serde_json",
@@ -116,7 +118,6 @@ version = "0.2.0"
 dependencies = [
  "aldis-core",
  "aldis-testkit",
- "proptest",
  "serde_json",
 ]
 
