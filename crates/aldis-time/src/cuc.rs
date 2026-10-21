@@ -253,6 +253,10 @@ impl CucValue {
     /// For 0–3 fine octets the round trip through [`Cuc::from_seconds_nanos`] is exact. With 4
     /// or more fine octets the fraction is finer than a nanosecond, so the round trip is exact
     /// only to the nanosecond.
+    ///
+    /// The basic time unit is taken to be the second, the unit 301.0 §1.2 gives the CCSDS codes and
+    /// §3.2.1 recommends; for a Level 2 code ([`CucEpoch::Agency`]) the result is the time in
+    /// seconds only if the agency's unit is the second (TIME-011).
     #[must_use]
     pub fn to_seconds_nanos(&self) -> (u64, u32) {
         // floor(fine × 10⁹ / 2¹²⁸) from the two 64-bit halves; each product is below 2⁹⁴.
@@ -307,6 +311,10 @@ impl Cuc {
     /// The code for `seconds` and `nanos` in `format`: the fraction is rounded **up** to the next
     /// representable value (301.0 §3.2.1, TIME-011), and a carry adds one to the coarse time.
     /// Returns a [`Cuc`], so the fit to the format is established once (RS-020).
+    ///
+    /// The basic time unit is taken to be the second, the unit 301.0 §1.2 gives the CCSDS codes and
+    /// §3.2.1 recommends; for a Level 2 code ([`CucEpoch::Agency`]) `seconds` and `nanos` give the
+    /// time only if the agency's unit is the second (TIME-011).
     ///
     /// # Errors
     /// `OutOfRange` (`nanoseconds`) if `nanos` ≥ 10⁹; `OutOfRange` (`coarse`) if the coarse time,
