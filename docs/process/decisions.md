@@ -52,3 +52,8 @@ One line for each decision the maintainer takes, under the [decision rights](dec
 - 2026-10-21 · process · #75 · The xtask crate split is held, and revisited at the M2 exit review with the measurement #75 describes
 - 2026-10-21 · plan · chat · Which tasks start next (the day's dispatches, among them the decision rights and the PR metrics)
 - 2026-10-21 · process · chat · Decision rights accepted as drafted: the coordinator starts queued work in the order last given; a PR may implement the recommended option of a pending decision but is not readied until it is answered; readings the normative text settles are decided and cited in the PR; one log file, routine items unlogged, the decisions check and the PR-template section kept
+- 2026-10-21 · scope · #78 · ACFS D1, D19: one milestone, ACFS, in four phases P1–P4, gating no release
+- 2026-10-21 · plan · #78 · ACFS D8: lockstep sequencing by `refapp_step`; cFE TIME runs as shipped, outside the trace, and OI-36 is deferred
+- 2026-10-21 · scope · #78 · ACFS D18: the harness side of the node protocol, with both transports, is built in ACFS WP-2 rather than A5 (OI-38)
+- 2026-10-21 · deps · #78 · ACFS D3, D5, D14: nasa/cFS `v7.0.1` (Apache-2.0), fetched and built by a nightly job, not vendored
+- 2026-10-21 · plan · #78 · ACFS D2, D4, D6, D7, D9–D13, D15–D17 accepted as recommended

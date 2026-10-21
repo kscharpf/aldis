@@ -60,7 +60,7 @@ Read on 2026-10-21 from the repositories, through the GitHub API and the source 
 
 ## 2. Decisions
 
-Plan and scope decisions for the maintainer (decision rights §2.2, §2.3, §2.7, §2.8, PR #76), all accepted 2026-10-21 as recommended. Each row gives the choice first, then the alternatives not chosen.
+Plan and scope decisions for the maintainer ([decision rights](../process/decision-rights.md) §2.2, §2.3, §2.7, §2.8; [log](../process/decisions.md)), all accepted 2026-10-21 as recommended. Each row gives the choice first, then the alternatives not chosen.
 
 | # | Decision | Choice (recommended), and alternatives | Status |
 |---|---|---|---|
@@ -198,7 +198,7 @@ ACFS is complete when every item below is green on `main` and in the nightly job
 
 ## 6. For the maintainer
 
-Questions to decide before WP-1 starts, in the order they block work, in the shape of the decision rights §3 (PR #76):
+Questions to decide before WP-1 starts, in the order they block work, in the shape of the [decision rights](../process/decision-rights.md) §3:
 
 1. **D1 (`plan`).** One milestone ACFS with phases P1–P4, or four milestones? Recommended: one.
 2. **D8 (`plan`).** Lockstep sequencing (option C), with cFE TIME untouched? Recommended: yes. OI-36 stays open.
