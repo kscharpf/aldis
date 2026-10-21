@@ -14,6 +14,7 @@ mod header;
 mod layers;
 mod links;
 mod md;
+mod metrics;
 mod models;
 mod records;
 mod refapp;
@@ -107,6 +108,7 @@ fn run(args: &[&str]) -> Result<usize, String> {
         ["consistency"] => consistency::check(),
         ["cpp", rest @ ..] => cpp::run(rest),
         ["verify", rest @ ..] => verify::run(rest),
+        ["metrics", rest @ ..] => metrics::run(rest),
         ["changelog", "check"] => changelog::check(),
         ["changelog", "show"] => changelog::show(),
         ["changelog", "release", version, date] => changelog::release(version, date),
@@ -137,14 +139,15 @@ fn run(args: &[&str]) -> Result<usize, String> {
             Ok(failed)
         }
         [] | ["help" | "-h" | "--help"] => {
-            print!("{HELP}{}\n{}", cpp::HELP, verify::HELP);
+            print!("{HELP}{}\n{}\n{}", cpp::HELP, verify::HELP, metrics::HELP);
             Ok(0)
         }
         _ => Err(format!(
-            "unknown command: {}\n\n{HELP}{}\n{}",
+            "unknown command: {}\n\n{HELP}{}\n{}\n{}",
             args.join(" "),
             cpp::HELP,
-            verify::HELP
+            verify::HELP,
+            metrics::HELP
         )),
     }
 }

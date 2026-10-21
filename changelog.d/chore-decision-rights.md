@@ -10,7 +10,7 @@
 - The decision log, [docs/process/decisions.md](docs/process/decisions.md): one line per
   maintainer decision, `- YYYY-MM-DD · <category> · <#N or chat> · <decision>`, appended by the
   coordinator, backfilled with the decisions of 2026-10-20 and 2026-10-21.
-- New VER-062 ([docs/06-verification.md](docs/06-verification.md) §9): decisions are taken by the
+- New VER-062 ([docs/06-verification.md](docs/06-verification.md) §10): decisions are taken by the
   role the decision rights give them to, and every maintainer decision is logged.
   `cargo xtask decisions` checks the log's format (known category slugs, each defined in the
   decision rights; real dates in order; a `#N` or `chat` source), in `cargo xtask ci`, the verify

@@ -1,6 +1,6 @@
 # Decision rights
 
-Who may decide what on Aldis, so that routine questions don't wait for the maintainer, and the questions that do reach the maintainer arrive with an answer ready to accept. Requirement: VER-062 ([06 §9](../06-verification.md#9-decision-rights)). This document is itself the maintainer's decision; changing it is a `process` decision (§2.7).
+Who may decide what on Aldis, so that routine questions don't wait for the maintainer, and the questions that do reach the maintainer arrive with an answer ready to accept. Requirement: VER-062 ([06 §10](../06-verification.md#10-decision-rights)). This document is itself the maintainer's decision; changing it is a `process` decision (§2.7).
 
 ## 1. Roles and where each records its decisions
 
