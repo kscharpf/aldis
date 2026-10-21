@@ -3,6 +3,13 @@
 version = 4
 
 [[package]]
+name = "aldis-aos"
+version = "0.2.0"
+dependencies = [
+ "aldis-core",
+]
+
+[[package]]
 name = "aldis-core"
 version = "0.2.0"
 
@@ -17,6 +24,7 @@ dependencies = [
 name = "aldis-exerciser"
 version = "0.1.0"
 dependencies = [
+ "aldis-aos",
  "aldis-core",
  "aldis-epp",
  "aldis-spp",

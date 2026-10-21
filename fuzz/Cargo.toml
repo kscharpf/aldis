@@ -14,10 +14,12 @@ publish = false
 cargo-fuzz = true
 
 [dependencies]
+aldis-aos = { path = "../crates/aldis-aos" }
 aldis-core = { path = "../crates/aldis-core", features = ["crc-table", "test-hooks"] }
 aldis-epp = { path = "../crates/aldis-epp" }
 aldis-spp = { path = "../crates/aldis-spp", features = ["time"] }
 aldis-time = { path = "../crates/aldis-time" }
+aldis-testkit = { path = "../crates/aldis-testkit" }
 libfuzzer-sys = "0.4.13"
 
 # Tooling lint profile (RS-017): assertions are how a fuzz target reports a failure.
@@ -180,6 +182,13 @@ bench = false
 [[bin]]
 name = "spp_time_header"
 path = "fuzz_targets/spp_time_header.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "aos_fhec_model"
+path = "fuzz_targets/aos_fhec_model.rs"
 test = false
 doc = false
 bench = false
