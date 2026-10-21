@@ -156,7 +156,7 @@ WarningsAsErrors: '*'
 | `readability-identifier-length` | Style only: it rejects one- and two-letter names such as `a`, `b`, `i`, `n`, and `s` in short scopes, which the code shares with `aldis-core` (and with the arithmetic it implements). Neither CERT C++ nor AUTOSAR C++14 sets a minimum length |
 | `bugprone-easily-swappable-parameters` | Arithmetic and range helpers take operands of one type by nature (`checked_add(a, b)`, `wrapping_sub(a, b, bits)`), and the codec signatures mirror `aldis-core`. Where a mix-up matters, the parameters already have distinct types (identifiers, `OctetRange`, `SecurityLayout`), and the tests and vectors cover the order |
 
-Tests and tools (`cpp/tests/.clang-tidy`, which inherits the configuration above) also disable the checks below, mostly because GoogleTest's `TEST` macros expand to code they flag. Library code never has these exemptions.
+Tests and tools (`cpp/tests/.clang-tidy`, and its copy `cpp/vectors/.clang-tidy` for the vector loader, runner, and generator; both inherit the configuration above) also disable the checks below, mostly because GoogleTest's `TEST` macros expand to code they flag. Library code never has these exemptions.
 
 | Disabled in tests and tools | Reason |
 |---|---|

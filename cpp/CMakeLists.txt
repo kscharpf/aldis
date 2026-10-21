@@ -39,6 +39,11 @@ option(ALDIS_CRC_TABLE "Table-driven CRC-16, the counterpart of the crc-table fe
 option(ALDIS_TEST_HOOKS "Test-only security hook, the counterpart of the test-hooks feature; never installed" OFF)
 option(ALDIS_SANITIZE "Clang sanitizers of CPP-051 on all Aldis code and tests (D16)" OFF)
 option(ALDIS_COVERAGE "Clang source-based coverage of the host tests (CPP-052, D14)" OFF)
+# Vector tooling (CPP-053, D5). A bare-metal build takes the host generator from ALDIS_VECGEN, or
+# builds it first in a host build of this project configured with ALDIS_VECGEN_ONLY.
+set(ALDIS_VECGEN "" CACHE FILEPATH
+    "aldis_vecgen of a host build, for cross builds (D5); empty: built as needed")
+option(ALDIS_VECGEN_ONLY "Build only the host vector loader and aldis_vecgen (D5)" OFF)
 
 if(PROJECT_IS_TOP_LEVEL)
   aldis_check_toolchain()
@@ -102,6 +107,13 @@ if(ALDIS_TEST_HOOKS OR ALDIS_BUILD_TESTS)
   target_include_directories(aldis_core_test_hooks INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}/testing/include")
   target_link_libraries(aldis_core_test_hooks INTERFACE aldis_core)
 endif()
+
+# --- Vector loader, runner, and generated cases (CPP-053, D5) ---
+
+# The shared conformance vectors (docs/07-test-vectors.md).
+set(ALDIS_VECTORS_DIR "${ALDIS_SOURCE_DIR}/../test-vectors")
+cmake_path(NORMAL_PATH ALDIS_VECTORS_DIR)
+add_subdirectory(vectors)
 
 # --- Tests ---
 

@@ -120,12 +120,14 @@ Also in WP-3: `aldis_core` is `constexpr` throughout where the Rust function is 
 | Task | Output |
 |---|---|
 | Case model (literal types), loader with the exact-match rules of `aldis-testkit` (D5), and self-tests: a corrupted, an incomplete, and an over-specified vector each fail | `cpp/vectors/` |
-| Check functions for the nine core operations: `bits_get`, `bits_set`, `counter_classify`, `counter_increment`, `crc16`, `error_code`, `frame_layout`, `oid_fill`, `oid_fill_sequence` | `cpp/vectors/checks/` |
+| Check functions for the nine core operations: `bits_get`, `bits_set`, `counter_classify`, `counter_increment`, `crc16`, `error_code`, `frame_layout`, `oid_fill`, `oid_fill_sequence` | `cpp/vectors/include/aldis/vectors/checks/` |
 | Host runner registered with CTest: one test per vector file, reporting failing case IDs | `aldis_vectors` |
 | `aldis_vecgen`: writes `constexpr` case arrays into a generated header; build integration for cross presets (D5) | host tool |
 | `static_assert` over a subset of each core file's cases (at least one success and one error case per operation), so constant evaluation checks them at compile time (CPP-034) | `cpp/tests/constexpr_vectors.cpp` |
 
 **Done when:** all 77 live core cases pass on the host presets, under the sanitizers, and on `s390x`; a corrupted vector fails the run.
+
+As built: the loader follows the schemas (closed objects reject unknown keys; nullable members may be `null`) and applies TV-012 per operation, rejecting an incomplete or over-specified expectation, an unused parameter, `config`, `mode`, or `input_hex`, and an unknown operation, each reported as a failing case. An error expectation may give `field`, the field code of M2 plan D3 (1…65535): the loader keeps it and C0 does not compare it; C1 compares it when `FieldId` gains its code (D8). The six core files are named in `cpp/vectors/CMakeLists.txt`, as the Rust test names them; `test-vectors/core/fields.json` (M2 WP-0a) is the field catalogue, not a vector file, and joins in C1.
 
 ### WP-5 Freestanding exerciser, link check, QEMU (M) — CPP-050, CPP-011, CPP-053
 
