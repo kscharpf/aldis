@@ -42,7 +42,7 @@
 | `thumbv7em-none-eabihf` | Cortex-M4/M7 | no features | exerciser + vectors under QEMU |
 | `armv7r-none-eabihf` | Cortex-R | no features | exerciser + vectors under QEMU |
 | `riscv32imac-unknown-none-elf` | RISC-V MCU | no features | exerciser + vectors under QEMU |
-| `sparc-unknown-none-elf` | LEON3/4 (tier 3) | no features (`-Z build-std`) | build + exerciser link check ([open issues](09-open-issues.md) OI-08) |
+| `sparc-unknown-none-elf` | LEON3/4 (tier 3; `-C target-cpu=leon3`) | no features (tooling nightly, `-Z build-std=core`) | exerciser link check + vectors under QEMU `leon3_generic`; non-gating check `rust-sparc-leon3` ([open issues](09-open-issues.md) OI-08) |
 
 | ID | Requirement | Source | Verif. |
 |---|---|---|---|
