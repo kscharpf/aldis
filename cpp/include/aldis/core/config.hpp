@@ -13,7 +13,9 @@
 static_assert(__cplusplus >= 202002L, "Aldis requires C++20 or later (CPP-001)");
 
 // Version of the native C++ library. A native release carries the version of the Rust release
-// it was verified against (docs/08-roadmap.md §5); the port follows aldis-core 0.1.0.
+// it was verified against (docs/08-roadmap.md §5). The port follows aldis-core 0.2.0 (commit
+// 0655f2a, release v0.2.0-m1); the version stays 0.1.0 because differential verification against
+// a Rust release starts in C1 (VER-053), and only then does a native release carry its version.
 // Consumers test the version in #if directives, so these stay macros.
 // NOLINTBEGIN(cppcoreguidelines-macro-usage,cppcoreguidelines-macro-to-enum,modernize-macro-to-enum)
 #define ALDIS_VERSION_MAJOR 0

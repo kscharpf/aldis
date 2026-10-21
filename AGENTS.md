@@ -38,7 +38,7 @@ cargo xtask verify --publish        # every check, in the pinned image; then the
 cargo xtask verify check            # re-check the published record of HEAD
 ```
 
-If you cannot run it locally, start the same run on a GitHub-hosted runner instead (VER-060). It takes 20 to 30 minutes, publishes the same record and status, and names the run they came from:
+If you cannot run it locally, start the same run on a GitHub-hosted runner instead (VER-060). It takes 20 to 30 minutes when it has to build the image, and less when a workflow has already pushed the image for the same pins to `ghcr.io/kscharpf/aldis-verify` (VER-060). It publishes the same record and status, and names the run they came from:
 
 ```sh
 git push
@@ -83,7 +83,7 @@ cargo xtask cpp unsafe-optouts                 # bounds opt-outs only in aldis/c
 cargo xtask cpp layers target/cpp/host-gcc     # CMake target graph (CPP-010)
 ```
 
-`cargo xtask verify` also runs clang-format, clang-tidy, the sanitizers, s390x, and the bare-metal builds. Each check declares its inputs in `xtask/src/verify/checks.rs` and is skipped when none of them changed against the merge base with `main` (`cargo xtask verify list` shows which checks HEAD needs; `--all` runs every check): a change to documentation only (`docs/`, `changelog.d/`, the root `*.md`, `specs/README.md`, `specs/manifest.tsv`) runs only `spec`, a change to `xtask/` runs everything, and so does a path that no list names. When a check starts reading a new path, add the path to its inputs in the same change (as `CPP` for the C++ build). Suppress a warning or clang-tidy finding only on the smallest region, naming the check (CPP-042).
+`cargo xtask verify` also runs clang-format, clang-tidy, the sanitizers, s390x, and the bare-metal builds. Each check declares its inputs in `xtask/src/verify/checks.rs` and is skipped when none of them changed against the merge base with `main` (`cargo xtask verify list` shows which checks HEAD needs; `--all` runs every check): a change to documentation only (`docs/`, `changelog.d/`, the root `*.md`, `specs/README.md`, `specs/manifest.tsv`) runs only `spec`, a change to `xtask/` runs everything, and so does a path that no list names. After you merge `main` into a branch whose head has a published record, a check whose inputs the commits from `main` did not touch is `reused` from that record instead of run. When a check starts reading a new path, add the path to its inputs in the same change (as `CPP` for the C++ build). Suppress a warning or clang-tidy finding only on the smallest region, naming the check (CPP-042).
 
 When you change `refapp/` (track A), also run, from `refapp/` (see [refapp/README.md](refapp/README.md)):
 

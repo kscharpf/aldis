@@ -39,12 +39,17 @@ jobs:
     name: cargo xtask verify ${{ matrix.os }} (VER-059)
     # The verification run in its image, as a contributor runs it before a merge (VER-056); the
     # record is uploaded, never published. On ubuntu-24.04 it also runs the x86_64-only checks.
+    # The image is always built here, never pulled; on main it is then pushed to ghcr.io for
+    # verify.yml and opt-in local runs (VER-060).
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-24.04, ubuntu-24.04-arm]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 180
+    permissions:
+      contents: read
+      packages: write # push the verification image (VER-060)
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -61,6 +66,15 @@ jobs:
         env:
           ALDIS_VERIFY_ENGINE: docker
         run: cargo xtask verify --all
+      - name: Push the image built for main (VER-060)
+        if: github.ref == 'refs/heads/main' && github.repository == 'kscharpf/aldis'
+        env:
+          ALDIS_VERIFY_ENGINE: docker
+          ACTOR: ${{ github.actor }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          printf '%s' "$GH_TOKEN" | docker login ghcr.io -u "$ACTOR" --password-stdin
+          cargo xtask verify image --push ghcr.io/kscharpf/aldis-verify
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
@@ -115,6 +129,7 @@ jobs:
           - spp_segment_reassemble
           - spp_time_header
           - ffi_decode
+          - aos_fhec_model
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -185,7 +200,7 @@ jobs:
       # (e.g. 4, the unmutated tests fail) is a real failure.
       - run: |
           code=0
-          cargo mutants -p aldis-core -p aldis-time -p aldis-epp -p aldis-spp --all-features || code=$?
+          cargo mutants -p aldis-core -p aldis-time -p aldis-epp -p aldis-spp -p aldis-aos --all-features || code=$?
           echo "cargo-mutants exit code $code"
           [ "$code" -eq 0 ] || [ "$code" -eq 2 ] || [ "$code" -eq 3 ]
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

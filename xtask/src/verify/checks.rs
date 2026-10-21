@@ -501,8 +501,10 @@ git ls-files -z -- 'cpp/*.hpp' 'cpp/*.cpp' 'cpp/*.h' \
 const CPP_TIDY: &str = "\
 cd cpp
 cmake --preset host-clang
+# The tests include the generated vector cases (c0 plan D5): generate them first.
+cmake --build --preset host-clang --target aldis_vectors_generate
 # Findings are errors (WarningsAsErrors in cpp/.clang-tidy); GoogleTest is not analysed.
-run-clang-tidy -quiet -p ../target/cpp/host-clang '/header_check/|/cpp/tests/'
+run-clang-tidy -quiet -p ../target/cpp/host-clang '/header_check/|/cpp/tests/|/cpp/vectors/'
 ";
 
 const CPP_SANITIZE: &str = "\

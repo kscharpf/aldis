@@ -140,9 +140,11 @@ jobs:
         with:
           tools: cmake ninja gcc llvm
       - run: cmake --preset host-clang
-      - name: clang-tidy on every header (self-containment TUs) and every test
+      - name: Generate the vector cases the tests include (c0 plan D5)
+        run: cmake --build --preset host-clang --target aldis_vectors_generate
+      - name: clang-tidy on every header (self-containment TUs), every test, and the vector tools
         # Findings are errors (WarningsAsErrors in cpp/.clang-tidy); GoogleTest is not analysed.
-        run: run-clang-tidy -quiet -p ../target/cpp/host-clang '/header_check/|/cpp/tests/'
+        run: run-clang-tidy -quiet -p ../target/cpp/host-clang '/header_check/|/cpp/tests/|/cpp/vectors/'
 
   cpp-sanitize:
     name: cpp sanitizers (CPP-051)
@@ -196,9 +198,10 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-cpp
         with:
-          # Clang builds use the GCC toolchain's headers (D2).
-          tools: cmake ninja ${{ matrix.gnu }} ${{ matrix.compiler == 'clang' && 'llvm' || '' }}
-      - name: Build (header checks; the exerciser, link check, and QEMU join in WP-5)
+          # Clang builds use the GCC toolchain's headers (D2). The host GCC builds aldis_vecgen,
+          # which generates the vector cases (D5).
+          tools: cmake ninja gcc ${{ matrix.gnu }} ${{ matrix.compiler == 'clang' && 'llvm' || '' }}
+      - name: Build (header checks, constexpr vector cases; the exerciser, link check, and QEMU join in WP-5)
         run: |
           cmake --preset ${{ matrix.target }}-${{ matrix.compiler }}
           cmake --build --preset ${{ matrix.target }}-${{ matrix.compiler }}
@@ -215,7 +218,8 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-cpp
         with:
-          tools: cmake ninja bcc2
+          # The host GCC builds aldis_vecgen, which generates the vector cases (D5).
+          tools: cmake ninja gcc bcc2
       - name: Build (header checks)
         run: |
           cmake --preset leon3-gcc

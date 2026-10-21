@@ -1,0 +1,218 @@
+{
+  "kind": "codec",
+  "standard": "732.0-B-5 EC1 §4.1.2.6",
+  "provenance": "hand-derived",
+  "provenance_note": "Hand-derived from 732.0-B-5 EC1 §4.1.2.6.1 and §4.1.2.6.5 a–h (the same code as 732.0-B-4 §4.1.2.6.5, OI-04, M2 plan D11): RS(15,11) over GF(2^4), F(x) = x^4 + x + 1, g(x) = (x + a^6)(x + a^7)(x + a^8)(x + a^9), five leading symbols of zero virtual fill, systematic; symbols 6–11 are header bits 0–15 and 40–47, symbols 12–15 the FHEC (bits 48–63), each symbol sent from its left bit; bit 0 is the most significant bit of octet 0 (§1.6.3). 732.0 prints no worked FHEC example. Expected values computed by an independent Python model of the Blue Book text, written before the Rust codec: GF(2^4) by carry-less multiplication reduced by F(x), with no tables; a codeword is valid when the 15-symbol polynomial vanishes at a^6…a^9; the parity is solved by GF(2) linear algebra on those syndromes, not by division by g(x); decoding is a table from the syndrome of each of the 10 275 patterns of one or two symbol errors over the ten transmitted symbols to the pattern. The Rust codec divides by g(x) and decodes algebraically (Peterson, root search, Forney), so the two share no method. Input and output are the eight octets of the primary header with FHEC; octets 2–4 (the Virtual Channel Frame Count) are not protected. Case aos-fhec-enc-002 (header 400100000000) is derived by hand, polynomial division over GF(16) step by step, in docs/verification/derivations/aos-fhec.md, which also works the single-symbol correction of aos-fhec-c1-001.",
+  "cases": [
+    {
+      "id": "aos-fhec-enc-001",
+      "requirements": [
+        "AOS-013",
+        "TV-002"
+      ],
+      "description": "All-zero systematic symbols: the FHEC is zero",
+      "operation": "fhec_encode",
+      "input_hex": "000000000000",
+      "expect": {
+        "ok": true,
+        "fhec_hex": "0000",
+        "output_hex": "0000000000000000"
+      }
+    },
+    {
+      "id": "aos-fhec-enc-002",
+      "requirements": [
+        "AOS-013",
+        "TV-002"
+      ],
+      "description": "TFVN 01, SCID 0, VCID 1 (worked by hand)",
+      "operation": "fhec_encode",
+      "input_hex": "400100000000",
+      "expect": {
+        "ok": true,
+        "fhec_hex": "3EDF",
+        "output_hex": "4001000000003EDF"
+      }
+    },
+    {
+      "id": "aos-fhec-enc-003",
+      "requirements": [
+        "AOS-013",
+        "TV-002"
+      ],
+      "description": "TFVN 01, SCID 0xAA (8 bits), VCID 5, frame count 0x123456",
+      "operation": "fhec_encode",
+      "input_hex": "6A8512345600",
+      "expect": {
+        "ok": true,
+        "fhec_hex": "1252",
+        "output_hex": "6A85123456001252"
+      }
+    },
+    {
+      "id": "aos-fhec-enc-004",
+      "requirements": [
+        "AOS-013",
+        "TV-002"
+      ],
+      "description": "Same protected fields with frame count 0: the same FHEC (bits 16–39 not covered)",
+      "operation": "fhec_encode",
+      "input_hex": "6A8500000000",
+      "expect": {
+        "ok": true,
+        "fhec_hex": "1252",
+        "output_hex": "6A85000000001252"
+      }
+    },
+    {
+      "id": "aos-fhec-enc-005",
+      "requirements": [
+        "AOS-013",
+        "TV-002"
+      ],
+      "description": "OID frame: VCID 63, frame count 0xFFFFFF",
+      "operation": "fhec_encode",
+      "input_hex": "403FFFFFFF00",
+      "expect": {
+        "ok": true,
+        "fhec_hex": "FE72",
+        "output_hex": "403FFFFFFF00FE72"
+      }
+    },
+    {
+      "id": "aos-fhec-enc-006",
+      "requirements": [
+        "AOS-013",
+        "TV-002"
+      ],
+      "description": "Issue 5 10-bit SCID 0x3FF, VCID 63, signaling field 00, cycle 0xF",
+      "operation": "fhec_encode",
+      "input_hex": "7FFF0000003F",
+      "expect": {
+        "ok": true,
+        "fhec_hex": "0B86",
+        "output_hex": "7FFF0000003F0B86"
+      }
+    },
+    {
+      "id": "aos-fhec-enc-007",
+      "requirements": [
+        "AOS-013",
+        "TV-002"
+      ],
+      "description": "Replay flag 1, cycle use flag 1, SCID MSBs 00, cycle 7",
+      "operation": "fhec_encode",
+      "input_hex": "5555000000C7",
+      "expect": {
+        "ok": true,
+        "fhec_hex": "62CD",
+        "output_hex": "5555000000C762CD"
+      }
+    },
+    {
+      "id": "aos-fhec-enc-008",
+      "requirements": [
+        "AOS-013",
+        "TV-002"
+      ],
+      "description": "All ones",
+      "operation": "fhec_encode",
+      "input_hex": "FFFFFFFFFFFF",
+      "expect": {
+        "ok": true,
+        "fhec_hex": "6D0E",
+        "output_hex": "FFFFFFFFFFFF6D0E"
+      }
+    },
+    {
+      "id": "aos-fhec-enc-009",
+      "requirements": [
+        "AOS-013",
+        "TV-002"
+      ],
+      "description": "Systematic symbol 6 = 1000 (a^3), all others zero",
+      "operation": "fhec_encode",
+      "input_hex": "800000000000",
+      "expect": {
+        "ok": true,
+        "fhec_hex": "2BB2",
+        "output_hex": "8000000000002BB2"
+      }
+    },
+    {
+      "id": "aos-fhec-enc-010",
+      "requirements": [
+        "AOS-013",
+        "TV-002"
+      ],
+      "description": "Systematic symbol 7 = 1000 (a^3), all others zero",
+      "operation": "fhec_encode",
+      "input_hex": "080000000000",
+      "expect": {
+        "ok": true,
+        "fhec_hex": "21F8",
+        "output_hex": "08000000000021F8"
+      }
+    },
+    {
+      "id": "aos-fhec-enc-011",
+      "requirements": [
+        "AOS-013",
+        "TV-002"
+      ],
+      "description": "Systematic symbol 8 = 1000 (a^3), all others zero",
+      "operation": "fhec_encode",
+      "input_hex": "008000000000",
+      "expect": {
+        "ok": true,
+        "fhec_hex": "8E23",
+        "output_hex": "0080000000008E23"
+      }
+    },
+    {
+      "id": "aos-fhec-enc-012",
+      "requirements": [
+        "AOS-013",
+        "TV-002"
+      ],
+      "description": "Systematic symbol 9 = 1000 (a^3), all others zero",
+      "operation": "fhec_encode",
+      "input_hex": "000800000000",
+      "expect": {
+        "ok": true,
+        "fhec_hex": "3389",
+        "output_hex": "0008000000003389"
+      }
+    },
+    {
+      "id": "aos-fhec-enc-013",
+      "requirements": [
+        "AOS-013",
+        "TV-002"
+      ],
+      "description": "Systematic symbol 10 = 1000 (a^3), all others zero",
+      "operation": "fhec_encode",
+      "input_hex": "000000000080",
+      "expect": {
+        "ok": true,
+        "fhec_hex": "972C",
+        "output_hex": "000000000080972C"
+      }
+    },
+    {
+      "id": "aos-fhec-enc-014",
+      "requirements": [
+        "AOS-013",
+        "TV-002"
+      ],
+      "description": "Systematic symbol 11 = 1000 (a^3), all others zero",
+      "operation": "fhec_encode",
+      "input_hex": "000000000008",
+      "expect": {
+        "ok": true,
+        "fhec_hex": "C3C8",
+        "output_hex": "000000000008C3C8"
+      }
+    }
+  ]
+}

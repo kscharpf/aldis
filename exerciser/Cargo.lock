@@ -50,6 +50,7 @@ dependencies = [
 name = "aldis-exerciser"
 version = "0.1.0"
 dependencies = [
+ "aldis-aos",
  "aldis-core",
  "aldis-epp",
  "aldis-ffi",

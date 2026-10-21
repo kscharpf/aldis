@@ -1,0 +1,128 @@
+{
+  "kind": "codec",
+  "standard": "732.0-B-5 EC1 §4.1.2.6",
+  "provenance": "hand-derived",
+  "provenance_note": "Hand-derived from 732.0-B-5 EC1 §4.1.2.6.1 and §4.1.2.6.5 a–h (the same code as 732.0-B-4 §4.1.2.6.5, OI-04, M2 plan D11): RS(15,11) over GF(2^4), F(x) = x^4 + x + 1, g(x) = (x + a^6)(x + a^7)(x + a^8)(x + a^9), five leading symbols of zero virtual fill, systematic; symbols 6–11 are header bits 0–15 and 40–47, symbols 12–15 the FHEC (bits 48–63), each symbol sent from its left bit; bit 0 is the most significant bit of octet 0 (§1.6.3). 732.0 prints no worked FHEC example. Expected values computed by an independent Python model of the Blue Book text, written before the Rust codec: GF(2^4) by carry-less multiplication reduced by F(x), with no tables; a codeword is valid when the 15-symbol polynomial vanishes at a^6…a^9; the parity is solved by GF(2) linear algebra on those syndromes, not by division by g(x); decoding is a table from the syndrome of each of the 10 275 patterns of one or two symbol errors over the ten transmitted symbols to the pattern. The Rust codec divides by g(x) and decodes algebraically (Peterson, root search, Forney), so the two share no method. Input and output are the eight octets of the primary header with FHEC; octets 2–4 (the Virtual Channel Frame Count) are not protected. ",
+  "cases": [
+    {
+      "id": "aos-fhec-c2-001",
+      "requirements": [
+        "AOS-013",
+        "AOS-014"
+      ],
+      "description": "Both symbols of octet 0 (TFVN and SCID bits): errors 1111 and 1111 in symbols 6 and 7; corrected",
+      "operation": "fhec_decode",
+      "input_hex": "BF01000000003EDF",
+      "expect": {
+        "ok": true,
+        "header_hex": "4001000000003EDF",
+        "corrected_symbols": 2
+      }
+    },
+    {
+      "id": "aos-fhec-c2-002",
+      "requirements": [
+        "AOS-013",
+        "AOS-014"
+      ],
+      "description": "Both symbols of octet 1 (SCID and VCID bits): errors 0001 and 1000 in symbols 8 and 9; corrected",
+      "operation": "fhec_decode",
+      "input_hex": "6A9D123456001252",
+      "expect": {
+        "ok": true,
+        "header_hex": "6A85123456001252",
+        "corrected_symbols": 2
+      }
+    },
+    {
+      "id": "aos-fhec-c2-003",
+      "requirements": [
+        "AOS-013",
+        "AOS-014"
+      ],
+      "description": "Both symbols of octet 5 (signaling field and cycle): errors 0100 and 0010 in symbols 10 and 11; corrected",
+      "operation": "fhec_decode",
+      "input_hex": "4001000000423EDF",
+      "expect": {
+        "ok": true,
+        "header_hex": "4001000000003EDF",
+        "corrected_symbols": 2
+      }
+    },
+    {
+      "id": "aos-fhec-c2-004",
+      "requirements": [
+        "AOS-013",
+        "AOS-014"
+      ],
+      "description": "First and last parity symbols: errors 1001 and 0110 in symbols 12 and 15; corrected",
+      "operation": "fhec_decode",
+      "input_hex": "6A85123456008254",
+      "expect": {
+        "ok": true,
+        "header_hex": "6A85123456001252",
+        "corrected_symbols": 2
+      }
+    },
+    {
+      "id": "aos-fhec-c2-005",
+      "requirements": [
+        "AOS-013",
+        "AOS-014"
+      ],
+      "description": "First systematic and last parity symbol: errors 0011 and 1100 in symbols 6 and 15; corrected",
+      "operation": "fhec_decode",
+      "input_hex": "7001000000003ED3",
+      "expect": {
+        "ok": true,
+        "header_hex": "4001000000003EDF",
+        "corrected_symbols": 2
+      }
+    },
+    {
+      "id": "aos-fhec-c2-006",
+      "requirements": [
+        "AOS-013",
+        "AOS-014"
+      ],
+      "description": "A systematic and a parity symbol: errors 0111 and 1110 in symbols 7 and 12; corrected",
+      "operation": "fhec_decode",
+      "input_hex": "6D8512345600F252",
+      "expect": {
+        "ok": true,
+        "header_hex": "6A85123456001252",
+        "corrected_symbols": 2
+      }
+    },
+    {
+      "id": "aos-fhec-c2-007",
+      "requirements": [
+        "AOS-013",
+        "AOS-014"
+      ],
+      "description": "Two parity symbols, across octets 6 and 7: errors 0101 and 1010 in symbols 13 and 14; corrected",
+      "operation": "fhec_decode",
+      "input_hex": "4001000000003B7F",
+      "expect": {
+        "ok": true,
+        "header_hex": "4001000000003EDF",
+        "corrected_symbols": 2
+      }
+    },
+    {
+      "id": "aos-fhec-c2-008",
+      "requirements": [
+        "AOS-013",
+        "AOS-014"
+      ],
+      "description": "VCID nibble and the first symbol of octet 5: errors 1011 and 1101 in symbols 9 and 10; corrected",
+      "operation": "fhec_decode",
+      "input_hex": "6A8E123456D01252",
+      "expect": {
+        "ok": true,
+        "header_hex": "6A85123456001252",
+        "corrected_symbols": 2
+      }
+    }
+  ]
+}
