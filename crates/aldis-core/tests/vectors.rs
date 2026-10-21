@@ -10,6 +10,7 @@ use aldis_core::counter::{Continuity, ModCounter};
 use aldis_core::crc::{crc16, crc16_bitwise};
 use aldis_core::error::ErrorKind;
 use aldis_core::layout::{FrameLayout, LayoutSpec};
+use aldis_core::ocf::{FsrReport, OCF_LEN, Ocf, ProjectSpecificReport, Type1Report};
 use aldis_core::oid::{OidGenerator, OidGeneratorGalois};
 use aldis_core::security::SecurityLayout;
 use aldis_core::{Error, FieldId, bits};
@@ -140,8 +141,39 @@ fn handle(case: &CodecCase) -> Outcome {
                 }),
         ),
         "frame_layout" => handle_layout(case),
+        "ocf_classify" | "ocf_report" => handle_ocf(case),
         _ => Outcome::Unsupported,
     }
+}
+
+fn handle_ocf(case: &CodecCase) -> Outcome {
+    let octets = ocf_input(case);
+    if case.operation == "ocf_classify" {
+        let ocf = Ocf::decode(octets);
+        assert_eq!(Ocf::from(octets), ocf);
+        let report = match ocf {
+            Ocf::Clcw(_) => "clcw",
+            Ocf::ProjectSpecific(_) => "project_specific",
+            Ocf::SdlsFsr(_) => "sdls_fsr",
+        };
+        return ok(&json!({ "report": report, "octets_hex": hex::encode(&ocf.to_octets()) }));
+    }
+    // Each report type's checked constructor; a report it accepts is the OCF's variant.
+    let result = match param(case, "report").as_str().unwrap() {
+        "clcw" => Type1Report::try_from(octets).map(Ocf::from),
+        "project_specific" => ProjectSpecificReport::try_from(octets).map(Ocf::from),
+        "sdls_fsr" => FsrReport::try_from(octets).map(Ocf::from),
+        other => panic!("{}: unknown report {other}", case.id),
+    };
+    if let Ok(ocf) = result {
+        assert_eq!(Ocf::decode(octets), ocf);
+    }
+    outcome(result.map(|ocf| json!({ "octets_hex": hex::encode(&ocf.to_octets()) })))
+}
+
+fn ocf_input(case: &CodecCase) -> [u8; OCF_LEN] {
+    <[u8; OCF_LEN]>::try_from(input(case))
+        .unwrap_or_else(|v| panic!("{}: {} octets, not an OCF", case.id, v.len()))
 }
 
 fn handle_layout(case: &CodecCase) -> Outcome {
@@ -202,6 +234,12 @@ fn counter_vectors() {
 fn layout_vectors() {
     // req: CMN-040, CMN-041, VER-021
     run_codec_file("core/layout.json", handle).assert_passed();
+}
+
+#[test]
+fn ocf_vectors() {
+    // req: CMN-010, CMN-011, VER-021
+    run_codec_file("core/ocf.json", handle).assert_passed();
 }
 
 #[test]

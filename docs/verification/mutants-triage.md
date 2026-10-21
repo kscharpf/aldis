@@ -12,6 +12,10 @@ Surviving mutants from `cargo mutants` (`-p aldis-core -p aldis-time -p aldis-ep
 
 The one survivor is equivalent and is expected in every report.
 
+## 2026-10-21, branch `m2/wp1-ocf` (M2 WP-1, Operational Control Field)
+
+`cargo mutants -p aldis-core --all-features` on the changed files `ocf.rs` and `field.rs`: 32 mutants: 23 caught, 9 unviable, 0 missed, 0 timeouts. `field.rs` holds only `const` items and yields no mutant. cargo-mutants generated no mutant for the three `new` constructors (none for any function named `new`, as in `ids.rs`), so every report type is classified through `Ocf::decode`, the only reader of the flag bits: the caught mutants include `bit` → `0` or `1`, its `&` → `|` or `^` and `==` → `!=`, the deletion of each explicit match arm of `decode`, and every `to_octets` and `From<…> for [u8; 4]` → `[0; 4]` or `[1; 4]`. The unviable ones replace a value of a type without `Default` (`Ocf`, the report types, `Error`). No survivor. A first run, before the constructors went through `decode`, had 34 mutants: 25 caught, 9 unviable, 0 missed.
+
 ## 2026-10-20, branch `m2/wp0a-field-codes` (M2 WP-0a, field codes)
 
 `cargo mutants -p aldis-core --all-features` on the changed files `error.rs`, `field.rs`, `bits.rs`, `container.rs`, `counter.rs`, `ids.rs`, `layout.rs`, and `security.rs`: 339 mutants: 200 caught, 136 unviable, 3 missed, 0 timeouts. The 3 missed are the equivalent disjoint-bit `|` → `^` mutants of `bits.rs` `get` and `set` already listed below; no new survivor. The new `FieldId` code is covered: `PartialEq::eq` → `true`, → `false`, and `==` → `!=`, `Hash::hash` → `()`, and `FieldId::name` → `""` or `"xyzzy"` are all caught; `FieldId::catalogued` → `Default::default()` and `FieldId::code` → `1` are unviable. `field.rs` holds only `const` items and yields no mutant. The code mapping inside `catalogued` is an inline `const` block, which cargo-mutants does not mutate; `error::tests::field_codes_are_the_catalogue` checks every constant's code against its position in `field::ALL`.
