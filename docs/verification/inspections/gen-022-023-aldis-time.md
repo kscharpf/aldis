@@ -11,6 +11,7 @@
 | Revised | 2026-10-19, value types (parse, don't validate): new module `calendar.rs` (range-checked `Year`, `Month`, `Hour`, `Minute`, `Second`, `CalendarDate`; the leap-year rules moved here from `util.rs`) and the `bounded!` macro in `util.rs` add no loop and no recursion. `ccs.rs` `validate` is removed; `Ccs::from_t` and `Cds::from_t` call the field constructors directly. Loops unchanged. Confirmed 2026-10-19, maintainer |
 | Revised | 2026-10-19, issue #22 (RS-020): `ReservedPField::new` calls `PField::id` → `TimeCodeId::is_reserved`; `Cuc::from_seconds_nanos` (moved from `CucValue`) calls `check_coarse`; `TimeCodeId` matches are exhaustive without loops. No loop and no recursion added. Confirmed 2026-10-19, maintainer |
 | Revised | 2026-10-19, M1 WP-1 part 2 (branch `m1/time-ascii`): `ascii.rs` (ASCII codes A and B and subsets) adds the loops listed below, each bounded by the input length or a constant; `convert.rs` (`UtcInstant`) and the closed-form day functions in `calendar.rs` (`day_number`, `civil`; M1 D3) add none; `util.rs` `bounded!` gains a `Default` impl, no loop. No recursion. Confirmed 2026-10-19, maintainer |
+| Revised | 2026-10-21, `m2/cuc-round-down` (OI-40), prepared by Claude Code, pending exit review: `Cuc::from_seconds_nanos` rounds the fraction down; the carry branch and its `range` call for `coarse` are removed, and it calls `check_coarse` on `seconds` before computing the fraction. No loop and no recursion added |
 
 ## Loops
 

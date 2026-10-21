@@ -692,6 +692,10 @@
         "ok": true,
         "coarse": 0,
         "fine_hex": "01"
+      },
+      "superseded": {
+        "reason": "OI-40: conversion from nanoseconds rounds the fraction down (TIME-011), not up",
+        "by": "time-cuc-029"
       }
     },
     {
@@ -732,6 +736,10 @@
         "ok": true,
         "coarse": 6,
         "fine_hex": "00"
+      },
+      "superseded": {
+        "reason": "OI-40: conversion from nanoseconds rounds the fraction down (TIME-011), not up",
+        "by": "time-cuc-030"
       }
     },
     {
@@ -751,6 +759,10 @@
       "expect": {
         "ok": false,
         "error": "OutOfRange"
+      },
+      "superseded": {
+        "reason": "OI-40: conversion from nanoseconds rounds the fraction down (TIME-011), not up",
+        "by": "time-cuc-031"
       }
     },
     {
@@ -790,6 +802,10 @@
         "ok": true,
         "coarse": 0,
         "fine_hex": "FFFFFF"
+      },
+      "superseded": {
+        "reason": "OI-40: conversion from nanoseconds rounds the fraction down (TIME-011), not up",
+        "by": "time-cuc-032"
       }
     },
     {
@@ -810,6 +826,10 @@
         "ok": true,
         "coarse": 3,
         "fine_hex": "1F9ADD3739635F312421"
+      },
+      "superseded": {
+        "reason": "OI-40: conversion from nanoseconds rounds the fraction down (TIME-011), not up",
+        "by": "time-cuc-033"
       }
     },
     {
@@ -859,6 +879,126 @@
         },
         "consumed": 4,
         "anomalies": []
+      }
+    },
+    {
+      "id": "time-cuc-029",
+      "requirements": [
+        "TIME-011",
+        "TIME-012"
+      ],
+      "description": "1 ns rounds down to fraction 00 of 1 octet",
+      "operation": "cuc_from_ns",
+      "params": {
+        "seconds": 0,
+        "nanoseconds": 1,
+        "coarse_octets": 1,
+        "fine_octets": 1
+      },
+      "expect": {
+        "ok": true,
+        "coarse": 0,
+        "fine_hex": "00"
+      }
+    },
+    {
+      "id": "time-cuc-030",
+      "requirements": [
+        "TIME-011",
+        "TIME-012"
+      ],
+      "description": "999 999 999 ns rounds down to the largest 1-octet fraction, with no carry into the coarse time",
+      "operation": "cuc_from_ns",
+      "params": {
+        "seconds": 5,
+        "nanoseconds": 999999999,
+        "coarse_octets": 1,
+        "fine_octets": 1
+      },
+      "expect": {
+        "ok": true,
+        "coarse": 5,
+        "fine_hex": "FF"
+      }
+    },
+    {
+      "id": "time-cuc-031",
+      "requirements": [
+        "TIME-011",
+        "TIME-012"
+      ],
+      "description": "The largest 1-octet coarse time with 999 999 999 ns fits: rounding down never carries",
+      "operation": "cuc_from_ns",
+      "params": {
+        "seconds": 255,
+        "nanoseconds": 999999999,
+        "coarse_octets": 1,
+        "fine_octets": 1
+      },
+      "expect": {
+        "ok": true,
+        "coarse": 255,
+        "fine_hex": "FF"
+      }
+    },
+    {
+      "id": "time-cuc-032",
+      "requirements": [
+        "TIME-011",
+        "TIME-012"
+      ],
+      "description": "Round trip of time-cuc-016 in 3 fine octets gives one unit less: 999 999 940 ns rounds down to FFFFFE",
+      "operation": "cuc_from_ns",
+      "params": {
+        "seconds": 0,
+        "nanoseconds": 999999940,
+        "coarse_octets": 4,
+        "fine_octets": 3
+      },
+      "expect": {
+        "ok": true,
+        "coarse": 0,
+        "fine_hex": "FFFFFE"
+      }
+    },
+    {
+      "id": "time-cuc-033",
+      "requirements": [
+        "TIME-011",
+        "TIME-012"
+      ],
+      "description": "10 fine octets, 123 456 789 ns, rounded down",
+      "operation": "cuc_from_ns",
+      "params": {
+        "seconds": 3,
+        "nanoseconds": 123456789,
+        "coarse_octets": 4,
+        "fine_octets": 10
+      },
+      "expect": {
+        "ok": true,
+        "coarse": 3,
+        "fine_hex": "1F9ADD3739635F312420"
+      }
+    },
+    {
+      "id": "time-cuc-034",
+      "requirements": [
+        "TIME-011",
+        "TIME-012"
+      ],
+      "description": "1 953 125 ns (2^-9 s) is exact in 3 fine octets, so its round trip gives the same fraction",
+      "operation": "cuc_from_ns",
+      "params": {
+        "seconds": 0,
+        "nanoseconds": 1953125,
+        "coarse_octets": 4,
+        "fine_octets": 3
+      },
+      "expect": {
+        "ok": true,
+        "coarse": 0,
+        "fine_hex": "008000"
       }
     }
   ]

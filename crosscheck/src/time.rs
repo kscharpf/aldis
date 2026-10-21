@@ -445,11 +445,6 @@ fn param_bool(case: &CodecCase, key: &str) -> bool {
         .unwrap_or_else(|| panic!("{}: parameter {key} is not a boolean", case.id))
 }
 
-/// `numerator / denominator`, rounded down and up.
-const fn floor_ceil(numerator: u64, denominator: u64) -> (u64, u64) {
-    (numerator / denominator, numerator.div_ceil(denominator))
-}
-
 fn cuc_to_ns(case: &CodecCase) -> Verdict {
     let coarse = param_u64(case, "coarse");
     let fine = param_hex(case, "fine_hex");
@@ -529,7 +524,9 @@ fn cuc_from_ns(case: &CodecCase) -> Verdict {
             let mut values = Map::new();
             values.insert("coarse".into(), json!(time.counter()));
             values.insert("fine_hex".into(), json!(hex::encode(&fine_octets(&time))));
-            let verdict = if case.expect.ok {
+            // Both round the binary fraction down (TIME-011, OI-40), so any difference is a
+            // disagreement.
+            if case.expect.ok {
                 compare_produced(case, &values)
             } else {
                 Verdict::Disagree(format!(
@@ -537,65 +534,10 @@ fn cuc_from_ns(case: &CodecCase) -> Verdict {
                     case.expect.error.as_deref().unwrap_or("an error"),
                     Value::from(values)
                 ))
-            };
-            match verdict {
-                Verdict::Disagree(diff) => {
-                    rounding_discrepancy(case, scope, seconds, nanoseconds, &time)
-                        .unwrap_or(Verdict::Disagree(diff))
-                }
-                other => other,
             }
         }
         Err(e) => rejected(case, &TimestampError::from(e)),
     }
-}
-
-/// Known discrepancy D4 (cross-checks.md §3): `spacepackets` rounds the binary fraction of the
-/// sub-second part down, and the vector rounds it up (TIME-011), carrying into the coarse time
-/// or, when the coarse time is full, failing with `OutOfRange`.
-fn rounding_discrepancy(
-    case: &CodecCase,
-    scope: CucScope,
-    seconds: u64,
-    nanoseconds: u64,
-    time: &CucTime,
-) -> Option<Verdict> {
-    let bits = u32::try_from(8 * scope.fine_octets()).ok()?;
-    let modulus = 1_u64.checked_shl(bits)?;
-    let (down, up) = floor_ceil(nanoseconds.checked_mul(modulus)?, NANOS_PER_SECOND);
-    let fine_hex = |fine: u64| {
-        let octets = fine.to_be_bytes();
-        hex::encode(&octets[8 - scope.fine_octets()..])
-    };
-    // spacepackets: the truncated fraction, the coarse time unchanged.
-    let produced_down =
-        u64::from(time.counter()) == seconds && hex::encode(&fine_octets(time)) == fine_hex(down);
-    // The vector: the rounded-up fraction, with its carry.
-    let (coarse_up, fine_up) = if up == modulus {
-        (seconds.checked_add(1)?, 0)
-    } else {
-        (seconds, up)
-    };
-    let coarse_limit = 1_u64.checked_shl(8 * u32::from(scope.coarse))?;
-    let vector_up = if coarse_up < coarse_limit {
-        case.expect.ok
-            && expected(case, "coarse").as_u64() == Some(coarse_up)
-            && expected(case, "fine_hex").as_str() == Some(fine_hex(fine_up).as_str())
-    } else {
-        case.expect.error.as_deref() == Some("OutOfRange")
-    };
-    (down != up && produced_down && vector_up).then(|| {
-        Verdict::Known(format!(
-            "D4: {seconds} s + {nanoseconds} ns is fine time {} rounded down in spacepackets, \
-             {} rounded up in the vector (TIME-011)",
-            fine_hex(down),
-            if coarse_up < coarse_limit {
-                format!("{coarse_up} s + {}", fine_hex(fine_up))
-            } else {
-                "an OutOfRange coarse carry".to_owned()
-            }
-        ))
-    })
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -1081,23 +1023,19 @@ mod tests {
     }
 
     #[test]
-    fn rounding_discrepancy_needs_the_ceiling_in_the_vector() {
-        // req: VER-040
+    fn nanoseconds_round_down_as_in_spacepackets() {
+        // req: VER-040, TIME-011
         let params = json!({"seconds": 5, "nanoseconds": 999_999_999, "coarse_octets": 1,
                             "fine_octets": 1});
         let from_ns =
             |expect: &Value| check_cuc(&case("cuc_from_ns", Some(params.clone()), None, expect));
-        // Rounded up, the fraction carries into the coarse time.
-        assert!(is_known(
-            &from_ns(&json!({"ok": true, "coarse": 6, "fine_hex": "00"})),
-            "D4"
-        ));
+        // Both round down (OI-40); the rounded-up result of D4 is now a disagreement.
         assert_eq!(
             from_ns(&json!({"ok": true, "coarse": 5, "fine_hex": "FF"})),
             Verdict::Agree
         );
         assert!(is_disagree(&from_ns(
-            &json!({"ok": true, "coarse": 6, "fine_hex": "01"})
+            &json!({"ok": true, "coarse": 6, "fine_hex": "00"})
         )));
         assert!(is_disagree(&from_ns(
             &json!({"ok": false, "error": "OutOfRange"})
