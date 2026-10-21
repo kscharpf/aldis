@@ -21,7 +21,7 @@ This directory holds the specification for a family of libraries that add CCSDS 
 
 ### Verification records
 
-[`verification/analysis-records.md`](verification/analysis-records.md): requirements verified by analysis or inspection (method A/I), read by `cargo xtask trace`.
+[`verification/analysis-records.md`](verification/analysis-records.md): how requirements verified by analysis or inspection (method A/I) are recorded, one file per record in [`verification/records/`](verification/records/), read by `cargo xtask trace`.
 
 ### Reference application
 

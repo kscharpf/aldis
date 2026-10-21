@@ -11,6 +11,7 @@ mod fields;
 mod layers;
 mod links;
 mod md;
+mod records;
 mod refapp;
 mod repo;
 mod spec;
