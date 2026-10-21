@@ -29,6 +29,8 @@ This directory holds the specification for a family of libraries that add CCSDS 
 
 ### Milestone plans ([`milestones/`](milestones/))
 
+[Work-package checklists](milestones/checklists.md): the definition of done for recurring work (codec modules, crates, vector files, fuzz targets, C ABI functions, spec-readings PRs, milestone exits), and which items `cargo xtask consistency` checks.
+
 | Document | Milestone |
 |---|---|
 | [M0 Foundations](milestones/m0-foundations.md) | Repository, CI, verification tooling, `aldis-core` |

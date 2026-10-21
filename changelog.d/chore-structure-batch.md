@@ -14,6 +14,11 @@
   `python3` (installed in the verification image). The provenance notes of those six files,
   not released yet, name their model. `test-vectors/models/README.md` records that the M1
   models were not kept. TV-023 is in the M2 exit criteria.
+- `docs/milestones/checklists.md`: the definition of done for the recurring kinds of work (a
+  codec module, a crate, a vector file, a fuzz target, C ABI functions, a spec-readings pull
+  request, a milestone exit), each item citing the requirement or check that enforces it and
+  marking those `cargo xtask consistency` checks. Linked from `AGENTS.md`, `docs/README.md`, and
+  roadmap §6 rule 1.
 
 ### Changed
 - `docs/verification/analysis-records.md` is split into one file per record in
