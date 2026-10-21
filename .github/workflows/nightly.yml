@@ -1,5 +1,6 @@
 # Scheduled checks (docs/milestones/m0-foundations.md WP-1, WP-5, WP-6; docs/06-verification.md §7,
-# VER-059): the verification run on both Linux architectures, and the night-only checks.
+# VER-059): the verification run on both Linux architectures, the night-only checks, and the
+# process metrics (§9, VER-063).
 # Nightly Rust is tooling only (RS-002) and always the date pinned in `tooling-nightly`.
 name: Nightly
 
@@ -217,6 +218,67 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - run: specs/fetch.sh --all --check-urls
+
+  metrics:
+    name: process metrics (VER-063, report only)
+    # The report of the last 30 days, kept in the body of the one pinned issue labelled `metrics`
+    # (docs/06-verification.md §9). It measures the process, not the code: a failure here (the
+    # GitHub API, a rate limit) says nothing about `main`, so `continue-on-error` keeps it from
+    # failing the night, and it is not in the `needs` of `issue`, so it never opens the
+    # nightly-failure issue.
+    runs-on: ubuntu-24.04
+    continue-on-error: true
+    timeout-minutes: 30
+    permissions:
+      contents: read # the checkout and refs/notes/verify
+      issues: write # create, label, pin, and edit the tracking issue
+      pull-requests: read # merged pull requests, their commits, files, and reviews
+      statuses: read # the aldis/verify commit statuses
+      actions: read # the verify.yml runs
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # the merges from main are redone with git merge-tree
+      - uses: ./.github/actions/setup-rust
+        with:
+          cache-key: metrics
+      - name: Report for the last 30 days
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p target/metrics
+          cargo xtask metrics --since "$(date -u -d '30 days ago' +%F)" --format md \
+            --json target/metrics/metrics.json > target/metrics/metrics.md
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: process-metrics
+          path: target/metrics/
+          if-no-files-found: error
+          retention-days: 90
+      - name: Keep the report in the pinned issue "Process metrics"
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          RUN: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          body=target/metrics/body.md
+          # An issue body holds at most 65536 characters: whole lines up to 60000 bytes, and the
+          # per-PR table comes last.
+          { awk -v max=60000 '{ n += length($0) + 1; if (n > max) exit; print }' \
+              target/metrics/metrics.md
+            printf '\n\n---\nUpdated by the nightly run %s; the JSON is its `process-metrics` artefact.\n' "$RUN"
+          } > "$body"
+          gh label create metrics --repo "$REPO" --color 0e8a16 \
+            --description "The process metrics report (VER-063)" 2>/dev/null || true
+          number=$(gh issue list --repo "$REPO" --label metrics --state all --limit 1 \
+            --json number --jq '.[0].number // empty')
+          if [ -z "$number" ]; then
+            url=$(gh issue create --repo "$REPO" --title "Process metrics" --label metrics \
+              --body-file "$body")
+            gh issue pin "${url##*/}" --repo "$REPO"
+          else
+            gh issue edit "$number" --repo "$REPO" --body-file "$body"
+          fi
 
   issue:
     name: open an issue on a nightly failure (VER-059)
