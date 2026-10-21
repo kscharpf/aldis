@@ -174,12 +174,12 @@ USLP-011 (no mixing of truncated and full frames in one C&S data unit) belongs t
 
 **Done when:** every USLP requirement is traced, and `uslp/fixed_packets_rule000`, `fixed_mapa_rules001_010`, `variable_rules011_111`, `vcf_count_lengths_0_to_7`, `truncated`, `truncated_sdls_layout`, `oid`, `insert_zone`, `protocol_control_cop1`, `delimit_multiple_frames_with_fill`, `validation_failures`, and `invalid` pass through the Rust API and the C ABI.
 
-### WP-6 Vectors and cross-checks (M) — TV-001…003, TV-020, TV-021, VER-040, API-020, API-031, API-032
+### WP-6 Vectors and cross-checks (M) — TV-001…003, TV-020, TV-021, TV-023, VER-040, API-020, API-031, API-032
 
 | Task | Output |
 |---|---|
 | Vector files for every category named in the four standard documents; every field the view exposes (TV-002); every error kind and every validation reason each decoder can return, with field codes (D3) | `test-vectors/{tm,tc,aos,uslp}/`, `core/ocf.json` |
-| Blue Book material first where it exists (the OID pattern, CMN-020; the FHEC code parameters of 732.0 §4.1.2.6.5); otherwise hand-derived with a worked note | provenance per file |
+| Blue Book material first where it exists (the OID pattern, CMN-020; the FHEC code parameters of 732.0 §4.1.2.6.5); otherwise hand-derived with a worked note, and the independent model, when it is a program, committed under `test-vectors/models/` (TV-023) | provenance per file |
 | Cross-check search and harness for the frames, and the OI-32 candidates (D15). Every discrepancy is resolved against the Blue Book text and recorded | `crosscheck/`, [cross-checks.md](../verification/cross-checks.md) |
 | A second review of the hand-derived frame vectors, independent of the sessions that wrote them (M1 §5) | `docs/verification/reviews/m2-vectors.md` |
 | Testkit handlers per crate, registered in each crate's tests, in the C ABI runner, and in the exerciser codegen | handlers |
@@ -227,7 +227,7 @@ M2 is complete when every item below is green on `main`:
 | Panic freedom and resources | VER-010, GEN-020…024 (the exerciser, with `aldis-ffi`, runs on all three bare-metal targets), VER-011 |
 | Portability | GEN-005, GEN-006, GEN-007, VER-030, VER-031 |
 | Gates | VER-022 (all WP-7 fuzz targets, ≥ 1 CPU-hour each before the release), VER-024 (100 % for the four frame crates and `aldis-core`), VER-025 (triaged) |
-| Vectors and trace | TV-001…003, TV-020, TV-021, VER-020 (`xtask trace --scope m2 --strict`), VER-021, VER-040 |
+| Vectors and trace | TV-001…003, TV-020, TV-021, TV-023, VER-020 (`xtask trace --scope m2 --strict`), VER-021, VER-040 |
 | Docs | Roadmap updated; `CHANGELOG.md` entry for 0.3.0-m2; open issues updated |
 
 Not in M2: CMN-024 (an optional OID check with no verification method); API-074 and the engines' security-hook order (M4); USLP-011 and the LNK requirements (M4); COP-1 (M3); the C ABI handles of FOP-1, FARM-1, and the link engines (M3, M4), which reuse the handle pattern D5 sets; CABI-040, CABI-041 (M3, M4); CABI-050, CABI-060, VER-026, and VER-050's full compiler matrix (M5); CABI-070…072 (track C and M5); synchronization and channel coding (roadmap §7, OI-12).

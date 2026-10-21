@@ -6,6 +6,14 @@
   facade feature in `full`; the fuzz targets of `fuzz/Cargo.toml` and the nightly fuzz matrix
   are the same; every vector file is listed in `test-vectors/README.md`, named by a test in
   `crates/*/tests/`, and embedded by the exerciser when its crate is exercised.
+- The independent models of the hand-derived vectors are committed under `test-vectors/models/`
+  (new TV-023, [docs/07-test-vectors.md](docs/07-test-vectors.md) §4): `aos_fhec.py` for
+  `test-vectors/aos/fhec_*.json` and `core_ocf.py` for `test-vectors/core/ocf.json`, each with
+  `--check` (recompute every expected value; exit 1 on a difference) and `--write`.
+  `cargo xtask vectors validate` runs every model that a `provenance_note` names, which needs
+  `python3` (installed in the verification image). The provenance notes of those six files,
+  not released yet, name their model. `test-vectors/models/README.md` records that the M1
+  models were not kept. TV-023 is in the M2 exit criteria.
 
 ### Changed
 - `docs/verification/analysis-records.md` is split into one file per record in

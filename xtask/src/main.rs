@@ -12,6 +12,7 @@ mod fields;
 mod layers;
 mod links;
 mod md;
+mod models;
 mod records;
 mod refapp;
 mod repo;
@@ -30,7 +31,9 @@ commands:
   trace [--scope <m>] [--strict]
                                requirement -> artefact matrix in target/spec/ (VER-020);
                                --strict fails on in-scope requirements without artefacts
-  vectors validate             check test-vectors/ against the model and the spec (TV-*)
+  vectors validate             check test-vectors/ against the model and the spec (TV-*), and run
+                               the independent model each provenance_note names
+                               (python3 -I test-vectors/models/<m>.py --check, TV-023)
   vectors schema [--check]     (re)generate test-vectors/schema/, or check it is current
   fields [--write]             check the field catalogue (03-api-model.md §9.1) and that
                                aldis_core::field and test-vectors/core/fields.json match it,

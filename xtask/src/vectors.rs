@@ -483,6 +483,8 @@ pub fn validate() -> Result<usize, String> {
     let mut current_raw: BTreeMap<String, Option<Value>> = BTreeMap::new();
     let mut files = 0;
     let mut cases = 0;
+    // Each file with its provenance note, for the independent models (TV-023).
+    let mut notes: Vec<(String, String)> = Vec::new();
 
     for path in repo::files("test-vectors", &["json"]) {
         let rel = repo::rel(&path);
@@ -517,6 +519,7 @@ pub fn validate() -> Result<usize, String> {
                         "{rel}: provenance {provenance:?} requires provenance_note (TV-020)"
                     ));
                 }
+                notes.extend(provenance_note.map(|n| (rel.clone(), n)));
                 for c in &list {
                     cases += 1;
                     let at = format!("{rel}#{}", c.id);
@@ -544,6 +547,7 @@ pub fn validate() -> Result<usize, String> {
                         "{at}: provenance {provenance:?} requires provenance_note (TV-020)"
                     ));
                 }
+                notes.extend(provenance_note.map(|n| (rel.clone(), n)));
                 if steps.windows(2).any(|w| w[1].at_us < w[0].at_us) {
                     problems.push(format!("{at}: step instants must not decrease (TV-010)"));
                 }
@@ -562,6 +566,8 @@ pub fn validate() -> Result<usize, String> {
     check_released(&repo::root(), &current_raw, &mut problems);
 
     check_by_links(&ids, &by_links, &mut problems);
+
+    problems.extend(crate::models::check(&notes)?);
 
     for p in &problems {
         println!("error: {p}");

@@ -7,6 +7,7 @@ The vectors are the **contract between implementations**. The Rust reference imp
 ```
 test-vectors/
   schema/            JSON Schemas generated from the model in crates/aldis-testkit (cargo xtask vectors schema)
+  models/            independent models (Python) that compute or check hand-derived vectors (TV-023)
   core/              crc16.json, oid.json, errors.json, bits.json, counters.json, layout.json, ocf.json;
                      fields.json, the field catalogue (generated, not a vector file)
   time/              cuc.json, cds.json, ccs.json, ascii.json, convert.json
@@ -98,3 +99,4 @@ An expected error may also give `field`: the code, from the field catalogue in [
 | TV-020 | Each vector file SHALL record its provenance: `blue-book-example`, `hand-derived` (with a worked derivation note), `cross-checked` (with the independent implementation and version), or `fuzz-regression`. | VER-040 | I |
 | TV-021 | Vectors SHALL be immutable once released. Corrections SHALL add a new case and mark the old one `superseded`, with a reason. `superseded.by` MAY name the replacing case; when present, it SHALL name an existing case that is not itself superseded. A released case that is wrong and has no correct replacement is marked `superseded` with a reason only. | — | A/I |
 | TV-022 | Seed vectors already verified during specification work: `core/crc16.json` (`"123456789"` → `29B1`, CMN-002) and `core/oid.json` (first 20 octets, CMN-020). | CMN-002, CMN-020 | V |
+| TV-023 | When the expected values of a `hand-derived` vector file are computed by a program, the program (the file's **independent model**) SHALL be committed under [`test-vectors/models/`](../test-vectors/models/README.md) and named in the file's `provenance_note` as `test-vectors/models/<name>.py`. It SHALL run with `python3 -I` from the repository root, and `--check <files>` SHALL recompute the expected outcome of every live case from its inputs and exit non-zero on any difference. It SHALL share no code with any implementation it checks. `cargo xtask vectors validate` runs every model on the files that name it, and fails on a named model that does not exist or a model that no file names. | TV-020, VER-040 | A |
