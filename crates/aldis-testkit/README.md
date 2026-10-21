@@ -13,9 +13,10 @@ Not part of the layered library. It is a tooling crate (RS-017): `std` only, nev
 - `model`: the types of the vector files in [`test-vectors/`](../../test-vectors/README.md), codec files and engine scenario files, with their provenance. These types define the format: `cargo xtask vectors validate` reads every file with them, and `cargo xtask vectors schema` generates the JSON Schemas in [`test-vectors/schema/`](../../test-vectors/schema/) from them.
 - `runner`: `run_codec_file` runs every case of a codec vector file through a handler the crate under test supplies, compares each `Outcome` exactly with the expected values, and returns a `Report`.
 - `hex`: the hex encoding the vector files use.
+- `oracle`: independent models that library code is checked against in unit tests and fuzz targets; `oracle::fhec` is the table model of the AOS Frame Header Error Control (M2 plan D10).
 - `vectors_dir`: the path of `test-vectors/` in the repository.
 
-Its users are the vector suites of the library crates (for example [`aldis-spp/tests/vectors.rs`](../aldis-spp/tests/vectors.rs)), `xtask`, the bare-metal [exerciser](../../exerciser/), whose build script turns the vectors into data for the target, and the [cross-checks](../../crosscheck/) against independent implementations.
+Its users are the vector suites and unit tests of the library crates (for example [`aldis-spp/tests/vectors.rs`](../aldis-spp/tests/vectors.rs)), the fuzz targets, `xtask`, the bare-metal [exerciser](../../exerciser/), whose build script turns the vectors into data for the target, and the [cross-checks](../../crosscheck/) against independent implementations.
 
 The crate documentation in [`src/lib.rs`](src/lib.rs) shows a handler.
 
