@@ -170,13 +170,16 @@ fn changed_paths(dir: &Path, base: &str, commit: &str) -> Result<Vec<String>, St
 }
 
 /// `git diff --name-only` from `from` to `to`. Without renames, so that both sides of a rename
-/// are listed, and with NUL separators, so that no path is quoted.
+/// are listed, and with NUL separators, so that no path is quoted. `diff.relative` is switched
+/// off by configuration rather than `--no-relative`, which needs git 2.28; the nightly
+/// big-endian job runs the tests in a `cross` image with an older git.
 fn diff_paths(dir: &Path, from: &str, to: &str) -> Result<Vec<String>, String> {
     let out = git_bytes(
         dir,
         &[
+            "-c",
+            "diff.relative=false",
             "diff",
-            "--no-relative",
             "--no-renames",
             "--no-ext-diff",
             "--no-textconv",
@@ -1154,7 +1157,10 @@ mod tests {
             let _ = std::fs::remove_dir_all(&dir);
             std::fs::create_dir_all(&dir).unwrap();
             let repo = Self(dir);
-            repo.git(&["init", "-q", "-b", "main"]);
+            // `init -b` needs git 2.28; the nightly big-endian job runs the tests in a `cross`
+            // image with an older git.
+            repo.git(&["init", "-q"]);
+            repo.git(&["symbolic-ref", "HEAD", "refs/heads/main"]);
             repo
         }
 

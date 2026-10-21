@@ -18,6 +18,9 @@
   only; `ALDIS_VERIFY_PULL=<repository>` opts a local run in to pulling.
 
 ### Fixed
+- `xtask` tests: the temporary git repositories of the vector and verify-scope tests no longer use
+  `git init -b` or `git diff --no-relative` (git 2.28), which failed the nightly big-endian job,
+  whose `cross` image has an older git (#62).
 - `cargo xtask verify` no longer skips a check because the record covering the base skipped it
   under an older rule: a result is taken only from the record in which the check ran, with inputs
   identical to the commit's. Before, a C++ check skipped by a format 1 record (whose C++ paths did

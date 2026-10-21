@@ -604,7 +604,10 @@ mod tests {
             let _ = std::fs::remove_dir_all(&dir);
             std::fs::create_dir_all(&dir).unwrap();
             let repo = TempRepo(dir);
-            repo.git(&["init", "-q", "-b", "main"]);
+            // `init -b` needs git 2.28; the nightly big-endian job runs the tests in a `cross`
+            // image with an older git.
+            repo.git(&["init", "-q"]);
+            repo.git(&["symbolic-ref", "HEAD", "refs/heads/main"]);
             repo
         }
 
