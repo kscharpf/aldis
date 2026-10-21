@@ -16,6 +16,7 @@
 
 pub mod hex;
 pub mod model;
+pub mod oracle;
 pub mod runner;
 #[cfg(feature = "strategies")]
 pub mod strategies;

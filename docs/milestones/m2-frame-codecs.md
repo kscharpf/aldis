@@ -130,7 +130,7 @@ Each codec module is done when:
 | 7 | `anomaly` | The flag list as D9 settles it | API-032, API-033 |
 | 8 | C ABI | `aldis_aos_*` (D14) | CABI-010…012, CABI-033 |
 
-**Done when:** every AOS requirement is traced, and `aos/minimal`, `fhec_encode`, `fhec_correct_1_symbol`, `fhec_correct_2_symbols`, `fhec_uncorrectable`, `insert_zone`, `mpdu_pointers`, `bpdu_pointers`, `oid`, `issue4_compat`, and `scid_10bit` pass through the Rust API and the C ABI.
+**Done when:** every AOS requirement is traced, and `aos/minimal`, `fhec_encode`, `fhec_correct_1_symbol`, `fhec_correct_2_symbols`, `fhec_miscorrection`, `fhec_uncorrectable`, `insert_zone`, `mpdu_pointers`, `bpdu_pointers`, `oid`, `issue4_compat`, and `scid_10bit` pass through the Rust API and the C ABI.
 
 ### WP-5 `aldis-uslp` (L) — USLP-001…010, USLP-012…016
 

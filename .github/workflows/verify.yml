@@ -6,6 +6,13 @@
 # It runs `cargo xtask verify --publish` on the branch's head, as a contributor would: a passing
 # record is published under refs/notes/verify and sets the commit status aldis/verify, linked to
 # this run (VER-057, VER-058). The logs are this run's artefact.
+#
+# The verification image comes from ghcr.io/kscharpf/aldis-verify when a workflow of this
+# repository has pushed it for the same image inputs (tag `<input hash>-amd64`), and its labels
+# hold; otherwise it is built here and pushed (VER-060). The record names the image's source and
+# digest. The first push creates the package as private: make it public once, under the
+# package's settings (Package settings, Danger Zone, Change visibility), and check that
+# "Manage Actions access" gives kscharpf/aldis the Write role.
 name: verify
 
 on:
@@ -27,6 +34,11 @@ jobs:
     permissions:
       contents: write # push refs/notes/verify
       statuses: write # set aldis/verify
+      packages: write # push the verification image to ghcr.io (VER-060)
+    env:
+      ALDIS_VERIFY_ENGINE: docker
+      # Use the image this repository's workflows pushed, if its labels hold (VER-060).
+      ALDIS_VERIFY_PULL: ghcr.io/kscharpf/aldis-verify
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -43,9 +55,17 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+      - name: Log in to ghcr.io
+        if: github.repository == 'kscharpf/aldis'
+        env:
+          ACTOR: ${{ github.actor }}
+          GH_TOKEN: ${{ github.token }}
+        run: printf '%s' "$GH_TOKEN" | docker login ghcr.io -u "$ACTOR" --password-stdin
+      - name: The verification image, pulled from ghcr.io or built here and pushed (VER-060)
+        if: github.repository == 'kscharpf/aldis'
+        run: cargo xtask verify image --push "$ALDIS_VERIFY_PULL"
       - name: Every check; publish a passing record
         env:
-          ALDIS_VERIFY_ENGINE: docker
           GH_TOKEN: ${{ github.token }}
         run: cargo xtask verify --publish
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

@@ -11,9 +11,15 @@ use sha2::{Digest as _, Sha256};
 
 use super::checks::Host;
 
-/// The `format` value of every record this version of the tool writes: with the `scope` of the
-/// input rule (VER-056). A tool that knows only format 1 refuses it rather than accept its skips.
-pub const FORMAT: &str = "aldis-verify-record/2";
+/// The `format` value of every record this version of the tool writes: a check that did not run
+/// names the record it takes its result from (`source`), and may be `reused` from an earlier
+/// commit of the branch (VER-056, VER-057). A tool that knows only formats 1 and 2 refuses it
+/// rather than accept its reuses.
+pub const FORMAT: &str = "aldis-verify-record/3";
+
+/// The format of the records written with the input rule before reuse: with the `scope` of the
+/// rule, a skip measured against the base and the record covering it. Still read.
+pub const FORMAT_2: &str = "aldis-verify-record/2";
 
 /// The format of the records written before the input rule, with only the C++ scope `cpp`.
 /// Still read: a skip in one is accepted for a C++ check whose scope says C++ was not affected.
@@ -28,8 +34,12 @@ pub enum Outcome {
     Fail,
     /// Not run: host-bound to a host this is not, or not selected with `--only`.
     NotRun,
-    /// Not run: none of the check's inputs changed against the base (VER-056).
+    /// Not run: none of the check's inputs changed against the base, and its result is taken
+    /// from a record in which it passed with the same inputs (VER-056).
     Skipped,
+    /// Not run: its inputs changed against the base, but are those of an earlier commit in
+    /// whose record it passed, and its result is taken from that record (VER-056).
+    Reused,
 }
 
 impl Outcome {
@@ -40,6 +50,7 @@ impl Outcome {
             Self::Fail => "fail",
             Self::NotRun => "not-run",
             Self::Skipped => "skipped",
+            Self::Reused => "reused",
         }
     }
 }
@@ -126,23 +137,38 @@ fn write_canonical(value: &Value, out: &mut String) {
     }
 }
 
-/// Whether `record`'s own scope skips the check `name`: in format 2, its decision in `scope`,
-/// for a base covered by a record; in format 1, a C++ check when C++ was not affected.
-fn skip_recorded(record: &Value, name: &str) -> bool {
+/// Whether `record`'s own scope leaves out the check `name` of entry `entry` with `result`
+/// (`skipped` or `reused`): in format 3, its decision in `scope` and the source the entry names,
+/// and for a skip the base; in format 2, a skip decided in `scope` for a base covered by a record;
+/// in format 1, a skipped C++ check when C++ was not affected.
+fn not_run_recorded(record: &Value, entry: &Value, name: &str, result: &str) -> bool {
+    let scope = record.get("scope");
+    let field = |k: &str| scope.and_then(|s| s.get(k));
+    let decided = || {
+        field("checks")
+            .and_then(|c| c.get(name))
+            .and_then(|d| d.get("run"))
+            == Some(&Value::Bool(false))
+    };
     match record.get("format").and_then(Value::as_str) {
         Some(FORMAT) => {
-            let scope = record.get("scope");
-            let field = |k: &str| scope.and_then(|s| s.get(k));
-            field("base").is_some_and(Value::is_string)
+            let source = entry.get("source");
+            let named = |k: &str| source.and_then(|s| s.get(k)).is_some_and(Value::is_string);
+            decided()
+                && named("commit")
+                && named("record")
+                && (result == "reused" || field("base").is_some_and(Value::is_string))
+        }
+        Some(FORMAT_2) => {
+            result == "skipped"
+                && field("base").is_some_and(Value::is_string)
                 && field("base_record").is_some_and(Value::is_string)
-                && field("checks")
-                    .and_then(|c| c.get(name))
-                    .and_then(|d| d.get("run"))
-                    == Some(&Value::Bool(false))
+                && decided()
         }
         Some(FORMAT_1) => {
             let cpp = record.get("cpp");
-            name.starts_with("cpp-")
+            result == "skipped"
+                && name.starts_with("cpp-")
                 && cpp.and_then(|c| c.get("affected")) == Some(&Value::Bool(false))
                 && cpp
                     .and_then(|c| c.get("base"))
@@ -153,13 +179,15 @@ fn skip_recorded(record: &Value, name: &str) -> bool {
 }
 
 /// Why `record` does not meet the merge gate (VER-058); empty when it does. Checks the record
-/// only: that it belongs to the commit under review, and that its skips hold in git
+/// only: that it belongs to the commit under review, and that its skips and reuses hold in git
 /// (`scope::recheck`), is the caller's part.
 pub fn gate_problems(record: &Value) -> Vec<String> {
     let mut problems = Vec::new();
     let format = record.get("format").and_then(Value::as_str);
-    if format != Some(FORMAT) && format != Some(FORMAT_1) {
-        problems.push(format!("not a `{FORMAT}` or `{FORMAT_1}` record"));
+    if ![FORMAT, FORMAT_2, FORMAT_1].map(Some).contains(&format) {
+        problems.push(format!(
+            "not a `{FORMAT}`, `{FORMAT_2}`, or `{FORMAT_1}` record"
+        ));
     }
     let Some(checks) = record.get("checks").and_then(Value::as_array) else {
         problems.push("no checks".to_owned());
@@ -177,8 +205,10 @@ pub fn gate_problems(record: &Value) -> Vec<String> {
         }
         match result {
             "pass" => {}
-            "skipped" if skip_recorded(record, name) => {}
-            "skipped" => problems.push(format!("{name}: skipped, but the record's scope runs it")),
+            "skipped" | "reused" if not_run_recorded(record, c, name, result) => {}
+            "skipped" | "reused" => problems.push(format!(
+                "{name}: {result}, but the record's scope runs it or names no source"
+            )),
             // Only a portable check must run; a host-bound one may be left to the nightly runs.
             "not-run" if field("host") != Host::Container.name() => {}
             "not-run" => problems.push(format!("{name}: portable check not run")),
@@ -218,9 +248,51 @@ mod tests {
     }
 
     fn record(checks: &Value) -> Value {
-        json!({"format": FORMAT, "checks": checks, "scope": {
+        json!({"format": FORMAT_2, "checks": checks, "scope": {
             "base": "b", "base_record": "c", "checks": {"cpp-tidy": {"run": false}, "fmt": {"run": true}},
         }})
+    }
+
+    // req: VER-057, VER-058
+    #[test]
+    fn gate_of_format_3() {
+        let source = json!({"commit": "c", "record": "d"});
+        let rec = |checks: &Value| {
+            json!({"format": FORMAT, "checks": checks, "scope": {"base": "b", "checks": {
+                "fmt": {"run": true}, "clippy": {"run": false}, "cpp-tidy": {"run": false},
+            }}})
+        };
+        let ok = rec(&json!([
+            {"name": "fmt", "host": "container", "gating": true, "result": "pass"},
+            {"name": "clippy", "host": "container", "gating": true, "result": "reused", "source": source},
+            {"name": "cpp-tidy", "host": "container", "gating": true, "result": "skipped", "source": source},
+        ]));
+        assert_eq!(gate_problems(&ok), Vec::<String>::new());
+        // A check that did not run names its source, and the scope decided not to run it.
+        let mut bad = ok.clone();
+        bad["checks"][1]["source"] = Value::Null;
+        bad["checks"][2]["source"]["record"] = json!(7);
+        bad["checks"][0]["result"] = json!("reused");
+        bad["checks"][0]["source"] = source.clone();
+        assert_eq!(gate_problems(&bad).len(), 3);
+        let mut ran = ok.clone();
+        ran["scope"]["checks"]["clippy"]["run"] = json!(true);
+        assert_eq!(
+            gate_problems(&ran),
+            ["clippy: reused, but the record's scope runs it or names no source"]
+        );
+        // A skip is measured against a base.
+        let mut no_base = ok;
+        no_base["scope"]["base"] = Value::Null;
+        assert_eq!(
+            gate_problems(&no_base),
+            ["cpp-tidy: skipped, but the record's scope runs it or names no source"]
+        );
+        // Format 2 knows no reuse.
+        let two = record(&json!([
+            {"name": "cpp-tidy", "host": "container", "gating": true, "result": "reused", "source": source},
+        ]));
+        assert_eq!(gate_problems(&two).len(), 1);
     }
 
     // req: VER-058
@@ -241,7 +313,7 @@ mod tests {
         ]));
         assert_eq!(
             gate_problems(&forged),
-            ["fmt: skipped, but the record's scope runs it"]
+            ["fmt: skipped, but the record's scope runs it or names no source"]
         );
         forged["scope"]["base_record"] = Value::Null;
         assert_eq!(gate_problems(&forged).len(), 2);
@@ -280,7 +352,10 @@ mod tests {
             gate_problems(
                 &json!({"checks": [{"name": "fmt", "host": "container", "gating": true, "result": "pass"}]})
             ),
-            ["not a `aldis-verify-record/2` or `aldis-verify-record/1` record"]
+            [
+                "not a `aldis-verify-record/3`, `aldis-verify-record/2`, or \
+                 `aldis-verify-record/1` record"
+            ]
         );
     }
 }

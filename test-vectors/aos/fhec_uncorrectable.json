@@ -1,0 +1,134 @@
+{
+  "kind": "codec",
+  "standard": "732.0-B-5 EC1 §4.1.2.6",
+  "provenance": "hand-derived",
+  "provenance_note": "Hand-derived from 732.0-B-5 EC1 §4.1.2.6.1 and §4.1.2.6.5 a–h (the same code as 732.0-B-4 §4.1.2.6.5, OI-04, M2 plan D11): RS(15,11) over GF(2^4), F(x) = x^4 + x + 1, g(x) = (x + a^6)(x + a^7)(x + a^8)(x + a^9), five leading symbols of zero virtual fill, systematic; symbols 6–11 are header bits 0–15 and 40–47, symbols 12–15 the FHEC (bits 48–63), each symbol sent from its left bit; bit 0 is the most significant bit of octet 0 (§1.6.3). 732.0 prints no worked FHEC example. Expected values computed by an independent Python model of the Blue Book text, written before the Rust codec: GF(2^4) by carry-less multiplication reduced by F(x), with no tables; a codeword is valid when the 15-symbol polynomial vanishes at a^6…a^9; the parity is solved by GF(2) linear algebra on those syndromes, not by division by g(x); decoding is a table from the syndrome of each of the 10 275 patterns of one or two symbol errors over the ten transmitted symbols to the pattern. The Rust codec divides by g(x) and decodes algebraically (Peterson, root search, Forney), so the two share no method. Input and output are the eight octets of the primary header with FHEC; octets 2–4 (the Virtual Channel Frame Count) are not protected. Uncorrectable inputs are chosen so that the model has no table entry for their syndrome; the virtual-fill cases have the syndrome of an error in a virtual fill symbol, which no transmitted pattern of weight ≤ 2 has.",
+  "cases": [
+    {
+      "id": "aos-fhec-un-001",
+      "requirements": [
+        "AOS-013",
+        "AOS-014"
+      ],
+      "description": "Three symbol errors (symbols 6, 7, 8): detected, not correctable",
+      "operation": "fhec_decode",
+      "input_hex": "5111000000003EDF",
+      "expect": {
+        "ok": false,
+        "error": "HeaderUncorrectable"
+      }
+    },
+    {
+      "id": "aos-fhec-un-002",
+      "requirements": [
+        "AOS-013",
+        "AOS-014"
+      ],
+      "description": "Three symbol errors (symbols 6, 11, 15): detected, not correctable",
+      "operation": "fhec_decode",
+      "input_hex": "B001000000033ED7",
+      "expect": {
+        "ok": false,
+        "error": "HeaderUncorrectable"
+      }
+    },
+    {
+      "id": "aos-fhec-un-003",
+      "requirements": [
+        "AOS-013",
+        "AOS-014"
+      ],
+      "description": "Three symbol errors (symbols 12, 13, 14): detected, not correctable",
+      "operation": "fhec_decode",
+      "input_hex": "4001000000001ABF",
+      "expect": {
+        "ok": false,
+        "error": "HeaderUncorrectable"
+      }
+    },
+    {
+      "id": "aos-fhec-un-004",
+      "requirements": [
+        "AOS-013",
+        "AOS-014"
+      ],
+      "description": "Syndrome of one error in virtual fill symbol 1: the locator's root lies in the virtual fill",
+      "operation": "fhec_decode",
+      "input_hex": "4001000000006071",
+      "expect": {
+        "ok": false,
+        "error": "HeaderUncorrectable"
+      }
+    },
+    {
+      "id": "aos-fhec-un-005",
+      "requirements": [
+        "AOS-013",
+        "AOS-014"
+      ],
+      "description": "Syndrome of one error in virtual fill symbol 5: the locator's root lies in the virtual fill",
+      "operation": "fhec_decode",
+      "input_hex": "4001000000006AB3",
+      "expect": {
+        "ok": false,
+        "error": "HeaderUncorrectable"
+      }
+    },
+    {
+      "id": "aos-fhec-un-006",
+      "requirements": [
+        "AOS-013",
+        "AOS-014"
+      ],
+      "description": "Syndrome of an error in virtual fill symbol 3 and one in symbol 9: one locator root in the fill",
+      "operation": "fhec_decode",
+      "input_hex": "40010000000065D0",
+      "expect": {
+        "ok": false,
+        "error": "HeaderUncorrectable"
+      }
+    },
+    {
+      "id": "aos-fhec-un-007",
+      "requirements": [
+        "AOS-013",
+        "AOS-014"
+      ],
+      "description": "Only S6 non-zero (value 0001): no pattern of one or two errors",
+      "operation": "fhec_decode",
+      "input_hex": "4001000000001638",
+      "expect": {
+        "ok": false,
+        "error": "HeaderUncorrectable"
+      }
+    },
+    {
+      "id": "aos-fhec-un-008",
+      "requirements": [
+        "AOS-013",
+        "AOS-014"
+      ],
+      "description": "Only S9 non-zero (value 0001): no pattern of one or two errors",
+      "operation": "fhec_decode",
+      "input_hex": "400100000000E71C",
+      "expect": {
+        "ok": false,
+        "error": "HeaderUncorrectable"
+      }
+    },
+    {
+      "id": "aos-fhec-un-009",
+      "requirements": [
+        "AOS-013",
+        "AOS-014"
+      ],
+      "description": "Four symbol errors (symbols 6, 8, 10, 12): detected",
+      "operation": "fhec_decode",
+      "input_hex": "3AE5123456709252",
+      "expect": {
+        "ok": false,
+        "error": "HeaderUncorrectable"
+      }
+    }
+  ]
+}

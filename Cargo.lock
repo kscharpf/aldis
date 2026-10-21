@@ -24,6 +24,8 @@ name = "aldis-aos"
 version = "0.2.0"
 dependencies = [
  "aldis-core",
+ "aldis-testkit",
+ "serde_json",
 ]
 
 [[package]]

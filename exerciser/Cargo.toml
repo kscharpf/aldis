@@ -19,6 +19,7 @@ test = false
 bench = false
 
 [dependencies]
+aldis-aos = { path = "../crates/aldis-aos", default-features = false }
 aldis-core = { path = "../crates/aldis-core", default-features = false, features = ["crc-table", "test-hooks"] }
 aldis-epp = { path = "../crates/aldis-epp", default-features = false }
 aldis-spp = { path = "../crates/aldis-spp", default-features = false, features = ["time"] }

@@ -73,4 +73,4 @@ There is **no OCF flag in the AOS header**. OCF presence is a per-VC managed par
 
 ## 6. Test-vector categories
 
-`aos/minimal`, `aos/fhec_encode`, `aos/fhec_correct_1_symbol`, `aos/fhec_correct_2_symbols`, `aos/fhec_uncorrectable`, `aos/insert_zone`, `aos/mpdu_pointers`, `aos/bpdu_pointers`, `aos/oid`, `aos/issue4_compat`, `aos/scid_10bit`.
+`aos/minimal`, `aos/fhec_encode`, `aos/fhec_correct_1_symbol`, `aos/fhec_correct_2_symbols`, `aos/fhec_miscorrection` (three or more symbol errors the code cannot detect, AOS-014), `aos/fhec_uncorrectable`, `aos/insert_zone`, `aos/mpdu_pointers`, `aos/bpdu_pointers`, `aos/oid`, `aos/issue4_compat`, `aos/scid_10bit`.
