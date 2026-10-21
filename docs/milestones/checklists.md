@@ -2,11 +2,11 @@
 
 A definition of done for the kinds of work that recur in every milestone. Each item names the requirement or check that enforces it. Items marked **(consistency)** are checked by `cargo xtask consistency`, part of `cargo xtask ci`; items marked **(ci)** by another command of `cargo xtask ci`; the rest by `cargo xtask verify` where a check is named, and otherwise by review. A milestone plan may add items for its own work packages; it does not repeat these.
 
-Every pull request also: changes one track's directories ([roadmap](../08-roadmap.md) §6 rule 2); adds one fragment to [`changelog.d/`](../../changelog.d/README.md) and never edits `CHANGELOG.md` (GEN-080; `cargo xtask changelog check`, **(ci)**); updates the requirement table in the same change when behaviour changes, with new IDs taking the next free number (`cargo xtask spec-lint`, **(ci)**); updates only its own row of the plan's work-package table (§6 rule 1); and merges on a published, passing record of `cargo xtask verify` (VER-058).
+Every pull request also: changes one track's directories ([roadmap](../08-roadmap.md) §6 rule 2); adds one fragment to [`changelog.d/`](../../changelog.d/README.md) and never edits `CHANGELOG.md` (GEN-080; `cargo xtask changelog check`, **(ci)**); updates the requirement table in the same change when behaviour changes, with new IDs taking the next free number (`cargo xtask spec-lint`, **(ci)**); updates only its own row of the plan's work-package table (§6 rule 1); asks the maintainer only what the [decision rights](../process/decision-rights.md) give the maintainer, and adds a line to the [decision log](../process/decisions.md) for each maintainer decision it records (VER-062; `cargo xtask decisions`, **(ci)**); and is merged by the maintainer on a published, passing record of `cargo xtask verify` (VER-058).
 
 ## Adding a codec module to an existing crate
 
-- [ ] Wire behaviour taken from the Blue Book clause cited, never from memory; open questions recorded as OIs ([09](../09-open-issues.md)), not settled in code.
+- [ ] Wire behaviour taken from the Blue Book clause cited, never from memory; open questions recorded as OIs ([09](../09-open-issues.md)), not settled in code; those the Blue Book does not settle go to the maintainer ([decision rights](../process/decision-rights.md) §2.1, §3).
 - [ ] Public items cite their clause and requirement IDs (RS-015, `missing_docs`); range-restricted fields are their own types with checked constructors (RS-020).
 - [ ] No panic, heap, I/O, or `unsafe` (GEN-010, GEN-020, GEN-030, GEN-070): Clippy with the workspace lint set (VER-001, verify check `clippy`).
 - [ ] Unit tests with `// req: <ID>` on every test (VER-020; `cargo xtask trace`, **(ci)**); test modules marked `#[cfg_attr(coverage_nightly, coverage(off))]`.
@@ -42,6 +42,7 @@ A crate *has code* once its `src/` declares a function. In the change that gives
 - [ ] Run by a host test in `crates/<crate>/tests/` through the `aldis-testkit` exact-match runner and a handler (VER-021, TV-012) **(consistency)** for a test naming the file.
 - [ ] Embedded and run by the exerciser when its crate is exercised (VER-010, M1 D6) **(consistency)**.
 - [ ] For a codec that has C ABI functions, run through the C ABI by the `aldis-ffi` vector runner, `crates/aldis-ffi/tests/vectors.rs` (M2 plan D4) **(consistency)**: every file of `test-vectors/{time,spp,epp}/` (`FFI_AREAS` in `xtask/src/consistency.rs`), and every file of a directory the runner names at least one file of.
+- [ ] Each case in the file whose name describes it; a case not yet released that does not fit moves to one that does, without asking ([decision rights](../process/decision-rights.md) §2.5).
 - [ ] Never edit a released case: add a new case and mark the old one `superseded` (TV-021, `cargo xtask vectors validate`).
 
 ## Adding a fuzz target
@@ -54,7 +55,7 @@ A crate *has code* once its `src/` declares a function. In the change that gives
 
 ## Adding C ABI functions
 
-- [ ] Functions in the codec's own module of `crates/aldis-ffi` (M2 plan §3), named `aldis_<std>_…` ([C ABI profile](../profiles/c-abi.md)), in the shape of M2 plan D4 and D14; every pointer and length checked (CABI-022); every `unsafe` block with a `// SAFETY:` comment (GEN-070).
+- [ ] Functions in the codec's own module of `crates/aldis-ffi` (M2 plan §3), named `aldis_<std>_…` ([C ABI profile](../profiles/c-abi.md)), in the shape of M2 plan D4 and D14 (a convention they do not fix, such as status codes or struct layout, is the maintainer's: [decision rights](../process/decision-rights.md) §2.4); every pointer and length checked (CABI-022); every `unsafe` block with a `// SAFETY:` comment (GEN-070).
 - [ ] The generated header `include/aldis/aldis.h` regenerated with `cargo xtask header --write`, never merged by hand (CABI-002; verify check `header`).
 - [ ] Capacities of stateful helpers in `crates/aldis-ffi/capacities.toml` and reported by `aldis_limits` (CABI-030).
 - [ ] The functions called by the exerciser's `aldis-ffi` group, `exerciser/src/ffi.rs` (M2 plan D16, VER-010; the dependency, the `ffi` group run by `exerciser/src/exercise.rs`, and `REPORTED` in `xtask/src/coverage.rs` **(consistency)**) and compared with the Rust decoders by the `ffi_decode` fuzz target (M2 WP-7).
@@ -67,17 +68,17 @@ Before a codec's work package starts, one pull request settles the Blue Book que
 
 - [ ] Each reading cites the clause it rests on; no text copied from the Blue Book (AGENTS.md).
 - [ ] Requirement tables and the standard document changed in the same pull request; new requirements take the next free ID (`cargo xtask spec-lint`, **(ci)**); new requirements in scope added to the plan's exit table, so that `cargo xtask trace --scope <id>` measures them.
-- [ ] OIs answered, updated, or opened in [09](../09-open-issues.md), and what is left to the maintainer named.
+- [ ] OIs answered, updated, or opened in [09](../09-open-issues.md), and what is left to the maintainer named: the readings the Blue Book does not settle ([decision rights](../process/decision-rights.md) §2.1), each asked as one question with a recommended option (§3), and each answer a line of the [decision log](../process/decisions.md).
 - [ ] Anomaly lists and error kinds settled before the codec ships them (API-032, API-033).
 - [ ] No code: the codec follows in its own pull request.
 
 ## Milestone exit
 
 - [ ] Every exit criterion of the plan's §4 met on `main`, with the evidence in a results column; `cargo xtask trace --scope <id> --strict` passes and replaces the non-strict run in `cargo xtask ci`, `ci.yml`, and the verify check `spec` (VER-020).
-- [ ] **The GEN-022/023 inspections of every crate the milestone changed approved by the maintainer at the exit review**, covering every revision since the last approval; the approval recorded in each record's `Approved` row (VER-061).
+- [ ] **The GEN-022/023 inspections of every crate the milestone changed approved by the maintainer at the exit review**, covering every revision since the last approval; the approval recorded in each record's `Approved` row (VER-061) and logged as `approval` in the [decision log](../process/decisions.md).
 - [ ] Coverage at 100 % for the gated crates (VER-024); mutants triaged (VER-025); every fuzz target run one CPU-hour (VER-022); stack sizes published (VER-011); the exerciser run on all bare-metal targets (VER-010).
 - [ ] Cross-checks run, or the search recorded in [cross-checks.md](../verification/cross-checks.md) (VER-040); the second review of the hand-derived vectors recorded in `docs/verification/reviews/`.
 - [ ] Crate docs cite clauses and requirement IDs (RS-015, reviewed); facade features documented.
 - [ ] **The process metrics for the milestone reviewed** (`cargo xtask metrics --since <the milestone's start>`, or the pinned issue "Process metrics", [06 §9](../06-verification.md#9-process-metrics)), and the top friction item, such as the file that conflicts most or the check group that costs most, opened as a follow-up issue (VER-063, review).
 - [ ] Open issues updated; the roadmap row, the root `README.md` status, and the plan's status updated.
-- [ ] For a track-R milestone: `cargo xtask changelog release <version> <date>`, the workspace version, and the release tag; vectors are immutable from then on (TV-021). Track C and A milestones cut no release (roadmap §5).
+- [ ] For a track-R milestone: `cargo xtask changelog release <version> <date>`, the workspace version, and the release tag, which the maintainer cuts ([decision rights](../process/decision-rights.md) §2.9, logged as `release`); vectors are immutable from then on (TV-021). Track C and A milestones cut no release (roadmap §5).
