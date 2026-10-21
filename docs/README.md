@@ -22,13 +22,15 @@ This directory holds the specification for a family of libraries that add CCSDS 
 
 ### Verification records
 
-[`verification/analysis-records.md`](verification/analysis-records.md): requirements verified by analysis or inspection (method A/I), read by `cargo xtask trace`.
+[`verification/analysis-records.md`](verification/analysis-records.md): how requirements verified by analysis or inspection (method A/I) are recorded, one file per record in [`verification/records/`](verification/records/), read by `cargo xtask trace`.
 
 ### Reference application
 
 [`reference-application.md`](reference-application.md): the scenario of the end-to-end flight↔ground application in `refapp/` (track A, area APP): roles, APIDs, link plan, time, link model and faults, golden-trace format, node interface, and implementation rules.
 
 ### Milestone plans ([`milestones/`](milestones/))
+
+[Work-package checklists](milestones/checklists.md): the definition of done for recurring work (codec modules, crates, vector files, fuzz targets, C ABI functions, spec-readings PRs, milestone exits), and which items `cargo xtask consistency` checks.
 
 | Document | Milestone |
 |---|---|

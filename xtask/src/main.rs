@@ -4,6 +4,7 @@
 
 mod binaries;
 mod changelog;
+mod consistency;
 mod coverage;
 mod cpp;
 mod features;
@@ -12,6 +13,8 @@ mod header;
 mod layers;
 mod links;
 mod md;
+mod models;
+mod records;
 mod refapp;
 mod repo;
 mod spec;
@@ -29,7 +32,9 @@ commands:
   trace [--scope <m>] [--strict]
                                requirement -> artefact matrix in target/spec/ (VER-020);
                                --strict fails on in-scope requirements without artefacts
-  vectors validate             check test-vectors/ against the model and the spec (TV-*)
+  vectors validate             check test-vectors/ against the model and the spec (TV-*), and run
+                               the independent model each provenance_note names
+                               (python3 -I test-vectors/models/<m>.py --check, TV-023)
   vectors schema [--check]     (re)generate test-vectors/schema/, or check it is current
   fields [--write]             check the field catalogue (03-api-model.md §9.1) and that
                                aldis_core::field and test-vectors/core/fields.json match it,
@@ -41,6 +46,10 @@ commands:
                                program with them, as C99 and C++11 (CABI-001, CABI-003)
   links                        relative Markdown links resolve inside the repository
   layers                       crate dependency rules (GEN-001..004)
+  consistency                  the registrations agree: crates with code in coverage, features,
+                               mutants, the exerciser, layers, READMEs, and the facade; fuzz
+                               targets in fuzz/Cargo.toml and the nightly matrix; every vector
+                               file in test-vectors/README.md, a test, and the exerciser
   refapp-deps                  refapp/ uses Aldis only through the `aldis` facade and
                                forbids unsafe code (APP-100, APP-105)
   symbols                      no frame-protocol code in a build of aldis-spp alone (VER-031)
@@ -57,7 +66,7 @@ commands:
   changelog release <version> <YYYY-MM-DD>
                                move every fragment into a new section of CHANGELOG.md
   ci                           everything CI runs without a C++ build: spec-lint, links,
-                               layers, refapp-deps, vectors validate, vectors schema --check,
+                               layers, consistency, refapp-deps, vectors validate, vectors schema --check,
                                fields, trace --scope m0 --strict, trace --scope m1 --strict,
                                trace --scope m2, trace --scope c0, changelog check,
                                cpp unsafe-optouts
@@ -92,6 +101,7 @@ fn run(args: &[&str]) -> Result<usize, String> {
         ["stack-sizes", target] => binaries::stack_sizes(target),
         ["coverage"] => coverage::run(),
         ["features"] => features::check(),
+        ["consistency"] => consistency::check(),
         ["cpp", rest @ ..] => cpp::run(rest),
         ["verify", rest @ ..] => verify::run(rest),
         ["changelog", "check"] => changelog::check(),
@@ -103,6 +113,7 @@ fn run(args: &[&str]) -> Result<usize, String> {
                 spec::lint as fn() -> Result<usize, String>,
                 links::check,
                 layers::check,
+                consistency::check,
                 refapp::check,
                 vectors::validate,
                 || vectors::schema(true),

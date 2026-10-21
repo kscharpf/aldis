@@ -16,6 +16,8 @@ Never write protocol values from memory. Look them up in the Blue Book. Registry
 
 v1 is built in three tracks: **R** (Rust reference, milestones M0–M6), **C** (native C++, C0–C5), and **A** (reference application, A0–A6). Before starting work, find your track and milestone in [docs/08-roadmap.md](docs/08-roadmap.md), check that its entry gate is met on `main`, and follow the parallel-work rules in §6: one track's directories per PR, branch prefix `m<N>/`, `c<N>/`, or `a<N>/`, and the Rust crates as the reference when implementations disagree.
 
+A milestone plan carries a work-package status table, one row per WP or sub-part (WP, State, PRs, Notes); update only your WP's row. Never write requirement counts into a plan: `cargo xtask trace --scope <id>` reports them (roadmap §6 rule 1). Before calling a work package done, go through its checklist in [docs/milestones/checklists.md](docs/milestones/checklists.md) (adding a codec module, a crate, a vector file, a fuzz target, C ABI functions; a spec-readings PR; a milestone exit); `cargo xtask consistency` checks the registrations it marks.
+
 The rules and checks below are written for the Rust crates. The native C++ code follows [docs/profiles/cpp.md](docs/profiles/cpp.md) instead; its checks are set up in milestone C0.
 
 ## Non-negotiable rules (Layers 0–2)
@@ -57,7 +59,7 @@ cargo fmt --all --check
 cargo clippy --workspace --all-features --all-targets
 cargo test --workspace --all-features
 cargo clippy -p aldis --no-default-features --features full --target thumbv7em-none-eabihf
-cargo xtask ci        # spec lint, links, layering, vectors, schema, field codes, M0 and M1 traces (strict), M2 trace
+cargo xtask ci        # spec lint, links, layering, registrations (consistency), vectors, schema, field codes, M0 and M1 traces (strict), M2 trace
 ```
 
 When you change `aldis-core`, also run:
@@ -99,7 +101,8 @@ Clippy runs with the `all` and `pedantic` groups denied, plus restriction lints 
 ## Conventions
 
 - **Traceability:** every public item's docs cite the CCSDS clause and requirement IDs it implements (RS-015). Every test names the requirements it covers with a `// req: <ID>` comment (VER-020).
-- **Verification records:** requirements verified by a check of `cargo xtask verify` or by review (method A/I) are listed in [docs/verification/analysis-records.md](docs/verification/analysis-records.md).
+- **Verification records:** requirements verified by a check of `cargo xtask verify` or by review (method A/I) each have a record file in [docs/verification/records/](docs/verification/records/), named after its first requirement ID, in the format of [analysis-records.md](docs/verification/analysis-records.md). Change only the record you touch; there is no index.
+- **Inspections (GEN-022/023):** when your change adds or changes a loop, a call between a crate's own functions, or a blocking construct in library code, revise that crate's record in [docs/verification/inspections/](docs/verification/inspections/) in the same change: update the loop table and call graph, and add a `Revised` row "<date>, <branch> (<WP>), prepared by <you>, pending exit review: …". Do not ask for or wait for a maintainer approval, and never edit an `Approved` row: the maintainer approves every pending revision once, in the milestone exit review or before a release (VER-061).
 - **Test vectors** in [`test-vectors/`](test-vectors/README.md) are shared with future C/C++ and binding implementations. Follow [docs/07-test-vectors.md](docs/07-test-vectors.md). Record provenance, and never edit a released vector: add a new case and mark the old one `superseded`.
 - **Changelog:** never edit `CHANGELOG.md` in a pull request. Add one fragment file to [`changelog.d/`](changelog.d/README.md), named after the branch; `cargo xtask changelog check` validates it.
 - **Errors** use the stable catalogue in [docs/03-api-model.md](docs/03-api-model.md) §9. Do not renumber error codes.

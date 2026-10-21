@@ -4,7 +4,8 @@
 //! reference application in `refapp/` and the cross-checks in `crosscheck/`) and in the C++
 //! sources and headers under `cpp/` (labelled `test (C++)`, CPP-057), the `requirements` fields of test vectors and of
 //! golden-trace headers (`refapp/golden/*.jsonl`, docs/reference-application.md §7.2), and
-//! `docs/verification/analysis-records.md`.
+//! the analysis and inspection records, one file each in `docs/verification/records/`
+//! ([`crate::records`]).
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
@@ -109,17 +110,10 @@ fn artefacts(spec: &Spec) -> Result<BTreeMap<String, BTreeSet<String>>, String> 
         add(&mut map, spec, &refs, &format!("golden {rel}"));
     }
 
-    let records = repo::root().join("docs/verification/analysis-records.md");
-    if records.exists() {
-        for t in tables(&repo::read(&records)?) {
-            if t.header.first().map(String::as_str) == Some("ID") && t.header.len() == 3 {
-                for (_, row) in t.rows {
-                    if let [ids, method, artefact] = row.as_slice() {
-                        let refs = scan_ids(ids, &areas);
-                        add(&mut map, spec, &refs, &format!("{method}: {artefact}"));
-                    }
-                }
-            }
+    for record in crate::records::load(spec)? {
+        let label = record.label();
+        for id in record.ids {
+            map.entry(id).or_default().insert(label.clone());
         }
     }
     Ok(map)

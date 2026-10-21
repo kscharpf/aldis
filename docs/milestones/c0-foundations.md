@@ -151,7 +151,7 @@ As built: the loader follows the schemas (closed objects reject unknown keys; nu
 | Coverage gate and MC/DC report (D14) | `cpp-coverage`, `xtask cpp coverage` |
 | CodeQL Coding Standards job and deviation log (D13); every initial finding fixed or logged with its reason | `cpp-codeql`, `docs/verification/cpp-deviations.md` |
 | **IKOS evaluation** (OI-22). Scope: the current IKOS release on `aldis_core` through the exerciser's entry point and one harness per module, with the default numerical domain and one relational domain. Questions: does its LLVM front end (older than Clang 23) compile the C++20 headers; which checks it proves (buffer overflow, division by zero, signed and unsigned overflow, null dereference, uninitialized reads, shift count); run time; how many warnings, and how many are false positives. Output: an evaluation record with a recommendation (adopt as a CI gate, run nightly as a report, or do not adopt) for the maintainer to decide | `docs/verification/ikos-evaluation.md` |
-| Analysis records for every A/I requirement in the exit table (CPP-001…003, CPP-010…012, CPP-030…033, CPP-040…044, CPP-050, CPP-052, CPP-056, CPP-057) | `docs/verification/analysis-records.md` |
+| Analysis records for every A/I requirement in the exit table (CPP-001…003, CPP-010…012, CPP-030…033, CPP-040…044, CPP-050, CPP-052, CPP-056, CPP-057) | `docs/verification/records/` (one file per record) |
 
 **Done when:** every job is green on `main` and has failed once on a planted violation (warning, clang-tidy finding, formatting, include outside the allowlist, sanitizer finding, uncovered branch, CodeQL finding without a log entry, canary).
 

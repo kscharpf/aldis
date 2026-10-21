@@ -101,7 +101,7 @@ Requirements appear in tables with these columns:
 | ID | Requirement identifier |
 | Requirement | The SHALL statement |
 | Source | CCSDS clause (e.g. `133.0 §4.1.3.5.2`) or `—` for library-design requirements |
-| Verif. | **T** = unit/integration test · **V** = shared test vector · **F** = fuzzing/property test · **A** = analysis (tooling, e.g. panic-freedom link check) · **I** = inspection/review |
+| Verif. | **T** = unit/integration test · **V** = shared test vector · **F** = fuzzing/property test · **A** = analysis (tooling, e.g. panic-freedom link check) · **I** = inspection/review (records and their approval: [06 §8](06-verification.md#8-inspection-records-and-their-approval)) |
 
 Every requirement SHALL be traced to at least one verification artefact (see VER-020).
 

@@ -15,7 +15,7 @@ use serde_json::Value;
 use crate::repo;
 
 /// Crates gated in M0 (Layer 0). Layers 1–2 join as they gain code (VER-024).
-const GATED: &[&str] = &[
+pub const GATED: &[&str] = &[
     "aldis-core",
     "aldis-time",
     "aldis-epp",
@@ -24,7 +24,7 @@ const GATED: &[&str] = &[
 ];
 
 /// Crates measured and reported, not gated (M2 plan D16).
-const REPORTED: &[&str] = &["aldis-ffi"];
+pub const REPORTED: &[&str] = &["aldis-ffi"];
 
 /// The four metrics reported by `llvm-cov`, in report order.
 const METRICS: &[&str] = &["regions", "functions", "lines", "branches"];

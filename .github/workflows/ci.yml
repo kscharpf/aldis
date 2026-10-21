@@ -248,6 +248,9 @@ jobs:
       - run: cargo xtask vectors schema --check
       # The field catalogue and the files generated from it (API-082, m2 plan D2).
       - run: cargo xtask fields
+      # The per-crate, fuzz-target, and vector-file registrations agree
+      # (docs/milestones/checklists.md).
+      - run: cargo xtask consistency
       # Independent cross-check of the vectors (VER-040); fails on any disagreement. Its own
       # tests first: the harness must report a difference it is shown.
       - run: cargo test --manifest-path crosscheck/Cargo.toml
