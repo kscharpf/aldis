@@ -7,7 +7,7 @@ The vectors are the **contract between implementations**. The Rust reference imp
 ```
 test-vectors/
   schema/            JSON Schemas generated from the model in crates/aldis-testkit (cargo xtask vectors schema)
-  core/              crc16.json, oid.json, errors.json, bits.json, counters.json, layout.json;
+  core/              crc16.json, oid.json, errors.json, bits.json, counters.json, layout.json, ocf.json;
                      fields.json, the field catalogue (generated, not a vector file)
   time/              cuc.json, cds.json, ccs.json, ascii.json, convert.json
   spp/  epp/  tm/  tc/  aos/  uslp/

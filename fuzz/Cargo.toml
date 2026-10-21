@@ -89,6 +89,13 @@ doc = false
 bench = false
 
 [[bin]]
+name = "ocf_classify"
+path = "fuzz_targets/ocf_classify.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
 name = "epp_decode"
 path = "fuzz_targets/epp_decode.rs"
 test = false

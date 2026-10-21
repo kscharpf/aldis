@@ -12,7 +12,8 @@
 | WP-0a field codes, `--scope m2` | merged | #60 | D1, D2, D3; API-082 |
 | WP-0b testkit strategies | in progress | #70 | D6; VER-054 |
 | WP-0c M1 C ABI, header | in progress | #72 | D4, D5; C1 starts when it merges |
-| WP-1 `aldis-core` additions | in progress | #68 | `Ocf`, `core/ocf.json` |
+| WP-1 `aldis-core`: `Ocf` | merged | #68 | CMN-010, CMN-011; `core/ocf.json`, fuzz target `ocf_classify`, exerciser group |
+| WP-1 C ABI (`aldis_crc16`, `aldis_ocf_classify`, OID generator) | planned | — | Follows once WP-0c has set the shape (§3) |
 | WP-2 `aldis-tm` | planned | — | |
 | WP-3 `aldis-tc` | planned | — | |
 | WP-4 `aldis-aos` module 1, `fhec` | merged | #64 | D10; `aldis-aos` joined the coverage gate, mutants, the exerciser, and the fuzz target `aos_fhec_model` |
