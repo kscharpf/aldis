@@ -398,6 +398,9 @@ cargo xtask vectors validate
 cargo xtask vectors schema --check
 # The field catalogue of docs/03-api-model.md §9.1 and the files generated from it (API-082).
 cargo xtask fields
+# The per-crate registrations (coverage, features, mutants, exerciser, layers, fuzz matrix,
+# vector index) agree (docs/milestones/checklists.md).
+cargo xtask consistency
 # Independent cross-check of the vectors (VER-040); fails on any disagreement. Its own tests
 # first: the harness must report a difference it is shown.
 cargo test --manifest-path crosscheck/Cargo.toml
