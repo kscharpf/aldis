@@ -27,6 +27,13 @@
   them ([docs/08-roadmap.md](docs/08-roadmap.md) §6 rule 1, `AGENTS.md`). The M2 plan's status
   paragraph becomes a status sentence, the table, and a short history; the C0 and A0 status
   paragraphs carry no counts and stay as they are.
+- GEN-022/023 inspections are approved once per milestone (maintainer decision 2026-10-21; new
+  VER-061, [docs/06-verification.md](docs/06-verification.md) §8): the change that adds a loop
+  or a call revises the crate's record in `docs/verification/inspections/`, prepared by its
+  author and marked pending exit review, and the maintainer approves every revision since the
+  last approval at the milestone exit review or before a release. No pull request waits for an
+  approval. `AGENTS.md` and the M2 plan (WP-7 and a new §4 exit row) follow; past approvals
+  stand.
 
 ### Fixed
 - `cargo xtask features` checks `aldis-aos` too (GEN-006): it joined the coverage gate in M2

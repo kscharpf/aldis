@@ -195,7 +195,7 @@ USLP-011 (no mixing of truncated and full frames in one C&S data unit) belongs t
 | Fuzz targets: `tm_decode`, `tm_roundtrip`, `tc_decode`, `tc_roundtrip`, `tc_delimit`, `tc_clcw`, `aos_fhec_model`, `aos_decode`, `aos_roundtrip`, `uslp_decode`, `uslp_truncated`, `uslp_roundtrip`, `ocf_classify`, and `ffi_decode` (the C ABI decoders agree with the Rust decoders on the same octets). Each asserts no panic, `decode(encode(x)) == x`, and GEN-042 | `fuzz/`, `nightly.yml` matrix |
 | Mutation testing of the four crates and `aldis-core`; survivors triaged before the release (VER-025) | [mutants-triage.md](../verification/mutants-triage.md) |
 | Stack sizes per target with the new crates (VER-011) | nightly artefacts |
-| GEN-022/023 inspection of the four crates and `aldis-ffi` | `docs/verification/inspections/` |
+| GEN-022/023 inspection of the four crates and `aldis-ffi`: each WP revises the record of every crate it changes, prepared by its author and pending exit review (VER-061) | `docs/verification/inspections/` |
 | VER-031: the minimal `aldis-spp` build still has no frame symbols | verify check `layers` |
 | 1 CPU-hour per fuzz target before the release (VER-022) | run link in the exit table |
 
@@ -225,6 +225,7 @@ M2 is complete when every item below is green on `main`:
 | USLP Transfer Frame | USLP-001…010, USLP-012…016 |
 | Codec contract | API-010…014, API-020…023, API-030…033, API-040, API-041, API-070, API-072, API-075, GEN-013, GEN-014, GEN-043, GEN-052, GEN-053, GEN-060, GEN-061, RS-012. Every live case of `tm/`, `tc/`, `aos/`, and `uslp/` passes through the Rust API and through the C ABI |
 | Panic freedom and resources | VER-010, GEN-020…024 (the exerciser, with `aldis-ffi`, runs on all three bare-metal targets), VER-011 |
+| Inspections | VER-061: the GEN-022/023 inspections of all changed crates approved at the exit review, covering every revision since the last approval |
 | Portability | GEN-005, GEN-006, GEN-007, VER-030, VER-031 |
 | Gates | VER-022 (all WP-7 fuzz targets, ≥ 1 CPU-hour each before the release), VER-024 (100 % for the four frame crates and `aldis-core`), VER-025 (triaged) |
 | Vectors and trace | TV-001…003, TV-020, TV-021, TV-023, VER-020 (`xtask trace --scope m2 --strict`), VER-021, VER-040 |
