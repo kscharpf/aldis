@@ -44,15 +44,15 @@ std::string rejection(const std::string& text) {
     return f.rejected.front().message;
 }
 
-/// Input and parameters of a `bits_get` case.
-std::string bits_get_params() {
-    return R"(, "input_hex": "0001", "params": { "bit_offset": 5, "width": 11 })";
+/// The members of a `bits_get` case: input and parameters, then `rest`.
+std::string bits_get_members(const std::string& rest) {
+    return R"(, "input_hex": "0001", "params": { "bit_offset": 5, "width": 11 })" + rest;
 }
 
 TEST(VectorLoader, AcceptsAValidCase) {
     // req: TV-001, CPP-053
     const CodecFile f = parse_codec(
-        file(one("bits_get", bits_get_params() + R"(, "expect": { "ok": true, "value": 1 })")));
+        file(one("bits_get", bits_get_members(R"(, "expect": { "ok": true, "value": 1 })"))));
     ASSERT_EQ(f.cases.bits_get.size(), 1U);
     EXPECT_TRUE(f.rejected.empty());
     EXPECT_EQ(f.cases.bits_get.front().id, "c1");
@@ -107,7 +107,7 @@ TEST(VectorLoader, NullMeansAbsentWhereTheSchemaAllowsIt) {
 
 TEST(VectorLoader, IncompleteExpectationIsRejected) {
     // req: TV-002, TV-012
-    EXPECT_NE(rejection(file(one("bits_get", bits_get_params() + R"(, "expect": { "ok": true })")))
+    EXPECT_NE(rejection(file(one("bits_get", bits_get_members(R"(, "expect": { "ok": true })"))))
                   .find("missing expect.value"),
               std::string::npos);
     // A gap names the counts missing.
@@ -123,8 +123,8 @@ TEST(VectorLoader, IncompleteExpectationIsRejected) {
 TEST(VectorLoader, OverSpecifiedExpectationIsRejected) {
     // req: TV-002, TV-012
     EXPECT_NE(rejection(file(one("bits_get",
-                                 bits_get_params() +
-                                     R"(, "expect": { "ok": true, "value": 1, "extra": 0 })")))
+                                 bits_get_members(
+                                     R"(, "expect": { "ok": true, "value": 1, "extra": 0 })"))))
                   .find("over-specified expectation: extra"),
               std::string::npos);
     // Only a gap produces `missing`.

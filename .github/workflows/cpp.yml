@@ -140,6 +140,8 @@ jobs:
         with:
           tools: cmake ninja gcc llvm
       - run: cmake --preset host-clang
+      - name: Generate the vector cases the tests include (c0 plan D5)
+        run: cmake --build --preset host-clang --target aldis_vectors_generate
       - name: clang-tidy on every header (self-containment TUs), every test, and the vector tools
         # Findings are errors (WarningsAsErrors in cpp/.clang-tidy); GoogleTest is not analysed.
         run: run-clang-tidy -quiet -p ../target/cpp/host-clang '/header_check/|/cpp/tests/|/cpp/vectors/'
