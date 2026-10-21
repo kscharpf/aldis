@@ -52,6 +52,18 @@ The reference application lives in its own workspace, `refapp/`, and uses only t
 | **A4 Engines** | The hand-written loops are replaced by the `aldis-link` engines | A3; M4 | Same trace as A3 for the same scenario |
 | **A5 C and C++** | A C++ flight side using `aldis.hpp`, built once against the Rust-backed library and once against the native library | A4; M5; C5 to exit | The Rust, Rust-via-C-ABI, and native C++ builds reproduce the same golden trace |
 | **A6 Framework and target** | The application moves onto `aldis-framework` stacks and trace/replay; the flight side runs bare-metal under QEMU; footprint, stack, and timing figures published | A5; M6 | End-to-end ground↔flight demo; figures included in the v1.0 tables |
+| **ACFS cFS flight side** ([plan](milestones/acfs-flight-side.md)) | A second flight side: NASA cFS apps (cFE, OSAL, pc-linux PSP) that call Aldis through `aldis.h`, run in lockstep with the harness, and reproduce the Rust flight side's golden traces ([reference-application.md](reference-application.md) §10). Four phases, below | Per phase, below | Every phase's traces reproduced in the nightly job; gates no release |
+
+ACFS phases ([plan](milestones/acfs-flight-side.md) D1). Each phase follows one Rust-side milestone of track A and the C ABI it needs:
+
+| Phase | Content | Entry gate | Exit criteria |
+|---|---|---|---|
+| **P1 Packets** | cFS apps exchange Space Packets with the harness; command ingest and telemetry output through the M1 codecs' C ABI | A1; the M1 codecs' C ABI (M2 WP-0c, #72) | `a1-*` traces reproduced in nightly CI |
+| **P2 Frames** | TM and TC frames, hand-written C link loops | P1; A2; the M2 frame C ABI | `a2-*` traces reproduced in nightly CI |
+| **P3 COP-1** | FARM-1 through its C ABI handle | P2; A3; M3 | `a3-*` traces reproduced in nightly CI, fault cases included |
+| **P4 Engines** | The link engines' C ABI handles replace the loops | P3; A4; M4 | `a3-*` traces reproduced through the engines in nightly CI |
+
+The alternative to one milestone with phases is four milestones, one per row; the plan's D1 compares them.
 
 ## 4. Overlap
 
