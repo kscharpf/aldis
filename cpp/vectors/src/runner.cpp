@@ -24,8 +24,10 @@ namespace {
 std::string text(std::uint64_t v) { return std::to_string(v); }
 
 std::string text(std::uint16_t v) {
-    const std::array<std::byte, 2> octets{std::byte{static_cast<std::uint8_t>(v >> 8U)},
-                                          std::byte{static_cast<std::uint8_t>(v & 0xFFU)}};
+    const std::array<std::byte, 2> octets{
+        std::byte{static_cast<std::uint8_t>(v >> 8U)},
+        std::byte{static_cast<std::uint8_t>(v & 0xFFU)},
+    };
     return "\"" + hex(octets) + "\"";
 }
 

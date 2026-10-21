@@ -16,12 +16,14 @@
 #include "aldis/vectors/checks/oid_fill_sequence.hpp"
 
 #include <nlohmann/json.hpp>
+#include <nlohmann/json_fwd.hpp>
 
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
 #include <functional>
+#include <ios>
 #include <limits>
 #include <map>
 #include <optional>
@@ -156,8 +158,10 @@ std::optional<Superseded> schema_superseded(const json* v, const std::string& wh
         return std::nullopt;
     }
     Members m(*v, where + ".superseded");
-    Superseded s{.reason = schema_string(m.take("reason"), m.where() + ".reason"),
-                 .by = schema_opt_string(m.take_opt("by"), m.where() + ".by")};
+    Superseded s{
+        .reason = schema_string(m.take("reason"), m.where() + ".reason"),
+        .by = schema_opt_string(m.take_opt("by"), m.where() + ".by"),
+    };
     schema_finish(m);
     return s;
 }
@@ -186,7 +190,7 @@ RawCase schema_case(const json& value, const std::string& where) {
     c.operation = schema_string(m.take("operation"), at + ".operation");
     c.mode = schema_opt_string(m.take_opt("mode"), at + ".mode");
     if (c.mode.has_value() && *c.mode != "strict" && *c.mode != "lenient") {
-        throw LoadError(at + ".mode: expected \"strict\" or \"lenient\"");
+        throw LoadError(at + R"(.mode: expected "strict" or "lenient")");
     }
     c.config = m.take_opt("config");
     if (c.config != nullptr && !c.config->is_object()) {
@@ -328,7 +332,7 @@ public:
             throw CaseError("config is not used by " + raw.operation);
         }
         if (raw.mode.value_or("strict") != "strict") {
-            throw CaseError("mode " + *raw.mode + " is not used by " + raw.operation);
+            throw CaseError("mode " + raw.mode.value_or("") + " is not used by " + raw.operation);
         }
     }
 
@@ -410,26 +414,28 @@ BitsGetCase parse_bits_get(CaseReader& r) {
         .input = r.input(),
         .bit_offset = to_unsigned<std::size_t>(r.param("bit_offset"), "params.bit_offset"),
         .width = to_unsigned<std::uint8_t>(r.param("width"), "params.width"),
-        .expect = r.expect<std::uint64_t>([](CaseReader& e) { return expected_u64(e, "value"); })};
+        .expect = r.expect<std::uint64_t>([](CaseReader& e) { return expected_u64(e, "value"); }),
+    };
     return c;
 }
 
 BitsSetCase parse_bits_set(CaseReader& r) {
-    return BitsSetCase{.input = r.input(),
-                       .bit_offset =
-                           to_unsigned<std::size_t>(r.param("bit_offset"), "params.bit_offset"),
-                       .width = to_unsigned<std::uint8_t>(r.param("width"), "params.width"),
-                       .value = to_u64(r.param("value"), "params.value"),
-                       .expect = r.expect<Octets>([](CaseReader& e) {
-                           return expected_hex(e.value("output_hex"), "expect.output_hex");
-                       })};
+    return BitsSetCase{
+        .input = r.input(),
+        .bit_offset = to_unsigned<std::size_t>(r.param("bit_offset"), "params.bit_offset"),
+        .width = to_unsigned<std::uint8_t>(r.param("width"), "params.width"),
+        .value = to_u64(r.param("value"), "params.value"),
+        .expect = r.expect<Octets>(
+            [](CaseReader& e) { return expected_hex(e.value("output_hex"), "expect.output_hex"); }),
+    };
 }
 
 CounterIncrementCase parse_counter_increment(CaseReader& r) {
     return CounterIncrementCase{
         .bits = to_unsigned<std::uint8_t>(r.param("bits"), "params.bits"),
         .value = to_u64(r.param("value"), "params.value"),
-        .expect = r.expect<std::uint64_t>([](CaseReader& e) { return expected_u64(e, "value"); })};
+        .expect = r.expect<std::uint64_t>([](CaseReader& e) { return expected_u64(e, "value"); }),
+    };
 }
 
 core::Continuity expected_continuity(CaseReader& r) {
@@ -450,15 +456,18 @@ core::Continuity expected_continuity(CaseReader& r) {
 }
 
 CounterClassifyCase parse_counter_classify(CaseReader& r) {
-    return CounterClassifyCase{.bits = to_unsigned<std::uint8_t>(r.param("bits"), "params.bits"),
-                               .prev = to_u64(r.param("prev"), "params.prev"),
-                               .next = to_u64(r.param("next"), "params.next"),
-                               .expect = r.expect<core::Continuity>(expected_continuity)};
+    return CounterClassifyCase{
+        .bits = to_unsigned<std::uint8_t>(r.param("bits"), "params.bits"),
+        .prev = to_u64(r.param("prev"), "params.prev"),
+        .next = to_u64(r.param("next"), "params.next"),
+        .expect = r.expect<core::Continuity>(expected_continuity),
+    };
 }
 
 Crc16Case parse_crc16(CaseReader& r) {
     return Crc16Case{
-        .input = r.input(), .expect = r.expect<std::uint16_t>([](CaseReader& e) {
+        .input = r.input(),
+        .expect = r.expect<std::uint16_t>([](CaseReader& e) {
             const Octets value = expected_hex(e.value("value_hex"), "expect.value_hex");
             // The Rust handler formats the CRC as exactly four hex digits.
             const std::span<const std::byte> v = value.view();
@@ -467,7 +476,8 @@ Crc16Case parse_crc16(CaseReader& r) {
             }
             return static_cast<std::uint16_t>((std::to_integer<unsigned>(v.front()) << 8U) |
                                               std::to_integer<unsigned>(v.back()));
-        })};
+        }),
+    };
 }
 
 ErrorCodeCase parse_error_code(CaseReader& r) {
@@ -477,8 +487,9 @@ ErrorCodeCase parse_error_code(CaseReader& r) {
         throw CaseError("params.kind: longer than " + std::to_string(max_name) + " characters");
     }
     return ErrorCodeCase{
-        .kind = *name.ok(), .expect = r.expect<ErrorCode>([](CaseReader& e) {
-            const std::uint16_t code = to_unsigned<std::uint16_t>(e.value("code"), "expect.code");
+        .kind = *name.ok(),
+        .expect = r.expect<ErrorCode>([](CaseReader& e) {
+            const auto code = to_unsigned<std::uint16_t>(e.value("code"), "expect.code");
             const json* c_abi = e.value("c_abi");
             if (c_abi == nullptr) {
                 throw CaseError("missing expect.c_abi");
@@ -494,7 +505,8 @@ ErrorCodeCase parse_error_code(CaseReader& r) {
                 throw CaseError("expect.c_abi: expected a 32-bit integer, got " + c_abi->dump());
             }
             return ErrorCode{.code = code, .c_abi = static_cast<std::int32_t>(value)};
-        })};
+        }),
+    };
 }
 
 LayoutRange expected_range(CaseReader& r, const std::string& name) {
@@ -506,39 +518,44 @@ LayoutRange expected_range(CaseReader& r, const std::string& name) {
     if (!v->is_array() || v->size() != 2) {
         throw CaseError(what + ": expected [start, end], got " + v->dump());
     }
-    return LayoutRange{.start = to_unsigned<std::size_t>(&v->at(0), what + "[0]"),
-                       .end = to_unsigned<std::size_t>(&v->at(1), what + "[1]")};
+    return LayoutRange{
+        .start = to_unsigned<std::size_t>(&v->at(0), what + "[0]"),
+        .end = to_unsigned<std::size_t>(&v->at(1), what + "[1]"),
+    };
 }
 
 FrameLayoutCase parse_frame_layout(CaseReader& r) {
-    auto size = [&r](const std::string& name) {
+    const auto size = [&r](const std::string& name) {
         return to_unsigned<std::size_t>(r.param(name), "params." + name);
     };
-    return FrameLayoutCase{.frame_len = size("frame_len"),
-                           .primary_header_len = size("primary_header_len"),
-                           .secondary_len = size("secondary_len"),
-                           .security_header_len = size("security_header_len"),
-                           .security_trailer_len = size("security_trailer_len"),
-                           .ocf = to_bool(r.param("ocf"), "params.ocf"),
-                           .fecf = to_bool(r.param("fecf"), "params.fecf"),
-                           .expect = r.expect<LayoutRanges>([](CaseReader& e) {
-                               return LayoutRanges{
-                                   expected_range(e, "primary_header"),
-                                   expected_range(e, "secondary"),
-                                   expected_range(e, "security_header"),
-                                   expected_range(e, "data"),
-                                   expected_range(e, "security_trailer"),
-                                   expected_range(e, "ocf"),
-                                   expected_range(e, "fecf"),
-                               };
-                           })};
+    return FrameLayoutCase{
+        .frame_len = size("frame_len"),
+        .primary_header_len = size("primary_header_len"),
+        .secondary_len = size("secondary_len"),
+        .security_header_len = size("security_header_len"),
+        .security_trailer_len = size("security_trailer_len"),
+        .ocf = to_bool(r.param("ocf"), "params.ocf"),
+        .fecf = to_bool(r.param("fecf"), "params.fecf"),
+        .expect = r.expect<LayoutRanges>([](CaseReader& e) {
+            return LayoutRanges{
+                expected_range(e, "primary_header"),
+                expected_range(e, "secondary"),
+                expected_range(e, "security_header"),
+                expected_range(e, "data"),
+                expected_range(e, "security_trailer"),
+                expected_range(e, "ocf"),
+                expected_range(e, "fecf"),
+            };
+        }),
+    };
 }
 
 OidFillCase parse_oid_fill(CaseReader& r) {
-    return OidFillCase{.octets = to_unsigned<std::size_t>(r.param("octets"), "params.octets"),
-                       .expect = r.expect<Octets>([](CaseReader& e) {
-                           return expected_hex(e.value("output_hex"), "expect.output_hex");
-                       })};
+    return OidFillCase{
+        .octets = to_unsigned<std::size_t>(r.param("octets"), "params.octets"),
+        .expect = r.expect<Octets>(
+            [](CaseReader& e) { return expected_hex(e.value("output_hex"), "expect.output_hex"); }),
+    };
 }
 
 OidFillSequenceCase parse_oid_fill_sequence(CaseReader& r) {
@@ -558,7 +575,8 @@ OidFillSequenceCase parse_oid_fill_sequence(CaseReader& r) {
         throw CaseError("params.fills: more than " + std::to_string(max_fills) + " fills");
     }
     return OidFillSequenceCase{
-        .fills = *list.ok(), .expect = r.expect<OctetsList>([](CaseReader& e) {
+        .fills = *list.ok(),
+        .expect = r.expect<OctetsList>([](CaseReader& e) {
             const json* outputs = e.value("outputs_hex");
             if (outputs == nullptr) {
                 throw CaseError("missing expect.outputs_hex");
@@ -576,7 +594,8 @@ OidFillSequenceCase parse_oid_fill_sequence(CaseReader& r) {
                                 " outputs");
             }
             return *out.ok();
-        })};
+        }),
+    };
 }
 
 /// Parses a live case with `parse` and appends it to `cases`.
@@ -744,7 +763,7 @@ CodecFile parse_codec(std::string_view text) {
 }
 
 std::string read_file(const std::filesystem::path& path) {
-    std::ifstream in(path, std::ios::binary);
+    const std::ifstream in(path, std::ios::binary);
     if (!in) {
         throw LoadError(path.string() + ": cannot be read");
     }

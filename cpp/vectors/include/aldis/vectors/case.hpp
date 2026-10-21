@@ -286,7 +286,7 @@ template <typename Out>
 /// `std::string` instead (aldis/vectors/loader.hpp).
 template <typename Case> struct Named {
     /// The case identifier (`id`).
-    std::span<const char> id{};
+    std::span<const char> id;
     /// The case.
     Case data;
 };

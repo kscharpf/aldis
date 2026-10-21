@@ -20,7 +20,6 @@
 #include <cstddef>
 #include <cstdint>
 #include <string>
-#include <utility>
 #include <vector>
 
 #ifndef ALDIS_VECTORS_DIR
@@ -37,9 +36,13 @@ using aldis::vectors::Expect;
 using aldis::vectors::ExpectedError;
 using aldis::vectors::Mismatch;
 
-const std::vector<std::string> core_files{"core/bits.json",   "core/counters.json",
-                                          "core/crc16.json",  "core/errors.json",
-                                          "core/layout.json", "core/oid.json"};
+/// The core vector files.
+std::vector<std::string> core_files() {
+    return {
+        "core/bits.json",   "core/counters.json", "core/crc16.json",
+        "core/errors.json", "core/layout.json",   "core/oid.json",
+    };
+}
 
 CodecFile load(const std::string& name) {
     return aldis::vectors::parse_codec(
@@ -50,7 +53,7 @@ TEST(VectorRunner, EveryLiveCoreCasePasses) {
     // req: CPP-053, VER-021, TV-012, TV-021
     std::size_t passed = 0;
     std::size_t superseded = 0;
-    for (const std::string& name : core_files) {
+    for (const std::string& name : core_files()) {
         const aldis::vectors::Report r = aldis::vectors::run(load(name));
         EXPECT_TRUE(aldis::vectors::passed(r)) << aldis::vectors::summary(r, name);
         passed += r.passed;
@@ -154,7 +157,7 @@ TEST(VectorCodegen, GeneratedCasesAreTheLoadedCases) {
     // req: CPP-053, CPP-034
     std::vector<std::string> loaded_ids;
     std::size_t loaded = 0;
-    for (const std::string& name : core_files) {
+    for (const std::string& name : core_files()) {
         const CodecFile f = load(name);
         loaded += aldis::vectors::size(f.cases);
         for (const auto& c : f.cases.bits_get) {
@@ -164,6 +167,7 @@ TEST(VectorCodegen, GeneratedCasesAreTheLoadedCases) {
     EXPECT_EQ(gen::live_cases, loaded);
     EXPECT_EQ(gen::superseded_cases, 6U);
     std::vector<std::string> generated_ids;
+    generated_ids.reserve(aldis::vectors::generated::bits_get.size());
     for (const auto& c : gen::bits_get) {
         generated_ids.emplace_back(c.id.begin(), c.id.end());
     }

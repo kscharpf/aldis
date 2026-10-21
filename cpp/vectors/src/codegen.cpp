@@ -32,7 +32,7 @@ namespace {
 std::string literal_of(std::string_view s) {
     std::string out = "\"";
     for (const char c : s) {
-        const auto u = static_cast<unsigned char>(c);
+        const unsigned u = static_cast<unsigned char>(c);
         if (c == '"' || c == '\\') {
             out += '\\';
             out += c;
@@ -51,7 +51,7 @@ std::string literal_of(std::string_view s) {
 
 std::string lit(std::uint64_t v) { return std::to_string(v) + "U"; }
 
-std::string lit_bool(bool v) { return v ? "true" : "false"; }
+std::string_view lit_bool(bool v) { return v ? "true" : "false"; }
 
 std::string value(std::uint64_t v) { return "std::uint64_t{" + lit(v) + "}"; }
 
@@ -184,8 +184,8 @@ std::string fields(const FrameLayoutCase& c) {
            ", .secondary_len = " + lit(c.secondary_len) +
            ", .security_header_len = " + lit(c.security_header_len) +
            ", .security_trailer_len = " + lit(c.security_trailer_len) +
-           ", .ocf = " + lit_bool(c.ocf) + ", .fecf = " + lit_bool(c.fecf) +
-           ", .expect = " + value(c.expect);
+           ", .ocf = " + std::string(lit_bool(c.ocf)) +
+           ", .fecf = " + std::string(lit_bool(c.fecf)) + ", .expect = " + value(c.expect);
 }
 
 std::string fields(const OidFillCase& c) {
