@@ -1,6 +1,6 @@
 # Human review: four time-code readings (CCSDS 301.0-B-4)
 
-**Status:** in progress (Q1 and Q2 readings recorded; exercises and Q3–Q4 open) · **Reviewer:** the maintainer · **Prepared:** 2026-10-21
+**Status:** in progress (Q1–Q3 readings recorded; Q3 disagrees with Aldis, OI-39; exercises and Q4 open) · **Reviewer:** the maintainer · **Prepared:** 2026-10-21
 
 ## Purpose
 
@@ -72,16 +72,19 @@ Record every reading, including "agrees". A reading you would have made differen
 
 | Case | Input | Your result |
 |---|---|---|
-| `time-cuc-003` (in `cuc.json`) | `9C 20 01 02 03 04 05` | |
-| `time-pf-003` (in `pfield.json`) | `9F 7E 01 02 … 11` (19 octets in all, `01` to `11` hex) | |
+| `time-cuc-003` (in `cuc.json`) | `9C 20 01 02 03 04 05` | reject: P-field bit 0 is set |
+| `time-pf-003` (in `pfield.json`) | `9F 7E 01 02 … 11` (19 octets in all, `01` to `11` hex) | reject: P-field bit 0 is set |
 
 **Record**
 
-- Your reading, with clauses:
-- Fixed by 301.0, or left open:
-- Vector cases agree with your results (yes / no, which):
-- After reading cross-checks.md §3 D3 — agree with Aldis / `spacepackets` / neither / unsure:
+- Your reading, with clauses: bit 0 of the P-field is the extension flag (§3.1.1), and §3.1.1 says its value is at present `0`. Take §3.1.1 as authoritative and §3.2.2's octet 2 as an extension that has not been formalized. A P-field with bit 0 set is therefore ambiguous, and the safe behaviour in the face of ambiguity is to reject the time code. Only the one P-field octet is accepted, and the time units are read from it as specified. (2026-10-21)
+- Fixed by 301.0, or left open: left open; the two clauses read against each other.
+- Vector cases agree with your results (yes / no, which): results above, from the reading; not yet compared with the vector files.
+- After reading cross-checks.md §3 D3 — agree with Aldis / `spacepackets` / neither / unsure: not yet compared.
 - Notes:
+  - **Disagrees with Aldis**, which accepts CUC octet 2 (TIME-010) and decodes both exercise inputs. Raised as [OI-39](../../09-open-issues.md); Aldis keeps its behaviour until OI-39 is decided.
+  - **Partly primed:** the first answer ("accept only the one P-field octet") left open whether a set flag means reject or ignore the flag. The coordinator (an AI) asked which, and asked how the reading fits §3.2.2. The reading above came after those questions and kept the first answer's direction.
+  - **For an expert:** whether §3.1.1's "at present `0`" or §3.2.2's definition of octet 2 governs. This is the question of this review best suited to a CCSDS expert.
 
 ## Q4. Converting nanoseconds to CUC fine time
 
@@ -114,4 +117,4 @@ Record every reading, including "agrees". A reading you would have made differen
 - Time spent:
 - Had you seen any AI's answers to these questions before writing yours (an automated review of the pull request that added this packet, PR #80, works all four)? Which questions:
 - Findings that need a change (none, or the questions):
-- Questions to pass to a CCSDS expert:
+- Questions to pass to a CCSDS expert: Q3 (OI-39).

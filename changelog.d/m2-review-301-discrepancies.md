@@ -3,3 +3,5 @@
   answer, from CCSDS 301.0-B-4 alone, the four readings on which `spacepackets` and Aldis differ
   (cross-checks.md §3, D1–D4), with hand exercises against the named vector cases and a record to
   fill in.
+- Open issue OI-39: CUC P-field octet 2, 301.0 §3.1.1 against §3.2.2, raised by the review's Q3,
+  where the maintainer's reading (reject a P-field with bit 0 set) differs from Aldis's.
