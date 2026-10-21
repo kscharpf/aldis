@@ -188,6 +188,14 @@ fn apis_errors_ids(tally: &mut Tally) {
             && err0.field() != Some(field::EPI),
     );
     tally.check(err0.detail() != ErrorDetail::None);
+    tally.check(
+        FieldId::from_code(bb(5)) == Some(field::APID)
+            && FieldId::from_code(bb(0)).is_none()
+            && FieldId::from_code(bb(u16::MAX)).is_none(),
+    );
+    tally.check(
+        bb(field::SPACECRAFT_ID) < bb(field::APID) && field::APID.max(field::EPI) == field::EPI,
+    );
     tally.check(Error::from(ErrorKind::Malformed) == Error::new(ErrorKind::Malformed));
     for err in [
         err0,

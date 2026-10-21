@@ -29,3 +29,13 @@
   is now `aldis-ffi`'s, with the new feature `panic-unreachable`. The fuzz target `ffi_decode`
   checks that the C ABI decoders agree with the Rust decoders. `cargo xtask coverage` measures
   and reports `aldis-ffi` without gating it.
+- `aldis-core`: `FieldId::from_code`, the catalogued field of a code that crossed the C ABI,
+  and `PartialOrd`/`Ord` on `FieldId` by code alone, written by hand so the display name never
+  enters the comparison (API-082; issue #65). `FieldId` gets no `Display`: `name()` is the
+  display name, and `Error`'s `Display` prints it.
+
+### Changed
+- `cargo xtask fields` also generates the `ALDIS_FIELD_*` constants of the C ABI
+  (`crates/aldis-ffi/src/field.rs`), and checks that every "Used by" entry of the field
+  catalogue names a codec crate: `core`, `time`, `spp`, `epp`, `tm`, `tc`, `aos`, or `uslp`
+  (issue #65).

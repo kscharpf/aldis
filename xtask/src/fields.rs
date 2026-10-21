@@ -4,7 +4,7 @@
 //! (`crates/aldis-ffi/src/field.rs`, CABI-021).
 //!
 //! `cargo xtask fields` checks the catalogue (codes 1 to n in table order, each code and name
-//! used once) and that the files match it;
+//! used once, every "Used by" entry a codec crate) and that the files match it;
 //! `cargo xtask fields --write` regenerates them.
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -23,6 +23,8 @@ pub const MODULE: &str = "crates/aldis-core/src/field.rs";
 pub const JSON: &str = "test-vectors/core/fields.json";
 /// The generated field-code constants of the C ABI (CABI-021).
 pub const FFI: &str = "crates/aldis-ffi/src/field.rs";
+/// The names the "Used by" column may hold: the codec crates, `aldis-<name>`.
+const USED_BY: [&str; 8] = ["core", "time", "spp", "epp", "tm", "tc", "aos", "uslp"];
 
 /// Header of the catalogue table.
 const HEADER: [&str; 6] = ["Code", "Name", "Kind", "Meaning", "Used by", "Defined by"];
@@ -116,6 +118,16 @@ fn parse(text: &str, doc: &str, problems: &mut Vec<String>) -> Vec<Entry> {
         ] {
             if value.is_empty() {
                 problems.push(format!("{at}: empty {column}"));
+            }
+        }
+        if !used_by.is_empty() {
+            for user in used_by.split(',').map(str::trim) {
+                if !USED_BY.contains(&user) {
+                    problems.push(format!(
+                        "{at}: \"Used by\" names {user:?}, not one of {}",
+                        USED_BY.join(", ")
+                    ));
+                }
             }
         }
         entries.push(Entry {
@@ -498,6 +510,21 @@ mod tests {
              API-082, CABI-021).\npub const ALDIS_FIELD_APID: u16 = 1;\n"
         ));
         assert!(c.contains("    assert!(ALDIS_FIELD_WIDTH == field::WIDTH.code().get());\n"));
+    }
+
+    #[test]
+    fn used_by_names_codec_crates() {
+        // req: API-082
+        let shared = "| 1 | `apid` | field | APID | core, spp, tm | 133.0 §4.1.3.3.4 |";
+        assert_eq!(problems(&[shared]), Vec::<String>::new());
+        let typo = "| 1 | `apid` | field | APID | core, sp | 133.0 §4.1.3.3.4 |";
+        let p = problems(&[typo]);
+        assert_eq!(p.len(), 1, "{p:?}");
+        assert!(p[0].contains("names \"sp\""), "{p:?}");
+        let crate_name = "| 1 | `apid` | field | APID | aldis-spp | 133.0 §4.1.3.3.4 |";
+        assert_eq!(problems(&[crate_name]).len(), 1);
+        let empty_entry = "| 1 | `apid` | field | APID | core, | 133.0 §4.1.3.3.4 |";
+        assert_eq!(problems(&[empty_entry]).len(), 1);
     }
 
     #[test]

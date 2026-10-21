@@ -17,7 +17,7 @@
 
 use core::num::NonZeroU16;
 
-use aldis::core::{Anomaly, ErrorKind};
+use aldis::core::{Anomaly, ErrorKind, FieldId};
 use aldis::epp::EppAnomaly;
 use aldis::spp::SppAnomaly;
 use aldis::time::TimeAnomaly;
@@ -51,9 +51,15 @@ fn call(f: impl FnOnce(*mut aldis_error_detail_t) -> i32) -> R<()> {
         "status and detail disagree"
     );
     let kind = ErrorKind::from_code(u16::try_from(d.kind).unwrap()).unwrap();
+    // A field code crosses the ABI only if the catalogue has it (API-082).
+    let field = NonZeroU16::new(d.field).map(|code| {
+        FieldId::from_code(code.get())
+            .unwrap_or_else(|| panic!("field code {code} is not catalogued"))
+            .code()
+    });
     Err(Fail {
         kind: kind.name().to_owned(),
-        field: NonZeroU16::new(d.field),
+        field,
     })
 }
 
