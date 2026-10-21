@@ -24,11 +24,12 @@ use crate::repo;
 
 /// The crates checked, each with the base feature sets its tests run on. Crates join as
 /// their milestone adds code.
-const CRATES: &[(&str, &[&str])] = &[
+pub const CRATES: &[(&str, &[&str])] = &[
     ("aldis-core", &[""]),
     ("aldis-time", &[""]),
     ("aldis-epp", &[""]),
     ("aldis-spp", &["", "time"]),
+    ("aldis-aos", &[""]),
 ];
 
 /// The features GEN-006 requires to be additive.

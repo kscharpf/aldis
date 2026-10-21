@@ -13,7 +13,7 @@ use serde_json::Value;
 use crate::repo;
 
 /// Crates gated in M0 (Layer 0). Layers 1–2 join as they gain code (VER-024).
-const GATED: &[&str] = &[
+pub const GATED: &[&str] = &[
     "aldis-core",
     "aldis-time",
     "aldis-epp",

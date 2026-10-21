@@ -57,7 +57,7 @@ cargo fmt --all --check
 cargo clippy --workspace --all-features --all-targets
 cargo test --workspace --all-features
 cargo clippy -p aldis --no-default-features --features full --target thumbv7em-none-eabihf
-cargo xtask ci        # spec lint, links, layering, vectors, schema, field codes, M0 and M1 traces (strict), M2 trace
+cargo xtask ci        # spec lint, links, layering, registrations (consistency), vectors, schema, field codes, M0 and M1 traces (strict), M2 trace
 ```
 
 When you change `aldis-core`, also run:
