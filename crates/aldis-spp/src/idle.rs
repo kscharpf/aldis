@@ -4,6 +4,7 @@ use aldis_core::ids::{Apid, SeqCount};
 use aldis_core::{Error, Result};
 
 use crate::config::SppConfig;
+use crate::field;
 use crate::header::{
     MIN_PACKET_LEN, PRIMARY_HEADER_LEN, PacketFields, PacketType, SequenceFlags, SpacePacketHeader,
     len_u64,
@@ -33,7 +34,7 @@ impl<'p> IdlePacket<'p> {
     pub fn new(config: &SppConfig, total_len: usize) -> Result<IdlePacket<'p>> {
         if total_len < MIN_PACKET_LEN {
             return Err(Error::out_of_range(
-                "packet_len",
+                field::PACKET_LEN,
                 len_u64(MIN_PACKET_LEN),
                 len_u64(total_len),
             ));

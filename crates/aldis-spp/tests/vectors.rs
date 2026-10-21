@@ -15,7 +15,7 @@ use core::num::NonZeroUsize;
 
 use aldis_core::counter::Continuity;
 use aldis_core::ids::{Apid, SeqCount};
-use aldis_core::{DecodeMode, Error};
+use aldis_core::{DecodeMode, Error, FieldId};
 #[cfg(feature = "time")]
 use aldis_spp::TimeHeaderLayout;
 use aldis_spp::{
@@ -400,7 +400,10 @@ fn run(case: &CodecCase) -> Result<Value, Error> {
 fn handle(case: &CodecCase) -> Outcome {
     match run(case) {
         Ok(v) => Outcome::Ok(v.as_object().cloned().unwrap()),
-        Err(e) => Outcome::Err(e.kind().name().to_owned()),
+        Err(e) => Outcome::Err {
+            kind: e.kind().name().to_owned(),
+            field: e.field().map(FieldId::code),
+        },
     }
 }
 
@@ -416,6 +419,7 @@ macro_rules! vector_test {
 
 vector_test!(decode_valid, "decode_valid");
 vector_test!(decode_invalid, "decode_invalid");
+vector_test!(field_codes, "field_codes");
 vector_test!(encode_packets, "encode");
 vector_test!(idle_packets, "idle");
 vector_test!(octet_string, "octet_string");

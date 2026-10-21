@@ -5,6 +5,7 @@ use aldis_core::{AnomalySet, DecodeMode, Error, ErrorDetail, ErrorKind, FieldId,
 
 use crate::anomaly::EppAnomaly;
 use crate::config::EppConfig;
+use crate::field;
 use crate::header::{EncapsulationHeader, Epi, EpiExtension, HeaderLen, UserDefined};
 
 /// A decoded Encapsulation Packet borrowing its data field from the input (133.1 §4.1;
@@ -17,9 +18,9 @@ pub struct EncapsulationPacket<'a> {
 }
 
 /// `ReservedValue` for a field that must be zero, with the value found.
-const fn reserved(field: &'static str, found: u64) -> Error {
+const fn reserved(field: FieldId, found: u64) -> Error {
     Error::new(ErrorKind::ReservedValue)
-        .with_field(FieldId::new(field))
+        .with_field(field)
         .with_detail(ErrorDetail::Expected { expected: 0, found })
 }
 
@@ -50,7 +51,7 @@ impl<'a> EncapsulationPacket<'a> {
             && header.epi() != Epi::EXTENDED
         {
             match mode {
-                DecodeMode::Strict => return Err(reserved("epi_extension", ext.get().into())),
+                DecodeMode::Strict => return Err(reserved(field::EPI_EXTENSION, ext.get().into())),
                 DecodeMode::Lenient => anomalies.insert(EppAnomaly::NonZeroEpiExtension),
             }
         }
@@ -58,7 +59,7 @@ impl<'a> EncapsulationPacket<'a> {
             && ccsds != 0
         {
             match mode {
-                DecodeMode::Strict => return Err(reserved("ccsds_defined", ccsds.into())),
+                DecodeMode::Strict => return Err(reserved(field::CCSDS_DEFINED, ccsds.into())),
                 DecodeMode::Lenient => anomalies.insert(EppAnomaly::NonZeroCcsdsDefined),
             }
         }
@@ -168,6 +169,7 @@ impl<'a> EncapsulationPacket<'a> {
     reason = "test buffer sizing on small bounded lengths (RS-018)"
 )]
 mod tests {
+    use crate::field;
     extern crate std;
     use std::vec;
 
@@ -178,7 +180,7 @@ mod tests {
         EncapsulationFields, Epi, EpiExtension, HeaderLen, HeaderSize, UserDefined,
     };
     use crate::writer::encode;
-    use aldis_core::{AnomalySet, DecodeMode, ErrorDetail, ErrorKind, FieldId};
+    use aldis_core::{AnomalySet, DecodeMode, ErrorDetail, ErrorKind};
     use proptest::prelude::*;
 
     #[test]
@@ -206,12 +208,12 @@ mod tests {
         // req: GEN-041, EPP-005, EPP-006, EPP-007
         let e = EncapsulationPacket::decode(&[0xE5, 0x02], DecodeMode::Strict).unwrap_err();
         assert_eq!(
-            (e.kind(), e.field().map(FieldId::name)),
-            (ErrorKind::InvalidField, Some("epi"))
+            (e.kind(), e.field()),
+            (ErrorKind::InvalidField, Some(field::EPI))
         );
         let e = EncapsulationPacket::decode(&[0xE6, 0x03, 0x00, 0x05, 0x00], DecodeMode::Strict)
             .unwrap_err();
-        assert_eq!(e.field().map(FieldId::name), Some("epi_extension"));
+        assert_eq!(e.field(), Some(field::EPI_EXTENSION));
         assert_eq!(
             e.detail(),
             ErrorDetail::Expected {
@@ -224,7 +226,7 @@ mod tests {
             DecodeMode::Strict,
         )
         .unwrap_err();
-        assert_eq!(e.field().map(FieldId::name), Some("ccsds_defined"));
+        assert_eq!(e.field(), Some(field::CCSDS_DEFINED));
         assert_eq!(
             e.detail(),
             ErrorDetail::Expected {

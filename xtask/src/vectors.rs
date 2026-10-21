@@ -5,9 +5,13 @@ use std::io::{BufRead, BufReader, Write};
 use std::path::Path;
 use std::process::{Command, Stdio};
 
-use aldis_testkit::{CodecCase, CodecFile, Provenance, ScenarioFile, Superseded, VectorFile, hex};
+use aldis_testkit::{
+    CodecCase, CodecFile, Expect, FieldCatalogue, Provenance, ScenarioFile, Superseded, VectorFile,
+    hex,
+};
 use serde_json::{Map, Value};
 
+use crate::fields;
 use crate::md::scan_ids;
 use crate::repo;
 use crate::spec::Spec;
@@ -185,11 +189,13 @@ fn check_against_released(
 }
 
 /// Whether `rel` (relative to the repository root) is a vector file: a `.json` file under
-/// `test-vectors/` outside the schema directory. The extension is matched exactly, as
-/// [`repo::files`] matches it, so the released and the current side see the same files.
-fn is_vector_file(rel: &str) -> bool {
+/// `test-vectors/` outside the schema directory, other than the generated field catalogue
+/// (checked by `cargo xtask fields`). The extension is matched exactly, as [`repo::files`]
+/// matches it, so the released and the current side see the same files.
+pub fn is_vector_file(rel: &str) -> bool {
     rel.starts_with("test-vectors/")
         && !rel.starts_with(&format!("{SCHEMA_DIR}/"))
+        && rel != fields::JSON
         && Path::new(rel).extension().is_some_and(|ext| ext == "json")
 }
 
@@ -400,9 +406,33 @@ fn check_released(
     }
 }
 
+/// A field code names the field of an expected error, and must be catalogued (API-082, M2 plan
+/// D3).
+fn check_field(
+    expect: &Expect,
+    field_codes: &BTreeMap<u16, String>,
+    at: &str,
+    problems: &mut Vec<String>,
+) {
+    match expect.field {
+        Some(code) if expect.ok => {
+            problems.push(format!(
+                "{at}: expect.ok is true but a field code ({code}) is given"
+            ));
+        }
+        Some(code) if !field_codes.contains_key(&code.get()) => {
+            problems.push(format!(
+                "{at}: field code {code} is not in the catalogue (03-api-model.md §9.1)"
+            ));
+        }
+        _ => {}
+    }
+}
+
 fn check_codec_case(
     c: &CodecCase,
     spec: &Spec,
+    field_codes: &BTreeMap<u16, String>,
     at: &str,
     by_links: &mut Vec<(String, String)>,
     problems: &mut Vec<String>,
@@ -430,6 +460,7 @@ fn check_codec_case(
         }
         _ => {}
     }
+    check_field(&c.expect, field_codes, at, problems);
     for (k, v) in c
         .expect
         .values
@@ -445,6 +476,8 @@ fn check_codec_case(
 pub fn validate() -> Result<usize, String> {
     let spec = Spec::load()?;
     let mut problems = Vec::new();
+    // A broken catalogue is reported by `cargo xtask fields`; here every code is then unknown.
+    let field_codes = fields::load().unwrap_or_default();
     let mut ids: BTreeMap<String, (String, bool)> = BTreeMap::new();
     let mut by_links: Vec<(String, String)> = Vec::new();
     let mut current_raw: BTreeMap<String, Option<Value>> = BTreeMap::new();
@@ -488,7 +521,7 @@ pub fn validate() -> Result<usize, String> {
                     cases += 1;
                     let at = format!("{rel}#{}", c.id);
                     unique(&c.id, &at, c.superseded.is_some(), &mut problems);
-                    check_codec_case(c, &spec, &at, &mut by_links, &mut problems);
+                    check_codec_case(c, &spec, &field_codes, &at, &mut by_links, &mut problems);
                 }
             }
             Ok(VectorFile::EngineScenario(ScenarioFile {
@@ -552,6 +585,10 @@ pub fn schema(check: bool) -> Result<usize, String> {
             "engine-scenario.schema.json",
             aldis_testkit::schemars::schema_for!(ScenarioFile),
         ),
+        (
+            "fields.schema.json",
+            aldis_testkit::schemars::schema_for!(FieldCatalogue),
+        ),
     ];
     let mut stale = 0;
     for (name, schema) in generated {
@@ -579,8 +616,8 @@ pub fn schema(check: bool) -> Result<usize, String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        ReleaseFindings, check_against_released, check_by_links, check_released, check_superseded,
-        release_tags, tag_blobs,
+        ReleaseFindings, check_against_released, check_by_links, check_field, check_released,
+        check_superseded, is_vector_file, release_tags, tag_blobs,
     };
     use aldis_testkit::{Superseded, VectorFile};
     use serde_json::{Value, json};
@@ -680,6 +717,40 @@ mod tests {
         };
         check_against_released("f.json", "v0.1.0-m0", released, current, &mut out);
         problems
+    }
+
+    #[test]
+    fn field_codes_need_an_error_and_the_catalogue() {
+        // req: API-082, TV-001
+        let codes = BTreeMap::from([(4, "packet_version".to_owned())]);
+        let expect = |v: Value| -> aldis_testkit::Expect { serde_json::from_value(v).unwrap() };
+        let check = |e: &aldis_testkit::Expect| {
+            let mut problems = Vec::new();
+            check_field(e, &codes, "f#c", &mut problems);
+            problems
+        };
+        let known = expect(json!({ "ok": false, "error": "UnsupportedVersion", "field": 4 }));
+        assert_eq!(check(&known), Vec::<String>::new());
+        let without = expect(json!({ "ok": false, "error": "UnsupportedVersion" }));
+        assert_eq!(check(&without), Vec::<String>::new());
+        let unknown = check(&expect(
+            json!({ "ok": false, "error": "InvalidField", "field": 9 }),
+        ));
+        assert_eq!(unknown.len(), 1);
+        assert!(
+            unknown[0].contains("field code 9 is not in the catalogue"),
+            "{unknown:?}"
+        );
+        let on_success = check(&expect(json!({ "ok": true, "field": 4 })));
+        assert_eq!(on_success.len(), 1);
+        assert!(
+            on_success[0].contains("expect.ok is true"),
+            "{on_success:?}"
+        );
+        // The generated catalogue is not a vector file; the schema directory is not either.
+        assert!(!is_vector_file("test-vectors/core/fields.json"));
+        assert!(!is_vector_file("test-vectors/schema/codec.schema.json"));
+        assert!(is_vector_file("test-vectors/core/errors.json"));
     }
 
     #[test]

@@ -12,7 +12,8 @@
 
 use core::ops::Range;
 
-use crate::error::{Error, ErrorKind, FieldId, Result};
+use crate::error::{Error, ErrorKind, Result};
+use crate::field;
 use crate::security::SecurityLayout;
 
 /// Length of the Operational Control Field, in octets.
@@ -62,7 +63,7 @@ impl FrameLayout {
     /// Computes the layout.
     ///
     /// # Errors
-    /// `InvalidConfig` (field `data`) if the other fields leave no octet for the data field
+    /// `InvalidConfig` (`field::FRAME_DATA_FIELD`) if the other fields leave no octet for the data field
     /// (CMN-041).
     pub fn compute(spec: &LayoutSpec) -> Result<FrameLayout> {
         let trailer_len = spec
@@ -79,7 +80,7 @@ impl FrameLayout {
             .checked_sub(head_len)
             .and_then(|n| n.checked_sub(trailer_len))
             .filter(|&n| n > 0)
-            .ok_or(Error::new(ErrorKind::InvalidConfig).with_field(FieldId::new("data")))?;
+            .ok_or(Error::new(ErrorKind::InvalidConfig).with_field(field::FRAME_DATA_FIELD))?;
         let mut at = 0;
         Ok(FrameLayout {
             primary_header: take(&mut at, spec.primary_header_len),
@@ -164,6 +165,7 @@ impl FrameLayout {
 mod tests {
     use super::{FrameLayout, LayoutSpec};
     use crate::error::ErrorKind;
+    use crate::field;
     use crate::security::SecurityLayout;
     use proptest::prelude::*;
 
@@ -217,9 +219,10 @@ mod tests {
             frame_len: 3,
             ..spec
         };
+        let e = FrameLayout::compute(&spec).unwrap_err();
         assert_eq!(
-            FrameLayout::compute(&spec).unwrap_err().kind(),
-            ErrorKind::InvalidConfig
+            (e.kind(), e.field()),
+            (ErrorKind::InvalidConfig, Some(field::FRAME_DATA_FIELD))
         );
     }
 

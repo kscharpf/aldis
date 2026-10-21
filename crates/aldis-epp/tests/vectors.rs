@@ -8,7 +8,7 @@
     reason = "test-only harness crate: malformed vectors must fail loudly (RS-018)"
 )]
 
-use aldis_core::{DecodeMode, Error};
+use aldis_core::{DecodeMode, Error, FieldId};
 use aldis_epp::{
     EncapsulationFields, EncapsulationHeader, EncapsulationPacket, EncapsulationWriter, Epi,
     EpiExtension, EpiSet, EppConfig, ExtendedEpiSet, HeaderLen, HeaderSize, UserDefined, encode,
@@ -190,7 +190,10 @@ fn run(case: &CodecCase) -> Result<Value, Error> {
 fn handle(case: &CodecCase) -> Outcome {
     match run(case) {
         Ok(v) => Outcome::Ok(v.as_object().cloned().unwrap()),
-        Err(e) => Outcome::Err(e.kind().name().to_owned()),
+        Err(e) => Outcome::Err {
+            kind: e.kind().name().to_owned(),
+            field: e.field().map(FieldId::code),
+        },
     }
 }
 

@@ -5,7 +5,8 @@
 //!
 //! | Module | Contents | Requirements |
 //! |---|---|---|
-//! | [`error`] | Stable error catalogue, `Error` | GEN-040, GEN-041, RS-011 |
+//! | [`error`] | Stable error catalogue, `Error`, `FieldId` | GEN-040, GEN-041, RS-011 |
+//! | [`field`] | Field codes of the catalogue, generated (03-api-model.md §9.1) | API-082 |
 //! | [`mode`] | `DecodeMode` (strict/lenient) | API-030…API-032 |
 //! | [`anomaly`] | Lenient-mode anomaly flags, `AnomalySet` | GEN-043, GEN-081 |
 //! | [`bits`] | Big-endian bit-field primitives | GEN-050, GEN-051 |
@@ -35,6 +36,7 @@ pub mod container;
 pub mod counter;
 pub mod crc;
 pub mod error;
+pub mod field;
 pub mod ids;
 pub mod layout;
 pub mod mode;

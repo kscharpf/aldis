@@ -8,6 +8,7 @@ use aldis_core::ids::{Apid, SeqCount};
 use aldis_core::{Error, ErrorDetail, Result};
 
 use crate::config::SppConfig;
+use crate::field;
 use crate::header::{PacketFields, PacketType, SequenceFlags, SpacePacketHeader, invalid};
 use crate::sequence::SequenceCounter;
 use crate::writer::encode;
@@ -43,16 +44,16 @@ impl<'s> Segmenter<'s> {
         max_user_len: usize,
     ) -> Result<Segmenter<'s>> {
         if sdu.is_empty() {
-            return Err(invalid("sdu").with_detail(ErrorDetail::Expected {
+            return Err(invalid(field::SDU).with_detail(ErrorDetail::Expected {
                 expected: 1,
                 found: 0,
             }));
         }
         if max_user_len == 0 {
-            return Err(Error::out_of_range("max_user_len", 1, 0));
+            return Err(Error::out_of_range(field::MAX_USER_LEN, 1, 0));
         }
         if apid.is_idle() {
-            return Err(invalid("apid"));
+            return Err(invalid(field::APID));
         }
         Ok(Segmenter {
             config: *config,
@@ -195,7 +196,7 @@ impl<'b> Reassembler<'b> {
     /// `InvalidField` (`apid`) for a packet of another APID; nothing changes.
     pub fn push(&mut self, header: &SpacePacketHeader, user_data: &[u8]) -> Result<Outcome> {
         if header.apid() != self.apid {
-            return Err(invalid("apid").with_detail(ErrorDetail::Expected {
+            return Err(invalid(field::APID).with_detail(ErrorDetail::Expected {
                 expected: u64::from(self.apid.get()),
                 found: u64::from(header.apid().get()),
             }));
@@ -311,6 +312,7 @@ impl<'b> Reassembler<'b> {
     reason = "test bookkeeping on small bounded counts (RS-018)"
 )]
 mod tests {
+    use crate::field;
     extern crate std;
     use std::vec;
 
@@ -321,7 +323,7 @@ mod tests {
     use crate::view::SpacePacket;
     use SequenceFlags::{Continuation as C, First as F, Last as L, Unsegmented as U};
     use aldis_core::ids::{Apid, SeqCount};
-    use aldis_core::{DecodeMode, ErrorDetail, ErrorKind, FieldId};
+    use aldis_core::{DecodeMode, ErrorDetail, ErrorKind};
     use proptest::prelude::*;
 
     fn apid(n: u16) -> Apid {
@@ -349,8 +351,8 @@ mod tests {
         let tm = PacketType::Telemetry;
         let e = Segmenter::new(&cfg, tm, apid(5), &[], 4).unwrap_err();
         assert_eq!(
-            (e.kind(), e.field().map(FieldId::name)),
-            (ErrorKind::InvalidField, Some("sdu"))
+            (e.kind(), e.field()),
+            (ErrorKind::InvalidField, Some(field::SDU))
         );
         assert_eq!(
             e.detail(),
@@ -361,11 +363,11 @@ mod tests {
         );
         let e = Segmenter::new(&cfg, tm, apid(5), &[1], 0).unwrap_err();
         assert_eq!(
-            (e.kind(), e.field().map(FieldId::name)),
-            (ErrorKind::OutOfRange, Some("max_user_len"))
+            (e.kind(), e.field()),
+            (ErrorKind::OutOfRange, Some(field::MAX_USER_LEN))
         );
         let e = Segmenter::new(&cfg, tm, Apid::IDLE, &[1], 4).unwrap_err();
-        assert_eq!(e.field().map(FieldId::name), Some("apid"));
+        assert_eq!(e.field(), Some(field::APID));
         // Errors change nothing: a short buffer, then a too-long packet.
         let mut seg = Segmenter::new(&cfg, tm, apid(5), &[1, 2, 3, 4, 5, 6], 4).unwrap();
         let mut counter = SequenceCounter::new(SeqCount::new(9).unwrap());
@@ -423,8 +425,8 @@ mod tests {
         );
         let e = ra.push(&other, &[1]).unwrap_err();
         assert_eq!(
-            (e.kind(), e.field().map(FieldId::name)),
-            (ErrorKind::InvalidField, Some("apid"))
+            (e.kind(), e.field()),
+            (ErrorKind::InvalidField, Some(field::APID))
         );
         assert_eq!(
             e.detail(),

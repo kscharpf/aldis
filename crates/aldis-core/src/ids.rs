@@ -7,10 +7,11 @@
 
 use crate::counter::{Continuity, ModCounter, classify_masked, from_valid};
 use crate::error::{Error, Result, u8_to_u64, u16_to_u64};
+use crate::field;
 
 /// Defines an unsigned identifier whose valid values are `0..=2^BITS - 1`.
 macro_rules! width_id {
-    ($(#[$doc:meta])* $name:ident, $field:literal, $repr:ty, $max_bits:literal) => {
+    ($(#[$doc:meta])* $name:ident, $field:expr, $repr:ty, $max_bits:literal) => {
         $(#[$doc])*
         #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
         pub struct $name<const BITS: u32>($repr);
@@ -58,15 +59,15 @@ macro_rules! width_id {
 width_id!(
     /// Spacecraft Identifier of `BITS` width (132.0 §4.1.2.2.3, 232.0 §4.1.2.5, 732.0 §4.1.2.2.3,
     /// 732.1 §4.1.2.2.3).
-    SpacecraftId, "spacecraft_id", u16, 16
+    SpacecraftId, field::SPACECRAFT_ID, u16, 16
 );
 width_id!(
     /// Virtual Channel Identifier of `BITS` width: 3 (TM) or 6 (TC, AOS, USLP).
-    VcId, "vc_id", u8, 8
+    VcId, field::VC_ID, u8, 8
 );
 width_id!(
     /// Multiplexer Access Point Identifier of `BITS` width: 6 (TC Segment Header) or 4 (USLP).
-    MapId, "map_id", u8, 8
+    MapId, field::MAP_ID, u8, 8
 );
 
 /// Application Process Identifier, 0–2047 (133.0 §4.1.3.3.4).
@@ -107,7 +108,7 @@ impl TryFrom<u16> for Apid {
 
     fn try_from(value: u16) -> Result<Apid> {
         Apid::new(value)
-            .ok_or_else(|| Error::out_of_range("apid", u64::from(Apid::MAX), u64::from(value)))
+            .ok_or_else(|| Error::out_of_range(field::APID, u64::from(Apid::MAX), u64::from(value)))
     }
 }
 
@@ -159,7 +160,11 @@ impl TryFrom<u16> for SeqCount {
 
     fn try_from(value: u16) -> Result<SeqCount> {
         SeqCount::new(value).ok_or_else(|| {
-            Error::out_of_range("sequence_count", u64::from(SeqCount::MAX), u64::from(value))
+            Error::out_of_range(
+                field::SEQUENCE_COUNT,
+                u64::from(SeqCount::MAX),
+                u64::from(value),
+            )
         })
     }
 }
@@ -263,7 +268,7 @@ impl TryFrom<u8> for PacketVersion {
     fn try_from(value: u8) -> Result<PacketVersion> {
         PacketVersion::new(value).ok_or_else(|| {
             Error::out_of_range(
-                "packet_version",
+                field::PACKET_VERSION,
                 u64::from(PacketVersion::MAX),
                 u64::from(value),
             )
@@ -282,7 +287,8 @@ impl From<PacketVersion> for u8 {
 mod tests {
     use super::{Apid, FrameSeqNum, MapId, PacketVersion, SeqCount, SpacecraftId, VcId};
     use crate::counter::{Continuity, ModCounter};
-    use crate::error::{ErrorKind, FieldId};
+    use crate::error::ErrorKind;
+    use crate::field;
 
     #[test]
     fn widths_are_enforced() {
@@ -301,14 +307,14 @@ mod tests {
         assert!(MapId::<6>::new(64).is_none());
         let e = SpacecraftId::<10>::try_from(2000).unwrap_err();
         assert_eq!(e.kind(), ErrorKind::OutOfRange);
-        assert_eq!(e.field(), Some(FieldId::new("spacecraft_id")));
+        assert_eq!(e.field(), Some(field::SPACECRAFT_ID));
         assert_eq!(
             VcId::<3>::try_from(8).unwrap_err().field(),
-            Some(FieldId::new("vc_id"))
+            Some(field::VC_ID)
         );
         assert_eq!(
             MapId::<4>::try_from(16).unwrap_err().field(),
-            Some(FieldId::new("map_id"))
+            Some(field::MAP_ID)
         );
         assert_eq!(u16::from(SpacecraftId::<10>::try_from(42).unwrap()), 42);
         assert_eq!(VcId::<6>::new(5).map(VcId::get), Some(5));

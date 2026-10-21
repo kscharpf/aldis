@@ -7,6 +7,7 @@ mod changelog;
 mod coverage;
 mod cpp;
 mod features;
+mod fields;
 mod layers;
 mod links;
 mod md;
@@ -29,6 +30,9 @@ commands:
                                --strict fails on in-scope requirements without artefacts
   vectors validate             check test-vectors/ against the model and the spec (TV-*)
   vectors schema [--check]     (re)generate test-vectors/schema/, or check it is current
+  fields [--write]             check the field catalogue (03-api-model.md §9.1) and that
+                               aldis_core::field and test-vectors/core/fields.json match it,
+                               or regenerate both (API-082)
   links                        relative Markdown links resolve inside the repository
   layers                       crate dependency rules (GEN-001..004)
   refapp-deps                  refapp/ uses Aldis only through the `aldis` facade and
@@ -46,8 +50,9 @@ commands:
                                move every fragment into a new section of CHANGELOG.md
   ci                           everything CI runs without a C++ build: spec-lint, links,
                                layers, refapp-deps, vectors validate, vectors schema --check,
-                               trace --scope m0 --strict, trace --scope m1 --strict,
-                               trace --scope c0, changelog check, cpp unsafe-optouts
+                               fields, trace --scope m0 --strict, trace --scope m1 --strict,
+                               trace --scope m2, trace --scope c0, changelog check,
+                               cpp unsafe-optouts
 
 C++ checks (docs/milestones/c0-foundations.md D12):
 ";
@@ -66,6 +71,8 @@ fn run(args: &[&str]) -> Result<usize, String> {
         ["vectors", "validate"] => vectors::validate(),
         ["vectors", "schema"] => vectors::schema(false),
         ["vectors", "schema", "--check"] => vectors::schema(true),
+        ["fields"] => fields::run(false),
+        ["fields", "--write"] => fields::run(true),
         ["links"] => links::check(),
         ["layers"] => layers::check(),
         ["refapp-deps"] => refapp::check(),
@@ -87,9 +94,12 @@ fn run(args: &[&str]) -> Result<usize, String> {
                 refapp::check,
                 vectors::validate,
                 || vectors::schema(true),
+                || fields::run(false),
                 // M0 and M1 are closed: every in-scope requirement must keep an artefact.
                 || trace::run(Some("m0"), true),
                 || trace::run(Some("m1"), true),
+                // M2 is open: report its trace without failing (strict at the M2 exit, D1).
+                || trace::run(Some("m2"), false),
                 // C0 is open: report its trace without failing (strict at the C0 exit, D17).
                 || trace::run(Some("c0"), false),
                 changelog::check,
