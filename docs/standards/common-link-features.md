@@ -36,7 +36,7 @@ The table is the same in 132.0-B-3 §4.1.5.4–5, 732.0-B-4 and 732.0-B-5 §4.1.
 
 | ID | Requirement | Source | Verif. |
 |---|---|---|---|
-| CMN-010 | `Ocf::decode([u8;4])` SHALL classify the report as `Clcw(raw)`, `ProjectSpecific(raw)`, or `SdlsFsr(raw)` using bits 0–1. | 132.0 §4.1.5.4–5 | V |
+| CMN-010 | `Ocf::decode([u8;4])` SHALL classify the report as `Clcw(raw)`, `ProjectSpecific(raw)`, or `SdlsFsr(raw)` using bits 0–1. On USLP a Type-1 Report (`Clcw`) may also be a PLCW (732.1 §4.1.5.2.1 a); the variant keeps its name, and the caller that knows the channel decodes it. The enum is closed: the Blue Books assign all four values of the two bits (GEN-081 applies to enums that may grow). | 132.0 §4.1.5.4–5; 732.0 §4.1.5.4–5; 732.1 §4.1.5.2.1–2 | V |
 | CMN-011 | CLCW field decoding SHALL be delegated to the TC codec ([tc-frame.md §5](tc-frame.md#5-clcw)). `aldis-core` treats the CLCW as opaque except for bit 0. | 232.0 §4.2 | I |
 
 ## 3. Only-Idle-Data (OID) pattern
