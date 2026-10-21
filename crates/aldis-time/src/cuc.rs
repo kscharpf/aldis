@@ -250,9 +250,12 @@ impl CucValue {
 
     /// The value as whole seconds and nanoseconds, truncated toward zero (301.0 §3.2.1, TIME-011).
     ///
-    /// For 0–3 fine octets the round trip through [`Cuc::from_seconds_nanos`] is exact. With 4
-    /// or more fine octets the fraction is finer than a nanosecond, so the round trip is exact
-    /// only to the nanosecond.
+    /// [`Cuc::from_seconds_nanos`] truncates too (OI-40), so a round trip never gives a later
+    /// time. The round trip value → nanoseconds → value is exact if and only if the value is a
+    /// multiple of 2⁻⁹ s: always with 0 or 1 fine octets (2⁻⁸ s is exactly 3 906 250 ns), and
+    /// otherwise one unit of the last fine octet lower with 2 or 3 fine octets. With 4 or more
+    /// fine octets, finer than a nanosecond, nanoseconds → value → nanoseconds gives the
+    /// nanoseconds back if they are a multiple of 1 953 125 (2⁻⁹ s) and one fewer otherwise.
     ///
     /// The basic time unit is taken to be the second, the unit 301.0 §1.2 gives the CCSDS codes and
     /// §3.2.1 recommends; for a Level 2 code ([`CucEpoch::Agency`]) the result is the time in
@@ -308,38 +311,34 @@ impl Cuc {
         Ok(Cuc { format, value })
     }
 
-    /// The code for `seconds` and `nanos` in `format`: the fraction is rounded **up** to the next
-    /// representable value (301.0 §3.2.1, TIME-011), and a carry adds one to the coarse time.
-    /// Returns a [`Cuc`], so the fit to the format is established once (RS-020).
+    /// The code for `seconds` and `nanos` in `format`: the fraction is rounded **down** to the
+    /// representable value at or below `nanos`, so the coarse time is always `seconds` (301.0
+    /// §3.2.1; TIME-011, OI-40). Returns a [`Cuc`], so the fit to the format is established once
+    /// (RS-020).
     ///
     /// The basic time unit is taken to be the second, the unit 301.0 §1.2 gives the CCSDS codes and
     /// §3.2.1 recommends; for a Level 2 code ([`CucEpoch::Agency`]) `seconds` and `nanos` give the
     /// time only if the agency's unit is the second (TIME-011).
     ///
     /// # Errors
-    /// `OutOfRange` (`nanoseconds`) if `nanos` ≥ 10⁹; `OutOfRange` (`coarse`) if the coarse time,
-    /// after any carry, does not fit the format (TIME-012).
+    /// `OutOfRange` (`nanoseconds`) if `nanos` ≥ 10⁹; `OutOfRange` (`coarse`) if `seconds` does
+    /// not fit the format (TIME-012).
     pub fn from_seconds_nanos(format: CucFormat, seconds: u64, nanos: u32) -> Result<Cuc> {
         if nanos >= NANOS {
             return Err(range(field::NANOSECONDS, 999_999_999, u64::from(nanos)));
         }
+        check_coarse(&format, seconds)?;
         let bits = u32::from(format.fine).wrapping_mul(8);
-        // nanos < 2³⁰ and bits ≤ 80, so the shifted value stays below 2¹¹⁰.
-        let scaled = (u128::from(nanos) << bits).div_ceil(u128::from(NANOS));
-        let (coarse, raw) = if scaled == 1_u128 << bits {
-            let carried = seconds
-                .checked_add(1)
-                .ok_or_else(|| range(field::COARSE, u64::MAX, u64::MAX))?;
-            (carried, 0)
-        } else {
-            (seconds, scaled)
-        };
-        check_coarse(&format, coarse)?;
-        // The rounded fraction has no bits below the format's resolution.
+        // nanos < 2³⁰ and bits ≤ 80, so the shifted value stays below 2¹¹⁰; nanos < 10⁹ keeps
+        // the quotient below 2^bits, so it fits the fine octets and nothing carries.
+        let raw = (u128::from(nanos) << bits)
+            .checked_div(u128::from(NANOS))
+            .unwrap_or(0);
+        // The truncated fraction has no bits below the format's resolution.
         Ok(Cuc {
             format,
             value: CucValue {
-                coarse,
+                coarse: seconds,
                 fine: raw.checked_shl(128_u32.wrapping_sub(bits)).unwrap_or(0),
             },
         })
@@ -511,14 +510,24 @@ mod tests {
         let c = Cuc::from_seconds_nanos(fmt(1, 1), 5, 999_999_999).unwrap();
         assert_eq!(
             (c.format(), c.value().coarse(), c.value().fine()),
-            (fmt(1, 1), 6, 0)
+            (fmt(1, 1), 5, 0xFF << 120),
+            "the fraction rounds down and never carries (OI-40)"
         );
-        let v = Cuc::from_seconds_nanos(fmt(1, 0), 5, 1).unwrap().value();
+        let top = Cuc::from_seconds_nanos(fmt(1, 1), 255, 999_999_999).unwrap();
+        assert_eq!(
+            (top.value().coarse(), top.value().fine()),
+            (255, 0xFF << 120)
+        );
+        let v = Cuc::from_seconds_nanos(fmt(1, 0), 5, 999_999_999)
+            .unwrap()
+            .value();
         assert_eq!(
             (v.coarse(), v.fine()),
-            (6, 0),
-            "no fine octets: any fraction rounds up"
+            (5, 0),
+            "no fine octets: any fraction rounds down"
         );
+        let v = Cuc::from_seconds_nanos(fmt(1, 10), 0, 1).unwrap().value();
+        assert_eq!(v.fine(), 0x0004_4B82_FA09_B5A5 << 48, "1 ns in 10 octets");
         assert_eq!(
             Cuc::from_seconds_nanos(fmt(1, 0), 5, 0)
                 .unwrap()
@@ -544,11 +553,58 @@ mod tests {
     #[test]
     fn cuc_round_trips_through_seconds_and_nanos() {
         // req: TIME-011
-        let carried = Cuc::from_seconds_nanos(fmt(1, 1), 5, 999_999_999).unwrap();
-        assert_eq!(carried.to_seconds_nanos(), (6, 0));
+        let full = Cuc::from_seconds_nanos(fmt(1, 1), 5, 999_999_999).unwrap();
+        assert_eq!(full.to_seconds_nanos(), (5, 996_093_750));
         let half = Cuc::from_seconds_nanos(fmt(1, 1), 5, 500_000_000).unwrap();
         assert_eq!(half.to_seconds_nanos(), (5, 500_000_000));
         assert_eq!(half.to_seconds_nanos(), half.value().to_seconds_nanos());
+    }
+
+    #[test]
+    fn value_round_trip_is_exact_only_on_multiples_of_2_pow_minus_9() {
+        // req: TIME-011
+        // Every 1- and 2-octet fraction: CucValue → ns → CucValue gives the value back exactly
+        // when it is a multiple of 2⁻⁹ s, and otherwise one unit of the last octet less.
+        for fo in [1_u8, 2] {
+            let bits = u32::from(fo) * 8;
+            for raw in 0_u128..1 << bits {
+                let fine = raw << (128 - bits);
+                let (s, ns) = CucValue::new(9, fine).to_seconds_nanos();
+                let back = Cuc::from_seconds_nanos(fmt(1, fo), s, ns).unwrap().value();
+                let exact = bits <= 9 || raw.is_multiple_of(1 << (bits - 9));
+                let expected = if exact { raw } else { raw - 1 };
+                assert_eq!(
+                    back,
+                    CucValue::new(9, expected << (128 - bits)),
+                    "{fo} {raw}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn nanosecond_round_trip_is_one_short_off_multiples_of_2_pow_minus_9() {
+        // req: TIME-011
+        // With 4 or more fine octets, ns → CucValue → ns gives the nanoseconds back when they are
+        // a multiple of 1 953 125 (2⁻⁹ s), and otherwise one fewer.
+        for fo in [4_u8, 7, 10] {
+            for ns in (0..2_000_000).chain(998_000_000..1_000_000_000).step_by(7) {
+                let back = Cuc::from_seconds_nanos(fmt(1, fo), 3, ns)
+                    .unwrap()
+                    .to_seconds_nanos();
+                let expected = if ns.is_multiple_of(1_953_125) {
+                    ns
+                } else {
+                    ns - 1
+                };
+                assert_eq!(back, (3, expected), "{fo} {ns}");
+            }
+            for k in 0..512 {
+                let ns = k * 1_953_125;
+                let c = Cuc::from_seconds_nanos(fmt(1, fo), 3, ns).unwrap();
+                assert_eq!(c.to_seconds_nanos(), (3, ns), "{fo} {k}");
+            }
+        }
     }
 
     #[test]

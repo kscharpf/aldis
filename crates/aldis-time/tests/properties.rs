@@ -97,15 +97,32 @@ proptest! {
         let Ok(c) = Cuc::from_seconds_nanos(f, secs, ns) else { return Ok(()) };
         prop_assert_eq!(Cuc::new(f, c.value()), Ok(c), "rounded value is representable");
         let (s2, ns2) = c.value().to_seconds_nanos();
-        // Rounding up never lowers the time, and moves it by less than one fine step.
+        // Rounding down never raises the time, and lowers it by less than one fine step plus the
+        // nanosecond truncated on the way back (TIME-011, OI-40).
         let before = u128::from(secs) * 1_000_000_000 + u128::from(ns);
         let after = u128::from(s2) * 1_000_000_000 + u128::from(ns2);
-        prop_assert!(after + 1 >= before);
+        prop_assert!(after <= before);
         let step = 1_000_000_000_u128 >> (8 * u32::from(fo)).min(30);
-        prop_assert!(after <= before + step.max(1));
-        if fo <= 3 {
-            // Exact round trip of the value through nanoseconds (TIME-011).
-            prop_assert_eq!(Cuc::from_seconds_nanos(f, s2, ns2), Ok(c));
+        prop_assert!(before <= after + step + 1);
+        // CucValue → ns → CucValue is exact if and only if the value is a multiple of 2⁻⁹ s,
+        // and otherwise one unit of the last fine octet lower for 2 or 3 fine octets (TIME-011).
+        let back = Cuc::from_seconds_nanos(f, s2, ns2).unwrap().value();
+        let value = c.value();
+        prop_assert_eq!(back.coarse(), value.coarse());
+        if value.fine() & (u128::MAX >> 9) == 0 {
+            prop_assert_eq!(back, value);
+        } else {
+            prop_assert!(back.fine() < value.fine());
+            if fo <= 3 {
+                let unit = 1_u128 << (128 - 8 * u32::from(fo));
+                prop_assert_eq!(back.fine() + unit, value.fine());
+            }
+        }
+        if fo >= 4 {
+            // ns → CucValue → ns gives the nanoseconds back if they are a multiple of 1 953 125
+            // (2⁻⁹ s), and one fewer otherwise (TIME-011).
+            let expected = if ns.is_multiple_of(1_953_125) { ns } else { ns - 1 };
+            prop_assert_eq!((s2, ns2), (secs, expected));
         }
     }
 
