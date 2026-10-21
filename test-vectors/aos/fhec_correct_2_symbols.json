@@ -123,21 +123,6 @@
         "header_hex": "6A85123456001252",
         "corrected_symbols": 2
       }
-    },
-    {
-      "id": "aos-fhec-c2-009",
-      "requirements": [
-        "AOS-013",
-        "AOS-014"
-      ],
-      "description": "Four symbol errors (0001, 0010, 0011, 0100 in symbols 6, 8, 10, 12) within two symbols of another codeword: miscorrected to it, reported as two corrections (732.0 §4.1.2.6.5 note 3; OI-35 item 5)",
-      "operation": "fhec_decode",
-      "input_hex": "7AA5123456305252",
-      "expect": {
-        "ok": true,
-        "header_hex": "7AA5123456E05352",
-        "corrected_symbols": 2
-      }
     }
   ]
 }

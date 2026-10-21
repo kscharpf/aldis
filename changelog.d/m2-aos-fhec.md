@@ -8,7 +8,7 @@
 - `aldis-testkit`: `oracle::fhec`, an independent table model of the FHEC built from every pattern
   of at most two symbol errors; the decoder agrees with it on all 65 536 syndromes (unit test) and
   in the new fuzz target `aos_fhec_model`, which joins the nightly fuzz matrix.
-- Vectors `test-vectors/aos/{fhec_encode,fhec_correct_1_symbol,fhec_correct_2_symbols,fhec_uncorrectable}.json`,
+- Vectors `test-vectors/aos/{fhec_encode,fhec_correct_1_symbol,fhec_correct_2_symbols,fhec_miscorrection,fhec_uncorrectable}.json`,
   with one encoding and one correction worked by hand in
   `docs/verification/derivations/aos-fhec.md`; the exerciser runs them on the three bare-metal
   targets. `aldis-aos` joins the coverage gate and the nightly mutation testing, and has a

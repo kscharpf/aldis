@@ -66,6 +66,12 @@ fn fhec_correct_2_symbols() {
 }
 
 #[test]
+fn fhec_miscorrection() {
+    // req: AOS-013, AOS-014, VER-021
+    run_codec_file("aos/fhec_miscorrection.json", handler).assert_passed();
+}
+
+#[test]
 fn fhec_uncorrectable() {
     // req: AOS-014, GEN-020, VER-021
     run_codec_file("aos/fhec_uncorrectable.json", handler).assert_passed();
