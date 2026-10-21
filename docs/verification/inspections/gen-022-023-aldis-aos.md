@@ -5,7 +5,7 @@
 | Requirements | GEN-022 (every loop bounded by an input length, a compile-time capacity, or a constant; no recursion), GEN-023 (time bounded by O(input length + capacities); nothing blocks or waits) |
 | Scope | `crates/aldis-aos/src/*.rs`, library code only (test modules excluded), on branch `m2/aos-fhec` (M2 WP-4, module 1, based on `main` 8647d69). Only `fhec.rs` holds code; `anomaly.rs`, `bpdu.rs`, `config.rs`, `header.rs`, `mpdu.rs`, `view.rs`, and `writer.rs` are module headers only, and `lib.rs` declares the modules and re-exports two `fhec` types |
 | Inspected | 2026-10-20, prepared by Claude Code: first inspection. Every loop, every call between the crate's own functions, and every blocking construct checked. No unbounded loop, no recursion |
-| Approved | Pending maintainer approval |
+| Approved | 2026-10-21, maintainer |
 | Repeat | when `aldis-aos` gains a loop or a call between its own functions (each later WP-4 module), and before each release |
 
 ## Loops
