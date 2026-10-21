@@ -129,6 +129,7 @@ jobs:
           - spp_tracker_model
           - spp_segment_reassemble
           - spp_time_header
+          - ffi_decode
           - aos_fhec_model
     runs-on: ubuntu-24.04
     permissions:

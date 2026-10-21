@@ -70,6 +70,13 @@ cargo clippy --manifest-path fuzz/Cargo.toml --all-targets               # fuzz 
 
 A failed exerciser link with `undefined symbol: aldis_panic_is_unreachable` means a panic path is reachable in `aldis-core`. Remove it; do not work around the check. Mark new test modules `#[cfg_attr(coverage_nightly, coverage(off))]`.
 
+When you change `aldis-ffi` (the C ABI) or a crate it wraps, regenerate and check the header with the pinned `cbindgen` (`cargo install --locked cbindgen@0.29.4`; [crates/aldis-ffi/README.md](crates/aldis-ffi/README.md)), and never edit `include/aldis/aldis.h` by hand:
+
+```sh
+cargo xtask header --write && cargo xtask header   # CABI-002, CABI-003
+cargo xtask header c-smoke cc c++                  # host libraries, C99 and C++11 (CABI-001)
+```
+
 When you change `cpp/` (the native C++ implementation, [C++ profile](docs/profiles/cpp.md)), use the toolchains pinned in `cpp/toolchains.lock`; every preset refuses another compiler. Also run:
 
 ```sh

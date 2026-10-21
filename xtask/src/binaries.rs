@@ -212,3 +212,83 @@ pub fn symbols() -> Result<usize, String> {
     );
     Ok(problems)
 }
+
+/// The symbols a bare-metal static library may leave to the integrator (CABI-004): the C
+/// library's memory functions, which a compiler may also call on its own.
+const FFI_IMPORTS_ALLOWED: &[&str] = &["memcpy", "memmove", "memset", "memcmp", "bcmp"];
+
+/// The names of `llvm-nm` output lines: the last word of each symbol line.
+fn nm_names(listing: &str) -> std::collections::BTreeSet<String> {
+    listing
+        .lines()
+        .filter(|l| !l.trim().is_empty() && !l.ends_with(':'))
+        .filter_map(|l| l.split_whitespace().last())
+        .map(str::to_owned)
+        .collect()
+}
+
+/// The symbols `undefined` names that `defined` does not, less [`FFI_IMPORTS_ALLOWED`].
+fn foreign_imports(defined: &str, undefined: &str) -> Vec<String> {
+    let defined = nm_names(defined);
+    nm_names(undefined)
+        .into_iter()
+        .filter(|s| !defined.contains(s) && !FFI_IMPORTS_ALLOWED.contains(&s.as_str()))
+        .collect()
+}
+
+/// `xtask ffi-imports <target>`: the `no_std` static library `aldis-ffi` builds for a
+/// bare-metal target (`--no-default-features --features panic-handler --release`) needs
+/// nothing from the integrator beyond `memcpy`/`memset` equivalents: no heap, threads, or C
+/// runtime (CABI-004). Expects the library built.
+pub fn ffi_imports(target: &str) -> Result<usize, String> {
+    // Cargo puts the archive under `CARGO_TARGET_DIR` when it is set (relative to the
+    // repository root if relative), else under `target/`.
+    let target_dir = std::env::var_os("CARGO_TARGET_DIR").map_or_else(
+        || repo::root().join("target"),
+        |dir| repo::root().join(std::path::PathBuf::from(dir)),
+    );
+    let lib = target_dir.join(target).join("release/libaldis_ffi.a");
+    if !lib.is_file() {
+        return Err(format!(
+            "{} not found; build it with `cargo build -p aldis-ffi --no-default-features \
+             --features panic-handler --target {target} --release`",
+            repo::rel(&lib)
+        ));
+    }
+    let nm = llvm_tool("llvm-nm")?;
+    let defined = run(Command::new(&nm).arg("--defined-only").arg(&lib), "llvm-nm")?;
+    let undefined = run(
+        Command::new(&nm).arg("--undefined-only").arg(&lib),
+        "llvm-nm",
+    )?;
+    let foreign = foreign_imports(&defined, &undefined);
+    for s in &foreign {
+        println!(
+            "error: CABI-004 {} needs `{s}` from the integrator",
+            repo::rel(&lib)
+        );
+    }
+    println!(
+        "ffi-imports {target}: {} symbol(s) needed from outside the library beyond {}",
+        foreign.len(),
+        FFI_IMPORTS_ALLOWED.join(", ")
+    );
+    Ok(foreign.len())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::foreign_imports;
+
+    // req: CABI-004
+    #[test]
+    fn only_memory_functions_may_be_imported() {
+        let defined = "a.o:\n00000000 T aldis_spp_decode\n00000010 T helper\n";
+        let undefined = "a.o:\n         U helper\n         U memcpy\n         U malloc\n";
+        assert_eq!(foreign_imports(defined, undefined), ["malloc"]);
+        assert_eq!(
+            foreign_imports(defined, "b.o:\n U memset\n"),
+            Vec::<String>::new()
+        );
+    }
+}
