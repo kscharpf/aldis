@@ -1,6 +1,6 @@
 # Human review: four time-code readings (CCSDS 301.0-B-4)
 
-**Status:** in progress (Q1–Q3 readings recorded; Q3 disagrees with Aldis, OI-39; exercises and Q4 open) · **Reviewer:** the maintainer · **Prepared:** 2026-10-21
+**Status:** in progress (all four readings recorded; Q3 and Q4 differ from Aldis, OI-39 and OI-40; the comparisons with the vectors and with §3 D1–D4 are open) · **Reviewer:** the maintainer · **Prepared:** 2026-10-21
 
 ## Purpose
 
@@ -96,18 +96,20 @@ Record every reading, including "agrees". A reading you would have made differen
 
 | Case | Input | Your result |
 |---|---|---|
-| `time-cuc-020` | 0 s, 1 ns | |
-| `time-cuc-022` | 5 s, 999 999 999 ns | |
-| `time-cuc-023` | 255 s, 999 999 999 ns | |
+| `time-cuc-020` | 0 s, 1 ns | coarse 0, fine `00` |
+| `time-cuc-022` | 5 s, 999 999 999 ns | coarse 5, fine `FF` |
+| `time-cuc-023` | 255 s, 999 999 999 ns | coarse 255, fine `FF` (fits; no carry) |
 
 **Record**
 
-- Your reading, with clauses:
-- Fixed by 301.0, or left open:
-- If left open, the rule you would choose, and whether Aldis's (after you read it) is reasonable:
-- Vector cases agree with your results (yes / no, which):
-- After reading cross-checks.md §3 D4 — agree with Aldis / `spacepackets` / neither / unsure:
+- Your reading, with clauses: truncate (round down) the nanoseconds. A hardware provider with an explicit clock at 2^N Hz provides an exact binary fraction, so the conversion from nanoseconds is not the source of the time code's precision. (2026-10-21)
+- Fixed by 301.0, or left open: left open (no rounding rule is given); the choice is a project rule (TIME-011).
+- If left open, the rule you would choose, and whether Aldis's (after you read it) is reasonable: round down. Aldis's rule not yet read.
+- Vector cases agree with your results (yes / no, which): the results above follow from round-down and were computed by the coordinator (an AI) from the reviewer's rule, not worked by hand; not yet compared with the vector file.
+- After reading cross-checks.md §3 D4 — agree with Aldis / `spacepackets` / neither / unsure: not yet compared.
 - Notes:
+  - **Differs from Aldis**, which rounds up (TIME-011). Under round-down the carry into the coarse time (`time-cuc-022`) and the overflow (`time-cuc-023`) cannot happen. Raised as [OI-40](../../09-open-issues.md); Aldis keeps its behaviour until OI-40 is decided.
+  - Not primed: the coordinator did not discuss Q4 before this reading was given. The automated review of PR #80 answers Q4; whether it was read first belongs in the sign-off.
 
 ## Sign-off
 
@@ -117,4 +119,4 @@ Record every reading, including "agrees". A reading you would have made differen
 - Time spent:
 - Had you seen any AI's answers to these questions before writing yours (an automated review of the pull request that added this packet, PR #80, works all four)? Which questions:
 - Findings that need a change (none, or the questions):
-- Questions to pass to a CCSDS expert: Q3 (OI-39).
+- Questions to pass to a CCSDS expert: Q3 (OI-39). Q4 (OI-40) is a project rule, so it needs no expert.
