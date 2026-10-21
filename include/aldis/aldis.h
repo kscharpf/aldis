@@ -2652,6 +2652,9 @@ int32_t aldis_time_format_t_len(const aldis_time_format_t *format,
  * CUC time as seconds and nanoseconds, the fraction truncated (301.0 §3.2; TIME-011). Only
  * `coarse`, `fine`, and `fine_len` of `value` are read.
  *
+ * The basic time unit is taken to be the second (301.0 §1.2, §3.2.1); for a Level 2 code the
+ * result is the time in seconds only if the agency's unit is the second.
+ *
  * # Errors
  * CABI-022 violations, including a `fine_len` above 10 or fine octets set from `fine_len` on.
  *
@@ -2667,6 +2670,9 @@ int32_t aldis_time_cuc_to_ns(const aldis_time_value_t *value,
 /**
  * CUC time of a CUC format for seconds and nanoseconds, the fraction rounded up to the
  * format's resolution (301.0 §3.2; TIME-011, TIME-012).
+ *
+ * The basic time unit is taken to be the second (301.0 §1.2, §3.2.1); for a Level 2 format the
+ * code is right only if the agency's unit is the second.
  *
  * # Errors
  * `ALDIS_ERR_OUT_OF_RANGE` (`nanoseconds`) at 10⁹ or more, or (`coarse`) when the seconds do
