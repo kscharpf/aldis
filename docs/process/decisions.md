@@ -51,3 +51,4 @@ One line for each decision the maintainer takes, under the [decision rights](dec
 - 2026-10-21 · process · chat · Cleanup policy: when a pull request merges, delete its worktree and local branch unless they hold unpushed or uncommitted work
 - 2026-10-21 · process · #75 · The xtask crate split is held, and revisited at the M2 exit review with the measurement #75 describes
 - 2026-10-21 · plan · chat · Which tasks start next (the day's dispatches, among them the decision rights and the PR metrics)
+- 2026-10-21 · process · chat · Decision rights accepted as drafted: the coordinator starts queued work in the order last given; a PR may implement the recommended option of a pending decision but is not readied until it is answered; readings the normative text settles are decided and cited in the PR; one log file, routine items unlogged, the decisions check and the PR-template section kept
