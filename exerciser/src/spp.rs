@@ -9,9 +9,9 @@ use aldis_core::ids::{Apid, SeqCount};
 use aldis_core::{DecodeMode, ErrorKind};
 use aldis_spp::{
     Discard, IdlePacket, MAX_PACKET_LEN, MIN_PACKET_LEN, OctetStringEncoder, Outcome,
-    PRIMARY_HEADER_LEN, PacketFields, PacketType, Reassembler, SecondaryHeaderLayout, Segmenter,
-    SequenceCounter, SequenceFlags, SequenceTracker, SpacePacket, SpacePacketWriter, SppAnomaly,
-    SppConfig, Status, TimeHeaderLayout, Tracked, encode,
+    PRIMARY_HEADER_LEN, PacketFields, PacketType, Reassembler, ReassemblerState,
+    SecondaryHeaderLayout, Segmenter, SequenceCounter, SequenceFlags, SequenceTracker, SpacePacket,
+    SpacePacketWriter, SppAnomaly, SppConfig, Status, TimeHeaderLayout, Tracked, encode,
 };
 use aldis_time::{
     CcsFormat, CcsVariation, CdsDayLen, CdsEpoch, CdsFormat, CdsSubMs, CucEpoch, CucFormat,
@@ -248,6 +248,43 @@ fn segments(t: &mut Tally) {
     t.check(first.is_some_and(|o| o.status == Status::InProgress) && ra.is_assembling());
     ra.reset();
     t.check(!ra.is_assembling() && ra.sdu().is_empty());
+    suspended(t, cfg, apid, &sdu);
+}
+
+/// The buffer-free states of the segmenter and the reassembler (SPP-013, API-060).
+fn suspended(t: &mut Tally, cfg: SppConfig, apid: Apid, sdu: &[u8]) {
+    let Ok(seg) = Segmenter::new(&cfg, PacketType::Telemetry, apid, sdu, bb(3)) else {
+        t.check(false);
+        return;
+    };
+    let mut state = seg.suspend();
+    t.check(state.remaining() == sdu.len() && !state.is_done());
+    t.check(state.resume(bb(&[])).is_err());
+    let mut buf = [0_u8; 8];
+    let mut ra_state = ReassemblerState::new(apid);
+    t.check(ra_state.apid() == apid && !ra_state.is_assembling() && ra_state.sdu_len() == 0);
+    let mut counter = SequenceCounter::default();
+    let mut out = [0_u8; 16];
+    loop {
+        let Ok(mut seg) = state.resume(sdu) else {
+            t.check(false);
+            return;
+        };
+        let Ok(Some(n)) = seg.next_packet(&mut counter, &[], &mut out) else {
+            break;
+        };
+        state = seg.suspend();
+        let decoded = SpacePacket::decode(bb(out.get(..n).unwrap_or_default()), DecodeMode::Strict);
+        match (decoded, ra_state.resume(&mut buf)) {
+            (Ok(p), Ok(mut ra)) => {
+                t.check(ra.push(&p.header(), p.data_field()).is_ok());
+                ra_state = ra.suspend();
+            }
+            _ => t.check(false),
+        }
+    }
+    t.check(state.is_done() && ra_state.sdu_len() == sdu.len());
+    t.check(ra_state.resume(bb(&mut [0_u8; 1])).is_err());
 }
 
 fn time_header(t: &mut Tally) {

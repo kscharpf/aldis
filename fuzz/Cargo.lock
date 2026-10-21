@@ -3,10 +3,36 @@
 version = 4
 
 [[package]]
+name = "aldis"
+version = "0.2.0"
+dependencies = [
+ "aldis-aos",
+ "aldis-cop1",
+ "aldis-core",
+ "aldis-epp",
+ "aldis-framework",
+ "aldis-link",
+ "aldis-spp",
+ "aldis-tc",
+ "aldis-time",
+ "aldis-tm",
+ "aldis-uslp",
+]
+
+[[package]]
 name = "aldis-aos"
 version = "0.2.0"
 dependencies = [
  "aldis-core",
+]
+
+[[package]]
+name = "aldis-cop1"
+version = "0.2.0"
+dependencies = [
+ "aldis-core",
+ "aldis-tc",
+ "aldis-uslp",
 ]
 
 [[package]]
@@ -21,16 +47,46 @@ dependencies = [
 ]
 
 [[package]]
+name = "aldis-ffi"
+version = "0.2.0"
+dependencies = [
+ "aldis",
+]
+
+[[package]]
+name = "aldis-framework"
+version = "0.2.0"
+dependencies = [
+ "aldis-cop1",
+ "aldis-core",
+ "aldis-link",
+]
+
+[[package]]
 name = "aldis-fuzz"
 version = "0.0.0"
 dependencies = [
  "aldis-aos",
  "aldis-core",
  "aldis-epp",
+ "aldis-ffi",
  "aldis-spp",
  "aldis-testkit",
  "aldis-time",
  "libfuzzer-sys",
+]
+
+[[package]]
+name = "aldis-link"
+version = "0.2.0"
+dependencies = [
+ "aldis-aos",
+ "aldis-core",
+ "aldis-epp",
+ "aldis-spp",
+ "aldis-tc",
+ "aldis-tm",
+ "aldis-uslp",
 ]
 
 [[package]]
@@ -39,6 +95,13 @@ version = "0.2.0"
 dependencies = [
  "aldis-core",
  "aldis-time",
+]
+
+[[package]]
+name = "aldis-tc"
+version = "0.2.0"
+dependencies = [
+ "aldis-core",
 ]
 
 [[package]]
@@ -51,6 +114,20 @@ dependencies = [
 
 [[package]]
 name = "aldis-time"
+version = "0.2.0"
+dependencies = [
+ "aldis-core",
+]
+
+[[package]]
+name = "aldis-tm"
+version = "0.2.0"
+dependencies = [
+ "aldis-core",
+]
+
+[[package]]
+name = "aldis-uslp"
 version = "0.2.0"
 dependencies = [
  "aldis-core",
