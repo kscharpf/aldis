@@ -108,5 +108,6 @@ Record every reading, including "agrees". A reading you would have made differen
 - Date(s):
 - Document read (edition, and corrigenda checked on the CCSDS site):
 - Time spent:
+- Had you seen any AI's answers to these questions before writing yours (an automated review of the pull request that added this packet, PR #80, works all four)? Which questions:
 - Findings that need a change (none, or the questions):
 - Questions to pass to a CCSDS expert:
