@@ -2668,8 +2668,9 @@ int32_t aldis_time_cuc_to_ns(const aldis_time_value_t *value,
                              aldis_error_detail_t *err);
 
 /**
- * CUC time of a CUC format for seconds and nanoseconds, the fraction rounded up to the
- * format's resolution (301.0 §3.2; TIME-011, TIME-012).
+ * CUC time of a CUC format for seconds and nanoseconds, the fraction rounded down to the
+ * format's resolution, so the coarse time is always `seconds` (301.0 §3.2; TIME-011, TIME-012,
+ * OI-40).
  *
  * The basic time unit is taken to be the second (301.0 §1.2, §3.2.1); for a Level 2 format the
  * code is right only if the agency's unit is the second.
