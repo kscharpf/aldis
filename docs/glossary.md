@@ -185,7 +185,7 @@ Not CCSDS terms: names from NASA's Core Flight System, as its repositories use t
 
 | Term | Expansion | Meaning | Defined in | In Aldis |
 |---|---|---|---|---|
-| <a id="cfs"></a>**cFS** | Core Flight System | NASA's open-source flight software framework: the cFE, OSAL, and a PSP, plus applications, released as one bundle. | nasa/cFS (`README.md`) | The proposed cFS flight side of the reference application ([reference-application.md](reference-application.md) §10; APP-110…APP-125) |
+| <a id="cfs"></a>**cFS** | Core Flight System | NASA's open-source flight software framework: the cFE, OSAL, and a PSP, plus applications, released as one bundle. | nasa/cFS (`README.md`) | The cFS flight side of the reference application ([reference-application.md](reference-application.md) §10; APP-110…APP-125) |
 | <a id="cfe"></a>**cFE** | Core Flight Executive | The cFS core: executive services (ES), events (EVS), the Software Bus (SB), tables (TBL), and time (TIME), under which cFS applications run. | nasa/cFE | Runs unchanged under the cFS flight side (APP-111); its time is kept out of the trace (OI-36, OI-37) |
 | <a id="osal"></a>**OSAL** | Operating System Abstraction Layer | The cFS library that hides the operating system: tasks, queues, timers and timebases, sockets, files, and the console. | nasa/osal | The cFS bridge's TCP socket (APP-118) |
 | <a id="psp"></a>**PSP** | Platform Support Package | The cFS layer for one hardware or operating-system platform, such as `pc-linux`; it provides the local clock and the system timebase. | nasa/PSP | pc-linux only (APP-111) |

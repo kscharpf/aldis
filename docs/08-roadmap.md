@@ -52,9 +52,9 @@ The reference application lives in its own workspace, `refapp/`, and uses only t
 | **A4 Engines** | The hand-written loops are replaced by the `aldis-link` engines | A3; M4 | Same trace as A3 for the same scenario |
 | **A5 C and C++** | A C++ flight side using `aldis.hpp`, built once against the Rust-backed library and once against the native library | A4; M5; C5 to exit | The Rust, Rust-via-C-ABI, and native C++ builds reproduce the same golden trace |
 | **A6 Framework and target** | The application moves onto `aldis-framework` stacks and trace/replay; the flight side runs bare-metal under QEMU; footprint, stack, and timing figures published | A5; M6 | End-to-end ground↔flight demo; figures included in the v1.0 tables |
-| **ACFS cFS flight side** (proposed, [plan](milestones/acfs-flight-side.md)) | A second flight side: NASA cFS apps (cFE, OSAL, pc-linux PSP) that call Aldis through `aldis.h`, run in lockstep with the harness, and reproduce the Rust flight side's golden traces ([reference-application.md](reference-application.md) §10). Four phases, below | Per phase, below | Every phase's traces reproduced in the nightly job; gates no release |
+| **ACFS cFS flight side** ([plan](milestones/acfs-flight-side.md)) | A second flight side: NASA cFS apps (cFE, OSAL, pc-linux PSP) that call Aldis through `aldis.h`, run in lockstep with the harness, and reproduce the Rust flight side's golden traces ([reference-application.md](reference-application.md) §10). Four phases, below | Per phase, below | Every phase's traces reproduced in the nightly job; gates no release |
 
-ACFS phases (proposed; [plan](milestones/acfs-flight-side.md) D1). Each phase follows one Rust-side milestone of track A and the C ABI it needs:
+ACFS phases ([plan](milestones/acfs-flight-side.md) D1). Each phase follows one Rust-side milestone of track A and the C ABI it needs:
 
 | Phase | Content | Entry gate | Exit criteria |
 |---|---|---|---|

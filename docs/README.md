@@ -39,7 +39,7 @@ This directory holds the specification for a family of libraries that add CCSDS 
 | [M2 Frame codecs](milestones/m2-frame-codecs.md) | C ABI for the M1 codecs, field codes, shared property-test strategies; `aldis-tm`, `aldis-tc`, `aldis-aos`, `aldis-uslp` (planned) |
 | [C0 Foundations (native C++)](milestones/c0-foundations.md) | `cpp/` CMake project, C++ CI and verification tooling, `aldis_core` (plan approved) |
 | [A0 Scenario](milestones/a0-scenario.md) | Reference application: scenario specification (area APP) and `refapp/` skeleton (plan approved) |
-| [ACFS cFS flight side](milestones/acfs-flight-side.md) | Reference application: a cFS flight side over the C ABI, reproducing the golden traces in four phases (planned, draft; decisions proposed) |
+| [ACFS cFS flight side](milestones/acfs-flight-side.md) | Reference application: a cFS flight side over the C ABI, reproducing the golden traces in four phases (plan approved; decisions D1–D19 accepted) |
 
 ### Per-standard specifications ([`standards/`](standards/))
 

@@ -1,6 +1,6 @@
 # Reference application — scenario
 
-**Area:** APP · **Track:** A ([roadmap](08-roadmap.md) §3) · **Plan:** [A0 Scenario](milestones/a0-scenario.md) (decisions D1–D16); §10 [ACFS cFS flight side](milestones/acfs-flight-side.md) (proposed) · **Code:** `refapp/` · **Scenario version:** 1 (draft for maintainer review)
+**Area:** APP · **Track:** A ([roadmap](08-roadmap.md) §3) · **Plan:** [A0 Scenario](milestones/a0-scenario.md) (decisions D1–D16); §10 [ACFS cFS flight side](milestones/acfs-flight-side.md) (decisions D1–D19) · **Code:** `refapp/` · **Scenario version:** 1 (draft for maintainer review)
 
 ## Summary
 
@@ -16,9 +16,9 @@
 | Time | CUC Level 1, 4 coarse + 2 fractional octets, T0 = 2 100 000 000 s, no drift | §5 |
 | Link model | Simulated µs clock from 0; one-way delay 10 ms; downlink slot 125 ms; uplink slot 250 ms; scripted faults by (direction, unit index) | §6 |
 | Golden traces | Canonical JSON Lines in `refapp/golden/<case>.jsonl`; header line + one record per observable event; byte comparison | §7 |
-| Node interface | `step(now, inputs) -> outputs + next deadline`; in-process for Rust, a lockstep stdin/stdout protocol for the A5 C++ and A6 QEMU flight nodes (OI-24) | §8 |
+| Node interface | `step(now, inputs) -> outputs + next deadline`; in-process for Rust, a lockstep protocol for the A5 C++ and A6 QEMU flight nodes over stdin/stdout (OI-24) and for the cFS node over loopback TCP (§10.6) | §8 |
 | Code rules | `aldis` facade only; flight node `no_std`, no heap, flight lint set; `forbid(unsafe_code)` everywhere | §9 |
-| cFS flight side (proposed) | A second flight node: cFS apps on cFE, OSAL, and the pc-linux PSP calling Aldis through `aldis.h`, in lockstep with the harness, reproducing the A1–A3 golden traces in four phases; plan [ACFS](milestones/acfs-flight-side.md), all decisions Proposed | §10 |
+| cFS flight side | A second flight node: cFS apps on cFE, OSAL, and the pc-linux PSP calling Aldis through `aldis.h`, in lockstep with the harness, reproducing the A1–A3 golden traces in four phases; plan [ACFS](milestones/acfs-flight-side.md), decisions accepted 2026-10-21 | §10 |
 
 **Open items that affect this document:** OI-11 (OID frames, §4.1). Resolved 2026-10-19: OI-23 (golden traces and vectors, §7.5), OI-24 (out-of-process nodes, §8.2), OI-25 (framework trace, §7.5), OI-26 (spacecraft ID, §3.4), OI-06 (SANA registries, §3.1, §4.3). Every protocol value below cites the Blue Book clause it was read from.
 
@@ -501,7 +501,7 @@ The A5 C++ flight node and the A6 bare-metal flight node under QEMU run as child
 | `0x82` STEP_RESULT | node → harness | output count (u16) ‖ each: kind (u8: 1 unit, 2 packet_out, 3 packet_in, 4 app_event) ‖ unit: length (u16) ‖ octets; packet: APID (u16) ‖ length (u16) ‖ octets; event: code (u16) ‖ count (u8) ‖ u64 each; then `next_deadline` (u64, all ones = none) |
 | `0x83` END_ACK | node → harness | — |
 
-The harness sends one message and waits for its answer; it never reads the wall clock (CI job timeouts bound a hung node). A malformed message, an unexpected type, or a closed stream ends the run with an error and no trace. The protocol is implemented and may be refined in A5, before any trace depends on it. The proposed cFS flight node (§10) would carry the same messages over a loopback TCP stream instead, and would need the protocol before A5 (§10.6, OI-38).
+The harness sends one message and waits for its answer; it never reads the wall clock (CI job timeouts bound a hung node). A malformed message, an unexpected type, or a closed stream ends the run with an error and no trace. The harness side of the protocol, with both transports, is implemented in ACFS WP-2, before A5 (ACFS D18, OI-38); it may be refined in A5, before any trace depends on it. The cFS flight node (§10) carries the same messages over a loopback TCP stream instead (§10.6).
 
 | ID | Requirement | Source | Verif. |
 |---|---|---|---|
@@ -523,9 +523,9 @@ The harness sends one message and waits for its answer; it never reads the wall 
 | APP-107 | All scenario values SHALL come from one language-neutral file in `refapp/scenario/`, validated against a published JSON Schema; the Rust constants SHALL be generated from it (a C++ header from A5), and CI SHALL check that the generated files are current. | — | A |
 | APP-108 | Tests in `refapp/` SHALL carry `// req:` annotations (VER-020), and `cargo xtask trace` SHALL read them and the `requirements` of golden-trace headers. | VER-020 | A |
 
-## 10. cFS flight side (proposed)
+## 10. cFS flight side
 
-**Status: proposed, for the maintainer's review.** Plan: [ACFS cFS flight side](milestones/acfs-flight-side.md), decisions D1–D19, all Proposed. Nothing in §1–§9 changes until the plan is accepted, and APP-110…APP-125 are verified only from then on. The cFS facts this section relies on were read from the cFS repositories at the release the plan proposes to pin (nasa/cFS `v7.0.1`); the plan lists them with their source files as F1–F18 (§1.1), and this section cites them by those numbers.
+**Status: accepted (2026-10-21, #78).** Plan: [ACFS cFS flight side](milestones/acfs-flight-side.md), decisions D1–D19, accepted as recommended. APP-110…APP-125 are verified phase by phase as ACFS lands. The cFS facts this section relies on were read from the cFS repositories at the release the plan proposes to pin (nasa/cFS `v7.0.1`); the plan lists them with their source files as F1–F18 (§1.1), and this section cites them by those numbers.
 
 ### 10.1 Purpose
 
@@ -612,7 +612,7 @@ How the sequencing keeps the order of §2.1 and of the trace records:
 | Deadlines | Each DONE marker carries the app's next deadline, and `refapp_step` reports the earliest (§8.1). A WAKE at an instant where nothing is due changes nothing (APP-074) |
 | No timeouts in the scenario path | Apps pend on their pipes without a timeout; the CI job's time limit bounds a hung run, as in §8.2 |
 
-What the trace format needs: nothing in APP-080…APP-088. There are two consequences elsewhere. (1) The out-of-process node protocol of §8.2 is needed in P1, before A5 implements it, and over another transport (§10.6, OI-38). (2) A golden trace's header lists the requirements its case verifies and is shared by every implementation, so the requirements below are traced by the `// req:` annotations of the harness tests and C sources that run the cFS node (APP-125), not by golden-trace headers. How the trace's timing fields relate to cFS time is OI-37.
+What the trace format needs: nothing in APP-080…APP-088. There are two consequences elsewhere. (1) The out-of-process node protocol of §8.2 is needed in P1, before A5, and over another transport, so ACFS WP-2 builds it (§10.6, ACFS D18, OI-38). (2) A golden trace's header lists the requirements its case verifies and is shared by every implementation, so the requirements below are traced by the `// req:` annotations of the harness tests and C sources that run the cFS node (APP-125), not by golden-trace headers. How the trace's timing fields relate to cFS time is OI-37.
 
 ### 10.6 Node protocol transport
 
