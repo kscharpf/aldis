@@ -35,7 +35,7 @@ struct Crc16Case {
     const std::uint16_t bitwise = core::crc::crc16_bitwise(c.input.view());
     const std::uint16_t table = core::crc::crc16_table(c.input.view());
     const core::Result<std::uint16_t> selected = run(c);
-    if (bitwise != table || selected.value_or(bitwise) != bitwise) {
+    if (bitwise != table || selected.ok() == nullptr || *selected.ok() != bitwise) {
         return Verdict::fail(Mismatch::FormsDisagree);
     }
     return compare(c.expect, selected);

@@ -52,7 +52,9 @@ constexpr core::Result<Octets> fill(Generator& gen, std::size_t len) noexcept {
     const core::Result<Octets> fibonacci = run(c);
     core::OidGeneratorGalois gen{};
     const core::Result<Octets> galois = detail::fill(gen, c.octets);
-    if (fibonacci.ok() != nullptr && galois.ok() != nullptr && !(*fibonacci.ok() == *galois.ok())) {
+    // The forms disagree if only one of them succeeds, or if both succeed with different octets.
+    if ((fibonacci.ok() == nullptr) != (galois.ok() == nullptr) ||
+        (fibonacci.ok() != nullptr && !(*fibonacci.ok() == *galois.ok()))) {
         return Verdict::fail(Mismatch::FormsDisagree);
     }
     return compare(c.expect, fibonacci);

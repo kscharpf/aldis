@@ -63,7 +63,9 @@ constexpr core::Result<OctetsList> fill_sequence(const OidFillSequenceCase& c) n
 [[nodiscard]] constexpr Verdict check(const OidFillSequenceCase& c) noexcept {
     const core::Result<OctetsList> fibonacci = run(c);
     const core::Result<OctetsList> galois = detail::fill_sequence<core::OidGeneratorGalois>(c);
-    if (fibonacci.ok() != nullptr && galois.ok() != nullptr && !(*fibonacci.ok() == *galois.ok())) {
+    // The forms disagree if only one of them succeeds, or if both succeed with different octets.
+    if ((fibonacci.ok() == nullptr) != (galois.ok() == nullptr) ||
+        (fibonacci.ok() != nullptr && !(*fibonacci.ok() == *galois.ok()))) {
         return Verdict::fail(Mismatch::FormsDisagree);
     }
     return compare(c.expect, fibonacci);
