@@ -269,3 +269,5 @@ The table is the registry. `cargo xtask fields --write` generates from it the Ru
 | 62 | `data_len` | parameter | Length of the Encapsulated Data Field | epp | 133.1 §4.1.3, Table 4-2 |
 | 63 | `min_data_len` | parameter | Minimum Data Unit Length, a managed parameter | epp | 133.1 §5 Table 5-1 |
 | 64 | `max_data_len` | parameter | Maximum Data Unit Length, a managed parameter | epp | 133.1 §5 Table 5-1 |
+| 65 | `ocf_type_flag` | field | Type Flag of the Operational Control Field, bit 0: Type-1 or Type-2 Report | core | 132.0 §4.1.5.4; 732.0 §4.1.5.4; 732.1 §4.1.5.2.1 |
+| 66 | `ocf_report_use` | field | Bit 1 of a Type-2 Report in the Operational Control Field: project-specific or SDLS Frame Security Report | core | 132.0 §4.1.5.5; 732.0 §4.1.5.5; 732.1 §4.1.5.2.2 |
