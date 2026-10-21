@@ -14,6 +14,7 @@ use aldis_core::counter::Continuity;
 use aldis_core::crc::{syndrome, verify_fecf, write_fecf};
 use aldis_core::error::ErrorKind;
 use aldis_core::layout::FrameLayout;
+use aldis_core::ocf::{FsrReport, Ocf, ProjectSpecificReport, Type1Report};
 use aldis_testkit::strategies::common::{
     QueueOp, bit_field_access, byte_queue_ops, fixed_queue_ops, layout_spec, mod_counter_and_value,
 };
@@ -165,5 +166,30 @@ proptest! {
                 prop_assert!(frame_len <= fixed);
             }
         }
+    }
+}
+
+proptest! {
+    #![proptest_config(strategies::config(256, REGRESSIONS))]
+
+    #[test]
+    fn ocf_classification_matches_the_flag_bits(octets in any::<[u8; 4]>()) {
+        // req: CMN-010
+        let ocf = Ocf::decode(octets);
+        prop_assert_eq!(ocf.to_octets(), octets);
+        let (type_flag, use_bit) = (octets[0] >> 7, (octets[0] >> 6) & 1);
+        let expected = match (type_flag, use_bit) {
+            (0, _) => Ocf::Clcw(Type1Report::new(octets).unwrap()),
+            (_, 0) => Ocf::ProjectSpecific(ProjectSpecificReport::new(octets).unwrap()),
+            _ => Ocf::SdlsFsr(FsrReport::new(octets).unwrap()),
+        };
+        prop_assert_eq!(ocf, expected);
+        // Exactly one report type accepts the octets.
+        let accepted = [
+            Type1Report::new(octets).is_some(),
+            ProjectSpecificReport::new(octets).is_some(),
+            FsrReport::new(octets).is_some(),
+        ];
+        prop_assert_eq!(accepted.iter().filter(|&&a| a).count(), 1);
     }
 }

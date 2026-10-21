@@ -266,7 +266,6 @@ mod tests {
     use super::{FsrReport, OCF_LEN, Ocf, ProjectSpecificReport, Type1Report};
     use crate::error::{ErrorDetail, ErrorKind};
     use crate::field;
-    use proptest::prelude::*;
 
     /// The CLCW of 232.0 figure 4-6 with COP-1 in effect, VCID 5, Retransmit set, FARM-B
     /// Counter 2, and Report Value 42.
@@ -365,28 +364,5 @@ mod tests {
         }
         assert_eq!(Ocf::from(ps), Ocf::ProjectSpecific(ps));
         assert_eq!(Ocf::from(fsr), Ocf::SdlsFsr(fsr));
-    }
-
-    proptest! {
-        #[test]
-        fn classification_matches_the_flag_bits(octets in any::<[u8; 4]>()) {
-            // req: CMN-010
-            let ocf = Ocf::decode(octets);
-            prop_assert_eq!(ocf.to_octets(), octets);
-            let (type_flag, use_bit) = (octets[0] >> 7, (octets[0] >> 6) & 1);
-            let expected = match (type_flag, use_bit) {
-                (0, _) => Ocf::Clcw(Type1Report::new(octets).unwrap()),
-                (_, 0) => Ocf::ProjectSpecific(ProjectSpecificReport::new(octets).unwrap()),
-                _ => Ocf::SdlsFsr(FsrReport::new(octets).unwrap()),
-            };
-            prop_assert_eq!(ocf, expected);
-            // Exactly one report type accepts the octets.
-            let accepted = [
-                Type1Report::new(octets).is_some(),
-                ProjectSpecificReport::new(octets).is_some(),
-                FsrReport::new(octets).is_some(),
-            ];
-            prop_assert_eq!(accepted.iter().filter(|&&a| a).count(), 1);
-        }
     }
 }
