@@ -7,6 +7,7 @@
 )]
 
 use aldis_aos::fhec;
+use aldis_core::FieldId;
 use aldis_testkit::{CodecCase, Outcome, hex, run_codec_file};
 use serde_json::{Map, Value, json};
 
@@ -41,7 +42,10 @@ fn handler(case: &CodecCase) -> Outcome {
                 "header_hex": hex::encode(&c.octets()),
                 "corrected_symbols": c.corrected_symbols().get(),
             }))),
-            Err(e) => Outcome::Err(e.kind().name().to_owned()),
+            Err(e) => Outcome::Err {
+                kind: e.kind().name().to_owned(),
+                field: e.field().map(FieldId::code),
+            },
         },
         _ => Outcome::Unsupported,
     }
