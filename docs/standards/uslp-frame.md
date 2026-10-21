@@ -1,6 +1,6 @@
 # USLP Transfer Frame — CCSDS 732.1-B-3
 
-**Crate:** `aldis-uslp` · **Reference:** `specs/pdf/732x1b3e1.pdf` ([how to download](../../specs/README.md))
+**Crate:** `aldis-uslp` · **Reference:** `specs/pdf/732x1b3e1.pdf` ([how to download](../../specs/README.md)) · **Acronyms:** [glossary](../glossary.md)
 
 ## 1. Wire format (§4.1, Annex D)
 

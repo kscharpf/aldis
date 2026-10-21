@@ -1,6 +1,6 @@
 # Time codes — CCSDS 301.0-B-4
 
-**Crate:** `aldis-time` · **Reference:** `specs/pdf/301x0b4e1.pdf` ([how to download](../../specs/README.md))
+**Crate:** `aldis-time` · **Reference:** `specs/pdf/301x0b4e1.pdf` ([how to download](../../specs/README.md)) · **Acronyms:** [glossary](../glossary.md)
 
 ## 1. Scope
 

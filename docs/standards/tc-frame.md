@@ -1,6 +1,6 @@
 # TC Transfer Frame and CLCW — CCSDS 232.0-B-4 (+ Cor. 1)
 
-**Crate:** `aldis-tc` · **Reference:** `specs/pdf/232x0b4e1c1.pdf` ([how to download](../../specs/README.md))
+**Crate:** `aldis-tc` · **Reference:** `specs/pdf/232x0b4e1c1.pdf` ([how to download](../../specs/README.md)) · **Acronyms:** [glossary](../glossary.md)
 
 ## 1. Wire format (§4.1)
 

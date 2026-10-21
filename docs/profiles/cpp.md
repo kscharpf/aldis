@@ -2,6 +2,8 @@
 
 This profile binds the language-neutral specification to the **native C++ implementation**. The Rust crates remain the reference implementation and the recommended choice. The native C++ library exists for legacy flight software that cannot easily take a Rust toolchain. It exposes the same C ABI (CABI-070) and the same C++ wrapper API (CABI-072) as the Rust-backed library, so an application can switch between them without source changes.
 
+**Terms and acronyms:** see the [glossary](../glossary.md).
+
 **Status:** Draft, 2026-10-19. No C++ code exists yet; the work is planned as track C of the [roadmap](../08-roadmap.md) §2. The language is C++20 (OI-19) and engine capacities are template parameters (OI-20). Every tool is free (VER-055); the coding guidelines are CERT C++ and AUTOSAR C++14 (VER-052, OI-22).
 
 ## 0. How the C++ implementation is assured

@@ -78,5 +78,6 @@ MIT. See [LICENSE](LICENSE).
 ## Where to start
 
 1. [docs/README.md](docs/README.md): reading order and document map (contributors and coding agents: also read [AGENTS.md](AGENTS.md))
+   - [docs/glossary.md](docs/glossary.md): what OCF, CLCW, FHP, and the other acronyms mean, and the project's own terms
 2. [docs/01-architecture.md](docs/01-architecture.md): layers and crates
 3. [docs/09-open-issues.md](docs/09-open-issues.md): decisions still needed

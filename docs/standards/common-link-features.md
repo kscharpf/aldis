@@ -1,6 +1,6 @@
 # Common link features
 
-**Implemented in:** `aldis-core` · **Used by:** TM (132.0), TC (232.0), AOS (732.0), USLP (732.1)
+**Implemented in:** `aldis-core` · **Used by:** TM (132.0), TC (232.0), AOS (732.0), USLP (732.1) · **Acronyms:** [glossary](../glossary.md)
 
 This document specifies algorithms and fields shared by several data link protocols. Each is implemented once in `aldis-core`.
 

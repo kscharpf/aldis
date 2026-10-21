@@ -2,6 +2,8 @@
 
 This profile binds the language-neutral specification to Rust. The Rust crates are the **reference implementation**.
 
+**Terms and acronyms:** see the [glossary](../glossary.md).
+
 ## 1. Toolchain and edition
 
 | ID | Requirement | Source | Verif. |
