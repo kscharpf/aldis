@@ -364,13 +364,16 @@ fn main() {
 
     // One start-up, semihosting trap, and linker script per architecture (M1 D6).
     let target = std::env::var("TARGET").unwrap_or_default();
-    println!("cargo::rustc-check-cfg=cfg(cortex_m, cortex_r, riscv)");
+    println!("cargo::rustc-check-cfg=cfg(cortex_m, cortex_r, riscv, sparc)");
     let (cfg, script) = if target.starts_with("thumbv") {
         ("cortex_m", "link-cortex-m.x")
     } else if target.starts_with("armv7r") {
         ("cortex_r", "link-cortex-r.x")
     } else if target.starts_with("riscv32") {
         ("riscv", "link-riscv.x")
+    } else if target.starts_with("sparc-") {
+        // LEON3 (SPARC V8), non-gating (OI-08).
+        ("sparc", "link-leon3.x")
     } else {
         panic!("{target}: no start-up code for this target (exerciser/src/target.rs)")
     };

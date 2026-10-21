@@ -1,6 +1,6 @@
-# `cargo run --release --target <t>` executes the exerciser under QEMU with semihosting
-# (M1 D6). QEMU's exit status is the result: 0 only when every vector case passed. Each
-# runner works with QEMU 8.2 (Ubuntu 24.04, the verification image).
+# `cargo run --release --target <t>` executes the exerciser under QEMU, with semihosting on the
+# Arm and RISC-V targets (M1 D6). QEMU's exit status is the result: 0 only when every vector
+# case passed. Each runner works with QEMU 8.2 (Ubuntu 24.04, the verification image).
 
 # Cortex-M4 on the MPS2 AN386 board.
 [target.thumbv7em-none-eabihf]
@@ -21,3 +21,15 @@ runner = [
 # RV32 on the virt board, machine mode, no firmware.
 [target.riscv32imac-unknown-none-elf]
 runner = "qemu-system-riscv32 -machine virt -bios none -nographic -semihosting-config enable=on,target=native -kernel"
+
+# LEON3 (SPARC V8) on the leon3_generic board, non-gating (OI-08). The target is tier 3: build
+# with the tooling nightly and `-Z build-std=core` (verify check `rust-sparc-leon3`). The
+# rustflags select the LEON3 CPU; a RUSTFLAGS variable replaces them, so the check sets the flag
+# there too. rust-lld links no 32-bit SPARC: GNU ld does (Ubuntu's binutils-sparc64-linux-gnu,
+# with the elf32-sparc output format from link-leon3.x). QEMU has no SPARC semihosting: the
+# exerciser writes to the APBUART and ends in error mode, `ta 0` on success (QEMU exits with 0)
+# and `ta 1` on failure (QEMU aborts).
+[target.sparc-unknown-none-elf]
+linker = "sparc64-linux-gnu-ld"
+rustflags = ["-C", "target-cpu=leon3"]
+runner = "qemu-system-sparc -machine leon3_generic -nographic -monitor none -kernel"
