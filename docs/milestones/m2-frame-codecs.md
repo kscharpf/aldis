@@ -19,7 +19,7 @@
 | WP-4 `aldis-aos` module 1, `fhec` | merged | #64 | D10; `aldis-aos` joined the coverage gate, mutants, the exerciser, and the fuzz target `aos_fhec_model` |
 | WP-4 `aldis-aos` modules 2–8 | planned | — | |
 | WP-5 `aldis-uslp` | planned | — | |
-| WP-6 vectors and cross-checks | in progress | #64 | Grows with each codec: the FHEC vectors so far |
+| WP-6 vectors and cross-checks | in progress | #64 | Grows with each codec: the FHEC vectors so far. NASA cFE `MSG` v7.0.1 runs in `crosscheck/` as a second Space Packet oracle (`m2/crosscheck-cfe`; OI-32) |
 | WP-7 verification gates | in progress | #64 | Grows with each codec: `aldis-aos` so far |
 | WP-8 docs, trace, release | planned | — | |
 

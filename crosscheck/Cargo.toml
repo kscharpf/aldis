@@ -6,14 +6,19 @@ edition = "2024"
 license = "MIT"
 publish = false
 
-# Separate workspace: the independent implementations are third-party std crates that the main
-# workspace must not depend on (GEN-001). Its own deny.toml carries the exceptions they need
-# (docs/verification/cross-checks.md §1).
+# Separate workspace: the independent implementations are third-party std crates and C sources
+# that the main workspace must not depend on (GEN-001). Its own deny.toml carries the exceptions
+# they need (docs/verification/cross-checks.md §1).
 [workspace]
 
 [dependencies]
-# The vector model and loader only; no Aldis codec is linked.
-aldis-testkit = { path = "../crates/aldis-testkit" }
+# The vector model and loader, and the Space Packet strategies of the cFE property check.
+aldis-testkit = { path = "../crates/aldis-testkit", features = ["strategies-spp"] }
+# The Aldis side of the cFE check, which compares cFE with Aldis as well as with the vectors.
+# The spacepackets checks use neither.
+aldis-core = { path = "../crates/aldis-core" }
+aldis-spp = { path = "../crates/aldis-spp", features = ["time"] }
+aldis-time = { path = "../crates/aldis-time" }
 # The date types that spacepackets' ASCII formatting takes, which it does not re-export. Already
 # in its dependency tree (its `std` feature enables `chrono`), so this adds no crate.
 chrono = { version = "0.4.45", default-features = false }
@@ -23,9 +28,14 @@ serde_json = "1.0.154"
 # Pinned exactly: a new release can change what the cross-check reports (cross-checks.md §1).
 spacepackets = "=0.18.0"
 
+[build-dependencies]
+# Compiles the vendored cFE MSG sources (vendor/cfe/). Already in this workspace's tree.
+cc = "1.9.0"
+
 # Tooling lint profile (RS-017).
 [lints.rust]
-unsafe_code = "forbid"
+# Denied, not forbidden: the cFE bindings (src/cfe_msg.rs) relax it for that module only.
+unsafe_code = "deny"
 missing_docs = "deny"
 
 [lints.clippy]

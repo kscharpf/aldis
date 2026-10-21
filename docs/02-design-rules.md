@@ -64,7 +64,7 @@ All CCSDS standards in scope use the same convention, which these rules restate.
 | ID | Requirement | Source | Verif. |
 |---|---|---|---|
 | GEN-070 | Layers 0–3 SHALL forbid `unsafe` code (`#![forbid(unsafe_code)]`). | — | A |
-| GEN-071 | `unsafe` is permitted only in `aldis-ffi` and in the dev-only differential-test bridge (`difftest/`, VER-053), which calls a native implementation through its C ABI and is never part of a flight build. Every `unsafe` block SHALL carry a `// SAFETY:` justification. `aldis-ffi` SHALL be tested under Miri. | — | A/I |
+| GEN-071 | `unsafe` is permitted only in `aldis-ffi`, in the dev-only differential-test bridge (`difftest/`, VER-053), which calls a native implementation through its C ABI and is never part of a flight build, and in the module of the dev-only cross-checks that calls a C oracle (`crosscheck/src/cfe_msg.rs`, VER-040). Every `unsafe` block SHALL carry a `// SAFETY:` justification. `aldis-ffi` SHALL be tested under Miri. | — | A/I |
 
 ## 8. Versioning and compatibility
 
