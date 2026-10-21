@@ -3,6 +3,7 @@
 //! Implements the stable error catalogue of `docs/03-api-model.md` §9 (GEN-040), errors with
 //! field and value detail without allocation (GEN-041), and extensible enums (GEN-081, RS-011).
 
+use core::cmp::Ordering;
 use core::fmt;
 use core::hash::{Hash, Hasher};
 use core::num::NonZeroU16;
@@ -123,8 +124,10 @@ impl ErrorKind {
 /// [`field::APID`](crate::field::APID) (03-api-model.md §9.1; GEN-041, API-082).
 ///
 /// The only values are the constants of [`crate::field`], generated from the catalogue, so no
-/// code can be made up at a call site. Equality and hashing use the code alone: the name is for
-/// display only and is never compared (API-082).
+/// code can be made up at a call site; [`FieldId::from_code`] finds the constant of a code that
+/// crossed the C ABI. Equality, ordering, and hashing use the code alone: the name is for
+/// display only and is never compared (API-082). There is no `Display`: [`FieldId::name`] is the
+/// display name, and [`Error`]'s `Display` prints it.
 ///
 /// ```
 /// use aldis_core::field;
@@ -145,6 +148,9 @@ impl FieldId {
     /// The catalogued field `CODE` with its display name. Only the generated module
     /// [`crate::field`] calls it; `CODE` 0 ("no field" in the C ABI) fails to compile.
     pub(crate) const fn catalogued<const CODE: u16>(name: &'static str) -> FieldId {
+        // Evaluated at compile time, after the assertion: with `CODE` ≥ 1, `1 + (CODE - 1)` is
+        // `CODE`, so the expression adds no run-time branch and no panic path, which
+        // `NonZeroU16::new(CODE).unwrap()` would (GEN-020).
         let code = const {
             assert!(CODE != 0, "field code 0 means no field (API-082)");
             NonZeroU16::MIN.saturating_add(CODE.wrapping_sub(1))
@@ -163,6 +169,15 @@ impl FieldId {
     pub const fn name(self) -> &'static str {
         self.name
     }
+
+    /// The catalogued field with code `code`, or `None` for 0 and codes the catalogue does not
+    /// have (API-082, CABI-021): the counterpart of [`ErrorKind::from_code`] for a code that
+    /// crossed the C ABI. Code `n` is `field::ALL[n - 1]`, since codes run from 1 in order.
+    #[must_use]
+    pub fn from_code(code: u16) -> Option<FieldId> {
+        let index = usize::from(code).checked_sub(1)?;
+        crate::field::ALL.get(index).copied()
+    }
 }
 
 impl PartialEq for FieldId {
@@ -176,6 +191,19 @@ impl Eq for FieldId {}
 impl Hash for FieldId {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.code.hash(state);
+    }
+}
+
+// Written by hand rather than derived, so that the name never enters the comparison (API-082).
+impl PartialOrd for FieldId {
+    fn partial_cmp(&self, other: &FieldId) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for FieldId {
+    fn cmp(&self, other: &FieldId) -> Ordering {
+        self.code.cmp(&other.code)
     }
 }
 
@@ -463,6 +491,39 @@ mod tests {
                 assert_eq!(a == b, i == j);
             }
         }
+    }
+
+    #[test]
+    fn field_codes_find_their_constant() {
+        // req: API-082, CABI-021
+        for f in field::ALL {
+            assert_eq!(FieldId::from_code(f.code().get()), Some(f));
+        }
+        assert_eq!(FieldId::from_code(5).map(FieldId::name), Some("apid"));
+        assert_eq!(FieldId::from_code(0), None);
+        let past = u16::try_from(field::ALL.len() + 1).unwrap();
+        assert_eq!(FieldId::from_code(past), None);
+        assert_eq!(FieldId::from_code(u16::MAX), None);
+    }
+
+    #[test]
+    fn fields_are_ordered_by_code_only() {
+        // req: API-082
+        use core::cmp::Ordering;
+        assert!(field::SPACECRAFT_ID < field::APID && field::APID < field::MAX_DATA_LEN);
+        assert_eq!(field::APID.cmp(&field::APID), Ordering::Equal);
+        assert_eq!(
+            field::EPI.partial_cmp(&field::APID),
+            Some(Ordering::Greater)
+        );
+        // A name that sorts first does not move a field: the order is the codes' order.
+        let renamed = FieldId::catalogued::<64>("aaa");
+        assert_eq!(renamed.cmp(&field::MAX_DATA_LEN), Ordering::Equal);
+        assert!(renamed > field::SPACECRAFT_ID);
+        let mut all = field::ALL;
+        all.reverse();
+        all.sort();
+        assert_eq!(all, field::ALL);
     }
 
     #[test]

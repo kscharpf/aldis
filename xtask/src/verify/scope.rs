@@ -988,10 +988,15 @@ mod tests {
             running(&changed(&["cpp/src/core/crc.cpp"]), Force::default()),
             want
         );
-        // The vectors are read by both implementations.
+        // The vectors are read by both implementations, not by the header check.
         assert_eq!(
             running(&changed(&["test-vectors/README.md"]), Force::default()),
-            everything
+            names(|c| c.name != "header")
+        );
+        // The committed header is read by the header check (and spec) alone.
+        assert_eq!(
+            running(&changed(&["include/aldis/aldis.h"]), Force::default()),
+            names(|c| c.name == "header" || c.name == "spec")
         );
         // xtask and the image run everything.
         for path in [
@@ -1599,7 +1604,7 @@ mod tests {
         let rust = names(|c| !c.cpp && c.name != "spec" && !xtask_tests.contains(&c.name.as_str()));
         assert_eq!(
             decided(&p, Some(Outcome::Reused)),
-            (rust, vec![r.p1.clone()])
+            (rust.clone(), vec![r.p1.clone()])
         );
         // The C++ checks: unchanged against the base, which PR 1's record covers.
         assert_eq!(
@@ -1612,7 +1617,11 @@ mod tests {
         assert_eq!(decided(&p, None).0, names(|c| run.contains(&c.name)));
         let lines = describe(&p, &checks);
         assert!(
-            lines[0].ends_with("4 of 32 checks run, 15 skipped, 13 reused"),
+            lines[0].ends_with(&format!(
+                "4 of {} checks run, 15 skipped, {} reused",
+                checks.len(),
+                rust.len()
+            )),
             "{lines:?}"
         );
 
@@ -1698,7 +1707,11 @@ mod tests {
         assert_eq!(decided(&p, Some(Outcome::Reused)).0, Vec::<String>::new());
         // The record that reused it no longer passes.
         let problems = recheck(&r.clone.0, &rec, &checks);
-        assert_eq!(problems.len(), 13, "{problems:?}");
+        // One problem per reused check: the Rust checks outside spec and the xtask tests.
+        let xtask_tests = ["test", "test-macos", "big-endian"];
+        let reused =
+            names(|c| !c.cpp && c.name != "spec" && !xtask_tests.contains(&c.name.as_str()));
+        assert_eq!(problems.len(), reused.len(), "{problems:?}");
         assert!(
             problems[0].ends_with(&format!(
                 "no published record of {} passes the merge gate",

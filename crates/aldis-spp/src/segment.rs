@@ -2,10 +2,15 @@
 //!
 //! 133.0 does not mandate segmentation: these are utilities on top of the codec. The rules are
 //! in `docs/standards/space-packet.md` §5.4.
+//!
+//! Both helpers borrow a buffer, the SDU or the reassembly buffer. A caller that cannot keep
+//! the borrow between calls, such as the C ABI, keeps a [`SegmenterState`] or
+//! [`ReassemblerState`] instead and resumes it with the same buffer on every call; no
+//! reference is stored (API-060; M2 plan D5).
 
 use aldis_core::counter::Continuity;
 use aldis_core::ids::{Apid, SeqCount};
-use aldis_core::{Error, ErrorDetail, Result};
+use aldis_core::{Error, ErrorDetail, ErrorKind, Result};
 
 use crate::config::SppConfig;
 use crate::field;
@@ -117,6 +122,81 @@ impl<'s> Segmenter<'s> {
     pub const fn remaining(&self) -> usize {
         self.sdu.len().saturating_sub(self.offset)
     }
+
+    /// Its progress without the SDU, which [`SegmenterState::resume`] continues with the same
+    /// SDU (SPP-013, API-060; M2 plan D5).
+    #[must_use]
+    pub const fn suspend(&self) -> SegmenterState {
+        SegmenterState {
+            config: self.config,
+            packet_type: self.packet_type,
+            apid: self.apid,
+            sdu_len: self.sdu.len(),
+            max_user_len: self.max_user_len,
+            offset: self.offset,
+        }
+    }
+}
+
+/// A [`Segmenter`]'s progress without its SDU (133.0 §4.1.3.4.2; SPP-013, API-060).
+///
+/// Only [`Segmenter::suspend`] makes one, so every value is the state of a segmenter that
+/// [`Segmenter::new`] accepted (M2 plan D5).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct SegmenterState {
+    config: SppConfig,
+    packet_type: PacketType,
+    apid: Apid,
+    sdu_len: usize,
+    max_user_len: usize,
+    offset: usize,
+}
+
+impl SegmenterState {
+    /// The segmenter again, over `sdu`, which must be the SDU it was suspended with
+    /// (SPP-013, API-060).
+    ///
+    /// # Errors
+    /// `LengthMismatch` (`sdu`) when `sdu` has another length; the content is the caller's.
+    pub const fn resume(self, sdu: &[u8]) -> Result<Segmenter<'_>> {
+        if sdu.len() != self.sdu_len {
+            return Err(Error::new(ErrorKind::LengthMismatch)
+                .with_field(field::SDU)
+                .with_detail(ErrorDetail::Expected {
+                    expected: as_u64(self.sdu_len),
+                    found: as_u64(sdu.len()),
+                }));
+        }
+        Ok(Segmenter {
+            config: self.config,
+            packet_type: self.packet_type,
+            apid: self.apid,
+            sdu,
+            max_user_len: self.max_user_len,
+            offset: self.offset,
+        })
+    }
+
+    /// SDU octets not yet written (133.0 §4.1.3.4.2, SPP-013).
+    #[must_use]
+    pub const fn remaining(&self) -> usize {
+        self.sdu_len.saturating_sub(self.offset)
+    }
+
+    /// Whether every segment has been written (133.0 §4.1.3.4.2, SPP-013).
+    #[must_use]
+    pub const fn is_done(&self) -> bool {
+        self.offset >= self.sdu_len
+    }
+}
+
+/// `n` as `u64` for an error's detail.
+#[expect(
+    clippy::as_conversions,
+    reason = "supported targets are 32- or 64-bit, so usize fits in u64"
+)]
+const fn as_u64(n: usize) -> u64 {
+    n as u64
 }
 
 /// Why the reassembler threw data away (133.0 §4.1.3.4.2; SPP-013, OI-30).
@@ -303,6 +383,85 @@ impl<'b> Reassembler<'b> {
         self.complete = 0;
         self.last = None;
     }
+
+    /// Its state without the buffer, which [`ReassemblerState::resume`] continues with the
+    /// same buffer (SPP-013, API-060; M2 plan D5).
+    #[must_use]
+    pub const fn suspend(&self) -> ReassemblerState {
+        ReassemblerState {
+            apid: self.apid,
+            filled: self.filled,
+            assembling: self.assembling,
+            complete: self.complete,
+            last: self.last,
+        }
+    }
+}
+
+/// A [`Reassembler`]'s state without its buffer (133.0 §4.1.3.4.2; SPP-013, API-060).
+///
+/// Made by [`ReassemblerState::new`] or [`Reassembler::suspend`], so every value is the state of
+/// a reassembler (M2 plan D5).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct ReassemblerState {
+    apid: Apid,
+    filled: usize,
+    assembling: bool,
+    complete: usize,
+    last: Option<SeqCount>,
+}
+
+impl ReassemblerState {
+    /// The state of a new reassembler for `apid`, as [`Reassembler::new`] starts (SPP-013).
+    #[must_use]
+    pub const fn new(apid: Apid) -> ReassemblerState {
+        ReassemblerState {
+            apid,
+            filled: 0,
+            assembling: false,
+            complete: 0,
+            last: None,
+        }
+    }
+
+    /// The reassembler again, over `buf`, which must hold the octets it was suspended with
+    /// (SPP-013, API-060).
+    ///
+    /// # Errors
+    /// `BufferTooSmall` (`needed` = the octets of the partial or completed SDU) when `buf` is
+    /// shorter than them; the content is the caller's.
+    pub const fn resume(self, buf: &mut [u8]) -> Result<Reassembler<'_>> {
+        if buf.len() < self.filled {
+            return Err(Error::buffer_too_small(self.filled));
+        }
+        Ok(Reassembler {
+            apid: self.apid,
+            buf,
+            filled: self.filled,
+            assembling: self.assembling,
+            complete: self.complete,
+            last: self.last,
+        })
+    }
+
+    /// The APID it accepts (133.0 §4.1.3.4.2, SPP-013).
+    #[must_use]
+    pub const fn apid(&self) -> Apid {
+        self.apid
+    }
+
+    /// Whether a partial SDU is in progress (133.0 §4.1.3.4.2, SPP-013).
+    #[must_use]
+    pub const fn is_assembling(&self) -> bool {
+        self.assembling
+    }
+
+    /// Length of the SDU completed by the last push, at the start of the buffer; 0 after any
+    /// other outcome (133.0 §4.1.3.4.2, SPP-013).
+    #[must_use]
+    pub const fn sdu_len(&self) -> usize {
+        self.complete
+    }
 }
 
 #[cfg(test)]
@@ -316,7 +475,7 @@ mod tests {
     extern crate std;
     use std::vec;
 
-    use super::{Discard, Outcome, Reassembler, Segmenter, Status};
+    use super::{Discard, Outcome, Reassembler, ReassemblerState, Segmenter, Status};
     use crate::config::SppConfig;
     use crate::header::{PacketFields, PacketType, SequenceFlags, SpacePacketHeader};
     use crate::sequence::SequenceCounter;
@@ -538,5 +697,78 @@ mod tests {
             prop_assert_eq!(last, Some(outcome(None, Status::Complete(sdu.len()))));
             prop_assert_eq!(ra.sdu(), sdu.as_slice());
         }
+    }
+
+    #[test]
+    fn a_suspended_segmenter_resumes_where_it_stopped() {
+        // req: SPP-013, API-060
+        let cfg = SppConfig::DEFAULT;
+        let sdu = [1_u8, 2, 3, 4, 5];
+        let (mut whole, mut parts) = (vec![], vec![]);
+        let mut counter = SequenceCounter::default();
+        let mut seg = Segmenter::new(&cfg, PacketType::Telemetry, apid(9), &sdu, 2).unwrap();
+        let mut out = [0_u8; 16];
+        while let Some(n) = seg.next_packet(&mut counter, &[], &mut out).unwrap() {
+            whole.push(out[..n].to_vec());
+        }
+        let mut counter = SequenceCounter::default();
+        let mut state = Segmenter::new(&cfg, PacketType::Telemetry, apid(9), &sdu, 2)
+            .unwrap()
+            .suspend();
+        assert_eq!((state.remaining(), state.is_done()), (5, false));
+        loop {
+            let mut seg = state.resume(&sdu).unwrap();
+            let Some(n) = seg.next_packet(&mut counter, &[], &mut out).unwrap() else {
+                break;
+            };
+            parts.push(out[..n].to_vec());
+            state = seg.suspend();
+        }
+        assert_eq!(parts, whole);
+        assert_eq!((state.remaining(), state.is_done()), (0, true));
+        let e = state.resume(&sdu[..4]).unwrap_err();
+        assert_eq!(
+            (e.kind(), e.field(), e.detail()),
+            (
+                ErrorKind::LengthMismatch,
+                Some(field::SDU),
+                ErrorDetail::Expected {
+                    expected: 5,
+                    found: 4
+                }
+            )
+        );
+    }
+
+    #[test]
+    fn a_suspended_reassembler_resumes_with_its_buffer() {
+        // req: SPP-013, API-060
+        let mut buf = [0_u8; 8];
+        let fresh = Reassembler::new(apid(5), &mut buf).suspend();
+        assert_eq!(fresh, ReassemblerState::new(apid(5)));
+        assert_eq!(
+            (fresh.apid(), fresh.is_assembling(), fresh.sdu_len()),
+            (apid(5), false, 0)
+        );
+        let mut state = fresh;
+        let pushes = [
+            (header(F, 1), &[1_u8, 2][..]),
+            (header(C, 2), &[3][..]),
+            (header(L, 3), &[4][..]),
+        ];
+        let mut outcomes = vec![];
+        for (h, data) in pushes {
+            let mut r = state.resume(&mut buf).unwrap();
+            outcomes.push(r.push(&h, data).unwrap());
+            state = r.suspend();
+        }
+        assert_eq!(outcomes[2], outcome(None, Status::Complete(4)));
+        assert_eq!((state.sdu_len(), state.is_assembling()), (4, false));
+        assert_eq!(state.resume(&mut buf).unwrap().sdu(), &[1, 2, 3, 4]);
+        let e = state.resume(&mut [0_u8; 3]).unwrap_err();
+        assert_eq!(
+            (e.kind(), e.detail()),
+            (ErrorKind::BufferTooSmall, ErrorDetail::Needed(4))
+        );
     }
 }

@@ -61,6 +61,8 @@ name = "aldis-ffi"
 version = "0.2.0"
 dependencies = [
  "aldis",
+ "aldis-testkit",
+ "serde_json",
 ]
 
 [[package]]
