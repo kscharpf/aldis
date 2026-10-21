@@ -4,8 +4,9 @@
 //! positive leap second. Leap-second handling is the caller's responsibility; Aldis checks
 //! only the counter ranges (TIME-022, `docs/standards/time-codes.md` §6).
 
-use aldis_core::{Error, ErrorKind, FieldId, Result};
+use aldis_core::{Error, ErrorKind, Result};
 
+use crate::field;
 use crate::pfield::{PField, PFieldTail, TimeCodeId};
 use crate::util::{bounded, wide, widen16};
 
@@ -15,15 +16,15 @@ pub const MAX_MS_OF_DAY: u32 = 86_400_999;
 bounded!(
     /// Milliseconds of day, 0 to 86 400 999: one positive leap second is allowed (301.0 Annex
     /// A, TIME-021).
-    MsOfDay, u32, "ms_of_day", 0, 86_400_999
+    MsOfDay, u32, field::MS_OF_DAY, 0, 86_400_999
 );
 bounded!(
     /// Microseconds of millisecond, 0–999 (301.0 Annex A, TIME-021).
-    Micros, u16, "subms", 0, 999
+    Micros, u16, field::SUBMS, 0, 999
 );
 bounded!(
     /// Picoseconds of millisecond, 0–999 999 999 (301.0 Annex A, TIME-021).
-    Picos, u32, "subms", 0, 999_999_999
+    Picos, u32, field::SUBMS, 0, 999_999_999
 );
 
 /// The submillisecond segment of a CDS value; its resolution must match the format's
@@ -212,7 +213,7 @@ impl CdsFormat {
             0b01 => CdsSubMs::Micros,
             0b10 => CdsSubMs::Picos,
             _ => {
-                return Err(Error::new(ErrorKind::ReservedValue).with_field(FieldId::new("subms")));
+                return Err(Error::new(ErrorKind::ReservedValue).with_field(field::SUBMS));
             }
         };
         Ok(CdsFormat {
@@ -259,7 +260,7 @@ impl Cds {
     /// construction; only the fit to `format` is checked here (301.0 §3.3.1; TIME-020, TIME-021).
     ///
     /// # Errors
-    /// `OutOfRange` (`day`) if the day does not fit the 16- or 24-bit day segment;
+    /// `OutOfRange` (`cds_day`) if the day does not fit the 16- or 24-bit day segment;
     /// `InvalidField` (`subms`) if the value's submillisecond resolution is not the format's.
     pub const fn new(format: CdsFormat, value: CdsValue) -> Result<Cds> {
         let max_day = match format.day {
@@ -267,7 +268,11 @@ impl Cds {
             CdsDayLen::Bits24 => 0xFF_FFFF,
         };
         if value.day > max_day {
-            return Err(Error::out_of_range("day", wide(max_day), wide(value.day)));
+            return Err(Error::out_of_range(
+                field::CDS_DAY,
+                wide(max_day),
+                wide(value.day),
+            ));
         }
         if !matches!(
             (value.subms, format.subms),
@@ -275,7 +280,7 @@ impl Cds {
                 | (SubMillis::Micros(_), CdsSubMs::Micros)
                 | (SubMillis::Picos(_), CdsSubMs::Picos)
         ) {
-            return Err(Error::new(ErrorKind::InvalidField).with_field(FieldId::new("subms")));
+            return Err(Error::new(ErrorKind::InvalidField).with_field(field::SUBMS));
         }
         Ok(Cds { format, value })
     }
@@ -354,8 +359,9 @@ mod tests {
         Cds, CdsDayLen, CdsEpoch, CdsFormat, CdsSubMs, CdsValue, MAX_MS_OF_DAY, Micros, MsOfDay,
         Picos, SubMillis,
     };
+    use crate::field;
     use crate::pfield::{PField, PFieldTail};
-    use aldis_core::{ErrorDetail, ErrorKind, FieldId};
+    use aldis_core::{ErrorDetail, ErrorKind};
 
     const SUBMS: [CdsSubMs; 3] = [CdsSubMs::None, CdsSubMs::Micros, CdsSubMs::Picos];
 
@@ -389,8 +395,8 @@ mod tests {
         );
         let e = CdsFormat::from_pfield(&PField::parse(&[0x43]).unwrap()).unwrap_err();
         assert_eq!(
-            (e.kind(), e.field().map(FieldId::name)),
-            (ErrorKind::ReservedValue, Some("subms"))
+            (e.kind(), e.field()),
+            (ErrorKind::ReservedValue, Some(field::SUBMS))
         );
         assert_eq!(SUBMS.map(CdsSubMs::max), [0, 999, 999_999_999]);
     }
@@ -411,22 +417,19 @@ mod tests {
         for (e, field, expected, found) in [
             (
                 MsOfDay::try_from(86_401_000).unwrap_err(),
-                "ms_of_day",
+                field::MS_OF_DAY,
                 86_400_999,
                 86_401_000,
             ),
-            (Micros::try_from(1000).unwrap_err(), "subms", 999, 1000),
+            (Micros::try_from(1000).unwrap_err(), field::SUBMS, 999, 1000),
             (
                 Picos::try_from(1_000_000_000).unwrap_err(),
-                "subms",
+                field::SUBMS,
                 999_999_999,
                 1_000_000_000,
             ),
         ] {
-            assert_eq!(
-                (e.kind(), e.field().map(FieldId::name)),
-                (ErrorKind::OutOfRange, Some(field))
-            );
+            assert_eq!((e.kind(), e.field()), (ErrorKind::OutOfRange, Some(field)));
             assert_eq!(e.detail(), ErrorDetail::Expected { expected, found });
         }
         for resolution in SUBMS {
@@ -457,9 +460,9 @@ mod tests {
         )
         .unwrap_err();
         assert_eq!(
-            (e.field().map(FieldId::name), e.detail()),
+            (e.field(), e.detail()),
             (
-                Some("day"),
+                Some(field::CDS_DAY),
                 ErrorDetail::Expected {
                     expected: 0xFFFF,
                     found: 0x1_0000
@@ -500,8 +503,8 @@ mod tests {
             )
             .unwrap_err();
             assert_eq!(
-                (e.kind(), e.field().map(FieldId::name)),
-                (ErrorKind::InvalidField, Some("subms"))
+                (e.kind(), e.field()),
+                (ErrorKind::InvalidField, Some(field::SUBMS))
             );
         }
     }
@@ -515,25 +518,28 @@ mod tests {
             (
                 fu,
                 &[0, 0, 0x05, 0x26, 0x5F, 0xE8, 0, 0][..],
-                "ms_of_day",
+                field::MS_OF_DAY,
                 86_400_999,
                 86_401_000,
             ),
-            (fu, &[0, 0, 0, 0, 0, 0, 0x03, 0xE8], "subms", 999, 1000),
-            (fu, &[0, 0, 0, 0, 0, 0, 0xFF, 0xFF], "subms", 999, 65_535),
+            (fu, &[0, 0, 0, 0, 0, 0, 0x03, 0xE8], field::SUBMS, 999, 1000),
+            (
+                fu,
+                &[0, 0, 0, 0, 0, 0, 0xFF, 0xFF],
+                field::SUBMS,
+                999,
+                65_535,
+            ),
             (
                 fp,
                 &[0, 0, 0, 0, 0, 0, 0x3B, 0x9A, 0xCA, 0x00],
-                "subms",
+                field::SUBMS,
                 999_999_999,
                 1_000_000_000,
             ),
         ] {
             let e = Cds::from_t(f, t).unwrap_err();
-            assert_eq!(
-                (e.kind(), e.field().map(FieldId::name)),
-                (ErrorKind::OutOfRange, Some(field))
-            );
+            assert_eq!((e.kind(), e.field()), (ErrorKind::OutOfRange, Some(field)));
             assert_eq!(e.detail(), ErrorDetail::Expected { expected, found });
         }
     }

@@ -3,7 +3,9 @@
 //!
 //! CCSDS numbers bits from the most significant: bit 0 of an octet is its MSB.
 
-use aldis_core::{Error, ErrorKind, FieldId, Result};
+use aldis_core::{Error, ErrorKind, Result};
+
+use crate::field;
 
 /// Largest P-field Aldis accepts, in octets (301.0 §3.1.1, TIME-005).
 pub const MAX_PFIELD_LEN: usize = 8;
@@ -113,7 +115,7 @@ impl PField {
         }
         let used = usize::from(rest_len).wrapping_add(1);
         if used == MAX_PFIELD_LEN {
-            Err(Error::new(ErrorKind::Malformed).with_field(FieldId::new("pfield")))
+            Err(Error::new(ErrorKind::Malformed).with_field(field::PFIELD))
         } else {
             Err(Error::incomplete(used.wrapping_add(1)))
         }
@@ -216,7 +218,7 @@ impl PFieldTail {
     /// `InvalidField` (`pfield_tail`) if there are more than 7 octets, or the extension flags do
     /// not form a chain: set on every octet but the last, clear on the last.
     pub fn new(octets: &[u8]) -> Result<PFieldTail> {
-        let invalid = Error::new(ErrorKind::InvalidField).with_field(FieldId::new("pfield_tail"));
+        let invalid = Error::new(ErrorKind::InvalidField).with_field(field::PFIELD_TAIL);
         if octets.len() >= MAX_PFIELD_LEN {
             return Err(invalid);
         }

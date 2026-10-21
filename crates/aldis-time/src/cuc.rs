@@ -6,6 +6,7 @@
 
 use aldis_core::{Error, ErrorKind, FieldId, Result};
 
+use crate::field;
 use crate::pfield::{PField, PFieldTail, TimeCodeId};
 use crate::util::wide8;
 
@@ -34,7 +35,7 @@ pub struct CucFormat {
 }
 
 /// `OutOfRange` for `field` with its limit and the value found.
-const fn range(field: &'static str, limit: u64, found: u64) -> Error {
+const fn range(field: FieldId, limit: u64, found: u64) -> Error {
     Error::out_of_range(field, limit, found)
 }
 
@@ -59,14 +60,14 @@ impl CucFormat {
                 CucFormat::MAX_COARSE
             };
             return Err(Error::out_of_range(
-                "coarse_octets",
+                field::COARSE_OCTETS,
                 wide8(limit),
                 wide8(coarse_octets),
             ));
         }
         if fine_octets > CucFormat::MAX_FINE {
             return Err(Error::out_of_range(
-                "fine_octets",
+                field::FINE_OCTETS,
                 wide8(CucFormat::MAX_FINE),
                 wide8(fine_octets),
             ));
@@ -88,7 +89,7 @@ impl CucFormat {
     /// `OutOfRange` (`mission_bits`) above 3.
     pub const fn with_mission_bits(self, bits: u8) -> Result<CucFormat> {
         if bits > 0b11 {
-            return Err(Error::out_of_range("mission_bits", 3, wide8(bits)));
+            return Err(Error::out_of_range(field::MISSION_BITS, 3, wide8(bits)));
         }
         Ok(CucFormat {
             mission: bits,
@@ -115,7 +116,7 @@ impl CucFormat {
     /// P-field longer than 8.
     pub fn with_tail(self, tail: PFieldTail) -> Result<CucFormat> {
         if tail.len() > 6 {
-            return Err(Error::new(ErrorKind::InvalidField).with_field(FieldId::new("pfield_tail")));
+            return Err(Error::new(ErrorKind::InvalidField).with_field(field::PFIELD_TAIL));
         }
         Ok(CucFormat {
             tail,
@@ -272,7 +273,7 @@ fn check_coarse(format: &CucFormat, coarse: u64) -> Result<()> {
         .checked_shr(64_u32.wrapping_sub(bits))
         .unwrap_or(u64::MAX);
     if coarse > max {
-        return Err(range("coarse", max, coarse));
+        return Err(range(field::COARSE, max, coarse));
     }
     Ok(())
 }
@@ -298,7 +299,7 @@ impl Cuc {
             .checked_shr(u32::from(format.fine).wrapping_mul(8))
             .unwrap_or(0);
         if value.fine & below != 0 {
-            return Err(Error::new(ErrorKind::OutOfRange).with_field(FieldId::new("fine")));
+            return Err(Error::new(ErrorKind::OutOfRange).with_field(field::FINE));
         }
         Ok(Cuc { format, value })
     }
@@ -312,7 +313,7 @@ impl Cuc {
     /// after any carry, does not fit the format (TIME-012).
     pub fn from_seconds_nanos(format: CucFormat, seconds: u64, nanos: u32) -> Result<Cuc> {
         if nanos >= NANOS {
-            return Err(range("nanoseconds", 999_999_999, u64::from(nanos)));
+            return Err(range(field::NANOSECONDS, 999_999_999, u64::from(nanos)));
         }
         let bits = u32::from(format.fine).wrapping_mul(8);
         // nanos < 2³⁰ and bits ≤ 80, so the shifted value stays below 2¹¹⁰.
@@ -320,7 +321,7 @@ impl Cuc {
         let (coarse, raw) = if scaled == 1_u128 << bits {
             let carried = seconds
                 .checked_add(1)
-                .ok_or_else(|| range("coarse", u64::MAX, u64::MAX))?;
+                .ok_or_else(|| range(field::COARSE, u64::MAX, u64::MAX))?;
             (carried, 0)
         } else {
             (seconds, scaled)

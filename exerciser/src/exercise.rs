@@ -15,6 +15,7 @@ use aldis_core::crc::{
     crc16_update_table, syndrome, verify_fecf, write_fecf,
 };
 use aldis_core::error::{Error, ErrorDetail, ErrorKind, FieldId};
+use aldis_core::field;
 use aldis_core::ids::{Apid, FrameSeqNum, MapId, PacketVersion, SeqCount, SpacecraftId, VcId};
 use aldis_core::layout::{FrameLayout, LayoutSpec};
 use aldis_core::mode::DecodeMode;
@@ -174,14 +175,17 @@ fn tally_layout(t: &mut Tally, l: &FrameLayout, accessors: &[core::ops::Range<us
 
 fn apis_errors_ids(tally: &mut Tally) {
     // error
-    let err0 = Error::out_of_range(bb("apid"), 2047, bb(4096))
-        .with_field(FieldId::new("apid"))
+    let err0 = Error::out_of_range(bb(field::APID), 2047, bb(4096))
+        .with_field(bb(field::APID))
         .with_detail(ErrorDetail::Expected {
             expected: 2047,
             found: 4096,
         });
     tally.check(
-        err0.kind() == ErrorKind::OutOfRange && err0.field().map(FieldId::name) == Some("apid"),
+        err0.kind() == ErrorKind::OutOfRange
+            && err0.field() == Some(field::APID)
+            && err0.field().map(FieldId::code) == Some(field::APID.code())
+            && err0.field() != Some(field::EPI),
     );
     tally.check(err0.detail() != ErrorDetail::None);
     tally.check(Error::from(ErrorKind::Malformed) == Error::new(ErrorKind::Malformed));

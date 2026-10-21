@@ -9,6 +9,7 @@
 use aldis_core::Result;
 
 use crate::ccs::CcsVariation;
+use crate::field;
 use crate::util::{bounded, out_of_bounds, wide8, wide16};
 
 /// Gregorian leap year: divisible by 4, except centuries not divisible by 400 (301.0 Annex A).
@@ -102,24 +103,24 @@ pub(crate) const fn civil(day: u32) -> (u32, u8, u8) {
 
 bounded!(
     /// Year A.D., 1–9999 (301.0 Annex A, §3.5.1; TIME-030).
-    Year, u16, "year", 1, 9999
+    Year, u16, field::YEAR, 1, 9999
 );
 bounded!(
     /// Month of year, 1–12 (301.0 Annex A; TIME-030).
-    Month, u8, "month", 1, 12
+    Month, u8, field::MONTH, 1, 12
 );
 bounded!(
     /// Hour of day, 0–23 (301.0 Annex A; TIME-030).
-    Hour, u8, "hour", 0, 23
+    Hour, u8, field::HOUR, 0, 23
 );
 bounded!(
     /// Minute of hour, 0–59 (301.0 Annex A; TIME-030).
-    Minute, u8, "minute", 0, 59
+    Minute, u8, field::MINUTE, 0, 59
 );
 bounded!(
     /// Second of minute, 0–60: 60 is a positive leap second, accepted at any minute because
     /// leap-second handling is the caller's (301.0 Annex A, TIME-022, TIME-030).
-    Second, u8, "second", 0, 60
+    Second, u8, field::SECOND, 0, 60
 );
 
 /// How a [`CalendarDate`] names its day.
@@ -153,7 +154,7 @@ impl CalendarDate {
     pub const fn from_month_day(year: Year, month: Month, day: u8) -> Result<CalendarDate> {
         let last = days_in_month(year.0, month.0);
         if day == 0 || day > last {
-            return Err(out_of_bounds("day", wide8(day), 1, wide8(last)));
+            return Err(out_of_bounds(field::DAY, wide8(day), 1, wide8(last)));
         }
         Ok(CalendarDate {
             year,
@@ -170,7 +171,7 @@ impl CalendarDate {
         let last = days_in_year(year.0);
         if day_of_year == 0 || day_of_year > last {
             return Err(out_of_bounds(
-                "day_of_year",
+                field::DAY_OF_YEAR,
                 wide16(day_of_year),
                 1,
                 wide16(last),
@@ -259,7 +260,8 @@ mod tests {
         CalendarDate, Hour, Minute, Month, Second, Year, days_in_month, days_in_year, is_leap,
     };
     use crate::ccs::CcsVariation;
-    use aldis_core::{ErrorDetail, ErrorKind, FieldId};
+    use crate::field;
+    use aldis_core::{ErrorDetail, ErrorKind};
 
     #[test]
     fn gregorian_rules() {
@@ -291,16 +293,21 @@ mod tests {
         assert_eq!(Second::new(61), None);
         assert_eq!(Second::new(0).map(Second::get), Some(0));
         for (e, field, expected, found) in [
-            (Year::try_from(0).unwrap_err(), "year", 1, 0),
-            (Year::try_from(10_000).unwrap_err(), "year", 9999, 10_000),
-            (Month::try_from(0).unwrap_err(), "month", 1, 0),
-            (Month::try_from(13).unwrap_err(), "month", 12, 13),
-            (Hour::try_from(24).unwrap_err(), "hour", 23, 24),
-            (Minute::try_from(60).unwrap_err(), "minute", 59, 60),
-            (Second::try_from(61).unwrap_err(), "second", 60, 61),
+            (Year::try_from(0).unwrap_err(), field::YEAR, 1, 0),
+            (
+                Year::try_from(10_000).unwrap_err(),
+                field::YEAR,
+                9999,
+                10_000,
+            ),
+            (Month::try_from(0).unwrap_err(), field::MONTH, 1, 0),
+            (Month::try_from(13).unwrap_err(), field::MONTH, 12, 13),
+            (Hour::try_from(24).unwrap_err(), field::HOUR, 23, 24),
+            (Minute::try_from(60).unwrap_err(), field::MINUTE, 59, 60),
+            (Second::try_from(61).unwrap_err(), field::SECOND, 60, 61),
         ] {
             assert_eq!(e.kind(), ErrorKind::OutOfRange);
-            assert_eq!(e.field().map(FieldId::name), Some(field));
+            assert_eq!(e.field(), Some(field));
             assert_eq!(e.detail(), ErrorDetail::Expected { expected, found });
         }
         assert_eq!(Hour::try_from(0).map(Hour::get), Ok(0));
@@ -366,37 +373,37 @@ mod tests {
         for (e, field, expected, found) in [
             (
                 CalendarDate::from_month_day(y(2023), m(2), 29).unwrap_err(),
-                "day",
+                field::DAY,
                 28,
                 29,
             ),
             (
                 CalendarDate::from_month_day(y(2023), m(4), 0).unwrap_err(),
-                "day",
+                field::DAY,
                 1,
                 0,
             ),
             (
                 CalendarDate::from_month_day(y(1900), m(2), 29).unwrap_err(),
-                "day",
+                field::DAY,
                 28,
                 29,
             ),
             (
                 CalendarDate::from_day_of_year(y(2023), 366).unwrap_err(),
-                "day_of_year",
+                field::DAY_OF_YEAR,
                 365,
                 366,
             ),
             (
                 CalendarDate::from_day_of_year(y(2023), 0).unwrap_err(),
-                "day_of_year",
+                field::DAY_OF_YEAR,
                 1,
                 0,
             ),
         ] {
             assert_eq!(e.kind(), ErrorKind::OutOfRange);
-            assert_eq!(e.field().map(FieldId::name), Some(field));
+            assert_eq!(e.field(), Some(field));
             assert_eq!(e.detail(), ErrorDetail::Expected { expected, found });
         }
         assert!(CalendarDate::from_month_day(y(2000), m(2), 29).is_ok());

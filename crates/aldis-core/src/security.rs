@@ -11,6 +11,7 @@ use core::ops::Range;
 use crate::error::{
     Error, ErrorKind, Result, u8_to_usize, u16_to_usize, usize_to_u8, usize_to_u16,
 };
+use crate::field;
 use crate::ids::{MapId, SpacecraftId, VcId};
 use crate::layout::FrameLayout;
 
@@ -44,12 +45,12 @@ impl SecurityLayout {
     /// `InvalidConfig` if the header exceeds 64 octets or the trailer exceeds 65 535 octets.
     pub const fn new(header_len: usize, trailer_len: usize) -> Result<SecurityLayout> {
         let Some(header_len) = usize_to_u8(header_len, SecurityLayout::MAX_HEADER_LEN) else {
-            return Err(Error::new(ErrorKind::InvalidConfig)
-                .with_field(crate::error::FieldId::new("security_header_len")));
+            return Err(Error::new(ErrorKind::InvalidConfig).with_field(field::SECURITY_HEADER_LEN));
         };
         let Some(trailer_len) = usize_to_u16(trailer_len, SecurityLayout::MAX_TRAILER_LEN) else {
-            return Err(Error::new(ErrorKind::InvalidConfig)
-                .with_field(crate::error::FieldId::new("security_trailer_len")));
+            return Err(
+                Error::new(ErrorKind::InvalidConfig).with_field(field::SECURITY_TRAILER_LEN)
+            );
         };
         Ok(SecurityLayout {
             header_len,
@@ -207,8 +208,7 @@ impl SecuredFields {
         let ordered =
             header.start <= header.end && data.start <= data.end && trailer.start <= trailer.end;
         if !ordered || header.end != data.start || data.end != trailer.start {
-            return Err(Error::new(ErrorKind::InvalidField)
-                .with_field(crate::error::FieldId::new("secured_fields")));
+            return Err(Error::new(ErrorKind::InvalidField).with_field(field::SECURED_FIELDS));
         }
         Ok(SecuredFields {
             header,
@@ -347,7 +347,8 @@ mod tests {
         FixedPatternSecurity, FrameCtx, NoSecurity, Protocol, SecuredFields, SecurityHook,
         SecurityLayout,
     };
-    use crate::error::{ErrorKind, FieldId};
+    use crate::error::ErrorKind;
+    use crate::field;
     use crate::ids::{MapId, SpacecraftId, VcId};
     use crate::layout::{FrameLayout, LayoutSpec};
 
@@ -436,8 +437,8 @@ mod tests {
         for (h, d, t) in bad {
             let e = SecuredFields::new(h.clone(), d.clone(), t.clone()).unwrap_err();
             assert_eq!(
-                (e.kind(), e.field().map(FieldId::name)),
-                (ErrorKind::InvalidField, Some("secured_fields")),
+                (e.kind(), e.field()),
+                (ErrorKind::InvalidField, Some(field::SECURED_FIELDS)),
                 "{h:?} {d:?} {t:?}"
             );
         }
@@ -472,17 +473,19 @@ mod tests {
         // Either length alone makes the layout non-empty.
         assert!(!SecurityLayout::new(6, 0).unwrap().is_none());
         assert!(!SecurityLayout::new(0, 16).unwrap().is_none());
+        let e = SecurityLayout::new(65, 0).unwrap_err();
         assert_eq!(
-            SecurityLayout::new(65, 0).unwrap_err().kind(),
-            ErrorKind::InvalidConfig
+            (e.kind(), e.field()),
+            (ErrorKind::InvalidConfig, Some(field::SECURITY_HEADER_LEN))
         );
         assert_eq!(
             SecurityLayout::new(300, 0).unwrap_err().kind(),
             ErrorKind::InvalidConfig
         );
+        let e = SecurityLayout::new(0, 70_000).unwrap_err();
         assert_eq!(
-            SecurityLayout::new(0, 70_000).unwrap_err().kind(),
-            ErrorKind::InvalidConfig
+            (e.kind(), e.field()),
+            (ErrorKind::InvalidConfig, Some(field::SECURITY_TRAILER_LEN))
         );
         assert_eq!(
             SecurityLayout::USLP_TRUNCATED,

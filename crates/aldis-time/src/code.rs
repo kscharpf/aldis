@@ -1,12 +1,13 @@
 //! Time codes with an explicit or implicit P-field: decode, encode, agency-defined codes
 //! (301.0 §3, §3.6; TIME-001…TIME-006).
 
-use aldis_core::{AnomalySet, DecodeMode, Error, ErrorDetail, ErrorKind, FieldId, Result};
+use aldis_core::{AnomalySet, DecodeMode, Error, ErrorDetail, ErrorKind, Result};
 
 use crate::anomaly::TimeAnomaly;
 use crate::ccs::{Ccs, CcsFormat};
 use crate::cds::{Cds, CdsFormat};
 use crate::cuc::{Cuc, CucFormat};
+use crate::field;
 use crate::pfield::{MAX_PFIELD_LEN, PField, PFieldTail, ReservedPField, TimeCodeId};
 use crate::util::wide8;
 
@@ -32,7 +33,11 @@ impl AgencyFormat {
         if t_len == 0 || t_len > MAX_AGENCY_LEN {
             // Report the violated bound: 1 for zero, the maximum otherwise (GEN-041).
             let limit = if t_len == 0 { 1 } else { MAX_AGENCY_LEN };
-            return Err(Error::out_of_range("t_len", wide8(limit), wide8(t_len)));
+            return Err(Error::out_of_range(
+                field::T_LEN,
+                wide8(limit),
+                wide8(t_len),
+            ));
         }
         Ok(AgencyFormat {
             t_len,
@@ -92,7 +97,7 @@ impl Agency {
     pub fn new(format: AgencyFormat, t: &[u8]) -> Result<Agency> {
         if t.len() != format.t_len() {
             return Err(Error::new(ErrorKind::LengthMismatch)
-                .with_field(FieldId::new("tfield"))
+                .with_field(field::TFIELD)
                 .with_detail(ErrorDetail::Expected {
                     expected: u64::from(format.t_len),
                     found: u64::try_from(t.len()).unwrap_or(u64::MAX),
@@ -268,31 +273,31 @@ fn t_field(bytes: &[u8], start: usize, len: usize) -> Result<&[u8]> {
 pub fn decode_with_pfield(bytes: &[u8], mode: DecodeMode) -> Result<Decoded> {
     let pfield = PField::parse(bytes)?;
     let mut anomalies = AnomalySet::empty();
-    let format =
-        match pfield.id() {
-            TimeCodeId::CucLevel1 | TimeCodeId::CucLevel2 => {
-                TimeFormat::Cuc(CucFormat::from_pfield(&pfield))
-            }
-            TimeCodeId::Cds => TimeFormat::Cds(CdsFormat::from_pfield(&pfield)?),
-            TimeCodeId::Ccs => TimeFormat::Ccs(CcsFormat::from_pfield(&pfield)?),
-            TimeCodeId::Agency => TimeFormat::Agency(AgencyFormat::from_pfield(&pfield)),
-            TimeCodeId::Reserved000 | TimeCodeId::Reserved011 | TimeCodeId::Reserved111 => {
-                return match mode {
-                    DecodeMode::Strict => Err(Error::new(ErrorKind::ReservedValue)
-                        .with_field(FieldId::new("time_code_id"))),
-                    DecodeMode::Lenient => Ok(Decoded {
-                        code: TimeCode::Unknown(ReservedPField::from_reserved(pfield)),
-                        pfield: Some(pfield),
-                        len: pfield.len(),
-                        anomalies: AnomalySet::from_flags(&[TimeAnomaly::ReservedTimeCodeId]),
-                    }),
-                };
-            }
-        };
+    let format = match pfield.id() {
+        TimeCodeId::CucLevel1 | TimeCodeId::CucLevel2 => {
+            TimeFormat::Cuc(CucFormat::from_pfield(&pfield))
+        }
+        TimeCodeId::Cds => TimeFormat::Cds(CdsFormat::from_pfield(&pfield)?),
+        TimeCodeId::Ccs => TimeFormat::Ccs(CcsFormat::from_pfield(&pfield)?),
+        TimeCodeId::Agency => TimeFormat::Agency(AgencyFormat::from_pfield(&pfield)),
+        TimeCodeId::Reserved000 | TimeCodeId::Reserved011 | TimeCodeId::Reserved111 => {
+            return match mode {
+                DecodeMode::Strict => {
+                    Err(Error::new(ErrorKind::ReservedValue).with_field(field::TIME_CODE_ID))
+                }
+                DecodeMode::Lenient => Ok(Decoded {
+                    code: TimeCode::Unknown(ReservedPField::from_reserved(pfield)),
+                    pfield: Some(pfield),
+                    len: pfield.len(),
+                    anomalies: AnomalySet::from_flags(&[TimeAnomaly::ReservedTimeCodeId]),
+                }),
+            };
+        }
+    };
     if format.has_tail() {
         match mode {
             DecodeMode::Strict => {
-                return Err(Error::new(ErrorKind::ReservedValue).with_field(FieldId::new("pfield")));
+                return Err(Error::new(ErrorKind::ReservedValue).with_field(field::PFIELD));
             }
             DecodeMode::Lenient => anomalies.insert(TimeAnomaly::UndefinedPFieldExtension),
         }
@@ -374,7 +379,7 @@ impl TimeCode {
     /// (`pfield`) for [`TimeCode::Unknown`] without its P-field, which would write nothing.
     pub fn encode(&self, include_pfield: bool, out: &mut [u8]) -> Result<usize> {
         if !include_pfield && matches!(self, TimeCode::Unknown(_)) {
-            return Err(Error::new(ErrorKind::InvalidField).with_field(FieldId::new("pfield")));
+            return Err(Error::new(ErrorKind::InvalidField).with_field(field::PFIELD));
         }
         let pfield = self.pfield();
         let (p_octets, p_len) = if include_pfield {
@@ -409,8 +414,9 @@ mod tests {
         Cds, CdsDayLen, CdsEpoch, CdsFormat, CdsSubMs, CdsValue, MsOfDay, Picos, SubMillis,
     };
     use crate::cuc::{Cuc, CucEpoch, CucFormat, CucValue};
+    use crate::field;
     use crate::pfield::{PField, PFieldTail};
-    use aldis_core::{DecodeMode, ErrorDetail, ErrorKind, FieldId};
+    use aldis_core::{DecodeMode, ErrorDetail, ErrorKind};
     use proptest::prelude::*;
 
     fn samples() -> [TimeCode; 4] {
@@ -471,8 +477,8 @@ mod tests {
         );
         let e = Agency::new(f, &[1, 2]).unwrap_err();
         assert_eq!(
-            (e.kind(), e.field().map(FieldId::name)),
-            (ErrorKind::LengthMismatch, Some("tfield"))
+            (e.kind(), e.field()),
+            (ErrorKind::LengthMismatch, Some(field::TFIELD))
         );
         let a = Agency::new(AgencyFormat::new(2).unwrap(), &[1, 2]).unwrap();
         assert_eq!((a.tfield(), a.format().t_len()), (&[1, 2][..], 2));
@@ -526,8 +532,8 @@ mod tests {
             if tail {
                 let e = strict.unwrap_err();
                 assert_eq!(
-                    (e.kind(), e.field().map(FieldId::name)),
-                    (ErrorKind::ReservedValue, Some("pfield"))
+                    (e.kind(), e.field()),
+                    (ErrorKind::ReservedValue, Some(field::PFIELD))
                 );
             } else {
                 assert_eq!(strict.unwrap().code(), code);
@@ -552,8 +558,8 @@ mod tests {
         // req: TIME-002, TIME-003, API-032
         let e = decode_with_pfield(&[0x30, 0], DecodeMode::Strict).unwrap_err();
         assert_eq!(
-            (e.kind(), e.field().map(FieldId::name)),
-            (ErrorKind::ReservedValue, Some("time_code_id"))
+            (e.kind(), e.field()),
+            (ErrorKind::ReservedValue, Some(field::TIME_CODE_ID))
         );
         let d: Decoded = decode_with_pfield(&[0xB0, 0x01, 0xFF], DecodeMode::Lenient).unwrap();
         assert_eq!(d.len(), 2);
@@ -569,8 +575,8 @@ mod tests {
         assert_eq!(out[..2], [0xB0, 0x01]);
         let e = d.code().encode(false, &mut out).unwrap_err();
         assert_eq!(
-            (e.kind(), e.field().map(FieldId::name)),
-            (ErrorKind::InvalidField, Some("pfield"))
+            (e.kind(), e.field()),
+            (ErrorKind::InvalidField, Some(field::PFIELD))
         );
         assert_eq!(PField::parse(&[0xB0, 0x01]).unwrap(), p);
     }

@@ -6,6 +6,7 @@
 //! leaves the item queued (API-061).
 
 use crate::error::{Error, ErrorKind, Result};
+use crate::field;
 
 /// `(i + k) mod n` for `i < n` and `k <= n`, without division. Callers guarantee `n > 0`
 /// (a zero-capacity container is always full and always empty, so it never indexes).
@@ -131,13 +132,13 @@ const PREFIX: usize = 4;
 const fn record_len_err(cap: usize, len: usize) -> Error {
     if let Some(max_len) = cap.checked_sub(PREFIX) {
         Error::out_of_range(
-            "record_len",
+            field::RECORD_LEN,
             crate::error::as_u64(max_len),
             crate::error::as_u64(len),
         )
     } else {
         Error::out_of_range(
-            "capacity",
+            field::CAPACITY,
             crate::error::as_u64(PREFIX),
             crate::error::as_u64(cap),
         )

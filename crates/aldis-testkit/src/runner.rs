@@ -3,6 +3,8 @@
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 
+use std::num::NonZeroU16;
+
 use serde_json::{Map, Value};
 
 use crate::model::{CodecCase, CodecFile, VectorFile};
@@ -12,8 +14,14 @@ use crate::model::{CodecCase, CodecFile, VectorFile};
 pub enum Outcome {
     /// Success with the output values (compared exactly with `expect`).
     Ok(Map<String, Value>),
-    /// Failure with the error kind name from the catalogue (e.g. `"CrcMismatch"`).
-    Err(String),
+    /// Failure with the error kind name from the catalogue (e.g. `"CrcMismatch"`), and the
+    /// code of the field the error names, if it names one (03-api-model.md §9.1, API-082).
+    Err {
+        /// The error kind name.
+        kind: String,
+        /// The field code, compared when the case gives `expect.field` (M2 plan D3).
+        field: Option<NonZeroU16>,
+    },
     /// The handler does not implement this operation. Always a failure (TV-012).
     Unsupported,
 }
@@ -95,16 +103,21 @@ pub fn compare(case: &CodecCase, outcome: &Outcome) -> Result<(), String> {
             }
             Err(diffs.join("; "))
         }
-        (true, Outcome::Err(kind)) => Err(format!("expected success, got error {kind}")),
+        (true, Outcome::Err { kind, .. }) => Err(format!("expected success, got error {kind}")),
         (false, Outcome::Ok(actual)) => Err(format!(
             "expected error {}, got success {}",
             exp.error.as_deref().unwrap_or("?"),
             Value::Object(actual.clone())
         )),
-        (false, Outcome::Err(kind)) => match exp.error.as_deref() {
-            Some(e) if e == kind => Ok(()),
-            Some(e) => Err(format!("expected error {e}, got {kind}")),
-            None => Err("vector expects failure but names no error kind".to_owned()),
+        (false, Outcome::Err { kind, field }) => match (exp.error.as_deref(), exp.field) {
+            (Some(e), _) if e != kind => Err(format!("expected error {e}, got {kind}")),
+            // The field is compared when the case gives it (TV-012, M2 plan D3).
+            (Some(_), Some(code)) if *field != Some(code) => Err(format!(
+                "expected error {kind} naming field {code}, got {}",
+                field.map_or_else(|| "no field".to_owned(), |f| format!("field {f}"))
+            )),
+            (Some(_), _) => Ok(()),
+            (None, _) => Err("vector expects failure but names no error kind".to_owned()),
         },
     }
 }
@@ -154,6 +167,7 @@ mod tests {
     use super::{Outcome, compare, run_codec};
     use crate::model::{CodecFile, VectorFile};
     use serde_json::{Map, Value, json};
+    use std::num::NonZeroU16;
     use std::path::Path;
 
     fn file(cases: &Value) -> CodecFile {
@@ -167,6 +181,45 @@ mod tests {
 
     fn obj(v: &Value) -> Map<String, Value> {
         v.as_object().unwrap().clone()
+    }
+
+    fn err(kind: &str, field: Option<u16>) -> Outcome {
+        Outcome::Err {
+            kind: kind.to_owned(),
+            field: field.map(|f| NonZeroU16::new(f).unwrap()),
+        }
+    }
+
+    #[test]
+    fn field_codes_are_compared_when_given() {
+        // req: API-082, TV-012
+        let f = file(&json!([
+            { "id": "f1", "requirements": ["API-082"], "operation": "op",
+              "expect": { "ok": false, "error": "InvalidField", "field": 5 } },
+            { "id": "f2", "requirements": ["API-082"], "operation": "op",
+              "expect": { "ok": false, "error": "InvalidField" } }
+        ]));
+        let (given, absent) = (&f.cases[0], &f.cases[1]);
+        assert_eq!(given.expect.field, NonZeroU16::new(5));
+        assert!(given.expect.values.is_empty());
+        assert!(compare(given, &err("InvalidField", Some(5))).is_ok());
+        let wrong = compare(given, &err("InvalidField", Some(6))).unwrap_err();
+        assert!(
+            wrong.contains("field 5") && wrong.contains("field 6"),
+            "{wrong}"
+        );
+        let none = compare(given, &err("InvalidField", None)).unwrap_err();
+        assert!(none.contains("no field"), "{none}");
+        assert!(compare(given, &err("OutOfRange", Some(5))).is_err());
+        // Without `field` in the case, any field (or none) passes.
+        assert!(compare(absent, &err("InvalidField", Some(6))).is_ok());
+        assert!(compare(absent, &err("InvalidField", None)).is_ok());
+        // Code 0 means "no field" and cannot be expected.
+        let zero = json!({ "kind": "codec", "standard": "t", "provenance": "hand-derived",
+                           "cases": [{ "id": "z", "requirements": [], "operation": "op",
+                                       "expect": { "ok": false, "error": "InvalidField",
+                                                   "field": 0 } }] });
+        assert!(VectorFile::from_json(&zero.to_string()).is_err());
     }
 
     #[test]
@@ -186,7 +239,7 @@ mod tests {
         );
         assert!(extra.unwrap_err().contains("unexpected output c"));
         assert!(compare(case, &Outcome::Unsupported).is_err());
-        assert!(compare(case, &Outcome::Err("CrcMismatch".into())).is_err());
+        assert!(compare(case, &err("CrcMismatch", None)).is_err());
     }
 
     #[test]
@@ -197,8 +250,8 @@ mod tests {
                                "expect": { "ok": false, "error": "CrcMismatch" } }]),
         );
         let case = &f.cases[0];
-        assert!(compare(case, &Outcome::Err("CrcMismatch".into())).is_ok());
-        assert!(compare(case, &Outcome::Err("LengthMismatch".into())).is_err());
+        assert!(compare(case, &err("CrcMismatch", None)).is_ok());
+        assert!(compare(case, &err("LengthMismatch", None)).is_err());
         assert!(compare(case, &Outcome::Ok(Map::new())).is_err());
     }
 

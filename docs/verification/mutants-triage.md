@@ -12,6 +12,10 @@ Surviving mutants from `cargo mutants` (`-p aldis-core -p aldis-time -p aldis-ep
 
 The one survivor is equivalent and is expected in every report.
 
+## 2026-10-20, branch `m2/wp0a-field-codes` (M2 WP-0a, field codes)
+
+`cargo mutants -p aldis-core --all-features` on the changed files `error.rs`, `field.rs`, `bits.rs`, `container.rs`, `counter.rs`, `ids.rs`, `layout.rs`, and `security.rs`: 339 mutants: 200 caught, 136 unviable, 3 missed, 0 timeouts. The 3 missed are the equivalent disjoint-bit `|` → `^` mutants of `bits.rs` `get` and `set` already listed below; no new survivor. The new `FieldId` code is covered: `PartialEq::eq` → `true`, → `false`, and `==` → `!=`, `Hash::hash` → `()`, and `FieldId::name` → `""` or `"xyzzy"` are all caught; `FieldId::catalogued` → `Default::default()` and `FieldId::code` → `1` are unviable. `field.rs` holds only `const` items and yields no mutant. The code mapping inside `catalogued` is an inline `const` block, which cargo-mutants does not mutate; `error::tests::field_codes_are_the_catalogue` checks every constant's code against its position in `field::ALL`.
+
 ## 2026-10-20, Nightly run 39442459267 on `main` 5f40e8b (M1 release triage)
 
 The full report of the `mutants` job ([run 39442459267](https://github.com/kscharpf/aldis/actions/runs/39442459267), the M1 pre-release run) over all four crates: 1553 mutants: 1096 caught, 424 unviable, 33 missed, 0 timeouts. 28 of the missed are the equivalent mutants already listed below: the disjoint-bit `|` → `^` mutants (`aldis-core` `bits.rs` and `oid.rs`; `aldis-epp` `EncapsulationHeader::octets`; `aldis-spp` `SpacePacketHeader::octets_with_version`; `aldis-time` `ccs.rs`, `cds.rs`, `code.rs`, `cuc.rs`) and `aldis-time` `util.rs` `out_of_bounds` `<` → `<=`. The other 5 are new, all in `aldis-core`, whose own tests checked these items only with values the mutant also returns:
