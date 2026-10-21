@@ -19,7 +19,19 @@ members = [
     "crates/aldis-ffi",
     # Tooling (std, dev-only; not part of the layered library)
     "crates/aldis-testkit",
-    "xtask",
+    # The xtask crates (docs/06-verification.md §7): the `cargo xtask` dispatcher, its shared
+    # helpers, the verification harness, and one crate per group of tools.
+    "xtask/cli",
+    "xtask/lib",
+    "xtask/verify",
+    "xtask/spec",
+    "xtask/changelog",
+    "xtask/layers",
+    "xtask/binaries",
+    "xtask/features",
+    "xtask/coverage",
+    "xtask/cpp",
+    "xtask/ci",
 ]
 
 [workspace.package]

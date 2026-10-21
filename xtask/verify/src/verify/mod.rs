@@ -33,6 +33,7 @@ const CHECK_ENV: &[(&str, &str)] = &[
     ("RUSTDOCFLAGS", "-D warnings"),
 ];
 
+/// Usage of `cargo xtask verify`, the end of the main help text.
 pub const HELP: &str = "\
 Verification run and merge gate (docs/06-verification.md §7):
   verify [--only <check>,...] [--all | --all-cpp] [--publish]
@@ -75,7 +76,11 @@ pub struct Options {
     base: Option<String>,
 }
 
-/// Dispatches `cargo xtask verify ...`.
+/// Dispatches `cargo xtask verify ...`; returns the number of problems found.
+///
+/// # Errors
+///
+/// When the arguments are not understood, or the run cannot be made.
 pub fn run(args: &[&str]) -> Result<usize, String> {
     match args {
         ["inside", "--out", out, rest @ ..] => {

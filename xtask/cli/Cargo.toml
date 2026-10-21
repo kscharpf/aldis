@@ -1,6 +1,6 @@
 [package]
 name = "xtask"
-description = "Project tooling for Aldis: spec lint, traceability, vectors, links, layering"
+description = "Project tooling for Aldis: `cargo xtask`, which dispatches each command to its tool crate"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -9,9 +9,16 @@ repository.workspace = true
 publish = false
 
 [dependencies]
-aldis-testkit = { path = "../crates/aldis-testkit", features = ["schema"] }
-serde_json = "1.0.154"
-sha2 = "0.11.1"
+xtask-binaries = { path = "../binaries" }
+xtask-changelog = { path = "../changelog" }
+xtask-ci = { path = "../ci" }
+xtask-coverage = { path = "../coverage" }
+xtask-cpp = { path = "../cpp" }
+xtask-features = { path = "../features" }
+xtask-layers = { path = "../layers" }
+xtask-lib = { path = "../lib" }
+xtask-spec = { path = "../spec" }
+xtask-verify = { path = "../verify" }
 
 # Tooling lint profile (RS-017).
 [lints.rust]

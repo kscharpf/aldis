@@ -31,6 +31,11 @@ pub const LAYERS: &[(&str, u8)] = &[
 /// Boundary crates: they may depend on every layer, and nothing depends on them.
 pub const BOUNDARY: &[&str] = &["aldis", "aldis-ffi"];
 const TOOLING: &[&str] = &["aldis-testkit", "xtask"];
+
+/// A tooling crate: one of [`TOOLING`], or one of the xtask crates (`xtask-*`).
+fn is_tooling(name: &str) -> bool {
+    TOOLING.contains(&name) || name.starts_with("xtask-")
+}
 /// The GEN-002 exceptions: same-layer dependencies that are allowed.
 pub const SAME_LAYER_ALLOWED: &[(&str, &str)] = &[("aldis-spp", "aldis-time")];
 const FRAME_CRATES: &[&str] = &[
@@ -141,14 +146,11 @@ pub fn check() -> Result<usize, String> {
 
     for (name, deps) in &crates {
         let name = name.as_str();
-        if TOOLING.contains(&name) {
+        if is_tooling(name) {
             continue;
         }
         if BOUNDARY.contains(&name) {
-            for d in deps
-                .iter()
-                .filter(|d| !d.dev && TOOLING.contains(&d.name.as_str()))
-            {
+            for d in deps.iter().filter(|d| !d.dev && is_tooling(&d.name)) {
                 errors.push(format!(
                     "{name} depends on tooling crate {} outside dev-dependencies",
                     d.name
@@ -157,12 +159,12 @@ pub fn check() -> Result<usize, String> {
             continue;
         }
         let Some(&l) = layer.get(name) else {
-            errors.push(format!("{name}: not assigned to a layer in xtask/src/layers.rs (update docs/01-architecture.md §2 too)"));
+            errors.push(format!("{name}: not assigned to a layer in xtask/layers/src/layers.rs (update docs/01-architecture.md §2 too)"));
             continue;
         };
         for d in deps.iter().filter(|d| !d.dev) {
             let dn = d.name.as_str();
-            if TOOLING.contains(&dn) {
+            if is_tooling(dn) {
                 errors.push(format!(
                     "{name} depends on tooling crate {dn} outside dev-dependencies"
                 ));

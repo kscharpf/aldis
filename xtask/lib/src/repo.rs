@@ -2,10 +2,12 @@
 
 use std::path::{Path, PathBuf};
 
-/// Repository root (parent of the `xtask` crate).
+/// Repository root (two levels above this crate, `xtask/lib`).
+#[must_use]
 pub fn root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent()
+        .ancestors()
+        .nth(2)
         .map_or_else(|| PathBuf::from("."), Path::to_path_buf)
 }
 
@@ -27,6 +29,7 @@ const SKIP: &[&str] = &[
 ];
 
 /// All files under `dir` (relative to the root) whose extension is in `exts`, sorted.
+#[must_use]
 pub fn files(dir: &str, exts: &[&str]) -> Vec<PathBuf> {
     let root = root();
     let mut out = Vec::new();
@@ -66,6 +69,7 @@ pub fn files(dir: &str, exts: &[&str]) -> Vec<PathBuf> {
 /// All files under `dir` (relative to the root) whatever their name, sorted, skipping the
 /// same directories as [`files`] (used by `xtask cpp unsafe-optouts` for `.clang-tidy` and
 /// `CMakeLists.txt`).
+#[must_use]
 pub fn all_files(dir: &str) -> Vec<PathBuf> {
     let root = root();
     let mut out = Vec::new();
@@ -95,6 +99,7 @@ pub fn all_files(dir: &str) -> Vec<PathBuf> {
 }
 
 /// Path relative to the repository root, with forward slashes.
+#[must_use]
 pub fn rel(path: &Path) -> String {
     path.strip_prefix(root())
         .unwrap_or(path)
@@ -103,11 +108,19 @@ pub fn rel(path: &Path) -> String {
 }
 
 /// Reads a file as UTF-8, reporting the path on failure.
+///
+/// # Errors
+///
+/// When the file cannot be read or is not UTF-8.
 pub fn read(path: &Path) -> Result<String, String> {
     std::fs::read_to_string(path).map_err(|e| format!("{}: {e}", rel(path)))
 }
 
 /// The pinned nightly used for tooling only (RS-002), from the `tooling-nightly` file.
+///
+/// # Errors
+///
+/// When the file cannot be read or does not hold one `nightly-YYYY-MM-DD`.
 pub fn tooling_nightly() -> Result<String, String> {
     let pin = read(&root().join("tooling-nightly"))?;
     let pin = pin.trim();

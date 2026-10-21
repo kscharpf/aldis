@@ -714,9 +714,96 @@ dependencies = [
 name = "xtask"
 version = "0.2.0"
 dependencies = [
+ "xtask-binaries",
+ "xtask-changelog",
+ "xtask-ci",
+ "xtask-coverage",
+ "xtask-cpp",
+ "xtask-features",
+ "xtask-layers",
+ "xtask-lib",
+ "xtask-spec",
+ "xtask-verify",
+]
+
+[[package]]
+name = "xtask-binaries"
+version = "0.2.0"
+dependencies = [
+ "serde_json",
+ "xtask-lib",
+]
+
+[[package]]
+name = "xtask-changelog"
+version = "0.2.0"
+dependencies = [
+ "xtask-lib",
+]
+
+[[package]]
+name = "xtask-ci"
+version = "0.2.0"
+dependencies = [
+ "xtask-changelog",
+ "xtask-cpp",
+ "xtask-layers",
+ "xtask-lib",
+ "xtask-spec",
+]
+
+[[package]]
+name = "xtask-coverage"
+version = "0.2.0"
+dependencies = [
+ "serde_json",
+ "xtask-lib",
+]
+
+[[package]]
+name = "xtask-cpp"
+version = "0.2.0"
+dependencies = [
+ "xtask-layers",
+ "xtask-lib",
+]
+
+[[package]]
+name = "xtask-features"
+version = "0.2.0"
+dependencies = [
+ "serde_json",
+ "xtask-lib",
+]
+
+[[package]]
+name = "xtask-layers"
+version = "0.2.0"
+dependencies = [
+ "serde_json",
+ "xtask-lib",
+]
+
+[[package]]
+name = "xtask-lib"
+version = "0.2.0"
+
+[[package]]
+name = "xtask-spec"
+version = "0.2.0"
+dependencies = [
  "aldis-testkit",
  "serde_json",
+ "xtask-lib",
+]
+
+[[package]]
+name = "xtask-verify"
+version = "0.2.0"
+dependencies = [
+ "serde_json",
  "sha2",
+ "xtask-lib",
 ]
 
 [[package]]

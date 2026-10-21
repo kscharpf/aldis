@@ -117,8 +117,8 @@ fn violations(g: &Graph) -> Vec<String> {
             && !BOUNDARY.contains(&krate.as_str())
         {
             errors.push(format!(
-                "CPP-010 {name}: no crate {krate} in the layer table of xtask/src/layers.rs \
-                 (name a module after its crate, or list a tooling library in xtask/src/cpp/layers.rs)"
+                "CPP-010 {name}: no crate {krate} in the layer table of xtask/layers/src/layers.rs \
+                 (name a module after its crate, or list a tooling library in xtask/cpp/src/cpp/layers.rs)"
             ));
         }
     }

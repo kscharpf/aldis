@@ -1,124 +1,50 @@
 //! Project tooling for Aldis (docs/milestones/m0-foundations.md WP-2).
 //!
-//! Run with `cargo xtask <command>`; see `cargo xtask help`.
-
-mod binaries;
-mod changelog;
-mod coverage;
-mod cpp;
-mod features;
-mod fields;
-mod layers;
-mod links;
-mod md;
-mod refapp;
-mod repo;
-mod spec;
-mod trace;
-mod vectors;
-mod verify;
+//! Run with `cargo xtask <command>`; see `cargo xtask help`. This binary only dispatches: each
+//! command runs in the tool crate whose [`Tool`] claims its first word, and `verify` in the
+//! harness, `xtask-verify` (docs/06-verification.md §7).
 
 use std::process::ExitCode;
 
-const HELP: &str = "\
-usage: cargo xtask <command>
+use xtask_lib::Tool;
 
-commands:
-  spec-lint                    check requirement tables and every requirement-ID reference
-  trace [--scope <m>] [--strict]
-                               requirement -> artefact matrix in target/spec/ (VER-020);
-                               --strict fails on in-scope requirements without artefacts
-  vectors validate             check test-vectors/ against the model and the spec (TV-*)
-  vectors schema [--check]     (re)generate test-vectors/schema/, or check it is current
-  fields [--write]             check the field catalogue (03-api-model.md §9.1) and that
-                               aldis_core::field and test-vectors/core/fields.json match it,
-                               or regenerate both (API-082)
-  links                        relative Markdown links resolve inside the repository
-  layers                       crate dependency rules (GEN-001..004)
-  refapp-deps                  refapp/ uses Aldis only through the `aldis` facade and
-                               forbids unsafe code (APP-100, APP-105)
-  symbols                      no frame-protocol code in a build of aldis-spp alone (VER-031)
-  stack-sizes <target>         per-function stack usage of the exerciser (VER-011; tooling nightly)
-  features                     `alloc` and `std` are additive: no API gated on them, and every
-                               test passes alike without them, with `alloc`, and with `std`
-                               (GEN-006)
-  coverage                     100 % region/function/line/branch gate for aldis-core (VER-024;
-                               tooling nightly + cargo-llvm-cov >= 0.9)
-  changelog check              every fragment in changelog.d/ is well formed (GEN-080)
-  changelog show               print the unreleased changes as the next release will list them
-  changelog release <version> <YYYY-MM-DD>
-                               move every fragment into a new section of CHANGELOG.md
-  ci                           everything CI runs without a C++ build: spec-lint, links,
-                               layers, refapp-deps, vectors validate, vectors schema --check,
-                               fields, trace --scope m0 --strict, trace --scope m1 --strict,
-                               trace --scope m2, trace --scope c0, changelog check,
-                               cpp unsafe-optouts
+/// The tool crates, in the order of `cargo xtask help`.
+const TOOLS: &[Tool] = &[
+    xtask_spec::TOOL,
+    xtask_layers::TOOL,
+    xtask_binaries::TOOL,
+    xtask_features::TOOL,
+    xtask_coverage::TOOL,
+    xtask_changelog::TOOL,
+    xtask_ci::TOOL,
+    xtask_cpp::TOOL,
+];
 
-C++ checks (docs/milestones/c0-foundations.md D12):
-";
+const USAGE: &str = "usage: cargo xtask <command>\n\ncommands:\n";
+
+/// The text of `cargo xtask help`.
+fn help() -> String {
+    let mut out = USAGE.to_owned();
+    for piece in TOOLS.iter().flat_map(|t| t.help) {
+        out.push_str(piece);
+    }
+    out.push('\n');
+    out.push_str(xtask_verify::HELP);
+    out
+}
 
 fn run(args: &[&str]) -> Result<usize, String> {
     match args {
-        ["spec-lint"] => spec::lint(),
-        ["trace", rest @ ..] => {
-            let scope = rest
-                .iter()
-                .position(|a| *a == "--scope")
-                .and_then(|i| rest.get(i + 1))
-                .copied();
-            trace::run(scope, rest.contains(&"--strict"))
-        }
-        ["vectors", "validate"] => vectors::validate(),
-        ["vectors", "schema"] => vectors::schema(false),
-        ["vectors", "schema", "--check"] => vectors::schema(true),
-        ["fields"] => fields::run(false),
-        ["fields", "--write"] => fields::run(true),
-        ["links"] => links::check(),
-        ["layers"] => layers::check(),
-        ["refapp-deps"] => refapp::check(),
-        ["symbols"] => binaries::symbols(),
-        ["stack-sizes", target] => binaries::stack_sizes(target),
-        ["coverage"] => coverage::run(),
-        ["features"] => features::check(),
-        ["cpp", rest @ ..] => cpp::run(rest),
-        ["verify", rest @ ..] => verify::run(rest),
-        ["changelog", "check"] => changelog::check(),
-        ["changelog", "show"] => changelog::show(),
-        ["changelog", "release", version, date] => changelog::release(version, date),
-        ["ci"] => {
-            let mut failed = 0;
-            for step in [
-                spec::lint as fn() -> Result<usize, String>,
-                links::check,
-                layers::check,
-                refapp::check,
-                vectors::validate,
-                || vectors::schema(true),
-                || fields::run(false),
-                // M0 and M1 are closed: every in-scope requirement must keep an artefact.
-                || trace::run(Some("m0"), true),
-                || trace::run(Some("m1"), true),
-                // M2 is open: report its trace without failing (strict at the M2 exit, D1).
-                || trace::run(Some("m2"), false),
-                // C0 is open: report its trace without failing (strict at the C0 exit, D17).
-                || trace::run(Some("c0"), false),
-                changelog::check,
-                cpp::optouts::check,
-            ] {
-                failed += step()?;
-            }
-            Ok(failed)
-        }
         [] | ["help" | "-h" | "--help"] => {
-            print!("{HELP}{}\n{}", cpp::HELP, verify::HELP);
+            print!("{}", help());
             Ok(0)
         }
-        _ => Err(format!(
-            "unknown command: {}\n\n{HELP}{}\n{}",
-            args.join(" "),
-            cpp::HELP,
-            verify::HELP
-        )),
+        ["verify", rest @ ..] => xtask_verify::run(rest),
+        [command, ..] => TOOLS
+            .iter()
+            .find(|t| t.commands.contains(command))
+            .and_then(|t| (t.run)(args))
+            .unwrap_or_else(|| Err(format!("unknown command: {}\n\n{}", args.join(" "), help()))),
     }
 }
 
