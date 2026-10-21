@@ -12,4 +12,7 @@
 - `docs/06-verification.md` §4: the LEON3 row now runs the vectors under QEMU, non-gating.
   `docs/09-open-issues.md` OI-08 records the spike's findings, among them that the static
   library does not meet CABI-004 on SPARC (`compiler_builtins` refers to the `_Q_*` quad-float
-  routines), and a proposed resolution; it stays open.
+  routines). OI-08 is resolved (maintainer, 2026-10-21): Rust on LEON stays best-effort in v1, with
+  the native C++ implementation as the primary LEON path, and CABI-004 on SPARC is a recorded
+  deviation (`docs/verification/records/CABI-004.md`) with an integrator note in
+  `crates/aldis-ffi/README.md`: link with `--gc-sections`, or supply the `_Q_*` routines.
