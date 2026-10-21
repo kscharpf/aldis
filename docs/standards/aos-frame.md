@@ -1,6 +1,6 @@
 # AOS Transfer Frame — CCSDS 732.0-B-5
 
-**Crate:** `aldis-aos` · **Reference:** `specs/pdf/732x0b5ec1.pdf` ([how to download](../../specs/README.md))
+**Crate:** `aldis-aos` · **Reference:** `specs/pdf/732x0b5ec1.pdf` ([how to download](../../specs/README.md)) · **Acronyms:** [glossary](../glossary.md)
 
 ## 1. Wire format (§4.1)
 

@@ -1,6 +1,6 @@
 # Space Packet — CCSDS 133.0-B-2
 
-**Crate:** `aldis-spp` · **Reference:** `specs/pdf/133x0b2e2.pdf` ([how to download](../../specs/README.md))
+**Crate:** `aldis-spp` · **Reference:** `specs/pdf/133x0b2e2.pdf` ([how to download](../../specs/README.md)) · **Acronyms:** [glossary](../glossary.md)
 
 ## 1. Wire format (§4.1)
 

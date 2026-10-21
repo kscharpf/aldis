@@ -2,6 +2,8 @@
 
 This profile defines the C interface. The Rust reference implementation exposes it through `aldis-ffi`, and the native C++ and C implementations SHALL expose the same interface. Because both expose one interface, a C or C++ application can link either library without source changes.
 
+**Terms and acronyms:** see the [glossary](../glossary.md).
+
 ## 1. Linkage and artefacts
 
 | ID | Requirement | Source | Verif. |

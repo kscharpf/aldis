@@ -1,6 +1,6 @@
 # TM Transfer Frame — CCSDS 132.0-B-3
 
-**Crate:** `aldis-tm` · **Reference:** `specs/pdf/132x0b3.pdf` ([how to download](../../specs/README.md))
+**Crate:** `aldis-tm` · **Reference:** `specs/pdf/132x0b3.pdf` ([how to download](../../specs/README.md)) · **Acronyms:** [glossary](../glossary.md)
 
 ## 1. Wire format (§4.1)
 
