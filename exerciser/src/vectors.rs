@@ -1,8 +1,9 @@
-//! The `aldis-time`, `aldis-spp`, `aldis-epp`, and `aldis-aos` vector cases on the target (M1
-//! WP-5, D7; M2 D16).
+//! The `aldis-core` OCF, `aldis-time`, `aldis-spp`, `aldis-epp`, and `aldis-aos` vector cases on
+//! the target (M1 WP-5, D7; M2 WP-1, D16).
 //!
-//! `build.rs` embeds every live case of `test-vectors/{time,spp,epp,aos}/` as a value tree. Each
-//! crate's handler (`time.rs`, `spp.rs`, `epp.rs`, `aos.rs`) mirrors the host suite of its crate
+//! `build.rs` embeds every live case of `test-vectors/core/ocf.json` and
+//! `test-vectors/{time,spp,epp,aos}/` as a value tree. Each handler (`ocf.rs`, `time.rs`,
+//! `spp.rs`, `epp.rs`, `aos.rs`) mirrors the host suite of its crate
 //! (`crates/aldis-*/tests/vectors.rs`): it reads the parameters, calls the API with inputs
 //! through `black_box`, and reports every output value to an [`Out`], which compares them with
 //! the expected values exactly, with no missing and no extra keys (TV-012).
@@ -29,9 +30,10 @@ pub enum Val {
 /// An object of a vector file.
 pub type Map = &'static [(&'static str, Val)];
 
-/// The crate a case belongs to.
+/// The crate, or the `aldis-core` module, a case belongs to.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Group {
+    Ocf,
     Time,
     Spp,
     Epp,
@@ -438,6 +440,7 @@ pub fn run(t: &mut Tally) {
             Expect::Err(..) => &[],
         });
         let result = match case.group {
+            Group::Ocf => crate::ocf::vector(case, &mut out),
             Group::Time => crate::time::vector(case, &mut out, &mut scratch),
             Group::Spp => crate::spp::vector(case, &mut out, &mut scratch),
             Group::Epp => crate::epp::vector(case, &mut out, &mut scratch),

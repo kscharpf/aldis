@@ -115,6 +115,7 @@ jobs:
           - container_model
           - layout_ranges
           - anomaly_set_model
+          - ocf_classify
           - epp_decode
           - epp_roundtrip
           - time_pfield
