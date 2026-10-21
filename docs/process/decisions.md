@@ -52,3 +52,6 @@ One line for each decision the maintainer takes, under the [decision rights](dec
 - 2026-10-21 · process · #75 · The xtask crate split is held, and revisited at the M2 exit review with the measurement #75 describes
 - 2026-10-21 · plan · chat · Which tasks start next (the day's dispatches, among them the decision rights and the PR metrics)
 - 2026-10-21 · process · chat · Decision rights accepted as drafted: the coordinator starts queued work in the order last given; a PR may implement the recommended option of a pending decision but is not readied until it is answered; readings the normative text settles are decided and cited in the PR; one log file, routine items unlogged, the decisions check and the PR-template section kept
+- 2026-10-21 · spec · #79 · GEN-071, VER-002, RS-017: `unsafe` is allowed in `crosscheck/src/cfe_msg.rs` only, chosen over a C subprocess driver
+- 2026-10-21 · deps · #79 · `crosscheck/` vendors 13 unmodified cFE v7.0.1 files and takes the `cc` 1.9.0 build dependency
+- 2026-10-21 · spec · #79 · VER-051 (SEI CERT C) applies to the cFE stubs and `abi_check.c`, not to the vendored cFE files
