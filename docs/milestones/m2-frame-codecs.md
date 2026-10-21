@@ -167,7 +167,7 @@ USLP-011 (no mixing of truncated and full frames in one C&S data unit) belongs t
 | Task | Output |
 |---|---|
 | Exerciser groups for the four crates and `aldis-ffi` (D16); QEMU on the three targets as in M1 (M1 D6) | `exerciser/`, verify checks `exerciser-<target>` |
-| Coverage gate for the four crates; `aldis-ffi` reported | `xtask/src/coverage.rs` |
+| Coverage gate for the four crates; `aldis-ffi` reported | `xtask/coverage/src/coverage.rs` |
 | Fuzz targets: `tm_decode`, `tm_roundtrip`, `tc_decode`, `tc_roundtrip`, `tc_delimit`, `tc_clcw`, `aos_fhec_model`, `aos_decode`, `aos_roundtrip`, `uslp_decode`, `uslp_truncated`, `uslp_roundtrip`, `ocf_classify`, and `ffi_decode` (the C ABI decoders agree with the Rust decoders on the same octets). Each asserts no panic, `decode(encode(x)) == x`, and GEN-042 | `fuzz/`, `nightly.yml` matrix |
 | Mutation testing of the four crates and `aldis-core`; survivors triaged before the release (VER-025) | [mutants-triage.md](../verification/mutants-triage.md) |
 | Stack sizes per target with the new crates (VER-011) | nightly artefacts |
@@ -231,4 +231,4 @@ Not in M2: CMN-024 (an optional OID check with no verification method); API-074 
 | A — A2 (TM and TC frames) | `aldis-tm`, `aldis-tc` with the CLCW; the OCF as `Ocf` | M2 exit (A2's entry gate); WP-2 and WP-3 merged earlier let A2 prepare |
 | R — M3 (COP-1) | `aldis-tc` control commands and CLCW; USLP-013's TFDZ access (D8) | M2 exit |
 
-When the C++ build starts reading `include/`, `CPP_PATHS` in `xtask/src/verify/mod.rs` gains it (AGENTS.md).
+When the C++ build starts reading `include/`, the `CPP` input list in `xtask/verify/src/verify/checks.rs` gains it (AGENTS.md).

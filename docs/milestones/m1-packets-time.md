@@ -115,7 +115,7 @@ Also: crate docs. TIME-004, TIME-014, and TIME-022 are verified by inspection an
 |---|---|
 | Exerciser: one test group per new crate. Every public API is called with codegen'd vectors through `black_box`. `inject-panic` canary unchanged. Since PR #50: `build.rs` embeds every live case of `test-vectors/{time,spp,epp}/`, and a handler per crate compares every output exactly, as the host suites do (TV-012); the public API, checked against the symbols of an unoptimized build, is called in full | `exerciser/` |
 | QEMU execution on Cortex-R and RISC-V (D6); Cortex-M continues. Since PR #50: `mps2-an386` (Cortex-M4), `none` with `-cpu cortex-r5f` (Cortex-R5F), and `virt` (RV32), each with semihosting, a time limit, and one retry | verify checks `exerciser-<target>`, nightly CI `exerciser` |
-| Coverage gate: add `aldis-time`, `aldis-spp` (with `--all-features`, so `time` is included), and `aldis-epp` to `GATED` | `xtask/src/coverage.rs` |
+| Coverage gate: add `aldis-time`, `aldis-spp` (with `--all-features`, so `time` is included), and `aldis-epp` to `GATED` | `xtask/coverage/src/coverage.rs` |
 | Fuzz targets: `time_pfield`, `time_cuc`, `time_cds`, `time_ccs`, `time_ascii`, `spp_decode`, `spp_stream`, `spp_roundtrip`, `spp_tracker_model`, `spp_segment_reassemble`, `epp_decode`, `epp_roundtrip`. Each one asserts no panic, `decode(encode(x)) == x`, and GEN-042 | `fuzz/`, `nightly.yml` matrix |
 | Mutation testing for the three crates; triage of survivors before the release (VER-025) | `docs/verification/mutants-triage.md` |
 | Stack-size table per target with the new crates (VER-011); u128 cost checked (D2) | nightly artefacts |
