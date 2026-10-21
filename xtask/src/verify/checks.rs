@@ -473,7 +473,7 @@ const CPP_TIDY: &str = "\
 cd cpp
 cmake --preset host-clang
 # Findings are errors (WarningsAsErrors in cpp/.clang-tidy); GoogleTest is not analysed.
-run-clang-tidy -quiet -p ../target/cpp/host-clang '/header_check/|/cpp/tests/'
+run-clang-tidy -quiet -p ../target/cpp/host-clang '/header_check/|/cpp/tests/|/cpp/vectors/'
 ";
 
 const CPP_SANITIZE: &str = "\

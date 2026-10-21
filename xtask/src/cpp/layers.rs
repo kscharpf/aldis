@@ -15,7 +15,16 @@ use crate::repo;
 
 /// C++ library targets named `aldis_*` that are tooling (vector loader, test support): never
 /// linked by a module. Executables need no entry.
-const TOOLING: &[&str] = &["aldis_core_test_hooks"];
+const TOOLING: &[&str] = &[
+    "aldis_core_test_hooks",
+    // The vector case model, checks, loader, runner, and generated cases (c0 plan D5).
+    "aldis_vectors_checks",
+    "aldis_vectors_checks_headers",
+    "aldis_vectors_constexpr",
+    "aldis_vectors_generated",
+    "aldis_vectors_loader",
+    "aldis_vectors_runner",
+];
 
 /// What a graph node is, from its `Graphviz` shape.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
