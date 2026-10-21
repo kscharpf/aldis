@@ -1,6 +1,6 @@
 # Human review: four time-code readings (CCSDS 301.0-B-4)
 
-**Status:** in progress (all four readings recorded; Q4 differs from Aldis, OI-40; Q3's question is deferred, OI-39; the comparisons with the vectors and with §3 D1–D4 are open) · **Reviewer:** the maintainer · **Prepared:** 2026-10-21
+**Status:** in progress (all four readings recorded; Q4 changes Aldis, OI-40 resolved; Q3's question is deferred, OI-39; the comparisons with the vectors and with §3 D1–D4 are open) · **Reviewer:** the maintainer · **Prepared:** 2026-10-21
 
 ## Purpose
 
@@ -109,7 +109,7 @@ Record every reading, including "agrees". A reading you would have made differen
 - Vector cases agree with your results (yes / no, which): the results above follow from round-down and were computed by the coordinator (an AI) from the reviewer's rule, not worked by hand; not yet compared with the vector file.
 - After reading cross-checks.md §3 D4 — agree with Aldis / `spacepackets` / neither / unsure: not yet compared.
 - Notes:
-  - **Differs from Aldis**, which rounds up (TIME-011). Under round-down the carry into the coarse time (`time-cuc-022`) and the overflow (`time-cuc-023`) cannot happen. Raised as [OI-40](../../09-open-issues.md); Aldis keeps its behaviour until OI-40 is decided.
+  - **Differs from Aldis**, which rounds up (TIME-011). Under round-down the carry into the coarse time (`time-cuc-022`) and the overflow (`time-cuc-023`) cannot happen. Raised as [OI-40](../../09-open-issues.md), resolved by the maintainer on 2026-10-21 for round-down; Aldis changes in a follow-up pull request.
   - Not primed: the coordinator did not discuss Q4 before this reading was given, and the reviewer did not read the automated review of PR #80, which answers it.
 
 ## Sign-off
@@ -119,5 +119,5 @@ Record every reading, including "agrees". A reading you would have made differen
 - Document read (edition, and corrigenda checked on the CCSDS site):
 - Time spent:
 - Had you seen any AI's answers to these questions before writing yours (an automated review of the pull request that added this packet, PR #80, works all four)? Which questions: no automated review was read. The coordinator's discussion primed Q1's final reading and, in part, Q3's (see their notes); Q2 and Q4 were not primed. (2026-10-21)
-- Findings that need a change (none, or the questions):
+- Findings that need a change (none, or the questions): Q4, round down (OI-40); Q1's finding was documented in #83 (#82).
 - Questions to pass to a CCSDS expert: Q3 (OI-39, #84). Q4 (OI-40) is a project rule, so it needs no expert.

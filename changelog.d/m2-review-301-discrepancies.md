@@ -5,5 +5,5 @@
   fill in.
 - Open issue OI-39: CUC P-field octet 2, 301.0 §3.1.1 against §3.2.2, raised by the review's Q3;
   deferred with octet 2 still accepted, and tracked in #84.
-- Open issue OI-40: rounding nanoseconds to CUC fine time, raised by the review's Q4, where the
-  maintainer chose to round down and TIME-011 rounds up.
+- Open issue OI-40: rounding nanoseconds to CUC fine time, raised by the review's Q4, and
+  resolved for rounding down, which a follow-up pull request implements.
