@@ -3,7 +3,30 @@
 **Goal:** the M1 codecs' part of the C ABI, the field-code catalogue, and the shared property-test strategies (WP-0), then complete, verified Layer 1 codecs for the four data link protocols: `aldis-tm`, `aldis-tc` (with the CLCW, frame delimiting, and frame validation), `aldis-aos` (with the FHEC and the editions), and `aldis-uslp` (with truncated frames). Each codec has its C ABI functions, and every vector passes through the C ABI as well as through the Rust API. They are verified to the standard of M1: vectors, panic freedom on bare metal, 100 % coverage, fuzzing, mutation testing, and cross-checks.
 **Roadmap entry:** [08-roadmap.md](../08-roadmap.md) §1 · **Builds on:** [M1](m1-packets-time.md) (`v0.2.0-m1`) · **Release:** `v0.3.0-m2`
 
-**Status: in progress (2026-10-20): WP-0a (field codes, `--scope m2` in the gate).** Entry gate: M1 (roadmap §1), met by the M1 exit, PR #54 (branch `m1/exit`), release `v0.2.0-m1`; this plan merges after that PR. Decisions D1–D17 accepted by the maintainer 2026-10-20, after the review of PR #56. `cargo xtask trace --scope m2` puts 122 requirements in scope (USLP-016 added by PR #61); 50 are traced: the M0 and M1 artefacts of the shared codec contract, gates, and vectors, and API-082 (WP-0a). Three new open issues come from planning: OI-33, OI-34, and OI-35; OI-04 is updated with the reading of 732.0-B-4. Revised after the review of PR #56: D2, D5, D11, D14, and D15 changed, D17 added (USLP-014, USLP-015), and §3 and §5 cover the generated files shared by parallel pull requests.
+**Status: in progress.** Entry gate: M1 (roadmap §1), met by the M1 exit, PR #54 (branch `m1/exit`), release `v0.2.0-m1`. Decisions D1–D17 accepted by the maintainer 2026-10-20. How many of the §4 requirements are traced is reported by `cargo xtask trace --scope m2` (part of `cargo xtask ci` and the verify check `spec`), not quoted here.
+
+| WP | State | PRs | Notes |
+|---|---|---|---|
+| Plan | merged | #56 | Merged after PR #54 |
+| Frame spec readings | merged | #61 | D9 anomaly lists and API-032 applied ahead of the frame WPs; OI-05 and OI-35 items 2, 3, and 5–7 answered (new USLP-016); items 1 and 8 left to the maintainer |
+| WP-0a field codes, `--scope m2` | merged | #60 | D1, D2, D3; API-082 |
+| WP-0b testkit strategies | in progress | #70 | D6; VER-054 |
+| WP-0c M1 C ABI, header | in progress | #72 | D4, D5; C1 starts when it merges |
+| WP-1 `aldis-core` additions | in progress | #68 | `Ocf`, `core/ocf.json` |
+| WP-2 `aldis-tm` | planned | — | |
+| WP-3 `aldis-tc` | planned | — | |
+| WP-4 `aldis-aos` module 1, `fhec` | merged | #64 | D10; `aldis-aos` joined the coverage gate, mutants, the exerciser, and the fuzz target `aos_fhec_model` |
+| WP-4 `aldis-aos` modules 2–8 | planned | — | |
+| WP-5 `aldis-uslp` | planned | — | |
+| WP-6 vectors and cross-checks | in progress | #64 | Grows with each codec: the FHEC vectors so far |
+| WP-7 verification gates | in progress | #64 | Grows with each codec: `aldis-aos` so far |
+| WP-8 docs, trace, release | planned | — | |
+
+A pull request that starts or merges a work package changes only its row (roadmap §6 rule 1).
+
+History:
+- 2026-10-20: the plan, PR #56, revised after its review: D2, D5, D11, D14, and D15 changed, D17 added (USLP-014, USLP-015), and §3 and §5 cover the generated files shared by parallel pull requests. Planning opened OI-33, OI-34, and OI-35, and updated OI-04 with the reading of 732.0-B-4.
+- 2026-10-21: PR #61 added USLP-016 to the scope; PR #60 put `--scope m2` in the gate (D1).
 
 ## 1. Starting point
 

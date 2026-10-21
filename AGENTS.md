@@ -14,6 +14,8 @@ Never write protocol values from memory. Look them up in the Blue Book. Registry
 
 v1 is built in three tracks: **R** (Rust reference, milestones M0–M6), **C** (native C++, C0–C5), and **A** (reference application, A0–A6). Before starting work, find your track and milestone in [docs/08-roadmap.md](docs/08-roadmap.md), check that its entry gate is met on `main`, and follow the parallel-work rules in §6: one track's directories per PR, branch prefix `m<N>/`, `c<N>/`, or `a<N>/`, and the Rust crates as the reference when implementations disagree.
 
+A milestone plan carries a work-package status table, one row per WP or sub-part (WP, State, PRs, Notes); update only your WP's row. Never write requirement counts into a plan: `cargo xtask trace --scope <id>` reports them (roadmap §6 rule 1).
+
 The rules and checks below are written for the Rust crates. The native C++ code follows [docs/profiles/cpp.md](docs/profiles/cpp.md) instead; its checks are set up in milestone C0.
 
 ## Non-negotiable rules (Layers 0–2)
