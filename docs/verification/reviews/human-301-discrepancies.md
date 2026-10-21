@@ -51,14 +51,14 @@ Record every reading, including "agrees". A reading you would have made differen
 
 | Case | Mode | Your result |
 |---|---|---|
-| `time-cds-004` | strict | |
-| `time-cds-005` | lenient | |
+| `time-cds-004` | strict | reject |
+| `time-cds-005` | lenient | reject |
 
 **Record**
 
-- Your reading, with clauses: reject code `11`. §3.3.2 reserves it for future use, so a sender using it means either the specification has been updated or the application must be, and a decoder should not guess its meaning. (2026-10-21)
+- Your reading, with clauses: reject code `11`. §3.3.2 reserves it for future use, so a sender using it means either the specification has been updated or the application must be, and a decoder should not guess its meaning. Reject it in lenient mode as well: the code sets the number of sub-millisecond octets, so without knowing it the decoder cannot tell where the T-field ends, and its handling of every later octet could be off. (2026-10-21)
 - Fixed by 301.0, or left open: the code is reserved by §3.3.2; what a decoder does with it is the reading above.
-- Vector cases agree with your results (yes / no, which): exercises not yet done. The reading gives a rejection; whether strict and lenient modes should differ was not stated.
+- Vector cases agree with your results (yes / no, which): results above, from the reading (2026-10-21); not yet compared with the vector file.
 - After reading cross-checks.md §3 D2 — agree with Aldis / `spacepackets` / neither / unsure: not yet compared.
 - Notes: the coordinator (an AI) did not discuss Q2 before this reading was given. The automated review of PR #80 answers Q2; whether it was read first belongs in the sign-off.
 
