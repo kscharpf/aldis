@@ -26,6 +26,10 @@ use record::Outcome;
 
 use crate::repo;
 
+// For `cargo xtask metrics` (VER-063), which reads the published records as `verify check` does.
+pub use publish::{fetch_notes, published};
+pub use record::utc;
+
 /// Flags shared with the RUSTFLAGS of every check (the former `ci.yml` `env`).
 const CHECK_ENV: &[(&str, &str)] = &[
     ("CARGO_TERM_COLOR", "never"),

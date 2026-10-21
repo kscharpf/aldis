@@ -79,7 +79,7 @@ pub fn utc_now() -> String {
 }
 
 /// RFC 3339 form of a Unix time (civil-from-days, H. Hinnant's algorithm).
-fn utc(secs: u64) -> String {
+pub fn utc(secs: u64) -> String {
     let (days, rem) = (secs / 86_400, secs % 86_400);
     let z = days + 719_468;
     let era = z / 146_097;
