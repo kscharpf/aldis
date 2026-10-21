@@ -306,7 +306,7 @@ pub fn reuse_reason(source: &Source) -> String {
 }
 
 /// Whether some check reads `path`, or it is documentation (read by `spec` alone).
-fn listed(checks: &[Check], path: &str) -> bool {
+pub(super) fn listed(checks: &[Check], path: &str) -> bool {
     DOCS.contains(path)
         || checks
             .iter()
@@ -850,7 +850,10 @@ mod tests {
     use std::path::PathBuf;
     use std::process::Command;
 
-    use super::super::checks::all;
+    use std::fmt::Write as _;
+
+    use super::super::checks::{all, derive, fixture};
+    use super::super::graph::Graph;
     use super::*;
 
     // req: VER-056
@@ -993,9 +996,10 @@ mod tests {
             running(&changed(&["test-vectors/README.md"]), Force::default()),
             everything
         );
-        // xtask and the image run everything.
+        // When the xtask inputs are not derived (`checks::all`), xtask and the image run
+        // everything; with them derived, see `a_change_to_a_tool_crate_*` below.
         for path in [
-            "xtask/src/main.rs",
+            "xtask/cli/src/main.rs",
             "xtask/verify/Containerfile",
             "cpp/toolchains.lock",
             "tooling-nightly",
@@ -1816,5 +1820,209 @@ mod tests {
         let mut notes = Notes::fetch(&r.clone.0).unwrap();
         assert_eq!(notes.origin(&r.p1, "cpp-tidy", ORIGIN_DEPTH), None);
         assert!(notes.origin(&r.p1, "clippy", ORIGIN_DEPTH).is_some());
+    }
+
+    /// `origin` holding a Cargo workspace with the packages of `checks::fixture` (the xtask
+    /// crates of the repository and `aldis-testkit`), a library crate `crates/x`, and `cpp/`; and
+    /// a clone of it on a branch `topic`.
+    fn workspace(name: &str) -> (Repo, Repo) {
+        let origin = Repo::new(&format!("{name}-origin"));
+        let mut members = vec!["crates/x".to_owned()];
+        origin.write(
+            "crates/x/Cargo.toml",
+            "[package]\nname = \"x\"\nversion = \"0.0.0\"\nedition = \"2024\"\n",
+        );
+        origin.write("crates/x/src/lib.rs", "//! x\n");
+        for (package, dir, deps) in fixture::PACKAGES {
+            members.push((*dir).to_owned());
+            let mut lines = String::new();
+            for d in *deps {
+                let (_, to, _) = fixture::PACKAGES.iter().find(|p| p.0 == *d).unwrap();
+                writeln!(lines, "{d} = {{ path = \"../../{to}\" }}").unwrap();
+            }
+            let deps = lines;
+            origin.write(
+                &format!("{dir}/Cargo.toml"),
+                &format!(
+                    "[package]\nname = \"{package}\"\nversion = \"0.0.0\"\nedition = \"2024\"\n\n\
+                     [dependencies]\n{deps}\n[lints.rust]\nunsafe_code = \"forbid\"\n"
+                ),
+            );
+            let target = if *package == "xtask" {
+                "main.rs"
+            } else {
+                "lib.rs"
+            };
+            origin.write(
+                &format!("{dir}/src/{target}"),
+                "//! a crate\nfn main() {}\n",
+            );
+        }
+        let members: Vec<String> = members.iter().map(|m| format!("\"{m}\"")).collect();
+        origin.write(
+            "Cargo.toml",
+            &format!(
+                "[workspace]\nresolver = \"3\"\nmembers = [{}]\n",
+                members.join(", ")
+            ),
+        );
+        origin.write("xtask/verify/Containerfile", "FROM scratch\n");
+        origin.write("cpp/src/a.cpp", "// a\n");
+        origin.write("docs/a.md", "a\n");
+        origin.commit("start");
+        let clone = Repo::clone_of(&origin, &format!("{name}-clone"));
+        clone.git(&["checkout", "-q", "-b", "topic"]);
+        (origin, clone)
+    }
+
+    /// The checks that run when the branch of `clone` changes `path` alone against `main`, the
+    /// xtask inputs derived from the crate graph of `clone`, and a record that covers the base
+    /// passed every check.
+    fn running_after(clone: &Repo, path: &str) -> Plan {
+        clone.git(&["reset", "-q", "--hard", "origin/main"]);
+        let file = clone.0.join(path);
+        let mut text = std::fs::read_to_string(&file).unwrap_or_default();
+        let slashes = [".rs", ".cpp"].iter().any(|e| path.ends_with(e));
+        text.push_str(if slashes {
+            "// changed\n"
+        } else {
+            "# changed\n"
+        });
+        clone.write(path, &text);
+        clone.commit(path);
+        let checks = derive(&Graph::load(&clone.0).unwrap(), fixture::TOOLS).unwrap();
+        let c = change(&clone.0, "HEAD", Main::Origin);
+        plan(&checks, &c, Force::default(), covered(&c))
+    }
+
+    fn ran(p: &Plan) -> Vec<String> {
+        p.checks
+            .iter()
+            .filter(|d| d.run)
+            .map(|d| d.name.clone())
+            .collect()
+    }
+
+    /// The checks of the whole workspace and `spec`, which every xtask change runs, and `extra`.
+    fn workspace_checks_and(extra: &[&str]) -> Vec<String> {
+        let whole = [
+            "fmt",
+            "clippy",
+            "test",
+            "test-macos",
+            "big-endian",
+            "deny",
+            "spec",
+        ];
+        names(|c| whole.contains(&c.name.as_str()) || extra.contains(&c.name.as_str()))
+    }
+
+    // req: VER-056
+    #[test]
+    fn a_change_to_a_tool_crate_runs_only_the_checks_that_run_it() {
+        let (_origin, clone) = workspace("tool");
+        for (path, extra) in [
+            ("xtask/features/src/lib.rs", &["features"][..]),
+            ("xtask/coverage/src/lib.rs", &["coverage"]),
+            ("xtask/binaries/src/lib.rs", &["layers"]),
+            // xtask-cpp depends on xtask-layers: cpp-layers runs the Rust layer table.
+            ("xtask/layers/src/lib.rs", &["layers", "cpp-layers"]),
+            ("xtask/cpp/src/lib.rs", &["cpp-layers"]),
+            // Run by spec only, which reads every path anyway; `ci` by no check.
+            ("xtask/spec/src/lib.rs", &[]),
+            ("xtask/changelog/src/lib.rs", &[]),
+            ("xtask/ci/src/lib.rs", &[]),
+        ] {
+            let p = running_after(&clone, path);
+            assert_eq!(p.every, None, "{path}");
+            assert_eq!(ran(&p), workspace_checks_and(extra), "{path}");
+        }
+        // aldis-testkit, which xtask-spec builds: the Rust checks, as any crate, but no C++ one.
+        let p = running_after(&clone, "crates/aldis-testkit/src/lib.rs");
+        assert_eq!(ran(&p), names(|c| !c.cpp));
+    }
+
+    // req: VER-056
+    #[test]
+    fn a_change_to_the_harness_the_helpers_or_a_manifest_runs_every_check() {
+        let (_origin, clone) = workspace("harness");
+        for path in [
+            "xtask/lib/src/lib.rs",
+            "xtask/verify/src/lib.rs",
+            "xtask/verify/Containerfile",
+            "xtask/cli/src/main.rs",
+            "xtask/features/Cargo.toml",
+            "Cargo.toml",
+            "Cargo.lock",
+        ] {
+            let p = running_after(&clone, path);
+            assert_eq!(ran(&p), names(|_| true), "{path}");
+        }
+        // A path below xtask/ that is in no crate: an input of no check, so every check runs.
+        let p = running_after(&clone, "xtask/notes.txt");
+        assert!(
+            p.checks
+                .iter()
+                .all(|d| d.run && d.why.contains("an input of no check")),
+            "{p:?}"
+        );
+    }
+
+    // req: VER-056
+    #[test]
+    fn a_cpp_change_runs_the_cpp_checks_and_the_xtask_tests() {
+        let (_origin, clone) = workspace("cpp");
+        let p = running_after(&clone, "cpp/src/a.cpp");
+        let tests = ["test", "test-macos", "big-endian", "spec"];
+        assert_eq!(
+            ran(&p),
+            names(|c| c.cpp || tests.contains(&c.name.as_str()))
+        );
+        // Documentation runs spec only, as before.
+        assert_eq!(ran(&running_after(&clone, "docs/a.md")), ["spec"]);
+    }
+
+    // req: VER-056
+    #[test]
+    fn a_crate_graph_that_could_hide_a_build_input_is_refused() {
+        let (_origin, clone) = workspace("refused");
+        assert!(Graph::load(&clone.0).is_ok());
+        let features = "xtask/features";
+        let manifest = clone.0.join(features).join("Cargo.toml");
+        let text = std::fs::read_to_string(&manifest).unwrap();
+        // A build script.
+        clone.write(&format!("{features}/build.rs"), "fn main() {}\n");
+        let refused = Graph::load(&clone.0).unwrap_err();
+        assert!(refused.contains("custom-build"), "{refused}");
+        std::fs::remove_file(clone.0.join(features).join("build.rs")).unwrap();
+        // A file read at build time.
+        let include = concat!(
+            "const A: &str = include_",
+            "str!(\"../../../docs/a.md\");\n"
+        );
+        clone.write(&format!("{features}/src/lib.rs"), include);
+        assert!(
+            Graph::load(&clone.0)
+                .unwrap_err()
+                .contains("reads a file at build time")
+        );
+        clone.write(&format!("{features}/src/lib.rs"), "//! a crate\n");
+        // A manifest that does not forbid unsafe code.
+        clone.write(
+            &format!("{features}/Cargo.toml"),
+            &text.replace("unsafe_code = \"forbid\"", "unsafe_code = \"deny\""),
+        );
+        assert!(Graph::load(&clone.0).unwrap_err().contains("forbid"));
+        clone.write(&format!("{features}/Cargo.toml"), &text);
+        assert!(Graph::load(&clone.0).is_ok());
+        // Without the graph, every xtask path is an input of every check, as before the split.
+        let conservative = all();
+        let p = plan(
+            &conservative,
+            &changed(&["xtask/features/src/lib.rs"]),
+            Force::default(),
+            covered(&changed(&["xtask/features/src/lib.rs"])),
+        );
+        assert!(p.checks.iter().all(|d| d.run));
     }
 }

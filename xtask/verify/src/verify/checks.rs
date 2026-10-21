@@ -5,6 +5,12 @@
 //! Each check is a Bash script run with `-euo pipefail` from the root of the checkout, with
 //! `RUNNER_TEMP` set to an empty directory of its own.
 
+use std::collections::BTreeSet;
+
+use xtask_lib::Tool;
+
+use super::graph::{Graph, XTASK_DIR};
+
 /// Bare-metal Rust targets of the matrix (docs/06-verification.md §4).
 const RUST_BARE_METAL: &[&str] = &[
     "thumbv7em-none-eabihf",
@@ -49,23 +55,31 @@ pub struct PathList {
 // inputs and is not in `DOCS` runs every check. Precision never at the cost of soundness: when a
 // check starts reading a new path, add the path here in the same change; when unsure, include it.
 //
+// The xtask code a check runs is not listed here: it is derived from the crate graph
+// ([`derived`], docs/06-verification.md §7). Every check runs the harness (`xtask-verify`, with
+// the crates it depends on) and the dispatcher (`xtask`); a check whose script runs
+// `cargo xtask <command>` also runs the crate whose `Tool` claims the command, with the crates it
+// depends on; and the checks that build, lint, or test the whole workspace ([`Uses::Workspace`])
+// read every xtask crate.
+//
 // The differential tests of track C (`difftest/`, VER-053, milestone C1) will read both the Rust
-// crates and `cpp/`: their checks take `Inputs::Paths(&[&RUN, &RUST, &CPP, &DIFFTEST])`, with a
+// crates and `cpp/`: their checks take the lists `&[&RUN, &RUST, &CPP, &DIFFTEST]`, with a
 // `DIFFTEST` list naming `difftest/**` and whatever else they read.
 
-/// Read by every check: the verification run itself. `xtask/` holds the harness that runs and
-/// judges every check, the image definition (`xtask/verify/`), and every `cargo xtask` command;
-/// building xtask reads the workspace manifests, `.cargo/`, and `aldis-testkit`; the image is
-/// built from the files of `image::INPUTS`.
+/// Read by every check: the verification run itself, apart from the xtask crates, which are
+/// derived (see above). Building xtask reads every workspace manifest and `.cargo/`, and the
+/// manifests decide the features of the dependencies the xtask crates share; the image is built
+/// from the files of `image::INPUTS`.
 pub const RUN: PathList = PathList {
     name: "run",
     patterns: &[
-        "xtask/**",
         "Cargo.toml",
         "Cargo.lock",
         ".cargo/**",
         "crates/*/Cargo.toml",
-        "crates/aldis-testkit/**",
+        "xtask/*/Cargo.toml",
+        "xtask/verify/Containerfile",
+        "xtask/verify/entrypoint.sh",
         "rust-toolchain.toml",
         "tooling-nightly",
         "cpp/toolchains.lock",
@@ -135,39 +149,73 @@ pub const DOCS: PathList = PathList {
 };
 
 /// What a check reads (VER-056).
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Inputs {
     /// Every path of the repository: the check runs on every change.
     Everything,
-    /// The paths that match a pattern of one of these lists.
-    Paths(&'static [&'static PathList]),
+    /// The paths that match a pattern of one of these lists, or of the xtask crates it runs.
+    Paths(&'static [&'static PathList], Crates),
+}
+
+/// The xtask crates a check runs (VER-056): their directories, derived from the crate graph, or
+/// every xtask path when they are not derived.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Crates {
+    /// Shown by `cargo xtask verify list`: `xtask/**` when not derived, `xtask` for every xtask
+    /// crate, else the tool crates the check's commands name; empty for the harness alone.
+    pub label: String,
+    /// The patterns, relative to the repository root.
+    pub patterns: Vec<String>,
+}
+
+impl Crates {
+    /// Every xtask path, and `aldis-testkit`, which xtask builds: the inputs when the crate graph
+    /// is not known.
+    pub fn every() -> Self {
+        Self {
+            label: "xtask/**".to_owned(),
+            patterns: vec!["xtask/**".to_owned(), "crates/aldis-testkit/**".to_owned()],
+        }
+    }
 }
 
 impl Inputs {
     /// Whether `path` is one of them.
-    pub fn contains(self, path: &str) -> bool {
+    pub fn contains(&self, path: &str) -> bool {
         match self {
             Self::Everything => true,
-            Self::Paths(lists) => lists.iter().any(|l| l.contains(path)),
+            Self::Paths(lists, crates) => {
+                lists.iter().any(|l| l.contains(path))
+                    || crates
+                        .patterns
+                        .iter()
+                        .any(|p| super::scope::matches(p, path))
+            }
         }
     }
 
     /// Every pattern, as the record lists them.
-    pub fn patterns(self) -> Vec<&'static str> {
+    pub fn patterns(&self) -> Vec<String> {
         match self {
-            Self::Everything => vec!["**"],
-            Self::Paths(lists) => lists
+            Self::Everything => vec!["**".to_owned()],
+            Self::Paths(lists, crates) => lists
                 .iter()
-                .flat_map(|l| l.patterns.iter().copied())
+                .flat_map(|l| l.patterns.iter().map(|p| (*p).to_owned()))
+                .chain(crates.patterns.iter().cloned())
                 .collect(),
         }
     }
 
-    /// The names of the lists, for `cargo xtask verify list`.
-    pub fn label(self) -> String {
+    /// The names of the lists and of the xtask crates, for `cargo xtask verify list`.
+    pub fn label(&self) -> String {
         match self {
             Self::Everything => "every path".to_owned(),
-            Self::Paths(lists) => lists.iter().map(|l| l.name).collect::<Vec<_>>().join("+"),
+            Self::Paths(lists, crates) => lists
+                .iter()
+                .map(|l| l.name)
+                .chain(Some(crates.label.as_str()).filter(|l| !l.is_empty()))
+                .collect::<Vec<_>>()
+                .join("+"),
         }
     }
 }
@@ -179,9 +227,18 @@ impl PathList {
     }
 }
 
-const RUST_INPUTS: Inputs = Inputs::Paths(&[&RUN, &RUST]);
-const RUST_TEST_INPUTS: Inputs = Inputs::Paths(&[&RUN, &RUST, &XTASK_TESTS]);
-const CPP_INPUTS: Inputs = Inputs::Paths(&[&RUN, &CPP]);
+const RUST_INPUTS: &[&PathList] = &[&RUN, &RUST];
+const RUST_TEST_INPUTS: &[&PathList] = &[&RUN, &RUST, &XTASK_TESTS];
+const CPP_INPUTS: &[&PathList] = &[&RUN, &CPP];
+
+/// Which xtask crates a check runs besides the harness and the dispatcher (VER-056).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Uses {
+    /// The crates of the `cargo xtask <command>` lines of its script.
+    Commands,
+    /// Every xtask crate: the check builds, lints, formats, tests, or audits the whole workspace.
+    Workspace,
+}
 
 /// One check of the verification run.
 #[derive(Clone, Debug)]
@@ -194,6 +251,8 @@ pub struct Check {
     pub cpp: bool,
     /// What it reads: it is skipped when none of these changed (VER-056).
     pub inputs: Inputs,
+    /// Which xtask crates it runs, from which [`derived`] finds the xtask part of its inputs.
+    pub uses: Uses,
     /// A failure fails the run. Only the LEON3 build is reported without gating (OI-08).
     pub gating: bool,
     /// The Bash script.
@@ -205,18 +264,184 @@ fn check(name: impl Into<String>, host: Host, cpp: bool, script: impl Into<Strin
         name: name.into(),
         host,
         cpp,
-        inputs: if cpp { CPP_INPUTS } else { RUST_INPUTS },
+        inputs: Inputs::Paths(if cpp { CPP_INPUTS } else { RUST_INPUTS }, Crates::every()),
+        uses: Uses::Commands,
         gating: true,
         script: script.into(),
     }
 }
 
-/// `check` with other inputs than its kind's.
-fn reading(inputs: Inputs, check: Check) -> Check {
-    Check { inputs, ..check }
+/// `check` with other lists than its kind's.
+fn reading(lists: &'static [&'static PathList], check: Check) -> Check {
+    Check {
+        inputs: Inputs::Paths(lists, Crates::every()),
+        ..check
+    }
 }
 
-/// Every check, in the order they run.
+/// `check`, reading every path.
+fn everything(check: Check) -> Check {
+    Check {
+        inputs: Inputs::Everything,
+        ..check
+    }
+}
+
+/// `check`, building, linting, formatting, testing, or auditing the whole workspace.
+fn whole(check: Check) -> Check {
+    Check {
+        uses: Uses::Workspace,
+        ..check
+    }
+}
+
+/// The commands that the harness itself runs (`verify`) or that print the help text; every check
+/// already runs the harness and the dispatcher, so no tool may claim them.
+const RESERVED: &[&str] = &["verify", "help", "-h", "--help"];
+/// The package of the harness.
+const HARNESS: &str = "xtask-verify";
+/// The package of the dispatcher, the `xtask` binary. Its own directory is an input of every
+/// check; the crates it depends on are inputs only of the checks that run them.
+const DISPATCHER: &str = "xtask";
+
+/// The first word after each `cargo xtask` in `script`; `None` when `xtask` also appears in
+/// another form, so that the script may run xtask code that cannot be told.
+fn commands(script: &str) -> Option<Vec<&str>> {
+    let words: Vec<&str> = script
+        .split(|c: char| c.is_whitespace() || "();&|`\"'".contains(c))
+        .filter(|w| !w.is_empty())
+        .collect();
+    let mut out = Vec::new();
+    let mut seen = 0;
+    for (i, word) in words.iter().enumerate() {
+        if !word.contains("xtask") {
+            continue;
+        }
+        seen += 1;
+        let after_cargo = i.checked_sub(1).and_then(|j| words.get(j)) == Some(&"cargo");
+        if *word != "xtask" || !after_cargo {
+            return None;
+        }
+        out.push(*words.get(i + 1)?);
+    }
+    (script.matches("xtask").count() == seen).then_some(out)
+}
+
+/// The derivation of the xtask inputs from the crate graph and the dispatcher's tools.
+struct Derivation<'a> {
+    graph: &'a Graph,
+    tools: &'a [Tool],
+    /// The packages every check runs: the harness with its dependencies, and the dispatcher.
+    base: BTreeSet<String>,
+}
+
+impl<'a> Derivation<'a> {
+    fn new(graph: &'a Graph, tools: &'a [Tool]) -> Result<Self, String> {
+        let mut claimed: Vec<&str> = RESERVED.to_vec();
+        for tool in tools {
+            let dir = graph
+                .packages
+                .get(tool.package)
+                .map(|p| p.dir.as_str())
+                .ok_or_else(|| format!("no workspace package {}", tool.package))?;
+            if !dir.starts_with(XTASK_DIR) {
+                return Err(format!(
+                    "the tool crate {} is not below xtask/",
+                    tool.package
+                ));
+            }
+            for command in tool.commands {
+                if claimed.contains(command) {
+                    return Err(format!(
+                        "the command `{command}` of {} is claimed twice",
+                        tool.package
+                    ));
+                }
+                claimed.push(command);
+            }
+        }
+        if !graph.packages.contains_key(DISPATCHER) {
+            return Err(format!("no workspace package {DISPATCHER}"));
+        }
+        let mut base = graph.closure(HARNESS)?;
+        base.insert(DISPATCHER.to_owned());
+        Ok(Self { graph, tools, base })
+    }
+
+    /// The xtask crates `check` runs, with their dependencies; every xtask path when its script
+    /// runs a command no tool claims, or xtask in another form.
+    fn crates(&self, check: &Check) -> Result<Crates, String> {
+        let mut packages = self.base.clone();
+        let label = match check.uses {
+            Uses::Workspace => {
+                for name in self.graph.xtask() {
+                    packages.extend(self.graph.closure(name)?);
+                }
+                "xtask".to_owned()
+            }
+            Uses::Commands => {
+                let Some(commands) = commands(&check.script) else {
+                    return Ok(Crates::every());
+                };
+                let mut named = Vec::new();
+                for command in commands {
+                    if command == "verify" {
+                        continue;
+                    }
+                    let Some(tool) = self.tools.iter().find(|t| t.commands.contains(&command))
+                    else {
+                        return Ok(Crates::every());
+                    };
+                    packages.extend(self.graph.closure(tool.package)?);
+                    if !named.contains(&tool.package) {
+                        named.push(tool.package);
+                    }
+                }
+                named.join("+")
+            }
+        };
+        let mut patterns: Vec<String> = packages
+            .iter()
+            .filter_map(|p| self.graph.packages.get(p))
+            .map(|p| format!("{}/**", p.dir))
+            .collect();
+        patterns.sort();
+        patterns.dedup();
+        Ok(Crates { label, patterns })
+    }
+}
+
+/// Every check with the xtask part of its inputs derived from `graph` and `tools`, the commands
+/// the dispatcher runs (VER-056).
+///
+/// # Errors
+///
+/// When the tools do not match the graph or a command is claimed twice; [`all`] then holds.
+pub fn derive(graph: &Graph, tools: &[Tool]) -> Result<Vec<Check>, String> {
+    let d = Derivation::new(graph, tools)?;
+    all()
+        .into_iter()
+        .map(|c| match &c.inputs {
+            Inputs::Everything => Ok(c),
+            Inputs::Paths(lists, _) => Ok(Check {
+                inputs: Inputs::Paths(lists, d.crates(&c)?),
+                ..c
+            }),
+        })
+        .collect()
+}
+
+/// [`derive`] from the crate graph of the repository (`graph::Graph::load`).
+///
+/// # Errors
+///
+/// When the graph cannot be read or is refused, or [`derive`] fails.
+pub fn derived(tools: &[Tool]) -> Result<Vec<Check>, String> {
+    derive(&Graph::load(&crate::repo::root())?, tools)
+}
+
+/// Every check, in the order they run, with every xtask path among the inputs of each: the table
+/// when the xtask inputs are not derived ([`derived`]).
 pub fn all() -> Vec<Check> {
     let mut out = rust();
     out.extend(cpp());
@@ -226,13 +451,13 @@ pub fn all() -> Vec<Check> {
 fn rust() -> Vec<Check> {
     let c = Host::Container;
     let mut out = vec![
-        check("fmt", c, false, FMT),
-        check("clippy", c, false, CLIPPY),
-        reading(RUST_TEST_INPUTS, check("test", c, false, TEST)),
-        reading(
+        whole(check("fmt", c, false, FMT)),
+        whole(check("clippy", c, false, CLIPPY)),
+        whole(reading(RUST_TEST_INPUTS, check("test", c, false, TEST))),
+        whole(reading(
             RUST_TEST_INPUTS,
             check("test-macos", Host::MacOs, false, TEST),
-        ),
+        )),
         // The alloc and std features are additive (GEN-006).
         check("features", c, false, "cargo xtask features\n"),
     ];
@@ -250,7 +475,10 @@ fn rust() -> Vec<Check> {
         ));
     }
     out.extend([
-        reading(RUST_TEST_INPUTS, check("big-endian", c, false, BIG_ENDIAN)),
+        whole(reading(
+            RUST_TEST_INPUTS,
+            check("big-endian", c, false, BIG_ENDIAN),
+        )),
         check("layers", c, false, LAYERS),
         check("refapp", c, false, REFAPP),
     ]);
@@ -260,8 +488,9 @@ fn rust() -> Vec<Check> {
     out.extend([
         check("coverage", c, false, "cargo xtask coverage\n"),
         // Spec lint, links, vectors, traces, and changelog: it reads every part of the tree.
-        reading(Inputs::Everything, check("spec", c, false, SPEC)),
-        check("deny", c, false, DENY),
+        everything(check("spec", c, false, SPEC)),
+        // cargo-deny reads every crate of the workspace.
+        whole(check("deny", c, false, DENY)),
     ]);
     out
 }
@@ -546,12 +775,15 @@ mod tests {
     #[test]
     fn inputs_of_every_check() {
         for c in all() {
-            let lists: &[&PathList] = match c.inputs {
+            let lists: &[&PathList] = match &c.inputs {
                 Inputs::Everything => {
                     assert_eq!(c.name, "spec");
                     continue;
                 }
-                Inputs::Paths(lists) => lists,
+                Inputs::Paths(lists, crates) => {
+                    assert_eq!(*crates, Crates::every(), "{}", c.name);
+                    lists
+                }
             };
             assert!(lists.contains(&&RUN), "{}", c.name);
             assert!(!lists.contains(&&DOCS), "{}", c.name);
@@ -630,7 +862,8 @@ mod tests {
     #[test]
     fn every_included_file_is_an_input_of_the_rust_checks() {
         // A file that Rust code includes is read by every check that builds it.
-        let rust = Inputs::Paths(&[&RUN, &RUST]);
+        // An xtask crate includes no file at all (`graph::Graph::load`).
+        let rust = Inputs::Paths(&[&RUN, &RUST], Crates::every());
         let macros = [
             concat!("include_", "str!(\""),
             concat!("include_", "bytes!(\""),
@@ -669,6 +902,286 @@ mod tests {
                 )),
                 "{name}"
             );
+        }
+    }
+
+    // req: VER-056
+    #[test]
+    fn the_xtask_commands_of_a_script() {
+        assert_eq!(
+            commands(LAYERS),
+            Some(vec!["layers", "symbols", "refapp-deps"])
+        );
+        assert_eq!(commands(CPP_LAYERS), Some(vec!["cpp", "cpp"]));
+        assert_eq!(commands(FMT), Some(vec![]));
+        assert_eq!(
+            commands("x=$(cargo xtask features)\n"),
+            Some(vec!["features"])
+        );
+        // xtask in any other form: not known.
+        for script in [
+            "cargo run -p xtask -- features\n",
+            "cargo run -p xtask-spec\n",
+            "cd xtask && cargo test\n",
+            "cargo xtask\n",
+            "cargo +nightly xtask coverage\n",
+        ] {
+            assert_eq!(commands(script), None, "{script}");
+        }
+    }
+
+    // req: VER-056
+    #[test]
+    fn the_checks_of_the_whole_workspace() {
+        let whole: Vec<String> = all()
+            .into_iter()
+            .filter(|c| c.uses == Uses::Workspace)
+            .map(|c| c.name)
+            .collect();
+        assert_eq!(
+            whole,
+            ["fmt", "clippy", "test", "test-macos", "big-endian", "deny"]
+        );
+        // A script that runs cargo on the root workspace other than through `cargo xtask` and
+        // without naming its packages builds every xtask crate.
+        for c in all() {
+            if c.script.lines().any(|l| l.trim_start().starts_with("cd ")) {
+                continue;
+            }
+            for line in c.script.lines().map(str::trim) {
+                let words: Vec<&str> = line.split_whitespace().collect();
+                if words.first() != Some(&"cargo") || words.get(1) == Some(&"xtask") {
+                    continue;
+                }
+                let named = words
+                    .iter()
+                    .any(|w| matches!(*w, "-p" | "--package" | "--manifest-path"));
+                assert!(
+                    named || c.uses == Uses::Workspace || c.inputs == Inputs::Everything,
+                    "{}: {line}",
+                    c.name
+                );
+                assert!(
+                    !words.iter().any(|w| w.starts_with("xtask")),
+                    "{}: {line}",
+                    c.name
+                );
+            }
+        }
+    }
+
+    fn crates_of(checks: &[Check], name: &str) -> Crates {
+        match checks.iter().find(|c| c.name == name).map(|c| &c.inputs) {
+            Some(Inputs::Paths(_, crates)) => crates.clone(),
+            other => panic!("{name}: {other:?}"),
+        }
+    }
+
+    // req: VER-056
+    #[test]
+    fn the_xtask_inputs_derived_from_the_crate_graph() {
+        let checks = derive(&fixture::graph(), fixture::TOOLS).unwrap();
+        let base = ["xtask/cli/**", "xtask/lib/**", "xtask/verify/**"];
+        let with = |extra: &[&str]| -> Vec<String> {
+            let mut v: Vec<String> = base.iter().chain(extra).map(|p| (*p).to_owned()).collect();
+            v.sort();
+            v
+        };
+        // A check that runs no xtask command: the harness and the dispatcher only.
+        for name in ["no-std-thumbv7em-none-eabihf", "refapp", "cpp-tidy"] {
+            assert_eq!(
+                crates_of(&checks, name),
+                Crates {
+                    label: String::new(),
+                    patterns: with(&[])
+                }
+            );
+        }
+        assert_eq!(
+            crates_of(&checks, "features").patterns,
+            with(&["xtask/features/**"])
+        );
+        let layers = crates_of(&checks, "layers");
+        assert_eq!(layers.label, "xtask-layers+xtask-binaries");
+        assert_eq!(
+            layers.patterns,
+            with(&["xtask/binaries/**", "xtask/layers/**"])
+        );
+        // xtask-cpp depends on xtask-layers.
+        assert_eq!(
+            crates_of(&checks, "cpp-layers").patterns,
+            with(&["xtask/cpp/**", "xtask/layers/**"])
+        );
+        // The whole workspace: every xtask crate and what they depend on.
+        let fmt = crates_of(&checks, "fmt");
+        assert_eq!(fmt.label, "xtask");
+        assert!(fmt.patterns.contains(&"xtask/ci/**".to_owned()));
+        assert!(fmt.patterns.contains(&"crates/aldis-testkit/**".to_owned()));
+        // spec reads every path anyway.
+        let spec = checks.iter().find(|c| c.name == "spec").unwrap();
+        assert_eq!(spec.inputs, Inputs::Everything);
+        // The label shown by `verify list`.
+        let features = checks.iter().find(|c| c.name == "features").unwrap();
+        assert_eq!(features.inputs.label(), "run+rust+xtask-features");
+    }
+
+    // req: VER-056
+    #[test]
+    fn the_xtask_inputs_are_every_xtask_path_when_not_derivable() {
+        let graph = fixture::graph();
+        // A command no tool claims: that check reads every xtask path.
+        let without_coverage: Vec<Tool> = fixture::TOOLS
+            .iter()
+            .filter(|t| t.package != "xtask-coverage")
+            .copied()
+            .collect();
+        let checks = derive(&graph, &without_coverage).unwrap();
+        assert_eq!(crates_of(&checks, "coverage"), Crates::every());
+        assert_ne!(crates_of(&checks, "features"), Crates::every());
+        // A command claimed twice, or a reserved one: nothing is derived.
+        let mut twice = fixture::TOOLS.to_vec();
+        twice.push(fixture::tool("xtask-ci", &["features"]));
+        assert!(
+            derive(&graph, &twice)
+                .unwrap_err()
+                .contains("claimed twice")
+        );
+        let mut reserved = fixture::TOOLS.to_vec();
+        reserved.push(fixture::tool("xtask-ci", &["verify"]));
+        assert!(derive(&graph, &reserved).is_err());
+        // A tool that is not an xtask crate, or not in the graph.
+        for package in ["aldis-testkit", "xtask-nowhere"] {
+            let mut odd = fixture::TOOLS.to_vec();
+            odd.push(fixture::tool(package, &["odd"]));
+            assert!(derive(&graph, &odd).is_err(), "{package}");
+        }
+        // No harness in the graph.
+        let mut no_harness = graph;
+        no_harness.packages.remove("xtask-verify");
+        assert!(derive(&no_harness, fixture::TOOLS).is_err());
+    }
+
+    // req: VER-056
+    #[test]
+    fn the_repository_crate_graph_is_accepted() {
+        // The real graph: no build script, procedural macro, or included file in an xtask
+        // crate, and every xtask manifest forbids unsafe code.
+        let graph = Graph::load(&crate::repo::root()).unwrap();
+        let xtask: Vec<&String> = graph.xtask().collect();
+        assert!(xtask.iter().any(|n| *n == "xtask"), "{xtask:?}");
+        assert!(xtask.iter().any(|n| *n == "xtask-verify"), "{xtask:?}");
+        // Every tracked path below xtask/ is in the directory of an xtask crate, so that the
+        // checks of the whole workspace read it and no path there is an input of no check.
+        let files = std::process::Command::new("git")
+            .args(["ls-files", "-z", "--", "xtask"])
+            .current_dir(crate::repo::root())
+            .output()
+            .unwrap();
+        let dirs: Vec<String> = xtask
+            .iter()
+            .map(|n| format!("{}/", graph.packages[*n].dir))
+            .collect();
+        for file in String::from_utf8(files.stdout).unwrap().split('\0') {
+            if !file.is_empty() {
+                assert!(dirs.iter().any(|d| file.starts_with(d)), "{file}");
+            }
+        }
+    }
+}
+
+/// A workspace and the tools of its dispatcher like those of the repository, for tests.
+#[cfg(test)]
+pub(super) mod fixture {
+    use xtask_lib::Tool;
+
+    use super::super::graph::{Graph, Package};
+
+    const fn none(_: &[&str]) -> Option<Result<usize, String>> {
+        None
+    }
+
+    /// A tool of `package` claiming `commands`.
+    pub(in super::super) const fn tool(
+        package: &'static str,
+        commands: &'static [&'static str],
+    ) -> Tool {
+        Tool {
+            package,
+            commands,
+            help: &[],
+            run: none,
+        }
+    }
+
+    /// The tools.
+    pub(in super::super) const TOOLS: &[Tool] = &[
+        tool(
+            "xtask-spec",
+            &["spec-lint", "trace", "vectors", "fields", "links"],
+        ),
+        tool("xtask-layers", &["layers", "refapp-deps"]),
+        tool("xtask-binaries", &["symbols", "stack-sizes"]),
+        tool("xtask-features", &["features"]),
+        tool("xtask-coverage", &["coverage"]),
+        tool("xtask-changelog", &["changelog"]),
+        tool("xtask-ci", &["ci"]),
+        tool("xtask-cpp", &["cpp"]),
+    ];
+
+    /// The packages: name, directory, and the workspace packages it depends on.
+    pub(in super::super) const PACKAGES: &[(&str, &str, &[&str])] = &[
+        (
+            "xtask",
+            "xtask/cli",
+            &[
+                "xtask-binaries",
+                "xtask-changelog",
+                "xtask-ci",
+                "xtask-coverage",
+                "xtask-cpp",
+                "xtask-features",
+                "xtask-layers",
+                "xtask-lib",
+                "xtask-spec",
+                "xtask-verify",
+            ],
+        ),
+        ("xtask-lib", "xtask/lib", &[]),
+        ("xtask-verify", "xtask/verify", &["xtask-lib"]),
+        ("xtask-spec", "xtask/spec", &["aldis-testkit", "xtask-lib"]),
+        ("xtask-changelog", "xtask/changelog", &["xtask-lib"]),
+        ("xtask-layers", "xtask/layers", &["xtask-lib"]),
+        ("xtask-binaries", "xtask/binaries", &["xtask-lib"]),
+        ("xtask-features", "xtask/features", &["xtask-lib"]),
+        ("xtask-coverage", "xtask/coverage", &["xtask-lib"]),
+        ("xtask-cpp", "xtask/cpp", &["xtask-layers", "xtask-lib"]),
+        (
+            "xtask-ci",
+            "xtask/ci",
+            &[
+                "xtask-changelog",
+                "xtask-cpp",
+                "xtask-layers",
+                "xtask-lib",
+                "xtask-spec",
+            ],
+        ),
+        ("aldis-testkit", "crates/aldis-testkit", &[]),
+    ];
+
+    /// The graph of [`PACKAGES`].
+    pub(in super::super) fn graph() -> Graph {
+        Graph {
+            packages: PACKAGES
+                .iter()
+                .map(|(name, dir, deps)| {
+                    let package = Package {
+                        dir: (*dir).to_owned(),
+                        deps: deps.iter().map(|d| (*d).to_owned()).collect(),
+                    };
+                    ((*name).to_owned(), package)
+                })
+                .collect(),
         }
     }
 }

@@ -9,7 +9,8 @@ use std::process::{Command, Stdio};
 
 use serde_json::Value;
 
-use super::{checks, git, git_in, record, scope};
+use super::checks::Check;
+use super::{git, git_in, record, scope};
 use crate::repo;
 
 /// The notes ref that holds the records.
@@ -106,14 +107,14 @@ fn push_note(commit: &str, path: &str) -> Result<(), String> {
 
 /// Why a record of the commit it names does not meet the merge gate (VER-058): the record's own
 /// rules, and its skips re-derived from git rather than trusted.
-fn problems(record: &Value) -> Vec<String> {
+fn problems(record: &Value, checks: &[Check]) -> Vec<String> {
     let mut problems = record::gate_problems(record);
-    problems.extend(scope::recheck(&repo::root(), record, &checks::all()));
+    problems.extend(scope::recheck(&repo::root(), record, checks));
     problems
 }
 
 /// Publishes the local record of `commit` from `target/verify/<commit>/record.json`.
-pub fn publish(commit: &str) -> Result<usize, String> {
+pub fn publish(commit: &str, checks: &[Check]) -> Result<usize, String> {
     let path = repo::root()
         .join("target/verify")
         .join(commit)
@@ -121,7 +122,7 @@ pub fn publish(commit: &str) -> Result<usize, String> {
     let text = repo::read(&path)
         .map_err(|e| format!("{e}\nrun `cargo xtask verify` on {commit} first"))?;
     let record = load(&text, commit)?;
-    let problems = problems(&record);
+    let problems = problems(&record, checks);
     if !problems.is_empty() {
         return Err(format!(
             "the record does not pass the merge gate, so it is not published:\n  {}",
@@ -180,7 +181,7 @@ pub fn publish(commit: &str) -> Result<usize, String> {
 }
 
 /// Checks the record of `rev` published on `origin` against the merge gate.
-pub fn check(rev: &str) -> Result<usize, String> {
+pub fn check(rev: &str, checks: &[Check]) -> Result<usize, String> {
     let commit = git(&["rev-parse", rev])?;
     if !fetch_notes(&repo::root())? {
         return Err(format!("origin has no {NOTES} yet"));
@@ -188,7 +189,7 @@ pub fn check(rev: &str) -> Result<usize, String> {
     let text = published(&repo::root(), &commit)
         .ok_or_else(|| format!("origin has no published record for {commit}"))?;
     let record = load(&text, &commit)?;
-    let problems = problems(&record);
+    let problems = problems(&record, checks);
     println!(
         "verify: record of {commit}, sha256 {}, finished {}",
         record::sha256_hex(text.trim().as_bytes()),

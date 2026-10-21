@@ -3,5 +3,5 @@
 
 mod verify;
 
-pub use verify::{HELP, run};
+pub use verify::{HELP, readers, run};
 use xtask_lib::repo;

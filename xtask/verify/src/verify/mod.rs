@@ -8,6 +8,7 @@
 //! `--publish` stores it as a git note and sets the commit status (`publish.rs`).
 
 mod checks;
+mod graph;
 mod image;
 mod inside;
 mod publish;
@@ -20,6 +21,7 @@ use std::process::{Command, Stdio};
 use std::time::Instant;
 
 use serde_json::{Map, Value, json};
+use xtask_lib::Tool;
 
 use checks::{Check, Host};
 use record::Outcome;
@@ -78,19 +80,23 @@ pub struct Options {
 
 /// Dispatches `cargo xtask verify ...`; returns the number of problems found.
 ///
+/// `tools` are the tool crates of the dispatcher: the inputs of each check include the crates
+/// its `cargo xtask` commands run (VER-056).
+///
 /// # Errors
 ///
 /// When the arguments are not understood, or the run cannot be made.
-pub fn run(args: &[&str]) -> Result<usize, String> {
+pub fn run(args: &[&str], tools: &[Tool]) -> Result<usize, String> {
+    let table = || table(tools);
     match args {
         ["inside", "--out", out, rest @ ..] => {
             let opts = parse_options(rest)?.0;
             inside::run(Path::new(out), &opts)
         }
-        ["publish"] => publish::publish(&git(&["rev-parse", "HEAD"])?),
-        ["publish", rev] => publish::publish(&git(&["rev-parse", rev])?),
-        ["check"] => publish::check("HEAD"),
-        ["check", rev] => publish::check(rev),
+        ["publish"] => publish::publish(&git(&["rev-parse", "HEAD"])?, &table()),
+        ["publish", rev] => publish::publish(&git(&["rev-parse", rev])?, &table()),
+        ["check"] => publish::check("HEAD", &table()),
+        ["check", rev] => publish::check(rev, &table()),
         ["image", rest @ ..] => {
             let engine = image::Engine::detect()?;
             let commit = git(&["rev-parse", "HEAD"])?;
@@ -105,19 +111,47 @@ pub fn run(args: &[&str]) -> Result<usize, String> {
             );
             Ok(0)
         }
-        ["list" | "scope"] => show("HEAD", scope::Main::Origin),
-        ["scope", "--main", main] => show("HEAD", scope::Main::Rev(main)),
-        ["scope", rev] => show(rev, scope::Main::Origin),
-        ["scope", rev, "--main", main] => show(rev, scope::Main::Rev(main)),
+        ["list" | "scope"] => show("HEAD", scope::Main::Origin, &table()),
+        ["scope", "--main", main] => show("HEAD", scope::Main::Rev(main), &table()),
+        ["scope", rev] => show(rev, scope::Main::Origin, &table()),
+        ["scope", rev, "--main", main] => show(rev, scope::Main::Rev(main), &table()),
         rest => {
             let (opts, flags) = parse_options(rest)?;
             let force = scope::Force {
                 all: flags.contains(&"--all"),
                 cpp: flags.contains(&"--all-cpp"),
             };
-            verify(opts, force, flags.contains(&"--publish"))
+            verify(opts, force, flags.contains(&"--publish"), &table())
         }
     }
+}
+
+/// The checks, the xtask part of their inputs derived from the crate graph and `tools`; when it
+/// cannot be derived, every xtask path is an input of every check, and the reason is printed.
+fn table(tools: &[Tool]) -> Vec<Check> {
+    checks::derived(tools).unwrap_or_else(|why| {
+        println!("verify: every xtask path is an input of every check: {why}");
+        checks::all()
+    })
+}
+
+/// The checks that a change to `path` alone runs (VER-056).
+///
+/// They are the checks that read it, or every check when it is an input of none and not
+/// documentation; the xtask part of their inputs is derived from the crate graph of the
+/// repository and `tools`, the tool crates of the dispatcher.
+///
+/// # Errors
+///
+/// When the xtask inputs cannot be derived.
+pub fn readers(tools: &[Tool], path: &str) -> Result<Vec<String>, String> {
+    let checks = checks::derived(tools)?;
+    let listed = scope::listed(&checks, path);
+    Ok(checks
+        .into_iter()
+        .filter(|c| !listed || c.inputs.contains(path))
+        .map(|c| c.name)
+        .collect())
 }
 
 /// Parses a comma-separated list of check names.
@@ -187,20 +221,19 @@ fn git(args: &[&str]) -> Result<String, String> {
 }
 
 /// Prints the checks, their inputs, and which of them `rev` needs (VER-056).
-fn show(rev: &str, main: scope::Main) -> Result<usize, String> {
+fn show(rev: &str, main: scope::Main, checks: &[Check]) -> Result<usize, String> {
     let commit = git(&["rev-parse", rev])?;
     let root = repo::root();
-    let checks = checks::all();
     let change = scope::change(&root, &commit, main);
     let tip = match main {
         scope::Main::Origin => "origin/main",
         scope::Main::Rev(rev) => rev,
     };
-    let plan = scope::plan(&checks, &change, scope::Force::default(), |b| {
-        scope::sources(&root, &commit, b, tip, &checks)
+    let plan = scope::plan(checks, &change, scope::Force::default(), |b| {
+        scope::sources(&root, &commit, b, tip, checks)
     });
     println!("verify: scope of {commit}");
-    for line in scope::describe(&plan, &checks) {
+    for line in scope::describe(&plan, checks) {
         println!("verify: {line}");
     }
     Ok(0)
@@ -392,7 +425,12 @@ fn host_checks(commit: &str, out: &Path, opts: &Options) -> Result<(Vec<Value>, 
 }
 
 /// The whole run on HEAD; returns the number of merge-gate problems.
-fn verify(mut opts: Options, force: scope::Force, publish: bool) -> Result<usize, String> {
+fn verify(
+    mut opts: Options,
+    force: scope::Force,
+    publish: bool,
+    all: &[Check],
+) -> Result<usize, String> {
     let dirty = git(&["status", "--porcelain"])?;
     if !dirty.is_empty() {
         return Err(format!(
@@ -403,12 +441,11 @@ fn verify(mut opts: Options, force: scope::Force, publish: bool) -> Result<usize
     let root = repo::root();
     let commit = git(&["rev-parse", "HEAD"])?;
     let tree = git(&["rev-parse", "HEAD^{tree}"])?;
-    let all = checks::all();
     let change = scope::change(&root, &commit, scope::Main::Origin);
-    let plan = scope::plan(&all, &change, force, |b| {
-        scope::sources(&root, &commit, b, "origin/main", &all)
+    let plan = scope::plan(all, &change, force, |b| {
+        scope::sources(&root, &commit, b, "origin/main", all)
     });
-    for line in scope::describe(&plan, &all) {
+    for line in scope::describe(&plan, all) {
         println!("verify: {line}");
     }
     opts.skip = plan
@@ -435,7 +472,7 @@ fn verify(mut opts: Options, force: scope::Force, publish: bool) -> Result<usize
     let carried = plan
         .checks
         .iter()
-        .zip(&all)
+        .zip(all)
         .filter(|(_, c)| opts.only.as_ref().is_none_or(|o| o.contains(&c.name)))
         .filter_map(|(d, c)| carried(c, d));
     let results = merge_results(
@@ -458,14 +495,14 @@ fn verify(mut opts: Options, force: scope::Force, publish: bool) -> Result<usize
         "image": image.to_json(),
         "tools": tools,
         "packages": container.get("packages"),
-        "scope": scope::to_json(&plan, &all),
+        "scope": scope::to_json(&plan, all),
         "checks": results,
     });
     let text = record::canonical(&record);
     let path = out.join("record.json");
     std::fs::write(&path, &text).map_err(|e| format!("{}: {e}", path.display()))?;
     let mut problems = record::gate_problems(&record);
-    problems.extend(scope::recheck(&root, &record, &all));
+    problems.extend(scope::recheck(&root, &record, all));
     println!(
         "verify: record {} (sha256 {})",
         repo::rel(&path),
@@ -474,7 +511,7 @@ fn verify(mut opts: Options, force: scope::Force, publish: bool) -> Result<usize
     if problems.is_empty() {
         println!("verify: the record passes the merge gate (VER-058)");
         if publish {
-            return publish::publish(&commit);
+            return publish::publish(&commit, all);
         }
     } else {
         for p in &problems {
