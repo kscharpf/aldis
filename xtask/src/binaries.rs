@@ -241,10 +241,13 @@ fn foreign_imports(defined: &str, undefined: &str) -> Vec<String> {
 /// nothing from the integrator beyond `memcpy`/`memset` equivalents: no heap, threads, or C
 /// runtime (CABI-004). Expects the library built.
 pub fn ffi_imports(target: &str) -> Result<usize, String> {
-    let lib = repo::root()
-        .join("target")
-        .join(target)
-        .join("release/libaldis_ffi.a");
+    // Cargo puts the archive under `CARGO_TARGET_DIR` when it is set (relative to the
+    // repository root if relative), else under `target/`.
+    let target_dir = std::env::var_os("CARGO_TARGET_DIR").map_or_else(
+        || repo::root().join("target"),
+        |dir| repo::root().join(std::path::PathBuf::from(dir)),
+    );
+    let lib = target_dir.join(target).join("release/libaldis_ffi.a");
     if !lib.is_file() {
         return Err(format!(
             "{} not found; build it with `cargo build -p aldis-ffi --no-default-features \

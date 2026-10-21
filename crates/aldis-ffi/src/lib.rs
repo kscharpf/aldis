@@ -63,6 +63,10 @@ compile_error!("features `panic-handler` and `panic-unreachable` each define the
     not(feature = "panic-unreachable")
 ))]
 #[panic_handler]
+#[expect(
+    clippy::missing_const_for_fn,
+    reason = "a #[panic_handler] cannot be a const fn"
+)]
 fn panic(_info: &core::panic::PanicInfo<'_>) -> ! {
     loop {}
 }
