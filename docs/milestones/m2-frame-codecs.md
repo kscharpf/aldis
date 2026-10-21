@@ -10,7 +10,7 @@
 | Plan | merged | #56 | Merged after PR #54 |
 | Frame spec readings | merged | #61 | D9 anomaly lists and API-032 applied ahead of the frame WPs; OI-05 and OI-35 items 2, 3, and 5–7 answered (new USLP-016); items 1 and 8 left to the maintainer |
 | WP-0a field codes, `--scope m2` | merged | #60 | D1, D2, D3; API-082 |
-| WP-0b testkit strategies | in progress | #70 | D6; VER-054 |
+| WP-0b testkit strategies | merged | #70 | D6; VER-054; the 19 M1 property tests moved to `tests/properties.rs` |
 | WP-0c M1 C ABI, header | merged | #72 | D4, D5; the generated `include/aldis/aldis.h` and the verify check `header`; `cbindgen` 0.29.4 (MPL-2.0, checked against VER-055, `xtask/src/header.rs`, `xtask/verify/Containerfile`); C1 may start |
 | WP-1 `aldis-core`: `Ocf` | merged | #68 | CMN-010, CMN-011; `core/ocf.json`, fuzz target `ocf_classify`, exerciser group |
 | WP-1 C ABI (`aldis_crc16`, `aldis_ocf_classify`, OID generator) | planned | — | In the shape WP-0c (#72) set (§3) |

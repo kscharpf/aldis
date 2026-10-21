@@ -1,7 +1,9 @@
 //! Test-vector model, loader, and runner shared by all Aldis test suites.
 //!
 //! Tooling crate (std, dev-only): crates use it only as a dev-dependency (GEN-001), and it
-//! is never part of a flight build. Specification: `docs/07-test-vectors.md`.
+//! is never part of a flight build. Specification: `docs/07-test-vectors.md`. With the
+//! `strategies` feature it also provides the shared property-test strategies of VER-054
+//! ([`strategies`]).
 //!
 //! ```no_run
 //! use aldis_testkit::{Outcome, run_codec_file};
@@ -16,6 +18,8 @@ pub mod hex;
 pub mod model;
 pub mod oracle;
 pub mod runner;
+#[cfg(feature = "strategies")]
+pub mod strategies;
 
 pub use model::{
     CodecCase, CodecFile, Expect, FieldCatalogue, FieldEntry, FieldKind, Mode, Provenance,

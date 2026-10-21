@@ -382,17 +382,10 @@ impl<T: Copy + Default, const N: usize> Default for FixedVec<T, N> {
 
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]
-#[expect(
-    clippy::arithmetic_side_effects,
-    reason = "test bookkeeping on small bounded values (RS-018)"
-)]
 mod tests {
     extern crate std;
     use super::{ByteQueue, FixedQueue, FixedVec};
     use crate::error::{ErrorDetail, ErrorKind};
-    use proptest::prelude::*;
-    use std::collections::VecDeque;
-    use std::vec::Vec;
 
     #[test]
     fn queue_basics_and_zero_capacity() {
@@ -497,77 +490,5 @@ mod tests {
         assert!(v.is_empty());
         assert_eq!(v.pop(), None);
         assert_eq!(v.as_slice(), &[][..]);
-    }
-
-    #[derive(Debug, Clone)]
-    enum Op {
-        Push(Vec<u8>),
-        Pop,
-        Discard,
-    }
-
-    fn op() -> impl Strategy<Value = Op> {
-        prop_oneof![
-            proptest::collection::vec(any::<u8>(), 0..20).prop_map(Op::Push),
-            Just(Op::Pop),
-            Just(Op::Discard),
-        ]
-    }
-
-    proptest! {
-        #[test]
-        fn byte_queue_matches_model(ops in proptest::collection::vec(op(), 0..200)) {
-            // req: GEN-010, API-061
-            let mut q: ByteQueue<37> = ByteQueue::new();
-            let mut model: VecDeque<Vec<u8>> = VecDeque::new();
-            let mut used = 0;
-            for op in ops {
-                match op {
-                    Op::Push(data) => {
-                        let need = data.len() + 4;
-                        let r = q.push(&data);
-                        if need > 37 {
-                            prop_assert_eq!(r.unwrap_err().kind(), ErrorKind::OutOfRange);
-                        } else if used + need > 37 {
-                            prop_assert_eq!(r.unwrap_err().kind(), ErrorKind::WouldBlock);
-                        } else {
-                            prop_assert!(r.is_ok());
-                            used += need;
-                            model.push_back(data);
-                        }
-                    }
-                    Op::Pop => {
-                        let mut out = [0_u8; 40];
-                        let got = q.pop_into(&mut out).unwrap();
-                        let expected = model.pop_front();
-                        prop_assert_eq!(got.map(|n| out[..n].to_vec()), expected.clone());
-                        used -= expected.map_or(0, |e| e.len() + 4);
-                    }
-                    Op::Discard => {
-                        let expected = model.pop_front();
-                        prop_assert_eq!(q.discard(), expected.as_ref().map(Vec::len));
-                        used -= expected.map_or(0, |e| e.len() + 4);
-                    }
-                }
-                prop_assert_eq!(q.records(), model.len());
-                prop_assert_eq!(q.free(), 37 - used);
-            }
-        }
-
-        #[test]
-        fn fixed_queue_matches_model(ops in proptest::collection::vec(proptest::option::of(any::<u8>()), 0..200)) {
-            // req: GEN-010, API-051
-            let mut q: FixedQueue<u8, 5> = FixedQueue::new();
-            let mut model: VecDeque<u8> = VecDeque::new();
-            for op in ops {
-                match op {
-                    Some(v) if model.len() < 5 => { prop_assert_eq!(q.push(v), Ok(())); model.push_back(v); }
-                    Some(v) => prop_assert_eq!(q.push(v), Err(v)),
-                    None => prop_assert_eq!(q.pop(), model.pop_front()),
-                }
-                prop_assert_eq!(q.len(), model.len());
-                prop_assert_eq!(q.peek(), model.front());
-            }
-        }
     }
 }

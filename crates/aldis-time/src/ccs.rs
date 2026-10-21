@@ -338,10 +338,6 @@ impl Ccs {
 
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]
-#[expect(
-    clippy::arithmetic_side_effects,
-    reason = "test models on bounded values (RS-018)"
-)]
 mod tests {
     use super::{Ccs, CcsFormat, CcsValue, CcsVariation, from_bcd, subsecond_limit, to_bcd};
     use crate::anomaly::TimeAnomaly;
@@ -349,7 +345,6 @@ mod tests {
     use crate::field;
     use crate::pfield::{PField, PFieldTail};
     use aldis_core::{AnomalySet, DecodeMode, ErrorDetail, ErrorKind};
-    use proptest::prelude::*;
 
     fn md(year: u16, month: u8, day: u8) -> CalendarDate {
         CalendarDate::from_month_day(Year::new(year).unwrap(), Month::new(month).unwrap(), day)
@@ -608,63 +603,6 @@ mod tests {
                     }
                 }
             }
-        }
-    }
-
-    fn valid() -> impl Strategy<Value = (CcsFormat, CcsValue)> {
-        (
-            any::<bool>(),
-            0_u8..=6,
-            1_u16..=9999,
-            1_u8..=12,
-            1_u16..=366,
-            0_u8..24,
-            0_u8..60,
-            0_u8..=60,
-            any::<u64>(),
-        )
-            .prop_map(
-                |(ordinal, n, year, month, day, hour, minute, second, sub)| {
-                    let variation = if ordinal {
-                        CcsVariation::DayOfYear
-                    } else {
-                        CcsVariation::MonthDay
-                    };
-                    let y = Year::new(year).unwrap();
-                    let date = if ordinal {
-                        CalendarDate::from_day_of_year(
-                            y,
-                            day.min(crate::calendar::days_in_year(year)),
-                        )
-                    } else {
-                        let last = crate::calendar::days_in_month(year, month);
-                        let day = u8::try_from(day).unwrap_or(1).clamp(1, last);
-                        CalendarDate::from_month_day(y, Month::new(month).unwrap(), day)
-                    }
-                    .unwrap();
-                    let limit = 10_u64.pow(2 * u32::from(n));
-                    let value = CcsValue {
-                        date,
-                        hour: Hour::new(hour).unwrap(),
-                        minute: Minute::new(minute).unwrap(),
-                        second: Second::new(second).unwrap(),
-                        subsecond: sub % limit,
-                    };
-                    (CcsFormat::new(variation, n).unwrap(), value)
-                },
-            )
-    }
-
-    proptest! {
-        #[test]
-        fn t_field_round_trip((format, value) in valid()) {
-            // req: TIME-030, API-020, VER-023
-            let c = Ccs::new(format, value).unwrap();
-            let t = c.t_octets();
-            let mut flags = AnomalySet::empty();
-            prop_assert_eq!(Ccs::from_t(format, &t[..format.t_len()], DecodeMode::Strict, &mut flags), Ok(c));
-            prop_assert!(flags.is_empty());
-            prop_assert_eq!(t[2] >> 4 == 0 || format.variation() == CcsVariation::MonthDay, true);
         }
     }
 }

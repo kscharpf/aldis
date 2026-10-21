@@ -175,15 +175,10 @@ octet_int!(
 
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]
-#[expect(
-    clippy::arithmetic_side_effects,
-    reason = "test bookkeeping on small bounded values (RS-018)"
-)]
 mod tests {
     use super::{get, read_u16, read_u32, read_u64, set, write_u16, write_u32, write_u64};
     use crate::error::{ErrorDetail, ErrorKind};
     use crate::field;
-    use proptest::prelude::*;
 
     #[test]
     fn space_packet_header_fields() {
@@ -300,29 +295,5 @@ mod tests {
             write_u64(&mut b, usize::MAX, 0).unwrap_err().kind(),
             ErrorKind::OutOfRange
         );
-    }
-
-    proptest! {
-        #[test]
-        fn set_then_get_round_trips_and_preserves_other_bits(
-            buf in proptest::collection::vec(any::<u8>(), 1..16),
-            offset in 0_usize..128,
-            width in 1_u8..=64,
-            value in any::<u64>(),
-        ) {
-            // req: GEN-050, GEN-051
-            let value = value & (u64::MAX >> (64 - width));
-            let mut out = buf.clone();
-            if set(&mut out, offset, width, value).is_ok() {
-                prop_assert_eq!(get(&out, offset, width), Ok(value));
-                for bit in 0..buf.len() * 8 {
-                    if bit < offset || bit >= offset + usize::from(width) {
-                        prop_assert_eq!(get(&out, bit, 1), get(&buf, bit, 1));
-                    }
-                }
-            } else {
-                prop_assert_eq!(out, buf);
-            }
-        }
     }
 }

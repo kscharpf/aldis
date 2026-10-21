@@ -164,7 +164,6 @@ mod tests {
     use crate::secondary::SecondaryHeaderLayout;
     use aldis_core::{DecodeMode, ErrorDetail, ErrorKind};
     use core::num::NonZeroUsize;
-    use proptest::prelude::*;
 
     #[test]
     fn view_accessors() {
@@ -215,23 +214,5 @@ mod tests {
         let p = SpacePacket::decode(&idle, DecodeMode::Lenient).unwrap();
         assert!(p.is_idle() && p.anomalies().contains(SppAnomaly::IdleWithSecondaryHeader));
         assert_eq!(SpacePacket::peek_length(&idle), Ok(7));
-    }
-
-    proptest! {
-        #[test]
-        fn lenient_accepts_whatever_strict_accepts(bytes in proptest::collection::vec(any::<u8>(), 0..32)) {
-            // req: GEN-020, API-010, API-031, SPP-003
-            let strict = SpacePacket::decode(&bytes, DecodeMode::Strict);
-            let lenient = SpacePacket::decode(&bytes, DecodeMode::Lenient);
-            if let Ok(s) = strict {
-                let l = lenient.unwrap();
-                prop_assert_eq!((l.header(), l.data_field(), l.anomalies()), (s.header(), s.data_field(), s.anomalies()));
-                prop_assert!(s.anomalies().is_empty());
-            }
-            if let Ok(l) = lenient {
-                prop_assert_eq!(SpacePacket::peek_length(&bytes), Ok(l.len()));
-                prop_assert!(l.len() <= bytes.len());
-            }
-        }
     }
 }

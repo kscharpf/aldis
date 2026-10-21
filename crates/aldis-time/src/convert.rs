@@ -264,13 +264,12 @@ mod tests {
     use super::{CDS_EPOCH, UtcInstant, ccs_scale};
     use crate::ascii::{AsciiFormat, AsciiOptions, AsciiTime, Fraction};
     use crate::calendar::{CalendarDate, Month, Year};
-    use crate::ccs::{Ccs, CcsFormat, CcsVariation};
+    use crate::ccs::{CcsFormat, CcsVariation};
     use crate::cds::{
         Cds, CdsDayLen, CdsEpoch, CdsFormat, CdsSubMs, CdsValue, Micros, MsOfDay, Picos, SubMillis,
     };
     use crate::field;
     use aldis_core::{ErrorDetail, ErrorKind};
-    use proptest::prelude::*;
 
     fn cds_fmt(day: CdsDayLen, subms: CdsSubMs, epoch: CdsEpoch) -> CdsFormat {
         CdsFormat::new(epoch, day, subms)
@@ -513,22 +512,5 @@ mod tests {
                 1
             ]
         );
-    }
-
-    proptest! {
-        #[test]
-        fn cds_round_trips(day in 0_u32..0x1_0000, ms in 0_u32..=86_400_999, ps in 0_u32..1_000_000_000) {
-            // req: TIME-033, VER-023
-            let fmt = cds_fmt(CdsDayLen::Bits16, CdsSubMs::Picos, CdsEpoch::Ccsds1958);
-            let code = cds(day, ms, SubMillis::Picos(Picos::new(ps).unwrap()), fmt);
-            let inst = UtcInstant::from_cds(&code, None).unwrap();
-            prop_assert_eq!(inst.to_cds(fmt, None), Ok(code));
-            // Through CCS with 12 sub-second digits and ASCII with 12 digits: exact.
-            let ccs = inst.to_ccs(CcsFormat::new(CcsVariation::DayOfYear, 6).unwrap()).unwrap();
-            prop_assert_eq!(UtcInstant::from_ccs(&ccs), inst);
-            let agency_cds = inst.to_ascii(AsciiFormat::new(CcsVariation::MonthDay, 12, true).unwrap()).unwrap();
-            prop_assert_eq!(UtcInstant::from_ascii(&agency_cds), inst);
-            prop_assert_eq!(Ccs::new(ccs.format(), ccs.value()), Ok(ccs));
-        }
     }
 }
