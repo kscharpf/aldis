@@ -244,6 +244,8 @@ jobs:
           cache-key: xtask
       - run: cargo xtask spec-lint
       - run: cargo xtask links
+      # The decision log is well formed (VER-062).
+      - run: cargo xtask decisions
       - run: cargo xtask vectors validate
       - run: cargo xtask vectors schema --check
       # The field catalogue and the files generated from it (API-082, m2 plan D2).

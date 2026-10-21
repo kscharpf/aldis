@@ -7,6 +7,7 @@ mod changelog;
 mod consistency;
 mod coverage;
 mod cpp;
+mod decisions;
 mod features;
 mod fields;
 mod header;
@@ -46,6 +47,7 @@ commands:
   header c-smoke <cc> <c++>    build the aldis-ffi static and shared libraries and run a C
                                program with them, as C99 and C++11 (CABI-001, CABI-003)
   links                        relative Markdown links resolve inside the repository
+  decisions                    the decision log docs/process/decisions.md is well formed (VER-062)
   layers                       crate dependency rules (GEN-001..004)
   consistency                  the registrations agree: crates with code in coverage, features,
                                mutants, the exerciser, layers, READMEs, and the facade; fuzz
@@ -67,7 +69,7 @@ commands:
   changelog release <version> <YYYY-MM-DD>
                                move every fragment into a new section of CHANGELOG.md
   ci                           everything CI runs without a C++ build: spec-lint, links,
-                               layers, consistency, refapp-deps, vectors validate, vectors schema --check,
+                               decisions, layers, consistency, refapp-deps, vectors validate, vectors schema --check,
                                fields, trace --scope m0 --strict, trace --scope m1 --strict,
                                trace --scope m2, trace --scope c0, changelog check,
                                cpp unsafe-optouts
@@ -95,6 +97,7 @@ fn run(args: &[&str]) -> Result<usize, String> {
         ["header", "--write"] => header::run(true),
         ["header", "c-smoke", cc, cxx] => header::c_smoke(cc, cxx),
         ["links"] => links::check(),
+        ["decisions"] => decisions::check(),
         ["layers"] => layers::check(),
         ["refapp-deps"] => refapp::check(),
         ["symbols"] => binaries::symbols(),
@@ -114,6 +117,7 @@ fn run(args: &[&str]) -> Result<usize, String> {
             for step in [
                 spec::lint as fn() -> Result<usize, String>,
                 links::check,
+                decisions::check,
                 layers::check,
                 consistency::check,
                 refapp::check,
