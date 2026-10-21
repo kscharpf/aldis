@@ -1,0 +1,316 @@
+{
+  "kind": "codec",
+  "standard": "132.0-B-3 §4.1.5.4-5 / 732.0-B-5 §4.1.5.4-5 / 732.1-B-3 §4.1.5.2.1-2; CLCW layout 232.0-B-4 §4.2.1",
+  "provenance": "hand-derived",
+  "provenance_note": "No frame Blue Book prints an example OCF. Classification by bits 0-1 (bit 0 the most significant bit of the first octet): Type Flag 0 is a Type-1 Report (CLCW, or CLCW/PLCW on USLP); Type Flag 1 with bit 1 = 0 is project-specific; with bit 1 = 1 an SDLS FSR. TM, AOS Issues 4 and 5, and USLP give the same table and no reserved value. The CLCW of ocf-classify-001 is assembled field by field from 232.0-B-4 figure 4-6 (Control Word Type 0, Version 00, Status 000, COP in Effect 01, VCID 000101, spare 00, Flags 00001, FARM-B Counter 10, spare 0, Report Value 0x2A). Expected values computed by an independent Python model of those clauses, which shares no code with the Rust implementation. Error cases name the field code (03 §9.1): 65 ocf_type_flag, 66 ocf_report_use.",
+  "cases": [
+    {
+      "id": "ocf-classify-001",
+      "requirements": [
+        "CMN-010"
+      ],
+      "description": "CLCW of 232.0 figure 4-6: COP-1, VCID 5, Retransmit, FARM-B 2, N(R) 42",
+      "operation": "ocf_classify",
+      "input_hex": "01140C2A",
+      "expect": {
+        "ok": true,
+        "report": "clcw",
+        "octets_hex": "01140C2A"
+      }
+    },
+    {
+      "id": "ocf-classify-002",
+      "requirements": [
+        "CMN-010"
+      ],
+      "description": "All zeros: Type Flag 0, a Type-1 Report",
+      "operation": "ocf_classify",
+      "input_hex": "00000000",
+      "expect": {
+        "ok": true,
+        "report": "clcw",
+        "octets_hex": "00000000"
+      }
+    },
+    {
+      "id": "ocf-classify-003",
+      "requirements": [
+        "CMN-010",
+        "CMN-011"
+      ],
+      "description": "Type Flag 0 and every other bit 1: still a Type-1 Report; core does not check the CLCW (CMN-011)",
+      "operation": "ocf_classify",
+      "input_hex": "7FFFFFFF",
+      "expect": {
+        "ok": true,
+        "report": "clcw",
+        "octets_hex": "7FFFFFFF"
+      }
+    },
+    {
+      "id": "ocf-classify-004",
+      "requirements": [
+        "CMN-010"
+      ],
+      "description": "Type Flag 0 and bit 1 set: bit 1 belongs to the Type-1 Report",
+      "operation": "ocf_classify",
+      "input_hex": "40000000",
+      "expect": {
+        "ok": true,
+        "report": "clcw",
+        "octets_hex": "40000000"
+      }
+    },
+    {
+      "id": "ocf-classify-005",
+      "requirements": [
+        "CMN-010"
+      ],
+      "description": "Bits 0-1 = 10, the rest zero: project-specific Type-2 Report",
+      "operation": "ocf_classify",
+      "input_hex": "80000000",
+      "expect": {
+        "ok": true,
+        "report": "project_specific",
+        "octets_hex": "80000000"
+      }
+    },
+    {
+      "id": "ocf-classify-006",
+      "requirements": [
+        "CMN-010"
+      ],
+      "description": "Bits 0-1 = 10, the rest ones: project-specific Type-2 Report",
+      "operation": "ocf_classify",
+      "input_hex": "BFFFFFFF",
+      "expect": {
+        "ok": true,
+        "report": "project_specific",
+        "octets_hex": "BFFFFFFF"
+      }
+    },
+    {
+      "id": "ocf-classify-007",
+      "requirements": [
+        "CMN-010"
+      ],
+      "description": "Bits 0-1 = 11, the rest zero: SDLS FSR Type-2 Report",
+      "operation": "ocf_classify",
+      "input_hex": "C0000000",
+      "expect": {
+        "ok": true,
+        "report": "sdls_fsr",
+        "octets_hex": "C0000000"
+      }
+    },
+    {
+      "id": "ocf-classify-008",
+      "requirements": [
+        "CMN-010"
+      ],
+      "description": "All ones: SDLS FSR Type-2 Report",
+      "operation": "ocf_classify",
+      "input_hex": "FFFFFFFF",
+      "expect": {
+        "ok": true,
+        "report": "sdls_fsr",
+        "octets_hex": "FFFFFFFF"
+      }
+    },
+    {
+      "id": "ocf-classify-009",
+      "requirements": [
+        "CMN-010"
+      ],
+      "description": "Bits 0-1 = 10 with a mixed project payload",
+      "operation": "ocf_classify",
+      "input_hex": "A55A00FF",
+      "expect": {
+        "ok": true,
+        "report": "project_specific",
+        "octets_hex": "A55A00FF"
+      }
+    },
+    {
+      "id": "ocf-classify-010",
+      "requirements": [
+        "CMN-010"
+      ],
+      "description": "Bits 0-1 = 11 with a mixed FSR payload",
+      "operation": "ocf_classify",
+      "input_hex": "E0010203",
+      "expect": {
+        "ok": true,
+        "report": "sdls_fsr",
+        "octets_hex": "E0010203"
+      }
+    },
+    {
+      "id": "ocf-report-001",
+      "requirements": [
+        "CMN-010"
+      ],
+      "description": "A CLCW is a Type-1 Report",
+      "operation": "ocf_report",
+      "params": {
+        "report": "clcw"
+      },
+      "input_hex": "01140C2A",
+      "expect": {
+        "ok": true,
+        "octets_hex": "01140C2A"
+      }
+    },
+    {
+      "id": "ocf-report-002",
+      "requirements": [
+        "CMN-010"
+      ],
+      "description": "Type Flag 1 is not a Type-1 Report",
+      "operation": "ocf_report",
+      "params": {
+        "report": "clcw"
+      },
+      "input_hex": "80000000",
+      "expect": {
+        "ok": false,
+        "error": "InvalidField",
+        "field": 65
+      }
+    },
+    {
+      "id": "ocf-report-003",
+      "requirements": [
+        "CMN-010"
+      ],
+      "description": "An SDLS FSR is not a Type-1 Report",
+      "operation": "ocf_report",
+      "params": {
+        "report": "clcw"
+      },
+      "input_hex": "C1234567",
+      "expect": {
+        "ok": false,
+        "error": "InvalidField",
+        "field": 65
+      }
+    },
+    {
+      "id": "ocf-report-004",
+      "requirements": [
+        "CMN-010"
+      ],
+      "description": "Bits 0-1 = 10: project-specific",
+      "operation": "ocf_report",
+      "params": {
+        "report": "project_specific"
+      },
+      "input_hex": "80123456",
+      "expect": {
+        "ok": true,
+        "octets_hex": "80123456"
+      }
+    },
+    {
+      "id": "ocf-report-005",
+      "requirements": [
+        "CMN-010"
+      ],
+      "description": "Type Flag 0 is not a Type-2 Report",
+      "operation": "ocf_report",
+      "params": {
+        "report": "project_specific"
+      },
+      "input_hex": "01140C2A",
+      "expect": {
+        "ok": false,
+        "error": "InvalidField",
+        "field": 65
+      }
+    },
+    {
+      "id": "ocf-report-006",
+      "requirements": [
+        "CMN-010"
+      ],
+      "description": "Type Flag 0 with bit 1 set: the Type Flag is reported",
+      "operation": "ocf_report",
+      "params": {
+        "report": "project_specific"
+      },
+      "input_hex": "40000000",
+      "expect": {
+        "ok": false,
+        "error": "InvalidField",
+        "field": 65
+      }
+    },
+    {
+      "id": "ocf-report-007",
+      "requirements": [
+        "CMN-010"
+      ],
+      "description": "Bit 1 = 1 is an SDLS FSR, not project-specific",
+      "operation": "ocf_report",
+      "params": {
+        "report": "project_specific"
+      },
+      "input_hex": "C1234567",
+      "expect": {
+        "ok": false,
+        "error": "InvalidField",
+        "field": 66
+      }
+    },
+    {
+      "id": "ocf-report-008",
+      "requirements": [
+        "CMN-010"
+      ],
+      "description": "Bits 0-1 = 11: SDLS FSR",
+      "operation": "ocf_report",
+      "params": {
+        "report": "sdls_fsr"
+      },
+      "input_hex": "C1234567",
+      "expect": {
+        "ok": true,
+        "octets_hex": "C1234567"
+      }
+    },
+    {
+      "id": "ocf-report-009",
+      "requirements": [
+        "CMN-010"
+      ],
+      "description": "Type Flag 0 is not a Type-2 Report",
+      "operation": "ocf_report",
+      "params": {
+        "report": "sdls_fsr"
+      },
+      "input_hex": "40000000",
+      "expect": {
+        "ok": false,
+        "error": "InvalidField",
+        "field": 65
+      }
+    },
+    {
+      "id": "ocf-report-010",
+      "requirements": [
+        "CMN-010"
+      ],
+      "description": "Bit 1 = 0 is project-specific, not an SDLS FSR",
+      "operation": "ocf_report",
+      "params": {
+        "report": "sdls_fsr"
+      },
+      "input_hex": "80123456",
+      "expect": {
+        "ok": false,
+        "error": "InvalidField",
+        "field": 66
+      }
+    }
+  ]
+}
