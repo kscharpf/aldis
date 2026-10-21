@@ -13,5 +13,14 @@
   installs `cbindgen`.
 - `capacities.toml` `[spp] tracker_max_apids`, published as `ALDIS_SPP_TRACKER_MAX_APIDS` and
   reported by `aldis_limits` (CABI-030).
+- `aldis-ffi`: `aldis_spp_tracker_*`, `aldis_spp_segmenter_*`, and `aldis_spp_reassembler_*`
+  in caller-owned storage, with `_STORAGE_SIZE` and `_STORAGE_ALIGN` constants and queries
+  (M2 plan D5). `_init` checks the storage's size and alignment (CABI-031); every call checks
+  the storage's tag, a magic number, a layout generation, and the storage's address, and fails
+  with `ALDIS_ERR_INVALID_HANDLE` on uninitialized, released, foreign, or moved storage
+  (CABI-032). The SDU and the reassembly buffer are passed on every call (API-060).
+- `aldis-spp`: `Segmenter::suspend` and `Reassembler::suspend` return a `SegmenterState` or
+  `ReassemblerState` without the borrowed buffer, which `resume` continues with the same
+  buffer, for callers that cannot keep the borrow between calls (API-060).
 - An `aldis-ffi` integration test runs every live case of `test-vectors/{time,spp,epp}/`
   through the C ABI with the testkit runner.

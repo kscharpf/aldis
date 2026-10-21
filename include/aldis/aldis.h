@@ -638,6 +638,12 @@
 #define ALDIS_FIELD_MAX_DATA_LEN 64
 
 /**
+ * Alignment, in octets, of every helper's storage: a C caller gets it with a `uint64_t`
+ * array (CABI-031).
+ */
+#define ALDIS_STORAGE_ALIGN 8
+
+/**
  * [`aldis_spp_fields_t::packet_type`]: telemetry, Packet Type 0 (133.0 §4.1.3.3.2).
  */
 #define ALDIS_SPP_TELEMETRY 0
@@ -710,6 +716,113 @@
  * Ancillary Data (133.0 §4.1.4.2.2; SPP-008).
  */
 #define ALDIS_SPP_SECONDARY_TIME 2
+
+/**
+ * Storage octets of one `aldis_spp_tracker_t` (CABI-031; M2 plan D5).
+ */
+#define ALDIS_SPP_TRACKER_STORAGE_SIZE (32 + (8 * ALDIS_SPP_TRACKER_MAX_APIDS))
+
+/**
+ * Storage alignment of one `aldis_spp_tracker_t` (CABI-031).
+ */
+#define ALDIS_SPP_TRACKER_STORAGE_ALIGN 8
+
+/**
+ * Storage octets of one `aldis_spp_segmenter_t` (CABI-031; M2 plan D5).
+ */
+#define ALDIS_SPP_SEGMENTER_STORAGE_SIZE 96
+
+/**
+ * Storage alignment of one `aldis_spp_segmenter_t` (CABI-031).
+ */
+#define ALDIS_SPP_SEGMENTER_STORAGE_ALIGN 8
+
+/**
+ * Storage octets of one `aldis_spp_reassembler_t` (CABI-031; M2 plan D5).
+ */
+#define ALDIS_SPP_REASSEMBLER_STORAGE_SIZE 64
+
+/**
+ * Storage alignment of one `aldis_spp_reassembler_t` (CABI-031).
+ */
+#define ALDIS_SPP_REASSEMBLER_STORAGE_ALIGN 8
+
+/**
+ * [`aldis_spp_tracked_t::continuity`]: the first count of an APID (SPP-011).
+ */
+#define ALDIS_SPP_TRACK_FIRST 0
+
+/**
+ * [`aldis_spp_tracked_t::continuity`]: forward distance 1 (CMN-031, SPP-011).
+ */
+#define ALDIS_SPP_TRACK_IN_SEQUENCE 1
+
+/**
+ * [`aldis_spp_tracked_t::continuity`]: forward distance 2 to 8192; `missing` counts were
+ * skipped (CMN-031, SPP-011).
+ */
+#define ALDIS_SPP_TRACK_GAP 2
+
+/**
+ * [`aldis_spp_tracked_t::continuity`]: the same count again (CMN-031, SPP-011).
+ */
+#define ALDIS_SPP_TRACK_REPEAT 3
+
+/**
+ * [`aldis_spp_tracked_t::continuity`]: any other distance, a reset (CMN-031, SPP-011).
+ */
+#define ALDIS_SPP_TRACK_BACKWARDS 4
+
+/**
+ * [`aldis_spp_reassembly_t::discarded`] and `reason`: nothing (SPP-013).
+ */
+#define ALDIS_SPP_DISCARD_NONE 0
+
+/**
+ * A sequence gap while assembling (SPP-013).
+ */
+#define ALDIS_SPP_DISCARD_GAP 1
+
+/**
+ * A first segment arrived while assembling (SPP-013).
+ */
+#define ALDIS_SPP_DISCARD_RESTARTED 2
+
+/**
+ * An unsegmented packet arrived while assembling (SPP-013).
+ */
+#define ALDIS_SPP_DISCARD_INTERRUPTED 3
+
+/**
+ * A continuation or last segment with nothing in progress (SPP-013).
+ */
+#define ALDIS_SPP_DISCARD_ORPHAN 4
+
+/**
+ * The SDU would exceed the buffer (SPP-013).
+ */
+#define ALDIS_SPP_DISCARD_OVERFLOW 5
+
+/**
+ * A reason that a later `aldis-spp` adds (GEN-081).
+ */
+#define ALDIS_SPP_DISCARD_OTHER 255
+
+/**
+ * [`aldis_spp_reassembly_t::status`]: the segment was stored (SPP-013).
+ */
+#define ALDIS_SPP_REASSEMBLY_IN_PROGRESS 0
+
+/**
+ * [`aldis_spp_reassembly_t::status`]: the SDU of `sdu_len` octets is complete at the start of
+ * the buffer (SPP-013).
+ */
+#define ALDIS_SPP_REASSEMBLY_COMPLETE 1
+
+/**
+ * [`aldis_spp_reassembly_t::status`]: the packet was dropped for `reason` (SPP-013).
+ */
+#define ALDIS_SPP_REASSEMBLY_DROPPED 2
 
 /**
  * [`aldis_time_format_t::code`]: CCSDS Unsegmented Time Code (301.0 §3.2).
@@ -860,6 +973,21 @@
  * [`aldis_time_ascii_subset_t::present`]: `fraction` and `fraction_digits` are present.
  */
 #define ALDIS_TIME_SUBSET_FRACTION (1 << 8)
+
+/**
+ * Handle of an SDU reassembler in caller storage (SPP-013, CABI-032).
+ */
+typedef struct aldis_spp_reassembler_t aldis_spp_reassembler_t;
+
+/**
+ * Handle of an SDU segmenter in caller storage (SPP-013, CABI-032).
+ */
+typedef struct aldis_spp_segmenter_t aldis_spp_segmenter_t;
+
+/**
+ * Handle of a Packet Sequence Count tracker in caller storage (SPP-011, CABI-032).
+ */
+typedef struct aldis_spp_tracker_t aldis_spp_tracker_t;
 
 /**
  * A decoded Encapsulation Packet: its header and where its data field lies in the input
@@ -1358,6 +1486,78 @@ typedef struct {
    */
   aldis_time_decoded_t time;
 } aldis_spp_split_t;
+
+/**
+ * Configuration of a tracker (SPP-011, CABI-033).
+ */
+typedef struct {
+  /**
+   * `sizeof(aldis_spp_tracker_config_t)`, set by the caller (CABI-033).
+   */
+  uint32_t struct_size;
+  /**
+   * APIDs to track, 1 to `ALDIS_SPP_TRACKER_MAX_APIDS`.
+   */
+  uint32_t capacity;
+} aldis_spp_tracker_config_t;
+
+/**
+ * What a tracked count says about continuity (CMN-031, SPP-011).
+ */
+typedef struct {
+  /**
+   * `ALDIS_SPP_TRACK_*`.
+   */
+  uint32_t continuity;
+  /**
+   * For `ALDIS_SPP_TRACK_GAP`: counts skipped.
+   */
+  uint64_t missing;
+} aldis_spp_tracked_t;
+
+/**
+ * Configuration of a segmenter (133.0 §4.1.3.4.2; SPP-013, CABI-033).
+ */
+typedef struct {
+  /**
+   * `sizeof(aldis_spp_segmenter_config_t)`, set by the caller (CABI-033).
+   */
+  uint32_t struct_size;
+  /**
+   * `ALDIS_SPP_TELEMETRY` or `ALDIS_SPP_TELECOMMAND`.
+   */
+  uint8_t packet_type;
+  /**
+   * APID of every segment; not 2047.
+   */
+  uint16_t apid;
+  /**
+   * Largest User Data Field of one segment, at least 1.
+   */
+  size_t max_user_len;
+} aldis_spp_segmenter_config_t;
+
+/**
+ * The outcome of one reassembler push (133.0 §4.1.3.4.2; SPP-013).
+ */
+typedef struct {
+  /**
+   * Why a partial SDU was thrown away: `ALDIS_SPP_DISCARD_*`, `_NONE` if none was.
+   */
+  uint32_t discarded;
+  /**
+   * `ALDIS_SPP_REASSEMBLY_*`.
+   */
+  uint32_t status;
+  /**
+   * For `ALDIS_SPP_REASSEMBLY_DROPPED`: `ALDIS_SPP_DISCARD_ORPHAN` or `_OVERFLOW`.
+   */
+  uint32_t reason;
+  /**
+   * For `ALDIS_SPP_REASSEMBLY_COMPLETE`: the SDU length, at the start of the buffer.
+   */
+  size_t sdu_len;
+} aldis_spp_reassembly_t;
 
 /**
  * A parsed P-field (301.0 §3.1.1; TIME-001, TIME-002, TIME-005).
@@ -2028,6 +2228,285 @@ int32_t aldis_spp_split(const uint8_t *bytes,
                         const aldis_spp_secondary_layout_t *layout,
                         aldis_spp_split_t *out,
                         aldis_error_detail_t *err);
+
+/**
+ * The storage octets an `aldis_spp_tracker_t` needs: `ALDIS_SPP_TRACKER_STORAGE_SIZE`
+ * (CABI-031).
+ */
+size_t aldis_spp_tracker_storage_size(void);
+
+/**
+ * The storage alignment an `aldis_spp_tracker_t` needs: `ALDIS_SPP_TRACKER_STORAGE_ALIGN`
+ * (CABI-031).
+ */
+size_t aldis_spp_tracker_storage_align(void);
+
+/**
+ * Places an empty Packet Sequence Count tracker in `storage` (SPP-011; CABI-031, CABI-032).
+ *
+ * # Errors
+ * `ALDIS_ERR_BUFFER_TOO_SMALL` (with `needed`) for storage smaller than
+ * `ALDIS_SPP_TRACKER_STORAGE_SIZE`; `ALDIS_ERR_INVALID_FIELD` for `NULL` or misaligned storage;
+ * `ALDIS_ERR_INVALID_CONFIG` for a capacity of 0 and `ALDIS_ERR_CAPACITY_EXCEEDED` for one
+ * above `ALDIS_SPP_TRACKER_MAX_APIDS`; CABI-022 violations.
+ *
+ * # Safety
+ * `storage` is valid for writes of `storage_len` octets and outlives the handle; `cfg` is
+ * valid for a read; `out` is valid for one write; `err` is `NULL` or valid for one write.
+ */
+int32_t aldis_spp_tracker_init(void *storage,
+                               size_t storage_len,
+                               const aldis_spp_tracker_config_t *cfg,
+                               aldis_spp_tracker_t **out,
+                               aldis_error_detail_t *err);
+
+/**
+ * Classifies the count `count` of `apid` against the last one tracked (133.0 §4.1.3.4.3.3–4;
+ * SPP-011, CMN-031).
+ *
+ * # Errors
+ * `ALDIS_ERR_CAPACITY_EXCEEDED` (`apid`, with the capacity) for a new APID when the tracker is
+ * full; `ALDIS_ERR_OUT_OF_RANGE` (`apid`, `sequence_count`); `ALDIS_ERR_INVALID_HANDLE`;
+ * CABI-022 violations. On error the tracker is unchanged.
+ *
+ * # Safety
+ * `h` is a handle from `aldis_spp_tracker_init` whose storage is still valid, or detectably
+ * invalid storage; `out` is valid for one write; `err` is `NULL` or valid for one write.
+ */
+int32_t aldis_spp_tracker_track(aldis_spp_tracker_t *h,
+                                uint16_t apid,
+                                uint16_t count,
+                                aldis_spp_tracked_t *out,
+                                aldis_error_detail_t *err);
+
+/**
+ * Stops tracking `apid`; `forgot` says whether it was tracked (SPP-011).
+ *
+ * # Errors
+ * `ALDIS_ERR_OUT_OF_RANGE` (`apid`); `ALDIS_ERR_INVALID_HANDLE`; CABI-022 violations.
+ *
+ * # Safety
+ * As for [`aldis_spp_tracker_track`]; `forgot` is valid for one write.
+ */
+int32_t aldis_spp_tracker_forget(aldis_spp_tracker_t *h,
+                                 uint16_t apid,
+                                 bool *forgot,
+                                 aldis_error_detail_t *err);
+
+/**
+ * The last count tracked for `apid`: `known` is false when it is not tracked (SPP-011).
+ *
+ * # Errors
+ * `ALDIS_ERR_OUT_OF_RANGE` (`apid`); `ALDIS_ERR_INVALID_HANDLE`; CABI-022 violations.
+ *
+ * # Safety
+ * As for [`aldis_spp_tracker_track`]; `known` and `count` are valid for one write each.
+ */
+int32_t aldis_spp_tracker_last(aldis_spp_tracker_t *h,
+                               uint16_t apid,
+                               bool *known,
+                               uint16_t *count,
+                               aldis_error_detail_t *err);
+
+/**
+ * The number of APIDs tracked (SPP-011).
+ *
+ * # Errors
+ * `ALDIS_ERR_INVALID_HANDLE`; CABI-022 violations.
+ *
+ * # Safety
+ * As for [`aldis_spp_tracker_track`]; `len` is valid for one write.
+ */
+int32_t aldis_spp_tracker_len(aldis_spp_tracker_t *h, size_t *len, aldis_error_detail_t *err);
+
+/**
+ * Releases a tracker: later calls with `h` fail with `ALDIS_ERR_INVALID_HANDLE` (CABI-032).
+ * An invalid handle is ignored.
+ *
+ * # Safety
+ * `h` is `NULL`, a handle whose storage is still valid, or detectably invalid storage.
+ */
+void aldis_spp_tracker_deinit(aldis_spp_tracker_t *h);
+
+/**
+ * The storage octets an `aldis_spp_segmenter_t` needs: `ALDIS_SPP_SEGMENTER_STORAGE_SIZE`
+ * (CABI-031).
+ */
+size_t aldis_spp_segmenter_storage_size(void);
+
+/**
+ * The storage alignment an `aldis_spp_segmenter_t` needs: `ALDIS_SPP_SEGMENTER_STORAGE_ALIGN`
+ * (CABI-031).
+ */
+size_t aldis_spp_segmenter_storage_align(void);
+
+/**
+ * Places a segmenter for `sdu` in `storage` (133.0 §4.1.3.4.2; SPP-013; CABI-031, CABI-032).
+ *
+ * The segmenter keeps only the SDU's length and its position: every call to
+ * [`aldis_spp_segmenter_next`] takes the same SDU again (API-060).
+ *
+ * # Errors
+ * `ALDIS_ERR_INVALID_FIELD` for an empty SDU (`sdu`) or APID 2047 (`apid`),
+ * `ALDIS_ERR_OUT_OF_RANGE` (`max_user_len`) for 0 or (`apid`) above 2047,
+ * `ALDIS_ERR_INVALID_CONFIG` (`max_packet_len`); the storage errors of
+ * [`aldis_spp_tracker_init`]; CABI-022 violations.
+ *
+ * # Safety
+ * `storage` is valid for writes of `storage_len` octets and outlives the handle; `spp` and
+ * `cfg` are valid for reads; `sdu` is valid for `sdu_len` octets; `out` is valid for one
+ * write; `err` is `NULL` or valid for one write.
+ */
+int32_t aldis_spp_segmenter_init(void *storage,
+                                 size_t storage_len,
+                                 const aldis_spp_config_t *spp,
+                                 const aldis_spp_segmenter_config_t *cfg,
+                                 const uint8_t *sdu,
+                                 size_t sdu_len,
+                                 aldis_spp_segmenter_t **out,
+                                 aldis_error_detail_t *err);
+
+/**
+ * Encodes the next segment of `sdu` with the count `sequence_count` and the secondary header
+ * `secondary` (empty for none) (133.0 §4.1.3.4.2; SPP-013).
+ *
+ * `out_len` is 0 when the SDU is done and no packet was written; otherwise `next_count` is the
+ * count of the next packet.
+ *
+ * # Errors
+ * `ALDIS_ERR_LENGTH_MISMATCH` (`sdu`) for an SDU of another length than at `_init`,
+ * `ALDIS_ERR_OUT_OF_RANGE` (`packet_len`, `sequence_count`), `ALDIS_ERR_BUFFER_TOO_SMALL`;
+ * `ALDIS_ERR_INVALID_HANDLE`; CABI-022 violations, including `out` overlapping an input or the
+ * storage. On error nothing changes.
+ *
+ * # Safety
+ * `h` is as for [`aldis_spp_tracker_track`]; `sdu` and `secondary` are valid for their lengths;
+ * `out` is valid for `cap` octets; `out_len` and `next_count` are valid for one write each;
+ * `err` is `NULL` or valid for one write.
+ */
+int32_t aldis_spp_segmenter_next(aldis_spp_segmenter_t *h,
+                                 const uint8_t *sdu,
+                                 size_t sdu_len,
+                                 uint16_t sequence_count,
+                                 const uint8_t *secondary,
+                                 size_t secondary_len,
+                                 uint8_t *out,
+                                 size_t cap,
+                                 size_t *out_len,
+                                 uint16_t *next_count,
+                                 aldis_error_detail_t *err);
+
+/**
+ * SDU octets not yet written (133.0 §4.1.3.4.2; SPP-013).
+ *
+ * # Errors
+ * `ALDIS_ERR_INVALID_HANDLE`; CABI-022 violations.
+ *
+ * # Safety
+ * As for [`aldis_spp_tracker_track`]; `remaining` is valid for one write.
+ */
+int32_t aldis_spp_segmenter_remaining(aldis_spp_segmenter_t *h,
+                                      size_t *remaining,
+                                      aldis_error_detail_t *err);
+
+/**
+ * Releases a segmenter (CABI-032); an invalid handle is ignored.
+ *
+ * # Safety
+ * As for [`aldis_spp_tracker_deinit`].
+ */
+void aldis_spp_segmenter_deinit(aldis_spp_segmenter_t *h);
+
+/**
+ * The storage octets an `aldis_spp_reassembler_t` needs:
+ * `ALDIS_SPP_REASSEMBLER_STORAGE_SIZE` (CABI-031).
+ */
+size_t aldis_spp_reassembler_storage_size(void);
+
+/**
+ * The storage alignment an `aldis_spp_reassembler_t` needs:
+ * `ALDIS_SPP_REASSEMBLER_STORAGE_ALIGN` (CABI-031).
+ */
+size_t aldis_spp_reassembler_storage_align(void);
+
+/**
+ * Places a reassembler for `apid` in `storage` (133.0 §4.1.3.4.2; SPP-013; CABI-031,
+ * CABI-032).
+ *
+ * The reassembler keeps no buffer: every push takes the same reassembly buffer (API-060).
+ *
+ * # Errors
+ * `ALDIS_ERR_OUT_OF_RANGE` (`apid`); the storage errors of [`aldis_spp_tracker_init`];
+ * CABI-022 violations.
+ *
+ * # Safety
+ * `storage` is valid for writes of `storage_len` octets and outlives the handle; `out` is
+ * valid for one write; `err` is `NULL` or valid for one write.
+ */
+int32_t aldis_spp_reassembler_init(void *storage,
+                                   size_t storage_len,
+                                   uint16_t apid,
+                                   aldis_spp_reassembler_t **out,
+                                   aldis_error_detail_t *err);
+
+/**
+ * Decodes one Space Packet, splits its data field by `layout`, and pushes its User Data Field
+ * into the reassembly buffer `buf` (133.0 §4.1.3.4.2; SPP-013).
+ *
+ * A completed SDU is `buf[0 .. out->sdu_len]` until the next push.
+ *
+ * # Errors
+ * The errors of `aldis_spp_split`; `ALDIS_ERR_INVALID_FIELD` (`apid`) for a packet of another
+ * APID; `ALDIS_ERR_BUFFER_TOO_SMALL` (with `needed`) for a buffer shorter than the SDU in
+ * progress; `ALDIS_ERR_INVALID_HANDLE`; CABI-022 violations, including `buf` overlapping the
+ * packet or the storage. On error the reassembler is unchanged.
+ *
+ * # Safety
+ * `h` is as for [`aldis_spp_tracker_track`]; `packet` is valid for `packet_len` octets;
+ * `layout` is valid for a read; `buf` is valid for `buf_len` octets and holds what earlier
+ * pushes wrote; `out` is valid for one write; `err` is `NULL` or valid for one write.
+ */
+int32_t aldis_spp_reassembler_push(aldis_spp_reassembler_t *h,
+                                   const uint8_t *packet,
+                                   size_t packet_len,
+                                   uint32_t mode,
+                                   const aldis_spp_secondary_layout_t *layout,
+                                   uint8_t *buf,
+                                   size_t buf_len,
+                                   aldis_spp_reassembly_t *out,
+                                   aldis_error_detail_t *err);
+
+/**
+ * Discards any partial SDU and forgets the last count (133.0 §4.1.3.4.2; SPP-013).
+ *
+ * # Errors
+ * `ALDIS_ERR_INVALID_HANDLE`; CABI-022 violations.
+ *
+ * # Safety
+ * As for [`aldis_spp_tracker_track`].
+ */
+int32_t aldis_spp_reassembler_reset(aldis_spp_reassembler_t *h, aldis_error_detail_t *err);
+
+/**
+ * Whether a partial SDU is in progress (133.0 §4.1.3.4.2; SPP-013).
+ *
+ * # Errors
+ * `ALDIS_ERR_INVALID_HANDLE`; CABI-022 violations.
+ *
+ * # Safety
+ * As for [`aldis_spp_tracker_track`]; `assembling` is valid for one write.
+ */
+int32_t aldis_spp_reassembler_is_assembling(aldis_spp_reassembler_t *h,
+                                            bool *assembling,
+                                            aldis_error_detail_t *err);
+
+/**
+ * Releases a reassembler (CABI-032); an invalid handle is ignored.
+ *
+ * # Safety
+ * As for [`aldis_spp_tracker_deinit`].
+ */
+void aldis_spp_reassembler_deinit(aldis_spp_reassembler_t *h);
 
 /**
  * Decodes a time code that starts with its P-field (301.0 §3.1; TIME-001…006, TIME-010…030,

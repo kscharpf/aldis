@@ -23,6 +23,7 @@ use aldis::spp::SppAnomaly;
 use aldis::time::TimeAnomaly;
 use aldis_ffi::epp::*;
 use aldis_ffi::spp::*;
+use aldis_ffi::spp_state::*;
 use aldis_ffi::time::*;
 use aldis_ffi::{ALDIS_MODE_LENIENT, ALDIS_MODE_STRICT, ALDIS_OK, aldis_error_detail_t};
 use aldis_testkit::{CodecCase, Mode, Outcome, hex, run_codec_file};
@@ -811,6 +812,202 @@ fn decode_stream(case: &CodecCase) -> Value {
     json!({ "packets": packets, "stop_error": stop, "offset": at })
 }
 
+/// Storage for one helper: `uint64_t` words, as a C caller declares it (CABI-031).
+fn storage(size: usize) -> Vec<u64> {
+    vec![0_u64; size.div_ceil(8)]
+}
+
+fn track(case: &CodecCase) -> Value {
+    let mut words = storage(aldis_spp_tracker_storage_size());
+    let cfg = aldis_spp_tracker_config_t {
+        struct_size: size_of_u32::<aldis_spp_tracker_config_t>(),
+        capacity: u32::try_from(usize_of(&params(case), "capacity")).unwrap(),
+    };
+    let mut h: *mut aldis_spp_tracker_t = core::ptr::null_mut();
+    // SAFETY: `words` is live, aligned storage of the published size.
+    call(|e| unsafe {
+        aldis_spp_tracker_init(
+            words.as_mut_ptr().cast(),
+            words.len() * 8,
+            &raw const cfg,
+            &raw mut h,
+            e,
+        )
+    })
+    .unwrap_or_else(|_| panic!("{}: tracker_init", case.id));
+    let mut results = Vec::new();
+    for ev in param(case, "events").as_array().unwrap() {
+        let apid = u16_of(ev, "apid");
+        results.push(match str_of(ev, "op") {
+            "track" => {
+                let mut t = aldis_spp_tracked_t::default();
+                // SAFETY: `h` is the live handle; `t` a live local.
+                match call(|e| unsafe {
+                    aldis_spp_tracker_track(h, apid, u16_of(ev, "count"), &raw mut t, e)
+                }) {
+                    Err(f) => json!({ "error": f.kind }),
+                    Ok(()) => match t.continuity {
+                        ALDIS_SPP_TRACK_FIRST => json!({ "continuity": "First" }),
+                        ALDIS_SPP_TRACK_IN_SEQUENCE => json!({ "continuity": "InSequence" }),
+                        ALDIS_SPP_TRACK_REPEAT => json!({ "continuity": "Repeat" }),
+                        ALDIS_SPP_TRACK_BACKWARDS => json!({ "continuity": "Backwards" }),
+                        _ => json!({ "continuity": "Gap", "missing": t.missing }),
+                    },
+                }
+            }
+            "forget" => {
+                let mut forgot = false;
+                // SAFETY: as above.
+                call(|e| unsafe { aldis_spp_tracker_forget(h, apid, &raw mut forgot, e) })
+                    .unwrap_or_else(|_| panic!("{}: forget", case.id));
+                json!({ "forgot": forgot })
+            }
+            op => panic!("unknown tracker op {op}"),
+        });
+    }
+    // SAFETY: `h` is the live handle.
+    unsafe { aldis_spp_tracker_deinit(h) };
+    json!({ "results": results })
+}
+
+fn segment(case: &CodecCase) -> R<Value> {
+    let cfg = spp_config(case);
+    let p = params(case);
+    let sdu = hex_of(&p, "sdu_hex");
+    let sec = hex_of(&p, "secondary_header_hex");
+    let seg_cfg = aldis_spp_segmenter_config_t {
+        struct_size: size_of_u32::<aldis_spp_segmenter_config_t>(),
+        packet_type: u8_of(&p, "packet_type"),
+        apid: u16_of(&p, "apid"),
+        max_user_len: usize_of(&p, "max_user_len"),
+    };
+    let mut words = storage(ALDIS_SPP_SEGMENTER_STORAGE_SIZE);
+    let mut h: *mut aldis_spp_segmenter_t = core::ptr::null_mut();
+    // SAFETY: `words` is live, aligned storage of the published size; the rest are locals.
+    call(|e| unsafe {
+        aldis_spp_segmenter_init(
+            words.as_mut_ptr().cast(),
+            words.len() * 8,
+            &raw const cfg,
+            &raw const seg_cfg,
+            sdu.as_ptr(),
+            sdu.len(),
+            &raw mut h,
+            e,
+        )
+    })?;
+    let mut count = u16_of(&p, "sequence_count");
+    let mut packets = Vec::new();
+    let mut out = vec![0_u8; 70_000];
+    loop {
+        let (mut n, mut next) = (0, 0_u16);
+        // SAFETY: `h` is the live handle; the buffers are live and disjoint.
+        call(|e| unsafe {
+            aldis_spp_segmenter_next(
+                h,
+                sdu.as_ptr(),
+                sdu.len(),
+                count,
+                sec.as_ptr(),
+                sec.len(),
+                out.as_mut_ptr(),
+                out.len(),
+                &raw mut n,
+                &raw mut next,
+                e,
+            )
+        })?;
+        if n == 0 {
+            break;
+        }
+        packets.push(json!(hex::encode(&out[..n])));
+        count = next;
+    }
+    let mut remaining = 1;
+    // SAFETY: as above.
+    call(|e| unsafe { aldis_spp_segmenter_remaining(h, &raw mut remaining, e) })
+        .unwrap_or_else(|_| panic!("{}: remaining", case.id));
+    assert_eq!(remaining, 0, "{}", case.id);
+    // SAFETY: as above.
+    unsafe { aldis_spp_segmenter_deinit(h) };
+    Ok(json!({ "packets_hex": packets, "next_count": count }))
+}
+
+fn discard_name(d: u32) -> &'static str {
+    match d {
+        ALDIS_SPP_DISCARD_GAP => "Gap",
+        ALDIS_SPP_DISCARD_RESTARTED => "Restarted",
+        ALDIS_SPP_DISCARD_INTERRUPTED => "Interrupted",
+        ALDIS_SPP_DISCARD_ORPHAN => "Orphan",
+        ALDIS_SPP_DISCARD_OVERFLOW => "Overflow",
+        other => panic!("discard {other}"),
+    }
+}
+
+fn reassemble(case: &CodecCase) -> Value {
+    let p = params(case);
+    let mut buf = vec![0_u8; usize_of(&p, "buffer_len")];
+    let mut words = storage(ALDIS_SPP_REASSEMBLER_STORAGE_SIZE);
+    let mut h: *mut aldis_spp_reassembler_t = core::ptr::null_mut();
+    // SAFETY: `words` is live, aligned storage of the published size.
+    call(|e| unsafe {
+        aldis_spp_reassembler_init(
+            words.as_mut_ptr().cast(),
+            words.len() * 8,
+            u16_of(&p, "apid"),
+            &raw mut h,
+            e,
+        )
+    })
+    .unwrap_or_else(|_| panic!("{}: reassembler_init", case.id));
+    let layout = spp_layout(ALDIS_SPP_SECONDARY_ABSENT);
+    let mut results = Vec::new();
+    for packet in get(&p, "packets_hex").as_array().unwrap() {
+        let bytes = hex::decode(packet.as_str().unwrap()).unwrap();
+        let mut r = aldis_spp_reassembly_t::default();
+        // SAFETY: `h` is the live handle; the buffers are live and disjoint.
+        let pushed = call(|e| unsafe {
+            aldis_spp_reassembler_push(
+                h,
+                bytes.as_ptr(),
+                bytes.len(),
+                ALDIS_MODE_STRICT,
+                &raw const layout,
+                buf.as_mut_ptr(),
+                buf.len(),
+                &raw mut r,
+                e,
+            )
+        });
+        results.push(if let Err(f) = pushed {
+            json!({ "error": f.kind })
+        } else {
+            let discarded = match r.discarded {
+                ALDIS_SPP_DISCARD_NONE => Value::Null,
+                d => json!(discard_name(d)),
+            };
+            match r.status {
+                ALDIS_SPP_REASSEMBLY_IN_PROGRESS => {
+                    json!({ "discarded": discarded, "status": "InProgress" })
+                }
+                ALDIS_SPP_REASSEMBLY_COMPLETE => json!({
+                    "discarded": discarded,
+                    "status": "Complete",
+                    "sdu_hex": hex::encode(&buf[..r.sdu_len]),
+                }),
+                _ => json!({
+                    "discarded": discarded,
+                    "status": "Dropped",
+                    "reason": discard_name(r.reason),
+                }),
+            }
+        });
+    }
+    // SAFETY: `h` is the live handle.
+    unsafe { aldis_spp_reassembler_deinit(h) };
+    json!({ "results": results })
+}
+
 fn spp_run(case: &CodecCase) -> R<Value> {
     match case.operation.as_str() {
         "decode" => {
@@ -891,6 +1088,9 @@ fn spp_run(case: &CodecCase) -> R<Value> {
             }))
         }
         "split_time" => split_time(case),
+        "track" => Ok(track(case)),
+        "segment" => segment(case),
+        "reassemble" => Ok(reassemble(case)),
         op => panic!("{}: unsupported operation {op}", case.id),
     }
 }
@@ -1189,6 +1389,9 @@ vector_test!(
     "secondary_header_time",
     spp_run
 );
+vector_test!(spp_sequence_tracker, "spp", "sequence_tracker", spp_run);
+vector_test!(spp_segment, "spp", "segment", spp_run);
+vector_test!(spp_reassemble, "spp", "reassemble", spp_run);
 vector_test!(epp_header_1, "epp", "header_1", epp_run);
 vector_test!(epp_header_2, "epp", "header_2", epp_run);
 vector_test!(epp_header_4, "epp", "header_4", epp_run);

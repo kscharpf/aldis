@@ -1,7 +1,7 @@
 //! C ABI for Aldis (docs/profiles/c-abi.md; M2 plan D4, D5).
 //!
 //! The functions of the M1 codecs: `aldis-spp` ([`spp`]), its stateful helpers in caller-owned
-//! storage (`spp_state`), `aldis-time` ([`time`]), and `aldis-epp` ([`epp`]). The header
+//! storage ([`spp_state`]), `aldis-time` ([`time`]), and `aldis-epp` ([`epp`]). The header
 //! `include/aldis/aldis.h` is generated from these sources by the pinned `cbindgen`
 //! (`cargo xtask header --write`; CABI-002, CABI-003), and build-time capacities come from
 //! `capacities.toml` ([`capacities`], CABI-030).
@@ -32,8 +32,10 @@ pub mod capacities;
 pub mod epp;
 pub mod error;
 pub mod field;
+pub mod handle;
 pub mod limits;
 pub mod spp;
+pub mod spp_state;
 pub mod time;
 
 pub use abi::{ALDIS_MODE_LENIENT, ALDIS_MODE_STRICT};
