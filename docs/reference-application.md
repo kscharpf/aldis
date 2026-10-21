@@ -1,6 +1,6 @@
 # Reference application — scenario
 
-**Area:** APP · **Track:** A ([roadmap](08-roadmap.md) §3) · **Plan:** [A0 Scenario](milestones/a0-scenario.md) (decisions D1–D16) · **Code:** `refapp/` · **Scenario version:** 1 (draft for maintainer review)
+**Area:** APP · **Track:** A ([roadmap](08-roadmap.md) §3) · **Plan:** [A0 Scenario](milestones/a0-scenario.md) (decisions D1–D16); §10 [ACFS cFS flight side](milestones/acfs-flight-side.md) (proposed) · **Code:** `refapp/` · **Scenario version:** 1 (draft for maintainer review)
 
 ## Summary
 
@@ -18,6 +18,7 @@
 | Golden traces | Canonical JSON Lines in `refapp/golden/<case>.jsonl`; header line + one record per observable event; byte comparison | §7 |
 | Node interface | `step(now, inputs) -> outputs + next deadline`; in-process for Rust, a lockstep stdin/stdout protocol for the A5 C++ and A6 QEMU flight nodes (OI-24) | §8 |
 | Code rules | `aldis` facade only; flight node `no_std`, no heap, flight lint set; `forbid(unsafe_code)` everywhere | §9 |
+| cFS flight side (proposed) | A second flight node: cFS apps on cFE, OSAL, and the pc-linux PSP calling Aldis through `aldis.h`, in lockstep with the harness, reproducing the A1–A3 golden traces in four phases; plan [ACFS](milestones/acfs-flight-side.md), all decisions Proposed | §10 |
 
 **Open items that affect this document:** OI-11 (OID frames, §4.1). Resolved 2026-10-19: OI-23 (golden traces and vectors, §7.5), OI-24 (out-of-process nodes, §8.2), OI-25 (framework trace, §7.5), OI-26 (spacecraft ID, §3.4), OI-06 (SANA registries, §3.1, §4.3). Every protocol value below cites the Blue Book clause it was read from.
 
@@ -500,7 +501,7 @@ The A5 C++ flight node and the A6 bare-metal flight node under QEMU run as child
 | `0x82` STEP_RESULT | node → harness | output count (u16) ‖ each: kind (u8: 1 unit, 2 packet_out, 3 packet_in, 4 app_event) ‖ unit: length (u16) ‖ octets; packet: APID (u16) ‖ length (u16) ‖ octets; event: code (u16) ‖ count (u8) ‖ u64 each; then `next_deadline` (u64, all ones = none) |
 | `0x83` END_ACK | node → harness | — |
 
-The harness sends one message and waits for its answer; it never reads the wall clock (CI job timeouts bound a hung node). A malformed message, an unexpected type, or a closed stream ends the run with an error and no trace. The protocol is implemented and may be refined in A5, before any trace depends on it.
+The harness sends one message and waits for its answer; it never reads the wall clock (CI job timeouts bound a hung node). A malformed message, an unexpected type, or a closed stream ends the run with an error and no trace. The protocol is implemented and may be refined in A5, before any trace depends on it. The proposed cFS flight node (§10) would carry the same messages over a loopback TCP stream instead, and would need the protocol before A5 (§10.6, OI-38).
 
 | ID | Requirement | Source | Verif. |
 |---|---|---|---|
@@ -521,3 +522,134 @@ The harness sends one message and waits for its answer; it never reads the wall 
 | APP-106 | `refapp/` SHALL be a separate Cargo workspace on the pinned toolchain (RS-001). CI SHALL check its formatting (VER-004), Clippy, tests, the `thumbv7em-none-eabihf` build of `refapp-flight`, and its licences and advisories (VER-003); from A1 CI SHALL reproduce every golden trace. | VER-001 | A |
 | APP-107 | All scenario values SHALL come from one language-neutral file in `refapp/scenario/`, validated against a published JSON Schema; the Rust constants SHALL be generated from it (a C++ header from A5), and CI SHALL check that the generated files are current. | — | A |
 | APP-108 | Tests in `refapp/` SHALL carry `// req:` annotations (VER-020), and `cargo xtask trace` SHALL read them and the `requirements` of golden-trace headers. | VER-020 | A |
+
+## 10. cFS flight side (proposed)
+
+**Status: proposed, for the maintainer's review.** Plan: [ACFS cFS flight side](milestones/acfs-flight-side.md), decisions D1–D19, all Proposed. Nothing in §1–§9 changes until the plan is accepted, and APP-110…APP-125 are verified only from then on. The cFS facts this section relies on were read from the cFS repositories at the release the plan proposes to pin (nasa/cFS `v7.0.1`); the plan lists them with their source files as F1–F18 (§1.1), and this section cites them by those numbers.
+
+### 10.1 Purpose
+
+The Rust flight node (§2.1) shows Aldis in a sans-I/O application written for it. Most integrators will instead call Aldis from a flight framework with heritage, through the C ABI. The cFS flight node shows that integration with NASA's Core Flight System: cFS applications on cFE, OSAL, and the pc-linux PSP that build packets and frames with `aldis.h`, exchange messages on the cFE Software Bus, and run under the cFE executive. Because it reproduces the golden traces of the Rust flight node, it is also interoperability evidence: the same octets on the link, whichever framework produces them.
+
+### 10.2 What stays the same
+
+| Item | Rule |
+|---|---|
+| Scenario | Unchanged: applications and per-instant order (§2), APIDs and packet formats (§3), link plan (§4), time (§5), link model, faults, and cases (§6). Values come from `refapp/scenario/scenario.json` (APP-107) |
+| Ground side | The Rust ground node, in-process in the harness, unchanged |
+| Harness | Unchanged in what it owns: time, the link, the faults, and the trace (APP-070). The cFS process is an out-of-process flight node (§8.2, §10.6) |
+| Golden traces | The same files, `refapp/golden/<case>.jsonl`, compared by byte equality (APP-085). A cFS run's trace equals the Rust flight node's at the link interface (every `fault`, `unit_sent`, and `unit_delivered` record) and also in every `packet_out`, `packet_in`, and `app_event` record, because the harness records those from the node's step outputs (§7.3) |
+| Trace format | No change to APP-080…APP-088 (§10.5). The run manifest (APP-084) names the cFS release and the `aldis-ffi` build |
+
+### 10.3 Architecture
+
+```
+harness (refapp-harness, std)        cFS process core-cpu1 (pc-linux PSP, SIMULATION=native)
+┌──────────────────────────────┐
+│ clock, link model, faults,   │ node protocol   refapp_step (bridge and sequencer)
+│ trace writer, comparator;    │◀─── TCP ──────▶   │ WAKE(now, units, slot): one app at a time, in this order
+│ Rust ground node, in-process │  127.0.0.1        ├──▶ refapp_ci  ──┐
+└──────────────────────────────┘                   ├──▶ refapp_cmd ──┤ telemetry, events, DONE
+                                                   ├──▶ refapp_hk  ──┤ (Software Bus, one pipe)
+                                                   ├──▶ refapp_pl  ──┤
+                                                   └──▶ refapp_to ◀──┘
+                                                          │ packets, frames, other outputs, DONE
+                                                          └──▶ refapp_step ──▶ STEP_RESULT
+
+                                     refapp_aldis: cFE library wrapping libaldis_ffi.a (aldis.h)
+                                     cFE core services (ES, EVS, SB, TBL, TIME), as shipped
+```
+
+| cFS module | Replaces | Role | Aldis use (`aldis.h`) |
+|---|---|---|---|
+| `refapp_aldis` (cFE library) | — | Wraps the static `libaldis_ffi.a` built from the same commit. The startup script loads it first, so its symbols resolve the apps loaded after it (F4, F17) | — |
+| `refapp_step` | SCH_LAB | **Bridge and sequencer.** Holds the harness connection (§10.6); turns each STEP into WAKE messages to the scenario apps in the order of §2.1, one app at a time (§10.5); collects the outputs and the next deadlines; answers STEP_RESULT | None |
+| `refapp_ci` | CI_LAB | **Command ingest.** Decodes the delivered link units with the strict decoders and puts each command and table-upload packet on the Software Bus. P1: Space Packets. P2: TC frames, MAP demultiplexing, and segment reassembly, with the FARM-B Counter for the CLCW. P3: FARM-1 through its C ABI handle. P4: the receiving side of the link engines | `aldis_spp_*`; from P2 `aldis_tc_*` with the CLCW; from P3 FARM-1; from P4 the M4 engine handles |
+| `refapp_to` | TO_LAB | **Telemetry output.** Receives the scenario's telemetry and output messages in one pipe. Builds each Space Packet as the message arrives (per-APID sequence count, secondary header of §3.2, on-board time of §5); from P2 also the TM frames of §4.1 (VC packet generation, mux, idle fill, OID frames, frame counts, the CLCW in the OCF); forwards every other output to `refapp_step` in order | `aldis_spp_*`, `aldis_time_*`; from P2 `aldis_tm_*`, the OID generator, CRC-16; from P4 the M4 engine handles |
+| `refapp_cmd` | — | Command handler with the time-tag queue, the table store, and the memory dump (§2.1, §2.3): the applications that share the command path | `aldis_time_*` (execution times), `aldis_spp_segmenter_*` (dump), CRC-16 |
+| `refapp_hk` | — | Housekeeping (§3.3.1), from status messages of `refapp_cmd`, `refapp_pl`, and from P3 `refapp_ci` (FARM-1 status) | None |
+| `refapp_pl` | — | Payload (§3.3.3) | None |
+
+The event reporter of §2.1 is not an app of its own: each app sends its on-board events as Software Bus messages to `refapp_to`, which makes them `0x011` packets in arrival order. cFE's own event service (EVS) and housekeeping are not part of the scenario and never reach the trace. The module names avoid the `aldis_` and `ALDIS_` prefixes, which belong to the C ABI ([C ABI profile](profiles/c-abi.md) §2).
+
+**Link between the processes.** The flight node's link units cross the node protocol, never a socket of their own. `refapp_to` hands each unit to `refapp_step`, which returns it in STEP_RESULT; the harness applies the link model and the faults and delivers the unit to the Rust ground node, and the ground node's units reach the flight node in a later STEP. The lab apps' UDP ports (F13, F14) are not used.
+
+**Code structure.** Each app keeps its scenario logic and its Aldis calls in C functions that take the WAKE inputs and return outputs, with no cFE, OSAL, or PSP call (a sans-I/O core, like the engines of [03 §5](03-api-model.md#5-engines-the-sans-io-contract)). The cFS glue (main loop, pipes, subscriptions, the socket) is separate, so the cores can be unit-tested on the host without cFS, and an integrator can lift a core into another framework.
+
+### 10.4 Phasing
+
+Each phase starts when the Rust milestone it follows has released its golden traces and the C ABI it needs is merged, and reproduces those traces:
+
+| Phase | Link level | Needs from track R (C ABI) | Needs from track A | Reproduces | Link code in the cFS apps |
+|---|---|---|---|---|---|
+| P1 Packets | Space Packets, one per unit | The M1 codecs (time, SPP, EPP): M2 WP-0c, merged (#72) | A1 exited | `a1-*` | None |
+| P2 Frames | TM down, TC Type-BD up | The M2 frame codecs: `aldis-tm`, `aldis-tc` with the CLCW, CRC-16, the OID generator (M2 WP-1 to WP-3) | A2 exited | `a2-*` | Hand-written C loops that mirror A2's Rust loops (plan D10) |
+| P3 COP-1 | FARM-1 on board | The FARM-1 handle (M3) | A3 exited | `a3-*` | As P2, with FARM-1 |
+| P4 Engines | As P3 | The link engine handles (M4) | A4 exited | `a3-*` (frozen from A3, APP-004) | The M4 engines replace the loops |
+
+The AOS and USLP variants of §4.3 (`a4-aos-nominal`, `a4-uslp-nominal`) are not part of P4; they can be added as cases once their C ABI exists.
+
+### 10.5 Determinism and the golden trace
+
+cFS runs in real time. SCH_LAB's schedule and cFE TIME's 1 Hz both run from OSAL timers on the PSP's timebase `cFS-Master`, which counts wall-clock time (F6, F8, F12), and cFE TIME interpolates between tones with the PSP's monotonic clock (F8). On a Linux host without privileges every task also runs at the same priority (F16), so the order in which apps run within a tick is the Linux scheduler's. A golden trace must be the same on every run (APP-077). The options:
+
+| Option | How | Trace change | Assessment |
+|---|---|---|---|
+| A. cFS timing from simulated time | Configure cFE TIME as a server with an external tone and MET (F9), let the harness step the tone, and drive an SCH-like scheduler from it | None | cFE TIME checks each tone against the PSP's monotonic clock and rejects one that does not come about 1 s after the last (F10), and interpolates with that clock between tones (F8). The clock comes from a PSP module that a mission cannot replace (F5, F6), so simulated time that runs faster or slower than real time needs a change to the PSP or a clock shim (`LD_PRELOAD`). Even then the order of apps within a tick is the scheduler's (F16). OI-36 |
+| B. Real time, normalised comparison | Run cFS as shipped (SCH_LAB, UDP) and compare only packets and frames, with time fields and instants masked | A new comparison mode; exceptions to APP-085 and APP-004 | The CUC time stamps are inside the packet octets (§3.2), so masking reaches into the units themselves. The time-tagged commands, the dump schedule, and every fault case depend on timing. Weaker evidence than the Rust and C++ nodes give |
+| **C. Lockstep sequencing** (recommended) | The harness is the clock. `refapp_step` turns each STEP into WAKE messages that carry `now` and wakes one app at a time. Scenario time is `now`, converted by Aldis (APP-060), never cFE TIME. cFE's services run as shipped and stay outside the trace | None to APP-080…APP-088; the node protocol gains a transport (§10.6) | Byte-equal traces for every case, faults included; no change to cFS; cFE TIME untouched. It replaces SCH_LAB, as missions replace the lab apps with their own |
+| D. Hybrid: C in CI, B as a demonstration | C for the nightly comparison, plus a free-running build with real-time scheduling, compared by the packet projection (APP-003) with time masked, run by hand | As C | A second build for a demonstration no check covers; left for later (§10.7) |
+
+**Recommendation: C.** It is the only option that keeps byte equality without changing cFS, and the only one under which the fault cases of A2 and A3 can be reproduced at all. Its cost is that cFS's own scheduler does not drive the scenario; the plan records this limit, and OI-36 keeps the question of driving cFE TIME open for later.
+
+How the sequencing keeps the order of §2.1 and of the trace records:
+
+| Rule | Detail |
+|---|---|
+| One active app | `refapp_step` wakes `refapp_ci` (§2.1 step 1: delivered units), `refapp_cmd` (step 1: delivered commands, then steps 2 and 3), `refapp_hk` (step 4), `refapp_pl` (step 5), and last `refapp_to` with the transmit slot. It wakes the next app only after the previous one's DONE marker has come back |
+| One ordered output stream | Every app sends its telemetry, its application events, and then its DONE marker to the one pipe of `refapp_to`, which packetises telemetry as it arrives and forwards everything else, the marker last, to `refapp_step`. A pipe is first in, first out, and only one app produces at a time, so the records reach the trace in the order the apps raise them |
+| Time | Every WAKE carries `now`. On-board time is T0 + `now` (§5), converted with the Aldis time functions; no scenario value is read from cFE TIME or from an OSAL or PSP clock |
+| Deadlines | Each DONE marker carries the app's next deadline, and `refapp_step` reports the earliest (§8.1). A WAKE at an instant where nothing is due changes nothing (APP-074) |
+| No timeouts in the scenario path | Apps pend on their pipes without a timeout; the CI job's time limit bounds a hung run, as in §8.2 |
+
+What the trace format needs: nothing in APP-080…APP-088. There are two consequences elsewhere. (1) The out-of-process node protocol of §8.2 is needed in P1, before A5 implements it, and over another transport (§10.6, OI-38). (2) A golden trace's header lists the requirements its case verifies and is shared by every implementation, so the requirements below are traced by the `// req:` annotations of the harness tests and C sources that run the cFS node (APP-125), not by golden-trace headers. How the trace's timing fields relate to cFS time is OI-37.
+
+### 10.6 Node protocol transport
+
+§8.2 carries the node protocol over the child's stdin and stdout. A cFS process cannot use them, because the OSAL console writes to stdout (F15). The cFS node carries the same messages, in the same lockstep, over a TCP stream on the loopback interface, opened through the OSAL socket API (F15) so that the bridge stays portable to the other OSAL targets. The harness listens, starts `core-cpu1` in its staging directory (F3), and accepts one connection, which `refapp_step` opens once cFE start-up has completed (F18). The harness ends the process after END_ACK. The stdin/stdout transport stays as it is for the A5 and A6 nodes.
+
+### 10.7 Non-goals
+
+| Not in the first version | Why |
+|---|---|
+| RTEMS, VxWorks, or a PSP other than pc-linux | pc-linux runs on the CI host; the other targets need emulators or licences and add nothing to the trace |
+| A port of cFS to Rust, or Rust code in the cFS apps | The point is the C ABI, as integrators use it |
+| Changes to cFE, OSAL, PSP, or the lab apps | Mission configuration (defs directory, configuration headers, startup script, tables) is not a change; anything that needs a patch is an open issue (OI-36) |
+| cFE TIME driven by simulated time | OI-36 |
+| A free-running real-time demonstration with SCH_LAB and UDP | Option D of §10.5; later |
+| A ground side in cFS or in another ground system | The ground node is the Rust node of §2.2 |
+
+### 10.8 Requirements
+
+**T** is a harness test annotated `// req:` that runs the cFS node in the nightly job and compares its trace (APP-123); **A** is a check; **I** is review.
+
+| ID | Requirement | Source | Verif. |
+|---|---|---|---|
+| APP-110 | For every case of the link levels its phase covers (§10.4), the cFS flight node SHALL reproduce byte for byte the golden trace that the Rust flight node reproduces, with the Rust ground node and the harness unchanged. | GEN-030 | T |
+| APP-111 | The cFS flight node SHALL run on the cFS release (cFE, OSAL, PSP) that its plan pins, built for the pc-linux PSP with `SIMULATION=native`, without changes to the cFE, OSAL, PSP, or lab-app sources or build files. Mission configuration (defs directory, configuration headers, startup script, tables) is not a change. cFS sources SHALL NOT be committed to this repository. | — | A/I |
+| APP-112 | The cFS apps SHALL call Aldis only through `aldis.h`, linked from the static library `libaldis_ffi.a` built from the same commit (CABI-001) through one cFE library module, and SHALL NOT use other code of `refapp/`, another Aldis crate, or anything the header does not declare. | CABI-001, CABI-002 | A/I |
+| APP-113 | The telemetry-output app SHALL build every downlink Space Packet with the Aldis SPP and time functions, keeping the per-APID sequence counts of §3.1 and the secondary headers of §3.2, and from phase P2 every TM frame of §4.1 with the Aldis TM functions. It SHALL be the only source of downlink link units. | APP-020…APP-023, APP-030…APP-035 | T |
+| APP-114 | The command-ingest app SHALL decode every delivered link unit with the Aldis strict decoders (API-030): Space Packets in P1, TC frames with MAP demultiplexing and segment reassembly from P2, and FARM-1 through its C ABI handle from P3. It SHALL put each accepted command and table-upload packet on the Software Bus and supply the CLCW to the telemetry-output app. | APP-024, APP-041…APP-044 | T |
+| APP-115 | The flight applications of §2.1 SHALL be cFS apps that exchange Software Bus messages only, and SHALL take scenario time only from the `now` of their WAKE message, never from cFE TIME or an OSAL or PSP clock. | APP-060 | T/I |
+| APP-116 | The bridge SHALL answer each STEP by waking the apps one at a time in the order of §10.5, each after the previous app's DONE marker has passed through the output stream, and SHALL report the outputs in the order they arrive and the earliest next deadline the apps report. | APP-010, APP-074, APP-090 | T |
+| APP-117 | No trace record of a cFS run SHALL depend on wall-clock time, task priorities, or operating-system scheduling. The nightly job SHALL run every case twice and fail if the two traces differ. | GEN-031, APP-077 | T |
+| APP-118 | The cFS node SHALL carry the node protocol of §8.2, unchanged in its messages and lockstep, over a TCP stream on the loopback interface opened through the OSAL socket API, with the harness listening. The harness SHALL produce the same trace through either transport (APP-092). | APP-092 | T |
+| APP-119 | Each phase of §10.4 SHALL start only when the Rust milestone it follows has exited and the C ABI it needs is merged, and SHALL end when that milestone's cases are reproduced (APP-110). | — | I |
+| APP-120 | The cFS apps SHALL take every scenario value from a C header generated from the scenario file (APP-107), and CI SHALL check that the header is current. | APP-107 | A |
+| APP-121 | Each cFS app SHALL keep its scenario logic and its Aldis calls in functions that make no cFE, OSAL, or PSP call, separate from the cFS glue, and those functions SHALL be unit-tested on the host without cFS. | GEN-030 | I/T |
+| APP-122 | The C sources in `refapp/cfs/` SHALL be C99, as the cFS build compiles them (F3), and SHALL follow the SEI CERT C Coding Standard, checked with a free analyser (VER-051). | VER-051, VER-055 | A |
+| APP-123 | The cFS build and the trace reproduction SHALL run in the nightly workflow and on manual dispatch only, never as a gating check of the verification run, and a failure SHALL open an issue (VER-059). | VER-059 | A |
+| APP-124 | Every cFS component used SHALL be under a licence that VER-055 allows, recorded with its tag and commit in the plan. | VER-055 | I |
+| APP-125 | The tests and C sources of the cFS node SHALL carry `// req:` annotations, and `cargo xtask trace` SHALL read them. | VER-020 | A |
+
+Not applicable to the cFS node, which is C code inside a framework with tasks and global state (plan D16): APP-091 (APP-117 and APP-121 take its place), the rule on threads in APP-077 (APP-116, APP-117), the Cargo rules of APP-100 (APP-112), and APP-102 to APP-106, which are rules for the Rust crates.
