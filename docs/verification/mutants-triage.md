@@ -1,6 +1,16 @@
 # Mutation testing triage (VER-025)
 
-Surviving mutants from `cargo mutants` (`-p aldis-core -p aldis-time -p aldis-epp -p aldis-spp --all-features`) (cargo-mutants 27.1.0), triaged per VER-025. The nightly job `mutants` publishes the full report. Update this file when a new survivor appears.
+Surviving mutants from `cargo mutants` (`-p aldis-core -p aldis-time -p aldis-epp -p aldis-spp -p aldis-aos --all-features`) (cargo-mutants 27.1.0), triaged per VER-025. The nightly job `mutants` publishes the full report. Update this file when a new survivor appears.
+
+## 2026-10-20, branch `m2/aos-fhec` (M2 WP-4, module 1)
+
+`cargo mutants -p aldis-aos --all-features` (the FHEC, the crate's only code): 39 mutants: 29 caught, 9 unviable, 1 missed, 0 timeouts.
+
+| Mutant | Verdict | Action |
+|---|---|---|
+| `fhec.rs` `Gf::octet` `\|` → `^` (`high.0 << 4 \| low.0`) | Equivalent: a symbol is below 16 by construction, so the shifted upper symbol and the lower symbol occupy disjoint bits and OR and XOR agree | None possible |
+
+The one survivor is equivalent and is expected in every report.
 
 ## 2026-10-20, Nightly run 39442459267 on `main` 5f40e8b (M1 release triage)
 

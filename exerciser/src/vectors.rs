@@ -1,7 +1,8 @@
-//! The `aldis-time`, `aldis-spp`, and `aldis-epp` vector cases on the target (M1 WP-5, D7).
+//! The `aldis-time`, `aldis-spp`, `aldis-epp`, and `aldis-aos` vector cases on the target (M1
+//! WP-5, D7; M2 D16).
 //!
-//! `build.rs` embeds every live case of `test-vectors/{time,spp,epp}/` as a value tree. Each
-//! crate's handler (`time.rs`, `spp.rs`, `epp.rs`) mirrors the host suite of its crate
+//! `build.rs` embeds every live case of `test-vectors/{time,spp,epp,aos}/` as a value tree. Each
+//! crate's handler (`time.rs`, `spp.rs`, `epp.rs`, `aos.rs`) mirrors the host suite of its crate
 //! (`crates/aldis-*/tests/vectors.rs`): it reads the parameters, calls the API with inputs
 //! through `black_box`, and reports every output value to an [`Out`], which compares them with
 //! the expected values exactly, with no missing and no extra keys (TV-012).
@@ -34,6 +35,7 @@ pub enum Group {
     Time,
     Spp,
     Epp,
+    Aos,
 }
 
 /// The expected outcome of a case.
@@ -438,6 +440,7 @@ pub fn run(t: &mut Tally) {
             Group::Time => crate::time::vector(case, &mut out, &mut scratch),
             Group::Spp => crate::spp::vector(case, &mut out, &mut scratch),
             Group::Epp => crate::epp::vector(case, &mut out, &mut scratch),
+            Group::Aos => crate::aos::vector(case, &mut out),
         };
         let passed = match (result, &case.expect) {
             (Err(Fail::NotRepresentable), _) => {

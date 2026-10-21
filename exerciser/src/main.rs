@@ -5,7 +5,7 @@
 //! `aldis_panic_is_unreachable`, a symbol that is defined nowhere. A release build (LTO,
 //! `panic = "abort"`) links only if no panic path survives optimization in any code the
 //! exerciser reaches, which is every public API of `aldis-core`, `aldis-time`, `aldis-spp`
-//! (with `time`), and `aldis-epp`. Feature `inject-panic` plants a reachable panic to show that
+//! (with `time`), `aldis-epp`, and the implemented modules of `aldis-aos` (the FHEC, M2 WP-4). Feature `inject-panic` plants a reachable panic to show that
 //! the check fails when it should.
 //!
 //! **On-target run (M1 D6):** on every bare-metal target the exerciser also checks every
@@ -15,6 +15,7 @@
 #![no_std]
 #![no_main]
 
+mod aos;
 mod cases;
 mod epp;
 mod exercise;
