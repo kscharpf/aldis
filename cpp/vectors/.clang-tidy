@@ -1,0 +1,16 @@
+# clang-tidy for the vector tools (CPP-041, CPP-042; docs/milestones/c0-foundations.md D5, D12): the
+# configuration of cpp/tests/.clang-tidy, which docs/profiles/cpp.md §5 gives tests and tools.
+---
+InheritParentConfig: true
+Checks: >
+  -cert-err58-cpp,
+  -cppcoreguidelines-avoid-non-const-global-variables,
+  -cppcoreguidelines-owning-memory,
+  -cppcoreguidelines-special-member-functions,
+  -hicpp-special-member-functions,
+  -cppcoreguidelines-avoid-magic-numbers,
+  -readability-magic-numbers,
+  -readability-function-cognitive-complexity
+CheckOptions:
+  # Tests use the test framework and the standard library freely (D4, D12).
+  portability-restrict-system-includes.Includes: '*'
