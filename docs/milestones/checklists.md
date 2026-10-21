@@ -41,7 +41,7 @@ A crate *has code* once its `src/` declares a function. In the change that gives
 - [ ] A row in [`test-vectors/README.md`](../../test-vectors/README.md) **(consistency)**.
 - [ ] Run by a host test in `crates/<crate>/tests/` through the `aldis-testkit` exact-match runner and a handler (VER-021, TV-012) **(consistency)** for a test naming the file.
 - [ ] Embedded and run by the exerciser when its crate is exercised (VER-010, M1 D6) **(consistency)**.
-- [ ] For a codec of M1 or later, run through the C ABI by the `aldis-ffi` vector runner (M2 plan D4, CABI exit criteria). Not checked by `consistency` until the runner exists (M2 WP-0c).
+- [ ] For a codec that has C ABI functions, run through the C ABI by the `aldis-ffi` vector runner, `crates/aldis-ffi/tests/vectors.rs` (M2 plan D4) **(consistency)**: every file of `test-vectors/{time,spp,epp}/` (`FFI_AREAS` in `xtask/src/consistency.rs`), and every file of a directory the runner names at least one file of.
 - [ ] Never edit a released case: add a new case and mark the old one `superseded` (TV-021, `cargo xtask vectors validate`).
 
 ## Adding a fuzz target
@@ -55,10 +55,10 @@ A crate *has code* once its `src/` declares a function. In the change that gives
 ## Adding C ABI functions
 
 - [ ] Functions in the codec's own module of `crates/aldis-ffi` (M2 plan §3), named `aldis_<std>_…` ([C ABI profile](../profiles/c-abi.md)), in the shape of M2 plan D4 and D14; every pointer and length checked (CABI-022); every `unsafe` block with a `// SAFETY:` comment (GEN-070).
-- [ ] The generated header `include/aldis/aldis.h` regenerated from the sources, never merged by hand (CABI-002; the verify check that diffs it arrives with M2 WP-0c).
+- [ ] The generated header `include/aldis/aldis.h` regenerated with `cargo xtask header --write`, never merged by hand (CABI-002; verify check `header`).
 - [ ] Capacities of stateful helpers in `crates/aldis-ffi/capacities.toml` and reported by `aldis_limits` (CABI-030).
-- [ ] The functions called by the exerciser's `aldis-ffi` group (M2 plan D16, VER-010) and compared with the Rust decoders by the `ffi_decode` fuzz target (M2 WP-7).
-- [ ] Every vector file of the codec run through the C ABI by the `aldis-ffi` vector runner (D4).
+- [ ] The functions called by the exerciser's `aldis-ffi` group, `exerciser/src/ffi.rs` (M2 plan D16, VER-010; the dependency, the `ffi` group run by `exerciser/src/exercise.rs`, and `REPORTED` in `xtask/src/coverage.rs` **(consistency)**) and compared with the Rust decoders by the `ffi_decode` fuzz target (M2 WP-7).
+- [ ] Every vector file of the codec run through the C ABI by the `aldis-ffi` vector runner (D4); add the codec's directory to `FFI_AREAS` in `xtask/src/consistency.rs` **(consistency)**.
 - [ ] The C++ owner told when the header changes (roadmap §6 rule 4).
 
 ## A spec-readings pull request before a codec

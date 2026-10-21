@@ -95,6 +95,8 @@ The outcome of each packet has two parts:
 - **Discarded:** why a partial SDU was thrown away, if one was: `Gap`, `Restarted`, `Interrupted`, or `Overflow`.
 - **Status of the current packet:** in progress, complete (the SDU length; the SDU stays readable until the next packet), or dropped with its reason. The reason is `Orphan` for a `00` or `10` with nothing in progress, which includes one whose SDU a gap has just discarded, or `Overflow`.
 
+Both helpers borrow a buffer: the segmenter its SDU, the reassembler its reassembly buffer. A caller that cannot keep the borrow from one call to the next, such as the C ABI, suspends a helper into a state without the buffer (`SegmenterState`, `ReassemblerState`) and resumes it with the same buffer on every call; nothing keeps a reference between calls (API-060; [M2 plan](../milestones/m2-frame-codecs.md) D5). Resuming a segmenter with an SDU of another length is `LengthMismatch` (`sdu`); resuming a reassembler with a buffer shorter than the SDU in progress is `BufferTooSmall`, with `needed`.
+
 ### 5.5 Secondary header layouts (SPP-007, SPP-008; OI-30 points 1 and 2)
 
 - **No configuration in the decoder:** `decode` takes no configuration and exposes the whole Packet Data Field. The caller looks up the APID's layout and splits the packet with it.

@@ -17,6 +17,7 @@ cargo-fuzz = true
 aldis-aos = { path = "../crates/aldis-aos" }
 aldis-core = { path = "../crates/aldis-core", features = ["crc-table", "test-hooks"] }
 aldis-epp = { path = "../crates/aldis-epp" }
+aldis-ffi = { path = "../crates/aldis-ffi" }
 aldis-spp = { path = "../crates/aldis-spp", features = ["time"] }
 aldis-time = { path = "../crates/aldis-time" }
 aldis-testkit = { path = "../crates/aldis-testkit" }
@@ -182,6 +183,13 @@ bench = false
 [[bin]]
 name = "spp_time_header"
 path = "fuzz_targets/spp_time_header.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "ffi_decode"
+path = "fuzz_targets/ffi_decode.rs"
 test = false
 doc = false
 bench = false

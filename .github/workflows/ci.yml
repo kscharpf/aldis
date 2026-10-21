@@ -73,6 +73,21 @@ jobs:
           cache-key: features
       - run: cargo xtask features
 
+  header:
+    name: C header, host libraries, C99 and C++11 (CABI-001..003)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup-rust
+        with:
+          cache-key: header
+      - name: Install the pinned cbindgen (CABI-002; xtask/src/header.rs)
+        run: cargo install --locked cbindgen@0.29.4
+      - run: cargo xtask header
+      # The runner's GCC and Clang; the verification image runs the pinned ones (CABI-003).
+      - run: cargo xtask header c-smoke gcc g++
+      - run: cargo xtask header c-smoke clang clang++
+
   no-std:
     name: no_std ${{ matrix.target }} (GEN-005)
     strategy:
@@ -93,6 +108,8 @@ jobs:
         # A cdylib cannot be built for bare metal; Cargo's notice about dropping it is
         # not a compiler warning and does not trip RUSTFLAGS=-D warnings.
         run: cargo build -p aldis-ffi --no-default-features --features panic-handler --target ${{ matrix.target }} --release
+      - name: No heap, threads, or C runtime needed (CABI-004)
+        run: cargo xtask ffi-imports ${{ matrix.target }}
 
   big-endian:
     name: big-endian tests (VER-030, GEN-007)
@@ -272,7 +289,7 @@ jobs:
 
   issue:
     name: open an issue on a nightly failure (VER-059)
-    needs: [fmt, clippy, test, features, no-std, big-endian, layers, refapp, exerciser, coverage, spec, deny]
+    needs: [fmt, clippy, test, features, header, no-std, big-endian, layers, refapp, exerciser, coverage, spec, deny]
     if: failure() && github.event_name == 'schedule'
     runs-on: ubuntu-24.04
     permissions:

@@ -5,7 +5,10 @@
   vector group), and no skeleton is; every crate has a README linked from `README.md` and a
   facade feature in `full`; the fuzz targets of `fuzz/Cargo.toml` and the nightly fuzz matrix
   are the same; every vector file is listed in `test-vectors/README.md`, named by a test in
-  `crates/*/tests/`, and embedded by the exerciser when its crate is exercised.
+  `crates/*/tests/`, and embedded by the exerciser when its crate is exercised; `aldis-ffi`, once
+  it has code, is in the coverage report and the exerciser, and every file of
+  `test-vectors/{time,spp,epp}/`, and of any directory it names a file of, is run through the C ABI
+  by `crates/aldis-ffi/tests/vectors.rs`; the exerciser has its `ffi` group.
 - The independent models of the hand-derived vectors are committed under `test-vectors/models/`
   (new TV-023, [docs/07-test-vectors.md](docs/07-test-vectors.md) §4): `aos_fhec.py` for
   `test-vectors/aos/fhec_*.json` and `core_ocf.py` for `test-vectors/core/ocf.json`, each with
