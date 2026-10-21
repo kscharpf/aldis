@@ -24,6 +24,13 @@ This directory holds the specification for a family of libraries that add CCSDS 
 
 [`verification/analysis-records.md`](verification/analysis-records.md): how requirements verified by analysis or inspection (method A/I) are recorded, one file per record in [`verification/records/`](verification/records/), read by `cargo xtask trace`.
 
+### Process ([`process/`](process/))
+
+| Document | What it defines |
+|---|---|
+| [Decision rights](process/decision-rights.md) | Who decides what: the maintainer, the coordinating session, or the agent of a work package, per category (spec readings, scope, plans, API and ABI, vectors, reviews, process, dependencies, releases, merges, housekeeping, approvals); how to ask the maintainer, and what continues meanwhile (VER-062) |
+| [Decision log](process/decisions.md) | One line per maintainer decision, with its date, category, and the pull request or issue that records it; checked by `cargo xtask decisions` (VER-062) |
+
 ### Reference application
 
 [`reference-application.md`](reference-application.md): the scenario of the end-to-end flight↔ground application in `refapp/` (track A, area APP): roles, APIDs, link plan, time, link model and faults, golden-trace format, node interface, and implementation rules.

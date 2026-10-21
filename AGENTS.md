@@ -20,6 +20,16 @@ A milestone plan carries a work-package status table, one row per WP or sub-part
 
 The rules and checks below are written for the Rust crates. The native C++ code follows [docs/profiles/cpp.md](docs/profiles/cpp.md) instead; its checks are set up in milestone C0.
 
+## Decision rights
+
+[docs/process/decision-rights.md](docs/process/decision-rights.md) says who decides what: the maintainer, the coordinating session that dispatches agents and opens pull requests, or the agent of a work package. In short:
+
+- **Decide yourself**, and list it under "Judgement calls" in your report: how to build what an accepted plan decision says; a Blue Book reading the normative text settles (cite the clause); new vector cases, and the layout of vector files not yet released; fixes to review findings that change no behaviour, spec, or ABI.
+- **Leave to the maintainer**, through the coordinator, as one question with a recommended option: a reading the Blue Book does not settle (as an OI), scope and plan decisions, C ABI and public API conventions, new dependencies, releases, tags, visibility and anything external, approvals, and merges to `main`. Meanwhile, continue the work the answer does not touch.
+- **Never ask** about what a rule of this file, a checklist, or a check already decides.
+
+Every maintainer decision gets a line in the [decision log](docs/process/decisions.md) (VER-062), which `cargo xtask decisions` checks.
+
 ## Non-negotiable rules (Layers 0–2)
 
 - `no_std`, **no heap**: fixed capacities via const generics (GEN-010, GEN-011).
@@ -59,7 +69,7 @@ cargo fmt --all --check
 cargo clippy --workspace --all-features --all-targets
 cargo test --workspace --all-features
 cargo clippy -p aldis --no-default-features --features full --target thumbv7em-none-eabihf
-cargo xtask ci        # spec lint, links, layering, registrations (consistency), vectors, schema, field codes, M0 and M1 traces (strict), M2 trace
+cargo xtask ci        # spec lint, links, decision log, layering, registrations (consistency), vectors, schema, field codes, M0 and M1 traces (strict), M2 trace
 ```
 
 When you change `aldis-core`, also run:
