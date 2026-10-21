@@ -6,7 +6,7 @@
 //! `- YYYY-MM-DD · <category> · <#N or chat> · <decision>`, with a known category, a real date,
 //! and dates in order. `cargo xtask metrics` parses the same lines.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use crate::repo;
 
@@ -20,7 +20,7 @@ const RIGHTS: &str = "docs/process/decision-rights.md";
 const SEP: &str = " · ";
 
 /// One parsed line of the log.
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
 struct Entry<'a> {
     /// `YYYY-MM-DD`, which sorts as the date does.
     date: &'a str,
@@ -54,6 +54,15 @@ fn backticked<'a>(lines: &[(usize, &'a str)]) -> Vec<&'a str> {
         }
     }
     out
+}
+
+/// The category slugs a heading of the rights defines, written `` (`slug`) ``.
+fn heading_slugs(heading: &str) -> Vec<&str> {
+    heading
+        .split("(`")
+        .skip(1)
+        .filter_map(|rest| rest.split_once("`)").map(|(slug, _)| slug))
+        .collect()
 }
 
 /// Whether `date` is `YYYY-MM-DD` with a month of 1–12 and a day the month can have.
@@ -146,11 +155,25 @@ fn problems(log: &str, rights: &str) -> Vec<String> {
             ));
         }
     }
+    // The other direction: a category the rights define is listed in the log, so the two files
+    // cannot drift apart when the rights gain a category.
+    for slug in rights
+        .lines()
+        .filter(|l| l.starts_with('#'))
+        .flat_map(heading_slugs)
+    {
+        if !categories.contains(slug) {
+            out.push(format!(
+                "{LOG}: {RIGHTS} defines category `{slug}`, which `## Categories` does not list"
+            ));
+        }
+    }
     let Some(lines) = section(log, "Log") else {
         out.push(format!("{LOG}: no `## Log` section"));
         return out;
     };
     let mut last: Option<&str> = None;
+    let mut seen: BTreeMap<Entry<'_>, usize> = BTreeMap::new();
     for (n, line) in lines {
         if line.trim().is_empty() {
             continue;
@@ -166,6 +189,13 @@ fn problems(log: &str, rights: &str) -> Vec<String> {
                     ));
                 }
                 last = Some(entry.date);
+                if let Some(first) = seen.get(&entry) {
+                    out.push(format!(
+                        "{LOG}:{n}: repeats the entry of line {first}; record a decision once"
+                    ));
+                } else {
+                    seen.insert(entry, n);
+                }
             }
             Err(e) => out.push(format!("{LOG}:{n}: {e}")),
         }
@@ -264,10 +294,37 @@ mod tests {
         // req: VER-062
         let text = "## Categories\n\n`spec` · `merge`\n\n## Log\n";
         let found = problems(text, RIGHTS);
-        assert_eq!(found.len(), 1, "{found:#?}");
-        assert!(found[0].contains("category `merge`"));
+        assert_eq!(found.len(), 2, "{found:#?}");
+        assert!(found[0].contains("category `merge`"), "{}", found[0]);
+        assert!(found[1].contains("defines category `api`"), "{}", found[1]);
         assert_eq!(problems("## Log\n", RIGHTS).len(), 1);
-        assert_eq!(problems("## Categories\n\n`spec`\n", RIGHTS).len(), 1);
+        // No log section, and `api` is not listed.
+        assert_eq!(problems("## Categories\n\n`spec`\n", RIGHTS).len(), 2);
+    }
+
+    #[test]
+    fn every_category_of_the_rights_is_listed() {
+        // req: VER-062
+        let text = "## Categories\n\n`spec`\n\n## Log\n";
+        let found = problems(text, RIGHTS);
+        assert_eq!(found.len(), 1, "{found:#?}");
+        assert!(found[0].contains("defines category `api`"), "{}", found[0]);
+    }
+
+    #[test]
+    fn a_repeated_entry_is_reported() {
+        // req: VER-062
+        let line = "- 2026-10-21 · api · chat · status codes stay negative";
+        let text = log(&format!(
+            "{line}\n- 2026-10-21 · spec · #61 · other\n{line}"
+        ));
+        let found = problems(&text, RIGHTS);
+        assert_eq!(found.len(), 1, "{found:#?}");
+        assert!(
+            found[0].contains("repeats the entry of line"),
+            "{}",
+            found[0]
+        );
     }
 
     #[test]
