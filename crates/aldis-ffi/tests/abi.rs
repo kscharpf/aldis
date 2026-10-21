@@ -192,9 +192,11 @@ fn errors_carry_their_field_code_and_values() {
     assert_eq!(
         d,
         aldis_error_detail_t {
+            struct_size: size::<aldis_error_detail_t>(),
             kind: 5,
             field: aldis_ffi::field::ALDIS_FIELD_APID,
             detail: ALDIS_DETAIL_EXPECTED,
+            reserved: 0,
             needed: 0,
             expected: 2047,
             found: 4096,
@@ -761,4 +763,75 @@ fn counts_and_epi_checks() {
         );
         assert_eq!(d.field, aldis_ffi::field::ALDIS_FIELD_DATA_LEN);
     }
+}
+
+/// Calls `aldis_spp_peek_length` on a 3-octet prefix, which fails with `Incomplete`
+/// (`needed` = 6), writing the detail into `words` with the given `struct_size`.
+fn short_peek(words: &mut [u64], struct_size: u32) -> i32 {
+    words.fill(u64::MAX);
+    let detail = words.as_mut_ptr().cast::<aldis_error_detail_t>();
+    let mut n = 0;
+    // SAFETY: `words` is aligned to 8 and holds `struct_size` octets or more; the library
+    // reads only `struct_size` and writes only within it.
+    unsafe {
+        detail.cast::<u32>().write(struct_size);
+        aldis_spp_peek_length(PACKET.as_ptr(), 3, &raw mut n, detail)
+    }
+}
+
+/// The octets of `words`.
+fn octets(words: &[u64]) -> Vec<u8> {
+    words.iter().flat_map(|w| w.to_ne_bytes()).collect()
+}
+
+#[test]
+fn the_detail_is_written_within_its_struct_size() {
+    // req: CABI-021, CABI-033
+    let full = usize::try_from(size::<aldis_error_detail_t>()).unwrap();
+    // Too short for the fixed prefix: the call fails before it runs, nothing is written.
+    let mut words = vec![0_u64; 8];
+    assert_eq!(
+        short_peek(&mut words, ALDIS_ERROR_DETAIL_MIN_SIZE - 1),
+        ALDIS_ERR_INVALID_FIELD
+    );
+    assert!(octets(&words)[4..].iter().all(|&b| b == 0xFF));
+    // Exactly the prefix: kind, field, and detail, nothing after them.
+    assert_eq!(
+        short_peek(&mut words, ALDIS_ERROR_DETAIL_MIN_SIZE),
+        ALDIS_ERR_INCOMPLETE
+    );
+    let o = octets(&words);
+    assert_eq!(u32::from_ne_bytes(o[4..8].try_into().unwrap()), 2);
+    assert_eq!(u16::from_ne_bytes(o[8..10].try_into().unwrap()), 0);
+    assert_eq!(
+        u16::from_ne_bytes(o[10..12].try_into().unwrap()),
+        ALDIS_DETAIL_NEEDED
+    );
+    assert!(o[12..].iter().all(|&b| b == 0xFF));
+    // Through `needed`: the 64-bit members after it are left alone.
+    assert_eq!(short_peek(&mut words, 24), ALDIS_ERR_INCOMPLETE);
+    let o = octets(&words);
+    assert_eq!(u64::from_ne_bytes(o[16..24].try_into().unwrap()), 6);
+    assert!(o[24..].iter().all(|&b| b == 0xFF));
+    // The size this library knows: every member.
+    assert_eq!(
+        short_peek(&mut words, size::<aldis_error_detail_t>()),
+        ALDIS_ERR_INCOMPLETE
+    );
+    // SAFETY: `words` holds a whole, aligned detail.
+    let d = unsafe { words.as_ptr().cast::<aldis_error_detail_t>().read() };
+    assert_eq!(
+        (d.kind, d.detail, d.reserved, d.needed, d.expected, d.found),
+        (2, 1, 0, 6, 0, 0)
+    );
+    assert_eq!(d.struct_size, size::<aldis_error_detail_t>());
+    // A larger struct of a later version: the known members, nothing beyond them.
+    assert_eq!(short_peek(&mut words, 64), ALDIS_ERR_INCOMPLETE);
+    let o = octets(&words);
+    assert_eq!(
+        u32::from_ne_bytes(o[0..4].try_into().unwrap()),
+        64,
+        "struct_size is the caller's"
+    );
+    assert!(o[full..].iter().all(|&b| b == 0xFF));
 }

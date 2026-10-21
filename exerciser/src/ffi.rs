@@ -57,8 +57,12 @@ fn size<T>() -> u32 {
 }
 
 /// A detail to pass to every call.
+/// Its `struct_size` is the size of the struct (CABI-021).
 fn detail() -> aldis_error_detail_t {
-    aldis_error_detail_t::default()
+    aldis_error_detail_t {
+        struct_size: size::<aldis_error_detail_t>(),
+        ..aldis_error_detail_t::default()
+    }
 }
 
 const PACKET: [u8; 10] = [0x18, 0x23, 0xC0, 0x07, 0x00, 0x03, 0xA0, 0xB0, 0xB1, 0xEE];

@@ -12,6 +12,7 @@
 use aldis_core::{DecodeMode, Error};
 use aldis_epp::{EncapsulationPacket, EpiExtension, UserDefined};
 use aldis_ffi::epp::{aldis_epp_decode, aldis_epp_packet_t, aldis_epp_peek_length};
+use aldis_ffi::error::ALDIS_ERROR_DETAIL_MIN_SIZE;
 use aldis_ffi::spp::{aldis_spp_decode, aldis_spp_packet_t, aldis_spp_peek_length};
 use aldis_ffi::time::{
     aldis_time_ascii_options_t, aldis_time_ascii_parse, aldis_time_ascii_t, aldis_time_decode,
@@ -49,6 +50,31 @@ fn spp(data: &[u8], mode: DecodeMode, c_mode: u32) {
         )
     };
     expect(&rust, status, &detail);
+    // With only the fixed prefix of the detail, the same status and prefix, nothing after it.
+    let mut short = aldis_error_detail_t {
+        struct_size: ALDIS_ERROR_DETAIL_MIN_SIZE,
+        needed: u64::MAX,
+        ..aldis_error_detail_t::default()
+    };
+    // SAFETY: as above.
+    let again = unsafe {
+        aldis_spp_decode(
+            data.as_ptr(),
+            data.len(),
+            c_mode,
+            &raw mut view,
+            &raw mut short,
+        )
+    };
+    assert_eq!(again, status);
+    assert_eq!(
+        (short.kind, short.field, short.detail),
+        (detail.kind, detail.field, detail.detail)
+    );
+    assert_eq!(
+        (short.struct_size, short.needed),
+        (ALDIS_ERROR_DETAIL_MIN_SIZE, u64::MAX)
+    );
     if let Ok(p) = rust {
         assert_eq!(
             (

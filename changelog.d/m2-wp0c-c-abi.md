@@ -4,7 +4,8 @@
   two-phase writers as two stateless calls (`_writer_begin`, `_writer_finish`), idle builders,
   `peek_length`, conversions, and configuration checks. Every pointer and length is checked;
   views are POD structs with offset/length pairs; configuration structs start with
-  `struct_size`; `aldis_error_detail_t` carries the error kind, the field code, and the detail.
+  `struct_size`; `aldis_error_detail_t` starts with a caller-set `struct_size`, within which the
+  library writes the error kind, the field code, and the detail.
   The `ALDIS_FIELD_*` constants are generated from the field catalogue by `cargo xtask fields`.
 - The generated header `include/aldis/aldis.h`, made by the pinned `cbindgen` 0.29.4 (MPL-2.0)
   with `cargo xtask header --write`; `cargo xtask header` and the new verify check `header`

@@ -16,7 +16,9 @@ use core::ptr::NonNull;
 
 use aldis::core::{DecodeMode, Error, ErrorKind, Result};
 
-use crate::error::{ALDIS_ERR_INVALID_FIELD, ALDIS_OK, aldis_error_detail_t, status};
+use crate::error::{
+    ALDIS_ERR_INVALID_FIELD, ALDIS_ERROR_DETAIL_MIN_SIZE, ALDIS_OK, aldis_error_detail_t, status,
+};
 
 /// Mode argument: strict decoding, the default (API-030, API-031).
 pub const ALDIS_MODE_STRICT: u32 = 0;
@@ -208,13 +210,65 @@ pub(crate) unsafe fn bytes_mut<'a>(
     Ok(unsafe { core::slice::from_raw_parts_mut(ptr, cap) })
 }
 
+/// Writes the members of `value` that lie wholly inside the caller's `struct_size` octets at
+/// `detail`, except `struct_size` itself (CABI-021, CABI-033).
+///
+/// # Safety
+/// `detail` is non-null, aligned, and valid for writes of `struct_size` octets.
+#[expect(
+    unsafe_code,
+    reason = "writes caller memory within its struct_size (CABI-021, GEN-071)"
+)]
+unsafe fn write_detail(
+    detail: *mut aldis_error_detail_t,
+    struct_size: usize,
+    value: &aldis_error_detail_t,
+) {
+    use core::mem::offset_of;
+    let fits = |offset: usize, len: usize| {
+        offset
+            .checked_add(len)
+            .is_some_and(|end| end <= struct_size)
+    };
+    let d = detail;
+    // SAFETY: each member is written only when it lies wholly inside the `struct_size` octets
+    // the caller made writable (`fits`); a field projection of the aligned struct is aligned
+    // for the field's type, and no member outside `struct_size` is projected.
+    unsafe {
+        if fits(offset_of!(aldis_error_detail_t, kind), 4) {
+            (&raw mut (*d).kind).write(value.kind);
+        }
+        if fits(offset_of!(aldis_error_detail_t, field), 2) {
+            (&raw mut (*d).field).write(value.field);
+        }
+        if fits(offset_of!(aldis_error_detail_t, detail), 2) {
+            (&raw mut (*d).detail).write(value.detail);
+        }
+        if fits(offset_of!(aldis_error_detail_t, reserved), 4) {
+            (&raw mut (*d).reserved).write(value.reserved);
+        }
+        if fits(offset_of!(aldis_error_detail_t, needed), 8) {
+            (&raw mut (*d).needed).write(value.needed);
+        }
+        if fits(offset_of!(aldis_error_detail_t, expected), 8) {
+            (&raw mut (*d).expected).write(value.expected);
+        }
+        if fits(offset_of!(aldis_error_detail_t, found), 8) {
+            (&raw mut (*d).found).write(value.found);
+        }
+    }
+}
+
 /// Runs `f` and reports its result: [`ALDIS_OK`], or the negated catalogue code with the
 /// detail written to `detail` when it is not `NULL` (CABI-020, CABI-021).
 ///
-/// A misaligned `detail` is rejected before `f` runs, with `ALDIS_ERR_INVALID_FIELD`.
+/// A misaligned `detail`, or one whose `struct_size` is below
+/// [`ALDIS_ERROR_DETAIL_MIN_SIZE`], is rejected before `f` runs, with
+/// `ALDIS_ERR_INVALID_FIELD`; the detail is then not written.
 ///
 /// # Safety
-/// A non-null, aligned `detail` must be valid for one write of [`aldis_error_detail_t`].
+/// A non-null, aligned `detail` must be valid for a read of its first four octets, the
+/// `struct_size` the caller set, and for writes of `struct_size` octets.
 #[expect(
     unsafe_code,
     reason = "checked access to caller memory (CABI-022, GEN-071)"
@@ -223,16 +277,26 @@ pub(crate) unsafe fn call(
     detail: *mut aldis_error_detail_t,
     f: impl FnOnce() -> Result<()>,
 ) -> i32 {
-    if !detail.is_null() && !detail.is_aligned() {
-        return ALDIS_ERR_INVALID_FIELD;
-    }
+    let size = if detail.is_null() {
+        None
+    } else {
+        if !detail.is_aligned() {
+            return ALDIS_ERR_INVALID_FIELD;
+        }
+        // SAFETY: non-null and aligned, checked above; the caller set `struct_size`.
+        let struct_size = unsafe { detail.cast::<u32>().read() };
+        if struct_size < ALDIS_ERROR_DETAIL_MIN_SIZE {
+            return ALDIS_ERR_INVALID_FIELD;
+        }
+        Some(usize::try_from(struct_size).unwrap_or(usize::MAX))
+    };
     match f() {
         Ok(()) => ALDIS_OK,
         Err(e) => {
-            if !detail.is_null() {
-                // SAFETY: non-null and aligned, checked above; valid for a write by the
-                // caller's contract.
-                unsafe { detail.write(aldis_error_detail_t::from(e)) };
+            if let Some(struct_size) = size {
+                // SAFETY: non-null and aligned, checked above; valid for writes of
+                // `struct_size` octets by the caller's contract.
+                unsafe { write_detail(detail, struct_size, &aldis_error_detail_t::from(e)) };
             }
             status(e)
         }

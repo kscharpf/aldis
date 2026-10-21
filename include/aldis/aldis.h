@@ -186,6 +186,12 @@
 #define ALDIS_DETAIL_EXPECTED 2
 
 /**
+ * The smallest `struct_size` of an [`aldis_error_detail_t`]: `struct_size`, `kind`, `field`,
+ * and `detail`, 12 octets (CABI-021, CABI-033).
+ */
+#define ALDIS_ERROR_DETAIL_MIN_SIZE 12
+
+/**
  * Spacecraft Identifier.
  *
  * Code 1, a field (132.0 §4.1.2.2.3; 232.0 §4.1.2.5; 732.0 §4.1.2.2.3; 732.1 §4.1.2.2.3; API-082,
@@ -1044,11 +1050,21 @@ typedef struct {
  * Detail of a failed call, written only when the call fails (CABI-021, GEN-041).
  *
  * Every function takes an optional `aldis_error_detail_t *` as its last parameter; `NULL`
- * is allowed. A violation of CABI-022 (a `NULL` or misaligned pointer, an inconsistent
- * length, overlapping buffers, a `struct_size` too small, or an enumeration value with no
- * constant) is `ALDIS_ERR_INVALID_FIELD` with field 0 and no detail.
+ * is allowed. The caller sets `struct_size`, at least `ALDIS_ERROR_DETAIL_MIN_SIZE`; the
+ * library writes only the members that lie wholly inside it, never `struct_size` itself, so
+ * a later ABI version can append members (CABI-033). A smaller `struct_size`, or a
+ * misaligned pointer, fails the call with `ALDIS_ERR_INVALID_FIELD` before it does anything,
+ * and the detail is not written.
+ *
+ * A violation of CABI-022 (a `NULL` or misaligned pointer, an inconsistent length,
+ * overlapping buffers, a `struct_size` too small, or an enumeration value with no constant)
+ * is `ALDIS_ERR_INVALID_FIELD` with field 0 and no detail.
  */
 typedef struct {
+  /**
+   * `sizeof(aldis_error_detail_t)`, set by the caller before the call (CABI-033).
+   */
+  uint32_t struct_size;
   /**
    * The error kind: its catalogue code, the negation of the returned status (03 §9).
    */
@@ -1061,6 +1077,10 @@ typedef struct {
    * `ALDIS_DETAIL_NONE`, `ALDIS_DETAIL_NEEDED`, or `ALDIS_DETAIL_EXPECTED`.
    */
   uint16_t detail;
+  /**
+   * Reserved, written as 0.
+   */
+  uint32_t reserved;
   /**
    * Octets (or bits, where documented) required, for `ALDIS_DETAIL_NEEDED`.
    */

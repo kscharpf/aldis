@@ -12,7 +12,7 @@ The foreign-function boundary of the [architecture](../../docs/01-architecture.m
 
 The [C ABI profile](../../docs/profiles/c-abi.md) sets the rules; §10 lists the details the M1 codecs settle.
 
-- Every fallible function returns `int32_t`: `ALDIS_OK` (0) or a negative `ALDIS_ERR_*`, the negated code of the [error catalogue](../../docs/03-api-model.md#9-error-catalogue) (CABI-020). Its last parameter is an optional `aldis_error_detail_t *`, written only on failure, with the kind, the field code (`ALDIS_FIELD_*`, 0 for none), and `needed` or `expected`/`found` (CABI-021).
+- Every fallible function returns `int32_t`: `ALDIS_OK` (0) or a negative `ALDIS_ERR_*`, the negated code of the [error catalogue](../../docs/03-api-model.md#9-error-catalogue) (CABI-020). Its last parameter is an optional `aldis_error_detail_t *` whose `struct_size` the caller sets, written only on failure and only within `struct_size`, with the kind, the field code (`ALDIS_FIELD_*`, 0 for none), and `needed` or `expected`/`found` (CABI-021).
 - Every pointer and length is checked: `NULL` only for an empty buffer or the detail, every pointer aligned, no output overlapping an input. A violation is `ALDIS_ERR_INVALID_FIELD` naming no field (CABI-022).
 - Buffers are `(const uint8_t *, size_t)` in and `(uint8_t *, size_t cap, size_t *out_len)` out (CABI-011). Views are POD structs with offset/length pairs into the input (CABI-012). Configuration structs start with `uint32_t struct_size` (CABI-033).
 - The decode mode is a `uint32_t` (`ALDIS_MODE_STRICT`, `ALDIS_MODE_LENIENT`); anomalies are a `uint32_t` mask, bit `n` for the flag with index `n` (`ALDIS_*_ANOMALY_*`).
@@ -25,6 +25,7 @@ The [C ABI profile](../../docs/profiles/c-abi.md) sets the rules; §10 lists the
 
 aldis_spp_packet_t view;
 aldis_error_detail_t err;
+err.struct_size = sizeof err;
 int32_t rc = aldis_spp_decode(bytes, len, ALDIS_MODE_STRICT, &view, &err);
 if (rc == ALDIS_ERR_INCOMPLETE) {
     /* err.needed octets are required */

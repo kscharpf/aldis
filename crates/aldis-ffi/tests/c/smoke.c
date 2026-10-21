@@ -41,6 +41,7 @@ int main(void) {
     size_t len = 0;
     aldis_error_detail_t err;
     memset(&err, 0, sizeof err);
+    err.struct_size = (uint32_t)sizeof err; /* CABI-021: the caller sets it */
     check(aldis_spp_encode(&cfg, &fields, NULL, 0, user, sizeof user, packet, sizeof packet,
                            &len, &err) == ALDIS_OK,
           "aldis_spp_encode");
@@ -59,6 +60,17 @@ int main(void) {
           "peek_length of a short prefix");
     check(err.kind == 2 && err.detail == ALDIS_DETAIL_NEEDED && err.needed == 6,
           "Incomplete detail");
+
+    /* CABI-021: a struct_size below the fixed prefix is rejected; the prefix alone is enough. */
+    aldis_error_detail_t small;
+    memset(&small, 0xFF, sizeof small);
+    small.struct_size = ALDIS_ERROR_DETAIL_MIN_SIZE - 1;
+    check(aldis_spp_peek_length(packet, 3, &total, &small) == ALDIS_ERR_INVALID_FIELD,
+          "detail struct_size too small");
+    small.struct_size = ALDIS_ERROR_DETAIL_MIN_SIZE;
+    check(aldis_spp_peek_length(packet, 3, &total, &small) == ALDIS_ERR_INCOMPLETE &&
+              small.kind == 2 && small.needed == UINT64_MAX,
+          "detail written within its struct_size");
 
     /* CABI-022: a NULL output is rejected, and NULL detail is allowed. */
     check(aldis_spp_peek_length(packet, len, NULL, NULL) == ALDIS_ERR_INVALID_FIELD,

@@ -39,11 +39,16 @@ type R<T> = Result<T, Fail>;
 
 /// Calls `f` with a detail and turns a failure into its kind and field code.
 fn call(f: impl FnOnce(*mut aldis_error_detail_t) -> i32) -> R<()> {
-    let mut d = aldis_error_detail_t::default();
+    let mut d = aldis_error_detail_t {
+        struct_size: size_of_u32::<aldis_error_detail_t>(),
+        ..aldis_error_detail_t::default()
+    };
     let status = f(&raw mut d);
     if status == ALDIS_OK {
         return Ok(());
     }
+    // The library never writes the caller's struct_size (CABI-021).
+    assert_eq!(d.struct_size, size_of_u32::<aldis_error_detail_t>());
     assert!(status < 0, "status {status}");
     assert_eq!(
         -status,
