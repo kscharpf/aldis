@@ -14,6 +14,7 @@
 
 pub mod hex;
 pub mod model;
+pub mod oracle;
 pub mod runner;
 
 pub use model::{

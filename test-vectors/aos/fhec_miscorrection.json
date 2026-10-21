@@ -1,0 +1,23 @@
+{
+  "kind": "codec",
+  "standard": "732.0-B-5 EC1 §4.1.2.6",
+  "provenance": "hand-derived",
+  "provenance_note": "Hand-derived from 732.0-B-5 EC1 §4.1.2.6.1 and §4.1.2.6.5 a–h (the same code as 732.0-B-4 §4.1.2.6.5, OI-04, M2 plan D11): RS(15,11) over GF(2^4), F(x) = x^4 + x + 1, g(x) = (x + a^6)(x + a^7)(x + a^8)(x + a^9), five leading symbols of zero virtual fill, systematic; symbols 6–11 are header bits 0–15 and 40–47, symbols 12–15 the FHEC (bits 48–63), each symbol sent from its left bit; bit 0 is the most significant bit of octet 0 (§1.6.3). 732.0 prints no worked FHEC example. Expected values computed by an independent Python model of the Blue Book text, written before the Rust codec: GF(2^4) by carry-less multiplication reduced by F(x), with no tables; a codeword is valid when the 15-symbol polynomial vanishes at a^6…a^9; the parity is solved by GF(2) linear algebra on those syndromes, not by division by g(x); decoding is a table from the syndrome of each of the 10 275 patterns of one or two symbol errors over the ten transmitted symbols to the pattern. The Rust codec divides by g(x) and decodes algebraically (Peterson, root search, Forney), so the two share no method. Input and output are the eight octets of the primary header with FHEC; octets 2–4 (the Virtual Channel Frame Count) are not protected. This file holds received headers with three or more symbol errors that lie within two symbols of another codeword: the code cannot detect them (minimum distance 5; 732.0-B-5 §4.1.2.6.5 note 3), so every conforming decoder returns that other codeword and reports two corrections (AOS-014, OI-35 item 5). A configured FECF, checked over the corrected header, rejects such a frame (AOS-014).",
+  "cases": [
+    {
+      "id": "aos-fhec-mis-001",
+      "requirements": [
+        "AOS-013",
+        "AOS-014"
+      ],
+      "description": "Four symbol errors (0001, 0010, 0011, 0100 in symbols 6, 8, 10, 12) within two symbols of another codeword: miscorrected to it, reported as two corrections (732.0 §4.1.2.6.5 note 3; OI-35 item 5)",
+      "operation": "fhec_decode",
+      "input_hex": "7AA5123456305252",
+      "expect": {
+        "ok": true,
+        "header_hex": "7AA5123456E05352",
+        "corrected_symbols": 2
+      }
+    }
+  ]
+}
