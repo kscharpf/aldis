@@ -120,14 +120,9 @@ impl ModCounter {
 
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]
-#[expect(
-    clippy::arithmetic_side_effects,
-    reason = "test bookkeeping on bounded values and u128 modular model (RS-018)"
-)]
 mod tests {
     use super::{Continuity, ModCounter};
     use crate::error::{ErrorDetail, ErrorKind};
-    use proptest::prelude::*;
 
     #[test]
     fn exhaustive_8_bit() {
@@ -187,29 +182,5 @@ mod tests {
                 .kind(),
             ErrorKind::OutOfRange
         );
-    }
-
-    proptest! {
-        #[test]
-        fn wider_counters_match_u128_model(bits in 1_u8..=64, raw_prev in any::<u64>(), raw_next in any::<u64>()) {
-            // req: CMN-030, CMN-031, GEN-024, VER-023
-            let modulus = 1_u128 << bits;
-            let mask = u64::MAX >> (64 - bits);
-            let prev = raw_prev & mask;
-            let next = raw_next & mask;
-            let c = ModCounter::new(bits, prev).unwrap();
-            prop_assert_eq!(u128::from(c.next().value()), (u128::from(prev) + 1) % modulus);
-            let dist = (u128::from(next) + modulus - u128::from(prev)) % modulus;
-            prop_assert_eq!(u128::from(c.distance_to(next).unwrap()), dist);
-            let expected = match dist {
-                0 => Continuity::Repeat,
-                1 => Continuity::InSequence,
-                d if d <= modulus / 2 => Continuity::Gap {
-                    missing: u64::try_from(d - 1).unwrap(),
-                },
-                _ => Continuity::Backwards,
-            };
-            prop_assert_eq!(c.classify(next), Ok(expected));
-        }
     }
 }

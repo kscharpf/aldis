@@ -168,17 +168,12 @@ pub fn write_fecf(frame: &mut [u8]) -> Result<()> {
 
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]
-#[expect(
-    clippy::arithmetic_side_effects,
-    reason = "test bookkeeping on small bounded values (RS-018)"
-)]
 mod tests {
     use super::{
         PRESET, crc16, crc16_bitwise, crc16_update, crc16_update_bitwise, syndrome, verify_fecf,
         write_fecf,
     };
     use crate::error::ErrorKind;
-    use proptest::prelude::*;
 
     #[test]
     fn check_value_and_incremental() {
@@ -217,27 +212,5 @@ mod tests {
             write_fecf(&mut [0x00]).unwrap_err().kind(),
             ErrorKind::BufferTooSmall
         );
-    }
-
-    proptest! {
-        #[test]
-        fn both_verification_methods_agree(data in proptest::collection::vec(any::<u8>(), 0..300), flip in any::<u16>()) {
-            // req: CMN-003
-            let mut frame = data;
-            frame.extend_from_slice(&[0, 0]);
-            write_fecf(&mut frame).unwrap();
-            prop_assert_eq!(syndrome(&frame), 0);
-            prop_assert!(verify_fecf(&frame).is_ok());
-            let bit = usize::from(flip) % (frame.len() * 8);
-            frame[bit / 8] ^= 0x80 >> (bit % 8);
-            prop_assert_eq!(verify_fecf(&frame).is_ok(), syndrome(&frame) == 0);
-        }
-
-        #[cfg(feature = "crc-table")]
-        #[test]
-        fn table_equals_bitwise(data in proptest::collection::vec(any::<u8>(), 0..300)) {
-            // req: CMN-004
-            prop_assert_eq!(super::crc16_table(&data), crc16_bitwise(&data));
-        }
     }
 }

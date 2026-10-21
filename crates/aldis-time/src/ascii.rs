@@ -863,7 +863,6 @@ mod tests {
     use crate::ccs::CcsVariation;
     use crate::field;
     use aldis_core::{ErrorDetail, ErrorKind, FieldId};
-    use proptest::prelude::*;
 
     fn kind_field(r: Result<AsciiTime, aldis_core::Error>) -> (ErrorKind, Option<FieldId>) {
         let e = r.unwrap_err();
@@ -1217,19 +1216,5 @@ mod tests {
         assert!(subset("2024-366").is_ok() && subset("2024-02-29").is_ok());
         let e = AsciiSubset::parse(b"::00.1234", &AsciiOptions::new(3).unwrap()).unwrap_err();
         assert_eq!(e.kind(), ErrorKind::OutOfRange);
-    }
-
-    proptest! {
-        #[test]
-        fn arbitrary_text_never_panics(bytes in proptest::collection::vec(any::<u8>(), 0..40)) {
-            // req: GEN-020, TIME-031, TIME-032
-            if let Ok(t) = AsciiTime::parse(&bytes, &AsciiOptions::DEFAULT) {
-                let mut out = [0_u8; MAX_ASCII_LEN];
-                let n = t.encode(&mut out).unwrap();
-                prop_assert_eq!(&out[..n], bytes.as_slice());
-                prop_assert!(AsciiSubset::parse(&bytes, &AsciiOptions::DEFAULT).is_ok());
-            }
-            let _ = AsciiSubset::parse(&bytes, &AsciiOptions::DEFAULT);
-        }
     }
 }

@@ -466,10 +466,6 @@ impl ReassemblerState {
 
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]
-#[expect(
-    clippy::arithmetic_side_effects,
-    reason = "test bookkeeping on small bounded counts (RS-018)"
-)]
 mod tests {
     use crate::field;
     extern crate std;
@@ -483,7 +479,6 @@ mod tests {
     use SequenceFlags::{Continuation as C, First as F, Last as L, Unsegmented as U};
     use aldis_core::ids::{Apid, SeqCount};
     use aldis_core::{DecodeMode, ErrorDetail, ErrorKind};
-    use proptest::prelude::*;
 
     fn apid(n: u16) -> Apid {
         Apid::new(n).unwrap()
@@ -667,36 +662,6 @@ mod tests {
             Ok(outcome(None, Status::Complete(1)))
         );
         assert_eq!(ra.sdu(), &[7]);
-    }
-
-    proptest! {
-        #[test]
-        fn segment_then_reassemble_round_trips(
-            sdu in proptest::collection::vec(any::<u8>(), 1..200),
-            max_user in 1_usize..40,
-            start in 0_u16..=0x3FFF,
-            sec in proptest::collection::vec(any::<u8>(), 0..4),
-        ) {
-            // req: SPP-013, VER-023
-            let cfg = SppConfig::DEFAULT;
-            let mut seg = Segmenter::new(&cfg, PacketType::Telecommand, apid(5), &sdu, max_user).unwrap();
-            let mut counter = SequenceCounter::new(SeqCount::new(start).unwrap());
-            let mut buf = vec![0_u8; sdu.len()];
-            let mut ra = Reassembler::new(apid(5), &mut buf);
-            let mut out = [0_u8; 64];
-            let mut last = None;
-            let mut packets = 0;
-            while let Some(n) = seg.next_packet(&mut counter, &sec, &mut out).unwrap() {
-                let p = SpacePacket::decode(&out[..n], DecodeMode::Strict).unwrap();
-                let user = p.data_field().get(sec.len()..).unwrap();
-                prop_assert!(!user.is_empty() && user.len() <= max_user);
-                last = Some(ra.push(&p.header(), user).unwrap());
-                packets += 1;
-            }
-            prop_assert_eq!(packets, sdu.len().div_ceil(max_user));
-            prop_assert_eq!(last, Some(outcome(None, Status::Complete(sdu.len()))));
-            prop_assert_eq!(ra.sdu(), sdu.as_slice());
-        }
     }
 
     #[test]

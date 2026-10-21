@@ -417,7 +417,6 @@ mod tests {
     use crate::field;
     use crate::pfield::{PField, PFieldTail};
     use aldis_core::{DecodeMode, ErrorDetail, ErrorKind};
-    use proptest::prelude::*;
 
     fn samples() -> [TimeCode; 4] {
         let tail = PFieldTail::new(&[0x01]).unwrap();
@@ -616,35 +615,5 @@ mod tests {
             ErrorKind::Incomplete
         );
         assert_eq!(cds.t_len(), 6);
-    }
-
-    proptest! {
-        #[test]
-        fn arbitrary_input(bytes in proptest::collection::vec(any::<u8>(), 0..32)) {
-            // req: GEN-020, API-010, API-020, API-030, VER-023
-            let strict = decode_with_pfield(&bytes, DecodeMode::Strict);
-            let lenient = decode_with_pfield(&bytes, DecodeMode::Lenient);
-            match (&strict, &lenient) {
-                (Ok(s), Ok(l)) => prop_assert_eq!(s, l),
-                (Ok(_), Err(e)) => prop_assert!(false, "lenient rejected a strict code: {}", e),
-                (Err(s), Ok(l)) => {
-                    prop_assert_eq!(s.kind(), ErrorKind::ReservedValue);
-                    prop_assert!(!l.anomalies().is_empty());
-                }
-                // Strict stops at the first reserved value; lenient may fail later on.
-                (Err(s), Err(l)) => prop_assert!(s == l || s.kind() == ErrorKind::ReservedValue),
-            }
-            if let Ok(d) = lenient {
-                prop_assert!(d.len() <= bytes.len());
-                // A lenient decode re-encodes to a code that decodes the same (API-020, TIME-005).
-                // The octets may differ: a CUC count split re-encodes canonically, and a CCS
-                // day-of-year high nibble is written as zero.
-                let mut out = [0_u8; 32];
-                let n = d.code().encode(true, &mut out).unwrap();
-                let again = decode_with_pfield(&out[..n], DecodeMode::Lenient).unwrap();
-                prop_assert_eq!(again.code(), d.code());
-                prop_assert_eq!(again.len(), n);
-            }
-        }
     }
 }

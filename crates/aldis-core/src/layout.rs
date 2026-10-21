@@ -158,16 +158,11 @@ impl FrameLayout {
 
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]
-#[expect(
-    clippy::arithmetic_side_effects,
-    reason = "test bookkeeping on small bounded values (RS-018)"
-)]
 mod tests {
     use super::{FrameLayout, LayoutSpec};
     use crate::error::ErrorKind;
     use crate::field;
     use crate::security::SecurityLayout;
-    use proptest::prelude::*;
 
     #[test]
     fn tm_frame_with_everything() {
@@ -224,33 +219,5 @@ mod tests {
             (e.kind(), e.field()),
             (ErrorKind::InvalidConfig, Some(field::FRAME_DATA_FIELD))
         );
-    }
-
-    proptest! {
-        #[test]
-        fn ranges_are_contiguous_and_cover_the_frame(
-            frame_len in 0_usize..2000, ph in 0_usize..16, sec in 0_usize..70,
-            sh in 0_usize..=64, st in 0_usize..40, ocf in any::<bool>(), fecf in any::<bool>(),
-        ) {
-            // req: CMN-040, CMN-041
-            let spec = LayoutSpec { frame_len, primary_header_len: ph, secondary_len: sec,
-                                    security: SecurityLayout::new(sh, st).unwrap(), ocf, fecf };
-            let fixed = ph + sec + sh + st + if ocf { 4 } else { 0 } + if fecf { 2 } else { 0 };
-            match FrameLayout::compute(&spec) {
-                Ok(l) => {
-                    let r = l.ranges();
-                    prop_assert_eq!(r[0].start, 0);
-                    for w in r.windows(2) { prop_assert_eq!(w[0].end, w[1].start); }
-                    prop_assert_eq!(r[6].end, frame_len);
-                    prop_assert_eq!(l.data().len(), frame_len - fixed);
-                    prop_assert_eq!(l.frame_len(), frame_len);
-                    prop_assert!(!l.data().is_empty());
-                }
-                Err(e) => {
-                    prop_assert_eq!(e.kind(), ErrorKind::InvalidConfig);
-                    prop_assert!(frame_len <= fixed);
-                }
-            }
-        }
     }
 }

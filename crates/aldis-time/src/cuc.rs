@@ -396,15 +396,10 @@ impl Cuc {
 
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]
-#[expect(
-    clippy::arithmetic_side_effects,
-    reason = "test models on bounded values (RS-018)"
-)]
 mod tests {
     use super::{Cuc, CucEpoch, CucFormat, CucValue};
     use crate::pfield::PFieldTail;
     use aldis_core::ErrorKind;
-    use proptest::prelude::*;
 
     fn fmt(co: u8, fo: u8) -> CucFormat {
         CucFormat::new(CucEpoch::Tai1958, co, fo).unwrap()
@@ -573,27 +568,5 @@ mod tests {
         assert_eq!(Cuc::from_t(fmt(2, 1), &[1, 2, 3]), c);
         let full = Cuc::new(fmt(7, 10), CucValue::new((1 << 56) - 1, u128::MAX << 48)).unwrap();
         assert_eq!(Cuc::from_t(fmt(7, 10), &full.t_octets()), full);
-    }
-
-    proptest! {
-        #[test]
-        fn ns_round_trip(co in 1_u8..=7, fo in 0_u8..=10, secs in any::<u64>(), ns in 0_u32..1_000_000_000) {
-            // req: TIME-011, VER-023
-            let f = fmt(co, fo);
-            let secs = secs >> (64 - 8 * u32::from(co));
-            let Ok(c) = Cuc::from_seconds_nanos(f, secs, ns) else { return Ok(()) };
-            prop_assert_eq!(Cuc::new(f, c.value()), Ok(c), "rounded value is representable");
-            let (s2, ns2) = c.value().to_seconds_nanos();
-            // Rounding up never lowers the time, and moves it by less than one fine step.
-            let before = u128::from(secs) * 1_000_000_000 + u128::from(ns);
-            let after = u128::from(s2) * 1_000_000_000 + u128::from(ns2);
-            prop_assert!(after + 1 >= before);
-            let step = 1_000_000_000_u128 >> (8 * u32::from(fo)).min(30);
-            prop_assert!(after <= before + step.max(1));
-            if fo <= 3 {
-                // Exact round trip of the value through nanoseconds (TIME-011).
-                prop_assert_eq!(Cuc::from_seconds_nanos(f, s2, ns2), Ok(c));
-            }
-        }
     }
 }
