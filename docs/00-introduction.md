@@ -46,7 +46,7 @@ The following are **out of scope for v1** and are planned in the [roadmap](08-ro
 
 ## 4. Terminology
 
-CCSDS terms (Transfer Frame, Virtual Channel, MAP, FHP, OCF, FECF, CLCW, …) are used as in the Blue Books. Terms specific to this specification:
+CCSDS terms (Transfer Frame, Virtual Channel, MAP, FHP, OCF, FECF, CLCW, …) are used as in the Blue Books; the [glossary](glossary.md) expands every acronym and cites its defining clause. Terms specific to this specification:
 
 | Term | Meaning |
 |---|---|

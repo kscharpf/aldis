@@ -9,6 +9,7 @@ This directory holds the specification for a family of libraries that add CCSDS 
 | # | Document | What it defines |
 |---|---|---|
 | 00 | [Introduction](00-introduction.md) | Purpose, v1 scope, non-goals, terminology, requirement conventions |
+| — | [Glossary](glossary.md) | Acronyms and abbreviations (OCF, CLCW, FHP, …) with their Blue Book clauses, Aldis terms (tracks, WPs, provenance, verification run, …), and the Blue Book document numbers. Keep it open while reading the rest |
 | 01 | [Architecture](01-architecture.md) | Layers (codecs → engines → framework), crate map, dependency rules, data flows |
 | 02 | [Design rules](02-design-rules.md) | `no_std`/no-heap, panic freedom, bounded resources, error model, bit conventions |
 | 03 | [API model](03-api-model.md) | Language-neutral concepts: views, writers, configs, sans-I/O engines, security hooks, error catalogue |

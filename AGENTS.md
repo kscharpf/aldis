@@ -8,6 +8,8 @@ Guide for coding agents working on **Aldis**. Read [README.md](README.md) first 
 2. **The specification** in [`docs/`](docs/README.md) defines everything else. Start with `docs/README.md`. Every requirement has an ID (e.g. `SPP-002`, `GEN-020`) and cites its CCSDS clause.
 3. **Open decisions** are tracked in [`docs/09-open-issues.md`](docs/09-open-issues.md). Do not silently resolve an open issue in code: update the issue.
 
+Terms and acronyms: [`docs/glossary.md`](docs/glossary.md).
+
 Never write protocol values from memory. Look them up in the Blue Book. Registry values (UPIDs, EPIs, PVNs, time systems) come from SANA (OI-06).
 
 ## Tracks

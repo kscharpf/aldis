@@ -1,6 +1,6 @@
 # Encapsulation Packet — CCSDS 133.1-B-3
 
-**Crate:** `aldis-epp` · **Reference:** `specs/pdf/133x1b3e1.pdf` ([how to download](../../specs/README.md))
+**Crate:** `aldis-epp` · **Reference:** `specs/pdf/133x1b3e1.pdf` ([how to download](../../specs/README.md)) · **Acronyms:** [glossary](../glossary.md)
 
 ## 1. Wire format (§4.1)
 
