@@ -38,8 +38,9 @@ CCSDS re-uploads documents when it issues editorial changes or corrigenda, so th
 | ref | CCSDS 131.0-B-6 | TM Synchronization and Channel Coding | `specs/pdf/131x0b6ec1.pdf` |
 | ref | CCSDS 231.0-B-4 | TC Synchronization and Channel Coding | `specs/pdf/231x0b4e1c1.pdf` |
 | ref | CCSDS 732.0-B-4 (Silver Book) | AOS Space Data Link Protocol, superseded Issue 4, for `Issue4Compatible` (OI-04, AOS-002, AOS-003) | `specs/pdf/732x0b4s.pdf` |
+| ref | CCSDS 700.1-G-1 (Green Book) | Overview of the Unified Space Data Link Protocol, informational, confirming the TFDF header length (OI-05, USLP-005) | `specs/pdf/700x1g1.pdf` |
 
-CCSDS 732.0-B-4 is a superseded issue, published with the other historical documents in the CCSDS Silver Books (<https://ccsds.org/publications/silverbooks/>).
+CCSDS 732.0-B-4 is a superseded issue, published with the other historical documents in the CCSDS Silver Books (<https://ccsds.org/publications/silverbooks/>). CCSDS 700.1-G-1 is an informational report (<https://ccsds.org/publications/greenbooks/>), written for 732.1-B-1: it explains the Blue Book and never overrides it.
 
 ## Rules
 

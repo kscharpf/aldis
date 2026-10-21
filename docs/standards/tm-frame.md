@@ -44,14 +44,19 @@ Secondary Header: ID octet = version `00` (2 bits) ‖ length − 1 (6 bits), fo
 | TM-005 | If the FECF is configured, the decoder SHALL verify it before returning a view and SHALL fail with `CrcMismatch` on error. A separate `decode_unchecked` SHALL exist for diagnostics. | §4.1.6 | V |
 | TM-006 | The data field length SHALL be computed as frame length − 6 − FSH − security header − security trailer − OCF − FECF (CMN-040). | §4.1.4.2, §6.3.5.2 | V |
 | TM-007 | With Sync Flag = 0, strict mode SHALL require Packet Order Flag = 0 and Segment Length ID = `11`. Lenient mode SHALL flag deviations. With Sync Flag = 1, these fields SHALL be exposed raw and not validated. | §4.1.2.7.4–5 | V |
-| TM-008 | The view SHALL classify the FHP as `PacketStartsAt(n)` (n < data field length), `NoPacketStart` (`0x7FF`), or `OnlyIdleData` (`0x7FE`). Any other n ≥ data field length SHALL be `Malformed` in strict mode. | §4.1.2.7.6 | V |
+| TM-008 | With Sync Flag = 0, the view SHALL classify the FHP as `PacketStartsAt(n)` (n < data field length), `NoPacketStart` (`0x7FF`), or `OnlyIdleData` (`0x7FE`). Any other n ≥ data field length SHALL be `Malformed` in both modes: it points outside the field it indexes (API-032; [open issues](../09-open-issues.md) OI-33). With Sync Flag = 1 the FHP is undefined and SHALL be exposed raw. | §4.1.2.7.6, §4.1.2.7.6.2 note | V |
 | TM-009 | The writer SHALL compute the FSH ID octet, the OCF flag (from configuration), and the FECF. It SHALL accept MC/VC frame counts, the sync flag, and the FHP as inputs (counts are owned by engines, [04](../04-engines.md)). | §4.1.2–6 | V |
 | TM-010 | An OID writer SHALL set FHP = `0x7FE` and fill the data field from a supplied `OidGenerator` (CMN-020). It SHALL use a VCID that is configured for packets. FSH and OCF MAY carry valid data. | §4.1.4.6 | V |
 | TM-011 | `validate(&MasterChannelConfig)` SHALL check SCID and VCID against the configuration. It SHALL check that the OCF Flag and FSH presence and length match the configured MC/VC parameters, and that the Sync Flag matches the VC data field content. | §5; §4.1.2.4.3; §4.1.2.7.3.3 | V |
 
 ## 4. Anomaly flags (lenient mode)
 
-`TmAnomaly::{PacketOrderFlagSet, SegmentLengthIdNot11, FhpBeyondDataField}`
+`TmAnomaly` flags. The bit index is the flag's position in `AnomalySet::bits()` and is shared with the C ABI. It never changes once `aldis-tm` is released. Before OI-33 the flags were listed without bit indices, so withdrawing `FhpBeyondDataField` (an FHP beyond the data field is `Malformed` in both modes, TM-008) reserves no bit. Version, length, and FECF errors remain errors in both modes (API-032).
+
+| Bit | Flag | Deviation | Source |
+|---|---|---|---|
+| 0 | `PacketOrderFlagSet` | Packet Order Flag = 1 with Sync Flag = 0 (TM-007) | 132.0 §4.1.2.7.4 note |
+| 1 | `SegmentLengthIdNot11` | Segment Length ID ≠ `11` with Sync Flag = 0, a fixed-value legacy field (TM-007, API-032) | 132.0 §4.1.2.7.5.2, notes 1–2 |
 
 ## 5. Test-vector categories
 
