@@ -116,6 +116,15 @@ pub const CPP: PathList = PathList {
     ],
 };
 
+/// Read by the `header` check (CABI-001…003): the C ABI crate `aldis-ffi`, every crate that its
+/// `aldis` dependency builds with `full`, which the check compiles into the static and shared
+/// libraries, and the committed header `include/`. One pattern for the crates: `full` enables
+/// all of them, and a narrower list would miss a crate when the facade gains it.
+pub const FFI: PathList = PathList {
+    name: "ffi",
+    patterns: &["crates/**", "include/**"],
+};
+
 /// Documentation: read by `spec` only (spec lint, links, vectors, field catalogue, traces,
 /// changelog check), so a change to these paths alone runs only `spec`; a change to the field
 /// catalogue in `docs/03-api-model.md` alone fails `spec` until `cargo xtask fields --write`
@@ -182,6 +191,7 @@ impl PathList {
 const RUST_INPUTS: Inputs = Inputs::Paths(&[&RUN, &RUST]);
 const RUST_TEST_INPUTS: Inputs = Inputs::Paths(&[&RUN, &RUST, &XTASK_TESTS]);
 const CPP_INPUTS: Inputs = Inputs::Paths(&[&RUN, &CPP]);
+const FFI_INPUTS: Inputs = Inputs::Paths(&[&RUN, &FFI]);
 
 /// One check of the verification run.
 #[derive(Clone, Debug)]
@@ -235,6 +245,7 @@ fn rust() -> Vec<Check> {
         ),
         // The alloc and std features are additive (GEN-006).
         check("features", c, false, "cargo xtask features\n"),
+        reading(FFI_INPUTS, check("header", c, false, HEADER)),
     ];
     for t in RUST_BARE_METAL {
         out.push(check(
@@ -360,6 +371,16 @@ cargo clippy --manifest-path crosscheck/Cargo.toml --all-targets
 ";
 
 const TEST: &str = "cargo test --workspace --all-features\n";
+
+const HEADER: &str = "\
+# The committed C header is a fresh generation by the pinned cbindgen (CABI-002), includes only
+# <stdint.h>, <stddef.h>, and <stdbool.h>, and wraps its declarations in extern \"C\" (CABI-003).
+cargo xtask header
+# The static and shared libraries on the host (CABI-001), and the header as C99 and C++11 with
+# the pinned GCC and Clang: a C program built against each library runs (CABI-003).
+cargo xtask header c-smoke gcc-14 g++-14
+cargo xtask header c-smoke clang clang++
+";
 
 const BIG_ENDIAN: &str = "\
 # s390x under QEMU user mode, linked with the pinned cross GCC (VER-030, GEN-007).
@@ -553,6 +574,10 @@ mod tests {
             };
             assert!(lists.contains(&&RUN), "{}", c.name);
             assert!(!lists.contains(&&DOCS), "{}", c.name);
+            if c.name == "header" {
+                assert_eq!(lists, [&RUN, &FFI]);
+                continue;
+            }
             assert_eq!(lists.contains(&&CPP), c.cpp, "{}", c.name);
             assert_eq!(lists.contains(&&RUST), !c.cpp, "{}", c.name);
             let tests = matches!(c.name.as_str(), "test" | "test-macos" | "big-endian");
@@ -651,6 +676,29 @@ mod tests {
             }
         }
         assert!(seen > 0, "no include_str! found");
+    }
+
+    // req: CABI-002, VER-056
+    #[test]
+    fn the_header_check_reads_the_ffi_crates_and_the_header() {
+        let header = all().into_iter().find(|c| c.name == "header").unwrap();
+        for path in [
+            "crates/aldis-ffi/src/spp.rs",
+            "crates/aldis-ffi/cbindgen.toml",
+            "crates/aldis-ffi/capacities.toml",
+            "crates/aldis-spp/src/view.rs",
+            "crates/aldis-tm/src/lib.rs",
+            "include/aldis/aldis.h",
+            "xtask/src/header.rs",
+            "xtask/verify/Containerfile",
+        ] {
+            assert!(header.inputs.contains(path), "{path}");
+        }
+        assert!(!header.inputs.contains("test-vectors/spp/encode.json"));
+        assert!(!header.inputs.contains("cpp/src/x.cpp"));
+        assert!(header.script.contains("cargo xtask header\n"));
+        assert!(header.script.contains("c-smoke gcc-14 g++-14"));
+        assert!(header.script.contains("c-smoke clang clang++"));
     }
 
     // req: VER-010, GEN-021

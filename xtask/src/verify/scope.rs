@@ -573,10 +573,15 @@ mod tests {
             running(&changed(&["cpp/src/core/crc.cpp"]), Force::default()),
             want
         );
-        // The vectors are read by both implementations.
+        // The vectors are read by both implementations, not by the header check.
         assert_eq!(
             running(&changed(&["test-vectors/README.md"]), Force::default()),
-            everything
+            names(|c| c.name != "header")
+        );
+        // The committed header is read by the header check (and spec) alone.
+        assert_eq!(
+            running(&changed(&["include/aldis/aldis.h"]), Force::default()),
+            names(|c| c.name == "header" || c.name == "spec")
         );
         // xtask and the image run everything.
         for path in [

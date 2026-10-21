@@ -15,6 +15,10 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 [dependencies]
 aldis = { path = "../aldis", default-features = false, features = ["full"] }
 
+[dev-dependencies]
+aldis-testkit = { path = "../aldis-testkit" }
+serde_json = "1.0.154"
+
 [features]
 default = ["std"]
 # Hosted builds (ground). Embedded builds use --no-default-features --features panic-handler.
@@ -22,6 +26,9 @@ std = ["aldis/std"]
 # Provides a minimal #[panic_handler] for no_std staticlib builds. GEN-020/VER-010 require
 # that no panic path is reachable, so this handler only satisfies the linker.
 panic-handler = []
+# A #[panic_handler] that calls the undefined symbol `aldis_panic_is_unreachable`, for the
+# exerciser's panic-freedom link check (VER-010, M2 plan D16). Not for integrators.
+panic-unreachable = []
 
 [lints.rust]
 unsafe_code = "deny"

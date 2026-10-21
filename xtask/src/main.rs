@@ -8,6 +8,7 @@ mod coverage;
 mod cpp;
 mod features;
 mod fields;
+mod header;
 mod layers;
 mod links;
 mod md;
@@ -33,6 +34,11 @@ commands:
   fields [--write]             check the field catalogue (03-api-model.md §9.1) and that
                                aldis_core::field and test-vectors/core/fields.json match it,
                                or regenerate both (API-082)
+  header [--write]             check that include/aldis/aldis.h and the aldis-ffi capacities
+                               match a fresh generation with the pinned cbindgen, or
+                               regenerate them (CABI-002, CABI-003, CABI-030)
+  header c-smoke <cc> <c++>    build the aldis-ffi static and shared libraries and run a C
+                               program with them, as C99 and C++11 (CABI-001, CABI-003)
   links                        relative Markdown links resolve inside the repository
   layers                       crate dependency rules (GEN-001..004)
   refapp-deps                  refapp/ uses Aldis only through the `aldis` facade and
@@ -73,6 +79,9 @@ fn run(args: &[&str]) -> Result<usize, String> {
         ["vectors", "schema", "--check"] => vectors::schema(true),
         ["fields"] => fields::run(false),
         ["fields", "--write"] => fields::run(true),
+        ["header"] => header::run(false),
+        ["header", "--write"] => header::run(true),
+        ["header", "c-smoke", cc, cxx] => header::c_smoke(cc, cxx),
         ["links"] => links::check(),
         ["layers"] => layers::check(),
         ["refapp-deps"] => refapp::check(),

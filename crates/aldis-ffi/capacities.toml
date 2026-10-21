@@ -13,3 +13,6 @@ max_virtual_channels = 8
 max_map_channels = 16
 packet_queue_octets = 8192
 max_frame_octets = 2048
+
+[spp]
+tracker_max_apids = 16     # APIDs one aldis_spp_tracker_t tracks (SPP-011, M2 plan D5)
