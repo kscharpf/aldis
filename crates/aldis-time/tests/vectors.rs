@@ -7,7 +7,7 @@
     reason = "test-only harness crate: malformed vectors must fail loudly (RS-018)"
 )]
 
-use aldis_core::{DecodeMode, Error};
+use aldis_core::{DecodeMode, Error, FieldId};
 use aldis_testkit::{CodecCase, Mode, Outcome, hex, run_codec_file};
 use aldis_time::{
     Agency, AgencyFormat, AsciiFormat, AsciiOptions, AsciiSubset, AsciiTime, CalendarDate, Ccs,
@@ -467,7 +467,10 @@ fn run(case: &CodecCase) -> Result<Value, Error> {
 fn handle(case: &CodecCase) -> Outcome {
     match run(case) {
         Ok(v) => Outcome::Ok(v.as_object().cloned().unwrap_or_else(Map::new)),
-        Err(e) => Outcome::Err(e.kind().name().to_owned()),
+        Err(e) => Outcome::Err {
+            kind: e.kind().name().to_owned(),
+            field: e.field().map(FieldId::code),
+        },
     }
 }
 

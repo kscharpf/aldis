@@ -1,10 +1,11 @@
 //! Packet Sequence Count generation and tracking (133.0 §4.1.3.4.3, §4.3.2.2; SPP-011, GEN-011,
 //! GEN-024, OI-30).
 
+use crate::field;
 use aldis_core::container::FixedVec;
 use aldis_core::counter::Continuity;
 use aldis_core::ids::{Apid, SeqCount};
-use aldis_core::{Error, ErrorDetail, ErrorKind, FieldId, Result};
+use aldis_core::{Error, ErrorDetail, ErrorKind, Result};
 
 /// Generates the Packet Sequence Count of one APID, modulo 16 384 (133.0 §4.1.3.4.3.4,
 /// SPP-011, GEN-024). Counts are per APID, so keep one counter per APID (§4.1.3.4.3.3).
@@ -99,7 +100,7 @@ impl<const N: usize> SequenceTracker<N> {
             })
             .map_err(|_| {
                 Error::new(ErrorKind::CapacityExceeded)
-                    .with_field(FieldId::new("apid"))
+                    .with_field(field::APID)
                     .with_detail(ErrorDetail::Expected {
                         expected: capacity,
                         found: capacity.saturating_add(1),
@@ -152,9 +153,10 @@ impl<const N: usize> SequenceTracker<N> {
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::{SequenceCounter, SequenceTracker, Tracked};
+    use crate::field;
     use aldis_core::counter::Continuity;
     use aldis_core::ids::{Apid, SeqCount};
-    use aldis_core::{ErrorDetail, ErrorKind, FieldId};
+    use aldis_core::{ErrorDetail, ErrorKind};
     use proptest::prelude::*;
 
     fn apid(n: u16) -> Apid {
@@ -194,8 +196,8 @@ mod tests {
         );
         let e = t.track(apid(3), count(0)).unwrap_err();
         assert_eq!(
-            (e.kind(), e.field().map(FieldId::name)),
-            (ErrorKind::CapacityExceeded, Some("apid"))
+            (e.kind(), e.field()),
+            (ErrorKind::CapacityExceeded, Some(field::APID))
         );
         assert_eq!(
             e.detail(),

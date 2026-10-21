@@ -13,6 +13,7 @@
 //! | [`ascii`] | ASCII time codes A and B and their subsets: `AsciiTime`, `AsciiSubset`, `AsciiFormat`, `Fraction` | 301.0 §3.5 | TIME-031, TIME-032 |
 //! | [`convert`] | `UtcInstant`: conversions between CDS, CCS, and ASCII | 301.0 §3.3–3.5 | TIME-033 |
 //! | [`anomaly`] | `TimeAnomaly` lenient-mode flags | 301.0 §3.1.1, §3.4.1.2 | API-032, GEN-043 |
+//! | [`field`] | The field codes its errors name, re-exported from `aldis_core::field` | 301.0 §3 | API-082, GEN-041 |
 //!
 //! No operation reads a clock or a time zone (TIME-004). CUC Level 1 is TAI-based with no leap
 //! seconds (TIME-014); CDS and CCS are UTC-based, and leap-second handling is the caller's
@@ -42,6 +43,7 @@ pub mod cds;
 pub mod code;
 pub mod convert;
 pub mod cuc;
+pub mod field;
 pub mod pfield;
 mod util;
 

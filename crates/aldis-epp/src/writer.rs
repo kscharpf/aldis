@@ -4,6 +4,7 @@
 use aldis_core::{Error, Result};
 
 use crate::config::{DataUnit, EppConfig};
+use crate::field;
 use crate::header::{EncapsulationFields, EncapsulationHeader, HeaderSize, invalid, len_u64};
 
 /// Encodes a checked data unit as one packet into the start of `out`; returns the total length
@@ -109,7 +110,7 @@ impl<'b> EncapsulationWriter<'b> {
     pub fn finish(self, data_len: usize) -> Result<usize> {
         if data_len > self.max_data_len {
             return Err(Error::out_of_range(
-                "data_len",
+                field::DATA_LEN,
                 len_u64(self.max_data_len),
                 len_u64(data_len),
             ));
@@ -117,7 +118,7 @@ impl<'b> EncapsulationWriter<'b> {
         if !self.header.epi().is_idle() {
             self.config.check_len(data_len)?;
             if data_len == 0 {
-                return Err(invalid("epi"));
+                return Err(invalid(field::EPI));
             }
         }
         // Fits: `begin` checked the header against `max_data_len` ≥ `data_len`.
@@ -133,9 +134,10 @@ impl<'b> EncapsulationWriter<'b> {
 mod tests {
     use super::{EncapsulationWriter, encode, idle};
     use crate::config::{ANY, EpiSet, EppConfig, ExtendedEpiSet};
+    use crate::field;
     use crate::header::{EncapsulationFields, Epi, HeaderLen, HeaderSize};
     use crate::view::EncapsulationPacket;
-    use aldis_core::{DecodeMode, ErrorDetail, ErrorKind, FieldId};
+    use aldis_core::{DecodeMode, ErrorDetail, ErrorKind};
 
     const MISSION: EncapsulationFields = EncapsulationFields::new(Epi::MISSION_SPECIFIC);
 
@@ -159,8 +161,8 @@ mod tests {
         )
         .unwrap_err();
         assert_eq!(
-            (e.kind(), e.field().map(FieldId::name)),
-            (ErrorKind::UnknownChannel, Some("epi"))
+            (e.kind(), e.field()),
+            (ErrorKind::UnknownChannel, Some(field::EPI))
         );
         for (len, expected) in [(1, 2), (4, 3)] {
             let w =
@@ -262,8 +264,8 @@ mod tests {
         let e =
             EncapsulationWriter::begin(&mut out, &ANY, MISSION, HeaderSize::Auto, 0).unwrap_err();
         assert_eq!(
-            (e.kind(), e.field().map(aldis_core::FieldId::name)),
-            (ErrorKind::InvalidField, Some("epi"))
+            (e.kind(), e.field()),
+            (ErrorKind::InvalidField, Some(field::EPI))
         );
         let w = EncapsulationWriter::begin(&mut out, &ANY, MISSION, HeaderSize::Auto, 2).unwrap();
         assert_eq!(w.finish(0).unwrap_err().kind(), ErrorKind::InvalidField);

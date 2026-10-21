@@ -4,6 +4,8 @@
 //! field and value detail without allocation (GEN-041), and extensible enums (GEN-081, RS-011).
 
 use core::fmt;
+use core::hash::{Hash, Hasher};
+use core::num::NonZeroU16;
 
 /// Error kind with a stable numeric code shared by all profiles (03-api-model.md §9).
 ///
@@ -117,21 +119,63 @@ impl ErrorKind {
     }
 }
 
-/// Identifies the field an error refers to, e.g. `FieldId::new("apid")` (GEN-041).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct FieldId(&'static str);
+/// Identifies the field an error refers to by its code in the field catalogue, e.g.
+/// [`field::APID`](crate::field::APID) (03-api-model.md §9.1; GEN-041, API-082).
+///
+/// The only values are the constants of [`crate::field`], generated from the catalogue, so no
+/// code can be made up at a call site. Equality and hashing use the code alone: the name is for
+/// display only and is never compared (API-082).
+///
+/// ```
+/// use aldis_core::field;
+/// use aldis_core::ids::Apid;
+///
+/// let e = Apid::try_from(4096).unwrap_err();
+/// assert_eq!(e.field(), Some(field::APID));
+/// assert_eq!(field::APID.code().get(), 5); // what the C ABI carries
+/// assert_eq!(e.to_string(), "OutOfRange (apid): expected 2047, found 4096");
+/// ```
+#[derive(Debug, Clone, Copy)]
+pub struct FieldId {
+    code: NonZeroU16,
+    name: &'static str,
+}
 
 impl FieldId {
-    /// A field identifier with a static name.
-    #[must_use]
-    pub const fn new(name: &'static str) -> FieldId {
-        FieldId(name)
+    /// The catalogued field `CODE` with its display name. Only the generated module
+    /// [`crate::field`] calls it; `CODE` 0 ("no field" in the C ABI) fails to compile.
+    pub(crate) const fn catalogued<const CODE: u16>(name: &'static str) -> FieldId {
+        let code = const {
+            assert!(CODE != 0, "field code 0 means no field (API-082)");
+            NonZeroU16::MIN.saturating_add(CODE.wrapping_sub(1))
+        };
+        FieldId { code, name }
     }
 
-    /// The field name.
+    /// The field code, shared by all profiles and carried by the C ABI (API-082, CABI-021).
+    #[must_use]
+    pub const fn code(self) -> NonZeroU16 {
+        self.code
+    }
+
+    /// The field name, for display only (API-082).
     #[must_use]
     pub const fn name(self) -> &'static str {
-        self.0
+        self.name
+    }
+}
+
+impl PartialEq for FieldId {
+    fn eq(&self, other: &FieldId) -> bool {
+        self.code == other.code
+    }
+}
+
+impl Eq for FieldId {}
+
+impl Hash for FieldId {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.code.hash(state);
     }
 }
 
@@ -255,18 +299,18 @@ impl Error {
         Error::new(ErrorKind::Incomplete).with_detail(ErrorDetail::Needed(needed))
     }
 
-    /// `OutOfRange` for `field`, with the limit and the value found.
+    /// `OutOfRange` for `field`, with the limit and the value found (GEN-041).
     #[must_use]
-    pub const fn out_of_range(field: &'static str, limit: u64, found: u64) -> Error {
+    pub const fn out_of_range(field: FieldId, limit: u64, found: u64) -> Error {
         Error::new(ErrorKind::OutOfRange)
-            .with_field(FieldId::new(field))
+            .with_field(field)
             .with_detail(ErrorDetail::Expected {
                 expected: limit,
                 found,
             })
     }
 
-    /// The same error, naming `field`.
+    /// The same error, naming `field` (GEN-041, API-082).
     #[must_use]
     pub const fn with_field(self, field: FieldId) -> Error {
         Error {
@@ -334,6 +378,7 @@ pub type Result<T> = core::result::Result<T, Error>;
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::{Error, ErrorDetail, ErrorKind, FieldId, usize_to_u8, usize_to_u16};
+    use crate::field;
 
     #[test]
     fn narrowing_never_truncates() {
@@ -371,9 +416,9 @@ mod tests {
         // req: GEN-041, RS-011
         extern crate std;
         use std::string::ToString;
-        let e = Error::out_of_range("apid", 2047, 4096);
+        let e = Error::out_of_range(field::APID, 2047, 4096);
         assert_eq!(e.kind(), ErrorKind::OutOfRange);
-        assert_eq!(e.field(), Some(FieldId::new("apid")));
+        assert_eq!(e.field(), Some(field::APID));
         assert_eq!(
             e.detail(),
             ErrorDetail::Expected {
@@ -391,6 +436,54 @@ mod tests {
         );
         assert_eq!(Error::incomplete(3).detail(), ErrorDetail::Needed(3));
         assert_eq!(Error::from(ErrorKind::Malformed).to_string(), "Malformed");
+        assert_eq!(
+            Error::new(ErrorKind::InvalidField)
+                .with_field(field::EPI)
+                .with_detail(ErrorDetail::Needed(2))
+                .to_string(),
+            "InvalidField (epi): 2 needed"
+        );
         let _: &dyn core::error::Error = &e;
+    }
+
+    #[test]
+    fn field_codes_are_the_catalogue() {
+        // req: API-082, GEN-041
+        // Codes run from 1 in order with no gap, as `cargo xtask fields` checks the table.
+        for (i, f) in field::ALL.into_iter().enumerate() {
+            assert_eq!(usize::from(f.code().get()), i + 1);
+        }
+        assert_eq!(field::SPACECRAFT_ID.code().get(), 1);
+        assert_eq!(field::APID.code().get(), 5);
+        assert_eq!(field::MAX_DATA_LEN.code().get(), 64);
+        assert_eq!(field::APID.name(), "apid");
+        // Equality is by code: each constant equals only itself.
+        for (i, a) in field::ALL.into_iter().enumerate() {
+            for (j, b) in field::ALL.into_iter().enumerate() {
+                assert_eq!(a == b, i == j);
+            }
+        }
+    }
+
+    #[test]
+    fn field_equality_and_hash_use_the_code_only() {
+        // req: API-082
+        extern crate std;
+        use core::hash::{Hash, Hasher};
+        use std::collections::hash_map::DefaultHasher;
+        fn hash(f: FieldId) -> u64 {
+            let mut h = DefaultHasher::new();
+            f.hash(&mut h);
+            h.finish()
+        }
+        // The same code under another display name is the same field.
+        let renamed = FieldId::catalogued::<5>("application_process_id");
+        assert_eq!(renamed, field::APID);
+        assert_eq!(hash(renamed), hash(field::APID));
+        assert_ne!(field::APID, field::EPI);
+        assert_ne!(hash(field::APID), hash(field::EPI));
+        let mut h = DefaultHasher::new();
+        field::APID.code().hash(&mut h);
+        assert_eq!(hash(field::APID), h.finish());
     }
 }

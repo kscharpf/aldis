@@ -4,8 +4,9 @@
 //! The valid EPI and extended-EPI sets are supplied by the caller: Aldis embeds no SANA
 //! registry (M1 D4, OI-06).
 
-use aldis_core::{Error, ErrorDetail, ErrorKind, FieldId, Result};
+use aldis_core::{Error, ErrorDetail, ErrorKind, Result};
 
+use crate::field;
 use crate::header::{
     EncapsulationFields, EncapsulationHeader, Epi, EpiExtension, HeaderSize, invalid, len_u64,
 };
@@ -118,7 +119,7 @@ impl EppConfig {
     ) -> Result<EppConfig> {
         if min_data_len > max_data_len {
             return Err(Error::new(ErrorKind::InvalidConfig)
-                .with_field(FieldId::new("min_data_len"))
+                .with_field(field::MIN_DATA_LEN)
                 .with_detail(ErrorDetail::Expected {
                     expected: wide(max_data_len),
                     found: wide(min_data_len),
@@ -126,7 +127,7 @@ impl EppConfig {
         }
         if max_data_len > MAX_DATA_LEN {
             return Err(Error::new(ErrorKind::InvalidConfig)
-                .with_field(FieldId::new("max_data_len"))
+                .with_field(field::MAX_DATA_LEN)
                 .with_detail(ErrorDetail::Expected {
                     expected: wide(MAX_DATA_LEN),
                     found: wide(max_data_len),
@@ -187,14 +188,12 @@ impl EppConfig {
     /// The identifier part of [`check`](Self::check) for a non-idle EPI.
     fn check_ids(&self, epi: Epi, extension: Option<EpiExtension>) -> Result<()> {
         if !self.valid_epis.contains(epi) {
-            return Err(Error::new(ErrorKind::UnknownChannel).with_field(FieldId::new("epi")));
+            return Err(Error::new(ErrorKind::UnknownChannel).with_field(field::EPI));
         }
         if epi == Epi::EXTENDED
             && !extension.is_some_and(|ext| self.valid_extended_epis.contains(ext))
         {
-            return Err(
-                Error::new(ErrorKind::UnknownChannel).with_field(FieldId::new("epi_extension"))
-            );
+            return Err(Error::new(ErrorKind::UnknownChannel).with_field(field::EPI_EXTENSION));
         }
         Ok(())
     }
@@ -204,14 +203,14 @@ impl EppConfig {
         let len = len_u64(data_len);
         if len < u64::from(self.min_data_len) {
             return Err(Error::out_of_range(
-                "data_len",
+                field::DATA_LEN,
                 self.min_data_len.into(),
                 len,
             ));
         }
         if len > u64::from(self.max_data_len) {
             return Err(Error::out_of_range(
-                "data_len",
+                field::DATA_LEN,
                 self.max_data_len.into(),
                 len,
             ));
@@ -241,7 +240,7 @@ impl EppConfig {
     ) -> Result<DataUnit<'a>> {
         self.check(fields.epi(), Some(fields.extension()), data.len())?;
         if data.is_empty() && !fields.epi().is_idle() {
-            return Err(invalid("epi"));
+            return Err(invalid(field::EPI));
         }
         Ok(DataUnit { fields, data })
     }
@@ -304,8 +303,9 @@ pub(crate) const ANY: EppConfig = EppConfig {
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::{EpiSet, EppConfig, ExtendedEpiSet, MAX_DATA_LEN};
+    use crate::field;
     use crate::header::{Epi, EpiExtension};
-    use aldis_core::{ErrorDetail, ErrorKind, FieldId};
+    use aldis_core::{ErrorDetail, ErrorKind};
 
     const EXT9: EpiExtension = match EpiExtension::new(9) {
         Some(e) => e,
@@ -349,7 +349,7 @@ mod tests {
         assert_eq!(cfg.valid_extended_epis().bits(), 1 << 9);
         let e = EppConfig::new(11, 10, EpiSet::EMPTY, ExtendedEpiSet::EMPTY).unwrap_err();
         assert_eq!(e.kind(), ErrorKind::InvalidConfig);
-        assert_eq!(e.field().map(FieldId::name), Some("min_data_len"));
+        assert_eq!(e.field(), Some(field::MIN_DATA_LEN));
         assert_eq!(
             e.detail(),
             ErrorDetail::Expected {
@@ -359,7 +359,7 @@ mod tests {
         );
         let e =
             EppConfig::new(0, MAX_DATA_LEN + 1, EpiSet::EMPTY, ExtendedEpiSet::EMPTY).unwrap_err();
-        assert_eq!(e.field().map(FieldId::name), Some("max_data_len"));
+        assert_eq!(e.field(), Some(field::MAX_DATA_LEN));
     }
 
     #[test]
@@ -389,27 +389,24 @@ mod tests {
                 EncapsulationFields::new(Epi::new(1).unwrap()),
                 &[1][..],
                 ErrorKind::UnknownChannel,
-                "epi",
+                field::EPI,
             ),
             (
                 EncapsulationFields::new(Epi::EXTENDED),
                 &[1][..],
                 ErrorKind::UnknownChannel,
-                "epi_extension",
+                field::EPI_EXTENSION,
             ),
             (
                 mission,
                 &[1, 2, 3, 4, 5][..],
                 ErrorKind::OutOfRange,
-                "data_len",
+                field::DATA_LEN,
             ),
-            (mission, &[][..], ErrorKind::OutOfRange, "data_len"),
+            (mission, &[][..], ErrorKind::OutOfRange, field::DATA_LEN),
         ] {
             let e = cfg.data_unit(fields, data).unwrap_err();
-            assert_eq!(
-                (e.kind(), e.field().map(FieldId::name)),
-                (kind, Some(field))
-            );
+            assert_eq!((e.kind(), e.field()), (kind, Some(field)));
         }
         let any_len = EppConfig::new(
             0,
@@ -420,8 +417,8 @@ mod tests {
         .unwrap();
         let e = any_len.data_unit(mission, &[]).unwrap_err();
         assert_eq!(
-            (e.kind(), e.field().map(FieldId::name)),
-            (ErrorKind::InvalidField, Some("epi"))
+            (e.kind(), e.field()),
+            (ErrorKind::InvalidField, Some(field::EPI))
         );
         let h = cfg
             .header(EncapsulationFields::extended(EXT9), HeaderSize::Auto, 4)
@@ -453,11 +450,11 @@ mod tests {
         assert_eq!(cfg.check(Epi::EXTENDED, Some(EXT9), 3), Ok(()));
         let e = cfg.check(Epi::MISSION_SPECIFIC, None, 3).unwrap_err();
         assert_eq!(
-            (e.kind(), e.field().map(FieldId::name)),
-            (ErrorKind::UnknownChannel, Some("epi"))
+            (e.kind(), e.field()),
+            (ErrorKind::UnknownChannel, Some(field::EPI))
         );
         let e = cfg.check(Epi::EXTENDED, None, 3).unwrap_err();
-        assert_eq!(e.field().map(FieldId::name), Some("epi_extension"));
+        assert_eq!(e.field(), Some(field::EPI_EXTENSION));
         let e = cfg.check(Epi::EXTENDED, Some(EXT9), 1).unwrap_err();
         assert_eq!(
             e.detail(),

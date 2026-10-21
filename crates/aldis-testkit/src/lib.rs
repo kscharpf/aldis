@@ -17,7 +17,8 @@ pub mod model;
 pub mod runner;
 
 pub use model::{
-    CodecCase, CodecFile, Expect, Mode, Provenance, ScenarioFile, Step, Superseded, VectorFile,
+    CodecCase, CodecFile, Expect, FieldCatalogue, FieldEntry, FieldKind, Mode, Provenance,
+    ScenarioFile, Step, Superseded, VectorFile,
 };
 pub use runner::{Failure, Outcome, Report, compare, run_codec, run_codec_file};
 

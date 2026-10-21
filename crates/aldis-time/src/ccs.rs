@@ -7,6 +7,7 @@ use aldis_core::{AnomalySet, DecodeMode, Error, ErrorKind, FieldId, Result};
 
 use crate::anomaly::TimeAnomaly;
 use crate::calendar::{CalendarDate, Hour, Minute, Month, Second, Year};
+use crate::field;
 use crate::pfield::{PField, PFieldTail, TimeCodeId};
 use crate::util::wide8;
 
@@ -52,7 +53,7 @@ impl CcsFormat {
     pub const fn new(variation: CcsVariation, subsecond_octets: u8) -> Result<CcsFormat> {
         if subsecond_octets > CcsFormat::MAX_SUBSECOND_OCTETS {
             return Err(Error::out_of_range(
-                "subsecond_octets",
+                field::SUBSECOND_OCTETS,
                 wide8(CcsFormat::MAX_SUBSECOND_OCTETS),
                 wide8(subsecond_octets),
             ));
@@ -117,9 +118,7 @@ impl CcsFormat {
         let first = pfield.first();
         let subsecond = first & 0b111;
         if subsecond == 0b111 {
-            return Err(
-                Error::new(ErrorKind::ReservedValue).with_field(FieldId::new("subsecond_octets"))
-            );
+            return Err(Error::new(ErrorKind::ReservedValue).with_field(field::SUBSECOND_OCTETS));
         }
         Ok(CcsFormat {
             variation: if first & 0b1000 == 0 {
@@ -168,10 +167,10 @@ const fn to_bcd(n: u8) -> u8 {
 ///
 /// # Errors
 /// `InvalidField` (`field`) if either nibble is above 9 (TIME-030).
-const fn from_bcd(octet: u8, field: &'static str) -> Result<u8> {
+const fn from_bcd(octet: u8, field: FieldId) -> Result<u8> {
     let (hi, lo) = (octet >> 4, octet & 0xF);
     if hi > 9 || lo > 9 {
-        return Err(Error::new(ErrorKind::InvalidField).with_field(FieldId::new(field)));
+        return Err(Error::new(ErrorKind::InvalidField).with_field(field));
     }
     Ok(hi.wrapping_mul(10).wrapping_add(lo))
 }
@@ -190,12 +189,12 @@ impl Ccs {
             (CcsVariation::MonthDay, CcsVariation::MonthDay)
                 | (CcsVariation::DayOfYear, CcsVariation::DayOfYear)
         ) {
-            return Err(Error::new(ErrorKind::InvalidField).with_field(FieldId::new("date")));
+            return Err(Error::new(ErrorKind::InvalidField).with_field(field::DATE));
         }
         let limit = subsecond_limit(format.subsecond);
         if value.subsecond >= limit {
             return Err(Error::out_of_range(
-                "subsecond",
+                field::SUBSECOND,
                 limit.saturating_sub(1),
                 value.subsecond,
             ));
@@ -282,30 +281,31 @@ impl Ccs {
         let mut octets = t.iter().copied();
         let mut next = || octets.next().unwrap_or(0);
         // Each field is parsed into its type as it is read (TIME-030).
-        let century = from_bcd(next(), "year")?;
+        let century = from_bcd(next(), field::YEAR)?;
         let year = Year::try_from(
             u16::from(century)
                 .wrapping_mul(100)
-                .wrapping_add(u16::from(from_bcd(next(), "year")?)),
+                .wrapping_add(u16::from(from_bcd(next(), field::YEAR)?)),
         )?;
         let (a, b) = (next(), next());
         let date = match format.variation {
             CcsVariation::MonthDay => {
-                let month = Month::try_from(from_bcd(a, "month")?)?;
-                CalendarDate::from_month_day(year, month, from_bcd(b, "day")?)?
+                let month = Month::try_from(from_bcd(a, field::MONTH)?)?;
+                CalendarDate::from_month_day(year, month, from_bcd(b, field::DAY)?)?
             }
             CcsVariation::DayOfYear => {
                 if a >> 4 != 0 {
                     match mode {
                         DecodeMode::Strict => {
-                            return Err(Error::new(ErrorKind::ReservedValue)
-                                .with_field(FieldId::new("day_of_year")));
+                            return Err(
+                                Error::new(ErrorKind::ReservedValue).with_field(field::DAY_OF_YEAR)
+                            );
                         }
                         DecodeMode::Lenient => anomalies.insert(TimeAnomaly::NonZeroDoyHighNibble),
                     }
                 }
-                let hundreds = from_bcd(a & 0x0F, "day_of_year")?;
-                let rest = from_bcd(b, "day_of_year")?;
+                let hundreds = from_bcd(a & 0x0F, field::DAY_OF_YEAR)?;
+                let rest = from_bcd(b, field::DAY_OF_YEAR)?;
                 CalendarDate::from_day_of_year(
                     year,
                     u16::from(hundreds)
@@ -314,12 +314,12 @@ impl Ccs {
                 )?
             }
         };
-        let hour = Hour::try_from(from_bcd(next(), "hour")?)?;
-        let minute = Minute::try_from(from_bcd(next(), "minute")?)?;
-        let second = Second::try_from(from_bcd(next(), "second")?)?;
+        let hour = Hour::try_from(from_bcd(next(), field::HOUR)?)?;
+        let minute = Minute::try_from(from_bcd(next(), field::MINUTE)?)?;
+        let second = Second::try_from(from_bcd(next(), field::SECOND)?)?;
         let mut subsecond: u64 = 0;
         for _ in 0..format.subsecond {
-            let digits = from_bcd(next(), "subsecond")?;
+            let digits = from_bcd(next(), field::SUBSECOND)?;
             subsecond = subsecond.wrapping_mul(100).wrapping_add(u64::from(digits));
         }
         // The value has at most 2n digits for n octets, so it always fits the format.
@@ -346,8 +346,9 @@ mod tests {
     use super::{Ccs, CcsFormat, CcsValue, CcsVariation, from_bcd, subsecond_limit, to_bcd};
     use crate::anomaly::TimeAnomaly;
     use crate::calendar::{CalendarDate, Hour, Minute, Month, Second, Year};
+    use crate::field;
     use crate::pfield::{PField, PFieldTail};
-    use aldis_core::{AnomalySet, DecodeMode, ErrorDetail, ErrorKind, FieldId};
+    use aldis_core::{AnomalySet, DecodeMode, ErrorDetail, ErrorKind};
     use proptest::prelude::*;
 
     fn md(year: u16, month: u8, day: u8) -> CalendarDate {
@@ -398,8 +399,8 @@ mod tests {
         );
         let e = CcsFormat::from_pfield(&PField::parse(&[0x57]).unwrap()).unwrap_err();
         assert_eq!(
-            (e.kind(), e.field().map(FieldId::name)),
-            (ErrorKind::ReservedValue, Some("subsecond_octets"))
+            (e.kind(), e.field()),
+            (ErrorKind::ReservedValue, Some(field::SUBSECOND_OCTETS))
         );
     }
 
@@ -416,12 +417,12 @@ mod tests {
         ] {
             let e = Ccs::new(f, v).unwrap_err();
             assert_eq!(
-                (e.kind(), e.field().map(FieldId::name)),
-                (ErrorKind::InvalidField, Some("date"))
+                (e.kind(), e.field()),
+                (ErrorKind::InvalidField, Some(field::DATE))
             );
         }
         let e = Ccs::new(mdf, value(md(2023, 1, 1), 100)).unwrap_err();
-        assert_eq!(e.field().map(FieldId::name), Some("subsecond"));
+        assert_eq!(e.field(), Some(field::SUBSECOND));
         assert_eq!(
             e.detail(),
             ErrorDetail::Expected {
@@ -457,19 +458,16 @@ mod tests {
             (23, 59, 60)
         );
         for (t, field, expected, found) in [
-            ([0x00, 0x00, 0x01, 0x01, 0, 0, 0], "year", 1, 0),
-            ([0x20, 0x23, 0x13, 0x01, 0, 0, 0], "month", 12, 13),
-            ([0x20, 0x23, 0x00, 0x01, 0, 0, 0], "month", 1, 0),
-            ([0x20, 0x23, 0x02, 0x29, 0, 0, 0], "day", 28, 29),
-            ([0x20, 0x23, 0x01, 0x01, 0x24, 0, 0], "hour", 23, 24),
-            ([0x20, 0x23, 0x01, 0x01, 0, 0x60, 0], "minute", 59, 60),
-            ([0x20, 0x23, 0x01, 0x01, 0, 0, 0x61], "second", 60, 61),
+            ([0x00, 0x00, 0x01, 0x01, 0, 0, 0], field::YEAR, 1, 0),
+            ([0x20, 0x23, 0x13, 0x01, 0, 0, 0], field::MONTH, 12, 13),
+            ([0x20, 0x23, 0x00, 0x01, 0, 0, 0], field::MONTH, 1, 0),
+            ([0x20, 0x23, 0x02, 0x29, 0, 0, 0], field::DAY, 28, 29),
+            ([0x20, 0x23, 0x01, 0x01, 0x24, 0, 0], field::HOUR, 23, 24),
+            ([0x20, 0x23, 0x01, 0x01, 0, 0x60, 0], field::MINUTE, 59, 60),
+            ([0x20, 0x23, 0x01, 0x01, 0, 0, 0x61], field::SECOND, 60, 61),
         ] {
             let e = Ccs::from_t(f, &t, DecodeMode::Lenient, &mut flags).unwrap_err();
-            assert_eq!(
-                (e.kind(), e.field().map(FieldId::name)),
-                (ErrorKind::OutOfRange, Some(field))
-            );
+            assert_eq!((e.kind(), e.field()), (ErrorKind::OutOfRange, Some(field)));
             assert_eq!(
                 e.detail(),
                 ErrorDetail::Expected { expected, found },
@@ -544,10 +542,10 @@ mod tests {
             (to_bcd(0), to_bcd(9), to_bcd(42), to_bcd(99)),
             (0x00, 0x09, 0x42, 0x99)
         );
-        assert_eq!(from_bcd(0x59, "x"), Ok(59));
+        assert_eq!(from_bcd(0x59, field::HOUR), Ok(59));
         for bad in [0x0A, 0xA0, 0xFF] {
             assert_eq!(
-                from_bcd(bad, "x").unwrap_err().kind(),
+                from_bcd(bad, field::HOUR).unwrap_err().kind(),
                 ErrorKind::InvalidField
             );
         }

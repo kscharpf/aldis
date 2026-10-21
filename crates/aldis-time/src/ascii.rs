@@ -11,6 +11,7 @@ use aldis_core::{Error, ErrorKind, FieldId, Result};
 
 use crate::calendar::{CalendarDate, Hour, Minute, Month, Second, Year, days_in_month, is_leap};
 use crate::ccs::CcsVariation;
+use crate::field;
 use crate::util::{out_of_bounds, wide8};
 
 /// Most fractional digits: 12, down to 10⁻¹² s (301.0 §3.5.1, TIME-031).
@@ -26,8 +27,8 @@ const fn malformed() -> Error {
 }
 
 /// `InvalidField` naming the subfield that holds a non-digit (§5.1).
-const fn not_digit(field: &'static str) -> Error {
-    Error::new(ErrorKind::InvalidField).with_field(FieldId::new(field))
+const fn not_digit(field: FieldId) -> Error {
+    Error::new(ErrorKind::InvalidField).with_field(field)
 }
 
 /// 10^`n` for `n` = 0–12.
@@ -127,7 +128,7 @@ impl AsciiOptions {
     pub const fn new(max_fraction_digits: u8) -> Result<AsciiOptions> {
         if max_fraction_digits > MAX_FRACTION_DIGITS {
             return Err(Error::out_of_range(
-                "max_fraction_digits",
+                field::MAX_FRACTION_DIGITS,
                 wide8(MAX_FRACTION_DIGITS),
                 wide8(max_fraction_digits),
             ));
@@ -172,7 +173,7 @@ impl AsciiFormat {
     ) -> Result<AsciiFormat> {
         if fraction_digits > MAX_FRACTION_DIGITS {
             return Err(Error::out_of_range(
-                "fraction_digits",
+                field::FRACTION_DIGITS,
                 wide8(MAX_FRACTION_DIGITS),
                 wide8(fraction_digits),
             ));
@@ -207,7 +208,7 @@ impl AsciiFormat {
 ///
 /// # Errors
 /// `InvalidField` (`field`) for a non-digit octet.
-fn number(digits: &[u8], field: &'static str) -> Result<u16> {
+fn number(digits: &[u8], field: FieldId) -> Result<u16> {
     digits.iter().try_fold(0_u16, |acc, &b| {
         if b.is_ascii_digit() {
             Ok(acc
@@ -234,11 +235,11 @@ fn fraction_digits(digits: &[u8], max: u8) -> Result<Fraction> {
         return Err(malformed());
     }
     if !digits.iter().all(u8::is_ascii_digit) {
-        return Err(not_digit("fraction"));
+        return Err(not_digit(field::FRACTION));
     }
     let found = u64::try_from(digits.len()).unwrap_or(u64::MAX);
     if found > u64::from(max) {
-        return Err(Error::out_of_range("fraction", wide8(max), found));
+        return Err(Error::out_of_range(field::FRACTION, wide8(max), found));
     }
     let value = digits.iter().fold(0_u64, |acc, &b| {
         acc.wrapping_mul(10)
@@ -350,19 +351,21 @@ impl AsciiTime {
         let date = match date {
             DateDigits::MonthDay(y, m, d) => {
                 let (y, m, d) = (
-                    number(&y, "year")?,
-                    number(&m, "month")?,
-                    number(&d, "day")?,
+                    number(&y, field::YEAR)?,
+                    number(&m, field::MONTH)?,
+                    number(&d, field::DAY)?,
                 );
                 (y, Some((m, d)), None)
             }
-            DateDigits::Ordinal(y, d) => {
-                (number(&y, "year")?, None, Some(number(&d, "day_of_year")?))
-            }
+            DateDigits::Ordinal(y, d) => (
+                number(&y, field::YEAR)?,
+                None,
+                Some(number(&d, field::DAY_OF_YEAR)?),
+            ),
         };
-        let hour = number(&[*h0, *h1], "hour")?;
-        let minute = number(&[*i0, *i1], "minute")?;
-        let second = number(&[*s0, *s1], "second")?;
+        let hour = number(&[*h0, *h1], field::HOUR)?;
+        let minute = number(&[*i0, *i1], field::MINUTE)?;
+        let second = number(&[*s0, *s1], field::SECOND)?;
         let year = Year::try_from(date.0)?;
         let date = match (date.1, date.2) {
             (Some((month, day)), _) => {
@@ -460,16 +463,16 @@ enum Part {
 }
 
 impl Part {
-    /// The field name used in errors.
-    const fn name(self) -> &'static str {
+    /// The field that errors about this subfield name (API-082).
+    const fn field(self) -> FieldId {
         match self {
-            Part::Year => "year",
-            Part::Month => "month",
-            Part::Day => "day",
-            Part::DayOfYear => "day_of_year",
-            Part::Hour => "hour",
-            Part::Minute => "minute",
-            Part::Second => "second",
+            Part::Year => field::YEAR,
+            Part::Month => field::MONTH,
+            Part::Day => field::DAY,
+            Part::DayOfYear => field::DAY_OF_YEAR,
+            Part::Hour => field::HOUR,
+            Part::Minute => field::MINUTE,
+            Part::Second => field::SECOND,
         }
     }
 }
@@ -638,7 +641,7 @@ impl Raw {
     fn read(&mut self, text: &[u8], shape: &Shape) -> Result<()> {
         for &(part, at, len) in shape.parts {
             let digits = text.get(at..at.wrapping_add(len)).unwrap_or_default();
-            let value = Some(number(digits, part.name())?);
+            let value = Some(number(digits, part.field())?);
             match part {
                 Part::Year => self.year = value,
                 Part::Month => self.month = value,
@@ -749,7 +752,7 @@ impl AsciiSubset {
                     (Some(y), Some(m)) => days_in_month(y.get(), m.get()),
                 };
                 if day == 0 || day > u16::from(last) {
-                    return Err(out_of_bounds("day", day.into(), 1, last.into()));
+                    return Err(out_of_bounds(field::DAY, day.into(), 1, last.into()));
                 }
                 Some(small(day))
             }
@@ -763,7 +766,12 @@ impl AsciiSubset {
                     365
                 };
                 if doy == 0 || doy > last {
-                    return Err(out_of_bounds("day_of_year", doy.into(), 1, last.into()));
+                    return Err(out_of_bounds(
+                        field::DAY_OF_YEAR,
+                        doy.into(),
+                        1,
+                        last.into(),
+                    ));
                 }
                 Some(doy)
             }
@@ -853,12 +861,13 @@ mod tests {
     };
     use crate::calendar::{CalendarDate, Hour, Minute, Month, Second, Year};
     use crate::ccs::CcsVariation;
+    use crate::field;
     use aldis_core::{ErrorDetail, ErrorKind, FieldId};
     use proptest::prelude::*;
 
-    fn kind_field(r: Result<AsciiTime, aldis_core::Error>) -> (ErrorKind, Option<&'static str>) {
+    fn kind_field(r: Result<AsciiTime, aldis_core::Error>) -> (ErrorKind, Option<FieldId>) {
         let e = r.unwrap_err();
-        (e.kind(), e.field().map(FieldId::name))
+        (e.kind(), e.field())
     }
 
     fn parse(text: &str) -> Result<AsciiTime, aldis_core::Error> {
@@ -914,8 +923,8 @@ mod tests {
         assert_eq!(AsciiOptions::DEFAULT.max_fraction_digits(), 12);
         let e = AsciiFormat::new(CcsVariation::MonthDay, 13, false).unwrap_err();
         assert_eq!(
-            (e.kind(), e.field().map(FieldId::name)),
-            (ErrorKind::OutOfRange, Some("fraction_digits"))
+            (e.kind(), e.field()),
+            (ErrorKind::OutOfRange, Some(field::FRACTION_DIGITS))
         );
         let f = AsciiFormat::new(CcsVariation::DayOfYear, 6, true).unwrap();
         assert_eq!(
@@ -927,9 +936,9 @@ mod tests {
     #[test]
     fn helpers() {
         // req: TIME-031
-        assert_eq!(number(b"0123", "x"), Ok(123));
+        assert_eq!(number(b"0123", field::YEAR), Ok(123));
         assert_eq!(
-            number(b"1a", "x").unwrap_err().kind(),
+            number(b"1a", field::YEAR).unwrap_err().kind(),
             ErrorKind::InvalidField
         );
         assert_eq!((small(255), small(300)), (255, 255));
@@ -959,9 +968,9 @@ mod tests {
         assert!(AsciiTime::parse(b"2024-01-01T00:00:00.123", &three).is_ok());
         let e = AsciiTime::parse(b"2024-01-01T00:00:00.1234", &three).unwrap_err();
         assert_eq!(
-            (e.field().map(FieldId::name), e.detail()),
+            (e.field(), e.detail()),
             (
-                Some("fraction"),
+                Some(field::FRACTION),
                 ErrorDetail::Expected {
                     expected: 3,
                     found: 4
@@ -996,15 +1005,15 @@ mod tests {
             );
         }
         for (text, field) in [
-            ("2O24-01-01T00:00:00", "year"),
-            ("2O24-001T00:00:00", "year"),
-            ("2024-0x-01T00:00:00", "month"),
-            ("2024-01-0xT00:00:00", "day"),
-            ("2024-0x1T00:00:00", "day_of_year"),
-            ("2024-01-01T0x:00:00", "hour"),
-            ("2024-01-01T00:0x:00", "minute"),
-            ("2024-01-01T00:00:0x", "second"),
-            ("2024-01-01T00:00:00.1x", "fraction"),
+            ("2O24-01-01T00:00:00", field::YEAR),
+            ("2O24-001T00:00:00", field::YEAR),
+            ("2024-0x-01T00:00:00", field::MONTH),
+            ("2024-01-0xT00:00:00", field::DAY),
+            ("2024-0x1T00:00:00", field::DAY_OF_YEAR),
+            ("2024-01-01T0x:00:00", field::HOUR),
+            ("2024-01-01T00:0x:00", field::MINUTE),
+            ("2024-01-01T00:00:0x", field::SECOND),
+            ("2024-01-01T00:00:00.1x", field::FRACTION),
         ] {
             assert_eq!(
                 kind_field(parse(text)),
@@ -1013,14 +1022,14 @@ mod tests {
             );
         }
         for (text, field) in [
-            ("0000-01-01T00:00:00", "year"),
-            ("2024-13-01T00:00:00", "month"),
-            ("2023-02-29T00:00:00", "day"),
-            ("2023-366T00:00:00", "day_of_year"),
-            ("2024-01-01T24:00:00", "hour"),
-            ("2024-01-01T00:60:00", "minute"),
-            ("2024-01-01T00:00:61", "second"),
-            ("2024-01-01T00:00:00.1234567890123", "fraction"),
+            ("0000-01-01T00:00:00", field::YEAR),
+            ("2024-13-01T00:00:00", field::MONTH),
+            ("2023-02-29T00:00:00", field::DAY),
+            ("2023-366T00:00:00", field::DAY_OF_YEAR),
+            ("2024-01-01T24:00:00", field::HOUR),
+            ("2024-01-01T00:60:00", field::MINUTE),
+            ("2024-01-01T00:00:61", field::SECOND),
+            ("2024-01-01T00:00:00.1234567890123", field::FRACTION),
         ] {
             assert_eq!(
                 kind_field(parse(text)),
@@ -1162,39 +1171,39 @@ mod tests {
             );
         }
         for (text, field) in [
-            ("19x8", "year"),
-            ("-0x", "month"),
-            ("--1x", "day"),
-            ("-0x8", "day_of_year"),
-            ("1x", "hour"),
-            (":2x", "minute"),
-            ("::4x", "second"),
-            ("::.1x", "fraction"),
+            ("19x8", field::YEAR),
+            ("-0x", field::MONTH),
+            ("--1x", field::DAY),
+            ("-0x8", field::DAY_OF_YEAR),
+            ("1x", field::HOUR),
+            (":2x", field::MINUTE),
+            ("::4x", field::SECOND),
+            ("::.1x", field::FRACTION),
         ] {
             let e = subset(text).unwrap_err();
             assert_eq!(
-                (e.kind(), e.field().map(FieldId::name)),
+                (e.kind(), e.field()),
                 (ErrorKind::InvalidField, Some(field)),
                 "{text}"
             );
         }
         for (text, field, expected, found) in [
-            ("0000", "year", 1, 0),
-            ("-13", "month", 12, 13),
-            ("--32", "day", 31, 32),
-            ("--00", "day", 1, 0),
-            ("-02-30", "day", 29, 30),
-            ("2023-02-29", "day", 28, 29),
-            ("-367", "day_of_year", 366, 367),
-            ("2023-366", "day_of_year", 365, 366),
-            ("-000", "day_of_year", 1, 0),
-            ("24", "hour", 23, 24),
-            (":60", "minute", 59, 60),
-            ("::61", "second", 60, 61),
+            ("0000", field::YEAR, 1, 0),
+            ("-13", field::MONTH, 12, 13),
+            ("--32", field::DAY, 31, 32),
+            ("--00", field::DAY, 1, 0),
+            ("-02-30", field::DAY, 29, 30),
+            ("2023-02-29", field::DAY, 28, 29),
+            ("-367", field::DAY_OF_YEAR, 366, 367),
+            ("2023-366", field::DAY_OF_YEAR, 365, 366),
+            ("-000", field::DAY_OF_YEAR, 1, 0),
+            ("24", field::HOUR, 23, 24),
+            (":60", field::MINUTE, 59, 60),
+            ("::61", field::SECOND, 60, 61),
         ] {
             let e = subset(text).unwrap_err();
             assert_eq!(
-                (e.kind(), e.field().map(FieldId::name)),
+                (e.kind(), e.field()),
                 (ErrorKind::OutOfRange, Some(field)),
                 "{text}"
             );

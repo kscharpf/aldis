@@ -9,6 +9,7 @@
 //! | [`writer`] | One-shot `encode`, two-phase `EncapsulationWriter`, `idle` | 133.1 §4.1, §4.2.1 | EPP-008, EPP-009, API-020…API-023 |
 //! | [`config`] | `EppConfig` managed parameters, `EpiSet`, `ExtendedEpiSet`, the checked `DataUnit` | 133.1 §4.2.1.1.2, §5 Table 5-1 | EPP-010, GEN-060, GEN-061 |
 //! | [`anomaly`] | `EppAnomaly` lenient-mode flags | 133.1 §4.1.2.6.3, §4.1.2.7.2 | API-032, GEN-043 |
+//! | [`field`] | The field codes its errors name, re-exported from `aldis_core::field` | 133.1 §4.1, §5 | API-082, GEN-041 |
 //!
 //! Unlike the Space Packet, the Packet Length field holds the **total** packet length,
 //! header included (133.1 §4.1.2.8.2); the API exposes it unchanged.
@@ -35,6 +36,7 @@ extern crate std;
 
 pub mod anomaly;
 pub mod config;
+pub mod field;
 pub mod header;
 pub mod view;
 pub mod writer;

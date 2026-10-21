@@ -4,6 +4,7 @@
 use aldis_core::{Error, Result};
 
 use crate::config::{PacketData, SppConfig, check_parts};
+use crate::field;
 use crate::header::{
     PRIMARY_HEADER_LEN, PacketFields, SpacePacketHeader, UNFINISHED_VERSION, len_u64,
 };
@@ -128,7 +129,7 @@ impl<'b> SpacePacketWriter<'b> {
     pub fn finish(self, user_len: usize) -> Result<usize> {
         if user_len > self.max_user_len {
             return Err(Error::out_of_range(
-                "user_len",
+                field::USER_LEN,
                 len_u64(self.max_user_len),
                 len_u64(user_len),
             ));
@@ -148,10 +149,11 @@ impl<'b> SpacePacketWriter<'b> {
 mod tests {
     use super::{SpacePacketWriter, encode};
     use crate::config::SppConfig;
+    use crate::field;
     use crate::header::{PacketFields, PacketType, SequenceFlags};
     use crate::view::SpacePacket;
     use aldis_core::ids::{Apid, SeqCount};
-    use aldis_core::{DecodeMode, ErrorDetail, ErrorKind, FieldId};
+    use aldis_core::{DecodeMode, ErrorDetail, ErrorKind};
     use proptest::prelude::*;
 
     fn fields(apid: u16, count: u16) -> PacketFields {
@@ -200,17 +202,17 @@ mod tests {
         let cfg = SppConfig::new(12).unwrap();
         let mut out = [0_u8; 16];
         let e = SpacePacketWriter::begin(&mut out, &cfg, fields(5, 0), 0, 0).unwrap_err();
-        assert_eq!(e.field().map(FieldId::name), Some("data_field"));
+        assert_eq!(e.field(), Some(field::DATA_FIELD));
         let e = SpacePacketWriter::begin(&mut out, &cfg, fields(0x7FF, 0), 1, 1).unwrap_err();
-        assert_eq!(e.field().map(FieldId::name), Some("secondary_header_flag"));
+        assert_eq!(e.field(), Some(field::SECONDARY_HEADER_FLAG));
         let e = SpacePacketWriter::begin(&mut out, &cfg, fields(5, 0), 3, 4).unwrap_err();
         assert_eq!(
-            (e.kind(), e.field().map(FieldId::name)),
-            (ErrorKind::OutOfRange, Some("packet_len"))
+            (e.kind(), e.field()),
+            (ErrorKind::OutOfRange, Some(field::PACKET_LEN))
         );
         let w = SpacePacketWriter::begin(&mut out, &cfg, fields(5, 0), 0, 3).unwrap();
         let e = w.finish(0).unwrap_err();
-        assert_eq!(e.field().map(FieldId::name), Some("data_field"));
+        assert_eq!(e.field(), Some(field::DATA_FIELD));
         let w = SpacePacketWriter::begin(&mut out, &cfg, fields(5, 0), 0, 3).unwrap();
         let e = w.finish(4).unwrap_err();
         assert_eq!(

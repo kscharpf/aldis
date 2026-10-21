@@ -7,10 +7,11 @@
 
 use core::num::NonZeroUsize;
 
-use aldis_core::{DecodeMode, Error, ErrorDetail, ErrorKind, FieldId, Result};
+use aldis_core::{DecodeMode, Error, ErrorDetail, ErrorKind, Result};
 #[cfg(feature = "time")]
 use aldis_time::{Decoded, PField, TimeFormat, decode_implicit, decode_with_pfield};
 
+use crate::field;
 use crate::header::{invalid, len_u64};
 
 /// The secondary header of one APID (133.0 §4.1.4.2.1.4–5, SPP-007, SPP-008).
@@ -33,7 +34,7 @@ pub enum SecondaryHeaderLayout {
 /// extension.
 fn too_short(expected: usize, found: usize) -> Error {
     Error::new(ErrorKind::LengthMismatch)
-        .with_field(FieldId::new("secondary_header"))
+        .with_field(field::SECONDARY_HEADER)
         .with_detail(ErrorDetail::Expected {
             expected: len_u64(expected),
             found: len_u64(found),
@@ -70,7 +71,7 @@ impl TimeHeaderLayout {
                 ancillary_len,
             }),
             TimeFormat::Ccs(_) | TimeFormat::Agency(_) => {
-                Err(Error::new(ErrorKind::InvalidConfig).with_field(FieldId::new("time_code")))
+                Err(Error::new(ErrorKind::InvalidConfig).with_field(field::TIME_CODE))
             }
         }
     }
@@ -110,10 +111,12 @@ impl TimeHeaderLayout {
         let id = PField::parse(data).map_err(short)?.id();
         let expected = self.format.pfield().id();
         if id != expected {
-            return Err(invalid("time_code_id").with_detail(ErrorDetail::Expected {
-                expected: u64::from(expected.bits()),
-                found: u64::from(id.bits()),
-            }));
+            return Err(
+                invalid(field::TIME_CODE_ID).with_detail(ErrorDetail::Expected {
+                    expected: u64::from(expected.bits()),
+                    found: u64::from(id.bits()),
+                }),
+            );
         }
         decode_with_pfield(data, mode).map_err(short)
     }
@@ -143,7 +146,7 @@ impl SecondaryHeaderLayout {
     ) -> Result<SplitPacket<'_>> {
         let present = !matches!(self, SecondaryHeaderLayout::Absent);
         if flag != present {
-            return Err(invalid("secondary_header_flag"));
+            return Err(invalid(field::SECONDARY_HEADER_FLAG));
         }
         let (len, time_len) = match self {
             SecondaryHeaderLayout::Absent => (0, 0),
@@ -227,7 +230,8 @@ impl<'a> SplitPacket<'a> {
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::SecondaryHeaderLayout;
-    use aldis_core::{DecodeMode, ErrorDetail, ErrorKind, FieldId};
+    use crate::field;
+    use aldis_core::{DecodeMode, ErrorDetail, ErrorKind};
     use core::num::NonZeroUsize;
 
     const STRICT: DecodeMode = DecodeMode::Strict;
@@ -257,14 +261,14 @@ mod tests {
         for (layout, flag) in [(SecondaryHeaderLayout::Absent, true), (two, false)] {
             let e = layout.split(flag, &[1, 2, 3], STRICT).unwrap_err();
             assert_eq!(
-                (e.kind(), e.field().map(FieldId::name)),
-                (ErrorKind::InvalidField, Some("secondary_header_flag"))
+                (e.kind(), e.field()),
+                (ErrorKind::InvalidField, Some(field::SECONDARY_HEADER_FLAG))
             );
         }
         let e = two.split(true, &[1], STRICT).unwrap_err();
         assert_eq!(
-            (e.kind(), e.field().map(FieldId::name)),
-            (ErrorKind::LengthMismatch, Some("secondary_header"))
+            (e.kind(), e.field()),
+            (ErrorKind::LengthMismatch, Some(field::SECONDARY_HEADER))
         );
         assert_eq!(
             e.detail(),
@@ -278,8 +282,9 @@ mod tests {
     #[cfg(feature = "time")]
     mod time {
         use super::{STRICT, SecondaryHeaderLayout};
+        use crate::field;
         use crate::secondary::TimeHeaderLayout;
-        use aldis_core::{DecodeMode, ErrorDetail, ErrorKind, FieldId};
+        use aldis_core::{DecodeMode, ErrorDetail, ErrorKind};
         use aldis_time::{
             CcsFormat, CcsVariation, CdsDayLen, CdsEpoch, CdsFormat, CdsSubMs, CucEpoch, CucFormat,
             TimeAnomaly, TimeCode, TimeFormat,
@@ -312,8 +317,8 @@ mod tests {
             for bad in [ccs, agency] {
                 let e = TimeHeaderLayout::new(bad, false, 0).unwrap_err();
                 assert_eq!(
-                    (e.kind(), e.field().map(FieldId::name)),
-                    (ErrorKind::InvalidConfig, Some("time_code"))
+                    (e.kind(), e.field()),
+                    (ErrorKind::InvalidConfig, Some(field::TIME_CODE))
                 );
             }
         }
@@ -352,8 +357,8 @@ mod tests {
                 .split(true, &[0x40, 0, 0, 0, 0, 0, 0], STRICT)
                 .unwrap_err();
             assert_eq!(
-                (e.kind(), e.field().map(FieldId::name)),
-                (ErrorKind::InvalidField, Some("time_code_id"))
+                (e.kind(), e.field()),
+                (ErrorKind::InvalidField, Some(field::TIME_CODE_ID))
             );
             assert_eq!(
                 e.detail(),
@@ -373,8 +378,8 @@ mod tests {
             ] {
                 let e = lay.split(true, d, STRICT).unwrap_err();
                 assert_eq!(
-                    (e.kind(), e.field().map(FieldId::name)),
-                    (ErrorKind::LengthMismatch, Some("secondary_header"))
+                    (e.kind(), e.field()),
+                    (ErrorKind::LengthMismatch, Some(field::SECONDARY_HEADER))
                 );
                 assert_eq!(
                     e.detail(),

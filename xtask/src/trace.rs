@@ -80,10 +80,10 @@ fn artefacts(spec: &Spec) -> Result<BTreeMap<String, BTreeSet<String>>, String> 
     }
 
     for path in repo::files("test-vectors", &["json"]) {
-        if repo::rel(&path).starts_with("test-vectors/schema/") {
+        let rel = repo::rel(&path);
+        if !crate::vectors::is_vector_file(&rel) {
             continue;
         }
-        let rel = repo::rel(&path);
         match VectorFile::from_json(&repo::read(&path)?) {
             Ok(VectorFile::Codec(f)) => {
                 for c in f.cases.iter().filter(|c| c.superseded.is_none()) {
