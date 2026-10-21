@@ -61,4 +61,7 @@ One line for each decision the maintainer takes, under the [decision rights](dec
 - 2026-10-21 · deps · #79 · `crosscheck/` vendors 13 unmodified cFE v7.0.1 files and takes the `cc` 1.9.0 build dependency
 - 2026-10-21 · spec · #79 · VER-051 (SEI CERT C) applies to the cFE stubs and `abi_check.c`, not to the vendored cFE files
 - 2026-10-21 · spec · #82 · CUC nanosecond conversions take the basic time unit to be the second; TIME-011 and the API docs say so, and that a Level 2 code converts correctly only if the agency's unit is the second (option a)
+- 2026-10-21 · review · chat · The maintainer reviews the four `spacepackets` discrepancies (cross-checks.md §3) against 301.0 first, from a packet that withholds Aldis's reasoning
+- 2026-10-21 · spec · #80 · OI-39 deferred: CUC P-field octet 2 stays accepted (TIME-010); which of 301.0 §3.1.1 and §3.2.2 governs waits for a real system or an expert (#84)
+- 2026-10-21 · spec · #80 · OI-40: nanoseconds convert to CUC fine time by rounding down; TIME-011 and the `cuc_from_ns` vectors change in a follow-up
 - 2026-10-21 · plan · chat · Start the Rust LEON3 spike (OI-08); the C++ LEON3 spike waits
