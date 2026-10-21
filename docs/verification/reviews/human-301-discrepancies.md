@@ -1,6 +1,6 @@
 # Human review: four time-code readings (CCSDS 301.0-B-4)
 
-**Status:** open, not started · **Reviewer:** the maintainer · **Prepared:** 2026-10-21
+**Status:** in progress (Q1 reading recorded; exercises and Q2–Q4 open) · **Reviewer:** the maintainer · **Prepared:** 2026-10-21
 
 ## Purpose
 
@@ -31,11 +31,15 @@ Record every reading, including "agrees". A reading you would have made differen
 
 **Record**
 
-- Your reading, with clauses:
-- Fixed by 301.0, or left open:
-- Vector cases agree with your results (yes / no, which):
-- After reading cross-checks.md §3 D1 — agree with Aldis / `spacepackets` / neither / unsure:
+- Your reading, with clauses: F is a binary fraction of a unit that the metadata defines (§3.2.1, §3.2.2). (2026-10-21)
+- Fixed by 301.0, or left open: the form of the fraction is fixed (binary, octet by octet); the basic time unit is left to the metadata.
+- Vector cases agree with your results (yes / no, which): exercises not yet done.
+- After reading cross-checks.md §3 D1 — agree with Aldis / `spacepackets` / neither / unsure: not yet compared.
 - Notes:
+  - **First reading** (2026-10-21): fine time as segments of milliseconds of the second, microseconds of the millisecond, and nanoseconds of the microsecond, each finer one requiring the one before. This came from Annex E1, which is PB-5J, an informative example of an agency-defined segmented code (time code ID `110`), not from §3.2. A reader looking up "fine time" can land there.
+  - **A reading considered and set aside:** that 301.0 is agnostic about the fractional unit, which might be defined by the mission-definition bits 6–7 of CUC P-field octet 2. §3.2.2 only reserves those bits for mission definition.
+  - **Primed:** the reading above was settled after a discussion with the coordinator (an AI), which pointed to the "binary fraction" wording of §3.2.1 and §1.2. The first reading was not primed.
+  - **Finding:** Aldis's conversion of a CUC time to seconds and nanoseconds (TIME-011) assumes that the basic time unit is the second. For a Level 2 code whose agency defines another unit, that conversion does not apply. Raised as #82.
 
 ## Q2. CDS sub-millisecond code `11`
 
