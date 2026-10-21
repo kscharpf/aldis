@@ -7,5 +7,5 @@
   nasa/cFS `v7.0.1`, decisions D1–D19 (accepted), work packages, exit criteria, and risks;
   the ACFS row and phases in `docs/08-roadmap.md` §3.
 - Open issues OI-36 (cFE TIME from simulated time), OI-37 (trace timing and cFS time), and OI-38
-  (node protocol transport and timing), each resolved by the accepted decisions.
+  (node protocol transport and timing): OI-37 and OI-38 resolved, OI-36 deferred.
 - Glossary: cFS, cFE, OSAL, PSP, SB, SCH and SCH_LAB, CI_LAB, TO_LAB, MET, and STCF.
