@@ -330,6 +330,17 @@ pub const ALDIS_FIELD_MIN_DATA_LEN: u16 = 63;
 /// Code 64, a parameter (133.1 §5 Table 5-1; API-082, CABI-021).
 pub const ALDIS_FIELD_MAX_DATA_LEN: u16 = 64;
 
+/// Type Flag of the Operational Control Field, bit 0: Type-1 or Type-2 Report.
+///
+/// Code 65, a field (132.0 §4.1.5.4; 732.0 §4.1.5.4; 732.1 §4.1.5.2.1; API-082, CABI-021).
+pub const ALDIS_FIELD_OCF_TYPE_FLAG: u16 = 65;
+
+/// Bit 1 of a Type-2 Report in the Operational Control Field: project-specific or SDLS Frame
+/// Security Report.
+///
+/// Code 66, a field (132.0 §4.1.5.5; 732.0 §4.1.5.5; 732.1 §4.1.5.2.2; API-082, CABI-021).
+pub const ALDIS_FIELD_OCF_REPORT_USE: u16 = 66;
+
 // Each code is the code of its `aldis_core::field` constant (API-082).
 const _: () = {
     assert!(ALDIS_FIELD_SPACECRAFT_ID == field::SPACECRAFT_ID.code().get());
@@ -396,4 +407,6 @@ const _: () = {
     assert!(ALDIS_FIELD_DATA_LEN == field::DATA_LEN.code().get());
     assert!(ALDIS_FIELD_MIN_DATA_LEN == field::MIN_DATA_LEN.code().get());
     assert!(ALDIS_FIELD_MAX_DATA_LEN == field::MAX_DATA_LEN.code().get());
+    assert!(ALDIS_FIELD_OCF_TYPE_FLAG == field::OCF_TYPE_FLAG.code().get());
+    assert!(ALDIS_FIELD_OCF_REPORT_USE == field::OCF_REPORT_USE.code().get());
 };

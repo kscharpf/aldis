@@ -320,6 +320,16 @@
       "code": 64,
       "name": "max_data_len",
       "kind": "parameter"
+    },
+    {
+      "code": 65,
+      "name": "ocf_type_flag",
+      "kind": "field"
+    },
+    {
+      "code": 66,
+      "name": "ocf_report_use",
+      "kind": "field"
     }
   ]
 }

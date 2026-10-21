@@ -13,6 +13,7 @@
 //! | [`ids`] | Range-checked identifiers | API-001, API-002, RS-010 |
 //! | [`time`] | `Instant`, `Duration` | API-003 |
 //! | [`crc`] | FECF CRC-16 | CMN-001…CMN-004 |
+//! | [`ocf`] | Operational Control Field classification | CMN-010, CMN-011 |
 //! | [`oid`] | OID pseudo-noise generators | CMN-020…CMN-023 |
 //! | [`counter`] | Modular counters, gap classification | CMN-030, CMN-031 |
 //! | [`container`] | Fixed-capacity queues and vectors | GEN-010…GEN-012, API-061 |
@@ -40,6 +41,7 @@ pub mod field;
 pub mod ids;
 pub mod layout;
 pub mod mode;
+pub mod ocf;
 pub mod oid;
 pub mod security;
 pub mod time;

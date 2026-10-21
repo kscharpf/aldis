@@ -644,6 +644,21 @@
 #define ALDIS_FIELD_MAX_DATA_LEN 64
 
 /**
+ * Type Flag of the Operational Control Field, bit 0: Type-1 or Type-2 Report.
+ *
+ * Code 65, a field (132.0 §4.1.5.4; 732.0 §4.1.5.4; 732.1 §4.1.5.2.1; API-082, CABI-021).
+ */
+#define ALDIS_FIELD_OCF_TYPE_FLAG 65
+
+/**
+ * Bit 1 of a Type-2 Report in the Operational Control Field: project-specific or SDLS Frame
+ * Security Report.
+ *
+ * Code 66, a field (132.0 §4.1.5.5; 732.0 §4.1.5.5; 732.1 §4.1.5.2.2; API-082, CABI-021).
+ */
+#define ALDIS_FIELD_OCF_REPORT_USE 66
+
+/**
  * Alignment, in octets, of every helper's storage: a C caller gets it with a `uint64_t`
  * array (CABI-031).
  */

@@ -336,8 +336,19 @@ pub const MIN_DATA_LEN: FieldId = FieldId::catalogued::<63>("min_data_len");
 /// Code 64, a parameter (133.1 §5 Table 5-1; API-082).
 pub const MAX_DATA_LEN: FieldId = FieldId::catalogued::<64>("max_data_len");
 
+/// Type Flag of the Operational Control Field, bit 0: Type-1 or Type-2 Report.
+///
+/// Code 65, a field (132.0 §4.1.5.4; 732.0 §4.1.5.4; 732.1 §4.1.5.2.1; API-082).
+pub const OCF_TYPE_FLAG: FieldId = FieldId::catalogued::<65>("ocf_type_flag");
+
+/// Bit 1 of a Type-2 Report in the Operational Control Field: project-specific or SDLS Frame
+/// Security Report.
+///
+/// Code 66, a field (132.0 §4.1.5.5; 732.0 §4.1.5.5; 732.1 §4.1.5.2.2; API-082).
+pub const OCF_REPORT_USE: FieldId = FieldId::catalogued::<66>("ocf_report_use");
+
 /// Every field code, in code order from 1 (API-082).
-pub const ALL: [FieldId; 64] = [
+pub const ALL: [FieldId; 66] = [
     SPACECRAFT_ID,
     VC_ID,
     MAP_ID,
@@ -402,4 +413,6 @@ pub const ALL: [FieldId; 64] = [
     DATA_LEN,
     MIN_DATA_LEN,
     MAX_DATA_LEN,
+    OCF_TYPE_FLAG,
+    OCF_REPORT_USE,
 ];

@@ -32,9 +32,11 @@ The OCF is 4 octets, present per the TM/USLP OCF flag or the AOS per-VC managed 
 | 1 | 0 | Type-2 Report, project-specific |
 | 1 | 1 | Type-2 Report, SDLS Frame Security Report (FSR) |
 
+The table is the same in 132.0-B-3 §4.1.5.4–5, 732.0-B-4 and 732.0-B-5 §4.1.5.4–5, and 732.1-B-3 §4.1.5.2.1–2. None of the four values of bits 0–1 is reserved, so every four octets are an OCF and classification cannot fail. In a Type-1 Report bit 1 belongs to the report (it is the first bit of the CLCW Version Number, 232.0 §4.2.1.3). The FSR is defined in SDLS Extended Procedures (355.1-B-1), which `specs/` does not hold; `aldis-core` decodes neither the CLCW nor the FSR. `aldis_core::ocf` holds each report as its four octets, with the flag bits checked by the report's constructor (RS-020); a constructor given octets of another report fails with `InvalidField` naming `ocf_type_flag` or `ocf_report_use` ([03 §9.1](../03-api-model.md#91-field-codes)).
+
 | ID | Requirement | Source | Verif. |
 |---|---|---|---|
-| CMN-010 | `Ocf::decode([u8;4])` SHALL classify the report as `Clcw(raw)`, `ProjectSpecific(raw)`, or `SdlsFsr(raw)` using bits 0–1. | 132.0 §4.1.5.4–5 | V |
+| CMN-010 | `Ocf::decode([u8;4])` SHALL classify the report as `Clcw(raw)`, `ProjectSpecific(raw)`, or `SdlsFsr(raw)` using bits 0–1. On USLP a Type-1 Report (`Clcw`) may also be a PLCW (732.1 §4.1.5.2.1 a); the variant keeps its name, and the caller that knows the channel decodes it. The enum is closed: the Blue Books assign all four values of the two bits (GEN-081 applies to enums that may grow). | 132.0 §4.1.5.4–5; 732.0 §4.1.5.4–5; 732.1 §4.1.5.2.1–2 | V |
 | CMN-011 | CLCW field decoding SHALL be delegated to the TC codec ([tc-frame.md §5](tc-frame.md#5-clcw)). `aldis-core` treats the CLCW as opaque except for bit 0. | 232.0 §4.2 | I |
 
 ## 3. Only-Idle-Data (OID) pattern
