@@ -134,7 +134,7 @@
       ]
     },
     "Expect": {
-      "description": "Expected outcome of a codec case.\n\nWhen `ok` is true, every other key is an expected output value and the handler's output\nmust match them **exactly**: no missing and no extra keys (TV-002, TV-012). When `ok` is\nfalse, `error` names the expected error kind from the catalogue (03-api-model.md §9).",
+      "description": "Expected outcome of a codec case.\n\nWhen `ok` is true, every other key is an expected output value and the handler's output\nmust match them **exactly**: no missing and no extra keys (TV-002, TV-012). When `ok` is\nfalse, `error` names the expected error kind from the catalogue (03-api-model.md §9), and\n`field`, when present, the code of the field the error names (03-api-model.md §9.1;\nAPI-082, M2 plan D3).",
       "type": "object",
       "properties": {
         "error": {
@@ -143,6 +143,16 @@
             "string",
             "null"
           ]
+        },
+        "field": {
+          "description": "Code of the field the expected error names (03-api-model.md §9.1), when `ok` is false.\nCompared only when present: cases released before field codes existed leave it out\n(TV-021).",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint16",
+          "maximum": 65535,
+          "minimum": 1
         },
         "ok": {
           "description": "Whether the operation succeeds.",

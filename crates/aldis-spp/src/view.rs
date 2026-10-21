@@ -5,6 +5,7 @@ use aldis_core::ids::{Apid, SeqCount};
 use aldis_core::{AnomalySet, DecodeMode, Error, Result};
 
 use crate::anomaly::SppAnomaly;
+use crate::field;
 use crate::header::{PRIMARY_HEADER_LEN, PacketType, SequenceFlags, SpacePacketHeader, invalid};
 use crate::secondary::{SecondaryHeaderLayout, SplitPacket};
 
@@ -41,7 +42,7 @@ impl<'a> SpacePacket<'a> {
         let mut anomalies = AnomalySet::empty();
         if header.is_idle() && header.has_secondary_header() {
             match mode {
-                DecodeMode::Strict => return Err(invalid("secondary_header_flag")),
+                DecodeMode::Strict => return Err(invalid(field::SECONDARY_HEADER_FLAG)),
                 DecodeMode::Lenient => anomalies.insert(SppAnomaly::IdleWithSecondaryHeader),
             }
         }
@@ -158,9 +159,10 @@ impl<'a> SpacePacket<'a> {
 mod tests {
     use super::SpacePacket;
     use crate::anomaly::SppAnomaly;
+    use crate::field;
     use crate::header::{PacketType, SequenceFlags};
     use crate::secondary::SecondaryHeaderLayout;
-    use aldis_core::{DecodeMode, ErrorDetail, ErrorKind, FieldId};
+    use aldis_core::{DecodeMode, ErrorDetail, ErrorKind};
     use core::num::NonZeroUsize;
     use proptest::prelude::*;
 
@@ -207,8 +209,8 @@ mod tests {
         let idle = [0x0F, 0xFF, 0xC0, 0, 0, 0, 0];
         let e = SpacePacket::decode(&idle, DecodeMode::Strict).unwrap_err();
         assert_eq!(
-            (e.kind(), e.field().map(FieldId::name)),
-            (ErrorKind::InvalidField, Some("secondary_header_flag"))
+            (e.kind(), e.field()),
+            (ErrorKind::InvalidField, Some(field::SECONDARY_HEADER_FLAG))
         );
         let p = SpacePacket::decode(&idle, DecodeMode::Lenient).unwrap();
         assert!(p.is_idle() && p.anomalies().contains(SppAnomaly::IdleWithSecondaryHeader));

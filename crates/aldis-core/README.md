@@ -2,7 +2,7 @@
 
 Foundation types and shared algorithms of Aldis: the error catalogue, decode modes, bit-field access, range-checked identifiers, the Frame Error Control Field CRC-16, the Only-Idle-Data generator, modular counters, fixed-capacity containers, and the reserved SDLS hooks. Each algorithm that several CCSDS data link protocols share is implemented here once ([common link features](../../docs/standards/common-link-features.md)).
 
-**Status:** implemented in Milestone 0, release `v0.1.0-m0` ([plan](../../docs/milestones/m0-foundations.md)). Milestone 1 added the decode mode and the anomaly set ([M1 plan](../../docs/milestones/m1-packets-time.md) WP-0, release `v0.2.0-m1`). Milestone 2, work package 0, is planned to add the numeric field codes to `FieldId` (API-082, OI-27; [roadmap](../../docs/08-roadmap.md) §1).
+**Status:** implemented in Milestone 0, release `v0.1.0-m0` ([plan](../../docs/milestones/m0-foundations.md)). Milestone 1 added the decode mode and the anomaly set ([M1 plan](../../docs/milestones/m1-packets-time.md) WP-0, release `v0.2.0-m1`). Milestone 2, work package 0a, added the numeric field codes of `FieldId` and the generated module `field` (API-082, OI-27; [M2 plan](../../docs/milestones/m2-frame-codecs.md) D2).
 
 ## Where it sits
 
@@ -10,7 +10,7 @@ Layer 0 (foundation) of the [architecture](../../docs/01-architecture.md) §2. I
 
 ## What it provides
 
-- Errors: `Error` with an `ErrorKind` from the stable catalogue of [03 API model](../../docs/03-api-model.md) §9, an optional `FieldId`, and `ErrorDetail` values, all without allocation.
+- Errors: `Error` with an `ErrorKind` from the stable catalogue of [03 API model](../../docs/03-api-model.md) §9, an optional `FieldId`, and `ErrorDetail` values, all without allocation. A `FieldId` is one of the constants of `field`, generated from the field catalogue of [03 API model](../../docs/03-api-model.md) §9.1: its code is shared by all profiles and carried by the C ABI, and its name is for display only (API-082).
 - Decoding policy: `DecodeMode` (strict or lenient) and `AnomalySet`, the flags a lenient decode returns. Each codec crate declares its own flag enum.
 - Bit fields: big-endian read and write primitives that every codec uses for wire fields.
 - Identifiers: range-checked types such as `Apid`, `SeqCount`, `PacketVersion`, `SpacecraftId`, `VcId`, and `MapId`. A value of one of these types is always in range, so an encoder cannot write an out-of-range field.
@@ -70,5 +70,5 @@ The evidence is in the exit tables of the [M0 plan](../../docs/milestones/m0-fou
 
 - [docs/standards/common-link-features.md](../../docs/standards/common-link-features.md): requirement area CMN (CRC-16, OID, counters, field placement with SDLS).
 - [docs/02-design-rules.md](../../docs/02-design-rules.md) and [docs/03-api-model.md](../../docs/03-api-model.md): the GEN and API requirements this crate implements, including the error catalogue.
-- [docs/09-open-issues.md](../../docs/09-open-issues.md): OI-27 (resolved: numeric field codes, to be added in M2).
+- [docs/09-open-issues.md](../../docs/09-open-issues.md): OI-27 (resolved: numeric field codes, added in M2 WP-0a).
 - [docs/README.md](../../docs/README.md): the index of the specification.

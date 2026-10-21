@@ -12,7 +12,7 @@ use aldis_core::error::ErrorKind;
 use aldis_core::layout::{FrameLayout, LayoutSpec};
 use aldis_core::oid::{OidGenerator, OidGeneratorGalois};
 use aldis_core::security::SecurityLayout;
-use aldis_core::{Error, bits};
+use aldis_core::{Error, FieldId, bits};
 use aldis_testkit::{CodecCase, Outcome, hex, run_codec_file};
 use serde_json::{Map, Value, json};
 
@@ -48,7 +48,10 @@ fn ok(value: &Value) -> Outcome {
 fn outcome(result: Result<Value, Error>) -> Outcome {
     match result {
         Ok(v) => ok(&v),
-        Err(e) => Outcome::Err(e.kind().name().to_owned()),
+        Err(e) => Outcome::Err {
+            kind: e.kind().name().to_owned(),
+            field: e.field().map(FieldId::code),
+        },
     }
 }
 
@@ -96,7 +99,10 @@ fn handle(case: &CodecCase) -> Outcome {
                 Some(k) => {
                     ok(&json!({ "code": k.code(), "c_abi": i32::from(k.code()).wrapping_neg() }))
                 }
-                None => Outcome::Err("UnknownKind".to_owned()),
+                None => Outcome::Err {
+                    kind: "UnknownKind".to_owned(),
+                    field: None,
+                },
             }
         }
         "bits_get" => outcome(

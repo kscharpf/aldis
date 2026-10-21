@@ -1,6 +1,6 @@
 //! Crate-internal helpers: `const` widening and range-checked field types.
 
-use aldis_core::Error;
+use aldis_core::{Error, FieldId};
 
 /// Widens `u32` to `u64` in `const` context (`From` is not yet `const`).
 #[expect(clippy::as_conversions, reason = "lossless widening u32 -> u64")]
@@ -28,14 +28,14 @@ pub(crate) const fn wide8(n: u8) -> u64 {
 
 /// `OutOfRange` for `field` naming the violated bound: `min` if `value` is below it, else `max`
 /// (GEN-041).
-pub(crate) const fn out_of_bounds(field: &'static str, value: u64, min: u64, max: u64) -> Error {
+pub(crate) const fn out_of_bounds(field: FieldId, value: u64, min: u64, max: u64) -> Error {
     Error::out_of_range(field, if value < min { min } else { max }, value)
 }
 
 /// Defines a field type holding `$min..=$max` (API-001 style: private field, checked
 /// constructors).
 macro_rules! bounded {
-    ($(#[$doc:meta])* $name:ident, $repr:ty, $field:literal, $min:literal, $max:literal) => {
+    ($(#[$doc:meta])* $name:ident, $repr:ty, $field:expr, $min:literal, $max:literal) => {
         $(#[$doc])*
         #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
         pub struct $name($repr);

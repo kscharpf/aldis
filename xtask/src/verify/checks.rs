@@ -116,11 +116,13 @@ pub const CPP: PathList = PathList {
     ],
 };
 
-/// Documentation: read by `spec` only (spec lint, links, vectors, traces, changelog check), so a
-/// change to these paths alone runs only `spec`. Not documentation: the crate READMEs, which are
-/// doctests, `test-vectors/README.md`, which lies under the Rust and C++ input `test-vectors/`,
-/// and every other `.md` file outside these paths, such as `cpp/README.md` (installed by the C++
-/// build) and `refapp/golden/CHANGES.md`.
+/// Documentation: read by `spec` only (spec lint, links, vectors, field catalogue, traces,
+/// changelog check), so a change to these paths alone runs only `spec`; a change to the field
+/// catalogue in `docs/03-api-model.md` alone fails `spec` until `cargo xtask fields --write`
+/// regenerates its files, which are Rust and C++ inputs. Not documentation: the crate READMEs,
+/// which are doctests, `test-vectors/README.md`, which lies under the Rust and C++ input
+/// `test-vectors/`, and every other `.md` file outside these paths, such as `cpp/README.md`
+/// (installed by the C++ build) and `refapp/golden/CHANGES.md`.
 pub const DOCS: PathList = PathList {
     name: "docs",
     patterns: &[
@@ -394,6 +396,8 @@ cargo xtask spec-lint
 cargo xtask links
 cargo xtask vectors validate
 cargo xtask vectors schema --check
+# The field catalogue of docs/03-api-model.md §9.1 and the files generated from it (API-082).
+cargo xtask fields
 # Independent cross-check of the vectors (VER-040); fails on any disagreement. Its own tests
 # first: the harness must report a difference it is shown.
 cargo test --manifest-path crosscheck/Cargo.toml
@@ -403,6 +407,8 @@ cargo xtask changelog check
 cargo xtask trace --scope m0 --strict
 # M1 is closed: every in-scope requirement must keep an artefact (VER-020, m1 plan D8).
 cargo xtask trace --scope m1 --strict
+# M2 is open: its trace is reported, and becomes --strict at the M2 exit (m2 plan D1).
+cargo xtask trace --scope m2
 # C0 is open: its trace is reported, and becomes --strict at the C0 exit (c0 plan D17).
 cargo xtask trace --scope c0
 ";

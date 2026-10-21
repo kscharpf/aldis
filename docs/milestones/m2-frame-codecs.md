@@ -3,7 +3,7 @@
 **Goal:** the M1 codecs' part of the C ABI, the field-code catalogue, and the shared property-test strategies (WP-0), then complete, verified Layer 1 codecs for the four data link protocols: `aldis-tm`, `aldis-tc` (with the CLCW, frame delimiting, and frame validation), `aldis-aos` (with the FHEC and the editions), and `aldis-uslp` (with truncated frames). Each codec has its C ABI functions, and every vector passes through the C ABI as well as through the Rust API. They are verified to the standard of M1: vectors, panic freedom on bare metal, 100 % coverage, fuzzing, mutation testing, and cross-checks.
 **Roadmap entry:** [08-roadmap.md](../08-roadmap.md) §1 · **Builds on:** [M1](m1-packets-time.md) (`v0.2.0-m1`) · **Release:** `v0.3.0-m2`
 
-**Status: planned (2026-10-20).** Entry gate: M1 (roadmap §1), met by the M1 exit, PR #54 (branch `m1/exit`), release `v0.2.0-m1`; this plan merges after that PR. Decisions D1–D17 accepted by the maintainer 2026-10-20, after the review of PR #56. `cargo xtask trace --scope m2` puts 121 requirements in scope; the 49 traced so far are the M0 and M1 artefacts of the shared codec contract, gates, and vectors. Three new open issues come from planning: OI-33, OI-34, and OI-35; OI-04 is updated with the reading of 732.0-B-4. Revised after the review of PR #56: D2, D5, D11, D14, and D15 changed, D17 added (USLP-014, USLP-015), and §3 and §5 cover the generated files shared by parallel pull requests.
+**Status: in progress (2026-10-20): WP-0a (field codes, `--scope m2` in the gate).** Entry gate: M1 (roadmap §1), met by the M1 exit, PR #54 (branch `m1/exit`), release `v0.2.0-m1`; this plan merges after that PR. Decisions D1–D17 accepted by the maintainer 2026-10-20, after the review of PR #56. `cargo xtask trace --scope m2` puts 122 requirements in scope (USLP-016 added by PR #61); 50 are traced: the M0 and M1 artefacts of the shared codec contract, gates, and vectors, and API-082 (WP-0a). Three new open issues come from planning: OI-33, OI-34, and OI-35; OI-04 is updated with the reading of 732.0-B-4. Revised after the review of PR #56: D2, D5, D11, D14, and D15 changed, D17 added (USLP-014, USLP-015), and §3 and §5 cover the generated files shared by parallel pull requests.
 
 ## 1. Starting point
 
@@ -21,7 +21,7 @@
 
 ## 2. Decisions
 
-All accepted 2026-10-20. The open issues and requirements they settle were updated on acceptance: OI-04 (D11), OI-33 (D9), and OI-34 (D8) are resolved; OI-06 (UPIDs, D13), OI-32 (D15), and OI-35 item 4 (D17) are updated; AOS-003 (D11), API-013 (D14), and USLP-010 (D8) are changed. D9's anomaly lists and the API-032 wording are applied by each frame WP.
+All accepted 2026-10-20. The open issues and requirements they settle were updated on acceptance: OI-04 (D11), OI-33 (D9), and OI-34 (D8) are resolved; OI-06 (UPIDs, D13), OI-32 (D15), and OI-35 item 4 (D17) are updated; AOS-003 (D11), API-013 (D14), and USLP-010 (D8) are changed. D9's anomaly lists and the API-032 wording were applied ahead of the frame WPs by the frame spec pull request (`m2/frame-spec`), which also answered OI-05 and OI-35 items 2, 3, and 5–7 (new USLP-016) and left items 1 and 8 to the maintainer.
 
 | # | Decision | Choice | Status |
 |---|---|---|---|
@@ -132,7 +132,7 @@ Each codec module is done when:
 
 **Done when:** every AOS requirement is traced, and `aos/minimal`, `fhec_encode`, `fhec_correct_1_symbol`, `fhec_correct_2_symbols`, `fhec_uncorrectable`, `insert_zone`, `mpdu_pointers`, `bpdu_pointers`, `oid`, `issue4_compat`, and `scid_10bit` pass through the Rust API and the C ABI.
 
-### WP-5 `aldis-uslp` (L) — USLP-001…010, USLP-012…015
+### WP-5 `aldis-uslp` (L) — USLP-001…010, USLP-012…016
 
 | Order | Module | Content | Requirements |
 |---|---|---|---|
@@ -140,7 +140,7 @@ Each codec module is done when:
 | 2 | `config` | Physical, master, virtual channel, and MAP configuration (732.1 §5): fixed or variable frames, Insert Zone only on fixed-length channels, VCF Count lengths per QoS, truncated length 6–32 and only on variable-length VCs, OCF allowed or required | USLP-004, USLP-008, USLP-012, API-040, API-070, API-075, GEN-060 |
 | 3 | `header`, `view` | Version and reserved flag combination; fixed length from the configuration, variable length from the Frame Length field (consuming exactly one frame); VCF Count with its length checked against the QoS; Insert Zone, security slices, OCF, FECF | USLP-001, USLP-003, USLP-004, API-011, API-012, API-072 |
 | 4 | `truncated` | The truncated view of D12 | USLP-002, USLP-012 |
-| 5 | `tfdf` | TFDF header length by construction rule (USLP-005, OI-05), FHP and LVO classification, TFDZ; COP-1 control commands decodable with `aldis-tc` (D8) | USLP-005, USLP-006, USLP-013 |
+| 5 | `tfdf` | TFDF header length by construction rule (USLP-005, OI-05), construction rule against the VC's frame type (USLP-016), FHP and LVO classification, TFDZ; COP-1 control commands decodable with `aldis-tc` (D8) | USLP-005, USLP-006, USLP-013, USLP-016 |
 | 6 | `writer` | Frame Length, VCF Count Length, TFDF header, FECF; OID frames on VCID 63, MAP 0, rule `001`, UPID "Only Idle Data", LVO at the last TFDZ octet, fixed-length channels only | USLP-009, USLP-010 (as D8 settles it), API-020…023 |
 | 7 | `anomaly` | The flag list as D9 settles it | API-032, API-033 |
 | 8 | `delimit`, `validate` | Frame Delimiting and Fill Data Removal, and the USLP Frame Validation Checks a–e, for a physical channel over TC Synchronization and Channel Coding (D17) | USLP-014, USLP-015 |
@@ -198,7 +198,7 @@ M2 is complete when every item below is green on `main`:
 | TM Transfer Frame | TM-001…011 |
 | TC Transfer Frame and CLCW | TC-001…008, TC-020…023, TC-030, TC-031 |
 | AOS Transfer Frame | AOS-001…003, AOS-010…019, GEN-062 |
-| USLP Transfer Frame | USLP-001…010, USLP-012…015 |
+| USLP Transfer Frame | USLP-001…010, USLP-012…016 |
 | Codec contract | API-010…014, API-020…023, API-030…033, API-040, API-041, API-070, API-072, API-075, GEN-013, GEN-014, GEN-043, GEN-052, GEN-053, GEN-060, GEN-061, RS-012. Every live case of `tm/`, `tc/`, `aos/`, and `uslp/` passes through the Rust API and through the C ABI |
 | Panic freedom and resources | VER-010, GEN-020…024 (the exerciser, with `aldis-ffi`, runs on all three bare-metal targets), VER-011 |
 | Portability | GEN-005, GEN-006, GEN-007, VER-030, VER-031 |

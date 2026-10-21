@@ -40,8 +40,9 @@ pub enum Group {
 pub enum Expect {
     /// Success with exactly these output values.
     Ok(Map),
-    /// Failure with this error kind (catalogue name).
-    Err(&'static str),
+    /// Failure with this error kind (catalogue name) and, when the case gives one, the code of
+    /// the field the error names (03-api-model.md §9.1; API-082, M2 plan D3).
+    Err(&'static str, Option<u16>),
 }
 
 /// One codec case.
@@ -432,7 +433,7 @@ pub fn run(t: &mut Tally) {
     for case in CODEC {
         let mut out = Out::new(match case.expect {
             Expect::Ok(map) => map,
-            Expect::Err(_) => &[],
+            Expect::Err(..) => &[],
         });
         let result = match case.group {
             Group::Time => crate::time::vector(case, &mut out, &mut scratch),
@@ -445,7 +446,10 @@ pub fn run(t: &mut Tally) {
                 continue;
             }
             (Ok(()), Expect::Ok(_)) => out.finish(),
-            (Err(Fail::Api(e)), Expect::Err(kind)) => e.kind().name() == *kind,
+            (Err(Fail::Api(e)), Expect::Err(kind, field)) => {
+                e.kind().name() == *kind
+                    && field.is_none_or(|code| e.field().map(|f| f.code().get()) == Some(code))
+            }
             _ => false,
         };
         t.check(passed);

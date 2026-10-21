@@ -71,7 +71,7 @@ w.finish(payload_len) -> Result<usize, Error>
 |---|---|---|---|
 | API-030 | Every decoder SHALL support `Strict` (default) and `Lenient` modes. | — | T |
 | API-031 | In `Strict` mode, any violation of a SHALL in the Blue Book that is checkable from the octets and the supplied configuration SHALL be an error. | — | V |
-| API-032 | In `Lenient` mode, deviations limited to **reserved/spare bits, fields CCSDS declares "undefined", conventional-zero fields, and fixed-value fields of idle data units** (e.g. EPP CCSDS Defined Field, TM Packet Order Flag when Sync Flag = 1, Secondary Header Flag of an Idle Packet), plus a reserved P-field time code ID decoded as TIME-002 specifies, SHALL be accepted. They SHALL be reported as anomaly flags. Version numbers, lengths, and FECF/FHEC failures SHALL remain errors in both modes (OI-15, OI-16). | e.g. 133.1 §4.1.2.7.2; 132.0 §4.1.2.7.4–5; 133.0 §4.1.3.3.3.4 | V |
+| API-032 | In `Lenient` mode, deviations limited to **reserved/spare bits, fields CCSDS declares "undefined", conventional-zero fields, fixed-value fields of idle data units, and the TM Segment Length Identifier**, a fixed-value field that 132.0 keeps only as a legacy marker (e.g. EPP CCSDS Defined Field, TM Packet Order Flag when Sync Flag = 1, Secondary Header Flag of an Idle Packet, TM Segment Length Identifier ≠ `11` when Sync Flag = 0), plus a reserved P-field time code ID decoded as TIME-002 specifies, SHALL be accepted. They SHALL be reported as anomaly flags. Version numbers, lengths, pointers outside the field they index, and FECF/FHEC failures SHALL remain errors in both modes, and a value a decoder reports in both modes, such as the FHEC's corrected symbols, SHALL NOT be an anomaly flag (OI-15, OI-16, OI-33). | e.g. 133.1 §4.1.2.7.2; 132.0 §4.1.2.7.4, §4.1.2.7.5.2 notes 1–2; 133.0 §4.1.3.3.3.4 | V |
 | API-033 | Each standard document SHALL list the anomaly flags its decoder can raise. | — | I |
 
 ## 4. Configuration objects
@@ -187,8 +187,85 @@ Numeric codes are stable across profiles. In the C ABI, `0` is success and error
 
 ### 9.1 Field codes
 
-An error that names a field (GEN-041), such as `InvalidField`, carries a **field code**: a stable number shared by all profiles, so that the C ABI can carry it (CABI-010, CABI-021) and the differential tests can compare it (VER-053). Profiles may also expose the field's name for display. The catalogue table is created in M2 WP-0 ([roadmap](08-roadmap.md) §1, OI-27), listing every field identifier the codecs use, and grows with each codec.
+An error that names a field (GEN-041), such as `InvalidField`, carries a **field code**: a stable number shared by all profiles, so that the C ABI can carry it (CABI-010, CABI-021) and the differential tests can compare it (VER-053). Profiles may also expose the field's name for display. The catalogue below was created in M2 WP-0 ([M2 plan](milestones/m2-frame-codecs.md) D2, OI-27), with every field identifier that `aldis-core`, `aldis-time`, `aldis-spp`, and `aldis-epp` name, and grows with each codec.
 
 | ID | Requirement | Source | Verif. |
 |---|---|---|---|
 | API-082 | Every field identifier SHALL have a numeric code (16 bits) listed in the field catalogue of this section and shared by all profiles. Codes SHALL never be renumbered or reused; a new field takes the next free code. The C ABI SHALL carry the code. Profiles MAY also expose the field name, which is for display only and SHALL NOT be compared by tests or tools. | GEN-041 | T |
+
+**Rules of the catalogue.**
+
+- Codes run from 1 in table order, with no gap. Code 0 is never assigned: in the C ABI it means "no field" (CABI-021).
+- One code per field. A Blue Book field that several codecs carry has one row, listing every codec that names it; for example the Spacecraft Identifier of TM, TC, AOS, and USLP, or the Packet Version Number of Space and Encapsulation Packets.
+- **Kind** says what the code names. `field` is a field of a data unit defined by a Blue Book: a header field, a P-field or T-field subfield, or a data field. `parameter` is anything else an error can name: a managed parameter, a configuration value, an argument of a call, or a length the caller passes, such as a buffer length. A parameter row cites the clause that gives its limits where there is one, and otherwise the requirement it implements.
+- **Name** is the display name: lower case, words joined by `_`, unique in the table. It is what `Display` prints, and it is never compared (API-082).
+- A new row takes the next code. Two open pull requests that take the same code are settled as roadmap §6 rule 7 settles requirement IDs: the one that merges second renumbers its rows.
+
+The table is the registry. `cargo xtask fields --write` generates from it the Rust module `aldis_core::field`, one `pub const` per row, and [`test-vectors/core/fields.json`](../test-vectors/core/fields.json) for the C++ and binding runners; neither file is edited by hand. `cargo xtask fields`, part of `cargo xtask ci` and of the verification run, fails when either file differs from the table, or when a code or name is used twice or the codes are not 1 to n in order. A vector case that expects an error may give the code it names (`expect.field`, [07](07-test-vectors.md) §2).
+
+| Code | Name | Kind | Meaning | Used by | Defined by |
+|---|---|---|---|---|---|
+| 1 | `spacecraft_id` | field | Spacecraft Identifier | core | 132.0 §4.1.2.2.3; 232.0 §4.1.2.5; 732.0 §4.1.2.2.3; 732.1 §4.1.2.2.3 |
+| 2 | `vc_id` | field | Virtual Channel Identifier | core | 132.0 §4.1.2.3; 232.0 §4.1.2.6; 732.0 §4.1.2.3; 732.1 §4.1.2.4 |
+| 3 | `map_id` | field | Multiplexer Access Point Identifier | core | 232.0 §4.1.3.2.2.3; 732.1 §4.1.2.5 |
+| 4 | `packet_version` | field | Packet Version Number | core, spp, epp | 133.0 §4.1.3.2; 133.1 §4.1.2.2 |
+| 5 | `apid` | field | Application Process Identifier | core, spp | 133.0 §4.1.3.3.4 |
+| 6 | `sequence_count` | field | Packet Sequence Count or Packet Name | core | 133.0 §4.1.3.4.3 |
+| 7 | `frame_data_field` | field | Transfer Frame Data Field, as the frame layout places it | core | 132.0 §4.1.4; 232.0 §4.1.3; 732.0 §4.1.4; 732.1 §4.1.4; CMN-041 |
+| 8 | `security_header_len` | parameter | Length of the Security Header on a Virtual Channel or MAP | core | 355.0 §4.1.1.1.4; API-071 |
+| 9 | `security_trailer_len` | parameter | Length of the Security Trailer on a Virtual Channel or MAP | core | 355.0 §4.1.2; API-071 |
+| 10 | `secured_fields` | parameter | Octet ranges of the Security Header, the data field, and the Security Trailer | core | 355.0 §4.1; API-070 |
+| 11 | `width` | parameter | Width of a bit field, 1 to 64 bits | core | GEN-050 |
+| 12 | `bit_offset` | parameter | Bit offset of a bit field in its buffer | core | GEN-050 |
+| 13 | `buf_bits` | parameter | Length of the buffer that holds a bit field, in bits | core | GEN-050 |
+| 14 | `offset` | parameter | Octet offset of a big-endian integer in its buffer | core | GEN-050 |
+| 15 | `buf_len` | parameter | Length of the buffer that holds a big-endian integer, in octets | core | GEN-050 |
+| 16 | `value` | parameter | Value written to a bit field, or held by a modular counter | core | GEN-050; CMN-030 |
+| 17 | `bits` | parameter | Width of a modular counter, 1 to 64 bits | core | CMN-030 |
+| 18 | `record_len` | parameter | Length of a record pushed to a fixed-capacity byte queue | core | API-061 |
+| 19 | `capacity` | parameter | Capacity of a fixed-capacity byte queue, in octets | core | GEN-011 |
+| 20 | `pfield` | field | Preamble Field (P-field) of a time code | time | 301.0 §3.1.1 |
+| 21 | `pfield_tail` | field | P-field extension octets that the time code does not define | time | 301.0 §3.1.1; TIME-005 |
+| 22 | `time_code_id` | field | Time code identification, P-field octet 1 bits 1–3 | time, spp | 301.0 §3.1.1; 133.0 §4.1.4.2.2 |
+| 23 | `tfield` | field | Time Field (T-field) of a time code | time | 301.0 §3.1.2 |
+| 24 | `t_len` | field | T-field length of an agency-defined code, 1 to 16 octets | time | 301.0 §3.6.2 |
+| 25 | `coarse_octets` | field | Number of octets of the CUC basic time unit | time | 301.0 §3.2.2 |
+| 26 | `fine_octets` | field | Number of octets of the CUC fractional time unit | time | 301.0 §3.2.2 |
+| 27 | `mission_bits` | field | CUC P-field octet 2 bits 6–7, reserved for mission definition | time | 301.0 §3.2.2 |
+| 28 | `coarse` | field | CUC count of basic time units (coarse time) | time | 301.0 §3.2.1 |
+| 29 | `fine` | field | CUC fraction of the basic time unit (fine time) | time | 301.0 §3.2.1 |
+| 30 | `nanoseconds` | parameter | Nanoseconds converted to CUC fine time | time | TIME-011 |
+| 31 | `cds_day` | field | CDS day segment | time | 301.0 §3.3.1, §3.3.2 |
+| 32 | `ms_of_day` | field | CDS ms of day segment | time | 301.0 §3.3.1, Annex A |
+| 33 | `subms` | field | CDS submillisecond segment, and its length in P-field bits 6–7 | time | 301.0 §3.3.1, §3.3.2 |
+| 34 | `agency_epoch` | parameter | Calendar date of the agency-defined epoch of a CDS code | time | 301.0 §3.3.2; TIME-033 |
+| 35 | `year` | field | Year: the CCS year segment, the ASCII year subfield | time | 301.0 §3.4.1, §3.5.1, Annex A |
+| 36 | `month` | field | Month: the CCS month segment, the ASCII month subfield | time | 301.0 §3.4.1.1, §3.5.1.1, Annex A |
+| 37 | `day` | field | Day of month: the CCS day of month segment, the ASCII day subfield | time | 301.0 §3.4.1.1, §3.5.1.1, Annex A |
+| 38 | `day_of_year` | field | Day of year: the CCS day of year segment, the ASCII day of year subfield | time | 301.0 §3.4.1.2, §3.5.1.2, Annex A |
+| 39 | `hour` | field | Hour: the CCS hour segment, the ASCII hour subfield | time | 301.0 §3.4.1, §3.5.1, Annex A |
+| 40 | `minute` | field | Minute: the CCS minute segment, the ASCII minute subfield | time | 301.0 §3.4.1, §3.5.1, Annex A |
+| 41 | `second` | field | Second: the CCS second segment, the ASCII second subfield | time | 301.0 §3.4.1, §3.5.1, Annex A |
+| 42 | `subsecond` | field | CCS subsecond segments, 10⁻² to 10⁻¹² s | time | 301.0 §3.4.1 |
+| 43 | `subsecond_octets` | field | CCS resolution: the number of subsecond segments, P-field bits 5–7 | time | 301.0 §3.4.2 |
+| 44 | `date` | field | CCS date segments, whose calendar variation P-field bit 4 selects | time | 301.0 §3.4.1, §3.4.2 |
+| 45 | `fraction` | field | ASCII decimal fraction of the second | time | 301.0 §3.5.1.1, §3.5.1.2 |
+| 46 | `fraction_digits` | parameter | Number of fraction digits an ASCII format writes | time | 301.0 §3.5.1.1; TIME-031 |
+| 47 | `max_fraction_digits` | parameter | Largest number of fraction digits the ASCII parser accepts | time | 301.0 §3.5.1.1; TIME-031 |
+| 48 | `secondary_header_flag` | field | Secondary Header Flag | spp | 133.0 §4.1.3.3.3 |
+| 49 | `data_field` | field | Packet Data Field | spp | 133.0 §4.1.4.1 |
+| 50 | `secondary_header` | field | Packet Secondary Header | spp | 133.0 §4.1.4.2 |
+| 51 | `time_code` | parameter | Time code of a time secondary header layout | spp | 133.0 §4.1.4.2.2; SPP-008 |
+| 52 | `packet_len` | field | Total length of a packet in octets: the Encapsulation Packet's Packet Length field, or a Space Packet's primary header and Packet Data Field | spp, epp | 133.0 §4.1.2.2, §4.1.3.5; 133.1 §4.1.2.8 |
+| 53 | `max_packet_len` | parameter | Maximum Packet Length, a managed parameter | spp | 133.0 §5.2 Table 5-1 |
+| 54 | `user_len` | parameter | Length of the User Data Field a two-phase writer is finished with | spp | 133.0 §4.1.4.3; API-023 |
+| 55 | `sdu` | parameter | SDU that the segmenter splits across packets | spp | 133.0 §4.1.3.4.2; SPP-013 |
+| 56 | `max_user_len` | parameter | Largest User Data Field of one segment | spp | 133.0 §4.1.3.4.2; SPP-013 |
+| 57 | `epi` | field | Encapsulation Protocol ID | epp | 133.1 §4.1.2.3 |
+| 58 | `epi_extension` | field | Encapsulation Protocol ID Extension | epp | 133.1 §4.1.2.6 |
+| 59 | `user_defined` | field | User Defined Field | epp | 133.1 §4.1.2.5 |
+| 60 | `ccsds_defined` | field | CCSDS Defined Field | epp | 133.1 §4.1.2.7 |
+| 61 | `header_size` | parameter | Header size policy of the encoder, which sets the Length of Length | epp | 133.1 §4.1.2.1.1, §4.1.2.4; EPP-008 |
+| 62 | `data_len` | parameter | Length of the Encapsulated Data Field | epp | 133.1 §4.1.3, Table 4-2 |
+| 63 | `min_data_len` | parameter | Minimum Data Unit Length, a managed parameter | epp | 133.1 §5 Table 5-1 |
+| 64 | `max_data_len` | parameter | Maximum Data Unit Length, a managed parameter | epp | 133.1 §5 Table 5-1 |

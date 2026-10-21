@@ -5,12 +5,13 @@
 //! of the three codes, so only the target can lose precision; it truncates toward zero. There is
 //! no time-scale change: leap seconds pass through as second 60 (TIME-022).
 
-use aldis_core::{Error, ErrorKind, FieldId, Result};
+use aldis_core::{Error, ErrorKind, Result};
 
 use crate::ascii::{AsciiFormat, AsciiTime, Fraction};
 use crate::calendar::{CalendarDate, Hour, Minute, Month, Second, Year, civil, day_number};
 use crate::ccs::{Ccs, CcsFormat, CcsValue, CcsVariation};
 use crate::cds::{Cds, CdsEpoch, CdsFormat, CdsSubMs, CdsValue, Micros, MsOfDay, Picos, SubMillis};
+use crate::field;
 
 /// Picoseconds per millisecond.
 const PICOS_PER_MS: u64 = 1_000_000_000;
@@ -44,7 +45,7 @@ const fn epoch_day(epoch: CdsEpoch, agency_epoch: Option<CalendarDate>) -> Resul
         (CdsEpoch::Ccsds1958, _) => Ok(CDS_EPOCH),
         (CdsEpoch::Agency, Some(date)) => Ok(date.day_number()),
         (CdsEpoch::Agency, None) => {
-            Err(Error::new(ErrorKind::InvalidConfig).with_field(FieldId::new("agency_epoch")))
+            Err(Error::new(ErrorKind::InvalidConfig).with_field(field::AGENCY_EPOCH))
         }
     }
 }
@@ -130,9 +131,9 @@ impl UtcInstant {
     ///
     /// # Errors
     /// - `InvalidConfig` (`agency_epoch`) for an agency-defined epoch without `agency_epoch`.
-    /// - `OutOfRange` (`day`) beyond the format's day segment, with the segment's largest day
+    /// - `OutOfRange` (`cds_day`) beyond the format's day segment, with the segment's largest day
     ///   and the day found (GEN-041).
-    /// - `OutOfRange` (`day`) before the epoch, with no detail: the day relative to the epoch
+    /// - `OutOfRange` (`cds_day`) before the epoch, with no detail: the day relative to the epoch
     ///   is negative, so no unsigned expected/found pair would describe it.
     /// - `OutOfRange` (`second`) for second 60 at a minute other than 23:59, which CDS cannot
     ///   represent (OI-29).
@@ -141,10 +142,10 @@ impl UtcInstant {
         let day = self
             .day
             .checked_sub(base)
-            .ok_or(Error::new(ErrorKind::OutOfRange).with_field(FieldId::new("day")))?;
+            .ok_or(Error::new(ErrorKind::OutOfRange).with_field(field::CDS_DAY))?;
         let (h, m, s) = (self.hour.get(), self.minute.get(), self.second.get());
         if s == 60 && (h, m) != (23, 59) {
-            return Err(Error::out_of_range("second", 59, 60));
+            return Err(Error::out_of_range(field::SECOND, 59, 60));
         }
         let secs = u32::from(h)
             .wrapping_mul(3600)
@@ -267,7 +268,8 @@ mod tests {
     use crate::cds::{
         Cds, CdsDayLen, CdsEpoch, CdsFormat, CdsSubMs, CdsValue, Micros, MsOfDay, Picos, SubMillis,
     };
-    use aldis_core::{ErrorDetail, ErrorKind, FieldId};
+    use crate::field;
+    use aldis_core::{ErrorDetail, ErrorKind};
     use proptest::prelude::*;
 
     fn cds_fmt(day: CdsDayLen, subms: CdsSubMs, epoch: CdsEpoch) -> CdsFormat {
@@ -340,8 +342,8 @@ mod tests {
         let agency_cds = cds(366, 0, SubMillis::None, agency);
         let err = UtcInstant::from_cds(&agency_cds, None).unwrap_err();
         assert_eq!(
-            (err.kind(), err.field().map(FieldId::name)),
-            (ErrorKind::InvalidConfig, Some("agency_epoch"))
+            (err.kind(), err.field()),
+            (ErrorKind::InvalidConfig, Some(field::AGENCY_EPOCH))
         );
         let inst = UtcInstant::from_cds(&agency_cds, Some(epoch(2000, 1, 1))).unwrap();
         assert_eq!(inst.date(CcsVariation::MonthDay), Ok(epoch(2001, 1, 1)));
@@ -400,13 +402,13 @@ mod tests {
             .to_cds(fmt, None)
             .unwrap_err();
         assert_eq!(
-            (err.kind(), err.field().map(FieldId::name)),
-            (ErrorKind::OutOfRange, Some("day"))
+            (err.kind(), err.field()),
+            (ErrorKind::OutOfRange, Some(field::CDS_DAY))
         );
         let err = UtcInstant::from_ascii(&ascii("2137-06-07T00:00:00"))
             .to_cds(fmt, None)
             .unwrap_err();
-        assert_eq!(err.field().map(FieldId::name), Some("day"));
+        assert_eq!(err.field(), Some(field::CDS_DAY));
         let late = UtcInstant::from_ascii(&ascii("2137-06-07T00:00:00"));
         assert_eq!(
             late.to_cds(
@@ -422,8 +424,8 @@ mod tests {
             .to_cds(fmt, None)
             .unwrap_err();
         assert_eq!(
-            (err.kind(), err.field().map(FieldId::name)),
-            (ErrorKind::OutOfRange, Some("second"))
+            (err.kind(), err.field()),
+            (ErrorKind::OutOfRange, Some(field::SECOND))
         );
         for text in ["2016-06-30T23:30:60", "2016-06-30T12:59:60"] {
             assert!(
@@ -494,7 +496,7 @@ mod tests {
         let err = far
             .to_ascii(AsciiFormat::new(CcsVariation::MonthDay, 0, false).unwrap())
             .unwrap_err();
-        assert_eq!(err.field().map(FieldId::name), Some("year"));
+        assert_eq!(err.field(), Some(field::YEAR));
         assert_eq!(
             far.date(CcsVariation::DayOfYear).unwrap_err().kind(),
             ErrorKind::OutOfRange

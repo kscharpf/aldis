@@ -14,6 +14,7 @@
 //! | [`octet`] | `OctetStringEncoder` (Octet String service) | 133.0 §3.4, §4.2.2 | SPP-012 |
 //! | [`segment`] | `Segmenter`, `Reassembler` with its `Outcome`, `Status`, and `Discard` | 133.0 §4.1.3.4.2 note | SPP-013 |
 //! | [`anomaly`] | `SppAnomaly` lenient-mode flags | 133.0 §4.1.3.3.3.4 | API-032, GEN-043 |
+//! | [`field`] | The field codes its errors name, re-exported from `aldis_core::field` | 133.0 §4.1, §5.2 | API-082, GEN-041 |
 //!
 //! The Packet Data Length field holds the data field length minus one (133.0 §4.1.3.5); the API
 //! works in data field and total packet lengths and converts at the wire.
@@ -41,6 +42,7 @@ extern crate std;
 
 pub mod anomaly;
 pub mod config;
+pub mod field;
 pub mod header;
 pub mod idle;
 pub mod octet;

@@ -5,8 +5,9 @@
 //! passes a [`SecondaryHeaderLayout`](crate::secondary::SecondaryHeaderLayout) to
 //! [`SpacePacket::split`](crate::view::SpacePacket::split) (OI-30).
 
-use aldis_core::{Error, ErrorDetail, ErrorKind, FieldId, Result};
+use aldis_core::{Error, ErrorDetail, ErrorKind, Result};
 
+use crate::field;
 use crate::header::{
     MAX_PACKET_LEN, MIN_PACKET_LEN, PRIMARY_HEADER_LEN, PacketFields, invalid, len_u64,
 };
@@ -35,9 +36,7 @@ impl SppConfig {
     /// `InvalidConfig` (`max_packet_len`) outside 7–65 542 (133.0 §4.1.2.2).
     pub const fn new(max_packet_len: usize) -> Result<SppConfig> {
         if max_packet_len < MIN_PACKET_LEN || max_packet_len > MAX_PACKET_LEN {
-            return Err(
-                Error::new(ErrorKind::InvalidConfig).with_field(FieldId::new("max_packet_len"))
-            );
+            return Err(Error::new(ErrorKind::InvalidConfig).with_field(field::MAX_PACKET_LEN));
         }
         Ok(SppConfig { max_packet_len })
     }
@@ -53,7 +52,7 @@ impl SppConfig {
     pub(crate) fn check_len(self, total: usize) -> Result<()> {
         if total > self.max_packet_len {
             return Err(Error::out_of_range(
-                "packet_len",
+                field::PACKET_LEN,
                 len_u64(self.max_packet_len),
                 len_u64(total),
             ));
@@ -95,13 +94,15 @@ pub(crate) const fn check_parts(
     data_len: usize,
 ) -> Result<()> {
     if data_len == 0 {
-        return Err(invalid("data_field").with_detail(ErrorDetail::Expected {
-            expected: 1,
-            found: 0,
-        }));
+        return Err(
+            invalid(field::DATA_FIELD).with_detail(ErrorDetail::Expected {
+                expected: 1,
+                found: 0,
+            }),
+        );
     }
     if fields.apid.is_idle() && secondary_len != 0 {
-        return Err(invalid("secondary_header_flag"));
+        return Err(invalid(field::SECONDARY_HEADER_FLAG));
     }
     Ok(())
 }
@@ -148,9 +149,10 @@ impl<'a> PacketData<'a> {
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::SppConfig;
+    use crate::field;
     use crate::header::{PacketFields, PacketType, SequenceFlags};
     use aldis_core::ids::{Apid, SeqCount};
-    use aldis_core::{ErrorDetail, ErrorKind, FieldId};
+    use aldis_core::{ErrorDetail, ErrorKind};
 
     fn fields(apid: u16) -> PacketFields {
         PacketFields {
@@ -170,8 +172,8 @@ mod tests {
         for bad in [0, 6, 65_543] {
             let e = SppConfig::new(bad).unwrap_err();
             assert_eq!(
-                (e.kind(), e.field().map(FieldId::name)),
-                (ErrorKind::InvalidConfig, Some("max_packet_len"))
+                (e.kind(), e.field()),
+                (ErrorKind::InvalidConfig, Some(field::MAX_PACKET_LEN))
             );
         }
     }
@@ -192,8 +194,8 @@ mod tests {
         );
         let e = cfg.packet(fields(1), &[], &[]).unwrap_err();
         assert_eq!(
-            (e.kind(), e.field().map(FieldId::name)),
-            (ErrorKind::InvalidField, Some("data_field"))
+            (e.kind(), e.field()),
+            (ErrorKind::InvalidField, Some(field::DATA_FIELD))
         );
         assert_eq!(
             e.detail(),
@@ -203,7 +205,7 @@ mod tests {
             }
         );
         let e = cfg.packet(fields(0x7FF), &[1], &[]).unwrap_err();
-        assert_eq!(e.field().map(FieldId::name), Some("secondary_header_flag"));
+        assert_eq!(e.field(), Some(field::SECONDARY_HEADER_FLAG));
         assert!(cfg.packet(fields(0x7FF), &[], &[0]).is_ok());
         let e = cfg.packet(fields(1), &[], &[0; 5]).unwrap_err();
         assert_eq!(
