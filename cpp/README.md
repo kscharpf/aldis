@@ -26,6 +26,12 @@ Build output goes to `../target/cpp/<preset>/`. For a local experiment with an u
 | `ALDIS_TEST_HOOKS` | off | Test-only security hook (the Rust `test-hooks` feature); never installed |
 | `ALDIS_SANITIZE` | off | Clang sanitizers (CPP-051) |
 | `ALDIS_COVERAGE` | off | Clang source-based coverage (CPP-052) |
+| `ALDIS_VECGEN` | empty | Host `aldis_vecgen` for a bare-metal build; empty: a bare-metal preset builds it first with the pinned host GCC |
+| `ALDIS_VECGEN_ONLY` | off | Build only the vector loader and `aldis_vecgen` (the host build of a bare-metal preset) |
+
+## Conformance vectors
+
+`cpp/vectors/` runs the shared [test vectors](../test-vectors/README.md) against the library (CPP-053): `ctest` runs `aldis_vectors` once per file of `test-vectors/core/`, with the exact comparison of TV-012, and `aldis_vecgen` writes the same cases as `constexpr` arrays (`aldis/vectors/generated/core.hpp`) for the freestanding exerciser and the compile-time checks of CPP-034. Test tooling only: nothing in `cpp/vectors/` is installed.
 
 ## Using the installed package
 

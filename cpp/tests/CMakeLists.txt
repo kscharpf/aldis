@@ -32,6 +32,15 @@ aldis_add_test(aldis_core_tests
   LIBS aldis::core aldis::core_test_hooks)
 target_include_directories(aldis_core_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
 
+# Self-tests of the vector loader, runner, and generator (CPP-053, TV-012; c0 plan WP-4). The
+# runner itself runs every core vector file as its own CTest test (cpp/vectors/CMakeLists.txt).
+aldis_add_test(aldis_vectors_tests
+  SOURCES
+    vectors/loader_test.cpp
+    vectors/runner_test.cpp
+  LIBS aldis_vectors_runner aldis_vectors_generated)
+target_compile_definitions(aldis_vectors_tests PRIVATE ALDIS_VECTORS_DIR="${ALDIS_VECTORS_DIR}")
+
 # CPP-001, OI-28: the headers reject a standard older than C++20 at compile time.
 add_test(NAME aldis_core_rejects_cxx17
   COMMAND "${CMAKE_CXX_COMPILER}" -std=c++17 -fsyntax-only
