@@ -11,6 +11,7 @@ mod decisions;
 mod features;
 mod fields;
 mod header;
+mod kani;
 mod layers;
 mod links;
 mod md;
@@ -64,6 +65,9 @@ commands:
                                (GEN-006)
   coverage                     100 % region/function/line/branch gate for aldis-core (VER-024;
                                tooling nightly + cargo-llvm-cov >= 0.9)
+  kani                         run the Kani proof harnesses and print each one's result and
+                               time; a spike, not a gate (docs/verification/formal-proofs.md,
+                               OI-41; needs the pinned Kani)
   changelog check              every fragment in changelog.d/ is well formed (GEN-080)
   changelog show               print the unreleased changes as the next release will list them
   changelog release <version> <YYYY-MM-DD>
@@ -104,6 +108,7 @@ fn run(args: &[&str]) -> Result<usize, String> {
         ["ffi-imports", target] => binaries::ffi_imports(target),
         ["stack-sizes", target] => binaries::stack_sizes(target),
         ["coverage"] => coverage::run(),
+        ["kani"] => kani::run(),
         ["features"] => features::check(),
         ["consistency"] => consistency::check(),
         ["cpp", rest @ ..] => cpp::run(rest),

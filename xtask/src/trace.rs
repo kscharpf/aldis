@@ -53,8 +53,16 @@ fn artefacts(spec: &Spec) -> Result<BTreeMap<String, BTreeSet<String>>, String> 
         "refapp",
         "crosscheck",
     ] {
-        let kind = if dir == "fuzz" { "fuzz" } else { "test" };
         for path in repo::files(dir, &["rs"]) {
+            // Kani harnesses (docs/verification/formal-proofs.md) are labelled apart: no check
+            // of the verification run proves them (OI-41).
+            let kind = if dir == "fuzz" {
+                "fuzz"
+            } else if path.file_name().is_some_and(|f| f == "proofs.rs") {
+                "proof"
+            } else {
+                "test"
+            };
             let text = repo::read(&path)?;
             for (n, line) in text.lines().enumerate() {
                 if let Some((_, ids)) = line.split_once("// req:") {

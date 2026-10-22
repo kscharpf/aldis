@@ -46,6 +46,10 @@ pub mod oid;
 pub mod security;
 pub mod time;
 
+// Kani proof harnesses, compiled only by `cargo kani` (docs/verification/formal-proofs.md).
+#[cfg(kani)]
+mod proofs;
+
 pub use anomaly::{Anomaly, AnomalySet};
 pub use error::{Error, ErrorDetail, ErrorKind, FieldId, Result};
 pub use mode::DecodeMode;

@@ -52,6 +52,10 @@ pub mod sequence;
 pub mod view;
 pub mod writer;
 
+// Kani proof harnesses, compiled only by `cargo kani` (docs/verification/formal-proofs.md).
+#[cfg(kani)]
+mod proofs;
+
 pub use anomaly::SppAnomaly;
 pub use config::{PacketData, SppConfig};
 pub use header::{
