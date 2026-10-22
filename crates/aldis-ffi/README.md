@@ -68,6 +68,8 @@ cargo build -p aldis-ffi --no-default-features --features panic-handler \
 cargo xtask ffi-imports thumbv7em-none-eabihf   # needs nothing beyond memcpy/memset (CABI-004)
 ```
 
+**LEON3 (`sparc-unknown-none-elf`, best-effort; OI-08).** The library builds on the tooling nightly with `-Z build-std=core` and `-C target-cpu=leon3`, and links with GNU ld for SPARC (rust-lld cannot). It deviates from CABI-004: the `compiler_builtins` in the archive refers to the SPARC quad-float routines `_Q_*`, which Aldis never calls. Link with `--gc-sections`, which drops them, or supply them ([CABI-004 record](../../docs/verification/records/CABI-004.md)).
+
 ## Guarantees
 
 This is the only library crate in which `unsafe` is allowed. Its lint table sets `unsafe_code` to `deny` instead of the workspace's `forbid`; every entry point and pointer check carries `#[expect(unsafe_code)]`, and every `unsafe` block a `// SAFETY:` comment (GEN-070, GEN-071). Every caller memory access goes through `abi.rs` and `handle.rs`. No heap, threads, or C runtime are required on `no_std` targets (CABI-004).

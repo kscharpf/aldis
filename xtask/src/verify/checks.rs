@@ -204,7 +204,8 @@ pub struct Check {
     pub cpp: bool,
     /// What it reads: it is skipped when none of these changed (VER-056).
     pub inputs: Inputs,
-    /// A failure fails the run. Only the LEON3 build is reported without gating (OI-08).
+    /// A failure fails the run. Only the LEON3 checks, Rust and C++, are reported without
+    /// gating (OI-08).
     pub gating: bool,
     /// The Bash script.
     pub script: String,
@@ -270,6 +271,10 @@ fn rust() -> Vec<Check> {
     for t in RUST_BARE_METAL {
         out.push(check(format!("exerciser-{t}"), c, false, exerciser(t)));
     }
+    out.push(Check {
+        gating: false,
+        ..check("rust-sparc-leon3", c, false, RUST_LEON3)
+    });
     out.extend([
         check("coverage", c, false, "cargo xtask coverage\n"),
         // Spec lint, links, vectors, traces, and changelog: it reads every part of the tree.
@@ -302,6 +307,46 @@ fn exerciser(target: &str) -> String {
          \x20 || timeout 120 cargo run --release --locked --target {target}\n"
     )
 }
+
+/// The LEON3 (SPARC V8) check, reported against OI-08 and never a gate (docs/06-verification.md
+/// §4). `sparc-unknown-none-elf` is tier 3, so `core` is built from source on the tooling
+/// nightly (`-Z build-std`, RS-002) for `-C target-cpu=leon3`. The library builds as in
+/// `no-std-<target>`, and the exerciser runs as in `exerciser-<target>`: the panic-freedom link
+/// check, its canary, and every vector case under QEMU `leon3_generic` (VER-010). The linker
+/// and the QEMU command are in `exerciser/.cargo/config.toml`.
+const RUST_LEON3: &str = r#"
+# Reported against OI-08, never a gate.
+t=sparc-unknown-none-elf
+nightly="$(cat tooling-nightly)"
+std=(-Z build-std=core)
+# The flag of exerciser/.cargo/config.toml, which RUSTFLAGS replaces. xtask, a host build,
+# keeps the flags it had.
+host_flags="${RUSTFLAGS:-}"
+export RUSTFLAGS="$host_flags -C target-cpu=leon3"
+cargo +"$nightly" build "${std[@]}" -p aldis --no-default-features --features full --target $t
+cargo +"$nightly" clippy "${std[@]}" -p aldis --no-default-features --features full --target $t
+cargo +"$nightly" build "${std[@]}" -p aldis-ffi --no-default-features --features panic-handler \
+  --target $t --release
+# CABI-004 is reported, not checked, on this target: the compiler_builtins that build-std makes
+# for 32-bit SPARC refers to the quad-float routines of the SPARC ABI (_Q_add, ...), which
+# nothing in the archive defines (OI-08).
+RUSTFLAGS="$host_flags" cargo xtask ffi-imports $t || echo "ffi-imports $t: CABI-004 not met (OI-08)"
+cd exerciser
+# Panic-freedom link check (VER-010).
+cargo +"$nightly" build "${std[@]}" --release --locked --target $t
+cargo +"$nightly" clippy "${std[@]}" --release --locked --target $t
+# Canary: a reachable panic must fail the link.
+if cargo +"$nightly" build "${std[@]}" --release --locked --target $t --features inject-panic \
+     2> "$RUNNER_TEMP/canary.log"; then
+  echo 'exerciser linked with a reachable panic; the VER-010 check is broken' >&2
+  exit 1
+fi
+grep -q aldis_panic_is_unreachable "$RUNNER_TEMP/canary.log"
+echo 'canary failed to link, as it should'
+# Every vector case under QEMU leon3_generic: one retry, each run time-limited.
+timeout 120 cargo +"$nightly" run "${std[@]}" --release --locked --target $t \
+  || timeout 120 cargo +"$nightly" run "${std[@]}" --release --locked --target $t
+"#;
 
 fn cpp() -> Vec<Check> {
     let c = Host::Container;
@@ -561,13 +606,52 @@ mod tests {
 
     // req: VER-056
     #[test]
-    fn only_the_leon3_build_is_non_gating() {
+    fn only_the_leon3_checks_are_non_gating() {
         let non_gating: Vec<String> = all()
             .into_iter()
             .filter(|c| !c.gating)
             .map(|c| c.name)
             .collect();
-        assert_eq!(non_gating, ["cpp-leon3"]);
+        assert_eq!(non_gating, ["rust-sparc-leon3", "cpp-leon3"]);
+    }
+
+    // req: VER-010, VER-056
+    #[test]
+    fn the_rust_leon3_check_builds_links_and_runs_on_the_tooling_nightly() {
+        let check = all()
+            .into_iter()
+            .find(|c| c.name == "rust-sparc-leon3")
+            .unwrap();
+        assert_eq!(check.host, Host::Container);
+        assert!(!check.cpp);
+        assert_eq!(check.inputs, Inputs::Paths(&[&RUN, &RUST]));
+        for path in [
+            "exerciser/src/target.rs",
+            "exerciser/link-leon3.x",
+            "exerciser/.cargo/config.toml",
+            "crates/aldis-core/src/lib.rs",
+            "test-vectors/spp/encode.json",
+            "tooling-nightly",
+            "xtask/verify/Containerfile",
+        ] {
+            assert!(check.inputs.contains(path), "{path}");
+        }
+        assert!(!check.inputs.contains("cpp/src/x.cpp"));
+        let s = &check.script;
+        assert!(s.contains(r#"nightly="$(cat tooling-nightly)""#));
+        assert!(s.contains("std=(-Z build-std=core)"));
+        assert!(s.contains("-C target-cpu=leon3"));
+        assert!(s.contains("--no-default-features --features full --target $t"));
+        assert!(s.contains("--features inject-panic"));
+        assert!(s.contains("grep -q aldis_panic_is_unreachable"));
+        assert!(s.contains(r#"timeout 120 cargo +"$nightly" run "${std[@]}" --release"#));
+        // xtask, a host build, runs without the LEON3 CPU flag.
+        assert!(s.contains(r#"RUSTFLAGS="$host_flags" cargo xtask ffi-imports $t"#));
+        // Every other cargo command of the check builds core from source on the nightly.
+        for line in s.lines().filter(|l| l.contains("cargo +")) {
+            assert!(line.contains(r#"cargo +"$nightly" "#), "{line}");
+            assert!(line.contains(r#""${std[@]}""#), "{line}");
+        }
     }
 
     // req: VER-056

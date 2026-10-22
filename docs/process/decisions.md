@@ -64,3 +64,7 @@ One line for each decision the maintainer takes, under the [decision rights](dec
 - 2026-10-21 · review · chat · The maintainer reviews the four `spacepackets` discrepancies (cross-checks.md §3) against 301.0 first, from a packet that withholds Aldis's reasoning
 - 2026-10-21 · spec · #80 · OI-39 deferred: CUC P-field octet 2 stays accepted (TIME-010); which of 301.0 §3.1.1 and §3.2.2 governs waits for a real system or an expert (#84)
 - 2026-10-21 · spec · #80 · OI-40: nanoseconds convert to CUC fine time by rounding down; TIME-011 and the `cuc_from_ns` vectors change in a follow-up
+- 2026-10-21 · plan · chat · Start the Rust LEON3 spike (OI-08); the C++ LEON3 spike waits
+- 2026-10-21 · scope · #81 · OI-08: Rust on LEON stays best-effort in v1, with native C++ the primary LEON path; `rust-sparc-leon3` stays non-gating, revisited if the target reaches tier 2
+- 2026-10-21 · api · #81 · CABI-004 on SPARC: the `compiler_builtins` `_Q_*` references are a recorded deviation with an integrator note (`--gc-sections`, or supply them); no upstream report
+- 2026-10-21 · deps · #81 · The verify image's SPARC binutils and QEMU are pinned to their upstream versions only, not to Ubuntu revisions

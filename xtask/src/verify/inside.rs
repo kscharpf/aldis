@@ -46,6 +46,12 @@ fn tool_commands() -> Result<Vec<(&'static str, Vec<String>)>, String> {
             cmd(&["qemu-system-riscv32", "--version"]),
         ),
         ("qemu-s390x", cmd(&["qemu-s390x", "--version"])),
+        // The linker and QEMU of the LEON3 check (OI-08).
+        ("sparc-ld", cmd(&["sparc64-linux-gnu-ld", "--version"])),
+        (
+            "qemu-system-sparc",
+            cmd(&["qemu-system-sparc", "--version"]),
+        ),
         ("python3", cmd(&["python3", "--version"])),
         ("git", cmd(&["git", "--version"])),
     ])

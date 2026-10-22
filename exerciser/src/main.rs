@@ -17,6 +17,9 @@
 //! runs it under QEMU (`exerciser/.cargo/config.toml`).
 #![no_std]
 #![no_main]
+// Inline and global assembly is unstable on SPARC. The LEON3 build is on the tooling nightly
+// anyway, for `-Z build-std` (OI-08, RS-002); the other targets build on stable.
+#![cfg_attr(sparc, feature(asm_experimental_arch))]
 
 mod aos;
 mod cases;
