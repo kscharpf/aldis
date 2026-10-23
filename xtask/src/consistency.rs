@@ -33,7 +33,8 @@
 //! of a codec with C ABI functions (`FFI_AREAS`: `time`, `spp`, `epp`), or that the C ABI
 //! runner `crates/aldis-ffi/tests/vectors.rs` already covers (it names one of its files in a
 //! `vector_test!` invocation), is covered whole by that runner, and the runner names no missing file
-//! (M2 plan D4).
+//! (M2 plan D4). `aldis-core` has a C ABI for part of its modules only (M2 plan D14): the runner
+//! runs the `core/` files of those modules (`FFI_FILES`), and `core/` is not required whole.
 
 use std::collections::BTreeSet;
 use std::path::Path;
@@ -409,8 +410,17 @@ fn vector_problems(
 ) -> Vec<String> {
     let mut p = Vec::new();
     // An area the C ABI runner covers is covered whole (M2 plan D4).
+    // An area with a C ABI for some of its files only (`FFI_FILES`) needs those files alone.
     let ffi = ffi_runner_files(ffi_runner);
-    let mut ffi_areas: BTreeSet<&str> = ffi.iter().filter_map(|f| f.split('/').next()).collect();
+    let partial: BTreeSet<&str> = FFI_FILES
+        .iter()
+        .filter_map(|f| f.split('/').next())
+        .collect();
+    let mut ffi_areas: BTreeSet<&str> = ffi
+        .iter()
+        .filter_map(|f| f.split('/').next())
+        .filter(|area| !partial.contains(area))
+        .collect();
     ffi_areas.extend(FFI_AREAS);
     for f in &ffi {
         if !files.contains(f) {
@@ -437,6 +447,11 @@ fn vector_problems(
         if ffi_areas.contains(area) && !ffi.contains(f) {
             p.push(format!(
                 "test-vectors/{f}: the C ABI runner {FFI_RUNNER} covers `{area}/` but not this file"
+            ));
+        }
+        if FFI_FILES.contains(&f.as_str()) && !ffi.contains(f) {
+            p.push(format!(
+                "test-vectors/{f}: has C ABI functions (`FFI_FILES`), but the C ABI runner {FFI_RUNNER} does not run it"
             ));
         }
         if !c.exerciser.contains(&format!("aldis-{area}")) {
@@ -470,6 +485,11 @@ const FFI_RUNNER: &str = "crates/aldis-ffi/tests/vectors.rs";
 /// through [`FFI_RUNNER`] (M2 plan D4, WP-0c). A codec's directory joins when its C ABI does;
 /// a directory the runner already names is required whole in any case.
 const FFI_AREAS: &[&str] = &["time", "spp", "epp"];
+
+/// The vector files of an area whose crate has a C ABI for some of its modules only: each runs
+/// through [`FFI_RUNNER`], and the rest of the area need not (M2 plan D14, WP-1: the CRC-16,
+/// the OCF, and the OID generator of `aldis-core`).
+const FFI_FILES: &[&str] = &["core/crc16.json", "core/ocf.json", "core/oid.json"];
 
 fn metadata() -> Result<Value, String> {
     let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".to_owned());
@@ -801,8 +821,9 @@ mod tests {
         );
     }
 
-    /// A C ABI runner that runs `time/cuc.json`.
-    const FFI_CUC: &str = "vector_test!(t, \"time\", \"cuc\", r);";
+    /// A C ABI runner that runs `time/cuc.json` and `core/crc16.json`.
+    const FFI_CUC: &str =
+        "vector_test!(t, \"time\", \"cuc\", r);\nvector_test!(c, \"core\", \"crc16\", r);";
 
     #[test]
     fn vector_files_need_a_readme_row_a_test_and_the_exerciser() {
@@ -903,6 +924,38 @@ mod tests {
             [
                 "test-vectors/aos/other.json: the C ABI runner crates/aldis-ffi/tests/vectors.rs covers `aos/` but not this file"
             ]
+        );
+    }
+
+    #[test]
+    fn the_c_abi_runner_covers_the_core_files_with_a_c_abi() {
+        // req: CABI-011, VER-021
+        let readme = "| File |\n|---|\n| `core/*.json` |\n";
+        let core = [
+            "core/bits.json".to_owned(),
+            "core/crc16.json".to_owned(),
+            "core/ocf.json".to_owned(),
+            "core/oid.json".to_owned(),
+        ];
+        let tests = [
+            "(\"core/bits.json\") (\"core/crc16.json\") (\"core/ocf.json\") (\"core/oid.json\")"
+                .to_owned(),
+        ];
+        let mut c = consistent();
+        c.exerciser.clear();
+        // The runner names some `core/` files: those of FFI_FILES are needed, the rest are not.
+        let runner =
+            "vector_test!(a, \"core\", \"crc16\", r);\nvector_test!(b, \"core\", \"ocf\", r);";
+        assert_eq!(
+            vector_problems(&core, readme, &tests, "", runner, &c),
+            [
+                "test-vectors/core/oid.json: has C ABI functions (`FFI_FILES`), but the C ABI runner crates/aldis-ffi/tests/vectors.rs does not run it"
+            ]
+        );
+        let runner = format!("{runner}\nvector_test!(c, \"core\", \"oid\", r);");
+        assert_eq!(
+            vector_problems(&core, readme, &tests, "", &runner, &c),
+            Vec::<String>::new()
         );
     }
 
