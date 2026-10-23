@@ -314,7 +314,7 @@
         "reason": "ReservedFlags",
         "reason_code": 3,
         "error_kind": "ReservedValue",
-        "error_field": 68
+        "error_field": 77
       }
     },
     {
@@ -378,7 +378,7 @@
         "reason": "ReservedSpare",
         "reason_code": 4,
         "error_kind": "ReservedValue",
-        "error_field": 69
+        "error_field": 78
       }
     },
     {
@@ -535,7 +535,7 @@
         "reason": "FrameTooLong",
         "reason_code": 6,
         "error_kind": "OutOfRange",
-        "error_field": 70
+        "error_field": 68
       }
     },
     {
@@ -661,7 +661,7 @@
         "reason": "LengthMismatch",
         "reason_code": 8,
         "error_kind": "LengthMismatch",
-        "error_field": 70
+        "error_field": 68
       }
     },
     {
@@ -724,7 +724,7 @@
         "reason": "LengthMismatch",
         "reason_code": 8,
         "error_kind": "LengthMismatch",
-        "error_field": 70
+        "error_field": 68
       }
     },
     {
@@ -787,7 +787,7 @@
         "reason": "LengthMismatch",
         "reason_code": 8,
         "error_kind": "LengthMismatch",
-        "error_field": 70
+        "error_field": 68
       }
     },
     {
@@ -977,7 +977,7 @@
         "reason": "ReservedControlCommand",
         "reason_code": 11,
         "error_kind": "ReservedValue",
-        "error_field": 73
+        "error_field": 81
       }
     },
     {

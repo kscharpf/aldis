@@ -21,6 +21,7 @@ aldis-ffi = { path = "../crates/aldis-ffi" }
 aldis-spp = { path = "../crates/aldis-spp", features = ["time"] }
 aldis-tc = { path = "../crates/aldis-tc" }
 aldis-time = { path = "../crates/aldis-time" }
+aldis-tm = { path = "../crates/aldis-tm" }
 aldis-testkit = { path = "../crates/aldis-testkit" }
 libfuzzer-sys = "0.4.13"
 
@@ -198,6 +199,20 @@ bench = false
 [[bin]]
 name = "aos_fhec_model"
 path = "fuzz_targets/aos_fhec_model.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "tm_decode"
+path = "fuzz_targets/tm_decode.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "tm_roundtrip"
+path = "fuzz_targets/tm_roundtrip.rs"
 test = false
 doc = false
 bench = false

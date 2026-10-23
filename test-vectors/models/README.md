@@ -5,6 +5,7 @@ The expected values of a `hand-derived` vector file come from an **independent m
 | Model | Vector files | Covers |
 |---|---|---|
 | [`aos_fhec.py`](aos_fhec.py) | `aos/fhec_{encode,correct_1_symbol,correct_2_symbols,miscorrection,uncorrectable}.json` | AOS Frame Header Error Control, 732.0-B-5 EC1 §4.1.2.6.5 (AOS-013, AOS-014): GF(2^4) by carry-less multiplication, the check symbols by GF(2) linear algebra on the syndromes, and decoding by a table over every pattern of at most two symbol errors |
+| [`tm_frame.py`](tm_frame.py) | `tm/*.json` | TM Transfer Frame, 132.0-B-3 §4.1, §5, §6.3, Annex D (TM-001…TM-011): frames assembled and taken apart as bit strings from the figure widths, the FECF by polynomial division of integers, the OID data by the Annex D recurrence |
 | [`core_ocf.py`](core_ocf.py) | `core/ocf.json` | Operational Control Field classification, 132.0-B-3 / 732.0-B-5 §4.1.5.4–5 and 732.1-B-3 §4.1.5.2.1–2 (CMN-010, CMN-011), with the CLCW layout of 232.0-B-4 §4.2.1 for one input |
 | [`tc_frame.py`](tc_frame.py) | `tc/*.json` | TC Transfer Frame, CLCW, Frame Delimiting and Fill Removal, and the Frame Validation Checks, 232.0-B-4 Cor. 1 §4.1, §4.2.1, §4.4.9, §5, §6.3, §6.6 (TC-001…TC-008, TC-020…TC-023, TC-030, TC-031): the header as one 40-bit integer, the CRC bit by bit from G(X), the check order and reason codes of tc-frame.md §4.1 |
 
@@ -15,6 +16,7 @@ From the repository root, with Python 3 and no packages beyond the standard libr
 ```sh
 python3 -I test-vectors/models/aos_fhec.py --check test-vectors/aos/fhec_*.json
 python3 -I test-vectors/models/core_ocf.py --check test-vectors/core/ocf.json
+python3 -I test-vectors/models/tm_frame.py --check test-vectors/tm/*.json
 python3 -I test-vectors/models/tc_frame.py --check test-vectors/tc/*.json
 ```
 

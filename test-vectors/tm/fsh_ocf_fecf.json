@@ -1,0 +1,426 @@
+{
+  "kind": "codec",
+  "standard": "132.0-B-3 §4.1.3, §4.1.5, §4.1.6",
+  "provenance": "hand-derived",
+  "provenance_note": "132.0-B-3 prints no example frame; only the first OID octets of Annex D. Cases hand-derived from 132.0-B-3 §4.1 (figures 4-1 to 4-4, the Data Field Status of §4.1.2.7, the Secondary Header of §4.1.3, OID frames of §4.1.4.6 and Annex D, the FECF of §4.1.6), §5 Tables 5-1 to 5-3, and §6.3, with the readings of docs/standards/tm-frame.md (TM-001...TM-011 and the anomaly list) and the error kinds and field codes of docs/03-api-model.md §9 and §9.1. Inputs assembled bit by bit from the figure widths; expected values computed by an independent Python model of those clauses, written from the Blue Book after the Rust codec but not from its code, and sharing no code with it (the FECF by polynomial division, the OID data by the Annex D recurrence). The model is committed as test-vectors/models/tm_frame.py (TV-023); `python3 -I test-vectors/models/tm_frame.py --check test-vectors/tm/*.json` recomputes every expected value. One frame is worked by hand in docs/verification/derivations/tm-frame.md.",
+  "cases": [
+    {
+      "id": "tm-fof-dec-001",
+      "requirements": [
+        "TM-003",
+        "TM-004",
+        "TM-005",
+        "TM-006",
+        "API-010",
+        "CMN-010"
+      ],
+      "description": "4-octet FSH, CLCW in the OCF, FECF: every field placed",
+      "operation": "decode",
+      "config": {
+        "frame_len": 40,
+        "fecf": true
+      },
+      "input_hex": "2A530304980203112233404142434445464748494A4B4C4D4E4F505152535455565701140C2AD376",
+      "expect": {
+        "ok": true,
+        "scid": 677,
+        "vcid": 1,
+        "ocf_flag": true,
+        "mc_frame_count": 3,
+        "vc_frame_count": 4,
+        "fsh_flag": true,
+        "sync_flag": false,
+        "packet_order_flag": false,
+        "segment_length_id": 3,
+        "first_header_pointer": 2,
+        "pointer": "starts_at",
+        "packet_offset": 2,
+        "fsh_len": 4,
+        "fsh_data_hex": "112233",
+        "security_header_hex": "",
+        "data_hex": "404142434445464748494A4B4C4D4E4F5051525354555657",
+        "security_trailer_hex": "",
+        "ocf_hex": "01140C2A",
+        "ocf_report": "clcw",
+        "fecf": 54134,
+        "consumed": 40,
+        "anomalies": []
+      }
+    },
+    {
+      "id": "tm-fof-dec-002",
+      "requirements": [
+        "TM-004",
+        "CMN-010"
+      ],
+      "description": "OCF holding a project-specific report",
+      "operation": "decode",
+      "config": {
+        "frame_len": 40,
+        "fecf": true
+      },
+      "input_hex": "2A55000018000000000000000000000000000000000000000000000000000000000080ABCDEFD886",
+      "expect": {
+        "ok": true,
+        "scid": 677,
+        "vcid": 2,
+        "ocf_flag": true,
+        "mc_frame_count": 0,
+        "vc_frame_count": 0,
+        "fsh_flag": false,
+        "sync_flag": false,
+        "packet_order_flag": false,
+        "segment_length_id": 3,
+        "first_header_pointer": 0,
+        "pointer": "starts_at",
+        "packet_offset": 0,
+        "fsh_len": null,
+        "fsh_data_hex": null,
+        "security_header_hex": "",
+        "data_hex": "00000000000000000000000000000000000000000000000000000000",
+        "security_trailer_hex": "",
+        "ocf_hex": "80ABCDEF",
+        "ocf_report": "project_specific",
+        "fecf": 55430,
+        "consumed": 40,
+        "anomalies": []
+      }
+    },
+    {
+      "id": "tm-fof-dec-003",
+      "requirements": [
+        "TM-004",
+        "CMN-010"
+      ],
+      "description": "OCF holding an SDLS FSR",
+      "operation": "decode",
+      "config": {
+        "frame_len": 40,
+        "fecf": true
+      },
+      "input_hex": "2A550000180000000000000000000000000000000000000000000000000000000000C0000001879F",
+      "expect": {
+        "ok": true,
+        "scid": 677,
+        "vcid": 2,
+        "ocf_flag": true,
+        "mc_frame_count": 0,
+        "vc_frame_count": 0,
+        "fsh_flag": false,
+        "sync_flag": false,
+        "packet_order_flag": false,
+        "segment_length_id": 3,
+        "first_header_pointer": 0,
+        "pointer": "starts_at",
+        "packet_offset": 0,
+        "fsh_len": null,
+        "fsh_data_hex": null,
+        "security_header_hex": "",
+        "data_hex": "00000000000000000000000000000000000000000000000000000000",
+        "security_trailer_hex": "",
+        "ocf_hex": "C0000001",
+        "ocf_report": "sdls_fsr",
+        "fecf": 34719,
+        "consumed": 40,
+        "anomalies": []
+      }
+    },
+    {
+      "id": "tm-fof-dec-004",
+      "requirements": [
+        "TM-003"
+      ],
+      "description": "Longest FSH: 64 octets, length field 0x3F",
+      "operation": "decode",
+      "config": {
+        "frame_len": 80,
+        "fecf": false
+      },
+      "input_hex": "0012000098003F0102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F202122232425262728292A2B2C2D2E2F303132333435363738393A3B3C3D3E3FE0E1E2E3E4E5E6E7E8E9",
+      "expect": {
+        "ok": true,
+        "scid": 1,
+        "vcid": 1,
+        "ocf_flag": false,
+        "mc_frame_count": 0,
+        "vc_frame_count": 0,
+        "fsh_flag": true,
+        "sync_flag": false,
+        "packet_order_flag": false,
+        "segment_length_id": 3,
+        "first_header_pointer": 0,
+        "pointer": "starts_at",
+        "packet_offset": 0,
+        "fsh_len": 64,
+        "fsh_data_hex": "0102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F202122232425262728292A2B2C2D2E2F303132333435363738393A3B3C3D3E3F",
+        "security_header_hex": "",
+        "data_hex": "E0E1E2E3E4E5E6E7E8E9",
+        "security_trailer_hex": "",
+        "ocf_hex": null,
+        "ocf_report": null,
+        "fecf": null,
+        "consumed": 80,
+        "anomalies": []
+      }
+    },
+    {
+      "id": "tm-fof-dec-005",
+      "requirements": [
+        "TM-003"
+      ],
+      "description": "Shortest FSH: 2 octets, length field 1",
+      "operation": "decode",
+      "config": {
+        "frame_len": 12,
+        "fecf": true
+      },
+      "input_hex": "001200009800019901023429",
+      "expect": {
+        "ok": true,
+        "scid": 1,
+        "vcid": 1,
+        "ocf_flag": false,
+        "mc_frame_count": 0,
+        "vc_frame_count": 0,
+        "fsh_flag": true,
+        "sync_flag": false,
+        "packet_order_flag": false,
+        "segment_length_id": 3,
+        "first_header_pointer": 0,
+        "pointer": "starts_at",
+        "packet_offset": 0,
+        "fsh_len": 2,
+        "fsh_data_hex": "99",
+        "security_header_hex": "",
+        "data_hex": "0102",
+        "security_trailer_hex": "",
+        "ocf_hex": null,
+        "ocf_report": null,
+        "fecf": 13353,
+        "consumed": 12,
+        "anomalies": []
+      }
+    },
+    {
+      "id": "tm-fof-dec-006",
+      "requirements": [
+        "TM-005",
+        "CMN-003"
+      ],
+      "description": "decode_unchecked accepts the frame of tm-fof-dec-001 with a corrupted data octet",
+      "operation": "decode_unchecked",
+      "config": {
+        "frame_len": 40,
+        "fecf": true
+      },
+      "input_hex": "2A53030498020311223340414243444546474849B54B4C4D4E4F505152535455565701140C2AD376",
+      "expect": {
+        "ok": true,
+        "scid": 677,
+        "vcid": 1,
+        "ocf_flag": true,
+        "mc_frame_count": 3,
+        "vc_frame_count": 4,
+        "fsh_flag": true,
+        "sync_flag": false,
+        "packet_order_flag": false,
+        "segment_length_id": 3,
+        "first_header_pointer": 2,
+        "pointer": "starts_at",
+        "packet_offset": 2,
+        "fsh_len": 4,
+        "fsh_data_hex": "112233",
+        "security_header_hex": "",
+        "data_hex": "40414243444546474849B54B4C4D4E4F5051525354555657",
+        "security_trailer_hex": "",
+        "ocf_hex": "01140C2A",
+        "ocf_report": "clcw",
+        "fecf": 54134,
+        "consumed": 40,
+        "anomalies": []
+      }
+    },
+    {
+      "id": "tm-fof-enc-001",
+      "requirements": [
+        "TM-009",
+        "API-020",
+        "API-021"
+      ],
+      "description": "Encode the frame of tm-fof-dec-001 from its VC_FSH and VC_OCF configuration",
+      "operation": "encode",
+      "config": {
+        "frame_len": 40,
+        "fecf": true,
+        "scid": 677,
+        "mc_fsh": null,
+        "mc_ocf": false,
+        "vcs": [
+          {
+            "vcid": 1,
+            "content": "packets",
+            "fsh": 4,
+            "ocf": true,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "vcid": 2,
+            "content": "vca_sdu",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "params": {
+        "vcid": 1,
+        "mc_frame_count": 3,
+        "vc_frame_count": 4,
+        "status": {
+          "sync": false,
+          "pointer": "starts_at",
+          "packet_offset": 2
+        },
+        "fsh_data_hex": "112233",
+        "security_header_hex": "",
+        "data_hex": "404142434445464748494A4B4C4D4E4F5051525354555657",
+        "security_trailer_hex": "",
+        "ocf_hex": "01140C2A"
+      },
+      "expect": {
+        "ok": true,
+        "output_hex": "2A530304980203112233404142434445464748494A4B4C4D4E4F505152535455565701140C2AD376"
+      }
+    },
+    {
+      "id": "tm-fof-enc-002",
+      "requirements": [
+        "TM-009",
+        "API-021"
+      ],
+      "description": "MC_FSH of 6 octets and MC_OCF on a VCA_SDU channel",
+      "operation": "encode",
+      "config": {
+        "frame_len": 40,
+        "fecf": true,
+        "scid": 677,
+        "mc_fsh": 6,
+        "mc_ocf": true,
+        "vcs": [
+          {
+            "vcid": 0,
+            "content": "packets",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "vcid": 3,
+            "content": "vca_sdu",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "params": {
+        "vcid": 3,
+        "mc_frame_count": 9,
+        "vc_frame_count": 9,
+        "status": {
+          "sync": true,
+          "packet_order_flag": false,
+          "segment_length_id": 3,
+          "first_header_pointer": 2047
+        },
+        "fsh_data_hex": "A0A1A2A3A4",
+        "security_header_hex": "",
+        "data_hex": "77777777777777777777777777777777777777777777",
+        "security_trailer_hex": "",
+        "ocf_hex": "80000000"
+      },
+      "expect": {
+        "ok": true,
+        "output_hex": "2A570909DFFF05A0A1A2A3A477777777777777777777777777777777777777777777800000008DB6"
+      }
+    },
+    {
+      "id": "tm-fof-val-002",
+      "requirements": [
+        "TM-011"
+      ],
+      "description": "A frame of the master channel of tm-fof-enc-002",
+      "operation": "validate",
+      "config": {
+        "frame_len": 40,
+        "fecf": true,
+        "scid": 677,
+        "mc_fsh": 6,
+        "mc_ocf": true,
+        "vcs": [
+          {
+            "vcid": 0,
+            "content": "packets",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "vcid": 3,
+            "content": "vca_sdu",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "input_hex": "2A51000098000500000000000000000000000000000000000000000000000000000001140C2A7BF2",
+      "expect": {
+        "ok": true
+      }
+    },
+    {
+      "id": "tm-fof-val-001",
+      "requirements": [
+        "TM-011"
+      ],
+      "description": "The frame of tm-fof-dec-001 matches its channel",
+      "operation": "validate",
+      "config": {
+        "frame_len": 40,
+        "fecf": true,
+        "scid": 677,
+        "mc_fsh": null,
+        "mc_ocf": false,
+        "vcs": [
+          {
+            "vcid": 1,
+            "content": "packets",
+            "fsh": 4,
+            "ocf": true,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "vcid": 2,
+            "content": "vca_sdu",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "input_hex": "2A530304980203112233404142434445464748494A4B4C4D4E4F505152535455565701140C2AD376",
+      "expect": {
+        "ok": true
+      }
+    }
+  ]
+}

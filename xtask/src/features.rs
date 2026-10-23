@@ -30,6 +30,7 @@ pub const CRATES: &[(&str, &[&str])] = &[
     ("aldis-epp", &[""]),
     ("aldis-spp", &["", "time"]),
     ("aldis-aos", &[""]),
+    ("aldis-tm", &[""]),
     ("aldis-tc", &[""]),
 ];
 

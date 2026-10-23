@@ -338,66 +338,106 @@
     },
     {
       "code": 68,
-      "name": "control_command_flag",
-      "kind": "field"
-    },
-    {
-      "code": 69,
-      "name": "tc_header_spare",
-      "kind": "field"
-    },
-    {
-      "code": 70,
       "name": "frame_len",
       "kind": "field"
     },
     {
+      "code": 69,
+      "name": "ocf_flag",
+      "kind": "field"
+    },
+    {
+      "code": 70,
+      "name": "fsh_flag",
+      "kind": "field"
+    },
+    {
       "code": 71,
-      "name": "max_frame_len",
-      "kind": "parameter"
+      "name": "sync_flag",
+      "kind": "field"
     },
     {
       "code": 72,
-      "name": "segment_header",
+      "name": "packet_order_flag",
       "kind": "field"
     },
     {
       "code": 73,
-      "name": "control_command",
+      "name": "segment_length_id",
       "kind": "field"
     },
     {
       "code": 74,
-      "name": "control_word_type",
+      "name": "first_header_pointer",
       "kind": "field"
     },
     {
       "code": 75,
-      "name": "clcw_version",
+      "name": "fsh_version",
       "kind": "field"
     },
     {
       "code": 76,
-      "name": "clcw_status",
+      "name": "fsh_len",
       "kind": "field"
     },
     {
       "code": 77,
-      "name": "cop_in_effect",
+      "name": "control_command_flag",
       "kind": "field"
     },
     {
       "code": 78,
-      "name": "clcw_spare_14_15",
+      "name": "tc_header_spare",
       "kind": "field"
     },
     {
       "code": 79,
+      "name": "max_frame_len",
+      "kind": "parameter"
+    },
+    {
+      "code": 80,
+      "name": "segment_header",
+      "kind": "field"
+    },
+    {
+      "code": 81,
+      "name": "control_command",
+      "kind": "field"
+    },
+    {
+      "code": 82,
+      "name": "control_word_type",
+      "kind": "field"
+    },
+    {
+      "code": 83,
+      "name": "clcw_version",
+      "kind": "field"
+    },
+    {
+      "code": 84,
+      "name": "clcw_status",
+      "kind": "field"
+    },
+    {
+      "code": 85,
+      "name": "cop_in_effect",
+      "kind": "field"
+    },
+    {
+      "code": 86,
+      "name": "clcw_spare_14_15",
+      "kind": "field"
+    },
+    {
+      "code": 87,
       "name": "clcw_spare_23",
       "kind": "field"
     },
     {
-      "code": 80,
+      "code": 88,
       "name": "farm_b_counter",
       "kind": "field"
     }

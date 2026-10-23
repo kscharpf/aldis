@@ -21,6 +21,7 @@ pub const GATED: &[&str] = &[
     "aldis-epp",
     "aldis-spp",
     "aldis-aos",
+    "aldis-tm",
     "aldis-tc",
 ];
 

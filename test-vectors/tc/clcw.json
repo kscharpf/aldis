@@ -136,7 +136,7 @@
       "expect": {
         "ok": false,
         "error": "InvalidField",
-        "field": 74
+        "field": 82
       }
     },
     {
@@ -152,7 +152,7 @@
       "expect": {
         "ok": false,
         "error": "InvalidField",
-        "field": 74
+        "field": 82
       }
     },
     {
@@ -167,7 +167,7 @@
       "expect": {
         "ok": false,
         "error": "UnsupportedVersion",
-        "field": 75
+        "field": 83
       }
     },
     {
@@ -183,7 +183,7 @@
       "expect": {
         "ok": false,
         "error": "UnsupportedVersion",
-        "field": 75
+        "field": 83
       }
     },
     {
@@ -198,7 +198,7 @@
       "expect": {
         "ok": false,
         "error": "ReservedValue",
-        "field": 78
+        "field": 86
       }
     },
     {
@@ -213,7 +213,7 @@
       "expect": {
         "ok": false,
         "error": "ReservedValue",
-        "field": 79
+        "field": 87
       }
     },
     {
@@ -398,7 +398,7 @@
       "expect": {
         "ok": false,
         "error": "OutOfRange",
-        "field": 76
+        "field": 84
       }
     },
     {
@@ -426,7 +426,7 @@
       "expect": {
         "ok": false,
         "error": "OutOfRange",
-        "field": 77
+        "field": 85
       }
     },
     {
@@ -482,7 +482,7 @@
       "expect": {
         "ok": false,
         "error": "OutOfRange",
-        "field": 80
+        "field": 88
       }
     }
   ]

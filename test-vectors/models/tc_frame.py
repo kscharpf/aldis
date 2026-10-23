@@ -36,10 +36,10 @@ import sys
 # Field codes of docs/03-api-model.md §9.1.
 F = {
     "spacecraft_id": 1, "vc_id": 2, "map_id": 3, "frame_data_field": 7, "user_len": 54,
-    "frame_version": 67, "control_command_flag": 68, "tc_header_spare": 69, "frame_len": 70,
-    "max_frame_len": 71, "segment_header": 72, "control_command": 73,
-    "control_word_type": 74, "clcw_version": 75, "clcw_status": 76, "cop_in_effect": 77,
-    "clcw_spare_14_15": 78, "clcw_spare_23": 79, "farm_b_counter": 80,
+    "frame_version": 67, "frame_len": 68, "control_command_flag": 77, "tc_header_spare": 78,
+    "max_frame_len": 79, "segment_header": 80, "control_command": 81,
+    "control_word_type": 82, "clcw_version": 83, "clcw_status": 84, "cop_in_effect": 85,
+    "clcw_spare_14_15": 86, "clcw_spare_23": 87, "farm_b_counter": 88,
 }
 
 # Validation reasons, docs/standards/tc-frame.md §4 (TC-021, TC-022, D14), in check order.

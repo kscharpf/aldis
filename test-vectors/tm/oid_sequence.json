@@ -1,0 +1,238 @@
+{
+  "kind": "codec",
+  "standard": "132.0-B-3 §4.1.4.6, Annex D",
+  "provenance": "hand-derived",
+  "provenance_note": "132.0-B-3 prints no example frame; only the first OID octets of Annex D. Cases hand-derived from 132.0-B-3 §4.1 (figures 4-1 to 4-4, the Data Field Status of §4.1.2.7, the Secondary Header of §4.1.3, OID frames of §4.1.4.6 and Annex D, the FECF of §4.1.6), §5 Tables 5-1 to 5-3, and §6.3, with the readings of docs/standards/tm-frame.md (TM-001...TM-011 and the anomaly list) and the error kinds and field codes of docs/03-api-model.md §9 and §9.1. Inputs assembled bit by bit from the figure widths; expected values computed by an independent Python model of those clauses, written from the Blue Book after the Rust codec but not from its code, and sharing no code with it (the FECF by polynomial division, the OID data by the Annex D recurrence). The model is committed as test-vectors/models/tm_frame.py (TV-023); `python3 -I test-vectors/models/tm_frame.py --check test-vectors/tm/*.json` recomputes every expected value. One frame is worked by hand in docs/verification/derivations/tm-frame.md.",
+  "cases": [
+    {
+      "id": "tm-oid-001",
+      "requirements": [
+        "TM-010",
+        "CMN-020",
+        "CMN-021",
+        "CMN-023"
+      ],
+      "description": "Two consecutive OID frames on VC 2 continue the PN sequence: the first starts with FF FF FF FF 6D B6 D8 61 45 1F (Annex D)",
+      "operation": "encode_oid",
+      "config": {
+        "frame_len": 32,
+        "fecf": true,
+        "scid": 171,
+        "mc_fsh": null,
+        "mc_ocf": false,
+        "vcs": [
+          {
+            "vcid": 0,
+            "content": "packets",
+            "fsh": 4,
+            "ocf": false,
+            "security_header_len": 2,
+            "security_trailer_len": 1
+          },
+          {
+            "vcid": 1,
+            "content": "vca_sdu",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "vcid": 2,
+            "content": "packets",
+            "fsh": null,
+            "ocf": true,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "params": {
+        "vcid": 2,
+        "frames": [
+          {
+            "mc_frame_count": 0,
+            "vc_frame_count": 0,
+            "ocf_hex": "01140C2A"
+          },
+          {
+            "mc_frame_count": 1,
+            "vc_frame_count": 1,
+            "ocf_hex": "01140C2A"
+          }
+        ]
+      },
+      "expect": {
+        "ok": true,
+        "frames_hex": [
+          "0AB500001FFEFFFFFFFF6DB6D861451F11F19716723CBE7E00B101140C2A2DC1",
+          "0AB501011FFEDE90B262107AF83494CEE3323F0354BEF5C1528C01140C2A762A"
+        ]
+      }
+    },
+    {
+      "id": "tm-oid-002",
+      "requirements": [
+        "TM-010",
+        "CMN-021"
+      ],
+      "description": "Three OID frames on VC 0 with an FSH carrying data and SDLS fields left zero",
+      "operation": "encode_oid",
+      "config": {
+        "frame_len": 32,
+        "fecf": true,
+        "scid": 171,
+        "mc_fsh": null,
+        "mc_ocf": false,
+        "vcs": [
+          {
+            "vcid": 0,
+            "content": "packets",
+            "fsh": 4,
+            "ocf": false,
+            "security_header_len": 2,
+            "security_trailer_len": 1
+          },
+          {
+            "vcid": 1,
+            "content": "vca_sdu",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "vcid": 2,
+            "content": "packets",
+            "fsh": null,
+            "ocf": true,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "params": {
+        "vcid": 0,
+        "frames": [
+          {
+            "mc_frame_count": 0,
+            "vc_frame_count": 10,
+            "fsh_data_hex": "ABCDEF"
+          },
+          {
+            "mc_frame_count": 1,
+            "vc_frame_count": 11,
+            "fsh_data_hex": "ABCDEF"
+          },
+          {
+            "mc_frame_count": 2,
+            "vc_frame_count": 12,
+            "fsh_data_hex": "ABCDEF"
+          }
+        ]
+      },
+      "expect": {
+        "ok": true,
+        "frames_hex": [
+          "0AB0000A9FFE03ABCDEF0000FFFFFFFF6DB6D861451F11F19716723CBE00B802",
+          "0AB0010B9FFE03ABCDEF00007E00B1DE90B262107AF83494CEE3323F0300E235",
+          "0AB0020C9FFE03ABCDEF000054BEF5C1528C9BB9ED35FDBC23D9BC2F07006375"
+        ]
+      }
+    },
+    {
+      "id": "tm-oid-003",
+      "requirements": [
+        "TM-010"
+      ],
+      "description": "An OID frame on a VCA_SDU channel is rejected: OID frames use a packet VC",
+      "operation": "encode_oid",
+      "config": {
+        "frame_len": 32,
+        "fecf": true,
+        "scid": 171,
+        "mc_fsh": null,
+        "mc_ocf": false,
+        "vcs": [
+          {
+            "vcid": 0,
+            "content": "packets",
+            "fsh": 4,
+            "ocf": false,
+            "security_header_len": 2,
+            "security_trailer_len": 1
+          },
+          {
+            "vcid": 1,
+            "content": "vca_sdu",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "vcid": 2,
+            "content": "packets",
+            "fsh": null,
+            "ocf": true,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "params": {
+        "vcid": 1,
+        "frames": [
+          {
+            "mc_frame_count": 0,
+            "vc_frame_count": 0
+          }
+        ]
+      },
+      "expect": {
+        "ok": false,
+        "error": "InvalidField",
+        "field": 71
+      }
+    },
+    {
+      "id": "tm-oid-004",
+      "requirements": [
+        "TM-008",
+        "TM-010"
+      ],
+      "description": "The first frame of tm-oid-001 decodes as only idle data",
+      "operation": "decode",
+      "config": {
+        "frame_len": 32,
+        "fecf": true
+      },
+      "input_hex": "0AB500001FFEFFFFFFFF6DB6D861451F11F19716723CBE7E00B101140C2A2DC1",
+      "expect": {
+        "ok": true,
+        "scid": 171,
+        "vcid": 2,
+        "ocf_flag": true,
+        "mc_frame_count": 0,
+        "vc_frame_count": 0,
+        "fsh_flag": false,
+        "sync_flag": false,
+        "packet_order_flag": false,
+        "segment_length_id": 3,
+        "first_header_pointer": 2046,
+        "pointer": "only_idle_data",
+        "packet_offset": null,
+        "fsh_len": null,
+        "fsh_data_hex": null,
+        "security_header_hex": "",
+        "data_hex": "FFFFFFFF6DB6D861451F11F19716723CBE7E00B1",
+        "security_trailer_hex": "",
+        "ocf_hex": "01140C2A",
+        "ocf_report": "clcw",
+        "fecf": 11713,
+        "consumed": 32,
+        "anomalies": []
+      }
+    }
+  ]
+}

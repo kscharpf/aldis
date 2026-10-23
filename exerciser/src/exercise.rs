@@ -450,6 +450,7 @@ pub fn run() -> Tally {
     apis_mode_anomaly(&mut t);
     crate::ocf::run(&mut t);
     crate::aos::run(&mut t);
+    crate::tm::run(&mut t);
     crate::epp::run(&mut t);
     crate::ffi::run(&mut t);
     crate::spp::run(&mut t);
