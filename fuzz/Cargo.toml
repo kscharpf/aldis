@@ -19,6 +19,7 @@ aldis-core = { path = "../crates/aldis-core", features = ["crc-table", "test-hoo
 aldis-epp = { path = "../crates/aldis-epp" }
 aldis-ffi = { path = "../crates/aldis-ffi" }
 aldis-spp = { path = "../crates/aldis-spp", features = ["time"] }
+aldis-tc = { path = "../crates/aldis-tc" }
 aldis-time = { path = "../crates/aldis-time" }
 aldis-testkit = { path = "../crates/aldis-testkit" }
 libfuzzer-sys = "0.4.13"
@@ -197,6 +198,34 @@ bench = false
 [[bin]]
 name = "aos_fhec_model"
 path = "fuzz_targets/aos_fhec_model.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "tc_decode"
+path = "fuzz_targets/tc_decode.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "tc_roundtrip"
+path = "fuzz_targets/tc_roundtrip.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "tc_delimit"
+path = "fuzz_targets/tc_delimit.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "tc_clcw"
+path = "fuzz_targets/tc_clcw.rs"
 test = false
 doc = false
 bench = false

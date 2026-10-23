@@ -1,9 +1,9 @@
-//! The `aldis-core` OCF, `aldis-time`, `aldis-spp`, `aldis-epp`, and `aldis-aos` vector cases on
+//! The `aldis-core` OCF, `aldis-time`, `aldis-spp`, `aldis-epp`, `aldis-aos`, and `aldis-tc` vector cases on
 //! the target (M1 WP-5, D7; M2 WP-1, D16).
 //!
 //! `build.rs` embeds every live case of `test-vectors/core/ocf.json` and
-//! `test-vectors/{time,spp,epp,aos}/` as a value tree. Each handler (`ocf.rs`, `time.rs`,
-//! `spp.rs`, `epp.rs`, `aos.rs`) mirrors the host suite of its crate
+//! `test-vectors/{time,spp,epp,aos,tc}/` as a value tree. Each handler (`ocf.rs`, `time.rs`,
+//! `spp.rs`, `epp.rs`, `aos.rs`, `tc.rs`) mirrors the host suite of its crate
 //! (`crates/aldis-*/tests/vectors.rs`): it reads the parameters, calls the API with inputs
 //! through `black_box`, and reports every output value to an [`Out`], which compares them with
 //! the expected values exactly, with no missing and no extra keys (TV-012).
@@ -38,6 +38,7 @@ pub enum Group {
     Spp,
     Epp,
     Aos,
+    Tc,
 }
 
 /// The expected outcome of a case.
@@ -445,6 +446,7 @@ pub fn run(t: &mut Tally) {
             Group::Spp => crate::spp::vector(case, &mut out, &mut scratch),
             Group::Epp => crate::epp::vector(case, &mut out, &mut scratch),
             Group::Aos => crate::aos::vector(case, &mut out),
+            Group::Tc => crate::tc::vector(case, &mut out, &mut scratch),
         };
         let passed = match (result, &case.expect) {
             (Err(Fail::NotRepresentable), _) => {

@@ -1,6 +1,18 @@
 # Mutation testing triage (VER-025)
 
-Surviving mutants from `cargo mutants` (`-p aldis-core -p aldis-time -p aldis-epp -p aldis-spp -p aldis-aos --all-features`) (cargo-mutants 27.1.0), triaged per VER-025. The nightly job `mutants` publishes the full report. Update this file when a new survivor appears.
+Surviving mutants from `cargo mutants` (`-p aldis-core -p aldis-time -p aldis-epp -p aldis-spp -p aldis-aos -p aldis-tc --all-features`) (cargo-mutants 27.1.0), triaged per VER-025. The nightly job `mutants` publishes the full report. Update this file when a new survivor appears.
+
+## 2026-10-23, branch `m2/tc-codec` (M2 WP-3, modules 1–7)
+
+`cargo mutants -p aldis-tc --all-features` (with `PROPTEST_CASES=32`): 298 mutants: 189 caught, 98 unviable, 11 missed, 0 timeouts. The first run also missed `len_u64` replaced by 0 and by 1, which only error details use; a unit test of the `OutOfRange` detail of an over-long frame (`writer.rs` `encode_checks`) now catches both.
+
+| Mutant | Verdict | Action |
+|---|---|---|
+| `header.rs` `SegmentHeader::octet` `\|` → `^` (Sequence Flags `<< 6` and MAP ID `& 0x3F`) | Equivalent: the two fields occupy disjoint bits, so OR and XOR agree | None possible |
+| `header.rs` `primary_octets` `\|` → `^`, four places (the two flags `<< 5` and `<< 4`; version `<< 6`, flags, and the SCID's top two bits; VCID `<< 2` and the Frame Length's top two bits) | Equivalent: every field is masked or bounded to its own bits (VCID ≤ 63), which do not overlap | None possible |
+| `clcw.rs` `Clcw::to_octets` `\|` → `^`, six places (Status `<< 2` and COP in Effect; the five flags and FARM-B Counter `<< 1`) | Equivalent: disjoint bits, each field bounded by its type | None possible |
+
+The eleven survivors are equivalent and are expected in every report.
 
 ## 2026-10-20, branch `m2/aos-fhec` (M2 WP-4, module 1)
 
