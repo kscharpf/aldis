@@ -1,0 +1,490 @@
+{
+  "kind": "codec",
+  "standard": "232.0-B-4 Cor. 1 — Managed parameters",
+  "provenance": "hand-derived",
+  "provenance_note": "232.0-B-4 prints no example frame or CLCW. Hand-derived from 232.0-B-4 with Cor. 1: §4.1.2 (Primary Header bits 0-1 TFVN 00, 2 Bypass, 3 Control Command, 4-5 spare, 6-15 SCID, 16-21 VCID, 22-31 Frame Length = total - 1, 32-39 N(S); Table 4-1, flags 0/1 reserved), §4.1.3 (Segment Header: Sequence Flags 2 bits, Table 4-2, MAP ID 6 bits; Unlock = 00, Set V(R) = 82 00 V(R)), §4.1.4 (FECF: CRC with G(X) = X^16 + X^12 + X^5 + 1, register preset to ones), §4.2.1 (CLCW fields and widths), §4.4.9.2-3 (delimiting and validation), §4.4.3.3 and §4.4.7.3 (invalid MAP and VC), §5 and §6.3, §6.6 (managed parameters, Security Header after the Segment Header). Check order, validation reason codes, the delimiter's valid header, and the managed parameters kept, as docs/standards/tc-frame.md states them. SCID 0x155 is the fictional SCID of the reference scenario (APP-026). Expected values computed by an independent Python model of those clauses, written before the Rust codec, which shares no code or method with it (the header is one 40-bit integer, the CRC is bitwise from G(X)). Error cases name the field code of 03 §9.1. The BC Unlock frame of tc-bc-unlock-enc-001 and the CLCW of tc-clcw-enc-001 are worked by hand, the CRC register octet by octet, in docs/verification/derivations/tc-frame.md. The model is committed as test-vectors/models/tc_frame.py (TV-023); `python3 -I test-vectors/models/tc_frame.py --check test-vectors/tc/*.json` recomputes every expected value.",
+  "cases": [
+    {
+      "id": "tc-cfg-001",
+      "requirements": [
+        "GEN-060",
+        "API-040"
+      ],
+      "description": "The configuration the other files use",
+      "operation": "config",
+      "config": {
+        "max_frame_len": 1024,
+        "fecf": true,
+        "vcs": [
+          {
+            "scid": 341,
+            "vcid": 1,
+            "max_frame_len": 1024,
+            "segment_header": false
+          },
+          {
+            "scid": 341,
+            "vcid": 2,
+            "max_frame_len": 1024,
+            "segment_header": true
+          },
+          {
+            "scid": 341,
+            "vcid": 3,
+            "max_frame_len": 1024,
+            "segment_header": false,
+            "security_header_len": 4,
+            "security_trailer_len": 2
+          }
+        ],
+        "maps": [
+          {
+            "scid": 341,
+            "vcid": 2,
+            "map_id": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 2,
+            "map_id": 5
+          },
+          {
+            "scid": 341,
+            "vcid": 2,
+            "map_id": 9,
+            "security_header_len": 3,
+            "security_trailer_len": 1
+          }
+        ]
+      },
+      "input_hex": "",
+      "expect": {
+        "ok": true,
+        "vcs": 3,
+        "maps": 3
+      }
+    },
+    {
+      "id": "tc-cfg-002",
+      "requirements": [
+        "GEN-060",
+        "API-040",
+        "TC-007"
+      ],
+      "description": "Physical channel maximum 1025: InvalidConfig max_frame_len",
+      "operation": "config",
+      "config": {
+        "max_frame_len": 1025,
+        "fecf": true,
+        "vcs": [
+          {
+            "scid": 341,
+            "vcid": 1,
+            "max_frame_len": 1024,
+            "segment_header": false
+          },
+          {
+            "scid": 341,
+            "vcid": 2,
+            "max_frame_len": 1024,
+            "segment_header": true
+          },
+          {
+            "scid": 341,
+            "vcid": 3,
+            "max_frame_len": 1024,
+            "segment_header": false,
+            "security_header_len": 4,
+            "security_trailer_len": 2
+          }
+        ],
+        "maps": [
+          {
+            "scid": 341,
+            "vcid": 2,
+            "map_id": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 2,
+            "map_id": 5
+          },
+          {
+            "scid": 341,
+            "vcid": 2,
+            "map_id": 9,
+            "security_header_len": 3,
+            "security_trailer_len": 1
+          }
+        ]
+      },
+      "input_hex": "",
+      "expect": {
+        "ok": false,
+        "error": "InvalidConfig",
+        "field": 71
+      }
+    },
+    {
+      "id": "tc-cfg-003",
+      "requirements": [
+        "GEN-060",
+        "API-040"
+      ],
+      "description": "Physical channel maximum 7 with FECF: no room for a frame",
+      "operation": "config",
+      "config": {
+        "max_frame_len": 7,
+        "fecf": true,
+        "vcs": [
+          {
+            "scid": 341,
+            "vcid": 1,
+            "max_frame_len": 1024,
+            "segment_header": false
+          }
+        ],
+        "maps": []
+      },
+      "input_hex": "",
+      "expect": {
+        "ok": false,
+        "error": "InvalidConfig",
+        "field": 71
+      }
+    },
+    {
+      "id": "tc-cfg-004",
+      "requirements": [
+        "GEN-060",
+        "API-040"
+      ],
+      "description": "Physical channel maximum 8 with FECF: the smallest frame fits",
+      "operation": "config",
+      "config": {
+        "max_frame_len": 8,
+        "fecf": true,
+        "vcs": [
+          {
+            "scid": 341,
+            "vcid": 1,
+            "max_frame_len": 1024,
+            "segment_header": false
+          }
+        ],
+        "maps": []
+      },
+      "input_hex": "",
+      "expect": {
+        "ok": true,
+        "vcs": 1,
+        "maps": 0
+      }
+    },
+    {
+      "id": "tc-cfg-005",
+      "requirements": [
+        "GEN-060",
+        "API-040"
+      ],
+      "description": "VC maximum 5: InvalidConfig max_frame_len",
+      "operation": "config",
+      "config": {
+        "max_frame_len": 1024,
+        "fecf": true,
+        "vcs": [
+          {
+            "scid": 341,
+            "vcid": 1,
+            "max_frame_len": 5,
+            "segment_header": false
+          }
+        ],
+        "maps": []
+      },
+      "input_hex": "",
+      "expect": {
+        "ok": false,
+        "error": "InvalidConfig",
+        "field": 71
+      }
+    },
+    {
+      "id": "tc-cfg-006",
+      "requirements": [
+        "GEN-060",
+        "API-040"
+      ],
+      "description": "VC 1 twice: InvalidConfig vc_id",
+      "operation": "config",
+      "config": {
+        "max_frame_len": 1024,
+        "fecf": true,
+        "vcs": [
+          {
+            "scid": 341,
+            "vcid": 1,
+            "max_frame_len": 1024,
+            "segment_header": false
+          },
+          {
+            "scid": 341,
+            "vcid": 1,
+            "max_frame_len": 1024,
+            "segment_header": true
+          }
+        ],
+        "maps": []
+      },
+      "input_hex": "",
+      "expect": {
+        "ok": false,
+        "error": "InvalidConfig",
+        "field": 2
+      }
+    },
+    {
+      "id": "tc-cfg-007",
+      "requirements": [
+        "GEN-060",
+        "API-040"
+      ],
+      "description": "The same VCID on two spacecraft is two channels",
+      "operation": "config",
+      "config": {
+        "max_frame_len": 1024,
+        "fecf": true,
+        "vcs": [
+          {
+            "scid": 341,
+            "vcid": 1,
+            "max_frame_len": 1024,
+            "segment_header": false
+          },
+          {
+            "scid": 342,
+            "vcid": 1,
+            "max_frame_len": 1024,
+            "segment_header": false
+          }
+        ],
+        "maps": []
+      },
+      "input_hex": "",
+      "expect": {
+        "ok": true,
+        "vcs": 2,
+        "maps": 0
+      }
+    },
+    {
+      "id": "tc-cfg-008",
+      "requirements": [
+        "GEN-060",
+        "API-040",
+        "TC-004"
+      ],
+      "description": "A MAP on VC 1, which has no Segment Header: InvalidConfig map_id",
+      "operation": "config",
+      "config": {
+        "max_frame_len": 1024,
+        "fecf": true,
+        "vcs": [
+          {
+            "scid": 341,
+            "vcid": 1,
+            "max_frame_len": 1024,
+            "segment_header": false
+          }
+        ],
+        "maps": [
+          {
+            "scid": 341,
+            "vcid": 1,
+            "map_id": 0
+          }
+        ]
+      },
+      "input_hex": "",
+      "expect": {
+        "ok": false,
+        "error": "InvalidConfig",
+        "field": 3
+      }
+    },
+    {
+      "id": "tc-cfg-009",
+      "requirements": [
+        "GEN-060",
+        "API-040"
+      ],
+      "description": "A MAP on an unknown VC: InvalidConfig map_id",
+      "operation": "config",
+      "config": {
+        "max_frame_len": 1024,
+        "fecf": true,
+        "vcs": [
+          {
+            "scid": 341,
+            "vcid": 2,
+            "max_frame_len": 1024,
+            "segment_header": true
+          }
+        ],
+        "maps": [
+          {
+            "scid": 341,
+            "vcid": 5,
+            "map_id": 0
+          }
+        ]
+      },
+      "input_hex": "",
+      "expect": {
+        "ok": false,
+        "error": "InvalidConfig",
+        "field": 3
+      }
+    },
+    {
+      "id": "tc-cfg-010",
+      "requirements": [
+        "GEN-060",
+        "API-040"
+      ],
+      "description": "MAP 3 twice: InvalidConfig map_id",
+      "operation": "config",
+      "config": {
+        "max_frame_len": 1024,
+        "fecf": true,
+        "vcs": [
+          {
+            "scid": 341,
+            "vcid": 2,
+            "max_frame_len": 1024,
+            "segment_header": true
+          }
+        ],
+        "maps": [
+          {
+            "scid": 341,
+            "vcid": 2,
+            "map_id": 3
+          },
+          {
+            "scid": 341,
+            "vcid": 2,
+            "map_id": 3,
+            "security_header_len": 2,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "input_hex": "",
+      "expect": {
+        "ok": false,
+        "error": "InvalidConfig",
+        "field": 3
+      }
+    },
+    {
+      "id": "tc-cfg-011",
+      "requirements": [
+        "GEN-060",
+        "API-070",
+        "CMN-041"
+      ],
+      "description": "A VC whose Security Header and Trailer fill its maximum: InvalidConfig frame_data_field",
+      "operation": "config",
+      "config": {
+        "max_frame_len": 1024,
+        "fecf": true,
+        "vcs": [
+          {
+            "scid": 341,
+            "vcid": 1,
+            "max_frame_len": 20,
+            "segment_header": false,
+            "security_header_len": 8,
+            "security_trailer_len": 5
+          }
+        ],
+        "maps": []
+      },
+      "input_hex": "",
+      "expect": {
+        "ok": false,
+        "error": "InvalidConfig",
+        "field": 7
+      }
+    },
+    {
+      "id": "tc-cfg-012",
+      "requirements": [
+        "GEN-060",
+        "API-070",
+        "CMN-041"
+      ],
+      "description": "The same VC one octet longer leaves one data octet",
+      "operation": "config",
+      "config": {
+        "max_frame_len": 1024,
+        "fecf": true,
+        "vcs": [
+          {
+            "scid": 341,
+            "vcid": 1,
+            "max_frame_len": 21,
+            "segment_header": false,
+            "security_header_len": 8,
+            "security_trailer_len": 5
+          }
+        ],
+        "maps": []
+      },
+      "input_hex": "",
+      "expect": {
+        "ok": true,
+        "vcs": 1,
+        "maps": 0
+      }
+    },
+    {
+      "id": "tc-cfg-013",
+      "requirements": [
+        "GEN-060",
+        "API-070",
+        "CMN-041"
+      ],
+      "description": "A MAP whose Security Header and Trailer fill its VC's maximum: InvalidConfig frame_data_field",
+      "operation": "config",
+      "config": {
+        "max_frame_len": 1024,
+        "fecf": true,
+        "vcs": [
+          {
+            "scid": 341,
+            "vcid": 2,
+            "max_frame_len": 16,
+            "segment_header": true
+          }
+        ],
+        "maps": [
+          {
+            "scid": 341,
+            "vcid": 2,
+            "map_id": 1,
+            "security_header_len": 6,
+            "security_trailer_len": 2
+          }
+        ]
+      },
+      "input_hex": "",
+      "expect": {
+        "ok": false,
+        "error": "InvalidConfig",
+        "field": 7
+      }
+    }
+  ]
+}

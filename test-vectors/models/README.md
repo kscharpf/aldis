@@ -6,6 +6,7 @@ The expected values of a `hand-derived` vector file come from an **independent m
 |---|---|---|
 | [`aos_fhec.py`](aos_fhec.py) | `aos/fhec_{encode,correct_1_symbol,correct_2_symbols,miscorrection,uncorrectable}.json` | AOS Frame Header Error Control, 732.0-B-5 EC1 §4.1.2.6.5 (AOS-013, AOS-014): GF(2^4) by carry-less multiplication, the check symbols by GF(2) linear algebra on the syndromes, and decoding by a table over every pattern of at most two symbol errors |
 | [`core_ocf.py`](core_ocf.py) | `core/ocf.json` | Operational Control Field classification, 132.0-B-3 / 732.0-B-5 §4.1.5.4–5 and 732.1-B-3 §4.1.5.2.1–2 (CMN-010, CMN-011), with the CLCW layout of 232.0-B-4 §4.2.1 for one input |
+| [`tc_frame.py`](tc_frame.py) | `tc/*.json` | TC Transfer Frame, CLCW, Frame Delimiting and Fill Removal, and the Frame Validation Checks, 232.0-B-4 Cor. 1 §4.1, §4.2.1, §4.4.9, §5, §6.3, §6.6 (TC-001…TC-008, TC-020…TC-023, TC-030, TC-031): the header as one 40-bit integer, the CRC bit by bit from G(X), the check order and reason codes of tc-frame.md §4.1 |
 
 ## Running them
 
@@ -14,6 +15,7 @@ From the repository root, with Python 3 and no packages beyond the standard libr
 ```sh
 python3 -I test-vectors/models/aos_fhec.py --check test-vectors/aos/fhec_*.json
 python3 -I test-vectors/models/core_ocf.py --check test-vectors/core/ocf.json
+python3 -I test-vectors/models/tc_frame.py --check test-vectors/tc/*.json
 ```
 
 `--check` recomputes the expected outcome of every live case from its operation and input and compares it with the file, and compares the cases the model's generator writes with the file's; it exits 1 on any difference. `cargo xtask vectors validate` (part of `cargo xtask ci` and the verify check `spec`) runs every model on the files whose notes name it, and fails on a named model that is missing or a model that no file names. `--write` regenerates a file from the model, cases and provenance note; it records how the inputs were chosen. Use it only for a file that is not released yet: a released file changes only by new cases and `superseded` marks (TV-021).
