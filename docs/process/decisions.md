@@ -71,3 +71,4 @@ One line for each decision the maintainer takes, under the [decision rights](dec
 - 2026-10-23 · api · #89 · The OCF crosses the C ABI as `(const uint8_t *ocf, size_t ocf_len)`; a length other than 4 is a CABI-022 violation
 - 2026-10-23 · api · #89 · `aldis_oid_generator_fill` takes `(out, len)` with no `out_len`: it always fills exactly `len` octets
 - 2026-10-23 · api · #89 · `aldis_ocf_check` is public C ABI, the C form of the OCF reports' checked constructors
+- 2026-10-23 · api · #90 · TM per-VC security layouts come through `VcLookup::security_layout(scid, vcid)`, implemented by `TmMasterChannelConfig` (holding its at most 8 VCs) and `NoSdls`; `decode` keeps the profile signature, `decode_with` takes a lookup
