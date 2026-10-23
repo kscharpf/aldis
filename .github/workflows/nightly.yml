@@ -134,6 +134,10 @@ jobs:
           - aos_fhec_model
           - tm_decode
           - tm_roundtrip
+          - tc_decode
+          - tc_roundtrip
+          - tc_delimit
+          - tc_clcw
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -204,7 +208,7 @@ jobs:
       # (e.g. 4, the unmutated tests fail) is a real failure.
       - run: |
           code=0
-          cargo mutants -p aldis-core -p aldis-time -p aldis-epp -p aldis-spp -p aldis-aos -p aldis-tm --all-features || code=$?
+          cargo mutants -p aldis-core -p aldis-time -p aldis-epp -p aldis-spp -p aldis-aos -p aldis-tm -p aldis-tc --all-features || code=$?
           echo "cargo-mutants exit code $code"
           [ "$code" -eq 0 ] || [ "$code" -eq 2 ] || [ "$code" -eq 3 ]
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

@@ -281,9 +281,10 @@ pub const PACKET_LEN: FieldId = FieldId::catalogued::<52>("packet_len");
 /// Code 53, a parameter (133.0 §5.2 Table 5-1; API-082).
 pub const MAX_PACKET_LEN: FieldId = FieldId::catalogued::<53>("max_packet_len");
 
-/// Length of the User Data Field a two-phase writer is finished with.
+/// Length of the user data a two-phase writer is finished with: the User Data Field of a Space
+/// Packet, or the User Data of a TC Frame Data Unit.
 ///
-/// Code 54, a parameter (133.0 §4.1.4.3; API-023; API-082).
+/// Code 54, a parameter (133.0 §4.1.4.3; 232.0 §4.1.3.2.1; API-023; API-082).
 pub const USER_LEN: FieldId = FieldId::catalogued::<54>("user_len");
 
 /// SDU that the segmenter splits across packets.
@@ -349,12 +350,13 @@ pub const OCF_REPORT_USE: FieldId = FieldId::catalogued::<66>("ocf_report_use");
 
 /// Transfer Frame Version Number.
 ///
-/// Code 67, a field (132.0 §4.1.2.2.2; API-082).
+/// Code 67, a field (132.0 §4.1.2.2.2; 232.0 §4.1.2.2; API-082).
 pub const FRAME_VERSION: FieldId = FieldId::catalogued::<67>("frame_version");
 
-/// Transfer Frame Length of a physical channel with fixed-length frames, a managed parameter.
+/// Length of a Transfer Frame in octets: the Frame Length field of a TC frame, or the Transfer
+/// Frame Length managed parameter of a TM physical channel with fixed-length frames.
 ///
-/// Code 68, a parameter (132.0 §4.1.1.2, §5.1 Table 5-1; API-082).
+/// Code 68, a field (132.0 §4.1.1.2, §5.1 Table 5-1; 232.0 §4.1.2.7; API-082).
 pub const FRAME_LEN: FieldId = FieldId::catalogued::<68>("frame_len");
 
 /// Operational Control Field Flag.
@@ -398,8 +400,68 @@ pub const FSH_VERSION: FieldId = FieldId::catalogued::<75>("fsh_version");
 /// Code 76, a field (132.0 §4.1.3.2.3, §5.2 Table 5-2, §5.3 Table 5-3; API-082).
 pub const FSH_LEN: FieldId = FieldId::catalogued::<76>("fsh_len");
 
+/// Control Command Flag, read with the Bypass Flag as the frame type of Table 4-1.
+///
+/// Code 77, a field (232.0 §4.1.2.3, Table 4-1; API-082).
+pub const CONTROL_COMMAND_FLAG: FieldId = FieldId::catalogued::<77>("control_command_flag");
+
+/// Reserved Spare of the TC Transfer Frame Primary Header, bits 4–5.
+///
+/// Code 78, a field (232.0 §4.1.2.4; API-082).
+pub const TC_HEADER_SPARE: FieldId = FieldId::catalogued::<78>("tc_header_spare");
+
+/// Maximum Transfer Frame Length, a managed parameter of a Physical or Virtual Channel.
+///
+/// Code 79, a parameter (232.0 §5 Tables 5-1, 5-3; API-082).
+pub const MAX_FRAME_LEN: FieldId = FieldId::catalogued::<79>("max_frame_len");
+
+/// Segment Header of a TC Frame Data Unit.
+///
+/// Code 80, a field (232.0 §4.1.3.2.2; API-082).
+pub const SEGMENT_HEADER: FieldId = FieldId::catalogued::<80>("segment_header");
+
+/// Control Command in the data field of a Type-C TC frame.
+///
+/// Code 81, a field (232.0 §4.1.3.3; API-082).
+pub const CONTROL_COMMAND: FieldId = FieldId::catalogued::<81>("control_command");
+
+/// Control Word Type of the CLCW, bit 0.
+///
+/// Code 82, a field (232.0 §4.2.1.2; API-082).
+pub const CONTROL_WORD_TYPE: FieldId = FieldId::catalogued::<82>("control_word_type");
+
+/// CLCW Version Number, bits 1–2.
+///
+/// Code 83, a field (232.0 §4.2.1.3; API-082).
+pub const CLCW_VERSION: FieldId = FieldId::catalogued::<83>("clcw_version");
+
+/// Status Field of the CLCW, bits 3–5.
+///
+/// Code 84, a field (232.0 §4.2.1.4; API-082).
+pub const CLCW_STATUS: FieldId = FieldId::catalogued::<84>("clcw_status");
+
+/// COP in Effect of the CLCW, bits 6–7.
+///
+/// Code 85, a field (232.0 §4.2.1.5; API-082).
+pub const COP_IN_EFFECT: FieldId = FieldId::catalogued::<85>("cop_in_effect");
+
+/// Reserved Spare of the CLCW, bits 14–15.
+///
+/// Code 86, a field (232.0 §4.2.1.7; API-082).
+pub const CLCW_SPARE_14_15: FieldId = FieldId::catalogued::<86>("clcw_spare_14_15");
+
+/// Reserved Spare of the CLCW, bit 23.
+///
+/// Code 87, a field (232.0 §4.2.1.10; API-082).
+pub const CLCW_SPARE_23: FieldId = FieldId::catalogued::<87>("clcw_spare_23");
+
+/// FARM-B Counter of the CLCW, bits 21–22.
+///
+/// Code 88, a field (232.0 §4.2.1.9; API-082).
+pub const FARM_B_COUNTER: FieldId = FieldId::catalogued::<88>("farm_b_counter");
+
 /// Every field code, in code order from 1 (API-082).
-pub const ALL: [FieldId; 76] = [
+pub const ALL: [FieldId; 88] = [
     SPACECRAFT_ID,
     VC_ID,
     MAP_ID,
@@ -476,4 +538,16 @@ pub const ALL: [FieldId; 76] = [
     FIRST_HEADER_POINTER,
     FSH_VERSION,
     FSH_LEN,
+    CONTROL_COMMAND_FLAG,
+    TC_HEADER_SPARE,
+    MAX_FRAME_LEN,
+    SEGMENT_HEADER,
+    CONTROL_COMMAND,
+    CONTROL_WORD_TYPE,
+    CLCW_VERSION,
+    CLCW_STATUS,
+    COP_IN_EFFECT,
+    CLCW_SPARE_14_15,
+    CLCW_SPARE_23,
+    FARM_B_COUNTER,
 ];

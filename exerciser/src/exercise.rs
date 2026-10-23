@@ -454,6 +454,7 @@ pub fn run() -> Tally {
     crate::epp::run(&mut t);
     crate::ffi::run(&mut t);
     crate::spp::run(&mut t);
+    crate::tc::run(&mut t);
     crate::time::run(&mut t);
     crate::vectors::run(&mut t);
     #[cfg(feature = "inject-panic")]

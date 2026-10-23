@@ -72,3 +72,7 @@ One line for each decision the maintainer takes, under the [decision rights](dec
 - 2026-10-23 · api · #89 · `aldis_oid_generator_fill` takes `(out, len)` with no `out_len`: it always fills exactly `len` octets
 - 2026-10-23 · api · #89 · `aldis_ocf_check` is public C ABI, the C form of the OCF reports' checked constructors
 - 2026-10-23 · api · #90 · TM per-VC security layouts come through `VcLookup::security_layout(scid, vcid)`, implemented by `TmMasterChannelConfig` (holding its at most 8 VCs) and `NoSdls`; `decode` keeps the profile signature, `decode_with` takes a lookup
+- 2026-10-23 · spec · #91 · OI-41 (1): a TC frame needs at least one User Data octet, with or without a Segment Header and SDLS fields (CMN-041)
+- 2026-10-23 · spec · #91 · OI-41 (2): a valid header for TC delimiting is at least five octets with TFVN `00` and a Frame Length of at least six; otherwise the rest of the unit is Fill
+- 2026-10-23 · api · #91 · Field code 54 `user_len` is shared by SPP and TC (one code per field, M2 D2)
+- 2026-10-23 · api · #91 · Field code 68 `frame_len` is one code shared by TM (the Transfer Frame Length parameter) and TC (the Frame Length field), kind `field`; AOS and USLP share it too

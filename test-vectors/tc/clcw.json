@@ -1,0 +1,489 @@
+{
+  "kind": "codec",
+  "standard": "232.0-B-4 Cor. 1 — Communications Link Control Word",
+  "provenance": "hand-derived",
+  "provenance_note": "232.0-B-4 prints no example frame or CLCW. Hand-derived from 232.0-B-4 with Cor. 1: §4.1.2 (Primary Header bits 0-1 TFVN 00, 2 Bypass, 3 Control Command, 4-5 spare, 6-15 SCID, 16-21 VCID, 22-31 Frame Length = total - 1, 32-39 N(S); Table 4-1, flags 0/1 reserved), §4.1.3 (Segment Header: Sequence Flags 2 bits, Table 4-2, MAP ID 6 bits; Unlock = 00, Set V(R) = 82 00 V(R)), §4.1.4 (FECF: CRC with G(X) = X^16 + X^12 + X^5 + 1, register preset to ones), §4.2.1 (CLCW fields and widths), §4.4.9.2-3 (delimiting and validation), §4.4.3.3 and §4.4.7.3 (invalid MAP and VC), §5 and §6.3, §6.6 (managed parameters, Security Header after the Segment Header). Check order, validation reason codes, the delimiter's valid header, and the managed parameters kept, as docs/standards/tc-frame.md states them. SCID 0x155 is the fictional SCID of the reference scenario (APP-026). Expected values computed by an independent Python model of those clauses, written before the Rust codec, which shares no code or method with it (the header is one 40-bit integer, the CRC is bitwise from G(X)). Error cases name the field code of 03 §9.1. The BC Unlock frame of tc-bc-unlock-enc-001 and the CLCW of tc-clcw-enc-001 are worked by hand, the CRC register octet by octet, in docs/verification/derivations/tc-frame.md. The model is committed as test-vectors/models/tc_frame.py (TV-023); `python3 -I test-vectors/models/tc_frame.py --check test-vectors/tc/*.json` recomputes every expected value.",
+  "cases": [
+    {
+      "id": "tc-clcw-dec-001",
+      "requirements": [
+        "TC-030"
+      ],
+      "description": "COP-1, VCID 5, Retransmit, FARM-B 2, N(R) 42 (the CLCW of core/ocf.json)",
+      "operation": "clcw_decode",
+      "mode": "strict",
+      "input_hex": "01140C2A",
+      "expect": {
+        "ok": true,
+        "status": 0,
+        "cop_in_effect": 1,
+        "vc_id": 5,
+        "no_rf_available": false,
+        "no_bit_lock": false,
+        "lockout": false,
+        "wait": false,
+        "retransmit": true,
+        "farm_b_counter": 2,
+        "report_value": 42,
+        "anomalies": []
+      }
+    },
+    {
+      "id": "tc-clcw-dec-002",
+      "requirements": [
+        "TC-030"
+      ],
+      "description": "Every flag set, VCID 63, N(R) 255",
+      "operation": "clcw_decode",
+      "mode": "strict",
+      "input_hex": "01FCFEFF",
+      "expect": {
+        "ok": true,
+        "status": 0,
+        "cop_in_effect": 1,
+        "vc_id": 63,
+        "no_rf_available": true,
+        "no_bit_lock": true,
+        "lockout": true,
+        "wait": true,
+        "retransmit": true,
+        "farm_b_counter": 3,
+        "report_value": 255,
+        "anomalies": []
+      }
+    },
+    {
+      "id": "tc-clcw-dec-003",
+      "requirements": [
+        "TC-031"
+      ],
+      "description": "Status Field 101 is passed through",
+      "operation": "clcw_decode",
+      "mode": "strict",
+      "input_hex": "15040007",
+      "expect": {
+        "ok": true,
+        "status": 5,
+        "cop_in_effect": 1,
+        "vc_id": 1,
+        "no_rf_available": false,
+        "no_bit_lock": false,
+        "lockout": false,
+        "wait": false,
+        "retransmit": false,
+        "farm_b_counter": 0,
+        "report_value": 7,
+        "anomalies": []
+      }
+    },
+    {
+      "id": "tc-clcw-dec-004",
+      "requirements": [
+        "TC-030"
+      ],
+      "description": "COP in Effect 00 is decoded and exposed, not rejected",
+      "operation": "clcw_decode",
+      "mode": "strict",
+      "input_hex": "00080000",
+      "expect": {
+        "ok": true,
+        "status": 0,
+        "cop_in_effect": 0,
+        "vc_id": 2,
+        "no_rf_available": false,
+        "no_bit_lock": false,
+        "lockout": false,
+        "wait": false,
+        "retransmit": false,
+        "farm_b_counter": 0,
+        "report_value": 0,
+        "anomalies": []
+      }
+    },
+    {
+      "id": "tc-clcw-dec-005",
+      "requirements": [
+        "TC-030"
+      ],
+      "description": "COP in Effect 11 is decoded and exposed",
+      "operation": "clcw_decode",
+      "mode": "strict",
+      "input_hex": "03000000",
+      "expect": {
+        "ok": true,
+        "status": 0,
+        "cop_in_effect": 3,
+        "vc_id": 0,
+        "no_rf_available": false,
+        "no_bit_lock": false,
+        "lockout": false,
+        "wait": false,
+        "retransmit": false,
+        "farm_b_counter": 0,
+        "report_value": 0,
+        "anomalies": []
+      }
+    },
+    {
+      "id": "tc-clcw-dec-006",
+      "requirements": [
+        "TC-030"
+      ],
+      "description": "Control Word Type 1: not a CLCW, InvalidField",
+      "operation": "clcw_decode",
+      "mode": "strict",
+      "input_hex": "81000000",
+      "expect": {
+        "ok": false,
+        "error": "InvalidField",
+        "field": 82
+      }
+    },
+    {
+      "id": "tc-clcw-dec-007",
+      "requirements": [
+        "TC-030",
+        "API-032"
+      ],
+      "description": "Control Word Type 1 in lenient mode: still InvalidField",
+      "operation": "clcw_decode",
+      "mode": "lenient",
+      "input_hex": "81000000",
+      "expect": {
+        "ok": false,
+        "error": "InvalidField",
+        "field": 82
+      }
+    },
+    {
+      "id": "tc-clcw-dec-008",
+      "requirements": [
+        "TC-030"
+      ],
+      "description": "Version 01: UnsupportedVersion",
+      "operation": "clcw_decode",
+      "mode": "strict",
+      "input_hex": "21000000",
+      "expect": {
+        "ok": false,
+        "error": "UnsupportedVersion",
+        "field": 83
+      }
+    },
+    {
+      "id": "tc-clcw-dec-009",
+      "requirements": [
+        "TC-030",
+        "API-032"
+      ],
+      "description": "Version 11 in lenient mode: UnsupportedVersion",
+      "operation": "clcw_decode",
+      "mode": "lenient",
+      "input_hex": "61000000",
+      "expect": {
+        "ok": false,
+        "error": "UnsupportedVersion",
+        "field": 83
+      }
+    },
+    {
+      "id": "tc-clcw-dec-010",
+      "requirements": [
+        "TC-030"
+      ],
+      "description": "Spare bits 14-15 = 10, strict: ReservedValue",
+      "operation": "clcw_decode",
+      "mode": "strict",
+      "input_hex": "01020000",
+      "expect": {
+        "ok": false,
+        "error": "ReservedValue",
+        "field": 86
+      }
+    },
+    {
+      "id": "tc-clcw-dec-011",
+      "requirements": [
+        "TC-030"
+      ],
+      "description": "Spare bit 23 = 1, strict: ReservedValue",
+      "operation": "clcw_decode",
+      "mode": "strict",
+      "input_hex": "01000100",
+      "expect": {
+        "ok": false,
+        "error": "ReservedValue",
+        "field": 87
+      }
+    },
+    {
+      "id": "tc-clcw-dec-012",
+      "requirements": [
+        "TC-030",
+        "API-032"
+      ],
+      "description": "Spare bits 14-15 = 01, lenient: ClcwSpareSet",
+      "operation": "clcw_decode",
+      "mode": "lenient",
+      "input_hex": "01010003",
+      "expect": {
+        "ok": true,
+        "status": 0,
+        "cop_in_effect": 1,
+        "vc_id": 0,
+        "no_rf_available": false,
+        "no_bit_lock": false,
+        "lockout": false,
+        "wait": false,
+        "retransmit": false,
+        "farm_b_counter": 0,
+        "report_value": 3,
+        "anomalies": [
+          "ClcwSpareSet"
+        ]
+      }
+    },
+    {
+      "id": "tc-clcw-dec-013",
+      "requirements": [
+        "TC-030",
+        "API-032"
+      ],
+      "description": "Spare bit 23 and bits 14-15 set, lenient: one ClcwSpareSet",
+      "operation": "clcw_decode",
+      "mode": "lenient",
+      "input_hex": "01270100",
+      "expect": {
+        "ok": true,
+        "status": 0,
+        "cop_in_effect": 1,
+        "vc_id": 9,
+        "no_rf_available": false,
+        "no_bit_lock": false,
+        "lockout": false,
+        "wait": false,
+        "retransmit": false,
+        "farm_b_counter": 0,
+        "report_value": 0,
+        "anomalies": [
+          "ClcwSpareSet"
+        ]
+      }
+    },
+    {
+      "id": "tc-clcw-dec-014",
+      "requirements": [
+        "TC-031"
+      ],
+      "description": "Status 111 with spare bits clear: passed through",
+      "operation": "clcw_decode",
+      "mode": "strict",
+      "input_hex": "1D003000",
+      "expect": {
+        "ok": true,
+        "status": 7,
+        "cop_in_effect": 1,
+        "vc_id": 0,
+        "no_rf_available": false,
+        "no_bit_lock": false,
+        "lockout": true,
+        "wait": true,
+        "retransmit": false,
+        "farm_b_counter": 0,
+        "report_value": 0,
+        "anomalies": []
+      }
+    },
+    {
+      "id": "tc-clcw-enc-001",
+      "requirements": [
+        "TC-030",
+        "TV-002"
+      ],
+      "description": "COP-1, VCID 5, Retransmit, FARM-B 2, N(R) 42",
+      "operation": "clcw_encode",
+      "params": {
+        "status": 0,
+        "cop_in_effect": 1,
+        "vc_id": 5,
+        "no_rf_available": false,
+        "no_bit_lock": false,
+        "lockout": false,
+        "wait": false,
+        "retransmit": true,
+        "farm_b_counter": 2,
+        "report_value": 42
+      },
+      "input_hex": "",
+      "expect": {
+        "ok": true,
+        "output_hex": "01140C2A"
+      }
+    },
+    {
+      "id": "tc-clcw-enc-002",
+      "requirements": [
+        "TC-030",
+        "TC-031",
+        "TV-002"
+      ],
+      "description": "Every field at its largest",
+      "operation": "clcw_encode",
+      "params": {
+        "status": 7,
+        "cop_in_effect": 3,
+        "vc_id": 63,
+        "no_rf_available": true,
+        "no_bit_lock": true,
+        "lockout": true,
+        "wait": true,
+        "retransmit": true,
+        "farm_b_counter": 3,
+        "report_value": 255
+      },
+      "input_hex": "",
+      "expect": {
+        "ok": true,
+        "output_hex": "1FFCFEFF"
+      }
+    },
+    {
+      "id": "tc-clcw-enc-003",
+      "requirements": [
+        "TC-031",
+        "TV-002"
+      ],
+      "description": "Status Field 010 is written as given",
+      "operation": "clcw_encode",
+      "params": {
+        "status": 2,
+        "cop_in_effect": 1,
+        "vc_id": 12,
+        "no_rf_available": false,
+        "no_bit_lock": false,
+        "lockout": false,
+        "wait": false,
+        "retransmit": false,
+        "farm_b_counter": 0,
+        "report_value": 0
+      },
+      "input_hex": "",
+      "expect": {
+        "ok": true,
+        "output_hex": "09300000"
+      }
+    },
+    {
+      "id": "tc-clcw-enc-004",
+      "requirements": [
+        "TC-030",
+        "API-001",
+        "TV-002"
+      ],
+      "description": "Status Field 8 does not fit three bits: OutOfRange",
+      "operation": "clcw_encode",
+      "params": {
+        "status": 8,
+        "cop_in_effect": 1,
+        "vc_id": 0,
+        "no_rf_available": false,
+        "no_bit_lock": false,
+        "lockout": false,
+        "wait": false,
+        "retransmit": false,
+        "farm_b_counter": 0,
+        "report_value": 0
+      },
+      "input_hex": "",
+      "expect": {
+        "ok": false,
+        "error": "OutOfRange",
+        "field": 84
+      }
+    },
+    {
+      "id": "tc-clcw-enc-005",
+      "requirements": [
+        "TC-030",
+        "API-001",
+        "TV-002"
+      ],
+      "description": "COP in Effect 4: OutOfRange",
+      "operation": "clcw_encode",
+      "params": {
+        "status": 0,
+        "cop_in_effect": 4,
+        "vc_id": 0,
+        "no_rf_available": false,
+        "no_bit_lock": false,
+        "lockout": false,
+        "wait": false,
+        "retransmit": false,
+        "farm_b_counter": 0,
+        "report_value": 0
+      },
+      "input_hex": "",
+      "expect": {
+        "ok": false,
+        "error": "OutOfRange",
+        "field": 85
+      }
+    },
+    {
+      "id": "tc-clcw-enc-006",
+      "requirements": [
+        "TC-030",
+        "API-001",
+        "TV-002"
+      ],
+      "description": "VCID 64: OutOfRange",
+      "operation": "clcw_encode",
+      "params": {
+        "status": 0,
+        "cop_in_effect": 1,
+        "vc_id": 64,
+        "no_rf_available": false,
+        "no_bit_lock": false,
+        "lockout": false,
+        "wait": false,
+        "retransmit": false,
+        "farm_b_counter": 0,
+        "report_value": 0
+      },
+      "input_hex": "",
+      "expect": {
+        "ok": false,
+        "error": "OutOfRange",
+        "field": 2
+      }
+    },
+    {
+      "id": "tc-clcw-enc-007",
+      "requirements": [
+        "TC-030",
+        "API-001",
+        "TV-002"
+      ],
+      "description": "FARM-B Counter 4: OutOfRange",
+      "operation": "clcw_encode",
+      "params": {
+        "status": 0,
+        "cop_in_effect": 1,
+        "vc_id": 0,
+        "no_rf_available": false,
+        "no_bit_lock": false,
+        "lockout": false,
+        "wait": false,
+        "retransmit": false,
+        "farm_b_counter": 4,
+        "report_value": 0
+      },
+      "input_hex": "",
+      "expect": {
+        "ok": false,
+        "error": "OutOfRange",
+        "field": 88
+      }
+    }
+  ]
+}

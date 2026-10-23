@@ -1,0 +1,1237 @@
+{
+  "kind": "codec",
+  "standard": "232.0-B-4 Cor. 1 — Frame Validation Checks",
+  "provenance": "hand-derived",
+  "provenance_note": "232.0-B-4 prints no example frame or CLCW. Hand-derived from 232.0-B-4 with Cor. 1: §4.1.2 (Primary Header bits 0-1 TFVN 00, 2 Bypass, 3 Control Command, 4-5 spare, 6-15 SCID, 16-21 VCID, 22-31 Frame Length = total - 1, 32-39 N(S); Table 4-1, flags 0/1 reserved), §4.1.3 (Segment Header: Sequence Flags 2 bits, Table 4-2, MAP ID 6 bits; Unlock = 00, Set V(R) = 82 00 V(R)), §4.1.4 (FECF: CRC with G(X) = X^16 + X^12 + X^5 + 1, register preset to ones), §4.2.1 (CLCW fields and widths), §4.4.9.2-3 (delimiting and validation), §4.4.3.3 and §4.4.7.3 (invalid MAP and VC), §5 and §6.3, §6.6 (managed parameters, Security Header after the Segment Header). Check order, validation reason codes, the delimiter's valid header, and the managed parameters kept, as docs/standards/tc-frame.md states them. SCID 0x155 is the fictional SCID of the reference scenario (APP-026). Expected values computed by an independent Python model of those clauses, written before the Rust codec, which shares no code or method with it (the header is one 40-bit integer, the CRC is bitwise from G(X)). Error cases name the field code of 03 §9.1. The BC Unlock frame of tc-bc-unlock-enc-001 and the CLCW of tc-clcw-enc-001 are worked by hand, the CRC register octet by octet, in docs/verification/derivations/tc-frame.md. The model is committed as test-vectors/models/tc_frame.py (TV-023); `python3 -I test-vectors/models/tc_frame.py --check test-vectors/tc/*.json` recomputes every expected value.",
+  "cases": [
+    {
+      "id": "tc-val-001",
+      "requirements": [
+        "TC-021",
+        "TC-023"
+      ],
+      "description": "A valid AD frame is accepted",
+      "operation": "validate",
+      "mode": "strict",
+      "config": {
+        "max_frame_len": 1024,
+        "fecf": true,
+        "vcs": [
+          {
+            "scid": 341,
+            "vcid": 1,
+            "max_frame_len": 1024,
+            "segment_header": false
+          },
+          {
+            "scid": 341,
+            "vcid": 2,
+            "max_frame_len": 1024,
+            "segment_header": true
+          },
+          {
+            "scid": 341,
+            "vcid": 3,
+            "max_frame_len": 1024,
+            "segment_header": false,
+            "security_header_len": 4,
+            "security_trailer_len": 2
+          }
+        ],
+        "maps": [
+          {
+            "scid": 341,
+            "vcid": 2,
+            "map_id": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 2,
+            "map_id": 5
+          },
+          {
+            "scid": 341,
+            "vcid": 2,
+            "map_id": 9,
+            "security_header_len": 3,
+            "security_trailer_len": 1
+          }
+        ]
+      },
+      "input_hex": "0155040904010203E0C0",
+      "expect": {
+        "ok": true,
+        "accepted": true,
+        "frame_len": 10
+      }
+    },
+    {
+      "id": "tc-val-002",
+      "requirements": [
+        "TC-021",
+        "TC-023"
+      ],
+      "description": "The same frame as BD is accepted by the same checks",
+      "operation": "validate",
+      "mode": "strict",
+      "config": {
+        "max_frame_len": 1024,
+        "fecf": true,
+        "vcs": [
+          {
+            "scid": 341,
+            "vcid": 1,
+            "max_frame_len": 1024,
+            "segment_header": false
+          },
+          {
+            "scid": 341,
+            "vcid": 2,
+            "max_frame_len": 1024,
+            "segment_header": true
+          },
+          {
+            "scid": 341,
+            "vcid": 3,
+            "max_frame_len": 1024,
+            "segment_header": false,
+            "security_header_len": 4,
+            "security_trailer_len": 2
+          }
+        ],
+        "maps": [
+          {
+            "scid": 341,
+            "vcid": 2,
+            "map_id": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 2,
+            "map_id": 5
+          },
+          {
+            "scid": 341,
+            "vcid": 2,
+            "map_id": 9,
+            "security_header_len": 3,
+            "security_trailer_len": 1
+          }
+        ]
+      },
+      "input_hex": "21550409000102035159",
+      "expect": {
+        "ok": true,
+        "accepted": true,
+        "frame_len": 10
+      }
+    },
+    {
+      "id": "tc-val-003",
+      "requirements": [
+        "TC-021",
+        "TC-002"
+      ],
+      "description": "(a) TFVN 01: UnexpectedVersion",
+      "operation": "validate",
+      "mode": "strict",
+      "config": {
+        "max_frame_len": 1024,
+        "fecf": true,
+        "vcs": [
+          {
+            "scid": 341,
+            "vcid": 1,
+            "max_frame_len": 1024,
+            "segment_header": false
+          },
+          {
+            "scid": 341,
+            "vcid": 2,
+            "max_frame_len": 1024,
+            "segment_header": true
+          },
+          {
+            "scid": 341,
+            "vcid": 3,
+            "max_frame_len": 1024,
+            "segment_header": false,
+            "security_header_len": 4,
+            "security_trailer_len": 2
+          }
+        ],
+        "maps": [
+          {
+            "scid": 341,
+            "vcid": 2,
+            "map_id": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 2,
+            "map_id": 5
+          },
+          {
+            "scid": 341,
+            "vcid": 2,
+            "map_id": 9,
+            "security_header_len": 3,
+            "security_trailer_len": 1
+          }
+        ]
+      },
+      "input_hex": "4155040900010203DCE1",
+      "expect": {
+        "ok": true,
+        "accepted": false,
+        "reason": "UnexpectedVersion",
+        "reason_code": 1,
+        "error_kind": "UnsupportedVersion",
+        "error_field": 67
+      }
+    },
+    {
+      "id": "tc-val-004",
+      "requirements": [
+        "TC-021"
+      ],
+      "description": "(b) SCID 0x156, not an expected MCID: UnexpectedSpacecraft",
+      "operation": "validate",
+      "mode": "strict",
+      "config": {
+        "max_frame_len": 1024,
+        "fecf": true,
+        "vcs": [
+          {
+            "scid": 341,
+            "vcid": 1,
+            "max_frame_len": 1024,
+            "segment_header": false
+          },
+          {
+            "scid": 341,
+            "vcid": 2,
+            "max_frame_len": 1024,
+            "segment_header": true
+          },
+          {
+            "scid": 341,
+            "vcid": 3,
+            "max_frame_len": 1024,
+            "segment_header": false,
+            "security_header_len": 4,
+            "security_trailer_len": 2
+          }
+        ],
+        "maps": [
+          {
+            "scid": 341,
+            "vcid": 2,
+            "map_id": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 2,
+            "map_id": 5
+          },
+          {
+            "scid": 341,
+            "vcid": 2,
+            "map_id": 9,
+            "security_header_len": 3,
+            "security_trailer_len": 1
+          }
+        ]
+      },
+      "input_hex": "0156040900010203F2B3",
+      "expect": {
+        "ok": true,
+        "accepted": false,
+        "reason": "UnexpectedSpacecraft",
+        "reason_code": 2,
+        "error_kind": "UnknownChannel",
+        "error_field": 1
+      }
+    },
+    {
+      "id": "tc-val-005",
+      "requirements": [
+        "TC-021",
+        "TC-002"
+      ],
+      "description": "(c) Bypass 0 / Control Command 1: ReservedFlags",
+      "operation": "validate",
+      "mode": "strict",
+      "config": {
+        "max_frame_len": 1024,
+        "fecf": true,
+        "vcs": [
+          {
+            "scid": 341,
+            "vcid": 1,
+            "max_frame_len": 1024,
+            "segment_header": false
+          },
+          {
+            "scid": 341,
+            "vcid": 2,
+            "max_frame_len": 1024,
+            "segment_header": true
+          },
+          {
+            "scid": 341,
+            "vcid": 3,
+            "max_frame_len": 1024,
+            "segment_header": false,
+            "security_header_len": 4,
+            "security_trailer_len": 2
+          }
+        ],
+        "maps": [
+          {
+            "scid": 341,
+            "vcid": 2,
+            "map_id": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 2,
+            "map_id": 5
+          },
+          {
+            "scid": 341,
+            "vcid": 2,
+            "map_id": 9,
+            "security_header_len": 3,
+            "security_trailer_len": 1
+          }
+        ]
+      },
+      "input_hex": "11550409000102031785",
+      "expect": {
+        "ok": true,
+        "accepted": false,
+        "reason": "ReservedFlags",
+        "reason_code": 3,
+        "error_kind": "ReservedValue",
+        "error_field": 77
+      }
+    },
+    {
+      "id": "tc-val-006",
+      "requirements": [
+        "TC-021",
+        "TC-003"
+      ],
+      "description": "(c) Reserved Spare 10, strict: ReservedSpare",
+      "operation": "validate",
+      "mode": "strict",
+      "config": {
+        "max_frame_len": 1024,
+        "fecf": true,
+        "vcs": [
+          {
+            "scid": 341,
+            "vcid": 1,
+            "max_frame_len": 1024,
+            "segment_header": false
+          },
+          {
+            "scid": 341,
+            "vcid": 2,
+            "max_frame_len": 1024,
+            "segment_header": true
+          },
+          {
+            "scid": 341,
+            "vcid": 3,
+            "max_frame_len": 1024,
+            "segment_header": false,
+            "security_header_len": 4,
+            "security_trailer_len": 2
+          }
+        ],
+        "maps": [
+          {
+            "scid": 341,
+            "vcid": 2,
+            "map_id": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 2,
+            "map_id": 5
+          },
+          {
+            "scid": 341,
+            "vcid": 2,
+            "map_id": 9,
+            "security_header_len": 3,
+            "security_trailer_len": 1
+          }
+        ]
+      },
+      "input_hex": "095504090001020334EB",
+      "expect": {
+        "ok": true,
+        "accepted": false,
+        "reason": "ReservedSpare",
+        "reason_code": 4,
+        "error_kind": "ReservedValue",
+        "error_field": 78
+      }
+    },
+    {
+      "id": "tc-val-007",
+      "requirements": [
+        "TC-021",
+        "TC-003",
+        "API-032"
+      ],
+      "description": "Reserved Spare 10, lenient: accepted",
+      "operation": "validate",
+      "mode": "lenient",
+      "config": {
+        "max_frame_len": 1024,
+        "fecf": true,
+        "vcs": [
+          {
+            "scid": 341,
+            "vcid": 1,
+            "max_frame_len": 1024,
+            "segment_header": false
+          },
+          {
+            "scid": 341,
+            "vcid": 2,
+            "max_frame_len": 1024,
+            "segment_header": true
+          },
+          {
+            "scid": 341,
+            "vcid": 3,
+            "max_frame_len": 1024,
+            "segment_header": false,
+            "security_header_len": 4,
+            "security_trailer_len": 2
+          }
+        ],
+        "maps": [
+          {
+            "scid": 341,
+            "vcid": 2,
+            "map_id": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 2,
+            "map_id": 5
+          },
+          {
+            "scid": 341,
+            "vcid": 2,
+            "map_id": 9,
+            "security_header_len": 3,
+            "security_trailer_len": 1
+          }
+        ]
+      },
+      "input_hex": "095504090001020334EB",
+      "expect": {
+        "ok": true,
+        "accepted": true,
+        "frame_len": 10
+      }
+    },
+    {
+      "id": "tc-val-008",
+      "requirements": [
+        "TC-021",
+        "TC-022"
+      ],
+      "description": "(c) VCID 4 is not configured: InvalidVcid",
+      "operation": "validate",
+      "mode": "strict",
+      "config": {
+        "max_frame_len": 1024,
+        "fecf": true,
+        "vcs": [
+          {
+            "scid": 341,
+            "vcid": 1,
+            "max_frame_len": 1024,
+            "segment_header": false
+          },
+          {
+            "scid": 341,
+            "vcid": 2,
+            "max_frame_len": 1024,
+            "segment_header": true
+          },
+          {
+            "scid": 341,
+            "vcid": 3,
+            "max_frame_len": 1024,
+            "segment_header": false,
+            "security_header_len": 4,
+            "security_trailer_len": 2
+          }
+        ],
+        "maps": [
+          {
+            "scid": 341,
+            "vcid": 2,
+            "map_id": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 2,
+            "map_id": 5
+          },
+          {
+            "scid": 341,
+            "vcid": 2,
+            "map_id": 9,
+            "security_header_len": 3,
+            "security_trailer_len": 1
+          }
+        ]
+      },
+      "input_hex": "01551009000102033614",
+      "expect": {
+        "ok": true,
+        "accepted": false,
+        "reason": "InvalidVcid",
+        "reason_code": 5,
+        "error_kind": "UnknownChannel",
+        "error_field": 2
+      }
+    },
+    {
+      "id": "tc-val-009",
+      "requirements": [
+        "TC-021"
+      ],
+      "description": "(c) Frame Length 17 above the VC's maximum 16: FrameTooLong",
+      "operation": "validate",
+      "mode": "strict",
+      "config": {
+        "max_frame_len": 1024,
+        "fecf": true,
+        "vcs": [
+          {
+            "scid": 341,
+            "vcid": 1,
+            "max_frame_len": 16,
+            "segment_header": false
+          }
+        ],
+        "maps": []
+      },
+      "input_hex": "015504100000000000000000000000B94E",
+      "expect": {
+        "ok": true,
+        "accepted": false,
+        "reason": "FrameTooLong",
+        "reason_code": 6,
+        "error_kind": "OutOfRange",
+        "error_field": 68
+      }
+    },
+    {
+      "id": "tc-val-010",
+      "requirements": [
+        "TC-021"
+      ],
+      "description": "(c) Frame Length 7 leaves no data field with FECF: FrameTooShort",
+      "operation": "validate",
+      "mode": "strict",
+      "config": {
+        "max_frame_len": 1024,
+        "fecf": true,
+        "vcs": [
+          {
+            "scid": 341,
+            "vcid": 1,
+            "max_frame_len": 1024,
+            "segment_header": false
+          },
+          {
+            "scid": 341,
+            "vcid": 2,
+            "max_frame_len": 1024,
+            "segment_header": true
+          },
+          {
+            "scid": 341,
+            "vcid": 3,
+            "max_frame_len": 1024,
+            "segment_header": false,
+            "security_header_len": 4,
+            "security_trailer_len": 2
+          }
+        ],
+        "maps": [
+          {
+            "scid": 341,
+            "vcid": 2,
+            "map_id": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 2,
+            "map_id": 5
+          },
+          {
+            "scid": 341,
+            "vcid": 2,
+            "map_id": 9,
+            "security_header_len": 3,
+            "security_trailer_len": 1
+          }
+        ]
+      },
+      "input_hex": "01550406000000",
+      "expect": {
+        "ok": true,
+        "accepted": false,
+        "reason": "FrameTooShort",
+        "reason_code": 7,
+        "error_kind": "InvalidField",
+        "error_field": 7
+      }
+    },
+    {
+      "id": "tc-val-011",
+      "requirements": [
+        "TC-021"
+      ],
+      "description": "(d) Frame Length 10, eleven octets present: LengthMismatch",
+      "operation": "validate",
+      "mode": "strict",
+      "config": {
+        "max_frame_len": 1024,
+        "fecf": true,
+        "vcs": [
+          {
+            "scid": 341,
+            "vcid": 1,
+            "max_frame_len": 1024,
+            "segment_header": false
+          },
+          {
+            "scid": 341,
+            "vcid": 2,
+            "max_frame_len": 1024,
+            "segment_header": true
+          },
+          {
+            "scid": 341,
+            "vcid": 3,
+            "max_frame_len": 1024,
+            "segment_header": false,
+            "security_header_len": 4,
+            "security_trailer_len": 2
+          }
+        ],
+        "maps": [
+          {
+            "scid": 341,
+            "vcid": 2,
+            "map_id": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 2,
+            "map_id": 5
+          },
+          {
+            "scid": 341,
+            "vcid": 2,
+            "map_id": 9,
+            "security_header_len": 3,
+            "security_trailer_len": 1
+          }
+        ]
+      },
+      "input_hex": "0155040904010203E0C000",
+      "expect": {
+        "ok": true,
+        "accepted": false,
+        "reason": "LengthMismatch",
+        "reason_code": 8,
+        "error_kind": "LengthMismatch",
+        "error_field": 68
+      }
+    },
+    {
+      "id": "tc-val-012",
+      "requirements": [
+        "TC-021"
+      ],
+      "description": "(d) Frame Length 10, nine octets present: LengthMismatch",
+      "operation": "validate",
+      "mode": "strict",
+      "config": {
+        "max_frame_len": 1024,
+        "fecf": true,
+        "vcs": [
+          {
+            "scid": 341,
+            "vcid": 1,
+            "max_frame_len": 1024,
+            "segment_header": false
+          },
+          {
+            "scid": 341,
+            "vcid": 2,
+            "max_frame_len": 1024,
+            "segment_header": true
+          },
+          {
+            "scid": 341,
+            "vcid": 3,
+            "max_frame_len": 1024,
+            "segment_header": false,
+            "security_header_len": 4,
+            "security_trailer_len": 2
+          }
+        ],
+        "maps": [
+          {
+            "scid": 341,
+            "vcid": 2,
+            "map_id": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 2,
+            "map_id": 5
+          },
+          {
+            "scid": 341,
+            "vcid": 2,
+            "map_id": 9,
+            "security_header_len": 3,
+            "security_trailer_len": 1
+          }
+        ]
+      },
+      "input_hex": "0155040904010203E0",
+      "expect": {
+        "ok": true,
+        "accepted": false,
+        "reason": "LengthMismatch",
+        "reason_code": 8,
+        "error_kind": "LengthMismatch",
+        "error_field": 68
+      }
+    },
+    {
+      "id": "tc-val-013",
+      "requirements": [
+        "TC-021"
+      ],
+      "description": "(d) Four octets, no complete header: LengthMismatch",
+      "operation": "validate",
+      "mode": "strict",
+      "config": {
+        "max_frame_len": 1024,
+        "fecf": true,
+        "vcs": [
+          {
+            "scid": 341,
+            "vcid": 1,
+            "max_frame_len": 1024,
+            "segment_header": false
+          },
+          {
+            "scid": 341,
+            "vcid": 2,
+            "max_frame_len": 1024,
+            "segment_header": true
+          },
+          {
+            "scid": 341,
+            "vcid": 3,
+            "max_frame_len": 1024,
+            "segment_header": false,
+            "security_header_len": 4,
+            "security_trailer_len": 2
+          }
+        ],
+        "maps": [
+          {
+            "scid": 341,
+            "vcid": 2,
+            "map_id": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 2,
+            "map_id": 5
+          },
+          {
+            "scid": 341,
+            "vcid": 2,
+            "map_id": 9,
+            "security_header_len": 3,
+            "security_trailer_len": 1
+          }
+        ]
+      },
+      "input_hex": "01550409",
+      "expect": {
+        "ok": true,
+        "accepted": false,
+        "reason": "LengthMismatch",
+        "reason_code": 8,
+        "error_kind": "LengthMismatch",
+        "error_field": 68
+      }
+    },
+    {
+      "id": "tc-val-014",
+      "requirements": [
+        "TC-021",
+        "TC-006"
+      ],
+      "description": "(e) One data bit flipped: FecfMismatch",
+      "operation": "validate",
+      "mode": "strict",
+      "config": {
+        "max_frame_len": 1024,
+        "fecf": true,
+        "vcs": [
+          {
+            "scid": 341,
+            "vcid": 1,
+            "max_frame_len": 1024,
+            "segment_header": false
+          },
+          {
+            "scid": 341,
+            "vcid": 2,
+            "max_frame_len": 1024,
+            "segment_header": true
+          },
+          {
+            "scid": 341,
+            "vcid": 3,
+            "max_frame_len": 1024,
+            "segment_header": false,
+            "security_header_len": 4,
+            "security_trailer_len": 2
+          }
+        ],
+        "maps": [
+          {
+            "scid": 341,
+            "vcid": 2,
+            "map_id": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 2,
+            "map_id": 5
+          },
+          {
+            "scid": 341,
+            "vcid": 2,
+            "map_id": 9,
+            "security_header_len": 3,
+            "security_trailer_len": 1
+          }
+        ]
+      },
+      "input_hex": "0155040904010303E0C0",
+      "expect": {
+        "ok": true,
+        "accepted": false,
+        "reason": "FecfMismatch",
+        "reason_code": 9,
+        "error_kind": "CrcMismatch",
+        "error_field": null
+      }
+    },
+    {
+      "id": "tc-val-015",
+      "requirements": [
+        "TC-022"
+      ],
+      "description": "MAP 7 on VC 2 is not configured: InvalidMapId",
+      "operation": "validate",
+      "mode": "strict",
+      "config": {
+        "max_frame_len": 1024,
+        "fecf": true,
+        "vcs": [
+          {
+            "scid": 341,
+            "vcid": 1,
+            "max_frame_len": 1024,
+            "segment_header": false
+          },
+          {
+            "scid": 341,
+            "vcid": 2,
+            "max_frame_len": 1024,
+            "segment_header": true
+          },
+          {
+            "scid": 341,
+            "vcid": 3,
+            "max_frame_len": 1024,
+            "segment_header": false,
+            "security_header_len": 4,
+            "security_trailer_len": 2
+          }
+        ],
+        "maps": [
+          {
+            "scid": 341,
+            "vcid": 2,
+            "map_id": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 2,
+            "map_id": 5
+          },
+          {
+            "scid": 341,
+            "vcid": 2,
+            "map_id": 9,
+            "security_header_len": 3,
+            "security_trailer_len": 1
+          }
+        ]
+      },
+      "input_hex": "0155080900C70102F0F7",
+      "expect": {
+        "ok": true,
+        "accepted": false,
+        "reason": "InvalidMapId",
+        "reason_code": 10,
+        "error_kind": "UnknownChannel",
+        "error_field": 3
+      }
+    },
+    {
+      "id": "tc-val-016",
+      "requirements": [
+        "TC-005"
+      ],
+      "description": "Type-C frame with a reserved Control Command, strict: ReservedControlCommand",
+      "operation": "validate",
+      "mode": "strict",
+      "config": {
+        "max_frame_len": 1024,
+        "fecf": true,
+        "vcs": [
+          {
+            "scid": 341,
+            "vcid": 1,
+            "max_frame_len": 1024,
+            "segment_header": false
+          },
+          {
+            "scid": 341,
+            "vcid": 2,
+            "max_frame_len": 1024,
+            "segment_header": true
+          },
+          {
+            "scid": 341,
+            "vcid": 3,
+            "max_frame_len": 1024,
+            "segment_header": false,
+            "security_header_len": 4,
+            "security_trailer_len": 2
+          }
+        ],
+        "maps": [
+          {
+            "scid": 341,
+            "vcid": 2,
+            "map_id": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 2,
+            "map_id": 5
+          },
+          {
+            "scid": 341,
+            "vcid": 2,
+            "map_id": 9,
+            "security_header_len": 3,
+            "security_trailer_len": 1
+          }
+        ]
+      },
+      "input_hex": "3155040700076DDF",
+      "expect": {
+        "ok": true,
+        "accepted": false,
+        "reason": "ReservedControlCommand",
+        "reason_code": 11,
+        "error_kind": "ReservedValue",
+        "error_field": 81
+      }
+    },
+    {
+      "id": "tc-val-017",
+      "requirements": [
+        "TC-005",
+        "API-032"
+      ],
+      "description": "The same frame in lenient mode is accepted",
+      "operation": "validate",
+      "mode": "lenient",
+      "config": {
+        "max_frame_len": 1024,
+        "fecf": true,
+        "vcs": [
+          {
+            "scid": 341,
+            "vcid": 1,
+            "max_frame_len": 1024,
+            "segment_header": false
+          },
+          {
+            "scid": 341,
+            "vcid": 2,
+            "max_frame_len": 1024,
+            "segment_header": true
+          },
+          {
+            "scid": 341,
+            "vcid": 3,
+            "max_frame_len": 1024,
+            "segment_header": false,
+            "security_header_len": 4,
+            "security_trailer_len": 2
+          }
+        ],
+        "maps": [
+          {
+            "scid": 341,
+            "vcid": 2,
+            "map_id": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 2,
+            "map_id": 5
+          },
+          {
+            "scid": 341,
+            "vcid": 2,
+            "map_id": 9,
+            "security_header_len": 3,
+            "security_trailer_len": 1
+          }
+        ]
+      },
+      "input_hex": "3155040700076DDF",
+      "expect": {
+        "ok": true,
+        "accepted": true,
+        "frame_len": 8
+      }
+    },
+    {
+      "id": "tc-val-018",
+      "requirements": [
+        "TC-021",
+        "TC-022"
+      ],
+      "description": "(c) a valid VCID with a SCID that is not expected: UnexpectedSpacecraft first",
+      "operation": "validate",
+      "mode": "strict",
+      "config": {
+        "max_frame_len": 1024,
+        "fecf": true,
+        "vcs": [
+          {
+            "scid": 341,
+            "vcid": 1,
+            "max_frame_len": 1024,
+            "segment_header": false
+          },
+          {
+            "scid": 341,
+            "vcid": 2,
+            "max_frame_len": 1024,
+            "segment_header": true
+          },
+          {
+            "scid": 341,
+            "vcid": 3,
+            "max_frame_len": 1024,
+            "segment_header": false,
+            "security_header_len": 4,
+            "security_trailer_len": 2
+          }
+        ],
+        "maps": [
+          {
+            "scid": 341,
+            "vcid": 2,
+            "map_id": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 2,
+            "map_id": 5
+          },
+          {
+            "scid": 341,
+            "vcid": 2,
+            "map_id": 9,
+            "security_header_len": 3,
+            "security_trailer_len": 1
+          }
+        ]
+      },
+      "input_hex": "03FF1009000102038FF3",
+      "expect": {
+        "ok": true,
+        "accepted": false,
+        "reason": "UnexpectedSpacecraft",
+        "reason_code": 2,
+        "error_kind": "UnknownChannel",
+        "error_field": 1
+      }
+    },
+    {
+      "id": "tc-val-019",
+      "requirements": [
+        "TC-021",
+        "TC-006"
+      ],
+      "description": "(e) FECF without a frame error but wrong FECF octets",
+      "operation": "validate",
+      "mode": "strict",
+      "config": {
+        "max_frame_len": 1024,
+        "fecf": true,
+        "vcs": [
+          {
+            "scid": 341,
+            "vcid": 1,
+            "max_frame_len": 1024,
+            "segment_header": false
+          },
+          {
+            "scid": 341,
+            "vcid": 2,
+            "max_frame_len": 1024,
+            "segment_header": true
+          },
+          {
+            "scid": 341,
+            "vcid": 3,
+            "max_frame_len": 1024,
+            "segment_header": false,
+            "security_header_len": 4,
+            "security_trailer_len": 2
+          }
+        ],
+        "maps": [
+          {
+            "scid": 341,
+            "vcid": 2,
+            "map_id": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 2,
+            "map_id": 5
+          },
+          {
+            "scid": 341,
+            "vcid": 2,
+            "map_id": 9,
+            "security_header_len": 3,
+            "security_trailer_len": 1
+          }
+        ]
+      },
+      "input_hex": "2155040900010203D159",
+      "expect": {
+        "ok": true,
+        "accepted": false,
+        "reason": "FecfMismatch",
+        "reason_code": 9,
+        "error_kind": "CrcMismatch",
+        "error_field": null
+      }
+    },
+    {
+      "id": "tc-val-020",
+      "requirements": [
+        "TC-021",
+        "API-070"
+      ],
+      "description": "Frame on VC 3 whose Security Header and Trailer leave no data: FrameTooShort",
+      "operation": "validate",
+      "mode": "strict",
+      "config": {
+        "max_frame_len": 1024,
+        "fecf": true,
+        "vcs": [
+          {
+            "scid": 341,
+            "vcid": 1,
+            "max_frame_len": 1024,
+            "segment_header": false
+          },
+          {
+            "scid": 341,
+            "vcid": 2,
+            "max_frame_len": 1024,
+            "segment_header": true
+          },
+          {
+            "scid": 341,
+            "vcid": 3,
+            "max_frame_len": 1024,
+            "segment_header": false,
+            "security_header_len": 4,
+            "security_trailer_len": 2
+          }
+        ],
+        "maps": [
+          {
+            "scid": 341,
+            "vcid": 2,
+            "map_id": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 2,
+            "map_id": 5
+          },
+          {
+            "scid": 341,
+            "vcid": 2,
+            "map_id": 9,
+            "security_header_len": 3,
+            "security_trailer_len": 1
+          }
+        ]
+      },
+      "input_hex": "01550C0C000000000000008C1D",
+      "expect": {
+        "ok": true,
+        "accepted": false,
+        "reason": "FrameTooShort",
+        "reason_code": 7,
+        "error_kind": "InvalidField",
+        "error_field": 7
+      }
+    }
+  ]
+}
