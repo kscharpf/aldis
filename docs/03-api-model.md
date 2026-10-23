@@ -206,13 +206,13 @@ The table is the registry. `cargo xtask fields --write` generates from it the Ru
 
 | Code | Name | Kind | Meaning | Used by | Defined by |
 |---|---|---|---|---|---|
-| 1 | `spacecraft_id` | field | Spacecraft Identifier | core | 132.0 §4.1.2.2.3; 232.0 §4.1.2.5; 732.0 §4.1.2.2.3; 732.1 §4.1.2.2.3 |
-| 2 | `vc_id` | field | Virtual Channel Identifier | core | 132.0 §4.1.2.3; 232.0 §4.1.2.6; 732.0 §4.1.2.3; 732.1 §4.1.2.4 |
-| 3 | `map_id` | field | Multiplexer Access Point Identifier | core | 232.0 §4.1.3.2.2.3; 732.1 §4.1.2.5 |
+| 1 | `spacecraft_id` | field | Spacecraft Identifier | core, tc | 132.0 §4.1.2.2.3; 232.0 §4.1.2.5; 732.0 §4.1.2.2.3; 732.1 §4.1.2.2.3 |
+| 2 | `vc_id` | field | Virtual Channel Identifier | core, tc | 132.0 §4.1.2.3; 232.0 §4.1.2.6; 732.0 §4.1.2.3; 732.1 §4.1.2.4 |
+| 3 | `map_id` | field | Multiplexer Access Point Identifier | core, tc | 232.0 §4.1.3.2.2.3; 732.1 §4.1.2.5 |
 | 4 | `packet_version` | field | Packet Version Number | core, spp, epp | 133.0 §4.1.3.2; 133.1 §4.1.2.2 |
 | 5 | `apid` | field | Application Process Identifier | core, spp | 133.0 §4.1.3.3.4 |
 | 6 | `sequence_count` | field | Packet Sequence Count or Packet Name | core | 133.0 §4.1.3.4.3 |
-| 7 | `frame_data_field` | field | Transfer Frame Data Field, as the frame layout places it | core | 132.0 §4.1.4; 232.0 §4.1.3; 732.0 §4.1.4; 732.1 §4.1.4; CMN-041 |
+| 7 | `frame_data_field` | field | Transfer Frame Data Field, as the frame layout places it | core, tc | 132.0 §4.1.4; 232.0 §4.1.3; 732.0 §4.1.4; 732.1 §4.1.4; CMN-041 |
 | 8 | `security_header_len` | parameter | Length of the Security Header on a Virtual Channel or MAP | core | 355.0 §4.1.1.1.4; API-071 |
 | 9 | `security_trailer_len` | parameter | Length of the Security Trailer on a Virtual Channel or MAP | core | 355.0 §4.1.2; API-071 |
 | 10 | `secured_fields` | parameter | Octet ranges of the Security Header, the data field, and the Security Trailer | core | 355.0 §4.1; API-070 |
@@ -259,7 +259,7 @@ The table is the registry. `cargo xtask fields --write` generates from it the Ru
 | 51 | `time_code` | parameter | Time code of a time secondary header layout | spp | 133.0 §4.1.4.2.2; SPP-008 |
 | 52 | `packet_len` | field | Total length of a packet in octets: the Encapsulation Packet's Packet Length field, or a Space Packet's primary header and Packet Data Field | spp, epp | 133.0 §4.1.2.2, §4.1.3.5; 133.1 §4.1.2.8 |
 | 53 | `max_packet_len` | parameter | Maximum Packet Length, a managed parameter | spp | 133.0 §5.2 Table 5-1 |
-| 54 | `user_len` | parameter | Length of the User Data Field a two-phase writer is finished with | spp | 133.0 §4.1.4.3; API-023 |
+| 54 | `user_len` | parameter | Length of the user data a two-phase writer is finished with: the User Data Field of a Space Packet, or the User Data of a TC Frame Data Unit | spp, tc | 133.0 §4.1.4.3; 232.0 §4.1.3.2.1; API-023 |
 | 55 | `sdu` | parameter | SDU that the segmenter splits across packets | spp | 133.0 §4.1.3.4.2; SPP-013 |
 | 56 | `max_user_len` | parameter | Largest User Data Field of one segment | spp | 133.0 §4.1.3.4.2; SPP-013 |
 | 57 | `epi` | field | Encapsulation Protocol ID | epp | 133.1 §4.1.2.3 |
@@ -272,3 +272,17 @@ The table is the registry. `cargo xtask fields --write` generates from it the Ru
 | 64 | `max_data_len` | parameter | Maximum Data Unit Length, a managed parameter | epp | 133.1 §5 Table 5-1 |
 | 65 | `ocf_type_flag` | field | Type Flag of the Operational Control Field, bit 0: Type-1 or Type-2 Report | core | 132.0 §4.1.5.4; 732.0 §4.1.5.4; 732.1 §4.1.5.2.1 |
 | 66 | `ocf_report_use` | field | Bit 1 of a Type-2 Report in the Operational Control Field: project-specific or SDLS Frame Security Report | core | 132.0 §4.1.5.5; 732.0 §4.1.5.5; 732.1 §4.1.5.2.2 |
+| 67 | `frame_version` | field | Transfer Frame Version Number | tc | 232.0 §4.1.2.2 |
+| 68 | `control_command_flag` | field | Control Command Flag, read with the Bypass Flag as the frame type of Table 4-1 | tc | 232.0 §4.1.2.3, Table 4-1 |
+| 69 | `tc_header_spare` | field | Reserved Spare of the TC Transfer Frame Primary Header, bits 4–5 | tc | 232.0 §4.1.2.4 |
+| 70 | `frame_len` | field | Frame Length: the total length of a frame in octets | tc | 232.0 §4.1.2.7 |
+| 71 | `max_frame_len` | parameter | Maximum Transfer Frame Length, a managed parameter of a Physical or Virtual Channel | tc | 232.0 §5 Tables 5-1, 5-3 |
+| 72 | `segment_header` | field | Segment Header of a TC Frame Data Unit | tc | 232.0 §4.1.3.2.2 |
+| 73 | `control_command` | field | Control Command in the data field of a Type-C TC frame | tc | 232.0 §4.1.3.3 |
+| 74 | `control_word_type` | field | Control Word Type of the CLCW, bit 0 | tc | 232.0 §4.2.1.2 |
+| 75 | `clcw_version` | field | CLCW Version Number, bits 1–2 | tc | 232.0 §4.2.1.3 |
+| 76 | `clcw_status` | field | Status Field of the CLCW, bits 3–5 | tc | 232.0 §4.2.1.4 |
+| 77 | `cop_in_effect` | field | COP in Effect of the CLCW, bits 6–7 | tc | 232.0 §4.2.1.5 |
+| 78 | `clcw_spare_14_15` | field | Reserved Spare of the CLCW, bits 14–15 | tc | 232.0 §4.2.1.7 |
+| 79 | `clcw_spare_23` | field | Reserved Spare of the CLCW, bit 23 | tc | 232.0 §4.2.1.10 |
+| 80 | `farm_b_counter` | field | FARM-B Counter of the CLCW, bits 21–22 | tc | 232.0 §4.2.1.9 |

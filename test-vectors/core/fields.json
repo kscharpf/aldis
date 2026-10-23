@@ -330,6 +330,76 @@
       "code": 66,
       "name": "ocf_report_use",
       "kind": "field"
+    },
+    {
+      "code": 67,
+      "name": "frame_version",
+      "kind": "field"
+    },
+    {
+      "code": 68,
+      "name": "control_command_flag",
+      "kind": "field"
+    },
+    {
+      "code": 69,
+      "name": "tc_header_spare",
+      "kind": "field"
+    },
+    {
+      "code": 70,
+      "name": "frame_len",
+      "kind": "field"
+    },
+    {
+      "code": 71,
+      "name": "max_frame_len",
+      "kind": "parameter"
+    },
+    {
+      "code": 72,
+      "name": "segment_header",
+      "kind": "field"
+    },
+    {
+      "code": 73,
+      "name": "control_command",
+      "kind": "field"
+    },
+    {
+      "code": 74,
+      "name": "control_word_type",
+      "kind": "field"
+    },
+    {
+      "code": 75,
+      "name": "clcw_version",
+      "kind": "field"
+    },
+    {
+      "code": 76,
+      "name": "clcw_status",
+      "kind": "field"
+    },
+    {
+      "code": 77,
+      "name": "cop_in_effect",
+      "kind": "field"
+    },
+    {
+      "code": 78,
+      "name": "clcw_spare_14_15",
+      "kind": "field"
+    },
+    {
+      "code": 79,
+      "name": "clcw_spare_23",
+      "kind": "field"
+    },
+    {
+      "code": 80,
+      "name": "farm_b_counter",
+      "kind": "field"
     }
   ]
 }
