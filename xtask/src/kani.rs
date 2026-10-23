@@ -132,6 +132,8 @@ pub fn run() -> Result<usize, String> {
         let stdout = String::from_utf8_lossy(&out.stdout);
         let outcomes = parse(&stdout);
         if outcomes.is_empty() {
+            // Kani reports a failure before any harness, such as goto-cc's, on stdout.
+            eprint!("{stdout}");
             eprint!("{}", String::from_utf8_lossy(&out.stderr));
             println!("error: {label}: no harness reported (exit {})", out.status);
             problems += 1;

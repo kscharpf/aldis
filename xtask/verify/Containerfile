@@ -30,7 +30,9 @@ RUN mkdir -p /opt/aldis-cpp \
         --downloads /tmp/aldis-cpp-downloads --tools-dir /opt/aldis-cpp/tools install all \
  && rm -rf /tmp/aldis-cpp-downloads /var/lib/apt/lists/* \
  && ln -s "$(command -v gcc-14)" /usr/local/bin/cc \
- && ln -s "$(command -v g++-14)" /usr/local/bin/c++
+ && ln -s "$(command -v gcc-14)" /usr/local/bin/gcc \
+ && ln -s "$(command -v g++-14)" /usr/local/bin/c++ \
+ && ln -s "$(command -v g++-14)" /usr/local/bin/g++
 
 # Rust: rustup-init 1.29.1, checked against its published SHA-256, then the pinned toolchains and
 # cargo tools. cbindgen generates include/aldis/aldis.h (CABI-002; MPL-2.0, VER-055); its version
@@ -73,7 +75,8 @@ RUN apt-get update -q \
 # bundle (kani-compiler and CBMC) is checked against the SHA-256 that GitHub records for the
 # release asset, then installed from the local file, so that `cargo kani setup` downloads only
 # the nightly it is built against, through rustup. The driver comes from crates.io with its lock
-# file; its version is also pinned in xtask/src/kani.rs, which refuses another.
+# file; its version is also pinned in xtask/src/kani.rs, which refuses another. CBMC's goto-cc
+# preprocesses with `gcc`, linked to gcc-14 above.
 ENV KANI_HOME=/opt/kani
 RUN case "$TARGETARCH" in \
       amd64) triple=x86_64-unknown-linux-gnu; sha=32e2b484d73ede0bbf64a2cf0879c4259422497d8aec4ee67d448de9ae7843d3 ;; \
