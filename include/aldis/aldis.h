@@ -659,6 +659,77 @@
 #define ALDIS_FIELD_OCF_REPORT_USE 66
 
 /**
+ * Transfer Frame Version Number.
+ *
+ * Code 67, a field (132.0 §4.1.2.2.2; API-082, CABI-021).
+ */
+#define ALDIS_FIELD_FRAME_VERSION 67
+
+/**
+ * Transfer Frame Length of a physical channel with fixed-length frames, a managed parameter.
+ *
+ * Code 68, a parameter (132.0 §4.1.1.2, §5.1 Table 5-1; API-082, CABI-021).
+ */
+#define ALDIS_FIELD_FRAME_LEN 68
+
+/**
+ * Operational Control Field Flag.
+ *
+ * Code 69, a field (132.0 §4.1.2.4; API-082, CABI-021).
+ */
+#define ALDIS_FIELD_OCF_FLAG 69
+
+/**
+ * Transfer Frame Secondary Header Flag.
+ *
+ * Code 70, a field (132.0 §4.1.2.7.2; API-082, CABI-021).
+ */
+#define ALDIS_FIELD_FSH_FLAG 70
+
+/**
+ * Synchronization Flag of the TM Transfer Frame Data Field Status.
+ *
+ * Code 71, a field (132.0 §4.1.2.7.3; API-082, CABI-021).
+ */
+#define ALDIS_FIELD_SYNC_FLAG 71
+
+/**
+ * Packet Order Flag.
+ *
+ * Code 72, a field (132.0 §4.1.2.7.4; API-082, CABI-021).
+ */
+#define ALDIS_FIELD_PACKET_ORDER_FLAG 72
+
+/**
+ * Segment Length Identifier.
+ *
+ * Code 73, a field (132.0 §4.1.2.7.5; API-082, CABI-021).
+ */
+#define ALDIS_FIELD_SEGMENT_LENGTH_ID 73
+
+/**
+ * First Header Pointer.
+ *
+ * Code 74, a field (132.0 §4.1.2.7.6; API-082, CABI-021).
+ */
+#define ALDIS_FIELD_FIRST_HEADER_POINTER 74
+
+/**
+ * Transfer Frame Secondary Header Version Number.
+ *
+ * Code 75, a field (132.0 §4.1.3.2.2; API-082, CABI-021).
+ */
+#define ALDIS_FIELD_FSH_VERSION 75
+
+/**
+ * Total length of the Transfer Frame Secondary Header in octets: its Length field plus one, and
+ * the `MC_FSH` or `VC_FSH` Length managed parameter.
+ *
+ * Code 76, a field (132.0 §4.1.3.2.3, §5.2 Table 5-2, §5.3 Table 5-3; API-082, CABI-021).
+ */
+#define ALDIS_FIELD_FSH_LEN 76
+
+/**
  * Alignment, in octets, of every helper's storage: a C caller gets it with a `uint64_t`
  * array (CABI-031).
  */
