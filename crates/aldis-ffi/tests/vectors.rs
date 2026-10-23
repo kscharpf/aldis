@@ -1,5 +1,6 @@
-//! Runs every live case of `test-vectors/{time,spp,epp}/` through the `extern "C"` functions of
-//! `aldis-ffi`, with the testkit's runner and exact comparison (M2 plan D4; TV-012, VER-021,
+//! Runs every live case of `test-vectors/{time,spp,epp}/`, and of the files of `test-vectors/core/`
+//! whose functions have a C ABI (`crc16`, `ocf`, `oid`; M2 plan D14), through the `extern "C"`
+//! functions of `aldis-ffi`, with the testkit's runner and exact comparison (M2 plan D4; TV-012, VER-021,
 //! CABI-012, CABI-020, CABI-021). The handlers build the C structs from the vector's raw values,
 //! call the C ABI, and write the outputs from the C structs, so every value the vectors check
 //! crosses the ABI, including the field codes of errors (M2 plan D3).
@@ -21,7 +22,10 @@ use aldis::core::{Anomaly, ErrorKind, FieldId};
 use aldis::epp::EppAnomaly;
 use aldis::spp::SppAnomaly;
 use aldis::time::TimeAnomaly;
+use aldis_ffi::crc::aldis_crc16;
 use aldis_ffi::epp::*;
+use aldis_ffi::ocf::*;
+use aldis_ffi::oid::*;
 use aldis_ffi::spp::*;
 use aldis_ffi::spp_state::*;
 use aldis_ffi::time::*;
@@ -1367,6 +1371,119 @@ fn epp_run(case: &CodecCase) -> R<Value> {
     }
 }
 
+// ---------------------------------------------------------------- aldis-core: CRC, OCF, OID
+
+/// An OID generator of one form in storage of its own (CABI-031): the storage, and the handle
+/// into it.
+struct Oid {
+    _words: Vec<u64>,
+    h: *mut aldis_oid_generator_t,
+}
+
+impl Oid {
+    fn new(form: u32) -> Oid {
+        let mut words = storage(aldis_oid_generator_storage_size());
+        let mut h = core::ptr::null_mut();
+        // SAFETY: `words` is live, aligned storage of the published size.
+        call(|e| unsafe {
+            aldis_oid_generator_init(
+                words.as_mut_ptr().cast(),
+                words.len() * 8,
+                form,
+                &raw mut h,
+                e,
+            )
+        })
+        .unwrap_or_else(|f| panic!("aldis_oid_generator_init: {}", f.kind));
+        Oid { _words: words, h }
+    }
+
+    /// The next `len` octets, from `aldis_oid_generator_fill`.
+    fn fill(&self, len: usize) -> Vec<u8> {
+        let mut out = vec![0_u8; len];
+        // SAFETY: `h` is the handle of the live storage; `out` is a live vector.
+        call(|e| unsafe { aldis_oid_generator_fill(self.h, out.as_mut_ptr(), len, e) })
+            .unwrap_or_else(|f| panic!("aldis_oid_generator_fill: {}", f.kind));
+        out
+    }
+}
+
+impl Drop for Oid {
+    fn drop(&mut self) {
+        // SAFETY: `h` is the handle of the storage this struct still owns.
+        unsafe { aldis_oid_generator_deinit(self.h) }
+    }
+}
+
+/// Fills of `lens` octets from one generator of each form, which must agree (CMN-022).
+fn oid_fills(lens: &[usize]) -> Vec<String> {
+    let (fib, gal) = (Oid::new(ALDIS_OID_FIBONACCI), Oid::new(ALDIS_OID_GALOIS));
+    lens.iter()
+        .map(|&len| {
+            let out = fib.fill(len);
+            assert_eq!(out, gal.fill(len), "the Galois form differs (CMN-022)");
+            hex::encode(&out)
+        })
+        .collect()
+}
+
+fn ocf_report_name(report: u32) -> &'static str {
+    match report {
+        ALDIS_OCF_CLCW => "clcw",
+        ALDIS_OCF_PROJECT_SPECIFIC => "project_specific",
+        ALDIS_OCF_SDLS_FSR => "sdls_fsr",
+        other => panic!("unknown report {other}"),
+    }
+}
+
+fn core_run(case: &CodecCase) -> R<Value> {
+    match case.operation.as_str() {
+        "crc16" => {
+            let data = input(case);
+            let mut crc = 0_u16;
+            // SAFETY: every pointer is to a live local or vector.
+            call(|e| unsafe { aldis_crc16(data.as_ptr(), data.len(), &raw mut crc, e) })?;
+            Ok(json!({ "value_hex": format!("{crc:04X}") }))
+        }
+        "oid_fill" => {
+            let outputs = oid_fills(&[usize_of(&params(case), "octets")]);
+            Ok(json!({ "output_hex": outputs[0] }))
+        }
+        "oid_fill_sequence" => {
+            let lens: Vec<usize> = param(case, "fills")
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|n| usize::try_from(n.as_u64().unwrap()).unwrap())
+                .collect();
+            Ok(json!({ "outputs_hex": oid_fills(&lens) }))
+        }
+        "ocf_classify" => {
+            let octets = input(case);
+            let mut report = u32::MAX;
+            // SAFETY: every pointer is to a live local or vector.
+            call(|e| unsafe {
+                aldis_ocf_classify(octets.as_ptr(), octets.len(), &raw mut report, e)
+            })?;
+            // The OCF crosses the ABI as the caller's octets: classifying never changes them.
+            Ok(json!({ "report": ocf_report_name(report), "octets_hex": hex::encode(&octets) }))
+        }
+        "ocf_report" => {
+            let octets = input(case);
+            let report = match str_of(&params(case), "report") {
+                "clcw" => ALDIS_OCF_CLCW,
+                "project_specific" => ALDIS_OCF_PROJECT_SPECIFIC,
+                "sdls_fsr" => ALDIS_OCF_SDLS_FSR,
+                other => panic!("{}: unknown report {other}", case.id),
+            };
+            // SAFETY: every pointer is to a live vector.
+            call(|e| unsafe { aldis_ocf_check(octets.as_ptr(), octets.len(), report, e) })?;
+            Ok(json!({ "octets_hex": hex::encode(&octets) }))
+        }
+        op => panic!("{}: unsupported operation {op}", case.id),
+    }
+}
+
 // ---------------------------------------------------------------- tests
 
 macro_rules! vector_test {
@@ -1380,6 +1497,9 @@ macro_rules! vector_test {
     };
 }
 
+vector_test!(core_crc16, "core", "crc16", core_run);
+vector_test!(core_ocf, "core", "ocf", core_run);
+vector_test!(core_oid, "core", "oid", core_run);
 vector_test!(time_pfield, "time", "pfield", time_run);
 vector_test!(time_cuc, "time", "cuc", time_run);
 vector_test!(time_cds, "time", "cds", time_run);
