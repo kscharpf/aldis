@@ -360,19 +360,22 @@ pub fn encode(
             u64::from(content.ocf.is_some()),
         ));
     }
-    let mut writer = TmFrameWriter::start(out, plan)?;
-    writer
-        .secondary_header_data_mut()
-        .copy_from_slice(content.secondary_header_data);
-    writer
-        .security_header_mut()
-        .copy_from_slice(content.security_header);
-    writer.data_field_mut().copy_from_slice(content.data);
-    writer
-        .security_trailer_mut()
-        .copy_from_slice(content.security_trailer);
+    let writer = TmFrameWriter::start(out, plan)?;
+    // Each field has the length checked above, so it fills its range exactly.
+    let layout = &writer.layout;
+    for (at, src) in [
+        (
+            layout.secondary().start.saturating_add(1),
+            content.secondary_header_data,
+        ),
+        (layout.security_header().start, content.security_header),
+        (layout.data().start, content.data),
+        (layout.security_trailer().start, content.security_trailer),
+    ] {
+        write_at(writer.frame, at, src);
+    }
     if let Some(ocf) = content.ocf {
-        write_at(writer.frame, writer.layout.ocf().start, &ocf.to_octets());
+        write_at(writer.frame, layout.ocf().start, &ocf.to_octets());
     }
     Ok(writer.finish())
 }
