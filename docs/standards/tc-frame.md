@@ -33,6 +33,17 @@ Control commands (Type-C data field): **Unlock** = `00`; **Set V(R)** = `82 00 v
 | Virtual channel | VCID, Segment Header present, data field content (Packets/VCA_SDU, if no Segment Header), valid MAP IDs, blocking permitted, repetitions (Type-A, Type-BC), `SecurityLayout` (per VC, or per MAP) |
 | MAP | MAP ID, content (Packets/MAP_SDU), blocking, segmentation, max MAP_SDU length, max FDU length (≤ 1019) |
 
+The codec keeps the parameters it reads, in `aldis_tc::config`; the others belong to the engines that use them (M4: data field content, blocking, segmentation, the MAP_SDU and FDU limits, repetitions, frames per data unit, the multiplexing schemes, the CLCW reporting rate):
+
+| Type | Parameters | Checked by its constructor |
+|---|---|---|
+| `PhysicalChannelConfig` | Maximum Transfer Frame Length, FECF present (Table 5-1) | 6 (8 with FECF) to 1024 octets |
+| `VcConfig` | SCID, VCID, Maximum Transfer Frame Length, `SegmentHeaderUse::{Absent(SecurityLayout), Present}` (Tables 5-3, 6-2) | 6 to 1024 octets |
+| `MapConfig` | SCID, VCID, MAP ID, `SecurityLayout` (Tables 5-4, 6-3) | — |
+| `VcTable<V, M>` | the channels of one Physical Channel; implements the `VcLookup` trait the decoder, writers, and validator take (M2 D14). The valid SCIDs (Table 5-1) and each Master Channel's valid VCIDs (Table 5-2) are those of its Virtual Channels | VCs and MAPs unique; a MAP only on a VC with Segment Headers; every VC and MAP leaves at least one data octet in its longest frame (CMN-041); at most `V` VCs and `M` MAPs |
+
+A frame's limit is the smaller of its Virtual and Physical Channel's maximum. The Master Channel's own maximum (Table 5-2) is not kept separately: each of its Virtual Channels carries one.
+
 ## 3. Frame requirements
 
 | ID | Requirement | Source | Verif. |
@@ -54,6 +65,30 @@ Control commands (Type-C data field): **Unlock** = `00`; **Set V(R)** = `82 00 v
 | TC-021 | `validate_frame(&config)` SHALL implement the **Frame Validation Checks**: (a) expected TFVN; (b) expected MCID (TFVN + SCID); (c) header values consistent with implemented features (VCID valid, flags not reserved, Segment Header consistent); (d) Frame Length consistent with the octets present; (e) FECF matches if present. Each failure SHALL be reported with a distinct reason. | §4.4.9.3.3 | V |
 | TC-022 | Frames with an invalid VCID SHALL be discarded with reason `InvalidVcid`. FDUs with an invalid MAP ID SHALL be discarded with reason `InvalidMapId`. | §4.4.7.3, §4.4.3.3 | V |
 | TC-023 | Validation SHALL be applied identically to Type-A and Type-B frames, before any FARM-1 processing. | §4.4.9.3.1 | T |
+
+### 4.1 Check order and validation reasons
+
+`TcFrame::decode` and `validate_frame` run one sequence of checks (`aldis_tc::view`), in the order of the Frame Validation Checks of §4.4.9.3.3, and stop at the first failure. `validate_frame` takes the octets of exactly one frame, as the delimiter yields them, and reports a `Rejection`: the reason below and the decoder's error. `decode` accepts octets after the frame (API-011) and reports only the error. Each reason has a stable numeric code, shared with the C ABI (M2 D14). Reasons 4 and 11 occur only in strict mode; in lenient mode the deviation is an anomaly flag (§6).
+
+| Code | Reason | Check | Condition | Decoder error (field) |
+|---|---|---|---|---|
+| 1 | `UnexpectedVersion` | (a) | TFVN ≠ `00` (§4.1.2.2.2) | `UnsupportedVersion` (`frame_version`) |
+| 2 | `UnexpectedSpacecraft` | (b) | SCID not among the valid SCIDs of the Physical Channel | `UnknownChannel` (`spacecraft_id`) |
+| 3 | `ReservedFlags` | (c) | Bypass Flag `0`, Control Command Flag `1` (Table 4-1) | `ReservedValue` (`control_command_flag`) |
+| 4 | `ReservedSpare` | (c) | Reserved Spare ≠ `00`, strict mode (§4.1.2.4.2) | `ReservedValue` (`tc_header_spare`) |
+| 5 | `InvalidVcid` | (c), TC-022 | VCID not valid on the Master Channel (§4.4.7.3) | `UnknownChannel` (`vc_id`) |
+| 6 | `FrameTooLong` | (c) | Frame Length above the VC's or the Physical Channel's maximum (Tables 5-1, 5-3) | `OutOfRange` (`frame_len`) |
+| 7 | `FrameTooShort` | (c) | no data octet after the Primary Header, a Segment Header the frame must have, and the FECF; checked again with the Security Header and Trailer once the MAP is known ([OI-41](../09-open-issues.md) item 1) | `InvalidField` (`frame_data_field`) |
+| 8 | `LengthMismatch` | (d) | octets present ≠ Frame Length, or fewer than 5 | `LengthMismatch` (`frame_len`) when validating; `Incomplete` when decoding fewer octets than the frame |
+| 9 | `FecfMismatch` | (e) | FECF configured and wrong (§4.1.4.3) | `CrcMismatch` |
+| 10 | `InvalidMapId` | TC-022 | MAP ID of the Segment Header not valid on the VC (§4.4.3.3) | `UnknownChannel` (`map_id`) |
+| 11 | `ReservedControlCommand` | TC-005 | Type-C data field neither Unlock nor Set V(R), strict mode (§4.1.3.3.4) | `ReservedValue` (`control_command`) |
+
+The FECF is checked before the Segment Header is read, so a bit error in the MAP ID is reported as reason 9, not 10.
+
+### 4.2 Delimiting
+
+`next_frame(rest)` is stateless: it returns the next item of the octets not yet delimited, and the caller skips its length (M2 D14). `FrameDelimiter` iterates with it. An item is a `Frame`, a `TruncatedFrame` (the rest, discarded; §4.4.9.2.5), or `Fill` (the rest, discarded; §4.4.9.2.6). The next octets form a **valid header** when there are at least five of them, the TFVN is `00`, and the Frame Length declares at least six octets (§4.1.1, §4.1.2.7); the Fill Data pattern `01010101` of §4.4.9.2.6 note 2 has TFVN `01` and is never a valid header ([OI-41](../09-open-issues.md) item 2). A frame the delimiter yields still goes through `validate_frame`.
 
 ## 5. CLCW
 
@@ -83,8 +118,16 @@ Control commands (Type-C data field): **Unlock** = `00`; **Set V(R)** = `82 00 v
 
 ## 6. Anomaly flags (lenient mode)
 
-`TcAnomaly::{ReservedSpareSet, UnknownControlCommand, ClcwSpareSet}`
+`TcAnomaly`, with the bit indices shared with the C ABI (API-033):
+
+| Bit | Flag | Raised when (lenient mode only) |
+|---|---|---|
+| 0 | `ReservedSpareSet` | Reserved Spare of the Primary Header ≠ `00` (§4.1.2.4.2; TC-003) |
+| 1 | `UnknownControlCommand` | a Type-C data field that is neither Unlock nor Set V(R); the view keeps its octets in `data_field()` (§4.1.3.3.4; TC-005) |
+| 2 | `ClcwSpareSet` | a Reserved Spare of the CLCW, bits 14–15 or bit 23, not zero (§4.2.1.7.2, §4.2.1.10.2; TC-030) |
+
+The Control Word Type and the CLCW Version Number are errors in both modes (`InvalidField` naming `control_word_type`, `UnsupportedVersion` naming `clcw_version`; API-032).
 
 ## 7. Test-vector categories
 
-`tc/ad`, `tc/bd`, `tc/bc_unlock`, `tc/bc_setvr`, `tc/segment_header`, `tc/max_length`, `tc/delimit_multiple_frames_with_fill`, `tc/validation_failures` (one per check a–e), `tc/clcw`.
+`tc/ad`, `tc/bd`, `tc/bc_unlock`, `tc/bc_setvr`, `tc/segment_header`, `tc/max_length`, `tc/delimit_multiple_frames_with_fill`, `tc/validation_failures` (one per check a–e, and every reason of §4.1), `tc/clcw`; and `tc/decode_errors` (the decoder's errors and lenient anomalies) and `tc/config` (the managed parameters of §2).

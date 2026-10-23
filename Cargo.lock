@@ -100,6 +100,8 @@ name = "aldis-tc"
 version = "0.2.0"
 dependencies = [
  "aldis-core",
+ "aldis-testkit",
+ "serde_json",
 ]
 
 [[package]]
@@ -109,6 +111,7 @@ dependencies = [
  "aldis-core",
  "aldis-epp",
  "aldis-spp",
+ "aldis-tc",
  "aldis-time",
  "proptest",
  "schemars",
