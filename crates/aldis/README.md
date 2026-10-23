@@ -17,7 +17,7 @@ Outside the layers of the [architecture](../../docs/01-architecture.md) §2: it 
 | `spp` | `aldis::spp` | [`aldis-spp`](../aldis-spp/README.md), without its feature `time` | Implemented (M1) |
 | `spp-time` | `aldis::spp` and `aldis::time` | `aldis-spp` with its feature `time`: the typed time secondary header (SPP-008) | Implemented (M1) |
 | `epp` | `aldis::epp` | [`aldis-epp`](../aldis-epp/README.md) | Implemented (M1) |
-| `tm` | `aldis::tm` | [`aldis-tm`](../aldis-tm/README.md) | Skeleton (M2) |
+| `tm` | `aldis::tm` | [`aldis-tm`](../aldis-tm/README.md) | Implemented (M2; C ABI to follow) |
 | `tc` | `aldis::tc` | [`aldis-tc`](../aldis-tc/README.md) | Skeleton (M2) |
 | `aos` | `aldis::aos` | [`aldis-aos`](../aldis-aos/README.md) | Skeleton (M2) |
 | `uslp` | `aldis::uslp` | [`aldis-uslp`](../aldis-uslp/README.md) | Skeleton (M2) |
