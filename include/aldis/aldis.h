@@ -567,9 +567,10 @@
 #define ALDIS_FIELD_MAX_PACKET_LEN 53
 
 /**
- * Length of the User Data Field a two-phase writer is finished with.
+ * Length of the user data a two-phase writer is finished with: the User Data Field of a Space
+ * Packet, or the User Data of a TC Frame Data Unit.
  *
- * Code 54, a parameter (133.0 §4.1.4.3; API-023; API-082, CABI-021).
+ * Code 54, a parameter (133.0 §4.1.4.3; 232.0 §4.1.3.2.1; API-023; API-082, CABI-021).
  */
 #define ALDIS_FIELD_USER_LEN 54
 
@@ -657,6 +658,104 @@
  * Code 66, a field (132.0 §4.1.5.5; 732.0 §4.1.5.5; 732.1 §4.1.5.2.2; API-082, CABI-021).
  */
 #define ALDIS_FIELD_OCF_REPORT_USE 66
+
+/**
+ * Transfer Frame Version Number.
+ *
+ * Code 67, a field (232.0 §4.1.2.2; API-082, CABI-021).
+ */
+#define ALDIS_FIELD_FRAME_VERSION 67
+
+/**
+ * Control Command Flag, read with the Bypass Flag as the frame type of Table 4-1.
+ *
+ * Code 68, a field (232.0 §4.1.2.3, Table 4-1; API-082, CABI-021).
+ */
+#define ALDIS_FIELD_CONTROL_COMMAND_FLAG 68
+
+/**
+ * Reserved Spare of the TC Transfer Frame Primary Header, bits 4–5.
+ *
+ * Code 69, a field (232.0 §4.1.2.4; API-082, CABI-021).
+ */
+#define ALDIS_FIELD_TC_HEADER_SPARE 69
+
+/**
+ * Frame Length: the total length of a frame in octets.
+ *
+ * Code 70, a field (232.0 §4.1.2.7; API-082, CABI-021).
+ */
+#define ALDIS_FIELD_FRAME_LEN 70
+
+/**
+ * Maximum Transfer Frame Length, a managed parameter of a Physical or Virtual Channel.
+ *
+ * Code 71, a parameter (232.0 §5 Tables 5-1, 5-3; API-082, CABI-021).
+ */
+#define ALDIS_FIELD_MAX_FRAME_LEN 71
+
+/**
+ * Segment Header of a TC Frame Data Unit.
+ *
+ * Code 72, a field (232.0 §4.1.3.2.2; API-082, CABI-021).
+ */
+#define ALDIS_FIELD_SEGMENT_HEADER 72
+
+/**
+ * Control Command in the data field of a Type-C TC frame.
+ *
+ * Code 73, a field (232.0 §4.1.3.3; API-082, CABI-021).
+ */
+#define ALDIS_FIELD_CONTROL_COMMAND 73
+
+/**
+ * Control Word Type of the CLCW, bit 0.
+ *
+ * Code 74, a field (232.0 §4.2.1.2; API-082, CABI-021).
+ */
+#define ALDIS_FIELD_CONTROL_WORD_TYPE 74
+
+/**
+ * CLCW Version Number, bits 1–2.
+ *
+ * Code 75, a field (232.0 §4.2.1.3; API-082, CABI-021).
+ */
+#define ALDIS_FIELD_CLCW_VERSION 75
+
+/**
+ * Status Field of the CLCW, bits 3–5.
+ *
+ * Code 76, a field (232.0 §4.2.1.4; API-082, CABI-021).
+ */
+#define ALDIS_FIELD_CLCW_STATUS 76
+
+/**
+ * COP in Effect of the CLCW, bits 6–7.
+ *
+ * Code 77, a field (232.0 §4.2.1.5; API-082, CABI-021).
+ */
+#define ALDIS_FIELD_COP_IN_EFFECT 77
+
+/**
+ * Reserved Spare of the CLCW, bits 14–15.
+ *
+ * Code 78, a field (232.0 §4.2.1.7; API-082, CABI-021).
+ */
+#define ALDIS_FIELD_CLCW_SPARE_14_15 78
+
+/**
+ * Reserved Spare of the CLCW, bit 23.
+ *
+ * Code 79, a field (232.0 §4.2.1.10; API-082, CABI-021).
+ */
+#define ALDIS_FIELD_CLCW_SPARE_23 79
+
+/**
+ * FARM-B Counter of the CLCW, bits 21–22.
+ *
+ * Code 80, a field (232.0 §4.2.1.9; API-082, CABI-021).
+ */
+#define ALDIS_FIELD_FARM_B_COUNTER 80
 
 /**
  * Alignment, in octets, of every helper's storage: a C caller gets it with a `uint64_t`
