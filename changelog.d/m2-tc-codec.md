@@ -14,4 +14,4 @@
 - `aldis-testkit`: TC strategies (feature `strategies-tc`); `aldis-tc` property tests.
 - Fuzz targets `tc_decode`, `tc_roundtrip`, `tc_delimit`, and `tc_clcw`; the `aldis-tc` exerciser
   group; `aldis-tc` in the coverage gate, the `features` check, and the nightly mutants job.
-- OI-41: empty User Data in a TC frame, and what the delimiter takes as a valid header.
+- OI-41 (resolved): empty User Data in a TC frame is rejected, and the delimiter takes as a valid header at least five octets with TFVN `00` and a Frame Length of at least six.
