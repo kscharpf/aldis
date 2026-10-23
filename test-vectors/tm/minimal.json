@@ -1,0 +1,386 @@
+{
+  "kind": "codec",
+  "standard": "132.0-B-3 §4.1, §5",
+  "provenance": "hand-derived",
+  "provenance_note": "132.0-B-3 prints no example frame; only the first OID octets of Annex D. Cases hand-derived from 132.0-B-3 §4.1 (figures 4-1 to 4-4, the Data Field Status of §4.1.2.7, the Secondary Header of §4.1.3, OID frames of §4.1.4.6 and Annex D, the FECF of §4.1.6), §5 Tables 5-1 to 5-3, and §6.3, with the readings of docs/standards/tm-frame.md (TM-001...TM-011 and the anomaly list) and the error kinds and field codes of docs/03-api-model.md §9 and §9.1. Inputs assembled bit by bit from the figure widths; expected values computed by an independent Python model of those clauses, written from the Blue Book after the Rust codec but not from its code, and sharing no code with it (the FECF by polynomial division, the OID data by the Annex D recurrence). The model is committed as test-vectors/models/tm_frame.py (TV-023); `python3 -I test-vectors/models/tm_frame.py --check test-vectors/tm/*.json` recomputes every expected value. One frame is worked by hand in docs/verification/derivations/tm-frame.md.",
+  "cases": [
+    {
+      "id": "tm-min-dec-001",
+      "requirements": [
+        "TM-001",
+        "TM-002",
+        "TM-006",
+        "TM-008",
+        "API-010",
+        "API-012",
+        "GEN-013"
+      ],
+      "description": "16-octet frame, no FSH, OCF, FECF, or SDLS: 6-octet header, 10 data octets, FHP 0",
+      "operation": "decode",
+      "config": {
+        "frame_len": 16,
+        "fecf": false
+      },
+      "input_hex": "2A5A01021800D0D1D2D3D4D5D6D7D8D9",
+      "expect": {
+        "ok": true,
+        "scid": 677,
+        "vcid": 5,
+        "ocf_flag": false,
+        "mc_frame_count": 1,
+        "vc_frame_count": 2,
+        "fsh_flag": false,
+        "sync_flag": false,
+        "packet_order_flag": false,
+        "segment_length_id": 3,
+        "first_header_pointer": 0,
+        "pointer": "starts_at",
+        "packet_offset": 0,
+        "fsh_len": null,
+        "fsh_data_hex": null,
+        "security_header_hex": "",
+        "data_hex": "D0D1D2D3D4D5D6D7D8D9",
+        "security_trailer_hex": "",
+        "ocf_hex": null,
+        "ocf_report": null,
+        "fecf": null,
+        "consumed": 16,
+        "anomalies": []
+      }
+    },
+    {
+      "id": "tm-min-dec-002",
+      "requirements": [
+        "TM-001",
+        "TM-008",
+        "API-010"
+      ],
+      "description": "Highest SCID and VCID, counts 255, FHP 9 (the last data octet)",
+      "operation": "decode",
+      "config": {
+        "frame_len": 16,
+        "fecf": false
+      },
+      "input_hex": "3FFEFFFF180900000000000000000000",
+      "expect": {
+        "ok": true,
+        "scid": 1023,
+        "vcid": 7,
+        "ocf_flag": false,
+        "mc_frame_count": 255,
+        "vc_frame_count": 255,
+        "fsh_flag": false,
+        "sync_flag": false,
+        "packet_order_flag": false,
+        "segment_length_id": 3,
+        "first_header_pointer": 9,
+        "pointer": "starts_at",
+        "packet_offset": 9,
+        "fsh_len": null,
+        "fsh_data_hex": null,
+        "security_header_hex": "",
+        "data_hex": "00000000000000000000",
+        "security_trailer_hex": "",
+        "ocf_hex": null,
+        "ocf_report": null,
+        "fecf": null,
+        "consumed": 16,
+        "anomalies": []
+      }
+    },
+    {
+      "id": "tm-min-dec-003",
+      "requirements": [
+        "TM-001",
+        "TM-006",
+        "API-012"
+      ],
+      "description": "Shortest frame without FECF: 7 octets, one data octet",
+      "operation": "decode",
+      "config": {
+        "frame_len": 7,
+        "fecf": false
+      },
+      "input_hex": "0000000018005A",
+      "expect": {
+        "ok": true,
+        "scid": 0,
+        "vcid": 0,
+        "ocf_flag": false,
+        "mc_frame_count": 0,
+        "vc_frame_count": 0,
+        "fsh_flag": false,
+        "sync_flag": false,
+        "packet_order_flag": false,
+        "segment_length_id": 3,
+        "first_header_pointer": 0,
+        "pointer": "starts_at",
+        "packet_offset": 0,
+        "fsh_len": null,
+        "fsh_data_hex": null,
+        "security_header_hex": "",
+        "data_hex": "5A",
+        "security_trailer_hex": "",
+        "ocf_hex": null,
+        "ocf_report": null,
+        "fecf": null,
+        "consumed": 7,
+        "anomalies": []
+      }
+    },
+    {
+      "id": "tm-min-peek-001",
+      "requirements": [
+        "API-013"
+      ],
+      "description": "peek_length returns the configured length",
+      "operation": "peek_length",
+      "config": {
+        "frame_len": 1115,
+        "fecf": true
+      },
+      "input_hex": "00",
+      "expect": {
+        "ok": true,
+        "len": 1115
+      }
+    },
+    {
+      "id": "tm-min-peek-002",
+      "requirements": [
+        "API-013"
+      ],
+      "description": "peek_length of an empty prefix",
+      "operation": "peek_length",
+      "config": {
+        "frame_len": 16,
+        "fecf": false
+      },
+      "input_hex": "",
+      "expect": {
+        "ok": true,
+        "len": 16
+      }
+    },
+    {
+      "id": "tm-min-enc-001",
+      "requirements": [
+        "TM-009",
+        "API-020",
+        "API-021"
+      ],
+      "description": "Encode the frame of tm-min-dec-001",
+      "operation": "encode",
+      "config": {
+        "frame_len": 16,
+        "fecf": false,
+        "scid": 677,
+        "mc_fsh": null,
+        "mc_ocf": false,
+        "vcs": [
+          {
+            "vcid": 5,
+            "content": "packets",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "params": {
+        "vcid": 5,
+        "mc_frame_count": 1,
+        "vc_frame_count": 2,
+        "status": {
+          "sync": false,
+          "pointer": "starts_at",
+          "packet_offset": 0
+        },
+        "fsh_data_hex": "",
+        "security_header_hex": "",
+        "data_hex": "D0D1D2D3D4D5D6D7D8D9",
+        "security_trailer_hex": "",
+        "ocf_hex": null
+      },
+      "expect": {
+        "ok": true,
+        "output_hex": "2A5A01021800D0D1D2D3D4D5D6D7D8D9"
+      }
+    },
+    {
+      "id": "tm-min-enc-002",
+      "requirements": [
+        "TM-009",
+        "API-020"
+      ],
+      "description": "Encode with no packet start (FHP 0x7FF)",
+      "operation": "encode",
+      "config": {
+        "frame_len": 16,
+        "fecf": false,
+        "scid": 677,
+        "mc_fsh": null,
+        "mc_ocf": false,
+        "vcs": [
+          {
+            "vcid": 5,
+            "content": "packets",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "params": {
+        "vcid": 5,
+        "mc_frame_count": 128,
+        "vc_frame_count": 127,
+        "status": {
+          "sync": false,
+          "pointer": "no_packet_start"
+        },
+        "fsh_data_hex": "",
+        "security_header_hex": "",
+        "data_hex": "AAAAAAAAAAAAAAAAAAAA",
+        "security_trailer_hex": "",
+        "ocf_hex": null
+      },
+      "expect": {
+        "ok": true,
+        "output_hex": "2A5A807F1FFFAAAAAAAAAAAAAAAAAAAA"
+      }
+    },
+    {
+      "id": "tm-min-val-001",
+      "requirements": [
+        "TM-011"
+      ],
+      "description": "The frame of tm-min-dec-001 matches its channel",
+      "operation": "validate",
+      "config": {
+        "frame_len": 16,
+        "fecf": false,
+        "scid": 677,
+        "mc_fsh": null,
+        "mc_ocf": false,
+        "vcs": [
+          {
+            "vcid": 5,
+            "content": "packets",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "input_hex": "2A5A01021800D0D1D2D3D4D5D6D7D8D9",
+      "expect": {
+        "ok": true
+      }
+    },
+    {
+      "id": "tm-min-cfg-001",
+      "requirements": [
+        "API-040",
+        "TM-001"
+      ],
+      "description": "Physical channel of 7 octets, no FECF",
+      "operation": "config",
+      "config": {
+        "frame_len": 7,
+        "fecf": false
+      },
+      "expect": {
+        "ok": true
+      }
+    },
+    {
+      "id": "tm-min-cfg-002",
+      "requirements": [
+        "API-040",
+        "TM-011"
+      ],
+      "description": "Master channel with all eight VCs, packets and VCA_SDUs",
+      "operation": "config",
+      "config": {
+        "frame_len": 64,
+        "fecf": true,
+        "scid": 1,
+        "mc_fsh": null,
+        "mc_ocf": false,
+        "vcs": [
+          {
+            "vcid": 0,
+            "content": "packets",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "vcid": 1,
+            "content": "vca_sdu",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "vcid": 2,
+            "content": "packets",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "vcid": 3,
+            "content": "vca_sdu",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "vcid": 4,
+            "content": "packets",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "vcid": 5,
+            "content": "vca_sdu",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "vcid": 6,
+            "content": "packets",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "vcid": 7,
+            "content": "vca_sdu",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "expect": {
+        "ok": true
+      }
+    }
+  ]
+}

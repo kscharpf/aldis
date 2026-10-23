@@ -330,6 +330,56 @@
       "code": 66,
       "name": "ocf_report_use",
       "kind": "field"
+    },
+    {
+      "code": 67,
+      "name": "frame_version",
+      "kind": "field"
+    },
+    {
+      "code": 68,
+      "name": "frame_len",
+      "kind": "parameter"
+    },
+    {
+      "code": 69,
+      "name": "ocf_flag",
+      "kind": "field"
+    },
+    {
+      "code": 70,
+      "name": "fsh_flag",
+      "kind": "field"
+    },
+    {
+      "code": 71,
+      "name": "sync_flag",
+      "kind": "field"
+    },
+    {
+      "code": 72,
+      "name": "packet_order_flag",
+      "kind": "field"
+    },
+    {
+      "code": 73,
+      "name": "segment_length_id",
+      "kind": "field"
+    },
+    {
+      "code": 74,
+      "name": "first_header_pointer",
+      "kind": "field"
+    },
+    {
+      "code": 75,
+      "name": "fsh_version",
+      "kind": "field"
+    },
+    {
+      "code": 76,
+      "name": "fsh_len",
+      "kind": "field"
     }
   ]
 }

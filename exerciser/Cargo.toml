@@ -27,6 +27,7 @@ aldis-epp = { path = "../crates/aldis-epp", default-features = false }
 aldis-ffi = { path = "../crates/aldis-ffi", default-features = false, features = ["panic-unreachable"] }
 aldis-spp = { path = "../crates/aldis-spp", default-features = false, features = ["time"] }
 aldis-time = { path = "../crates/aldis-time", default-features = false }
+aldis-tm = { path = "../crates/aldis-tm", default-features = false }
 
 [build-dependencies]
 aldis-testkit = { path = "../crates/aldis-testkit" }
