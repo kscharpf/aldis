@@ -665,6 +665,52 @@
 #define ALDIS_STORAGE_ALIGN 8
 
 /**
+ * Length of the Operational Control Field in octets (132.0 §4.1.5.1, 732.0 §4.1.5.1,
+ * 732.1 §4.1.5.2; CMN-010).
+ */
+#define ALDIS_OCF_LEN 4
+
+/**
+ * Report: Type Flag (bit 0) `0`, a Type-1 Report, the CLCW, or on USLP a CLCW or a PLCW
+ * (132.0 §4.1.5.4 a, 732.0 §4.1.5.4 a, 732.1 §4.1.5.2.1 a; CMN-010, CMN-011).
+ */
+#define ALDIS_OCF_CLCW 0
+
+/**
+ * Report: bits 0–1 `10`, a project-specific Type-2 Report (132.0 §4.1.5.5 a, 732.0 §4.1.5.5 a,
+ * 732.1 §4.1.5.2.2 a; CMN-010).
+ */
+#define ALDIS_OCF_PROJECT_SPECIFIC 1
+
+/**
+ * Report: bits 0–1 `11`, a Type-2 Report holding an SDLS Frame Security Report
+ * (132.0 §4.1.5.5 b, 732.0 §4.1.5.5 b, 732.1 §4.1.5.2.2 b; CMN-010).
+ */
+#define ALDIS_OCF_SDLS_FSR 2
+
+/**
+ * [`aldis_oid_generator_init`] `form`: the Fibonacci form, the reference implementation
+ * (132.0 Annex D; CMN-020).
+ */
+#define ALDIS_OID_FIBONACCI 0
+
+/**
+ * [`aldis_oid_generator_init`] `form`: the Galois form, with the seed of 132.0 Annex D
+ * (CMN-022).
+ */
+#define ALDIS_OID_GALOIS 1
+
+/**
+ * Storage octets of one `aldis_oid_generator_t` (CABI-031; M2 plan D5, D14).
+ */
+#define ALDIS_OID_GENERATOR_STORAGE_SIZE 32
+
+/**
+ * Storage alignment of one `aldis_oid_generator_t` (CABI-031).
+ */
+#define ALDIS_OID_GENERATOR_STORAGE_ALIGN 8
+
+/**
  * [`aldis_spp_fields_t::packet_type`]: telemetry, Packet Type 0 (133.0 §4.1.3.3.2).
  */
 #define ALDIS_SPP_TELEMETRY 0
@@ -996,6 +1042,11 @@
 #define ALDIS_TIME_SUBSET_FRACTION (1 << 8)
 
 /**
+ * Handle of an OID generator in caller storage (CMN-020…023, CABI-032).
+ */
+typedef struct aldis_oid_generator_t aldis_oid_generator_t;
+
+/**
  * Handle of an SDU reassembler in caller storage (SPP-013, CABI-032).
  */
 typedef struct aldis_spp_reassembler_t aldis_spp_reassembler_t;
@@ -1009,6 +1060,55 @@ typedef struct aldis_spp_segmenter_t aldis_spp_segmenter_t;
  * Handle of a Packet Sequence Count tracker in caller storage (SPP-011, CABI-032).
  */
 typedef struct aldis_spp_tracker_t aldis_spp_tracker_t;
+
+/**
+ * Detail of a failed call, written only when the call fails (CABI-021, GEN-041).
+ *
+ * Every function takes an optional `aldis_error_detail_t *` as its last parameter; `NULL`
+ * is allowed. The caller sets `struct_size`, at least `ALDIS_ERROR_DETAIL_MIN_SIZE`; the
+ * library writes only the members that lie wholly inside it, never `struct_size` itself, so
+ * a later ABI version can append members (CABI-033). A smaller `struct_size`, or a
+ * misaligned pointer, fails the call with `ALDIS_ERR_INVALID_FIELD` before it does anything,
+ * and the detail is not written.
+ *
+ * A violation of CABI-022 (a `NULL` or misaligned pointer, an inconsistent length,
+ * overlapping buffers, a `struct_size` too small, or an enumeration value with no constant)
+ * is `ALDIS_ERR_INVALID_FIELD` with field 0 and no detail.
+ */
+typedef struct {
+  /**
+   * `sizeof(aldis_error_detail_t)`, set by the caller before the call (CABI-033).
+   */
+  uint32_t struct_size;
+  /**
+   * The error kind: its catalogue code, the negation of the returned status (03 §9).
+   */
+  uint32_t kind;
+  /**
+   * The field code of the field catalogue (03 §9.1, API-082), 0 for none.
+   */
+  uint16_t field;
+  /**
+   * `ALDIS_DETAIL_NONE`, `ALDIS_DETAIL_NEEDED`, or `ALDIS_DETAIL_EXPECTED`.
+   */
+  uint16_t detail;
+  /**
+   * Reserved, written as 0.
+   */
+  uint32_t reserved;
+  /**
+   * Octets (or bits, where documented) required, for `ALDIS_DETAIL_NEEDED`.
+   */
+  uint64_t needed;
+  /**
+   * The value or limit the standard or configuration requires, for `ALDIS_DETAIL_EXPECTED`.
+   */
+  uint64_t expected;
+  /**
+   * The value found, for `ALDIS_DETAIL_EXPECTED`.
+   */
+  uint64_t found;
+} aldis_error_detail_t;
 
 /**
  * A decoded Encapsulation Packet: its header and where its data field lies in the input
@@ -1060,55 +1160,6 @@ typedef struct {
    */
   size_t data_len;
 } aldis_epp_packet_t;
-
-/**
- * Detail of a failed call, written only when the call fails (CABI-021, GEN-041).
- *
- * Every function takes an optional `aldis_error_detail_t *` as its last parameter; `NULL`
- * is allowed. The caller sets `struct_size`, at least `ALDIS_ERROR_DETAIL_MIN_SIZE`; the
- * library writes only the members that lie wholly inside it, never `struct_size` itself, so
- * a later ABI version can append members (CABI-033). A smaller `struct_size`, or a
- * misaligned pointer, fails the call with `ALDIS_ERR_INVALID_FIELD` before it does anything,
- * and the detail is not written.
- *
- * A violation of CABI-022 (a `NULL` or misaligned pointer, an inconsistent length,
- * overlapping buffers, a `struct_size` too small, or an enumeration value with no constant)
- * is `ALDIS_ERR_INVALID_FIELD` with field 0 and no detail.
- */
-typedef struct {
-  /**
-   * `sizeof(aldis_error_detail_t)`, set by the caller before the call (CABI-033).
-   */
-  uint32_t struct_size;
-  /**
-   * The error kind: its catalogue code, the negation of the returned status (03 §9).
-   */
-  uint32_t kind;
-  /**
-   * The field code of the field catalogue (03 §9.1, API-082), 0 for none.
-   */
-  uint16_t field;
-  /**
-   * `ALDIS_DETAIL_NONE`, `ALDIS_DETAIL_NEEDED`, or `ALDIS_DETAIL_EXPECTED`.
-   */
-  uint16_t detail;
-  /**
-   * Reserved, written as 0.
-   */
-  uint32_t reserved;
-  /**
-   * Octets (or bits, where documented) required, for `ALDIS_DETAIL_NEEDED`.
-   */
-  uint64_t needed;
-  /**
-   * The value or limit the standard or configuration requires, for `ALDIS_DETAIL_EXPECTED`.
-   */
-  uint64_t expected;
-  /**
-   * The value found, for `ALDIS_DETAIL_EXPECTED`.
-   */
-  uint64_t found;
-} aldis_error_detail_t;
 
 /**
  * Managed parameters of the Encapsulation Packet Protocol (133.1 §5 Table 5-1; EPP-009,
@@ -1820,6 +1871,23 @@ extern "C" {
 #endif // __cplusplus
 
 /**
+ * The CRC-16 of the `len` octets at `data` (132.0 §4.1.6.2; CMN-001, CMN-004).
+ *
+ * The register is preset to all ones: `0x29B1` for the nine octets of `"123456789"`
+ * (CMN-002), `0xFFFF` for none. Over a whole frame including its FECF it is the syndrome, 0
+ * exactly when no error is detected (132.0 §4.1.6.3; CMN-003).
+ *
+ * # Errors
+ * CABI-022 violations: `data` `NULL` with `len` above 0, a range that wraps, or `crc` `NULL`
+ * or misaligned.
+ *
+ * # Safety
+ * `data` is valid for reads of `len` octets (or `NULL` with `len` 0); `crc` is valid for one
+ * write; `err` is `NULL` or valid for one write.
+ */
+int32_t aldis_crc16(const uint8_t *data, size_t len, uint16_t *crc, aldis_error_detail_t *err);
+
+/**
  * Decodes one Encapsulation Packet (133.1 §4.1; EPP-001…007, API-010, API-011, API-030).
  *
  * # Errors
@@ -2049,6 +2117,107 @@ int32_t aldis_epp_config_check(const aldis_epp_config_t *cfg, aldis_error_detail
  * `limits` is valid for a read of its `struct_size` and one write of `aldis_limits_t`.
  */
 int32_t aldis_limits(aldis_limits_t *limits);
+
+/**
+ * Classifies the four OCF octets at `ocf` by bits 0–1 (CMN-010).
+ *
+ * `report` receives `ALDIS_OCF_CLCW`, `ALDIS_OCF_PROJECT_SPECIFIC`, or `ALDIS_OCF_SDLS_FSR`
+ * (132.0 §4.1.5.4–5, 732.0 §4.1.5.4–5, 732.1 §4.1.5.2.1–2). Every four octets are an OCF, and
+ * the CLCW is not decoded (CMN-011).
+ *
+ * # Errors
+ * CABI-022 violations only: `ocf_len` other than `ALDIS_OCF_LEN`, `ocf` `NULL`, or `report`
+ * `NULL` or misaligned.
+ *
+ * # Safety
+ * `ocf` is valid for reads of `ocf_len` octets; `report` is valid for one write; `err` is
+ * `NULL` or valid for one write.
+ */
+int32_t aldis_ocf_classify(const uint8_t *ocf,
+                           size_t ocf_len,
+                           uint32_t *report,
+                           aldis_error_detail_t *err);
+
+/**
+ * Checks that the four OCF octets at `ocf` hold the report `report` (CMN-010).
+ *
+ * `report` is an `ALDIS_OCF_*` constant. A writer checks its report so before it places it in
+ * a frame (132.0 §4.1.5.4–5, 732.0 §4.1.5.4–5, 732.1 §4.1.5.2.1–2).
+ *
+ * # Errors
+ * `ALDIS_ERR_INVALID_FIELD` naming `ALDIS_FIELD_OCF_TYPE_FLAG` when the Type Flag is not the
+ * report's, or `ALDIS_FIELD_OCF_REPORT_USE` when bit 1 of a Type-2 Report is not, with the
+ * expected and found bit; CABI-022 violations (no field): `ocf_len` other than
+ * `ALDIS_OCF_LEN`, `ocf` `NULL`, or `report` not an `ALDIS_OCF_*` constant.
+ *
+ * # Safety
+ * `ocf` is valid for reads of `ocf_len` octets; `err` is `NULL` or valid for one write.
+ */
+int32_t aldis_ocf_check(const uint8_t *ocf,
+                        size_t ocf_len,
+                        uint32_t report,
+                        aldis_error_detail_t *err);
+
+/**
+ * The storage octets an `aldis_oid_generator_t` needs: `ALDIS_OID_GENERATOR_STORAGE_SIZE`
+ * (CABI-031).
+ */
+size_t aldis_oid_generator_storage_size(void);
+
+/**
+ * The storage alignment an `aldis_oid_generator_t` needs: `ALDIS_OID_GENERATOR_STORAGE_ALIGN`
+ * (CABI-031).
+ */
+size_t aldis_oid_generator_storage_align(void);
+
+/**
+ * Places an OID generator of the form `form` (`ALDIS_OID_FIBONACCI` or `ALDIS_OID_GALOIS`) in
+ * `storage`, in its device start-up state (132.0 §4.1.4.6.2, Annex D; CMN-020, CMN-022;
+ * CABI-031, CABI-032).
+ *
+ * # Errors
+ * `ALDIS_ERR_BUFFER_TOO_SMALL` (with `needed`) for storage smaller than
+ * `ALDIS_OID_GENERATOR_STORAGE_SIZE`; `ALDIS_ERR_INVALID_FIELD` for `NULL` or misaligned
+ * storage, or a `form` that is no `ALDIS_OID_*` constant; CABI-022 violations.
+ *
+ * # Safety
+ * `storage` is valid for writes of `storage_len` octets and outlives the handle; `out` is
+ * valid for one write; `err` is `NULL` or valid for one write.
+ */
+int32_t aldis_oid_generator_init(void *storage,
+                                 size_t storage_len,
+                                 uint32_t form,
+                                 aldis_oid_generator_t **out,
+                                 aldis_error_detail_t *err);
+
+/**
+ * Fills the `len` octets at `out` with the next `len` octets of the OID sequence (CMN-023).
+ *
+ * The octets are MSB first, and the generator advances by exactly `len` octets (132.0
+ * §4.1.4.6.2; CMN-020, CMN-021). The first 20 octets after `_init` are those of 132.0 Annex D.
+ *
+ * # Errors
+ * `ALDIS_ERR_INVALID_HANDLE`; CABI-022 violations, including `out` overlapping the storage. On
+ * error the generator is unchanged and `out` unwritten.
+ *
+ * # Safety
+ * `h` is a handle from `aldis_oid_generator_init` whose storage is still valid, or detectably
+ * invalid storage; `out` is valid for writes of `len` octets (or `NULL` with `len` 0); `err`
+ * is `NULL` or valid for one write.
+ */
+int32_t aldis_oid_generator_fill(aldis_oid_generator_t *h,
+                                 uint8_t *out,
+                                 size_t len,
+                                 aldis_error_detail_t *err);
+
+/**
+ * Releases an OID generator: later calls with `h` fail with `ALDIS_ERR_INVALID_HANDLE`
+ * (CABI-032). An invalid handle is ignored.
+ *
+ * # Safety
+ * `h` is `NULL`, a handle whose storage is still valid, or detectably invalid storage.
+ */
+void aldis_oid_generator_deinit(aldis_oid_generator_t *h);
 
 /**
  * Decodes one Space Packet (133.0 §4.1; SPP-001…004, SPP-009, API-010, API-011, API-030).

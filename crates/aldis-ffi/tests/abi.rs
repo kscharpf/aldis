@@ -8,6 +8,7 @@ use core::ptr::{null, null_mut};
 
 use aldis_ffi::capacities::ALDIS_SPP_TRACKER_MAX_APIDS;
 use aldis_ffi::error::*;
+use aldis_ffi::oid::*;
 use aldis_ffi::spp::*;
 use aldis_ffi::spp_state::*;
 use aldis_ffi::time::*;
@@ -518,6 +519,126 @@ fn a_moved_storage_is_foreign() {
             aldis_spp_reassembler_reset(h, null_mut()),
             ALDIS_ERR_INVALID_HANDLE
         );
+    }
+}
+
+#[test]
+#[expect(
+    clippy::too_many_lines,
+    reason = "one check per storage and handle rule"
+)]
+fn the_oid_generator_follows_the_handle_pattern() {
+    // req: CABI-031, CABI-032, CABI-022, CMN-021, CMN-023
+    const WORDS: usize = ALDIS_OID_GENERATOR_STORAGE_SIZE / 8;
+    assert_eq!(
+        aldis_oid_generator_storage_size(),
+        ALDIS_OID_GENERATOR_STORAGE_SIZE
+    );
+    assert_eq!(
+        aldis_oid_generator_storage_align(),
+        ALDIS_OID_GENERATOR_STORAGE_ALIGN
+    );
+    let mut words = vec![0_u64; 2 * WORDS];
+    let base = words.as_mut_ptr().cast::<core::ffi::c_void>();
+    let mut h: *mut aldis_oid_generator_t = null_mut();
+    let mut d = aldis_error_detail_t::default();
+    let mut out = [0_u8; 4];
+    // SAFETY: every pointer is NULL, into `words`, or to a live local.
+    unsafe {
+        // Never initialized.
+        assert_eq!(
+            aldis_oid_generator_fill(base.cast(), out.as_mut_ptr(), 4, null_mut()),
+            ALDIS_ERR_INVALID_HANDLE
+        );
+        assert_eq!(
+            aldis_oid_generator_init(
+                base,
+                ALDIS_OID_GENERATOR_STORAGE_SIZE - 1,
+                ALDIS_OID_FIBONACCI,
+                &raw mut h,
+                &raw mut d
+            ),
+            ALDIS_ERR_BUFFER_TOO_SMALL
+        );
+        assert_eq!(
+            d.needed,
+            u64::try_from(ALDIS_OID_GENERATOR_STORAGE_SIZE).unwrap()
+        );
+        let odd = base.cast::<u8>().add(4).cast::<core::ffi::c_void>();
+        for (storage, form) in [
+            (odd, ALDIS_OID_FIBONACCI),
+            (null_mut(), ALDIS_OID_FIBONACCI),
+            (base, 2),
+        ] {
+            assert_eq!(
+                aldis_oid_generator_init(
+                    storage,
+                    ALDIS_OID_GENERATOR_STORAGE_SIZE,
+                    form,
+                    &raw mut h,
+                    null_mut()
+                ),
+                ALDIS_ERR_INVALID_FIELD
+            );
+        }
+        assert!(h.is_null());
+        assert_eq!(
+            aldis_oid_generator_init(
+                base,
+                ALDIS_OID_GENERATOR_STORAGE_SIZE,
+                ALDIS_OID_GALOIS,
+                &raw mut h,
+                null_mut()
+            ),
+            ALDIS_OK
+        );
+        assert_eq!(h.cast::<core::ffi::c_void>(), base);
+        assert_eq!(
+            aldis_oid_generator_fill(h, out.as_mut_ptr(), 4, null_mut()),
+            ALDIS_OK
+        );
+        assert_eq!(out, [0xFF; 4]);
+        // A rejected fill (the output overlaps the storage) leaves the generator as it was.
+        assert_eq!(
+            aldis_oid_generator_fill(h, base.cast::<u8>().add(8), 4, null_mut()),
+            ALDIS_ERR_INVALID_FIELD
+        );
+        // A NULL handle is an invalid argument (CABI-022); a tracker is foreign.
+        assert_eq!(
+            aldis_oid_generator_fill(null_mut(), out.as_mut_ptr(), 4, null_mut()),
+            ALDIS_ERR_INVALID_FIELD
+        );
+        let mut len = 0;
+        assert_eq!(
+            aldis_spp_tracker_len(h.cast(), &raw mut len, null_mut()),
+            ALDIS_ERR_INVALID_HANDLE
+        );
+    }
+    // Moved: a copy of the storage is foreign; the original continues the sequence.
+    words.copy_within(..WORDS, WORDS);
+    let moved = words[WORDS..].as_mut_ptr().cast::<aldis_oid_generator_t>();
+    let h = words.as_mut_ptr().cast::<aldis_oid_generator_t>();
+    // SAFETY: `moved` and `h` point into `words`; `out` is a live local.
+    unsafe {
+        assert_eq!(
+            aldis_oid_generator_fill(moved, out.as_mut_ptr(), 4, null_mut()),
+            ALDIS_ERR_INVALID_HANDLE
+        );
+        assert_eq!(
+            aldis_oid_generator_fill(h, out.as_mut_ptr(), 4, null_mut()),
+            ALDIS_OK
+        );
+        assert_eq!(
+            out,
+            [0x6D, 0xB6, 0xD8, 0x61],
+            "132.0 Annex D, octets 4 to 7"
+        );
+        aldis_oid_generator_deinit(h);
+        assert_eq!(
+            aldis_oid_generator_fill(h, out.as_mut_ptr(), 4, null_mut()),
+            ALDIS_ERR_INVALID_HANDLE
+        );
+        aldis_oid_generator_deinit(null_mut());
     }
 }
 
