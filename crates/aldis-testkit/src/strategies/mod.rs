@@ -6,7 +6,7 @@
 //! - **valid typed values**, built only through the crates' own checked constructors and
 //!   encoders: identifiers and counters of `aldis-core` ([`common`]), time code formats and
 //!   values (`time`), Space Packet and Encapsulation Packet fields, configurations, and whole
-//!   packets (`spp`, `epp`);
+//!   packets (`spp`, `epp`), and TM channel configurations and whole frames (`tm`);
 //! - **invalid octet strings next to each boundary**: a valid encoding one octet too short, its
 //!   length field off by one, a version or reserved value changed, mixed with arbitrary octets
 //!   (`*_near_boundary` and `*_decoder_input`).
@@ -19,7 +19,8 @@
 //! # Features
 //!
 //! `strategies` provides this module and [`common`] (`aldis-core`); `strategies-time`,
-//! `strategies-spp`, and `strategies-epp` add the module for one codec crate each. A crate's
+//! `strategies-spp`, `strategies-epp`, and `strategies-tm` add the module for one codec crate
+//! each. A crate's
 //! tests enable only the features for the crates they test, so that they link no other codec
 //! crate: `aldis-core`'s coverage would otherwise count the code its macros expand to in those
 //! crates (VER-024).
@@ -51,6 +52,8 @@ pub mod epp;
 pub mod spp;
 #[cfg(feature = "strategies-time")]
 pub mod time;
+#[cfg(feature = "strategies-tm")]
+pub mod tm;
 
 use proptest::collection::SizeRange;
 use proptest::prelude::*;

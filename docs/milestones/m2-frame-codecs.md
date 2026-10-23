@@ -13,8 +13,8 @@
 | WP-0b testkit strategies | merged | #70 | D6; VER-054; the 19 M1 property tests moved to `tests/properties.rs` |
 | WP-0c M1 C ABI, header | merged | #72 | D4, D5; the generated `include/aldis/aldis.h` and the verify check `header`; `cbindgen` 0.29.4 (MPL-2.0, checked against VER-055, `xtask/src/header.rs`, `xtask/verify/Containerfile`); C1 may start |
 | WP-1 `aldis-core`: `Ocf` | merged | #68 | CMN-010, CMN-011; `core/ocf.json`, fuzz target `ocf_classify`, exerciser group |
-| WP-1 C ABI (`aldis_crc16`, `aldis_ocf_classify`, OID generator) | in progress | #89 | In the shape WP-0c (#72) set (§3); also `aldis_ocf_check` for the `ocf_report` vectors; `core/{crc16,ocf,oid}.json` through the C ABI (`FFI_FILES`) |
-| WP-2 `aldis-tm` | planned | — | |
+| WP-1 C ABI (`aldis_crc16`, `aldis_ocf_classify`, OID generator) | merged | #89 | In the shape WP-0c (#72) set (§3); also `aldis_ocf_check` for the `ocf_report` vectors; `core/{crc16,ocf,oid}.json` through the C ABI (`FFI_FILES`) |
+| WP-2 `aldis-tm` | in progress | #90 | Modules 1–6 (Rust codec), `tm/` vectors, gates; module 7 (C ABI) follows in its own pull request |
 | WP-3 `aldis-tc` | planned | — | |
 | WP-4 `aldis-aos` module 1, `fhec` | merged | #64 | D10; `aldis-aos` joined the coverage gate, mutants, the exerciser, and the fuzz target `aos_fhec_model` |
 | WP-4 `aldis-aos` modules 2–8 | planned | — | |

@@ -5,6 +5,7 @@ The expected values of a `hand-derived` vector file come from an **independent m
 | Model | Vector files | Covers |
 |---|---|---|
 | [`aos_fhec.py`](aos_fhec.py) | `aos/fhec_{encode,correct_1_symbol,correct_2_symbols,miscorrection,uncorrectable}.json` | AOS Frame Header Error Control, 732.0-B-5 EC1 §4.1.2.6.5 (AOS-013, AOS-014): GF(2^4) by carry-less multiplication, the check symbols by GF(2) linear algebra on the syndromes, and decoding by a table over every pattern of at most two symbol errors |
+| [`tm_frame.py`](tm_frame.py) | `tm/*.json` | TM Transfer Frame, 132.0-B-3 §4.1, §5, §6.3, Annex D (TM-001…TM-011): frames assembled and taken apart as bit strings from the figure widths, the FECF by polynomial division of integers, the OID data by the Annex D recurrence |
 | [`core_ocf.py`](core_ocf.py) | `core/ocf.json` | Operational Control Field classification, 132.0-B-3 / 732.0-B-5 §4.1.5.4–5 and 732.1-B-3 §4.1.5.2.1–2 (CMN-010, CMN-011), with the CLCW layout of 232.0-B-4 §4.2.1 for one input |
 
 ## Running them
@@ -14,6 +15,7 @@ From the repository root, with Python 3 and no packages beyond the standard libr
 ```sh
 python3 -I test-vectors/models/aos_fhec.py --check test-vectors/aos/fhec_*.json
 python3 -I test-vectors/models/core_ocf.py --check test-vectors/core/ocf.json
+python3 -I test-vectors/models/tm_frame.py --check test-vectors/tm/*.json
 ```
 
 `--check` recomputes the expected outcome of every live case from its operation and input and compares it with the file, and compares the cases the model's generator writes with the file's; it exits 1 on any difference. `cargo xtask vectors validate` (part of `cargo xtask ci` and the verify check `spec`) runs every model on the files whose notes name it, and fails on a named model that is missing or a model that no file names. `--write` regenerates a file from the model, cases and provenance note; it records how the inputs were chosen. Use it only for a file that is not released yet: a released file changes only by new cases and `superseded` marks (TV-021).

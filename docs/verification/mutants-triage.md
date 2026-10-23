@@ -1,6 +1,19 @@
 # Mutation testing triage (VER-025)
 
-Surviving mutants from `cargo mutants` (`-p aldis-core -p aldis-time -p aldis-epp -p aldis-spp -p aldis-aos --all-features`) (cargo-mutants 27.1.0), triaged per VER-025. The nightly job `mutants` publishes the full report. Update this file when a new survivor appears.
+Surviving mutants from `cargo mutants` (`-p aldis-core -p aldis-time -p aldis-epp -p aldis-spp -p aldis-aos -p aldis-tm --all-features`) (cargo-mutants 27.1.0), triaged per VER-025. The nightly job `mutants` publishes the full report. Update this file when a new survivor appears.
+
+## 2026-10-23, branch `m2/tm-codec` (M2 WP-2, modules 1-6)
+
+`cargo mutants -p aldis-tm --all-features` (cargo-mutants 27.1.0), the whole crate: 256 mutants: 159 caught, 80 unviable, 17 missed, 0 timeouts. Two survivors were test gaps, fixed and re-run (`config.rs`, `TmMasterChannelConfig::fsh` and `::ocf`: 12 mutants, 10 caught, 2 unviable); the other 15 are equivalent and are expected in every report.
+
+| Mutant | Verdict | Action |
+|---|---|---|
+| `config.rs` `TmMasterChannelConfig::fsh` → `None` | Test gap: `fsh()` was checked only on a master channel without an MC_FSH | `master_channel_rejects_what_132_forbids` checks it on one with an MC_FSH; caught |
+| `config.rs` `TmMasterChannelConfig::ocf` → `true` | Test gap: `ocf()` was checked only on a master channel with an MC_OCF | The same test checks it on one without; caught |
+| `header.rs` `TmPrimaryHeader::to_octets` `\|` → `^` (8 mutants), `TmPrimaryHeader::decode` `\|` → `^` (2), `FshLen::id_octet` `\|` → `^` (1) | Equivalent: each joins fields shifted into disjoint bits (version, SCID, VCID, OCF Flag; the four flags, the Segment Length Identifier, and the FHP bits; SCID and FHP halves; FSH version and length), so OR and XOR agree | None possible |
+| `header.rs` `TmPrimaryHeader::to_octets` `<<` → `>>` on `VERSION`, `FshLen::id_octet` `<<` → `>>` on `FSH_VERSION` | Equivalent: both versions are `00`, and 0 shifted either way is 0 | None possible |
+| `header.rs` `TryFrom<u8> for FshLen` `<` → `<=` (the bound reported for a rejected length) | Equivalent: the closure runs only for a length `new` rejects, so never for 2, the one value where `<` and `<=` differ | None possible |
+| `config.rs` `VcLookup for NoSdls` `security_layout` → `Ok(Default::default())` | Equivalent: `SecurityLayout::default()` is `SecurityLayout::NONE` | None possible |
 
 ## 2026-10-20, branch `m2/aos-fhec` (M2 WP-4, module 1)
 

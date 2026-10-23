@@ -1,9 +1,9 @@
-//! The `aldis-core` OCF, `aldis-time`, `aldis-spp`, `aldis-epp`, and `aldis-aos` vector cases on
-//! the target (M1 WP-5, D7; M2 WP-1, D16).
+//! The `aldis-core` OCF, `aldis-time`, `aldis-spp`, `aldis-epp`, `aldis-aos`, and `aldis-tm`
+//! vector cases on the target (M1 WP-5, D7; M2 WP-1, WP-2, D16).
 //!
 //! `build.rs` embeds every live case of `test-vectors/core/ocf.json` and
-//! `test-vectors/{time,spp,epp,aos}/` as a value tree. Each handler (`ocf.rs`, `time.rs`,
-//! `spp.rs`, `epp.rs`, `aos.rs`) mirrors the host suite of its crate
+//! `test-vectors/{time,spp,epp,aos,tm}/` as a value tree. Each handler (`ocf.rs`, `time.rs`,
+//! `spp.rs`, `epp.rs`, `aos.rs`, `tm.rs`) mirrors the host suite of its crate
 //! (`crates/aldis-*/tests/vectors.rs`): it reads the parameters, calls the API with inputs
 //! through `black_box`, and reports every output value to an [`Out`], which compares them with
 //! the expected values exactly, with no missing and no extra keys (TV-012).
@@ -38,6 +38,7 @@ pub enum Group {
     Spp,
     Epp,
     Aos,
+    Tm,
 }
 
 /// The expected outcome of a case.
@@ -216,7 +217,7 @@ impl Params for Map {
 pub struct Out {
     expect: Map,
     /// Bit `i` is set once the key at index `i` of `expect` has been produced. An object with
-    /// more than 64 keys cannot be tracked and fails the comparison (the vectors have at most 13).
+    /// more than 64 keys cannot be tracked and fails the comparison (the vectors have at most 23).
     seen: u64,
     ok: bool,
 }
@@ -445,6 +446,7 @@ pub fn run(t: &mut Tally) {
             Group::Spp => crate::spp::vector(case, &mut out, &mut scratch),
             Group::Epp => crate::epp::vector(case, &mut out, &mut scratch),
             Group::Aos => crate::aos::vector(case, &mut out),
+            Group::Tm => crate::tm::vector(case, &mut out, &mut scratch),
         };
         let passed = match (result, &case.expect) {
             (Err(Fail::NotRepresentable), _) => {

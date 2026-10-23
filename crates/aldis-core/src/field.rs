@@ -347,8 +347,59 @@ pub const OCF_TYPE_FLAG: FieldId = FieldId::catalogued::<65>("ocf_type_flag");
 /// Code 66, a field (132.0 §4.1.5.5; 732.0 §4.1.5.5; 732.1 §4.1.5.2.2; API-082).
 pub const OCF_REPORT_USE: FieldId = FieldId::catalogued::<66>("ocf_report_use");
 
+/// Transfer Frame Version Number.
+///
+/// Code 67, a field (132.0 §4.1.2.2.2; API-082).
+pub const FRAME_VERSION: FieldId = FieldId::catalogued::<67>("frame_version");
+
+/// Transfer Frame Length of a physical channel with fixed-length frames, a managed parameter.
+///
+/// Code 68, a parameter (132.0 §4.1.1.2, §5.1 Table 5-1; API-082).
+pub const FRAME_LEN: FieldId = FieldId::catalogued::<68>("frame_len");
+
+/// Operational Control Field Flag.
+///
+/// Code 69, a field (132.0 §4.1.2.4; API-082).
+pub const OCF_FLAG: FieldId = FieldId::catalogued::<69>("ocf_flag");
+
+/// Transfer Frame Secondary Header Flag.
+///
+/// Code 70, a field (132.0 §4.1.2.7.2; API-082).
+pub const FSH_FLAG: FieldId = FieldId::catalogued::<70>("fsh_flag");
+
+/// Synchronization Flag of the TM Transfer Frame Data Field Status.
+///
+/// Code 71, a field (132.0 §4.1.2.7.3; API-082).
+pub const SYNC_FLAG: FieldId = FieldId::catalogued::<71>("sync_flag");
+
+/// Packet Order Flag.
+///
+/// Code 72, a field (132.0 §4.1.2.7.4; API-082).
+pub const PACKET_ORDER_FLAG: FieldId = FieldId::catalogued::<72>("packet_order_flag");
+
+/// Segment Length Identifier.
+///
+/// Code 73, a field (132.0 §4.1.2.7.5; API-082).
+pub const SEGMENT_LENGTH_ID: FieldId = FieldId::catalogued::<73>("segment_length_id");
+
+/// First Header Pointer.
+///
+/// Code 74, a field (132.0 §4.1.2.7.6; API-082).
+pub const FIRST_HEADER_POINTER: FieldId = FieldId::catalogued::<74>("first_header_pointer");
+
+/// Transfer Frame Secondary Header Version Number.
+///
+/// Code 75, a field (132.0 §4.1.3.2.2; API-082).
+pub const FSH_VERSION: FieldId = FieldId::catalogued::<75>("fsh_version");
+
+/// Total length of the Transfer Frame Secondary Header in octets: its Length field plus one, and
+/// the `MC_FSH` or `VC_FSH` Length managed parameter.
+///
+/// Code 76, a field (132.0 §4.1.3.2.3, §5.2 Table 5-2, §5.3 Table 5-3; API-082).
+pub const FSH_LEN: FieldId = FieldId::catalogued::<76>("fsh_len");
+
 /// Every field code, in code order from 1 (API-082).
-pub const ALL: [FieldId; 66] = [
+pub const ALL: [FieldId; 76] = [
     SPACECRAFT_ID,
     VC_ID,
     MAP_ID,
@@ -415,4 +466,14 @@ pub const ALL: [FieldId; 66] = [
     MAX_DATA_LEN,
     OCF_TYPE_FLAG,
     OCF_REPORT_USE,
+    FRAME_VERSION,
+    FRAME_LEN,
+    OCF_FLAG,
+    FSH_FLAG,
+    SYNC_FLAG,
+    PACKET_ORDER_FLAG,
+    SEGMENT_LENGTH_ID,
+    FIRST_HEADER_POINTER,
+    FSH_VERSION,
+    FSH_LEN,
 ];
