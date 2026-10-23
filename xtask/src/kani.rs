@@ -1,5 +1,5 @@
 //! `cargo xtask kani`: runs the Kani proof harnesses and prints each one's result and time
-//! (docs/verification/formal-proofs.md, OI-41). A spike: no check of the verification run calls
+//! (docs/verification/formal-proofs.md, OI-42). A spike: no check of the verification run calls
 //! it, and nothing gates on it.
 //!
 //! The harnesses are `#[kani::proof]` functions in a `#[cfg(kani)] mod proofs` of each crate in

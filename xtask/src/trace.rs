@@ -55,7 +55,7 @@ fn artefacts(spec: &Spec) -> Result<BTreeMap<String, BTreeSet<String>>, String> 
     ] {
         for path in repo::files(dir, &["rs"]) {
             // Kani harnesses (docs/verification/formal-proofs.md) are labelled apart: no check
-            // of the verification run proves them (OI-41).
+            // of the verification run proves them (OI-42).
             let kind = if dir == "fuzz" {
                 "fuzz"
             } else if path.file_name().is_some_and(|f| f == "proofs.rs") {

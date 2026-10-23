@@ -1,7 +1,13 @@
-//! Kani proof harnesses (spike, docs/verification/formal-proofs.md, OI-41).
+//! Kani proof harnesses (spike, docs/verification/formal-proofs.md, OI-42).
 //!
 //! Compiled only by `cargo kani` (`cfg(kani)`); not part of the library, the tests, or the
 //! coverage run. The properties are those TIME-011 states (docs/standards/time-codes.md).
+//!
+//! The number of fine octets is fixed per harness and the coarse octets, epoch, and values are
+//! symbolic. With a symbolic fine count the 128-bit shifts and divisions take symbolic amounts,
+//! and CBMC did not finish one such harness in 10 minutes (formal-proofs.md §6); with a fixed
+//! count of 1 or 2 each finishes in seconds or minutes, and 3 only for `to_seconds_nanos`. No
+//! harness has a loop.
 
 use aldis_core::ErrorKind;
 
@@ -10,12 +16,10 @@ use crate::field;
 
 const NANOS: u128 = 1_000_000_000;
 
-/// A symbolic CUC format with 1–7 coarse octets, `fine_min`–`fine_max` fine octets, and either
-/// epoch.
-fn any_format(fine_min: u8, fine_max: u8) -> CucFormat {
+/// A CUC format with 1–7 symbolic coarse octets, `fine` fine octets, and either epoch.
+fn any_format(fine: u8) -> CucFormat {
     let coarse: u8 = kani::any();
-    let fine: u8 = kani::any();
-    kani::assume((1..=7).contains(&coarse) && (fine_min..=fine_max).contains(&fine));
+    kani::assume((1..=7).contains(&coarse));
     let epoch = if kani::any() {
         CucEpoch::Tai1958
     } else {
@@ -31,15 +35,13 @@ fn units(format: &CucFormat, value: &CucValue) -> u128 {
     value.fine() >> (128 - 8 * u32::from(format.fine_octets()))
 }
 
-/// `Cuc::from_seconds_nanos` for every format with 1–3 fine octets and every `seconds` and
+/// `Cuc::from_seconds_nanos` for every format with `fine` fine octets and every `seconds` and
 /// `nanos`: it fails exactly for `nanos` ≥ 10⁹ or `seconds` too wide for the coarse octets
 /// (TIME-012), keeps `seconds` as the coarse time (nothing carries), and rounds the fraction
 /// down: the result is the largest value of the format at or below `nanos` (OI-40). The
-/// value is representable, and converting back never gives a later time. No loops.
-#[kani::proof]
-fn cuc_from_seconds_nanos_floor() {
-    // req: TIME-011, TIME-012, GEN-020
-    let format = any_format(1, 3);
+/// value is representable, and converting back never gives a later time.
+fn from_seconds_nanos_floor(fine: u8) {
+    let format = any_format(fine);
     let seconds: u64 = kani::any();
     let nanos: u32 = kani::any();
     let coarse_bits = 8 * u32::from(format.coarse_octets());
@@ -61,7 +63,7 @@ fn cuc_from_seconds_nanos_floor() {
             assert_eq!(Cuc::new(format, value), Ok(cuc));
             // r units of 2^-8f s with r·10⁹ ≤ nanos·2^8f < (r + 1)·10⁹.
             let r = units(&format, &value);
-            let scaled = u128::from(nanos) << (8 * u32::from(format.fine_octets()));
+            let scaled = u128::from(nanos) << (8 * u32::from(fine));
             assert!(r * NANOS <= scaled);
             assert!(scaled < (r + 1) * NANOS);
             let (s, n) = cuc.to_seconds_nanos();
@@ -70,13 +72,10 @@ fn cuc_from_seconds_nanos_floor() {
     }
 }
 
-/// `to_seconds_nanos` for every value of every format with 1–3 fine octets: the coarse time is
-/// the seconds and the nanoseconds are the fraction truncated toward zero. No loops.
-#[kani::proof]
-fn cuc_to_seconds_nanos_truncates() {
-    // req: TIME-011, GEN-020
-    let format = any_format(1, 3);
-    let bits = 8 * u32::from(format.fine_octets());
+/// `to_seconds_nanos` for every value of every format with `fine` fine octets: the coarse time
+/// is the seconds and the nanoseconds are the fraction truncated toward zero.
+fn to_seconds_nanos_truncates(fine: u8) {
+    let bits = 8 * u32::from(fine);
     let coarse: u64 = kani::any();
     let r: u128 = kani::any();
     kani::assume(r >> bits == 0);
@@ -91,13 +90,11 @@ fn cuc_to_seconds_nanos_truncates() {
 }
 
 /// The round trip value → nanoseconds → value that TIME-011 documents, for every value of every
-/// format with 1–3 fine octets: exact if and only if the value is a multiple of 2⁻⁹ s (always
-/// with 1 fine octet), and otherwise one unit of the last fine octet lower. No loops.
-#[kani::proof]
-fn cuc_round_trip_value() {
-    // req: TIME-011, GEN-020
-    let format = any_format(1, 3);
-    let bits = 8 * u32::from(format.fine_octets());
+/// format with `fine` fine octets: exact if and only if the value is a multiple of 2⁻⁹ s
+/// (always with 1 fine octet), and otherwise one unit of the last fine octet lower.
+fn round_trip_value(fine: u8) {
+    let format = any_format(fine);
+    let bits = 8 * u32::from(fine);
     let coarse_bits = 8 * u32::from(format.coarse_octets());
     let coarse: u64 = kani::any();
     kani::assume(coarse_bits == 64 || coarse >> coarse_bits == 0);
@@ -122,23 +119,52 @@ fn cuc_round_trip_value() {
     assert_eq!(back == cuc, multiple);
 }
 
-/// The round trip nanoseconds → value → nanoseconds that TIME-011 documents for 4 or more fine
-/// octets, for every `nanos` and every format with 4–10 fine octets: the nanoseconds come back
-/// if they are a multiple of 1 953 125 (2⁻⁹ s) and one fewer otherwise. No loops.
-#[kani::proof]
-fn cuc_round_trip_nanos_fine() {
-    // req: TIME-011, GEN-020
-    let format = any_format(4, 10);
-    let nanos: u32 = kani::any();
-    kani::assume(u128::from(nanos) < NANOS);
-    let cuc = Cuc::from_seconds_nanos(format, 0, nanos);
-    assert!(cuc.is_ok());
-    let Ok(cuc) = cuc else { return };
-    let (s, n) = cuc.to_seconds_nanos();
-    assert_eq!(s, 0);
-    if nanos % 1_953_125 == 0 {
-        assert_eq!(n, nanos);
-    } else {
-        assert_eq!(n + 1, nanos);
-    }
+// One harness per fine-octet count that CBMC finishes within 30 minutes; the counts that did not
+// (3 for the floor and the value round trip, 4 for the nanoseconds round trip) have none
+// (formal-proofs.md §6).
+
+macro_rules! from_ns_harnesses {
+    ($($fine:literal: $name:ident;)*) => {$(
+        #[kani::proof]
+        fn $name() {
+            // req: TIME-011, TIME-012, GEN-020
+            from_seconds_nanos_floor($fine);
+        }
+    )*};
+}
+
+from_ns_harnesses! {
+    1: cuc_from_ns_floor_fine1;
+    2: cuc_from_ns_floor_fine2;
+}
+
+macro_rules! to_ns_harnesses {
+    ($($fine:literal: $name:ident;)*) => {$(
+        #[kani::proof]
+        fn $name() {
+            // req: TIME-011, GEN-020
+            to_seconds_nanos_truncates($fine);
+        }
+    )*};
+}
+
+to_ns_harnesses! {
+    1: cuc_to_ns_truncates_fine1;
+    2: cuc_to_ns_truncates_fine2;
+    3: cuc_to_ns_truncates_fine3;
+}
+
+macro_rules! value_harnesses {
+    ($($fine:literal: $name:ident;)*) => {$(
+        #[kani::proof]
+        fn $name() {
+            // req: TIME-011, GEN-020
+            round_trip_value($fine);
+        }
+    )*};
+}
+
+value_harnesses! {
+    1: cuc_round_trip_value_fine1;
+    2: cuc_round_trip_value_fine2;
 }

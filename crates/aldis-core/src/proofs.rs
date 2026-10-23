@@ -1,4 +1,4 @@
-//! Kani proof harnesses (spike, docs/verification/formal-proofs.md, OI-41).
+//! Kani proof harnesses (spike, docs/verification/formal-proofs.md, OI-42).
 //!
 //! Compiled only by `cargo kani` (`cfg(kani)`); not part of the library, the tests, or the
 //! coverage run. Each harness states its bound and why the unwinding depth suffices.

@@ -67,7 +67,7 @@ commands:
                                tooling nightly + cargo-llvm-cov >= 0.9)
   kani                         run the Kani proof harnesses and print each one's result and
                                time; a spike, not a gate (docs/verification/formal-proofs.md,
-                               OI-41; needs the pinned Kani)
+                               OI-42; needs the pinned Kani)
   changelog check              every fragment in changelog.d/ is well formed (GEN-080)
   changelog show               print the unreleased changes as the next release will list them
   changelog release <version> <YYYY-MM-DD>
