@@ -68,3 +68,6 @@ One line for each decision the maintainer takes, under the [decision rights](dec
 - 2026-10-21 · scope · #81 · OI-08: Rust on LEON stays best-effort in v1, with native C++ the primary LEON path; `rust-sparc-leon3` stays non-gating, revisited if the target reaches tier 2
 - 2026-10-21 · api · #81 · CABI-004 on SPARC: the `compiler_builtins` `_Q_*` references are a recorded deviation with an integrator note (`--gc-sections`, or supply them); no upstream report
 - 2026-10-21 · deps · #81 · The verify image's SPARC binutils and QEMU are pinned to their upstream versions only, not to Ubuntu revisions
+- 2026-10-23 · api · #89 · The OCF crosses the C ABI as `(const uint8_t *ocf, size_t ocf_len)`; a length other than 4 is a CABI-022 violation
+- 2026-10-23 · api · #89 · `aldis_oid_generator_fill` takes `(out, len)` with no `out_len`: it always fills exactly `len` octets
+- 2026-10-23 · api · #89 · `aldis_ocf_check` is public C ABI, the C form of the OCF reports' checked constructors

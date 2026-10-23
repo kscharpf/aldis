@@ -91,6 +91,32 @@ int main(void) {
     check(aldis_epp_idle(1, 0, idle, sizeof idle, &len, NULL) == ALDIS_OK && idle[0] == 0xE0,
           "aldis_epp_idle");
 
+    /* The CRC-16, the OCF, and the OID generator of aldis-core (M2 plan D5, D14). */
+    uint16_t crc = 0;
+    check(aldis_crc16((const uint8_t *)"123456789", 9, &crc, NULL) == ALDIS_OK && crc == 0x29B1,
+          "aldis_crc16 check value (CMN-002)");
+    const uint8_t ocf[ALDIS_OCF_LEN] = {0x01, 0x14, 0x0C, 0x2A};
+    uint32_t report = 99;
+    check(aldis_ocf_classify(ocf, sizeof ocf, &report, NULL) == ALDIS_OK &&
+              report == ALDIS_OCF_CLCW,
+          "aldis_ocf_classify");
+    check(aldis_ocf_check(ocf, sizeof ocf, ALDIS_OCF_SDLS_FSR, &err) == ALDIS_ERR_INVALID_FIELD &&
+              err.field == ALDIS_FIELD_OCF_TYPE_FLAG,
+          "aldis_ocf_check names the Type Flag");
+    uint64_t oid_storage[ALDIS_OID_GENERATOR_STORAGE_SIZE / 8];
+    aldis_oid_generator_t *oid = NULL;
+    uint8_t idle_data[6];
+    check(aldis_oid_generator_init(oid_storage, sizeof oid_storage, ALDIS_OID_GALOIS, &oid,
+                                   &err) == ALDIS_OK,
+          "aldis_oid_generator_init");
+    check(aldis_oid_generator_fill(oid, idle_data, sizeof idle_data, &err) == ALDIS_OK &&
+              idle_data[0] == 0xFF && idle_data[4] == 0x6D && idle_data[5] == 0xB6,
+          "OID sequence of 132.0 Annex D");
+    aldis_oid_generator_deinit(oid);
+    check(aldis_oid_generator_fill(oid, idle_data, sizeof idle_data, NULL) ==
+              ALDIS_ERR_INVALID_HANDLE,
+          "a released generator is an invalid handle (CABI-032)");
+
     if (failures != 0) {
         return 1;
     }

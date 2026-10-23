@@ -8,14 +8,23 @@ use core::hint::black_box as bb;
 use core::ptr::{null, null_mut};
 
 use aldis_ffi::aldis_error_detail_t;
+use aldis_ffi::crc::aldis_crc16;
 use aldis_ffi::epp::{
     ALDIS_EPP_HEADER_AUTO, aldis_epp_check, aldis_epp_config_check, aldis_epp_config_t,
     aldis_epp_decode, aldis_epp_encode, aldis_epp_fields_t, aldis_epp_header_encode,
     aldis_epp_idle, aldis_epp_idle_header, aldis_epp_packet_t, aldis_epp_peek_length,
     aldis_epp_validate, aldis_epp_writer_begin, aldis_epp_writer_finish, aldis_epp_writer_layout_t,
 };
-use aldis_ffi::error::{ALDIS_ERR_INCOMPLETE, ALDIS_ERR_INVALID_HANDLE, ALDIS_OK};
+use aldis_ffi::error::{
+    ALDIS_ERR_INCOMPLETE, ALDIS_ERR_INVALID_FIELD, ALDIS_ERR_INVALID_HANDLE, ALDIS_OK,
+};
 use aldis_ffi::limits::{aldis_limits, aldis_limits_t};
+use aldis_ffi::ocf::{ALDIS_OCF_CLCW, ALDIS_OCF_SDLS_FSR, aldis_ocf_check, aldis_ocf_classify};
+use aldis_ffi::oid::{
+    ALDIS_OID_FIBONACCI, ALDIS_OID_GALOIS, ALDIS_OID_GENERATOR_STORAGE_SIZE,
+    aldis_oid_generator_deinit, aldis_oid_generator_fill, aldis_oid_generator_init,
+    aldis_oid_generator_storage_align, aldis_oid_generator_storage_size, aldis_oid_generator_t,
+};
 use aldis_ffi::spp::{
     ALDIS_SPP_MAX_PACKET_LEN, ALDIS_SPP_SECONDARY_ABSENT, ALDIS_SPP_SECONDARY_OPAQUE,
     ALDIS_SPP_SEQ_UNSEGMENTED, ALDIS_SPP_TELEMETRY, aldis_spp_config_check, aldis_spp_config_t,
@@ -664,8 +673,72 @@ fn epp(t: &mut Tally) {
     }
 }
 
+/// The C ABI of `aldis-core`: the CRC-16, the OCF, and the OID generator in caller storage
+/// (CMN-001, CMN-010, CMN-020…023; M2 plan D14).
+#[expect(unsafe_code, reason = "calls the C ABI with valid pointers")]
+fn core(t: &mut Tally) {
+    let mut det = detail();
+    let check_string = bb(*b"123456789");
+    let mut crc = 0_u16;
+    let ocf = bb([0xC1_u8, 0x23, 0x45, 0x67]);
+    let mut report = 0_u32;
+    t.check(aldis_oid_generator_storage_size() == ALDIS_OID_GENERATOR_STORAGE_SIZE);
+    t.check(aldis_oid_generator_storage_align() == 8);
+    let mut fib_words = [0_u64; ALDIS_OID_GENERATOR_STORAGE_SIZE / 8];
+    let mut gal_words = [0_u64; ALDIS_OID_GENERATOR_STORAGE_SIZE / 8];
+    let mut fib: *mut aldis_oid_generator_t = null_mut();
+    let mut gal: *mut aldis_oid_generator_t = null_mut();
+    let (mut a, mut b) = ([0_u8; 6], [0_u8; 6]);
+    // SAFETY: every pointer is to a live local; the storage is aligned and of the published
+    // size, and the handles point into it.
+    unsafe {
+        t.check(
+            aldis_crc16(check_string.as_ptr(), bb(9), &raw mut crc, &raw mut det) == ALDIS_OK
+                && crc == 0x29B1,
+        );
+        t.check(
+            aldis_ocf_classify(ocf.as_ptr(), bb(4), &raw mut report, &raw mut det) == ALDIS_OK
+                && report == ALDIS_OCF_SDLS_FSR,
+        );
+        t.check(
+            aldis_ocf_check(ocf.as_ptr(), bb(4), bb(ALDIS_OCF_CLCW), &raw mut det)
+                == ALDIS_ERR_INVALID_FIELD
+                && det.expected == 0
+                && det.found == 1,
+        );
+        t.check(
+            aldis_oid_generator_init(
+                fib_words.as_mut_ptr().cast(),
+                bb(ALDIS_OID_GENERATOR_STORAGE_SIZE),
+                bb(ALDIS_OID_FIBONACCI),
+                &raw mut fib,
+                &raw mut det,
+            ) == ALDIS_OK,
+        );
+        t.check(
+            aldis_oid_generator_init(
+                gal_words.as_mut_ptr().cast(),
+                bb(ALDIS_OID_GENERATOR_STORAGE_SIZE),
+                bb(ALDIS_OID_GALOIS),
+                &raw mut gal,
+                &raw mut det,
+            ) == ALDIS_OK,
+        );
+        t.check(aldis_oid_generator_fill(fib, a.as_mut_ptr(), bb(6), &raw mut det) == ALDIS_OK);
+        t.check(aldis_oid_generator_fill(gal, b.as_mut_ptr(), bb(6), &raw mut det) == ALDIS_OK);
+        t.check(a == b && a == [0xFF, 0xFF, 0xFF, 0xFF, 0x6D, 0xB6]);
+        aldis_oid_generator_deinit(fib);
+        aldis_oid_generator_deinit(gal);
+        t.check(
+            aldis_oid_generator_fill(fib, a.as_mut_ptr(), bb(6), &raw mut det)
+                == ALDIS_ERR_INVALID_HANDLE,
+        );
+    }
+}
+
 /// Calls every exported function of `aldis-ffi`.
 pub fn run(t: &mut Tally) {
+    core(t);
     spp(t);
     spp_state(t);
     time(t);

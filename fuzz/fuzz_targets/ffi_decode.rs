@@ -4,15 +4,30 @@
 //! A success carries the same fields, offsets, lengths, and anomaly flags; a failure the same
 //! status and the same detail: kind, field code, and values (CABI-012, CABI-020, CABI-021,
 //! GEN-020). A decoded time code re-encodes through the C ABI to the octets the Rust encoder
-//! writes.
+//! writes. The C ABI of `aldis-core` agrees with it too: `aldis_crc16`, `aldis_ocf_classify`,
+//! `aldis_ocf_check`, and the OID generator in both forms.
 #![no_main]
 
-// req: CABI-012, CABI-020, CABI-021, CABI-022, GEN-020, API-010, VER-022
+// req: CABI-012, CABI-020, CABI-021, CABI-022, GEN-020, API-010, VER-022, CMN-001, CMN-010, CMN-022
 
+use core::ptr::null_mut;
+
+use aldis_core::crc::crc16;
+use aldis_core::ocf::{FsrReport, OCF_LEN, Ocf, ProjectSpecificReport, Type1Report};
+use aldis_core::oid::OidGenerator;
 use aldis_core::{DecodeMode, Error};
 use aldis_epp::{EncapsulationPacket, EpiExtension, UserDefined};
+use aldis_ffi::crc::aldis_crc16;
 use aldis_ffi::epp::{aldis_epp_decode, aldis_epp_packet_t, aldis_epp_peek_length};
-use aldis_ffi::error::ALDIS_ERROR_DETAIL_MIN_SIZE;
+use aldis_ffi::error::{ALDIS_ERR_INVALID_FIELD, ALDIS_ERROR_DETAIL_MIN_SIZE};
+use aldis_ffi::ocf::{
+    ALDIS_OCF_CLCW, ALDIS_OCF_PROJECT_SPECIFIC, ALDIS_OCF_SDLS_FSR, aldis_ocf_check,
+    aldis_ocf_classify,
+};
+use aldis_ffi::oid::{
+    ALDIS_OID_FIBONACCI, ALDIS_OID_GALOIS, ALDIS_OID_GENERATOR_STORAGE_SIZE,
+    aldis_oid_generator_deinit, aldis_oid_generator_fill, aldis_oid_generator_init,
+};
 use aldis_ffi::spp::{aldis_spp_decode, aldis_spp_packet_t, aldis_spp_peek_length};
 use aldis_ffi::time::{
     aldis_time_ascii_options_t, aldis_time_ascii_parse, aldis_time_ascii_t, aldis_time_decode,
@@ -243,6 +258,86 @@ fn time(data: &[u8], mode: DecodeMode, c_mode: u32) {
     }
 }
 
+/// The C ABI of `aldis-core` (M2 plan D14): `aldis_crc16` agrees with `crc16`;
+/// `aldis_ocf_classify` with `Ocf::decode` on four octets and rejects any other length;
+/// `aldis_ocf_check` with the checked report constructors, with the same detail; and a fill of
+/// the input's length from each OID form with `OidGenerator::fill` (CMN-001, CMN-010, CMN-020,
+/// CMN-022, CMN-023).
+#[expect(unsafe_code, reason = "calls the C ABI with valid pointers")]
+fn core(data: &[u8]) {
+    let mut crc = 0_u16;
+    // SAFETY: `data` and `crc` are live; NULL detail is allowed.
+    let status = unsafe { aldis_crc16(data.as_ptr(), data.len(), &raw mut crc, null_mut()) };
+    assert_eq!((status, crc), (ALDIS_OK, crc16(data)));
+
+    let octets = <[u8; OCF_LEN]>::try_from(data).ok();
+    let mut report = u32::MAX;
+    let mut detail = aldis_error_detail_t::default();
+    // SAFETY: as above.
+    let status =
+        unsafe { aldis_ocf_classify(data.as_ptr(), data.len(), &raw mut report, &raw mut detail) };
+    match octets.map(Ocf::decode) {
+        Some(ocf) => {
+            assert_eq!(status, ALDIS_OK);
+            let expected = match ocf {
+                Ocf::Clcw(_) => ALDIS_OCF_CLCW,
+                Ocf::ProjectSpecific(_) => ALDIS_OCF_PROJECT_SPECIFIC,
+                Ocf::SdlsFsr(_) => ALDIS_OCF_SDLS_FSR,
+            };
+            assert_eq!(report, expected);
+        }
+        None => assert_eq!(
+            (status, report, detail.field),
+            (ALDIS_ERR_INVALID_FIELD, u32::MAX, 0)
+        ),
+    }
+    for c_report in [
+        ALDIS_OCF_CLCW,
+        ALDIS_OCF_PROJECT_SPECIFIC,
+        ALDIS_OCF_SDLS_FSR,
+    ] {
+        let mut detail = aldis_error_detail_t::default();
+        // SAFETY: as above.
+        let status =
+            unsafe { aldis_ocf_check(data.as_ptr(), data.len(), c_report, &raw mut detail) };
+        match octets {
+            Some(o) => {
+                let rust = match c_report {
+                    ALDIS_OCF_CLCW => Type1Report::try_from(o).map(drop),
+                    ALDIS_OCF_PROJECT_SPECIFIC => ProjectSpecificReport::try_from(o).map(drop),
+                    _ => FsrReport::try_from(o).map(drop),
+                };
+                expect(&rust, status, &detail);
+            }
+            None => assert_eq!((status, detail.field), (ALDIS_ERR_INVALID_FIELD, 0)),
+        }
+    }
+
+    let mut rust = vec![0_u8; data.len()];
+    OidGenerator::new().fill(&mut rust);
+    for form in [ALDIS_OID_FIBONACCI, ALDIS_OID_GALOIS] {
+        let mut storage = [0_u64; ALDIS_OID_GENERATOR_STORAGE_SIZE / 8];
+        let mut h = null_mut();
+        let mut out = vec![0_u8; data.len()];
+        // SAFETY: `storage` is live, aligned, and of the published size; `h` points into it;
+        // `out` is live.
+        unsafe {
+            let status = aldis_oid_generator_init(
+                storage.as_mut_ptr().cast(),
+                ALDIS_OID_GENERATOR_STORAGE_SIZE,
+                form,
+                &raw mut h,
+                null_mut(),
+            );
+            assert_eq!(status, ALDIS_OK);
+            let status = aldis_oid_generator_fill(h, out.as_mut_ptr(), out.len(), null_mut());
+            assert_eq!(status, ALDIS_OK);
+            aldis_oid_generator_deinit(h);
+        }
+        assert_eq!(out, rust);
+    }
+}
+
 fuzz_target!(|input: &[u8]| {
     let Some((&selector, data)) = input.split_first() else {
         return;
@@ -252,9 +347,10 @@ fuzz_target!(|input: &[u8]| {
     } else {
         (DecodeMode::Lenient, ALDIS_MODE_LENIENT)
     };
-    match (selector >> 1) % 3 {
+    match (selector >> 1) % 4 {
         0 => spp(data, mode, c_mode),
         1 => epp(data, mode, c_mode),
-        _ => time(data, mode, c_mode),
+        2 => time(data, mode, c_mode),
+        _ => core(data),
     }
 });
