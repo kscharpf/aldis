@@ -269,9 +269,11 @@ fn native_static_libs(note: &str) -> Vec<String> {
 /// C++11 (CABI-003), through a C program that calls the library.
 pub fn c_smoke(cc: &str, cxx: &str) -> Result<usize, String> {
     let root = repo::root();
-    // The static library's native dependencies, printed while it is built (CABI-001).
+    // The static library's native dependencies, printed while it is built (CABI-001). Without
+    // colour, so that no escape sequence of `CARGO_TERM_COLOR=always` ends up in a library name.
     let note = run_cmd(
         Command::new("cargo")
+            .args(["--color", "never"])
             .args(["rustc", "-p", "aldis-ffi", "--release", "--lib"])
             .args([
                 "--crate-type",
