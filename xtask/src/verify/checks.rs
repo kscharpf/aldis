@@ -125,6 +125,18 @@ pub const FFI: PathList = PathList {
     patterns: &["crates/**", "include/**"],
 };
 
+/// Read by the non-gating check `kani` (OI-42): the crates with Kani proof harnesses, whose
+/// `proofs.rs` and the code it calls are what the check proves. Their manifests, the workspace,
+/// and `xtask` (which runs the harnesses) are in `RUN`.
+pub const KANI: PathList = PathList {
+    name: "kani",
+    patterns: &[
+        "crates/aldis-core/**",
+        "crates/aldis-spp/**",
+        "crates/aldis-time/**",
+    ],
+};
+
 /// Documentation: read by `spec` only (spec lint, links, vectors, field catalogue, traces,
 /// changelog check), so a change to these paths alone runs only `spec`; a change to the field
 /// catalogue in `docs/03-api-model.md` alone fails `spec` until `cargo xtask fields --write`
@@ -192,6 +204,7 @@ const RUST_INPUTS: Inputs = Inputs::Paths(&[&RUN, &RUST]);
 const RUST_TEST_INPUTS: Inputs = Inputs::Paths(&[&RUN, &RUST, &XTASK_TESTS]);
 const CPP_INPUTS: Inputs = Inputs::Paths(&[&RUN, &CPP]);
 const FFI_INPUTS: Inputs = Inputs::Paths(&[&RUN, &FFI]);
+const KANI_INPUTS: Inputs = Inputs::Paths(&[&RUN, &KANI]);
 
 /// One check of the verification run.
 #[derive(Clone, Debug)]
@@ -204,8 +217,8 @@ pub struct Check {
     pub cpp: bool,
     /// What it reads: it is skipped when none of these changed (VER-056).
     pub inputs: Inputs,
-    /// A failure fails the run. Only the LEON3 checks, Rust and C++, are reported without
-    /// gating (OI-08).
+    /// A failure fails the run. Only the LEON3 checks, Rust and C++ (OI-08), and the Kani proofs
+    /// (OI-42) are reported without gating.
     pub gating: bool,
     /// The Bash script.
     pub script: String,
@@ -274,6 +287,11 @@ fn rust() -> Vec<Check> {
     out.push(Check {
         gating: false,
         ..check("rust-sparc-leon3", c, false, RUST_LEON3)
+    });
+    // The Kani proof harnesses (OI-42, docs/verification/formal-proofs.md): reported, not gating.
+    out.push(Check {
+        gating: false,
+        ..reading(KANI_INPUTS, check("kani", c, false, "cargo xtask kani\n"))
     });
     out.extend([
         check("coverage", c, false, "cargo xtask coverage\n"),
@@ -606,13 +624,13 @@ mod tests {
 
     // req: VER-056
     #[test]
-    fn only_the_leon3_checks_are_non_gating() {
+    fn only_the_leon3_and_kani_checks_are_non_gating() {
         let non_gating: Vec<String> = all()
             .into_iter()
             .filter(|c| !c.gating)
             .map(|c| c.name)
             .collect();
-        assert_eq!(non_gating, ["rust-sparc-leon3", "cpp-leon3"]);
+        assert_eq!(non_gating, ["rust-sparc-leon3", "kani", "cpp-leon3"]);
     }
 
     // req: VER-010, VER-056
@@ -669,6 +687,10 @@ mod tests {
             assert!(!lists.contains(&&DOCS), "{}", c.name);
             if c.name == "header" {
                 assert_eq!(lists, [&RUN, &FFI]);
+                continue;
+            }
+            if c.name == "kani" {
+                assert_eq!(lists, [&RUN, &KANI]);
                 continue;
             }
             assert_eq!(lists.contains(&&CPP), c.cpp, "{}", c.name);

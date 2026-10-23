@@ -69,6 +69,25 @@ RUN apt-get update -q \
  && qemu="$(sed -n 's/^QEMU_VERSION=//p' /opt/aldis/cpp/toolchains.lock)" \
  && qemu-system-sparc --version | head -n 1 | grep -q "version $qemu "
 
+# Kani for the non-gating check kani (OI-42, docs/verification/formal-proofs.md §7). The release
+# bundle (kani-compiler and CBMC) is checked against the SHA-256 that GitHub records for the
+# release asset, then installed from the local file, so that `cargo kani setup` downloads only
+# the nightly it is built against, through rustup. The driver comes from crates.io with its lock
+# file; its version is also pinned in xtask/src/kani.rs, which refuses another.
+ENV KANI_HOME=/opt/kani
+RUN case "$TARGETARCH" in \
+      amd64) triple=x86_64-unknown-linux-gnu; sha=32e2b484d73ede0bbf64a2cf0879c4259422497d8aec4ee67d448de9ae7843d3 ;; \
+      arm64) triple=aarch64-unknown-linux-gnu; sha=0042d2688bf1550270def4a79c96aaeea138631818cb4ab5480120f2d51a942c ;; \
+      *) echo "unsupported architecture $TARGETARCH" >&2; exit 1 ;; \
+    esac \
+ && curl -fsSL -o /tmp/kani.tar.gz \
+      "https://github.com/model-checking/kani/releases/download/kani-0.68.0/kani-0.68.0-$triple.tar.gz" \
+ && echo "$sha  /tmp/kani.tar.gz" | sha256sum -c - \
+ && cargo install --locked --root /opt/cargo kani-verifier@0.68.0 \
+ && cargo kani setup --use-local-bundle /tmp/kani.tar.gz \
+ && cargo kani --version | grep -q '0\.68\.0' \
+ && rm -rf /tmp/kani.tar.gz /opt/cargo/registry /opt/cargo/git
+
 COPY xtask/verify/entrypoint.sh /usr/local/bin/aldis-verify
 RUN chmod 0755 /usr/local/bin/aldis-verify
 ENTRYPOINT ["/usr/local/bin/aldis-verify"]

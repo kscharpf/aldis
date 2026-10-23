@@ -1,6 +1,7 @@
 //! `cargo xtask kani`: runs the Kani proof harnesses and prints each one's result and time
-//! (docs/verification/formal-proofs.md, OI-42). A spike: no check of the verification run calls
-//! it, and nothing gates on it.
+//! (docs/verification/formal-proofs.md, OI-42). The non-gating check `kani` of
+//! `cargo xtask verify` runs it in the verification image (maintainer decision 2026-10-23, #92);
+//! nothing gates on it.
 //!
 //! The harnesses are `#[kani::proof]` functions in a `#[cfg(kani)] mod proofs` of each crate in
 //! [`RUNS`]. Kani is pinned to [`KANI_VERSION`]; another version is refused, since the trusted
@@ -12,7 +13,7 @@ use std::time::Instant;
 use crate::repo;
 
 /// The pinned Kani release (`cargo install --locked kani-verifier@0.68.0`, then
-/// `cargo kani setup`).
+/// `cargo kani setup`); `xtask/verify/Containerfile` installs the same.
 pub const KANI_VERSION: &str = "0.68.0";
 
 /// One `cargo kani` invocation: crate, features, and an exact harness name to restrict it to.
@@ -181,6 +182,15 @@ mod tests {
             ]
         );
         assert_eq!(parse("error: could not compile"), []);
+    }
+
+    // req: VER-056
+    #[test]
+    fn the_image_installs_the_pinned_kani() {
+        let containerfile =
+            crate::repo::read(&crate::repo::root().join("xtask/verify/Containerfile")).unwrap();
+        assert!(containerfile.contains(&format!("kani-verifier@{KANI_VERSION}")));
+        assert!(containerfile.contains(&format!("kani-{KANI_VERSION}-$triple.tar.gz")));
     }
 
     #[test]

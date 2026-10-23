@@ -972,10 +972,19 @@ mod tests {
             ),
             rust
         );
-        // A rename out of docs/ lists both sides.
+        // A rename out of docs/ lists both sides. The facade has no Kani harness.
+        let rust_but_kani = names(|c| !c.cpp && c.name != "kani");
         assert_eq!(
             running(
                 &changed(&["docs/a.md", "crates/aldis/a.md"]),
+                Force::default()
+            ),
+            rust_but_kani
+        );
+        // A crate with Kani harnesses runs the check kani with the other Rust checks (OI-42).
+        assert_eq!(
+            running(
+                &changed(&["crates/aldis-core/src/proofs.rs"]),
                 Force::default()
             ),
             rust
@@ -991,7 +1000,7 @@ mod tests {
         // The vectors are read by both implementations, not by the header check.
         assert_eq!(
             running(&changed(&["test-vectors/README.md"]), Force::default()),
-            names(|c| c.name != "header")
+            names(|c| c.name != "header" && c.name != "kani")
         );
         // The committed header is read by the header check (and spec) alone.
         assert_eq!(
@@ -1021,6 +1030,7 @@ mod tests {
             all: false,
             cpp: true,
         };
+        want.retain(|n| n != "kani");
         assert_eq!(
             running(&changed(&["crates/aldis/src/lib.rs"]), all_cpp),
             want
@@ -1126,9 +1136,16 @@ mod tests {
         let xtask_tests = ["test", "test-macos", "big-endian"];
         assert_eq!(
             of(Some(Outcome::Reused)),
-            names(|c| !c.cpp && c.name != "spec" && !xtask_tests.contains(&c.name.as_str()))
+            names(|c| {
+                !c.cpp
+                    && !matches!(c.name.as_str(), "spec" | "kani")
+                    && !xtask_tests.contains(&c.name.as_str())
+            })
         );
-        assert_eq!(of(Some(Outcome::Skipped)), names(|c| c.cpp));
+        assert_eq!(
+            of(Some(Outcome::Skipped)),
+            names(|c| c.cpp || c.name == "kani")
+        );
         let mut run = vec!["spec".to_owned()];
         run.extend(xtask_tests.map(str::to_owned));
         assert_eq!(of(None), names(|c| run.contains(&c.name)));
@@ -1601,7 +1618,11 @@ mod tests {
         assert_eq!(p.branch, std::slice::from_ref(&r.p1));
         let xtask_tests = ["test", "test-macos", "big-endian"];
         // The Rust checks: their inputs are those of the branch's verified head.
-        let rust = names(|c| !c.cpp && c.name != "spec" && !xtask_tests.contains(&c.name.as_str()));
+        let rust = names(|c| {
+            !c.cpp
+                && !matches!(c.name.as_str(), "spec" | "kani")
+                && !xtask_tests.contains(&c.name.as_str())
+        });
         assert_eq!(
             decided(&p, Some(Outcome::Reused)),
             (rust.clone(), vec![r.p1.clone()])
@@ -1609,7 +1630,7 @@ mod tests {
         // The C++ checks: unchanged against the base, which PR 1's record covers.
         assert_eq!(
             decided(&p, Some(Outcome::Skipped)),
-            (names(|c| c.cpp), vec![r.head1.clone()])
+            (names(|c| c.cpp || c.name == "kani"), vec![r.head1.clone()])
         );
         // spec reads every path; the xtask tests read cpp/.
         let mut run = xtask_tests.map(str::to_owned).to_vec();
@@ -1618,7 +1639,7 @@ mod tests {
         let lines = describe(&p, &checks);
         assert!(
             lines[0].ends_with(&format!(
-                "4 of {} checks run, 15 skipped, {} reused",
+                "4 of {} checks run, 16 skipped, {} reused",
                 checks.len(),
                 rust.len()
             )),
@@ -1675,10 +1696,10 @@ mod tests {
     fn a_main_merge_that_changes_a_rust_input_runs_the_rust_checks() {
         let r = reverify("rust-input", "crates/y/src/lib.rs");
         let p = plan_of(&r);
-        assert_eq!(decided(&p, None).0, names(|c| !c.cpp));
+        assert_eq!(decided(&p, None).0, names(|c| !c.cpp && c.name != "kani"));
         assert_eq!(
             decided(&p, Some(Outcome::Skipped)),
-            (names(|c| c.cpp), vec![r.head1])
+            (names(|c| c.cpp || c.name == "kani"), vec![r.head1])
         );
         assert_eq!(decided(&p, Some(Outcome::Reused)).0, Vec::<String>::new());
         let clippy = p.checks.iter().find(|d| d.name == "clippy").unwrap();
@@ -1709,8 +1730,11 @@ mod tests {
         let problems = recheck(&r.clone.0, &rec, &checks);
         // One problem per reused check: the Rust checks outside spec and the xtask tests.
         let xtask_tests = ["test", "test-macos", "big-endian"];
-        let reused =
-            names(|c| !c.cpp && c.name != "spec" && !xtask_tests.contains(&c.name.as_str()));
+        let reused = names(|c| {
+            !c.cpp
+                && !matches!(c.name.as_str(), "spec" | "kani")
+                && !xtask_tests.contains(&c.name.as_str())
+        });
         assert_eq!(problems.len(), reused.len(), "{problems:?}");
         assert!(
             problems[0].ends_with(&format!(

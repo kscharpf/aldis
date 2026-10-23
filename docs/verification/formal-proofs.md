@@ -1,6 +1,6 @@
 # Formal proofs with Kani (spike, OI-42)
 
-A spike on branch `m2/kani-spike`, 2026-10-22: how far the bounded model checker Kani takes Aldis toward proven properties. It adds proof harnesses to `aldis-core`, `aldis-spp`, and `aldis-time`, and the command `cargo xtask kani`. Nothing gates on it, and no requirement's verification method changes. The choice of method and tool is [OI-42](../09-open-issues.md).
+A spike on branch `m2/kani-spike`, 2026-10-22: how far the bounded model checker Kani takes Aldis toward proven properties. It adds proof harnesses to `aldis-core`, `aldis-spp`, and `aldis-time`, and the command `cargo xtask kani`, which the non-gating check `kani` of `cargo xtask verify` runs (§7). Nothing gates on it, and no requirement's verification method changes. The choice of method and tool is [OI-42](../09-open-issues.md).
 
 ## 1. Tool
 
@@ -12,7 +12,7 @@ A spike on branch `m2/kani-spike`, 2026-10-22: how far the bounded model checker
 | Footprint | 352 MB in `~/.kani/kani-0.68.0` (release bundle, 109 MB download for `aarch64-apple-darwin`) and 1.3 GB for the nightly in `~/.rustup/toolchains`; the Linux bundles are 139 MB (`aarch64`) and 140 MB (`x86_64`) |
 | Host of the measurements | Apple silicon, 8 cores, 8 GB, macOS; other sessions shared the machine, so the times are indicative (±50 %) |
 
-`cargo xtask kani` checks that `cargo kani --version` reports the pinned 0.68.0 and refuses another version, then runs every harness and prints a table of result and CBMC time per harness. It is not a check of `cargo xtask verify` (§7).
+`cargo xtask kani` checks that `cargo kani --version` reports the pinned 0.68.0 and refuses another version, then runs every harness and prints a table of result and CBMC time per harness. The non-gating check `kani` of `cargo xtask verify` runs it (§7).
 
 ## 2. Harnesses
 
@@ -91,17 +91,14 @@ No proof failed on the real code. The CMN-031, SPP-001/002/004, and TIME-011 sta
 - **Scope of the tool.** Kani proves properties of bounded executions. Stateful engines (COP-1, the link receivers) can be checked for a bounded number of steps from a symbolic state, but invariants over unbounded runs need loop or function contracts, which are still unstable in Kani, or a deductive tool (OI-42 option (b)).
 - **Not a coverage artefact.** The harnesses compile only under `cfg(kani)`, so the coverage run (VER-024) and clippy never see them; their code is linted by the Kani compiler's rustc warnings only.
 
-## 7. The verification image (not changed)
+## 7. The non-gating check `kani`
 
-`cargo xtask verify` has no `kani` check. Running it in the pinned image needs Kani's own nightly (about 1.3 GB, a third toolchain beside 1.99.1 and the tooling nightly) and its release bundle (139–140 MB download, about 350 MB unpacked), and the release bundles publish no checksum to pin against, unlike `rustup-init` in the Containerfile. That is not a small change, so the spike leaves the image and `checks.rs` alone. A non-gating check would be:
+The maintainer accepted OI-42 option (a) as far as a non-gating check (2026-10-23, #92). The check `kani` of `cargo xtask verify` (`xtask/src/verify/checks.rs`) runs `cargo xtask kani` in the verification image with `gating: false`, as the LEON3 checks do: its result is in every record, and a failure fails no run. Its inputs are `RUN` and the crates with harnesses (`KANI`: `crates/aldis-core/**`, `crates/aldis-spp/**`, `crates/aldis-time/**`), so a change elsewhere reuses or skips it. It adds about 20 minutes of CPU time when it runs (§2: about 8 for `aldis-core`, 9 for `aldis-spp`, and 3 for `aldis-time`).
 
-```dockerfile
-# Kani for the non-gating check `kani` (OI-42): the verifier from crates.io, then its bundle (CBMC,
-# kani-compiler) and the nightly it is built against, under /opt/kani.
-ENV KANI_HOME=/opt/kani
-RUN cargo install --locked --root /opt/cargo kani-verifier@0.68.0 \
- && cargo kani setup \
- && rm -rf /opt/cargo/registry /opt/cargo/git
-```
+The image (`xtask/verify/Containerfile`, last layer, `KANI_HOME=/opt/kani`):
 
-with a check `kani` in `xtask/src/verify/checks.rs` that runs `cargo xtask kani`, `gating: false`, inputs `RUN` and the three crates (`crates/aldis-core/**`, `crates/aldis-spp/**`, `crates/aldis-time/**`, or the existing `RUST` list), and the test `only_the_leon3_checks_are_non_gating` extended to it. The run would add about 20 minutes of CPU time on the measurement host (§2: about 8 for `aldis-core`, 9 for `aldis-spp`, and 3 for `aldis-time`).
+- **Driver.** `kani-verifier` 0.68.0 from crates.io with `--locked`. `xtask/src/kani.rs` pins the same version and refuses another; a test checks that the two agree.
+- **Bundle.** The release bundle (kani-compiler and CBMC, 139–140 MB per Linux architecture) is downloaded and checked against the SHA-256 that GitHub records for the release asset, then installed with `cargo kani setup --use-local-bundle`. The project publishes no checksum file; GitHub's asset digests and the two downloads of 2026-10-23 agreed (`aarch64` `0042d268…`, `x86_64` `32e2b484…`).
+- **Toolchain.** `cargo kani setup` installs the nightly the bundle is built against (`nightly-2026-08-21`) through rustup, which checks it; about 1.3 GB, a third toolchain beside 1.99.1 and the tooling nightly.
+
+Still open in OI-42: making the check gating, and a verification method for the requirements a harness proves (the letter **F** is taken).

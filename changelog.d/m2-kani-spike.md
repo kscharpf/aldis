@@ -5,7 +5,10 @@
   SPP-001/002/004, header and whole-packet encode→decode), and `aldis-time` (the TIME-011 CUC
   conversions and round trips for 1 and 2 fine octets, and the conversion to nanoseconds for 3; the
   others did not finish within 30 minutes), compiled only under `cfg(kani)`. `cargo xtask kani` runs them and
-  prints each harness's result and time; it is no check of `cargo xtask verify` and gates nothing.
+  prints each harness's result and time.
+- The non-gating check `kani` of `cargo xtask verify` runs `cargo xtask kani` (OI-42, maintainer
+  decision 2026-10-23). The verification image installs Kani 0.68.0: the driver from crates.io, and
+  the release bundle checked against GitHub's SHA-256 of the asset, under `/opt/kani`.
   `docs/verification/formal-proofs.md` records the bounds, the trusted base, the canaries, and the
   limits; `cargo xtask trace` lists the harnesses as `proof` artefacts.
 
