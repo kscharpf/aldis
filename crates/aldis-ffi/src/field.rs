@@ -341,6 +341,57 @@ pub const ALDIS_FIELD_OCF_TYPE_FLAG: u16 = 65;
 /// Code 66, a field (132.0 §4.1.5.5; 732.0 §4.1.5.5; 732.1 §4.1.5.2.2; API-082, CABI-021).
 pub const ALDIS_FIELD_OCF_REPORT_USE: u16 = 66;
 
+/// Transfer Frame Version Number.
+///
+/// Code 67, a field (132.0 §4.1.2.2.2; API-082, CABI-021).
+pub const ALDIS_FIELD_FRAME_VERSION: u16 = 67;
+
+/// Transfer Frame Length of a physical channel with fixed-length frames, a managed parameter.
+///
+/// Code 68, a parameter (132.0 §4.1.1.2, §5.1 Table 5-1; API-082, CABI-021).
+pub const ALDIS_FIELD_FRAME_LEN: u16 = 68;
+
+/// Operational Control Field Flag.
+///
+/// Code 69, a field (132.0 §4.1.2.4; API-082, CABI-021).
+pub const ALDIS_FIELD_OCF_FLAG: u16 = 69;
+
+/// Transfer Frame Secondary Header Flag.
+///
+/// Code 70, a field (132.0 §4.1.2.7.2; API-082, CABI-021).
+pub const ALDIS_FIELD_FSH_FLAG: u16 = 70;
+
+/// Synchronization Flag of the TM Transfer Frame Data Field Status.
+///
+/// Code 71, a field (132.0 §4.1.2.7.3; API-082, CABI-021).
+pub const ALDIS_FIELD_SYNC_FLAG: u16 = 71;
+
+/// Packet Order Flag.
+///
+/// Code 72, a field (132.0 §4.1.2.7.4; API-082, CABI-021).
+pub const ALDIS_FIELD_PACKET_ORDER_FLAG: u16 = 72;
+
+/// Segment Length Identifier.
+///
+/// Code 73, a field (132.0 §4.1.2.7.5; API-082, CABI-021).
+pub const ALDIS_FIELD_SEGMENT_LENGTH_ID: u16 = 73;
+
+/// First Header Pointer.
+///
+/// Code 74, a field (132.0 §4.1.2.7.6; API-082, CABI-021).
+pub const ALDIS_FIELD_FIRST_HEADER_POINTER: u16 = 74;
+
+/// Transfer Frame Secondary Header Version Number.
+///
+/// Code 75, a field (132.0 §4.1.3.2.2; API-082, CABI-021).
+pub const ALDIS_FIELD_FSH_VERSION: u16 = 75;
+
+/// Total length of the Transfer Frame Secondary Header in octets: its Length field plus one, and
+/// the `MC_FSH` or `VC_FSH` Length managed parameter.
+///
+/// Code 76, a field (132.0 §4.1.3.2.3, §5.2 Table 5-2, §5.3 Table 5-3; API-082, CABI-021).
+pub const ALDIS_FIELD_FSH_LEN: u16 = 76;
+
 // Each code is the code of its `aldis_core::field` constant (API-082).
 const _: () = {
     assert!(ALDIS_FIELD_SPACECRAFT_ID == field::SPACECRAFT_ID.code().get());
@@ -409,4 +460,14 @@ const _: () = {
     assert!(ALDIS_FIELD_MAX_DATA_LEN == field::MAX_DATA_LEN.code().get());
     assert!(ALDIS_FIELD_OCF_TYPE_FLAG == field::OCF_TYPE_FLAG.code().get());
     assert!(ALDIS_FIELD_OCF_REPORT_USE == field::OCF_REPORT_USE.code().get());
+    assert!(ALDIS_FIELD_FRAME_VERSION == field::FRAME_VERSION.code().get());
+    assert!(ALDIS_FIELD_FRAME_LEN == field::FRAME_LEN.code().get());
+    assert!(ALDIS_FIELD_OCF_FLAG == field::OCF_FLAG.code().get());
+    assert!(ALDIS_FIELD_FSH_FLAG == field::FSH_FLAG.code().get());
+    assert!(ALDIS_FIELD_SYNC_FLAG == field::SYNC_FLAG.code().get());
+    assert!(ALDIS_FIELD_PACKET_ORDER_FLAG == field::PACKET_ORDER_FLAG.code().get());
+    assert!(ALDIS_FIELD_SEGMENT_LENGTH_ID == field::SEGMENT_LENGTH_ID.code().get());
+    assert!(ALDIS_FIELD_FIRST_HEADER_POINTER == field::FIRST_HEADER_POINTER.code().get());
+    assert!(ALDIS_FIELD_FSH_VERSION == field::FSH_VERSION.code().get());
+    assert!(ALDIS_FIELD_FSH_LEN == field::FSH_LEN.code().get());
 };
