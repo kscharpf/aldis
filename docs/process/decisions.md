@@ -72,3 +72,4 @@ One line for each decision the maintainer takes, under the [decision rights](dec
 - 2026-10-23 · api · #89 · `aldis_oid_generator_fill` takes `(out, len)` with no `out_len`: it always fills exactly `len` octets
 - 2026-10-23 · api · #89 · `aldis_ocf_check` is public C ABI, the C form of the OCF reports' checked constructors
 - 2026-10-23 · api · #90 · TM per-VC security layouts come through `VcLookup::security_layout(scid, vcid)`, implemented by `TmMasterChannelConfig` (holding its at most 8 VCs) and `NoSdls`; `decode` keeps the profile signature, `decode_with` takes a lookup
+- 2026-10-23 · plan · chat · Continue the Kani formal-verification spike (OI-42) found uncommitted in a worktree, and open it as a pull request
