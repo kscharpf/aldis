@@ -438,6 +438,7 @@ mod tests {
             assert_eq!((e.kind(), e.field()), (ErrorKind::InvalidConfig, Some(f)));
         };
         let mc_fsh = TmMasterChannelConfig::new(pc, scid(1), Some(fsh), false);
+        assert_eq!((mc_fsh.fsh(), mc_fsh.ocf()), (Some(fsh), false));
         invalid(mc_fsh.with_vc(packets(0).with_fsh(fsh)), field::FSH_LEN);
         let mc_ocf = TmMasterChannelConfig::new(pc, scid(1), None, true);
         invalid(
