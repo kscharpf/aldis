@@ -20,3 +20,8 @@ tracker_max_apids = 16     # APIDs one aldis_spp_tracker_t tracks (SPP-011, M2 p
 # --- TC (M2 WP-3 module 8)
 [tc]
 max_maps = 64             # MAPs one aldis_tc_* call takes with a master channel (232.0 Table 5-4, M2 plan D14)
+
+# ---- USLP (M2 WP-5 module 9) ----
+[uslp]
+max_vcs = 16               # virtual channels in one aldis_uslp_* channel table (API-040, M2 plan D14)
+max_maps = 32              # MAP channels in one aldis_uslp_* channel table (API-040, M2 plan D14)

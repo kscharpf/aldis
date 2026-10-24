@@ -10,7 +10,7 @@
 //! | [`view`] | Zero-copy `UslpFrame` (full or truncated) and `UslpFullFrame`, `peek_length` | 732.1 §4.1, §6.3 | USLP-001, USLP-003…USLP-007, USLP-016, API-010…API-014, API-072 |
 //! | [`truncated`] | Zero-copy `UslpTruncatedFrame` | 732.1 Annex D | USLP-002, USLP-012, API-075 |
 //! | [`tfdf`] | `TfdfHeader`, `TfdzRule`, `ConstructionRule`, `FirstHeaderPointer`, `LastValidOctet`, `TfdzOffset` | 732.1 §4.1.4.2 | USLP-005, USLP-006, USLP-016 |
-//! | [`writer`] | One-shot `encode`, two-phase `UslpFrameWriter`, `encode_truncated`, `encode_oid` | 732.1 §4.1, §6.3, Annex D | USLP-009, USLP-010, API-020…API-023 |
+//! | [`writer`] | One-shot `encode`, two-phase `UslpFrameWriter` (with `resume` for a stateless finish), `encode_truncated`, `encode_oid` and `encode_oid_galois` | 732.1 §4.1, §6.3, Annex D | USLP-009, USLP-010, API-020…API-023 |
 //! | [`anomaly`] | `UslpAnomaly` lenient-mode flags | 732.1 §4.1.2.9, §4.1.4.1.8–9 | API-032, API-033 |
 //! | [`delimit`] | Frame Delimiting and Fill Data Removal: stateless `next_frame`, `FrameDelimiter` | 732.1 §4.3.11.2 | USLP-015 |
 //! | [`validate`] | USLP Frame Validation Checks: `validate_frame`, `Reason`, `Rejection` | 732.1 §4.3.11.3 | USLP-014 |
@@ -71,7 +71,8 @@ pub use upid::{UnassignedUpid, Upid};
 pub use validate::{Reason, Rejection, validate_frame};
 pub use view::{UslpFrame, UslpFullFrame};
 pub use writer::{
-    FrameContent, FrameFields, UslpFrameWriter, encode, encode_oid, encode_truncated,
+    FrameContent, FrameFields, UslpFrameWriter, encode, encode_oid, encode_oid_galois,
+    encode_truncated,
 };
 
 /// Compiles and runs the examples in `README.md` as doctests; not part of the API.

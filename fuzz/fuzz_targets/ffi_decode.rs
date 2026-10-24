@@ -8,7 +8,9 @@
 //! `aldis_ocf_check`, and the OID generator in both forms; and so does that of `aldis-tm`:
 //! `aldis_tm_decode`, `aldis_tm_decode_unchecked`, `aldis_tm_peek_length`,
 //! `aldis_tm_header_decode`, `aldis_tm_decode_with`, and `aldis_tm_validate`; and so does that
-//! of `aldis-tc` and the CLCW (`tc_ffi`).
+//! of `aldis-tc` and the CLCW (`tc_ffi`), and that of `aldis-uslp`: `aldis_uslp_vc_table_check`,
+//! `aldis_uslp_decode`, `aldis_uslp_validate`, `aldis_uslp_peek_length`, and
+//! `aldis_uslp_next_frame`.
 //!
 //! AOS (M2 WP-4 module 8): every input also runs through the C ABI of `aldis-aos`, which agrees
 //! with it: `aldis_aos_fhec_encode`, `aldis_aos_fhec_decode`, `aldis_aos_mpdu_decode`,
@@ -19,6 +21,7 @@
 // req: CABI-012, CABI-020, CABI-021, CABI-022, GEN-020, API-010, VER-022, CMN-001, CMN-010, CMN-022, TM-001, API-070
 // req: TC-001, TC-020, TC-021, TC-030
 // req: AOS-010, AOS-013, AOS-014, AOS-017
+// req: USLP-001, USLP-014, USLP-015
 
 use core::ptr::null_mut;
 
@@ -73,6 +76,23 @@ use aldis_tm::{
     DataFieldContent, DataFieldStatus, FshLen, NoSdls, PacketPointer, TmFrame,
     TmMasterChannelConfig, TmPhysicalChannelConfig, TmPrimaryHeader, TmVirtualChannelConfig,
 };
+// ---- USLP (M2 WP-5 module 9)
+use aldis_ffi::uslp::{
+    ALDIS_USLP_DELIMITED_END, ALDIS_USLP_DELIMITED_FILL, ALDIS_USLP_DELIMITED_FRAME,
+    ALDIS_USLP_DELIMITED_INCOMPLETE_FRAME, ALDIS_USLP_DELIMITED_NO_TRUNCATED_LENGTH,
+    ALDIS_USLP_FRAME_FIXED, ALDIS_USLP_FRAME_VARIABLE, ALDIS_USLP_KIND_EXPEDITED,
+    ALDIS_USLP_KIND_PROTOCOL_CONTROL, ALDIS_USLP_KIND_SEQUENCE_CONTROLLED, ALDIS_USLP_OCF_ABSENT,
+    ALDIS_USLP_OCF_ALLOWED, ALDIS_USLP_OCF_REQUIRED, ALDIS_USLP_REASON_NONE,
+    ALDIS_USLP_SECURITY_PER_MAP, ALDIS_USLP_SECURITY_VC, aldis_uslp_config_t, aldis_uslp_decode,
+    aldis_uslp_delimited_t, aldis_uslp_frame_t, aldis_uslp_map_config_t, aldis_uslp_next_frame,
+    aldis_uslp_peek_length, aldis_uslp_validate, aldis_uslp_vc_config_t, aldis_uslp_vc_table_check,
+};
+use aldis_uslp::{
+    Delimited, FrameKind, MapConfig, OcfUse, PhysicalChannelConfig, SecurityScope,
+    TransferFrameType, TruncatedFrameLen, Upid, UslpFrame, UslpMapId, UslpSpacecraftId, UslpVcId,
+    VcConfig, VcParams, VcTable as UslpVcTable, VcfCountLen, next_frame, validate_frame,
+};
+// ---- end USLP
 use libfuzzer_sys::fuzz_target;
 
 /// The status and detail a C call returns for a Rust result.
@@ -1226,6 +1246,365 @@ fn aos(data: &[u8], selector: u8, mode: DecodeMode, c_mode: u32) {
     }
 }
 
+// ---- USLP (M2 WP-5 module 9)
+
+/// The offset of `part`, a subslice of `whole`, in `whole`.
+fn uslp_offset(whole: &[u8], part: &[u8]) -> usize {
+    part.as_ptr().addr() - whole.as_ptr().addr()
+}
+
+/// The C view of a USLP frame agrees with the Rust view: the tag, the shared fields, the TFDF
+/// Header, the full frame's header fields, the FECF, the anomalies, and every field's offset
+/// and length (CABI-012; M2 plan D12).
+fn uslp_same(view: &aldis_uslp_frame_t, frame: &UslpFrame<'_>, data: &[u8]) {
+    let ch = frame.channel();
+    assert_eq!(view.truncated, frame.is_truncated());
+    assert_eq!(
+        (
+            view.channel.scid,
+            view.channel.source_or_destination,
+            view.channel.vcid,
+            view.channel.map_id
+        ),
+        (
+            ch.spacecraft_id.get(),
+            u8::from(ch.source_or_destination.bit()),
+            ch.vc_id.get(),
+            ch.map_id.get()
+        )
+    );
+    let tfdf = frame.tfdf_header();
+    assert_eq!(
+        (view.tfdf.rule, view.tfdf.upid, view.tfdf.pointer),
+        (
+            tfdf.rule.rule().bits(),
+            tfdf.upid.bits(),
+            tfdf.rule.pointer().unwrap_or(0)
+        )
+    );
+    assert_eq!(view.upid_assigned, !matches!(tfdf.upid, Upid::Other(_)));
+    assert_eq!(view.anomalies, frame.anomalies().bits());
+    let l = &view.layout;
+    let span = |at: usize, len: usize| at..at + len;
+    let of = |s: &[u8]| span(uslp_offset(data, s), s.len());
+    assert_eq!(l.frame_len, frame.len());
+    assert_eq!(
+        span(l.security_header_offset, l.security_header_len),
+        of(frame.security_header())
+    );
+    assert_eq!(span(l.tfdz_offset, l.tfdz_len), of(frame.tfdz()));
+    assert_eq!(l.tfdf_header_offset + tfdf.len(), l.tfdz_offset);
+    assert_eq!(
+        span(l.security_trailer_offset, l.security_trailer_len),
+        of(frame.security_trailer())
+    );
+    assert_eq!(
+        l.ocf_offset,
+        l.security_trailer_offset + l.security_trailer_len
+    );
+    assert_eq!(l.fecf_offset + l.fecf_len, l.frame_len);
+    if let Some(full) = frame.full() {
+        let h = full.header();
+        assert_eq!(
+            (view.ocf_flag, view.vcf_count_len, view.vcf_count),
+            (
+                h.ocf_flag(),
+                h.vcf_count().len().get(),
+                h.vcf_count().value()
+            )
+        );
+        let kind = match h.kind() {
+            FrameKind::SequenceControlled => ALDIS_USLP_KIND_SEQUENCE_CONTROLLED,
+            FrameKind::Expedited => ALDIS_USLP_KIND_EXPEDITED,
+            FrameKind::ProtocolControl => ALDIS_USLP_KIND_PROTOCOL_CONTROL,
+        };
+        assert_eq!(view.kind, kind);
+        assert_eq!(
+            span(l.insert_zone_offset, l.insert_zone_len),
+            of(full.insert_zone())
+        );
+        assert_eq!(l.ocf_len, if full.ocf().is_some() { OCF_LEN } else { 0 });
+        assert_eq!(view.has_fecf.then_some(view.fecf), full.fecf());
+    } else {
+        assert_eq!(
+            (view.kind, view.ocf_flag, view.vcf_count_len, view.vcf_count),
+            (0, false, 0, 0)
+        );
+        assert_eq!((l.insert_zone_len, l.ocf_len, l.fecf_len), (0, 0, 0));
+        assert!(!view.has_fecf);
+    }
+}
+
+/// The USLP channels of an input: a physical channel, fixed-length of the input's length or
+/// variable-length up to 1024 octets, with the selector's FECF and Insert Zone; one virtual
+/// channel on the SCID and VCID the input's first octets name, with the VCF Count Length of
+/// its octet 6 for both services, so most frames reach the later checks, and a truncated frame
+/// length, an OCF use, and SDLS layouts (per VC or per MAP) drawn from the selector; and its 16
+/// MAPs. As C structs and as the `VcTable` the Rust constructors build.
+fn uslp_channels(
+    data: &[u8],
+    selector: u8,
+) -> (
+    aldis_uslp_config_t,
+    aldis_uslp_vc_config_t,
+    [aldis_uslp_map_config_t; 16],
+) {
+    let fixed = selector & 0x80 != 0;
+    let fecf = selector & 0x40 != 0;
+    let word = data
+        .first_chunk::<4>()
+        .map_or(0, |b| u32::from_be_bytes(*b));
+    let scid = u16::try_from((word >> 12) & 0xFFFF).unwrap();
+    let vcid = u8::try_from((word >> 5) & 0x3F).unwrap();
+    let count_len = data.get(6).map_or(0, |b| b & 0b111);
+    let per_map = selector & 0x20 != 0;
+    let frame_type = if fixed {
+        ALDIS_USLP_FRAME_FIXED
+    } else {
+        ALDIS_USLP_FRAME_VARIABLE
+    };
+    let pc = aldis_uslp_config_t {
+        struct_size: u32::try_from(size_of::<aldis_uslp_config_t>()).unwrap(),
+        frame_type,
+        fecf: u8::from(fecf),
+        frame_len: if fixed { data.len() } else { 1024 },
+        insert_zone_len: if fixed {
+            usize::from((selector >> 3) & 0b11)
+        } else {
+            0
+        },
+    };
+    let vc = aldis_uslp_vc_config_t {
+        struct_size: u32::try_from(size_of::<aldis_uslp_vc_config_t>()).unwrap(),
+        scid,
+        vcid,
+        frame_type,
+        vcf_count_len_sequence: count_len,
+        vcf_count_len_expedited: count_len,
+        ocf: match (fixed, selector & 0x10 != 0) {
+            (true, true) => ALDIS_USLP_OCF_REQUIRED,
+            (false, true) => ALDIS_USLP_OCF_ALLOWED,
+            (_, false) => ALDIS_USLP_OCF_ABSENT,
+        },
+        truncated_frame_len: if fixed { 0 } else { 6 + vcid % 27 },
+        security: if per_map {
+            ALDIS_USLP_SECURITY_PER_MAP
+        } else {
+            ALDIS_USLP_SECURITY_VC
+        },
+        security_header_len: if per_map { 0 } else { vcid % 3 },
+        security_trailer_len: if per_map { 0 } else { u32::from(vcid % 2) },
+    };
+    let maps = core::array::from_fn(|m| {
+        let m = u8::try_from(m).unwrap();
+        aldis_uslp_map_config_t {
+            struct_size: u32::try_from(size_of::<aldis_uslp_map_config_t>()).unwrap(),
+            scid,
+            vcid,
+            map_id: m,
+            security_header_len: if per_map { m % 3 } else { 0 },
+            security_trailer_len: if per_map { u32::from(m % 2) } else { 0 },
+        }
+    });
+    (pc, vc, maps)
+}
+
+/// The Rust table of the C structs, built through the `aldis-uslp` constructors.
+fn uslp_table(
+    pc: &aldis_uslp_config_t,
+    vc: &aldis_uslp_vc_config_t,
+    maps: &[aldis_uslp_map_config_t; 16],
+) -> Result<UslpVcTable<1, 16>, Error> {
+    let frame_type = |t| {
+        if t == ALDIS_USLP_FRAME_FIXED {
+            TransferFrameType::Fixed
+        } else {
+            TransferFrameType::Variable
+        }
+    };
+    let physical = PhysicalChannelConfig::new(
+        frame_type(pc.frame_type),
+        pc.frame_len,
+        pc.insert_zone_len,
+        pc.fecf == 1,
+    )?;
+    let scid = UslpSpacecraftId::try_from(vc.scid)?;
+    let vcid = UslpVcId::try_from(vc.vcid)?;
+    let params = VcParams {
+        frame_type: frame_type(vc.frame_type),
+        vcf_count_len_sequence: VcfCountLen::new(vc.vcf_count_len_sequence)?,
+        vcf_count_len_expedited: VcfCountLen::new(vc.vcf_count_len_expedited)?,
+        ocf: match vc.ocf {
+            ALDIS_USLP_OCF_REQUIRED => OcfUse::Required,
+            ALDIS_USLP_OCF_ALLOWED => OcfUse::Allowed,
+            _ => OcfUse::Absent,
+        },
+        truncated_frame_len: match vc.truncated_frame_len {
+            0 => None,
+            n => Some(TruncatedFrameLen::new(usize::from(n))?),
+        },
+        security: if vc.security == ALDIS_USLP_SECURITY_PER_MAP {
+            SecurityScope::PerMap
+        } else {
+            SecurityScope::Vc(SecurityLayout::new(
+                usize::from(vc.security_header_len),
+                usize::try_from(vc.security_trailer_len).unwrap(),
+            )?)
+        },
+    };
+    let mut rust_maps =
+        [MapConfig::new(scid, vcid, UslpMapId::new(0).unwrap(), SecurityLayout::NONE); 16];
+    for (slot, m) in rust_maps.iter_mut().zip(maps) {
+        *slot = MapConfig::new(
+            scid,
+            vcid,
+            UslpMapId::try_from(m.map_id)?,
+            SecurityLayout::new(
+                usize::from(m.security_header_len),
+                usize::try_from(m.security_trailer_len).unwrap(),
+            )?,
+        );
+    }
+    UslpVcTable::new(physical, &[VcConfig::new(scid, vcid, params)?], &rust_maps)
+}
+
+/// The C ABI of `aldis-uslp` agrees with `aldis-uslp` on the input as one frame or data unit
+/// (M2 plan D14): `aldis_uslp_vc_table_check`, `aldis_uslp_decode`, `aldis_uslp_validate` with
+/// its reason, `aldis_uslp_peek_length`, and `aldis_uslp_next_frame` over the whole input
+/// (USLP-001…USLP-007, USLP-014…USLP-016, API-070).
+#[expect(unsafe_code, reason = "calls the C ABI with valid pointers")]
+#[expect(clippy::too_many_lines, reason = "one comparison per C function")]
+fn uslp(data: &[u8], selector: u8, mode: DecodeMode, c_mode: u32) {
+    let (pc, vc, maps) = uslp_channels(data, selector);
+    let rust_table = uslp_table(&pc, &vc, &maps);
+    let mut detail = aldis_error_detail_t::default();
+    // SAFETY: every pointer is to a live local.
+    let status = unsafe {
+        aldis_uslp_vc_table_check(
+            &raw const pc,
+            &raw const vc,
+            1,
+            maps.as_ptr(),
+            maps.len(),
+            &raw mut detail,
+        )
+    };
+    expect(&rust_table, status, &detail);
+    let Ok(table) = rust_table else {
+        return;
+    };
+    let mut view = aldis_uslp_frame_t::default();
+    let rust = UslpFrame::decode(data, &table, mode);
+    // SAFETY: as above.
+    let status = unsafe {
+        aldis_uslp_decode(
+            data.as_ptr(),
+            data.len(),
+            &raw const pc,
+            &raw const vc,
+            1,
+            maps.as_ptr(),
+            maps.len(),
+            c_mode,
+            &raw mut view,
+            &raw mut detail,
+        )
+    };
+    expect(&rust, status, &detail);
+    if let Ok(f) = &rust {
+        uslp_same(&view, f, data);
+    }
+    let rust = validate_frame(data, &table, mode);
+    let mut reason = u32::MAX;
+    // SAFETY: as above.
+    let status = unsafe {
+        aldis_uslp_validate(
+            data.as_ptr(),
+            data.len(),
+            &raw const pc,
+            &raw const vc,
+            1,
+            maps.as_ptr(),
+            maps.len(),
+            c_mode,
+            &raw mut view,
+            &raw mut reason,
+            &raw mut detail,
+        )
+    };
+    match &rust {
+        Ok(f) => {
+            assert_eq!((status, reason), (ALDIS_OK, ALDIS_USLP_REASON_NONE));
+            uslp_same(&view, f, data);
+        }
+        Err(r) => {
+            expect(&Err::<(), _>(r.error()), status, &detail);
+            assert_eq!(reason, u32::from(r.reason().code()));
+        }
+    }
+    let rust = UslpFrame::peek_length(data, &table);
+    let mut len = 0;
+    // SAFETY: as above.
+    let status = unsafe {
+        aldis_uslp_peek_length(
+            data.as_ptr(),
+            data.len(),
+            &raw const pc,
+            &raw const vc,
+            1,
+            &raw mut len,
+            &raw mut detail,
+        )
+    };
+    expect(&rust, status, &detail);
+    if let Ok(n) = rust {
+        assert_eq!(len, n);
+    }
+    // The delimiter, item by item, against `next_frame` (USLP-015).
+    let mut at = 0;
+    loop {
+        let mut item = aldis_uslp_delimited_t::default();
+        // SAFETY: as above.
+        let status = unsafe {
+            aldis_uslp_next_frame(
+                data.as_ptr(),
+                data.len(),
+                at,
+                &raw const pc,
+                &raw const vc,
+                1,
+                &raw mut item,
+                &raw mut detail,
+            )
+        };
+        assert_eq!((status, item.offset), (ALDIS_OK, at));
+        let expected = match next_frame(&data[at..], &table) {
+            None => (ALDIS_USLP_DELIMITED_END, 0, 0),
+            Some(Delimited::Frame(o)) => (ALDIS_USLP_DELIMITED_FRAME, o.len(), o.len()),
+            Some(Delimited::IncompleteFrame {
+                octets,
+                declared_len,
+            }) => (
+                ALDIS_USLP_DELIMITED_INCOMPLETE_FRAME,
+                octets.len(),
+                declared_len,
+            ),
+            Some(Delimited::NoTruncatedLength(o)) => {
+                (ALDIS_USLP_DELIMITED_NO_TRUNCATED_LENGTH, o.len(), 0)
+            }
+            Some(Delimited::Fill(o)) => (ALDIS_USLP_DELIMITED_FILL, o.len(), 0),
+        };
+        assert_eq!((item.kind, item.len, item.declared_len), expected);
+        if item.kind == ALDIS_USLP_DELIMITED_END {
+            assert_eq!(at, data.len());
+            break;
+        }
+        at += item.len;
+    }
+}
+
+// ---- end USLP
+
 fuzz_target!(|input: &[u8]| {
     let Some((&selector, data)) = input.split_first() else {
         return;
@@ -1237,12 +1616,15 @@ fuzz_target!(|input: &[u8]| {
     };
     // AOS (WP-4 module 8): every input, besides the branch the selector picks.
     aos(data, selector, mode, c_mode);
-    match (selector >> 1) % 6 {
+    match (selector >> 1) % 7 {
         0 => spp(data, mode, c_mode),
         1 => epp(data, mode, c_mode),
         2 => time(data, mode, c_mode),
         3 => tm(data, selector & 0x80 != 0, mode, c_mode),
         4 => tc_ffi::run(data, selector & 0x80 != 0, mode, c_mode),
+        // ---- USLP (M2 WP-5 module 9)
+        5 => uslp(data, selector, mode, c_mode),
+        // ---- end USLP
         _ => core(data),
     }
 });
