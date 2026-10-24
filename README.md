@@ -14,7 +14,18 @@
 
 Libraries that add CCSDS protocol support to spacecraft flight software and ground systems. The reference implementation is in Rust (`no_std`, no heap, panic-free), with a C ABI for C and C++ applications. Other languages are planned on top of that ABI.
 
-**Status:** Milestone 1 (`v0.2.0-m1`) complete: the specification, verification tooling, and `aldis-core` (Layer 0, Milestone 0, `v0.1.0-m0`), and the Layer 1 codecs for time codes, Space Packets, and Encapsulation Packets (`aldis-time`, `aldis-spp`, `aldis-epp`). Milestone 2 is in progress: the four frame codecs are implemented, each with its C ABI: TM (`aldis-tm`), TC with the CLCW, frame delimiting, and validation (`aldis-tc`), AOS in both editions with the Frame Header Error Control, the M_PDU, and the B_PDU (`aldis-aos`), and USLP with truncated frames, delimiting, and validation (`aldis-uslp`); the remaining verification gates and the exit review are next. Layers 2–3 are skeletons pending Milestones 3–6. The native C++ foundations (C0) and the reference application scenario (A0) are in progress ([roadmap](docs/08-roadmap.md)).
+## Status
+
+| Milestone or track | State |
+|---|---|
+| M0 Foundations (`v0.1.0-m0`) | Released: the specification, the verification tooling, and `aldis-core` (Layer 0) |
+| M1 Packets and time (`v0.2.0-m1`) | Released: the Layer 1 codecs for time codes, Space Packets, and Encapsulation Packets (`aldis-time`, `aldis-spp`, `aldis-epp`) |
+| M2 Frame codecs | In progress. The four frame codecs are implemented, each with its C ABI: TM (`aldis-tm`); TC with the CLCW, frame delimiting, and validation (`aldis-tc`); AOS in both editions with the Frame Header Error Control, the M_PDU, and the B_PDU (`aldis-aos`); USLP with truncated frames, delimiting, and validation (`aldis-uslp`). The remaining verification gates and the exit review are next |
+| M3–M6 | Not started: the Layer 2–3 crates (COP-1, link engines, framework) are skeletons |
+| C0 native C++ foundations | In progress |
+| A0 reference application scenario | In progress |
+
+See the [roadmap](docs/08-roadmap.md) for every milestone and track.
 
 ## How Aldis is verified
 
