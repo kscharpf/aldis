@@ -1,0 +1,852 @@
+{
+  "kind": "codec",
+  "standard": "732.0-B-4 §4.1.2, §4.1.4.2",
+  "provenance": "hand-derived",
+  "provenance_note": "732.0-B-5 EC1 prints no example frame, only the first OID octets of Annex D. Cases hand-derived from 732.0-B-5 EC1 §4.1 (figures 4-1 to 4-4; the Primary Header of §4.1.2 with the SCID's two most significant bits in bits 42-43; the FHEC of §4.1.2.6; the Insert Zone of §4.1.3; OID frames on VCID 63 of §4.1.4.1.5 and Annex D; the M_PDU and B_PDU of §4.1.4.2-3 with their reserved pointer values; the OCF per VC of §4.1.5; the FECF of §4.1.6), §4.3.7.2-3 (the header corrected before the CRC is checked), §5 Tables 5-1 to 5-3, and §6.3, and from 732.0-B-4 §4.1.2.2.3, §4.1.2.5.4, and §4.1.4.2.2-3 for Issue 4, with the readings of docs/standards/aos-frame.md (AOS-001...AOS-019, the anomaly list, OI-43) and the error kinds and field codes of docs/03-api-model.md §9 and §9.1. Inputs assembled bit by bit from the figure widths; expected values computed by an independent Python model of those clauses, written from the Blue Book after the Rust codec but not from its code, and sharing no code with it (the FECF by polynomial division over the corrected header, the OID data by the Annex D recurrence, the FHEC by the table model aos_fhec.py of the fhec_*.json files, loaded from its path). The model is committed as test-vectors/models/aos_frame.py (TV-023); `python3 -I test-vectors/models/aos_frame.py --check test-vectors/aos/<file>.json` recomputes every expected value. One frame is worked by hand in docs/verification/derivations/aos-frame.md.",
+  "cases": [
+    {
+      "id": "aos-i4-dec-001",
+      "requirements": [
+        "AOS-001",
+        "GEN-062",
+        "AOS-002",
+        "AOS-003"
+      ],
+      "description": "Issue 4: 8-bit SCID 0xA5, bits 42-43 00, M_PDU spare 00000 and pointer 3",
+      "operation": "decode",
+      "config": {
+        "frame_len": 14,
+        "fhec": false,
+        "insert_zone_len": 0,
+        "fecf": false,
+        "edition": "issue4",
+        "vcs": [
+          {
+            "scid": 165,
+            "vcid": 5,
+            "content": "mpdu",
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "input_hex": "6945000000000003707172737475",
+      "expect": {
+        "ok": true,
+        "scid": 165,
+        "vcid": 5,
+        "vc_frame_count": 0,
+        "replay_flag": false,
+        "cycle_use_flag": false,
+        "cycle_field": 0,
+        "vc_frame_count_cycle": null,
+        "issue4_spare": 0,
+        "fhec": null,
+        "corrected_symbols": 0,
+        "header_hex": "694500000000",
+        "is_oid": false,
+        "insert_zone_hex": "",
+        "security_header_hex": "",
+        "data_field_hex": "0003707172737475",
+        "security_trailer_hex": "",
+        "ocf_hex": null,
+        "ocf_report": null,
+        "fecf": null,
+        "data_unit": "mpdu",
+        "pdu_pointer_raw": 3,
+        "pointer": "starts_at",
+        "pointer_value": 3,
+        "pdu_spare": 0,
+        "zone_hex": "707172737475",
+        "consumed": 14,
+        "anomalies": []
+      }
+    },
+    {
+      "id": "aos-i4-dec-002",
+      "requirements": [
+        "AOS-001",
+        "GEN-062",
+        "AOS-003"
+      ],
+      "description": "11-bit pointer 0x7FF: no Packet starts",
+      "operation": "decode",
+      "config": {
+        "frame_len": 14,
+        "fhec": false,
+        "insert_zone_len": 0,
+        "fecf": false,
+        "edition": "issue4",
+        "vcs": [
+          {
+            "scid": 165,
+            "vcid": 5,
+            "content": "mpdu",
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "input_hex": "69450000000007FF707172737475",
+      "expect": {
+        "ok": true,
+        "scid": 165,
+        "vcid": 5,
+        "vc_frame_count": 0,
+        "replay_flag": false,
+        "cycle_use_flag": false,
+        "cycle_field": 0,
+        "vc_frame_count_cycle": null,
+        "issue4_spare": 0,
+        "fhec": null,
+        "corrected_symbols": 0,
+        "header_hex": "694500000000",
+        "is_oid": false,
+        "insert_zone_hex": "",
+        "security_header_hex": "",
+        "data_field_hex": "07FF707172737475",
+        "security_trailer_hex": "",
+        "ocf_hex": null,
+        "ocf_report": null,
+        "fecf": null,
+        "data_unit": "mpdu",
+        "pdu_pointer_raw": 2047,
+        "pointer": "no_packet_start",
+        "pointer_value": null,
+        "pdu_spare": 0,
+        "zone_hex": "707172737475",
+        "consumed": 14,
+        "anomalies": []
+      }
+    },
+    {
+      "id": "aos-i4-dec-003",
+      "requirements": [
+        "AOS-001",
+        "GEN-062",
+        "AOS-003"
+      ],
+      "description": "11-bit pointer 0x7FE: only Idle Data",
+      "operation": "decode",
+      "config": {
+        "frame_len": 14,
+        "fhec": false,
+        "insert_zone_len": 0,
+        "fecf": false,
+        "edition": "issue4",
+        "vcs": [
+          {
+            "scid": 165,
+            "vcid": 5,
+            "content": "mpdu",
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "input_hex": "69450000000007FE707172737475",
+      "expect": {
+        "ok": true,
+        "scid": 165,
+        "vcid": 5,
+        "vc_frame_count": 0,
+        "replay_flag": false,
+        "cycle_use_flag": false,
+        "cycle_field": 0,
+        "vc_frame_count_cycle": null,
+        "issue4_spare": 0,
+        "fhec": null,
+        "corrected_symbols": 0,
+        "header_hex": "694500000000",
+        "is_oid": false,
+        "insert_zone_hex": "",
+        "security_header_hex": "",
+        "data_field_hex": "07FE707172737475",
+        "security_trailer_hex": "",
+        "ocf_hex": null,
+        "ocf_report": null,
+        "fecf": null,
+        "data_unit": "mpdu",
+        "pdu_pointer_raw": 2046,
+        "pointer": "only_idle_data",
+        "pointer_value": null,
+        "pdu_spare": 0,
+        "zone_hex": "707172737475",
+        "consumed": 14,
+        "anomalies": []
+      }
+    },
+    {
+      "id": "aos-i4-dec-004-s",
+      "requirements": [
+        "AOS-001",
+        "GEN-062",
+        "AOS-002",
+        "API-031",
+        "API-032",
+        "GEN-043"
+      ],
+      "description": "Bits 42-43 = 10, a reserved spare in Issue 4: ReservedValue in strict mode, Issue4SpareSet in lenient mode, SCID still 0xA5; strict",
+      "operation": "decode",
+      "mode": "strict",
+      "config": {
+        "frame_len": 14,
+        "fhec": false,
+        "insert_zone_len": 0,
+        "fecf": false,
+        "edition": "issue4",
+        "vcs": [
+          {
+            "scid": 165,
+            "vcid": 5,
+            "content": "mpdu",
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "input_hex": "6945000000200003707172737475",
+      "expect": {
+        "ok": false,
+        "error": "ReservedValue",
+        "field": 89
+      }
+    },
+    {
+      "id": "aos-i4-dec-004-l",
+      "requirements": [
+        "AOS-001",
+        "GEN-062",
+        "AOS-002",
+        "API-031",
+        "API-032",
+        "GEN-043"
+      ],
+      "description": "Bits 42-43 = 10, a reserved spare in Issue 4: ReservedValue in strict mode, Issue4SpareSet in lenient mode, SCID still 0xA5; lenient",
+      "operation": "decode",
+      "mode": "lenient",
+      "config": {
+        "frame_len": 14,
+        "fhec": false,
+        "insert_zone_len": 0,
+        "fecf": false,
+        "edition": "issue4",
+        "vcs": [
+          {
+            "scid": 165,
+            "vcid": 5,
+            "content": "mpdu",
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "input_hex": "6945000000200003707172737475",
+      "expect": {
+        "ok": true,
+        "scid": 165,
+        "vcid": 5,
+        "vc_frame_count": 0,
+        "replay_flag": false,
+        "cycle_use_flag": false,
+        "cycle_field": 0,
+        "vc_frame_count_cycle": null,
+        "issue4_spare": 2,
+        "fhec": null,
+        "corrected_symbols": 0,
+        "header_hex": "694500000020",
+        "is_oid": false,
+        "insert_zone_hex": "",
+        "security_header_hex": "",
+        "data_field_hex": "0003707172737475",
+        "security_trailer_hex": "",
+        "ocf_hex": null,
+        "ocf_report": null,
+        "fecf": null,
+        "data_unit": "mpdu",
+        "pdu_pointer_raw": 3,
+        "pointer": "starts_at",
+        "pointer_value": 3,
+        "pdu_spare": 0,
+        "zone_hex": "707172737475",
+        "consumed": 14,
+        "anomalies": [
+          "Issue4SpareSet"
+        ]
+      }
+    },
+    {
+      "id": "aos-i4-dec-005-s",
+      "requirements": [
+        "AOS-001",
+        "GEN-062",
+        "AOS-003",
+        "API-031",
+        "API-032",
+        "GEN-043"
+      ],
+      "description": "M_PDU Reserved Spare 00001: ReservedValue in strict mode, Issue4SpareSet in lenient mode; strict",
+      "operation": "decode",
+      "mode": "strict",
+      "config": {
+        "frame_len": 14,
+        "fhec": false,
+        "insert_zone_len": 0,
+        "fecf": false,
+        "edition": "issue4",
+        "vcs": [
+          {
+            "scid": 165,
+            "vcid": 5,
+            "content": "mpdu",
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "input_hex": "6945000000000803707172737475",
+      "expect": {
+        "ok": false,
+        "error": "ReservedValue",
+        "field": 95
+      }
+    },
+    {
+      "id": "aos-i4-dec-005-l",
+      "requirements": [
+        "AOS-001",
+        "GEN-062",
+        "AOS-003",
+        "API-031",
+        "API-032",
+        "GEN-043"
+      ],
+      "description": "M_PDU Reserved Spare 00001: ReservedValue in strict mode, Issue4SpareSet in lenient mode; lenient",
+      "operation": "decode",
+      "mode": "lenient",
+      "config": {
+        "frame_len": 14,
+        "fhec": false,
+        "insert_zone_len": 0,
+        "fecf": false,
+        "edition": "issue4",
+        "vcs": [
+          {
+            "scid": 165,
+            "vcid": 5,
+            "content": "mpdu",
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "input_hex": "6945000000000803707172737475",
+      "expect": {
+        "ok": true,
+        "scid": 165,
+        "vcid": 5,
+        "vc_frame_count": 0,
+        "replay_flag": false,
+        "cycle_use_flag": false,
+        "cycle_field": 0,
+        "vc_frame_count_cycle": null,
+        "issue4_spare": 0,
+        "fhec": null,
+        "corrected_symbols": 0,
+        "header_hex": "694500000000",
+        "is_oid": false,
+        "insert_zone_hex": "",
+        "security_header_hex": "",
+        "data_field_hex": "0803707172737475",
+        "security_trailer_hex": "",
+        "ocf_hex": null,
+        "ocf_report": null,
+        "fecf": null,
+        "data_unit": "mpdu",
+        "pdu_pointer_raw": 3,
+        "pointer": "starts_at",
+        "pointer_value": 3,
+        "pdu_spare": 1,
+        "zone_hex": "707172737475",
+        "consumed": 14,
+        "anomalies": [
+          "Issue4SpareSet"
+        ]
+      }
+    },
+    {
+      "id": "aos-i4-dec-006-s",
+      "requirements": [
+        "AOS-001",
+        "GEN-062",
+        "AOS-003",
+        "AOS-017",
+        "API-032"
+      ],
+      "description": "11-bit pointer 6, past the Packet Zone, with a spare set: Malformed in both modes; strict",
+      "operation": "decode",
+      "mode": "strict",
+      "config": {
+        "frame_len": 14,
+        "fhec": false,
+        "insert_zone_len": 0,
+        "fecf": false,
+        "edition": "issue4",
+        "vcs": [
+          {
+            "scid": 165,
+            "vcid": 5,
+            "content": "mpdu",
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "input_hex": "694500000000F806707172737475",
+      "expect": {
+        "ok": false,
+        "error": "Malformed",
+        "field": 74
+      }
+    },
+    {
+      "id": "aos-i4-dec-006-l",
+      "requirements": [
+        "AOS-001",
+        "GEN-062",
+        "AOS-003",
+        "AOS-017",
+        "API-032"
+      ],
+      "description": "11-bit pointer 6, past the Packet Zone, with a spare set: Malformed in both modes; lenient",
+      "operation": "decode",
+      "mode": "lenient",
+      "config": {
+        "frame_len": 14,
+        "fhec": false,
+        "insert_zone_len": 0,
+        "fecf": false,
+        "edition": "issue4",
+        "vcs": [
+          {
+            "scid": 165,
+            "vcid": 5,
+            "content": "mpdu",
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "input_hex": "694500000000F806707172737475",
+      "expect": {
+        "ok": false,
+        "error": "Malformed",
+        "field": 74
+      }
+    },
+    {
+      "id": "aos-i4-dec-007",
+      "requirements": [
+        "AOS-001",
+        "AOS-002",
+        "AOS-003"
+      ],
+      "description": "The octets of aos-i4-dec-004-s read in Issue 5: SCID 0x2A5, 16-bit pointer 3",
+      "operation": "decode",
+      "config": {
+        "frame_len": 14,
+        "fhec": false,
+        "insert_zone_len": 0,
+        "fecf": false,
+        "edition": "issue5",
+        "vcs": [
+          {
+            "scid": 677,
+            "vcid": 5,
+            "content": "mpdu",
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "input_hex": "6945000000200003707172737475",
+      "expect": {
+        "ok": true,
+        "scid": 677,
+        "vcid": 5,
+        "vc_frame_count": 0,
+        "replay_flag": false,
+        "cycle_use_flag": false,
+        "cycle_field": 0,
+        "vc_frame_count_cycle": null,
+        "issue4_spare": 0,
+        "fhec": null,
+        "corrected_symbols": 0,
+        "header_hex": "694500000020",
+        "is_oid": false,
+        "insert_zone_hex": "",
+        "security_header_hex": "",
+        "data_field_hex": "0003707172737475",
+        "security_trailer_hex": "",
+        "ocf_hex": null,
+        "ocf_report": null,
+        "fecf": null,
+        "data_unit": "mpdu",
+        "pdu_pointer_raw": 3,
+        "pointer": "starts_at",
+        "pointer_value": 3,
+        "pdu_spare": 0,
+        "zone_hex": "707172737475",
+        "consumed": 14,
+        "anomalies": []
+      }
+    },
+    {
+      "id": "aos-i4-dec-008",
+      "requirements": [
+        "AOS-001",
+        "AOS-003",
+        "AOS-017"
+      ],
+      "description": "The octets of aos-i4-dec-002 read in Issue 5: 16-bit pointer 0x07FF is Malformed",
+      "operation": "decode",
+      "config": {
+        "frame_len": 14,
+        "fhec": false,
+        "insert_zone_len": 0,
+        "fecf": false,
+        "edition": "issue5",
+        "vcs": [
+          {
+            "scid": 165,
+            "vcid": 5,
+            "content": "mpdu",
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "input_hex": "69450000000007FF707172737475",
+      "expect": {
+        "ok": false,
+        "error": "Malformed",
+        "field": 74
+      }
+    },
+    {
+      "id": "aos-i4-enc-001",
+      "requirements": [
+        "AOS-001",
+        "GEN-062",
+        "AOS-002",
+        "AOS-003",
+        "GEN-052"
+      ],
+      "description": "Encode in Issue 4: bits 42-43 and the M_PDU spare written 00 and 00000",
+      "operation": "encode",
+      "config": {
+        "frame_len": 14,
+        "fhec": false,
+        "insert_zone_len": 0,
+        "fecf": false,
+        "edition": "issue4",
+        "vcs": [
+          {
+            "scid": 165,
+            "vcid": 5,
+            "content": "mpdu",
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "params": {
+        "scid": 165,
+        "vcid": 5,
+        "vc_frame_count": 66051,
+        "replay_flag": true,
+        "cycle": 12,
+        "pdu": {
+          "kind": "mpdu",
+          "pointer": "starts_at",
+          "value": 5
+        },
+        "insert_zone_hex": "",
+        "security_header_hex": "",
+        "zone_hex": "707172737475",
+        "security_trailer_hex": "",
+        "ocf_hex": null
+      },
+      "expect": {
+        "ok": true,
+        "output_hex": "6945010203CC0005707172737475"
+      }
+    },
+    {
+      "id": "aos-i4-enc-002",
+      "requirements": [
+        "AOS-001",
+        "GEN-062",
+        "AOS-003"
+      ],
+      "description": "Encode OnlyIdleData in Issue 4: 0x7FE",
+      "operation": "encode",
+      "config": {
+        "frame_len": 14,
+        "fhec": false,
+        "insert_zone_len": 0,
+        "fecf": false,
+        "edition": "issue4",
+        "vcs": [
+          {
+            "scid": 165,
+            "vcid": 5,
+            "content": "mpdu",
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "params": {
+        "scid": 165,
+        "vcid": 5,
+        "vc_frame_count": 0,
+        "replay_flag": false,
+        "cycle": null,
+        "pdu": {
+          "kind": "mpdu",
+          "pointer": "only_idle_data",
+          "value": null
+        },
+        "insert_zone_hex": "",
+        "security_header_hex": "",
+        "zone_hex": "707172737475",
+        "security_trailer_hex": "",
+        "ocf_hex": null
+      },
+      "expect": {
+        "ok": true,
+        "output_hex": "69450000000007FE707172737475"
+      }
+    },
+    {
+      "id": "aos-i4-enc-003",
+      "requirements": [
+        "AOS-001",
+        "GEN-062",
+        "AOS-003",
+        "AOS-019"
+      ],
+      "description": "Issue 4, a 2 052-octet Packet Zone: StartsAt(0x7FD) is the largest offset",
+      "operation": "encode",
+      "config": {
+        "frame_len": 2060,
+        "fhec": false,
+        "insert_zone_len": 0,
+        "fecf": false,
+        "edition": "issue4",
+        "vcs": [
+          {
+            "scid": 165,
+            "vcid": 5,
+            "content": "mpdu",
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "params": {
+        "scid": 165,
+        "vcid": 5,
+        "vc_frame_count": 0,
+        "replay_flag": false,
+        "cycle": null,
+        "pdu": {
+          "kind": "mpdu",
+          "pointer": "starts_at",
+          "value": 2045
+        },
+        "insert_zone_hex": "",
+        "security_header_hex": "",
+        "zone_hex": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+        "security_trailer_hex": "",
+        "ocf_hex": null
+      },
+      "expect": {
+        "ok": true,
+        "output_hex": "69450000000007FD000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      }
+    },
+    {
+      "id": "aos-i4-enc-004",
+      "requirements": [
+        "AOS-001",
+        "GEN-062",
+        "AOS-003",
+        "AOS-019"
+      ],
+      "description": "Issue 4: StartsAt(0x7FE) cannot be written: OutOfRange",
+      "operation": "encode",
+      "config": {
+        "frame_len": 2060,
+        "fhec": false,
+        "insert_zone_len": 0,
+        "fecf": false,
+        "edition": "issue4",
+        "vcs": [
+          {
+            "scid": 165,
+            "vcid": 5,
+            "content": "mpdu",
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "params": {
+        "scid": 165,
+        "vcid": 5,
+        "vc_frame_count": 0,
+        "replay_flag": false,
+        "cycle": null,
+        "pdu": {
+          "kind": "mpdu",
+          "pointer": "starts_at",
+          "value": 2046
+        },
+        "insert_zone_hex": "",
+        "security_header_hex": "",
+        "zone_hex": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+        "security_trailer_hex": "",
+        "ocf_hex": null
+      },
+      "expect": {
+        "ok": false,
+        "error": "OutOfRange",
+        "field": 74
+      }
+    },
+    {
+      "id": "aos-i4-cfg-001",
+      "requirements": [
+        "AOS-001",
+        "GEN-062",
+        "AOS-002",
+        "API-040"
+      ],
+      "description": "Issue 4, a VC of SCID 255: accepted",
+      "operation": "config",
+      "config": {
+        "frame_len": 14,
+        "fhec": false,
+        "insert_zone_len": 0,
+        "fecf": false,
+        "edition": "issue4",
+        "vcs": [
+          {
+            "scid": 255,
+            "vcid": 5,
+            "content": "mpdu",
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "expect": {
+        "ok": true
+      }
+    },
+    {
+      "id": "aos-i4-cfg-002",
+      "requirements": [
+        "AOS-001",
+        "GEN-062",
+        "AOS-002",
+        "API-040"
+      ],
+      "description": "Issue 4, a VC of SCID 256: InvalidConfig (spacecraft_id)",
+      "operation": "config",
+      "config": {
+        "frame_len": 14,
+        "fhec": false,
+        "insert_zone_len": 0,
+        "fecf": false,
+        "edition": "issue4",
+        "vcs": [
+          {
+            "scid": 256,
+            "vcid": 5,
+            "content": "mpdu",
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "expect": {
+        "ok": false,
+        "error": "InvalidConfig",
+        "field": 1
+      }
+    },
+    {
+      "id": "aos-i4-hdr-001",
+      "requirements": [
+        "AOS-001",
+        "GEN-062",
+        "AOS-002"
+      ],
+      "description": "The Primary Header alone in Issue 4, bits 42-43 = 11, reported raw",
+      "operation": "decode_header",
+      "config": {
+        "frame_len": 14,
+        "fhec": false,
+        "insert_zone_len": 0,
+        "fecf": false,
+        "edition": "issue4",
+        "vcs": [
+          {
+            "scid": 165,
+            "vcid": 5,
+            "content": "mpdu",
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "input_hex": "694500000030",
+      "expect": {
+        "ok": true,
+        "scid": 165,
+        "vcid": 5,
+        "vc_frame_count": 0,
+        "replay_flag": false,
+        "cycle_use_flag": false,
+        "cycle_field": 0,
+        "vc_frame_count_cycle": null,
+        "issue4_spare": 3,
+        "fhec": null,
+        "corrected_symbols": 0,
+        "header_hex": "694500000030",
+        "is_oid": false
+      }
+    }
+  ]
+}

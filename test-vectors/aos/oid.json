@@ -1,0 +1,316 @@
+{
+  "kind": "codec",
+  "standard": "732.0-B-5 EC1 §4.1.4.1.5, Annex D",
+  "provenance": "hand-derived",
+  "provenance_note": "732.0-B-5 EC1 prints no example frame, only the first OID octets of Annex D. Cases hand-derived from 732.0-B-5 EC1 §4.1 (figures 4-1 to 4-4; the Primary Header of §4.1.2 with the SCID's two most significant bits in bits 42-43; the FHEC of §4.1.2.6; the Insert Zone of §4.1.3; OID frames on VCID 63 of §4.1.4.1.5 and Annex D; the M_PDU and B_PDU of §4.1.4.2-3 with their reserved pointer values; the OCF per VC of §4.1.5; the FECF of §4.1.6), §4.3.7.2-3 (the header corrected before the CRC is checked), §5 Tables 5-1 to 5-3, and §6.3, and from 732.0-B-4 §4.1.2.2.3, §4.1.2.5.4, and §4.1.4.2.2-3 for Issue 4, with the readings of docs/standards/aos-frame.md (AOS-001...AOS-019, the anomaly list, OI-43) and the error kinds and field codes of docs/03-api-model.md §9 and §9.1. Inputs assembled bit by bit from the figure widths; expected values computed by an independent Python model of those clauses, written from the Blue Book after the Rust codec but not from its code, and sharing no code with it (the FECF by polynomial division over the corrected header, the OID data by the Annex D recurrence, the FHEC by the table model aos_fhec.py of the fhec_*.json files, loaded from its path). The model is committed as test-vectors/models/aos_frame.py (TV-023); `python3 -I test-vectors/models/aos_frame.py --check test-vectors/aos/<file>.json` recomputes every expected value. One frame is worked by hand in docs/verification/derivations/aos-frame.md.",
+  "cases": [
+    {
+      "id": "aos-oid-enc-001",
+      "requirements": [
+        "AOS-016",
+        "CMN-020",
+        "CMN-021",
+        "AOS-019"
+      ],
+      "description": "Three OID frames from one generator: VCID 63, the data fields continue the PN sequence (FF FF FF FF 6D B6 D8 61 ...), FECF computed",
+      "operation": "encode_oid",
+      "config": {
+        "frame_len": 16,
+        "fhec": false,
+        "insert_zone_len": 0,
+        "fecf": true,
+        "edition": "issue5",
+        "vcs": [
+          {
+            "scid": 85,
+            "vcid": 0,
+            "content": "mpdu",
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "params": {
+        "scid": 85,
+        "frames": [
+          {
+            "vc_frame_count": 0
+          },
+          {
+            "vc_frame_count": 1
+          },
+          {
+            "vc_frame_count": 2,
+            "cycle": 3
+          }
+        ]
+      },
+      "expect": {
+        "ok": true,
+        "frames_hex": [
+          "557F00000000FFFFFFFF6DB6D8619194",
+          "557F00000100451F11F19716723C3BB7",
+          "557F00000243BE7E00B1DE90B2629F8E"
+        ]
+      }
+    },
+    {
+      "id": "aos-oid-enc-002",
+      "requirements": [
+        "AOS-016",
+        "CMN-020",
+        "CMN-021",
+        "AOS-015",
+        "AOS-013"
+      ],
+      "description": "OID frames with FHEC and an Insert Zone the caller fills (§4.1.3.3)",
+      "operation": "encode_oid",
+      "config": {
+        "frame_len": 20,
+        "fhec": true,
+        "insert_zone_len": 2,
+        "fecf": false,
+        "edition": "issue5",
+        "vcs": [
+          {
+            "scid": 85,
+            "vcid": 0,
+            "content": "mpdu",
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "params": {
+        "scid": 85,
+        "frames": [
+          {
+            "vc_frame_count": 5,
+            "insert_zone_hex": "ABCD"
+          },
+          {
+            "vc_frame_count": 6
+          }
+        ]
+      },
+      "expect": {
+        "ok": true,
+        "frames_hex": [
+          "557F00000500AC12ABCDFFFFFFFF6DB6D861451F",
+          "557F00000600AC12000011F19716723CBE7E00B1"
+        ]
+      }
+    },
+    {
+      "id": "aos-oid-enc-003",
+      "requirements": [
+        "AOS-016",
+        "CMN-020",
+        "CMN-021",
+        "API-022"
+      ],
+      "description": "An SCID with no VC: UnknownChannel",
+      "operation": "encode_oid",
+      "config": {
+        "frame_len": 16,
+        "fhec": false,
+        "insert_zone_len": 0,
+        "fecf": true,
+        "edition": "issue5",
+        "vcs": [
+          {
+            "scid": 85,
+            "vcid": 0,
+            "content": "mpdu",
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "params": {
+        "scid": 86,
+        "frames": [
+          {
+            "vc_frame_count": 0
+          }
+        ]
+      },
+      "expect": {
+        "ok": false,
+        "error": "UnknownChannel",
+        "field": 1
+      }
+    },
+    {
+      "id": "aos-oid-dec-001",
+      "requirements": [
+        "AOS-016",
+        "CMN-020",
+        "CMN-021",
+        "AOS-010"
+      ],
+      "description": "Decode the first frame of aos-oid-enc-001: Idle Data, no OCF",
+      "operation": "decode",
+      "config": {
+        "frame_len": 16,
+        "fhec": false,
+        "insert_zone_len": 0,
+        "fecf": true,
+        "edition": "issue5",
+        "vcs": [
+          {
+            "scid": 85,
+            "vcid": 0,
+            "content": "mpdu",
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "input_hex": "557F00000000FFFFFFFF6DB6D8619194",
+      "expect": {
+        "ok": true,
+        "scid": 85,
+        "vcid": 63,
+        "vc_frame_count": 0,
+        "replay_flag": false,
+        "cycle_use_flag": false,
+        "cycle_field": 0,
+        "vc_frame_count_cycle": null,
+        "issue4_spare": 0,
+        "fhec": null,
+        "corrected_symbols": 0,
+        "header_hex": "557F00000000",
+        "is_oid": true,
+        "insert_zone_hex": "",
+        "security_header_hex": "",
+        "data_field_hex": "FFFFFFFF6DB6D861",
+        "security_trailer_hex": "",
+        "ocf_hex": null,
+        "ocf_report": null,
+        "fecf": 37268,
+        "data_unit": "idle_data",
+        "pdu_pointer_raw": null,
+        "pointer": null,
+        "pointer_value": null,
+        "pdu_spare": null,
+        "zone_hex": "FFFFFFFF6DB6D861",
+        "consumed": 16,
+        "anomalies": []
+      }
+    },
+    {
+      "id": "aos-oid-dec-002",
+      "requirements": [
+        "AOS-016",
+        "AOS-010"
+      ],
+      "description": "An OID frame of an SCID with no VC: UnknownChannel (spacecraft_id)",
+      "operation": "decode",
+      "config": {
+        "frame_len": 16,
+        "fhec": false,
+        "insert_zone_len": 0,
+        "fecf": true,
+        "edition": "issue5",
+        "vcs": [
+          {
+            "scid": 85,
+            "vcid": 0,
+            "content": "mpdu",
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "input_hex": "55BF0000000000000000000000008DC8",
+      "expect": {
+        "ok": false,
+        "error": "UnknownChannel",
+        "field": 1
+      }
+    },
+    {
+      "id": "aos-oid-enc-004",
+      "requirements": [
+        "AOS-016",
+        "API-022"
+      ],
+      "description": "VCID 63 through encode, which writes data VCs only: InvalidField (vc_id)",
+      "operation": "encode",
+      "config": {
+        "frame_len": 16,
+        "fhec": false,
+        "insert_zone_len": 0,
+        "fecf": true,
+        "edition": "issue5",
+        "vcs": [
+          {
+            "scid": 85,
+            "vcid": 0,
+            "content": "mpdu",
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "params": {
+        "scid": 85,
+        "vcid": 63,
+        "vc_frame_count": 0,
+        "replay_flag": false,
+        "cycle": null,
+        "pdu": {
+          "kind": "none"
+        },
+        "insert_zone_hex": "",
+        "security_header_hex": "",
+        "zone_hex": "0000000000000000",
+        "security_trailer_hex": "",
+        "ocf_hex": null
+      },
+      "expect": {
+        "ok": false,
+        "error": "InvalidField",
+        "field": 2
+      }
+    },
+    {
+      "id": "aos-oid-cfg-001",
+      "requirements": [
+        "AOS-016",
+        "API-040"
+      ],
+      "description": "VCID 63 configured as a data VC: InvalidConfig (vc_id)",
+      "operation": "config",
+      "config": {
+        "frame_len": 16,
+        "fhec": false,
+        "insert_zone_len": 0,
+        "fecf": false,
+        "edition": "issue5",
+        "vcs": [
+          {
+            "scid": 85,
+            "vcid": 63,
+            "content": "idle_data",
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "expect": {
+        "ok": false,
+        "error": "InvalidConfig",
+        "field": 2
+      }
+    }
+  ]
+}

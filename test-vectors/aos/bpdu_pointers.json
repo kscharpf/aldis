@@ -1,0 +1,871 @@
+{
+  "kind": "codec",
+  "standard": "732.0-B-5 EC1 §4.1.4.3",
+  "provenance": "hand-derived",
+  "provenance_note": "732.0-B-5 EC1 prints no example frame, only the first OID octets of Annex D. Cases hand-derived from 732.0-B-5 EC1 §4.1 (figures 4-1 to 4-4; the Primary Header of §4.1.2 with the SCID's two most significant bits in bits 42-43; the FHEC of §4.1.2.6; the Insert Zone of §4.1.3; OID frames on VCID 63 of §4.1.4.1.5 and Annex D; the M_PDU and B_PDU of §4.1.4.2-3 with their reserved pointer values; the OCF per VC of §4.1.5; the FECF of §4.1.6), §4.3.7.2-3 (the header corrected before the CRC is checked), §5 Tables 5-1 to 5-3, and §6.3, and from 732.0-B-4 §4.1.2.2.3, §4.1.2.5.4, and §4.1.4.2.2-3 for Issue 4, with the readings of docs/standards/aos-frame.md (AOS-001...AOS-019, the anomaly list, OI-43) and the error kinds and field codes of docs/03-api-model.md §9 and §9.1. Inputs assembled bit by bit from the figure widths; expected values computed by an independent Python model of those clauses, written from the Blue Book after the Rust codec but not from its code, and sharing no code with it (the FECF by polynomial division over the corrected header, the OID data by the Annex D recurrence, the FHEC by the table model aos_fhec.py of the fhec_*.json files, loaded from its path). The model is committed as test-vectors/models/aos_frame.py (TV-023); `python3 -I test-vectors/models/aos_frame.py --check test-vectors/aos/<file>.json` recomputes every expected value. One frame is worked by hand in docs/verification/derivations/aos-frame.md.",
+  "cases": [
+    {
+      "id": "aos-bpdu-dec-001",
+      "requirements": [
+        "AOS-017",
+        "AOS-010",
+        "GEN-053"
+      ],
+      "description": "Pointer 0: the first bit valid, 1 bit",
+      "operation": "decode",
+      "config": {
+        "frame_len": 14,
+        "fhec": false,
+        "insert_zone_len": 0,
+        "fecf": false,
+        "edition": "issue5",
+        "vcs": [
+          {
+            "scid": 85,
+            "vcid": 2,
+            "content": "bpdu",
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "input_hex": "5542000000000000B0B1B2B3B4B5",
+      "expect": {
+        "ok": true,
+        "scid": 85,
+        "vcid": 2,
+        "vc_frame_count": 0,
+        "replay_flag": false,
+        "cycle_use_flag": false,
+        "cycle_field": 0,
+        "vc_frame_count_cycle": null,
+        "issue4_spare": 0,
+        "fhec": null,
+        "corrected_symbols": 0,
+        "header_hex": "554200000000",
+        "is_oid": false,
+        "insert_zone_hex": "",
+        "security_header_hex": "",
+        "data_field_hex": "0000B0B1B2B3B4B5",
+        "security_trailer_hex": "",
+        "ocf_hex": null,
+        "ocf_report": null,
+        "fecf": null,
+        "data_unit": "bpdu",
+        "pdu_pointer_raw": 0,
+        "pointer": "valid_bits",
+        "pointer_value": 1,
+        "pdu_spare": 0,
+        "zone_hex": "B0B1B2B3B4B5",
+        "consumed": 14,
+        "anomalies": []
+      }
+    },
+    {
+      "id": "aos-bpdu-dec-002",
+      "requirements": [
+        "AOS-017",
+        "AOS-010",
+        "GEN-053"
+      ],
+      "description": "Pointer 46: 47 valid bits, the last one idle",
+      "operation": "decode",
+      "config": {
+        "frame_len": 14,
+        "fhec": false,
+        "insert_zone_len": 0,
+        "fecf": false,
+        "edition": "issue5",
+        "vcs": [
+          {
+            "scid": 85,
+            "vcid": 2,
+            "content": "bpdu",
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "input_hex": "554200000000002EB0B1B2B3B4B5",
+      "expect": {
+        "ok": true,
+        "scid": 85,
+        "vcid": 2,
+        "vc_frame_count": 0,
+        "replay_flag": false,
+        "cycle_use_flag": false,
+        "cycle_field": 0,
+        "vc_frame_count_cycle": null,
+        "issue4_spare": 0,
+        "fhec": null,
+        "corrected_symbols": 0,
+        "header_hex": "554200000000",
+        "is_oid": false,
+        "insert_zone_hex": "",
+        "security_header_hex": "",
+        "data_field_hex": "002EB0B1B2B3B4B5",
+        "security_trailer_hex": "",
+        "ocf_hex": null,
+        "ocf_report": null,
+        "fecf": null,
+        "data_unit": "bpdu",
+        "pdu_pointer_raw": 46,
+        "pointer": "valid_bits",
+        "pointer_value": 47,
+        "pdu_spare": 0,
+        "zone_hex": "B0B1B2B3B4B5",
+        "consumed": 14,
+        "anomalies": []
+      }
+    },
+    {
+      "id": "aos-bpdu-dec-003",
+      "requirements": [
+        "AOS-017",
+        "AOS-010"
+      ],
+      "description": "Pointer 0x3FFF: all valid (§4.1.4.3.3.3)",
+      "operation": "decode",
+      "config": {
+        "frame_len": 14,
+        "fhec": false,
+        "insert_zone_len": 0,
+        "fecf": false,
+        "edition": "issue5",
+        "vcs": [
+          {
+            "scid": 85,
+            "vcid": 2,
+            "content": "bpdu",
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "input_hex": "5542000000003FFFB0B1B2B3B4B5",
+      "expect": {
+        "ok": true,
+        "scid": 85,
+        "vcid": 2,
+        "vc_frame_count": 0,
+        "replay_flag": false,
+        "cycle_use_flag": false,
+        "cycle_field": 0,
+        "vc_frame_count_cycle": null,
+        "issue4_spare": 0,
+        "fhec": null,
+        "corrected_symbols": 0,
+        "header_hex": "554200000000",
+        "is_oid": false,
+        "insert_zone_hex": "",
+        "security_header_hex": "",
+        "data_field_hex": "3FFFB0B1B2B3B4B5",
+        "security_trailer_hex": "",
+        "ocf_hex": null,
+        "ocf_report": null,
+        "fecf": null,
+        "data_unit": "bpdu",
+        "pdu_pointer_raw": 16383,
+        "pointer": "all_valid",
+        "pointer_value": null,
+        "pdu_spare": 0,
+        "zone_hex": "B0B1B2B3B4B5",
+        "consumed": 14,
+        "anomalies": []
+      }
+    },
+    {
+      "id": "aos-bpdu-dec-004",
+      "requirements": [
+        "AOS-017",
+        "AOS-010"
+      ],
+      "description": "Pointer 0x3FFE: only idle data (§4.1.4.3.3.4)",
+      "operation": "decode",
+      "config": {
+        "frame_len": 14,
+        "fhec": false,
+        "insert_zone_len": 0,
+        "fecf": false,
+        "edition": "issue5",
+        "vcs": [
+          {
+            "scid": 85,
+            "vcid": 2,
+            "content": "bpdu",
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "input_hex": "5542000000003FFEB0B1B2B3B4B5",
+      "expect": {
+        "ok": true,
+        "scid": 85,
+        "vcid": 2,
+        "vc_frame_count": 0,
+        "replay_flag": false,
+        "cycle_use_flag": false,
+        "cycle_field": 0,
+        "vc_frame_count_cycle": null,
+        "issue4_spare": 0,
+        "fhec": null,
+        "corrected_symbols": 0,
+        "header_hex": "554200000000",
+        "is_oid": false,
+        "insert_zone_hex": "",
+        "security_header_hex": "",
+        "data_field_hex": "3FFEB0B1B2B3B4B5",
+        "security_trailer_hex": "",
+        "ocf_hex": null,
+        "ocf_report": null,
+        "fecf": null,
+        "data_unit": "bpdu",
+        "pdu_pointer_raw": 16382,
+        "pointer": "only_idle",
+        "pointer_value": null,
+        "pdu_spare": 0,
+        "zone_hex": "B0B1B2B3B4B5",
+        "consumed": 14,
+        "anomalies": []
+      }
+    },
+    {
+      "id": "aos-bpdu-dec-005-s",
+      "requirements": [
+        "AOS-017",
+        "AOS-010",
+        "API-031",
+        "API-032"
+      ],
+      "description": "Pointer 47, the zone's last bit: a zone with no idle data has the pointer all ones (§4.1.4.3.3.3), InvalidField in both modes; strict",
+      "operation": "decode",
+      "mode": "strict",
+      "config": {
+        "frame_len": 14,
+        "fhec": false,
+        "insert_zone_len": 0,
+        "fecf": false,
+        "edition": "issue5",
+        "vcs": [
+          {
+            "scid": 85,
+            "vcid": 2,
+            "content": "bpdu",
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "input_hex": "554200000000002FB0B1B2B3B4B5",
+      "expect": {
+        "ok": false,
+        "error": "InvalidField",
+        "field": 97
+      }
+    },
+    {
+      "id": "aos-bpdu-dec-005-l",
+      "requirements": [
+        "AOS-017",
+        "AOS-010",
+        "API-031",
+        "API-032"
+      ],
+      "description": "Pointer 47, the zone's last bit: a zone with no idle data has the pointer all ones (§4.1.4.3.3.3), InvalidField in both modes; lenient",
+      "operation": "decode",
+      "mode": "lenient",
+      "config": {
+        "frame_len": 14,
+        "fhec": false,
+        "insert_zone_len": 0,
+        "fecf": false,
+        "edition": "issue5",
+        "vcs": [
+          {
+            "scid": 85,
+            "vcid": 2,
+            "content": "bpdu",
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "input_hex": "554200000000002FB0B1B2B3B4B5",
+      "expect": {
+        "ok": false,
+        "error": "InvalidField",
+        "field": 97
+      }
+    },
+    {
+      "id": "aos-bpdu-dec-006-s",
+      "requirements": [
+        "AOS-017",
+        "AOS-010",
+        "API-032"
+      ],
+      "description": "Pointer 48, past the zone: Malformed in both modes; strict",
+      "operation": "decode",
+      "mode": "strict",
+      "config": {
+        "frame_len": 14,
+        "fhec": false,
+        "insert_zone_len": 0,
+        "fecf": false,
+        "edition": "issue5",
+        "vcs": [
+          {
+            "scid": 85,
+            "vcid": 2,
+            "content": "bpdu",
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "input_hex": "5542000000000030B0B1B2B3B4B5",
+      "expect": {
+        "ok": false,
+        "error": "Malformed",
+        "field": 97
+      }
+    },
+    {
+      "id": "aos-bpdu-dec-006-l",
+      "requirements": [
+        "AOS-017",
+        "AOS-010",
+        "API-032"
+      ],
+      "description": "Pointer 48, past the zone: Malformed in both modes; lenient",
+      "operation": "decode",
+      "mode": "lenient",
+      "config": {
+        "frame_len": 14,
+        "fhec": false,
+        "insert_zone_len": 0,
+        "fecf": false,
+        "edition": "issue5",
+        "vcs": [
+          {
+            "scid": 85,
+            "vcid": 2,
+            "content": "bpdu",
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "input_hex": "5542000000000030B0B1B2B3B4B5",
+      "expect": {
+        "ok": false,
+        "error": "Malformed",
+        "field": 97
+      }
+    },
+    {
+      "id": "aos-bpdu-dec-007-s",
+      "requirements": [
+        "AOS-017",
+        "AOS-010",
+        "API-031",
+        "API-032",
+        "GEN-043"
+      ],
+      "description": "Reserved Spare 10 (§4.1.4.3.2.2): ReservedValue in strict mode, BpduSpareSet in lenient mode; strict",
+      "operation": "decode",
+      "mode": "strict",
+      "config": {
+        "frame_len": 14,
+        "fhec": false,
+        "insert_zone_len": 0,
+        "fecf": false,
+        "edition": "issue5",
+        "vcs": [
+          {
+            "scid": 85,
+            "vcid": 2,
+            "content": "bpdu",
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "input_hex": "554200000000BFFFB0B1B2B3B4B5",
+      "expect": {
+        "ok": false,
+        "error": "ReservedValue",
+        "field": 96
+      }
+    },
+    {
+      "id": "aos-bpdu-dec-007-l",
+      "requirements": [
+        "AOS-017",
+        "AOS-010",
+        "API-031",
+        "API-032",
+        "GEN-043"
+      ],
+      "description": "Reserved Spare 10 (§4.1.4.3.2.2): ReservedValue in strict mode, BpduSpareSet in lenient mode; lenient",
+      "operation": "decode",
+      "mode": "lenient",
+      "config": {
+        "frame_len": 14,
+        "fhec": false,
+        "insert_zone_len": 0,
+        "fecf": false,
+        "edition": "issue5",
+        "vcs": [
+          {
+            "scid": 85,
+            "vcid": 2,
+            "content": "bpdu",
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "input_hex": "554200000000BFFFB0B1B2B3B4B5",
+      "expect": {
+        "ok": true,
+        "scid": 85,
+        "vcid": 2,
+        "vc_frame_count": 0,
+        "replay_flag": false,
+        "cycle_use_flag": false,
+        "cycle_field": 0,
+        "vc_frame_count_cycle": null,
+        "issue4_spare": 0,
+        "fhec": null,
+        "corrected_symbols": 0,
+        "header_hex": "554200000000",
+        "is_oid": false,
+        "insert_zone_hex": "",
+        "security_header_hex": "",
+        "data_field_hex": "BFFFB0B1B2B3B4B5",
+        "security_trailer_hex": "",
+        "ocf_hex": null,
+        "ocf_report": null,
+        "fecf": null,
+        "data_unit": "bpdu",
+        "pdu_pointer_raw": 16383,
+        "pointer": "all_valid",
+        "pointer_value": null,
+        "pdu_spare": 2,
+        "zone_hex": "B0B1B2B3B4B5",
+        "consumed": 14,
+        "anomalies": [
+          "BpduSpareSet"
+        ]
+      }
+    },
+    {
+      "id": "aos-bpdu-enc-001",
+      "requirements": [
+        "AOS-017",
+        "AOS-010",
+        "AOS-019",
+        "GEN-053"
+      ],
+      "description": "Encode ValidBits(47)",
+      "operation": "encode",
+      "config": {
+        "frame_len": 14,
+        "fhec": false,
+        "insert_zone_len": 0,
+        "fecf": false,
+        "edition": "issue5",
+        "vcs": [
+          {
+            "scid": 85,
+            "vcid": 2,
+            "content": "bpdu",
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "params": {
+        "scid": 85,
+        "vcid": 2,
+        "vc_frame_count": 0,
+        "replay_flag": false,
+        "cycle": null,
+        "pdu": {
+          "kind": "bpdu",
+          "pointer": "valid_bits",
+          "value": 47
+        },
+        "insert_zone_hex": "",
+        "security_header_hex": "",
+        "zone_hex": "B0B1B2B3B4B5",
+        "security_trailer_hex": "",
+        "ocf_hex": null
+      },
+      "expect": {
+        "ok": true,
+        "output_hex": "554200000000002EB0B1B2B3B4B5"
+      }
+    },
+    {
+      "id": "aos-bpdu-enc-002",
+      "requirements": [
+        "AOS-017",
+        "AOS-010",
+        "AOS-019"
+      ],
+      "description": "Encode AllValid",
+      "operation": "encode",
+      "config": {
+        "frame_len": 14,
+        "fhec": false,
+        "insert_zone_len": 0,
+        "fecf": false,
+        "edition": "issue5",
+        "vcs": [
+          {
+            "scid": 85,
+            "vcid": 2,
+            "content": "bpdu",
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "params": {
+        "scid": 85,
+        "vcid": 2,
+        "vc_frame_count": 0,
+        "replay_flag": false,
+        "cycle": null,
+        "pdu": {
+          "kind": "bpdu",
+          "pointer": "all_valid",
+          "value": null
+        },
+        "insert_zone_hex": "",
+        "security_header_hex": "",
+        "zone_hex": "B0B1B2B3B4B5",
+        "security_trailer_hex": "",
+        "ocf_hex": null
+      },
+      "expect": {
+        "ok": true,
+        "output_hex": "5542000000003FFFB0B1B2B3B4B5"
+      }
+    },
+    {
+      "id": "aos-bpdu-enc-003",
+      "requirements": [
+        "AOS-017",
+        "AOS-010",
+        "AOS-019"
+      ],
+      "description": "Encode OnlyIdle",
+      "operation": "encode",
+      "config": {
+        "frame_len": 14,
+        "fhec": false,
+        "insert_zone_len": 0,
+        "fecf": false,
+        "edition": "issue5",
+        "vcs": [
+          {
+            "scid": 85,
+            "vcid": 2,
+            "content": "bpdu",
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "params": {
+        "scid": 85,
+        "vcid": 2,
+        "vc_frame_count": 0,
+        "replay_flag": false,
+        "cycle": null,
+        "pdu": {
+          "kind": "bpdu",
+          "pointer": "only_idle",
+          "value": null
+        },
+        "insert_zone_hex": "",
+        "security_header_hex": "",
+        "zone_hex": "B0B1B2B3B4B5",
+        "security_trailer_hex": "",
+        "ocf_hex": null
+      },
+      "expect": {
+        "ok": true,
+        "output_hex": "5542000000003FFEB0B1B2B3B4B5"
+      }
+    },
+    {
+      "id": "aos-bpdu-enc-004",
+      "requirements": [
+        "AOS-017",
+        "AOS-010",
+        "AOS-019",
+        "API-022"
+      ],
+      "description": "Encode ValidBits(48), every bit of the zone: OutOfRange, the writer wants AllValid",
+      "operation": "encode",
+      "config": {
+        "frame_len": 14,
+        "fhec": false,
+        "insert_zone_len": 0,
+        "fecf": false,
+        "edition": "issue5",
+        "vcs": [
+          {
+            "scid": 85,
+            "vcid": 2,
+            "content": "bpdu",
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "params": {
+        "scid": 85,
+        "vcid": 2,
+        "vc_frame_count": 0,
+        "replay_flag": false,
+        "cycle": null,
+        "pdu": {
+          "kind": "bpdu",
+          "pointer": "valid_bits",
+          "value": 48
+        },
+        "insert_zone_hex": "",
+        "security_header_hex": "",
+        "zone_hex": "B0B1B2B3B4B5",
+        "security_trailer_hex": "",
+        "ocf_hex": null
+      },
+      "expect": {
+        "ok": false,
+        "error": "OutOfRange",
+        "field": 97
+      }
+    },
+    {
+      "id": "aos-bpdu-enc-005",
+      "requirements": [
+        "AOS-017",
+        "AOS-010",
+        "AOS-019",
+        "API-022"
+      ],
+      "description": "Encode ValidBits(0): OutOfRange, the writer wants OnlyIdle",
+      "operation": "encode",
+      "config": {
+        "frame_len": 14,
+        "fhec": false,
+        "insert_zone_len": 0,
+        "fecf": false,
+        "edition": "issue5",
+        "vcs": [
+          {
+            "scid": 85,
+            "vcid": 2,
+            "content": "bpdu",
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "params": {
+        "scid": 85,
+        "vcid": 2,
+        "vc_frame_count": 0,
+        "replay_flag": false,
+        "cycle": null,
+        "pdu": {
+          "kind": "bpdu",
+          "pointer": "valid_bits",
+          "value": 0
+        },
+        "insert_zone_hex": "",
+        "security_header_hex": "",
+        "zone_hex": "B0B1B2B3B4B5",
+        "security_trailer_hex": "",
+        "ocf_hex": null
+      },
+      "expect": {
+        "ok": false,
+        "error": "OutOfRange",
+        "field": 97
+      }
+    },
+    {
+      "id": "aos-bpdu-cfg-001",
+      "requirements": [
+        "AOS-018",
+        "API-040"
+      ],
+      "description": "Issue 5, B_PDU VC on 2 048-octet frames: accepted",
+      "operation": "config",
+      "config": {
+        "frame_len": 2048,
+        "fhec": false,
+        "insert_zone_len": 0,
+        "fecf": false,
+        "edition": "issue5",
+        "vcs": [
+          {
+            "scid": 85,
+            "vcid": 2,
+            "content": "bpdu",
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "expect": {
+        "ok": true
+      }
+    },
+    {
+      "id": "aos-bpdu-cfg-002",
+      "requirements": [
+        "AOS-018",
+        "API-040"
+      ],
+      "description": "Issue 5, B_PDU VC on 2 049-octet frames: InvalidConfig (frame_len)",
+      "operation": "config",
+      "config": {
+        "frame_len": 2049,
+        "fhec": false,
+        "insert_zone_len": 0,
+        "fecf": false,
+        "edition": "issue5",
+        "vcs": [
+          {
+            "scid": 85,
+            "vcid": 2,
+            "content": "bpdu",
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "expect": {
+        "ok": false,
+        "error": "InvalidConfig",
+        "field": 68
+      }
+    },
+    {
+      "id": "aos-bpdu-cfg-003",
+      "requirements": [
+        "AOS-018",
+        "API-040"
+      ],
+      "description": "Issue 5, an M_PDU VC on 2 049-octet frames: accepted",
+      "operation": "config",
+      "config": {
+        "frame_len": 2049,
+        "fhec": false,
+        "insert_zone_len": 0,
+        "fecf": false,
+        "edition": "issue5",
+        "vcs": [
+          {
+            "scid": 85,
+            "vcid": 2,
+            "content": "mpdu",
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "expect": {
+        "ok": true
+      }
+    },
+    {
+      "id": "aos-bpdu-cfg-004",
+      "requirements": [
+        "AOS-018",
+        "API-040",
+        "GEN-062"
+      ],
+      "description": "Issue 4, a Bitstream Data Zone of 2 047 octets: accepted",
+      "operation": "config",
+      "config": {
+        "frame_len": 2055,
+        "fhec": false,
+        "insert_zone_len": 0,
+        "fecf": false,
+        "edition": "issue4",
+        "vcs": [
+          {
+            "scid": 85,
+            "vcid": 2,
+            "content": "bpdu",
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "expect": {
+        "ok": true
+      }
+    },
+    {
+      "id": "aos-bpdu-cfg-005",
+      "requirements": [
+        "AOS-018",
+        "API-040",
+        "GEN-062"
+      ],
+      "description": "Issue 4, a Bitstream Data Zone of 2 048 octets: InvalidConfig (frame_data_field)",
+      "operation": "config",
+      "config": {
+        "frame_len": 2056,
+        "fhec": false,
+        "insert_zone_len": 0,
+        "fecf": false,
+        "edition": "issue4",
+        "vcs": [
+          {
+            "scid": 85,
+            "vcid": 2,
+            "content": "bpdu",
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "expect": {
+        "ok": false,
+        "error": "InvalidConfig",
+        "field": 7
+      }
+    }
+  ]
+}
