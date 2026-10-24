@@ -2,6 +2,18 @@
 
 Surviving mutants from `cargo mutants` (`-p aldis-core -p aldis-time -p aldis-epp -p aldis-spp -p aldis-aos -p aldis-tm -p aldis-tc --all-features`) (cargo-mutants 27.1.0), triaged per VER-025. The nightly job `mutants` publishes the full report. Update this file when a new survivor appears.
 
+## 2026-10-23, branch `m2/aos-codec` (M2 WP-4, modules 2–7)
+
+`cargo mutants -p aldis-aos --all-features` (cargo-mutants 27.1.0, with `PROPTEST_CASES=32`), the whole crate, the FHEC included: 405 mutants: 273 caught, 124 unviable, 8 missed, 0 timeouts.
+
+| Mutant | Verdict | Action |
+|---|---|---|
+| `header.rs` `AosPrimaryHeader::parse` `\|` → `^`, two places (the 6 SCID bits of octet 0 `<< 2` and the 2 of octet 1; bits 42–43 `<< 8` and the 8-bit LSBs) | Equivalent: each joins fields shifted into disjoint bits, so OR and XOR agree | None possible |
+| `header.rs` `AosPrimaryHeader::to_octets` `\|` → `^`, five places (octet 5: the two flags, bits 42–43 `<< 4`, and the cycle `& 0x0F`; octet 0: version `<< 6` and the SCID LSBs `>> 2`; octet 1: the SCID LSBs `<< 6` and the VCID `& 0x3F`) | Equivalent: every field is masked or bounded to its own bits, which do not overlap | None possible |
+| `fhec.rs` `Gf::octet` `\|` → `^` | Equivalent, as triaged for module 1 below | None possible |
+
+The eight survivors are equivalent and are expected in every report.
+
 ## 2026-10-23, branch `m2/tm-codec` (M2 WP-2, modules 1-6)
 
 `cargo mutants -p aldis-tm --all-features` (cargo-mutants 27.1.0), the whole crate: 256 mutants: 159 caught, 80 unviable, 17 missed, 0 timeouts. Two survivors were test gaps, fixed and re-run (`config.rs`, `TmMasterChannelConfig::fsh` and `::ocf`: 12 mutants, 10 caught, 2 unviable); the other 15 are equivalent and are expected in every report.
