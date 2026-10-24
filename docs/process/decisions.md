@@ -91,3 +91,4 @@ One line for each decision the maintainer takes, under the [decision rights](dec
 - 2026-10-24 · process · chat · After a PR merges, the coordinator merges main into the next ready PR in the merge order and starts its verify run at once, so the maintainer does not wait on the up-to-date run (VER-058)
 - 2026-10-24 · process · chat · The workflow definitions and the other .github files no check reads become inputs of spec only (VER-056); the xtask module split of the inputs is not adopted
 - 2026-10-24 · spec · #97 · OI-43 (1): an OID frame on VCID 63 carries neither an OCF nor SDLS fields; it is the Primary Header, the optional Insert Zone, the OID data, and the optional FECF (732.0 Table 5-3, §4.1.4.2.3.4 note 1)
+- 2026-10-24 · api · #97 · Field codes 93 `vcf_count` and 97 `insert_zone_len` are each one code shared by USLP and AOS (one code per field, M2 D2); the AOS codes are 100–106
