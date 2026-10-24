@@ -59,6 +59,7 @@ dependencies = [
  "aldis-testkit",
  "aldis-time",
  "aldis-tm",
+ "aldis-uslp",
  "serde_json",
 ]
 

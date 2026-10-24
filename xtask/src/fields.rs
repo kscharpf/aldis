@@ -302,13 +302,17 @@ fn ffi(entries: &[Entry]) -> String {
     for e in entries {
         let c = e.constant();
         let line = format!("    assert!(ALDIS_FIELD_{c} == field::{c}.code().get());");
+        let inner = format!("        ALDIS_FIELD_{c} == field::{c}.code().get()");
         if line.len() <= MAX_WIDTH {
             out.push_str(&line);
             out.push('\n');
+        } else if inner.len() <= MAX_WIDTH {
+            let _ = writeln!(out, "    assert!(\n{inner}\n    );");
         } else {
+            // As rustfmt breaks a comparison that does not fit on one line.
             let _ = writeln!(
                 out,
-                "    assert!(\n        ALDIS_FIELD_{c} == field::{c}.code().get()\n    );"
+                "    assert!(\n        ALDIS_FIELD_{c}\n            == field::{c}.code().get()\n    );"
             );
         }
     }

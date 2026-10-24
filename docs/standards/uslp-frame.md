@@ -54,6 +54,19 @@ The TFDZ is fixed-length on a VC whose VC Transfer Frame Type is fixed-length, a
 | Virtual channel | frame type (fixed when the physical or master channel is fixed, Table 5-3 note 2), VCID, VCF count length for sequence-controlled and expedited QoS, COP in effect (COP-1/COP-P/none), MAP IDs, truncated frame length (6–32; only on a variable-length VC, Annex D1.2.1; at least 28 with SDLS, Annex D1.2.4), SDU type, OCF allowed (variable) / required (fixed), repetitions, max TFDF completion delay, max inter-frame delay, `SecurityLayout` (per VC/MAP) |
 | MAP | MAP ID, SDU type (Packet / MAPA_SDU / Octet stream), UPID |
 
+### 2.1 What the codec keeps
+
+`aldis_uslp::config` keeps the parameters the codec reads; the engines keep the rest (multiplexing schemes, repetitions, delays, COP in Effect, SDU types). The decoder, the writers, the delimiter, and `validate_frame` look the channels up through `VcLookup`, which `VcTable<V, M>` implements with fixed capacities (M2 D14).
+
+| Type | Parameters | Rejected with `InvalidConfig` (field) |
+|---|---|---|
+| `PhysicalChannelConfig` | Transfer Frame Type, Transfer Frame Length (the frame length when fixed, the maximum when variable), Insert Zone length (0 = absent), FECF | a length above 65 536 (`frame_len` when fixed, `max_frame_len` when variable; §4.1.2.7 note 4); an Insert Zone on a variable-length channel (`insert_zone_len`; Table 5-1 note 5, USLP-008) |
+| `VcConfig` | SCID (its Master Channel), VCID, VC Transfer Frame Type, VCF Count Length for each QoS (0–7 octets, `VcfCountLen`), OCF use (`Absent`, `Allowed` on a variable-length VC, `Required` on a fixed-length VC), truncated frame length (6–32, `TruncatedFrameLen`), where the SDLS lengths are set (`SecurityScope::Vc(layout)` or `PerMap`) | `Allowed` on a fixed-length VC or `Required` on a variable-length one (`ocf_flag`; Table 5-3); a truncated frame length on a fixed-length VC (`truncated_frame_len`; Annex D1.2.1, USLP-002); VCID 63 on a variable-length VC (`transfer_frame_type`; USLP-016) or with `PerMap` (`vc_id`) |
+| `MapConfig` | SCID, VCID, MAP ID, Security Header and Trailer lengths when the VC sets them per MAP (Table 6-3) | — |
+| `VcTable::new` | the channels of one Physical Channel | a variable-length VC on a fixed-length Physical Channel (`transfer_frame_type`; Table 5-3 note 2); VCID 63 on a variable-length Physical Channel (`vc_id`; Table 5-1 note 4, USLP-009); a VC or MAP given twice, a MAP whose VC is not given or is VCID 63, or a MAP with SDLS lengths on a VC with `SecurityScope::Vc` (`vc_id`, `map_id`); a channel whose longest non-truncated frame leaves no TFDZ octet (`frame_data_field`; CMN-041); a truncated frame length below 28 on a VC that uses SDLS, by its own layout or a MAP's (`truncated_frame_len`; Annex D1.2.4, USLP-012); more than `V` VCs or `M` MAPs (`CapacityExceeded`) |
+
+The valid VCIDs of a Master Channel are its `VcConfig` entries, and VCID 63 is valid only when it is given, as a fixed-length VC (Table 5-2 note 2). The valid MAP IDs of a VC other than 63 are its `MapConfig` entries; VCID 63 carries no MAP channel, and its MAP ID is checked as part of the OID header (§3.1, reason 17). The Master Channel's "Inclusion of OCF Required" is expressed by giving each of its fixed-length VCs `OcfUse::Required`. A protocol control frame (flags `11`) has no Security Header or Trailer (§6.3.1). A truncated frame uses SDLS when the layout that applies to its VC or MAP is not empty, and then has the fixed 6-octet Security Header and 16-octet Security Trailer of Annex D1.2.3 (USLP-012, API-075).
+
 ## 3. Requirements
 
 | ID | Requirement | Source | Verif. |
@@ -75,6 +88,73 @@ The TFDZ is fixed-length on a VC whose VC Transfer Frame Type is fixed-length, a
 | USLP-015 | When the Synchronization and Channel Coding Sublayer below is TC Synchronization and Channel Coding, `FrameDelimiter` SHALL implement the **Frame Delimiting and Fill Data Removal Procedure**. Given the octets of one decoded data unit, it SHALL yield successive frames by Frame Length. If the remaining octets are fewer than a frame's declared length, they SHALL be discarded with an event (`IncompleteFrame`). Trailing octets that cannot form a valid header SHALL be treated as fill and discarded. When a header's End of Frame Primary Header Flag is 1, the delimiter SHALL read the VCID from the truncated header and take the frame's length from that VC's truncated frame length (Annex D1.3.2), then continue with the next frame; an unknown VC, or one with no truncated frame length, SHALL end the data unit with a reason. Mixing truncated and non-truncated frames is not checked on reception, since USLP-011 is a sending rule ([open issues](../09-open-issues.md) OI-35 item 8). | §4.3.11.1.6, §4.3.11.2 | V |
 | USLP-016 | The TFDZ Construction Rule SHALL match the TFDZ type that the VC Transfer Frame Type sets: `000`–`010` on a fixed-length VC, and `011`–`111` on a variable-length VC, which includes every truncated frame. VCID 63 counts as fixed-length, because OID frames exist only on fixed-length channels (USLP-009). The decoder SHALL reject any other rule with `InvalidField` (TFDZ Construction Rule) in both modes, before it reads a pointer, and the writer SHALL reject it with `InvalidField` ([open issues](../09-open-issues.md) OI-35 item 3). | §4.1.4.2.2.1.1, §4.1.4.2.2.2.1–8, Table 4-3; Annex D1.2.1 | V |
 
+USLP-011 (no mixing of truncated and full frames in one C&S data unit) is a sending rule of the multiplexing engine (M4); the codec does not check it on reception.
+
+### 3.1 Check order and validation reasons
+
+`UslpFrame::decode` and `validate_frame` run one sequence of checks (`aldis_uslp::view`), in the order of the USLP Frame Validation Checks of §4.3.11.3.4, then the checks of the TFDF Header, and stop at the first failure. `validate_frame` takes the octets of exactly one frame, as the delimiter yields them, and reports a `Rejection`: the reason below and the decoder's error. `decode` accepts octets after a variable-length or truncated frame (API-011); on a fixed-length Physical Channel it requires exactly the configured frame length (API-012). Each reason has a stable numeric code, shared with the C ABI (M2 D14). Reasons 4 and 17 occur only in strict mode; in lenient mode the deviation is an anomaly flag (§4).
+
+A non-truncated frame (End of Frame Primary Header Flag `0`), in check order:
+
+| Code | Reason | Check | Condition | Decoder error (field) |
+|---|---|---|---|---|
+| 13 | `LengthMismatch` | (d) | fewer than 4 octets, then fewer than 7 | `Incomplete` (`needed` 4, then 7) when decoding; `LengthMismatch` (`frame_len`) when validating |
+| 1 | `UnexpectedVersion` | (a) | TFVN ≠ `1100` (§4.1.2.2.2) | `UnsupportedVersion` (`frame_version`), detail expected 12 |
+| 2 | `UnexpectedSpacecraft` | (b) | SCID not among the SCIDs of the configured VCs | `UnknownChannel` (`spacecraft_id`) |
+| 3 | `ReservedFlags` | (c) | Bypass/Sequence Control Flag `0`, Protocol Control Command Flag `1` (Table 4-1; USLP-001) | `ReservedValue` (`protocol_control_command_flag`) |
+| 4 | `ReservedSpare` | (c) | Reserve Spares ≠ `00`, strict mode (§4.1.2.9.2) | `ReservedValue` (`uslp_header_spare`) |
+| 5 | `InvalidVcid` | (c) | VCID not valid on the Master Channel | `UnknownChannel` (`vc_id`) |
+| 6 | `InvalidMapId` | (c) | MAP ID not valid on the VC (not checked on VCID 63) | `UnknownChannel` (`map_id`) |
+| 8 | `VcfCountLengthMismatch` | (c) | VCF Count Length ≠ the VC's length for the QoS of the Bypass/Sequence Control Flag (§4.1.2.11.4; USLP-004) | `LengthMismatch` (`vcf_count_len`) |
+| 9 | `OcfFlagMismatch` | (c) | OCF Flag `1` on a VC with `OcfUse::Absent`, or `0` on a VC with `Required` (§4.1.5.3–4, Table 5-3) | `InvalidField` (`ocf_flag`) |
+| 10 | `FixedLengthMismatch` | (c) | fixed-length Physical Channel: Frame Length + 1 ≠ the configured frame length (§4.1.2.7; USLP-003) | `LengthMismatch` (`frame_len`) |
+| 11 | `FrameTooLong` | (c) | variable-length Physical Channel: Frame Length + 1 above its maximum (Table 5-1 note 2) | `OutOfRange` (`frame_len`) |
+| 12 | `FrameTooShort` | (c) | Frame Length + 1 leaves no TFDZ octet after the Primary Header with its VCF Count, Insert Zone, Security Header, TFDF Header (3 octets on a fixed-length VC, 1 on a variable-length VC), Security Trailer, OCF, and FECF the frame has ([OI-44](../09-open-issues.md) item 2) | `InvalidField` (`frame_data_field`) |
+| 13 | `LengthMismatch` | (d) | octets present ≠ Frame Length + 1 when validating, or on a fixed-length Physical Channel (API-012); fewer than Frame Length + 1 when decoding on a variable-length one | `LengthMismatch` (`frame_len`); `Incomplete` (`needed` = Frame Length + 1) |
+| 14 | `FecfMismatch` | (e) | FECF configured and wrong (§4.1.6, Annex B) | `CrcMismatch` |
+| 15 | `ConstructionRuleMismatch` | USLP-016 | TFDZ Construction Rule `011`–`111` on a fixed-length VC or `000`–`010` on a variable-length VC (VCID 63 counts as fixed-length) | `InvalidField` (`tfdz_construction_rule`) |
+| 16 | `PointerBeyondZone` | USLP-006 | First Header or Last Valid Octet Pointer ≠ `0xFFFF` and not below the TFDZ length (§4.1.4.2.4) | `Malformed` (`fhp_lvo_pointer`) |
+| 17 | `OidHeaderMismatch` | §4.1.4.1.8–9 | VCID 63, strict mode: MAP ID ≠ 0, rule ≠ `001`, UPID ≠ "Only Idle Data", or Last Valid Octet Pointer ≠ the last TFDZ octet ([OI-44](../09-open-issues.md) item 1) | `InvalidField` (`map_id`, `tfdz_construction_rule`, `upid`, `fhp_lvo_pointer`, checked in that order) |
+
+A truncated frame (End of Frame Primary Header Flag `1`, Annex D), in check order: reasons 13 (fewer than 4 octets), 1, 2, 5, and 6 as above, then
+
+| Code | Reason | Check | Condition | Decoder error (field) |
+|---|---|---|---|---|
+| 7 | `TruncatedFrameNotAllowed` | (c) | the VC has no truncated frame length (Annex D1.2.1, D1.3.2; USLP-002) | `InvalidField` (`end_of_frame_primary_header_flag`) |
+| 13 | `LengthMismatch` | (d)(2) | octets present ≠ the truncated frame length when validating; fewer when decoding | `LengthMismatch` (`frame_len`); `Incomplete` (`needed` = the truncated frame length) |
+| 15 | `ConstructionRuleMismatch` | USLP-016 | TFDZ Construction Rule `000`–`010` (Annex D1.2.1) | `InvalidField` (`tfdz_construction_rule`) |
+
+The truncated frame has no Bypass/Sequence Control Flag, Reserve Spares, OCF, or FECF, so reasons 3, 4, 8–12, 14, 16, and 17 do not apply; its rule (`011`–`111`) and UPID are exposed and not checked further (USLP-002, OI-35 item 1). A UPID the registry does not assign is never an error (USLP-007). The FECF is checked before the TFDF Header is read, so a bit error in the rule or the pointer is reported as reason 14.
+
+`peek_length(prefix, channels)` (API-013) needs 4 octets (`Incomplete`, `needed` 4) and a TFVN of `1100` (`UnsupportedVersion`). For a truncated header it returns the VC's truncated frame length, with the errors of reasons 2, 5, and 7 above. Otherwise it returns the configured frame length of a fixed-length Physical Channel, or, with 6 octets (`Incomplete`, `needed` 6), Frame Length + 1.
+
+### 3.2 Delimiting
+
+`next_frame(rest, channels)` is stateless: it returns the next item of the octets not yet delimited, and the caller skips its length (M2 D14). `FrameDelimiter` iterates with it. An item is a `Frame`; an `IncompleteFrame` (the rest, discarded: it starts with a valid header that declares more octets than remain; §4.3.11.2.3); `NoTruncatedLength` (the rest, discarded: a truncated header whose SCID and VCID name no configured VC, or a VC without a truncated frame length; USLP-015, OI-35 item 8); or `Fill` (the rest, discarded; §4.3.11.2.4). The next octets start a **valid header** when there are at least 4 of them and the TFVN is `1100`, and either the End of Frame Primary Header Flag is `1` (the length is the VC's truncated frame length, Annex D1.3.2), or it is `0`, at least 7 octets remain, and Frame Length + 1 is at least the Primary Header with its VCF Count, a 1-octet TFDF Header, and one TFDZ octet: 9 + the VCF Count Length (§4.1.2.7, §4.1.2.11). Otherwise the rest is `Fill`. This is the rule [OI-41](../09-open-issues.md) item 2 chose for TC ([OI-44](../09-open-issues.md) item 3). The Fill Data pattern `01010101` has TFVN `0101` and is never a valid header. A frame the delimiter yields still goes through `validate_frame`.
+
+### 3.3 Writers
+
+`encode` and the two-phase `UslpFrameWriter` write a non-truncated frame, `encode_truncated` a truncated one, and `encode_oid` an OID frame; each computes the Frame Length, the OCF Flag, the VCF Count Length (from the VC and the QoS of the Bypass/Sequence Control Flag), the TFDF Header, and the FECF, and takes the TFDZ, the Insert Zone, and the OCF as given (USLP-010, API-021). An OID frame's TFDZ comes from the caller's `OidGenerator`, its rule is `001`, its UPID "Only Idle Data", and its Last Valid Octet Pointer the last TFDZ octet (USLP-009). Security Headers and Trailers are written as zeros for the SDLS layer to fill (API-072). The writers check in this order and reject, with nothing written (API-022):
+
+| Condition | Error (field) |
+|---|---|
+| SCID or VCID not configured | `UnknownChannel` (`spacecraft_id`, `vc_id`) |
+| VCID 63 in `encode`, `UslpFrameWriter`, or `encode_truncated`; another VCID in `encode_oid` | `InvalidField` (`vc_id`) |
+| `encode_oid`: MAP ID ≠ 0, or protocol control flags | `InvalidField` (`map_id`, `protocol_control_command_flag`) |
+| MAP ID not configured on the VC (not on VCID 63) | `UnknownChannel` (`map_id`) |
+| `encode_truncated` on a VC without a truncated frame length | `InvalidField` (`end_of_frame_primary_header_flag`) |
+| a TFDZ Construction Rule of the other TFDZ type (USLP-016) | `InvalidField` (`tfdz_construction_rule`) |
+| a VCF Count that does not fit the VC's VCF Count Length for the QoS | `OutOfRange` (`vcf_count`) |
+| an OCF on a VC with `OcfUse::Absent`, or none on a VC with `Required` | `InvalidField` (`ocf_flag`) |
+| an Insert Zone of another length than the Physical Channel's | `LengthMismatch` (`insert_zone_len`) |
+| an empty TFDZ | `InvalidField` (`frame_data_field`) |
+| a TFDZ that does not fill a fixed-length frame or a truncated frame exactly | `LengthMismatch` (`frame_data_field`) |
+| a frame longer than a variable-length Physical Channel allows | `OutOfRange` (`frame_len`) |
+| a First Header or Last Valid Octet Pointer neither `0xFFFF` nor below the TFDZ length | `OutOfRange` (`fhp_lvo_pointer`) |
+| `out` shorter than the frame | `BufferTooSmall` |
+
+Until `UslpFrameWriter::finish`, the buffer holds a Primary Header whose TFVN is `1111`, which every decoder rejects with `UnsupportedVersion` and the delimiter treats as fill (API-023).
+
 ## 4. Anomaly flags (lenient mode)
 
 `UslpAnomaly` flags. The bit index is the flag's position in `AnomalySet::bits()` and is shared with the C ABI. It never changes once `aldis-uslp` is released. Before OI-33 the flags were listed without bit indices, so withdrawing `VcfLengthMismatchForQos` (an error in both modes, USLP-004) and `UnknownUpid` (reported by `Upid::Other(n)`, USLP-007) reserves no bit. Version, length, and FECF errors remain errors in both modes (API-032).
@@ -82,7 +162,8 @@ The TFDZ is fixed-length on a VC whose VC Transfer Frame Type is fixed-length, a
 | Bit | Flag | Deviation | Source |
 |---|---|---|---|
 | 0 | `ReserveSparesSet` | Reserve Spares (bits 50–51) ≠ `00` | §4.1.2.9.2 |
+| 1 | `OidHeaderMismatch` | on VCID 63: MAP ID ≠ 0, TFDZ Construction Rule ≠ `001`, UPID ≠ "Only Idle Data", or Last Valid Octet Pointer ≠ the last TFDZ octet, fixed-value fields of an idle data unit (API-032); the view keeps the values. Proposed in M2 WP-5, pending the maintainer ([OI-44](../09-open-issues.md) item 1) | §4.1.4.1.8–9 |
 
 ## 5. Test-vector categories
 
-`uslp/fixed_packets_rule000`, `uslp/fixed_mapa_rules001_010`, `uslp/variable_rules011_111`, `uslp/vcf_count_lengths_0_to_7`, `uslp/truncated`, `uslp/truncated_sdls_layout`, `uslp/oid`, `uslp/insert_zone`, `uslp/protocol_control_cop1`, `uslp/invalid`.
+`uslp/fixed_packets_rule000`, `uslp/fixed_mapa_rules001_010`, `uslp/variable_rules011_111`, `uslp/vcf_count_lengths_0_to_7`, `uslp/truncated`, `uslp/truncated_sdls_layout`, `uslp/oid`, `uslp/insert_zone`, `uslp/protocol_control_cop1`, `uslp/delimit_multiple_frames_with_fill`, `uslp/validation_failures`, `uslp/invalid`, and `uslp/config` (the configuration errors of §2.1).

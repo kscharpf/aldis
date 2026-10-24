@@ -5,7 +5,7 @@
 //! `aldis_panic_is_unreachable`, a symbol that is defined nowhere. A release build (LTO,
 //! `panic = "abort"`) links only if no panic path survives optimization in any code the
 //! exerciser reaches, which is every public API of `aldis-core`, `aldis-time`, `aldis-spp`
-//! (with `time`), `aldis-epp`, `aldis-tm` (M2 WP-2), `aldis-tc` (M2 WP-3), and the implemented modules of `aldis-aos`
+//! (with `time`), `aldis-epp`, `aldis-tm` (M2 WP-2), `aldis-tc` (M2 WP-3), `aldis-uslp` (M2 WP-5), and the implemented modules of `aldis-aos`
 //! (the FHEC, M2 WP-4), and every function `aldis-ffi` exports (M2 plan D16). The handler is `aldis-ffi`'s, with its
 //! feature `panic-unreachable`, because `aldis-ffi` is also built as a static library and so
 //! needs one of its own. Feature `inject-panic` plants a reachable panic to show that the check
@@ -32,6 +32,7 @@ mod target;
 mod tc;
 mod time;
 mod tm;
+mod uslp;
 mod vectors;
 
 /// The Rust entry point: the reset handler on Cortex-M, called by the start-up code of
