@@ -137,6 +137,111 @@ pub(crate) unsafe fn config<T: Copy>(ptr: *const T) -> Result<T> {
     Ok(unsafe { ptr.read() })
 }
 
+/// An array of configuration structs in caller memory, each starting with `uint32_t
+/// struct_size` (CABI-033, CABI-022; M2 plan D14): `len` structs, `stride` octets apart.
+///
+/// The stride is the `struct_size` of the first struct, which every struct repeats, so that a
+/// caller built against a later header, with a longer struct, still passes an array this
+/// library can step through; the library reads the struct it knows from each element.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct Configs<'a, T> {
+    ptr: *const T,
+    stride: usize,
+    len: usize,
+    life: PhantomData<&'a T>,
+}
+
+impl<T: Copy> Configs<'_, T> {
+    /// The number of structs.
+    pub(crate) const fn len(&self) -> usize {
+        self.len
+    }
+
+    /// The struct at index `i`, read by value.
+    ///
+    /// # Errors
+    /// `InvalidField` (no field) when `i` is not below [`len`](Self::len), or the struct's
+    /// `struct_size` is not the array's stride.
+    #[expect(
+        unsafe_code,
+        reason = "reads caller memory that `configs` checked (CABI-022, GEN-071)"
+    )]
+    pub(crate) fn get(&self, i: usize) -> Result<T> {
+        if i >= self.len {
+            return Err(invalid_argument());
+        }
+        let offset = i.checked_mul(self.stride).ok_or_else(invalid_argument)?;
+        // SAFETY: `configs` checked that the `len × stride` octets at `ptr` form one range that
+        // neither wraps nor exceeds `isize::MAX`, and its caller made them valid for reads; with
+        // `i < len`, the struct at `offset` lies inside that range.
+        let element = unsafe { self.ptr.cast::<u8>().add(offset) }.cast::<T>();
+        // `ptr` is aligned for `T` and for `u32`, and `stride` a multiple of both alignments, so
+        // `element` is too.
+        let size = element.cast::<u32>();
+        // SAFETY: inside the checked range and aligned for `u32`; the first four octets of
+        // every struct are its `struct_size` by the caller's contract.
+        let struct_size = unsafe { size.read() };
+        if usize::try_from(struct_size) != Ok(self.stride) {
+            return Err(invalid_argument());
+        }
+        // SAFETY: aligned for `T`, and `stride` ≥ `size_of::<T>()` octets of it lie inside the
+        // checked range and hold an initialized `T` by the caller's contract.
+        Ok(unsafe { element.read() })
+    }
+}
+
+/// The `len` configuration structs at `ptr` as an array (CABI-033, CABI-022; M2 plan D14).
+/// `NULL` is allowed for an empty array.
+///
+/// # Errors
+/// `InvalidField` (no field) when `ptr` is `NULL` and `len` is not 0, `ptr` is misaligned, the
+/// first `struct_size` (the stride) is smaller than `T` or not a multiple of its alignment, or
+/// the `len × stride` octets wrap or exceed `isize::MAX`.
+///
+/// # Safety
+/// For `len` > 0, `ptr` must be valid for reads of `len × struct_size` initialized octets, of
+/// which each struct's first four hold its `struct_size`, not written during `'a`. `T` must be
+/// `#[repr(C)]` with a `u32` first field.
+#[expect(
+    unsafe_code,
+    reason = "checked access to caller memory (CABI-022, GEN-071)"
+)]
+pub(crate) unsafe fn configs<'a, T: Copy>(ptr: *const T, len: usize) -> Result<Configs<'a, T>> {
+    let empty = Configs {
+        ptr,
+        stride: 0,
+        len: 0,
+        life: PhantomData,
+    };
+    if len == 0 {
+        return Ok(empty);
+    }
+    let size = ptr.cast::<u32>();
+    if ptr.is_null() || !ptr.is_aligned() || !size.is_aligned() {
+        return Err(invalid_argument());
+    }
+    // SAFETY: non-null and aligned for `u32`, checked above; the first four octets of the
+    // first struct are its `struct_size` by the caller's contract.
+    let stride = usize::try_from(unsafe { size.read() }).map_err(|_| invalid_argument())?;
+    // A multiple of both alignments keeps every element aligned for `T` and for the `u32`
+    // `struct_size` that `Configs::get` reads first, whatever `T` is.
+    if stride < size_of::<T>()
+        || !stride.is_multiple_of(align_of::<T>())
+        || !stride.is_multiple_of(align_of::<u32>())
+    {
+        return Err(invalid_argument());
+    }
+    let total = stride.checked_mul(len).ok_or_else(invalid_argument)?;
+    if range(ptr.cast::<u8>(), total).is_none() || isize::try_from(total).is_err() {
+        return Err(invalid_argument());
+    }
+    Ok(Configs {
+        stride,
+        len,
+        ..empty
+    })
+}
+
 /// The address range `[start, end)` of `len` octets at `ptr`, if it does not wrap.
 fn range(ptr: *const u8, len: usize) -> Option<(usize, usize)> {
     let start = ptr.addr();
@@ -405,6 +510,37 @@ mod tests {
             assert_eq!(read(misaligned), Err(invalid_argument()));
             assert!(out(misaligned.cast_mut()).is_err());
             assert!(out::<Cfg>(core::ptr::null_mut()).is_err());
+        }
+    }
+
+    #[test]
+    fn configuration_arrays_step_by_their_struct_size() {
+        // req: CABI-033, CABI-022
+        let cfgs = [
+            Cfg {
+                struct_size: 8,
+                value: 1,
+            },
+            Cfg {
+                struct_size: 8,
+                value: 2,
+            },
+        ];
+        // SAFETY: each pointer is NULL with length 0 or points to `len` live `Cfg`s.
+        unsafe {
+            let array = configs(cfgs.as_ptr(), 2).unwrap();
+            assert_eq!(array.len(), 2);
+            assert_eq!(array.get(1), Ok(cfgs[1]));
+            assert_eq!(array.get(2), Err(invalid_argument()));
+            assert_eq!(configs::<Cfg>(core::ptr::null(), 0).map(|a| a.len()), Ok(0));
+            assert_eq!(
+                configs::<Cfg>(core::ptr::null(), 1).map(|a| a.len()),
+                Err(invalid_argument())
+            );
+            assert_eq!(
+                configs(&raw const cfgs[0], usize::MAX).map(|a| a.len()),
+                Err(invalid_argument())
+            );
         }
     }
 
