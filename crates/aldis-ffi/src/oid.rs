@@ -125,12 +125,15 @@ pub unsafe extern "C" fn aldis_oid_generator_init(
     }
 }
 
-/// The generator behind `h`.
+/// The generator behind `h`; also used by the OID frame writers of the frame codecs
+/// ([`crate::tm`]).
 ///
 /// # Safety
 /// As for `handle::get`.
 #[expect(unsafe_code, reason = "checks a caller handle (CABI-032, GEN-071)")]
-unsafe fn generator(h: *mut aldis_oid_generator_t) -> Result<handle::Handle<GeneratorState>> {
+pub(crate) unsafe fn generator(
+    h: *mut aldis_oid_generator_t,
+) -> Result<handle::Handle<GeneratorState>> {
     // SAFETY: forwarded from the caller.
     unsafe { handle::get(h.cast::<Slot<GeneratorState>>(), GENERATOR_MAGIC) }
 }

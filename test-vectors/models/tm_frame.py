@@ -246,7 +246,9 @@ def decode(octets, pc, mc, mode, check_fecf, lookup):
 # ---- validation against the master channel (TM-011)
 
 def validate(octets, pc, mc, mode):
-    v = decode(octets, pc, mc, mode, True, False)
+    # Decoded with the security layout of the frame's VC from the master channel: a check that
+    # takes a master channel always uses its layouts (c-abi.md §11, maintainer decision on #94).
+    v = decode(octets, pc, mc, mode, True, True)
     if v["scid"] != mc["scid"]:
         raise Fail("UnknownChannel", F["spacecraft_id"])
     if v["vcid"] not in mc["vcs"]:
@@ -441,6 +443,15 @@ def enc(vcid, mcc, vcc, st, data, fsh_data="", sh="", tr="", ocf=None, **extra):
          "security_trailer_hex": tr, "ocf_hex": ocf}
     p.update(extra)
     return p
+
+
+def superseded(c, op, expect_, reason, by):
+    """A superseded case as it was released: its operation and expectation are kept, and the
+    model does not recompute them (TV-021)."""
+    c["operation"] = op
+    c["expect"] = expect_
+    c["superseded"] = {"reason": reason, "by": by}
+    return c
 
 
 def case(cid, reqs, desc, op, config, input_hex=None, params=None, mode=None):
@@ -651,8 +662,16 @@ def security_layout():
              "VCA_SDU channel with a 3-octet Security Header and an OCF", "encode", mc,
              params=enc(5, 1, 1, status(sync=True, fhp=NO_PACKET_START), "C3" * 25,
                         sh="A5A5A5", ocf="00000000")),
-        case("tm-sec-val-001", ["TM-011", "API-070"],
-             "Decoded without SDLS, the frame of tm-sec-dec-001 does not match VC 4's layout",
+        superseded(
+            case("tm-sec-val-001", ["TM-011", "API-070"],
+                 "Decoded without SDLS, the frame of tm-sec-dec-001 does not match VC 4's layout",
+                 "config", mc, pattern),
+            "validate", {"ok": False, "error": "LengthMismatch", "field": F["security_header_len"]},
+            "the validate operation decodes with the master channel's security layouts "
+            "(maintainer decision on #94), so a frame cannot be validated as decoded without SDLS",
+            "tm-sec-val-002"),
+        case("tm-sec-val-002", ["TM-011", "API-070"],
+             "Decoded with VC 4's layout, the frame of tm-sec-dec-001 matches its channel",
              "validate", mc, pattern),
         case("tm-sec-cfg-001", ["API-040", "API-071"],
              "Security Header longer than 64 octets", "config",

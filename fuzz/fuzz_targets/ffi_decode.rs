@@ -5,16 +5,20 @@
 //! status and the same detail: kind, field code, and values (CABI-012, CABI-020, CABI-021,
 //! GEN-020). A decoded time code re-encodes through the C ABI to the octets the Rust encoder
 //! writes. The C ABI of `aldis-core` agrees with it too: `aldis_crc16`, `aldis_ocf_classify`,
-//! `aldis_ocf_check`, and the OID generator in both forms.
+//! `aldis_ocf_check`, and the OID generator in both forms; and so does that of `aldis-tm`:
+//! `aldis_tm_decode`, `aldis_tm_decode_unchecked`, `aldis_tm_peek_length`,
+//! `aldis_tm_header_decode`, `aldis_tm_decode_with`, and `aldis_tm_validate`.
 #![no_main]
 
-// req: CABI-012, CABI-020, CABI-021, CABI-022, GEN-020, API-010, VER-022, CMN-001, CMN-010, CMN-022
+// req: CABI-012, CABI-020, CABI-021, CABI-022, GEN-020, API-010, VER-022, CMN-001, CMN-010, CMN-022, TM-001, API-070
 
 use core::ptr::null_mut;
 
 use aldis_core::crc::crc16;
+use aldis_core::ids::VcId;
 use aldis_core::ocf::{FsrReport, OCF_LEN, Ocf, ProjectSpecificReport, Type1Report};
 use aldis_core::oid::OidGenerator;
+use aldis_core::security::SecurityLayout;
 use aldis_core::{DecodeMode, Error};
 use aldis_epp::{EncapsulationPacket, EpiExtension, UserDefined};
 use aldis_ffi::crc::aldis_crc16;
@@ -33,9 +37,20 @@ use aldis_ffi::time::{
     aldis_time_ascii_options_t, aldis_time_ascii_parse, aldis_time_ascii_t, aldis_time_decode,
     aldis_time_decoded_t, aldis_time_encode, aldis_time_pfield_parse, aldis_time_pfield_t,
 };
+use aldis_ffi::tm::{
+    ALDIS_TM_CONTENT_PACKETS, ALDIS_TM_POINTER_NO_PACKET_START, ALDIS_TM_POINTER_NONE,
+    ALDIS_TM_POINTER_ONLY_IDLE_DATA, ALDIS_TM_POINTER_STARTS_AT, aldis_tm_config_t,
+    aldis_tm_decode, aldis_tm_decode_unchecked, aldis_tm_decode_with, aldis_tm_frame_t,
+    aldis_tm_header_decode, aldis_tm_header_t, aldis_tm_mc_config_t, aldis_tm_peek_length,
+    aldis_tm_validate, aldis_tm_vc_config_t,
+};
 use aldis_ffi::{ALDIS_MODE_LENIENT, ALDIS_MODE_STRICT, ALDIS_OK, aldis_error_detail_t};
 use aldis_spp::SpacePacket;
 use aldis_time::{AsciiOptions, AsciiTime, PField, decode_with_pfield};
+use aldis_tm::{
+    DataFieldContent, DataFieldStatus, FshLen, NoSdls, PacketPointer, TmFrame,
+    TmMasterChannelConfig, TmPhysicalChannelConfig, TmPrimaryHeader, TmVirtualChannelConfig,
+};
 use libfuzzer_sys::fuzz_target;
 
 /// The status and detail a C call returns for a Rust result.
@@ -338,6 +353,224 @@ fn core(data: &[u8]) {
     }
 }
 
+/// The C view of a TM frame agrees with the Rust view: header, pointer, Secondary Header
+/// length, FECF, anomalies, and every field's offset and length (CABI-012).
+fn tm_same(view: &aldis_tm_frame_t, frame: &TmFrame<'_>) {
+    let rust = frame.header();
+    let c_header = &view.header;
+    assert_eq!(
+        (
+            c_header.scid,
+            c_header.vcid,
+            c_header.ocf_flag,
+            c_header.mc_frame_count,
+            c_header.vc_frame_count
+        ),
+        (
+            rust.scid.get(),
+            rust.vcid.get(),
+            rust.ocf_flag,
+            rust.mc_frame_count,
+            rust.vc_frame_count
+        )
+    );
+    assert_eq!(
+        (
+            c_header.fsh_flag,
+            c_header.sync_flag,
+            c_header.packet_order_flag
+        ),
+        (rust.fsh_flag, rust.sync_flag, rust.packet_order_flag)
+    );
+    assert_eq!(
+        (c_header.segment_length_id, c_header.first_header_pointer),
+        (
+            rust.segment_length_id.get(),
+            rust.first_header_pointer.get()
+        )
+    );
+    let pointer = match frame.data_field_status() {
+        DataFieldStatus::Packets(PacketPointer::StartsAt(n)) => (ALDIS_TM_POINTER_STARTS_AT, n),
+        DataFieldStatus::Packets(PacketPointer::NoPacketStart) => {
+            (ALDIS_TM_POINTER_NO_PACKET_START, 0)
+        }
+        DataFieldStatus::Packets(PacketPointer::OnlyIdleData) => {
+            (ALDIS_TM_POINTER_ONLY_IDLE_DATA, 0)
+        }
+        DataFieldStatus::VcaSdu { .. } => (ALDIS_TM_POINTER_NONE, 0),
+    };
+    assert_eq!((view.pointer, view.packet_offset), pointer);
+    assert_eq!(view.fsh_len, frame.fsh_len().map_or(0, FshLen::get));
+    assert_eq!(view.has_fecf.then_some(view.fecf), frame.fecf());
+    assert_eq!(view.anomalies, frame.anomalies().bits());
+    let c_layout = &view.layout;
+    let ranges = frame.layout();
+    let span = |at: usize, len: usize| at..at + len;
+    assert_eq!(c_layout.frame_len, frame.len());
+    let fsh = ranges.secondary();
+    assert_eq!(
+        span(c_layout.fsh_data_offset, c_layout.fsh_data_len),
+        (fsh.start + 1).min(fsh.end)..fsh.end
+    );
+    assert_eq!(
+        span(
+            c_layout.security_header_offset,
+            c_layout.security_header_len
+        ),
+        ranges.security_header()
+    );
+    assert_eq!(span(c_layout.data_offset, c_layout.data_len), ranges.data());
+    assert_eq!(
+        span(
+            c_layout.security_trailer_offset,
+            c_layout.security_trailer_len
+        ),
+        ranges.security_trailer()
+    );
+    assert_eq!(span(c_layout.ocf_offset, c_layout.ocf_len), ranges.ocf());
+    assert_eq!(span(c_layout.fecf_offset, c_layout.fecf_len), ranges.fecf());
+}
+
+/// The C ABI of `aldis-tm` agrees with `aldis-tm` on a frame of the input's length (M2 plan
+/// D14): `aldis_tm_decode` and `aldis_tm_decode_unchecked` without SDLS, `aldis_tm_peek_length`,
+/// and `aldis_tm_header_decode`; and, on a master channel of the frame's SCID whose eight VCs
+/// carry packets with SDLS layouts of 0 to 2 header and 0 or 1 trailer octets,
+/// `aldis_tm_decode_with` and `aldis_tm_validate` (TM-001…TM-008, TM-011, API-070).
+#[expect(unsafe_code, reason = "calls the C ABI with valid pointers")]
+#[expect(clippy::too_many_lines, reason = "one comparison per C function")]
+fn tm(data: &[u8], fecf: bool, mode: DecodeMode, c_mode: u32) {
+    let pc = aldis_tm_config_t {
+        struct_size: u32::try_from(size_of::<aldis_tm_config_t>()).unwrap(),
+        fecf: u8::from(fecf),
+        frame_len: data.len(),
+    };
+    let rust_pc = TmPhysicalChannelConfig::new(data.len(), fecf);
+    let mut view = aldis_tm_frame_t::default();
+    let mut detail = aldis_error_detail_t::default();
+    let rust = rust_pc.and_then(|p| TmFrame::decode(data, &p, mode));
+    // SAFETY: `data`, `pc`, `view`, and `detail` are live.
+    let status = unsafe {
+        aldis_tm_decode(
+            data.as_ptr(),
+            data.len(),
+            &raw const pc,
+            c_mode,
+            &raw mut view,
+            &raw mut detail,
+        )
+    };
+    expect(&rust, status, &detail);
+    if let Ok(f) = &rust {
+        tm_same(&view, f);
+    }
+    let rust = rust_pc.and_then(|p| TmFrame::decode_unchecked(data, &p, &NoSdls, mode));
+    // SAFETY: as above.
+    let status = unsafe {
+        aldis_tm_decode_unchecked(
+            data.as_ptr(),
+            data.len(),
+            &raw const pc,
+            c_mode,
+            &raw mut view,
+            &raw mut detail,
+        )
+    };
+    expect(&rust, status, &detail);
+    if let Ok(f) = &rust {
+        tm_same(&view, f);
+    }
+    let rust = rust_pc.and_then(|p| TmFrame::peek_length(data, &p));
+    let mut len = 0;
+    // SAFETY: as above.
+    let status = unsafe {
+        aldis_tm_peek_length(
+            data.as_ptr(),
+            data.len(),
+            &raw const pc,
+            &raw mut len,
+            &raw mut detail,
+        )
+    };
+    expect(&rust, status, &detail);
+    if let Ok(n) = rust {
+        assert_eq!(len, n);
+    }
+    let rust = TmPrimaryHeader::decode(data);
+    let mut header = aldis_tm_header_t::default();
+    // SAFETY: as above.
+    let status = unsafe {
+        aldis_tm_header_decode(data.as_ptr(), data.len(), &raw mut header, &raw mut detail)
+    };
+    expect(&rust, status, &detail);
+    let Ok(h) = rust else {
+        return;
+    };
+    assert_eq!((header.scid, header.vcid), (h.scid.get(), h.vcid.get()));
+    // A master channel of the frame's SCID; VC n has a Security Header of n % 3 octets and a
+    // Trailer of n % 2.
+    let mc = aldis_tm_mc_config_t {
+        struct_size: u32::try_from(size_of::<aldis_tm_mc_config_t>()).unwrap(),
+        scid: h.scid.get(),
+        fsh_len: 0,
+        ocf: 0,
+        pc,
+    };
+    let vcs: [aldis_tm_vc_config_t; 8] = core::array::from_fn(|n| aldis_tm_vc_config_t {
+        struct_size: u32::try_from(size_of::<aldis_tm_vc_config_t>()).unwrap(),
+        vcid: u8::try_from(n).unwrap(),
+        content: ALDIS_TM_CONTENT_PACKETS,
+        fsh_len: 0,
+        ocf: 0,
+        security_header_len: u8::try_from(n % 3).unwrap(),
+        security_trailer_len: u16::try_from(n % 2).unwrap(),
+    });
+    let rust_master = rust_pc.and_then(|p| {
+        let mut m = TmMasterChannelConfig::new(p, h.scid, None, false);
+        for n in 0..8_u8 {
+            let security = SecurityLayout::new(usize::from(n % 3), usize::from(n % 2))?;
+            let vc = TmVirtualChannelConfig::new(VcId::new(n).unwrap(), DataFieldContent::Packets)
+                .with_security(security);
+            m = m.with_vc(vc)?;
+        }
+        Ok(m)
+    });
+    let rust = rust_master
+        .as_ref()
+        .map_err(|e| *e)
+        .and_then(|m| TmFrame::decode_with(data, m.pc(), m, mode));
+    // SAFETY: as above; `vcs` holds 8 structs.
+    let status = unsafe {
+        aldis_tm_decode_with(
+            data.as_ptr(),
+            data.len(),
+            &raw const mc,
+            vcs.as_ptr(),
+            vcs.len(),
+            c_mode,
+            &raw mut view,
+            &raw mut detail,
+        )
+    };
+    expect(&rust, status, &detail);
+    if let Ok(f) = &rust {
+        tm_same(&view, f);
+    }
+    let rust = rust_master.and_then(|m| TmFrame::decode_with(data, m.pc(), &m, mode)?.validate(&m));
+    // SAFETY: as above.
+    let status = unsafe {
+        aldis_tm_validate(
+            data.as_ptr(),
+            data.len(),
+            &raw const mc,
+            vcs.as_ptr(),
+            vcs.len(),
+            c_mode,
+            &raw mut detail,
+        )
+    };
+    expect(&rust, status, &detail);
+}
+
 fuzz_target!(|input: &[u8]| {
     let Some((&selector, data)) = input.split_first() else {
         return;
@@ -347,10 +580,11 @@ fuzz_target!(|input: &[u8]| {
     } else {
         (DecodeMode::Lenient, ALDIS_MODE_LENIENT)
     };
-    match (selector >> 1) % 4 {
+    match (selector >> 1) % 5 {
         0 => spp(data, mode, c_mode),
         1 => epp(data, mode, c_mode),
         2 => time(data, mode, c_mode),
+        3 => tm(data, selector & 0x80 != 0, mode, c_mode),
         _ => core(data),
     }
 });
