@@ -177,14 +177,14 @@ fn strip(text: &str) -> String {
 
 /// One token: an identifier, keyword, number, lifetime, or punctuation.
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct Tok {
-    text: String,
-    line: usize,
+pub(crate) struct Tok {
+    pub(crate) text: String,
+    pub(crate) line: usize,
 }
 
 /// The tokens of `text`, with 1-based line numbers. `::`, `->`, and `=>` are single tokens; a
 /// macro variable (`$name`) is one identifier token; other punctuation is one character each.
-fn tokens(text: &str) -> Vec<Tok> {
+pub(crate) fn tokens(text: &str) -> Vec<Tok> {
     let stripped = strip(text);
     let c: Vec<char> = stripped.chars().collect();
     let ident = ident_char;
@@ -284,7 +284,7 @@ struct Items {
 }
 
 /// Index of the bracket that closes the one at `open`.
-fn group_end(t: &[Tok], open: usize) -> Result<usize, String> {
+pub(crate) fn group_end(t: &[Tok], open: usize) -> Result<usize, String> {
     if !t
         .get(open)
         .is_some_and(|tok| matches!(tok.text.as_str(), "(" | "[" | "{"))
@@ -344,7 +344,7 @@ fn split_commas(t: &[Tok]) -> Result<Vec<&[Tok]>, String> {
 }
 
 /// Whether attribute tokens (between `#[` and `]`) gate the item on `test` or `kani`.
-fn test_only(attr: &[Tok]) -> bool {
+pub(crate) fn test_only(attr: &[Tok]) -> bool {
     let words: Vec<&str> = attr.iter().map(|t| t.text.as_str()).collect();
     match words.as_slice() {
         ["cfg", "(", "test" | "kani", ")"] => true,
