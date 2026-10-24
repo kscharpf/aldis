@@ -346,19 +346,9 @@ impl<const N: usize> VcTable<N> {
         pc: AosPhysicalChannelConfig,
         vcs: &[AosVirtualChannelConfig],
     ) -> Result<VcTable<N>> {
-        let mut table = VcTable { pc, vcs: [None; N] };
-        for (i, vc) in vcs.iter().enumerate() {
-            if table.vc(vc.scid, vc.vcid).is_some() {
-                return Err(Error::new(ErrorKind::InvalidConfig).with_field(field::VC_ID));
-            }
-            check_vc(&pc, vc)?;
-            let slot = table
-                .vcs
-                .get_mut(i)
-                .ok_or(Error::new(ErrorKind::CapacityExceeded).with_field(field::VC_ID))?;
-            *slot = Some(*vc);
-        }
-        Ok(table)
+        let mut slots = [None; N];
+        fill(&mut slots, &pc, vcs)?;
+        Ok(VcTable { pc, vcs: slots })
     }
 
     /// The physical channel (Table 5-1).
@@ -376,15 +366,67 @@ impl<const N: usize> VcTable<N> {
     /// channel is valid: for VCID 63, that of an OID frame (732.0 §4.1, §6.3; CMN-040).
     #[must_use]
     pub fn frame_layout(&self, scid: SpacecraftId<10>, vcid: VcId<6>) -> Option<FrameLayout> {
-        if vcid == OID_VCID {
-            return self
-                .has_spacecraft(scid)
-                .then(|| frame_layout(&self.pc, SecurityLayout::NONE, false).ok())
-                .flatten();
-        }
-        let vc = self.vc(scid, vcid)?;
-        frame_layout(&self.pc, vc.security, vc.ocf).ok()
+        slots_layout(&self.pc, &self.vcs, scid, vcid)
     }
+}
+
+// The work of `VcTable` is done over its slots as a slice, so that one copy of each function is
+// compiled and measured whatever the capacity (VER-024).
+
+/// Fills `slots` with `vcs` in order, checking each as [`VcTable::new`] documents.
+fn fill(
+    slots: &mut [Option<AosVirtualChannelConfig>],
+    pc: &AosPhysicalChannelConfig,
+    vcs: &[AosVirtualChannelConfig],
+) -> Result<()> {
+    for (i, vc) in vcs.iter().enumerate() {
+        if find(slots, vc.scid, vc.vcid).is_some() {
+            return Err(Error::new(ErrorKind::InvalidConfig).with_field(field::VC_ID));
+        }
+        check_vc(pc, vc)?;
+        let slot = slots
+            .get_mut(i)
+            .ok_or(Error::new(ErrorKind::CapacityExceeded).with_field(field::VC_ID))?;
+        *slot = Some(*vc);
+    }
+    Ok(())
+}
+
+/// The virtual channel (`scid`, `vcid`) of `slots`.
+fn find(
+    slots: &[Option<AosVirtualChannelConfig>],
+    scid: SpacecraftId<10>,
+    vcid: VcId<6>,
+) -> Option<AosVirtualChannelConfig> {
+    slots
+        .iter()
+        .flatten()
+        .find(|vc| vc.scid == scid && vc.vcid == vcid)
+        .copied()
+}
+
+/// Whether `slots` hold a virtual channel of `scid`.
+fn has(slots: &[Option<AosVirtualChannelConfig>], scid: SpacecraftId<10>) -> bool {
+    slots.iter().flatten().any(|vc| vc.scid == scid)
+}
+
+/// [`VcTable::frame_layout`] over the slots.
+fn slots_layout(
+    pc: &AosPhysicalChannelConfig,
+    slots: &[Option<AosVirtualChannelConfig>],
+    scid: SpacecraftId<10>,
+    vcid: VcId<6>,
+) -> Option<FrameLayout> {
+    let (security, ocf) = if vcid == OID_VCID {
+        if !has(slots, scid) {
+            return None;
+        }
+        (SecurityLayout::NONE, false)
+    } else {
+        let vc = find(slots, scid, vcid)?;
+        (vc.security, vc.ocf)
+    };
+    frame_layout(pc, security, ocf).ok()
 }
 
 /// The checks of [`VcTable::new`] for one virtual channel after the duplicate check.
@@ -433,13 +475,11 @@ fn check_vc(pc: &AosPhysicalChannelConfig, vc: &AosVirtualChannelConfig) -> Resu
 
 impl<const N: usize> VcLookup for VcTable<N> {
     fn has_spacecraft(&self, scid: SpacecraftId<10>) -> bool {
-        self.vcs().any(|vc| vc.scid == scid)
+        has(&self.vcs, scid)
     }
 
     fn vc(&self, scid: SpacecraftId<10>, vcid: VcId<6>) -> Option<AosVirtualChannelConfig> {
-        self.vcs()
-            .find(|vc| vc.scid == scid && vc.vcid == vcid)
-            .copied()
+        find(&self.vcs, scid, vcid)
     }
 }
 

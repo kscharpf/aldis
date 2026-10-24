@@ -195,8 +195,10 @@ impl Plan {
         if !vcs.has_spacecraft(fields.scid) {
             return Err(Error::new(ErrorKind::UnknownChannel).with_field(field::SPACECRAFT_ID));
         }
-        let layout = frame_layout(pc, SecurityLayout::NONE, false)?;
-        Plan::finish(pc, fields, layout, None)
+        // The physical channel always leaves an OID frame a data octet (its constructor), so
+        // the layout is never an error; `and_then` keeps that branch out of this crate's code.
+        frame_layout(pc, SecurityLayout::NONE, false)
+            .and_then(|layout| Plan::finish(pc, fields, layout, None))
     }
 
     /// The SCID check against the edition, and the header (AOS-002).
