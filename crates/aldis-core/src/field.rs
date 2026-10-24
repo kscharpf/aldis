@@ -282,9 +282,9 @@ pub const PACKET_LEN: FieldId = FieldId::catalogued::<52>("packet_len");
 pub const MAX_PACKET_LEN: FieldId = FieldId::catalogued::<53>("max_packet_len");
 
 /// Length of the user data a two-phase writer is finished with: the User Data Field of a Space
-/// Packet, or the User Data of a TC Frame Data Unit.
+/// Packet, the User Data of a TC Frame Data Unit, or the Transfer Frame Data Zone of a USLP frame.
 ///
-/// Code 54, a parameter (133.0 §4.1.4.3; 232.0 §4.1.3.2.1; API-023; API-082).
+/// Code 54, a parameter (133.0 §4.1.4.3; 232.0 §4.1.3.2.1; 732.1 §4.1.4.3; API-023; API-082).
 pub const USER_LEN: FieldId = FieldId::catalogued::<54>("user_len");
 
 /// SDU that the segmenter splits across packets.
@@ -350,18 +350,20 @@ pub const OCF_REPORT_USE: FieldId = FieldId::catalogued::<66>("ocf_report_use");
 
 /// Transfer Frame Version Number.
 ///
-/// Code 67, a field (132.0 §4.1.2.2.2; 232.0 §4.1.2.2; API-082).
+/// Code 67, a field (132.0 §4.1.2.2.2; 232.0 §4.1.2.2; 732.1 §4.1.2.2.2; API-082).
 pub const FRAME_VERSION: FieldId = FieldId::catalogued::<67>("frame_version");
 
-/// Length of a Transfer Frame in octets: the Frame Length field of a TC frame, or the Transfer
-/// Frame Length managed parameter of a TM physical channel with fixed-length frames.
+/// Length of a Transfer Frame in octets: the Frame Length field of a TC or USLP frame, or the
+/// Transfer Frame Length managed parameter of a TM or USLP physical channel with fixed-length
+/// frames.
 ///
-/// Code 68, a field (132.0 §4.1.1.2, §5.1 Table 5-1; 232.0 §4.1.2.7; API-082).
+/// Code 68, a field (132.0 §4.1.1.2, §5.1 Table 5-1; 232.0 §4.1.2.7; 732.1 §4.1.2.7, Table 5-1;
+/// API-082).
 pub const FRAME_LEN: FieldId = FieldId::catalogued::<68>("frame_len");
 
 /// Operational Control Field Flag.
 ///
-/// Code 69, a field (132.0 §4.1.2.4; API-082).
+/// Code 69, a field (132.0 §4.1.2.4; 732.1 §4.1.2.10; API-082).
 pub const OCF_FLAG: FieldId = FieldId::catalogued::<69>("ocf_flag");
 
 /// Transfer Frame Secondary Header Flag.
@@ -412,7 +414,7 @@ pub const TC_HEADER_SPARE: FieldId = FieldId::catalogued::<78>("tc_header_spare"
 
 /// Maximum Transfer Frame Length, a managed parameter of a Physical or Virtual Channel.
 ///
-/// Code 79, a parameter (232.0 §5 Tables 5-1, 5-3; API-082).
+/// Code 79, a parameter (232.0 §5 Tables 5-1, 5-3; 732.1 §5.2 Table 5-1 note 2; API-082).
 pub const MAX_FRAME_LEN: FieldId = FieldId::catalogued::<79>("max_frame_len");
 
 /// Segment Header of a TC Frame Data Unit.
@@ -460,8 +462,67 @@ pub const CLCW_SPARE_23: FieldId = FieldId::catalogued::<87>("clcw_spare_23");
 /// Code 88, a field (232.0 §4.2.1.9; API-082).
 pub const FARM_B_COUNTER: FieldId = FieldId::catalogued::<88>("farm_b_counter");
 
+/// Protocol Control Command Flag of the USLP Primary Header, read with the Bypass/Sequence Control
+/// Flag as Table 4-1.
+///
+/// Code 89, a field (732.1 §4.1.2.8.2, Table 4-1; API-082).
+pub const PROTOCOL_CONTROL_COMMAND_FLAG: FieldId =
+    FieldId::catalogued::<89>("protocol_control_command_flag");
+
+/// Reserve Spares of the USLP Primary Header, bits 50–51.
+///
+/// Code 90, a field (732.1 §4.1.2.9; API-082).
+pub const USLP_HEADER_SPARE: FieldId = FieldId::catalogued::<90>("uslp_header_spare");
+
+/// End of Frame Primary Header Flag: a truncated Primary Header.
+///
+/// Code 91, a field (732.1 §4.1.2.6; Annex D1.3; API-082).
+pub const END_OF_FRAME_PRIMARY_HEADER_FLAG: FieldId =
+    FieldId::catalogued::<91>("end_of_frame_primary_header_flag");
+
+/// Virtual Channel Frame Count Length, and the VC Count Length managed parameters for each QoS.
+///
+/// Code 92, a field (732.1 §4.1.2.11; §5.4 Table 5-3; API-082).
+pub const VCF_COUNT_LEN: FieldId = FieldId::catalogued::<92>("vcf_count_len");
+
+/// Virtual Channel Frame Count.
+///
+/// Code 93, a field (732.1 §4.1.2.12; API-082).
+pub const VCF_COUNT: FieldId = FieldId::catalogued::<93>("vcf_count");
+
+/// TFDZ Construction Rule of the TFDF Header.
+///
+/// Code 94, a field (732.1 §4.1.4.2.2; API-082).
+pub const TFDZ_CONSTRUCTION_RULE: FieldId = FieldId::catalogued::<94>("tfdz_construction_rule");
+
+/// USLP Protocol Identifier of the TFDF Header.
+///
+/// Code 95, a field (732.1 §4.1.4.2.3; API-082).
+pub const UPID: FieldId = FieldId::catalogued::<95>("upid");
+
+/// First Header/Last Valid Octet Pointer of the TFDF Header.
+///
+/// Code 96, a field (732.1 §4.1.4.2.4; API-082).
+pub const FHP_LVO_POINTER: FieldId = FieldId::catalogued::<96>("fhp_lvo_pointer");
+
+/// Insert Zone Length, a managed parameter of a Physical Channel, and the Insert Zone a writer is
+/// given.
+///
+/// Code 97, a parameter (732.1 §4.1.3; §5.2 Table 5-1 note 5; API-082).
+pub const INSERT_ZONE_LEN: FieldId = FieldId::catalogued::<97>("insert_zone_len");
+
+/// Truncated Transfer Frame Length, a managed parameter of a Virtual Channel.
+///
+/// Code 98, a parameter (732.1 §5.4 Table 5-3 note 5; Annex D1.2.1, D1.2.4, D1.3.2; API-082).
+pub const TRUNCATED_FRAME_LEN: FieldId = FieldId::catalogued::<98>("truncated_frame_len");
+
+/// Transfer Frame Type of a Physical or Virtual Channel: fixed or variable length.
+///
+/// Code 99, a parameter (732.1 §5.2 Table 5-1, §5.4 Table 5-3 note 2; §4.1.4.2.2.1.1; API-082).
+pub const TRANSFER_FRAME_TYPE: FieldId = FieldId::catalogued::<99>("transfer_frame_type");
+
 /// Every field code, in code order from 1 (API-082).
-pub const ALL: [FieldId; 88] = [
+pub const ALL: [FieldId; 99] = [
     SPACECRAFT_ID,
     VC_ID,
     MAP_ID,
@@ -550,4 +611,15 @@ pub const ALL: [FieldId; 88] = [
     CLCW_SPARE_14_15,
     CLCW_SPARE_23,
     FARM_B_COUNTER,
+    PROTOCOL_CONTROL_COMMAND_FLAG,
+    USLP_HEADER_SPARE,
+    END_OF_FRAME_PRIMARY_HEADER_FLAG,
+    VCF_COUNT_LEN,
+    VCF_COUNT,
+    TFDZ_CONSTRUCTION_RULE,
+    UPID,
+    FHP_LVO_POINTER,
+    INSERT_ZONE_LEN,
+    TRUNCATED_FRAME_LEN,
+    TRANSFER_FRAME_TYPE,
 ];

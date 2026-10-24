@@ -486,6 +486,8 @@ cargo xtask vectors validate
 cargo xtask vectors schema --check
 # The field catalogue of docs/03-api-model.md §9.1 and the files generated from it (API-082).
 cargo xtask fields
+# The SANA registry snapshots of specs/sana/ and the tables generated from them (M2 plan D13).
+cargo xtask sana
 # The per-crate registrations (coverage, features, mutants, exerciser, layers, fuzz matrix,
 # vector index) agree (docs/milestones/checklists.md).
 cargo xtask consistency

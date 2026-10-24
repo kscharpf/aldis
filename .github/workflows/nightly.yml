@@ -225,6 +225,19 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - run: specs/fetch.sh --all --check-urls
 
+  sana-registries:
+    name: SANA registries match their snapshots
+    # Downloads each registry of specs/sana/ and fails when it differs from the committed snapshot
+    # (M2 plan D13, OI-06); the failure opens the nightly issue, and the snapshot is re-imported
+    # with `cargo xtask sana import <registry>` in a pull request.
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup-rust
+        with:
+          cache-key: sana
+      - run: cargo xtask sana check-live
+
   metrics:
     name: process metrics (VER-063, report only)
     # The report of the last 30 days, kept in the body of the one pinned issue labelled `metrics`
@@ -288,7 +301,7 @@ jobs:
 
   issue:
     name: open an issue on a nightly failure (VER-059)
-    needs: [big-endian-bare-metal, verify, stack-sizes, fuzz, mutants, ccsds-urls]
+    needs: [big-endian-bare-metal, verify, stack-sizes, fuzz, mutants, ccsds-urls, sana-registries]
     if: failure() && github.event_name == 'schedule'
     runs-on: ubuntu-24.04
     permissions:
