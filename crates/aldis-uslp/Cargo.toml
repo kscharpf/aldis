@@ -18,3 +18,10 @@ std = ["alloc", "aldis-core/std"]
 
 [lints]
 workspace = true
+
+[dev-dependencies]
+aldis-testkit = { path = "../aldis-testkit" }
+serde_json = "1.0.154"
+# USLP-013: a TFDZ of COP-1 control commands decodes with the TC control-command decoder; a
+# dev-dependency only, so GEN-002 holds for the library (M2 plan D8, OI-34).
+aldis-tc = { path = "../aldis-tc", default-features = false }

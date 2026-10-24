@@ -1,0 +1,1845 @@
+{
+  "kind": "codec",
+  "standard": "732.1-B-3 — Frame Delimiting and Fill Data Removal",
+  "provenance": "hand-derived",
+  "provenance_note": "732.1-B-3 prints no example frame, only the first OID octets (Annex H). Hand-derived from 732.1-B-3: §4.1.2 (Primary Header: TFVN 4 bits = 1100, SCID 16, Source-or-Destination 1, VCID 6, MAP ID 4, End of Frame Primary Header Flag 1, Frame Length 16 = total - 1, Bypass/Sequence Control 1, Protocol Control Command 1, Reserve Spares 2, OCF Flag 1, VCF Count Length 3, VCF Count 0-7 octets; Table 4-1, flags 01 reserved; Table 4-2), §4.1.3 (Insert Zone), §4.1.4 (TFDF Header: rule 3 bits, UPID 5 bits, pointer 16 bits for rules 000-010 only; Table 4-3; the OID frame of §4.1.4.1.5-12), §4.1.5 (OCF), §4.1.6 and Annex B (FECF, G(X) = X^16 + X^12 + X^5 + 1, preset by L(X)), §4.3.11.2-3 (delimiting and the USLP Frame Validation Checks), §5 Tables 5-1 to 5-4 (managed parameters), §6.3 (Security Header after the Insert Zone, Trailer before the OCF; none in protocol control frames), Annex D (truncated frames: 4-octet header, 1-octet TFDF Header, length 6-32 from the VC, SDLS 6/16 and at least 28 octets), Annex H (OID generator). UPID values from the SANA snapshot specs/sana/uslp_protocol_id.tsv, read by the model at run time. COP-1 control commands from 232.0-B-4 §4.1.3.3 (Unlock = 00, Set V(R) = 82 00 V(R)). Check order, validation reason codes, the delimiter's valid header, the writers' error order, and the configuration kept, as docs/standards/uslp-frame.md §2.1 and §3 state them (OI-35, OI-43). SCID 0x155 is the fictional SCID of the reference scenario (APP-026); SCID 0xF0A5 is also fictional. Expected values computed by an independent Python model of those clauses, test-vectors/models/uslp_frame.py (TV-023), written independently of the Rust codec and sharing no code or method with it (headers as bit strings from the figure widths, the FECF as the Annex B remainder by GF(2) long division and checked by the B1.2.1 syndrome, the OID data from the Galois form of Figure H-2, checked against the Fibonacci form and the printed pattern). Error cases name the field code of 03 §9.1. One rule-000 frame with its FECF, register octet by octet, and one truncated frame are worked by hand in docs/verification/derivations/uslp-frame.md. `python3 -I test-vectors/models/uslp_frame.py --check test-vectors/uslp/*.json` recomputes every expected value.",
+  "cases": [
+    {
+      "id": "uslp-delim-001",
+      "requirements": [
+        "USLP-015"
+      ],
+      "description": "Two frames and 3 octets of fill 0x55",
+      "operation": "delimit",
+      "config": {
+        "frame_type": "variable",
+        "frame_len": 64,
+        "insert_zone_len": 0,
+        "fecf": true,
+        "vcs": [
+          {
+            "scid": 341,
+            "vcid": 1,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": null,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 3,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 0,
+            "vcf_count_len_expedited": 0,
+            "ocf": "absent",
+            "truncated_frame_len": null,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 5,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": 8,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 6,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": 28,
+            "security": {
+              "header_len": 6,
+              "trailer_len": 16
+            }
+          }
+        ],
+        "maps": [
+          {
+            "scid": 341,
+            "vcid": 1,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 3,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 5,
+            "map_id": 2,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 6,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "input_hex": "C0155020000E0101E511121314E966C015502000130102642122232425262728298529555555",
+      "expect": {
+        "ok": true,
+        "items": [
+          {
+            "kind": "frame",
+            "offset": 0,
+            "octets_hex": "C0155020000E0101E511121314E966",
+            "declared_len": null
+          },
+          {
+            "kind": "frame",
+            "offset": 15,
+            "octets_hex": "C015502000130102642122232425262728298529",
+            "declared_len": null
+          },
+          {
+            "kind": "fill",
+            "offset": 35,
+            "octets_hex": "555555",
+            "declared_len": null
+          }
+        ]
+      }
+    },
+    {
+      "id": "uslp-delim-002",
+      "requirements": [
+        "USLP-015"
+      ],
+      "description": "Three frames back to back, no fill",
+      "operation": "delimit",
+      "config": {
+        "frame_type": "variable",
+        "frame_len": 64,
+        "insert_zone_len": 0,
+        "fecf": true,
+        "vcs": [
+          {
+            "scid": 341,
+            "vcid": 1,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": null,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 3,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 0,
+            "vcf_count_len_expedited": 0,
+            "ocf": "absent",
+            "truncated_frame_len": null,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 5,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": 8,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 6,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": 28,
+            "security": {
+              "header_len": 6,
+              "trailer_len": 16
+            }
+          }
+        ],
+        "maps": [
+          {
+            "scid": 341,
+            "vcid": 1,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 3,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 5,
+            "map_id": 2,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 6,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "input_hex": "C0155020000E0101E511121314E966C015502000130102642122232425262728298529C0155060000A80E531A258",
+      "expect": {
+        "ok": true,
+        "items": [
+          {
+            "kind": "frame",
+            "offset": 0,
+            "octets_hex": "C0155020000E0101E511121314E966",
+            "declared_len": null
+          },
+          {
+            "kind": "frame",
+            "offset": 15,
+            "octets_hex": "C015502000130102642122232425262728298529",
+            "declared_len": null
+          },
+          {
+            "kind": "frame",
+            "offset": 35,
+            "octets_hex": "C0155060000A80E531A258",
+            "declared_len": null
+          }
+        ]
+      }
+    },
+    {
+      "id": "uslp-delim-003",
+      "requirements": [
+        "USLP-015"
+      ],
+      "description": "A frame and a last frame that declares more octets than remain: incomplete",
+      "operation": "delimit",
+      "config": {
+        "frame_type": "variable",
+        "frame_len": 64,
+        "insert_zone_len": 0,
+        "fecf": true,
+        "vcs": [
+          {
+            "scid": 341,
+            "vcid": 1,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": null,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 3,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 0,
+            "vcf_count_len_expedited": 0,
+            "ocf": "absent",
+            "truncated_frame_len": null,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 5,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": 8,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 6,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": 28,
+            "security": {
+              "header_len": 6,
+              "trailer_len": 16
+            }
+          }
+        ],
+        "maps": [
+          {
+            "scid": 341,
+            "vcid": 1,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 3,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 5,
+            "map_id": 2,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 6,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "input_hex": "C0155020000E0101E511121314E966C015502000130102642122232425262728",
+      "expect": {
+        "ok": true,
+        "items": [
+          {
+            "kind": "frame",
+            "offset": 0,
+            "octets_hex": "C0155020000E0101E511121314E966",
+            "declared_len": null
+          },
+          {
+            "kind": "incomplete",
+            "offset": 15,
+            "octets_hex": "C015502000130102642122232425262728",
+            "declared_len": 20
+          }
+        ]
+      }
+    },
+    {
+      "id": "uslp-delim-004",
+      "requirements": [
+        "USLP-015"
+      ],
+      "description": "A truncated frame (VC 5, length 8 from the configuration) and fill",
+      "operation": "delimit",
+      "config": {
+        "frame_type": "variable",
+        "frame_len": 64,
+        "insert_zone_len": 0,
+        "fecf": true,
+        "vcs": [
+          {
+            "scid": 341,
+            "vcid": 1,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": null,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 3,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 0,
+            "vcf_count_len_expedited": 0,
+            "ocf": "absent",
+            "truncated_frame_len": null,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 5,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": 8,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 6,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": 28,
+            "security": {
+              "header_len": 6,
+              "trailer_len": 16
+            }
+          }
+        ],
+        "maps": [
+          {
+            "scid": 341,
+            "vcid": 1,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 3,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 5,
+            "map_id": 2,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 6,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "input_hex": "C01550A5E5414243555555",
+      "expect": {
+        "ok": true,
+        "items": [
+          {
+            "kind": "frame",
+            "offset": 0,
+            "octets_hex": "C01550A5E5414243",
+            "declared_len": null
+          },
+          {
+            "kind": "fill",
+            "offset": 8,
+            "octets_hex": "555555",
+            "declared_len": null
+          }
+        ]
+      }
+    },
+    {
+      "id": "uslp-delim-005",
+      "requirements": [
+        "USLP-015"
+      ],
+      "description": "A truncated frame with SDLS (VC 6, length 28) then a non-truncated frame: mixing is not checked on reception (USLP-011 is a sending rule)",
+      "operation": "delimit",
+      "config": {
+        "frame_type": "variable",
+        "frame_len": 64,
+        "insert_zone_len": 0,
+        "fecf": true,
+        "vcs": [
+          {
+            "scid": 341,
+            "vcid": 1,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": null,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 3,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 0,
+            "vcf_count_len_expedited": 0,
+            "ocf": "absent",
+            "truncated_frame_len": null,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 5,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": 8,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 6,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": 28,
+            "security": {
+              "header_len": 6,
+              "trailer_len": 16
+            }
+          }
+        ],
+        "maps": [
+          {
+            "scid": 341,
+            "vcid": 1,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 3,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 5,
+            "map_id": 2,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 6,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "input_hex": "C01550C1000000000000E55100000000000000000000000000000000C0155020000E0101E511121314E966",
+      "expect": {
+        "ok": true,
+        "items": [
+          {
+            "kind": "frame",
+            "offset": 0,
+            "octets_hex": "C01550C1000000000000E55100000000000000000000000000000000",
+            "declared_len": null
+          },
+          {
+            "kind": "frame",
+            "offset": 28,
+            "octets_hex": "C0155020000E0101E511121314E966",
+            "declared_len": null
+          }
+        ]
+      }
+    },
+    {
+      "id": "uslp-delim-006",
+      "requirements": [
+        "USLP-015"
+      ],
+      "description": "A frame and a truncated header on VC 1, which has no truncated frame length: no_truncated_length",
+      "operation": "delimit",
+      "config": {
+        "frame_type": "variable",
+        "frame_len": 64,
+        "insert_zone_len": 0,
+        "fecf": true,
+        "vcs": [
+          {
+            "scid": 341,
+            "vcid": 1,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": null,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 3,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 0,
+            "vcf_count_len_expedited": 0,
+            "ocf": "absent",
+            "truncated_frame_len": null,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 5,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": 8,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 6,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": 28,
+            "security": {
+              "header_len": 6,
+              "trailer_len": 16
+            }
+          }
+        ],
+        "maps": [
+          {
+            "scid": 341,
+            "vcid": 1,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 3,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 5,
+            "map_id": 2,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 6,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "input_hex": "C0155020000E0101E511121314E966C015502110111213",
+      "expect": {
+        "ok": true,
+        "items": [
+          {
+            "kind": "frame",
+            "offset": 0,
+            "octets_hex": "C0155020000E0101E511121314E966",
+            "declared_len": null
+          },
+          {
+            "kind": "no_truncated_length",
+            "offset": 15,
+            "octets_hex": "C015502110111213",
+            "declared_len": null
+          }
+        ]
+      }
+    },
+    {
+      "id": "uslp-delim-007",
+      "requirements": [
+        "USLP-015"
+      ],
+      "description": "A truncated header on SCID 0x0001: no_truncated_length",
+      "operation": "delimit",
+      "config": {
+        "frame_type": "variable",
+        "frame_len": 64,
+        "insert_zone_len": 0,
+        "fecf": true,
+        "vcs": [
+          {
+            "scid": 341,
+            "vcid": 1,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": null,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 3,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 0,
+            "vcf_count_len_expedited": 0,
+            "ocf": "absent",
+            "truncated_frame_len": null,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 5,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": 8,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 6,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": 28,
+            "security": {
+              "header_len": 6,
+              "trailer_len": 16
+            }
+          }
+        ],
+        "maps": [
+          {
+            "scid": 341,
+            "vcid": 1,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 3,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 5,
+            "map_id": 2,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 6,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "input_hex": "C00010A510111213",
+      "expect": {
+        "ok": true,
+        "items": [
+          {
+            "kind": "no_truncated_length",
+            "offset": 0,
+            "octets_hex": "C00010A510111213",
+            "declared_len": null
+          }
+        ]
+      }
+    },
+    {
+      "id": "uslp-delim-008",
+      "requirements": [
+        "USLP-015"
+      ],
+      "description": "A truncated header on VC 5 with 6 of its 8 octets: incomplete",
+      "operation": "delimit",
+      "config": {
+        "frame_type": "variable",
+        "frame_len": 64,
+        "insert_zone_len": 0,
+        "fecf": true,
+        "vcs": [
+          {
+            "scid": 341,
+            "vcid": 1,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": null,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 3,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 0,
+            "vcf_count_len_expedited": 0,
+            "ocf": "absent",
+            "truncated_frame_len": null,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 5,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": 8,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 6,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": 28,
+            "security": {
+              "header_len": 6,
+              "trailer_len": 16
+            }
+          }
+        ],
+        "maps": [
+          {
+            "scid": 341,
+            "vcid": 1,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 3,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 5,
+            "map_id": 2,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 6,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "input_hex": "C0155020000E0101E511121314E966C01550A5E541",
+      "expect": {
+        "ok": true,
+        "items": [
+          {
+            "kind": "frame",
+            "offset": 0,
+            "octets_hex": "C0155020000E0101E511121314E966",
+            "declared_len": null
+          },
+          {
+            "kind": "incomplete",
+            "offset": 15,
+            "octets_hex": "C01550A5E541",
+            "declared_len": 8
+          }
+        ]
+      }
+    },
+    {
+      "id": "uslp-delim-009",
+      "requirements": [
+        "USLP-015"
+      ],
+      "description": "A frame followed by 4 zero octets (TFVN 0000): fill",
+      "operation": "delimit",
+      "config": {
+        "frame_type": "variable",
+        "frame_len": 64,
+        "insert_zone_len": 0,
+        "fecf": true,
+        "vcs": [
+          {
+            "scid": 341,
+            "vcid": 1,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": null,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 3,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 0,
+            "vcf_count_len_expedited": 0,
+            "ocf": "absent",
+            "truncated_frame_len": null,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 5,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": 8,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 6,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": 28,
+            "security": {
+              "header_len": 6,
+              "trailer_len": 16
+            }
+          }
+        ],
+        "maps": [
+          {
+            "scid": 341,
+            "vcid": 1,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 3,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 5,
+            "map_id": 2,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 6,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "input_hex": "C0155020000E0101E511121314E96600000000",
+      "expect": {
+        "ok": true,
+        "items": [
+          {
+            "kind": "frame",
+            "offset": 0,
+            "octets_hex": "C0155020000E0101E511121314E966",
+            "declared_len": null
+          },
+          {
+            "kind": "fill",
+            "offset": 15,
+            "octets_hex": "00000000",
+            "declared_len": null
+          }
+        ]
+      }
+    },
+    {
+      "id": "uslp-delim-010",
+      "requirements": [
+        "USLP-015"
+      ],
+      "description": "Only fill 0x55 (TFVN 0101 is never a valid header)",
+      "operation": "delimit",
+      "config": {
+        "frame_type": "variable",
+        "frame_len": 64,
+        "insert_zone_len": 0,
+        "fecf": true,
+        "vcs": [
+          {
+            "scid": 341,
+            "vcid": 1,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": null,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 3,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 0,
+            "vcf_count_len_expedited": 0,
+            "ocf": "absent",
+            "truncated_frame_len": null,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 5,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": 8,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 6,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": 28,
+            "security": {
+              "header_len": 6,
+              "trailer_len": 16
+            }
+          }
+        ],
+        "maps": [
+          {
+            "scid": 341,
+            "vcid": 1,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 3,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 5,
+            "map_id": 2,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 6,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "input_hex": "555555555555555555555555",
+      "expect": {
+        "ok": true,
+        "items": [
+          {
+            "kind": "fill",
+            "offset": 0,
+            "octets_hex": "555555555555555555555555",
+            "declared_len": null
+          }
+        ]
+      }
+    },
+    {
+      "id": "uslp-delim-011",
+      "requirements": [
+        "USLP-015"
+      ],
+      "description": "A frame and 3 trailing octets C0 55 55: fewer than 4, fill",
+      "operation": "delimit",
+      "config": {
+        "frame_type": "variable",
+        "frame_len": 64,
+        "insert_zone_len": 0,
+        "fecf": true,
+        "vcs": [
+          {
+            "scid": 341,
+            "vcid": 1,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": null,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 3,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 0,
+            "vcf_count_len_expedited": 0,
+            "ocf": "absent",
+            "truncated_frame_len": null,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 5,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": 8,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 6,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": 28,
+            "security": {
+              "header_len": 6,
+              "trailer_len": 16
+            }
+          }
+        ],
+        "maps": [
+          {
+            "scid": 341,
+            "vcid": 1,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 3,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 5,
+            "map_id": 2,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 6,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "input_hex": "C0155020000E0101E511121314E966C05555",
+      "expect": {
+        "ok": true,
+        "items": [
+          {
+            "kind": "frame",
+            "offset": 0,
+            "octets_hex": "C0155020000E0101E511121314E966",
+            "declared_len": null
+          },
+          {
+            "kind": "fill",
+            "offset": 15,
+            "octets_hex": "C05555",
+            "declared_len": null
+          }
+        ]
+      }
+    },
+    {
+      "id": "uslp-delim-012",
+      "requirements": [
+        "USLP-015"
+      ],
+      "description": "A frame and 5 octets starting with TFVN 1100, End of Frame Primary Header Flag 0: fewer than 7, fill",
+      "operation": "delimit",
+      "config": {
+        "frame_type": "variable",
+        "frame_len": 64,
+        "insert_zone_len": 0,
+        "fecf": true,
+        "vcs": [
+          {
+            "scid": 341,
+            "vcid": 1,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": null,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 3,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 0,
+            "vcf_count_len_expedited": 0,
+            "ocf": "absent",
+            "truncated_frame_len": null,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 5,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": 8,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 6,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": 28,
+            "security": {
+              "header_len": 6,
+              "trailer_len": 16
+            }
+          }
+        ],
+        "maps": [
+          {
+            "scid": 341,
+            "vcid": 1,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 3,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 5,
+            "map_id": 2,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 6,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "input_hex": "C0155020000E0101E511121314E966C015502000",
+      "expect": {
+        "ok": true,
+        "items": [
+          {
+            "kind": "frame",
+            "offset": 0,
+            "octets_hex": "C0155020000E0101E511121314E966",
+            "declared_len": null
+          },
+          {
+            "kind": "fill",
+            "offset": 15,
+            "octets_hex": "C015502000",
+            "declared_len": null
+          }
+        ]
+      }
+    },
+    {
+      "id": "uslp-delim-013",
+      "requirements": [
+        "USLP-015"
+      ],
+      "description": "A header whose Frame Length + 1 = 9 with a 1-octet VCF Count (below 9 + 1): fill",
+      "operation": "delimit",
+      "config": {
+        "frame_type": "variable",
+        "frame_len": 64,
+        "insert_zone_len": 0,
+        "fecf": true,
+        "vcs": [
+          {
+            "scid": 341,
+            "vcid": 1,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": null,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 3,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 0,
+            "vcf_count_len_expedited": 0,
+            "ocf": "absent",
+            "truncated_frame_len": null,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 5,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": 8,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 6,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": 28,
+            "security": {
+              "header_len": 6,
+              "trailer_len": 16
+            }
+          }
+        ],
+        "maps": [
+          {
+            "scid": 341,
+            "vcid": 1,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 3,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 5,
+            "map_id": 2,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 6,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "input_hex": "C01550200008010000",
+      "expect": {
+        "ok": true,
+        "items": [
+          {
+            "kind": "fill",
+            "offset": 0,
+            "octets_hex": "C01550200008010000",
+            "declared_len": null
+          }
+        ]
+      }
+    },
+    {
+      "id": "uslp-delim-014",
+      "requirements": [
+        "USLP-015"
+      ],
+      "description": "A header whose Frame Length + 1 = 9 with no VCF Count: a 9-octet frame, left to validation",
+      "operation": "delimit",
+      "config": {
+        "frame_type": "variable",
+        "frame_len": 64,
+        "insert_zone_len": 0,
+        "fecf": true,
+        "vcs": [
+          {
+            "scid": 341,
+            "vcid": 1,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": null,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 3,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 0,
+            "vcf_count_len_expedited": 0,
+            "ocf": "absent",
+            "truncated_frame_len": null,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 5,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": 8,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 6,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": 28,
+            "security": {
+              "header_len": 6,
+              "trailer_len": 16
+            }
+          }
+        ],
+        "maps": [
+          {
+            "scid": 341,
+            "vcid": 1,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 3,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 5,
+            "map_id": 2,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 6,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "input_hex": "C0155060000880E000555555",
+      "expect": {
+        "ok": true,
+        "items": [
+          {
+            "kind": "frame",
+            "offset": 0,
+            "octets_hex": "C0155060000880E000",
+            "declared_len": null
+          },
+          {
+            "kind": "fill",
+            "offset": 9,
+            "octets_hex": "555555",
+            "declared_len": null
+          }
+        ]
+      }
+    },
+    {
+      "id": "uslp-delim-015",
+      "requirements": [
+        "USLP-015"
+      ],
+      "description": "A frame with the reserved flags 01: the delimiter does not check them",
+      "operation": "delimit",
+      "config": {
+        "frame_type": "variable",
+        "frame_len": 64,
+        "insert_zone_len": 0,
+        "fecf": true,
+        "vcs": [
+          {
+            "scid": 341,
+            "vcid": 1,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": null,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 3,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 0,
+            "vcf_count_len_expedited": 0,
+            "ocf": "absent",
+            "truncated_frame_len": null,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 5,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": 8,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 6,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": 28,
+            "security": {
+              "header_len": 6,
+              "trailer_len": 16
+            }
+          }
+        ],
+        "maps": [
+          {
+            "scid": 341,
+            "vcid": 1,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 3,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 5,
+            "map_id": 2,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 6,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "input_hex": "C0155020000E4101E511121314348A555555",
+      "expect": {
+        "ok": true,
+        "items": [
+          {
+            "kind": "frame",
+            "offset": 0,
+            "octets_hex": "C0155020000E4101E511121314348A",
+            "declared_len": null
+          },
+          {
+            "kind": "fill",
+            "offset": 15,
+            "octets_hex": "555555",
+            "declared_len": null
+          }
+        ]
+      }
+    },
+    {
+      "id": "uslp-delim-016",
+      "requirements": [
+        "USLP-015"
+      ],
+      "description": "An empty data unit",
+      "operation": "delimit",
+      "config": {
+        "frame_type": "variable",
+        "frame_len": 64,
+        "insert_zone_len": 0,
+        "fecf": true,
+        "vcs": [
+          {
+            "scid": 341,
+            "vcid": 1,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": null,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 3,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 0,
+            "vcf_count_len_expedited": 0,
+            "ocf": "absent",
+            "truncated_frame_len": null,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 5,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": 8,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 6,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": 28,
+            "security": {
+              "header_len": 6,
+              "trailer_len": 16
+            }
+          }
+        ],
+        "maps": [
+          {
+            "scid": 341,
+            "vcid": 1,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 3,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 5,
+            "map_id": 2,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 6,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "input_hex": "",
+      "expect": {
+        "ok": true,
+        "items": []
+      }
+    }
+  ]
+}
