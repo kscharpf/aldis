@@ -26,7 +26,7 @@ This profile defines the C interface. The Rust reference implementation exposes 
 
 | ID | Requirement | Source | Verif. |
 |---|---|---|---|
-| CABI-010 | Only fixed-width integer types (`uint8_t` … `uint64_t`, `int32_t`), `size_t`, `bool`, and POD structs of those types SHALL cross the ABI. Enumerations SHALL be passed as fixed-width integers with `#define`d or `enum` constants, never as C `enum` types in struct fields. | — | I |
+| CABI-010 | Only fixed-width integer types (`uint8_t` … `uint64_t`, `int32_t`), `size_t`, `bool`, pointers to these types and to the library's structs, and POD structs of those types SHALL cross the ABI. A struct member SHALL be a pointer only as a `const` pointer to an input buffer, paired with the buffer's length, and only in a per-call input struct that the library reads during the call and does not keep (`aldis_tm_content_t`, §11). Enumerations SHALL be passed as fixed-width integers with `#define`d or `enum` constants, never as C `enum` types in struct fields. | — | I |
 | CABI-011 | Buffers SHALL be passed as `(const uint8_t *ptr, size_t len)` or `(uint8_t *ptr, size_t cap, size_t *out_len)`. | API-060, API-061 | I |
 | CABI-012 | Views SHALL be returned as POD structs containing decoded field values, plus **offset/length pairs** into the caller's input buffer (not pointers), so that they remain valid if the buffer is moved. | API-010, GEN-013 | T |
 | CABI-013 | `Instant` and `Duration` SHALL be `uint64_t` microseconds. | API-003 | I |
