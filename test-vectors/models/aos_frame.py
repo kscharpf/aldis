@@ -43,6 +43,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 
 def _load_fhec():
     """The FHEC table model, loaded from its file (python3 -I puts no directory on the path)."""
+    sys.dont_write_bytecode = True  # no __pycache__ beside the models
     spec = importlib.util.spec_from_file_location("aos_fhec_model",
                                                   os.path.join(HERE, "aos_fhec.py"))
     module = importlib.util.module_from_spec(spec)
