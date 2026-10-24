@@ -161,7 +161,7 @@ pub fn encode<L: VcLookup + ?Sized>(
         control.is_some(),
         payload.len(),
     )?;
-    let mut w = TcFrameWriter::start(out, plan)?;
+    let mut w = TcFrameWriter::start(out, plan, true)?;
     for (d, s) in w.user_data_mut().iter_mut().zip(payload) {
         *d = *s;
     }
@@ -200,19 +200,44 @@ impl<'b> TcFrameWriter<'b> {
         max_user_len: usize,
     ) -> Result<TcFrameWriter<'b>> {
         let plan = Plan::new(channels, fields, segment_header, false, max_user_len)?;
-        TcFrameWriter::start(out, plan)
+        TcFrameWriter::start(out, plan, true)
     }
 
-    /// Writes the unfinished header, the Segment Header, and zeros in the Security Header and
-    /// Trailer of a checked plan (API-023).
-    fn start(out: &'b mut [u8], plan: Plan) -> Result<TcFrameWriter<'b>> {
+    /// Takes up a frame that [`begin`](Self::begin) started in `out` with the same `channels`,
+    /// `fields`, `segment_header`, and `max_user_len`, so that a writer which keeps no state
+    /// between calls, the C ABI's `aldis_tc_writer_finish`, can finish it (API-023; M2 plan
+    /// D4, c-abi.md §11).
+    ///
+    /// Checks the arguments as `begin` does and writes nothing: the unfinished header and
+    /// Segment Header that `begin` wrote, and the User Data, Security Header, and Security
+    /// Trailer the caller filled, stay as they are until [`finish`](Self::finish).
+    ///
+    /// # Errors
+    /// As for [`begin`](Self::begin); `out` is never changed (API-022, GEN-042).
+    pub fn resume<L: VcLookup + ?Sized>(
+        out: &'b mut [u8],
+        channels: &L,
+        fields: FrameFields,
+        segment_header: Option<SegmentHeader>,
+        max_user_len: usize,
+    ) -> Result<TcFrameWriter<'b>> {
+        let plan = Plan::new(channels, fields, segment_header, false, max_user_len)?;
+        TcFrameWriter::start(out, plan, false)
+    }
+
+    /// The writer of a checked plan (API-023). With `write`, as `begin` and `encode` call it,
+    /// it writes the unfinished header, the Segment Header, and zeros in the Security Header
+    /// and Trailer; without, as `resume` calls it, it writes nothing.
+    fn start(out: &'b mut [u8], plan: Plan, write: bool) -> Result<TcFrameWriter<'b>> {
         let buf = out
             .get_mut(..plan.total)
             .ok_or(Error::buffer_too_small(plan.total))?;
-        let header = primary_octets(UNFINISHED_VERSION, plan.fields, 1);
-        let segment = plan.segment_header.map(SegmentHeader::octet);
-        for (d, s) in buf.iter_mut().zip(header.into_iter().chain(segment)) {
-            *d = s;
+        if write {
+            let header = primary_octets(UNFINISHED_VERSION, plan.fields, 1);
+            let segment = plan.segment_header.map(SegmentHeader::octet);
+            for (d, s) in buf.iter_mut().zip(header.into_iter().chain(segment)) {
+                *d = s;
+            }
         }
         let max_user_len = plan
             .total
@@ -224,8 +249,10 @@ impl<'b> TcFrameWriter<'b> {
             plan,
             max_user_len,
         };
-        w.security_header_mut().fill(0);
-        w.security_trailer_mut().fill(0);
+        if write {
+            w.security_header_mut().fill(0);
+            w.security_trailer_mut().fill(0);
+        }
         Ok(w)
     }
 
@@ -498,5 +525,43 @@ mod tests {
         w.user_data_mut()[0] = 0x42;
         assert_eq!(w.finish(1), Ok(6));
         assert_eq!(TcFrame::peek_length(&out), Ok(6));
+    }
+
+    #[test]
+    fn resume_keeps_what_the_caller_filled() {
+        // req: API-022, API-023, API-070, API-072
+        let t = standard(true);
+        let sh = SegmentHeader {
+            sequence_flags: SequenceFlags::Unsegmented,
+            map_id: mapid(9),
+        };
+        let ad = fields(FrameType::Ad, 2);
+        let mut one = [0xEE_u8; 32];
+        let mut w = TcFrameWriter::begin(&mut one, &t, ad, Some(sh), 5).unwrap();
+        w.security_header_mut().copy_from_slice(&[0xA, 0xB, 0xC]);
+        w.security_trailer_mut().copy_from_slice(&[0xD]);
+        w.user_data_mut()[..2].copy_from_slice(&[1, 2]);
+        let len = w.finish(2).unwrap();
+        // The same frame begun, filled, and finished by a writer taken up with `resume`.
+        let mut two = [0xEE_u8; 32];
+        let mut w = TcFrameWriter::begin(&mut two, &t, ad, Some(sh), 5).unwrap();
+        w.security_header_mut().copy_from_slice(&[0xA, 0xB, 0xC]);
+        w.security_trailer_mut().copy_from_slice(&[0xD]);
+        w.user_data_mut()[..2].copy_from_slice(&[1, 2]);
+        let before = two;
+        assert!(TcFrameWriter::resume(&mut two, &t, ad, Some(sh), 5).is_ok());
+        assert_eq!(two, before, "resume writes nothing");
+        let mut w = TcFrameWriter::resume(&mut two, &t, ad, Some(sh), 5).unwrap();
+        assert_eq!(w.security_header_mut(), [0xA, 0xB, 0xC]);
+        assert_eq!(w.user_data_mut().len(), 5);
+        assert_eq!(w.finish(2), Ok(len));
+        assert_eq!(two[..len], one[..len]);
+        // Its arguments are checked as `begin` checks them, and `out` stays unchanged.
+        let before = two;
+        let e = TcFrameWriter::resume(&mut two, &t, ad, None, 5).unwrap_err();
+        assert_eq!(e.field(), Some(field::SEGMENT_HEADER));
+        let e = TcFrameWriter::resume(&mut two[..8], &t, ad, Some(sh), 5).unwrap_err();
+        assert_eq!(e.detail(), ErrorDetail::Needed(17));
+        assert_eq!(two, before);
     }
 }

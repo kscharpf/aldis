@@ -7,10 +7,12 @@
 //! writes. The C ABI of `aldis-core` agrees with it too: `aldis_crc16`, `aldis_ocf_classify`,
 //! `aldis_ocf_check`, and the OID generator in both forms; and so does that of `aldis-tm`:
 //! `aldis_tm_decode`, `aldis_tm_decode_unchecked`, `aldis_tm_peek_length`,
-//! `aldis_tm_header_decode`, `aldis_tm_decode_with`, and `aldis_tm_validate`.
+//! `aldis_tm_header_decode`, `aldis_tm_decode_with`, and `aldis_tm_validate`; and so does that
+//! of `aldis-tc` and the CLCW (`tc_ffi`).
 #![no_main]
 
 // req: CABI-012, CABI-020, CABI-021, CABI-022, GEN-020, API-010, VER-022, CMN-001, CMN-010, CMN-022, TM-001, API-070
+// req: TC-001, TC-020, TC-021, TC-030
 
 use core::ptr::null_mut;
 
@@ -571,6 +573,332 @@ fn tm(data: &[u8], fecf: bool, mode: DecodeMode, c_mode: u32) {
     expect(&rust, status, &detail);
 }
 
+// ---------------------------------------------------------------- TC (M2 WP-3 module 8)
+
+/// The C ABI of `aldis-tc` agrees with `aldis-tc` on the input (M2 plan D14):
+/// `aldis_tc_peek_length` and `aldis_tc_header_decode`; on a master channel of the frame's SCID
+/// with eight VCs, the odd ones with Segment Headers and four MAPs each, the even ones with
+/// SDLS layouts of `n % 5` header and `n % 3` trailer octets, `aldis_tc_mc_config_check`,
+/// `aldis_tc_decode`, and `aldis_tc_validate` with its reason; `aldis_tc_next_frame` at every
+/// item of the input as a data unit; `aldis_tc_control_decode`; and `aldis_clcw_decode` on the
+/// first four octets (TC-001…TC-006, TC-020…TC-022, TC-030, API-070).
+mod tc_ffi {
+    use core::ptr::null_mut;
+
+    use aldis_core::security::SecurityLayout;
+    use aldis_core::{DecodeMode, Error};
+    use aldis_ffi::tc::{
+        ALDIS_TC_CONTROL_NONE, ALDIS_TC_CONTROL_SET_VR, ALDIS_TC_CONTROL_UNLOCK,
+        ALDIS_TC_DELIMITED_END, ALDIS_TC_DELIMITED_FILL, ALDIS_TC_DELIMITED_FRAME,
+        ALDIS_TC_DELIMITED_TRUNCATED_FRAME, ALDIS_TC_FRAME_AD, ALDIS_TC_FRAME_BC,
+        ALDIS_TC_FRAME_BD, ALDIS_TC_REASON_NONE, aldis_clcw_decode, aldis_clcw_t,
+        aldis_tc_config_t, aldis_tc_control_decode, aldis_tc_control_t, aldis_tc_decode,
+        aldis_tc_delimited_t, aldis_tc_frame_t, aldis_tc_header_decode, aldis_tc_header_t,
+        aldis_tc_map_config_t, aldis_tc_mc_config_check, aldis_tc_mc_config_t, aldis_tc_next_frame,
+        aldis_tc_peek_length, aldis_tc_validate, aldis_tc_vc_config_t,
+    };
+    use aldis_ffi::{ALDIS_OK, aldis_error_detail_t};
+    use aldis_tc::{
+        Clcw, ControlCommand, Delimited, FrameType, MapConfig, PhysicalChannelConfig,
+        SegmentHeaderUse, TcFrame, TcFrameHeader, TcMapId, TcSpacecraftId, TcVcId, VcConfig,
+        VcTable, next_frame, validate_frame,
+    };
+
+    use super::expect;
+
+    fn size<T>() -> u32 {
+        u32::try_from(size_of::<T>()).unwrap()
+    }
+
+    /// The master channel of `scid` as C structs: VC `n` of 0 to 7, VC 0 with frames of at most
+    /// 32 octets; MAPs 0 to 3 on each odd VC, MAP `m` with SDLS `m % 3` / `(m + 1) % 2`.
+    fn c_channels(
+        scid: u16,
+        fecf: bool,
+    ) -> (
+        aldis_tc_mc_config_t,
+        Vec<aldis_tc_vc_config_t>,
+        Vec<aldis_tc_map_config_t>,
+    ) {
+        let mc = aldis_tc_mc_config_t {
+            struct_size: size::<aldis_tc_mc_config_t>(),
+            scid,
+            pc: aldis_tc_config_t {
+                struct_size: size::<aldis_tc_config_t>(),
+                fecf: u8::from(fecf),
+                max_frame_len: 1024,
+            },
+        };
+        let vcs = (0..8_u8)
+            .map(|n| aldis_tc_vc_config_t {
+                struct_size: size::<aldis_tc_vc_config_t>(),
+                vcid: n,
+                segment_header: n % 2,
+                security_header_len: if n % 2 == 0 { n % 5 } else { 0 },
+                security_trailer_len: if n % 2 == 0 { u16::from(n % 3) } else { 0 },
+                max_frame_len: if n == 0 { 32 } else { 1024 },
+            })
+            .collect();
+        let maps = (0..8_u8)
+            .filter(|n| n % 2 == 1)
+            .flat_map(|vcid| {
+                (0..4_u8).map(move |m| aldis_tc_map_config_t {
+                    struct_size: size::<aldis_tc_map_config_t>(),
+                    vcid,
+                    map_id: m,
+                    security_header_len: m % 3,
+                    security_trailer_len: u16::from((m + 1) % 2),
+                })
+            })
+            .collect();
+        (mc, vcs, maps)
+    }
+
+    /// The same master channel in Rust.
+    fn rust_channels(scid: u16, fecf: bool) -> Result<VcTable<64, 64>, Error> {
+        let pc = PhysicalChannelConfig::new(1024, fecf)?;
+        let s = TcSpacecraftId::try_from(scid)?;
+        let mut vcs = Vec::new();
+        for n in 0..8_u8 {
+            let use_ = if n % 2 == 1 {
+                SegmentHeaderUse::Present
+            } else {
+                SegmentHeaderUse::Absent(SecurityLayout::new(
+                    usize::from(n % 5),
+                    usize::from(n % 3),
+                )?)
+            };
+            let max = if n == 0 { 32 } else { 1024 };
+            vcs.push(VcConfig::new(s, TcVcId::try_from(n)?, max, use_)?);
+        }
+        let mut maps = Vec::new();
+        for vcid in (0..8_u8).filter(|n| n % 2 == 1) {
+            for m in 0..4_u8 {
+                let security = SecurityLayout::new(usize::from(m % 3), usize::from((m + 1) % 2))?;
+                maps.push(MapConfig::new(
+                    s,
+                    TcVcId::try_from(vcid)?,
+                    TcMapId::try_from(m)?,
+                    security,
+                ));
+            }
+        }
+        VcTable::new(pc, &vcs, &maps)
+    }
+
+    fn same_header(c: &aldis_tc_header_t, h: &TcFrameHeader) {
+        let frame_type = match h.frame_type() {
+            FrameType::Ad => ALDIS_TC_FRAME_AD,
+            FrameType::Bd => ALDIS_TC_FRAME_BD,
+            FrameType::Bc => ALDIS_TC_FRAME_BC,
+        };
+        assert_eq!(
+            (c.frame_type, c.scid, c.vcid, c.sequence_number, c.frame_len),
+            (
+                frame_type,
+                h.spacecraft_id().get(),
+                h.vc_id().get(),
+                h.sequence_number().get(),
+                h.frame_len()
+            )
+        );
+    }
+
+    /// The offset of `part` in `whole`, which holds it.
+    fn at(whole: &[u8], part: &[u8]) -> usize {
+        part.as_ptr() as usize - whole.as_ptr() as usize
+    }
+
+    /// The C view agrees with the Rust view: header, Segment Header, Control Command, FECF,
+    /// anomalies, and every field's offset and length (CABI-012).
+    fn same(view: &aldis_tc_frame_t, data: &[u8], f: &TcFrame<'_>) {
+        same_header(&view.header, &f.header());
+        let sh = f.segment_header();
+        assert_eq!(view.has_segment_header, sh.is_some());
+        assert_eq!(
+            (view.sequence_flags, view.map_id),
+            sh.map_or((0, 0), |s| (s.sequence_flags.bits(), s.map_id.get()))
+        );
+        let control = match f.control_command() {
+            None => (ALDIS_TC_CONTROL_NONE, 0),
+            Some(ControlCommand::Unlock) => (ALDIS_TC_CONTROL_UNLOCK, 0),
+            Some(ControlCommand::SetVr(vr)) => (ALDIS_TC_CONTROL_SET_VR, vr.get()),
+        };
+        assert_eq!((view.control.command, view.control.set_vr_value), control);
+        assert_eq!(view.has_fecf.then_some(view.fecf), f.fecf());
+        assert_eq!(view.anomalies, f.anomalies().bits());
+        let l = &view.layout;
+        assert_eq!(l.frame_len, f.len());
+        assert_eq!(l.segment_header_len, usize::from(sh.is_some()));
+        assert_eq!(
+            (l.security_header_offset, l.security_header_len),
+            (at(data, f.security_header()), f.security_header().len())
+        );
+        assert_eq!(
+            (l.data_offset, l.data_len),
+            (at(data, f.data_field()), f.data_field().len())
+        );
+        assert_eq!(
+            (l.security_trailer_offset, l.security_trailer_len),
+            (at(data, f.security_trailer()), f.security_trailer().len())
+        );
+        assert_eq!(l.fecf_offset + l.fecf_len, f.len());
+    }
+
+    #[expect(unsafe_code, reason = "calls the C ABI with valid pointers")]
+    #[expect(clippy::too_many_lines, reason = "one comparison per C function")]
+    pub(super) fn run(data: &[u8], fecf: bool, mode: DecodeMode, c_mode: u32) {
+        let mut detail = aldis_error_detail_t::default();
+        let rust = TcFrame::peek_length(data);
+        let mut len = 0;
+        // SAFETY: `data`, `len`, and `detail` are live.
+        let status = unsafe {
+            aldis_tc_peek_length(data.as_ptr(), data.len(), &raw mut len, &raw mut detail)
+        };
+        expect(&rust, status, &detail);
+        if let Ok(n) = rust {
+            assert_eq!(len, n);
+        }
+        let rust = TcFrame::peek_header(data);
+        let mut header = aldis_tc_header_t::default();
+        // SAFETY: as above.
+        let status = unsafe {
+            aldis_tc_header_decode(data.as_ptr(), data.len(), &raw mut header, &raw mut detail)
+        };
+        expect(&rust, status, &detail);
+        if let Ok(h) = &rust {
+            same_header(&header, h);
+        }
+        // A master channel of the frame's SCID, so that the checks after (b) run.
+        let scid = rust.map_or(0x155, |h| h.spacecraft_id().get());
+        let (mc, vcs, maps) = c_channels(scid, fecf);
+        let table = rust_channels(scid, fecf);
+        // SAFETY: every pointer is to a live local or vector, with its length.
+        let status = unsafe {
+            aldis_tc_mc_config_check(
+                &raw const mc,
+                vcs.as_ptr(),
+                vcs.len(),
+                maps.as_ptr(),
+                maps.len(),
+                &raw mut detail,
+            )
+        };
+        expect(&table, status, &detail);
+        let table = table.unwrap();
+        let rust = TcFrame::decode(data, &table, mode);
+        let mut view = aldis_tc_frame_t::default();
+        // SAFETY: as above.
+        let status = unsafe {
+            aldis_tc_decode(
+                data.as_ptr(),
+                data.len(),
+                &raw const mc,
+                vcs.as_ptr(),
+                vcs.len(),
+                maps.as_ptr(),
+                maps.len(),
+                c_mode,
+                &raw mut view,
+                &raw mut detail,
+            )
+        };
+        expect(&rust, status, &detail);
+        if let Ok(f) = &rust {
+            same(&view, data, f);
+        }
+        let rust = validate_frame(data, &table, mode);
+        let mut reason = u32::MAX;
+        // SAFETY: as above.
+        let status = unsafe {
+            aldis_tc_validate(
+                data.as_ptr(),
+                data.len(),
+                &raw const mc,
+                vcs.as_ptr(),
+                vcs.len(),
+                maps.as_ptr(),
+                maps.len(),
+                c_mode,
+                &raw mut view,
+                &raw mut reason,
+                &raw mut detail,
+            )
+        };
+        expect(&rust.map_err(Error::from), status, &detail);
+        match &rust {
+            Ok(f) => {
+                assert_eq!(reason, ALDIS_TC_REASON_NONE);
+                same(&view, data, f);
+            }
+            Err(r) => assert_eq!(reason, u32::from(r.reason().code())),
+        }
+        // The input as one data unit, item by item.
+        let mut offset = 0;
+        loop {
+            let mut item = aldis_tc_delimited_t::default();
+            // SAFETY: as above.
+            let status = unsafe {
+                aldis_tc_next_frame(data.as_ptr(), data.len(), offset, &raw mut item, null_mut())
+            };
+            assert_eq!((status, item.offset), (ALDIS_OK, offset));
+            let rust = next_frame(&data[offset..]);
+            let expected = match rust {
+                None => (ALDIS_TC_DELIMITED_END, 0, 0),
+                Some(Delimited::Frame(f)) => (ALDIS_TC_DELIMITED_FRAME, f.len(), f.len()),
+                Some(Delimited::TruncatedFrame {
+                    octets,
+                    declared_len,
+                }) => (
+                    ALDIS_TC_DELIMITED_TRUNCATED_FRAME,
+                    octets.len(),
+                    declared_len,
+                ),
+                Some(Delimited::Fill(f)) => (ALDIS_TC_DELIMITED_FILL, f.len(), 0),
+            };
+            assert_eq!((item.kind, item.len, item.declared_len), expected);
+            if item.kind == ALDIS_TC_DELIMITED_END {
+                break;
+            }
+            offset += item.len;
+        }
+        assert_eq!(offset, data.len());
+        let rust = ControlCommand::parse(data);
+        let mut control = aldis_tc_control_t::default();
+        // SAFETY: as above.
+        let status = unsafe {
+            aldis_tc_control_decode(data.as_ptr(), data.len(), &raw mut control, &raw mut detail)
+        };
+        assert_eq!(status == ALDIS_OK, rust.is_some());
+        if let Some(ControlCommand::SetVr(vr)) = rust {
+            assert_eq!(control.set_vr_value, vr.get());
+        }
+        if let Some(&octets) = data.first_chunk::<4>() {
+            let rust = Clcw::decode(octets, mode);
+            let mut clcw = aldis_clcw_t::default();
+            let mut anomalies = u32::MAX;
+            // SAFETY: as above.
+            let status = unsafe {
+                aldis_clcw_decode(
+                    u32::from_be_bytes(octets),
+                    c_mode,
+                    &raw mut clcw,
+                    &raw mut anomalies,
+                    &raw mut detail,
+                )
+            };
+            expect(&rust, status, &detail);
+            if let Ok((c, a)) = rust {
+                assert_eq!(
+                    (clcw.vcid, clcw.report_value, clcw.retransmit == 1),
+                    (c.vc_id.get(), c.report_value.get(), c.retransmit)
+                );
+                assert_eq!(anomalies, a.bits());
+            }
+        }
+    }
+}
+
 fuzz_target!(|input: &[u8]| {
     let Some((&selector, data)) = input.split_first() else {
         return;
@@ -580,11 +908,12 @@ fuzz_target!(|input: &[u8]| {
     } else {
         (DecodeMode::Lenient, ALDIS_MODE_LENIENT)
     };
-    match (selector >> 1) % 5 {
+    match (selector >> 1) % 6 {
         0 => spp(data, mode, c_mode),
         1 => epp(data, mode, c_mode),
         2 => time(data, mode, c_mode),
         3 => tm(data, selector & 0x80 != 0, mode, c_mode),
+        4 => tc_ffi::run(data, selector & 0x80 != 0, mode, c_mode),
         _ => core(data),
     }
 });

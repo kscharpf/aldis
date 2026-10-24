@@ -984,6 +984,307 @@ fn tm(t: &mut Tally) {
     }
 }
 
+// ---------------------------------------------------------------- TC (M2 WP-3 module 8)
+
+/// A TC master channel of SCID 0x155 with frames of at most 64 octets and an FECF: VC 1 without
+/// SDLS, VC 2 with Segment Headers, whose MAP 9 has SDLS 3/1 (232.0 §5; M2 plan D14).
+fn tc_channels() -> (
+    aldis_ffi::tc::aldis_tc_mc_config_t,
+    [aldis_ffi::tc::aldis_tc_vc_config_t; 2],
+    [aldis_ffi::tc::aldis_tc_map_config_t; 1],
+) {
+    use aldis_ffi::tc::{
+        aldis_tc_config_t, aldis_tc_map_config_t, aldis_tc_mc_config_t, aldis_tc_vc_config_t,
+    };
+    let mc = aldis_tc_mc_config_t {
+        struct_size: size::<aldis_tc_mc_config_t>(),
+        scid: bb(0x155),
+        pc: aldis_tc_config_t {
+            struct_size: size::<aldis_tc_config_t>(),
+            fecf: bb(1),
+            max_frame_len: bb(64),
+        },
+    };
+    let plain = aldis_tc_vc_config_t {
+        struct_size: size::<aldis_tc_vc_config_t>(),
+        vcid: bb(1),
+        segment_header: 0,
+        security_header_len: 0,
+        security_trailer_len: 0,
+        max_frame_len: bb(64),
+    };
+    let segmented = aldis_tc_vc_config_t {
+        vcid: bb(2),
+        segment_header: bb(1),
+        ..plain
+    };
+    let map = aldis_tc_map_config_t {
+        struct_size: size::<aldis_tc_map_config_t>(),
+        vcid: bb(2),
+        map_id: bb(9),
+        security_header_len: bb(3),
+        security_trailer_len: bb(1),
+    };
+    (mc, [plain, segmented], [map])
+}
+
+/// The C ABI of `aldis-tc` and the CLCW (TC-001…TC-031; M2 plan D14).
+#[expect(unsafe_code, reason = "calls the C ABI with valid pointers")]
+#[expect(clippy::too_many_lines, reason = "one call per exported function")]
+fn tc(t: &mut Tally) {
+    use aldis_ffi::error::{ALDIS_ERR_CRC_MISMATCH, ALDIS_ERR_RESERVED_VALUE};
+    use aldis_ffi::tc::{
+        ALDIS_TC_CONTROL_SET_VR, ALDIS_TC_DELIMITED_FILL, ALDIS_TC_DELIMITED_FRAME,
+        ALDIS_TC_FRAME_AD, ALDIS_TC_FRAME_BC, ALDIS_TC_REASON_FECF_MISMATCH, ALDIS_TC_REASON_NONE,
+        ALDIS_TC_SEQ_UNSEGMENTED, aldis_clcw_decode, aldis_clcw_encode, aldis_clcw_t,
+        aldis_tc_config_check, aldis_tc_content_t, aldis_tc_control_decode,
+        aldis_tc_control_encode, aldis_tc_control_t, aldis_tc_decode, aldis_tc_delimited_t,
+        aldis_tc_encode, aldis_tc_fields_t, aldis_tc_frame_t, aldis_tc_header_decode,
+        aldis_tc_header_t, aldis_tc_layout_t, aldis_tc_mc_config_check, aldis_tc_next_frame,
+        aldis_tc_peek_length, aldis_tc_validate, aldis_tc_writer_begin, aldis_tc_writer_finish,
+    };
+    let (mc, vcs, maps) = tc_channels();
+    let mut det = detail();
+    let ad = aldis_tc_fields_t {
+        frame_type: bb(ALDIS_TC_FRAME_AD),
+        scid: bb(0x155),
+        vcid: bb(1),
+        sequence_number: bb(4),
+        ..aldis_tc_fields_t::default()
+    };
+    let seg = aldis_tc_fields_t {
+        vcid: bb(2),
+        segment_header: bb(1),
+        sequence_flags: bb(ALDIS_TC_SEQ_UNSEGMENTED),
+        map_id: bb(9),
+        ..ad
+    };
+    let set_vr = aldis_tc_control_t {
+        command: bb(ALDIS_TC_CONTROL_SET_VR),
+        set_vr_value: bb(7),
+    };
+    let bc = aldis_tc_fields_t {
+        frame_type: bb(ALDIS_TC_FRAME_BC),
+        ..ad
+    };
+    let user = [1_u8, 2, 3];
+    let content = aldis_tc_content_t {
+        user_data: user.as_ptr(),
+        user_data_len: bb(3),
+        ..aldis_tc_content_t::default()
+    };
+    let command = aldis_tc_content_t {
+        control: set_vr,
+        ..aldis_tc_content_t::default()
+    };
+    // The AD frame of `tc/ad.json` followed by two octets of fill, in one data unit.
+    let mut unit = [0x55_u8; 12];
+    let mut two = [0_u8; 16];
+    let mut layout = aldis_tc_layout_t::default();
+    let mut view = aldis_tc_frame_t::default();
+    let mut header = aldis_tc_header_t::default();
+    let mut item = aldis_tc_delimited_t::default();
+    let mut control = aldis_tc_control_t::default();
+    let mut clcw = aldis_clcw_t::default();
+    let (mut n, mut reason, mut word, mut anomalies) = (0_usize, 0_u32, 0_u32, 0_u32);
+    let mut octets = [0_u8; 3];
+    // SAFETY: every pointer is to a live local; lengths are those of the buffers.
+    unsafe {
+        t.check(aldis_tc_config_check(&raw const mc.pc, &raw mut det) == ALDIS_OK);
+        t.check(
+            aldis_tc_mc_config_check(
+                &raw const mc,
+                vcs.as_ptr(),
+                bb(2),
+                maps.as_ptr(),
+                bb(1),
+                &raw mut det,
+            ) == ALDIS_OK,
+        );
+        t.check(
+            aldis_tc_encode(
+                &raw const mc,
+                vcs.as_ptr(),
+                bb(2),
+                maps.as_ptr(),
+                bb(1),
+                &raw const ad,
+                &raw const content,
+                unit.as_mut_ptr(),
+                unit.len(),
+                &raw mut n,
+                &raw mut det,
+            ) == ALDIS_OK
+                && n == 10
+                && unit.get(8..10) == Some(&[0xE0, 0xC0][..]),
+        );
+        t.check(
+            aldis_tc_encode(
+                &raw const mc,
+                vcs.as_ptr(),
+                bb(2),
+                maps.as_ptr(),
+                bb(1),
+                &raw const bc,
+                &raw const command,
+                two.as_mut_ptr(),
+                two.len(),
+                &raw mut n,
+                &raw mut det,
+            ) == ALDIS_OK
+                && n == 10,
+        );
+        t.check(
+            aldis_tc_writer_begin(
+                &raw const mc,
+                vcs.as_ptr(),
+                bb(2),
+                maps.as_ptr(),
+                bb(1),
+                &raw const seg,
+                bb(4),
+                two.as_mut_ptr(),
+                two.len(),
+                &raw mut layout,
+                &raw mut det,
+            ) == ALDIS_OK
+                && layout.security_header_offset == 6
+                && layout.data_offset == 9,
+        );
+        two[9] = bb(0x11);
+        t.check(
+            aldis_tc_writer_finish(
+                &raw const mc,
+                vcs.as_ptr(),
+                bb(2),
+                maps.as_ptr(),
+                bb(1),
+                &raw const seg,
+                bb(4),
+                bb(1),
+                two.as_mut_ptr(),
+                two.len(),
+                &raw mut n,
+                &raw mut det,
+            ) == ALDIS_OK
+                && n == 13,
+        );
+        t.check(
+            aldis_tc_peek_length(unit.as_ptr(), bb(5), &raw mut n, &raw mut det) == ALDIS_OK
+                && n == 10,
+        );
+        t.check(
+            aldis_tc_header_decode(unit.as_ptr(), bb(5), &raw mut header, &raw mut det) == ALDIS_OK
+                && header.scid == 0x155
+                && header.sequence_number == 4,
+        );
+        t.check(
+            aldis_tc_decode(
+                two.as_ptr(),
+                bb(13),
+                &raw const mc,
+                vcs.as_ptr(),
+                bb(2),
+                maps.as_ptr(),
+                bb(1),
+                bb(ALDIS_MODE_STRICT),
+                &raw mut view,
+                &raw mut det,
+            ) == ALDIS_OK
+                && view.has_segment_header
+                && view.layout.security_header_len == 3,
+        );
+        t.check(
+            aldis_tc_next_frame(
+                unit.as_ptr(),
+                unit.len(),
+                bb(0),
+                &raw mut item,
+                &raw mut det,
+            ) == ALDIS_OK
+                && item.kind == ALDIS_TC_DELIMITED_FRAME
+                && item.len == 10,
+        );
+        t.check(
+            aldis_tc_validate(
+                unit.as_ptr(),
+                item.len,
+                &raw const mc,
+                vcs.as_ptr(),
+                bb(2),
+                maps.as_ptr(),
+                bb(1),
+                bb(ALDIS_MODE_LENIENT),
+                &raw mut view,
+                &raw mut reason,
+                &raw mut det,
+            ) == ALDIS_OK
+                && reason == ALDIS_TC_REASON_NONE,
+        );
+        unit[7] ^= bb(1);
+        t.check(
+            aldis_tc_validate(
+                unit.as_ptr(),
+                bb(10),
+                &raw const mc,
+                vcs.as_ptr(),
+                bb(2),
+                maps.as_ptr(),
+                bb(1),
+                bb(ALDIS_MODE_STRICT),
+                &raw mut view,
+                &raw mut reason,
+                &raw mut det,
+            ) == ALDIS_ERR_CRC_MISMATCH
+                && reason == ALDIS_TC_REASON_FECF_MISMATCH,
+        );
+        t.check(
+            aldis_tc_next_frame(
+                unit.as_ptr(),
+                unit.len(),
+                bb(10),
+                &raw mut item,
+                &raw mut det,
+            ) == ALDIS_OK
+                && item.kind == ALDIS_TC_DELIMITED_FILL,
+        );
+        t.check(
+            aldis_tc_control_encode(
+                &raw const set_vr,
+                octets.as_mut_ptr(),
+                octets.len(),
+                &raw mut n,
+                &raw mut det,
+            ) == ALDIS_OK
+                && n == 3,
+        );
+        t.check(
+            aldis_tc_control_decode(octets.as_ptr(), bb(3), &raw mut control, &raw mut det)
+                == ALDIS_OK
+                && control == set_vr,
+        );
+        t.check(
+            aldis_tc_control_decode(octets.as_ptr(), bb(2), &raw mut control, &raw mut det)
+                == ALDIS_ERR_RESERVED_VALUE,
+        );
+        t.check(
+            aldis_clcw_decode(
+                bb(0x0114_0C2A),
+                bb(ALDIS_MODE_STRICT),
+                &raw mut clcw,
+                &raw mut anomalies,
+                &raw mut det,
+            ) == ALDIS_OK
+                && clcw.vcid == 5
+                && anomalies == 0,
+        );
+        t.check(
+            aldis_clcw_encode(&raw const clcw, &raw mut word, &raw mut det) == ALDIS_OK
+                && word == 0x0114_0C2A,
+        );
+    }
+}
+
 /// Calls every exported function of `aldis-ffi`.
 pub fn run(t: &mut Tally) {
     core(t);
@@ -992,4 +1293,5 @@ pub fn run(t: &mut Tally) {
     time(t);
     epp(t);
     tm(t);
+    tc(t);
 }
