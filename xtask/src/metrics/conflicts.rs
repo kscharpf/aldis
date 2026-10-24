@@ -47,15 +47,15 @@ fn parse(stdout: &str) -> Vec<String> {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
     use super::*;
     use std::path::PathBuf;
 
     /// A throwaway git repository in the system temporary directory, removed on drop.
-    struct TempRepo(PathBuf);
+    pub struct TempRepo(pub PathBuf);
 
     impl TempRepo {
-        fn new(name: &str) -> Self {
+        pub fn new(name: &str) -> Self {
             let dir = std::env::temp_dir()
                 .join(format!("aldis-xtask-metrics-{name}-{}", std::process::id()));
             let _ = std::fs::remove_dir_all(&dir);
@@ -67,7 +67,7 @@ mod tests {
         }
 
         /// Runs git with a fixed identity, ignoring the user's and the system's configuration.
-        fn git(&self, args: &[&str]) -> String {
+        pub fn git(&self, args: &[&str]) -> String {
             let out = Command::new("git")
                 .args([
                     "-c",
@@ -91,7 +91,7 @@ mod tests {
             String::from_utf8(out.stdout).unwrap().trim().to_owned()
         }
 
-        fn commit(&self, files: &[(&str, &str)], message: &str) -> String {
+        pub fn commit(&self, files: &[(&str, &str)], message: &str) -> String {
             for (rel, body) in files {
                 let path = self.0.join(rel);
                 std::fs::create_dir_all(path.parent().unwrap()).unwrap();

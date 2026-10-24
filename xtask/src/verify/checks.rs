@@ -49,7 +49,7 @@ pub struct PathList {
 
 // The inputs of the checks (VER-056): every path a check builds, reads, or is run by. A check
 // runs when a changed path matches one of its inputs, and a changed path that matches no check's
-// inputs and is not in `DOCS` or `GITHUB` runs every check. Precision never at the cost of soundness: when a
+// inputs and is in none of the lists of `SPEC_ONLY` runs every check. Precision never at the cost of soundness: when a
 // check starts reading a new path, add the path here in the same change; when unsure, include it.
 //
 // The differential tests of track C (`difftest/`, VER-053, milestone C1) will read both the Rust
@@ -172,6 +172,22 @@ pub const GITHUB: PathList = PathList {
         ".github/dependabot.yml",
     ],
 };
+
+/// The root configuration that no check reads but `spec` (which reads every path), so that a
+/// change to these paths alone runs only `spec`, as documentation does: `.gitignore`, which says
+/// only which files git leaves untracked. Every check runs in a fresh checkout of the commit,
+/// which has no untracked files, and none lists untracked files (`git ls-files` without
+/// `--others`; the directories that xtask skips are its own list, `repo::SKIP`). Not here:
+/// `.gitattributes`, whose attributes can change the bytes a checkout writes (`text`, `eol`,
+/// `filter`), and every other root file, which is in no list and so runs every check.
+pub const ROOT_CONFIG: PathList = PathList {
+    name: "root-config",
+    patterns: &[".gitignore"],
+};
+
+/// The lists that `spec` alone reads (VER-056): documentation, the GitHub configuration, and the
+/// root configuration that no other check reads.
+pub const SPEC_ONLY: [&PathList; 3] = [&DOCS, &GITHUB, &ROOT_CONFIG];
 
 /// What a check reads (VER-056).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -316,9 +332,9 @@ fn rust() -> Vec<Check> {
             false,
             3,
             format!(
-                "cargo build -p aldis --no-default-features --features full --target {t}\n\
-                 cargo clippy -p aldis --no-default-features --features full --target {t}\n\
-                 cargo build -p aldis-ffi --no-default-features --features panic-handler \
+                "cargo build --locked -p aldis --no-default-features --features full --target {t}\n\
+                 cargo clippy --locked -p aldis --no-default-features --features full --target {t}\n\
+                 cargo build --locked -p aldis-ffi --no-default-features --features panic-handler \
                  --target {t} --release\n\
                  # The C ABI static library needs no heap, threads, or C runtime (CABI-004).\n\
                  cargo xtask ffi-imports {t}\n"
@@ -486,15 +502,19 @@ cargo fmt --all --check --manifest-path fuzz/Cargo.toml
 cargo fmt --all --check --manifest-path crosscheck/Cargo.toml
 ";
 
+// The workspace builds of the checks pass `--locked`, so that a commit whose `Cargo.lock` is
+// stale fails instead of being resolved again in the checkout; `verify inside` refuses a checkout
+// that building xtask changed before any check ran (`inside::unchanged`), which is how a stale
+// root `Cargo.lock` shows there, since `cargo xtask` itself does not pass `--locked`.
 const CLIPPY: &str = "\
-cargo clippy --workspace --all-features --all-targets
-cargo doc --workspace --all-features --no-deps
+cargo clippy --locked --workspace --all-features --all-targets
+cargo doc --locked --workspace --all-features --no-deps
 # Fuzz targets build on stable; only running them needs nightly (RS-002).
-cargo clippy --manifest-path fuzz/Cargo.toml --all-targets
-cargo clippy --manifest-path crosscheck/Cargo.toml --all-targets
+cargo clippy --locked --manifest-path fuzz/Cargo.toml --all-targets
+cargo clippy --locked --manifest-path crosscheck/Cargo.toml --all-targets
 ";
 
-const TEST: &str = "cargo test --workspace --all-features\n";
+const TEST: &str = "cargo test --locked --workspace --all-features\n";
 
 const HEADER: &str = "\
 # The committed C header is a fresh generation by the pinned cbindgen (CABI-002), includes only
@@ -510,7 +530,7 @@ const BIG_ENDIAN: &str = "\
 # s390x under QEMU user mode, linked with the pinned cross GCC (VER-030, GEN-007).
 export CARGO_TARGET_S390X_UNKNOWN_LINUX_GNU_LINKER=s390x-linux-gnu-gcc-14
 export CARGO_TARGET_S390X_UNKNOWN_LINUX_GNU_RUNNER='qemu-s390x -L /usr/s390x-linux-gnu'
-cargo test --workspace --all-features --target s390x-unknown-linux-gnu
+cargo test --locked --workspace --all-features --target s390x-unknown-linux-gnu
 ";
 
 const LAYERS: &str = "\
@@ -792,8 +812,9 @@ mod tests {
                 Inputs::Paths(lists) => lists,
             };
             assert!(lists.contains(&&RUN), "{}", c.name);
-            assert!(!lists.contains(&&DOCS), "{}", c.name);
-            assert!(!lists.contains(&&GITHUB), "{}", c.name);
+            for only in SPEC_ONLY {
+                assert!(!lists.contains(&only), "{} {}", c.name, only.name);
+            }
             if c.name == "header" {
                 assert_eq!(lists, [&RUN, &FFI]);
                 continue;

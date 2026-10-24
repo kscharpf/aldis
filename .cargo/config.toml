@@ -1,3 +1,7 @@
 [alias]
 # Project tooling (docs/milestones/m0-foundations.md WP-2): `cargo xtask help`
+# Without `--locked`: contributors run `cargo xtask` right after editing a manifest (for example
+# `fields --write` or `header --write` with a new crate), when Cargo.lock must follow. The gate
+# does not rely on it: `cargo xtask verify` refuses a working tree whose Cargo.lock the build
+# rewrote, `verify inside` a checkout it rewrote, and the checks pass `--locked`.
 xtask = "run --quiet --package xtask --"

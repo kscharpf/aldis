@@ -225,6 +225,7 @@ pub fn check() -> Result<usize, String> {
 #[cfg(test)]
 mod tests {
     use std::collections::BTreeSet;
+    use std::process::Command;
 
     use super::{Entry, is_date, parse, problems};
 
@@ -325,6 +326,88 @@ mod tests {
             "{}",
             found[0]
         );
+    }
+
+    /// What `git merge-file --union` makes of the log when one side has `ours` and the other
+    /// `theirs`, both from `base`: what a merge of two pull requests gives under the
+    /// `merge=union` attribute of `.gitattributes`.
+    fn union(name: &str, base: &str, ours: &str, theirs: &str) -> String {
+        let dir = std::env::temp_dir().join(format!(
+            "aldis-xtask-decisions-{name}-{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        for (file, text) in [("ours", ours), ("base", base), ("theirs", theirs)] {
+            std::fs::write(dir.join(file), text).unwrap();
+        }
+        let out = Command::new("git")
+            .args(["merge-file", "-p", "--union", "ours", "base", "theirs"])
+            .current_dir(&dir)
+            .env("GIT_CONFIG_NOSYSTEM", "1")
+            .env("GIT_CONFIG_GLOBAL", dir.join("no-global-config"))
+            .output()
+            .unwrap();
+        let _ = std::fs::remove_dir_all(&dir);
+        // A union leaves no conflict: git merge-file exits 0.
+        assert!(out.status.success(), "git merge-file: {out:?}");
+        String::from_utf8(out.stdout).unwrap()
+    }
+
+    #[test]
+    fn the_log_merges_by_union() {
+        // req: VER-062
+        let out = Command::new("git")
+            .args(["check-attr", "merge", "--", super::LOG])
+            .current_dir(crate::repo::root())
+            .output()
+            .unwrap();
+        assert_eq!(
+            String::from_utf8_lossy(&out.stdout),
+            format!("{}: merge: union\n", super::LOG)
+        );
+    }
+
+    #[test]
+    fn a_union_of_two_pull_requests_is_checked() {
+        // req: VER-062
+        let a = "- 2026-10-23 · api · #60 · a";
+        let b = "- 2026-10-24 · spec · #61 · b";
+        let c = "- 2026-10-24 · api · chat · c";
+        let base = log(a);
+        // Two pull requests that each append: the union keeps both sides, and the log passes.
+        let merged = union(
+            "append",
+            &base,
+            &log(&format!("{a}\n{b}")),
+            &log(&format!("{a}\n{c}")),
+        );
+        assert!(merged.contains(b) && merged.contains(c), "{merged}");
+        assert_eq!(problems(&merged, RIGHTS), Vec::<String>::new());
+        // Both appended the same line, in different places: the union has it twice.
+        let ours = log(&format!("{a}\n{b}\n{c}"));
+        let theirs = log(&format!("{a}\n{c}\n- 2026-10-24 · spec · #62 · d"));
+        let found = problems(&union("twice", &base, &ours, &theirs), RIGHTS);
+        assert_eq!(found.len(), 1, "{found:#?}");
+        assert!(found[0].contains("repeats the entry of line"), "{found:#?}");
+        // The side merged in has an earlier date than the line appended before it.
+        let later = log(&format!("{a}\n- 2026-10-25 · spec · #61 · later"));
+        let found = problems(
+            &union("order", &base, &later, &log(&format!("{a}\n{c}"))),
+            RIGHTS,
+        );
+        assert_eq!(found.len(), 1, "{found:#?}");
+        assert!(
+            found[0].contains("2026-10-24 comes after 2026-10-25"),
+            "{found:#?}"
+        );
+        // A malformed line on one side is reported after the union too.
+        let bad = log(&format!("{a}\n- 2026-10-24 · ui · #61 · bad"));
+        let found = problems(
+            &union("bad", &base, &bad, &log(&format!("{a}\n{c}"))),
+            RIGHTS,
+        );
+        assert_eq!(found.len(), 1, "{found:#?}");
+        assert!(found[0].contains("unknown category `ui`"), "{found:#?}");
     }
 
     #[test]

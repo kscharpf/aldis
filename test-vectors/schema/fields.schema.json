@@ -5,7 +5,7 @@
   "type": "object",
   "properties": {
     "fields": {
-      "description": "Every entry, in code order from 1 with no gap.",
+      "description": "Every entry, in code order from 1. The codes of one block run without a gap; the blocks\nthat are not full leave gaps between them (03-api-model.md §9.1).",
       "type": "array",
       "items": {
         "$ref": "#/$defs/FieldEntry"

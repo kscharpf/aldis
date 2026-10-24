@@ -54,6 +54,6 @@ Validate with `cargo xtask vectors validate`, which also runs the independent mo
 }
 ```
 
-`fields` lists every entry in code order from 1 with no gap; code 0 is never used ("no field" in the C ABI). `kind` is `field` for a field of a data unit that a Blue Book defines and `parameter` for anything else an error can name. `name` is for display only and is never compared (API-082).
+`fields` lists every entry in code order from 1. The codes of one block (03 §9.1) run without a gap, and blocks that are not full leave gaps between them; code 0 is never used ("no field" in the C ABI). `kind` is `field` for a field of a data unit that a Blue Book defines and `parameter` for anything else an error can name. `name` is for display only and is never compared (API-082).
 
 All other directories are created as each milestone adds vectors (see [../docs/08-roadmap.md](../docs/08-roadmap.md)).
