@@ -89,3 +89,5 @@ One line for each decision the maintainer takes, under the [decision rights](dec
 - 2026-10-24 · spec · #98 · OI-44 (2): a USLP TFDZ holds at least one octet, as OI-41 (1) for TC
 - 2026-10-24 · spec · #98 · OI-44 (3): a valid header for USLP delimiting is TFVN `1100` and either a truncated header or at least seven octets with Frame Length + 1 ≥ 9 + the VCF Count Length, as OI-41 (2) for TC
 - 2026-10-24 · process · #102 · VER-063 reports each pull request's stages, raw and in the maintainer's active time, and the process-created waits, compared with fixed thresholds and the previous period in a "Recommendations input" section (wording accepted as drafted)
+- 2026-10-24 · process · #102 · Agents end every GitHub comment or review with the line `🤖 Generated with [Claude Code](https://claude.com/claude-code)`, so that metrics can tell the maintainer's words from theirs (AGENTS.md)
+- 2026-10-24 · process · #102 · Pushes and workflow dispatches do not count as the maintainer's activity in VER-063's active time; the thresholds of `xtask/src/metrics/waits.rs` stay as built for a few nightly reports, then are tuned
