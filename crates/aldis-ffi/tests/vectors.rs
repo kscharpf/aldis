@@ -1,4 +1,4 @@
-//! Runs every live case of `test-vectors/{time,spp,epp}/`, and of the files of `test-vectors/core/`
+//! Runs every live case of `test-vectors/{time,spp,epp,tm}/`, and of the files of `test-vectors/core/`
 //! whose functions have a C ABI (`crc16`, `ocf`, `oid`; M2 plan D14), through the `extern "C"`
 //! functions of `aldis-ffi`, with the testkit's runner and exact comparison (M2 plan D4; TV-012, VER-021,
 //! CABI-012, CABI-020, CABI-021). The handlers build the C structs from the vector's raw values,
@@ -22,6 +22,7 @@ use aldis::core::{Anomaly, ErrorKind, FieldId};
 use aldis::epp::EppAnomaly;
 use aldis::spp::SppAnomaly;
 use aldis::time::TimeAnomaly;
+use aldis::tm::TmAnomaly;
 use aldis_ffi::crc::aldis_crc16;
 use aldis_ffi::epp::*;
 use aldis_ffi::ocf::*;
@@ -29,6 +30,7 @@ use aldis_ffi::oid::*;
 use aldis_ffi::spp::*;
 use aldis_ffi::spp_state::*;
 use aldis_ffi::time::*;
+use aldis_ffi::tm::*;
 use aldis_ffi::{ALDIS_MODE_LENIENT, ALDIS_MODE_STRICT, ALDIS_OK, aldis_error_detail_t};
 use aldis_testkit::{CodecCase, Mode, Outcome, hex, run_codec_file};
 use serde_json::{Map, Value, json};
@@ -1484,6 +1486,442 @@ fn core_run(case: &CodecCase) -> R<Value> {
     }
 }
 
+// ---------------------------------------------------------------- TM
+
+/// A TM physical channel and, when the configuration has an SCID, its master channel with its
+/// virtual channels, as C structs.
+struct TmChannels {
+    pc: aldis_tm_config_t,
+    mc: Option<(aldis_tm_mc_config_t, Vec<aldis_tm_vc_config_t>)>,
+}
+
+impl TmChannels {
+    fn mc(&self, case: &CodecCase) -> (&aldis_tm_mc_config_t, &[aldis_tm_vc_config_t]) {
+        let (mc, vcs) = self
+            .mc
+            .as_ref()
+            .unwrap_or_else(|| panic!("{}: no master channel", case.id));
+        (mc, vcs)
+    }
+}
+
+/// A Secondary Header length of the vectors, `null` for none: 0 in the C structs.
+fn tm_fsh(v: Option<&Value>) -> u8 {
+    v.filter(|v| !v.is_null())
+        .map_or(0, |n| u8::try_from(n.as_u64().unwrap()).unwrap())
+}
+
+fn tm_channels(case: &CodecCase) -> TmChannels {
+    let cfg = Value::Object(case.config.clone().unwrap());
+    let pc = aldis_tm_config_t {
+        struct_size: size_of_u32::<aldis_tm_config_t>(),
+        fecf: u8::from(get(&cfg, "fecf").as_bool().unwrap()),
+        frame_len: usize_of(&cfg, "frame_len"),
+    };
+    let Some(scid) = cfg.get("scid") else {
+        return TmChannels { pc, mc: None };
+    };
+    let mc = aldis_tm_mc_config_t {
+        struct_size: size_of_u32::<aldis_tm_mc_config_t>(),
+        scid: u16::try_from(scid.as_u64().unwrap()).unwrap(),
+        fsh_len: tm_fsh(cfg.get("mc_fsh")),
+        ocf: u8::from(cfg.get("mc_ocf").and_then(Value::as_bool).unwrap_or(false)),
+        pc,
+    };
+    let vcs = cfg
+        .get("vcs")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .map(|v| aldis_tm_vc_config_t {
+            struct_size: size_of_u32::<aldis_tm_vc_config_t>(),
+            vcid: u8_of(v, "vcid"),
+            content: match str_of(v, "content") {
+                "packets" => ALDIS_TM_CONTENT_PACKETS,
+                "vca_sdu" => ALDIS_TM_CONTENT_VCA_SDU,
+                other => panic!("{}: content {other}", case.id),
+            },
+            fsh_len: tm_fsh(v.get("fsh")),
+            ocf: u8::from(v.get("ocf").and_then(Value::as_bool).unwrap_or(false)),
+            security_header_len: v.get("security_header_len").map_or(0, |_| {
+                u8::try_from(u64_of(v, "security_header_len")).unwrap()
+            }),
+            security_trailer_len: v
+                .get("security_trailer_len")
+                .map_or(0, |_| u16_of(v, "security_trailer_len")),
+        })
+        .collect();
+    TmChannels {
+        pc,
+        mc: Some((mc, vcs)),
+    }
+}
+
+/// The sender's fields of an `encode` case.
+fn tm_fields(p: &Value) -> aldis_tm_fields_t {
+    let s = get(p, "status");
+    let mut f = aldis_tm_fields_t {
+        vcid: u8_of(p, "vcid"),
+        mc_frame_count: u8_of(p, "mc_frame_count"),
+        vc_frame_count: u8_of(p, "vc_frame_count"),
+        ..aldis_tm_fields_t::default()
+    };
+    if get(s, "sync").as_bool().unwrap() {
+        f.sync_flag = 1;
+        f.packet_order_flag = u8::from(get(s, "packet_order_flag").as_bool().unwrap());
+        f.segment_length_id = u8_of(s, "segment_length_id");
+        f.first_header_pointer = u16_of(s, "first_header_pointer");
+    } else {
+        f.pointer = match str_of(s, "pointer") {
+            "starts_at" => {
+                f.packet_offset = u16_of(s, "packet_offset");
+                ALDIS_TM_POINTER_STARTS_AT
+            }
+            "no_packet_start" => ALDIS_TM_POINTER_NO_PACKET_START,
+            "only_idle_data" => ALDIS_TM_POINTER_ONLY_IDLE_DATA,
+            other => panic!("pointer {other}"),
+        };
+    }
+    f
+}
+
+/// The octets of `len` at `offset` in `bytes`, which the view guarantees lie inside it.
+fn tm_slice(bytes: &[u8], offset: usize, len: usize) -> &[u8] {
+    &bytes[offset..offset + len]
+}
+
+/// Every field the view exposes (TV-002), read from the C view and the caller's input.
+fn tm_json(v: &aldis_tm_frame_t, bytes: &[u8]) -> R<Value> {
+    let (h, l) = (&v.header, &v.layout);
+    let pointer = match v.pointer {
+        ALDIS_TM_POINTER_STARTS_AT => Some("starts_at"),
+        ALDIS_TM_POINTER_NO_PACKET_START => Some("no_packet_start"),
+        ALDIS_TM_POINTER_ONLY_IDLE_DATA => Some("only_idle_data"),
+        ALDIS_TM_POINTER_NONE => None,
+        other => panic!("pointer {other}"),
+    };
+    assert_eq!(v.pointer == ALDIS_TM_POINTER_NONE, h.sync_flag);
+    let ocf = (l.ocf_len != 0).then(|| tm_slice(bytes, l.ocf_offset, l.ocf_len));
+    let report = match ocf {
+        Some(o) => {
+            let mut report = u32::MAX;
+            // SAFETY: `o` and `report` are live.
+            call(|e| unsafe { aldis_ocf_classify(o.as_ptr(), o.len(), &raw mut report, e) })?;
+            Some(ocf_report_name(report))
+        }
+        None => None,
+    };
+    // The header alone decodes to the view's header (API-014).
+    let mut header = aldis_tm_header_t::default();
+    // SAFETY: `bytes` and `header` are live.
+    call(|e| unsafe { aldis_tm_header_decode(bytes.as_ptr(), bytes.len(), &raw mut header, e) })?;
+    assert_eq!(header, *h);
+    Ok(json!({
+        "scid": h.scid,
+        "vcid": h.vcid,
+        "ocf_flag": h.ocf_flag,
+        "mc_frame_count": h.mc_frame_count,
+        "vc_frame_count": h.vc_frame_count,
+        "fsh_flag": h.fsh_flag,
+        "sync_flag": h.sync_flag,
+        "packet_order_flag": h.packet_order_flag,
+        "segment_length_id": h.segment_length_id,
+        "first_header_pointer": h.first_header_pointer,
+        "pointer": pointer,
+        "packet_offset": (v.pointer == ALDIS_TM_POINTER_STARTS_AT).then_some(v.packet_offset),
+        "fsh_len": (v.fsh_len != 0).then_some(v.fsh_len),
+        "fsh_data_hex": (v.fsh_len != 0)
+            .then(|| hex::encode(tm_slice(bytes, l.fsh_data_offset, l.fsh_data_len))),
+        "security_header_hex": hex::encode(tm_slice(
+            bytes,
+            l.security_header_offset,
+            l.security_header_len
+        )),
+        "data_hex": hex::encode(tm_slice(bytes, l.data_offset, l.data_len)),
+        "security_trailer_hex": hex::encode(tm_slice(
+            bytes,
+            l.security_trailer_offset,
+            l.security_trailer_len
+        )),
+        "ocf_hex": ocf.map(hex::encode),
+        "ocf_report": report,
+        "fecf": v.has_fecf.then_some(v.fecf),
+        "consumed": l.frame_len,
+        "anomalies": anomalies::<TmAnomaly>(v.anomalies),
+    }))
+}
+
+/// The OCF of a parameter object, empty for none.
+fn tm_ocf(p: &Value) -> Vec<u8> {
+    p.get("ocf_hex")
+        .filter(|v| !v.is_null())
+        .map(|v| hex::decode(v.as_str().unwrap()).unwrap())
+        .unwrap_or_default()
+}
+
+/// Copies `src` to `offset` in `frame`, where the writer's layout gives it `len` octets.
+fn tm_put(frame: &mut [u8], offset: usize, len: usize, src: &[u8]) {
+    assert_eq!(
+        src.len(),
+        len,
+        "a field of another length than the layout's"
+    );
+    frame[offset..offset + len].copy_from_slice(src);
+}
+
+/// Encodes one frame with `aldis_tm_encode` and checks that the two-phase writer agrees
+/// (API-020, API-023).
+fn tm_encode(case: &CodecCase, ch: &TmChannels) -> R<Value> {
+    let (mc, vcs) = ch.mc(case);
+    let par = params(case);
+    let fields = tm_fields(&par);
+    let (fsh, sh, data, st, ocf) = (
+        hex_of(&par, "fsh_data_hex"),
+        hex_of(&par, "security_header_hex"),
+        hex_of(&par, "data_hex"),
+        hex_of(&par, "security_trailer_hex"),
+        tm_ocf(&par),
+    );
+    let cap = par
+        .get("out_len")
+        .map_or(ch.pc.frame_len, |_| usize_of(&par, "out_len"));
+    let mut out = vec![0xEE_u8; cap];
+    let mut written = 0_usize;
+    let content = aldis_tm_content_t {
+        fsh_data: fsh.as_ptr(),
+        fsh_data_len: fsh.len(),
+        security_header: sh.as_ptr(),
+        security_header_len: sh.len(),
+        data: data.as_ptr(),
+        data_len: data.len(),
+        security_trailer: st.as_ptr(),
+        security_trailer_len: st.len(),
+        ocf: ocf.as_ptr(),
+        ocf_len: ocf.len(),
+    };
+    // SAFETY: every pointer is to a live local or vector, with its length.
+    let result = call(|e| unsafe {
+        aldis_tm_encode(
+            mc,
+            vcs.as_ptr(),
+            vcs.len(),
+            &raw const fields,
+            &raw const content,
+            out.as_mut_ptr(),
+            out.len(),
+            &raw mut written,
+            e,
+        )
+    });
+    if result.is_err() {
+        assert!(out.iter().all(|&b| b == 0xEE), "{}: out changed", case.id);
+    }
+    result?;
+    // The two-phase writer: begin, fill each field at its offset, finish (API-023).
+    let mut two = vec![0xEE_u8; written];
+    let mut layout = aldis_tm_layout_t::default();
+    // SAFETY: every pointer is to a live local or vector, with its length.
+    call(|e| unsafe {
+        aldis_tm_writer_begin(
+            mc,
+            vcs.as_ptr(),
+            vcs.len(),
+            &raw const fields,
+            two.as_mut_ptr(),
+            two.len(),
+            &raw mut layout,
+            e,
+        )
+    })?;
+    assert_eq!(layout.frame_len, written);
+    tm_put(&mut two, layout.fsh_data_offset, layout.fsh_data_len, &fsh);
+    tm_put(
+        &mut two,
+        layout.security_header_offset,
+        layout.security_header_len,
+        &sh,
+    );
+    tm_put(&mut two, layout.data_offset, layout.data_len, &data);
+    tm_put(
+        &mut two,
+        layout.security_trailer_offset,
+        layout.security_trailer_len,
+        &st,
+    );
+    tm_put(&mut two, layout.ocf_offset, layout.ocf_len, &ocf);
+    let mut finished = 0_usize;
+    // SAFETY: as above.
+    call(|e| unsafe {
+        aldis_tm_writer_finish(
+            mc,
+            vcs.as_ptr(),
+            vcs.len(),
+            &raw const fields,
+            two.as_mut_ptr(),
+            two.len(),
+            &raw mut finished,
+            e,
+        )
+    })?;
+    assert_eq!(finished, written, "{}", case.id);
+    assert_eq!(two, out[..written], "{}: two-phase writer differs", case.id);
+    Ok(json!({ "output_hex": hex::encode(&out[..written]) }))
+}
+
+/// Consecutive OID frames from one generator of `form` (TM-010, CMN-021).
+fn tm_oid_frames(case: &CodecCase, ch: &TmChannels, form: u32) -> R<Vec<String>> {
+    let (mc, vcs) = ch.mc(case);
+    let p = params(case);
+    let vcid = u8_of(&p, "vcid");
+    let oid = Oid::new(form);
+    let mut frames = Vec::new();
+    for f in get(&p, "frames").as_array().unwrap() {
+        let (mcc, vcc) = (u8_of(f, "mc_frame_count"), u8_of(f, "vc_frame_count"));
+        let mut out = vec![0xEE_u8; ch.pc.frame_len];
+        let mut l = aldis_tm_layout_t::default();
+        // SAFETY: every pointer is to a live local or vector; `oid.h` is a live handle.
+        call(|e| unsafe {
+            aldis_tm_oid_writer_begin(
+                mc,
+                vcs.as_ptr(),
+                vcs.len(),
+                vcid,
+                mcc,
+                vcc,
+                oid.h,
+                out.as_mut_ptr(),
+                out.len(),
+                &raw mut l,
+                e,
+            )
+        })?;
+        if f.get("fsh_data_hex").is_some() {
+            tm_put(
+                &mut out,
+                l.fsh_data_offset,
+                l.fsh_data_len,
+                &hex_of(f, "fsh_data_hex"),
+            );
+        }
+        let ocf = tm_ocf(f);
+        if !ocf.is_empty() {
+            tm_put(&mut out, l.ocf_offset, l.ocf_len, &ocf);
+        }
+        let mut n = 0_usize;
+        // SAFETY: as above.
+        call(|e| unsafe {
+            aldis_tm_oid_writer_finish(
+                mc,
+                vcs.as_ptr(),
+                vcs.len(),
+                vcid,
+                mcc,
+                vcc,
+                out.as_mut_ptr(),
+                out.len(),
+                &raw mut n,
+                e,
+            )
+        })?;
+        frames.push(hex::encode(&out[..n]));
+    }
+    Ok(frames)
+}
+
+fn tm_run(case: &CodecCase) -> R<Value> {
+    let ch = tm_channels(case);
+    // The configuration is checked first, as the Rust runner builds it (API-040).
+    // SAFETY: every pointer is to a live local or vector.
+    call(|e| unsafe { aldis_tm_config_check(&raw const ch.pc, e) })?;
+    if let Some((mc, vcs)) = &ch.mc {
+        // SAFETY: as above.
+        call(|e| unsafe { aldis_tm_mc_config_check(mc, vcs.as_ptr(), vcs.len(), e) })?;
+    }
+    let bytes = input(case);
+    let mut view = aldis_tm_frame_t::default();
+    match case.operation.as_str() {
+        "config" => Ok(json!({})),
+        "peek_length" => {
+            let mut n = 0_usize;
+            // SAFETY: every pointer is to a live local or vector.
+            call(|e| unsafe {
+                aldis_tm_peek_length(bytes.as_ptr(), bytes.len(), &raw const ch.pc, &raw mut n, e)
+            })?;
+            Ok(json!({ "len": n }))
+        }
+        "decode" => {
+            // SAFETY: as above.
+            call(|e| unsafe {
+                aldis_tm_decode(
+                    bytes.as_ptr(),
+                    bytes.len(),
+                    &raw const ch.pc,
+                    mode(case),
+                    &raw mut view,
+                    e,
+                )
+            })?;
+            tm_json(&view, &bytes)
+        }
+        "decode_unchecked" => {
+            // SAFETY: as above.
+            call(|e| unsafe {
+                aldis_tm_decode_unchecked(
+                    bytes.as_ptr(),
+                    bytes.len(),
+                    &raw const ch.pc,
+                    mode(case),
+                    &raw mut view,
+                    e,
+                )
+            })?;
+            tm_json(&view, &bytes)
+        }
+        "decode_with" => {
+            let (mc, vcs) = ch.mc(case);
+            // SAFETY: as above.
+            call(|e| unsafe {
+                aldis_tm_decode_with(
+                    bytes.as_ptr(),
+                    bytes.len(),
+                    mc,
+                    vcs.as_ptr(),
+                    vcs.len(),
+                    mode(case),
+                    &raw mut view,
+                    e,
+                )
+            })?;
+            tm_json(&view, &bytes)
+        }
+        "validate" => {
+            let (mc, vcs) = ch.mc(case);
+            // SAFETY: as above.
+            call(|e| unsafe {
+                aldis_tm_validate(
+                    bytes.as_ptr(),
+                    bytes.len(),
+                    mc,
+                    vcs.as_ptr(),
+                    vcs.len(),
+                    mode(case),
+                    e,
+                )
+            })?;
+            Ok(json!({}))
+        }
+        "encode" => tm_encode(case, &ch),
+        "encode_oid" => {
+            let frames = tm_oid_frames(case, &ch, ALDIS_OID_FIBONACCI)?;
+            // The Galois form writes the same frames (CMN-022).
+            let galois = tm_oid_frames(case, &ch, ALDIS_OID_GALOIS)?;
+            assert_eq!(frames, galois, "{}: the Galois form differs", case.id);
+            Ok(json!({ "frames_hex": frames }))
+        }
+        op => panic!("{}: unsupported operation {op}", case.id),
+    }
+}
+
 // ---------------------------------------------------------------- tests
 
 macro_rules! vector_test {
@@ -1536,3 +1974,9 @@ vector_test!(
 );
 vector_test!(epp_invalid, "epp", "invalid", epp_run);
 vector_test!(epp_config_and_validate, "epp", "config", epp_run);
+vector_test!(tm_minimal, "tm", "minimal", tm_run);
+vector_test!(tm_fsh_ocf_fecf, "tm", "fsh_ocf_fecf", tm_run);
+vector_test!(tm_fhp_values, "tm", "fhp_values", tm_run);
+vector_test!(tm_oid_sequence, "tm", "oid_sequence", tm_run);
+vector_test!(tm_security_layout, "tm", "security_layout", tm_run);
+vector_test!(tm_invalid, "tm", "invalid", tm_run);
