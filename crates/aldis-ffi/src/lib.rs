@@ -4,7 +4,9 @@
 //! storage ([`spp_state`]), `aldis-time` ([`time`]), and `aldis-epp` ([`epp`]); and the parts of
 //! `aldis-core` the frame codecs share (M2 plan D14): the CRC-16 ([`crc`]), the Operational
 //! Control Field ([`ocf`]), and the OID generator in caller-owned storage ([`oid`]); and the
-//! frame codec `aldis-tm` ([`tm`]; M2 plan WP-2 module 7, D14). The header
+//! frame codec `aldis-tm` ([`tm`]; M2 plan WP-2 module 7, D14); the frame codec `aldis-aos`
+//! ([`aos`]; WP-4 module 8, D14); and the frame codec `aldis-uslp` ([`uslp`]; WP-5 module 9,
+//! D14). The header
 //! `include/aldis/aldis.h` is generated from these sources by the pinned `cbindgen`
 //! (`cargo xtask header --write`; CABI-002, CABI-003), and build-time capacities come from
 //! `capacities.toml` ([`capacities`], CABI-030).
@@ -31,6 +33,7 @@
 #![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 
 pub mod abi;
+pub mod aos;
 pub mod capacities;
 pub mod crc;
 pub mod epp;
@@ -42,8 +45,12 @@ pub mod ocf;
 pub mod oid;
 pub mod spp;
 pub mod spp_state;
+pub mod tc;
 pub mod time;
 pub mod tm;
+// ---- USLP (M2 WP-5 module 9)
+pub mod uslp;
+// ---- end USLP
 
 pub use abi::{ALDIS_MODE_LENIENT, ALDIS_MODE_STRICT};
 pub use error::{ALDIS_OK, aldis_error_detail_t};

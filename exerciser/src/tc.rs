@@ -139,6 +139,7 @@ fn frame_group(t: &mut Tally) {
         Err(_) => t.check(false),
     }
     t.check(TcFrame::peek_length(bb(frame)) == Ok(10));
+    t.check(TcFrame::peek_header(bb(frame)).is_ok_and(|h| h.fields() == ad && h.frame_len() == 10));
     t.check(validate_frame(bb(frame), &table, DecodeMode::Strict).is_ok_and(|f| f.len() == 10));
     match validate_frame(
         bb(frame.get(..9).unwrap_or_default()),
@@ -174,6 +175,19 @@ fn frame_group(t: &mut Tally) {
         }
         _ => t.check(false),
     }
+    // `resume` takes up a begun frame without writing, as the C ABI's finish uses it (API-023).
+    let mut two = [0_u8; 32];
+    match seg.map(|f| TcFrameWriter::begin(&mut two, &table, f, sh, bb(4))) {
+        Some(Ok(mut w)) => {
+            w.security_header_mut().fill(0xA5);
+            w.security_trailer_mut().fill(0x5A);
+            w.user_data_mut().fill(0x11);
+        }
+        _ => t.check(false),
+    }
+    let resumed = seg.map(|f| TcFrameWriter::resume(&mut two, &table, f, sh, bb(4)));
+    t.check(resumed.is_some_and(|w| w.is_ok_and(|w| w.finish(bb(2)) == Ok(14))));
+    t.check(two.get(..14) == out.get(..14));
     let f = TcFrame::decode(bb(&out), &table, DecodeMode::Strict);
     t.check(f.is_ok_and(|f| {
         f.security_header() == [0xA5; 3]

@@ -282,7 +282,23 @@ fn frames(
         .is_ok_and(|w| w.finish() == 40),
     );
     t.check(frame.get(12..16) == Some(&[0xFF; 4][..]));
+    resume_oid(t, &mut frame, pc, table, AosFrameFields::oid(scid, zero));
     t.check(AosFrame::decode(bb(&frame), pc, table, DecodeMode::Strict).is_ok_and(|f| f.is_oid()));
+}
+
+/// `resume` takes up the OID frame `begin_oid` wrote in `frame`, keeping its OID data, as the
+/// C ABI's `aldis_aos_writer_finish` does (API-023).
+fn resume_oid(
+    t: &mut Tally,
+    frame: &mut [u8; 40],
+    pc: &AosPhysicalChannelConfig,
+    table: &VcTable<2>,
+    fields: AosFrameFields,
+) {
+    t.check(
+        AosFrameWriter::resume(bb(frame), pc, table, bb(&fields)).is_ok_and(|w| w.finish() == 40),
+    );
+    t.check(frame.get(12..16) == Some(&[0xFF; 4][..]));
 }
 
 /// Runs the `aldis-aos` group.

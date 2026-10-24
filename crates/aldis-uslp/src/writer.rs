@@ -1,4 +1,5 @@
-//! Encoders: [`encode`], [`UslpFrameWriter`], [`encode_truncated`], and [`encode_oid`].
+//! Encoders: [`encode`], [`UslpFrameWriter`], [`encode_truncated`], [`encode_oid`], and
+//! [`encode_oid_galois`].
 //!
 //! 732.1 §4.1, §6.3, Annex D; USLP-009, USLP-010, USLP-016, API-020…API-023, API-072, GEN-014,
 //! GEN-042, GEN-052.
@@ -13,7 +14,7 @@
 use aldis_core::crc;
 use aldis_core::layout::{FECF_LEN, OCF_LEN};
 use aldis_core::ocf::Ocf;
-use aldis_core::oid::OidGenerator;
+use aldis_core::oid::{OidGenerator, OidGeneratorGalois};
 use aldis_core::security::SecurityLayout;
 use aldis_core::{Error, Result};
 
@@ -267,7 +268,7 @@ pub fn encode<L: VcLookup + ?Sized>(
         check_pointer: true,
     };
     let plan = Plan::new(channels, fields, content, Some(tfdz.len()), purpose)?;
-    let mut w = UslpFrameWriter::start(out, plan, content.insert_zone)?;
+    let mut w = UslpFrameWriter::start(out, plan, content.insert_zone, true)?;
     for (d, s) in w.tfdz_mut().iter_mut().zip(tfdz) {
         *d = *s;
     }
@@ -294,6 +295,43 @@ pub fn encode_oid<L: VcLookup + ?Sized>(
     oid: &mut OidGenerator,
     out: &mut [u8],
 ) -> Result<usize> {
+    oid_frame(channels, fields, insert_zone, ocf, out, |tfdz| {
+        oid.fill(tfdz);
+    })
+}
+
+/// Encodes an OID frame as [`encode_oid`] does, with the OID generator in its Galois form
+/// (732.1 §4.1.4.1.10; USLP-009, CMN-022).
+///
+/// The two forms give the same sequence, so the frames are the same. For a caller that keeps
+/// the Galois form, such as the C ABI's `aldis_uslp_encode_oid` with a generator initialized
+/// as `ALDIS_OID_GALOIS`.
+///
+/// # Errors
+/// As for [`encode_oid`]. On error neither `out` nor `oid` is changed (GEN-042).
+pub fn encode_oid_galois<L: VcLookup + ?Sized>(
+    channels: &L,
+    fields: FrameFields,
+    insert_zone: &[u8],
+    ocf: Option<Ocf>,
+    oid: &mut OidGeneratorGalois,
+    out: &mut [u8],
+) -> Result<usize> {
+    oid_frame(channels, fields, insert_zone, ocf, out, |tfdz| {
+        oid.fill(tfdz);
+    })
+}
+
+/// The OID frame of [`encode_oid`], its TFDZ filled by `fill` once every check has passed, so
+/// that a rejected frame leaves the generator unchanged (USLP-009, GEN-042).
+fn oid_frame<L: VcLookup + ?Sized>(
+    channels: &L,
+    fields: FrameFields,
+    insert_zone: &[u8],
+    ocf: Option<Ocf>,
+    out: &mut [u8],
+    fill: impl FnOnce(&mut [u8]),
+) -> Result<usize> {
     let content = FrameContent {
         tfdf: oid_tfdf(1),
         insert_zone,
@@ -301,8 +339,8 @@ pub fn encode_oid<L: VcLookup + ?Sized>(
     };
     let plan = Plan::new(channels, fields, content, None, Purpose::Oid)?;
     let tfdz_len = plan.tfdz_len;
-    let mut w = UslpFrameWriter::start(out, plan, insert_zone)?;
-    oid.fill(w.tfdz_mut());
+    let mut w = UslpFrameWriter::start(out, plan, insert_zone, true)?;
+    fill(w.tfdz_mut());
     w.finish(tfdz_len)
 }
 
@@ -400,12 +438,41 @@ impl<'b> UslpFrameWriter<'b> {
             check_pointer: false,
         };
         let plan = Plan::new(channels, fields, content, Some(max_tfdz_len), purpose)?;
-        UslpFrameWriter::start(out, plan, content.insert_zone)
+        UslpFrameWriter::start(out, plan, content.insert_zone, true)
     }
 
-    /// Writes the unfinished header, the Insert Zone, the TFDF Header, and zeros in the
-    /// Security Header and Trailer of a checked plan (API-023).
-    fn start(out: &'b mut [u8], plan: Plan, insert_zone: &[u8]) -> Result<UslpFrameWriter<'b>> {
+    /// Takes up a frame begun with [`begin`](Self::begin) and the same arguments, for a writer
+    /// that keeps no state between its two phases, such as the C ABI's
+    /// `aldis_uslp_writer_finish` (API-023; c-abi.md §11).
+    ///
+    /// It checks the arguments as `begin` does and rewrites the unfinished Primary Header, the
+    /// Insert Zone, and the TFDF Header; the Security Header, the TFDZ, and the Security Trailer
+    /// keep what the caller filled in, where `begin` zero-filled the security fields.
+    ///
+    /// # Errors
+    /// As for [`begin`](Self::begin); on error `out` is unchanged (API-022, GEN-042).
+    pub fn resume<L: VcLookup + ?Sized>(
+        out: &'b mut [u8],
+        channels: &L,
+        fields: FrameFields,
+        content: FrameContent<'_>,
+        max_tfdz_len: usize,
+    ) -> Result<UslpFrameWriter<'b>> {
+        let purpose = Purpose::Data {
+            check_pointer: false,
+        };
+        let plan = Plan::new(channels, fields, content, Some(max_tfdz_len), purpose)?;
+        UslpFrameWriter::start(out, plan, content.insert_zone, false)
+    }
+
+    /// Writes the unfinished header, the Insert Zone, and the TFDF Header of a checked plan,
+    /// and, if `zero`, zeros in the Security Header and Trailer (API-023).
+    fn start(
+        out: &'b mut [u8],
+        plan: Plan,
+        insert_zone: &[u8],
+        zero: bool,
+    ) -> Result<UslpFrameWriter<'b>> {
         let buf = out
             .get_mut(..plan.total)
             .ok_or(Error::buffer_too_small(plan.total))?;
@@ -417,19 +484,25 @@ impl<'b> UslpFrameWriter<'b> {
             plan.ocf.is_some(),
             plan.count,
         );
-        let tfdf = plan.tfdf.octets();
-        let octets = header
+        let head = header
             .iter()
             .take(plan.header_len)
             .chain(insert_zone)
-            .copied()
-            .chain(core::iter::repeat_n(0, plan.security.header_len()))
-            .chain(tfdf.iter().take(plan.tfdf.len()).copied());
-        for (d, s) in buf.iter_mut().zip(octets) {
+            .copied();
+        for (d, s) in buf.iter_mut().zip(head) {
             *d = s;
         }
+        let tfdf = plan.tfdf.octets();
+        let tfdf_start = plan.tfdz_start().saturating_sub(plan.tfdf.len());
+        let slot = buf.get_mut(tfdf_start..).unwrap_or_default();
+        for (d, s) in slot.iter_mut().zip(tfdf.iter().take(plan.tfdf.len())) {
+            *d = *s;
+        }
         let mut w = UslpFrameWriter { out, plan };
-        w.security_trailer_mut().fill(0);
+        if zero {
+            w.security_header_mut().fill(0);
+            w.security_trailer_mut().fill(0);
+        }
         Ok(w)
     }
 
@@ -529,7 +602,10 @@ impl<'b> UslpFrameWriter<'b> {
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     extern crate std;
-    use super::{FrameContent, FrameFields, UslpFrameWriter, encode, encode_oid, encode_truncated};
+    use super::{
+        FrameContent, FrameFields, UslpFrameWriter, encode, encode_oid, encode_oid_galois,
+        encode_truncated,
+    };
     use crate::config::tests::{fixed, mapid, scid, variable, vcid};
     use crate::field;
     use crate::header::{ChannelFields, FrameKind, SourceOrDestination};
@@ -538,7 +614,7 @@ mod tests {
     use crate::upid::Upid;
     use crate::view::UslpFrame;
     use aldis_core::ocf::Ocf;
-    use aldis_core::oid::OidGenerator;
+    use aldis_core::oid::{OidGenerator, OidGeneratorGalois};
     use aldis_core::{DecodeMode, Error, ErrorKind, FieldId};
     use std::vec::Vec;
 
@@ -685,6 +761,59 @@ mod tests {
             (ErrorKind::BufferTooSmall, None)
         );
         assert_eq!(small, [0; 20]);
+    }
+
+    #[test]
+    fn resume_keeps_what_the_caller_filled() {
+        // req: API-022, API-023, API-072, USLP-010
+        let tbl = variable();
+        let c = content(TfdzRule::NoSegmentation, Upid::OctetStream, &[], None);
+        let f = fields(5, 1, FrameKind::SequenceControlled, 0);
+        let mut one = [0_u8; 64];
+        let mut w = UslpFrameWriter::begin(&mut one, &tbl, f, c, 10).unwrap();
+        w.security_header_mut().fill(0x51);
+        w.security_trailer_mut().fill(0x52);
+        w.tfdz_mut()[..3].copy_from_slice(&[7, 8, 9]);
+        let len = w.finish(3).unwrap();
+        // A stateless finish: `begin`, fill, then `resume` with the same arguments and `finish`.
+        let mut two = [0xEE_u8; 64];
+        let mut w = UslpFrameWriter::begin(&mut two, &tbl, f, c, 10).unwrap();
+        w.security_header_mut().fill(0x51);
+        w.security_trailer_mut().fill(0x52);
+        w.tfdz_mut()[..3].copy_from_slice(&[7, 8, 9]);
+        let w = UslpFrameWriter::resume(&mut two, &tbl, f, c, 10).unwrap();
+        assert_eq!(w.finish(3), Ok(len));
+        assert_eq!(two[..len], one[..len]);
+        // `resume` writes the unfinished header, the Insert Zone, and the TFDF Header, and no
+        // other octet.
+        let fx = fixed();
+        let pkt = TfdzRule::PacketsSpanningFrames(FirstHeaderPointer::NoPacketStartOrEnd);
+        let iz = content(pkt, Upid::Packets, &[0xAA, 0xBB], None);
+        let other = fields(2, 1, FrameKind::Expedited, 0);
+        let mut three = [0xEE_u8; 64];
+        assert!(UslpFrameWriter::resume(&mut three, &fx, other, iz, 44).is_ok());
+        assert_eq!(three[7..9], [0xAA, 0xBB]);
+        assert_eq!(three[9..13], [0xEE; 4], "Security Header untouched");
+        assert_eq!(three[13..16], [0, 0xFF, 0xFF], "TFDF Header");
+        assert_eq!(
+            three[16..64],
+            [0xEE; 48],
+            "TFDZ, Trailer, and FECF untouched"
+        );
+        assert_eq!(three[0] >> 4, 0b1111, "unfinished version");
+        let w = UslpFrameWriter::resume(&mut three, &fx, other, iz, 44).unwrap();
+        assert_eq!(w.finish(44), Ok(64));
+        // The errors of `begin`, with `out` unchanged.
+        let mut four = [0xEE_u8; 64];
+        let unknown = FrameFields {
+            vc_id: vcid(9),
+            ..f
+        };
+        let e = UslpFrameWriter::resume(&mut four, &tbl, unknown, c, 10).unwrap_err();
+        assert_eq!(e.field(), Some(field::VC_ID));
+        let e = UslpFrameWriter::resume(&mut four[..20], &tbl, f, c, 10).unwrap_err();
+        assert_eq!(e.kind(), ErrorKind::BufferTooSmall);
+        assert_eq!(four, [0xEE; 64]);
     }
 
     #[test]
@@ -884,6 +1013,54 @@ mod tests {
             (ErrorKind::BufferTooSmall, None)
         );
         assert_eq!(oid, before);
+    }
+
+    #[test]
+    fn oid_frames_from_the_galois_form() {
+        // req: USLP-009, CMN-021, CMN-022, GEN-042
+        let tbl = fixed();
+        let f = fields(63, 0, FrameKind::Expedited, 5);
+        let (mut fib, mut gal) = (OidGenerator::new(), OidGeneratorGalois::new());
+        for _ in 0..3 {
+            let (mut one, mut two) = ([0_u8; 64], [0_u8; 64]);
+            let len_fib = encode_oid(&tbl, f, &[0xAA, 0xBB], None, &mut fib, &mut one).unwrap();
+            let len_gal =
+                encode_oid_galois(&tbl, f, &[0xAA, 0xBB], None, &mut gal, &mut two).unwrap();
+            assert_eq!(
+                (len_fib, one),
+                (len_gal, two),
+                "the forms give the same frames"
+            );
+        }
+        assert_eq!(fib.next_octet(), gal.next_octet());
+        let before = gal.clone();
+        let mut out = [0xEE_u8; 64];
+        let bad = fields(63, 1, FrameKind::Expedited, 0);
+        assert_eq!(
+            kf(encode_oid_galois(
+                &tbl,
+                bad,
+                &[0, 0],
+                None,
+                &mut gal,
+                &mut out
+            )),
+            (ErrorKind::InvalidField, Some(field::MAP_ID))
+        );
+        let mut small = [0xEE_u8; 10];
+        assert_eq!(
+            kf(encode_oid_galois(
+                &tbl,
+                f,
+                &[0, 0],
+                None,
+                &mut gal,
+                &mut small
+            )),
+            (ErrorKind::BufferTooSmall, None)
+        );
+        assert_eq!(gal, before);
+        assert_eq!((out, small), ([0xEE; 64], [0xEE; 10]));
     }
 
     #[test]

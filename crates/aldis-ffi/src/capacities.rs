@@ -8,3 +8,18 @@
 ///
 /// `[spp] tracker_max_apids` of `capacities.toml` (CABI-030).
 pub const ALDIS_SPP_TRACKER_MAX_APIDS: usize = 16;
+
+/// MAPs that one `aldis_tc_*` call takes with a master channel (232.0 Table 5-4; M2 plan D14).
+///
+/// `[tc] max_maps` of `capacities.toml` (CABI-030).
+pub const ALDIS_TC_MAX_MAPS: usize = 64;
+
+/// Virtual channels in the channel table of one `aldis_uslp_*` call (API-040; M2 plan D14).
+///
+/// `[uslp] max_vcs` of `capacities.toml` (CABI-030).
+pub const ALDIS_USLP_MAX_VCS: usize = 16;
+
+/// MAP channels in the channel table of one `aldis_uslp_*` call (API-040; M2 plan D14).
+///
+/// `[uslp] max_maps` of `capacities.toml` (CABI-030).
+pub const ALDIS_USLP_MAX_MAPS: usize = 32;

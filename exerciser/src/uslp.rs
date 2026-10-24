@@ -5,7 +5,7 @@ use core::fmt::Write as _;
 use core::hint::black_box as bb;
 
 use aldis_core::ocf::Ocf;
-use aldis_core::oid::OidGenerator;
+use aldis_core::oid::{OidGenerator, OidGeneratorGalois};
 use aldis_core::security::SecurityLayout;
 use aldis_core::{Anomaly, DecodeMode};
 use aldis_uslp::{
@@ -14,7 +14,7 @@ use aldis_uslp::{
     SecurityScope, SourceOrDestination, TfdfHeader, TfdzOffset, TfdzRule, TransferFrameType,
     TruncatedFrameLen, UnassignedUpid, Upid, UslpAnomaly, UslpFrame, UslpFrameWriter, UslpMapId,
     UslpSpacecraftId, UslpVcId, VcConfig, VcLookup, VcParams, VcTable, VcfCount, VcfCountLen,
-    encode, encode_oid, encode_truncated, next_frame, validate_frame,
+    encode, encode_oid, encode_oid_galois, encode_truncated, next_frame, validate_frame,
 };
 
 use crate::exercise::Tally;
@@ -254,6 +254,15 @@ fn frame_group(t: &mut Tally) {
         }
         Err(_) => t.check(false),
     }
+    // `resume` keeps the TFDZ the caller filled, as the C ABI's finish uses it (API-023).
+    let mut three = [0_u8; 64];
+    let begun = UslpFrameWriter::begin(&mut three, &vt, full, content, bb(10)).map(|mut w| {
+        crate::vectors::copy(w.tfdz_mut().get_mut(..3).unwrap_or_default(), &[1, 2, 3])
+    });
+    t.check(begun == Ok(true));
+    let resumed = UslpFrameWriter::resume(&mut three, &vt, full, content, bb(10));
+    t.check(resumed.and_then(|w| w.finish(bb(3))) == Ok(18));
+    t.check(three.get(..18) == Some(frame));
     truncated_and_oid(t, &vt, full);
 }
 
@@ -306,6 +315,12 @@ fn truncated_and_oid(t: &mut Tally, vt: &VcTable<2, 2>, full: FrameFields) {
         t.check(len == Ok(40));
         let dec = UslpFrame::decode(bb(&fixed_out), &ft, DecodeMode::Strict);
         t.check(dec.is_ok_and(|dec| dec.tfdf_header().upid == Upid::OnlyIdleData));
+        // The Galois form writes the same frame (CMN-022).
+        let mut galois = OidGeneratorGalois::new();
+        let mut galois_out = [0_u8; 40];
+        let first = OidGenerator::new();
+        let len = encode_oid_galois(&ft, of, bb(&[1, 2]), None, &mut galois, &mut galois_out);
+        t.check(len == Ok(40) && galois_out == fixed_out && first != oid);
     }
 }
 

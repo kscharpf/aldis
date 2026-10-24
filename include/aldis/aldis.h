@@ -33,11 +33,180 @@
 #define ALDIS_MODE_LENIENT 1
 
 /**
+ * Length of the AOS Transfer Frame Primary Header without the FHEC, in octets (732.0
+ * §4.1.2.1).
+ */
+#define ALDIS_AOS_PRIMARY_HEADER_LEN 6
+
+/**
+ * Length of the Frame Header Error Control, in octets (732.0 §4.1.2.6.1; AOS-013).
+ */
+#define ALDIS_AOS_FHEC_LEN 2
+
+/**
+ * Length of the `M_PDU` and of the `B_PDU` Header, in octets: the zone of a data unit starts
+ * this many octets into the data field (732.0 §4.1.4.2.1.3, §4.1.4.3.1.3).
+ */
+#define ALDIS_AOS_PDU_HEADER_LEN 2
+
+/**
+ * VCID 63, the VCID of OID Transfer Frames (732.0 §4.1.4.1.5.1, Table 5-2 note 2; AOS-016).
+ */
+#define ALDIS_AOS_OID_VCID 63
+
+/**
+ * The most virtual channels one master channel can configure: VCIDs 0 to 62 (732.0 Table 5-3
+ * note 2). A longer array names some VCID twice.
+ */
+#define ALDIS_AOS_MAX_VCS 63
+
+/**
+ * Largest Virtual Channel Frame Count, 2²⁴ − 1 (732.0 §4.1.2.4.2).
+ */
+#define ALDIS_AOS_VC_FRAME_COUNT_MAX 16777215
+
+/**
+ * Largest Virtual Channel Frame Count Cycle, `1111` (732.0 §4.1.2.5.5.1; AOS-012).
+ */
+#define ALDIS_AOS_CYCLE_MAX 15
+
+/**
+ * Largest packet offset of `ALDIS_AOS_POINTER_STARTS_AT`, `0xFFFD`, below the reserved values
+ * of the Issue 5 pointer; `0x7FD` in Issue 4 (732.0 §4.1.4.2.2.3–5; AOS-003).
+ */
+#define ALDIS_AOS_PACKET_OFFSET_MAX 65533
+
+/**
+ * Smallest count of valid bits of `ALDIS_AOS_POINTER_VALID_BITS` (732.0 §4.1.4.3.3.2).
+ */
+#define ALDIS_AOS_VALID_BITS_MIN 1
+
+/**
+ * Largest count of valid bits of `ALDIS_AOS_POINTER_VALID_BITS`, `0x3FFE`: pointer `0x3FFD`,
+ * the last index below the reserved values (732.0 §4.1.4.3.3.3–4; AOS-017).
+ */
+#define ALDIS_AOS_VALID_BITS_MAX 16382
+
+/**
+ * Edition: 732.0-B-5, a 10-bit SCID and a 16-bit First Header Pointer; the default (732.0
+ * §4.1.2.2.3, §4.1.4.2.1.4; AOS-001, GEN-062).
+ */
+#define ALDIS_AOS_EDITION_ISSUE5 0
+
+/**
+ * Edition: the wire format of 732.0-B-4 and earlier (AOS-002, AOS-003).
+ *
+ * An 8-bit SCID, Primary Header bits 42–43 a spare, and an `M_PDU` Header of a 5-bit spare and
+ * an 11-bit First Header Pointer (732.0-B-4 §4.1.2.2.3, §4.1.2.5.4, §4.1.4.2.2–3).
+ */
+#define ALDIS_AOS_EDITION_ISSUE4 1
+
+/**
+ * Data Field Content: one `M_PDU` per frame (732.0 §4.1.4.2, Table 5-3).
+ */
+#define ALDIS_AOS_CONTENT_MPDU 0
+
+/**
+ * Data Field Content: one `B_PDU` per frame (732.0 §4.1.4.3, Table 5-3; AOS-018).
+ */
+#define ALDIS_AOS_CONTENT_BPDU 1
+
+/**
+ * Data Field Content: one `VCA_SDU` per frame, opaque (732.0 §4.1.4.1.3, Table 5-3).
+ */
+#define ALDIS_AOS_CONTENT_VCA_SDU 2
+
+/**
+ * Data Field Content: Idle Data, the content of an OID frame's data field too (732.0
+ * §4.1.4.1.3, §4.1.4.1.5, Table 5-3).
+ */
+#define ALDIS_AOS_CONTENT_IDLE_DATA 3
+
+/**
+ * Pointer: no `M_PDU` or `B_PDU` Header: a `VCA_SDU` or Idle Data (732.0 §4.1.4.1.3).
+ */
+#define ALDIS_AOS_POINTER_NONE 0
+
+/**
+ * `M_PDU` First Header Pointer: the first Packet that starts in the Packet Zone starts at the
+ * octet `pointer_value` (732.0 §4.1.4.2.2.3; AOS-017).
+ */
+#define ALDIS_AOS_POINTER_STARTS_AT 1
+
+/**
+ * `M_PDU` First Header Pointer all ones: no Packet starts in the Packet Zone (732.0
+ * §4.1.4.2.2.4).
+ */
+#define ALDIS_AOS_POINTER_NO_PACKET_START 2
+
+/**
+ * `M_PDU` First Header Pointer all ones minus one: the Packet Zone holds only Idle Data (732.0
+ * §4.1.4.2.2.5).
+ */
+#define ALDIS_AOS_POINTER_ONLY_IDLE_DATA 3
+
+/**
+ * `B_PDU` Bitstream Data Pointer: the first `pointer_value` bits of the Bitstream Data Zone are
+ * user data, the rest idle data (732.0 §4.1.4.3.3.2; AOS-017, GEN-053).
+ */
+#define ALDIS_AOS_POINTER_VALID_BITS 4
+
+/**
+ * `B_PDU` Bitstream Data Pointer all ones: the zone holds only user data (732.0
+ * §4.1.4.3.3.3).
+ */
+#define ALDIS_AOS_POINTER_ALL_VALID 5
+
+/**
+ * `B_PDU` Bitstream Data Pointer all ones minus one: the zone holds only idle data (732.0
+ * §4.1.4.3.3.4).
+ */
+#define ALDIS_AOS_POINTER_ONLY_IDLE 6
+
+/**
+ * Anomaly bit: Virtual Channel Frame Count Cycle other than `0000` with its Use Flag `0`
+ * (bit 0 of `AosAnomaly`; 732.0 §4.1.2.5.5.3; AOS-012, API-032).
+ */
+#define ALDIS_AOS_ANOMALY_CYCLE_NON_ZERO_WHILE_UNUSED (1 << 0)
+
+/**
+ * Anomaly bit: `B_PDU` Reserved Spare other than `00` (bit 1; 732.0 §4.1.4.3.2.2; API-032).
+ */
+#define ALDIS_AOS_ANOMALY_BPDU_SPARE_SET (1 << 1)
+
+/**
+ * Anomaly bit: in Issue 4, Primary Header bits 42–43 or the `M_PDU` Reserved Spare not zero
+ * (bit 2; 732.0-B-4 §4.1.2.5.4, §4.1.4.2.2; AOS-002, AOS-003, API-032).
+ */
+#define ALDIS_AOS_ANOMALY_ISSUE4_SPARE_SET (1 << 2)
+
+/**
  * APIDs that one `aldis_spp_tracker_t` tracks (SPP-011; M2 plan D5).
  *
  * `[spp] tracker_max_apids` of `capacities.toml` (CABI-030).
  */
 #define ALDIS_SPP_TRACKER_MAX_APIDS 16
+
+/**
+ * MAPs that one `aldis_tc_*` call takes with a master channel (232.0 Table 5-4; M2 plan D14).
+ *
+ * `[tc] max_maps` of `capacities.toml` (CABI-030).
+ */
+#define ALDIS_TC_MAX_MAPS 64
+
+/**
+ * Virtual channels in the channel table of one `aldis_uslp_*` call (API-040; M2 plan D14).
+ *
+ * `[uslp] max_vcs` of `capacities.toml` (CABI-030).
+ */
+#define ALDIS_USLP_MAX_VCS 16
+
+/**
+ * MAP channels in the channel table of one `aldis_uslp_*` call (API-040; M2 plan D14).
+ *
+ * `[uslp] max_maps` of `capacities.toml` (CABI-030).
+ */
+#define ALDIS_USLP_MAX_MAPS 32
 
 /**
  * Header size argument: the smallest header that holds the fields and the length
@@ -1188,6 +1357,188 @@
 #define ALDIS_SPP_REASSEMBLY_DROPPED 2
 
 /**
+ * Length of the TC Transfer Frame Primary Header in octets (232.0 §4.1.2).
+ */
+#define ALDIS_TC_PRIMARY_HEADER_LEN 5
+
+/**
+ * Length of the Segment Header in octets (232.0 §4.1.3.2.2).
+ */
+#define ALDIS_TC_SEGMENT_HEADER_LEN 1
+
+/**
+ * Shortest TC Transfer Frame in octets (232.0 §4.1.1, §4.1.2.7).
+ */
+#define ALDIS_TC_MIN_FRAME_LEN 6
+
+/**
+ * Longest TC Transfer Frame in octets (232.0 §4.1.2.7; TC-007).
+ */
+#define ALDIS_TC_MAX_FRAME_LEN 1024
+
+/**
+ * Virtual channels a master channel can have: VCIDs 0 to 63 (232.0 §4.1.2; M2 plan D14).
+ */
+#define ALDIS_TC_MAX_VCS 64
+
+/**
+ * Frame type AD: Bypass Flag `0`, Control Command Flag `0` (232.0 §4.1.2, Table 4-1).
+ */
+#define ALDIS_TC_FRAME_AD 0
+
+/**
+ * Frame type BD: Bypass Flag `1`, Control Command Flag `0` (232.0 Table 4-1).
+ */
+#define ALDIS_TC_FRAME_BD 1
+
+/**
+ * Frame type BC: Bypass Flag `1`, Control Command Flag `1` (232.0 Table 4-1).
+ */
+#define ALDIS_TC_FRAME_BC 2
+
+/**
+ * Sequence Flags `00`: a continuing segment (232.0 §4.1.3.2.2).
+ */
+#define ALDIS_TC_SEQ_CONTINUING 0
+
+/**
+ * Sequence Flags `01`: the first segment (232.0 §4.1.3.2.2).
+ */
+#define ALDIS_TC_SEQ_FIRST 1
+
+/**
+ * Sequence Flags `10`: the last segment (232.0 §4.1.3.2.2).
+ */
+#define ALDIS_TC_SEQ_LAST 2
+
+/**
+ * Sequence Flags `11`: no segmentation (232.0 §4.1.3.2.2).
+ */
+#define ALDIS_TC_SEQ_UNSEGMENTED 3
+
+/**
+ * No Control Command: the data field of a Type-D frame, or, in lenient mode, a Type-C data
+ * field that is neither command (232.0 §4.1.3.3.4; TC-005).
+ */
+#define ALDIS_TC_CONTROL_NONE 0
+
+/**
+ * The Unlock Control Command, one octet of zeros (232.0 §4.1.3.3.2; TC-005).
+ */
+#define ALDIS_TC_CONTROL_UNLOCK 1
+
+/**
+ * The Set V(R) Control Command, `82 00` and the new V(R) (232.0 §4.1.3.3.3; TC-005).
+ */
+#define ALDIS_TC_CONTROL_SET_VR 2
+
+/**
+ * Anomaly bit: Reserved Spare of the Primary Header not `00` (bit 0 of `TcAnomaly`; 232.0
+ * §4.1.2.4; TC-003, API-032).
+ */
+#define ALDIS_TC_ANOMALY_RESERVED_SPARE_SET (1 << 0)
+
+/**
+ * Anomaly bit: a Type-C data field that is neither Unlock nor Set V(R) (bit 1; 232.0
+ * §4.1.3.3.4; TC-005, API-032).
+ */
+#define ALDIS_TC_ANOMALY_UNKNOWN_CONTROL_COMMAND (1 << 1)
+
+/**
+ * Anomaly bit: a Reserved Spare of the CLCW not zero (bit 2; 232.0 §4.2.1.7, §4.2.1.10;
+ * TC-030, API-032).
+ */
+#define ALDIS_TC_ANOMALY_CLCW_SPARE_SET (1 << 2)
+
+/**
+ * Delimiter item: no octets of the unit remain (232.0 §4.4.9.2; TC-020).
+ */
+#define ALDIS_TC_DELIMITED_END 0
+
+/**
+ * Delimiter item: one frame, as long as its Frame Length declares (232.0 §4.4.9.2.4; TC-020).
+ */
+#define ALDIS_TC_DELIMITED_FRAME 1
+
+/**
+ * Delimiter item: the rest of the unit, discarded: a valid header that declares more octets
+ * than remain (232.0 §4.4.9.2.5; TC-020).
+ */
+#define ALDIS_TC_DELIMITED_TRUNCATED_FRAME 2
+
+/**
+ * Delimiter item: the rest of the unit, discarded as Fill Data (232.0 §4.4.9.2.6; TC-020).
+ */
+#define ALDIS_TC_DELIMITED_FILL 3
+
+/**
+ * No rejection: the frame passed the Frame Validation Checks, or the call failed before they
+ * ran (TC-021).
+ */
+#define ALDIS_TC_REASON_NONE 0
+
+/**
+ * Check (a): the Transfer Frame Version Number is not `00` (232.0 §4.4.9.3.3; TC-021).
+ */
+#define ALDIS_TC_REASON_UNEXPECTED_VERSION 1
+
+/**
+ * Check (b): the Spacecraft ID is not that of the master channel (232.0 §4.4.9.3.3; TC-021).
+ */
+#define ALDIS_TC_REASON_UNEXPECTED_SPACECRAFT 2
+
+/**
+ * Check (c): Bypass Flag `0` with Control Command Flag `1` (232.0 Table 4-1; TC-002, TC-021).
+ */
+#define ALDIS_TC_REASON_RESERVED_FLAGS 3
+
+/**
+ * Check (c), strict mode only: the Reserved Spare is not `00` (232.0 §4.1.2.4; TC-003).
+ */
+#define ALDIS_TC_REASON_RESERVED_SPARE 4
+
+/**
+ * Check (c): the VCID is not configured (232.0 §4.4.7.3; TC-022).
+ */
+#define ALDIS_TC_REASON_INVALID_VCID 5
+
+/**
+ * Check (c): the Frame Length exceeds the channel's maximum (232.0 Tables 5-1, 5-3; TC-021).
+ */
+#define ALDIS_TC_REASON_FRAME_TOO_LONG 6
+
+/**
+ * Check (c): the Frame Length leaves no data octet (232.0 §4.1.1; TC-021, CMN-041).
+ */
+#define ALDIS_TC_REASON_FRAME_TOO_SHORT 7
+
+/**
+ * Check (d): the Frame Length disagrees with the octets present (232.0 §4.4.9.3.3; TC-021).
+ */
+#define ALDIS_TC_REASON_LENGTH_MISMATCH 8
+
+/**
+ * Check (e): the FECF does not match (232.0 §4.1.4; TC-006, TC-021).
+ */
+#define ALDIS_TC_REASON_FECF_MISMATCH 9
+
+/**
+ * The MAP ID is not configured on the Virtual Channel (232.0 §4.4.3.3; TC-022).
+ */
+#define ALDIS_TC_REASON_INVALID_MAP_ID 10
+
+/**
+ * Strict mode only: a Type-C data field that is neither Unlock nor Set V(R) (232.0
+ * §4.1.3.3.4; TC-005).
+ */
+#define ALDIS_TC_REASON_RESERVED_CONTROL_COMMAND 11
+
+/**
+ * COP in Effect `01`: COP-1 (232.0 §4.2.1.5).
+ */
+#define ALDIS_CLCW_COP_1 1
+
+/**
  * [`aldis_time_format_t::code`]: CCSDS Unsegmented Time Code (301.0 §3.2).
  */
 #define ALDIS_TIME_CUC 0
@@ -1411,6 +1762,338 @@
 #define ALDIS_TM_ANOMALY_SEGMENT_LENGTH_ID_NOT_11 (1 << 1)
 
 /**
+ * Length of the non-truncated Primary Header without its VCF Count, in octets (732.1
+ * §4.1.2.1.2).
+ */
+#define ALDIS_USLP_PRIMARY_HEADER_LEN 7
+
+/**
+ * Length of the truncated Primary Header, in octets (732.1 Annex D1.2.2).
+ */
+#define ALDIS_USLP_TRUNCATED_HEADER_LEN 4
+
+/**
+ * Longest USLP Transfer Frame, in octets: the 16-bit Frame Length field plus one (732.1
+ * §4.1.2.7; USLP-003).
+ */
+#define ALDIS_USLP_MAX_FRAME_LEN 65536
+
+/**
+ * The VCID of OID frames (732.1 §4.1.4.1.6; USLP-009).
+ */
+#define ALDIS_USLP_OID_VCID 63
+
+/**
+ * First Header or Last Valid Octet Pointer `0xFFFF`: no packet starts or ends in the TFDZ
+ * (rule `000`), or the SDU continues (rules `001`, `010`) (732.1 §4.1.4.2.4; USLP-006).
+ */
+#define ALDIS_USLP_POINTER_NONE 65535
+
+/**
+ * Shortest truncated frame, in octets (732.1 Annex D1.3.2; USLP-002). A `truncated_frame_len`
+ * of 0 means the VC carries no truncated frames.
+ */
+#define ALDIS_USLP_TRUNCATED_MIN_LEN 6
+
+/**
+ * Longest truncated frame, in octets (732.1 Annex D1.3.2; USLP-002).
+ */
+#define ALDIS_USLP_TRUNCATED_MAX_LEN 32
+
+/**
+ * Shortest truncated frame on a VC or MAP with SDLS, in octets (732.1 Annex D1.2.4;
+ * USLP-012, API-075).
+ */
+#define ALDIS_USLP_TRUNCATED_MIN_LEN_WITH_SDLS 28
+
+/**
+ * Transfer Frame Type: fixed-length frames (732.1 §5 Tables 5-1, 5-3).
+ */
+#define ALDIS_USLP_FRAME_FIXED 0
+
+/**
+ * Transfer Frame Type: variable-length frames (732.1 §5 Tables 5-1, 5-3).
+ */
+#define ALDIS_USLP_FRAME_VARIABLE 1
+
+/**
+ * OCF use of a virtual channel: no frame carries an OCF (732.1 §4.1.5, Table 5-3).
+ */
+#define ALDIS_USLP_OCF_ABSENT 0
+
+/**
+ * OCF use: a frame may carry an OCF, on a variable-length VC (732.1 §4.1.5.4).
+ */
+#define ALDIS_USLP_OCF_ALLOWED 1
+
+/**
+ * OCF use: every frame carries an OCF, on a fixed-length VC (732.1 §4.1.5.3).
+ */
+#define ALDIS_USLP_OCF_REQUIRED 2
+
+/**
+ * Security of a virtual channel: one layout for the VC, its lengths in the VC struct (732.1
+ * §6.6 Table 6-1; API-070).
+ */
+#define ALDIS_USLP_SECURITY_VC 0
+
+/**
+ * Security of a virtual channel: a layout per MAP, in the MAP structs (732.1 §6.6; API-070).
+ */
+#define ALDIS_USLP_SECURITY_PER_MAP 1
+
+/**
+ * Source-or-Destination Identifier `0`: the SCID is the frame's source (732.1 §4.1.2.3).
+ */
+#define ALDIS_USLP_SOURCE 0
+
+/**
+ * Source-or-Destination Identifier `1`: the SCID is the frame's destination (732.1 §4.1.2.3).
+ */
+#define ALDIS_USLP_DESTINATION 1
+
+/**
+ * Frame kind: Bypass/Sequence Control and Protocol Control Command Flags `00`, user data of
+ * the Sequence-Controlled service (732.1 Table 4-1; USLP-001).
+ */
+#define ALDIS_USLP_KIND_SEQUENCE_CONTROLLED 0
+
+/**
+ * Frame kind: flags `10`, user data of the Expedited service (732.1 Table 4-1; USLP-001).
+ */
+#define ALDIS_USLP_KIND_EXPEDITED 1
+
+/**
+ * Frame kind: flags `11`, Protocol Control Commands (732.1 Table 4-1; USLP-001, USLP-013).
+ */
+#define ALDIS_USLP_KIND_PROTOCOL_CONTROL 2
+
+/**
+ * TFDZ Construction Rule `000`: packets spanning frames, fixed-length TFDZ (732.1 Table 4-3).
+ */
+#define ALDIS_USLP_RULE_PACKETS_SPANNING_FRAMES 0
+
+/**
+ * Rule `001`: start of a `MAPA_SDU` or `VCA_SDU`, fixed-length TFDZ (732.1 Table 4-3).
+ */
+#define ALDIS_USLP_RULE_SDU_START 1
+
+/**
+ * Rule `010`: continuing portion of a `MAPA_SDU` or `VCA_SDU`, fixed-length TFDZ (732.1
+ * Table 4-3).
+ */
+#define ALDIS_USLP_RULE_SDU_CONTINUATION 2
+
+/**
+ * Rule `011`: octet stream, variable-length TFDZ (732.1 Table 4-3).
+ */
+#define ALDIS_USLP_RULE_OCTET_STREAM 3
+
+/**
+ * Rule `100`: starting segment, variable-length TFDZ (732.1 Table 4-3).
+ */
+#define ALDIS_USLP_RULE_STARTING_SEGMENT 4
+
+/**
+ * Rule `101`: continuing segment, variable-length TFDZ (732.1 Table 4-3).
+ */
+#define ALDIS_USLP_RULE_CONTINUING_SEGMENT 5
+
+/**
+ * Rule `110`: last segment, variable-length TFDZ (732.1 Table 4-3).
+ */
+#define ALDIS_USLP_RULE_LAST_SEGMENT 6
+
+/**
+ * Rule `111`: no segmentation, variable-length TFDZ (732.1 Table 4-3).
+ */
+#define ALDIS_USLP_RULE_NO_SEGMENTATION 7
+
+/**
+ * Largest UPID: the field has 5 bits; every value from 0 up to it crosses the ABI, assigned
+ * by the SANA registry or not (732.1 §4.1.4.2.3; USLP-007).
+ */
+#define ALDIS_USLP_UPID_MAX 31
+
+/**
+ * UPID "Space Packets or Encapsulation packets", from the SANA registry snapshot
+ * `specs/sana/uslp_protocol_id.tsv` (732.1 §4.1.4.2.3; USLP-007, OI-06).
+ */
+#define ALDIS_USLP_UPID_PACKETS 0
+
+/**
+ * UPID "COP-1 Control Commands", from the SANA snapshot (USLP-007, USLP-013).
+ */
+#define ALDIS_USLP_UPID_COP1_CONTROL_COMMANDS 1
+
+/**
+ * UPID "COP-P Control Commands", from the SANA snapshot (USLP-007).
+ */
+#define ALDIS_USLP_UPID_COPP_CONTROL_COMMANDS 2
+
+/**
+ * UPID "User-defined Octet Stream", from the SANA snapshot (USLP-007).
+ */
+#define ALDIS_USLP_UPID_OCTET_STREAM 4
+
+/**
+ * UPID "Mission-specific Information-1", from the SANA snapshot (USLP-007; Annex D1.4.1.2).
+ */
+#define ALDIS_USLP_UPID_MISSION_SPECIFIC_INFORMATION_1 5
+
+/**
+ * UPID "Proximity-1 Pseudo Packet Identifier 1 for Segmentation", from the SANA snapshot
+ * (USLP-007).
+ */
+#define ALDIS_USLP_UPID_PROXIMITY1_PSEUDO_PACKET_ID_1 6
+
+/**
+ * UPID "Proximity-1 SPDUs", from the SANA snapshot (USLP-007).
+ */
+#define ALDIS_USLP_UPID_PROXIMITY1_SPDUS 7
+
+/**
+ * UPID "Proximity-1 Pseudo Packet Identifier 2 for Segmentation", from the SANA snapshot
+ * (USLP-007).
+ */
+#define ALDIS_USLP_UPID_PROXIMITY1_PSEUDO_PACKET_ID_2 8
+
+/**
+ * UPID "Only Idle Data", from the SANA snapshot (USLP-007, USLP-009).
+ */
+#define ALDIS_USLP_UPID_ONLY_IDLE_DATA 31
+
+/**
+ * Anomaly bit: Reserve Spares not `00` (bit 0 of `UslpAnomaly`; 732.1 §4.1.2.9.2; API-032).
+ */
+#define ALDIS_USLP_ANOMALY_RESERVE_SPARES_SET (1 << 0)
+
+/**
+ * Anomaly bit: a frame on VCID 63 whose OID header fields deviate (bit 1; 732.1
+ * §4.1.4.1.8–9; API-032, OI-44 item 1).
+ */
+#define ALDIS_USLP_ANOMALY_OID_HEADER_MISMATCH (1 << 1)
+
+/**
+ * Validation reason: none, the frame was accepted (USLP-014).
+ */
+#define ALDIS_USLP_REASON_NONE 0
+
+/**
+ * Reason 1, test (a): the TFVN is not `1100` (732.1 §4.3.11.3.4 a; USLP-014).
+ */
+#define ALDIS_USLP_REASON_UNEXPECTED_VERSION 1
+
+/**
+ * Reason 2, test (b): the SCID names no master channel of the physical channel.
+ */
+#define ALDIS_USLP_REASON_UNEXPECTED_SPACECRAFT 2
+
+/**
+ * Reason 3, test (c): the reserved flag combination `01` (Table 4-1).
+ */
+#define ALDIS_USLP_REASON_RESERVED_FLAGS 3
+
+/**
+ * Reason 4, test (c), strict mode only: the Reserve Spares are not `00`.
+ */
+#define ALDIS_USLP_REASON_RESERVED_SPARE 4
+
+/**
+ * Reason 5, test (c): the VCID is not configured.
+ */
+#define ALDIS_USLP_REASON_INVALID_VCID 5
+
+/**
+ * Reason 6, test (c): the MAP ID is not configured on the VC.
+ */
+#define ALDIS_USLP_REASON_INVALID_MAP_ID 6
+
+/**
+ * Reason 7, test (c): a truncated frame on a VC without a truncated frame length.
+ */
+#define ALDIS_USLP_REASON_TRUNCATED_FRAME_NOT_ALLOWED 7
+
+/**
+ * Reason 8, test (c): the VCF Count Length is not the VC's for the frame's service.
+ */
+#define ALDIS_USLP_REASON_VCF_COUNT_LENGTH_MISMATCH 8
+
+/**
+ * Reason 9, test (c): the OCF Flag disagrees with the VC's OCF use.
+ */
+#define ALDIS_USLP_REASON_OCF_FLAG_MISMATCH 9
+
+/**
+ * Reason 10, test (c): the Frame Length is not a fixed-length channel's frame length.
+ */
+#define ALDIS_USLP_REASON_FIXED_LENGTH_MISMATCH 10
+
+/**
+ * Reason 11, test (c): the Frame Length exceeds a variable-length channel's maximum.
+ */
+#define ALDIS_USLP_REASON_FRAME_TOO_LONG 11
+
+/**
+ * Reason 12, test (c): the Frame Length leaves no TFDZ octet (OI-44 item 2).
+ */
+#define ALDIS_USLP_REASON_FRAME_TOO_SHORT 12
+
+/**
+ * Reason 13, test (d): the octets present disagree with the frame length.
+ */
+#define ALDIS_USLP_REASON_LENGTH_MISMATCH 13
+
+/**
+ * Reason 14, test (e): the FECF does not match.
+ */
+#define ALDIS_USLP_REASON_FECF_MISMATCH 14
+
+/**
+ * Reason 15: the TFDZ Construction Rule is of the other TFDZ type than the VC's (USLP-016).
+ */
+#define ALDIS_USLP_REASON_CONSTRUCTION_RULE_MISMATCH 15
+
+/**
+ * Reason 16: the First Header or Last Valid Octet Pointer lies beyond the TFDZ (USLP-006).
+ */
+#define ALDIS_USLP_REASON_POINTER_BEYOND_ZONE 16
+
+/**
+ * Reason 17, strict mode only: a frame on VCID 63 whose OID header fields deviate (OI-44
+ * item 1).
+ */
+#define ALDIS_USLP_REASON_OID_HEADER_MISMATCH 17
+
+/**
+ * Delimited item: no octets remain at the offset (732.1 §4.3.11.2; USLP-015).
+ */
+#define ALDIS_USLP_DELIMITED_END 0
+
+/**
+ * Delimited item: one frame, as long as its header declares, for the validation checks
+ * (732.1 §4.3.11.2.2, §4.3.11.2.4 c).
+ */
+#define ALDIS_USLP_DELIMITED_FRAME 1
+
+/**
+ * Delimited item: the rest of the unit, discarded: a valid header that declares more octets
+ * than remain, `declared_len` (732.1 §4.3.11.2.3).
+ */
+#define ALDIS_USLP_DELIMITED_INCOMPLETE_FRAME 2
+
+/**
+ * Delimited item: the rest of the unit, discarded: a truncated header of no configured VC, or
+ * of a VC without a truncated frame length (USLP-015; OI-35 item 8).
+ */
+#define ALDIS_USLP_DELIMITED_NO_TRUNCATED_LENGTH 3
+
+/**
+ * Delimited item: the rest of the unit, discarded as Fill Data (732.1 §4.3.11.2.4 a–b).
+ */
+#define ALDIS_USLP_DELIMITED_FILL 4
+
+/**
  * Handle of an OID generator in caller storage (CMN-020…023, CABI-032).
  */
 typedef struct aldis_oid_generator_t aldis_oid_generator_t;
@@ -1478,6 +2161,403 @@ typedef struct {
    */
   uint64_t found;
 } aldis_error_detail_t;
+
+/**
+ * A primary header that passed the FHEC check, corrected where needed (732.0 §4.1.2.6,
+ * §4.3.7.2; AOS-013, AOS-014).
+ */
+typedef struct {
+  /**
+   * The eight header octets after correction, the FHEC included; octets 2–4, which the code
+   * does not protect, as received (§4.1.2.6.1 note 2).
+   */
+  uint8_t octets[8];
+  /**
+   * How many symbols were corrected: 0, 1, or 2 (AOS-014, M2 plan D9).
+   */
+  uint8_t corrected_symbols;
+} aldis_aos_corrected_header_t;
+
+/**
+ * Managed parameters of a physical channel (732.0 §5.2 Table 5-1; AOS-001, AOS-015, API-041,
+ * CABI-033). The configuration `aldis_aos_peek_length` takes (M2 plan D14).
+ */
+typedef struct {
+  /**
+   * `sizeof(aldis_aos_config_t)`, set by the caller (CABI-033).
+   */
+  uint32_t struct_size;
+  /**
+   * 1 if every Primary Header ends with the Frame Header Error Control, else 0 (732.0
+   * §4.1.2.6.2; AOS-013).
+   */
+  uint8_t fhec;
+  /**
+   * 1 if every frame ends with a Frame Error Control Field, else 0 (732.0 §4.1.6.1.2).
+   */
+  uint8_t fecf;
+  /**
+   * The wire format, `ALDIS_AOS_EDITION_*`; 0 is Issue 5 (AOS-001, GEN-062).
+   */
+  uint8_t edition;
+  /**
+   * Transfer Frame Length in octets: at least the Primary Header, the Insert Zone, one data
+   * octet, and the FECF (732.0 §4.1.1.2; CMN-041).
+   */
+  size_t frame_len;
+  /**
+   * Insert Zone length in octets, 0 for none (732.0 §4.1.3; AOS-015).
+   */
+  size_t insert_zone_len;
+} aldis_aos_config_t;
+
+/**
+ * A master channel: the Spacecraft ID of the virtual channels passed beside it, and its
+ * physical channel (732.0 §5.3 Table 5-2; API-040, CABI-033; c-abi.md §11).
+ *
+ * Its virtual channels are passed beside it, as an array of [`aldis_aos_vc_config_t`] and its
+ * count (M2 plan D14).
+ */
+typedef struct {
+  /**
+   * `sizeof(aldis_aos_mc_config_t)`, set by the caller (CABI-033).
+   */
+  uint32_t struct_size;
+  /**
+   * Spacecraft Identifier, 0 to 1023; at most 255 for a virtual channel in Issue 4 (732.0
+   * §4.1.2.2.3; AOS-002).
+   */
+  uint16_t scid;
+  /**
+   * The physical channel, with its own `struct_size` (CABI-033).
+   */
+  aldis_aos_config_t pc;
+} aldis_aos_mc_config_t;
+
+/**
+ * Managed parameters of a virtual channel (732.0 §5.4 Table 5-3, §6.6.2 Table 6-1; API-040,
+ * API-070, CABI-033).
+ */
+typedef struct {
+  /**
+   * `sizeof(aldis_aos_vc_config_t)`, set by the caller, the same for every struct of an
+   * array (CABI-033).
+   */
+  uint32_t struct_size;
+  /**
+   * Virtual Channel Identifier, 0 to 62; 63 is reserved for OID frames (732.0 §4.1.2.3,
+   * Table 5-3 note 2).
+   */
+  uint8_t vcid;
+  /**
+   * Data Field Content, `ALDIS_AOS_CONTENT_*` (732.0 §4.1.4.1.4, Table 5-3).
+   */
+  uint8_t content;
+  /**
+   * 1 for a `VC_OCF`, else 0 (732.0 §4.1.5.2, Table 5-3).
+   */
+  uint8_t ocf;
+  /**
+   * Security Header length in octets, at most 64; 0 without SDLS (Table 6-1; API-070).
+   */
+  uint8_t security_header_len;
+  /**
+   * Security Trailer length in octets; 0 without SDLS (Table 6-1; API-070).
+   */
+  uint16_t security_trailer_len;
+} aldis_aos_vc_config_t;
+
+/**
+ * An AOS Transfer Frame Primary Header as plain values, after FHEC correction (732.0 §4.1.2;
+ * AOS-002, AOS-010…AOS-014, API-014).
+ */
+typedef struct {
+  /**
+   * Spacecraft Identifier, as the edition defines it (732.0 §4.1.2.2.3; AOS-002).
+   */
+  uint16_t scid;
+  /**
+   * Virtual Channel Identifier; `ALDIS_AOS_OID_VCID` for an OID frame (732.0 §4.1.2.3).
+   */
+  uint8_t vcid;
+  /**
+   * Virtual Channel Frame Count, never corrected (732.0 §4.1.2.4, §4.1.2.6.1 note 2).
+   */
+  uint32_t vc_frame_count;
+  /**
+   * Replay Flag (732.0 §4.1.2.5.2).
+   */
+  bool replay_flag;
+  /**
+   * Virtual Channel Frame Count Cycle Use Flag (732.0 §4.1.2.5.3).
+   */
+  bool cycle_use_flag;
+  /**
+   * Bits 44–47 as received, whether or not the Use Flag is set (732.0 §4.1.2.5.5; AOS-012).
+   */
+  uint8_t cycle_field;
+  /**
+   * In Issue 4, bits 42–43, the Reserved Spare, as received; always 0 in Issue 5
+   * (732.0-B-4 §4.1.2.5.4; AOS-002).
+   */
+  uint8_t issue4_spare;
+  /**
+   * Whether the header ends with an FHEC (732.0 §4.1.2.6).
+   */
+  bool has_fhec;
+  /**
+   * The FHEC after correction, when `has_fhec`.
+   */
+  uint16_t fhec;
+  /**
+   * How many symbols the FHEC corrected: 0, 1, or 2; 0 without the FHEC (AOS-014).
+   */
+  uint8_t corrected_symbols;
+  /**
+   * The header octets after correction: 8 with the FHEC, else 6 and then two zero octets
+   * (732.0 §4.1.2; API-014).
+   */
+  uint8_t octets[8];
+} aldis_aos_header_t;
+
+/**
+ * A decoded `M_PDU` or `B_PDU` Header, or none (732.0 §4.1.4.2.2, §4.1.4.3.2–3; AOS-003,
+ * AOS-017).
+ *
+ * The zone, the Packet Zone or the Bitstream Data Zone, follows the
+ * `ALDIS_AOS_PDU_HEADER_LEN` header octets.
+ */
+typedef struct {
+  /**
+   * What the data field holds, `ALDIS_AOS_CONTENT_*` (Table 5-3).
+   */
+  uint8_t content;
+  /**
+   * The pointer classified, `ALDIS_AOS_POINTER_*`; `ALDIS_AOS_POINTER_NONE` for a
+   * `VCA_SDU` or Idle Data.
+   */
+  uint8_t pointer;
+  /**
+   * With `ALDIS_AOS_POINTER_STARTS_AT`, the offset of the first Packet in the Packet Zone;
+   * with `ALDIS_AOS_POINTER_VALID_BITS`, the count of valid bits; else 0.
+   */
+  uint16_t pointer_value;
+  /**
+   * The First Header Pointer (16 bits, 11 in Issue 4) or the Bitstream Data Pointer (14 bits)
+   * as received; 0 without a header (732.0 §4.1.4.2.2.1, §4.1.4.3.3.1).
+   */
+  uint16_t pointer_raw;
+  /**
+   * The Reserved Spare as received: the `B_PDU`'s, or in Issue 4 the `M_PDU`'s; else 0
+   * (732.0 §4.1.4.3.2; 732.0-B-4 §4.1.4.2.2).
+   */
+  uint8_t spare;
+  /**
+   * Lenient-mode anomaly flags of the data unit, `ALDIS_AOS_ANOMALY_*`; 0 in strict mode
+   * (API-032).
+   */
+  uint32_t anomalies;
+} aldis_aos_pdu_t;
+
+/**
+ * Where each field of a frame lies (732.0 §4.1, §6.3; CMN-040, API-072, CABI-012).
+ *
+ * Offsets and lengths are in octets from the start of the frame. An absent field has length 0
+ * at the offset where it would start.
+ */
+typedef struct {
+  /**
+   * Transfer Frame Length: the octets the frame takes (732.0 §4.1.1.2; API-012).
+   */
+  size_t frame_len;
+  /**
+   * Offset of the Insert Zone.
+   */
+  size_t insert_zone_offset;
+  /**
+   * Length of the Insert Zone; 0 without one (§4.1.3; AOS-015).
+   */
+  size_t insert_zone_len;
+  /**
+   * Offset of the Security Header.
+   */
+  size_t security_header_offset;
+  /**
+   * Length of the Security Header; 0 without SDLS (§6.3.4).
+   */
+  size_t security_header_len;
+  /**
+   * Offset of the Transfer Frame Data Field.
+   */
+  size_t data_offset;
+  /**
+   * Length of the Transfer Frame Data Field, never 0 (§4.1.4).
+   */
+  size_t data_len;
+  /**
+   * Offset of the zone after the `M_PDU` or `B_PDU` Header, or of the data field.
+   */
+  size_t zone_offset;
+  /**
+   * Length of that zone, never 0 (§4.1.4.2.3, §4.1.4.3.4).
+   */
+  size_t zone_len;
+  /**
+   * Offset of the Security Trailer.
+   */
+  size_t security_trailer_offset;
+  /**
+   * Length of the Security Trailer; 0 without SDLS (§6.3.6).
+   */
+  size_t security_trailer_len;
+  /**
+   * Offset of the Operational Control Field.
+   */
+  size_t ocf_offset;
+  /**
+   * Length of the Operational Control Field: `ALDIS_OCF_LEN` or 0 (§4.1.5).
+   */
+  size_t ocf_len;
+  /**
+   * Offset of the Frame Error Control Field.
+   */
+  size_t fecf_offset;
+  /**
+   * Length of the Frame Error Control Field: 2 or 0 (§4.1.6).
+   */
+  size_t fecf_len;
+} aldis_aos_layout_t;
+
+/**
+ * A decoded AOS Transfer Frame: its fields and where they lie in the input (732.0 §4.1, §6.3;
+ * AOS-010…AOS-017, API-010, CABI-012). The OCF is classified with `aldis_ocf_classify` on its
+ * octets (CMN-010).
+ */
+typedef struct {
+  /**
+   * The Primary Header after FHEC correction (732.0 §4.1.2; API-014).
+   */
+  aldis_aos_header_t header;
+  /**
+   * The data unit: `ALDIS_AOS_CONTENT_IDLE_DATA` for an OID frame (AOS-016, AOS-017).
+   */
+  aldis_aos_pdu_t pdu;
+  /**
+   * Whether the frame has an FECF (732.0 §4.1.6).
+   */
+  bool has_fecf;
+  /**
+   * The FECF, when `has_fecf`.
+   */
+  uint16_t fecf;
+  /**
+   * Lenient-mode anomaly flags of the header and the data unit, `ALDIS_AOS_ANOMALY_*`; 0 in
+   * strict mode (API-032).
+   */
+  uint32_t anomalies;
+  /**
+   * Where each field lies in the input.
+   */
+  aldis_aos_layout_t layout;
+} aldis_aos_frame_t;
+
+/**
+ * The Primary Header fields and the data unit header a sender chooses (732.0 §4.1.2,
+ * §4.1.4.2.2, §4.1.4.3.3; AOS-019).
+ *
+ * The SCID comes from the master channel, and the version, the spare bits, and the FHEC are
+ * the library's (API-021).
+ */
+typedef struct {
+  /**
+   * Virtual Channel Identifier: a configured VC, or `ALDIS_AOS_OID_VCID` for
+   * `aldis_aos_oid_writer_begin` (732.0 §4.1.2.3).
+   */
+  uint8_t vcid;
+  /**
+   * Virtual Channel Frame Count, at most `ALDIS_AOS_VC_FRAME_COUNT_MAX` (732.0 §4.1.2.4).
+   */
+  uint32_t vc_frame_count;
+  /**
+   * Replay Flag, 0 or 1 (732.0 §4.1.2.5.2).
+   */
+  uint8_t replay_flag;
+  /**
+   * Virtual Channel Frame Count Cycle Use Flag, 0 or 1; with 0 the cycle is written `0000`
+   * and `cycle` is ignored (732.0 §4.1.2.5.3; AOS-012).
+   */
+  uint8_t cycle_use_flag;
+  /**
+   * With `cycle_use_flag` 1: the Virtual Channel Frame Count Cycle, at most
+   * `ALDIS_AOS_CYCLE_MAX` (732.0 §4.1.2.5.5).
+   */
+  uint8_t cycle;
+  /**
+   * The data unit header, `ALDIS_AOS_POINTER_*`: one of the `M_PDU` pointers on a VC that
+   * carries `M_PDUs`, one of the `B_PDU` pointers on a VC that carries `B_PDUs`, else
+   * `ALDIS_AOS_POINTER_NONE` (732.0 §4.1.4.1.4; AOS-019).
+   */
+  uint8_t pointer;
+  /**
+   * With `ALDIS_AOS_POINTER_STARTS_AT`, the packet offset in the Packet Zone, inside it and
+   * at most `ALDIS_AOS_PACKET_OFFSET_MAX` (`0x7FD` in Issue 4); with `ALDIS_AOS_POINTER_VALID_BITS`, the count of
+   * valid bits, `ALDIS_AOS_VALID_BITS_MIN` to `ALDIS_AOS_VALID_BITS_MAX` and below the zone's
+   * length in bits; else ignored (732.0 §4.1.4.2.2.3, §4.1.4.3.3.2; AOS-017).
+   */
+  uint16_t pointer_value;
+} aldis_aos_fields_t;
+
+/**
+ * The variable fields of a frame for [`aldis_aos_encode`], as `(pointer, length)` buffers
+ * (732.0 §4.1, §6.3; AOS-015, AOS-019, API-072, CABI-011; c-abi.md §11).
+ *
+ * Each buffer has exactly the length the configuration gives its field, and may be `NULL`
+ * with length 0. The struct is read once per call and no pointer is kept (API-060).
+ */
+typedef struct {
+  /**
+   * The Insert Zone, an `IN_SDU`; empty without one (732.0 §4.1.3).
+   */
+  const uint8_t *insert_zone;
+  /**
+   * Length of `insert_zone`.
+   */
+  size_t insert_zone_len;
+  /**
+   * The Security Header, as a security hook filled it; empty without SDLS (732.0 §6.3.4).
+   */
+  const uint8_t *security_header;
+  /**
+   * Length of `security_header`.
+   */
+  size_t security_header_len;
+  /**
+   * The octets after the `M_PDU` or `B_PDU` Header, or the whole data field of a `VCA_SDU`
+   * or Idle Data, filling it exactly (732.0 §4.1.4).
+   */
+  const uint8_t *zone;
+  /**
+   * Length of `zone`.
+   */
+  size_t zone_len;
+  /**
+   * The Security Trailer; empty without SDLS (732.0 §6.3.6).
+   */
+  const uint8_t *security_trailer;
+  /**
+   * Length of `security_trailer`.
+   */
+  size_t security_trailer_len;
+  /**
+   * The Operational Control Field: `ALDIS_OCF_LEN` octets when the VC has one, else empty
+   * (732.0 §4.1.5).
+   */
+  const uint8_t *ocf;
+  /**
+   * Length of `ocf`: `ALDIS_OCF_LEN` or 0.
+   */
+  size_t ocf_len;
+} aldis_aos_content_t;
 
 /**
  * A decoded Encapsulation Packet: its header and where its data field lies in the input
@@ -1604,6 +2684,21 @@ typedef struct {
    * `ALDIS_SPP_TRACKER_MAX_APIDS`: APIDs one `aldis_spp_tracker_t` tracks (SPP-011).
    */
   uint32_t spp_tracker_max_apids;
+  /**
+   * `ALDIS_TC_MAX_MAPS`: MAPs one `aldis_tc_*` call takes with a master channel (232.0
+   * Table 5-4; M2 plan D14).
+   */
+  uint32_t tc_max_maps;
+  /**
+   * `ALDIS_USLP_MAX_VCS`: virtual channels in the channel table of one `aldis_uslp_*` call
+   * (API-040; M2 plan D14).
+   */
+  uint32_t uslp_max_vcs;
+  /**
+   * `ALDIS_USLP_MAX_MAPS`: MAP channels in the channel table of one `aldis_uslp_*` call
+   * (API-040; M2 plan D14).
+   */
+  uint32_t uslp_max_maps;
 } aldis_limits_t;
 
 /**
@@ -2013,6 +3108,390 @@ typedef struct {
    */
   size_t sdu_len;
 } aldis_spp_reassembly_t;
+
+/**
+ * Managed parameters of a physical channel (232.0 §5.1 Table 5-1; GEN-060, CABI-033).
+ */
+typedef struct {
+  /**
+   * `sizeof(aldis_tc_config_t)`, set by the caller (CABI-033).
+   */
+  uint32_t struct_size;
+  /**
+   * 1 if every frame ends with a Frame Error Control Field, else 0 (232.0 §4.1.4.1).
+   */
+  uint8_t fecf;
+  /**
+   * Maximum Transfer Frame Length in octets: at most `ALDIS_TC_MAX_FRAME_LEN`, and at least
+   * `ALDIS_TC_MIN_FRAME_LEN`, two more with the FECF (232.0 Table 5-1; TC-007).
+   */
+  size_t max_frame_len;
+} aldis_tc_config_t;
+
+/**
+ * Managed parameters of a master channel (232.0 §5.2 Table 5-2; GEN-060, CABI-033).
+ *
+ * Its virtual channels and MAPs are passed beside it, each as an array and its count (M2 plan
+ * D14).
+ */
+typedef struct {
+  /**
+   * `sizeof(aldis_tc_mc_config_t)`, set by the caller (CABI-033).
+   */
+  uint32_t struct_size;
+  /**
+   * Spacecraft ID, 0 to 1023 (232.0 §4.1.2, Table 5-2).
+   */
+  uint16_t scid;
+  /**
+   * The physical channel, with its own `struct_size` (CABI-033).
+   */
+  aldis_tc_config_t pc;
+} aldis_tc_mc_config_t;
+
+/**
+ * Managed parameters of a virtual channel (232.0 §5.3 Table 5-3, §6.6.1 Table 6-2; TC-004,
+ * API-070, CABI-033).
+ */
+typedef struct {
+  /**
+   * `sizeof(aldis_tc_vc_config_t)`, set by the caller, the same for every struct of an
+   * array (CABI-033).
+   */
+  uint32_t struct_size;
+  /**
+   * Virtual Channel Identifier, 0 to 63 (232.0 §4.1.2).
+   */
+  uint8_t vcid;
+  /**
+   * 1 if the VC's Type-D frames carry a Segment Header, else 0 (232.0 §4.1.3.2.2.1.2;
+   * TC-004). With a Segment Header the Security Header and Trailer lengths are set per MAP
+   * and both lengths here must be 0.
+   */
+  uint8_t segment_header;
+  /**
+   * Security Header length in octets, at most 64; 0 without SDLS (Table 6-2; API-070).
+   */
+  uint8_t security_header_len;
+  /**
+   * Security Trailer length in octets; 0 without SDLS (Table 6-2; API-070).
+   */
+  uint16_t security_trailer_len;
+  /**
+   * Maximum Transfer Frame Length of the VC in octets, `ALDIS_TC_MIN_FRAME_LEN` to
+   * `ALDIS_TC_MAX_FRAME_LEN` (Table 5-3; TC-007).
+   */
+  size_t max_frame_len;
+} aldis_tc_vc_config_t;
+
+/**
+ * Managed parameters of a MAP channel (232.0 §5.4 Table 5-4, §6.6.2 Table 6-3; TC-022,
+ * API-070, CABI-033).
+ */
+typedef struct {
+  /**
+   * `sizeof(aldis_tc_map_config_t)`, set by the caller, the same for every struct of an
+   * array (CABI-033).
+   */
+  uint32_t struct_size;
+  /**
+   * The VCID of its virtual channel, which must have Segment Headers (232.0
+   * §4.1.3.2.2.1.2).
+   */
+  uint8_t vcid;
+  /**
+   * MAP Identifier, 0 to 63 (232.0 §4.1.3.2.2).
+   */
+  uint8_t map_id;
+  /**
+   * Security Header length in octets, at most 64; 0 without SDLS (Table 6-3; API-070).
+   */
+  uint8_t security_header_len;
+  /**
+   * Security Trailer length in octets; 0 without SDLS (Table 6-3; API-070).
+   */
+  uint16_t security_trailer_len;
+} aldis_tc_map_config_t;
+
+/**
+ * A TC Transfer Frame Primary Header as plain values (232.0 §4.1.2; TC-001, TC-002, API-014,
+ * GEN-053).
+ */
+typedef struct {
+  /**
+   * Frame type, `ALDIS_TC_FRAME_*`, from the Bypass and Control Command Flags (232.0 Table
+   * 4-1).
+   */
+  uint8_t frame_type;
+  /**
+   * Spacecraft ID (232.0 §4.1.2).
+   */
+  uint16_t scid;
+  /**
+   * Virtual Channel Identifier (232.0 §4.1.2).
+   */
+  uint8_t vcid;
+  /**
+   * Frame Sequence Number N(S) (232.0 §4.1.2).
+   */
+  uint8_t sequence_number;
+  /**
+   * Total frame length in octets: the Frame Length field plus one (232.0 §4.1.2.7;
+   * GEN-053).
+   */
+  size_t frame_len;
+} aldis_tc_header_t;
+
+/**
+ * A Control Command (232.0 §4.1.3.3; TC-005).
+ *
+ * `set_vr_value` is read only with `ALDIS_TC_CONTROL_SET_VR`, and written as 0 otherwise.
+ */
+typedef struct {
+  /**
+   * `ALDIS_TC_CONTROL_*`.
+   */
+  uint8_t command;
+  /**
+   * The new V(R) of a Set V(R) command (232.0 §4.1.3.3.3).
+   */
+  uint8_t set_vr_value;
+} aldis_tc_control_t;
+
+/**
+ * Where each field of a frame lies (232.0 §4.1, §6.3; API-072, CABI-012).
+ *
+ * Offsets and lengths are in octets from the start of the frame. An absent field has length 0
+ * at the offset where it would start.
+ */
+typedef struct {
+  /**
+   * The octets the frame takes (232.0 §4.1.2.7; API-012).
+   */
+  size_t frame_len;
+  /**
+   * Offset of the Segment Header.
+   */
+  size_t segment_header_offset;
+  /**
+   * Length of the Segment Header: `ALDIS_TC_SEGMENT_HEADER_LEN` or 0 (232.0 §4.1.3.2.2).
+   */
+  size_t segment_header_len;
+  /**
+   * Offset of the Security Header.
+   */
+  size_t security_header_offset;
+  /**
+   * Length of the Security Header; 0 without SDLS (232.0 §6.3.4).
+   */
+  size_t security_header_len;
+  /**
+   * Offset of the data field: the User Data or the Control Command.
+   */
+  size_t data_offset;
+  /**
+   * Length of the data field (232.0 §4.1.3).
+   */
+  size_t data_len;
+  /**
+   * Offset of the Security Trailer.
+   */
+  size_t security_trailer_offset;
+  /**
+   * Length of the Security Trailer; 0 without SDLS (232.0 §6.3.6).
+   */
+  size_t security_trailer_len;
+  /**
+   * Offset of the Frame Error Control Field.
+   */
+  size_t fecf_offset;
+  /**
+   * Length of the Frame Error Control Field: 2 or 0 (232.0 §4.1.4).
+   */
+  size_t fecf_len;
+} aldis_tc_layout_t;
+
+/**
+ * A decoded TC Transfer Frame: its fields and where they lie in the input (232.0 §4.1, §6.3;
+ * TC-001…TC-006, API-010, CABI-012).
+ */
+typedef struct {
+  /**
+   * The Primary Header (232.0 §4.1.2; API-014).
+   */
+  aldis_tc_header_t header;
+  /**
+   * Whether the frame has a Segment Header (232.0 §4.1.3.2.2; TC-004).
+   */
+  bool has_segment_header;
+  /**
+   * With `has_segment_header`, the Sequence Flags, `ALDIS_TC_SEQ_*`; else 0.
+   */
+  uint8_t sequence_flags;
+  /**
+   * With `has_segment_header`, the MAP Identifier; else 0.
+   */
+  uint8_t map_id;
+  /**
+   * The Control Command of a Type-C frame; `ALDIS_TC_CONTROL_NONE` for a Type-D frame, and
+   * for a reserved pattern in lenient mode (232.0 §4.1.3.3; TC-005).
+   */
+  aldis_tc_control_t control;
+  /**
+   * Whether the frame has an FECF (232.0 §4.1.4; TC-006).
+   */
+  bool has_fecf;
+  /**
+   * The FECF, when `has_fecf`.
+   */
+  uint16_t fecf;
+  /**
+   * Lenient-mode anomaly flags, `ALDIS_TC_ANOMALY_*`; 0 in strict mode (API-032).
+   */
+  uint32_t anomalies;
+  /**
+   * Where each field lies in the input.
+   */
+  aldis_tc_layout_t layout;
+} aldis_tc_frame_t;
+
+/**
+ * The header fields a sender chooses (232.0 §4.1.2, §4.1.3.2.2; TC-004, TC-008). The Frame
+ * Length and the Reserved Spare are written by the library (API-021).
+ *
+ * With `segment_header` 0, `sequence_flags` and `map_id` are ignored.
+ */
+typedef struct {
+  /**
+   * Frame type, `ALDIS_TC_FRAME_*` (232.0 Table 4-1).
+   */
+  uint8_t frame_type;
+  /**
+   * Spacecraft ID, which must be the master channel's (232.0 §4.1.2).
+   */
+  uint16_t scid;
+  /**
+   * Virtual Channel Identifier, which must be configured (232.0 §4.1.2).
+   */
+  uint8_t vcid;
+  /**
+   * Frame Sequence Number N(S), as given also on Type-B frames (232.0 §4.1.2; TC-008).
+   */
+  uint8_t sequence_number;
+  /**
+   * 1 for a Segment Header, which a Type-D frame of a VC with Segment Headers must have,
+   * else 0 (232.0 §4.1.3.2.2.1.2; TC-004).
+   */
+  uint8_t segment_header;
+  /**
+   * Sequence Flags, `ALDIS_TC_SEQ_*` (232.0 §4.1.3.2.2).
+   */
+  uint8_t sequence_flags;
+  /**
+   * MAP Identifier, 0 to 63, which must be configured (232.0 §4.1.3.2.2; TC-022).
+   */
+  uint8_t map_id;
+} aldis_tc_fields_t;
+
+/**
+ * The data field of a frame for [`aldis_tc_encode`] (232.0 §4.1.3; TC-004, TC-005, API-072,
+ * CABI-011; c-abi.md §11).
+ *
+ * With `control.command` `ALDIS_TC_CONTROL_NONE` the frame is Type-D and carries
+ * `user_data`, at least one octet; otherwise it is Type-C and carries the command, and
+ * `user_data` must be empty. The Security Header and Trailer are written as zeros for the SDLS
+ * layer to fill (API-072). The struct is read once per call and no pointer is kept (API-060).
+ */
+typedef struct {
+  /**
+   * The User Data of a Type-D frame (232.0 §4.1.3.2); may be `NULL` with length 0.
+   */
+  const uint8_t *user_data;
+  /**
+   * Length of `user_data`.
+   */
+  size_t user_data_len;
+  /**
+   * The Control Command of a Type-C frame, or `ALDIS_TC_CONTROL_NONE` (232.0 §4.1.3.3).
+   */
+  aldis_tc_control_t control;
+} aldis_tc_content_t;
+
+/**
+ * One item of a data unit, from [`aldis_tc_next_frame`] (232.0 §4.4.9.2; TC-020, M2 plan D14).
+ */
+typedef struct {
+  /**
+   * `ALDIS_TC_DELIMITED_*`.
+   */
+  uint8_t kind;
+  /**
+   * Offset of the item in the unit: the `offset` the call was given.
+   */
+  size_t offset;
+  /**
+   * Octets the item takes, which the caller adds to `offset` for the next call; 0 only for
+   * `ALDIS_TC_DELIMITED_END`.
+   */
+  size_t len;
+  /**
+   * The frame length the header declares: `len` for a frame, more than `len` for a
+   * truncated frame, 0 for fill and the end.
+   */
+  size_t declared_len;
+} aldis_tc_delimited_t;
+
+/**
+ * A Communications Link Control Word as plain values (232.0 §4.2.1; TC-030, TC-031, M2 plan
+ * D14).
+ *
+ * The struct is an input of [`aldis_clcw_encode`] and an output of [`aldis_clcw_decode`], so
+ * its flags are `uint8_t`, 0 or 1, as an input struct's are (c-abi.md §10). The Control Word
+ * Type, the CLCW Version Number, and the Reserved Spares are not held: the encoder writes them
+ * as zeros.
+ */
+typedef struct {
+  /**
+   * Status Field, 0 to 7, mission-specific and passed through (232.0 §4.2.1.4; TC-031).
+   */
+  uint8_t status;
+  /**
+   * COP in Effect, 0 to 3; `ALDIS_CLCW_COP_1` is COP-1 (232.0 §4.2.1.5).
+   */
+  uint8_t cop_in_effect;
+  /**
+   * Virtual Channel Identification, 0 to 63 (232.0 §4.2.1.6).
+   */
+  uint8_t vcid;
+  /**
+   * No RF Available Flag (232.0 §4.2.1.8.2).
+   */
+  uint8_t no_rf_available;
+  /**
+   * No Bit Lock Flag (232.0 §4.2.1.8.3).
+   */
+  uint8_t no_bit_lock;
+  /**
+   * Lockout Flag (232.0 §4.2.1.8.4).
+   */
+  uint8_t lockout;
+  /**
+   * Wait Flag (232.0 §4.2.1.8.5).
+   */
+  uint8_t wait;
+  /**
+   * Retransmit Flag (232.0 §4.2.1.8.6).
+   */
+  uint8_t retransmit;
+  /**
+   * FARM-B Counter, 0 to 3 (232.0 §4.2.1.9).
+   */
+  uint8_t farm_b_counter;
+  /**
+   * Report Value N(R) (232.0 §4.2.1.11).
+   */
+  uint8_t report_value;
+} aldis_clcw_t;
 
 /**
  * A parsed P-field (301.0 §3.1.1; TIME-001, TIME-002, TIME-005).
@@ -2575,9 +4054,729 @@ typedef struct {
   size_t ocf_len;
 } aldis_tm_content_t;
 
+/**
+ * Managed parameters of a physical channel (732.1 §5 Table 5-1; USLP-003, USLP-008, API-040,
+ * CABI-033).
+ */
+typedef struct {
+  /**
+   * `sizeof(aldis_uslp_config_t)`, set by the caller (CABI-033).
+   */
+  uint32_t struct_size;
+  /**
+   * Transfer Frame Type, `ALDIS_USLP_FRAME_*` (Table 5-1).
+   */
+  uint8_t frame_type;
+  /**
+   * 1 if every frame ends with a Frame Error Control Field, else 0 (732.1 §4.1.6).
+   */
+  uint8_t fecf;
+  /**
+   * The frame length of a fixed-length channel, or the maximum of a variable-length one, in
+   * octets: 9 to `ALDIS_USLP_MAX_FRAME_LEN` (732.1 §4.1.2.7, Table 5-1).
+   */
+  size_t frame_len;
+  /**
+   * Insert Zone length in octets, on a fixed-length channel only; 0 for none (732.1 §4.1.3;
+   * USLP-008).
+   */
+  size_t insert_zone_len;
+} aldis_uslp_config_t;
+
+/**
+ * Managed parameters of a virtual channel (732.1 §5 Table 5-3, §6.6 Table 6-1, Annex D1.2;
+ * USLP-002, USLP-004, USLP-012, API-070, CABI-033).
+ */
+typedef struct {
+  /**
+   * `sizeof(aldis_uslp_vc_config_t)`, set by the caller, the same for every struct of an
+   * array (CABI-033).
+   */
+  uint32_t struct_size;
+  /**
+   * Spacecraft Identifier of the VC's master channel (732.1 §4.1.2.2.3).
+   */
+  uint16_t scid;
+  /**
+   * Virtual Channel Identifier, 0 to 63; 63 for OID frames (732.1 §4.1.2.4).
+   */
+  uint8_t vcid;
+  /**
+   * Transfer Frame Type of the VC, `ALDIS_USLP_FRAME_*` (Table 5-3).
+   */
+  uint8_t frame_type;
+  /**
+   * VCF Count Length of Sequence-Controlled frames, 0 to 7 octets (732.1 §4.1.2.11;
+   * USLP-004).
+   */
+  uint8_t vcf_count_len_sequence;
+  /**
+   * VCF Count Length of Expedited and protocol control frames, 0 to 7 octets (USLP-004).
+   */
+  uint8_t vcf_count_len_expedited;
+  /**
+   * OCF use, `ALDIS_USLP_OCF_*` (732.1 §4.1.5).
+   */
+  uint8_t ocf;
+  /**
+   * Truncated Transfer Frame Length, `ALDIS_USLP_TRUNCATED_MIN_LEN` to
+   * `ALDIS_USLP_TRUNCATED_MAX_LEN`, on a variable-length VC; 0 for none (Annex D1.2.1;
+   * USLP-002).
+   */
+  uint8_t truncated_frame_len;
+  /**
+   * `ALDIS_USLP_SECURITY_VC` for the layout below, or `ALDIS_USLP_SECURITY_PER_MAP` for the
+   * layouts of the MAP structs, which ignores the two lengths below (Table 6-1; API-070).
+   */
+  uint8_t security;
+  /**
+   * Security Header length in octets, at most 64; 0 without SDLS (Table 6-1; API-070).
+   */
+  uint8_t security_header_len;
+  /**
+   * Security Trailer length in octets, at most 65 535; 0 without SDLS (Table 6-1; API-070).
+   */
+  uint32_t security_trailer_len;
+} aldis_uslp_vc_config_t;
+
+/**
+ * Managed parameters of a MAP channel (732.1 §5 Table 5-4, §6.6; API-070, CABI-033).
+ */
+typedef struct {
+  /**
+   * `sizeof(aldis_uslp_map_config_t)`, set by the caller, the same for every struct of an
+   * array (CABI-033).
+   */
+  uint32_t struct_size;
+  /**
+   * Spacecraft Identifier of the MAP's virtual channel (732.1 §4.1.2.2.3).
+   */
+  uint16_t scid;
+  /**
+   * Virtual Channel Identifier of the MAP's virtual channel, which must be configured
+   * (732.1 §4.1.2.4).
+   */
+  uint8_t vcid;
+  /**
+   * MAP Identifier, 0 to 15 (732.1 §4.1.2.5).
+   */
+  uint8_t map_id;
+  /**
+   * Security Header length on a VC with `ALDIS_USLP_SECURITY_PER_MAP`, at most 64; otherwise
+   * 0 (Table 6-1; API-070).
+   */
+  uint8_t security_header_len;
+  /**
+   * Security Trailer length on a VC with `ALDIS_USLP_SECURITY_PER_MAP`, at most 65 535;
+   * otherwise 0 (Table 6-1; API-070).
+   */
+  uint32_t security_trailer_len;
+} aldis_uslp_map_config_t;
+
+/**
+ * The fields of a frame's first four octets, which truncated and non-truncated Primary Headers
+ * share (732.1 §4.1.2.2–5, Annex D1.3.1).
+ */
+typedef struct {
+  /**
+   * Spacecraft Identifier (732.1 §4.1.2.2.3).
+   */
+  uint16_t scid;
+  /**
+   * Source-or-Destination Identifier, `ALDIS_USLP_SOURCE` or `ALDIS_USLP_DESTINATION`
+   * (732.1 §4.1.2.3).
+   */
+  uint8_t source_or_destination;
+  /**
+   * Virtual Channel Identifier, 0 to 63 (732.1 §4.1.2.4).
+   */
+  uint8_t vcid;
+  /**
+   * MAP Identifier, 0 to 15 (732.1 §4.1.2.5).
+   */
+  uint8_t map_id;
+} aldis_uslp_channel_t;
+
+/**
+ * A TFDF Header (732.1 §4.1.4.2; USLP-005…USLP-007).
+ */
+typedef struct {
+  /**
+   * TFDZ Construction Rule, `ALDIS_USLP_RULE_*` (Table 4-3).
+   */
+  uint8_t rule;
+  /**
+   * UPID, 0 to `ALDIS_USLP_UPID_MAX`; an assigned value has an `ALDIS_USLP_UPID_*` constant
+   * (732.1 §4.1.4.2.3; USLP-007).
+   */
+  uint8_t upid;
+  /**
+   * For rules `000` to `010`, the First Header or Last Valid Octet Pointer, raw:
+   * `ALDIS_USLP_POINTER_NONE` or an offset in the TFDZ (§4.1.4.2.4; USLP-006). The other
+   * rules have no pointer: 0 in a view and ignored by the writers (USLP-005).
+   */
+  uint16_t pointer;
+} aldis_uslp_tfdf_t;
+
+/**
+ * Where each field of a frame lies (732.1 §4.1, §6.3, Annex D; API-072, CABI-012).
+ *
+ * Offsets and lengths are in octets from the start of the frame. An absent field has length 0
+ * at the offset where it would start; the Primary Header is the octets before the Insert Zone.
+ */
+typedef struct {
+  /**
+   * Transfer Frame length: the octets the frame takes (732.1 §4.1.2.7, Annex D1.3.2).
+   */
+  size_t frame_len;
+  /**
+   * Offset of the Insert Zone, after the Primary Header and its VCF Count.
+   */
+  size_t insert_zone_offset;
+  /**
+   * Length of the Insert Zone; 0 without one (§4.1.3).
+   */
+  size_t insert_zone_len;
+  /**
+   * Offset of the Security Header.
+   */
+  size_t security_header_offset;
+  /**
+   * Length of the Security Header; 0 without SDLS (§6.3.4).
+   */
+  size_t security_header_len;
+  /**
+   * Offset of the TFDF Header.
+   */
+  size_t tfdf_header_offset;
+  /**
+   * Length of the TFDF Header: 3 for rules `000` to `010`, else 1 (§4.1.4.2.1.2; USLP-005).
+   */
+  size_t tfdf_header_len;
+  /**
+   * Offset of the Transfer Frame Data Zone.
+   */
+  size_t tfdz_offset;
+  /**
+   * Length of the TFDZ, never 0 (§4.1.4.3).
+   */
+  size_t tfdz_len;
+  /**
+   * Offset of the Security Trailer.
+   */
+  size_t security_trailer_offset;
+  /**
+   * Length of the Security Trailer; 0 without one (§6.3.6).
+   */
+  size_t security_trailer_len;
+  /**
+   * Offset of the Operational Control Field.
+   */
+  size_t ocf_offset;
+  /**
+   * Length of the OCF: `ALDIS_OCF_LEN` or 0 (§4.1.5).
+   */
+  size_t ocf_len;
+  /**
+   * Offset of the Frame Error Control Field.
+   */
+  size_t fecf_offset;
+  /**
+   * Length of the FECF: 2 or 0 (§4.1.6).
+   */
+  size_t fecf_len;
+} aldis_uslp_layout_t;
+
+/**
+ * A decoded USLP Transfer Frame, full or truncated (732.1 §4.1, §6.3, Annex D; USLP-001…USLP-007,
+ * API-010, CABI-012; M2 plan D12).
+ *
+ * Its fields, and where they lie in the input. The OCF is classified with
+ * `aldis_ocf_classify` on its octets (CMN-010).
+ */
+typedef struct {
+  /**
+   * Whether the End of Frame Primary Header Flag is 1: a truncated frame, whose length is
+   * its VC's truncated frame length and which has no Frame Length, flags, VCF Count, Insert
+   * Zone, OCF, or FECF (732.1 §4.1.2.6, Annex D; USLP-002).
+   */
+  bool truncated;
+  /**
+   * The fields of the first four octets (732.1 §4.1.2.2–5, Annex D1.3.1).
+   */
+  aldis_uslp_channel_t channel;
+  /**
+   * Frame kind, `ALDIS_USLP_KIND_*` (Table 4-1); 0 for a truncated frame.
+   */
+  uint8_t kind;
+  /**
+   * OCF Flag (§4.1.2.10); `false` for a truncated frame.
+   */
+  bool ocf_flag;
+  /**
+   * VCF Count Length in octets (§4.1.2.11); 0 for a truncated frame.
+   */
+  uint8_t vcf_count_len;
+  /**
+   * VCF Count (§4.1.2.12); 0 for a truncated frame.
+   */
+  uint64_t vcf_count;
+  /**
+   * The TFDF Header (§4.1.4.2; USLP-005…USLP-007).
+   */
+  aldis_uslp_tfdf_t tfdf;
+  /**
+   * Whether the SANA registry assigns the UPID (USLP-007).
+   */
+  bool upid_assigned;
+  /**
+   * Whether the frame has an FECF (§4.1.6).
+   */
+  bool has_fecf;
+  /**
+   * The FECF, when `has_fecf`.
+   */
+  uint16_t fecf;
+  /**
+   * Lenient-mode anomaly flags, `ALDIS_USLP_ANOMALY_*`; 0 in strict mode (API-032).
+   */
+  uint32_t anomalies;
+  /**
+   * Where each field lies in the input.
+   */
+  aldis_uslp_layout_t layout;
+} aldis_uslp_frame_t;
+
+/**
+ * The Primary Header fields a sender chooses (732.1 §4.1.2; USLP-010, API-021). The TFVN, the
+ * Frame Length, the Reserve Spares, the OCF Flag, and the VCF Count Length are derived.
+ */
+typedef struct {
+  /**
+   * The SCID, the Source-or-Destination Identifier, the VCID, and the MAP ID.
+   */
+  aldis_uslp_channel_t channel;
+  /**
+   * Frame kind, `ALDIS_USLP_KIND_*` (732.1 Table 4-1).
+   */
+  uint8_t kind;
+  /**
+   * VCF Count, written in the VC's VCF Count Length for the frame's service (732.1
+   * §4.1.2.12; USLP-004).
+   */
+  uint64_t vcf_count;
+} aldis_uslp_fields_t;
+
+/**
+ * The variable fields of a frame, as `(pointer, length)` buffers, and its TFDF Header (732.1
+ * §4.1.3–5; USLP-010, CABI-011; c-abi.md §11).
+ *
+ * Each buffer may be `NULL` with length 0. The struct is read once per call and no pointer is
+ * kept (API-060). A call that does not take a buffer requires it empty, and says so.
+ */
+typedef struct {
+  /**
+   * The TFDF Header: rule, UPID, pointer (§4.1.4.2).
+   */
+  aldis_uslp_tfdf_t tfdf;
+  /**
+   * The Insert Zone, exactly the physical channel's `insert_zone_len` octets (§4.1.3).
+   */
+  const uint8_t *insert_zone;
+  /**
+   * Length of `insert_zone`.
+   */
+  size_t insert_zone_len;
+  /**
+   * The Transfer Frame Data Zone (§4.1.4.3).
+   */
+  const uint8_t *tfdz;
+  /**
+   * Length of `tfdz`.
+   */
+  size_t tfdz_len;
+  /**
+   * The Operational Control Field: `ALDIS_OCF_LEN` octets when the frame carries one, else
+   * empty (§4.1.5).
+   */
+  const uint8_t *ocf;
+  /**
+   * Length of `ocf`: `ALDIS_OCF_LEN` or 0.
+   */
+  size_t ocf_len;
+} aldis_uslp_content_t;
+
+/**
+ * One item of a data unit (732.1 §4.3.11.2; USLP-015, M2 plan D14): its octets are the `len`
+ * octets of the unit at `offset`.
+ */
+typedef struct {
+  /**
+   * `ALDIS_USLP_DELIMITED_*`.
+   */
+  uint8_t kind;
+  /**
+   * Offset of the item in the unit: the offset the call was given.
+   */
+  size_t offset;
+  /**
+   * Octets the item takes; 0 only for `ALDIS_USLP_DELIMITED_END`. Every item but a frame
+   * takes the rest of the unit.
+   */
+  size_t len;
+  /**
+   * The frame length the header declares, or its VC's truncated frame length: `len` for a
+   * frame, more than `len` for `ALDIS_USLP_DELIMITED_INCOMPLETE_FRAME`, 0 for the other kinds,
+   * as `aldis_tc_delimited_t` gives it.
+   */
+  size_t declared_len;
+} aldis_uslp_delimited_t;
+
 #ifdef __cplusplus
 extern "C" {
 #endif // __cplusplus
+
+/**
+ * Computes the FHEC of the six octets of a Primary Header: the four parity symbols, which form
+ * octets 6 and 7, from octets 0, 1, and 5 (732.0 §4.1.2.6.5; AOS-013, AOS-019).
+ *
+ * `*out` is the FHEC as a big-endian 16-bit value: octet 6 in its high octet.
+ *
+ * # Errors
+ * CABI-022 violations, including a `header_len` other than `ALDIS_AOS_PRIMARY_HEADER_LEN`.
+ *
+ * # Safety
+ * `header` is valid for `header_len` octets (or `NULL` with 0); `out` is valid for one write;
+ * `err` is `NULL` or valid for one write.
+ */
+int32_t aldis_aos_fhec_encode(const uint8_t *header,
+                              size_t header_len,
+                              uint16_t *out,
+                              aldis_error_detail_t *err);
+
+/**
+ * Checks a received Primary Header with its FHEC and corrects up to two symbol errors (732.0
+ * §4.1.2.6.5, §4.3.7.2; AOS-013, AOS-014), as `aldis_aos::fhec::decode` does.
+ *
+ * The input is not changed. Three or more symbol errors can be miscorrected to another
+ * codeword and reported as one or two corrections (§4.1.2.6.5 note 3).
+ *
+ * # Errors
+ * `ALDIS_ERR_HEADER_UNCORRECTABLE` if no pattern of at most two symbol errors explains the
+ * syndromes; CABI-022 violations, including a `received_len` other than 8.
+ *
+ * # Safety
+ * `received` is valid for `received_len` octets (or `NULL` with 0); `out` is valid for one
+ * write; `err` is `NULL` or valid for one write.
+ */
+int32_t aldis_aos_fhec_decode(const uint8_t *received,
+                              size_t received_len,
+                              aldis_aos_corrected_header_t *out,
+                              aldis_error_detail_t *err);
+
+/**
+ * Checks a physical channel configuration (732.0 §5.2 Table 5-1; AOS-001, API-040, CMN-041).
+ *
+ * # Errors
+ * `ALDIS_ERR_INVALID_CONFIG` (`frame_len`) for a frame too short for the Primary Header (6
+ * octets, 8 with the FHEC), the Insert Zone, one data octet, and the FECF, with that minimum;
+ * CABI-022 violations, including an `edition` that is no `ALDIS_AOS_EDITION_*` constant.
+ *
+ * # Safety
+ * `pc` is valid for a read; `err` is `NULL` or valid for one write.
+ */
+int32_t aldis_aos_config_check(const aldis_aos_config_t *pc, aldis_error_detail_t *err);
+
+/**
+ * Checks a master channel configuration and its virtual channels (732.0 §5 Tables 5-1 to 5-3,
+ * §6.6 Table 6-1; AOS-002, AOS-018, API-040, API-070, CMN-041), as `VcTable::new` checks them.
+ *
+ * The physical channel is checked first, then the SCID, then each virtual channel in array
+ * order: its VCID, content, `VC_OCF` flag, and security layout; and then, in array order again,
+ * whether each fits the master channel.
+ *
+ * # Errors
+ * The errors of [`aldis_aos_config_check`]; `ALDIS_ERR_OUT_OF_RANGE` (`spacecraft_id`, `vc_id`)
+ * for an SCID above 1023 or a VCID above 63; `ALDIS_ERR_INVALID_CONFIG` (`vc_id`) for VCID 63,
+ * which is reserved for OID frames, and (`security_header_len`) for a Security Header above 64
+ * octets; then, for the first virtual channel that fails: `ALDIS_ERR_INVALID_CONFIG` (`vc_id`)
+ * for a VCID given twice, (`spacecraft_id`) for an SCID above 255 in Issue 4, (`frame_data_field`)
+ * for a VC left no data octet or, for an `M_PDU` or `B_PDU`, no octet after its header, and
+ * for a VC that carries `B_PDUs` (`frame_len`) for frames longer than 2 048 octets in Issue 5
+ * and (`frame_data_field`) for a Bitstream Data Zone longer than 2 047 octets (AOS-018);
+ * CABI-022 violations, including a VC struct whose `struct_size` differs from the first one's.
+ *
+ * # Safety
+ * `mc` is valid for a read; `vcs` is valid for reads of `vc_count` structs of the first one's
+ * `struct_size` (or `NULL` with 0); `err` is `NULL` or valid for one write.
+ */
+int32_t aldis_aos_mc_config_check(const aldis_aos_mc_config_t *mc,
+                                  const aldis_aos_vc_config_t *vcs,
+                                  size_t vc_count,
+                                  aldis_error_detail_t *err);
+
+/**
+ * The length of the frame that `prefix` begins: the configured frame length (732.0 §4.1.1.2;
+ * API-013, M2 plan D14), as `AosFrame::peek_length` gives it.
+ *
+ * Any prefix will do; the header it holds is checked as [`aldis_aos_decode`] checks it: with
+ * the FHEC once all eight header octets are present, corrected first, and without it the
+ * version as soon as the first octet is present.
+ *
+ * # Errors
+ * `ALDIS_ERR_HEADER_UNCORRECTABLE` (AOS-014); `ALDIS_ERR_UNSUPPORTED_VERSION` (`frame_version`)
+ * for a version other than `01` (AOS-011); the errors of [`aldis_aos_config_check`]; CABI-022
+ * violations.
+ *
+ * # Safety
+ * `prefix` is valid for `prefix_len` octets (or `NULL` with 0); `cfg` is valid for a read;
+ * `out_len` is valid for one write; `err` is `NULL` or valid for one write.
+ */
+int32_t aldis_aos_peek_length(const uint8_t *prefix,
+                              size_t prefix_len,
+                              const aldis_aos_config_t *cfg,
+                              size_t *out_len,
+                              aldis_error_detail_t *err);
+
+/**
+ * Decodes the Primary Header that `prefix` begins, after the FHEC has corrected it if
+ * configured (732.0 §4.1.2, §4.3.7.2; AOS-002, AOS-010…AOS-014, API-014).
+ *
+ * The SCID is read as the edition of `cfg` defines it. The rest of the frame is not read: for
+ * example to find the SCID of a frame on a physical channel that carries several master
+ * channels. The checks that depend on the mode are [`aldis_aos_decode`]'s; here the fields
+ * are given raw.
+ *
+ * # Errors
+ * `ALDIS_ERR_INCOMPLETE` (`needed` 6, or 8 with the FHEC) for a shorter prefix;
+ * `ALDIS_ERR_HEADER_UNCORRECTABLE` (AOS-014); `ALDIS_ERR_UNSUPPORTED_VERSION` (`frame_version`)
+ * for a version other than `01` (AOS-011); the errors of [`aldis_aos_config_check`]; CABI-022
+ * violations.
+ *
+ * # Safety
+ * `prefix` is valid for `prefix_len` octets (or `NULL` with 0); `cfg` is valid for a read;
+ * `out` is valid for one write; `err` is `NULL` or valid for one write.
+ */
+int32_t aldis_aos_header_decode(const uint8_t *prefix,
+                                size_t prefix_len,
+                                const aldis_aos_config_t *cfg,
+                                aldis_aos_header_t *out,
+                                aldis_error_detail_t *err);
+
+/**
+ * Decodes one frame of the master channel `mc`, with the parameters of its virtual channel
+ * from `vcs` (732.0 §4.1, §4.3.7, §6.3; AOS-010…AOS-017, API-010, API-012, API-070).
+ *
+ * It decodes as `AosFrame::decode` does with a `VcTable`.
+ *
+ * The header is corrected with the FHEC first and the FECF checked over the frame with the
+ * corrected header (§4.3.7.2–3; AOS-014). An OID frame (VCID 63) needs only the SCID of `mc`
+ * with at least one virtual channel: it has no OCF and no SDLS fields (§4.1.4.1.5).
+ *
+ * # Errors
+ * The errors of [`aldis_aos_mc_config_check`]; then, in this order:
+ * `ALDIS_ERR_LENGTH_MISMATCH` (`frame_len`) if `len` is not the frame length (API-012);
+ * `ALDIS_ERR_HEADER_UNCORRECTABLE` (AOS-014); `ALDIS_ERR_CRC_MISMATCH` for a wrong FECF;
+ * `ALDIS_ERR_UNSUPPORTED_VERSION` (`frame_version`) for a version other than `01` (AOS-011);
+ * `ALDIS_ERR_UNKNOWN_CHANNEL` (`spacecraft_id` for another SCID, `vc_id` for a VC `vcs` does not
+ * hold); the pointer errors of [`aldis_aos_mpdu_decode`] and [`aldis_aos_bpdu_decode`], in
+ * both modes (AOS-017); in strict mode, for the first deviation: `ALDIS_ERR_INVALID_FIELD`
+ * (`vc_frame_count_cycle`) for a cycle other than `0000` with its Use Flag `0` (AOS-012),
+ * `ALDIS_ERR_RESERVED_VALUE` (`aos_header_spare`) for Issue 4 bits 42–43 other than `00`
+ * (AOS-002), and the spare errors of the data unit; CABI-022 violations.
+ *
+ * # Safety
+ * `bytes` is valid for `len` octets (or `NULL` with 0); `mc` and `vcs` as for
+ * [`aldis_aos_mc_config_check`]; `out` is valid for one write; `err` is `NULL` or valid for one
+ * write.
+ */
+int32_t aldis_aos_decode(const uint8_t *bytes,
+                         size_t len,
+                         const aldis_aos_mc_config_t *mc,
+                         const aldis_aos_vc_config_t *vcs,
+                         size_t vc_count,
+                         uint32_t mode,
+                         aldis_aos_frame_t *out,
+                         aldis_error_detail_t *err);
+
+/**
+ * Decodes an `M_PDU` that fills `field`, the data field of a frame of a VC that carries
+ * `M_PDUs`, in `edition` (732.0 §4.1.4.2; 732.0-B-4 §4.1.4.2; AOS-003, AOS-017).
+ *
+ * It decodes as `Mpdu::decode` does. Its Packet Zone is the rest of `field`.
+ *
+ * # Errors
+ * `ALDIS_ERR_MALFORMED` (`frame_data_field`) if `field` has no octet after the 2-octet header,
+ * and (`first_header_pointer`) for a pointer outside the Packet Zone that is not reserved, in
+ * both modes; in strict mode `ALDIS_ERR_RESERVED_VALUE` (`mpdu_spare`) for an Issue 4 Reserved
+ * Spare other than `00000`; CABI-022 violations, including an `edition` that is no
+ * `ALDIS_AOS_EDITION_*` constant.
+ *
+ * # Safety
+ * `field` is valid for `len` octets (or `NULL` with 0); `out` is valid for one write; `err` is
+ * `NULL` or valid for one write.
+ */
+int32_t aldis_aos_mpdu_decode(const uint8_t *field,
+                              size_t len,
+                              uint8_t edition,
+                              uint32_t mode,
+                              aldis_aos_pdu_t *out,
+                              aldis_error_detail_t *err);
+
+/**
+ * Decodes a `B_PDU` that fills `field`, the data field of a frame of a VC that carries
+ * `B_PDUs` (732.0 §4.1.4.3; AOS-017), as `Bpdu::decode` does. Its Bitstream Data Zone is the
+ * rest of `field`.
+ *
+ * # Errors
+ * `ALDIS_ERR_MALFORMED` (`frame_data_field`) if `field` has no octet after the 2-octet header;
+ * in both modes, `ALDIS_ERR_INVALID_FIELD` (`bitstream_data_pointer`) for the index of the
+ * zone's last bit, which must be all ones instead (§4.1.4.3.3.3), and `ALDIS_ERR_MALFORMED`
+ * (`bitstream_data_pointer`) for an index beyond the zone that is not reserved; in strict mode
+ * `ALDIS_ERR_RESERVED_VALUE` (`bpdu_spare`) for a Reserved Spare other than `00`; CABI-022
+ * violations.
+ *
+ * # Safety
+ * `field` is valid for `len` octets (or `NULL` with 0); `out` is valid for one write; `err` is
+ * `NULL` or valid for one write.
+ */
+int32_t aldis_aos_bpdu_decode(const uint8_t *field,
+                              size_t len,
+                              uint32_t mode,
+                              aldis_aos_pdu_t *out,
+                              aldis_error_detail_t *err);
+
+/**
+ * Encodes one frame of (`mc->scid`, `fields->vcid`) into the start of `out` in one call (732.0
+ * §4.1, §6.3; AOS-019, API-020…API-022, API-072), as `aldis_aos::encode` does.
+ *
+ * `content` gives the variable fields, each exactly the length the configuration gives it
+ * ([`aldis_aos_content_t`]). The library writes the FHEC, the `M_PDU` or `B_PDU` Header from
+ * `fields->pointer`, and the FECF (API-021).
+ *
+ * # Errors
+ * On error `out` is unchanged (API-022). The errors of [`aldis_aos_mc_config_check`]; then
+ * `ALDIS_ERR_OUT_OF_RANGE` (`vc_id`, `vcf_count`, `vc_frame_count_cycle`,
+ * `first_header_pointer`, `bitstream_data_pointer`) for a value of `fields` outside its field:
+ * a packet offset above `0xFFFD`, or a count of valid bits of 0 or above
+ * `ALDIS_AOS_VALID_BITS_MAX`; then, as `AosFrameWriter::begin` checks them,
+ * `ALDIS_ERR_INVALID_FIELD` (`vc_id`) for VCID 63, whose frames `aldis_aos_oid_writer_begin`
+ * writes; `ALDIS_ERR_UNKNOWN_CHANNEL` (`spacecraft_id` or `vc_id`) for a VC not in `vcs`;
+ * `ALDIS_ERR_INVALID_FIELD` (`data_field_content`) for a pointer not of the VC's data unit;
+ * `ALDIS_ERR_OUT_OF_RANGE` (`first_header_pointer`, `bitstream_data_pointer`) for a pointer
+ * value outside the zone (AOS-017); `ALDIS_ERR_BUFFER_TOO_SMALL` (`needed` = frame length);
+ * then `ALDIS_ERR_LENGTH_MISMATCH` (`insert_zone_len`, `security_header_len`,
+ * `frame_data_field`, `security_trailer_len`) for a buffer of another length than its field's,
+ * and `ALDIS_ERR_INVALID_FIELD` (`ocf`) for an OCF given where none is configured or missing
+ * where one is; CABI-022 violations, including an `ocf_len` other than 0 or `ALDIS_OCF_LEN`
+ * and `out` overlapping a buffer of `content`.
+ *
+ * # Safety
+ * `mc` and `vcs` as for [`aldis_aos_mc_config_check`]; `fields` and `content` are valid for a
+ * read; each buffer of `content` is valid for its length (or `NULL` with 0); `out` is valid for
+ * `cap` octets; `out_len` is valid for one write; `err` is `NULL` or valid for one write.
+ */
+int32_t aldis_aos_encode(const aldis_aos_mc_config_t *mc,
+                         const aldis_aos_vc_config_t *vcs,
+                         size_t vc_count,
+                         const aldis_aos_fields_t *fields,
+                         const aldis_aos_content_t *content,
+                         uint8_t *out,
+                         size_t cap,
+                         size_t *out_len,
+                         aldis_error_detail_t *err);
+
+/**
+ * Starts a two-phase write of one frame of (`mc->scid`, `fields->vcid`) (732.0 §4.1; AOS-019,
+ * API-023, M2 plan D4).
+ *
+ * Checks the arguments, writes the Primary Header with its FHEC and the `M_PDU` or `B_PDU`
+ * Header in the first frame-length octets of `out`, zero-fills every other octet of the frame,
+ * and reports where each field lies.
+ *
+ * The caller fills the fields at the offsets of `layout`, the OCF included (check a report
+ * with `aldis_ocf_check`), and calls [`aldis_aos_writer_finish`] with the same arguments. No
+ * state is kept.
+ *
+ * # Errors
+ * On error `out` is unchanged (API-022). The errors of [`aldis_aos_encode`] before
+ * `ALDIS_ERR_BUFFER_TOO_SMALL`, that one included; CABI-022 violations.
+ *
+ * # Safety
+ * `mc` and `vcs` as for [`aldis_aos_mc_config_check`]; `fields` is valid for a read; `out` is
+ * valid for `cap` octets; `layout` is valid for one write; `err` is `NULL` or valid for one
+ * write.
+ */
+int32_t aldis_aos_writer_begin(const aldis_aos_mc_config_t *mc,
+                               const aldis_aos_vc_config_t *vcs,
+                               size_t vc_count,
+                               const aldis_aos_fields_t *fields,
+                               uint8_t *out,
+                               size_t cap,
+                               aldis_aos_layout_t *layout,
+                               aldis_error_detail_t *err);
+
+/**
+ * Finishes a two-phase write begun with the same arguments by [`aldis_aos_writer_begin`], or
+ * by [`aldis_aos_oid_writer_begin`] without its generator (732.0 §4.1.6.2; AOS-019, API-021,
+ * API-023).
+ *
+ * Rewrites the Primary Header with its FHEC and the `M_PDU` or `B_PDU` Header, leaves every
+ * field the caller filled and the OID data, computes the FECF if configured, and returns the
+ * frame length (`AosFrameWriter::resume`).
+ *
+ * # Errors
+ * As [`aldis_aos_writer_begin`], or for `fields->vcid` 63 as [`aldis_aos_oid_writer_begin`];
+ * on error `out` is unchanged.
+ *
+ * # Safety
+ * As [`aldis_aos_writer_begin`]; `out_len` is valid for one write.
+ */
+int32_t aldis_aos_writer_finish(const aldis_aos_mc_config_t *mc,
+                                const aldis_aos_vc_config_t *vcs,
+                                size_t vc_count,
+                                const aldis_aos_fields_t *fields,
+                                uint8_t *out,
+                                size_t cap,
+                                size_t *out_len,
+                                aldis_error_detail_t *err);
+
+/**
+ * Starts an OID Transfer Frame of `mc->scid` on VCID 63 (732.0 §4.1.4.1.5; AOS-016, CMN-020,
+ * CMN-021).
+ *
+ * The frame has no OCF or SDLS fields, and the whole data field holds the next octets of the
+ * OID generator `oid`, as `AosFrameWriter::begin_oid` writes it; the Galois form gives the
+ * same octets (CMN-022). Reports where each field lies, as [`aldis_aos_writer_begin`] does.
+ *
+ * `fields->vcid` is `ALDIS_AOS_OID_VCID` and `fields->pointer` `ALDIS_AOS_POINTER_NONE`. The
+ * caller may fill the Insert Zone (AOS-015) and calls [`aldis_aos_writer_finish`] with the same
+ * arguments, without `oid`.
+ *
+ * # Errors
+ * On error neither `out` nor the generator is changed (GEN-042). The errors of
+ * [`aldis_aos_mc_config_check`] and the `fields` errors of [`aldis_aos_encode`]; then
+ * `ALDIS_ERR_INVALID_FIELD` (`vc_id`) unless `fields->vcid` is 63, and (`data_field_content`)
+ * unless `fields->pointer` is `ALDIS_AOS_POINTER_NONE`; `ALDIS_ERR_UNKNOWN_CHANNEL`
+ * (`spacecraft_id`) if `vcs` is empty; `ALDIS_ERR_BUFFER_TOO_SMALL` (`needed` = frame length);
+ * `ALDIS_ERR_INVALID_HANDLE` for an invalid generator; CABI-022 violations, including `out`
+ * overlapping the generator's storage.
+ *
+ * # Safety
+ * `mc` and `vcs` as for [`aldis_aos_mc_config_check`]; `fields` is valid for a read; `oid` is a
+ * handle from `aldis_oid_generator_init` whose storage is still valid, or detectably invalid
+ * storage; `out` is valid for `cap` octets; `layout` is valid for one write; `err` is `NULL` or
+ * valid for one write.
+ */
+int32_t aldis_aos_oid_writer_begin(const aldis_aos_mc_config_t *mc,
+                                   const aldis_aos_vc_config_t *vcs,
+                                   size_t vc_count,
+                                   const aldis_aos_fields_t *fields,
+                                   aldis_oid_generator_t *oid,
+                                   uint8_t *out,
+                                   size_t cap,
+                                   aldis_aos_layout_t *layout,
+                                   aldis_error_detail_t *err);
 
 /**
  * The CRC-16 of the `len` octets at `data` (132.0 §4.1.6.2; CMN-001, CMN-004).
@@ -3422,6 +5621,353 @@ int32_t aldis_spp_reassembler_is_assembling(aldis_spp_reassembler_t *h,
 void aldis_spp_reassembler_deinit(aldis_spp_reassembler_t *h);
 
 /**
+ * Checks a physical channel configuration (232.0 §5.1 Table 5-1; GEN-060, API-040, TC-007).
+ *
+ * # Errors
+ * `ALDIS_ERR_INVALID_CONFIG` (`max_frame_len`) above 1024 octets, or below six, eight with the
+ * FECF; CABI-022 violations.
+ *
+ * # Safety
+ * `pc` is valid for a read; `err` is `NULL` or valid for one write.
+ */
+int32_t aldis_tc_config_check(const aldis_tc_config_t *pc, aldis_error_detail_t *err);
+
+/**
+ * Checks a master channel configuration with its virtual channels and MAPs (232.0 §5 Tables
+ * 5-1 to 5-4, §6.6 Tables 6-2, 6-3; GEN-060, API-040, API-070, CMN-041).
+ *
+ * The physical channel is checked first, then the Spacecraft ID, each virtual channel in array
+ * order (its VCID, Segment Header flag, security layout, and maximum frame length), each MAP
+ * in array order (its VCID, MAP ID, and security layout), and then the channels together, as
+ * `VcTable::new` checks them.
+ *
+ * # Errors
+ * The errors of [`aldis_tc_config_check`]; `ALDIS_ERR_OUT_OF_RANGE` (`spacecraft_id`, `vc_id`,
+ * `map_id`); `ALDIS_ERR_CAPACITY_EXCEEDED` (`vc_id`) for more than `ALDIS_TC_MAX_VCS` virtual
+ * channels and (`map_id`) for more than `ALDIS_TC_MAX_MAPS` MAPs, before any of them is read
+ * (CABI-030); `ALDIS_ERR_INVALID_CONFIG` (`security_header_len`) for a Security Header above 64
+ * octets, (`max_frame_len`) for a VC maximum outside 6 to 1024 octets, (`vc_id`) for a VCID
+ * given twice, (`map_id`) for a MAP given twice or on a VC that is not given or has no Segment
+ * Header, and (`frame_data_field`) for a VC or MAP whose fields leave no data octet; CABI-022
+ * violations, including a struct whose `struct_size` differs from its array's first, and a VC
+ * with Segment Headers whose security lengths are not 0.
+ *
+ * # Safety
+ * `mc` is valid for a read; `vcs` and `maps` are valid for reads of `vc_count` and
+ * `map_count` structs of their first one's `struct_size` (or `NULL` with 0); `err` is `NULL`
+ * or valid for one write.
+ */
+int32_t aldis_tc_mc_config_check(const aldis_tc_mc_config_t *mc,
+                                 const aldis_tc_vc_config_t *vcs,
+                                 size_t vc_count,
+                                 const aldis_tc_map_config_t *maps,
+                                 size_t map_count,
+                                 aldis_error_detail_t *err);
+
+/**
+ * The length of the frame that `prefix` begins, from its Frame Length field (232.0
+ * §4.1.2.7; TC-001, API-013, GEN-053, M2 plan D14).
+ *
+ * # Errors
+ * `ALDIS_ERR_INCOMPLETE` (`needed` 5) for a prefix shorter than the Primary Header;
+ * `ALDIS_ERR_UNSUPPORTED_VERSION` (`frame_version`) for a version other than `00`;
+ * `ALDIS_ERR_RESERVED_VALUE` (`control_command_flag`) for Bypass Flag `0` with Control Command
+ * Flag `1` (TC-002); CABI-022 violations.
+ *
+ * # Safety
+ * `prefix` is valid for `prefix_len` octets (or `NULL` with 0); `out_len` is valid for one
+ * write; `err` is `NULL` or valid for one write.
+ */
+int32_t aldis_tc_peek_length(const uint8_t *prefix,
+                             size_t prefix_len,
+                             size_t *out_len,
+                             aldis_error_detail_t *err);
+
+/**
+ * Decodes the Primary Header that `prefix` begins (232.0 §4.1.2; TC-001, TC-002, API-014), as
+ * `TcFrame::peek_header` does.
+ *
+ * The rest of the frame is not read and no channel is looked up: for example to find the
+ * Spacecraft ID of a frame on a physical channel that carries several master channels.
+ *
+ * # Errors
+ * As [`aldis_tc_peek_length`].
+ *
+ * # Safety
+ * `prefix` is valid for `prefix_len` octets (or `NULL` with 0); `out` is valid for one write;
+ * `err` is `NULL` or valid for one write.
+ */
+int32_t aldis_tc_header_decode(const uint8_t *prefix,
+                               size_t prefix_len,
+                               aldis_tc_header_t *out,
+                               aldis_error_detail_t *err);
+
+/**
+ * Decodes the frame that `bytes` begins, on the master channel `mc` (232.0 §4.1, §6.3;
+ * TC-001…TC-006, API-010…API-014, API-070), as `TcFrame::decode` does.
+ *
+ * The frame takes as many octets as its Frame Length declares (`out->layout.frame_len`); the
+ * octets after it are not read. The Security Header and Trailer lengths are those of the
+ * frame's virtual channel, or of its MAP when it has a Segment Header.
+ *
+ * # Errors
+ * The errors of [`aldis_tc_mc_config_check`]; then, in this order: `ALDIS_ERR_INCOMPLETE`
+ * (`needed`) for fewer octets than the Primary Header or the frame; `ALDIS_ERR_UNSUPPORTED_VERSION`
+ * (`frame_version`); `ALDIS_ERR_UNKNOWN_CHANNEL` (`spacecraft_id`) for another Spacecraft ID;
+ * `ALDIS_ERR_RESERVED_VALUE` (`control_command_flag`) (TC-002) and, in strict mode,
+ * (`tc_header_spare`) (TC-003); `ALDIS_ERR_UNKNOWN_CHANNEL` (`vc_id`); `ALDIS_ERR_OUT_OF_RANGE`
+ * (`frame_len`) above the channel's maximum and `ALDIS_ERR_INVALID_FIELD` (`frame_data_field`)
+ * for no data octet; `ALDIS_ERR_CRC_MISMATCH` (TC-006); `ALDIS_ERR_UNKNOWN_CHANNEL` (`map_id`);
+ * in strict mode `ALDIS_ERR_RESERVED_VALUE` (`control_command`) for a Type-C data field that
+ * is neither command (TC-005); CABI-022 violations.
+ *
+ * # Safety
+ * `bytes` is valid for `len` octets (or `NULL` with 0); `mc`, `vcs`, and `maps` as for
+ * [`aldis_tc_mc_config_check`]; `out` is valid for one write; `err` is `NULL` or valid for one
+ * write.
+ */
+int32_t aldis_tc_decode(const uint8_t *bytes,
+                        size_t len,
+                        const aldis_tc_mc_config_t *mc,
+                        const aldis_tc_vc_config_t *vcs,
+                        size_t vc_count,
+                        const aldis_tc_map_config_t *maps,
+                        size_t map_count,
+                        uint32_t mode,
+                        aldis_tc_frame_t *out,
+                        aldis_error_detail_t *err);
+
+/**
+ * Applies the Frame Validation Checks to `frame`, the octets of exactly one frame (232.0
+ * §4.4.9.3; TC-021…TC-023), as `validate_frame` does, with the security layouts of the master
+ * channel (c-abi.md §11).
+ *
+ * A frame that passes is written to `out` and `reason` is set to `ALDIS_TC_REASON_NONE`. A
+ * frame that fails sets `reason` to the `ALDIS_TC_REASON_*` of the first check that failed,
+ * and the call returns that check's error. Type-A and Type-B frames are checked alike
+ * (TC-023).
+ *
+ * # Errors
+ * The errors of [`aldis_tc_mc_config_check`], with `out` and `reason` unchanged; then the
+ * error of the failed check, as for [`aldis_tc_decode`], except that a frame shorter or longer
+ * than its Frame Length is `ALDIS_ERR_LENGTH_MISMATCH` (`frame_len`); CABI-022 violations,
+ * with `out` and `reason` unchanged.
+ *
+ * # Safety
+ * `frame` is valid for `len` octets (or `NULL` with 0); `mc`, `vcs`, and `maps` as for
+ * [`aldis_tc_mc_config_check`]; `out` and `reason` are valid for one write each; `err` is
+ * `NULL` or valid for one write.
+ */
+int32_t aldis_tc_validate(const uint8_t *frame,
+                          size_t len,
+                          const aldis_tc_mc_config_t *mc,
+                          const aldis_tc_vc_config_t *vcs,
+                          size_t vc_count,
+                          const aldis_tc_map_config_t *maps,
+                          size_t map_count,
+                          uint32_t mode,
+                          aldis_tc_frame_t *out,
+                          uint32_t *reason,
+                          aldis_error_detail_t *err);
+
+/**
+ * Encodes one frame into the start of `out` in one call (232.0 §4.1, §6.3; TC-004, TC-005,
+ * TC-007, TC-008, API-020…API-022, API-072), as `aldis_tc::encode` does.
+ *
+ * The library writes the Frame Length, the Reserved Spare `00`, zeros in the Security Header
+ * and Trailer, and the FECF (API-021).
+ *
+ * # Errors
+ * On error `out` is unchanged (API-022). The errors of [`aldis_tc_mc_config_check`]; then
+ * `ALDIS_ERR_OUT_OF_RANGE` (`spacecraft_id`, `vc_id`, `map_id`) for a value of `fields`
+ * outside its field; `ALDIS_ERR_UNKNOWN_CHANNEL` (`spacecraft_id`, `vc_id`, `map_id`) for a
+ * channel the master channel does not have; `ALDIS_ERR_INVALID_FIELD` (`control_command_flag`)
+ * for a frame type that does not match the content, (`segment_header`) for a Segment Header
+ * where the VC has none or none where it has them, and (`frame_data_field`) for empty User
+ * Data; `ALDIS_ERR_OUT_OF_RANGE` (`frame_len`) above the channel's maximum (TC-007);
+ * `ALDIS_ERR_BUFFER_TOO_SMALL` (`needed` = frame length); CABI-022 violations, including User
+ * Data or a Segment Header with a Control Command, and `out` overlapping `user_data`.
+ *
+ * # Safety
+ * `mc`, `vcs`, and `maps` as for [`aldis_tc_mc_config_check`]; `fields` and `content` are
+ * valid for a read; `content->user_data` is valid for its length (or `NULL` with 0); `out` is
+ * valid for `cap` octets; `out_len` is valid for one write; `err` is `NULL` or valid for one
+ * write.
+ */
+int32_t aldis_tc_encode(const aldis_tc_mc_config_t *mc,
+                        const aldis_tc_vc_config_t *vcs,
+                        size_t vc_count,
+                        const aldis_tc_map_config_t *maps,
+                        size_t map_count,
+                        const aldis_tc_fields_t *fields,
+                        const aldis_tc_content_t *content,
+                        uint8_t *out,
+                        size_t cap,
+                        size_t *out_len,
+                        aldis_error_detail_t *err);
+
+/**
+ * Starts a two-phase write of one Type-D frame with room for up to `max_user_len` octets of
+ * User Data (232.0 §4.1, §6.3; TC-004, TC-007, API-020, API-023, API-072, M2 plan D4).
+ *
+ * Checks the arguments, writes an unfinished Primary Header (version `11`, which every decoder
+ * rejects), the Segment Header, and zeros in the Security Header and Trailer, and reports where
+ * each field lies: the data field is the reserved User Data, `max_user_len` octets, and the
+ * Security Trailer follows it.
+ *
+ * The caller fills the User Data and, with SDLS, the Security Header and Trailer at the
+ * offsets of `layout`, and calls [`aldis_tc_writer_finish`] with the same arguments and the
+ * User Data length used. No state is kept.
+ *
+ * # Errors
+ * On error `out` is unchanged (API-022). As [`aldis_tc_encode`] for a frame with
+ * `max_user_len` octets of User Data, with `ALDIS_ERR_INVALID_FIELD` (`control_command_flag`)
+ * for a Type-BC frame; CABI-022 violations.
+ *
+ * # Safety
+ * `mc`, `vcs`, and `maps` as for [`aldis_tc_mc_config_check`]; `fields` is valid for a read;
+ * `out` is valid for `cap` octets; `layout` is valid for one write; `err` is `NULL` or valid
+ * for one write.
+ */
+int32_t aldis_tc_writer_begin(const aldis_tc_mc_config_t *mc,
+                              const aldis_tc_vc_config_t *vcs,
+                              size_t vc_count,
+                              const aldis_tc_map_config_t *maps,
+                              size_t map_count,
+                              const aldis_tc_fields_t *fields,
+                              size_t max_user_len,
+                              uint8_t *out,
+                              size_t cap,
+                              aldis_tc_layout_t *layout,
+                              aldis_error_detail_t *err);
+
+/**
+ * Finishes a two-phase write begun with the same arguments, with `user_len` octets of User
+ * Data (232.0 §4.1.2.7, §4.1.4; TC-007, API-021, API-023).
+ *
+ * Writes the Primary Header with the Frame Length, moves the Security Trailer to follow the
+ * User Data when `user_len` is below `max_user_len`, computes the FECF if configured, and
+ * returns the frame length; the frame is the first `*out_len` octets of `out`.
+ *
+ * # Errors
+ * On error `out` is unchanged. As [`aldis_tc_writer_begin`]; then `ALDIS_ERR_OUT_OF_RANGE`
+ * (`user_len`) above `max_user_len` and `ALDIS_ERR_INVALID_FIELD` (`frame_data_field`) for 0.
+ *
+ * # Safety
+ * As [`aldis_tc_writer_begin`]; `out_len` is valid for one write.
+ */
+int32_t aldis_tc_writer_finish(const aldis_tc_mc_config_t *mc,
+                               const aldis_tc_vc_config_t *vcs,
+                               size_t vc_count,
+                               const aldis_tc_map_config_t *maps,
+                               size_t map_count,
+                               const aldis_tc_fields_t *fields,
+                               size_t max_user_len,
+                               size_t user_len,
+                               uint8_t *out,
+                               size_t cap,
+                               size_t *out_len,
+                               aldis_error_detail_t *err);
+
+/**
+ * The item of the data unit `unit` that starts at `offset` (232.0 §4.4.9.2; TC-020, M2 plan
+ * D14), as `next_frame` gives it for the octets from `offset` on.
+ *
+ * The unit is the octets of one data unit that the Channel Coding Sublayer declared clean. A
+ * caller starts at offset 0 and adds each item's `len` until the item is
+ * `ALDIS_TC_DELIMITED_END`; a truncated frame or fill takes the rest of the unit. Each frame is
+ * then passed to [`aldis_tc_validate`] at its offset, with its length. No state is kept.
+ *
+ * # Errors
+ * CABI-022 violations, including an `offset` past the end of the unit.
+ *
+ * # Safety
+ * `unit` is valid for `unit_len` octets (or `NULL` with 0); `out` is valid for one write; `err`
+ * is `NULL` or valid for one write.
+ */
+int32_t aldis_tc_next_frame(const uint8_t *unit,
+                            size_t unit_len,
+                            size_t offset,
+                            aldis_tc_delimited_t *out,
+                            aldis_error_detail_t *err);
+
+/**
+ * Decodes the Control Command that the data field `octets` of a Type-C frame holds exactly
+ * (232.0 §4.1.3.3; TC-005), as `ControlCommand::parse` does.
+ *
+ * # Errors
+ * `ALDIS_ERR_RESERVED_VALUE` (`control_command`) for any other pattern, including a known one
+ * with octets missing or added, as a strict decoder reports it; CABI-022 violations.
+ *
+ * # Safety
+ * `octets` is valid for `len` octets (or `NULL` with 0); `out` is valid for one write; `err` is
+ * `NULL` or valid for one write.
+ */
+int32_t aldis_tc_control_decode(const uint8_t *octets,
+                                size_t len,
+                                aldis_tc_control_t *out,
+                                aldis_error_detail_t *err);
+
+/**
+ * Encodes a Control Command into the start of `out`, as a Type-C frame's data field carries it
+ * (232.0 §4.1.3.3; TC-005, API-020): one octet for Unlock, three for Set V(R).
+ *
+ * # Errors
+ * On error `out` is unchanged. `ALDIS_ERR_BUFFER_TOO_SMALL` (`needed`); CABI-022 violations,
+ * including `ALDIS_TC_CONTROL_NONE`.
+ *
+ * # Safety
+ * `command` is valid for a read; `out` is valid for `cap` octets; `out_len` is valid for one
+ * write; `err` is `NULL` or valid for one write.
+ */
+int32_t aldis_tc_control_encode(const aldis_tc_control_t *command,
+                                uint8_t *out,
+                                size_t cap,
+                                size_t *out_len,
+                                aldis_error_detail_t *err);
+
+/**
+ * Decodes a CLCW given as a 32-bit word, bit 0 of 232.0 §4.2.1 the most significant (232.0
+ * §4.2.1; TC-030, TC-031, M2 plan D14), as `Clcw::decode` does with its four octets.
+ *
+ * Any COP in Effect is accepted and exposed; the Status Field is passed through. A CLCW in an
+ * Operational Control Field is its four octets read as a big-endian word.
+ *
+ * # Errors
+ * `ALDIS_ERR_INVALID_FIELD` (`control_word_type`) for a Control Word Type of `1` and
+ * `ALDIS_ERR_UNSUPPORTED_VERSION` (`clcw_version`) for a version other than `00`, in both
+ * modes; in strict mode `ALDIS_ERR_RESERVED_VALUE` (`clcw_spare_14_15`, `clcw_spare_23`) for a
+ * Reserved Spare that is not zero, which lenient mode reports as
+ * `ALDIS_TC_ANOMALY_CLCW_SPARE_SET` in `anomalies`; CABI-022 violations.
+ *
+ * # Safety
+ * `out` and `anomalies` are valid for one write each; `err` is `NULL` or valid for one write.
+ */
+int32_t aldis_clcw_decode(uint32_t word,
+                          uint32_t mode,
+                          aldis_clcw_t *out,
+                          uint32_t *anomalies,
+                          aldis_error_detail_t *err);
+
+/**
+ * Encodes a CLCW as a 32-bit word, bit 0 of 232.0 §4.2.1 the most significant (232.0 §4.2.1;
+ * TC-030, TC-031, GEN-052, M2 plan D14), as `Clcw::to_word` does.
+ *
+ * The Control Word Type is `0`, the version `00`, and the Reserved Spares zero. The word's four
+ * octets, most significant first, are the Operational Control Field that carries the CLCW
+ * (CMN-011).
+ *
+ * # Errors
+ * `ALDIS_ERR_OUT_OF_RANGE` (`clcw_status`, `cop_in_effect`, `vc_id`, `farm_b_counter`) for a
+ * value outside its field; CABI-022 violations, including a flag other than 0 or 1.
+ *
+ * # Safety
+ * `clcw` is valid for a read; `out` is valid for one write; `err` is `NULL` or valid for one
+ * write.
+ */
+int32_t aldis_clcw_encode(const aldis_clcw_t *clcw, uint32_t *out, aldis_error_detail_t *err);
+
+/**
  * Decodes a time code that starts with its P-field (301.0 §3.1; TIME-001…006, TIME-010…030,
  * API-030).
  *
@@ -4001,6 +6547,351 @@ int32_t aldis_tm_oid_writer_finish(const aldis_tm_mc_config_t *mc,
                                    size_t cap,
                                    size_t *out_len,
                                    aldis_error_detail_t *err);
+
+/**
+ * Checks a physical channel configuration (732.1 §5 Table 5-1; USLP-003, USLP-008, API-040).
+ *
+ * # Errors
+ * `ALDIS_ERR_INVALID_CONFIG` (`frame_len` for a fixed-length channel, `max_frame_len` for a
+ * variable-length one) for a length below 9 or above `ALDIS_USLP_MAX_FRAME_LEN`, and
+ * (`insert_zone_len`) for an Insert Zone on a variable-length channel; CABI-022 violations,
+ * including a `frame_type` or `fecf` that is no constant.
+ *
+ * # Safety
+ * `pc` is valid for a read; `err` is `NULL` or valid for one write.
+ */
+int32_t aldis_uslp_config_check(const aldis_uslp_config_t *pc, aldis_error_detail_t *err);
+
+/**
+ * Checks a channel table: a physical channel with its virtual channels and MAPs (732.1 §5
+ * Tables 5-1 to 5-4, §6.6, Annex D1.2; USLP-002, USLP-008, USLP-012, API-040, API-070,
+ * API-075, GEN-060).
+ *
+ * The physical channel is checked first, then the counts against `ALDIS_USLP_MAX_VCS` and
+ * `ALDIS_USLP_MAX_MAPS`, each virtual channel in array order, each MAP in array order, and the
+ * table as `VcTable::new` checks it.
+ *
+ * # Errors
+ * The errors of [`aldis_uslp_config_check`]; `ALDIS_ERR_CAPACITY_EXCEEDED` (`vc_id`, `map_id`)
+ * above the capacities; `ALDIS_ERR_OUT_OF_RANGE` (`vc_id`, `map_id`); `ALDIS_ERR_INVALID_CONFIG`
+ * (`vcf_count_len`, `truncated_frame_len`, `security_header_len`, `security_trailer_len`,
+ * `ocf_flag`, `transfer_frame_type`, `vc_id`, `map_id`, `frame_data_field`) as `aldis-uslp`'s
+ * constructors return them (`docs/standards/uslp-frame.md` §2.1); CABI-022 violations,
+ * including an enumeration member that is no constant and a struct whose `struct_size` differs
+ * from its array's first one.
+ *
+ * # Safety
+ * `pc` is valid for a read; `vcs` is valid for reads of `vc_count` structs of the first one's
+ * `struct_size`, and `maps` of `map_count` (each `NULL` with 0); `err` is `NULL` or valid for
+ * one write.
+ */
+int32_t aldis_uslp_vc_table_check(const aldis_uslp_config_t *pc,
+                                  const aldis_uslp_vc_config_t *vcs,
+                                  size_t vc_count,
+                                  const aldis_uslp_map_config_t *maps,
+                                  size_t map_count,
+                                  aldis_error_detail_t *err);
+
+/**
+ * The length of the frame that `prefix` begins (732.1 §4.1.2.7, Annex D1.3.2; API-013, M2 plan
+ * D12, D14).
+ *
+ * As `UslpFrame::peek_length` gives it: a truncated frame's VC's truncated frame length, a
+ * fixed-length channel's frame length, or the Frame Length field plus one.
+ *
+ * # Errors
+ * `ALDIS_ERR_INCOMPLETE` (`needed` 4) for a shorter prefix; `ALDIS_ERR_UNSUPPORTED_VERSION`
+ * (`frame_version`); for a truncated header `ALDIS_ERR_UNKNOWN_CHANNEL` (`spacecraft_id`,
+ * `vc_id`) or `ALDIS_ERR_INVALID_FIELD` (`end_of_frame_primary_header_flag`) for a VC without
+ * a truncated frame length; on a variable-length channel `ALDIS_ERR_INCOMPLETE` (`needed` 6);
+ * the errors of [`aldis_uslp_vc_table_check`] without MAPs; CABI-022 violations.
+ *
+ * # Safety
+ * `prefix` is valid for `prefix_len` octets (or `NULL` with 0); `pc` and `vcs` as for
+ * [`aldis_uslp_vc_table_check`]; `out_len` is valid for one write; `err` is `NULL` or valid
+ * for one write.
+ */
+int32_t aldis_uslp_peek_length(const uint8_t *prefix,
+                               size_t prefix_len,
+                               const aldis_uslp_config_t *pc,
+                               const aldis_uslp_vc_config_t *vcs,
+                               size_t vc_count,
+                               size_t *out_len,
+                               aldis_error_detail_t *err);
+
+/**
+ * Decodes one frame, full or truncated, with the managed parameters of the channel table
+ * (732.1 §4.1, §6.3, Annex D; USLP-001…USLP-007, USLP-016, API-010…API-012, API-030), as
+ * `UslpFrame::decode` does.
+ *
+ * A variable-length or truncated frame may be followed by other octets, which are ignored
+ * (`out->layout.frame_len` is the frame's length; API-011); on a fixed-length channel `len`
+ * must be the frame length (API-012).
+ *
+ * # Errors
+ * The decoder errors of `docs/standards/uslp-frame.md` §3.1, in its order: among them
+ * `ALDIS_ERR_INCOMPLETE` (`needed`), `ALDIS_ERR_UNSUPPORTED_VERSION` (`frame_version`),
+ * `ALDIS_ERR_UNKNOWN_CHANNEL` (`spacecraft_id`, `vc_id`, `map_id`), `ALDIS_ERR_RESERVED_VALUE`
+ * (`protocol_control_command_flag`, and `uslp_header_spare` in strict mode),
+ * `ALDIS_ERR_LENGTH_MISMATCH` (`vcf_count_len`, `frame_len`), `ALDIS_ERR_CRC_MISMATCH`,
+ * `ALDIS_ERR_INVALID_FIELD` (`tfdz_construction_rule`, `frame_data_field`, and the OID header
+ * fields in strict mode), and `ALDIS_ERR_MALFORMED` (`fhp_lvo_pointer`); the errors of
+ * [`aldis_uslp_vc_table_check`]; CABI-022 violations.
+ *
+ * # Safety
+ * `bytes` is valid for `len` octets (or `NULL` with 0); `pc`, `vcs`, and `maps` as for
+ * [`aldis_uslp_vc_table_check`]; `out` is valid for one write; `err` is `NULL` or valid for
+ * one write.
+ */
+int32_t aldis_uslp_decode(const uint8_t *bytes,
+                          size_t len,
+                          const aldis_uslp_config_t *pc,
+                          const aldis_uslp_vc_config_t *vcs,
+                          size_t vc_count,
+                          const aldis_uslp_map_config_t *maps,
+                          size_t map_count,
+                          uint32_t mode,
+                          aldis_uslp_frame_t *out,
+                          aldis_error_detail_t *err);
+
+/**
+ * Applies the USLP Frame Validation Checks to `bytes`, the octets of exactly one frame, as the
+ * delimiter yields them (732.1 §4.3.11.3; USLP-014, M2 plan D14, D17), as `validate_frame`
+ * does.
+ *
+ * On success the frame is written to `out`, as [`aldis_uslp_decode`] writes it, and `reason`
+ * is `ALDIS_USLP_REASON_NONE`. When a check fails, `reason` is its stable code,
+ * `ALDIS_USLP_REASON_*` (`docs/standards/uslp-frame.md` §3.1), the call returns the decoder's
+ * error for it, and `out` is unchanged.
+ *
+ * # Errors
+ * The errors of [`aldis_uslp_decode`], with `ALDIS_ERR_LENGTH_MISMATCH` (`frame_len`) where it
+ * returns `ALDIS_ERR_INCOMPLETE`, each with its reason; the errors of
+ * [`aldis_uslp_vc_table_check`] and CABI-022 violations, which write no reason.
+ *
+ * # Safety
+ * As [`aldis_uslp_decode`]; `reason` is valid for one write.
+ */
+int32_t aldis_uslp_validate(const uint8_t *bytes,
+                            size_t len,
+                            const aldis_uslp_config_t *pc,
+                            const aldis_uslp_vc_config_t *vcs,
+                            size_t vc_count,
+                            const aldis_uslp_map_config_t *maps,
+                            size_t map_count,
+                            uint32_t mode,
+                            aldis_uslp_frame_t *out,
+                            uint32_t *reason,
+                            aldis_error_detail_t *err);
+
+/**
+ * Encodes one non-truncated frame into the start of `out` in one call (732.1 §4.1, §6.3;
+ * USLP-010, USLP-016, API-020…022), as `aldis_uslp::encode` does.
+ *
+ * `content` gives the TFDF Header, the Insert Zone, the TFDZ, and the OCF. The library writes
+ * the Frame Length, the OCF Flag, the VCF Count Length, and the FECF; with SDLS, the Security
+ * Header and Trailer are zeros, for which [`aldis_uslp_writer_begin`] gives the place to fill
+ * (API-072).
+ *
+ * # Errors
+ * On error `out` is unchanged (API-022). The errors of [`aldis_uslp_vc_table_check`]; then
+ * those of `docs/standards/uslp-frame.md` §3.3, in its order: `ALDIS_ERR_UNKNOWN_CHANNEL`
+ * (`spacecraft_id`, `vc_id`, `map_id`); `ALDIS_ERR_INVALID_FIELD` (`vc_id`) for VCID 63, whose
+ * frames [`aldis_uslp_encode_oid`] writes; `ALDIS_ERR_INVALID_FIELD`
+ * (`tfdz_construction_rule`); `ALDIS_ERR_OUT_OF_RANGE` (`vcf_count`); `ALDIS_ERR_INVALID_FIELD`
+ * (`ocf_flag`); `ALDIS_ERR_LENGTH_MISMATCH` (`insert_zone_len`); `ALDIS_ERR_INVALID_FIELD` and
+ * `ALDIS_ERR_LENGTH_MISMATCH` (`frame_data_field`); `ALDIS_ERR_OUT_OF_RANGE` (`frame_len`,
+ * `fhp_lvo_pointer`); `ALDIS_ERR_BUFFER_TOO_SMALL` (`needed` = frame length);
+ * `ALDIS_ERR_OUT_OF_RANGE` (`vc_id`, `map_id`, `upid`) for a value of `fields` or `content`
+ * outside its field; CABI-022 violations, including an `ocf_len` other than 0 or
+ * `ALDIS_OCF_LEN`, a member that is no constant, and `out` overlapping a buffer of `content`.
+ *
+ * # Safety
+ * `pc`, `vcs`, and `maps` as for [`aldis_uslp_vc_table_check`]; `fields` and `content` are
+ * valid for a read; each buffer of `content` is valid for its length (or `NULL` with 0); `out`
+ * is valid for `cap` octets; `out_len` is valid for one write; `err` is `NULL` or valid for one
+ * write.
+ */
+int32_t aldis_uslp_encode(const aldis_uslp_config_t *pc,
+                          const aldis_uslp_vc_config_t *vcs,
+                          size_t vc_count,
+                          const aldis_uslp_map_config_t *maps,
+                          size_t map_count,
+                          const aldis_uslp_fields_t *fields,
+                          const aldis_uslp_content_t *content,
+                          uint8_t *out,
+                          size_t cap,
+                          size_t *out_len,
+                          aldis_error_detail_t *err);
+
+/**
+ * Starts a two-phase write of one non-truncated frame with room for up to `max_tfdz_len` TFDZ
+ * octets (732.1 §4.1, §6.3; USLP-010, API-020, API-023, API-072; M2 plan D4).
+ *
+ * Checks the arguments, writes the unfinished Primary Header (TFVN `1111`, which every decoder
+ * rejects), the Insert Zone, and the TFDF Header in the first octets of `out`, zero-fills the
+ * Security Header and Trailer, and reports where each field lies. On a fixed-length channel
+ * `max_tfdz_len` must fill the frame.
+ *
+ * The caller fills the TFDZ and, with SDLS, the Security Header and Trailer at the offsets of
+ * `layout`, and calls [`aldis_uslp_writer_finish`] with the same arguments. `content->tfdz`
+ * must be empty: the TFDZ is filled in place. No state is kept.
+ *
+ * # Errors
+ * On error `out` is unchanged (API-022). The errors of [`aldis_uslp_encode`] for a frame with
+ * `max_tfdz_len` TFDZ octets, except the pointer, which [`aldis_uslp_writer_finish`] checks;
+ * CABI-022 violations, including a non-empty `content->tfdz`.
+ *
+ * # Safety
+ * As [`aldis_uslp_encode`], with `layout` valid for one write in place of `out_len`.
+ */
+int32_t aldis_uslp_writer_begin(const aldis_uslp_config_t *pc,
+                                const aldis_uslp_vc_config_t *vcs,
+                                size_t vc_count,
+                                const aldis_uslp_map_config_t *maps,
+                                size_t map_count,
+                                const aldis_uslp_fields_t *fields,
+                                const aldis_uslp_content_t *content,
+                                size_t max_tfdz_len,
+                                uint8_t *out,
+                                size_t cap,
+                                aldis_uslp_layout_t *layout,
+                                aldis_error_detail_t *err);
+
+/**
+ * Finishes a two-phase write begun with the same arguments, with `tfdz_len` TFDZ octets
+ * (732.1 §4.1.2.7, §4.1.5, §4.1.6; USLP-010, API-021, API-023).
+ *
+ * Rewrites the unfinished headers without zero-filling (`UslpFrameWriter::resume`), keeps the
+ * TFDZ and the security fields the caller filled, moves the Security Trailer to follow a TFDZ
+ * shorter than the reservation, writes the Frame Length, the OCF, and the FECF if configured,
+ * and returns the frame length. The frame is the first `*out_len` octets of `out`; the octets
+ * after it keep unspecified values (`UslpFrameWriter::finish`).
+ *
+ * # Errors
+ * As [`aldis_uslp_writer_begin`]; then `ALDIS_ERR_OUT_OF_RANGE` (`user_len`) above
+ * `max_tfdz_len`, `ALDIS_ERR_INVALID_FIELD` (`frame_data_field`) for 0,
+ * `ALDIS_ERR_LENGTH_MISMATCH` (`frame_data_field`) below it on a fixed-length channel, and
+ * `ALDIS_ERR_OUT_OF_RANGE` (`fhp_lvo_pointer`) for a pointer not below `tfdz_len`. On error
+ * `out` is unchanged, or, after the argument checks, holds the unfinished frame.
+ *
+ * # Safety
+ * As [`aldis_uslp_encode`].
+ */
+int32_t aldis_uslp_writer_finish(const aldis_uslp_config_t *pc,
+                                 const aldis_uslp_vc_config_t *vcs,
+                                 size_t vc_count,
+                                 const aldis_uslp_map_config_t *maps,
+                                 size_t map_count,
+                                 const aldis_uslp_fields_t *fields,
+                                 const aldis_uslp_content_t *content,
+                                 size_t max_tfdz_len,
+                                 size_t tfdz_len,
+                                 uint8_t *out,
+                                 size_t cap,
+                                 size_t *out_len,
+                                 aldis_error_detail_t *err);
+
+/**
+ * Encodes one truncated frame into the start of `out`; its length is the VC's truncated frame
+ * length (732.1 Annex D; USLP-002, USLP-012, USLP-016, API-075), as
+ * `aldis_uslp::encode_truncated` does.
+ *
+ * `content` gives the TFDF Header and the TFDZ; its Insert Zone and OCF must be empty, since a
+ * truncated frame has neither (Annex D1.2.2). With SDLS on the VC or MAP, the 6-octet Security
+ * Header and 16-octet Security Trailer are written as zeros (Annex D1.2.3).
+ *
+ * # Errors
+ * On error `out` is unchanged (API-022). The errors of [`aldis_uslp_vc_table_check`]; then
+ * `ALDIS_ERR_UNKNOWN_CHANNEL` (`spacecraft_id`, `vc_id`); `ALDIS_ERR_INVALID_FIELD` (`vc_id`) for
+ * VCID 63; `ALDIS_ERR_UNKNOWN_CHANNEL` (`map_id`); `ALDIS_ERR_INVALID_FIELD`
+ * (`end_of_frame_primary_header_flag`) for a VC without a truncated frame length,
+ * (`tfdz_construction_rule`) for a rule of a fixed-length TFDZ, and (`frame_data_field`) for an
+ * empty TFDZ; `ALDIS_ERR_LENGTH_MISMATCH` (`frame_data_field`) for a TFDZ that does not fill the
+ * frame; `ALDIS_ERR_BUFFER_TOO_SMALL`; CABI-022 violations, including a non-empty Insert Zone or
+ * OCF in `content`.
+ *
+ * # Safety
+ * As [`aldis_uslp_encode`], with `channel` in place of `fields`.
+ */
+int32_t aldis_uslp_encode_truncated(const aldis_uslp_config_t *pc,
+                                    const aldis_uslp_vc_config_t *vcs,
+                                    size_t vc_count,
+                                    const aldis_uslp_map_config_t *maps,
+                                    size_t map_count,
+                                    const aldis_uslp_channel_t *channel,
+                                    const aldis_uslp_content_t *content,
+                                    uint8_t *out,
+                                    size_t cap,
+                                    size_t *out_len,
+                                    aldis_error_detail_t *err);
+
+/**
+ * Encodes an OID frame on VCID 63 into the start of `out` and fills its TFDZ with the next
+ * octets of the OID generator `oid` (732.1 §4.1.4.1.5–12; USLP-009, CMN-020…022).
+ *
+ * As `aldis_uslp::encode_oid` does with the Fibonacci form, and `encode_oid_galois` with the
+ * Galois form, which gives the same octets.
+ *
+ * `fields->channel.vcid` must be 63 and `map_id` 0. The library writes the TFDF Header: rule
+ * `001`, UPID "Only Idle Data", and the Last Valid Octet Pointer at the last TFDZ octet, so
+ * `content->tfdf` is not read; `content` gives the Insert Zone and the OCF, and its TFDZ must be
+ * empty. The TFDZ fills the fixed-length frame.
+ *
+ * # Errors
+ * The errors of [`aldis_uslp_encode`], with `ALDIS_ERR_INVALID_FIELD` (`vc_id`) for another
+ * VCID, (`map_id`) for a MAP ID other than 0, and (`protocol_control_command_flag`) for
+ * protocol control frames; `ALDIS_ERR_INVALID_HANDLE` for an invalid generator; CABI-022
+ * violations, including a non-empty `content->tfdz` and `out` overlapping the generator's
+ * storage. On error neither `out` nor the generator is changed (GEN-042).
+ *
+ * # Safety
+ * As [`aldis_uslp_encode`]; `oid` is a handle from `aldis_oid_generator_init` whose storage is
+ * still valid, or detectably invalid storage.
+ */
+int32_t aldis_uslp_encode_oid(const aldis_uslp_config_t *pc,
+                              const aldis_uslp_vc_config_t *vcs,
+                              size_t vc_count,
+                              const aldis_uslp_map_config_t *maps,
+                              size_t map_count,
+                              const aldis_uslp_fields_t *fields,
+                              const aldis_uslp_content_t *content,
+                              aldis_oid_generator_t *oid,
+                              uint8_t *out,
+                              size_t cap,
+                              size_t *out_len,
+                              aldis_error_detail_t *err);
+
+/**
+ * The next item of the data unit `unit` from `offset`, the first octet not yet delimited
+ * (732.1 §4.3.11.2; USLP-015, M2 plan D14, D17).
+ *
+ * As `aldis_uslp::next_frame` gives it: a frame, which the caller passes to
+ * [`aldis_uslp_validate`] and steps over, or the rest of the unit, discarded. A C caller loops
+ * from offset 0, adding each item's `len`, until the kind is `ALDIS_USLP_DELIMITED_END`;
+ * every other item takes at least one octet.
+ *
+ * The unit is the octets of one data unit that TC Synchronization and Channel Coding delivered
+ * error-free (§4.3.11.2.1). Truncated frames are delimited by their VC's truncated frame
+ * length, which is why the call takes the virtual channels.
+ *
+ * # Errors
+ * The errors of [`aldis_uslp_vc_table_check`] without MAPs; CABI-022 violations, including an
+ * `offset` beyond `unit_len`.
+ *
+ * # Safety
+ * `unit` is valid for `unit_len` octets (or `NULL` with 0); `pc` and `vcs` as for
+ * [`aldis_uslp_vc_table_check`]; `out` is valid for one write; `err` is `NULL` or valid for one
+ * write.
+ */
+int32_t aldis_uslp_next_frame(const uint8_t *unit,
+                              size_t unit_len,
+                              size_t offset,
+                              const aldis_uslp_config_t *pc,
+                              const aldis_uslp_vc_config_t *vcs,
+                              size_t vc_count,
+                              aldis_uslp_delimited_t *out,
+                              aldis_error_detail_t *err);
 
 #ifdef __cplusplus
 }  // extern "C"

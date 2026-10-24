@@ -1,7 +1,10 @@
 //! Run-time report of the build-time capacities (CABI-030, GEN-011; M2 plan D5).
 
 use crate::abi;
-use crate::capacities::ALDIS_SPP_TRACKER_MAX_APIDS;
+use crate::capacities::{ALDIS_SPP_TRACKER_MAX_APIDS, ALDIS_TC_MAX_MAPS};
+// ---- USLP (M2 WP-5 module 9)
+use crate::capacities::{ALDIS_USLP_MAX_MAPS, ALDIS_USLP_MAX_VCS};
+// ---- end USLP
 use crate::error::{ALDIS_OK, status};
 
 /// The capacities this library was built with: the `ALDIS_*_MAX_*` constants (CABI-030).
@@ -15,6 +18,17 @@ pub struct aldis_limits_t {
     pub struct_size: u32,
     /// `ALDIS_SPP_TRACKER_MAX_APIDS`: APIDs one `aldis_spp_tracker_t` tracks (SPP-011).
     pub spp_tracker_max_apids: u32,
+    /// `ALDIS_TC_MAX_MAPS`: MAPs one `aldis_tc_*` call takes with a master channel (232.0
+    /// Table 5-4; M2 plan D14).
+    pub tc_max_maps: u32,
+    // ---- USLP (M2 WP-5 module 9)
+    /// `ALDIS_USLP_MAX_VCS`: virtual channels in the channel table of one `aldis_uslp_*` call
+    /// (API-040; M2 plan D14).
+    pub uslp_max_vcs: u32,
+    /// `ALDIS_USLP_MAX_MAPS`: MAP channels in the channel table of one `aldis_uslp_*` call
+    /// (API-040; M2 plan D14).
+    pub uslp_max_maps: u32,
+    // ---- end USLP
 }
 
 /// Fills `limits` with the capacities of this build (CABI-030).
@@ -40,6 +54,11 @@ pub unsafe extern "C" fn aldis_limits(limits: *mut aldis_limits_t) -> i32 {
                 struct_size: caller.struct_size,
                 spp_tracker_max_apids: u32::try_from(ALDIS_SPP_TRACKER_MAX_APIDS)
                     .unwrap_or(u32::MAX),
+                tc_max_maps: u32::try_from(ALDIS_TC_MAX_MAPS).unwrap_or(u32::MAX),
+                // ---- USLP (M2 WP-5 module 9)
+                uslp_max_vcs: u32::try_from(ALDIS_USLP_MAX_VCS).unwrap_or(u32::MAX),
+                uslp_max_maps: u32::try_from(ALDIS_USLP_MAX_MAPS).unwrap_or(u32::MAX),
+                // ---- end USLP
             });
             Ok(())
         })
@@ -66,6 +85,14 @@ mod tests {
         assert_eq!(
             usize::try_from(l.spp_tracker_max_apids).ok(),
             Some(ALDIS_SPP_TRACKER_MAX_APIDS)
+        );
+        assert_eq!(usize::try_from(l.tc_max_maps).ok(), Some(ALDIS_TC_MAX_MAPS));
+        assert_eq!(
+            (
+                usize::try_from(l.uslp_max_vcs).ok(),
+                usize::try_from(l.uslp_max_maps).ok()
+            ),
+            (Some(ALDIS_USLP_MAX_VCS), Some(ALDIS_USLP_MAX_MAPS))
         );
         let mut small = aldis_limits_t {
             struct_size: 4,
