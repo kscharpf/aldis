@@ -19,7 +19,7 @@ Outside the layers of the [architecture](../../docs/01-architecture.md) §2: it 
 | `epp` | `aldis::epp` | [`aldis-epp`](../aldis-epp/README.md) | Implemented (M1) |
 | `tm` | `aldis::tm` | [`aldis-tm`](../aldis-tm/README.md) | Implemented (M2; C ABI to follow) |
 | `tc` | `aldis::tc` | [`aldis-tc`](../aldis-tc/README.md) | Skeleton (M2) |
-| `aos` | `aldis::aos` | [`aldis-aos`](../aldis-aos/README.md) | Skeleton (M2) |
+| `aos` | `aldis::aos` | [`aldis-aos`](../aldis-aos/README.md) | Implemented (M2; C ABI to follow) |
 | `uslp` | `aldis::uslp` | [`aldis-uslp`](../aldis-uslp/README.md) | Skeleton (M2) |
 | `cop1` | `aldis::cop1` | [`aldis-cop1`](../aldis-cop1/README.md) | Skeleton (M3) |
 | `link` | `aldis::link` | [`aldis-link`](../aldis-link/README.md) | Skeleton (M4) |
