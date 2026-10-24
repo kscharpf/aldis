@@ -138,6 +138,9 @@ jobs:
           - tc_roundtrip
           - tc_delimit
           - tc_clcw
+          - uslp_decode
+          - uslp_truncated
+          - uslp_roundtrip
     runs-on: ubuntu-24.04
     permissions:
       contents: read
