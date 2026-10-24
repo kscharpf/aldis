@@ -200,6 +200,9 @@ USLP-011 (no mixing of truncated and full frames in one C&S data unit) belongs t
 | 1 CPU-hour per fuzz target before the release (VER-022) | run link in the exit table |
 | RS-020 check (added 2026-10-24, maintainer): `cargo xtask` flags a public enum variant, tuple-struct field, or named field of a codec crate (`aldis-core`, `-time`, `-spp`, `-epp`, `-tm`, `-tc`, `-aos`, `-uslp`) that holds a bare integer (`u8`…`u64`, `usize`) where the crate defines a restricted type, with an explicit, reasoned exemption list; part of `cargo xtask ci` | `xtask`, the exemption list, `cargo xtask ci` |
 | A test for every restricted type (added 2026-10-24, maintainer): for each newtype or enum with a checked constructor, a property test (VER-054 strategies) that every value the constructor accepts encodes to a wire field and decodes back to the same value, and every value it rejects is rejected; a Kani harness of the same property where the input space allows (nightly, OI-42) | `crates/*/tests/properties.rs`, `proofs.rs` |
+| Worst-case stack bound (added 2026-10-24, maintainer; extends VER-011): from `-Z emit-stack-sizes` and the call graph (complete because GEN-022 forbids recursion), compute each public entry point's worst-case stack on each embedded target and fail when it exceeds a budget per target; a `dyn` call or function pointer in library code that makes the graph incomplete is itself a failure | verify check, the budgets, the VER-011 record |
+| Loop-bound consistency (added 2026-10-24, maintainer; mechanizes GEN-022): every loop in a crate's library code appears in its inspection record (`docs/verification/inspections/`) with its bound, and every loop the record lists exists; a Kani unwinding proof of the bound where the kernel allows (nightly) | `cargo xtask ci`, the inspection records |
+| Bit-flip completeness (added 2026-10-24, maintainer): for each codec with an FECF, a deterministic suite that every single-bit error, and every double-bit error within the length the CRC guarantees (132.0, 232.0, 732.0, 732.1 FECF clauses), of a valid frame is rejected and never decoded as a different valid frame | `crates/*/tests/`, vectors where useful |
 
 **Done when:** every gate is green on `main` for all M2 crates.
 
@@ -211,6 +214,8 @@ USLP-011 (no mixing of truncated and full frames in one C&S data unit) belongs t
 | Crate docs cite clauses and requirement IDs (RS-015); the facade's `tm`, `tc`, `aos`, `uslp` features documented; the C ABI documented in the header comments | rustdoc, header |
 | `README.md` status, `CHANGELOG.md` `0.3.0-m2` (`cargo xtask changelog release 0.3.0-m2 <date>`), roadmap row, workspace version `0.3.0` | docs |
 | Open issues: OI-04, OI-05, OI-06, OI-32…35 updated with the accepted decisions; new spec questions as new OIs | [09-open-issues.md](../09-open-issues.md) |
+| Assurance case (added 2026-10-24, maintainer): a structured argument from the top claims (the library decodes and encodes per the cited Blue Books, never panics or blocks, uses bounded resources, and reports every deviation) down to the requirements and the verification records that support them; `cargo xtask` checks that every piece of evidence it cites exists and passes | `docs/verification/assurance-case.md`, an `xtask` check |
+| Hazard and failure-mode analysis (added 2026-10-24, maintainer): per codec, how a failure of the library could harm a mission (a corrupt frame accepted as valid, routing to the wrong spacecraft, VC or MAP, silent truncation, a hang), each failure mode traced to the requirements and tests that cover it, and gaps raised as new requirements or OIs | `docs/verification/hazards.md` |
 
 ## 4. Exit criteria
 
