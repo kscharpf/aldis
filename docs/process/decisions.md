@@ -2,7 +2,7 @@
 
 One line for each decision the maintainer takes, under the [decision rights](decision-rights.md) (VER-062). The line is an index: the decision itself is written where the rights say, in the OI, the plan, the requirement, or the pull request named on the line.
 
-**The coordinator appends a line whenever the maintainer decides something**, in the pull request that records the decision, or, for a decision that has none, in the next pull request it opens. Keep the lines in date order: a line whose date is earlier than the last goes in its place, not at the end. When two pull requests add lines, the one that merges second resolves the conflict. Merges themselves are not logged (decision rights §2.10). `cargo xtask decisions` checks the format, in `cargo xtask ci` and the verify check `spec`; `cargo xtask metrics` counts the lines.
+**The coordinator appends a line whenever the maintainer decides something**, in the pull request that records the decision, or, for a decision that has none, in the next pull request it opens. Keep the lines in date order: a line whose date is earlier than the last goes in its place, not at the end. Lines are added, never edited or removed; a correction is a new line. Git merges the log with `merge=union` ([`.gitattributes`](../../.gitattributes)), so when two pull requests add lines at the same place it keeps both sides instead of stopping at a conflict; `cargo xtask decisions` then reports a line the union left out of date order, or a line it kept twice, and the merge fixes it. Merges themselves are not logged (decision rights §2.10). `cargo xtask decisions` checks the format, in `cargo xtask ci` and the verify check `spec`; `cargo xtask metrics` counts the lines.
 
 ## Categories
 

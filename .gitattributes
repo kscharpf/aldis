@@ -1,0 +1,6 @@
+# The decision log is append-only (VER-062): pull requests only add lines at its end, so two of
+# them conflict merely because both append at the same place. merge=union keeps the lines of
+# both sides instead of stopping at the conflict. What a union can get wrong, a line out of date
+# order or the same line twice, `cargo xtask decisions` reports (in `cargo xtask ci` and the
+# verify check `spec`).
+docs/process/decisions.md merge=union
