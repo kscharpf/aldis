@@ -480,7 +480,8 @@ pub const USLP_HEADER_SPARE: FieldId = FieldId::catalogued::<90>("uslp_header_sp
 pub const END_OF_FRAME_PRIMARY_HEADER_FLAG: FieldId =
     FieldId::catalogued::<91>("end_of_frame_primary_header_flag");
 
-/// Virtual Channel Frame Count Length, and the VC Count Length managed parameters for each QoS.
+/// Virtual Channel Frame Count Length, and the VC Count Length managed parameters for each quality
+/// of service.
 ///
 /// Code 92, a field (732.1 §4.1.2.11; §5.4 Table 5-3; API-082).
 pub const VCF_COUNT_LEN: FieldId = FieldId::catalogued::<92>("vcf_count_len");

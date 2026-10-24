@@ -306,6 +306,18 @@ fn upid_table(snap: &Snapshot) -> Result<String, String> {
     );
     for (value, name, description, references, oid) in &assigned {
         let refs = references.replace('[', "\\[").replace(']', "\\]");
+        // Words with `_` (such as MAPA_SDU) are identifiers to rustdoc and Clippy.
+        let description: Vec<String> = description
+            .split(' ')
+            .map(|w| {
+                if w.contains('_') {
+                    format!("`{w}`")
+                } else {
+                    w.to_owned()
+                }
+            })
+            .collect();
+        let description = description.join(" ");
         let text = format!("`{value:05b}`: {description} (SANA {refs}, OID {oid})");
         for line in wrap(&text, MAX_WIDTH - "    /// ".len()) {
             let _ = writeln!(s, "    /// {line}");
@@ -320,16 +332,21 @@ fn upid_table(snap: &Snapshot) -> Result<String, String> {
          \x20   /// The UPID of a 5-bit field value, or `None` above 31 (732.1 §4.1.4.2.3.1; USLP-007).\n\
          \x20   #[must_use]\n\
          \x20   pub const fn from_bits(bits: u8) -> Option<Upid> {\n\
-         \x20       match bits {\n",
+         \x20       if bits > 0x1F {\n\
+         \x20           return None;\n\
+         \x20       }\n\
+         \x20       Some(Upid::from_field(bits))\n\
+         \x20   }\n\n\
+         \x20   /// The UPID of the low five bits of `bits`, the field of a TFDF Header (732.1\n\
+         \x20   /// §4.1.4.2.3.1; USLP-007).\n\
+         \x20   pub(crate) const fn from_field(bits: u8) -> Upid {\n\
+         \x20       match bits & 0x1F {\n",
     );
     for (value, name, ..) in &assigned {
-        let _ = writeln!(s, "            0b{value:05b} => Some(Upid::{name}),");
+        let _ = writeln!(s, "            0b{value:05b} => Upid::{name},");
     }
     s.push_str(
-        "            _ => match UnassignedUpid::new(bits) {\n\
-         \x20               Some(u) => Some(Upid::Other(u)),\n\
-         \x20               None => None,\n\
-         \x20           },\n\
+        "            other => Upid::Other(UnassignedUpid(other)),\n\
          \x20       }\n\
          \x20   }\n\n\
          \x20   /// The 5-bit field value (732.1 §4.1.4.2.3.1; USLP-007).\n\
@@ -548,7 +565,7 @@ mod tests {
         };
         let table = upid_table(&snap(rows.clone())).unwrap();
         assert!(table.contains("    OnlyIdleData,\n"));
-        assert!(table.contains("0b11111 => Some(Upid::OnlyIdleData),"));
+        assert!(table.contains("0b11111 => Upid::OnlyIdleData,"));
         let mut unnamed = rows.clone();
         unnamed[0] = row("Assigned", "0b00000", "1.3.112.4.58.99");
         assert!(upid_table(&snap(unnamed)).is_err());

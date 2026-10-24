@@ -27,7 +27,7 @@ pub enum Upid {
     /// `00100`: User-defined Octet Stream data are contained within the TFDZ. (SANA
     /// \[ccsds-732.1-B-1\], OID 1.3.112.4.58.5)
     OctetStream,
-    /// `00101`: Mission-specific Information-1 as a MAPA_SDU or VCA_SDU is contained within the
+    /// `00101`: Mission-specific Information-1 as a `MAPA_SDU` or `VCA_SDU` is contained within the
     /// TFDZ. (SANA \[ccsds-732.1-B-1\], OID 1.3.112.4.58.6)
     MissionSpecificInformation1,
     /// `00110`: Proximity-1 Pseudo Packet Identifier 1 for Segmentation (SANA \[ccsds-732.1-B-1\],
@@ -50,20 +50,26 @@ impl Upid {
     /// The UPID of a 5-bit field value, or `None` above 31 (732.1 §4.1.4.2.3.1; USLP-007).
     #[must_use]
     pub const fn from_bits(bits: u8) -> Option<Upid> {
-        match bits {
-            0b00000 => Some(Upid::Packets),
-            0b00001 => Some(Upid::Cop1ControlCommands),
-            0b00010 => Some(Upid::CopPControlCommands),
-            0b00100 => Some(Upid::OctetStream),
-            0b00101 => Some(Upid::MissionSpecificInformation1),
-            0b00110 => Some(Upid::Proximity1PseudoPacketId1),
-            0b00111 => Some(Upid::Proximity1Spdus),
-            0b01000 => Some(Upid::Proximity1PseudoPacketId2),
-            0b11111 => Some(Upid::OnlyIdleData),
-            _ => match UnassignedUpid::new(bits) {
-                Some(u) => Some(Upid::Other(u)),
-                None => None,
-            },
+        if bits > 0x1F {
+            return None;
+        }
+        Some(Upid::from_field(bits))
+    }
+
+    /// The UPID of the low five bits of `bits`, the field of a TFDF Header (732.1
+    /// §4.1.4.2.3.1; USLP-007).
+    pub(crate) const fn from_field(bits: u8) -> Upid {
+        match bits & 0x1F {
+            0b00000 => Upid::Packets,
+            0b00001 => Upid::Cop1ControlCommands,
+            0b00010 => Upid::CopPControlCommands,
+            0b00100 => Upid::OctetStream,
+            0b00101 => Upid::MissionSpecificInformation1,
+            0b00110 => Upid::Proximity1PseudoPacketId1,
+            0b00111 => Upid::Proximity1Spdus,
+            0b01000 => Upid::Proximity1PseudoPacketId2,
+            0b11111 => Upid::OnlyIdleData,
+            other => Upid::Other(UnassignedUpid(other)),
         }
     }
 

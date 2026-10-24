@@ -473,7 +473,8 @@ pub const ALDIS_FIELD_USLP_HEADER_SPARE: u16 = 90;
 /// Code 91, a field (732.1 §4.1.2.6; Annex D1.3; API-082, CABI-021).
 pub const ALDIS_FIELD_END_OF_FRAME_PRIMARY_HEADER_FLAG: u16 = 91;
 
-/// Virtual Channel Frame Count Length, and the VC Count Length managed parameters for each QoS.
+/// Virtual Channel Frame Count Length, and the VC Count Length managed parameters for each quality
+/// of service.
 ///
 /// Code 92, a field (732.1 §4.1.2.11; §5.4 Table 5-3; API-082, CABI-021).
 pub const ALDIS_FIELD_VCF_COUNT_LEN: u16 = 92;

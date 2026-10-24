@@ -297,7 +297,7 @@ The table is the registry. `cargo xtask fields --write` generates from it the Ru
 | 89 | `protocol_control_command_flag` | field | Protocol Control Command Flag of the USLP Primary Header, read with the Bypass/Sequence Control Flag as Table 4-1 | uslp | 732.1 §4.1.2.8.2, Table 4-1 |
 | 90 | `uslp_header_spare` | field | Reserve Spares of the USLP Primary Header, bits 50–51 | uslp | 732.1 §4.1.2.9 |
 | 91 | `end_of_frame_primary_header_flag` | field | End of Frame Primary Header Flag: a truncated Primary Header | uslp | 732.1 §4.1.2.6; Annex D1.3 |
-| 92 | `vcf_count_len` | field | Virtual Channel Frame Count Length, and the VC Count Length managed parameters for each QoS | uslp | 732.1 §4.1.2.11; §5.4 Table 5-3 |
+| 92 | `vcf_count_len` | field | Virtual Channel Frame Count Length, and the VC Count Length managed parameters for each quality of service | uslp | 732.1 §4.1.2.11; §5.4 Table 5-3 |
 | 93 | `vcf_count` | field | Virtual Channel Frame Count | uslp | 732.1 §4.1.2.12 |
 | 94 | `tfdz_construction_rule` | field | TFDZ Construction Rule of the TFDF Header | uslp | 732.1 §4.1.4.2.2 |
 | 95 | `upid` | field | USLP Protocol Identifier of the TFDF Header | uslp | 732.1 §4.1.4.2.3 |
