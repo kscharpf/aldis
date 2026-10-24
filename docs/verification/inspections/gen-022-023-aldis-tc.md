@@ -13,6 +13,7 @@
 | Date | Change |
 |---|---|
 | 2026-10-23, `m2/tc-codec` (WP-3), prepared by Claude Code, pending exit review | First inspection: modules 1–7 of WP-3 |
+| 2026-10-24, `m2/tc-c-abi` (WP-3 module 8), prepared by Claude Code (agent of WP-3 module 8), pending exit review | For the C ABI: `view.rs` adds `TcFrame::peek_header` → `RawHeader::parse`, `check_version`, `frame_type`, `TcFrameHeader::new`, and `peek_length` now → `peek_header`, `TcFrameHeader::frame_len`; `writer.rs` adds `TcFrameWriter::resume` → `Plan::new`, `TcFrameWriter::start`, and `start` takes a `write` flag: the unfinished header, the Segment Header, and the zeros of the Security Header and Trailer are written only for `begin` and `encode`. No loop added (the existing ones in `start` are now conditional), no recursion |
 
 ## Loops
 
@@ -26,8 +27,8 @@ Every loop in library code, with its bound. Copies and comparisons of fixed-size
 | `config.rs` `VcLookup for VcTable` `has_spacecraft`, `vc`, `map`; `VcTable::vcs`, `maps` | `iter().flatten()` with `any` / `find` | compile-time capacity: `V` or `M` |
 | `view.rs` `parse` (via `crc::verify_fecf`) | CRC over the frame | input length: the frame, at most 1024 octets |
 | `writer.rs` `encode` | copies the User Data or Control Command into the reservation (`zip`) | input length: the payload |
-| `writer.rs` `TcFrameWriter::start` | writes the unfinished header and the Segment Header (`zip` over `header.chain(segment)`) | constant: at most 6 |
-| `writer.rs` `TcFrameWriter::start` | `fill(0)` of the Security Header and Trailer | input length: the reserved frame in the caller's buffer, at most 1024 octets |
+| `writer.rs` `TcFrameWriter::start` | writes the unfinished header and the Segment Header (`zip` over `header.chain(segment)`), when called by `begin` or `encode` (not by `resume`) | constant: at most 6 |
+| `writer.rs` `TcFrameWriter::start` | `fill(0)` of the Security Header and Trailer, when called by `begin` or `encode` (not by `resume`) | input length: the reserved frame in the caller's buffer, at most 1024 octets |
 | `writer.rs` `TcFrameWriter::finish` | `copy_within` moving the Security Trailer to follow the User Data | input length: the unused User Data and the trailer, within the frame |
 | `writer.rs` `TcFrameWriter::finish` | writes the final header (`zip` over 5 octets); `crc::write_fecf` over the frame | constant: 5; input length: the frame |
 | `clcw.rs` `Clcw::decode` | over the two Reserved Spare fields | constant: 2 |
@@ -40,8 +41,8 @@ Every loop in library code, with its bound. Copies and comparisons of fixed-size
 No function calls itself, directly or through another `aldis-tc` function. The internal call graph is acyclic and at most five functions deep, for example `TcFrame::decode` → `parse` → `check_head` → `RawHeader::frame_type` → `FrameType::from_flags`. The calls between the crate's own functions:
 
 - `TcFrame::decode`, `validate_frame` → `parse` → `check_head`, `length`, `fail` (→ `Rejection::new`), `too_short`, `control_command` (→ `ControlCommand::parse`), `SegmentHeader::from_octet` (→ `SequenceFlags::from_bits`), `VcConfig::security`, `MapConfig::security`, `TcFrameHeader::new`, `unknown`, `reserved`, `invalid`; `check_head` → `RawHeader::parse`, `RawHeader::check_version`, `RawHeader::frame_type` (→ `FrameType::from_flags`, `reserved`), `VcConfig::has_segment_header`, `VcConfig::max_frame_len`, `PhysicalChannelConfig::max_frame_len`, `fecf`, `len_u64`, and the `VcLookup` methods.
-- `TcFrame::peek_length` → `RawHeader::parse`, `RawHeader::check_version`, `RawHeader::frame_type`.
-- `encode` → `ControlCommand::to_octets`, `ControlOctets::as_slice`, `Plan::new`, `TcFrameWriter::start`, `TcFrameWriter::user_data_mut`, `TcFrameWriter::finish`; `TcFrameWriter::begin` → `Plan::new`, `TcFrameWriter::start`; `Plan::new` → `FrameType::control_command_flag`, `VcConfig::has_segment_header`, `VcConfig::security`, `MapConfig::security`, `unknown`, `invalid`, `len_u64`, and the `VcLookup` methods; `TcFrameWriter::start` → `primary_octets` (→ `FrameType::bypass_flag`, `control_command_flag`), `SegmentHeader::octet` (→ `SequenceFlags::bits`), `security_header_mut`, `security_trailer_mut`; `TcFrameWriter::finish` → `primary_octets`, `invalid`, `len_u64`.
+- `TcFrame::peek_length` → `TcFrame::peek_header`, `TcFrameHeader::frame_len`; `peek_header` → `RawHeader::parse`, `RawHeader::check_version`, `RawHeader::frame_type`, `TcFrameHeader::new`.
+- `encode` → `ControlCommand::to_octets`, `ControlOctets::as_slice`, `Plan::new`, `TcFrameWriter::start`, `TcFrameWriter::user_data_mut`, `TcFrameWriter::finish`; `TcFrameWriter::begin` and `TcFrameWriter::resume` → `Plan::new`, `TcFrameWriter::start`; `Plan::new` → `FrameType::control_command_flag`, `VcConfig::has_segment_header`, `VcConfig::security`, `MapConfig::security`, `unknown`, `invalid`, `len_u64`, and the `VcLookup` methods; `TcFrameWriter::start` → `primary_octets` (→ `FrameType::bypass_flag`, `control_command_flag`), `SegmentHeader::octet` (→ `SequenceFlags::bits`), `security_header_mut`, `security_trailer_mut`; `TcFrameWriter::finish` → `primary_octets`, `invalid`, `len_u64`.
 - `VcTable::new` → `VcLookup::vc`, `VcLookup::map` (its own implementation, → `vcs`, `maps`), `VcConfig::has_segment_header`, `VcConfig::security`, `check_room`, `bad_max_len` (through `PhysicalChannelConfig::new`, `VcConfig::new`).
 - `TcFrameHeader::primary_header_octets` → `primary_octets`, `TcFrameHeader::frame_len`; the `TcFrame` accessors → the `TcFrameHeader` accessors.
 - `Clcw::decode` → `fixed`, `reserved`, `ClcwStatus::masked`, `CopInEffect::masked`, `FarmBCounter::masked`; `decode_report` → `decode`; `to_word`, `to_ocf` → `to_octets` → `flag`; the `TryFrom` implementations → `new`.

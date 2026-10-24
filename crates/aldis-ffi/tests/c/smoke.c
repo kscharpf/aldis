@@ -170,6 +170,79 @@ int main(void) {
     check(aldis_tm_validate(frame, len, &mc, &vc, 1, ALDIS_MODE_STRICT, NULL) == ALDIS_OK,
           "aldis_tm_validate");
 
+    /* --- TC (M2 WP-3 module 8) ---
+     * A Type-AD frame of VC 1 on SCID 0x155 through the two-phase writer, followed by fill in
+     * one data unit, delimited and validated (M2 plan D14); then a CLCW as a word. */
+    check(limits.tc_max_maps == ALDIS_TC_MAX_MAPS, "TC MAP capacity");
+    aldis_tc_mc_config_t tc_mc;
+    memset(&tc_mc, 0, sizeof tc_mc);
+    tc_mc.struct_size = (uint32_t)sizeof tc_mc;
+    tc_mc.scid = 0x155;
+    tc_mc.pc.struct_size = (uint32_t)sizeof tc_mc.pc;
+    tc_mc.pc.fecf = 1;
+    tc_mc.pc.max_frame_len = 64;
+    aldis_tc_vc_config_t tc_vc;
+    memset(&tc_vc, 0, sizeof tc_vc);
+    tc_vc.struct_size = (uint32_t)sizeof tc_vc;
+    tc_vc.vcid = 1;
+    tc_vc.max_frame_len = 64;
+    aldis_tc_fields_t tc;
+    memset(&tc, 0, sizeof tc);
+    tc.frame_type = ALDIS_TC_FRAME_AD;
+    tc.scid = 0x155;
+    tc.vcid = 1;
+    tc.sequence_number = 4;
+    uint8_t unit[16];
+    memset(unit, 0x55, sizeof unit); /* Fill Data after the frame */
+    aldis_tc_layout_t tc_layout;
+    check(aldis_tc_writer_begin(&tc_mc, &tc_vc, 1, NULL, 0, &tc, 3, unit, sizeof unit,
+                                &tc_layout, &err) == ALDIS_OK,
+          "aldis_tc_writer_begin");
+    check(tc_layout.data_offset == 5 && tc_layout.data_len == 3 && tc_layout.fecf_len == 2,
+          "TC frame layout");
+    unit[5] = 1;
+    unit[6] = 2;
+    unit[7] = 3;
+    check(aldis_tc_writer_finish(&tc_mc, &tc_vc, 1, NULL, 0, &tc, 3, 3, unit, sizeof unit, &len,
+                                 &err) == ALDIS_OK &&
+              len == 10,
+          "aldis_tc_writer_finish");
+    const uint8_t tc_frame[10] = {0x01, 0x55, 0x04, 0x09, 0x04, 0x01, 0x02, 0x03, 0xE0, 0xC0};
+    check(memcmp(unit, tc_frame, sizeof tc_frame) == 0, "TC frame octets (tc/ad.json)");
+    size_t offset = 0;
+    int tc_frames = 0;
+    int tc_fill = 0;
+    aldis_tc_delimited_t item;
+    while (aldis_tc_next_frame(unit, sizeof unit, offset, &item, &err) == ALDIS_OK &&
+           item.kind != ALDIS_TC_DELIMITED_END) {
+        if (item.kind == ALDIS_TC_DELIMITED_FRAME) {
+            aldis_tc_frame_t tc_view;
+            uint32_t reason = 99;
+            check(aldis_tc_validate(unit + item.offset, item.len, &tc_mc, &tc_vc, 1, NULL, 0,
+                                    ALDIS_MODE_STRICT, &tc_view, &reason, &err) == ALDIS_OK &&
+                      reason == ALDIS_TC_REASON_NONE,
+                  "aldis_tc_validate");
+            check(tc_view.header.sequence_number == 4 && tc_view.layout.data_len == 3 &&
+                      unit[item.offset + tc_view.layout.data_offset] == 1,
+                  "validated TC frame (CABI-012)");
+            tc_frames++;
+        } else if (item.kind == ALDIS_TC_DELIMITED_FILL) {
+            tc_fill++;
+        }
+        offset += item.len;
+    }
+    check(tc_frames == 1 && tc_fill == 1 && offset == sizeof unit, "aldis_tc_next_frame");
+    aldis_clcw_t clcw;
+    uint32_t clcw_anomalies = 99;
+    check(aldis_clcw_decode(0x01140C2Au, ALDIS_MODE_STRICT, &clcw, &clcw_anomalies, &err) ==
+                  ALDIS_OK &&
+              clcw.vcid == 5 && clcw.retransmit == 1 && clcw.report_value == 42 &&
+              clcw_anomalies == 0,
+          "aldis_clcw_decode");
+    uint32_t clcw_word = 0;
+    check(aldis_clcw_encode(&clcw, &clcw_word, &err) == ALDIS_OK && clcw_word == 0x01140C2Au,
+          "aldis_clcw_encode");
+
     if (failures != 0) {
         return 1;
     }

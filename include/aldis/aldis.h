@@ -40,6 +40,13 @@
 #define ALDIS_SPP_TRACKER_MAX_APIDS 16
 
 /**
+ * MAPs that one `aldis_tc_*` call takes with a master channel (232.0 Table 5-4; M2 plan D14).
+ *
+ * `[tc] max_maps` of `capacities.toml` (CABI-030).
+ */
+#define ALDIS_TC_MAX_MAPS 64
+
+/**
  * Header size argument: the smallest header that holds the fields and the length
  * (133.1 §4.1.2.4; EPP-008).
  */
@@ -1188,6 +1195,188 @@
 #define ALDIS_SPP_REASSEMBLY_DROPPED 2
 
 /**
+ * Length of the TC Transfer Frame Primary Header in octets (232.0 §4.1.2).
+ */
+#define ALDIS_TC_PRIMARY_HEADER_LEN 5
+
+/**
+ * Length of the Segment Header in octets (232.0 §4.1.3.2.2).
+ */
+#define ALDIS_TC_SEGMENT_HEADER_LEN 1
+
+/**
+ * Shortest TC Transfer Frame in octets (232.0 §4.1.1, §4.1.2.7).
+ */
+#define ALDIS_TC_MIN_FRAME_LEN 6
+
+/**
+ * Longest TC Transfer Frame in octets (232.0 §4.1.2.7; TC-007).
+ */
+#define ALDIS_TC_MAX_FRAME_LEN 1024
+
+/**
+ * Virtual channels a master channel can have: VCIDs 0 to 63 (232.0 §4.1.2; M2 plan D14).
+ */
+#define ALDIS_TC_MAX_VCS 64
+
+/**
+ * Frame type AD: Bypass Flag `0`, Control Command Flag `0` (232.0 §4.1.2, Table 4-1).
+ */
+#define ALDIS_TC_FRAME_AD 0
+
+/**
+ * Frame type BD: Bypass Flag `1`, Control Command Flag `0` (232.0 Table 4-1).
+ */
+#define ALDIS_TC_FRAME_BD 1
+
+/**
+ * Frame type BC: Bypass Flag `1`, Control Command Flag `1` (232.0 Table 4-1).
+ */
+#define ALDIS_TC_FRAME_BC 2
+
+/**
+ * Sequence Flags `00`: a continuing segment (232.0 §4.1.3.2.2).
+ */
+#define ALDIS_TC_SEQ_CONTINUING 0
+
+/**
+ * Sequence Flags `01`: the first segment (232.0 §4.1.3.2.2).
+ */
+#define ALDIS_TC_SEQ_FIRST 1
+
+/**
+ * Sequence Flags `10`: the last segment (232.0 §4.1.3.2.2).
+ */
+#define ALDIS_TC_SEQ_LAST 2
+
+/**
+ * Sequence Flags `11`: no segmentation (232.0 §4.1.3.2.2).
+ */
+#define ALDIS_TC_SEQ_UNSEGMENTED 3
+
+/**
+ * No Control Command: the data field of a Type-D frame, or, in lenient mode, a Type-C data
+ * field that is neither command (232.0 §4.1.3.3.4; TC-005).
+ */
+#define ALDIS_TC_CONTROL_NONE 0
+
+/**
+ * The Unlock Control Command, one octet of zeros (232.0 §4.1.3.3.2; TC-005).
+ */
+#define ALDIS_TC_CONTROL_UNLOCK 1
+
+/**
+ * The Set V(R) Control Command, `82 00` and the new V(R) (232.0 §4.1.3.3.3; TC-005).
+ */
+#define ALDIS_TC_CONTROL_SET_VR 2
+
+/**
+ * Anomaly bit: Reserved Spare of the Primary Header not `00` (bit 0 of `TcAnomaly`; 232.0
+ * §4.1.2.4; TC-003, API-032).
+ */
+#define ALDIS_TC_ANOMALY_RESERVED_SPARE_SET (1 << 0)
+
+/**
+ * Anomaly bit: a Type-C data field that is neither Unlock nor Set V(R) (bit 1; 232.0
+ * §4.1.3.3.4; TC-005, API-032).
+ */
+#define ALDIS_TC_ANOMALY_UNKNOWN_CONTROL_COMMAND (1 << 1)
+
+/**
+ * Anomaly bit: a Reserved Spare of the CLCW not zero (bit 2; 232.0 §4.2.1.7, §4.2.1.10;
+ * TC-030, API-032).
+ */
+#define ALDIS_TC_ANOMALY_CLCW_SPARE_SET (1 << 2)
+
+/**
+ * Delimiter item: no octets of the unit remain (232.0 §4.4.9.2; TC-020).
+ */
+#define ALDIS_TC_DELIMITED_END 0
+
+/**
+ * Delimiter item: one frame, as long as its Frame Length declares (232.0 §4.4.9.2.4; TC-020).
+ */
+#define ALDIS_TC_DELIMITED_FRAME 1
+
+/**
+ * Delimiter item: the rest of the unit, discarded: a valid header that declares more octets
+ * than remain (232.0 §4.4.9.2.5; TC-020).
+ */
+#define ALDIS_TC_DELIMITED_TRUNCATED_FRAME 2
+
+/**
+ * Delimiter item: the rest of the unit, discarded as Fill Data (232.0 §4.4.9.2.6; TC-020).
+ */
+#define ALDIS_TC_DELIMITED_FILL 3
+
+/**
+ * No rejection: the frame passed the Frame Validation Checks, or the call failed before they
+ * ran (TC-021).
+ */
+#define ALDIS_TC_REASON_NONE 0
+
+/**
+ * Check (a): the Transfer Frame Version Number is not `00` (232.0 §4.4.9.3.3; TC-021).
+ */
+#define ALDIS_TC_REASON_UNEXPECTED_VERSION 1
+
+/**
+ * Check (b): the Spacecraft ID is not that of the master channel (232.0 §4.4.9.3.3; TC-021).
+ */
+#define ALDIS_TC_REASON_UNEXPECTED_SPACECRAFT 2
+
+/**
+ * Check (c): Bypass Flag `0` with Control Command Flag `1` (232.0 Table 4-1; TC-002, TC-021).
+ */
+#define ALDIS_TC_REASON_RESERVED_FLAGS 3
+
+/**
+ * Check (c), strict mode only: the Reserved Spare is not `00` (232.0 §4.1.2.4; TC-003).
+ */
+#define ALDIS_TC_REASON_RESERVED_SPARE 4
+
+/**
+ * Check (c): the VCID is not configured (232.0 §4.4.7.3; TC-022).
+ */
+#define ALDIS_TC_REASON_INVALID_VCID 5
+
+/**
+ * Check (c): the Frame Length exceeds the channel's maximum (232.0 Tables 5-1, 5-3; TC-021).
+ */
+#define ALDIS_TC_REASON_FRAME_TOO_LONG 6
+
+/**
+ * Check (c): the Frame Length leaves no data octet (232.0 §4.1.1; TC-021, CMN-041).
+ */
+#define ALDIS_TC_REASON_FRAME_TOO_SHORT 7
+
+/**
+ * Check (d): the Frame Length disagrees with the octets present (232.0 §4.4.9.3.3; TC-021).
+ */
+#define ALDIS_TC_REASON_LENGTH_MISMATCH 8
+
+/**
+ * Check (e): the FECF does not match (232.0 §4.1.4; TC-006, TC-021).
+ */
+#define ALDIS_TC_REASON_FECF_MISMATCH 9
+
+/**
+ * The MAP ID is not configured on the Virtual Channel (232.0 §4.4.3.3; TC-022).
+ */
+#define ALDIS_TC_REASON_INVALID_MAP_ID 10
+
+/**
+ * Strict mode only: a Type-C data field that is neither Unlock nor Set V(R) (232.0
+ * §4.1.3.3.4; TC-005).
+ */
+#define ALDIS_TC_REASON_RESERVED_CONTROL_COMMAND 11
+
+/**
+ * COP in Effect `01`: COP-1 (232.0 §4.2.1.5).
+ */
+#define ALDIS_CLCW_COP_1 1
+
+/**
  * [`aldis_time_format_t::code`]: CCSDS Unsegmented Time Code (301.0 §3.2).
  */
 #define ALDIS_TIME_CUC 0
@@ -1604,6 +1793,11 @@ typedef struct {
    * `ALDIS_SPP_TRACKER_MAX_APIDS`: APIDs one `aldis_spp_tracker_t` tracks (SPP-011).
    */
   uint32_t spp_tracker_max_apids;
+  /**
+   * `ALDIS_TC_MAX_MAPS`: MAPs one `aldis_tc_*` call takes with a master channel (232.0
+   * Table 5-4; M2 plan D14).
+   */
+  uint32_t tc_max_maps;
 } aldis_limits_t;
 
 /**
@@ -2013,6 +2207,390 @@ typedef struct {
    */
   size_t sdu_len;
 } aldis_spp_reassembly_t;
+
+/**
+ * Managed parameters of a physical channel (232.0 §5.1 Table 5-1; GEN-060, CABI-033).
+ */
+typedef struct {
+  /**
+   * `sizeof(aldis_tc_config_t)`, set by the caller (CABI-033).
+   */
+  uint32_t struct_size;
+  /**
+   * 1 if every frame ends with a Frame Error Control Field, else 0 (232.0 §4.1.4.1).
+   */
+  uint8_t fecf;
+  /**
+   * Maximum Transfer Frame Length in octets: at most `ALDIS_TC_MAX_FRAME_LEN`, and at least
+   * `ALDIS_TC_MIN_FRAME_LEN`, two more with the FECF (232.0 Table 5-1; TC-007).
+   */
+  size_t max_frame_len;
+} aldis_tc_config_t;
+
+/**
+ * Managed parameters of a master channel (232.0 §5.2 Table 5-2; GEN-060, CABI-033).
+ *
+ * Its virtual channels and MAPs are passed beside it, each as an array and its count (M2 plan
+ * D14).
+ */
+typedef struct {
+  /**
+   * `sizeof(aldis_tc_mc_config_t)`, set by the caller (CABI-033).
+   */
+  uint32_t struct_size;
+  /**
+   * Spacecraft ID, 0 to 1023 (232.0 §4.1.2, Table 5-2).
+   */
+  uint16_t scid;
+  /**
+   * The physical channel, with its own `struct_size` (CABI-033).
+   */
+  aldis_tc_config_t pc;
+} aldis_tc_mc_config_t;
+
+/**
+ * Managed parameters of a virtual channel (232.0 §5.3 Table 5-3, §6.6.1 Table 6-2; TC-004,
+ * API-070, CABI-033).
+ */
+typedef struct {
+  /**
+   * `sizeof(aldis_tc_vc_config_t)`, set by the caller, the same for every struct of an
+   * array (CABI-033).
+   */
+  uint32_t struct_size;
+  /**
+   * Virtual Channel Identifier, 0 to 63 (232.0 §4.1.2).
+   */
+  uint8_t vcid;
+  /**
+   * 1 if the VC's Type-D frames carry a Segment Header, else 0 (232.0 §4.1.3.2.2.1.2;
+   * TC-004). With a Segment Header the Security Header and Trailer lengths are set per MAP
+   * and both lengths here must be 0.
+   */
+  uint8_t segment_header;
+  /**
+   * Security Header length in octets, at most 64; 0 without SDLS (Table 6-2; API-070).
+   */
+  uint8_t security_header_len;
+  /**
+   * Security Trailer length in octets; 0 without SDLS (Table 6-2; API-070).
+   */
+  uint16_t security_trailer_len;
+  /**
+   * Maximum Transfer Frame Length of the VC in octets, `ALDIS_TC_MIN_FRAME_LEN` to
+   * `ALDIS_TC_MAX_FRAME_LEN` (Table 5-3; TC-007).
+   */
+  size_t max_frame_len;
+} aldis_tc_vc_config_t;
+
+/**
+ * Managed parameters of a MAP channel (232.0 §5.4 Table 5-4, §6.6.2 Table 6-3; TC-022,
+ * API-070, CABI-033).
+ */
+typedef struct {
+  /**
+   * `sizeof(aldis_tc_map_config_t)`, set by the caller, the same for every struct of an
+   * array (CABI-033).
+   */
+  uint32_t struct_size;
+  /**
+   * The VCID of its virtual channel, which must have Segment Headers (232.0
+   * §4.1.3.2.2.1.2).
+   */
+  uint8_t vcid;
+  /**
+   * MAP Identifier, 0 to 63 (232.0 §4.1.3.2.2).
+   */
+  uint8_t map_id;
+  /**
+   * Security Header length in octets, at most 64; 0 without SDLS (Table 6-3; API-070).
+   */
+  uint8_t security_header_len;
+  /**
+   * Security Trailer length in octets; 0 without SDLS (Table 6-3; API-070).
+   */
+  uint16_t security_trailer_len;
+} aldis_tc_map_config_t;
+
+/**
+ * A TC Transfer Frame Primary Header as plain values (232.0 §4.1.2; TC-001, TC-002, API-014,
+ * GEN-053).
+ */
+typedef struct {
+  /**
+   * Frame type, `ALDIS_TC_FRAME_*`, from the Bypass and Control Command Flags (232.0 Table
+   * 4-1).
+   */
+  uint8_t frame_type;
+  /**
+   * Spacecraft ID (232.0 §4.1.2).
+   */
+  uint16_t scid;
+  /**
+   * Virtual Channel Identifier (232.0 §4.1.2).
+   */
+  uint8_t vcid;
+  /**
+   * Frame Sequence Number N(S) (232.0 §4.1.2).
+   */
+  uint8_t sequence_number;
+  /**
+   * Total frame length in octets: the Frame Length field plus one (232.0 §4.1.2.7;
+   * GEN-053).
+   */
+  size_t frame_len;
+} aldis_tc_header_t;
+
+/**
+ * A Control Command (232.0 §4.1.3.3; TC-005).
+ *
+ * `set_vr_value` is read only with `ALDIS_TC_CONTROL_SET_VR`, and written as 0 otherwise.
+ */
+typedef struct {
+  /**
+   * `ALDIS_TC_CONTROL_*`.
+   */
+  uint8_t command;
+  /**
+   * The new V(R) of a Set V(R) command (232.0 §4.1.3.3.3).
+   */
+  uint8_t set_vr_value;
+} aldis_tc_control_t;
+
+/**
+ * Where each field of a frame lies (232.0 §4.1, §6.3; API-072, CABI-012).
+ *
+ * Offsets and lengths are in octets from the start of the frame. An absent field has length 0
+ * at the offset where it would start.
+ */
+typedef struct {
+  /**
+   * The octets the frame takes (232.0 §4.1.2.7; API-012).
+   */
+  size_t frame_len;
+  /**
+   * Offset of the Segment Header.
+   */
+  size_t segment_header_offset;
+  /**
+   * Length of the Segment Header: `ALDIS_TC_SEGMENT_HEADER_LEN` or 0 (232.0 §4.1.3.2.2).
+   */
+  size_t segment_header_len;
+  /**
+   * Offset of the Security Header.
+   */
+  size_t security_header_offset;
+  /**
+   * Length of the Security Header; 0 without SDLS (232.0 §6.3.4).
+   */
+  size_t security_header_len;
+  /**
+   * Offset of the data field: the User Data or the Control Command.
+   */
+  size_t data_offset;
+  /**
+   * Length of the data field (232.0 §4.1.3).
+   */
+  size_t data_len;
+  /**
+   * Offset of the Security Trailer.
+   */
+  size_t security_trailer_offset;
+  /**
+   * Length of the Security Trailer; 0 without SDLS (232.0 §6.3.6).
+   */
+  size_t security_trailer_len;
+  /**
+   * Offset of the Frame Error Control Field.
+   */
+  size_t fecf_offset;
+  /**
+   * Length of the Frame Error Control Field: 2 or 0 (232.0 §4.1.4).
+   */
+  size_t fecf_len;
+} aldis_tc_layout_t;
+
+/**
+ * A decoded TC Transfer Frame: its fields and where they lie in the input (232.0 §4.1, §6.3;
+ * TC-001…TC-006, API-010, CABI-012).
+ */
+typedef struct {
+  /**
+   * The Primary Header (232.0 §4.1.2; API-014).
+   */
+  aldis_tc_header_t header;
+  /**
+   * Whether the frame has a Segment Header (232.0 §4.1.3.2.2; TC-004).
+   */
+  bool has_segment_header;
+  /**
+   * With `has_segment_header`, the Sequence Flags, `ALDIS_TC_SEQ_*`; else 0.
+   */
+  uint8_t sequence_flags;
+  /**
+   * With `has_segment_header`, the MAP Identifier; else 0.
+   */
+  uint8_t map_id;
+  /**
+   * The Control Command of a Type-C frame; `ALDIS_TC_CONTROL_NONE` for a Type-D frame, and
+   * for a reserved pattern in lenient mode (232.0 §4.1.3.3; TC-005).
+   */
+  aldis_tc_control_t control;
+  /**
+   * Whether the frame has an FECF (232.0 §4.1.4; TC-006).
+   */
+  bool has_fecf;
+  /**
+   * The FECF, when `has_fecf`.
+   */
+  uint16_t fecf;
+  /**
+   * Lenient-mode anomaly flags, `ALDIS_TC_ANOMALY_*`; 0 in strict mode (API-032).
+   */
+  uint32_t anomalies;
+  /**
+   * Where each field lies in the input.
+   */
+  aldis_tc_layout_t layout;
+} aldis_tc_frame_t;
+
+/**
+ * The header fields a sender chooses (232.0 §4.1.2, §4.1.3.2.2; TC-004, TC-008). The Frame
+ * Length and the Reserved Spare are written by the library (API-021).
+ *
+ * With `segment_header` 0, `sequence_flags` and `map_id` are ignored.
+ */
+typedef struct {
+  /**
+   * Frame type, `ALDIS_TC_FRAME_*` (232.0 Table 4-1).
+   */
+  uint8_t frame_type;
+  /**
+   * Spacecraft ID, which must be the master channel's (232.0 §4.1.2).
+   */
+  uint16_t scid;
+  /**
+   * Virtual Channel Identifier, which must be configured (232.0 §4.1.2).
+   */
+  uint8_t vcid;
+  /**
+   * Frame Sequence Number N(S), as given also on Type-B frames (232.0 §4.1.2; TC-008).
+   */
+  uint8_t sequence_number;
+  /**
+   * 1 for a Segment Header, which a Type-D frame of a VC with Segment Headers must have,
+   * else 0 (232.0 §4.1.3.2.2.1.2; TC-004).
+   */
+  uint8_t segment_header;
+  /**
+   * Sequence Flags, `ALDIS_TC_SEQ_*` (232.0 §4.1.3.2.2).
+   */
+  uint8_t sequence_flags;
+  /**
+   * MAP Identifier, 0 to 63, which must be configured (232.0 §4.1.3.2.2; TC-022).
+   */
+  uint8_t map_id;
+} aldis_tc_fields_t;
+
+/**
+ * The data field of a frame for [`aldis_tc_encode`] (232.0 §4.1.3; TC-004, TC-005, API-072,
+ * CABI-011; c-abi.md §11).
+ *
+ * With `control.command` `ALDIS_TC_CONTROL_NONE` the frame is Type-D and carries
+ * `user_data`, at least one octet; otherwise it is Type-C and carries the command, and
+ * `user_data` must be empty. The Security Header and Trailer are written as zeros for the SDLS
+ * layer to fill (API-072). The struct is read once per call and no pointer is kept (API-060).
+ */
+typedef struct {
+  /**
+   * The User Data of a Type-D frame (232.0 §4.1.3.2); may be `NULL` with length 0.
+   */
+  const uint8_t *user_data;
+  /**
+   * Length of `user_data`.
+   */
+  size_t user_data_len;
+  /**
+   * The Control Command of a Type-C frame, or `ALDIS_TC_CONTROL_NONE` (232.0 §4.1.3.3).
+   */
+  aldis_tc_control_t control;
+} aldis_tc_content_t;
+
+/**
+ * One item of a data unit, from [`aldis_tc_next_frame`] (232.0 §4.4.9.2; TC-020, M2 plan D14).
+ */
+typedef struct {
+  /**
+   * `ALDIS_TC_DELIMITED_*`.
+   */
+  uint8_t kind;
+  /**
+   * Offset of the item in the unit: the `offset` the call was given.
+   */
+  size_t offset;
+  /**
+   * Octets the item takes, which the caller adds to `offset` for the next call; 0 only for
+   * `ALDIS_TC_DELIMITED_END`.
+   */
+  size_t len;
+  /**
+   * The frame length the header declares: `len` for a frame, more than `len` for a
+   * truncated frame, 0 for fill and the end.
+   */
+  size_t declared_len;
+} aldis_tc_delimited_t;
+
+/**
+ * A Communications Link Control Word as plain values (232.0 §4.2.1; TC-030, TC-031, M2 plan
+ * D14).
+ *
+ * The struct is an input of [`aldis_clcw_encode`] and an output of [`aldis_clcw_decode`], so
+ * its flags are `uint8_t`, 0 or 1, as an input struct's are (c-abi.md §10). The Control Word
+ * Type, the CLCW Version Number, and the Reserved Spares are not held: the encoder writes them
+ * as zeros.
+ */
+typedef struct {
+  /**
+   * Status Field, 0 to 7, mission-specific and passed through (232.0 §4.2.1.4; TC-031).
+   */
+  uint8_t status;
+  /**
+   * COP in Effect, 0 to 3; `ALDIS_CLCW_COP_1` is COP-1 (232.0 §4.2.1.5).
+   */
+  uint8_t cop_in_effect;
+  /**
+   * Virtual Channel Identification, 0 to 63 (232.0 §4.2.1.6).
+   */
+  uint8_t vcid;
+  /**
+   * No RF Available Flag (232.0 §4.2.1.8.2).
+   */
+  uint8_t no_rf_available;
+  /**
+   * No Bit Lock Flag (232.0 §4.2.1.8.3).
+   */
+  uint8_t no_bit_lock;
+  /**
+   * Lockout Flag (232.0 §4.2.1.8.4).
+   */
+  uint8_t lockout;
+  /**
+   * Wait Flag (232.0 §4.2.1.8.5).
+   */
+  uint8_t wait;
+  /**
+   * Retransmit Flag (232.0 §4.2.1.8.6).
+   */
+  uint8_t retransmit;
+  /**
+   * FARM-B Counter, 0 to 3 (232.0 §4.2.1.9).
+   */
+  uint8_t farm_b_counter;
+  /**
+   * Report Value N(R) (232.0 §4.2.1.11).
+   */
+  uint8_t report_value;
+} aldis_clcw_t;
 
 /**
  * A parsed P-field (301.0 §3.1.1; TIME-001, TIME-002, TIME-005).
@@ -3420,6 +3998,353 @@ int32_t aldis_spp_reassembler_is_assembling(aldis_spp_reassembler_t *h,
  * As for [`aldis_spp_tracker_deinit`].
  */
 void aldis_spp_reassembler_deinit(aldis_spp_reassembler_t *h);
+
+/**
+ * Checks a physical channel configuration (232.0 §5.1 Table 5-1; GEN-060, API-040, TC-007).
+ *
+ * # Errors
+ * `ALDIS_ERR_INVALID_CONFIG` (`max_frame_len`) above 1024 octets, or below six, eight with the
+ * FECF; CABI-022 violations.
+ *
+ * # Safety
+ * `pc` is valid for a read; `err` is `NULL` or valid for one write.
+ */
+int32_t aldis_tc_config_check(const aldis_tc_config_t *pc, aldis_error_detail_t *err);
+
+/**
+ * Checks a master channel configuration with its virtual channels and MAPs (232.0 §5 Tables
+ * 5-1 to 5-4, §6.6 Tables 6-2, 6-3; GEN-060, API-040, API-070, CMN-041).
+ *
+ * The physical channel is checked first, then the Spacecraft ID, each virtual channel in array
+ * order (its VCID, Segment Header flag, security layout, and maximum frame length), each MAP
+ * in array order (its VCID, MAP ID, and security layout), and then the channels together, as
+ * `VcTable::new` checks them.
+ *
+ * # Errors
+ * The errors of [`aldis_tc_config_check`]; `ALDIS_ERR_OUT_OF_RANGE` (`spacecraft_id`, `vc_id`,
+ * `map_id`); `ALDIS_ERR_CAPACITY_EXCEEDED` (`vc_id`) for more than `ALDIS_TC_MAX_VCS` virtual
+ * channels and (`map_id`) for more than `ALDIS_TC_MAX_MAPS` MAPs, before any of them is read
+ * (CABI-030); `ALDIS_ERR_INVALID_CONFIG` (`security_header_len`) for a Security Header above 64
+ * octets, (`max_frame_len`) for a VC maximum outside 6 to 1024 octets, (`vc_id`) for a VCID
+ * given twice, (`map_id`) for a MAP given twice or on a VC that is not given or has no Segment
+ * Header, and (`frame_data_field`) for a VC or MAP whose fields leave no data octet; CABI-022
+ * violations, including a struct whose `struct_size` differs from its array's first, and a VC
+ * with Segment Headers whose security lengths are not 0.
+ *
+ * # Safety
+ * `mc` is valid for a read; `vcs` and `maps` are valid for reads of `vc_count` and
+ * `map_count` structs of their first one's `struct_size` (or `NULL` with 0); `err` is `NULL`
+ * or valid for one write.
+ */
+int32_t aldis_tc_mc_config_check(const aldis_tc_mc_config_t *mc,
+                                 const aldis_tc_vc_config_t *vcs,
+                                 size_t vc_count,
+                                 const aldis_tc_map_config_t *maps,
+                                 size_t map_count,
+                                 aldis_error_detail_t *err);
+
+/**
+ * The length of the frame that `prefix` begins, from its Frame Length field (232.0
+ * §4.1.2.7; TC-001, API-013, GEN-053, M2 plan D14).
+ *
+ * # Errors
+ * `ALDIS_ERR_INCOMPLETE` (`needed` 5) for a prefix shorter than the Primary Header;
+ * `ALDIS_ERR_UNSUPPORTED_VERSION` (`frame_version`) for a version other than `00`;
+ * `ALDIS_ERR_RESERVED_VALUE` (`control_command_flag`) for Bypass Flag `0` with Control Command
+ * Flag `1` (TC-002); CABI-022 violations.
+ *
+ * # Safety
+ * `prefix` is valid for `prefix_len` octets (or `NULL` with 0); `out_len` is valid for one
+ * write; `err` is `NULL` or valid for one write.
+ */
+int32_t aldis_tc_peek_length(const uint8_t *prefix,
+                             size_t prefix_len,
+                             size_t *out_len,
+                             aldis_error_detail_t *err);
+
+/**
+ * Decodes the Primary Header that `prefix` begins (232.0 §4.1.2; TC-001, TC-002, API-014), as
+ * `TcFrame::peek_header` does.
+ *
+ * The rest of the frame is not read and no channel is looked up: for example to find the
+ * Spacecraft ID of a frame on a physical channel that carries several master channels.
+ *
+ * # Errors
+ * As [`aldis_tc_peek_length`].
+ *
+ * # Safety
+ * `prefix` is valid for `prefix_len` octets (or `NULL` with 0); `out` is valid for one write;
+ * `err` is `NULL` or valid for one write.
+ */
+int32_t aldis_tc_header_decode(const uint8_t *prefix,
+                               size_t prefix_len,
+                               aldis_tc_header_t *out,
+                               aldis_error_detail_t *err);
+
+/**
+ * Decodes the frame that `bytes` begins, on the master channel `mc` (232.0 §4.1, §6.3;
+ * TC-001…TC-006, API-010…API-014, API-070), as `TcFrame::decode` does.
+ *
+ * The frame takes as many octets as its Frame Length declares (`out->layout.frame_len`); the
+ * octets after it are not read. The Security Header and Trailer lengths are those of the
+ * frame's virtual channel, or of its MAP when it has a Segment Header.
+ *
+ * # Errors
+ * The errors of [`aldis_tc_mc_config_check`]; then, in this order: `ALDIS_ERR_INCOMPLETE`
+ * (`needed`) for fewer octets than the Primary Header or the frame; `ALDIS_ERR_UNSUPPORTED_VERSION`
+ * (`frame_version`); `ALDIS_ERR_UNKNOWN_CHANNEL` (`spacecraft_id`) for another Spacecraft ID;
+ * `ALDIS_ERR_RESERVED_VALUE` (`control_command_flag`) (TC-002) and, in strict mode,
+ * (`tc_header_spare`) (TC-003); `ALDIS_ERR_UNKNOWN_CHANNEL` (`vc_id`); `ALDIS_ERR_OUT_OF_RANGE`
+ * (`frame_len`) above the channel's maximum and `ALDIS_ERR_INVALID_FIELD` (`frame_data_field`)
+ * for no data octet; `ALDIS_ERR_CRC_MISMATCH` (TC-006); `ALDIS_ERR_UNKNOWN_CHANNEL` (`map_id`);
+ * in strict mode `ALDIS_ERR_RESERVED_VALUE` (`control_command`) for a Type-C data field that
+ * is neither command (TC-005); CABI-022 violations.
+ *
+ * # Safety
+ * `bytes` is valid for `len` octets (or `NULL` with 0); `mc`, `vcs`, and `maps` as for
+ * [`aldis_tc_mc_config_check`]; `out` is valid for one write; `err` is `NULL` or valid for one
+ * write.
+ */
+int32_t aldis_tc_decode(const uint8_t *bytes,
+                        size_t len,
+                        const aldis_tc_mc_config_t *mc,
+                        const aldis_tc_vc_config_t *vcs,
+                        size_t vc_count,
+                        const aldis_tc_map_config_t *maps,
+                        size_t map_count,
+                        uint32_t mode,
+                        aldis_tc_frame_t *out,
+                        aldis_error_detail_t *err);
+
+/**
+ * Applies the Frame Validation Checks to `frame`, the octets of exactly one frame (232.0
+ * §4.4.9.3; TC-021…TC-023), as `validate_frame` does, with the security layouts of the master
+ * channel (c-abi.md §11).
+ *
+ * A frame that passes is written to `out` and `reason` is set to `ALDIS_TC_REASON_NONE`. A
+ * frame that fails sets `reason` to the `ALDIS_TC_REASON_*` of the first check that failed,
+ * and the call returns that check's error. Type-A and Type-B frames are checked alike
+ * (TC-023).
+ *
+ * # Errors
+ * The errors of [`aldis_tc_mc_config_check`], with `out` and `reason` unchanged; then the
+ * error of the failed check, as for [`aldis_tc_decode`], except that a frame shorter or longer
+ * than its Frame Length is `ALDIS_ERR_LENGTH_MISMATCH` (`frame_len`); CABI-022 violations,
+ * with `out` and `reason` unchanged.
+ *
+ * # Safety
+ * `frame` is valid for `len` octets (or `NULL` with 0); `mc`, `vcs`, and `maps` as for
+ * [`aldis_tc_mc_config_check`]; `out` and `reason` are valid for one write each; `err` is
+ * `NULL` or valid for one write.
+ */
+int32_t aldis_tc_validate(const uint8_t *frame,
+                          size_t len,
+                          const aldis_tc_mc_config_t *mc,
+                          const aldis_tc_vc_config_t *vcs,
+                          size_t vc_count,
+                          const aldis_tc_map_config_t *maps,
+                          size_t map_count,
+                          uint32_t mode,
+                          aldis_tc_frame_t *out,
+                          uint32_t *reason,
+                          aldis_error_detail_t *err);
+
+/**
+ * Encodes one frame into the start of `out` in one call (232.0 §4.1, §6.3; TC-004, TC-005,
+ * TC-007, TC-008, API-020…API-022, API-072), as `aldis_tc::encode` does.
+ *
+ * The library writes the Frame Length, the Reserved Spare `00`, zeros in the Security Header
+ * and Trailer, and the FECF (API-021).
+ *
+ * # Errors
+ * On error `out` is unchanged (API-022). The errors of [`aldis_tc_mc_config_check`]; then
+ * `ALDIS_ERR_OUT_OF_RANGE` (`spacecraft_id`, `vc_id`, `map_id`) for a value of `fields`
+ * outside its field; `ALDIS_ERR_UNKNOWN_CHANNEL` (`spacecraft_id`, `vc_id`, `map_id`) for a
+ * channel the master channel does not have; `ALDIS_ERR_INVALID_FIELD` (`control_command_flag`)
+ * for a frame type that does not match the content, (`segment_header`) for a Segment Header
+ * where the VC has none or none where it has them, and (`frame_data_field`) for empty User
+ * Data; `ALDIS_ERR_OUT_OF_RANGE` (`frame_len`) above the channel's maximum (TC-007);
+ * `ALDIS_ERR_BUFFER_TOO_SMALL` (`needed` = frame length); CABI-022 violations, including User
+ * Data or a Segment Header with a Control Command, and `out` overlapping `user_data`.
+ *
+ * # Safety
+ * `mc`, `vcs`, and `maps` as for [`aldis_tc_mc_config_check`]; `fields` and `content` are
+ * valid for a read; `content->user_data` is valid for its length (or `NULL` with 0); `out` is
+ * valid for `cap` octets; `out_len` is valid for one write; `err` is `NULL` or valid for one
+ * write.
+ */
+int32_t aldis_tc_encode(const aldis_tc_mc_config_t *mc,
+                        const aldis_tc_vc_config_t *vcs,
+                        size_t vc_count,
+                        const aldis_tc_map_config_t *maps,
+                        size_t map_count,
+                        const aldis_tc_fields_t *fields,
+                        const aldis_tc_content_t *content,
+                        uint8_t *out,
+                        size_t cap,
+                        size_t *out_len,
+                        aldis_error_detail_t *err);
+
+/**
+ * Starts a two-phase write of one Type-D frame with room for up to `max_user_len` octets of
+ * User Data (232.0 §4.1, §6.3; TC-004, TC-007, API-020, API-023, API-072, M2 plan D4).
+ *
+ * Checks the arguments, writes an unfinished Primary Header (version `11`, which every decoder
+ * rejects), the Segment Header, and zeros in the Security Header and Trailer, and reports where
+ * each field lies: the data field is the reserved User Data, `max_user_len` octets, and the
+ * Security Trailer follows it.
+ *
+ * The caller fills the User Data and, with SDLS, the Security Header and Trailer at the
+ * offsets of `layout`, and calls [`aldis_tc_writer_finish`] with the same arguments and the
+ * User Data length used. No state is kept.
+ *
+ * # Errors
+ * On error `out` is unchanged (API-022). As [`aldis_tc_encode`] for a frame with
+ * `max_user_len` octets of User Data, with `ALDIS_ERR_INVALID_FIELD` (`control_command_flag`)
+ * for a Type-BC frame; CABI-022 violations.
+ *
+ * # Safety
+ * `mc`, `vcs`, and `maps` as for [`aldis_tc_mc_config_check`]; `fields` is valid for a read;
+ * `out` is valid for `cap` octets; `layout` is valid for one write; `err` is `NULL` or valid
+ * for one write.
+ */
+int32_t aldis_tc_writer_begin(const aldis_tc_mc_config_t *mc,
+                              const aldis_tc_vc_config_t *vcs,
+                              size_t vc_count,
+                              const aldis_tc_map_config_t *maps,
+                              size_t map_count,
+                              const aldis_tc_fields_t *fields,
+                              size_t max_user_len,
+                              uint8_t *out,
+                              size_t cap,
+                              aldis_tc_layout_t *layout,
+                              aldis_error_detail_t *err);
+
+/**
+ * Finishes a two-phase write begun with the same arguments, with `user_len` octets of User
+ * Data (232.0 §4.1.2.7, §4.1.4; TC-007, API-021, API-023).
+ *
+ * Writes the Primary Header with the Frame Length, moves the Security Trailer to follow the
+ * User Data when `user_len` is below `max_user_len`, computes the FECF if configured, and
+ * returns the frame length; the frame is the first `*out_len` octets of `out`.
+ *
+ * # Errors
+ * On error `out` is unchanged. As [`aldis_tc_writer_begin`]; then `ALDIS_ERR_OUT_OF_RANGE`
+ * (`user_len`) above `max_user_len` and `ALDIS_ERR_INVALID_FIELD` (`frame_data_field`) for 0.
+ *
+ * # Safety
+ * As [`aldis_tc_writer_begin`]; `out_len` is valid for one write.
+ */
+int32_t aldis_tc_writer_finish(const aldis_tc_mc_config_t *mc,
+                               const aldis_tc_vc_config_t *vcs,
+                               size_t vc_count,
+                               const aldis_tc_map_config_t *maps,
+                               size_t map_count,
+                               const aldis_tc_fields_t *fields,
+                               size_t max_user_len,
+                               size_t user_len,
+                               uint8_t *out,
+                               size_t cap,
+                               size_t *out_len,
+                               aldis_error_detail_t *err);
+
+/**
+ * The item of the data unit `unit` that starts at `offset` (232.0 §4.4.9.2; TC-020, M2 plan
+ * D14), as `next_frame` gives it for the octets from `offset` on.
+ *
+ * The unit is the octets of one data unit that the Channel Coding Sublayer declared clean. A
+ * caller starts at offset 0 and adds each item's `len` until the item is
+ * `ALDIS_TC_DELIMITED_END`; a truncated frame or fill takes the rest of the unit. Each frame is
+ * then passed to [`aldis_tc_validate`] at its offset, with its length. No state is kept.
+ *
+ * # Errors
+ * CABI-022 violations, including an `offset` past the end of the unit.
+ *
+ * # Safety
+ * `unit` is valid for `unit_len` octets (or `NULL` with 0); `out` is valid for one write; `err`
+ * is `NULL` or valid for one write.
+ */
+int32_t aldis_tc_next_frame(const uint8_t *unit,
+                            size_t unit_len,
+                            size_t offset,
+                            aldis_tc_delimited_t *out,
+                            aldis_error_detail_t *err);
+
+/**
+ * Decodes the Control Command that the data field `octets` of a Type-C frame holds exactly
+ * (232.0 §4.1.3.3; TC-005), as `ControlCommand::parse` does.
+ *
+ * # Errors
+ * `ALDIS_ERR_RESERVED_VALUE` (`control_command`) for any other pattern, including a known one
+ * with octets missing or added, as a strict decoder reports it; CABI-022 violations.
+ *
+ * # Safety
+ * `octets` is valid for `len` octets (or `NULL` with 0); `out` is valid for one write; `err` is
+ * `NULL` or valid for one write.
+ */
+int32_t aldis_tc_control_decode(const uint8_t *octets,
+                                size_t len,
+                                aldis_tc_control_t *out,
+                                aldis_error_detail_t *err);
+
+/**
+ * Encodes a Control Command into the start of `out`, as a Type-C frame's data field carries it
+ * (232.0 §4.1.3.3; TC-005, API-020): one octet for Unlock, three for Set V(R).
+ *
+ * # Errors
+ * On error `out` is unchanged. `ALDIS_ERR_BUFFER_TOO_SMALL` (`needed`); CABI-022 violations,
+ * including `ALDIS_TC_CONTROL_NONE`.
+ *
+ * # Safety
+ * `command` is valid for a read; `out` is valid for `cap` octets; `out_len` is valid for one
+ * write; `err` is `NULL` or valid for one write.
+ */
+int32_t aldis_tc_control_encode(const aldis_tc_control_t *command,
+                                uint8_t *out,
+                                size_t cap,
+                                size_t *out_len,
+                                aldis_error_detail_t *err);
+
+/**
+ * Decodes a CLCW given as a 32-bit word, bit 0 of 232.0 §4.2.1 the most significant (232.0
+ * §4.2.1; TC-030, TC-031, M2 plan D14), as `Clcw::decode` does with its four octets.
+ *
+ * Any COP in Effect is accepted and exposed; the Status Field is passed through. A CLCW in an
+ * Operational Control Field is its four octets read as a big-endian word.
+ *
+ * # Errors
+ * `ALDIS_ERR_INVALID_FIELD` (`control_word_type`) for a Control Word Type of `1` and
+ * `ALDIS_ERR_UNSUPPORTED_VERSION` (`clcw_version`) for a version other than `00`, in both
+ * modes; in strict mode `ALDIS_ERR_RESERVED_VALUE` (`clcw_spare_14_15`, `clcw_spare_23`) for a
+ * Reserved Spare that is not zero, which lenient mode reports as
+ * `ALDIS_TC_ANOMALY_CLCW_SPARE_SET` in `anomalies`; CABI-022 violations.
+ *
+ * # Safety
+ * `out` and `anomalies` are valid for one write each; `err` is `NULL` or valid for one write.
+ */
+int32_t aldis_clcw_decode(uint32_t word,
+                          uint32_t mode,
+                          aldis_clcw_t *out,
+                          uint32_t *anomalies,
+                          aldis_error_detail_t *err);
+
+/**
+ * Encodes a CLCW as a 32-bit word, bit 0 of 232.0 §4.2.1 the most significant (232.0 §4.2.1;
+ * TC-030, TC-031, GEN-052, M2 plan D14), as `Clcw::to_word` does.
+ *
+ * The Control Word Type is `0`, the version `00`, and the Reserved Spares zero. The word's four
+ * octets, most significant first, are the Operational Control Field that carries the CLCW
+ * (CMN-011).
+ *
+ * # Errors
+ * `ALDIS_ERR_OUT_OF_RANGE` (`clcw_status`, `cop_in_effect`, `vc_id`, `farm_b_counter`) for a
+ * value outside its field; CABI-022 violations, including a flag other than 0 or 1.
+ *
+ * # Safety
+ * `clcw` is valid for a read; `out` is valid for one write; `err` is `NULL` or valid for one
+ * write.
+ */
+int32_t aldis_clcw_encode(const aldis_clcw_t *clcw, uint32_t *out, aldis_error_detail_t *err);
 
 /**
  * Decodes a time code that starts with its P-field (301.0 §3.1; TIME-001…006, TIME-010…030,

@@ -1,4 +1,4 @@
-//! Runs every live case of `test-vectors/{time,spp,epp,tm}/`, and of the files of `test-vectors/core/`
+//! Runs every live case of `test-vectors/{time,spp,epp,tm,tc}/`, and of the files of `test-vectors/core/`
 //! whose functions have a C ABI (`crc16`, `ocf`, `oid`; M2 plan D14), through the `extern "C"`
 //! functions of `aldis-ffi`, with the testkit's runner and exact comparison (M2 plan D4; TV-012, VER-021,
 //! CABI-012, CABI-020, CABI-021). The handlers build the C structs from the vector's raw values,
@@ -1980,3 +1980,547 @@ vector_test!(tm_fhp_values, "tm", "fhp_values", tm_run);
 vector_test!(tm_oid_sequence, "tm", "oid_sequence", tm_run);
 vector_test!(tm_security_layout, "tm", "security_layout", tm_run);
 vector_test!(tm_invalid, "tm", "invalid", tm_run);
+
+// ---------------------------------------------------------------- TC (M2 WP-3 module 8)
+
+/// Every file of `test-vectors/tc/` through the C ABI of `aldis-tc` and the CLCW (M2 plan
+/// WP-3 module 8, D14).
+mod tc {
+    use core::num::NonZeroU16;
+
+    use aldis::tc::{Reason, TcAnomaly};
+    use aldis_ffi::tc::*;
+    use aldis_testkit::{CodecCase, hex, run_codec_file};
+    use serde_json::{Value, json};
+
+    use super::{
+        Fail, R, anomalies, call, get, handle, input, mode, params, size_of_u32, str_of, u8_of,
+        u16_of, usize_of,
+    };
+
+    /// A master channel: its struct, its virtual channels, and its MAPs.
+    type Mc = (
+        aldis_tc_mc_config_t,
+        Vec<aldis_tc_vc_config_t>,
+        Vec<aldis_tc_map_config_t>,
+    );
+
+    /// A TC physical channel and its master channels, one per Spacecraft ID in order of first
+    /// appearance, as C structs (c-abi.md §11: one master channel per call).
+    struct Channels {
+        pc: aldis_tc_config_t,
+        mcs: Vec<Mc>,
+    }
+
+    impl Channels {
+        /// The one master channel a frame operation runs on.
+        fn mc(&self, case: &CodecCase) -> &Mc {
+            match self.mcs.as_slice() {
+                [mc] => mc,
+                _ => panic!("{}: not one master channel", case.id),
+            }
+        }
+    }
+
+    fn opt_u8(v: &Value, name: &str) -> u8 {
+        v.get(name).map_or(0, |_| u8_of(v, name))
+    }
+
+    fn opt_u16(v: &Value, name: &str) -> u16 {
+        v.get(name).map_or(0, |_| u16_of(v, name))
+    }
+
+    fn flag(v: &Value, name: &str) -> u8 {
+        u8::from(get(v, name).as_bool().unwrap())
+    }
+
+    fn channels(case: &CodecCase) -> Option<Channels> {
+        let cfg = Value::Object(case.config.clone()?);
+        let pc = aldis_tc_config_t {
+            struct_size: size_of_u32::<aldis_tc_config_t>(),
+            fecf: flag(&cfg, "fecf"),
+            max_frame_len: usize_of(&cfg, "max_frame_len"),
+        };
+        let vcs = get(&cfg, "vcs").as_array().unwrap();
+        let maps = get(&cfg, "maps").as_array().unwrap();
+        let mut scids: Vec<u16> = Vec::new();
+        for v in vcs.iter().chain(maps) {
+            let scid = u16_of(v, "scid");
+            if !scids.contains(&scid) {
+                scids.push(scid);
+            }
+        }
+        let mcs = scids
+            .into_iter()
+            .map(|scid| {
+                let mc = aldis_tc_mc_config_t {
+                    struct_size: size_of_u32::<aldis_tc_mc_config_t>(),
+                    scid,
+                    pc,
+                };
+                let on = |v: &&Value| u16_of(v, "scid") == scid;
+                let vcs = vcs
+                    .iter()
+                    .filter(on)
+                    .map(|v| aldis_tc_vc_config_t {
+                        struct_size: size_of_u32::<aldis_tc_vc_config_t>(),
+                        vcid: u8_of(v, "vcid"),
+                        segment_header: flag(v, "segment_header"),
+                        security_header_len: opt_u8(v, "security_header_len"),
+                        security_trailer_len: opt_u16(v, "security_trailer_len"),
+                        max_frame_len: usize_of(v, "max_frame_len"),
+                    })
+                    .collect();
+                let maps = maps
+                    .iter()
+                    .filter(on)
+                    .map(|m| aldis_tc_map_config_t {
+                        struct_size: size_of_u32::<aldis_tc_map_config_t>(),
+                        vcid: u8_of(m, "vcid"),
+                        map_id: u8_of(m, "map_id"),
+                        security_header_len: opt_u8(m, "security_header_len"),
+                        security_trailer_len: opt_u16(m, "security_trailer_len"),
+                    })
+                    .collect();
+                (mc, vcs, maps)
+            })
+            .collect();
+        Some(Channels { pc, mcs })
+    }
+
+    fn frame_type_name(t: u8) -> &'static str {
+        match t {
+            ALDIS_TC_FRAME_AD => "AD",
+            ALDIS_TC_FRAME_BD => "BD",
+            ALDIS_TC_FRAME_BC => "BC",
+            other => panic!("frame type {other}"),
+        }
+    }
+
+    /// The octets of `len` at `offset` in `bytes`, which the view guarantees lie inside it.
+    fn slice(bytes: &[u8], offset: usize, len: usize) -> &[u8] {
+        &bytes[offset..offset + len]
+    }
+
+    /// Every field the view exposes (TV-002), read from the C view and the caller's input.
+    fn json_of(v: &aldis_tc_frame_t, bytes: &[u8]) -> R<Value> {
+        let (h, l) = (&v.header, &v.layout);
+        // The header alone decodes to the view's header (API-014).
+        let mut header = aldis_tc_header_t::default();
+        // SAFETY: `bytes` and `header` are live.
+        call(|e| unsafe {
+            aldis_tc_header_decode(bytes.as_ptr(), bytes.len(), &raw mut header, e)
+        })?;
+        assert_eq!(header, *h);
+        assert_eq!(l.frame_len, h.frame_len);
+        let data = slice(bytes, l.data_offset, l.data_len);
+        let (command, vr) = match v.control.command {
+            ALDIS_TC_CONTROL_NONE => (Value::Null, Value::Null),
+            ALDIS_TC_CONTROL_UNLOCK => (json!("unlock"), Value::Null),
+            ALDIS_TC_CONTROL_SET_VR => (json!("set_vr"), json!(v.control.set_vr_value)),
+            other => panic!("control command {other}"),
+        };
+        if v.control.command != ALDIS_TC_CONTROL_NONE {
+            // The data field decodes to the same command on its own (TC-005).
+            let mut alone = aldis_tc_control_t::default();
+            // SAFETY: `data` and `alone` are live.
+            call(|e| unsafe {
+                aldis_tc_control_decode(data.as_ptr(), data.len(), &raw mut alone, e)
+            })?;
+            assert_eq!(alone, v.control);
+        }
+        Ok(json!({
+            "frame_type": frame_type_name(h.frame_type),
+            "bypass_flag": u8::from(h.frame_type != ALDIS_TC_FRAME_AD),
+            "control_command_flag": u8::from(h.frame_type == ALDIS_TC_FRAME_BC),
+            "spacecraft_id": h.scid,
+            "vc_id": h.vcid,
+            "frame_len": h.frame_len,
+            "sequence_number": h.sequence_number,
+            "segment_header": v.has_segment_header.then(|| json!({
+                "sequence_flags": v.sequence_flags,
+                "map_id": v.map_id,
+            })),
+            "security_header_hex": hex::encode(slice(
+                bytes,
+                l.security_header_offset,
+                l.security_header_len
+            )),
+            "data_hex": hex::encode(data),
+            "security_trailer_hex": hex::encode(slice(
+                bytes,
+                l.security_trailer_offset,
+                l.security_trailer_len
+            )),
+            "fecf_hex": v.has_fecf.then(|| format!("{:04X}", v.fecf)),
+            "control_command": command,
+            "set_vr_value": vr,
+            "consumed": l.frame_len,
+            "anomalies": anomalies::<TcAnomaly>(v.anomalies),
+        }))
+    }
+
+    /// The sender's fields of an `encode` case.
+    fn fields_of(p: &Value) -> aldis_tc_fields_t {
+        let sh = p.get("segment_header").unwrap_or(&Value::Null);
+        aldis_tc_fields_t {
+            frame_type: match str_of(p, "frame_type") {
+                "AD" => ALDIS_TC_FRAME_AD,
+                "BD" => ALDIS_TC_FRAME_BD,
+                "BC" => ALDIS_TC_FRAME_BC,
+                other => panic!("frame type {other}"),
+            },
+            scid: u16_of(p, "spacecraft_id"),
+            vcid: u8_of(p, "vc_id"),
+            sequence_number: u8_of(p, "sequence_number"),
+            segment_header: u8::from(!sh.is_null()),
+            sequence_flags: if sh.is_null() {
+                0
+            } else {
+                u8_of(sh, "sequence_flags")
+            },
+            map_id: if sh.is_null() { 0 } else { u8_of(sh, "map_id") },
+        }
+    }
+
+    /// Encodes one frame with `aldis_tc_encode`; checks that the two-phase writer agrees on a
+    /// Type-D frame (API-020, API-023) and `aldis_tc_control_encode` on a Type-C one (TC-005).
+    fn encode(case: &CodecCase, ch: &Channels) -> R<Value> {
+        let (mc, vcs, maps) = ch.mc(case);
+        let p = params(case);
+        let fields = fields_of(&p);
+        let control = match p.get("control_command").and_then(Value::as_str) {
+            None => aldis_tc_control_t::default(),
+            Some("unlock") => aldis_tc_control_t {
+                command: ALDIS_TC_CONTROL_UNLOCK,
+                set_vr_value: 0,
+            },
+            Some("set_vr") => aldis_tc_control_t {
+                command: ALDIS_TC_CONTROL_SET_VR,
+                set_vr_value: u8_of(&p, "set_vr_value"),
+            },
+            Some(other) => panic!("control command {other}"),
+        };
+        let user = if control.command == ALDIS_TC_CONTROL_NONE {
+            hex::decode(str_of(&p, "user_data_hex")).unwrap()
+        } else {
+            Vec::new()
+        };
+        let content = aldis_tc_content_t {
+            user_data: user.as_ptr(),
+            user_data_len: user.len(),
+            control,
+        };
+        let mut out = vec![0xEE_u8; 1100];
+        let mut written = 0_usize;
+        // SAFETY: every pointer is to a live local or vector, with its length.
+        let result = call(|e| unsafe {
+            aldis_tc_encode(
+                mc,
+                vcs.as_ptr(),
+                vcs.len(),
+                maps.as_ptr(),
+                maps.len(),
+                &raw const fields,
+                &raw const content,
+                out.as_mut_ptr(),
+                out.len(),
+                &raw mut written,
+                e,
+            )
+        });
+        if result.is_err() {
+            assert!(out.iter().all(|&b| b == 0xEE), "{}: out changed", case.id);
+        }
+        result?;
+        let frame = &out[..written];
+        if control.command == ALDIS_TC_CONTROL_NONE {
+            assert_eq!(
+                writer(mc, vcs, maps, &fields, &user)?,
+                frame,
+                "{}: two-phase writer differs",
+                case.id
+            );
+        } else {
+            let mut octets = [0_u8; 3];
+            let mut n = 0_usize;
+            // SAFETY: every pointer is to a live local.
+            call(|e| unsafe {
+                aldis_tc_control_encode(
+                    &raw const control,
+                    octets.as_mut_ptr(),
+                    octets.len(),
+                    &raw mut n,
+                    e,
+                )
+            })?;
+            assert_eq!(&frame[5..5 + n], &octets[..n], "{}", case.id);
+        }
+        Ok(json!({ "output_hex": hex::encode(frame) }))
+    }
+
+    /// The frame of `user` through the two-phase writer: begin, fill the User Data at its
+    /// offset, finish (API-023).
+    fn writer(
+        mc: &aldis_tc_mc_config_t,
+        vcs: &[aldis_tc_vc_config_t],
+        maps: &[aldis_tc_map_config_t],
+        fields: &aldis_tc_fields_t,
+        user: &[u8],
+    ) -> R<Vec<u8>> {
+        let mut two = vec![0xEE_u8; 1100];
+        let mut l = aldis_tc_layout_t::default();
+        // SAFETY: every pointer is to a live local or vector, with its length.
+        call(|e| unsafe {
+            aldis_tc_writer_begin(
+                mc,
+                vcs.as_ptr(),
+                vcs.len(),
+                maps.as_ptr(),
+                maps.len(),
+                fields,
+                user.len(),
+                two.as_mut_ptr(),
+                two.len(),
+                &raw mut l,
+                e,
+            )
+        })?;
+        assert_eq!(l.data_len, user.len());
+        two[l.data_offset..l.data_offset + l.data_len].copy_from_slice(user);
+        let mut n = 0_usize;
+        // SAFETY: as above.
+        call(|e| unsafe {
+            aldis_tc_writer_finish(
+                mc,
+                vcs.as_ptr(),
+                vcs.len(),
+                maps.as_ptr(),
+                maps.len(),
+                fields,
+                user.len(),
+                user.len(),
+                two.as_mut_ptr(),
+                two.len(),
+                &raw mut n,
+                e,
+            )
+        })?;
+        assert_eq!(n, l.frame_len);
+        two.truncate(n);
+        Ok(two)
+    }
+
+    /// The Frame Validation Checks: an accepted frame, or a rejection with its reason and the
+    /// error of the failed check (TC-021, TC-022).
+    fn validate(case: &CodecCase, ch: &Channels, bytes: &[u8]) -> R<Value> {
+        let (mc, vcs, maps) = ch.mc(case);
+        let mut view = aldis_tc_frame_t::default();
+        let mut reason = u32::MAX;
+        // SAFETY: every pointer is to a live local or vector, with its length.
+        let result = call(|e| unsafe {
+            aldis_tc_validate(
+                bytes.as_ptr(),
+                bytes.len(),
+                mc,
+                vcs.as_ptr(),
+                vcs.len(),
+                maps.as_ptr(),
+                maps.len(),
+                mode(case),
+                &raw mut view,
+                &raw mut reason,
+                e,
+            )
+        });
+        match result {
+            Ok(()) => {
+                assert_eq!(reason, ALDIS_TC_REASON_NONE);
+                Ok(json!({ "accepted": true, "frame_len": view.layout.frame_len }))
+            }
+            Err(Fail { kind, field }) if reason != u32::MAX => {
+                let r = Reason::from_code(u8::try_from(reason).unwrap()).unwrap();
+                Ok(json!({
+                    "accepted": false,
+                    "reason": format!("{r:?}"),
+                    "reason_code": reason,
+                    "error_kind": kind,
+                    "error_field": field.map(NonZeroU16::get),
+                }))
+            }
+            Err(fail) => Err(fail),
+        }
+    }
+
+    /// Every item of a data unit, one stateless call each (TC-020, M2 plan D14).
+    fn delimit(unit: &[u8]) -> R<Value> {
+        let mut items = Vec::new();
+        let mut offset = 0;
+        loop {
+            let mut item = aldis_tc_delimited_t::default();
+            // SAFETY: `unit` and `item` are live.
+            call(|e| unsafe {
+                aldis_tc_next_frame(unit.as_ptr(), unit.len(), offset, &raw mut item, e)
+            })?;
+            assert_eq!(item.offset, offset);
+            let (kind, declared) = match item.kind {
+                ALDIS_TC_DELIMITED_END => break,
+                ALDIS_TC_DELIMITED_FRAME => {
+                    assert_eq!(item.declared_len, item.len);
+                    ("frame", Value::Null)
+                }
+                ALDIS_TC_DELIMITED_TRUNCATED_FRAME => ("truncated", json!(item.declared_len)),
+                ALDIS_TC_DELIMITED_FILL => {
+                    assert_eq!(item.declared_len, 0);
+                    ("fill", Value::Null)
+                }
+                other => panic!("item kind {other}"),
+            };
+            items.push(json!({
+                "kind": kind,
+                "offset": offset,
+                "octets_hex": hex::encode(slice(unit, offset, item.len)),
+                "declared_len": declared,
+            }));
+            assert!(item.len > 0);
+            offset += item.len;
+        }
+        assert_eq!(offset, unit.len());
+        Ok(json!({ "items": items }))
+    }
+
+    fn clcw_json(c: &aldis_clcw_t, mask: u32) -> Value {
+        let set = |f: u8| {
+            assert!(f <= 1);
+            f == 1
+        };
+        json!({
+            "status": c.status,
+            "cop_in_effect": c.cop_in_effect,
+            "vc_id": c.vcid,
+            "no_rf_available": set(c.no_rf_available),
+            "no_bit_lock": set(c.no_bit_lock),
+            "lockout": set(c.lockout),
+            "wait": set(c.wait),
+            "retransmit": set(c.retransmit),
+            "farm_b_counter": c.farm_b_counter,
+            "report_value": c.report_value,
+            "anomalies": anomalies::<TcAnomaly>(mask),
+        })
+    }
+
+    fn clcw_encode(case: &CodecCase) -> R<Value> {
+        let p = params(case);
+        let c = aldis_clcw_t {
+            status: u8_of(&p, "status"),
+            cop_in_effect: u8_of(&p, "cop_in_effect"),
+            vcid: u8_of(&p, "vc_id"),
+            no_rf_available: flag(&p, "no_rf_available"),
+            no_bit_lock: flag(&p, "no_bit_lock"),
+            lockout: flag(&p, "lockout"),
+            wait: flag(&p, "wait"),
+            retransmit: flag(&p, "retransmit"),
+            farm_b_counter: u8_of(&p, "farm_b_counter"),
+            report_value: u8_of(&p, "report_value"),
+        };
+        let mut word = 0_u32;
+        // SAFETY: `c` and `word` are live.
+        call(|e| unsafe { aldis_clcw_encode(&raw const c, &raw mut word, e) })?;
+        Ok(json!({ "output_hex": hex::encode(&word.to_be_bytes()) }))
+    }
+
+    fn run(case: &CodecCase) -> R<Value> {
+        let ch = channels(case);
+        if let Some(ch) = &ch {
+            // The configuration is checked first, as the Rust runner builds it (API-040).
+            // SAFETY: every pointer is to a live local or vector.
+            call(|e| unsafe { aldis_tc_config_check(&raw const ch.pc, e) })?;
+            for (mc, vcs, maps) in &ch.mcs {
+                // SAFETY: as above.
+                call(|e| unsafe {
+                    aldis_tc_mc_config_check(
+                        mc,
+                        vcs.as_ptr(),
+                        vcs.len(),
+                        maps.as_ptr(),
+                        maps.len(),
+                        e,
+                    )
+                })?;
+            }
+        }
+        let need = || {
+            ch.as_ref()
+                .unwrap_or_else(|| panic!("{}: no configuration", case.id))
+        };
+        let bytes = input(case);
+        match case.operation.as_str() {
+            "config" => {
+                let mcs = &need().mcs;
+                Ok(json!({
+                    "vcs": mcs.iter().map(|m| m.1.len()).sum::<usize>(),
+                    "maps": mcs.iter().map(|m| m.2.len()).sum::<usize>(),
+                }))
+            }
+            "decode" => {
+                let (mc, vcs, maps) = need().mc(case);
+                let mut view = aldis_tc_frame_t::default();
+                // SAFETY: every pointer is to a live local or vector.
+                call(|e| unsafe {
+                    aldis_tc_decode(
+                        bytes.as_ptr(),
+                        bytes.len(),
+                        mc,
+                        vcs.as_ptr(),
+                        vcs.len(),
+                        maps.as_ptr(),
+                        maps.len(),
+                        mode(case),
+                        &raw mut view,
+                        e,
+                    )
+                })?;
+                json_of(&view, &bytes)
+            }
+            "peek_length" => {
+                let mut n = 0_usize;
+                // SAFETY: as above.
+                call(|e| unsafe {
+                    aldis_tc_peek_length(bytes.as_ptr(), bytes.len(), &raw mut n, e)
+                })?;
+                Ok(json!({ "frame_len": n }))
+            }
+            "encode" => encode(case, need()),
+            "validate" => validate(case, need(), &bytes),
+            "delimit" => delimit(&bytes),
+            "clcw_decode" => {
+                let word = u32::from_be_bytes(bytes.as_slice().try_into().unwrap());
+                let (mut c, mut mask) = (aldis_clcw_t::default(), u32::MAX);
+                // SAFETY: as above.
+                call(|e| unsafe {
+                    aldis_clcw_decode(word, mode(case), &raw mut c, &raw mut mask, e)
+                })?;
+                Ok(clcw_json(&c, mask))
+            }
+            "clcw_encode" => clcw_encode(case),
+            op => panic!("{}: unsupported operation {op}", case.id),
+        }
+    }
+
+    vector_test!(tc_ad, "tc", "ad", run);
+    vector_test!(tc_bd, "tc", "bd", run);
+    vector_test!(tc_bc_unlock, "tc", "bc_unlock", run);
+    vector_test!(tc_bc_setvr, "tc", "bc_setvr", run);
+    vector_test!(tc_segment_header, "tc", "segment_header", run);
+    vector_test!(tc_max_length, "tc", "max_length", run);
+    vector_test!(
+        tc_delimit_multiple_frames_with_fill,
+        "tc",
+        "delimit_multiple_frames_with_fill",
+        run
+    );
+    vector_test!(tc_validation_failures, "tc", "validation_failures", run);
+    vector_test!(tc_decode_errors, "tc", "decode_errors", run);
+    vector_test!(tc_config, "tc", "config", run);
+    vector_test!(tc_clcw, "tc", "clcw", run);
+}

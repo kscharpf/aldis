@@ -16,3 +16,7 @@ max_frame_octets = 2048
 
 [spp]
 tracker_max_apids = 16     # APIDs one aldis_spp_tracker_t tracks (SPP-011, M2 plan D5)
+
+# --- TC (M2 WP-3 module 8)
+[tc]
+max_maps = 64             # MAPs one aldis_tc_* call takes with a master channel (232.0 Table 5-4, M2 plan D14)

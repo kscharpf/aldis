@@ -258,9 +258,30 @@ impl<'a> TcFrame<'a> {
     /// `Incomplete` (`needed` = 5) if `prefix` is shorter; `UnsupportedVersion`
     /// (`frame_version`); `ReservedValue` (`control_command_flag`) (TC-002).
     pub fn peek_length(prefix: &[u8]) -> Result<usize> {
+        TcFrame::peek_header(prefix).map(|h| h.frame_len())
+    }
+
+    /// The Primary Header of the frame that starts `prefix`, from its first five octets (232.0
+    /// §4.1.2; TC-001, TC-002, API-014, GEN-053), with the checks of
+    /// [`peek_length`](Self::peek_length).
+    ///
+    /// The rest of the frame is not read and no channel is looked up: for example to find the
+    /// Spacecraft ID of a frame on a Physical Channel that carries several Master Channels,
+    /// as the C ABI's `aldis_tc_header_decode` does (M2 plan D14). Whether a Segment Header
+    /// follows depends on the Virtual Channel, so the header returned has none.
+    ///
+    /// # Errors
+    /// The errors of [`peek_length`](Self::peek_length).
+    pub fn peek_header(prefix: &[u8]) -> Result<TcFrameHeader> {
         let raw = RawHeader::parse(prefix).ok_or(Error::incomplete(PRIMARY_HEADER_LEN))?;
         raw.check_version()?;
-        raw.frame_type().map(|_| raw.frame_len)
+        let fields = FrameFields {
+            frame_type: raw.frame_type()?,
+            spacecraft_id: raw.spacecraft_id,
+            vc_id: raw.vc_id,
+            sequence_number: raw.sequence_number,
+        };
+        Ok(TcFrameHeader::new(fields, raw.frame_len, None))
     }
 
     /// The header as plain values (232.0 §4.1.2, §4.1.3.2.2; API-014).
@@ -504,6 +525,34 @@ mod tests {
         assert_eq!(e.detail(), ErrorDetail::Needed(5));
         assert!(TcFrame::peek_length(&[0x81, 0x55, 0x04, 0x05, 0]).is_err());
         assert!(TcFrame::peek_length(&[0x11, 0x55, 0x04, 0x05, 0]).is_err());
+    }
+
+    #[test]
+    fn the_header_peeks_alone() {
+        // req: TC-001, TC-002, API-014, GEN-053
+        // Type-BC, SCID 0x3FF, VCID 63, Frame Length field 6, N(S) 9; no channel is looked up.
+        let h = TcFrame::peek_header(&[0x33, 0xFF, 0xFC, 0x06, 0x09]).unwrap();
+        assert_eq!(
+            (h.frame_type(), h.spacecraft_id().get(), h.vc_id().get()),
+            (FrameType::Bc, 0x3FF, 63)
+        );
+        assert_eq!((h.frame_len(), h.sequence_number().get()), (7, 9));
+        assert_eq!(h.segment_header(), None);
+        let e = TcFrame::peek_header(&[0x01, 0x55, 0x04, 0x05]).unwrap_err();
+        assert_eq!(
+            (e.kind(), e.detail()),
+            (ErrorKind::Incomplete, ErrorDetail::Needed(5))
+        );
+        let e = TcFrame::peek_header(&[0x41, 0x55, 0x04, 0x05, 0]).unwrap_err();
+        assert_eq!(
+            (e.kind(), e.field()),
+            (ErrorKind::UnsupportedVersion, Some(field::FRAME_VERSION))
+        );
+        let e = TcFrame::peek_header(&[0x11, 0x55, 0x04, 0x05, 0]).unwrap_err();
+        assert_eq!(
+            (e.kind(), e.field()),
+            (ErrorKind::ReservedValue, Some(field::CONTROL_COMMAND_FLAG))
+        );
     }
 
     #[test]
