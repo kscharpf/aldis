@@ -55,8 +55,9 @@ Verification run and merge gate (docs/06-verification.md §7):
                                that result: `skipped` when its inputs did not change against
                                the merge base with origin/main either, `reused` when they are
                                those of an earlier commit of the branch (`verify list` shows
-                               which); --all runs every check; --all-cpp runs the C++ checks
-                               even if their inputs are untouched; --only runs a subset (such a
+                               which); --all runs every check, the nightly-only kani too,
+                               which every other run records as not run; --all-cpp runs the C++
+                               checks even if their inputs are untouched; --only runs a subset (such a
                                record never passes the gate); --publish then publishes it, as
                                `verify publish` does. The checks run quickest first; with
                                --fail-fast, the default with --publish, the run stops at the
@@ -68,6 +69,8 @@ Verification run and merge gate (docs/06-verification.md §7):
   verify publish [<rev>]       push the passing record of <rev> (default HEAD) as a git note
                                under refs/notes/verify and set the commit status aldis/verify
                                (VER-058)
+  verify nightly [<rev>]       fail unless every nightly-only check passed in the local record
+                               of <rev> (default HEAD), made with --all (VER-059)
   verify check [<rev>]         check the published record of <rev> against the merge gate,
                                re-deriving its skipped and reused checks from git and the
                                sources' published records
@@ -96,6 +99,8 @@ pub struct Options {
     fail_fast: Option<bool>,
     /// The registry repository to push the image the run builds to (`--push-image`).
     push_image: Option<String>,
+    /// `--all`: every check runs, the nightly-only ones too (VER-059).
+    all: bool,
 }
 
 impl Options {
@@ -115,6 +120,8 @@ pub fn run(args: &[&str]) -> Result<usize, String> {
         ["publish"] => publish::publish(&git(&["rev-parse", "HEAD"])?),
         ["publish", rev] => publish::publish(&git(&["rev-parse", rev])?),
         ["check"] => publish::check("HEAD"),
+        ["nightly"] => nightly("HEAD"),
+        ["nightly", rev] => nightly(rev),
         ["check", rev] => publish::check(rev),
         ["image", rest @ ..] => {
             let engine = image::Engine::detect()?;
@@ -195,7 +202,11 @@ fn parse_options<'a>(args: &[&'a str]) -> Result<(Options, Vec<&'a str>), String
                 let repository = it.next().ok_or("--push-image needs a repository")?;
                 opts.push_image = Some((*repository).to_owned());
             }
-            "--all" | "--all-cpp" | "--publish" => flags.push(*arg),
+            "--all" => {
+                opts.all = true;
+                flags.push(*arg);
+            }
+            "--all-cpp" | "--publish" => flags.push(*arg),
             other => return Err(format!("unknown argument `{other}`\n\n{HELP}")),
         }
     }
@@ -406,9 +417,12 @@ fn without_container(opts: &Options, x86_64: bool) -> Result<Vec<Value>, String>
     Ok(results)
 }
 
-/// The result entry of a check that `opts` leaves out, if it does.
+/// The result entry of a check that `opts` leaves out, if it does: a nightly-only check in a run
+/// without `--all` (VER-059), a check that `--only` does not select, or one the input rule skips.
 fn skipped(check: &Check, opts: &Options) -> Option<Value> {
-    if opts.only.as_ref().is_some_and(|o| !o.contains(&check.name)) {
+    if check.nightly && !opts.all {
+        Some(outcome(check, Outcome::NotRun, Some(checks::NIGHTLY_ONLY)))
+    } else if opts.only.as_ref().is_some_and(|o| !o.contains(&check.name)) {
         Some(outcome(
             check,
             Outcome::NotRun,
@@ -567,6 +581,49 @@ fn host_checks(
     Ok((results, json!({ "host-rustc": rustc }), stopped))
 }
 
+/// Why the nightly-only checks of `record` did not pass, if one did not: each must have run and
+/// passed in a nightly run (`--all`, VER-059).
+fn nightly_problems(record: &Value, checks: &[Check]) -> Vec<String> {
+    let entries = record
+        .get("checks")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    checks
+        .iter()
+        .filter(|c| c.nightly)
+        .filter_map(|c| {
+            let entry = entries.iter().find(|e| e["name"] == c.name.as_str());
+            let result = entry
+                .and_then(|e| e["result"].as_str())
+                .unwrap_or("missing");
+            (result != Outcome::Pass.name()).then(|| format!("{}: {result}", c.name))
+        })
+        .collect()
+}
+
+/// `verify nightly [<rev>]`: checks that the nightly-only checks passed in the local record of
+/// `rev`, made by `verify --all`; the nightly workflow runs it after the run, so that a failure of
+/// one of them fails the nightly run and opens its issue (VER-059). Returns the number of
+/// problems.
+fn nightly(rev: &str) -> Result<usize, String> {
+    let commit = git(&["rev-parse", rev])?;
+    let path = repo::root()
+        .join("target/verify")
+        .join(&commit)
+        .join("record.json");
+    let record: Value = serde_json::from_str(&repo::read(&path)?)
+        .map_err(|e| format!("{}: {e}", path.display()))?;
+    let problems = nightly_problems(&record, &checks::all());
+    for p in &problems {
+        println!("verify: nightly-only check {p} (VER-059)");
+    }
+    if problems.is_empty() {
+        println!("verify: every nightly-only check passed in the record of {commit}");
+    }
+    Ok(problems.len())
+}
+
 /// The container part of a run, for the record.
 struct ContainerRun {
     /// `container.json`: the result entries of the container checks, the container's
@@ -644,7 +701,7 @@ fn verify(mut opts: Options, force: scope::Force, publish: bool) -> Result<usize
     opts.skip = plan
         .checks
         .iter()
-        .filter(|d| !d.run)
+        .filter(|d| !d.run && d.source.is_some())
         .map(|d| d.name.clone())
         .collect();
     opts.base.clone_from(&plan.base);
@@ -809,7 +866,12 @@ mod tests {
         assert!(rows[..at].iter().all(|r| r.1 == "pass"));
         for row in &rows[at + 1..] {
             assert_eq!(row.1, "not-run", "{}", row.0);
-            assert_eq!(row.2.as_deref(), Some(stop_reason("header").as_str()));
+            let why = if row.0 == "kani" {
+                checks::NIGHTLY_ONLY.to_owned()
+            } else {
+                stop_reason("header")
+            };
+            assert_eq!(row.2.as_deref(), Some(why.as_str()), "{}", row.0);
         }
         assert!(
             stop_reason("header")
@@ -820,7 +882,7 @@ mod tests {
     // req: VER-056
     #[test]
     fn a_non_gating_failure_never_stops_a_run() {
-        let order: Vec<String> = checks::run_order().into_iter().map(|c| c.name).collect();
+        let order = runs_without_all();
         let (entries, stopped, ran) = simulate(&fail_fast(true), &["cpp-leon3", "kani"]);
         assert_eq!(stopped, None);
         assert_eq!(ran, order);
@@ -829,13 +891,74 @@ mod tests {
             .filter(|r| r.1 == "fail")
             .map(|r| r.0)
             .collect();
-        assert_eq!(failed, ["cpp-leon3", "kani"]);
+        assert_eq!(failed, ["cpp-leon3"]);
+    }
+
+    /// The checks of the run order that a run without `--all` runs: all but the nightly-only.
+    fn runs_without_all() -> Vec<String> {
+        checks::run_order()
+            .into_iter()
+            .filter(|c| !c.nightly)
+            .map(|c| c.name)
+            .collect()
+    }
+
+    // req: VER-056, VER-057, VER-059
+    #[test]
+    fn a_nightly_only_check_runs_only_with_all() {
+        for publish in [
+            &["--publish"][..],
+            &[],
+            &["--only", "kani"],
+            &["--no-fail-fast"],
+        ] {
+            let (opts, _, _) = run_options(publish).unwrap();
+            let (entries, _, ran) = {
+                let mut ran = Vec::new();
+                let (entries, stopped) = run_in_order(&checks::run_order(), &opts, None, |c| {
+                    ran.push(c.name.clone());
+                    Ok(entry(c, Outcome::Pass))
+                })
+                .unwrap();
+                (entries, stopped, ran)
+            };
+            assert!(!ran.contains(&"kani".to_owned()), "{publish:?}");
+            let kani = results(&entries)
+                .into_iter()
+                .find(|r| r.0 == "kani")
+                .unwrap();
+            assert_eq!(kani.1, "not-run");
+            assert_eq!(kani.2.as_deref(), Some(checks::NIGHTLY_ONLY));
+        }
+        // --all runs it, and passes --all on to the container.
+        let (opts, force, _) = run_options(&["--all"]).unwrap();
+        assert!(opts.all && force.all);
+        let (_, _, ran) = simulate(&opts, &[]);
+        assert!(ran.contains(&"kani".to_owned()));
+        assert!(parse_options(&["--all"]).unwrap().0.all);
+    }
+
+    // req: VER-059
+    #[test]
+    fn a_nightly_run_fails_when_a_nightly_only_check_did_not_pass() {
+        let all = checks::all();
+        let rec = |result: &str| {
+            json!({"checks": [{"name": "fmt", "result": "pass"},
+            {"name": "kani", "result": result}, {"name": "cpp-leon3", "result": "fail"}]})
+        };
+        assert_eq!(nightly_problems(&rec("pass"), &all), Vec::<String>::new());
+        assert_eq!(nightly_problems(&rec("fail"), &all), ["kani: fail"]);
+        assert_eq!(nightly_problems(&rec("not-run"), &all), ["kani: not-run"]);
+        assert_eq!(
+            nightly_problems(&json!({"checks": []}), &all),
+            ["kani: missing"]
+        );
     }
 
     // req: VER-056
     #[test]
     fn a_run_that_does_not_fail_fast_runs_every_check() {
-        let order: Vec<String> = checks::run_order().into_iter().map(|c| c.name).collect();
+        let order = runs_without_all();
         let (entries, stopped, ran) = simulate(&fail_fast(false), &["header", "clippy"]);
         assert_eq!(stopped.as_deref(), Some("header"));
         assert_eq!(ran, order);
@@ -933,6 +1056,16 @@ mod tests {
                 .into_iter()
                 .map(|c| {
                     let runs = run.contains(&c.name.as_str());
+                    if c.nightly {
+                        // As `scope::plan` decides without --all.
+                        return scope::Decision {
+                            name: c.name,
+                            run: false,
+                            why: checks::NIGHTLY_ONLY.to_owned(),
+                            source: None,
+                            reused: false,
+                        };
+                    }
                     scope::Decision {
                         why: if runs { "changes x" } else { "same inputs" }.to_owned(),
                         source: (!runs).then(|| source.clone()),
@@ -952,7 +1085,7 @@ mod tests {
             skip: plan
                 .checks
                 .iter()
-                .filter(|d| !d.run)
+                .filter(|d| !d.run && d.source.is_some())
                 .map(|d| d.name.clone())
                 .collect(),
             base: plan.base.clone(),
@@ -971,14 +1104,20 @@ mod tests {
         // Every check skipped or reused, or only the non-gating checks without a passing source,
         // or a gating check on the host alone: no container.
         assert!(none(&[], None, true));
-        assert!(none(&["cpp-leon3", "kani"], None, true));
-        assert!(none(&["cpp-leon3", "kani"], None, false));
+        assert!(none(&["cpp-leon3"], None, true));
+        assert!(none(&["cpp-leon3"], None, false));
         assert!(none(&["test-macos"], None, true));
+        // The nightly-only kani never starts one on its own, even selected with --only.
+        assert!(none(&[], Some(&["kani"]), true));
         // A gating container check, or a check that --only selects, starts one.
         assert!(!none(&["cpp-leon3", "clippy"], None, true));
         assert!(!none(&["spec"], None, false));
-        assert!(!none(&["kani"], Some(&["kani"]), true));
-        assert!(none(&["kani"], Some(&["fmt"]), true));
+        assert!(!none(
+            &["rust-sparc-leon3"],
+            Some(&["rust-sparc-leon3"]),
+            true
+        ));
+        assert!(none(&["rust-sparc-leon3"], Some(&["fmt"]), true));
         // A check for an x86_64 host that --only selects runs on no other host.
         assert!(none(&["cpp-leon3"], Some(&["cpp-leon3"]), false));
         assert!(!none(&["cpp-leon3"], Some(&["cpp-leon3"]), true));
@@ -988,7 +1127,7 @@ mod tests {
     #[test]
     fn the_record_of_a_run_without_a_container_passes_the_gate() {
         let all = checks::all();
-        let plan = plan_running(&["cpp-leon3", "kani", "test-macos"]);
+        let plan = plan_running(&["cpp-leon3", "test-macos"]);
         let opts = opts_of(&plan, None);
         for x86_64 in [true, false] {
             let checks = without_container(&opts, x86_64).unwrap();
@@ -1000,7 +1139,8 @@ mod tests {
             for (name, result, reason) in &rows {
                 let want = match name.as_str() {
                     "cpp-leon3" if !x86_64 => ("not-run", Some("needs an x86_64 host")),
-                    "cpp-leon3" | "kani" => ("not-run", Some(NO_CONTAINER_REASON)),
+                    "cpp-leon3" => ("not-run", Some(NO_CONTAINER_REASON)),
+                    "kani" => ("not-run", Some(checks::NIGHTLY_ONLY)),
                     _ => ("skipped", None),
                 };
                 assert_eq!(result, want.0, "{name}");

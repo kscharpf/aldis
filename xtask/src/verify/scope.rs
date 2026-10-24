@@ -23,7 +23,7 @@ use std::rc::Rc;
 
 use serde_json::{Map, Value, json};
 
-use super::checks::{Check, DOCS, Inputs};
+use super::checks::{Check, DOCS, Inputs, NIGHTLY_ONLY};
 use super::record::Outcome;
 use super::{git_bytes, git_in, publish, record};
 
@@ -265,12 +265,26 @@ pub struct Decision {
 }
 
 impl Decision {
-    /// The result recorded for a check that does not run (VER-057); `None` when it runs.
+    /// The result recorded for a check that does not run (VER-057); `None` when it runs. A check
+    /// that does not run and takes no result from a source is a nightly-only check outside the
+    /// nightly run: not run.
     pub const fn outcome(&self) -> Option<Outcome> {
-        match (self.run, self.reused) {
-            (true, _) => None,
-            (false, false) => Some(Outcome::Skipped),
-            (false, true) => Some(Outcome::Reused),
+        match (self.run, self.source.is_some(), self.reused) {
+            (true, _, _) => None,
+            (false, false, _) => Some(Outcome::NotRun),
+            (false, true, false) => Some(Outcome::Skipped),
+            (false, true, true) => Some(Outcome::Reused),
+        }
+    }
+
+    /// The decision for the nightly-only check `name` in a run without `--all` (VER-059).
+    fn nightly(name: &str) -> Self {
+        Self {
+            name: name.to_owned(),
+            run: false,
+            why: NIGHTLY_ONLY.to_owned(),
+            source: None,
+            reused: false,
         }
     }
 }
@@ -341,12 +355,17 @@ pub fn plan(
         changed,
         checks: checks
             .iter()
-            .map(|c| Decision {
-                name: c.name.clone(),
-                run: true,
-                why: format!("every check runs: {why}"),
-                source: None,
-                reused: false,
+            .map(|c| {
+                if c.nightly && !force.all {
+                    return Decision::nightly(&c.name);
+                }
+                Decision {
+                    name: c.name.clone(),
+                    run: true,
+                    why: format!("every check runs: {why}"),
+                    source: None,
+                    reused: false,
+                }
             })
             .collect(),
         every: Some(why),
@@ -366,6 +385,10 @@ pub fn plan(
     let decisions = checks
         .iter()
         .map(|c| {
+            // A nightly-only check is not run, whatever its inputs; with --all, `every` ran it.
+            if c.nightly {
+                return Decision::nightly(&c.name);
+            }
             let against_base = differs(checks, c, &paths);
             let origin = found.origins.get(&c.name).and_then(|origins| {
                 origins.iter().find(|o| {
@@ -646,12 +669,14 @@ pub fn describe(plan: &Plan, checks: &[Check]) -> Vec<String> {
     } else {
         let count = |o: Option<Outcome>| plan.checks.iter().filter(|d| d.outcome() == o).count();
         out.push(format!(
-            "{} changed path(s) against main at {base}: {} of {} checks run, {} skipped, {} reused",
+            "{} changed path(s) against main at {base}: {} of {} checks run, {} skipped, {} reused, \
+             {} nightly only",
             plan.changed.len(),
             count(None),
             plan.checks.len(),
             count(Some(Outcome::Skipped)),
             count(Some(Outcome::Reused)),
+            count(Some(Outcome::NotRun)),
         ));
         match &plan.base_record {
             Some(rec) => out.push(format!("the base passed in the published record of {rec}")),
@@ -674,7 +699,8 @@ pub fn describe(plan: &Plan, checks: &[Check]) -> Vec<String> {
     for (d, c) in plan.checks.iter().zip(checks) {
         let (what, why) = match (d.outcome(), &d.source) {
             (Some(o), Some(s)) => (o.name(), format!("from the record of {}", short(&s.commit))),
-            _ => ("runs", d.why.clone()),
+            (Some(_), None) => ("nightly", d.why.clone()),
+            (None, _) => ("runs", d.why.clone()),
         };
         out.push(format!(
             "  {:40} {:16} {:7} [{}] {why}",
@@ -957,9 +983,10 @@ mod tests {
     // req: VER-056
     #[test]
     fn code_runs_its_checks() {
-        let rust = names(|c| !c.cpp);
+        // kani is nightly-only: no change runs it without --all.
+        let rust = names(|c| !c.cpp && !c.nightly);
         let cpp = names(|c| c.cpp || c.name == "spec");
-        let everything = names(|_| true);
+        let everything = names(|c| !c.nightly);
         // A crate README is a doctest.
         assert_eq!(
             running(&changed(&["crates/aldis-spp/README.md"]), Force::default()),
@@ -972,16 +999,16 @@ mod tests {
             ),
             rust
         );
-        // A rename out of docs/ lists both sides. The facade has no Kani harness.
-        let rust_but_kani = names(|c| !c.cpp && c.name != "kani");
+        // A rename out of docs/ lists both sides.
         assert_eq!(
             running(
                 &changed(&["docs/a.md", "crates/aldis/a.md"]),
                 Force::default()
             ),
-            rust_but_kani
+            rust
         );
-        // A crate with Kani harnesses runs the check kani with the other Rust checks (OI-42).
+        // A crate with Kani harnesses runs the Rust checks, not kani, which is nightly-only
+        // (OI-42, VER-059).
         assert_eq!(
             running(
                 &changed(&["crates/aldis-core/src/proofs.rs"]),
@@ -1000,7 +1027,7 @@ mod tests {
         // The vectors are read by both implementations, not by the header check.
         assert_eq!(
             running(&changed(&["test-vectors/README.md"]), Force::default()),
-            names(|c| c.name != "header" && c.name != "kani")
+            names(|c| c.name != "header" && !c.nightly)
         );
         // The committed header is read by the header check (and spec) alone.
         assert_eq!(
@@ -1030,7 +1057,6 @@ mod tests {
             all: false,
             cpp: true,
         };
-        want.retain(|n| n != "kani");
         assert_eq!(
             running(&changed(&["crates/aldis/src/lib.rs"]), all_cpp),
             want
@@ -1041,6 +1067,8 @@ mod tests {
     #[test]
     fn fail_safe() {
         let everything = names(|_| true);
+        let but_nightly = names(|c| !c.nightly);
+        let nightly = |d: &Decision| d.name == "kani" && d.outcome() == Some(Outcome::NotRun);
         let default = Force::default();
         let all = Force {
             all: true,
@@ -1057,16 +1085,18 @@ mod tests {
             assert!(
                 p.checks
                     .iter()
-                    .all(|d| d.run && d.why.contains("an input of no check")),
+                    .all(|d| nightly(d) || (d.run && d.why.contains("an input of no check"))),
                 "{paths:?}"
             );
         }
+        // --all runs every check, the nightly-only ones too (VER-059).
         assert_eq!(running(&changed(&["docs/a.md"]), all), everything);
         let unknown = Change {
             base: None,
             paths: Err("origin/main could not be fetched".to_owned()),
         };
-        assert_eq!(running(&unknown, default), everything);
+        assert_eq!(running(&unknown, default), but_nightly);
+        assert_eq!(running(&unknown, all), everything);
         // No record covers the base, and the branch has none.
         let p = plan(&all_checks(), &changed(&["docs/a.md"]), default, |b| {
             Sources {
@@ -1075,7 +1105,7 @@ mod tests {
             }
         });
         assert_eq!(p.every, Some(format!("nothing covers {}", "b".repeat(40))));
-        assert!(p.checks.iter().all(|d| d.run));
+        assert!(p.checks.iter().all(|d| d.run || nightly(d)));
         // A record whose diff is not known is not used.
         let mut change = changed(&["docs/a.md"]);
         let p = plan(&all_checks(), &change, default, covered(&change));
@@ -1085,7 +1115,7 @@ mod tests {
             ..change.clone()
         };
         let p = plan(&all_checks(), &change, default, covered(&unknown_diff));
-        assert!(p.checks.iter().all(|d| d.run));
+        assert!(p.checks.iter().all(|d| d.run || nightly(d)));
         // Records are not looked for when every check runs anyway.
         change.paths = Err("the commit is on main".to_owned());
         let asked = std::cell::Cell::new(false);
@@ -1142,10 +1172,11 @@ mod tests {
                     && !xtask_tests.contains(&c.name.as_str())
             })
         );
-        assert_eq!(
-            of(Some(Outcome::Skipped)),
-            names(|c| c.cpp || c.name == "kani")
-        );
+        assert_eq!(of(Some(Outcome::Skipped)), names(|c| c.cpp));
+        // kani is nightly-only: neither skipped nor reused, whatever the records say.
+        assert_eq!(of(Some(Outcome::NotRun)), ["kani"]);
+        let kani = p.checks.iter().find(|d| d.name == "kani").unwrap();
+        assert_eq!((kani.why.as_str(), &kani.source), (NIGHTLY_ONLY, &None));
         let mut run = vec!["spec".to_owned()];
         run.extend(xtask_tests.map(str::to_owned));
         assert_eq!(of(None), names(|c| run.contains(&c.name)));
@@ -1630,8 +1661,9 @@ mod tests {
         // The C++ checks: unchanged against the base, which PR 1's record covers.
         assert_eq!(
             decided(&p, Some(Outcome::Skipped)),
-            (names(|c| c.cpp || c.name == "kani"), vec![r.head1.clone()])
+            (names(|c| c.cpp), vec![r.head1.clone()])
         );
+        assert_eq!(decided(&p, Some(Outcome::NotRun)).0, ["kani"]);
         // spec reads every path; the xtask tests read cpp/.
         let mut run = xtask_tests.map(str::to_owned).to_vec();
         run.push("spec".to_owned());
@@ -1639,7 +1671,7 @@ mod tests {
         let lines = describe(&p, &checks);
         assert!(
             lines[0].ends_with(&format!(
-                "4 of {} checks run, 16 skipped, {} reused",
+                "4 of {} checks run, 15 skipped, {} reused, 1 nightly only",
                 checks.len(),
                 rust.len()
             )),
@@ -1696,10 +1728,10 @@ mod tests {
     fn a_main_merge_that_changes_a_rust_input_runs_the_rust_checks() {
         let r = reverify("rust-input", "crates/y/src/lib.rs");
         let p = plan_of(&r);
-        assert_eq!(decided(&p, None).0, names(|c| !c.cpp && c.name != "kani"));
+        assert_eq!(decided(&p, None).0, names(|c| !c.cpp && !c.nightly));
         assert_eq!(
             decided(&p, Some(Outcome::Skipped)),
-            (names(|c| c.cpp || c.name == "kani"), vec![r.head1])
+            (names(|c| c.cpp), vec![r.head1])
         );
         assert_eq!(decided(&p, Some(Outcome::Reused)).0, Vec::<String>::new());
         let clippy = p.checks.iter().find(|d| d.name == "clippy").unwrap();
@@ -1861,7 +1893,7 @@ mod tests {
         let r = reverify("stopped", "cpp/src/a.cpp");
         let checks = all();
         let stopped = "the run stopped after the gating check header failed (--fail-fast)";
-        // A record that passes the gate, in which kani, non-gating, did not run: kani takes no
+        // A record that passes the gate, in which kani, nightly-only, did not run: kani takes no
         // result from it, and every check that passed does.
         let mut kani = r.origin.record_for(
             record::FORMAT,

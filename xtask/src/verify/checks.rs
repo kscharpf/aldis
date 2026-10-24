@@ -5,6 +5,9 @@
 //! Each check is a Bash script run with `-euo pipefail` from the root of the checkout, with
 //! `RUNNER_TEMP` set to an empty directory of its own.
 
+/// The reason recorded for a nightly-only check ([`Check::nightly`]) in a run without `--all`.
+pub const NIGHTLY_ONLY: &str = "nightly only (VER-059)";
+
 /// Bare-metal Rust targets of the matrix (docs/06-verification.md §4).
 const RUST_BARE_METAL: &[&str] = &[
     "thumbv7em-none-eabihf",
@@ -220,6 +223,11 @@ pub struct Check {
     /// A failure fails the run. Only the LEON3 checks, Rust and C++ (OI-08), and the Kani proofs
     /// (OI-42) are reported without gating.
     pub gating: bool,
+    /// A nightly-only check: it runs only in a run with `--all`, which is what the nightly
+    /// verification run uses (VER-059), and every other run records it as not run with
+    /// [`NIGHTLY_ONLY`]. It is never skipped, reused, or a source (VER-056). Only `kani` (OI-42,
+    /// maintainer decision 2026-10-24).
+    pub nightly: bool,
     /// Its typical duration in seconds, which orders the run only ([`run_order`]): the median
     /// of its durations in the published records of the GitHub-hosted runs of VER-060
     /// (`x86_64`, an empty build cache) from 2026-10-19 to 2026-10-24, rounded; for
@@ -243,6 +251,7 @@ fn check(
         cpp,
         inputs: if cpp { CPP_INPUTS } else { RUST_INPUTS },
         gating: true,
+        nightly: false,
         secs,
         script: script.into(),
     }
@@ -316,9 +325,11 @@ fn rust() -> Vec<Check> {
         gating: false,
         ..check("rust-sparc-leon3", c, false, 45, RUST_LEON3)
     });
-    // The Kani proof harnesses (OI-42, docs/verification/formal-proofs.md): reported, not gating.
+    // The Kani proof harnesses (OI-42, docs/verification/formal-proofs.md): reported, not gating,
+    // and run only at night (maintainer decision 2026-10-24).
     out.push(Check {
         gating: false,
+        nightly: true,
         ..reading(
             KANI_INPUTS,
             check("kani", c, false, 641, "cargo xtask kani\n"),
@@ -690,6 +701,16 @@ mod tests {
             }
         }
         assert_eq!(order.last().map(|c| c.name.as_str()), Some("kani"));
+    }
+
+    // req: VER-056, VER-059
+    #[test]
+    fn only_kani_is_nightly_only_and_it_does_not_gate() {
+        let nightly: Vec<Check> = all().into_iter().filter(|c| c.nightly).collect();
+        assert_eq!(nightly.len(), 1);
+        assert_eq!(nightly[0].name, "kani");
+        assert!(!nightly[0].gating);
+        assert_eq!(nightly[0].host, Host::Container);
     }
 
     // req: VER-056

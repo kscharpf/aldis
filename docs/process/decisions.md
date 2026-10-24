@@ -86,3 +86,7 @@ One line for each decision the maintainer takes, under the [decision rights](dec
 - 2026-10-24 · api · #94 · aldis_tm_encode takes the five frame-content slices in one aldis_tm_content_t (review finding 2); the VC array stays as arguments
 - 2026-10-24 · api · #94 · One aldis_tm_validate, which uses the master channel's security layouts; the _with pairs exist only for decoders, whose plain form takes the physical channel (review finding 3, c-abi.md §11)
 - 2026-10-24 · process · chat · Standing process review: the coordinator flags an order inversion (an approved pull request blocked by an unreviewed one it depends on) as soon as it happens, and after each nightly report (#87) recommends changes only on process-created waits (inversions, update runs after approval, wasted runs, rework, repeated conflicts); review latency counts only in the maintainer's active time and is never alone a reason
+- 2026-10-24 · process · chat · The Kani check runs only in the nightly verification run (`verify --all`, VER-059), not in pull-request runs; it stays non-gating (OI-42)
+- 2026-10-24 · process · #101 · VER-056: a run that cannot publish MAY stop at its first gating failure; a run in which no gating check needs a container MAY start none, the non-gating checks it would run reported as not run
+- 2026-10-24 · process · #101 · VER-057: a run without a container records that no image was used, with the commit's image-input hash
+- 2026-10-24 · process · #101 · VER-060: a run that needs no image neither pulls nor builds one

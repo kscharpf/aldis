@@ -294,6 +294,9 @@ impl Engine {
         if opts.fails_fast() {
             args.push("--fail-fast".to_owned());
         }
+        if opts.all {
+            args.push("--all".to_owned());
+        }
         // The exit status reports gating failures, which the record carries; only a missing
         // report is an error here.
         let _ = Command::new(&self.program)

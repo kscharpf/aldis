@@ -11,3 +11,9 @@
 - `cargo xtask ci` also runs `cargo xtask header`, so a stale `include/aldis/aldis.h` fails it
   in seconds; it needs the pinned `cbindgen`. A step that cannot run counts as a problem, and
   the other steps still run.
+- The check `kani` is nightly-only: it runs only with `verify --all`, as the nightly run does,
+  and every other run records it as not run, "nightly only (VER-059)"; it stays non-gating
+  (OI-42). In the nightly run, `cargo xtask verify nightly` fails the job when it did not pass,
+  so a failing harness opens the nightly issue.
+- VER-056, VER-057, and VER-060 state the fail-fast stop, the run without a container, the
+  record without an image, and nightly-only checks (docs/06-verification.md §7).
