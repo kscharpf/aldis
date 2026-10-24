@@ -463,7 +463,9 @@ impl<'b> UslpFrameWriter<'b> {
     ///
     /// The frame is the first `len` octets of the buffer. When `tfdz_len` is below the
     /// reservation, the Security Trailer moves to follow the TFDZ, and the octets after the
-    /// frame keep unspecified values; use only `out[..len]`.
+    /// frame keep unspecified values, which may include octets of the Security Trailer as it
+    /// was before the move; use only `out[..len]`, and clear the rest of the buffer if it may
+    /// hold sensitive data.
     ///
     /// # Errors
     /// `OutOfRange` (`user_len`) above the reservation; `InvalidField` (`frame_data_field`) for
