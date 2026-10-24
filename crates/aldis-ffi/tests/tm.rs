@@ -11,7 +11,10 @@
 use core::ptr::{null, null_mut};
 
 use aldis_ffi::error::*;
-use aldis_ffi::field::{ALDIS_FIELD_SPACECRAFT_ID, ALDIS_FIELD_SYNC_FLAG};
+use aldis_ffi::field::{
+    ALDIS_FIELD_FIRST_HEADER_POINTER, ALDIS_FIELD_SPACECRAFT_ID, ALDIS_FIELD_SYNC_FLAG,
+    ALDIS_FIELD_VC_ID,
+};
 use aldis_ffi::oid::*;
 use aldis_ffi::tm::*;
 use aldis_ffi::{ALDIS_MODE_STRICT, aldis_error_detail_t};
@@ -608,4 +611,168 @@ fn the_oid_writer_takes_a_generator_handle() {
         begin(4, null_mut(), frame.as_mut_ptr(), &raw mut l),
         ALDIS_ERR_INVALID_FIELD
     );
+}
+
+/// One call of `aldis_tm_encode`, `aldis_tm_writer_begin`, and `aldis_tm_writer_finish` with
+/// `fields` on `mc`, `vcs`, each into a fresh 2100-octet buffer: the status and the detail of
+/// each, which must agree.
+fn write_all(
+    mc: &aldis_tm_mc_config_t,
+    vcs: &[aldis_tm_vc_config_t],
+    fields: &aldis_tm_fields_t,
+    data_len: usize,
+    layout: bool,
+) -> (i32, aldis_error_detail_t) {
+    let data = vec![0xD0_u8; data_len];
+    let content = aldis_tm_content_t {
+        data: data.as_ptr(),
+        data_len,
+        ..aldis_tm_content_t::default()
+    };
+    let mut results = Vec::new();
+    for call in 0..3 {
+        let mut frame = vec![0xEE_u8; 2100];
+        let (mut d, mut n, mut l) = (detail(), 0_usize, aldis_tm_layout_t::default());
+        let l_ptr: *mut aldis_tm_layout_t = if layout { &raw mut l } else { null_mut() };
+        // SAFETY: every pointer is to a live local or NULL.
+        let status = unsafe {
+            match call {
+                0 => aldis_tm_encode(
+                    mc,
+                    vcs.as_ptr(),
+                    vcs.len(),
+                    fields,
+                    &raw const content,
+                    frame.as_mut_ptr(),
+                    frame.len(),
+                    &raw mut n,
+                    &raw mut d,
+                ),
+                1 => aldis_tm_writer_begin(
+                    mc,
+                    vcs.as_ptr(),
+                    vcs.len(),
+                    fields,
+                    frame.as_mut_ptr(),
+                    frame.len(),
+                    l_ptr,
+                    &raw mut d,
+                ),
+                _ => aldis_tm_writer_finish(
+                    mc,
+                    vcs.as_ptr(),
+                    vcs.len(),
+                    fields,
+                    frame.as_mut_ptr(),
+                    frame.len(),
+                    &raw mut n,
+                    &raw mut d,
+                ),
+            }
+        };
+        assert!(
+            frame.iter().all(|&b| b == 0xEE),
+            "call {call} wrote on error"
+        );
+        results.push((status, d));
+    }
+    assert!(
+        results
+            .iter()
+            .all(|r| (r.0, r.1.kind, r.1.field, r.1.expected, r.1.found)
+                == (
+                    results[0].0,
+                    results[0].1.kind,
+                    results[0].1.field,
+                    results[0].1.expected,
+                    results[0].1.found
+                )),
+        "the three writers disagree"
+    );
+    results[0]
+}
+
+#[test]
+fn packet_offsets_above_0x7fd_fail_as_the_writer_checks_them() {
+    // req: TM-009, CABI-020, CABI-022, RS-020
+    let (mc, vcs) = (mc(), vcs());
+    let beyond = |vcid| aldis_tm_fields_t {
+        packet_offset: 0x7FE,
+        ..packets(vcid)
+    };
+    // Inside the 18-octet data field of VC 4: the largest valid offset, 17.
+    let (status, d) = write_all(&mc, &vcs, &beyond(4), 18, true);
+    assert_eq!(
+        (status, d.field, d.detail, d.expected, d.found),
+        (
+            ALDIS_ERR_OUT_OF_RANGE,
+            ALDIS_FIELD_FIRST_HEADER_POINTER,
+            ALDIS_DETAIL_EXPECTED,
+            17,
+            0x7FE
+        )
+    );
+    for offset in [0x7FF, u16::MAX] {
+        let f = aldis_tm_fields_t {
+            packet_offset: offset,
+            ..packets(4)
+        };
+        let (status, d) = write_all(&mc, &vcs, &f, 18, true);
+        assert_eq!(
+            (status, d.expected, d.found),
+            (ALDIS_ERR_OUT_OF_RANGE, 17, u64::from(offset))
+        );
+    }
+    // A data field longer than the pointer reaches: the largest offset, 0x7FD.
+    let big = aldis_tm_mc_config_t {
+        pc: aldis_tm_config_t {
+            fecf: 0,
+            frame_len: 2100,
+            ..mc.pc
+        },
+        ..mc
+    };
+    let plain = [aldis_tm_vc_config_t {
+        security_header_len: 0,
+        security_trailer_len: 0,
+        ..vcs[0]
+    }];
+    let (status, d) = write_all(&big, &plain, &beyond(4), 2094, true);
+    assert_eq!(
+        (status, d.field, d.expected, d.found),
+        (
+            ALDIS_ERR_OUT_OF_RANGE,
+            ALDIS_FIELD_FIRST_HEADER_POINTER,
+            0x7FD,
+            0x7FE
+        )
+    );
+    // The checks before the pointer's come first: the VC, then the Synchronization Flag.
+    let (status, d) = write_all(&mc, &vcs, &beyond(3), 18, true);
+    assert_eq!(
+        (status, d.field),
+        (ALDIS_ERR_UNKNOWN_CHANNEL, ALDIS_FIELD_VC_ID)
+    );
+    let (status, d) = write_all(&mc, &vcs, &beyond(5), 18, true);
+    assert_eq!(
+        (status, d.field, d.expected, d.found),
+        (ALDIS_ERR_INVALID_FIELD, ALDIS_FIELD_SYNC_FLAG, 1, 0)
+    );
+    // And an argument the C ABI checks first stays first (CABI-022): a NULL layout for begin.
+    let mut frame = vec![0_u8; 40];
+    let f = beyond(4);
+    // SAFETY: every pointer is to a live local or NULL.
+    let status = unsafe {
+        aldis_tm_writer_begin(
+            &raw const mc,
+            vcs.as_ptr(),
+            2,
+            &raw const f,
+            frame.as_mut_ptr(),
+            40,
+            null_mut(),
+            null_mut(),
+        )
+    };
+    assert_eq!(status, ALDIS_ERR_INVALID_FIELD);
 }

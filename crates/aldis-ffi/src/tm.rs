@@ -32,15 +32,16 @@
 
 use core::ops::Range;
 
-use aldis::core::Result;
 use aldis::core::ids::{SpacecraftId, VcId};
 use aldis::core::layout::{FrameLayout, OCF_LEN};
 use aldis::core::ocf::Ocf;
 use aldis::core::security::SecurityLayout;
+use aldis::core::{Error, ErrorDetail, ErrorKind, Result};
 use aldis::tm::{
-    DataFieldContent, DataFieldStatus, FirstHeaderPointer, FshLen, NoSdls, PacketPointer,
-    SegmentLengthId, TmFrame, TmFrameContent, TmFrameFields, TmFrameWriter, TmMasterChannelConfig,
-    TmPhysicalChannelConfig, TmPrimaryHeader, TmVirtualChannelConfig, encode,
+    DataFieldContent, DataFieldStatus, FirstHeaderPointer, FshLen, NoSdls, PacketOffset,
+    PacketPointer, SegmentLengthId, TmFrame, TmFrameContent, TmFrameFields, TmFrameWriter,
+    TmMasterChannelConfig, TmPhysicalChannelConfig, TmPrimaryHeader, TmVirtualChannelConfig,
+    encode,
 };
 
 use crate::abi::{self, Configs, invalid_argument};
@@ -397,8 +398,56 @@ unsafe fn master_channel_at(
     master_channel(&mc, &vcs)
 }
 
+/// The sender's fields of a C struct, and a packet offset that no [`PacketOffset`] holds.
+///
+/// Such an offset (above `0x7FD`) has no [`PacketPointer`]. Before RS-020 gave the offset its
+/// type, it reached the writer, which rejected it; [`Fields::checked`] returns the error the
+/// writer returned, where the writer returned it, so the C ABI behaves as before (CABI-020,
+/// TM-009).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Fields {
+    /// The fields; with an offset beyond, the pointer stands in as `NoPacketStart`.
+    fields: TmFrameFields,
+    /// The packet offset no `PacketOffset` holds, if the C struct gave one.
+    offset_beyond: Option<u16>,
+}
+
+impl Fields {
+    /// The fields for the writers, or for an offset beyond, the error of the writer's checks of
+    /// `fields` on `mc`, in their order: the VC, the Synchronization Flag, then the offset
+    /// (132.0 §4.1.2.7.6.3; TM-009).
+    fn checked(&self, mc: &TmMasterChannelConfig) -> Result<&TmFrameFields> {
+        let Some(n) = self.offset_beyond else {
+            return Ok(&self.fields);
+        };
+        let vcid = self.fields.vcid;
+        Err(match (mc.vc(vcid), mc.frame_layout(vcid)) {
+            (Some(vc), Some(_)) if vc.content().sync_flag() => Error::new(ErrorKind::InvalidField)
+                .with_field(aldis::tm::field::SYNC_FLAG)
+                .with_detail(ErrorDetail::Expected {
+                    expected: u64::from(vc.content().sync_flag()),
+                    found: u64::from(false),
+                }),
+            (Some(_), Some(layout)) => {
+                let limit = layout
+                    .data()
+                    .len()
+                    .min(usize::from(FirstHeaderPointer::ONLY_IDLE_DATA.get()))
+                    .saturating_sub(1);
+                Error::out_of_range(
+                    aldis::tm::field::FIRST_HEADER_POINTER,
+                    u64::try_from(limit).unwrap_or(u64::MAX),
+                    u64::from(n),
+                )
+            }
+            _ => Error::new(ErrorKind::UnknownChannel).with_field(aldis::tm::field::VC_ID),
+        })
+    }
+}
+
 /// The sender's fields of a C struct, each parsed into its type (132.0 §4.1.2; RS-020).
-fn fields(f: aldis_tm_fields_t) -> Result<TmFrameFields> {
+fn fields(f: aldis_tm_fields_t) -> Result<Fields> {
+    let mut offset_beyond = None;
     let vcid = VcId::try_from(f.vcid)?;
     let status = if abi::flag(f.sync_flag)? {
         DataFieldStatus::VcaSdu {
@@ -408,18 +457,23 @@ fn fields(f: aldis_tm_fields_t) -> Result<TmFrameFields> {
         }
     } else {
         DataFieldStatus::Packets(match f.pointer {
-            ALDIS_TM_POINTER_STARTS_AT => PacketPointer::StartsAt(f.packet_offset),
+            ALDIS_TM_POINTER_STARTS_AT => {
+                if let Ok(offset) = PacketOffset::try_from(f.packet_offset) {
+                    PacketPointer::StartsAt(offset)
+                } else {
+                    offset_beyond = Some(f.packet_offset);
+                    PacketPointer::NoPacketStart
+                }
+            }
             ALDIS_TM_POINTER_NO_PACKET_START => PacketPointer::NoPacketStart,
             ALDIS_TM_POINTER_ONLY_IDLE_DATA => PacketPointer::OnlyIdleData,
             _ => return Err(invalid_argument()),
         })
     };
-    Ok(TmFrameFields::new(
-        vcid,
-        f.mc_frame_count,
-        f.vc_frame_count,
-        status,
-    ))
+    Ok(Fields {
+        fields: TmFrameFields::new(vcid, f.mc_frame_count, f.vc_frame_count, status),
+        offset_beyond,
+    })
 }
 
 /// The fields of an Only Idle Data frame, as `TmFrameWriter::begin_oid` sets them (TM-010).
@@ -494,7 +548,9 @@ fn layout(l: &FrameLayout) -> aldis_tm_layout_t {
 /// The C view of a decoded frame.
 pub(crate) fn view(f: &TmFrame<'_>) -> aldis_tm_frame_t {
     let (pointer, packet_offset) = match f.data_field_status() {
-        DataFieldStatus::Packets(PacketPointer::StartsAt(n)) => (ALDIS_TM_POINTER_STARTS_AT, n),
+        DataFieldStatus::Packets(PacketPointer::StartsAt(n)) => {
+            (ALDIS_TM_POINTER_STARTS_AT, n.get())
+        }
         DataFieldStatus::Packets(PacketPointer::NoPacketStart) => {
             (ALDIS_TM_POINTER_NO_PACKET_START, 0)
         }
@@ -897,7 +953,7 @@ pub unsafe extern "C" fn aldis_tm_encode(
             };
             let out = abi::bytes_mut(out, cap, &c.buffers())?;
             let out_len = abi::out(out_len)?;
-            out_len.write(encode(&mc, &fields, &content, out)?);
+            out_len.write(encode(&mc, fields.checked(&mc)?, &content, out)?);
             Ok(())
         })
     }
@@ -946,7 +1002,7 @@ pub unsafe extern "C" fn aldis_tm_writer_begin(
             let fields = self::fields(abi::read(fields)?)?;
             let out = abi::bytes_mut(out, cap, &[])?;
             let layout = abi::out(layout)?;
-            let writer = TmFrameWriter::begin(out, &mc, &fields)?;
+            let writer = TmFrameWriter::begin(out, &mc, fields.checked(&mc)?)?;
             layout.write(self::layout(writer.layout()));
             Ok(())
         })
@@ -986,7 +1042,7 @@ pub unsafe extern "C" fn aldis_tm_writer_finish(
             let fields = self::fields(abi::read(fields)?)?;
             let out = abi::bytes_mut(out, cap, &[])?;
             let out_len = abi::out(out_len)?;
-            out_len.write(TmFrameWriter::resume(out, &mc, &fields)?.finish());
+            out_len.write(TmFrameWriter::resume(out, &mc, fields.checked(&mc)?)?.finish());
             Ok(())
         })
     }

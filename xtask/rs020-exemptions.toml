@@ -14,8 +14,7 @@
 # - full width: every value of the integer is valid;
 # - relation: the value's only bound is its fit to another value (a format, a configuration,
 #   a frame), which the constructor or writer checks, as RS-020 allows;
-# - output: a length, count, or diagnostic the crate reports and no function takes back;
-# - pending: a gap whose fix waits for a maintainer decision.
+# - output: a length, count, or diagnostic the crate reports and no function takes back.
 
 # aldis-core
 
@@ -64,10 +63,6 @@ item = "aldis_spp::segment::Status::Complete.0"
 reason = "output: the length in octets of the SDU the Reassembler has completed (SPP-013)"
 
 # aldis-tm
-
-[[exemption]]
-item = "aldis_tm::header::PacketPointer::StartsAt.0"
-reason = "pending: an RS-020 gap (offsets above 0x7FD have no pointer value, and to_raw maps them to No Packet Start); the fix changes a type the C ABI maps from packet_offset, so it waits for the maintainer (m2/rs020-check)"
 
 [[exemption]]
 item = "aldis_tm::header::TmPrimaryHeader.mc_frame_count"

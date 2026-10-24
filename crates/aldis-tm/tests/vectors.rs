@@ -14,9 +14,9 @@ use aldis_core::security::SecurityLayout;
 use aldis_core::{DecodeMode, Error, FieldId};
 use aldis_testkit::{CodecCase, Mode, Outcome, hex, run_codec_file};
 use aldis_tm::{
-    DataFieldContent, DataFieldStatus, FirstHeaderPointer, FshLen, NoSdls, PacketPointer,
-    SegmentLengthId, TmFrame, TmFrameContent, TmFrameFields, TmFrameWriter, TmMasterChannelConfig,
-    TmPhysicalChannelConfig, TmVirtualChannelConfig, encode,
+    DataFieldContent, DataFieldStatus, FirstHeaderPointer, FshLen, NoSdls, PacketOffset,
+    PacketPointer, SegmentLengthId, TmFrame, TmFrameContent, TmFrameFields, TmFrameWriter,
+    TmMasterChannelConfig, TmPhysicalChannelConfig, TmVirtualChannelConfig, encode,
 };
 use serde_json::{Map, Value, json};
 
@@ -96,8 +96,8 @@ fn config(
     Ok((pc, Some(mc)))
 }
 
-fn status(case: &CodecCase, s: &Map<String, Value>) -> DataFieldStatus {
-    if get(s, case, "sync").as_bool().unwrap() {
+fn status(case: &CodecCase, s: &Map<String, Value>) -> Result<DataFieldStatus, Error> {
+    Ok(if get(s, case, "sync").as_bool().unwrap() {
         DataFieldStatus::VcaSdu {
             packet_order_flag: get(s, case, "packet_order_flag").as_bool().unwrap(),
             segment_length_id: SegmentLengthId::new(uint(get(s, case, "segment_length_id")))
@@ -111,12 +111,16 @@ fn status(case: &CodecCase, s: &Map<String, Value>) -> DataFieldStatus {
         }
     } else {
         DataFieldStatus::Packets(match get(s, case, "pointer").as_str().unwrap() {
-            "starts_at" => PacketPointer::StartsAt(uint(get(s, case, "packet_offset"))),
+            "starts_at" => PacketPointer::StartsAt(PacketOffset::try_from(uint::<u16>(get(
+                s,
+                case,
+                "packet_offset",
+            )))?),
             "no_packet_start" => PacketPointer::NoPacketStart,
             "only_idle_data" => PacketPointer::OnlyIdleData,
             other => panic!("{}: pointer {other}", case.id),
         })
-    }
+    })
 }
 
 fn ocf_of(v: Option<&Value>) -> Option<Ocf> {
@@ -136,7 +140,7 @@ const fn report(ocf: Ocf) -> &'static str {
 fn decoded(f: &TmFrame<'_>) -> Value {
     let h = f.header();
     let (pointer, offset) = match f.data_field_status() {
-        DataFieldStatus::Packets(PacketPointer::StartsAt(n)) => (Some("starts_at"), Some(n)),
+        DataFieldStatus::Packets(PacketPointer::StartsAt(n)) => (Some("starts_at"), Some(n.get())),
         DataFieldStatus::Packets(PacketPointer::NoPacketStart) => (Some("no_packet_start"), None),
         DataFieldStatus::Packets(PacketPointer::OnlyIdleData) => (Some("only_idle_data"), None),
         DataFieldStatus::VcaSdu { .. } => (None, None),
@@ -174,7 +178,7 @@ fn encode_case(case: &CodecCase, mc: &TmMasterChannelConfig) -> Result<Value, Er
         VcId::try_from(uint::<u8>(get(p, case, "vcid")))?,
         uint(get(p, case, "mc_frame_count")),
         uint(get(p, case, "vc_frame_count")),
-        status(case, get(p, case, "status").as_object().unwrap()),
+        status(case, get(p, case, "status").as_object().unwrap())?,
     );
     let (fsh_data, sh, data, st) = (
         octets(get(p, case, "fsh_data_hex")),

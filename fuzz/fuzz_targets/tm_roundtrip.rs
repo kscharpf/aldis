@@ -12,8 +12,8 @@ use aldis_core::ocf::Ocf;
 use aldis_core::oid::OidGenerator;
 use aldis_core::security::SecurityLayout;
 use aldis_tm::{
-    DataFieldContent, DataFieldStatus, FirstHeaderPointer, FshLen, PacketPointer, SegmentLengthId,
-    TmFrame, TmFrameContent, TmFrameFields, TmFrameWriter, TmMasterChannelConfig,
+    DataFieldContent, DataFieldStatus, FirstHeaderPointer, FshLen, PacketOffset, PacketPointer,
+    SegmentLengthId, TmFrame, TmFrameContent, TmFrameFields, TmFrameWriter, TmMasterChannelConfig,
     TmPhysicalChannelConfig, TmVirtualChannelConfig, encode,
 };
 use libfuzzer_sys::arbitrary::{Result, Unstructured};
@@ -66,7 +66,9 @@ fn status(u: &mut Unstructured<'_>) -> Result<DataFieldStatus> {
         DataFieldStatus::Packets(match u.int_in_range(0..=3)? {
             0 => PacketPointer::NoPacketStart,
             1 => PacketPointer::OnlyIdleData,
-            _ => PacketPointer::StartsAt(u.int_in_range(0..=0x800)?),
+            _ => PacketPointer::StartsAt(
+                PacketOffset::new(u.int_in_range(0..=PacketOffset::MAX)?).unwrap(),
+            ),
         })
     })
 }
