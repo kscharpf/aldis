@@ -14,7 +14,7 @@
 
 Libraries that add CCSDS protocol support to spacecraft flight software and ground systems. The reference implementation is in Rust (`no_std`, no heap, panic-free), with a C ABI for C and C++ applications. Other languages are planned on top of that ABI.
 
-**Status:** Milestone 1 (`v0.2.0-m1`) complete: the specification, verification tooling, and `aldis-core` (Layer 0, Milestone 0, `v0.1.0-m0`), and the Layer 1 codecs for time codes, Space Packets, and Encapsulation Packets (`aldis-time`, `aldis-spp`, `aldis-epp`). Milestone 2 is in progress: the TC frame codec with the CLCW, frame delimiting, and frame validation (`aldis-tc`) and the AOS Frame Header Error Control (`aldis-aos`) are implemented; the other frame codecs and Layers 2–3 are skeletons pending Milestones 2–6. The native C++ foundations (C0) and the reference application scenario (A0) are in progress ([roadmap](docs/08-roadmap.md)).
+**Status:** Milestone 1 (`v0.2.0-m1`) complete: the specification, verification tooling, and `aldis-core` (Layer 0, Milestone 0, `v0.1.0-m0`), and the Layer 1 codecs for time codes, Space Packets, and Encapsulation Packets (`aldis-time`, `aldis-spp`, `aldis-epp`). Milestone 2 is in progress: the TC frame codec with the CLCW, frame delimiting, and frame validation (`aldis-tc`), the USLP frame codec with truncated frames, delimiting, and validation (`aldis-uslp`), and the AOS frame codec in both editions, with the Frame Header Error Control, the M_PDU, and the B_PDU (`aldis-aos`), are implemented; the other frame codecs and Layers 2–3 are skeletons pending Milestones 2–6. The native C++ foundations (C0) and the reference application scenario (A0) are in progress ([roadmap](docs/08-roadmap.md)).
 
 ## Layout
 
@@ -32,7 +32,7 @@ code/
 │   ├── aldis-tm          L1  132.0 TM frames
 │   ├── aldis-tc          L1  232.0 TC frames, CLCW, delimiting, validation
 │   ├── aldis-aos         L1  732.0 AOS frames, FHEC, M_PDU, B_PDU
-│   ├── aldis-uslp        L1  732.1 USLP frames, truncated frames, TFDF
+│   ├── aldis-uslp        L1  732.1 USLP frames, truncated frames, TFDF, delimiting, validation
 │   ├── aldis-link        L2  sans-I/O generators, mux, receiver, extraction, segmentation
 │   ├── aldis-cop1        L2  232.1 FOP-1 / FARM-1
 │   ├── aldis-framework   L3  optional transport/clock traits and stacks

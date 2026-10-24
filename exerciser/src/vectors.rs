@@ -1,9 +1,9 @@
 //! The `aldis-core` OCF, `aldis-time`, `aldis-spp`, `aldis-epp`, `aldis-aos`, `aldis-tm`, and
-//! `aldis-tc` vector cases on the target (M1 WP-5, D7; M2 WP-1, WP-2, WP-3, D16).
+//! `aldis-tc`, and `aldis-uslp` vector cases on the target (M1 WP-5, D7; M2 WP-1, WP-2, WP-3, WP-5, D16).
 //!
 //! `build.rs` embeds every live case of `test-vectors/core/ocf.json` and
-//! `test-vectors/{time,spp,epp,aos,tm,tc}/` as a value tree. Each handler (`ocf.rs`, `time.rs`,
-//! `spp.rs`, `epp.rs`, `aos.rs`, `tm.rs`, `tc.rs`) mirrors the host suite of its crate
+//! `test-vectors/{time,spp,epp,aos,tm,tc,uslp}/` as a value tree. Each handler (`ocf.rs`, `time.rs`,
+//! `spp.rs`, `epp.rs`, `aos.rs`, `tm.rs`, `tc.rs`, `uslp.rs`) mirrors the host suite of its crate
 //! (`crates/aldis-*/tests/vectors.rs`): it reads the parameters, calls the API with inputs
 //! through `black_box`, and reports every output value to an [`Out`], which compares them with
 //! the expected values exactly, with no missing and no extra keys (TV-012).
@@ -40,6 +40,7 @@ pub enum Group {
     Aos,
     Tm,
     Tc,
+    Uslp,
 }
 
 /// The expected outcome of a case.
@@ -218,7 +219,7 @@ impl Params for Map {
 pub struct Out {
     expect: Map,
     /// Bit `i` is set once the key at index `i` of `expect` has been produced. An object with
-    /// more than 64 keys cannot be tracked and fails the comparison (the vectors have at most 23).
+    /// more than 64 keys cannot be tracked and fails the comparison (the vectors have at most 27).
     seen: u64,
     ok: bool,
 }
@@ -446,9 +447,10 @@ pub fn run(t: &mut Tally) {
             Group::Time => crate::time::vector(case, &mut out, &mut scratch),
             Group::Spp => crate::spp::vector(case, &mut out, &mut scratch),
             Group::Epp => crate::epp::vector(case, &mut out, &mut scratch),
-            Group::Aos => crate::aos::vector(case, &mut out),
+            Group::Aos => crate::aos::vector(case, &mut out, &mut scratch),
             Group::Tm => crate::tm::vector(case, &mut out, &mut scratch),
             Group::Tc => crate::tc::vector(case, &mut out, &mut scratch),
+            Group::Uslp => crate::uslp::vector(case, &mut out, &mut scratch),
         };
         let passed = match (result, &case.expect) {
             (Err(Fail::NotRepresentable), _) => {

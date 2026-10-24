@@ -20,6 +20,7 @@ mod models;
 mod records;
 mod refapp;
 mod repo;
+mod sana;
 mod spec;
 mod trace;
 mod vectors;
@@ -47,6 +48,11 @@ commands:
                                regenerate them (CABI-002, CABI-003, CABI-030)
   header c-smoke <cc> <c++>    build the aldis-ffi static and shared libraries and run a C
                                program with them, as C99 and C++11 (CABI-001, CABI-003)
+  sana [--write]               the SANA registry snapshots in specs/sana/ match their SHA-256
+                               and the tables generated from them, or regenerate the tables
+                               (M2 plan D13, OI-06)
+  sana import <registry>       download a SANA registry, write its snapshot and its table
+  sana check-live              fail when a SANA registry differs from its snapshot (nightly)
   links                        relative Markdown links resolve inside the repository
   decisions                    the decision log docs/process/decisions.md is well formed (VER-062)
   layers                       crate dependency rules (GEN-001..004)
@@ -75,7 +81,7 @@ commands:
   ci                           the quick checks of the verification run, without a build:
                                spec-lint, links, decisions, layers, consistency, refapp-deps,
                                vectors validate, vectors schema --check, fields, header (needs
-                               the pinned cbindgen), trace --scope m0 --strict,
+                               the pinned cbindgen), sana, trace --scope m0 --strict,
                                trace --scope m1 --strict, trace --scope m2, trace --scope c0,
                                changelog check, cpp unsafe-optouts; a step that cannot run
                                counts as a problem, and the others still run
@@ -102,6 +108,7 @@ const CI: &[Step] = &[
     ("vectors schema --check", || vectors::schema(true)),
     ("fields", || fields::run(false)),
     ("header", || header::run(false)),
+    ("sana", || sana::run(&[])),
     // M0 and M1 are closed: every in-scope requirement must keep an artefact.
     ("trace --scope m0 --strict", || trace::run(Some("m0"), true)),
     ("trace --scope m1 --strict", || trace::run(Some("m1"), true)),
@@ -148,6 +155,7 @@ fn run(args: &[&str]) -> Result<usize, String> {
         ["header"] => header::run(false),
         ["header", "--write"] => header::run(true),
         ["header", "c-smoke", cc, cxx] => header::c_smoke(cc, cxx),
+        ["sana", rest @ ..] => sana::run(rest),
         ["links"] => links::check(),
         ["decisions"] => decisions::check(),
         ["layers"] => layers::check(),

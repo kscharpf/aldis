@@ -23,6 +23,7 @@ pub const GATED: &[&str] = &[
     "aldis-aos",
     "aldis-tm",
     "aldis-tc",
+    "aldis-uslp",
 ];
 
 /// Crates measured and reported, not gated (M2 plan D16).

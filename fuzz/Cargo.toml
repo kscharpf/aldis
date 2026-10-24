@@ -22,6 +22,7 @@ aldis-spp = { path = "../crates/aldis-spp", features = ["time"] }
 aldis-tc = { path = "../crates/aldis-tc" }
 aldis-time = { path = "../crates/aldis-time" }
 aldis-tm = { path = "../crates/aldis-tm" }
+aldis-uslp = { path = "../crates/aldis-uslp" }
 aldis-testkit = { path = "../crates/aldis-testkit" }
 libfuzzer-sys = "0.4.13"
 
@@ -204,6 +205,20 @@ doc = false
 bench = false
 
 [[bin]]
+name = "aos_decode"
+path = "fuzz_targets/aos_decode.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "aos_roundtrip"
+path = "fuzz_targets/aos_roundtrip.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
 name = "tm_decode"
 path = "fuzz_targets/tm_decode.rs"
 test = false
@@ -241,6 +256,27 @@ bench = false
 [[bin]]
 name = "tc_clcw"
 path = "fuzz_targets/tc_clcw.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "uslp_decode"
+path = "fuzz_targets/uslp_decode.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "uslp_truncated"
+path = "fuzz_targets/uslp_truncated.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "uslp_roundtrip"
+path = "fuzz_targets/uslp_roundtrip.rs"
 test = false
 doc = false
 bench = false

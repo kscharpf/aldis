@@ -440,6 +440,96 @@
       "code": 88,
       "name": "farm_b_counter",
       "kind": "field"
+    },
+    {
+      "code": 89,
+      "name": "protocol_control_command_flag",
+      "kind": "field"
+    },
+    {
+      "code": 90,
+      "name": "uslp_header_spare",
+      "kind": "field"
+    },
+    {
+      "code": 91,
+      "name": "end_of_frame_primary_header_flag",
+      "kind": "field"
+    },
+    {
+      "code": 92,
+      "name": "vcf_count_len",
+      "kind": "field"
+    },
+    {
+      "code": 93,
+      "name": "vcf_count",
+      "kind": "field"
+    },
+    {
+      "code": 94,
+      "name": "tfdz_construction_rule",
+      "kind": "field"
+    },
+    {
+      "code": 95,
+      "name": "upid",
+      "kind": "field"
+    },
+    {
+      "code": 96,
+      "name": "fhp_lvo_pointer",
+      "kind": "field"
+    },
+    {
+      "code": 97,
+      "name": "insert_zone_len",
+      "kind": "parameter"
+    },
+    {
+      "code": 98,
+      "name": "truncated_frame_len",
+      "kind": "parameter"
+    },
+    {
+      "code": 99,
+      "name": "transfer_frame_type",
+      "kind": "parameter"
+    },
+    {
+      "code": 100,
+      "name": "aos_header_spare",
+      "kind": "field"
+    },
+    {
+      "code": 101,
+      "name": "vc_frame_count_cycle",
+      "kind": "field"
+    },
+    {
+      "code": 102,
+      "name": "data_field_content",
+      "kind": "parameter"
+    },
+    {
+      "code": 103,
+      "name": "ocf",
+      "kind": "field"
+    },
+    {
+      "code": 104,
+      "name": "mpdu_spare",
+      "kind": "field"
+    },
+    {
+      "code": 105,
+      "name": "bpdu_spare",
+      "kind": "field"
+    },
+    {
+      "code": 106,
+      "name": "bitstream_data_pointer",
+      "kind": "field"
     }
   ]
 }

@@ -49,7 +49,7 @@ pub struct PathList {
 
 // The inputs of the checks (VER-056): every path a check builds, reads, or is run by. A check
 // runs when a changed path matches one of its inputs, and a changed path that matches no check's
-// inputs and is not in `DOCS` runs every check. Precision never at the cost of soundness: when a
+// inputs and is not in `DOCS` or `GITHUB` runs every check. Precision never at the cost of soundness: when a
 // check starts reading a new path, add the path here in the same change; when unsure, include it.
 //
 // The differential tests of track C (`difftest/`, VER-053, milestone C1) will read both the Rust
@@ -78,8 +78,8 @@ pub const RUN: PathList = PathList {
 
 /// Read by every Rust check: the crates and the separate workspaces (`exerciser/`, `fuzz/`,
 /// `refapp/`, `crosscheck/`), their lint, format, licence, and coverage settings, the vectors that
-/// their tests and the exerciser load, and the Rust setup of the workflows. One list for all of
-/// them: a finer split would save little and risk missing a path.
+/// their tests and the exerciser load. One list for all of them: a finer split would save little
+/// and risk missing a path. The workflows, which no check reads, are in `GITHUB`.
 pub const RUST: PathList = PathList {
     name: "rust",
     patterns: &[
@@ -95,8 +95,6 @@ pub const RUST: PathList = PathList {
         "deny.toml",
         "coverage-waivers.toml",
         "LICENSE",
-        ".github/actions/setup-rust/**",
-        ".github/workflows/**",
     ],
 };
 
@@ -107,16 +105,12 @@ pub const XTASK_TESTS: PathList = PathList {
     patterns: &["cpp/**"],
 };
 
-/// Read by the C++ checks: the C++ tree, the vectors (read by the C++ tests from C1), and the
-/// C++ setup action and workflow (formerly the `changes` job of `cpp.yml`).
+/// Read by the C++ checks: the C++ tree and the vectors (read by the C++ tests from C1). The C++
+/// setup script, which the image runs, is in `RUN`; the action's definition and the workflow
+/// `cpp.yml` are in `GITHUB`.
 pub const CPP: PathList = PathList {
     name: "cpp",
-    patterns: &[
-        "cpp/**",
-        "test-vectors/**",
-        ".github/actions/setup-cpp/**",
-        ".github/workflows/cpp.yml",
-    ],
+    patterns: &["cpp/**", "test-vectors/**"],
 };
 
 /// Read by the `header` check (CABI-001…003): the C ABI crate `aldis-ffi`, every crate that its
@@ -155,6 +149,27 @@ pub const DOCS: PathList = PathList {
         "*.md",
         "specs/README.md",
         "specs/manifest.tsv",
+    ],
+};
+
+/// The GitHub configuration that no check reads but `spec` (which reads every path: spec lint
+/// scans the workflows for requirement IDs, `consistency` reads `nightly.yml`, and `links` the
+/// pull-request template), so that a change to these paths alone runs only `spec`, as
+/// documentation does: the workflows, the definitions of the composite actions, the pull-request
+/// template, the code owners, and the Dependabot configuration. A check takes its tools from the
+/// image and gives the same result on a contributor's machine, which never reads these files, as
+/// in `verify.yml` (VER-060); the nightly runs, which use the workflows, run every check
+/// (VER-059). Not here: `.github/actions/setup-cpp/setup_cpp.py`, which the image runs (`RUN`),
+/// and any other file of `.github/`, which is in no list and so runs every check.
+pub const GITHUB: PathList = PathList {
+    name: "github",
+    patterns: &[
+        ".github/workflows/**",
+        ".github/actions/setup-rust/**",
+        ".github/actions/setup-cpp/action.yml",
+        ".github/pull_request_template.md",
+        ".github/CODEOWNERS",
+        ".github/dependabot.yml",
     ],
 };
 
@@ -530,6 +545,8 @@ cargo xtask vectors validate
 cargo xtask vectors schema --check
 # The field catalogue of docs/03-api-model.md §9.1 and the files generated from it (API-082).
 cargo xtask fields
+# The SANA registry snapshots of specs/sana/ and the tables generated from them (M2 plan D13).
+cargo xtask sana
 # The per-crate registrations (coverage, features, mutants, exerciser, layers, fuzz matrix,
 # vector index) agree (docs/milestones/checklists.md).
 cargo xtask consistency
@@ -776,6 +793,7 @@ mod tests {
             };
             assert!(lists.contains(&&RUN), "{}", c.name);
             assert!(!lists.contains(&&DOCS), "{}", c.name);
+            assert!(!lists.contains(&&GITHUB), "{}", c.name);
             if c.name == "header" {
                 assert_eq!(lists, [&RUN, &FFI]);
                 continue;

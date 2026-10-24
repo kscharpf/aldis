@@ -1,6 +1,37 @@
 # Mutation testing triage (VER-025)
 
-Surviving mutants from `cargo mutants` (`-p aldis-core -p aldis-time -p aldis-epp -p aldis-spp -p aldis-aos -p aldis-tm -p aldis-tc --all-features`) (cargo-mutants 27.1.0), triaged per VER-025. The nightly job `mutants` publishes the full report. Update this file when a new survivor appears.
+Surviving mutants from `cargo mutants` (`-p aldis-core -p aldis-time -p aldis-epp -p aldis-spp -p aldis-aos -p aldis-tm -p aldis-tc -p aldis-uslp --all-features`) (cargo-mutants 27.1.0), triaged per VER-025. The nightly job `mutants` publishes the full report. Update this file when a new survivor appears.
+
+## 2026-10-23, branch `m2/uslp-codec` (M2 WP-5, modules 1–8)
+
+`cargo mutants -p aldis-uslp --all-features` (with `PROPTEST_CASES=32`): 450 mutants: 283 caught, 155 unviable, 12 missed, 0 timeouts. Two survivors were a test gap, fixed and re-run: `header.rs` `len_u64` replaced by 0 and by 1, which only error details use; `view.rs` `length_errors_on_a_variable_channel` now checks the `OutOfRange` detail of an over-long frame (2 mutants, 2 caught). The other ten are equivalent and are expected in every report.
+
+| Mutant | Verdict | Action |
+|---|---|---|
+| `header.rs` `start_octets` `\|` → `^`, five places (TFVN `<< 28`, SCID `<< 12`, Source-or-Destination `<< 11`, VCID `<< 5`, MAP ID `<< 1`, End of Frame Primary Header Flag) | Equivalent: every field is masked to its own bits of the 32-bit word, which do not overlap | None possible |
+| `header.rs` `primary_octets` `\|` → `^`, three places (the two flags `<< 7` and `<< 6`, the OCF Flag `<< 3`, the VCF Count Length `& 0b111`) | Equivalent: disjoint bits of octet 6 | None possible |
+| `header.rs` `read_vcf_count` `\|` → `^` (the count shifted left by 8 and the next octet) | Equivalent: the shift leaves the low eight bits zero, so OR and XOR agree | None possible |
+| `tfdf.rs` `TfdfHeader::octets` `\|` → `^` (rule `<< 5` and UPID `& 0x1F`) | Equivalent: disjoint bits | None possible |
+
+## 2026-10-23, branch `m2/aos-codec` (M2 WP-4, modules 2–7)
+
+`cargo mutants -p aldis-aos --all-features` (cargo-mutants 27.1.0, with `PROPTEST_CASES=32`), the whole crate, the FHEC included: 405 mutants: 273 caught, 124 unviable, 8 missed, 0 timeouts.
+
+| Mutant | Verdict | Action |
+|---|---|---|
+| `header.rs` `AosPrimaryHeader::parse` `\|` → `^`, two places (the 6 SCID bits of octet 0 `<< 2` and the 2 of octet 1; bits 42–43 `<< 8` and the 8-bit LSBs) | Equivalent: each joins fields shifted into disjoint bits, so OR and XOR agree | None possible |
+| `header.rs` `AosPrimaryHeader::to_octets` `\|` → `^`, five places (octet 5: the two flags, bits 42–43 `<< 4`, and the cycle `& 0x0F`; octet 0: version `<< 6` and the SCID LSBs `>> 2`; octet 1: the SCID LSBs `<< 6` and the VCID `& 0x3F`) | Equivalent: every field is masked or bounded to its own bits, which do not overlap | None possible |
+| `fhec.rs` `Gf::octet` `\|` → `^` | Equivalent, as triaged for module 1 below | None possible |
+
+The eight survivors are equivalent and are expected in every report.
+
+Re-run 2026-10-24 after the review of #97 gave the B_PDU count its own type, `ValidBitCount` (RS-020): `cargo mutants -p aldis-aos --all-features --file crates/aldis-aos/src/bpdu.rs --file crates/aldis-aos/src/writer.rs` (with `PROPTEST_CASES=32`): 93 mutants: 57 caught, 33 unviable, 3 missed. One was a test gap, fixed and re-run on `bpdu.rs` (43 mutants: 30 caught, 11 unviable, 2 missed); the other two are equivalent.
+
+| Mutant | Verdict | Action |
+|---|---|---|
+| `bpdu.rs` `From<ValidBitCount> for u16` → `1` | Test gap: `u16::from` was checked only on the count 1 | `valid_bit_counts_are_1_to_0x3ffe` checks it on `0x3FFE`; caught |
+| `bpdu.rs` `TryFrom<u16> for ValidBitCount` `<` → `<=` (the bound reported for a rejected count) | Equivalent: the closure runs only for a count `new` rejects, so never for 1, the one value where `<` and `<=` differ | None possible |
+| `bpdu.rs` `BitstreamPointer::classify` `index < last_bit` → `<=` | Equivalent: an index equal to the last bit has already returned `InvalidField` | None possible |
 
 ## 2026-10-23, branch `m2/tm-codec` (M2 WP-2, modules 1-6)
 

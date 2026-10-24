@@ -108,12 +108,14 @@ dependencies = [
 name = "aldis-testkit"
 version = "0.2.0"
 dependencies = [
+ "aldis-aos",
  "aldis-core",
  "aldis-epp",
  "aldis-spp",
  "aldis-tc",
  "aldis-time",
  "aldis-tm",
+ "aldis-uslp",
  "proptest",
  "schemars",
  "serde",
@@ -143,6 +145,9 @@ name = "aldis-uslp"
 version = "0.2.0"
 dependencies = [
  "aldis-core",
+ "aldis-tc",
+ "aldis-testkit",
+ "serde_json",
 ]
 
 [[package]]
