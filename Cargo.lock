@@ -114,6 +114,7 @@ dependencies = [
  "aldis-tc",
  "aldis-time",
  "aldis-tm",
+ "aldis-uslp",
  "proptest",
  "schemars",
  "serde",
