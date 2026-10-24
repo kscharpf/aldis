@@ -7,7 +7,7 @@
 //! the next item, whose length the caller skips, so the C ABI can wrap it without keeping a
 //! pointer (M2 plan D14). [`FrameDelimiter`] iterates over a unit with it.
 //!
-//! A *valid header* (`docs/standards/uslp-frame.md` §3.2; OI-43 item 3) starts with at least 4
+//! A *valid header* (`docs/standards/uslp-frame.md` §3.2; OI-44 item 3) starts with at least 4
 //! octets whose TFVN is `1100`, and either has the End of Frame Primary Header Flag 1, its length
 //! being its VC's truncated frame length (Annex D1.3.2; OI-35 item 8), or has the flag 0, at
 //! least 7 octets, and a Frame Length that declares at least the Primary Header with its VCF

@@ -109,12 +109,12 @@ A non-truncated frame (End of Frame Primary Header Flag `0`), in check order:
 | 9 | `OcfFlagMismatch` | (c) | OCF Flag `1` on a VC with `OcfUse::Absent`, or `0` on a VC with `Required` (§4.1.5.3–4, Table 5-3) | `InvalidField` (`ocf_flag`) |
 | 10 | `FixedLengthMismatch` | (c) | fixed-length Physical Channel: Frame Length + 1 ≠ the configured frame length (§4.1.2.7; USLP-003) | `LengthMismatch` (`frame_len`) |
 | 11 | `FrameTooLong` | (c) | variable-length Physical Channel: Frame Length + 1 above its maximum (Table 5-1 note 2) | `OutOfRange` (`frame_len`) |
-| 12 | `FrameTooShort` | (c) | Frame Length + 1 leaves no TFDZ octet after the Primary Header with its VCF Count, Insert Zone, Security Header, TFDF Header (3 octets on a fixed-length VC, 1 on a variable-length VC), Security Trailer, OCF, and FECF the frame has ([OI-43](../09-open-issues.md) item 2) | `InvalidField` (`frame_data_field`) |
+| 12 | `FrameTooShort` | (c) | Frame Length + 1 leaves no TFDZ octet after the Primary Header with its VCF Count, Insert Zone, Security Header, TFDF Header (3 octets on a fixed-length VC, 1 on a variable-length VC), Security Trailer, OCF, and FECF the frame has ([OI-44](../09-open-issues.md) item 2) | `InvalidField` (`frame_data_field`) |
 | 13 | `LengthMismatch` | (d) | octets present ≠ Frame Length + 1 when validating, or on a fixed-length Physical Channel (API-012); fewer than Frame Length + 1 when decoding on a variable-length one | `LengthMismatch` (`frame_len`); `Incomplete` (`needed` = Frame Length + 1) |
 | 14 | `FecfMismatch` | (e) | FECF configured and wrong (§4.1.6, Annex B) | `CrcMismatch` |
 | 15 | `ConstructionRuleMismatch` | USLP-016 | TFDZ Construction Rule `011`–`111` on a fixed-length VC or `000`–`010` on a variable-length VC (VCID 63 counts as fixed-length) | `InvalidField` (`tfdz_construction_rule`) |
 | 16 | `PointerBeyondZone` | USLP-006 | First Header or Last Valid Octet Pointer ≠ `0xFFFF` and not below the TFDZ length (§4.1.4.2.4) | `Malformed` (`fhp_lvo_pointer`) |
-| 17 | `OidHeaderMismatch` | §4.1.4.1.8–9 | VCID 63, strict mode: MAP ID ≠ 0, rule ≠ `001`, UPID ≠ "Only Idle Data", or Last Valid Octet Pointer ≠ the last TFDZ octet ([OI-43](../09-open-issues.md) item 1) | `InvalidField` (`map_id`, `tfdz_construction_rule`, `upid`, `fhp_lvo_pointer`, checked in that order) |
+| 17 | `OidHeaderMismatch` | §4.1.4.1.8–9 | VCID 63, strict mode: MAP ID ≠ 0, rule ≠ `001`, UPID ≠ "Only Idle Data", or Last Valid Octet Pointer ≠ the last TFDZ octet ([OI-44](../09-open-issues.md) item 1) | `InvalidField` (`map_id`, `tfdz_construction_rule`, `upid`, `fhp_lvo_pointer`, checked in that order) |
 
 A truncated frame (End of Frame Primary Header Flag `1`, Annex D), in check order: reasons 13 (fewer than 4 octets), 1, 2, 5, and 6 as above, then
 
@@ -130,7 +130,7 @@ The truncated frame has no Bypass/Sequence Control Flag, Reserve Spares, OCF, or
 
 ### 3.2 Delimiting
 
-`next_frame(rest, channels)` is stateless: it returns the next item of the octets not yet delimited, and the caller skips its length (M2 D14). `FrameDelimiter` iterates with it. An item is a `Frame`; an `IncompleteFrame` (the rest, discarded: it starts with a valid header that declares more octets than remain; §4.3.11.2.3); `NoTruncatedLength` (the rest, discarded: a truncated header whose SCID and VCID name no configured VC, or a VC without a truncated frame length; USLP-015, OI-35 item 8); or `Fill` (the rest, discarded; §4.3.11.2.4). The next octets start a **valid header** when there are at least 4 of them and the TFVN is `1100`, and either the End of Frame Primary Header Flag is `1` (the length is the VC's truncated frame length, Annex D1.3.2), or it is `0`, at least 7 octets remain, and Frame Length + 1 is at least the Primary Header with its VCF Count, a 1-octet TFDF Header, and one TFDZ octet: 9 + the VCF Count Length (§4.1.2.7, §4.1.2.11). Otherwise the rest is `Fill`. This is the rule [OI-41](../09-open-issues.md) item 2 chose for TC ([OI-43](../09-open-issues.md) item 3). The Fill Data pattern `01010101` has TFVN `0101` and is never a valid header. A frame the delimiter yields still goes through `validate_frame`.
+`next_frame(rest, channels)` is stateless: it returns the next item of the octets not yet delimited, and the caller skips its length (M2 D14). `FrameDelimiter` iterates with it. An item is a `Frame`; an `IncompleteFrame` (the rest, discarded: it starts with a valid header that declares more octets than remain; §4.3.11.2.3); `NoTruncatedLength` (the rest, discarded: a truncated header whose SCID and VCID name no configured VC, or a VC without a truncated frame length; USLP-015, OI-35 item 8); or `Fill` (the rest, discarded; §4.3.11.2.4). The next octets start a **valid header** when there are at least 4 of them and the TFVN is `1100`, and either the End of Frame Primary Header Flag is `1` (the length is the VC's truncated frame length, Annex D1.3.2), or it is `0`, at least 7 octets remain, and Frame Length + 1 is at least the Primary Header with its VCF Count, a 1-octet TFDF Header, and one TFDZ octet: 9 + the VCF Count Length (§4.1.2.7, §4.1.2.11). Otherwise the rest is `Fill`. This is the rule [OI-41](../09-open-issues.md) item 2 chose for TC ([OI-44](../09-open-issues.md) item 3). The Fill Data pattern `01010101` has TFVN `0101` and is never a valid header. A frame the delimiter yields still goes through `validate_frame`.
 
 ### 3.3 Writers
 
@@ -162,7 +162,7 @@ Until `UslpFrameWriter::finish`, the buffer holds a Primary Header whose TFVN is
 | Bit | Flag | Deviation | Source |
 |---|---|---|---|
 | 0 | `ReserveSparesSet` | Reserve Spares (bits 50–51) ≠ `00` | §4.1.2.9.2 |
-| 1 | `OidHeaderMismatch` | on VCID 63: MAP ID ≠ 0, TFDZ Construction Rule ≠ `001`, UPID ≠ "Only Idle Data", or Last Valid Octet Pointer ≠ the last TFDZ octet, fixed-value fields of an idle data unit (API-032); the view keeps the values. Proposed in M2 WP-5, pending the maintainer ([OI-43](../09-open-issues.md) item 1) | §4.1.4.1.8–9 |
+| 1 | `OidHeaderMismatch` | on VCID 63: MAP ID ≠ 0, TFDZ Construction Rule ≠ `001`, UPID ≠ "Only Idle Data", or Last Valid Octet Pointer ≠ the last TFDZ octet, fixed-value fields of an idle data unit (API-032); the view keeps the values. Proposed in M2 WP-5, pending the maintainer ([OI-44](../09-open-issues.md) item 1) | §4.1.4.1.8–9 |
 
 ## 5. Test-vector categories
 

@@ -72,5 +72,5 @@ Layer 1 (codecs) of the [architecture](../../docs/01-architecture.md) §2. It de
 
 - [docs/standards/uslp-frame.md](../../docs/standards/uslp-frame.md): requirement area USLP, what the configuration keeps (§2.1), the check order and validation reason codes (§3.1), the delimiter (§3.2), the writers (§3.3), and the anomaly flags (§4).
 - [docs/standards/common-link-features.md](../../docs/standards/common-link-features.md): the FECF, OID, counters, and field placement, implemented in `aldis-core`.
-- [docs/09-open-issues.md](../../docs/09-open-issues.md): OI-05 (the TFDF header length, resolved), OI-06 (SANA registries), OI-35 (frame readings), OI-43 (the OID header on reception, empty TFDZ, the delimiter's valid header).
+- [docs/09-open-issues.md](../../docs/09-open-issues.md): OI-05 (the TFDF header length, resolved), OI-06 (SANA registries), OI-35 (frame readings), OI-44 (the OID header on reception, empty TFDZ, the delimiter's valid header).
 - [docs/README.md](../../docs/README.md): the index of the specification.

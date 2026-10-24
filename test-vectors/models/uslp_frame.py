@@ -1654,7 +1654,7 @@ NOTE = (
     "the model at run time. COP-1 control commands from 232.0-B-4 §4.1.3.3 (Unlock = 00, Set "
     "V(R) = 82 00 V(R)). Check order, validation reason codes, the delimiter's valid header, "
     "the writers' error order, and the configuration kept, as docs/standards/uslp-frame.md "
-    "§2.1 and §3 state them (OI-35, OI-43). SCID 0x155 is the fictional SCID of the reference "
+    "§2.1 and §3 state them (OI-35, OI-44). SCID 0x155 is the fictional SCID of the reference "
     "scenario (APP-026); SCID 0xF0A5 is also fictional. Expected values computed by an "
     "independent Python model of those clauses, test-vectors/models/uslp_frame.py (TV-023), "
     "written independently of the Rust codec and sharing no code or method with it (headers "

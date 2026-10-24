@@ -23,7 +23,7 @@
   USLP-013 test that decodes COP-1 control commands with `aldis-tc` (a dev-dependency).
 - Fuzz targets `uslp_decode`, `uslp_truncated`, and `uslp_roundtrip`; the `aldis-uslp` exerciser
   group; `aldis-uslp` in the coverage gate, the `features` check, and the nightly mutants job.
-- OI-43 (open, recommendations implemented): the OID header checked on reception with the new flag
+- OI-44 (open, recommendations implemented): the OID header checked on reception with the new flag
   `OidHeaderMismatch`, at least one TFDZ octet, and the delimiter's valid header.
 
 ### Fixed

@@ -12,7 +12,7 @@ aldis_core::anomaly_flags! {
         ReserveSparesSet = 0,
         /// Bit 1. A frame on VCID 63 whose MAP ID, TFDZ Construction Rule, UPID, or Last Valid
         /// Octet Pointer is not the value of an OID frame (732.1 §4.1.4.1.8–9): fixed-value
-        /// fields of an idle data unit (API-032; proposed, OI-43 item 1). The view keeps the
+        /// fields of an idle data unit (API-032; proposed, OI-44 item 1). The view keeps the
         /// values.
         OidHeaderMismatch = 1,
     }

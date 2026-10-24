@@ -86,7 +86,7 @@ pub enum UslpFrame<'a> {
 }
 
 /// The deviation of an OID frame's fixed fields, in check order, if any (732.1 §4.1.4.1.8–9;
-/// OI-43 item 1).
+/// OI-44 item 1).
 fn oid_deviation(map_id: UslpMapId, tfdf: TfdfHeader, tfdz_len: usize) -> Option<FieldId> {
     let last = u16::try_from(tfdz_len.saturating_sub(1)).unwrap_or(u16::MAX);
     if map_id.get() != 0 {
@@ -317,7 +317,7 @@ impl<'a> UslpFrame<'a> {
     /// - `InvalidField` (`tfdz_construction_rule`) for a rule of the other TFDZ type (USLP-016);
     ///   `Malformed` (`fhp_lvo_pointer`) for a pointer beyond the TFDZ (USLP-006).
     /// - On VCID 63, `InvalidField` naming the deviating OID header field in strict mode,
-    ///   [`UslpAnomaly::OidHeaderMismatch`] in lenient (OI-43 item 1).
+    ///   [`UslpAnomaly::OidHeaderMismatch`] in lenient (OI-44 item 1).
     pub fn decode<L: VcLookup + ?Sized>(
         bytes: &'a [u8],
         channels: &L,

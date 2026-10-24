@@ -48,7 +48,7 @@ pub enum Reason {
     /// maximum (Table 5-1 note 2; USLP-003).
     FrameTooLong,
     /// 12, test (c): the Frame Length leaves no TFDZ octet after the fields the frame has
-    /// (CMN-041; OI-43 item 2).
+    /// (CMN-041; OI-44 item 2).
     FrameTooShort,
     /// 13, test (d): the octets present disagree with the Frame Length, or with the truncated
     /// frame length (§4.3.11.3.4 d).
@@ -60,7 +60,7 @@ pub enum Reason {
     /// 16: the First Header or Last Valid Octet Pointer lies beyond the TFDZ (USLP-006).
     PointerBeyondZone,
     /// 17, strict mode only: a frame on VCID 63 whose OID header fields deviate (§4.1.4.1.8–9;
-    /// OI-43 item 1).
+    /// OI-44 item 1).
     OidHeaderMismatch,
 }
 

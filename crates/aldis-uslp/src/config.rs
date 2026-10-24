@@ -409,7 +409,7 @@ pub trait VcLookup {
 }
 
 /// `InvalidConfig` (`frame_data_field`) unless the longest non-truncated frame of `vc` with
-/// the SDLS lengths `security` leaves a TFDZ octet (CMN-041; OI-43 item 2).
+/// the SDLS lengths `security` leaves a TFDZ octet (CMN-041; OI-44 item 2).
 fn check_room(
     physical: &PhysicalChannelConfig,
     vc: &VcConfig,
