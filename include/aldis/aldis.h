@@ -71,6 +71,12 @@
 #define ALDIS_AOS_CYCLE_MAX 15
 
 /**
+ * Largest packet offset of `ALDIS_AOS_POINTER_STARTS_AT`, `0xFFFD`, below the reserved values
+ * of the Issue 5 pointer; `0x7FD` in Issue 4 (732.0 §4.1.4.2.2.3–5; AOS-003).
+ */
+#define ALDIS_AOS_PACKET_OFFSET_MAX 65533
+
+/**
  * Smallest count of valid bits of `ALDIS_AOS_POINTER_VALID_BITS` (732.0 §4.1.4.3.3.2).
  */
 #define ALDIS_AOS_VALID_BITS_MIN 1
@@ -1959,7 +1965,7 @@ typedef struct {
   uint8_t pointer;
   /**
    * With `ALDIS_AOS_POINTER_STARTS_AT`, the packet offset in the Packet Zone, inside it and
-   * at most `0xFFFD` (`0x7FD` in Issue 4); with `ALDIS_AOS_POINTER_VALID_BITS`, the count of
+   * at most `ALDIS_AOS_PACKET_OFFSET_MAX` (`0x7FD` in Issue 4); with `ALDIS_AOS_POINTER_VALID_BITS`, the count of
    * valid bits, `ALDIS_AOS_VALID_BITS_MIN` to `ALDIS_AOS_VALID_BITS_MAX` and below the zone's
    * length in bits; else ignored (732.0 §4.1.4.2.2.3, §4.1.4.3.3.2; AOS-017).
    */
@@ -3339,8 +3345,9 @@ int32_t aldis_aos_bpdu_decode(const uint8_t *field,
  * # Errors
  * On error `out` is unchanged (API-022). The errors of [`aldis_aos_mc_config_check`]; then
  * `ALDIS_ERR_OUT_OF_RANGE` (`vc_id`, `vcf_count`, `vc_frame_count_cycle`,
- * `bitstream_data_pointer`) for a value of `fields` outside its field, or a count of valid bits
- * of 0 or above `ALDIS_AOS_VALID_BITS_MAX`; then, as `AosFrameWriter::begin` checks them,
+ * `first_header_pointer`, `bitstream_data_pointer`) for a value of `fields` outside its field:
+ * a packet offset above `0xFFFD`, or a count of valid bits of 0 or above
+ * `ALDIS_AOS_VALID_BITS_MAX`; then, as `AosFrameWriter::begin` checks them,
  * `ALDIS_ERR_INVALID_FIELD` (`vc_id`) for VCID 63, whose frames `aldis_aos_oid_writer_begin`
  * writes; `ALDIS_ERR_UNKNOWN_CHANNEL` (`spacecraft_id` or `vc_id`) for a VC not in `vcs`;
  * `ALDIS_ERR_INVALID_FIELD` (`data_field_content`) for a pointer not of the VC's data unit;

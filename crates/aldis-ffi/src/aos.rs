@@ -41,8 +41,8 @@ use aldis::aos::mpdu::MPDU_HEADER_LEN;
 use aldis::aos::{
     AosEdition, AosFrame, AosFrameContent, AosFrameFields, AosFrameWriter,
     AosPhysicalChannelConfig, AosPrimaryHeader, AosVirtualChannelConfig, BitstreamPointer, Bpdu,
-    DataFieldContent, DataUnit, FrameCountCycle, Mpdu, PacketPointer, PduHeader, ValidBitCount,
-    VcFrameCount, VcTable, encode,
+    DataFieldContent, DataUnit, FrameCountCycle, Mpdu, PacketOffset, PacketPointer, PduHeader,
+    ValidBitCount, VcFrameCount, VcTable, encode,
 };
 use aldis::core::Result;
 use aldis::core::ids::{SpacecraftId, VcId};
@@ -71,6 +71,9 @@ pub const ALDIS_AOS_MAX_VCS: usize = 63;
 pub const ALDIS_AOS_VC_FRAME_COUNT_MAX: u32 = 0x00FF_FFFF;
 /// Largest Virtual Channel Frame Count Cycle, `1111` (732.0 §4.1.2.5.5.1; AOS-012).
 pub const ALDIS_AOS_CYCLE_MAX: u8 = 0x0F;
+/// Largest packet offset of `ALDIS_AOS_POINTER_STARTS_AT`, `0xFFFD`, below the reserved values
+/// of the Issue 5 pointer; `0x7FD` in Issue 4 (732.0 §4.1.4.2.2.3–5; AOS-003).
+pub const ALDIS_AOS_PACKET_OFFSET_MAX: u16 = 0xFFFD;
 /// Smallest count of valid bits of `ALDIS_AOS_POINTER_VALID_BITS` (732.0 §4.1.4.3.3.2).
 pub const ALDIS_AOS_VALID_BITS_MIN: u16 = 1;
 /// Largest count of valid bits of `ALDIS_AOS_POINTER_VALID_BITS`, `0x3FFE`: pointer `0x3FFD`,
@@ -211,7 +214,7 @@ pub struct aldis_aos_fields_t {
     /// `ALDIS_AOS_POINTER_NONE` (732.0 §4.1.4.1.4; AOS-019).
     pub pointer: u8,
     /// With `ALDIS_AOS_POINTER_STARTS_AT`, the packet offset in the Packet Zone, inside it and
-    /// at most `0xFFFD` (`0x7FD` in Issue 4); with `ALDIS_AOS_POINTER_VALID_BITS`, the count of
+    /// at most `ALDIS_AOS_PACKET_OFFSET_MAX` (`0x7FD` in Issue 4); with `ALDIS_AOS_POINTER_VALID_BITS`, the count of
     /// valid bits, `ALDIS_AOS_VALID_BITS_MIN` to `ALDIS_AOS_VALID_BITS_MAX` and below the zone's
     /// length in bits; else ignored (732.0 §4.1.4.2.2.3, §4.1.4.3.3.2; AOS-017).
     pub pointer_value: u16,
@@ -516,8 +519,8 @@ unsafe fn master_channel_at(
 }
 
 /// The sender's fields of a C struct on master channel `scid`, each parsed into its type
-/// (732.0 §4.1.2; RS-020). The count of valid bits becomes a `ValidBitCount` here, at the
-/// boundary.
+/// (732.0 §4.1.2; RS-020). The packet offset becomes a `PacketOffset` and the count of valid
+/// bits a `ValidBitCount` here, at the boundary.
 fn fields(scid: SpacecraftId<10>, f: aldis_aos_fields_t) -> Result<AosFrameFields> {
     let vcid = VcId::try_from(f.vcid)?;
     let vc_frame_count = VcFrameCount::try_from(f.vc_frame_count)?;
@@ -529,7 +532,9 @@ fn fields(scid: SpacecraftId<10>, f: aldis_aos_fields_t) -> Result<AosFrameField
     };
     let pdu = match f.pointer {
         ALDIS_AOS_POINTER_NONE => PduHeader::None,
-        ALDIS_AOS_POINTER_STARTS_AT => PduHeader::Mpdu(PacketPointer::StartsAt(f.pointer_value)),
+        ALDIS_AOS_POINTER_STARTS_AT => PduHeader::Mpdu(PacketPointer::StartsAt(
+            PacketOffset::try_from(f.pointer_value)?,
+        )),
         ALDIS_AOS_POINTER_NO_PACKET_START => PduHeader::Mpdu(PacketPointer::NoPacketStart),
         ALDIS_AOS_POINTER_ONLY_IDLE_DATA => PduHeader::Mpdu(PacketPointer::OnlyIdleData),
         ALDIS_AOS_POINTER_VALID_BITS => PduHeader::Bpdu(BitstreamPointer::ValidBits(
@@ -582,7 +587,7 @@ const fn header(h: &AosPrimaryHeader) -> aldis_aos_header_t {
 /// The C form of an `M_PDU` Header.
 fn mpdu(m: &Mpdu<'_>) -> aldis_aos_pdu_t {
     let (pointer, pointer_value) = match m.pointer() {
-        PacketPointer::StartsAt(n) => (ALDIS_AOS_POINTER_STARTS_AT, n),
+        PacketPointer::StartsAt(n) => (ALDIS_AOS_POINTER_STARTS_AT, n.get()),
         PacketPointer::NoPacketStart => (ALDIS_AOS_POINTER_NO_PACKET_START, 0),
         PacketPointer::OnlyIdleData => (ALDIS_AOS_POINTER_ONLY_IDLE_DATA, 0),
     };
@@ -1046,8 +1051,9 @@ pub unsafe extern "C" fn aldis_aos_bpdu_decode(
 /// # Errors
 /// On error `out` is unchanged (API-022). The errors of [`aldis_aos_mc_config_check`]; then
 /// `ALDIS_ERR_OUT_OF_RANGE` (`vc_id`, `vcf_count`, `vc_frame_count_cycle`,
-/// `bitstream_data_pointer`) for a value of `fields` outside its field, or a count of valid bits
-/// of 0 or above `ALDIS_AOS_VALID_BITS_MAX`; then, as `AosFrameWriter::begin` checks them,
+/// `first_header_pointer`, `bitstream_data_pointer`) for a value of `fields` outside its field:
+/// a packet offset above `0xFFFD`, or a count of valid bits of 0 or above
+/// `ALDIS_AOS_VALID_BITS_MAX`; then, as `AosFrameWriter::begin` checks them,
 /// `ALDIS_ERR_INVALID_FIELD` (`vc_id`) for VCID 63, whose frames `aldis_aos_oid_writer_begin`
 /// writes; `ALDIS_ERR_UNKNOWN_CHANNEL` (`spacecraft_id` or `vc_id`) for a VC not in `vcs`;
 /// `ALDIS_ERR_INVALID_FIELD` (`data_field_content`) for a pointer not of the VC's data unit;
@@ -1297,6 +1303,7 @@ mod tests {
         assert_eq!(usize::from(ALDIS_AOS_OID_VCID), ALDIS_AOS_MAX_VCS);
         assert_eq!(ALDIS_AOS_VC_FRAME_COUNT_MAX, VcFrameCount::MAX);
         assert_eq!(ALDIS_AOS_CYCLE_MAX, FrameCountCycle::MAX);
+        assert_eq!(ALDIS_AOS_PACKET_OFFSET_MAX, PacketOffset::MAX);
         assert_eq!(
             (ALDIS_AOS_VALID_BITS_MIN, ALDIS_AOS_VALID_BITS_MAX),
             (ValidBitCount::MIN, ValidBitCount::MAX)

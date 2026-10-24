@@ -796,6 +796,12 @@ fn writer_arguments_are_checked() {
             ALDIS_ERR_INVALID_FIELD
         );
     }
+    // A packet offset above 0xFFFD, checked as the `PacketOffset` it becomes (AOS-003).
+    let wide = fields(0, ALDIS_AOS_POINTER_STARTS_AT, 0xFFFE);
+    assert_eq!(
+        encode(&raw const wide, &raw const content, out, 40),
+        (ALDIS_ERR_OUT_OF_RANGE, ALDIS_FIELD_FIRST_HEADER_POINTER)
+    );
     for bits in [0, ALDIS_AOS_VALID_BITS_MAX + 1] {
         let bad = fields(1, ALDIS_AOS_POINTER_VALID_BITS, bits);
         assert_eq!(

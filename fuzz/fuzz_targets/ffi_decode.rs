@@ -598,7 +598,7 @@ fn aos_pdu_same(view: &aldis_aos_pdu_t, unit: &DataUnit<'_>) {
     let expected = match unit {
         DataUnit::Mpdu(mpdu) => {
             let (kind, value) = match mpdu.pointer() {
-                aldis_aos::PacketPointer::StartsAt(n) => (ALDIS_AOS_POINTER_STARTS_AT, n),
+                aldis_aos::PacketPointer::StartsAt(n) => (ALDIS_AOS_POINTER_STARTS_AT, n.get()),
                 aldis_aos::PacketPointer::NoPacketStart => (ALDIS_AOS_POINTER_NO_PACKET_START, 0),
                 aldis_aos::PacketPointer::OnlyIdleData => (ALDIS_AOS_POINTER_ONLY_IDLE_DATA, 0),
             };

@@ -680,7 +680,7 @@ mod tests {
         // req: AOS-016, AOS-019, API-022, API-023, GEN-042
         let t = table();
         let phy = t.physical_channel();
-        let fields = mpdu(PacketPointer::StartsAt(3));
+        let fields = mpdu(starts_at(3));
         let fill = |w: &mut AosFrameWriter<'_>| {
             w.insert_zone_mut().copy_from_slice(&[1, 2, 3, 4]);
             w.security_header_mut().copy_from_slice(&[0xA5, 0xA5]);

@@ -10,7 +10,8 @@
   `aldis_aos_oid_writer_begin` on VCID 63, which takes an `aldis_oid_generator_t` and which
   `aldis_aos_writer_finish` finishes. A physical channel is an `aldis_aos_config_t` with its
   edition; a master channel an `aldis_aos_mc_config_t`, one SCID holding its physical
-  channel, with an array of `aldis_aos_vc_config_t` and its count. The count of valid bits of
+  channel, with an array of `aldis_aos_vc_config_t` and its count. The packet offset of an
+  `M_PDU` crosses as a `uint16_t` checked as a `PacketOffset`, and the count of valid bits of
   a `B_PDU` crosses as a `uint16_t` checked as a `ValidBitCount`. The header
   `include/aldis/aldis.h` is regenerated.
 - `aldis-aos`: `AosFrameWriter::resume`, which takes up a frame `begin` or `begin_oid` started
