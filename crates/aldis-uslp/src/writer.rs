@@ -592,6 +592,47 @@ mod tests {
     }
 
     #[test]
+    fn frames_without_fecf() {
+        // req: USLP-010, API-020, API-021
+        use crate::config::{
+            MapConfig, OcfUse, PhysicalChannelConfig, TransferFrameType, VcConfig, VcParams,
+            VcTable,
+        };
+        use aldis_core::security::SecurityLayout;
+        let pc = PhysicalChannelConfig::new(TransferFrameType::Variable, 64, 0, false).unwrap();
+        let params = VcParams {
+            ocf: OcfUse::Allowed,
+            ..VcParams::new(TransferFrameType::Variable)
+        };
+        let tbl: VcTable<4, 4> = VcTable::new(
+            pc,
+            &[VcConfig::new(scid(0x155), vcid(4), params).unwrap()],
+            &[MapConfig::new(
+                scid(0x155),
+                vcid(4),
+                mapid(0),
+                SecurityLayout::NONE,
+            )],
+        )
+        .unwrap();
+        let f = fields(4, 0, FrameKind::Expedited, 0);
+        for ocf in [None, Some(Ocf::decode([5, 6, 7, 8]))] {
+            let c = content(TfdzRule::OctetStream, Upid::OctetStream, &[], ocf);
+            let mut buf = [0_u8; 32];
+            let mut writer = UslpFrameWriter::begin(&mut buf, &tbl, f, c, 4).unwrap();
+            writer.tfdz_mut()[..2].copy_from_slice(&[1, 2]);
+            let len = writer.finish(2).unwrap();
+            assert_eq!(len, 10 + if ocf.is_some() { 4 } else { 0 });
+            let dec = UslpFrame::decode(&buf[..len], &tbl, DecodeMode::Strict).unwrap();
+            let full = dec.full().unwrap();
+            assert_eq!(
+                (full.tfdz(), full.ocf(), full.fecf()),
+                (&[1, 2][..], ocf, None)
+            );
+        }
+    }
+
+    #[test]
     fn variable_frames_with_sdls_shrink() {
         // req: USLP-010, API-022, API-023, API-072
         let tbl = variable();
@@ -629,6 +670,12 @@ mod tests {
             kf(w.finish(0)),
             (ErrorKind::InvalidField, Some(field::FRAME_DATA_FIELD))
         );
+        let unknown = FrameFields {
+            vc_id: vcid(9),
+            ..f
+        };
+        let e = UslpFrameWriter::begin(&mut raw, &tbl, unknown, c, 10).unwrap_err();
+        assert_eq!(e.field(), Some(field::VC_ID));
         let mut small = [0_u8; 20];
         assert_eq!(
             kf(encode(&tbl, f, c, &[1; 10], &mut small)),

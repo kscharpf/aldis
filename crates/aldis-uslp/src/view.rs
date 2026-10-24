@@ -7,7 +7,7 @@
 //! `docs/standards/uslp-frame.md` §3.1.
 
 use aldis_core::crc;
-use aldis_core::layout::{FECF_LEN, FrameLayout, LayoutSpec, OCF_LEN};
+use aldis_core::layout::{FECF_LEN, OCF_LEN};
 use aldis_core::ocf::Ocf;
 use aldis_core::security::SecurityLayout;
 use aldis_core::{AnomalySet, DecodeMode, Error, ErrorKind, FieldId, Result};
@@ -39,6 +39,13 @@ pub(crate) const fn length(exact: bool, len: usize) -> Rejection {
         Error::incomplete(len)
     };
     fail(Reason::LengthMismatch, error)
+}
+
+/// The first `n` octets of `cursor`, which moves past them; all that remain if fewer.
+fn take<'a>(cursor: &mut &'a [u8], n: usize) -> &'a [u8] {
+    let (head, rest) = cursor.split_at(n.min(cursor.len()));
+    *cursor = rest;
+    head
 }
 
 /// The reason of a TFDF Header error (USLP-006, USLP-016, CMN-041).
@@ -152,12 +159,11 @@ fn check_channel<L: VcLookup + ?Sized>(
 /// The checks of a non-truncated frame after the SCID (`docs/standards/uslp-frame.md` §3.1).
 fn parse_full<'a, L: VcLookup + ?Sized>(
     bytes: &'a [u8],
-    start: RawStart,
+    (start, rest): (RawStart, RawRest),
     channels: &L,
     mode: DecodeMode,
     exact: bool,
 ) -> core::result::Result<UslpFullFrame<'a>, Rejection> {
-    let rest = RawRest::parse(bytes).ok_or(length(exact, PRIMARY_HEADER_LEN))?;
     let mut anomalies = AnomalySet::empty();
     let (vc, map, kind) = check_channel(start.channel, rest, channels, mode, &mut anomalies)?;
     let ch = start.channel;
@@ -193,9 +199,11 @@ fn parse_full<'a, L: VcLookup + ?Sized>(
         .saturating_add(security.trailer_len())
         .saturating_add(if rest.ocf_flag { OCF_LEN } else { 0 })
         .saturating_add(if physical.fecf() { FECF_LEN } else { 0 });
-    let too_short = fail(Reason::FrameTooShort, invalid(field::FRAME_DATA_FIELD));
     if total <= overhead {
-        return Err(too_short);
+        return Err(fail(
+            Reason::FrameTooShort,
+            invalid(field::FRAME_DATA_FIELD),
+        ));
     }
     let whole = exact || physical.is_fixed();
     let frame = match bytes.get(..total) {
@@ -205,16 +213,18 @@ fn parse_full<'a, L: VcLookup + ?Sized>(
     if physical.fecf() {
         crc::verify_fecf(frame).map_err(|e| fail(Reason::FecfMismatch, e))?;
     }
-    let layout = FrameLayout::compute(&LayoutSpec {
-        frame_len: total,
-        primary_header_len: header_len,
-        secondary_len: physical.insert_zone_len(),
-        security,
-        ocf: rest.ocf_flag,
-        fecf: physical.fecf(),
-    })
-    .map_err(|_| too_short)?;
-    let data_field = frame.get(layout.data()).unwrap_or_default();
+    let ocf_len = if rest.ocf_flag { OCF_LEN } else { 0 };
+    let tail_len = security
+        .trailer_len()
+        .saturating_add(ocf_len)
+        .saturating_add(if physical.fecf() { FECF_LEN } else { 0 });
+    let mut cursor = frame.get(header_len..).unwrap_or_default();
+    let insert_zone = take(&mut cursor, physical.insert_zone_len());
+    let security_header = take(&mut cursor, security.header_len());
+    let tfdf_len = cursor.len().saturating_sub(tail_len);
+    let data_field = take(&mut cursor, tfdf_len);
+    let security_trailer = take(&mut cursor, security.trailer_len());
+    let ocf_octets = take(&mut cursor, ocf_len);
     let (tfdf_header, tfdz) =
         TfdfHeader::parse(data_field, vc.fixed_tfdz()).map_err(tfdf_rejection)?;
     if oid && let Some(f) = oid_deviation(ch.map_id, tfdf_header, tfdz.len()) {
@@ -232,18 +242,16 @@ fn parse_full<'a, L: VcLookup + ?Sized>(
             read_vcf_count(frame, rest.vcf_count_len),
         ),
         octets: frame,
-        insert_zone: frame.get(layout.secondary()).unwrap_or_default(),
-        security_header: frame.get(layout.security_header()).unwrap_or_default(),
+        insert_zone,
+        security_header,
         tfdf_header,
         tfdz,
-        security_trailer: frame.get(layout.security_trailer()).unwrap_or_default(),
-        ocf: frame
-            .get(layout.ocf())
-            .and_then(<[u8]>::first_chunk::<OCF_LEN>)
+        security_trailer,
+        ocf: ocf_octets
+            .first_chunk::<OCF_LEN>()
             .map(|&octets| Ocf::decode(octets)),
-        fecf: frame
-            .get(layout.fecf())
-            .and_then(<[u8]>::first_chunk::<FECF_LEN>)
+        fecf: cursor
+            .first_chunk::<FECF_LEN>()
             .map(|&octets| u16::from_be_bytes(octets)),
         anomalies,
     })
@@ -261,9 +269,12 @@ pub(crate) fn parse<'a, L: VcLookup + ?Sized>(
     exact: bool,
 ) -> core::result::Result<UslpFrame<'a>, Rejection> {
     let start = RawStart::parse(bytes).ok_or(length(exact, TRUNCATED_HEADER_LEN))?;
-    if !start.truncated && bytes.len() < PRIMARY_HEADER_LEN {
-        return Err(length(exact, PRIMARY_HEADER_LEN));
-    }
+    let rest = if start.truncated {
+        None
+    } else {
+        let r = RawRest::parse(bytes).ok_or(length(exact, PRIMARY_HEADER_LEN))?;
+        Some(r)
+    };
     start
         .check_version()
         .map_err(|e| fail(Reason::UnexpectedVersion, e))?;
@@ -273,10 +284,9 @@ pub(crate) fn parse<'a, L: VcLookup + ?Sized>(
             unknown(field::SPACECRAFT_ID),
         ));
     }
-    if start.truncated {
-        truncated::parse(bytes, start.channel, channels, exact).map(UslpFrame::Truncated)
-    } else {
-        parse_full(bytes, start, channels, mode, exact).map(UslpFrame::Full)
+    match rest {
+        None => truncated::parse(bytes, start.channel, channels, exact).map(UslpFrame::Truncated),
+        Some(rest) => parse_full(bytes, (start, rest), channels, mode, exact).map(UslpFrame::Full),
     }
 }
 

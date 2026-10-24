@@ -205,6 +205,23 @@ mod tests {
     }
 
     #[test]
+    fn validating_truncated_frames() {
+        // req: USLP-014, USLP-002
+        use crate::validate::{Reason, validate_frame};
+        let t = variable();
+        let mut bytes = vec![0xC0, 0x15, 0x58, 0x85, 0xE5];
+        bytes.extend(1..=7);
+        assert_eq!(
+            validate_frame(&bytes, &t, DecodeMode::Strict).map(|f| f.len()),
+            Ok(12)
+        );
+        bytes.push(0);
+        let r = validate_frame(&bytes, &t, DecodeMode::Strict).unwrap_err();
+        assert_eq!(r.reason(), Reason::LengthMismatch);
+        assert_eq!(r.error().field(), Some(field::FRAME_LEN));
+    }
+
+    #[test]
     fn truncated_sdls_layout() {
         // req: USLP-012, API-075, API-072
         let t = variable();
@@ -261,6 +278,13 @@ mod tests {
         );
         assert_eq!(peek(&[0xC0, 0x15, 0x50, 0xE1]), Some(field::VC_ID));
         assert_eq!(peek(&[0xC0, 0x16, 0x50, 0x81]), Some(field::SPACECRAFT_ID));
+        // VCID 63 has no MAP channel and no truncated frames (USLP-016).
+        let f = crate::config::tests::fixed();
+        let e = UslpFrame::decode(&[0xC0, 0x15, 0x57, 0xE1, 0x20, 0], &f, DecodeMode::Strict);
+        assert_eq!(
+            e.map_err(|e| e.field()),
+            Err(Some(field::END_OF_FRAME_PRIMARY_HEADER_FLAG))
+        );
         assert_eq!(
             super::wrong_tfdz_len().field(),
             Some(field::FRAME_DATA_FIELD)

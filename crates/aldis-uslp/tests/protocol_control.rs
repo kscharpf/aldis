@@ -4,8 +4,6 @@
 //! OI-34); `aldis-cop1` checks it again in M3.
 #![expect(
     clippy::unwrap_used,
-    clippy::indexing_slicing,
-    clippy::arithmetic_side_effects,
     reason = "test-only harness: a failure must fail loudly (RS-018)"
 )]
 

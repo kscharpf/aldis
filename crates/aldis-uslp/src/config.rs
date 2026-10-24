@@ -847,7 +847,7 @@ pub(crate) mod tests {
         use TransferFrameType::{Fixed, Variable};
         let fpc = PhysicalChannelConfig::new(Fixed, 64, 0, true).unwrap();
         let vpc = PhysicalChannelConfig::new(Variable, 64, 0, true).unwrap();
-        let t = |pc, vcs: &[VcConfig], maps: &[MapConfig]| kf(VcTable::<2, 2>::new(pc, vcs, maps));
+        let t = |pc, vcs: &[VcConfig], maps: &[MapConfig]| kf(VcTable::<4, 4>::new(pc, vcs, maps));
         let f = vc(1, params(Fixed, 0, 0));
         let var = vc(2, params(Variable, 0, 0));
         let ic = |fld| (ErrorKind::InvalidConfig, Some(fld));
@@ -863,7 +863,11 @@ pub(crate) mod tests {
         };
         assert_eq!(t(fpc, &[vc(3, fat)], &[]), ic(field::FRAME_DATA_FIELD));
         assert_eq!(
-            t(vpc, &[f, var, vc(3, params(Variable, 0, 0))], &[]),
+            t(
+                vpc,
+                &[1, 2, 3, 4, 5].map(|n| vc(n, params(Variable, 0, 0))),
+                &[]
+            ),
             (ErrorKind::CapacityExceeded, Some(field::VC_ID))
         );
         assert_eq!(t(vpc, &[f], &[map(4, 0, 0, 0)]), ic(field::MAP_ID));
@@ -888,11 +892,7 @@ pub(crate) mod tests {
             ic(field::FRAME_DATA_FIELD)
         );
         assert_eq!(
-            t(
-                vpc,
-                &[per_map],
-                &[map(5, 0, 0, 0), map(5, 1, 0, 0), map(5, 2, 0, 0)]
-            ),
+            t(vpc, &[per_map], &[0, 1, 2, 3, 4].map(|m| map(5, m, 0, 0))),
             (ErrorKind::CapacityExceeded, Some(field::MAP_ID))
         );
         let short = |security| {
@@ -915,16 +915,48 @@ pub(crate) mod tests {
             ),
             ic(field::TRUNCATED_FRAME_LEN)
         );
-        let ok = VcTable::<2, 2>::new(vpc, &[short(SecurityScope::PerMap)], &[map(6, 0, 0, 0)]);
+        let ok = VcTable::<4, 4>::new(vpc, &[short(SecurityScope::PerMap)], &[map(6, 0, 0, 0)]);
         assert!(ok.is_ok());
         let none =
-            VcTable::<1, 0>::new(vpc, &[short(SecurityScope::Vc(SecurityLayout::NONE))], &[]);
+            VcTable::<4, 4>::new(vpc, &[short(SecurityScope::Vc(SecurityLayout::NONE))], &[]);
         assert!(none.is_ok());
+        // The SDLS MAPs of another Master Channel or VC do not count (§6.6.1 note 1).
+        let other_scid = VcConfig::new(
+            scid(0x156),
+            vcid(6),
+            VcParams {
+                security: SecurityScope::PerMap,
+                ..params(Variable, 0, 0)
+            },
+        )
+        .unwrap();
+        let other_vc = vc(
+            7,
+            VcParams {
+                security: SecurityScope::PerMap,
+                ..params(Variable, 0, 0)
+            },
+        );
+        let sdls_elsewhere = [
+            MapConfig::new(
+                scid(0x156),
+                vcid(6),
+                mapid(0),
+                SecurityLayout::new(1, 0).unwrap(),
+            ),
+            map(7, 0, 1, 0),
+        ];
+        let mixed = VcTable::<4, 4>::new(
+            vpc,
+            &[short(SecurityScope::PerMap), other_scid, other_vc],
+            &sdls_elsewhere,
+        );
+        assert!(mixed.is_ok());
         let tight = PhysicalChannelConfig::new(Fixed, 11, 0, false).unwrap();
-        assert!(VcTable::<1, 0>::new(tight, &[f], &[]).is_ok());
+        assert!(VcTable::<4, 4>::new(tight, &[f], &[]).is_ok());
         let tighter = PhysicalChannelConfig::new(Fixed, 10, 0, false).unwrap();
         assert_eq!(
-            kf(VcTable::<1, 0>::new(tighter, &[f], &[])),
+            kf(VcTable::<4, 4>::new(tighter, &[f], &[])),
             ic(field::FRAME_DATA_FIELD)
         );
         let ocf = vc(
@@ -936,10 +968,10 @@ pub(crate) mod tests {
         );
         let room = PhysicalChannelConfig::new(Variable, 14, 0, true).unwrap();
         assert_eq!(
-            kf(VcTable::<1, 0>::new(room, &[ocf], &[])),
+            kf(VcTable::<4, 4>::new(room, &[ocf], &[])),
             ic(field::FRAME_DATA_FIELD)
         );
         let room = PhysicalChannelConfig::new(Variable, 15, 0, true).unwrap();
-        assert!(VcTable::<1, 0>::new(room, &[ocf], &[]).is_ok());
+        assert!(VcTable::<4, 4>::new(room, &[ocf], &[]).is_ok());
     }
 }

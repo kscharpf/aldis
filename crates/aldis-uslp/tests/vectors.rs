@@ -243,25 +243,26 @@ fn bytes_of(p: &Map<String, Value>, key: &str) -> Vec<u8> {
 }
 
 fn encode_case(case: &CodecCase) -> Result<Value, Error> {
-    let t = table(case)?;
-    let p = case.params.as_ref().unwrap();
-    let f = fields(p)?;
-    let iz = bytes_of(p, "insert_zone_hex");
+    let tbl = table(case)?;
+    let params = case.params.as_ref().unwrap();
+    let frame_fields = fields(params)?;
+    let iz = bytes_of(params, "insert_zone_hex");
     let content = FrameContent {
-        tfdf: tfdf(p),
+        tfdf: tfdf(params),
         insert_zone: &iz,
-        ocf: ocf(p),
+        ocf: ocf(params),
     };
-    let tfdz = bytes_of(p, "tfdz_hex");
+    let tfdz = bytes_of(params, "tfdz_hex");
     let mut out = vec![0_u8; 70_000];
-    let n = encode(&t, f, content, &tfdz, &mut out)?;
+    let len = encode(&tbl, frame_fields, content, &tfdz, &mut out)?;
     // The two-phase writer produces the same octets (API-020).
-    let mut two = vec![0xA5_u8; n];
-    let mut w = UslpFrameWriter::begin(&mut two, &t, f, content, tfdz.len()).unwrap();
-    w.tfdz_mut().copy_from_slice(&tfdz);
-    assert_eq!(w.finish(tfdz.len()), Ok(n), "{}", case.id);
-    assert_eq!(two, out[..n], "{}: two-phase writer differs", case.id);
-    Ok(json!({ "output_hex": hex::encode(&out[..n]) }))
+    let mut two = vec![0xA5_u8; len];
+    let mut writer =
+        UslpFrameWriter::begin(&mut two, &tbl, frame_fields, content, tfdz.len()).unwrap();
+    writer.tfdz_mut().copy_from_slice(&tfdz);
+    assert_eq!(writer.finish(tfdz.len()), Ok(len), "{}", case.id);
+    assert_eq!(two, out[..len], "{}: two-phase writer differs", case.id);
+    Ok(json!({ "output_hex": hex::encode(&out[..len]) }))
 }
 
 fn encode_truncated_case(case: &CodecCase) -> Result<Value, Error> {
