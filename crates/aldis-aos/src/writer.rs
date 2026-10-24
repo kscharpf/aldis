@@ -13,7 +13,7 @@ use aldis_core::oid::OidGenerator;
 use aldis_core::security::SecurityLayout;
 use aldis_core::{Error, ErrorKind, Result};
 
-use crate::bpdu::BitstreamPointer;
+use crate::bpdu::{BitstreamPointer, ValidBitCount};
 use crate::config::{
     AosPhysicalChannelConfig, DataFieldContent, VcLookup, frame_layout, pdu_header_len,
     unknown_channel,
@@ -259,20 +259,20 @@ fn mpdu_header(
 /// The `B_PDU` Header for `pointer` in a Bitstream Data Zone of `zone` octets (AOS-019).
 ///
 /// # Errors
-/// `OutOfRange` (`bitstream_data_pointer`) for `ValidBits(n)` with `n` 0 or not below the
-/// zone's length in bits (a zone of valid data only is `AllValid`, §4.1.4.3.3.3), with the
-/// largest valid count.
+/// `OutOfRange` (`bitstream_data_pointer`) for `ValidBits(n)` with `n` not below the zone's
+/// length in bits (a zone of valid data only is `AllValid`, §4.1.4.3.3.3), with the largest
+/// valid count. The count is at least 1 and has a pointer value by its type (RS-020).
 fn bpdu_header(pointer: BitstreamPointer, zone: usize) -> Result<[u8; 2]> {
     if let BitstreamPointer::ValidBits(n) = pointer {
         let limit = zone
             .saturating_mul(8)
             .saturating_sub(1)
-            .min(usize::from(BitstreamPointer::ONLY_IDLE_RAW));
-        if n == 0 || usize::from(n) > limit {
+            .min(usize::from(ValidBitCount::MAX));
+        if usize::from(n.get()) > limit {
             return Err(Error::out_of_range(
                 field::BITSTREAM_DATA_POINTER,
                 len_u64(limit),
-                u64::from(n),
+                u64::from(n.get()),
             ));
         }
     }
@@ -318,7 +318,7 @@ impl<'b> AosFrameWriter<'b> {
     ///   `M_PDU` or `B_PDU` Header, which a `vcs` built for `pc` never allows;
     /// - `OutOfRange` (`first_header_pointer`) for a packet offset outside the Packet Zone or
     ///   above `0xFFFD` (`0x7FD` in Issue 4), or (`bitstream_data_pointer`) for `ValidBits(n)`
-    ///   with `n` 0 or not below the zone's bits, with the largest valid value (AOS-017);
+    ///   with `n` not below the zone's bits, with the largest valid value (AOS-017);
     /// - `OutOfRange` (`spacecraft_id`) for an SCID above 255 in `Issue4Compatible` (AOS-002);
     /// - `BufferTooSmall` (`needed` = frame length) if `out` is shorter than a frame.
     pub fn begin<L: VcLookup + ?Sized>(
@@ -527,7 +527,7 @@ mod tests {
     use std::vec;
 
     use super::{AosFrameContent, AosFrameFields, AosFrameWriter, PduHeader, encode};
-    use crate::bpdu::BitstreamPointer;
+    use crate::bpdu::{BitstreamPointer, ValidBitCount};
     use crate::config::tests::{pc, scid, vc, vcid};
     use crate::config::{AosEdition, AosVirtualChannelConfig, DataFieldContent, VcLookup, VcTable};
     use crate::field;
@@ -693,12 +693,12 @@ mod tests {
             )
         );
         // Bitstream Data Zone of 40 − 8 − 4 − 2 − 2 = 24 octets, 192 bits: counts 1–191.
-        for n in [0, 192] {
+        for n in [192, ValidBitCount::MAX] {
             let f = AosFrameFields::new(
                 scid(0x0AB),
                 vcid(1),
                 count(0),
-                PduHeader::Bpdu(BitstreamPointer::ValidBits(n)),
+                PduHeader::Bpdu(BitstreamPointer::ValidBits(ValidBitCount::new(n).unwrap())),
             );
             assert_eq!(
                 rejected(&t, &f),
@@ -729,7 +729,9 @@ mod tests {
             scid(0x0AB),
             vcid(1),
             count(0),
-            PduHeader::Bpdu(BitstreamPointer::ValidBits(191)),
+            PduHeader::Bpdu(BitstreamPointer::ValidBits(
+                ValidBitCount::new(191).unwrap(),
+            )),
         );
         let mut out = [0_u8; 40];
         assert!(AosFrameWriter::begin(&mut out, &t.physical_channel(), &t, &f).is_ok());

@@ -6,6 +6,7 @@
 
 // req: API-020, API-021, API-022, API-023, AOS-013, AOS-014, AOS-015, AOS-016, AOS-019, CMN-021, GEN-042, VER-022
 
+use aldis_aos::ValidBitCount;
 use aldis_aos::{
     AosEdition, AosFrame, AosFrameContent, AosFrameFields, AosFrameWriter,
     AosPhysicalChannelConfig, AosVirtualChannelConfig, BitstreamPointer, DataFieldContent,
@@ -73,7 +74,10 @@ fn pdu(u: &mut Unstructured<'_>) -> Result<PduHeader> {
         3 => PduHeader::Mpdu(PacketPointer::StartsAt(u.int_in_range(0..=300)?)),
         4 => PduHeader::Bpdu(BitstreamPointer::AllValid),
         5 => PduHeader::Bpdu(BitstreamPointer::OnlyIdle),
-        _ => PduHeader::Bpdu(BitstreamPointer::ValidBits(u.int_in_range(0..=2400)?)),
+        _ => match ValidBitCount::new(u.int_in_range(0..=2400)?) {
+            Some(n) => PduHeader::Bpdu(BitstreamPointer::ValidBits(n)),
+            None => PduHeader::Bpdu(BitstreamPointer::OnlyIdle),
+        },
     })
 }
 

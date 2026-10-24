@@ -116,7 +116,7 @@ fn slices_inside_property(table: &AosTable, bytes: &[u8]) -> Result<(), TestCase
     if let DataUnit::Bpdu(b) = f.data_unit()
         && let aldis_aos::BitstreamPointer::ValidBits(n) = b.pointer()
     {
-        prop_assert!(n >= 1 && usize::from(n) < b.data_zone().len().saturating_mul(8));
+        prop_assert!(usize::from(n.get()) < b.data_zone().len().saturating_mul(8));
     }
     prop_assert_eq!(AosFrame::peek_length(bytes, &pc), Ok(bytes.len()));
     Ok(())

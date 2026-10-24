@@ -7,6 +7,7 @@
     reason = "test-only harness crate: malformed vectors must fail loudly (RS-018)"
 )]
 
+use aldis_aos::ValidBitCount;
 use aldis_aos::{
     AosEdition, AosFrame, AosFrameContent, AosFrameFields, AosFrameWriter,
     AosPhysicalChannelConfig, AosPrimaryHeader, AosVirtualChannelConfig, BitstreamPointer,
@@ -149,7 +150,7 @@ fn decoded(f: &AosFrame<'_>) -> Value {
         }
         DataUnit::Bpdu(b) => {
             let (p, v) = match b.pointer() {
-                BitstreamPointer::ValidBits(n) => ("valid_bits", Some(n)),
+                BitstreamPointer::ValidBits(n) => ("valid_bits", Some(n.get())),
                 BitstreamPointer::AllValid => ("all_valid", None),
                 BitstreamPointer::OnlyIdle => ("only_idle", None),
             };
@@ -185,21 +186,25 @@ fn decoded(f: &AosFrame<'_>) -> Value {
     Value::Object(out)
 }
 
-fn pdu(case: &CodecCase, p: &Map<String, Value>) -> PduHeader {
+fn pdu(case: &CodecCase, p: &Map<String, Value>) -> Result<PduHeader, Error> {
     let value = || uint::<u16>(get(p, case, "value"));
-    match (
-        get(p, case, "kind").as_str().unwrap(),
-        p.get("pointer").and_then(Value::as_str),
-    ) {
-        ("mpdu", Some("starts_at")) => PduHeader::Mpdu(PacketPointer::StartsAt(value())),
-        ("mpdu", Some("no_packet_start")) => PduHeader::Mpdu(PacketPointer::NoPacketStart),
-        ("mpdu", Some("only_idle_data")) => PduHeader::Mpdu(PacketPointer::OnlyIdleData),
-        ("bpdu", Some("valid_bits")) => PduHeader::Bpdu(BitstreamPointer::ValidBits(value())),
-        ("bpdu", Some("all_valid")) => PduHeader::Bpdu(BitstreamPointer::AllValid),
-        ("bpdu", Some("only_idle")) => PduHeader::Bpdu(BitstreamPointer::OnlyIdle),
-        ("none", _) => PduHeader::None,
-        other => panic!("{}: pdu {other:?}", case.id),
-    }
+    Ok(
+        match (
+            get(p, case, "kind").as_str().unwrap(),
+            p.get("pointer").and_then(Value::as_str),
+        ) {
+            ("mpdu", Some("starts_at")) => PduHeader::Mpdu(PacketPointer::StartsAt(value())),
+            ("mpdu", Some("no_packet_start")) => PduHeader::Mpdu(PacketPointer::NoPacketStart),
+            ("mpdu", Some("only_idle_data")) => PduHeader::Mpdu(PacketPointer::OnlyIdleData),
+            ("bpdu", Some("valid_bits")) => PduHeader::Bpdu(BitstreamPointer::ValidBits(
+                ValidBitCount::try_from(value())?,
+            )),
+            ("bpdu", Some("all_valid")) => PduHeader::Bpdu(BitstreamPointer::AllValid),
+            ("bpdu", Some("only_idle")) => PduHeader::Bpdu(BitstreamPointer::OnlyIdle),
+            ("none", _) => PduHeader::None,
+            other => panic!("{}: pdu {other:?}", case.id),
+        },
+    )
 }
 
 fn cycle(p: &Map<String, Value>) -> Result<Option<FrameCountCycle>, Error> {
@@ -218,7 +223,7 @@ fn encode_case(case: &CodecCase, pc: &AosPhysicalChannelConfig, t: &Table) -> Re
         vc_frame_count: VcFrameCount::try_from(uint::<u32>(get(p, case, "vc_frame_count")))?,
         replay_flag: flag(p, "replay_flag"),
         cycle: cycle(p)?,
-        pdu: pdu(case, get(p, case, "pdu").as_object().unwrap()),
+        pdu: pdu(case, get(p, case, "pdu").as_object().unwrap())?,
     };
     let (iz, sh, zone, st) = (
         octets(p.get("insert_zone_hex")),

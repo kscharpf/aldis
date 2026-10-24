@@ -113,7 +113,7 @@ fn run(u: &mut Unstructured<'_>) -> Result<()> {
         if let DataUnit::Bpdu(b) = f.data_unit()
             && let BitstreamPointer::ValidBits(n) = b.pointer()
         {
-            assert!(n >= 1 && usize::from(n) < b.data_zone().len() * 8);
+            assert!(usize::from(n.get()) < b.data_zone().len() * 8);
         }
     }
     if let Ok(f) = strict

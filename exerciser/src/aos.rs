@@ -3,6 +3,7 @@
 
 use core::hint::black_box as bb;
 
+use aldis_aos::ValidBitCount;
 use aldis_aos::fhec::{self, CorrectedSymbols};
 use aldis_aos::{
     AosAnomaly, AosEdition, AosFrame, AosFrameContent, AosFrameFields, AosFrameWriter,
@@ -60,7 +61,18 @@ fn pointer_group(t: &mut Tally) {
     t.check(PacketPointer::classify(bb(4), bb(4), five).is_err());
     t.check(PacketPointer::StartsAt(bb(0x7FE)).to_raw(four) == 0x7FF);
     t.check(PacketPointer::OnlyIdleData.header_octets(bb(five)) == [0xFF, 0xFE]);
-    t.check(BitstreamPointer::classify(bb(14), bb(2)) == Ok(BitstreamPointer::ValidBits(15)));
+    t.check(ValidBitCount::new(bb(15)).is_some_and(|n| {
+        BitstreamPointer::classify(bb(14), bb(2)) == Ok(BitstreamPointer::ValidBits(n))
+            && n.get() == 15
+            && n.last_bit() == 14
+            && u16::from(n) == 15
+    }));
+    t.check(
+        ValidBitCount::new(bb(0)).is_none() && ValidBitCount::try_from(bb(0x3FFF_u16)).is_err(),
+    );
+    t.check(
+        ValidBitCount::try_from(bb(ValidBitCount::MAX)).is_ok_and(|n| n.get() > ValidBitCount::MIN),
+    );
     t.check(
         BitstreamPointer::classify(bb(15), bb(2))
             .is_err_and(|e| e.kind() == ErrorKind::InvalidField),
@@ -68,7 +80,7 @@ fn pointer_group(t: &mut Tally) {
     t.check(
         BitstreamPointer::classify(bb(16), bb(2)).is_err_and(|e| e.kind() == ErrorKind::Malformed),
     );
-    t.check(BitstreamPointer::ValidBits(bb(0)).to_raw() == BitstreamPointer::ALL_VALID_RAW);
+    t.check(BitstreamPointer::AllValid.to_raw() == bb(BitstreamPointer::ALL_VALID_RAW));
     t.check(BitstreamPointer::OnlyIdle.header_octets() == [0x3F, 0xFE]);
     let field = [0xA8, 0x01, 0, 0];
     t.check(Mpdu::decode(bb(&field), four, bb(DecodeMode::Strict)).is_err());
@@ -396,7 +408,7 @@ fn decoded(out: &mut Out, f: &AosFrame<'_>) {
         }
         DataUnit::Bpdu(b) => {
             let (p, v) = match b.pointer() {
-                BitstreamPointer::ValidBits(n) => ("valid_bits", Some(n)),
+                BitstreamPointer::ValidBits(n) => ("valid_bits", Some(n.get())),
                 BitstreamPointer::AllValid => ("all_valid", None),
                 BitstreamPointer::OnlyIdle => ("only_idle", None),
             };
@@ -427,9 +439,9 @@ fn pdu(p: Map) -> Result<PduHeader, Fail> {
         ("mpdu", Some("starts_at")) => PduHeader::Mpdu(PacketPointer::StartsAt(p.num("value")?)),
         ("mpdu", Some("no_packet_start")) => PduHeader::Mpdu(PacketPointer::NoPacketStart),
         ("mpdu", Some("only_idle_data")) => PduHeader::Mpdu(PacketPointer::OnlyIdleData),
-        ("bpdu", Some("valid_bits")) => {
-            PduHeader::Bpdu(BitstreamPointer::ValidBits(p.num("value")?))
-        }
+        ("bpdu", Some("valid_bits")) => PduHeader::Bpdu(BitstreamPointer::ValidBits(
+            ValidBitCount::try_from(p.num::<u16>("value")?)?,
+        )),
         ("bpdu", Some("all_valid")) => PduHeader::Bpdu(BitstreamPointer::AllValid),
         ("bpdu", Some("only_idle")) => PduHeader::Bpdu(BitstreamPointer::OnlyIdle),
         ("none", _) => PduHeader::None,

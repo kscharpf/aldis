@@ -7,7 +7,8 @@
   `AosPrimaryHeader::decode`, which corrects the header with the FHEC before any field is read; the
   zero-copy `AosFrame` decoder, with the FECF checked over the corrected header, the Insert Zone,
   the SDLS slices, the OCF, and the data field as a `DataUnit`; `Mpdu` and `Bpdu` with their
-  pointers classified (`PacketPointer`, `BitstreamPointer`); the one-shot `encode`, the two-phase
+  pointers classified (`PacketPointer`, `BitstreamPointer` with its count of valid bits
+  `ValidBitCount`, 1 to `0x3FFE`); the one-shot `encode`, the two-phase
   `AosFrameWriter`, and OID frames on VCID 63 (`begin_oid`). Lenient-mode flags `AosAnomaly` with
   bit indices.
 - Field codes 89–97 for the AOS fields and parameters (`docs/03-api-model.md` §9.1); the Spacecraft

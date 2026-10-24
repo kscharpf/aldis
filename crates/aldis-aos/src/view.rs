@@ -382,7 +382,7 @@ pub(crate) mod tests {
 
     use super::{AosFrame, DataUnit};
     use crate::anomaly::AosAnomaly;
-    use crate::bpdu::BitstreamPointer;
+    use crate::bpdu::{BitstreamPointer, ValidBitCount};
     use crate::config::tests::{pc, scid, vc, vcid};
     use crate::config::{AosEdition, DataFieldContent, VcTable};
     use crate::fhec::{self, CorrectedSymbols};
@@ -497,7 +497,10 @@ pub(crate) mod tests {
         };
         assert_eq!(
             (b.pointer(), f.data_unit().content()),
-            (BitstreamPointer::ValidBits(10), DataFieldContent::Bpdu)
+            (
+                BitstreamPointer::ValidBits(ValidBitCount::new(10).unwrap()),
+                DataFieldContent::Bpdu
+            )
         );
         assert_eq!(f.data_unit().zone(), &bytes[8..]);
         for (v, content) in [

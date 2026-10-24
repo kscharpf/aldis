@@ -8,7 +8,7 @@
 //! | [`config`] | `AosEdition`, `AosPhysicalChannelConfig`, `AosVirtualChannelConfig`, `DataFieldContent`, the `VcLookup` trait and its `VcTable` | 732.0 §5, §6.6; 732.0-B-4 | AOS-001, AOS-002, AOS-018, GEN-060, GEN-062, API-040, API-041, API-070 |
 //! | [`header`] | Owned `AosPrimaryHeader` read after FHEC correction, `VcFrameCount`, `FrameCountCycle`, `OID_VCID` | 732.0 §4.1.2, §4.3.7.2 | AOS-002, AOS-010…AOS-014, API-014 |
 //! | [`view`] | Zero-copy `AosFrame` decoder with the `VcLookup`, `DataUnit`, `peek_length` | 732.0 §4.1, §4.3.7, §6.3 | AOS-010…AOS-017, API-010, API-012, API-013, API-072, GEN-013 |
-//! | [`mpdu`], [`bpdu`] | `Mpdu` and `PacketPointer` (both editions), `Bpdu` and `BitstreamPointer` | 732.0 §4.1.4.2–3; 732.0-B-4 §4.1.4.2 | AOS-003, AOS-017, AOS-018 |
+//! | [`mpdu`], [`bpdu`] | `Mpdu` and `PacketPointer` (both editions), `Bpdu`, `BitstreamPointer`, and `ValidBitCount` | 732.0 §4.1.4.2–3; 732.0-B-4 §4.1.4.2 | AOS-003, AOS-017, AOS-018 |
 //! | [`writer`] | One-shot `encode`, two-phase `AosFrameWriter`, OID frames on VCID 63 | 732.0 §4.1, §4.1.4.1.5, §4.2.7, §6.3 | AOS-015, AOS-016, AOS-019, API-020…API-023, API-072 |
 //! | [`anomaly`] | `AosAnomaly` lenient-mode flags | 732.0 §4.1.2.5.5.3, §4.1.4.3.2; 732.0-B-4 §4.1.2.5.4, §4.1.4.2.2 | API-032, API-033, GEN-043 |
 //! | [`field`] | The field codes its errors name, re-exported from `aldis_core::field` | 732.0 §4.1, §5 | API-082, GEN-041 |
@@ -43,7 +43,7 @@ pub mod view;
 pub mod writer;
 
 pub use anomaly::AosAnomaly;
-pub use bpdu::{BitstreamPointer, Bpdu};
+pub use bpdu::{BitstreamPointer, Bpdu, ValidBitCount};
 pub use config::{
     AosEdition, AosPhysicalChannelConfig, AosVirtualChannelConfig, DataFieldContent, VcLookup,
     VcTable,

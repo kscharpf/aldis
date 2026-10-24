@@ -23,7 +23,7 @@ Primary Header (6, or 8 with FHEC) ‖ [Insert Zone] ‖ [Security Header] ‖ D
 The data field holds exactly one of: an **M_PDU** (packets), a **B_PDU** (bitstream), a **VCA_SDU**, or Idle Data (OID frame), fixed per VC.
 
 - **M_PDU (Issue 5):** First Header Pointer (16 bits) ‖ Packet Zone. FHP `0xFFFF` = no packet starts; `0xFFFE` = only idle data.
-- **B_PDU:** Reserved Spare (2 bits, `00`) ‖ Bitstream Data Pointer (14 bits, index of the last valid *bit*) ‖ Data Zone. Pointer `0x3FFF` = all valid; `0x3FFE` = only idle. The view reports a pointer `p` below the reserved values as `ValidBits(p + 1)`, the number of valid bits (GEN-053).
+- **B_PDU:** Reserved Spare (2 bits, `00`) ‖ Bitstream Data Pointer (14 bits, index of the last valid *bit*) ‖ Data Zone. Pointer `0x3FFF` = all valid; `0x3FFE` = only idle. The view reports a pointer `p` below the reserved values as `ValidBits(n)` with `n = p + 1`, the number of valid bits (GEN-053), a `ValidBitCount` of 1 to `0x3FFE`, the counts whose pointer lies below the reserved values (RS-020).
 
 ## 2. Editions
 

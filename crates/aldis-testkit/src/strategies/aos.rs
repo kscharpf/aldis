@@ -3,6 +3,7 @@
 //! Physical channel configurations in both editions, virtual channel tables, whole AOS Transfer
 //! Frames built by the crate's own encoder, and frame octets next to the decoder's boundaries.
 
+use aldis_aos::ValidBitCount;
 use aldis_aos::fhec;
 use aldis_aos::{
     AosEdition, AosFrameContent, AosFrameFields, AosPhysicalChannelConfig, AosVirtualChannelConfig,
@@ -188,7 +189,9 @@ fn pdu_header(
                 .unwrap_or(1)
                 .max(1);
             prop_oneof![
-                3 => (1..=last).prop_map(BitstreamPointer::ValidBits),
+                3 => (1..=last)
+                    .prop_filter_map("a count of valid bits", ValidBitCount::new)
+                    .prop_map(BitstreamPointer::ValidBits),
                 1 => Just(BitstreamPointer::AllValid),
                 1 => Just(BitstreamPointer::OnlyIdle),
             ]

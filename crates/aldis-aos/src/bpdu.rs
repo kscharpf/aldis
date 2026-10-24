@@ -23,6 +23,76 @@ pub const MAX_BITSTREAM_ZONE_LEN: usize = 2047;
 /// octets (16 384 bits; 732.0 §4.1.4.3.3.4 note; AOS-018).
 pub const MAX_BITSTREAM_FRAME_LEN: usize = 2048;
 
+/// The number of valid user data bits at the start of a Bitstream Data Zone that also holds idle
+/// data, 1 to `0x3FFE` (732.0 §4.1.4.3.3.2; AOS-017, GEN-053, RS-020).
+///
+/// The pointer holds the count minus one, the index of the last valid bit, which must lie below
+/// the two reserved values `0x3FFE` and `0x3FFF`; so every count of this type has a pointer value
+/// (§4.1.4.3.3.1–4). Whether it fits a given zone, below the zone's length in bits, is the
+/// writer's check (AOS-019).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct ValidBitCount(u16);
+
+impl ValidBitCount {
+    /// Smallest count: one valid bit, pointer 0 (§4.1.4.3.3.2).
+    pub const MIN: u16 = 1;
+    /// Largest count, `0x3FFE`: pointer `0x3FFD`, the last index below the reserved values
+    /// (§4.1.4.3.3.3–4).
+    pub const MAX: u16 = 0x3FFE;
+
+    /// The count, or `None` outside 1 to `0x3FFE` (API-001).
+    #[must_use]
+    pub const fn new(bits: u16) -> Option<ValidBitCount> {
+        if bits >= ValidBitCount::MIN && bits <= ValidBitCount::MAX {
+            Some(ValidBitCount(bits))
+        } else {
+            None
+        }
+    }
+
+    /// The number of valid bits (GEN-053).
+    #[must_use]
+    pub const fn get(self) -> u16 {
+        self.0
+    }
+
+    /// The Bitstream Data Pointer of the count: the index of the last valid bit, `get() − 1`
+    /// (§4.1.4.3.3.2).
+    #[must_use]
+    pub const fn last_bit(self) -> u16 {
+        self.0.saturating_sub(1)
+    }
+}
+
+impl TryFrom<u16> for ValidBitCount {
+    type Error = Error;
+
+    /// # Errors
+    /// `OutOfRange` (`bitstream_data_pointer`) for 0 or above `0x3FFE`, with the bound that was
+    /// crossed.
+    fn try_from(bits: u16) -> Result<ValidBitCount> {
+        ValidBitCount::new(bits).ok_or_else(|| {
+            let bound = if bits < ValidBitCount::MIN {
+                ValidBitCount::MIN
+            } else {
+                ValidBitCount::MAX
+            };
+            mismatch(
+                ErrorKind::OutOfRange,
+                field::BITSTREAM_DATA_POINTER,
+                u64::from(bound),
+                u64::from(bits),
+            )
+        })
+    }
+}
+
+impl From<ValidBitCount> for u16 {
+    fn from(count: ValidBitCount) -> u16 {
+        count.0
+    }
+}
+
 /// The Bitstream Data Pointer, classified (732.0 §4.1.4.3.3; AOS-017).
 ///
 /// A decoded `B_PDU` holds `ValidBits(n)` only for `n` below the zone's length in bits; a pointer
@@ -30,8 +100,8 @@ pub const MAX_BITSTREAM_FRAME_LEN: usize = 2048;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum BitstreamPointer {
     /// The first `n` bits of the zone are user data and the rest idle data: the pointer holds
-    /// `n − 1`, the index of the last valid bit (§4.1.4.3.3.2; GEN-053). `n` is at least 1.
-    ValidBits(u16),
+    /// `n − 1`, the index of the last valid bit (§4.1.4.3.3.2; GEN-053).
+    ValidBits(ValidBitCount),
     /// All ones: the zone holds only user data (§4.1.4.3.3.3).
     AllValid,
     /// All ones minus one: the zone holds only idle data (§4.1.4.3.3.4).
@@ -52,44 +122,42 @@ impl BitstreamPointer {
     /// In both modes (API-031, API-032):
     /// - `InvalidField` (`bitstream_data_pointer`) for the index of the zone's last bit: a zone
     ///   with no idle data has the pointer all ones (§4.1.4.3.3.3), with that value;
-    /// - `Malformed` (`bitstream_data_pointer`) for an index beyond the zone that is not
-    ///   reserved, with the zone's last bit index (OI-33).
+    /// - `Malformed` (`bitstream_data_pointer`) for an index beyond the zone, or above the
+    ///   14-bit field, that is not reserved, with the zone's last bit index (OI-33).
     pub fn classify(raw: u16, zone_len: usize) -> Result<BitstreamPointer> {
         let last_bit = zone_len.saturating_mul(8).saturating_sub(1);
         if raw == BitstreamPointer::ALL_VALID_RAW {
-            Ok(BitstreamPointer::AllValid)
-        } else if raw == BitstreamPointer::ONLY_IDLE_RAW {
-            Ok(BitstreamPointer::OnlyIdle)
-        } else if usize::from(raw) < last_bit {
-            Ok(BitstreamPointer::ValidBits(raw.saturating_add(1)))
-        } else if usize::from(raw) == last_bit {
-            Err(mismatch(
+            return Ok(BitstreamPointer::AllValid);
+        }
+        if raw == BitstreamPointer::ONLY_IDLE_RAW {
+            return Ok(BitstreamPointer::OnlyIdle);
+        }
+        let index = usize::from(raw);
+        if index == last_bit {
+            return Err(mismatch(
                 ErrorKind::InvalidField,
                 field::BITSTREAM_DATA_POINTER,
                 u64::from(BitstreamPointer::ALL_VALID_RAW),
                 u64::from(raw),
-            ))
-        } else {
-            Err(mismatch(
+            ));
+        }
+        match ValidBitCount::new(raw.saturating_add(1)) {
+            Some(count) if index < last_bit => Ok(BitstreamPointer::ValidBits(count)),
+            _ => Err(mismatch(
                 ErrorKind::Malformed,
                 field::BITSTREAM_DATA_POINTER,
                 len_u64(last_bit),
                 u64::from(raw),
-            ))
+            )),
         }
     }
 
-    /// The raw 14-bit field. `ValidBits(0)` and counts above `0x3FFE` saturate to "all
-    /// valid"; the writers reject them before they reach the wire (AOS-019).
+    /// The raw 14-bit field (§4.1.4.3.3; AOS-019).
     #[must_use]
     pub const fn to_raw(self) -> u16 {
         match self {
-            BitstreamPointer::ValidBits(n) if n >= 1 && n <= BitstreamPointer::ONLY_IDLE_RAW => {
-                n.saturating_sub(1)
-            }
-            BitstreamPointer::ValidBits(_) | BitstreamPointer::AllValid => {
-                BitstreamPointer::ALL_VALID_RAW
-            }
+            BitstreamPointer::ValidBits(count) => count.last_bit(),
+            BitstreamPointer::AllValid => BitstreamPointer::ALL_VALID_RAW,
             BitstreamPointer::OnlyIdle => BitstreamPointer::ONLY_IDLE_RAW,
         }
     }
@@ -196,13 +264,46 @@ impl<'a> Bpdu<'a> {
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
-    use super::{BitstreamPointer, Bpdu};
+    use super::{BitstreamPointer, Bpdu, ValidBitCount};
     use crate::anomaly::AosAnomaly;
     use crate::field;
     use aldis_core::{AnomalySet, DecodeMode, ErrorDetail, ErrorKind};
 
     const STRICT: DecodeMode = DecodeMode::Strict;
     const LENIENT: DecodeMode = DecodeMode::Lenient;
+
+    fn vb(n: u16) -> BitstreamPointer {
+        BitstreamPointer::ValidBits(ValidBitCount::new(n).unwrap())
+    }
+
+    #[test]
+    fn valid_bit_counts_are_1_to_0x3ffe() {
+        // req: AOS-017, API-001, GEN-053, RS-020
+        assert_eq!(ValidBitCount::new(0), None);
+        assert_eq!(ValidBitCount::new(0x3FFF), None);
+        let one = ValidBitCount::new(1).unwrap();
+        assert_eq!((one.get(), one.last_bit(), u16::from(one)), (1, 0, 1));
+        let max = ValidBitCount::try_from(0x3FFE).unwrap();
+        assert_eq!(
+            (max.get(), max.last_bit(), u16::from(max)),
+            (ValidBitCount::MAX, 0x3FFD, 0x3FFE)
+        );
+        for (n, bound) in [(0, 1), (0x3FFF, 0x3FFE), (0xFFFF, 0x3FFE)] {
+            let e = ValidBitCount::try_from(n).unwrap_err();
+            assert_eq!(
+                (e.kind(), e.field(), e.detail()),
+                (
+                    ErrorKind::OutOfRange,
+                    Some(field::BITSTREAM_DATA_POINTER),
+                    ErrorDetail::Expected {
+                        expected: bound,
+                        found: u64::from(n)
+                    }
+                )
+            );
+        }
+        assert_eq!(ValidBitCount::MIN, 1);
+    }
 
     #[test]
     fn classification() {
@@ -216,14 +317,8 @@ mod tests {
             BitstreamPointer::classify(0x3FFE, 2),
             Ok(BitstreamPointer::OnlyIdle)
         );
-        assert_eq!(
-            BitstreamPointer::classify(0, 2),
-            Ok(BitstreamPointer::ValidBits(1))
-        );
-        assert_eq!(
-            BitstreamPointer::classify(14, 2),
-            Ok(BitstreamPointer::ValidBits(15))
-        );
+        assert_eq!(BitstreamPointer::classify(0, 2), Ok(vb(1)));
+        assert_eq!(BitstreamPointer::classify(14, 2), Ok(vb(15)));
         let e = BitstreamPointer::classify(15, 2).unwrap_err();
         assert_eq!(
             (e.kind(), e.field(), e.detail()),
@@ -249,10 +344,7 @@ mod tests {
             )
         );
         // The longest zone, 2 047 octets: last bit 16 375 = 0x3FF7.
-        assert_eq!(
-            BitstreamPointer::classify(0x3FF6, 2047),
-            Ok(BitstreamPointer::ValidBits(0x3FF7))
-        );
+        assert_eq!(BitstreamPointer::classify(0x3FF6, 2047), Ok(vb(0x3FF7)));
         assert_eq!(
             BitstreamPointer::classify(0x3FF7, 2047).unwrap_err().kind(),
             ErrorKind::InvalidField
@@ -261,25 +353,26 @@ mod tests {
             BitstreamPointer::classify(0x3FF8, 2047).unwrap_err().kind(),
             ErrorKind::Malformed
         );
+        // A raw value above 14 bits, in a zone longer than any configuration allows.
+        assert_eq!(BitstreamPointer::classify(0x3FFD, 4000), Ok(vb(0x3FFE)));
+        assert_eq!(
+            BitstreamPointer::classify(0x4000, 4000).unwrap_err().kind(),
+            ErrorKind::Malformed
+        );
     }
 
     #[test]
     fn raw_values() {
         // req: AOS-017, AOS-019, GEN-052
         for (p, raw) in [
-            (BitstreamPointer::ValidBits(1), 0),
-            (BitstreamPointer::ValidBits(0x3FFE), 0x3FFD),
-            (BitstreamPointer::ValidBits(0x3FFF), 0x3FFF),
-            (BitstreamPointer::ValidBits(0), 0x3FFF),
+            (vb(1), 0),
+            (vb(0x3FFE), 0x3FFD),
             (BitstreamPointer::AllValid, 0x3FFF),
             (BitstreamPointer::OnlyIdle, 0x3FFE),
         ] {
             assert_eq!(p.to_raw(), raw, "{p:?}");
         }
-        assert_eq!(
-            BitstreamPointer::ValidBits(0x124).header_octets(),
-            [0x01, 0x23]
-        );
+        assert_eq!(vb(0x124).header_octets(), [0x01, 0x23]);
     }
 
     #[test]
@@ -287,10 +380,7 @@ mod tests {
         // req: AOS-017, API-031, API-032, GEN-043, GEN-013
         let field = [0x00, 0x05, 0xF8, 0x00];
         let b = Bpdu::decode(&field, STRICT).unwrap();
-        assert_eq!(
-            (b.pointer(), b.bitstream_data_pointer()),
-            (BitstreamPointer::ValidBits(6), 5)
-        );
+        assert_eq!((b.pointer(), b.bitstream_data_pointer()), (vb(6), 5));
         assert_eq!((b.data_zone(), b.spare()), (&field[2..], 0));
         assert_eq!(b.data_zone().as_ptr(), field[2..].as_ptr(), "zero-copy");
         assert!(b.anomalies().is_empty());
