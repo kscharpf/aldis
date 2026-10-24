@@ -156,7 +156,7 @@ jobs:
       - run: |
           rustup toolchain install "$NIGHTLY" --profile minimal \
             || { sleep 30; rustup toolchain install "$NIGHTLY" --profile minimal; }
-      - uses: taiki-e/install-action@8cca0918f8471c33515202b73f56ab27f2bed283 # v2.87.29
+      - uses: taiki-e/install-action@a4d3f3f761dcd95cce1b72cb61cb6d1963438177 # v2.87.30
         with:
           tool: cargo-fuzz@0.13.2
       # The corpus carries over between nights; it is never committed (.gitignore).
@@ -203,7 +203,7 @@ jobs:
       - uses: ./.github/actions/setup-rust
         with:
           cache-key: mutants
-      - uses: taiki-e/install-action@8cca0918f8471c33515202b73f56ab27f2bed283 # v2.87.29
+      - uses: taiki-e/install-action@a4d3f3f761dcd95cce1b72cb61cb6d1963438177 # v2.87.30
         with:
           tool: cargo-mutants@27.1.0
       # Exit 2 (missed mutants) and 3 (timeouts) are reported, not failed: survivors are triaged
