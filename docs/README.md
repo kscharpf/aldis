@@ -24,6 +24,8 @@ This directory holds the specification for a family of libraries that add CCSDS 
 
 [`verification/analysis-records.md`](verification/analysis-records.md): how requirements verified by analysis or inspection (method A/I) are recorded, one file per record in [`verification/records/`](verification/records/), read by `cargo xtask trace`.
 
+[`verification/formal-proofs.md`](verification/formal-proofs.md): the Kani proof harnesses of the formal-verification spike, what they prove and up to which bounds, and the limits found (OI-42).
+
 ### Process ([`process/`](process/))
 
 | Document | What it defines |

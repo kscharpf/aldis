@@ -76,3 +76,5 @@ One line for each decision the maintainer takes, under the [decision rights](dec
 - 2026-10-23 · spec · #91 · OI-41 (2): a valid header for TC delimiting is at least five octets with TFVN `00` and a Frame Length of at least six; otherwise the rest of the unit is Fill
 - 2026-10-23 · api · #91 · Field code 54 `user_len` is shared by SPP and TC (one code per field, M2 D2)
 - 2026-10-23 · api · #91 · Field code 68 `frame_len` is one code shared by TM (the Transfer Frame Length parameter) and TC (the Frame Length field), kind `field`; AOS and USLP share it too
+- 2026-10-23 · plan · chat · Continue the Kani formal-verification spike (OI-42) found uncommitted in a worktree, and open it as a pull request
+- 2026-10-23 · process · #92 · OI-42 (a) as far as a non-gating check: the verify check `kani` runs the Kani harnesses in the verification image, which installs Kani 0.68.0 with its bundle checked against GitHub's asset digest; gating and a verification method stay open

@@ -47,6 +47,10 @@ pub mod field;
 pub mod pfield;
 mod util;
 
+// Kani proof harnesses, compiled only by `cargo kani` (docs/verification/formal-proofs.md).
+#[cfg(kani)]
+mod proofs;
+
 pub use anomaly::TimeAnomaly;
 pub use ascii::{
     AsciiFormat, AsciiOptions, AsciiSubset, AsciiTime, Fraction, MAX_ASCII_LEN, MAX_FRACTION_DIGITS,

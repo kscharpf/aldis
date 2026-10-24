@@ -35,8 +35,9 @@ repository = "https://github.com/kscharpf/aldis"
 unsafe_code = "forbid"
 missing_docs = "deny"
 unreachable_pub = "warn"
-# cargo-llvm-cov sets cfg(coverage_nightly) so test modules can be excluded from coverage (VER-024).
-unexpected_cfgs = { level = "warn", check-cfg = ["cfg(coverage_nightly)"] }
+# cargo-llvm-cov sets cfg(coverage_nightly) so test modules can be excluded from coverage (VER-024);
+# `cargo kani` sets cfg(kani) for the proof harnesses (docs/verification/formal-proofs.md).
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(coverage_nightly)", "cfg(kani)"] }
 
 [workspace.lints.clippy]
 # Lint groups first (lowest priority) so the individual lints below can refine them.
