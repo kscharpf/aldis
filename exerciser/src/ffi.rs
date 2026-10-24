@@ -65,6 +65,19 @@ use aldis_ffi::tm::{
     aldis_tm_oid_writer_begin, aldis_tm_oid_writer_finish, aldis_tm_peek_length, aldis_tm_validate,
     aldis_tm_vc_config_t, aldis_tm_writer_begin, aldis_tm_writer_finish,
 };
+// ---- USLP (M2 WP-5 module 9)
+use aldis_ffi::uslp::{
+    ALDIS_USLP_DELIMITED_FRAME, ALDIS_USLP_FRAME_FIXED, ALDIS_USLP_FRAME_VARIABLE,
+    ALDIS_USLP_KIND_EXPEDITED, ALDIS_USLP_OID_VCID, ALDIS_USLP_REASON_NONE,
+    ALDIS_USLP_RULE_NO_SEGMENTATION, ALDIS_USLP_RULE_OCTET_STREAM, ALDIS_USLP_UPID_OCTET_STREAM,
+    aldis_uslp_channel_t, aldis_uslp_config_check, aldis_uslp_config_t, aldis_uslp_content_t,
+    aldis_uslp_decode, aldis_uslp_delimit, aldis_uslp_delimited_t, aldis_uslp_encode,
+    aldis_uslp_encode_oid, aldis_uslp_encode_truncated, aldis_uslp_fields_t, aldis_uslp_frame_t,
+    aldis_uslp_layout_t, aldis_uslp_map_config_t, aldis_uslp_peek_length, aldis_uslp_tfdf_t,
+    aldis_uslp_validate, aldis_uslp_vc_config_t, aldis_uslp_vc_table_check,
+    aldis_uslp_writer_begin, aldis_uslp_writer_finish,
+};
+// ---- end USLP
 use aldis_ffi::{ALDIS_MODE_LENIENT, ALDIS_MODE_STRICT};
 
 use crate::exercise::Tally;
@@ -984,6 +997,284 @@ fn tm(t: &mut Tally) {
     }
 }
 
+// ---- USLP (M2 WP-5 module 9)
+
+/// USLP channels on SCID 0x155 (732.1 §5; M2 plan D14): a 64-octet variable-length physical
+/// channel with an FECF, whose VC 4 has truncated frames of 12 octets and MAP 0; and a 32-octet
+/// fixed-length one with VC 63 for OID frames.
+fn uslp_channels() -> (
+    aldis_uslp_config_t,
+    aldis_uslp_vc_config_t,
+    aldis_uslp_map_config_t,
+    aldis_uslp_config_t,
+    aldis_uslp_vc_config_t,
+) {
+    let pc = aldis_uslp_config_t {
+        struct_size: size::<aldis_uslp_config_t>(),
+        frame_type: ALDIS_USLP_FRAME_VARIABLE,
+        fecf: bb(1),
+        frame_len: bb(64),
+        insert_zone_len: 0,
+    };
+    let vc = aldis_uslp_vc_config_t {
+        struct_size: size::<aldis_uslp_vc_config_t>(),
+        scid: bb(0x155),
+        vcid: bb(4),
+        frame_type: ALDIS_USLP_FRAME_VARIABLE,
+        truncated_frame_len: bb(12),
+        ..aldis_uslp_vc_config_t::default()
+    };
+    let map = aldis_uslp_map_config_t {
+        struct_size: size::<aldis_uslp_map_config_t>(),
+        scid: bb(0x155),
+        vcid: bb(4),
+        ..aldis_uslp_map_config_t::default()
+    };
+    let fixed = aldis_uslp_config_t {
+        frame_type: ALDIS_USLP_FRAME_FIXED,
+        frame_len: bb(32),
+        ..pc
+    };
+    let oid_vc = aldis_uslp_vc_config_t {
+        vcid: ALDIS_USLP_OID_VCID,
+        frame_type: ALDIS_USLP_FRAME_FIXED,
+        truncated_frame_len: 0,
+        ..vc
+    };
+    (pc, vc, map, fixed, oid_vc)
+}
+
+/// The C ABI of `aldis-uslp` (USLP-001…USLP-016; M2 plan D14).
+#[expect(unsafe_code, reason = "calls the C ABI with valid pointers")]
+#[expect(clippy::too_many_lines, reason = "one call per exported function")]
+fn uslp(t: &mut Tally) {
+    let (pc, vc, map, fixed, oid_vc) = uslp_channels();
+    let mut det = detail();
+    let fields = aldis_uslp_fields_t {
+        channel: aldis_uslp_channel_t {
+            scid: bb(0x155),
+            vcid: bb(4),
+            ..aldis_uslp_channel_t::default()
+        },
+        kind: ALDIS_USLP_KIND_EXPEDITED,
+        vcf_count: 0,
+    };
+    let tfdz = [0xD0_u8; 3];
+    let content = aldis_uslp_content_t {
+        tfdf: aldis_uslp_tfdf_t {
+            rule: ALDIS_USLP_RULE_OCTET_STREAM,
+            upid: ALDIS_USLP_UPID_OCTET_STREAM,
+            pointer: 0,
+        },
+        tfdz: tfdz.as_ptr(),
+        tfdz_len: bb(3),
+        ..aldis_uslp_content_t::default()
+    };
+    let in_place = aldis_uslp_content_t {
+        tfdz: null(),
+        tfdz_len: 0,
+        ..content
+    };
+    let seven = [0x31_u8; 7];
+    let truncated = aldis_uslp_content_t {
+        tfdf: aldis_uslp_tfdf_t {
+            rule: ALDIS_USLP_RULE_NO_SEGMENTATION,
+            ..content.tfdf
+        },
+        tfdz: seven.as_ptr(),
+        tfdz_len: bb(7),
+        ..aldis_uslp_content_t::default()
+    };
+    let oid_fields = aldis_uslp_fields_t {
+        channel: aldis_uslp_channel_t {
+            vcid: ALDIS_USLP_OID_VCID,
+            ..fields.channel
+        },
+        ..fields
+    };
+    let idle = aldis_uslp_content_t::default();
+    let mut frame = [0_u8; 64];
+    let mut two = [0_u8; 64];
+    let mut layout = aldis_uslp_layout_t::default();
+    let mut view = aldis_uslp_frame_t::default();
+    let mut item = aldis_uslp_delimited_t::default();
+    let mut reason = u8::MAX;
+    let mut n = 0_usize;
+    let mut words = [0_u64; ALDIS_OID_GENERATOR_STORAGE_SIZE / 8];
+    let mut oid: *mut aldis_oid_generator_t = null_mut();
+    // SAFETY: every pointer is to a live local; lengths are those of the buffers; the
+    // generator's storage is aligned and of the published size.
+    unsafe {
+        t.check(aldis_uslp_config_check(&raw const pc, &raw mut det) == ALDIS_OK);
+        t.check(
+            aldis_uslp_vc_table_check(
+                &raw const pc,
+                &raw const vc,
+                bb(1),
+                &raw const map,
+                bb(1),
+                &raw mut det,
+            ) == ALDIS_OK,
+        );
+        t.check(
+            aldis_uslp_encode(
+                &raw const pc,
+                &raw const vc,
+                bb(1),
+                &raw const map,
+                bb(1),
+                &raw const fields,
+                &raw const content,
+                frame.as_mut_ptr(),
+                frame.len(),
+                &raw mut n,
+                &raw mut det,
+            ) == ALDIS_OK
+                && n == 13,
+        );
+        t.check(
+            aldis_uslp_writer_begin(
+                &raw const pc,
+                &raw const vc,
+                bb(1),
+                &raw const map,
+                bb(1),
+                &raw const fields,
+                &raw const in_place,
+                bb(3),
+                two.as_mut_ptr(),
+                two.len(),
+                &raw mut layout,
+                &raw mut det,
+            ) == ALDIS_OK
+                && layout.tfdz_offset == 8,
+        );
+        two[8..11].fill(0xD0);
+        t.check(
+            aldis_uslp_writer_finish(
+                &raw const pc,
+                &raw const vc,
+                bb(1),
+                &raw const map,
+                bb(1),
+                &raw const fields,
+                &raw const in_place,
+                bb(3),
+                bb(3),
+                two.as_mut_ptr(),
+                two.len(),
+                &raw mut n,
+                &raw mut det,
+            ) == ALDIS_OK
+                && two == frame,
+        );
+        t.check(
+            aldis_uslp_peek_length(
+                frame.as_ptr(),
+                bb(6),
+                &raw const pc,
+                &raw const vc,
+                bb(1),
+                &raw mut n,
+                &raw mut det,
+            ) == ALDIS_OK
+                && n == 13,
+        );
+        t.check(
+            aldis_uslp_decode(
+                frame.as_ptr(),
+                bb(13),
+                &raw const pc,
+                &raw const vc,
+                bb(1),
+                &raw const map,
+                bb(1),
+                bb(ALDIS_MODE_STRICT),
+                &raw mut view,
+                &raw mut det,
+            ) == ALDIS_OK
+                && view.layout.tfdz_len == 3
+                && !view.truncated,
+        );
+        t.check(
+            aldis_uslp_validate(
+                frame.as_ptr(),
+                bb(13),
+                &raw const pc,
+                &raw const vc,
+                bb(1),
+                &raw const map,
+                bb(1),
+                bb(ALDIS_MODE_LENIENT),
+                &raw mut view,
+                &raw mut reason,
+                &raw mut det,
+            ) == ALDIS_OK
+                && reason == ALDIS_USLP_REASON_NONE,
+        );
+        t.check(
+            aldis_uslp_delimit(
+                frame.as_ptr(),
+                bb(13),
+                bb(0),
+                &raw const pc,
+                &raw const vc,
+                bb(1),
+                &raw mut item,
+                &raw mut det,
+            ) == ALDIS_OK
+                && item.kind == ALDIS_USLP_DELIMITED_FRAME
+                && item.len == 13,
+        );
+        t.check(
+            aldis_uslp_encode_truncated(
+                &raw const pc,
+                &raw const vc,
+                bb(1),
+                &raw const map,
+                bb(1),
+                &raw const fields.channel,
+                &raw const truncated,
+                frame.as_mut_ptr(),
+                frame.len(),
+                &raw mut n,
+                &raw mut det,
+            ) == ALDIS_OK
+                && n == 12,
+        );
+        t.check(
+            aldis_oid_generator_init(
+                words.as_mut_ptr().cast(),
+                bb(ALDIS_OID_GENERATOR_STORAGE_SIZE),
+                bb(ALDIS_OID_GALOIS),
+                &raw mut oid,
+                &raw mut det,
+            ) == ALDIS_OK,
+        );
+        t.check(
+            aldis_uslp_encode_oid(
+                &raw const fixed,
+                &raw const oid_vc,
+                bb(1),
+                null(),
+                0,
+                &raw const oid_fields,
+                &raw const idle,
+                oid,
+                frame.as_mut_ptr(),
+                frame.len(),
+                &raw mut n,
+                &raw mut det,
+            ) == ALDIS_OK
+                && n == 32
+                && frame.get(10..14) == Some(&[0xFF; 4][..]),
+        );
+        aldis_oid_generator_deinit(oid);
+    }
+}
+
+// ---- end USLP
+
 /// Calls every exported function of `aldis-ffi`.
 pub fn run(t: &mut Tally) {
     core(t);
@@ -992,4 +1283,5 @@ pub fn run(t: &mut Tally) {
     time(t);
     epp(t);
     tm(t);
+    uslp(t);
 }
