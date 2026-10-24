@@ -5,7 +5,8 @@
 //! (`scope.rs`, from the inputs of each check in `checks.rs`), builds the verification image if
 //! it is missing (`image.rs`), runs the container checks in it (`inside.rs`), runs the host-bound
 //! checks, and writes the evidence record (`record.rs`) to `target/verify/<commit>/record.json`.
-//! `--publish` stores it as a git note and sets the commit status (`publish.rs`).
+//! `--publish` signs it, stores it and its signature as git notes, and sets the commit status
+//! (`publish.rs`, `sign.rs`).
 //!
 //! The checks run quickest first (`checks::run_order`). A run that would publish stops at the
 //! first gating check that fails (`--fail-fast`), since such a run can never publish; the checks
@@ -19,6 +20,9 @@ mod inside;
 mod publish;
 mod record;
 mod scope;
+mod sign;
+#[cfg(test)]
+mod testing;
 
 use std::fs::File;
 use std::path::{Path, PathBuf};
@@ -66,17 +70,29 @@ Verification run and merge gate (docs/06-verification.md §7):
                                When no gating check needs the container, none is started and
                                no image is pulled or built. --push-image pushes the image the
                                run builds to <repository>, as `verify image --push` does
-  verify publish [<rev>]       push the passing record of <rev> (default HEAD) as a git note
-                               under refs/notes/verify and, when <rev> contains the tip of
-                               origin/main, set the commit status aldis/verify (VER-058); a
-                               record of a commit behind main is published without the status,
-                               as a source for later commits, and the command fails
+  verify publish [<rev>]       sign the passing record of <rev> (default HEAD) with the SSH key
+                               git signs with (gpg.format=ssh, user.signingKey) and push it as
+                               a git note under refs/notes/verify, its signature under
+                               refs/notes/verify-signature (VER-064), and, when <rev> contains
+                               the tip of origin/main, set the commit status aldis/verify
+                               (VER-058); a record of a commit behind main is published without
+                               the status, as a source for later commits, and the command fails.
+                               A record of a GitHub Actions run (VER-060) is published unsigned
+                               and sets no status until `verify sign` countersigns it
+  verify sign [<rev>]          countersign the published record of <rev> (default HEAD): check
+                               it against the merge gate and, for a GitHub Actions run, that the
+                               run is verify.yml on <rev> and that its artefact holds the same
+                               record; then sign it, push the signature, and set the status as
+                               `verify publish` does (VER-064)
   verify nightly [<rev>]       fail unless every nightly-only check passed in the local record
                                of <rev> (default HEAD), made with --all (VER-059)
-  verify check [<rev>]         check the published record of <rev> against the merge gate,
-                               re-deriving its skipped and reused checks from git and the
-                               sources' published records, and that <rev> contains the tip of
-                               origin/main
+  verify check [<rev>]         check the published record of <rev> against the merge gate:
+                               its signature verifies against the allowed signers of origin/main
+                               (.github/allowed_signers, VER-064), its skipped and reused checks
+                               re-derived from git and the sources' published, signed records,
+                               and <rev> contains the tip of origin/main
+  verify tag <tag>             check that the release tag <tag> is annotated and signed with SSH
+                               by a key of the allowed signers of origin/main (VER-065)
   verify image [--push <repository>]
                                build the verification image for HEAD, or pull it from the
                                registry repository named in ALDIS_VERIFY_PULL when its labels
@@ -126,6 +142,9 @@ pub fn run(args: &[&str]) -> Result<usize, String> {
         ["nightly"] => nightly("HEAD"),
         ["nightly", rev] => nightly(rev),
         ["check", rev] => publish::check(rev),
+        ["sign"] => publish::countersign("HEAD"),
+        ["sign", rev] => publish::countersign(rev),
+        ["tag", tag] => Ok(sign::tag(tag)),
         ["image", rest @ ..] => {
             let engine = image::Engine::detect()?;
             let commit = git(&["rev-parse", "HEAD"])?;

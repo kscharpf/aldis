@@ -156,7 +156,8 @@ pub const DOCS: PathList = PathList {
 /// scans the workflows for requirement IDs, `consistency` reads `nightly.yml`, and `links` the
 /// pull-request template), so that a change to these paths alone runs only `spec`, as
 /// documentation does: the workflows, the definitions of the composite actions, the pull-request
-/// template, the code owners, and the Dependabot configuration. A check takes its tools from the
+/// template, the code owners, the Dependabot configuration, and the allowed signers of the
+/// evidence, which `verify publish`, `sign`, and `check` read from `origin/main` (VER-064). A check takes its tools from the
 /// image and gives the same result on a contributor's machine, which never reads these files, as
 /// in `verify.yml` (VER-060); the nightly runs, which use the workflows, run every check
 /// (VER-059). Not here: `.github/actions/setup-cpp/setup_cpp.py`, which the image runs (`RUN`),
@@ -170,6 +171,7 @@ pub const GITHUB: PathList = PathList {
         ".github/pull_request_template.md",
         ".github/CODEOWNERS",
         ".github/dependabot.yml",
+        ".github/allowed_signers",
     ],
 };
 

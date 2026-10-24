@@ -4,9 +4,13 @@
 #   gh workflow run verify.yml --ref <branch>
 #
 # It runs `cargo xtask verify --publish` on the branch's head, as a contributor would: a passing
-# record is published under refs/notes/verify and sets the commit status aldis/verify, linked to
-# this run (VER-057, VER-058); if main moved during the run, the record is published without the
-# status, so that the merge from main can reuse it. The logs are this run's artefact.
+# record is published under refs/notes/verify (VER-057). The run holds no signing key, so the
+# record is published unsigned and sets no commit status: it counts for the merge gate, and as a
+# source for later commits, once an allowed signer has countersigned it with
+# `cargo xtask verify sign <commit>`, which checks that this run of this workflow on that commit
+# finished and that its artefact holds the same record, and then sets the commit status
+# aldis/verify, linked to this run (VER-058, VER-064). The logs are this run's artefact, and the
+# countersignature needs it: it is kept for 90 days.
 #
 # The verification image comes from ghcr.io/kscharpf/aldis-verify when a workflow of this
 # repository has pushed it for the same image inputs (tag `<input hash>-amd64`), and its labels
@@ -34,8 +38,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 180
     permissions:
-      contents: write # push refs/notes/verify
-      statuses: write # set aldis/verify
+      contents: write # push refs/notes/verify; the status is set by the countersignature (VER-064)
       packages: write # push the verification image to ghcr.io (VER-060)
     env:
       ALDIS_VERIFY_ENGINE: docker

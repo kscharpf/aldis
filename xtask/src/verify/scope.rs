@@ -17,6 +17,9 @@
 //! not used for any check when a path that differs from its commit is an input of no check and
 //! in none of the lists that `spec` alone reads (`SPEC_ONLY`: documentation, the GitHub
 //! configuration, and the root configuration that no other check reads).
+//!
+//! A published record counts, as a source or as the record covering the base, only when its
+//! signature verifies against the allowed signers of `origin/main` (VER-064, `sign.rs`).
 
 use std::collections::{BTreeMap, HashMap};
 use std::path::Path;
@@ -26,6 +29,7 @@ use serde_json::{Map, Value, json};
 
 use super::checks::{Check, DOCS, GITHUB, Inputs, NIGHTLY_ONLY, ROOT_CONFIG, SPEC_ONLY};
 use super::record::Outcome;
+use super::sign::Signers;
 use super::{git_bytes, git_in, publish, record};
 
 /// At most this many changed paths are listed in a record.
@@ -455,27 +459,40 @@ fn tree_of(dir: &Path, commit: &str) -> Option<String> {
 /// A record read from `origin`'s notes, with the SHA-256 of its published text.
 type Read = Option<(Rc<Value>, String)>;
 
+/// A record read from `origin`'s notes and checked, or why it cannot be used.
+type Checked = Result<(Rc<Value>, String), String>;
+
 /// `origin`'s published records, fetched once and each read and checked once.
 struct Notes<'a> {
     dir: &'a Path,
-    seen: HashMap<String, Read>,
+    /// The allowed signers the records' signatures are verified against (VER-064).
+    signers: Result<Signers, String>,
+    seen: HashMap<String, Checked>,
 }
 
 impl<'a> Notes<'a> {
-    /// Fetches `origin`'s notes; `None` when it has none or they cannot be fetched.
-    fn fetch(dir: &'a Path) -> Option<Self> {
+    /// Fetches `origin`'s notes, for the records `commit` may take results from or names;
+    /// `None` when it has none or they cannot be fetched.
+    fn fetch(dir: &'a Path, commit: &str) -> Option<Self> {
         publish::fetch_notes(dir)
             .ok()
             .filter(|fetched| *fetched)
             .map(|_| Self {
                 dir,
+                signers: Signers::of(dir, commit),
                 seen: HashMap::new(),
             })
     }
 
-    /// The published record of `commit` and its SHA-256, when it names that commit and its tree
-    /// and passes the merge gate on its own (`record::gate_problems`).
+    /// The published record of `commit` and its SHA-256, when it names that commit and its tree,
+    /// passes the merge gate on its own (`record::gate_problems`), and its signature verifies
+    /// against the allowed signers (VER-064).
     fn passing(&mut self, commit: &str) -> Read {
+        self.checked(commit).ok()
+    }
+
+    /// [`Self::passing`], or why the record of `commit` cannot be used.
+    fn checked(&mut self, commit: &str) -> Checked {
         if let Some(read) = self.seen.get(commit) {
             return read.clone();
         }
@@ -484,18 +501,25 @@ impl<'a> Notes<'a> {
         read
     }
 
-    fn read(&self, commit: &str) -> Read {
+    fn read(&self, commit: &str) -> Checked {
         if !is_hash(commit) {
-            return None;
+            return Err(format!("{commit} is not a full commit hash"));
         }
-        let tree = tree_of(self.dir, commit)?;
-        let text = publish::published(self.dir, commit)?;
-        let rec: Value = serde_json::from_str(text.trim()).ok()?;
+        let tree = tree_of(self.dir, commit).ok_or_else(|| format!("no commit {commit}"))?;
+        let text = publish::published(self.dir, commit).ok_or("it has no published record")?;
+        let rec: Value =
+            serde_json::from_str(text.trim()).map_err(|e| format!("its record: {e}"))?;
         let field = |k: &str| rec.get(k).and_then(Value::as_str);
-        let ok = field("commit") == Some(commit)
-            && field("tree") == Some(tree.as_str())
-            && record::gate_problems(&rec).is_empty();
-        ok.then(|| (Rc::new(rec), record::sha256_hex(text.trim().as_bytes())))
+        if field("commit") != Some(commit) || field("tree") != Some(tree.as_str()) {
+            return Err("its record is for another commit or tree".to_owned());
+        }
+        let problems = record::gate_problems(&rec);
+        if !problems.is_empty() {
+            return Err(format!("its record: {}", problems.join("; ")));
+        }
+        let signers = self.signers.as_ref().map_err(Clone::clone)?;
+        publish::authenticate(self.dir, signers, commit, &text)?;
+        Ok((Rc::new(rec), record::sha256_hex(text.trim().as_bytes())))
     }
 
     /// The commit whose published passing record covers `base`: `base` itself, or a parent of
@@ -550,9 +574,10 @@ impl<'a> Notes<'a> {
     }
 }
 
-/// The commit whose published passing record (on `origin`) covers `base` (VER-058).
-pub fn covering_record(dir: &Path, base: &str) -> Result<String, String> {
-    Notes::fetch(dir)
+/// The commit whose published passing record (on `origin`) covers `base` (VER-058), for the
+/// commit `commit`, whose allowed signers apply while `origin/main` has none (VER-064).
+pub fn covering_record(dir: &Path, commit: &str, base: &str) -> Result<String, String> {
+    Notes::fetch(dir, commit)
         .and_then(|mut notes| notes.cover(base))
         .ok_or_else(|| format!("no published passing record covers main at {base}"))
 }
@@ -576,7 +601,7 @@ pub fn sources(dir: &Path, commit: &str, base: &str, tip: &str, checks: &[Check]
         none: Some(why),
         ..Sources::default()
     };
-    let Some(mut notes) = Notes::fetch(dir) else {
+    let Some(mut notes) = Notes::fetch(dir, commit) else {
         return none("origin has no published records".to_owned());
     };
     let base_record = notes.cover(base);
@@ -742,7 +767,7 @@ fn recheck_skips(
         }
     };
     let uncovered = if cover {
-        covering_record(dir, base).err()
+        covering_record(dir, commit, base).err()
     } else {
         None
     };
@@ -785,8 +810,8 @@ fn recheck_source(
     }
     let notes = notes.ok_or("origin's published records could not be fetched")?;
     let (rec, published) = notes
-        .passing(from)
-        .ok_or_else(|| format!("no published record of {from} passes the merge gate"))?;
+        .checked(from)
+        .map_err(|why| format!("no published record of {from} passes the merge gate: {why}"))?;
     if published != sha {
         return Err(format!(
             "the published record of {from} has sha256 {published}, not {sha}"
@@ -868,7 +893,7 @@ pub fn recheck(dir: &Path, rec: &Value, checks: &[Check]) -> Vec<String> {
         }
     }
     if format == Some(record::FORMAT) {
-        let mut notes = Notes::fetch(dir);
+        let mut notes = Notes::fetch(dir, commit);
         for (check, result, e) in carried {
             if let Err(why) = recheck_source(notes.as_mut(), dir, commit, check, e, checks) {
                 problems.push(format!("{}: {result}, but {why}", check.name));
@@ -880,10 +905,8 @@ pub fn recheck(dir: &Path, rec: &Value, checks: &[Check]) -> Vec<String> {
 
 #[cfg(test)]
 mod tests {
-    use std::path::PathBuf;
-    use std::process::Command;
-
     use super::super::checks::all;
+    use super::super::testing::{Forge, Repo};
     use super::*;
 
     // req: VER-056
@@ -970,6 +993,7 @@ mod tests {
             ".github/pull_request_template.md",
             ".github/CODEOWNERS",
             ".github/dependabot.yml",
+            ".github/allowed_signers",
             ".github/workflows/cpp.yml",
             ".github/workflows/verify.yml",
             ".github/actions/setup-cpp/action.yml",
@@ -1260,127 +1284,6 @@ mod tests {
         );
     }
 
-    /// A throwaway git repository under the temporary directory.
-    struct Repo(PathBuf);
-
-    impl Repo {
-        fn new(name: &str) -> Self {
-            let dir = std::env::temp_dir()
-                .join(format!("aldis-verify-scope-{name}-{}", std::process::id()));
-            let _ = std::fs::remove_dir_all(&dir);
-            std::fs::create_dir_all(&dir).unwrap();
-            let repo = Self(dir);
-            // `init -b` needs git 2.28; the nightly big-endian job runs the tests in a `cross`
-            // image with an older git.
-            repo.git(&["init", "-q"]);
-            repo.git(&["symbolic-ref", "HEAD", "refs/heads/main"]);
-            repo
-        }
-
-        fn clone_of(origin: &Self, name: &str) -> Self {
-            let dir = std::env::temp_dir()
-                .join(format!("aldis-verify-scope-{name}-{}", std::process::id()));
-            let _ = std::fs::remove_dir_all(&dir);
-            let repo = Self(dir.clone());
-            origin.git(&[
-                "clone",
-                "-q",
-                origin.0.to_str().unwrap(),
-                dir.to_str().unwrap(),
-            ]);
-            repo
-        }
-
-        fn git(&self, args: &[&str]) -> String {
-            let out = Command::new("git")
-                .args([
-                    "-c",
-                    "user.name=t",
-                    "-c",
-                    "user.email=t@t",
-                    "-c",
-                    "commit.gpgsign=false",
-                ])
-                .args([
-                    "-c",
-                    "core.hooksPath=/dev/null",
-                    "-c",
-                    "init.defaultBranch=main",
-                ])
-                .args(args)
-                .current_dir(&self.0)
-                .env("GIT_CONFIG_GLOBAL", "/dev/null")
-                .env("GIT_CONFIG_NOSYSTEM", "1")
-                .output()
-                .unwrap();
-            assert!(
-                out.status.success(),
-                "git {args:?}: {}",
-                String::from_utf8_lossy(&out.stderr)
-            );
-            String::from_utf8_lossy(&out.stdout).trim().to_owned()
-        }
-
-        fn write(&self, path: &str, text: &str) {
-            let file = self.0.join(path);
-            std::fs::create_dir_all(file.parent().unwrap()).unwrap();
-            std::fs::write(file, text).unwrap();
-        }
-
-        /// Commits everything; returns the commit.
-        fn commit(&self, message: &str) -> String {
-            self.git(&["add", "-A"]);
-            self.git(&["commit", "-q", "--allow-empty", "-m", message]);
-            self.git(&["rev-parse", "HEAD"])
-        }
-
-        /// A record of `commit` in `format` with the result entries `checks`, and a scope that
-        /// decides as they say.
-        fn record_for(&self, format: &str, commit: &str, checks: &Value) -> Value {
-            let tree = self.git(&["rev-parse", &format!("{commit}^{{tree}}")]);
-            let decisions: Map<String, Value> = checks
-                .as_array()
-                .unwrap()
-                .iter()
-                .map(|e| {
-                    let run = !matches!(e["result"].as_str(), Some("skipped" | "reused"));
-                    (e["name"].as_str().unwrap().to_owned(), json!({"run": run}))
-                })
-                .collect();
-            let base = "0".repeat(40);
-            json!({"format": format, "commit": commit, "tree": tree, "checks": checks,
-                "scope": {"base": base, "base_record": base, "checks": decisions}})
-        }
-
-        /// Publishes `rec` as a note on this repository's notes ref; returns its SHA-256.
-        fn publish_record(&self, rec: &Value) -> String {
-            let text = record::canonical(rec);
-            let commit = rec["commit"].as_str().unwrap();
-            self.git(&[
-                "notes",
-                "--ref=refs/notes/verify",
-                "add",
-                "-f",
-                "-m",
-                &text,
-                commit,
-            ]);
-            record::sha256_hex(text.as_bytes())
-        }
-
-        /// Publishes a format 3 record of `commit` with the result entries `checks`; returns its
-        /// SHA-256.
-        fn publish(&self, commit: &str, checks: &Value) -> String {
-            self.publish_record(&self.record_for(record::FORMAT, commit, checks))
-        }
-    }
-
-    impl Drop for Repo {
-        fn drop(&mut self) {
-            let _ = std::fs::remove_dir_all(&self.0);
-        }
-    }
-
     fn pass(name: &str) -> Value {
         json!({"name": name, "host": "container", "gating": true, "result": "pass"})
     }
@@ -1429,7 +1332,8 @@ mod tests {
             ])
         );
         // The base is covered by the published record of the merged head.
-        let covered = covering_record(&clone.0, &merge);
+        let head = clone.git(&["rev-parse", "HEAD"]);
+        let covered = covering_record(&clone.0, &head, &merge);
         assert_eq!(
             covered,
             Ok(clone.git(&["rev-parse", &format!("{merge}^2")]))
@@ -1441,7 +1345,7 @@ mod tests {
             no_origin.paths,
             Err("origin/main could not be fetched".to_owned())
         );
-        assert!(covering_record(&clone.0, &merge).is_err());
+        assert!(covering_record(&clone.0, &head, &merge).is_err());
     }
 
     // req: VER-056
@@ -1798,6 +1702,44 @@ mod tests {
         assert_eq!(clippy.why, "changes crates/x/src/lib.rs");
     }
 
+    // req: VER-056, VER-058, VER-064
+    #[test]
+    fn a_source_whose_record_is_not_signed_by_an_allowed_signer_is_not_used() {
+        let r = reverify("unsigned-source", "cpp/src/a.cpp");
+        let checks = all();
+        let rec = record_from(&r.clone, &r.h, &plan_of(&r), &checks);
+        assert_eq!(recheck(&r.clone.0, &rec, &checks), Vec::<String>::new());
+        let reused = names(|c| {
+            !c.cpp
+                && !matches!(c.name.as_str(), "spec" | "kani")
+                && !["test", "test-macos", "big-endian"].contains(&c.name.as_str())
+        });
+        let sigs = format!("--ref={}", super::super::testing::SIGNATURES);
+        let text = r.origin.note("refs/notes/verify", &r.p1).unwrap();
+        // The branch head's record without its signature, or signed by a key that is not
+        // allowed: no longer a source, and the record that reused it no longer passes.
+        let stranger = super::super::sign::testing::TestKey::new("stranger@example.org");
+        for signed in [false, true] {
+            r.origin
+                .git(&["notes", &sigs, "remove", "--ignore-missing", &r.p1]);
+            if signed {
+                r.origin
+                    .add_signature(&r.p1, &stranger.sign(text.as_bytes()));
+            }
+            let p = plan_of(&r);
+            assert_eq!(p.branch, Vec::<String>::new());
+            assert_eq!(decided(&p, Some(Outcome::Reused)).0, Vec::<String>::new());
+            let problems = recheck(&r.clone.0, &rec, &checks);
+            assert_eq!(problems.len(), reused.len(), "{problems:?}");
+            let why = if signed {
+                "the signature of its record is by a key that is not in origin/main:"
+            } else {
+                "its record is not signed"
+            };
+            assert!(problems[0].contains(why), "{problems:?}");
+        }
+    }
+
     // req: VER-056, VER-058
     #[test]
     fn a_source_whose_record_fails_the_gate_is_not_used() {
@@ -1830,7 +1772,7 @@ mod tests {
         assert_eq!(problems.len(), reused.len(), "{problems:?}");
         assert!(
             problems[0].ends_with(&format!(
-                "no published record of {} passes the merge gate",
+                "no published record of {} passes the merge gate: its record: fmt: fail",
                 r.p1
             )),
             "{problems:?}"
@@ -1890,7 +1832,7 @@ mod tests {
     fn origins_are_followed_through_format_2_and_3_records() {
         let r = reverify("origins", "cpp/src/a.cpp");
         let checks = all();
-        let mut notes = Notes::fetch(&r.clone.0).unwrap();
+        let mut notes = Notes::fetch(&r.clone.0, &r.h).unwrap();
         let from0 = Source {
             commit: r.head0.clone(),
             record: r.sha0.clone(),
@@ -1914,7 +1856,7 @@ mod tests {
         );
         two["scope"]["base_record"] = json!(r.head0);
         r.origin.publish_record(&two);
-        let mut notes = Notes::fetch(&r.clone.0).unwrap();
+        let mut notes = Notes::fetch(&r.clone.0, &r.h).unwrap();
         assert_eq!(
             notes.origin(&r.p1, "cpp-tidy", ORIGIN_DEPTH),
             Some(from0.clone())
@@ -1926,7 +1868,7 @@ mod tests {
         one["format"] = json!(record::FORMAT_1);
         one["cpp"] = json!({"affected": false, "base": merge0});
         r.origin.publish_record(&one);
-        let mut notes = Notes::fetch(&r.clone.0).unwrap();
+        let mut notes = Notes::fetch(&r.clone.0, &r.h).unwrap();
         assert_eq!(notes.origin(&r.p1, "cpp-tidy", ORIGIN_DEPTH), Some(from0));
         // A record that names itself leads nowhere.
         let mut own = r.origin.record_for(
@@ -1942,7 +1884,7 @@ mod tests {
         );
         own["scope"]["base"] = json!(r.head0);
         r.origin.publish_record(&own);
-        let mut notes = Notes::fetch(&r.clone.0).unwrap();
+        let mut notes = Notes::fetch(&r.clone.0, &r.h).unwrap();
         assert_eq!(notes.origin(&r.p1, "cpp-tidy", ORIGIN_DEPTH), None);
         assert!(notes.origin(&r.p1, "clippy", ORIGIN_DEPTH).is_some());
     }
@@ -1970,7 +1912,7 @@ mod tests {
         kani["checks"][at]["reason"] = json!(stopped);
         assert_eq!(record::gate_problems(&kani), Vec::<String>::new());
         r.origin.publish_record(&kani);
-        let mut notes = Notes::fetch(&r.clone.0).unwrap();
+        let mut notes = Notes::fetch(&r.clone.0, &r.h).unwrap();
         assert_eq!(notes.origin(&r.p1, "kani", ORIGIN_DEPTH), None);
         assert_eq!(
             notes
@@ -1996,7 +1938,7 @@ mod tests {
                 }
             }),
         );
-        let mut notes = Notes::fetch(&r.clone.0).unwrap();
+        let mut notes = Notes::fetch(&r.clone.0, &r.h).unwrap();
         assert_eq!(notes.passing(&r.p1), None);
         assert_eq!(notes.origin(&r.p1, "fmt", ORIGIN_DEPTH), None);
         let p = plan_of(&r);
@@ -2010,27 +1952,6 @@ mod tests {
         );
     }
 
-    /// A [`publish::Forge`] that has every commit and records the statuses set.
-    #[derive(Default)]
-    struct Forge(std::cell::RefCell<Vec<String>>);
-
-    impl publish::Forge for Forge {
-        fn has_commit(&self, _: &Path, _: &str) -> Result<bool, String> {
-            Ok(true)
-        }
-
-        fn set_status(
-            &self,
-            _: &Path,
-            commit: &str,
-            _: &str,
-            _: Option<&str>,
-        ) -> Result<(), String> {
-            self.0.borrow_mut().push(commit.to_owned());
-            Ok(())
-        }
-    }
-
     /// Writes `rec` as the local record of its commit in `repo`, as a run does.
     fn write_record(repo: &Repo, rec: &Value) {
         let commit = rec["commit"].as_str().unwrap();
@@ -2042,25 +1963,14 @@ mod tests {
 
     /// Whether `origin` has a published record of `commit`.
     fn has_note(origin: &Repo, commit: &str) -> bool {
-        Command::new("git")
-            .args(["notes", "--ref=refs/notes/verify", "show", commit])
-            .current_dir(&origin.0)
-            .env("GIT_CONFIG_GLOBAL", "/dev/null")
-            .output()
-            .is_ok_and(|o| o.status.success())
+        origin.note("refs/notes/verify", commit).is_some()
     }
 
     // req: VER-056, VER-057, VER-058
     #[test]
     fn a_passing_record_of_a_commit_behind_main_is_published_without_a_status() {
         let (origin, clone, _) = history("behind");
-        for (k, v) in [
-            ("user.name", "t"),
-            ("user.email", "t@t"),
-            ("commit.gpgsign", "false"),
-        ] {
-            clone.git(&["config", k, v]);
-        }
+        clone.sign_with(clone.key());
         // Local records are not committed.
         clone.write(".git/info/exclude", "target/\n");
         let checks = all();
@@ -2076,7 +1986,7 @@ mod tests {
         // The note is published; no status is set, and the result says the head is behind.
         assert_eq!(publish::publish_in(&clone.0, &p, &forge), Ok(1));
         assert!(has_note(&origin, &p));
-        assert_eq!(forge.0.borrow().len(), 0);
+        assert_eq!(forge.commits().len(), 0);
         // The merge gate still refuses the head.
         assert_eq!(publish::check_in(&clone.0, &p), Ok(1));
 
@@ -2102,7 +2012,7 @@ mod tests {
         assert_eq!(recheck(&clone.0, &rec_h, &checks), Vec::<String>::new());
         write_record(&clone, &rec_h);
         assert_eq!(publish::publish_in(&clone.0, &h, &forge), Ok(0));
-        assert_eq!(*forge.0.borrow(), std::slice::from_ref(&h));
+        assert_eq!(forge.commits(), std::slice::from_ref(&h));
         assert_eq!(publish::check_in(&clone.0, &h), Ok(0));
 
         // A failed run publishes nothing, behind main or not.
@@ -2123,6 +2033,6 @@ mod tests {
         let refused = publish::publish_in(&clone.0, &q, &forge).unwrap_err();
         assert!(refused.contains("fmt: fail"), "{refused}");
         assert!(!has_note(&origin, &q));
-        assert_eq!(forge.0.borrow().len(), 1);
+        assert_eq!(forge.commits().len(), 1);
     }
 }

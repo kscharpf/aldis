@@ -6,8 +6,8 @@
 # digest, the C++ tools come from cpp/toolchains.lock through setup_cpp.py (CPP-001), and Rust
 # from rust-toolchain.toml and tooling-nightly (RS-001, RS-002). The LEON3 linker and QEMU
 # machine are Ubuntu packages whose upstream versions are asserted where they are installed. The
-# other Ubuntu packages are utilities (git, Python, archivers); their versions are listed in
-# every evidence record.
+# other Ubuntu packages are utilities (git, OpenSSH's ssh-keygen for the xtask tests of the
+# signed evidence, Python, archivers); their versions are listed in every evidence record.
 FROM docker.io/library/ubuntu:24.04@sha256:68ee22004a9109b44973313b02ff7b1de250f1de0f5ecb628d73f579aaff33ac
 
 ARG TARGETARCH
@@ -15,7 +15,7 @@ ENV DEBIAN_FRONTEND=noninteractive LANG=C.UTF-8
 
 RUN apt-get update -q \
  && apt-get install -y -q --no-install-recommends \
-      ca-certificates curl git python3 xz-utils zstd unzip \
+      ca-certificates curl git openssh-client python3 xz-utils zstd unzip \
  && rm -rf /var/lib/apt/lists/* \
  && git config --system --add safe.directory '*'
 

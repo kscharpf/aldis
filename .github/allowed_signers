@@ -1,0 +1,16 @@
+# The keys that may sign the verification evidence of Aldis (docs/06-verification.md §7,
+# VER-064, VER-065), in the format of ssh-keygen(1), "ALLOWED SIGNERS":
+#
+#   <principal> namespaces="<namespace>,..." <key type> <base64 public key> [comment]
+#
+# Namespaces: `aldis-verify-record` signs an evidence record (`cargo xtask verify --publish`,
+# `cargo xtask verify sign`); `git` signs a release tag (`git tag -s` with gpg.format=ssh).
+#
+# `verify publish`, `sign`, `check`, and `tag` read this file from the tip of origin/main, never
+# from the branch under review: a key added here can sign only once a commit that adds it has
+# been reviewed and merged, and a key removed here stops counting for every commit that contains
+# the removal, also as the source of a skipped or reused check. Only while origin/main has no
+# such file, for the change that introduces it, is the commit's own copy read.
+#
+# Adding or removing a key is the maintainer's decision, made in a pull request of its own that
+# changes nothing else, and logged in docs/process/decisions.md.
