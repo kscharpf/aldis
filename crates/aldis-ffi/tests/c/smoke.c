@@ -170,6 +170,81 @@ int main(void) {
     check(aldis_tm_validate(frame, len, &mc, &vc, 1, ALDIS_MODE_STRICT, NULL) == ALDIS_OK,
           "aldis_tm_validate");
 
+    /* ---- USLP (M2 WP-5 module 9) ---- */
+    /* A variable-length USLP frame of VC 4 MAP 0 on SCID 0x155 with an FECF, through the
+     * two-phase writer, the decoder, the validation checks, and the delimiter (M2 plan D14):
+     * the physical channel and arrays of one virtual channel and one MAP. */
+    aldis_uslp_config_t upc;
+    memset(&upc, 0, sizeof upc);
+    upc.struct_size = (uint32_t)sizeof upc;
+    upc.frame_type = ALDIS_USLP_FRAME_VARIABLE;
+    upc.fecf = 1;
+    upc.frame_len = 64;
+    aldis_uslp_vc_config_t uvc;
+    memset(&uvc, 0, sizeof uvc);
+    uvc.struct_size = (uint32_t)sizeof uvc;
+    uvc.scid = 0x155;
+    uvc.vcid = 4;
+    uvc.frame_type = ALDIS_USLP_FRAME_VARIABLE;
+    uvc.security = ALDIS_USLP_SECURITY_VC;
+    aldis_uslp_map_config_t umap;
+    memset(&umap, 0, sizeof umap);
+    umap.struct_size = (uint32_t)sizeof umap;
+    umap.scid = 0x155;
+    umap.vcid = 4;
+    check(aldis_uslp_vc_table_check(&upc, &uvc, 1, &umap, 1, &err) == ALDIS_OK,
+          "aldis_uslp_vc_table_check");
+    aldis_uslp_fields_t ufields;
+    memset(&ufields, 0, sizeof ufields);
+    ufields.channel.scid = 0x155;
+    ufields.channel.source_or_destination = ALDIS_USLP_SOURCE;
+    ufields.channel.vcid = 4;
+    ufields.kind = ALDIS_USLP_KIND_SEQUENCE_CONTROLLED;
+    aldis_uslp_content_t ucontent;
+    memset(&ucontent, 0, sizeof ucontent);
+    ucontent.tfdf.rule = ALDIS_USLP_RULE_OCTET_STREAM;
+    ucontent.tfdf.upid = ALDIS_USLP_UPID_OCTET_STREAM;
+    uint8_t uframe[64];
+    aldis_uslp_layout_t ulayout;
+    check(aldis_uslp_writer_begin(&upc, &uvc, 1, &umap, 1, &ufields, &ucontent, 10, uframe,
+                                  sizeof uframe, &ulayout, &err) == ALDIS_OK &&
+              ulayout.tfdz_offset == 8 && ulayout.tfdz_len == 10,
+          "aldis_uslp_writer_begin");
+    memset(uframe + ulayout.tfdz_offset, 0xD0, 4);
+    size_t ulen = 0;
+    check(aldis_uslp_writer_finish(&upc, &uvc, 1, &umap, 1, &ufields, &ucontent, 10, 4, uframe,
+                                   sizeof uframe, &ulen, &err) == ALDIS_OK &&
+              ulen == 14,
+          "aldis_uslp_writer_finish");
+    aldis_uslp_frame_t uview;
+    check(aldis_uslp_decode(uframe, ulen, &upc, &uvc, 1, &umap, 1, ALDIS_MODE_STRICT, &uview,
+                            NULL) == ALDIS_OK,
+          "aldis_uslp_decode");
+    check(!uview.truncated && uview.channel.scid == 0x155 && uview.channel.vcid == 4 &&
+              uview.tfdf.rule == ALDIS_USLP_RULE_OCTET_STREAM && uview.upid_assigned &&
+              uview.layout.tfdz_len == 4 && uframe[uview.layout.tfdz_offset] == 0xD0,
+          "decoded USLP frame (CABI-012)");
+    uint8_t ureason = 0xFF;
+    check(aldis_uslp_validate(uframe, ulen, &upc, &uvc, 1, &umap, 1, ALDIS_MODE_STRICT, &uview,
+                              &ureason, NULL) == ALDIS_OK &&
+              ureason == ALDIS_USLP_REASON_NONE,
+          "aldis_uslp_validate");
+    uframe[ulen - 1] ^= 1;
+    check(aldis_uslp_validate(uframe, ulen, &upc, &uvc, 1, &umap, 1, ALDIS_MODE_STRICT, &uview,
+                              &ureason, NULL) == ALDIS_ERR_CRC_MISMATCH &&
+              ureason == ALDIS_USLP_REASON_FECF_MISMATCH,
+          "a wrong FECF fails test (e) (USLP-014)");
+    aldis_uslp_delimited_t uitem;
+    check(aldis_uslp_delimit(uframe, ulen, 0, &upc, &uvc, 1, &uitem, NULL) == ALDIS_OK &&
+              uitem.kind == ALDIS_USLP_DELIMITED_FRAME && uitem.len == ulen,
+          "aldis_uslp_delimit");
+    check(aldis_uslp_delimit(uframe, ulen, ulen, &upc, &uvc, 1, &uitem, NULL) == ALDIS_OK &&
+              uitem.kind == ALDIS_USLP_DELIMITED_NONE,
+          "the delimiter ends at the end of the unit");
+    check(limits.uslp_max_vcs == ALDIS_USLP_MAX_VCS && limits.uslp_max_maps == ALDIS_USLP_MAX_MAPS,
+          "USLP channel table capacities");
+    /* ---- end USLP ---- */
+
     if (failures != 0) {
         return 1;
     }

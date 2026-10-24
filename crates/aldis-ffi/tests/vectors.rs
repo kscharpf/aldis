@@ -1,4 +1,4 @@
-//! Runs every live case of `test-vectors/{time,spp,epp,tm}/`, and of the files of `test-vectors/core/`
+//! Runs every live case of `test-vectors/{time,spp,epp,tm,uslp}/`, and of the files of `test-vectors/core/`
 //! whose functions have a C ABI (`crc16`, `ocf`, `oid`; M2 plan D14), through the `extern "C"`
 //! functions of `aldis-ffi`, with the testkit's runner and exact comparison (M2 plan D4; TV-012, VER-021,
 //! CABI-012, CABI-020, CABI-021). The handlers build the C structs from the vector's raw values,
@@ -33,6 +33,10 @@ use aldis_ffi::time::*;
 use aldis_ffi::tm::*;
 use aldis_ffi::{ALDIS_MODE_LENIENT, ALDIS_MODE_STRICT, ALDIS_OK, aldis_error_detail_t};
 use aldis_testkit::{CodecCase, Mode, Outcome, hex, run_codec_file};
+// ---- USLP (M2 WP-5 module 9)
+use aldis::uslp::{Reason, UslpAnomaly};
+use aldis_ffi::uslp::*;
+// ---- end USLP
 use serde_json::{Map, Value, json};
 
 /// A failed call: what `Outcome::Err` carries.
@@ -1922,6 +1926,541 @@ fn tm_run(case: &CodecCase) -> R<Value> {
     }
 }
 
+// ---------------------------------------------------------------- USLP (M2 WP-5 module 9)
+
+/// A USLP channel table as C structs: the physical channel, the virtual channels, the MAPs.
+struct UslpChannels {
+    pc: aldis_uslp_config_t,
+    vcs: Vec<aldis_uslp_vc_config_t>,
+    maps: Vec<aldis_uslp_map_config_t>,
+}
+
+fn uslp_frame_type(v: &Value) -> u8 {
+    match v.as_str().unwrap() {
+        "fixed" => ALDIS_USLP_FRAME_FIXED,
+        "variable" => ALDIS_USLP_FRAME_VARIABLE,
+        other => panic!("frame type {other}"),
+    }
+}
+
+fn uslp_channels(case: &CodecCase) -> UslpChannels {
+    let cfg = Value::Object(case.config.clone().unwrap());
+    let pc = aldis_uslp_config_t {
+        struct_size: size_of_u32::<aldis_uslp_config_t>(),
+        frame_type: uslp_frame_type(get(&cfg, "frame_type")),
+        fecf: u8::from(get(&cfg, "fecf").as_bool().unwrap()),
+        frame_len: usize_of(&cfg, "frame_len"),
+        insert_zone_len: usize_of(&cfg, "insert_zone_len"),
+    };
+    let vcs = get(&cfg, "vcs")
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|v| {
+            let security = get(v, "security");
+            let per_map = security.as_str() == Some("per_map");
+            aldis_uslp_vc_config_t {
+                struct_size: size_of_u32::<aldis_uslp_vc_config_t>(),
+                scid: u16_of(v, "scid"),
+                vcid: u8_of(v, "vcid"),
+                frame_type: uslp_frame_type(get(v, "frame_type")),
+                vcf_count_len_sequence: u8_of(v, "vcf_count_len_sequence"),
+                vcf_count_len_expedited: u8_of(v, "vcf_count_len_expedited"),
+                ocf: match str_of(v, "ocf") {
+                    "absent" => ALDIS_USLP_OCF_ABSENT,
+                    "allowed" => ALDIS_USLP_OCF_ALLOWED,
+                    "required" => ALDIS_USLP_OCF_REQUIRED,
+                    other => panic!("{}: ocf {other}", case.id),
+                },
+                // `null` is no truncated frame length: 0 in the C struct.
+                truncated_frame_len: get(v, "truncated_frame_len")
+                    .as_u64()
+                    .map_or(0, |n| u8::try_from(n).unwrap()),
+                security: if per_map {
+                    ALDIS_USLP_SECURITY_PER_MAP
+                } else {
+                    ALDIS_USLP_SECURITY_VC
+                },
+                security_header_len: if per_map {
+                    0
+                } else {
+                    u8_of(security, "header_len")
+                },
+                security_trailer_len: if per_map {
+                    0
+                } else {
+                    u32_of(security, "trailer_len")
+                },
+            }
+        })
+        .collect();
+    let maps = get(&cfg, "maps")
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|m| aldis_uslp_map_config_t {
+            struct_size: size_of_u32::<aldis_uslp_map_config_t>(),
+            scid: u16_of(m, "scid"),
+            vcid: u8_of(m, "vcid"),
+            map_id: u8_of(m, "map_id"),
+            security_header_len: u8_of(m, "security_header_len"),
+            security_trailer_len: u32_of(m, "security_trailer_len"),
+        })
+        .collect();
+    UslpChannels { pc, vcs, maps }
+}
+
+fn uslp_channel(p: &Value) -> aldis_uslp_channel_t {
+    aldis_uslp_channel_t {
+        scid: u16_of(p, "spacecraft_id"),
+        source_or_destination: match str_of(p, "source_or_destination") {
+            "source" => ALDIS_USLP_SOURCE,
+            "destination" => ALDIS_USLP_DESTINATION,
+            other => panic!("source_or_destination {other}"),
+        },
+        vcid: u8_of(p, "vc_id"),
+        map_id: u8_of(p, "map_id"),
+    }
+}
+
+fn uslp_fields(p: &Value) -> aldis_uslp_fields_t {
+    aldis_uslp_fields_t {
+        channel: uslp_channel(p),
+        kind: match str_of(p, "kind") {
+            "sequence_controlled" => ALDIS_USLP_KIND_SEQUENCE_CONTROLLED,
+            "expedited" => ALDIS_USLP_KIND_EXPEDITED,
+            "protocol_control" => ALDIS_USLP_KIND_PROTOCOL_CONTROL,
+            other => panic!("kind {other}"),
+        },
+        vcf_count: u64_of(p, "vcf_count"),
+    }
+}
+
+/// The TFDF Header of a parameter object: the pointer exactly for rules `000`–`010`.
+fn uslp_tfdf(p: &Value) -> aldis_uslp_tfdf_t {
+    let rule = u8_of(p, "tfdz_construction_rule");
+    let pointer = p.get("pointer").filter(|v| !v.is_null());
+    assert_eq!(
+        rule <= ALDIS_USLP_RULE_SDU_CONTINUATION,
+        pointer.is_some(),
+        "pointer exactly for 000-010"
+    );
+    aldis_uslp_tfdf_t {
+        rule,
+        upid: u8_of(p, "upid"),
+        pointer: pointer.map_or(0, |v| u16::try_from(v.as_u64().unwrap()).unwrap()),
+    }
+}
+
+/// The OCF of a parameter object, empty for none.
+fn uslp_ocf(p: &Value) -> Vec<u8> {
+    p.get("ocf_hex")
+        .and_then(Value::as_str)
+        .map(|h| hex::decode(h).unwrap())
+        .unwrap_or_default()
+}
+
+/// The octets of `len` at `offset` in `bytes`, which the view guarantees lie inside it.
+fn uslp_slice(bytes: &[u8], offset: usize, len: usize) -> &[u8] {
+    &bytes[offset..offset + len]
+}
+
+/// Every field the view exposes (TV-002), read from the C view and the caller's input, with
+/// the keys of the Rust runner.
+fn uslp_json(v: &aldis_uslp_frame_t, bytes: &[u8]) -> Value {
+    let (c, t, l) = (&v.channel, &v.tfdf, &v.layout);
+    let part = |offset, len| hex::encode(uslp_slice(bytes, offset, len));
+    let mut out = json!({
+        "truncated": v.truncated,
+        "spacecraft_id": c.scid,
+        "source_or_destination": match c.source_or_destination {
+            ALDIS_USLP_SOURCE => "source",
+            ALDIS_USLP_DESTINATION => "destination",
+            other => panic!("source_or_destination {other}"),
+        },
+        "vc_id": c.vcid,
+        "map_id": c.map_id,
+        "frame_len": l.frame_len,
+        "security_header_hex": part(l.security_header_offset, l.security_header_len),
+        "tfdz_construction_rule": t.rule,
+        "upid": t.upid,
+        "upid_assigned": v.upid_assigned,
+        "tfdz_hex": part(l.tfdz_offset, l.tfdz_len),
+        "security_trailer_hex": part(l.security_trailer_offset, l.security_trailer_len),
+        "consumed": l.frame_len,
+        "anomalies": anomalies::<UslpAnomaly>(v.anomalies),
+    });
+    // The fields tile the frame in wire order (CABI-012).
+    assert_eq!(l.tfdf_header_offset + l.tfdf_header_len, l.tfdz_offset);
+    assert_eq!(l.fecf_offset + l.fecf_len, l.frame_len);
+    if v.truncated {
+        assert_eq!(
+            (v.kind, v.ocf_flag, v.vcf_count, v.has_fecf),
+            (0, false, 0, false)
+        );
+        return out;
+    }
+    let has_pointer = t.rule <= ALDIS_USLP_RULE_SDU_CONTINUATION;
+    let pointer_kind = match (t.rule, t.pointer == ALDIS_USLP_POINTER_NONE) {
+        (ALDIS_USLP_RULE_PACKETS_SPANNING_FRAMES, false) => Some("packet_starts_at"),
+        (ALDIS_USLP_RULE_PACKETS_SPANNING_FRAMES, true) => Some("no_packet_start_or_end"),
+        (ALDIS_USLP_RULE_SDU_START | ALDIS_USLP_RULE_SDU_CONTINUATION, false) => {
+            Some("last_valid_octet")
+        }
+        (ALDIS_USLP_RULE_SDU_START | ALDIS_USLP_RULE_SDU_CONTINUATION, true) => {
+            Some("sdu_continues")
+        }
+        _ => None,
+    };
+    let extra = json!({
+        "kind": match v.kind {
+            ALDIS_USLP_KIND_SEQUENCE_CONTROLLED => "sequence_controlled",
+            ALDIS_USLP_KIND_EXPEDITED => "expedited",
+            ALDIS_USLP_KIND_PROTOCOL_CONTROL => "protocol_control",
+            other => panic!("kind {other}"),
+        },
+        "ocf_flag": v.ocf_flag,
+        "vcf_count_len": v.vcf_count_len,
+        "vcf_count": v.vcf_count,
+        "insert_zone_hex": part(l.insert_zone_offset, l.insert_zone_len),
+        "pointer": has_pointer.then_some(t.pointer),
+        "pointer_kind": pointer_kind,
+        "ocf_hex": (l.ocf_len != 0).then(|| part(l.ocf_offset, l.ocf_len)),
+        "fecf_hex": v.has_fecf.then(|| format!("{:04X}", v.fecf)),
+    });
+    assert_eq!(v.ocf_flag, l.ocf_len != 0);
+    if v.has_fecf {
+        assert_eq!(
+            uslp_slice(bytes, l.fecf_offset, l.fecf_len),
+            v.fecf.to_be_bytes()
+        );
+    }
+    if let (Value::Object(m), Value::Object(e)) = (&mut out, extra) {
+        m.extend(e);
+    }
+    out
+}
+
+/// Copies `src` to `offset` in `frame`, where the writer's layout gives it at least `src.len()`
+/// octets.
+fn uslp_put(frame: &mut [u8], offset: usize, src: &[u8]) {
+    frame[offset..offset + src.len()].copy_from_slice(src);
+}
+
+/// Encodes one frame with `aldis_uslp_encode` and checks that the two-phase writer agrees
+/// (API-020, API-023).
+fn uslp_encode(case: &CodecCase, ch: &UslpChannels) -> R<Value> {
+    let p = params(case);
+    let fields = uslp_fields(&p);
+    let (iz, tfdz, ocf) = (
+        hex_of(&p, "insert_zone_hex"),
+        hex_of(&p, "tfdz_hex"),
+        uslp_ocf(&p),
+    );
+    let mut content = aldis_uslp_content_t {
+        tfdf: uslp_tfdf(&p),
+        insert_zone: iz.as_ptr(),
+        insert_zone_len: iz.len(),
+        tfdz: tfdz.as_ptr(),
+        tfdz_len: tfdz.len(),
+        ocf: ocf.as_ptr(),
+        ocf_len: ocf.len(),
+    };
+    let mut out = vec![0xEE_u8; 70_000];
+    let mut written = 0_usize;
+    // SAFETY: every pointer is to a live local or vector, with its length.
+    let result = call(|e| unsafe {
+        aldis_uslp_encode(
+            &raw const ch.pc,
+            ch.vcs.as_ptr(),
+            ch.vcs.len(),
+            ch.maps.as_ptr(),
+            ch.maps.len(),
+            &raw const fields,
+            &raw const content,
+            out.as_mut_ptr(),
+            out.len(),
+            &raw mut written,
+            e,
+        )
+    });
+    if result.is_err() {
+        assert!(out.iter().all(|&b| b == 0xEE), "{}: out changed", case.id);
+    }
+    result?;
+    // The two-phase writer: begin, fill the TFDZ at its offset, finish (API-023).
+    content.tfdz = core::ptr::null();
+    content.tfdz_len = 0;
+    let mut two = vec![0xEE_u8; written];
+    let mut layout = aldis_uslp_layout_t::default();
+    // SAFETY: as above.
+    call(|e| unsafe {
+        aldis_uslp_writer_begin(
+            &raw const ch.pc,
+            ch.vcs.as_ptr(),
+            ch.vcs.len(),
+            ch.maps.as_ptr(),
+            ch.maps.len(),
+            &raw const fields,
+            &raw const content,
+            tfdz.len(),
+            two.as_mut_ptr(),
+            two.len(),
+            &raw mut layout,
+            e,
+        )
+    })?;
+    assert_eq!(
+        (layout.frame_len, layout.tfdz_len),
+        (written, tfdz.len()),
+        "{}",
+        case.id
+    );
+    uslp_put(&mut two, layout.tfdz_offset, &tfdz);
+    let mut finished = 0_usize;
+    // SAFETY: as above.
+    call(|e| unsafe {
+        aldis_uslp_writer_finish(
+            &raw const ch.pc,
+            ch.vcs.as_ptr(),
+            ch.vcs.len(),
+            ch.maps.as_ptr(),
+            ch.maps.len(),
+            &raw const fields,
+            &raw const content,
+            tfdz.len(),
+            tfdz.len(),
+            two.as_mut_ptr(),
+            two.len(),
+            &raw mut finished,
+            e,
+        )
+    })?;
+    assert_eq!(finished, written, "{}", case.id);
+    assert_eq!(two, out[..written], "{}: two-phase writer differs", case.id);
+    Ok(json!({ "output_hex": hex::encode(&out[..written]) }))
+}
+
+fn uslp_encode_truncated(case: &CodecCase, ch: &UslpChannels) -> R<Value> {
+    let p = params(case);
+    let channel = uslp_channel(&p);
+    let tfdz = hex_of(&p, "tfdz_hex");
+    let content = aldis_uslp_content_t {
+        tfdf: uslp_tfdf(&p),
+        tfdz: tfdz.as_ptr(),
+        tfdz_len: tfdz.len(),
+        ..aldis_uslp_content_t::default()
+    };
+    let mut out = [0_u8; 64];
+    let mut n = 0_usize;
+    // SAFETY: every pointer is to a live local or vector, with its length.
+    call(|e| unsafe {
+        aldis_uslp_encode_truncated(
+            &raw const ch.pc,
+            ch.vcs.as_ptr(),
+            ch.vcs.len(),
+            ch.maps.as_ptr(),
+            ch.maps.len(),
+            &raw const channel,
+            &raw const content,
+            out.as_mut_ptr(),
+            out.len(),
+            &raw mut n,
+            e,
+        )
+    })?;
+    Ok(json!({ "output_hex": hex::encode(&out[..n]) }))
+}
+
+/// One OID frame from a generator of `form`, advanced by the case's `oid_skip_octets`
+/// (USLP-009, CMN-021).
+fn uslp_oid_frame(case: &CodecCase, ch: &UslpChannels, form: u32) -> R<String> {
+    let p = params(case);
+    let oid = Oid::new(form);
+    let _ = oid.fill(usize_of(&p, "oid_skip_octets"));
+    let fields = uslp_fields(&p);
+    let (iz, ocf) = (hex_of(&p, "insert_zone_hex"), uslp_ocf(&p));
+    let content = aldis_uslp_content_t {
+        insert_zone: iz.as_ptr(),
+        insert_zone_len: iz.len(),
+        ocf: ocf.as_ptr(),
+        ocf_len: ocf.len(),
+        ..aldis_uslp_content_t::default()
+    };
+    let mut out = vec![0_u8; 70_000];
+    let mut n = 0_usize;
+    // SAFETY: every pointer is to a live local or vector; `oid.h` is a live handle.
+    call(|e| unsafe {
+        aldis_uslp_encode_oid(
+            &raw const ch.pc,
+            ch.vcs.as_ptr(),
+            ch.vcs.len(),
+            ch.maps.as_ptr(),
+            ch.maps.len(),
+            &raw const fields,
+            &raw const content,
+            oid.h,
+            out.as_mut_ptr(),
+            out.len(),
+            &raw mut n,
+            e,
+        )
+    })?;
+    Ok(hex::encode(&out[..n]))
+}
+
+fn uslp_validate(case: &CodecCase, ch: &UslpChannels) -> Value {
+    let bytes = input(case);
+    let mut view = aldis_uslp_frame_t::default();
+    let mut reason = u8::MAX;
+    // SAFETY: every pointer is to a live local or vector, with its length.
+    let result = call(|e| unsafe {
+        aldis_uslp_validate(
+            bytes.as_ptr(),
+            bytes.len(),
+            &raw const ch.pc,
+            ch.vcs.as_ptr(),
+            ch.vcs.len(),
+            ch.maps.as_ptr(),
+            ch.maps.len(),
+            mode(case),
+            &raw mut view,
+            &raw mut reason,
+            e,
+        )
+    });
+    match result {
+        Ok(()) => {
+            assert_eq!(reason, ALDIS_USLP_REASON_NONE);
+            json!({ "accepted": true, "frame_len": view.layout.frame_len })
+        }
+        Err(f) => {
+            let r =
+                Reason::from_code(reason).unwrap_or_else(|| panic!("{}: reason {reason}", case.id));
+            json!({
+                "accepted": false,
+                "reason": format!("{r:?}"),
+                "reason_code": reason,
+                "error_kind": f.kind,
+                "error_field": f.field,
+            })
+        }
+    }
+}
+
+fn uslp_delimit(case: &CodecCase, ch: &UslpChannels) -> R<Value> {
+    let unit = input(case);
+    let mut items = Vec::new();
+    let mut at = 0_usize;
+    loop {
+        let mut item = aldis_uslp_delimited_t::default();
+        // SAFETY: every pointer is to a live local or vector, with its length.
+        call(|e| unsafe {
+            aldis_uslp_delimit(
+                unit.as_ptr(),
+                unit.len(),
+                at,
+                &raw const ch.pc,
+                ch.vcs.as_ptr(),
+                ch.vcs.len(),
+                &raw mut item,
+                e,
+            )
+        })?;
+        assert_eq!(item.offset, at);
+        let kind = match item.kind {
+            ALDIS_USLP_DELIMITED_NONE => break,
+            ALDIS_USLP_DELIMITED_FRAME => "frame",
+            ALDIS_USLP_DELIMITED_INCOMPLETE_FRAME => "incomplete",
+            ALDIS_USLP_DELIMITED_NO_TRUNCATED_LENGTH => "no_truncated_length",
+            ALDIS_USLP_DELIMITED_FILL => "fill",
+            other => panic!("delimited kind {other}"),
+        };
+        assert!(item.len > 0);
+        items.push(json!({
+            "kind": kind,
+            "offset": at,
+            "octets_hex": hex::encode(&unit[at..at + item.len]),
+            "declared_len": (item.kind == ALDIS_USLP_DELIMITED_INCOMPLETE_FRAME)
+                .then_some(item.declared_len),
+        }));
+        at += item.len;
+    }
+    assert_eq!(at, unit.len(), "{}: the items cover the unit", case.id);
+    Ok(json!({ "items": items }))
+}
+
+fn uslp_run(case: &CodecCase) -> R<Value> {
+    let ch = uslp_channels(case);
+    // The configuration is checked first, as the Rust runner builds it (API-040).
+    // SAFETY: every pointer is to a live local or vector.
+    call(|e| unsafe { aldis_uslp_config_check(&raw const ch.pc, e) })?;
+    // SAFETY: as above.
+    call(|e| unsafe {
+        aldis_uslp_vc_table_check(
+            &raw const ch.pc,
+            ch.vcs.as_ptr(),
+            ch.vcs.len(),
+            ch.maps.as_ptr(),
+            ch.maps.len(),
+            e,
+        )
+    })?;
+    let bytes = input(case);
+    match case.operation.as_str() {
+        "config" => Ok(json!({ "vcs": ch.vcs.len(), "maps": ch.maps.len() })),
+        "peek_length" => {
+            let mut n = 0_usize;
+            // SAFETY: every pointer is to a live local or vector.
+            call(|e| unsafe {
+                aldis_uslp_peek_length(
+                    bytes.as_ptr(),
+                    bytes.len(),
+                    &raw const ch.pc,
+                    ch.vcs.as_ptr(),
+                    ch.vcs.len(),
+                    &raw mut n,
+                    e,
+                )
+            })?;
+            Ok(json!({ "frame_len": n }))
+        }
+        "decode" => {
+            let mut view = aldis_uslp_frame_t::default();
+            // SAFETY: as above.
+            call(|e| unsafe {
+                aldis_uslp_decode(
+                    bytes.as_ptr(),
+                    bytes.len(),
+                    &raw const ch.pc,
+                    ch.vcs.as_ptr(),
+                    ch.vcs.len(),
+                    ch.maps.as_ptr(),
+                    ch.maps.len(),
+                    mode(case),
+                    &raw mut view,
+                    e,
+                )
+            })?;
+            Ok(uslp_json(&view, &bytes))
+        }
+        "encode" => uslp_encode(case, &ch),
+        "encode_truncated" => uslp_encode_truncated(case, &ch),
+        "encode_oid" => {
+            let frame = uslp_oid_frame(case, &ch, ALDIS_OID_FIBONACCI)?;
+            // The Galois form writes the same frame (CMN-022).
+            let galois = uslp_oid_frame(case, &ch, ALDIS_OID_GALOIS)?;
+            assert_eq!(frame, galois, "{}: the Galois form differs", case.id);
+            Ok(json!({ "output_hex": frame }))
+        }
+        "validate" => Ok(uslp_validate(case, &ch)),
+        "delimit" => uslp_delimit(case, &ch),
+        op => panic!("{}: unsupported operation {op}", case.id),
+    }
+}
+
+// ---------------------------------------------------------------- end USLP
+
 // ---------------------------------------------------------------- tests
 
 macro_rules! vector_test {
@@ -1980,3 +2519,58 @@ vector_test!(tm_fhp_values, "tm", "fhp_values", tm_run);
 vector_test!(tm_oid_sequence, "tm", "oid_sequence", tm_run);
 vector_test!(tm_security_layout, "tm", "security_layout", tm_run);
 vector_test!(tm_invalid, "tm", "invalid", tm_run);
+// ---- USLP (M2 WP-5 module 9)
+vector_test!(uslp_config, "uslp", "config", uslp_run);
+vector_test!(
+    uslp_fixed_packets_rule000,
+    "uslp",
+    "fixed_packets_rule000",
+    uslp_run
+);
+vector_test!(
+    uslp_fixed_mapa_rules001_010,
+    "uslp",
+    "fixed_mapa_rules001_010",
+    uslp_run
+);
+vector_test!(
+    uslp_variable_rules011_111,
+    "uslp",
+    "variable_rules011_111",
+    uslp_run
+);
+vector_test!(
+    uslp_vcf_count_lengths_0_to_7,
+    "uslp",
+    "vcf_count_lengths_0_to_7",
+    uslp_run
+);
+vector_test!(uslp_truncated, "uslp", "truncated", uslp_run);
+vector_test!(
+    uslp_truncated_sdls_layout,
+    "uslp",
+    "truncated_sdls_layout",
+    uslp_run
+);
+vector_test!(uslp_oid, "uslp", "oid", uslp_run);
+vector_test!(uslp_insert_zone, "uslp", "insert_zone", uslp_run);
+vector_test!(
+    uslp_protocol_control_cop1,
+    "uslp",
+    "protocol_control_cop1",
+    uslp_run
+);
+vector_test!(
+    uslp_delimit_multiple_frames_with_fill,
+    "uslp",
+    "delimit_multiple_frames_with_fill",
+    uslp_run
+);
+vector_test!(
+    uslp_validation_failures,
+    "uslp",
+    "validation_failures",
+    uslp_run
+);
+vector_test!(uslp_invalid, "uslp", "invalid", uslp_run);
+// ---- end USLP
