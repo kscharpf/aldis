@@ -295,6 +295,34 @@ mod tests {
         assert_eq!(gate_problems(&two).len(), 1);
     }
 
+    // req: VER-056, VER-057, VER-058
+    #[test]
+    fn the_record_of_a_stopped_run_never_passes() {
+        let stopped = "the run stopped after the gating check header failed (--fail-fast)";
+        let rec = |checks: &Value| json!({"format": FORMAT, "checks": checks, "scope": {"base": "b", "checks": {}}});
+        let ran = rec(&json!([
+            {"name": "fmt", "host": "container", "gating": true, "result": "pass"},
+            {"name": "header", "host": "container", "gating": true, "result": "fail"},
+            {"name": "clippy", "host": "container", "gating": true, "result": "not-run",
+                "reason": stopped},
+            {"name": "test-macos", "host": "macos", "gating": true, "result": "not-run",
+                "reason": stopped},
+            {"name": "kani", "host": "container", "gating": false, "result": "not-run",
+                "reason": stopped},
+        ]));
+        assert_eq!(
+            gate_problems(&ran),
+            ["header: fail", "clippy: portable check not run"]
+        );
+        // Even if the failing check were left out, the checks it stopped are not run.
+        let mut without_failure = ran;
+        without_failure["checks"][1]["result"] = json!("pass");
+        assert_eq!(
+            gate_problems(&without_failure),
+            ["clippy: portable check not run"]
+        );
+    }
+
     // req: VER-058
     #[test]
     fn gate() {

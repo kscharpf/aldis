@@ -1854,4 +1854,67 @@ mod tests {
         assert_eq!(notes.origin(&r.p1, "cpp-tidy", ORIGIN_DEPTH), None);
         assert!(notes.origin(&r.p1, "clippy", ORIGIN_DEPTH).is_some());
     }
+
+    // req: VER-056, VER-058
+    #[test]
+    fn a_check_that_did_not_run_is_never_a_source() {
+        let r = reverify("stopped", "cpp/src/a.cpp");
+        let checks = all();
+        let stopped = "the run stopped after the gating check header failed (--fail-fast)";
+        // A record that passes the gate, in which kani, non-gating, did not run: kani takes no
+        // result from it, and every check that passed does.
+        let mut kani = r.origin.record_for(
+            record::FORMAT,
+            &r.p1,
+            &entries(&checks, |c| {
+                if c.name == "kani" {
+                    ("not-run", None)
+                } else {
+                    ("pass", None)
+                }
+            }),
+        );
+        let at = checks.iter().position(|c| c.name == "kani").unwrap();
+        kani["checks"][at]["reason"] = json!(stopped);
+        assert_eq!(record::gate_problems(&kani), Vec::<String>::new());
+        r.origin.publish_record(&kani);
+        let mut notes = Notes::fetch(&r.clone.0).unwrap();
+        assert_eq!(notes.origin(&r.p1, "kani", ORIGIN_DEPTH), None);
+        assert_eq!(
+            notes
+                .origin(&r.p1, "clippy", ORIGIN_DEPTH)
+                .map(|s| s.commit),
+            Some(r.p1.clone())
+        );
+        // The record of a run that stopped at header, had it been published, is no source at
+        // all: not even for the checks that passed before the stop.
+        let order: Vec<String> = super::super::checks::run_order()
+            .into_iter()
+            .map(|c| c.name)
+            .collect();
+        let header = order.iter().position(|n| n == "header").unwrap();
+        r.origin.publish(
+            &r.p1,
+            &entries(&checks, |c| {
+                let at = order.iter().position(|n| *n == c.name).unwrap();
+                match at.cmp(&header) {
+                    std::cmp::Ordering::Less => ("pass", None),
+                    std::cmp::Ordering::Equal => ("fail", None),
+                    std::cmp::Ordering::Greater => ("not-run", None),
+                }
+            }),
+        );
+        let mut notes = Notes::fetch(&r.clone.0).unwrap();
+        assert_eq!(notes.passing(&r.p1), None);
+        assert_eq!(notes.origin(&r.p1, "fmt", ORIGIN_DEPTH), None);
+        let p = plan_of(&r);
+        assert_eq!(p.branch, Vec::<String>::new());
+        assert!(
+            p.checks
+                .iter()
+                .filter_map(|d| d.source.as_ref())
+                .all(|s| s.commit != r.p1),
+            "{p:?}"
+        );
+    }
 }

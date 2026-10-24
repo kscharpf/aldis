@@ -72,14 +72,62 @@ commands:
   changelog show               print the unreleased changes as the next release will list them
   changelog release <version> <YYYY-MM-DD>
                                move every fragment into a new section of CHANGELOG.md
-  ci                           everything CI runs without a C++ build: spec-lint, links,
-                               decisions, layers, consistency, refapp-deps, vectors validate, vectors schema --check,
-                               fields, trace --scope m0 --strict, trace --scope m1 --strict,
-                               trace --scope m2, trace --scope c0, changelog check,
-                               cpp unsafe-optouts
+  ci                           the quick checks of the verification run, without a build:
+                               spec-lint, links, decisions, layers, consistency, refapp-deps,
+                               vectors validate, vectors schema --check, fields, header (needs
+                               the pinned cbindgen), trace --scope m0 --strict,
+                               trace --scope m1 --strict, trace --scope m2, trace --scope c0,
+                               changelog check, cpp unsafe-optouts; a step that cannot run
+                               counts as a problem, and the others still run
 
 C++ checks (docs/milestones/c0-foundations.md D12):
 ";
+
+/// One step of `cargo xtask ci`: its name, as `cargo xtask help` lists it, and the check.
+type Step = (&'static str, fn() -> Result<usize, String>);
+
+/// The steps of `cargo xtask ci`, in order: the checks of the verification run that need no
+/// build, so that a stale generated file fails here, in seconds, before any verification run.
+/// The generated files are checked by `fields` (the field codes of `aldis-core`, the vectors,
+/// and `aldis-ffi`, API-082, CABI-021) and `header` (the C header and the `aldis-ffi`
+/// capacities, CABI-002, CABI-030), which needs the pinned `cbindgen`.
+const CI: &[Step] = &[
+    ("spec-lint", spec::lint),
+    ("links", links::check),
+    ("decisions", decisions::check),
+    ("layers", layers::check),
+    ("consistency", consistency::check),
+    ("refapp-deps", refapp::check),
+    ("vectors validate", vectors::validate),
+    ("vectors schema --check", || vectors::schema(true)),
+    ("fields", || fields::run(false)),
+    ("header", || header::run(false)),
+    // M0 and M1 are closed: every in-scope requirement must keep an artefact.
+    ("trace --scope m0 --strict", || trace::run(Some("m0"), true)),
+    ("trace --scope m1 --strict", || trace::run(Some("m1"), true)),
+    // M2 is open: report its trace without failing (strict at the M2 exit, D1).
+    ("trace --scope m2", || trace::run(Some("m2"), false)),
+    // C0 is open: report its trace without failing (strict at the C0 exit, D17).
+    ("trace --scope c0", || trace::run(Some("c0"), false)),
+    ("changelog check", changelog::check),
+    ("cpp unsafe-optouts", cpp::optouts::check),
+];
+
+/// Runs `steps`; returns the number of problems. A step that cannot run (a missing tool, an
+/// unreadable file) counts as one problem and is reported, and the other steps still run.
+fn run_steps(steps: &[Step]) -> usize {
+    let mut failed = 0;
+    for (name, step) in steps {
+        match step() {
+            Ok(problems) => failed += problems,
+            Err(e) => {
+                println!("ci: {name}: {e}");
+                failed += 1;
+            }
+        }
+    }
+    failed
+}
 
 fn run(args: &[&str]) -> Result<usize, String> {
     match args {
@@ -117,32 +165,7 @@ fn run(args: &[&str]) -> Result<usize, String> {
         ["changelog", "check"] => changelog::check(),
         ["changelog", "show"] => changelog::show(),
         ["changelog", "release", version, date] => changelog::release(version, date),
-        ["ci"] => {
-            let mut failed = 0;
-            for step in [
-                spec::lint as fn() -> Result<usize, String>,
-                links::check,
-                decisions::check,
-                layers::check,
-                consistency::check,
-                refapp::check,
-                vectors::validate,
-                || vectors::schema(true),
-                || fields::run(false),
-                // M0 and M1 are closed: every in-scope requirement must keep an artefact.
-                || trace::run(Some("m0"), true),
-                || trace::run(Some("m1"), true),
-                // M2 is open: report its trace without failing (strict at the M2 exit, D1).
-                || trace::run(Some("m2"), false),
-                // C0 is open: report its trace without failing (strict at the C0 exit, D17).
-                || trace::run(Some("c0"), false),
-                changelog::check,
-                cpp::optouts::check,
-            ] {
-                failed += step()?;
-            }
-            Ok(failed)
-        }
+        ["ci"] => Ok(run_steps(CI)),
         [] | ["help" | "-h" | "--help"] => {
             print!("{HELP}{}\n{}\n{}", cpp::HELP, verify::HELP, metrics::HELP);
             Ok(0)
@@ -170,5 +193,47 @@ fn main() -> ExitCode {
             eprintln!("xtask: {e}");
             ExitCode::FAILURE
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // req: API-082, CABI-002, CABI-021
+    #[test]
+    fn ci_checks_the_generated_files() {
+        let names: Vec<&str> = CI.iter().map(|(name, _)| *name).collect();
+        assert!(names.contains(&"fields"), "{names:?}");
+        assert!(names.contains(&"header"), "{names:?}");
+        // The help lists every step.
+        let help: String = HELP.split_whitespace().collect::<Vec<_>>().join(" ");
+        for name in names {
+            assert!(help.contains(name), "{name}");
+        }
+        // `fields` covers the field-code constants of the C ABI.
+        assert_eq!(fields::FFI, "crates/aldis-ffi/src/field.rs");
+    }
+
+    // req: CABI-002
+    #[test]
+    fn a_step_that_fails_or_cannot_run_fails_ci_and_the_others_still_run() {
+        static RAN: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+        let steps: &[Step] = &[
+            ("stale", || {
+                RAN.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                Ok(1)
+            }),
+            ("no tool", || {
+                RAN.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                Err("cbindgen: not found".to_owned())
+            }),
+            ("fine", || {
+                RAN.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                Ok(0)
+            }),
+        ];
+        assert_eq!(run_steps(steps), 2);
+        assert_eq!(RAN.load(std::sync::atomic::Ordering::SeqCst), 3);
     }
 }

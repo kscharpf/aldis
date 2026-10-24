@@ -54,7 +54,7 @@ The toolchain is pinned to Rust **1.99.1** in `rust-toolchain.toml`. Do not chan
 
 ```sh
 git push                            # the commit must be on GitHub before its status can be set
-cargo xtask verify --publish        # every check, in the pinned image; then the git note and status aldis/verify
+cargo xtask verify --publish        # every check, in the pinned image, stopping at the first failure; then the git note and status aldis/verify
 cargo xtask verify check            # re-check the published record of HEAD
 ```
 
@@ -66,7 +66,7 @@ gh workflow run verify.yml --ref <branch>   # or "Run workflow" on the Actions t
 gh run watch                                # then: cargo xtask verify check
 ```
 
-`cargo xtask verify` needs podman or Docker Engine with about 20 GB of free disk and 6 GB of memory for the engine's VM (`podman machine set --memory 6144`). The first run builds the image (several GB of downloads). A podman VM keeps the disk space the build frees until it is trimmed: run `podman machine ssh sudo fstrim -av` after the build (it returned about 20 GB on macOS). It refuses a dirty working tree, runs every check in a fresh checkout of HEAD, and writes `target/verify/<commit>/record.json` and one log per check. `cargo xtask verify list` names the checks, and `--only <check>,...` runs some of them while you work; such a record never passes the gate. Runs on one machine share the engine's cache volume and take turns: a run started while another is in progress waits for it to finish. A record is tied to the commit's tree, so any new commit, including a merge from `main`, needs a new run.
+`cargo xtask verify` needs podman or Docker Engine with about 20 GB of free disk and 6 GB of memory for the engine's VM (`podman machine set --memory 6144`). The first run builds the image (several GB of downloads). A podman VM keeps the disk space the build frees until it is trimmed: run `podman machine ssh sudo fstrim -av` after the build (it returned about 20 GB on macOS). It refuses a dirty working tree, runs every check in a fresh checkout of HEAD, and writes `target/verify/<commit>/record.json` and one log per check. `cargo xtask verify list` names the checks, and `--only <check>,...` runs some of them while you work; such a record never passes the gate. The checks run quickest first. With `--publish` the run stops at the first gating check that fails, since it could not publish, and records the rest as not run (`--no-fail-fast` runs them all; `--fail-fast` stops a run without `--publish`). When the input rule skips or reuses every gating check, the run starts no container and pulls or builds no image. Runs on one machine share the engine's cache volume and take turns: a run started while another is in progress waits for it to finish. A record is tied to the commit's tree, so any new commit, including a merge from `main`, needs a new run.
 
 While you work, run these. All must pass with **zero warnings**:
 
@@ -75,7 +75,7 @@ cargo fmt --all --check
 cargo clippy --workspace --all-features --all-targets
 cargo test --workspace --all-features
 cargo clippy -p aldis --no-default-features --features full --target thumbv7em-none-eabihf
-cargo xtask ci        # spec lint, links, decision log, layering, registrations (consistency), vectors, schema, field codes, M0 and M1 traces (strict), M2 trace
+cargo xtask ci        # spec lint, links, decision log, layering, registrations (consistency), vectors, schema, generated files (field codes, C header), traces, changelog, C++ opt-outs
 ```
 
 When you change `aldis-core`, also run:
@@ -88,7 +88,7 @@ cargo clippy --manifest-path fuzz/Cargo.toml --all-targets               # fuzz 
 
 A failed exerciser link with `undefined symbol: aldis_panic_is_unreachable` means a panic path is reachable in `aldis-core`. Remove it; do not work around the check. Mark new test modules `#[cfg_attr(coverage_nightly, coverage(off))]`.
 
-When you change `aldis-ffi` (the C ABI) or a crate it wraps, regenerate and check the header with the pinned `cbindgen` (`cargo install --locked cbindgen@0.29.4`; [crates/aldis-ffi/README.md](crates/aldis-ffi/README.md)), and never edit `include/aldis/aldis.h` by hand:
+`cargo xtask ci` checks every generated file (`fields`, `header`), so it needs the pinned `cbindgen` (`cargo install --locked cbindgen@0.29.4`) in any work package; without it, `ci` reports the missing tool as a problem. When you change `aldis-ffi` (the C ABI) or a crate it wraps, regenerate and check the header with it ([crates/aldis-ffi/README.md](crates/aldis-ffi/README.md)), and never edit `include/aldis/aldis.h` by hand:
 
 ```sh
 cargo xtask header --write && cargo xtask header   # CABI-002, CABI-003
