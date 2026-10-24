@@ -45,6 +45,7 @@ Spend the review on what no check covers: the reading of the Blue Book behind ea
 - No third-party runtime dependencies in Layers 0–2 (GEN-001).
 - Layering: a crate may depend only on lower layers ([docs/01-architecture.md](docs/01-architecture.md) §2).
 - **Parse, don't validate** (RS-020): make invalid values unrepresentable. Give every field with a restricted range its own type with a checked constructor, keep fields private when a constraint spans them, and check untrusted input once, where it becomes the type. A constructor may check only the relation between values that are each already valid, such as a value fitting a format. Do not add `validate`/`check` functions that re-examine a value the type could have guaranteed.
+- **State machines** (RS-021): make invalid states and transitions unrepresentable. Always use the typestate pattern where the caller's call sequence decides the next state (lifecycles, two-phase writers, builders, sessions). Where an external event decides it (COP-1's protocol states), use a closed `enum` whose transition function is generated from, or checked against, the state table, with an exhaustive `match` and no wildcard arm.
 
 ## Toolchain and checks
 
