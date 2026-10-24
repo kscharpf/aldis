@@ -13,6 +13,26 @@ Surviving mutants from `cargo mutants` (`-p aldis-core -p aldis-time -p aldis-ep
 | `header.rs` `read_vcf_count` `\|` → `^` (the count shifted left by 8 and the next octet) | Equivalent: the shift leaves the low eight bits zero, so OR and XOR agree | None possible |
 | `tfdf.rs` `TfdfHeader::octets` `\|` → `^` (rule `<< 5` and UPID `& 0x1F`) | Equivalent: disjoint bits | None possible |
 
+## 2026-10-23, branch `m2/aos-codec` (M2 WP-4, modules 2–7)
+
+`cargo mutants -p aldis-aos --all-features` (cargo-mutants 27.1.0, with `PROPTEST_CASES=32`), the whole crate, the FHEC included: 405 mutants: 273 caught, 124 unviable, 8 missed, 0 timeouts.
+
+| Mutant | Verdict | Action |
+|---|---|---|
+| `header.rs` `AosPrimaryHeader::parse` `\|` → `^`, two places (the 6 SCID bits of octet 0 `<< 2` and the 2 of octet 1; bits 42–43 `<< 8` and the 8-bit LSBs) | Equivalent: each joins fields shifted into disjoint bits, so OR and XOR agree | None possible |
+| `header.rs` `AosPrimaryHeader::to_octets` `\|` → `^`, five places (octet 5: the two flags, bits 42–43 `<< 4`, and the cycle `& 0x0F`; octet 0: version `<< 6` and the SCID LSBs `>> 2`; octet 1: the SCID LSBs `<< 6` and the VCID `& 0x3F`) | Equivalent: every field is masked or bounded to its own bits, which do not overlap | None possible |
+| `fhec.rs` `Gf::octet` `\|` → `^` | Equivalent, as triaged for module 1 below | None possible |
+
+The eight survivors are equivalent and are expected in every report.
+
+Re-run 2026-10-24 after the review of #97 gave the B_PDU count its own type, `ValidBitCount` (RS-020): `cargo mutants -p aldis-aos --all-features --file crates/aldis-aos/src/bpdu.rs --file crates/aldis-aos/src/writer.rs` (with `PROPTEST_CASES=32`): 93 mutants: 57 caught, 33 unviable, 3 missed. One was a test gap, fixed and re-run on `bpdu.rs` (43 mutants: 30 caught, 11 unviable, 2 missed); the other two are equivalent.
+
+| Mutant | Verdict | Action |
+|---|---|---|
+| `bpdu.rs` `From<ValidBitCount> for u16` → `1` | Test gap: `u16::from` was checked only on the count 1 | `valid_bit_counts_are_1_to_0x3ffe` checks it on `0x3FFE`; caught |
+| `bpdu.rs` `TryFrom<u16> for ValidBitCount` `<` → `<=` (the bound reported for a rejected count) | Equivalent: the closure runs only for a count `new` rejects, so never for 1, the one value where `<` and `<=` differ | None possible |
+| `bpdu.rs` `BitstreamPointer::classify` `index < last_bit` → `<=` | Equivalent: an index equal to the last bit has already returned `InvalidField` | None possible |
+
 ## 2026-10-23, branch `m2/tm-codec` (M2 WP-2, modules 1-6)
 
 `cargo mutants -p aldis-tm --all-features` (cargo-mutants 27.1.0), the whole crate: 256 mutants: 159 caught, 80 unviable, 17 missed, 0 timeouts. Two survivors were test gaps, fixed and re-run (`config.rs`, `TmMasterChannelConfig::fsh` and `::ocf`: 12 mutants, 10 caught, 2 unviable); the other 15 are equivalent and are expected in every report.

@@ -495,6 +495,41 @@
       "code": 99,
       "name": "transfer_frame_type",
       "kind": "parameter"
+    },
+    {
+      "code": 100,
+      "name": "aos_header_spare",
+      "kind": "field"
+    },
+    {
+      "code": 101,
+      "name": "vc_frame_count_cycle",
+      "kind": "field"
+    },
+    {
+      "code": 102,
+      "name": "data_field_content",
+      "kind": "parameter"
+    },
+    {
+      "code": 103,
+      "name": "ocf",
+      "kind": "field"
+    },
+    {
+      "code": 104,
+      "name": "mpdu_spare",
+      "kind": "field"
+    },
+    {
+      "code": 105,
+      "name": "bpdu_spare",
+      "kind": "field"
+    },
+    {
+      "code": 106,
+      "name": "bitstream_data_pointer",
+      "kind": "field"
     }
   ]
 }

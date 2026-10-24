@@ -108,6 +108,7 @@ dependencies = [
 name = "aldis-testkit"
 version = "0.2.0"
 dependencies = [
+ "aldis-aos",
  "aldis-core",
  "aldis-epp",
  "aldis-spp",

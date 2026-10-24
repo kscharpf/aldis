@@ -204,8 +204,15 @@ fn parenthesize(text: &str) -> String {
     out
 }
 
+/// The problem of the generated file `path` when its committed text `committed` (`None` when
+/// it is missing) is not `generated`, the text generated `from` a source.
+fn stale(path: &str, committed: Option<&str>, generated: &str, from: &str) -> Option<String> {
+    (committed != Some(generated))
+        .then(|| format!("{path} differs from {from}; run `cargo xtask header --write`"))
+}
+
 /// Checks the generated files, or with `write` regenerates them; returns the number of
-/// problems.
+/// problems. Part of `cargo xtask ci` and of the verify check `header`.
 pub fn run(write: bool) -> Result<usize, String> {
     let root = repo::root();
     let capacities = capacities_rs(&parse_toml(&repo::read(&root.join(CAPACITIES_TOML))?)?)?;
@@ -214,9 +221,13 @@ pub fn run(write: bool) -> Result<usize, String> {
         std::fs::write(root.join(CAPACITIES_RS), &capacities)
             .map_err(|e| format!("{CAPACITIES_RS}: {e}"))?;
         println!("wrote {CAPACITIES_RS}");
-    } else if std::fs::read_to_string(root.join(CAPACITIES_RS)).ok() != Some(capacities) {
-        problems.push(format!(
-            "{CAPACITIES_RS} differs from {CAPACITIES_TOML}; run `cargo xtask header --write`"
+    } else {
+        let committed = std::fs::read_to_string(root.join(CAPACITIES_RS)).ok();
+        problems.extend(stale(
+            CAPACITIES_RS,
+            committed.as_deref(),
+            &capacities,
+            CAPACITIES_TOML,
         ));
     }
     let header = generate(&root)?;
@@ -228,9 +239,13 @@ pub fn run(write: bool) -> Result<usize, String> {
         }
         std::fs::write(&path, &header).map_err(|e| format!("{HEADER}: {e}"))?;
         println!("wrote {HEADER}");
-    } else if std::fs::read_to_string(root.join(HEADER)).ok() != Some(header) {
-        problems.push(format!(
-            "{HEADER} differs from a fresh generation (CABI-002); run `cargo xtask header --write`"
+    } else {
+        let committed = std::fs::read_to_string(root.join(HEADER)).ok();
+        problems.extend(stale(
+            HEADER,
+            committed.as_deref(),
+            &header,
+            "a fresh generation (CABI-002)",
         ));
     }
     for p in &problems {
@@ -383,6 +398,21 @@ mod tests {
         let unknown = "[spp]\ntracker_max_apids = 4\nextra = 1\n";
         let e = capacities_rs(&parse_toml(unknown).unwrap()).unwrap_err();
         assert!(e.contains("unknown key [spp] extra"), "{e}");
+    }
+
+    // req: CABI-002, CABI-030
+    #[test]
+    fn a_stale_or_missing_generated_file_is_a_problem() {
+        let fresh = "/* Generated */\n#define ALDIS_X 1\n";
+        let from = "a fresh generation (CABI-002)";
+        assert_eq!(stale(HEADER, Some(fresh), fresh, from), None);
+        let old = stale(HEADER, Some("/* Generated */\n"), fresh, from).unwrap();
+        assert_eq!(
+            old,
+            "include/aldis/aldis.h differs from a fresh generation (CABI-002); run \
+             `cargo xtask header --write`"
+        );
+        assert!(stale(CAPACITIES_RS, None, fresh, CAPACITIES_TOML).is_some());
     }
 
     // req: CABI-003

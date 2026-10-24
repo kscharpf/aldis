@@ -350,15 +350,16 @@ pub const OCF_REPORT_USE: FieldId = FieldId::catalogued::<66>("ocf_report_use");
 
 /// Transfer Frame Version Number.
 ///
-/// Code 67, a field (132.0 §4.1.2.2.2; 232.0 §4.1.2.2; 732.1 §4.1.2.2.2; API-082).
+/// Code 67, a field (132.0 §4.1.2.2.2; 232.0 §4.1.2.2; 732.0 §4.1.2.2.2; 732.1 §4.1.2.2.2;
+/// API-082).
 pub const FRAME_VERSION: FieldId = FieldId::catalogued::<67>("frame_version");
 
 /// Length of a Transfer Frame in octets: the Frame Length field of a TC or USLP frame, or the
-/// Transfer Frame Length managed parameter of a TM or USLP physical channel with fixed-length
+/// Transfer Frame Length managed parameter of a TM, AOS, or USLP physical channel with fixed-length
 /// frames.
 ///
 /// Code 68, a field (132.0 §4.1.1.2, §5.1 Table 5-1; 232.0 §4.1.2.7; 732.1 §4.1.2.7, Table 5-1;
-/// API-082).
+/// 732.0 §4.1.1.2, §5.2 Table 5-1; API-082).
 pub const FRAME_LEN: FieldId = FieldId::catalogued::<68>("frame_len");
 
 /// Operational Control Field Flag.
@@ -386,9 +387,9 @@ pub const PACKET_ORDER_FLAG: FieldId = FieldId::catalogued::<72>("packet_order_f
 /// Code 73, a field (132.0 §4.1.2.7.5; API-082).
 pub const SEGMENT_LENGTH_ID: FieldId = FieldId::catalogued::<73>("segment_length_id");
 
-/// First Header Pointer.
+/// First Header Pointer: of the TM Transfer Frame Data Field Status, or of the AOS `M_PDU` Header.
 ///
-/// Code 74, a field (132.0 §4.1.2.7.6; API-082).
+/// Code 74, a field (132.0 §4.1.2.7.6; 732.0 §4.1.4.2.2; 732.0-B-4 §4.1.4.2.3; API-082).
 pub const FIRST_HEADER_POINTER: FieldId = FieldId::catalogued::<74>("first_header_pointer");
 
 /// Transfer Frame Secondary Header Version Number.
@@ -486,9 +487,10 @@ pub const END_OF_FRAME_PRIMARY_HEADER_FLAG: FieldId =
 /// Code 92, a field (732.1 §4.1.2.11; §5.4 Table 5-3; API-082).
 pub const VCF_COUNT_LEN: FieldId = FieldId::catalogued::<92>("vcf_count_len");
 
-/// Virtual Channel Frame Count.
+/// Virtual Channel Frame Count: of a USLP frame, of the length its VCF Count Length gives; of an
+/// AOS frame, 24 bits.
 ///
-/// Code 93, a field (732.1 §4.1.2.12; API-082).
+/// Code 93, a field (732.1 §4.1.2.12; 732.0 §4.1.2.4; API-082).
 pub const VCF_COUNT: FieldId = FieldId::catalogued::<93>("vcf_count");
 
 /// TFDZ Construction Rule of the TFDF Header.
@@ -506,10 +508,11 @@ pub const UPID: FieldId = FieldId::catalogued::<95>("upid");
 /// Code 96, a field (732.1 §4.1.4.2.4; API-082).
 pub const FHP_LVO_POINTER: FieldId = FieldId::catalogued::<96>("fhp_lvo_pointer");
 
-/// Insert Zone Length, a managed parameter of a Physical Channel, and the Insert Zone a writer is
-/// given.
+/// Insert Zone Length, a managed parameter of a USLP or AOS Physical Channel, and the Insert Zone a
+/// writer is given.
 ///
-/// Code 97, a parameter (732.1 §4.1.3; §5.2 Table 5-1 note 5; API-082).
+/// Code 97, a parameter (732.1 §4.1.3; §5.2 Table 5-1 note 5; 732.0 §4.1.3.4.1, §5.2 Table 5-1;
+/// API-082).
 pub const INSERT_ZONE_LEN: FieldId = FieldId::catalogued::<97>("insert_zone_len");
 
 /// Truncated Transfer Frame Length, a managed parameter of a Virtual Channel.
@@ -522,8 +525,45 @@ pub const TRUNCATED_FRAME_LEN: FieldId = FieldId::catalogued::<98>("truncated_fr
 /// Code 99, a parameter (732.1 §5.2 Table 5-1, §5.4 Table 5-3 note 2; §4.1.4.2.2.1.1; API-082).
 pub const TRANSFER_FRAME_TYPE: FieldId = FieldId::catalogued::<99>("transfer_frame_type");
 
+/// Reserved Spare of the AOS Transfer Frame Primary Header, bits 42–43, in Issue 4 and earlier (the
+/// two most significant SCID bits in Issue 5).
+///
+/// Code 100, a field (732.0-B-4 §4.1.2.5.4; 732.0 §4.1.2.5.4; API-082).
+pub const AOS_HEADER_SPARE: FieldId = FieldId::catalogued::<100>("aos_header_spare");
+
+/// Virtual Channel Frame Count Cycle of an AOS Transfer Frame, bits 44–47.
+///
+/// Code 101, a field (732.0 §4.1.2.5.5; API-082).
+pub const VC_FRAME_COUNT_CYCLE: FieldId = FieldId::catalogued::<101>("vc_frame_count_cycle");
+
+/// Data Field Content of an AOS virtual channel: `M_PDU`, `B_PDU`, `VCA_SDU`, or Idle Data.
+///
+/// Code 102, a parameter (732.0 §4.1.4.1.3–4, §5.4 Table 5-3; API-082).
+pub const DATA_FIELD_CONTENT: FieldId = FieldId::catalogued::<102>("data_field_content");
+
+/// Operational Control Field of an AOS Transfer Frame, present by the `VC_OCF` managed parameter of
+/// its virtual channel.
+///
+/// Code 103, a field (732.0 §4.1.5.2–3, §5.4 Table 5-3; API-082).
+pub const OCF: FieldId = FieldId::catalogued::<103>("ocf");
+
+/// Reserved Spare of the `M_PDU` Header, bits 0–4, in Issue 4 and earlier.
+///
+/// Code 104, a field (732.0-B-4 §4.1.4.2.2; API-082).
+pub const MPDU_SPARE: FieldId = FieldId::catalogued::<104>("mpdu_spare");
+
+/// Reserved Spare of the `B_PDU` Header, bits 0–1.
+///
+/// Code 105, a field (732.0 §4.1.4.3.2; API-082).
+pub const BPDU_SPARE: FieldId = FieldId::catalogued::<105>("bpdu_spare");
+
+/// Bitstream Data Pointer of the `B_PDU` Header.
+///
+/// Code 106, a field (732.0 §4.1.4.3.3; API-082).
+pub const BITSTREAM_DATA_POINTER: FieldId = FieldId::catalogued::<106>("bitstream_data_pointer");
+
 /// Every field code, in code order from 1 (API-082).
-pub const ALL: [FieldId; 99] = [
+pub const ALL: [FieldId; 106] = [
     SPACECRAFT_ID,
     VC_ID,
     MAP_ID,
@@ -623,4 +663,11 @@ pub const ALL: [FieldId; 99] = [
     INSERT_ZONE_LEN,
     TRUNCATED_FRAME_LEN,
     TRANSFER_FRAME_TYPE,
+    AOS_HEADER_SPARE,
+    VC_FRAME_COUNT_CYCLE,
+    DATA_FIELD_CONTENT,
+    OCF,
+    MPDU_SPARE,
+    BPDU_SPARE,
+    BITSTREAM_DATA_POINTER,
 ];

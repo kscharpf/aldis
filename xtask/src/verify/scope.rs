@@ -15,7 +15,7 @@
 //! cannot be fetched, there is no merge base, the commit is on `main`, nothing differs), or when
 //! no published passing record covers the base or an earlier commit of the branch. A record is
 //! not used for any check when a path that differs from its commit is an input of no check and
-//! not documentation.
+//! neither documentation nor GitHub configuration (`DOCS`, `GITHUB`: read by `spec` alone).
 
 use std::collections::{BTreeMap, HashMap};
 use std::path::Path;
@@ -23,7 +23,7 @@ use std::rc::Rc;
 
 use serde_json::{Map, Value, json};
 
-use super::checks::{Check, DOCS, Inputs};
+use super::checks::{Check, DOCS, GITHUB, Inputs, NIGHTLY_ONLY};
 use super::record::Outcome;
 use super::{git_bytes, git_in, publish, record};
 
@@ -265,12 +265,26 @@ pub struct Decision {
 }
 
 impl Decision {
-    /// The result recorded for a check that does not run (VER-057); `None` when it runs.
+    /// The result recorded for a check that does not run (VER-057); `None` when it runs. A check
+    /// that does not run and takes no result from a source is a nightly-only check outside the
+    /// nightly run: not run.
     pub const fn outcome(&self) -> Option<Outcome> {
-        match (self.run, self.reused) {
-            (true, _) => None,
-            (false, false) => Some(Outcome::Skipped),
-            (false, true) => Some(Outcome::Reused),
+        match (self.run, self.source.is_some(), self.reused) {
+            (true, _, _) => None,
+            (false, false, _) => Some(Outcome::NotRun),
+            (false, true, false) => Some(Outcome::Skipped),
+            (false, true, true) => Some(Outcome::Reused),
+        }
+    }
+
+    /// The decision for the nightly-only check `name` in a run without `--all` (VER-059).
+    fn nightly(name: &str) -> Self {
+        Self {
+            name: name.to_owned(),
+            run: false,
+            why: NIGHTLY_ONLY.to_owned(),
+            source: None,
+            reused: false,
         }
     }
 }
@@ -305,9 +319,11 @@ pub fn reuse_reason(source: &Source) -> String {
     )
 }
 
-/// Whether some check reads `path`, or it is documentation (read by `spec` alone).
+/// Whether some check reads `path`, or it is documentation or GitHub configuration (read by
+/// `spec` alone).
 fn listed(checks: &[Check], path: &str) -> bool {
     DOCS.contains(path)
+        || GITHUB.contains(path)
         || checks
             .iter()
             .any(|c| c.inputs != Inputs::Everything && c.inputs.contains(path))
@@ -318,7 +334,9 @@ fn listed(checks: &[Check], path: &str) -> bool {
 /// be read by any check, so it makes every check's inputs differ.
 fn differs(checks: &[Check], check: &Check, paths: &[String]) -> Option<String> {
     if let Some(p) = paths.iter().find(|p| !listed(checks, p)) {
-        return Some(format!("{p} is an input of no check and not documentation"));
+        return Some(format!(
+            "{p} is an input of no check, and neither documentation nor GitHub configuration"
+        ));
     }
     paths
         .iter()
@@ -341,12 +359,17 @@ pub fn plan(
         changed,
         checks: checks
             .iter()
-            .map(|c| Decision {
-                name: c.name.clone(),
-                run: true,
-                why: format!("every check runs: {why}"),
-                source: None,
-                reused: false,
+            .map(|c| {
+                if c.nightly && !force.all {
+                    return Decision::nightly(&c.name);
+                }
+                Decision {
+                    name: c.name.clone(),
+                    run: true,
+                    why: format!("every check runs: {why}"),
+                    source: None,
+                    reused: false,
+                }
             })
             .collect(),
         every: Some(why),
@@ -366,6 +389,10 @@ pub fn plan(
     let decisions = checks
         .iter()
         .map(|c| {
+            // A nightly-only check is not run, whatever its inputs; with --all, `every` ran it.
+            if c.nightly {
+                return Decision::nightly(&c.name);
+            }
             let against_base = differs(checks, c, &paths);
             let origin = found.origins.get(&c.name).and_then(|origins| {
                 origins.iter().find(|o| {
@@ -626,6 +653,7 @@ pub fn to_json(plan: &Plan, checks: &[Check]) -> Value {
         "changed_count": plan.changed.len(),
         "checks": decisions,
         "documentation": DOCS.patterns,
+        "github": GITHUB.patterns,
         "every": plan.every,
         "inputs": inputs,
     })
@@ -646,12 +674,14 @@ pub fn describe(plan: &Plan, checks: &[Check]) -> Vec<String> {
     } else {
         let count = |o: Option<Outcome>| plan.checks.iter().filter(|d| d.outcome() == o).count();
         out.push(format!(
-            "{} changed path(s) against main at {base}: {} of {} checks run, {} skipped, {} reused",
+            "{} changed path(s) against main at {base}: {} of {} checks run, {} skipped, {} reused, \
+             {} nightly only",
             plan.changed.len(),
             count(None),
             plan.checks.len(),
             count(Some(Outcome::Skipped)),
             count(Some(Outcome::Reused)),
+            count(Some(Outcome::NotRun)),
         ));
         match &plan.base_record {
             Some(rec) => out.push(format!("the base passed in the published record of {rec}")),
@@ -674,7 +704,8 @@ pub fn describe(plan: &Plan, checks: &[Check]) -> Vec<String> {
     for (d, c) in plan.checks.iter().zip(checks) {
         let (what, why) = match (d.outcome(), &d.source) {
             (Some(o), Some(s)) => (o.name(), format!("from the record of {}", short(&s.commit))),
-            _ => ("runs", d.why.clone()),
+            (Some(_), None) => ("nightly", d.why.clone()),
+            (None, _) => ("runs", d.why.clone()),
         };
         out.push(format!(
             "  {:40} {:16} {:7} [{}] {why}",
@@ -925,6 +956,41 @@ mod tests {
 
     // req: VER-056
     #[test]
+    fn github_configuration_runs_spec_only() {
+        // #95: GitHub Actions version bumps.
+        let dependabot = changed(&[
+            ".github/actions/setup-rust/action.yml",
+            ".github/workflows/ci.yml",
+            ".github/workflows/nightly.yml",
+        ]);
+        assert_eq!(running(&dependabot, Force::default()), ["spec"]);
+        for path in [
+            ".github/pull_request_template.md",
+            ".github/CODEOWNERS",
+            ".github/dependabot.yml",
+            ".github/workflows/cpp.yml",
+            ".github/workflows/verify.yml",
+            ".github/actions/setup-cpp/action.yml",
+        ] {
+            assert_eq!(
+                running(&changed(&[path]), Force::default()),
+                ["spec"],
+                "{path}"
+            );
+        }
+        // The setup script that the image runs is read by every check; all but the
+        // nightly-only kani run.
+        assert_eq!(
+            running(
+                &changed(&[".github/actions/setup-cpp/setup_cpp.py"]),
+                Force::default()
+            ),
+            names(|c| !c.nightly)
+        );
+    }
+
+    // req: VER-056
+    #[test]
     fn documentation_runs_spec_only() {
         let docs = changed(&[
             "docs/06-verification.md",
@@ -957,9 +1023,10 @@ mod tests {
     // req: VER-056
     #[test]
     fn code_runs_its_checks() {
-        let rust = names(|c| !c.cpp);
+        // kani is nightly-only: no change runs it without --all.
+        let rust = names(|c| !c.cpp && !c.nightly);
         let cpp = names(|c| c.cpp || c.name == "spec");
-        let everything = names(|_| true);
+        let everything = names(|c| !c.nightly);
         // A crate README is a doctest.
         assert_eq!(
             running(&changed(&["crates/aldis-spp/README.md"]), Force::default()),
@@ -972,16 +1039,16 @@ mod tests {
             ),
             rust
         );
-        // A rename out of docs/ lists both sides. The facade has no Kani harness.
-        let rust_but_kani = names(|c| !c.cpp && c.name != "kani");
+        // A rename out of docs/ lists both sides.
         assert_eq!(
             running(
                 &changed(&["docs/a.md", "crates/aldis/a.md"]),
                 Force::default()
             ),
-            rust_but_kani
+            rust
         );
-        // A crate with Kani harnesses runs the check kani with the other Rust checks (OI-42).
+        // A crate with Kani harnesses runs the Rust checks, not kani, which is nightly-only
+        // (OI-42, VER-059).
         assert_eq!(
             running(
                 &changed(&["crates/aldis-core/src/proofs.rs"]),
@@ -1000,7 +1067,7 @@ mod tests {
         // The vectors are read by both implementations, not by the header check.
         assert_eq!(
             running(&changed(&["test-vectors/README.md"]), Force::default()),
-            names(|c| c.name != "header" && c.name != "kani")
+            names(|c| c.name != "header" && !c.nightly)
         );
         // The committed header is read by the header check (and spec) alone.
         assert_eq!(
@@ -1030,7 +1097,6 @@ mod tests {
             all: false,
             cpp: true,
         };
-        want.retain(|n| n != "kani");
         assert_eq!(
             running(&changed(&["crates/aldis/src/lib.rs"]), all_cpp),
             want
@@ -1041,6 +1107,8 @@ mod tests {
     #[test]
     fn fail_safe() {
         let everything = names(|_| true);
+        let but_nightly = names(|c| !c.nightly);
+        let nightly = |d: &Decision| d.name == "kani" && d.outcome() == Some(Outcome::NotRun);
         let default = Force::default();
         let all = Force {
             all: true,
@@ -1050,23 +1118,25 @@ mod tests {
         for paths in [
             &[".gitignore"][..],
             &["docs/a.md", "specs/fetch.sh"],
-            &[".github/CODEOWNERS"],
+            &[".github/ISSUE_TEMPLATE/bug.md"],
         ] {
             let change = changed(paths);
             let p = plan(&all_checks(), &change, default, covered(&change));
             assert!(
                 p.checks
                     .iter()
-                    .all(|d| d.run && d.why.contains("an input of no check")),
+                    .all(|d| nightly(d) || (d.run && d.why.contains("an input of no check"))),
                 "{paths:?}"
             );
         }
+        // --all runs every check, the nightly-only ones too (VER-059).
         assert_eq!(running(&changed(&["docs/a.md"]), all), everything);
         let unknown = Change {
             base: None,
             paths: Err("origin/main could not be fetched".to_owned()),
         };
-        assert_eq!(running(&unknown, default), everything);
+        assert_eq!(running(&unknown, default), but_nightly);
+        assert_eq!(running(&unknown, all), everything);
         // No record covers the base, and the branch has none.
         let p = plan(&all_checks(), &changed(&["docs/a.md"]), default, |b| {
             Sources {
@@ -1075,7 +1145,7 @@ mod tests {
             }
         });
         assert_eq!(p.every, Some(format!("nothing covers {}", "b".repeat(40))));
-        assert!(p.checks.iter().all(|d| d.run));
+        assert!(p.checks.iter().all(|d| d.run || nightly(d)));
         // A record whose diff is not known is not used.
         let mut change = changed(&["docs/a.md"]);
         let p = plan(&all_checks(), &change, default, covered(&change));
@@ -1085,7 +1155,7 @@ mod tests {
             ..change.clone()
         };
         let p = plan(&all_checks(), &change, default, covered(&unknown_diff));
-        assert!(p.checks.iter().all(|d| d.run));
+        assert!(p.checks.iter().all(|d| d.run || nightly(d)));
         // Records are not looked for when every check runs anyway.
         change.paths = Err("the commit is on main".to_owned());
         let asked = std::cell::Cell::new(false);
@@ -1142,10 +1212,11 @@ mod tests {
                     && !xtask_tests.contains(&c.name.as_str())
             })
         );
-        assert_eq!(
-            of(Some(Outcome::Skipped)),
-            names(|c| c.cpp || c.name == "kani")
-        );
+        assert_eq!(of(Some(Outcome::Skipped)), names(|c| c.cpp));
+        // kani is nightly-only: neither skipped nor reused, whatever the records say.
+        assert_eq!(of(Some(Outcome::NotRun)), ["kani"]);
+        let kani = p.checks.iter().find(|d| d.name == "kani").unwrap();
+        assert_eq!((kani.why.as_str(), &kani.source), (NIGHTLY_ONLY, &None));
         let mut run = vec!["spec".to_owned()];
         run.extend(xtask_tests.map(str::to_owned));
         assert_eq!(of(None), names(|c| run.contains(&c.name)));
@@ -1630,8 +1701,9 @@ mod tests {
         // The C++ checks: unchanged against the base, which PR 1's record covers.
         assert_eq!(
             decided(&p, Some(Outcome::Skipped)),
-            (names(|c| c.cpp || c.name == "kani"), vec![r.head1.clone()])
+            (names(|c| c.cpp), vec![r.head1.clone()])
         );
+        assert_eq!(decided(&p, Some(Outcome::NotRun)).0, ["kani"]);
         // spec reads every path; the xtask tests read cpp/.
         let mut run = xtask_tests.map(str::to_owned).to_vec();
         run.push("spec".to_owned());
@@ -1639,7 +1711,7 @@ mod tests {
         let lines = describe(&p, &checks);
         assert!(
             lines[0].ends_with(&format!(
-                "4 of {} checks run, 16 skipped, {} reused",
+                "4 of {} checks run, 15 skipped, {} reused, 1 nightly only",
                 checks.len(),
                 rust.len()
             )),
@@ -1696,10 +1768,10 @@ mod tests {
     fn a_main_merge_that_changes_a_rust_input_runs_the_rust_checks() {
         let r = reverify("rust-input", "crates/y/src/lib.rs");
         let p = plan_of(&r);
-        assert_eq!(decided(&p, None).0, names(|c| !c.cpp && c.name != "kani"));
+        assert_eq!(decided(&p, None).0, names(|c| !c.cpp && !c.nightly));
         assert_eq!(
             decided(&p, Some(Outcome::Skipped)),
-            (names(|c| c.cpp || c.name == "kani"), vec![r.head1])
+            (names(|c| c.cpp), vec![r.head1])
         );
         assert_eq!(decided(&p, Some(Outcome::Reused)).0, Vec::<String>::new());
         let clippy = p.checks.iter().find(|d| d.name == "clippy").unwrap();
@@ -1853,5 +1925,184 @@ mod tests {
         let mut notes = Notes::fetch(&r.clone.0).unwrap();
         assert_eq!(notes.origin(&r.p1, "cpp-tidy", ORIGIN_DEPTH), None);
         assert!(notes.origin(&r.p1, "clippy", ORIGIN_DEPTH).is_some());
+    }
+
+    // req: VER-056, VER-058
+    #[test]
+    fn a_check_that_did_not_run_is_never_a_source() {
+        let r = reverify("stopped", "cpp/src/a.cpp");
+        let checks = all();
+        let stopped = "the run stopped after the gating check header failed (--fail-fast)";
+        // A record that passes the gate, in which kani, nightly-only, did not run: kani takes no
+        // result from it, and every check that passed does.
+        let mut kani = r.origin.record_for(
+            record::FORMAT,
+            &r.p1,
+            &entries(&checks, |c| {
+                if c.name == "kani" {
+                    ("not-run", None)
+                } else {
+                    ("pass", None)
+                }
+            }),
+        );
+        let at = checks.iter().position(|c| c.name == "kani").unwrap();
+        kani["checks"][at]["reason"] = json!(stopped);
+        assert_eq!(record::gate_problems(&kani), Vec::<String>::new());
+        r.origin.publish_record(&kani);
+        let mut notes = Notes::fetch(&r.clone.0).unwrap();
+        assert_eq!(notes.origin(&r.p1, "kani", ORIGIN_DEPTH), None);
+        assert_eq!(
+            notes
+                .origin(&r.p1, "clippy", ORIGIN_DEPTH)
+                .map(|s| s.commit),
+            Some(r.p1.clone())
+        );
+        // The record of a run that stopped at header, had it been published, is no source at
+        // all: not even for the checks that passed before the stop.
+        let order: Vec<String> = super::super::checks::run_order()
+            .into_iter()
+            .map(|c| c.name)
+            .collect();
+        let header = order.iter().position(|n| n == "header").unwrap();
+        r.origin.publish(
+            &r.p1,
+            &entries(&checks, |c| {
+                let at = order.iter().position(|n| *n == c.name).unwrap();
+                match at.cmp(&header) {
+                    std::cmp::Ordering::Less => ("pass", None),
+                    std::cmp::Ordering::Equal => ("fail", None),
+                    std::cmp::Ordering::Greater => ("not-run", None),
+                }
+            }),
+        );
+        let mut notes = Notes::fetch(&r.clone.0).unwrap();
+        assert_eq!(notes.passing(&r.p1), None);
+        assert_eq!(notes.origin(&r.p1, "fmt", ORIGIN_DEPTH), None);
+        let p = plan_of(&r);
+        assert_eq!(p.branch, Vec::<String>::new());
+        assert!(
+            p.checks
+                .iter()
+                .filter_map(|d| d.source.as_ref())
+                .all(|s| s.commit != r.p1),
+            "{p:?}"
+        );
+    }
+
+    /// A [`publish::Forge`] that has every commit and records the statuses set.
+    #[derive(Default)]
+    struct Forge(std::cell::RefCell<Vec<String>>);
+
+    impl publish::Forge for Forge {
+        fn has_commit(&self, _: &Path, _: &str) -> Result<bool, String> {
+            Ok(true)
+        }
+
+        fn set_status(
+            &self,
+            _: &Path,
+            commit: &str,
+            _: &str,
+            _: Option<&str>,
+        ) -> Result<(), String> {
+            self.0.borrow_mut().push(commit.to_owned());
+            Ok(())
+        }
+    }
+
+    /// Writes `rec` as the local record of its commit in `repo`, as a run does.
+    fn write_record(repo: &Repo, rec: &Value) {
+        let commit = rec["commit"].as_str().unwrap();
+        repo.write(
+            &format!("target/verify/{commit}/record.json"),
+            &record::canonical(rec),
+        );
+    }
+
+    /// Whether `origin` has a published record of `commit`.
+    fn has_note(origin: &Repo, commit: &str) -> bool {
+        Command::new("git")
+            .args(["notes", "--ref=refs/notes/verify", "show", commit])
+            .current_dir(&origin.0)
+            .env("GIT_CONFIG_GLOBAL", "/dev/null")
+            .output()
+            .is_ok_and(|o| o.status.success())
+    }
+
+    // req: VER-056, VER-057, VER-058
+    #[test]
+    fn a_passing_record_of_a_commit_behind_main_is_published_without_a_status() {
+        let (origin, clone, _) = history("behind");
+        for (k, v) in [
+            ("user.name", "t"),
+            ("user.email", "t@t"),
+            ("commit.gpgsign", "false"),
+        ] {
+            clone.git(&["config", k, v]);
+        }
+        // Local records are not committed.
+        clone.write(".git/info/exclude", "target/\n");
+        let checks = all();
+        clone.write("crates/x/src/lib.rs", "//! x, on the topic\n");
+        let p = clone.commit("topic");
+        clone.git(&["push", "-q", "origin", "topic"]);
+        // main moves while p is verified.
+        origin.write("cpp/src/a.cpp", "// main moved\n");
+        origin.commit("main moved");
+        let passing = clone.record_for(record::FORMAT, &p, &entries(&checks, |_| ("pass", None)));
+        write_record(&clone, &passing);
+        let forge = Forge::default();
+        // The note is published; no status is set, and the result says the head is behind.
+        assert_eq!(publish::publish_in(&clone.0, &p, &forge), Ok(1));
+        assert!(has_note(&origin, &p));
+        assert_eq!(forge.0.borrow().len(), 0);
+        // The merge gate still refuses the head.
+        assert_eq!(publish::check_in(&clone.0, &p), Ok(1));
+
+        // The branch merges main: the Rust checks take their results from p's record.
+        clone.git(&["fetch", "-q", "origin"]);
+        clone.git(&["merge", "-q", "--no-edit", "origin/main"]);
+        let h = clone.git(&["rev-parse", "HEAD"]);
+        let c = change(&clone.0, &h, Main::Origin);
+        let plan_h = plan(&checks, &c, Force::default(), |b| {
+            sources(&clone.0, &h, b, "origin/main", &checks)
+        });
+        assert_eq!(plan_h.branch, std::slice::from_ref(&p));
+        let clippy = plan_h.checks.iter().find(|d| d.name == "clippy").unwrap();
+        assert_eq!(clippy.outcome(), Some(Outcome::Reused));
+        assert_eq!(
+            clippy.source.as_ref().map(|s| s.commit.as_str()),
+            Some(p.as_str())
+        );
+        let cpp = plan_h.checks.iter().find(|d| d.name == "cpp-tidy").unwrap();
+        assert!(cpp.run, "{cpp:?}");
+        // Its record passes, re-derived from git and p's record, and sets the status.
+        let rec_h = record_from(&clone, &h, &plan_h, &checks);
+        assert_eq!(recheck(&clone.0, &rec_h, &checks), Vec::<String>::new());
+        write_record(&clone, &rec_h);
+        assert_eq!(publish::publish_in(&clone.0, &h, &forge), Ok(0));
+        assert_eq!(*forge.0.borrow(), std::slice::from_ref(&h));
+        assert_eq!(publish::check_in(&clone.0, &h), Ok(0));
+
+        // A failed run publishes nothing, behind main or not.
+        clone.write("crates/x/src/lib.rs", "//! x, broken\n");
+        let q = clone.commit("broken");
+        let failed = clone.record_for(
+            record::FORMAT,
+            &q,
+            &entries(&checks, |c| {
+                if c.name == "fmt" {
+                    ("fail", None)
+                } else {
+                    ("pass", None)
+                }
+            }),
+        );
+        write_record(&clone, &failed);
+        let refused = publish::publish_in(&clone.0, &q, &forge).unwrap_err();
+        assert!(refused.contains("fmt: fail"), "{refused}");
+        assert!(!has_note(&origin, &q));
+        assert_eq!(forge.0.borrow().len(), 1);
     }
 }

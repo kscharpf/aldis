@@ -219,7 +219,7 @@ impl Params for Map {
 pub struct Out {
     expect: Map,
     /// Bit `i` is set once the key at index `i` of `expect` has been produced. An object with
-    /// more than 64 keys cannot be tracked and fails the comparison (the vectors have at most 23).
+    /// more than 64 keys cannot be tracked and fails the comparison (the vectors have at most 27).
     seen: u64,
     ok: bool,
 }
@@ -447,7 +447,7 @@ pub fn run(t: &mut Tally) {
             Group::Time => crate::time::vector(case, &mut out, &mut scratch),
             Group::Spp => crate::spp::vector(case, &mut out, &mut scratch),
             Group::Epp => crate::epp::vector(case, &mut out, &mut scratch),
-            Group::Aos => crate::aos::vector(case, &mut out),
+            Group::Aos => crate::aos::vector(case, &mut out, &mut scratch),
             Group::Tm => crate::tm::vector(case, &mut out, &mut scratch),
             Group::Tc => crate::tc::vector(case, &mut out, &mut scratch),
             Group::Uslp => crate::uslp::vector(case, &mut out, &mut scratch),

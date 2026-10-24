@@ -345,15 +345,16 @@ pub const ALDIS_FIELD_OCF_REPORT_USE: u16 = 66;
 
 /// Transfer Frame Version Number.
 ///
-/// Code 67, a field (132.0 §4.1.2.2.2; 232.0 §4.1.2.2; 732.1 §4.1.2.2.2; API-082, CABI-021).
+/// Code 67, a field (132.0 §4.1.2.2.2; 232.0 §4.1.2.2; 732.0 §4.1.2.2.2; 732.1 §4.1.2.2.2; API-082,
+/// CABI-021).
 pub const ALDIS_FIELD_FRAME_VERSION: u16 = 67;
 
 /// Length of a Transfer Frame in octets: the Frame Length field of a TC or USLP frame, or the
-/// Transfer Frame Length managed parameter of a TM or USLP physical channel with fixed-length
+/// Transfer Frame Length managed parameter of a TM, AOS, or USLP physical channel with fixed-length
 /// frames.
 ///
 /// Code 68, a field (132.0 §4.1.1.2, §5.1 Table 5-1; 232.0 §4.1.2.7; 732.1 §4.1.2.7, Table 5-1;
-/// API-082, CABI-021).
+/// 732.0 §4.1.1.2, §5.2 Table 5-1; API-082, CABI-021).
 pub const ALDIS_FIELD_FRAME_LEN: u16 = 68;
 
 /// Operational Control Field Flag.
@@ -381,9 +382,9 @@ pub const ALDIS_FIELD_PACKET_ORDER_FLAG: u16 = 72;
 /// Code 73, a field (132.0 §4.1.2.7.5; API-082, CABI-021).
 pub const ALDIS_FIELD_SEGMENT_LENGTH_ID: u16 = 73;
 
-/// First Header Pointer.
+/// First Header Pointer: of the TM Transfer Frame Data Field Status, or of the AOS `M_PDU` Header.
 ///
-/// Code 74, a field (132.0 §4.1.2.7.6; API-082, CABI-021).
+/// Code 74, a field (132.0 §4.1.2.7.6; 732.0 §4.1.4.2.2; 732.0-B-4 §4.1.4.2.3; API-082, CABI-021).
 pub const ALDIS_FIELD_FIRST_HEADER_POINTER: u16 = 74;
 
 /// Transfer Frame Secondary Header Version Number.
@@ -479,9 +480,10 @@ pub const ALDIS_FIELD_END_OF_FRAME_PRIMARY_HEADER_FLAG: u16 = 91;
 /// Code 92, a field (732.1 §4.1.2.11; §5.4 Table 5-3; API-082, CABI-021).
 pub const ALDIS_FIELD_VCF_COUNT_LEN: u16 = 92;
 
-/// Virtual Channel Frame Count.
+/// Virtual Channel Frame Count: of a USLP frame, of the length its VCF Count Length gives; of an
+/// AOS frame, 24 bits.
 ///
-/// Code 93, a field (732.1 §4.1.2.12; API-082, CABI-021).
+/// Code 93, a field (732.1 §4.1.2.12; 732.0 §4.1.2.4; API-082, CABI-021).
 pub const ALDIS_FIELD_VCF_COUNT: u16 = 93;
 
 /// TFDZ Construction Rule of the TFDF Header.
@@ -499,10 +501,11 @@ pub const ALDIS_FIELD_UPID: u16 = 95;
 /// Code 96, a field (732.1 §4.1.4.2.4; API-082, CABI-021).
 pub const ALDIS_FIELD_FHP_LVO_POINTER: u16 = 96;
 
-/// Insert Zone Length, a managed parameter of a Physical Channel, and the Insert Zone a writer is
-/// given.
+/// Insert Zone Length, a managed parameter of a USLP or AOS Physical Channel, and the Insert Zone a
+/// writer is given.
 ///
-/// Code 97, a parameter (732.1 §4.1.3; §5.2 Table 5-1 note 5; API-082, CABI-021).
+/// Code 97, a parameter (732.1 §4.1.3; §5.2 Table 5-1 note 5; 732.0 §4.1.3.4.1, §5.2 Table 5-1;
+/// API-082, CABI-021).
 pub const ALDIS_FIELD_INSERT_ZONE_LEN: u16 = 97;
 
 /// Truncated Transfer Frame Length, a managed parameter of a Virtual Channel.
@@ -516,6 +519,43 @@ pub const ALDIS_FIELD_TRUNCATED_FRAME_LEN: u16 = 98;
 /// Code 99, a parameter (732.1 §5.2 Table 5-1, §5.4 Table 5-3 note 2; §4.1.4.2.2.1.1; API-082,
 /// CABI-021).
 pub const ALDIS_FIELD_TRANSFER_FRAME_TYPE: u16 = 99;
+
+/// Reserved Spare of the AOS Transfer Frame Primary Header, bits 42–43, in Issue 4 and earlier (the
+/// two most significant SCID bits in Issue 5).
+///
+/// Code 100, a field (732.0-B-4 §4.1.2.5.4; 732.0 §4.1.2.5.4; API-082, CABI-021).
+pub const ALDIS_FIELD_AOS_HEADER_SPARE: u16 = 100;
+
+/// Virtual Channel Frame Count Cycle of an AOS Transfer Frame, bits 44–47.
+///
+/// Code 101, a field (732.0 §4.1.2.5.5; API-082, CABI-021).
+pub const ALDIS_FIELD_VC_FRAME_COUNT_CYCLE: u16 = 101;
+
+/// Data Field Content of an AOS virtual channel: `M_PDU`, `B_PDU`, `VCA_SDU`, or Idle Data.
+///
+/// Code 102, a parameter (732.0 §4.1.4.1.3–4, §5.4 Table 5-3; API-082, CABI-021).
+pub const ALDIS_FIELD_DATA_FIELD_CONTENT: u16 = 102;
+
+/// Operational Control Field of an AOS Transfer Frame, present by the `VC_OCF` managed parameter of
+/// its virtual channel.
+///
+/// Code 103, a field (732.0 §4.1.5.2–3, §5.4 Table 5-3; API-082, CABI-021).
+pub const ALDIS_FIELD_OCF: u16 = 103;
+
+/// Reserved Spare of the `M_PDU` Header, bits 0–4, in Issue 4 and earlier.
+///
+/// Code 104, a field (732.0-B-4 §4.1.4.2.2; API-082, CABI-021).
+pub const ALDIS_FIELD_MPDU_SPARE: u16 = 104;
+
+/// Reserved Spare of the `B_PDU` Header, bits 0–1.
+///
+/// Code 105, a field (732.0 §4.1.4.3.2; API-082, CABI-021).
+pub const ALDIS_FIELD_BPDU_SPARE: u16 = 105;
+
+/// Bitstream Data Pointer of the `B_PDU` Header.
+///
+/// Code 106, a field (732.0 §4.1.4.3.3; API-082, CABI-021).
+pub const ALDIS_FIELD_BITSTREAM_DATA_POINTER: u16 = 106;
 
 // Each code is the code of its `aldis_core::field` constant (API-082).
 const _: () = {
@@ -624,4 +664,11 @@ const _: () = {
     assert!(ALDIS_FIELD_INSERT_ZONE_LEN == field::INSERT_ZONE_LEN.code().get());
     assert!(ALDIS_FIELD_TRUNCATED_FRAME_LEN == field::TRUNCATED_FRAME_LEN.code().get());
     assert!(ALDIS_FIELD_TRANSFER_FRAME_TYPE == field::TRANSFER_FRAME_TYPE.code().get());
+    assert!(ALDIS_FIELD_AOS_HEADER_SPARE == field::AOS_HEADER_SPARE.code().get());
+    assert!(ALDIS_FIELD_VC_FRAME_COUNT_CYCLE == field::VC_FRAME_COUNT_CYCLE.code().get());
+    assert!(ALDIS_FIELD_DATA_FIELD_CONTENT == field::DATA_FIELD_CONTENT.code().get());
+    assert!(ALDIS_FIELD_OCF == field::OCF.code().get());
+    assert!(ALDIS_FIELD_MPDU_SPARE == field::MPDU_SPARE.code().get());
+    assert!(ALDIS_FIELD_BPDU_SPARE == field::BPDU_SPARE.code().get());
+    assert!(ALDIS_FIELD_BITSTREAM_DATA_POINTER == field::BITSTREAM_DATA_POINTER.code().get());
 };

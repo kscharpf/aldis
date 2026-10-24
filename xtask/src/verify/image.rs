@@ -7,7 +7,9 @@
 //! On a GitHub-hosted runner the image may instead be pulled from the project's registry
 //! (VER-060): `ALDIS_VERIFY_PULL` names the repository, and an image is used only when its labels
 //! name the same input hash and a commit whose image inputs hash to it. The workflows push the
-//! images they build (`verify image --push`), tagged `<hash>-<arch>`.
+//! images they build (`verify image --push`, or `verify --push-image` in a run that needs one),
+//! tagged `<hash>-<arch>`. A run in which no gating check needs the container uses no image
+//! ([`unused`]).
 
 use std::path::Path;
 use std::process::{Command, Stdio};
@@ -289,6 +291,12 @@ impl Engine {
         if let Some(only) = &opts.only {
             args.extend(["--only".to_owned(), only.join(",")]);
         }
+        if opts.fails_fast() {
+            args.push("--fail-fast".to_owned());
+        }
+        if opts.all {
+            args.push("--all".to_owned());
+        }
         // The exit status reports gating failures, which the record carries; only a missing
         // report is an error here.
         let _ = Command::new(&self.program)
@@ -324,6 +332,20 @@ impl Image {
     pub fn to_json(&self) -> Value {
         json!({"tag": self.tag, "id": self.id, "inputs": self.inputs, "source": self.source})
     }
+}
+
+/// The record's `image` object for a run of `commit` that starts no container, for the reason
+/// `why`: no tag or ID, since no image was used, and the hash of the image inputs of `commit`
+/// that a run needing one would have used; its `source` is `{"kind": "none"}` with the reason
+/// (VER-057). The tools and packages of an image are recorded only by a run that used one.
+pub fn unused(commit: &str, why: &str) -> Result<Value, String> {
+    let (inputs, _) = input_hash(commit)?;
+    Ok(json!({
+        "tag": null,
+        "id": null,
+        "inputs": inputs,
+        "source": {"kind": "none", "reason": why},
+    }))
 }
 
 /// The first 16 hex digits of a hash: the tag of the image.
