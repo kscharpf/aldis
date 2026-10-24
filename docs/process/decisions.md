@@ -92,3 +92,4 @@ One line for each decision the maintainer takes, under the [decision rights](dec
 - 2026-10-24 · process · #101 · VER-060: a run that needs no image neither pulls nor builds one
 - 2026-10-24 · process · #101 · A nightly-only check (Kani) that does not pass in the nightly run fails the job and opens the nightly-failure issue (VER-059)
 - 2026-10-24 · process · #101 · verify --publish stores a passing record even when main moved during the run, without setting aldis/verify; such a record may be a reuse source; the merge gate is unchanged (VER-057, VER-058)
+- 2026-10-24 · process · #101 · The VER-056, VER-057, and VER-058 wording for records of commits behind main accepted as drafted; verify --publish exits with a failure when it publishes such a record, and verify check fails on any head behind main
