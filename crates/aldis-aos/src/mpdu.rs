@@ -16,6 +16,61 @@ use crate::header::{len_u64, mismatch};
 /// Length of the `M_PDU` Header, in octets (732.0 §4.1.4.2.1.3 a).
 pub const MPDU_HEADER_LEN: usize = 2;
 
+/// The octet offset of the first Packet that starts in a Packet Zone, 0 to `0xFFFD`
+/// (732.0 §4.1.4.2.2.3–5; AOS-003, AOS-017, RS-020).
+///
+/// The offsets of this type are those the 16-bit pointer of `Issue5` holds below its two
+/// reserved values, so every offset has a pointer value there (§4.1.4.2.2.4–5). Whether it fits
+/// the 11-bit pointer of `Issue4Compatible`, up to [`PacketPointer::max_offset`], and whether it
+/// lies inside a given Packet Zone are the writer's checks (AOS-019).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct PacketOffset(u16);
+
+impl PacketOffset {
+    /// Largest offset, `0xFFFD`: the largest `Issue5` pointer below the reserved values
+    /// (§4.1.4.2.2.3–5).
+    pub const MAX: u16 = PacketPointer::max_offset(AosEdition::Issue5);
+
+    /// The offset, or `None` above `0xFFFD` (API-001).
+    #[must_use]
+    pub const fn new(offset: u16) -> Option<PacketOffset> {
+        if offset <= PacketOffset::MAX {
+            Some(PacketOffset(offset))
+        } else {
+            None
+        }
+    }
+
+    /// The offset in octets (§4.1.4.2.2.3).
+    #[must_use]
+    pub const fn get(self) -> u16 {
+        self.0
+    }
+}
+
+impl TryFrom<u16> for PacketOffset {
+    type Error = Error;
+
+    /// # Errors
+    /// `OutOfRange` (`first_header_pointer`) above `0xFFFD`, with that bound.
+    fn try_from(offset: u16) -> Result<PacketOffset> {
+        PacketOffset::new(offset).ok_or_else(|| {
+            mismatch(
+                ErrorKind::OutOfRange,
+                field::FIRST_HEADER_POINTER,
+                u64::from(PacketOffset::MAX),
+                u64::from(offset),
+            )
+        })
+    }
+}
+
+impl From<PacketOffset> for u16 {
+    fn from(offset: PacketOffset) -> u16 {
+        offset.0
+    }
+}
+
 /// The First Header Pointer, classified (732.0 §4.1.4.2.2; 732.0-B-4 §4.1.4.2.3; AOS-003,
 /// AOS-017).
 ///
@@ -24,8 +79,8 @@ pub const MPDU_HEADER_LEN: usize = 2;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum PacketPointer {
     /// The first Packet that starts in the Packet Zone starts at this octet, numbered from 0
-    /// (§4.1.4.2.2.3).
-    StartsAt(u16),
+    /// (§4.1.4.2.2.3; RS-020).
+    StartsAt(PacketOffset),
     /// All ones: no Packet starts in the Packet Zone (§4.1.4.2.2.4).
     NoPacketStart,
     /// All ones minus one: the Packet Zone holds only Idle Data (§4.1.4.2.2.5).
@@ -68,25 +123,27 @@ impl PacketPointer {
             Ok(PacketPointer::NoPacketStart)
         } else if raw == PacketPointer::only_idle_data_raw(edition) {
             Ok(PacketPointer::OnlyIdleData)
-        } else if usize::from(raw) < zone_len {
-            Ok(PacketPointer::StartsAt(raw))
         } else {
-            Err(mismatch(
-                ErrorKind::Malformed,
-                field::FIRST_HEADER_POINTER,
-                len_u64(zone_len.saturating_sub(1)),
-                u64::from(raw),
-            ))
+            match PacketOffset::new(raw) {
+                Some(offset) if usize::from(raw) < zone_len => Ok(PacketPointer::StartsAt(offset)),
+                _ => Err(mismatch(
+                    ErrorKind::Malformed,
+                    field::FIRST_HEADER_POINTER,
+                    len_u64(zone_len.saturating_sub(1)),
+                    u64::from(raw),
+                )),
+            }
         }
     }
 
-    /// The raw field value in `edition`. An offset above [`max_offset`](Self::max_offset)
-    /// saturates to "no Packet starts"; the writers reject such offsets before they reach the
-    /// wire (AOS-003, AOS-019).
+    /// The raw field value in `edition`. Every [`PacketOffset`] fits `Issue5`; in
+    /// `Issue4Compatible`, an offset above [`max_offset`](Self::max_offset) saturates to "no
+    /// Packet starts", and the writers reject such offsets before they reach the wire (AOS-003,
+    /// AOS-019).
     #[must_use]
     pub const fn to_raw(self, edition: AosEdition) -> u16 {
         match self {
-            PacketPointer::StartsAt(n) if n <= PacketPointer::max_offset(edition) => n,
+            PacketPointer::StartsAt(n) if n.get() <= PacketPointer::max_offset(edition) => n.get(),
             PacketPointer::StartsAt(_) | PacketPointer::NoPacketStart => {
                 PacketPointer::no_packet_start_raw(edition)
             }
@@ -207,9 +264,10 @@ impl<'a> Mpdu<'a> {
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
-    use super::{Mpdu, PacketPointer};
+    use super::{Mpdu, PacketOffset, PacketPointer};
     use crate::anomaly::AosAnomaly;
     use crate::config::AosEdition::{Issue4Compatible, Issue5};
+    use crate::config::tests::starts_at;
     use crate::field;
     use aldis_core::{AnomalySet, DecodeMode, ErrorDetail, ErrorKind};
 
@@ -226,18 +284,43 @@ mod tests {
         assert_eq!(PacketPointer::only_idle_data_raw(Issue4Compatible), 0x7FE);
         assert_eq!(PacketPointer::max_offset(Issue4Compatible), 0x7FD);
         for (p, five, four) in [
-            (PacketPointer::StartsAt(7), 7, 7),
-            (PacketPointer::StartsAt(0x7FD), 0x7FD, 0x7FD),
-            (PacketPointer::StartsAt(0x7FE), 0x7FE, 0x7FF),
-            (PacketPointer::StartsAt(0xFFFE), 0xFFFF, 0x7FF),
+            (starts_at(7), 7, 7),
+            (starts_at(0x7FD), 0x7FD, 0x7FD),
+            (starts_at(0x7FE), 0x7FE, 0x7FF),
+            (starts_at(0xFFFD), 0xFFFD, 0x7FF),
             (PacketPointer::NoPacketStart, 0xFFFF, 0x7FF),
             (PacketPointer::OnlyIdleData, 0xFFFE, 0x7FE),
         ] {
             assert_eq!((p.to_raw(Issue5), p.to_raw(Issue4Compatible)), (five, four));
         }
+        assert_eq!(starts_at(0x123).header_octets(Issue5), [0x01, 0x23]);
+    }
+
+    #[test]
+    fn offsets_lie_below_the_reserved_values() {
+        // req: AOS-003, AOS-017, RS-020
+        assert_eq!(PacketOffset::MAX, PacketPointer::max_offset(Issue5));
+        for n in [0, 1, 0x7FD, 0x7FE, 0xFFFD] {
+            let offset = PacketOffset::new(n).unwrap();
+            assert_eq!((offset.get(), u16::from(offset)), (n, n));
+        }
+        assert_eq!(PacketOffset::new(0xFFFE), None);
+        assert_eq!(PacketOffset::new(0xFFFF), None);
         assert_eq!(
-            PacketPointer::StartsAt(0x123).header_octets(Issue5),
-            [0x01, 0x23]
+            PacketOffset::try_from(0xFFFD),
+            Ok(PacketOffset::new(0xFFFD).unwrap())
+        );
+        let e = PacketOffset::try_from(0xFFFE).unwrap_err();
+        assert_eq!(
+            (e.kind(), e.field(), e.detail()),
+            (
+                ErrorKind::OutOfRange,
+                Some(field::FIRST_HEADER_POINTER),
+                ErrorDetail::Expected {
+                    expected: 0xFFFD,
+                    found: 0xFFFE
+                }
+            )
         );
     }
 
@@ -255,10 +338,7 @@ mod tests {
                 PacketPointer::classify(idle, 4, edition),
                 Ok(PacketPointer::OnlyIdleData)
             );
-            assert_eq!(
-                PacketPointer::classify(3, 4, edition),
-                Ok(PacketPointer::StartsAt(3))
-            );
+            assert_eq!(PacketPointer::classify(3, 4, edition), Ok(starts_at(3)));
             let e = PacketPointer::classify(4, 4, edition).unwrap_err();
             assert_eq!(
                 (e.kind(), e.field(), e.detail()),
@@ -279,7 +359,21 @@ mod tests {
         );
         assert_eq!(
             PacketPointer::classify(0x7FE, 4000, Issue5),
-            Ok(PacketPointer::StartsAt(0x7FE))
+            Ok(starts_at(0x7FE))
+        );
+        // A 16-bit value given with the 11-bit edition: inside the zone, but above every
+        // offset a pointer can hold (RS-020).
+        let e = PacketPointer::classify(0xFFFE, 70_000, Issue4Compatible).unwrap_err();
+        assert_eq!(
+            (e.kind(), e.field(), e.detail()),
+            (
+                ErrorKind::Malformed,
+                Some(field::FIRST_HEADER_POINTER),
+                ErrorDetail::Expected {
+                    expected: 69_999,
+                    found: 0xFFFE
+                }
+            )
         );
     }
 
@@ -288,10 +382,7 @@ mod tests {
         // req: AOS-017, GEN-013
         let field = [0x00, 0x02, 0xA0, 0xA1, 0xA2];
         let m = Mpdu::decode(&field, Issue5, STRICT).unwrap();
-        assert_eq!(
-            (m.pointer(), m.first_header_pointer()),
-            (PacketPointer::StartsAt(2), 2)
-        );
+        assert_eq!((m.pointer(), m.first_header_pointer()), (starts_at(2), 2));
         assert_eq!(m.packet_zone(), &field[2..]);
         assert_eq!(m.packet_zone().as_ptr(), field[2..].as_ptr(), "zero-copy");
         assert_eq!((m.issue4_spare(), m.anomalies()), (0, AnomalySet::empty()));
@@ -336,10 +427,7 @@ mod tests {
             )
         );
         let m = Mpdu::decode(&spare, Issue4Compatible, LENIENT).unwrap();
-        assert_eq!(
-            (m.pointer(), m.issue4_spare()),
-            (PacketPointer::StartsAt(1), 0x15)
-        );
+        assert_eq!((m.pointer(), m.issue4_spare()), (starts_at(1), 0x15));
         assert_eq!(
             m.anomalies(),
             AnomalySet::from_flags(&[AosAnomaly::Issue4SpareSet])

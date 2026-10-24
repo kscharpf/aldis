@@ -108,7 +108,7 @@ fn run(u: &mut Unstructured<'_>) -> Result<()> {
         if let DataUnit::Mpdu(m) = f.data_unit()
             && let PacketPointer::StartsAt(n) = m.pointer()
         {
-            assert!(usize::from(n) < m.packet_zone().len());
+            assert!(usize::from(n.get()) < m.packet_zone().len());
         }
         if let DataUnit::Bpdu(b) = f.data_unit()
             && let BitstreamPointer::ValidBits(n) = b.pointer()
