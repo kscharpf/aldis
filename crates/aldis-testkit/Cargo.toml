@@ -25,6 +25,7 @@ aldis-spp = { path = "../aldis-spp", default-features = false, optional = true }
 aldis-epp = { path = "../aldis-epp", default-features = false, optional = true }
 aldis-tm = { path = "../aldis-tm", default-features = false, optional = true }
 aldis-tc = { path = "../aldis-tc", default-features = false, optional = true }
+aldis-aos = { path = "../aldis-aos", default-features = false, optional = true }
 aldis-uslp = { path = "../aldis-uslp", default-features = false, optional = true }
 proptest = { version = "1.12.0", optional = true }
 
@@ -39,6 +40,7 @@ strategies-spp = ["strategies", "dep:aldis-spp"]
 strategies-epp = ["strategies", "dep:aldis-epp"]
 strategies-tm = ["strategies", "dep:aldis-tm"]
 strategies-tc = ["strategies", "dep:aldis-tc"]
+strategies-aos = ["strategies", "dep:aldis-aos"]
 strategies-uslp = ["strategies", "dep:aldis-uslp"]
 
 # Tooling lint profile (docs/profiles/rust.md RS-017): all + pedantic, no flight-code

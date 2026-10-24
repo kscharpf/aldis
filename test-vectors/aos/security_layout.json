@@ -1,0 +1,336 @@
+{
+  "kind": "codec",
+  "standard": "732.0-B-5 EC1 §6.3, Table 6-1",
+  "provenance": "hand-derived",
+  "provenance_note": "732.0-B-5 EC1 prints no example frame, only the first OID octets of Annex D. Cases hand-derived from 732.0-B-5 EC1 §4.1 (figures 4-1 to 4-4; the Primary Header of §4.1.2 with the SCID's two most significant bits in bits 42-43; the FHEC of §4.1.2.6; the Insert Zone of §4.1.3; OID frames on VCID 63 of §4.1.4.1.5 and Annex D; the M_PDU and B_PDU of §4.1.4.2-3 with their reserved pointer values; the OCF per VC of §4.1.5; the FECF of §4.1.6), §4.3.7.2-3 (the header corrected before the CRC is checked), §5 Tables 5-1 to 5-3, and §6.3, and from 732.0-B-4 §4.1.2.2.3, §4.1.2.5.4, and §4.1.4.2.2-3 for Issue 4, with the readings of docs/standards/aos-frame.md (AOS-001...AOS-019, the anomaly list, OI-43) and the error kinds and field codes of docs/03-api-model.md §9 and §9.1. Inputs assembled bit by bit from the figure widths; expected values computed by an independent Python model of those clauses, written from the Blue Book after the Rust codec but not from its code, and sharing no code with it (the FECF by polynomial division over the corrected header, the OID data by the Annex D recurrence, the FHEC by the table model aos_fhec.py of the fhec_*.json files, loaded from its path). The model is committed as test-vectors/models/aos_frame.py (TV-023); `python3 -I test-vectors/models/aos_frame.py --check test-vectors/aos/<file>.json` recomputes every expected value. One frame is worked by hand in docs/verification/derivations/aos-frame.md.",
+  "cases": [
+    {
+      "id": "aos-sec-dec-001",
+      "requirements": [
+        "API-070",
+        "API-072",
+        "AOS-010"
+      ],
+      "description": "Insert Zone, Security Header 3, M_PDU, Security Trailer 2, OCF, FECF (§6.3)",
+      "operation": "decode",
+      "config": {
+        "frame_len": 32,
+        "fhec": false,
+        "insert_zone_len": 2,
+        "fecf": true,
+        "edition": "issue5",
+        "vcs": [
+          {
+            "scid": 85,
+            "vcid": 3,
+            "content": "mpdu",
+            "ocf": true,
+            "security_header_len": 3,
+            "security_trailer_len": 2
+          }
+        ]
+      },
+      "input_hex": "5543000000000102A5A5A50005303132333435363738393A5A5A01140C2A9ABE",
+      "expect": {
+        "ok": true,
+        "scid": 85,
+        "vcid": 3,
+        "vc_frame_count": 0,
+        "replay_flag": false,
+        "cycle_use_flag": false,
+        "cycle_field": 0,
+        "vc_frame_count_cycle": null,
+        "issue4_spare": 0,
+        "fhec": null,
+        "corrected_symbols": 0,
+        "header_hex": "554300000000",
+        "is_oid": false,
+        "insert_zone_hex": "0102",
+        "security_header_hex": "A5A5A5",
+        "data_field_hex": "0005303132333435363738393A",
+        "security_trailer_hex": "5A5A",
+        "ocf_hex": "01140C2A",
+        "ocf_report": "clcw",
+        "fecf": 39614,
+        "data_unit": "mpdu",
+        "pdu_pointer_raw": 5,
+        "pointer": "starts_at",
+        "pointer_value": 5,
+        "pdu_spare": 0,
+        "zone_hex": "303132333435363738393A",
+        "consumed": 32,
+        "anomalies": []
+      }
+    },
+    {
+      "id": "aos-sec-dec-002",
+      "requirements": [
+        "API-070",
+        "API-072",
+        "AOS-010",
+        "AOS-016"
+      ],
+      "description": "An OID frame on the same channel: no SDLS fields on VCID 63 (OI-43 item 1)",
+      "operation": "decode",
+      "config": {
+        "frame_len": 32,
+        "fhec": false,
+        "insert_zone_len": 2,
+        "fecf": true,
+        "edition": "issue5",
+        "vcs": [
+          {
+            "scid": 85,
+            "vcid": 3,
+            "content": "mpdu",
+            "ocf": true,
+            "security_header_len": 3,
+            "security_trailer_len": 2
+          }
+        ]
+      },
+      "input_hex": "557F00000000010200000000000000000000000000000000000000000000D789",
+      "expect": {
+        "ok": true,
+        "scid": 85,
+        "vcid": 63,
+        "vc_frame_count": 0,
+        "replay_flag": false,
+        "cycle_use_flag": false,
+        "cycle_field": 0,
+        "vc_frame_count_cycle": null,
+        "issue4_spare": 0,
+        "fhec": null,
+        "corrected_symbols": 0,
+        "header_hex": "557F00000000",
+        "is_oid": true,
+        "insert_zone_hex": "0102",
+        "security_header_hex": "",
+        "data_field_hex": "00000000000000000000000000000000000000000000",
+        "security_trailer_hex": "",
+        "ocf_hex": null,
+        "ocf_report": null,
+        "fecf": 55177,
+        "data_unit": "idle_data",
+        "pdu_pointer_raw": null,
+        "pointer": null,
+        "pointer_value": null,
+        "pdu_spare": null,
+        "zone_hex": "00000000000000000000000000000000000000000000",
+        "consumed": 32,
+        "anomalies": []
+      }
+    },
+    {
+      "id": "aos-sec-enc-001",
+      "requirements": [
+        "API-070",
+        "API-072",
+        "AOS-010",
+        "AOS-019"
+      ],
+      "description": "Encode with the SDLS fields",
+      "operation": "encode",
+      "config": {
+        "frame_len": 32,
+        "fhec": false,
+        "insert_zone_len": 2,
+        "fecf": true,
+        "edition": "issue5",
+        "vcs": [
+          {
+            "scid": 85,
+            "vcid": 3,
+            "content": "mpdu",
+            "ocf": true,
+            "security_header_len": 3,
+            "security_trailer_len": 2
+          }
+        ]
+      },
+      "params": {
+        "scid": 85,
+        "vcid": 3,
+        "vc_frame_count": 0,
+        "replay_flag": false,
+        "cycle": null,
+        "pdu": {
+          "kind": "mpdu",
+          "pointer": "starts_at",
+          "value": 5
+        },
+        "insert_zone_hex": "0102",
+        "security_header_hex": "A5A5A5",
+        "zone_hex": "303132333435363738393A",
+        "security_trailer_hex": "5A5A",
+        "ocf_hex": "01140C2A"
+      },
+      "expect": {
+        "ok": true,
+        "output_hex": "5543000000000102A5A5A50005303132333435363738393A5A5A01140C2A9ABE"
+      }
+    },
+    {
+      "id": "aos-sec-enc-002",
+      "requirements": [
+        "API-070",
+        "API-072",
+        "AOS-010",
+        "API-022"
+      ],
+      "description": "A Security Header of 2 octets: LengthMismatch",
+      "operation": "encode",
+      "config": {
+        "frame_len": 32,
+        "fhec": false,
+        "insert_zone_len": 2,
+        "fecf": true,
+        "edition": "issue5",
+        "vcs": [
+          {
+            "scid": 85,
+            "vcid": 3,
+            "content": "mpdu",
+            "ocf": true,
+            "security_header_len": 3,
+            "security_trailer_len": 2
+          }
+        ]
+      },
+      "params": {
+        "scid": 85,
+        "vcid": 3,
+        "vc_frame_count": 0,
+        "replay_flag": false,
+        "cycle": null,
+        "pdu": {
+          "kind": "mpdu",
+          "pointer": "starts_at",
+          "value": 5
+        },
+        "insert_zone_hex": "0102",
+        "security_header_hex": "A5A5",
+        "zone_hex": "303132333435363738393A",
+        "security_trailer_hex": "5A5A",
+        "ocf_hex": "01140C2A"
+      },
+      "expect": {
+        "ok": false,
+        "error": "LengthMismatch",
+        "field": 8
+      }
+    },
+    {
+      "id": "aos-sec-enc-003",
+      "requirements": [
+        "API-070",
+        "API-072",
+        "AOS-010",
+        "API-022"
+      ],
+      "description": "A Security Trailer of 3 octets: LengthMismatch",
+      "operation": "encode",
+      "config": {
+        "frame_len": 32,
+        "fhec": false,
+        "insert_zone_len": 2,
+        "fecf": true,
+        "edition": "issue5",
+        "vcs": [
+          {
+            "scid": 85,
+            "vcid": 3,
+            "content": "mpdu",
+            "ocf": true,
+            "security_header_len": 3,
+            "security_trailer_len": 2
+          }
+        ]
+      },
+      "params": {
+        "scid": 85,
+        "vcid": 3,
+        "vc_frame_count": 0,
+        "replay_flag": false,
+        "cycle": null,
+        "pdu": {
+          "kind": "mpdu",
+          "pointer": "starts_at",
+          "value": 5
+        },
+        "insert_zone_hex": "0102",
+        "security_header_hex": "A5A5A5",
+        "zone_hex": "303132333435363738393A",
+        "security_trailer_hex": "5A5A5A",
+        "ocf_hex": "01140C2A"
+      },
+      "expect": {
+        "ok": false,
+        "error": "LengthMismatch",
+        "field": 9
+      }
+    },
+    {
+      "id": "aos-sec-cfg-001",
+      "requirements": [
+        "API-071",
+        "API-040"
+      ],
+      "description": "A Security Header of 65 octets",
+      "operation": "config",
+      "config": {
+        "frame_len": 200,
+        "fhec": false,
+        "insert_zone_len": 0,
+        "fecf": false,
+        "edition": "issue5",
+        "vcs": [
+          {
+            "scid": 85,
+            "vcid": 3,
+            "content": "vca_sdu",
+            "ocf": false,
+            "security_header_len": 65,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "expect": {
+        "ok": false,
+        "error": "InvalidConfig",
+        "field": 8
+      }
+    },
+    {
+      "id": "aos-sec-cfg-002",
+      "requirements": [
+        "API-070",
+        "CMN-041"
+      ],
+      "description": "SDLS fields that leave no data octet",
+      "operation": "config",
+      "config": {
+        "frame_len": 20,
+        "fhec": false,
+        "insert_zone_len": 0,
+        "fecf": false,
+        "edition": "issue5",
+        "vcs": [
+          {
+            "scid": 85,
+            "vcid": 3,
+            "content": "vca_sdu",
+            "ocf": false,
+            "security_header_len": 8,
+            "security_trailer_len": 6
+          }
+        ]
+      },
+      "expect": {
+        "ok": false,
+        "error": "InvalidConfig",
+        "field": 7
+      }
+    }
+  ]
+}

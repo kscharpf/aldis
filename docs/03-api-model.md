@@ -206,15 +206,15 @@ The table is the registry. `cargo xtask fields --write` generates from it the Ru
 
 | Code | Name | Kind | Meaning | Used by | Defined by |
 |---|---|---|---|---|---|
-| 1 | `spacecraft_id` | field | Spacecraft Identifier | core, tm, tc, uslp | 132.0 §4.1.2.2.3; 232.0 §4.1.2.5; 732.0 §4.1.2.2.3; 732.1 §4.1.2.2.3 |
-| 2 | `vc_id` | field | Virtual Channel Identifier | core, tm, tc, uslp | 132.0 §4.1.2.3; 232.0 §4.1.2.6; 732.0 §4.1.2.3; 732.1 §4.1.2.4 |
+| 1 | `spacecraft_id` | field | Spacecraft Identifier | core, tm, tc, uslp, aos | 132.0 §4.1.2.2.3; 232.0 §4.1.2.5; 732.0 §4.1.2.2.3; 732.1 §4.1.2.2.3 |
+| 2 | `vc_id` | field | Virtual Channel Identifier | core, tm, tc, uslp, aos | 132.0 §4.1.2.3; 232.0 §4.1.2.6; 732.0 §4.1.2.3; 732.1 §4.1.2.4 |
 | 3 | `map_id` | field | Multiplexer Access Point Identifier | core, tc, uslp | 232.0 §4.1.3.2.2.3; 732.1 §4.1.2.5 |
 | 4 | `packet_version` | field | Packet Version Number | core, spp, epp | 133.0 §4.1.3.2; 133.1 §4.1.2.2 |
 | 5 | `apid` | field | Application Process Identifier | core, spp | 133.0 §4.1.3.3.4 |
 | 6 | `sequence_count` | field | Packet Sequence Count or Packet Name | core | 133.0 §4.1.3.4.3 |
-| 7 | `frame_data_field` | field | Transfer Frame Data Field, as the frame layout places it | core, tm, tc, uslp | 132.0 §4.1.4; 232.0 §4.1.3; 732.0 §4.1.4; 732.1 §4.1.4; CMN-041 |
-| 8 | `security_header_len` | parameter | Length of the Security Header on a Virtual Channel or MAP | core, tm | 355.0 §4.1.1.1.4; API-071 |
-| 9 | `security_trailer_len` | parameter | Length of the Security Trailer on a Virtual Channel or MAP | core, tm | 355.0 §4.1.2; API-071 |
+| 7 | `frame_data_field` | field | Transfer Frame Data Field, as the frame layout places it | core, tm, tc, uslp, aos | 132.0 §4.1.4; 232.0 §4.1.3; 732.0 §4.1.4; 732.1 §4.1.4; CMN-041 |
+| 8 | `security_header_len` | parameter | Length of the Security Header on a Virtual Channel or MAP | core, tm, aos | 355.0 §4.1.1.1.4; API-071 |
+| 9 | `security_trailer_len` | parameter | Length of the Security Trailer on a Virtual Channel or MAP | core, tm, aos | 355.0 §4.1.2; API-071 |
 | 10 | `secured_fields` | parameter | Octet ranges of the Security Header, the data field, and the Security Trailer | core | 355.0 §4.1; API-070 |
 | 11 | `width` | parameter | Width of a bit field, 1 to 64 bits | core | GEN-050 |
 | 12 | `bit_offset` | parameter | Bit offset of a bit field in its buffer | core | GEN-050 |
@@ -272,14 +272,14 @@ The table is the registry. `cargo xtask fields --write` generates from it the Ru
 | 64 | `max_data_len` | parameter | Maximum Data Unit Length, a managed parameter | epp | 133.1 §5 Table 5-1 |
 | 65 | `ocf_type_flag` | field | Type Flag of the Operational Control Field, bit 0: Type-1 or Type-2 Report | core | 132.0 §4.1.5.4; 732.0 §4.1.5.4; 732.1 §4.1.5.2.1 |
 | 66 | `ocf_report_use` | field | Bit 1 of a Type-2 Report in the Operational Control Field: project-specific or SDLS Frame Security Report | core | 132.0 §4.1.5.5; 732.0 §4.1.5.5; 732.1 §4.1.5.2.2 |
-| 67 | `frame_version` | field | Transfer Frame Version Number | tm, tc, uslp | 132.0 §4.1.2.2.2; 232.0 §4.1.2.2; 732.1 §4.1.2.2.2 |
-| 68 | `frame_len` | field | Length of a Transfer Frame in octets: the Frame Length field of a TC or USLP frame, or the Transfer Frame Length managed parameter of a TM or USLP physical channel with fixed-length frames | tm, tc, uslp | 132.0 §4.1.1.2, §5.1 Table 5-1; 232.0 §4.1.2.7; 732.1 §4.1.2.7, Table 5-1 |
+| 67 | `frame_version` | field | Transfer Frame Version Number | tm, tc, uslp, aos | 132.0 §4.1.2.2.2; 232.0 §4.1.2.2; 732.0 §4.1.2.2.2; 732.1 §4.1.2.2.2 |
+| 68 | `frame_len` | field | Length of a Transfer Frame in octets: the Frame Length field of a TC or USLP frame, or the Transfer Frame Length managed parameter of a TM, AOS, or USLP physical channel with fixed-length frames | tm, tc, uslp, aos | 132.0 §4.1.1.2, §5.1 Table 5-1; 232.0 §4.1.2.7; 732.1 §4.1.2.7, Table 5-1; 732.0 §4.1.1.2, §5.2 Table 5-1 |
 | 69 | `ocf_flag` | field | Operational Control Field Flag | tm, uslp | 132.0 §4.1.2.4; 732.1 §4.1.2.10 |
 | 70 | `fsh_flag` | field | Transfer Frame Secondary Header Flag | tm | 132.0 §4.1.2.7.2 |
 | 71 | `sync_flag` | field | Synchronization Flag of the TM Transfer Frame Data Field Status | tm | 132.0 §4.1.2.7.3 |
 | 72 | `packet_order_flag` | field | Packet Order Flag | tm | 132.0 §4.1.2.7.4 |
 | 73 | `segment_length_id` | field | Segment Length Identifier | tm | 132.0 §4.1.2.7.5 |
-| 74 | `first_header_pointer` | field | First Header Pointer | tm | 132.0 §4.1.2.7.6 |
+| 74 | `first_header_pointer` | field | First Header Pointer: of the TM Transfer Frame Data Field Status, or of the AOS `M_PDU` Header | tm, aos | 132.0 §4.1.2.7.6; 732.0 §4.1.4.2.2; 732.0-B-4 §4.1.4.2.3 |
 | 75 | `fsh_version` | field | Transfer Frame Secondary Header Version Number | tm | 132.0 §4.1.3.2.2 |
 | 76 | `fsh_len` | field | Total length of the Transfer Frame Secondary Header in octets: its Length field plus one, and the `MC_FSH` or `VC_FSH` Length managed parameter | tm | 132.0 §4.1.3.2.3, §5.2 Table 5-2, §5.3 Table 5-3 |
 | 77 | `control_command_flag` | field | Control Command Flag, read with the Bypass Flag as the frame type of Table 4-1 | tc | 232.0 §4.1.2.3, Table 4-1 |
@@ -298,10 +298,17 @@ The table is the registry. `cargo xtask fields --write` generates from it the Ru
 | 90 | `uslp_header_spare` | field | Reserve Spares of the USLP Primary Header, bits 50–51 | uslp | 732.1 §4.1.2.9 |
 | 91 | `end_of_frame_primary_header_flag` | field | End of Frame Primary Header Flag: a truncated Primary Header | uslp | 732.1 §4.1.2.6; Annex D1.3 |
 | 92 | `vcf_count_len` | field | Virtual Channel Frame Count Length, and the VC Count Length managed parameters for each quality of service | uslp | 732.1 §4.1.2.11; §5.4 Table 5-3 |
-| 93 | `vcf_count` | field | Virtual Channel Frame Count | uslp | 732.1 §4.1.2.12 |
+| 93 | `vcf_count` | field | Virtual Channel Frame Count: of a USLP frame, of the length its VCF Count Length gives; of an AOS frame, 24 bits | uslp, aos | 732.1 §4.1.2.12; 732.0 §4.1.2.4 |
 | 94 | `tfdz_construction_rule` | field | TFDZ Construction Rule of the TFDF Header | uslp | 732.1 §4.1.4.2.2 |
 | 95 | `upid` | field | USLP Protocol Identifier of the TFDF Header | uslp | 732.1 §4.1.4.2.3 |
 | 96 | `fhp_lvo_pointer` | field | First Header/Last Valid Octet Pointer of the TFDF Header | uslp | 732.1 §4.1.4.2.4 |
-| 97 | `insert_zone_len` | parameter | Insert Zone Length, a managed parameter of a Physical Channel, and the Insert Zone a writer is given | uslp | 732.1 §4.1.3; §5.2 Table 5-1 note 5 |
+| 97 | `insert_zone_len` | parameter | Insert Zone Length, a managed parameter of a USLP or AOS Physical Channel, and the Insert Zone a writer is given | uslp, aos | 732.1 §4.1.3; §5.2 Table 5-1 note 5; 732.0 §4.1.3.4.1, §5.2 Table 5-1 |
 | 98 | `truncated_frame_len` | parameter | Truncated Transfer Frame Length, a managed parameter of a Virtual Channel | uslp | 732.1 §5.4 Table 5-3 note 5; Annex D1.2.1, D1.2.4, D1.3.2 |
 | 99 | `transfer_frame_type` | parameter | Transfer Frame Type of a Physical or Virtual Channel: fixed or variable length | uslp | 732.1 §5.2 Table 5-1, §5.4 Table 5-3 note 2; §4.1.4.2.2.1.1 |
+| 100 | `aos_header_spare` | field | Reserved Spare of the AOS Transfer Frame Primary Header, bits 42–43, in Issue 4 and earlier (the two most significant SCID bits in Issue 5) | aos | 732.0-B-4 §4.1.2.5.4; 732.0 §4.1.2.5.4 |
+| 101 | `vc_frame_count_cycle` | field | Virtual Channel Frame Count Cycle of an AOS Transfer Frame, bits 44–47 | aos | 732.0 §4.1.2.5.5 |
+| 102 | `data_field_content` | parameter | Data Field Content of an AOS virtual channel: `M_PDU`, `B_PDU`, `VCA_SDU`, or Idle Data | aos | 732.0 §4.1.4.1.3–4, §5.4 Table 5-3 |
+| 103 | `ocf` | field | Operational Control Field of an AOS Transfer Frame, present by the `VC_OCF` managed parameter of its virtual channel | aos | 732.0 §4.1.5.2–3, §5.4 Table 5-3 |
+| 104 | `mpdu_spare` | field | Reserved Spare of the `M_PDU` Header, bits 0–4, in Issue 4 and earlier | aos | 732.0-B-4 §4.1.4.2.2 |
+| 105 | `bpdu_spare` | field | Reserved Spare of the `B_PDU` Header, bits 0–1 | aos | 732.0 §4.1.4.3.2 |
+| 106 | `bitstream_data_pointer` | field | Bitstream Data Pointer of the `B_PDU` Header | aos | 732.0 §4.1.4.3.3 |

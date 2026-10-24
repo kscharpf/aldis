@@ -663,17 +663,18 @@
 /**
  * Transfer Frame Version Number.
  *
- * Code 67, a field (132.0 §4.1.2.2.2; 232.0 §4.1.2.2; 732.1 §4.1.2.2.2; API-082, CABI-021).
+ * Code 67, a field (132.0 §4.1.2.2.2; 232.0 §4.1.2.2; 732.0 §4.1.2.2.2; 732.1 §4.1.2.2.2; API-082,
+ * CABI-021).
  */
 #define ALDIS_FIELD_FRAME_VERSION 67
 
 /**
  * Length of a Transfer Frame in octets: the Frame Length field of a TC or USLP frame, or the
- * Transfer Frame Length managed parameter of a TM or USLP physical channel with fixed-length
+ * Transfer Frame Length managed parameter of a TM, AOS, or USLP physical channel with fixed-length
  * frames.
  *
  * Code 68, a field (132.0 §4.1.1.2, §5.1 Table 5-1; 232.0 §4.1.2.7; 732.1 §4.1.2.7, Table 5-1;
- * API-082, CABI-021).
+ * 732.0 §4.1.1.2, §5.2 Table 5-1; API-082, CABI-021).
  */
 #define ALDIS_FIELD_FRAME_LEN 68
 
@@ -713,9 +714,9 @@
 #define ALDIS_FIELD_SEGMENT_LENGTH_ID 73
 
 /**
- * First Header Pointer.
+ * First Header Pointer: of the TM Transfer Frame Data Field Status, or of the AOS `M_PDU` Header.
  *
- * Code 74, a field (132.0 §4.1.2.7.6; API-082, CABI-021).
+ * Code 74, a field (132.0 §4.1.2.7.6; 732.0 §4.1.4.2.2; 732.0-B-4 §4.1.4.2.3; API-082, CABI-021).
  */
 #define ALDIS_FIELD_FIRST_HEADER_POINTER 74
 
@@ -849,9 +850,10 @@
 #define ALDIS_FIELD_VCF_COUNT_LEN 92
 
 /**
- * Virtual Channel Frame Count.
+ * Virtual Channel Frame Count: of a USLP frame, of the length its VCF Count Length gives; of an
+ * AOS frame, 24 bits.
  *
- * Code 93, a field (732.1 §4.1.2.12; API-082, CABI-021).
+ * Code 93, a field (732.1 §4.1.2.12; 732.0 §4.1.2.4; API-082, CABI-021).
  */
 #define ALDIS_FIELD_VCF_COUNT 93
 
@@ -877,10 +879,11 @@
 #define ALDIS_FIELD_FHP_LVO_POINTER 96
 
 /**
- * Insert Zone Length, a managed parameter of a Physical Channel, and the Insert Zone a writer is
- * given.
+ * Insert Zone Length, a managed parameter of a USLP or AOS Physical Channel, and the Insert Zone a
+ * writer is given.
  *
- * Code 97, a parameter (732.1 §4.1.3; §5.2 Table 5-1 note 5; API-082, CABI-021).
+ * Code 97, a parameter (732.1 §4.1.3; §5.2 Table 5-1 note 5; 732.0 §4.1.3.4.1, §5.2 Table 5-1;
+ * API-082, CABI-021).
  */
 #define ALDIS_FIELD_INSERT_ZONE_LEN 97
 
@@ -899,6 +902,57 @@
  * CABI-021).
  */
 #define ALDIS_FIELD_TRANSFER_FRAME_TYPE 99
+
+/**
+ * Reserved Spare of the AOS Transfer Frame Primary Header, bits 42–43, in Issue 4 and earlier (the
+ * two most significant SCID bits in Issue 5).
+ *
+ * Code 100, a field (732.0-B-4 §4.1.2.5.4; 732.0 §4.1.2.5.4; API-082, CABI-021).
+ */
+#define ALDIS_FIELD_AOS_HEADER_SPARE 100
+
+/**
+ * Virtual Channel Frame Count Cycle of an AOS Transfer Frame, bits 44–47.
+ *
+ * Code 101, a field (732.0 §4.1.2.5.5; API-082, CABI-021).
+ */
+#define ALDIS_FIELD_VC_FRAME_COUNT_CYCLE 101
+
+/**
+ * Data Field Content of an AOS virtual channel: `M_PDU`, `B_PDU`, `VCA_SDU`, or Idle Data.
+ *
+ * Code 102, a parameter (732.0 §4.1.4.1.3–4, §5.4 Table 5-3; API-082, CABI-021).
+ */
+#define ALDIS_FIELD_DATA_FIELD_CONTENT 102
+
+/**
+ * Operational Control Field of an AOS Transfer Frame, present by the `VC_OCF` managed parameter of
+ * its virtual channel.
+ *
+ * Code 103, a field (732.0 §4.1.5.2–3, §5.4 Table 5-3; API-082, CABI-021).
+ */
+#define ALDIS_FIELD_OCF 103
+
+/**
+ * Reserved Spare of the `M_PDU` Header, bits 0–4, in Issue 4 and earlier.
+ *
+ * Code 104, a field (732.0-B-4 §4.1.4.2.2; API-082, CABI-021).
+ */
+#define ALDIS_FIELD_MPDU_SPARE 104
+
+/**
+ * Reserved Spare of the `B_PDU` Header, bits 0–1.
+ *
+ * Code 105, a field (732.0 §4.1.4.3.2; API-082, CABI-021).
+ */
+#define ALDIS_FIELD_BPDU_SPARE 105
+
+/**
+ * Bitstream Data Pointer of the `B_PDU` Header.
+ *
+ * Code 106, a field (732.0 §4.1.4.3.3; API-082, CABI-021).
+ */
+#define ALDIS_FIELD_BITSTREAM_DATA_POINTER 106
 
 /**
  * Alignment, in octets, of every helper's storage: a C caller gets it with a `uint64_t`

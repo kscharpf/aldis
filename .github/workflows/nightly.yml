@@ -132,6 +132,8 @@ jobs:
           - spp_time_header
           - ffi_decode
           - aos_fhec_model
+          - aos_decode
+          - aos_roundtrip
           - tm_decode
           - tm_roundtrip
           - tc_decode

@@ -1,0 +1,689 @@
+{
+  "kind": "codec",
+  "standard": "732.0-B-5 EC1 §4.1.2.6, §4.3.7",
+  "provenance": "hand-derived",
+  "provenance_note": "732.0-B-5 EC1 prints no example frame, only the first OID octets of Annex D. Cases hand-derived from 732.0-B-5 EC1 §4.1 (figures 4-1 to 4-4; the Primary Header of §4.1.2 with the SCID's two most significant bits in bits 42-43; the FHEC of §4.1.2.6; the Insert Zone of §4.1.3; OID frames on VCID 63 of §4.1.4.1.5 and Annex D; the M_PDU and B_PDU of §4.1.4.2-3 with their reserved pointer values; the OCF per VC of §4.1.5; the FECF of §4.1.6), §4.3.7.2-3 (the header corrected before the CRC is checked), §5 Tables 5-1 to 5-3, and §6.3, and from 732.0-B-4 §4.1.2.2.3, §4.1.2.5.4, and §4.1.4.2.2-3 for Issue 4, with the readings of docs/standards/aos-frame.md (AOS-001...AOS-019, the anomaly list, OI-43) and the error kinds and field codes of docs/03-api-model.md §9 and §9.1. Inputs assembled bit by bit from the figure widths; expected values computed by an independent Python model of those clauses, written from the Blue Book after the Rust codec but not from its code, and sharing no code with it (the FECF by polynomial division over the corrected header, the OID data by the Annex D recurrence, the FHEC by the table model aos_fhec.py of the fhec_*.json files, loaded from its path). The model is committed as test-vectors/models/aos_frame.py (TV-023); `python3 -I test-vectors/models/aos_frame.py --check test-vectors/aos/<file>.json` recomputes every expected value. One frame is worked by hand in docs/verification/derivations/aos-frame.md.",
+  "cases": [
+    {
+      "id": "aos-fhecf-dec-001",
+      "requirements": [
+        "AOS-013",
+        "AOS-014",
+        "AOS-010",
+        "CMN-003"
+      ],
+      "description": "Frame with FHEC and FECF, no error",
+      "operation": "decode",
+      "config": {
+        "frame_len": 24,
+        "fhec": true,
+        "insert_zone_len": 0,
+        "fecf": true,
+        "edition": "issue5",
+        "vcs": [
+          {
+            "scid": 0,
+            "vcid": 1,
+            "content": "vca_sdu",
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "input_hex": "4001ABCDEF003EDF3333333333333333333333333333EBCE",
+      "expect": {
+        "ok": true,
+        "scid": 0,
+        "vcid": 1,
+        "vc_frame_count": 11259375,
+        "replay_flag": false,
+        "cycle_use_flag": false,
+        "cycle_field": 0,
+        "vc_frame_count_cycle": null,
+        "issue4_spare": 0,
+        "fhec": 16095,
+        "corrected_symbols": 0,
+        "header_hex": "4001ABCDEF003EDF",
+        "is_oid": false,
+        "insert_zone_hex": "",
+        "security_header_hex": "",
+        "data_field_hex": "3333333333333333333333333333",
+        "security_trailer_hex": "",
+        "ocf_hex": null,
+        "ocf_report": null,
+        "fecf": 60366,
+        "data_unit": "vca_sdu",
+        "pdu_pointer_raw": null,
+        "pointer": null,
+        "pointer_value": null,
+        "pdu_spare": null,
+        "zone_hex": "3333333333333333333333333333",
+        "consumed": 24,
+        "anomalies": []
+      }
+    },
+    {
+      "id": "aos-fhecf-dec-002-s",
+      "requirements": [
+        "AOS-013",
+        "AOS-014",
+        "AOS-010",
+        "API-032"
+      ],
+      "description": "One symbol (the version and SCID nibble of octet 0) wrong: corrected, reported as corrected_symbols 1 in both modes, and the FECF checked over the corrected header; strict",
+      "operation": "decode",
+      "mode": "strict",
+      "config": {
+        "frame_len": 24,
+        "fhec": true,
+        "insert_zone_len": 0,
+        "fecf": true,
+        "edition": "issue5",
+        "vcs": [
+          {
+            "scid": 0,
+            "vcid": 1,
+            "content": "vca_sdu",
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "input_hex": "C001ABCDEF003EDF3333333333333333333333333333EBCE",
+      "expect": {
+        "ok": true,
+        "scid": 0,
+        "vcid": 1,
+        "vc_frame_count": 11259375,
+        "replay_flag": false,
+        "cycle_use_flag": false,
+        "cycle_field": 0,
+        "vc_frame_count_cycle": null,
+        "issue4_spare": 0,
+        "fhec": 16095,
+        "corrected_symbols": 1,
+        "header_hex": "4001ABCDEF003EDF",
+        "is_oid": false,
+        "insert_zone_hex": "",
+        "security_header_hex": "",
+        "data_field_hex": "3333333333333333333333333333",
+        "security_trailer_hex": "",
+        "ocf_hex": null,
+        "ocf_report": null,
+        "fecf": 60366,
+        "data_unit": "vca_sdu",
+        "pdu_pointer_raw": null,
+        "pointer": null,
+        "pointer_value": null,
+        "pdu_spare": null,
+        "zone_hex": "3333333333333333333333333333",
+        "consumed": 24,
+        "anomalies": []
+      }
+    },
+    {
+      "id": "aos-fhecf-dec-002-l",
+      "requirements": [
+        "AOS-013",
+        "AOS-014",
+        "AOS-010",
+        "API-032"
+      ],
+      "description": "One symbol (the version and SCID nibble of octet 0) wrong: corrected, reported as corrected_symbols 1 in both modes, and the FECF checked over the corrected header; lenient",
+      "operation": "decode",
+      "mode": "lenient",
+      "config": {
+        "frame_len": 24,
+        "fhec": true,
+        "insert_zone_len": 0,
+        "fecf": true,
+        "edition": "issue5",
+        "vcs": [
+          {
+            "scid": 0,
+            "vcid": 1,
+            "content": "vca_sdu",
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "input_hex": "C001ABCDEF003EDF3333333333333333333333333333EBCE",
+      "expect": {
+        "ok": true,
+        "scid": 0,
+        "vcid": 1,
+        "vc_frame_count": 11259375,
+        "replay_flag": false,
+        "cycle_use_flag": false,
+        "cycle_field": 0,
+        "vc_frame_count_cycle": null,
+        "issue4_spare": 0,
+        "fhec": 16095,
+        "corrected_symbols": 1,
+        "header_hex": "4001ABCDEF003EDF",
+        "is_oid": false,
+        "insert_zone_hex": "",
+        "security_header_hex": "",
+        "data_field_hex": "3333333333333333333333333333",
+        "security_trailer_hex": "",
+        "ocf_hex": null,
+        "ocf_report": null,
+        "fecf": 60366,
+        "data_unit": "vca_sdu",
+        "pdu_pointer_raw": null,
+        "pointer": null,
+        "pointer_value": null,
+        "pdu_spare": null,
+        "zone_hex": "3333333333333333333333333333",
+        "consumed": 24,
+        "anomalies": []
+      }
+    },
+    {
+      "id": "aos-fhecf-dec-003-s",
+      "requirements": [
+        "AOS-013",
+        "AOS-014",
+        "AOS-010"
+      ],
+      "description": "Two symbols wrong, in octet 1 and the FHEC: corrected, corrected_symbols 2; strict",
+      "operation": "decode",
+      "mode": "strict",
+      "config": {
+        "frame_len": 24,
+        "fhec": true,
+        "insert_zone_len": 0,
+        "fecf": true,
+        "edition": "issue5",
+        "vcs": [
+          {
+            "scid": 0,
+            "vcid": 1,
+            "content": "vca_sdu",
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "input_hex": "400EABCDEF003E8F3333333333333333333333333333EBCE",
+      "expect": {
+        "ok": true,
+        "scid": 0,
+        "vcid": 1,
+        "vc_frame_count": 11259375,
+        "replay_flag": false,
+        "cycle_use_flag": false,
+        "cycle_field": 0,
+        "vc_frame_count_cycle": null,
+        "issue4_spare": 0,
+        "fhec": 16095,
+        "corrected_symbols": 2,
+        "header_hex": "4001ABCDEF003EDF",
+        "is_oid": false,
+        "insert_zone_hex": "",
+        "security_header_hex": "",
+        "data_field_hex": "3333333333333333333333333333",
+        "security_trailer_hex": "",
+        "ocf_hex": null,
+        "ocf_report": null,
+        "fecf": 60366,
+        "data_unit": "vca_sdu",
+        "pdu_pointer_raw": null,
+        "pointer": null,
+        "pointer_value": null,
+        "pdu_spare": null,
+        "zone_hex": "3333333333333333333333333333",
+        "consumed": 24,
+        "anomalies": []
+      }
+    },
+    {
+      "id": "aos-fhecf-dec-003-l",
+      "requirements": [
+        "AOS-013",
+        "AOS-014",
+        "AOS-010"
+      ],
+      "description": "Two symbols wrong, in octet 1 and the FHEC: corrected, corrected_symbols 2; lenient",
+      "operation": "decode",
+      "mode": "lenient",
+      "config": {
+        "frame_len": 24,
+        "fhec": true,
+        "insert_zone_len": 0,
+        "fecf": true,
+        "edition": "issue5",
+        "vcs": [
+          {
+            "scid": 0,
+            "vcid": 1,
+            "content": "vca_sdu",
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "input_hex": "400EABCDEF003E8F3333333333333333333333333333EBCE",
+      "expect": {
+        "ok": true,
+        "scid": 0,
+        "vcid": 1,
+        "vc_frame_count": 11259375,
+        "replay_flag": false,
+        "cycle_use_flag": false,
+        "cycle_field": 0,
+        "vc_frame_count_cycle": null,
+        "issue4_spare": 0,
+        "fhec": 16095,
+        "corrected_symbols": 2,
+        "header_hex": "4001ABCDEF003EDF",
+        "is_oid": false,
+        "insert_zone_hex": "",
+        "security_header_hex": "",
+        "data_field_hex": "3333333333333333333333333333",
+        "security_trailer_hex": "",
+        "ocf_hex": null,
+        "ocf_report": null,
+        "fecf": 60366,
+        "data_unit": "vca_sdu",
+        "pdu_pointer_raw": null,
+        "pointer": null,
+        "pointer_value": null,
+        "pdu_spare": null,
+        "zone_hex": "3333333333333333333333333333",
+        "consumed": 24,
+        "anomalies": []
+      }
+    },
+    {
+      "id": "aos-fhecf-dec-004",
+      "requirements": [
+        "AOS-013",
+        "AOS-014",
+        "AOS-010",
+        "GEN-041"
+      ],
+      "description": "The frame count octets wrong: not protected, not corrected, so the FECF fails",
+      "operation": "decode",
+      "config": {
+        "frame_len": 24,
+        "fhec": true,
+        "insert_zone_len": 0,
+        "fecf": true,
+        "edition": "issue5",
+        "vcs": [
+          {
+            "scid": 0,
+            "vcid": 1,
+            "content": "vca_sdu",
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "input_hex": "4001AB32EF003EDF3333333333333333333333333333EBCE",
+      "expect": {
+        "ok": false,
+        "error": "CrcMismatch"
+      }
+    },
+    {
+      "id": "aos-fhecf-dec-005",
+      "requirements": [
+        "AOS-013",
+        "AOS-014",
+        "AOS-010"
+      ],
+      "description": "The uncorrectable header of aos-fhec-unc (5111...): HeaderUncorrectable before the FECF",
+      "operation": "decode",
+      "config": {
+        "frame_len": 24,
+        "fhec": true,
+        "insert_zone_len": 0,
+        "fecf": true,
+        "edition": "issue5",
+        "vcs": [
+          {
+            "scid": 0,
+            "vcid": 1,
+            "content": "vca_sdu",
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "input_hex": "5111ABCDEF003EDF3333333333333333333333333333EBCE",
+      "expect": {
+        "ok": false,
+        "error": "HeaderUncorrectable"
+      }
+    },
+    {
+      "id": "aos-fhecf-dec-006",
+      "requirements": [
+        "AOS-013",
+        "AOS-014",
+        "AOS-010",
+        "CMN-003"
+      ],
+      "description": "Four symbol errors miscorrected by the FHEC (aos-fhec-mis-001): the FECF over the corrected header catches it (AOS-014)",
+      "operation": "decode",
+      "config": {
+        "frame_len": 24,
+        "fhec": true,
+        "insert_zone_len": 0,
+        "fecf": true,
+        "edition": "issue5",
+        "vcs": [
+          {
+            "scid": 170,
+            "vcid": 5,
+            "content": "vca_sdu",
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 746,
+            "vcid": 37,
+            "content": "vca_sdu",
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "input_hex": "7AA512345630525233333333333333333333333333333763",
+      "expect": {
+        "ok": false,
+        "error": "CrcMismatch"
+      }
+    },
+    {
+      "id": "aos-fhecf-dec-007",
+      "requirements": [
+        "AOS-013",
+        "AOS-014",
+        "AOS-010"
+      ],
+      "description": "The same miscorrection without an FECF: decoded as SCID 0x2EA, VC 37, two corrections; no decoder can tell (OI-35 item 5)",
+      "operation": "decode",
+      "config": {
+        "frame_len": 22,
+        "fhec": true,
+        "insert_zone_len": 0,
+        "fecf": false,
+        "edition": "issue5",
+        "vcs": [
+          {
+            "scid": 170,
+            "vcid": 5,
+            "content": "vca_sdu",
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 746,
+            "vcid": 37,
+            "content": "vca_sdu",
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "input_hex": "7AA51234563052523333333333333333333333333333",
+      "expect": {
+        "ok": true,
+        "scid": 746,
+        "vcid": 37,
+        "vc_frame_count": 1193046,
+        "replay_flag": true,
+        "cycle_use_flag": true,
+        "cycle_field": 0,
+        "vc_frame_count_cycle": 0,
+        "issue4_spare": 0,
+        "fhec": 21330,
+        "corrected_symbols": 2,
+        "header_hex": "7AA5123456E05352",
+        "is_oid": false,
+        "insert_zone_hex": "",
+        "security_header_hex": "",
+        "data_field_hex": "3333333333333333333333333333",
+        "security_trailer_hex": "",
+        "ocf_hex": null,
+        "ocf_report": null,
+        "fecf": null,
+        "data_unit": "vca_sdu",
+        "pdu_pointer_raw": null,
+        "pointer": null,
+        "pointer_value": null,
+        "pdu_spare": null,
+        "zone_hex": "3333333333333333333333333333",
+        "consumed": 22,
+        "anomalies": []
+      }
+    },
+    {
+      "id": "aos-fhecf-enc-001",
+      "requirements": [
+        "AOS-019",
+        "AOS-013",
+        "API-021"
+      ],
+      "description": "Encode with the FHEC and FECF computed by the writer",
+      "operation": "encode",
+      "config": {
+        "frame_len": 24,
+        "fhec": true,
+        "insert_zone_len": 0,
+        "fecf": true,
+        "edition": "issue5",
+        "vcs": [
+          {
+            "scid": 0,
+            "vcid": 1,
+            "content": "vca_sdu",
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "params": {
+        "scid": 0,
+        "vcid": 1,
+        "vc_frame_count": 11259375,
+        "replay_flag": false,
+        "cycle": null,
+        "pdu": {
+          "kind": "none"
+        },
+        "insert_zone_hex": "",
+        "security_header_hex": "",
+        "zone_hex": "3333333333333333333333333333",
+        "security_trailer_hex": "",
+        "ocf_hex": null
+      },
+      "expect": {
+        "ok": true,
+        "output_hex": "4001ABCDEF003EDF3333333333333333333333333333EBCE"
+      }
+    },
+    {
+      "id": "aos-fhecf-hdr-001",
+      "requirements": [
+        "AOS-010",
+        "AOS-014"
+      ],
+      "description": "The Primary Header alone, two symbols corrected",
+      "operation": "decode_header",
+      "config": {
+        "frame_len": 24,
+        "fhec": true,
+        "insert_zone_len": 0,
+        "fecf": true,
+        "edition": "issue5",
+        "vcs": [
+          {
+            "scid": 0,
+            "vcid": 1,
+            "content": "vca_sdu",
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "input_hex": "4F01ABCDEF403EDF",
+      "expect": {
+        "ok": true,
+        "scid": 0,
+        "vcid": 1,
+        "vc_frame_count": 11259375,
+        "replay_flag": false,
+        "cycle_use_flag": false,
+        "cycle_field": 0,
+        "vc_frame_count_cycle": null,
+        "issue4_spare": 0,
+        "fhec": 16095,
+        "corrected_symbols": 2,
+        "header_hex": "4001ABCDEF003EDF",
+        "is_oid": false
+      }
+    },
+    {
+      "id": "aos-fhecf-hdr-002",
+      "requirements": [
+        "AOS-010",
+        "API-013"
+      ],
+      "description": "Seven octets with the FHEC: Incomplete",
+      "operation": "decode_header",
+      "config": {
+        "frame_len": 24,
+        "fhec": true,
+        "insert_zone_len": 0,
+        "fecf": true,
+        "edition": "issue5",
+        "vcs": [
+          {
+            "scid": 0,
+            "vcid": 1,
+            "content": "vca_sdu",
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "input_hex": "4001ABCDEF003E",
+      "expect": {
+        "ok": false,
+        "error": "Incomplete"
+      }
+    },
+    {
+      "id": "aos-fhecf-peek-001",
+      "requirements": [
+        "API-013",
+        "AOS-014"
+      ],
+      "description": "Seven octets: no version check yet, even of a wrong version",
+      "operation": "peek_length",
+      "config": {
+        "frame_len": 24,
+        "fhec": true,
+        "insert_zone_len": 0,
+        "fecf": true,
+        "edition": "issue5",
+        "vcs": [
+          {
+            "scid": 0,
+            "vcid": 1,
+            "content": "vca_sdu",
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "input_hex": "C001ABCDEF003E",
+      "expect": {
+        "ok": true,
+        "len": 24
+      }
+    },
+    {
+      "id": "aos-fhecf-peek-002",
+      "requirements": [
+        "API-013",
+        "AOS-014"
+      ],
+      "description": "Eight octets with a correctable version error: corrected first",
+      "operation": "peek_length",
+      "config": {
+        "frame_len": 24,
+        "fhec": true,
+        "insert_zone_len": 0,
+        "fecf": true,
+        "edition": "issue5",
+        "vcs": [
+          {
+            "scid": 0,
+            "vcid": 1,
+            "content": "vca_sdu",
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "input_hex": "C001ABCDEF003EDF",
+      "expect": {
+        "ok": true,
+        "len": 24
+      }
+    },
+    {
+      "id": "aos-fhecf-peek-003",
+      "requirements": [
+        "API-013",
+        "AOS-014"
+      ],
+      "description": "Eight uncorrectable octets: HeaderUncorrectable",
+      "operation": "peek_length",
+      "config": {
+        "frame_len": 24,
+        "fhec": true,
+        "insert_zone_len": 0,
+        "fecf": true,
+        "edition": "issue5",
+        "vcs": [
+          {
+            "scid": 0,
+            "vcid": 1,
+            "content": "vca_sdu",
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "input_hex": "5111ABCDEF003EDF",
+      "expect": {
+        "ok": false,
+        "error": "HeaderUncorrectable"
+      }
+    }
+  ]
+}

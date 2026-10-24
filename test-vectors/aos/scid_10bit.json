@@ -1,0 +1,474 @@
+{
+  "kind": "codec",
+  "standard": "732.0-B-5 EC1 §4.1.2.2.3, §4.1.2.5.4",
+  "provenance": "hand-derived",
+  "provenance_note": "732.0-B-5 EC1 prints no example frame, only the first OID octets of Annex D. Cases hand-derived from 732.0-B-5 EC1 §4.1 (figures 4-1 to 4-4; the Primary Header of §4.1.2 with the SCID's two most significant bits in bits 42-43; the FHEC of §4.1.2.6; the Insert Zone of §4.1.3; OID frames on VCID 63 of §4.1.4.1.5 and Annex D; the M_PDU and B_PDU of §4.1.4.2-3 with their reserved pointer values; the OCF per VC of §4.1.5; the FECF of §4.1.6), §4.3.7.2-3 (the header corrected before the CRC is checked), §5 Tables 5-1 to 5-3, and §6.3, and from 732.0-B-4 §4.1.2.2.3, §4.1.2.5.4, and §4.1.4.2.2-3 for Issue 4, with the readings of docs/standards/aos-frame.md (AOS-001...AOS-019, the anomaly list, OI-43) and the error kinds and field codes of docs/03-api-model.md §9 and §9.1. Inputs assembled bit by bit from the figure widths; expected values computed by an independent Python model of those clauses, written from the Blue Book after the Rust codec but not from its code, and sharing no code with it (the FECF by polynomial division over the corrected header, the OID data by the Annex D recurrence, the FHEC by the table model aos_fhec.py of the fhec_*.json files, loaded from its path). The model is committed as test-vectors/models/aos_frame.py (TV-023); `python3 -I test-vectors/models/aos_frame.py --check test-vectors/aos/<file>.json` recomputes every expected value. One frame is worked by hand in docs/verification/derivations/aos-frame.md.",
+  "cases": [
+    {
+      "id": "aos-scid-dec-001",
+      "requirements": [
+        "AOS-002",
+        "AOS-001"
+      ],
+      "description": "SCID 0x3FF: LSBs FF in bits 2-9, MSBs 11 in bits 42-43",
+      "operation": "decode",
+      "config": {
+        "frame_len": 12,
+        "fhec": false,
+        "insert_zone_len": 0,
+        "fecf": false,
+        "edition": "issue5",
+        "vcs": [
+          {
+            "scid": 1023,
+            "vcid": 1,
+            "content": "vca_sdu",
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 677,
+            "vcid": 2,
+            "content": "vca_sdu",
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 256,
+            "vcid": 3,
+            "content": "vca_sdu",
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "input_hex": "7FC100000030000000000000",
+      "expect": {
+        "ok": true,
+        "scid": 1023,
+        "vcid": 1,
+        "vc_frame_count": 0,
+        "replay_flag": false,
+        "cycle_use_flag": false,
+        "cycle_field": 0,
+        "vc_frame_count_cycle": null,
+        "issue4_spare": 0,
+        "fhec": null,
+        "corrected_symbols": 0,
+        "header_hex": "7FC100000030",
+        "is_oid": false,
+        "insert_zone_hex": "",
+        "security_header_hex": "",
+        "data_field_hex": "000000000000",
+        "security_trailer_hex": "",
+        "ocf_hex": null,
+        "ocf_report": null,
+        "fecf": null,
+        "data_unit": "vca_sdu",
+        "pdu_pointer_raw": null,
+        "pointer": null,
+        "pointer_value": null,
+        "pdu_spare": null,
+        "zone_hex": "000000000000",
+        "consumed": 12,
+        "anomalies": []
+      }
+    },
+    {
+      "id": "aos-scid-dec-002",
+      "requirements": [
+        "AOS-002",
+        "AOS-001"
+      ],
+      "description": "SCID 0x2A5: MSBs 10",
+      "operation": "decode",
+      "config": {
+        "frame_len": 12,
+        "fhec": false,
+        "insert_zone_len": 0,
+        "fecf": false,
+        "edition": "issue5",
+        "vcs": [
+          {
+            "scid": 1023,
+            "vcid": 1,
+            "content": "vca_sdu",
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 677,
+            "vcid": 2,
+            "content": "vca_sdu",
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 256,
+            "vcid": 3,
+            "content": "vca_sdu",
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "input_hex": "69420000006F000000000000",
+      "expect": {
+        "ok": true,
+        "scid": 677,
+        "vcid": 2,
+        "vc_frame_count": 0,
+        "replay_flag": false,
+        "cycle_use_flag": true,
+        "cycle_field": 15,
+        "vc_frame_count_cycle": 15,
+        "issue4_spare": 0,
+        "fhec": null,
+        "corrected_symbols": 0,
+        "header_hex": "69420000006F",
+        "is_oid": false,
+        "insert_zone_hex": "",
+        "security_header_hex": "",
+        "data_field_hex": "000000000000",
+        "security_trailer_hex": "",
+        "ocf_hex": null,
+        "ocf_report": null,
+        "fecf": null,
+        "data_unit": "vca_sdu",
+        "pdu_pointer_raw": null,
+        "pointer": null,
+        "pointer_value": null,
+        "pdu_spare": null,
+        "zone_hex": "000000000000",
+        "consumed": 12,
+        "anomalies": []
+      }
+    },
+    {
+      "id": "aos-scid-dec-003",
+      "requirements": [
+        "AOS-002",
+        "AOS-001"
+      ],
+      "description": "SCID 0x100: LSBs 00, MSBs 01",
+      "operation": "decode",
+      "config": {
+        "frame_len": 12,
+        "fhec": false,
+        "insert_zone_len": 0,
+        "fecf": false,
+        "edition": "issue5",
+        "vcs": [
+          {
+            "scid": 1023,
+            "vcid": 1,
+            "content": "vca_sdu",
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 677,
+            "vcid": 2,
+            "content": "vca_sdu",
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 256,
+            "vcid": 3,
+            "content": "vca_sdu",
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "input_hex": "400300000090000000000000",
+      "expect": {
+        "ok": true,
+        "scid": 256,
+        "vcid": 3,
+        "vc_frame_count": 0,
+        "replay_flag": true,
+        "cycle_use_flag": false,
+        "cycle_field": 0,
+        "vc_frame_count_cycle": null,
+        "issue4_spare": 0,
+        "fhec": null,
+        "corrected_symbols": 0,
+        "header_hex": "400300000090",
+        "is_oid": false,
+        "insert_zone_hex": "",
+        "security_header_hex": "",
+        "data_field_hex": "000000000000",
+        "security_trailer_hex": "",
+        "ocf_hex": null,
+        "ocf_report": null,
+        "fecf": null,
+        "data_unit": "vca_sdu",
+        "pdu_pointer_raw": null,
+        "pointer": null,
+        "pointer_value": null,
+        "pdu_spare": null,
+        "zone_hex": "000000000000",
+        "consumed": 12,
+        "anomalies": []
+      }
+    },
+    {
+      "id": "aos-scid-dec-004",
+      "requirements": [
+        "AOS-002",
+        "AOS-001",
+        "AOS-010"
+      ],
+      "description": "SCID 0x0A5 (the same LSBs, MSBs 00) has no VC: UnknownChannel (spacecraft_id)",
+      "operation": "decode",
+      "config": {
+        "frame_len": 12,
+        "fhec": false,
+        "insert_zone_len": 0,
+        "fecf": false,
+        "edition": "issue5",
+        "vcs": [
+          {
+            "scid": 1023,
+            "vcid": 1,
+            "content": "vca_sdu",
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 677,
+            "vcid": 2,
+            "content": "vca_sdu",
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 256,
+            "vcid": 3,
+            "content": "vca_sdu",
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "input_hex": "694200000000000000000000",
+      "expect": {
+        "ok": false,
+        "error": "UnknownChannel",
+        "field": 1
+      }
+    },
+    {
+      "id": "aos-scid-dec-005",
+      "requirements": [
+        "AOS-002",
+        "AOS-001",
+        "AOS-013",
+        "AOS-014"
+      ],
+      "description": "The FHEC protects bits 42-43: the SCID MSB symbol corrected",
+      "operation": "decode",
+      "config": {
+        "frame_len": 14,
+        "fhec": true,
+        "insert_zone_len": 0,
+        "fecf": false,
+        "edition": "issue5",
+        "vcs": [
+          {
+            "scid": 677,
+            "vcid": 2,
+            "content": "vca_sdu",
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "input_hex": "6942000000108255000000000000",
+      "expect": {
+        "ok": true,
+        "scid": 677,
+        "vcid": 2,
+        "vc_frame_count": 0,
+        "replay_flag": false,
+        "cycle_use_flag": false,
+        "cycle_field": 0,
+        "vc_frame_count_cycle": null,
+        "issue4_spare": 0,
+        "fhec": 33365,
+        "corrected_symbols": 1,
+        "header_hex": "6942000000208255",
+        "is_oid": false,
+        "insert_zone_hex": "",
+        "security_header_hex": "",
+        "data_field_hex": "000000000000",
+        "security_trailer_hex": "",
+        "ocf_hex": null,
+        "ocf_report": null,
+        "fecf": null,
+        "data_unit": "vca_sdu",
+        "pdu_pointer_raw": null,
+        "pointer": null,
+        "pointer_value": null,
+        "pdu_spare": null,
+        "zone_hex": "000000000000",
+        "consumed": 14,
+        "anomalies": []
+      }
+    },
+    {
+      "id": "aos-scid-enc-001",
+      "requirements": [
+        "AOS-002",
+        "AOS-001",
+        "AOS-019"
+      ],
+      "description": "Encode SCID 0x3FF",
+      "operation": "encode",
+      "config": {
+        "frame_len": 12,
+        "fhec": false,
+        "insert_zone_len": 0,
+        "fecf": false,
+        "edition": "issue5",
+        "vcs": [
+          {
+            "scid": 1023,
+            "vcid": 1,
+            "content": "vca_sdu",
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 677,
+            "vcid": 2,
+            "content": "vca_sdu",
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 256,
+            "vcid": 3,
+            "content": "vca_sdu",
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "params": {
+        "scid": 1023,
+        "vcid": 1,
+        "vc_frame_count": 16777215,
+        "replay_flag": false,
+        "cycle": 0,
+        "pdu": {
+          "kind": "none"
+        },
+        "insert_zone_hex": "",
+        "security_header_hex": "",
+        "zone_hex": "ABABABABABAB",
+        "security_trailer_hex": "",
+        "ocf_hex": null
+      },
+      "expect": {
+        "ok": true,
+        "output_hex": "7FC1FFFFFF70ABABABABABAB"
+      }
+    },
+    {
+      "id": "aos-scid-enc-002",
+      "requirements": [
+        "AOS-002",
+        "AOS-001",
+        "AOS-019",
+        "AOS-013"
+      ],
+      "description": "Encode SCID 0x2A5 with the FHEC",
+      "operation": "encode",
+      "config": {
+        "frame_len": 14,
+        "fhec": true,
+        "insert_zone_len": 0,
+        "fecf": false,
+        "edition": "issue5",
+        "vcs": [
+          {
+            "scid": 677,
+            "vcid": 2,
+            "content": "vca_sdu",
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "params": {
+        "scid": 677,
+        "vcid": 2,
+        "vc_frame_count": 16,
+        "replay_flag": false,
+        "cycle": null,
+        "pdu": {
+          "kind": "none"
+        },
+        "insert_zone_hex": "",
+        "security_header_hex": "",
+        "zone_hex": "CDCDCDCDCDCD",
+        "security_trailer_hex": "",
+        "ocf_hex": null
+      },
+      "expect": {
+        "ok": true,
+        "output_hex": "6942000010208255CDCDCDCDCDCD"
+      }
+    },
+    {
+      "id": "aos-scid-cfg-001",
+      "requirements": [
+        "AOS-002",
+        "AOS-001",
+        "API-040"
+      ],
+      "description": "Issue 5, a VC of SCID 1023: accepted",
+      "operation": "config",
+      "config": {
+        "frame_len": 12,
+        "fhec": false,
+        "insert_zone_len": 0,
+        "fecf": false,
+        "edition": "issue5",
+        "vcs": [
+          {
+            "scid": 1023,
+            "vcid": 1,
+            "content": "mpdu",
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "expect": {
+        "ok": true
+      }
+    }
+  ]
+}

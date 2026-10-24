@@ -1,0 +1,940 @@
+{
+  "kind": "codec",
+  "standard": "732.0-B-5 EC1 §4.1",
+  "provenance": "hand-derived",
+  "provenance_note": "732.0-B-5 EC1 prints no example frame, only the first OID octets of Annex D. Cases hand-derived from 732.0-B-5 EC1 §4.1 (figures 4-1 to 4-4; the Primary Header of §4.1.2 with the SCID's two most significant bits in bits 42-43; the FHEC of §4.1.2.6; the Insert Zone of §4.1.3; OID frames on VCID 63 of §4.1.4.1.5 and Annex D; the M_PDU and B_PDU of §4.1.4.2-3 with their reserved pointer values; the OCF per VC of §4.1.5; the FECF of §4.1.6), §4.3.7.2-3 (the header corrected before the CRC is checked), §5 Tables 5-1 to 5-3, and §6.3, and from 732.0-B-4 §4.1.2.2.3, §4.1.2.5.4, and §4.1.4.2.2-3 for Issue 4, with the readings of docs/standards/aos-frame.md (AOS-001...AOS-019, the anomaly list, OI-43) and the error kinds and field codes of docs/03-api-model.md §9 and §9.1. Inputs assembled bit by bit from the figure widths; expected values computed by an independent Python model of those clauses, written from the Blue Book after the Rust codec but not from its code, and sharing no code with it (the FECF by polynomial division over the corrected header, the OID data by the Annex D recurrence, the FHEC by the table model aos_fhec.py of the fhec_*.json files, loaded from its path). The model is committed as test-vectors/models/aos_frame.py (TV-023); `python3 -I test-vectors/models/aos_frame.py --check test-vectors/aos/<file>.json` recomputes every expected value. One frame is worked by hand in docs/verification/derivations/aos-frame.md.",
+  "cases": [
+    {
+      "id": "aos-inv-dec-001",
+      "requirements": [
+        "AOS-010",
+        "GEN-041",
+        "API-012"
+      ],
+      "description": "One octet short: LengthMismatch",
+      "operation": "decode",
+      "config": {
+        "frame_len": 20,
+        "fhec": false,
+        "insert_zone_len": 0,
+        "fecf": true,
+        "edition": "issue5",
+        "vcs": [
+          {
+            "scid": 85,
+            "vcid": 1,
+            "content": "mpdu",
+            "ocf": true,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 85,
+            "vcid": 2,
+            "content": "vca_sdu",
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "input_hex": "554100000000FFFF00000000000001140C2A89",
+      "expect": {
+        "ok": false,
+        "error": "LengthMismatch",
+        "field": 68
+      }
+    },
+    {
+      "id": "aos-inv-dec-002",
+      "requirements": [
+        "AOS-010",
+        "GEN-041",
+        "API-012"
+      ],
+      "description": "One octet long: LengthMismatch",
+      "operation": "decode",
+      "config": {
+        "frame_len": 20,
+        "fhec": false,
+        "insert_zone_len": 0,
+        "fecf": true,
+        "edition": "issue5",
+        "vcs": [
+          {
+            "scid": 85,
+            "vcid": 1,
+            "content": "mpdu",
+            "ocf": true,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 85,
+            "vcid": 2,
+            "content": "vca_sdu",
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "input_hex": "554100000000FFFF00000000000001140C2A891000",
+      "expect": {
+        "ok": false,
+        "error": "LengthMismatch",
+        "field": 68
+      }
+    },
+    {
+      "id": "aos-inv-dec-003",
+      "requirements": [
+        "AOS-010",
+        "GEN-041",
+        "CMN-003"
+      ],
+      "description": "A data bit flipped: CrcMismatch",
+      "operation": "decode",
+      "config": {
+        "frame_len": 20,
+        "fhec": false,
+        "insert_zone_len": 0,
+        "fecf": true,
+        "edition": "issue5",
+        "vcs": [
+          {
+            "scid": 85,
+            "vcid": 1,
+            "content": "mpdu",
+            "ocf": true,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 85,
+            "vcid": 2,
+            "content": "vca_sdu",
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "input_hex": "554100000000FFFF00000100000001140C2A8910",
+      "expect": {
+        "ok": false,
+        "error": "CrcMismatch"
+      }
+    },
+    {
+      "id": "aos-inv-dec-004",
+      "requirements": [
+        "AOS-010",
+        "GEN-041",
+        "AOS-011"
+      ],
+      "description": "Version 00 with a valid FECF: UnsupportedVersion",
+      "operation": "decode",
+      "config": {
+        "frame_len": 20,
+        "fhec": false,
+        "insert_zone_len": 0,
+        "fecf": true,
+        "edition": "issue5",
+        "vcs": [
+          {
+            "scid": 85,
+            "vcid": 1,
+            "content": "mpdu",
+            "ocf": true,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 85,
+            "vcid": 2,
+            "content": "vca_sdu",
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "input_hex": "154100000000FFFF00000000000001140C2A728F",
+      "expect": {
+        "ok": false,
+        "error": "UnsupportedVersion",
+        "field": 67
+      }
+    },
+    {
+      "id": "aos-inv-dec-005",
+      "requirements": [
+        "AOS-010",
+        "GEN-041",
+        "AOS-011"
+      ],
+      "description": "Version 10 with a valid FECF: UnsupportedVersion",
+      "operation": "decode",
+      "config": {
+        "frame_len": 20,
+        "fhec": false,
+        "insert_zone_len": 0,
+        "fecf": true,
+        "edition": "issue5",
+        "vcs": [
+          {
+            "scid": 85,
+            "vcid": 1,
+            "content": "mpdu",
+            "ocf": true,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 85,
+            "vcid": 2,
+            "content": "vca_sdu",
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "input_hex": "954100000000FFFF00000000000001140C2A9590",
+      "expect": {
+        "ok": false,
+        "error": "UnsupportedVersion",
+        "field": 67
+      }
+    },
+    {
+      "id": "aos-inv-dec-006",
+      "requirements": [
+        "AOS-010",
+        "GEN-041",
+        "AOS-011"
+      ],
+      "description": "Version 11 with a valid FECF: UnsupportedVersion",
+      "operation": "decode",
+      "config": {
+        "frame_len": 20,
+        "fhec": false,
+        "insert_zone_len": 0,
+        "fecf": true,
+        "edition": "issue5",
+        "vcs": [
+          {
+            "scid": 85,
+            "vcid": 1,
+            "content": "mpdu",
+            "ocf": true,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 85,
+            "vcid": 2,
+            "content": "vca_sdu",
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "input_hex": "D54100000000FFFF00000000000001140C2A6E0F",
+      "expect": {
+        "ok": false,
+        "error": "UnsupportedVersion",
+        "field": 67
+      }
+    },
+    {
+      "id": "aos-inv-dec-007",
+      "requirements": [
+        "AOS-010",
+        "GEN-041"
+      ],
+      "description": "VC 3 is not configured: UnknownChannel (vc_id)",
+      "operation": "decode",
+      "config": {
+        "frame_len": 20,
+        "fhec": false,
+        "insert_zone_len": 0,
+        "fecf": true,
+        "edition": "issue5",
+        "vcs": [
+          {
+            "scid": 85,
+            "vcid": 1,
+            "content": "mpdu",
+            "ocf": true,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 85,
+            "vcid": 2,
+            "content": "vca_sdu",
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "input_hex": "554300000000000000000000000000000000057F",
+      "expect": {
+        "ok": false,
+        "error": "UnknownChannel",
+        "field": 2
+      }
+    },
+    {
+      "id": "aos-inv-dec-008",
+      "requirements": [
+        "AOS-010",
+        "GEN-041"
+      ],
+      "description": "SCID 0x56 has no VC: UnknownChannel (spacecraft_id)",
+      "operation": "decode",
+      "config": {
+        "frame_len": 20,
+        "fhec": false,
+        "insert_zone_len": 0,
+        "fecf": true,
+        "edition": "issue5",
+        "vcs": [
+          {
+            "scid": 85,
+            "vcid": 1,
+            "content": "mpdu",
+            "ocf": true,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 85,
+            "vcid": 2,
+            "content": "vca_sdu",
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "input_hex": "558100000000000000000000000001140C2A85E5",
+      "expect": {
+        "ok": false,
+        "error": "UnknownChannel",
+        "field": 1
+      }
+    },
+    {
+      "id": "aos-inv-enc-001",
+      "requirements": [
+        "AOS-019",
+        "API-022"
+      ],
+      "description": "An unknown VC: UnknownChannel",
+      "operation": "encode",
+      "config": {
+        "frame_len": 20,
+        "fhec": false,
+        "insert_zone_len": 0,
+        "fecf": true,
+        "edition": "issue5",
+        "vcs": [
+          {
+            "scid": 85,
+            "vcid": 1,
+            "content": "mpdu",
+            "ocf": true,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 85,
+            "vcid": 2,
+            "content": "vca_sdu",
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "params": {
+        "scid": 85,
+        "vcid": 3,
+        "vc_frame_count": 0,
+        "replay_flag": false,
+        "cycle": null,
+        "pdu": {
+          "kind": "none"
+        },
+        "insert_zone_hex": "",
+        "security_header_hex": "",
+        "zone_hex": "000000000000",
+        "security_trailer_hex": "",
+        "ocf_hex": null
+      },
+      "expect": {
+        "ok": false,
+        "error": "UnknownChannel",
+        "field": 2
+      }
+    },
+    {
+      "id": "aos-inv-enc-002",
+      "requirements": [
+        "AOS-019",
+        "API-022"
+      ],
+      "description": "An unknown SCID: UnknownChannel",
+      "operation": "encode",
+      "config": {
+        "frame_len": 20,
+        "fhec": false,
+        "insert_zone_len": 0,
+        "fecf": true,
+        "edition": "issue5",
+        "vcs": [
+          {
+            "scid": 85,
+            "vcid": 1,
+            "content": "mpdu",
+            "ocf": true,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 85,
+            "vcid": 2,
+            "content": "vca_sdu",
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "params": {
+        "scid": 86,
+        "vcid": 1,
+        "vc_frame_count": 0,
+        "replay_flag": false,
+        "cycle": null,
+        "pdu": {
+          "kind": "mpdu",
+          "pointer": "no_packet_start",
+          "value": null
+        },
+        "insert_zone_hex": "",
+        "security_header_hex": "",
+        "zone_hex": "000000000000",
+        "security_trailer_hex": "",
+        "ocf_hex": "01140C2A"
+      },
+      "expect": {
+        "ok": false,
+        "error": "UnknownChannel",
+        "field": 1
+      }
+    },
+    {
+      "id": "aos-inv-enc-003",
+      "requirements": [
+        "AOS-019",
+        "API-022"
+      ],
+      "description": "An M_PDU Header on a VCA_SDU VC: InvalidField (data_field_content)",
+      "operation": "encode",
+      "config": {
+        "frame_len": 20,
+        "fhec": false,
+        "insert_zone_len": 0,
+        "fecf": true,
+        "edition": "issue5",
+        "vcs": [
+          {
+            "scid": 85,
+            "vcid": 1,
+            "content": "mpdu",
+            "ocf": true,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 85,
+            "vcid": 2,
+            "content": "vca_sdu",
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "params": {
+        "scid": 85,
+        "vcid": 2,
+        "vc_frame_count": 0,
+        "replay_flag": false,
+        "cycle": null,
+        "pdu": {
+          "kind": "mpdu",
+          "pointer": "no_packet_start",
+          "value": null
+        },
+        "insert_zone_hex": "",
+        "security_header_hex": "",
+        "zone_hex": "000000000000",
+        "security_trailer_hex": "",
+        "ocf_hex": null
+      },
+      "expect": {
+        "ok": false,
+        "error": "InvalidField",
+        "field": 102
+      }
+    },
+    {
+      "id": "aos-inv-enc-004",
+      "requirements": [
+        "AOS-019",
+        "API-022"
+      ],
+      "description": "No M_PDU Header on an M_PDU VC: InvalidField (data_field_content)",
+      "operation": "encode",
+      "config": {
+        "frame_len": 20,
+        "fhec": false,
+        "insert_zone_len": 0,
+        "fecf": true,
+        "edition": "issue5",
+        "vcs": [
+          {
+            "scid": 85,
+            "vcid": 1,
+            "content": "mpdu",
+            "ocf": true,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 85,
+            "vcid": 2,
+            "content": "vca_sdu",
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "params": {
+        "scid": 85,
+        "vcid": 1,
+        "vc_frame_count": 0,
+        "replay_flag": false,
+        "cycle": null,
+        "pdu": {
+          "kind": "none"
+        },
+        "insert_zone_hex": "",
+        "security_header_hex": "",
+        "zone_hex": "000000000000",
+        "security_trailer_hex": "",
+        "ocf_hex": "01140C2A"
+      },
+      "expect": {
+        "ok": false,
+        "error": "InvalidField",
+        "field": 102
+      }
+    },
+    {
+      "id": "aos-inv-enc-005",
+      "requirements": [
+        "AOS-019",
+        "API-022"
+      ],
+      "description": "A B_PDU Header on an M_PDU VC: InvalidField (data_field_content)",
+      "operation": "encode",
+      "config": {
+        "frame_len": 20,
+        "fhec": false,
+        "insert_zone_len": 0,
+        "fecf": true,
+        "edition": "issue5",
+        "vcs": [
+          {
+            "scid": 85,
+            "vcid": 1,
+            "content": "mpdu",
+            "ocf": true,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 85,
+            "vcid": 2,
+            "content": "vca_sdu",
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "params": {
+        "scid": 85,
+        "vcid": 1,
+        "vc_frame_count": 0,
+        "replay_flag": false,
+        "cycle": null,
+        "pdu": {
+          "kind": "bpdu",
+          "pointer": "all_valid",
+          "value": null
+        },
+        "insert_zone_hex": "",
+        "security_header_hex": "",
+        "zone_hex": "000000000000",
+        "security_trailer_hex": "",
+        "ocf_hex": "01140C2A"
+      },
+      "expect": {
+        "ok": false,
+        "error": "InvalidField",
+        "field": 102
+      }
+    },
+    {
+      "id": "aos-inv-enc-006",
+      "requirements": [
+        "AOS-019",
+        "API-022"
+      ],
+      "description": "No OCF on a VC with an OCF: InvalidField (ocf)",
+      "operation": "encode",
+      "config": {
+        "frame_len": 20,
+        "fhec": false,
+        "insert_zone_len": 0,
+        "fecf": true,
+        "edition": "issue5",
+        "vcs": [
+          {
+            "scid": 85,
+            "vcid": 1,
+            "content": "mpdu",
+            "ocf": true,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 85,
+            "vcid": 2,
+            "content": "vca_sdu",
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "params": {
+        "scid": 85,
+        "vcid": 1,
+        "vc_frame_count": 0,
+        "replay_flag": false,
+        "cycle": null,
+        "pdu": {
+          "kind": "mpdu",
+          "pointer": "no_packet_start",
+          "value": null
+        },
+        "insert_zone_hex": "",
+        "security_header_hex": "",
+        "zone_hex": "000000000000",
+        "security_trailer_hex": "",
+        "ocf_hex": null
+      },
+      "expect": {
+        "ok": false,
+        "error": "InvalidField",
+        "field": 103
+      }
+    },
+    {
+      "id": "aos-inv-enc-007",
+      "requirements": [
+        "AOS-019",
+        "API-022"
+      ],
+      "description": "An OCF on a VC without one: InvalidField (ocf)",
+      "operation": "encode",
+      "config": {
+        "frame_len": 20,
+        "fhec": false,
+        "insert_zone_len": 0,
+        "fecf": true,
+        "edition": "issue5",
+        "vcs": [
+          {
+            "scid": 85,
+            "vcid": 1,
+            "content": "mpdu",
+            "ocf": true,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 85,
+            "vcid": 2,
+            "content": "vca_sdu",
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "params": {
+        "scid": 85,
+        "vcid": 2,
+        "vc_frame_count": 0,
+        "replay_flag": false,
+        "cycle": null,
+        "pdu": {
+          "kind": "none"
+        },
+        "insert_zone_hex": "",
+        "security_header_hex": "",
+        "zone_hex": "000000000000000000000000",
+        "security_trailer_hex": "",
+        "ocf_hex": "01140C2A"
+      },
+      "expect": {
+        "ok": false,
+        "error": "InvalidField",
+        "field": 103
+      }
+    },
+    {
+      "id": "aos-inv-enc-008",
+      "requirements": [
+        "AOS-019",
+        "API-022"
+      ],
+      "description": "A zone one octet short: LengthMismatch (frame_data_field)",
+      "operation": "encode",
+      "config": {
+        "frame_len": 20,
+        "fhec": false,
+        "insert_zone_len": 0,
+        "fecf": true,
+        "edition": "issue5",
+        "vcs": [
+          {
+            "scid": 85,
+            "vcid": 1,
+            "content": "mpdu",
+            "ocf": true,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 85,
+            "vcid": 2,
+            "content": "vca_sdu",
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "params": {
+        "scid": 85,
+        "vcid": 1,
+        "vc_frame_count": 0,
+        "replay_flag": false,
+        "cycle": null,
+        "pdu": {
+          "kind": "mpdu",
+          "pointer": "no_packet_start",
+          "value": null
+        },
+        "insert_zone_hex": "",
+        "security_header_hex": "",
+        "zone_hex": "0000000000",
+        "security_trailer_hex": "",
+        "ocf_hex": "01140C2A"
+      },
+      "expect": {
+        "ok": false,
+        "error": "LengthMismatch",
+        "field": 7
+      }
+    },
+    {
+      "id": "aos-inv-enc-009",
+      "requirements": [
+        "AOS-019",
+        "API-022",
+        "GEN-014"
+      ],
+      "description": "An output buffer one octet short: BufferTooSmall",
+      "operation": "encode",
+      "config": {
+        "frame_len": 20,
+        "fhec": false,
+        "insert_zone_len": 0,
+        "fecf": true,
+        "edition": "issue5",
+        "vcs": [
+          {
+            "scid": 85,
+            "vcid": 1,
+            "content": "mpdu",
+            "ocf": true,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 85,
+            "vcid": 2,
+            "content": "vca_sdu",
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "params": {
+        "scid": 85,
+        "vcid": 1,
+        "vc_frame_count": 0,
+        "replay_flag": false,
+        "cycle": null,
+        "pdu": {
+          "kind": "mpdu",
+          "pointer": "no_packet_start",
+          "value": null
+        },
+        "insert_zone_hex": "",
+        "security_header_hex": "",
+        "zone_hex": "000000000000",
+        "security_trailer_hex": "",
+        "ocf_hex": "01140C2A",
+        "out_len": 19
+      },
+      "expect": {
+        "ok": false,
+        "error": "BufferTooSmall"
+      }
+    },
+    {
+      "id": "aos-inv-enc-010",
+      "requirements": [
+        "AOS-019",
+        "API-001"
+      ],
+      "description": "A VC Frame Count of 2^24: OutOfRange (vc_frame_count)",
+      "operation": "encode",
+      "config": {
+        "frame_len": 20,
+        "fhec": false,
+        "insert_zone_len": 0,
+        "fecf": true,
+        "edition": "issue5",
+        "vcs": [
+          {
+            "scid": 85,
+            "vcid": 1,
+            "content": "mpdu",
+            "ocf": true,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 85,
+            "vcid": 2,
+            "content": "vca_sdu",
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "params": {
+        "scid": 85,
+        "vcid": 2,
+        "vc_frame_count": 16777216,
+        "replay_flag": false,
+        "cycle": null,
+        "pdu": {
+          "kind": "none"
+        },
+        "insert_zone_hex": "",
+        "security_header_hex": "",
+        "zone_hex": "000000000000000000000000",
+        "security_trailer_hex": "",
+        "ocf_hex": null
+      },
+      "expect": {
+        "ok": false,
+        "error": "OutOfRange",
+        "field": 93
+      }
+    },
+    {
+      "id": "aos-inv-enc-011",
+      "requirements": [
+        "AOS-019",
+        "API-001"
+      ],
+      "description": "A cycle of 16: OutOfRange (vc_frame_count_cycle)",
+      "operation": "encode",
+      "config": {
+        "frame_len": 20,
+        "fhec": false,
+        "insert_zone_len": 0,
+        "fecf": true,
+        "edition": "issue5",
+        "vcs": [
+          {
+            "scid": 85,
+            "vcid": 1,
+            "content": "mpdu",
+            "ocf": true,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 85,
+            "vcid": 2,
+            "content": "vca_sdu",
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "params": {
+        "scid": 85,
+        "vcid": 2,
+        "vc_frame_count": 0,
+        "replay_flag": false,
+        "cycle": 16,
+        "pdu": {
+          "kind": "none"
+        },
+        "insert_zone_hex": "",
+        "security_header_hex": "",
+        "zone_hex": "000000000000000000000000",
+        "security_trailer_hex": "",
+        "ocf_hex": null
+      },
+      "expect": {
+        "ok": false,
+        "error": "OutOfRange",
+        "field": 101
+      }
+    }
+  ]
+}
