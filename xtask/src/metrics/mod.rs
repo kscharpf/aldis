@@ -1,15 +1,18 @@
 //! `cargo xtask metrics`: how the project's pull requests went (docs/06-verification.md §9,
 //! VER-063). Cycle time, size, verification runs and their cost, merges from `main` and their
-//! conflicts, review outcomes, follow-ups, and the maintainer's decision log.
+//! conflicts, review outcomes, follow-ups, the maintainer's decision log, the stages and the
+//! process-created waits, and the process overhead (`overhead.rs`).
 //!
 //! It reads GitHub through `gh api` (a tooling dependency, RS-017, as `verify` uses it) and the
 //! local repository: the published records under `refs/notes/verify`, fetched as `verify check`
-//! fetches them, and the merge commits, redone with `git merge-tree`. It needs the network, so it
-//! is never part of `cargo xtask ci`. The computation (`pr.rs`, `report.rs`, `decisions.rs`) is
-//! pure and tested on fixtures.
+//! fetches them, the merge commits, redone with `git merge-tree`, and the paths each commit
+//! changes (`git diff-tree`, and `git show` of a milestone plan). It needs the network, so it is
+//! never part of `cargo xtask ci`. The computation (`pr.rs`, `report.rs`, `decisions.rs`,
+//! `overhead.rs`) is pure and tested on fixtures.
 
 mod conflicts;
 mod decisions;
+mod overhead;
 mod pr;
 mod report;
 mod stages;
@@ -34,7 +37,10 @@ Process metrics (docs/06-verification.md §9, VER-063; needs `gh` and the networ
                                stages each waited in, raw and in the maintainer's active time;
                                and the process-created waits (order inversions, verification
                                after approval, failed and cancelled runs, rework after a
-                               decision, repeated conflicts) against thresholds, beside the
+                               decision, repeated conflicts) and the process overhead (the
+                               shares of pull requests, commits, and verification minutes that
+                               are process-only, product-only, or mixed, and the
+                               bookkeeping-only commits) against thresholds, beside the
                                previous period of the same length (--no-previous: not fetched).
                                Prints a Markdown report (default) or the per-PR data as JSON;
                                --json also writes the JSON to <file>; --top sets the length of
@@ -327,6 +333,7 @@ fn complete(
             Err(e) => eprintln!("metrics: #{number}: merge {}: {e}", m.commit),
         }
     }
+    raw.commit_files = commit_files(&root, number, &raw.commits);
     raw.decision_commits = decision_commits(&root, number, &head)
         .into_iter()
         .filter(|c| shas.contains(c))
@@ -350,6 +357,72 @@ fn complete(
         }
     }
     Ok(())
+}
+
+/// The changed paths of each of `commits` that has one parent; a commit git cannot diff is left
+/// out, and the report counts it as not known.
+fn commit_files(
+    root: &Path,
+    number: u64,
+    commits: &[Value],
+) -> BTreeMap<String, Vec<overhead::Changed>> {
+    let mut out = BTreeMap::new();
+    for c in commits {
+        let single = c.get("parents").and_then(Value::as_array).map(Vec::len) == Some(1);
+        let Some(sha) = c.get("sha").and_then(Value::as_str).filter(|_| single) else {
+            continue;
+        };
+        match changed_paths(root, sha) {
+            Ok(changed) => {
+                out.insert(sha.to_owned(), changed);
+            }
+            Err(e) => eprintln!("metrics: #{number}: commit {sha}: {e}"),
+        }
+    }
+    out
+}
+
+/// The paths that `sha`, a commit with one parent, changes against it (`git diff-tree`), with,
+/// for a milestone plan, whether only its status rows changed (`git show` of both versions; a
+/// file that one side lacks is empty there).
+fn changed_paths(root: &Path, sha: &str) -> Result<Vec<overhead::Changed>, String> {
+    let out = Command::new("git")
+        .args([
+            "diff-tree",
+            "--no-commit-id",
+            "--name-only",
+            "-r",
+            "-z",
+            sha,
+        ])
+        .current_dir(root)
+        .output()
+        .map_err(|e| format!("git diff-tree: {e}"))?;
+    if !out.status.success() {
+        return Err(format!(
+            "git diff-tree: {}",
+            String::from_utf8_lossy(&out.stderr).trim()
+        ));
+    }
+    let show = |rev: &str, path: &str| {
+        Command::new("git")
+            .args(["show", &format!("{rev}:{path}")])
+            .current_dir(root)
+            .output()
+            .ok()
+            .filter(|o| o.status.success())
+            .map(|o| String::from_utf8_lossy(&o.stdout).into_owned())
+            .unwrap_or_default()
+    };
+    Ok(String::from_utf8_lossy(&out.stdout)
+        .split('\0')
+        .filter(|p| !p.is_empty())
+        .map(|path| overhead::Changed {
+            status_rows_only: path.starts_with("docs/milestones/")
+                && overhead::status_rows_only(&show(&format!("{sha}^"), path), &show(sha, path)),
+            path: path.to_owned(),
+        })
+        .collect())
 }
 
 /// The commits reachable from `head` that added or removed a decision-log line naming `#number`
@@ -568,6 +641,71 @@ fn output(opts: &Options, report: &report::Report) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // req: VER-063
+    #[test]
+    fn reads_the_changed_paths_of_each_commit() {
+        use super::conflicts::tests::TempRepo;
+        use serde_json::json;
+        let repo = TempRepo::new("changed");
+        let plan = "# M9\n\n| WP | State | PRs | Notes |\n|---|---|---|---|\n| WP-1 | open | – | x |\n\
+                    \nText.\n";
+        let base = repo.commit(
+            &[("docs/milestones/m9.md", plan), ("crates/a.rs", "a\n")],
+            "base",
+        );
+        let rows = repo.commit(
+            &[
+                (
+                    "docs/milestones/m9.md",
+                    &plan.replace("open | –", "merged | #1"),
+                ),
+                ("docs/process/decisions.md", "- line\n"),
+            ],
+            "status row and log",
+        );
+        let text = repo.commit(
+            &[("docs/milestones/m9.md", &plan.replace("Text.", "More."))],
+            "plan text",
+        );
+        let added = repo.commit(&[("docs/milestones/m10.md", plan)], "new plan");
+        repo.git(&["checkout", "-q", "-b", "side", &base]);
+        let side = repo.commit(&[("xtask/b.rs", "b\n")], "side");
+        repo.git(&["checkout", "-q", "main"]);
+        repo.git(&["merge", "-q", "--no-edit", "side"]);
+        let merge = repo.git(&["rev-parse", "HEAD"]);
+        let commit = |sha: &str, parents: &[&str]| json!({"sha": sha, "parents": parents.iter().map(|p| json!({"sha": p})).collect::<Vec<_>>()});
+        let unknown = "0123456789abcdef0123456789abcdef01234567";
+        let commits = [
+            commit(&rows, &[&base]),
+            commit(&text, &[&rows]),
+            commit(&added, &[&text]),
+            commit(&side, &[&base]),
+            commit(&merge, &[&added, &side]),
+            commit(unknown, &[&base]),
+        ];
+        let files = commit_files(&repo.0, 1, &commits);
+        let of = |sha: &str| -> Vec<(String, bool)> {
+            files[sha]
+                .iter()
+                .map(|c| (c.path.clone(), c.status_rows_only))
+                .collect()
+        };
+        assert_eq!(
+            of(&rows),
+            [
+                ("docs/milestones/m9.md".to_owned(), true),
+                ("docs/process/decisions.md".to_owned(), false),
+            ]
+        );
+        assert_eq!(of(&text), [("docs/milestones/m9.md".to_owned(), false)]);
+        // A new plan is more than its status rows.
+        assert_eq!(of(&added), [("docs/milestones/m10.md".to_owned(), false)]);
+        assert_eq!(of(&side), [("xtask/b.rs".to_owned(), false)]);
+        // A merge is not classified, and a commit git does not have is left out.
+        assert!(!files.contains_key(&merge) && !files.contains_key(unknown));
+        assert_eq!(files.len(), 4);
+    }
 
     // req: VER-063
     #[test]

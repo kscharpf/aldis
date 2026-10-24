@@ -6,6 +6,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use serde_json::{Value, json};
 
+use super::overhead::{self, Overhead};
 use super::stages::{self, ApprovalKind, Stages};
 use super::time;
 use super::waits::{self, Commit, Waits};
@@ -54,6 +55,9 @@ pub struct Raw {
     pub decision_commits: BTreeSet<String>,
     /// The record that a failed `verify.yml` run left in its artefact, by run ID.
     pub run_records: BTreeMap<u64, Value>,
+    /// For each commit other than a merge, the paths it changes against its parent
+    /// (`git diff-tree`), with, for a milestone plan, whether only its status rows changed.
+    pub commit_files: BTreeMap<String, Vec<overhead::Changed>>,
 }
 
 /// One verification run of the pull request's commits.
@@ -163,6 +167,8 @@ pub struct Pr {
     pub waits: Waits,
     /// The maintainer's events on it: reviews, their comments, and the merge.
     pub events: Vec<i64>,
+    /// Its split between product and process, and its bookkeeping-only commits.
+    pub overhead: Overhead,
 }
 
 fn str_of<'a>(v: &'a Value, key: &str) -> &'a str {
@@ -595,6 +601,22 @@ fn waits_of(stages: &Stages, commits: &[Commit], runs: &[Run]) -> Waits {
     }
 }
 
+/// The split of a pull request's files and of its commits other than merges between product and
+/// process.
+fn overhead_of(raw: &Raw) -> Overhead {
+    let single: Vec<&str> = raw
+        .commits
+        .iter()
+        .filter(|c| c.get("parents").and_then(Value::as_array).map(Vec::len) == Some(1))
+        .map(|c| str_of(c, "sha"))
+        .collect();
+    Overhead::compute(
+        raw.files.iter().map(|f| str_of(f, "filename")),
+        &single,
+        &raw.commit_files,
+    )
+}
+
 /// Computes the metrics of one merged pull request.
 pub fn compute(raw: &Raw) -> Result<Pr, String> {
     let pull = &raw.pull;
@@ -659,6 +681,7 @@ pub fn compute(raw: &Raw) -> Result<Pr, String> {
         waits: waits_of(&stages, &commits, &runs),
         stages,
         events,
+        overhead: overhead_of(raw),
         base: pull.get("base").map_or("", |b| str_of(b, "ref")).to_owned(),
         head: head.to_owned(),
         shas: shas.iter().map(|s| (*s).to_owned()).collect(),
@@ -795,6 +818,7 @@ impl Pr {
                 "fix_commits_after_first_review": self.fix_commits,
             },
             "follow_ups": self.follow_ups,
+            "overhead": self.overhead.to_json(),
             "stages": self.stages_json(activity),
             "waits": self.waits.to_json(),
         })

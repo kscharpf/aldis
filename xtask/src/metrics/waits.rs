@@ -5,6 +5,7 @@
 
 use serde_json::{Value, json};
 
+use super::overhead;
 use super::pr::{Pr, Run};
 use super::time;
 
@@ -206,6 +207,8 @@ pub struct Totals {
     pub cancelled: Vec<(u64, usize, i64)>,
     /// Files and the merges from `main` they conflicted in, most first.
     pub conflicts: Vec<(String, usize)>,
+    /// The split between product and process, and the bookkeeping-only commits.
+    pub overhead: overhead::Totals,
 }
 
 /// The totals of `prs`, with `inversions` over a wider set and the period's `conflicts`.
@@ -217,6 +220,7 @@ pub fn totals(prs: &[Pr], inversions: &[Inversion], conflicts: &[(String, usize)
             .cloned()
             .collect(),
         conflicts: conflicts.to_vec(),
+        overhead: overhead::totals(prs),
         ..Totals::default()
     };
     for pr in prs {
@@ -252,9 +256,16 @@ pub struct Measure {
 }
 
 /// The measures of [`Totals`], each with what crossed its threshold: order inversions,
-/// verification after approval, failed runs, cancelled runs, rework, and repeated conflicts.
+/// verification after approval, failed runs, cancelled runs, rework, repeated conflicts, the
+/// verification of process-only pull requests, and the bookkeeping-only commits.
 pub fn measures(t: &Totals) -> Vec<Measure> {
-    [approval_measures(t), run_measures(t), work_measures(t)].concat()
+    [
+        approval_measures(t),
+        run_measures(t),
+        work_measures(t),
+        overhead::measures(&t.overhead),
+    ]
+    .concat()
 }
 
 /// Order inversions and verification after approval.
@@ -412,6 +423,7 @@ pub fn to_json(t: &Totals) -> Value {
             .filter_map(|(_, r)| r.after_failure_s).sum::<i64>(),
         "cancelled_runs": t.cancelled.iter().map(|c| c.1).sum::<usize>(),
         "cancelled_s": t.cancelled.iter().map(|c| c.2).sum::<i64>(),
+        "overhead": t.overhead.to_json(),
         "measures": measures(t).iter().map(|m| json!({
             "name": m.name, "threshold": m.threshold, "total": m.total,
             "crossed": m.crossed.len(), "items": m.crossed,
@@ -634,6 +646,9 @@ mod tests {
                     vec!["#2 (2 commits, 1 run, 10 min)".to_owned()]
                 ),
                 ("Repeated conflicts", vec!["`docs/a.md` (3)".to_owned()]),
+                // These pull requests changed no file: no overhead (tests in overhead.rs).
+                ("Verification of process-only PRs", Vec::new()),
+                ("Bookkeeping-only commits", Vec::new()),
             ]
         );
         assert_eq!(

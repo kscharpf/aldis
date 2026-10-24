@@ -7,6 +7,7 @@ use std::fmt::Write as _;
 use serde_json::{Value, json};
 
 use super::decisions::{self, Log};
+use super::overhead::{self, Class};
 use super::pr::{AREAS, Pr};
 use super::stages::{self, ACTIVE_WINDOW, Activity, ApprovalKind};
 use super::time;
@@ -282,6 +283,83 @@ fn prose(r: &Report, s: &Summary, out: &mut String) {
                 decisions::PATH
             );
         }
+    }
+}
+
+/// The split between product and process of the pull requests, their commits, and their
+/// verification minutes, and the bookkeeping-only commits.
+fn overhead_section(r: &Report, t: &Totals, out: &mut String) {
+    let o = &t.overhead;
+    let _ = writeln!(out, "\n## Process overhead\n");
+    let _ = writeln!(
+        out,
+        "Pull requests, their commits other than merges, and their verification minutes by \
+         what they changed: product, process, or both (see \"How these are measured\"). A \
+         pull request's verification minutes count under its class.\n"
+    );
+    let _ = writeln!(
+        out,
+        "| | Process-only | Product-only | Mixed |\n|---|---:|---:|---:|"
+    );
+    let counts = |m: &std::collections::BTreeMap<Class, usize>| {
+        let wide = overhead::wide(m);
+        Class::ALL
+            .iter()
+            .map(|c| {
+                format!(
+                    "{} ({})",
+                    m.get(c).copied().unwrap_or(0),
+                    overhead::share(&wide, *c)
+                )
+            })
+            .collect::<Vec<_>>()
+            .join(" | ")
+    };
+    let minutes = Class::ALL
+        .iter()
+        .map(|c| {
+            format!(
+                "{} ({})",
+                time::duration(o.verify_s.get(c).copied().unwrap_or(0)),
+                overhead::share(&o.verify_s, *c)
+            )
+        })
+        .collect::<Vec<_>>()
+        .join(" | ");
+    let _ = writeln!(out, "| Pull requests | {} |", counts(&o.prs));
+    let _ = writeln!(out, "| Commits | {} |", counts(&o.commits));
+    let _ = writeln!(out, "| Verification minutes | {minutes} |");
+    if o.unknown > 0 {
+        let _ = writeln!(
+            out,
+            "\nNot counted: {} whose changed paths git could not read.",
+            count(o.unknown, "commit", "commits")
+        );
+    }
+    let _ = writeln!(out, "\n### Bookkeeping-only commits\n");
+    if o.bookkeeping.is_empty() {
+        let _ = writeln!(out, "No commit changed only bookkeeping.");
+        return;
+    }
+    let _ = writeln!(
+        out,
+        "Commits that change only `docs/process/decisions.md`, the work-package status rows of a \
+         milestone plan, or `docs/verification/records/`: {} in all.\n",
+        o.bookkeeping.iter().map(|(_, k)| k).sum::<usize>()
+    );
+    let _ = writeln!(out, "| PR | Bookkeeping-only | Commits |\n|---|---:|---|");
+    for pr in r.prs.iter().filter(|p| p.overhead.bookkeeping() > 0) {
+        let shas: Vec<String> = overhead::bookkeeping_shas(pr)
+            .into_iter()
+            .map(|s| format!("`{s}`"))
+            .collect();
+        let _ = writeln!(
+            out,
+            "| #{} | {} | {} |",
+            pr.number,
+            pr.overhead.bookkeeping(),
+            shas.join(" ")
+        );
     }
 }
 
@@ -788,11 +866,25 @@ its record, the first gating check that failed and the minutes of the checks tha
 - **Rework after a maintainer decision:** from the first decision to the approval: the commits \
 other than merges authored then, and the verification runs started then. A pull request counts \
 only if at least one commit was authored then; a run without one re-ran a head.
+- **Process overhead:** a changed path is *product* in `crates/`, `cpp/`, `include/`, \
+`test-vectors/`, `specs/`, `exerciser/`, `fuzz/`, `refapp/`, `crosscheck/`, and `difftest/`, and \
+in the specification: `docs/` except `docs/process/`, `docs/verification/`, and \
+`docs/milestones/` (so `docs/0*.md`, `docs/profiles/`, `docs/standards/`, and the other \
+documents of `docs/`). Every other path is *process*: `xtask/`, `.github/`, those three parts of \
+`docs/`, `changelog.d/`, `AGENTS.md`, and the other root files. A pull request is product-only, \
+process-only, or mixed by the files it changed (`pulls/{{n}}/files`), a commit other than a merge \
+by the paths it changes against its parent (`git diff-tree`); merges are not classified. A \
+*bookkeeping-only* commit changes only `docs/process/decisions.md`, files under \
+`docs/verification/records/`, or the rows of a milestone plan's work-package status table (the \
+plan before and after, `git show`).
 - **Thresholds:** every order inversion; verification after approval of {update} or more in one \
 pull request; a failed run that went on {fail} or more after its first gating failure; cancelled \
 runs of {cancel} or more in one pull request; at least {rework} verification run after a decision \
-in one pull request; a file in {conflicts} or more conflicted merges in the period. The previous \
-period has the same length and ends where this one starts.
+in one pull request; a file in {conflicts} or more conflicted merges in the period; process-only \
+pull requests that took {share} % or more of the period's verification minutes (each of them is \
+then listed); {bookkeeping} or more bookkeeping-only commits in one pull request (one is expected: \
+the commit of its decision-log lines). The previous period has the same length and ends where \
+this one starts.
 - Generated by `cargo xtask metrics` (docs/06-verification.md §9, VER-063).
 ",
         max = stages::HUMAN_MAX,
@@ -802,6 +894,8 @@ period has the same length and ends where this one starts.
         cancel = d(waits::CANCELLED_MIN_S),
         rework = waits::REWORK_MIN_RUNS,
         conflicts = waits::CONFLICT_MIN_MERGES,
+        share = overhead::PROCESS_SHARE_PCT,
+        bookkeeping = overhead::BOOKKEEPING_MIN,
     )
 }
 
@@ -825,6 +919,7 @@ pub fn markdown(r: &Report) -> String {
     stage_summary(r, &activity, &mut out);
     wait_details(r, &now, &activity, &mut out);
     run_details(r, &now, &mut out);
+    overhead_section(r, &now, &mut out);
     friction(r, &s, &mut out);
     table(r, &mut out);
     timeline(r, &activity, &mut out);
@@ -1046,6 +1141,68 @@ mod tests {
             md.contains("| **1** | – | #70 before #69 (35 min) |"),
             "{md}"
         );
+    }
+
+    // req: VER-063
+    #[test]
+    fn renders_the_process_overhead() {
+        use crate::metrics::overhead::{Commit, Overhead};
+        let mut prs = two();
+        prs[1].overhead = Overhead {
+            class: Some(Class::Process),
+            commits: vec![
+                Commit {
+                    sha: "0123456789ab".to_owned(),
+                    class: Class::Process,
+                    bookkeeping: true,
+                },
+                Commit {
+                    sha: "fedcba987654".to_owned(),
+                    class: Class::Process,
+                    bookkeeping: true,
+                },
+            ],
+            unknown: 1,
+        };
+        prs[0].overhead.class = Some(Class::Product);
+        let report = Report {
+            maintainer: "me".to_owned(),
+            events: Vec::new(),
+            previous: None,
+            repo: "o/r".to_owned(),
+            generated: time::parse("2026-10-21T16:00:00Z").unwrap(),
+            since: time::parse("2026-10-16"),
+            top: 10,
+            prs,
+            decisions: None,
+        };
+        let md = markdown(&report);
+        for want in [
+            // #70: 29 min of runs; #71: 10 min.
+            "| Verification of process-only PRs | ≥ 33 % of the period's verify minutes | 10 min \
+             of 39 min (25 %); 50 % of PRs, 100 % of commits process-only | **0** | – | – |",
+            "| Bookkeeping-only commits | ≥ 2 in one PR | 2 commits in 1 PR | **1** | – | #71 (2 \
+             commits) |",
+            "## Process overhead\n",
+            "| Pull requests | 1 (50 %) | 1 (50 %) | 0 (0 %) |",
+            "| Commits | 2 (100 %) | 0 (0 %) | 0 (0 %) |",
+            "| Verification minutes | 10 min (25 %) | 29 min (75 %) | 0 s (0 %) |",
+            "Not counted: 4 commits whose changed paths git could not read.",
+            "### Bookkeeping-only commits\n",
+            "| #71 | 2 | `01234567` `fedcba98` |",
+            "- **Process overhead:** a changed path is *product* in `crates/`",
+            "process-only pull requests that took 33 % or more of the period's verification minutes",
+        ] {
+            assert!(md.contains(want), "missing {want:?} in\n{md}");
+        }
+        let j = json(&report);
+        assert_eq!(j["waits"]["overhead"]["bookkeeping_commits"], 2);
+        assert_eq!(j["prs"][1]["overhead"]["class"], "process-only");
+        assert_eq!(j["waits"]["measures"][7]["crossed"], 1);
+        // Without bookkeeping-only commits, the section says so.
+        let mut none = report;
+        none.prs[1].overhead.commits.clear();
+        assert!(markdown(&none).contains("No commit changed only bookkeeping."));
     }
 
     // req: VER-063
