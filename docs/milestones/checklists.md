@@ -7,7 +7,7 @@ Every pull request also: changes one track's directories ([roadmap](../08-roadma
 ## Adding a codec module to an existing crate
 
 - [ ] Wire behaviour taken from the Blue Book clause cited, never from memory; open questions recorded as OIs ([09](../09-open-issues.md)), not settled in code; those the Blue Book does not settle go to the maintainer ([decision rights](../process/decision-rights.md) §2.1, §3).
-- [ ] Public items cite their clause and requirement IDs (RS-015, `missing_docs`); range-restricted fields are their own types with checked constructors (RS-020).
+- [ ] Public items cite their clause and requirement IDs (RS-015, `missing_docs`); range-restricted fields are their own types with checked constructors (RS-020; `cargo xtask rs020` flags a bare integer in a public field or enum payload, which needs a type or a reasoned exemption).
 - [ ] No panic, heap, I/O, or `unsafe` (GEN-010, GEN-020, GEN-030, GEN-070): Clippy with the workspace lint set (VER-001, verify check `clippy`).
 - [ ] Unit tests with `// req: <ID>` on every test (VER-020; `cargo xtask trace`, **(ci)**); test modules marked `#[cfg_attr(coverage_nightly, coverage(off))]`.
 - [ ] Fields the module's errors name are rows of the field catalogue ([03 §9.1](../03-api-model.md#91-field-codes)), regenerated with `cargo xtask fields --write` (API-082; `cargo xtask fields`, **(ci)**).

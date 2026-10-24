@@ -1,0 +1,102 @@
+# RS-020 exemptions, checked by `cargo xtask rs020` (part of `cargo xtask ci`).
+#
+# The check flags every bare integer (`u8` ... `u128`, `usize`, `i8` ... `isize`, also inside
+# `Option` or a tuple) in a public field or enum payload of a codec crate. RS-020 requires a field
+# with a restricted range to be a type that enforces it; a finding that is not such a gap is
+# listed here, with the reason. An exemption without a reason, listed twice, or that no longer
+# matches a finding fails the check, so this list is exactly the set of bare integers left.
+#
+# [[exemption]]
+# item = "aldis_x::module::Type.field"        # or Type::Variant.0 for an enum payload
+# reason = "why the integer has no range of its own that a type could enforce"
+#
+# Reasons used below:
+# - full width: every value of the integer is valid;
+# - relation: the value's only bound is its fit to another value (a format, a configuration,
+#   a frame), which the constructor or writer checks, as RS-020 allows;
+# - output: a length, count, or diagnostic the crate reports and no function takes back;
+# - pending: a gap whose fix waits for a maintainer decision.
+
+# aldis-core
+
+[[exemption]]
+item = "aldis_core::counter::Continuity::Gap.missing"
+reason = "output: the number of counts skipped, computed by the classify functions of ModCounter, SeqCount, and FrameSeqNum; no function takes a Continuity back (CMN-031)"
+
+[[exemption]]
+item = "aldis_core::error::ErrorDetail::Expected.expected"
+reason = "output: a diagnostic value of an error, the value or limit expected; any u64 is meaningful (GEN-041)"
+
+[[exemption]]
+item = "aldis_core::error::ErrorDetail::Expected.found"
+reason = "output: a diagnostic value of an error, the value found; any u64 is meaningful (GEN-041)"
+
+[[exemption]]
+item = "aldis_core::error::ErrorDetail::Needed.0"
+reason = "output: a diagnostic count of the octets or bits needed; any usize is meaningful (GEN-041)"
+
+[[exemption]]
+item = "aldis_core::layout::LayoutSpec.frame_len"
+reason = "relation: a length in octets with no range beyond usize; FrameLayout::compute checks that the lengths leave a data field (CMN-041)"
+
+[[exemption]]
+item = "aldis_core::layout::LayoutSpec.primary_header_len"
+reason = "relation: a length in octets with no range beyond usize; FrameLayout::compute checks that the lengths leave a data field (CMN-041)"
+
+[[exemption]]
+item = "aldis_core::layout::LayoutSpec.secondary_len"
+reason = "relation: a length in octets with no range beyond usize; FrameLayout::compute checks that the lengths leave a data field (CMN-041)"
+
+# aldis-time
+
+[[exemption]]
+item = "aldis_time::ccs::CcsValue.subsecond"
+reason = "relation: the sub-second digits, whose range is set by the format's number of sub-second octets; Ccs::new checks the fit (TIME-030); kept by the RS-020 audit of issue #22"
+
+[[exemption]]
+item = "aldis_time::cds::CdsValue.day"
+reason = "relation: days since the epoch, whose range is set by the format's 16- or 24-bit day segment; Cds::new checks the fit (TIME-020); kept by the RS-020 audit of issue #22"
+
+# aldis-spp
+
+[[exemption]]
+item = "aldis_spp::segment::Status::Complete.0"
+reason = "output: the length in octets of the SDU the Reassembler has completed (SPP-013)"
+
+# aldis-tm
+
+[[exemption]]
+item = "aldis_tm::header::PacketPointer::StartsAt.0"
+reason = "pending: an RS-020 gap (offsets above 0x7FD have no pointer value, and to_raw maps them to No Packet Start); the fix changes a type the C ABI maps from packet_offset, so it waits for the maintainer (m2/rs020-check)"
+
+[[exemption]]
+item = "aldis_tm::header::TmPrimaryHeader.mc_frame_count"
+reason = "full width: the 8-bit Master Channel Frame Count, modulo 256; every u8 is a count (132.0 §4.1.2.5)"
+
+[[exemption]]
+item = "aldis_tm::header::TmPrimaryHeader.vc_frame_count"
+reason = "full width: the 8-bit Virtual Channel Frame Count, modulo 256; every u8 is a count (132.0 §4.1.2.6)"
+
+[[exemption]]
+item = "aldis_tm::writer::TmFrameFields.mc_frame_count"
+reason = "full width: the 8-bit Master Channel Frame Count, modulo 256; every u8 is a count (132.0 §4.1.2.5)"
+
+[[exemption]]
+item = "aldis_tm::writer::TmFrameFields.vc_frame_count"
+reason = "full width: the 8-bit Virtual Channel Frame Count, modulo 256; every u8 is a count (132.0 §4.1.2.6)"
+
+# aldis-tc
+
+[[exemption]]
+item = "aldis_tc::delimit::Delimited::TruncatedFrame.declared_len"
+reason = "output: the frame length in octets a header declares, which the delimiter reports for discarded octets (TC-020)"
+
+# aldis-uslp
+
+[[exemption]]
+item = "aldis_uslp::delimit::Delimited::IncompleteFrame.declared_len"
+reason = "output: the frame length in octets a header declares, which the delimiter reports for discarded octets (USLP-015)"
+
+[[exemption]]
+item = "aldis_uslp::writer::FrameFields.vcf_count"
+reason = "relation: the VCF Count, whose range is set by the VC's VCF Count Length; the writer checks the fit when it builds the VcfCount (USLP-004)"
