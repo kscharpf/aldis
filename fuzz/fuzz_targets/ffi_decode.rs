@@ -8,12 +8,22 @@
 //! `aldis_ocf_check`, and the OID generator in both forms; and so does that of `aldis-tm`:
 //! `aldis_tm_decode`, `aldis_tm_decode_unchecked`, `aldis_tm_peek_length`,
 //! `aldis_tm_header_decode`, `aldis_tm_decode_with`, and `aldis_tm_validate`.
+//!
+//! AOS (M2 WP-4 module 8): every input also runs through the C ABI of `aldis-aos`, which agrees
+//! with it: `aldis_aos_fhec_encode`, `aldis_aos_fhec_decode`, `aldis_aos_mpdu_decode`,
+//! `aldis_aos_bpdu_decode`, `aldis_aos_peek_length`, `aldis_aos_header_decode`, and
+//! `aldis_aos_decode`, on a physical channel the selector configures.
 #![no_main]
 
 // req: CABI-012, CABI-020, CABI-021, CABI-022, GEN-020, API-010, VER-022, CMN-001, CMN-010, CMN-022, TM-001, API-070
+// req: AOS-010, AOS-013, AOS-014, AOS-017
 
 use core::ptr::null_mut;
 
+use aldis_aos::{
+    AosEdition, AosFrame, AosPhysicalChannelConfig, AosPrimaryHeader, AosVirtualChannelConfig,
+    BitstreamPointer, Bpdu, DataUnit, Mpdu, VcTable,
+};
 use aldis_core::crc::crc16;
 use aldis_core::ids::VcId;
 use aldis_core::ocf::{FsrReport, OCF_LEN, Ocf, ProjectSpecificReport, Type1Report};
@@ -21,6 +31,16 @@ use aldis_core::oid::OidGenerator;
 use aldis_core::security::SecurityLayout;
 use aldis_core::{DecodeMode, Error};
 use aldis_epp::{EncapsulationPacket, EpiExtension, UserDefined};
+use aldis_ffi::aos::{
+    ALDIS_AOS_CONTENT_BPDU, ALDIS_AOS_CONTENT_IDLE_DATA, ALDIS_AOS_CONTENT_MPDU,
+    ALDIS_AOS_CONTENT_VCA_SDU, ALDIS_AOS_EDITION_ISSUE4, ALDIS_AOS_EDITION_ISSUE5,
+    ALDIS_AOS_POINTER_ALL_VALID, ALDIS_AOS_POINTER_NO_PACKET_START, ALDIS_AOS_POINTER_NONE,
+    ALDIS_AOS_POINTER_ONLY_IDLE, ALDIS_AOS_POINTER_ONLY_IDLE_DATA, ALDIS_AOS_POINTER_STARTS_AT,
+    ALDIS_AOS_POINTER_VALID_BITS, aldis_aos_bpdu_decode, aldis_aos_config_t,
+    aldis_aos_corrected_header_t, aldis_aos_decode, aldis_aos_fhec_decode, aldis_aos_fhec_encode,
+    aldis_aos_frame_t, aldis_aos_header_decode, aldis_aos_header_t, aldis_aos_mc_config_t,
+    aldis_aos_mpdu_decode, aldis_aos_pdu_t, aldis_aos_peek_length, aldis_aos_vc_config_t,
+};
 use aldis_ffi::crc::aldis_crc16;
 use aldis_ffi::epp::{aldis_epp_decode, aldis_epp_packet_t, aldis_epp_peek_length};
 use aldis_ffi::error::{ALDIS_ERR_INVALID_FIELD, ALDIS_ERROR_DETAIL_MIN_SIZE};
@@ -571,6 +591,311 @@ fn tm(data: &[u8], fecf: bool, mode: DecodeMode, c_mode: u32) {
     expect(&rust, status, &detail);
 }
 
+// ---------------------------------------------------------------- AOS (WP-4 module 8)
+
+/// The C view of an AOS data unit agrees with the Rust one (AOS-017).
+fn aos_pdu_same(view: &aldis_aos_pdu_t, unit: &DataUnit<'_>) {
+    let expected = match unit {
+        DataUnit::Mpdu(mpdu) => {
+            let (kind, value) = match mpdu.pointer() {
+                aldis_aos::PacketPointer::StartsAt(n) => (ALDIS_AOS_POINTER_STARTS_AT, n),
+                aldis_aos::PacketPointer::NoPacketStart => (ALDIS_AOS_POINTER_NO_PACKET_START, 0),
+                aldis_aos::PacketPointer::OnlyIdleData => (ALDIS_AOS_POINTER_ONLY_IDLE_DATA, 0),
+            };
+            let header = (mpdu.first_header_pointer(), mpdu.issue4_spare());
+            (
+                ALDIS_AOS_CONTENT_MPDU,
+                kind,
+                value,
+                header,
+                mpdu.anomalies().bits(),
+            )
+        }
+        DataUnit::Bpdu(bpdu) => {
+            let (kind, value) = match bpdu.pointer() {
+                BitstreamPointer::ValidBits(n) => (ALDIS_AOS_POINTER_VALID_BITS, n.get()),
+                BitstreamPointer::AllValid => (ALDIS_AOS_POINTER_ALL_VALID, 0),
+                BitstreamPointer::OnlyIdle => (ALDIS_AOS_POINTER_ONLY_IDLE, 0),
+            };
+            let header = (bpdu.bitstream_data_pointer(), bpdu.spare());
+            (
+                ALDIS_AOS_CONTENT_BPDU,
+                kind,
+                value,
+                header,
+                bpdu.anomalies().bits(),
+            )
+        }
+        DataUnit::VcaSdu(_) => (
+            ALDIS_AOS_CONTENT_VCA_SDU,
+            ALDIS_AOS_POINTER_NONE,
+            0,
+            (0, 0),
+            0,
+        ),
+        DataUnit::IdleData(_) => (
+            ALDIS_AOS_CONTENT_IDLE_DATA,
+            ALDIS_AOS_POINTER_NONE,
+            0,
+            (0, 0),
+            0,
+        ),
+    };
+    let header = (view.pointer_raw, view.spare);
+    assert_eq!(
+        (
+            view.content,
+            view.pointer,
+            view.pointer_value,
+            header,
+            view.anomalies
+        ),
+        expected
+    );
+}
+
+/// The C form of an AOS Primary Header agrees with the Rust one (API-014).
+fn aos_header_same(c: &aldis_aos_header_t, h: &AosPrimaryHeader) {
+    assert_eq!(
+        (
+            c.scid,
+            c.vcid,
+            c.vc_frame_count,
+            c.replay_flag,
+            c.cycle_use_flag
+        ),
+        (
+            h.scid().get(),
+            h.vcid().get(),
+            h.vc_frame_count().get(),
+            h.replay_flag(),
+            h.cycle_use_flag()
+        )
+    );
+    assert_eq!(
+        (c.cycle_field, c.issue4_spare, c.has_fhec.then_some(c.fhec)),
+        (h.cycle_field().get(), h.issue4_spare(), h.fhec())
+    );
+    assert_eq!(
+        (c.corrected_symbols, c.octets),
+        (h.corrected_symbols().get(), h.to_octets())
+    );
+}
+
+/// The C view of an AOS frame agrees with the Rust view: header, data unit, FECF, anomalies,
+/// and every field's offset and length (CABI-012).
+fn aos_same(view: &aldis_aos_frame_t, frame: &AosFrame<'_>) {
+    aos_header_same(&view.header, &frame.header());
+    aos_pdu_same(&view.pdu, &frame.data_unit());
+    assert_eq!(view.has_fecf.then_some(view.fecf), frame.fecf());
+    assert_eq!(view.anomalies, frame.anomalies().bits());
+    let c = &view.layout;
+    let ranges = frame.layout();
+    let span = |at: usize, len: usize| at..at + len;
+    assert_eq!(c.frame_len, frame.len());
+    assert_eq!(
+        span(c.insert_zone_offset, c.insert_zone_len),
+        ranges.secondary()
+    );
+    assert_eq!(
+        span(c.security_header_offset, c.security_header_len),
+        ranges.security_header()
+    );
+    assert_eq!(span(c.data_offset, c.data_len), ranges.data());
+    let zone = frame.data_unit().zone();
+    let zone_start = zone.as_ptr().addr() - frame.as_bytes().as_ptr().addr();
+    assert_eq!(
+        span(c.zone_offset, c.zone_len),
+        span(zone_start, zone.len())
+    );
+    assert_eq!(
+        span(c.security_trailer_offset, c.security_trailer_len),
+        ranges.security_trailer()
+    );
+    assert_eq!(span(c.ocf_offset, c.ocf_len), ranges.ocf());
+    assert_eq!(span(c.fecf_offset, c.fecf_len), ranges.fecf());
+}
+
+/// The C ABI of `aldis-aos` agrees with `aldis-aos` on a frame of the input's length, on a
+/// physical channel whose FHEC, FECF, edition, and Insert Zone the selector chooses (M2 plan
+/// D14): `aldis_aos_fhec_encode` and `aldis_aos_fhec_decode` on the first octets,
+/// `aldis_aos_mpdu_decode` and `aldis_aos_bpdu_decode` on the input, `aldis_aos_peek_length`
+/// and `aldis_aos_header_decode`; and, on a master channel of the frame's SCID with every data
+/// VCID, VC `n` carrying the content `n % 4` with SDLS layouts of `n % 3` header and `n % 2`
+/// trailer octets and an OCF on odd VCIDs, `aldis_aos_decode` (AOS-010…AOS-017, API-070).
+#[expect(unsafe_code, reason = "calls the C ABI with valid pointers")]
+#[expect(clippy::too_many_lines, reason = "one comparison per C function")]
+fn aos(data: &[u8], selector: u8, mode: DecodeMode, c_mode: u32) {
+    let (fhec, fecf) = (selector & 0x40 != 0, selector & 0x80 != 0);
+    let (edition, c_edition) = if selector & 0x20 != 0 {
+        (AosEdition::Issue4Compatible, ALDIS_AOS_EDITION_ISSUE4)
+    } else {
+        (AosEdition::Issue5, ALDIS_AOS_EDITION_ISSUE5)
+    };
+    let insert_zone_len = usize::from((selector >> 3) & 3);
+    let mut detail = aldis_error_detail_t::default();
+    // The FHEC on the first six and eight octets (AOS-013, AOS-014).
+    if let Some(six) = data.first_chunk::<6>() {
+        let mut c = 0_u16;
+        // SAFETY: `six`, `c`, and `detail` are live.
+        let status = unsafe { aldis_aos_fhec_encode(six.as_ptr(), 6, &raw mut c, &raw mut detail) };
+        assert_eq!(
+            (status, c.to_be_bytes()),
+            (ALDIS_OK, aldis_aos::fhec::encode(six))
+        );
+    }
+    if let Some(eight) = data.first_chunk::<8>() {
+        let mut c = aldis_aos_corrected_header_t::default();
+        let rust = aldis_aos::fhec::decode(eight);
+        // SAFETY: as above.
+        let status =
+            unsafe { aldis_aos_fhec_decode(eight.as_ptr(), 8, &raw mut c, &raw mut detail) };
+        expect(&rust, status, &detail);
+        if let Ok(r) = rust {
+            assert_eq!(
+                (c.octets, c.corrected_symbols),
+                (r.octets(), r.corrected_symbols().get())
+            );
+        }
+    }
+    // The data units on the whole input (AOS-003, AOS-017).
+    let mut pdu = aldis_aos_pdu_t::default();
+    let rust = Mpdu::decode(data, edition, mode);
+    // SAFETY: as above.
+    let status = unsafe {
+        aldis_aos_mpdu_decode(
+            data.as_ptr(),
+            data.len(),
+            c_edition,
+            c_mode,
+            &raw mut pdu,
+            &raw mut detail,
+        )
+    };
+    expect(&rust, status, &detail);
+    if let Ok(m) = rust {
+        aos_pdu_same(&pdu, &DataUnit::Mpdu(m));
+    }
+    let rust = Bpdu::decode(data, mode);
+    // SAFETY: as above.
+    let status = unsafe {
+        aldis_aos_bpdu_decode(
+            data.as_ptr(),
+            data.len(),
+            c_mode,
+            &raw mut pdu,
+            &raw mut detail,
+        )
+    };
+    expect(&rust, status, &detail);
+    if let Ok(b) = rust {
+        aos_pdu_same(&pdu, &DataUnit::Bpdu(b));
+    }
+    let pc = aldis_aos_config_t {
+        struct_size: u32::try_from(size_of::<aldis_aos_config_t>()).unwrap(),
+        fhec: u8::from(fhec),
+        fecf: u8::from(fecf),
+        edition: c_edition,
+        frame_len: data.len(),
+        insert_zone_len,
+    };
+    let rust_pc = AosPhysicalChannelConfig::new(data.len(), fhec, insert_zone_len, fecf, edition);
+    let rust = rust_pc.and_then(|p| AosFrame::peek_length(data, &p));
+    let mut len = 0;
+    // SAFETY: `data`, `pc`, `len`, and `detail` are live.
+    let status = unsafe {
+        aldis_aos_peek_length(
+            data.as_ptr(),
+            data.len(),
+            &raw const pc,
+            &raw mut len,
+            &raw mut detail,
+        )
+    };
+    expect(&rust, status, &detail);
+    if let Ok(n) = rust {
+        assert_eq!(len, n);
+    }
+    let rust = rust_pc.and_then(|p| AosPrimaryHeader::decode(data, &p));
+    let mut header = aldis_aos_header_t::default();
+    // SAFETY: as above.
+    let status = unsafe {
+        aldis_aos_header_decode(
+            data.as_ptr(),
+            data.len(),
+            &raw const pc,
+            &raw mut header,
+            &raw mut detail,
+        )
+    };
+    expect(&rust, status, &detail);
+    let Ok(h) = rust else {
+        return;
+    };
+    aos_header_same(&header, &h);
+    // A master channel of the frame's SCID with every data VCID.
+    let mc = aldis_aos_mc_config_t {
+        struct_size: u32::try_from(size_of::<aldis_aos_mc_config_t>()).unwrap(),
+        scid: h.scid().get(),
+        pc,
+    };
+    let contents = [
+        (ALDIS_AOS_CONTENT_MPDU, aldis_aos::DataFieldContent::Mpdu),
+        (ALDIS_AOS_CONTENT_BPDU, aldis_aos::DataFieldContent::Bpdu),
+        (
+            ALDIS_AOS_CONTENT_VCA_SDU,
+            aldis_aos::DataFieldContent::VcaSdu,
+        ),
+        (
+            ALDIS_AOS_CONTENT_IDLE_DATA,
+            aldis_aos::DataFieldContent::IdleData,
+        ),
+    ];
+    let vcs: [aldis_aos_vc_config_t; 63] = core::array::from_fn(|n| aldis_aos_vc_config_t {
+        struct_size: u32::try_from(size_of::<aldis_aos_vc_config_t>()).unwrap(),
+        vcid: u8::try_from(n).unwrap(),
+        content: contents[n % 4].0,
+        ocf: u8::from(n % 2 == 1),
+        security_header_len: u8::try_from(n % 3).unwrap(),
+        security_trailer_len: u16::try_from(n % 2).unwrap(),
+    });
+    let rust_table = rust_pc.and_then(|p| {
+        let mut list = Vec::new();
+        for n in 0..63_u8 {
+            let i = usize::from(n);
+            let mut vc =
+                AosVirtualChannelConfig::new(h.scid(), VcId::new(n).unwrap(), contents[i % 4].1)?;
+            if n % 2 == 1 {
+                vc = vc.with_ocf();
+            }
+            list.push(vc.with_security(SecurityLayout::new(i % 3, i % 2)?));
+        }
+        VcTable::<63>::new(p, &list).map(|t| (p, t))
+    });
+    let rust = rust_table
+        .as_ref()
+        .map_err(|e| *e)
+        .and_then(|(p, t)| AosFrame::decode(data, p, t, mode));
+    let mut view = aldis_aos_frame_t::default();
+    // SAFETY: as above; `vcs` holds 63 structs.
+    let status = unsafe {
+        aldis_aos_decode(
+            data.as_ptr(),
+            data.len(),
+            &raw const mc,
+            vcs.as_ptr(),
+            vcs.len(),
+            c_mode,
+            &raw mut view,
+            &raw mut detail,
+        )
+    };
+    expect(&rust, status, &detail);
+    if let Ok(f) = &rust {
+        aos_same(&view, f);
+    }
+}
+
 fuzz_target!(|input: &[u8]| {
     let Some((&selector, data)) = input.split_first() else {
         return;
@@ -580,6 +905,8 @@ fuzz_target!(|input: &[u8]| {
     } else {
         (DecodeMode::Lenient, ALDIS_MODE_LENIENT)
     };
+    // AOS (WP-4 module 8): every input, besides the branch the selector picks.
+    aos(data, selector, mode, c_mode);
     match (selector >> 1) % 5 {
         0 => spp(data, mode, c_mode),
         1 => epp(data, mode, c_mode),

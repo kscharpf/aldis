@@ -328,7 +328,32 @@ impl<'b> AosFrameWriter<'b> {
         fields: &AosFrameFields,
     ) -> Result<AosFrameWriter<'b>> {
         let plan = Plan::new(pc, vcs, fields)?;
-        AosFrameWriter::start(out, plan)
+        AosFrameWriter::start(out, plan, true)
+    }
+
+    /// Takes up a frame that [`begin`](Self::begin) or [`begin_oid`](Self::begin_oid) started in
+    /// `out` with the same `pc`, `vcs`, and `fields`, so that a writer which keeps no state
+    /// between calls, the C ABI's `aldis_aos_writer_finish`, can finish it (API-023; M2 plan D4).
+    ///
+    /// Checks the arguments as `begin` does, or as `begin_oid` does when `fields.vcid` is 63,
+    /// and rewrites the Primary Header with its FHEC and the `M_PDU` or `B_PDU` Header; every
+    /// other octet stays as the caller filled it, the OID data of `begin_oid` included.
+    ///
+    /// # Errors
+    /// As for [`begin`](Self::begin), or for VCID 63 as for [`begin_oid`](Self::begin_oid); on
+    /// error `out` is unchanged (API-022, GEN-042).
+    pub fn resume<L: VcLookup + ?Sized>(
+        out: &'b mut [u8],
+        pc: &AosPhysicalChannelConfig,
+        vcs: &L,
+        fields: &AosFrameFields,
+    ) -> Result<AosFrameWriter<'b>> {
+        let plan = if fields.vcid == OID_VCID {
+            Plan::oid(pc, vcs, fields)?
+        } else {
+            Plan::new(pc, vcs, fields)?
+        };
+        AosFrameWriter::start(out, plan, false)
     }
 
     /// Starts an OID Transfer Frame: VCID 63, no OCF or SDLS fields, and the whole data field
@@ -350,18 +375,20 @@ impl<'b> AosFrameWriter<'b> {
         oid: &mut OidGenerator,
     ) -> Result<AosFrameWriter<'b>> {
         let plan = Plan::oid(pc, vcs, fields)?;
-        let mut writer = AosFrameWriter::start(out, plan)?;
+        let mut writer = AosFrameWriter::start(out, plan, true)?;
         oid.fill(writer.zone_mut());
         Ok(writer)
     }
 
-    /// Writes a checked plan into `out`.
-    fn start(out: &'b mut [u8], plan: Plan) -> Result<AosFrameWriter<'b>> {
+    /// Writes the headers of a checked plan into `out`, after zero-filling the frame if `zero`.
+    fn start(out: &'b mut [u8], plan: Plan, zero: bool) -> Result<AosFrameWriter<'b>> {
         let frame_len = plan.layout.frame_len();
         let frame = out
             .get_mut(..frame_len)
             .ok_or(Error::buffer_too_small(frame_len))?;
-        frame.fill(0);
+        if zero {
+            frame.fill(0);
+        }
         let header = plan.header.to_octets();
         write_at(
             frame,
@@ -503,7 +530,7 @@ pub fn encode<L: VcLookup + ?Sized>(
             u64::from(content.ocf.is_some()),
         ));
     }
-    let writer = AosFrameWriter::start(out, plan)?;
+    let writer = AosFrameWriter::start(out, plan, true)?;
     // Each field has the length checked above, so it fills its range exactly.
     let layout = &writer.layout;
     for (at, src) in [
@@ -647,6 +674,76 @@ mod tests {
         assert_eq!(out[..6], [0x6A, 0xC1, 0, 0, 0, 0]);
         assert_eq!(out[12..14], [0x3F, 0xFE], "the B_PDU Header");
         assert!(out[14..].iter().all(|&b| b == 0));
+    }
+
+    #[test]
+    fn resume_keeps_what_the_caller_filled() {
+        // req: AOS-016, AOS-019, API-022, API-023, GEN-042
+        let t = table();
+        let phy = t.physical_channel();
+        let fields = mpdu(PacketPointer::StartsAt(3));
+        let fill = |w: &mut AosFrameWriter<'_>| {
+            w.insert_zone_mut().copy_from_slice(&[1, 2, 3, 4]);
+            w.security_header_mut().copy_from_slice(&[0xA5, 0xA5]);
+            w.zone_mut().fill(0xD0);
+            w.security_trailer_mut().copy_from_slice(&[0x5A]);
+            w.set_ocf(Ocf::decode([0x01, 0, 0, 0])).unwrap();
+        };
+        let mut one = [0_u8; 40];
+        let mut w = AosFrameWriter::begin(&mut one, &phy, &t, &fields).unwrap();
+        fill(&mut w);
+        assert_eq!(w.finish(), 40);
+        // The same frame in two steps that keep no writer, with the headers overwritten between.
+        let mut two = [0_u8; 40];
+        fill(&mut AosFrameWriter::begin(&mut two, &phy, &t, &fields).unwrap());
+        two[..8].fill(0xEE);
+        two[14..16].fill(0xEE);
+        let w = AosFrameWriter::resume(&mut two, &phy, &t, &fields).unwrap();
+        assert_eq!(w.finish(), 40);
+        assert_eq!(two, one);
+        // An OID frame: `begin_oid`, then `resume` with the same fields, VCID 63.
+        let oid_fields = AosFrameFields::oid(scid(0x0AB), count(5));
+        let mut oid = OidGenerator::new();
+        let mut three = [0_u8; 40];
+        AosFrameWriter::begin_oid(&mut three, &phy, &t, &oid_fields, &mut oid)
+            .unwrap()
+            .insert_zone_mut()
+            .copy_from_slice(&[7; 4]);
+        let w = AosFrameWriter::resume(&mut three, &phy, &t, &oid_fields).unwrap();
+        assert_eq!(w.finish(), 40);
+        assert_eq!(
+            (&three[8..12], &three[12..16]),
+            (&[7; 4][..], &[0xFF; 4][..])
+        );
+        assert_eq!(syndrome(&three), 0);
+        assert!(AosFrame::decode(&three, &phy, &t, STRICT).unwrap().is_oid());
+        // Rejected as `begin` and `begin_oid` reject them, with the buffer left as it was.
+        let mut four = [0xEE_u8; 40];
+        let e = AosFrameWriter::resume(
+            &mut four,
+            &phy,
+            &t,
+            &AosFrameFields::new(scid(0x0AB), vcid(9), count(0), PduHeader::None),
+        )
+        .unwrap_err();
+        assert_eq!(
+            (e.kind(), e.field()),
+            (ErrorKind::UnknownChannel, Some(field::VC_ID))
+        );
+        let e = AosFrameWriter::resume(
+            &mut four,
+            &phy,
+            &t,
+            &AosFrameFields::oid(scid(0x0AC), count(0)),
+        )
+        .unwrap_err();
+        assert_eq!(
+            (e.kind(), e.field()),
+            (ErrorKind::UnknownChannel, Some(field::SPACECRAFT_ID))
+        );
+        let e = AosFrameWriter::resume(&mut four[..39], &phy, &t, &oid_fields).unwrap_err();
+        assert_eq!(e.kind(), ErrorKind::BufferTooSmall);
+        assert!(four.iter().all(|&b| b == 0xEE));
     }
 
     #[test]

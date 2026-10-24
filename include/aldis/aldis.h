@@ -33,6 +33,148 @@
 #define ALDIS_MODE_LENIENT 1
 
 /**
+ * Length of the AOS Transfer Frame Primary Header without the FHEC, in octets (732.0
+ * §4.1.2.1).
+ */
+#define ALDIS_AOS_PRIMARY_HEADER_LEN 6
+
+/**
+ * Length of the Frame Header Error Control, in octets (732.0 §4.1.2.6.1; AOS-013).
+ */
+#define ALDIS_AOS_FHEC_LEN 2
+
+/**
+ * Length of the `M_PDU` and of the `B_PDU` Header, in octets: the zone of a data unit starts
+ * this many octets into the data field (732.0 §4.1.4.2.1.3, §4.1.4.3.1.3).
+ */
+#define ALDIS_AOS_PDU_HEADER_LEN 2
+
+/**
+ * VCID 63, the VCID of OID Transfer Frames (732.0 §4.1.4.1.5.1, Table 5-2 note 2; AOS-016).
+ */
+#define ALDIS_AOS_OID_VCID 63
+
+/**
+ * The most virtual channels one master channel can configure: VCIDs 0 to 62 (732.0 Table 5-3
+ * note 2). A longer array names some VCID twice.
+ */
+#define ALDIS_AOS_MAX_VCS 63
+
+/**
+ * Largest Virtual Channel Frame Count, 2²⁴ − 1 (732.0 §4.1.2.4.2).
+ */
+#define ALDIS_AOS_VC_FRAME_COUNT_MAX 16777215
+
+/**
+ * Largest Virtual Channel Frame Count Cycle, `1111` (732.0 §4.1.2.5.5.1; AOS-012).
+ */
+#define ALDIS_AOS_CYCLE_MAX 15
+
+/**
+ * Smallest count of valid bits of `ALDIS_AOS_POINTER_VALID_BITS` (732.0 §4.1.4.3.3.2).
+ */
+#define ALDIS_AOS_VALID_BITS_MIN 1
+
+/**
+ * Largest count of valid bits of `ALDIS_AOS_POINTER_VALID_BITS`, `0x3FFE`: pointer `0x3FFD`,
+ * the last index below the reserved values (732.0 §4.1.4.3.3.3–4; AOS-017).
+ */
+#define ALDIS_AOS_VALID_BITS_MAX 16382
+
+/**
+ * Edition: 732.0-B-5, a 10-bit SCID and a 16-bit First Header Pointer; the default (732.0
+ * §4.1.2.2.3, §4.1.4.2.1.4; AOS-001, GEN-062).
+ */
+#define ALDIS_AOS_EDITION_ISSUE5 0
+
+/**
+ * Edition: the wire format of 732.0-B-4 and earlier (AOS-002, AOS-003).
+ *
+ * An 8-bit SCID, Primary Header bits 42–43 a spare, and an `M_PDU` Header of a 5-bit spare and
+ * an 11-bit First Header Pointer (732.0-B-4 §4.1.2.2.3, §4.1.2.5.4, §4.1.4.2.2–3).
+ */
+#define ALDIS_AOS_EDITION_ISSUE4 1
+
+/**
+ * Data Field Content: one `M_PDU` per frame (732.0 §4.1.4.2, Table 5-3).
+ */
+#define ALDIS_AOS_CONTENT_MPDU 0
+
+/**
+ * Data Field Content: one `B_PDU` per frame (732.0 §4.1.4.3, Table 5-3; AOS-018).
+ */
+#define ALDIS_AOS_CONTENT_BPDU 1
+
+/**
+ * Data Field Content: one `VCA_SDU` per frame, opaque (732.0 §4.1.4.1.3, Table 5-3).
+ */
+#define ALDIS_AOS_CONTENT_VCA_SDU 2
+
+/**
+ * Data Field Content: Idle Data, the content of an OID frame's data field too (732.0
+ * §4.1.4.1.3, §4.1.4.1.5, Table 5-3).
+ */
+#define ALDIS_AOS_CONTENT_IDLE_DATA 3
+
+/**
+ * Pointer: no `M_PDU` or `B_PDU` Header: a `VCA_SDU` or Idle Data (732.0 §4.1.4.1.3).
+ */
+#define ALDIS_AOS_POINTER_NONE 0
+
+/**
+ * `M_PDU` First Header Pointer: the first Packet that starts in the Packet Zone starts at the
+ * octet `pointer_value` (732.0 §4.1.4.2.2.3; AOS-017).
+ */
+#define ALDIS_AOS_POINTER_STARTS_AT 1
+
+/**
+ * `M_PDU` First Header Pointer all ones: no Packet starts in the Packet Zone (732.0
+ * §4.1.4.2.2.4).
+ */
+#define ALDIS_AOS_POINTER_NO_PACKET_START 2
+
+/**
+ * `M_PDU` First Header Pointer all ones minus one: the Packet Zone holds only Idle Data (732.0
+ * §4.1.4.2.2.5).
+ */
+#define ALDIS_AOS_POINTER_ONLY_IDLE_DATA 3
+
+/**
+ * `B_PDU` Bitstream Data Pointer: the first `pointer_value` bits of the Bitstream Data Zone are
+ * user data, the rest idle data (732.0 §4.1.4.3.3.2; AOS-017, GEN-053).
+ */
+#define ALDIS_AOS_POINTER_VALID_BITS 4
+
+/**
+ * `B_PDU` Bitstream Data Pointer all ones: the zone holds only user data (732.0
+ * §4.1.4.3.3.3).
+ */
+#define ALDIS_AOS_POINTER_ALL_VALID 5
+
+/**
+ * `B_PDU` Bitstream Data Pointer all ones minus one: the zone holds only idle data (732.0
+ * §4.1.4.3.3.4).
+ */
+#define ALDIS_AOS_POINTER_ONLY_IDLE 6
+
+/**
+ * Anomaly bit: Virtual Channel Frame Count Cycle other than `0000` with its Use Flag `0`
+ * (bit 0 of `AosAnomaly`; 732.0 §4.1.2.5.5.3; AOS-012, API-032).
+ */
+#define ALDIS_AOS_ANOMALY_CYCLE_NON_ZERO_WHILE_UNUSED (1 << 0)
+
+/**
+ * Anomaly bit: `B_PDU` Reserved Spare other than `00` (bit 1; 732.0 §4.1.4.3.2.2; API-032).
+ */
+#define ALDIS_AOS_ANOMALY_BPDU_SPARE_SET (1 << 1)
+
+/**
+ * Anomaly bit: in Issue 4, Primary Header bits 42–43 or the `M_PDU` Reserved Spare not zero
+ * (bit 2; 732.0-B-4 §4.1.2.5.4, §4.1.4.2.2; AOS-002, AOS-003, API-032).
+ */
+#define ALDIS_AOS_ANOMALY_ISSUE4_SPARE_SET (1 << 2)
+
+/**
  * APIDs that one `aldis_spp_tracker_t` tracks (SPP-011; M2 plan D5).
  *
  * `[spp] tracker_max_apids` of `capacities.toml` (CABI-030).
@@ -1480,6 +1622,403 @@ typedef struct {
 } aldis_error_detail_t;
 
 /**
+ * A primary header that passed the FHEC check, corrected where needed (732.0 §4.1.2.6,
+ * §4.3.7.2; AOS-013, AOS-014).
+ */
+typedef struct {
+  /**
+   * The eight header octets after correction, the FHEC included; octets 2–4, which the code
+   * does not protect, as received (§4.1.2.6.1 note 2).
+   */
+  uint8_t octets[8];
+  /**
+   * How many symbols were corrected: 0, 1, or 2 (AOS-014, M2 plan D9).
+   */
+  uint8_t corrected_symbols;
+} aldis_aos_corrected_header_t;
+
+/**
+ * Managed parameters of a physical channel (732.0 §5.2 Table 5-1; AOS-001, AOS-015, API-041,
+ * CABI-033). The configuration `aldis_aos_peek_length` takes (M2 plan D14).
+ */
+typedef struct {
+  /**
+   * `sizeof(aldis_aos_config_t)`, set by the caller (CABI-033).
+   */
+  uint32_t struct_size;
+  /**
+   * 1 if every Primary Header ends with the Frame Header Error Control, else 0 (732.0
+   * §4.1.2.6.2; AOS-013).
+   */
+  uint8_t fhec;
+  /**
+   * 1 if every frame ends with a Frame Error Control Field, else 0 (732.0 §4.1.6.1.2).
+   */
+  uint8_t fecf;
+  /**
+   * The wire format, `ALDIS_AOS_EDITION_*`; 0 is Issue 5 (AOS-001, GEN-062).
+   */
+  uint8_t edition;
+  /**
+   * Transfer Frame Length in octets: at least the Primary Header, the Insert Zone, one data
+   * octet, and the FECF (732.0 §4.1.1.2; CMN-041).
+   */
+  size_t frame_len;
+  /**
+   * Insert Zone length in octets, 0 for none (732.0 §4.1.3; AOS-015).
+   */
+  size_t insert_zone_len;
+} aldis_aos_config_t;
+
+/**
+ * A master channel: the Spacecraft ID of the virtual channels passed beside it, and its
+ * physical channel (732.0 §5.3 Table 5-2; API-040, CABI-033; c-abi.md §11).
+ *
+ * Its virtual channels are passed beside it, as an array of [`aldis_aos_vc_config_t`] and its
+ * count (M2 plan D14).
+ */
+typedef struct {
+  /**
+   * `sizeof(aldis_aos_mc_config_t)`, set by the caller (CABI-033).
+   */
+  uint32_t struct_size;
+  /**
+   * Spacecraft Identifier, 0 to 1023; at most 255 for a virtual channel in Issue 4 (732.0
+   * §4.1.2.2.3; AOS-002).
+   */
+  uint16_t scid;
+  /**
+   * The physical channel, with its own `struct_size` (CABI-033).
+   */
+  aldis_aos_config_t pc;
+} aldis_aos_mc_config_t;
+
+/**
+ * Managed parameters of a virtual channel (732.0 §5.4 Table 5-3, §6.6.2 Table 6-1; API-040,
+ * API-070, CABI-033).
+ */
+typedef struct {
+  /**
+   * `sizeof(aldis_aos_vc_config_t)`, set by the caller, the same for every struct of an
+   * array (CABI-033).
+   */
+  uint32_t struct_size;
+  /**
+   * Virtual Channel Identifier, 0 to 62; 63 is reserved for OID frames (732.0 §4.1.2.3,
+   * Table 5-3 note 2).
+   */
+  uint8_t vcid;
+  /**
+   * Data Field Content, `ALDIS_AOS_CONTENT_*` (732.0 §4.1.4.1.4, Table 5-3).
+   */
+  uint8_t content;
+  /**
+   * 1 for a `VC_OCF`, else 0 (732.0 §4.1.5.2, Table 5-3).
+   */
+  uint8_t ocf;
+  /**
+   * Security Header length in octets, at most 64; 0 without SDLS (Table 6-1; API-070).
+   */
+  uint8_t security_header_len;
+  /**
+   * Security Trailer length in octets; 0 without SDLS (Table 6-1; API-070).
+   */
+  uint16_t security_trailer_len;
+} aldis_aos_vc_config_t;
+
+/**
+ * An AOS Transfer Frame Primary Header as plain values, after FHEC correction (732.0 §4.1.2;
+ * AOS-002, AOS-010…AOS-014, API-014).
+ */
+typedef struct {
+  /**
+   * Spacecraft Identifier, as the edition defines it (732.0 §4.1.2.2.3; AOS-002).
+   */
+  uint16_t scid;
+  /**
+   * Virtual Channel Identifier; `ALDIS_AOS_OID_VCID` for an OID frame (732.0 §4.1.2.3).
+   */
+  uint8_t vcid;
+  /**
+   * Virtual Channel Frame Count, never corrected (732.0 §4.1.2.4, §4.1.2.6.1 note 2).
+   */
+  uint32_t vc_frame_count;
+  /**
+   * Replay Flag (732.0 §4.1.2.5.2).
+   */
+  bool replay_flag;
+  /**
+   * Virtual Channel Frame Count Cycle Use Flag (732.0 §4.1.2.5.3).
+   */
+  bool cycle_use_flag;
+  /**
+   * Bits 44–47 as received, whether or not the Use Flag is set (732.0 §4.1.2.5.5; AOS-012).
+   */
+  uint8_t cycle_field;
+  /**
+   * In Issue 4, bits 42–43, the Reserved Spare, as received; always 0 in Issue 5
+   * (732.0-B-4 §4.1.2.5.4; AOS-002).
+   */
+  uint8_t issue4_spare;
+  /**
+   * Whether the header ends with an FHEC (732.0 §4.1.2.6).
+   */
+  bool has_fhec;
+  /**
+   * The FHEC after correction, when `has_fhec`.
+   */
+  uint16_t fhec;
+  /**
+   * How many symbols the FHEC corrected: 0, 1, or 2; 0 without the FHEC (AOS-014).
+   */
+  uint8_t corrected_symbols;
+  /**
+   * The header octets after correction: 8 with the FHEC, else 6 and then two zero octets
+   * (732.0 §4.1.2; API-014).
+   */
+  uint8_t octets[8];
+} aldis_aos_header_t;
+
+/**
+ * A decoded `M_PDU` or `B_PDU` Header, or none (732.0 §4.1.4.2.2, §4.1.4.3.2–3; AOS-003,
+ * AOS-017).
+ *
+ * The zone, the Packet Zone or the Bitstream Data Zone, follows the
+ * `ALDIS_AOS_PDU_HEADER_LEN` header octets.
+ */
+typedef struct {
+  /**
+   * What the data field holds, `ALDIS_AOS_CONTENT_*` (Table 5-3).
+   */
+  uint8_t content;
+  /**
+   * The pointer classified, `ALDIS_AOS_POINTER_*`; `ALDIS_AOS_POINTER_NONE` for a
+   * `VCA_SDU` or Idle Data.
+   */
+  uint8_t pointer;
+  /**
+   * With `ALDIS_AOS_POINTER_STARTS_AT`, the offset of the first Packet in the Packet Zone;
+   * with `ALDIS_AOS_POINTER_VALID_BITS`, the count of valid bits; else 0.
+   */
+  uint16_t pointer_value;
+  /**
+   * The First Header Pointer (16 bits, 11 in Issue 4) or the Bitstream Data Pointer (14 bits)
+   * as received; 0 without a header (732.0 §4.1.4.2.2.1, §4.1.4.3.3.1).
+   */
+  uint16_t pointer_raw;
+  /**
+   * The Reserved Spare as received: the `B_PDU`'s, or in Issue 4 the `M_PDU`'s; else 0
+   * (732.0 §4.1.4.3.2; 732.0-B-4 §4.1.4.2.2).
+   */
+  uint8_t spare;
+  /**
+   * Lenient-mode anomaly flags of the data unit, `ALDIS_AOS_ANOMALY_*`; 0 in strict mode
+   * (API-032).
+   */
+  uint32_t anomalies;
+} aldis_aos_pdu_t;
+
+/**
+ * Where each field of a frame lies (732.0 §4.1, §6.3; CMN-040, API-072, CABI-012).
+ *
+ * Offsets and lengths are in octets from the start of the frame. An absent field has length 0
+ * at the offset where it would start.
+ */
+typedef struct {
+  /**
+   * Transfer Frame Length: the octets the frame takes (732.0 §4.1.1.2; API-012).
+   */
+  size_t frame_len;
+  /**
+   * Offset of the Insert Zone.
+   */
+  size_t insert_zone_offset;
+  /**
+   * Length of the Insert Zone; 0 without one (§4.1.3; AOS-015).
+   */
+  size_t insert_zone_len;
+  /**
+   * Offset of the Security Header.
+   */
+  size_t security_header_offset;
+  /**
+   * Length of the Security Header; 0 without SDLS (§6.3.4).
+   */
+  size_t security_header_len;
+  /**
+   * Offset of the Transfer Frame Data Field.
+   */
+  size_t data_offset;
+  /**
+   * Length of the Transfer Frame Data Field, never 0 (§4.1.4).
+   */
+  size_t data_len;
+  /**
+   * Offset of the zone after the `M_PDU` or `B_PDU` Header, or of the data field.
+   */
+  size_t zone_offset;
+  /**
+   * Length of that zone, never 0 (§4.1.4.2.3, §4.1.4.3.4).
+   */
+  size_t zone_len;
+  /**
+   * Offset of the Security Trailer.
+   */
+  size_t security_trailer_offset;
+  /**
+   * Length of the Security Trailer; 0 without SDLS (§6.3.6).
+   */
+  size_t security_trailer_len;
+  /**
+   * Offset of the Operational Control Field.
+   */
+  size_t ocf_offset;
+  /**
+   * Length of the Operational Control Field: `ALDIS_OCF_LEN` or 0 (§4.1.5).
+   */
+  size_t ocf_len;
+  /**
+   * Offset of the Frame Error Control Field.
+   */
+  size_t fecf_offset;
+  /**
+   * Length of the Frame Error Control Field: 2 or 0 (§4.1.6).
+   */
+  size_t fecf_len;
+} aldis_aos_layout_t;
+
+/**
+ * A decoded AOS Transfer Frame: its fields and where they lie in the input (732.0 §4.1, §6.3;
+ * AOS-010…AOS-017, API-010, CABI-012). The OCF is classified with `aldis_ocf_classify` on its
+ * octets (CMN-010).
+ */
+typedef struct {
+  /**
+   * The Primary Header after FHEC correction (732.0 §4.1.2; API-014).
+   */
+  aldis_aos_header_t header;
+  /**
+   * The data unit: `ALDIS_AOS_CONTENT_IDLE_DATA` for an OID frame (AOS-016, AOS-017).
+   */
+  aldis_aos_pdu_t pdu;
+  /**
+   * Whether the frame has an FECF (732.0 §4.1.6).
+   */
+  bool has_fecf;
+  /**
+   * The FECF, when `has_fecf`.
+   */
+  uint16_t fecf;
+  /**
+   * Lenient-mode anomaly flags of the header and the data unit, `ALDIS_AOS_ANOMALY_*`; 0 in
+   * strict mode (API-032).
+   */
+  uint32_t anomalies;
+  /**
+   * Where each field lies in the input.
+   */
+  aldis_aos_layout_t layout;
+} aldis_aos_frame_t;
+
+/**
+ * The Primary Header fields and the data unit header a sender chooses (732.0 §4.1.2,
+ * §4.1.4.2.2, §4.1.4.3.3; AOS-019).
+ *
+ * The SCID comes from the master channel, and the version, the spare bits, and the FHEC are
+ * the library's (API-021).
+ */
+typedef struct {
+  /**
+   * Virtual Channel Identifier: a configured VC, or `ALDIS_AOS_OID_VCID` for
+   * `aldis_aos_oid_writer_begin` (732.0 §4.1.2.3).
+   */
+  uint8_t vcid;
+  /**
+   * Virtual Channel Frame Count, at most `ALDIS_AOS_VC_FRAME_COUNT_MAX` (732.0 §4.1.2.4).
+   */
+  uint32_t vc_frame_count;
+  /**
+   * Replay Flag, 0 or 1 (732.0 §4.1.2.5.2).
+   */
+  uint8_t replay_flag;
+  /**
+   * Virtual Channel Frame Count Cycle Use Flag, 0 or 1; with 0 the cycle is written `0000`
+   * and `cycle` is ignored (732.0 §4.1.2.5.3; AOS-012).
+   */
+  uint8_t cycle_use_flag;
+  /**
+   * With `cycle_use_flag` 1: the Virtual Channel Frame Count Cycle, at most
+   * `ALDIS_AOS_CYCLE_MAX` (732.0 §4.1.2.5.5).
+   */
+  uint8_t cycle;
+  /**
+   * The data unit header, `ALDIS_AOS_POINTER_*`: one of the `M_PDU` pointers on a VC that
+   * carries `M_PDUs`, one of the `B_PDU` pointers on a VC that carries `B_PDUs`, else
+   * `ALDIS_AOS_POINTER_NONE` (732.0 §4.1.4.1.4; AOS-019).
+   */
+  uint8_t pointer;
+  /**
+   * With `ALDIS_AOS_POINTER_STARTS_AT`, the packet offset in the Packet Zone, inside it and
+   * at most `0xFFFD` (`0x7FD` in Issue 4); with `ALDIS_AOS_POINTER_VALID_BITS`, the count of
+   * valid bits, `ALDIS_AOS_VALID_BITS_MIN` to `ALDIS_AOS_VALID_BITS_MAX` and below the zone's
+   * length in bits; else ignored (732.0 §4.1.4.2.2.3, §4.1.4.3.3.2; AOS-017).
+   */
+  uint16_t pointer_value;
+} aldis_aos_fields_t;
+
+/**
+ * The variable fields of a frame for [`aldis_aos_encode`], as `(pointer, length)` buffers
+ * (732.0 §4.1, §6.3; AOS-015, AOS-019, API-072, CABI-011; c-abi.md §11).
+ *
+ * Each buffer has exactly the length the configuration gives its field, and may be `NULL`
+ * with length 0. The struct is read once per call and no pointer is kept (API-060).
+ */
+typedef struct {
+  /**
+   * The Insert Zone, an `IN_SDU`; empty without one (732.0 §4.1.3).
+   */
+  const uint8_t *insert_zone;
+  /**
+   * Length of `insert_zone`.
+   */
+  size_t insert_zone_len;
+  /**
+   * The Security Header, as a security hook filled it; empty without SDLS (732.0 §6.3.4).
+   */
+  const uint8_t *security_header;
+  /**
+   * Length of `security_header`.
+   */
+  size_t security_header_len;
+  /**
+   * The octets after the `M_PDU` or `B_PDU` Header, or the whole data field of a `VCA_SDU`
+   * or Idle Data, filling it exactly (732.0 §4.1.4).
+   */
+  const uint8_t *zone;
+  /**
+   * Length of `zone`.
+   */
+  size_t zone_len;
+  /**
+   * The Security Trailer; empty without SDLS (732.0 §6.3.6).
+   */
+  const uint8_t *security_trailer;
+  /**
+   * Length of `security_trailer`.
+   */
+  size_t security_trailer_len;
+  /**
+   * The Operational Control Field: `ALDIS_OCF_LEN` octets when the VC has one, else empty
+   * (732.0 §4.1.5).
+   */
+  const uint8_t *ocf;
+  /**
+   * Length of `ocf`: `ALDIS_OCF_LEN` or 0.
+   */
+  size_t ocf_len;
+} aldis_aos_content_t;
+
+/**
  * A decoded Encapsulation Packet: its header and where its data field lies in the input
  * (133.1 §4.1; EPP-001…007, API-010, API-014, CABI-012).
  */
@@ -2578,6 +3117,347 @@ typedef struct {
 #ifdef __cplusplus
 extern "C" {
 #endif // __cplusplus
+
+/**
+ * Computes the FHEC of the six octets of a Primary Header: the four parity symbols, which form
+ * octets 6 and 7, from octets 0, 1, and 5 (732.0 §4.1.2.6.5; AOS-013, AOS-019).
+ *
+ * `*out` is the FHEC as a big-endian 16-bit value: octet 6 in its high octet.
+ *
+ * # Errors
+ * CABI-022 violations, including a `header_len` other than `ALDIS_AOS_PRIMARY_HEADER_LEN`.
+ *
+ * # Safety
+ * `header` is valid for `header_len` octets (or `NULL` with 0); `out` is valid for one write;
+ * `err` is `NULL` or valid for one write.
+ */
+int32_t aldis_aos_fhec_encode(const uint8_t *header,
+                              size_t header_len,
+                              uint16_t *out,
+                              aldis_error_detail_t *err);
+
+/**
+ * Checks a received Primary Header with its FHEC and corrects up to two symbol errors (732.0
+ * §4.1.2.6.5, §4.3.7.2; AOS-013, AOS-014), as `aldis_aos::fhec::decode` does.
+ *
+ * The input is not changed. Three or more symbol errors can be miscorrected to another
+ * codeword and reported as one or two corrections (§4.1.2.6.5 note 3).
+ *
+ * # Errors
+ * `ALDIS_ERR_HEADER_UNCORRECTABLE` if no pattern of at most two symbol errors explains the
+ * syndromes; CABI-022 violations, including a `received_len` other than 8.
+ *
+ * # Safety
+ * `received` is valid for `received_len` octets (or `NULL` with 0); `out` is valid for one
+ * write; `err` is `NULL` or valid for one write.
+ */
+int32_t aldis_aos_fhec_decode(const uint8_t *received,
+                              size_t received_len,
+                              aldis_aos_corrected_header_t *out,
+                              aldis_error_detail_t *err);
+
+/**
+ * Checks a physical channel configuration (732.0 §5.2 Table 5-1; AOS-001, API-040, CMN-041).
+ *
+ * # Errors
+ * `ALDIS_ERR_INVALID_CONFIG` (`frame_len`) for a frame too short for the Primary Header (6
+ * octets, 8 with the FHEC), the Insert Zone, one data octet, and the FECF, with that minimum;
+ * CABI-022 violations, including an `edition` that is no `ALDIS_AOS_EDITION_*` constant.
+ *
+ * # Safety
+ * `pc` is valid for a read; `err` is `NULL` or valid for one write.
+ */
+int32_t aldis_aos_config_check(const aldis_aos_config_t *pc, aldis_error_detail_t *err);
+
+/**
+ * Checks a master channel configuration and its virtual channels (732.0 §5 Tables 5-1 to 5-3,
+ * §6.6 Table 6-1; AOS-002, AOS-018, API-040, API-070, CMN-041), as `VcTable::new` checks them.
+ *
+ * The physical channel is checked first, then the SCID, then each virtual channel in array
+ * order: its VCID, content, `VC_OCF` flag, and security layout; and then, in array order again,
+ * whether each fits the master channel.
+ *
+ * # Errors
+ * The errors of [`aldis_aos_config_check`]; `ALDIS_ERR_OUT_OF_RANGE` (`spacecraft_id`, `vc_id`)
+ * for an SCID above 1023 or a VCID above 63; `ALDIS_ERR_INVALID_CONFIG` (`vc_id`) for VCID 63,
+ * which is reserved for OID frames, and (`security_header_len`) for a Security Header above 64
+ * octets; then, for the first virtual channel that fails: `ALDIS_ERR_INVALID_CONFIG` (`vc_id`)
+ * for a VCID given twice, (`spacecraft_id`) for an SCID above 255 in Issue 4, (`frame_data_field`)
+ * for a VC left no data octet or, for an `M_PDU` or `B_PDU`, no octet after its header, and
+ * for a VC that carries `B_PDUs` (`frame_len`) for frames longer than 2 048 octets in Issue 5
+ * and (`frame_data_field`) for a Bitstream Data Zone longer than 2 047 octets (AOS-018);
+ * CABI-022 violations, including a VC struct whose `struct_size` differs from the first one's.
+ *
+ * # Safety
+ * `mc` is valid for a read; `vcs` is valid for reads of `vc_count` structs of the first one's
+ * `struct_size` (or `NULL` with 0); `err` is `NULL` or valid for one write.
+ */
+int32_t aldis_aos_mc_config_check(const aldis_aos_mc_config_t *mc,
+                                  const aldis_aos_vc_config_t *vcs,
+                                  size_t vc_count,
+                                  aldis_error_detail_t *err);
+
+/**
+ * The length of the frame that `prefix` begins: the configured frame length (732.0 §4.1.1.2;
+ * API-013, M2 plan D14), as `AosFrame::peek_length` gives it.
+ *
+ * Any prefix will do; the header it holds is checked as [`aldis_aos_decode`] checks it: with
+ * the FHEC once all eight header octets are present, corrected first, and without it the
+ * version as soon as the first octet is present.
+ *
+ * # Errors
+ * `ALDIS_ERR_HEADER_UNCORRECTABLE` (AOS-014); `ALDIS_ERR_UNSUPPORTED_VERSION` (`frame_version`)
+ * for a version other than `01` (AOS-011); the errors of [`aldis_aos_config_check`]; CABI-022
+ * violations.
+ *
+ * # Safety
+ * `prefix` is valid for `prefix_len` octets (or `NULL` with 0); `cfg` is valid for a read;
+ * `out_len` is valid for one write; `err` is `NULL` or valid for one write.
+ */
+int32_t aldis_aos_peek_length(const uint8_t *prefix,
+                              size_t prefix_len,
+                              const aldis_aos_config_t *cfg,
+                              size_t *out_len,
+                              aldis_error_detail_t *err);
+
+/**
+ * Decodes the Primary Header that `prefix` begins, after the FHEC has corrected it if
+ * configured (732.0 §4.1.2, §4.3.7.2; AOS-002, AOS-010…AOS-014, API-014).
+ *
+ * The SCID is read as the edition of `cfg` defines it. The rest of the frame is not read: for
+ * example to find the SCID of a frame on a physical channel that carries several master
+ * channels. The checks that depend on the mode are [`aldis_aos_decode`]'s; here the fields
+ * are given raw.
+ *
+ * # Errors
+ * `ALDIS_ERR_INCOMPLETE` (`needed` 6, or 8 with the FHEC) for a shorter prefix;
+ * `ALDIS_ERR_HEADER_UNCORRECTABLE` (AOS-014); `ALDIS_ERR_UNSUPPORTED_VERSION` (`frame_version`)
+ * for a version other than `01` (AOS-011); the errors of [`aldis_aos_config_check`]; CABI-022
+ * violations.
+ *
+ * # Safety
+ * `prefix` is valid for `prefix_len` octets (or `NULL` with 0); `cfg` is valid for a read;
+ * `out` is valid for one write; `err` is `NULL` or valid for one write.
+ */
+int32_t aldis_aos_header_decode(const uint8_t *prefix,
+                                size_t prefix_len,
+                                const aldis_aos_config_t *cfg,
+                                aldis_aos_header_t *out,
+                                aldis_error_detail_t *err);
+
+/**
+ * Decodes one frame of the master channel `mc`, with the parameters of its virtual channel
+ * from `vcs` (732.0 §4.1, §4.3.7, §6.3; AOS-010…AOS-017, API-010, API-012, API-070).
+ *
+ * It decodes as `AosFrame::decode` does with a `VcTable`.
+ *
+ * The header is corrected with the FHEC first and the FECF checked over the frame with the
+ * corrected header (§4.3.7.2–3; AOS-014). An OID frame (VCID 63) needs only the SCID of `mc`
+ * with at least one virtual channel: it has no OCF and no SDLS fields (§4.1.4.1.5).
+ *
+ * # Errors
+ * The errors of [`aldis_aos_mc_config_check`]; then, in this order:
+ * `ALDIS_ERR_LENGTH_MISMATCH` (`frame_len`) if `len` is not the frame length (API-012);
+ * `ALDIS_ERR_HEADER_UNCORRECTABLE` (AOS-014); `ALDIS_ERR_CRC_MISMATCH` for a wrong FECF;
+ * `ALDIS_ERR_UNSUPPORTED_VERSION` (`frame_version`) for a version other than `01` (AOS-011);
+ * `ALDIS_ERR_UNKNOWN_CHANNEL` (`spacecraft_id` for another SCID, `vc_id` for a VC `vcs` does not
+ * hold); the pointer errors of [`aldis_aos_mpdu_decode`] and [`aldis_aos_bpdu_decode`], in
+ * both modes (AOS-017); in strict mode, for the first deviation: `ALDIS_ERR_INVALID_FIELD`
+ * (`vc_frame_count_cycle`) for a cycle other than `0000` with its Use Flag `0` (AOS-012),
+ * `ALDIS_ERR_RESERVED_VALUE` (`aos_header_spare`) for Issue 4 bits 42–43 other than `00`
+ * (AOS-002), and the spare errors of the data unit; CABI-022 violations.
+ *
+ * # Safety
+ * `bytes` is valid for `len` octets (or `NULL` with 0); `mc` and `vcs` as for
+ * [`aldis_aos_mc_config_check`]; `out` is valid for one write; `err` is `NULL` or valid for one
+ * write.
+ */
+int32_t aldis_aos_decode(const uint8_t *bytes,
+                         size_t len,
+                         const aldis_aos_mc_config_t *mc,
+                         const aldis_aos_vc_config_t *vcs,
+                         size_t vc_count,
+                         uint32_t mode,
+                         aldis_aos_frame_t *out,
+                         aldis_error_detail_t *err);
+
+/**
+ * Decodes an `M_PDU` that fills `field`, the data field of a frame of a VC that carries
+ * `M_PDUs`, in `edition` (732.0 §4.1.4.2; 732.0-B-4 §4.1.4.2; AOS-003, AOS-017).
+ *
+ * It decodes as `Mpdu::decode` does. Its Packet Zone is the rest of `field`.
+ *
+ * # Errors
+ * `ALDIS_ERR_MALFORMED` (`frame_data_field`) if `field` has no octet after the 2-octet header,
+ * and (`first_header_pointer`) for a pointer outside the Packet Zone that is not reserved, in
+ * both modes; in strict mode `ALDIS_ERR_RESERVED_VALUE` (`mpdu_spare`) for an Issue 4 Reserved
+ * Spare other than `00000`; CABI-022 violations, including an `edition` that is no
+ * `ALDIS_AOS_EDITION_*` constant.
+ *
+ * # Safety
+ * `field` is valid for `len` octets (or `NULL` with 0); `out` is valid for one write; `err` is
+ * `NULL` or valid for one write.
+ */
+int32_t aldis_aos_mpdu_decode(const uint8_t *field,
+                              size_t len,
+                              uint8_t edition,
+                              uint32_t mode,
+                              aldis_aos_pdu_t *out,
+                              aldis_error_detail_t *err);
+
+/**
+ * Decodes a `B_PDU` that fills `field`, the data field of a frame of a VC that carries
+ * `B_PDUs` (732.0 §4.1.4.3; AOS-017), as `Bpdu::decode` does. Its Bitstream Data Zone is the
+ * rest of `field`.
+ *
+ * # Errors
+ * `ALDIS_ERR_MALFORMED` (`frame_data_field`) if `field` has no octet after the 2-octet header;
+ * in both modes, `ALDIS_ERR_INVALID_FIELD` (`bitstream_data_pointer`) for the index of the
+ * zone's last bit, which must be all ones instead (§4.1.4.3.3.3), and `ALDIS_ERR_MALFORMED`
+ * (`bitstream_data_pointer`) for an index beyond the zone that is not reserved; in strict mode
+ * `ALDIS_ERR_RESERVED_VALUE` (`bpdu_spare`) for a Reserved Spare other than `00`; CABI-022
+ * violations.
+ *
+ * # Safety
+ * `field` is valid for `len` octets (or `NULL` with 0); `out` is valid for one write; `err` is
+ * `NULL` or valid for one write.
+ */
+int32_t aldis_aos_bpdu_decode(const uint8_t *field,
+                              size_t len,
+                              uint32_t mode,
+                              aldis_aos_pdu_t *out,
+                              aldis_error_detail_t *err);
+
+/**
+ * Encodes one frame of (`mc->scid`, `fields->vcid`) into the start of `out` in one call (732.0
+ * §4.1, §6.3; AOS-019, API-020…API-022, API-072), as `aldis_aos::encode` does.
+ *
+ * `content` gives the variable fields, each exactly the length the configuration gives it
+ * ([`aldis_aos_content_t`]). The library writes the FHEC, the `M_PDU` or `B_PDU` Header from
+ * `fields->pointer`, and the FECF (API-021).
+ *
+ * # Errors
+ * On error `out` is unchanged (API-022). The errors of [`aldis_aos_mc_config_check`]; then
+ * `ALDIS_ERR_OUT_OF_RANGE` (`vc_id`, `vcf_count`, `vc_frame_count_cycle`,
+ * `bitstream_data_pointer`) for a value of `fields` outside its field, or a count of valid bits
+ * of 0 or above `ALDIS_AOS_VALID_BITS_MAX`; then, as `AosFrameWriter::begin` checks them,
+ * `ALDIS_ERR_INVALID_FIELD` (`vc_id`) for VCID 63, whose frames `aldis_aos_oid_writer_begin`
+ * writes; `ALDIS_ERR_UNKNOWN_CHANNEL` (`spacecraft_id` or `vc_id`) for a VC not in `vcs`;
+ * `ALDIS_ERR_INVALID_FIELD` (`data_field_content`) for a pointer not of the VC's data unit;
+ * `ALDIS_ERR_OUT_OF_RANGE` (`first_header_pointer`, `bitstream_data_pointer`) for a pointer
+ * value outside the zone (AOS-017); `ALDIS_ERR_BUFFER_TOO_SMALL` (`needed` = frame length);
+ * then `ALDIS_ERR_LENGTH_MISMATCH` (`insert_zone_len`, `security_header_len`,
+ * `frame_data_field`, `security_trailer_len`) for a buffer of another length than its field's,
+ * and `ALDIS_ERR_INVALID_FIELD` (`ocf`) for an OCF given where none is configured or missing
+ * where one is; CABI-022 violations, including an `ocf_len` other than 0 or `ALDIS_OCF_LEN`
+ * and `out` overlapping a buffer of `content`.
+ *
+ * # Safety
+ * `mc` and `vcs` as for [`aldis_aos_mc_config_check`]; `fields` and `content` are valid for a
+ * read; each buffer of `content` is valid for its length (or `NULL` with 0); `out` is valid for
+ * `cap` octets; `out_len` is valid for one write; `err` is `NULL` or valid for one write.
+ */
+int32_t aldis_aos_encode(const aldis_aos_mc_config_t *mc,
+                         const aldis_aos_vc_config_t *vcs,
+                         size_t vc_count,
+                         const aldis_aos_fields_t *fields,
+                         const aldis_aos_content_t *content,
+                         uint8_t *out,
+                         size_t cap,
+                         size_t *out_len,
+                         aldis_error_detail_t *err);
+
+/**
+ * Starts a two-phase write of one frame of (`mc->scid`, `fields->vcid`) (732.0 §4.1; AOS-019,
+ * API-023, M2 plan D4).
+ *
+ * Checks the arguments, writes the Primary Header with its FHEC and the `M_PDU` or `B_PDU`
+ * Header in the first frame-length octets of `out`, zero-fills every other octet of the frame,
+ * and reports where each field lies.
+ *
+ * The caller fills the fields at the offsets of `layout`, the OCF included (check a report
+ * with `aldis_ocf_check`), and calls [`aldis_aos_writer_finish`] with the same arguments. No
+ * state is kept.
+ *
+ * # Errors
+ * On error `out` is unchanged (API-022). The errors of [`aldis_aos_encode`] before
+ * `ALDIS_ERR_BUFFER_TOO_SMALL`, that one included; CABI-022 violations.
+ *
+ * # Safety
+ * `mc` and `vcs` as for [`aldis_aos_mc_config_check`]; `fields` is valid for a read; `out` is
+ * valid for `cap` octets; `layout` is valid for one write; `err` is `NULL` or valid for one
+ * write.
+ */
+int32_t aldis_aos_writer_begin(const aldis_aos_mc_config_t *mc,
+                               const aldis_aos_vc_config_t *vcs,
+                               size_t vc_count,
+                               const aldis_aos_fields_t *fields,
+                               uint8_t *out,
+                               size_t cap,
+                               aldis_aos_layout_t *layout,
+                               aldis_error_detail_t *err);
+
+/**
+ * Finishes a two-phase write begun with the same arguments by [`aldis_aos_writer_begin`], or
+ * by [`aldis_aos_oid_writer_begin`] without its generator (732.0 §4.1.6.2; AOS-019, API-021,
+ * API-023).
+ *
+ * Rewrites the Primary Header with its FHEC and the `M_PDU` or `B_PDU` Header, leaves every
+ * field the caller filled and the OID data, computes the FECF if configured, and returns the
+ * frame length (`AosFrameWriter::resume`).
+ *
+ * # Errors
+ * As [`aldis_aos_writer_begin`], or for `fields->vcid` 63 as [`aldis_aos_oid_writer_begin`];
+ * on error `out` is unchanged.
+ *
+ * # Safety
+ * As [`aldis_aos_writer_begin`]; `out_len` is valid for one write.
+ */
+int32_t aldis_aos_writer_finish(const aldis_aos_mc_config_t *mc,
+                                const aldis_aos_vc_config_t *vcs,
+                                size_t vc_count,
+                                const aldis_aos_fields_t *fields,
+                                uint8_t *out,
+                                size_t cap,
+                                size_t *out_len,
+                                aldis_error_detail_t *err);
+
+/**
+ * Starts an OID Transfer Frame of `mc->scid` on VCID 63 (732.0 §4.1.4.1.5; AOS-016, CMN-020,
+ * CMN-021).
+ *
+ * The frame has no OCF or SDLS fields, and the whole data field holds the next octets of the
+ * OID generator `oid`, as `AosFrameWriter::begin_oid` writes it; the Galois form gives the
+ * same octets (CMN-022). Reports where each field lies, as [`aldis_aos_writer_begin`] does.
+ *
+ * `fields->vcid` is `ALDIS_AOS_OID_VCID` and `fields->pointer` `ALDIS_AOS_POINTER_NONE`. The
+ * caller may fill the Insert Zone (AOS-015) and calls [`aldis_aos_writer_finish`] with the same
+ * arguments, without `oid`.
+ *
+ * # Errors
+ * On error neither `out` nor the generator is changed (GEN-042). The errors of
+ * [`aldis_aos_mc_config_check`] and the `fields` errors of [`aldis_aos_encode`]; then
+ * `ALDIS_ERR_INVALID_FIELD` (`vc_id`) unless `fields->vcid` is 63, and (`data_field_content`)
+ * unless `fields->pointer` is `ALDIS_AOS_POINTER_NONE`; `ALDIS_ERR_UNKNOWN_CHANNEL`
+ * (`spacecraft_id`) if `vcs` is empty; `ALDIS_ERR_BUFFER_TOO_SMALL` (`needed` = frame length);
+ * `ALDIS_ERR_INVALID_HANDLE` for an invalid generator; CABI-022 violations, including `out`
+ * overlapping the generator's storage.
+ *
+ * # Safety
+ * `mc` and `vcs` as for [`aldis_aos_mc_config_check`]; `fields` is valid for a read; `oid` is a
+ * handle from `aldis_oid_generator_init` whose storage is still valid, or detectably invalid
+ * storage; `out` is valid for `cap` octets; `layout` is valid for one write; `err` is `NULL` or
+ * valid for one write.
+ */
+int32_t aldis_aos_oid_writer_begin(const aldis_aos_mc_config_t *mc,
+                                   const aldis_aos_vc_config_t *vcs,
+                                   size_t vc_count,
+                                   const aldis_aos_fields_t *fields,
+                                   aldis_oid_generator_t *oid,
+                                   uint8_t *out,
+                                   size_t cap,
+                                   aldis_aos_layout_t *layout,
+                                   aldis_error_detail_t *err);
 
 /**
  * The CRC-16 of the `len` octets at `data` (132.0 §4.1.6.2; CMN-001, CMN-004).

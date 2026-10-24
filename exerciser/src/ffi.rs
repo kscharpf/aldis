@@ -8,6 +8,16 @@ use core::hint::black_box as bb;
 use core::ptr::{null, null_mut};
 
 use aldis_ffi::aldis_error_detail_t;
+use aldis_ffi::aos::{
+    ALDIS_AOS_CONTENT_BPDU, ALDIS_AOS_CONTENT_MPDU, ALDIS_AOS_EDITION_ISSUE5, ALDIS_AOS_OID_VCID,
+    ALDIS_AOS_POINTER_NONE, ALDIS_AOS_POINTER_STARTS_AT, ALDIS_AOS_POINTER_VALID_BITS,
+    aldis_aos_bpdu_decode, aldis_aos_config_check, aldis_aos_config_t, aldis_aos_content_t,
+    aldis_aos_corrected_header_t, aldis_aos_decode, aldis_aos_encode, aldis_aos_fhec_decode,
+    aldis_aos_fhec_encode, aldis_aos_fields_t, aldis_aos_frame_t, aldis_aos_header_decode,
+    aldis_aos_header_t, aldis_aos_layout_t, aldis_aos_mc_config_check, aldis_aos_mc_config_t,
+    aldis_aos_mpdu_decode, aldis_aos_oid_writer_begin, aldis_aos_pdu_t, aldis_aos_peek_length,
+    aldis_aos_vc_config_t, aldis_aos_writer_begin, aldis_aos_writer_finish,
+};
 use aldis_ffi::crc::aldis_crc16;
 use aldis_ffi::epp::{
     ALDIS_EPP_HEADER_AUTO, aldis_epp_check, aldis_epp_config_check, aldis_epp_config_t,
@@ -745,6 +755,262 @@ fn core(t: &mut Tally) {
     }
 }
 
+// ---------------------------------------------------------------- AOS (WP-4 module 8)
+
+/// A 40-octet AOS master channel with the FHEC, a 4-octet Insert Zone, and an FECF on SCID
+/// 0x0AB: VC 0 carries `M_PDUs` with an OCF and SDLS 2/1, VC 1 `B_PDUs` (732.0 §5; M2 plan D14).
+fn aos_channels() -> (aldis_aos_mc_config_t, [aldis_aos_vc_config_t; 2]) {
+    let mc = aldis_aos_mc_config_t {
+        struct_size: size::<aldis_aos_mc_config_t>(),
+        scid: bb(0x0AB),
+        pc: aldis_aos_config_t {
+            struct_size: size::<aldis_aos_config_t>(),
+            fhec: bb(1),
+            fecf: bb(1),
+            edition: bb(ALDIS_AOS_EDITION_ISSUE5),
+            frame_len: bb(40),
+            insert_zone_len: bb(4),
+        },
+    };
+    let vc = aldis_aos_vc_config_t {
+        struct_size: size::<aldis_aos_vc_config_t>(),
+        vcid: 0,
+        content: bb(ALDIS_AOS_CONTENT_MPDU),
+        ocf: bb(1),
+        security_header_len: bb(2),
+        security_trailer_len: bb(1),
+    };
+    let bpdu = aldis_aos_vc_config_t {
+        vcid: 1,
+        content: bb(ALDIS_AOS_CONTENT_BPDU),
+        ocf: 0,
+        security_header_len: 0,
+        security_trailer_len: 0,
+        ..vc
+    };
+    (mc, [vc, bpdu])
+}
+
+/// The C ABI of `aldis-aos` (AOS-001…AOS-019; M2 plan D14).
+#[expect(unsafe_code, reason = "calls the C ABI with valid pointers")]
+#[expect(clippy::too_many_lines, reason = "one call per exported function")]
+fn aos(t: &mut Tally) {
+    let (mc, vcs) = aos_channels();
+    let mut det = detail();
+    let fields = aldis_aos_fields_t {
+        vcid: bb(0),
+        vc_frame_count: bb(0x12_3456),
+        replay_flag: bb(1),
+        cycle_use_flag: bb(1),
+        cycle: bb(9),
+        pointer: bb(ALDIS_AOS_POINTER_STARTS_AT),
+        pointer_value: bb(3),
+    };
+    let (iz, sh, zone, st, ocf) = (
+        [0x11_u8; 4],
+        [0xA5_u8; 2],
+        [0xD0_u8; 17],
+        [0x5A_u8; 1],
+        [0x01_u8, 0, 0, 0],
+    );
+    let content = aldis_aos_content_t {
+        insert_zone: iz.as_ptr(),
+        insert_zone_len: bb(4),
+        security_header: sh.as_ptr(),
+        security_header_len: bb(2),
+        zone: zone.as_ptr(),
+        zone_len: bb(17),
+        security_trailer: st.as_ptr(),
+        security_trailer_len: bb(1),
+        ocf: ocf.as_ptr(),
+        ocf_len: bb(4),
+    };
+    let mut frame = [0_u8; 40];
+    let mut two = [0_u8; 40];
+    let mut layout = aldis_aos_layout_t::default();
+    let mut view = aldis_aos_frame_t::default();
+    let mut header = aldis_aos_header_t::default();
+    let mut corrected = aldis_aos_corrected_header_t::default();
+    let mut pdu = aldis_aos_pdu_t::default();
+    let mut fhec = 0_u16;
+    let mut n = 0_usize;
+    let mut words = [0_u64; ALDIS_OID_GENERATOR_STORAGE_SIZE / 8];
+    let mut oid: *mut aldis_oid_generator_t = null_mut();
+    // SAFETY: every pointer is to a live local; lengths are those of the buffers; the
+    // generator's storage is aligned and of the published size.
+    unsafe {
+        t.check(aldis_aos_config_check(&raw const mc.pc, &raw mut det) == ALDIS_OK);
+        t.check(
+            aldis_aos_mc_config_check(&raw const mc, vcs.as_ptr(), bb(2), &raw mut det) == ALDIS_OK,
+        );
+        t.check(
+            aldis_aos_encode(
+                &raw const mc,
+                vcs.as_ptr(),
+                bb(2),
+                &raw const fields,
+                &raw const content,
+                frame.as_mut_ptr(),
+                frame.len(),
+                &raw mut n,
+                &raw mut det,
+            ) == ALDIS_OK
+                && n == 40,
+        );
+        t.check(
+            aldis_aos_writer_begin(
+                &raw const mc,
+                vcs.as_ptr(),
+                bb(2),
+                &raw const fields,
+                two.as_mut_ptr(),
+                two.len(),
+                &raw mut layout,
+                &raw mut det,
+            ) == ALDIS_OK
+                && layout.zone_offset == 16
+                && layout.zone_len == 17,
+        );
+        two[8..12].fill(0x11);
+        two[12..14].fill(0xA5);
+        two[16..33].fill(0xD0);
+        two[33] = 0x5A;
+        two[34] = 0x01;
+        t.check(
+            aldis_aos_writer_finish(
+                &raw const mc,
+                vcs.as_ptr(),
+                bb(2),
+                &raw const fields,
+                two.as_mut_ptr(),
+                two.len(),
+                &raw mut n,
+                &raw mut det,
+            ) == ALDIS_OK
+                && two == frame,
+        );
+        t.check(
+            aldis_aos_fhec_encode(frame.as_ptr(), bb(6), &raw mut fhec, &raw mut det) == ALDIS_OK
+                && fhec.to_be_bytes() == [frame[6], frame[7]],
+        );
+        two[0] ^= bb(0x10);
+        t.check(
+            aldis_aos_fhec_decode(two.as_ptr(), bb(8), &raw mut corrected, &raw mut det)
+                == ALDIS_OK
+                && corrected.corrected_symbols == 1,
+        );
+        t.check(
+            aldis_aos_peek_length(
+                frame.as_ptr(),
+                bb(1),
+                &raw const mc.pc,
+                &raw mut n,
+                &raw mut det,
+            ) == ALDIS_OK
+                && n == 40,
+        );
+        t.check(
+            aldis_aos_header_decode(
+                frame.as_ptr(),
+                bb(7),
+                &raw const mc.pc,
+                &raw mut header,
+                &raw mut det,
+            ) == ALDIS_ERR_INCOMPLETE
+                && det.needed == 8,
+        );
+        t.check(
+            aldis_aos_header_decode(
+                two.as_ptr(),
+                bb(8),
+                &raw const mc.pc,
+                &raw mut header,
+                &raw mut det,
+            ) == ALDIS_OK
+                && header.scid == 0x0AB
+                && header.corrected_symbols == 1,
+        );
+        t.check(
+            aldis_aos_decode(
+                two.as_ptr(),
+                bb(40),
+                &raw const mc,
+                vcs.as_ptr(),
+                bb(2),
+                bb(ALDIS_MODE_LENIENT),
+                &raw mut view,
+                &raw mut det,
+            ) == ALDIS_OK
+                && view.pdu.pointer == ALDIS_AOS_POINTER_STARTS_AT
+                && view.layout.zone_len == 17,
+        );
+        t.check(
+            aldis_aos_mpdu_decode(
+                frame.as_ptr().wrapping_add(14),
+                bb(19),
+                bb(ALDIS_AOS_EDITION_ISSUE5),
+                bb(ALDIS_MODE_STRICT),
+                &raw mut pdu,
+                &raw mut det,
+            ) == ALDIS_OK
+                && pdu.pointer_value == 3,
+        );
+        t.check(
+            aldis_aos_bpdu_decode(
+                [0x00_u8, 0x08, 0xFF, 0x80].as_ptr(),
+                bb(4),
+                bb(ALDIS_MODE_STRICT),
+                &raw mut pdu,
+                &raw mut det,
+            ) == ALDIS_OK
+                && pdu.pointer == ALDIS_AOS_POINTER_VALID_BITS
+                && pdu.pointer_value == 9,
+        );
+        t.check(
+            aldis_oid_generator_init(
+                words.as_mut_ptr().cast(),
+                bb(ALDIS_OID_GENERATOR_STORAGE_SIZE),
+                bb(ALDIS_OID_GALOIS),
+                &raw mut oid,
+                &raw mut det,
+            ) == ALDIS_OK,
+        );
+        let idle = aldis_aos_fields_t {
+            vcid: bb(ALDIS_AOS_OID_VCID),
+            pointer: bb(ALDIS_AOS_POINTER_NONE),
+            ..fields
+        };
+        t.check(
+            aldis_aos_oid_writer_begin(
+                &raw const mc,
+                vcs.as_ptr(),
+                bb(2),
+                &raw const idle,
+                oid,
+                frame.as_mut_ptr(),
+                frame.len(),
+                &raw mut layout,
+                &raw mut det,
+            ) == ALDIS_OK
+                && frame.get(12..16) == Some(&[0xFF; 4][..]),
+        );
+        t.check(
+            aldis_aos_writer_finish(
+                &raw const mc,
+                vcs.as_ptr(),
+                bb(2),
+                &raw const idle,
+                frame.as_mut_ptr(),
+                frame.len(),
+                &raw mut n,
+                &raw mut det,
+            ) == ALDIS_OK
+                && n == 40,
+        );
+        aldis_oid_generator_deinit(oid);
+    }
+}
+
 /// A 32-octet TM master channel with an FECF on SCID 0x0AB: VC 0 carries packets with SDLS 2/1,
 /// VC 1 `VCA_SDUs` (132.0 §5; M2 plan D14).
 fn tm_channels() -> (aldis_tm_mc_config_t, [aldis_tm_vc_config_t; 2]) {
@@ -987,6 +1253,7 @@ fn tm(t: &mut Tally) {
 /// Calls every exported function of `aldis-ffi`.
 pub fn run(t: &mut Tally) {
     core(t);
+    aos(t);
     spp(t);
     spp_state(t);
     time(t);

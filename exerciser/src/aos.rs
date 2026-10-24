@@ -267,6 +267,12 @@ fn frames(
         .is_ok_and(|w| w.finish() == 40),
     );
     t.check(frame.get(12..16) == Some(&[0xFF; 4][..]));
+    // `resume` keeps the OID data `begin_oid` wrote, as the C ABI's finish uses it (API-023).
+    t.check(
+        AosFrameWriter::resume(bb(&mut frame), pc, table, &AosFrameFields::oid(scid, zero))
+            .is_ok_and(|w| w.finish() == 40),
+    );
+    t.check(frame.get(12..16) == Some(&[0xFF; 4][..]));
     t.check(AosFrame::decode(bb(&frame), pc, table, DecodeMode::Strict).is_ok_and(|f| f.is_oid()));
 }
 

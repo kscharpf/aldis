@@ -41,7 +41,7 @@ A crate *has code* once its `src/` declares a function. In the change that gives
 - [ ] A row in [`test-vectors/README.md`](../../test-vectors/README.md) **(consistency)**.
 - [ ] Run by a host test in `crates/<crate>/tests/` through the `aldis-testkit` exact-match runner and a handler (VER-021, TV-012) **(consistency)** for a test naming the file.
 - [ ] Embedded and run by the exerciser when its crate is exercised (VER-010, M1 D6) **(consistency)**.
-- [ ] For a codec that has C ABI functions, run through the C ABI by the `aldis-ffi` vector runner, `crates/aldis-ffi/tests/vectors.rs` (M2 plan D4) **(consistency)**: every file of `test-vectors/{time,spp,epp,tm}/` (`FFI_AREAS` in `xtask/src/consistency.rs`), and every file of a directory the runner names at least one file of; in `test-vectors/core/`, whose crate has a C ABI for some modules only (M2 plan D14), the files of those modules (`FFI_FILES`).
+- [ ] For a codec that has C ABI functions, run through the C ABI by the `aldis-ffi` vector runner, `crates/aldis-ffi/tests/vectors.rs` (M2 plan D4) **(consistency)**: every file of `test-vectors/{time,spp,epp,tm,aos}/` (`FFI_AREAS` in `xtask/src/consistency.rs`), and every file of a directory the runner names at least one file of; in `test-vectors/core/`, whose crate has a C ABI for some modules only (M2 plan D14), the files of those modules (`FFI_FILES`).
 - [ ] Each case in the file whose name describes it; a case not yet released that does not fit moves to one that does, without asking ([decision rights](../process/decision-rights.md) §2.5).
 - [ ] Never edit a released case: add a new case and mark the old one `superseded` (TV-021, `cargo xtask vectors validate`).
 
