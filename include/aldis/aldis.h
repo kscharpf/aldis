@@ -568,9 +568,10 @@
 
 /**
  * Length of the user data a two-phase writer is finished with: the User Data Field of a Space
- * Packet, or the User Data of a TC Frame Data Unit.
+ * Packet, the User Data of a TC Frame Data Unit, or the Transfer Frame Data Zone of a USLP frame.
  *
- * Code 54, a parameter (133.0 §4.1.4.3; 232.0 §4.1.3.2.1; API-023; API-082, CABI-021).
+ * Code 54, a parameter (133.0 §4.1.4.3; 232.0 §4.1.3.2.1; 732.1 §4.1.4.3; API-023; API-082,
+ * CABI-021).
  */
 #define ALDIS_FIELD_USER_LEN 54
 
@@ -662,22 +663,24 @@
 /**
  * Transfer Frame Version Number.
  *
- * Code 67, a field (132.0 §4.1.2.2.2; 232.0 §4.1.2.2; API-082, CABI-021).
+ * Code 67, a field (132.0 §4.1.2.2.2; 232.0 §4.1.2.2; 732.1 §4.1.2.2.2; API-082, CABI-021).
  */
 #define ALDIS_FIELD_FRAME_VERSION 67
 
 /**
- * Length of a Transfer Frame in octets: the Frame Length field of a TC frame, or the Transfer
- * Frame Length managed parameter of a TM physical channel with fixed-length frames.
+ * Length of a Transfer Frame in octets: the Frame Length field of a TC or USLP frame, or the
+ * Transfer Frame Length managed parameter of a TM or USLP physical channel with fixed-length
+ * frames.
  *
- * Code 68, a field (132.0 §4.1.1.2, §5.1 Table 5-1; 232.0 §4.1.2.7; API-082, CABI-021).
+ * Code 68, a field (132.0 §4.1.1.2, §5.1 Table 5-1; 232.0 §4.1.2.7; 732.1 §4.1.2.7, Table 5-1;
+ * API-082, CABI-021).
  */
 #define ALDIS_FIELD_FRAME_LEN 68
 
 /**
  * Operational Control Field Flag.
  *
- * Code 69, a field (132.0 §4.1.2.4; API-082, CABI-021).
+ * Code 69, a field (132.0 §4.1.2.4; 732.1 §4.1.2.10; API-082, CABI-021).
  */
 #define ALDIS_FIELD_OCF_FLAG 69
 
@@ -748,7 +751,7 @@
 /**
  * Maximum Transfer Frame Length, a managed parameter of a Physical or Virtual Channel.
  *
- * Code 79, a parameter (232.0 §5 Tables 5-1, 5-3; API-082, CABI-021).
+ * Code 79, a parameter (232.0 §5 Tables 5-1, 5-3; 732.1 §5.2 Table 5-1 note 2; API-082, CABI-021).
  */
 #define ALDIS_FIELD_MAX_FRAME_LEN 79
 
@@ -814,6 +817,88 @@
  * Code 88, a field (232.0 §4.2.1.9; API-082, CABI-021).
  */
 #define ALDIS_FIELD_FARM_B_COUNTER 88
+
+/**
+ * Protocol Control Command Flag of the USLP Primary Header, read with the Bypass/Sequence Control
+ * Flag as Table 4-1.
+ *
+ * Code 89, a field (732.1 §4.1.2.8.2, Table 4-1; API-082, CABI-021).
+ */
+#define ALDIS_FIELD_PROTOCOL_CONTROL_COMMAND_FLAG 89
+
+/**
+ * Reserve Spares of the USLP Primary Header, bits 50–51.
+ *
+ * Code 90, a field (732.1 §4.1.2.9; API-082, CABI-021).
+ */
+#define ALDIS_FIELD_USLP_HEADER_SPARE 90
+
+/**
+ * End of Frame Primary Header Flag: a truncated Primary Header.
+ *
+ * Code 91, a field (732.1 §4.1.2.6; Annex D1.3; API-082, CABI-021).
+ */
+#define ALDIS_FIELD_END_OF_FRAME_PRIMARY_HEADER_FLAG 91
+
+/**
+ * Virtual Channel Frame Count Length, and the VC Count Length managed parameters for each quality
+ * of service.
+ *
+ * Code 92, a field (732.1 §4.1.2.11; §5.4 Table 5-3; API-082, CABI-021).
+ */
+#define ALDIS_FIELD_VCF_COUNT_LEN 92
+
+/**
+ * Virtual Channel Frame Count.
+ *
+ * Code 93, a field (732.1 §4.1.2.12; API-082, CABI-021).
+ */
+#define ALDIS_FIELD_VCF_COUNT 93
+
+/**
+ * TFDZ Construction Rule of the TFDF Header.
+ *
+ * Code 94, a field (732.1 §4.1.4.2.2; API-082, CABI-021).
+ */
+#define ALDIS_FIELD_TFDZ_CONSTRUCTION_RULE 94
+
+/**
+ * USLP Protocol Identifier of the TFDF Header.
+ *
+ * Code 95, a field (732.1 §4.1.4.2.3; API-082, CABI-021).
+ */
+#define ALDIS_FIELD_UPID 95
+
+/**
+ * First Header/Last Valid Octet Pointer of the TFDF Header.
+ *
+ * Code 96, a field (732.1 §4.1.4.2.4; API-082, CABI-021).
+ */
+#define ALDIS_FIELD_FHP_LVO_POINTER 96
+
+/**
+ * Insert Zone Length, a managed parameter of a Physical Channel, and the Insert Zone a writer is
+ * given.
+ *
+ * Code 97, a parameter (732.1 §4.1.3; §5.2 Table 5-1 note 5; API-082, CABI-021).
+ */
+#define ALDIS_FIELD_INSERT_ZONE_LEN 97
+
+/**
+ * Truncated Transfer Frame Length, a managed parameter of a Virtual Channel.
+ *
+ * Code 98, a parameter (732.1 §5.4 Table 5-3 note 5; Annex D1.2.1, D1.2.4, D1.3.2; API-082,
+ * CABI-021).
+ */
+#define ALDIS_FIELD_TRUNCATED_FRAME_LEN 98
+
+/**
+ * Transfer Frame Type of a Physical or Virtual Channel: fixed or variable length.
+ *
+ * Code 99, a parameter (732.1 §5.2 Table 5-1, §5.4 Table 5-3 note 2; §4.1.4.2.2.1.1; API-082,
+ * CABI-021).
+ */
+#define ALDIS_FIELD_TRANSFER_FRAME_TYPE 99
 
 /**
  * Alignment, in octets, of every helper's storage: a C caller gets it with a `uint64_t`

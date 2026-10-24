@@ -456,6 +456,7 @@ pub fn run() -> Tally {
     crate::spp::run(&mut t);
     crate::tc::run(&mut t);
     crate::time::run(&mut t);
+    crate::uslp::run(&mut t);
     crate::vectors::run(&mut t);
     #[cfg(feature = "inject-panic")]
     canary(&mut t);

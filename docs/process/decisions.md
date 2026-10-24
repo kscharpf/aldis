@@ -85,5 +85,8 @@ One line for each decision the maintainer takes, under the [decision rights](dec
 - 2026-10-24 · api · #94 · A stateless `_writer_finish` over a writer whose `begin` zero-fills calls a public `resume` of the codec (`TmFrameWriter::resume`), not FECF or header code in `aldis-ffi` (c-abi.md §11)
 - 2026-10-24 · api · #94 · aldis_tm_encode takes the five frame-content slices in one aldis_tm_content_t (review finding 2); the VC array stays as arguments
 - 2026-10-24 · api · #94 · One aldis_tm_validate, which uses the master channel's security layouts; the _with pairs exist only for decoders, whose plain form takes the physical channel (review finding 3, c-abi.md §11)
+- 2026-10-24 · spec · #98 · OI-44 (1): on VCID 63 a USLP decoder checks the OID header (MAP ID 0, rule `001`, UPID Only Idle Data, LVO at the last TFDZ octet): `InvalidField` with reason 17 in strict mode, the anomaly `OidHeaderMismatch` (bit 1) in lenient mode
+- 2026-10-24 · spec · #98 · OI-44 (2): a USLP TFDZ holds at least one octet, as OI-41 (1) for TC
+- 2026-10-24 · spec · #98 · OI-44 (3): a valid header for USLP delimiting is TFVN `1100` and either a truncated header or at least seven octets with Frame Length + 1 ≥ 9 + the VCF Count Length, as OI-41 (2) for TC
 - 2026-10-24 · process · chat · After a PR merges, the coordinator merges main into the next ready PR in the merge order and starts its verify run at once, so the maintainer does not wait on the up-to-date run (VER-058)
 - 2026-10-24 · process · chat · The workflow definitions and the other .github files no check reads become inputs of spec only (VER-056); the xtask module split of the inputs is not adopted
