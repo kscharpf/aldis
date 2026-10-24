@@ -11,10 +11,10 @@ use aldis_core::{Anomaly, DecodeMode};
 use aldis_uslp::{
     ChannelFields, ConstructionRule, Delimited, FirstHeaderPointer, FrameContent, FrameDelimiter,
     FrameFields, FrameKind, LastValidOctet, MapConfig, OcfUse, PhysicalChannelConfig, Reason,
-    SecurityScope, SourceOrDestination, TfdfHeader, TfdzRule, TransferFrameType, TruncatedFrameLen,
-    UnassignedUpid, Upid, UslpAnomaly, UslpFrame, UslpFrameWriter, UslpMapId, UslpSpacecraftId,
-    UslpVcId, VcConfig, VcLookup, VcParams, VcTable, VcfCount, VcfCountLen, encode, encode_oid,
-    encode_truncated, next_frame, validate_frame,
+    SecurityScope, SourceOrDestination, TfdfHeader, TfdzOffset, TfdzRule, TransferFrameType,
+    TruncatedFrameLen, UnassignedUpid, Upid, UslpAnomaly, UslpFrame, UslpFrameWriter, UslpMapId,
+    UslpSpacecraftId, UslpVcId, VcConfig, VcLookup, VcParams, VcTable, VcfCount, VcfCountLen,
+    encode, encode_oid, encode_truncated, next_frame, validate_frame,
 };
 
 use crate::exercise::Tally;
@@ -155,7 +155,14 @@ fn tfdf_group(t: &mut Tally) {
         t.check(rule.rule() == r && rule.pointer().is_some() == r.has_pointer());
     }
     t.check(FirstHeaderPointer::from_raw(bb(0xFFFF)) == FirstHeaderPointer::NoPacketStartOrEnd);
-    t.check(FirstHeaderPointer::PacketStartsAt(3).raw() == 3);
+    t.check(TfdzOffset::new(bb(3)).is_some_and(|n| {
+        FirstHeaderPointer::PacketStartsAt(n).raw() == 3 && n.get() == 3 && u16::from(n) == 3
+    }));
+    t.check(TfdzOffset::new(bb(0xFFFF)).is_none() && TfdzOffset::try_from(bb(0xFFFF_u16)).is_err());
+    t.check(
+        TfdzOffset::try_from(bb(TfdzOffset::MAX))
+            .is_ok_and(|n| LastValidOctet::At(n).raw() == 0xFFFE),
+    );
     t.check(LastValidOctet::from_raw(bb(2)).raw() == 2);
     let h = TfdfHeader {
         rule: TfdzRule::SduStart(LastValidOctet::SduContinues),

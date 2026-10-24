@@ -7,13 +7,13 @@
     reason = "test-only harness crate: malformed vectors must fail loudly (RS-018)"
 )]
 
-use aldis_aos::ValidBitCount;
 use aldis_aos::{
     AosEdition, AosFrame, AosFrameContent, AosFrameFields, AosFrameWriter,
     AosPhysicalChannelConfig, AosPrimaryHeader, AosVirtualChannelConfig, BitstreamPointer,
     DataFieldContent, DataUnit, FrameCountCycle, PacketPointer, PduHeader, VcFrameCount, VcTable,
     encode, fhec,
 };
+use aldis_aos::{PacketOffset, ValidBitCount};
 use aldis_core::ids::{SpacecraftId, VcId};
 use aldis_core::ocf::Ocf;
 use aldis_core::oid::OidGenerator;
@@ -136,7 +136,7 @@ fn decoded(f: &AosFrame<'_>) -> Value {
     let (kind, raw, pointer, value, spare) = match f.data_unit() {
         DataUnit::Mpdu(m) => {
             let (p, v) = match m.pointer() {
-                PacketPointer::StartsAt(n) => ("starts_at", Some(n)),
+                PacketPointer::StartsAt(n) => ("starts_at", Some(n.get())),
                 PacketPointer::NoPacketStart => ("no_packet_start", None),
                 PacketPointer::OnlyIdleData => ("only_idle_data", None),
             };
@@ -193,7 +193,9 @@ fn pdu(case: &CodecCase, p: &Map<String, Value>) -> Result<PduHeader, Error> {
             get(p, case, "kind").as_str().unwrap(),
             p.get("pointer").and_then(Value::as_str),
         ) {
-            ("mpdu", Some("starts_at")) => PduHeader::Mpdu(PacketPointer::StartsAt(value())),
+            ("mpdu", Some("starts_at")) => {
+                PduHeader::Mpdu(PacketPointer::StartsAt(PacketOffset::new(value()).unwrap()))
+            }
             ("mpdu", Some("no_packet_start")) => PduHeader::Mpdu(PacketPointer::NoPacketStart),
             ("mpdu", Some("only_idle_data")) => PduHeader::Mpdu(PacketPointer::OnlyIdleData),
             ("bpdu", Some("valid_bits")) => PduHeader::Bpdu(BitstreamPointer::ValidBits(

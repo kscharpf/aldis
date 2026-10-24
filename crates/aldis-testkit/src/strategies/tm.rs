@@ -8,8 +8,8 @@ use aldis_core::ids::VcId;
 use aldis_core::ocf::Ocf;
 use aldis_core::security::SecurityLayout;
 use aldis_tm::{
-    DataFieldContent, DataFieldStatus, FirstHeaderPointer, FshLen, PacketPointer, SegmentLengthId,
-    TmFrameContent, TmFrameFields, TmMasterChannelConfig, TmPhysicalChannelConfig,
+    DataFieldContent, DataFieldStatus, FirstHeaderPointer, FshLen, PacketOffset, PacketPointer,
+    SegmentLengthId, TmFrameContent, TmFrameFields, TmMasterChannelConfig, TmPhysicalChannelConfig,
     TmVirtualChannelConfig, encode,
 };
 use proptest::prelude::*;
@@ -143,7 +143,9 @@ fn data_field_status(content: DataFieldContent, data_len: usize) -> BoxedStrateg
         DataFieldContent::Packets => {
             let last = u16::try_from(data_len.min(0x7FE) - 1).unwrap_or(0x7FD);
             prop_oneof![
-                3 => up_to_u16(last).prop_map(PacketPointer::StartsAt),
+                3 => up_to_u16(last).prop_map(|n| PacketPointer::StartsAt(
+                    PacketOffset::new(n).expect("at most the largest offset")
+                )),
                 1 => Just(PacketPointer::NoPacketStart),
                 1 => Just(PacketPointer::OnlyIdleData),
             ]

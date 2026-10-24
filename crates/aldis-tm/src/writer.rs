@@ -115,11 +115,11 @@ impl Plan {
                         .len()
                         .min(usize::from(FirstHeaderPointer::ONLY_IDLE_DATA.get()))
                         .saturating_sub(1);
-                    if usize::from(n) > limit {
+                    if usize::from(n.get()) > limit {
                         return Err(Error::out_of_range(
                             field::FIRST_HEADER_POINTER,
                             len_u64(limit),
-                            u64::from(n),
+                            u64::from(n.get()),
                         ));
                     }
                 }
@@ -182,8 +182,8 @@ impl<'b> TmFrameWriter<'b> {
     /// - `UnknownChannel` (`vc_id`) if the VC is not configured;
     /// - `InvalidField` (`sync_flag`) if `fields.status` does not match the VC's data field
     ///   content (132.0 §4.1.2.7.3.3, §4.1.4.4);
-    /// - `OutOfRange` (`first_header_pointer`) for a packet offset outside the data field or
-    ///   above `0x7FD`, with the largest valid offset (132.0 §4.1.2.7.6.3);
+    /// - `OutOfRange` (`first_header_pointer`) for a packet offset outside the data field, with
+    ///   the largest valid offset (132.0 §4.1.2.7.6.3);
     /// - `BufferTooSmall` (`needed` = frame length) if `out` is shorter than a frame.
     pub fn begin(
         out: &'b mut [u8],
@@ -412,6 +412,7 @@ mod tests {
         DataFieldContent, TmMasterChannelConfig, TmPhysicalChannelConfig, TmVirtualChannelConfig,
     };
     use crate::field;
+    use crate::header::tests::starts_at;
     use crate::header::{
         DataFieldStatus, FirstHeaderPointer, FshLen, PacketPointer, SegmentLengthId,
     };
@@ -454,8 +455,7 @@ mod tests {
         // req: TM-009, API-020, API-021, API-072, GEN-014
         let mc = mc();
         let mut out = [0xEE_u8; 40];
-        let mut w =
-            TmFrameWriter::begin(&mut out, &mc, &packets(0, PacketPointer::StartsAt(3))).unwrap();
+        let mut w = TmFrameWriter::begin(&mut out, &mc, &packets(0, starts_at(3))).unwrap();
         assert_eq!(w.layout().frame_len(), 32);
         w.secondary_header_data_mut().copy_from_slice(&[1, 2, 3]);
         w.security_header_mut().copy_from_slice(&[0xA5, 0xA5]);
@@ -476,7 +476,7 @@ mod tests {
         assert_eq!(f.ocf(), Some(Ocf::decode([0x01, 0, 0, 0])));
         assert_eq!(
             f.data_field_status(),
-            DataFieldStatus::Packets(PacketPointer::StartsAt(3))
+            DataFieldStatus::Packets(starts_at(3))
         );
         f.validate(&mc).unwrap();
     }
@@ -495,7 +495,7 @@ mod tests {
     fn resume_keeps_what_the_caller_filled() {
         // req: TM-009, TM-010, API-022, API-023, GEN-042
         let mc = mc();
-        let fields = packets(0, PacketPointer::StartsAt(3));
+        let fields = packets(0, starts_at(3));
         let fill = |w: &mut TmFrameWriter<'_>| {
             w.secondary_header_data_mut().copy_from_slice(&[1, 2, 3]);
             w.data_field_mut().fill(0xD0);
@@ -586,7 +586,7 @@ mod tests {
         // Data field of VC 0: 13 octets, so offsets 0–12.
         let e = check(
             &mut out,
-            &packets(0, PacketPointer::StartsAt(13)),
+            &packets(0, starts_at(13)),
             ErrorKind::OutOfRange,
             Some(field::FIRST_HEADER_POINTER),
         );
@@ -597,19 +597,12 @@ mod tests {
                 found: 13
             }
         );
-        let e = TmFrameWriter::begin(
-            &mut out[..31],
-            &mc,
-            &packets(0, PacketPointer::StartsAt(12)),
-        )
-        .unwrap_err();
+        let e = TmFrameWriter::begin(&mut out[..31], &mc, &packets(0, starts_at(12))).unwrap_err();
         assert_eq!(
             (e.kind(), e.detail()),
             (ErrorKind::BufferTooSmall, ErrorDetail::Needed(32))
         );
-        assert!(
-            TmFrameWriter::begin(&mut out, &mc, &packets(0, PacketPointer::StartsAt(12))).is_ok()
-        );
+        assert!(TmFrameWriter::begin(&mut out, &mc, &packets(0, starts_at(12))).is_ok());
     }
 
     #[test]
@@ -623,12 +616,9 @@ mod tests {
             ))
             .unwrap();
         let mut out = vec![0; 2100];
-        assert!(
-            TmFrameWriter::begin(&mut out, &mc, &packets(0, PacketPointer::StartsAt(0x7FD)))
-                .is_ok()
-        );
-        let e = TmFrameWriter::begin(&mut out, &mc, &packets(0, PacketPointer::StartsAt(0x7FE)))
-            .unwrap_err();
+        assert!(TmFrameWriter::begin(&mut out, &mc, &packets(0, starts_at(0x7FD))).is_ok());
+        // 0x7FE is no offset: the type rejects it where it is parsed (RS-020).
+        let e = crate::header::PacketOffset::try_from(0x7FE).unwrap_err();
         assert_eq!(
             (e.kind(), e.detail()),
             (
@@ -689,7 +679,7 @@ mod tests {
             security_trailer: &[0],
             ocf: Some(Ocf::decode([0; 4])),
         };
-        let fields = packets(0, PacketPointer::StartsAt(0));
+        let fields = packets(0, starts_at(0));
         for (content, f, expected, found) in [
             (
                 TmFrameContent {

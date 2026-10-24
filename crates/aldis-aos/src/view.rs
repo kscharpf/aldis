@@ -383,7 +383,7 @@ pub(crate) mod tests {
     use super::{AosFrame, DataUnit};
     use crate::anomaly::AosAnomaly;
     use crate::bpdu::{BitstreamPointer, ValidBitCount};
-    use crate::config::tests::{pc, scid, vc, vcid};
+    use crate::config::tests::{pc, scid, starts_at, vc, vcid};
     use crate::config::{AosEdition, DataFieldContent, VcTable};
     use crate::fhec::{self, CorrectedSymbols};
     use crate::field;
@@ -462,7 +462,7 @@ pub(crate) mod tests {
         let DataUnit::Mpdu(m) = f.data_unit() else {
             panic!("an M_PDU")
         };
-        assert_eq!(m.pointer(), PacketPointer::StartsAt(0));
+        assert_eq!(m.pointer(), starts_at(0));
         assert_eq!(f.data_unit().zone(), &bytes[8..]);
         assert_eq!(
             f.data_unit().zone().as_ptr(),

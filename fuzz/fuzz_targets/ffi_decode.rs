@@ -390,7 +390,9 @@ fn tm_same(view: &aldis_tm_frame_t, frame: &TmFrame<'_>) {
         )
     );
     let pointer = match frame.data_field_status() {
-        DataFieldStatus::Packets(PacketPointer::StartsAt(n)) => (ALDIS_TM_POINTER_STARTS_AT, n),
+        DataFieldStatus::Packets(PacketPointer::StartsAt(n)) => {
+            (ALDIS_TM_POINTER_STARTS_AT, n.get())
+        }
         DataFieldStatus::Packets(PacketPointer::NoPacketStart) => {
             (ALDIS_TM_POINTER_NO_PACKET_START, 0)
         }

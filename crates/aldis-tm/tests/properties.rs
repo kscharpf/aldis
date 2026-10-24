@@ -95,7 +95,7 @@ fn slices_inside_property(mc: &TmMasterChannelConfig, bytes: &[u8]) -> Result<()
     }
     prop_assert_eq!(at, bytes.len());
     if let DataFieldStatus::Packets(aldis_tm::PacketPointer::StartsAt(n)) = f.data_field_status() {
-        prop_assert!(usize::from(n) < f.data_field().len());
+        prop_assert!(usize::from(n.get()) < f.data_field().len());
     }
     Ok(())
 }

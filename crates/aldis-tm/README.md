@@ -31,8 +31,8 @@ use aldis_core::ids::{SpacecraftId, VcId};
 use aldis_core::ocf::Ocf;
 use aldis_core::DecodeMode;
 use aldis_tm::{
-    DataFieldContent, DataFieldStatus, PacketPointer, TmFrame, TmFrameContent, TmFrameFields,
-    TmMasterChannelConfig, TmPhysicalChannelConfig, TmVirtualChannelConfig, encode,
+    DataFieldContent, DataFieldStatus, PacketOffset, PacketPointer, TmFrame, TmFrameContent,
+    TmFrameFields, TmMasterChannelConfig, TmPhysicalChannelConfig, TmVirtualChannelConfig, encode,
 };
 
 fn main() -> Result<(), aldis_core::Error> {
@@ -43,7 +43,8 @@ fn main() -> Result<(), aldis_core::Error> {
         .with_vc(TmVirtualChannelConfig::new(vc1, DataFieldContent::Packets).with_ocf())?;
 
     // A packet starts at the first data octet; the data field is 32 - 6 - 4 - 2 = 20 octets.
-    let fields = TmFrameFields::new(vc1, 7, 3, DataFieldStatus::Packets(PacketPointer::StartsAt(0)));
+    let start = PacketPointer::StartsAt(PacketOffset::try_from(0)?);
+    let fields = TmFrameFields::new(vc1, 7, 3, DataFieldStatus::Packets(start));
     let data = [0xAB_u8; 20];
     let content = TmFrameContent {
         ocf: Some(Ocf::decode([0x01, 0x14, 0x0C, 0x2A])),

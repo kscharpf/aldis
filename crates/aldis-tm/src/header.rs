@@ -221,6 +221,60 @@ impl From<FshLen> for u8 {
     }
 }
 
+/// The octet offset of the first Packet that starts in a data field, 0 to `0x7FD` (132.0
+/// §4.1.2.7.6.3–5; TM-008, TM-009, RS-020).
+///
+/// The offsets of this type are the 11-bit pointer values below the two reserved ones,
+/// [`FirstHeaderPointer::ONLY_IDLE_DATA`] and [`FirstHeaderPointer::NO_PACKET_START`], so every
+/// offset has a pointer value. Whether it lies inside a given data field is the writer's check
+/// (TM-009).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct PacketOffset(u16);
+
+impl PacketOffset {
+    /// Largest offset, `0x7FD`: the last pointer value below
+    /// [`FirstHeaderPointer::ONLY_IDLE_DATA`] (132.0 §4.1.2.7.6.3–5).
+    pub const MAX: u16 = FirstHeaderPointer::ONLY_IDLE_DATA.0.saturating_sub(1);
+
+    /// The offset, or `None` above `0x7FD` (API-001).
+    #[must_use]
+    pub const fn new(offset: u16) -> Option<PacketOffset> {
+        if offset <= PacketOffset::MAX {
+            Some(PacketOffset(offset))
+        } else {
+            None
+        }
+    }
+
+    /// The offset in octets (132.0 §4.1.2.7.6.3).
+    #[must_use]
+    pub const fn get(self) -> u16 {
+        self.0
+    }
+}
+
+impl TryFrom<u16> for PacketOffset {
+    type Error = Error;
+
+    /// # Errors
+    /// `OutOfRange` (`first_header_pointer`) above `0x7FD`, with that bound.
+    fn try_from(offset: u16) -> Result<PacketOffset> {
+        PacketOffset::new(offset).ok_or_else(|| {
+            Error::out_of_range(
+                field::FIRST_HEADER_POINTER,
+                u64::from(PacketOffset::MAX),
+                u64::from(offset),
+            )
+        })
+    }
+}
+
+impl From<PacketOffset> for u16 {
+    fn from(offset: PacketOffset) -> u16 {
+        offset.0
+    }
+}
+
 /// The First Header Pointer of a frame with the Synchronization Flag `0` (132.0 §4.1.2.7.6;
 /// TM-008).
 ///
@@ -229,8 +283,8 @@ impl From<FshLen> for u8 {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum PacketPointer {
     /// The first Packet that starts in the data field starts at this octet, numbered from 0
-    /// (132.0 §4.1.2.7.6.3).
-    StartsAt(u16),
+    /// (132.0 §4.1.2.7.6.3; RS-020).
+    StartsAt(PacketOffset),
     /// `11111111111`: no Packet starts in the data field (132.0 §4.1.2.7.6.4).
     NoPacketStart,
     /// `11111111110`: only idle data, an OID frame (132.0 §4.1.2.7.6.5, §4.1.4.6.1).
@@ -247,27 +301,24 @@ impl PacketPointer {
         match raw {
             FirstHeaderPointer::NO_PACKET_START => Ok(PacketPointer::NoPacketStart),
             FirstHeaderPointer::ONLY_IDLE_DATA => Ok(PacketPointer::OnlyIdleData),
-            FirstHeaderPointer(n) if usize::from(n) < data_len => Ok(PacketPointer::StartsAt(n)),
-            FirstHeaderPointer(n) => Err(mismatch(
-                ErrorKind::Malformed,
-                field::FIRST_HEADER_POINTER,
-                len_u64(data_len.saturating_sub(1)),
-                u64::from(n),
-            )),
+            FirstHeaderPointer(n) => match PacketOffset::new(n) {
+                Some(offset) if usize::from(n) < data_len => Ok(PacketPointer::StartsAt(offset)),
+                _ => Err(mismatch(
+                    ErrorKind::Malformed,
+                    field::FIRST_HEADER_POINTER,
+                    len_u64(data_len.saturating_sub(1)),
+                    u64::from(n),
+                )),
+            },
         }
     }
 
-    /// The raw field value. An offset above 11 bits saturates to `11111111111`; writers reject
-    /// such offsets before they reach the wire (132.0 §4.1.2.7.6; TM-009).
+    /// The raw field value; every [`PacketOffset`] is one (132.0 §4.1.2.7.6; TM-009).
     #[must_use]
     pub const fn to_raw(self) -> FirstHeaderPointer {
         match self {
-            PacketPointer::StartsAt(n) if n < FirstHeaderPointer::ONLY_IDLE_DATA.0 => {
-                FirstHeaderPointer(n)
-            }
-            PacketPointer::StartsAt(_) | PacketPointer::NoPacketStart => {
-                FirstHeaderPointer::NO_PACKET_START
-            }
+            PacketPointer::StartsAt(n) => FirstHeaderPointer(n.get()),
+            PacketPointer::NoPacketStart => FirstHeaderPointer::NO_PACKET_START,
             PacketPointer::OnlyIdleData => FirstHeaderPointer::ONLY_IDLE_DATA,
         }
     }
@@ -399,14 +450,18 @@ const fn flag(set: bool, bit: u32) -> u8 {
 
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]
-mod tests {
+pub(crate) mod tests {
     use super::{
-        DataFieldStatus, FirstHeaderPointer, FshLen, PacketPointer, SegmentLengthId,
+        DataFieldStatus, FirstHeaderPointer, FshLen, PacketOffset, PacketPointer, SegmentLengthId,
         TmPrimaryHeader,
     };
     use crate::field;
     use aldis_core::ids::{SpacecraftId, VcId};
     use aldis_core::{ErrorDetail, ErrorKind};
+
+    pub(crate) fn starts_at(n: u16) -> PacketPointer {
+        PacketPointer::StartsAt(PacketOffset::new(n).unwrap())
+    }
 
     fn header() -> TmPrimaryHeader {
         TmPrimaryHeader {
@@ -513,6 +568,35 @@ mod tests {
     }
 
     #[test]
+    fn offsets_lie_below_the_reserved_values() {
+        // req: TM-008, TM-009, RS-020
+        assert_eq!(
+            PacketOffset::MAX,
+            FirstHeaderPointer::ONLY_IDLE_DATA.get() - 1
+        );
+        for n in [0, 1, 0x7FD] {
+            let offset = PacketOffset::new(n).unwrap();
+            assert_eq!((offset.get(), u16::from(offset)), (n, n));
+            assert_eq!(PacketOffset::try_from(n), Ok(offset));
+        }
+        for n in [0x7FE, 0x7FF, 0x800, u16::MAX] {
+            assert_eq!(PacketOffset::new(n), None);
+            let e = PacketOffset::try_from(n).unwrap_err();
+            assert_eq!(
+                (e.kind(), e.field(), e.detail()),
+                (
+                    ErrorKind::OutOfRange,
+                    Some(field::FIRST_HEADER_POINTER),
+                    ErrorDetail::Expected {
+                        expected: 0x7FD,
+                        found: u64::from(n)
+                    }
+                )
+            );
+        }
+    }
+
+    #[test]
     fn pointer_classification() {
         // req: TM-008, API-032
         let raw = |n| FirstHeaderPointer::new(n).unwrap();
@@ -524,10 +608,7 @@ mod tests {
             PacketPointer::classify(raw(0x7FE), 10),
             Ok(PacketPointer::OnlyIdleData)
         );
-        assert_eq!(
-            PacketPointer::classify(raw(9), 10),
-            Ok(PacketPointer::StartsAt(9))
-        );
+        assert_eq!(PacketPointer::classify(raw(9), 10), Ok(starts_at(9)));
         let e = PacketPointer::classify(raw(10), 10).unwrap_err();
         assert_eq!(
             (e.kind(), e.field(), e.detail()),
@@ -545,8 +626,13 @@ mod tests {
             PacketPointer::classify(raw(0x7FE), 4000),
             Ok(PacketPointer::OnlyIdleData)
         );
-        assert_eq!(PacketPointer::StartsAt(7).to_raw(), raw(7));
-        assert_eq!(PacketPointer::StartsAt(0x7FE).to_raw(), raw(0x7FF));
+        assert_eq!(starts_at(7).to_raw(), raw(7));
+        assert_eq!(starts_at(0x7FD).to_raw(), raw(0x7FD));
+        // An 11-bit pointer that is not reserved but outside the data field.
+        assert_eq!(
+            PacketPointer::classify(raw(0x7FD), 4000),
+            Ok(starts_at(0x7FD))
+        );
         assert_eq!(
             FirstHeaderPointer::from(PacketPointer::OnlyIdleData),
             raw(0x7FE)

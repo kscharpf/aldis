@@ -384,6 +384,7 @@ mod tests {
         TmVirtualChannelConfig,
     };
     use crate::field;
+    use crate::header::tests::starts_at;
     use crate::header::{
         DataFieldStatus, FirstHeaderPointer, FshLen, PacketPointer, SegmentLengthId,
     };
@@ -422,7 +423,7 @@ mod tests {
         assert_eq!((f.mc_frame_count(), f.vc_frame_count()), (1, 2));
         assert_eq!(
             f.data_field_status(),
-            DataFieldStatus::Packets(PacketPointer::StartsAt(0))
+            DataFieldStatus::Packets(starts_at(0))
         );
         assert_eq!(f.data_field(), &bytes[6..]);
         assert_eq!(f.data_field().as_ptr(), bytes[6..].as_ptr(), "zero-copy");
@@ -576,7 +577,7 @@ mod tests {
             b
         };
         for (fhp, expected) in [
-            (9, PacketPointer::StartsAt(9)),
+            (9, starts_at(9)),
             (0x7FE, PacketPointer::OnlyIdleData),
             (0x7FF, PacketPointer::NoPacketStart),
         ] {
@@ -643,7 +644,7 @@ mod tests {
         assert_eq!(f.header().segment_length_id.get(), 1);
         assert_eq!(
             f.data_field_status(),
-            DataFieldStatus::Packets(PacketPointer::StartsAt(0))
+            DataFieldStatus::Packets(starts_at(0))
         );
     }
 

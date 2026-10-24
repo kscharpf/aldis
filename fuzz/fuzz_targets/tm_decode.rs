@@ -92,7 +92,7 @@ fn run(u: &mut Unstructured<'_>) -> Result<()> {
         assert_eq!(at, bytes.len());
         assert_ne!(f.data_field().len(), 0);
         if let DataFieldStatus::Packets(PacketPointer::StartsAt(n)) = f.data_field_status() {
-            assert!(usize::from(n) < f.data_field().len());
+            assert!(usize::from(n.get()) < f.data_field().len());
         }
     }
     if let Ok(f) = strict

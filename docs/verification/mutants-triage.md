@@ -2,6 +2,10 @@
 
 Surviving mutants from `cargo mutants` (`-p aldis-core -p aldis-time -p aldis-epp -p aldis-spp -p aldis-aos -p aldis-tm -p aldis-tc -p aldis-uslp --all-features`) (cargo-mutants 27.1.0), triaged per VER-025. The nightly job `mutants` publishes the full report. Update this file when a new survivor appears.
 
+## 2026-10-24, branch `m2/rs020-check` (M2 WP-7, RS-020 check)
+
+The check gave the M_PDU offset its own type, `PacketOffset` (`aldis-aos`), and the USLP pointer offsets theirs, `TfdzOffset` (`aldis-uslp`). The mutants of the changed lines, `cargo mutants --in-diff <diff against main>` (with `PROPTEST_CASES=32`): `-p aldis-aos --all-features`, 21 mutants: 19 caught, 2 unviable; `-p aldis-uslp --all-features`, 15 mutants: 10 caught, 5 unviable. None missed. The TM packet offset followed (`aldis_tm::PacketOffset`, with the C ABI's `Fields::checked` in `aldis-ffi`), against the previous commit: `-p aldis-tm --all-features`, 12 mutants: 9 caught, 3 unviable; `-p aldis-ffi --all-features`, 7 mutants: 5 caught, 2 unviable. None missed.
+
 ## 2026-10-23, branch `m2/uslp-codec` (M2 WP-5, modules 1–8)
 
 `cargo mutants -p aldis-uslp --all-features` (with `PROPTEST_CASES=32`): 450 mutants: 283 caught, 155 unviable, 12 missed, 0 timeouts. Two survivors were a test gap, fixed and re-run: `header.rs` `len_u64` replaced by 0 and by 1, which only error details use; `view.rs` `length_errors_on_a_variable_channel` now checks the `OutOfRange` detail of an over-long frame (2 mutants, 2 caught). The other ten are equivalent and are expected in every report.

@@ -9,10 +9,10 @@ use aldis_core::oid::OidGenerator;
 use aldis_core::security::SecurityLayout;
 use aldis_core::{Anomaly as _, AnomalySet, DecodeMode, ErrorKind};
 use aldis_tm::{
-    DataFieldContent, DataFieldStatus, FirstHeaderPointer, FshLen, NoSdls, PacketPointer,
-    SegmentLengthId, TmAnomaly, TmFrame, TmFrameContent, TmFrameFields, TmFrameWriter,
-    TmMasterChannelConfig, TmPhysicalChannelConfig, TmPrimaryHeader, TmVirtualChannelConfig,
-    VcLookup as _, encode,
+    DataFieldContent, DataFieldStatus, FirstHeaderPointer, FshLen, NoSdls, PacketOffset,
+    PacketPointer, SegmentLengthId, TmAnomaly, TmFrame, TmFrameContent, TmFrameFields,
+    TmFrameWriter, TmMasterChannelConfig, TmPhysicalChannelConfig, TmPrimaryHeader,
+    TmVirtualChannelConfig, VcLookup as _, encode,
 };
 
 use crate::exercise::Tally;
@@ -34,7 +34,16 @@ fn header_group(t: &mut Tally) {
         FirstHeaderPointer::from(bb(PacketPointer::OnlyIdleData))
             == FirstHeaderPointer::ONLY_IDLE_DATA,
     );
-    t.check(PacketPointer::StartsAt(bb(0x7FE)).to_raw() == FirstHeaderPointer::NO_PACKET_START);
+    t.check(
+        PacketOffset::new(bb(0x7FE)).is_none() && PacketOffset::try_from(bb(0x7FE_u16)).is_err(),
+    );
+    t.check(
+        PacketOffset::try_from(bb(PacketOffset::MAX)).is_ok_and(|n| {
+            PacketPointer::StartsAt(n).to_raw().get() == 0x7FD
+                && n.get() == 0x7FD
+                && u16::from(n) == 0x7FD
+        }),
+    );
     t.check(
         PacketPointer::classify(bb(FirstHeaderPointer::NO_PACKET_START), bb(4))
             == Ok(PacketPointer::NoPacketStart),
@@ -119,11 +128,15 @@ fn frame_group(t: &mut Tally) {
 fn frames(t: &mut Tally, mc: &TmMasterChannelConfig, vc0: VcId<3>, vc1: VcId<3>, fsh: FshLen) {
     let (pc, scid) = (*mc.pc(), mc.scid());
     let mut frame = [0_u8; 32];
+    let Some(offset) = PacketOffset::new(bb(3)) else {
+        t.check(false);
+        return;
+    };
     let fields = TmFrameFields::new(
         vc0,
         bb(1),
         bb(2),
-        DataFieldStatus::Packets(PacketPointer::StartsAt(bb(3))),
+        DataFieldStatus::Packets(PacketPointer::StartsAt(offset)),
     );
     match TmFrameWriter::begin(bb(&mut frame), mc, bb(&fields)) {
         Ok(mut w) => {
@@ -268,7 +281,9 @@ fn status(s: Map) -> Result<DataFieldStatus, Fail> {
         })
     } else {
         Ok(DataFieldStatus::Packets(match s.text("pointer")? {
-            "starts_at" => PacketPointer::StartsAt(s.num("packet_offset")?),
+            "starts_at" => {
+                PacketPointer::StartsAt(PacketOffset::try_from(s.num::<u16>("packet_offset")?)?)
+            }
             "no_packet_start" => PacketPointer::NoPacketStart,
             "only_idle_data" => PacketPointer::OnlyIdleData,
             _ => return Err(Fail::Vector),
@@ -308,7 +323,7 @@ fn decoded(out: &mut Out, f: &TmFrame<'_>) {
     out.num("segment_length_id", h.segment_length_id.get());
     out.num("first_header_pointer", h.first_header_pointer.get());
     let (pointer, offset) = match f.data_field_status() {
-        DataFieldStatus::Packets(PacketPointer::StartsAt(n)) => (Some("starts_at"), Some(n)),
+        DataFieldStatus::Packets(PacketPointer::StartsAt(n)) => (Some("starts_at"), Some(n.get())),
         DataFieldStatus::Packets(PacketPointer::NoPacketStart) => (Some("no_packet_start"), None),
         DataFieldStatus::Packets(PacketPointer::OnlyIdleData) => (Some("only_idle_data"), None),
         DataFieldStatus::VcaSdu { .. } => (None, None),
