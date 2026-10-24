@@ -895,6 +895,16 @@ pub(crate) mod tests {
             t(vpc, &[per_map], &[0, 1, 2, 3, 4].map(|m| map(5, m, 0, 0))),
             (ErrorKind::CapacityExceeded, Some(field::MAP_ID))
         );
+    }
+
+    #[test]
+    fn table_truncated_sdls_and_room() {
+        // req: GEN-060, API-075, USLP-012, CMN-041
+        use TransferFrameType::{Fixed, Variable};
+        let vpc = PhysicalChannelConfig::new(Variable, 64, 0, true).unwrap();
+        let t = |pc, vcs: &[VcConfig], maps: &[MapConfig]| kf(VcTable::<4, 4>::new(pc, vcs, maps));
+        let f = vc(1, params(Fixed, 0, 0));
+        let ic = |fld| (ErrorKind::InvalidConfig, Some(fld));
         let short = |security| {
             vc(
                 6,

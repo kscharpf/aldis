@@ -239,8 +239,11 @@ fn upid_value(cell: &str) -> Result<u8, String> {
         .ok_or(format!("`{cell}` is not a 5-bit UPID"))
 }
 
-/// The generated UPID table of `aldis-uslp` (USLP-007).
-fn upid_table(snap: &Snapshot) -> Result<String, String> {
+/// An assigned UPID: its value, Rust name, description, references, and OID.
+type Assigned<'a> = (u8, &'static str, String, String, &'a String);
+
+/// The assigned UPIDs of the snapshot, after checking that it lists each value once.
+fn assigned_upids(snap: &Snapshot) -> Result<Vec<Assigned<'_>>, String> {
     let mut assigned = Vec::new();
     let mut seen = [false; 32];
     for row in &snap.rows {
@@ -277,6 +280,12 @@ fn upid_table(snap: &Snapshot) -> Result<String, String> {
     if seen.contains(&false) {
         return Err("the registry does not list all 32 UPIDs".to_owned());
     }
+    Ok(assigned)
+}
+
+/// The generated UPID table of `aldis-uslp` (USLP-007).
+fn upid_table(snap: &Snapshot) -> Result<String, String> {
+    let assigned = assigned_upids(snap)?;
     let mut s = String::new();
     let intro = format!(
         "The USLP Protocol Identifiers that the SANA registry `uslp_protocol_id` assigns (732.1 \
@@ -366,7 +375,14 @@ fn upid_table(snap: &Snapshot) -> Result<String, String> {
         .iter()
         .map(|(v, ..)| format!("0b{v:05b}"))
         .collect();
-    let _ = writeln!(s, "        {}\n    )\n}}", values.join("\n            | "));
+    // As rustfmt lays it out: one line when it fits, else one value per line.
+    let one_line = values.join(" | ");
+    let body = if "        ".len() + one_line.len() <= MAX_WIDTH {
+        one_line
+    } else {
+        values.join("\n            | ")
+    };
+    let _ = writeln!(s, "        {body}\n    )\n}}");
     Ok(s)
 }
 
@@ -498,6 +514,8 @@ pub fn run(args: &[&str]) -> Result<usize, String> {
 
 #[cfg(test)]
 mod tests {
+    use std::fmt::Write as _;
+
     use super::{COLUMNS, Snapshot, digest, parse_page, text_of, upid_table, upid_value};
 
     fn row(status: &str, upid: &str, oid: &str) -> Vec<String> {
@@ -511,7 +529,7 @@ mod tests {
         for (status, upid, desc) in rows {
             s.push_str("<tr class=\"x\">");
             for (col, v) in COLUMNS.iter().zip([*status, *upid, *desc, "", "1.2"]) {
-                s.push_str(&format!("<td class=\"sana-{col}\"><p>{v}</p></td>"));
+                let _ = write!(s, "<td class=\"sana-{col}\"><p>{v}</p></td>");
             }
             s.push_str("</tr>");
         }
