@@ -117,3 +117,4 @@ One line for each decision the maintainer takes, under the [decision rights](dec
 - 2026-10-24 · spec · chat · TV-023: an independent model is written blind, by an author who has not read the implementation it checks (AGENTS.md)
 - 2026-10-24 · plan · chat · M2 WP-7 adds three gates: a worst-case stack bound per target (extends VER-011), loop-bound consistency between code and inspection records (GEN-022), and bit-flip completeness for every codec with an FECF; M2 WP-8 adds an assurance case and a hazard and failure-mode analysis
 - 2026-10-24 · plan · chat · Signed verification evidence (records and release tags) is started now, on its own branch
+- 2026-10-24 · plan · chat · Signed verification evidence is parked (#107 closed, branch kept, issue #110); revisit with the assurance case at the M2 exit
