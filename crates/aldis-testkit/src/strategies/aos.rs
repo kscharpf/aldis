@@ -7,8 +7,8 @@ use aldis_aos::ValidBitCount;
 use aldis_aos::fhec;
 use aldis_aos::{
     AosEdition, AosFrameContent, AosFrameFields, AosPhysicalChannelConfig, AosVirtualChannelConfig,
-    BitstreamPointer, DataFieldContent, FrameCountCycle, PacketPointer, PduHeader, VcFrameCount,
-    VcTable, encode,
+    BitstreamPointer, DataFieldContent, FrameCountCycle, PacketOffset, PacketPointer, PduHeader,
+    VcFrameCount, VcTable, encode,
 };
 use aldis_core::crc::write_fecf;
 use aldis_core::ids::{SpacecraftId, VcId};
@@ -177,7 +177,9 @@ fn pdu_header(
             let max = usize::from(PacketPointer::max_offset(edition));
             let last = u16::try_from(zone.saturating_sub(1).min(max)).unwrap_or(0);
             prop_oneof![
-                3 => up_to_u16(last).prop_map(PacketPointer::StartsAt),
+                3 => up_to_u16(last).prop_map(|n| PacketPointer::StartsAt(
+                    PacketOffset::new(n).expect("at most the largest offset")
+                )),
                 1 => Just(PacketPointer::NoPacketStart),
                 1 => Just(PacketPointer::OnlyIdleData),
             ]

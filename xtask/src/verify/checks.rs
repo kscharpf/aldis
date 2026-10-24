@@ -570,6 +570,8 @@ cargo xtask sana
 # The per-crate registrations (coverage, features, mutants, exerciser, layers, fuzz matrix,
 # vector index) agree (docs/milestones/checklists.md).
 cargo xtask consistency
+# No bare integer in the public API of a codec crate unless exempted with a reason (RS-020).
+cargo xtask rs020
 # Independent cross-check of the vectors (VER-040); fails on any disagreement. Its own tests
 # first: the harness must report a difference it is shown.
 cargo test --manifest-path crosscheck/Cargo.toml

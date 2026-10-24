@@ -506,6 +506,10 @@ pub(crate) mod tests {
         VcId::new(n).unwrap()
     }
 
+    pub(crate) fn starts_at(n: u16) -> crate::mpdu::PacketPointer {
+        crate::mpdu::PacketPointer::StartsAt(crate::mpdu::PacketOffset::new(n).unwrap())
+    }
+
     pub(crate) fn vc(s: u16, v: u8, content: DataFieldContent) -> AosVirtualChannelConfig {
         AosVirtualChannelConfig::new(scid(s), vcid(v), content).unwrap()
     }

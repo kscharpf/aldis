@@ -6,12 +6,12 @@
 
 // req: API-020, API-021, API-022, API-023, AOS-013, AOS-014, AOS-015, AOS-016, AOS-019, CMN-021, GEN-042, VER-022
 
-use aldis_aos::ValidBitCount;
 use aldis_aos::{
     AosEdition, AosFrame, AosFrameContent, AosFrameFields, AosFrameWriter,
     AosPhysicalChannelConfig, AosVirtualChannelConfig, BitstreamPointer, DataFieldContent,
     DataUnit, FrameCountCycle, PacketPointer, PduHeader, VcFrameCount, VcTable, encode,
 };
+use aldis_aos::{PacketOffset, ValidBitCount};
 use aldis_core::DecodeMode;
 use aldis_core::ids::{SpacecraftId, VcId};
 use aldis_core::ocf::Ocf;
@@ -71,7 +71,9 @@ fn pdu(u: &mut Unstructured<'_>) -> Result<PduHeader> {
         0 => PduHeader::None,
         1 => PduHeader::Mpdu(PacketPointer::NoPacketStart),
         2 => PduHeader::Mpdu(PacketPointer::OnlyIdleData),
-        3 => PduHeader::Mpdu(PacketPointer::StartsAt(u.int_in_range(0..=300)?)),
+        3 => PacketOffset::new(u.int_in_range(0..=300)?).map_or(PduHeader::None, |n| {
+            PduHeader::Mpdu(PacketPointer::StartsAt(n))
+        }),
         4 => PduHeader::Bpdu(BitstreamPointer::AllValid),
         5 => PduHeader::Bpdu(BitstreamPointer::OnlyIdle),
         _ => match ValidBitCount::new(u.int_in_range(0..=2400)?) {

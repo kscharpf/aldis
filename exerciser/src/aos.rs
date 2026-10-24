@@ -3,7 +3,6 @@
 
 use core::hint::black_box as bb;
 
-use aldis_aos::ValidBitCount;
 use aldis_aos::fhec::{self, CorrectedSymbols};
 use aldis_aos::{
     AosAnomaly, AosEdition, AosFrame, AosFrameContent, AosFrameFields, AosFrameWriter,
@@ -11,6 +10,7 @@ use aldis_aos::{
     DataFieldContent, DataUnit, FrameCountCycle, Mpdu, OID_VCID, PacketPointer, PduHeader,
     VcFrameCount, VcLookup as _, VcTable, encode,
 };
+use aldis_aos::{PacketOffset, ValidBitCount};
 use aldis_core::ids::{SpacecraftId, VcId};
 use aldis_core::ocf::Ocf;
 use aldis_core::oid::OidGenerator;
@@ -57,9 +57,20 @@ fn pointer_group(t: &mut Tally) {
     t.check(PacketPointer::no_packet_start_raw(bb(five)) == 0xFFFF);
     t.check(PacketPointer::only_idle_data_raw(bb(four)) == 0x7FE);
     t.check(PacketPointer::max_offset(bb(four)) == 0x7FD);
-    t.check(PacketPointer::classify(bb(3), bb(4), five) == Ok(PacketPointer::StartsAt(3)));
+    t.check(matches!(
+        PacketPointer::classify(bb(3), bb(4), five),
+        Ok(PacketPointer::StartsAt(n)) if n.get() == 3 && u16::from(n) == 3
+    ));
     t.check(PacketPointer::classify(bb(4), bb(4), five).is_err());
-    t.check(PacketPointer::StartsAt(bb(0x7FE)).to_raw(four) == 0x7FF);
+    t.check(PacketPointer::classify(bb(0xFFFE), bb(70_000), four).is_err());
+    t.check(
+        PacketOffset::new(bb(0x7FE))
+            .is_some_and(|n| PacketPointer::StartsAt(n).to_raw(four) == 0x7FF),
+    );
+    t.check(
+        PacketOffset::new(bb(PacketOffset::MAX)).is_some()
+            && PacketOffset::new(bb(0xFFFE)).is_none(),
+    );
     t.check(PacketPointer::OnlyIdleData.header_octets(bb(five)) == [0xFF, 0xFE]);
     t.check(ValidBitCount::new(bb(15)).is_some_and(|n| {
         BitstreamPointer::classify(bb(14), bb(2)) == Ok(BitstreamPointer::ValidBits(n))
@@ -86,7 +97,7 @@ fn pointer_group(t: &mut Tally) {
     t.check(Mpdu::decode(bb(&field), four, bb(DecodeMode::Strict)).is_err());
     t.check(
         Mpdu::decode(bb(&field), four, bb(DecodeMode::Lenient)).is_ok_and(|m| {
-            m.pointer() == PacketPointer::StartsAt(1)
+            matches!(m.pointer(), PacketPointer::StartsAt(n) if n.get() == 1)
                 && m.first_header_pointer() == 1
                 && m.issue4_spare() == 0x15
                 && m.packet_zone().len() == 2
@@ -180,6 +191,10 @@ fn frames(
         t.check(false);
         return;
     };
+    let Some(offset) = PacketOffset::new(bb(3)) else {
+        t.check(false);
+        return;
+    };
     let fields = AosFrameFields {
         replay_flag: bb(true),
         cycle: FrameCountCycle::new(bb(9)),
@@ -187,7 +202,7 @@ fn frames(
             scid,
             vc0,
             count,
-            PduHeader::Mpdu(PacketPointer::StartsAt(bb(3))),
+            PduHeader::Mpdu(PacketPointer::StartsAt(offset)),
         )
     };
     match AosFrameWriter::begin(bb(&mut frame), pc, table, bb(&fields)) {
@@ -218,7 +233,7 @@ fn frames(
                 f.data_unit().content() == DataFieldContent::Mpdu
                     && f.data_unit().zone().len() == 17,
             );
-            t.check(matches!(f.data_unit(), DataUnit::Mpdu(m) if m.pointer() == PacketPointer::StartsAt(3)));
+            t.check(matches!(f.data_unit(), DataUnit::Mpdu(m) if m.pointer() == PacketPointer::StartsAt(offset)));
             t.check(
                 f.as_bytes().len() == 40
                     && f.len() == 40
@@ -394,7 +409,7 @@ fn decoded(out: &mut Out, f: &AosFrame<'_>) {
     let (kind, raw, pointer, value, spare) = match f.data_unit() {
         DataUnit::Mpdu(m) => {
             let (p, v) = match m.pointer() {
-                PacketPointer::StartsAt(n) => ("starts_at", Some(n)),
+                PacketPointer::StartsAt(n) => ("starts_at", Some(n.get())),
                 PacketPointer::NoPacketStart => ("no_packet_start", None),
                 PacketPointer::OnlyIdleData => ("only_idle_data", None),
             };
@@ -436,7 +451,9 @@ fn decoded(out: &mut Out, f: &AosFrame<'_>) {
 fn pdu(p: Map) -> Result<PduHeader, Fail> {
     let pointer = crate::vectors::get(p, "pointer").and_then(Val::str);
     Ok(match (p.text("kind")?, pointer) {
-        ("mpdu", Some("starts_at")) => PduHeader::Mpdu(PacketPointer::StartsAt(p.num("value")?)),
+        ("mpdu", Some("starts_at")) => PduHeader::Mpdu(PacketPointer::StartsAt(
+            PacketOffset::new(p.num("value")?).ok_or(Fail::Vector)?,
+        )),
         ("mpdu", Some("no_packet_start")) => PduHeader::Mpdu(PacketPointer::NoPacketStart),
         ("mpdu", Some("only_idle_data")) => PduHeader::Mpdu(PacketPointer::OnlyIdleData),
         ("bpdu", Some("valid_bits")) => PduHeader::Bpdu(BitstreamPointer::ValidBits(

@@ -83,11 +83,61 @@ impl ConstructionRule {
     }
 }
 
+/// An octet offset in a TFDZ that a 16-bit pointer can hold: 0 to `0xFFFE`, every value below
+/// [`POINTER_NONE`] (732.1 §4.1.4.2.4.3–6; USLP-006, RS-020).
+///
+/// So every offset of this type has a pointer value, and none is read back as "none". Whether it
+/// lies inside a given TFDZ is the check of the decoder (USLP-006) and the writers.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct TfdzOffset(u16);
+
+impl TfdzOffset {
+    /// Largest offset, `0xFFFE`: the last value below [`POINTER_NONE`] (§4.1.4.2.4.4,
+    /// §4.1.4.2.4.6).
+    pub const MAX: u16 = POINTER_NONE.saturating_sub(1);
+
+    /// The offset, or `None` for [`POINTER_NONE`] (API-001).
+    #[must_use]
+    pub const fn new(offset: u16) -> Option<TfdzOffset> {
+        if offset <= TfdzOffset::MAX {
+            Some(TfdzOffset(offset))
+        } else {
+            None
+        }
+    }
+
+    /// The offset in octets (§4.1.4.2.4.3, §4.1.4.2.4.5).
+    #[must_use]
+    pub const fn get(self) -> u16 {
+        self.0
+    }
+}
+
+impl TryFrom<u16> for TfdzOffset {
+    type Error = Error;
+
+    /// # Errors
+    /// `OutOfRange` (`fhp_lvo_pointer`) for [`POINTER_NONE`], with the largest offset.
+    fn try_from(offset: u16) -> Result<TfdzOffset, Error> {
+        TfdzOffset::new(offset).ok_or(Error::out_of_range(
+            field::FHP_LVO_POINTER,
+            u64::from(TfdzOffset::MAX),
+            u64::from(offset),
+        ))
+    }
+}
+
+impl From<TfdzOffset> for u16 {
+    fn from(offset: TfdzOffset) -> u16 {
+        offset.0
+    }
+}
+
 /// The First Header Pointer of rule `000` (732.1 §4.1.4.2.4.3–4; USLP-006).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum FirstHeaderPointer {
-    /// The first packet header that starts in the TFDZ starts at this offset.
-    PacketStartsAt(u16),
+    /// The first packet header that starts in the TFDZ starts at this offset (RS-020).
+    PacketStartsAt(TfdzOffset),
     /// `0xFFFF`: no packet starts or ends in the TFDZ.
     NoPacketStartOrEnd,
 }
@@ -95,8 +145,8 @@ pub enum FirstHeaderPointer {
 /// The Last Valid Octet Pointer of rules `001` and `010` (732.1 §4.1.4.2.4.5–6; USLP-006).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum LastValidOctet {
-    /// The SDU ends at this offset; idle data follows.
-    At(u16),
+    /// The SDU ends at this offset; idle data follows (RS-020).
+    At(TfdzOffset),
     /// `0xFFFF`: the SDU does not end in this TFDZ.
     SduContinues,
 }
@@ -105,10 +155,9 @@ impl FirstHeaderPointer {
     /// The pointer of a 16-bit field value (§4.1.4.2.4.3–4).
     #[must_use]
     pub const fn from_raw(raw: u16) -> FirstHeaderPointer {
-        if raw == POINTER_NONE {
-            FirstHeaderPointer::NoPacketStartOrEnd
-        } else {
-            FirstHeaderPointer::PacketStartsAt(raw)
+        match TfdzOffset::new(raw) {
+            Some(offset) => FirstHeaderPointer::PacketStartsAt(offset),
+            None => FirstHeaderPointer::NoPacketStartOrEnd,
         }
     }
 
@@ -116,7 +165,7 @@ impl FirstHeaderPointer {
     #[must_use]
     pub const fn raw(self) -> u16 {
         match self {
-            FirstHeaderPointer::PacketStartsAt(n) => n,
+            FirstHeaderPointer::PacketStartsAt(n) => n.get(),
             FirstHeaderPointer::NoPacketStartOrEnd => POINTER_NONE,
         }
     }
@@ -126,10 +175,9 @@ impl LastValidOctet {
     /// The pointer of a 16-bit field value (§4.1.4.2.4.5–6).
     #[must_use]
     pub const fn from_raw(raw: u16) -> LastValidOctet {
-        if raw == POINTER_NONE {
-            LastValidOctet::SduContinues
-        } else {
-            LastValidOctet::At(raw)
+        match TfdzOffset::new(raw) {
+            Some(offset) => LastValidOctet::At(offset),
+            None => LastValidOctet::SduContinues,
         }
     }
 
@@ -137,7 +185,7 @@ impl LastValidOctet {
     #[must_use]
     pub const fn raw(self) -> u16 {
         match self {
-            LastValidOctet::At(n) => n,
+            LastValidOctet::At(n) => n.get(),
             LastValidOctet::SduContinues => POINTER_NONE,
         }
     }
@@ -301,13 +349,14 @@ impl TfdfHeader {
 
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]
-mod tests {
+pub(crate) mod tests {
     use super::{
-        ConstructionRule, FirstHeaderPointer, LastValidOctet, POINTER_NONE, TfdfHeader, TfdzRule,
+        ConstructionRule, FirstHeaderPointer, LastValidOctet, POINTER_NONE, TfdfHeader, TfdzOffset,
+        TfdzRule,
     };
     use crate::field;
     use crate::upid::Upid;
-    use aldis_core::ErrorKind;
+    use aldis_core::{ErrorDetail, ErrorKind};
 
     #[test]
     fn rules_and_types() {
@@ -323,6 +372,33 @@ mod tests {
         }
     }
 
+    pub(crate) fn offset(n: u16) -> TfdzOffset {
+        TfdzOffset::new(n).unwrap()
+    }
+
+    #[test]
+    fn offsets_lie_below_the_none_value() {
+        // req: USLP-006, RS-020
+        assert_eq!(TfdzOffset::MAX, POINTER_NONE - 1);
+        for n in [0, 1, 0x7FFF, 0xFFFE] {
+            assert_eq!((offset(n).get(), u16::from(offset(n))), (n, n));
+            assert_eq!(TfdzOffset::try_from(n), Ok(offset(n)));
+        }
+        assert_eq!(TfdzOffset::new(POINTER_NONE), None);
+        let e = TfdzOffset::try_from(POINTER_NONE).unwrap_err();
+        assert_eq!(
+            (e.kind(), e.field(), e.detail()),
+            (
+                ErrorKind::OutOfRange,
+                Some(field::FHP_LVO_POINTER),
+                ErrorDetail::Expected {
+                    expected: 0xFFFE,
+                    found: 0xFFFF
+                }
+            )
+        );
+    }
+
     #[test]
     fn pointers_classify() {
         // req: USLP-006
@@ -332,15 +408,19 @@ mod tests {
         );
         assert_eq!(
             FirstHeaderPointer::from_raw(4),
-            FirstHeaderPointer::PacketStartsAt(4)
+            FirstHeaderPointer::PacketStartsAt(offset(4))
         );
+        assert_eq!(FirstHeaderPointer::PacketStartsAt(offset(4)).raw(), 4);
         assert_eq!(FirstHeaderPointer::NoPacketStartOrEnd.raw(), POINTER_NONE);
         assert_eq!(
             LastValidOctet::from_raw(POINTER_NONE),
             LastValidOctet::SduContinues
         );
-        assert_eq!(LastValidOctet::from_raw(9), LastValidOctet::At(9));
-        assert_eq!(LastValidOctet::At(9).raw(), 9);
+        assert_eq!(LastValidOctet::from_raw(9), LastValidOctet::At(offset(9)));
+        assert_eq!(LastValidOctet::At(offset(9)).raw(), 9);
+        // The largest offset is a pointer value, not "none" (RS-020).
+        assert_eq!(FirstHeaderPointer::from_raw(0xFFFE).raw(), 0xFFFE);
+        assert_eq!(LastValidOctet::from_raw(0xFFFE).raw(), 0xFFFE);
         assert_eq!(LastValidOctet::SduContinues.raw(), POINTER_NONE);
         assert_eq!(
             TfdzRule::new(ConstructionRule::SduContinuation, 3).pointer(),
@@ -354,7 +434,7 @@ mod tests {
         let (h, z) = TfdfHeader::parse(&[0x00, 0x00, 0x02, 1, 2, 3], true).unwrap();
         assert_eq!(
             h.rule,
-            TfdzRule::PacketsSpanningFrames(FirstHeaderPointer::PacketStartsAt(2))
+            TfdzRule::PacketsSpanningFrames(FirstHeaderPointer::PacketStartsAt(offset(2)))
         );
         assert_eq!(
             (h.upid, z, h.len(), h.is_empty()),
@@ -393,7 +473,7 @@ mod tests {
         assert_eq!(h.rule, TfdzRule::SduStart(LastValidOctet::SduContinues));
         assert!(h.check_pointer(1).is_ok());
         let lvo = TfdfHeader {
-            rule: TfdzRule::SduStart(LastValidOctet::At(4)),
+            rule: TfdzRule::SduStart(LastValidOctet::At(offset(4))),
             upid: Upid::Packets,
         };
         assert!(lvo.check_pointer(5).is_ok());
