@@ -30,6 +30,12 @@ The rules and checks below are written for the Rust crates. The native C++ code 
 
 Every maintainer decision gets a line in the [decision log](docs/process/decisions.md) (VER-062), which `cargo xtask decisions` checks.
 
+## Independent review
+
+A reviewer of a pull request does **not** re-run the verification checks: `cargo build`, `cargo check`, `cargo test`, `cargo clippy`, `cargo fmt`, `cargo xtask ci`, coverage, the exerciser, fuzzing, or `cargo xtask verify`. They are the merge gate's job (VER-056…VER-058), and the gate already ran them on the head commit. Read the evidence instead: `cargo xtask verify check <head>` re-checks the published record, and a check that does not gate (`kani`, `cpp-leon3`, `rust-sparc-leon3`) is read from the record, not assumed to pass.
+
+Spend the review on what no check covers: the reading of the Blue Book behind each decision (cite the clause), the requirements and whether the tests and vectors really cover them, the soundness of every `unsafe` block, the shape of the public API and C ABI, and the decisions and judgement calls the pull request lists. Report findings as [decision-rights.md](docs/process/decision-rights.md) §2.6 describes, each with the file and line and why it matters; to show a defect, a failing test or vector case is the clearest form.
+
 ## Non-negotiable rules (Layers 0–2)
 
 - `no_std`, **no heap**: fixed capacities via const generics (GEN-010, GEN-011).
