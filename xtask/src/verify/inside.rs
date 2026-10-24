@@ -11,7 +11,7 @@ use serde_json::{Value, json};
 
 use super::checks::{self, Check, Host};
 use super::record::{Outcome, canonical};
-use super::{Options, outcome, run_check, run_in_order};
+use super::{Options, git_in, outcome, run_check, run_in_order};
 use crate::repo;
 
 /// The tools whose versions every record lists (VER-057): name and command.
@@ -90,6 +90,24 @@ fn packages() -> Result<BTreeMap<String, String>, String> {
         .collect())
 }
 
+/// Why the checkout no longer holds the commit's files, given `git status --porcelain
+/// --untracked-files=no` run in it before any check: the entry point checked the commit out
+/// clean, so a tracked file that differs was changed by building xtask, which `cargo xtask`
+/// does without `--locked`. That is how a stale `Cargo.lock` shows: cargo resolves the
+/// dependencies again and rewrites it, and the checks would then verify a lock file the commit
+/// does not have. The links to the cache volume (`target` and the like) are untracked.
+fn changed_checkout(status: &str) -> Option<String> {
+    let status = status.trim_end();
+    (!status.is_empty()).then(|| {
+        format!(
+            "the checkout differs from the commit before any check ran, so no check would \
+             verify the commit's files (VER-056):\n{status}\nA stale Cargo.lock is rewritten \
+             when cargo builds xtask: run a cargo command in the workspace, such as `cargo \
+             check`, and commit Cargo.lock"
+        )
+    })
+}
+
 /// Runs every container check selected by `opts`, in run order, stopping at the first gating
 /// failure with `--fail-fast` (`super::run_in_order`); returns the number of gating failures.
 pub fn run(out: &Path, opts: &Options) -> Result<usize, String> {
@@ -100,6 +118,12 @@ pub fn run(out: &Path, opts: &Options) -> Result<usize, String> {
         );
     }
     let root = repo::root();
+    if let Some(why) = changed_checkout(&git_in(
+        &root,
+        &["status", "--porcelain", "--untracked-files=no"],
+    )?) {
+        return Err(why);
+    }
     let logs = out.join("logs");
     std::fs::create_dir_all(&logs).map_err(|e| format!("{}: {e}", logs.display()))?;
     let order: Vec<Check> = checks::run_order()
@@ -135,4 +159,19 @@ pub fn run(out: &Path, opts: &Options) -> Result<usize, String> {
     let path = out.join("container.json");
     std::fs::write(&path, canonical(&report)).map_err(|e| format!("{}: {e}", path.display()))?;
     Ok(failed)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::changed_checkout;
+
+    // req: VER-056
+    #[test]
+    fn a_checkout_that_building_xtask_changed_is_refused() {
+        assert_eq!(changed_checkout(""), None);
+        assert_eq!(changed_checkout("\n"), None);
+        let why = changed_checkout(" M Cargo.lock\n").unwrap();
+        assert!(why.contains(" M Cargo.lock\n"), "{why}");
+        assert!(why.contains("commit Cargo.lock"), "{why}");
+    }
 }

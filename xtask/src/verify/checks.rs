@@ -332,9 +332,9 @@ fn rust() -> Vec<Check> {
             false,
             3,
             format!(
-                "cargo build -p aldis --no-default-features --features full --target {t}\n\
-                 cargo clippy -p aldis --no-default-features --features full --target {t}\n\
-                 cargo build -p aldis-ffi --no-default-features --features panic-handler \
+                "cargo build --locked -p aldis --no-default-features --features full --target {t}\n\
+                 cargo clippy --locked -p aldis --no-default-features --features full --target {t}\n\
+                 cargo build --locked -p aldis-ffi --no-default-features --features panic-handler \
                  --target {t} --release\n\
                  # The C ABI static library needs no heap, threads, or C runtime (CABI-004).\n\
                  cargo xtask ffi-imports {t}\n"
@@ -502,15 +502,19 @@ cargo fmt --all --check --manifest-path fuzz/Cargo.toml
 cargo fmt --all --check --manifest-path crosscheck/Cargo.toml
 ";
 
+// The workspace builds of the checks pass `--locked`, so that a commit whose `Cargo.lock` is
+// stale fails instead of being resolved again in the checkout; `verify inside` refuses a checkout
+// that building xtask changed before any check ran (`inside::unchanged`), which is how a stale
+// root `Cargo.lock` shows there, since `cargo xtask` itself does not pass `--locked`.
 const CLIPPY: &str = "\
-cargo clippy --workspace --all-features --all-targets
-cargo doc --workspace --all-features --no-deps
+cargo clippy --locked --workspace --all-features --all-targets
+cargo doc --locked --workspace --all-features --no-deps
 # Fuzz targets build on stable; only running them needs nightly (RS-002).
-cargo clippy --manifest-path fuzz/Cargo.toml --all-targets
-cargo clippy --manifest-path crosscheck/Cargo.toml --all-targets
+cargo clippy --locked --manifest-path fuzz/Cargo.toml --all-targets
+cargo clippy --locked --manifest-path crosscheck/Cargo.toml --all-targets
 ";
 
-const TEST: &str = "cargo test --workspace --all-features\n";
+const TEST: &str = "cargo test --locked --workspace --all-features\n";
 
 const HEADER: &str = "\
 # The committed C header is a fresh generation by the pinned cbindgen (CABI-002), includes only
@@ -526,7 +530,7 @@ const BIG_ENDIAN: &str = "\
 # s390x under QEMU user mode, linked with the pinned cross GCC (VER-030, GEN-007).
 export CARGO_TARGET_S390X_UNKNOWN_LINUX_GNU_LINKER=s390x-linux-gnu-gcc-14
 export CARGO_TARGET_S390X_UNKNOWN_LINUX_GNU_RUNNER='qemu-s390x -L /usr/s390x-linux-gnu'
-cargo test --workspace --all-features --target s390x-unknown-linux-gnu
+cargo test --locked --workspace --all-features --target s390x-unknown-linux-gnu
 ";
 
 const LAYERS: &str = "\
