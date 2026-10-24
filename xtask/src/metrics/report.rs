@@ -8,11 +8,29 @@ use serde_json::{Value, json};
 
 use super::decisions::{self, Log};
 use super::pr::{AREAS, Pr};
+use super::stages::{self, ACTIVE_WINDOW, Activity, ApprovalKind};
 use super::time;
+use super::waits::{self, Totals, short};
+
+/// The period before the report's, of the same length, for comparison.
+#[derive(Debug)]
+pub struct Previous {
+    /// Its start (midnight UTC); it ends where the report's period starts.
+    pub since: i64,
+    /// The pull requests merged in it.
+    pub prs: Vec<Pr>,
+}
 
 /// What a report covers.
 #[derive(Debug)]
 pub struct Report {
+    /// The maintainer's login.
+    pub maintainer: String,
+    /// The maintainer's events outside the pull requests' own: their comments on any issue or pull
+    /// request of the repository.
+    pub events: Vec<i64>,
+    /// The previous period, if one was fetched.
+    pub previous: Option<Previous>,
     /// `owner/repo`.
     pub repo: String,
     /// When it was made.
@@ -387,6 +405,329 @@ fn table(r: &Report, out: &mut String) {
     }
 }
 
+impl Report {
+    /// Every pull request fetched: the period's and the previous period's.
+    fn all_prs(&self) -> impl Iterator<Item = &Pr> {
+        self.prs
+            .iter()
+            .chain(self.previous.iter().flat_map(|p| &p.prs))
+    }
+
+    /// The maintainer's active time, from their events on every pull request fetched and their
+    /// comments on the repository.
+    pub fn activity(&self) -> Activity {
+        let mut events = self.events.clone();
+        for pr in self.all_prs() {
+            events.extend(&pr.events);
+        }
+        Activity::new(&events, ACTIVE_WINDOW)
+    }
+
+    /// The process-created waits of the period, and of the previous one if it was fetched. Order
+    /// inversions are found among every pull request fetched, so that one approved in the period
+    /// can wait on one merged before it.
+    pub fn totals(&self) -> (Totals, Option<Totals>) {
+        let all: Vec<&Pr> = self.all_prs().collect();
+        let found = waits::inversions(&all);
+        let of = |prs: &[Pr]| waits::totals(prs, &found, &summary(prs).conflict_files);
+        (of(&self.prs), self.previous.as_ref().map(|p| of(&p.prs)))
+    }
+}
+
+/// Per named interval of [`stages::INTERVALS`]: its label, the pull requests that passed both of
+/// its stages in that order, and its medians raw and in the maintainer's active time.
+pub fn stage_medians(
+    prs: &[Pr],
+    activity: &Activity,
+) -> Vec<(&'static str, usize, Option<i64>, Option<i64>)> {
+    stages::INTERVALS
+        .iter()
+        .map(|(from, to, label)| {
+            let spans: Vec<(i64, i64)> = prs
+                .iter()
+                .filter_map(|p| p.stages.between(from, to))
+                .collect();
+            let raw: Vec<i64> = spans.iter().map(|(a, b)| b - a).collect();
+            let active: Vec<i64> = spans.iter().map(|(a, b)| activity.active(*a, *b)).collect();
+            (
+                *label,
+                spans.len(),
+                time::median(&raw),
+                time::median(&active),
+            )
+        })
+        .collect()
+}
+
+/// The "Recommendations input": each process-created wait against its threshold, beside the
+/// previous period.
+fn recommendations(r: &Report, now: &Totals, before: Option<&Totals>, out: &mut String) {
+    let _ = writeln!(out, "\n## Recommendations input\n");
+    let previous = r.previous.as_ref().map_or_else(
+        || "no previous period was fetched".to_owned(),
+        |p| {
+            format!(
+                "the previous period is {} to {} ({})",
+                time::date(p.since),
+                time::date(r.since.unwrap_or(p.since) - 86_400),
+                count(p.prs.len(), "pull request", "pull requests")
+            )
+        },
+    );
+    let _ = writeln!(
+        out,
+        "The waits the process created, each against a fixed threshold (see \"How these are \
+         measured\"); {previous}. This is data for the coordinator's recommendations, which the \
+         maintainer decides on. Review latency is not in it: its raw figure is the maintainer's \
+         availability.\n"
+    );
+    let _ = writeln!(
+        out,
+        "| Measure | Threshold | In the period | Crossed | Previous period | Crossed by |\n\
+         |---|---|---|---:|---:|---|"
+    );
+    let earlier = before.map(waits::measures);
+    for (i, m) in waits::measures(now).iter().enumerate() {
+        let prev = earlier
+            .as_ref()
+            .and_then(|e| e.get(i))
+            .map_or_else(|| "–".to_owned(), |e| e.crossed.len().to_string());
+        let shown: Vec<&str> = m.crossed.iter().take(r.top).map(String::as_str).collect();
+        let more = m.crossed.len().saturating_sub(r.top);
+        let by = match (shown.is_empty(), more) {
+            (true, _) => "–".to_owned(),
+            (false, 0) => shown.join(", "),
+            (false, k) => format!("{}, and {k} more", shown.join(", ")),
+        };
+        let _ = writeln!(
+            out,
+            "| {} | {} | {} | **{}** | {prev} | {by} |",
+            m.name,
+            m.threshold,
+            m.total,
+            m.crossed.len()
+        );
+    }
+}
+
+/// The medians of the stage intervals, raw and in active time.
+fn stage_summary(r: &Report, activity: &Activity, out: &mut String) {
+    let _ = writeln!(out, "\n## Stages\n");
+    let _ = writeln!(
+        out,
+        "Medians over the pull requests that passed both stages, in that order. *Active* counts \
+         only the time within {} of a maintainer event (a comment, a review, or a merge) on the \
+         repository.\n",
+        time::duration(ACTIVE_WINDOW)
+    );
+    let _ = writeln!(
+        out,
+        "| Interval | PRs | Median | Median in active time |\n|---|---:|---:|---:|"
+    );
+    for (label, n, raw, active) in stage_medians(&r.prs, activity) {
+        let note = if label == stages::REVIEW_WAIT {
+            " (raw: not actionable)"
+        } else {
+            ""
+        };
+        let _ = writeln!(
+            out,
+            "| {label}{note} | {n} | {} | {} |",
+            opt_duration(raw),
+            opt_duration(active)
+        );
+    }
+    let mut kinds: BTreeMap<&str, usize> = BTreeMap::new();
+    for pr in &r.prs {
+        *kinds.entry(pr.stages.approval.kind.name()).or_default() += 1;
+    }
+    let kinds: Vec<String> = kinds.iter().map(|(k, n)| format!("{n} by {k}")).collect();
+    let _ = writeln!(out, "\nApprovals: {}.", kinds.join(", "));
+}
+
+/// The details behind the "Recommendations input": order inversions and verification after
+/// approval.
+fn wait_details(r: &Report, t: &Totals, activity: &Activity, out: &mut String) {
+    let at = |s: i64| crate::verify::utc(u64::try_from(s).unwrap_or(0));
+    let _ = writeln!(out, "\n## Process-created waits\n");
+    let _ = writeln!(out, "### Order inversions\n");
+    let all: Vec<&Pr> = r.all_prs().collect();
+    let pairs: Vec<String> = waits::dependencies(&all)
+        .iter()
+        .filter(|(b, _)| r.prs.iter().any(|p| p.number == b.number))
+        .map(|(b, a)| format!("#{} on #{}", b.number, a.number))
+        .collect();
+    let _ = writeln!(
+        out,
+        "Dependencies found (branch ancestry): {}.\n",
+        if pairs.is_empty() {
+            "none".to_owned()
+        } else {
+            pairs.join(", ")
+        }
+    );
+    if t.inversions.is_empty() {
+        let _ = writeln!(
+            out,
+            "No pull request was approved while one it depends on was unreviewed."
+        );
+    } else {
+        let _ = writeln!(
+            out,
+            "| Approved | At | Depends on | First reviewed or approved | Inverted for |\n\
+             |---|---|---|---|---:|"
+        );
+        for i in &t.inversions {
+            let _ = writeln!(
+                out,
+                "| #{} | {} | #{} | {} | {} |",
+                i.pr,
+                at(i.approved),
+                i.waiting_on,
+                at(i.reviewed),
+                time::duration(i.seconds())
+            );
+        }
+    }
+    let _ = writeln!(out, "\n### Verification after approval\n");
+    if t.after_approval.is_empty() {
+        let _ = writeln!(out, "Nothing ran after an approval that was not the merge.");
+    } else {
+        let _ = writeln!(
+            out,
+            "| PR | Approval | Merges | Runs | Verify time | Approval → merged | In active time |\n\
+             |---|---|---:|---:|---:|---:|---:|"
+        );
+        for (n, w) in t.after_approval.iter().take(r.top) {
+            let Some(pr) = r.prs.iter().find(|p| p.number == *n) else {
+                continue;
+            };
+            let a = pr.stages.approval;
+            let _ = writeln!(
+                out,
+                "| #{n} | {} ({}) | {} | {} | {} | {} | {} |",
+                at(a.at),
+                a.kind.name(),
+                w.merges,
+                w.runs,
+                time::duration(w.verify_s),
+                time::duration(pr.merged - a.at),
+                time::duration(activity.active(a.at, pr.merged))
+            );
+        }
+    }
+}
+
+/// The failed and cancelled runs, and the rework after a maintainer decision.
+fn run_details(r: &Report, t: &Totals, out: &mut String) {
+    let at = |s: i64| crate::verify::utc(u64::try_from(s).unwrap_or(0));
+    let _ = writeln!(out, "\n### Failed and cancelled runs\n");
+    let mut wasted: Vec<(u64, &super::pr::Run)> =
+        t.failed.iter().map(|(n, run)| (*n, run)).collect();
+    for pr in &r.prs {
+        wasted.extend(pr.waits.cancelled.iter().map(|run| (pr.number, run)));
+    }
+    if wasted.is_empty() {
+        let _ = writeln!(out, "No run failed or was cancelled.");
+    } else {
+        wasted.sort_by_key(|(_, run)| std::cmp::Reverse(run.seconds.unwrap_or(0)));
+        let _ = writeln!(
+            out,
+            "| PR | Commit | Result | Wall time | First gating failure | Ran after it |\n\
+             |---|---|---|---:|---|---:|"
+        );
+        for (n, run) in wasted.iter().take(r.top) {
+            let _ = writeln!(
+                out,
+                "| #{n} | `{}` | {} | {} | {} | {} |",
+                short(&run.commit),
+                run.result,
+                opt_duration(run.seconds),
+                run.first_failure
+                    .as_ref()
+                    .map_or_else(|| "–".to_owned(), |f| format!("`{f}`")),
+                opt_duration(run.after_failure_s)
+            );
+        }
+    }
+    let _ = writeln!(out, "\n### Rework after a maintainer decision\n");
+    if t.rework.is_empty() {
+        let _ = writeln!(out, "No work followed a maintainer decision.");
+    } else {
+        let _ = writeln!(
+            out,
+            "| PR | First decision | Commits | Merges | Runs | Verify time |\n\
+             |---|---|---:|---:|---:|---:|"
+        );
+        for (n, w) in t.rework.iter().take(r.top) {
+            let first = r
+                .prs
+                .iter()
+                .find(|p| p.number == *n)
+                .and_then(|p| p.stages.first_decision)
+                .map_or_else(|| "–".to_owned(), at);
+            let _ = writeln!(
+                out,
+                "| #{n} | {first} | {} | {} | {} | {} |",
+                w.commits,
+                w.merges,
+                w.runs,
+                time::duration(w.verify_s)
+            );
+        }
+    }
+}
+
+/// The per-PR stage timeline: each stage's distance from the stage before it that happened.
+fn timeline(r: &Report, activity: &Activity, out: &mut String) {
+    let _ = writeln!(out, "\n## Stage timeline\n");
+    let _ = writeln!(
+        out,
+        "Each cell is the time from the stage before it that happened; a negative one came before \
+         it (a review before the first passing record). The review wait runs from opened to the \
+         first review.\n"
+    );
+    let heads: Vec<&str> = stages::NAMES.iter().skip(1).copied().collect();
+    let _ = writeln!(
+        out,
+        "| PR | {} | Review wait | In active time |\n|---|{}---:|---:|",
+        heads
+            .iter()
+            .map(|h| format!("→ {h}"))
+            .collect::<Vec<_>>()
+            .join(" | "),
+        "---:|".repeat(heads.len())
+    );
+    for pr in &r.prs {
+        let gaps = pr.stages.gaps();
+        let cells: Vec<String> = heads
+            .iter()
+            .map(|h| {
+                let gap = gaps.iter().find(|(n, _)| n == h).map(|(_, g)| *g);
+                match (gap, *h) {
+                    (Some(g), "approval") => {
+                        format!("{} ({})", time::duration(g), pr.stages.approval.kind.name())
+                    }
+                    (None, "approval") if pr.stages.approval.kind == ApprovalKind::Merge => {
+                        "by merge".to_owned()
+                    }
+                    (Some(g), _) => time::duration(g),
+                    (None, _) => "–".to_owned(),
+                }
+            })
+            .collect();
+        let wait = pr.stages.between("opened", "first review");
+        let _ = writeln!(
+            out,
+            "| #{} | {} | {} | {} |",
+            pr.number,
+            cells.join(" | "),
+            opt_duration(wait.map(|(a, b)| b - a)),
+            opt_duration(wait.map(|(a, b)| activity.active(a, b)))
+        );
+    }
+}
+
 /// How each number is made, and what is not measured.
 const METHOD: &str = "\
 ## How these are measured
@@ -408,8 +749,61 @@ heading naming a review; anything that contains `Generated with [Claude Code]` i
 not counted. A fix is a commit other than a merge authored after the first review.
 - **Follow-ups:** issues (not pull requests) linked as `#N` from the description or the author's \
 replies and opened between the first commit and a day after the merge.
-- Generated by `cargo xtask metrics` (docs/06-verification.md §9, VER-063).
 ";
+
+/// How the stages and the process-created waits are made, with the constants they use.
+fn method_stages() -> String {
+    let d = time::duration;
+    format!(
+        "\
+- **Maintainer:** the repository owner's account, which the agents post under too. A review is \
+the maintainer's (as above). A conversation comment is the maintainer's own if it does not \
+contain the agent's marker, is no review, has at most {max} characters, and has no bold text; the \
+agent's replies that lack the marker are longer or open in bold.
+- **Stages:** the first commit; opened; the first passing record (`finished` of the earliest \
+published record of any of its commits; only passing records are published); the first review; \
+the last maintainer decision (their last comment in the conversation, or the committer date of the \
+commit of the pull request that added a line naming it to `docs/process/decisions.md`, found with \
+`git log -S`); the approval; the passing record of the merged head; merged.
+- **Approval:** the first `APPROVED` review; otherwise the maintainer's last word (the last of \
+their reviews, comments, and recorded decisions up to the merge) if no commit other than a merge \
+was authored after it; otherwise the merge itself, as the maintainer approves by merging.
+- **Active time:** the union of the windows of {window} before and after each maintainer event: a \
+review or review comment, a maintainer comment on any issue or pull request, and a merge. Pushes \
+and workflow dispatches are left out, because agents make them while the maintainer is away. \
+Each interval is reported raw and in active time; the raw wait for the first review is the \
+maintainer's availability and not actionable.
+- **Dependency:** pull request B depends on A if A's head is one of B's commits, or a parent of \
+one of B's commits from outside B is a commit of A (B branched from A's branch or merged it). A \
+merge from `main` brings `main`'s merge commit, which is no commit of A. Only the pull requests \
+fetched (this period and the previous one) are compared.
+- **Order inversion:** B was approved while A, which it depends on, was unreviewed: A's first \
+review (or its approval, if that came first) is later than B's approval; it lasts from B's \
+approval to that review.
+- **Verification after approval:** from an approval that was not the merge to the merge: the \
+merges, and the verification runs started then, with their wall time.
+- **Wasted runs:** failed and cancelled `verify.yml` runs. For a failed run whose artefact holds \
+its record, the first gating check that failed and the minutes of the checks that ran after it \
+(the record's order, the macOS checks last). A local run that fails leaves no trace.
+- **Rework after a maintainer decision:** from the first decision to the approval: the commits \
+other than merges authored then, and the verification runs started then. A pull request counts \
+only if at least one commit was authored then; a run without one re-ran a head.
+- **Thresholds:** every order inversion; verification after approval of {update} or more in one \
+pull request; a failed run that went on {fail} or more after its first gating failure; cancelled \
+runs of {cancel} or more in one pull request; at least {rework} verification run after a decision \
+in one pull request; a file in {conflicts} or more conflicted merges in the period. The previous \
+period has the same length and ends where this one starts.
+- Generated by `cargo xtask metrics` (docs/06-verification.md §9, VER-063).
+",
+        max = stages::HUMAN_MAX,
+        window = d(ACTIVE_WINDOW),
+        update = d(waits::UPDATE_MIN_S),
+        fail = d(waits::AFTER_FAILURE_MIN_S),
+        cancel = d(waits::CANCELLED_MIN_S),
+        rework = waits::REWORK_MIN_RUNS,
+        conflicts = waits::CONFLICT_MIN_MERGES,
+    )
+}
 
 /// The Markdown report.
 pub fn markdown(r: &Report) -> String {
@@ -425,9 +819,16 @@ pub fn markdown(r: &Report) -> String {
     );
     let _ = writeln!(out, "## Summary\n");
     prose(r, &s, &mut out);
+    let activity = r.activity();
+    let (now, before) = r.totals();
+    recommendations(r, &now, before.as_ref(), &mut out);
+    stage_summary(r, &activity, &mut out);
+    wait_details(r, &now, &activity, &mut out);
+    run_details(r, &now, &mut out);
     friction(r, &s, &mut out);
     table(r, &mut out);
-    let _ = write!(out, "\n{METHOD}");
+    timeline(r, &activity, &mut out);
+    let _ = write!(out, "\n{METHOD}{}", method_stages());
     out
 }
 
@@ -435,11 +836,32 @@ pub fn markdown(r: &Report) -> String {
 pub fn json(r: &Report) -> Value {
     let s = summary(&r.prs);
     let at = |t: i64| crate::verify::utc(u64::try_from(t).unwrap_or(0));
+    let activity = r.activity();
+    let (now, before) = r.totals();
+    let medians = |prs: &[Pr]| {
+        stage_medians(prs, &activity)
+            .into_iter()
+            .map(|(label, n, raw, active)| {
+                json!({"interval": label, "prs": n, "raw_median_s": raw,
+                       "active_median_s": active})
+            })
+            .collect::<Vec<_>>()
+    };
     json!({
         "format": "aldis-metrics/1",
         "repo": r.repo,
         "generated": at(r.generated),
         "since": r.since.map(at),
+        "maintainer": r.maintainer,
+        "active_window_s": ACTIVE_WINDOW,
+        "stages": medians(&r.prs),
+        "waits": waits::to_json(&now),
+        "previous": r.previous.as_ref().map(|p| json!({
+            "since": at(p.since),
+            "prs": p.prs.len(),
+            "stages": medians(&p.prs),
+            "waits": before.as_ref().map(waits::to_json),
+        })),
         "summary": {
             "prs": s.prs,
             "open_to_merge_median_s": s.open_to_merge,
@@ -470,7 +892,7 @@ pub fn json(r: &Report) -> Value {
             "follow_ups": s.follow_ups,
         },
         "decisions": decisions::to_json(r.decisions.as_ref(), r.since.unwrap_or(i64::MIN)),
-        "prs": r.prs.iter().map(Pr::to_json).collect::<Vec<_>>(),
+        "prs": r.prs.iter().map(|p| p.to_json(&activity)).collect::<Vec<_>>(),
     })
 }
 
@@ -526,10 +948,113 @@ mod tests {
         assert_eq!(summary(&[]), Summary::default());
     }
 
+    /// #70 with a decision (approved by its last word at 13:54:12), stacked on #69, whose head m2
+    /// it merged; #69 was first reviewed at 14:30, after #70's approval.
+    fn stacked() -> Vec<Pr> {
+        let top = compute(&pr::tests::decided()).unwrap();
+        let mut raw = pr::tests::fixture();
+        raw.pull["number"] = json!(69);
+        raw.pull["head"] = json!({"ref": "m2/base", "sha": "m2"});
+        raw.pull["base"] = json!({"ref": "main"});
+        raw.pull["created_at"] = json!("2026-10-21T11:00:00Z");
+        raw.pull["merged_at"] = json!("2026-10-21T15:30:00Z");
+        raw.commits = vec![pr::tests::commit("m2", &["base"], "2026-10-21T11:00:00Z")];
+        raw.reviews = vec![json!({"user": {"login": "me"}, "state": "COMMENTED",
+            "submitted_at": "2026-10-21T14:30:00Z", "body": "# Review"})];
+        raw.review_comments.clear();
+        raw.issue_comments.clear();
+        raw.records.clear();
+        raw.runs.clear();
+        let base = compute(&raw).unwrap();
+        let mut top = top;
+        top.base = "main".to_owned();
+        vec![top, base]
+    }
+
+    // req: VER-063
+    #[test]
+    fn renders_stages_waits_and_recommendations_input() {
+        let report = Report {
+            maintainer: "me".to_owned(),
+            events: Vec::new(),
+            previous: Some(Previous {
+                since: time::parse("2026-09-16").unwrap(),
+                prs: Vec::new(),
+            }),
+            repo: "o/r".to_owned(),
+            generated: time::parse("2026-10-21T16:00:00Z").unwrap(),
+            since: time::parse("2026-10-16"),
+            top: 10,
+            prs: stacked(),
+            decisions: None,
+        };
+        let md = markdown(&report);
+        for want in [
+            "## Recommendations input\n",
+            "the previous period is 2026-09-16 to 2026-10-15 (0 pull requests).",
+            "| Order inversions | every one | 1, 35 min in all | **1** | 0 | #70 before #69 \
+             (35 min) |",
+            "| Verification after approval | ≥ 10 min of runs in one PR | 1 PR, 15 min of runs | \
+             **1** | 0 | #70 (15 min, 1 run) |",
+            "| Failed runs that went on after the first gating failure | ≥ 5 min after it, per \
+             run | 1 failed run, 20 min; 3 min after a first gating failure | **0** | 0 | – |",
+            "| Cancelled runs | ≥ 10 min of cancelled runs in one PR | 1 run, 4 min | **0** | 0 | – |",
+            "| Rework after a maintainer decision | ≥ 1 verification run after it, in one PR | 1 PR, \
+             1 commit, 0 s of runs | **0** | 0 | – |",
+            "| Repeated conflicts | a file in ≥ 3 conflicted merges | 1 file conflicted | **0** | 0 \
+             | – |",
+            "## Stages\n",
+            "| waiting for the first review (raw: not actionable) | 2 |",
+            "Approvals: 2 by last word.",
+            "## Process-created waits\n",
+            "Dependencies found (branch ancestry): #70 on #69.\n",
+            "| #70 | 2026-10-21T13:54:12Z | #69 | 2026-10-21T14:30:00Z | 35 min |",
+            // Events from 13:46 to 15:30, windows of 30 min: active from 13:16 to 16:00.
+            "| #70 | 2026-10-21T13:54:12Z (last word) | 0 | 1 | 15 min | 1 h 19 min | 1 h 19 min |",
+            "| #70 | `c` | failure | 20 min | `header` | 3 min |",
+            "| #70 | `d` | cancelled | 4 min | – | – |",
+            "| #70 | 2026-10-21T13:52:00Z | 1 | 0 | 0 | 0 s |",
+            "## Stage timeline\n",
+            "| #70 | 5 min | 12 min | 1 h 36 min | 8 min | 0 s (last word) | 1 h 14 min | 4 min | \
+             1 h 48 min | 30 min |",
+            // Opened 11:00, reviewed 14:30: active from 13:16:03.
+            "| #69 | 0 s | – | 3 h 30 min | – | 0 s (last word) | – | 1 h 00 min | 3 h 30 min | \
+             1 h 13 min |",
+            "- **Approval:** the first `APPROVED` review;",
+            "the union of the windows of 30 min before and after each maintainer event",
+        ] {
+            assert!(md.contains(want), "missing {want:?} in\n{md}");
+        }
+        let j = json(&report);
+        assert_eq!(j["maintainer"], "me");
+        assert_eq!(j["active_window_s"], 1_800);
+        assert_eq!(j["waits"]["inversions"][0]["pr"], 70);
+        assert_eq!(j["waits"]["measures"][0]["crossed"], 1);
+        assert_eq!(j["stages"][2]["interval"], "waiting for the first review");
+        assert_eq!(j["stages"][2]["prs"], 2);
+        assert_eq!(j["previous"]["prs"], 0);
+        assert_eq!(j["previous"]["waits"]["measures"][0]["crossed"], 0);
+        assert_eq!(j["prs"][0]["stages"]["approval"]["kind"], "last word");
+        // Without a previous period, its column is empty.
+        let none = Report {
+            previous: None,
+            ..report
+        };
+        let md = markdown(&none);
+        assert!(md.contains("no previous period was fetched"));
+        assert!(
+            md.contains("| **1** | – | #70 before #69 (35 min) |"),
+            "{md}"
+        );
+    }
+
     // req: VER-063
     #[test]
     fn renders_markdown_and_json() {
         let report = Report {
+            maintainer: "me".to_owned(),
+            events: Vec::new(),
+            previous: None,
             repo: "o/r".to_owned(),
             generated: time::parse("2026-10-21T16:00:00Z").unwrap(),
             since: time::parse("2026-10-16"),
