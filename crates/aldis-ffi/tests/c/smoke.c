@@ -224,7 +224,7 @@ int main(void) {
               uview.tfdf.rule == ALDIS_USLP_RULE_OCTET_STREAM && uview.upid_assigned &&
               uview.layout.tfdz_len == 4 && uframe[uview.layout.tfdz_offset] == 0xD0,
           "decoded USLP frame (CABI-012)");
-    uint8_t ureason = 0xFF;
+    uint32_t ureason = 0xFFFFFFFFu;
     check(aldis_uslp_validate(uframe, ulen, &upc, &uvc, 1, &umap, 1, ALDIS_MODE_STRICT, &uview,
                               &ureason, NULL) == ALDIS_OK &&
               ureason == ALDIS_USLP_REASON_NONE,
@@ -235,11 +235,11 @@ int main(void) {
               ureason == ALDIS_USLP_REASON_FECF_MISMATCH,
           "a wrong FECF fails test (e) (USLP-014)");
     aldis_uslp_delimited_t uitem;
-    check(aldis_uslp_delimit(uframe, ulen, 0, &upc, &uvc, 1, &uitem, NULL) == ALDIS_OK &&
+    check(aldis_uslp_next_frame(uframe, ulen, 0, &upc, &uvc, 1, &uitem, NULL) == ALDIS_OK &&
               uitem.kind == ALDIS_USLP_DELIMITED_FRAME && uitem.len == ulen,
-          "aldis_uslp_delimit");
-    check(aldis_uslp_delimit(uframe, ulen, ulen, &upc, &uvc, 1, &uitem, NULL) == ALDIS_OK &&
-              uitem.kind == ALDIS_USLP_DELIMITED_NONE,
+          "aldis_uslp_next_frame");
+    check(aldis_uslp_next_frame(uframe, ulen, ulen, &upc, &uvc, 1, &uitem, NULL) == ALDIS_OK &&
+              uitem.kind == ALDIS_USLP_DELIMITED_END,
           "the delimiter ends at the end of the unit");
     check(limits.uslp_max_vcs == ALDIS_USLP_MAX_VCS && limits.uslp_max_maps == ALDIS_USLP_MAX_MAPS,
           "USLP channel table capacities");

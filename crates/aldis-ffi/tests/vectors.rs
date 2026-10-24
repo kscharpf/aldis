@@ -2312,7 +2312,7 @@ fn uslp_oid_frame(case: &CodecCase, ch: &UslpChannels, form: u32) -> R<String> {
 fn uslp_validate(case: &CodecCase, ch: &UslpChannels) -> Value {
     let bytes = input(case);
     let mut view = aldis_uslp_frame_t::default();
-    let mut reason = u8::MAX;
+    let mut reason = u32::MAX;
     // SAFETY: every pointer is to a live local or vector, with its length.
     let result = call(|e| unsafe {
         aldis_uslp_validate(
@@ -2335,8 +2335,8 @@ fn uslp_validate(case: &CodecCase, ch: &UslpChannels) -> Value {
             json!({ "accepted": true, "frame_len": view.layout.frame_len })
         }
         Err(f) => {
-            let r =
-                Reason::from_code(reason).unwrap_or_else(|| panic!("{}: reason {reason}", case.id));
+            let r = Reason::from_code(u8::try_from(reason).unwrap())
+                .unwrap_or_else(|| panic!("{}: reason {reason}", case.id));
             json!({
                 "accepted": false,
                 "reason": format!("{r:?}"),
@@ -2356,7 +2356,7 @@ fn uslp_delimit(case: &CodecCase, ch: &UslpChannels) -> R<Value> {
         let mut item = aldis_uslp_delimited_t::default();
         // SAFETY: every pointer is to a live local or vector, with its length.
         call(|e| unsafe {
-            aldis_uslp_delimit(
+            aldis_uslp_next_frame(
                 unit.as_ptr(),
                 unit.len(),
                 at,
@@ -2369,7 +2369,7 @@ fn uslp_delimit(case: &CodecCase, ch: &UslpChannels) -> R<Value> {
         })?;
         assert_eq!(item.offset, at);
         let kind = match item.kind {
-            ALDIS_USLP_DELIMITED_NONE => break,
+            ALDIS_USLP_DELIMITED_END => break,
             ALDIS_USLP_DELIMITED_FRAME => "frame",
             ALDIS_USLP_DELIMITED_INCOMPLETE_FRAME => "incomplete",
             ALDIS_USLP_DELIMITED_NO_TRUNCATED_LENGTH => "no_truncated_length",

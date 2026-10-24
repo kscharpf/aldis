@@ -71,7 +71,7 @@ use aldis_ffi::uslp::{
     ALDIS_USLP_KIND_EXPEDITED, ALDIS_USLP_OID_VCID, ALDIS_USLP_REASON_NONE,
     ALDIS_USLP_RULE_NO_SEGMENTATION, ALDIS_USLP_RULE_OCTET_STREAM, ALDIS_USLP_UPID_OCTET_STREAM,
     aldis_uslp_channel_t, aldis_uslp_config_check, aldis_uslp_config_t, aldis_uslp_content_t,
-    aldis_uslp_decode, aldis_uslp_delimit, aldis_uslp_delimited_t, aldis_uslp_encode,
+    aldis_uslp_decode, aldis_uslp_next_frame, aldis_uslp_delimited_t, aldis_uslp_encode,
     aldis_uslp_encode_oid, aldis_uslp_encode_truncated, aldis_uslp_fields_t, aldis_uslp_frame_t,
     aldis_uslp_layout_t, aldis_uslp_map_config_t, aldis_uslp_peek_length, aldis_uslp_tfdf_t,
     aldis_uslp_validate, aldis_uslp_vc_config_t, aldis_uslp_vc_table_check,
@@ -1098,7 +1098,7 @@ fn uslp(t: &mut Tally) {
     let mut layout = aldis_uslp_layout_t::default();
     let mut view = aldis_uslp_frame_t::default();
     let mut item = aldis_uslp_delimited_t::default();
-    let mut reason = u8::MAX;
+    let mut reason = u32::MAX;
     let mut n = 0_usize;
     let mut words = [0_u64; ALDIS_OID_GENERATOR_STORAGE_SIZE / 8];
     let mut oid: *mut aldis_oid_generator_t = null_mut();
@@ -1213,7 +1213,7 @@ fn uslp(t: &mut Tally) {
                 && reason == ALDIS_USLP_REASON_NONE,
         );
         t.check(
-            aldis_uslp_delimit(
+            aldis_uslp_next_frame(
                 frame.as_ptr(),
                 bb(13),
                 bb(0),

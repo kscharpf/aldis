@@ -1731,7 +1731,7 @@
 /**
  * Delimited item: no octets remain at the offset (732.1 §4.3.11.2; USLP-015).
  */
-#define ALDIS_USLP_DELIMITED_NONE 0
+#define ALDIS_USLP_DELIMITED_END 0
 
 /**
  * Delimited item: one frame, as long as its header declares, for the validation checks
@@ -3297,7 +3297,7 @@ typedef struct {
    */
   size_t offset;
   /**
-   * Octets the item takes; 0 only for `ALDIS_USLP_DELIMITED_NONE`. Every item but a frame
+   * Octets the item takes; 0 only for `ALDIS_USLP_DELIMITED_END`. Every item but a frame
    * takes the rest of the unit.
    */
   size_t len;
@@ -4868,7 +4868,7 @@ int32_t aldis_uslp_validate(const uint8_t *bytes,
                             size_t map_count,
                             uint32_t mode,
                             aldis_uslp_frame_t *out,
-                            uint8_t *reason,
+                            uint32_t *reason,
                             aldis_error_detail_t *err);
 
 /**
@@ -5055,7 +5055,7 @@ int32_t aldis_uslp_encode_oid(const aldis_uslp_config_t *pc,
  *
  * As `aldis_uslp::next_frame` gives it: a frame, which the caller passes to
  * [`aldis_uslp_validate`] and steps over, or the rest of the unit, discarded. A C caller loops
- * from offset 0, adding each item's `len`, until the kind is `ALDIS_USLP_DELIMITED_NONE`;
+ * from offset 0, adding each item's `len`, until the kind is `ALDIS_USLP_DELIMITED_END`;
  * every other item takes at least one octet.
  *
  * The unit is the octets of one data unit that TC Synchronization and Channel Coding delivered
@@ -5071,14 +5071,14 @@ int32_t aldis_uslp_encode_oid(const aldis_uslp_config_t *pc,
  * [`aldis_uslp_vc_table_check`]; `out` is valid for one write; `err` is `NULL` or valid for one
  * write.
  */
-int32_t aldis_uslp_delimit(const uint8_t *unit,
-                           size_t unit_len,
-                           size_t offset,
-                           const aldis_uslp_config_t *pc,
-                           const aldis_uslp_vc_config_t *vcs,
-                           size_t vc_count,
-                           aldis_uslp_delimited_t *out,
-                           aldis_error_detail_t *err);
+int32_t aldis_uslp_next_frame(const uint8_t *unit,
+                              size_t unit_len,
+                              size_t offset,
+                              const aldis_uslp_config_t *pc,
+                              const aldis_uslp_vc_config_t *vcs,
+                              size_t vc_count,
+                              aldis_uslp_delimited_t *out,
+                              aldis_error_detail_t *err);
 
 #ifdef __cplusplus
 }  // extern "C"

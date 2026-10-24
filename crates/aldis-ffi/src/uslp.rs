@@ -8,7 +8,7 @@
 //! [`aldis_uslp_content_t`]; the two-phase writer as [`aldis_uslp_writer_begin`] and
 //! [`aldis_uslp_writer_finish`]; [`aldis_uslp_encode_truncated`]; the OID frame writer
 //! [`aldis_uslp_encode_oid`], which takes an `aldis_oid_generator_t`; and the stateless Frame
-//! Delimiting and Fill Data Removal [`aldis_uslp_delimit`].
+//! Delimiting and Fill Data Removal [`aldis_uslp_next_frame`].
 //!
 //! **Channels.** A physical channel is an [`aldis_uslp_config_t`] (732.1 §5 Table 5-1). The
 //! virtual channels and MAPs it carries are passed beside it as two arrays, of
@@ -19,7 +19,7 @@
 //! each virtual channel and MAP names its own SCID, so one table holds every master channel of
 //! the physical channel. Each array's stride is the `struct_size` of its first struct, which
 //! every struct repeats (`abi::configs`; c-abi.md §11). `aldis_uslp_peek_length` and
-//! `aldis_uslp_delimit` take the virtual channels only (M2 plan D14), since only a VC's
+//! `aldis_uslp_next_frame` take the virtual channels only (M2 plan D14), since only a VC's
 //! truncated frame length delimits a frame.
 //!
 //! **Security layouts** (API-070, API-075; c-abi.md §11). Every call that takes the channels
@@ -159,45 +159,45 @@ pub const ALDIS_USLP_ANOMALY_RESERVE_SPARES_SET: u32 = 1 << 0;
 pub const ALDIS_USLP_ANOMALY_OID_HEADER_MISMATCH: u32 = 1 << 1;
 
 /// Validation reason: none, the frame was accepted (USLP-014).
-pub const ALDIS_USLP_REASON_NONE: u8 = 0;
+pub const ALDIS_USLP_REASON_NONE: u32 = 0;
 /// Reason 1, test (a): the TFVN is not `1100` (732.1 §4.3.11.3.4 a; USLP-014).
-pub const ALDIS_USLP_REASON_UNEXPECTED_VERSION: u8 = 1;
+pub const ALDIS_USLP_REASON_UNEXPECTED_VERSION: u32 = 1;
 /// Reason 2, test (b): the SCID names no master channel of the physical channel.
-pub const ALDIS_USLP_REASON_UNEXPECTED_SPACECRAFT: u8 = 2;
+pub const ALDIS_USLP_REASON_UNEXPECTED_SPACECRAFT: u32 = 2;
 /// Reason 3, test (c): the reserved flag combination `01` (Table 4-1).
-pub const ALDIS_USLP_REASON_RESERVED_FLAGS: u8 = 3;
+pub const ALDIS_USLP_REASON_RESERVED_FLAGS: u32 = 3;
 /// Reason 4, test (c), strict mode only: the Reserve Spares are not `00`.
-pub const ALDIS_USLP_REASON_RESERVED_SPARE: u8 = 4;
+pub const ALDIS_USLP_REASON_RESERVED_SPARE: u32 = 4;
 /// Reason 5, test (c): the VCID is not configured.
-pub const ALDIS_USLP_REASON_INVALID_VCID: u8 = 5;
+pub const ALDIS_USLP_REASON_INVALID_VCID: u32 = 5;
 /// Reason 6, test (c): the MAP ID is not configured on the VC.
-pub const ALDIS_USLP_REASON_INVALID_MAP_ID: u8 = 6;
+pub const ALDIS_USLP_REASON_INVALID_MAP_ID: u32 = 6;
 /// Reason 7, test (c): a truncated frame on a VC without a truncated frame length.
-pub const ALDIS_USLP_REASON_TRUNCATED_FRAME_NOT_ALLOWED: u8 = 7;
+pub const ALDIS_USLP_REASON_TRUNCATED_FRAME_NOT_ALLOWED: u32 = 7;
 /// Reason 8, test (c): the VCF Count Length is not the VC's for the frame's service.
-pub const ALDIS_USLP_REASON_VCF_COUNT_LENGTH_MISMATCH: u8 = 8;
+pub const ALDIS_USLP_REASON_VCF_COUNT_LENGTH_MISMATCH: u32 = 8;
 /// Reason 9, test (c): the OCF Flag disagrees with the VC's OCF use.
-pub const ALDIS_USLP_REASON_OCF_FLAG_MISMATCH: u8 = 9;
+pub const ALDIS_USLP_REASON_OCF_FLAG_MISMATCH: u32 = 9;
 /// Reason 10, test (c): the Frame Length is not a fixed-length channel's frame length.
-pub const ALDIS_USLP_REASON_FIXED_LENGTH_MISMATCH: u8 = 10;
+pub const ALDIS_USLP_REASON_FIXED_LENGTH_MISMATCH: u32 = 10;
 /// Reason 11, test (c): the Frame Length exceeds a variable-length channel's maximum.
-pub const ALDIS_USLP_REASON_FRAME_TOO_LONG: u8 = 11;
+pub const ALDIS_USLP_REASON_FRAME_TOO_LONG: u32 = 11;
 /// Reason 12, test (c): the Frame Length leaves no TFDZ octet (OI-44 item 2).
-pub const ALDIS_USLP_REASON_FRAME_TOO_SHORT: u8 = 12;
+pub const ALDIS_USLP_REASON_FRAME_TOO_SHORT: u32 = 12;
 /// Reason 13, test (d): the octets present disagree with the frame length.
-pub const ALDIS_USLP_REASON_LENGTH_MISMATCH: u8 = 13;
+pub const ALDIS_USLP_REASON_LENGTH_MISMATCH: u32 = 13;
 /// Reason 14, test (e): the FECF does not match.
-pub const ALDIS_USLP_REASON_FECF_MISMATCH: u8 = 14;
+pub const ALDIS_USLP_REASON_FECF_MISMATCH: u32 = 14;
 /// Reason 15: the TFDZ Construction Rule is of the other TFDZ type than the VC's (USLP-016).
-pub const ALDIS_USLP_REASON_CONSTRUCTION_RULE_MISMATCH: u8 = 15;
+pub const ALDIS_USLP_REASON_CONSTRUCTION_RULE_MISMATCH: u32 = 15;
 /// Reason 16: the First Header or Last Valid Octet Pointer lies beyond the TFDZ (USLP-006).
-pub const ALDIS_USLP_REASON_POINTER_BEYOND_ZONE: u8 = 16;
+pub const ALDIS_USLP_REASON_POINTER_BEYOND_ZONE: u32 = 16;
 /// Reason 17, strict mode only: a frame on VCID 63 whose OID header fields deviate (OI-44
 /// item 1).
-pub const ALDIS_USLP_REASON_OID_HEADER_MISMATCH: u8 = 17;
+pub const ALDIS_USLP_REASON_OID_HEADER_MISMATCH: u32 = 17;
 
 /// Delimited item: no octets remain at the offset (732.1 §4.3.11.2; USLP-015).
-pub const ALDIS_USLP_DELIMITED_NONE: u8 = 0;
+pub const ALDIS_USLP_DELIMITED_END: u8 = 0;
 /// Delimited item: one frame, as long as its header declares, for the validation checks
 /// (732.1 §4.3.11.2.2, §4.3.11.2.4 c).
 pub const ALDIS_USLP_DELIMITED_FRAME: u8 = 1;
@@ -465,7 +465,7 @@ pub struct aldis_uslp_delimited_t {
     pub kind: u8,
     /// Offset of the item in the unit: the offset the call was given.
     pub offset: usize,
-    /// Octets the item takes; 0 only for `ALDIS_USLP_DELIMITED_NONE`. Every item but a frame
+    /// Octets the item takes; 0 only for `ALDIS_USLP_DELIMITED_END`. Every item but a frame
     /// takes the rest of the unit.
     pub len: usize,
     /// For `ALDIS_USLP_DELIMITED_INCOMPLETE_FRAME`, the frame length the header declares, or its
@@ -1023,7 +1023,7 @@ pub unsafe extern "C" fn aldis_uslp_validate(
     map_count: usize,
     mode: u32,
     out: *mut aldis_uslp_frame_t,
-    reason: *mut u8,
+    reason: *mut u32,
     err: *mut crate::aldis_error_detail_t,
 ) -> i32 {
     // SAFETY: every pointer is valid as `# Safety` states; `abi` checks NULL and alignment.
@@ -1041,7 +1041,7 @@ pub unsafe extern "C" fn aldis_uslp_validate(
                     Ok(())
                 }
                 Err(r) => {
-                    reason.write(r.reason().code());
+                    reason.write(u32::from(r.reason().code()));
                     Err(r.error())
                 }
             }
@@ -1353,7 +1353,7 @@ pub unsafe extern "C" fn aldis_uslp_encode_oid(
 ///
 /// As `aldis_uslp::next_frame` gives it: a frame, which the caller passes to
 /// [`aldis_uslp_validate`] and steps over, or the rest of the unit, discarded. A C caller loops
-/// from offset 0, adding each item's `len`, until the kind is `ALDIS_USLP_DELIMITED_NONE`;
+/// from offset 0, adding each item's `len`, until the kind is `ALDIS_USLP_DELIMITED_END`;
 /// every other item takes at least one octet.
 ///
 /// The unit is the octets of one data unit that TC Synchronization and Channel Coding delivered
@@ -1373,7 +1373,7 @@ pub unsafe extern "C" fn aldis_uslp_encode_oid(
     reason = "C ABI entry point: unmangled, takes raw pointers (GEN-071)"
 )]
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn aldis_uslp_delimit(
+pub unsafe extern "C" fn aldis_uslp_next_frame(
     unit: *const u8,
     unit_len: usize,
     offset: usize,
@@ -1397,7 +1397,7 @@ pub unsafe extern "C" fn aldis_uslp_delimit(
                 declared_len,
             };
             out.write(match next_frame(rest, &t) {
-                None => item(ALDIS_USLP_DELIMITED_NONE, 0, 0),
+                None => item(ALDIS_USLP_DELIMITED_END, 0, 0),
                 Some(Delimited::Frame(o)) => item(ALDIS_USLP_DELIMITED_FRAME, o.len(), 0),
                 Some(Delimited::IncompleteFrame {
                     octets,
@@ -1557,9 +1557,10 @@ mod tests {
             reasons
                 .iter()
                 .copied()
-                .eq(Reason::ALL.iter().map(|r| r.code()))
+                .eq(Reason::ALL.iter().map(|r| u32::from(r.code())))
         );
-        assert_eq!(Reason::from_code(ALDIS_USLP_REASON_NONE), None);
+        assert_eq!(Reason::from_code(0), None);
+        assert_eq!(ALDIS_USLP_REASON_NONE, 0);
         assert_eq!(
             (ALDIS_USLP_SOURCE, ALDIS_USLP_DESTINATION),
             (

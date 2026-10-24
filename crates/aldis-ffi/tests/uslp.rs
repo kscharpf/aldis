@@ -720,7 +720,7 @@ fn validation_reports_a_stable_reason() {
         &mut det,
     );
     assert_eq!(rc, ALDIS_OK);
-    let validate = |bytes: &[u8], view: &mut aldis_uslp_frame_t, reason: *mut u8, det| {
+    let validate = |bytes: &[u8], view: &mut aldis_uslp_frame_t, reason: *mut u32, det| {
         // SAFETY: every pointer is to a live local, struct, or vector, or `reason` is NULL.
         unsafe {
             aldis_uslp_validate(
@@ -739,7 +739,7 @@ fn validation_reports_a_stable_reason() {
         }
     };
     let mut view = aldis_uslp_frame_t::default();
-    let mut reason = u8::MAX;
+    let mut reason = u32::MAX;
     assert_eq!(
         validate(&frame[..len], &mut view, &raw mut reason, &raw mut det),
         ALDIS_OK
@@ -764,7 +764,7 @@ fn validation_reports_a_stable_reason() {
     );
     assert_eq!((reason, det.field), (ALDIS_USLP_REASON_FECF_MISMATCH, 0));
     // An argument error writes no reason.
-    reason = u8::MAX;
+    reason = u32::MAX;
     assert_eq!(
         validate(&frame[..len], &mut v2, null_mut(), &raw mut det),
         ALDIS_ERR_INVALID_FIELD
@@ -786,7 +786,7 @@ fn validation_reports_a_stable_reason() {
             null_mut(),
         )
     };
-    assert_eq!((rc, reason), (ALDIS_ERR_INVALID_FIELD, u8::MAX));
+    assert_eq!((rc, reason), (ALDIS_ERR_INVALID_FIELD, u32::MAX));
 }
 
 #[test]
@@ -815,7 +815,7 @@ fn the_delimiter_is_a_stateless_call() {
     let delimit = |offset: usize, item: &mut aldis_uslp_delimited_t| {
         // SAFETY: every pointer is to a live local, struct, or vector, with its length.
         unsafe {
-            aldis_uslp_delimit(
+            aldis_uslp_next_frame(
                 unit.as_ptr(),
                 unit.len(),
                 offset,
@@ -832,7 +832,7 @@ fn the_delimiter_is_a_stateless_call() {
     loop {
         let mut item = aldis_uslp_delimited_t::default();
         assert_eq!(delimit(at, &mut item), ALDIS_OK);
-        if item.kind == ALDIS_USLP_DELIMITED_NONE {
+        if item.kind == ALDIS_USLP_DELIMITED_END {
             break;
         }
         items.push(item);
@@ -856,12 +856,12 @@ fn the_delimiter_is_a_stateless_call() {
     let mut last = aldis_uslp_delimited_t::default();
     assert_eq!(delimit(unit.len() + 1, &mut last), ALDIS_ERR_INVALID_FIELD);
     assert_eq!(delimit(unit.len(), &mut last), ALDIS_OK);
-    assert_eq!(last, item(ALDIS_USLP_DELIMITED_NONE, unit.len(), 0));
+    assert_eq!(last, item(ALDIS_USLP_DELIMITED_END, unit.len(), 0));
     // A frame cut short: the rest is discarded with the length its header declares.
     let mut cut = aldis_uslp_delimited_t::default();
     // SAFETY: as above.
     let rc = unsafe {
-        aldis_uslp_delimit(
+        aldis_uslp_next_frame(
             unit.as_ptr(),
             len - 1,
             0,

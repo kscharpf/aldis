@@ -134,7 +134,7 @@ The truncated frame has no Bypass/Sequence Control Flag, Reserve Spares, OCF, or
 
 ### 3.3 Writers
 
-`encode` and the two-phase `UslpFrameWriter` write a non-truncated frame, `encode_truncated` a truncated one, and `encode_oid` an OID frame; each computes the Frame Length, the OCF Flag, the VCF Count Length (from the VC and the QoS of the Bypass/Sequence Control Flag), the TFDF Header, and the FECF, and takes the TFDZ, the Insert Zone, and the OCF as given (USLP-010, API-021). An OID frame's TFDZ comes from the caller's `OidGenerator`, its rule is `001`, its UPID "Only Idle Data", and its Last Valid Octet Pointer the last TFDZ octet (USLP-009). Security Headers and Trailers are written as zeros for the SDLS layer to fill (API-072). The writers check in this order and reject, with nothing written (API-022):
+`encode` and the two-phase `UslpFrameWriter` write a non-truncated frame, `encode_truncated` a truncated one, and `encode_oid` an OID frame (`encode_oid_galois` with the Galois form of the generator, which gives the same frame, CMN-022); each computes the Frame Length, the OCF Flag, the VCF Count Length (from the VC and the QoS of the Bypass/Sequence Control Flag), the TFDF Header, and the FECF, and takes the TFDZ, the Insert Zone, and the OCF as given (USLP-010, API-021). An OID frame's TFDZ comes from the caller's `OidGenerator`, its rule is `001`, its UPID "Only Idle Data", and its Last Valid Octet Pointer the last TFDZ octet (USLP-009). Security Headers and Trailers are written as zeros for the SDLS layer to fill (API-072). The writers check in this order and reject, with nothing written (API-022):
 
 | Condition | Error (field) |
 |---|---|
@@ -153,7 +153,7 @@ The truncated frame has no Bypass/Sequence Control Flag, Reserve Spares, OCF, or
 | a First Header or Last Valid Octet Pointer neither `0xFFFF` nor below the TFDZ length | `OutOfRange` (`fhp_lvo_pointer`) |
 | `out` shorter than the frame | `BufferTooSmall` |
 
-Until `UslpFrameWriter::finish`, the buffer holds a Primary Header whose TFVN is `1111`, which every decoder rejects with `UnsupportedVersion` and the delimiter treats as fill (API-023).
+Until `UslpFrameWriter::finish`, the buffer holds a Primary Header whose TFVN is `1111`, which every decoder rejects with `UnsupportedVersion` and the delimiter treats as fill (API-023). `UslpFrameWriter::resume`, with the arguments of `begin`, makes the same checks and rewrites the unfinished header, the Insert Zone, and the TFDF Header without zero-filling the Security Header and Trailer, so a writer that keeps no state between its calls, such as the C ABI's `aldis_uslp_writer_finish`, can finish the frame (c-abi.md §11).
 
 ## 4. Anomaly flags (lenient mode)
 
