@@ -15,7 +15,7 @@
 //! cannot be fetched, there is no merge base, the commit is on `main`, nothing differs), or when
 //! no published passing record covers the base or an earlier commit of the branch. A record is
 //! not used for any check when a path that differs from its commit is an input of no check and
-//! not documentation.
+//! neither documentation nor GitHub configuration (`DOCS`, `GITHUB`: read by `spec` alone).
 
 use std::collections::{BTreeMap, HashMap};
 use std::path::Path;
@@ -23,7 +23,7 @@ use std::rc::Rc;
 
 use serde_json::{Map, Value, json};
 
-use super::checks::{Check, DOCS, Inputs};
+use super::checks::{Check, DOCS, GITHUB, Inputs};
 use super::record::Outcome;
 use super::{git_bytes, git_in, publish, record};
 
@@ -305,9 +305,11 @@ pub fn reuse_reason(source: &Source) -> String {
     )
 }
 
-/// Whether some check reads `path`, or it is documentation (read by `spec` alone).
+/// Whether some check reads `path`, or it is documentation or GitHub configuration (read by
+/// `spec` alone).
 fn listed(checks: &[Check], path: &str) -> bool {
     DOCS.contains(path)
+        || GITHUB.contains(path)
         || checks
             .iter()
             .any(|c| c.inputs != Inputs::Everything && c.inputs.contains(path))
@@ -318,7 +320,9 @@ fn listed(checks: &[Check], path: &str) -> bool {
 /// be read by any check, so it makes every check's inputs differ.
 fn differs(checks: &[Check], check: &Check, paths: &[String]) -> Option<String> {
     if let Some(p) = paths.iter().find(|p| !listed(checks, p)) {
-        return Some(format!("{p} is an input of no check and not documentation"));
+        return Some(format!(
+            "{p} is an input of no check, and neither documentation nor GitHub configuration"
+        ));
     }
     paths
         .iter()
@@ -626,6 +630,7 @@ pub fn to_json(plan: &Plan, checks: &[Check]) -> Value {
         "changed_count": plan.changed.len(),
         "checks": decisions,
         "documentation": DOCS.patterns,
+        "github": GITHUB.patterns,
         "every": plan.every,
         "inputs": inputs,
     })
@@ -925,6 +930,40 @@ mod tests {
 
     // req: VER-056
     #[test]
+    fn github_configuration_runs_spec_only() {
+        // #95: GitHub Actions version bumps.
+        let dependabot = changed(&[
+            ".github/actions/setup-rust/action.yml",
+            ".github/workflows/ci.yml",
+            ".github/workflows/nightly.yml",
+        ]);
+        assert_eq!(running(&dependabot, Force::default()), ["spec"]);
+        for path in [
+            ".github/pull_request_template.md",
+            ".github/CODEOWNERS",
+            ".github/dependabot.yml",
+            ".github/workflows/cpp.yml",
+            ".github/workflows/verify.yml",
+            ".github/actions/setup-cpp/action.yml",
+        ] {
+            assert_eq!(
+                running(&changed(&[path]), Force::default()),
+                ["spec"],
+                "{path}"
+            );
+        }
+        // The setup script that the image runs is read by every check.
+        assert_eq!(
+            running(
+                &changed(&[".github/actions/setup-cpp/setup_cpp.py"]),
+                Force::default()
+            ),
+            names(|_| true)
+        );
+    }
+
+    // req: VER-056
+    #[test]
     fn documentation_runs_spec_only() {
         let docs = changed(&[
             "docs/06-verification.md",
@@ -1050,7 +1089,7 @@ mod tests {
         for paths in [
             &[".gitignore"][..],
             &["docs/a.md", "specs/fetch.sh"],
-            &[".github/CODEOWNERS"],
+            &[".github/ISSUE_TEMPLATE/bug.md"],
         ] {
             let change = changed(paths);
             let p = plan(&all_checks(), &change, default, covered(&change));

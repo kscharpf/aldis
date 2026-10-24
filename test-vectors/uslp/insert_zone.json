@@ -1,0 +1,1109 @@
+{
+  "kind": "codec",
+  "standard": "732.1-B-3 — Insert Zone",
+  "provenance": "hand-derived",
+  "provenance_note": "732.1-B-3 prints no example frame, only the first OID octets (Annex H). Hand-derived from 732.1-B-3: §4.1.2 (Primary Header: TFVN 4 bits = 1100, SCID 16, Source-or-Destination 1, VCID 6, MAP ID 4, End of Frame Primary Header Flag 1, Frame Length 16 = total - 1, Bypass/Sequence Control 1, Protocol Control Command 1, Reserve Spares 2, OCF Flag 1, VCF Count Length 3, VCF Count 0-7 octets; Table 4-1, flags 01 reserved; Table 4-2), §4.1.3 (Insert Zone), §4.1.4 (TFDF Header: rule 3 bits, UPID 5 bits, pointer 16 bits for rules 000-010 only; Table 4-3; the OID frame of §4.1.4.1.5-12), §4.1.5 (OCF), §4.1.6 and Annex B (FECF, G(X) = X^16 + X^12 + X^5 + 1, preset by L(X)), §4.3.11.2-3 (delimiting and the USLP Frame Validation Checks), §5 Tables 5-1 to 5-4 (managed parameters), §6.3 (Security Header after the Insert Zone, Trailer before the OCF; none in protocol control frames), Annex D (truncated frames: 4-octet header, 1-octet TFDF Header, length 6-32 from the VC, SDLS 6/16 and at least 28 octets), Annex H (OID generator). UPID values from the SANA snapshot specs/sana/uslp_protocol_id.tsv, read by the model at run time. COP-1 control commands from 232.0-B-4 §4.1.3.3 (Unlock = 00, Set V(R) = 82 00 V(R)). Check order, validation reason codes, the delimiter's valid header, the writers' error order, and the configuration kept, as docs/standards/uslp-frame.md §2.1 and §3 state them (OI-35, OI-44). SCID 0x155 is the fictional SCID of the reference scenario (APP-026); SCID 0xF0A5 is also fictional. Expected values computed by an independent Python model of those clauses, test-vectors/models/uslp_frame.py (TV-023), written independently of the Rust codec and sharing no code or method with it (headers as bit strings from the figure widths, the FECF as the Annex B remainder by GF(2) long division and checked by the B1.2.1 syndrome, the OID data from the Galois form of Figure H-2, checked against the Fibonacci form and the printed pattern). Error cases name the field code of 03 §9.1. One rule-000 frame with its FECF, register octet by octet, and one truncated frame are worked by hand in docs/verification/derivations/uslp-frame.md. `python3 -I test-vectors/models/uslp_frame.py --check test-vectors/uslp/*.json` recomputes every expected value.",
+  "cases": [
+    {
+      "id": "uslp-iz-001",
+      "requirements": [
+        "USLP-008",
+        "USLP-005",
+        "USLP-010",
+        "API-020",
+        "API-021",
+        "TV-002"
+      ],
+      "description": "Rule 000 frame with the 4-octet Insert Zone DEADBEEF, 31 TFDZ octets",
+      "operation": "encode",
+      "config": {
+        "frame_type": "fixed",
+        "frame_len": 48,
+        "insert_zone_len": 4,
+        "fecf": true,
+        "vcs": [
+          {
+            "scid": 341,
+            "vcid": 1,
+            "frame_type": "fixed",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": null,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 2,
+            "frame_type": "fixed",
+            "vcf_count_len_sequence": 0,
+            "vcf_count_len_expedited": 0,
+            "ocf": "required",
+            "truncated_frame_len": null,
+            "security": {
+              "header_len": 2,
+              "trailer_len": 2
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 63,
+            "frame_type": "fixed",
+            "vcf_count_len_sequence": 0,
+            "vcf_count_len_expedited": 0,
+            "ocf": "absent",
+            "truncated_frame_len": null,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          }
+        ],
+        "maps": [
+          {
+            "scid": 341,
+            "vcid": 1,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 2,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "params": {
+        "spacecraft_id": 341,
+        "source_or_destination": "source",
+        "vc_id": 1,
+        "map_id": 0,
+        "kind": "sequence_controlled",
+        "vcf_count": 1,
+        "tfdz_construction_rule": 0,
+        "upid": 0,
+        "pointer": 0,
+        "tfdz_hex": "202122232425262728292A2B2C2D2E2F303132333435363738393A3B3C3D3E",
+        "insert_zone_hex": "DEADBEEF",
+        "ocf_hex": null
+      },
+      "input_hex": "",
+      "expect": {
+        "ok": true,
+        "output_hex": "C0155020002F0101DEADBEEF000000202122232425262728292A2B2C2D2E2F303132333435363738393A3B3C3D3E593D"
+      }
+    },
+    {
+      "id": "uslp-iz-002",
+      "requirements": [
+        "USLP-008",
+        "USLP-005",
+        "API-010",
+        "TV-002"
+      ],
+      "description": "Rule 000 frame with the 4-octet Insert Zone DEADBEEF, 31 TFDZ octets: decoded",
+      "operation": "decode",
+      "mode": "strict",
+      "config": {
+        "frame_type": "fixed",
+        "frame_len": 48,
+        "insert_zone_len": 4,
+        "fecf": true,
+        "vcs": [
+          {
+            "scid": 341,
+            "vcid": 1,
+            "frame_type": "fixed",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": null,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 2,
+            "frame_type": "fixed",
+            "vcf_count_len_sequence": 0,
+            "vcf_count_len_expedited": 0,
+            "ocf": "required",
+            "truncated_frame_len": null,
+            "security": {
+              "header_len": 2,
+              "trailer_len": 2
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 63,
+            "frame_type": "fixed",
+            "vcf_count_len_sequence": 0,
+            "vcf_count_len_expedited": 0,
+            "ocf": "absent",
+            "truncated_frame_len": null,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          }
+        ],
+        "maps": [
+          {
+            "scid": 341,
+            "vcid": 1,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 2,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "input_hex": "C0155020002F0101DEADBEEF000000202122232425262728292A2B2C2D2E2F303132333435363738393A3B3C3D3E593D",
+      "expect": {
+        "ok": true,
+        "truncated": false,
+        "spacecraft_id": 341,
+        "source_or_destination": "source",
+        "vc_id": 1,
+        "map_id": 0,
+        "kind": "sequence_controlled",
+        "frame_len": 48,
+        "ocf_flag": false,
+        "vcf_count_len": 1,
+        "vcf_count": 1,
+        "insert_zone_hex": "DEADBEEF",
+        "security_header_hex": "",
+        "tfdz_construction_rule": 0,
+        "upid": 0,
+        "upid_assigned": true,
+        "pointer": 0,
+        "pointer_kind": "packet_starts_at",
+        "tfdz_hex": "202122232425262728292A2B2C2D2E2F303132333435363738393A3B3C3D3E",
+        "security_trailer_hex": "",
+        "ocf_hex": null,
+        "fecf_hex": "593D",
+        "consumed": 48,
+        "anomalies": []
+      }
+    },
+    {
+      "id": "uslp-iz-003",
+      "requirements": [
+        "USLP-008",
+        "API-070",
+        "API-072",
+        "USLP-010",
+        "API-020",
+        "API-021",
+        "TV-002"
+      ],
+      "description": "Insert Zone before the Security Header (2/2), OCF required, no VCF Count (§6.3.4)",
+      "operation": "encode",
+      "config": {
+        "frame_type": "fixed",
+        "frame_len": 48,
+        "insert_zone_len": 4,
+        "fecf": true,
+        "vcs": [
+          {
+            "scid": 341,
+            "vcid": 1,
+            "frame_type": "fixed",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": null,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 2,
+            "frame_type": "fixed",
+            "vcf_count_len_sequence": 0,
+            "vcf_count_len_expedited": 0,
+            "ocf": "required",
+            "truncated_frame_len": null,
+            "security": {
+              "header_len": 2,
+              "trailer_len": 2
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 63,
+            "frame_type": "fixed",
+            "vcf_count_len_sequence": 0,
+            "vcf_count_len_expedited": 0,
+            "ocf": "absent",
+            "truncated_frame_len": null,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          }
+        ],
+        "maps": [
+          {
+            "scid": 341,
+            "vcid": 1,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 2,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "params": {
+        "spacecraft_id": 341,
+        "source_or_destination": "source",
+        "vc_id": 2,
+        "map_id": 0,
+        "kind": "sequence_controlled",
+        "vcf_count": 0,
+        "tfdz_construction_rule": 1,
+        "upid": 5,
+        "pointer": 65535,
+        "tfdz_hex": "505152535455565758595A5B5C5D5E5F6061626364656667",
+        "insert_zone_hex": "01020304",
+        "ocf_hex": "01140C2A"
+      },
+      "input_hex": "",
+      "expect": {
+        "ok": true,
+        "output_hex": "C0155040002F0801020304000025FFFF505152535455565758595A5B5C5D5E5F6061626364656667000001140C2AE537"
+      }
+    },
+    {
+      "id": "uslp-iz-004",
+      "requirements": [
+        "USLP-008",
+        "API-070",
+        "API-072",
+        "API-010",
+        "TV-002"
+      ],
+      "description": "Insert Zone before the Security Header (2/2), OCF required, no VCF Count (§6.3.4): decoded",
+      "operation": "decode",
+      "mode": "strict",
+      "config": {
+        "frame_type": "fixed",
+        "frame_len": 48,
+        "insert_zone_len": 4,
+        "fecf": true,
+        "vcs": [
+          {
+            "scid": 341,
+            "vcid": 1,
+            "frame_type": "fixed",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": null,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 2,
+            "frame_type": "fixed",
+            "vcf_count_len_sequence": 0,
+            "vcf_count_len_expedited": 0,
+            "ocf": "required",
+            "truncated_frame_len": null,
+            "security": {
+              "header_len": 2,
+              "trailer_len": 2
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 63,
+            "frame_type": "fixed",
+            "vcf_count_len_sequence": 0,
+            "vcf_count_len_expedited": 0,
+            "ocf": "absent",
+            "truncated_frame_len": null,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          }
+        ],
+        "maps": [
+          {
+            "scid": 341,
+            "vcid": 1,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 2,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "input_hex": "C0155040002F0801020304000025FFFF505152535455565758595A5B5C5D5E5F6061626364656667000001140C2AE537",
+      "expect": {
+        "ok": true,
+        "truncated": false,
+        "spacecraft_id": 341,
+        "source_or_destination": "source",
+        "vc_id": 2,
+        "map_id": 0,
+        "kind": "sequence_controlled",
+        "frame_len": 48,
+        "ocf_flag": true,
+        "vcf_count_len": 0,
+        "vcf_count": 0,
+        "insert_zone_hex": "01020304",
+        "security_header_hex": "0000",
+        "tfdz_construction_rule": 1,
+        "upid": 5,
+        "upid_assigned": true,
+        "pointer": 65535,
+        "pointer_kind": "sdu_continues",
+        "tfdz_hex": "505152535455565758595A5B5C5D5E5F6061626364656667",
+        "security_trailer_hex": "0000",
+        "ocf_hex": "01140C2A",
+        "fecf_hex": "E537",
+        "consumed": 48,
+        "anomalies": []
+      }
+    },
+    {
+      "id": "uslp-iz-005",
+      "requirements": [
+        "USLP-008",
+        "USLP-009",
+        "CMN-020",
+        "USLP-010",
+        "API-020",
+        "API-021",
+        "TV-002"
+      ],
+      "description": "OID frame with the Insert Zone (§4.1.3.2.2)",
+      "operation": "encode_oid",
+      "config": {
+        "frame_type": "fixed",
+        "frame_len": 48,
+        "insert_zone_len": 4,
+        "fecf": true,
+        "vcs": [
+          {
+            "scid": 341,
+            "vcid": 1,
+            "frame_type": "fixed",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": null,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 2,
+            "frame_type": "fixed",
+            "vcf_count_len_sequence": 0,
+            "vcf_count_len_expedited": 0,
+            "ocf": "required",
+            "truncated_frame_len": null,
+            "security": {
+              "header_len": 2,
+              "trailer_len": 2
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 63,
+            "frame_type": "fixed",
+            "vcf_count_len_sequence": 0,
+            "vcf_count_len_expedited": 0,
+            "ocf": "absent",
+            "truncated_frame_len": null,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          }
+        ],
+        "maps": [
+          {
+            "scid": 341,
+            "vcid": 1,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 2,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "params": {
+        "spacecraft_id": 341,
+        "source_or_destination": "source",
+        "vc_id": 63,
+        "map_id": 0,
+        "kind": "sequence_controlled",
+        "vcf_count": 0,
+        "insert_zone_hex": "CAFEF00D",
+        "ocf_hex": null,
+        "oid_skip_octets": 0
+      },
+      "input_hex": "",
+      "expect": {
+        "ok": true,
+        "output_hex": "C01557E0002F00CAFEF00D3F001FFFFFFFFF6DB6D861451F11F19716723CBE7E00B1DE90B262107AF83494CEE332F7C4"
+      }
+    },
+    {
+      "id": "uslp-iz-006",
+      "requirements": [
+        "USLP-008",
+        "USLP-009",
+        "CMN-020",
+        "API-010",
+        "TV-002"
+      ],
+      "description": "OID frame with the Insert Zone (§4.1.3.2.2): decoded",
+      "operation": "decode",
+      "mode": "strict",
+      "config": {
+        "frame_type": "fixed",
+        "frame_len": 48,
+        "insert_zone_len": 4,
+        "fecf": true,
+        "vcs": [
+          {
+            "scid": 341,
+            "vcid": 1,
+            "frame_type": "fixed",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": null,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 2,
+            "frame_type": "fixed",
+            "vcf_count_len_sequence": 0,
+            "vcf_count_len_expedited": 0,
+            "ocf": "required",
+            "truncated_frame_len": null,
+            "security": {
+              "header_len": 2,
+              "trailer_len": 2
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 63,
+            "frame_type": "fixed",
+            "vcf_count_len_sequence": 0,
+            "vcf_count_len_expedited": 0,
+            "ocf": "absent",
+            "truncated_frame_len": null,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          }
+        ],
+        "maps": [
+          {
+            "scid": 341,
+            "vcid": 1,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 2,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "input_hex": "C01557E0002F00CAFEF00D3F001FFFFFFFFF6DB6D861451F11F19716723CBE7E00B1DE90B262107AF83494CEE332F7C4",
+      "expect": {
+        "ok": true,
+        "truncated": false,
+        "spacecraft_id": 341,
+        "source_or_destination": "source",
+        "vc_id": 63,
+        "map_id": 0,
+        "kind": "sequence_controlled",
+        "frame_len": 48,
+        "ocf_flag": false,
+        "vcf_count_len": 0,
+        "vcf_count": 0,
+        "insert_zone_hex": "CAFEF00D",
+        "security_header_hex": "",
+        "tfdz_construction_rule": 1,
+        "upid": 31,
+        "upid_assigned": true,
+        "pointer": 31,
+        "pointer_kind": "last_valid_octet",
+        "tfdz_hex": "FFFFFFFF6DB6D861451F11F19716723CBE7E00B1DE90B262107AF83494CEE332",
+        "security_trailer_hex": "",
+        "ocf_hex": null,
+        "fecf_hex": "F7C4",
+        "consumed": 48,
+        "anomalies": []
+      }
+    },
+    {
+      "id": "uslp-iz-007",
+      "requirements": [
+        "USLP-008",
+        "USLP-014"
+      ],
+      "description": "validate, frame with an Insert Zone: accepted",
+      "operation": "validate",
+      "mode": "strict",
+      "config": {
+        "frame_type": "fixed",
+        "frame_len": 48,
+        "insert_zone_len": 4,
+        "fecf": true,
+        "vcs": [
+          {
+            "scid": 341,
+            "vcid": 1,
+            "frame_type": "fixed",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": null,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 2,
+            "frame_type": "fixed",
+            "vcf_count_len_sequence": 0,
+            "vcf_count_len_expedited": 0,
+            "ocf": "required",
+            "truncated_frame_len": null,
+            "security": {
+              "header_len": 2,
+              "trailer_len": 2
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 63,
+            "frame_type": "fixed",
+            "vcf_count_len_sequence": 0,
+            "vcf_count_len_expedited": 0,
+            "ocf": "absent",
+            "truncated_frame_len": null,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          }
+        ],
+        "maps": [
+          {
+            "scid": 341,
+            "vcid": 1,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 2,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "input_hex": "C0155020002F0101DEADBEEF000000202122232425262728292A2B2C2D2E2F303132333435363738393A3B3C3D3E593D",
+      "expect": {
+        "ok": true,
+        "accepted": true,
+        "frame_len": 48
+      }
+    },
+    {
+      "id": "uslp-iz-008",
+      "requirements": [
+        "USLP-008",
+        "USLP-010",
+        "API-022"
+      ],
+      "description": "A 3-octet Insert Zone (4 configured): LengthMismatch",
+      "operation": "encode",
+      "config": {
+        "frame_type": "fixed",
+        "frame_len": 48,
+        "insert_zone_len": 4,
+        "fecf": true,
+        "vcs": [
+          {
+            "scid": 341,
+            "vcid": 1,
+            "frame_type": "fixed",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": null,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 2,
+            "frame_type": "fixed",
+            "vcf_count_len_sequence": 0,
+            "vcf_count_len_expedited": 0,
+            "ocf": "required",
+            "truncated_frame_len": null,
+            "security": {
+              "header_len": 2,
+              "trailer_len": 2
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 63,
+            "frame_type": "fixed",
+            "vcf_count_len_sequence": 0,
+            "vcf_count_len_expedited": 0,
+            "ocf": "absent",
+            "truncated_frame_len": null,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          }
+        ],
+        "maps": [
+          {
+            "scid": 341,
+            "vcid": 1,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 2,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "params": {
+        "spacecraft_id": 341,
+        "source_or_destination": "source",
+        "vc_id": 1,
+        "map_id": 0,
+        "kind": "sequence_controlled",
+        "vcf_count": 0,
+        "tfdz_construction_rule": 0,
+        "upid": 0,
+        "pointer": 0,
+        "tfdz_hex": "101112131415161718191A1B1C1D1E1F202122232425262728292A2B2C2D2E2F",
+        "insert_zone_hex": "000000",
+        "ocf_hex": null
+      },
+      "input_hex": "",
+      "expect": {
+        "ok": false,
+        "error": "LengthMismatch",
+        "field": 97
+      }
+    },
+    {
+      "id": "uslp-iz-009",
+      "requirements": [
+        "USLP-008",
+        "USLP-010",
+        "API-022"
+      ],
+      "description": "No Insert Zone (4 configured): LengthMismatch",
+      "operation": "encode",
+      "config": {
+        "frame_type": "fixed",
+        "frame_len": 48,
+        "insert_zone_len": 4,
+        "fecf": true,
+        "vcs": [
+          {
+            "scid": 341,
+            "vcid": 1,
+            "frame_type": "fixed",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": null,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 2,
+            "frame_type": "fixed",
+            "vcf_count_len_sequence": 0,
+            "vcf_count_len_expedited": 0,
+            "ocf": "required",
+            "truncated_frame_len": null,
+            "security": {
+              "header_len": 2,
+              "trailer_len": 2
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 63,
+            "frame_type": "fixed",
+            "vcf_count_len_sequence": 0,
+            "vcf_count_len_expedited": 0,
+            "ocf": "absent",
+            "truncated_frame_len": null,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          }
+        ],
+        "maps": [
+          {
+            "scid": 341,
+            "vcid": 1,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 2,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "params": {
+        "spacecraft_id": 341,
+        "source_or_destination": "source",
+        "vc_id": 1,
+        "map_id": 0,
+        "kind": "sequence_controlled",
+        "vcf_count": 0,
+        "tfdz_construction_rule": 0,
+        "upid": 0,
+        "pointer": 0,
+        "tfdz_hex": "101112131415161718191A1B1C1D1E1F202122232425262728292A2B2C2D2E2F303132",
+        "insert_zone_hex": "",
+        "ocf_hex": null
+      },
+      "input_hex": "",
+      "expect": {
+        "ok": false,
+        "error": "LengthMismatch",
+        "field": 97
+      }
+    },
+    {
+      "id": "uslp-iz-010",
+      "requirements": [
+        "USLP-008",
+        "USLP-010",
+        "API-022"
+      ],
+      "description": "An Insert Zone on a variable-length channel: LengthMismatch",
+      "operation": "encode",
+      "config": {
+        "frame_type": "variable",
+        "frame_len": 300,
+        "insert_zone_len": 0,
+        "fecf": true,
+        "vcs": [
+          {
+            "scid": 341,
+            "vcid": 1,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "allowed",
+            "truncated_frame_len": null,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 4,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 2,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": null,
+            "security": {
+              "header_len": 6,
+              "trailer_len": 4
+            }
+          },
+          {
+            "scid": 61605,
+            "vcid": 9,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 3,
+            "vcf_count_len_expedited": 2,
+            "ocf": "allowed",
+            "truncated_frame_len": null,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          }
+        ],
+        "maps": [
+          {
+            "scid": 341,
+            "vcid": 1,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 1,
+            "map_id": 7,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 4,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 61605,
+            "vcid": 9,
+            "map_id": 15,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "params": {
+        "spacecraft_id": 341,
+        "source_or_destination": "source",
+        "vc_id": 1,
+        "map_id": 0,
+        "kind": "sequence_controlled",
+        "vcf_count": 0,
+        "tfdz_construction_rule": 7,
+        "upid": 5,
+        "pointer": null,
+        "tfdz_hex": "10111213",
+        "insert_zone_hex": "0000",
+        "ocf_hex": null
+      },
+      "input_hex": "",
+      "expect": {
+        "ok": false,
+        "error": "LengthMismatch",
+        "field": 97
+      }
+    },
+    {
+      "id": "uslp-iz-011",
+      "requirements": [
+        "USLP-008",
+        "API-040"
+      ],
+      "description": "Insert Zone length 4 on a variable-length Physical Channel: InvalidConfig (Table 5-1 note 5)",
+      "operation": "config",
+      "config": {
+        "frame_type": "variable",
+        "frame_len": 64,
+        "insert_zone_len": 4,
+        "fecf": true,
+        "vcs": [
+          {
+            "scid": 341,
+            "vcid": 1,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": null,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          }
+        ],
+        "maps": [
+          {
+            "scid": 341,
+            "vcid": 1,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "input_hex": "",
+      "expect": {
+        "ok": false,
+        "error": "InvalidConfig",
+        "field": 97
+      }
+    },
+    {
+      "id": "uslp-iz-012",
+      "requirements": [
+        "USLP-008",
+        "API-040",
+        "CMN-041"
+      ],
+      "description": "A fixed-length channel whose Insert Zone leaves one TFDZ octet: accepted",
+      "operation": "config",
+      "config": {
+        "frame_type": "fixed",
+        "frame_len": 24,
+        "insert_zone_len": 10,
+        "fecf": true,
+        "vcs": [
+          {
+            "scid": 341,
+            "vcid": 1,
+            "frame_type": "fixed",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": null,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          }
+        ],
+        "maps": [
+          {
+            "scid": 341,
+            "vcid": 1,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "input_hex": "",
+      "expect": {
+        "ok": true,
+        "vcs": 1,
+        "maps": 1
+      }
+    },
+    {
+      "id": "uslp-iz-013",
+      "requirements": [
+        "USLP-008",
+        "API-040",
+        "CMN-041"
+      ],
+      "description": "The same with an Insert Zone of 11: no TFDZ octet, InvalidConfig",
+      "operation": "config",
+      "config": {
+        "frame_type": "fixed",
+        "frame_len": 24,
+        "insert_zone_len": 11,
+        "fecf": true,
+        "vcs": [
+          {
+            "scid": 341,
+            "vcid": 1,
+            "frame_type": "fixed",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": null,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          }
+        ],
+        "maps": [
+          {
+            "scid": 341,
+            "vcid": 1,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "input_hex": "",
+      "expect": {
+        "ok": false,
+        "error": "InvalidConfig",
+        "field": 7
+      }
+    }
+  ]
+}

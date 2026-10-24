@@ -266,7 +266,7 @@
       "expect": {
         "ok": false,
         "error": "InvalidField",
-        "field": 97
+        "field": 106
       }
     },
     {
@@ -301,7 +301,7 @@
       "expect": {
         "ok": false,
         "error": "InvalidField",
-        "field": 97
+        "field": 106
       }
     },
     {
@@ -335,7 +335,7 @@
       "expect": {
         "ok": false,
         "error": "Malformed",
-        "field": 97
+        "field": 106
       }
     },
     {
@@ -369,7 +369,7 @@
       "expect": {
         "ok": false,
         "error": "Malformed",
-        "field": 97
+        "field": 106
       }
     },
     {
@@ -405,7 +405,7 @@
       "expect": {
         "ok": false,
         "error": "ReservedValue",
-        "field": 96
+        "field": 105
       }
     },
     {
@@ -663,7 +663,7 @@
       "expect": {
         "ok": false,
         "error": "OutOfRange",
-        "field": 97
+        "field": 106
       }
     },
     {
@@ -713,7 +713,7 @@
       "expect": {
         "ok": false,
         "error": "OutOfRange",
-        "field": 97
+        "field": 106
       }
     },
     {

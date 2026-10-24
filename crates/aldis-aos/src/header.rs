@@ -84,11 +84,11 @@ impl TryFrom<u32> for VcFrameCount {
     type Error = Error;
 
     /// # Errors
-    /// `OutOfRange` (`vc_frame_count`) above 2²⁴ − 1.
+    /// `OutOfRange` (`vcf_count`) above 2²⁴ − 1.
     fn try_from(value: u32) -> Result<VcFrameCount> {
         VcFrameCount::new(value).ok_or_else(|| {
             Error::out_of_range(
-                field::VC_FRAME_COUNT,
+                field::VCF_COUNT,
                 u64::from(VcFrameCount::MAX),
                 u64::from(value),
             )
@@ -488,7 +488,7 @@ mod tests {
             (e.kind(), e.field(), e.detail()),
             (
                 ErrorKind::OutOfRange,
-                Some(field::VC_FRAME_COUNT),
+                Some(field::VCF_COUNT),
                 ErrorDetail::Expected {
                     expected: 0xFF_FFFF,
                     found: 0x100_0000

@@ -57,9 +57,9 @@ FHEC = _load_fhec()
 F = {
     "spacecraft_id": 1, "vc_id": 2, "frame_data_field": 7, "security_header_len": 8,
     "security_trailer_len": 9, "frame_version": 67, "frame_len": 68,
-    "first_header_pointer": 74, "aos_header_spare": 89, "vc_frame_count": 90,
-    "vc_frame_count_cycle": 91, "insert_zone_len": 92, "data_field_content": 93, "ocf": 94,
-    "mpdu_spare": 95, "bpdu_spare": 96, "bitstream_data_pointer": 97,
+    "first_header_pointer": 74, "vcf_count": 93, "insert_zone_len": 97,
+    "aos_header_spare": 100, "vc_frame_count_cycle": 101, "data_field_content": 102, "ocf": 103,
+    "mpdu_spare": 104, "bpdu_spare": 105, "bitstream_data_pointer": 106,
 }
 
 # Primary Header, figure 4-2: (name, width in bits), in transmission order.
@@ -383,7 +383,7 @@ def check_fields(p):
     if p.get("vcid", OID_VCID) > 63:
         raise Fail("OutOfRange", F["vc_id"])
     if p["vc_frame_count"] > 0xFFFFFF:
-        raise Fail("OutOfRange", F["vc_frame_count"])
+        raise Fail("OutOfRange", F["vcf_count"])
     if p.get("cycle") is not None and p["cycle"] > 15:
         raise Fail("OutOfRange", F["vc_frame_count_cycle"])
 

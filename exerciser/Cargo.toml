@@ -28,6 +28,7 @@ aldis-ffi = { path = "../crates/aldis-ffi", default-features = false, features =
 aldis-spp = { path = "../crates/aldis-spp", default-features = false, features = ["time"] }
 aldis-tc = { path = "../crates/aldis-tc", default-features = false }
 aldis-time = { path = "../crates/aldis-time", default-features = false }
+aldis-uslp = { path = "../crates/aldis-uslp", default-features = false }
 aldis-tm = { path = "../crates/aldis-tm", default-features = false }
 
 [build-dependencies]

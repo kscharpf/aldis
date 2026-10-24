@@ -75,6 +75,7 @@ dependencies = [
  "aldis-testkit",
  "aldis-time",
  "aldis-tm",
+ "aldis-uslp",
  "libfuzzer-sys",
 ]
 

@@ -1,0 +1,39 @@
+# SANA registry uslp_protocol_id, a snapshot of its table (M2 plan D13; OI-06).
+# Written by `cargo xtask sana import uslp_protocol_id`; never edit by hand. `cargo xtask sana`
+# checks the SHA-256 of the rows below and the table generated from them.
+# url	https://sanaregistry.org/r/uslp_protocol_id/?per_page=100&sort=upid
+# retrieved	2026-10-24
+# sha256	0c199541a3cfff45ddab0bb0184df6779fb75ef449a97c85bde254c819df9916
+status	upid	description	references	oid
+Assigned	0b00000	Space Packets or Encapsulation packets are contained within the TFDZ.	[ccsds-732.1-B-1]	1.3.112.4.58.1
+Assigned	0b00001	COP-1 Control Commands are contained within the TFDZ.	[ccsds-732.1-B-1]	1.3.112.4.58.2
+Assigned	0b00010	COP-P Control Commands are contained within the TFDZ.	[ccsds-732.1-B-1]	1.3.112.4.58.3
+Unassigned	0b00011			1.3.112.4.58.4
+Assigned	0b00100	User-defined Octet Stream data are contained within the TFDZ.	[ccsds-732.1-B-1]	1.3.112.4.58.5
+Assigned	0b00101	Mission-specific Information-1 as a MAPA_SDU or VCA_SDU is contained within the TFDZ.	[ccsds-732.1-B-1]	1.3.112.4.58.6
+Assigned	0b00110	Proximity-1 Pseudo Packet Identifier 1 for Segmentation	[ccsds-732.1-B-1]	1.3.112.4.58.9
+Assigned	0b00111	Proximity-1 Supervisory Protocol Data Units (SPDUs) are contained within the TFDZ.	[ccsds-732.1-B-1]	1.3.112.4.58.7
+Assigned	0b01000	Proximity-1 Pseudo Packet Identifier 2 for Segmentation	[ccsds-732.1-B-1]	1.3.112.4.58.10
+Unassigned	0b01001			1.3.112.4.58.11
+Unassigned	0b01010			1.3.112.4.58.12
+Unassigned	0b01011			1.3.112.4.58.13
+Unassigned	0b01100			1.3.112.4.58.14
+Unassigned	0b01101			1.3.112.4.58.15
+Unassigned	0b01110			1.3.112.4.58.16
+Unassigned	0b01111			1.3.112.4.58.17
+Unassigned	0b10000			1.3.112.4.58.18
+Unassigned	0b10001			1.3.112.4.58.19
+Unassigned	0b10010			1.3.112.4.58.20
+Unassigned	0b10011			1.3.112.4.58.21
+Unassigned	0b10100			1.3.112.4.58.22
+Unassigned	0b10101			1.3.112.4.58.23
+Unassigned	0b10110			1.3.112.4.58.24
+Unassigned	0b10111			1.3.112.4.58.25
+Unassigned	0b11000			1.3.112.4.58.26
+Unassigned	0b11001			1.3.112.4.58.27
+Unassigned	0b11010			1.3.112.4.58.28
+Unassigned	0b11011			1.3.112.4.58.29
+Unassigned	0b11100			1.3.112.4.58.30
+Unassigned	0b11101			1.3.112.4.58.31
+Unassigned	0b11110			1.3.112.4.58.32
+Assigned	0b11111	UPID field signals that the entire fixed-length TFDZ contains idle data.	[ccsds-732.1-B-1]	1.3.112.4.58.8

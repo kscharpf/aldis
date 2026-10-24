@@ -9,6 +9,7 @@ The expected values of a `hand-derived` vector file come from an **independent m
 | [`tm_frame.py`](tm_frame.py) | `tm/*.json` | TM Transfer Frame, 132.0-B-3 §4.1, §5, §6.3, Annex D (TM-001…TM-011): frames assembled and taken apart as bit strings from the figure widths, the FECF by polynomial division of integers, the OID data by the Annex D recurrence |
 | [`core_ocf.py`](core_ocf.py) | `core/ocf.json` | Operational Control Field classification, 132.0-B-3 / 732.0-B-5 §4.1.5.4–5 and 732.1-B-3 §4.1.5.2.1–2 (CMN-010, CMN-011), with the CLCW layout of 232.0-B-4 §4.2.1 for one input |
 | [`tc_frame.py`](tc_frame.py) | `tc/*.json` | TC Transfer Frame, CLCW, Frame Delimiting and Fill Removal, and the Frame Validation Checks, 232.0-B-4 Cor. 1 §4.1, §4.2.1, §4.4.9, §5, §6.3, §6.6 (TC-001…TC-008, TC-020…TC-023, TC-030, TC-031): the header as one 40-bit integer, the CRC bit by bit from G(X), the check order and reason codes of tc-frame.md §4.1 |
+| [`uslp_frame.py`](uslp_frame.py) | `uslp/*.json` | USLP Transfer Frame, truncated frame, OID frame, Frame Delimiting and Fill Data Removal, and the USLP Frame Validation Checks, 732.1-B-3 §4.1, §4.3.11.2–3, §5, §6.3, Annex B, Annex D, Annex H (USLP-001…USLP-016): headers as bit strings from the widths of Figures 4-2 and D-2, the FECF as the Annex B remainder by GF(2) long division checked by the B1.2.1 syndrome, the OID data from the Galois form of Figure H-2, the UPIDs read from the SANA snapshot, the check order and reason codes of uslp-frame.md §3.1 |
 
 ## Running them
 
@@ -20,6 +21,7 @@ python3 -I test-vectors/models/aos_frame.py --check test-vectors/aos/{minimal,fh
 python3 -I test-vectors/models/core_ocf.py --check test-vectors/core/ocf.json
 python3 -I test-vectors/models/tm_frame.py --check test-vectors/tm/*.json
 python3 -I test-vectors/models/tc_frame.py --check test-vectors/tc/*.json
+python3 -I test-vectors/models/uslp_frame.py --check test-vectors/uslp/*.json
 ```
 
 `--check` recomputes the expected outcome of every live case from its operation and input and compares it with the file, and compares the cases the model's generator writes with the file's; it exits 1 on any difference. `cargo xtask vectors validate` (part of `cargo xtask ci` and the verify check `spec`) runs every model on the files whose notes name it, and fails on a named model that is missing or a model that no file names. `--write` regenerates a file from the model, cases and provenance note; it records how the inputs were chosen. Use it only for a file that is not released yet: a released file changes only by new cases and `superseded` marks (TV-021).

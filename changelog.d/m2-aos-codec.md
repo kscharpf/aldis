@@ -11,9 +11,10 @@
   `ValidBitCount`, 1 to `0x3FFE`); the one-shot `encode`, the two-phase
   `AosFrameWriter`, and OID frames on VCID 63 (`begin_oid`). Lenient-mode flags `AosAnomaly` with
   bit indices.
-- Field codes 89–97 for the AOS fields and parameters (`docs/03-api-model.md` §9.1); the Spacecraft
-  ID, VCID, frame data field, security lengths, Transfer Frame Version Number, frame length, and
-  First Header Pointer codes are shared with `aldis-aos`.
+- Field codes 100–106 for the AOS fields and parameters (`docs/03-api-model.md` §9.1). AOS shares
+  `vcf_count` (93) and `insert_zone_len` (97) with USLP, and the Spacecraft ID, VCID, frame data
+  field, security lengths, Transfer Frame Version Number, frame length, and First Header Pointer
+  codes with the other codecs.
 - Vectors `test-vectors/aos/` (11 frame files) from the independent model
   `test-vectors/models/aos_frame.py`, which uses the FHEC model `aos_fhec.py`, with a worked
   derivation in `docs/verification/derivations/aos-frame.md`.

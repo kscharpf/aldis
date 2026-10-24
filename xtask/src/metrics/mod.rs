@@ -12,7 +12,7 @@ mod conflicts;
 mod decisions;
 mod pr;
 mod report;
-mod time;
+pub(crate) mod time;
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;

@@ -191,7 +191,26 @@ impl<'b> TmFrameWriter<'b> {
         fields: &TmFrameFields,
     ) -> Result<TmFrameWriter<'b>> {
         let plan = Plan::new(mc, fields)?;
-        TmFrameWriter::start(out, plan)
+        TmFrameWriter::start(out, plan, true)
+    }
+
+    /// Takes up a frame that [`begin`](Self::begin) or [`begin_oid`](Self::begin_oid) started in
+    /// `out` with the same `mc` and `fields`, so that a writer which keeps no state between
+    /// calls, the C ABI's `aldis_tm_writer_finish`, can finish it (API-023; M2 plan D4).
+    ///
+    /// Checks `mc` and `fields` as `begin` does and rewrites the Primary Header and the
+    /// Secondary Header Identification Field; every other octet stays as the caller filled it.
+    /// For an OID frame, `fields` has the status `Packets(OnlyIdleData)` that `begin_oid` uses.
+    ///
+    /// # Errors
+    /// As for [`begin`](Self::begin); on error `out` is unchanged (API-022, GEN-042).
+    pub fn resume(
+        out: &'b mut [u8],
+        mc: &TmMasterChannelConfig,
+        fields: &TmFrameFields,
+    ) -> Result<TmFrameWriter<'b>> {
+        let plan = Plan::new(mc, fields)?;
+        TmFrameWriter::start(out, plan, false)
     }
 
     /// Starts an Only Idle Data frame on `vcid`: First Header Pointer `0x7FE` and the data field
@@ -221,13 +240,15 @@ impl<'b> TmFrameWriter<'b> {
         Ok(writer)
     }
 
-    /// Writes a checked plan into `out`.
-    fn start(out: &'b mut [u8], plan: Plan) -> Result<TmFrameWriter<'b>> {
+    /// Writes the headers of a checked plan into `out`, after zero-filling the frame if `zero`.
+    fn start(out: &'b mut [u8], plan: Plan, zero: bool) -> Result<TmFrameWriter<'b>> {
         let frame_len = plan.layout.frame_len();
         let frame = out
             .get_mut(..frame_len)
             .ok_or(Error::buffer_too_small(frame_len))?;
-        frame.fill(0);
+        if zero {
+            frame.fill(0);
+        }
         write_at(frame, 0, &plan.header.to_octets());
         if let Some(fsh) = plan.fsh {
             write_at(frame, PRIMARY_HEADER_LEN, &[fsh.id_octet()]);
@@ -360,7 +381,7 @@ pub fn encode(
             u64::from(content.ocf.is_some()),
         ));
     }
-    let writer = TmFrameWriter::start(out, plan)?;
+    let writer = TmFrameWriter::start(out, plan, true)?;
     // Each field has the length checked above, so it fills its range exactly.
     let layout = &writer.layout;
     for (at, src) in [
@@ -468,6 +489,52 @@ mod tests {
         TmFrameWriter::begin(&mut out, &mc, &packets(0, PacketPointer::NoPacketStart)).unwrap();
         assert_eq!(out[..7], [0x0A, 0xB1, 7, 9, 0x9F, 0xFF, 0x03]);
         assert!(out[7..].iter().all(|&b| b == 0));
+    }
+
+    #[test]
+    fn resume_keeps_what_the_caller_filled() {
+        // req: TM-009, TM-010, API-022, API-023, GEN-042
+        let mc = mc();
+        let fields = packets(0, PacketPointer::StartsAt(3));
+        let fill = |w: &mut TmFrameWriter<'_>| {
+            w.secondary_header_data_mut().copy_from_slice(&[1, 2, 3]);
+            w.data_field_mut().fill(0xD0);
+            w.set_ocf(Ocf::decode([0x01, 0, 0, 0])).unwrap();
+        };
+        let mut one = [0_u8; 32];
+        let mut w = TmFrameWriter::begin(&mut one, &mc, &fields).unwrap();
+        fill(&mut w);
+        assert_eq!(w.finish(), 32);
+        // The same frame in two steps that keep no writer, with the headers overwritten between.
+        let mut two = [0_u8; 32];
+        fill(&mut TmFrameWriter::begin(&mut two, &mc, &fields).unwrap());
+        two[..7].fill(0xEE);
+        let w = TmFrameWriter::resume(&mut two, &mc, &fields).unwrap();
+        assert_eq!(w.finish(), 32);
+        assert_eq!(two, one);
+        // An OID frame: `begin_oid`, then `resume` with the status it uses.
+        let mut oid = OidGenerator::new();
+        let mut three = [0_u8; 32];
+        let data = TmFrameWriter::begin_oid(&mut three, &mc, vcid(0), 7, 9, &mut oid)
+            .unwrap()
+            .layout()
+            .data();
+        let idle = packets(0, PacketPointer::OnlyIdleData);
+        let w = TmFrameWriter::resume(&mut three, &mc, &idle).unwrap();
+        assert_eq!(w.finish(), 32);
+        assert_eq!(three[data.start..data.start + 4], [0xFF; 4]);
+        assert_eq!(syndrome(&three), 0);
+        // Rejected as `begin` rejects them, with the buffer left as it was.
+        let mut four = [0xEE_u8; 32];
+        let e = TmFrameWriter::resume(&mut four, &mc, &packets(2, PacketPointer::NoPacketStart))
+            .unwrap_err();
+        assert_eq!(
+            (e.kind(), e.field()),
+            (ErrorKind::UnknownChannel, Some(field::VC_ID))
+        );
+        let e = TmFrameWriter::resume(&mut four[..31], &mc, &idle).unwrap_err();
+        assert_eq!(e.kind(), ErrorKind::BufferTooSmall);
+        assert!(four.iter().all(|&b| b == 0xEE));
     }
 
     #[test]

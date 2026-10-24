@@ -1,6 +1,17 @@
 # Mutation testing triage (VER-025)
 
-Surviving mutants from `cargo mutants` (`-p aldis-core -p aldis-time -p aldis-epp -p aldis-spp -p aldis-aos -p aldis-tm -p aldis-tc --all-features`) (cargo-mutants 27.1.0), triaged per VER-025. The nightly job `mutants` publishes the full report. Update this file when a new survivor appears.
+Surviving mutants from `cargo mutants` (`-p aldis-core -p aldis-time -p aldis-epp -p aldis-spp -p aldis-aos -p aldis-tm -p aldis-tc -p aldis-uslp --all-features`) (cargo-mutants 27.1.0), triaged per VER-025. The nightly job `mutants` publishes the full report. Update this file when a new survivor appears.
+
+## 2026-10-23, branch `m2/uslp-codec` (M2 WP-5, modules 1–8)
+
+`cargo mutants -p aldis-uslp --all-features` (with `PROPTEST_CASES=32`): 450 mutants: 283 caught, 155 unviable, 12 missed, 0 timeouts. Two survivors were a test gap, fixed and re-run: `header.rs` `len_u64` replaced by 0 and by 1, which only error details use; `view.rs` `length_errors_on_a_variable_channel` now checks the `OutOfRange` detail of an over-long frame (2 mutants, 2 caught). The other ten are equivalent and are expected in every report.
+
+| Mutant | Verdict | Action |
+|---|---|---|
+| `header.rs` `start_octets` `\|` → `^`, five places (TFVN `<< 28`, SCID `<< 12`, Source-or-Destination `<< 11`, VCID `<< 5`, MAP ID `<< 1`, End of Frame Primary Header Flag) | Equivalent: every field is masked to its own bits of the 32-bit word, which do not overlap | None possible |
+| `header.rs` `primary_octets` `\|` → `^`, three places (the two flags `<< 7` and `<< 6`, the OCF Flag `<< 3`, the VCF Count Length `& 0b111`) | Equivalent: disjoint bits of octet 6 | None possible |
+| `header.rs` `read_vcf_count` `\|` → `^` (the count shifted left by 8 and the next octet) | Equivalent: the shift leaves the low eight bits zero, so OR and XOR agree | None possible |
+| `tfdf.rs` `TfdfHeader::octets` `\|` → `^` (rule `<< 5` and UPID `& 0x1F`) | Equivalent: disjoint bits | None possible |
 
 ## 2026-10-23, branch `m2/aos-codec` (M2 WP-4, modules 2–7)
 

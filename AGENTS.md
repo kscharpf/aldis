@@ -30,6 +30,12 @@ The rules and checks below are written for the Rust crates. The native C++ code 
 
 Every maintainer decision gets a line in the [decision log](docs/process/decisions.md) (VER-062), which `cargo xtask decisions` checks.
 
+## Independent review
+
+A reviewer of a pull request does **not** re-run the verification checks: `cargo build`, `cargo check`, `cargo test`, `cargo clippy`, `cargo fmt`, `cargo xtask ci`, coverage, the exerciser, fuzzing, or `cargo xtask verify`. They are the merge gate's job (VER-056…VER-058), and the gate already ran them on the head commit. Read the evidence instead: `cargo xtask verify check <head>` re-checks the published record, and a check that does not gate (`kani`, `cpp-leon3`, `rust-sparc-leon3`) is read from the record, not assumed to pass.
+
+Spend the review on what no check covers: the reading of the Blue Book behind each decision (cite the clause), the requirements and whether the tests and vectors really cover them, the soundness of every `unsafe` block, the shape of the public API and C ABI, and the decisions and judgement calls the pull request lists. Read every suppression the change adds, because the gate passes *because of* it: each `#[expect(…, reason = "…")]` (RS-016), `// NOLINT(<check>): <reason>` (CPP-042), entry of `coverage-waivers.toml` (VER-024), and mutant triaged as equivalent in [mutants-triage.md](docs/verification/mutants-triage.md) (VER-025). Check that the reason is true and the region is the smallest one; a reason that does not hold is a finding. Report findings as [decision-rights.md](docs/process/decision-rights.md) §2.6 describes, each with the file and line and why it matters; to show a defect, a failing test or vector case is the clearest form.
+
 ## Non-negotiable rules (Layers 0–2)
 
 - `no_std`, **no heap**: fixed capacities via const generics (GEN-010, GEN-011).
@@ -97,7 +103,7 @@ cargo xtask cpp unsafe-optouts                 # bounds opt-outs only in aldis/c
 cargo xtask cpp layers target/cpp/host-gcc     # CMake target graph (CPP-010)
 ```
 
-`cargo xtask verify` also runs clang-format, clang-tidy, the sanitizers, s390x, and the bare-metal builds. Each check declares its inputs in `xtask/src/verify/checks.rs` and is skipped when none of them changed against the merge base with `main` (`cargo xtask verify list` shows which checks HEAD needs; `--all` runs every check): a change to documentation only (`docs/`, `changelog.d/`, the root `*.md`, `specs/README.md`, `specs/manifest.tsv`) runs only `spec`, a change to `xtask/` runs everything, and so does a path that no list names. After you merge `main` into a branch whose head has a published record, a check whose inputs the commits from `main` did not touch is `reused` from that record instead of run. When a check starts reading a new path, add the path to its inputs in the same change (as `CPP` for the C++ build). Suppress a warning or clang-tidy finding only on the smallest region, naming the check (CPP-042).
+`cargo xtask verify` also runs clang-format, clang-tidy, the sanitizers, s390x, and the bare-metal builds. Each check declares its inputs in `xtask/src/verify/checks.rs` and is skipped when none of them changed against the merge base with `main` (`cargo xtask verify list` shows which checks HEAD needs; `--all` runs every check): a change to documentation only (`docs/`, `changelog.d/`, the root `*.md`, `specs/README.md`, `specs/manifest.tsv`) or to the GitHub configuration that no check reads (`.github/workflows/`, `.github/actions/setup-rust/`, `.github/actions/setup-cpp/action.yml`, the pull-request template, `CODEOWNERS`, `dependabot.yml`) runs only `spec`, a change to `xtask/` runs everything, and so does a path that no list names. After you merge `main` into a branch whose head has a published record, a check whose inputs the commits from `main` did not touch is `reused` from that record instead of run. When a check starts reading a new path, add the path to its inputs in the same change (as `CPP` for the C++ build). Suppress a warning or clang-tidy finding only on the smallest region, naming the check (CPP-042).
 
 When you change `refapp/` (track A), also run, from `refapp/` (see [refapp/README.md](refapp/README.md)):
 
