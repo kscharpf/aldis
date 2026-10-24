@@ -198,6 +198,8 @@ USLP-011 (no mixing of truncated and full frames in one C&S data unit) belongs t
 | GEN-022/023 inspection of the four crates and `aldis-ffi`: each WP revises the record of every crate it changes, prepared by its author and pending exit review (VER-061) | `docs/verification/inspections/` |
 | VER-031: the minimal `aldis-spp` build still has no frame symbols | verify check `layers` |
 | 1 CPU-hour per fuzz target before the release (VER-022) | run link in the exit table |
+| RS-020 check (added 2026-10-24, maintainer): `cargo xtask` flags a public enum variant, tuple-struct field, or named field of a codec crate (`aldis-core`, `-time`, `-spp`, `-epp`, `-tm`, `-tc`, `-aos`, `-uslp`) that holds a bare integer (`u8`…`u64`, `usize`) where the crate defines a restricted type, with an explicit, reasoned exemption list; part of `cargo xtask ci` | `xtask`, the exemption list, `cargo xtask ci` |
+| A test for every restricted type (added 2026-10-24, maintainer): for each newtype or enum with a checked constructor, a property test (VER-054 strategies) that every value the constructor accepts encodes to a wire field and decodes back to the same value, and every value it rejects is rejected; a Kani harness of the same property where the input space allows (nightly, OI-42) | `crates/*/tests/properties.rs`, `proofs.rs` |
 
 **Done when:** every gate is green on `main` for all M2 crates.
 
