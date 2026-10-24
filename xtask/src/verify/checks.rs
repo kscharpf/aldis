@@ -49,7 +49,7 @@ pub struct PathList {
 
 // The inputs of the checks (VER-056): every path a check builds, reads, or is run by. A check
 // runs when a changed path matches one of its inputs, and a changed path that matches no check's
-// inputs and is not in `DOCS` or `GITHUB` runs every check. Precision never at the cost of soundness: when a
+// inputs and is in none of the lists of `SPEC_ONLY` runs every check. Precision never at the cost of soundness: when a
 // check starts reading a new path, add the path here in the same change; when unsure, include it.
 //
 // The differential tests of track C (`difftest/`, VER-053, milestone C1) will read both the Rust
@@ -172,6 +172,22 @@ pub const GITHUB: PathList = PathList {
         ".github/dependabot.yml",
     ],
 };
+
+/// The root configuration that no check reads but `spec` (which reads every path), so that a
+/// change to these paths alone runs only `spec`, as documentation does: `.gitignore`, which says
+/// only which files git leaves untracked. Every check runs in a fresh checkout of the commit,
+/// which has no untracked files, and none lists untracked files (`git ls-files` without
+/// `--others`; the directories that xtask skips are its own list, `repo::SKIP`). Not here:
+/// `.gitattributes`, whose attributes can change the bytes a checkout writes (`text`, `eol`,
+/// `filter`), and every other root file, which is in no list and so runs every check.
+pub const ROOT_CONFIG: PathList = PathList {
+    name: "root-config",
+    patterns: &[".gitignore"],
+};
+
+/// The lists that `spec` alone reads (VER-056): documentation, the GitHub configuration, and the
+/// root configuration that no other check reads.
+pub const SPEC_ONLY: [&PathList; 3] = [&DOCS, &GITHUB, &ROOT_CONFIG];
 
 /// What a check reads (VER-056).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -792,8 +808,9 @@ mod tests {
                 Inputs::Paths(lists) => lists,
             };
             assert!(lists.contains(&&RUN), "{}", c.name);
-            assert!(!lists.contains(&&DOCS), "{}", c.name);
-            assert!(!lists.contains(&&GITHUB), "{}", c.name);
+            for only in SPEC_ONLY {
+                assert!(!lists.contains(&only), "{} {}", c.name, only.name);
+            }
             if c.name == "header" {
                 assert_eq!(lists, [&RUN, &FFI]);
                 continue;

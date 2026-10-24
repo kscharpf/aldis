@@ -15,7 +15,8 @@
 //! cannot be fetched, there is no merge base, the commit is on `main`, nothing differs), or when
 //! no published passing record covers the base or an earlier commit of the branch. A record is
 //! not used for any check when a path that differs from its commit is an input of no check and
-//! neither documentation nor GitHub configuration (`DOCS`, `GITHUB`: read by `spec` alone).
+//! in none of the lists that `spec` alone reads (`SPEC_ONLY`: documentation, the GitHub
+//! configuration, and the root configuration that no other check reads).
 
 use std::collections::{BTreeMap, HashMap};
 use std::path::Path;
@@ -23,7 +24,7 @@ use std::rc::Rc;
 
 use serde_json::{Map, Value, json};
 
-use super::checks::{Check, DOCS, GITHUB, Inputs, NIGHTLY_ONLY};
+use super::checks::{Check, DOCS, GITHUB, Inputs, NIGHTLY_ONLY, ROOT_CONFIG, SPEC_ONLY};
 use super::record::Outcome;
 use super::{git_bytes, git_in, publish, record};
 
@@ -319,11 +320,10 @@ pub fn reuse_reason(source: &Source) -> String {
     )
 }
 
-/// Whether some check reads `path`, or it is documentation or GitHub configuration (read by
-/// `spec` alone).
+/// Whether some check reads `path`, or it is in a list that `spec` alone reads
+/// ([`SPEC_ONLY`]).
 fn listed(checks: &[Check], path: &str) -> bool {
-    DOCS.contains(path)
-        || GITHUB.contains(path)
+    SPEC_ONLY.iter().any(|l| l.contains(path))
         || checks
             .iter()
             .any(|c| c.inputs != Inputs::Everything && c.inputs.contains(path))
@@ -335,7 +335,8 @@ fn listed(checks: &[Check], path: &str) -> bool {
 fn differs(checks: &[Check], check: &Check, paths: &[String]) -> Option<String> {
     if let Some(p) = paths.iter().find(|p| !listed(checks, p)) {
         return Some(format!(
-            "{p} is an input of no check, and neither documentation nor GitHub configuration"
+            "{p} is an input of no check, and neither documentation nor configuration that \
+             `spec` alone reads"
         ));
     }
     paths
@@ -654,6 +655,7 @@ pub fn to_json(plan: &Plan, checks: &[Check]) -> Value {
         "checks": decisions,
         "documentation": DOCS.patterns,
         "github": GITHUB.patterns,
+        "root_config": ROOT_CONFIG.patterns,
         "every": plan.every,
         "inputs": inputs,
     })
@@ -991,6 +993,24 @@ mod tests {
 
     // req: VER-056
     #[test]
+    fn root_configuration_runs_spec_only() {
+        assert_eq!(
+            running(&changed(&[".gitignore"]), Force::default()),
+            ["spec"]
+        );
+        assert_eq!(
+            running(&changed(&[".gitignore", "docs/a.md"]), Force::default()),
+            ["spec"]
+        );
+        // .gitattributes can change what a checkout writes: in no list, so every check runs.
+        assert_eq!(
+            running(&changed(&[".gitattributes"]), Force::default()),
+            names(|c| !c.nightly)
+        );
+    }
+
+    // req: VER-056
+    #[test]
     fn documentation_runs_spec_only() {
         let docs = changed(&[
             "docs/06-verification.md",
@@ -1116,7 +1136,7 @@ mod tests {
         };
         // An unlisted path, alone or with documentation: no record that differs in it is used.
         for paths in [
-            &[".gitignore"][..],
+            &[".gitattributes"][..],
             &["docs/a.md", "specs/fetch.sh"],
             &[".github/ISSUE_TEMPLATE/bug.md"],
         ] {
