@@ -17,3 +17,6 @@
   so a failing harness opens the nightly issue.
 - VER-056, VER-057, and VER-060 state the fail-fast stop, the run without a container, the
   record without an image, and nightly-only checks (docs/06-verification.md §7).
+- `verify --publish` publishes a passing record even when `main` moved during the run, without
+  setting the `aldis/verify` status, so that the merge from `main` can reuse its results;
+  `verify check` fails a head that does not contain the tip of `main` (VER-057, VER-058).

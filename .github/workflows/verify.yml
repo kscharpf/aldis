@@ -5,7 +5,8 @@
 #
 # It runs `cargo xtask verify --publish` on the branch's head, as a contributor would: a passing
 # record is published under refs/notes/verify and sets the commit status aldis/verify, linked to
-# this run (VER-057, VER-058). The logs are this run's artefact.
+# this run (VER-057, VER-058); if main moved during the run, the record is published without the
+# status, so that the merge from main can reuse it. The logs are this run's artefact.
 #
 # The verification image comes from ghcr.io/kscharpf/aldis-verify when a workflow of this
 # repository has pushed it for the same image inputs (tag `<input hash>-amd64`), and its labels

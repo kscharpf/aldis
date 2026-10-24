@@ -67,13 +67,16 @@ Verification run and merge gate (docs/06-verification.md §7):
                                no image is pulled or built. --push-image pushes the image the
                                run builds to <repository>, as `verify image --push` does
   verify publish [<rev>]       push the passing record of <rev> (default HEAD) as a git note
-                               under refs/notes/verify and set the commit status aldis/verify
-                               (VER-058)
+                               under refs/notes/verify and, when <rev> contains the tip of
+                               origin/main, set the commit status aldis/verify (VER-058); a
+                               record of a commit behind main is published without the status,
+                               as a source for later commits, and the command fails
   verify nightly [<rev>]       fail unless every nightly-only check passed in the local record
                                of <rev> (default HEAD), made with --all (VER-059)
   verify check [<rev>]         check the published record of <rev> against the merge gate,
                                re-deriving its skipped and reused checks from git and the
-                               sources' published records
+                               sources' published records, and that <rev> contains the tip of
+                               origin/main
   verify image [--push <repository>]
                                build the verification image for HEAD, or pull it from the
                                registry repository named in ALDIS_VERIFY_PULL when its labels

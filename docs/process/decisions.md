@@ -90,3 +90,5 @@ One line for each decision the maintainer takes, under the [decision rights](dec
 - 2026-10-24 · process · #101 · VER-056: a run that cannot publish MAY stop at its first gating failure; a run in which no gating check needs a container MAY start none, the non-gating checks it would run reported as not run
 - 2026-10-24 · process · #101 · VER-057: a run without a container records that no image was used, with the commit's image-input hash
 - 2026-10-24 · process · #101 · VER-060: a run that needs no image neither pulls nor builds one
+- 2026-10-24 · process · #101 · A nightly-only check (Kani) that does not pass in the nightly run fails the job and opens the nightly-failure issue (VER-059)
+- 2026-10-24 · process · #101 · verify --publish stores a passing record even when main moved during the run, without setting aldis/verify; such a record may be a reuse source; the merge gate is unchanged (VER-057, VER-058)

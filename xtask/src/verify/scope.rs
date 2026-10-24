@@ -1949,4 +1949,120 @@ mod tests {
             "{p:?}"
         );
     }
+
+    /// A [`publish::Forge`] that has every commit and records the statuses set.
+    #[derive(Default)]
+    struct Forge(std::cell::RefCell<Vec<String>>);
+
+    impl publish::Forge for Forge {
+        fn has_commit(&self, _: &Path, _: &str) -> Result<bool, String> {
+            Ok(true)
+        }
+
+        fn set_status(
+            &self,
+            _: &Path,
+            commit: &str,
+            _: &str,
+            _: Option<&str>,
+        ) -> Result<(), String> {
+            self.0.borrow_mut().push(commit.to_owned());
+            Ok(())
+        }
+    }
+
+    /// Writes `rec` as the local record of its commit in `repo`, as a run does.
+    fn write_record(repo: &Repo, rec: &Value) {
+        let commit = rec["commit"].as_str().unwrap();
+        repo.write(
+            &format!("target/verify/{commit}/record.json"),
+            &record::canonical(rec),
+        );
+    }
+
+    /// Whether `origin` has a published record of `commit`.
+    fn has_note(origin: &Repo, commit: &str) -> bool {
+        Command::new("git")
+            .args(["notes", "--ref=refs/notes/verify", "show", commit])
+            .current_dir(&origin.0)
+            .env("GIT_CONFIG_GLOBAL", "/dev/null")
+            .output()
+            .is_ok_and(|o| o.status.success())
+    }
+
+    // req: VER-056, VER-057, VER-058
+    #[test]
+    fn a_passing_record_of_a_commit_behind_main_is_published_without_a_status() {
+        let (origin, clone, _) = history("behind");
+        for (k, v) in [
+            ("user.name", "t"),
+            ("user.email", "t@t"),
+            ("commit.gpgsign", "false"),
+        ] {
+            clone.git(&["config", k, v]);
+        }
+        // Local records are not committed.
+        clone.write(".git/info/exclude", "target/\n");
+        let checks = all();
+        clone.write("crates/x/src/lib.rs", "//! x, on the topic\n");
+        let p = clone.commit("topic");
+        clone.git(&["push", "-q", "origin", "topic"]);
+        // main moves while p is verified.
+        origin.write("cpp/src/a.cpp", "// main moved\n");
+        origin.commit("main moved");
+        let passing = clone.record_for(record::FORMAT, &p, &entries(&checks, |_| ("pass", None)));
+        write_record(&clone, &passing);
+        let forge = Forge::default();
+        // The note is published; no status is set, and the result says the head is behind.
+        assert_eq!(publish::publish_in(&clone.0, &p, &forge), Ok(1));
+        assert!(has_note(&origin, &p));
+        assert_eq!(forge.0.borrow().len(), 0);
+        // The merge gate still refuses the head.
+        assert_eq!(publish::check_in(&clone.0, &p), Ok(1));
+
+        // The branch merges main: the Rust checks take their results from p's record.
+        clone.git(&["fetch", "-q", "origin"]);
+        clone.git(&["merge", "-q", "--no-edit", "origin/main"]);
+        let h = clone.git(&["rev-parse", "HEAD"]);
+        let c = change(&clone.0, &h, Main::Origin);
+        let plan_h = plan(&checks, &c, Force::default(), |b| {
+            sources(&clone.0, &h, b, "origin/main", &checks)
+        });
+        assert_eq!(plan_h.branch, std::slice::from_ref(&p));
+        let clippy = plan_h.checks.iter().find(|d| d.name == "clippy").unwrap();
+        assert_eq!(clippy.outcome(), Some(Outcome::Reused));
+        assert_eq!(
+            clippy.source.as_ref().map(|s| s.commit.as_str()),
+            Some(p.as_str())
+        );
+        let cpp = plan_h.checks.iter().find(|d| d.name == "cpp-tidy").unwrap();
+        assert!(cpp.run, "{cpp:?}");
+        // Its record passes, re-derived from git and p's record, and sets the status.
+        let rec_h = record_from(&clone, &h, &plan_h, &checks);
+        assert_eq!(recheck(&clone.0, &rec_h, &checks), Vec::<String>::new());
+        write_record(&clone, &rec_h);
+        assert_eq!(publish::publish_in(&clone.0, &h, &forge), Ok(0));
+        assert_eq!(*forge.0.borrow(), std::slice::from_ref(&h));
+        assert_eq!(publish::check_in(&clone.0, &h), Ok(0));
+
+        // A failed run publishes nothing, behind main or not.
+        clone.write("crates/x/src/lib.rs", "//! x, broken\n");
+        let q = clone.commit("broken");
+        let failed = clone.record_for(
+            record::FORMAT,
+            &q,
+            &entries(&checks, |c| {
+                if c.name == "fmt" {
+                    ("fail", None)
+                } else {
+                    ("pass", None)
+                }
+            }),
+        );
+        write_record(&clone, &failed);
+        let refused = publish::publish_in(&clone.0, &q, &forge).unwrap_err();
+        assert!(refused.contains("fmt: fail"), "{refused}");
+        assert!(!has_note(&origin, &q));
+        assert_eq!(forge.0.borrow().len(), 1);
+    }
 }
