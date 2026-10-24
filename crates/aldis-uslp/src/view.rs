@@ -781,13 +781,21 @@ mod tests {
 
     #[test]
     fn length_errors_on_a_variable_channel() {
-        // req: USLP-003, CMN-041, OI-43
+        // req: USLP-003, USLP-014, CMN-041
         let t = variable();
         // VC 4 MAP 0, sequence-controlled: Frame Length 600 > 512.
         let long = [0xC0, 0x15, 0x50, 0x80, 0x02, 0x57, 0x00, 0xE0, 0x00];
         assert_eq!(
             err_of(UslpFrame::decode(&long, &t, DecodeMode::Strict)),
             (ErrorKind::OutOfRange, Some(field::FRAME_LEN))
+        );
+        let e = UslpFrame::decode(&long, &t, DecodeMode::Strict).unwrap_err();
+        assert_eq!(
+            e.detail(),
+            ErrorDetail::Expected {
+                expected: 512,
+                found: 600
+            }
         );
         // Frame Length 9 leaves no TFDZ octet after a 1-octet TFDF Header and the FECF.
         let short = [0xC0, 0x15, 0x50, 0x80, 0x00, 0x08, 0x00, 0xE0, 0x00];
@@ -810,7 +818,7 @@ mod tests {
 
     #[test]
     fn oid_header_checks() {
-        // req: USLP-009, API-031, API-032, OI-43
+        // req: USLP-009, API-031, API-032
         let t = fixed();
         // VC 63, MAP 0, expedited (VCF 1/1), Insert Zone, rule 001 UPID idle, LVO last.
         let lvo = 64 - 8 - 2 - 3 - 2 - 1;
