@@ -82,3 +82,5 @@ One line for each decision the maintainer takes, under the [decision rights](dec
 - 2026-10-24 · api · #94 · A C ABI master channel configuration embeds its physical channel configuration; each per-VC call takes one master channel, and the Rust lookup over several master channels has no C form (c-abi.md §11)
 - 2026-10-24 · api · #94 · C ABI decoders and validation without a suffix mean no SDLS; the `_with` variants take each VC's security layout from the master channel; no lookup-mode argument (c-abi.md §11)
 - 2026-10-24 · api · #94 · A stateless `_writer_finish` over a writer whose `begin` zero-fills calls a public `resume` of the codec (`TmFrameWriter::resume`), not FECF or header code in `aldis-ffi` (c-abi.md §11)
+- 2026-10-24 · api · #94 · aldis_tm_encode takes the five frame-content slices in one aldis_tm_content_t (review finding 2); the VC array stays as arguments
+- 2026-10-24 · api · #94 · One aldis_tm_validate, which uses the master channel's security layouts; the _with pairs exist only for decoders, whose plain form takes the physical channel (review finding 3, c-abi.md §11)

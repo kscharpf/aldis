@@ -11,9 +11,7 @@
 use core::ptr::{null, null_mut};
 
 use aldis_ffi::error::*;
-use aldis_ffi::field::{
-    ALDIS_FIELD_SECURITY_HEADER_LEN, ALDIS_FIELD_SPACECRAFT_ID, ALDIS_FIELD_SYNC_FLAG,
-};
+use aldis_ffi::field::{ALDIS_FIELD_SPACECRAFT_ID, ALDIS_FIELD_SYNC_FLAG};
 use aldis_ffi::oid::*;
 use aldis_ffi::tm::*;
 use aldis_ffi::{ALDIS_MODE_STRICT, aldis_error_detail_t};
@@ -221,19 +219,7 @@ fn the_with_functions_take_the_vc_security_layout() {
             (6, 12, 18, 8)
         );
         assert!(v.has_fecf && v.header.scid == 677 && v.header.vcid == 4);
-        assert_eq!(
-            aldis_tm_validate_with(
-                frame.as_ptr(),
-                40,
-                &raw const mc,
-                vcs.as_ptr(),
-                2,
-                ALDIS_MODE_STRICT,
-                &raw mut d
-            ),
-            ALDIS_OK
-        );
-        // Decoded without SDLS, the layout is not VC 4's.
+        // Validation decodes with VC 4's layout, so the frame matches its channel (c-abi.md §11).
         assert_eq!(
             aldis_tm_validate(
                 frame.as_ptr(),
@@ -244,11 +230,26 @@ fn the_with_functions_take_the_vc_security_layout() {
                 ALDIS_MODE_STRICT,
                 &raw mut d
             ),
-            ALDIS_ERR_LENGTH_MISMATCH
+            ALDIS_OK
+        );
+        // With VC 4 configured for VCA_SDUs, the Synchronization Flag disagrees.
+        let mut vca = vcs;
+        vca[0].content = ALDIS_TM_CONTENT_VCA_SDU;
+        assert_eq!(
+            aldis_tm_validate(
+                frame.as_ptr(),
+                40,
+                &raw const mc,
+                vca.as_ptr(),
+                2,
+                ALDIS_MODE_STRICT,
+                &raw mut d
+            ),
+            ALDIS_ERR_INVALID_FIELD
         );
         assert_eq!(
             (d.field, d.expected, d.found),
-            (ALDIS_FIELD_SECURITY_HEADER_LEN, 6, 0)
+            (ALDIS_FIELD_SYNC_FLAG, 1, 0)
         );
         // Another SCID is an unknown channel, with the configured and the found SCID.
         let mut other = mc;
@@ -356,25 +357,17 @@ fn writer_arguments_are_checked() {
     let st = [0x5A_u8; 8];
     let mut frame = [0_u8; 64];
     let mut n = 0_usize;
-    let encode = |data: *const u8, data_len: usize, ocf: &[u8], out: *mut u8, cap: usize| {
+    let encode = |content: *const aldis_tm_content_t, out: *mut u8, cap: usize| {
         let mut n = 0_usize;
-        // SAFETY: every pointer is to a live local, or into `frame`.
+        // SAFETY: every pointer is to a live local, or into `frame`; `content` is NULL or
+        // points to a live struct whose buffers are live or into `frame`.
         unsafe {
             aldis_tm_encode(
                 &raw const mc,
                 vcs.as_ptr(),
                 2,
                 &raw const fields,
-                null(),
-                0,
-                sh.as_ptr(),
-                6,
-                data,
-                data_len,
-                st.as_ptr(),
-                8,
-                ocf.as_ptr(),
-                ocf.len(),
+                content,
                 out,
                 cap,
                 &raw mut n,
@@ -383,30 +376,73 @@ fn writer_arguments_are_checked() {
         }
     };
     let data = [0xD0_u8; 18];
-    assert_eq!(
-        encode(data.as_ptr(), 18, &[], frame.as_mut_ptr(), 40),
-        ALDIS_OK
-    );
-    // An OCF of neither 0 nor 4 octets.
-    assert_eq!(
-        encode(data.as_ptr(), 18, &[1, 2], frame.as_mut_ptr(), 40),
-        ALDIS_ERR_INVALID_FIELD
-    );
-    // An OCF where none is configured: the frame's OCF Flag (132.0 §4.1.2.4.3).
-    assert_eq!(
-        encode(data.as_ptr(), 18, &[1, 2, 3, 4], frame.as_mut_ptr(), 40),
-        ALDIS_ERR_INVALID_FIELD
-    );
-    // The output overlapping an input: the data field inside the output buffer.
-    let inside = frame.as_ptr().wrapping_add(12);
-    assert_eq!(
-        encode(inside, 18, &[], frame.as_mut_ptr(), 40),
-        ALDIS_ERR_INVALID_FIELD
-    );
+    let content = aldis_tm_content_t {
+        security_header: sh.as_ptr(),
+        security_header_len: 6,
+        data: data.as_ptr(),
+        data_len: 18,
+        security_trailer: st.as_ptr(),
+        security_trailer_len: 8,
+        ..aldis_tm_content_t::default()
+    };
+    let out = frame.as_mut_ptr();
+    assert_eq!(encode(&raw const content, out, 40), ALDIS_OK);
+    assert_eq!(encode(null(), out, 40), ALDIS_ERR_INVALID_FIELD);
+    // A NULL buffer with a length (CABI-022).
+    let no_data = aldis_tm_content_t {
+        data: null(),
+        ..content
+    };
+    assert_eq!(encode(&raw const no_data, out, 40), ALDIS_ERR_INVALID_FIELD);
+    // An OCF of neither 0 nor 4 octets, and one where none is configured: the frame's OCF Flag
+    // (132.0 §4.1.2.4.3).
+    let ocf = [1_u8, 2, 3, 4];
+    for len in [2, 4] {
+        let with_ocf = aldis_tm_content_t {
+            ocf: ocf.as_ptr(),
+            ocf_len: len,
+            ..content
+        };
+        assert_eq!(
+            encode(&raw const with_ocf, out, 40),
+            ALDIS_ERR_INVALID_FIELD
+        );
+    }
+    // The output overlapping any buffer of the content (CABI-022).
+    let inside = |at: usize| frame.as_ptr().wrapping_add(at);
+    for overlapping in [
+        aldis_tm_content_t {
+            security_header: inside(6),
+            ..content
+        },
+        aldis_tm_content_t {
+            data: inside(12),
+            ..content
+        },
+        aldis_tm_content_t {
+            security_trailer: inside(30),
+            ..content
+        },
+        aldis_tm_content_t {
+            fsh_data: inside(0),
+            fsh_data_len: 1,
+            ..content
+        },
+        aldis_tm_content_t {
+            ocf: inside(36),
+            ocf_len: 4,
+            ..content
+        },
+    ] {
+        assert_eq!(
+            encode(&raw const overlapping, out, 40),
+            ALDIS_ERR_INVALID_FIELD
+        );
+    }
     // The output too small: nothing written.
     frame.fill(0xEE);
     assert_eq!(
-        encode(data.as_ptr(), 18, &[], frame.as_mut_ptr(), 39),
+        encode(&raw const content, frame.as_mut_ptr(), 39),
         ALDIS_ERR_BUFFER_TOO_SMALL
     );
     assert!(frame.iter().all(|&b| b == 0xEE));

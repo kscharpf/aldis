@@ -1687,6 +1687,18 @@ fn tm_encode(case: &CodecCase, ch: &TmChannels) -> R<Value> {
         .map_or(ch.pc.frame_len, |_| usize_of(&par, "out_len"));
     let mut out = vec![0xEE_u8; cap];
     let mut written = 0_usize;
+    let content = aldis_tm_content_t {
+        fsh_data: fsh.as_ptr(),
+        fsh_data_len: fsh.len(),
+        security_header: sh.as_ptr(),
+        security_header_len: sh.len(),
+        data: data.as_ptr(),
+        data_len: data.len(),
+        security_trailer: st.as_ptr(),
+        security_trailer_len: st.len(),
+        ocf: ocf.as_ptr(),
+        ocf_len: ocf.len(),
+    };
     // SAFETY: every pointer is to a live local or vector, with its length.
     let result = call(|e| unsafe {
         aldis_tm_encode(
@@ -1694,16 +1706,7 @@ fn tm_encode(case: &CodecCase, ch: &TmChannels) -> R<Value> {
             vcs.as_ptr(),
             vcs.len(),
             &raw const fields,
-            fsh.as_ptr(),
-            fsh.len(),
-            sh.as_ptr(),
-            sh.len(),
-            data.as_ptr(),
-            data.len(),
-            st.as_ptr(),
-            st.len(),
-            ocf.as_ptr(),
-            ocf.len(),
+            &raw const content,
             out.as_mut_ptr(),
             out.len(),
             &raw mut written,

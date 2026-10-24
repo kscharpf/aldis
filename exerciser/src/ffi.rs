@@ -16,8 +16,7 @@ use aldis_ffi::epp::{
     aldis_epp_validate, aldis_epp_writer_begin, aldis_epp_writer_finish, aldis_epp_writer_layout_t,
 };
 use aldis_ffi::error::{
-    ALDIS_ERR_INCOMPLETE, ALDIS_ERR_INVALID_FIELD, ALDIS_ERR_INVALID_HANDLE,
-    ALDIS_ERR_LENGTH_MISMATCH, ALDIS_OK,
+    ALDIS_ERR_INCOMPLETE, ALDIS_ERR_INVALID_FIELD, ALDIS_ERR_INVALID_HANDLE, ALDIS_OK,
 };
 use aldis_ffi::limits::{aldis_limits, aldis_limits_t};
 use aldis_ffi::ocf::{ALDIS_OCF_CLCW, ALDIS_OCF_SDLS_FSR, aldis_ocf_check, aldis_ocf_classify};
@@ -59,11 +58,11 @@ use aldis_ffi::time::{
 };
 use aldis_ffi::tm::{
     ALDIS_TM_CONTENT_PACKETS, ALDIS_TM_CONTENT_VCA_SDU, ALDIS_TM_POINTER_STARTS_AT,
-    aldis_tm_config_check, aldis_tm_config_t, aldis_tm_decode, aldis_tm_decode_unchecked,
-    aldis_tm_decode_unchecked_with, aldis_tm_decode_with, aldis_tm_encode, aldis_tm_fields_t,
-    aldis_tm_frame_t, aldis_tm_header_decode, aldis_tm_header_t, aldis_tm_layout_t,
-    aldis_tm_mc_config_check, aldis_tm_mc_config_t, aldis_tm_oid_writer_begin,
-    aldis_tm_oid_writer_finish, aldis_tm_peek_length, aldis_tm_validate, aldis_tm_validate_with,
+    aldis_tm_config_check, aldis_tm_config_t, aldis_tm_content_t, aldis_tm_decode,
+    aldis_tm_decode_unchecked, aldis_tm_decode_unchecked_with, aldis_tm_decode_with,
+    aldis_tm_encode, aldis_tm_fields_t, aldis_tm_frame_t, aldis_tm_header_decode,
+    aldis_tm_header_t, aldis_tm_layout_t, aldis_tm_mc_config_check, aldis_tm_mc_config_t,
+    aldis_tm_oid_writer_begin, aldis_tm_oid_writer_finish, aldis_tm_peek_length, aldis_tm_validate,
     aldis_tm_vc_config_t, aldis_tm_writer_begin, aldis_tm_writer_finish,
 };
 use aldis_ffi::{ALDIS_MODE_LENIENT, ALDIS_MODE_STRICT};
@@ -792,6 +791,15 @@ fn tm(t: &mut Tally) {
         ..aldis_tm_fields_t::default()
     };
     let (sh, data, st) = ([0xA5_u8; 2], [0xD0_u8; 21], [0x5A_u8; 1]);
+    let content = aldis_tm_content_t {
+        security_header: sh.as_ptr(),
+        security_header_len: bb(2),
+        data: data.as_ptr(),
+        data_len: bb(21),
+        security_trailer: st.as_ptr(),
+        security_trailer_len: bb(1),
+        ..aldis_tm_content_t::default()
+    };
     let mut frame = [0_u8; 32];
     let mut two = [0_u8; 32];
     let mut layout = aldis_tm_layout_t::default();
@@ -813,16 +821,7 @@ fn tm(t: &mut Tally) {
                 vcs.as_ptr(),
                 bb(2),
                 &raw const fields,
-                null(),
-                0,
-                sh.as_ptr(),
-                bb(2),
-                data.as_ptr(),
-                bb(21),
-                st.as_ptr(),
-                bb(1),
-                null(),
-                0,
+                &raw const content,
                 frame.as_mut_ptr(),
                 frame.len(),
                 &raw mut n,
@@ -931,17 +930,6 @@ fn tm(t: &mut Tally) {
         );
         frame[10] ^= bb(1);
         t.check(
-            aldis_tm_validate_with(
-                frame.as_ptr(),
-                bb(32),
-                &raw const mc,
-                vcs.as_ptr(),
-                bb(2),
-                bb(ALDIS_MODE_STRICT),
-                &raw mut det,
-            ) == ALDIS_OK,
-        );
-        t.check(
             aldis_tm_validate(
                 frame.as_ptr(),
                 bb(32),
@@ -950,7 +938,7 @@ fn tm(t: &mut Tally) {
                 bb(2),
                 bb(ALDIS_MODE_STRICT),
                 &raw mut det,
-            ) == ALDIS_ERR_LENGTH_MISMATCH,
+            ) == ALDIS_OK,
         );
         t.check(
             aldis_oid_generator_init(

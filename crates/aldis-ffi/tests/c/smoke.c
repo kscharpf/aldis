@@ -147,6 +147,19 @@ int main(void) {
     check(aldis_tm_writer_finish(&mc, &vc, 1, &tm, frame, sizeof frame, &len, &err) == ALDIS_OK &&
               len == 16,
           "aldis_tm_writer_finish");
+    /* The same frame in one call, its data field given in the content struct. */
+    uint8_t tm_data[10];
+    memset(tm_data, 0xD0, sizeof tm_data);
+    aldis_tm_content_t content;
+    memset(&content, 0, sizeof content);
+    content.data = tm_data;
+    content.data_len = sizeof tm_data;
+    uint8_t one_shot[16];
+    size_t one_len = 0;
+    check(aldis_tm_encode(&mc, &vc, 1, &tm, &content, one_shot, sizeof one_shot, &one_len,
+                          &err) == ALDIS_OK &&
+              one_len == 16 && memcmp(one_shot, frame, 16) == 0,
+          "aldis_tm_encode agrees with the two-phase writer");
     aldis_tm_frame_t tm_view;
     check(aldis_tm_decode(frame, len, &mc.pc, ALDIS_MODE_STRICT, &tm_view, NULL) == ALDIS_OK,
           "aldis_tm_decode");
@@ -154,8 +167,8 @@ int main(void) {
               tm_view.pointer == ALDIS_TM_POINTER_STARTS_AT &&
               tm_view.layout.data_len == 10 && frame[tm_view.layout.data_offset] == 0xD0,
           "decoded TM frame (CABI-012)");
-    check(aldis_tm_validate_with(frame, len, &mc, &vc, 1, ALDIS_MODE_STRICT, NULL) == ALDIS_OK,
-          "aldis_tm_validate_with");
+    check(aldis_tm_validate(frame, len, &mc, &vc, 1, ALDIS_MODE_STRICT, NULL) == ALDIS_OK,
+          "aldis_tm_validate");
 
     if (failures != 0) {
         return 1;

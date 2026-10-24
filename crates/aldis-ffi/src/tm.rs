@@ -3,9 +3,9 @@
 //!
 //! Calls: [`aldis_tm_config_check`] and [`aldis_tm_mc_config_check`]; [`aldis_tm_peek_length`]
 //! and [`aldis_tm_header_decode`]; the decoders [`aldis_tm_decode`], [`aldis_tm_decode_with`],
-//! [`aldis_tm_decode_unchecked`], and [`aldis_tm_decode_unchecked_with`]; the checks against
-//! the managed parameters [`aldis_tm_validate`] and [`aldis_tm_validate_with`]; the one-shot
-//! [`aldis_tm_encode`]; the two-phase writer as [`aldis_tm_writer_begin`] and
+//! [`aldis_tm_decode_unchecked`], and [`aldis_tm_decode_unchecked_with`]; the check against
+//! the managed parameters [`aldis_tm_validate`]; the one-shot [`aldis_tm_encode`], which takes
+//! the frame's variable fields in an [`aldis_tm_content_t`]; the two-phase writer as [`aldis_tm_writer_begin`] and
 //! [`aldis_tm_writer_finish`]; and the OID frame writer as [`aldis_tm_oid_writer_begin`] and
 //! [`aldis_tm_oid_writer_finish`].
 //!
@@ -16,10 +16,12 @@
 //! `TmMasterChannelConfig`, built and checked on every call. The array's stride is the
 //! `struct_size` of its structs, which must all be the same (`abi::configs`).
 //!
-//! **Security layouts** (API-070; decision of #90). The `_with` functions take the Security
-//! Header and Trailer lengths of a frame's virtual channel from the master channel, as
-//! `TmFrame::decode_with` does with a `TmMasterChannelConfig` as its `VcLookup`; the others
-//! decode as on a channel without SDLS, as `TmFrame::decode` does with `NoSdls`. A physical
+//! **Security layouts** (API-070; decisions of #90 and #94, c-abi.md §11). The `_with`
+//! decoders take the Security Header and Trailer lengths of a frame's virtual channel from the
+//! master channel, as `TmFrame::decode_with` does with a `TmMasterChannelConfig` as its
+//! `VcLookup`; their plain forms take the physical channel alone and decode as on a channel
+//! without SDLS, as `TmFrame::decode` does with `NoSdls`. Every other call that takes a master
+//! channel, [`aldis_tm_validate`] among them, uses its layouts. A physical
 //! channel that carries several master channels is decoded by reading the SCID first with
 //! [`aldis_tm_header_decode`].
 //!
@@ -170,6 +172,69 @@ pub struct aldis_tm_fields_t {
     pub packet_offset: u16,
     /// With `sync_flag` 1: First Header Pointer, 0 to `0x7FF`, raw (132.0 §4.1.2.7.6.2).
     pub first_header_pointer: u16,
+}
+
+/// The variable fields of a frame for [`aldis_tm_encode`], as `(pointer, length)` buffers
+/// (132.0 §4.1, §6.3; TM-009, API-072, CABI-011; maintainer decision on #94).
+///
+/// Each buffer has exactly the length the configuration gives its field, and may be `NULL`
+/// with length 0. The struct is read once per call and no pointer is kept (API-060).
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct aldis_tm_content_t {
+    /// The Secondary Header Data Field, after the Identification Field the library writes;
+    /// empty without a Secondary Header (132.0 §4.1.3.3).
+    pub fsh_data: *const u8,
+    /// Length of `fsh_data`.
+    pub fsh_data_len: usize,
+    /// The Security Header, as a security hook filled it; empty without SDLS (132.0 §6.3.4).
+    pub security_header: *const u8,
+    /// Length of `security_header`.
+    pub security_header_len: usize,
+    /// The Transfer Frame Data Field, filling it exactly (132.0 §4.1.4.2).
+    pub data: *const u8,
+    /// Length of `data`.
+    pub data_len: usize,
+    /// The Security Trailer; empty without SDLS (132.0 §6.3.6).
+    pub security_trailer: *const u8,
+    /// Length of `security_trailer`.
+    pub security_trailer_len: usize,
+    /// The Operational Control Field: `ALDIS_OCF_LEN` octets when the frame carries one, else
+    /// empty (132.0 §4.1.5).
+    pub ocf: *const u8,
+    /// Length of `ocf`: `ALDIS_OCF_LEN` or 0.
+    pub ocf_len: usize,
+}
+
+impl Default for aldis_tm_content_t {
+    /// Every buffer empty and `NULL`.
+    fn default() -> aldis_tm_content_t {
+        aldis_tm_content_t {
+            fsh_data: core::ptr::null(),
+            fsh_data_len: 0,
+            security_header: core::ptr::null(),
+            security_header_len: 0,
+            data: core::ptr::null(),
+            data_len: 0,
+            security_trailer: core::ptr::null(),
+            security_trailer_len: 0,
+            ocf: core::ptr::null(),
+            ocf_len: 0,
+        }
+    }
+}
+
+impl aldis_tm_content_t {
+    /// The five buffers, which an output buffer must not overlap (CABI-022).
+    const fn buffers(&self) -> [(*const u8, usize); 5] {
+        [
+            (self.fsh_data, self.fsh_data_len),
+            (self.security_header, self.security_header_len),
+            (self.data, self.data_len),
+            (self.security_trailer, self.security_trailer_len),
+            (self.ocf, self.ocf_len),
+        ]
+    }
 }
 
 /// A TM Transfer Frame Primary Header as plain values (132.0 §4.1.2; TM-002, API-014).
@@ -737,21 +802,17 @@ pub unsafe extern "C" fn aldis_tm_decode_unchecked_with(
 }
 
 /// Checks a frame against the managed parameters of a master channel (132.0 §5 Tables 5-1 to
-/// 5-3, §6.6 Table 6-1; TM-011).
+/// 5-3, §6.6 Table 6-1; TM-011, API-070).
 ///
-/// The frame is decoded as [`aldis_tm_decode`] decodes it, on the physical channel of `mc`,
-/// and checked as `TmFrame::validate` checks it.
-///
-/// Decoded without SDLS, a frame of a VC with a Security Header or Trailer fails the security
-/// layout check; [`aldis_tm_validate_with`] decodes with the VC's layout.
+/// The frame is decoded as [`aldis_tm_decode_with`] decodes it, with the security layout of its
+/// virtual channel from `mc`, and checked as `TmFrame::validate` checks it. A call that takes a
+/// master channel always uses its layouts (c-abi.md §11).
 ///
 /// # Errors
-/// The errors of [`aldis_tm_mc_config_check`] and of [`aldis_tm_decode`]; then, in this order,
-/// each with the configured and the found value: `ALDIS_ERR_UNKNOWN_CHANNEL` (`spacecraft_id`,
-/// `vc_id`); `ALDIS_ERR_INVALID_FIELD` (`ocf_flag`, `fsh_flag`, `sync_flag`) for a flag that
-/// disagrees with the configuration; `ALDIS_ERR_LENGTH_MISMATCH` (`fsh_len`,
-/// `security_header_len`, `security_trailer_len`) for another Secondary Header length or
-/// security layout.
+/// The errors of [`aldis_tm_decode_with`]; then, in this order, each with the configured and
+/// the found value: `ALDIS_ERR_INVALID_FIELD` (`ocf_flag`, `fsh_flag`, `sync_flag`) for a flag
+/// that disagrees with the configuration, and `ALDIS_ERR_LENGTH_MISMATCH` (`fsh_len`) for
+/// another Secondary Header length.
 ///
 /// # Safety
 /// As [`aldis_tm_decode_with`], without `out`.
@@ -774,39 +835,6 @@ pub unsafe extern "C" fn aldis_tm_validate(
         abi::call(err, || {
             let mc = master_channel_at(mc, vcs, vc_count)?;
             let bytes = abi::bytes(bytes, len)?;
-            let frame = TmFrame::decode(bytes, mc.pc(), abi::mode(mode)?)?;
-            frame.validate(&mc)
-        })
-    }
-}
-
-/// Decodes one frame as [`aldis_tm_decode_with`] does and checks it as [`aldis_tm_validate`]
-/// does (132.0 §5, §6.6; TM-011, API-070).
-///
-/// # Errors
-/// The errors of [`aldis_tm_decode_with`], then those of the checks of [`aldis_tm_validate`].
-///
-/// # Safety
-/// As [`aldis_tm_validate`].
-#[expect(
-    unsafe_code,
-    reason = "C ABI entry point: unmangled, takes raw pointers (GEN-071)"
-)]
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn aldis_tm_validate_with(
-    bytes: *const u8,
-    len: usize,
-    mc: *const aldis_tm_mc_config_t,
-    vcs: *const aldis_tm_vc_config_t,
-    vc_count: usize,
-    mode: u32,
-    err: *mut crate::aldis_error_detail_t,
-) -> i32 {
-    // SAFETY: every pointer is valid as `# Safety` states; `abi` checks NULL and alignment.
-    unsafe {
-        abi::call(err, || {
-            let mc = master_channel_at(mc, vcs, vc_count)?;
-            let bytes = abi::bytes(bytes, len)?;
             let frame = TmFrame::decode_with(bytes, mc.pc(), &mc, abi::mode(mode)?)?;
             frame.validate(&mc)
         })
@@ -816,11 +844,9 @@ pub unsafe extern "C" fn aldis_tm_validate_with(
 /// Encodes one frame of `fields->vcid` into the start of `out` in one call (132.0 §4.1, §6.3;
 /// TM-009, API-020…022, API-072), as `aldis_tm::encode` does.
 ///
-/// Each field buffer has exactly the length the configuration gives it: `fsh_data` the
-/// Secondary Header Data Field after the Identification Field the library writes, the Security
-/// Header and Trailer as a security hook filled them, `data` the whole data field, and `ocf`
-/// `ALDIS_OCF_LEN` octets when the frame carries an OCF, else 0. The library writes the
-/// Identification Field, the OCF Flag, and the FECF (API-021).
+/// `content` gives the variable fields, each exactly the length the configuration gives it
+/// ([`aldis_tm_content_t`]). The library writes the Identification Field, the OCF Flag, and the
+/// FECF (API-021).
 ///
 /// # Errors
 /// On error `out` is unchanged (API-022). The errors of [`aldis_tm_mc_config_check`]; then
@@ -832,12 +858,13 @@ pub unsafe extern "C" fn aldis_tm_validate_with(
 /// given where none is configured or missing where one is; `ALDIS_ERR_BUFFER_TOO_SMALL`
 /// (`needed` = frame length); `ALDIS_ERR_OUT_OF_RANGE` (`vc_id`, `segment_length_id`,
 /// `first_header_pointer`) for a value of `fields` outside its field; CABI-022 violations,
-/// including an `ocf_len` other than 0 or `ALDIS_OCF_LEN` and `out` overlapping an input.
+/// including an `ocf_len` other than 0 or `ALDIS_OCF_LEN` and `out` overlapping a buffer of
+/// `content`.
 ///
 /// # Safety
-/// `mc` and `vcs` as for [`aldis_tm_mc_config_check`]; `fields` is valid for a read; each field
-/// buffer is valid for its length (or `NULL` with 0); `out` is valid for `cap` octets;
-/// `out_len` is valid for one write; `err` is `NULL` or valid for one write.
+/// `mc` and `vcs` as for [`aldis_tm_mc_config_check`]; `fields` and `content` are valid for a
+/// read; each buffer of `content` is valid for its length (or `NULL` with 0); `out` is valid
+/// for `cap` octets; `out_len` is valid for one write; `err` is `NULL` or valid for one write.
 #[expect(
     unsafe_code,
     reason = "C ABI entry point: unmangled, takes raw pointers (GEN-071)"
@@ -848,16 +875,7 @@ pub unsafe extern "C" fn aldis_tm_encode(
     vcs: *const aldis_tm_vc_config_t,
     vc_count: usize,
     fields: *const aldis_tm_fields_t,
-    fsh_data: *const u8,
-    fsh_data_len: usize,
-    security_header: *const u8,
-    security_header_len: usize,
-    data: *const u8,
-    data_len: usize,
-    security_trailer: *const u8,
-    security_trailer_len: usize,
-    ocf: *const u8,
-    ocf_len: usize,
+    content: *const aldis_tm_content_t,
     out: *mut u8,
     cap: usize,
     out_len: *mut usize,
@@ -869,21 +887,15 @@ pub unsafe extern "C" fn aldis_tm_encode(
         abi::call(err, || {
             let mc = master_channel_at(mc, vcs, vc_count)?;
             let fields = self::fields(abi::read(fields)?)?;
+            let c = abi::read(content)?;
             let content = TmFrameContent {
-                secondary_header_data: abi::bytes(fsh_data, fsh_data_len)?,
-                security_header: abi::bytes(security_header, security_header_len)?,
-                data: abi::bytes(data, data_len)?,
-                security_trailer: abi::bytes(security_trailer, security_trailer_len)?,
-                ocf: self::ocf(abi::bytes(ocf, ocf_len)?)?,
+                secondary_header_data: abi::bytes(c.fsh_data, c.fsh_data_len)?,
+                security_header: abi::bytes(c.security_header, c.security_header_len)?,
+                data: abi::bytes(c.data, c.data_len)?,
+                security_trailer: abi::bytes(c.security_trailer, c.security_trailer_len)?,
+                ocf: self::ocf(abi::bytes(c.ocf, c.ocf_len)?)?,
             };
-            let inputs = [
-                (fsh_data, fsh_data_len),
-                (security_header, security_header_len),
-                (data, data_len),
-                (security_trailer, security_trailer_len),
-                (ocf, ocf_len),
-            ];
-            let out = abi::bytes_mut(out, cap, &inputs)?;
+            let out = abi::bytes_mut(out, cap, &c.buffers())?;
             let out_len = abi::out(out_len)?;
             out_len.write(encode(&mc, &fields, &content, out)?);
             Ok(())

@@ -7,7 +7,7 @@
 //! writes. The C ABI of `aldis-core` agrees with it too: `aldis_crc16`, `aldis_ocf_classify`,
 //! `aldis_ocf_check`, and the OID generator in both forms; and so does that of `aldis-tm`:
 //! `aldis_tm_decode`, `aldis_tm_decode_unchecked`, `aldis_tm_peek_length`,
-//! `aldis_tm_header_decode`, `aldis_tm_decode_with`, and `aldis_tm_validate_with`.
+//! `aldis_tm_header_decode`, `aldis_tm_decode_with`, and `aldis_tm_validate`.
 #![no_main]
 
 // req: CABI-012, CABI-020, CABI-021, CABI-022, GEN-020, API-010, VER-022, CMN-001, CMN-010, CMN-022, TM-001, API-070
@@ -42,7 +42,7 @@ use aldis_ffi::tm::{
     ALDIS_TM_POINTER_ONLY_IDLE_DATA, ALDIS_TM_POINTER_STARTS_AT, aldis_tm_config_t,
     aldis_tm_decode, aldis_tm_decode_unchecked, aldis_tm_decode_with, aldis_tm_frame_t,
     aldis_tm_header_decode, aldis_tm_header_t, aldis_tm_mc_config_t, aldis_tm_peek_length,
-    aldis_tm_validate_with, aldis_tm_vc_config_t,
+    aldis_tm_validate, aldis_tm_vc_config_t,
 };
 use aldis_ffi::{ALDIS_MODE_LENIENT, ALDIS_MODE_STRICT, ALDIS_OK, aldis_error_detail_t};
 use aldis_spp::SpacePacket;
@@ -435,7 +435,7 @@ fn tm_same(view: &aldis_tm_frame_t, frame: &TmFrame<'_>) {
 /// D14): `aldis_tm_decode` and `aldis_tm_decode_unchecked` without SDLS, `aldis_tm_peek_length`,
 /// and `aldis_tm_header_decode`; and, on a master channel of the frame's SCID whose eight VCs
 /// carry packets with SDLS layouts of 0 to 2 header and 0 or 1 trailer octets,
-/// `aldis_tm_decode_with` and `aldis_tm_validate_with` (TM-001…TM-008, TM-011, API-070).
+/// `aldis_tm_decode_with` and `aldis_tm_validate` (TM-001…TM-008, TM-011, API-070).
 #[expect(unsafe_code, reason = "calls the C ABI with valid pointers")]
 #[expect(clippy::too_many_lines, reason = "one comparison per C function")]
 fn tm(data: &[u8], fecf: bool, mode: DecodeMode, c_mode: u32) {
@@ -558,7 +558,7 @@ fn tm(data: &[u8], fecf: bool, mode: DecodeMode, c_mode: u32) {
     let rust = rust_master.and_then(|m| TmFrame::decode_with(data, m.pc(), &m, mode)?.validate(&m));
     // SAFETY: as above.
     let status = unsafe {
-        aldis_tm_validate_with(
+        aldis_tm_validate(
             data.as_ptr(),
             data.len(),
             &raw const mc,

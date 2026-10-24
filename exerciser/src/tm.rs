@@ -428,7 +428,10 @@ pub fn vector(case: &Case, out: &mut Out, scratch: &mut Scratch) -> Run {
             &TmFrame::decode_with(input, &pc, need(mc.as_ref())?, mode)?,
         ),
         "decode_unchecked" => decoded(out, &TmFrame::decode_unchecked(input, &pc, &NoSdls, mode)?),
-        "validate" => TmFrame::decode(input, &pc, mode)?.validate(need(mc.as_ref())?)?,
+        "validate" => {
+            let mc = need(mc.as_ref())?;
+            TmFrame::decode_with(input, &pc, mc, mode)?.validate(mc)?;
+        }
         "encode" => encode_case(case.params, need(mc.as_ref())?, out, scratch)?,
         "encode_oid" => encode_oid(case.params, need(mc.as_ref())?, out, scratch)?,
         _ => return Err(Fail::Vector),

@@ -2384,6 +2384,58 @@ typedef struct {
   uint16_t first_header_pointer;
 } aldis_tm_fields_t;
 
+/**
+ * The variable fields of a frame for [`aldis_tm_encode`], as `(pointer, length)` buffers
+ * (132.0 §4.1, §6.3; TM-009, API-072, CABI-011; maintainer decision on #94).
+ *
+ * Each buffer has exactly the length the configuration gives its field, and may be `NULL`
+ * with length 0. The struct is read once per call and no pointer is kept (API-060).
+ */
+typedef struct {
+  /**
+   * The Secondary Header Data Field, after the Identification Field the library writes;
+   * empty without a Secondary Header (132.0 §4.1.3.3).
+   */
+  const uint8_t *fsh_data;
+  /**
+   * Length of `fsh_data`.
+   */
+  size_t fsh_data_len;
+  /**
+   * The Security Header, as a security hook filled it; empty without SDLS (132.0 §6.3.4).
+   */
+  const uint8_t *security_header;
+  /**
+   * Length of `security_header`.
+   */
+  size_t security_header_len;
+  /**
+   * The Transfer Frame Data Field, filling it exactly (132.0 §4.1.4.2).
+   */
+  const uint8_t *data;
+  /**
+   * Length of `data`.
+   */
+  size_t data_len;
+  /**
+   * The Security Trailer; empty without SDLS (132.0 §6.3.6).
+   */
+  const uint8_t *security_trailer;
+  /**
+   * Length of `security_trailer`.
+   */
+  size_t security_trailer_len;
+  /**
+   * The Operational Control Field: `ALDIS_OCF_LEN` octets when the frame carries one, else
+   * empty (132.0 §4.1.5).
+   */
+  const uint8_t *ocf;
+  /**
+   * Length of `ocf`: `ALDIS_OCF_LEN` or 0.
+   */
+  size_t ocf_len;
+} aldis_tm_content_t;
+
 #ifdef __cplusplus
 extern "C" {
 #endif // __cplusplus
@@ -3639,21 +3691,17 @@ int32_t aldis_tm_decode_unchecked_with(const uint8_t *bytes,
 
 /**
  * Checks a frame against the managed parameters of a master channel (132.0 §5 Tables 5-1 to
- * 5-3, §6.6 Table 6-1; TM-011).
+ * 5-3, §6.6 Table 6-1; TM-011, API-070).
  *
- * The frame is decoded as [`aldis_tm_decode`] decodes it, on the physical channel of `mc`,
- * and checked as `TmFrame::validate` checks it.
- *
- * Decoded without SDLS, a frame of a VC with a Security Header or Trailer fails the security
- * layout check; [`aldis_tm_validate_with`] decodes with the VC's layout.
+ * The frame is decoded as [`aldis_tm_decode_with`] decodes it, with the security layout of its
+ * virtual channel from `mc`, and checked as `TmFrame::validate` checks it. A call that takes a
+ * master channel always uses its layouts (c-abi.md §11).
  *
  * # Errors
- * The errors of [`aldis_tm_mc_config_check`] and of [`aldis_tm_decode`]; then, in this order,
- * each with the configured and the found value: `ALDIS_ERR_UNKNOWN_CHANNEL` (`spacecraft_id`,
- * `vc_id`); `ALDIS_ERR_INVALID_FIELD` (`ocf_flag`, `fsh_flag`, `sync_flag`) for a flag that
- * disagrees with the configuration; `ALDIS_ERR_LENGTH_MISMATCH` (`fsh_len`,
- * `security_header_len`, `security_trailer_len`) for another Secondary Header length or
- * security layout.
+ * The errors of [`aldis_tm_decode_with`]; then, in this order, each with the configured and
+ * the found value: `ALDIS_ERR_INVALID_FIELD` (`ocf_flag`, `fsh_flag`, `sync_flag`) for a flag
+ * that disagrees with the configuration, and `ALDIS_ERR_LENGTH_MISMATCH` (`fsh_len`) for
+ * another Secondary Header length.
  *
  * # Safety
  * As [`aldis_tm_decode_with`], without `out`.
@@ -3667,32 +3715,12 @@ int32_t aldis_tm_validate(const uint8_t *bytes,
                           aldis_error_detail_t *err);
 
 /**
- * Decodes one frame as [`aldis_tm_decode_with`] does and checks it as [`aldis_tm_validate`]
- * does (132.0 §5, §6.6; TM-011, API-070).
- *
- * # Errors
- * The errors of [`aldis_tm_decode_with`], then those of the checks of [`aldis_tm_validate`].
- *
- * # Safety
- * As [`aldis_tm_validate`].
- */
-int32_t aldis_tm_validate_with(const uint8_t *bytes,
-                               size_t len,
-                               const aldis_tm_mc_config_t *mc,
-                               const aldis_tm_vc_config_t *vcs,
-                               size_t vc_count,
-                               uint32_t mode,
-                               aldis_error_detail_t *err);
-
-/**
  * Encodes one frame of `fields->vcid` into the start of `out` in one call (132.0 §4.1, §6.3;
  * TM-009, API-020…022, API-072), as `aldis_tm::encode` does.
  *
- * Each field buffer has exactly the length the configuration gives it: `fsh_data` the
- * Secondary Header Data Field after the Identification Field the library writes, the Security
- * Header and Trailer as a security hook filled them, `data` the whole data field, and `ocf`
- * `ALDIS_OCF_LEN` octets when the frame carries an OCF, else 0. The library writes the
- * Identification Field, the OCF Flag, and the FECF (API-021).
+ * `content` gives the variable fields, each exactly the length the configuration gives it
+ * ([`aldis_tm_content_t`]). The library writes the Identification Field, the OCF Flag, and the
+ * FECF (API-021).
  *
  * # Errors
  * On error `out` is unchanged (API-022). The errors of [`aldis_tm_mc_config_check`]; then
@@ -3704,27 +3732,19 @@ int32_t aldis_tm_validate_with(const uint8_t *bytes,
  * given where none is configured or missing where one is; `ALDIS_ERR_BUFFER_TOO_SMALL`
  * (`needed` = frame length); `ALDIS_ERR_OUT_OF_RANGE` (`vc_id`, `segment_length_id`,
  * `first_header_pointer`) for a value of `fields` outside its field; CABI-022 violations,
- * including an `ocf_len` other than 0 or `ALDIS_OCF_LEN` and `out` overlapping an input.
+ * including an `ocf_len` other than 0 or `ALDIS_OCF_LEN` and `out` overlapping a buffer of
+ * `content`.
  *
  * # Safety
- * `mc` and `vcs` as for [`aldis_tm_mc_config_check`]; `fields` is valid for a read; each field
- * buffer is valid for its length (or `NULL` with 0); `out` is valid for `cap` octets;
- * `out_len` is valid for one write; `err` is `NULL` or valid for one write.
+ * `mc` and `vcs` as for [`aldis_tm_mc_config_check`]; `fields` and `content` are valid for a
+ * read; each buffer of `content` is valid for its length (or `NULL` with 0); `out` is valid
+ * for `cap` octets; `out_len` is valid for one write; `err` is `NULL` or valid for one write.
  */
 int32_t aldis_tm_encode(const aldis_tm_mc_config_t *mc,
                         const aldis_tm_vc_config_t *vcs,
                         size_t vc_count,
                         const aldis_tm_fields_t *fields,
-                        const uint8_t *fsh_data,
-                        size_t fsh_data_len,
-                        const uint8_t *security_header,
-                        size_t security_header_len,
-                        const uint8_t *data,
-                        size_t data_len,
-                        const uint8_t *security_trailer,
-                        size_t security_trailer_len,
-                        const uint8_t *ocf,
-                        size_t ocf_len,
+                        const aldis_tm_content_t *content,
                         uint8_t *out,
                         size_t cap,
                         size_t *out_len,
