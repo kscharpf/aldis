@@ -254,8 +254,10 @@ fn run(case: &CodecCase) -> Result<Value, Error> {
         "decode_unchecked" => {
             TmFrame::decode_unchecked(&bytes, &pc, &NoSdls, mode(case)).map(|f| decoded(&f))
         }
+        // Decoded with the master channel's security layouts, which it is checked against
+        // (c-abi.md §11).
         "validate" => {
-            let f = TmFrame::decode(&bytes, &pc, mode(case))?;
+            let f = TmFrame::decode_with(&bytes, &pc, mc(), mode(case))?;
             f.validate(mc()).map(|()| json!({}))
         }
         "encode" => encode_case(case, mc()),

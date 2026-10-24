@@ -46,3 +46,19 @@ CCSDS 732.0-B-4 is a superseded issue, published with the other historical docum
 
 - Never commit CCSDS PDFs or extracted text from them. CI SHALL NOT require them: tests use the [test vectors](../test-vectors/README.md).
 - Quote the standards by document number and clause (e.g. `133.0 §4.1.3.5.2`), not by copying text.
+
+## SANA registry snapshots
+
+Protocol values that a registry of the Space Assigned Numbers Authority (SANA) assigns are never written from memory (OI-06). [`sana/`](sana/) holds a committed snapshot of each registry the code needs: the rows of the registry's public table, the URL they were read from, the retrieval date, and the SHA-256 of the rows (M2 plan D13). Unlike the PDFs, the snapshots are committed: they are registry data, not CCSDS text.
+
+| Registry | Snapshot | Generated from it |
+|---|---|---|
+| `uslp_protocol_id`, USLP Protocol Identifier (732.1 reference [14]) | [`sana/uslp_protocol_id.tsv`](sana/uslp_protocol_id.tsv) | `crates/aldis-uslp/src/upid/table.rs` (USLP-007) |
+
+```sh
+cargo xtask sana import uslp_protocol_id   # download, write the snapshot and the table
+cargo xtask sana                           # offline: rows match the SHA-256, table matches (cargo xtask ci)
+cargo xtask sana check-live                # the live registry still matches (nightly job sana-registries)
+```
+
+SANA publishes no machine-readable export without an account (checked 2026-10-23: `/api/` asks for a login, and the registry page links no CSV, JSON, or XML), so the import reads the HTML table of the public registry page and checks the row count it states. The registry pages state no terms of use.

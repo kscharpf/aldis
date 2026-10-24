@@ -368,6 +368,48 @@
         "ok": false,
         "error": "LengthMismatch",
         "field": 8
+      },
+      "superseded": {
+        "reason": "the validate operation decodes with the master channel's security layouts (maintainer decision on #94), so a frame cannot be validated as decoded without SDLS",
+        "by": "tm-sec-val-002"
+      }
+    },
+    {
+      "id": "tm-sec-val-002",
+      "requirements": [
+        "TM-011",
+        "API-070"
+      ],
+      "description": "Decoded with VC 4's layout, the frame of tm-sec-dec-001 matches its channel",
+      "operation": "validate",
+      "config": {
+        "frame_len": 40,
+        "fecf": true,
+        "scid": 677,
+        "mc_fsh": null,
+        "mc_ocf": false,
+        "vcs": [
+          {
+            "vcid": 4,
+            "content": "packets",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 6,
+            "security_trailer_len": 8
+          },
+          {
+            "vcid": 5,
+            "content": "vca_sdu",
+            "fsh": null,
+            "ocf": true,
+            "security_header_len": 3,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "input_hex": "2A5800001800A5A5A5A5A5A5303132333435363738393A3B3C3D3E3F40415A5A5A5A5A5A5A5A7A6C",
+      "expect": {
+        "ok": true
       }
     },
     {

@@ -138,6 +138,9 @@ jobs:
           - tc_roundtrip
           - tc_delimit
           - tc_clcw
+          - uslp_decode
+          - uslp_truncated
+          - uslp_roundtrip
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -208,7 +211,7 @@ jobs:
       # (e.g. 4, the unmutated tests fail) is a real failure.
       - run: |
           code=0
-          cargo mutants -p aldis-core -p aldis-time -p aldis-epp -p aldis-spp -p aldis-aos -p aldis-tm -p aldis-tc --all-features || code=$?
+          cargo mutants -p aldis-core -p aldis-time -p aldis-epp -p aldis-spp -p aldis-aos -p aldis-tm -p aldis-tc -p aldis-uslp --all-features || code=$?
           echo "cargo-mutants exit code $code"
           [ "$code" -eq 0 ] || [ "$code" -eq 2 ] || [ "$code" -eq 3 ]
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -224,6 +227,19 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - run: specs/fetch.sh --all --check-urls
+
+  sana-registries:
+    name: SANA registries match their snapshots
+    # Downloads each registry of specs/sana/ and fails when it differs from the committed snapshot
+    # (M2 plan D13, OI-06); the failure opens the nightly issue, and the snapshot is re-imported
+    # with `cargo xtask sana import <registry>` in a pull request.
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup-rust
+        with:
+          cache-key: sana
+      - run: cargo xtask sana check-live
 
   metrics:
     name: process metrics (VER-063, report only)
@@ -288,7 +304,7 @@ jobs:
 
   issue:
     name: open an issue on a nightly failure (VER-059)
-    needs: [big-endian-bare-metal, verify, stack-sizes, fuzz, mutants, ccsds-urls]
+    needs: [big-endian-bare-metal, verify, stack-sizes, fuzz, mutants, ccsds-urls, sana-registries]
     if: failure() && github.event_name == 'schedule'
     runs-on: ubuntu-24.04
     permissions:

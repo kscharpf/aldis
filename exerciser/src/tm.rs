@@ -179,6 +179,15 @@ fn frames(t: &mut Tally, mc: &TmMasterChannelConfig, vc0: VcId<3>, vc1: VcId<3>,
             .is_ok_and(|w| w.finish() == 32),
     );
     t.check(frame.get(12..16) == Some(&[0xFF; 4][..]));
+    // `resume` keeps the Idle Data `begin_oid` wrote, as the C ABI's finish uses it (API-023).
+    let idle = TmFrameFields::new(
+        vc0,
+        0,
+        0,
+        DataFieldStatus::Packets(PacketPointer::OnlyIdleData),
+    );
+    t.check(TmFrameWriter::resume(bb(&mut frame), mc, bb(&idle)).is_ok_and(|w| w.finish() == 32));
+    t.check(frame.get(12..16) == Some(&[0xFF; 4][..]));
 }
 
 /// Runs the `aldis-tm` group.
@@ -419,7 +428,10 @@ pub fn vector(case: &Case, out: &mut Out, scratch: &mut Scratch) -> Run {
             &TmFrame::decode_with(input, &pc, need(mc.as_ref())?, mode)?,
         ),
         "decode_unchecked" => decoded(out, &TmFrame::decode_unchecked(input, &pc, &NoSdls, mode)?),
-        "validate" => TmFrame::decode(input, &pc, mode)?.validate(need(mc.as_ref())?)?,
+        "validate" => {
+            let mc = need(mc.as_ref())?;
+            TmFrame::decode_with(input, &pc, mc, mode)?.validate(mc)?;
+        }
         "encode" => encode_case(case.params, need(mc.as_ref())?, out, scratch)?,
         "encode_oid" => encode_oid(case.params, need(mc.as_ref())?, out, scratch)?,
         _ => return Err(Fail::Vector),

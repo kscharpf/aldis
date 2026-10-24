@@ -30,7 +30,7 @@
 //! the test itself fails when the file does not pass. When the area's crate is exercised, the
 //! exerciser embeds the file: `exerciser/build.rs` names `"<name>.json"` for `core`, and lists
 //! the area as a vector group otherwise (it then embeds every file of the directory). An area
-//! of a codec with C ABI functions (`FFI_AREAS`: `time`, `spp`, `epp`), or that the C ABI
+//! of a codec with C ABI functions (`FFI_AREAS`: `time`, `spp`, `epp`, `tm`), or that the C ABI
 //! runner `crates/aldis-ffi/tests/vectors.rs` already covers (it names one of its files in a
 //! `vector_test!` invocation), is covered whole by that runner, and the runner names no missing file
 //! (M2 plan D4). `aldis-core` has a C ABI for part of its modules only (M2 plan D14): the runner
@@ -484,7 +484,7 @@ const FFI_RUNNER: &str = "crates/aldis-ffi/tests/vectors.rs";
 /// The vector directories of the codecs that have C ABI functions: every file in them runs
 /// through [`FFI_RUNNER`] (M2 plan D4, WP-0c). A codec's directory joins when its C ABI does;
 /// a directory the runner already names is required whole in any case.
-const FFI_AREAS: &[&str] = &["time", "spp", "epp"];
+const FFI_AREAS: &[&str] = &["time", "spp", "epp", "tm"];
 
 /// The vector files of an area whose crate has a C ABI for some of its modules only: each runs
 /// through [`FFI_RUNNER`], and the rest of the area need not (M2 plan D14, WP-1: the CRC-16,
@@ -843,7 +843,7 @@ mod tests {
             "core/crc16.json".to_owned(),
             "core/layout.json".to_owned(),
             "time/cuc.json".to_owned(),
-            "tm/frame.json".to_owned(),
+            "uslp/frame.json".to_owned(),
         ];
         assert_eq!(
             vector_problems(&files, readme, &tests, build, FFI_CUC, &c),
@@ -851,8 +851,8 @@ mod tests {
                 "test-vectors/core/layout.json: not listed in test-vectors/README.md",
                 "test-vectors/core/layout.json: no test in crates/*/tests/ runs it",
                 "test-vectors/core/layout.json: aldis-core is exercised but exerciser/build.rs does not embed it",
-                "test-vectors/tm/frame.json: not listed in test-vectors/README.md",
-                "test-vectors/tm/frame.json: no test in crates/*/tests/ runs it",
+                "test-vectors/uslp/frame.json: not listed in test-vectors/README.md",
+                "test-vectors/uslp/frame.json: no test in crates/*/tests/ runs it",
                 "test-vectors/README.md: `aos/gone.json` matches no vector file",
             ]
         );
