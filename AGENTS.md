@@ -123,7 +123,8 @@ Clippy runs with the `all` and `pedantic` groups denied, plus restriction lints 
 - **Changelog:** never edit `CHANGELOG.md` in a pull request. Add one fragment file to [`changelog.d/`](changelog.d/README.md), named after the branch; `cargo xtask changelog check` validates it.
 - **Errors** use the stable catalogue in [docs/03-api-model.md](docs/03-api-model.md) §9. Do not renumber error codes.
 - **C ABI names** use the `aldis_` / `ALDIS_` prefix ([docs/profiles/c-abi.md](docs/profiles/c-abi.md)).
-- **Process metrics:** `cargo xtask metrics` measures PR cycle time, verify cost, merge conflicts, and review outcomes; the nightly report is the pinned issue "Process metrics" ([docs/06-verification.md](docs/06-verification.md) §9, VER-063).
+- **Process metrics:** `cargo xtask metrics` measures PR cycle time, the stages of each PR (raw and in the maintainer's active time), the process-created waits, verify cost, merge conflicts, and review outcomes; the nightly report is the pinned issue "Process metrics" ([docs/06-verification.md](docs/06-verification.md) §9, VER-063).
+- **Agent comments:** end every comment or review an agent posts on GitHub with the line `🤖 Generated with [Claude Code](https://claude.com/claude-code)`. Agents post under the maintainer's account, and `cargo xtask metrics` tells their words apart by this marker.
 - **Spec changes:** when behavior changes, update the requirement table in the same change. New requirements get the next free ID in their area; IDs are never reused.
 
 ## Where things go

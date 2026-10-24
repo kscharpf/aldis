@@ -6,7 +6,9 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use serde_json::{Value, json};
 
+use super::stages::{self, ApprovalKind, Stages};
 use super::time;
+use super::waits::{self, Commit, Waits};
 
 /// The line the agent's replies end with; a comment that contains it is a reply, not a review.
 pub const MARKER: &str = "Generated with [Claude Code]";
@@ -45,10 +47,17 @@ pub struct Raw {
     pub issues: BTreeMap<u64, Value>,
     /// For each merge from `main`, the paths `git merge-tree` reports as conflicted.
     pub conflicts: BTreeMap<String, Vec<String>>,
+    /// The maintainer's login: the repository owner's.
+    pub maintainer: String,
+    /// The commits of the pull request that added a line naming it to the decision log
+    /// (`git log -S`).
+    pub decision_commits: BTreeSet<String>,
+    /// The record that a failed `verify.yml` run left in its artefact, by run ID.
+    pub run_records: BTreeMap<u64, Value>,
 }
 
 /// One verification run of the pull request's commits.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Run {
     /// `local` (a published record made on a contributor's machine) or `github` (a run of
     /// `verify.yml`, VER-060).
@@ -59,6 +68,12 @@ pub struct Run {
     pub seconds: Option<i64>,
     /// `success`, `failure`, `cancelled`, ... for a workflow run; `published` for a local record.
     pub result: String,
+    /// When it started.
+    pub started: Option<i64>,
+    /// For a failed run whose record is known: the first gating check that failed.
+    pub first_failure: Option<String>,
+    /// And the seconds of the checks that ran after it.
+    pub after_failure_s: Option<i64>,
 }
 
 /// A merge of `main` into the branch.
@@ -134,6 +149,20 @@ pub struct Pr {
     /// Issues opened while the pull request was worked on and linked from its description or a
     /// reply: deferred findings.
     pub follow_ups: Vec<u64>,
+    /// Its base branch.
+    pub base: String,
+    /// Its merged head commit.
+    pub head: String,
+    /// Its commits.
+    pub shas: BTreeSet<String>,
+    /// The parents of its commits that are not its commits: where it branched, and what it merged.
+    pub outside_parents: BTreeSet<String>,
+    /// The stages it passed.
+    pub stages: Stages,
+    /// The waits the process created.
+    pub waits: Waits,
+    /// The maintainer's events on it: reviews, their comments, and the merge.
+    pub events: Vec<i64>,
 }
 
 fn str_of<'a>(v: &'a Value, key: &str) -> &'a str {
@@ -299,6 +328,11 @@ fn runs(raw: &Raw, shas: &BTreeSet<&str>, branch: &str) -> Vec<Run> {
             .get("conclusion")
             .and_then(Value::as_str)
             .unwrap_or_else(|| str_of(r, "status"));
+        let failure = r
+            .get("id")
+            .and_then(Value::as_u64)
+            .and_then(|id| raw.run_records.get(&id))
+            .and_then(after_first_failure);
         ordered.push((
             started.unwrap_or(0),
             Run {
@@ -306,6 +340,9 @@ fn runs(raw: &Raw, shas: &BTreeSet<&str>, branch: &str) -> Vec<Run> {
                 commit: sha.to_owned(),
                 seconds,
                 result: result.to_owned(),
+                started,
+                after_failure_s: failure.as_ref().map(|f| f.1),
+                first_failure: failure.map(|f| f.0),
             },
         ));
     }
@@ -327,12 +364,41 @@ fn runs(raw: &Raw, shas: &BTreeSet<&str>, branch: &str) -> Vec<Run> {
                 } else {
                     "published".to_owned()
                 },
+                started,
+                ..Run::default()
             },
         ));
     }
     ordered.sort_by_key(|(t, _)| *t);
     out.extend(ordered.into_iter().map(|(_, r)| r));
     out
+}
+
+/// The conclusions of a `verify.yml` run that are failures.
+pub const FAILED: &[&str] = &["failure", "timed_out", "startup_failure"];
+
+/// The first gating check that failed in a record, and the seconds of the checks that ran after
+/// it. The checks ran in the record's order, the macOS ones last. `None` if no gating check failed
+/// (the run failed outside the checks).
+pub fn after_first_failure(record: &Value) -> Option<(String, i64)> {
+    let checks = record.get("checks").and_then(Value::as_array)?;
+    let macos = |c: &&Value| str_of(c, "host") == "macos";
+    let ordered: Vec<&Value> = checks
+        .iter()
+        .filter(|c| !macos(c))
+        .chain(checks.iter().filter(macos))
+        .collect();
+    let first = ordered.iter().position(|c| {
+        c.get("gating").and_then(Value::as_bool).unwrap_or(true) && str_of(c, "result") == "fail"
+    })?;
+    let ms: u64 = ordered
+        .iter()
+        .skip(first + 1)
+        .filter(|c| matches!(str_of(c, "result"), "pass" | "fail"))
+        .filter_map(|c| c.get("duration_ms").and_then(Value::as_u64))
+        .sum();
+    let name = ordered.get(first).map(|c| str_of(c, "name").to_owned())?;
+    Some((name, i64::try_from(ms / 1000).unwrap_or(i64::MAX)))
 }
 
 /// The checks of a record by result.
@@ -383,6 +449,152 @@ fn review_times(raw: &Raw) -> Vec<i64> {
     reviews.chain(inline).chain(conversation).collect()
 }
 
+/// Milliseconds and runs per check group, over the checks that ran in the published records.
+fn check_minutes(raw: &Raw) -> BTreeMap<String, (u64, usize)> {
+    let mut check_ms: BTreeMap<String, (u64, usize)> = BTreeMap::new();
+    for record in raw.records.values() {
+        for c in record
+            .get("checks")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+        {
+            if matches!(str_of(c, "result"), "pass" | "fail") {
+                let ms = c.get("duration_ms").and_then(Value::as_u64).unwrap_or(0);
+                let e = check_ms
+                    .entry(group(str_of(c, "name")).to_owned())
+                    .or_default();
+                e.0 += ms;
+                e.1 += 1;
+            }
+        }
+    }
+    check_ms
+}
+
+/// The commits' dates (`fallback` when one is missing) and whether each is a merge.
+fn commit_list(raw: &Raw, fallback: i64) -> Vec<Commit> {
+    let date = |c: &Value, who: &str| {
+        c.get("commit")
+            .and_then(|c| c.get(who))
+            .and_then(|a| time_of(a, "date"))
+            .unwrap_or(fallback)
+    };
+    raw.commits
+        .iter()
+        .map(|c| Commit {
+            authored: date(c, "author"),
+            committed: date(c, "committer"),
+            merge: c.get("parents").and_then(Value::as_array).map(Vec::len) > Some(1),
+        })
+        .collect()
+}
+
+/// The parents of the commits that are not among them.
+fn outside_parents(raw: &Raw, shas: &BTreeSet<&str>) -> BTreeSet<String> {
+    raw.commits
+        .iter()
+        .filter_map(|c| c.get("parents").and_then(Value::as_array))
+        .flatten()
+        .map(|p| str_of(p, "sha"))
+        .filter(|p| !shas.contains(p))
+        .map(str::to_owned)
+        .collect()
+}
+
+/// The stages of a merged pull request, and the maintainer's events on it.
+fn timeline(
+    raw: &Raw,
+    commits: &[Commit],
+    first_commit: i64,
+    opened: i64,
+    merged: i64,
+    head: &str,
+) -> (Stages, Vec<i64>) {
+    let finished = |r: &Value| time_of(r, "finished");
+    let reviews = review_times(raw);
+    // Inline comments are review items; a decision is given in the conversation.
+    let comments: Vec<i64> = raw
+        .issue_comments
+        .iter()
+        .filter(|c| stages::is_maintainer_comment(c, &raw.maintainer))
+        .filter_map(|c| time_of(c, "created_at"))
+        .collect();
+    let recorded = raw
+        .commits
+        .iter()
+        .filter(|c| raw.decision_commits.contains(str_of(c, "sha")))
+        .filter_map(|c| {
+            c.get("commit")?
+                .get("committer")
+                .and_then(|a| time_of(a, "date"))
+        });
+    let decisions: Vec<i64> = comments
+        .iter()
+        .copied()
+        .chain(recorded)
+        .filter(|t| *t <= merged)
+        .collect();
+    let approved = raw
+        .reviews
+        .iter()
+        .filter(|r| str_of(r, "state") == "APPROVED" && !str_of(r, "body").contains(MARKER))
+        .filter_map(|r| time_of(r, "submitted_at"))
+        .min();
+    let words: Vec<i64> = reviews.iter().chain(&decisions).copied().collect();
+    let work: Vec<i64> = commits
+        .iter()
+        .filter(|c| !c.merge)
+        .map(|c| c.authored)
+        .collect();
+    let stages = Stages {
+        first_commit,
+        opened,
+        first_pass: raw.records.values().filter_map(finished).min(),
+        first_review: reviews.iter().copied().min(),
+        last_review: reviews.iter().copied().filter(|t| *t <= merged).max(),
+        first_decision: decisions.iter().copied().min(),
+        last_decision: decisions.iter().copied().max(),
+        approval: stages::approval(approved, &words, &work, merged),
+        final_pass: raw.records.get(head).and_then(finished),
+        merged,
+    };
+    let mut events: Vec<i64> = reviews.into_iter().chain(comments).collect();
+    events.push(merged);
+    (stages, events)
+}
+
+/// The process-created waits of a pull request: the work after its approval (unless that was the
+/// merge), the work from its first maintainer decision to the approval, and its failed and
+/// cancelled runs.
+fn waits_of(stages: &Stages, commits: &[Commit], runs: &[Run]) -> Waits {
+    let approval = stages.approval;
+    let by_merge = approval.kind == ApprovalKind::Merge;
+    let after_approval = if by_merge {
+        waits::Work::default()
+    } else {
+        waits::work_in(commits, runs, approval.at, stages.merged)
+    };
+    let rework = stages
+        .first_decision
+        .map(|d| waits::work_in(commits, runs, d, approval.at))
+        .unwrap_or_default();
+    Waits {
+        after_approval,
+        rework,
+        failed: runs
+            .iter()
+            .filter(|r| FAILED.contains(&r.result.as_str()))
+            .cloned()
+            .collect(),
+        cancelled: runs
+            .iter()
+            .filter(|r| r.result == "cancelled")
+            .cloned()
+            .collect(),
+    }
+}
+
 /// Computes the metrics of one merged pull request.
 pub fn compute(raw: &Raw) -> Result<Pr, String> {
     let pull = &raw.pull;
@@ -412,24 +624,7 @@ pub fn compute(raw: &Raw) -> Result<Pr, String> {
             .entry(area(str_of(f, "filename")).to_owned())
             .or_default() += 1;
     }
-    let mut check_ms: BTreeMap<String, (u64, usize)> = BTreeMap::new();
-    for record in raw.records.values() {
-        for c in record
-            .get("checks")
-            .and_then(Value::as_array)
-            .into_iter()
-            .flatten()
-        {
-            if matches!(str_of(c, "result"), "pass" | "fail") {
-                let ms = c.get("duration_ms").and_then(Value::as_u64).unwrap_or(0);
-                let e = check_ms
-                    .entry(group(str_of(c, "name")).to_owned())
-                    .or_default();
-                e.0 += ms;
-                e.1 += 1;
-            }
-        }
-    }
+    let check_ms = check_minutes(raw);
     let statuses = raw
         .statuses
         .values()
@@ -455,10 +650,20 @@ pub fn compute(raw: &Raw) -> Result<Pr, String> {
             })
         })
         .collect();
+    let runs = runs(raw, &shas, &branch);
+    let commits = commit_list(raw, opened);
+    let (stages, events) = timeline(raw, &commits, first_commit, opened, merged, head);
     Ok(Pr {
         number,
         title: str_of(pull, "title").to_owned(),
-        runs: runs(raw, &shas, &branch),
+        waits: waits_of(&stages, &commits, &runs),
+        stages,
+        events,
+        base: pull.get("base").map_or("", |b| str_of(b, "ref")).to_owned(),
+        head: head.to_owned(),
+        shas: shas.iter().map(|s| (*s).to_owned()).collect(),
+        outside_parents: outside_parents(raw, &shas),
+        runs,
         branch,
         opened,
         merged,
@@ -512,8 +717,39 @@ impl Pr {
             .map(|f| !f.skipped.is_empty() || !f.reused.is_empty())
     }
 
-    /// The JSON form, for `--format json`.
-    pub fn to_json(&self) -> Value {
+    /// The JSON form of its stages: each stage's time, the gaps between them, and the named
+    /// intervals in raw and in the maintainer's active time.
+    pub fn stages_json(&self, activity: &stages::Activity) -> Value {
+        let at = |t: i64| crate::verify::utc(u64::try_from(t).unwrap_or(0));
+        let s = &self.stages;
+        let points: serde_json::Map<String, Value> = s
+            .points()
+            .iter()
+            .map(|(n, t)| (n.replace(' ', "_"), json!(t.map(at))))
+            .collect();
+        let intervals: Vec<Value> = stages::INTERVALS
+            .iter()
+            .filter_map(|(from, to, label)| {
+                let (a, b) = s.between(from, to)?;
+                Some(json!({
+                    "from": from, "to": to, "label": label,
+                    "raw_s": b - a, "active_s": activity.active(a, b),
+                }))
+            })
+            .collect();
+        json!({
+            "at": points,
+            "approval": {"at": at(s.approval.at), "kind": s.approval.kind.name()},
+            "first_decision": s.first_decision.map(at),
+            "last_review": s.last_review.map(at),
+            "gaps_s": s.gaps().iter().map(|(n, g)| json!({"to": n, "seconds": g}))
+                .collect::<Vec<_>>(),
+            "intervals": intervals,
+        })
+    }
+
+    /// The JSON form, for `--format json`; active times are read from `activity`.
+    pub fn to_json(&self, activity: &stages::Activity) -> Value {
         let at = |t: i64| crate::verify::utc(u64::try_from(t).unwrap_or(0));
         json!({
             "number": self.number,
@@ -559,6 +795,8 @@ impl Pr {
                 "fix_commits_after_first_review": self.fix_commits,
             },
             "follow_ups": self.follow_ups,
+            "stages": self.stages_json(activity),
+            "waits": self.waits.to_json(),
         })
     }
 }
@@ -673,7 +911,44 @@ pub mod tests {
                 (72, json!({"created_at": "2026-10-21T15:20:00Z"})),
             ]),
             conflicts: BTreeMap::from([("d".to_owned(), vec!["docs/plan.md".to_owned()])]),
+            maintainer: "me".to_owned(),
+            ..Raw::default()
         }
+    }
+
+    /// The fixture with a maintainer decision (a comment at 13:52, recorded by commit e at
+    /// 13:54:12) and a failed run of c whose record names its first gating failure.
+    pub fn decided() -> Raw {
+        let mut raw = fixture();
+        raw.issue_comments.push(json!({
+            "user": {"login": "me"}, "created_at": "2026-10-21T13:52:00Z",
+            "body": "agree with the recommendations",
+        }));
+        raw.decision_commits.insert("e".to_owned());
+        raw.runs.push(json!({
+            "id": 898, "head_branch": "m2/wp0b", "head_sha": "c", "status": "completed",
+            "conclusion": "failure", "run_started_at": "2026-10-21T12:20:00Z",
+            "updated_at": "2026-10-21T12:40:00Z",
+        }));
+        raw.run_records.insert(
+            898,
+            json!({"checks": [
+                {"name": "fmt", "host": "container", "gating": true, "result": "pass",
+                 "duration_ms": 1_000},
+                // A macOS check runs after the container's, whatever its place in the record.
+                {"name": "test-macos", "host": "macos", "gating": true, "result": "pass",
+                 "duration_ms": 60_000},
+                {"name": "header", "host": "container", "gating": true, "result": "fail",
+                 "duration_ms": 300},
+                {"name": "clippy", "host": "container", "gating": true, "result": "pass",
+                 "duration_ms": 120_000},
+                {"name": "kani", "host": "container", "gating": false, "result": "fail",
+                 "duration_ms": 5_000},
+                {"name": "spec", "host": "container", "gating": true, "result": "not-run",
+                 "duration_ms": 0},
+            ]}),
+        );
+        raw
     }
 
     // req: VER-063
@@ -780,11 +1055,106 @@ pub mod tests {
             candidate_references(&fixture()),
             BTreeSet::from([64, 68, 69, 71, 72])
         );
-        let j = pr.to_json();
+        let j = pr.to_json(&stages::Activity::default());
         assert_eq!(j["cycle"]["open_to_merge_s"], 11_775);
         assert_eq!(j["verify"]["github_runs"], 2);
         assert_eq!(j["merges_from_main"][1]["conflicts"][0], "docs/plan.md");
         assert_eq!(j["review"]["first_review_after_s"], 6_536);
+    }
+
+    // req: VER-063
+    #[test]
+    fn stages_approval_and_waits() {
+        let t = |s: &str| time::parse(s).unwrap();
+        let pr = compute(&decided()).unwrap();
+        let s = &pr.stages;
+        assert_eq!(s.first_commit, t("2026-10-21T11:51:49Z"));
+        assert_eq!(s.opened, t("2026-10-21T11:57:07Z"));
+        // The local record of c finished first; the GitHub record of the head e last.
+        assert_eq!(s.first_pass, Some(t("2026-10-21T12:10:00Z")));
+        assert_eq!(s.final_pass, Some(t("2026-10-21T15:09:00Z")));
+        // Reviews: the review and the inline finding.
+        assert_eq!(s.first_review, Some(t("2026-10-21T13:46:03Z")));
+        assert_eq!(s.last_review, Some(t("2026-10-21T13:47:00Z")));
+        // Decisions: the maintainer's comment (not the agent's reply or the inline finding), and
+        // the commit that recorded it.
+        assert_eq!(s.first_decision, Some(t("2026-10-21T13:52:00Z")));
+        assert_eq!(s.last_decision, Some(t("2026-10-21T13:54:12Z")));
+        // No commit was authored after the last decision: it is the approval.
+        assert_eq!(
+            (s.approval.at, s.approval.kind),
+            (t("2026-10-21T13:54:12Z"), ApprovalKind::LastWord)
+        );
+        // After it: the run of e (14:57:36, 15 min 17 s), no merge, no commit.
+        let w = &pr.waits;
+        assert_eq!(
+            w.after_approval,
+            waits::Work {
+                commits: 0,
+                merges: 0,
+                runs: 1,
+                verify_s: 917
+            }
+        );
+        // From the decision to the approval: commit e.
+        assert_eq!(
+            (w.rework.commits, w.rework.merges, w.rework.runs),
+            (1, 0, 0)
+        );
+        // The failed run of c: header failed first; clippy, kani, and test-macos ran after it.
+        assert_eq!(w.failed.len(), 1);
+        assert_eq!(w.failed[0].first_failure.as_deref(), Some("header"));
+        assert_eq!(w.failed[0].after_failure_s, Some(185));
+        assert_eq!(w.failed[0].seconds, Some(1_200));
+        assert_eq!(w.cancelled.len(), 1);
+        assert_eq!(w.cancelled_s(), 240);
+        // Maintainer events: the two reviews, the comment, the merge.
+        assert_eq!(pr.events.len(), 4);
+        // Dependencies are read from the commits and their outside parents.
+        assert_eq!(pr.head, "e");
+        assert_eq!(
+            pr.outside_parents,
+            BTreeSet::from(["base", "m1", "m2"].map(str::to_owned))
+        );
+        // The JSON: stages and intervals, raw and active.
+        let act = stages::Activity::new(&pr.events, stages::ACTIVE_WINDOW);
+        let j = pr.to_json(&act);
+        assert_eq!(j["stages"]["approval"]["kind"], "last word");
+        assert_eq!(j["stages"]["at"]["first_pass"], "2026-10-21T12:10:00Z");
+        let wait = &j["stages"]["intervals"][2];
+        assert_eq!(wait["label"], "waiting for the first review");
+        assert_eq!(wait["raw_s"], 6_536);
+        // Opened 11:57:07, reviewed 13:46:03: active only from 13:16:03, 30 min before it.
+        assert_eq!(wait["active_s"], 1_800);
+        assert_eq!(j["waits"]["failed_runs"][0]["after_failure_s"], 185);
+        assert_eq!(j["waits"]["after_approval"]["runs"], 1);
+        // No gating failure, or no checks: nothing to say.
+        assert_eq!(after_first_failure(&json!({"checks": []})), None);
+        assert_eq!(after_first_failure(&json!({})), None);
+    }
+
+    // req: VER-063
+    #[test]
+    fn approval_by_merge_when_work_followed_the_last_word() {
+        let mut raw = decided();
+        // A fix authored after the decision was recorded.
+        raw.commits
+            .push(commit("f", &["e"], "2026-10-21T14:30:00Z"));
+        raw.pull["head"]["sha"] = json!("f");
+        let pr = compute(&raw).unwrap();
+        assert_eq!(pr.stages.approval.kind, ApprovalKind::Merge);
+        assert_eq!(pr.stages.approval.at, pr.merged);
+        assert_eq!(pr.stages.final_pass, None);
+        // Nothing after an approval by merge; the rework runs to the merge.
+        assert!(pr.waits.after_approval.is_empty());
+        assert_eq!((pr.waits.rework.commits, pr.waits.rework.runs), (2, 1));
+        // An APPROVED review is the approval.
+        raw.reviews
+            .push(json!({"user": {"login": "you"}, "state": "APPROVED",
+            "submitted_at": "2026-10-21T14:40:00Z", "body": ""}));
+        let pr = compute(&raw).unwrap();
+        assert_eq!(pr.stages.approval.kind, ApprovalKind::Review);
+        assert_eq!(pr.waits.after_approval.runs, 1);
     }
 
     // req: VER-063
