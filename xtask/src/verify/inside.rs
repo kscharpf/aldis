@@ -9,9 +9,9 @@ use std::process::Command;
 
 use serde_json::{Value, json};
 
-use super::checks::{self, Host};
+use super::checks::{self, Check, Host};
 use super::record::{Outcome, canonical};
-use super::{Options, outcome, run_check, skipped};
+use super::{Options, outcome, run_check, run_in_order};
 use crate::repo;
 
 /// The tools whose versions every record lists (VER-057): name and command.
@@ -90,7 +90,8 @@ fn packages() -> Result<BTreeMap<String, String>, String> {
         .collect())
 }
 
-/// Runs every container check selected by `opts`; returns the number of gating failures.
+/// Runs every container check selected by `opts`, in run order, stopping at the first gating
+/// failure with `--fail-fast` (`super::run_in_order`); returns the number of gating failures.
 pub fn run(out: &Path, opts: &Options) -> Result<usize, String> {
     if std::env::var_os("ALDIS_VERIFY_INSIDE").is_none() {
         return Err(
@@ -101,22 +102,26 @@ pub fn run(out: &Path, opts: &Options) -> Result<usize, String> {
     let root = repo::root();
     let logs = out.join("logs");
     std::fs::create_dir_all(&logs).map_err(|e| format!("{}: {e}", logs.display()))?;
-    let mut results = Vec::new();
-    let mut failed = 0;
-    for check in checks::all().iter().filter(|c| c.host != Host::MacOs) {
-        let result = if let Some(r) = skipped(check, opts) {
-            r
-        } else if check.host == Host::ContainerX64 && std::env::consts::ARCH != "x86_64" {
-            outcome(check, Outcome::NotRun, Some("needs an x86_64 host"))
-        } else {
-            let temp = Path::new("/tmp/verify").join(&check.name);
-            run_check(check, &root, &temp, &logs, &[])?
-        };
-        if check.gating && result.get("result").and_then(Value::as_str) == Some("fail") {
-            failed += 1;
+    let order: Vec<Check> = checks::run_order()
+        .into_iter()
+        .filter(|c| c.host != Host::MacOs)
+        .collect();
+    let (results, _) = run_in_order(&order, opts, None, |check| {
+        if check.host == Host::ContainerX64 && std::env::consts::ARCH != "x86_64" {
+            return Ok(outcome(
+                check,
+                Outcome::NotRun,
+                Some("needs an x86_64 host"),
+            ));
         }
-        results.push(result);
-    }
+        let temp = Path::new("/tmp/verify").join(&check.name);
+        run_check(check, &root, &temp, &logs, &[])
+    })?;
+    let failed = order
+        .iter()
+        .zip(&results)
+        .filter(|(c, r)| c.gating && r.get("result").and_then(Value::as_str) == Some("fail"))
+        .count();
     let tools: BTreeMap<&str, String> = tool_commands()?
         .into_iter()
         .map(|(name, cmd)| (name, first_line(&cmd, &root)))

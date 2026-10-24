@@ -32,7 +32,7 @@ Every maintainer decision gets a line in the [decision log](docs/process/decisio
 
 ## Independent review
 
-A reviewer of a pull request does **not** re-run the verification checks: `cargo build`, `cargo check`, `cargo test`, `cargo clippy`, `cargo fmt`, `cargo xtask ci`, coverage, the exerciser, fuzzing, or `cargo xtask verify`. They are the merge gate's job (VER-056…VER-058), and the gate already ran them on the head commit. Read the evidence instead: `cargo xtask verify check <head>` re-checks the published record, and a check that does not gate (`kani`, `cpp-leon3`, `rust-sparc-leon3`) is read from the record, not assumed to pass.
+A reviewer of a pull request does **not** re-run the verification checks: `cargo build`, `cargo check`, `cargo test`, `cargo clippy`, `cargo fmt`, `cargo xtask ci`, coverage, the exerciser, fuzzing, or `cargo xtask verify`. They are the merge gate's job (VER-056…VER-058), and the gate already ran them on the head commit. Read the evidence instead: `cargo xtask verify check <head>` re-checks the published record, and a check that does not gate (`cpp-leon3`, `rust-sparc-leon3`) is read from the record, not assumed to pass. `kani` is nightly-only: a pull request's record shows it as not run ("nightly only (VER-059)"), and its results are in the nightly run on `main`, whose failure opens the nightly issue.
 
 Spend the review on what no check covers: the reading of the Blue Book behind each decision (cite the clause), the requirements and whether the tests and vectors really cover them, the soundness of every `unsafe` block, the shape of the public API and C ABI, and the decisions and judgement calls the pull request lists. Read every suppression the change adds, because the gate passes *because of* it: each `#[expect(…, reason = "…")]` (RS-016), `// NOLINT(<check>): <reason>` (CPP-042), entry of `coverage-waivers.toml` (VER-024), and mutant triaged as equivalent in [mutants-triage.md](docs/verification/mutants-triage.md) (VER-025). Check that the reason is true and the region is the smallest one; a reason that does not hold is a finding. Report findings as [decision-rights.md](docs/process/decision-rights.md) §2.6 describes, each with the file and line and why it matters; to show a defect, a failing test or vector case is the clearest form.
 
@@ -54,8 +54,8 @@ The toolchain is pinned to Rust **1.99.1** in `rust-toolchain.toml`. Do not chan
 
 ```sh
 git push                            # the commit must be on GitHub before its status can be set
-cargo xtask verify --publish        # every check, in the pinned image; then the git note and status aldis/verify
-cargo xtask verify check            # re-check the published record of HEAD
+cargo xtask verify --publish        # every check, in the pinned image, stopping at the first failure; then the git note and status aldis/verify
+cargo xtask verify check            # re-check the published record of HEAD; it fails while HEAD lacks the tip of main
 ```
 
 If you cannot run it locally, start the same run on a GitHub-hosted runner instead (VER-060). It takes 20 to 30 minutes when it has to build the image, and less when a workflow has already pushed the image for the same pins to `ghcr.io/kscharpf/aldis-verify` (VER-060). It publishes the same record and status, and names the run they came from:
@@ -66,7 +66,7 @@ gh workflow run verify.yml --ref <branch>   # or "Run workflow" on the Actions t
 gh run watch                                # then: cargo xtask verify check
 ```
 
-`cargo xtask verify` needs podman or Docker Engine with about 20 GB of free disk and 6 GB of memory for the engine's VM (`podman machine set --memory 6144`). The first run builds the image (several GB of downloads). A podman VM keeps the disk space the build frees until it is trimmed: run `podman machine ssh sudo fstrim -av` after the build (it returned about 20 GB on macOS). It refuses a dirty working tree, runs every check in a fresh checkout of HEAD, and writes `target/verify/<commit>/record.json` and one log per check. `cargo xtask verify list` names the checks, and `--only <check>,...` runs some of them while you work; such a record never passes the gate. Runs on one machine share the engine's cache volume and take turns: a run started while another is in progress waits for it to finish. A record is tied to the commit's tree, so any new commit, including a merge from `main`, needs a new run.
+`cargo xtask verify` needs podman or Docker Engine with about 20 GB of free disk and 6 GB of memory for the engine's VM (`podman machine set --memory 6144`). The first run builds the image (several GB of downloads). A podman VM keeps the disk space the build frees until it is trimmed: run `podman machine ssh sudo fstrim -av` after the build (it returned about 20 GB on macOS). It refuses a dirty working tree, runs every check in a fresh checkout of HEAD, and writes `target/verify/<commit>/record.json` and one log per check. `cargo xtask verify list` names the checks, and `--only <check>,...` runs some of them while you work; such a record never passes the gate. The checks run quickest first. With `--publish` the run stops at the first gating check that fails, since it could not publish, and records the rest as not run (`--no-fail-fast` runs them all; `--fail-fast` stops a run without `--publish`). When the input rule skips or reuses every gating check, the run starts no container and pulls or builds no image. If `main` moves during a passing run, `--publish` still publishes the record, which a later commit can reuse, but sets no `aldis/verify` status: merge `main` and verify again. The nightly-only check `kani` runs only with `--all`, as the nightly run does (VER-059). Runs on one machine share the engine's cache volume and take turns: a run started while another is in progress waits for it to finish. A record is tied to the commit's tree, so any new commit, including a merge from `main`, needs a new run.
 
 While you work, run these. All must pass with **zero warnings**:
 
@@ -75,7 +75,7 @@ cargo fmt --all --check
 cargo clippy --workspace --all-features --all-targets
 cargo test --workspace --all-features
 cargo clippy -p aldis --no-default-features --features full --target thumbv7em-none-eabihf
-cargo xtask ci        # spec lint, links, decision log, layering, registrations (consistency), vectors, schema, field codes, M0 and M1 traces (strict), M2 trace
+cargo xtask ci        # spec lint, links, decision log, layering, registrations (consistency), vectors, schema, generated files (field codes, C header), traces, changelog, C++ opt-outs
 ```
 
 When you change `aldis-core`, also run:
@@ -88,7 +88,7 @@ cargo clippy --manifest-path fuzz/Cargo.toml --all-targets               # fuzz 
 
 A failed exerciser link with `undefined symbol: aldis_panic_is_unreachable` means a panic path is reachable in `aldis-core`. Remove it; do not work around the check. Mark new test modules `#[cfg_attr(coverage_nightly, coverage(off))]`.
 
-When you change `aldis-ffi` (the C ABI) or a crate it wraps, regenerate and check the header with the pinned `cbindgen` (`cargo install --locked cbindgen@0.29.4`; [crates/aldis-ffi/README.md](crates/aldis-ffi/README.md)), and never edit `include/aldis/aldis.h` by hand:
+`cargo xtask ci` checks every generated file (`fields`, `header`), so it needs the pinned `cbindgen` (`cargo install --locked cbindgen@0.29.4`) in any work package; without it, `ci` reports the missing tool as a problem. When you change `aldis-ffi` (the C ABI) or a crate it wraps, regenerate and check the header with it ([crates/aldis-ffi/README.md](crates/aldis-ffi/README.md)), and never edit `include/aldis/aldis.h` by hand:
 
 ```sh
 cargo xtask header --write && cargo xtask header   # CABI-002, CABI-003

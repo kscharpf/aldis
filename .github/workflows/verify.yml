@@ -5,12 +5,14 @@
 #
 # It runs `cargo xtask verify --publish` on the branch's head, as a contributor would: a passing
 # record is published under refs/notes/verify and sets the commit status aldis/verify, linked to
-# this run (VER-057, VER-058). The logs are this run's artefact.
+# this run (VER-057, VER-058); if main moved during the run, the record is published without the
+# status, so that the merge from main can reuse it. The logs are this run's artefact.
 #
 # The verification image comes from ghcr.io/kscharpf/aldis-verify when a workflow of this
 # repository has pushed it for the same image inputs (tag `<input hash>-amd64`), and its labels
-# hold; otherwise it is built here and pushed (VER-060). The record names the image's source and
-# digest. The first push creates the package as private: make it public once, under the
+# hold; otherwise it is built here and pushed (`--push-image`, VER-060). The record names the
+# image's source and digest, or, when no gating check needed the container, that no image was
+# used. The first push creates the package as private: make it public once, under the
 # package's settings (Package settings, Danger Zone, Change visibility), and check that
 # "Manage Actions access" gives kscharpf/aldis the Write role.
 name: verify
@@ -61,13 +63,22 @@ jobs:
           ACTOR: ${{ github.actor }}
           GH_TOKEN: ${{ github.token }}
         run: printf '%s' "$GH_TOKEN" | docker login ghcr.io -u "$ACTOR" --password-stdin
-      - name: The verification image, pulled from ghcr.io or built here and pushed (VER-060)
-        if: github.repository == 'kscharpf/aldis'
-        run: cargo xtask verify image --push "$ALDIS_VERIFY_PULL"
-      - name: Every check; publish a passing record
+      # One step decides whether the run needs the image and gets it: pulled from ghcr.io, or
+      # built here and pushed (VER-060), before any check runs. When the input rule skips or
+      # reuses every gating check, no image is pulled or built (VER-056). The checks run
+      # quickest first, and the run stops at the first gating check that fails, since such a
+      # run cannot publish.
+      - name: Every check that the change needs; publish a passing record
         env:
           GH_TOKEN: ${{ github.token }}
-        run: cargo xtask verify --publish
+          # Only this repository's workflows push to the registry (VER-060).
+          PUSH: ${{ github.repository == 'kscharpf/aldis' && 'ghcr.io/kscharpf/aldis-verify' || '' }}
+        run: |
+          if [ -n "$PUSH" ]; then
+            cargo xtask verify --publish --push-image "$PUSH"
+          else
+            cargo xtask verify --publish
+          fi
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:

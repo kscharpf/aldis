@@ -5,6 +5,9 @@
 //! Each check is a Bash script run with `-euo pipefail` from the root of the checkout, with
 //! `RUNNER_TEMP` set to an empty directory of its own.
 
+/// The reason recorded for a nightly-only check ([`Check::nightly`]) in a run without `--all`.
+pub const NIGHTLY_ONLY: &str = "nightly only (VER-059)";
+
 /// Bare-metal Rust targets of the matrix (docs/06-verification.md §4).
 const RUST_BARE_METAL: &[&str] = &[
     "thumbv7em-none-eabihf",
@@ -235,17 +238,36 @@ pub struct Check {
     /// A failure fails the run. Only the LEON3 checks, Rust and C++ (OI-08), and the Kani proofs
     /// (OI-42) are reported without gating.
     pub gating: bool,
+    /// A nightly-only check: it runs only in a run with `--all`, which is what the nightly
+    /// verification run uses (VER-059), and every other run records it as not run with
+    /// [`NIGHTLY_ONLY`]. It is never skipped, reused, or a source (VER-056). Only `kani` (OI-42,
+    /// maintainer decision 2026-10-24).
+    pub nightly: bool,
+    /// Its typical duration in seconds, which orders the run only ([`run_order`]): the median
+    /// of its durations in the published records of the GitHub-hosted runs of VER-060
+    /// (`x86_64`, an empty build cache) from 2026-10-19 to 2026-10-24, rounded; for
+    /// `test-macos`, which runs on macOS only, the median of the local runs. A value that has
+    /// gone stale changes the order in which the checks run, never a result.
+    pub secs: u16,
     /// The Bash script.
     pub script: String,
 }
 
-fn check(name: impl Into<String>, host: Host, cpp: bool, script: impl Into<String>) -> Check {
+fn check(
+    name: impl Into<String>,
+    host: Host,
+    cpp: bool,
+    secs: u16,
+    script: impl Into<String>,
+) -> Check {
     Check {
         name: name.into(),
         host,
         cpp,
         inputs: if cpp { CPP_INPUTS } else { RUST_INPUTS },
         gating: true,
+        nightly: false,
+        secs,
         script: script.into(),
     }
 }
@@ -255,32 +277,44 @@ fn reading(inputs: Inputs, check: Check) -> Check {
     Check { inputs, ..check }
 }
 
-/// Every check, in the order they run.
+/// Every check, in table order: the order of the record and of `verify list`.
 pub fn all() -> Vec<Check> {
     let mut out = rust();
     out.extend(cpp());
     out
 }
 
+/// Every check, in the order a run executes them: the gating checks first, the quickest first
+/// (by [`Check::secs`], ties in table order), then the non-gating ones the same way. A run that
+/// stops at its first gating failure (`--fail-fast`, the default with `--publish`) then stops
+/// as early as it can, and a non-gating check, which never stops a run, never delays a stop.
+/// No check depends on another having run before it: each builds what it needs.
+pub fn run_order() -> Vec<Check> {
+    let mut out = all();
+    out.sort_by_key(|c| (!c.gating, c.secs));
+    out
+}
+
 fn rust() -> Vec<Check> {
     let c = Host::Container;
     let mut out = vec![
-        check("fmt", c, false, FMT),
-        check("clippy", c, false, CLIPPY),
-        reading(RUST_TEST_INPUTS, check("test", c, false, TEST)),
+        check("fmt", c, false, 1, FMT),
+        check("clippy", c, false, 29, CLIPPY),
+        reading(RUST_TEST_INPUTS, check("test", c, false, 18, TEST)),
         reading(
             RUST_TEST_INPUTS,
-            check("test-macos", Host::MacOs, false, TEST),
+            check("test-macos", Host::MacOs, false, 23, TEST),
         ),
         // The alloc and std features are additive (GEN-006).
-        check("features", c, false, "cargo xtask features\n"),
-        reading(FFI_INPUTS, check("header", c, false, HEADER)),
+        check("features", c, false, 37, "cargo xtask features\n"),
+        reading(FFI_INPUTS, check("header", c, false, 7, HEADER)),
     ];
     for t in RUST_BARE_METAL {
         out.push(check(
             format!("no-std-{t}"),
             c,
             false,
+            3,
             format!(
                 "cargo build -p aldis --no-default-features --features full --target {t}\n\
                  cargo clippy -p aldis --no-default-features --features full --target {t}\n\
@@ -292,27 +326,35 @@ fn rust() -> Vec<Check> {
         ));
     }
     out.extend([
-        reading(RUST_TEST_INPUTS, check("big-endian", c, false, BIG_ENDIAN)),
-        check("layers", c, false, LAYERS),
-        check("refapp", c, false, REFAPP),
+        reading(
+            RUST_TEST_INPUTS,
+            check("big-endian", c, false, 63, BIG_ENDIAN),
+        ),
+        check("layers", c, false, 1, LAYERS),
+        check("refapp", c, false, 10, REFAPP),
     ]);
     for t in RUST_BARE_METAL {
-        out.push(check(format!("exerciser-{t}"), c, false, exerciser(t)));
+        out.push(check(format!("exerciser-{t}"), c, false, 10, exerciser(t)));
     }
     out.push(Check {
         gating: false,
-        ..check("rust-sparc-leon3", c, false, RUST_LEON3)
+        ..check("rust-sparc-leon3", c, false, 45, RUST_LEON3)
     });
-    // The Kani proof harnesses (OI-42, docs/verification/formal-proofs.md): reported, not gating.
+    // The Kani proof harnesses (OI-42, docs/verification/formal-proofs.md): reported, not gating,
+    // and run only at night (maintainer decision 2026-10-24).
     out.push(Check {
         gating: false,
-        ..reading(KANI_INPUTS, check("kani", c, false, "cargo xtask kani\n"))
+        nightly: true,
+        ..reading(
+            KANI_INPUTS,
+            check("kani", c, false, 641, "cargo xtask kani\n"),
+        )
     });
     out.extend([
-        check("coverage", c, false, "cargo xtask coverage\n"),
+        check("coverage", c, false, 48, "cargo xtask coverage\n"),
         // Spec lint, links, vectors, traces, and changelog: it reads every part of the tree.
-        reading(Inputs::Everything, check("spec", c, false, SPEC)),
-        check("deny", c, false, DENY),
+        reading(Inputs::Everything, check("spec", c, false, 15, SPEC)),
+        check("deny", c, false, 2, DENY),
     ]);
     out
 }
@@ -384,14 +426,15 @@ timeout 120 cargo +"$nightly" run "${std[@]}" --release --locked --target $t \
 fn cpp() -> Vec<Check> {
     let c = Host::Container;
     let mut out = vec![
-        check("cpp-toolchains", c, true, CPP_TOOLCHAINS),
-        check("cpp-format", c, true, CPP_FORMAT),
+        check("cpp-toolchains", c, true, 2, CPP_TOOLCHAINS),
+        check("cpp-format", c, true, 0, CPP_FORMAT),
     ];
-    for (compiler, cxx) in [("gcc", "g++-14"), ("clang", "clang++")] {
+    for (compiler, cxx, secs) in [("gcc", "g++-14", 32), ("clang", "clang++", 24)] {
         out.push(check(
             format!("cpp-build-{compiler}"),
             c,
             true,
+            secs,
             format!(
                 "cd cpp\n\
                  cmake --preset host-{compiler}\n\
@@ -407,9 +450,9 @@ fn cpp() -> Vec<Check> {
         ));
     }
     out.extend([
-        check("cpp-tidy", c, true, CPP_TIDY),
-        check("cpp-sanitize", c, true, CPP_SANITIZE),
-        check("cpp-big-endian", c, true, CPP_BIG_ENDIAN),
+        check("cpp-tidy", c, true, 90, CPP_TIDY),
+        check("cpp-sanitize", c, true, 26, CPP_SANITIZE),
+        check("cpp-big-endian", c, true, 39, CPP_BIG_ENDIAN),
     ]);
     for target in ["cortex-m4f", "cortex-r5f", "rv32imac"] {
         for compiler in ["gcc", "clang"] {
@@ -417,6 +460,7 @@ fn cpp() -> Vec<Check> {
                 format!("cpp-bare-metal-{target}-{compiler}"),
                 c,
                 true,
+                10,
                 format!(
                     "cd cpp\n\
                      # Header checks; the exerciser, link check, and QEMU join in C0 WP-5.\n\
@@ -428,9 +472,9 @@ fn cpp() -> Vec<Check> {
     }
     out.push(Check {
         gating: false,
-        ..check("cpp-leon3", Host::ContainerX64, true, CPP_LEON3)
+        ..check("cpp-leon3", Host::ContainerX64, true, 1, CPP_LEON3)
     });
-    out.push(check("cpp-layers", c, true, CPP_LAYERS));
+    out.push(check("cpp-layers", c, true, 0, CPP_LAYERS));
     out
 }
 
@@ -637,6 +681,53 @@ mod tests {
             n.chars()
                 .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
         }));
+    }
+
+    // req: VER-056
+    #[test]
+    fn the_run_order_puts_the_quickest_gating_checks_first() {
+        let table = all();
+        let order = run_order();
+        // Every check once.
+        let mut a: Vec<&str> = table.iter().map(|c| c.name.as_str()).collect();
+        let mut b: Vec<&str> = order.iter().map(|c| c.name.as_str()).collect();
+        a.sort_unstable();
+        b.sort_unstable();
+        assert_eq!(a, b);
+        // The gating checks, then the non-gating ones, each by typical duration, ties in table
+        // order.
+        let gating = order.iter().take_while(|c| c.gating).count();
+        assert!(order[gating..].iter().all(|c| !c.gating));
+        assert_eq!(gating, table.iter().filter(|c| c.gating).count());
+        let index = |name: &str| table.iter().position(|c| c.name == name).unwrap();
+        for part in [&order[..gating], &order[gating..]] {
+            for w in part.windows(2) {
+                assert!(
+                    (w[0].secs, index(&w[0].name)) < (w[1].secs, index(&w[1].name)),
+                    "{} before {}",
+                    w[0].name,
+                    w[1].name
+                );
+            }
+        }
+        // The checks that fail in seconds come before the builds; kani is last.
+        let at = |name: &str| order.iter().position(|c| c.name == name).unwrap();
+        for quick in ["fmt", "layers", "deny", "header", "cpp-format"] {
+            for slow in ["clippy", "test", "spec", "coverage", "cpp-tidy"] {
+                assert!(at(quick) < at(slow), "{quick} before {slow}");
+            }
+        }
+        assert_eq!(order.last().map(|c| c.name.as_str()), Some("kani"));
+    }
+
+    // req: VER-056, VER-059
+    #[test]
+    fn only_kani_is_nightly_only_and_it_does_not_gate() {
+        let nightly: Vec<Check> = all().into_iter().filter(|c| c.nightly).collect();
+        assert_eq!(nightly.len(), 1);
+        assert_eq!(nightly[0].name, "kani");
+        assert!(!nightly[0].gating);
+        assert_eq!(nightly[0].host, Host::Container);
     }
 
     // req: VER-056

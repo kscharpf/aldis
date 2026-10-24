@@ -67,6 +67,12 @@ jobs:
         env:
           ALDIS_VERIFY_ENGINE: docker
         run: cargo xtask verify --all
+      # The nightly-only check kani runs only here; it gates no merge, but its failure fails
+      # this job, so that the issue job reports it (OI-42, VER-059). The other non-gating
+      # checks (cpp-leon3, rust-sparc-leon3) stay reported in the record only.
+      - name: The nightly-only checks passed (kani, OI-42, VER-059)
+        if: ${{ !cancelled() }}
+        run: cargo xtask verify nightly
       - name: Push the image built for main (VER-060)
         if: github.ref == 'refs/heads/main' && github.repository == 'kscharpf/aldis'
         env:
