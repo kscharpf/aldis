@@ -79,3 +79,5 @@ One line for each decision the maintainer takes, under the [decision rights](dec
 - 2026-10-23 · plan · chat · Continue the Kani formal-verification spike (OI-42) found uncommitted in a worktree, and open it as a pull request
 - 2026-10-23 · process · #92 · OI-42 (a) as far as a non-gating check: the verify check `kani` runs the Kani harnesses in the verification image, which installs Kani 0.68.0 with its bundle checked against GitHub's asset digest; gating and a verification method stay open
 - 2026-10-24 · process · chat · An independent reviewer does not re-run the merge gate's checks; it reads the published record (`cargo xtask verify check`) and reviews what no check covers (AGENTS.md, Independent review)
+- 2026-10-24 · process · chat · After a PR merges, the coordinator merges main into the next ready PR in the merge order and starts its verify run at once, so the maintainer does not wait on the up-to-date run (VER-058)
+- 2026-10-24 · process · chat · The workflow definitions and the other .github files no check reads become inputs of spec only (VER-056); the xtask module split of the inputs is not adopted
