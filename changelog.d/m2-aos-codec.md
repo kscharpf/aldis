@@ -19,8 +19,8 @@
 - `aldis-testkit`: AOS strategies (feature `strategies-aos`); `aldis-aos` property tests.
 - Fuzz targets `aos_decode` and `aos_roundtrip`; the `aldis-aos` exerciser group covers the frame
   codec and every `aos/` vector.
-- OI-43 (open): whether OID frames on VCID 63 may carry an OCF or SDLS fields; the codec gives them
-  neither, as recommended.
+- OI-43 item 1 (resolved by the maintainer): an OID frame on VCID 63 carries neither an OCF nor
+  SDLS fields.
 
 ### Changed
 - AOS-002, AOS-003, AOS-012, AOS-017: the error kinds and fields of the strict checks are stated,
