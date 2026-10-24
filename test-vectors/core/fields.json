@@ -339,7 +339,7 @@
     {
       "code": 68,
       "name": "frame_len",
-      "kind": "parameter"
+      "kind": "field"
     },
     {
       "code": 69,
@@ -379,6 +379,66 @@
     {
       "code": 76,
       "name": "fsh_len",
+      "kind": "field"
+    },
+    {
+      "code": 77,
+      "name": "control_command_flag",
+      "kind": "field"
+    },
+    {
+      "code": 78,
+      "name": "tc_header_spare",
+      "kind": "field"
+    },
+    {
+      "code": 79,
+      "name": "max_frame_len",
+      "kind": "parameter"
+    },
+    {
+      "code": 80,
+      "name": "segment_header",
+      "kind": "field"
+    },
+    {
+      "code": 81,
+      "name": "control_command",
+      "kind": "field"
+    },
+    {
+      "code": 82,
+      "name": "control_word_type",
+      "kind": "field"
+    },
+    {
+      "code": 83,
+      "name": "clcw_version",
+      "kind": "field"
+    },
+    {
+      "code": 84,
+      "name": "clcw_status",
+      "kind": "field"
+    },
+    {
+      "code": 85,
+      "name": "cop_in_effect",
+      "kind": "field"
+    },
+    {
+      "code": 86,
+      "name": "clcw_spare_14_15",
+      "kind": "field"
+    },
+    {
+      "code": 87,
+      "name": "clcw_spare_23",
+      "kind": "field"
+    },
+    {
+      "code": 88,
+      "name": "farm_b_counter",
       "kind": "field"
     }
   ]

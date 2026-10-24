@@ -31,6 +31,7 @@ pub const CRATES: &[(&str, &[&str])] = &[
     ("aldis-spp", &["", "time"]),
     ("aldis-aos", &[""]),
     ("aldis-tm", &[""]),
+    ("aldis-tc", &[""]),
 ];
 
 /// The features GEN-006 requires to be additive.

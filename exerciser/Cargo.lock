@@ -55,6 +55,7 @@ dependencies = [
  "aldis-epp",
  "aldis-ffi",
  "aldis-spp",
+ "aldis-tc",
  "aldis-testkit",
  "aldis-time",
  "aldis-tm",
