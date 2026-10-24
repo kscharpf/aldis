@@ -3,9 +3,13 @@
 //! for the C++ and binding runners, and the `ALDIS_FIELD_*` constants of the C ABI
 //! (`crates/aldis-ffi/src/field.rs`, CABI-021).
 //!
-//! `cargo xtask fields` checks the catalogue (codes 1 to n in table order, each code and name
-//! used once, every "Used by" entry a codec crate) and that the files match it;
-//! `cargo xtask fields --write` regenerates them.
+//! `cargo xtask fields` checks the catalogue and that the files match it; `cargo xtask fields
+//! --write` regenerates them. The catalogue's rows are in code order, each code and name used
+//! once, every "Used by" entry a codec crate or the owner of a block, and every code in its
+//! owner's block (M2 plan D2, amended 2026-10-24): codes 1 to [`LEGACY_LAST`] keep the numbers
+//! they had before the blocks; a code above them used by one crate that has a block lies in that
+//! block; any other code above them lies in the common block. Within a block the codes run from
+//! its first code without a gap.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
@@ -28,6 +32,16 @@ const USED_BY: [&str; 8] = ["core", "time", "spp", "epp", "tm", "tc", "aos", "us
 
 /// Header of the catalogue table.
 const HEADER: [&str; 6] = ["Code", "Name", "Kind", "Meaning", "Used by", "Defined by"];
+/// Header of the block table.
+const BLOCK_HEADER: [&str; 3] = ["Codes", "Owner", "Reserved by"];
+/// The last code assigned before the blocks: codes 1 to this keep their numbers and lie in no
+/// crate's block (M2 plan D2, amended 2026-10-24).
+const LEGACY_LAST: u16 = 106;
+/// The last code of the common block, which follows the legacy range: the codes of fields that
+/// several crates name, or that a crate without a block names.
+const COMMON_LAST: u16 = 149;
+/// The number of codes in a crate's block, reserved when its milestone plan is accepted.
+const BLOCK_LEN: u16 = 50;
 /// rustfmt's default line width, which the generated module keeps to.
 const MAX_WIDTH: usize = 100;
 
@@ -40,7 +54,44 @@ pub struct Entry {
     name: String,
     kind: FieldKind,
     meaning: String,
+    /// The "Used by" entries.
+    used_by: Vec<String>,
     defined_by: String,
+}
+
+/// Who a block of codes belongs to.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum Owner {
+    /// Codes 1 to [`LEGACY_LAST`], assigned before the blocks.
+    Legacy,
+    /// The common block.
+    Common,
+    /// One crate, by the part of its name after `aldis-`.
+    Crate(String),
+}
+
+/// One row of the block table: a range of codes and its owner.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct Block {
+    first: u16,
+    last: u16,
+    owner: Owner,
+}
+
+impl Block {
+    fn contains(&self, code: u16) -> bool {
+        (self.first..=self.last).contains(&code)
+    }
+
+    /// The block, as problems name it.
+    fn describe(&self) -> String {
+        let (first, last) = (self.first, self.last);
+        match &self.owner {
+            Owner::Legacy => format!("the legacy range {first}–{last}"),
+            Owner::Common => format!("the common block {first}–{last}"),
+            Owner::Crate(name) => format!("the block of `{name}`, {first}–{last}"),
+        }
+    }
 }
 
 impl Entry {
@@ -61,8 +112,135 @@ fn is_display_name(name: &str) -> bool {
             .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')
 }
 
-/// Parses the one catalogue table of `text`; `doc` names the document in problems.
-fn parse(text: &str, doc: &str, problems: &mut Vec<String>) -> Vec<Entry> {
+/// The codes of a block table cell, `first–last` (an en dash, or `-`).
+fn code_range(cell: &str) -> Option<(u16, u16)> {
+    let (first, last) = cell.split_once('–').or_else(|| cell.split_once('-'))?;
+    let (first, last) = (first.trim().parse().ok()?, last.trim().parse().ok()?);
+    (first <= last).then_some((first, last))
+}
+
+/// The owner a block table cell names, or `None` if it is neither `legacy`, `common`, nor a
+/// crate name (lower-case letters and digits) in backticks.
+fn owner(cell: &str) -> Option<Owner> {
+    match cell {
+        "legacy" => Some(Owner::Legacy),
+        "common" => Some(Owner::Common),
+        _ => {
+            let name = cell.strip_prefix('`')?.strip_suffix('`')?;
+            let valid = name.starts_with(|c: char| c.is_ascii_lowercase())
+                && name
+                    .chars()
+                    .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit());
+            valid.then(|| Owner::Crate(name.to_owned()))
+        }
+    }
+}
+
+/// Why `block`, row `index` of the block table, is not where the table's shape puts it: the
+/// legacy range 1 to [`LEGACY_LAST`], the common block to [`COMMON_LAST`], then one block of
+/// [`BLOCK_LEN`] codes per crate, each following the one before, each crate once, and none of
+/// them a codec crate of [`USED_BY`], whose fields keep to the legacy range and the common block.
+fn misshapen(block: &Block, earlier: &[Block]) -> Vec<String> {
+    let fixed = |first, last, owner| Block { first, last, owner };
+    let expected = match earlier.len() {
+        0 => Some(fixed(1, LEGACY_LAST, Owner::Legacy)),
+        1 => Some(fixed(LEGACY_LAST + 1, COMMON_LAST, Owner::Common)),
+        _ => None,
+    };
+    if let Some(want) = expected {
+        return if *block == want {
+            Vec::new()
+        } else {
+            vec![format!("expected {}", want.describe())]
+        };
+    }
+    let Owner::Crate(name) = &block.owner else {
+        return vec![
+            "only the first two rows are the legacy range and the common block".to_owned(),
+        ];
+    };
+    let mut out = Vec::new();
+    let start = earlier.last().map_or(1, |b| b.last.saturating_add(1));
+    if block.first != start || block.last.checked_sub(block.first) != Some(BLOCK_LEN - 1) {
+        out.push(format!(
+            "the block of `{name}` is {}–{}; a crate's block is the next {BLOCK_LEN} codes, \
+             {start}–{}",
+            block.first,
+            block.last,
+            start.saturating_add(BLOCK_LEN - 1)
+        ));
+    }
+    if USED_BY.contains(&name.as_str()) {
+        out.push(format!(
+            "`{name}` is a codec crate of M1 or M2, whose fields keep to the legacy range and \
+             the common block"
+        ));
+    }
+    if earlier.iter().any(|b| b.owner == block.owner) {
+        out.push(format!("`{name}` has a block already"));
+    }
+    out
+}
+
+/// Parses the one block table of `text` and checks its shape ([`misshapen`]); `doc` names the
+/// document in problems.
+fn parse_blocks(text: &str, doc: &str, problems: &mut Vec<String>) -> Vec<Block> {
+    let tables: Vec<md::Table> = md::tables(text)
+        .into_iter()
+        .filter(|t| t.header == BLOCK_HEADER)
+        .collect();
+    let [table] = tables.as_slice() else {
+        problems.push(format!(
+            "{doc}: expected one table of code blocks ({}), found {}",
+            BLOCK_HEADER.join(" | "),
+            tables.len()
+        ));
+        return Vec::new();
+    };
+    let mut blocks: Vec<Block> = Vec::new();
+    for (line, cells) in &table.rows {
+        let at = format!("{doc}:{line}");
+        let [codes, owner_cell, reserved_by] = cells.as_slice() else {
+            problems.push(format!(
+                "{at}: expected {} cells, found {}",
+                BLOCK_HEADER.len(),
+                cells.len()
+            ));
+            continue;
+        };
+        let Some((first, last)) = code_range(codes) else {
+            problems.push(format!(
+                "{at}: codes {codes:?} are not a range `first–last` of 16-bit numbers"
+            ));
+            continue;
+        };
+        let Some(owner) = owner(owner_cell) else {
+            problems.push(format!(
+                "{at}: owner {owner_cell:?} is neither `legacy`, `common`, nor a crate name in \
+                 backticks"
+            ));
+            continue;
+        };
+        if reserved_by.is_empty() {
+            problems.push(format!("{at}: empty Reserved by"));
+        }
+        let block = Block { first, last, owner };
+        for why in misshapen(&block, &blocks) {
+            problems.push(format!("{at}: {why}"));
+        }
+        blocks.push(block);
+    }
+    if blocks.len() < 2 && problems.is_empty() {
+        problems.push(format!(
+            "{doc}: the block table needs the legacy range and the common block"
+        ));
+    }
+    blocks
+}
+
+/// Parses the one catalogue table of `text`; `doc` names the document in problems, and `owners`
+/// the crates with a block, which "Used by" may name besides the codec crates.
+fn parse(text: &str, doc: &str, owners: &[&str], problems: &mut Vec<String>) -> Vec<Entry> {
     let tables: Vec<md::Table> = md::tables(text)
         .into_iter()
         .filter(|t| t.header == HEADER)
@@ -120,12 +298,16 @@ fn parse(text: &str, doc: &str, problems: &mut Vec<String>) -> Vec<Entry> {
                 problems.push(format!("{at}: empty {column}"));
             }
         }
+        let mut users = Vec::new();
         if !used_by.is_empty() {
             for user in used_by.split(',').map(str::trim) {
-                if !USED_BY.contains(&user) {
+                if USED_BY.contains(&user) || owners.contains(&user) {
+                    users.push(user.to_owned());
+                } else {
+                    let known: Vec<&str> = USED_BY.iter().chain(owners).copied().collect();
                     problems.push(format!(
                         "{at}: \"Used by\" names {user:?}, not one of {}",
-                        USED_BY.join(", ")
+                        known.join(", ")
                     ));
                 }
             }
@@ -136,43 +318,116 @@ fn parse(text: &str, doc: &str, problems: &mut Vec<String>) -> Vec<Entry> {
             name,
             kind,
             meaning: meaning.clone(),
+            used_by: users,
             defined_by: defined_by.clone(),
         });
     }
     entries
 }
 
-/// Checks that the codes run from 1 in table order with no gap, and that no code or name is
-/// used twice (API-082); `doc` names the document in problems.
-fn check(entries: &[Entry], doc: &str, problems: &mut Vec<String>) {
+/// Why a code above the legacy range does not belong in `block`, given the crates that use it:
+/// a crate's block holds codes its crate uses, and the common block holds no code that one crate
+/// with a block uses alone. A code never moves, so a code of a crate's block stays there when
+/// other crates start to use its field (API-082).
+fn misplaced(users: &[String], block: &Block, blocks: &[Block]) -> Option<String> {
+    match &block.owner {
+        Owner::Legacy => None,
+        Owner::Common => {
+            let [only] = users else { return None };
+            let own = blocks
+                .iter()
+                .find(|b| b.owner == Owner::Crate(only.clone()))?;
+            Some(format!(
+                "is used by `{only}` alone, so it takes the next code of {}, not of the common \
+                 block",
+                own.describe()
+            ))
+        }
+        Owner::Crate(name) => (!users.contains(name)).then(|| {
+            format!(
+                "lies in {}, but `{name}` does not use it: a field of one crate with a block \
+                 takes a code of that block, and any other field one of the common block {}–{}",
+                block.describe(),
+                LEGACY_LAST + 1,
+                COMMON_LAST
+            )
+        }),
+    }
+}
+
+/// Checks that the rows are in code order, that no code or name is used twice, and that each
+/// code is the next free code of its owner's block (API-082; M2 plan D2, amended 2026-10-24);
+/// `doc` names the document in problems.
+fn check(entries: &[Entry], blocks: &[Block], doc: &str, problems: &mut Vec<String>) {
     let mut codes: BTreeMap<u16, usize> = BTreeMap::new();
     let mut names: BTreeMap<&str, usize> = BTreeMap::new();
-    for (expected, e) in (1_usize..).zip(entries) {
+    let mut next: Vec<u16> = blocks.iter().map(|b| b.first).collect();
+    let mut highest: Option<u16> = None;
+    for e in entries {
         let at = format!("{doc}:{}", e.line);
-        if let Some(first) = codes.insert(e.code, e.line) {
-            problems.push(format!(
-                "{at}: code {} is used twice (also line {first})",
-                e.code
-            ));
-        } else if usize::from(e.code) != expected {
-            problems.push(format!(
-                "{at}: code {} out of order: codes run from 1 in table order, so this row is {expected}",
-                e.code
-            ));
-        }
         if let Some(first) = names.insert(&e.name, e.line) {
             problems.push(format!(
                 "{at}: name `{}` is used twice (also line {first})",
                 e.name
             ));
         }
+        if let Some(first) = codes.insert(e.code, e.line) {
+            problems.push(format!(
+                "{at}: code {} is used twice (also line {first})",
+                e.code
+            ));
+            continue;
+        }
+        if let Some(h) = highest.filter(|h| e.code < *h) {
+            problems.push(format!(
+                "{at}: code {} out of order: the rows are in code order, and an earlier row has \
+                 {h}",
+                e.code
+            ));
+        }
+        highest = highest.max(Some(e.code));
+        if e.code == 0 {
+            problems.push(format!(
+                "{at}: code 0 is never assigned: it means no field (CABI-021)"
+            ));
+            continue;
+        }
+        let Some((i, block)) = blocks.iter().enumerate().find(|(_, b)| b.contains(e.code)) else {
+            problems.push(format!(
+                "{at}: code {} lies in no block; a new crate reserves a block of {BLOCK_LEN} codes \
+                 when its milestone plan is accepted",
+                e.code
+            ));
+            continue;
+        };
+        if let Some(n) = next.get_mut(i) {
+            if e.code > *n {
+                problems.push(format!(
+                    "{at}: code {} leaves a gap: the next free code of {} is {n}",
+                    e.code,
+                    block.describe()
+                ));
+            }
+            *n = (*n).max(e.code.saturating_add(1));
+        }
+        if let Some(why) = misplaced(&e.used_by, block, blocks) {
+            problems.push(format!("{at}: code {} {why}", e.code));
+        }
     }
 }
 
 /// Parses and checks the catalogue of `text`.
 fn catalogue(text: &str, doc: &str, problems: &mut Vec<String>) -> Vec<Entry> {
-    let entries = parse(text, doc, problems);
-    check(&entries, doc, problems);
+    let blocks = parse_blocks(text, doc, problems);
+    let owners: Vec<&str> = blocks
+        .iter()
+        .filter_map(|b| match &b.owner {
+            Owner::Crate(name) => Some(name.as_str()),
+            Owner::Legacy | Owner::Common => None,
+        })
+        .collect();
+    let entries = parse(text, doc, &owners, problems);
+    check(&entries, &blocks, doc, problems);
     if entries.is_empty() && problems.is_empty() {
         problems.push(format!("{doc}: the field catalogue has no rows"));
     }
@@ -394,10 +649,22 @@ pub fn run(write: bool) -> Result<usize, String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{HEADER, catalogue, doc_comment, ffi, is_display_name, json, module, stale};
+    use super::{
+        BLOCK_HEADER, HEADER, catalogue, code_range, doc_comment, ffi, is_display_name, json,
+        module, stale,
+    };
     use aldis_testkit::{FieldCatalogue, FieldKind};
 
-    fn doc(rows: &[&str]) -> String {
+    /// The block table of 03 §9.1 as amended on 2026-10-24.
+    const BLOCKS: [&str; 4] = [
+        "| 1–106 | legacy | M1, M2 |",
+        "| 107–149 | common | D2 amended |",
+        "| 150–199 | `cop1` | M3 |",
+        "| 200–249 | `link` | M4 |",
+    ];
+
+    /// A document with the catalogue `rows` (the first on line 7) and the block table `blocks`.
+    fn doc_with(rows: &[&str], blocks: &[&str]) -> String {
         let mut text = format!(
             "# Doc\n\nText.\n\n| {} |\n|---|---|---|---|---|---|\n",
             HEADER.join(" | ")
@@ -406,7 +673,18 @@ mod tests {
             text.push_str(row);
             text.push('\n');
         }
+        text.push_str("\n| ");
+        text.push_str(&BLOCK_HEADER.join(" | "));
+        text.push_str(" |\n|---|---|---|\n");
+        for row in blocks {
+            text.push_str(row);
+            text.push('\n');
+        }
         text
+    }
+
+    fn doc(rows: &[&str]) -> String {
+        doc_with(rows, &BLOCKS)
     }
 
     const APID: &str =
@@ -450,20 +728,148 @@ mod tests {
     }
 
     #[test]
-    fn codes_run_from_one_without_gap() {
+    fn codes_are_in_order_and_the_next_free_code_of_their_block() {
         // req: API-082
         let gap = "| 3 | `width` | parameter | Width | core | GEN-050 |";
         let p = problems(&[APID, gap]);
         assert_eq!(p.len(), 1, "{p:?}");
         assert!(
-            p[0].contains("code 3 out of order") && p[0].contains("row is 2"),
+            p[0].contains("code 3 leaves a gap: the next free code of the legacy range 1–106 is 2"),
             "{p:?}"
         );
         let zero = "| 0 | `apid` | field | APID | core | 133.0 §4.1.3.3.4 |";
-        assert!(problems(&[zero])[0].contains("code 0 out of order"));
+        assert!(problems(&[zero])[0].contains("code 0 is never assigned"));
         let swapped = "| 2 | `apid` | field | APID | core | 133.0 §4.1.3.3.4 |";
         let first = "| 1 | `width` | parameter | Width | core | GEN-050 |";
-        assert_eq!(problems(&[swapped, first]).len(), 2);
+        let p = problems(&[swapped, first]);
+        assert_eq!(p.len(), 2, "{p:?}");
+        assert!(p[1].contains("code 1 out of order"), "{p:?}");
+        // Each block has its own next free code: 107 and 150 follow 1 without a gap.
+        let common = "| 107 | `shared` | field | Shared | tc, cop1 | 232.0 |";
+        let cop1 = "| 150 | `fop_state` | parameter | FOP-1 state | cop1 | 232.1 |";
+        assert_eq!(problems(&[APID, common, cop1]), Vec::<String>::new());
+        let p = problems(&[APID, "| 108 | `shared` | field | S | tc, cop1 | 232.0 |"]);
+        assert_eq!(p.len(), 1, "{p:?}");
+        assert!(p[0].contains("the common block 107–149 is 107"), "{p:?}");
+        let p = problems(&[APID, "| 151 | `fop_state` | parameter | S | cop1 | 232.1 |"]);
+        assert!(
+            p[0].contains("the block of `cop1`, 150–199 is 150"),
+            "{p:?}"
+        );
+        let p = problems(&[APID, "| 250 | `later` | field | L | core | X |"]);
+        assert_eq!(p.len(), 1, "{p:?}");
+        assert!(p[0].contains("code 250 lies in no block"), "{p:?}");
+    }
+
+    #[test]
+    fn legacy_codes_are_grandfathered() {
+        // req: API-082
+        // A code of 1–106 may be used by any crate, a crate with a block too.
+        let legacy = "| 1 | `apid` | field | APID | cop1 | 133.0 §4.1.3.3.4 |";
+        assert_eq!(problems(&[legacy]), Vec::<String>::new());
+        let shared = "| 1 | `apid` | field | APID | core, link | 133.0 §4.1.3.3.4 |";
+        assert_eq!(problems(&[shared]), Vec::<String>::new());
+    }
+
+    #[test]
+    fn a_code_of_one_crate_with_a_block_lies_in_that_block() {
+        // req: API-082
+        let own = "| 150 | `fop_state` | parameter | FOP-1 state | cop1 | 232.1 |";
+        assert_eq!(problems(&[APID, own]), Vec::<String>::new());
+        // In the common block, or in another crate's block: misplaced.
+        let common = "| 107 | `fop_state` | parameter | FOP-1 state | cop1 | 232.1 |";
+        let p = problems(&[APID, common]);
+        assert_eq!(p.len(), 1, "{p:?}");
+        assert!(
+            p[0].contains(
+                "code 107 is used by `cop1` alone, so it takes the next code of the \
+                           block of `cop1`, 150–199"
+            ),
+            "{p:?}"
+        );
+        let other = "| 200 | `fop_state` | parameter | FOP-1 state | cop1 | 232.1 |";
+        let p = problems(&[APID, other]);
+        assert_eq!(p.len(), 1, "{p:?}");
+        assert!(
+            p[0].contains(
+                "code 200 lies in the block of `link`, 200–249, but `link` does not \
+                           use it"
+            ),
+            "{p:?}"
+        );
+    }
+
+    #[test]
+    fn a_shared_code_lies_in_the_common_block() {
+        // req: API-082
+        // Several crates, or one crate without a block (a codec crate of M1 or M2).
+        for users in ["tc, cop1", "cop1, link", "tm", "core, tc"] {
+            let row = format!("| 107 | `shared` | field | Shared | {users} | 232.0 |");
+            assert_eq!(problems(&[APID, &row]), Vec::<String>::new(), "{users}");
+        }
+        // A code of a crate's block that a second crate starts to use stays there (API-082).
+        let stays = "| 150 | `fop_state` | parameter | FOP-1 state | cop1, link | 232.1 |";
+        assert_eq!(problems(&[APID, stays]), Vec::<String>::new());
+        // A shared field that its owner does not use is not the owner's.
+        let foreign = "| 150 | `shared` | field | Shared | tc, link | 232.0 |";
+        assert!(problems(&[APID, foreign])[0].contains("but `cop1` does not use it"));
+    }
+
+    #[test]
+    fn the_block_table_has_its_fixed_shape() {
+        // req: API-082
+        let blocks = |rows: &[&str]| {
+            let mut p = Vec::new();
+            catalogue(&doc_with(&[APID], rows), "d.md", &mut p);
+            p
+        };
+        assert_eq!(blocks(&BLOCKS[..2]), Vec::<String>::new());
+        let p = blocks(&[]);
+        assert!(
+            p[0].contains("needs the legacy range and the common block"),
+            "{p:?}"
+        );
+        let p = blocks(&["| 1–100 | legacy | x |", BLOCKS[1]]);
+        assert!(p[0].contains("expected the legacy range 1–106"), "{p:?}");
+        let p = blocks(&[BLOCKS[0], "| 107–149 | `tc` | x |"]);
+        assert!(p[0].contains("expected the common block 107–149"), "{p:?}");
+        let p = blocks(&[BLOCKS[0], BLOCKS[1], "| 150–189 | `cop1` | M3 |"]);
+        assert!(
+            p[0].contains(
+                "the block of `cop1` is 150–189; a crate's block is the next 50 codes, \
+                           150–199"
+            ),
+            "{p:?}"
+        );
+        let p = blocks(&[BLOCKS[0], BLOCKS[1], "| 200–249 | `link` | M4 |"]);
+        assert!(p[0].contains("next 50 codes, 150–199"), "{p:?}");
+        let p = blocks(&[BLOCKS[0], BLOCKS[1], BLOCKS[2], "| 200–249 | `cop1` | x |"]);
+        assert_eq!(p.len(), 1, "{p:?}");
+        assert!(p[0].contains("`cop1` has a block already"), "{p:?}");
+        let p = blocks(&[BLOCKS[0], BLOCKS[1], "| 150–199 | `tm` | x |"]);
+        assert!(p[0].contains("`tm` is a codec crate of M1 or M2"), "{p:?}");
+        let p = blocks(&[BLOCKS[0], BLOCKS[1], "| 150–199 | common | x |"]);
+        assert!(p[0].contains("only the first two rows"), "{p:?}");
+        for (row, want) in [
+            ("| 1 | legacy | x |", "not a range"),
+            ("| 9–1 | legacy | x |", "not a range"),
+            ("| 1–106 | Legacy | x |", "neither `legacy`"),
+            ("| 1–106 | `Cop1` | x |", "neither `legacy`"),
+            ("| 1–106 | cop1 | x |", "neither `legacy`"),
+            ("| 1–106 | legacy |  |", "empty Reserved by"),
+            ("| 1–106 | legacy |", "expected 3 cells"),
+        ] {
+            let p = blocks(&[row, BLOCKS[1]]);
+            assert!(p[0].contains(want), "{row}: {p:?}");
+        }
+        assert_eq!(code_range("150-199"), Some((150, 199)));
+        assert_eq!(code_range(" 1 – 106 "), Some((1, 106)));
+        let mut p = Vec::new();
+        catalogue(&format!("{}\n{}", doc(&[APID]), doc(&[])), "d.md", &mut p);
+        assert!(
+            p.iter().any(|p| p.contains("one table of code blocks")),
+            "{p:?}"
+        );
     }
 
     #[test]
@@ -477,7 +883,9 @@ mod tests {
         assert!(problems(&["| 1 | `apid` | field | A | core |"])[0].contains("expected 6 cells"));
         let mut p = Vec::new();
         catalogue("# No table\n", "d.md", &mut p);
-        assert!(p[0].contains("expected one field catalogue table"), "{p:?}");
+        assert_eq!(p.len(), 2, "{p:?}");
+        assert!(p[0].contains("expected one table of code blocks"), "{p:?}");
+        assert!(p[1].contains("expected one field catalogue table"), "{p:?}");
         let mut p = Vec::new();
         catalogue(&doc(&[]), "d.md", &mut p);
         assert!(p[0].contains("no rows"), "{p:?}");
@@ -525,6 +933,9 @@ mod tests {
         let p = problems(&[typo]);
         assert_eq!(p.len(), 1, "{p:?}");
         assert!(p[0].contains("names \"sp\""), "{p:?}");
+        // The owner of a block is a valid entry.
+        let owner = "| 1 | `apid` | field | APID | core, link | 133.0 §4.1.3.3.4 |";
+        assert_eq!(problems(&[owner]), Vec::<String>::new());
         let crate_name = "| 1 | `apid` | field | APID | aldis-spp | 133.0 §4.1.3.3.4 |";
         assert_eq!(problems(&[crate_name]).len(), 1);
         let empty_entry = "| 1 | `apid` | field | APID | core, | 133.0 §4.1.3.3.4 |";

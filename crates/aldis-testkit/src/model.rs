@@ -226,7 +226,8 @@ pub struct FieldEntry {
 pub struct FieldCatalogue {
     /// Where the entries come from; the file is never edited by hand.
     pub source: String,
-    /// Every entry, in code order from 1 with no gap.
+    /// Every entry, in code order from 1. The codes of one block run without a gap; the blocks
+    /// that are not full leave gaps between them (03-api-model.md §9.1).
     pub fields: Vec<FieldEntry>,
 }
 

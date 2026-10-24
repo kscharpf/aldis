@@ -187,22 +187,32 @@ Numeric codes are stable across profiles. In the C ABI, `0` is success and error
 
 ### 9.1 Field codes
 
-An error that names a field (GEN-041), such as `InvalidField`, carries a **field code**: a stable number shared by all profiles, so that the C ABI can carry it (CABI-010, CABI-021) and the differential tests can compare it (VER-053). Profiles may also expose the field's name for display. The catalogue below was created in M2 WP-0 ([M2 plan](milestones/m2-frame-codecs.md) D2, OI-27), with every field identifier that `aldis-core`, `aldis-time`, `aldis-spp`, and `aldis-epp` name, and grows with each codec.
+An error that names a field (GEN-041), such as `InvalidField`, carries a **field code**: a stable number shared by all profiles, so that the C ABI can carry it (CABI-010, CABI-021) and the differential tests can compare it (VER-053). Profiles may also expose the field's name for display. The catalogue below was created in M2 WP-0 ([M2 plan](milestones/m2-frame-codecs.md) D2, OI-27), with every field identifier that `aldis-core`, `aldis-time`, `aldis-spp`, and `aldis-epp` name, and grows with each crate. Since 2026-10-24 its codes are divided into blocks (D2 as amended that day).
 
 | ID | Requirement | Source | Verif. |
 |---|---|---|---|
-| API-082 | Every field identifier SHALL have a numeric code (16 bits) listed in the field catalogue of this section and shared by all profiles. Codes SHALL never be renumbered or reused; a new field takes the next free code. The C ABI SHALL carry the code. Profiles MAY also expose the field name, which is for display only and SHALL NOT be compared by tests or tools. | GEN-041 | T |
+| API-082 | Every field identifier SHALL have a numeric code (16 bits) listed in the field catalogue of this section and shared by all profiles. Codes SHALL never be renumbered or reused; a new field takes the next free code of its block (below). The C ABI SHALL carry the code. Profiles MAY also expose the field name, which is for display only and SHALL NOT be compared by tests or tools. | GEN-041 | T |
 
 **Rules of the catalogue.**
 
-- Codes run from 1 in table order, with no gap. Code 0 is never assigned: in the C ABI it means "no field" (CABI-021).
+- Rows are in code order. Code 0 is never assigned: in the C ABI it means "no field" (CABI-021).
 - One code per field. A Blue Book field that several codecs carry has one row, listing every codec that names it; for example the Spacecraft Identifier of TM, TC, AOS, and USLP, or the Packet Version Number of Space and Encapsulation Packets.
 - **Kind** says what the code names. `field` is a field of a data unit defined by a Blue Book: a header field, a P-field or T-field subfield, or a data field. `parameter` is anything else an error can name: a managed parameter, a configuration value, an argument of a call, or a length the caller passes, such as a buffer length. A parameter row cites the clause that gives its limits where there is one, and otherwise the requirement it implements.
 - **Name** is the display name: lower case, words joined by `_`, unique in the table. It is what an error's `Display` prints, and it is never compared (API-082).
-- **Used by** lists the codec crates that name the field, by the part of the crate name after `aldis-`: `core`, `time`, `spp`, `epp`, `tm`, `tc`, `aos`, `uslp`. `cargo xtask fields` rejects any other entry.
-- A new row takes the next code. Two open pull requests that take the same code are settled as roadmap §6 rule 7 settles requirement IDs: the one that merges second renumbers its rows.
+- **Used by** lists the crates that name the field, by the part of the crate name after `aldis-`: the codec crates `core`, `time`, `spp`, `epp`, `tm`, `tc`, `aos`, `uslp`, and the crates that have a block (below). `cargo xtask fields` rejects any other entry.
+- **Blocks.** Codes 1–106, assigned before the blocks, keep their numbers: they are the legacy range. Each new crate gets a **block of 50 codes**, reserved when its milestone plan is accepted, with a row in the table of blocks below; a field that only that crate names takes the next free code of its block. A field that several crates name, or that a crate without a block names (the crates of M1 and M2), takes the next free code of the **common block**, 107–149. Within a block the codes run from its first code with no gap. A code never moves (API-082): when a second crate starts to name a field of a crate's block, the code stays in that block, and "Used by" gains the second crate.
+- Since each new crate draws on its own block, pull requests for different crates never take the same code, and nothing is renumbered at merge. Two open pull requests that take the same code of one block, the common block or one crate's, are settled as roadmap §6 rule 7 settles requirement IDs: the one that merges second renumbers its rows.
 
-The table is the registry. `cargo xtask fields --write` generates from it the Rust module `aldis_core::field`, one `pub const` per row, [`test-vectors/core/fields.json`](../test-vectors/core/fields.json) for the C++ and binding runners, and the `ALDIS_FIELD_*` constants of the C ABI (`crates/aldis-ffi/src/field.rs`, which the header publishes); none of them is edited by hand. `cargo xtask fields`, part of `cargo xtask ci` and of the verification run, fails when a file differs from the table, when a code or name is used twice or the codes are not 1 to n in order, or when "Used by" names something other than a codec crate. A vector case that expects an error may give the code it names (`expect.field`, [07](07-test-vectors.md) §2).
+| Codes | Owner | Reserved by |
+|---|---|---|
+| 1–106 | legacy | M1 and M2: the codes assigned before the blocks ([M2 plan](milestones/m2-frame-codecs.md) D2) |
+| 107–149 | common | M2 plan D2 as amended 2026-10-24: fields that several crates name, or that a crate without a block names |
+| 150–199 | `cop1` | Pre-assigned 2026-10-24 to `aldis-cop1`, for M3 ([roadmap](08-roadmap.md) §1) |
+| 200–249 | `link` | Pre-assigned 2026-10-24 to `aldis-link`, for M4 ([roadmap](08-roadmap.md) §1) |
+
+The next crate's block is 250–299. `cargo xtask fields` checks that the table of blocks has this shape (the legacy range, the common block, then one block of 50 per crate, each following the one before) and that every code lies in its owner's block: a code of 1–106 is grandfathered; above them, a code that one crate with a block names alone lies in that crate's block, a code of a crate's block is named by that crate, and every other code lies in the common block.
+
+The table is the registry. `cargo xtask fields --write` generates from it the Rust module `aldis_core::field`, one `pub const` per row, [`test-vectors/core/fields.json`](../test-vectors/core/fields.json) for the C++ and binding runners, and the `ALDIS_FIELD_*` constants of the C ABI (`crates/aldis-ffi/src/field.rs`, which the header publishes); none of them is edited by hand. `cargo xtask fields`, part of `cargo xtask ci` and of the verification run, fails when a file differs from the table, when a code or name is used twice, the rows are not in code order, a code is not the next free code of its block or lies outside its owner's block, or when "Used by" names something other than a codec crate or the owner of a block. A vector case that expects an error may give the code it names (`expect.field`, [07](07-test-vectors.md) §2).
 
 | Code | Name | Kind | Meaning | Used by | Defined by |
 |---|---|---|---|---|---|
