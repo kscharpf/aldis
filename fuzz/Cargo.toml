@@ -204,6 +204,20 @@ doc = false
 bench = false
 
 [[bin]]
+name = "aos_decode"
+path = "fuzz_targets/aos_decode.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "aos_roundtrip"
+path = "fuzz_targets/aos_roundtrip.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
 name = "tm_decode"
 path = "fuzz_targets/tm_decode.rs"
 test = false
