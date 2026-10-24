@@ -95,7 +95,7 @@ fn oid_deviation(map_id: UslpMapId, tfdf: TfdfHeader, tfdz_len: usize) -> Option
         Some(field::TFDZ_CONSTRUCTION_RULE)
     } else if tfdf.upid != Upid::OnlyIdleData {
         Some(field::UPID)
-    } else if tfdf.rule != TfdzRule::SduStart(LastValidOctet::At(last)) {
+    } else if tfdf.rule != TfdzRule::SduStart(LastValidOctet::from_raw(last)) {
         Some(field::FHP_LVO_POINTER)
     } else {
         None
@@ -582,6 +582,7 @@ mod tests {
     use crate::config::tests::{fixed, mapid, variable};
     use crate::field;
     use crate::header::{FrameKind, SourceOrDestination};
+    use crate::tfdf::tests::offset;
     use crate::tfdf::{FirstHeaderPointer, LastValidOctet, TfdfHeader, TfdzRule};
     use crate::upid::Upid;
     use crate::validate::Reason;
@@ -642,7 +643,7 @@ mod tests {
         assert_eq!(full.insert_zone(), [0xAA, 0xBB]);
         assert_eq!(
             full.tfdf_header().rule,
-            TfdzRule::PacketsSpanningFrames(FirstHeaderPointer::PacketStartsAt(2))
+            TfdzRule::PacketsSpanningFrames(FirstHeaderPointer::PacketStartsAt(offset(2)))
         );
         assert_eq!(full.tfdf_header().upid, Upid::Packets);
         assert_eq!(full.tfdz().len(), 44);
@@ -840,7 +841,7 @@ mod tests {
         let f = UslpFrame::decode(&bad, &t, DecodeMode::Lenient).unwrap();
         assert!(f.anomalies().contains(UslpAnomaly::OidHeaderMismatch));
         let h = |rule, upid| TfdfHeader { rule, upid };
-        let start = TfdzRule::SduStart(LastValidOctet::At(9));
+        let start = TfdzRule::SduStart(LastValidOctet::At(offset(9)));
         let idle = Upid::OnlyIdleData;
         assert_eq!(
             oid_deviation(mapid(1), h(start, idle), 10),
@@ -849,7 +850,10 @@ mod tests {
         assert_eq!(
             oid_deviation(
                 mapid(0),
-                h(TfdzRule::SduContinuation(LastValidOctet::At(9)), idle),
+                h(
+                    TfdzRule::SduContinuation(LastValidOctet::At(offset(9))),
+                    idle
+                ),
                 10
             ),
             Some(field::TFDZ_CONSTRUCTION_RULE)

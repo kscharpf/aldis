@@ -111,7 +111,7 @@ fn slices_inside_property(table: &AosTable, bytes: &[u8]) -> Result<(), TestCase
     if let DataUnit::Mpdu(m) = f.data_unit()
         && let aldis_aos::PacketPointer::StartsAt(n) = m.pointer()
     {
-        prop_assert!(usize::from(n) < m.packet_zone().len());
+        prop_assert!(usize::from(n.get()) < m.packet_zone().len());
     }
     if let DataUnit::Bpdu(b) = f.data_unit()
         && let aldis_aos::BitstreamPointer::ValidBits(n) = b.pointer()

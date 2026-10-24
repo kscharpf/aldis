@@ -45,7 +45,6 @@ Spend the review on what no check covers: the reading of the Blue Book behind ea
 - No third-party runtime dependencies in Layers 0–2 (GEN-001).
 - Layering: a crate may depend only on lower layers ([docs/01-architecture.md](docs/01-architecture.md) §2).
 - **Parse, don't validate** (RS-020): make invalid values unrepresentable. Give every field with a restricted range its own type with a checked constructor, keep fields private when a constraint spans them, and check untrusted input once, where it becomes the type. A constructor may check only the relation between values that are each already valid, such as a value fitting a format. Do not add `validate`/`check` functions that re-examine a value the type could have guaranteed.
-
 ## Toolchain and checks
 
 The toolchain is pinned to Rust **1.99.1** in `rust-toolchain.toml`. Do not change it without updating RS-001 and OI-07.
@@ -75,7 +74,7 @@ cargo fmt --all --check
 cargo clippy --workspace --all-features --all-targets
 cargo test --workspace --all-features
 cargo clippy -p aldis --no-default-features --features full --target thumbv7em-none-eabihf
-cargo xtask ci        # spec lint, links, decision log, layering, registrations (consistency), vectors, schema, generated files (field codes, C header), traces, changelog, C++ opt-outs
+cargo xtask ci        # spec lint, links, decision log, layering, registrations (consistency), bare integers in the codec APIs (rs020), vectors, schema, generated files (field codes, C header), traces, changelog, C++ opt-outs
 ```
 
 When you change `aldis-core`, also run:

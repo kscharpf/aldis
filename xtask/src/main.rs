@@ -20,6 +20,7 @@ mod models;
 mod records;
 mod refapp;
 mod repo;
+mod rs020;
 mod sana;
 mod spec;
 mod trace;
@@ -60,6 +61,9 @@ commands:
                                mutants, the exerciser, layers, READMEs, and the facade; fuzz
                                targets in fuzz/Cargo.toml and the nightly matrix; every vector
                                file in test-vectors/README.md, a test, and the exerciser
+  rs020                        no bare integer in a public field or enum payload of a codec
+                               crate unless xtask/rs020-exemptions.toml exempts it with a
+                               reason, and no exemption that matches nothing (RS-020)
   refapp-deps                  refapp/ uses Aldis only through the `aldis` facade and
                                forbids unsafe code (APP-100, APP-105)
   symbols                      no frame-protocol code in a build of aldis-spp alone (VER-031)
@@ -79,7 +83,7 @@ commands:
   changelog release <version> <YYYY-MM-DD>
                                move every fragment into a new section of CHANGELOG.md
   ci                           the quick checks of the verification run, without a build:
-                               spec-lint, links, decisions, layers, consistency, refapp-deps,
+                               spec-lint, links, decisions, layers, consistency, rs020, refapp-deps,
                                vectors validate, vectors schema --check, fields, header (needs
                                the pinned cbindgen), sana, trace --scope m0 --strict,
                                trace --scope m1 --strict, trace --scope m2, trace --scope c0,
@@ -103,6 +107,7 @@ const CI: &[Step] = &[
     ("decisions", decisions::check),
     ("layers", layers::check),
     ("consistency", consistency::check),
+    ("rs020", rs020::check),
     ("refapp-deps", refapp::check),
     ("vectors validate", vectors::validate),
     ("vectors schema --check", || vectors::schema(true)),
@@ -167,6 +172,7 @@ fn run(args: &[&str]) -> Result<usize, String> {
         ["kani"] => kani::run(),
         ["features"] => features::check(),
         ["consistency"] => consistency::check(),
+        ["rs020"] => rs020::check(),
         ["cpp", rest @ ..] => cpp::run(rest),
         ["verify", rest @ ..] => verify::run(rest),
         ["metrics", rest @ ..] => metrics::run(rest),

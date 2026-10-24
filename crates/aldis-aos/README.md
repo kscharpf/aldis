@@ -29,8 +29,8 @@ Encode a frame with the FHEC and an M_PDU and decode it again, after a header sy
 ```rust
 use aldis_aos::{
     AosEdition, AosFrame, AosFrameContent, AosFrameFields, AosPhysicalChannelConfig,
-    AosVirtualChannelConfig, CorrectedSymbols, DataFieldContent, DataUnit, PacketPointer,
-    PduHeader, VcFrameCount, VcTable, encode,
+    AosVirtualChannelConfig, CorrectedSymbols, DataFieldContent, DataUnit, PacketOffset,
+    PacketPointer, PduHeader, VcFrameCount, VcTable, encode,
 };
 use aldis_core::ids::{SpacecraftId, VcId};
 use aldis_core::DecodeMode;
@@ -48,7 +48,7 @@ fn main() -> Result<(), aldis_core::Error> {
         scid,
         vcid,
         VcFrameCount::try_from(7)?,
-        PduHeader::Mpdu(PacketPointer::StartsAt(0)),
+        PduHeader::Mpdu(PacketPointer::StartsAt(PacketOffset::try_from(0)?)),
     );
     let mut frame = [0_u8; 32];
     let n = encode(&pc, &table, &fields, &AosFrameContent::new(&zone), &mut frame)?;

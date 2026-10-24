@@ -245,11 +245,11 @@ fn mpdu_header(
     if let PacketPointer::StartsAt(n) = pointer {
         let max = usize::from(PacketPointer::max_offset(edition));
         let limit = zone.saturating_sub(1).min(max);
-        if usize::from(n) > limit {
+        if usize::from(n.get()) > limit {
             return Err(Error::out_of_range(
                 field::FIRST_HEADER_POINTER,
                 len_u64(limit),
-                u64::from(n),
+                u64::from(n.get()),
             ));
         }
     }
@@ -555,7 +555,7 @@ mod tests {
 
     use super::{AosFrameContent, AosFrameFields, AosFrameWriter, PduHeader, encode};
     use crate::bpdu::{BitstreamPointer, ValidBitCount};
-    use crate::config::tests::{pc, scid, vc, vcid};
+    use crate::config::tests::{pc, scid, starts_at, vc, vcid};
     use crate::config::{AosEdition, AosVirtualChannelConfig, DataFieldContent, VcLookup, VcTable};
     use crate::field;
     use crate::header::{FrameCountCycle, OID_VCID, VcFrameCount};
@@ -619,8 +619,7 @@ mod tests {
         let t = table();
         let phy = t.physical_channel();
         let mut out = [0xEE_u8; 48];
-        let mut w =
-            AosFrameWriter::begin(&mut out, &phy, &t, &mpdu(PacketPointer::StartsAt(3))).unwrap();
+        let mut w = AosFrameWriter::begin(&mut out, &phy, &t, &mpdu(starts_at(3))).unwrap();
         assert_eq!(w.layout().frame_len(), 40);
         w.insert_zone_mut().copy_from_slice(&[1, 2, 3, 4]);
         w.security_header_mut().copy_from_slice(&[0xA5, 0xA5]);
@@ -655,7 +654,7 @@ mod tests {
         };
         assert_eq!(
             (m.pointer(), m.packet_zone()),
-            (PacketPointer::StartsAt(3), &[0xD0; 17][..])
+            (starts_at(3), &[0xD0; 17][..])
         );
     }
 
@@ -779,7 +778,7 @@ mod tests {
         }
         // Packet Zone of 17 octets: offsets 0–16.
         assert_eq!(
-            rejected(&t, &mpdu(PacketPointer::StartsAt(17))),
+            rejected(&t, &mpdu(starts_at(17))),
             (
                 ErrorKind::OutOfRange,
                 Some(field::FIRST_HEADER_POINTER),
@@ -810,13 +809,8 @@ mod tests {
             );
         }
         let mut short = [0xEE_u8; 39];
-        let e = AosFrameWriter::begin(
-            &mut short,
-            &t.physical_channel(),
-            &t,
-            &mpdu(PacketPointer::StartsAt(16)),
-        )
-        .unwrap_err();
+        let e = AosFrameWriter::begin(&mut short, &t.physical_channel(), &t, &mpdu(starts_at(16)))
+            .unwrap_err();
         assert_eq!(
             (e.kind(), e.detail()),
             (ErrorKind::BufferTooSmall, ErrorDetail::Needed(40))
@@ -872,8 +866,7 @@ mod tests {
         let mut out = vec![0_u8; 2100];
         let fields =
             |pointer| AosFrameFields::new(scid(0xFF), vcid(7), count(1), PduHeader::Mpdu(pointer));
-        let w = AosFrameWriter::begin(&mut out, &p4, &t, &fields(PacketPointer::StartsAt(0x7FD)))
-            .unwrap();
+        let w = AosFrameWriter::begin(&mut out, &p4, &t, &fields(starts_at(0x7FD))).unwrap();
         assert_eq!(w.finish(), 2100);
         // SCID 0xFF in bits 2–9, bits 42–43 00; spare 00000 and FHP 0x7FD.
         assert_eq!(out[..8], [0x7F, 0xC7, 0, 0, 1, 0x00, 0x07, 0xFD]);
@@ -882,8 +875,7 @@ mod tests {
             (f.scid(), f.header().edition()),
             (scid(0xFF), AosEdition::Issue4Compatible)
         );
-        let e = AosFrameWriter::begin(&mut out, &p4, &t, &fields(PacketPointer::StartsAt(0x7FE)))
-            .unwrap_err();
+        let e = AosFrameWriter::begin(&mut out, &p4, &t, &fields(starts_at(0x7FE))).unwrap_err();
         assert_eq!(
             (e.kind(), e.detail()),
             (
@@ -897,8 +889,7 @@ mod tests {
         // Issue 5 accepts the offset, and writes 16 bits.
         let p5 = pc(2100, false, 0, false, AosEdition::Issue5);
         let t5 = VcTable::<1>::new(p5, &[vc(0xFF, 7, DataFieldContent::Mpdu)]).unwrap();
-        let w = AosFrameWriter::begin(&mut out, &p5, &t5, &fields(PacketPointer::StartsAt(0x7FE)))
-            .unwrap();
+        let w = AosFrameWriter::begin(&mut out, &p5, &t5, &fields(starts_at(0x7FE))).unwrap();
         assert_eq!(w.finish(), 2100);
         assert_eq!(out[6..8], [0x07, 0xFE]);
         // An SCID above 8 bits from a lookup that did not check it.
@@ -942,7 +933,7 @@ mod tests {
             security_trailer: &[0],
             ocf: Some(Ocf::decode([0; 4])),
         };
-        let fields = mpdu(PacketPointer::StartsAt(0));
+        let fields = mpdu(starts_at(0));
         for (content, f, expected, found) in [
             (
                 AosFrameContent {
@@ -1010,7 +1001,7 @@ mod tests {
                 }
             )
         );
-        let e = encode(&phy, &t, &mpdu(PacketPointer::StartsAt(17)), &ok, &mut out).unwrap_err();
+        let e = encode(&phy, &t, &mpdu(starts_at(17)), &ok, &mut out).unwrap_err();
         assert_eq!(e.kind(), ErrorKind::OutOfRange);
         let e = encode(&phy, &t, &fields, &ok, &mut out[..10]).unwrap_err();
         assert_eq!(e.kind(), ErrorKind::BufferTooSmall);

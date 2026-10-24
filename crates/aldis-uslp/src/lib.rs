@@ -9,7 +9,7 @@
 //! | [`header`] | `FrameKind`, `SourceOrDestination`, `VcfCountLen`, `VcfCount`, `ChannelFields`, owned `UslpPrimaryHeader` | 732.1 §4.1.2, Annex D1.3 | USLP-001, USLP-003, USLP-004, API-014, GEN-053 |
 //! | [`view`] | Zero-copy `UslpFrame` (full or truncated) and `UslpFullFrame`, `peek_length` | 732.1 §4.1, §6.3 | USLP-001, USLP-003…USLP-007, USLP-016, API-010…API-014, API-072 |
 //! | [`truncated`] | Zero-copy `UslpTruncatedFrame` | 732.1 Annex D | USLP-002, USLP-012, API-075 |
-//! | [`tfdf`] | `TfdfHeader`, `TfdzRule`, `ConstructionRule`, `FirstHeaderPointer`, `LastValidOctet` | 732.1 §4.1.4.2 | USLP-005, USLP-006, USLP-016 |
+//! | [`tfdf`] | `TfdfHeader`, `TfdzRule`, `ConstructionRule`, `FirstHeaderPointer`, `LastValidOctet`, `TfdzOffset` | 732.1 §4.1.4.2 | USLP-005, USLP-006, USLP-016 |
 //! | [`writer`] | One-shot `encode`, two-phase `UslpFrameWriter`, `encode_truncated`, `encode_oid` | 732.1 §4.1, §6.3, Annex D | USLP-009, USLP-010, API-020…API-023 |
 //! | [`anomaly`] | `UslpAnomaly` lenient-mode flags | 732.1 §4.1.2.9, §4.1.4.1.8–9 | API-032, API-033 |
 //! | [`delimit`] | Frame Delimiting and Fill Data Removal: stateless `next_frame`, `FrameDelimiter` | 732.1 §4.3.11.2 | USLP-015 |
@@ -63,7 +63,8 @@ pub use header::{
     VcfCountLen,
 };
 pub use tfdf::{
-    ConstructionRule, FirstHeaderPointer, LastValidOctet, POINTER_NONE, TfdfHeader, TfdzRule,
+    ConstructionRule, FirstHeaderPointer, LastValidOctet, POINTER_NONE, TfdfHeader, TfdzOffset,
+    TfdzRule,
 };
 pub use truncated::UslpTruncatedFrame;
 pub use upid::{UnassignedUpid, Upid};

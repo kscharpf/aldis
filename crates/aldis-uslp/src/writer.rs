@@ -102,7 +102,7 @@ enum Purpose {
 fn oid_tfdf(tfdz_len: usize) -> TfdfHeader {
     let last = u16::try_from(tfdz_len.saturating_sub(1)).unwrap_or(u16::MAX);
     TfdfHeader {
-        rule: TfdzRule::SduStart(LastValidOctet::At(last)),
+        rule: TfdzRule::SduStart(LastValidOctet::from_raw(last)),
         upid: Upid::OnlyIdleData,
     }
 }
@@ -533,6 +533,7 @@ mod tests {
     use crate::config::tests::{fixed, mapid, scid, variable, vcid};
     use crate::field;
     use crate::header::{ChannelFields, FrameKind, SourceOrDestination};
+    use crate::tfdf::tests::offset;
     use crate::tfdf::{FirstHeaderPointer, LastValidOctet, TfdfHeader, TfdzRule};
     use crate::upid::Upid;
     use crate::view::UslpFrame;
@@ -570,7 +571,7 @@ mod tests {
         // req: USLP-003, USLP-004, USLP-005, USLP-010, API-020, API-021, GEN-052
         let tbl = fixed();
         let ocf = Some(Ocf::decode([1, 2, 3, 4]));
-        let rule = TfdzRule::PacketsSpanningFrames(FirstHeaderPointer::PacketStartsAt(2));
+        let rule = TfdzRule::PacketsSpanningFrames(FirstHeaderPointer::PacketStartsAt(offset(2)));
         let c = content(rule, Upid::Packets, &[0xAA, 0xBB], ocf);
         let f = fields(1, 3, FrameKind::Expedited, 0x1234);
         let tfdz: Vec<u8> = (0..44).collect();
@@ -777,7 +778,7 @@ mod tests {
             (ErrorKind::LengthMismatch, Some(field::FRAME_DATA_FIELD))
         );
         let far = content(
-            TfdzRule::PacketsSpanningFrames(FirstHeaderPointer::PacketStartsAt(45)),
+            TfdzRule::PacketsSpanningFrames(FirstHeaderPointer::PacketStartsAt(offset(45))),
             Upid::Packets,
             &[0, 0],
             ocf,
@@ -817,7 +818,7 @@ mod tests {
             (ErrorKind::LengthMismatch, Some(field::FRAME_DATA_FIELD))
         );
         let lvo = content(
-            TfdzRule::SduStart(LastValidOctet::At(9)),
+            TfdzRule::SduStart(LastValidOctet::At(offset(9))),
             Upid::Packets,
             &[],
             None,
