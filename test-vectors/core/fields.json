@@ -440,6 +440,51 @@
       "code": 88,
       "name": "farm_b_counter",
       "kind": "field"
+    },
+    {
+      "code": 89,
+      "name": "aos_header_spare",
+      "kind": "field"
+    },
+    {
+      "code": 90,
+      "name": "vc_frame_count",
+      "kind": "field"
+    },
+    {
+      "code": 91,
+      "name": "vc_frame_count_cycle",
+      "kind": "field"
+    },
+    {
+      "code": 92,
+      "name": "insert_zone_len",
+      "kind": "parameter"
+    },
+    {
+      "code": 93,
+      "name": "data_field_content",
+      "kind": "parameter"
+    },
+    {
+      "code": 94,
+      "name": "ocf",
+      "kind": "field"
+    },
+    {
+      "code": 95,
+      "name": "mpdu_spare",
+      "kind": "field"
+    },
+    {
+      "code": 96,
+      "name": "bpdu_spare",
+      "kind": "field"
+    },
+    {
+      "code": 97,
+      "name": "bitstream_data_pointer",
+      "kind": "field"
     }
   ]
 }

@@ -350,13 +350,14 @@ pub const OCF_REPORT_USE: FieldId = FieldId::catalogued::<66>("ocf_report_use");
 
 /// Transfer Frame Version Number.
 ///
-/// Code 67, a field (132.0 §4.1.2.2.2; 232.0 §4.1.2.2; API-082).
+/// Code 67, a field (132.0 §4.1.2.2.2; 232.0 §4.1.2.2; 732.0 §4.1.2.2.2; API-082).
 pub const FRAME_VERSION: FieldId = FieldId::catalogued::<67>("frame_version");
 
 /// Length of a Transfer Frame in octets: the Frame Length field of a TC frame, or the Transfer
-/// Frame Length managed parameter of a TM physical channel with fixed-length frames.
+/// Frame Length managed parameter of a TM or AOS physical channel with fixed-length frames.
 ///
-/// Code 68, a field (132.0 §4.1.1.2, §5.1 Table 5-1; 232.0 §4.1.2.7; API-082).
+/// Code 68, a field (132.0 §4.1.1.2, §5.1 Table 5-1; 232.0 §4.1.2.7; 732.0 §4.1.1.2, §5.2 Table
+/// 5-1; API-082).
 pub const FRAME_LEN: FieldId = FieldId::catalogued::<68>("frame_len");
 
 /// Operational Control Field Flag.
@@ -384,9 +385,9 @@ pub const PACKET_ORDER_FLAG: FieldId = FieldId::catalogued::<72>("packet_order_f
 /// Code 73, a field (132.0 §4.1.2.7.5; API-082).
 pub const SEGMENT_LENGTH_ID: FieldId = FieldId::catalogued::<73>("segment_length_id");
 
-/// First Header Pointer.
+/// First Header Pointer: of the TM Transfer Frame Data Field Status, or of the AOS `M_PDU` Header.
 ///
-/// Code 74, a field (132.0 §4.1.2.7.6; API-082).
+/// Code 74, a field (132.0 §4.1.2.7.6; 732.0 §4.1.4.2.2; 732.0-B-4 §4.1.4.2.3; API-082).
 pub const FIRST_HEADER_POINTER: FieldId = FieldId::catalogued::<74>("first_header_pointer");
 
 /// Transfer Frame Secondary Header Version Number.
@@ -460,8 +461,56 @@ pub const CLCW_SPARE_23: FieldId = FieldId::catalogued::<87>("clcw_spare_23");
 /// Code 88, a field (232.0 §4.2.1.9; API-082).
 pub const FARM_B_COUNTER: FieldId = FieldId::catalogued::<88>("farm_b_counter");
 
+/// Reserved Spare of the AOS Transfer Frame Primary Header, bits 42–43, in Issue 4 and earlier (the
+/// two most significant SCID bits in Issue 5).
+///
+/// Code 89, a field (732.0-B-4 §4.1.2.5.4; 732.0 §4.1.2.5.4; API-082).
+pub const AOS_HEADER_SPARE: FieldId = FieldId::catalogued::<89>("aos_header_spare");
+
+/// Virtual Channel Frame Count of an AOS Transfer Frame, 24 bits.
+///
+/// Code 90, a field (732.0 §4.1.2.4; API-082).
+pub const VC_FRAME_COUNT: FieldId = FieldId::catalogued::<90>("vc_frame_count");
+
+/// Virtual Channel Frame Count Cycle of an AOS Transfer Frame, bits 44–47.
+///
+/// Code 91, a field (732.0 §4.1.2.5.5; API-082).
+pub const VC_FRAME_COUNT_CYCLE: FieldId = FieldId::catalogued::<91>("vc_frame_count_cycle");
+
+/// Insert Zone Length, a managed parameter of an AOS physical channel, and the length of the Insert
+/// Zone a writer is given.
+///
+/// Code 92, a parameter (732.0 §4.1.3.4.1, §5.2 Table 5-1; API-082).
+pub const INSERT_ZONE_LEN: FieldId = FieldId::catalogued::<92>("insert_zone_len");
+
+/// Data Field Content of an AOS virtual channel: `M_PDU`, `B_PDU`, `VCA_SDU`, or Idle Data.
+///
+/// Code 93, a parameter (732.0 §4.1.4.1.3–4, §5.4 Table 5-3; API-082).
+pub const DATA_FIELD_CONTENT: FieldId = FieldId::catalogued::<93>("data_field_content");
+
+/// Operational Control Field of an AOS Transfer Frame, present by the `VC_OCF` managed parameter of
+/// its virtual channel.
+///
+/// Code 94, a field (732.0 §4.1.5.2–3, §5.4 Table 5-3; API-082).
+pub const OCF: FieldId = FieldId::catalogued::<94>("ocf");
+
+/// Reserved Spare of the `M_PDU` Header, bits 0–4, in Issue 4 and earlier.
+///
+/// Code 95, a field (732.0-B-4 §4.1.4.2.2; API-082).
+pub const MPDU_SPARE: FieldId = FieldId::catalogued::<95>("mpdu_spare");
+
+/// Reserved Spare of the `B_PDU` Header, bits 0–1.
+///
+/// Code 96, a field (732.0 §4.1.4.3.2; API-082).
+pub const BPDU_SPARE: FieldId = FieldId::catalogued::<96>("bpdu_spare");
+
+/// Bitstream Data Pointer of the `B_PDU` Header.
+///
+/// Code 97, a field (732.0 §4.1.4.3.3; API-082).
+pub const BITSTREAM_DATA_POINTER: FieldId = FieldId::catalogued::<97>("bitstream_data_pointer");
+
 /// Every field code, in code order from 1 (API-082).
-pub const ALL: [FieldId; 88] = [
+pub const ALL: [FieldId; 97] = [
     SPACECRAFT_ID,
     VC_ID,
     MAP_ID,
@@ -550,4 +599,13 @@ pub const ALL: [FieldId; 88] = [
     CLCW_SPARE_14_15,
     CLCW_SPARE_23,
     FARM_B_COUNTER,
+    AOS_HEADER_SPARE,
+    VC_FRAME_COUNT,
+    VC_FRAME_COUNT_CYCLE,
+    INSERT_ZONE_LEN,
+    DATA_FIELD_CONTENT,
+    OCF,
+    MPDU_SPARE,
+    BPDU_SPARE,
+    BITSTREAM_DATA_POINTER,
 ];
