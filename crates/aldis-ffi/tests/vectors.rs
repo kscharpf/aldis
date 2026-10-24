@@ -7,6 +7,9 @@
 //!
 //! Every error must come back consistently: the returned status is the negated kind of the
 //! detail (CABI-020, CABI-021).
+//!
+//! AOS (M2 WP-4 module 8): every live case of `test-vectors/aos/` runs through `aldis_aos_*`,
+//! one master channel per SCID, picked by the SCID of the frame's header (c-abi.md §11).
 #![expect(
     clippy::unwrap_used,
     clippy::panic,
@@ -18,11 +21,13 @@
 
 use core::num::NonZeroU16;
 
+use aldis::aos::AosAnomaly;
 use aldis::core::{Anomaly, ErrorKind, FieldId};
 use aldis::epp::EppAnomaly;
 use aldis::spp::SppAnomaly;
 use aldis::time::TimeAnomaly;
 use aldis::tm::TmAnomaly;
+use aldis_ffi::aos::*;
 use aldis_ffi::crc::aldis_crc16;
 use aldis_ffi::epp::*;
 use aldis_ffi::ocf::*;
@@ -1486,6 +1491,526 @@ fn core_run(case: &CodecCase) -> R<Value> {
     }
 }
 
+// ---------------------------------------------------------------- AOS (WP-4 module 8)
+
+/// An AOS physical channel and its virtual channels as C structs, one master channel per SCID
+/// in the order the SCIDs first appear (c-abi.md §11: a call takes one master channel).
+struct AosChannels {
+    pc: aldis_aos_config_t,
+    mcs: Vec<(aldis_aos_mc_config_t, Vec<aldis_aos_vc_config_t>)>,
+}
+
+impl AosChannels {
+    /// The master channel of `scid`, with no virtual channel if the configuration has none of
+    /// that SCID: a caller with several master channels picks the one of a frame's SCID.
+    fn mc(&self, scid: u16) -> (aldis_aos_mc_config_t, Vec<aldis_aos_vc_config_t>) {
+        self.mcs
+            .iter()
+            .find(|(m, _)| m.scid == scid)
+            .cloned()
+            .unwrap_or_else(|| (aos_mc(scid, self.pc), Vec::new()))
+    }
+}
+
+fn aos_mc(scid: u16, pc: aldis_aos_config_t) -> aldis_aos_mc_config_t {
+    aldis_aos_mc_config_t {
+        struct_size: size_of_u32::<aldis_aos_mc_config_t>(),
+        scid,
+        pc,
+    }
+}
+
+fn aos_flag(obj: &Value, name: &str) -> u8 {
+    u8::from(obj.get(name).and_then(Value::as_bool).unwrap_or(false))
+}
+
+fn aos_size(obj: &Value, name: &str) -> u64 {
+    obj.get(name).map_or(0, |v| v.as_u64().unwrap())
+}
+
+fn aos_channels(case: &CodecCase) -> AosChannels {
+    let cfg = Value::Object(case.config.clone().unwrap());
+    let pc = aldis_aos_config_t {
+        struct_size: size_of_u32::<aldis_aos_config_t>(),
+        fhec: aos_flag(&cfg, "fhec"),
+        fecf: aos_flag(&cfg, "fecf"),
+        edition: match cfg.get("edition").and_then(Value::as_str) {
+            None | Some("issue5") => ALDIS_AOS_EDITION_ISSUE5,
+            Some("issue4") => ALDIS_AOS_EDITION_ISSUE4,
+            Some(other) => panic!("{}: edition {other}", case.id),
+        },
+        frame_len: usize_of(&cfg, "frame_len"),
+        insert_zone_len: usize::try_from(aos_size(&cfg, "insert_zone_len")).unwrap(),
+    };
+    let mut mcs: Vec<(aldis_aos_mc_config_t, Vec<aldis_aos_vc_config_t>)> = Vec::new();
+    for v in cfg
+        .get("vcs")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+    {
+        let scid = u16_of(v, "scid");
+        let vc = aldis_aos_vc_config_t {
+            struct_size: size_of_u32::<aldis_aos_vc_config_t>(),
+            vcid: u8_of(v, "vcid"),
+            content: match str_of(v, "content") {
+                "mpdu" => ALDIS_AOS_CONTENT_MPDU,
+                "bpdu" => ALDIS_AOS_CONTENT_BPDU,
+                "vca_sdu" => ALDIS_AOS_CONTENT_VCA_SDU,
+                "idle_data" => ALDIS_AOS_CONTENT_IDLE_DATA,
+                other => panic!("{}: content {other}", case.id),
+            },
+            ocf: aos_flag(v, "ocf"),
+            security_header_len: u8::try_from(aos_size(v, "security_header_len")).unwrap(),
+            security_trailer_len: u16::try_from(aos_size(v, "security_trailer_len")).unwrap(),
+        };
+        match mcs.iter_mut().find(|(m, _)| m.scid == scid) {
+            Some((_, vcs)) => vcs.push(vc),
+            None => mcs.push((aos_mc(scid, pc), vec![vc])),
+        }
+    }
+    AosChannels { pc, mcs }
+}
+
+/// The octets of `len` at `offset` in `bytes`, which the view guarantees lie inside it.
+fn aos_slice(bytes: &[u8], offset: usize, len: usize) -> &[u8] {
+    &bytes[offset..offset + len]
+}
+
+/// Every field of the Primary Header (TV-002), from the C struct.
+fn aos_header_json(h: &aldis_aos_header_t) -> Map<String, Value> {
+    let len = if h.has_fhec { 8 } else { 6 };
+    assert!(h.has_fhec || h.octets[6..] == [0, 0]);
+    json!({
+        "scid": h.scid,
+        "vcid": h.vcid,
+        "vc_frame_count": h.vc_frame_count,
+        "replay_flag": h.replay_flag,
+        "cycle_use_flag": h.cycle_use_flag,
+        "cycle_field": h.cycle_field,
+        "vc_frame_count_cycle": h.cycle_use_flag.then_some(h.cycle_field),
+        "issue4_spare": h.issue4_spare,
+        "fhec": h.has_fhec.then_some(h.fhec),
+        "corrected_symbols": h.corrected_symbols,
+        "header_hex": hex::encode(&h.octets[..len]),
+        "is_oid": h.vcid == ALDIS_AOS_OID_VCID,
+    })
+    .as_object()
+    .cloned()
+    .unwrap()
+}
+
+/// The vector names of a decoded data unit: its kind, and the pointer's name and value.
+fn aos_pdu_names(p: &aldis_aos_pdu_t) -> (&'static str, Option<&'static str>, Option<u16>) {
+    let kind = match p.content {
+        ALDIS_AOS_CONTENT_MPDU => "mpdu",
+        ALDIS_AOS_CONTENT_BPDU => "bpdu",
+        ALDIS_AOS_CONTENT_VCA_SDU => "vca_sdu",
+        ALDIS_AOS_CONTENT_IDLE_DATA => "idle_data",
+        other => panic!("content {other}"),
+    };
+    let (pointer, value) = match p.pointer {
+        ALDIS_AOS_POINTER_NONE => (None, None),
+        ALDIS_AOS_POINTER_STARTS_AT => (Some("starts_at"), Some(p.pointer_value)),
+        ALDIS_AOS_POINTER_NO_PACKET_START => (Some("no_packet_start"), None),
+        ALDIS_AOS_POINTER_ONLY_IDLE_DATA => (Some("only_idle_data"), None),
+        ALDIS_AOS_POINTER_VALID_BITS => (Some("valid_bits"), Some(p.pointer_value)),
+        ALDIS_AOS_POINTER_ALL_VALID => (Some("all_valid"), None),
+        ALDIS_AOS_POINTER_ONLY_IDLE => (Some("only_idle"), None),
+        other => panic!("pointer {other}"),
+    };
+    (kind, pointer, value)
+}
+
+/// Every field the view exposes (TV-002), read from the C view and the caller's input.
+fn aos_json(v: &aldis_aos_frame_t, bytes: &[u8], pc: &aldis_aos_config_t, mode: u32) -> R<Value> {
+    let (l, p) = (&v.layout, &v.pdu);
+    let ocf = (l.ocf_len != 0).then(|| aos_slice(bytes, l.ocf_offset, l.ocf_len));
+    let report = match ocf {
+        Some(o) => {
+            let mut report = u32::MAX;
+            // SAFETY: `o` and `report` are live.
+            call(|e| unsafe { aldis_ocf_classify(o.as_ptr(), o.len(), &raw mut report, e) })?;
+            Some(ocf_report_name(report))
+        }
+        None => None,
+    };
+    // The header alone decodes to the view's header (API-014).
+    let mut header = aldis_aos_header_t::default();
+    // SAFETY: `bytes`, `pc`, and `header` are live.
+    call(|e| unsafe {
+        aldis_aos_header_decode(bytes.as_ptr(), bytes.len(), pc, &raw mut header, e)
+    })?;
+    assert_eq!(header, v.header);
+    let data = aos_slice(bytes, l.data_offset, l.data_len);
+    // The data unit alone decodes to the view's (AOS-017).
+    let mut alone = *p;
+    if p.content == ALDIS_AOS_CONTENT_MPDU {
+        // SAFETY: `data` and `alone` are live.
+        call(|e| unsafe {
+            aldis_aos_mpdu_decode(
+                data.as_ptr(),
+                data.len(),
+                pc.edition,
+                mode,
+                &raw mut alone,
+                e,
+            )
+        })?;
+    } else if p.content == ALDIS_AOS_CONTENT_BPDU {
+        // SAFETY: as above.
+        call(|e| unsafe {
+            aldis_aos_bpdu_decode(data.as_ptr(), data.len(), mode, &raw mut alone, e)
+        })?;
+    }
+    assert_eq!(alone, *p);
+    assert_eq!(v.anomalies & p.anomalies, p.anomalies);
+    let (kind, pointer, value) = aos_pdu_names(p);
+    let unit = p.content == ALDIS_AOS_CONTENT_MPDU || p.content == ALDIS_AOS_CONTENT_BPDU;
+    let mut out = aos_header_json(&v.header);
+    let rest = json!({
+        "insert_zone_hex": hex::encode(aos_slice(bytes, l.insert_zone_offset, l.insert_zone_len)),
+        "security_header_hex": hex::encode(aos_slice(
+            bytes,
+            l.security_header_offset,
+            l.security_header_len
+        )),
+        "data_field_hex": hex::encode(data),
+        "security_trailer_hex": hex::encode(aos_slice(
+            bytes,
+            l.security_trailer_offset,
+            l.security_trailer_len
+        )),
+        "ocf_hex": ocf.map(hex::encode),
+        "ocf_report": report,
+        "fecf": v.has_fecf.then_some(v.fecf),
+        "data_unit": kind,
+        "pdu_pointer_raw": unit.then_some(p.pointer_raw),
+        "pointer": pointer,
+        "pointer_value": value,
+        "pdu_spare": unit.then_some(p.spare),
+        "zone_hex": hex::encode(aos_slice(bytes, l.zone_offset, l.zone_len)),
+        "consumed": l.frame_len,
+        "anomalies": anomalies::<AosAnomaly>(v.anomalies),
+    });
+    out.extend(rest.as_object().cloned().unwrap());
+    Ok(Value::Object(out))
+}
+
+/// The sender's fields of an `encode` case, or of one OID frame (VCID 63, no data unit header).
+fn aos_fields(p: &Value) -> aldis_aos_fields_t {
+    let cycle = p.get("cycle").filter(|v| !v.is_null());
+    let mut f = aldis_aos_fields_t {
+        vcid: p
+            .get("vcid")
+            .map_or(ALDIS_AOS_OID_VCID, |_| u8_of(p, "vcid")),
+        vc_frame_count: u32_of(p, "vc_frame_count"),
+        replay_flag: aos_flag(p, "replay_flag"),
+        cycle_use_flag: u8::from(cycle.is_some()),
+        cycle: cycle.map_or(0, |c| u8::try_from(c.as_u64().unwrap()).unwrap()),
+        ..aldis_aos_fields_t::default()
+    };
+    let Some(pdu) = p.get("pdu") else {
+        return f;
+    };
+    let value = || u16::try_from(get(pdu, "value").as_u64().unwrap()).unwrap();
+    let kind = (
+        str_of(pdu, "kind"),
+        pdu.get("pointer").and_then(Value::as_str),
+    );
+    (f.pointer, f.pointer_value) = match kind {
+        ("mpdu", Some("starts_at")) => (ALDIS_AOS_POINTER_STARTS_AT, value()),
+        ("mpdu", Some("no_packet_start")) => (ALDIS_AOS_POINTER_NO_PACKET_START, 0),
+        ("mpdu", Some("only_idle_data")) => (ALDIS_AOS_POINTER_ONLY_IDLE_DATA, 0),
+        ("bpdu", Some("valid_bits")) => (ALDIS_AOS_POINTER_VALID_BITS, value()),
+        ("bpdu", Some("all_valid")) => (ALDIS_AOS_POINTER_ALL_VALID, 0),
+        ("bpdu", Some("only_idle")) => (ALDIS_AOS_POINTER_ONLY_IDLE, 0),
+        ("none", _) => (ALDIS_AOS_POINTER_NONE, 0),
+        other => panic!("pdu {other:?}"),
+    };
+    f
+}
+
+/// The octets of an optional hex member, empty for none.
+fn aos_octets(p: &Value, name: &str) -> Vec<u8> {
+    p.get(name)
+        .filter(|v| !v.is_null())
+        .map(|v| hex::decode(v.as_str().unwrap()).unwrap())
+        .unwrap_or_default()
+}
+
+/// Copies `src` to `offset` in `frame`, where the writer's layout gives it `len` octets.
+fn aos_put(frame: &mut [u8], offset: usize, len: usize, src: &[u8]) {
+    assert_eq!(
+        src.len(),
+        len,
+        "a field of another length than the layout's"
+    );
+    frame[offset..offset + len].copy_from_slice(src);
+}
+
+/// Encodes one frame with `aldis_aos_encode` and checks that the two-phase writer agrees
+/// (API-020, API-023).
+fn aos_encode(case: &CodecCase, ch: &AosChannels) -> R<Value> {
+    let par = params(case);
+    let (mc, vcs) = ch.mc(u16_of(&par, "scid"));
+    let fields = aos_fields(&par);
+    let (iz, sh, zone, st, ocf) = (
+        aos_octets(&par, "insert_zone_hex"),
+        aos_octets(&par, "security_header_hex"),
+        aos_octets(&par, "zone_hex"),
+        aos_octets(&par, "security_trailer_hex"),
+        aos_octets(&par, "ocf_hex"),
+    );
+    let cap = par
+        .get("out_len")
+        .map_or(ch.pc.frame_len, |_| usize_of(&par, "out_len"));
+    let mut out = vec![0xEE_u8; cap];
+    let mut written = 0_usize;
+    let content = aldis_aos_content_t {
+        insert_zone: iz.as_ptr(),
+        insert_zone_len: iz.len(),
+        security_header: sh.as_ptr(),
+        security_header_len: sh.len(),
+        zone: zone.as_ptr(),
+        zone_len: zone.len(),
+        security_trailer: st.as_ptr(),
+        security_trailer_len: st.len(),
+        ocf: ocf.as_ptr(),
+        ocf_len: ocf.len(),
+    };
+    // SAFETY: every pointer is to a live local or vector, with its length.
+    let result = call(|e| unsafe {
+        aldis_aos_encode(
+            &raw const mc,
+            vcs.as_ptr(),
+            vcs.len(),
+            &raw const fields,
+            &raw const content,
+            out.as_mut_ptr(),
+            out.len(),
+            &raw mut written,
+            e,
+        )
+    });
+    if result.is_err() {
+        assert!(out.iter().all(|&b| b == 0xEE), "{}: out changed", case.id);
+    }
+    result?;
+    // The two-phase writer: begin, fill each field at its offset, finish (API-023).
+    let mut two = vec![0xEE_u8; written];
+    let mut l = aldis_aos_layout_t::default();
+    // SAFETY: every pointer is to a live local or vector, with its length.
+    call(|e| unsafe {
+        aldis_aos_writer_begin(
+            &raw const mc,
+            vcs.as_ptr(),
+            vcs.len(),
+            &raw const fields,
+            two.as_mut_ptr(),
+            two.len(),
+            &raw mut l,
+            e,
+        )
+    })?;
+    assert_eq!(l.frame_len, written);
+    aos_put(&mut two, l.insert_zone_offset, l.insert_zone_len, &iz);
+    aos_put(
+        &mut two,
+        l.security_header_offset,
+        l.security_header_len,
+        &sh,
+    );
+    aos_put(&mut two, l.zone_offset, l.zone_len, &zone);
+    aos_put(
+        &mut two,
+        l.security_trailer_offset,
+        l.security_trailer_len,
+        &st,
+    );
+    aos_put(&mut two, l.ocf_offset, l.ocf_len, &ocf);
+    let mut finished = 0_usize;
+    // SAFETY: as above.
+    call(|e| unsafe {
+        aldis_aos_writer_finish(
+            &raw const mc,
+            vcs.as_ptr(),
+            vcs.len(),
+            &raw const fields,
+            two.as_mut_ptr(),
+            two.len(),
+            &raw mut finished,
+            e,
+        )
+    })?;
+    assert_eq!(finished, written, "{}", case.id);
+    assert_eq!(two, out[..written], "{}: two-phase writer differs", case.id);
+    Ok(json!({ "output_hex": hex::encode(&out[..written]) }))
+}
+
+/// Consecutive OID frames of one SCID from one generator of `form` (AOS-016, CMN-021).
+fn aos_oid_frames(case: &CodecCase, ch: &AosChannels, form: u32) -> R<Vec<String>> {
+    let p = params(case);
+    let (mc, vcs) = ch.mc(u16_of(&p, "scid"));
+    let oid = Oid::new(form);
+    let mut frames = Vec::new();
+    for f in get(&p, "frames").as_array().unwrap() {
+        let fields = aos_fields(f);
+        let mut out = vec![0xEE_u8; ch.pc.frame_len];
+        let mut l = aldis_aos_layout_t::default();
+        // SAFETY: every pointer is to a live local or vector; `oid.h` is a live handle.
+        call(|e| unsafe {
+            aldis_aos_oid_writer_begin(
+                &raw const mc,
+                vcs.as_ptr(),
+                vcs.len(),
+                &raw const fields,
+                oid.h,
+                out.as_mut_ptr(),
+                out.len(),
+                &raw mut l,
+                e,
+            )
+        })?;
+        if f.get("insert_zone_hex").is_some() {
+            aos_put(
+                &mut out,
+                l.insert_zone_offset,
+                l.insert_zone_len,
+                &hex_of(f, "insert_zone_hex"),
+            );
+        }
+        let mut n = 0_usize;
+        // SAFETY: as above.
+        call(|e| unsafe {
+            aldis_aos_writer_finish(
+                &raw const mc,
+                vcs.as_ptr(),
+                vcs.len(),
+                &raw const fields,
+                out.as_mut_ptr(),
+                out.len(),
+                &raw mut n,
+                e,
+            )
+        })?;
+        frames.push(hex::encode(&out[..n]));
+    }
+    Ok(frames)
+}
+
+/// The FHEC cases of `aos/fhec_*.json` (AOS-013, AOS-014).
+fn aos_fhec(case: &CodecCase) -> R<Value> {
+    let bytes = input(case);
+    match case.operation.as_str() {
+        "fhec_encode" => {
+            let mut fhec = 0_u16;
+            // SAFETY: every pointer is to a live local or vector.
+            call(|e| unsafe {
+                aldis_aos_fhec_encode(bytes.as_ptr(), bytes.len(), &raw mut fhec, e)
+            })?;
+            let mut header = bytes;
+            header.extend(fhec.to_be_bytes());
+            Ok(json!({
+                "fhec_hex": hex::encode(&fhec.to_be_bytes()),
+                "output_hex": hex::encode(&header),
+            }))
+        }
+        "fhec_decode" => {
+            let mut c = aldis_aos_corrected_header_t::default();
+            // SAFETY: as above.
+            call(|e| unsafe { aldis_aos_fhec_decode(bytes.as_ptr(), bytes.len(), &raw mut c, e) })?;
+            Ok(json!({
+                "header_hex": hex::encode(&c.octets),
+                "corrected_symbols": c.corrected_symbols,
+            }))
+        }
+        op => panic!("{}: unsupported operation {op}", case.id),
+    }
+}
+
+fn aos_run(case: &CodecCase) -> R<Value> {
+    if case.operation.starts_with("fhec_") {
+        return aos_fhec(case);
+    }
+    let ch = aos_channels(case);
+    // The configuration is checked first, as the Rust runner builds it (API-040): the
+    // physical channel, then each master channel.
+    // SAFETY: every pointer is to a live local or vector.
+    call(|e| unsafe { aldis_aos_config_check(&raw const ch.pc, e) })?;
+    for (mc, vcs) in &ch.mcs {
+        // SAFETY: as above.
+        call(|e| unsafe { aldis_aos_mc_config_check(mc, vcs.as_ptr(), vcs.len(), e) })?;
+    }
+    let bytes = input(case);
+    match case.operation.as_str() {
+        "config" => Ok(json!({})),
+        "peek_length" => {
+            let mut n = 0_usize;
+            // SAFETY: as above.
+            call(|e| unsafe {
+                aldis_aos_peek_length(bytes.as_ptr(), bytes.len(), &raw const ch.pc, &raw mut n, e)
+            })?;
+            Ok(json!({ "len": n }))
+        }
+        "decode_header" => {
+            let mut h = aldis_aos_header_t::default();
+            // SAFETY: as above.
+            call(|e| unsafe {
+                aldis_aos_header_decode(
+                    bytes.as_ptr(),
+                    bytes.len(),
+                    &raw const ch.pc,
+                    &raw mut h,
+                    e,
+                )
+            })?;
+            Ok(Value::Object(aos_header_json(&h)))
+        }
+        "decode" => {
+            // The SCID from the header picks the master channel; a frame whose header does not
+            // decode fails before the lookup, on any master channel (c-abi.md §11).
+            let mut h = aldis_aos_header_t::default();
+            // SAFETY: as above.
+            let scid = call(|e| unsafe {
+                aldis_aos_header_decode(
+                    bytes.as_ptr(),
+                    bytes.len(),
+                    &raw const ch.pc,
+                    &raw mut h,
+                    e,
+                )
+            })
+            .map_or(0, |()| h.scid);
+            let (mc, vcs) = ch.mc(scid);
+            let mut view = aldis_aos_frame_t::default();
+            // SAFETY: as above.
+            call(|e| unsafe {
+                aldis_aos_decode(
+                    bytes.as_ptr(),
+                    bytes.len(),
+                    &raw const mc,
+                    vcs.as_ptr(),
+                    vcs.len(),
+                    mode(case),
+                    &raw mut view,
+                    e,
+                )
+            })?;
+            aos_json(&view, &bytes, &ch.pc, mode(case))
+        }
+        "encode" => aos_encode(case, &ch),
+        "encode_oid" => {
+            let frames = aos_oid_frames(case, &ch, ALDIS_OID_FIBONACCI)?;
+            // The Galois form writes the same frames (CMN-022).
+            let galois = aos_oid_frames(case, &ch, ALDIS_OID_GALOIS)?;
+            assert_eq!(frames, galois, "{}: the Galois form differs", case.id);
+            Ok(json!({ "frames_hex": frames }))
+        }
+        op => panic!("{}: unsupported operation {op}", case.id),
+    }
+}
+
 // ---------------------------------------------------------------- TM
 
 /// A TM physical channel and, when the configuration has an SCID, its master channel with its
@@ -1974,6 +2499,32 @@ vector_test!(
 );
 vector_test!(epp_invalid, "epp", "invalid", epp_run);
 vector_test!(epp_config_and_validate, "epp", "config", epp_run);
+vector_test!(aos_fhec_encode, "aos", "fhec_encode", aos_run);
+vector_test!(
+    aos_fhec_correct_1_symbol,
+    "aos",
+    "fhec_correct_1_symbol",
+    aos_run
+);
+vector_test!(
+    aos_fhec_correct_2_symbols,
+    "aos",
+    "fhec_correct_2_symbols",
+    aos_run
+);
+vector_test!(aos_fhec_miscorrection, "aos", "fhec_miscorrection", aos_run);
+vector_test!(aos_fhec_uncorrectable, "aos", "fhec_uncorrectable", aos_run);
+vector_test!(aos_minimal, "aos", "minimal", aos_run);
+vector_test!(aos_fhec_frame, "aos", "fhec_frame", aos_run);
+vector_test!(aos_insert_zone, "aos", "insert_zone", aos_run);
+vector_test!(aos_security_layout, "aos", "security_layout", aos_run);
+vector_test!(aos_mpdu_pointers, "aos", "mpdu_pointers", aos_run);
+vector_test!(aos_bpdu_pointers, "aos", "bpdu_pointers", aos_run);
+vector_test!(aos_oid, "aos", "oid", aos_run);
+vector_test!(aos_issue4_compat, "aos", "issue4_compat", aos_run);
+vector_test!(aos_scid_10bit, "aos", "scid_10bit", aos_run);
+vector_test!(aos_config, "aos", "config", aos_run);
+vector_test!(aos_invalid, "aos", "invalid", aos_run);
 vector_test!(tm_minimal, "tm", "minimal", tm_run);
 vector_test!(tm_fsh_ocf_fecf, "tm", "fsh_ocf_fecf", tm_run);
 vector_test!(tm_fhp_values, "tm", "fhp_values", tm_run);

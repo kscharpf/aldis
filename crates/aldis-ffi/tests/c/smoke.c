@@ -18,6 +18,71 @@ static void check(int ok, const char *what) {
     }
 }
 
+/* AOS (M2 WP-4 module 8): an M_PDU frame of a 10-bit SCID with the FHEC and the FECF, through
+ * the two-phase writer, the one-shot encoder, and the decoder after a corrected header hit. */
+static void aos_smoke(void) {
+    aldis_error_detail_t err;
+    err.struct_size = (uint32_t)sizeof err;
+    aldis_aos_mc_config_t mc;
+    memset(&mc, 0, sizeof mc);
+    mc.struct_size = (uint32_t)sizeof mc;
+    mc.scid = 0x2A5;
+    mc.pc.struct_size = (uint32_t)sizeof mc.pc;
+    mc.pc.fhec = 1;
+    mc.pc.fecf = 1;
+    mc.pc.edition = ALDIS_AOS_EDITION_ISSUE5;
+    mc.pc.frame_len = 16;
+    aldis_aos_vc_config_t vc;
+    memset(&vc, 0, sizeof vc);
+    vc.struct_size = (uint32_t)sizeof vc;
+    vc.vcid = 1;
+    vc.content = ALDIS_AOS_CONTENT_MPDU;
+    check(aldis_aos_mc_config_check(&mc, &vc, 1, &err) == ALDIS_OK, "aldis_aos_mc_config_check");
+    aldis_aos_fields_t fields;
+    memset(&fields, 0, sizeof fields);
+    fields.vcid = 1;
+    fields.vc_frame_count = 7;
+    fields.pointer = ALDIS_AOS_POINTER_STARTS_AT;
+    uint8_t frame[16];
+    aldis_aos_layout_t layout;
+    check(aldis_aos_writer_begin(&mc, &vc, 1, &fields, frame, sizeof frame, &layout, &err) ==
+              ALDIS_OK,
+          "aldis_aos_writer_begin");
+    check(layout.data_offset == 8 && layout.zone_offset == 10 && layout.zone_len == 4 &&
+              layout.fecf_offset == 14,
+          "AOS frame layout");
+    memset(frame + layout.zone_offset, 0x5A, layout.zone_len);
+    size_t len = 0;
+    check(aldis_aos_writer_finish(&mc, &vc, 1, &fields, frame, sizeof frame, &len, &err) ==
+                  ALDIS_OK &&
+              len == 16,
+          "aldis_aos_writer_finish");
+    uint8_t zone[4];
+    memset(zone, 0x5A, sizeof zone);
+    aldis_aos_content_t content;
+    memset(&content, 0, sizeof content);
+    content.zone = zone;
+    content.zone_len = sizeof zone;
+    uint8_t one_shot[16];
+    size_t one_len = 0;
+    check(aldis_aos_encode(&mc, &vc, 1, &fields, &content, one_shot, sizeof one_shot, &one_len,
+                           &err) == ALDIS_OK &&
+              one_len == 16 && memcmp(one_shot, frame, 16) == 0,
+          "aldis_aos_encode agrees with the two-phase writer");
+    uint16_t fhec = 0;
+    check(aldis_aos_fhec_encode(frame, ALDIS_AOS_PRIMARY_HEADER_LEN, &fhec, &err) == ALDIS_OK &&
+              fhec == (uint16_t)((frame[6] << 8) | frame[7]),
+          "aldis_aos_fhec_encode");
+    frame[1] ^= 0x01; /* a bit of the VCID, which the FHEC corrects (AOS-014) */
+    aldis_aos_frame_t view;
+    check(aldis_aos_decode(frame, len, &mc, &vc, 1, ALDIS_MODE_STRICT, &view, NULL) == ALDIS_OK,
+          "aldis_aos_decode");
+    check(view.header.scid == 0x2A5 && view.header.vcid == 1 &&
+              view.header.corrected_symbols == 1 && view.pdu.pointer == ALDIS_AOS_POINTER_STARTS_AT &&
+              view.pdu.pointer_value == 0 && frame[view.layout.zone_offset] == 0x5A,
+          "decoded AOS frame (CABI-012)");
+}
+
 int main(void) {
     /* CABI-030: aldis_limits reports the build capacities. */
     aldis_limits_t limits;
@@ -25,6 +90,8 @@ int main(void) {
     limits.struct_size = (uint32_t)sizeof limits;
     check(aldis_limits(&limits) == ALDIS_OK, "aldis_limits");
     check(limits.spp_tracker_max_apids == ALDIS_SPP_TRACKER_MAX_APIDS, "tracker capacity");
+
+    aos_smoke();
 
     /* A telemetry packet, APID 0x0A0, one octet of data, through encode and decode. */
     aldis_spp_config_t cfg;
