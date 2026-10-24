@@ -10,5 +10,5 @@
   verification after approval, failed runs with the time spent after their first gating failure
   (from the run's artefact), cancelled runs, rework after a maintainer decision, and repeated
   conflicts. A "Recommendations input" section compares them with fixed thresholds and with the
-  previous period of the same length (`--no-previous` skips it). The wording of VER-063 for these
-  is proposed, pending the maintainer.
+  previous period of the same length (`--no-previous` skips it). VER-063 states these (maintainer
+  decision 2026-10-24).

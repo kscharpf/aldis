@@ -88,3 +88,4 @@ One line for each decision the maintainer takes, under the [decision rights](dec
 - 2026-10-24 · spec · #98 · OI-44 (1): on VCID 63 a USLP decoder checks the OID header (MAP ID 0, rule `001`, UPID Only Idle Data, LVO at the last TFDZ octet): `InvalidField` with reason 17 in strict mode, the anomaly `OidHeaderMismatch` (bit 1) in lenient mode
 - 2026-10-24 · spec · #98 · OI-44 (2): a USLP TFDZ holds at least one octet, as OI-41 (1) for TC
 - 2026-10-24 · spec · #98 · OI-44 (3): a valid header for USLP delimiting is TFVN `1100` and either a truncated header or at least seven octets with Frame Length + 1 ≥ 9 + the VCF Count Length, as OI-41 (2) for TC
+- 2026-10-24 · process · #102 · VER-063 reports each pull request's stages, raw and in the maintainer's active time, and the process-created waits, compared with fixed thresholds and the previous period in a "Recommendations input" section (wording accepted as drafted)
