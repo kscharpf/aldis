@@ -78,6 +78,7 @@ One line for each decision the maintainer takes, under the [decision rights](dec
 - 2026-10-23 · api · #91 · Field code 68 `frame_len` is one code shared by TM (the Transfer Frame Length parameter) and TC (the Frame Length field), kind `field`; AOS and USLP share it too
 - 2026-10-23 · plan · chat · Continue the Kani formal-verification spike (OI-42) found uncommitted in a worktree, and open it as a pull request
 - 2026-10-23 · process · #92 · OI-42 (a) as far as a non-gating check: the verify check `kani` runs the Kani harnesses in the verification image, which installs Kani 0.68.0 with its bundle checked against GitHub's asset digest; gating and a verification method stay open
+- 2026-10-24 · process · chat · An independent reviewer does not re-run the merge gate's checks; it reads the published record (`cargo xtask verify check`) and reviews what no check covers (AGENTS.md, Independent review)
 - 2026-10-24 · api · #94 · An array of versioned C ABI configuration structs uses the first element's `struct_size` as its stride; every element repeats it, at least the library's size and a multiple of its alignment (c-abi.md §11)
 - 2026-10-24 · api · #94 · A C ABI master channel configuration embeds its physical channel configuration; each per-VC call takes one master channel, and the Rust lookup over several master channels has no C form (c-abi.md §11)
 - 2026-10-24 · api · #94 · C ABI decoders and validation without a suffix mean no SDLS; the `_with` variants take each VC's security layout from the master channel; no lookup-mode argument (c-abi.md §11)
