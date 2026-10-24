@@ -179,6 +179,15 @@ fn frames(t: &mut Tally, mc: &TmMasterChannelConfig, vc0: VcId<3>, vc1: VcId<3>,
             .is_ok_and(|w| w.finish() == 32),
     );
     t.check(frame.get(12..16) == Some(&[0xFF; 4][..]));
+    // `resume` keeps the Idle Data `begin_oid` wrote, as the C ABI's finish uses it (API-023).
+    let idle = TmFrameFields::new(
+        vc0,
+        0,
+        0,
+        DataFieldStatus::Packets(PacketPointer::OnlyIdleData),
+    );
+    t.check(TmFrameWriter::resume(bb(&mut frame), mc, bb(&idle)).is_ok_and(|w| w.finish() == 32));
+    t.check(frame.get(12..16) == Some(&[0xFF; 4][..]));
 }
 
 /// Runs the `aldis-tm` group.
