@@ -175,7 +175,8 @@ impl<T: Copy> Configs<'_, T> {
         // neither wraps nor exceeds `isize::MAX`, and its caller made them valid for reads; with
         // `i < len`, the struct at `offset` lies inside that range.
         let element = unsafe { self.ptr.cast::<u8>().add(offset) }.cast::<T>();
-        // `ptr` is aligned for `T` and `stride` a multiple of its alignment, so `element` is too.
+        // `ptr` is aligned for `T` and for `u32`, and `stride` a multiple of both alignments, so
+        // `element` is too.
         let size = element.cast::<u32>();
         // SAFETY: inside the checked range and aligned for `u32`; the first four octets of
         // every struct are its `struct_size` by the caller's contract.
@@ -222,7 +223,12 @@ pub(crate) unsafe fn configs<'a, T: Copy>(ptr: *const T, len: usize) -> Result<C
     // SAFETY: non-null and aligned for `u32`, checked above; the first four octets of the
     // first struct are its `struct_size` by the caller's contract.
     let stride = usize::try_from(unsafe { size.read() }).map_err(|_| invalid_argument())?;
-    if stride < size_of::<T>() || !stride.is_multiple_of(align_of::<T>()) {
+    // A multiple of both alignments keeps every element aligned for `T` and for the `u32`
+    // `struct_size` that `Configs::get` reads first, whatever `T` is.
+    if stride < size_of::<T>()
+        || !stride.is_multiple_of(align_of::<T>())
+        || !stride.is_multiple_of(align_of::<u32>())
+    {
         return Err(invalid_argument());
     }
     let total = stride.checked_mul(len).ok_or_else(invalid_argument)?;
