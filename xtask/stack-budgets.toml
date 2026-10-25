@@ -3,7 +3,9 @@
 #
 # [[budget]]: per bare-metal target, the most stack in bytes that one call of an entry point may
 # use, for the Rust entry points (`rust`) and the C ABI functions (`c-abi`). The values are the
-# maintainer's (docs/process/decisions.md, 2026-10-24, #113), revisited at the M2 exit.
+# maintainer's (docs/process/decisions.md, 2026-10-24, #113), revisited at the M2 exit. `rust` is
+# 4096 because the channel-table constructors (`VcTable::new` of TC, AOS, and USLP) build the table
+# in their own frame and return it by value: about 3.6 KB for TC. OI-45 decides the table design.
 #
 # [[exemption]]: a function at which the call graph is incomplete, with a stated bound and the
 # reason. `frame = <bytes>`: the function is assembly, with no `.stack_sizes` entry and no IR;
@@ -15,17 +17,17 @@
 
 [[budget]]
 target = "thumbv7em-none-eabihf"
-rust = 1024
+rust = 4096
 c-abi = 10240
 
 [[budget]]
 target = "armv7r-none-eabihf"
-rust = 1024
+rust = 4096
 c-abi = 10240
 
 [[budget]]
 target = "riscv32imac-unknown-none-elf"
-rust = 1024
+rust = 4096
 c-abi = 10240
 
 # The `Display` implementation of `aldis_core::Error` writes through `core::fmt`, whose
