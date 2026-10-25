@@ -212,7 +212,12 @@ NOTE_COMMON = (
 NOTE_MODEL = (
     "The model is committed as test-vectors/models/aos_fhec.py (TV-023); "
     "`python3 -I test-vectors/models/aos_fhec.py --check test-vectors/aos/fhec_*.json` "
-    "recomputes every expected value."
+    "recomputes every expected value. Author of the model: an AI agent, Claude Opus 5.5, "
+    "recorded as co-author of commit 222232e (2026-10-21), which committed it; the vectors "
+    "first appeared in commit 910c9db, which names the same co-author and says they come from "
+    "an independent Python model. The model was written from 732.0 §4.1.2.6.5 before the Rust "
+    "codec (the note above); the history records no briefing of the agent and does not show "
+    "whether it read any implementation (TV-023)."
 )
 HAND = (
     "Case aos-fhec-enc-002 (header 400100000000) is derived by hand, polynomial division over "

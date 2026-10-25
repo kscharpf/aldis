@@ -1,6 +1,6 @@
 """Independent model of the TC Transfer Frame, the Communications Link Control Word, Frame
 Delimiting and Fill Removal, and the Frame Validation Checks, for the vector files of
-test-vectors/tc/ (TC-001...TC-008, TC-020...TC-023, TC-030, TC-031; M2 WP-3).
+test-vectors/tc/ (TC-001...TC-009, TC-020...TC-023, TC-030, TC-031; M2 WP-3).
 
 Sources: CCSDS 232.0-B-4 with Technical Corrigendum 1: the frame of §4.1.1-4.1.4 (Primary
 Header bit positions, Table 4-1 for the Bypass and Control Command Flags, the Segment Header
@@ -544,8 +544,9 @@ def gen_bd():
                     "not forced to 0", STD, data_params("BD", 1, 0x5A, b"\x01"))
     b.encode_decode("tc-bd", 3, ["TC-001", "TC-008"], "BD frame without FECF, N(S) 255",
                     NO_FECF, data_params("BD", 1, 255, bytes(range(16))))
-    b.add("tc-bd-enc-err-001", ["TC-007", "API-001"],
-          "A BD frame cannot carry a Control Command: InvalidField control_command_flag",
+    b.add("tc-bd-enc-err-001", ["TC-009"],
+          "A BD frame cannot carry a Control Command (§4.1.2.3.2.2): InvalidField "
+          "control_command_flag",
           "encode", config_=STD, params=control_params(1, 0, "unlock", kind="BD"))
     return b.cases
 
@@ -571,11 +572,13 @@ def gen_bc_unlock():
     b.add("tc-bc-unlock-dec-006", ["TC-005", "API-031"],
           "One octet 0x01: a reserved Control Command, strict", "decode", mode="strict",
           config_=STD, data=one)
-    b.add("tc-bc-unlock-enc-err-001", ["TC-007", "API-001"],
-          "An AD frame cannot carry a Control Command: InvalidField control_command_flag",
+    b.add("tc-bc-unlock-enc-err-001", ["TC-009"],
+          "An AD frame cannot carry a Control Command (§4.1.2.3.2.2): InvalidField "
+          "control_command_flag",
           "encode", config_=STD, params=control_params(1, 0, "unlock", kind="AD"))
-    b.add("tc-bc-unlock-enc-err-002", ["TC-007", "API-001"],
-          "A BC frame cannot carry a Frame Data Unit: InvalidField control_command_flag",
+    b.add("tc-bc-unlock-enc-err-002", ["TC-009"],
+          "A BC frame cannot carry a Frame Data Unit (§4.1.2.3.2.2): InvalidField "
+          "control_command_flag",
           "encode", config_=STD, params=data_params("BC", 1, 0, b"\x00"))
     return b.cases
 
@@ -690,7 +693,9 @@ def gen_delimit():
           data=f1 + f2 + b"\x55" * 3)
     b.add("tc-delimit-003", ["TC-020"],
           "Three frames and six octets of fill 0x55: TFVN 01 is not a valid header "
-          "(§4.4.9.2.6 note 2)", "delimit", data=f1 + f2 + f3 + b"\x55" * 6)
+          "(§4.4.9.2.6 note 2). The rest is reported as Fill, which is the reading of OI-41 item 2; "
+          "the Blue Book only requires the octets to be discarded", "delimit",
+          data=f1 + f2 + f3 + b"\x55" * 6)
     b.add("tc-delimit-004", ["TC-020"],
           "A frame, then a frame cut short: the rest is discarded as a truncated frame "
           "(§4.4.9.2.5)", "delimit", data=f1 + f3[:-4])
@@ -698,7 +703,8 @@ def gen_delimit():
           data=b"")
     b.add("tc-delimit-006", ["TC-020"], "Only fill octets", "delimit", data=b"\x55" * 7)
     b.add("tc-delimit-007", ["TC-020"],
-          "A header that declares a 5-octet frame is not a valid header: fill", "delimit",
+          "A header that declares a 5-octet frame is not a valid header: fill (OI-41 item 2, a "
+          "project reading)", "delimit",
           data=f4 + hdr("AD", 1, 5, 0) + b"\x00")
     b.add("tc-delimit-008", ["TC-020"],
           "Frames without FECF back to back, then four octets of zero fill", "delimit",
@@ -756,9 +762,9 @@ def gen_validation():
           "The same frame in lenient mode is accepted", "validate", mode="lenient",
           config_=STD, data=with_fecf(hdr("BC", 1, 8, 0) + b"\x07"))
     bad(18, ["TC-021", "TC-022"],
-        "(c) a valid VCID with a SCID that is not expected: UnexpectedSpacecraft first",
+        "(b) SCID 0x3FF is not expected, and VCID 4 is not configured (c) either: the SCID check (b) comes first, so UnexpectedSpacecraft",
         with_fecf(hdr("AD", 4, 10, 0, scid=0x3FF) + b"\x01\x02\x03"))
-    bad(19, ["TC-021", "TC-006"], "(e) FECF without a frame error but wrong FECF octets",
+    bad(19, ["TC-021", "TC-006"], "(e) the BD frame of tc-val-002 with the first bit of its FECF flipped: every other check passes, FecfMismatch",
         ok_bd[:-2] + bytes([ok_bd[-2] ^ 0x80, ok_bd[-1]]))
     bad(20, ["TC-021", "API-070"],
         "Frame on VC 3 whose Security Header and Trailer leave no data: FrameTooShort",
@@ -941,7 +947,10 @@ NOTE = (
     "tc-clcw-enc-001 are worked by hand, the CRC register octet by octet, in "
     "docs/verification/derivations/tc-frame.md. The model is committed as "
     "test-vectors/models/tc_frame.py (TV-023); `python3 -I test-vectors/models/tc_frame.py "
-    "--check test-vectors/tc/*.json` recomputes every expected value."
+    "--check test-vectors/tc/*.json` recomputes every expected value. Author of the model: an "
+    "AI agent, Claude Opus 5.5, recorded as co-author of commit afff003 (2026-10-23), whose "
+    "message states that it wrote the model from 232.0-B-4 Cor. 1 before the Rust codec "
+    "existed; the history records no briefing of the agent beyond that statement (TV-023)."
 )
 
 
@@ -949,7 +958,9 @@ def generate():
     out = {}
     for name, (gen, title) in FILES.items():
         out[name] = {"kind": "codec", "standard": "232.0-B-4 Cor. 1 — " + title,
-                     "provenance": "hand-derived", "provenance_note": NOTE, "cases": gen()}
+                     "provenance": "hand-derived",
+                     "provenance_note": NOTE + " This file covers " + title + ".",
+                     "cases": gen()}
     return out
 
 

@@ -450,7 +450,9 @@ def superseded(c, op, expect_, reason, by):
     model does not recompute them (TV-021)."""
     c["operation"] = op
     c["expect"] = expect_
-    c["superseded"] = {"reason": reason, "by": by}
+    c["superseded"] = {"reason": reason}
+    if by is not None:
+        c["superseded"]["by"] = by
     return c
 
 
@@ -596,11 +598,11 @@ def fhp_values():
                       params=enc(0, 0, 0, status("starts_at", 14), data.hex().upper())))
     big = channel(2100, False, 1, [vc(0)])
     cases.append(case("tm-fhp-enc-err-002", ["TM-009", "TM-008"],
-                      "Encode FHP 0x7FE as an offset in a 2094-octet data field: OutOfRange",
+                      "Encode FHP 0x7FE as an offset in a 2094-octet data field: OutOfRange (0x7FE is the 'only idle data' code, 132.0-B-3 §4.1.2.7.6.5). The 2100-octet frame exceeds the 2048-octet maximum of 131.0-B-6 §11 on purpose: 132.0-B-3 states no maximum, and only so long a frame reaches an offset of 2046",
                       "encode", big,
                       params=enc(0, 0, 0, status("starts_at", 0x7FE), "00" * 2094)))
     cases.append(case("tm-fhp-enc-005", ["TM-009", "TM-008"],
-                      "Encode FHP 0x7FD, the largest offset, in a 2094-octet data field",
+                      "Encode FHP 0x7FD, the largest offset, in a 2094-octet data field. The 2100-octet frame exceeds the 2048-octet maximum of 131.0-B-6 §11 on purpose: 132.0-B-3 states no maximum, and only so long a frame reaches an offset of 2045",
                       "encode", big,
                       params=enc(0, 0, 0, status("starts_at", 0x7FD), "00" * 2094)))
     return cases
@@ -616,14 +618,23 @@ def oid_sequence():
              params={"vcid": 2, "frames": [
                  {"mc_frame_count": 0, "vc_frame_count": 0, "ocf_hex": CLCW.hex().upper()},
                  {"mc_frame_count": 1, "vc_frame_count": 1, "ocf_hex": CLCW.hex().upper()}]}),
-        case("tm-oid-002", ["TM-010", "CMN-021"],
-             "Three OID frames on VC 0 with an FSH carrying data and SDLS fields left zero",
-             "encode_oid", mc,
-             params={"vcid": 0, "frames": [
-                 {"mc_frame_count": i, "vc_frame_count": 10 + i, "fsh_data_hex": "ABCDEF"}
-                 for i in range(3)]}),
+        superseded(
+            case("tm-oid-002", ["TM-010", "CMN-021"],
+                 "Three OID frames on VC 0 with an FSH carrying data and SDLS fields left zero",
+                 "encode_oid", mc,
+                 params={"vcid": 0, "frames": [
+                     {"mc_frame_count": i, "vc_frame_count": 10 + i, "fsh_data_hex": "ABCDEF"}
+                     for i in range(3)]}),
+            "encode_oid",
+            {"ok": True, "frames_hex": [
+                "0AB0000A9FFE03ABCDEF0000FFFFFFFF6DB6D861451F11F19716723CBE00B802",
+                "0AB0010B9FFE03ABCDEF00007E00B1DE90B262107AF83494CEE3323F0300E235",
+                "0AB0020C9FFE03ABCDEF000054BEF5C1528C9BB9ED35FDBC23D9BC2F07006375"]},
+            "VC 0 uses SDLS (Security Header 2 octets, Trailer 1): the OID writer rejects such "
+            "a VC (maintainer decision of 2026-10-25 following 132.0-B-3 §6.4.6.2; TM-010)",
+            None),
         case("tm-oid-003", ["TM-010"],
-             "An OID frame on a VCA_SDU channel is rejected: OID frames use a packet VC",
+             "An OID frame on a VCA_SDU channel is rejected: OID frames use a packet VC (132.0-B-3 §4.1.4.6.3). The error kind and field are a project choice",
              "encode_oid", mc, params={"vcid": 1, "frames": [
                  {"mc_frame_count": 0, "vc_frame_count": 0}]}),
         case("tm-oid-004", ["TM-008", "TM-010"],
@@ -702,7 +713,7 @@ def invalid():
         case("tm-inv-crc-001", ["TM-005", "CMN-003"], "One data bit flipped: CrcMismatch",
              "decode", pc, good[:10] + bytes([good[10] ^ 1]) + good[11:]),
         case("tm-inv-crc-002", ["TM-005"],
-             "Version 01 with a wrong FECF: the FECF is checked first", "decode", pc,
+             "Version 01 with a wrong FECF: the FECF is checked first (the order of checks is a project choice, TM-005; 132.0-B-3 gives none)", "decode", pc,
              bytes([good[0] | 0x40]) + good[1:]),
         case("tm-inv-ver-001", ["TM-002"], "Transfer Frame Version Number 01", "decode", pc,
              f({"version": 1})),
@@ -761,9 +772,9 @@ def invalid():
              f({"vcid": 1, "sync_flag": 1})),
         case("tm-inv-enc-001", ["TM-009"], "Encode on an unconfigured VC", "encode", mc,
              params=enc(6, 0, 0, status("no_packet_start"), "00" * 12)),
-        case("tm-inv-enc-002", ["TM-009", "TM-011"], "Encode packets on a VCA_SDU VC",
+        case("tm-inv-enc-002", ["TM-009", "TM-011"], "Encode packets on a VCA_SDU VC (the error kind and field are a project choice)",
              "encode", mc, params=enc(1, 0, 0, status("no_packet_start"), "00" * 12)),
-        case("tm-inv-enc-003", ["TM-009", "TM-011"], "Encode a VCA_SDU on a packet VC",
+        case("tm-inv-enc-003", ["TM-009", "TM-011"], "Encode a VCA_SDU on a packet VC (the error kind and field are a project choice)",
              "encode", mc, params=enc(0, 0, 0, status(sync=True), "00" * 12)),
         case("tm-inv-enc-004", ["TM-009", "API-021"], "Data one octet short", "encode", mc,
              params=enc(0, 0, 0, status("no_packet_start"), "00" * 11)),
@@ -781,7 +792,9 @@ def invalid():
              params=enc(0, 0, 0, status("no_packet_start"), "00" * 12, tr="5A")),
         case("tm-inv-enc-010", ["API-022"], "Output buffer one octet short: BufferTooSmall",
              "encode", mc, params=enc(0, 0, 0, status("no_packet_start"), "00" * 12, out_len=19)),
-        case("tm-inv-cfg-001", ["API-040", "CMN-041"], "Frame of 8 octets with FECF",
+        case("tm-inv-cfg-001", ["API-040", "CMN-041"], "Frame of 8 octets with FECF: no data octet (CMN-041, a project rule). No VC is "
+             "configured, so the error names the frame length (68), where the cases that name "
+             "the data field (7) have a VC whose fields leave no data octet",
              "config", pc_only(8, True)),
         case("tm-inv-cfg-002", ["API-040"], "SCID 1024", "config", channel(20, False, 1024, [])),
         case("tm-inv-cfg-003", ["API-040"], "VCID 8", "config", channel(20, False, 1, [vc(8)])),
@@ -815,7 +828,11 @@ NOTE = (
     "polynomial division, the OID data by the Annex D recurrence). The model is committed as "
     "test-vectors/models/tm_frame.py (TV-023); `python3 -I test-vectors/models/tm_frame.py "
     "--check test-vectors/tm/*.json` recomputes every expected value. One frame is worked "
-    "by hand in docs/verification/derivations/tm-frame.md."
+    "by hand in docs/verification/derivations/tm-frame.md. Author of the model: an AI agent, "
+    "Claude Opus 5.5, recorded as co-author of commit 5e1235e (2026-10-23); it wrote the "
+    "model from 132.0-B-3 and docs/standards/tm-frame.md, and states that it did not write it "
+    "from the code of the Rust codec (the history shows the codec already existed and records "
+    "no briefing of the agent beyond that statement; TV-023)."
 )
 
 FILES = {
@@ -831,7 +848,7 @@ FILES = {
 def generate(name):
     make, standard = FILES[name]
     return {"kind": "codec", "standard": standard, "provenance": "hand-derived",
-            "provenance_note": NOTE, "cases": make()}
+            "provenance_note": NOTE + " This file covers " + standard + ".", "cases": make()}
 
 
 def check_field_codes(path):

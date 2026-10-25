@@ -748,7 +748,7 @@ def insert_zone():
              full, frame(full, hdr(SCID, 4, 9), iz=b"\xC1\xC2\xC3",
                          data=b"\xFF\xFF" + seq(0x80, 11), ocf=CLCW)),
         case("aos-iz-dec-003", reqs + ["AOS-016"],
-             "An OID frame keeps the Insert Zone (§4.1.3.3); no OCF on VCID 63 (OI-43 item 1)",
+             "An OID frame keeps the Insert Zone (§4.1.3.3); no OCF on VCID 63 (OI-43 item 1). The data is not the pseudo-noise pattern, and decode accepts it: a stateless decoder cannot check it (the pattern depends on the generator's position across frames; receivers discard it, §4.1.4.1.5.2)",
              "decode", full, frame(full, hdr(SCID, 63, 1), iz=b"\xC1\xC2\xC3",
                                    data=bytes(range(17)))),
         case("aos-iz-enc-001", reqs + ["AOS-019"], "Encode with an Insert Zone", "encode", cfg,
@@ -763,7 +763,7 @@ def insert_zone():
              params=enc(SCID, 4, 9, mp("starts_at", 1), seq(0x80, 12).hex().upper(),
                         iz="1A1B1C")),
         case("aos-iz-cfg-001", ["AOS-015", "API-040"],
-             "An Insert Zone that leaves no data octet: 6 + 9 + 1 > 15", "config",
+             "An Insert Zone that leaves no data octet: the 6-octet header and the 9-octet Insert Zone fill all 15 octets, and one data octet needs 16. The error names the Physical Channel's frame_len (68), the parameter to change; insert_zone_len (97) is the error of a writer given an Insert Zone of the wrong length", "config",
              channel(15, [], iz=9)),
     ]
 
@@ -778,7 +778,7 @@ def security_layout():
              "decode", cfg, frame(cfg, hdr(SCID, 3, 0), iz=b"\x01\x02", sh=sh,
                                   data=b"\x00\x05" + seq(0x30, 11), st=st, ocf=CLCW)),
         case("aos-sec-dec-002", reqs + ["AOS-016"],
-             "An OID frame on the same channel: no SDLS fields on VCID 63 (OI-43 item 1)",
+             "An OID frame on the same channel: no SDLS fields on VCID 63 (OI-43 item 1). The data is not the pseudo-noise pattern, and decode accepts it (a stateless decoder cannot check it)",
              "decode", cfg, frame(cfg, hdr(SCID, 63, 0), iz=b"\x01\x02", data=bytes(22))),
         case("aos-sec-enc-001", reqs + ["AOS-019"], "Encode with the SDLS fields", "encode", cfg,
              params=enc(SCID, 3, 0, mp("starts_at", 5), seq(0x30, 11).hex().upper(), iz="0102",
@@ -854,7 +854,8 @@ def bpdu_pointers():
     ]
     out += both("aos-bpdu-dec-005", reqs + ["API-031", "API-032"],
                 "Pointer 47, the zone's last bit: a zone with no idle data has the pointer all "
-                "ones (§4.1.4.3.3.3), InvalidField in both modes", cfg, f(47))
+                "ones (§4.1.4.3.3.3), InvalidField in both modes (the Blue Book does not say a "
+                "receiver must reject 47: this is the project's reading, AOS-017, API-031, API-032)", cfg, f(47))
     out += both("aos-bpdu-dec-006", reqs + ["API-032"],
                 "Pointer 48, past the zone: Malformed in both modes", cfg, f(48))
     out += both("aos-bpdu-dec-007", reqs + ["API-031", "API-032", "GEN-043"],
@@ -877,7 +878,7 @@ def bpdu_pointers():
              "Issue 5, B_PDU VC on 2 048-octet frames: accepted", "config",
              channel(2048, [vc(SCID, 2, "bpdu")])),
         case("aos-bpdu-cfg-002", ["AOS-018", "API-040"],
-             "Issue 5, B_PDU VC on 2 049-octet frames: InvalidConfig (frame_len)", "config",
+             "Issue 5, B_PDU VC on 2 049-octet frames: InvalidConfig (frame_len). The limit comes from a NOTE to §4.1.4.3.3.4, not a SHALL; rejecting it is a project choice (AOS-018)", "config",
              channel(2049, [vc(SCID, 2, "bpdu")])),
         case("aos-bpdu-cfg-003", ["AOS-018", "API-040"],
              "Issue 5, an M_PDU VC on 2 049-octet frames: accepted", "config",
@@ -950,7 +951,7 @@ def issue4_compat():
                 "lenient mode", cfg, f(hdr(0xA5, 5, edition="issue4"), 0x0800 | 3))
     out += both("aos-i4-dec-006", reqs + ["AOS-003", "AOS-017", "API-032"],
                 "11-bit pointer 6, past the Packet Zone, with a spare set: Malformed in both "
-                "modes", cfg, f(hdr(0xA5, 5, edition="issue4"), 0xF800 | 6))
+                "modes (the order of the two checks is a project choice; the Blue Book gives none)", cfg, f(hdr(0xA5, 5, edition="issue4"), 0xF800 | 6))
     i5 = channel(14, [vc(0x2A5, 5, "mpdu")])
     out += [
         case("aos-i4-dec-007", ["AOS-001", "AOS-002", "AOS-003"],
@@ -978,7 +979,7 @@ def issue4_compat():
              "Issue 4, a VC of SCID 256: InvalidConfig (spacecraft_id)", "config",
              channel(14, [vc(0x100, 5, "mpdu")], edition="issue4")),
         case("aos-i4-hdr-001", reqs + ["AOS-002"],
-             "The Primary Header alone in Issue 4, bits 42-43 = 11, reported raw",
+             "The Primary Header alone in Issue 4, bits 42-43 = 11, reported raw as issue4_spare 3: decode_header takes no mode (AOS-010), so this holds in strict and lenient mode alike",
              "decode_header", cfg, f(hdr(0xA5, 5, edition="issue4", spare=3), 3)[:6]),
     ]
     return out
@@ -1016,10 +1017,10 @@ def config():
     return [
         case("aos-cfg-001", reqs + ["AOS-001", "CMN-041"],
              "Shortest physical channel: 6 + 1 octets", "config", channel(7, [])),
-        case("aos-cfg-002", reqs + ["CMN-041"], "6 octets: no data octet", "config",
+        case("aos-cfg-002", reqs + ["CMN-041"], "6 octets: no data octet (CMN-041, a project rule); the error names the Physical Channel's frame_len (68)", "config",
              channel(6, [])),
         case("aos-cfg-003", reqs + ["CMN-041", "AOS-013"],
-             "With FHEC, Insert Zone 2, and FECF the shortest frame is 13 octets: 12 rejected",
+             "With FHEC, Insert Zone 2, and FECF the shortest frame is 13 octets: 12 rejected (frame_len, 68)",
              "config", channel(12, [], fhec=True, iz=2, fecf=True)),
         case("aos-cfg-004", reqs + ["CMN-041", "AOS-013"], "...and 13 accepted", "config",
              channel(13, [], fhec=True, iz=2, fecf=True)),
@@ -1143,14 +1144,18 @@ NOTE = (
     "the fhec_*.json files, loaded from its path). The model is committed as "
     "test-vectors/models/aos_frame.py (TV-023); `python3 -I test-vectors/models/aos_frame.py "
     "--check test-vectors/aos/<file>.json` recomputes every expected value. One frame is "
-    "worked by hand in docs/verification/derivations/aos-frame.md."
+    "worked by hand in docs/verification/derivations/aos-frame.md. Author of the model: an AI "
+    "agent, Claude Opus 5.5, recorded as co-author of commit 5bbbf45 (2026-10-23); it wrote "
+    "the model from 732.0-B-5 EC1, 732.0-B-4 and docs/standards/aos-frame.md, and states that "
+    "it did not write it from the code of the Rust codec (the history shows the codec already "
+    "existed and records no briefing of the agent beyond that statement; TV-023)."
 )
 
 
 def generate(name):
     make, standard = FILES[name]
     return {"kind": "codec", "standard": standard, "provenance": "hand-derived",
-            "provenance_note": NOTE, "cases": make()}
+            "provenance_note": NOTE + " This file covers " + standard + ".", "cases": make()}
 
 
 def check_field_codes(path):

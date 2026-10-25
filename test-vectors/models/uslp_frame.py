@@ -1665,15 +1665,60 @@ NOTE = (
     "octet, and one truncated frame are worked by hand in "
     "docs/verification/derivations/uslp-frame.md. `python3 -I "
     "test-vectors/models/uslp_frame.py --check test-vectors/uslp/*.json` recomputes every "
-    "expected value."
+    "expected value. The OID data of a decoded frame is not checked against the generator's "
+    "sequence: it depends on the generator's position across frames, which a stateless decoder "
+    "does not know, and receivers discard it. 732.1-B-3 §6.3.2.2 refers to D1.2.5 for the "
+    "truncated header of a frame with SDLS, where D1.3 is meant; the cases follow D1.2.3, "
+    "D1.2.4 and D1.3. Author of the model: an AI agent, Claude Opus 5.5, recorded as "
+    "co-author of commit 0459ef0 (2026-10-23), whose message states that it wrote the model "
+    "from 732.1-B-3 and uslp-frame.md without reading the Rust code; the history records no "
+    "briefing of the agent beyond that statement (TV-023)."
 )
+
+
+SUPERSEDED = {
+    "uslp-oid-019": (
+        "VCID 63 is valid on a fixed-length channel without an entry (maintainer decision of "
+        "2026-10-25 following 732.1-B-3 Table 5-2 note 2): encode_oid on a channel that does "
+        "not list VCID 63 succeeds, with no VCF Count, OCF, or Security fields"),
+}
+
+LOWER_LIMIT = (
+    " A Physical Channel frame length below 9 octets is rejected even when no VC is "
+    "configured: 9 is the 7-octet Primary Header, the 1-octet TFDF Header of a variable-length "
+    "frame, and one TFDZ octet (OI-44 item 2); the TFDF Header of a fixed-length VC has 3 "
+    "octets, so such a VC needs 11."
+)
+TRAILER_LIMIT = (
+    " The Security Trailer is limited to 65 535 octets by the 16-bit Frame Length; API-071 "
+    "states the limit of the Header (64 octets) only."
+)
+ORDER = (
+    " The order of the configuration checks (uslp-frame.md §2.1) is a project choice; the "
+    "Blue Book gives none."
+)
+EXTRA = {
+    "uslp-cfg-004": LOWER_LIMIT, "uslp-cfg-007": LOWER_LIMIT, "uslp-cfg-034": LOWER_LIMIT,
+    "uslp-cfg-016": TRAILER_LIMIT, "uslp-cfg-025": TRAILER_LIMIT,
+    **{f"uslp-cfg-{n:03d}": ORDER for n in range(48, 56)},
+    "uslp-val-013": " VCID 63 is rejected on a variable-length channel by Table 5-1 note 4.",
+    "uslp-cfg-029": " Table 5-1 note 4: OID frames are not generated for variable-length frames.",
+}
 
 
 def generate():
     out = {}
     for name, (gen, title) in FILES.items():
+        cases = gen()
+        for c in cases:
+            if c["id"] in EXTRA:
+                c["description"] += EXTRA[c["id"]]
+            if c["id"] in SUPERSEDED:
+                c["superseded"] = {"reason": SUPERSEDED[c["id"]]}
         out[name] = {"kind": "codec", "standard": "732.1-B-3 — " + title,
-                     "provenance": "hand-derived", "provenance_note": NOTE, "cases": gen()}
+                     "provenance": "hand-derived",
+                     "provenance_note": NOTE + " This file covers " + title + ".",
+                     "cases": cases}
     return out
 
 
