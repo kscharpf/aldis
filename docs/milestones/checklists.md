@@ -15,7 +15,7 @@ Every pull request also: changes one track's directories ([roadmap](../08-roadma
 - [ ] Vectors where the Verif. column says V (see below), a property-based round trip drawn from the shared strategies of `aldis-testkit` (VER-023, VER-054), and the fuzz target the plan names (below).
 - [ ] 100 % regions, functions, lines, and branches (VER-024, verify check `coverage`).
 - [ ] The exerciser calls every new public function with `black_box` inputs (VER-010, verify checks `exerciser-<target>`).
-- [ ] The crate's GEN-022/023 inspection revised for every new loop and call: a `Revised` row "prepared by <author>, pending exit review" (VER-061, review).
+- [ ] The crate's GEN-022/023 inspection revised for every new loop and call: a `Revised` row "prepared by <author>, pending exit review" (VER-061, review); every loop named in the `ID` column of its Loops table (`cargo xtask loops`).
 - [ ] The crate's `README.md` status, and the plan's WP row.
 
 ## Adding or activating a crate
@@ -76,7 +76,7 @@ Before a codec's work package starts, one pull request settles the Blue Book que
 
 - [ ] Every exit criterion of the plan's §4 met on `main`, with the evidence in a results column; `cargo xtask trace --scope <id> --strict` passes and replaces the non-strict run in `cargo xtask ci`, `ci.yml`, and the verify check `spec` (VER-020).
 - [ ] **The GEN-022/023 inspections of every crate the milestone changed approved by the maintainer at the exit review**, covering every revision since the last approval; the approval recorded in each record's `Approved` row (VER-061) and logged as `approval` in the [decision log](../process/decisions.md).
-- [ ] Coverage at 100 % for the gated crates (VER-024); mutants triaged (VER-025); every fuzz target run one CPU-hour (VER-022); stack sizes published (VER-011); the exerciser run on all bare-metal targets (VER-010).
+- [ ] Coverage at 100 % for the gated crates (VER-024); mutants triaged (VER-025); every fuzz target run one CPU-hour (VER-022); stack sizes published and within their budgets (VER-011, verify check `stack`); the exerciser run on all bare-metal targets (VER-010).
 - [ ] Cross-checks run, or the search recorded in [cross-checks.md](../verification/cross-checks.md) (VER-040); the second review of the hand-derived vectors recorded in `docs/verification/reviews/`.
 - [ ] Crate docs cite clauses and requirement IDs (RS-015, reviewed); facade features documented.
 - [ ] **The process metrics for the milestone reviewed** (`cargo xtask metrics --since <the milestone's start>`, or the pinned issue "Process metrics", [06 §9](../06-verification.md#9-process-metrics)), and the top friction item, such as the file that conflicts most or the check group that costs most, opened as a follow-up issue (VER-063, review).
