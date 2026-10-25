@@ -36,6 +36,8 @@ A reviewer of a pull request does **not** re-run the verification checks: `cargo
 
 Spend the review on what no check covers: the reading of the Blue Book behind each decision (cite the clause), the requirements and whether the tests and vectors really cover them, the soundness of every `unsafe` block, the shape of the public API and C ABI, and the decisions and judgement calls the pull request lists. Read every suppression the change adds, because the gate passes *because of* it: each `#[expect(…, reason = "…")]` (RS-016), `// NOLINT(<check>): <reason>` (CPP-042), entry of `coverage-waivers.toml` (VER-024), and mutant triaged as equivalent in [mutants-triage.md](docs/verification/mutants-triage.md) (VER-025). Check that the reason is true and the region is the smallest one; a reason that does not hold is a finding. Report findings as [decision-rights.md](docs/process/decision-rights.md) §2.6 describes, each with the file and line and why it matters; to show a defect, a failing test or vector case is the clearest form.
 
+**Every statement about the implementation cites the file and line it rests on** (`path:line`), quoting the code where the point depends on it, and a claim about a dependency, an algorithm, or a target names where it is in the code. A statement the reviewer cannot point to is not made. A review whose description of the code does not match the code does not count as a review of that pull request: the coordinator posts the corrections and the review is done again.
+
 ## Non-negotiable rules (Layers 0–2)
 
 - `no_std`, **no heap**: fixed capacities via const generics (GEN-010, GEN-011).
