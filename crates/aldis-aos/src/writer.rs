@@ -242,18 +242,21 @@ fn mpdu_header(
     pc: &AosPhysicalChannelConfig,
 ) -> Result<[u8; 2]> {
     let edition = pc.edition();
-    if let PacketPointer::StartsAt(n) = pointer {
-        let max = usize::from(PacketPointer::max_offset(edition));
-        let limit = zone.saturating_sub(1).min(max);
-        if usize::from(n.get()) > limit {
-            return Err(Error::out_of_range(
-                field::FIRST_HEADER_POINTER,
-                len_u64(limit),
-                u64::from(n.get()),
-            ));
-        }
+    let last = zone.saturating_sub(1);
+    let limit = last.min(usize::from(PacketPointer::max_offset(edition)));
+    // An offset above the edition's largest has no header octets; one past the zone, no place.
+    let (in_zone, offset) = match pointer {
+        PacketPointer::StartsAt(n) => (usize::from(n.get()) <= last, n.get()),
+        PacketPointer::NoPacketStart | PacketPointer::OnlyIdleData => (true, 0),
+    };
+    match pointer.header_octets(edition) {
+        Some(octets) if in_zone => Ok(octets),
+        _ => Err(Error::out_of_range(
+            field::FIRST_HEADER_POINTER,
+            len_u64(limit),
+            u64::from(offset),
+        )),
     }
-    Ok(pointer.header_octets(edition))
 }
 
 /// The `B_PDU` Header for `pointer` in a Bitstream Data Zone of `zone` octets (AOS-019).

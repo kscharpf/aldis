@@ -11,13 +11,13 @@ use aldis_core::oid::OidGenerator;
 use aldis_core::security::SecurityLayout;
 use aldis_uslp::{
     ChannelFields, ConstructionRule, FrameContent, FrameFields, FrameKind, MapConfig, OcfUse,
-    PhysicalChannelConfig, SecurityScope, SourceOrDestination, TfdfHeader, TfdzRule,
+    PhysicalChannelConfig, SecurityScope, SourceOrDestination, TfdfHeader, TfdzOffset, TfdzRule,
     TransferFrameType, TruncatedFrameLen, Upid, UslpMapId, UslpSpacecraftId, UslpVcId, VcConfig,
-    VcLookup, VcParams, VcTable, VcfCountLen, encode, encode_oid, encode_truncated,
+    VcLookup, VcParams, VcTable, VcfCount, VcfCountLen, encode, encode_oid, encode_truncated,
 };
 use proptest::prelude::*;
 
-use super::common::{map_id, spacecraft_id, vc_id};
+use super::common::{map_id, spacecraft_id, up_to_u16, up_to_u64, vc_id};
 use super::{octets, proper_prefix, with_trailing};
 
 /// The channel table of these strategies.
@@ -43,6 +43,21 @@ pub fn upid() -> impl Strategy<Value = Upid> {
 /// A VCF Count Length, 0–7 octets (USLP-004).
 pub fn vcf_count_len() -> impl Strategy<Value = VcfCountLen> {
     (0_u8..=7).prop_filter_map("0-7", |n| VcfCountLen::new(n).ok())
+}
+
+/// A VCF Count of any length, 0–7 octets, and any value the length holds, its edges drawn more
+/// often (732.1 §4.1.2.11–12, Table 4-2; USLP-004).
+pub fn vcf_count() -> impl Strategy<Value = VcfCount> {
+    vcf_count_len().prop_flat_map(|len| {
+        up_to_u64(len.max_count())
+            .prop_filter_map("fits the length", move |v| VcfCount::new(len, v))
+    })
+}
+
+/// Any TFDZ offset, 0 to `0xFFFE`, the edges drawn more often (732.1 §4.1.4.2.4.3–6; USLP-006,
+/// RS-020).
+pub fn tfdz_offset() -> impl Strategy<Value = TfdzOffset> {
+    up_to_u16(TfdzOffset::MAX).prop_filter_map("in range", TfdzOffset::new)
 }
 
 /// A Security Header of 0–6 and a Trailer of 0–4 octets (API-070).
@@ -617,10 +632,12 @@ pub fn uslp_frame_decoder_input() -> BoxedStrategy<(UslpChannels, Vec<u8>)> {
 
 #[cfg(test)]
 mod tests {
-    use super::{FrameParts, data_unit, uslp_frame, uslp_frame_decoder_input};
+    use super::{
+        FrameParts, data_unit, tfdz_offset, uslp_frame, uslp_frame_decoder_input, vcf_count,
+    };
     use crate::strategies::config;
     use aldis_core::DecodeMode;
-    use aldis_uslp::UslpFrame;
+    use aldis_uslp::{TfdzOffset, UslpFrame};
     use proptest::prelude::*;
 
     const REGRESSIONS: &str = concat!(
@@ -637,6 +654,13 @@ mod tests {
             let d = UslpFrame::decode(&f.octets, &f.channels.table, DecodeMode::Strict).unwrap();
             prop_assert_eq!(d.tfdz(), f.tfdz.as_slice());
             prop_assert_eq!(d.is_truncated(), matches!(f.parts, FrameParts::Truncated { .. }));
+        }
+
+        #[test]
+        fn counts_and_offsets_are_in_range(c in vcf_count(), o in tfdz_offset()) {
+            // req: VER-054, USLP-004, USLP-006
+            prop_assert!(c.value() <= c.len().max_count());
+            prop_assert!(o.get() <= TfdzOffset::MAX);
         }
 
         #[test]

@@ -299,6 +299,10 @@ impl<'a> UslpFrame<'a> {
     /// fixed-length Physical Channel `bytes` must be exactly one frame (API-012). The checks are
     /// those of [`validate_frame`](crate::validate::validate_frame), in its order.
     ///
+    /// A receiver of delimited frames must run `validate_frame`, or compare
+    /// [`len`](Self::len) with the octets it supplied, because a bit error in the Frame Length
+    /// field can make `decode` accept a shorter frame (API-011, USLP-014; VER-064).
+    ///
     /// # Errors
     /// The decoder errors of `docs/standards/uslp-frame.md` §3.1, among them:
     /// - `Incomplete` (`needed`) for fewer than 4 octets, 7 for a non-truncated frame, or the

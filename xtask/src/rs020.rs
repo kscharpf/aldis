@@ -287,7 +287,7 @@ struct Items {
 }
 
 /// Index of the bracket that closes the one at `open`.
-fn group_end(t: &[Tok], open: usize) -> Result<usize, String> {
+pub(crate) fn group_end(t: &[Tok], open: usize) -> Result<usize, String> {
     if !t
         .get(open)
         .is_some_and(|tok| matches!(tok.text.as_str(), "(" | "[" | "{"))
@@ -347,7 +347,7 @@ fn split_commas(t: &[Tok]) -> Result<Vec<&[Tok]>, String> {
 }
 
 /// Whether attribute tokens (between `#[` and `]`) gate the item on `test` or `kani`.
-fn test_only(attr: &[Tok]) -> bool {
+pub(crate) fn test_only(attr: &[Tok]) -> bool {
     let words: Vec<&str> = attr.iter().map(|t| t.text.as_str()).collect();
     match words.as_slice() {
         ["cfg", "(", "test" | "kani", ")"] => true,

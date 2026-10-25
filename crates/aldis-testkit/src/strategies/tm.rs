@@ -32,6 +32,12 @@ pub fn first_header_pointer() -> impl Strategy<Value = FirstHeaderPointer> {
     ]
 }
 
+/// Any packet offset, 0 to `0x7FD`, the edges drawn more often (132.0 §4.1.2.7.6.3–5; TM-008,
+/// RS-020).
+pub fn packet_offset() -> impl Strategy<Value = PacketOffset> {
+    up_to_u16(PacketOffset::MAX).prop_filter_map("in range", PacketOffset::new)
+}
+
 /// Any Secondary Header length, 2–64 octets (132.0 §4.1.3.1.3; TM-003).
 pub fn fsh_len() -> impl Strategy<Value = FshLen> {
     (FshLen::MIN..=FshLen::MAX).prop_filter_map("in range", FshLen::new)
@@ -302,10 +308,10 @@ pub fn tm_frame_decoder_input() -> BoxedStrategy<(TmMasterChannelConfig, Vec<u8>
 
 #[cfg(test)]
 mod tests {
-    use super::{master_channel, tm_frame, tm_frame_decoder_input};
+    use super::{master_channel, packet_offset, tm_frame, tm_frame_decoder_input};
     use crate::strategies::config;
     use aldis_core::DecodeMode;
-    use aldis_tm::TmFrame;
+    use aldis_tm::{PacketOffset, TmFrame};
     use proptest::prelude::*;
 
     const REGRESSIONS: &str = concat!(
@@ -326,9 +332,10 @@ mod tests {
         }
 
         #[test]
-        fn other_strategies_are_in_range(mc in master_channel(), (m, bytes) in tm_frame_decoder_input()) {
+        fn other_strategies_are_in_range(mc in master_channel(), (m, bytes) in tm_frame_decoder_input(), o in packet_offset()) {
             // req: VER-054, GEN-020
             prop_assert!(mc.vcs().next().is_some());
+            prop_assert!(o.get() <= PacketOffset::MAX);
             for mode in [DecodeMode::Strict, DecodeMode::Lenient] {
                 let _ = TmFrame::decode_with(&bytes, m.pc(), &m, mode);
             }

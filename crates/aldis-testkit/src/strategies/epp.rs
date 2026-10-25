@@ -96,6 +96,28 @@ pub fn epp_config() -> impl Strategy<Value = EppConfig> {
         })
 }
 
+/// Minimum and maximum data unit lengths for `EppConfig::new`, valid or not (133.1 Table 4-2,
+/// Table 5-1; EPP-010, GEN-060).
+///
+/// Each is drawn from the edges `0`, `1`, `MAX_DATA_LEN - 1`, `MAX_DATA_LEN`,
+/// `MAX_DATA_LEN + 1`, and `u32::MAX`, or from the whole `u32` range.
+pub fn epp_config_bounds() -> impl Strategy<Value = (u32, u32)> {
+    let bound = || {
+        prop_oneof![
+            1 => prop_oneof![
+                Just(0),
+                Just(1),
+                Just(MAX_DATA_LEN - 1),
+                Just(MAX_DATA_LEN),
+                Just(MAX_DATA_LEN + 1),
+                Just(u32::MAX),
+            ],
+            1 => any::<u32>(),
+        ]
+    };
+    (bound(), bound())
+}
+
 /// An Encapsulation Packet built by `EppConfig::data_unit` and `encode`, with the parts it was
 /// built from (133.1 §4.1; EPP-002, EPP-008, API-020, API-021).
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -362,9 +362,11 @@ pub fn aos_frame_near_boundary() -> BoxedStrategy<(AosTable, Vec<u8>)> {
                     .table
                     .frame_layout(f.fields.scid, f.fields.vcid)
                     .map_or(0, |l| l.data().start);
+                // A 1-octet data field may end the frame: write only the octets it has.
                 resealed(&f, |o| {
-                    o[at] = pdu[0];
-                    o[at + 1] = pdu[1];
+                    for (slot, octet) in o.iter_mut().skip(at).zip(pdu) {
+                        *slot = octet;
+                    }
                 })
             })
             .boxed(),

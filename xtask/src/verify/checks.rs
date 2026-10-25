@@ -78,8 +78,9 @@ pub const RUN: PathList = PathList {
 
 /// Read by every Rust check: the crates and the separate workspaces (`exerciser/`, `fuzz/`,
 /// `refapp/`, `crosscheck/`), their lint, format, licence, and coverage settings, the vectors that
-/// their tests and the exerciser load. One list for all of them: a finer split would save little
-/// and risk missing a path. The workflows, which no check reads, are in `GITHUB`.
+/// their tests and the exerciser load, and the SANA snapshots a test compares with the generated
+/// tables (`aldis-uslp/tests/restricted.rs`). One list for all of them: a finer split would save
+/// little and risk missing a path. The workflows, which no check reads, are in `GITHUB`.
 pub const RUST: PathList = PathList {
     name: "rust",
     patterns: &[
@@ -89,6 +90,7 @@ pub const RUST: PathList = PathList {
         "refapp/**",
         "crosscheck/**",
         "test-vectors/**",
+        "specs/sana/**",
         "clippy.toml",
         "rustfmt.toml",
         ".rustfmt.toml",
@@ -591,6 +593,8 @@ cargo xtask sana
 cargo xtask consistency
 # No bare integer in the public API of a codec crate unless exempted with a reason (RS-020).
 cargo xtask rs020
+# Every restricted type of a codec crate has a property test naming it (RS-020, VER-023).
+cargo xtask restricted
 # Every loop of the library code is in its crate's GEN-022/023 inspection record with a bound,
 # and every loop a record names exists (GEN-022).
 cargo xtask loops

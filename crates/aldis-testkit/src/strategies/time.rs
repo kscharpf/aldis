@@ -47,6 +47,24 @@ fn non_empty_tail(max_octets: usize) -> impl Strategy<Value = PFieldTail> {
     pfield_tail(max_octets).prop_filter("non-empty", |t| !t.is_empty())
 }
 
+/// `max + 1..=u32::MAX`, with `max + 1` drawn most often (GEN-041).
+///
+/// # Panics
+/// If `max` is `u32::MAX`.
+fn above_u32(max: u32) -> BoxedStrategy<u32> {
+    assert!(max < u32::MAX, "no value above max");
+    prop_oneof![1 => Just(max + 1), 1 => Just(u32::MAX), 2 => max + 1..=u32::MAX].boxed()
+}
+
+/// `max + 1..=u64::MAX`, with `max + 1` drawn most often (GEN-041).
+///
+/// # Panics
+/// If `max` is `u64::MAX`.
+fn above_u64(max: u64) -> BoxedStrategy<u64> {
+    assert!(max < u64::MAX, "no value above max");
+    prop_oneof![1 => Just(max + 1), 1 => Just(u64::MAX), 2 => max + 1..=u64::MAX].boxed()
+}
+
 // ----- CUC (301.0 §3.2) -----
 
 /// Level 1 (1958 TAI) or Level 2 (agency) epoch (301.0 §3.2.2, TIME-010).
@@ -110,6 +128,29 @@ pub fn cuc() -> impl Strategy<Value = Cuc> {
 /// A CUC code in `format` (301.0 §3.2; TIME-011, TIME-012).
 pub fn cuc_in(format: CucFormat) -> impl Strategy<Value = Cuc> {
     cuc_value(format).prop_filter_map("value fits", move |v| Cuc::new(format, v).ok())
+}
+
+/// Coarse times too wide for `format`, which `Cuc::new` and `Cuc::from_seconds_nanos` reject
+/// (TIME-012).
+///
+/// `2^(8 × coarse octets)` is drawn most often. A format has at most 7 coarse octets, so there
+/// is always a value above.
+pub fn cuc_coarse_out_of_range(format: CucFormat) -> BoxedStrategy<u64> {
+    let bits = 8 * u32::from(format.coarse_octets());
+    above_u64(u64::MAX >> (64 - bits))
+}
+
+/// Left-aligned fractions with a bit below `format`'s resolution, which `Cuc::new` rejects
+/// (301.0 §3.2.1, TIME-011).
+///
+/// The bit just below is drawn most often. A format has at most 10 fine octets (80 bits), so 48
+/// bits always lie below.
+pub fn cuc_fine_off_resolution(format: CucFormat) -> BoxedStrategy<u128> {
+    let below = 128 - 8 * u32::from(format.fine_octets());
+    let bit = prop_oneof![1 => Just(below - 1), 1 => Just(0), 2 => 0..below];
+    (any::<u128>(), bit)
+        .prop_map(|(f, bit)| f | (1_u128 << bit))
+        .boxed()
 }
 
 /// Nanoseconds of a second, `0..10⁹` (TIME-011).
@@ -180,6 +221,26 @@ pub fn cds_value(format: CdsFormat) -> impl Strategy<Value = CdsValue> {
             subms,
         },
     )
+}
+
+/// Milliseconds of day above 86 400 999, which `MsOfDay::new` rejects (301.0 Annex A,
+/// TIME-021).
+pub fn ms_of_day_out_of_range() -> BoxedStrategy<u32> {
+    above_u32(MsOfDay::MAX)
+}
+
+/// Picoseconds of millisecond above 999 999 999, which `Picos::new` rejects (TIME-021).
+pub fn picos_out_of_range() -> BoxedStrategy<u32> {
+    above_u32(Picos::MAX)
+}
+
+/// Day counts beyond a 16- or 24-bit day segment, `2^16` or `2^24` drawn most often, which
+/// `Cds::new` rejects (301.0 §3.3.1, Annex A; TIME-020).
+pub fn cds_day_out_of_range(day: CdsDayLen) -> BoxedStrategy<u32> {
+    above_u32(match day {
+        CdsDayLen::Bits16 => 0xFFFF,
+        CdsDayLen::Bits24 => 0xFF_FFFF,
+    })
 }
 
 /// A CDS code in a conformant [`cds_format`] (301.0 §3.3; TIME-020, TIME-021).
@@ -282,6 +343,12 @@ pub fn ccs() -> impl Strategy<Value = Ccs> {
 /// A CCS code in `format` (301.0 §3.4, TIME-030).
 pub fn ccs_in(format: CcsFormat) -> impl Strategy<Value = Ccs> {
     ccs_value(format).prop_filter_map("value fits", move |v| Ccs::new(format, v).ok())
+}
+
+/// Sub-second values with more digits than `format`'s sub-second octets hold, `10^(2n)` drawn
+/// most often, which `Ccs::new` rejects (301.0 §3.4.2, TIME-030).
+pub fn ccs_subsecond_out_of_range(format: CcsFormat) -> BoxedStrategy<u64> {
+    above_u64(10_u64.pow(2 * u32::from(format.subsecond_octets())) - 1)
 }
 
 // ----- Agency-defined codes (301.0 §3.6) -----
@@ -446,6 +513,15 @@ pub fn fraction(max_digits: u8) -> impl Strategy<Value = Fraction> {
     })
 }
 
+/// A digit count of 0–12 and a value with more digits than that, which `Fraction::new` rejects
+/// (301.0 §3.5.1, TIME-031).
+///
+/// The value is at least 10^digits, `10^digits` drawn most often.
+pub fn fraction_out_of_range() -> impl Strategy<Value = (u64, u8)> {
+    (0..=MAX_FRACTION_DIGITS)
+        .prop_flat_map(|digits| (above_u64(10_u64.pow(u32::from(digits)) - 1), Just(digits)))
+}
+
 /// An ASCII format: code A or B, 0–12 fractional digits, with or without `Z` (301.0 §3.5.1;
 /// TIME-031, TIME-033).
 pub fn ascii_format() -> impl Strategy<Value = AsciiFormat> {
@@ -520,12 +596,18 @@ pub fn ascii_parser_input() -> BoxedStrategy<Vec<u8>> {
 #[cfg(test)]
 mod tests {
     use super::{
-        ascii_parser_input, ascii_text, ascii_time, encode_with_pfield, time_code,
-        time_code_decoder_input, time_code_near_boundary, time_code_with_tail,
+        ascii_parser_input, ascii_text, ascii_time, ccs_format, ccs_in, ccs_subsecond_out_of_range,
+        cds_day_len, cds_day_out_of_range, cuc_coarse_out_of_range, cuc_fine_off_resolution,
+        cuc_format, cuc_value, encode_with_pfield, fraction_out_of_range, ms_of_day_out_of_range,
+        picos_out_of_range, time_code, time_code_decoder_input, time_code_near_boundary,
+        time_code_with_tail,
     };
     use crate::strategies::config;
     use aldis_core::{DecodeMode, ErrorKind};
-    use aldis_time::{AsciiOptions, AsciiTime, TimeCode, decode_with_pfield};
+    use aldis_time::{
+        AsciiOptions, AsciiTime, Ccs, CcsValue, CdsDayLen, Cuc, CucValue, Fraction, MsOfDay, Picos,
+        TimeCode, decode_with_pfield,
+    };
     use proptest::prelude::*;
 
     /// Whether `octets` decode as `code` in `mode`.
@@ -566,6 +648,35 @@ mod tests {
                 let _ = decode_with_pfield(&bytes, DecodeMode::Strict);
                 let _ = decode_with_pfield(&bytes, DecodeMode::Lenient);
             }
+        }
+
+        #[test]
+        fn out_of_range_values_are_out_of_range(
+            ms in ms_of_day_out_of_range(),
+            ps in picos_out_of_range(),
+            (day_len, day) in cds_day_len().prop_flat_map(|d| (Just(d), cds_day_out_of_range(d))),
+            (value, digits) in fraction_out_of_range(),
+        ) {
+            // req: VER-054, TIME-020, TIME-021, TIME-031
+            prop_assert!(MsOfDay::new(ms).is_none() && Picos::new(ps).is_none());
+            let max_day = if day_len == CdsDayLen::Bits16 { 0xFFFF } else { 0xFF_FFFF };
+            prop_assert!(day > max_day);
+            prop_assert!(Fraction::new(value, digits).is_none());
+        }
+
+        #[test]
+        fn misfits_do_not_fit(
+            (f, coarse, fine, ok) in cuc_format().prop_flat_map(|f| (
+                Just(f), cuc_coarse_out_of_range(f), cuc_fine_off_resolution(f), cuc_value(f),
+            )),
+            (c, sub) in ccs_format().prop_flat_map(|f| (ccs_in(f), ccs_subsecond_out_of_range(f))),
+        ) {
+            // req: VER-054, TIME-011, TIME-012, TIME-030
+            prop_assert!(Cuc::new(f, CucValue::new(coarse, 0)).is_err());
+            prop_assert!(Cuc::new(f, CucValue::new(ok.coarse(), fine)).is_err());
+            prop_assert!(Cuc::new(f, ok).is_ok());
+            let v = CcsValue { subsecond: sub, ..c.value() };
+            prop_assert!(Ccs::new(c.format(), v).is_err());
         }
 
         #[test]
