@@ -14,6 +14,7 @@ mod header;
 mod kani;
 mod layers;
 mod links;
+mod loops;
 mod md;
 mod metrics;
 mod models;
@@ -62,6 +63,9 @@ commands:
                                mutants, the exerciser, layers, READMEs, and the facade; fuzz
                                targets in fuzz/Cargo.toml and the nightly matrix; every vector
                                file in test-vectors/README.md, a test, and the exerciser
+  loops [list [<crate>...]]    every loop in a library crate is in its GEN-022/023 inspection
+                               record with a bound, and every loop a record lists exists
+                               (GEN-022); `list` prints the loops found
   rs020                        no bare integer in a public field or enum payload of a codec
                                crate unless xtask/rs020-exemptions.toml exempts it with a
                                reason, and no exemption that matches nothing (RS-020)
@@ -87,7 +91,8 @@ commands:
   changelog release <version> <YYYY-MM-DD>
                                move every fragment into a new section of CHANGELOG.md
   ci                           the quick checks of the verification run, without a build:
-                               spec-lint, links, decisions, layers, consistency, rs020, refapp-deps,
+                               spec-lint, links, decisions, layers, consistency, rs020, loops,
+                               refapp-deps,
                                vectors validate, vectors schema --check, fields, header (needs
                                the pinned cbindgen), sana, trace --scope m0 --strict,
                                trace --scope m1 --strict, trace --scope m2, trace --scope c0,
@@ -112,6 +117,7 @@ const CI: &[Step] = &[
     ("layers", layers::check),
     ("consistency", consistency::check),
     ("rs020", rs020::check),
+    ("loops", || loops::run(&[])),
     ("refapp-deps", refapp::check),
     ("vectors validate", vectors::validate),
     ("vectors schema --check", || vectors::schema(true)),
@@ -177,6 +183,7 @@ fn run(args: &[&str]) -> Result<usize, String> {
         ["features"] => features::check(),
         ["consistency"] => consistency::check(),
         ["rs020"] => rs020::check(),
+        ["loops", rest @ ..] => loops::run(rest),
         ["cpp", rest @ ..] => cpp::run(rest),
         ["verify", rest @ ..] => verify::run(rest),
         ["metrics", rest @ ..] => metrics::run(rest),

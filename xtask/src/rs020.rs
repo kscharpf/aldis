@@ -177,14 +177,17 @@ fn strip(text: &str) -> String {
 
 /// One token: an identifier, keyword, number, lifetime, or punctuation.
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct Tok {
-    text: String,
-    line: usize,
+pub struct Tok {
+    /// The token's text.
+    pub text: String,
+    /// Its 1-based line.
+    pub line: usize,
 }
 
 /// The tokens of `text`, with 1-based line numbers. `::`, `->`, and `=>` are single tokens; a
 /// macro variable (`$name`) is one identifier token; other punctuation is one character each.
-fn tokens(text: &str) -> Vec<Tok> {
+/// Also read by `xtask loops`.
+pub fn tokens(text: &str) -> Vec<Tok> {
     let stripped = strip(text);
     let c: Vec<char> = stripped.chars().collect();
     let ident = ident_char;

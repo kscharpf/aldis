@@ -7,6 +7,7 @@
 | Inspected | 2026-10-23, prepared by Claude Code (agent of M2 WP-2): first inspection. Every loop, every call between the crate's own functions, and every blocking construct checked. No unbounded loop, no recursion |
 | Revised | 2026-10-23, `m2/tm-c-abi` (M2 WP-2 module 7), prepared by Claude Code (agent of WP-2 module 7), pending exit review: `writer.rs` adds `TmFrameWriter::resume` → `Plan::new`, `TmFrameWriter::start`; `start` takes a `zero` flag and zero-fills the frame only when `begin` and `encode` set it. No loop added (the zero-fill is the existing one, now conditional), no recursion |
 | Revised | 2026-10-24, `m2/rs020-check` (M2 WP-7, RS-020 check), prepared by Claude Code (agent of M2 WP-7), pending exit review: `header.rs` gains `PacketOffset`, whose `new`, `get`, and `TryFrom`/`From` impls are straight-line; `PacketPointer::classify` now calls `PacketOffset::new`, `to_raw` calls `PacketOffset::get`, and `writer.rs` `Plan::new` calls `PacketOffset::get`. No loop added, no recursion; the call graph below is updated |
+| Revised | 2026-10-24, m2/wp7-checks (WP-7), prepared by the agent, pending exit review: the Loops table gains the first column `ID`, which names each loop that `cargo xtask loops` finds (file, item, and index; GEN-022, M2 plan WP-7), or holds `—` for a row that names none; the other columns are unchanged; the slice implementation `VcLookup for [TmMasterChannelConfig]` is named `[TmMasterChannelConfig]::security_layout` |
 | Approved | Pending exit review (VER-061) |
 | Repeat | when `aldis-tm` gains a loop or a call between its own functions, and before each release |
 
@@ -14,17 +15,17 @@
 
 Every loop in library code, with its bound. Copies and comparisons of fixed-size values (the 6-octet header array, the 4-octet OCF, the 8-slot VC array of `TmMasterChannelConfig` in derived `Clone`/`PartialEq`/`Hash`, its initializer `[const { None }; 8]`) run over a constant length and are not listed.
 
-| Location | Loop | Bound |
-|---|---|---|
-| `config.rs` `TmMasterChannelConfig::vcs` | iterator over the VC slots (`iter().flatten().map`), driven by the caller | constant: 8 |
-| `config.rs` `VcLookup for [TmMasterChannelConfig]` | `iter().find` for the master channel of the frame's SCID | input length: the caller's slice |
-| `view.rs` `TmFrame::check` → `aldis_core::crc::verify_fecf` | CRC over the frame | input length: the frame (inspected in `aldis-core`) |
-| `writer.rs` `write_at` | `iter_mut().skip(at).zip(src)` | input length: the shorter of the frame after `at` and `src` |
-| `writer.rs` `TmFrameWriter::start` | `frame.fill(0)`, when called by `begin` or `encode` (not by `resume`) | input length: the frame length, at most the caller's buffer |
-| `writer.rs` `TmFrameWriter::begin_oid` → `aldis_core::oid::OidGenerator::fill` | one PN octet per data field octet | input length: the data field (inspected in `aldis-core`) |
-| `writer.rs` `TmFrameWriter::finish` → `aldis_core::crc::crc16` | CRC over the frame less its FECF | input length: the frame |
-| `writer.rs` `encode` | the four content lengths compared with the layout; the four fields written by `write_at` | constant: 4 each |
-| `validate.rs` `TmFrame::validate` | the three flags (OCF, FSH, Synchronization) and the three lengths (FSH, Security Header, Security Trailer) compared | constant: 3 each |
+| ID | Location | Loop | Bound |
+|---|---|---|---|
+| — | `config.rs` `TmMasterChannelConfig::vcs` | iterator over the VC slots (`iter().flatten().map`), driven by the caller | constant: 8 |
+| `config.rs [TmMasterChannelConfig]::security_layout #1` | `config.rs` `VcLookup for [TmMasterChannelConfig]` | `iter().find` for the master channel of the frame's SCID | input length: the caller's slice |
+| — | `view.rs` `TmFrame::check` → `aldis_core::crc::verify_fecf` | CRC over the frame | input length: the frame (inspected in `aldis-core`) |
+| `writer.rs write_at #1` | `writer.rs` `write_at` | `iter_mut().skip(at).zip(src)` | input length: the shorter of the frame after `at` and `src` |
+| `writer.rs TmFrameWriter::start #1` | `writer.rs` `TmFrameWriter::start` | `frame.fill(0)`, when called by `begin` or `encode` (not by `resume`) | input length: the frame length, at most the caller's buffer |
+| `writer.rs TmFrameWriter::begin_oid #1` | `writer.rs` `TmFrameWriter::begin_oid` → `aldis_core::oid::OidGenerator::fill` | one PN octet per data field octet | input length: the data field (inspected in `aldis-core`) |
+| — | `writer.rs` `TmFrameWriter::finish` → `aldis_core::crc::crc16` | CRC over the frame less its FECF | input length: the frame |
+| `writer.rs encode #1 #2` | `writer.rs` `encode` | the four content lengths compared with the layout; the four fields written by `write_at` | constant: 4 each |
+| `validate.rs TmFrame::validate #1 #2` | `validate.rs` `TmFrame::validate` | the three flags (OCF, FSH, Synchronization) and the three lengths (FSH, Security Header, Security Trailer) compared | constant: 3 each |
 
 `FrameLayout::compute` (called by `TmMasterChannelConfig::with_vc` and `TmFrame::parse`) has no loop (inspected in `aldis-core`).
 

@@ -589,6 +589,9 @@ cargo xtask sana
 cargo xtask consistency
 # No bare integer in the public API of a codec crate unless exempted with a reason (RS-020).
 cargo xtask rs020
+# Every loop of the library code is in its crate's GEN-022/023 inspection record with a bound,
+# and every loop a record names exists (GEN-022).
+cargo xtask loops
 # Independent cross-check of the vectors (VER-040); fails on any disagreement. Its own tests
 # first: the harness must report a difference it is shown.
 cargo test --manifest-path crosscheck/Cargo.toml

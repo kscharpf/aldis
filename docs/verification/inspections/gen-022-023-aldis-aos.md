@@ -11,25 +11,26 @@
 | Revised | 2026-10-24, `m2/aos-codec` (M2 WP-4, review of #97, RS-020), prepared by Claude Code (agent of M2 WP-4), pending exit review: `bpdu.rs` gains `ValidBitCount`, whose `new`, `get`, `last_bit`, and `TryFrom`/`From` impls are straight-line; `BitstreamPointer::classify` now calls `ValidBitCount::new`, `to_raw` calls `ValidBitCount::last_bit`, and `writer.rs` `bpdu_header` calls `ValidBitCount::get`. No loop added, no recursion; the call graph below is updated |
 | Revised | 2026-10-24, `m2/rs020-check` (M2 WP-7, RS-020 check), prepared by Claude Code (agent of M2 WP-7), pending exit review: `mpdu.rs` gains `PacketOffset`, whose `new`, `get`, and `TryFrom`/`From` impls are straight-line; `PacketPointer::classify` now calls `PacketOffset::new`, `to_raw` calls `PacketOffset::get`, and `writer.rs` `mpdu_header` calls `PacketOffset::get`. No loop added, no recursion; the call graph below is updated |
 | Revised | 2026-10-24, `m2/aos-c-abi` (M2 WP-4 module 8), prepared by Claude Code (agent of WP-4 module 8), pending exit review: `writer.rs` adds `AosFrameWriter::resume` → `Plan::new` or, for VCID 63, `Plan::oid`, and `AosFrameWriter::start`; `start` takes a `zero` flag and zero-fills the frame only when `begin`, `begin_oid`, and `encode` set it. No loop added (the zero-fill is the existing one, now conditional), no recursion |
+| Revised | 2026-10-24, m2/wp7-checks (WP-7), prepared by the agent, pending exit review: the Loops table gains the first column `ID`, which names each loop that `cargo xtask loops` finds (file, item, and index; GEN-022, M2 plan WP-7), or holds `—` for a row that names none; the other columns are unchanged |
 
 ## Loops
 
 Every loop in library code, with its bound. `mpdu.rs`, `bpdu.rs`, and `anomaly.rs` contain none (the M_PDU and B_PDU headers are read with `first_chunk`, and `Deviations` and the `anomaly_flags!` expansion contain none at run time). Copies and comparisons of fixed-size values (the 6- and 8-octet headers, the 4-octet OCF, `to_be_bytes`, the `[None; N]` initializer and derived `Clone`/`PartialEq`/`Hash` of `VcTable<N>`) run over a constant length or the capacity and are not listed. The table lookups `Gf::alpha_pow` (index `e % 15`) and `Gf::log` (`get`) contain no loop.
 
-| Location | Loop | Bound |
-|---|---|---|
-| `fhec.rs` `encode` | over the six systematic symbols (division by g(x) in a shift register) | constant: 6 |
-| `fhec.rs` `decode`, syndromes | `ROOTS.map` over the four roots, each a `fold` over the ten transmitted symbols (Horner's rule) | constant: 4 × 10 |
-| `fhec.rs` `decode`, root search | over the ten transmitted symbols (`iter_mut().rev()`), evaluating the locator and, at a root, Forney's formula | constant: 10 (GEN-022, M2 plan D10: the transmitted positions only) |
-| `config.rs` `fill` | over the caller's virtual channels (`iter().enumerate()`), each calling `find` | input length: the caller's slice; it stops with `CapacityExceeded` after `N` |
-| `config.rs` `find`, `has`, `VcTable::vcs` | `iter().flatten()` with `find` or `any` over the slots, or driven by the caller | capacity: `N` |
-| `header.rs` `correct` | `iter_mut().zip(head)`: the header octets into an 8-octet array | constant: 6 or 8 |
-| `view.rs` `check_fecf` → `aldis_core::crc::crc16`, `crc16_update` | CRC over the corrected header and the rest of the frame | input length: the frame (inspected in `aldis-core`) |
-| `writer.rs` `write_at` | `iter_mut().skip(at).zip(src)` | input length: the shorter of the frame after `at` and `src` |
-| `writer.rs` `AosFrameWriter::start` | `frame.fill(0)`, when called by `begin`, `begin_oid`, or `encode` (not by `resume`) | input length: the frame length, at most the caller's buffer |
-| `writer.rs` `AosFrameWriter::begin_oid` → `aldis_core::oid::OidGenerator::fill` | one PN octet per data field octet | input length: the data field (inspected in `aldis-core`) |
-| `writer.rs` `AosFrameWriter::finish` → `aldis_core::crc::crc16` | CRC over the frame less its FECF | input length: the frame |
-| `writer.rs` `encode` | the four content lengths compared with the layout; the four fields written by `write_at` | constant: 4 each |
+| ID | Location | Loop | Bound |
+|---|---|---|---|
+| `fhec.rs encode #1` | `fhec.rs` `encode` | over the six systematic symbols (division by g(x) in a shift register) | constant: 6 |
+| `fhec.rs decode #1` | `fhec.rs` `decode`, syndromes | `ROOTS.map` over the four roots, each a `fold` over the ten transmitted symbols (Horner's rule) | constant: 4 × 10 |
+| `fhec.rs decode #2` | `fhec.rs` `decode`, root search | over the ten transmitted symbols (`iter_mut().rev()`), evaluating the locator and, at a root, Forney's formula | constant: 10 (GEN-022, M2 plan D10: the transmitted positions only) |
+| `config.rs fill #1` | `config.rs` `fill` | over the caller's virtual channels (`iter().enumerate()`), each calling `find` | input length: the caller's slice; it stops with `CapacityExceeded` after `N` |
+| `config.rs find #1`, `config.rs has #1` | `config.rs` `find`, `has`, `VcTable::vcs` | `iter().flatten()` with `find` or `any` over the slots, or driven by the caller | capacity: `N` |
+| `header.rs correct #1` | `header.rs` `correct` | `iter_mut().zip(head)`: the header octets into an 8-octet array | constant: 6 or 8 |
+| — | `view.rs` `check_fecf` → `aldis_core::crc::crc16`, `crc16_update` | CRC over the corrected header and the rest of the frame | input length: the frame (inspected in `aldis-core`) |
+| `writer.rs write_at #1` | `writer.rs` `write_at` | `iter_mut().skip(at).zip(src)` | input length: the shorter of the frame after `at` and `src` |
+| `writer.rs AosFrameWriter::start #1` | `writer.rs` `AosFrameWriter::start` | `frame.fill(0)`, when called by `begin`, `begin_oid`, or `encode` (not by `resume`) | input length: the frame length, at most the caller's buffer |
+| `writer.rs AosFrameWriter::begin_oid #1` | `writer.rs` `AosFrameWriter::begin_oid` → `aldis_core::oid::OidGenerator::fill` | one PN octet per data field octet | input length: the data field (inspected in `aldis-core`) |
+| — | `writer.rs` `AosFrameWriter::finish` → `aldis_core::crc::crc16` | CRC over the frame less its FECF | input length: the frame |
+| `writer.rs encode #1 #2` | `writer.rs` `encode` | the four content lengths compared with the layout; the four fields written by `write_at` | constant: 4 each |
 
 `FrameLayout::compute` (called by `frame_layout`) has no loop (inspected in `aldis-core`). A lookup through `VcLookup` costs what its implementation costs: for `VcTable<N>`, O(`N`).
 
