@@ -6532,7 +6532,9 @@ int32_t aldis_tm_oid_writer_begin(const aldis_tm_mc_config_t *mc,
  * caller filled, computes the FECF if configured, and returns the frame length.
  *
  * # Errors
- * As [`aldis_tm_writer_finish`] for the fields of an OID frame; on error `out` is unchanged.
+ * As [`aldis_tm_writer_finish`] for the fields of an OID frame, including
+ * `ALDIS_ERR_INVALID_FIELD` (`vc_id`) for a VC that uses SDLS, as [`aldis_tm_oid_writer_begin`]
+ * (132.0 §6.4.6.2; TM-010); on error `out` is unchanged.
  *
  * # Safety
  * `mc` and `vcs` as for [`aldis_tm_mc_config_check`]; `out` is valid for `cap` octets;
