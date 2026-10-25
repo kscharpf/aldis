@@ -227,7 +227,7 @@ M2 is complete when every item below is green on `main`:
 | Shared strategies | VER-054, VER-023 (property tests of the seven codec crates draw from `aldis-testkit`) |
 | Common link features | CMN-010, CMN-011 |
 | TM Transfer Frame | TM-001…011 |
-| TC Transfer Frame and CLCW | TC-001…008, TC-020…023, TC-030, TC-031 |
+| TC Transfer Frame and CLCW | TC-001…009, TC-020…023, TC-030, TC-031 |
 | AOS Transfer Frame | AOS-001…003, AOS-010…019, GEN-062 |
 | USLP Transfer Frame | USLP-001…010, USLP-012…016 |
 | Codec contract | API-010…014, API-020…023, API-030…033, API-040, API-041, API-070, API-072, API-075, GEN-013, GEN-014, GEN-043, GEN-052, GEN-053, GEN-060, GEN-061, RS-012. Every live case of `tm/`, `tc/`, `aos/`, and `uslp/` passes through the Rust API and through the C ABI |
