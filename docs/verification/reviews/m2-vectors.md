@@ -111,35 +111,35 @@ Every note was regenerated with `--write`, so each file's note is the model's, a
 
 ## Cases changed
 
-- **Superseded (reason in each case; no replacement yet, so no `by`):** `tm-oid-002` (decision 2) and `uslp-oid-019` (decision 1). Their operation and released expectation are kept. No test fails for want of a replacement: the vector runners skip superseded cases. `tm-sec-val-001` was already superseded by `tm-sec-val-002`.
+- **Superseded (reason in each case; `by` names the replacement of the follow-up cases):** `tm-oid-002` (decision 2, by `tm-oid-005`) and `uslp-oid-019` (decision 1, by `uslp-oid-042`). Their operation and released expectation are kept; the vector runners skip superseded cases. `tm-sec-val-001` was already superseded by `tm-sec-val-002`.
 - **Not superseded although listed for review:** `uslp-val-013`, `uslp-cfg-029`, `uslp-oid-041` give the same result as before: all three are variable-length channels, where VCID 63 stays rejected (decision 1 changes the fixed-length channel only). The fixed-length cases with a configured VCID 63 (`uslp/oid.json`, `uslp-iz-*`) also pass unchanged.
 - **Edited in place (unreleased):** descriptions of `tc-val-018`, `tc-val-019`, `aos-i4-hdr-001`, `aos-iz-cfg-001`, `aos-cfg-002`, `aos-cfg-003`, `tm-inv-cfg-001`, `tm-fhp-enc-005`, `tm-fhp-enc-err-002`, and the others named above; requirement citations of `tc-bd-enc-err-001`, `tc-bc-unlock-enc-err-001`, `-002`; every `provenance_note`. No field code, input, or expected value changed except through the two superseded cases.
 
 ## Follow-up cases
 
-For the model agent that generates the replacements next. Each is a coverage gap a review listed or a case the decisions need; no case is written here.
+Written on 2026-10-25 by a second, blind Claude Sonnet 5.5 agent (TV-023: it read the Blue Books, `docs/`, and the vectors, never the implementation) by extending the four models, and generated with their `--write`. The Rust and C ABI vector runners pass all of them; no discrepancy between model and implementation was found. Each item with the cases that cover it:
 
-TM:
-1. Replacement of `tm-oid-002` (decision 2): OID frames with an FSH on a VC without SDLS; the OID writer on VC 0 (SDLS) and on a VC that is both `vca_sdu` and SDLS (which of `sync_flag` and `vc_id` comes first), `InvalidField`, nothing written.
-2. A frame with FSH, Security Header, data, Security Trailer, OCF, and FECF together (§6.3.7.2; finding 5).
+TM (`test-vectors/models/tm_frame.py`):
+1. Replacement of `tm-oid-002` (decision 2): `tm-oid-005` (three OID frames with an FSH on VC 2, no SDLS; `tm-oid-002` now has `by: tm-oid-005`), `tm-oid-006` (VC 0 uses SDLS: `InvalidField` `vc_id`), `tm-oid-007` (a VC that is both `vca_sdu` and SDLS: `sync_flag` first), `tm-oid-008` and `tm-oid-009` (a Security Trailer alone, a Security Header alone: still SDLS, `vc_id`). A rejected request writes nothing: a case holds the whole `frames` list, so "nothing written" is the absence of `frames_hex` in the error expectation.
+2. FSH, Security Header, data, Security Trailer, OCF, and FECF together: `tm-sec-dec-006` (decode), `tm-sec-enc-003` (encode), `tm-sec-val-003` (validate).
 
-TC (reviewer's gaps 1–7 and finding 6):
-3. Unknown MAP ID with a wrong FECF: reason 9, not 10 (`tc-frame.md` §4.1).
-4. Two failures that fix the order of FrameTooLong/FrameTooShort (6, 7) against LengthMismatch (8).
-5. A Type-C frame on VC 3 (Security Header 4, Trailer 2): no Security fields (§6.3.4.1, §6.3.6.1).
-6. Field extremes in positive frames: SCID ≥ 512, VCID ≥ 32, MAP ID 63, Sequence Flags above 1; out-of-range SCID, VCID, and MAP ID on encode (API-001).
-7. Decode against the Physical Channel maximum (encode is covered by `tc-max-enc-err-004`, `tc-max-enc-005`).
-8. A VC maximum of 6 or 7 with FECF and no SDLS (CMN-041 for a VC).
-9. Both CLCW spares set in strict mode (86 or 87), and the lenient counterpart.
-10. `tc-ad-peek-002` pinning `needed`.
+TC (`test-vectors/models/tc_frame.py`):
+3. Unknown MAP ID with a wrong FECF, reason 9: `tc-val-021`; the decoder's `CrcMismatch`: `tc-dec-err-014`.
+4. Order of `FrameTooLong`/`FrameTooShort` against `LengthMismatch`: `tc-val-022` and `-023` (header above the VC maximum, fewer and more octets present: reason 6), `tc-val-024` and `-025` (header below the minimum, more and fewer octets present: reason 7).
+5. Type-C frame on VC 3: `tc-bc-unlock-enc-007`/`-dec-007` and `tc-bc-setvr-enc-012`/`-dec-012` (8 octets, no Security fields).
+6. Field extremes: `tc-ad-enc-006`/`-dec-006` (SCID 0x3FF, VCID 63), `tc-bd-enc-004`/`-dec-004`, `tc-seg-enc-007`/`-dec-007` (SCID 0x200, VCID 32, MAP 63, Sequence Flags 11), `tc-seg-enc-008`/`-dec-008` (Sequence Flags 10, MAP 0); out of range on encode, `OutOfRange` before any lookup (API-001): `tc-ad-enc-err-001` (SCID 1024), `tc-ad-enc-err-002` (VCID 64), `tc-seg-enc-err-005` (MAP ID 64). The two extreme configurations each hold one Spacecraft ID, because the C ABI runner builds one master channel per case.
+7. Decode against the Physical Channel maximum: `tc-max-dec-004` (100 octets accepted), `tc-max-dec-err-002` (101 octets: `OutOfRange` `frame_len`).
+8. A VC maximum of 6 or 7 with FECF and no SDLS: `tc-cfg-014`, `tc-cfg-015` (`InvalidConfig` `frame_data_field`), with `tc-cfg-016` (8 accepted) and `tc-cfg-017` (6 without FECF accepted).
+9. Both CLCW spares in strict mode: `tc-clcw-dec-015` (`ReservedValue`, field 86: bits 14-15 come first, a project order by field order); lenient counterpart, bit 23 alone: `tc-clcw-dec-016` (`ClcwSpareSet`); both set in lenient mode was `tc-clcw-dec-013`.
+10. **Skipped: `tc-ad-peek-002` pinning `needed`.** The vector format has no `needed` key in an expected error (docs/07-test-vectors.md, `core/fields.json`; an error expectation carries `error` and `field` only), so no case can pin it without a new format.
 
-AOS (finding 3):
-11. A frame with a wrong version and a wrong FECF, to pin `CrcMismatch` first.
+AOS (`test-vectors/models/aos_frame.py`):
+11. Wrong version and wrong FECF: `aos-inv-dec-009` (`CrcMismatch`).
 
-USLP (finding 4 and decision 1):
-12. Replacement of `uslp-oid-019` (decision 1): `encode_oid`, `decode`, `validate`, `peek_length`, and `delimit` of an OID frame on a fixed-length channel that does not list VCID 63 (no VCF Count, OCF, or Security fields); an unknown Spacecraft ID there still `UnknownChannel` (`spacecraft_id`); an entry for VCID 63 that sets a count length or `Required` OCF overriding the defaults.
-13. A 5-octet input with TFVN `0000` and one with an unknown SCID, to pin the length check against the version and SCID checks.
-14. A protocol control frame on a fixed-length VC (USLP-016; §4.1.4.2.2.2.8 d).
+USLP (`test-vectors/models/uslp_frame.py`; the model now resolves VCID 63 of a known Spacecraft ID on a fixed-length channel to a fixed-length VC with no VCF Count, OCF, Security fields, or truncated frames):
+12. Replacement of `uslp-oid-019` (decision 1; it now has `by: uslp-oid-042`, and keeps its released expectation): `uslp-oid-042`/`-043` (encode, decode), `-044` (validate), `-045` (`peek_length`), `-046` (`delimit`), `-047`/`-048` (two Spacecraft IDs), `-049` to `-051` (unknown Spacecraft ID: encode, decode, validate reason 2), `-052`, `-053` (OCF and VCF Count refused by the defaults), `-054`/`-055` (an entry with 2-octet counts overrides), `-056`, `-057` (the two directions of the count-length mismatch), `-058`/`-059` (an entry with OCF Required), `-060` to `-062` (the OCF mismatch in both directions, with validate reason 9), `-063` (a truncated header on the default VCID 63: `InvalidField` `end_of_frame_primary_header_flag`; this follows from "a fixed-length VC" and Annex D1.2.1, and is not stated for VCID 63 in the Blue Book or in `uslp-frame.md`).
+13. Five octets with TFVN 0000 or an unknown SCID: `uslp-inv-045`, `uslp-inv-046` (decode: `Incomplete`), `uslp-val-038` to `uslp-val-040` (validate: reason 13 before reasons 1 and 2).
+14. Protocol control frame on a fixed-length VC: `uslp-pc-014` (encode, `InvalidField` `tfdz_construction_rule`), `uslp-pc-015` (decode strict), `uslp-pc-016` (lenient), `uslp-pc-017` (validate, reason 15). The Blue Book puts Control Commands in rule 111, which is variable-length (§4.1.4.2.2.2.8 d), and USLP-016 rejects rule 111 on a fixed-length VC. A frame with flags 11 and a fixed-length rule (000 to 010) is not rejected by any requirement and is not covered.
 
 ## Not verified
 

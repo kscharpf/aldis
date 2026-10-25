@@ -2,7 +2,7 @@
   "kind": "codec",
   "standard": "132.0-B-3 §4.1.4.6, Annex D",
   "provenance": "hand-derived",
-  "provenance_note": "132.0-B-3 prints no example frame; only the first OID octets of Annex D. Cases hand-derived from 132.0-B-3 §4.1 (figures 4-1 to 4-4, the Data Field Status of §4.1.2.7, the Secondary Header of §4.1.3, OID frames of §4.1.4.6 and Annex D, the FECF of §4.1.6), §5 Tables 5-1 to 5-3, and §6.3, with the readings of docs/standards/tm-frame.md (TM-001...TM-011 and the anomaly list) and the error kinds and field codes of docs/03-api-model.md §9 and §9.1. Inputs assembled bit by bit from the figure widths; expected values computed by an independent Python model of those clauses, written from the Blue Book after the Rust codec but not from its code, and sharing no code with it (the FECF by polynomial division, the OID data by the Annex D recurrence). The model is committed as test-vectors/models/tm_frame.py (TV-023); `python3 -I test-vectors/models/tm_frame.py --check test-vectors/tm/*.json` recomputes every expected value. One frame is worked by hand in docs/verification/derivations/tm-frame.md. Author of the model: an AI agent, Claude Opus 5.5, recorded as co-author of commit 5e1235e (2026-10-23); it wrote the model from 132.0-B-3 and docs/standards/tm-frame.md, and states that it did not write it from the code of the Rust codec (the history shows the codec already existed and records no briefing of the agent beyond that statement; TV-023). This file covers 132.0-B-3 §4.1.4.6, Annex D.",
+  "provenance_note": "132.0-B-3 prints no example frame; only the first OID octets of Annex D. Cases hand-derived from 132.0-B-3 §4.1 (figures 4-1 to 4-4, the Data Field Status of §4.1.2.7, the Secondary Header of §4.1.3, OID frames of §4.1.4.6 and Annex D, the FECF of §4.1.6), §5 Tables 5-1 to 5-3, and §6.3, with the readings of docs/standards/tm-frame.md (TM-001...TM-011 and the anomaly list) and the error kinds and field codes of docs/03-api-model.md §9 and §9.1. Inputs assembled bit by bit from the figure widths; expected values computed by an independent Python model of those clauses, written from the Blue Book after the Rust codec but not from its code, and sharing no code with it (the FECF by polynomial division, the OID data by the Annex D recurrence). The model is committed as test-vectors/models/tm_frame.py (TV-023); `python3 -I test-vectors/models/tm_frame.py --check test-vectors/tm/*.json` recomputes every expected value. One frame is worked by hand in docs/verification/derivations/tm-frame.md. Author of the model: an AI agent, Claude Opus 5.5, recorded as co-author of commit 5e1235e (2026-10-23); it wrote the model from 132.0-B-3 and docs/standards/tm-frame.md, and states that it did not write it from the code of the Rust codec (the history shows the codec already existed and records no briefing of the agent beyond that statement; TV-023). The cases tm-oid-005 to tm-oid-009 and tm-sec-dec-006, tm-sec-enc-003, tm-sec-val-003 were added on 2026-10-25 (M2 WP-8) by a second agent, Claude Sonnet 5.5, briefed to read only the Blue Book, docs/, and the vectors, never the implementation, and to extend this model. This file covers 132.0-B-3 §4.1.4.6, Annex D.",
   "cases": [
     {
       "id": "tm-oid-001",
@@ -140,7 +140,8 @@
         ]
       },
       "superseded": {
-        "reason": "VC 0 uses SDLS (Security Header 2 octets, Trailer 1): the OID writer rejects such a VC (maintainer decision of 2026-10-25 following 132.0-B-3 §6.4.6.2; TM-010)"
+        "reason": "VC 0 uses SDLS (Security Header 2 octets, Trailer 1): the OID writer rejects such a VC (maintainer decision of 2026-10-25 following 132.0-B-3 §6.4.6.2; TM-010)",
+        "by": "tm-oid-005"
       }
     },
     {
@@ -235,6 +236,416 @@
         "fecf": 11713,
         "consumed": 32,
         "anomalies": []
+      }
+    },
+    {
+      "id": "tm-oid-005",
+      "requirements": [
+        "TM-010",
+        "CMN-021"
+      ],
+      "description": "Replaces tm-oid-002: three OID frames on VC 2, which has a 4-octet FSH and no SDLS, carry the FSH data ABCDEF and continue one PN sequence (132.0-B-3 §4.1.4.6, §6.4.6.2)",
+      "operation": "encode_oid",
+      "config": {
+        "frame_len": 32,
+        "fecf": true,
+        "scid": 171,
+        "mc_fsh": null,
+        "mc_ocf": false,
+        "vcs": [
+          {
+            "vcid": 0,
+            "content": "packets",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 2,
+            "security_trailer_len": 1
+          },
+          {
+            "vcid": 1,
+            "content": "vca_sdu",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "vcid": 2,
+            "content": "packets",
+            "fsh": 4,
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "vcid": 3,
+            "content": "vca_sdu",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 2,
+            "security_trailer_len": 1
+          },
+          {
+            "vcid": 4,
+            "content": "packets",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 1
+          },
+          {
+            "vcid": 5,
+            "content": "packets",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 3,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "params": {
+        "vcid": 2,
+        "frames": [
+          {
+            "mc_frame_count": 0,
+            "vc_frame_count": 10,
+            "fsh_data_hex": "ABCDEF"
+          },
+          {
+            "mc_frame_count": 1,
+            "vc_frame_count": 11,
+            "fsh_data_hex": "ABCDEF"
+          },
+          {
+            "mc_frame_count": 2,
+            "vc_frame_count": 12,
+            "fsh_data_hex": "ABCDEF"
+          }
+        ]
+      },
+      "expect": {
+        "ok": true,
+        "frames_hex": [
+          "0AB4000A9FFE03ABCDEFFFFFFFFF6DB6D861451F11F19716723CBE7E00B12C89",
+          "0AB4010B9FFE03ABCDEFDE90B262107AF83494CEE3323F0354BEF5C1528C48BC",
+          "0AB4020C9FFE03ABCDEF9BB9ED35FDBC23D9BC2F07576D987881BDF84845B268"
+        ]
+      }
+    },
+    {
+      "id": "tm-oid-006",
+      "requirements": [
+        "TM-010"
+      ],
+      "description": "OID frame on VC 0, which uses SDLS (Security Header 2, Trailer 1): InvalidField naming vc_id, nothing written (132.0-B-3 §6.4.6.2: the Master Channel Multiplexing Function uses a VC without SDLS)",
+      "operation": "encode_oid",
+      "config": {
+        "frame_len": 32,
+        "fecf": true,
+        "scid": 171,
+        "mc_fsh": null,
+        "mc_ocf": false,
+        "vcs": [
+          {
+            "vcid": 0,
+            "content": "packets",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 2,
+            "security_trailer_len": 1
+          },
+          {
+            "vcid": 1,
+            "content": "vca_sdu",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "vcid": 2,
+            "content": "packets",
+            "fsh": 4,
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "vcid": 3,
+            "content": "vca_sdu",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 2,
+            "security_trailer_len": 1
+          },
+          {
+            "vcid": 4,
+            "content": "packets",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 1
+          },
+          {
+            "vcid": 5,
+            "content": "packets",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 3,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "params": {
+        "vcid": 0,
+        "frames": [
+          {
+            "mc_frame_count": 0,
+            "vc_frame_count": 0
+          }
+        ]
+      },
+      "expect": {
+        "ok": false,
+        "error": "InvalidField",
+        "field": 2
+      }
+    },
+    {
+      "id": "tm-oid-007",
+      "requirements": [
+        "TM-010"
+      ],
+      "description": "OID frame on VC 3, which is both a VCA_SDU channel and uses SDLS: the sync_flag check comes first (TM-010: sync_flag, then vc_id)",
+      "operation": "encode_oid",
+      "config": {
+        "frame_len": 32,
+        "fecf": true,
+        "scid": 171,
+        "mc_fsh": null,
+        "mc_ocf": false,
+        "vcs": [
+          {
+            "vcid": 0,
+            "content": "packets",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 2,
+            "security_trailer_len": 1
+          },
+          {
+            "vcid": 1,
+            "content": "vca_sdu",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "vcid": 2,
+            "content": "packets",
+            "fsh": 4,
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "vcid": 3,
+            "content": "vca_sdu",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 2,
+            "security_trailer_len": 1
+          },
+          {
+            "vcid": 4,
+            "content": "packets",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 1
+          },
+          {
+            "vcid": 5,
+            "content": "packets",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 3,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "params": {
+        "vcid": 3,
+        "frames": [
+          {
+            "mc_frame_count": 0,
+            "vc_frame_count": 0
+          }
+        ]
+      },
+      "expect": {
+        "ok": false,
+        "error": "InvalidField",
+        "field": 71
+      }
+    },
+    {
+      "id": "tm-oid-008",
+      "requirements": [
+        "TM-010"
+      ],
+      "description": "OID frame on VC 4, which has a Security Trailer of 1 octet and no Security Header: still SDLS, InvalidField naming vc_id (132.0-B-3 §6.4.6.2)",
+      "operation": "encode_oid",
+      "config": {
+        "frame_len": 32,
+        "fecf": true,
+        "scid": 171,
+        "mc_fsh": null,
+        "mc_ocf": false,
+        "vcs": [
+          {
+            "vcid": 0,
+            "content": "packets",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 2,
+            "security_trailer_len": 1
+          },
+          {
+            "vcid": 1,
+            "content": "vca_sdu",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "vcid": 2,
+            "content": "packets",
+            "fsh": 4,
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "vcid": 3,
+            "content": "vca_sdu",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 2,
+            "security_trailer_len": 1
+          },
+          {
+            "vcid": 4,
+            "content": "packets",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 1
+          },
+          {
+            "vcid": 5,
+            "content": "packets",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 3,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "params": {
+        "vcid": 4,
+        "frames": [
+          {
+            "mc_frame_count": 0,
+            "vc_frame_count": 0
+          }
+        ]
+      },
+      "expect": {
+        "ok": false,
+        "error": "InvalidField",
+        "field": 2
+      }
+    },
+    {
+      "id": "tm-oid-009",
+      "requirements": [
+        "TM-010"
+      ],
+      "description": "OID frame on VC 5, which has a Security Header of 3 octets and no Security Trailer: still SDLS, InvalidField naming vc_id (132.0-B-3 §6.4.6.2)",
+      "operation": "encode_oid",
+      "config": {
+        "frame_len": 32,
+        "fecf": true,
+        "scid": 171,
+        "mc_fsh": null,
+        "mc_ocf": false,
+        "vcs": [
+          {
+            "vcid": 0,
+            "content": "packets",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 2,
+            "security_trailer_len": 1
+          },
+          {
+            "vcid": 1,
+            "content": "vca_sdu",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "vcid": 2,
+            "content": "packets",
+            "fsh": 4,
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "vcid": 3,
+            "content": "vca_sdu",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 2,
+            "security_trailer_len": 1
+          },
+          {
+            "vcid": 4,
+            "content": "packets",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 1
+          },
+          {
+            "vcid": 5,
+            "content": "packets",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 3,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "params": {
+        "vcid": 5,
+        "frames": [
+          {
+            "mc_frame_count": 0,
+            "vc_frame_count": 0
+          }
+        ]
+      },
+      "expect": {
+        "ok": false,
+        "error": "InvalidField",
+        "field": 2
       }
     }
   ]

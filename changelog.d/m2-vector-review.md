@@ -19,7 +19,7 @@
   CMN-020…022 include the AOS and USLP Blue Books.
 - Test vectors (unreleased): descriptions, requirement citations, and provenance notes of the `tm/`,
   `tc/`, `aos/`, `uslp/`, and `core/ocf.json` files, regenerated from their models. `tm-oid-002` and
-  `uslp-oid-019` are superseded; their replacements follow.
+  `uslp-oid-019` are superseded by `tm-oid-005` and `uslp-oid-042`. The follow-up cases of the review (TM 8, TC 29, AOS 1, USLP 31) were added by a blind second model writer, and the models' `--write` generated them.
 
 ### Fixed
 - `docs/standards/uslp-frame.md` §2.1 cited 732.1-B-3 Table 5-2 note 2 for the opposite of what it

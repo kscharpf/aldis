@@ -337,6 +337,18 @@ def vc_of(cfg, scid, vcid):
     return next((v for v in cfg["vcs"] if (v["scid"], v["vcid"]) == (scid, vcid)), None)
 
 
+def vc_lookup(cfg, scid, vcid):
+    """The VC a frame names: its entry, else VCID 63 of a known Spacecraft ID on a fixed-length
+    Physical Channel, which is always valid (732.1-B-3 Table 5-2 note 2) and has no VCF Count,
+    OCF, or Security fields (docs/standards/uslp-frame.md §2.1, decision of 2026-10-25)."""
+    v = vc_of(cfg, scid, vcid)
+    if v is None and vcid == OID_VCID and cfg["fixed"] and any(
+            w["scid"] == scid for w in cfg["vcs"]):
+        return {"scid": scid, "vcid": vcid, "fixed": True, "len": {0: 0, 1: 0},
+                "ocf": "absent", "trunc": None, "sec": (0, 0)}
+    return v
+
+
 def map_of(cfg, scid, vcid, map_id):
     return next((m for m in cfg["maps"]
                  if (m["scid"], m["vcid"], m["map"]) == (scid, vcid, map_id)), None)
@@ -402,7 +414,7 @@ def parse(cfg, data, mode, exact):
         if not lenient:
             fail("ReservedValue", "uslp_header_spare", "ReservedSpare")
         anomalies.append("ReserveSparesSet")
-    v = vc_of(cfg, h["scid"], h["vcid"])
+    v = vc_lookup(cfg, h["scid"], h["vcid"])
     if v is None:
         fail("UnknownChannel", "vc_id", "InvalidVcid")
     m = None
@@ -477,7 +489,7 @@ def parse(cfg, data, mode, exact):
 
 def parse_truncated(cfg, data, t, exact):
     """Annex D: reasons 5, 6, 7, 13 (d)(2), and 15."""
-    v = vc_of(cfg, t["scid"], t["vcid"])
+    v = vc_lookup(cfg, t["scid"], t["vcid"])
     if v is None:
         fail("UnknownChannel", "vc_id", "InvalidVcid")
     m = None
@@ -519,7 +531,7 @@ def peek(cfg, prefix):
     if t["eofph"] == 1:
         if not any(v["scid"] == t["scid"] for v in cfg["vcs"]):
             fail("UnknownChannel", "spacecraft_id")
-        v = vc_of(cfg, t["scid"], t["vcid"])
+        v = vc_lookup(cfg, t["scid"], t["vcid"])
         if v is None:
             fail("UnknownChannel", "vc_id")
         if v["trunc"] is None:
@@ -538,7 +550,7 @@ def encode(cfg, p, op):
     scid, vcid, map_id = p["spacecraft_id"], p["vc_id"], p["map_id"]
     if not any(v["scid"] == scid for v in cfg["vcs"]):
         fail("UnknownChannel", "spacecraft_id")
-    v = vc_of(cfg, scid, vcid)
+    v = vc_lookup(cfg, scid, vcid)
     if v is None:
         fail("UnknownChannel", "vc_id")
     if (vcid == OID_VCID) != (op == "encode_oid"):
@@ -635,7 +647,7 @@ def delimit(cfg, unit):
             break
         t = unpack(TRUNCATED, rest[:TRUNC_HEADER])
         if t["eofph"] == 1:
-            v = vc_of(cfg, t["scid"], t["vcid"])
+            v = vc_lookup(cfg, t["scid"], t["vcid"])
             if v is None or v["trunc"] is None:
                 item("no_truncated_length", rest)
                 break
@@ -1251,6 +1263,66 @@ def gen_oid():
     b.add(req + ["API-040"], "VCID 63 on a variable-length Physical Channel: InvalidConfig "
           "(Table 5-1 note 4)", "config",
           pc("variable", 64, [vc(OID_VCID, "fixed", seq=0, exp=0)], []))
+    # Added 2026-10-25 by a blind Claude Sonnet 5.5 agent (M2 WP-8 follow-up 12). VCID 63 is
+    # always valid on a fixed-length channel (732.1-B-3 Table 5-2 note 2), with no entry: no
+    # VCF Count, OCF, Security fields, or truncated frames (uslp-frame.md section 2.1).
+    ref = req + ["USLP-016"]
+    f0 = b.pair(ref, "Replaces uslp-oid-019: an OID frame on a fixed-length channel that lists "
+                "only VC 1 (VCID 63 is valid without an entry, Table 5-2 note 2): no VCF Count, "
+                "no OCF, a 9-octet TFDZ of PN octets, Insert Zone and FECF", NO_OID,
+                oparams(0, iz=iz), op="encode_oid")
+    assert len(f0) == 24
+    b.val(ref, "validate, the OID frame of uslp-oid-042 on the channel without an entry for "
+          "VCID 63: accepted", NO_OID, f0)
+    b.add(ref + ["API-013"], "peek_length on that frame: 24 (a fixed-length channel)",
+          "peek_length", NO_OID, data=f0[:4])
+    b.add(ref + ["USLP-015"], "delimit two such OID frames and three fill octets of 0x55: "
+          "the second frame is found by the channel's frame length, and three octets are "
+          "fewer than a header, so they are fill", "delimit", NO_OID,
+          data=f0 + f0 + b"\x55" * 3)
+    two = pc("fixed", 24, [vc(1, seq=1, exp=1), vc(7, seq=1, exp=1, scid=SCID16)],
+             [mp(1, 0), mp(7, 0, scid=SCID16)], iz=3)
+    b.pair(ref, "The same on a channel with two Spacecraft IDs: the OID frame of SCID 0xF0A5 "
+           "uses the defaults of VCID 63 of that Spacecraft ID", two,
+           oparams(0, iz=iz, scid=SCID16), op="encode_oid")
+    b.enc(werr, "encode_oid on SCID 0x0001, which has no VC: UnknownChannel "
+          "(spacecraft_id), whatever VCID 63 allows", NO_OID, oparams(iz=iz, scid=1),
+          op="encode_oid")
+    b.dec(ref, "An OID frame of SCID 0x0001, which has no VC: UnknownChannel (spacecraft_id)",
+          NO_OID, reheader(f0, scid=1))
+    b.val(ref, "validate, the same frame: reason 2, UnexpectedSpacecraft", NO_OID,
+          reheader(f0, scid=1))
+    b.enc(werr, "encode_oid with an OCF on the default VCID 63, which has none: InvalidField "
+          "(ocf_flag)", NO_OID, oparams(iz=iz, ocf=OCF_WORD), op="encode_oid")
+    b.enc(werr, "encode_oid with VCF Count 1 on the default VCID 63, which has a 0-octet "
+          "count: OutOfRange (vcf_count)", NO_OID, oparams(iz=iz, count=1), op="encode_oid")
+    # An entry for VCID 63 overrides the defaults.
+    with_count = pc("fixed", 24, [vc(OID_VCID, seq=2, exp=2), vc(1, seq=1, exp=1)],
+                    [mp(1, 0)], iz=3)
+    with_ocf = pc("fixed", 24, [vc(OID_VCID, seq=0, exp=0, ocf="required"),
+                                vc(1, seq=1, exp=1)], [mp(1, 0)], iz=3)
+    fc = frame_of(with_count, oparams(0, count=0x0102, iz=iz), "encode_oid")
+    fo = frame_of(with_ocf, oparams(0, iz=iz, ocf=OCF_WORD), "encode_oid")
+    b.pair(ref + ["USLP-004"], "An entry for VCID 63 with 2-octet counts overrides the "
+           "default: the frame has a VCF Count 0x0102 and a 7-octet TFDZ", with_count,
+           oparams(0, count=0x0102, iz=iz), op="encode_oid")
+    b.dec(ref + ["USLP-004"], "The frame of the entry with 2-octet counts, on the channel "
+          "without an entry (default: no VCF Count): LengthMismatch (vcf_count_len)",
+          NO_OID, fc)
+    b.dec(ref + ["USLP-004"], "The frame without a VCF Count, on a channel whose entry for "
+          "VCID 63 gives 2-octet counts: LengthMismatch (vcf_count_len)", with_count, f0)
+    b.pair(ref, "An entry for VCID 63 with OCF Required overrides the default: the frame "
+           "has an OCF and a 5-octet TFDZ", with_ocf, oparams(0, iz=iz, ocf=OCF_WORD),
+           op="encode_oid")
+    b.dec(ref, "The frame with an OCF, on the channel without an entry (default: no OCF): "
+          "InvalidField (ocf_flag)", NO_OID, fo)
+    b.val(ref, "validate, the same frame: reason 9, OcfFlagMismatch", NO_OID, fo)
+    b.dec(ref, "The frame without an OCF, on a channel whose entry for VCID 63 requires "
+          "one: InvalidField (ocf_flag)", with_ocf, f0)
+    b.add(ref, "A default VCID 63 on a fixed-length channel does not allow a truncated "
+          "frame: decode of a truncated header with VCID 63 gives InvalidField "
+          "(end_of_frame_primary_header_flag)", "decode", NO_OID,
+          data=thdr(OID_VCID) + bytes(8))
     return b.cases
 
 
@@ -1317,6 +1389,23 @@ def gen_protocol_control():
           reheader(frame, bypass=0, pcc=1), mode="lenient")
     b.add(req + ["API-013"], "peek_length, protocol control frame", "peek_length", VAR,
           data=frame[:6])
+    # Added 2026-10-25 by a blind Claude Sonnet 5.5 agent (M2 WP-8 follow-up 14). Control
+    # Commands go in a TFDZ of rule 111, which is variable-length (4.1.4.2.2.2.8 d), so a
+    # protocol control frame has no place on a fixed-length VC (USLP-016).
+    fixed_ff = frame_of(FIXED, params(1, pat(zone(FIXED, 1)), rule=0, pointer=0, count=1))
+    pcf = retfdf(reheader(fixed_ff, bypass=1, pcc=1), FIXED_HEADER + 1,
+                 bytes([7 << 5 | UPID_COP1]))
+    b.enc(["USLP-016", "USLP-013", "USLP-010", "API-022"],
+          "Encode a protocol control frame (flags 11) with rule 111 on fixed-length VC 1: "
+          "InvalidField (tfdz_construction_rule)", FIXED,
+          params(1, bytes([0x00]), rule=7, upid=UPID_COP1, kind="protocol_control", count=0))
+    b.dec(["USLP-016", "USLP-013"], "Decode a protocol control frame (flags 11) with rule 111 "
+          "on fixed-length VC 1: InvalidField (tfdz_construction_rule), strict", FIXED, pcf)
+    b.dec(["USLP-016", "USLP-013", "API-032"], "The same frame in lenient mode: still "
+          "InvalidField (tfdz_construction_rule), as USLP-016 holds in both modes", FIXED, pcf,
+          mode="lenient")
+    b.val(["USLP-016", "USLP-013"], "validate, the same frame: reason 15, "
+          "ConstructionRuleMismatch", FIXED, pcf)
     return b.cases
 
 
@@ -1426,6 +1515,16 @@ def gen_validation():
     v(["USLP-004"], "Reason 8 comes before reason 9: count length 2 and OCF Flag 1 on VC 1 "
       "(1-octet count, no OCF)", FIXED,
       reheader(ff, vcf_len=2, ocf=1))
+    # Added 2026-10-25 by a blind Claude Sonnet 5.5 agent (M2 WP-8 follow-up 13): the length
+    # check comes first (uslp-frame.md section 3.1), before the version and the SCID.
+    five = lambda tfvn, scid: hdr(1, 40, tfvn=tfvn, scid=scid, vcf_len=1)[:5]
+    v(["USLP-014", "USLP-001"], "Reason 13 comes before reason 1: five octets of a "
+      "non-truncated header (the Primary Header is 7 octets) with TFVN 0000", FIXED,
+      five(0, SCID))
+    v(["USLP-014"], "Reason 13 comes before reason 2: five octets with TFVN 1100 and the "
+      "unknown SCID 0x0001", FIXED, five(TFVN, 1))
+    v(["USLP-014", "USLP-001"], "Reason 13 comes before reasons 1 and 2: five octets with "
+      "TFVN 0000 and the unknown SCID 0x0001", FIXED, five(0, 1))
     return b.cases
 
 
@@ -1509,6 +1608,12 @@ def gen_invalid():
           "peek_length", VAR, data=reheader(vf, tfvn=0)[:6])
     b.add(["API-013"], "peek_length, fixed-length channel, 3 octets: Incomplete",
           "peek_length", FIXED, data=ff[:3])
+    # Added 2026-10-25 by a blind Claude Sonnet 5.5 agent (M2 WP-8 follow-up 13): too few
+    # octets for a Primary Header is Incomplete before the version or the SCID is read.
+    d([], "5 octets with TFVN 0000: Incomplete, not UnsupportedVersion", FIXED,
+      hdr(1, 40, tfvn=0, vcf_len=1)[:5])
+    d([], "5 octets with the unknown SCID 0x0001: Incomplete, not UnknownChannel", FIXED,
+      hdr(1, 40, scid=1, vcf_len=1)[:5])
     return b.cases
 
 
@@ -1672,7 +1777,10 @@ NOTE = (
     "D1.2.4 and D1.3. Author of the model: an AI agent, Claude Opus 5.5, recorded as "
     "co-author of commit 0459ef0 (2026-10-23), whose message states that it wrote the model "
     "from 732.1-B-3 and uslp-frame.md without reading the Rust code; the history records no "
-    "briefing of the agent beyond that statement (TV-023)."
+    "briefing of the agent beyond that statement (TV-023). The cases added on 2026-10-25 (M2 "
+    "WP-8: uslp-oid-042 onward, uslp-val-* and uslp-inv-* and uslp-pc-* at the end of their "
+    "files) were written by a second agent, Claude Sonnet 5.5, briefed to read only the Blue "
+    "Book, docs/, and the vectors, never the implementation, and to extend this model."
 )
 
 
@@ -1680,7 +1788,12 @@ SUPERSEDED = {
     "uslp-oid-019": (
         "VCID 63 is valid on a fixed-length channel without an entry (maintainer decision of "
         "2026-10-25 following 732.1-B-3 Table 5-2 note 2): encode_oid on a channel that does "
-        "not list VCID 63 succeeds, with no VCF Count, OCF, or Security fields"),
+        "not list VCID 63 succeeds, with no VCF Count, OCF, or Security fields",
+        "uslp-oid-042"),
+}
+# The expectation a superseded case was released with, which the model no longer computes (TV-021).
+RELEASED_EXPECT = {
+    "uslp-oid-019": {"ok": False, "error": "UnknownChannel", "field": F["vc_id"]},
 }
 
 LOWER_LIMIT = (
@@ -1714,7 +1827,9 @@ def generate():
             if c["id"] in EXTRA:
                 c["description"] += EXTRA[c["id"]]
             if c["id"] in SUPERSEDED:
-                c["superseded"] = {"reason": SUPERSEDED[c["id"]]}
+                reason, by = SUPERSEDED[c["id"]]
+                c["superseded"] = {"reason": reason, "by": by}
+                c["expect"] = RELEASED_EXPECT[c["id"]]
         out[name] = {"kind": "codec", "standard": "732.1-B-3 — " + title,
                      "provenance": "hand-derived",
                      "provenance_note": NOTE + " This file covers " + title + ".",

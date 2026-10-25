@@ -1071,7 +1071,15 @@ def invalid():
         out.append(case(f"aos-inv-dec-{4 + i:03d}", reqs + ["AOS-011"],
                         f"Version {v:02b} with a valid FECF: UnsupportedVersion", "decode", cfg,
                         with_version(v)))
+    stale = bytearray(good)
+    stale[0] = (stale[0] & 0x3F) | (2 << 6)
     out += [
+        # Added 2026-10-25 by a blind Claude Sonnet 5.5 agent (M2 WP-8 follow-up 11).
+        case("aos-inv-dec-009", reqs + ["AOS-011", "AOS-014", "CMN-003"],
+             "Version 10 with the FECF of the version-01 frame left unchanged: both the "
+             "version and the FECF are wrong, and the FECF check comes first (the order "
+             "of checks is a project choice, aos-frame.md section 4), so CrcMismatch, not "
+             "UnsupportedVersion", "decode", cfg, bytes(stale)),
         case("aos-inv-dec-007", reqs, "VC 3 is not configured: UnknownChannel (vc_id)", "decode",
              cfg, frame(cfg, hdr(SCID, 3, 0), data=bytes(12))),
         case("aos-inv-dec-008", reqs, "SCID 0x56 has no VC: UnknownChannel (spacecraft_id)",
@@ -1148,7 +1156,9 @@ NOTE = (
     "agent, Claude Opus 5.5, recorded as co-author of commit 5bbbf45 (2026-10-23); it wrote "
     "the model from 732.0-B-5 EC1, 732.0-B-4 and docs/standards/aos-frame.md, and states that "
     "it did not write it from the code of the Rust codec (the history shows the codec already "
-    "existed and records no briefing of the agent beyond that statement; TV-023)."
+    "existed and records no briefing of the agent beyond that statement; TV-023). The case aos-inv-dec-009 was added on 2026-10-25 (M2 "
+    "WP-8) by a second agent, Claude Sonnet 5.5, briefed to read only the Blue Book, docs/, and "
+    "the vectors, never the implementation, and to extend this model."
 )
 
 

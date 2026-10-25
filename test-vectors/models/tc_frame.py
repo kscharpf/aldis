@@ -248,6 +248,11 @@ def peek(prefix):
 def encode(cfg, p):
     """The writer: the sender's fields and data to octets, derived fields computed (TC-007)."""
     kind, scid, vcid = p["frame_type"], p["spacecraft_id"], p["vc_id"]
+    # API-001: an identifier wider than its field is OutOfRange, before any lookup.
+    if scid >= 1 << 10:
+        raise Fail("OutOfRange", F["spacecraft_id"])
+    if vcid >= 1 << 6:
+        raise Fail("OutOfRange", F["vc_id"])
     if not any(v["scid"] == scid for v in cfg["vcs"]):
         raise Fail("UnknownChannel", F["spacecraft_id"])
     vc = vc_of(cfg["vcs"], scid, vcid)
@@ -266,6 +271,8 @@ def encode(cfg, p):
         if (segment is not None) != vc["seg"]:
             raise Fail("InvalidField", F["segment_header"])
         if segment is not None:
+            if segment["map_id"] >= 1 << 6:
+                raise Fail("OutOfRange", F["map_id"])
             m = map_of(cfg, scid, vcid, segment["map_id"])
             if m is None:
                 raise Fail("UnknownChannel", F["map_id"])
@@ -430,6 +437,10 @@ def cfg(fecf=True, max_len=MAX_FRAME, vcs=None, maps=None):
 
 STD = cfg()
 NO_FECF = cfg(fecf=False)
+# Field extremes (follow-up 6): SCID with bit 9 set and the largest SCID, VCID 32 and 63, MAP 63.
+EXT_HI = cfg(vcs=[vc(63, scid=0x3FF)], maps=[])
+EXT_SEG = cfg(vcs=[vc(32, seg=True, scid=0x200)],
+              maps=[mp(32, 63, scid=0x200), mp(32, 0, scid=0x200)])
 
 
 def fields(kind, vcid, ns, scid=SCID):
@@ -471,6 +482,12 @@ def hdr(kind, vcid, total, ns, spare=0, tfvn=0, scid=SCID, flags=None):
 
 def with_fecf(body):
     return body + crc(body).to_bytes(2, "big")
+
+
+def bad_fecf(body):
+    """The frame with the last bit of its FECF flipped."""
+    good = with_fecf(body)
+    return good[:-1] + bytes([good[-1] ^ 1])
 
 
 class Builder:
@@ -518,6 +535,16 @@ def gen_ad():
                     "AD frame on VC 3 with a 4-octet Security Header and a 2-octet Security "
                     "Trailer (§6.3): written as zeros, exposed as slices", STD,
                     data_params("AD", 3, 9, b"\x01\x02\x03"))
+    b.encode_decode("tc-ad", 6, ["TC-001", "TC-006", "API-001"],
+                    "AD frame on the largest SCID 0x3FF and the largest VCID 63, N(S) 255: "
+                    "every bit of both fields set", EXT_HI,
+                    data_params("AD", 63, 255, b"\x5A\xA5", scid=0x3FF))
+    b.add("tc-ad-enc-err-001", ["API-001", "TC-007"],
+          "SCID 1024 does not fit ten bits: OutOfRange spacecraft_id, not UnknownChannel",
+          "encode", config_=STD, params=data_params("AD", 1, 0, b"\x01", scid=1024))
+    b.add("tc-ad-enc-err-002", ["API-001", "TC-007"],
+          "VCID 64 does not fit six bits: OutOfRange vc_id, not UnknownChannel", "encode",
+          config_=STD, params=data_params("AD", 64, 0, b"\x01"))
     frame = frame_of(STD, data_params("AD", 1, 0, b"\xA5"))
     b.add("tc-ad-peek-001", ["TC-001", "API-013", "GEN-053"],
           "peek_length from the five header octets", "peek_length", data=frame[:5])
@@ -544,6 +571,9 @@ def gen_bd():
                     "not forced to 0", STD, data_params("BD", 1, 0x5A, b"\x01"))
     b.encode_decode("tc-bd", 3, ["TC-001", "TC-008"], "BD frame without FECF, N(S) 255",
                     NO_FECF, data_params("BD", 1, 255, bytes(range(16))))
+    b.encode_decode("tc-bd", 4, ["TC-001", "TC-006", "API-001"],
+                    "BD frame on SCID 0x3FF and VCID 63, N(S) 0", EXT_HI,
+                    data_params("BD", 63, 0, b"\xC3", scid=0x3FF))
     b.add("tc-bd-enc-err-001", ["TC-009"],
           "A BD frame cannot carry a Control Command (§4.1.2.3.2.2): InvalidField "
           "control_command_flag",
@@ -561,6 +591,10 @@ def gen_bc_unlock():
     b.encode_decode("tc-bc-unlock", 3, ["TC-004", "TC-005"],
                     "Unlock on VC 2, which has Segment Headers: a Type-C frame has none",
                     STD, control_params(2, 0, "unlock"))
+    b.encode_decode("tc-bc-unlock", 7, ["TC-004", "TC-005", "API-070"],
+                    "Unlock on VC 3, whose Security Header (4) and Trailer (2) apply to Type-D "
+                    "frames only: a Type-C frame has neither (§6.3.4.1, §6.3.6.1), so it is 8 "
+                    "octets", STD, control_params(3, 0, "unlock"))
     two = with_fecf(hdr("BC", 1, 9, 0) + b"\x00\x00")
     b.add("tc-bc-unlock-dec-004", ["TC-005", "API-031"],
           "Two octets of zeros is not Unlock (one octet): reserved, strict", "decode",
@@ -591,6 +625,10 @@ def gen_bc_setvr():
                     control_params(1, 0x11, "set_vr", 255))
     b.encode_decode("tc-bc-setvr", 3, ["TC-005"], "Set V(R) to 0x80, no FECF", NO_FECF,
                     control_params(1, 0, "set_vr", 0x80))
+    b.encode_decode("tc-bc-setvr", 12, ["TC-004", "TC-005", "API-070"],
+                    "Set V(R) 9 on VC 3, whose Security Header and Trailer apply to Type-D "
+                    "frames only: a Type-C frame has neither (§6.3.4.1, §6.3.6.1)", STD,
+                    control_params(3, 0, "set_vr", 9))
     for n, (body, desc) in enumerate([
             (b"\x82\x00", "82 00 without the V(R) octet"),
             (b"\x82\x01\x05", "82 01 05: the second octet must be zero"),
@@ -618,6 +656,17 @@ def gen_segment_header():
                     STD, data_params("BD", 2, 0, b"\xAA\xBB", seg(0b11, 9)))
     b.encode_decode("tc-seg", 6, ["TC-004"], "MAP 0, no FECF", cfg(fecf=False),
                     data_params("AD", 2, 0, b"\x77", seg(0b11, 0)))
+    b.encode_decode("tc-seg", 7, ["TC-004", "API-001"],
+                    "Segment Header on SCID 0x200, VCID 32, MAP 63 with Sequence Flags 11: the "
+                    "Segment Header octet is FF", EXT_SEG,
+                    data_params("AD", 32, 0x80, b"\x12\x34", seg(0b11, 63), scid=0x200))
+    b.encode_decode("tc-seg", 8, ["TC-004", "API-001"],
+                    "Segment Header on SCID 0x200, VCID 32, MAP 0 with Sequence Flags 10 "
+                    "(last): the Segment Header octet is 80", EXT_SEG,
+                    data_params("BD", 32, 0, b"\x56", seg(0b10, 0), scid=0x200))
+    b.add("tc-seg-enc-err-005", ["API-001", "TC-004"],
+          "MAP ID 64 does not fit six bits: OutOfRange map_id, not UnknownChannel", "encode",
+          config_=STD, params=data_params("AD", 2, 0, b"\x01", seg(0b11, 64)))
     unknown = with_fecf(hdr("AD", 2, 10, 0) + bytes([0b11 << 6 | 7, 1, 2]))
     b.add("tc-seg-dec-err-001", ["TC-004", "TC-022"],
           "MAP 7 is not configured on VC 2: UnknownChannel map_id", "decode", mode="strict",
@@ -671,6 +720,14 @@ def gen_max_length():
           "Decoding a 65-octet frame on that VC: OutOfRange frame_len", "decode",
           mode="strict", config_=small, data=long_frame)
     pc = cfg(max_len=100, vcs=[vc(1)], maps=[])
+    b.add("tc-max-dec-004", ["TC-007", "GEN-060"],
+          "Decoding a 100-octet frame, exactly the physical channel's maximum (the VC allows "
+          "1024): accepted", "decode", mode="strict", config_=pc,
+          data=with_fecf(hdr("AD", 1, 100, 0) + bytes(93)))
+    b.add("tc-max-dec-err-002", ["TC-007", "TC-021"],
+          "Decoding a 101-octet frame, one above the physical channel's maximum of 100: "
+          "OutOfRange frame_len", "decode", mode="strict", config_=pc,
+          data=with_fecf(hdr("AD", 1, 101, 0) + bytes(94)))
     b.add("tc-max-enc-err-004", ["TC-007", "GEN-060"],
           "The physical channel's maximum (100) applies when the VC allows 1024", "encode",
           config_=pc, params=data_params("AD", 1, 0, bytes(94)))
@@ -769,6 +826,25 @@ def gen_validation():
     bad(20, ["TC-021", "API-070"],
         "Frame on VC 3 whose Security Header and Trailer leave no data: FrameTooShort",
         with_fecf(hdr("AD", 3, 13, 0) + bytes(6)))
+    # Added 2026-10-25 by a blind Claude Sonnet 5.5 agent (M2 WP-8 follow-ups 3 and 4).
+    bad(21, ["TC-021", "TC-006", "TC-022"],
+        "MAP 7 is not configured on VC 2 and the FECF is wrong: the FECF check (e) comes "
+        "first, so FecfMismatch (reason 9), not InvalidMapId (reason 10)",
+        bad_fecf(hdr("AD", 2, 10, 0) + bytes([0b11 << 6 | 7, 1, 2])))
+    bad(22, ["TC-021"],
+        "Frame Length 17 above the VC's maximum 16, with only 10 octets present: the length "
+        "limit (c) comes before the length consistency (d), so FrameTooLong (reason 6), not "
+        "LengthMismatch (reason 8)", hdr("AD", 1, 17, 0) + bytes(5), c=small)
+    bad(23, ["TC-021"],
+        "Frame Length 17 above the VC's maximum 16, with 20 octets present: FrameTooLong "
+        "(reason 6), not LengthMismatch (reason 8)", hdr("AD", 1, 17, 0) + bytes(15), c=small)
+    bad(24, ["TC-021"],
+        "Frame Length 7 leaves no data field with FECF, with 12 octets present: the "
+        "minimum-length check (c) comes before (d), so FrameTooShort (reason 7), not "
+        "LengthMismatch (reason 8)", hdr("AD", 1, 7, 0) + bytes(7))
+    bad(25, ["TC-021"],
+        "Frame Length 7 leaves no data field with FECF, with 6 octets present: FrameTooShort "
+        "(reason 7), not LengthMismatch (reason 8)", hdr("AD", 1, 7, 0) + bytes(1))
     return b.cases
 
 
@@ -806,6 +882,11 @@ def gen_decode_errors():
     b.add("tc-dec-err-012", ["TC-001", "CMN-041"],
           "Frame Length 5 leaves no data field: InvalidField frame_data_field", "decode",
           mode="strict", config_=NO_FECF, data=hdr("AD", 1, 5, 0) + bytes(3))
+    b.add("tc-dec-err-014", ["TC-006", "TC-022"],
+          "MAP 7 is not configured on VC 2 and the FECF is wrong: the FECF is checked before "
+          "the Segment Header is read (tc-frame.md section 4.1), so CrcMismatch, not "
+          "UnknownChannel", "decode", mode="strict", config_=STD,
+          data=bad_fecf(hdr("AD", 2, 10, 0) + bytes([0b11 << 6 | 7, 1, 2])))
     b.add("tc-dec-err-013", ["TC-003", "TC-005", "API-032"],
           "Spare set and a reserved Control Command, lenient: both anomalies", "decode",
           mode="lenient", config_=STD,
@@ -851,6 +932,19 @@ def gen_config():
           "A MAP whose Security Header and Trailer fill its VC's maximum: InvalidConfig "
           "frame_data_field", "config",
           config_=cfg(vcs=[vc(2, seg=True, max_len=16)], maps=[mp(2, 1, sh=6, st=2)]))
+    b.add("tc-cfg-014", ["GEN-060", "API-040", "CMN-041"],
+          "A VC maximum of 6 with FECF and no SDLS: the smallest frame is 5 + 1 + 2 = 8 "
+          "octets, so InvalidConfig frame_data_field", "config",
+          config_=cfg(vcs=[vc(1, max_len=6)], maps=[]))
+    b.add("tc-cfg-015", ["GEN-060", "API-040", "CMN-041"],
+          "A VC maximum of 7 with FECF and no SDLS: still no data octet, InvalidConfig "
+          "frame_data_field", "config", config_=cfg(vcs=[vc(1, max_len=7)], maps=[]))
+    b.add("tc-cfg-016", ["GEN-060", "API-040", "CMN-041"],
+          "A VC maximum of 8 with FECF and no SDLS: one data octet fits", "config",
+          config_=cfg(vcs=[vc(1, max_len=8)], maps=[]))
+    b.add("tc-cfg-017", ["GEN-060", "API-040", "CMN-041"],
+          "A VC maximum of 6 without FECF and without SDLS: one data octet fits", "config",
+          config_=cfg(fecf=False, vcs=[vc(1, max_len=6)], maps=[]))
     return b.cases
 
 
@@ -901,6 +995,11 @@ def gen_clcw():
         word(cop_in_effect=1, spare_14_15=3, spare_23=1, vc_id=9), mode="lenient")
     dec(14, "Status 111 with spare bits clear: passed through", ["TC-031"],
         word(status=7, cop_in_effect=1, lockout=1, wait=1))
+    dec(15, "Spare bits 14-15 and bit 23 both set, strict: ReservedValue, the field order "
+        "decides, so bits 14-15 (clcw_spare_14_15) come first", ["TC-030", "API-031"],
+        word(cop_in_effect=1, spare_14_15=3, spare_23=1, vc_id=9))
+    dec(16, "Spare bit 23 alone set, lenient: one ClcwSpareSet", ["TC-030", "API-032"],
+        word(cop_in_effect=1, spare_23=1, report_value=5), mode="lenient")
     enc(1, "COP-1, VCID 5, Retransmit, FARM-B 2, N(R) 42", ["TC-030"], vc_id=5,
         retransmit=True, farm_b_counter=2, report_value=42)
     enc(2, "Every field at its largest", ["TC-030", "TC-031"], status=7, cop_in_effect=3,
@@ -950,7 +1049,13 @@ NOTE = (
     "--check test-vectors/tc/*.json` recomputes every expected value. Author of the model: an "
     "AI agent, Claude Opus 5.5, recorded as co-author of commit afff003 (2026-10-23), whose "
     "message states that it wrote the model from 232.0-B-4 Cor. 1 before the Rust codec "
-    "existed; the history records no briefing of the agent beyond that statement (TV-023)."
+    "existed; the history records no briefing of the agent beyond that statement (TV-023). "
+    "The cases added on 2026-10-25 (M2 WP-8: tc-ad-6, tc-ad-enc-err-001 and -002, tc-bd-4, "
+    "tc-bc-unlock-7, tc-bc-setvr-12, tc-seg-7, -8, tc-seg-enc-err-005, tc-max-dec-004, "
+    "tc-max-dec-err-002, tc-val-021 to 025, tc-dec-err-014, tc-cfg-014 to 017, "
+    "tc-clcw-dec-015 and -016) were written by a second agent, Claude Sonnet 5.5, briefed to "
+    "read only the Blue Book, docs/, and the vectors, never the implementation, and to "
+    "extend this model."
 )
 
 

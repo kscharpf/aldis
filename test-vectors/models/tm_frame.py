@@ -345,6 +345,10 @@ def encode_oid(pc, mc, p):
              "vc_frame_count": f["vc_frame_count"],
              "status": {"sync": False, "pointer": "only_idle_data"}}
         vc, n, header = plan(pc, mc, q)
+        # §6.4.6.2: the OID frames of the Master Channel Multiplexing Function use a VC without
+        # SDLS; checked after the sync flag (TM-010, decision of 2026-10-25).
+        if vc["sh"] or vc["st"]:
+            raise Fail("InvalidField", F["vc_id"])
         fsh_data = hexb(f, "fsh_data_hex") or bytes((vc["fsh"] or 1) - 1)
         ocf = hexb(f, "ocf_hex") if vc["ocf"] else None
         if vc["ocf"] and ocf is None:
@@ -611,6 +615,8 @@ def fhp_values():
 def oid_sequence():
     mc = channel(32, True, 0x0AB, [vc(0, fsh=4, sh=2, st=1), vc(1, "vca_sdu"), vc(2, ocf=True)],
                  mc_ocf=False)
+    mc2 = channel(32, True, 0x0AB, [vc(0, sh=2, st=1), vc(1, "vca_sdu"), vc(2, fsh=4),
+                                    vc(3, "vca_sdu", sh=2, st=1), vc(4, st=1), vc(5, sh=3)])
     return [
         case("tm-oid-001", ["TM-010", "CMN-020", "CMN-021", "CMN-023"],
              "Two consecutive OID frames on VC 2 continue the PN sequence: the first starts with "
@@ -632,7 +638,7 @@ def oid_sequence():
                 "0AB0020C9FFE03ABCDEF000054BEF5C1528C9BB9ED35FDBC23D9BC2F07006375"]},
             "VC 0 uses SDLS (Security Header 2 octets, Trailer 1): the OID writer rejects such "
             "a VC (maintainer decision of 2026-10-25 following 132.0-B-3 §6.4.6.2; TM-010)",
-            None),
+            "tm-oid-005"),
         case("tm-oid-003", ["TM-010"],
              "An OID frame on a VCA_SDU channel is rejected: OID frames use a packet VC (132.0-B-3 §4.1.4.6.3). The error kind and field are a project choice",
              "encode_oid", mc, params={"vcid": 1, "frames": [
@@ -642,6 +648,33 @@ def oid_sequence():
              pc_only(32, True), expect({"operation": "encode_oid", "config": mc, "params": {
                  "vcid": 2, "frames": [{"mc_frame_count": 0, "vc_frame_count": 0,
                                         "ocf_hex": CLCW.hex().upper()}]}})["frames_hex"][0]),
+        # Added 2026-10-25 by a blind Claude Sonnet 5.5 agent (M2 WP-8 follow-up 1).
+        case("tm-oid-005", ["TM-010", "CMN-021"],
+             "Replaces tm-oid-002: three OID frames on VC 2, which has a 4-octet FSH and no "
+             "SDLS, carry the FSH data ABCDEF and continue one PN sequence (132.0-B-3 "
+             "§4.1.4.6, §6.4.6.2)", "encode_oid", mc2,
+             params={"vcid": 2, "frames": [
+                 {"mc_frame_count": i, "vc_frame_count": 10 + i, "fsh_data_hex": "ABCDEF"}
+                 for i in range(3)]}),
+        case("tm-oid-006", ["TM-010"],
+             "OID frame on VC 0, which uses SDLS (Security Header 2, Trailer 1): InvalidField "
+             "naming vc_id, nothing written (132.0-B-3 §6.4.6.2: the Master Channel "
+             "Multiplexing Function uses a VC without SDLS)", "encode_oid", mc2,
+             params={"vcid": 0, "frames": [{"mc_frame_count": 0, "vc_frame_count": 0}]}),
+        case("tm-oid-007", ["TM-010"],
+             "OID frame on VC 3, which is both a VCA_SDU channel and uses SDLS: the sync_flag "
+             "check comes first (TM-010: sync_flag, then vc_id)", "encode_oid", mc2,
+             params={"vcid": 3, "frames": [{"mc_frame_count": 0, "vc_frame_count": 0}]}),
+        case("tm-oid-008", ["TM-010"],
+             "OID frame on VC 4, which has a Security Trailer of 1 octet and no Security "
+             "Header: still SDLS, InvalidField naming vc_id (132.0-B-3 §6.4.6.2)",
+             "encode_oid", mc2,
+             params={"vcid": 4, "frames": [{"mc_frame_count": 0, "vc_frame_count": 0}]}),
+        case("tm-oid-009", ["TM-010"],
+             "OID frame on VC 5, which has a Security Header of 3 octets and no Security "
+             "Trailer: still SDLS, InvalidField naming vc_id (132.0-B-3 §6.4.6.2)",
+             "encode_oid", mc2,
+             params={"vcid": 5, "frames": [{"mc_frame_count": 0, "vc_frame_count": 0}]}),
     ]
 
 
@@ -649,6 +682,11 @@ def security_layout():
     mc = channel(40, True, SCID, [vc(4, sh=6, st=8), vc(5, "vca_sdu", ocf=True, sh=3)])
     pattern = frame(40, True, {"scid": SCID, "vcid": 4, "first_header_pointer": 0},
                     sh=b"\xA5" * 6, data=seq(0x30, 40 - 6 - 6 - 8 - 2), st=b"\x5A" * 8)
+    all_six = channel(40, True, SCID, [vc(6, fsh=3, ocf=True, sh=4, st=2)])
+    six = frame(40, True, {"scid": SCID, "vcid": 6, "mc_frame_count": 7, "vc_frame_count": 8,
+                           "first_header_pointer": 5},
+                fsh=b"\x02\x11\x22", sh=b"\xA5" * 4, data=seq(0x70, 19), st=b"\x5A" * 2,
+                ocf=CLCW)
     return [
         case("tm-sec-dec-001", ["API-070", "API-072", "TM-006"],
              "Security Header of 6 octets (A5) and Trailer of 8 (5A), FixedPatternSecurity: "
@@ -684,6 +722,17 @@ def security_layout():
         case("tm-sec-val-002", ["TM-011", "API-070"],
              "Decoded with VC 4's layout, the frame of tm-sec-dec-001 matches its channel",
              "validate", mc, pattern),
+        # Added 2026-10-25 by a blind Claude Sonnet 5.5 agent (M2 WP-8 follow-up 2).
+        case("tm-sec-dec-006", ["API-070", "TM-003", "TM-004", "TM-005", "TM-006"],
+             "FSH (3 octets), Security Header (4), 19 data octets, Security Trailer (2), OCF, "
+             "and FECF together, in the order of 132.0-B-3 §6.3.7.2: every field placed",
+             "decode_with", all_six, six),
+        case("tm-sec-enc-003", ["API-070", "TM-009", "TM-003", "TM-004", "TM-005"],
+             "Encode the frame of tm-sec-dec-006", "encode", all_six,
+             params=enc(6, 7, 8, status("starts_at", 5), seq(0x70, 19).hex().upper(),
+                        fsh_data="1122", sh="A5A5A5A5", tr="5A5A", ocf=CLCW.hex().upper())),
+        case("tm-sec-val-003", ["TM-011", "API-070"],
+             "The frame of tm-sec-dec-006 matches its channel", "validate", all_six, six),
         case("tm-sec-cfg-001", ["API-040", "API-071"],
              "Security Header longer than 64 octets", "config",
              channel(200, False, 1, [vc(0, sh=65)])),
@@ -832,7 +881,10 @@ NOTE = (
     "Claude Opus 5.5, recorded as co-author of commit 5e1235e (2026-10-23); it wrote the "
     "model from 132.0-B-3 and docs/standards/tm-frame.md, and states that it did not write it "
     "from the code of the Rust codec (the history shows the codec already existed and records "
-    "no briefing of the agent beyond that statement; TV-023)."
+    "no briefing of the agent beyond that statement; TV-023). The cases tm-oid-005 to tm-oid-009 "
+    "and tm-sec-dec-006, tm-sec-enc-003, tm-sec-val-003 were added on 2026-10-25 (M2 WP-8) by "
+    "a second agent, Claude Sonnet 5.5, briefed to read only the Blue Book, docs/, and the "
+    "vectors, never the implementation, and to extend this model."
 )
 
 FILES = {
