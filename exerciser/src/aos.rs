@@ -65,13 +65,14 @@ fn pointer_group(t: &mut Tally) {
     t.check(PacketPointer::classify(bb(0xFFFE), bb(70_000), four).is_err());
     t.check(
         PacketOffset::new(bb(0x7FE))
-            .is_some_and(|n| PacketPointer::StartsAt(n).to_raw(four) == 0x7FF),
+            .is_some_and(|n| PacketPointer::StartsAt(n).to_raw(four).is_none()),
     );
     t.check(
         PacketOffset::new(bb(PacketOffset::MAX)).is_some()
             && PacketOffset::new(bb(0xFFFE)).is_none(),
     );
-    t.check(PacketPointer::OnlyIdleData.header_octets(bb(five)) == [0xFF, 0xFE]);
+    t.check(PacketPointer::OnlyIdleData.header_octets(bb(five)) == Some([0xFF, 0xFE]));
+    t.check(PacketPointer::classify(bb(0x800), bb(0x1000), four).is_err());
     t.check(ValidBitCount::new(bb(15)).is_some_and(|n| {
         BitstreamPointer::classify(bb(14), bb(2)) == Ok(BitstreamPointer::ValidBits(n))
             && n.get() == 15

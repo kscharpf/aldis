@@ -219,9 +219,12 @@ fn packet_offset_is_below_the_reserved_pointers() {
                 let p = PacketPointer::StartsAt(offset);
                 for edition in [AosEdition::Issue5, AosEdition::Issue4Compatible] {
                     if v > PacketPointer::max_offset(edition) {
+                        // No raw value in this edition: to_raw refuses it, nothing saturates.
+                        assert_eq!(p.to_raw(edition), None);
+                        assert_eq!(p.header_octets(edition), None);
                         continue;
                     }
-                    field[..2].copy_from_slice(&p.header_octets(edition));
+                    field[..2].copy_from_slice(&p.header_octets(edition).unwrap());
                     let m = Mpdu::decode(&field, edition, DecodeMode::Strict).unwrap();
                     assert_eq!(m.pointer(), p);
                 }
@@ -241,15 +244,17 @@ fn packet_offset_is_below_the_reserved_pointers() {
 
 /// What `PacketPointer::classify` gives for `raw` in a zone of `zone_len` octets, from 732.0
 /// §4.1.4.2.2.3–5: all ones is "no Packet starts", all ones minus one "only Idle Data", an
-/// offset inside the zone a Packet start, and any other value `Malformed`
-/// (`first_header_pointer`) with the zone's last offset.
+/// offset inside the zone and the `width`-bit pointer a Packet start, and any other value, one
+/// wider than the pointer included, `Malformed` (`first_header_pointer`) with the zone's last
+/// offset.
 fn expected_packet_pointer(raw: u16, zone_len: usize, width: u32) -> Result<PacketPointer, Error> {
     let all_ones = ones(width);
+    let max = all_ones - 2;
     if raw == all_ones {
         Ok(PacketPointer::NoPacketStart)
     } else if raw == all_ones - 1 {
         Ok(PacketPointer::OnlyIdleData)
-    } else if usize::from(raw) < zone_len {
+    } else if raw <= max && usize::from(raw) < zone_len {
         Ok(PacketPointer::StartsAt(PacketOffset::new(raw).unwrap()))
     } else {
         Err(mismatch(
@@ -261,9 +266,10 @@ fn expected_packet_pointer(raw: u16, zone_len: usize, width: u32) -> Result<Pack
     }
 }
 
-/// Every raw First Header Pointer of each edition, in Packet Zones at and around the
-/// pointer's edges, is classified as 732.0 §4.1.4.2.2.3–5 (732.0-B-4 §4.1.4.2.3) says, both by
-/// `classify` and by `Mpdu::decode` on the wire; an accepted pointer writes back the same raw
+/// Every 16-bit raw value, in Packet Zones at and around the pointer's edges, is classified
+/// in each edition as 732.0 §4.1.4.2.2.3–5 (732.0-B-4 §4.1.4.2.3) says: by `classify` for
+/// every value, those wider than the Issue 4 pointer rejected, and by `Mpdu::decode` on the
+/// wire for every value of the edition's width; an accepted pointer writes back the same raw
 /// value (AOS-003, AOS-017).
 #[test]
 fn packet_pointer_classifies_every_raw_value() {
@@ -281,16 +287,19 @@ fn packet_pointer_classifies_every_raw_value() {
         assert_eq!(PacketPointer::only_idle_data_raw(edition), ones(width) - 1);
         for zone_len in zones {
             let unit = &mut field[..2 + zone_len];
-            for raw in 0..=ones(width) {
+            for raw in 0..=u16::MAX {
                 let want = expected_packet_pointer(raw, zone_len, width);
                 let got = PacketPointer::classify(raw, zone_len, edition);
                 assert_eq!(got, want, "{edition:?} raw {raw:#x} zone {zone_len}");
-                unit[..2].copy_from_slice(&raw.to_be_bytes());
-                let decoded = Mpdu::decode(unit, edition, DecodeMode::Strict).map(|m| m.pointer());
-                assert_eq!(decoded, want);
+                if raw <= ones(width) {
+                    unit[..2].copy_from_slice(&raw.to_be_bytes());
+                    let decoded =
+                        Mpdu::decode(unit, edition, DecodeMode::Strict).map(|m| m.pointer());
+                    assert_eq!(decoded, want);
+                }
                 if let Ok(p) = got {
-                    assert_eq!(p.to_raw(edition), raw);
-                    assert_eq!(p.header_octets(edition), raw.to_be_bytes());
+                    assert_eq!(p.to_raw(edition), Some(raw));
+                    assert_eq!(p.header_octets(edition), Some(raw.to_be_bytes()));
                 }
             }
         }
@@ -628,5 +637,144 @@ proptest! {
         let n = encode(&pc, &t, &fields, &content, &mut out).unwrap();
         let f = AosFrame::decode(&out[..n], &pc, &t, DecodeMode::Strict).unwrap();
         prop_assert_eq!((f.len(), f.scid(), f.vcid()), (pc.frame_len(), scid, vc.vcid()));
+    }
+}
+
+/// `VcTable::new` accepts exactly the virtual channel sets 732.0 §5 allows within its capacity
+/// `N`, and rejects each other with its documented error (GEN-011, API-040, AOS-018): a VC given
+/// twice (`InvalidConfig`, `vc_id`); an SCID above the 8 bits of `Issue4Compatible`
+/// (`spacecraft_id`, with that limit; AOS-002); a data field with no octet after the `M_PDU`
+/// Header (`frame_data_field`, with the shortest; CMN-041); for a `B_PDU` VC, an `Issue5` frame
+/// longer than the 14-bit Bitstream Data Pointer counts, 2 048 octets (`frame_len`), and a
+/// Bitstream Data Zone longer than 2 047 octets (`frame_data_field`), each with its limit
+/// (AOS-018); more than `N` VCs (`CapacityExceeded`, `vc_id`). An accepted table carries a frame
+/// of each VC through `encode` and `decode`.
+#[test]
+fn vc_tables_accept_exactly_the_configurable_channels() {
+    // restricted: VcTable
+    // req: AOS-002, AOS-018, API-040, GEN-011, GEN-060, CMN-041, VER-023
+    type Table = VcTable<2>;
+    let vc = |scid: u16, vcid: u8, content| {
+        let scid = SpacecraftId::new(scid).unwrap();
+        AosVirtualChannelConfig::new(scid, VcId::new(vcid).unwrap(), content).unwrap()
+    };
+    let pc = |len, fhec, fecf, edition| {
+        AosPhysicalChannelConfig::new(len, fhec, 0, fecf, edition).unwrap()
+    };
+    let failure = |pc, vcs: &[AosVirtualChannelConfig]| Table::new(pc, vcs).unwrap_err();
+    let invalid = |fld, expected: usize, found: usize| {
+        mismatch(
+            ErrorKind::InvalidConfig,
+            fld,
+            u64::try_from(expected).unwrap(),
+            u64::try_from(found).unwrap(),
+        )
+    };
+    let five = AosEdition::Issue5;
+    let four = AosEdition::Issue4Compatible;
+
+    // Accepted, at the capacity: a frame of each VC round-trips.
+    let wide = pc(1000, true, true, five);
+    let vcs = [
+        vc(0x2A5, 1, DataFieldContent::Mpdu),
+        vc(0x2A5, 2, DataFieldContent::Bpdu),
+    ];
+    let t = Table::new(wide, &vcs).unwrap();
+    assert_eq!(t.vcs().copied().collect::<Vec<_>>(), vcs);
+    for (v, pdu) in [
+        (1, PduHeader::Mpdu(PacketPointer::NoPacketStart)),
+        (2, PduHeader::Bpdu(BitstreamPointer::AllValid)),
+    ] {
+        let layout = t
+            .frame_layout(vcs[0].scid(), VcId::new(v).unwrap())
+            .unwrap();
+        let zone = vec![0xA5_u8; layout.data().len() - 2];
+        let fields = AosFrameFields {
+            scid: vcs[0].scid(),
+            vcid: VcId::new(v).unwrap(),
+            vc_frame_count: VcFrameCount::new(7).unwrap(),
+            replay_flag: false,
+            cycle: None,
+            pdu,
+        };
+        let content = AosFrameContent {
+            insert_zone: &[],
+            security_header: &[],
+            zone: &zone,
+            security_trailer: &[],
+            ocf: None,
+        };
+        let mut out = vec![0_u8; wide.frame_len()];
+        let n = encode(&wide, &t, &fields, &content, &mut out).unwrap();
+        let f = AosFrame::decode(&out[..n], &wide, &t, DecodeMode::Strict).unwrap();
+        assert_eq!((f.vcid().get(), f.data_unit().zone()), (v, zone.as_slice()));
+    }
+
+    // Duplicates, and capacity (GEN-011).
+    let twice = [vcs[0], vcs[0]];
+    let e = failure(wide, &twice);
+    assert_eq!(
+        (e.kind(), e.field()),
+        (ErrorKind::InvalidConfig, Some(field::VC_ID))
+    );
+    let three = [vcs[0], vcs[1], vc(0x2A5, 3, DataFieldContent::VcaSdu)];
+    let e = failure(wide, &three);
+    assert_eq!(
+        (e.kind(), e.field()),
+        (ErrorKind::CapacityExceeded, Some(field::VC_ID))
+    );
+
+    // Issue 4 has 8 bits of SCID (AOS-002).
+    let narrow = pc(64, false, true, four);
+    let scid_max = usize::from(ones(8));
+    assert!(Table::new(narrow, &[vc(0xFF, 1, DataFieldContent::Mpdu)]).is_ok());
+    assert_eq!(
+        failure(narrow, &[vc(0x100, 1, DataFieldContent::Mpdu)]),
+        invalid(field::SPACECRAFT_ID, scid_max, 0x100)
+    );
+
+    // An M_PDU needs an octet after its 2-octet header: header 6, data 2, FECF 2 leave none.
+    let tiny = pc(HEADER_OCTETS + 2 + FECF_OCTETS, false, true, five);
+    assert!(Table::new(tiny, &[vc(1, 1, DataFieldContent::VcaSdu)]).is_ok());
+    assert_eq!(
+        failure(tiny, &[vc(1, 1, DataFieldContent::Mpdu)]),
+        invalid(field::FRAME_DATA_FIELD, 3, 2)
+    );
+
+    // B_PDU limits (AOS-018): the 14-bit pointer counts bits of at most 2 048 octets, and the
+    // longest zone it can name is 2 047 octets.
+    let max_bitstream_frame = (1_usize << BDP_BITS) / 8;
+    let max_zone = 2047;
+    let bpdu = [vc(1, 1, DataFieldContent::Bpdu)];
+    assert!(Table::new(pc(max_bitstream_frame, true, true, five), &bpdu).is_ok());
+    assert_eq!(
+        failure(pc(max_bitstream_frame + 1, true, true, five), &bpdu),
+        invalid(
+            field::FRAME_LEN,
+            max_bitstream_frame,
+            max_bitstream_frame + 1
+        )
+    );
+    // In Issue 4, no FHEC or FECF: the frame is the header, the B_PDU Header, and the zone.
+    let len = |zone: usize| HEADER_OCTETS + 2 + zone;
+    assert!(Table::new(pc(len(max_zone), false, false, four), &bpdu).is_ok());
+    assert_eq!(
+        failure(pc(len(max_zone + 1), false, false, four), &bpdu),
+        invalid(field::FRAME_DATA_FIELD, max_zone, max_zone + 1)
+    );
+}
+
+proptest! {
+    #![proptest_config(strategies::config(64, REGRESSIONS))]
+
+    /// Every table of the shared strategies is rebuilt from its own virtual channels, and
+    /// decodes the frames encoded on it (API-040, VER-054).
+    #[test]
+    fn vc_tables_from_the_strategies_rebuild(f in aos_frame()) {
+        // req: API-040, VER-023, VER-054
+        let vcs: Vec<AosVirtualChannelConfig> = f.table.vcs().copied().collect();
+        let again = aldis_testkit::strategies::aos::AosTable::new(f.pc(), &vcs).unwrap();
+        prop_assert_eq!(&again, &f.table);
+        prop_assert!(AosFrame::decode(&f.octets, &f.pc(), &again, DecodeMode::Strict).is_ok());
     }
 }

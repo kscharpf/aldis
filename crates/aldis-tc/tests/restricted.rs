@@ -18,11 +18,12 @@ use aldis_core::{DecodeMode, Error, ErrorDetail, ErrorKind};
 use aldis_tc::field;
 use aldis_tc::{
     Clcw, ClcwStatus, ControlCommand, CopInEffect, FarmBCounter, FrameData, FrameFields, FrameType,
-    MAX_FRAME_LEN, MIN_FRAME_LEN, PRIMARY_HEADER_LEN, PhysicalChannelConfig, Reason,
-    SegmentHeaderUse, TcFrame, TcSpacecraftId, TcVcId, VcConfig, VcTable, encode,
+    MAX_FRAME_LEN, MIN_FRAME_LEN, MapConfig, PRIMARY_HEADER_LEN, PhysicalChannelConfig, Reason,
+    SegmentHeader, SegmentHeaderUse, SequenceFlags, TcFrame, TcMapId, TcSpacecraftId, TcVcId,
+    VcConfig, VcTable, encode,
 };
 use aldis_testkit::strategies::proptest::prelude::*;
-use aldis_testkit::strategies::tc::{clcw, frame_type, tc_frame};
+use aldis_testkit::strategies::tc::{Channels, clcw, frame_type, tc_frame};
 use aldis_testkit::strategies::{self, octets};
 
 /// Failing cases are saved here and replayed first.
@@ -419,5 +420,133 @@ proptest! {
         let mut out = vec![0_u8; 64];
         let n = encode(t, fields, data, &mut out).unwrap();
         prop_assert_eq!(TcFrame::decode(&out[..n], t, DecodeMode::Strict).map(|d| d.frame_type()), Ok(ty));
+    }
+}
+
+/// `VcTable::new` accepts exactly the channel sets 232.0 §5 allows within its capacities, and
+/// rejects each other with its documented error (GEN-011, API-040): more than `V` Virtual
+/// Channels or `M` MAPs (`CapacityExceeded`, `vc_id` or `map_id`); a Virtual Channel given
+/// twice (`InvalidConfig`, `vc_id`); a MAP given twice, on a Virtual Channel not given, or on
+/// one without a Segment Header (`InvalidConfig`, `map_id`; 232.0 §4.1.3.2.2.1.2); a Virtual
+/// Channel or MAP whose longest frame leaves no data octet (`InvalidConfig`, `frame_data_field`;
+/// CMN-041). An accepted table carries a frame on each channel through `encode` and `decode`.
+#[test]
+fn vc_tables_accept_exactly_the_configurable_channels() {
+    // restricted: VcTable
+    // req: API-040, GEN-011, GEN-060, CMN-041, TC-021, TC-022, VER-023
+    type Table = VcTable<2, 2>;
+    let scid = TcSpacecraftId::new(0x2A5).unwrap();
+    let vc = |v: u8| TcVcId::new(v).unwrap();
+    let map = |m: u8| TcMapId::new(m).unwrap();
+    let pc = PhysicalChannelConfig::new(MAX_FRAME_LEN, true).unwrap();
+    let plain = |v: u8, len: usize, sec: SecurityLayout| {
+        VcConfig::new(scid, vc(v), len, SegmentHeaderUse::Absent(sec)).unwrap()
+    };
+    let segmented =
+        |v: u8, len: usize| VcConfig::new(scid, vc(v), len, SegmentHeaderUse::Present).unwrap();
+    let on = |v: u8, m: u8, sec: SecurityLayout| MapConfig::new(scid, vc(v), map(m), sec);
+    let none = SecurityLayout::NONE;
+    let err = |kind, fld| (kind, Some(fld), ErrorDetail::None);
+    let invalid = |fld| err(ErrorKind::InvalidConfig, fld);
+    let failure = |vcs: &[VcConfig], maps: &[MapConfig]| {
+        let e = Table::new(pc, vcs, maps).unwrap_err();
+        (e.kind(), e.field(), e.detail())
+    };
+
+    // Accepted, at both capacities: a frame on each channel round-trips.
+    let vcs = [plain(1, MAX_FRAME_LEN, none), segmented(2, MAX_FRAME_LEN)];
+    let maps = [on(2, 3, none), on(2, 4, none)];
+    let t = Table::new(pc, &vcs, &maps).unwrap();
+    assert_eq!(t.vcs().copied().collect::<Vec<_>>(), vcs);
+    assert_eq!(t.maps().copied().collect::<Vec<_>>(), maps);
+    let user = [0x5A_u8; 9];
+    for (v, segment_header) in [
+        (1, None),
+        (
+            2,
+            Some(SegmentHeader {
+                sequence_flags: SequenceFlags::Unsegmented,
+                map_id: map(3),
+            }),
+        ),
+        (
+            2,
+            Some(SegmentHeader {
+                sequence_flags: SequenceFlags::Unsegmented,
+                map_id: map(4),
+            }),
+        ),
+    ] {
+        let fields = FrameFields {
+            frame_type: FrameType::Ad,
+            spacecraft_id: scid,
+            vc_id: vc(v),
+            sequence_number: FrameSeqNum::new(1),
+        };
+        let mut out = [0_u8; 64];
+        let data = FrameData::Fdu {
+            segment_header,
+            user_data: &user,
+        };
+        let n = encode(&t, fields, data, &mut out).unwrap();
+        let f = TcFrame::decode(&out[..n], &t, DecodeMode::Strict).unwrap();
+        assert_eq!(
+            (f.header().vc_id(), f.segment_header()),
+            (vc(v), segment_header)
+        );
+    }
+
+    // Capacities (GEN-011).
+    let three = [plain(1, 64, none), plain(5, 64, none), segmented(2, 64)];
+    assert_eq!(
+        failure(&three, &[]),
+        err(ErrorKind::CapacityExceeded, field::VC_ID)
+    );
+    let maps3 = [on(2, 3, none), on(2, 4, none), on(2, 5, none)];
+    assert_eq!(
+        failure(&vcs, &maps3),
+        err(ErrorKind::CapacityExceeded, field::MAP_ID)
+    );
+    // Duplicates and MAPs without a place.
+    assert_eq!(
+        failure(&[plain(1, 64, none), segmented(1, 64)], &[]),
+        invalid(field::VC_ID)
+    );
+    assert_eq!(
+        failure(&vcs, &[on(2, 3, none), on(2, 3, none)]),
+        invalid(field::MAP_ID)
+    );
+    assert_eq!(failure(&vcs, &[on(6, 3, none)]), invalid(field::MAP_ID));
+    assert_eq!(failure(&vcs, &[on(1, 3, none)]), invalid(field::MAP_ID));
+    // No data octet: the Primary Header (5), the Segment Header (1), the security fields, and
+    // the FECF (2) fill the longest frame.
+    let full = SecurityLayout::new(3, 0).unwrap();
+    assert_eq!(
+        failure(&[plain(1, 10, full)], &[]),
+        invalid(field::FRAME_DATA_FIELD)
+    );
+    assert!(Table::new(pc, &[plain(1, 11, full)], &[]).is_ok());
+    let tight = [segmented(2, 11)];
+    assert_eq!(
+        failure(&tight, &[on(2, 3, full)]),
+        invalid(field::FRAME_DATA_FIELD)
+    );
+    assert!(Table::new(pc, &tight, &[on(2, 3, SecurityLayout::new(2, 0).unwrap())]).is_ok());
+}
+
+proptest! {
+    #![proptest_config(strategies::config(64, REGRESSIONS))]
+
+    /// Every table of the shared strategies is rebuilt from its own channels, and decodes the
+    /// frames encoded on it (API-040, VER-054).
+    #[test]
+    fn vc_tables_from_the_strategies_rebuild(f in tc_frame()) {
+        // req: API-040, VER-023, VER-054
+        let t = &f.channels.table;
+        let vcs: Vec<VcConfig> = t.vcs().copied().collect();
+        let maps: Vec<MapConfig> = t.maps().copied().collect();
+        let again = Channels::new(t.physical(), &vcs, &maps).unwrap();
+        prop_assert_eq!(&again, t);
+        prop_assert!(TcFrame::decode(&f.octets, &again, DecodeMode::Strict).is_ok());
     }
 }

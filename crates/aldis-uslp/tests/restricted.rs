@@ -692,3 +692,177 @@ proptest! {
         }
     }
 }
+
+/// A fixed-length 64-octet frame of MAP `map_id` of VC `vc_id` encodes and decodes on `t`.
+fn map_frame_round_trips(
+    t: &VcTable<2, 2>,
+    scid: UslpSpacecraftId,
+    vc_id: UslpVcId,
+    map_id: UslpMapId,
+) {
+    let fields = FrameFields {
+        spacecraft_id: scid,
+        source_or_destination: SourceOrDestination::from_bit(false),
+        vc_id,
+        map_id,
+        kind: FrameKind::Expedited,
+        vcf_count: 0,
+    };
+    let content = FrameContent {
+        tfdf: TfdfHeader {
+            rule: TfdzRule::PacketsSpanningFrames(FirstHeaderPointer::from_raw(0)),
+            upid: Upid::Packets,
+        },
+        insert_zone: &[],
+        ocf: None,
+    };
+    // The 7-octet header, the 3-octet TFDF Header, and the FECF leave 52 octets.
+    let tfdz = [0x5A_u8; 52];
+    let mut out = [0_u8; 64];
+    assert_eq!(encode(t, fields, content, &tfdz, &mut out), Ok(64));
+    let f = UslpFrame::decode(&out, t, DecodeMode::Strict).unwrap();
+    assert_eq!(f.tfdz(), tfdz.as_slice());
+}
+
+/// `VcTable::new` accepts exactly the channel sets 732.1 §5 allows within its capacities, and
+/// rejects each other with its documented error (GEN-011, API-040, API-075). For VCs:
+/// `InvalidConfig` with `vc_id` for a VC given twice or VCID 63 on a variable-length channel
+/// (Table 5-1 note 4; USLP-009), `transfer_frame_type` for a variable-length VC on a
+/// fixed-length channel (Table 5-3 note 2), `frame_data_field` for SDLS lengths that leave no
+/// TFDZ octet (CMN-041), and `CapacityExceeded` (`vc_id`) above `V`. For MAPs: `InvalidConfig`
+/// (`map_id`) for a MAP on a VC not given, on VCID 63, given twice, or with SDLS lengths on a VC
+/// that sets them itself, `frame_data_field` for a MAP whose lengths leave no TFDZ octet, and
+/// `CapacityExceeded` (`map_id`) above `M`. Then `truncated_frame_len` for a truncated frame
+/// length below 28 with SDLS (Annex D1.2.4; USLP-012). An accepted table carries a frame through
+/// `encode` and `decode`.
+#[test]
+fn vc_tables_accept_exactly_the_configurable_channels() {
+    // restricted: VcTable
+    // req: API-040, API-075, GEN-011, GEN-060, CMN-041, USLP-009, USLP-012, VER-023
+    type Table = VcTable<2, 2>;
+    let scid = UslpSpacecraftId::new(0xA5A5).unwrap();
+    let id = |v: u8| UslpVcId::new(v).unwrap();
+    let mid = |m: u8| UslpMapId::new(m).unwrap();
+    let sec = |h: usize| SecurityLayout::new(h, 0).unwrap();
+    let vc = |v: u8, params: VcParams| VcConfig::new(scid, id(v), params).unwrap();
+    let with = |frame_type, security| VcParams {
+        security,
+        ..VcParams::new(frame_type)
+    };
+    let map = |v: u8, m: u8, security| MapConfig::new(scid, id(v), mid(m), security);
+    let fixed_pc = PhysicalChannelConfig::new(TransferFrameType::Fixed, 64, 0, true).unwrap();
+    let variable_pc = PhysicalChannelConfig::new(TransferFrameType::Variable, 64, 0, true).unwrap();
+    let fixed = |v: u8| vc(v, VcParams::new(TransferFrameType::Fixed));
+    let variable = |v: u8| vc(v, VcParams::new(TransferFrameType::Variable));
+    let none = SecurityLayout::NONE;
+    let failure = |pc, vcs: &[VcConfig], maps: &[MapConfig]| {
+        let e = Table::new(pc, vcs, maps).unwrap_err();
+        (e.kind(), e.field())
+    };
+    let invalid = |fld| (ErrorKind::InvalidConfig, Some(fld));
+
+    // Accepted, at both capacities: a frame of a MAP round-trips.
+    let vcs = [fixed(1), fixed(2)];
+    let maps = [map(1, 2, none), map(2, 3, none)];
+    let t = Table::new(fixed_pc, &vcs, &maps).unwrap();
+    assert_eq!(t.vcs().copied().collect::<Vec<_>>(), vcs);
+    assert_eq!(t.maps().copied().collect::<Vec<_>>(), maps);
+    map_frame_round_trips(&t, scid, id(1), mid(2));
+
+    // VCs.
+    assert_eq!(
+        failure(fixed_pc, &[fixed(1), fixed(1)], &[]),
+        invalid(field::VC_ID)
+    );
+    assert_eq!(
+        failure(fixed_pc, &[variable(1)], &[]),
+        invalid(field::TRANSFER_FRAME_TYPE)
+    );
+    assert_eq!(
+        failure(variable_pc, &[fixed(63)], &[]),
+        invalid(field::VC_ID)
+    );
+    assert!(Table::new(variable_pc, &[fixed(62)], &[]).is_ok());
+    // A fixed 64-octet frame: the header, the TFDF Header, and the FECF leave 52 octets.
+    let own = |h| vc(1, with(TransferFrameType::Fixed, SecurityScope::Vc(sec(h))));
+    assert!(Table::new(fixed_pc, &[own(51)], &[]).is_ok());
+    assert_eq!(
+        failure(fixed_pc, &[own(52)], &[]),
+        invalid(field::FRAME_DATA_FIELD)
+    );
+    let three = [fixed(1), fixed(2), fixed(3)];
+    assert_eq!(
+        failure(fixed_pc, &three, &[]),
+        (ErrorKind::CapacityExceeded, Some(field::VC_ID))
+    );
+
+    // MAPs.
+    assert_eq!(
+        failure(fixed_pc, &vcs, &[map(5, 2, none)]),
+        invalid(field::MAP_ID)
+    );
+    let oid = [fixed(1), fixed(63)];
+    assert_eq!(
+        failure(fixed_pc, &oid, &[map(63, 2, none)]),
+        invalid(field::MAP_ID)
+    );
+    let twice = [map(1, 2, none), map(1, 2, none)];
+    assert_eq!(failure(fixed_pc, &vcs, &twice), invalid(field::MAP_ID));
+    let sets_its_own = [own(2)];
+    assert_eq!(
+        failure(fixed_pc, &sets_its_own, &[map(1, 2, sec(1))]),
+        invalid(field::MAP_ID)
+    );
+    // Per MAP on a variable 64-octet frame: the header, a 1-octet TFDF Header, and the FECF
+    // leave 54 octets.
+    let per_map = [vc(
+        1,
+        with(TransferFrameType::Variable, SecurityScope::PerMap),
+    )];
+    assert!(Table::new(variable_pc, &per_map, &[map(1, 2, sec(53))]).is_ok());
+    assert_eq!(
+        failure(variable_pc, &per_map, &[map(1, 2, sec(54))]),
+        invalid(field::FRAME_DATA_FIELD)
+    );
+    let maps3 = [map(1, 2, none), map(1, 3, none), map(2, 4, none)];
+    assert_eq!(
+        failure(fixed_pc, &vcs, &maps3),
+        (ErrorKind::CapacityExceeded, Some(field::MAP_ID))
+    );
+
+    // Truncated frames with SDLS need 28 octets (Annex D1.2.4).
+    let truncated = |len, security| {
+        vc(
+            1,
+            VcParams {
+                truncated_frame_len: Some(TruncatedFrameLen::new(len).unwrap()),
+                security,
+                ..VcParams::new(TransferFrameType::Variable)
+            },
+        )
+    };
+    let sdls = SecurityScope::Vc(SecurityLayout::USLP_TRUNCATED);
+    assert!(Table::new(variable_pc, &[truncated(28, sdls)], &[]).is_ok());
+    assert!(Table::new(variable_pc, &[truncated(27, SecurityScope::Vc(none))], &[]).is_ok());
+    assert_eq!(
+        failure(variable_pc, &[truncated(27, sdls)], &[]),
+        invalid(field::TRUNCATED_FRAME_LEN)
+    );
+}
+
+proptest! {
+    #![proptest_config(strategies::config(64, REGRESSIONS))]
+
+    /// Every table of the shared strategies is rebuilt from its own channels, and decodes the
+    /// frames encoded on it (API-040, VER-054).
+    #[test]
+    fn vc_tables_from_the_strategies_rebuild(f in uslp_frame()) {
+        // req: API-040, VER-023, VER-054
+        let t = &f.channels.table;
+        let vcs: Vec<VcConfig> = t.vcs().copied().collect();
+        let maps: Vec<MapConfig> = t.maps().copied().collect();
+        let again = aldis_testkit::strategies::uslp::Channels::new(t.physical(), &vcs, &maps);
+        prop_assert_eq!(again.as_ref(), Ok(t));
+        prop_assert!(UslpFrame::decode(&f.octets, t, DecodeMode::Strict).is_ok());
+    }
+}

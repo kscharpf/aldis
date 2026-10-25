@@ -116,20 +116,24 @@ impl PacketPointer {
     /// (AOS-017).
     ///
     /// `raw` is the masked pointer field of `edition`, as the decoder reads it: 16 bits in
-    /// Issue 5, 11 bits in Issue 4 (AOS-003). A wider value cannot come off the wire, and is
-    /// classified as given.
+    /// Issue 5, 11 bits in Issue 4 (AOS-003). A value wider than the edition's pointer cannot
+    /// come off the wire, and is rejected like an offset outside the zone.
     ///
     /// # Errors
-    /// `Malformed` (`first_header_pointer`) for an offset that is not inside the Packet Zone,
-    /// with the largest offset that is (API-032, OI-33).
+    /// `Malformed` (`first_header_pointer`) for a value that is not reserved and is not an
+    /// offset inside both the Packet Zone and the edition's [`max_offset`](Self::max_offset),
+    /// with the zone's last offset, as for an offset outside the zone (API-032, OI-33).
     pub fn classify(raw: u16, zone_len: usize, edition: AosEdition) -> Result<PacketPointer> {
+        let max = PacketPointer::max_offset(edition);
         if raw == PacketPointer::no_packet_start_raw(edition) {
             Ok(PacketPointer::NoPacketStart)
         } else if raw == PacketPointer::only_idle_data_raw(edition) {
             Ok(PacketPointer::OnlyIdleData)
         } else {
             match PacketOffset::new(raw) {
-                Some(offset) if usize::from(raw) < zone_len => Ok(PacketPointer::StartsAt(offset)),
+                Some(offset) if raw <= max && usize::from(raw) < zone_len => {
+                    Ok(PacketPointer::StartsAt(offset))
+                }
                 _ => Err(mismatch(
                     ErrorKind::Malformed,
                     field::FIRST_HEADER_POINTER,
@@ -140,25 +144,29 @@ impl PacketPointer {
         }
     }
 
-    /// The raw field value in `edition`. Every [`PacketOffset`] fits `Issue5`; in
-    /// `Issue4Compatible`, an offset above [`max_offset`](Self::max_offset) saturates to "no
-    /// Packet starts", and the writers reject such offsets before they reach the wire (AOS-003,
-    /// AOS-019).
+    /// The raw field value in `edition`, or `None` for an offset that does not fit it: every
+    /// [`PacketOffset`] fits `Issue5`, and in `Issue4Compatible` an offset above
+    /// [`max_offset`](Self::max_offset) does not (AOS-003, AOS-019).
     #[must_use]
-    pub const fn to_raw(self, edition: AosEdition) -> u16 {
+    pub const fn to_raw(self, edition: AosEdition) -> Option<u16> {
         match self {
-            PacketPointer::StartsAt(n) if n.get() <= PacketPointer::max_offset(edition) => n.get(),
-            PacketPointer::StartsAt(_) | PacketPointer::NoPacketStart => {
-                PacketPointer::no_packet_start_raw(edition)
+            PacketPointer::StartsAt(n) if n.get() <= PacketPointer::max_offset(edition) => {
+                Some(n.get())
             }
-            PacketPointer::OnlyIdleData => PacketPointer::only_idle_data_raw(edition),
+            PacketPointer::StartsAt(_) => None,
+            PacketPointer::NoPacketStart => Some(PacketPointer::no_packet_start_raw(edition)),
+            PacketPointer::OnlyIdleData => Some(PacketPointer::only_idle_data_raw(edition)),
         }
     }
 
-    /// The two `M_PDU` Header octets of the pointer in `edition`, spare bits zero (GEN-052).
+    /// The two `M_PDU` Header octets of the pointer in `edition`, spare bits zero, or `None` for
+    /// an offset that does not fit the edition ([`to_raw`](Self::to_raw); GEN-052).
     #[must_use]
-    pub const fn header_octets(self, edition: AosEdition) -> [u8; MPDU_HEADER_LEN] {
-        self.to_raw(edition).to_be_bytes()
+    pub const fn header_octets(self, edition: AosEdition) -> Option<[u8; MPDU_HEADER_LEN]> {
+        match self.to_raw(edition) {
+            Some(raw) => Some(raw.to_be_bytes()),
+            None => None,
+        }
     }
 }
 
@@ -273,6 +281,7 @@ mod tests {
     use crate::config::AosEdition::{Issue4Compatible, Issue5};
     use crate::config::tests::starts_at;
     use crate::field;
+    use crate::header::mismatch;
     use aldis_core::{AnomalySet, DecodeMode, ErrorDetail, ErrorKind};
 
     const STRICT: DecodeMode = DecodeMode::Strict;
@@ -288,16 +297,47 @@ mod tests {
         assert_eq!(PacketPointer::only_idle_data_raw(Issue4Compatible), 0x7FE);
         assert_eq!(PacketPointer::max_offset(Issue4Compatible), 0x7FD);
         for (p, five, four) in [
-            (starts_at(7), 7, 7),
-            (starts_at(0x7FD), 0x7FD, 0x7FD),
-            (starts_at(0x7FE), 0x7FE, 0x7FF),
-            (starts_at(0xFFFD), 0xFFFD, 0x7FF),
-            (PacketPointer::NoPacketStart, 0xFFFF, 0x7FF),
-            (PacketPointer::OnlyIdleData, 0xFFFE, 0x7FE),
+            (starts_at(7), Some(7), Some(7)),
+            (starts_at(0x7FD), Some(0x7FD), Some(0x7FD)),
+            (starts_at(0x7FE), Some(0x7FE), None),
+            (starts_at(0xFFFD), Some(0xFFFD), None),
+            (PacketPointer::NoPacketStart, Some(0xFFFF), Some(0x7FF)),
+            (PacketPointer::OnlyIdleData, Some(0xFFFE), Some(0x7FE)),
         ] {
             assert_eq!((p.to_raw(Issue5), p.to_raw(Issue4Compatible)), (five, four));
         }
-        assert_eq!(starts_at(0x123).header_octets(Issue5), [0x01, 0x23]);
+        assert_eq!(starts_at(0x123).header_octets(Issue5), Some([0x01, 0x23]));
+        assert_eq!(starts_at(0x7FE).header_octets(Issue4Compatible), None);
+    }
+
+    #[test]
+    fn issue4_rejects_raw_values_wider_than_its_pointer() {
+        // req: AOS-003, AOS-017, RS-020
+        let malformed = |expected: u64, found: u64| {
+            Err(mismatch(
+                ErrorKind::Malformed,
+                field::FIRST_HEADER_POINTER,
+                expected,
+                found,
+            ))
+        };
+        // In a zone long enough to hold the offset, only the edition's width rejects it.
+        assert_eq!(
+            PacketPointer::classify(0x800, 0x1000, Issue4Compatible),
+            malformed(0xFFF, 0x800)
+        );
+        assert_eq!(
+            PacketPointer::classify(0xFFFD, 0x1_0000, Issue4Compatible),
+            malformed(0xFFFF, 0xFFFD)
+        );
+        assert_eq!(
+            PacketPointer::classify(0x800, 0x1000, Issue5),
+            Ok(starts_at(0x800))
+        );
+        assert_eq!(
+            PacketPointer::classify(0x7FD, 0x1000, Issue4Compatible),
+            Ok(starts_at(0x7FD))
+        );
     }
 
     #[test]

@@ -2,6 +2,10 @@
 
 Surviving mutants from `cargo mutants` (`-p aldis-core -p aldis-time -p aldis-epp -p aldis-spp -p aldis-aos -p aldis-tm -p aldis-tc -p aldis-uslp --all-features`) (cargo-mutants 27.1.0), triaged per VER-025. The nightly job `mutants` publishes the full report. Update this file when a new survivor appears.
 
+## 2026-10-25, branch `m2/wp7-tests` (M2 WP-7, review of #116)
+
+`aldis_aos::PacketPointer::classify` rejects raw values wider than the Issue 4 pointer, `to_raw` and `header_octets` return `Option`, and `writer.rs` `mpdu_header` takes the edition check from them. The mutants of the changed lines of `mpdu.rs` and `writer.rs`, `cargo mutants -p aldis-aos --all-features --in-diff <diff against 87a48ce>` (cargo-mutants 27.1.0, with `PROPTEST_CASES=32`): 22 mutants: 21 caught, 1 unviable. None missed.
+
 ## 2026-10-24, branch `m2/rs020-check` (M2 WP-7, RS-020 check)
 
 The check gave the M_PDU offset its own type, `PacketOffset` (`aldis-aos`), and the USLP pointer offsets theirs, `TfdzOffset` (`aldis-uslp`). The mutants of the changed lines, `cargo mutants --in-diff <diff against main>` (with `PROPTEST_CASES=32`): `-p aldis-aos --all-features`, 21 mutants: 19 caught, 2 unviable; `-p aldis-uslp --all-features`, 15 mutants: 10 caught, 5 unviable. None missed. The TM packet offset followed (`aldis_tm::PacketOffset`, with the C ABI's `Fields::checked` in `aldis-ffi`), against the previous commit: `-p aldis-tm --all-features`, 12 mutants: 9 caught, 3 unviable; `-p aldis-ffi --all-features`, 7 mutants: 5 caught, 2 unviable. None missed.

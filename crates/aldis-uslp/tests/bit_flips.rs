@@ -42,18 +42,18 @@
 
 use core::ops::Range;
 
-use aldis_core::DecodeMode;
 use aldis_core::ocf::Ocf;
 use aldis_core::security::SecurityLayout;
+use aldis_core::{DecodeMode, ErrorKind};
 use aldis_testkit::bitflip::{
     CRC16_DOUBLE_BIT_BITS, CRC16_DOUBLE_BIT_OCTETS, each_bit, each_double, each_pair, each_single,
     filler, find_double, find_single, flip, sampled_bits, sampled_pairs,
 };
 use aldis_uslp::{
     FirstHeaderPointer, FrameContent, FrameFields, FrameKind, MAX_FRAME_LEN, MapConfig, OcfUse,
-    PhysicalChannelConfig, SourceOrDestination, TfdfHeader, TfdzRule, TransferFrameType, Upid,
-    UslpFrame, UslpMapId, UslpSpacecraftId, UslpVcId, VcConfig, VcParams, VcTable, VcfCountLen,
-    encode, validate_frame,
+    PhysicalChannelConfig, Reason, SourceOrDestination, TfdfHeader, TfdzRule, TransferFrameType,
+    Upid, UslpFrame, UslpMapId, UslpSpacecraftId, UslpVcId, VcConfig, VcParams, VcTable,
+    VcfCountLen, encode, validate_frame,
 };
 
 /// The Frame Length field: bits 32–47 of the Primary Header (732.1 §4.1.2.7.1).
@@ -179,32 +179,59 @@ fn sampled(octets: usize) -> (Vec<usize>, Vec<(usize, usize)>) {
     }
 }
 
-/// Whether `bytes`, the frame with errors at `bits`, is rejected as the module docs state: by
-/// `validate_frame` in `mode`, and by `decode` unless, on a variable-length channel, it returns
-/// a frame shorter than `bytes` from an error in the Frame Length field. Two errors 32 767 bits
-/// apart pass the FECF, and the property says nothing about them.
-fn rejected(f: &Frame, bytes: &[u8], bits: &[usize], mode: DecodeMode) -> bool {
-    if let [i, j] = bits
-        && (j - i) % CRC16_DOUBLE_BIT_BITS == 0
-    {
-        return true;
-    }
-    let in_length = bits.iter().any(|b| FRAME_LENGTH_BITS.contains(b));
-    validate_frame(bytes, &f.table, mode).is_err()
-        && match UslpFrame::decode(bytes, &f.table, mode) {
-            Err(_) => true,
-            Ok(d) => f.variable() && in_length && d.len() < bytes.len(),
+/// What the receiving end must make of a frame with errors at `bits` (module docs).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Outcome {
+    /// The Frame Validation Checks reject the frame, and `decode` does too, or on a
+    /// variable-length channel reads a shorter frame from a Frame Length error.
+    Rejected,
+    /// Two errors a multiple of 32 767 bits apart, neither in the Frame Length field: the FECF
+    /// passes.
+    Undetected,
+}
+
+fn expected(bits: &[usize]) -> Outcome {
+    match bits {
+        [i, j]
+            if (j - i) % CRC16_DOUBLE_BIT_BITS == 0
+                && !bits.iter().any(|b| FRAME_LENGTH_BITS.contains(b)) =>
+        {
+            Outcome::Undetected
         }
+        _ => Outcome::Rejected,
+    }
+}
+
+/// Whether `validate_frame` and `decode`, in `mode`, give `bytes`, the frame with errors at
+/// `bits`, the expected outcome. An undetected error passes the FECF check; whatever the other
+/// checks then make of it is not this property's.
+fn as_expected(f: &Frame, bytes: &[u8], bits: &[usize], mode: DecodeMode) -> bool {
+    let validated = validate_frame(bytes, &f.table, mode);
+    let decoded = UslpFrame::decode(bytes, &f.table, mode);
+    match expected(bits) {
+        Outcome::Rejected => {
+            let in_length = bits.iter().any(|b| FRAME_LENGTH_BITS.contains(b));
+            validated.is_err()
+                && match decoded {
+                    Err(_) => true,
+                    Ok(d) => f.variable() && in_length && d.len() < bytes.len(),
+                }
+        }
+        Outcome::Undetected => {
+            validated.map_err(|r| r.reason()) != Err(Reason::FecfMismatch)
+                && decoded.map_err(|e| e.kind()) != Err(ErrorKind::CrcMismatch)
+        }
+    }
 }
 
 #[test]
-fn every_single_bit_error_of_the_short_frames_is_rejected() {
+fn every_single_bit_error_of_the_short_frames_is_as_expected() {
     // req: USLP-003, USLP-014, CMN-001, VER-023, VER-064
     for f in &short_frames() {
         each_single(&f.octets, |bit, bytes| {
             for mode in [DecodeMode::Strict, DecodeMode::Lenient] {
                 assert!(
-                    rejected(f, bytes, &[bit], mode),
+                    as_expected(f, bytes, &[bit], mode),
                     "{} octets, bit {bit}",
                     bytes.len()
                 );
@@ -214,26 +241,31 @@ fn every_single_bit_error_of_the_short_frames_is_rejected() {
 }
 
 #[test]
-fn every_double_bit_error_of_the_short_frames_is_rejected() {
+fn every_double_bit_error_of_the_short_frames_is_as_expected() {
     // req: USLP-003, USLP-014, CMN-001, VER-023, VER-064
     for f in &short_frames() {
         each_double(&f.octets, 0..f.octets.len() * 8, |i, j, bytes| {
-            let ok = rejected(f, bytes, &[i, j], DecodeMode::Strict);
-            assert!(ok, "{} octets, bits {i}, {j}", bytes.len());
+            for mode in [DecodeMode::Strict, DecodeMode::Lenient] {
+                let ok = as_expected(f, bytes, &[i, j], mode);
+                assert!(ok, "{} octets, bits {i}, {j}, {mode:?}", bytes.len());
+            }
         });
     }
 }
 
 #[test]
-fn sampled_errors_of_the_long_frames_are_rejected() {
+fn sampled_errors_of_the_long_frames_are_as_expected() {
     // req: USLP-003, USLP-014, CMN-001, VER-023, VER-064
     for f in &long_frames() {
         let (bits, pairs) = sampled(f.octets.len());
         each_bit(&f.octets, &bits, |bit, bytes| {
-            assert!(rejected(f, bytes, &[bit], DecodeMode::Strict), "bit {bit}");
+            assert!(
+                as_expected(f, bytes, &[bit], DecodeMode::Strict),
+                "bit {bit}"
+            );
         });
         each_pair(&f.octets, &pairs, |i, j, bytes| {
-            let ok = rejected(f, bytes, &[i, j], DecodeMode::Strict);
+            let ok = as_expected(f, bytes, &[i, j], DecodeMode::Strict);
             assert!(ok, "{} octets, bits {i}, {j}", bytes.len());
         });
     }
@@ -257,11 +289,11 @@ fn a_double_bit_error_32767_bits_apart_passes_the_fecf() {
 
 #[test]
 #[ignore = "exhaustive, 4.7 million checks of up to 65 536 octets: the nightly job bit-flips"]
-fn every_single_bit_error_of_the_long_frames_is_rejected() {
+fn every_single_bit_error_of_the_long_frames_is_as_expected() {
     // req: USLP-003, USLP-014, CMN-001, VER-023, VER-064
     for f in &long_frames() {
         let failure = find_single(&f.octets, |bit, bytes| {
-            rejected(f, bytes, &[bit], DecodeMode::Strict)
+            as_expected(f, bytes, &[bit], DecodeMode::Strict)
         });
         assert_eq!(failure, None, "{} octets", f.octets.len());
     }
@@ -269,11 +301,11 @@ fn every_single_bit_error_of_the_long_frames_is_rejected() {
 
 #[test]
 #[ignore = "exhaustive, 537 million checks: the nightly job bit-flips runs it in release mode"]
-fn every_double_bit_error_within_the_guarantee_is_rejected() {
+fn every_double_bit_error_within_the_guarantee_is_as_expected() {
     // req: USLP-003, USLP-014, CMN-001, VER-023, VER-064
     let [f, _] = long_frames();
     let failure = find_double(&f.octets, |i, j, bytes| {
-        rejected(&f, bytes, &[i, j], DecodeMode::Strict)
+        as_expected(&f, bytes, &[i, j], DecodeMode::Strict)
     });
     assert_eq!(failure, None);
 }

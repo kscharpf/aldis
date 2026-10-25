@@ -16,6 +16,11 @@
   requirement VER-064 (docs/06-verification.md).
 
 ### Changed
+- **Breaking:** `aldis_aos::PacketPointer::to_raw` and `header_octets` return `Option`, `None`
+  for an offset that does not fit the edition's pointer, instead of saturating to "no Packet
+  starts"; `PacketPointer::classify` in `Issue4Compatible` rejects a raw value wider than the
+  11-bit pointer as `Malformed` (`first_header_pointer`). Values off the wire, the writers'
+  errors, and the C ABI are unchanged.
 - `TcFrame::decode` and `UslpFrame::decode` document that a bit error in the Frame Length field
   can make them accept a shorter frame, so a receiver of delimited frames runs `validate_frame`;
   `aldis_aos::PacketPointer::classify` documents that `raw` is the edition's masked pointer field.

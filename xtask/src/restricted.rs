@@ -2,14 +2,17 @@
 //! VER-023; M2 plan WP-7, "A test for every restricted type"; part of `cargo xtask ci`).
 //!
 //! A *restricted type* is a public struct or enum of a crate of [`rs020::CRATES`] with a
-//! *checked constructor*: an inherent `pub fn` that takes its arguments by value (no `self`
-//! receiver and no reference) and returns `Option<Self>` or `Result<Self…>` (the type may be
-//! named instead of `Self`), or an `impl TryFrom<…>` for it. A function that takes a reference
-//! reads a buffer or another value: it parses, writes, or converts (a frame writer's `begin`, a
-//! table built from a slice of channels, `Agency::new` over the T-field octets), and the codec's
-//! round-trip and decoder property tests cover it; so do the decoders, functions named
-//! `decode…` or `parse…`. A type that a `macro_rules!` body defines with a checked constructor
-//! counts once for each invocation of the macro, named by its first identifier.
+//! *checked constructor*: an inherent `pub fn` without a `self` receiver that returns
+//! `Option<Self>` or `Result<Self…>` (the type may be named instead of `Self`), or an
+//! `impl TryFrom<…>` for it, where the function either takes every argument by value, or is
+//! named `new` or `try_new` and takes no reference but to a slice (`PFieldTail::new` over the
+//! P-field octets, `Agency::new` over the T-field, a channel table built from slices of
+//! channels). Any other function that takes a reference reads a buffer or another value: it
+//! parses, writes, or converts (a frame writer's `begin`, `Segmenter::new` over a configuration
+//! and a service data unit), and the codec's round-trip and decoder property tests cover it; so
+//! do the decoders, functions named `decode…` or `parse…`, whatever their arguments. A type that
+//! a `macro_rules!` body defines with a checked constructor counts once for each invocation of
+//! the macro, named by its first identifier.
 //!
 //! Each restricted type `T` of crate `aldis-x` must be named by a marker comment
 //! `// restricted: T` (several names may share one marker, separated by commas) in a file of
@@ -123,6 +126,14 @@ fn returns_self(ret: &[Tok], ty: &str) -> bool {
     matches!(words.as_slice(), ["Option" | "Result", "<", s] if *s == "Self" || *s == ty)
 }
 
+/// Whether the tokens after a `&` name a slice: `[`, after an optional lifetime and `mut`.
+fn slice_reference(after: &[Tok]) -> bool {
+    let rest = after
+        .iter()
+        .skip_while(|tok| tok.text.starts_with('\'') || tok.text == "mut");
+    rest.take(1).any(|tok| tok.text == "[")
+}
+
 /// The checked constructors of the inherent impl of `ty` whose body is `t[open..=close]`.
 fn inherent_constructors(t: &[Tok], open: usize, close: usize, ty: &str) -> Vec<String> {
     let mut out = Vec::new();
@@ -149,10 +160,15 @@ fn inherent_constructors(t: &[Tok], open: usize, close: usize, ty: &str) -> Vec<
             i += 1;
             continue;
         };
-        // A receiver, or a reference: the function reads a buffer or another value.
-        let by_value = !t[args..args_end]
-            .iter()
-            .any(|tok| tok.text == "self" || tok.text == "&");
+        // A receiver, or a reference: the function reads a buffer or another value, except a
+        // `new` or `try_new` whose references are all to slices.
+        let params = &t[args..args_end];
+        let receiver = params.iter().any(|tok| tok.text == "self");
+        let constructor = matches!(name.as_str(), "new" | "try_new");
+        let by_value = !receiver
+            && params.iter().enumerate().all(|(k, tok)| {
+                tok.text != "&" || (constructor && slice_reference(&params[k + 1..]))
+            });
         let mut ret_end = args_end + 1;
         while ret_end < close && !is(t, ret_end, "{") && !is(t, ret_end, "where") {
             ret_end += 1;
@@ -401,6 +417,14 @@ mod tests {
             impl Hidden { pub(crate) fn new(v: u8) -> Option<Self> { None } }
             struct Private(u8);
             impl Private { pub fn new(v: u8) -> Option<Self> { None } }
+            pub struct Tail([u8; 4]);
+            impl Tail { pub fn new(octets: &[u8]) -> Result<Tail> { x } }
+            pub struct Table;
+            impl Table { pub fn new(pc: Pc, vcs: &'a [Vc], maps: &mut [Map]) -> Result<Self> { x } }
+            pub struct Seg;
+            impl Seg { pub fn new(config: &Config, sdu: &[u8]) -> Result<Seg> { x } }
+            pub struct Raw;
+            impl Raw { pub fn from_octets(octets: &[u8]) -> Option<Raw> { x } }
             pub struct Writer<'b>(&'b mut [u8]);
             impl<'b> Writer<'b> { pub fn begin(out: &'b mut [u8]) -> Result<Writer<'b>> { x } }
             pub struct Plain(u8);
@@ -410,7 +434,13 @@ mod tests {
         ";
         assert_eq!(
             types(src),
-            ["Kind:TryFrom+from_code", "Len:new", "Offset:new"]
+            [
+                "Kind:TryFrom+from_code",
+                "Len:new",
+                "Offset:new",
+                "Table:new",
+                "Tail:new"
+            ]
         );
     }
 

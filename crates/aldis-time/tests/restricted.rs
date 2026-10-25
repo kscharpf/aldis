@@ -32,7 +32,7 @@ use aldis_time::{
     Agency, AgencyFormat, AsciiFormat, AsciiOptions, AsciiTime, CalendarDate, Ccs, CcsFormat,
     CcsValue, CcsVariation, Cds, CdsDayLen, CdsEpoch, CdsFormat, CdsSubMs, CdsValue, Cuc, CucEpoch,
     CucFormat, CucValue, Fraction, Hour, MAX_ASCII_LEN, Micros, Minute, Month, MsOfDay, PField,
-    Picos, ReservedPField, Second, SubMillis, TimeCode, TimeFormat, UtcInstant, Year,
+    PFieldTail, Picos, ReservedPField, Second, SubMillis, TimeCode, TimeFormat, UtcInstant, Year,
     decode_implicit, decode_with_pfield, field,
 };
 
@@ -787,6 +787,110 @@ fn agency_formats_are_exactly_1_to_16_octets() {
             (a.format().t_len(), d.len()),
             (usize::from(bits) + 1, octets.len())
         );
+    }
+}
+
+/// `Agency::new` accepts exactly a T-field of the format's length, 1 to 16 octets (301.0
+/// §3.6.1–2; TIME-006), and rejects every other length with `LengthMismatch` (`tfield`) and
+/// both lengths. Every format and every slice length 0–17; an accepted code travels with and
+/// without its P-field and keeps its octets.
+#[test]
+fn agency_codes_hold_exactly_their_formats_t_field() {
+    // restricted: Agency
+    // req: TIME-006, GEN-041, VER-023
+    for t_len in 1..=16_u8 {
+        let format = AgencyFormat::new(t_len).unwrap();
+        for n in 0..=17_u8 {
+            let t: Vec<u8> = (0..n)
+                .map(|i| i.wrapping_mul(71).wrapping_add(t_len))
+                .collect();
+            match Agency::new(format, &t) {
+                Ok(code) => {
+                    assert_eq!(n, t_len);
+                    assert_eq!(code.tfield(), t.as_slice());
+                    assert_eq!(code.format(), format);
+                    assert!(binary_identity(TimeCode::Agency(code)));
+                }
+                Err(e) => {
+                    assert_ne!(n, t_len);
+                    let detail = ErrorDetail::Expected {
+                        expected: t_len.into(),
+                        found: n.into(),
+                    };
+                    assert_eq!(
+                        parts(&e),
+                        (ErrorKind::LengthMismatch, Some(field::TFIELD), detail)
+                    );
+                }
+            }
+        }
+    }
+}
+
+/// `PFieldTail::new` accepts exactly the octets that may follow octet 1 of a P-field: at most 8
+/// octets in all (TIME-005), so 0–7, each with its extension flag (bit 0, 301.0 §3.1.1) set but
+/// the last. Every slice of 0–2 octets, and every flag pattern of 3–8 octets; other slices are
+/// `InvalidField` (`pfield_tail`). An accepted tail travels on an agency-defined P-field, which
+/// a lenient decode keeps raw and a strict one rejects (TIME-005).
+#[test]
+fn pfield_tails_are_exactly_the_extension_chains() {
+    // restricted: PFieldTail
+    // req: TIME-005, TIME-006, VER-023
+    const EXTENSION: u8 = 0b1000_0000;
+    const MAX_PFIELD: usize = 8;
+    let chain = |o: &[u8]| {
+        o.len() < MAX_PFIELD
+            && o.iter()
+                .enumerate()
+                .all(|(i, &b)| (b & EXTENSION != 0) == (i + 1 < o.len()))
+    };
+    let mut cases: Vec<Vec<u8>> = vec![Vec::new()];
+    for a in 0..=u8::MAX {
+        cases.push(vec![a]);
+        cases.extend((0..=u8::MAX).map(|b| vec![a, b]));
+    }
+    for len in 3..=MAX_PFIELD {
+        for flags in 0..1_u32 << len {
+            let octet = |i: usize| {
+                let flag = if flags >> i & 1 == 1 { EXTENSION } else { 0 };
+                flag | u8::try_from(i * 13).unwrap()
+            };
+            cases.push((0..len).map(octet).collect());
+        }
+    }
+    let format = AgencyFormat::new(2).unwrap();
+    for octets in &cases {
+        match PFieldTail::new(octets) {
+            Ok(tail) => {
+                assert!(chain(octets), "{octets:x?}");
+                assert_eq!(
+                    (tail.as_bytes(), tail.len()),
+                    (octets.as_slice(), octets.len())
+                );
+                let code = TimeCode::Agency(Agency::new(format.with_tail(tail), &[1, 2]).unwrap());
+                let mut out = [0_u8; 32];
+                let n = code.encode(true, &mut out).unwrap();
+                assert_eq!(n, 1 + octets.len() + 2);
+                let d = decode_with_pfield(&out[..n], DecodeMode::Lenient).unwrap();
+                let TimeCode::Agency(a) = d.code() else {
+                    panic!("not an agency-defined code");
+                };
+                assert_eq!((a.format().tail(), d.len()), (tail, n));
+                let strict = decode_with_pfield(&out[..n], DecodeMode::Strict);
+                assert_eq!(strict.is_ok(), tail.is_empty(), "{octets:x?}");
+            }
+            Err(e) => {
+                assert!(!chain(octets), "{octets:x?}");
+                assert_eq!(
+                    parts(&e),
+                    (
+                        ErrorKind::InvalidField,
+                        Some(field::PFIELD_TAIL),
+                        ErrorDetail::None
+                    )
+                );
+            }
+        }
     }
 }
 
