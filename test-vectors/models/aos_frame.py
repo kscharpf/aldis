@@ -982,6 +982,21 @@ def issue4_compat():
              "The Primary Header alone in Issue 4, bits 42-43 = 11, reported raw as issue4_spare 3: decode_header takes no mode (AOS-010), so this holds in strict and lenient mode alike",
              "decode_header", cfg, f(hdr(0xA5, 5, edition="issue4", spare=3), 3)[:6]),
     ]
+    # Added 2026-10-25 by a blind Claude Sonnet 5.5 agent (m2/hazard-controls, P-AOS-04,
+    # HZ-AOS-09): the silent misreading of an Issue 4 pointer by an Issue 5 receiver when the
+    # Packet Zone is longer than the pointer value. The edition is part of the configuration of
+    # the case, so a receiver set to the other edition is expressible.
+    i5_big = channel(2060, [vc(0xA5, 5, "mpdu")])
+    zone = seq(0x70, 2052)
+    for n, (word, what, value) in enumerate([(0x07FF, "no Packet starts", 2047),
+                                             (0x07FE, "only Idle Data", 2046)], 9):
+        out.append(case(
+            f"aos-i4-dec-{n:03d}", ["AOS-001", "AOS-003", "AOS-017", "GEN-062"],
+            f"HZ-AOS-09: the octets of an Issue 4 frame with a 2 052-octet Packet Zone and the "
+            f"11-bit pointer 0x{word:03X} ({what} in Issue 4) read in Issue 5: the 16-bit "
+            f"pointer is StartsAt({value}), accepted without an anomaly (a Packet Zone of "
+            f"more than {value} octets)", "decode", i5_big,
+            frame(big, hdr(0xA5, 5, edition="issue4"), data=word.to_bytes(2, "big") + zone)))
     return out
 
 
@@ -1162,10 +1177,18 @@ NOTE = (
 )
 
 
+NOTE_ISSUE4 = (
+    " The cases aos-i4-dec-009 and aos-i4-dec-010 were added on 2026-10-25 (m2/hazard-controls, "
+    "P-AOS-04) by a blind Claude Sonnet 5.5 agent, briefed to read only the Blue Book, docs/, "
+    "and the vectors, never the implementation, and to extend this model."
+)
+
+
 def generate(name):
     make, standard = FILES[name]
+    note = NOTE + (NOTE_ISSUE4 if name == "issue4_compat" else "")
     return {"kind": "codec", "standard": standard, "provenance": "hand-derived",
-            "provenance_note": NOTE + " This file covers " + standard + ".", "cases": make()}
+            "provenance_note": note + " This file covers " + standard + ".", "cases": make()}
 
 
 def check_field_codes(path):

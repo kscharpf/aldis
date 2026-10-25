@@ -2,7 +2,7 @@
   "kind": "codec",
   "standard": "732.1-B-3 — truncated Transfer Frames (Annex D)",
   "provenance": "hand-derived",
-  "provenance_note": "732.1-B-3 prints no example frame, only the first OID octets (Annex H). Hand-derived from 732.1-B-3: §4.1.2 (Primary Header: TFVN 4 bits = 1100, SCID 16, Source-or-Destination 1, VCID 6, MAP ID 4, End of Frame Primary Header Flag 1, Frame Length 16 = total - 1, Bypass/Sequence Control 1, Protocol Control Command 1, Reserve Spares 2, OCF Flag 1, VCF Count Length 3, VCF Count 0-7 octets; Table 4-1, flags 01 reserved; Table 4-2), §4.1.3 (Insert Zone), §4.1.4 (TFDF Header: rule 3 bits, UPID 5 bits, pointer 16 bits for rules 000-010 only; Table 4-3; the OID frame of §4.1.4.1.5-12), §4.1.5 (OCF), §4.1.6 and Annex B (FECF, G(X) = X^16 + X^12 + X^5 + 1, preset by L(X)), §4.3.11.2-3 (delimiting and the USLP Frame Validation Checks), §5 Tables 5-1 to 5-4 (managed parameters), §6.3 (Security Header after the Insert Zone, Trailer before the OCF; none in protocol control frames), Annex D (truncated frames: 4-octet header, 1-octet TFDF Header, length 6-32 from the VC, SDLS 6/16 and at least 28 octets), Annex H (OID generator). UPID values from the SANA snapshot specs/sana/uslp_protocol_id.tsv, read by the model at run time. COP-1 control commands from 232.0-B-4 §4.1.3.3 (Unlock = 00, Set V(R) = 82 00 V(R)). Check order, validation reason codes, the delimiter's valid header, the writers' error order, and the configuration kept, as docs/standards/uslp-frame.md §2.1 and §3 state them (OI-35, OI-44). SCID 0x155 is the fictional SCID of the reference scenario (APP-026); SCID 0xF0A5 is also fictional. Expected values computed by an independent Python model of those clauses, test-vectors/models/uslp_frame.py (TV-023), written independently of the Rust codec and sharing no code or method with it (headers as bit strings from the figure widths, the FECF as the Annex B remainder by GF(2) long division and checked by the B1.2.1 syndrome, the OID data from the Galois form of Figure H-2, checked against the Fibonacci form and the printed pattern). Error cases name the field code of 03 §9.1. One rule-000 frame with its FECF, register octet by octet, and one truncated frame are worked by hand in docs/verification/derivations/uslp-frame.md. `python3 -I test-vectors/models/uslp_frame.py --check test-vectors/uslp/*.json` recomputes every expected value. The OID data of a decoded frame is not checked against the generator's sequence: it depends on the generator's position across frames, which a stateless decoder does not know, and receivers discard it. 732.1-B-3 §6.3.2.2 refers to D1.2.5 for the truncated header of a frame with SDLS, where D1.3 is meant; the cases follow D1.2.3, D1.2.4 and D1.3. Author of the model: an AI agent, Claude Opus 5.5, recorded as co-author of commit 0459ef0 (2026-10-23), whose message states that it wrote the model from 732.1-B-3 and uslp-frame.md without reading the Rust code; the history records no briefing of the agent beyond that statement (TV-023). The cases added on 2026-10-25 (M2 WP-8: uslp-oid-042 onward, uslp-val-* and uslp-inv-* and uslp-pc-* at the end of their files) were written by a second agent, Claude Sonnet 5.5, briefed to read only the Blue Book, docs/, and the vectors, never the implementation, and to extend this model. This file covers truncated Transfer Frames (Annex D).",
+  "provenance_note": "732.1-B-3 prints no example frame, only the first OID octets (Annex H). Hand-derived from 732.1-B-3: §4.1.2 (Primary Header: TFVN 4 bits = 1100, SCID 16, Source-or-Destination 1, VCID 6, MAP ID 4, End of Frame Primary Header Flag 1, Frame Length 16 = total - 1, Bypass/Sequence Control 1, Protocol Control Command 1, Reserve Spares 2, OCF Flag 1, VCF Count Length 3, VCF Count 0-7 octets; Table 4-1, flags 01 reserved; Table 4-2), §4.1.3 (Insert Zone), §4.1.4 (TFDF Header: rule 3 bits, UPID 5 bits, pointer 16 bits for rules 000-010 only; Table 4-3; the OID frame of §4.1.4.1.5-12), §4.1.5 (OCF), §4.1.6 and Annex B (FECF, G(X) = X^16 + X^12 + X^5 + 1, preset by L(X)), §4.3.11.2-3 (delimiting and the USLP Frame Validation Checks), §5 Tables 5-1 to 5-4 (managed parameters), §6.3 (Security Header after the Insert Zone, Trailer before the OCF; none in protocol control frames), Annex D (truncated frames: 4-octet header, 1-octet TFDF Header, length 6-32 from the VC, SDLS 6/16 and at least 28 octets), Annex H (OID generator). UPID values from the SANA snapshot specs/sana/uslp_protocol_id.tsv, read by the model at run time. COP-1 control commands from 232.0-B-4 §4.1.3.3 (Unlock = 00, Set V(R) = 82 00 V(R)). Check order, validation reason codes, the delimiter's valid header, the writers' error order, and the configuration kept, as docs/standards/uslp-frame.md §2.1 and §3 state them (OI-35, OI-44). SCID 0x155 is the fictional SCID of the reference scenario (APP-026); SCID 0xF0A5 is also fictional. Expected values computed by an independent Python model of those clauses, test-vectors/models/uslp_frame.py (TV-023), written independently of the Rust codec and sharing no code or method with it (headers as bit strings from the figure widths, the FECF as the Annex B remainder by GF(2) long division and checked by the B1.2.1 syndrome, the OID data from the Galois form of Figure H-2, checked against the Fibonacci form and the printed pattern). Error cases name the field code of 03 §9.1. One rule-000 frame with its FECF, register octet by octet, and one truncated frame are worked by hand in docs/verification/derivations/uslp-frame.md. `python3 -I test-vectors/models/uslp_frame.py --check test-vectors/uslp/*.json` recomputes every expected value. The OID data of a decoded frame is not checked against the generator's sequence: it depends on the generator's position across frames, which a stateless decoder does not know, and receivers discard it. 732.1-B-3 §6.3.2.2 refers to D1.2.5 for the truncated header of a frame with SDLS, where D1.3 is meant; the cases follow D1.2.3, D1.2.4 and D1.3. Author of the model: an AI agent, Claude Opus 5.5, recorded as co-author of commit 0459ef0 (2026-10-23), whose message states that it wrote the model from 732.1-B-3 and uslp-frame.md without reading the Rust code; the history records no briefing of the agent beyond that statement (TV-023). The cases added on 2026-10-25 (M2 WP-8: uslp-oid-042 onward, uslp-val-* and uslp-inv-* and uslp-pc-* at the end of their files) were written by a second agent, Claude Sonnet 5.5, briefed to read only the Blue Book, docs/, and the vectors, never the implementation, and to extend this model. The cases uslp-trunc-039 onward were added on 2026-10-25 (m2/hazard-controls) by a blind Claude Sonnet 5.5 agent, briefed to read only the Blue Book, docs/, and the vectors, never the implementation, and to extend this model: OI-48, a VC with a truncated frame length carries only truncated frames. This file covers truncated Transfer Frames (Annex D).",
   "cases": [
     {
       "id": "uslp-trunc-001",
@@ -6519,6 +6519,2946 @@
         "ok": false,
         "error": "InvalidConfig",
         "field": 98
+      }
+    },
+    {
+      "id": "uslp-trunc-039",
+      "requirements": [
+        "USLP-002",
+        "USLP-010",
+        "API-022"
+      ],
+      "description": "OI-48: encode of a non-truncated frame on VC 5 (truncated frame length 12): InvalidField (end_of_frame_primary_header_flag)",
+      "operation": "encode",
+      "config": {
+        "frame_type": "variable",
+        "frame_len": 128,
+        "insert_zone_len": 0,
+        "fecf": true,
+        "vcs": [
+          {
+            "scid": 341,
+            "vcid": 1,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": null,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 5,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": 12,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 8,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": 6,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 10,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": 32,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 61605,
+            "vcid": 11,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": 9,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 6,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": 32,
+            "security": {
+              "header_len": 8,
+              "trailer_len": 8
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 7,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": 28,
+            "security": "per_map"
+          }
+        ],
+        "maps": [
+          {
+            "scid": 341,
+            "vcid": 1,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 5,
+            "map_id": 2,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 8,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 10,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 61605,
+            "vcid": 11,
+            "map_id": 4,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 6,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 7,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 7,
+            "map_id": 1,
+            "security_header_len": 4,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "params": {
+        "spacecraft_id": 341,
+        "source_or_destination": "source",
+        "vc_id": 5,
+        "map_id": 2,
+        "kind": "sequence_controlled",
+        "vcf_count": 1,
+        "tfdz_construction_rule": 7,
+        "upid": 5,
+        "pointer": null,
+        "tfdz_hex": "71727374",
+        "insert_zone_hex": "",
+        "ocf_hex": null
+      },
+      "input_hex": "",
+      "expect": {
+        "ok": false,
+        "error": "InvalidField",
+        "field": 91
+      }
+    },
+    {
+      "id": "uslp-trunc-040",
+      "requirements": [
+        "USLP-002",
+        "USLP-010",
+        "API-022"
+      ],
+      "description": "OI-48: encode of a non-truncated frame on VC 8 (truncated frame length 6, the shortest): InvalidField (end_of_frame_primary_header_flag)",
+      "operation": "encode",
+      "config": {
+        "frame_type": "variable",
+        "frame_len": 128,
+        "insert_zone_len": 0,
+        "fecf": true,
+        "vcs": [
+          {
+            "scid": 341,
+            "vcid": 1,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": null,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 5,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": 12,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 8,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": 6,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 10,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": 32,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 61605,
+            "vcid": 11,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": 9,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 6,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": 32,
+            "security": {
+              "header_len": 8,
+              "trailer_len": 8
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 7,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": 28,
+            "security": "per_map"
+          }
+        ],
+        "maps": [
+          {
+            "scid": 341,
+            "vcid": 1,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 5,
+            "map_id": 2,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 8,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 10,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 61605,
+            "vcid": 11,
+            "map_id": 4,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 6,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 7,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 7,
+            "map_id": 1,
+            "security_header_len": 4,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "params": {
+        "spacecraft_id": 341,
+        "source_or_destination": "source",
+        "vc_id": 8,
+        "map_id": 0,
+        "kind": "sequence_controlled",
+        "vcf_count": 1,
+        "tfdz_construction_rule": 7,
+        "upid": 5,
+        "pointer": null,
+        "tfdz_hex": "71727374",
+        "insert_zone_hex": "",
+        "ocf_hex": null
+      },
+      "input_hex": "",
+      "expect": {
+        "ok": false,
+        "error": "InvalidField",
+        "field": 91
+      }
+    },
+    {
+      "id": "uslp-trunc-041",
+      "requirements": [
+        "USLP-002",
+        "USLP-010",
+        "API-022"
+      ],
+      "description": "OI-48: encode on VC 5 with MAP 0, not configured: UnknownChannel (map_id) comes before the refusal (writer order, uslp-frame.md section 3.3)",
+      "operation": "encode",
+      "config": {
+        "frame_type": "variable",
+        "frame_len": 128,
+        "insert_zone_len": 0,
+        "fecf": true,
+        "vcs": [
+          {
+            "scid": 341,
+            "vcid": 1,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": null,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 5,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": 12,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 8,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": 6,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 10,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": 32,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 61605,
+            "vcid": 11,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": 9,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 6,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": 32,
+            "security": {
+              "header_len": 8,
+              "trailer_len": 8
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 7,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": 28,
+            "security": "per_map"
+          }
+        ],
+        "maps": [
+          {
+            "scid": 341,
+            "vcid": 1,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 5,
+            "map_id": 2,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 8,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 10,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 61605,
+            "vcid": 11,
+            "map_id": 4,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 6,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 7,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 7,
+            "map_id": 1,
+            "security_header_len": 4,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "params": {
+        "spacecraft_id": 341,
+        "source_or_destination": "source",
+        "vc_id": 5,
+        "map_id": 0,
+        "kind": "sequence_controlled",
+        "vcf_count": 1,
+        "tfdz_construction_rule": 7,
+        "upid": 5,
+        "pointer": null,
+        "tfdz_hex": "71727374",
+        "insert_zone_hex": "",
+        "ocf_hex": null
+      },
+      "input_hex": "",
+      "expect": {
+        "ok": false,
+        "error": "UnknownChannel",
+        "field": 3
+      }
+    },
+    {
+      "id": "uslp-trunc-042",
+      "requirements": [
+        "USLP-002",
+        "USLP-010",
+        "API-022",
+        "USLP-016"
+      ],
+      "description": "OI-48: encode on VC 5 with the fixed-length rule 000: the refusal of the frame comes before the rule check, InvalidField (end_of_frame_primary_header_flag)",
+      "operation": "encode",
+      "config": {
+        "frame_type": "variable",
+        "frame_len": 128,
+        "insert_zone_len": 0,
+        "fecf": true,
+        "vcs": [
+          {
+            "scid": 341,
+            "vcid": 1,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": null,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 5,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": 12,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 8,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": 6,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 10,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": 32,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 61605,
+            "vcid": 11,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": 9,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 6,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": 32,
+            "security": {
+              "header_len": 8,
+              "trailer_len": 8
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 7,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": 28,
+            "security": "per_map"
+          }
+        ],
+        "maps": [
+          {
+            "scid": 341,
+            "vcid": 1,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 5,
+            "map_id": 2,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 8,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 10,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 61605,
+            "vcid": 11,
+            "map_id": 4,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 6,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 7,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 7,
+            "map_id": 1,
+            "security_header_len": 4,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "params": {
+        "spacecraft_id": 341,
+        "source_or_destination": "source",
+        "vc_id": 5,
+        "map_id": 2,
+        "kind": "sequence_controlled",
+        "vcf_count": 0,
+        "tfdz_construction_rule": 0,
+        "upid": 0,
+        "pointer": 0,
+        "tfdz_hex": "71727374",
+        "insert_zone_hex": "",
+        "ocf_hex": null
+      },
+      "input_hex": "",
+      "expect": {
+        "ok": false,
+        "error": "InvalidField",
+        "field": 91
+      }
+    },
+    {
+      "id": "uslp-trunc-043",
+      "requirements": [
+        "USLP-002",
+        "API-031"
+      ],
+      "description": "OI-48: a non-truncated frame on VC 5, strict: InvalidField (end_of_frame_primary_header_flag)",
+      "operation": "decode",
+      "mode": "strict",
+      "config": {
+        "frame_type": "variable",
+        "frame_len": 128,
+        "insert_zone_len": 0,
+        "fecf": true,
+        "vcs": [
+          {
+            "scid": 341,
+            "vcid": 1,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": null,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 5,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": 12,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 8,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": 6,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 10,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": 32,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 61605,
+            "vcid": 11,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": 9,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 6,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": 32,
+            "security": {
+              "header_len": 8,
+              "trailer_len": 8
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 7,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": 28,
+            "security": "per_map"
+          }
+        ],
+        "maps": [
+          {
+            "scid": 341,
+            "vcid": 1,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 5,
+            "map_id": 2,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 8,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 10,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 61605,
+            "vcid": 11,
+            "map_id": 4,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 6,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 7,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 7,
+            "map_id": 1,
+            "security_header_len": 4,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "input_hex": "C01550A4000E0101E5717273740552",
+      "expect": {
+        "ok": false,
+        "error": "InvalidField",
+        "field": 91
+      }
+    },
+    {
+      "id": "uslp-trunc-044",
+      "requirements": [
+        "USLP-002",
+        "API-032"
+      ],
+      "description": "OI-48: a non-truncated frame on VC 5, lenient: the same error in both modes",
+      "operation": "decode",
+      "mode": "lenient",
+      "config": {
+        "frame_type": "variable",
+        "frame_len": 128,
+        "insert_zone_len": 0,
+        "fecf": true,
+        "vcs": [
+          {
+            "scid": 341,
+            "vcid": 1,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": null,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 5,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": 12,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 8,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": 6,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 10,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": 32,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 61605,
+            "vcid": 11,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": 9,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 6,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": 32,
+            "security": {
+              "header_len": 8,
+              "trailer_len": 8
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 7,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": 28,
+            "security": "per_map"
+          }
+        ],
+        "maps": [
+          {
+            "scid": 341,
+            "vcid": 1,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 5,
+            "map_id": 2,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 8,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 10,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 61605,
+            "vcid": 11,
+            "map_id": 4,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 6,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 7,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 7,
+            "map_id": 1,
+            "security_header_len": 4,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "input_hex": "C01550A4000E0101E5717273740552",
+      "expect": {
+        "ok": false,
+        "error": "InvalidField",
+        "field": 91
+      }
+    },
+    {
+      "id": "uslp-trunc-045",
+      "requirements": [
+        "USLP-002",
+        "API-011"
+      ],
+      "description": "OI-48: a non-truncated frame on VC 5 followed by 3 more octets: the same error",
+      "operation": "decode",
+      "mode": "strict",
+      "config": {
+        "frame_type": "variable",
+        "frame_len": 128,
+        "insert_zone_len": 0,
+        "fecf": true,
+        "vcs": [
+          {
+            "scid": 341,
+            "vcid": 1,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": null,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 5,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": 12,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 8,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": 6,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 10,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": 32,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 61605,
+            "vcid": 11,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": 9,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 6,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": 32,
+            "security": {
+              "header_len": 8,
+              "trailer_len": 8
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 7,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": 28,
+            "security": "per_map"
+          }
+        ],
+        "maps": [
+          {
+            "scid": 341,
+            "vcid": 1,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 5,
+            "map_id": 2,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 8,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 10,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 61605,
+            "vcid": 11,
+            "map_id": 4,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 6,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 7,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 7,
+            "map_id": 1,
+            "security_header_len": 4,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "input_hex": "C01550A4000E0101E5717273740552C0C1C2",
+      "expect": {
+        "ok": false,
+        "error": "InvalidField",
+        "field": 91
+      }
+    },
+    {
+      "id": "uslp-trunc-046",
+      "requirements": [
+        "USLP-002"
+      ],
+      "description": "OI-48: the frame one octet short: the refusal (reason 18) comes before the length check, so not Incomplete",
+      "operation": "decode",
+      "mode": "strict",
+      "config": {
+        "frame_type": "variable",
+        "frame_len": 128,
+        "insert_zone_len": 0,
+        "fecf": true,
+        "vcs": [
+          {
+            "scid": 341,
+            "vcid": 1,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": null,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 5,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": 12,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 8,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": 6,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 10,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": 32,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 61605,
+            "vcid": 11,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": 9,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 6,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": 32,
+            "security": {
+              "header_len": 8,
+              "trailer_len": 8
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 7,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": 28,
+            "security": "per_map"
+          }
+        ],
+        "maps": [
+          {
+            "scid": 341,
+            "vcid": 1,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 5,
+            "map_id": 2,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 8,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 10,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 61605,
+            "vcid": 11,
+            "map_id": 4,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 6,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 7,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 7,
+            "map_id": 1,
+            "security_header_len": 4,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "input_hex": "C01550A4000E0101E57172737405",
+      "expect": {
+        "ok": false,
+        "error": "InvalidField",
+        "field": 91
+      }
+    },
+    {
+      "id": "uslp-trunc-047",
+      "requirements": [
+        "USLP-002"
+      ],
+      "description": "OI-48: a non-truncated header of 7 octets on VC 5: the refusal, not Incomplete",
+      "operation": "decode",
+      "mode": "strict",
+      "config": {
+        "frame_type": "variable",
+        "frame_len": 128,
+        "insert_zone_len": 0,
+        "fecf": true,
+        "vcs": [
+          {
+            "scid": 341,
+            "vcid": 1,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": null,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 5,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": 12,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 8,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": 6,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 10,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": 32,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 61605,
+            "vcid": 11,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": 9,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 6,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": 32,
+            "security": {
+              "header_len": 8,
+              "trailer_len": 8
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 7,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": 28,
+            "security": "per_map"
+          }
+        ],
+        "maps": [
+          {
+            "scid": 341,
+            "vcid": 1,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 5,
+            "map_id": 2,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 8,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 10,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 61605,
+            "vcid": 11,
+            "map_id": 4,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 6,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 7,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 7,
+            "map_id": 1,
+            "security_header_len": 4,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "input_hex": "C01550A4000E01",
+      "expect": {
+        "ok": false,
+        "error": "InvalidField",
+        "field": 91
+      }
+    },
+    {
+      "id": "uslp-trunc-048",
+      "requirements": [
+        "USLP-002",
+        "USLP-004"
+      ],
+      "description": "OI-48: a non-truncated frame on VC 5 with VCF Count Length 2 (the VC's is 1): the refusal comes before the count length check",
+      "operation": "decode",
+      "mode": "strict",
+      "config": {
+        "frame_type": "variable",
+        "frame_len": 128,
+        "insert_zone_len": 0,
+        "fecf": true,
+        "vcs": [
+          {
+            "scid": 341,
+            "vcid": 1,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": null,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 5,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": 12,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 8,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": 6,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 10,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": 32,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 61605,
+            "vcid": 11,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": 9,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 6,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": 32,
+            "security": {
+              "header_len": 8,
+              "trailer_len": 8
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 7,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": 28,
+            "security": "per_map"
+          }
+        ],
+        "maps": [
+          {
+            "scid": 341,
+            "vcid": 1,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 5,
+            "map_id": 2,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 8,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 10,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 61605,
+            "vcid": 11,
+            "map_id": 4,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 6,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 7,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 7,
+            "map_id": 1,
+            "security_header_len": 4,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "input_hex": "C01550A4000E0201E571727374DDD0",
+      "expect": {
+        "ok": false,
+        "error": "InvalidField",
+        "field": 91
+      }
+    },
+    {
+      "id": "uslp-trunc-049",
+      "requirements": [
+        "USLP-002"
+      ],
+      "description": "OI-48: a non-truncated frame on VC 5 with MAP 3, not configured: UnknownChannel (map_id) comes before the refusal",
+      "operation": "decode",
+      "mode": "strict",
+      "config": {
+        "frame_type": "variable",
+        "frame_len": 128,
+        "insert_zone_len": 0,
+        "fecf": true,
+        "vcs": [
+          {
+            "scid": 341,
+            "vcid": 1,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": null,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 5,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": 12,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 8,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": 6,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 10,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": 32,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 61605,
+            "vcid": 11,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": 9,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 6,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": 32,
+            "security": {
+              "header_len": 8,
+              "trailer_len": 8
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 7,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": 28,
+            "security": "per_map"
+          }
+        ],
+        "maps": [
+          {
+            "scid": 341,
+            "vcid": 1,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 5,
+            "map_id": 2,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 8,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 10,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 61605,
+            "vcid": 11,
+            "map_id": 4,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 6,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 7,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 7,
+            "map_id": 1,
+            "security_header_len": 4,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "input_hex": "C01550A6000E0101E571727374DBD8",
+      "expect": {
+        "ok": false,
+        "error": "UnknownChannel",
+        "field": 3
+      }
+    },
+    {
+      "id": "uslp-trunc-050",
+      "requirements": [
+        "USLP-002",
+        "USLP-001"
+      ],
+      "description": "OI-48: a non-truncated frame on VC 5 with the reserved flags 01: ReservedValue comes before the refusal",
+      "operation": "decode",
+      "mode": "strict",
+      "config": {
+        "frame_type": "variable",
+        "frame_len": 128,
+        "insert_zone_len": 0,
+        "fecf": true,
+        "vcs": [
+          {
+            "scid": 341,
+            "vcid": 1,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": null,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 5,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": 12,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 8,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": 6,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 10,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": 32,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 61605,
+            "vcid": 11,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": 9,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 6,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": 32,
+            "security": {
+              "header_len": 8,
+              "trailer_len": 8
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 7,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": 28,
+            "security": "per_map"
+          }
+        ],
+        "maps": [
+          {
+            "scid": 341,
+            "vcid": 1,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 5,
+            "map_id": 2,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 8,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 10,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 61605,
+            "vcid": 11,
+            "map_id": 4,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 6,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 7,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 7,
+            "map_id": 1,
+            "security_header_len": 4,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "input_hex": "C01550A4000E4101E571727374D8BE",
+      "expect": {
+        "ok": false,
+        "error": "ReservedValue",
+        "field": 89
+      }
+    },
+    {
+      "id": "uslp-trunc-051",
+      "requirements": [
+        "USLP-002",
+        "API-031"
+      ],
+      "description": "OI-48: a non-truncated frame on VC 5 with Reserve Spares 01, strict: ReservedValue comes before the refusal",
+      "operation": "decode",
+      "mode": "strict",
+      "config": {
+        "frame_type": "variable",
+        "frame_len": 128,
+        "insert_zone_len": 0,
+        "fecf": true,
+        "vcs": [
+          {
+            "scid": 341,
+            "vcid": 1,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": null,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 5,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": 12,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 8,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": 6,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 10,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": 32,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 61605,
+            "vcid": 11,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": 9,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 6,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": 32,
+            "security": {
+              "header_len": 8,
+              "trailer_len": 8
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 7,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": 28,
+            "security": "per_map"
+          }
+        ],
+        "maps": [
+          {
+            "scid": 341,
+            "vcid": 1,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 5,
+            "map_id": 2,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 8,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 10,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 61605,
+            "vcid": 11,
+            "map_id": 4,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 6,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 7,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 7,
+            "map_id": 1,
+            "security_header_len": 4,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "input_hex": "C01550A4000E1101E5717273743229",
+      "expect": {
+        "ok": false,
+        "error": "ReservedValue",
+        "field": 90
+      }
+    },
+    {
+      "id": "uslp-trunc-052",
+      "requirements": [
+        "USLP-002",
+        "API-032"
+      ],
+      "description": "OI-48: a non-truncated frame on VC 5 with Reserve Spares 01, lenient: the anomaly, then the refusal",
+      "operation": "decode",
+      "mode": "lenient",
+      "config": {
+        "frame_type": "variable",
+        "frame_len": 128,
+        "insert_zone_len": 0,
+        "fecf": true,
+        "vcs": [
+          {
+            "scid": 341,
+            "vcid": 1,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": null,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 5,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": 12,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 8,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": 6,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 10,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": 32,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 61605,
+            "vcid": 11,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": 9,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 6,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": 32,
+            "security": {
+              "header_len": 8,
+              "trailer_len": 8
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 7,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": 28,
+            "security": "per_map"
+          }
+        ],
+        "maps": [
+          {
+            "scid": 341,
+            "vcid": 1,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 5,
+            "map_id": 2,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 8,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 10,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 61605,
+            "vcid": 11,
+            "map_id": 4,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 6,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 7,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 7,
+            "map_id": 1,
+            "security_header_len": 4,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "input_hex": "C01550A4000E1101E5717273743229",
+      "expect": {
+        "ok": false,
+        "error": "InvalidField",
+        "field": 91
+      }
+    },
+    {
+      "id": "uslp-trunc-053",
+      "requirements": [
+        "USLP-002",
+        "API-013"
+      ],
+      "description": "OI-48: peek_length, 4 octets of a non-truncated header on VC 5: InvalidField (end_of_frame_primary_header_flag), no more octets needed",
+      "operation": "peek_length",
+      "config": {
+        "frame_type": "variable",
+        "frame_len": 128,
+        "insert_zone_len": 0,
+        "fecf": true,
+        "vcs": [
+          {
+            "scid": 341,
+            "vcid": 1,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": null,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 5,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": 12,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 8,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": 6,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 10,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": 32,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 61605,
+            "vcid": 11,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": 9,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 6,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": 32,
+            "security": {
+              "header_len": 8,
+              "trailer_len": 8
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 7,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": 28,
+            "security": "per_map"
+          }
+        ],
+        "maps": [
+          {
+            "scid": 341,
+            "vcid": 1,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 5,
+            "map_id": 2,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 8,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 10,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 61605,
+            "vcid": 11,
+            "map_id": 4,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 6,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 7,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 7,
+            "map_id": 1,
+            "security_header_len": 4,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "input_hex": "C01550A4",
+      "expect": {
+        "ok": false,
+        "error": "InvalidField",
+        "field": 91
+      }
+    },
+    {
+      "id": "uslp-trunc-054",
+      "requirements": [
+        "USLP-002",
+        "API-013"
+      ],
+      "description": "OI-48: peek_length, 6 octets of a non-truncated header on VC 5: InvalidField (end_of_frame_primary_header_flag)",
+      "operation": "peek_length",
+      "config": {
+        "frame_type": "variable",
+        "frame_len": 128,
+        "insert_zone_len": 0,
+        "fecf": true,
+        "vcs": [
+          {
+            "scid": 341,
+            "vcid": 1,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": null,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 5,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": 12,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 8,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": 6,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 10,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": 32,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 61605,
+            "vcid": 11,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": 9,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 6,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": 32,
+            "security": {
+              "header_len": 8,
+              "trailer_len": 8
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 7,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": 28,
+            "security": "per_map"
+          }
+        ],
+        "maps": [
+          {
+            "scid": 341,
+            "vcid": 1,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 5,
+            "map_id": 2,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 8,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 10,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 61605,
+            "vcid": 11,
+            "map_id": 4,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 6,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 7,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 7,
+            "map_id": 1,
+            "security_header_len": 4,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "input_hex": "C01550A4000E",
+      "expect": {
+        "ok": false,
+        "error": "InvalidField",
+        "field": 91
+      }
+    },
+    {
+      "id": "uslp-trunc-055",
+      "requirements": [
+        "USLP-002",
+        "API-013"
+      ],
+      "description": "OI-48: peek_length, 6 octets of a non-truncated header on VC 1, which has no truncated frame length: its Frame Length + 1",
+      "operation": "peek_length",
+      "config": {
+        "frame_type": "variable",
+        "frame_len": 128,
+        "insert_zone_len": 0,
+        "fecf": true,
+        "vcs": [
+          {
+            "scid": 341,
+            "vcid": 1,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": null,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 5,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": 12,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 8,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": 6,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 10,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": 32,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 61605,
+            "vcid": 11,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": 9,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 6,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": 32,
+            "security": {
+              "header_len": 8,
+              "trailer_len": 8
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 7,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": 28,
+            "security": "per_map"
+          }
+        ],
+        "maps": [
+          {
+            "scid": 341,
+            "vcid": 1,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 5,
+            "map_id": 2,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 8,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 10,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 61605,
+            "vcid": 11,
+            "map_id": 4,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 6,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 7,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 7,
+            "map_id": 1,
+            "security_header_len": 4,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "input_hex": "C0155020000E",
+      "expect": {
+        "ok": true,
+        "frame_len": 15
       }
     }
   ]
