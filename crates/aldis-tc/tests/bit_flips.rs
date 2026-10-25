@@ -167,7 +167,7 @@ fn rejected(t: &Channels, bytes: &[u8], bits: &[usize]) -> bool {
 
 #[test]
 fn every_single_bit_error_is_rejected() {
-    // req: TC-006, TC-021, CMN-001, VER-023
+    // req: TC-006, TC-021, CMN-001, VER-023, VER-064
     let t = channels();
     let longest = segmented(&t, MAX_FRAME_LEN, 4);
     for f in short_frames(&t).iter().chain([&longest]) {
@@ -183,7 +183,7 @@ fn every_single_bit_error_is_rejected() {
 
 #[test]
 fn every_double_bit_error_of_the_short_frames_is_rejected() {
-    // req: TC-006, TC-021, CMN-001, VER-023
+    // req: TC-006, TC-021, CMN-001, VER-023, VER-064
     let t = channels();
     for f in &short_frames(&t) {
         each_double(f, 0..f.len() * 8, |i, j, bytes| {
@@ -198,7 +198,7 @@ fn every_double_bit_error_of_the_short_frames_is_rejected() {
 
 #[test]
 fn sampled_double_bit_errors_of_the_longest_frame_are_rejected() {
-    // req: TC-006, TC-021, CMN-001, VER-023
+    // req: TC-006, TC-021, CMN-001, VER-023, VER-064
     let t = channels();
     let f = segmented(&t, MAX_FRAME_LEN, 4);
     each_pair(&f, &sampled_pairs(f.len() * 8, 32, 97), |i, j, bytes| {
@@ -208,7 +208,7 @@ fn sampled_double_bit_errors_of_the_longest_frame_are_rejected() {
 
 #[test]
 fn decode_may_accept_a_frame_length_error_as_a_shorter_frame() {
-    // req: TC-021, VER-023
+    // req: TC-021, VER-023, VER-064
     // A 64-octet frame whose octets 30 and 31 are the FECF of its first 30 octets with the
     // Frame Length bit of value 32 (bit 26) cleared: with that bit flipped, it reads as a valid
     // 32-octet frame followed by other octets.
@@ -242,7 +242,7 @@ fn decode_may_accept_a_frame_length_error_as_a_shorter_frame() {
 #[test]
 #[ignore = "exhaustive, 33.5 million checks: the nightly job bit-flips runs it in release mode"]
 fn every_double_bit_error_of_the_longest_frame_is_rejected() {
-    // req: TC-006, TC-021, CMN-001, VER-023
+    // req: TC-006, TC-021, CMN-001, VER-023, VER-064
     let t = channels();
     let f = segmented(&t, MAX_FRAME_LEN, 4);
     assert_eq!(

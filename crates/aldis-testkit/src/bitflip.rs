@@ -1,5 +1,5 @@
 //! Bit errors in a frame, for the bit-flip completeness suites of the codecs with an FECF
-//! (TM, TC, AOS, USLP; M2 plan WP-7, VER-023).
+//! (TM, TC, AOS, USLP; M2 plan WP-7, VER-023, VER-064).
 //!
 //! The suites flip every bit, and every pair of bits, of valid frames, and check the decoder's
 //! outcome for each. This module enumerates the errors deterministically, runs the long
@@ -294,7 +294,7 @@ mod tests {
 
     #[test]
     fn the_double_bit_bound_is_the_order_of_x() {
-        // req: CMN-001, VER-023
+        // req: CMN-001, VER-023, VER-064
         assert_eq!(crc16_order(), CRC16_DOUBLE_BIT_BITS);
         assert_eq!(CRC16_DOUBLE_BIT_OCTETS, 4095);
         // X + 1 divides G(X): its value at X = 1 (the parity of its weight) is 0.
@@ -309,7 +309,7 @@ mod tests {
 
     #[test]
     fn errors_are_enumerated_once_each() {
-        // req: VER-023
+        // req: VER-023, VER-064
         let frame = [0x00, 0xFF];
         let mut singles = Vec::new();
         each_single(&frame, |bit, f| singles.push((bit, f.to_vec())));
@@ -340,7 +340,7 @@ mod tests {
 
     #[test]
     fn sampled_pairs_are_inside_and_ordered() {
-        // req: VER-023
+        // req: VER-023, VER-064
         let frame = [0x00, 0xFF];
         let pairs = sampled_pairs(16, 32, 97);
         assert!(pairs.windows(2).all(|w| w[0] < w[1]));

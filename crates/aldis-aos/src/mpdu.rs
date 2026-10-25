@@ -115,6 +115,10 @@ impl PacketPointer {
     /// The pointer for the raw field of `edition` and a Packet Zone of `zone_len` octets
     /// (AOS-017).
     ///
+    /// `raw` is the masked pointer field of `edition`, as the decoder reads it: 16 bits in
+    /// Issue 5, 11 bits in Issue 4 (AOS-003). A wider value cannot come off the wire, and is
+    /// classified as given.
+    ///
     /// # Errors
     /// `Malformed` (`first_header_pointer`) for an offset that is not inside the Packet Zone,
     /// with the largest offset that is (API-032, OI-33).

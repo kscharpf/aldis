@@ -96,7 +96,7 @@ fn long_frames() -> [Frame; 2] {
 
 #[test]
 fn every_single_bit_error_is_rejected() {
-    // req: TM-005, CMN-001, VER-023
+    // req: TM-005, CMN-001, VER-023, VER-064
     for f in short_frames().iter().chain(&long_frames()) {
         each_single(&f.octets, |bit, bytes| {
             assert!(
@@ -119,7 +119,7 @@ fn every_single_bit_error_is_rejected() {
 
 #[test]
 fn every_double_bit_error_of_the_short_frames_is_rejected() {
-    // req: TM-005, CMN-001, VER-023
+    // req: TM-005, CMN-001, VER-023, VER-064
     for f in &short_frames() {
         let bits = f.octets.len() * 8;
         each_double(&f.octets, 0..bits, |i, j, bytes| {
@@ -136,7 +136,7 @@ fn every_double_bit_error_of_the_short_frames_is_rejected() {
 
 #[test]
 fn sampled_double_bit_errors_of_the_long_frames_are_rejected() {
-    // req: TM-005, CMN-001, VER-023
+    // req: TM-005, CMN-001, VER-023, VER-064
     for f in &long_frames() {
         each_pair(
             &f.octets,
@@ -155,7 +155,7 @@ fn sampled_double_bit_errors_of_the_long_frames_are_rejected() {
 #[test]
 #[ignore = "exhaustive, 134 million decodes: the nightly job bit-flips runs it in release mode"]
 fn every_double_bit_error_of_the_longest_frame_is_rejected() {
-    // req: TM-005, CMN-001, VER-023
+    // req: TM-005, CMN-001, VER-023, VER-064
     let [_, f] = long_frames();
     let failure = find_double(&f.octets, |_, _, bytes| {
         rejected(&f, bytes, DecodeMode::Strict)

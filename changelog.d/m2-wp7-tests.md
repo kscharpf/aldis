@@ -12,8 +12,12 @@
   (AOS header errors in the FHEC's symbols are corrected, the rest rejected), within the 4 095
   octets up to which the CRC-16 detects every double-bit error, derived in
   `docs/verification/derivations/crc16-bit-flips.md`. The gated tests sample the longest frames;
-  the nightly job `bit-flips` runs them exhaustively. Helpers in `aldis_testkit::bitflip`.
+  the nightly job `bit-flips` runs them exhaustively. Helpers in `aldis_testkit::bitflip`. New
+  requirement VER-064 (docs/06-verification.md).
 
 ### Changed
+- `TcFrame::decode` and `UslpFrame::decode` document that a bit error in the Frame Length field
+  can make them accept a shorter frame, so a receiver of delimited frames runs `validate_frame`;
+  `aldis_aos::PacketPointer::classify` documents that `raw` is the edition's masked pointer field.
 - The verify checks that read the Rust crates also read `specs/sana/**`, which the USLP UPID test
   compares with the generated table.

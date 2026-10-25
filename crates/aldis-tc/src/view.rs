@@ -225,6 +225,10 @@ impl<'a> TcFrame<'a> {
     /// The checks are those of [`validate_frame`](crate::validate::validate_frame), in its
     /// order, except that the input may be longer than the frame.
     ///
+    /// A receiver of delimited frames must run `validate_frame`, or compare
+    /// [`len`](Self::len) with the octets it supplied, because a bit error in the Frame Length
+    /// field can make `decode` accept a shorter frame (API-011, TC-021; VER-064).
+    ///
     /// # Errors
     /// - `Incomplete` (`needed` = 5) for less than a Primary Header, then (`needed` = the
     ///   frame length) for less than the frame (TC-001).

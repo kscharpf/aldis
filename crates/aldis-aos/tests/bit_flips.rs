@@ -202,7 +202,7 @@ fn sampled(octets: usize) -> (Vec<usize>, Vec<(usize, usize)>) {
 
 #[test]
 fn every_single_bit_error_of_the_short_frames_is_corrected_or_rejected() {
-    // req: AOS-013, AOS-014, CMN-001, VER-023
+    // req: AOS-013, AOS-014, CMN-001, VER-023, VER-064
     for f in &short_frames() {
         each_single(&f.octets, |bit, bytes| {
             for mode in [DecodeMode::Strict, DecodeMode::Lenient] {
@@ -218,7 +218,7 @@ fn every_single_bit_error_of_the_short_frames_is_corrected_or_rejected() {
 
 #[test]
 fn every_double_bit_error_of_the_short_frames_is_corrected_or_rejected() {
-    // req: AOS-013, AOS-014, CMN-001, VER-023
+    // req: AOS-013, AOS-014, CMN-001, VER-023, VER-064
     for f in &short_frames() {
         each_double(&f.octets, 0..f.octets.len() * 8, |i, j, bytes| {
             for mode in [DecodeMode::Strict, DecodeMode::Lenient] {
@@ -234,7 +234,7 @@ fn every_double_bit_error_of_the_short_frames_is_corrected_or_rejected() {
 
 #[test]
 fn sampled_errors_of_the_long_frames_are_corrected_or_rejected() {
-    // req: AOS-013, AOS-014, CMN-001, VER-023
+    // req: AOS-013, AOS-014, CMN-001, VER-023, VER-064
     for f in &long_frames() {
         let (bits, pairs) = sampled(f.octets.len());
         each_bit(&f.octets, &bits, |bit, bytes| {
@@ -252,7 +252,7 @@ fn sampled_errors_of_the_long_frames_are_corrected_or_rejected() {
 
 #[test]
 fn a_double_bit_error_32767_bits_apart_passes_the_fecf() {
-    // req: CMN-001, VER-023
+    // req: CMN-001, VER-023, VER-064
     // Within 4 095 octets no two bits are 32 767 apart; in the longest frame, two data bits
     // are, and the frame decodes with other data: the guarantee ends where the module docs say.
     let [within, longest] = long_frames();
@@ -269,7 +269,7 @@ fn a_double_bit_error_32767_bits_apart_passes_the_fecf() {
 #[test]
 #[ignore = "exhaustive, 4.7 million decodes of up to 65 536 octets: the nightly job bit-flips"]
 fn every_single_bit_error_of_the_long_frames_is_corrected_or_rejected() {
-    // req: AOS-013, AOS-014, CMN-001, VER-023
+    // req: AOS-013, AOS-014, CMN-001, VER-023, VER-064
     for f in &long_frames() {
         let failure = find_single(&f.octets, |bit, bytes| {
             as_expected(f, bytes, &[bit], DecodeMode::Strict)
@@ -281,7 +281,7 @@ fn every_single_bit_error_of_the_long_frames_is_corrected_or_rejected() {
 #[test]
 #[ignore = "exhaustive, 537 million decodes: the nightly job bit-flips runs it in release mode"]
 fn every_double_bit_error_within_the_guarantee_is_corrected_or_rejected() {
-    // req: AOS-013, AOS-014, CMN-001, VER-023
+    // req: AOS-013, AOS-014, CMN-001, VER-023, VER-064
     let [f, _] = long_frames();
     let failure = find_double(&f.octets, |i, j, bytes| {
         as_expected(&f, bytes, &[i, j], DecodeMode::Strict)

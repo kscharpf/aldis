@@ -186,7 +186,7 @@ USLP-011 (no mixing of truncated and full frames in one C&S data unit) belongs t
 
 **Done when:** every vector file names its provenance, the cross-check run has no disagreement, each standard with no independent implementation is listed in `cross-checks.md` with what was searched, and the review is recorded.
 
-### WP-7 Verification gates (M) — VER-010, VER-011, VER-022…025, GEN-020…024, VER-030, VER-031
+### WP-7 Verification gates (M) — VER-010, VER-011, VER-022…025, GEN-020…024, VER-030, VER-031, VER-064
 
 | Task | Output |
 |---|---|
@@ -215,7 +215,7 @@ USLP-011 (no mixing of truncated and full frames in one C&S data unit) belongs t
 | `README.md` status, `CHANGELOG.md` `0.3.0-m2` (`cargo xtask changelog release 0.3.0-m2 <date>`), roadmap row, workspace version `0.3.0` | docs |
 | Open issues: OI-04, OI-05, OI-06, OI-32…35 updated with the accepted decisions; new spec questions as new OIs | [09-open-issues.md](../09-open-issues.md) |
 | Assurance case (added 2026-10-24, maintainer): a structured argument from the top claims (the library decodes and encodes per the cited Blue Books, never panics or blocks, uses bounded resources, and reports every deviation) down to the requirements and the verification records that support them; `cargo xtask` checks that every piece of evidence it cites exists and passes | `docs/verification/assurance-case.md`, an `xtask` check |
-| Hazard and failure-mode analysis (added 2026-10-24, maintainer): per codec, how a failure of the library could harm a mission (a corrupt frame accepted as valid, routing to the wrong spacecraft, VC or MAP, silent truncation, a hang), each failure mode traced to the requirements and tests that cover it, and gaps raised as new requirements or OIs; it includes a single-event upset in unprotected memory, controlled by GEN-015 ([hardware assumptions](../hardware-assumptions.md)) | `docs/verification/hazards.md` |
+| Hazard and failure-mode analysis (added 2026-10-24, maintainer): per codec, how a failure of the library could harm a mission (a corrupt frame accepted as valid, routing to the wrong spacecraft, VC or MAP, silent truncation, a hang), each failure mode traced to the requirements and tests that cover it, and gaps raised as new requirements or OIs; it includes a single-event upset in unprotected memory, controlled by GEN-015 ([hardware assumptions](../hardware-assumptions.md)), and a bit error in the TC or USLP Frame Length field that makes `decode` accept a shorter frame (API-011), controlled by `validate_frame` (TC-021, USLP-014) | `docs/verification/hazards.md` |
 
 ## 4. Exit criteria
 
@@ -234,7 +234,7 @@ M2 is complete when every item below is green on `main`:
 | Panic freedom and resources | VER-010, GEN-020…024 (the exerciser, with `aldis-ffi`, runs on all three bare-metal targets), VER-011 |
 | Inspections | VER-061: the GEN-022/023 inspections of all changed crates approved at the exit review, covering every revision since the last approval |
 | Portability | GEN-005, GEN-006, GEN-007, VER-030, VER-031 |
-| Gates | VER-022 (all WP-7 fuzz targets, ≥ 1 CPU-hour each before the release), VER-024 (100 % for the four frame crates and `aldis-core`), VER-025 (triaged) |
+| Gates | VER-022 (all WP-7 fuzz targets, ≥ 1 CPU-hour each before the release), VER-024 (100 % for the four frame crates and `aldis-core`), VER-025 (triaged), VER-064 (the bit-flip suites, gated and nightly) |
 | Vectors and trace | TV-001…003, TV-020, TV-021, TV-023, VER-020 (`xtask trace --scope m2 --strict`), VER-021, VER-040 |
 | Docs | Roadmap updated; `CHANGELOG.md` entry for 0.3.0-m2; open issues updated |
 

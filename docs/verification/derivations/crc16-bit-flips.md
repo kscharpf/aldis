@@ -1,6 +1,6 @@
 # Derivation: what the CRC-16 FECF detects, and the bit-flip suites
 
-The bound behind the bit-flip completeness suites of the codecs with an FECF ([M2 plan](../../milestones/m2-frame-codecs.md) WP-7, "Bit-flip completeness"): which single- and double-bit errors the FECF is certain to detect, and up to which frame length. Prepared 2026-10-24 on `m2/wp7-tests`.
+The bound behind the bit-flip completeness suites of the codecs with an FECF (VER-064; [M2 plan](../../milestones/m2-frame-codecs.md) WP-7, "Bit-flip completeness"): which single- and double-bit errors the FECF is certain to detect, and up to which frame length. Prepared 2026-10-24 on `m2/wp7-tests`.
 
 ## 1. The code
 
