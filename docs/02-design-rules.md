@@ -11,6 +11,7 @@ These rules apply to every crate in Layers 0–2, and to the C ABI. Layer 3 foll
 | GEN-012 | The memory footprint of every engine type SHALL be computable at compile time. The Rust profile exposes it through `core::mem::size_of`; the C ABI through `*_storage_size()` functions/constants. | — | A |
 | GEN-013 | Decoders SHALL be zero-copy: payload accessors return sub-slices of the input buffer. | — | T |
 | GEN-014 | No API SHALL require the caller to provide more buffer space than the maximum size of the data unit being produced. | — | T |
+| GEN-015 | Aldis SHALL assume that memory holding its state between calls (configurations, engine state, and helper storage) is protected against single-event upsets by the platform (error-correcting memory with scrubbing, or equivalent), or holds data that does not change at run time. [Hardware assumptions](hardware-assumptions.md) SHALL state this assumption, what an upset in unprotected memory does to Aldis (an enum with an invalid discriminant is undefined behaviour; a restricted value is not checked again after construction, RS-020), and what the integrator does to meet it. | — | I |
 
 ## 2. Panic freedom and bounded execution
 

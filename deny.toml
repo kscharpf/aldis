@@ -9,7 +9,7 @@ yanked = "deny"
 
 [licenses]
 version = 2
-# Licenses compatible with distributing Aldis under MIT.
+# Licenses compatible with distributing Aldis under MIT OR Apache-2.0.
 allow = ["MIT", "Apache-2.0", "BSD-2-Clause", "BSD-3-Clause", "ISC", "Zlib", "Unicode-3.0"]
 confidence-threshold = 0.9
 # The allow list is the policy for future dev-dependencies; unused entries are expected today.

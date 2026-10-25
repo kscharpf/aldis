@@ -3,7 +3,7 @@ name = "aldis-fuzz"
 description = "cargo-fuzz targets for Aldis (VER-022)"
 version = "0.0.0"
 edition = "2024"
-license = "MIT"
+license = "MIT OR Apache-2.0"
 publish = false
 
 # Separate workspace: the targets need nightly and libFuzzer, which the main workspace must not

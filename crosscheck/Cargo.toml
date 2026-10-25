@@ -3,7 +3,7 @@ name = "aldis-crosscheck"
 description = "Runs the Aldis test vectors through independent implementations (VER-040)"
 version = "0.0.0"
 edition = "2024"
-license = "MIT"
+license = "MIT OR Apache-2.0"
 publish = false
 
 # Separate workspace: the independent implementations are third-party std crates and C sources

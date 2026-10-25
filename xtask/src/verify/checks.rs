@@ -96,7 +96,8 @@ pub const RUST: PathList = PathList {
         ".rustfmt.toml",
         "deny.toml",
         "coverage-waivers.toml",
-        "LICENSE",
+        "LICENSE-MIT",
+        "LICENSE-APACHE",
     ],
 };
 
