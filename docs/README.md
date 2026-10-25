@@ -33,6 +33,7 @@ This directory holds the specification for a family of libraries that add CCSDS 
 |---|---|
 | [Decision rights](process/decision-rights.md) | Who decides what: the maintainer, the coordinating session, or the agent of a work package, per category (spec readings, scope, plans, API and ABI, vectors, reviews, process, dependencies, releases, merges, housekeeping, approvals); how to ask the maintainer, and what continues meanwhile (VER-062) |
 | [Decision log](process/decisions.md) | One line per maintainer decision, with its date, category, and the pull request or issue that records it; checked by `cargo xtask decisions` (VER-062) |
+| [Independent review](process/review.md) | Protocol for independent PR review: verification evidence over re-running checks, suppression verification, unautomated review focus, and citation of code file:line |
 
 ### Reference application
 
