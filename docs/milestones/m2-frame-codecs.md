@@ -215,7 +215,7 @@ USLP-011 (no mixing of truncated and full frames in one C&S data unit) belongs t
 | `README.md` status, `CHANGELOG.md` `0.3.0-m2` (`cargo xtask changelog release 0.3.0-m2 <date>`), roadmap row, workspace version `0.3.0` | docs |
 | Open issues: OI-04, OI-05, OI-06, OI-32…35 updated with the accepted decisions; new spec questions as new OIs | [09-open-issues.md](../09-open-issues.md) |
 | Assurance case (added 2026-10-24, maintainer): a structured argument from the top claims (the library decodes and encodes per the cited Blue Books, never panics or blocks, uses bounded resources, and reports every deviation) down to the requirements and the verification records that support them; `cargo xtask` checks that every piece of evidence it cites exists and passes | `docs/verification/assurance-case.md`, an `xtask` check |
-| Hazard and failure-mode analysis (added 2026-10-24, maintainer): per codec, how a failure of the library could harm a mission (a corrupt frame accepted as valid, routing to the wrong spacecraft, VC or MAP, silent truncation, a hang), each failure mode traced to the requirements and tests that cover it, and gaps raised as new requirements or OIs | `docs/verification/hazards.md` |
+| Hazard and failure-mode analysis (added 2026-10-24, maintainer): per codec, how a failure of the library could harm a mission (a corrupt frame accepted as valid, routing to the wrong spacecraft, VC or MAP, silent truncation, a hang), each failure mode traced to the requirements and tests that cover it, and gaps raised as new requirements or OIs; it includes a single-event upset in unprotected memory, controlled by GEN-015 ([hardware assumptions](../hardware-assumptions.md)) | `docs/verification/hazards.md` |
 
 ## 4. Exit criteria
 

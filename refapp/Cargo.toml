@@ -9,7 +9,7 @@ members = ["refapp-scenario", "refapp-flight", "refapp-ground", "refapp-harness"
 version = "0.1.0"
 edition = "2024"
 rust-version = "1.99.1"        # RS-001: equals rust-toolchain.toml at the repository root
-license = "MIT"
+license = "MIT OR Apache-2.0"
 repository = "https://github.com/kscharpf/aldis"
 publish = false
 
