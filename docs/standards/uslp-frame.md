@@ -159,7 +159,7 @@ The truncated frame has no Bypass/Sequence Control Flag, Reserve Spares, OCF, or
 | a First Header or Last Valid Octet Pointer neither `0xFFFF` nor below the TFDZ length | `OutOfRange` (`fhp_lvo_pointer`) |
 | `out` shorter than the frame | `BufferTooSmall` |
 
-Until `UslpFrameWriter::finish`, the buffer holds a Primary Header whose TFVN is `1111`, which every decoder rejects with `UnsupportedVersion` and the delimiter treats as fill (API-023). `UslpFrameWriter::resume`, with the arguments of `begin`, makes the same checks and rewrites the unfinished header, the Insert Zone, and the TFDF Header without zero-filling the Security Header and Trailer, so a writer that keeps no state between its calls, such as the C ABI's `aldis_uslp_writer_finish`, can finish the frame (c-abi.md §11).
+Until `UslpFrameWriter::finish`, the buffer holds a Primary Header whose TFVN is `1111`, which every decoder rejects with `UnsupportedVersion` and the delimiter treats as fill (API-023). `begin` stores the reserved frame length in the Frame Length field of that header. `UslpFrameWriter::resume`, with the arguments of `begin`, makes the same checks and writes nothing; it compares the unfinished header, the Insert Zone, and the TFDF Header with what `begin` wrote and fails with `InvalidState` on a difference or a buffer never begun (API-023; OI-50; the Security Header and Trailer, the TFDZ, and a changed security layout with an identical header are not compared). So a writer that keeps no state between its calls, such as the C ABI's `aldis_uslp_writer_finish`, can finish the frame (c-abi.md §11).
 
 ## 4. Anomaly flags (lenient mode)
 

@@ -97,18 +97,32 @@ fn run(u: &mut Unstructured<'_>) -> Result<()> {
                 } => {
                     assert_eq!(f.segment_header(), segment_header);
                     assert_eq!(f.data_field(), user_data);
-                    let mut two = vec![0x5A_u8; n];
-                    let mut w =
-                        TcFrameWriter::begin(&mut two, &table, fields, segment_header, user.len())
-                            .unwrap();
-                    w.user_data_mut().copy_from_slice(&user);
-                    assert_eq!(w.finish(user.len()), Ok(n));
-                    assert_eq!(two, out[..n]);
+                    two_phase(&table, fields, segment_header, &user, &out[..n]);
                 }
             }
         }
     }
     Ok(())
+}
+
+/// The two-phase writer, then a stateless finish by `resume` with the same arguments, give the
+/// frame of `encode` (API-023; OI-50).
+fn two_phase(
+    table: &VcTable<2, 1>,
+    fields: FrameFields,
+    segment_header: Option<SegmentHeader>,
+    user: &[u8],
+    frame: &[u8],
+) {
+    let mut two = vec![0x5A_u8; frame.len()];
+    {
+        let mut w =
+            TcFrameWriter::begin(&mut two, table, fields, segment_header, user.len()).unwrap();
+        w.user_data_mut().copy_from_slice(user);
+    }
+    let w = TcFrameWriter::resume(&mut two, table, fields, segment_header, user.len()).unwrap();
+    assert_eq!(w.finish(user.len()), Ok(frame.len()));
+    assert_eq!(two, frame);
 }
 
 fuzz_target!(|data: &[u8]| {

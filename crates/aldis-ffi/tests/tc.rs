@@ -622,6 +622,98 @@ fn writer_arguments_are_checked() {
 }
 
 #[test]
+fn finish_checks_the_buffer_was_begun_with_these_arguments() {
+    // req: API-023, CABI-022, TC-004 (OI-50)
+    let (mc, vcs, maps) = (mc(), vcs(), maps());
+    let call = |begin: bool, fields: &aldis_tc_fields_t, max: usize, frame: &mut [u8]| {
+        let mut l = aldis_tc_layout_t::default();
+        let mut n = 0_usize;
+        // SAFETY: every pointer is to a live local or into `frame`, with its length.
+        unsafe {
+            if begin {
+                aldis_tc_writer_begin(
+                    &raw const mc,
+                    vcs.as_ptr(),
+                    vcs.len(),
+                    maps.as_ptr(),
+                    maps.len(),
+                    fields,
+                    max,
+                    frame.as_mut_ptr(),
+                    frame.len(),
+                    &raw mut l,
+                    null_mut(),
+                )
+            } else {
+                aldis_tc_writer_finish(
+                    &raw const mc,
+                    vcs.as_ptr(),
+                    vcs.len(),
+                    maps.as_ptr(),
+                    maps.len(),
+                    fields,
+                    max,
+                    1,
+                    frame.as_mut_ptr(),
+                    frame.len(),
+                    &raw mut n,
+                    null_mut(),
+                )
+            }
+        }
+    };
+    // Another MAP, VC, frame type, sequence number, sequence flags, and reservation.
+    let begun = ad(2, Some(0));
+    let mut frame = [0xEE_u8; 64];
+    assert_eq!(call(true, &begun, 4, &mut frame), ALDIS_OK);
+    let written = frame;
+    let other = [
+        (ad(2, Some(9)), 4),
+        (ad(3, None), 4),
+        (
+            aldis_tc_fields_t {
+                frame_type: ALDIS_TC_FRAME_BD,
+                ..begun
+            },
+            4,
+        ),
+        (
+            aldis_tc_fields_t {
+                sequence_number: 8,
+                ..begun
+            },
+            4,
+        ),
+        (
+            aldis_tc_fields_t {
+                sequence_flags: ALDIS_TC_SEQ_FIRST,
+                ..begun
+            },
+            4,
+        ),
+        (begun, 3),
+        (begun, 5),
+    ];
+    for (f, max) in other {
+        assert_eq!(
+            call(false, &f, max, &mut frame),
+            ALDIS_ERR_INVALID_STATE,
+            "{f:?} {max}"
+        );
+        assert_eq!(frame, written, "a failed finish leaves the frame unchanged");
+    }
+    // The same arguments finish it.
+    assert_eq!(call(false, &begun, 4, &mut frame), ALDIS_OK);
+    // A buffer never begun, and a finished frame.
+    for fill in [0x00_u8, 0xA5] {
+        let mut never = [fill; 64];
+        assert_eq!(call(false, &begun, 4, &mut never), ALDIS_ERR_INVALID_STATE);
+        assert_eq!(never, [fill; 64]);
+    }
+    assert_eq!(call(false, &begun, 4, &mut frame), ALDIS_ERR_INVALID_STATE);
+}
+
+#[test]
 fn the_delimiter_is_stateless() {
     // req: TC-020, CABI-012, CABI-022
     // An Unlock frame without FECF, then three octets of fill.

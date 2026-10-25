@@ -5,6 +5,7 @@
 | Requirements | GEN-022 (every loop bounded by an input length, a compile-time capacity, or a constant; no recursion), GEN-023 (time bounded by O(input length + capacities); nothing blocks or waits) |
 | Scope | `crates/aldis-tc/src/*.rs`, library code only (test modules excluded), on branch `m2/tc-codec` (M2 WP-3, modules 1–7, based on `main` 46bfe0f): `config`, `header`, `view`, `writer`, `control`, `anomaly`, `clcw`, `delimit`, `validate`, `field` (re-exports only), and `lib.rs` (module declarations and re-exports) |
 | Inspected | 2026-10-23, prepared by Claude Code: first inspection. Every loop, every call between the crate's own functions, and every blocking construct checked. No unbounded loop, no recursion |
+| Revised | 2026-10-25, `m2/hc-finish` (OI-50), prepared by Claude Sonnet 5.5 (agent of OI-50), pending exit review: `writer.rs` `TcFrameWriter::start` takes a `write` flag; with it (from `begin`, `begin_oid`, `encode`) it zero-fills and writes the headers as before, without it (from `resume`) it writes nothing and compares the headers with an `all` over a `zip`, at most 6 octets. The unfinished header now holds the reserved frame length: `primary_octets` is called with `plan.total`, no new call. No recursion; the Loops table is updated |
 | Approved | — (pending exit review, VER-061) |
 | Repeat | when `aldis-tc` gains a loop or a call between its own functions (the C ABI of module 8 is in `aldis-ffi`), and before each release |
 
@@ -29,7 +30,8 @@ Every loop in library code, with its bound. Copies and comparisons of fixed-size
 | — | `view.rs` `parse` (via `crc::verify_fecf`) | CRC over the frame | input length: the frame, at most 1024 octets |
 | `writer.rs encode #1` | `writer.rs` `encode` | copies the User Data or Control Command into the reservation (`zip`) | input length: the payload |
 | `writer.rs TcFrameWriter::start #1` | `writer.rs` `TcFrameWriter::start` | writes the unfinished header and the Segment Header (`zip` over `header.chain(segment)`), when called by `begin` or `encode` (not by `resume`) | constant: at most 6 |
-| `writer.rs TcFrameWriter::start #2 #3` | `writer.rs` `TcFrameWriter::start` | `fill(0)` of the Security Header and Trailer, when called by `begin` or `encode` (not by `resume`) | input length: the reserved frame in the caller's buffer, at most 1024 octets |
+| `writer.rs TcFrameWriter::start #2` | `writer.rs` `TcFrameWriter::start` | when called by `resume`: `all` over the unfinished header and the Segment Header zipped with the expected octets | constant: at most 6 |
+| `writer.rs TcFrameWriter::start #3 #4` | `writer.rs` `TcFrameWriter::start` | `fill(0)` of the Security Header and Trailer, when called by `begin` or `encode` (not by `resume`) | input length: the reserved frame in the caller's buffer, at most 1024 octets |
 | `writer.rs TcFrameWriter::finish #1` | `writer.rs` `TcFrameWriter::finish` | `copy_within` moving the Security Trailer to follow the User Data | input length: the unused User Data and the trailer, within the frame |
 | `writer.rs TcFrameWriter::finish #2` | `writer.rs` `TcFrameWriter::finish` | writes the final header (`zip` over 5 octets); `crc::write_fecf` over the frame | constant: 5; input length: the frame |
 | `clcw.rs Clcw::decode #1` | `clcw.rs` `Clcw::decode` | over the two Reserved Spare fields | constant: 2 |

@@ -4721,13 +4721,15 @@ int32_t aldis_aos_writer_begin(const aldis_aos_mc_config_t *mc,
  * by [`aldis_aos_oid_writer_begin`] without its generator (732.0 §4.1.6.2; AOS-019, API-021,
  * API-023).
  *
- * Rewrites the Primary Header with its FHEC and the `M_PDU` or `B_PDU` Header, leaves every
- * field the caller filled and the OID data, computes the FECF if configured, and returns the
- * frame length (`AosFrameWriter::resume`).
+ * First checks that `out` holds the Primary Header with its FHEC and the `M_PDU` or `B_PDU`
+ * Header that the begin function wrote for these arguments (`AosFrameWriter::resume`; OI-50);
+ * the other fields are not compared. Then leaves every field the caller filled and the OID
+ * data, computes the FECF if configured, and returns the frame length.
  *
  * # Errors
  * As [`aldis_aos_writer_begin`], or for `fields->vcid` 63 as [`aldis_aos_oid_writer_begin`];
- * on error `out` is unchanged.
+ * `ALDIS_ERR_INVALID_STATE` if `out` does not hold the headers the begin function writes for
+ * these arguments (other arguments, or a buffer never begun); on error `out` is unchanged.
  *
  * # Safety
  * As [`aldis_aos_writer_begin`]; `out_len` is valid for one write.
@@ -5845,13 +5847,18 @@ int32_t aldis_tc_writer_begin(const aldis_tc_mc_config_t *mc,
  * Finishes a two-phase write begun with the same arguments, with `user_len` octets of User
  * Data (232.0 §4.1.2.7, §4.1.4; TC-007, API-021, API-023).
  *
- * Writes the Primary Header with the Frame Length, moves the Security Trailer to follow the
- * User Data when `user_len` is below `max_user_len`, computes the FECF if configured, and
- * returns the frame length; the frame is the first `*out_len` octets of `out`.
+ * First checks that `out` holds the unfinished Primary Header (with the reserved frame length)
+ * and Segment Header that [`aldis_tc_writer_begin`] wrote for these arguments
+ * (`TcFrameWriter::resume`; OI-50); the User Data and the Security Header and Trailer are not
+ * compared. Then writes the Primary Header with the Frame Length, moves the Security Trailer
+ * to follow the User Data when `user_len` is below `max_user_len`, computes the FECF if
+ * configured, and returns the frame length; the frame is the first `*out_len` octets of `out`.
  *
  * # Errors
- * On error `out` is unchanged. As [`aldis_tc_writer_begin`]; then `ALDIS_ERR_OUT_OF_RANGE`
- * (`user_len`) above `max_user_len` and `ALDIS_ERR_INVALID_FIELD` (`frame_data_field`) for 0.
+ * On error `out` is unchanged. As [`aldis_tc_writer_begin`]; `ALDIS_ERR_INVALID_STATE` if `out`
+ * does not hold the unfinished headers `aldis_tc_writer_begin` writes for these arguments (other
+ * arguments, or a buffer never begun); then `ALDIS_ERR_OUT_OF_RANGE` (`user_len`) above
+ * `max_user_len` and `ALDIS_ERR_INVALID_FIELD` (`frame_data_field`) for 0.
  *
  * # Safety
  * As [`aldis_tc_writer_begin`]; `out_len` is valid for one write.
@@ -6471,11 +6478,15 @@ int32_t aldis_tm_writer_begin(const aldis_tm_mc_config_t *mc,
  * Finishes a two-phase write begun with the same arguments (132.0 §4.1.6.2; TM-009, API-021,
  * API-023).
  *
- * Rewrites the headers, leaves every field the caller filled, computes the FECF if
- * configured, and returns the frame length.
+ * First checks that `out` holds the Primary Header and the Secondary Header Identification
+ * Field that [`aldis_tm_writer_begin`] wrote for these arguments (`TmFrameWriter::resume`;
+ * OI-50); the other fields are not compared. Then leaves every field the caller filled,
+ * computes the FECF if configured, and returns the frame length.
  *
  * # Errors
- * As [`aldis_tm_writer_begin`]; on error `out` is unchanged.
+ * As [`aldis_tm_writer_begin`]; `ALDIS_ERR_INVALID_STATE` if `out` does not hold the headers
+ * `aldis_tm_writer_begin` writes for these arguments (other arguments, or a buffer never
+ * begun); on error `out` is unchanged.
  *
  * # Safety
  * As [`aldis_tm_writer_begin`]; `out_len` is valid for one write.
@@ -6528,8 +6539,9 @@ int32_t aldis_tm_oid_writer_begin(const aldis_tm_mc_config_t *mc,
  * Finishes an Only Idle Data frame begun with [`aldis_tm_oid_writer_begin`] (132.0 §4.1.4.6,
  * §4.1.6.2; TM-010, API-023).
  *
- * Given the same arguments, it rewrites the headers, leaves the Idle Data and every field the
- * caller filled, computes the FECF if configured, and returns the frame length.
+ * Given the same arguments, it first checks the headers as [`aldis_tm_writer_finish`] does
+ * (OI-50), leaves the Idle Data and every field the caller filled, computes the FECF if
+ * configured, and returns the frame length.
  *
  * # Errors
  * As [`aldis_tm_writer_finish`] for the fields of an OID frame, including
@@ -6765,14 +6777,18 @@ int32_t aldis_uslp_writer_begin(const aldis_uslp_config_t *pc,
  * Finishes a two-phase write begun with the same arguments, with `tfdz_len` TFDZ octets
  * (732.1 §4.1.2.7, §4.1.5, §4.1.6; USLP-010, API-021, API-023).
  *
- * Rewrites the unfinished headers without zero-filling (`UslpFrameWriter::resume`), keeps the
- * TFDZ and the security fields the caller filled, moves the Security Trailer to follow a TFDZ
+ * First checks that `out` holds the unfinished Primary Header (with the reserved frame
+ * length), the Insert Zone, and the TFDF Header that [`aldis_uslp_writer_begin`] wrote for these
+ * arguments (`UslpFrameWriter::resume`; OI-50); the Security Header and Trailer and the TFDZ are
+ * not compared. Then keeps the TFDZ and the security fields the caller filled, moves the Security Trailer to follow a TFDZ
  * shorter than the reservation, writes the Frame Length, the OCF, and the FECF if configured,
  * and returns the frame length. The frame is the first `*out_len` octets of `out`; the octets
  * after it keep unspecified values (`UslpFrameWriter::finish`).
  *
  * # Errors
- * As [`aldis_uslp_writer_begin`]; then `ALDIS_ERR_OUT_OF_RANGE` (`user_len`) above
+ * As [`aldis_uslp_writer_begin`]; `ALDIS_ERR_INVALID_STATE` if `out` does not hold the unfinished
+ * headers `aldis_uslp_writer_begin` writes for these arguments (other arguments, or a buffer
+ * never begun); then `ALDIS_ERR_OUT_OF_RANGE` (`user_len`) above
  * `max_tfdz_len`, `ALDIS_ERR_INVALID_FIELD` (`frame_data_field`) for 0,
  * `ALDIS_ERR_LENGTH_MISMATCH` (`frame_data_field`) below it on a fixed-length channel, and
  * `ALDIS_ERR_OUT_OF_RANGE` (`fhp_lvo_pointer`) for a pointer not below `tfdz_len`. On error
