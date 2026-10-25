@@ -2,6 +2,7 @@
 //!
 //! Run with `cargo xtask <command>`; see `cargo xtask help`.
 
+mod api;
 mod binaries;
 mod changelog;
 mod consistency;

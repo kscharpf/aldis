@@ -3,24 +3,15 @@
 #
 # [[budget]]: per bare-metal target, the most stack in bytes that one call of an entry point may
 # use, for the Rust entry points (`rust`) and the C ABI functions (`c-abi`). The values are the
-# maintainer's. Proposed 2026-10-24 (M2 WP-7, pending the maintainer's decision) from the largest
-# worst case measured on `nightly-2026-10-15` that day, plus a margin, rounded up to whole KiB:
-#
-#   target                         rust (largest: SpacePacket::split)   c-abi (largest: aldis_tc_validate)
-#   thumbv7em-none-eabihf          752 -> 1024                          8576 -> 10240
-#   armv7r-none-eabihf             720 -> 1024                          8600 -> 10240
-#   riscv32imac-unknown-none-elf   608 -> 1024                          8528 -> 10240
-#
-# Most of the C ABI's stack is the channel table that the TC, AOS, TM, and USLP calls build on
-# the stack from the caller's array (`master_channel_at`, `table_at` in `aldis-ffi`): 4768 bytes
-# of the 8576 for TC on thumbv7em.
+# maintainer's (docs/process/decisions.md, 2026-10-24, #113), revisited at the M2 exit.
 #
 # [[exemption]]: a function at which the call graph is incomplete, with a stated bound and the
 # reason. `frame = <bytes>`: the function is assembly, with no `.stack_sizes` entry and no IR;
 # the bound is its own frame, read from its disassembly, and its direct calls stay in the graph.
-# `indirect = <bytes>`: indirect calls are reached from the function; the bound is what they may
-# take, added to its worst case. `targets` limits an exemption to some targets. An exemption that
-# applies to nothing on one of its targets fails the check.
+# `indirect = <bytes>`: the function makes indirect calls itself; the bound is what they may
+# take, added to its worst case. It accepts only that function's own indirect calls: not its
+# callees', and not inline assembly. `targets` limits an exemption to some targets. An exemption
+# that applies to nothing on one of its targets fails the check.
 
 [[budget]]
 target = "thumbv7em-none-eabihf"
@@ -38,14 +29,54 @@ rust = 1024
 c-abi = 10240
 
 # The `Display` implementation of `aldis_core::Error` writes through `core::fmt`, whose
-# `Formatter` calls the caller's `core::fmt::Write` implementation through a `dyn` reference:
-# `core::fmt::write`, `Formatter::pad`, `Formatter::pad_integral`, and its `write_prefix`. That
-# writer is the caller's code, so its stack is the caller's to bound; the library's own part is
-# in the worst case, the writer is not (0 bytes).
+# `Formatter` calls the caller's `core::fmt::Write` implementation through a `dyn` reference in
+# these four functions. That writer is the caller's code, so its stack is the caller's to bound:
+# the library's own part is in the worst case, the writer is not (0 bytes). The `aldis_core`
+# code under `Error as Display` stays fully checked.
 [[exemption]]
-function = "<aldis_core::error::Error as core::fmt::Display>::fmt"
+function = "core::fmt::write"
 indirect = 0
-reason = "the indirect calls in core::fmt go to the caller's own core::fmt::Write implementation, outside the library; its stack is the caller's"
+reason = "its indirect calls go to the caller's own core::fmt::Write implementation, outside the library; its stack is the caller's"
+
+[[exemption]]
+function = "<core::fmt::Formatter>::pad"
+indirect = 0
+reason = "its indirect calls go to the caller's own core::fmt::Write implementation, outside the library; its stack is the caller's"
+
+[[exemption]]
+function = "<core::fmt::Formatter>::pad_integral"
+indirect = 0
+reason = "its indirect calls go to the caller's own core::fmt::Write implementation, outside the library; its stack is the caller's"
+
+[[exemption]]
+function = "<core::fmt::Formatter>::pad_integral::write_prefix"
+indirect = 0
+reason = "its indirect calls go to the caller's own core::fmt::Write implementation, outside the library; its stack is the caller's"
+
+[[exemption]]
+function = "<core::fmt::Formatter>::padding"
+indirect = 0
+reason = "its indirect calls go to the caller's own core::fmt::Write implementation, outside the library; its stack is the caller's"
+
+# The `Debug` implementation of `aldis_core::AnomalySet<A>` writes a set with
+# `core::fmt::builders`, whose functions call the caller's writer, and the `Debug` of each entry,
+# through `dyn` references. Each entry is an `A`, the anomaly type the set is instantiated with:
+# the caller's type, or a codec's anomaly enum, whose derived `Debug` writes the variant's name to
+# the same writer. Neither is counted (0 bytes), as for `Display`.
+[[exemption]]
+function = "<core::fmt::Formatter>::debug_set"
+indirect = 0
+reason = "its indirect call goes to the caller's own core::fmt::Write implementation, outside the library; its stack is the caller's"
+
+[[exemption]]
+function = "<core::fmt::builders::DebugSet>::finish"
+indirect = 0
+reason = "its indirect call goes to the caller's own core::fmt::Write implementation, outside the library; its stack is the caller's"
+
+[[exemption]]
+function = "<core::fmt::builders::DebugInner>::entry"
+indirect = 0
+reason = "its indirect calls go to the caller's writer and to the Debug implementation of the entry type A that the caller instantiates the set with; neither stack is counted"
 
 # `__aeabi_uldivmod`, the 64-bit unsigned division of the ARM EABI, is hand-written assembly in
 # `compiler_builtins` (`src/arm.rs`): `push {r4, lr}` (8 bytes) and `sub sp, sp, #16` (16), then

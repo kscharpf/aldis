@@ -1084,10 +1084,10 @@ mod tests {
             running(&changed(&["cpp/src/core/crc.cpp"]), Force::default()),
             want
         );
-        // The vectors are read by both implementations, not by the header and stack checks.
+        // The vectors are read by both implementations, not by the header check.
         assert_eq!(
             running(&changed(&["test-vectors/README.md"]), Force::default()),
-            names(|c| !matches!(c.name.as_str(), "header" | "stack") && !c.nightly)
+            names(|c| c.name != "header" && !c.nightly)
         );
         // The committed header is read by the header check (and spec) alone.
         assert_eq!(

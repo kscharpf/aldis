@@ -119,7 +119,7 @@ enum Scope {
 
 /// Index of the token after the group that opens at `i` (`(`, `[`, `{`, or `<` counted with
 /// `>`), or the end.
-fn after_group(t: &[Tok], i: usize) -> usize {
+pub fn after_group(t: &[Tok], i: usize) -> usize {
     let (open, close) = match t.get(i).map(|t| t.text.as_str()) {
         Some("(") => ("(", ")"),
         Some("[") => ("[", "]"),
@@ -143,7 +143,7 @@ fn after_group(t: &[Tok], i: usize) -> usize {
 
 /// Index of the token after the item that starts at `i`: up to its `;` or through its first
 /// brace group, at bracket depth 0.
-fn after_item(t: &[Tok], mut i: usize) -> usize {
+pub fn after_item(t: &[Tok], mut i: usize) -> usize {
     while i < t.len() {
         match t[i].text.as_str() {
             ";" => return i + 1,
@@ -156,7 +156,7 @@ fn after_item(t: &[Tok], mut i: usize) -> usize {
 }
 
 /// Whether the attribute tokens (between `#[` and `]`) gate the item on tests or Kani.
-fn test_only(attr: &[Tok]) -> bool {
+pub fn test_only(attr: &[Tok]) -> bool {
     attr.first().is_some_and(|t| t.text == "cfg")
         && attr.get(1).is_some_and(|t| t.text == "(")
         && cfg_test_only(attr.get(2..attr.len().saturating_sub(1)).unwrap_or(&[]))
@@ -201,7 +201,7 @@ fn cfg_test_only(pred: &[Tok]) -> bool {
 
 /// The type an `impl` header names: the last path segment before its generic arguments, of the
 /// type after `for` if there is one. `i` is the token after `impl`.
-fn impl_type(t: &[Tok], mut i: usize) -> String {
+pub fn impl_type(t: &[Tok], mut i: usize) -> String {
     if t.get(i).is_some_and(|t| t.text == "<") {
         i = after_group(t, i);
     }
@@ -237,7 +237,7 @@ fn impl_type(t: &[Tok], mut i: usize) -> String {
 
 /// Index of the `{` that opens the body of the item whose header starts at `i`, or of the `;`
 /// that ends a header without a body, skipping bracket and angle groups.
-fn header_end(t: &[Tok], mut i: usize) -> usize {
+pub fn header_end(t: &[Tok], mut i: usize) -> usize {
     while i < t.len() {
         match t[i].text.as_str() {
             "{" | ";" => return i,
