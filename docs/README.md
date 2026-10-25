@@ -25,6 +25,8 @@ This directory holds the specification for a family of libraries that add CCSDS 
 
 [`verification/analysis-records.md`](verification/analysis-records.md): how requirements verified by analysis or inspection (method A/I) are recorded, one file per record in [`verification/records/`](verification/records/), read by `cargo xtask trace`.
 
+[`verification/hazards.md`](verification/hazards.md) and [`verification/assurance-case.md`](verification/assurance-case.md): the hazard and failure-mode analysis, one file per frame codec in [`verification/hazards/`](verification/hazards/), and the assurance case that argues from the library's top claims to its evidence (VER-065, VER-066); [`verification/assurance-evidence.md`](verification/assurance-evidence.md) specifies how `cargo xtask assurance` checks their references.
+
 [`verification/formal-proofs.md`](verification/formal-proofs.md): the Kani proof harnesses of the formal-verification spike, what they prove and up to which bounds, and the limits found (OI-42).
 
 ### Process ([`process/`](process/))
