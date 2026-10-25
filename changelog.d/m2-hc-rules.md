@@ -19,3 +19,12 @@
 - `aldis-ffi`: the `panic-handler` feature executes a trapping instruction before it spins:
   `udf #0` on Arm, `ebreak` on RISC-V, `brk #0` on AArch64, `ud2` on x86 (OI-49;
   `docs/profiles/c-abi.md` §1). A target without stable inline assembly (SPARC V8) still spins.
+- **Breaking:** `aldis-tm`: the decoders that take the channel table reject an Only Idle Data frame
+  (Synchronization Flag 0, First Header Pointer `0x7FE`) on a VC that uses SDLS (OI-54; 132.0
+  §6.4.6.2, TM-010). `TmFrame::decode_with` and `decode_unchecked` return `InvalidField`
+  (`vc_id`) in strict mode; in lenient mode they accept it and set the new anomaly
+  `TmAnomaly::OnlyIdleDataOnSdlsVc` (bit 2; C: `ALDIS_TM_ANOMALY_ONLY_IDLE_DATA_ON_SDLS_VC`).
+  `TmFrame::validate` rejects it in both modes. `TmFrame::decode`, which has no channel table,
+  cannot check and never reports it.
+- `aldis-uslp`: `TruncatedFrameLen::new` and `get` are `const fn` (RS-012), so a `VcConfig` with a
+  truncated frame length can be built in a `static`. Not breaking.
