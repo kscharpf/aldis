@@ -1,6 +1,6 @@
 # Derivation: TC Transfer Frame and CLCW vectors
 
-The worked derivation that [07-test-vectors.md](../../07-test-vectors.md) TV-020 asks for a `hand-derived` vector file, for `test-vectors/tc/*.json` (TC-001…TC-008, TC-020…TC-023, TC-030, TC-031; [M2 plan](../../milestones/m2-frame-codecs.md) WP-3). 232.0-B-4 prints no example frame or CLCW, and no independent implementation has been run against these vectors yet (D15), so one frame, with its FECF, and one CLCW are worked here by hand. The other cases' values come from the independent Python model the provenance notes name (`test-vectors/models/tc_frame.py`); this derivation checks that model on two cases.
+The worked derivation that [07-test-vectors.md](../../07-test-vectors.md) TV-020 asks for a `hand-derived` vector file, for `test-vectors/tc/*.json` (TC-001…TC-009, TC-020…TC-023, TC-030, TC-031; [M2 plan](../../milestones/m2-frame-codecs.md) WP-3). 232.0-B-4 prints no example frame or CLCW, and no independent implementation has been run against these vectors yet (D15), so one frame, with its FECF, and one CLCW are worked here by hand. The other cases' values come from the independent Python model the provenance notes name (`test-vectors/models/tc_frame.py`); this derivation checks that model on two cases.
 
 ## 1. The BC Unlock frame of `tc-bc-unlock-enc-001`
 

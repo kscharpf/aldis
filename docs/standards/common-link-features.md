@@ -53,9 +53,9 @@ The first 20 output octets are `FF FF FF FF 6D B6 D8 61 45 1F 11 F1 97 16 72 3C 
 
 | ID | Requirement | Source | Verif. |
 |---|---|---|---|
-| CMN-020 | `OidGenerator` SHALL produce the sequence above, MSB first within each octet, starting at device start-up state. | 132.0 §4.1.4.6.2 & Annex D | V |
-| CMN-021 | The generator state SHALL persist across frames. A generator SHALL be owned by the physical channel multiplexer, one per physical channel, and SHALL NOT be reset by engine reconfiguration. A full engine re-initialization, representing a "device start-up", MAY reset it. | 132.0 §4.1.4.6.2.1 | T |
-| CMN-022 | A Galois-form implementation, if provided, SHALL use seed `0b00000000001111111111111111111101` and SHALL produce identical output. | 132.0 §4.1.4.6.2.2 | V |
+| CMN-020 | `OidGenerator` SHALL produce the sequence above, MSB first within each octet, starting at device start-up state. | 132.0 §4.1.4.6.2 & Annex D; 732.0 §4.1.4.1.5.2 & Annex D; 732.1 §4.1.4.1.10 & Annex H | V |
+| CMN-021 | The generator state SHALL persist across frames. A generator SHALL be owned by the physical channel multiplexer, one per physical channel, and SHALL NOT be reset by engine reconfiguration. A full engine re-initialization, representing a "device start-up", MAY reset it. A decoder is stateless and so does not check the data of a received OID frame against the sequence (TM-010, AOS-016, USLP-009); receivers discard it. | 132.0 §4.1.4.6.2.1; 732.0 §4.1.4.1.5.2; 732.1 §4.1.4.1.10 | T |
+| CMN-022 | A Galois-form implementation, if provided, SHALL use seed `0b00000000001111111111111111111101` and SHALL produce identical output. | 132.0 §4.1.4.6.2.2; 732.1 Annex H | V |
 | CMN-023 | `OidGenerator::fill(buf)` SHALL write the next `buf.len()` octets of the sequence and advance by exactly that amount. | — | T |
 | CMN-024 | Receivers SHALL NOT be required to verify OID content. A `verify_oid` utility MAY be provided for test equipment. | — | — |
 
@@ -81,4 +81,4 @@ All frame codecs use one layout calculator (`FrameLayout`) that computes the oct
 | ID | Requirement | Source | Verif. |
 |---|---|---|---|
 | CMN-040 | `FrameLayout` SHALL return non-overlapping, contiguous ranges, in order, for: primary header, secondary header / insert zone, security header, data field, security trailer, OCF, FECF. The ranges SHALL cover the frame exactly. | 132.0 §6.3; 732.0 §6.3; 732.1 §6.3 | T/F |
-| CMN-041 | If the layout leaves a data field of zero or negative length, the configuration SHALL be rejected with `InvalidConfig`. | — | T |
+| CMN-041 | If the layout leaves a data field of zero or negative length, the configuration SHALL be rejected with `InvalidConfig`. A project rule: the Blue Books state no minimum data field length. | — | T |
