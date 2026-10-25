@@ -136,3 +136,4 @@ One line for each decision the maintainer takes, under the [decision rights](dec
 - 2026-10-25 · api · #117 · A CLCW with COP in Effect other than 01 stays decoded in strict mode (TC-030), now a listed exception in API-031
 - 2026-10-25 · spec · #117 · OI-46: the USLP VCF Count Length is read per QoS (Table 5-3) despite 732.1 §4.1.2.11.4; resolved with this reading
 - 2026-10-25 · plan · #75 · The xtask crate split is dropped: only #102 of 55 M2 pull requests would have gained (about 10–18 min); branches chore/xtask-verify-split and trial/structure-merge deleted, #75 closed
+- 2026-10-25 · process · #119 · AGENTS.md trimmed to actionable agent rules; detailed review protocol moved to docs/process/review.md and local container setup notes to docs/06-verification.md

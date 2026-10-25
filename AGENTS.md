@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Guide for coding agents working on **Aldis**. Read [README.md](README.md) first for the project overview, crate layout, and build commands. This file adds the rules you need before changing anything.
+Guide for coding agents working on **Aldis**. Read [README.md](README.md) first for the project overview, crate layout, and build commands. This file adds the rules you need before changing anything. This file holds what an agent must do or must not do; mechanics, rationale, and history go in [docs/](docs/README.md) and are linked.
 
 ## Sources of truth
 
@@ -18,7 +18,7 @@ v1 is built in three tracks: **R** (Rust reference, milestones M0–M6), **C** (
 
 A milestone plan carries a work-package status table, one row per WP or sub-part (WP, State, PRs, Notes); update only your WP's row. Never write requirement counts into a plan: `cargo xtask trace --scope <id>` reports them (roadmap §6 rule 1). Before calling a work package done, go through its checklist in [docs/milestones/checklists.md](docs/milestones/checklists.md) (adding a codec module, a crate, a vector file, a fuzz target, C ABI functions; a spec-readings PR; a milestone exit); `cargo xtask consistency` checks the registrations it marks.
 
-The rules and checks below are written for the Rust crates. The native C++ code follows [docs/profiles/cpp.md](docs/profiles/cpp.md) instead; its checks are set up in milestone C0.
+The rules and checks below are written for the Rust crates unless noted; the native C++ code follows [docs/profiles/cpp.md](docs/profiles/cpp.md).
 
 ## Decision rights
 
@@ -32,11 +32,12 @@ Every maintainer decision gets a line in the [decision log](docs/process/decisio
 
 ## Independent review
 
-A reviewer of a pull request does **not** re-run the verification checks: `cargo build`, `cargo check`, `cargo test`, `cargo clippy`, `cargo fmt`, `cargo xtask ci`, coverage, the exerciser, fuzzing, or `cargo xtask verify`. They are the merge gate's job (VER-056…VER-058), and the gate already ran them on the head commit. Read the evidence instead: `cargo xtask verify check <head>` re-checks the published record, and a check that does not gate (`cpp-leon3`, `rust-sparc-leon3`) is read from the record, not assumed to pass. `kani` is nightly-only: a pull request's record shows it as not run ("nightly only (VER-059)"), and its results are in the nightly run on `main`, whose failure opens the nightly issue.
+Detailed protocol: [docs/process/review.md](docs/process/review.md).
 
-Spend the review on what no check covers: the reading of the Blue Book behind each decision (cite the clause), the requirements and whether the tests and vectors really cover them, the soundness of every `unsafe` block, the shape of the public API and C ABI, and the decisions and judgement calls the pull request lists. Read every suppression the change adds, because the gate passes *because of* it: each `#[expect(…, reason = "…")]` (RS-016), `// NOLINT(<check>): <reason>` (CPP-042), entry of `coverage-waivers.toml` (VER-024), and mutant triaged as equivalent in [mutants-triage.md](docs/verification/mutants-triage.md) (VER-025). Check that the reason is true and the region is the smallest one; a reason that does not hold is a finding. Report findings as [decision-rights.md](docs/process/decision-rights.md) §2.6 describes, each with the file and line and why it matters; to show a defect, a failing test or vector case is the clearest form.
-
-**Every statement about the implementation cites the file and line it rests on** (`path:line`), quoting the code where the point depends on it, and a claim about a dependency, an algorithm, or a target names where it is in the code. A statement the reviewer cannot point to is not made. A review whose description of the code does not match the code does not count as a review of that pull request: the coordinator posts the corrections and the review is done again.
+- Don't re-run the gate's checks; read the published record (`cargo xtask verify check <head>`), including non-gating checks (`cpp-leon3`, `rust-sparc-leon3`; `kani` is nightly-only, VER-059).
+- Read every suppression the change adds (`#[expect(…, reason = "…")]` RS-016, `// NOLINT(<check>): <reason>` CPP-042, `coverage-waivers.toml` VER-024, and equivalent mutants in [mutants-triage.md](docs/verification/mutants-triage.md) VER-025) and verify the reason holds on the smallest region.
+- Spend the review on what no check covers: the Blue Book readings (cite the clause), requirements and test/vector coverage, `unsafe` soundness, and the public API and C ABI shape.
+- **Every statement about the implementation cites `path:line`**, quoting the code where the point depends on it; a review whose description of the code does not match the code does not count and is done again.
 
 ## Non-negotiable rules (Layers 0–2)
 
@@ -69,7 +70,7 @@ gh workflow run verify.yml --ref <branch>   # or "Run workflow" on the Actions t
 gh run watch                                # then: cargo xtask verify check
 ```
 
-`cargo xtask verify` needs podman or Docker Engine with about 20 GB of free disk and 6 GB of memory for the engine's VM (`podman machine set --memory 6144`). The first run builds the image (several GB of downloads). A podman VM keeps the disk space the build frees until it is trimmed: run `podman machine ssh sudo fstrim -av` after the build (it returned about 20 GB on macOS). It refuses a dirty working tree, runs every check in a fresh checkout of HEAD, and writes `target/verify/<commit>/record.json` and one log per check. `cargo xtask verify list` names the checks, and `--only <check>,...` runs some of them while you work; such a record never passes the gate. The checks run quickest first. With `--publish` the run stops at the first gating check that fails, since it could not publish, and records the rest as not run (`--no-fail-fast` runs them all; `--fail-fast` stops a run without `--publish`). When the input rule skips or reuses every gating check, the run starts no container and pulls or builds no image. If `main` moves during a passing run, `--publish` still publishes the record, which a later commit can reuse, but sets no `aldis/verify` status: merge `main` and verify again. The nightly-only check `kani` runs only with `--all`, as the nightly run does (VER-059). Runs on one machine share the engine's cache volume and take turns: a run started while another is in progress waits for it to finish. A record is tied to the commit's tree, so any new commit, including a merge from `main`, needs a new run.
+`cargo xtask verify` refuses a dirty working tree, runs in a fresh checkout of HEAD (`cargo xtask verify list` names the checks; `--only <check>,...` runs a subset while working, which never passes the gate), and runs on one machine wait for each other. A record is tied to the commit's tree, so any new commit—including a merge from `main`—needs a new run. If `main` moves during a passing run, `--publish` still publishes the record for reuse, but sets no `aldis/verify` status: merge `main` and verify again (see [docs/06-verification.md](docs/06-verification.md) §7 for container engine memory and disk setup).
 
 While you work, run these. All must pass with **zero warnings**:
 
@@ -81,39 +82,16 @@ cargo clippy -p aldis --no-default-features --features full --target thumbv7em-n
 cargo xtask ci        # spec lint, links, decision log, layering, registrations (consistency), bare integers in the codec APIs (rs020), loops against the inspection records (loops), vectors, schema, generated files (field codes, C header), traces, changelog, C++ opt-outs
 ```
 
-When you change `aldis-core`, also run:
-
-```sh
-cargo xtask coverage                                   # 100 % regions/functions/lines/branches (VER-024)
-(cd exerciser && cargo build --release --target thumbv7em-none-eabihf)  # panic-freedom link check (VER-010)
-cargo clippy --manifest-path fuzz/Cargo.toml --all-targets               # fuzz targets still compile
-```
+| Directory | Extra commands |
+|---|---|
+| `crates/aldis-core` | `cargo xtask coverage` (VER-024)<br>`(cd exerciser && cargo build --release --target thumbv7em-none-eabihf)` (VER-010)<br>`cargo clippy --manifest-path fuzz/Cargo.toml --all-targets` |
+| `crates/aldis-ffi` (or wrapped crates) | `cargo xtask header --write && cargo xtask header` (CABI-002, CABI-003)<br>`cargo xtask header c-smoke cc c++` (CABI-001; requires `cargo install --locked cbindgen@0.29.4`; never edit `include/aldis/aldis.h` by hand) |
+| `cpp/` ([C++ profile](docs/profiles/cpp.md), pinned in `cpp/toolchains.lock`) | `(cd cpp && cmake --preset host-gcc && cmake --build --preset host-gcc && ctest --preset host-gcc)` (and `host-clang`)<br>`cargo xtask cpp unsafe-optouts` (CPP-031)<br>`cargo xtask cpp layers target/cpp/host-gcc` (CPP-010) |
+| `refapp/` ([refapp/README.md](refapp/README.md)) | `(cd refapp && cargo fmt --all --check && cargo clippy --workspace --all-targets && cargo test --workspace && cargo build -p refapp-flight --target thumbv7em-none-eabihf)` |
 
 A failed exerciser link with `undefined symbol: aldis_panic_is_unreachable` means a panic path is reachable in `aldis-core`. Remove it; do not work around the check. Mark new test modules `#[cfg_attr(coverage_nightly, coverage(off))]`.
 
-`cargo xtask ci` checks every generated file (`fields`, `header`), so it needs the pinned `cbindgen` (`cargo install --locked cbindgen@0.29.4`) in any work package; without it, `ci` reports the missing tool as a problem. When you change `aldis-ffi` (the C ABI) or a crate it wraps, regenerate and check the header with it ([crates/aldis-ffi/README.md](crates/aldis-ffi/README.md)), and never edit `include/aldis/aldis.h` by hand:
-
-```sh
-cargo xtask header --write && cargo xtask header   # CABI-002, CABI-003
-cargo xtask header c-smoke cc c++                  # host libraries, C99 and C++11 (CABI-001)
-```
-
-When you change `cpp/` (the native C++ implementation, [C++ profile](docs/profiles/cpp.md)), use the toolchains pinned in `cpp/toolchains.lock`; every preset refuses another compiler. Also run:
-
-```sh
-(cd cpp && cmake --preset host-gcc && cmake --build --preset host-gcc && ctest --preset host-gcc)  # and host-clang
-cargo xtask cpp unsafe-optouts                 # bounds opt-outs only in aldis/core/bytes.hpp (CPP-031)
-cargo xtask cpp layers target/cpp/host-gcc     # CMake target graph (CPP-010)
-```
-
-`cargo xtask verify` also runs clang-format, clang-tidy, the sanitizers, s390x, the bare-metal builds, and the worst-case stack bound of every entry point per bare-metal target (`stack`, VER-011: `cargo xtask stack` on the tooling nightly, against the budgets and exemptions of `xtask/stack-budgets.toml`; an indirect call or recursion it cannot bound fails it). Each check declares its inputs in `xtask/src/verify/checks.rs` and is skipped when none of them changed against the merge base with `main` (`cargo xtask verify list` shows which checks HEAD needs; `--all` runs every check): a change to documentation only (`docs/`, `changelog.d/`, the root `*.md`, `specs/README.md`, `specs/manifest.tsv`) or to the GitHub configuration that no check reads (`.github/workflows/`, `.github/actions/setup-rust/`, `.github/actions/setup-cpp/action.yml`, the pull-request template, `CODEOWNERS`, `dependabot.yml`) or to `.gitignore` runs only `spec`, a change to `xtask/` runs everything, and so does a path that no list names. After you merge `main` into a branch whose head has a published record, a check whose inputs the commits from `main` did not touch is `reused` from that record instead of run. When a check starts reading a new path, add the path to its inputs in the same change (as `CPP` for the C++ build). Suppress a warning or clang-tidy finding only on the smallest region, naming the check (CPP-042).
-
-When you change `refapp/` (track A), also run, from `refapp/` (see [refapp/README.md](refapp/README.md)):
-
-```sh
-cargo fmt --all --check && cargo clippy --workspace --all-targets && cargo test --workspace
-cargo build -p refapp-flight --target thumbv7em-none-eabihf
-```
+Each check in `xtask/src/verify/checks.rs` declares its inputs (`cargo xtask verify list` shows which checks HEAD needs); when a check starts reading a new path, add that path to its inputs in the same change. Suppress a C++ warning or clang-tidy finding only on the smallest region, naming the check (CPP-042).
 
 Clippy runs with the `all` and `pedantic` groups denied, plus restriction lints and selected nursery lints ([docs/profiles/rust.md](docs/profiles/rust.md) §5). Do not enable the whole `nursery` group; adopt a nursery lint only after checking its findings, and record the decision there (RS-019). To relax a lint, use a local `#[expect(clippy::<lint>, reason = "…")]` on the smallest item (RS-016). Never use crate-wide `allow`.
 
@@ -122,12 +100,11 @@ Clippy runs with the `all` and `pedantic` groups denied, plus restriction lints 
 - **Traceability:** every public item's docs cite the CCSDS clause and requirement IDs it implements (RS-015). Every test names the requirements it covers with a `// req: <ID>` comment (VER-020).
 - **Verification records:** requirements verified by a check of `cargo xtask verify` or by review (method A/I) each have a record file in [docs/verification/records/](docs/verification/records/), named after its first requirement ID, in the format of [analysis-records.md](docs/verification/analysis-records.md). Change only the record you touch; there is no index.
 - **Inspections (GEN-022/023):** when your change adds or changes a loop, a call between a crate's own functions, or a blocking construct in library code, revise that crate's record in [docs/verification/inspections/](docs/verification/inspections/) in the same change: update the loop table (its `ID` column names each loop by file, item, and index, as `cargo xtask loops list` prints it; `cargo xtask loops` fails on a loop the table lacks) and call graph, and add a `Revised` row "<date>, <branch> (<WP>), prepared by <you>, pending exit review: …". Do not ask for or wait for a maintainer approval, and never edit an `Approved` row: the maintainer approves every pending revision once, in the milestone exit review or before a release (VER-061).
-- **Test vectors** in [`test-vectors/`](test-vectors/README.md) are shared with future C/C++ and binding implementations. Follow [docs/07-test-vectors.md](docs/07-test-vectors.md). Record provenance, and never edit a released vector: add a new case and mark the old one `superseded`. An independent model (TV-023) is written blind: by an agent or person who has not read the implementation it checks, from the Blue Book and `docs/` only; brief a model-writing agent that way, and give it no implementation paths.
+- **Test vectors** in [`test-vectors/`](test-vectors/README.md) are shared across the Rust, C ABI, and C++ implementations. Follow [docs/07-test-vectors.md](docs/07-test-vectors.md). Record provenance, and never edit a released vector: add a new case and mark the old one `superseded`. An independent model (TV-023) is written blind: by an agent or person who has not read the implementation it checks, from the Blue Book and `docs/` only; brief a model-writing agent that way, and give it no implementation paths.
 - **Changelog:** never edit `CHANGELOG.md` in a pull request. Add one fragment file to [`changelog.d/`](changelog.d/README.md), named after the branch; `cargo xtask changelog check` validates it.
 - **Errors** use the stable catalogue in [docs/03-api-model.md](docs/03-api-model.md) §9. Do not renumber error codes.
-- **Field codes** come from the catalogue of [docs/03-api-model.md](docs/03-api-model.md) §9.1. A field of one new crate takes the next code of that crate's block of 50, reserved when its plan is accepted; a field shared by several crates, or of a crate without a block, takes the next code of the common block 107–149. Because each new crate has its own block, codes need no renumbering at merge (roadmap §6 rule 7 still settles a clash in one block). `cargo xtask fields` checks the blocks.
+- **Field codes** come from the catalogue of [docs/03-api-model.md](docs/03-api-model.md) §9.1; `cargo xtask fields` checks the per-crate and common blocks.
 - **C ABI names** use the `aldis_` / `ALDIS_` prefix ([docs/profiles/c-abi.md](docs/profiles/c-abi.md)).
-- **Process metrics:** `cargo xtask metrics` measures PR cycle time, the stages of each PR (raw and in the maintainer's active time), the process-created waits, the process overhead (the shares of pull requests, commits, and verify minutes spent on process rather than product, and the bookkeeping-only commits), verify cost, merge conflicts, and review outcomes; the nightly report is the pinned issue "Process metrics" ([docs/06-verification.md](docs/06-verification.md) §9, VER-063).
 - **Agent comments:** end every comment or review an agent posts on GitHub with the line `🤖 Generated with [Claude Code](https://claude.com/claude-code)`. Agents post under the maintainer's account, and `cargo xtask metrics` tells their words apart by this marker.
 - **Spec changes:** when behavior changes, update the requirement table in the same change. New requirements get the next free ID in their area; IDs are never reused.
 
@@ -140,7 +117,6 @@ Clippy runs with the `all` and `pedantic` groups denied, plus restriction lints 
 | Stateful protocol behavior | `crates/aldis-link`, or `crates/aldis-cop1` for COP-1 |
 | Transports, run loop, adapters | `crates/aldis-framework` |
 | C interface | `crates/aldis-ffi` (capacities in `capacities.toml`) |
-| Native C++ implementation (track C) | `cpp/` |
 | Differential tests, Rust vs. native (VER-053) | `difftest/` |
 | Reference application (track A) | `refapp/` |
 | Requirements and design | `docs/` |
