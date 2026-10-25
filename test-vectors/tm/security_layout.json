@@ -2,7 +2,7 @@
   "kind": "codec",
   "standard": "132.0-B-3 §6.3, Table 6-1",
   "provenance": "hand-derived",
-  "provenance_note": "132.0-B-3 prints no example frame; only the first OID octets of Annex D. Cases hand-derived from 132.0-B-3 §4.1 (figures 4-1 to 4-4, the Data Field Status of §4.1.2.7, the Secondary Header of §4.1.3, OID frames of §4.1.4.6 and Annex D, the FECF of §4.1.6), §5 Tables 5-1 to 5-3, and §6.3, with the readings of docs/standards/tm-frame.md (TM-001...TM-011 and the anomaly list) and the error kinds and field codes of docs/03-api-model.md §9 and §9.1. Inputs assembled bit by bit from the figure widths; expected values computed by an independent Python model of those clauses, written from the Blue Book after the Rust codec but not from its code, and sharing no code with it (the FECF by polynomial division, the OID data by the Annex D recurrence). The model is committed as test-vectors/models/tm_frame.py (TV-023); `python3 -I test-vectors/models/tm_frame.py --check test-vectors/tm/*.json` recomputes every expected value. One frame is worked by hand in docs/verification/derivations/tm-frame.md. Author of the model: an AI agent, Claude Opus 5.5, recorded as co-author of commit 5e1235e (2026-10-23); it wrote the model from 132.0-B-3 and docs/standards/tm-frame.md, and states that it did not write it from the code of the Rust codec (the history shows the codec already existed and records no briefing of the agent beyond that statement; TV-023). The cases tm-oid-005 to tm-oid-009 and tm-sec-dec-006, tm-sec-enc-003, tm-sec-val-003 were added on 2026-10-25 (M2 WP-8) by a second agent, Claude Sonnet 5.5, briefed to read only the Blue Book, docs/, and the vectors, never the implementation, and to extend this model. This file covers 132.0-B-3 §6.3, Table 6-1.",
+  "provenance_note": "132.0-B-3 prints no example frame; only the first OID octets of Annex D. Cases hand-derived from 132.0-B-3 §4.1 (figures 4-1 to 4-4, the Data Field Status of §4.1.2.7, the Secondary Header of §4.1.3, OID frames of §4.1.4.6 and Annex D, the FECF of §4.1.6), §5 Tables 5-1 to 5-3, and §6.3, with the readings of docs/standards/tm-frame.md (TM-001...TM-011 and the anomaly list) and the error kinds and field codes of docs/03-api-model.md §9 and §9.1. Inputs assembled bit by bit from the figure widths; expected values computed by an independent Python model of those clauses, written from the Blue Book after the Rust codec but not from its code, and sharing no code with it (the FECF by polynomial division, the OID data by the Annex D recurrence). The model is committed as test-vectors/models/tm_frame.py (TV-023); `python3 -I test-vectors/models/tm_frame.py --check test-vectors/tm/*.json` recomputes every expected value. One frame is worked by hand in docs/verification/derivations/tm-frame.md. Author of the model: an AI agent, Claude Opus 5.5, recorded as co-author of commit 5e1235e (2026-10-23); it wrote the model from 132.0-B-3 and docs/standards/tm-frame.md, and states that it did not write it from the code of the Rust codec (the history shows the codec already existed and records no briefing of the agent beyond that statement; TV-023). The cases tm-oid-005 to tm-oid-009 and tm-sec-dec-006, tm-sec-enc-003, tm-sec-val-003 were added on 2026-10-25 (M2 WP-8) by a second agent, Claude Sonnet 5.5, briefed to read only the Blue Book, docs/, and the vectors, never the implementation, and to extend this model. The cases tm-sec-enc-004 to tm-sec-enc-007 were added on 2026-10-25 by a blind Claude Sonnet 5.5 agent, after the review of #117. This file covers 132.0-B-3 §6.3, Table 6-1.",
   "cases": [
     {
       "id": "tm-sec-dec-001",
@@ -543,6 +543,281 @@
       "input_hex": "2A5D07089805021122A5A5A5A5707172737475767778797A7B7C7D7E7F8081825A5A01140C2ADF84",
       "expect": {
         "ok": true
+      }
+    },
+    {
+      "id": "tm-sec-enc-004",
+      "requirements": [
+        "TM-010",
+        "TM-009"
+      ],
+      "description": "Encode FHP 0x7FE (Only Idle Data) on VC 0, which has a Security Header (2) and Trailer (1): the frame is an OID frame, which may not use SDLS, so InvalidField naming vc_id, nothing written (132.0-B-3 §6.4.6.2)",
+      "operation": "encode",
+      "config": {
+        "frame_len": 40,
+        "fecf": true,
+        "scid": 677,
+        "mc_fsh": null,
+        "mc_ocf": false,
+        "vcs": [
+          {
+            "vcid": 0,
+            "content": "packets",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 2,
+            "security_trailer_len": 1
+          },
+          {
+            "vcid": 1,
+            "content": "packets",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 3,
+            "security_trailer_len": 0
+          },
+          {
+            "vcid": 2,
+            "content": "packets",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 1
+          },
+          {
+            "vcid": 3,
+            "content": "packets",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "params": {
+        "vcid": 0,
+        "mc_frame_count": 0,
+        "vc_frame_count": 0,
+        "status": {
+          "sync": false,
+          "pointer": "only_idle_data"
+        },
+        "fsh_data_hex": "",
+        "security_header_hex": "A5A5",
+        "data_hex": "0000000000000000000000000000000000000000000000000000000000",
+        "security_trailer_hex": "5A",
+        "ocf_hex": null
+      },
+      "expect": {
+        "ok": false,
+        "error": "InvalidField",
+        "field": 2
+      }
+    },
+    {
+      "id": "tm-sec-enc-005",
+      "requirements": [
+        "TM-010",
+        "TM-009"
+      ],
+      "description": "Encode FHP 0x7FE on VC 1, which has a Security Header (3) and no Trailer: InvalidField naming vc_id (132.0-B-3 §6.4.6.2)",
+      "operation": "encode",
+      "config": {
+        "frame_len": 40,
+        "fecf": true,
+        "scid": 677,
+        "mc_fsh": null,
+        "mc_ocf": false,
+        "vcs": [
+          {
+            "vcid": 0,
+            "content": "packets",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 2,
+            "security_trailer_len": 1
+          },
+          {
+            "vcid": 1,
+            "content": "packets",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 3,
+            "security_trailer_len": 0
+          },
+          {
+            "vcid": 2,
+            "content": "packets",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 1
+          },
+          {
+            "vcid": 3,
+            "content": "packets",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "params": {
+        "vcid": 1,
+        "mc_frame_count": 0,
+        "vc_frame_count": 0,
+        "status": {
+          "sync": false,
+          "pointer": "only_idle_data"
+        },
+        "fsh_data_hex": "",
+        "security_header_hex": "A5A5A5",
+        "data_hex": "0000000000000000000000000000000000000000000000000000000000",
+        "security_trailer_hex": "",
+        "ocf_hex": null
+      },
+      "expect": {
+        "ok": false,
+        "error": "InvalidField",
+        "field": 2
+      }
+    },
+    {
+      "id": "tm-sec-enc-006",
+      "requirements": [
+        "TM-010",
+        "TM-009"
+      ],
+      "description": "Encode FHP 0x7FE on VC 2, which has a Security Trailer (1) and no Header: InvalidField naming vc_id (132.0-B-3 §6.4.6.2)",
+      "operation": "encode",
+      "config": {
+        "frame_len": 40,
+        "fecf": true,
+        "scid": 677,
+        "mc_fsh": null,
+        "mc_ocf": false,
+        "vcs": [
+          {
+            "vcid": 0,
+            "content": "packets",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 2,
+            "security_trailer_len": 1
+          },
+          {
+            "vcid": 1,
+            "content": "packets",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 3,
+            "security_trailer_len": 0
+          },
+          {
+            "vcid": 2,
+            "content": "packets",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 1
+          },
+          {
+            "vcid": 3,
+            "content": "packets",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "params": {
+        "vcid": 2,
+        "mc_frame_count": 0,
+        "vc_frame_count": 0,
+        "status": {
+          "sync": false,
+          "pointer": "only_idle_data"
+        },
+        "fsh_data_hex": "",
+        "security_header_hex": "",
+        "data_hex": "00000000000000000000000000000000000000000000000000000000000000",
+        "security_trailer_hex": "5A",
+        "ocf_hex": null
+      },
+      "expect": {
+        "ok": false,
+        "error": "InvalidField",
+        "field": 2
+      }
+    },
+    {
+      "id": "tm-sec-enc-007",
+      "requirements": [
+        "TM-010",
+        "TM-009"
+      ],
+      "description": "Encode FHP 0x7FE on VC 3, which does not use SDLS: accepted, the counterpart of tm-sec-enc-004 to -006 (132.0-B-3 §6.4.6.2)",
+      "operation": "encode",
+      "config": {
+        "frame_len": 40,
+        "fecf": true,
+        "scid": 677,
+        "mc_fsh": null,
+        "mc_ocf": false,
+        "vcs": [
+          {
+            "vcid": 0,
+            "content": "packets",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 2,
+            "security_trailer_len": 1
+          },
+          {
+            "vcid": 1,
+            "content": "packets",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 3,
+            "security_trailer_len": 0
+          },
+          {
+            "vcid": 2,
+            "content": "packets",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 1
+          },
+          {
+            "vcid": 3,
+            "content": "packets",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "params": {
+        "vcid": 3,
+        "mc_frame_count": 0,
+        "vc_frame_count": 0,
+        "status": {
+          "sync": false,
+          "pointer": "only_idle_data"
+        },
+        "fsh_data_hex": "",
+        "security_header_hex": "",
+        "data_hex": "0000000000000000000000000000000000000000000000000000000000000000",
+        "security_trailer_hex": "",
+        "ocf_hex": null
+      },
+      "expect": {
+        "ok": true,
+        "output_hex": "2A5600001FFE0000000000000000000000000000000000000000000000000000000000000000BEEA"
       }
     },
     {

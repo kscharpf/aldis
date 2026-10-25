@@ -122,6 +122,7 @@ Written on 2026-10-25 by a second, blind Claude Sonnet 5.5 agent (TV-023: it rea
 TM (`test-vectors/models/tm_frame.py`):
 1. Replacement of `tm-oid-002` (decision 2): `tm-oid-005` (three OID frames with an FSH on VC 2, no SDLS; `tm-oid-002` now has `by: tm-oid-005`), `tm-oid-006` (VC 0 uses SDLS: `InvalidField` `vc_id`), `tm-oid-007` (a VC that is both `vca_sdu` and SDLS: `sync_flag` first), `tm-oid-008` and `tm-oid-009` (a Security Trailer alone, a Security Header alone: still SDLS, `vc_id`). A rejected request writes nothing: a case holds the whole `frames` list, so "nothing written" is the absence of `frames_hex` in the error expectation.
 2. FSH, Security Header, data, Security Trailer, OCF, and FECF together: `tm-sec-dec-006` (decode), `tm-sec-enc-003` (encode), `tm-sec-val-003` (validate).
+2a. Finding 1 of the review of #117 (every TM writer applies the SDLS check to FHP `0x7FE`, TM-010, 132.0-B-3 §6.4.6.2), added 2026-10-25 by a blind Claude Sonnet 5.5 agent: `tm-sec-enc-004` (Security Header and Trailer), `tm-sec-enc-005` (Header only), `tm-sec-enc-006` (Trailer only): `InvalidField` `vc_id`; `tm-sec-enc-007` (no SDLS: accepted). The vector format has no two-phase writer operation for TM (operations: `encode`, `encode_oid`, `decode`, ...), so `begin`/`resume` have no vector case.
 
 TC (`test-vectors/models/tc_frame.py`):
 3. Unknown MAP ID with a wrong FECF, reason 9: `tc-val-021`; the decoder's `CrcMismatch`: `tc-dec-err-014`.

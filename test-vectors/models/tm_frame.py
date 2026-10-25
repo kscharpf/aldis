@@ -292,6 +292,10 @@ def plan(pc, mc, p):
                 raise Fail("OutOfRange", F["first_header_pointer"])
         else:
             fhp = NO_PACKET_START if kind == "no_packet_start" else ONLY_IDLE_DATA
+            # TM-010, §6.4.6.2: FHP 0x7FE makes the frame an OID frame, which uses a VC without
+            # SDLS; every writer applies the check, after the sync flag (decision of 2026-10-25).
+            if fhp == ONLY_IDLE_DATA and (vc["sh"] or vc["st"]):
+                raise Fail("InvalidField", F["vc_id"])
     header = join_primary({
         "version": 0, "scid": mc["scid"], "vcid": vcid, "ocf_flag": vc["ocf"],
         "mc_frame_count": p["mc_frame_count"], "vc_frame_count": p["vc_frame_count"],
@@ -683,6 +687,11 @@ def security_layout():
     pattern = frame(40, True, {"scid": SCID, "vcid": 4, "first_header_pointer": 0},
                     sh=b"\xA5" * 6, data=seq(0x30, 40 - 6 - 6 - 8 - 2), st=b"\x5A" * 8)
     all_six = channel(40, True, SCID, [vc(6, fsh=3, ocf=True, sh=4, st=2)])
+    oid_mc = channel(40, True, SCID, [vc(0, sh=2, st=1), vc(1, sh=3), vc(2, st=1), vc(3)])
+    idle = status("only_idle_data")
+
+    def idle_enc(vcid, n, sh="", tr=""):
+        return enc(vcid, 0, 0, idle, "00" * n, sh=sh, tr=tr)
     six = frame(40, True, {"scid": SCID, "vcid": 6, "mc_frame_count": 7, "vc_frame_count": 8,
                            "first_header_pointer": 5},
                 fsh=b"\x02\x11\x22", sh=b"\xA5" * 4, data=seq(0x70, 19), st=b"\x5A" * 2,
@@ -733,6 +742,25 @@ def security_layout():
                         fsh_data="1122", sh="A5A5A5A5", tr="5A5A", ocf=CLCW.hex().upper())),
         case("tm-sec-val-003", ["TM-011", "API-070"],
              "The frame of tm-sec-dec-006 matches its channel", "validate", all_six, six),
+        # Added 2026-10-25 by a blind Claude Sonnet 5.5 agent after the review of #117
+        # (finding 1: every TM writer applies the SDLS check of an OID frame).
+        case("tm-sec-enc-004", ["TM-010", "TM-009"],
+             "Encode FHP 0x7FE (Only Idle Data) on VC 0, which has a Security Header (2) and "
+             "Trailer (1): the frame is an OID frame, which may not use SDLS, so InvalidField "
+             "naming vc_id, nothing written (132.0-B-3 §6.4.6.2)", "encode", oid_mc,
+             params=idle_enc(0, 29, sh="A5A5", tr="5A")),
+        case("tm-sec-enc-005", ["TM-010", "TM-009"],
+             "Encode FHP 0x7FE on VC 1, which has a Security Header (3) and no Trailer: "
+             "InvalidField naming vc_id (132.0-B-3 §6.4.6.2)", "encode", oid_mc,
+             params=idle_enc(1, 29, sh="A5A5A5")),
+        case("tm-sec-enc-006", ["TM-010", "TM-009"],
+             "Encode FHP 0x7FE on VC 2, which has a Security Trailer (1) and no Header: "
+             "InvalidField naming vc_id (132.0-B-3 §6.4.6.2)", "encode", oid_mc,
+             params=idle_enc(2, 31, tr="5A")),
+        case("tm-sec-enc-007", ["TM-010", "TM-009"],
+             "Encode FHP 0x7FE on VC 3, which does not use SDLS: accepted, the counterpart "
+             "of tm-sec-enc-004 to -006 (132.0-B-3 §6.4.6.2)", "encode", oid_mc,
+             params=idle_enc(3, 32)),
         case("tm-sec-cfg-001", ["API-040", "API-071"],
              "Security Header longer than 64 octets", "config",
              channel(200, False, 1, [vc(0, sh=65)])),
@@ -884,7 +912,9 @@ NOTE = (
     "no briefing of the agent beyond that statement; TV-023). The cases tm-oid-005 to tm-oid-009 "
     "and tm-sec-dec-006, tm-sec-enc-003, tm-sec-val-003 were added on 2026-10-25 (M2 WP-8) by "
     "a second agent, Claude Sonnet 5.5, briefed to read only the Blue Book, docs/, and the "
-    "vectors, never the implementation, and to extend this model."
+    "vectors, never the implementation, and to extend this model. The cases tm-sec-enc-004 to "
+    "tm-sec-enc-007 were added on 2026-10-25 by a blind Claude Sonnet 5.5 agent, after the "
+    "review of #117."
 )
 
 FILES = {
