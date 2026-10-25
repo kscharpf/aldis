@@ -14,25 +14,26 @@
 |---|---|
 | 2026-10-23, `m2/tc-codec` (WP-3), prepared by Claude Code, pending exit review | First inspection: modules 1–7 of WP-3 |
 | 2026-10-24, `m2/tc-c-abi` (WP-3 module 8), prepared by Claude Code (agent of WP-3 module 8), pending exit review | For the C ABI: `view.rs` adds `TcFrame::peek_header` → `RawHeader::parse`, `check_version`, `frame_type`, `TcFrameHeader::new`, and `peek_length` now → `peek_header`, `TcFrameHeader::frame_len`; `writer.rs` adds `TcFrameWriter::resume` → `Plan::new`, `TcFrameWriter::start`, and `start` takes a `write` flag: the unfinished header, the Segment Header, and the zeros of the Security Header and Trailer are written only for `begin` and `encode`. No loop added (the existing ones in `start` are now conditional), no recursion |
+| 2026-10-24, m2/wp7-checks (WP-7), prepared by the agent, pending exit review | The Loops table gains the first column `ID`, which names each loop that `cargo xtask loops` finds (file, item, and index; GEN-022, M2 plan WP-7), or holds `—` for a row that names none; the other columns are unchanged |
 
 ## Loops
 
 Every loop in library code, with its bound. Copies and comparisons of fixed-size arrays (the five header octets, the four CLCW octets, the three Control Command octets, derived `PartialEq`/`Hash`) run over a constant length and are not listed. Calls into `aldis-core` that loop are listed with the loop they make: `crc::verify_fecf` and `crc::write_fecf` run over the frame, at most 1024 octets; `FrameLayout::compute` has no loop.
 
-| Location | Loop | Bound |
-|---|---|---|
-| `config.rs` `VcTable::new` | `[None; V]`, `[None; M]` initialisation | compile-time capacity: `V`, `M` |
-| `config.rs` `VcTable::new` | over the given Virtual Channels; each looks the VC up (`vc`) before storing it | input length, then capacity: at most `V` iterations store (one more fails with `CapacityExceeded`), each a lookup over at most `V` entries: O(V²) |
-| `config.rs` `VcTable::new` | over the given MAPs; each looks up its VC (`vc`) and the MAP (`map`) | input length, then capacity: at most `M` iterations store, each O(V + M): O(M · (V + M)) |
-| `config.rs` `VcLookup for VcTable` `has_spacecraft`, `vc`, `map`; `VcTable::vcs`, `maps` | `iter().flatten()` with `any` / `find` | compile-time capacity: `V` or `M` |
-| `view.rs` `parse` (via `crc::verify_fecf`) | CRC over the frame | input length: the frame, at most 1024 octets |
-| `writer.rs` `encode` | copies the User Data or Control Command into the reservation (`zip`) | input length: the payload |
-| `writer.rs` `TcFrameWriter::start` | writes the unfinished header and the Segment Header (`zip` over `header.chain(segment)`), when called by `begin` or `encode` (not by `resume`) | constant: at most 6 |
-| `writer.rs` `TcFrameWriter::start` | `fill(0)` of the Security Header and Trailer, when called by `begin` or `encode` (not by `resume`) | input length: the reserved frame in the caller's buffer, at most 1024 octets |
-| `writer.rs` `TcFrameWriter::finish` | `copy_within` moving the Security Trailer to follow the User Data | input length: the unused User Data and the trailer, within the frame |
-| `writer.rs` `TcFrameWriter::finish` | writes the final header (`zip` over 5 octets); `crc::write_fecf` over the frame | constant: 5; input length: the frame |
-| `clcw.rs` `Clcw::decode` | over the two Reserved Spare fields | constant: 2 |
-| `validate.rs` `Reason::from_code` | `ALL.into_iter().find` | constant: 11 |
+| ID | Location | Loop | Bound |
+|---|---|---|---|
+| — | `config.rs` `VcTable::new` | `[None; V]`, `[None; M]` initialisation | compile-time capacity: `V`, `M` |
+| `config.rs VcTable::new #1` | `config.rs` `VcTable::new` | over the given Virtual Channels; each looks the VC up (`vc`) before storing it | input length, then capacity: at most `V` iterations store (one more fails with `CapacityExceeded`), each a lookup over at most `V` entries: O(V²) |
+| `config.rs VcTable::new #2` | `config.rs` `VcTable::new` | over the given MAPs; each looks up its VC (`vc`) and the MAP (`map`) | input length, then capacity: at most `M` iterations store, each O(V + M): O(M · (V + M)) |
+| `config.rs VcTable::has_spacecraft #1`, `config.rs VcTable::vc #1`, `config.rs VcTable::map #1` | `config.rs` `VcLookup for VcTable` `has_spacecraft`, `vc`, `map`; `VcTable::vcs`, `maps` | `iter().flatten()` with `any` / `find` | compile-time capacity: `V` or `M` |
+| — | `view.rs` `parse` (via `crc::verify_fecf`) | CRC over the frame | input length: the frame, at most 1024 octets |
+| `writer.rs encode #1` | `writer.rs` `encode` | copies the User Data or Control Command into the reservation (`zip`) | input length: the payload |
+| `writer.rs TcFrameWriter::start #1` | `writer.rs` `TcFrameWriter::start` | writes the unfinished header and the Segment Header (`zip` over `header.chain(segment)`), when called by `begin` or `encode` (not by `resume`) | constant: at most 6 |
+| `writer.rs TcFrameWriter::start #2 #3` | `writer.rs` `TcFrameWriter::start` | `fill(0)` of the Security Header and Trailer, when called by `begin` or `encode` (not by `resume`) | input length: the reserved frame in the caller's buffer, at most 1024 octets |
+| `writer.rs TcFrameWriter::finish #1` | `writer.rs` `TcFrameWriter::finish` | `copy_within` moving the Security Trailer to follow the User Data | input length: the unused User Data and the trailer, within the frame |
+| `writer.rs TcFrameWriter::finish #2` | `writer.rs` `TcFrameWriter::finish` | writes the final header (`zip` over 5 octets); `crc::write_fecf` over the frame | constant: 5; input length: the frame |
+| `clcw.rs Clcw::decode #1` | `clcw.rs` `Clcw::decode` | over the two Reserved Spare fields | constant: 2 |
+| `validate.rs Reason::from_code #1` | `validate.rs` `Reason::from_code` | `ALL.into_iter().find` | constant: 11 |
 
 `delimit.rs` has no loop: `next_frame` reads one header; `FrameDelimiter::next` makes one call. A caller that iterates a `FrameDelimiter` or calls `next_frame` repeatedly is bounded by the unit's length, since every item takes at least one octet (`Delimited::len`, never 0), and a `TruncatedFrame` or `Fill` takes the rest.
 

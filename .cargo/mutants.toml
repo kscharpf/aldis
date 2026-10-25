@@ -1,0 +1,7 @@
+# cargo-mutants configuration (VER-025): read by every `cargo mutants` run in the repository,
+# the nightly job `mutants` included.
+#
+# The Kani proof modules are compiled only under `cfg(kani)` (docs/verification/formal-proofs.md),
+# so no test of `cargo test` builds them, and every mutant in them survives: they would only add
+# noise to the report (issue #96). `cargo xtask kani` checks them, at night.
+exclude_globs = ["**/proofs.rs"]

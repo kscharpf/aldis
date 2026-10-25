@@ -2,6 +2,7 @@
 //!
 //! Run with `cargo xtask <command>`; see `cargo xtask help`.
 
+mod api;
 mod binaries;
 mod changelog;
 mod consistency;
@@ -14,6 +15,7 @@ mod header;
 mod kani;
 mod layers;
 mod links;
+mod loops;
 mod md;
 mod metrics;
 mod models;
@@ -24,6 +26,7 @@ mod restricted;
 mod rs020;
 mod sana;
 mod spec;
+mod stack;
 mod trace;
 mod vectors;
 mod verify;
@@ -62,6 +65,9 @@ commands:
                                mutants, the exerciser, layers, READMEs, and the facade; fuzz
                                targets in fuzz/Cargo.toml and the nightly matrix; every vector
                                file in test-vectors/README.md, a test, and the exerciser
+  loops [list [<crate>...]]    every loop in a library crate is in its GEN-022/023 inspection
+                               record with a bound, and every loop a record lists exists
+                               (GEN-022); `list` prints the loops found
   rs020                        no bare integer in a public field or enum payload of a codec
                                crate unless xtask/rs020-exemptions.toml exempts it with a
                                reason, and no exemption that matches nothing (RS-020)
@@ -73,7 +79,10 @@ commands:
   symbols                      no frame-protocol code in a build of aldis-spp alone (VER-031)
   ffi-imports <target>         the bare-metal aldis-ffi static library needs nothing from the
                                integrator beyond memcpy/memset equivalents (CABI-004)
-  stack-sizes <target>         per-function stack usage of the exerciser (VER-011; tooling nightly)
+  stack [<target>...]          the worst-case stack of every entry point of the library on each
+                               bare-metal target (or those named) within the budgets of
+                               xtask/stack-budgets.toml, the call graph complete; writes
+                               target/spec/stack-<target>.md (VER-011, GEN-022; tooling nightly)
   features                     `alloc` and `std` are additive: no API gated on them, and every
                                test passes alike without them, with `alloc`, and with `std`
                                (GEN-006)
@@ -88,11 +97,11 @@ commands:
                                move every fragment into a new section of CHANGELOG.md
   ci                           the quick checks of the verification run, without a build:
                                spec-lint, links, decisions, layers, consistency, rs020,
-                               restricted, refapp-deps, vectors validate, vectors schema --check,
-                               fields, header (needs the pinned cbindgen), sana,
-                               trace --scope m0 --strict, trace --scope m1 --strict,
-                               trace --scope m2, trace --scope c0, changelog check,
-                               cpp unsafe-optouts; a step that cannot run
+                               restricted, loops, refapp-deps, vectors validate,
+                               vectors schema --check, fields, header (needs the pinned
+                               cbindgen), sana, trace --scope m0 --strict,
+                               trace --scope m1 --strict, trace --scope m2, trace --scope c0,
+                               changelog check, cpp unsafe-optouts; a step that cannot run
                                counts as a problem, and the others still run
 
 C++ checks (docs/milestones/c0-foundations.md D12):
@@ -114,6 +123,7 @@ const CI: &[Step] = &[
     ("consistency", consistency::check),
     ("rs020", rs020::check),
     ("restricted", || restricted::run(false)),
+    ("loops", || loops::run(&[])),
     ("refapp-deps", refapp::check),
     ("vectors validate", vectors::validate),
     ("vectors schema --check", || vectors::schema(true)),
@@ -173,7 +183,7 @@ fn run(args: &[&str]) -> Result<usize, String> {
         ["refapp-deps"] => refapp::check(),
         ["symbols"] => binaries::symbols(),
         ["ffi-imports", target] => binaries::ffi_imports(target),
-        ["stack-sizes", target] => binaries::stack_sizes(target),
+        ["stack", rest @ ..] => stack::run(rest),
         ["coverage"] => coverage::run(),
         ["kani"] => kani::run(),
         ["features"] => features::check(),
@@ -181,6 +191,7 @@ fn run(args: &[&str]) -> Result<usize, String> {
         ["rs020"] => rs020::check(),
         ["restricted"] => restricted::run(false),
         ["restricted", "list"] => restricted::run(true),
+        ["loops", rest @ ..] => loops::run(rest),
         ["cpp", rest @ ..] => cpp::run(rest),
         ["verify", rest @ ..] => verify::run(rest),
         ["metrics", rest @ ..] => metrics::run(rest),

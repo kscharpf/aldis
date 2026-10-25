@@ -10,17 +10,18 @@
 | History | First inspected 2026-10-18 on branch `m1/epp` (M1 WP-3, based on `main` b817d0f), approved 2026-10-18 maintainer; revised since as below |
 | Revised | 2026-10-18, PR #18 review: the header-copy loop of `writer.rs` `put_header` and of `EncapsulationHeader::encode` is now the single `EncapsulationHeader::write_to` (same loop, same bound); `EncapsulationWriter::begin` no longer adjusts `max_data_len`. No loop added. Confirmed 2026-10-18, maintainer |
 | Revised | 2026-10-19, issue #22 (RS-020): `EppConfig::data_unit` and `EppConfig::header` call `check` → `check_ids` / `check_len`, then (`header`) `EncapsulationHeader::for_data`; `EncapsulationWriter::begin` calls `check_fields` → `check_ids`, and `finish` calls `check_len`; `EncapsulationFields` constructors are straight-line. No loop and no recursion added. Confirmed 2026-10-19, maintainer |
+| Revised | 2026-10-24, m2/wp7-checks (WP-7), prepared by the agent, pending exit review: the Loops table gains the first column `ID`, which names each loop that `cargo xtask loops` finds (file, item, and index; GEN-022, M2 plan WP-7), or holds `—` for a row that names none; the other columns are unchanged |
 
 ## Loops
 
 Every loop in library code, with its bound. `view.rs`, `config.rs`, and `anomaly.rs` contain none (`EpiSet` and `ExtendedEpiSet` are bit masks; `contains` is one AND); the `small_id!` and `anomaly_flags!` expansions contain none at run time. Copies and comparisons of fixed-size arrays (`to_be_bytes`, derived `Clone`/`PartialEq`/`Hash`) run over a constant length and are not listed.
 
-| Location | Loop | Bound |
-|---|---|---|
-| `header.rs` `EncapsulationHeader::auto_len` | `find` over the candidate header lengths | constant: at most 3 candidates |
-| `header.rs` `EncapsulationHeader::write_to` (used by `encode` and the writers) | zip of the output with the 8-octet header array, `take(n)` | ≤ 8 (header length) |
-| `writer.rs` `encode` | zip of the output after the header with `data` | input length (`data`) |
-| `writer.rs` `idle` | over the output after the header | output length (`total_len`, checked against `out` first) |
+| ID | Location | Loop | Bound |
+|---|---|---|---|
+| `header.rs EncapsulationHeader::auto_len #1` | `header.rs` `EncapsulationHeader::auto_len` | `find` over the candidate header lengths | constant: at most 3 candidates |
+| `header.rs EncapsulationHeader::write_to #1` | `header.rs` `EncapsulationHeader::write_to` (used by `encode` and the writers) | zip of the output with the 8-octet header array, `take(n)` | ≤ 8 (header length) |
+| `writer.rs encode #1` | `writer.rs` `encode` | zip of the output after the header with `data` | input length (`data`) |
+| `writer.rs idle #1` | `writer.rs` `idle` | over the output after the header | output length (`total_len`, checked against `out` first) |
 
 ## Recursion
 
