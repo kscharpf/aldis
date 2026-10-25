@@ -35,6 +35,8 @@ use crate::repo;
 // For `cargo xtask metrics` (VER-063), which reads the published records as `verify check` does.
 pub use publish::{fetch_notes, published};
 pub use record::utc;
+// For `cargo xtask assurance` (VER-066), which resolves `check:` references against the checks.
+pub(crate) use checks::all as all_checks;
 
 /// Flags shared with the RUSTFLAGS of every check (the former `ci.yml` `env`).
 const CHECK_ENV: &[(&str, &str)] = &[

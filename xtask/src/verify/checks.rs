@@ -598,6 +598,8 @@ cargo xtask restricted
 # Every loop of the library code is in its crate's GEN-022/023 inspection record with a bound,
 # and every loop a record names exists (GEN-022).
 cargo xtask loops
+# Every reference of the hazard analysis and the assurance case resolves (VER-065, VER-066).
+cargo xtask assurance
 # Independent cross-check of the vectors (VER-040); fails on any disagreement. Its own tests
 # first: the harness must report a difference it is shown.
 cargo test --manifest-path crosscheck/Cargo.toml

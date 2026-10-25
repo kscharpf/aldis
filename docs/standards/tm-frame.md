@@ -39,7 +39,7 @@ Secondary Header: ID octet = version `00` (2 bits) ‖ length − 1 (6 bits), fo
 |---|---|---|---|
 | TM-001 | The decoder SHALL require the configured fixed frame length and the configured FECF presence (API-012). | §4.1.1.2, §4.1.6.1.2 | V |
 | TM-002 | The decoder SHALL reject TFVN ≠ `00` with `UnsupportedVersion`. | §4.1.2.2.2.2 | V |
-| TM-003 | If the Secondary Header Flag is set, the decoder SHALL read the FSH length from its ID octet. It SHALL reject FSH version ≠ `00`, and an FSH that would overrun the frame. | §4.1.3.2 | V |
+| TM-003 | If the Secondary Header Flag is set, the decoder SHALL read the FSH length from its ID octet. It SHALL reject FSH version ≠ `00`, and an FSH that would overrun the frame. It SHALL reject a Secondary Header Length field of 0 (a Secondary Header with no data octet; the field must be 1 to 63) with `InvalidField` (`fsh_len`). | §4.1.3.1.3 b, §4.1.3.2 | V |
 | TM-004 | If the OCF Flag is set, the decoder SHALL expose the 4 OCF octets ([common §2](common-link-features.md#2-operational-control-field)). | §4.1.5 | V |
 | TM-005 | If the FECF is configured, the decoder SHALL verify it before returning a view and SHALL fail with `CrcMismatch` on error. A separate `decode_unchecked` SHALL exist for diagnostics. | §4.1.6 | V |
 | TM-006 | The data field length SHALL be computed as frame length − 6 − FSH − security header − security trailer − OCF − FECF (CMN-040). | §4.1.4.2, §6.3.5.2 | V |
