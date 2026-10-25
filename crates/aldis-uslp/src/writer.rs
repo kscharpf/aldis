@@ -843,7 +843,7 @@ mod tests {
     #[test]
     fn resume_rejects_another_frame_than_begun() {
         // req: API-023, USLP-010, CABI-022 (OI-50)
-        let tbl = variable();
+        let tbl = plain_variable();
         let c = content(TfdzRule::NoSegmentation, Upid::OctetStream, &[], None);
         let f = fields(5, 1, FrameKind::SequenceControlled, 0);
         let mut out = [0xEE_u8; 64];
@@ -902,7 +902,7 @@ mod tests {
     #[test]
     fn resume_rejects_a_buffer_never_begun() {
         // req: API-023, CABI-022 (OI-50)
-        let tbl = variable();
+        let tbl = plain_variable();
         let c = content(TfdzRule::NoSegmentation, Upid::OctetStream, &[], None);
         let f = fields(5, 1, FrameKind::SequenceControlled, 0);
         for fill in [0x00_u8, 0xA5] {
