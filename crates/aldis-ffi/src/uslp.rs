@@ -29,7 +29,8 @@
 //!
 //! **Frames.** `UslpFrame` is a full or a truncated frame (M2 plan D12); it crosses as one
 //! [`aldis_uslp_frame_t`] whose `truncated` member says which, with the members of a full
-//! frame's Primary Header 0 for a truncated one. Every field lies at an offset and a length of
+//! frame's Primary Header 0 for a truncated one, except `kind`, which is
+//! `ALDIS_USLP_KIND_EXPEDITED` (USLP-002; OI-52). Every field lies at an offset and a length of
 //! its [`aldis_uslp_layout_t`] (CABI-012).
 //!
 //! **Writers.** No call keeps a pointer or state (API-023, API-060). `_writer_begin` writes the
@@ -195,6 +196,9 @@ pub const ALDIS_USLP_REASON_POINTER_BEYOND_ZONE: u32 = 16;
 /// Reason 17, strict mode only: a frame on VCID 63 whose OID header fields deviate (OI-44
 /// item 1).
 pub const ALDIS_USLP_REASON_OID_HEADER_MISMATCH: u32 = 17;
+/// Reason 18: a non-truncated frame on a VC that has a truncated frame length and so carries
+/// only truncated frames (Annex D1.2.1, USLP-002; OI-48).
+pub const ALDIS_USLP_REASON_NON_TRUNCATED_FRAME_NOT_ALLOWED: u32 = 18;
 
 /// Delimited item: no octets remain at the offset (732.1 §4.3.11.2; USLP-015).
 pub const ALDIS_USLP_DELIMITED_END: u8 = 0;
@@ -209,6 +213,9 @@ pub const ALDIS_USLP_DELIMITED_INCOMPLETE_FRAME: u8 = 2;
 pub const ALDIS_USLP_DELIMITED_NO_TRUNCATED_LENGTH: u8 = 3;
 /// Delimited item: the rest of the unit, discarded as Fill Data (732.1 §4.3.11.2.4 a–b).
 pub const ALDIS_USLP_DELIMITED_FILL: u8 = 4;
+/// Delimited item: the rest of the unit, discarded: a non-truncated header on a VC that has a
+/// truncated frame length and so carries only truncated frames (USLP-015; OI-48).
+pub const ALDIS_USLP_DELIMITED_NON_TRUNCATED_NOT_ALLOWED: u8 = 5;
 
 /// Managed parameters of a physical channel (732.1 §5 Table 5-1; USLP-003, USLP-008, API-040,
 /// CABI-033).
@@ -434,7 +441,8 @@ pub struct aldis_uslp_frame_t {
     pub truncated: bool,
     /// The fields of the first four octets (732.1 §4.1.2.2–5, Annex D1.3.1).
     pub channel: aldis_uslp_channel_t,
-    /// Frame kind, `ALDIS_USLP_KIND_*` (Table 4-1); 0 for a truncated frame.
+    /// Frame kind, `ALDIS_USLP_KIND_*` (Table 4-1); `ALDIS_USLP_KIND_EXPEDITED` for a truncated
+    /// frame, which is processed as expedited user data (Annex D1.3.1 note 3; USLP-002; OI-52).
     pub kind: u8,
     /// OCF Flag (§4.1.2.10); `false` for a truncated frame.
     pub ocf_flag: bool,
@@ -796,6 +804,7 @@ fn view(f: &UslpFrame<'_>, bytes: &[u8]) -> aldis_uslp_frame_t {
         v.has_fecf = full.fecf().is_some();
         v.fecf = full.fecf().unwrap_or(0);
     } else {
+        v.kind = kind_view(FrameKind::Expedited);
         tail(&mut layout, trailer_end, false, false);
     }
     v.layout = layout;
@@ -1413,6 +1422,9 @@ pub unsafe extern "C" fn aldis_uslp_next_frame(
                 Some(Delimited::NoTruncatedLength(o)) => {
                     item(ALDIS_USLP_DELIMITED_NO_TRUNCATED_LENGTH, o.len(), 0)
                 }
+                Some(Delimited::NonTruncatedNotAllowed(o)) => {
+                    item(ALDIS_USLP_DELIMITED_NON_TRUNCATED_NOT_ALLOWED, o.len(), 0)
+                }
                 Some(Delimited::Fill(o)) => item(ALDIS_USLP_DELIMITED_FILL, o.len(), 0),
             });
             Ok(())
@@ -1555,6 +1567,7 @@ mod tests {
             ALDIS_USLP_REASON_CONSTRUCTION_RULE_MISMATCH,
             ALDIS_USLP_REASON_POINTER_BEYOND_ZONE,
             ALDIS_USLP_REASON_OID_HEADER_MISMATCH,
+            ALDIS_USLP_REASON_NON_TRUNCATED_FRAME_NOT_ALLOWED,
         ];
         assert!(
             reasons

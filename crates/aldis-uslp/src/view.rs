@@ -144,6 +144,12 @@ fn check_channel<L: VcLookup + ?Sized>(
             .ok_or(fail(Reason::InvalidMapId, unknown(field::MAP_ID)))?;
         Some(m)
     };
+    if vc.truncated_frame_len().is_some() {
+        return Err(fail(
+            Reason::NonTruncatedFrameNotAllowed,
+            invalid(field::END_OF_FRAME_PRIMARY_HEADER_FLAG),
+        ));
+    }
     if rest.vcf_count_len != vc.vcf_count_len(kind.bypass_flag()) {
         return Err(fail(
             Reason::VcfCountLengthMismatch,
@@ -313,7 +319,7 @@ impl<'a> UslpFrame<'a> {
     ///   (`uslp_header_spare`) in strict mode, [`UslpAnomaly::ReserveSparesSet`] in lenient.
     /// - `UnknownChannel` (`spacecraft_id`, `vc_id`, `map_id`); `InvalidField`
     ///   (`end_of_frame_primary_header_flag`) for a truncated frame on a VC without a truncated
-    ///   frame length (USLP-002).
+    ///   frame length, and for a non-truncated frame on a VC with one (USLP-002; OI-48).
     /// - `LengthMismatch` (`vcf_count_len`) in both modes (USLP-004); `InvalidField`
     ///   (`ocf_flag`); `LengthMismatch` or `OutOfRange` (`frame_len`) against the channel;
     ///   `InvalidField` (`frame_data_field`) for no TFDZ octet (CMN-041).
@@ -338,7 +344,10 @@ impl<'a> UslpFrame<'a> {
     /// # Errors
     /// `Incomplete` (`needed` = 4) if `prefix` is shorter; `UnsupportedVersion`
     /// (`frame_version`); for a truncated header `UnknownChannel` (`spacecraft_id`, `vc_id`) or
-    /// `InvalidField` (`end_of_frame_primary_header_flag`); otherwise, on a variable-length
+    /// `InvalidField` (`end_of_frame_primary_header_flag`); for a non-truncated header on a
+    /// configured VC that has a truncated frame length, `InvalidField`
+    /// (`end_of_frame_primary_header_flag`: that VC carries only truncated frames, OI-48);
+    /// otherwise, on a variable-length
     /// channel, `Incomplete` (`needed` = 6) for less than the Frame Length field.
     pub fn peek_length<L: VcLookup + ?Sized>(prefix: &[u8], channels: &L) -> Result<usize> {
         let start = RawStart::parse(prefix).ok_or(Error::incomplete(TRUNCATED_HEADER_LEN))?;
@@ -355,6 +364,12 @@ impl<'a> UslpFrame<'a> {
                 .truncated_frame_len()
                 .map(crate::config::TruncatedFrameLen::get)
                 .ok_or(invalid(field::END_OF_FRAME_PRIMARY_HEADER_FLAG));
+        }
+        if channels
+            .vc(ch.spacecraft_id, ch.vc_id)
+            .is_some_and(|vc| vc.truncated_frame_len().is_some())
+        {
+            return Err(invalid(field::END_OF_FRAME_PRIMARY_HEADER_FLAG));
         }
         let physical = channels.physical_channel();
         if physical.is_fixed() {
@@ -583,7 +598,7 @@ mod tests {
     extern crate std;
     use super::{UslpFrame, oid_deviation, tfdf_rejection};
     use crate::anomaly::UslpAnomaly;
-    use crate::config::tests::{fixed, mapid, variable};
+    use crate::config::tests::{fixed, mapid, plain_variable, variable};
     use crate::field;
     use crate::header::{FrameKind, SourceOrDestination};
     use crate::tfdf::tests::offset;
@@ -674,7 +689,7 @@ mod tests {
     #[test]
     fn decodes_variable_frames_with_sdls_and_ocf() {
         // req: USLP-003, USLP-004, USLP-016, API-011, API-070, API-072
-        let t = variable();
+        let t = plain_variable();
         // VC 5 MAP 1 (SDLS 6/16), sequence-controlled, rule 111, UPID 5, 2 TFDZ octets.
         let mut b = vec![0xC0, 0x15, 0x50, 0xA2, 0x00, 0x00, 0x00];
         b.extend_from_slice(&[0x51; 6]);
@@ -787,7 +802,7 @@ mod tests {
     #[test]
     fn length_errors_on_a_variable_channel() {
         // req: USLP-003, USLP-014, CMN-041
-        let t = variable();
+        let t = plain_variable();
         // VC 4 MAP 0, sequence-controlled: Frame Length 600 > 512.
         let long = [0xC0, 0x15, 0x50, 0x80, 0x02, 0x57, 0x00, 0xE0, 0x00];
         assert_eq!(
@@ -889,5 +904,43 @@ mod tests {
             r(Error::new(ErrorKind::InvalidField).with_field(field::FRAME_DATA_FIELD)),
             Reason::FrameTooShort
         );
+    }
+
+    #[test]
+    fn a_vc_with_a_truncated_length_refuses_non_truncated_frames() {
+        // req: USLP-002, USLP-014, OI-48
+        use crate::validate::validate_frame;
+        // VC 4 MAP 0, sequence-controlled, rule 111, UPID 5, one TFDZ octet, FECF.
+        let frame = with_fecf(&[0xC0, 0x15, 0x50, 0x80, 0x00, 0x0A, 0x00, 0xE5, 0xAA]);
+        let plain = plain_variable();
+        let t = variable();
+        // Without a truncated frame length the frame is good.
+        assert!(UslpFrame::decode(&frame, &plain, DecodeMode::Strict).is_ok());
+        assert_eq!(UslpFrame::peek_length(&frame, &plain), Ok(11));
+        let flag = (
+            ErrorKind::InvalidField,
+            Some(field::END_OF_FRAME_PRIMARY_HEADER_FLAG),
+        );
+        // With one, it is refused in both modes, by the decoder, the validation, and the length
+        // peek, with a reason of its own; the check comes before the FECF and the lengths.
+        for mode in [DecodeMode::Strict, DecodeMode::Lenient] {
+            assert_eq!(err_of(UslpFrame::decode(&frame, &t, mode)), flag);
+            let r = validate_frame(&frame, &t, mode).unwrap_err();
+            assert_eq!(r.reason(), Reason::NonTruncatedFrameNotAllowed);
+            assert_eq!((r.error().kind(), r.error().field()), flag);
+            let mut bad = frame.clone();
+            bad[10] ^= 1;
+            bad[5] = 0x40;
+            assert_eq!(err_of(UslpFrame::decode(&bad, &t, mode)), flag);
+        }
+        let peek = UslpFrame::peek_length(&frame, &t).unwrap_err();
+        assert_eq!((peek.kind(), peek.field()), flag);
+        // The flag is checked after the channel: an unknown MAP is reason 6, an unknown VC 5.
+        let map3 = with_fecf(&[0xC0, 0x15, 0x50, 0x86, 0x00, 0x0A, 0x00, 0xE5, 0xAA]);
+        let r = validate_frame(&map3, &t, DecodeMode::Strict).unwrap_err();
+        assert_eq!(r.reason(), Reason::InvalidMapId);
+        // The length peek of an unknown VC is not refused.
+        let vc9 = [0xC0, 0x15, 0x51, 0x20, 0x00, 0x09];
+        assert_eq!(UslpFrame::peek_length(&vc9, &t), Ok(10));
     }
 }

@@ -20,9 +20,10 @@ use aldis_core::{Error, ErrorKind, Result};
 use crate::field;
 use crate::header::{FshLen, PRIMARY_HEADER_LEN, len_u64, mismatch};
 
-/// The longest frame a physical channel may be configured with: 4 095 octets, the longest for
-/// which the CRC-16 detects every double-bit error (TM-001, OI-51, VER-064,
-/// `docs/verification/derivations/crc16-bit-flips.md`). 132.0 states no maximum.
+/// The longest frame a physical channel may be configured with: 4 095 octets.
+///
+/// It is the longest for which the CRC-16 detects every double-bit error (TM-001, OI-51,
+/// VER-064, `docs/verification/derivations/crc16-bit-flips.md`). 132.0 states no maximum.
 pub const MAX_FRAME_LEN: usize = 4095;
 
 /// Managed parameters of a physical channel (132.0 §5.1 Table 5-1; TM-001, API-041, RS-012).

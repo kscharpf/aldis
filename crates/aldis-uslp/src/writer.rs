@@ -154,6 +154,9 @@ impl Plan {
                 .ok_or(unknown(field::MAP_ID))?;
             Some(m)
         };
+        if vc.truncated_frame_len().is_some() {
+            return Err(invalid(field::END_OF_FRAME_PRIMARY_HEADER_FLAG));
+        }
         if content.tfdf.rule.rule().is_fixed_length() != vc.fixed_tfdz() {
             return Err(invalid(field::TFDZ_CONSTRUCTION_RULE));
         }
@@ -251,7 +254,9 @@ impl Plan {
 /// # Errors
 /// Those of `docs/standards/uslp-frame.md` §3.3, in its order: `UnknownChannel`
 /// (`spacecraft_id`, `vc_id`, `map_id`); `InvalidField` (`vc_id`) for VCID 63, whose frames
-/// [`encode_oid`] writes; `InvalidField` (`tfdz_construction_rule`) for a rule of the other TFDZ
+/// [`encode_oid`] writes; `InvalidField` (`end_of_frame_primary_header_flag`) for a VC with a
+/// truncated frame length, which carries only truncated frames ([`encode_truncated`]; OI-48);
+/// `InvalidField` (`tfdz_construction_rule`) for a rule of the other TFDZ
 /// type (USLP-016); `OutOfRange` (`vcf_count`); `InvalidField` (`ocf_flag`); `LengthMismatch`
 /// (`insert_zone_len`); `InvalidField` (`frame_data_field`) for an empty TFDZ;
 /// `LengthMismatch` (`frame_data_field`) for a TFDZ that does not fill a fixed-length frame;
@@ -607,7 +612,7 @@ mod tests {
         FrameContent, FrameFields, UslpFrameWriter, encode, encode_oid, encode_oid_galois,
         encode_truncated,
     };
-    use crate::config::tests::{fixed, mapid, scid, variable, vcid};
+    use crate::config::tests::{fixed, mapid, plain_variable, scid, variable, vcid};
     use crate::field;
     use crate::header::{ChannelFields, FrameKind, SourceOrDestination};
     use crate::tfdf::tests::offset;
@@ -715,7 +720,7 @@ mod tests {
     #[test]
     fn variable_frames_with_sdls_shrink() {
         // req: USLP-010, API-022, API-023, API-072
-        let tbl = variable();
+        let tbl = plain_variable();
         let c = content(TfdzRule::NoSegmentation, Upid::OctetStream, &[], None);
         let f = fields(5, 1, FrameKind::SequenceControlled, 0);
         let mut buf = [0_u8; 64];
@@ -767,7 +772,7 @@ mod tests {
     #[test]
     fn resume_keeps_what_the_caller_filled() {
         // req: API-022, API-023, API-072, USLP-010
-        let tbl = variable();
+        let tbl = plain_variable();
         let c = content(TfdzRule::NoSegmentation, Upid::OctetStream, &[], None);
         let f = fields(5, 1, FrameKind::SequenceControlled, 0);
         let mut one = [0_u8; 64];
@@ -927,7 +932,7 @@ mod tests {
         let pkt = TfdzRule::PacketsSpanningFrames(FirstHeaderPointer::NoPacketStartOrEnd);
         let ok = content(pkt, Upid::Packets, &[0, 0], ocf);
         let f = fields(1, 0, FrameKind::SequenceControlled, 0);
-        let v = variable();
+        let v = plain_variable();
         let big = [0_u8; 600];
         let mut out = [0_u8; 700];
         let c = content(TfdzRule::NoSegmentation, Upid::Packets, &[], None);
@@ -1144,5 +1149,36 @@ mod tests {
             &mut out,
         ));
         assert_eq!(x, (ErrorKind::InvalidField, Some(field::VC_ID)));
+    }
+
+    #[test]
+    fn a_vc_with_a_truncated_length_refuses_non_truncated_frames() {
+        // req: USLP-002, API-022, OI-48
+        let c = content(TfdzRule::NoSegmentation, Upid::OctetStream, &[], None);
+        let flag = (
+            ErrorKind::InvalidField,
+            Some(field::END_OF_FRAME_PRIMARY_HEADER_FLAG),
+        );
+        let f = fields(4, 0, FrameKind::SequenceControlled, 0);
+        let plain = plain_variable();
+        let t = variable();
+        let mut out = [0xEE_u8; 64];
+        // The same arguments are good on a VC without a truncated frame length.
+        assert!(encode(&plain, f, c, &[1, 2, 3], &mut out).is_ok());
+        out.fill(0xEE);
+        assert_eq!(kf(encode(&t, f, c, &[1, 2, 3], &mut out)), flag);
+        let begin = UslpFrameWriter::begin(&mut out, &t, f, c, 3);
+        assert_eq!(kf(begin.map(|_| 0)), flag);
+        let resume = UslpFrameWriter::resume(&mut out, &t, f, c, 3);
+        assert_eq!(kf(resume.map(|_| 0)), flag);
+        assert_eq!(out, [0xEE; 64]);
+        // The channel is checked first: VC 5 with an unknown MAP is `UnknownChannel`.
+        let f = fields(5, 3, FrameKind::SequenceControlled, 0);
+        assert_eq!(
+            kf(encode(&t, f, c, &[1], &mut out)),
+            (ErrorKind::UnknownChannel, Some(field::MAP_ID))
+        );
+        // The truncated writer and the VC without the length are the other direction.
+        assert_eq!(out, [0xEE; 64]);
     }
 }

@@ -69,20 +69,74 @@ pub const ALDIS_ABI_VERSION_PATCH: u32 = 0;
 ))]
 compile_error!("features `panic-handler` and `panic-unreachable` each define the panic handler");
 
-/// Satisfies the linker of a `no_std` static library. No panic path is reachable (GEN-020,
-/// VER-010), so it never runs.
+/// The panic handler of a `no_std` static library (OI-49; c-abi.md §5). No panic path is
+/// reachable (GEN-020, VER-010), so it never runs. If one runs anyway, it traps at once
+/// ([`trap`]) instead of spinning, so that the target's fault handler, a debugger, or a
+/// watchdog sees the failure where it happened.
 #[cfg(all(
     not(feature = "std"),
     feature = "panic-handler",
     not(feature = "panic-unreachable")
 ))]
 #[panic_handler]
-#[expect(
-    clippy::missing_const_for_fn,
-    reason = "a #[panic_handler] cannot be a const fn"
-)]
 fn panic(_info: &core::panic::PanicInfo<'_>) -> ! {
+    trap();
+    // Reached only if the fault handler returns, or on a target with no trap instruction here.
     loop {}
+}
+
+/// Executes the permanently undefined instruction of the target (OI-49): `udf` on Arm
+/// (Cortex-M and Cortex-R included), `brk` on `AArch64`, `ebreak` on `RISC-V`, and `ud2` on x86.
+/// `core::intrinsics::abort` is unstable, and compiles to the same on these targets.
+#[cfg(all(
+    not(feature = "std"),
+    feature = "panic-handler",
+    not(feature = "panic-unreachable"),
+    any(
+        target_arch = "arm",
+        target_arch = "aarch64",
+        target_arch = "riscv32",
+        target_arch = "riscv64",
+        target_arch = "x86",
+        target_arch = "x86_64"
+    )
+))]
+#[expect(
+    unsafe_code,
+    reason = "inline assembly of the trapping instruction (GEN-070; OI-49)"
+)]
+fn trap() {
+    // SAFETY: each instruction reads and writes no memory and uses no stack; it only raises an
+    // exception, which the target's fault handler, if any, takes.
+    unsafe {
+        #[cfg(target_arch = "arm")]
+        core::arch::asm!("udf #0", options(nomem, nostack));
+        #[cfg(target_arch = "aarch64")]
+        core::arch::asm!("brk #0", options(nomem, nostack));
+        #[cfg(any(target_arch = "riscv32", target_arch = "riscv64"))]
+        core::arch::asm!("ebreak", options(nomem, nostack));
+        #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+        core::arch::asm!("ud2", options(nomem, nostack));
+    }
+}
+
+/// A target without a stable `core::arch::asm!` (for example SPARC V8, the LEON3 build) has no
+/// trap here: the handler spins, and only a watchdog ends it (OI-49).
+#[cfg(all(
+    not(feature = "std"),
+    feature = "panic-handler",
+    not(feature = "panic-unreachable"),
+    not(any(
+        target_arch = "arm",
+        target_arch = "aarch64",
+        target_arch = "riscv32",
+        target_arch = "riscv64",
+        target_arch = "x86",
+        target_arch = "x86_64"
+    ))
+))]
+fn trap() {
+    core::hint::spin_loop();
 }
 
 /// The panic handler of the exerciser's link check (VER-010, M2 plan D16): it calls

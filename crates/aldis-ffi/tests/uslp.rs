@@ -13,7 +13,8 @@ use aldis::core::DecodeMode;
 use aldis_ffi::capacities::{ALDIS_USLP_MAX_MAPS, ALDIS_USLP_MAX_VCS};
 use aldis_ffi::error::*;
 use aldis_ffi::field::{
-    ALDIS_FIELD_MAP_ID, ALDIS_FIELD_UPID, ALDIS_FIELD_USER_LEN, ALDIS_FIELD_VC_ID,
+    ALDIS_FIELD_END_OF_FRAME_PRIMARY_HEADER_FLAG, ALDIS_FIELD_MAP_ID, ALDIS_FIELD_UPID,
+    ALDIS_FIELD_USER_LEN, ALDIS_FIELD_VC_ID,
 };
 use aldis_ffi::oid::*;
 use aldis_ffi::uslp::*;
@@ -59,9 +60,20 @@ fn map(vcid: u8, map_id: u8, header: u8, trailer: u32) -> aldis_uslp_map_config_
 }
 
 /// Variable-length frames of up to 512 octets with an FECF on SCID 0x155: VC 4 with an
-/// expedited VCF Count of 1 octet, an OCF allowed, and truncated frames of 12 octets; VC 5 with
-/// SDLS per MAP and truncated frames of 28; MAPs 4/0, 4/2, and 5/1 with SDLS 6/16.
+/// expedited VCF Count of 1 octet and an OCF allowed; VC 5 with SDLS per MAP; MAPs 4/0, 4/2,
+/// and 5/1 with SDLS 6/16. No VC has a truncated frame length, so each carries non-truncated
+/// frames only.
 fn variable() -> Channels {
+    variable_with(0, 0)
+}
+
+/// The channels of [`variable`] with truncated frames of 12 octets on VC 4 and of 28 on VC 5,
+/// which then carry only truncated frames (Annex D1.2.1; OI-48).
+fn variable_truncated() -> Channels {
+    variable_with(12, 28)
+}
+
+fn variable_with(truncated4: u8, truncated5: u8) -> Channels {
     let pc = aldis_uslp_config_t {
         struct_size: size::<aldis_uslp_config_t>(),
         frame_type: ALDIS_USLP_FRAME_VARIABLE,
@@ -72,11 +84,11 @@ fn variable() -> Channels {
     let vc4 = aldis_uslp_vc_config_t {
         vcf_count_len_expedited: 1,
         ocf: ALDIS_USLP_OCF_ALLOWED,
-        truncated_frame_len: 12,
+        truncated_frame_len: truncated4,
         ..vc(4, ALDIS_USLP_FRAME_VARIABLE)
     };
     let vc5 = aldis_uslp_vc_config_t {
-        truncated_frame_len: 28,
+        truncated_frame_len: truncated5,
         security: ALDIS_USLP_SECURITY_PER_MAP,
         ..vc(5, ALDIS_USLP_FRAME_VARIABLE)
     };
@@ -498,9 +510,8 @@ fn the_writer_leaves_the_sdls_fields_to_the_caller() {
 fn rust_variable() -> aldis::uslp::VcTable<4, 4> {
     use aldis::core::security::SecurityLayout;
     use aldis::uslp::{
-        MapConfig, OcfUse, PhysicalChannelConfig, SecurityScope, TransferFrameType,
-        TruncatedFrameLen, UslpMapId, UslpSpacecraftId, UslpVcId, VcConfig, VcParams, VcTable,
-        VcfCountLen,
+        MapConfig, OcfUse, PhysicalChannelConfig, SecurityScope, TransferFrameType, UslpMapId,
+        UslpSpacecraftId, UslpVcId, VcConfig, VcParams, VcTable, VcfCountLen,
     };
     let scid = UslpSpacecraftId::new(0x155).unwrap();
     let vcid = |len| UslpVcId::new(len).unwrap();
@@ -508,11 +519,9 @@ fn rust_variable() -> aldis::uslp::VcTable<4, 4> {
     let vc4 = VcParams {
         vcf_count_len_expedited: VcfCountLen::new(1).unwrap(),
         ocf: OcfUse::Allowed,
-        truncated_frame_len: Some(TruncatedFrameLen::new(12).unwrap()),
         ..VcParams::new(TransferFrameType::Variable)
     };
     let vc5 = VcParams {
-        truncated_frame_len: Some(TruncatedFrameLen::new(28).unwrap()),
         security: SecurityScope::PerMap,
         ..VcParams::new(TransferFrameType::Variable)
     };
@@ -538,7 +547,7 @@ fn rust_variable() -> aldis::uslp::VcTable<4, 4> {
 #[test]
 #[expect(clippy::too_many_lines, reason = "one check per field of both views")]
 fn full_and_truncated_frames_cross_as_one_tagged_view() {
-    // req: USLP-002, USLP-008, CABI-012, M2 plan D12
+    // req: USLP-002, USLP-008, CABI-012, M2 plan D12, OI-52
     let ch = fixed();
     let (iz, ocf, tfdz) = ([0xAA_u8, 0xBB], [1_u8, 2, 3, 4], [0xD0_u8; 44]);
     let ct = aldis_uslp_content_t {
@@ -590,8 +599,9 @@ fn full_and_truncated_frames_cross_as_one_tagged_view() {
     );
     assert_eq!(frame[lay.ocf_offset..][..4], ocf);
     assert_eq!(view.fecf.to_be_bytes(), frame[62..64]);
-    // A truncated frame of VC 4 MAP 2: the full frame's members are 0.
-    let ch = variable();
+    // A truncated frame of VC 4 MAP 2: the full frame's members are 0, except the kind, which is
+    // expedited (Annex D1.3.1 note 3; OI-52).
+    let ch = variable_truncated();
     let seven = [0x31_u8, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37];
     let channel = aldis_uslp_channel_t {
         scid: 0x155,
@@ -635,7 +645,10 @@ fn full_and_truncated_frames_cross_as_one_tagged_view() {
     };
     assert_eq!(ch.decode(&tr, &mut view), ALDIS_OK);
     assert!(view.truncated && !view.upid_assigned && !view.ocf_flag && !view.has_fecf);
-    assert_eq!((view.kind, view.vcf_count_len, view.vcf_count), (0, 0, 0));
+    assert_eq!(
+        (view.kind, view.vcf_count_len, view.vcf_count),
+        (ALDIS_USLP_KIND_EXPEDITED, 0, 0)
+    );
     assert_eq!(view.channel, channel);
     let lay = view.layout;
     assert_eq!(
@@ -885,6 +898,131 @@ fn the_delimiter_is_a_stateless_call() {
             declared_len: len,
             ..item(ALDIS_USLP_DELIMITED_INCOMPLETE_FRAME, 0, len - 1)
         }
+    );
+}
+
+/// A VC with a truncated frame length carries only truncated frames: every C entry point that
+/// meets a non-truncated frame on it reports the flag, and the delimiter discards the rest
+/// (Annex D1.2.1; USLP-002, USLP-014, USLP-015; OI-48).
+#[test]
+#[expect(
+    clippy::too_many_lines,
+    reason = "one check per entry point of the C ABI"
+)]
+fn a_vc_with_a_truncated_length_refuses_non_truncated_frames() {
+    // req: USLP-002, USLP-014, USLP-015, CABI-020, CABI-021
+    let plain = variable();
+    let ch = variable_truncated();
+    let payload = [1_u8, 2, 3];
+    let ct = aldis_uslp_content_t {
+        tfdf: octet_stream(),
+        tfdz: payload.as_ptr(),
+        tfdz_len: 3,
+        ..aldis_uslp_content_t::default()
+    };
+    let fl = fields(4, 0, ALDIS_USLP_KIND_EXPEDITED, 7);
+    let mut frame = [0_u8; 64];
+    let mut det = detail();
+    let (rc, len) = plain.encode(&fl, &ct, &mut frame, &mut det);
+    assert_eq!(rc, ALDIS_OK);
+    let flag = (
+        ALDIS_ERR_INVALID_FIELD,
+        ALDIS_FIELD_END_OF_FRAME_PRIMARY_HEADER_FLAG,
+    );
+    let got = |rc: i32, det: &aldis_error_detail_t| (rc, det.field);
+    // The encoder, the two-phase writer's `begin` and `finish`.
+    let mut out = [0_u8; 64];
+    let mut det = detail();
+    let (rc, _) = ch.encode(&fl, &ct, &mut out, &mut det);
+    assert_eq!((got(rc, &det), out), (flag, [0; 64]));
+    let mut det = detail();
+    let open = aldis_uslp_content_t {
+        tfdf: octet_stream(),
+        ..aldis_uslp_content_t::default()
+    };
+    let mut lay = aldis_uslp_layout_t::default();
+    let rc = ch.begin(&fl, &open, 3, &mut out, &mut lay, &mut det);
+    assert_eq!((got(rc, &det), out), (flag, [0; 64]));
+    let mut det = detail();
+    let (rc, _) = ch.finish(&fl, &open, 3, 3, &mut out, &mut det);
+    assert_eq!((got(rc, &det), out), (flag, [0; 64]));
+    // The decoder.
+    let mut view = aldis_uslp_frame_t::default();
+    let mut det = detail();
+    // SAFETY: every pointer is to a live local, struct, or vector, with its length.
+    let rc = unsafe {
+        aldis_uslp_decode(
+            frame.as_ptr(),
+            len,
+            &raw const ch.pc,
+            ch.vcs.as_ptr(),
+            2,
+            ch.maps.as_ptr(),
+            3,
+            ALDIS_MODE_STRICT,
+            &raw mut view,
+            &raw mut det,
+        )
+    };
+    assert_eq!(got(rc, &det), flag);
+    // The validation: reason 18, and the same error.
+    let mut reason = 0_u32;
+    let mut det = detail();
+    // SAFETY: as above.
+    let rc = unsafe {
+        aldis_uslp_validate(
+            frame.as_ptr(),
+            len,
+            &raw const ch.pc,
+            ch.vcs.as_ptr(),
+            2,
+            ch.maps.as_ptr(),
+            3,
+            ALDIS_MODE_STRICT,
+            &raw mut view,
+            &raw mut reason,
+            &raw mut det,
+        )
+    };
+    assert_eq!(
+        (got(rc, &det), reason),
+        (flag, ALDIS_USLP_REASON_NON_TRUNCATED_FRAME_NOT_ALLOWED)
+    );
+    // The length of the frame that starts the prefix.
+    let mut n = 0;
+    let mut det = detail();
+    // SAFETY: as above.
+    let rc = unsafe {
+        aldis_uslp_peek_length(
+            frame.as_ptr(),
+            len,
+            &raw const ch.pc,
+            ch.vcs.as_ptr(),
+            2,
+            &raw mut n,
+            &raw mut det,
+        )
+    };
+    assert_eq!(got(rc, &det), flag);
+    // The delimiter discards the rest of the unit.
+    let mut item = aldis_uslp_delimited_t::default();
+    // SAFETY: as above.
+    let rc = unsafe {
+        aldis_uslp_next_frame(
+            frame.as_ptr(),
+            len,
+            0,
+            &raw const ch.pc,
+            ch.vcs.as_ptr(),
+            2,
+            &raw mut item,
+            null_mut(),
+        )
+    };
+    assert_eq!(rc, ALDIS_OK);
+    assert_eq!(
+        (item.kind, item.offset, item.len, item.declared_len),
+        (ALDIS_USLP_DELIMITED_NON_TRUNCATED_NOT_ALLOWED, 0, len, 0)
     );
 }
 

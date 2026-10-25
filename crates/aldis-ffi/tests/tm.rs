@@ -535,6 +535,7 @@ fn config_check_refuses_a_frame_length_above_4095() {
     for (len, ok) in [(4095, true), (4096, false)] {
         pc.frame_len = len;
         let mut d = detail();
+        // SAFETY: both pointers are to live locals.
         let status = unsafe { aldis_tm_config_check(&raw const pc, &raw mut d) };
         if ok {
             assert_eq!(status, ALDIS_OK);
