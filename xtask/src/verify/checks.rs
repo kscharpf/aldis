@@ -136,11 +136,12 @@ pub const KANI: PathList = PathList {
 };
 
 /// Read by the check `stack` (VER-011, GEN-022): the library crates and `aldis-ffi`, whose
-/// static library it builds for each bare-metal target. Its budgets and exemptions
+/// static library it builds for each bare-metal target; the exerciser, which it also builds, and
+/// the vectors that the exerciser's build script embeds. Its budgets and exemptions
 /// (`xtask/stack-budgets.toml`), its module, and the tooling nightly that builds it are in `RUN`.
 pub const STACK: PathList = PathList {
     name: "stack",
-    patterns: &["crates/**"],
+    patterns: &["crates/**", "exerciser/**", "test-vectors/**"],
 };
 
 /// Documentation: read by `spec` only (spec lint, links, vectors, field catalogue, traces,
@@ -363,12 +364,12 @@ fn rust() -> Vec<Check> {
         out.push(check(format!("exerciser-{t}"), c, false, 10, exerciser(t)));
     }
     // The worst-case stack of every entry point within its budget, the call graph complete
-    // (VER-011, GEN-022; M2 plan WP-7). Three builds of the C ABI library on the tooling
-    // nightly with `core` from source, about 25 s each on a warm host; the duration is an
-    // estimate until the GitHub-hosted runs measure it.
+    // (VER-011, GEN-022; M2 plan WP-7). Per target, the C ABI library and the exerciser on the
+    // tooling nightly with `core` from source: about 35 s per target from a warm cache on a
+    // macOS host; the duration is an estimate until the GitHub-hosted runs measure it.
     out.push(reading(
         STACK_INPUTS,
-        check("stack", c, false, 90, "cargo xtask stack\n"),
+        check("stack", c, false, 150, "cargo xtask stack\n"),
     ));
     out.push(Check {
         gating: false,
@@ -990,9 +991,16 @@ mod tests {
             assert!(stack.inputs.contains(path), "{path}");
         }
         for path in [
-            "test-vectors/spp/encode.json",
-            "cpp/src/x.cpp",
             "exerciser/src/main.rs",
+            "exerciser/build.rs",
+            "test-vectors/spp/encode.json",
+        ] {
+            assert!(stack.inputs.contains(path), "{path}");
+        }
+        for path in [
+            "cpp/src/x.cpp",
+            "docs/06-verification.md",
+            "include/aldis/aldis.h",
         ] {
             assert!(!stack.inputs.contains(path), "{path}");
         }

@@ -1,42 +1,56 @@
 //! `xtask stack [<target>...]`: the worst-case stack use of every entry point of the library, per
 //! bare-metal target, against a budget per target (VER-011, extended by M2 plan WP-7; GEN-022).
 //!
-//! **Build.** The static library of the C ABI is built as it ships (`cargo build -p aldis-ffi
-//! --no-default-features --features panic-handler --release --target <t>`), on the tooling
-//! nightly (RS-002) with `-Z build-std=core`, so that `core` and `compiler_builtins` are compiled
-//! with the same flags as the library, and with `-Z emit-stack-sizes --emit=llvm-ir,link`. The
-//! archive holds one object per crate (the release profile's LTO does not apply to a crate that
-//! is also an `rlib`), with a `.stack_sizes` section that gives each function's frame, and one
-//! LLVM IR file per crate, written by the same compilation.
+//! **Builds.** Two builds per target, both on the tooling nightly (RS-002) with
+//! `-Z build-std=core`, so that `core` and `compiler_builtins` are compiled with the same flags as
+//! the library, and with `-Z emit-stack-sizes --emit=llvm-ir,link`:
+//! - `ffi`: the static library of the C ABI as it ships (`cargo build -p aldis-ffi
+//!   --no-default-features --features panic-handler --release`). The archive holds one object per
+//!   crate (the release profile's LTO does not apply to a crate that is also an `rlib`).
+//! - `exerciser`: the exerciser (`exerciser/`), which calls every public function with real
+//!   capacities, without LTO (`CARGO_PROFILE_RELEASE_LTO=off`), its own crate in 256 codegen units
+//!   without MIR inlining (`-C codegen-units=256 -Z inline-mir=no`), so that the generic public
+//!   functions it instantiates stay functions of their own, and with `-C save-temps`, which keeps
+//!   their objects. The library crates' objects are those of their `rlib`s.
 //!
-//! **Graph.** The nodes are the functions of the archive's objects; a function's callees are the
+//! Each object has a `.stack_sizes` section, which gives each function's frame, and each
+//! compilation writes its LLVM IR; only the files that the build's own compilations wrote are read.
+//!
+//! **Graph.** The nodes are the functions of a build's objects; a function's callees are the
 //! functions its relocations name: calls, tail calls, and addresses taken, which can only
 //! over-approximate. The IR of each function says whether it makes an indirect call (a `dyn` call
-//! or a call through a function pointer), runs inline assembly, or allocates a dynamic amount of
-//! stack. GEN-022 forbids recursion, so the graph is a DAG, and a function's worst case is its
-//! frame plus the largest worst case of its callees.
+//! or a call through a function pointer), runs inline assembly, allocates a dynamic amount of
+//! stack, or never returns. GEN-022 forbids recursion, so the graph is a DAG, and a function's
+//! worst case is its frame plus the largest worst case of its callees. The walk stops at a
+//! diverging function of `core` (the panic machinery), counting its frame: GEN-020 forbids panics
+//! and VER-010 proves that no panic path survives the release link, so its callees never run.
 //!
-//! **Entry points.** Every `aldis_*` function of the C ABI, and every global function that the
-//! object of a library crate defines (each non-generic public function, and the functions that
-//! public generic or inline code calls): a superset of the public non-generic API. A generic
-//! function has no code until it is instantiated; it is measured where the C ABI instantiates it,
-//! with the capacities of `crates/aldis-ffi/capacities.toml`.
+//! **Entry points.** Every `aldis_*` function of the C ABI (in `ffi`), and every function whose
+//! demangled path names a public function of a library crate ([`api`]: by the item's Rust
+//! visibility, not by the symbol's binding), wherever it is emitted: a monomorphisation of a
+//! generic function lies, with local binding, in the object of the crate that instantiates it.
+//! `pub(crate)` helpers are not entry points. A function that the source index cannot see (one
+//! that a `macro_rules!` body defines) counts when it is a global symbol of its own crate's
+//! object. An entry point measured in both builds takes the larger worst case. The report lists
+//! the public functions that neither build has as a function of its own: they are inlined into
+//! every caller (their stack is in the callers' frames), or nothing instantiates them.
 //!
 //! **Completeness.** A reachable function without a frame (hand-written assembly), without IR,
 //! with an indirect call, inline assembly, or a dynamic allocation, a call to a symbol that no
 //! object defines, and a cycle are each a failure, unless [`BUDGETS`] lists an exemption with a
 //! stated bound: `frame` for a function in assembly (its own frame, read from the disassembly;
-//! its direct callees stay in the graph), or `indirect` for a function from which indirect calls
-//! are reached (the bytes they may take, added to its worst case). An exemption that matches
-//! nothing is a failure too, so the list stays exact.
+//! its direct callees stay in the graph), or `indirect` for a function that makes indirect calls
+//! itself (the bytes they may take, added to its worst case). An `indirect` exemption accepts only
+//! the named function's own indirect calls: not inline assembly, and nothing in its callees. An
+//! exemption that applies to nothing in either build is a failure too, so the list stays exact.
 //!
 //! **Gate.** Each entry point's worst case must not exceed its target's budget for its kind
 //! (`rust` or `c-abi`). The report `target/spec/stack-<target>.md` lists every entry point with
-//! its worst case and deepest path, and the frame of every reachable function; it is the table
-//! that VER-011 publishes per release (the nightly job `stack-sizes`).
+//! its worst case, build, and deepest path, and the frame of every reachable function; it is the
+//! table that VER-011 publishes per release (the nightly job `stack-sizes`).
 //!
-//! The bound does not include interrupt handlers or the caller's own frames, and holds for this
-//! build: another compiler version, profile, or set of features can change it.
+//! The bound does not include interrupt handlers or the caller's own frames, and holds for these
+//! builds: another compiler version, profile, or set of features can change it.
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fmt::Write as _;
@@ -45,7 +59,7 @@ use std::process::Command;
 
 use serde_json::Value;
 
-use crate::{binaries, repo};
+use crate::{api, binaries, repo};
 
 /// The bare-metal targets measured (docs/06-verification.md §4).
 pub const TARGETS: &[&str] = &[
@@ -91,6 +105,8 @@ struct IrFacts {
     asm: usize,
     /// `alloca` with a run-time count.
     dynamic_alloca: usize,
+    /// The function never returns (`noreturn`).
+    noreturn: bool,
 }
 
 impl IrFacts {
@@ -99,6 +115,7 @@ impl IrFacts {
             indirect: self.indirect + other.indirect,
             asm: self.asm + other.asm,
             dynamic_alloca: self.dynamic_alloca + other.dynamic_alloca,
+            noreturn: self.noreturn || other.noreturn,
         }
     }
 }
@@ -165,14 +182,61 @@ fn callee_is_function(rest: &str) -> Option<bool> {
     Some(false)
 }
 
+/// The comma-separated operands of an instruction, split only outside `{}`, `[]`, `<>`, and
+/// `()`, so that an aggregate type such as `{ i32, i32 }` stays one operand.
+fn operands(s: &str) -> Vec<&str> {
+    let mut out = Vec::new();
+    let (mut depth, mut start) = (0_usize, 0);
+    for (i, ch) in s.char_indices() {
+        match ch {
+            '{' | '[' | '<' | '(' => depth += 1,
+            '}' | ']' | '>' | ')' => depth = depth.saturating_sub(1),
+            ',' if depth == 0 => {
+                out.push(s[start..i].trim());
+                start = i + 1;
+            }
+            _ => {}
+        }
+    }
+    out.push(s[start..].trim());
+    out
+}
+
+/// Whether the operands of an `alloca` (the text after the keyword) give a run-time element
+/// count: `alloca <ty>, <ty> %n`, and not `alloca <ty>, align 4` or a constant count.
+fn dynamic_count(rest: &str) -> bool {
+    operands(rest).get(1).is_some_and(|count| {
+        let mut words = count.split_whitespace();
+        words
+            .next()
+            .is_some_and(|w| w != "align" && !w.starts_with("addrspace"))
+            && words.next().is_some_and(|v| v.starts_with('%'))
+    })
+}
+
 /// Reads one IR module into `ir`.
 fn parse_ir(text: &str, ir: &mut Ir) {
     let mut current: Option<(String, IrFacts)> = None;
+    // LLVM writes `; Function Attrs: …` before each definition.
+    let mut attrs = String::new();
     for line in text.lines() {
+        if let Some(a) = line.strip_prefix("; Function Attrs:") {
+            a.clone_into(&mut attrs);
+            continue;
+        }
         if let Some(rest) = line.strip_prefix("define ") {
             if let Some(name) = rest.find('@').and_then(|at| global_name(&rest[at..])) {
-                current = Some((name.to_owned(), IrFacts::default()));
+                let noreturn = attrs.split_whitespace().any(|w| w == "noreturn")
+                    || rest.split_whitespace().any(|w| w == "noreturn");
+                current = Some((
+                    name.to_owned(),
+                    IrFacts {
+                        noreturn,
+                        ..IrFacts::default()
+                    },
+                ));
             }
+            attrs.clear();
             continue;
         }
         if line.starts_with('}') {
@@ -214,12 +278,7 @@ fn parse_ir(text: &str, ir: &mut Ir) {
         } else if let Some(k) = words.iter().position(|w| *w == "alloca") {
             // `alloca <ty>, <ty> %n, align a`: the count is a value.
             let rest = words.get(k + 1..).map_or_else(String::new, |w| w.join(" "));
-            if rest.split(',').nth(1).is_some_and(|count| {
-                count
-                    .split_whitespace()
-                    .nth(1)
-                    .is_some_and(|v| v.starts_with('%'))
-            }) {
+            if dynamic_count(&rest) {
                 facts.dynamic_alloca += 1;
             }
         }
@@ -725,7 +784,7 @@ impl Gap {
     }
 }
 
-/// One entry point's result.
+/// One entry point's result in one build.
 #[derive(Debug, Clone)]
 struct Entry {
     kind: Kind,
@@ -735,7 +794,7 @@ struct Entry {
     path: Vec<usize>,
 }
 
-/// The result of one target.
+/// The result of one build.
 #[derive(Debug, Default)]
 struct Analysis {
     entries: Vec<Entry>,
@@ -747,6 +806,18 @@ struct Analysis {
     reached: BTreeSet<usize>,
     /// The exemptions (by index) that applied.
     used: BTreeSet<usize>,
+    /// The functions of the panic machinery reached, where the walk stopped.
+    panicking: BTreeSet<usize>,
+}
+
+/// Whether a function is an entry of the panic machinery: a function of `core` that never
+/// returns (`core::panicking::panic_fmt`, `panic_bounds_check`, the `slice_*_fail`
+/// functions, `unwrap_failed`, …; with `panic = "abort"` nothing else in `core` diverges).
+/// GEN-020 forbids panics and VER-010 proves that no panic path survives the release link, but a
+/// build without LTO keeps some of them; the walk counts the frame of that function and stops
+/// there, since its callees (the message formatting and the panic handler) never run.
+fn panic_entry(node: &Node) -> bool {
+    node.krate == "core" && node.ir.is_some_and(|f| f.noreturn)
 }
 
 /// The depth-first walk of [`analyse`].
@@ -754,10 +825,11 @@ struct Walk<'a> {
     nodes: &'a [Node],
     /// Per node: the frame that an exemption states, with the exemption's index.
     frame_of: &'a HashMap<usize, (u64, usize)>,
-    /// Per node: the bytes that an exemption grants its indirect calls, with its index.
+    /// Per node: the bytes that an exemption grants the node's own indirect calls, with its
+    /// index.
     indirect_of: &'a HashMap<usize, (u64, usize)>,
-    /// Per (node, covered): its worst case and the callee on its deepest path.
-    memo: HashMap<(usize, bool), (u64, Option<usize>)>,
+    /// Per node: its worst case and the callee on its deepest path.
+    memo: HashMap<usize, (u64, Option<usize>)>,
     on_path: Vec<usize>,
     out: Analysis,
     /// The entry point being walked, named with the gaps it reaches.
@@ -775,8 +847,9 @@ impl Walk<'_> {
             .insert(gap);
     }
 
-    /// The gaps of `node` itself, and its own frame.
-    fn own(&mut self, node: usize, covered: bool) -> u64 {
+    /// The gaps of `node` itself, and its own frame. An `indirect` exemption accepts only the
+    /// node's own indirect calls: never inline assembly, and nothing in its callees.
+    fn own(&mut self, node: usize) -> u64 {
         let n = &self.nodes[node];
         let stated = self.frame_of.get(&node).copied();
         let frame = match (n.frame, stated) {
@@ -794,6 +867,7 @@ impl Walk<'_> {
         // assembly calls; its direct calls are relocations, so they stay in the graph).
         let assembly = n.frame.is_none() && stated.is_some();
         let undefined: Vec<String> = n.undefined.iter().cloned().collect();
+        let granted = self.indirect_of.get(&node).copied();
         match n.ir {
             None if !assembly => self.gap(node, Gap::NoIr),
             None => {}
@@ -801,10 +875,15 @@ impl Walk<'_> {
                 if f.dynamic_alloca > 0 {
                     self.gap(node, Gap::DynamicAlloca(f.dynamic_alloca));
                 }
-                if !covered && f.indirect > 0 {
-                    self.gap(node, Gap::Indirect(f.indirect));
+                if f.indirect > 0 {
+                    match granted {
+                        Some((_, ex)) => {
+                            self.out.used.insert(ex);
+                        }
+                        None => self.gap(node, Gap::Indirect(f.indirect)),
+                    }
                 }
-                if !covered && f.asm > 0 {
+                if f.asm > 0 {
                     self.gap(node, Gap::Asm(f.asm));
                 }
             }
@@ -815,45 +894,51 @@ impl Walk<'_> {
         frame
     }
 
-    /// The worst case of `node`; `covered` when an `indirect` exemption of a caller on the path
-    /// accepts the indirect calls below it.
-    fn worst(&mut self, node: usize, covered: bool) -> u64 {
+    /// The worst case of `node`: its frame, the bytes an exemption grants its indirect calls,
+    /// and the largest worst case of its callees.
+    fn worst(&mut self, node: usize) -> u64 {
         if let Some(pos) = self.on_path.iter().position(|&n| n == node) {
             self.out.cycles.insert(self.on_path[pos..].to_vec());
             return 0;
         }
-        if let Some(&(w, _)) = self.memo.get(&(node, covered)) {
+        if let Some(&(w, _)) = self.memo.get(&node) {
             return w;
         }
         self.out.reached.insert(node);
-        let granted = self.indirect_of.get(&node).map(|&(bytes, _)| bytes);
-        let below = covered || granted.is_some();
-        let own = self.own(node, below);
+        if panic_entry(&self.nodes[node]) {
+            // The walk stops at the panic machinery: its own frame counts, its callees (the
+            // message formatting and the panic handler) never run (GEN-020, VER-010).
+            self.out.panicking.insert(node);
+            let frame = self.nodes[node].frame.unwrap_or(0);
+            self.memo.insert(node, (frame, None));
+            return frame;
+        }
+        let own = self.own(node);
+        let granted = self.indirect_of.get(&node).map_or(0, |&(bytes, _)| bytes);
         self.on_path.push(node);
         let mut best: (u64, Option<usize>) = (0, None);
         let edges: Vec<usize> = self.nodes[node].edges.iter().copied().collect();
         for callee in edges {
-            let w = self.worst(callee, below);
+            let w = self.worst(callee);
             if best.1.is_none() || w > best.0 {
                 best = (w, Some(callee));
             }
         }
         self.on_path.pop();
-        let worst = own + granted.unwrap_or(0) + best.0;
-        self.memo.insert((node, covered), (worst, best.1));
+        let worst = own + granted + best.0;
+        self.memo.insert(node, (worst, best.1));
         worst
     }
 
     /// The deepest path from `node`, from the memo.
     fn path(&self, node: usize) -> Vec<usize> {
         let mut out = vec![node];
-        let (mut at, mut covered) = (node, false);
+        let mut at = node;
         // A path visits each function once (the graph is checked for cycles separately).
-        while let Some(&(_, Some(next))) = self.memo.get(&(at, covered)) {
+        while let Some(&(_, Some(next))) = self.memo.get(&at) {
             if out.contains(&next) {
                 break;
             }
-            covered = covered || self.indirect_of.contains_key(&at);
             out.push(next);
             at = next;
         }
@@ -861,35 +946,68 @@ impl Walk<'_> {
     }
 }
 
-/// The entry points among `nodes`: the `aldis_*` functions of the C ABI, and the global
-/// functions of the Rust library crates.
-fn entry_points(nodes: &[Node]) -> Vec<(Kind, usize)> {
-    nodes
-        .iter()
-        .enumerate()
-        .filter(|(_, n)| n.global)
-        .filter_map(|(i, n)| {
-            if n.krate == "aldis_ffi" {
-                n.names
-                    .iter()
-                    .any(|s| s.starts_with("aldis_"))
-                    .then_some((Kind::CAbi, i))
-            } else if n.krate == "aldis" || n.krate.starts_with("aldis_") {
-                Some((Kind::Rust, i))
-            } else {
-                None
+/// Whether a crate is a Rust library crate whose public functions are entry points (not the C
+/// ABI crate, whose Rust items are not its API).
+fn library_crate(krate: &str) -> bool {
+    (krate == "aldis" || krate.starts_with("aldis_")) && krate != "aldis_ffi"
+}
+
+/// The crate a key names.
+fn key_crate(key: &api::Key) -> &str {
+    match key {
+        api::Key::Free { krate, .. }
+        | api::Key::Method { krate, .. }
+        | api::Key::Provided { krate, .. } => krate,
+    }
+}
+
+/// The entry points among `nodes`, and how many Rust entry points the source index did not
+/// know (taken by the fallback rule).
+///
+/// - C ABI (when `c_abi`): the global `aldis_*` functions of the `aldis_ffi` object.
+/// - Rust: every function whose demangled path names a public function of a library crate in
+///   `index`, wherever it is emitted: a monomorphisation of a generic function lies in the
+///   object of the crate that instantiates it, with local binding. A function the index does
+///   not know (one that a `macro_rules!` body defines) counts when it is a global symbol of its
+///   own crate's object, the rule before the index.
+fn entry_points(nodes: &[Node], index: &api::Index, c_abi: bool) -> (Vec<(Kind, usize)>, usize) {
+    let mut out = Vec::new();
+    let mut unindexed = 0;
+    for (i, n) in nodes.iter().enumerate() {
+        if n.krate == "aldis_ffi" && n.global && n.names.iter().any(|s| s.starts_with("aldis_")) {
+            if c_abi {
+                out.push((Kind::CAbi, i));
             }
-        })
-        .collect()
+            continue;
+        }
+        let keys = api::keys_of(&n.display);
+        let Some(first) = keys.first() else {
+            continue;
+        };
+        if keys.iter().any(|k| index.knows(k)) {
+            if keys.iter().any(|k| index.public(k)) && library_crate(key_crate(first)) {
+                out.push((Kind::Rust, i));
+            }
+        } else if library_crate(key_crate(first)) && n.global && n.krate == key_crate(first) {
+            out.push((Kind::Rust, i));
+            unindexed += 1;
+        }
+    }
+    (out, unindexed)
 }
 
 fn applies(e: &Exemption, target: &str) -> bool {
     e.targets.is_empty() || e.targets.iter().any(|t| t == target)
 }
 
-/// Walks every entry point of `nodes` on `target`; returns the analysis and its problems: the
-/// gaps, the cycles, and the exemptions that apply to nothing.
-fn analyse(nodes: &[Node], target: &str, exemptions: &[Exemption]) -> (Analysis, Vec<String>) {
+/// Walks the entry points of `nodes` on `target`; returns the analysis and its problems: the
+/// gaps and the cycles.
+fn analyse(
+    nodes: &[Node],
+    entry_points: &[(Kind, usize)],
+    target: &str,
+    exemptions: &[Exemption],
+) -> (Analysis, Vec<String>) {
     let mut frame_of = HashMap::new();
     let mut indirect_of = HashMap::new();
     let mut problems = Vec::new();
@@ -918,9 +1036,9 @@ fn analyse(nodes: &[Node], target: &str, exemptions: &[Exemption]) -> (Analysis,
         entry: 0,
     };
     let mut entries = Vec::new();
-    for (kind, node) in entry_points(nodes) {
+    for &(kind, node) in entry_points {
         walk.entry = node;
-        let worst = walk.worst(node, false);
+        let worst = walk.worst(node);
         entries.push(Entry {
             kind,
             node,
@@ -930,26 +1048,6 @@ fn analyse(nodes: &[Node], target: &str, exemptions: &[Exemption]) -> (Analysis,
     }
     let mut out = std::mem::take(&mut walk.out);
     out.entries = entries;
-    // An `indirect` exemption applies when an indirect call or inline assembly is reachable
-    // from its function.
-    for (&node, &(_, ex)) in &indirect_of {
-        if !out.reached.contains(&node) {
-            continue;
-        }
-        let mut seen = BTreeSet::from([node]);
-        let mut stack = vec![node];
-        while let Some(n) = stack.pop() {
-            if nodes[n].ir.is_some_and(|f| f.indirect > 0 || f.asm > 0) {
-                out.used.insert(ex);
-                break;
-            }
-            for &c in &nodes[n].edges {
-                if seen.insert(c) {
-                    stack.push(c);
-                }
-            }
-        }
-    }
     let name = |i: usize| nodes.get(i).map_or("?", |n| n.display.as_str());
     for (node, (gaps, entry)) in &out.gaps {
         for gap in gaps {
@@ -967,45 +1065,23 @@ fn analyse(nodes: &[Node], target: &str, exemptions: &[Exemption]) -> (Analysis,
         names.push(name(cycle[0]));
         problems.push(format!("recursion (GEN-022): {}", names.join(" → ")));
     }
-    for (ex, e) in exemptions.iter().enumerate() {
-        if applies(e, target) && !out.used.contains(&ex) {
-            problems.push(format!(
-                "{BUDGETS}:{}: the exemption of `{}` applies to nothing reachable on {target}; \
-                 remove it, or name the targets it applies to",
-                e.line, e.function
-            ));
-        }
-    }
     (out, problems)
 }
 
-/// The entry points over their budget, and a missing budget.
-fn over_budget(
-    nodes: &[Node],
-    target: &str,
-    entries: &[Entry],
-    budgets: &BTreeMap<String, BTreeMap<String, u64>>,
-) -> Vec<String> {
-    let Some(per_kind) = budgets.get(target) else {
-        return vec![format!("{BUDGETS}: no [[budget]] for {target}")];
-    };
-    let mut out = Vec::new();
-    for e in entries {
-        let Some(&budget) = per_kind.get(e.kind.key()) else {
-            continue;
-        };
-        if e.worst > budget {
-            out.push(format!(
-                "`{}` needs {} bytes of stack, over the {} budget of {budget} bytes on {target} \
-                 (deepest path: {})",
-                nodes[e.node].display,
-                e.worst,
-                e.kind.key(),
-                path_text(nodes, &e.path)
-            ));
-        }
-    }
-    out
+/// The exemptions for `target` that no build used.
+fn stale(exemptions: &[Exemption], target: &str, used: &BTreeSet<usize>) -> Vec<String> {
+    exemptions
+        .iter()
+        .enumerate()
+        .filter(|(ex, e)| applies(e, target) && !used.contains(ex))
+        .map(|(_, e)| {
+            format!(
+                "{BUDGETS}:{}: the exemption of `{}` applies to nothing reachable on {target}; \
+                 remove it, or name the targets it applies to",
+                e.line, e.function
+            )
+        })
+        .collect()
 }
 
 fn path_text(nodes: &[Node], path: &[usize]) -> String {
@@ -1021,34 +1097,114 @@ fn path_text(nodes: &[Node], path: &[usize]) -> String {
         .join(" → ")
 }
 
+/// One entry point across the builds: its largest worst case.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct Measured {
+    kind: Kind,
+    display: String,
+    worst: u64,
+    frame: Option<u64>,
+    /// The deepest path below the entry point, with frames.
+    below: String,
+    /// The build it was measured in.
+    unit: &'static str,
+}
+
+/// The entry points of one build, as [`Measured`].
+fn measured(unit: &'static str, nodes: &[Node], analysis: &Analysis) -> Vec<Measured> {
+    analysis
+        .entries
+        .iter()
+        .map(|e| Measured {
+            kind: e.kind,
+            display: nodes[e.node].display.clone(),
+            worst: e.worst,
+            frame: nodes[e.node].frame,
+            below: path_text(nodes, e.path.get(1..).unwrap_or(&[])),
+            unit,
+        })
+        .collect()
+}
+
+/// Keeps, per entry point and kind, the build with the largest worst case.
+fn merge(all: Vec<Measured>) -> Vec<Measured> {
+    let mut by: BTreeMap<(Kind, String), Measured> = BTreeMap::new();
+    for m in all {
+        let key = (m.kind, m.display.clone());
+        match by.get(&key) {
+            Some(old) if old.worst >= m.worst => {}
+            _ => {
+                by.insert(key, m);
+            }
+        }
+    }
+    let mut out: Vec<Measured> = by.into_values().collect();
+    out.sort_by(|a, b| {
+        b.worst
+            .cmp(&a.worst)
+            .then_with(|| a.display.cmp(&b.display))
+    });
+    out
+}
+
+/// The entry points over their budget, and a missing budget.
+fn over_budget(
+    target: &str,
+    entries: &[Measured],
+    budgets: &BTreeMap<String, BTreeMap<String, u64>>,
+) -> Vec<String> {
+    let Some(per_kind) = budgets.get(target) else {
+        return vec![format!("{BUDGETS}: no [[budget]] for {target}")];
+    };
+    let mut out = Vec::new();
+    for e in entries {
+        let Some(&budget) = per_kind.get(e.kind.key()) else {
+            continue;
+        };
+        if e.worst > budget {
+            out.push(format!(
+                "`{}` needs {} bytes of stack, {} over the {} budget of {budget} bytes on \
+                 {target} (build {}; its frame {}, then: {})",
+                e.display,
+                e.worst,
+                e.worst - budget,
+                e.kind.key(),
+                e.unit,
+                e.frame.map_or_else(|| "?".to_owned(), |f| f.to_string()),
+                e.below
+            ));
+        }
+    }
+    out
+}
+
 /// Escapes a name for a Markdown table cell.
 fn cell(s: &str) -> String {
     s.replace('|', "\\|")
 }
 
-/// The VER-011 table of one target.
-fn report(
-    target: &str,
-    nightly: &str,
-    nodes: &[Node],
-    analysis: &Analysis,
-    config: &Config,
-    problems: &[String],
-) -> String {
-    let mut md = format!(
-        "# Worst-case stack per entry point — `{target}` (VER-011)\n\n\
-         Generated by `cargo xtask stack {target}` on `{nightly}` (`-Z build-std=core`, \
-         `-Z emit-stack-sizes`) from the release build of the `aldis-ffi` static library \
-         (`--no-default-features --features panic-handler`). The worst case of an entry point \
-         is its frame plus the deepest chain of callee frames; the call graph comes from the \
-         objects' relocations and is checked complete against their LLVM IR: no indirect call, \
-         no recursion (`xtask/src/stack.rs`). Interrupts and the caller's frames are not \
-         included.\n\n"
-    );
-    let budgets = config.budgets.get(target);
+/// What one target's report shows.
+struct Summary<'a> {
+    target: &'a str,
+    nightly: &'a str,
+    entries: &'a [Measured],
+    /// Per function reached, in any build: its largest frame.
+    frames: &'a BTreeMap<String, u64>,
+    /// The public functions measured in no build.
+    unseen: &'a [String],
+    unindexed: usize,
+    /// Per build, the functions of the panic machinery reached (where the walk stopped).
+    panics: &'a [(&'static str, Vec<String>)],
+    problems: &'a [String],
+}
+
+/// The summary lines of a report: the entry points per kind, the limits of the measurement, the
+/// panic paths, and the problems.
+fn summary(md: &mut String, s: &Summary<'_>, config: &Config) {
+    let budgets = config.budgets.get(s.target);
     let budget = |k: Kind| budgets.and_then(|b| b.get(k.key())).copied();
     for kind in [Kind::Rust, Kind::CAbi] {
-        let of: Vec<&Entry> = analysis.entries.iter().filter(|e| e.kind == kind).collect();
+        let of: Vec<&Measured> = s.entries.iter().filter(|e| e.kind == kind).collect();
         let max = of.iter().map(|e| e.worst).max().unwrap_or(0);
         let _ = writeln!(
             md,
@@ -1064,13 +1220,53 @@ fn report(
     }
     let _ = writeln!(
         md,
-        "- functions reached: {}; problems: {}\n",
-        analysis.reached.len(),
-        problems.len()
+        "- Rust entry points taken without the source index (macro-generated): {}\n\
+         - public functions measured in neither build (inlined at every call, or never \
+         instantiated): {}\n\
+         - functions reached: {}; problems: {}",
+        s.unindexed,
+        s.unseen.len(),
+        s.frames.len(),
+        s.problems.len()
     );
-    for p in problems {
+    for (unit, names) in s.panics {
+        let list = if names.is_empty() {
+            "none".to_owned()
+        } else {
+            names
+                .iter()
+                .map(|n| format!("`{n}`"))
+                .collect::<Vec<_>>()
+                .join(", ")
+        };
+        let _ = writeln!(
+            md,
+            "- panic paths in build `{unit}`, where the walk stops (GEN-020, VER-010): {list}"
+        );
+    }
+    md.push('\n');
+    for p in s.problems {
         let _ = writeln!(md, "- **Problem:** {p}");
     }
+}
+
+/// The VER-011 table of one target.
+fn report(s: &Summary<'_>, config: &Config) -> String {
+    let (target, nightly) = (s.target, s.nightly);
+    let mut md = format!(
+        "# Worst-case stack per entry point — `{target}` (VER-011)\n\n\
+         Generated by `cargo xtask stack {target}` on `{nightly}` (`-Z build-std=core`, \
+         `-Z emit-stack-sizes`) from two builds: `ffi`, the release build of the `aldis-ffi` \
+         static library (`--no-default-features --features panic-handler`), and `exerciser`, \
+         the exerciser (`exerciser/`, which calls every public function with real capacities) \
+         without LTO, its own crate in 256 codegen units and without MIR inlining, so that the \
+         public functions it instantiates are functions of their own. The worst case of an \
+         entry point is its frame plus the deepest chain of callee frames, the largest of the \
+         two builds; the call graph comes from the objects' relocations and is checked complete \
+         against their LLVM IR: no indirect call, no recursion (`xtask/src/stack.rs`). \
+         Interrupts and the caller's frames are not included.\n\n"
+    );
+    summary(&mut md, s, config);
     let applied: Vec<&Exemption> = config
         .exemptions
         .iter()
@@ -1081,40 +1277,39 @@ fn report(
         for e in applied {
             let bound = match e.bound {
                 Bound::Frame(b) => format!("own frame {b} bytes"),
-                Bound::Indirect(b) => format!("indirect calls {b} bytes"),
+                Bound::Indirect(b) => format!("its own indirect calls {b} bytes"),
             };
             let _ = writeln!(md, "| `{}` | {bound} |", cell(&e.function));
         }
     }
     md.push_str(
-        "\n## Entry points\n\n| Bytes | Kind | Entry point | Deepest path below it (frame bytes) \
-         |\n|---:|---|---|---|\n",
+        "\n## Entry points\n\n| Bytes | Kind | Build | Entry point (frame) | Deepest path below it \
+         (frame bytes) |\n|---:|---|---|---|---|\n",
     );
-    let mut entries: Vec<&Entry> = analysis.entries.iter().collect();
-    entries.sort_by(|a, b| {
-        b.worst
-            .cmp(&a.worst)
-            .then_with(|| nodes[a.node].display.cmp(&nodes[b.node].display))
-    });
-    for e in entries {
+    for e in s.entries {
         let _ = writeln!(
             md,
-            "| {} | {} | `{}` ({}) | {} |",
+            "| {} | {} | {} | `{}` ({}) | {} |",
             e.worst,
             e.kind.key(),
-            cell(&nodes[e.node].display),
-            nodes[e.node]
-                .frame
-                .map_or_else(|| "?".to_owned(), |f| f.to_string()),
-            cell(&path_text(nodes, e.path.get(1..).unwrap_or(&[])))
+            e.unit,
+            cell(&e.display),
+            e.frame.map_or_else(|| "?".to_owned(), |f| f.to_string()),
+            cell(&e.below)
         );
     }
+    if !s.unseen.is_empty() {
+        md.push_str(
+            "\n## Public functions measured in neither build\n\nEach is inlined into its \
+             callers at every call in both builds (its stack is in their frames), or no build \
+             instantiates it.\n\n",
+        );
+        for u in s.unseen {
+            let _ = writeln!(md, "- `{}`", cell(u));
+        }
+    }
     md.push_str("\n## Frames of the functions reached\n\n| Bytes | Function |\n|---:|---|\n");
-    let mut frames: Vec<(u64, &str)> = analysis
-        .reached
-        .iter()
-        .map(|&i| (nodes[i].frame.unwrap_or(0), nodes[i].display.as_str()))
-        .collect();
+    let mut frames: Vec<(u64, &str)> = s.frames.iter().map(|(n, &f)| (f, n.as_str())).collect();
     frames.sort_by(|a, b| b.cmp(a));
     for (f, name) in frames {
         let _ = writeln!(md, "| {f} | `{}` |", cell(name));
@@ -1139,32 +1334,9 @@ fn run_tool(cmd: &mut Command, what: &str) -> Result<String, String> {
     String::from_utf8(out.stdout).map_err(|e| format!("{what}: {e}"))
 }
 
-/// Builds the measured static library for `target`; returns the archive and the IR files of
-/// the crates in it, found through Cargo's artefact messages so that no stale file is read.
-fn build(nightly: &str, target: &str) -> Result<(PathBuf, Vec<PathBuf>), String> {
-    let flags = std::env::var("RUSTFLAGS").unwrap_or_default();
-    let stream = run_tool(
-        Command::new("rustup")
-            .args(["run", nightly, "cargo", "build", "-Z", "build-std=core"])
-            .args(["--locked", "-p", "aldis-ffi", "--no-default-features"])
-            .args([
-                "--features",
-                "panic-handler",
-                "--release",
-                "--target",
-                target,
-            ])
-            .arg("--message-format=json-render-diagnostics")
-            .env("CARGO_TARGET_DIR", repo::root().join(TARGET_DIR))
-            .env_remove("CARGO_ENCODED_RUSTFLAGS")
-            .env(
-                "RUSTFLAGS",
-                format!("{flags} -Z emit-stack-sizes --emit=llvm-ir,link").trim(),
-            ),
-        &format!("the aldis-ffi build for {target}"),
-    )?;
-    let mut archive = None;
-    let mut dirs = BTreeSet::new();
+/// The files of the `compiler-artifact` messages of a Cargo JSON stream.
+fn artefacts(stream: &str) -> Vec<PathBuf> {
+    let mut out = Vec::new();
     for line in stream.lines() {
         let Ok(msg) = serde_json::from_str::<Value>(line) else {
             continue;
@@ -1172,77 +1344,314 @@ fn build(nightly: &str, target: &str) -> Result<(PathBuf, Vec<PathBuf>), String>
         if text(&msg, &["reason"]) != "compiler-artifact" {
             continue;
         }
-        for f in field(&msg, &["filenames"])
-            .as_array()
-            .into_iter()
-            .flatten()
-            .filter_map(Value::as_str)
-        {
-            let path = PathBuf::from(f);
-            if path.file_name().and_then(|n| n.to_str()) == Some("libaldis_ffi.a") {
-                archive = Some(path.clone());
-            }
-            if let Some(dir) = path.parent() {
-                dirs.insert(dir.to_path_buf());
-            }
-        }
+        out.extend(
+            list(&msg, &["filenames"])
+                .iter()
+                .filter_map(Value::as_str)
+                .map(PathBuf::from),
+        );
     }
-    let archive = archive.ok_or("the build reported no libaldis_ffi.a")?;
-    let mut ir = Vec::new();
-    for dir in dirs {
-        let Ok(entries) = std::fs::read_dir(&dir) else {
+    out
+}
+
+/// The IR files that the compilations of `artefacts` wrote: in each artefact's directory, the
+/// files named after its stem (`aldis_tc-<hash>.ll`, `aldis_tc-<hash>.<cgu>.rcgu.ll`, or
+/// `aldis_ffi.ll` for the crate of the build), so that an older compilation's file in the same
+/// directory, or another unit's, is not read.
+fn ir_files(artefacts: &[PathBuf]) -> Vec<PathBuf> {
+    let mut out = BTreeSet::new();
+    for a in artefacts {
+        let (Some(dir), Some(name)) = (a.parent(), a.file_name().and_then(|n| n.to_str())) else {
+            continue;
+        };
+        let stem = name
+            .strip_prefix("lib")
+            .unwrap_or(name)
+            .rsplit_once('.')
+            .map_or(name, |(s, _)| s);
+        let Ok(entries) = std::fs::read_dir(dir) else {
             continue;
         };
         for e in entries.flatten() {
-            if e.path().extension().and_then(|x| x.to_str()) == Some("ll") {
-                ir.push(e.path());
+            let file = e.file_name();
+            let Some(f) = file.to_str() else {
+                continue;
+            };
+            let Some(rest) = f.strip_prefix(stem) else {
+                continue;
+            };
+            let ll = Path::new(f).extension().is_some_and(|x| x == "ll");
+            if ll && rest.starts_with('.') {
+                out.insert(e.path());
             }
         }
     }
-    ir.sort();
-    if ir.is_empty() {
-        return Err("the build wrote no LLVM IR (--emit=llvm-ir)".to_owned());
-    }
-    Ok((archive, ir))
+    out.into_iter().collect()
 }
 
-fn readobj_json(tool: &Path, archive: &Path, args: &[&str]) -> Result<Value, String> {
+/// One build to measure: its objects and archives, and its IR files.
+struct Built {
+    name: &'static str,
+    objects: Vec<PathBuf>,
+    ir: Vec<PathBuf>,
+}
+
+/// `rustup run <nightly> cargo <args>` with the measurement's flags and target directory.
+fn cargo(nightly: &str, args: &[&str], env: &[(&str, &str)], what: &str) -> Result<String, String> {
+    let flags = std::env::var("RUSTFLAGS").unwrap_or_default();
+    let mut cmd = Command::new("rustup");
+    cmd.args(["run", nightly, "cargo"])
+        .args(args)
+        .env("CARGO_TARGET_DIR", repo::root().join(TARGET_DIR))
+        .env_remove("CARGO_ENCODED_RUSTFLAGS")
+        .env(
+            "RUSTFLAGS",
+            format!("{flags} -Z emit-stack-sizes --emit=llvm-ir,link").trim(),
+        );
+    for (k, v) in env {
+        cmd.env(k, v);
+    }
+    run_tool(&mut cmd, what)
+}
+
+/// Builds the static library of the C ABI for `target`, as it ships.
+fn build_ffi(nightly: &str, target: &str) -> Result<Built, String> {
+    let stream = cargo(
+        nightly,
+        &[
+            "build",
+            "-Z",
+            "build-std=core",
+            "--locked",
+            "-p",
+            "aldis-ffi",
+            "--no-default-features",
+            "--features",
+            "panic-handler",
+            "--release",
+            "--target",
+            target,
+            "--message-format=json-render-diagnostics",
+        ],
+        &[],
+        &format!("the aldis-ffi build for {target}"),
+    )?;
+    let files = artefacts(&stream);
+    let archive = files
+        .iter()
+        .find(|p| p.file_name().and_then(|n| n.to_str()) == Some("libaldis_ffi.a"))
+        .ok_or("the build reported no libaldis_ffi.a")?
+        .clone();
+    let ir = ir_files(&files);
+    if ir.is_empty() {
+        return Err("the aldis-ffi build wrote no LLVM IR (--emit=llvm-ir)".to_owned());
+    }
+    Ok(Built {
+        name: "ffi",
+        objects: vec![archive],
+        ir,
+    })
+}
+
+/// Builds the exerciser for `target` without LTO; its own crate in 256 codegen units without
+/// MIR inlining (`-C codegen-units=256 -Z inline-mir=no`), so that the generic public
+/// functions it instantiates stay functions of their own, and with `-C save-temps`, which keeps
+/// the objects of those codegen units. The link ignores undefined symbols: without LTO a panic
+/// path can stay referenced, and the panic handler of the link check calls a symbol that
+/// nothing defines (VER-010); the check reports it when an entry point reaches it. The
+/// exerciser's own outputs are removed first, so that only this compilation's are read.
+fn build_exerciser(nightly: &str, target: &str) -> Result<Built, String> {
+    let manifest = "exerciser/Cargo.toml";
+    cargo(
+        nightly,
+        &[
+            "clean",
+            "-p",
+            "aldis-exerciser",
+            "--release",
+            "--target",
+            target,
+            "--manifest-path",
+            manifest,
+        ],
+        &[],
+        &format!("cleaning the exerciser for {target}"),
+    )?;
+    let env = [("CARGO_PROFILE_RELEASE_LTO", "off")];
+    let stream = cargo(
+        nightly,
+        &[
+            "rustc",
+            "-Z",
+            "build-std=core",
+            "--locked",
+            "--release",
+            "--target",
+            target,
+            "--manifest-path",
+            manifest,
+            "--bin",
+            "exerciser",
+            "--message-format=json-render-diagnostics",
+            "--",
+            "-C",
+            "codegen-units=256",
+            "-Z",
+            "inline-mir=no",
+            "-C",
+            "save-temps",
+            "-C",
+            "link-arg=--unresolved-symbols=ignore-all",
+        ],
+        &env,
+        &format!("the exerciser build for {target}"),
+    )?;
+    let files = artefacts(&stream);
+    // The target's libraries, not the host crates of the build script.
+    let target_dir = repo::root().join(TARGET_DIR).join(target);
+    let mut objects: Vec<PathBuf> = files
+        .iter()
+        .filter(|p| p.starts_with(&target_dir))
+        .filter(|p| p.extension().and_then(|e| e.to_str()) == Some("rlib"))
+        .cloned()
+        .collect();
+    let mut ir = ir_files(&files);
+    let units = target_dir.join("release/build/aldis-exerciser");
+    for dir in std::fs::read_dir(&units)
+        .map_err(|e| format!("{}: {e}", repo::rel(&units)))?
+        .flatten()
+    {
+        let Ok(entries) = std::fs::read_dir(dir.path().join("out")) else {
+            continue;
+        };
+        for e in entries.flatten() {
+            let path = e.path();
+            let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
+                continue;
+            };
+            if name.starts_with("exerciser.") && name.ends_with(".rcgu.o") {
+                objects.push(path);
+            } else if name.starts_with("exerciser.") && name.ends_with(".rcgu.ll") {
+                ir.push(path);
+            }
+        }
+    }
+    objects.sort();
+    ir.sort();
+    if !objects
+        .iter()
+        .any(|p| p.extension().and_then(|e| e.to_str()) == Some("o"))
+    {
+        return Err("the exerciser build left no objects (-C save-temps)".to_owned());
+    }
+    Ok(Built {
+        name: "exerciser",
+        objects,
+        ir,
+    })
+}
+
+fn readobj_json(tool: &Path, files: &[PathBuf], args: &[&str]) -> Result<Value, String> {
     let out = run_tool(
         Command::new(tool)
             .arg("--elf-output-style=JSON")
             .args(args)
-            .arg(archive),
+            .args(files),
         "llvm-readobj",
     )?;
     serde_json::from_str(&out).map_err(|e| format!("llvm-readobj JSON: {e}"))
 }
 
-/// Measures `target`: builds, reads, analyses, checks the budgets, and writes the report.
-/// Returns the number of problems.
-fn measure(nightly: &str, target: &str, config: &Config) -> Result<usize, String> {
-    let start = std::time::Instant::now();
-    let (archive, ir_files) = build(nightly, target)?;
+/// The call graph of one build, with its IR.
+fn nodes_of(built: &Built) -> Result<Vec<Node>, String> {
     let readobj = binaries::llvm_tool("llvm-readobj")?;
     let objects = readobj_json(
         &readobj,
-        &archive,
+        &built.objects,
         &["--section-headers", "--symbols", "-r", "--stack-sizes"],
     )?;
-    let demangled = readobj_json(&readobj, &archive, &["--symbols", "--demangle"])?;
+    let demangled = readobj_json(&readobj, &built.objects, &["--symbols", "--demangle"])?;
     let mut nodes = graph(&objects, &demangled)?;
     let mut ir = Ir::default();
-    for f in &ir_files {
+    for f in &built.ir {
         parse_ir(&repo::read(f)?, &mut ir);
     }
     attach_ir(&mut nodes, &ir);
-    let (analysis, mut problems) = analyse(&nodes, target, &config.exemptions);
-    problems.extend(over_budget(
-        &nodes,
-        target,
-        &analysis.entries,
-        &config.budgets,
-    ));
-    let md = report(target, nightly, &nodes, &analysis, config, &problems);
+    Ok(nodes)
+}
+
+/// Measures `target`: builds, reads, analyses, checks the budgets, and writes the report.
+/// Returns the number of problems.
+fn measure(
+    nightly: &str,
+    target: &str,
+    config: &Config,
+    index: &api::Index,
+) -> Result<usize, String> {
+    let start = std::time::Instant::now();
+    let mut entries = Vec::new();
+    let mut problems: Vec<String> = Vec::new();
+    let mut used = BTreeSet::new();
+    let mut frames: BTreeMap<String, u64> = BTreeMap::new();
+    let mut seen: BTreeSet<api::Key> = BTreeSet::new();
+    let mut unindexed = 0;
+    let mut panics = Vec::new();
+    for built in [
+        build_ffi(nightly, target)?,
+        build_exerciser(nightly, target)?,
+    ] {
+        let nodes = nodes_of(&built)?;
+        let (points, fallback) = entry_points(&nodes, index, built.name == "ffi");
+        unindexed = unindexed.max(fallback);
+        let (analysis, found) = analyse(&nodes, &points, target, &config.exemptions);
+        for p in found {
+            let p = format!("{p} [build {}]", built.name);
+            if !problems.contains(&p) {
+                problems.push(p);
+            }
+        }
+        used.extend(analysis.used.iter().copied());
+        panics.push((
+            built.name,
+            analysis
+                .panicking
+                .iter()
+                .map(|&i| nodes[i].display.clone())
+                .collect(),
+        ));
+        for &i in &analysis.reached {
+            let f = frames.entry(nodes[i].display.clone()).or_insert(0);
+            *f = (*f).max(nodes[i].frame.unwrap_or(0));
+        }
+        for n in &nodes {
+            seen.extend(api::keys_of(&n.display));
+        }
+        entries.extend(measured(built.name, &nodes, &analysis));
+    }
+    problems.extend(stale(&config.exemptions, target, &used));
+    let entries = merge(entries);
+    problems.extend(over_budget(target, &entries, &config.budgets));
+    let unseen: Vec<String> = api::unseen(index, &seen)
+        .into_iter()
+        .map(|k| match k {
+            api::Key::Free { krate, path } => format!("{krate}::{path}"),
+            api::Key::Method { krate, ty, name } => format!("{krate}: <{ty}>::{name}"),
+            api::Key::Provided { krate, tr, name } => format!("{krate}: <_ as {tr}>::{name}"),
+        })
+        .collect();
+    let md = report(
+        &Summary {
+            target,
+            nightly,
+            entries: &entries,
+            frames: &frames,
+            unseen: &unseen,
+            unindexed,
+            panics: &panics,
+            problems: &problems,
+        },
+        config,
+    );
     let out = repo::root().join("target/spec");
     std::fs::create_dir_all(&out).map_err(|e| e.to_string())?;
     let file = out.join(format!("stack-{target}.md"));
@@ -1251,21 +1660,21 @@ fn measure(nightly: &str, target: &str, config: &Config) -> Result<usize, String
         println!("error: stack {target}: {p}");
     }
     let largest = |kind: Kind| {
-        analysis
-            .entries
+        entries
             .iter()
             .filter(|e| e.kind == kind)
             .max_by_key(|e| e.worst)
             .map_or_else(
                 || "none".to_owned(),
-                |e| format!("{} bytes (`{}`)", e.worst, nodes[e.node].display),
+                |e| format!("{} bytes (`{}`, {})", e.worst, e.display, e.unit),
             )
     };
     println!(
-        "stack {target}: {} entry point(s), {} function(s) reached; largest rust {}, c-abi {}; \
-         {} problem(s); {:.0} s; report: {}",
-        analysis.entries.len(),
-        analysis.reached.len(),
+        "stack {target}: {} entry point(s), {} function(s) reached, {} public function(s) \
+         measured in neither build; largest rust {}, c-abi {}; {} problem(s); {:.0} s; report: {}",
+        entries.len(),
+        frames.len(),
+        unseen.len(),
         largest(Kind::Rust),
         largest(Kind::CAbi),
         problems.len(),
@@ -1293,12 +1702,29 @@ pub fn run(args: &[&str]) -> Result<usize, String> {
     for p in &problems {
         println!("error: {p}");
     }
+    let index = api::index(LIBRARY_CRATES)?;
     let mut count = problems.len();
     for t in targets {
-        count += measure(&nightly, t, &config)?;
+        count += measure(&nightly, t, &config, &index)?;
     }
     Ok(count)
 }
+
+/// The library crates whose public functions are entry points.
+const LIBRARY_CRATES: &[&str] = &[
+    "aldis-core",
+    "aldis-time",
+    "aldis-spp",
+    "aldis-epp",
+    "aldis-tm",
+    "aldis-tc",
+    "aldis-aos",
+    "aldis-uslp",
+    "aldis-link",
+    "aldis-cop1",
+    "aldis-framework",
+    "aldis",
+];
 
 #[cfg(test)]
 mod tests {
@@ -1329,6 +1755,10 @@ start:
   call void asm sideeffect "bkpt 0xab", ""()
   %buf = alloca [16 x i8], align 4
   %dyn = alloca i8, i32 %n, align 1
+  %agg = alloca { i32, i32 }, i32 %n, align 4
+  %fixed = alloca { i32, i32 }, i32 3, align 4
+  %arr = alloca [4 x { i8, i8 }], align 2
+  %space = alloca i8, addrspace(5)
   ret void
 }
 "#;
@@ -1340,8 +1770,24 @@ start:
             IrFacts {
                 indirect: 2,
                 asm: 1,
-                dynamic_alloca: 1
+                dynamic_alloca: 2,
+                noreturn: false
             }
+        );
+        // LLVM's attribute comment before a definition marks a diverging function.
+        let mut diverging = Ir::default();
+        parse_ir(
+            "; Function Attrs: cold noreturn nounwind\ndefine void @fail() {\n  unreachable\n}\n\
+             define void @ok() {\n  ret void\n}\n",
+            &mut diverging,
+        );
+        assert!(diverging.defined["fail"].noreturn);
+        assert!(!diverging.defined["ok"].noreturn);
+        assert!(dynamic_count("{ i32, [2 x i8] }, i64 %len, align 8"));
+        assert!(!dynamic_count("{ i32, i32 }, align 4"));
+        assert_eq!(
+            operands("{ a, b }, <2 x i8> (c, d), x"),
+            ["{ a, b }", "<2 x i8> (c, d)", "x"]
         );
         assert_eq!(ir.aliases["alias_of_f"], "f");
         assert_eq!(global_name("@\"a b\"(x"), Some("a b"));
@@ -1450,7 +1896,10 @@ start:
         assert_eq!(memcpy.krate, "compiler_builtins");
         // The relocation without a symbol in helper's section adds nothing.
         assert!(nodes[1].edges.is_empty());
-        assert_eq!(entry_points(&nodes), [(Kind::Rust, 0)]);
+        // Not in the source index: the global function of its own crate's object counts.
+        let (points, unindexed) = entry_points(&nodes, &api::Index::default(), true);
+        assert_eq!(points, [(Kind::Rust, 0)]);
+        assert_eq!(unindexed, 1);
     }
 
     fn node(name: &str, krate: &str, frame: Option<u64>, edges: &[usize]) -> Node {
@@ -1466,18 +1915,116 @@ start:
         }
     }
 
+    fn free(krate: &str, path: &str) -> api::Key {
+        api::Key::Free {
+            krate: krate.to_owned(),
+            path: path.to_owned(),
+        }
+    }
+
+    // req: VER-011
+    #[test]
+    fn rust_entry_points_follow_the_source_visibility() {
+        let mut nodes = vec![
+            // A monomorphisation emitted into the C ABI's object, local.
+            node(
+                "<aldis_aos::config::VcTable<64>>::new",
+                "aldis_ffi",
+                Some(1),
+                &[],
+            ),
+            // A `pub(crate)` helper, global because generic code calls it.
+            node("aldis_tc::config::check_room", "aldis_tc", Some(1), &[]),
+            // A public free function, and its closure.
+            node(
+                "aldis_aos::writer::encode::<aldis_aos::config::VcTable<64>>",
+                "aldis_ffi",
+                Some(1),
+                &[],
+            ),
+            node(
+                "aldis_aos::writer::encode::{closure#0}",
+                "aldis_ffi",
+                Some(1),
+                &[],
+            ),
+            // The C ABI.
+            node("aldis_tc_decode", "aldis_ffi", Some(1), &[]),
+            // The C ABI crate's own Rust items are not entry points.
+            node(
+                "aldis_ffi::tc::master_channel_at",
+                "aldis_ffi",
+                Some(1),
+                &[],
+            ),
+            // A trait method of a public type.
+            node(
+                "<aldis_core::error::Error as core::fmt::Display>::fmt",
+                "aldis_core",
+                Some(1),
+                &[],
+            ),
+        ];
+        // Rust symbols are mangled; only the C ABI's are their own names.
+        for (i, n) in nodes.iter_mut().enumerate() {
+            if i != 4 {
+                n.names = vec![format!("_RN{i}")];
+            }
+        }
+        nodes[0].global = false;
+        nodes[2].global = false;
+        nodes[3].global = false;
+        nodes[5].global = false;
+        let mut index = api::Index::default();
+        for (key, public) in [
+            (
+                api::Key::Method {
+                    krate: "aldis_aos".to_owned(),
+                    ty: "VcTable".to_owned(),
+                    name: "new".to_owned(),
+                },
+                true,
+            ),
+            (free("aldis_tc", "config::check_room"), false),
+            (free("aldis_aos", "writer::encode"), true),
+            (
+                api::Key::Method {
+                    krate: "aldis_core".to_owned(),
+                    ty: "Error".to_owned(),
+                    name: "fmt".to_owned(),
+                },
+                true,
+            ),
+        ] {
+            index.items.insert(key, public);
+        }
+        let (points, unindexed) = entry_points(&nodes, &index, true);
+        assert_eq!(
+            points,
+            [
+                (Kind::Rust, 0),
+                (Kind::Rust, 2),
+                (Kind::CAbi, 4),
+                (Kind::Rust, 6)
+            ]
+        );
+        assert_eq!(unindexed, 0);
+        // In the exerciser's build the C ABI is not an entry point.
+        let (points, _) = entry_points(&nodes, &index, false);
+        assert!(points.iter().all(|(k, _)| *k == Kind::Rust), "{points:?}");
+    }
+
     // req: VER-011
     #[test]
     fn the_worst_case_is_the_deepest_chain_of_frames() {
-        let mut nodes = vec![
+        let nodes = vec![
             node("aldis_x_call", "aldis_ffi", Some(100), &[2, 3]),
             node("aldis_core::f", "aldis_core", Some(40), &[3]),
             node("helper", "aldis_ffi", Some(10), &[3]),
             node("leaf", "core", Some(8), &[]),
         ];
-        nodes[2].global = false;
-        nodes[3].global = false;
-        let (a, problems) = analyse(&nodes, "t", &[]);
+        let points = [(Kind::CAbi, 0), (Kind::Rust, 1)];
+        let (a, problems) = analyse(&nodes, &points, "t", &[]);
         assert!(problems.is_empty(), "{problems:?}");
         let worst: Vec<(Kind, u64, Vec<usize>)> = a
             .entries
@@ -1491,24 +2038,46 @@ start:
                 (Kind::Rust, 48, vec![1, 3])
             ]
         );
+        // The largest worst case of an entry point across builds.
+        let mut all = measured("ffi", &nodes, &a);
+        all.push(Measured {
+            worst: 60,
+            unit: "exerciser",
+            ..all[1].clone()
+        });
+        let merged = merge(all);
+        assert_eq!(merged[1].worst, 60);
+        assert_eq!(merged[1].unit, "exerciser");
+        assert_eq!(merged[0].below, "helper (10) → leaf (8)");
         let budgets = BTreeMap::from([(
             "t".to_owned(),
             BTreeMap::from([("rust".to_owned(), 48), ("c-abi".to_owned(), 117)]),
         )]);
-        let over = over_budget(&nodes, "t", &a.entries, &budgets);
-        assert_eq!(over.len(), 1, "{over:?}");
+        let over = over_budget("t", &merged, &budgets);
+        assert_eq!(over.len(), 2, "{over:?}");
         assert!(
-            over[0].contains("`aldis_x_call` needs 118 bytes"),
+            over[0].contains(
+                "`aldis_x_call` needs 118 bytes of stack, 1 over the c-abi budget of 117 bytes on t"
+            ),
             "{over:?}"
         );
         assert!(
-            over[0].contains("c-abi budget of 117 bytes on t"),
+            over[1].contains("`aldis_core::f` needs 60 bytes of stack, 12 over the rust budget"),
             "{over:?}"
         );
         assert_eq!(
-            over_budget(&nodes, "u", &a.entries, &budgets),
+            over_budget("u", &merged, &budgets),
             ["xtask/stack-budgets.toml: no [[budget]] for u"]
         );
+    }
+
+    fn exemption(function: &str, targets: &[&str], bound: Bound, line: usize) -> Exemption {
+        Exemption {
+            function: function.to_owned(),
+            targets: targets.iter().map(|t| (*t).to_owned()).collect(),
+            bound,
+            line,
+        }
     }
 
     // req: GEN-022, VER-011
@@ -1520,14 +2089,14 @@ start:
             node("asm_fn", "compiler_builtins", None, &[]),
             node("dyn_caller", "core", Some(4), &[]),
         ];
-        nodes[1].global = false;
         nodes[2].ir = None;
         nodes[3].ir = Some(IrFacts {
             indirect: 1,
             ..IrFacts::default()
         });
         nodes[3].undefined.insert("missing".to_owned());
-        let (_, problems) = analyse(&nodes, "t", &[]);
+        let points = [(Kind::Rust, 0)];
+        let (_, problems) = analyse(&nodes, &points, "t", &[]);
         let text = problems.join("\n");
         assert!(
             text.contains("recursion (GEN-022): aldis_core::a → b → aldis_core::a"),
@@ -1549,51 +2118,102 @@ start:
         nodes[1].edges.clear();
         nodes[3].undefined.clear();
         let exemptions = [
-            Exemption {
-                function: "asm_fn".to_owned(),
-                targets: vec!["t".to_owned()],
-                bound: Bound::Frame(24),
-                line: 1,
-            },
-            Exemption {
-                function: "aldis_core::a".to_owned(),
-                targets: Vec::new(),
-                bound: Bound::Indirect(100),
-                line: 2,
-            },
-            Exemption {
-                function: "nowhere".to_owned(),
-                targets: Vec::new(),
-                bound: Bound::Frame(1),
-                line: 3,
-            },
-            Exemption {
-                function: "asm_fn".to_owned(),
-                targets: vec!["other".to_owned()],
-                bound: Bound::Frame(1),
-                line: 4,
-            },
+            exemption("asm_fn", &["t"], Bound::Frame(24), 1),
+            exemption("dyn_caller", &[], Bound::Indirect(100), 2),
+            exemption("nowhere", &[], Bound::Frame(1), 3),
+            exemption("asm_fn", &["other"], Bound::Frame(1), 4),
         ];
-        let (a, problems) = analyse(&nodes, "t", &exemptions);
+        let (a, problems) = analyse(&nodes, &points, "t", &exemptions);
+        assert!(problems.is_empty(), "{problems:?}");
+        // 16 (a) + 4 (dyn_caller) + 100 (its indirect calls), more than 16 + 24 (asm_fn).
+        assert_eq!(a.entries[0].worst, 120);
+        assert_eq!(a.entries[0].path, [0, 3]);
+        assert_eq!(a.used, BTreeSet::from([0, 1]));
         assert_eq!(
-            problems,
+            stale(&exemptions, "t", &a.used),
             [
                 "xtask/stack-budgets.toml:3: the exemption of `nowhere` applies to nothing \
               reachable on t; remove it, or name the targets it applies to"
             ]
         );
-        // 16 (a) + 100 (its indirect calls) + 24 (asm_fn, the deepest callee).
-        assert_eq!(a.entries[0].worst, 140);
-        assert_eq!(a.entries[0].path, [0, 2]);
-
-        // An `indirect` exemption with no indirect call below it is stale.
+        // An `indirect` exemption without an indirect call of its own is stale.
         nodes[3].ir = Some(IrFacts::default());
-        let (_, problems) = analyse(&nodes, "t", &exemptions[..2]);
-        assert_eq!(problems.len(), 1, "{problems:?}");
+        let (a, _) = analyse(&nodes, &points, "t", &exemptions[..2]);
+        let stale = stale(&exemptions[..2], "t", &a.used);
+        assert_eq!(stale.len(), 1, "{stale:?}");
         assert!(
-            problems[0].contains(":2: the exemption of `aldis_core::a`"),
-            "{problems:?}"
+            stale[0].contains(":2: the exemption of `dyn_caller`"),
+            "{stale:?}"
         );
+    }
+
+    // req: GEN-022, VER-011
+    #[test]
+    fn an_indirect_exemption_covers_only_its_own_indirect_calls() {
+        let mut nodes = vec![
+            node("aldis_core::a", "aldis_core", Some(16), &[1]),
+            node("callee", "core", Some(8), &[]),
+        ];
+        nodes[0].ir = Some(IrFacts {
+            indirect: 1,
+            asm: 1,
+            ..IrFacts::default()
+        });
+        nodes[1].ir = Some(IrFacts {
+            indirect: 2,
+            ..IrFacts::default()
+        });
+        let exemptions = [exemption("aldis_core::a", &[], Bound::Indirect(0), 1)];
+        let (a, problems) = analyse(&nodes, &[(Kind::Rust, 0)], "t", &exemptions);
+        let text = problems.join("\n");
+        // Its own indirect call is accepted ...
+        assert!(!text.contains("`aldis_core::a` makes"), "{text}");
+        assert_eq!(a.used, BTreeSet::from([0]));
+        // ... but not its inline assembly, nor its callee's indirect calls.
+        assert!(
+            text.contains("`aldis_core::a` runs inline assembly (1)"),
+            "{text}"
+        );
+        assert!(text.contains("`callee` makes 2 indirect call(s)"), "{text}");
+        assert_eq!(problems.len(), 2, "{text}");
+    }
+
+    // req: VER-011
+    #[test]
+    fn reads_only_the_ir_of_the_compilations_reported() {
+        let dir = repo::root().join("target/stack-ir-test");
+        let out = dir.join("out");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&out).unwrap();
+        for f in [
+            "libaldis_tc-new.rlib",
+            "aldis_tc-new.ll",
+            "aldis_tc-old.ll",
+            "aldis_tc-new.aldis_tc.x-cgu.0.rcgu.ll",
+            "libaldis_ffi.rlib",
+            "aldis_ffi.ll",
+            "aldis_ffi_extra.ll",
+            "aldis_tc-newer.ll",
+        ] {
+            std::fs::write(out.join(f), "").unwrap();
+        }
+        let ir = ir_files(&[
+            out.join("libaldis_tc-new.rlib"),
+            out.join("libaldis_ffi.rlib"),
+        ]);
+        let names: Vec<String> = ir
+            .iter()
+            .filter_map(|p| p.file_name().and_then(|n| n.to_str()).map(str::to_owned))
+            .collect();
+        assert_eq!(
+            names,
+            [
+                "aldis_ffi.ll",
+                "aldis_tc-new.aldis_tc.x-cgu.0.rcgu.ll",
+                "aldis_tc-new.ll"
+            ]
+        );
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     // req: VER-011
