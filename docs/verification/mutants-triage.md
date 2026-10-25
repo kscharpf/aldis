@@ -2,6 +2,10 @@
 
 Surviving mutants from `cargo mutants` (`-p aldis-core -p aldis-time -p aldis-epp -p aldis-spp -p aldis-aos -p aldis-tm -p aldis-tc -p aldis-uslp --all-features`) (cargo-mutants 27.1.0), triaged per VER-025. The nightly job `mutants` publishes the full report. Update this file when a new survivor appears.
 
+## 2026-10-25, branch `m2/vector-review` (M2 WP-8, second review of the frame vectors)
+
+`TmFrameWriter::begin_oid` rejects a VC that uses SDLS (`aldis-tm`), and `VcTable` answers VCID 63 without an entry on a fixed-length channel (`aldis-uslp`, `config.rs` `given_vc` and `VcLookup::vc`). The mutants of the changed lines, `cargo mutants -p aldis-tm -p aldis-uslp --all-features --in-diff <diff against main>` (with `PROPTEST_CASES=32`): 12 mutants: 9 caught, 3 unviable, 0 missed, 0 timeouts. No survivor to triage. The `aldis-ffi` change (the Galois branch of `aldis_tm_oid_writer_begin` calls `begin_oid`) is outside the crates this file lists.
+
 ## 2026-10-25, branch `m2/wp7-tests` (M2 WP-7, review of #116)
 
 `aldis_aos::PacketPointer::classify` rejects raw values wider than the Issue 4 pointer, `to_raw` and `header_octets` return `Option`, and `writer.rs` `mpdu_header` takes the edition check from them. The mutants of the changed lines of `mpdu.rs` and `writer.rs`, `cargo mutants -p aldis-aos --all-features --in-diff <diff against 87a48ce>` (cargo-mutants 27.1.0, with `PROPTEST_CASES=32`): 22 mutants: 21 caught, 1 unviable. None missed.

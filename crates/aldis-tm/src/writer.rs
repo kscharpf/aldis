@@ -218,9 +218,16 @@ impl<'b> TmFrameWriter<'b> {
     /// Secondary Header and OCF may still be filled with valid data (132.0 §4.1.4.6.3 note 1).
     ///
     /// # Errors
-    /// As for [`begin`](Self::begin); `InvalidField` (`sync_flag`) if the VC carries `VCA_SDUs`,
-    /// since an OID frame uses a VC that transfers Packets (132.0 §4.1.4.6.3). On error neither
-    /// `out` nor `oid` is changed (GEN-042).
+    /// As for [`begin`](Self::begin), then in this order: `InvalidField` (`sync_flag`) if the VC
+    /// carries `VCA_SDUs`, since an OID frame uses a VC that transfers Packets (132.0
+    /// §4.1.4.6.3); `InvalidField` (`vc_id`) if the VC uses SDLS, a nonzero Security Header or
+    /// Trailer length, since the multiplexing function that creates an OID frame sets a VCID
+    /// that does not use SDLS (132.0 §6.4.6.2; TM-010). On error neither `out` nor `oid` is
+    /// changed (GEN-042).
+    ///
+    /// The Idle Data cannot be checked on decode: it depends on where `oid` stands in the
+    /// sequence, which a stateless decoder does not know (CMN-021), and receivers discard it
+    /// (132.0 §4.1.4.6.2).
     pub fn begin_oid(
         out: &'b mut [u8],
         mc: &TmMasterChannelConfig,
@@ -235,7 +242,14 @@ impl<'b> TmFrameWriter<'b> {
             vc_frame_count,
             DataFieldStatus::Packets(PacketPointer::OnlyIdleData),
         );
-        let mut writer = TmFrameWriter::begin(out, mc, &fields)?;
+        let plan = Plan::new(mc, &fields)?;
+        if mc
+            .entry(vcid)
+            .is_some_and(|entry| !entry.config.security().is_none())
+        {
+            return Err(Error::new(ErrorKind::InvalidField).with_field(field::VC_ID));
+        }
+        let mut writer = TmFrameWriter::start(out, plan, true)?;
         oid.fill(writer.data_field_mut());
         Ok(writer)
     }
@@ -444,6 +458,11 @@ mod tests {
                 DataFieldContent::VcaSdu,
             ))
             .unwrap()
+            .with_vc(
+                TmVirtualChannelConfig::new(vcid(5), DataFieldContent::Packets)
+                    .with_fsh(FshLen::new(4).unwrap()),
+            )
+            .unwrap()
     }
 
     fn packets(vc: u8, pointer: PacketPointer) -> TmFrameFields {
@@ -515,11 +534,11 @@ mod tests {
         // An OID frame: `begin_oid`, then `resume` with the status it uses.
         let mut oid = OidGenerator::new();
         let mut three = [0_u8; 32];
-        let data = TmFrameWriter::begin_oid(&mut three, &mc, vcid(0), 7, 9, &mut oid)
+        let data = TmFrameWriter::begin_oid(&mut three, &mc, vcid(5), 7, 9, &mut oid)
             .unwrap()
             .layout()
             .data();
-        let idle = packets(0, PacketPointer::OnlyIdleData);
+        let idle = packets(5, PacketPointer::OnlyIdleData);
         let w = TmFrameWriter::resume(&mut three, &mc, &idle).unwrap();
         assert_eq!(w.finish(), 32);
         assert_eq!(three[data.start..data.start + 4], [0xFF; 4]);
@@ -794,17 +813,17 @@ mod tests {
         let mut oid = OidGenerator::new();
         let mut first = [0_u8; 32];
         let mut second = [0_u8; 32];
-        let writer = TmFrameWriter::begin_oid(&mut first, &mc, vcid(0), 1, 1, &mut oid).unwrap();
+        let writer = TmFrameWriter::begin_oid(&mut first, &mc, vcid(5), 1, 1, &mut oid).unwrap();
         assert_eq!(writer.finish(), 32);
-        let writer = TmFrameWriter::begin_oid(&mut second, &mc, vcid(0), 2, 2, &mut oid).unwrap();
+        let writer = TmFrameWriter::begin_oid(&mut second, &mc, vcid(5), 2, 2, &mut oid).unwrap();
         assert_eq!(writer.finish(), 32);
         let mut reference = OidGenerator::new();
-        let mut expected = [0_u8; 26];
+        let mut expected = [0_u8; 32];
         reference.fill(&mut expected);
         let one = TmFrame::decode_with(&first, mc.pc(), &mc, DecodeMode::Strict).unwrap();
         let two = TmFrame::decode_with(&second, mc.pc(), &mc, DecodeMode::Strict).unwrap();
-        assert_eq!(one.data_field(), &expected[..13]);
-        assert_eq!(two.data_field(), &expected[13..]);
+        assert_eq!(one.data_field(), &expected[..16]);
+        assert_eq!(two.data_field(), &expected[16..]);
         assert_eq!(one.data_field()[..4], [0xFF; 4]);
         assert_eq!(
             one.data_field_status(),
@@ -818,6 +837,23 @@ mod tests {
             (e.kind(), e.field()),
             (ErrorKind::InvalidField, Some(field::SYNC_FLAG))
         );
+        assert_eq!(oid, before);
+        // A buffer that is too short is rejected without advancing the generator.
+        let mut short = [0_u8; 31];
+        let e = TmFrameWriter::begin_oid(&mut short, &mc, vcid(5), 3, 3, &mut oid).unwrap_err();
+        assert_eq!(e.kind(), ErrorKind::BufferTooSmall);
+        assert_eq!((short, oid.clone()), ([0; 31], before.clone()));
+        // Rejected on a channel that uses SDLS (132.0 §6.4.6.2), also when the buffer is short.
+        for cap in [32, 4] {
+            let mut fourth = [0_u8; 32];
+            let e = TmFrameWriter::begin_oid(&mut fourth[..cap], &mc, vcid(0), 3, 3, &mut oid)
+                .unwrap_err();
+            assert_eq!(
+                (e.kind(), e.field()),
+                (ErrorKind::InvalidField, Some(field::VC_ID))
+            );
+            assert_eq!(fourth, [0; 32]);
+        }
         assert_eq!(oid, before);
     }
 }

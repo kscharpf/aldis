@@ -281,7 +281,8 @@ pub fn encode<L: VcLookup + ?Sized>(
 /// `fields.vc_id` must be 63 and `fields.map_id` 0; the rule is `001`, the UPID "Only Idle
 /// Data", and the Last Valid Octet Pointer the last TFDZ octet. The TFDZ fills the
 /// fixed-length frame. VCID 63 exists only on a fixed-length Physical Channel
-/// ([`VcTable::new`](crate::config::VcTable::new)).
+/// ([`VcTable::new`](crate::config::VcTable::new)), where it is valid without an entry (Table
+/// 5-2 note 2): the frame then has no VCF Count, OCF, or Security fields.
 ///
 /// # Errors
 /// The errors of [`encode`], with `InvalidField` (`vc_id`) for another VCID, `InvalidField`

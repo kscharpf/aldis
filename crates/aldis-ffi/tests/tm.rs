@@ -530,7 +530,18 @@ fn writer_arguments_are_checked() {
 #[test]
 fn the_oid_writer_takes_a_generator_handle() {
     // req: TM-010, CMN-021, CMN-022, CABI-022, CABI-032, GEN-042
-    let (mc, vcs) = (mc(), vcs());
+    let (mc, [sdls, vca]) = (mc(), vcs());
+    // VC 6 carries packets without SDLS, the only kind of channel an OID frame may use.
+    let vcs = [
+        sdls,
+        vca,
+        aldis_tm_vc_config_t {
+            vcid: 6,
+            security_header_len: 0,
+            security_trailer_len: 0,
+            ..sdls
+        },
+    ];
     let mut words = vec![0_u64; 64];
     let storage = words.as_mut_ptr();
     let mut h: *mut aldis_oid_generator_t = null_mut();
@@ -544,7 +555,7 @@ fn the_oid_writer_takes_a_generator_handle() {
                 aldis_tm_oid_writer_begin(
                     &raw const mc,
                     vcs.as_ptr(),
-                    2,
+                    3,
                     vcid,
                     0,
                     0,
@@ -574,13 +585,19 @@ fn the_oid_writer_takes_a_generator_handle() {
         begin(5, h, frame.as_mut_ptr(), &raw mut l),
         ALDIS_ERR_INVALID_FIELD
     );
+    // Rejected: VC 4 uses SDLS (132.0 §6.4.6.2), and nothing is written.
+    assert_eq!(
+        begin(4, h, frame.as_mut_ptr(), &raw mut l),
+        ALDIS_ERR_INVALID_FIELD
+    );
+    assert_eq!(frame, [0; 40]);
     // The output inside the generator's storage.
     let in_storage = storage.cast::<u8>().wrapping_add(16);
-    assert_eq!(begin(4, h, in_storage, &raw mut l), ALDIS_ERR_INVALID_FIELD);
-    assert_eq!(begin(4, h, frame.as_mut_ptr(), &raw mut l), ALDIS_OK);
-    assert_eq!((l.data_offset, l.data_len), (12, 18));
+    assert_eq!(begin(6, h, in_storage, &raw mut l), ALDIS_ERR_INVALID_FIELD);
+    assert_eq!(begin(6, h, frame.as_mut_ptr(), &raw mut l), ALDIS_OK);
+    assert_eq!((l.data_offset, l.data_len), (6, 32));
     // The first octets of the sequence of 132.0 Annex D (CMN-020).
-    assert_eq!(frame[12..18], [0xFF, 0xFF, 0xFF, 0xFF, 0x6D, 0xB6]);
+    assert_eq!(frame[6..12], [0xFF, 0xFF, 0xFF, 0xFF, 0x6D, 0xB6]);
     // SAFETY: as above.
     unsafe {
         let mut n = 0;
@@ -588,8 +605,8 @@ fn the_oid_writer_takes_a_generator_handle() {
             aldis_tm_oid_writer_finish(
                 &raw const mc,
                 vcs.as_ptr(),
-                2,
-                4,
+                3,
+                6,
                 0,
                 0,
                 frame.as_mut_ptr(),
@@ -604,11 +621,11 @@ fn the_oid_writer_takes_a_generator_handle() {
         aldis_oid_generator_deinit(h);
     }
     assert_eq!(
-        begin(4, h, frame.as_mut_ptr(), &raw mut l),
+        begin(6, h, frame.as_mut_ptr(), &raw mut l),
         ALDIS_ERR_INVALID_HANDLE
     );
     assert_eq!(
-        begin(4, null_mut(), frame.as_mut_ptr(), &raw mut l),
+        begin(6, null_mut(), frame.as_mut_ptr(), &raw mut l),
         ALDIS_ERR_INVALID_FIELD
     );
 }

@@ -1291,7 +1291,9 @@ pub unsafe extern "C" fn aldis_uslp_encode_truncated(
 /// `fields->channel.vcid` must be 63 and `map_id` 0. The library writes the TFDF Header: rule
 /// `001`, UPID "Only Idle Data", and the Last Valid Octet Pointer at the last TFDZ octet, so
 /// `content->tfdf` is not read; `content` gives the Insert Zone and the OCF, and its TFDZ must be
-/// empty. The TFDZ fills the fixed-length frame.
+/// empty. The TFDZ fills the fixed-length frame. On a fixed-length channel, VCID 63 is valid
+/// without an entry in `vcs` (732.1 Table 5-2 note 2): the frame then has no VCF Count, OCF, or
+/// Security fields.
 ///
 /// # Errors
 /// The errors of [`aldis_uslp_encode`], with `ALDIS_ERR_INVALID_FIELD` (`vc_id`) for another

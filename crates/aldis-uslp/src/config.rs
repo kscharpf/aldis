@@ -398,6 +398,10 @@ pub trait VcLookup {
     /// frame has an expected MCID (732.1 §4.3.11.3.4 b).
     fn has_spacecraft(&self, spacecraft_id: UslpSpacecraftId) -> bool;
     /// The VC (`spacecraft_id`, `vc_id`), or `None` if it is not valid (§4.3.11.3.4 c).
+    ///
+    /// [`VcTable`] answers VCID 63 of a known Spacecraft ID on a fixed-length Physical Channel
+    /// even when it was not given: the value "all ones" is always valid there (Table 5-2 note
+    /// 2).
     fn vc(&self, spacecraft_id: UslpSpacecraftId, vc_id: UslpVcId) -> Option<VcConfig>;
     /// The MAP (`spacecraft_id`, `vc_id`, `map_id`), or `None` if it is not valid.
     fn map(
@@ -437,6 +441,11 @@ fn check_room(
 ///
 /// Built only by [`new`](Self::new), so its entries obey the rules of
 /// `docs/standards/uslp-frame.md` §2.1 (RS-020).
+///
+/// On a fixed-length Physical Channel, VCID 63 of each Spacecraft ID that has a VC is valid
+/// without an entry (Table 5-2 note 2): [`VcLookup::vc`] gives it a fixed-length VC with the
+/// defaults of [`VcParams::new`]. An entry for VCID 63 sets its other parameters, and
+/// [`vcs`](Self::vcs) lists only entries.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct VcTable<const V: usize, const M: usize> {
     physical: PhysicalChannelConfig,
@@ -473,7 +482,7 @@ impl<const V: usize, const M: usize> VcTable<V, M> {
             maps: [None; M],
         };
         for (i, vc) in vcs.iter().enumerate() {
-            if table.vc(vc.spacecraft_id, vc.vc_id).is_some() {
+            if table.given_vc(vc.spacecraft_id, vc.vc_id).is_some() {
                 return Err(bad(field::VC_ID));
             }
             if physical.is_fixed() && !vc.fixed_tfdz() {
@@ -493,7 +502,7 @@ impl<const V: usize, const M: usize> VcTable<V, M> {
         }
         for (i, map) in maps.iter().enumerate() {
             let vc = table
-                .vc(map.spacecraft_id, map.vc_id)
+                .given_vc(map.spacecraft_id, map.vc_id)
                 .filter(|vc| vc.vc_id.get() != OID_VCID)
                 .ok_or(bad(field::MAP_ID))?;
             if table
@@ -525,6 +534,13 @@ impl<const V: usize, const M: usize> VcTable<V, M> {
             }
         }
         Ok(table)
+    }
+
+    /// The VC (`spacecraft_id`, `vc_id`) as it was given, without the implied VCID 63.
+    fn given_vc(&self, spacecraft_id: UslpSpacecraftId, vc_id: UslpVcId) -> Option<VcConfig> {
+        self.vcs()
+            .find(|vc| vc.spacecraft_id == spacecraft_id && vc.vc_id == vc_id)
+            .copied()
     }
 
     /// Whether `vc` uses SDLS, by its own lengths or those of one of its MAPs (§6.6.1 note 1).
@@ -564,9 +580,18 @@ impl<const V: usize, const M: usize> VcLookup for VcTable<V, M> {
     }
 
     fn vc(&self, spacecraft_id: UslpSpacecraftId, vc_id: UslpVcId) -> Option<VcConfig> {
-        self.vcs()
-            .find(|vc| vc.spacecraft_id == spacecraft_id && vc.vc_id == vc_id)
-            .copied()
+        self.given_vc(spacecraft_id, vc_id).or_else(|| {
+            // VCID 63 is always valid on a fixed-length Physical Channel (Table 5-2 note 2);
+            // when not given it carries the defaults of `VcParams::new`.
+            (vc_id.get() == OID_VCID
+                && self.physical.is_fixed()
+                && self.has_spacecraft(spacecraft_id))
+            .then(|| VcConfig {
+                spacecraft_id,
+                vc_id,
+                params: VcParams::new(TransferFrameType::Fixed),
+            })
+        })
     }
 
     fn map(
@@ -811,6 +836,48 @@ pub(crate) mod tests {
             (scid(0x155), vcid(2), mapid(9))
         );
         assert_eq!(m.security(), SecurityLayout::new(3, 1).unwrap());
+    }
+
+    #[test]
+    fn vcid_63_is_valid_without_an_entry_on_a_fixed_channel() {
+        // req: USLP-009, USLP-014, GEN-060
+        // Table 5-2 note 2: "all ones" is always valid; Table 5-1 note 4: not on variable-length.
+        let fixed_pc = PhysicalChannelConfig::new(TransferFrameType::Fixed, 64, 0, true).unwrap();
+        let only_vc1 = |pc, ft| VcTable::<4, 4>::new(pc, &[vc(1, params(ft, 1, 1))], &[]).unwrap();
+        let t = only_vc1(fixed_pc, TransferFrameType::Fixed);
+        let implied = t.vc(scid(0x155), vcid(63)).unwrap();
+        assert_eq!(
+            (implied.spacecraft_id(), implied.vc_id(), implied.params()),
+            (
+                scid(0x155),
+                vcid(63),
+                VcParams::new(TransferFrameType::Fixed)
+            )
+        );
+        assert_eq!(t.vcs().count(), 1, "an implied VC is not an entry");
+        assert_eq!(
+            t.vc(scid(0x156), vcid(63)),
+            None,
+            "the Spacecraft ID is unknown"
+        );
+        let var_pc = PhysicalChannelConfig::new(TransferFrameType::Variable, 64, 0, true).unwrap();
+        let v = only_vc1(var_pc, TransferFrameType::Variable);
+        assert_eq!(v.vc(scid(0x155), vcid(63)), None);
+        // An entry for VCID 63 after another VC of the same Spacecraft ID is not a duplicate,
+        // and it overrides the defaults.
+        let given = VcTable::<4, 4>::new(
+            fixed_pc,
+            &[
+                vc(1, params(TransferFrameType::Fixed, 1, 1)),
+                vc(63, params(TransferFrameType::Fixed, 1, 1)),
+            ],
+            &[],
+        )
+        .unwrap();
+        assert_eq!(
+            given.vc(scid(0x155), vcid(63)),
+            Some(vc(63, params(TransferFrameType::Fixed, 1, 1)))
+        );
     }
 
     #[test]
