@@ -46,7 +46,7 @@ Secondary Header: ID octet = version `00` (2 bits) ‖ length − 1 (6 bits), fo
 | TM-007 | With Sync Flag = 0, strict mode SHALL require Packet Order Flag = 0 and Segment Length ID = `11`. Lenient mode SHALL flag deviations. With Sync Flag = 1, these fields SHALL be exposed raw and not validated. | §4.1.2.7.4–5 | V |
 | TM-008 | With Sync Flag = 0, the view SHALL classify the FHP as `PacketStartsAt(n)` (n < data field length), `NoPacketStart` (`0x7FF`), or `OnlyIdleData` (`0x7FE`). Any other n ≥ data field length SHALL be `Malformed` in both modes: it points outside the field it indexes (API-032; [open issues](../09-open-issues.md) OI-33). With Sync Flag = 1 the FHP is undefined and SHALL be exposed raw. | §4.1.2.7.6, §4.1.2.7.6.2 note | V |
 | TM-009 | The writer SHALL compute the FSH ID octet, the OCF flag (from configuration), and the FECF. It SHALL accept MC/VC frame counts, the sync flag, and the FHP as inputs (counts are owned by engines, [04](../04-engines.md)). | §4.1.2–6 | V |
-| TM-010 | An OID writer SHALL set FHP = `0x7FE` and fill the data field from a supplied `OidGenerator` (CMN-020). It SHALL use a VCID that is configured for packets. FSH and OCF MAY carry valid data. | §4.1.4.6 | V |
+| TM-010 | An OID writer SHALL set FHP = `0x7FE` and fill the data field from a supplied `OidGenerator` (CMN-020). It SHALL use a VCID that is configured for packets, else `InvalidField` (`sync_flag`); and a VC that does not use SDLS, that is with no Security Header or Trailer, else `InvalidField` (`vc_id`), checked in that order; it writes nothing on error (maintainer decision of 2026-10-25). Every other writer (`encode`, `begin`, `resume`, and their C ABI calls) SHALL apply the SDLS check to a frame with FHP = `0x7FE`, since that pointer makes it an OID frame. FSH and OCF MAY carry valid data. The decoder SHALL NOT check the OID data: it depends on the generator's position across frames (CMN-021), which a stateless decoder does not know, and receivers discard it. | §4.1.4.6; §6.4.6.2 | V |
 | TM-011 | `validate(&MasterChannelConfig)` SHALL check SCID and VCID against the configuration. It SHALL check that the OCF Flag and FSH presence and length match the configured MC/VC parameters, and that the Sync Flag matches the VC data field content. | §5; §4.1.2.4.3; §4.1.2.7.3.3 | V |
 
 ## 4. Anomaly flags (lenient mode)
@@ -60,4 +60,13 @@ Secondary Header: ID octet = version `00` (2 bits) ‖ length − 1 (6 bits), fo
 
 ## 5. Test-vector categories
 
-`tm/minimal` (no FSH/OCF/FECF), `tm/fsh_ocf_fecf`, `tm/fhp_values`, `tm/oid_sequence` (two consecutive OID frames continue the PN sequence), `tm/security_layout` (FixedPatternSecurity), `tm/invalid`.
+`tm/minimal` (no FSH/OCF/FECF), `tm/fsh_ocf_fecf`, `tm/fhp_values`, `tm/oid_sequence` (consecutive OID frames continue the PN sequence; the OID frame of a VC with SDLS is rejected), `tm/security_layout` (FixedPatternSecurity), `tm/invalid`.
+
+## 6. Project rules and choices the vectors pin
+
+The Blue Book does not decide these; they are the project's, and the second review ([m2-vectors.md](../verification/reviews/m2-vectors.md)) lists them:
+
+- A frame with no data octet is rejected (CMN-041, whose source is none). The error names `frame_data_field` (7) when a configured field (FSH, OCF, Security fields) leaves none, and `frame_len` (68) for a physical channel too short for its own header and FECF when no VC is configured (`tm-inv-cfg-001`).
+- The FECF is checked before the version (TM-005), so a frame with both faults is `CrcMismatch` (`tm-inv-crc-002`); `tm-inv-ver-001` and `-002` carry valid FECFs.
+- Sync = 0 with Packet Order Flag = 1 is `ReservedValue` in strict mode (TM-007): the Blue Book gives the rule in a NOTE (§4.1.2.7.4). The error kinds and fields for a VC whose content does not fit the writer's request (TM-009, TM-010) are `InvalidField` naming `sync_flag`.
+- Frames longer than 2048 octets are accepted: 132.0-B-3 states no maximum (131.0-B-6 §11 gives 2048 because of the 11-bit FHP), so that the FHP offsets 2045 and 2046 are testable (`tm-fhp-enc-005`, `tm-fhp-enc-err-002`).

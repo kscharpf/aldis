@@ -139,7 +139,10 @@ NOTE = (
     "name the field code (03 §9.1): 65 ocf_type_flag, 66 ocf_report_use. The model is "
     "committed as test-vectors/models/core_ocf.py (TV-023); "
     "`python3 -I test-vectors/models/core_ocf.py --check test-vectors/core/ocf.json` "
-    "recomputes every expected value."
+    "recomputes every expected value. Author of the model: an AI agent, Claude Opus 5.5, "
+    "recorded as co-author of commit 222232e (2026-10-21), which committed it, and of commit "
+    "7f8ecda, which added the vectors; the history records no briefing of the agent and does "
+    "not show whether it read any implementation (TV-023)."
 )
 
 

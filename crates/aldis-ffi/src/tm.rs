@@ -35,6 +35,7 @@ use core::ops::Range;
 use aldis::core::ids::{SpacecraftId, VcId};
 use aldis::core::layout::{FrameLayout, OCF_LEN};
 use aldis::core::ocf::Ocf;
+use aldis::core::oid::OidGenerator;
 use aldis::core::security::SecurityLayout;
 use aldis::core::{Error, ErrorDetail, ErrorKind, Result};
 use aldis::tm::{
@@ -1059,7 +1060,8 @@ pub unsafe extern "C" fn aldis_tm_writer_finish(
 ///
 /// # Errors
 /// As [`aldis_tm_writer_begin`]; `ALDIS_ERR_INVALID_FIELD` (`sync_flag`) if the VC carries
-/// `VCA_SDUs` (132.0 §4.1.4.6.3); `ALDIS_ERR_INVALID_HANDLE` for an invalid generator; CABI-022
+/// `VCA_SDUs` (132.0 §4.1.4.6.3), then (`vc_id`) if the VC uses SDLS (132.0 §6.4.6.2; TM-010);
+/// `ALDIS_ERR_INVALID_HANDLE` for an invalid generator; CABI-022
 /// violations, including `out` overlapping the generator's storage. On error neither `out` nor
 /// the generator is changed (GEN-042).
 ///
@@ -1099,10 +1101,18 @@ pub unsafe extern "C" fn aldis_tm_oid_writer_begin(
                 GeneratorState::Fibonacci(g) => {
                     TmFrameWriter::begin_oid(out, &mc, vcid, mc_frame_count, vc_frame_count, g)?
                 }
-                // `begin_oid` with the Galois form, which gives the same sequence (CMN-022).
+                // `begin_oid` with a scratch Fibonacci generator, which makes the same checks,
+                // then the Galois form fills the data field with the same sequence (CMN-022).
                 GeneratorState::Galois(g) => {
-                    let fields = oid_fields(vcid.get(), mc_frame_count, vc_frame_count)?;
-                    let mut writer = TmFrameWriter::begin(out, &mc, &fields)?;
+                    let mut scratch = OidGenerator::new();
+                    let mut writer = TmFrameWriter::begin_oid(
+                        out,
+                        &mc,
+                        vcid,
+                        mc_frame_count,
+                        vc_frame_count,
+                        &mut scratch,
+                    )?;
                     g.fill(writer.data_field_mut());
                     writer
                 }
@@ -1121,7 +1131,9 @@ pub unsafe extern "C" fn aldis_tm_oid_writer_begin(
 /// caller filled, computes the FECF if configured, and returns the frame length.
 ///
 /// # Errors
-/// As [`aldis_tm_writer_finish`] for the fields of an OID frame; on error `out` is unchanged.
+/// As [`aldis_tm_writer_finish`] for the fields of an OID frame, including
+/// `ALDIS_ERR_INVALID_FIELD` (`vc_id`) for a VC that uses SDLS, as [`aldis_tm_oid_writer_begin`]
+/// (132.0 §6.4.6.2; TM-010); on error `out` is unchanged.
 ///
 /// # Safety
 /// `mc` and `vcs` as for [`aldis_tm_mc_config_check`]; `out` is valid for `cap` octets;

@@ -144,16 +144,24 @@ impl EncodedTmFrame {
 /// The status of a frame on a VC carrying `content` with a `data_len`-octet data field: a
 /// packet pointer inside the field or a reserved value, or the raw fields of a `VCA_SDU` frame
 /// (132.0 §4.1.2.7; TM-007…TM-009).
-fn data_field_status(content: DataFieldContent, data_len: usize) -> BoxedStrategy<DataFieldStatus> {
+///
+/// `OnlyIdleData` only when `sdls` is false: an Only Idle Data frame uses a VC that does not use
+/// SDLS (132.0 §6.4.6.2; TM-010).
+fn data_field_status(
+    content: DataFieldContent,
+    data_len: usize,
+    sdls: bool,
+) -> BoxedStrategy<DataFieldStatus> {
     match content {
         DataFieldContent::Packets => {
             let last = u16::try_from(data_len.min(0x7FE) - 1).unwrap_or(0x7FD);
+            let idle = u32::from(!sdls);
             prop_oneof![
                 3 => up_to_u16(last).prop_map(|n| PacketPointer::StartsAt(
                     PacketOffset::new(n).expect("at most the largest offset")
                 )),
                 1 => Just(PacketPointer::NoPacketStart),
-                1 => Just(PacketPointer::OnlyIdleData),
+                idle => Just(PacketPointer::OnlyIdleData),
             ]
             .prop_map(DataFieldStatus::Packets)
             .boxed()
@@ -186,7 +194,7 @@ pub fn frame_of(mc: TmMasterChannelConfig) -> impl Strategy<Value = EncodedTmFra
                 Just(vc.vcid()),
                 any::<u8>(),
                 any::<u8>(),
-                data_field_status(vc.content(), layout.data().len()),
+                data_field_status(vc.content(), layout.data().len(), !vc.security().is_none()),
                 octets(layout.secondary().len().saturating_sub(1)),
                 octets(layout.security_header().len()),
                 octets(layout.data().len()),

@@ -2,7 +2,7 @@
   "kind": "codec",
   "standard": "732.1-B-3 — managed parameters",
   "provenance": "hand-derived",
-  "provenance_note": "732.1-B-3 prints no example frame, only the first OID octets (Annex H). Hand-derived from 732.1-B-3: §4.1.2 (Primary Header: TFVN 4 bits = 1100, SCID 16, Source-or-Destination 1, VCID 6, MAP ID 4, End of Frame Primary Header Flag 1, Frame Length 16 = total - 1, Bypass/Sequence Control 1, Protocol Control Command 1, Reserve Spares 2, OCF Flag 1, VCF Count Length 3, VCF Count 0-7 octets; Table 4-1, flags 01 reserved; Table 4-2), §4.1.3 (Insert Zone), §4.1.4 (TFDF Header: rule 3 bits, UPID 5 bits, pointer 16 bits for rules 000-010 only; Table 4-3; the OID frame of §4.1.4.1.5-12), §4.1.5 (OCF), §4.1.6 and Annex B (FECF, G(X) = X^16 + X^12 + X^5 + 1, preset by L(X)), §4.3.11.2-3 (delimiting and the USLP Frame Validation Checks), §5 Tables 5-1 to 5-4 (managed parameters), §6.3 (Security Header after the Insert Zone, Trailer before the OCF; none in protocol control frames), Annex D (truncated frames: 4-octet header, 1-octet TFDF Header, length 6-32 from the VC, SDLS 6/16 and at least 28 octets), Annex H (OID generator). UPID values from the SANA snapshot specs/sana/uslp_protocol_id.tsv, read by the model at run time. COP-1 control commands from 232.0-B-4 §4.1.3.3 (Unlock = 00, Set V(R) = 82 00 V(R)). Check order, validation reason codes, the delimiter's valid header, the writers' error order, and the configuration kept, as docs/standards/uslp-frame.md §2.1 and §3 state them (OI-35, OI-44). SCID 0x155 is the fictional SCID of the reference scenario (APP-026); SCID 0xF0A5 is also fictional. Expected values computed by an independent Python model of those clauses, test-vectors/models/uslp_frame.py (TV-023), written independently of the Rust codec and sharing no code or method with it (headers as bit strings from the figure widths, the FECF as the Annex B remainder by GF(2) long division and checked by the B1.2.1 syndrome, the OID data from the Galois form of Figure H-2, checked against the Fibonacci form and the printed pattern). Error cases name the field code of 03 §9.1. One rule-000 frame with its FECF, register octet by octet, and one truncated frame are worked by hand in docs/verification/derivations/uslp-frame.md. `python3 -I test-vectors/models/uslp_frame.py --check test-vectors/uslp/*.json` recomputes every expected value.",
+  "provenance_note": "732.1-B-3 prints no example frame, only the first OID octets (Annex H). Hand-derived from 732.1-B-3: §4.1.2 (Primary Header: TFVN 4 bits = 1100, SCID 16, Source-or-Destination 1, VCID 6, MAP ID 4, End of Frame Primary Header Flag 1, Frame Length 16 = total - 1, Bypass/Sequence Control 1, Protocol Control Command 1, Reserve Spares 2, OCF Flag 1, VCF Count Length 3, VCF Count 0-7 octets; Table 4-1, flags 01 reserved; Table 4-2), §4.1.3 (Insert Zone), §4.1.4 (TFDF Header: rule 3 bits, UPID 5 bits, pointer 16 bits for rules 000-010 only; Table 4-3; the OID frame of §4.1.4.1.5-12), §4.1.5 (OCF), §4.1.6 and Annex B (FECF, G(X) = X^16 + X^12 + X^5 + 1, preset by L(X)), §4.3.11.2-3 (delimiting and the USLP Frame Validation Checks), §5 Tables 5-1 to 5-4 (managed parameters), §6.3 (Security Header after the Insert Zone, Trailer before the OCF; none in protocol control frames), Annex D (truncated frames: 4-octet header, 1-octet TFDF Header, length 6-32 from the VC, SDLS 6/16 and at least 28 octets), Annex H (OID generator). UPID values from the SANA snapshot specs/sana/uslp_protocol_id.tsv, read by the model at run time. COP-1 control commands from 232.0-B-4 §4.1.3.3 (Unlock = 00, Set V(R) = 82 00 V(R)). Check order, validation reason codes, the delimiter's valid header, the writers' error order, and the configuration kept, as docs/standards/uslp-frame.md §2.1 and §3 state them (OI-35, OI-44). SCID 0x155 is the fictional SCID of the reference scenario (APP-026); SCID 0xF0A5 is also fictional. Expected values computed by an independent Python model of those clauses, test-vectors/models/uslp_frame.py (TV-023), written independently of the Rust codec and sharing no code or method with it (headers as bit strings from the figure widths, the FECF as the Annex B remainder by GF(2) long division and checked by the B1.2.1 syndrome, the OID data from the Galois form of Figure H-2, checked against the Fibonacci form and the printed pattern). Error cases name the field code of 03 §9.1. One rule-000 frame with its FECF, register octet by octet, and one truncated frame are worked by hand in docs/verification/derivations/uslp-frame.md. `python3 -I test-vectors/models/uslp_frame.py --check test-vectors/uslp/*.json` recomputes every expected value. The OID data of a decoded frame is not checked against the generator's sequence: it depends on the generator's position across frames, which a stateless decoder does not know, and receivers discard it. 732.1-B-3 §6.3.2.2 refers to D1.2.5 for the truncated header of a frame with SDLS, where D1.3 is meant; the cases follow D1.2.3, D1.2.4 and D1.3. Author of the model: an AI agent, Claude Opus 5.5, recorded as co-author of commit 0459ef0 (2026-10-23), whose message states that it wrote the model from 732.1-B-3 and uslp-frame.md without reading the Rust code; the history records no briefing of the agent beyond that statement (TV-023). The cases added on 2026-10-25 (M2 WP-8: uslp-oid-042 onward, uslp-val-* and uslp-inv-* and uslp-pc-* at the end of their files) were written by a second agent, Claude Sonnet 5.5, briefed to read only the Blue Book, docs/, and the vectors, never the implementation, and to extend this model. This file covers managed parameters.",
   "cases": [
     {
       "id": "uslp-cfg-001",
@@ -401,7 +401,7 @@
         "GEN-060",
         "API-040"
       ],
-      "description": "Fixed-length frame length 8: InvalidConfig",
+      "description": "Fixed-length frame length 8: InvalidConfig A Physical Channel frame length below 9 octets is rejected even when no VC is configured: 9 is the 7-octet Primary Header, the 1-octet TFDF Header of a variable-length frame, and one TFDZ octet (OI-44 item 2); the TFDF Header of a fixed-length VC has 3 octets, so such a VC needs 11.",
       "operation": "config",
       "config": {
         "frame_type": "fixed",
@@ -470,7 +470,7 @@
         "GEN-060",
         "API-040"
       ],
-      "description": "Variable-length maximum 8: InvalidConfig",
+      "description": "Variable-length maximum 8: InvalidConfig A Physical Channel frame length below 9 octets is rejected even when no VC is configured: 9 is the 7-octet Primary Header, the 1-octet TFDF Header of a variable-length frame, and one TFDZ octet (OI-44 item 2); the TFDF Header of a fixed-length VC has 3 octets, so such a VC needs 11.",
       "operation": "config",
       "config": {
         "frame_type": "variable",
@@ -812,7 +812,7 @@
         "API-040",
         "API-070"
       ],
-      "description": "Security Trailer 65536: InvalidConfig",
+      "description": "Security Trailer 65536: InvalidConfig The Security Trailer is limited to 65 535 octets by the 16-bit Frame Length; API-071 states the limit of the Header (64 octets) only.",
       "operation": "config",
       "config": {
         "frame_type": "fixed",
@@ -1169,7 +1169,7 @@
         "API-040",
         "API-070"
       ],
-      "description": "MAP Security Trailer 65536: InvalidConfig",
+      "description": "MAP Security Trailer 65536: InvalidConfig The Security Trailer is limited to 65 535 octets by the 16-bit Frame Length; API-071 states the limit of the Header (64 octets) only.",
       "operation": "config",
       "config": {
         "frame_type": "fixed",
@@ -1363,7 +1363,7 @@
         "GEN-060",
         "API-040"
       ],
-      "description": "A fixed-length VCID 63 on a variable-length channel: InvalidConfig",
+      "description": "A fixed-length VCID 63 on a variable-length channel: InvalidConfig Table 5-1 note 4: OID frames are not generated for variable-length frames.",
       "operation": "config",
       "config": {
         "frame_type": "variable",
@@ -1586,7 +1586,7 @@
         "API-040",
         "CMN-041"
       ],
-      "description": "Variable-length channel of 9 octets without FECF, VC without count: accepted",
+      "description": "Variable-length channel of 9 octets without FECF, VC without count: accepted A Physical Channel frame length below 9 octets is rejected even when no VC is configured: 9 is the 7-octet Primary Header, the 1-octet TFDF Header of a variable-length frame, and one TFDZ octet (OI-44 item 2); the TFDF Header of a fixed-length VC has 3 octets, so such a VC needs 11.",
       "operation": "config",
       "config": {
         "frame_type": "variable",
@@ -3114,7 +3114,7 @@
         "GEN-060",
         "API-040"
       ],
-      "description": "Order: the Physical Channel before a VC (Insert Zone on variable, VCID 64)",
+      "description": "Order: the Physical Channel before a VC (Insert Zone on variable, VCID 64) The order of the configuration checks (uslp-frame.md §2.1) is a project choice; the Blue Book gives none.",
       "operation": "config",
       "config": {
         "frame_type": "variable",
@@ -3151,7 +3151,7 @@
         "GEN-060",
         "API-040"
       ],
-      "description": "Order: a VC's own values before its relations (count length 8 and OCF allowed on fixed)",
+      "description": "Order: a VC's own values before its relations (count length 8 and OCF allowed on fixed) The order of the configuration checks (uslp-frame.md §2.1) is a project choice; the Blue Book gives none.",
       "operation": "config",
       "config": {
         "frame_type": "fixed",
@@ -3188,7 +3188,7 @@
         "GEN-060",
         "API-040"
       ],
-      "description": "Order: the count lengths before the truncated frame length",
+      "description": "Order: the count lengths before the truncated frame length The order of the configuration checks (uslp-frame.md §2.1) is a project choice; the Blue Book gives none.",
       "operation": "config",
       "config": {
         "frame_type": "variable",
@@ -3225,7 +3225,7 @@
         "GEN-060",
         "API-040"
       ],
-      "description": "Order: OCF before the truncated frame length on a fixed VC",
+      "description": "Order: OCF before the truncated frame length on a fixed VC The order of the configuration checks (uslp-frame.md §2.1) is a project choice; the Blue Book gives none.",
       "operation": "config",
       "config": {
         "frame_type": "fixed",
@@ -3262,7 +3262,7 @@
         "GEN-060",
         "API-040"
       ],
-      "description": "Order: every VC before every MAP (MAP ID 16, then a VC with VCID 64)",
+      "description": "Order: every VC before every MAP (MAP ID 16, then a VC with VCID 64) The order of the configuration checks (uslp-frame.md §2.1) is a project choice; the Blue Book gives none.",
       "operation": "config",
       "config": {
         "frame_type": "fixed",
@@ -3320,7 +3320,7 @@
         "GEN-060",
         "API-040"
       ],
-      "description": "Order: the MAPs' own values before the table (duplicate VC, MAP ID 16)",
+      "description": "Order: the MAPs' own values before the table (duplicate VC, MAP ID 16) The order of the configuration checks (uslp-frame.md §2.1) is a project choice; the Blue Book gives none.",
       "operation": "config",
       "config": {
         "frame_type": "fixed",
@@ -3378,7 +3378,7 @@
         "GEN-060",
         "API-040"
       ],
-      "description": "Order: the table's VCs before its MAPs (variable VC on fixed channel, MAP of a missing VC)",
+      "description": "Order: the table's VCs before its MAPs (variable VC on fixed channel, MAP of a missing VC) The order of the configuration checks (uslp-frame.md §2.1) is a project choice; the Blue Book gives none.",
       "operation": "config",
       "config": {
         "frame_type": "fixed",
@@ -3437,7 +3437,7 @@
         "API-040",
         "USLP-012"
       ],
-      "description": "Order: the truncated SDLS length is checked last (a duplicate MAP first)",
+      "description": "Order: the truncated SDLS length is checked last (a duplicate MAP first) The order of the configuration checks (uslp-frame.md §2.1) is a project choice; the Blue Book gives none.",
       "operation": "config",
       "config": {
         "frame_type": "variable",

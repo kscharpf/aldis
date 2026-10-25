@@ -74,13 +74,13 @@ pub struct UslpChannels {
     pub spacecraft_id: UslpSpacecraftId,
     /// The VCs other than 63 with their MAPs, at least one each.
     pub vcs: Vec<(UslpVcId, Vec<UslpMapId>)>,
-    /// Whether VC 63 is configured for OID frames.
+    /// Whether VC 63 carries OID frames, by an entry or, on a fixed channel, implied.
     pub oid: bool,
 }
 
 /// A fixed-length channel: frames of 32–256 octets, an Insert Zone of 0–4 octets, a data VC
 /// (VCF Count Lengths, OCF required or absent, SDLS) with 1–3 MAPs, and VC 63 (USLP-003,
-/// USLP-008, USLP-009).
+/// USLP-008, USLP-009), given or implied (Table 5-2 note 2).
 fn fixed_channels() -> impl Strategy<Value = UslpChannels> {
     (
         (32_usize..=256, 0_usize..=4, any::<bool>()),
@@ -93,11 +93,23 @@ fn fixed_channels() -> impl Strategy<Value = UslpChannels> {
             small_security(),
         ),
         proptest::collection::btree_set(map_id::<4>(), 1..=3),
-        (vcf_count_len(), vcf_count_len(), any::<bool>()),
+        (
+            vcf_count_len(),
+            vcf_count_len(),
+            any::<bool>(),
+            any::<bool>(),
+        ),
     )
         .prop_filter_map(
             "a valid fixed channel",
-            |((len, iz, fecf), scid, vcid, (seq, exp, ocf, sec), maps, (oseq, oexp, oocf))| {
+            |(
+                (len, iz, fecf),
+                scid,
+                vcid,
+                (seq, exp, ocf, sec),
+                maps,
+                (oseq, oexp, oocf, implied),
+            )| {
                 (vcid.get() != OID).then_some(())?;
                 let pc =
                     PhysicalChannelConfig::new(TransferFrameType::Fixed, len, iz, fecf).ok()?;
@@ -115,10 +127,14 @@ fn fixed_channels() -> impl Strategy<Value = UslpChannels> {
                     ocf: use_of(oocf),
                     ..VcParams::new(TransferFrameType::Fixed)
                 };
-                let vcs = [
-                    VcConfig::new(scid, vcid, data).ok()?,
-                    VcConfig::new(scid, UslpVcId::new(OID)?, oid).ok()?,
-                ];
+                // VCID 63 is valid without an entry on a fixed channel (Table 5-2 note 2): half
+                // the channels leave it implied, with the defaults of `VcParams::new`.
+                let given = VcConfig::new(scid, vcid, data).ok()?;
+                let vcs = if implied {
+                    vec![given]
+                } else {
+                    vec![given, VcConfig::new(scid, UslpVcId::new(OID)?, oid).ok()?]
+                };
                 let map_list: Vec<UslpMapId> = maps.into_iter().collect();
                 let configs: Vec<MapConfig> = map_list
                     .iter()

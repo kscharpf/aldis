@@ -130,3 +130,9 @@ One line for each decision the maintainer takes, under the [decision rights](dec
 - 2026-10-24 · process · chat · An independent review cites the file and line behind every statement about the implementation; a review that misdescribes the code does not count and is done again (AGENTS.md, after the review of #113)
 - 2026-10-24 · process · #113 · The Rust stack budget is 4096 bytes on every target (was 1024): after the review's fix, generic table constructors are measured, and VcTable::new of TC builds its table in its frame (about 3.6 KB); OI-45 widens to the Rust table constructors
 - 2026-10-24 · process · #113 · The core::fmt builders reached from AnomalySet's Debug are exempt with indirect = 0: neither the caller's writer nor the derived Debug of an anomaly enum, which is measured as its own entry point, is added
+- 2026-10-25 · spec · #117 · USLP VCID 63 follows 732.1 Table 5-2 note 2: OID frames on VCID 63 are always accepted on a fixed-length channel, with no configuration entry, and stay rejected on a variable-length one (Table 5-1 note 4); uslp-frame.md §2.1 corrected
+- 2026-10-25 · spec · #117 · The TM OID writer rejects a VC that uses SDLS (132.0 §6.4.6.2); TM-010 says so
+- 2026-10-25 · spec · #117 · A stateless decoder does not check the pseudo-noise data of an OID frame, and receivers discard it; documented for TM, AOS, and USLP, no behaviour change
+- 2026-10-25 · api · #117 · A CLCW with COP in Effect other than 01 stays decoded in strict mode (TC-030), now a listed exception in API-031
+- 2026-10-25 · spec · #117 · OI-46: the USLP VCF Count Length is read per QoS (Table 5-3) despite 732.1 §4.1.2.11.4; resolved with this reading
+- 2026-10-25 · plan · #75 · The xtask crate split is dropped: only #102 of 55 M2 pull requests would have gained (about 10–18 min); branches chore/xtask-verify-split and trial/structure-merge deleted, #75 closed

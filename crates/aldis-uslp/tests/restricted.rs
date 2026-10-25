@@ -27,7 +27,7 @@ use aldis_uslp::{
     MAX_FRAME_LEN, MapConfig, OcfUse, PRIMARY_HEADER_LEN, PhysicalChannelConfig, Reason,
     SecurityScope, SourceOrDestination, TfdfHeader, TfdzOffset, TfdzRule, TransferFrameType,
     TruncatedFrameLen, UnassignedUpid, Upid, UslpFrame, UslpMapId, UslpSpacecraftId, UslpVcId,
-    VcConfig, VcParams, VcTable, VcfCount, VcfCountLen, encode, encode_truncated,
+    VcConfig, VcLookup, VcParams, VcTable, VcfCount, VcfCountLen, encode, encode_truncated,
 };
 
 /// Failing cases are saved here and replayed first.
@@ -735,6 +735,29 @@ fn map_frame_round_trips(
 /// `CapacityExceeded` (`map_id`) above `M`. Then `truncated_frame_len` for a truncated frame
 /// length below 28 with SDLS (Annex D1.2.4; USLP-012). An accepted table carries a frame through
 /// `encode` and `decode`.
+#[test]
+fn vc_tables_imply_vcid_63_only_on_fixed_channels() {
+    // restricted: VcTable
+    // req: USLP-009, GEN-060
+    // VCID 63 needs no entry on a fixed channel (Table 5-2 note 2), and has none on a variable
+    // one (Table 5-1 note 4).
+    type Table = VcTable<2, 2>;
+    let scid = UslpSpacecraftId::new(0xA5A5).unwrap();
+    let id = |v: u8| UslpVcId::new(v).unwrap();
+    let pc = |t| PhysicalChannelConfig::new(t, 64, 0, true).unwrap();
+    let only_vc1 = |t| {
+        let vc = VcConfig::new(scid, id(1), VcParams::new(t)).unwrap();
+        Table::new(pc(t), &[vc], &[]).unwrap()
+    };
+    let fixed = only_vc1(TransferFrameType::Fixed);
+    assert_eq!(
+        fixed.vc(scid, id(63)).map(|v| v.params()),
+        Some(VcParams::new(TransferFrameType::Fixed))
+    );
+    assert_eq!(fixed.vcs().count(), 1);
+    assert_eq!(only_vc1(TransferFrameType::Variable).vc(scid, id(63)), None);
+}
+
 #[test]
 fn vc_tables_accept_exactly_the_configurable_channels() {
     // restricted: VcTable

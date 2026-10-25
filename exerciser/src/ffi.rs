@@ -1219,6 +1219,17 @@ fn tm(t: &mut Tally) {
                 &raw mut det,
             ) == ALDIS_OK,
         );
+        // An OID frame needs a VC without SDLS (132.0 §6.4.6.2): VC 2 has none.
+        let oid_vcs = [
+            vcs[0],
+            vcs[1],
+            aldis_tm_vc_config_t {
+                vcid: 2,
+                security_header_len: 0,
+                security_trailer_len: 0,
+                ..vcs[0]
+            },
+        ];
         t.check(
             aldis_oid_generator_init(
                 words.as_mut_ptr().cast(),
@@ -1231,9 +1242,9 @@ fn tm(t: &mut Tally) {
         t.check(
             aldis_tm_oid_writer_begin(
                 &raw const mc,
-                vcs.as_ptr(),
+                oid_vcs.as_ptr(),
+                bb(3),
                 bb(2),
-                bb(0),
                 bb(0),
                 bb(0),
                 oid,
@@ -1242,14 +1253,14 @@ fn tm(t: &mut Tally) {
                 &raw mut layout,
                 &raw mut det,
             ) == ALDIS_OK
-                && frame.get(8..12) == Some(&[0xFF; 4][..]),
+                && frame.get(6..10) == Some(&[0xFF; 4][..]),
         );
         t.check(
             aldis_tm_oid_writer_finish(
                 &raw const mc,
-                vcs.as_ptr(),
+                oid_vcs.as_ptr(),
+                bb(3),
                 bb(2),
-                bb(0),
                 bb(0),
                 bb(0),
                 frame.as_mut_ptr(),

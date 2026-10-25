@@ -6501,7 +6501,8 @@ int32_t aldis_tm_writer_finish(const aldis_tm_mc_config_t *mc,
  *
  * # Errors
  * As [`aldis_tm_writer_begin`]; `ALDIS_ERR_INVALID_FIELD` (`sync_flag`) if the VC carries
- * `VCA_SDUs` (132.0 §4.1.4.6.3); `ALDIS_ERR_INVALID_HANDLE` for an invalid generator; CABI-022
+ * `VCA_SDUs` (132.0 §4.1.4.6.3), then (`vc_id`) if the VC uses SDLS (132.0 §6.4.6.2; TM-010);
+ * `ALDIS_ERR_INVALID_HANDLE` for an invalid generator; CABI-022
  * violations, including `out` overlapping the generator's storage. On error neither `out` nor
  * the generator is changed (GEN-042).
  *
@@ -6531,7 +6532,9 @@ int32_t aldis_tm_oid_writer_begin(const aldis_tm_mc_config_t *mc,
  * caller filled, computes the FECF if configured, and returns the frame length.
  *
  * # Errors
- * As [`aldis_tm_writer_finish`] for the fields of an OID frame; on error `out` is unchanged.
+ * As [`aldis_tm_writer_finish`] for the fields of an OID frame, including
+ * `ALDIS_ERR_INVALID_FIELD` (`vc_id`) for a VC that uses SDLS, as [`aldis_tm_oid_writer_begin`]
+ * (132.0 §6.4.6.2; TM-010); on error `out` is unchanged.
  *
  * # Safety
  * `mc` and `vcs` as for [`aldis_tm_mc_config_check`]; `out` is valid for `cap` octets;
@@ -6836,7 +6839,9 @@ int32_t aldis_uslp_encode_truncated(const aldis_uslp_config_t *pc,
  * `fields->channel.vcid` must be 63 and `map_id` 0. The library writes the TFDF Header: rule
  * `001`, UPID "Only Idle Data", and the Last Valid Octet Pointer at the last TFDZ octet, so
  * `content->tfdf` is not read; `content` gives the Insert Zone and the OCF, and its TFDZ must be
- * empty. The TFDZ fills the fixed-length frame.
+ * empty. The TFDZ fills the fixed-length frame. On a fixed-length channel, VCID 63 is valid
+ * without an entry in `vcs` (732.1 Table 5-2 note 2): the frame then has no VCF Count, OCF, or
+ * Security fields.
  *
  * # Errors
  * The errors of [`aldis_uslp_encode`], with `ALDIS_ERR_INVALID_FIELD` (`vc_id`) for another

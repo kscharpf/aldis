@@ -292,6 +292,10 @@ def plan(pc, mc, p):
                 raise Fail("OutOfRange", F["first_header_pointer"])
         else:
             fhp = NO_PACKET_START if kind == "no_packet_start" else ONLY_IDLE_DATA
+            # TM-010, §6.4.6.2: FHP 0x7FE makes the frame an OID frame, which uses a VC without
+            # SDLS; every writer applies the check, after the sync flag (decision of 2026-10-25).
+            if fhp == ONLY_IDLE_DATA and (vc["sh"] or vc["st"]):
+                raise Fail("InvalidField", F["vc_id"])
     header = join_primary({
         "version": 0, "scid": mc["scid"], "vcid": vcid, "ocf_flag": vc["ocf"],
         "mc_frame_count": p["mc_frame_count"], "vc_frame_count": p["vc_frame_count"],
@@ -345,6 +349,10 @@ def encode_oid(pc, mc, p):
              "vc_frame_count": f["vc_frame_count"],
              "status": {"sync": False, "pointer": "only_idle_data"}}
         vc, n, header = plan(pc, mc, q)
+        # §6.4.6.2: the OID frames of the Master Channel Multiplexing Function use a VC without
+        # SDLS; checked after the sync flag (TM-010, decision of 2026-10-25).
+        if vc["sh"] or vc["st"]:
+            raise Fail("InvalidField", F["vc_id"])
         fsh_data = hexb(f, "fsh_data_hex") or bytes((vc["fsh"] or 1) - 1)
         ocf = hexb(f, "ocf_hex") if vc["ocf"] else None
         if vc["ocf"] and ocf is None:
@@ -450,7 +458,9 @@ def superseded(c, op, expect_, reason, by):
     model does not recompute them (TV-021)."""
     c["operation"] = op
     c["expect"] = expect_
-    c["superseded"] = {"reason": reason, "by": by}
+    c["superseded"] = {"reason": reason}
+    if by is not None:
+        c["superseded"]["by"] = by
     return c
 
 
@@ -596,11 +606,11 @@ def fhp_values():
                       params=enc(0, 0, 0, status("starts_at", 14), data.hex().upper())))
     big = channel(2100, False, 1, [vc(0)])
     cases.append(case("tm-fhp-enc-err-002", ["TM-009", "TM-008"],
-                      "Encode FHP 0x7FE as an offset in a 2094-octet data field: OutOfRange",
+                      "Encode FHP 0x7FE as an offset in a 2094-octet data field: OutOfRange (0x7FE is the 'only idle data' code, 132.0-B-3 §4.1.2.7.6.5). The 2100-octet frame exceeds the 2048-octet maximum of 131.0-B-6 §11 on purpose: 132.0-B-3 states no maximum, and only so long a frame reaches an offset of 2046",
                       "encode", big,
                       params=enc(0, 0, 0, status("starts_at", 0x7FE), "00" * 2094)))
     cases.append(case("tm-fhp-enc-005", ["TM-009", "TM-008"],
-                      "Encode FHP 0x7FD, the largest offset, in a 2094-octet data field",
+                      "Encode FHP 0x7FD, the largest offset, in a 2094-octet data field. The 2100-octet frame exceeds the 2048-octet maximum of 131.0-B-6 §11 on purpose: 132.0-B-3 states no maximum, and only so long a frame reaches an offset of 2045",
                       "encode", big,
                       params=enc(0, 0, 0, status("starts_at", 0x7FD), "00" * 2094)))
     return cases
@@ -609,6 +619,8 @@ def fhp_values():
 def oid_sequence():
     mc = channel(32, True, 0x0AB, [vc(0, fsh=4, sh=2, st=1), vc(1, "vca_sdu"), vc(2, ocf=True)],
                  mc_ocf=False)
+    mc2 = channel(32, True, 0x0AB, [vc(0, sh=2, st=1), vc(1, "vca_sdu"), vc(2, fsh=4),
+                                    vc(3, "vca_sdu", sh=2, st=1), vc(4, st=1), vc(5, sh=3)])
     return [
         case("tm-oid-001", ["TM-010", "CMN-020", "CMN-021", "CMN-023"],
              "Two consecutive OID frames on VC 2 continue the PN sequence: the first starts with "
@@ -616,14 +628,23 @@ def oid_sequence():
              params={"vcid": 2, "frames": [
                  {"mc_frame_count": 0, "vc_frame_count": 0, "ocf_hex": CLCW.hex().upper()},
                  {"mc_frame_count": 1, "vc_frame_count": 1, "ocf_hex": CLCW.hex().upper()}]}),
-        case("tm-oid-002", ["TM-010", "CMN-021"],
-             "Three OID frames on VC 0 with an FSH carrying data and SDLS fields left zero",
-             "encode_oid", mc,
-             params={"vcid": 0, "frames": [
-                 {"mc_frame_count": i, "vc_frame_count": 10 + i, "fsh_data_hex": "ABCDEF"}
-                 for i in range(3)]}),
+        superseded(
+            case("tm-oid-002", ["TM-010", "CMN-021"],
+                 "Three OID frames on VC 0 with an FSH carrying data and SDLS fields left zero",
+                 "encode_oid", mc,
+                 params={"vcid": 0, "frames": [
+                     {"mc_frame_count": i, "vc_frame_count": 10 + i, "fsh_data_hex": "ABCDEF"}
+                     for i in range(3)]}),
+            "encode_oid",
+            {"ok": True, "frames_hex": [
+                "0AB0000A9FFE03ABCDEF0000FFFFFFFF6DB6D861451F11F19716723CBE00B802",
+                "0AB0010B9FFE03ABCDEF00007E00B1DE90B262107AF83494CEE3323F0300E235",
+                "0AB0020C9FFE03ABCDEF000054BEF5C1528C9BB9ED35FDBC23D9BC2F07006375"]},
+            "VC 0 uses SDLS (Security Header 2 octets, Trailer 1): the OID writer rejects such "
+            "a VC (maintainer decision of 2026-10-25 following 132.0-B-3 §6.4.6.2; TM-010)",
+            "tm-oid-005"),
         case("tm-oid-003", ["TM-010"],
-             "An OID frame on a VCA_SDU channel is rejected: OID frames use a packet VC",
+             "An OID frame on a VCA_SDU channel is rejected: OID frames use a packet VC (132.0-B-3 §4.1.4.6.3). The error kind and field are a project choice",
              "encode_oid", mc, params={"vcid": 1, "frames": [
                  {"mc_frame_count": 0, "vc_frame_count": 0}]}),
         case("tm-oid-004", ["TM-008", "TM-010"],
@@ -631,6 +652,33 @@ def oid_sequence():
              pc_only(32, True), expect({"operation": "encode_oid", "config": mc, "params": {
                  "vcid": 2, "frames": [{"mc_frame_count": 0, "vc_frame_count": 0,
                                         "ocf_hex": CLCW.hex().upper()}]}})["frames_hex"][0]),
+        # Added 2026-10-25 by a blind Claude Sonnet 5.5 agent (M2 WP-8 follow-up 1).
+        case("tm-oid-005", ["TM-010", "CMN-021"],
+             "Replaces tm-oid-002: three OID frames on VC 2, which has a 4-octet FSH and no "
+             "SDLS, carry the FSH data ABCDEF and continue one PN sequence (132.0-B-3 "
+             "§4.1.4.6, §6.4.6.2)", "encode_oid", mc2,
+             params={"vcid": 2, "frames": [
+                 {"mc_frame_count": i, "vc_frame_count": 10 + i, "fsh_data_hex": "ABCDEF"}
+                 for i in range(3)]}),
+        case("tm-oid-006", ["TM-010"],
+             "OID frame on VC 0, which uses SDLS (Security Header 2, Trailer 1): InvalidField "
+             "naming vc_id, nothing written (132.0-B-3 §6.4.6.2: the Master Channel "
+             "Multiplexing Function uses a VC without SDLS)", "encode_oid", mc2,
+             params={"vcid": 0, "frames": [{"mc_frame_count": 0, "vc_frame_count": 0}]}),
+        case("tm-oid-007", ["TM-010"],
+             "OID frame on VC 3, which is both a VCA_SDU channel and uses SDLS: the sync_flag "
+             "check comes first (TM-010: sync_flag, then vc_id)", "encode_oid", mc2,
+             params={"vcid": 3, "frames": [{"mc_frame_count": 0, "vc_frame_count": 0}]}),
+        case("tm-oid-008", ["TM-010"],
+             "OID frame on VC 4, which has a Security Trailer of 1 octet and no Security "
+             "Header: still SDLS, InvalidField naming vc_id (132.0-B-3 §6.4.6.2)",
+             "encode_oid", mc2,
+             params={"vcid": 4, "frames": [{"mc_frame_count": 0, "vc_frame_count": 0}]}),
+        case("tm-oid-009", ["TM-010"],
+             "OID frame on VC 5, which has a Security Header of 3 octets and no Security "
+             "Trailer: still SDLS, InvalidField naming vc_id (132.0-B-3 §6.4.6.2)",
+             "encode_oid", mc2,
+             params={"vcid": 5, "frames": [{"mc_frame_count": 0, "vc_frame_count": 0}]}),
     ]
 
 
@@ -638,6 +686,16 @@ def security_layout():
     mc = channel(40, True, SCID, [vc(4, sh=6, st=8), vc(5, "vca_sdu", ocf=True, sh=3)])
     pattern = frame(40, True, {"scid": SCID, "vcid": 4, "first_header_pointer": 0},
                     sh=b"\xA5" * 6, data=seq(0x30, 40 - 6 - 6 - 8 - 2), st=b"\x5A" * 8)
+    all_six = channel(40, True, SCID, [vc(6, fsh=3, ocf=True, sh=4, st=2)])
+    oid_mc = channel(40, True, SCID, [vc(0, sh=2, st=1), vc(1, sh=3), vc(2, st=1), vc(3)])
+    idle = status("only_idle_data")
+
+    def idle_enc(vcid, n, sh="", tr=""):
+        return enc(vcid, 0, 0, idle, "00" * n, sh=sh, tr=tr)
+    six = frame(40, True, {"scid": SCID, "vcid": 6, "mc_frame_count": 7, "vc_frame_count": 8,
+                           "first_header_pointer": 5},
+                fsh=b"\x02\x11\x22", sh=b"\xA5" * 4, data=seq(0x70, 19), st=b"\x5A" * 2,
+                ocf=CLCW)
     return [
         case("tm-sec-dec-001", ["API-070", "API-072", "TM-006"],
              "Security Header of 6 octets (A5) and Trailer of 8 (5A), FixedPatternSecurity: "
@@ -673,6 +731,36 @@ def security_layout():
         case("tm-sec-val-002", ["TM-011", "API-070"],
              "Decoded with VC 4's layout, the frame of tm-sec-dec-001 matches its channel",
              "validate", mc, pattern),
+        # Added 2026-10-25 by a blind Claude Sonnet 5.5 agent (M2 WP-8 follow-up 2).
+        case("tm-sec-dec-006", ["API-070", "TM-003", "TM-004", "TM-005", "TM-006"],
+             "FSH (3 octets), Security Header (4), 19 data octets, Security Trailer (2), OCF, "
+             "and FECF together, in the order of 132.0-B-3 §6.3.7.2: every field placed",
+             "decode_with", all_six, six),
+        case("tm-sec-enc-003", ["API-070", "TM-009", "TM-003", "TM-004", "TM-005"],
+             "Encode the frame of tm-sec-dec-006", "encode", all_six,
+             params=enc(6, 7, 8, status("starts_at", 5), seq(0x70, 19).hex().upper(),
+                        fsh_data="1122", sh="A5A5A5A5", tr="5A5A", ocf=CLCW.hex().upper())),
+        case("tm-sec-val-003", ["TM-011", "API-070"],
+             "The frame of tm-sec-dec-006 matches its channel", "validate", all_six, six),
+        # Added 2026-10-25 by a blind Claude Sonnet 5.5 agent after the review of #117
+        # (finding 1: every TM writer applies the SDLS check of an OID frame).
+        case("tm-sec-enc-004", ["TM-010", "TM-009"],
+             "Encode FHP 0x7FE (Only Idle Data) on VC 0, which has a Security Header (2) and "
+             "Trailer (1): the frame is an OID frame, which may not use SDLS, so InvalidField "
+             "naming vc_id, nothing written (132.0-B-3 §6.4.6.2)", "encode", oid_mc,
+             params=idle_enc(0, 29, sh="A5A5", tr="5A")),
+        case("tm-sec-enc-005", ["TM-010", "TM-009"],
+             "Encode FHP 0x7FE on VC 1, which has a Security Header (3) and no Trailer: "
+             "InvalidField naming vc_id (132.0-B-3 §6.4.6.2)", "encode", oid_mc,
+             params=idle_enc(1, 29, sh="A5A5A5")),
+        case("tm-sec-enc-006", ["TM-010", "TM-009"],
+             "Encode FHP 0x7FE on VC 2, which has a Security Trailer (1) and no Header: "
+             "InvalidField naming vc_id (132.0-B-3 §6.4.6.2)", "encode", oid_mc,
+             params=idle_enc(2, 31, tr="5A")),
+        case("tm-sec-enc-007", ["TM-010", "TM-009"],
+             "Encode FHP 0x7FE on VC 3, which does not use SDLS: accepted, the counterpart "
+             "of tm-sec-enc-004 to -006 (132.0-B-3 §6.4.6.2)", "encode", oid_mc,
+             params=idle_enc(3, 32)),
         case("tm-sec-cfg-001", ["API-040", "API-071"],
              "Security Header longer than 64 octets", "config",
              channel(200, False, 1, [vc(0, sh=65)])),
@@ -702,7 +790,7 @@ def invalid():
         case("tm-inv-crc-001", ["TM-005", "CMN-003"], "One data bit flipped: CrcMismatch",
              "decode", pc, good[:10] + bytes([good[10] ^ 1]) + good[11:]),
         case("tm-inv-crc-002", ["TM-005"],
-             "Version 01 with a wrong FECF: the FECF is checked first", "decode", pc,
+             "Version 01 with a wrong FECF: the FECF is checked first (the order of checks is a project choice, TM-005; 132.0-B-3 gives none)", "decode", pc,
              bytes([good[0] | 0x40]) + good[1:]),
         case("tm-inv-ver-001", ["TM-002"], "Transfer Frame Version Number 01", "decode", pc,
              f({"version": 1})),
@@ -761,9 +849,9 @@ def invalid():
              f({"vcid": 1, "sync_flag": 1})),
         case("tm-inv-enc-001", ["TM-009"], "Encode on an unconfigured VC", "encode", mc,
              params=enc(6, 0, 0, status("no_packet_start"), "00" * 12)),
-        case("tm-inv-enc-002", ["TM-009", "TM-011"], "Encode packets on a VCA_SDU VC",
+        case("tm-inv-enc-002", ["TM-009", "TM-011"], "Encode packets on a VCA_SDU VC (the error kind and field are a project choice)",
              "encode", mc, params=enc(1, 0, 0, status("no_packet_start"), "00" * 12)),
-        case("tm-inv-enc-003", ["TM-009", "TM-011"], "Encode a VCA_SDU on a packet VC",
+        case("tm-inv-enc-003", ["TM-009", "TM-011"], "Encode a VCA_SDU on a packet VC (the error kind and field are a project choice)",
              "encode", mc, params=enc(0, 0, 0, status(sync=True), "00" * 12)),
         case("tm-inv-enc-004", ["TM-009", "API-021"], "Data one octet short", "encode", mc,
              params=enc(0, 0, 0, status("no_packet_start"), "00" * 11)),
@@ -781,7 +869,9 @@ def invalid():
              params=enc(0, 0, 0, status("no_packet_start"), "00" * 12, tr="5A")),
         case("tm-inv-enc-010", ["API-022"], "Output buffer one octet short: BufferTooSmall",
              "encode", mc, params=enc(0, 0, 0, status("no_packet_start"), "00" * 12, out_len=19)),
-        case("tm-inv-cfg-001", ["API-040", "CMN-041"], "Frame of 8 octets with FECF",
+        case("tm-inv-cfg-001", ["API-040", "CMN-041"], "Frame of 8 octets with FECF: no data octet (CMN-041, a project rule). No VC is "
+             "configured, so the error names the frame length (68), where the cases that name "
+             "the data field (7) have a VC whose fields leave no data octet",
              "config", pc_only(8, True)),
         case("tm-inv-cfg-002", ["API-040"], "SCID 1024", "config", channel(20, False, 1024, [])),
         case("tm-inv-cfg-003", ["API-040"], "VCID 8", "config", channel(20, False, 1, [vc(8)])),
@@ -815,7 +905,16 @@ NOTE = (
     "polynomial division, the OID data by the Annex D recurrence). The model is committed as "
     "test-vectors/models/tm_frame.py (TV-023); `python3 -I test-vectors/models/tm_frame.py "
     "--check test-vectors/tm/*.json` recomputes every expected value. One frame is worked "
-    "by hand in docs/verification/derivations/tm-frame.md."
+    "by hand in docs/verification/derivations/tm-frame.md. Author of the model: an AI agent, "
+    "Claude Opus 5.5, recorded as co-author of commit 5e1235e (2026-10-23); it wrote the "
+    "model from 132.0-B-3 and docs/standards/tm-frame.md, and states that it did not write it "
+    "from the code of the Rust codec (the history shows the codec already existed and records "
+    "no briefing of the agent beyond that statement; TV-023). The cases tm-oid-005 to tm-oid-009 "
+    "and tm-sec-dec-006, tm-sec-enc-003, tm-sec-val-003 were added on 2026-10-25 (M2 WP-8) by "
+    "a second agent, Claude Sonnet 5.5, briefed to read only the Blue Book, docs/, and the "
+    "vectors, never the implementation, and to extend this model. The cases tm-sec-enc-004 to "
+    "tm-sec-enc-007 were added on 2026-10-25 by a blind Claude Sonnet 5.5 agent, after the "
+    "review of #117."
 )
 
 FILES = {
@@ -831,7 +930,7 @@ FILES = {
 def generate(name):
     make, standard = FILES[name]
     return {"kind": "codec", "standard": standard, "provenance": "hand-derived",
-            "provenance_note": NOTE, "cases": make()}
+            "provenance_note": NOTE + " This file covers " + standard + ".", "cases": make()}
 
 
 def check_field_codes(path):

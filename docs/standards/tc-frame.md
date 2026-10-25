@@ -49,13 +49,14 @@ A frame's limit is the smaller of its Virtual and Physical Channel's maximum. Th
 | ID | Requirement | Source | Verif. |
 |---|---|---|---|
 | TC-001 | The decoder SHALL derive the frame length from the Frame Length field and consume exactly that many octets (API-011). | §4.1.2.7 | V |
-| TC-002 | The decoder SHALL reject TFVN ≠ `00` (`UnsupportedVersion`) and the reserved flag combination Bypass = 0 / Control Command = 1 (`ReservedValue`, both modes). | §4.1.2.2, Table 4-1 | V |
+| TC-002 | The decoder SHALL reject TFVN ≠ `00` (`UnsupportedVersion`) and the reserved flag combination Bypass = 0 / Control Command = 1 (`ReservedValue`, both modes). `peek_length` applies the same two checks to the header it reads (API-013), with the same errors. | §4.1.2.2, Table 4-1 | V |
 | TC-003 | Non-zero Reserved Spare bits SHALL be `ReservedValue` in strict mode and an anomaly in lenient mode. | §4.1.2.4.2 | V |
 | TC-004 | The Segment Header SHALL be parsed only when the VC configuration says it is present and the frame is Type-D. In Type-C frames it SHALL be absent. | §4.1.3.2.1.4, §4.1.3.2.2.1.3 | V |
 | TC-005 | A Type-C data field SHALL be decoded as `Unlock`, `SetVr(v)`, or, for any other pattern, `ReservedValue` in strict mode and `UnknownControlCommand(raw)` in lenient mode. | §4.1.3.3 | V |
 | TC-006 | The FECF SHALL be verified when it is configured (CMN-001). | §4.1.4 | V |
-| TC-007 | The writer SHALL compute Frame Length and the FECF. It SHALL reject total length > configured maximum or > 1024, and a data field larger than 1019 (1017 with FECF). | §4.1.2.7, §4.1.3.1.2 | V |
+| TC-007 | The writer SHALL compute Frame Length and the FECF. It SHALL reject total length > configured maximum or > 1024, and a data field larger than 1019 (1017 with FECF). The data-field limit is the 1024 limit expressed for the data field, so it is the same error: the one-shot writer reports a frame above its limit as `OutOfRange` naming `frame_len`; the two-phase writer's `finish` reports User Data above its reservation as `OutOfRange` naming `user_len`. | §4.1.2.7, §4.1.3.1.2 | V |
 | TC-008 | In Type-B frames the writer SHALL accept the caller's N(S) value. COP-1 conventionally sets it to 0 for Type-B frames, but the codec SHALL NOT enforce this. | §4.1.2.8 note 3 | T |
+| TC-009 | The writer SHALL build a Type-C frame (Control Command Flag `1`: BC) from a Control Command only, and a Type-D frame (Control Command Flag `0`: AD or BD) from a Frame Data Unit only. Any other pairing SHALL be rejected with `InvalidField` naming `control_command_flag`. | §4.1.2.3.2.2, Table 4-1 | V |
 
 ## 4. Receiving-end procedures provided by the codec
 
@@ -113,7 +114,7 @@ The FECF is checked before the Segment Header is read, so a bit error in the MAP
 
 | ID | Requirement | Source | Verif. |
 |---|---|---|---|
-| TC-030 | `Clcw` SHALL encode and decode all fields above. Strict decoding SHALL require Control Word Type `0`, version `00`, and zero spares. Strict decoding SHALL accept any COP in Effect value, exposing it. FOP-1 rejects COP ≠ `01` itself ([cop1.md](cop1.md)). | §4.2.1 | V |
+| TC-030 | `Clcw` SHALL encode and decode all fields above. Strict decoding SHALL require Control Word Type `0`, version `00`, and zero spares. Strict decoding SHALL accept any COP in Effect value, exposing it. FOP-1 rejects COP ≠ `01` itself ([cop1.md](cop1.md)). §4.2.1.5.2 says the field "shall be set to `01`" for COP-1 and API-031 would make a checkable SHALL violation a strict error; this requirement is a listed exception to API-031 (maintainer decision of 2026-10-25). | §4.2.1 | V |
 | TC-031 | The Status Field SHALL be passed through unchanged (mission-specific). | §4.2.1.4 | V |
 
 ## 6. Anomaly flags (lenient mode)

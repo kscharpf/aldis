@@ -2,7 +2,7 @@
   "kind": "codec",
   "standard": "232.0-B-4 Cor. 1 — Type-AD frames: encode, decode, peek_length, SDLS slices",
   "provenance": "hand-derived",
-  "provenance_note": "232.0-B-4 prints no example frame or CLCW. Hand-derived from 232.0-B-4 with Cor. 1: §4.1.2 (Primary Header bits 0-1 TFVN 00, 2 Bypass, 3 Control Command, 4-5 spare, 6-15 SCID, 16-21 VCID, 22-31 Frame Length = total - 1, 32-39 N(S); Table 4-1, flags 0/1 reserved), §4.1.3 (Segment Header: Sequence Flags 2 bits, Table 4-2, MAP ID 6 bits; Unlock = 00, Set V(R) = 82 00 V(R)), §4.1.4 (FECF: CRC with G(X) = X^16 + X^12 + X^5 + 1, register preset to ones), §4.2.1 (CLCW fields and widths), §4.4.9.2-3 (delimiting and validation), §4.4.3.3 and §4.4.7.3 (invalid MAP and VC), §5 and §6.3, §6.6 (managed parameters, Security Header after the Segment Header). Check order, validation reason codes, the delimiter's valid header, and the managed parameters kept, as docs/standards/tc-frame.md states them. SCID 0x155 is the fictional SCID of the reference scenario (APP-026). Expected values computed by an independent Python model of those clauses, written before the Rust codec, which shares no code or method with it (the header is one 40-bit integer, the CRC is bitwise from G(X)). Error cases name the field code of 03 §9.1. The BC Unlock frame of tc-bc-unlock-enc-001 and the CLCW of tc-clcw-enc-001 are worked by hand, the CRC register octet by octet, in docs/verification/derivations/tc-frame.md. The model is committed as test-vectors/models/tc_frame.py (TV-023); `python3 -I test-vectors/models/tc_frame.py --check test-vectors/tc/*.json` recomputes every expected value.",
+  "provenance_note": "232.0-B-4 prints no example frame or CLCW. Hand-derived from 232.0-B-4 with Cor. 1: §4.1.2 (Primary Header bits 0-1 TFVN 00, 2 Bypass, 3 Control Command, 4-5 spare, 6-15 SCID, 16-21 VCID, 22-31 Frame Length = total - 1, 32-39 N(S); Table 4-1, flags 0/1 reserved), §4.1.3 (Segment Header: Sequence Flags 2 bits, Table 4-2, MAP ID 6 bits; Unlock = 00, Set V(R) = 82 00 V(R)), §4.1.4 (FECF: CRC with G(X) = X^16 + X^12 + X^5 + 1, register preset to ones), §4.2.1 (CLCW fields and widths), §4.4.9.2-3 (delimiting and validation), §4.4.3.3 and §4.4.7.3 (invalid MAP and VC), §5 and §6.3, §6.6 (managed parameters, Security Header after the Segment Header). Check order, validation reason codes, the delimiter's valid header, and the managed parameters kept, as docs/standards/tc-frame.md states them. SCID 0x155 is the fictional SCID of the reference scenario (APP-026). Expected values computed by an independent Python model of those clauses, written before the Rust codec, which shares no code or method with it (the header is one 40-bit integer, the CRC is bitwise from G(X)). Error cases name the field code of 03 §9.1. The BC Unlock frame of tc-bc-unlock-enc-001 and the CLCW of tc-clcw-enc-001 are worked by hand, the CRC register octet by octet, in docs/verification/derivations/tc-frame.md. The model is committed as test-vectors/models/tc_frame.py (TV-023); `python3 -I test-vectors/models/tc_frame.py --check test-vectors/tc/*.json` recomputes every expected value. Author of the model: an AI agent, Claude Opus 5.5, recorded as co-author of commit afff003 (2026-10-23), whose message states that it wrote the model from 232.0-B-4 Cor. 1 before the Rust codec existed; the history records no briefing of the agent beyond that statement (TV-023). The cases added on 2026-10-25 (M2 WP-8: tc-ad-6, tc-ad-enc-err-001 and -002, tc-bd-4, tc-bc-unlock-7, tc-bc-setvr-12, tc-seg-7, -8, tc-seg-enc-err-005, tc-max-dec-004, tc-max-dec-err-002, tc-val-021 to 025, tc-dec-err-014, tc-cfg-014 to 017, tc-clcw-dec-015 and -016) were written by a second agent, Claude Sonnet 5.5, briefed to read only the Blue Book, docs/, and the vectors, never the implementation, and to extend this model. This file covers Type-AD frames: encode, decode, peek_length, SDLS slices.",
   "cases": [
     {
       "id": "tc-ad-enc-001",
@@ -747,6 +747,227 @@
         "set_vr_value": null,
         "consumed": 16,
         "anomalies": []
+      }
+    },
+    {
+      "id": "tc-ad-enc-006",
+      "requirements": [
+        "TC-001",
+        "TC-006",
+        "API-001",
+        "API-020",
+        "API-021",
+        "TV-002"
+      ],
+      "description": "AD frame on the largest SCID 0x3FF and the largest VCID 63, N(S) 255: every bit of both fields set",
+      "operation": "encode",
+      "config": {
+        "max_frame_len": 1024,
+        "fecf": true,
+        "vcs": [
+          {
+            "scid": 1023,
+            "vcid": 63,
+            "max_frame_len": 1024,
+            "segment_header": false
+          }
+        ],
+        "maps": []
+      },
+      "params": {
+        "frame_type": "AD",
+        "spacecraft_id": 1023,
+        "vc_id": 63,
+        "sequence_number": 255,
+        "segment_header": null,
+        "user_data_hex": "5AA5"
+      },
+      "input_hex": "",
+      "expect": {
+        "ok": true,
+        "output_hex": "03FFFC08FF5AA58715"
+      }
+    },
+    {
+      "id": "tc-ad-dec-006",
+      "requirements": [
+        "TC-001",
+        "TC-006",
+        "API-001",
+        "API-010",
+        "TV-002"
+      ],
+      "description": "AD frame on the largest SCID 0x3FF and the largest VCID 63, N(S) 255: every bit of both fields set: decoded",
+      "operation": "decode",
+      "mode": "strict",
+      "config": {
+        "max_frame_len": 1024,
+        "fecf": true,
+        "vcs": [
+          {
+            "scid": 1023,
+            "vcid": 63,
+            "max_frame_len": 1024,
+            "segment_header": false
+          }
+        ],
+        "maps": []
+      },
+      "input_hex": "03FFFC08FF5AA58715",
+      "expect": {
+        "ok": true,
+        "frame_type": "AD",
+        "bypass_flag": 0,
+        "control_command_flag": 0,
+        "spacecraft_id": 1023,
+        "vc_id": 63,
+        "frame_len": 9,
+        "sequence_number": 255,
+        "segment_header": null,
+        "security_header_hex": "",
+        "data_hex": "5AA5",
+        "security_trailer_hex": "",
+        "fecf_hex": "8715",
+        "control_command": null,
+        "set_vr_value": null,
+        "consumed": 9,
+        "anomalies": []
+      }
+    },
+    {
+      "id": "tc-ad-enc-err-001",
+      "requirements": [
+        "API-001",
+        "TC-007"
+      ],
+      "description": "SCID 1024 does not fit ten bits: OutOfRange spacecraft_id, not UnknownChannel",
+      "operation": "encode",
+      "config": {
+        "max_frame_len": 1024,
+        "fecf": true,
+        "vcs": [
+          {
+            "scid": 341,
+            "vcid": 1,
+            "max_frame_len": 1024,
+            "segment_header": false
+          },
+          {
+            "scid": 341,
+            "vcid": 2,
+            "max_frame_len": 1024,
+            "segment_header": true
+          },
+          {
+            "scid": 341,
+            "vcid": 3,
+            "max_frame_len": 1024,
+            "segment_header": false,
+            "security_header_len": 4,
+            "security_trailer_len": 2
+          }
+        ],
+        "maps": [
+          {
+            "scid": 341,
+            "vcid": 2,
+            "map_id": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 2,
+            "map_id": 5
+          },
+          {
+            "scid": 341,
+            "vcid": 2,
+            "map_id": 9,
+            "security_header_len": 3,
+            "security_trailer_len": 1
+          }
+        ]
+      },
+      "params": {
+        "frame_type": "AD",
+        "spacecraft_id": 1024,
+        "vc_id": 1,
+        "sequence_number": 0,
+        "segment_header": null,
+        "user_data_hex": "01"
+      },
+      "input_hex": "",
+      "expect": {
+        "ok": false,
+        "error": "OutOfRange",
+        "field": 1
+      }
+    },
+    {
+      "id": "tc-ad-enc-err-002",
+      "requirements": [
+        "API-001",
+        "TC-007"
+      ],
+      "description": "VCID 64 does not fit six bits: OutOfRange vc_id, not UnknownChannel",
+      "operation": "encode",
+      "config": {
+        "max_frame_len": 1024,
+        "fecf": true,
+        "vcs": [
+          {
+            "scid": 341,
+            "vcid": 1,
+            "max_frame_len": 1024,
+            "segment_header": false
+          },
+          {
+            "scid": 341,
+            "vcid": 2,
+            "max_frame_len": 1024,
+            "segment_header": true
+          },
+          {
+            "scid": 341,
+            "vcid": 3,
+            "max_frame_len": 1024,
+            "segment_header": false,
+            "security_header_len": 4,
+            "security_trailer_len": 2
+          }
+        ],
+        "maps": [
+          {
+            "scid": 341,
+            "vcid": 2,
+            "map_id": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 2,
+            "map_id": 5
+          },
+          {
+            "scid": 341,
+            "vcid": 2,
+            "map_id": 9,
+            "security_header_len": 3,
+            "security_trailer_len": 1
+          }
+        ]
+      },
+      "params": {
+        "frame_type": "AD",
+        "spacecraft_id": 341,
+        "vc_id": 64,
+        "sequence_number": 0,
+        "segment_header": null,
+        "user_data_hex": "01"
+      },
+      "input_hex": "",
+      "expect": {
+        "ok": false,
+        "error": "OutOfRange",
+        "field": 2
       }
     },
     {

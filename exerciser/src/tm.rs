@@ -187,11 +187,23 @@ fn frames(t: &mut Tally, mc: &TmMasterChannelConfig, vc0: VcId<3>, vc1: VcId<3>,
     );
     t.check(encode(mc, bb(&vca_fields), bb(&content), bb(&mut frame)) == Ok(32));
     let mut oid = OidGenerator::new();
+    // An OID frame needs a VC without SDLS (132.0 §6.4.6.2): VC 0 of `mc` has it, the VC of
+    // `plain` does not.
     t.check(
         TmFrameWriter::begin_oid(bb(&mut frame), mc, vc0, 0, 0, &mut oid)
+            .is_err_and(|e| e.kind() == ErrorKind::InvalidField),
+    );
+    let plain = TmVirtualChannelConfig::new(vc0, DataFieldContent::Packets).with_fsh(bb(fsh));
+    let Ok(oid_mc) = TmMasterChannelConfig::new(pc, scid, None, bb(false)).with_vc(bb(plain))
+    else {
+        t.check(false);
+        return;
+    };
+    t.check(
+        TmFrameWriter::begin_oid(bb(&mut frame), &oid_mc, vc0, 0, 0, &mut oid)
             .is_ok_and(|w| w.finish() == 32),
     );
-    t.check(frame.get(12..16) == Some(&[0xFF; 4][..]));
+    t.check(frame.get(10..14) == Some(&[0xFF; 4][..]));
     // `resume` keeps the Idle Data `begin_oid` wrote, as the C ABI's finish uses it (API-023).
     let idle = TmFrameFields::new(
         vc0,
@@ -199,8 +211,10 @@ fn frames(t: &mut Tally, mc: &TmMasterChannelConfig, vc0: VcId<3>, vc1: VcId<3>,
         0,
         DataFieldStatus::Packets(PacketPointer::OnlyIdleData),
     );
-    t.check(TmFrameWriter::resume(bb(&mut frame), mc, bb(&idle)).is_ok_and(|w| w.finish() == 32));
-    t.check(frame.get(12..16) == Some(&[0xFF; 4][..]));
+    t.check(
+        TmFrameWriter::resume(bb(&mut frame), &oid_mc, bb(&idle)).is_ok_and(|w| w.finish() == 32),
+    );
+    t.check(frame.get(10..14) == Some(&[0xFF; 4][..]));
 }
 
 /// Runs the `aldis-tm` group.
