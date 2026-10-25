@@ -120,7 +120,7 @@ fn matrix_targets(workflow: &str, job: &str) -> Result<BTreeSet<String>, String>
 }
 
 /// The names of the `[[bin]]` targets of a manifest.
-fn bin_targets(manifest: &str) -> BTreeSet<String> {
+pub(crate) fn bin_targets(manifest: &str) -> BTreeSet<String> {
     let mut out = BTreeSet::new();
     let mut in_bin = false;
     for line in manifest.lines().map(str::trim) {
