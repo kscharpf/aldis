@@ -2,9 +2,13 @@
 
 Surviving mutants from `cargo mutants` (`-p aldis-core -p aldis-time -p aldis-epp -p aldis-spp -p aldis-aos -p aldis-tm -p aldis-tc -p aldis-uslp --all-features`) (cargo-mutants 27.1.0), triaged per VER-025. The nightly job `mutants` publishes the full report. Update this file when a new survivor appears.
 
-## 2026-10-25, branch `m2/hc-finish` (OI-50, `resume` checks the unfinished headers)
+## 2026-10-25, branch `m2/hazard-controls` (OI-48 to OI-52, OI-54)
 
-`resume` of the TM, TC, AOS, and USLP two-phase writers compares the headers `begin` wrote (`writer.rs` `start` of each crate, and `matches_at` in `aldis-aos`). `cargo mutants -p aldis-tm -p aldis-tc -p aldis-aos -p aldis-uslp --all-features --in-diff <diff of the four crates' src against 957db42>` (cargo-mutants 27.1.0, with `PROPTEST_CASES=32`, and `-- --skip decoders_never_panic`, a property test of `aldis-tm` that already fails on 957db42): 17 mutants, 13 caught, 4 unviable, 0 missed, 0 timeouts. No survivor to triage.
+The branch merges the hc agents' work: `resume` of the TM, TC, AOS, and USLP two-phase writers compares the headers `begin` wrote (OI-50, `writer.rs` `start` of each crate, `matches_at` in `aldis-aos`), the TM frame length cap (OI-51) and the Only Idle Data rule of the decoder (OI-54), the USLP rules for a VC with a truncated frame length (OI-48: `view.rs`, `writer.rs`, `delimit.rs`, `validate.rs`), the C view `kind` of a truncated frame (OI-52), and the panic handler (OI-49). It replaces the entry the OI-50 agent wrote for `m2/hc-finish`, whose 17 mutants are among these. `cargo mutants -p aldis-tm -p aldis-tc -p aldis-aos -p aldis-uslp -p aldis-ffi --all-features --in-diff <diff of the five crates' src against 5086748>` (cargo-mutants 27.1.0, with `PROPTEST_CASES=32`): 47 mutants: 33 caught, 12 unviable, 2 missed, 0 timeouts. cargo-mutants makes no mutant of a function named `new`, so the conditions in `TmPhysicalChannelConfig::new` and `Plan::new` have none; the unit and C ABI tests of OI-51 and OI-54 cover them.
+
+| Mutant | Verdict | Action |
+|---|---|---|
+| `aldis-ffi` `lib.rs:111` and `:139` `trap` → `()` (the trapping instruction of the panic handler, and its fallback for targets without one) | Not testable by `cargo test`: `trap` is called only by the `#[panic_handler]` of a `no_std` build with the feature `panic-handler`, which no test build contains, and no panic path is reachable (VER-010). The instruction faults by design, so a test could observe it only by crashing | None possible; read in review: `udf`/`brk`/`ebreak`/`ud2` per target (OI-49, c-abi.md §1) |
 
 ## 2026-10-25, branch `m2/vector-review` (M2 WP-8, second review of the frame vectors)
 
