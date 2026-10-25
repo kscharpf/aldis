@@ -136,14 +136,14 @@ One line for each decision the maintainer takes, under the [decision rights](dec
 - 2026-10-25 · api · #117 · A CLCW with COP in Effect other than 01 stays decoded in strict mode (TC-030), now a listed exception in API-031
 - 2026-10-25 · spec · #117 · OI-46: the USLP VCF Count Length is read per QoS (Table 5-3) despite 732.1 §4.1.2.11.4; resolved with this reading
 - 2026-10-25 · plan · #75 · The xtask crate split is dropped: only #102 of 55 M2 pull requests would have gained (about 10–18 min); branches chore/xtask-verify-split and trial/structure-merge deleted, #75 closed
-- 2026-10-25 · process · #N · VER-065 (the hazard analysis) and VER-066 (the assurance case) join the M2 exit criteria
-- 2026-10-25 · api · #N · OI-47: the TC and USLP delimiters take a caller-set bound on the fill and report a leftover above it as a new item kind, alike in TC and USLP; implemented in M3
-- 2026-10-25 · spec · #N · OI-48: a USLP VC with a truncated frame length carries only truncated frames; the writers and the decoder refuse a non-truncated frame on it (a project reading of Annex D1.2.1 and D1.2.4)
-- 2026-10-25 · api · #N · OI-49: the panic handler of the shipped static library executes a trapping instruction instead of `loop {}`
-- 2026-10-25 · api · #N · OI-50: `resume` and the C `*_writer_finish` of TM, TC, AOS, and USLP check that the buffer holds the unfinished headers `begin` wrote, else `InvalidState`; `begin` stores the reserved length in the Frame Length field; API-023 changes
-- 2026-10-25 · spec · #N · OI-51: `TmPhysicalChannelConfig` rejects a frame length above 4095 octets, which keeps VER-064 true for every accepted TM frame
-- 2026-10-25 · api · #N · OI-52: the C view reports the expedited `kind` for a USLP truncated frame (USLP-002, Annex D1.3.1 note 3)
-- 2026-10-25 · spec · #N · OI-53: the AOS B_PDU pointer that names the zone's last bit stays rejected (AOS-017), as the project's reading
-- 2026-10-25 · spec · #N · TM-003 states that a Secondary Header Length field of 0 is rejected with `InvalidField` (`fsh_len`) (132.0 §4.1.3.1.3 b); no behaviour change
-- 2026-10-25 · api · #N · API-031 lists two more exceptions to strict rejection: an unregistered USLP UPID, and truncated and non-truncated USLP frames mixed in one data unit or, until OI-48 is implemented, on one VC
-- 2026-10-25 · spec · #N · ASM-8 of the assurance case: the receiver's managed parameters equal the sender's, for every codec
+- 2026-10-25 · process · #118 · VER-065 (the hazard analysis) and VER-066 (the assurance case) join the M2 exit criteria
+- 2026-10-25 · api · #118 · OI-47: the TC and USLP delimiters take a caller-set bound on the fill and report a leftover above it as a new item kind, alike in TC and USLP; implemented in M3
+- 2026-10-25 · spec · #118 · OI-48: a USLP VC with a truncated frame length carries only truncated frames; the writers and the decoder refuse a non-truncated frame on it (a project reading of Annex D1.2.1 and D1.2.4)
+- 2026-10-25 · api · #118 · OI-49: the panic handler of the shipped static library executes a trapping instruction instead of `loop {}`
+- 2026-10-25 · api · #118 · OI-50: `resume` and the C `*_writer_finish` of TM, TC, AOS, and USLP check that the buffer holds the unfinished headers `begin` wrote, else `InvalidState`; `begin` stores the reserved length in the Frame Length field; API-023 changes
+- 2026-10-25 · spec · #118 · OI-51: `TmPhysicalChannelConfig` rejects a frame length above 4095 octets, which keeps VER-064 true for every accepted TM frame
+- 2026-10-25 · api · #118 · OI-52: the C view reports the expedited `kind` for a USLP truncated frame (USLP-002, Annex D1.3.1 note 3)
+- 2026-10-25 · spec · #118 · OI-53: the AOS B_PDU pointer that names the zone's last bit stays rejected (AOS-017), as the project's reading
+- 2026-10-25 · spec · #118 · TM-003 states that a Secondary Header Length field of 0 is rejected with `InvalidField` (`fsh_len`) (132.0 §4.1.3.1.3 b); no behaviour change
+- 2026-10-25 · api · #118 · API-031 lists two more exceptions to strict rejection: an unregistered USLP UPID, and truncated and non-truncated USLP frames mixed in one data unit or, until OI-48 is implemented, on one VC
+- 2026-10-25 · spec · #118 · ASM-8 of the assurance case: the receiver's managed parameters equal the sender's, for every codec
