@@ -58,9 +58,14 @@ fn check_frame(
             assert_eq!(hdr.frame_len(), frame_len_out);
             assert!(validate_frame(frame, table, DecodeMode::Strict).is_ok());
             let mut two = vec![!fill; frame_len_out];
-            let mut writer =
-                UslpFrameWriter::begin(&mut two, table, fields, content, zone.len()).unwrap();
-            writer.tfdz_mut().copy_from_slice(zone);
+            {
+                let mut writer =
+                    UslpFrameWriter::begin(&mut two, table, fields, content, zone.len()).unwrap();
+                writer.tfdz_mut().copy_from_slice(zone);
+            }
+            // A stateless finish takes up the same buffer with the same arguments (OI-50).
+            let writer =
+                UslpFrameWriter::resume(&mut two, table, fields, content, zone.len()).unwrap();
             assert_eq!(writer.finish(zone.len()), Ok(frame_len_out));
             assert_eq!(two, frame);
         }

@@ -2,6 +2,10 @@
 
 Surviving mutants from `cargo mutants` (`-p aldis-core -p aldis-time -p aldis-epp -p aldis-spp -p aldis-aos -p aldis-tm -p aldis-tc -p aldis-uslp --all-features`) (cargo-mutants 27.1.0), triaged per VER-025. The nightly job `mutants` publishes the full report. Update this file when a new survivor appears.
 
+## 2026-10-25, branch `m2/hc-finish` (OI-50, `resume` checks the unfinished headers)
+
+`resume` of the TM, TC, AOS, and USLP two-phase writers compares the headers `begin` wrote (`writer.rs` `start` of each crate, and `matches_at` in `aldis-aos`). `cargo mutants -p aldis-tm -p aldis-tc -p aldis-aos -p aldis-uslp --all-features --in-diff <diff of the four crates' src against 957db42>` (cargo-mutants 27.1.0, with `PROPTEST_CASES=32`, and `-- --skip decoders_never_panic`, a property test of `aldis-tm` that already fails on 957db42): 17 mutants, 13 caught, 4 unviable, 0 missed, 0 timeouts. No survivor to triage.
+
 ## 2026-10-25, branch `m2/vector-review` (M2 WP-8, second review of the frame vectors)
 
 `TmFrameWriter::begin_oid` rejects a VC that uses SDLS (`aldis-tm`), and `VcTable` answers VCID 63 without an entry on a fixed-length channel (`aldis-uslp`, `config.rs` `given_vc` and `VcLookup::vc`). The mutants of the changed lines, `cargo mutants -p aldis-tm -p aldis-uslp --all-features --in-diff <diff against main>` (with `PROPTEST_CASES=32`): 12 mutants: 9 caught, 3 unviable, 0 missed, 0 timeouts. No survivor to triage. The `aldis-ffi` change (the Galois branch of `aldis_tm_oid_writer_begin` calls `begin_oid`) is outside the crates this file lists.

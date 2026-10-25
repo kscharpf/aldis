@@ -289,6 +289,11 @@ fn write_at(buf: &mut [u8], at: usize, src: &[u8]) {
     }
 }
 
+/// Whether `buf` holds `src` from octet `at` on, as far as both reach.
+fn matches_at(buf: &[u8], at: usize, src: &[u8]) -> bool {
+    buf.iter().skip(at).zip(src).all(|(d, s)| d == s)
+}
+
 /// Two-phase frame writer (732.0 §4.1; AOS-019, API-020…API-023, API-072).
 ///
 /// [`begin`](Self::begin) writes the Primary Header with its FHEC and the `M_PDU` or `B_PDU`
@@ -339,12 +344,17 @@ impl<'b> AosFrameWriter<'b> {
     /// between calls, the C ABI's `aldis_aos_writer_finish`, can finish it (API-023; M2 plan D4).
     ///
     /// Checks the arguments as `begin` does, or as `begin_oid` does when `fields.vcid` is 63,
-    /// and rewrites the Primary Header with its FHEC and the `M_PDU` or `B_PDU` Header; every
-    /// other octet stays as the caller filled it, the OID data of `begin_oid` included.
+    /// and writes nothing: every octet stays as the caller filled it, the OID data of
+    /// `begin_oid` included. It compares the Primary Header with its FHEC and the `M_PDU` or
+    /// `B_PDU` Header with what `begin` writes for these arguments (OI-50). The Insert Zone,
+    /// the Security Header and Trailer, the data zone, the OCF, and the FECF are not compared,
+    /// and a changed SDLS layout with an identical header is not caught.
     ///
     /// # Errors
-    /// As for [`begin`](Self::begin), or for VCID 63 as for [`begin_oid`](Self::begin_oid); on
-    /// error `out` is unchanged (API-022, GEN-042).
+    /// As for [`begin`](Self::begin), or for VCID 63 as for [`begin_oid`](Self::begin_oid);
+    /// `InvalidState` if `out` does not start with the headers `begin` writes for these
+    /// arguments (other fields, or a buffer never begun). On error `out` is unchanged
+    /// (API-022, GEN-042).
     pub fn resume<L: VcLookup + ?Sized>(
         out: &'b mut [u8],
         pc: &AosPhysicalChannelConfig,
@@ -383,26 +393,26 @@ impl<'b> AosFrameWriter<'b> {
         Ok(writer)
     }
 
-    /// Writes the headers of a checked plan into `out`, after zero-filling the frame if `zero`.
-    fn start(out: &'b mut [u8], plan: Plan, zero: bool) -> Result<AosFrameWriter<'b>> {
+    /// Takes up the frame of a checked plan in `out`. With `write`, as `begin` calls it, it
+    /// zero-fills the frame and writes the Primary Header and the `M_PDU` or `B_PDU` Header;
+    /// without, as `resume` calls it, it writes nothing and fails with `InvalidState` unless
+    /// those octets are what `begin` writes for the plan (OI-50).
+    fn start(out: &'b mut [u8], plan: Plan, write: bool) -> Result<AosFrameWriter<'b>> {
         let frame_len = plan.layout.frame_len();
         let frame = out
             .get_mut(..frame_len)
             .ok_or(Error::buffer_too_small(frame_len))?;
-        if zero {
-            frame.fill(0);
-        }
-        let header = plan.header.to_octets();
-        write_at(
-            frame,
-            0,
-            header.get(..plan.header.len()).unwrap_or_default(),
-        );
+        let header_octets = plan.header.to_octets();
+        let header = header_octets.get(..plan.header.len()).unwrap_or_default();
         let data = plan.layout.data();
-        let mut zone_start = data.start;
-        if let Some(pdu) = plan.pdu {
-            write_at(frame, data.start, &pdu);
-            zone_start = data.start.saturating_add(pdu.len());
+        let pdu: &[u8] = plan.pdu.as_ref().map_or(&[], |p| p.as_slice());
+        let zone_start = data.start.saturating_add(pdu.len());
+        if write {
+            frame.fill(0);
+            write_at(frame, 0, header);
+            write_at(frame, data.start, pdu);
+        } else if !(matches_at(frame, 0, header) && matches_at(frame, data.start, pdu)) {
+            return Err(Error::new(ErrorKind::InvalidState));
         }
         Ok(AosFrameWriter {
             frame,
@@ -695,11 +705,12 @@ mod tests {
         let mut w = AosFrameWriter::begin(&mut one, &phy, &t, &fields).unwrap();
         fill(&mut w);
         assert_eq!(w.finish(), 40);
-        // The same frame in two steps that keep no writer, with the headers overwritten between.
+        // The same frame in two steps that keep no writer.
         let mut two = [0_u8; 40];
         fill(&mut AosFrameWriter::begin(&mut two, &phy, &t, &fields).unwrap());
-        two[..8].fill(0xEE);
-        two[14..16].fill(0xEE);
+        let before = two;
+        assert!(AosFrameWriter::resume(&mut two, &phy, &t, &fields).is_ok());
+        assert_eq!(two, before, "resume writes nothing");
         let w = AosFrameWriter::resume(&mut two, &phy, &t, &fields).unwrap();
         assert_eq!(w.finish(), 40);
         assert_eq!(two, one);
@@ -746,6 +757,81 @@ mod tests {
         let e = AosFrameWriter::resume(&mut four[..39], &phy, &t, &oid_fields).unwrap_err();
         assert_eq!(e.kind(), ErrorKind::BufferTooSmall);
         assert!(four.iter().all(|&b| b == 0xEE));
+    }
+
+    #[test]
+    fn resume_rejects_another_frame_than_begun() {
+        // req: AOS-016, AOS-019, API-023, CABI-022 (OI-50)
+        let t = table();
+        let phy = t.physical_channel();
+        let fields = mpdu(starts_at(3));
+        let mut out = [0xEE_u8; 40];
+        AosFrameWriter::begin(&mut out, &phy, &t, &fields).unwrap();
+        let begun = out;
+        let bpdu = AosFrameFields::new(
+            scid(0x0AB),
+            vcid(1),
+            fields.vc_frame_count,
+            PduHeader::Bpdu(BitstreamPointer::AllValid),
+        );
+        let other = [
+            AosFrameFields {
+                vc_frame_count: count(0x12_3457),
+                ..fields
+            },
+            AosFrameFields {
+                replay_flag: false,
+                ..fields
+            },
+            AosFrameFields {
+                cycle: FrameCountCycle::new(8),
+                ..fields
+            },
+            AosFrameFields {
+                cycle: None,
+                ..fields
+            },
+            mpdu(starts_at(4)),
+            mpdu(PacketPointer::NoPacketStart),
+            AosFrameFields {
+                vcid: vcid(2),
+                pdu: PduHeader::None,
+                ..fields
+            },
+            bpdu,
+        ];
+        for f in other {
+            let e = AosFrameWriter::resume(&mut out, &phy, &t, &f).unwrap_err();
+            assert_eq!(e.kind(), ErrorKind::InvalidState, "{f:?}");
+            assert_eq!(out, begun, "the buffer is unchanged");
+        }
+        // The M_PDU Header and the FHEC alone are compared as well.
+        for at in [5, 14, 15] {
+            out[at] ^= 0x01;
+            let e = AosFrameWriter::resume(&mut out, &phy, &t, &fields).unwrap_err();
+            assert_eq!(e.kind(), ErrorKind::InvalidState, "octet {at}");
+            out[at] ^= 0x01;
+        }
+        // What the caller fills is not compared.
+        out[8..14].fill(0x5A);
+        out[16..].fill(0x5A);
+        assert!(AosFrameWriter::resume(&mut out, &phy, &t, &fields).is_ok());
+    }
+
+    #[test]
+    fn resume_rejects_a_buffer_never_begun() {
+        // req: AOS-019, API-023, CABI-022 (OI-50)
+        let t = table();
+        let phy = t.physical_channel();
+        for fill in [0x00_u8, 0xA5] {
+            let mut out = [fill; 40];
+            let e = AosFrameWriter::resume(&mut out, &phy, &t, &mpdu(starts_at(3))).unwrap_err();
+            assert_eq!(e.kind(), ErrorKind::InvalidState);
+            let oid_fields = AosFrameFields::oid(scid(0x0AB), count(5));
+            let e = AosFrameWriter::resume(&mut out, &phy, &t, &oid_fields).unwrap_err();
+            assert_eq!(e.kind(), ErrorKind::InvalidState);
+            assert_eq!(out, [fill; 40]);
+        }
     }
 
     #[test]

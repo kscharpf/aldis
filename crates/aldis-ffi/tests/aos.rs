@@ -908,6 +908,82 @@ fn writer_arguments_are_checked() {
 }
 
 #[test]
+fn finish_checks_the_buffer_was_begun_with_these_arguments() {
+    // req: AOS-019, API-023, CABI-022 (OI-50)
+    let (mc, vcs) = (mc(), vcs());
+    let call = |begin: bool, f: &aldis_aos_fields_t, frame: &mut [u8]| {
+        let mut l = aldis_aos_layout_t::default();
+        let mut n = 0_usize;
+        // SAFETY: every pointer is to a live local or into `frame`, with its length.
+        unsafe {
+            if begin {
+                aldis_aos_writer_begin(
+                    &raw const mc,
+                    vcs.as_ptr(),
+                    3,
+                    f,
+                    frame.as_mut_ptr(),
+                    frame.len(),
+                    &raw mut l,
+                    null_mut(),
+                )
+            } else {
+                aldis_aos_writer_finish(
+                    &raw const mc,
+                    vcs.as_ptr(),
+                    3,
+                    f,
+                    frame.as_mut_ptr(),
+                    frame.len(),
+                    &raw mut n,
+                    null_mut(),
+                )
+            }
+        }
+    };
+    let begun = fields(0, ALDIS_AOS_POINTER_STARTS_AT, 3);
+    let mut frame = [0xEE_u8; 40];
+    assert_eq!(call(true, &begun, &mut frame), ALDIS_OK);
+    let written = frame;
+    let other = [
+        aldis_aos_fields_t {
+            vc_frame_count: 0x12_3457,
+            ..begun
+        },
+        aldis_aos_fields_t {
+            replay_flag: 0,
+            ..begun
+        },
+        aldis_aos_fields_t { cycle: 8, ..begun },
+        aldis_aos_fields_t {
+            cycle_use_flag: 0,
+            ..begun
+        },
+        fields(0, ALDIS_AOS_POINTER_STARTS_AT, 4),
+        fields(0, ALDIS_AOS_POINTER_NO_PACKET_START, 0),
+        fields(1, ALDIS_AOS_POINTER_ALL_VALID, 0),
+    ];
+    for f in other {
+        assert_eq!(
+            call(false, &f, &mut frame),
+            ALDIS_ERR_INVALID_STATE,
+            "{f:?}"
+        );
+        assert_eq!(frame, written, "a failed finish leaves the frame unchanged");
+    }
+    assert_eq!(call(false, &begun, &mut frame), ALDIS_OK);
+    // A buffer never begun, for a data VC and for the OID VC.
+    let oid = fields(ALDIS_AOS_OID_VCID, ALDIS_AOS_POINTER_NONE, 0);
+    for fill in [0x00_u8, 0xA5] {
+        for f in [&begun, &oid] {
+            let mut never = [fill; 40];
+            assert_eq!(call(false, f, &mut never), ALDIS_ERR_INVALID_STATE);
+            assert_eq!(never, [fill; 40]);
+        }
+    }
+}
+
+#[test]
 fn the_oid_writer_takes_a_generator_handle() {
     // req: AOS-016, CMN-021, CMN-022, CABI-022, CABI-032, GEN-042
     let (mc, vcs) = (mc(), vcs());

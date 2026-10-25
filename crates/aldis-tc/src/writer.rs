@@ -4,7 +4,7 @@
 use aldis_core::crc;
 use aldis_core::layout::{FECF_LEN, FrameLayout, LayoutSpec};
 use aldis_core::security::SecurityLayout;
-use aldis_core::{Error, Result};
+use aldis_core::{Error, ErrorKind, Result};
 
 use crate::config::VcLookup;
 use crate::control::{ControlCommand, ControlOctets};
@@ -175,8 +175,9 @@ pub fn encode<L: VcLookup + ?Sized>(
 /// [`finish`](Self::finish) writes the header and the FECF.
 ///
 /// Until `finish`, the buffer holds a Primary Header whose version field is `11` and whose
-/// Frame Length is 0, which every decoder rejects with `UnsupportedVersion`, so an unfinished
-/// frame cannot be mistaken for a valid one (API-023).
+/// Frame Length is the reserved frame length, which every decoder rejects with
+/// `UnsupportedVersion`, so an unfinished frame cannot be mistaken for a valid one (API-023).
+/// [`resume`](Self::resume) compares these headers (OI-50).
 #[derive(Debug)]
 pub struct TcFrameWriter<'b> {
     out: &'b mut [u8],
@@ -210,10 +211,17 @@ impl<'b> TcFrameWriter<'b> {
     ///
     /// Checks the arguments as `begin` does and writes nothing: the unfinished header and
     /// Segment Header that `begin` wrote, and the User Data, Security Header, and Security
-    /// Trailer the caller filled, stay as they are until [`finish`](Self::finish).
+    /// Trailer the caller filled, stay as they are until [`finish`](Self::finish). It then
+    /// compares the Primary Header (version `11`, frame type, Spacecraft ID, Virtual Channel,
+    /// sequence number, and the reserved frame length in the Frame Length field) and the Segment
+    /// Header octet with what `begin` writes for these arguments (OI-50). The data field, the
+    /// Security Header and Trailer, and the FECF are not compared; a changed SDLS layout with an
+    /// identical header is not caught.
     ///
     /// # Errors
-    /// As for [`begin`](Self::begin); `out` is never changed (API-022, GEN-042).
+    /// As for [`begin`](Self::begin); `InvalidState` if `out` does not start with the unfinished
+    /// headers `begin` writes for these arguments (another argument, or a buffer never begun).
+    /// `out` is never changed (API-022, GEN-042).
     pub fn resume<L: VcLookup + ?Sized>(
         out: &'b mut [u8],
         channels: &L,
@@ -232,12 +240,19 @@ impl<'b> TcFrameWriter<'b> {
         let buf = out
             .get_mut(..plan.total)
             .ok_or(Error::buffer_too_small(plan.total))?;
+        let header = primary_octets(UNFINISHED_VERSION, plan.fields, plan.total);
+        let segment = plan.segment_header.map(SegmentHeader::octet);
         if write {
-            let header = primary_octets(UNFINISHED_VERSION, plan.fields, 1);
-            let segment = plan.segment_header.map(SegmentHeader::octet);
             for (d, s) in buf.iter_mut().zip(header.into_iter().chain(segment)) {
                 *d = s;
             }
+        } else if !buf
+            .iter()
+            .zip(header.into_iter().chain(segment))
+            .all(|(d, s)| *d == s)
+        {
+            // OI-50: the buffer is not the unfinished frame `begin` wrote for these arguments.
+            return Err(Error::new(ErrorKind::InvalidState));
         }
         let max_user_len = plan
             .total
@@ -563,5 +578,65 @@ mod tests {
         let e = TcFrameWriter::resume(&mut two[..8], &t, ad, Some(sh), 5).unwrap_err();
         assert_eq!(e.detail(), ErrorDetail::Needed(17));
         assert_eq!(two, before);
+    }
+
+    #[test]
+    fn resume_rejects_another_frame_than_begun() {
+        // req: API-023, TC-004, TC-007, CABI-022 (OI-50)
+        let t = standard(true);
+        let sh = |map: u8| SegmentHeader {
+            sequence_flags: SequenceFlags::Unsegmented,
+            map_id: mapid(map),
+        };
+        let ad = fields(FrameType::Ad, 2);
+        let mut out = [0xEE_u8; 32];
+        assert!(TcFrameWriter::begin(&mut out, &t, ad, Some(sh(9)), 5).is_ok());
+        let begun = out;
+        let mut other_scid = ad;
+        other_scid.spacecraft_id = scid(0x154);
+        let mut other_seq = ad;
+        other_seq.sequence_number = FrameSeqNum::new(10);
+        // Another frame type, VC, sequence number, MAP, Sequence Flags, and reservation.
+        let mut other_flags = sh(9);
+        other_flags.sequence_flags = SequenceFlags::First;
+        let cases = [
+            (fields(FrameType::Bd, 2), Some(sh(9)), 5),
+            (fields(FrameType::Ad, 1), None, 5),
+            (other_seq, Some(sh(9)), 5),
+            (ad, Some(sh(5)), 5),
+            (ad, Some(other_flags), 5),
+            (ad, Some(sh(9)), 4),
+            (ad, Some(sh(9)), 6),
+        ];
+        for (f, s, max) in cases {
+            let e = TcFrameWriter::resume(&mut out, &t, f, s, max).unwrap_err();
+            assert_eq!(e.kind(), ErrorKind::InvalidState, "{f:?} {s:?} {max}");
+            assert_eq!(out, begun, "the buffer is unchanged");
+        }
+        // Another spacecraft is not a channel of the table: the arguments fail first.
+        let e = TcFrameWriter::resume(&mut out, &t, other_scid, Some(sh(9)), 5).unwrap_err();
+        assert_eq!(e.kind(), ErrorKind::UnknownChannel);
+        // The same arguments take the buffer up, and the User Data does not matter.
+        out[10] = 0x77;
+        assert!(TcFrameWriter::resume(&mut out, &t, ad, Some(sh(9)), 5).is_ok());
+    }
+
+    #[test]
+    fn resume_rejects_a_buffer_never_begun() {
+        // req: API-023, CABI-022 (OI-50)
+        let t = standard(true);
+        let ad = fields(FrameType::Ad, 1);
+        for fill in [0x00_u8, 0xA5] {
+            let mut out = [fill; 16];
+            let e = TcFrameWriter::resume(&mut out, &t, ad, None, 4).unwrap_err();
+            assert_eq!(e.kind(), ErrorKind::InvalidState);
+            assert_eq!(out, [fill; 16]);
+        }
+        // A finished frame is not an unfinished one.
+        let mut out = [0_u8; 16];
+        let w = TcFrameWriter::begin(&mut out, &t, ad, None, 4).unwrap();
+        w.finish(1).unwrap();
+        let e = TcFrameWriter::resume(&mut out, &t, ad, None, 4).unwrap_err();
+        assert_eq!(e.kind(), ErrorKind::InvalidState);
     }
 }

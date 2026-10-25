@@ -494,6 +494,58 @@ fn the_writer_leaves_the_sdls_fields_to_the_caller() {
     assert_eq!(rust[..35], buf[..35]);
 }
 
+#[test]
+fn finish_checks_the_buffer_was_begun_with_these_arguments() {
+    // req: API-023, USLP-010, CABI-022 (OI-50)
+    let ch = variable();
+    let fl = fields(5, 1, ALDIS_USLP_KIND_SEQUENCE_CONTROLLED, 0);
+    let ct = aldis_uslp_content_t {
+        tfdf: octet_stream(),
+        ..aldis_uslp_content_t::default()
+    };
+    let mut det = detail();
+    let mut buf = [0xEE_u8; 64];
+    let mut lay = aldis_uslp_layout_t::default();
+    assert_eq!(
+        ch.begin(&fl, &ct, 10, &mut buf, &mut lay, &mut det),
+        ALDIS_OK
+    );
+    let written = buf;
+    // Without SDLS, where `begin` had SDLS 6/16 (VC 4, MAP 0), and the other arguments.
+    let other_tfdf = aldis_uslp_content_t {
+        tfdf: aldis_uslp_tfdf_t {
+            upid: ALDIS_USLP_UPID_PACKETS,
+            ..octet_stream()
+        },
+        ..ct
+    };
+    let cases = [
+        (fields(4, 0, ALDIS_USLP_KIND_SEQUENCE_CONTROLLED, 0), ct, 10),
+        (fields(5, 1, ALDIS_USLP_KIND_EXPEDITED, 0), ct, 10),
+        (fl, other_tfdf, 10),
+        (fl, ct, 9),
+        (fl, ct, 11),
+    ];
+    for (f, c, max) in cases {
+        let (rc, _) = ch.finish(&f, &c, max, 3, &mut buf, &mut det);
+        assert_eq!(rc, ALDIS_ERR_INVALID_STATE, "{max}");
+        assert_eq!(buf, written, "a failed finish leaves the frame unchanged");
+    }
+    // The same arguments finish it, and the finished frame is not an unfinished one.
+    assert_eq!(ch.finish(&fl, &ct, 10, 3, &mut buf, &mut det).0, ALDIS_OK);
+    assert_eq!(
+        ch.finish(&fl, &ct, 10, 3, &mut buf, &mut det).0,
+        ALDIS_ERR_INVALID_STATE
+    );
+    // A buffer never begun.
+    for fill in [0x00_u8, 0xA5] {
+        let mut never = [fill; 64];
+        let (rc, _) = ch.finish(&fl, &ct, 10, 3, &mut never, &mut det);
+        assert_eq!(rc, ALDIS_ERR_INVALID_STATE);
+        assert_eq!(never, [fill; 64]);
+    }
+}
+
 /// The Rust table of [`variable`].
 fn rust_variable() -> aldis::uslp::VcTable<4, 4> {
     use aldis::core::security::SecurityLayout;

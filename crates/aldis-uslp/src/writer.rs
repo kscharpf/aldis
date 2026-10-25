@@ -16,7 +16,7 @@ use aldis_core::layout::{FECF_LEN, OCF_LEN};
 use aldis_core::ocf::Ocf;
 use aldis_core::oid::{OidGenerator, OidGeneratorGalois};
 use aldis_core::security::SecurityLayout;
-use aldis_core::{Error, Result};
+use aldis_core::{Error, ErrorKind, Result};
 
 use crate::config::{OcfUse, VcConfig, VcLookup, frame_security};
 use crate::field;
@@ -413,7 +413,8 @@ pub fn encode_truncated<L: VcLookup + ?Sized>(
 ///
 /// Until `finish`, the buffer holds a Primary Header whose TFVN is `1111`, which every decoder
 /// rejects with `UnsupportedVersion` and the delimiter treats as fill, so an unfinished frame
-/// cannot be mistaken for a valid one (API-023).
+/// cannot be mistaken for a valid one (API-023). Its Frame Length field holds the reserved
+/// frame length, which [`resume`](Self::resume) compares (OI-50).
 #[derive(Debug)]
 pub struct UslpFrameWriter<'b> {
     out: &'b mut [u8],
@@ -446,12 +447,18 @@ impl<'b> UslpFrameWriter<'b> {
     /// that keeps no state between its two phases, such as the C ABI's
     /// `aldis_uslp_writer_finish` (API-023; c-abi.md §11).
     ///
-    /// It checks the arguments as `begin` does and rewrites the unfinished Primary Header, the
-    /// Insert Zone, and the TFDF Header; the Security Header, the TFDZ, and the Security Trailer
-    /// keep what the caller filled in, where `begin` zero-filled the security fields.
+    /// It checks the arguments as `begin` does and writes nothing: the Security Header, the
+    /// TFDZ, and the Security Trailer keep what the caller filled in. It compares the unfinished
+    /// Primary Header (TFVN `1111`, the channel fields, the flags, the VCF count, and the
+    /// reserved frame length in the Frame Length field), the Insert Zone, and the TFDF Header
+    /// with what `begin` writes for these arguments (OI-50). The Security Header and Trailer,
+    /// the TFDZ, the OCF (written at `finish`), and the FECF are not compared, and a changed
+    /// security layout with an identical header is not caught.
     ///
     /// # Errors
-    /// As for [`begin`](Self::begin); on error `out` is unchanged (API-022, GEN-042).
+    /// As for [`begin`](Self::begin); `InvalidState` if `out` does not start with the unfinished
+    /// headers `begin` writes for these arguments (other arguments, or a buffer never begun).
+    /// On error `out` is unchanged (API-022, GEN-042).
     pub fn resume<L: VcLookup + ?Sized>(
         out: &'b mut [u8],
         channels: &L,
@@ -466,13 +473,16 @@ impl<'b> UslpFrameWriter<'b> {
         UslpFrameWriter::start(out, plan, content.insert_zone, false)
     }
 
-    /// Writes the unfinished header, the Insert Zone, and the TFDF Header of a checked plan,
-    /// and, if `zero`, zeros in the Security Header and Trailer (API-023).
+    /// Takes up the frame of a checked plan in `out`. With `write`, as `begin` calls it, it
+    /// writes the unfinished header, the Insert Zone, and the TFDF Header, and zeros in the
+    /// Security Header and Trailer; without, as `resume` calls it, it writes nothing and fails
+    /// with `InvalidState` unless the unfinished header, the Insert Zone, and the TFDF Header
+    /// are what `begin` writes for the plan (OI-50; API-023).
     fn start(
         out: &'b mut [u8],
         plan: Plan,
         insert_zone: &[u8],
-        zero: bool,
+        write: bool,
     ) -> Result<UslpFrameWriter<'b>> {
         let buf = out
             .get_mut(..plan.total)
@@ -480,7 +490,7 @@ impl<'b> UslpFrameWriter<'b> {
         let header = primary_octets(
             UNFINISHED_VERSION,
             plan.channel,
-            1,
+            plan.total,
             plan.kind,
             plan.ocf.is_some(),
             plan.count,
@@ -490,17 +500,26 @@ impl<'b> UslpFrameWriter<'b> {
             .take(plan.header_len)
             .chain(insert_zone)
             .copied();
-        for (d, s) in buf.iter_mut().zip(head) {
-            *d = s;
-        }
         let tfdf = plan.tfdf.octets();
         let tfdf_start = plan.tfdz_start().saturating_sub(plan.tfdf.len());
-        let slot = buf.get_mut(tfdf_start..).unwrap_or_default();
-        for (d, s) in slot.iter_mut().zip(tfdf.iter().take(plan.tfdf.len())) {
-            *d = *s;
+        let tfdf = tfdf.iter().take(plan.tfdf.len()).copied();
+        if write {
+            for (d, s) in buf.iter_mut().zip(head) {
+                *d = s;
+            }
+            let slot = buf.get_mut(tfdf_start..).unwrap_or_default();
+            for (d, s) in slot.iter_mut().zip(tfdf) {
+                *d = s;
+            }
+        } else {
+            let slot = buf.iter().skip(tfdf_start);
+            if !(buf.iter().zip(head).all(|(d, s)| *d == s) && slot.zip(tfdf).all(|(d, s)| *d == s))
+            {
+                return Err(Error::new(ErrorKind::InvalidState));
+            }
         }
         let mut w = UslpFrameWriter { out, plan };
-        if zero {
+        if write {
             w.security_header_mut().fill(0);
             w.security_trailer_mut().fill(0);
         }
@@ -785,22 +804,21 @@ mod tests {
         let w = UslpFrameWriter::resume(&mut two, &tbl, f, c, 10).unwrap();
         assert_eq!(w.finish(3), Ok(len));
         assert_eq!(two[..len], one[..len]);
-        // `resume` writes the unfinished header, the Insert Zone, and the TFDF Header, and no
-        // other octet.
+        // `resume` writes no octet: the unfinished header, the Insert Zone, and the TFDF Header
+        // are the ones `begin` wrote.
         let fx = fixed();
         let pkt = TfdzRule::PacketsSpanningFrames(FirstHeaderPointer::NoPacketStartOrEnd);
         let iz = content(pkt, Upid::Packets, &[0xAA, 0xBB], None);
         let other = fields(2, 1, FrameKind::Expedited, 0);
         let mut three = [0xEE_u8; 64];
+        assert!(UslpFrameWriter::begin(&mut three, &fx, other, iz, 44).is_ok());
+        three[9..13].fill(0x77);
+        three[16..].fill(0x66);
+        let before = three;
         assert!(UslpFrameWriter::resume(&mut three, &fx, other, iz, 44).is_ok());
+        assert_eq!(three, before);
         assert_eq!(three[7..9], [0xAA, 0xBB]);
-        assert_eq!(three[9..13], [0xEE; 4], "Security Header untouched");
         assert_eq!(three[13..16], [0, 0xFF, 0xFF], "TFDF Header");
-        assert_eq!(
-            three[16..64],
-            [0xEE; 48],
-            "TFDZ, Trailer, and FECF untouched"
-        );
         assert_eq!(three[0] >> 4, 0b1111, "unfinished version");
         let w = UslpFrameWriter::resume(&mut three, &fx, other, iz, 44).unwrap();
         assert_eq!(w.finish(44), Ok(64));
@@ -815,6 +833,85 @@ mod tests {
         let e = UslpFrameWriter::resume(&mut four[..20], &tbl, f, c, 10).unwrap_err();
         assert_eq!(e.kind(), ErrorKind::BufferTooSmall);
         assert_eq!(four, [0xEE; 64]);
+    }
+
+    #[test]
+    fn resume_rejects_another_frame_than_begun() {
+        // req: API-023, USLP-010, CABI-022 (OI-50)
+        let tbl = variable();
+        let c = content(TfdzRule::NoSegmentation, Upid::OctetStream, &[], None);
+        let f = fields(5, 1, FrameKind::SequenceControlled, 0);
+        let mut out = [0xEE_u8; 64];
+        assert!(UslpFrameWriter::begin(&mut out, &tbl, f, c, 10).is_ok());
+        let begun = out;
+        let other_c = content(TfdzRule::NoSegmentation, Upid::Packets, &[], None);
+        let cases = [
+            (fields(5, 1, FrameKind::Expedited, 0), c, 10),
+            // Without SDLS, where `begin` had SDLS 6/16 on the MAP.
+            (fields(4, 0, FrameKind::SequenceControlled, 0), c, 10),
+            (f, other_c, 10),
+            (f, c, 9),
+            (f, c, 11),
+        ];
+        for (f, c, max) in cases {
+            let r = UslpFrameWriter::resume(&mut out, &tbl, f, c, max);
+            let e = r.unwrap_err();
+            assert_eq!(e.kind(), ErrorKind::InvalidState, "{f:?} {c:?} {max}");
+            assert_eq!(out, begun, "the buffer is unchanged");
+        }
+        // The Primary Header is compared in every octet and the TFDF Header as well.
+        for at in [0, 1, 2, 3, 4, 5, 6, 13] {
+            out[at] ^= 0x01;
+            let e = UslpFrameWriter::resume(&mut out, &tbl, f, c, 10).unwrap_err();
+            assert_eq!(e.kind(), ErrorKind::InvalidState, "octet {at}");
+            out[at] ^= 0x01;
+        }
+        // Another MAP of the same VC.
+        let m0 = fields(4, 0, FrameKind::SequenceControlled, 0);
+        assert!(UslpFrameWriter::begin(&mut out, &tbl, m0, c, 10).is_ok());
+        let m2 = fields(4, 2, FrameKind::SequenceControlled, 0);
+        let e = UslpFrameWriter::resume(&mut out, &tbl, m2, c, 10).unwrap_err();
+        assert_eq!(e.kind(), ErrorKind::InvalidState);
+        let x0 = fields(4, 0, FrameKind::Expedited, 0);
+        assert!(UslpFrameWriter::begin(&mut out, &tbl, x0, c, 10).is_ok());
+        let x1 = fields(4, 0, FrameKind::Expedited, 1);
+        let e = UslpFrameWriter::resume(&mut out, &tbl, x1, c, 10).unwrap_err();
+        assert_eq!(e.kind(), ErrorKind::InvalidState, "another VCF count");
+        assert!(UslpFrameWriter::begin(&mut out, &tbl, f, c, 10).is_ok());
+        // An Insert Zone that differs.
+        let fx = fixed();
+        let pkt = TfdzRule::PacketsSpanningFrames(FirstHeaderPointer::NoPacketStartOrEnd);
+        let iz = content(pkt, Upid::Packets, &[0xAA, 0xBB], None);
+        let other = fields(2, 1, FrameKind::Expedited, 0);
+        let mut fixed_out = [0xEE_u8; 64];
+        assert!(UslpFrameWriter::begin(&mut fixed_out, &fx, other, iz, 44).is_ok());
+        let iz2 = content(pkt, Upid::Packets, &[0xAA, 0xBC], None);
+        let e = UslpFrameWriter::resume(&mut fixed_out, &fx, other, iz2, 44).unwrap_err();
+        assert_eq!(e.kind(), ErrorKind::InvalidState);
+        // What the caller fills is not compared.
+        out[7..13].fill(0x5A);
+        out[14..].fill(0x5A);
+        assert!(UslpFrameWriter::resume(&mut out, &tbl, f, c, 10).is_ok());
+    }
+
+    #[test]
+    fn resume_rejects_a_buffer_never_begun() {
+        // req: API-023, CABI-022 (OI-50)
+        let tbl = variable();
+        let c = content(TfdzRule::NoSegmentation, Upid::OctetStream, &[], None);
+        let f = fields(5, 1, FrameKind::SequenceControlled, 0);
+        for fill in [0x00_u8, 0xA5] {
+            let mut out = [fill; 64];
+            let e = UslpFrameWriter::resume(&mut out, &tbl, f, c, 10).unwrap_err();
+            assert_eq!(e.kind(), ErrorKind::InvalidState);
+            assert_eq!(out, [fill; 64]);
+        }
+        // A finished frame is not an unfinished one.
+        let mut out = [0_u8; 64];
+        let w = UslpFrameWriter::begin(&mut out, &tbl, f, c, 10).unwrap();
+        w.finish(3).unwrap();
+        let e = UslpFrameWriter::resume(&mut out, &tbl, f, c, 10).unwrap_err();
+        assert_eq!(e.kind(), ErrorKind::InvalidState);
     }
 
     #[test]

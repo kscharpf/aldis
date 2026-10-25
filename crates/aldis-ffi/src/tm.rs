@@ -28,7 +28,8 @@
 //! **Writers.** No call keeps a pointer or state (API-023, API-060): `_writer_begin` writes the
 //! headers and zero-fills the frame, the caller fills the fields at the offsets of the
 //! [`aldis_tm_layout_t`] it returns, the OCF included, and `_writer_finish`, given the same
-//! arguments, rewrites the headers and computes the FECF (`TmFrameWriter::resume`).
+//! arguments, checks that the buffer holds the headers `_writer_begin` wrote, else
+//! `ALDIS_ERR_INVALID_STATE`, and computes the FECF (`TmFrameWriter::resume`; OI-50).
 
 use core::ops::Range;
 
@@ -1013,11 +1014,15 @@ pub unsafe extern "C" fn aldis_tm_writer_begin(
 /// Finishes a two-phase write begun with the same arguments (132.0 §4.1.6.2; TM-009, API-021,
 /// API-023).
 ///
-/// Rewrites the headers, leaves every field the caller filled, computes the FECF if
-/// configured, and returns the frame length.
+/// First checks that `out` holds the Primary Header and the Secondary Header Identification
+/// Field that [`aldis_tm_writer_begin`] wrote for these arguments (`TmFrameWriter::resume`;
+/// OI-50); the other fields are not compared. Then leaves every field the caller filled,
+/// computes the FECF if configured, and returns the frame length.
 ///
 /// # Errors
-/// As [`aldis_tm_writer_begin`]; on error `out` is unchanged.
+/// As [`aldis_tm_writer_begin`]; `ALDIS_ERR_INVALID_STATE` if `out` does not hold the headers
+/// `aldis_tm_writer_begin` writes for these arguments (other arguments, or a buffer never
+/// begun); on error `out` is unchanged.
 ///
 /// # Safety
 /// As [`aldis_tm_writer_begin`]; `out_len` is valid for one write.
@@ -1127,8 +1132,9 @@ pub unsafe extern "C" fn aldis_tm_oid_writer_begin(
 /// Finishes an Only Idle Data frame begun with [`aldis_tm_oid_writer_begin`] (132.0 §4.1.4.6,
 /// §4.1.6.2; TM-010, API-023).
 ///
-/// Given the same arguments, it rewrites the headers, leaves the Idle Data and every field the
-/// caller filled, computes the FECF if configured, and returns the frame length.
+/// Given the same arguments, it first checks the headers as [`aldis_tm_writer_finish`] does
+/// (OI-50), leaves the Idle Data and every field the caller filled, computes the FECF if
+/// configured, and returns the frame length.
 ///
 /// # Errors
 /// As [`aldis_tm_writer_finish`] for the fields of an OID frame, including

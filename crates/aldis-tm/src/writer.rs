@@ -205,12 +205,17 @@ impl<'b> TmFrameWriter<'b> {
     /// `out` with the same `mc` and `fields`, so that a writer which keeps no state between
     /// calls, the C ABI's `aldis_tm_writer_finish`, can finish it (API-023; M2 plan D4).
     ///
-    /// Checks `mc` and `fields` as `begin` does and rewrites the Primary Header and the
-    /// Secondary Header Identification Field; every other octet stays as the caller filled it.
-    /// For an OID frame, `fields` has the status `Packets(OnlyIdleData)` that `begin_oid` uses.
+    /// Checks `mc` and `fields` as `begin` does and writes nothing: every octet stays as the
+    /// caller filled it. It compares the Primary Header and the Secondary Header Identification
+    /// Field with what `begin` writes for `mc` and `fields` (OI-50); the Secondary Header Data
+    /// Field, the Security Header and Trailer, the data field, the OCF, and the FECF are not
+    /// compared, and a changed SDLS layout with an identical header is not caught. For an OID
+    /// frame, `fields` has the status `Packets(OnlyIdleData)` that `begin_oid` uses.
     ///
     /// # Errors
-    /// As for [`begin`](Self::begin); on error `out` is unchanged (API-022, GEN-042).
+    /// As for [`begin`](Self::begin); `InvalidState` if `out` does not start with the headers
+    /// `begin` writes for `mc` and `fields` (other fields, or a buffer never begun). On error
+    /// `out` is unchanged (API-022, GEN-042).
     pub fn resume(
         out: &'b mut [u8],
         mc: &TmMasterChannelConfig,
@@ -255,18 +260,29 @@ impl<'b> TmFrameWriter<'b> {
         Ok(writer)
     }
 
-    /// Writes the headers of a checked plan into `out`, after zero-filling the frame if `zero`.
-    fn start(out: &'b mut [u8], plan: Plan, zero: bool) -> Result<TmFrameWriter<'b>> {
+    /// Takes up the frame of a checked plan in `out`. With `write`, as `begin` calls it, it
+    /// zero-fills the frame and writes the Primary Header and the Identification Field; without,
+    /// as `resume` calls it, it writes nothing and fails with `InvalidState` unless those octets
+    /// are what `begin` writes for the plan (OI-50).
+    fn start(out: &'b mut [u8], plan: Plan, write: bool) -> Result<TmFrameWriter<'b>> {
         let frame_len = plan.layout.frame_len();
         let frame = out
             .get_mut(..frame_len)
             .ok_or(Error::buffer_too_small(frame_len))?;
-        if zero {
+        let primary = plan.header.to_octets();
+        let fsh = plan.fsh.map(FshLen::id_octet);
+        if write {
             frame.fill(0);
-        }
-        write_at(frame, 0, &plan.header.to_octets());
-        if let Some(fsh) = plan.fsh {
-            write_at(frame, PRIMARY_HEADER_LEN, &[fsh.id_octet()]);
+            write_at(frame, 0, &primary);
+            if let Some(octet) = fsh {
+                write_at(frame, PRIMARY_HEADER_LEN, &[octet]);
+            }
+        } else {
+            let found = frame.iter().take(PRIMARY_HEADER_LEN.saturating_add(1));
+            let expected = primary.iter().copied().chain(fsh);
+            if !found.zip(expected).all(|(d, s)| *d == s) {
+                return Err(Error::new(ErrorKind::InvalidState));
+            }
         }
         Ok(TmFrameWriter {
             frame,
@@ -512,6 +528,55 @@ mod tests {
     }
 
     #[test]
+    fn resume_rejects_another_frame_than_begun() {
+        // req: API-023, TM-009, CABI-022 (OI-50)
+        let mc = mc();
+        let fields = packets(0, starts_at(3));
+        let mut out = [0xEE_u8; 32];
+        TmFrameWriter::begin(&mut out, &mc, &fields).unwrap();
+        let begun = out;
+        let status = |s| TmFrameFields::new(vcid(0), 7, 9, s);
+        let other = [
+            TmFrameFields::new(vcid(5), 7, 9, fields.status),
+            TmFrameFields::new(vcid(0), 8, 9, fields.status),
+            TmFrameFields::new(vcid(0), 7, 10, fields.status),
+            status(DataFieldStatus::Packets(starts_at(4))),
+            status(DataFieldStatus::Packets(PacketPointer::NoPacketStart)),
+        ];
+        for f in other {
+            let e = TmFrameWriter::resume(&mut out, &mc, &f).unwrap_err();
+            assert_eq!(e.kind(), ErrorKind::InvalidState, "{f:?}");
+            assert_eq!(out, begun, "the buffer is unchanged");
+        }
+        // The Identification Field (VC 5 has the same FSH length: change the octet itself).
+        out[6] ^= 0x01;
+        let e = TmFrameWriter::resume(&mut out, &mc, &fields).unwrap_err();
+        assert_eq!(e.kind(), ErrorKind::InvalidState);
+        out[6] ^= 0x01;
+        // What the caller fills is not compared.
+        out[7..].fill(0x5A);
+        assert!(TmFrameWriter::resume(&mut out, &mc, &fields).is_ok());
+    }
+
+    #[test]
+    fn resume_rejects_a_buffer_never_begun() {
+        // req: API-023, CABI-022 (OI-50)
+        let mc = mc();
+        for fill in [0x00_u8, 0xA5] {
+            let mut out = [fill; 32];
+            let e = TmFrameWriter::resume(&mut out, &mc, &packets(0, starts_at(3))).unwrap_err();
+            assert_eq!(e.kind(), ErrorKind::InvalidState);
+            assert_eq!(out, [fill; 32]);
+        }
+        // The Only Idle Data frame of `begin_oid` is not the plain frame of the same VC.
+        let mut oid = OidGenerator::new();
+        let mut out = [0_u8; 32];
+        TmFrameWriter::begin_oid(&mut out, &mc, vcid(5), 7, 9, &mut oid).unwrap();
+        let e = TmFrameWriter::resume(&mut out, &mc, &packets(5, starts_at(0))).unwrap_err();
+        assert_eq!(e.kind(), ErrorKind::InvalidState);
+    }
+
+    #[test]
     fn resume_keeps_what_the_caller_filled() {
         // req: TM-009, TM-010, API-022, API-023, GEN-042
         let mc = mc();
@@ -525,10 +590,12 @@ mod tests {
         let mut w = TmFrameWriter::begin(&mut one, &mc, &fields).unwrap();
         fill(&mut w);
         assert_eq!(w.finish(), 32);
-        // The same frame in two steps that keep no writer, with the headers overwritten between.
+        // The same frame in two steps that keep no writer.
         let mut two = [0_u8; 32];
         fill(&mut TmFrameWriter::begin(&mut two, &mc, &fields).unwrap());
-        two[..7].fill(0xEE);
+        let before = two;
+        assert!(TmFrameWriter::resume(&mut two, &mc, &fields).is_ok());
+        assert_eq!(two, before, "resume writes nothing");
         let w = TmFrameWriter::resume(&mut two, &mc, &fields).unwrap();
         assert_eq!(w.finish(), 32);
         assert_eq!(two, one);

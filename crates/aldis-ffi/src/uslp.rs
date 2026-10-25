@@ -36,7 +36,8 @@
 //! unfinished header, the Insert Zone, and the TFDF Header, zero-fills the Security Header and
 //! Trailer, and reports where each field lies; the caller fills the TFDZ and the security
 //! fields in place; `_writer_finish`, given the same arguments and the TFDZ length used,
-//! rewrites the headers without zero-filling (`UslpFrameWriter::resume`) and finishes the frame:
+//! checks that the buffer holds the headers `_writer_begin` wrote, else
+//! `ALDIS_ERR_INVALID_STATE` (`UslpFrameWriter::resume`; OI-50), and finishes the frame:
 //! the Frame Length, the OCF, and the FECF.
 
 use aldis::core::layout::{FECF_LEN, OCF_LEN};
@@ -1172,14 +1173,18 @@ pub unsafe extern "C" fn aldis_uslp_writer_begin(
 /// Finishes a two-phase write begun with the same arguments, with `tfdz_len` TFDZ octets
 /// (732.1 §4.1.2.7, §4.1.5, §4.1.6; USLP-010, API-021, API-023).
 ///
-/// Rewrites the unfinished headers without zero-filling (`UslpFrameWriter::resume`), keeps the
-/// TFDZ and the security fields the caller filled, moves the Security Trailer to follow a TFDZ
+/// First checks that `out` holds the unfinished Primary Header (with the reserved frame
+/// length), the Insert Zone, and the TFDF Header that [`aldis_uslp_writer_begin`] wrote for these
+/// arguments (`UslpFrameWriter::resume`; OI-50); the Security Header and Trailer and the TFDZ are
+/// not compared. Then keeps the TFDZ and the security fields the caller filled, moves the Security Trailer to follow a TFDZ
 /// shorter than the reservation, writes the Frame Length, the OCF, and the FECF if configured,
 /// and returns the frame length. The frame is the first `*out_len` octets of `out`; the octets
 /// after it keep unspecified values (`UslpFrameWriter::finish`).
 ///
 /// # Errors
-/// As [`aldis_uslp_writer_begin`]; then `ALDIS_ERR_OUT_OF_RANGE` (`user_len`) above
+/// As [`aldis_uslp_writer_begin`]; `ALDIS_ERR_INVALID_STATE` if `out` does not hold the unfinished
+/// headers `aldis_uslp_writer_begin` writes for these arguments (other arguments, or a buffer
+/// never begun); then `ALDIS_ERR_OUT_OF_RANGE` (`user_len`) above
 /// `max_tfdz_len`, `ALDIS_ERR_INVALID_FIELD` (`frame_data_field`) for 0,
 /// `ALDIS_ERR_LENGTH_MISMATCH` (`frame_data_field`) below it on a fixed-length channel, and
 /// `ALDIS_ERR_OUT_OF_RANGE` (`fhp_lvo_pointer`) for a pointer not below `tfdz_len`. On error
