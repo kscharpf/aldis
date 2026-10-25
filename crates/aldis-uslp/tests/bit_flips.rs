@@ -4,7 +4,10 @@
 //! Every single-bit error and every double-bit error of a set of valid frames with the FECF is
 //! rejected by the USLP Frame Validation Checks, [`validate_frame`] (USLP-014), and never
 //! accepted as another frame, within the length the CRC-16 guarantees. A truncated frame has no
-//! FECF (732.1 Annex D1.2.2 note 1) and is not part of this suite.
+//! FECF (732.1 Annex D1.2.2 note 1): it is not part of this FECF property, and its own tests
+//! (the section on truncated frames below) pin which single-bit errors the structural checks
+//! reject. The last section pins the outcome of flag and VCID errors on channels without the
+//! FECF.
 //!
 //! The outcome depends on where the errors are:
 //!
@@ -42,18 +45,22 @@
 
 use core::ops::Range;
 
+use aldis_core::crc::crc16;
 use aldis_core::ocf::Ocf;
+use aldis_core::oid::OidGenerator;
 use aldis_core::security::SecurityLayout;
 use aldis_core::{DecodeMode, ErrorKind};
 use aldis_testkit::bitflip::{
     CRC16_DOUBLE_BIT_BITS, CRC16_DOUBLE_BIT_OCTETS, each_bit, each_double, each_pair, each_single,
     filler, find_double, find_single, flip, sampled_bits, sampled_pairs,
 };
+use aldis_uslp::delimit::{Delimited, next_frame};
 use aldis_uslp::{
-    FirstHeaderPointer, FrameContent, FrameFields, FrameKind, MAX_FRAME_LEN, MapConfig, OcfUse,
-    PhysicalChannelConfig, Reason, SourceOrDestination, TfdfHeader, TfdzRule, TransferFrameType,
-    Upid, UslpFrame, UslpMapId, UslpSpacecraftId, UslpVcId, VcConfig, VcParams, VcTable,
-    VcfCountLen, encode, validate_frame,
+    ChannelFields, FirstHeaderPointer, FrameContent, FrameFields, FrameKind, MAX_FRAME_LEN,
+    MapConfig, OcfUse, PhysicalChannelConfig, Reason, SecurityScope, SourceOrDestination,
+    TfdfHeader, TfdzRule, TransferFrameType, TruncatedFrameLen, Upid, UslpAnomaly, UslpFrame,
+    UslpMapId, UslpSpacecraftId, UslpVcId, VcConfig, VcParams, VcTable, VcfCountLen, encode,
+    encode_oid, encode_truncated, validate_frame,
 };
 
 /// The Frame Length field: bits 32–47 of the Primary Header (732.1 §4.1.2.7.1).
@@ -308,4 +315,476 @@ fn every_double_bit_error_within_the_guarantee_is_as_expected() {
         as_expected(&f, bytes, &[i, j], DecodeMode::Strict)
     });
     assert_eq!(failure, None);
+}
+
+#[test]
+fn decode_may_accept_a_frame_length_error_as_a_shorter_frame() {
+    // req: USLP-003, USLP-014, USLP-015, API-011, VER-023, VER-064
+    // hazard: HZ-USLP-01 (P-USLP-02). A 64-octet frame whose octets 30 and 31 are the FECF of
+    // its first 30 octets with the Frame Length bit of value 32 cleared: with that bit flipped
+    // (bit 42), it reads as a valid 32-octet frame followed by other octets.
+    let f = variable(64, false, 1);
+    let mut octets = f.octets.clone();
+    let mut head = octets[..30].to_vec();
+    head[5] ^= 0x20;
+    octets[30..32].copy_from_slice(&crc16(&head).to_be_bytes());
+    let fecf = crc16(&octets[..62]).to_be_bytes();
+    octets[62..].copy_from_slice(&fecf);
+    for mode in [DecodeMode::Strict, DecodeMode::Lenient] {
+        assert!(validate_frame(&octets, &f.table, mode).is_ok());
+    }
+    octets[5] ^= 0x20;
+    for mode in [DecodeMode::Strict, DecodeMode::Lenient] {
+        let short = UslpFrame::decode(&octets, &f.table, mode).unwrap();
+        assert_eq!(short.len(), 32);
+        // The delimiter reads the same field, so the unit yields the shorter frame, and
+        // validate_frame of those octets accepts it: only a caller that compares the length
+        // with the octets it was given sees the error.
+        let Some(Delimited::Frame(item)) = next_frame(&octets, &f.table) else {
+            panic!("not a frame");
+        };
+        assert_eq!(item.len(), 32);
+        assert!(validate_frame(item, &f.table, mode).is_ok());
+        // Given the 64 octets it was sent as, it is rejected.
+        let rejection = validate_frame(&octets, &f.table, mode).unwrap_err();
+        assert_eq!(rejection.reason(), Reason::LengthMismatch);
+    }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Truncated frames (P-USLP-05, P-USLP-06; OI-48).
+// ---------------------------------------------------------------------------------------------
+
+/// One variable-length VC (VC 1, MAP 2) with a truncated frame length of `len` octets, with SDLS
+/// if `sdls`, on a Physical Channel with the FECF (which truncated frames lack).
+fn truncated_table(len: usize, sdls: bool) -> Channels {
+    let pc =
+        PhysicalChannelConfig::new(TransferFrameType::Variable, MAX_FRAME_LEN, 0, true).unwrap();
+    let scid = UslpSpacecraftId::new(0xA5A5).unwrap();
+    let vc_id = UslpVcId::new(1).unwrap();
+    let params = VcParams {
+        truncated_frame_len: Some(TruncatedFrameLen::new(len).unwrap()),
+        security: SecurityScope::Vc(if sdls {
+            SecurityLayout::USLP_TRUNCATED
+        } else {
+            SecurityLayout::NONE
+        }),
+        ..VcParams::new(TransferFrameType::Variable)
+    };
+    let vc = VcConfig::new(scid, vc_id, params).unwrap();
+    let map = MapConfig::new(
+        scid,
+        vc_id,
+        UslpMapId::new(2).unwrap(),
+        SecurityLayout::NONE,
+    );
+    Channels::new(pc, &[vc], &[map]).unwrap()
+}
+
+const fn truncated_channel() -> ChannelFields {
+    ChannelFields {
+        spacecraft_id: UslpSpacecraftId::new(0xA5A5).unwrap(),
+        source_or_destination: SourceOrDestination::from_bit(false),
+        vc_id: UslpVcId::new(1).unwrap(),
+        map_id: UslpMapId::new(2).unwrap(),
+    }
+}
+
+/// A truncated frame of `len` octets on `table` (from [`truncated_table`]) with the TFDZ octets
+/// all `fill`, rule `011`.
+fn truncated(table: &Channels, len: usize, sdls: bool, fill: u8) -> Vec<u8> {
+    let room = len - 4 - 1 - if sdls { 6 + 16 } else { 0 };
+    let header = TfdfHeader {
+        rule: TfdzRule::OctetStream,
+        upid: Upid::OctetStream,
+    };
+    let mut out = vec![0_u8; 64];
+    let n = encode_truncated(
+        table,
+        truncated_channel(),
+        header,
+        &vec![fill; room],
+        &mut out,
+    )
+    .unwrap();
+    assert_eq!(n, len);
+    out.truncate(n);
+    for mode in [DecodeMode::Strict, DecodeMode::Lenient] {
+        assert!(validate_frame(&out, table, mode).is_ok());
+    }
+    out
+}
+
+/// What a single-bit error of a truncated frame gives (732.1 Annex D1.3).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Flip {
+    Accepted,
+    Rejected(Reason),
+}
+
+/// The outcome of the error at `bit` of a truncated frame of `len` octets, with SDLS if `sdls`,
+/// on the VC of [`truncated_table`], whose TFDF Header holds the rule `011`, in `mode`. The
+/// frame's TFDZ is all zero, so that the End of Frame Primary Header Flag error is read as a
+/// non-truncated header with clean flags. This is the model of the Blue Book's fields and the
+/// order of checks of `docs/standards/uslp-frame.md` §3.1, written from them.
+fn expected_flip(bit: usize, len: usize, sdls: bool) -> Flip {
+    let tfdf_header_bit = (4 + if sdls { 6 } else { 0 }) * 8;
+    match bit {
+        // The Transfer Frame Version Number.
+        0..4 => Flip::Rejected(Reason::UnexpectedVersion),
+        // The Spacecraft ID: the table has one Master Channel.
+        4..20 => Flip::Rejected(Reason::UnexpectedSpacecraft),
+        // The Source-or-Destination Identifier.
+        20 => Flip::Accepted,
+        // The VCID: the table has VC 1 only.
+        21..27 => Flip::Rejected(Reason::InvalidVcid),
+        // The MAP ID: the table has MAP 2 only.
+        27..31 => Flip::Rejected(Reason::InvalidMapId),
+        // The End of Frame Primary Header Flag: the frame becomes a non-truncated header on a
+        // VC that has a truncated frame length (OI-48). A 6-octet input has no room for the
+        // 7-octet header.
+        31 if len < 7 => Flip::Rejected(Reason::LengthMismatch),
+        31 => Flip::Rejected(Reason::NonTruncatedFrameNotAllowed),
+        // The construction rule `011` of the TFDF Header: `111` is also a variable-length
+        // rule; `001` and `010` have pointers that a truncated frame lacks (USLP-016).
+        b if (tfdf_header_bit..tfdf_header_bit + 3).contains(&b) => {
+            if b == tfdf_header_bit {
+                Flip::Accepted
+            } else {
+                Flip::Rejected(Reason::ConstructionRuleMismatch)
+            }
+        }
+        // The UPID, the Security Header and Trailer, and the TFDZ: a truncated frame has no
+        // field that the receiver checks (Annex D1.2.2 note 1).
+        _ => Flip::Accepted,
+    }
+}
+
+#[test]
+fn every_single_bit_error_of_a_truncated_frame_is_as_pinned() {
+    // req: USLP-002, USLP-012, USLP-014, USLP-016, CMN-001, VER-023, VER-064
+    // hazard: HZ-USLP-04 (P-USLP-06). A truncated frame has no error control: the errors
+    // that the receiver rejects are those of the fields it checks, and the others are
+    // accepted, in both modes. `decode` agrees with `validate_frame` on acceptance.
+    for (len, sdls) in [(6, false), (12, false), (32, false), (28, true)] {
+        let table = truncated_table(len, sdls);
+        let f = truncated(&table, len, sdls, 0);
+        let mut accepted = 0;
+        each_single(&f, |bit, bytes| {
+            let want = expected_flip(bit, len, sdls);
+            for mode in [DecodeMode::Strict, DecodeMode::Lenient] {
+                let got = match validate_frame(bytes, &table, mode) {
+                    Ok(_) => Flip::Accepted,
+                    Err(r) => Flip::Rejected(r.reason()),
+                };
+                assert_eq!(got, want, "{len} octets, sdls {sdls}, bit {bit}, {mode:?}");
+                assert_eq!(
+                    UslpFrame::decode(bytes, &table, mode).is_ok(),
+                    want == Flip::Accepted,
+                    "{len} octets, sdls {sdls}, bit {bit}, {mode:?}"
+                );
+            }
+        });
+        for bit in 0..len * 8 {
+            if expected_flip(bit, len, sdls) == Flip::Accepted {
+                accepted += 1;
+            }
+        }
+        // A truncated frame is not protected (Annex D1.2.2 note 1): errors are accepted.
+        assert!(accepted > 0, "{len} octets");
+    }
+}
+
+#[test]
+fn a_flipped_end_of_frame_flag_of_a_truncated_frame_is_rejected_whatever_follows() {
+    // req: USLP-002, USLP-014, USLP-015, API-011, VER-064
+    // hazard: HZ-USLP-02 (P-USLP-05; OI-48). The flag error reads the truncated frame as a
+    // non-truncated header on a VC that carries only truncated frames: rejected with reason
+    // 18, at any input length (the check precedes the Frame Length), with and without SDLS,
+    // and the delimiter does not trust its Frame Length either. Reason 3 or 4 come first
+    // when the octet that the flags now occupy has them set (strict mode for the spares).
+    for (len, sdls) in [(12, false), (32, false), (28, true)] {
+        let table = truncated_table(len, sdls);
+        // The flags octet is octet 6: TFDZ octet 1 without SDLS, Security Header octet 3 with.
+        let at = 6;
+        for (octet, strict, lenient) in [
+            (
+                0x00,
+                Reason::NonTruncatedFrameNotAllowed,
+                Reason::NonTruncatedFrameNotAllowed,
+            ),
+            (
+                0x20,
+                Reason::ReservedSpare,
+                Reason::NonTruncatedFrameNotAllowed,
+            ),
+            (0x40, Reason::ReservedFlags, Reason::ReservedFlags),
+        ] {
+            let mut f = truncated(&table, len, sdls, 0);
+            f[at] = octet;
+            f[3] ^= 0x01;
+            // Followed by enough octets for the largest Frame Length that rule bits make.
+            for trailing in [0, 40_000] {
+                let mut input = f.clone();
+                input.resize(len + trailing, 0xA5);
+                for (mode, reason) in [(DecodeMode::Strict, strict), (DecodeMode::Lenient, lenient)]
+                {
+                    let r = validate_frame(&input[..len], &table, mode).unwrap_err();
+                    assert_eq!(r.reason(), reason, "{len} octets, sdls {sdls}, {octet:#x}");
+                    if trailing != 0 {
+                        let e = UslpFrame::decode(&input, &table, mode).unwrap_err();
+                        assert_eq!(e.kind(), r.error().kind());
+                    }
+                }
+            }
+            if octet == 0x00 {
+                // Octets 4 and 5 are now the Frame Length: the TFDF Header and the first TFDZ
+                // octet (a length far above the frame) without SDLS, which the delimiter does
+                // not trust (OI-48); two zero Security Header octets (a length of 1, below the
+                // shortest frame) with SDLS, which it takes for fill. Both discard the rest.
+                let item = next_frame(&f, &table).unwrap();
+                if sdls {
+                    assert!(matches!(item, Delimited::Fill(_)));
+                } else {
+                    assert!(matches!(item, Delimited::NonTruncatedNotAllowed(_)));
+                }
+                assert_eq!(item.len(), len);
+            }
+        }
+    }
+}
+
+#[test]
+fn a_flipped_end_of_frame_flag_of_a_non_truncated_frame_is_rejected() {
+    // req: USLP-002, USLP-014, CMN-001, VER-064
+    // hazard: HZ-USLP-02 (P-USLP-05). The reverse: a frame on a VC without a truncated frame
+    // length read as truncated is rejected with reason 7 (Annex D1.2.1), in every frame of
+    // the suite, fixed-length ones included.
+    for f in &short_frames() {
+        let mut bytes = f.octets.clone();
+        bytes[3] ^= 0x01;
+        for mode in [DecodeMode::Strict, DecodeMode::Lenient] {
+            let r = validate_frame(&bytes, &f.table, mode).unwrap_err();
+            assert_eq!(r.reason(), Reason::TruncatedFrameNotAllowed);
+            assert!(UslpFrame::decode(&bytes, &f.table, mode).is_err());
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Channels without the FECF (P-USLP-10; HZ-USLP-08, HZ-USLP-09).
+// ---------------------------------------------------------------------------------------------
+
+/// A variable-length Physical Channel without the FECF: VC 1 with MAP 2, equal VCF Count
+/// Lengths (2 octets) for both qualities of service, and an OCF allowed.
+fn no_fecf_variable() -> Channels {
+    let pc = PhysicalChannelConfig::new(TransferFrameType::Variable, 64, 0, false).unwrap();
+    let scid = UslpSpacecraftId::new(0xA5A5).unwrap();
+    let vc_id = UslpVcId::new(1).unwrap();
+    let two = VcfCountLen::new(2).unwrap();
+    let params = VcParams {
+        vcf_count_len_sequence: two,
+        vcf_count_len_expedited: two,
+        ocf: OcfUse::Allowed,
+        ..VcParams::new(TransferFrameType::Variable)
+    };
+    let vc = VcConfig::new(scid, vc_id, params).unwrap();
+    let map = MapConfig::new(
+        scid,
+        vc_id,
+        UslpMapId::new(2).unwrap(),
+        SecurityLayout::NONE,
+    );
+    Channels::new(pc, &[vc], &[map]).unwrap()
+}
+
+/// A frame of `kind` on [`no_fecf_variable`] with a 20-octet TFDZ and rule `111` (which fits
+/// both user data and protocol control frames), and an OCF if `ocf`.
+fn no_fecf_frame(table: &Channels, kind: FrameKind, ocf: bool) -> Vec<u8> {
+    let fields = FrameFields {
+        spacecraft_id: UslpSpacecraftId::new(0xA5A5).unwrap(),
+        source_or_destination: SourceOrDestination::from_bit(false),
+        vc_id: UslpVcId::new(1).unwrap(),
+        map_id: UslpMapId::new(2).unwrap(),
+        kind,
+        vcf_count: 9,
+    };
+    let content = FrameContent {
+        tfdf: TfdfHeader {
+            rule: TfdzRule::NoSegmentation,
+            upid: Upid::OctetStream,
+        },
+        insert_zone: &[],
+        ocf: ocf.then(|| Ocf::decode([0x01, 0x14, 0x0C, 0x2A])),
+    };
+    let mut out = vec![0_u8; 64];
+    let n = encode(table, fields, content, &filler(20, 7), &mut out).unwrap();
+    out.truncate(n);
+    out
+}
+
+/// `frame` with the bit `bit` (0 = most significant bit of octet 0) flipped.
+fn flipped(frame: &[u8], bit: usize) -> Vec<u8> {
+    let mut b = frame.to_vec();
+    flip(&mut b, bit);
+    b
+}
+
+#[test]
+fn without_the_fecf_most_flag_errors_are_accepted() {
+    // req: USLP-001, USLP-004, USLP-013, USLP-014, VER-064
+    // hazard: HZ-USLP-09 (P-USLP-10). Source-or-Destination Identifier (bit 20), Bypass/Sequence
+    // Control Flag (48), Protocol Control Command Flag (49), OCF Flag (52). Pinned in both
+    // modes: accepted with another meaning, which the assertions state, but for the flags `01`
+    // (reason 3).
+    let table = no_fecf_variable();
+    for mode in [DecodeMode::Strict, DecodeMode::Lenient] {
+        for kind in [FrameKind::SequenceControlled, FrameKind::Expedited] {
+            for ocf in [false, true] {
+                let octets = no_fecf_frame(&table, kind, ocf);
+                let sent = validate_frame(&octets, &table, mode).unwrap();
+                // The identifier is read as the other end's.
+                let b = flipped(&octets, 20);
+                let got = validate_frame(&b, &table, mode).unwrap();
+                assert_ne!(got.source_or_destination(), sent.source_or_destination());
+                // The Bypass flag: the quality of service changes (equal count lengths).
+                let b = flipped(&octets, 48);
+                let got = validate_frame(&b, &table, mode).unwrap();
+                let other = if kind == FrameKind::Expedited {
+                    FrameKind::SequenceControlled
+                } else {
+                    FrameKind::Expedited
+                };
+                assert_eq!(got.full().unwrap().kind(), other);
+                // The OCF Flag: the last four TFDZ octets become the OCF, or the reverse.
+                let b = flipped(&octets, 52);
+                let got = validate_frame(&b, &table, mode).unwrap();
+                let got = got.full().unwrap();
+                assert_eq!(got.ocf().is_some(), !ocf);
+                assert_eq!(got.tfdz().len(), if ocf { 24 } else { 16 });
+            }
+        }
+        // The Protocol Control Command Flag: an expedited frame becomes protocol control,
+        // accepted; a sequence-controlled one becomes the reserved `01`, reason 3.
+        let sent = no_fecf_frame(&table, FrameKind::Expedited, false);
+        let b = flipped(&sent, 49);
+        let got = validate_frame(&b, &table, mode).unwrap();
+        assert_eq!(got.full().unwrap().kind(), FrameKind::ProtocolControl);
+        let sent = no_fecf_frame(&table, FrameKind::SequenceControlled, false);
+        let b = flipped(&sent, 49);
+        let r = validate_frame(&b, &table, mode).unwrap_err();
+        assert_eq!(r.reason(), Reason::ReservedFlags);
+        // A protocol control frame whose Bypass flag flips is `01`: reason 3.
+        let sent = no_fecf_frame(&table, FrameKind::ProtocolControl, false);
+        let b = flipped(&sent, 48);
+        let r = validate_frame(&b, &table, mode).unwrap_err();
+        assert_eq!(r.reason(), Reason::ReservedFlags);
+        assert!(validate_frame(&flipped(&sent, 49), &table, mode).is_ok());
+    }
+}
+
+/// A fixed-length Physical Channel of 64-octet frames without the FECF: VC 31 with MAP 0 and a
+/// fixed-length TFDZ. VCID 63 is valid without an entry, and VC 31 is one bit from it.
+fn no_fecf_fixed() -> Channels {
+    let pc = PhysicalChannelConfig::new(TransferFrameType::Fixed, 64, 0, false).unwrap();
+    let scid = UslpSpacecraftId::new(0xA5A5).unwrap();
+    let vc_id = UslpVcId::new(31).unwrap();
+    let vc = VcConfig::new(scid, vc_id, VcParams::new(TransferFrameType::Fixed)).unwrap();
+    let map = MapConfig::new(
+        scid,
+        vc_id,
+        UslpMapId::new(0).unwrap(),
+        SecurityLayout::NONE,
+    );
+    Channels::new(pc, &[vc], &[map]).unwrap()
+}
+
+const fn no_fecf_fields(vc: u8) -> FrameFields {
+    FrameFields {
+        spacecraft_id: UslpSpacecraftId::new(0xA5A5).unwrap(),
+        source_or_destination: SourceOrDestination::from_bit(false),
+        vc_id: UslpVcId::new(vc).unwrap(),
+        map_id: UslpMapId::new(0).unwrap(),
+        kind: FrameKind::Expedited,
+        vcf_count: 0,
+    }
+}
+
+#[test]
+fn without_the_fecf_a_vcid_error_between_a_data_frame_and_an_oid_frame_is_pinned() {
+    // req: USLP-009, USLP-014, USLP-016, API-031, API-032, VER-064
+    // hazard: HZ-USLP-08 (P-USLP-10). Every single-bit error of the VCID (bits 21–26) of a
+    // frame of VC 31 and of an OID frame (VC 63) on a fixed-length channel without the FECF:
+    // the one error between the two is accepted as the other, and the others name no VC.
+    let table = no_fecf_fixed();
+    let mut data = vec![0_u8; 64];
+    let content = FrameContent {
+        tfdf: TfdfHeader {
+            rule: TfdzRule::PacketsSpanningFrames(FirstHeaderPointer::from_raw(0)),
+            upid: Upid::Packets,
+        },
+        insert_zone: &[],
+        ocf: None,
+    };
+    let n = encode(
+        &table,
+        no_fecf_fields(31),
+        content,
+        &filler(54, 3),
+        &mut data,
+    )
+    .unwrap();
+    assert_eq!(n, 64);
+    let mut oid = vec![0_u8; 64];
+    let n = encode_oid(
+        &table,
+        no_fecf_fields(63),
+        &[],
+        None,
+        &mut OidGenerator::new(),
+        &mut oid,
+    )
+    .unwrap();
+    assert_eq!(n, 64);
+    for mode in [DecodeMode::Strict, DecodeMode::Lenient] {
+        assert!(validate_frame(&data, &table, mode).is_ok());
+        assert!(validate_frame(&oid, &table, mode).is_ok());
+    }
+    for bit in 21..27 {
+        // Only the most significant bit of the VCID (bit 21) leads from 31 (011111) to 63
+        // (111111) and back.
+        for mode in [DecodeMode::Strict, DecodeMode::Lenient] {
+            let (d, o) = (flipped(&data, bit), flipped(&oid, bit));
+            let got = validate_frame(&d, &table, mode);
+            let from_oid = validate_frame(&o, &table, mode);
+            if bit == 21 {
+                // A data frame read as an OID frame: its rule, UPID, or pointer deviate.
+                // Strict mode rejects it (reason 17); lenient mode accepts it and reports the
+                // anomaly.
+                match mode {
+                    DecodeMode::Strict => {
+                        assert_eq!(got.unwrap_err().reason(), Reason::OidHeaderMismatch);
+                    }
+                    DecodeMode::Lenient => {
+                        let got = got.unwrap();
+                        assert_eq!(got.vc_id().get(), 63);
+                        assert!(got.anomalies().contains(UslpAnomaly::OidHeaderMismatch));
+                    }
+                }
+                // An OID frame read as a data frame of VC 31: accepted in both modes with no
+                // anomaly, and its UPID is "Only Idle Data".
+                let sent = from_oid.unwrap();
+                assert_eq!(sent.vc_id().get(), 31);
+                assert!(sent.anomalies().is_empty());
+                assert_eq!(sent.tfdf_header().upid, Upid::OnlyIdleData);
+            } else {
+                assert_eq!(got.unwrap_err().reason(), Reason::InvalidVcid, "bit {bit}");
+                assert_eq!(
+                    from_oid.unwrap_err().reason(),
+                    Reason::InvalidVcid,
+                    "bit {bit}"
+                );
+            }
+        }
+    }
 }
