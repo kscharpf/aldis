@@ -1762,6 +1762,12 @@
 #define ALDIS_TM_ANOMALY_SEGMENT_LENGTH_ID_NOT_11 (1 << 1)
 
 /**
+ * Anomaly bit: an Only Idle Data frame (FHP `0x7FE`) on a virtual channel that uses SDLS
+ * (bit 2; 132.0 §6.4.6.2; TM-010, OI-54). Set only by the decoders that take the VC array.
+ */
+#define ALDIS_TM_ANOMALY_ONLY_IDLE_DATA_ON_SDLS_VC (1 << 2)
+
+/**
  * Length of the non-truncated Primary Header without its VCF Count, in octets (732.1
  * §4.1.2.1.2).
  */

@@ -17,7 +17,7 @@ use aldis_ffi::field::{
 };
 use aldis_ffi::oid::*;
 use aldis_ffi::tm::*;
-use aldis_ffi::{ALDIS_MODE_STRICT, aldis_error_detail_t};
+use aldis_ffi::{ALDIS_MODE_LENIENT, ALDIS_MODE_STRICT, aldis_error_detail_t};
 
 fn size<T>() -> u32 {
     u32::try_from(size_of::<T>()).unwrap()
@@ -883,6 +883,82 @@ fn the_oid_finish_checks_the_buffer_was_begun_with_these_arguments() {
     assert_eq!(finish_oid(6, 2, 3, &mut never), ALDIS_ERR_INVALID_STATE);
     assert_eq!(never, [0xA5; 40]);
     assert_eq!(finish_oid(6, 2, 3, &mut oid), ALDIS_OK);
+}
+
+#[test]
+fn an_only_idle_data_frame_on_an_sdls_vc_is_refused_or_flagged() {
+    // req: TM-010, TM-011, API-031, API-032, CABI-012 (OI-54)
+    let (mc, vcs) = (mc(), vcs());
+    // The frame of VC 4 with FHP 0x7FE (Synchronization Flag 0, Segment Length ID 11).
+    let mut frame = sdls_frame();
+    frame[4..6].copy_from_slice(&[0x1F, 0xFE]);
+    aldis::core::crc::write_fecf(&mut frame).unwrap();
+    let mut v = aldis_tm_frame_t::default();
+    let mut d = detail();
+    // SAFETY: every pointer is to a live local.
+    unsafe {
+        for decode in [aldis_tm_decode_with, aldis_tm_decode_unchecked_with] {
+            assert_eq!(
+                decode(
+                    frame.as_ptr(),
+                    40,
+                    &raw const mc,
+                    vcs.as_ptr(),
+                    2,
+                    ALDIS_MODE_STRICT,
+                    &raw mut v,
+                    &raw mut d
+                ),
+                ALDIS_ERR_INVALID_FIELD
+            );
+            assert_eq!(d.field, ALDIS_FIELD_VC_ID);
+            assert_eq!(
+                decode(
+                    frame.as_ptr(),
+                    40,
+                    &raw const mc,
+                    vcs.as_ptr(),
+                    2,
+                    ALDIS_MODE_LENIENT,
+                    &raw mut v,
+                    &raw mut d
+                ),
+                ALDIS_OK
+            );
+            assert_eq!(v.anomalies, ALDIS_TM_ANOMALY_ONLY_IDLE_DATA_ON_SDLS_VC);
+            assert_eq!(v.pointer, ALDIS_TM_POINTER_ONLY_IDLE_DATA);
+        }
+        // Validation refuses it in both modes: the managed parameters forbid it.
+        for mode in [ALDIS_MODE_STRICT, ALDIS_MODE_LENIENT] {
+            assert_eq!(
+                aldis_tm_validate(
+                    frame.as_ptr(),
+                    40,
+                    &raw const mc,
+                    vcs.as_ptr(),
+                    2,
+                    mode,
+                    &raw mut d
+                ),
+                ALDIS_ERR_INVALID_FIELD
+            );
+            assert_eq!(d.field, ALDIS_FIELD_VC_ID);
+        }
+        // The decoder without the VC array has no SDLS knowledge, so it reads the layout of a
+        // channel without SDLS and flags nothing.
+        assert_eq!(
+            aldis_tm_decode(
+                frame.as_ptr(),
+                40,
+                &raw const mc.pc,
+                ALDIS_MODE_LENIENT,
+                &raw mut v,
+                &raw mut d
+            ),
+            ALDIS_OK
+        );
+        assert_eq!(v.anomalies, 0);
+    }
 }
 
 #[test]

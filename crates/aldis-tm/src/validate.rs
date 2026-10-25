@@ -5,7 +5,7 @@ use aldis_core::{Error, ErrorKind, Result};
 
 use crate::config::{TmMasterChannelConfig, unknown_scid};
 use crate::field;
-use crate::header::{FshLen, len_u64, mismatch};
+use crate::header::{DataFieldStatus, FshLen, PacketPointer, len_u64, mismatch};
 use crate::view::TmFrame;
 
 impl TmFrame<'_> {
@@ -25,7 +25,10 @@ impl TmFrame<'_> {
     /// - `InvalidField` (`sync_flag`) if the Synchronization Flag disagrees with the VC's Data
     ///   Field Content (132.0 §4.1.2.7.3.3, §4.1.4.4);
     /// - `LengthMismatch` (`security_header_len` or `security_trailer_len`) if the frame was
-    ///   decoded with another security layout than the VC's (Table 6-1; API-070).
+    ///   decoded with another security layout than the VC's (Table 6-1; API-070);
+    /// - `InvalidField` (`vc_id`) for an Only Idle Data frame (First Header Pointer `0x7FE`) on a
+    ///   VC that uses SDLS, which a lenient decode accepts with an anomaly flag (132.0 §6.4.6.2;
+    ///   TM-010, OI-54).
     pub fn validate(&self, mc: &TmMasterChannelConfig) -> Result<()> {
         let frame_len = mc.pc().frame_len();
         if self.len() != frame_len {
@@ -85,6 +88,11 @@ impl TmFrame<'_> {
                     len_u64(found),
                 ));
             }
+        }
+        if self.data_field_status() == DataFieldStatus::Packets(PacketPointer::OnlyIdleData)
+            && !vc.security().is_none()
+        {
+            return Err(Error::new(ErrorKind::InvalidField).with_field(field::VC_ID));
         }
         Ok(())
     }
@@ -271,5 +279,25 @@ mod tests {
             )
         );
         assert!(TmFrame::decode_with(&bytes, &PC, &NoSdls, DecodeMode::Strict).is_ok());
+    }
+
+    #[test]
+    fn only_idle_data_on_an_sdls_vc_is_refused() {
+        // req: TM-010, TM-011 (OI-54)
+        let mc = mc();
+        // VC 2 uses SDLS; FHP 0x7FE, Segment Length ID 11. A lenient decode accepts it.
+        let mut bytes = frame(2, false, 0x1F, 0);
+        bytes[5] = 0xFE;
+        let f = TmFrame::decode_with(&bytes, &PC, &mc, DecodeMode::Lenient).unwrap();
+        let e = f.validate(&mc).unwrap_err();
+        assert_eq!(
+            (e.kind(), e.field()),
+            (ErrorKind::InvalidField, Some(field::VC_ID))
+        );
+        // The same frame on VC 0 (no SDLS, a Secondary Header of 3 octets) is valid.
+        let mut ok = frame(0, false, 0x9F, 3);
+        ok[5] = 0xFE;
+        let f = TmFrame::decode(&ok, &PC, DecodeMode::Strict).unwrap();
+        assert_eq!(f.validate(&mc), Ok(()));
     }
 }

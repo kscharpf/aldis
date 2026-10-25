@@ -35,13 +35,6 @@ fn strict_re_encode_property(
     if f.validate(mc).is_err() {
         return Ok(());
     }
-    // The writers refuse an Only Idle Data frame on a VC that uses SDLS (132.0 §6.4.6.2;
-    // TM-010); the decoder does not check that rule, so such a frame does not re-encode.
-    if f.data_field_status() == DataFieldStatus::Packets(aldis_tm::PacketPointer::OnlyIdleData)
-        && (!f.security_header().is_empty() || !f.security_trailer().is_empty())
-    {
-        return Ok(());
-    }
     let fields = TmFrameFields::new(
         f.vcid(),
         f.mc_frame_count(),
