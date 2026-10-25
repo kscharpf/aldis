@@ -113,14 +113,14 @@ Each codec file has:
 | | |
 |---|---|
 | Category | `panic` |
-| Status | `gap` |
+| Status | `residual` |
 | Severity | S2 |
 | Failure mode | A public function panics on some input, buffer content, or call sequence |
 | Cause | An unchecked index, overflow, division, `unwrap`, or a panic of `core` reached through the library |
 | Mission effect | The calling task stops. Through the C ABI's shipped static library, whose panic handler is `loop {}` (`crates/aldis-ffi/src/lib.rs:84`–`86`), the task spins forever instead: a hang, not a trap |
 | Requirements | GEN-020, GEN-021, VER-010, VER-001, GEN-070, VER-022 |
 | Evidence | `record:VER-010`; `check:exerciser-thumbv7em-none-eabihf`; `check:exerciser-armv7r-none-eabihf`; `check:exerciser-riscv32imac-unknown-none-elf`; `nightly-check:rust-sparc-leon3`; `record:VER-001`; `check:clippy`; `record:GEN-070`; `record:VER-022`; `fuzz:tm_decode`; `fuzz:tc_decode`; `fuzz:aos_decode`; `fuzz:uslp_decode`; `fuzz:ffi_decode`; `job:fuzz`; `test:crates/aldis-tc/tests/properties.rs::decoder_never_panics` |
-| Residual risk | The link check proves no panic path in the exerciser's release build with LTO, for the generic instantiations the exerciser makes (`record:VER-010`). It does not cover the shipped `aldis-ffi` static library, which is built without LTO (`gh:#114`), nor instantiations with other capacities that an integrator makes. `cargo xtask stack` already walks the shipped library's call graph and reports every panic path it reaches (`record:VER-011`: on 2026-10-25 one panic path, in the exerciser build only), but a reached panic path does not fail it |
+| Residual risk | The link check proves no panic path in the exerciser's release build with LTO, for the generic instantiations the exerciser makes (`record:VER-010`). It does not cover the shipped `aldis-ffi` static library, which is built without LTO (`gh:#114`), nor instantiations with other capacities that an integrator makes. `cargo xtask stack` already walks the shipped library's call graph and reports every panic path it reaches (`record:VER-011`: on 2026-10-25 one panic path, in the exerciser build only), but a reached panic path does not fail it. The panic handler of the shipped library spins until OI-49 is implemented (`m2/hazard-controls`); a check of the shipped library's panic paths is tracked with #114 (P-X-01) |
 | Assumptions | — |
 | Proposals | `proposal:P-X-01`; `proposal:P-X-02` |
 | Claims | `ac:AC-2.1`; `ac:AC-2.2`; `ac:AC-2.3` |
@@ -130,14 +130,14 @@ Each codec file has:
 | | |
 |---|---|
 | Category | `unbounded-time` |
-| Status | `gap` |
+| Status | `residual` |
 | Severity | S2 |
 | Failure mode | A call loops without bound, recurses, or waits |
 | Cause | A loop bounded by a value that can be corrupted or unbounded, recursion, a blocking construct, or I/O |
 | Mission effect | The calling task hangs until a watchdog acts |
 | Requirements | GEN-022, GEN-023, GEN-031, GEN-032, VER-061 |
-| Evidence | `record:GEN-022`; `ci:loops`; `check:spec`; `check:stack`; `file:docs/verification/inspections/gen-022-023-aldis-tm.md`; `file:docs/verification/inspections/gen-022-023-aldis-tc.md`; `file:docs/verification/inspections/gen-022-023-aldis-aos.md`; `file:docs/verification/inspections/gen-022-023-aldis-uslp.md`; `file:docs/verification/inspections/gen-022-023-aldis-ffi.md`; `proof:crates/aldis-core/src/proofs.rs::error_kind_lookup_is_bounded`; `record:CABI-004` |
-| Residual risk | The bound of each loop rests on the inspections, whose revisions for `aldis-tm`, `aldis-tc`, `aldis-uslp`, and `aldis-ffi` are pending the exit review (VER-061, `df:DF-4`); only one bound is proven (`proof:` above, nightly). GEN-031 and GEN-032 (no clocks, no I/O) have no verification record, so `cargo xtask trace` reports them untraced; that the shipped static library imports nothing but `memcpy` and `memset` equivalents (`record:CABI-004`) is evidence for them, but no record says so |
+| Evidence | `record:GEN-022`; `ci:loops`; `check:spec`; `check:stack`; `file:docs/verification/inspections/gen-022-023-aldis-tm.md`; `file:docs/verification/inspections/gen-022-023-aldis-tc.md`; `file:docs/verification/inspections/gen-022-023-aldis-aos.md`; `file:docs/verification/inspections/gen-022-023-aldis-uslp.md`; `file:docs/verification/inspections/gen-022-023-aldis-ffi.md`; `proof:crates/aldis-core/src/proofs.rs::error_kind_lookup_is_bounded`; `record:CABI-004`; `record:GEN-031` |
+| Residual risk | The bound of each loop rests on the inspections, whose revisions for `aldis-tm`, `aldis-tc`, `aldis-uslp`, and `aldis-ffi` are pending the exit review (VER-061, `df:DF-4`); only one bound is proven (`proof:` above, nightly). GEN-031 and GEN-032 (no clocks, no I/O) are traced by `record:GEN-031`; no check searches for a new global or a platform call in library code, so a later change relies on review and on the `no-std-<target>` builds |
 | Assumptions | — |
 | Proposals | `proposal:P-X-03` |
 | Claims | `ac:AC-3.1`; `ac:AC-3.2`; `ac:AC-3.3` |
@@ -231,6 +231,6 @@ Each codec file has:
 
 | ID | Kind | Proposal | Status |
 |---|---|---|---|
-| P-X-01 | `tooling` | Make `cargo xtask stack` fail when a panic path (a diverging function of `core`'s panic machinery, where its walk already stops and which it already reports) is reachable from an entry point of the `ffi` build, the static library as it ships. That turns the walk into a panic-freedom check of the shipped library, which VER-010's exerciser link does not cover while it is built without LTO (`gh:#114`). It enforces GEN-020, a rule already written, and loosens no gate, so the coordinator may decide it ([decision rights](../process/decision-rights.md) §2.7) | `proposed` |
-| P-X-02 | `oi` | Draft OI: "What should the panic handler of the shipped `no_std` static library do? It is `loop {}` (`crates/aldis-ffi/src/lib.rs:84`–`86`), so a panic that GEN-020 failed to exclude hangs the task without a trace. Options: (a) keep it, since VER-010 and P-X-01 exclude panics; (b) execute a trapping instruction, so that the platform's trap handler sees it; (c) call an integrator-supplied `extern \"C\"` hook, at the cost of a symbol the integrator must define (CABI-004)." Recommendation (b). A C ABI convention, so the maintainer's (§2.4) | `proposed` |
-| P-X-03 | `doc` | A verification record for GEN-031 and GEN-032 (method I, with the A of CABI-004): the library crates are `no_std` without `std` or `alloc` in the flight build (`no-std-<target>` checks), forbid `unsafe` (GEN-070), have no dependency (GEN-001), and the shipped static library imports nothing but `memcpy`/`memset` equivalents (`cargo xtask ffi-imports`, CABI-004), so it can reach no clock, random source, I/O, or global mutable state of the platform; plus a review that no `static mut` or interior-mutable `static` exists in library code. Closes the untraced GEN-031 and GEN-032 | `proposed` |
+| P-X-01 | `tooling` | Make `cargo xtask stack` fail when a panic path (a diverging function of `core`'s panic machinery, where its walk already stops and which it already reports) is reachable from an entry point of the `ffi` build, the static library as it ships. That turns the walk into a panic-freedom check of the shipped library, which VER-010's exerciser link does not cover while it is built without LTO (`gh:#114`). It enforces GEN-020, a rule already written, and loosens no gate, so the coordinator may decide it ([decision rights](../process/decision-rights.md) §2.7) | `accepted` tracked with #114 (LTO of the shipped library) |
+| P-X-02 | `oi` | Draft OI: "What should the panic handler of the shipped `no_std` static library do? It is `loop {}` (`crates/aldis-ffi/src/lib.rs:84`–`86`), so a panic that GEN-020 failed to exclude hangs the task without a trace. Options: (a) keep it, since VER-010 and P-X-01 exclude panics; (b) execute a trapping instruction, so that the platform's trap handler sees it; (c) call an integrator-supplied `extern \"C\"` hook, at the cost of a symbol the integrator must define (CABI-004)." Recommendation (b). A C ABI convention, so the maintainer's (§2.4) | `accepted` OI-49, `m2/hazard-controls` |
+| P-X-03 | `doc` | A verification record for GEN-031 and GEN-032 (method I, with the A of CABI-004): the library crates are `no_std` without `std` or `alloc` in the flight build (`no-std-<target>` checks), forbid `unsafe` (GEN-070), have no dependency (GEN-001), and the shipped static library imports nothing but `memcpy`/`memset` equivalents (`cargo xtask ffi-imports`, CABI-004), so it can reach no clock, random source, I/O, or global mutable state of the platform; plus a review that no `static mut` or interior-mutable `static` exists in library code. Closes the untraced GEN-031 and GEN-032 | `accepted` this branch, records/GEN-031.md |

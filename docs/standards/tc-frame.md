@@ -87,9 +87,11 @@ A frame's limit is the smaller of its Virtual and Physical Channel's maximum. Th
 
 The FECF is checked before the Segment Header is read, so a bit error in the MAP ID is reported as reason 9, not 10.
 
+**Limit of check (d).** A frame the delimiter yields (§4.2) was bounded by its own Frame Length field, and check (d) reads the same field, so (d) cannot see a Frame Length error in such a frame, in either direction: the frame is lengthened or shortened, and (d) agrees with it. The FECF (TC-006, reason 9) is then the only control, and on a channel with no FECF the frame is accepted. Check (d) rejects a Frame Length error only for octets bounded by something other than that field (assurance case ASM-2, `hz:HZ-TC-01`).
+
 ### 4.2 Delimiting
 
-`next_frame(rest)` is stateless: it returns the next item of the octets not yet delimited, and the caller skips its length (M2 D14). `FrameDelimiter` iterates with it. An item is a `Frame`, a `TruncatedFrame` (the rest, discarded; §4.4.9.2.5), or `Fill` (the rest, discarded; §4.4.9.2.6). The next octets form a **valid header** when there are at least five of them, the TFVN is `00`, and the Frame Length declares at least six octets (§4.1.1, §4.1.2.7); the Fill Data pattern `01010101` of §4.4.9.2.6 note 2 has TFVN `01` and is never a valid header ([OI-41](../09-open-issues.md) item 2). A frame the delimiter yields still goes through `validate_frame`.
+`next_frame(rest)` is stateless: it returns the next item of the octets not yet delimited, and the caller skips its length (M2 D14). `FrameDelimiter` iterates with it. An item is a `Frame`, a `TruncatedFrame` (the rest, discarded; §4.4.9.2.5), or `Fill` (the rest, discarded; §4.4.9.2.6). The next octets form a **valid header** when there are at least five of them, the TFVN is `00`, and the Frame Length declares at least six octets (§4.1.1, §4.1.2.7); the Fill Data pattern `01010101` of §4.4.9.2.6 note 2 has TFVN `01` and is never a valid header ([OI-41](../09-open-issues.md) item 2). A frame the delimiter yields still goes through `validate_frame`, which cannot see a Frame Length error in it (the limit of check (d), §4.1). The delimiter takes every octet after the last frame as fill whatever their number, although at most six occur with the BCH codeblock (§4.4.9.2.6 note 2); a bound set by the caller is [OI-47](../09-open-issues.md), implemented in M3.
 
 ## 5. CLCW
 
