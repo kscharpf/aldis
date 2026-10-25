@@ -69,9 +69,10 @@ fn header_group(t: &mut Tally) {
     t.check(TmPrimaryHeader::decode(bb(&[0; 5])).is_err_and(|e| e.kind() == ErrorKind::Incomplete));
     t.check(!DataFieldStatus::Packets(bb(PacketPointer::NoPacketStart)).sync_flag());
     t.check(
-        TmAnomaly::ALL.iter().map(|a| a.bit()).eq([0, 1]) && TmAnomaly::from_bit(bb(2)).is_none(),
+        TmAnomaly::ALL.iter().map(|a| a.bit()).eq([0, 1, 2])
+            && TmAnomaly::from_bit(bb(3)).is_none(),
     );
-    t.check(AnomalySet::from_flags(bb(TmAnomaly::ALL)).bits() == 0b11);
+    t.check(AnomalySet::from_flags(bb(TmAnomaly::ALL)).bits() == 0b111);
 }
 
 /// The configuration, the lookups, the decoder, the writers, and validation.

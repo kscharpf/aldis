@@ -1628,10 +1628,23 @@ fn uslp_channels() -> (
 fn uslp(t: &mut Tally) {
     let (pc, vc, map, fixed, oid_vc) = uslp_channels();
     let mut det = detail();
+    // VC 3 carries the full frames: a VC with a truncated frame length (VC 4) carries only
+    // truncated frames (OI-48).
+    let vc3 = aldis_uslp_vc_config_t {
+        vcid: bb(3),
+        truncated_frame_len: 0,
+        ..vc
+    };
+    let map3 = aldis_uslp_map_config_t { vcid: bb(3), ..map };
+    let trunc_channel = aldis_uslp_channel_t {
+        scid: bb(0x155),
+        vcid: bb(4),
+        ..aldis_uslp_channel_t::default()
+    };
     let fields = aldis_uslp_fields_t {
         channel: aldis_uslp_channel_t {
             scid: bb(0x155),
-            vcid: bb(4),
+            vcid: bb(3),
             ..aldis_uslp_channel_t::default()
         },
         kind: ALDIS_USLP_KIND_EXPEDITED,
@@ -1697,9 +1710,9 @@ fn uslp(t: &mut Tally) {
         t.check(
             aldis_uslp_encode(
                 &raw const pc,
-                &raw const vc,
+                &raw const vc3,
                 bb(1),
-                &raw const map,
+                &raw const map3,
                 bb(1),
                 &raw const fields,
                 &raw const content,
@@ -1713,9 +1726,9 @@ fn uslp(t: &mut Tally) {
         t.check(
             aldis_uslp_writer_begin(
                 &raw const pc,
-                &raw const vc,
+                &raw const vc3,
                 bb(1),
-                &raw const map,
+                &raw const map3,
                 bb(1),
                 &raw const fields,
                 &raw const in_place,
@@ -1731,9 +1744,9 @@ fn uslp(t: &mut Tally) {
         t.check(
             aldis_uslp_writer_finish(
                 &raw const pc,
-                &raw const vc,
+                &raw const vc3,
                 bb(1),
-                &raw const map,
+                &raw const map3,
                 bb(1),
                 &raw const fields,
                 &raw const in_place,
@@ -1751,7 +1764,7 @@ fn uslp(t: &mut Tally) {
                 frame.as_ptr(),
                 bb(6),
                 &raw const pc,
-                &raw const vc,
+                &raw const vc3,
                 bb(1),
                 &raw mut n,
                 &raw mut det,
@@ -1763,9 +1776,9 @@ fn uslp(t: &mut Tally) {
                 frame.as_ptr(),
                 bb(13),
                 &raw const pc,
-                &raw const vc,
+                &raw const vc3,
                 bb(1),
-                &raw const map,
+                &raw const map3,
                 bb(1),
                 bb(ALDIS_MODE_STRICT),
                 &raw mut view,
@@ -1779,9 +1792,9 @@ fn uslp(t: &mut Tally) {
                 frame.as_ptr(),
                 bb(13),
                 &raw const pc,
-                &raw const vc,
+                &raw const vc3,
                 bb(1),
-                &raw const map,
+                &raw const map3,
                 bb(1),
                 bb(ALDIS_MODE_LENIENT),
                 &raw mut view,
@@ -1796,7 +1809,7 @@ fn uslp(t: &mut Tally) {
                 bb(13),
                 bb(0),
                 &raw const pc,
-                &raw const vc,
+                &raw const vc3,
                 bb(1),
                 &raw mut item,
                 &raw mut det,
@@ -1811,7 +1824,7 @@ fn uslp(t: &mut Tally) {
                 bb(1),
                 &raw const map,
                 bb(1),
-                &raw const fields.channel,
+                &raw const trunc_channel,
                 &raw const truncated,
                 frame.as_mut_ptr(),
                 frame.len(),

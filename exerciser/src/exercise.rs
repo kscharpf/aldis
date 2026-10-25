@@ -42,10 +42,13 @@ impl Tally {
         self.not_representable = self.not_representable.saturating_add(1);
     }
 
-    pub(crate) const fn check(&mut self, ok: bool) {
+    #[track_caller]
+    pub(crate) fn check(&mut self, ok: bool) {
         self.cases = self.cases.saturating_add(1);
         if !ok {
             self.failures = self.failures.saturating_add(1);
+            let at = core::panic::Location::caller();
+            crate::target::failed_at(at.file(), at.line());
         }
     }
 }

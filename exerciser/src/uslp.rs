@@ -29,9 +29,10 @@ const fn scid() -> Option<UslpSpacecraftId> {
     UslpSpacecraftId::new(bb(SCID))
 }
 
-/// A variable-length channel of 128 octets with FECF: VC 4 (OCF allowed, VCF 1/1, truncated
+/// A variable-length channel of 128 octets with FECF: VC 3 (as VC 4 without a truncated length,
+/// so it carries full frames only; OI-48), VC 4 (OCF allowed, VCF 1/1, truncated
 /// 12, MAP 0) and VC 5 (SDLS per MAP: MAP 1 with 6/16, truncated 28).
-fn variable() -> Option<VcTable<2, 2>> {
+fn variable() -> Option<VcTable<3, 3>> {
     let s = scid()?;
     let pc = PhysicalChannelConfig::new(TransferFrameType::Variable, bb(128), 0, true).ok()?;
     let one = VcfCountLen::new(1).ok()?;
@@ -47,11 +48,22 @@ fn variable() -> Option<VcTable<2, 2>> {
         security: SecurityScope::PerMap,
         ..VcParams::new(TransferFrameType::Variable)
     };
+    let vc3 = VcParams {
+        truncated_frame_len: None,
+        ..vc4
+    };
     let vcs = [
+        VcConfig::new(s, UslpVcId::new(3)?, vc3).ok()?,
         VcConfig::new(s, UslpVcId::new(4)?, vc4).ok()?,
         VcConfig::new(s, UslpVcId::new(5)?, vc5).ok()?,
     ];
     let maps = [
+        MapConfig::new(
+            s,
+            UslpVcId::new(3)?,
+            UslpMapId::new(0)?,
+            SecurityLayout::NONE,
+        ),
         MapConfig::new(
             s,
             UslpVcId::new(4)?,
@@ -114,7 +126,7 @@ fn config_group(t: &mut Tally) {
     let pc = v.physical();
     t.check(pc.frame_type() == TransferFrameType::Variable && pc.frame_len() == 128);
     t.check(pc.fecf() && pc.insert_zone_len() == 0 && v.physical_channel() == pc);
-    t.check(v.vcs().count() == 2 && v.maps().count() == 2 && f.vcs().count() == 2);
+    t.check(v.vcs().count() == 3 && v.maps().count() == 3 && f.vcs().count() == 2);
     let s = scid();
     let vc4 = s.zip(UslpVcId::new(4)).and_then(|(s, c)| v.vc(s, c));
     t.check(vc4.is_some_and(|vc| {
@@ -192,7 +204,7 @@ fn tfdf_group(t: &mut Tally) {
 }
 
 fn frame_group(t: &mut Tally) {
-    let (Some(vt), Some(full)) = (variable(), fields(4, 0, FrameKind::Expedited)) else {
+    let (Some(vt), Some(full)) = (variable(), fields(3, 0, FrameKind::Expedited)) else {
         t.check(false);
         return;
     };
@@ -211,11 +223,11 @@ fn frame_group(t: &mut Tally) {
     match UslpFrame::decode(bb(frame), &vt, DecodeMode::Strict) {
         Ok(dec) => {
             t.check(!dec.is_truncated() && dec.truncated().is_none() && !dec.is_empty());
-            t.check(dec.spacecraft_id().get() == SCID && dec.vc_id().get() == 4);
+            t.check(dec.spacecraft_id().get() == SCID && dec.vc_id().get() == 3);
             t.check(dec.map_id().get() == 0 && dec.source_or_destination().bit());
             t.check(dec.tfdz() == [1, 2, 3] && dec.len() == 18 && dec.octets() == frame);
             t.check(dec.security_header().is_empty() && dec.security_trailer().is_empty());
-            t.check(dec.anomalies().is_empty() && dec.channel().vc_id.get() == 4);
+            t.check(dec.anomalies().is_empty() && dec.channel().vc_id.get() == 3);
             t.check(dec.tfdf_header().rule == TfdzRule::NoSegmentation);
             if let Some(view) = dec.full() {
                 let hdr = view.header();
@@ -231,7 +243,7 @@ fn frame_group(t: &mut Tally) {
                     hdr.len() == 8 && !hdr.is_empty() && hdr.frame_len() == 18 && hdr.ocf_flag(),
                 );
                 t.check(hdr.kind() == FrameKind::Expedited && hdr.vcf_count().len().get() == 1);
-                t.check(hdr.spacecraft_id().get() == SCID && hdr.vc_id().get() == 4);
+                t.check(hdr.spacecraft_id().get() == SCID && hdr.vc_id().get() == 3);
                 t.check(hdr.map_id().get() == 0 && hdr.source_or_destination().bit());
                 t.check(hdr.channel().map_id.get() == 0);
                 t.check(hdr.octets().get(..8) == frame.get(..8));
@@ -267,13 +279,16 @@ fn frame_group(t: &mut Tally) {
 }
 
 /// Truncated frames (USLP-002, USLP-012) and OID frames (USLP-009).
-fn truncated_and_oid(t: &mut Tally, vt: &VcTable<2, 2>, full: FrameFields) {
+fn truncated_and_oid(t: &mut Tally, vt: &VcTable<3, 3>, full: FrameFields) {
     let Some(ft) = fixed() else {
         t.check(false);
         return;
     };
     let mut out = [0_u8; 64];
-    let channel = full.vc_id;
+    let Some(channel) = UslpVcId::new(4) else {
+        t.check(false);
+        return;
+    };
     let tr = ChannelFields {
         spacecraft_id: full.spacecraft_id,
         source_or_destination: full.source_or_destination,
