@@ -3,6 +3,7 @@
 //! Run with `cargo xtask <command>`; see `cargo xtask help`.
 
 mod api;
+mod assurance;
 mod binaries;
 mod changelog;
 mod consistency;
@@ -68,6 +69,10 @@ commands:
   loops [list [<crate>...]]    every loop in a library crate is in its GEN-022/023 inspection
                                record with a bound, and every loop a record lists exists
                                (GEN-022); `list` prints the loops found
+  assurance [--strict]         every reference of the hazard analysis and the assurance case
+                               resolves, both follow their formats, and every hazard supports
+                               a claim; --strict also fails on anything left as TODO
+                               (VER-065, VER-066)
   rs020                        no bare integer in a public field or enum payload of a codec
                                crate unless xtask/rs020-exemptions.toml exempts it with a
                                reason, and no exemption that matches nothing (RS-020)
@@ -97,7 +102,7 @@ commands:
                                move every fragment into a new section of CHANGELOG.md
   ci                           the quick checks of the verification run, without a build:
                                spec-lint, links, decisions, layers, consistency, rs020,
-                               restricted, loops, refapp-deps, vectors validate,
+                               restricted, loops, assurance, refapp-deps, vectors validate,
                                vectors schema --check, fields, header (needs the pinned
                                cbindgen), sana, trace --scope m0 --strict,
                                trace --scope m1 --strict, trace --scope m2, trace --scope c0,
@@ -115,7 +120,7 @@ type Step = (&'static str, fn() -> Result<usize, String>);
 /// The generated files are checked by `fields` (the field codes of `aldis-core`, the vectors,
 /// and `aldis-ffi`, API-082, CABI-021) and `header` (the C header and the `aldis-ffi`
 /// capacities, CABI-002, CABI-030), which needs the pinned `cbindgen`.
-const CI: &[Step] = &[
+pub(crate) const CI: &[Step] = &[
     ("spec-lint", spec::lint),
     ("links", links::check),
     ("decisions", decisions::check),
@@ -124,6 +129,7 @@ const CI: &[Step] = &[
     ("rs020", rs020::check),
     ("restricted", || restricted::run(false)),
     ("loops", || loops::run(&[])),
+    ("assurance", || assurance::run(false)),
     ("refapp-deps", refapp::check),
     ("vectors validate", vectors::validate),
     ("vectors schema --check", || vectors::schema(true)),
@@ -192,6 +198,8 @@ fn run(args: &[&str]) -> Result<usize, String> {
         ["restricted"] => restricted::run(false),
         ["restricted", "list"] => restricted::run(true),
         ["loops", rest @ ..] => loops::run(rest),
+        ["assurance"] => assurance::run(false),
+        ["assurance", "--strict"] => assurance::run(true),
         ["cpp", rest @ ..] => cpp::run(rest),
         ["verify", rest @ ..] => verify::run(rest),
         ["metrics", rest @ ..] => metrics::run(rest),
