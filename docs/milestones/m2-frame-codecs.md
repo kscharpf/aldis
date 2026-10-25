@@ -237,6 +237,7 @@ M2 is complete when every item below is green on `main`:
 | Gates | VER-022 (all WP-7 fuzz targets, ≥ 1 CPU-hour each before the release), VER-024 (100 % for the four frame crates and `aldis-core`), VER-025 (triaged), VER-064 (the bit-flip suites, gated and nightly) |
 | Vectors and trace | TV-001…003, TV-020, TV-021, TV-023, VER-020 (`xtask trace --scope m2 --strict`), VER-021, VER-040 |
 | Docs | Roadmap updated; `CHANGELOG.md` entry for 0.3.0-m2; open issues updated |
+| Hazards and assurance case | VER-065 (the hazard analysis reviewed at the exit), VER-066 (`cargo xtask assurance --strict`) |
 
 Not in M2: CMN-024 (an optional OID check with no verification method); API-074 and the engines' security-hook order (M4); USLP-011 and the LNK requirements (M4); COP-1 (M3); the C ABI handles of FOP-1, FARM-1, and the link engines (M3, M4), which reuse the handle pattern D5 sets; CABI-040, CABI-041 (M3, M4); CABI-050, CABI-060, VER-026, and VER-050's full compiler matrix (M5); CABI-070…072 (track C and M5); synchronization and channel coding (roadmap §7, OI-12).
 
