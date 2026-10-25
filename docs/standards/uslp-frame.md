@@ -104,7 +104,7 @@ A non-truncated frame (End of Frame Primary Header Flag `0`), in check order:
 
 | Code | Reason | Check | Condition | Decoder error (field) |
 |---|---|---|---|---|
-| 13 | `LengthMismatch` | (d) | fewer than 4 octets, then fewer than 7 (the length comes before the version and the Spacecraft ID, a project choice that no vector pins for a 4 to 6 octet input) | `Incomplete` (`needed` 4, then 7) when decoding; `LengthMismatch` (`frame_len`) when validating |
+| 13 | `LengthMismatch` | (d) | fewer than 4 octets, then fewer than 7 (the length comes before the version and the Spacecraft ID, a project choice pinned for a 5-octet input by `uslp-inv-045`, `-046` and `uslp-val-038`…`040`) | `Incomplete` (`needed` 4, then 7) when decoding; `LengthMismatch` (`frame_len`) when validating |
 | 1 | `UnexpectedVersion` | (a) | TFVN ≠ `1100` (§4.1.2.2.2) | `UnsupportedVersion` (`frame_version`), detail expected 12 |
 | 2 | `UnexpectedSpacecraft` | (b) | SCID not among the SCIDs of the configured VCs | `UnknownChannel` (`spacecraft_id`) |
 | 3 | `ReservedFlags` | (c) | Bypass/Sequence Control Flag `0`, Protocol Control Command Flag `1` (Table 4-1; USLP-001) | `ReservedValue` (`protocol_control_command_flag`) |
@@ -168,7 +168,7 @@ Until `UslpFrameWriter::finish`, the buffer holds a Primary Header whose TFVN is
 | Bit | Flag | Deviation | Source |
 |---|---|---|---|
 | 0 | `ReserveSparesSet` | Reserve Spares (bits 50–51) ≠ `00` | §4.1.2.9.2 |
-| 1 | `OidHeaderMismatch` | on VCID 63: MAP ID ≠ 0, TFDZ Construction Rule ≠ `001`, UPID ≠ "Only Idle Data", or Last Valid Octet Pointer ≠ the last TFDZ octet, fixed-value fields of an idle data unit (API-032); the view keeps the values. Proposed in M2 WP-5, pending the maintainer ([OI-44](../09-open-issues.md) item 1) | §4.1.4.1.8–9 |
+| 1 | `OidHeaderMismatch` | on VCID 63: MAP ID ≠ 0, TFDZ Construction Rule ≠ `001`, UPID ≠ "Only Idle Data", or Last Valid Octet Pointer ≠ the last TFDZ octet, fixed-value fields of an idle data unit (API-032); the view keeps the values ([OI-44](../09-open-issues.md) item 1, resolved by the maintainer on 2026-10-24, #98) | §4.1.4.1.8–9 |
 
 ## 5. Test-vector categories
 

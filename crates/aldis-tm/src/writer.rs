@@ -123,6 +123,11 @@ impl Plan {
                         ));
                     }
                 }
+                // An Only Idle Data frame uses a VCID that does not use SDLS (132.0 §6.4.6.2;
+                // TM-010), whichever writer builds it.
+                if pointer == PacketPointer::OnlyIdleData && !vc.security().is_none() {
+                    return Err(Error::new(ErrorKind::InvalidField).with_field(field::VC_ID));
+                }
                 (false, SegmentLengthId::NO_SEGMENTS, pointer.to_raw())
             }
             DataFieldStatus::VcaSdu {
@@ -184,6 +189,8 @@ impl<'b> TmFrameWriter<'b> {
     ///   content (132.0 §4.1.2.7.3.3, §4.1.4.4);
     /// - `OutOfRange` (`first_header_pointer`) for a packet offset outside the data field, with
     ///   the largest valid offset (132.0 §4.1.2.7.6.3);
+    /// - `InvalidField` (`vc_id`) for `Packets(OnlyIdleData)`, an Only Idle Data frame, on a VC
+    ///   that uses SDLS (132.0 §6.4.6.2; TM-010);
     /// - `BufferTooSmall` (`needed` = frame length) if `out` is shorter than a frame.
     pub fn begin(
         out: &'b mut [u8],
@@ -218,12 +225,12 @@ impl<'b> TmFrameWriter<'b> {
     /// Secondary Header and OCF may still be filled with valid data (132.0 §4.1.4.6.3 note 1).
     ///
     /// # Errors
-    /// As for [`begin`](Self::begin), then in this order: `InvalidField` (`sync_flag`) if the VC
-    /// carries `VCA_SDUs`, since an OID frame uses a VC that transfers Packets (132.0
-    /// §4.1.4.6.3); `InvalidField` (`vc_id`) if the VC uses SDLS, a nonzero Security Header or
-    /// Trailer length, since the multiplexing function that creates an OID frame sets a VCID
-    /// that does not use SDLS (132.0 §6.4.6.2; TM-010). On error neither `out` nor `oid` is
-    /// changed (GEN-042).
+    /// As for [`begin`](Self::begin), which names these two in this order: `InvalidField`
+    /// (`sync_flag`) if the VC carries `VCA_SDUs`, since an OID frame uses a VC that transfers
+    /// Packets (132.0 §4.1.4.6.3); `InvalidField` (`vc_id`) if the VC uses SDLS, a nonzero
+    /// Security Header or Trailer length, since the multiplexing function that creates an OID
+    /// frame sets a VCID that does not use SDLS (132.0 §6.4.6.2; TM-010). On error neither `out`
+    /// nor `oid` is changed (GEN-042).
     ///
     /// The Idle Data cannot be checked on decode: it depends on where `oid` stands in the
     /// sequence, which a stateless decoder does not know (CMN-021), and receivers discard it
@@ -243,12 +250,6 @@ impl<'b> TmFrameWriter<'b> {
             DataFieldStatus::Packets(PacketPointer::OnlyIdleData),
         );
         let plan = Plan::new(mc, &fields)?;
-        if mc
-            .entry(vcid)
-            .is_some_and(|entry| !entry.config.security().is_none())
-        {
-            return Err(Error::new(ErrorKind::InvalidField).with_field(field::VC_ID));
-        }
         let mut writer = TmFrameWriter::start(out, plan, true)?;
         oid.fill(writer.data_field_mut());
         Ok(writer)
@@ -855,5 +856,19 @@ mod tests {
             assert_eq!(fourth, [0; 32]);
         }
         assert_eq!(oid, before);
+        // The other writers apply the same check to an Only Idle Data frame (TM-010).
+        let idle_sdls = packets(0, PacketPointer::OnlyIdleData);
+        let mut out = [0_u8; 32];
+        let rejected = |e: super::Error| {
+            assert_eq!(
+                (e.kind(), e.field()),
+                (ErrorKind::InvalidField, Some(field::VC_ID))
+            );
+        };
+        rejected(TmFrameWriter::begin(&mut out, &mc, &idle_sdls).unwrap_err());
+        rejected(TmFrameWriter::resume(&mut out, &mc, &idle_sdls).unwrap_err());
+        let data = [0_u8; 32];
+        rejected(encode(&mc, &idle_sdls, &TmFrameContent::new(&data), &mut out).unwrap_err());
+        assert_eq!(out, [0; 32]);
     }
 }
