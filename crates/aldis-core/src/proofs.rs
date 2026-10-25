@@ -232,3 +232,17 @@ fn octet_integers() {
         assert_eq!(buf, original);
     }
 }
+
+/// GEN-022 (loop `error.rs ErrorKind::from_code #1` of the inspection record): the lookup runs
+/// over the constant catalogue `ErrorKind::ALL` (17 kinds) for every code. Unwind 18: 17
+/// iterations and the exit test; the unwinding assertion fails the proof if any code needed more.
+#[kani::proof]
+#[kani::unwind(18)]
+fn error_kind_lookup_is_bounded() {
+    // req: GEN-022, GEN-020
+    let code: u16 = kani::any();
+    match ErrorKind::from_code(code) {
+        Some(kind) => assert_eq!(kind.code(), code),
+        None => assert!(ErrorKind::ALL.iter().all(|k| k.code() != code)),
+    }
+}

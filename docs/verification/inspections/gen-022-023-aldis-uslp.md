@@ -15,27 +15,28 @@
 | 2026-10-23, `m2/uslp-codec` (WP-5), prepared by Claude Code, pending exit review | First inspection: modules 1–8 of WP-5 |
 | 2026-10-24, `m2/rs020-check` (M2 WP-7, RS-020 check), prepared by Claude Code (agent of M2 WP-7), pending exit review | `tfdf.rs` gains `TfdzOffset`, whose `new`, `get`, and `TryFrom`/`From` impls are straight-line; `FirstHeaderPointer::from_raw` and `LastValidOctet::from_raw` now call `TfdzOffset::new`, their `raw` calls `TfdzOffset::get`, and `writer.rs` `oid_tfdf` and `view.rs` `oid_deviation` call `LastValidOctet::from_raw`. No loop added, no recursion; the call graph below is updated |
 | 2026-10-24, `m2/uslp-c-abi` (M2 WP-5 module 9), prepared by Claude Code (agent of WP-5 module 9), pending exit review | `writer.rs` gains `UslpFrameWriter::resume` → `Plan::new`, `start`, and `encode_oid_galois`; `encode_oid` and `encode_oid_galois` → the new private `oid_frame`, which holds the former body of `encode_oid` and fills the TFDZ through its closure argument (`OidGenerator::fill` or `OidGeneratorGalois::fill`); `start` takes a `zero` flag and writes the TFDF Header at its offset in a second `zip`, then zero-fills the Security Header and Trailer only when `begin`, `encode`, and `oid_frame` set it (not `resume`). One loop added, the TFDF Header copy, of at most 3 octets; no recursion |
+| 2026-10-24, m2/wp7-checks (WP-7), prepared by the agent, pending exit review | The Loops table gains the first column `ID`, which names each loop that `cargo xtask loops` finds (file, item, and index; GEN-022, M2 plan WP-7), or holds `—` for a row that names none; the other columns are unchanged |
 
 ## Loops
 
 Every loop in library code, with its bound. Copies and comparisons of fixed-size arrays (the 4- and 14-octet header arrays, the 3-octet TFDF Header, the 4-octet OCF, derived `PartialEq`/`Hash`) run over a constant length and are not listed. Calls into `aldis-core` that loop are listed with the loop they make: `crc::verify_fecf` and `crc::write_fecf` run over the frame, at most 65 536 octets; `OidGenerator::fill` runs over the slice it is given.
 
-| Location | Loop | Bound |
-|---|---|---|
-| `config.rs` `VcTable::new` | `[None; V]`, `[None; M]` initialisation | compile-time capacity: `V`, `M` |
-| `config.rs` `VcTable::new` | over the given Virtual Channels; each looks the VC up (`vc`) before storing it | input length, then capacity: at most `V` iterations store (one more fails with `CapacityExceeded`), each a lookup over at most `V` entries: O(V²) |
-| `config.rs` `VcTable::new` | over the given MAPs; each looks up its VC (`vc`) and the MAP (`map`) | input length, then capacity: at most `M` iterations store, each O(V + M): O(M · (V + M)) |
-| `config.rs` `VcTable::new` | over the stored VCs, each with `uses_sdls`, which runs `any` over the stored MAPs | capacities: O(V · M) |
-| `config.rs` `VcLookup for VcTable` `has_spacecraft`, `vc`, `map`; `VcTable::vcs`, `maps` | `iter().flatten()` with `any` / `find` | compile-time capacity: `V` or `M` |
-| `header.rs` `read_vcf_count` | `fold` over the VCF Count octets | constant: at most 7 |
-| `header.rs` `primary_octets` | `zip` of the 14-octet array with the header and the count octets | constant: 14 |
-| `view.rs` `parse_full` (via `crc::verify_fecf`) | CRC over the frame | input length: the frame |
-| `writer.rs` `encode` | copies the TFDZ into the reservation (`zip`) | input length: the TFDZ |
-| `writer.rs` `oid_frame`, for `encode_oid` and `encode_oid_galois` (via `OidGenerator::fill` or `OidGeneratorGalois::fill`) | fills the TFDZ | input length: the TFDZ, within the caller's buffer |
-| `writer.rs` `encode_truncated` | writes the frame (`zip` over the chained header, zeros, TFDF Header, TFDZ, zeros) | constant: the truncated frame length, at most 32 |
-| `writer.rs` `UslpFrameWriter::start` | writes the unfinished header and the Insert Zone (`zip` over a chain), then the TFDF Header (`zip`, at most 3); with `zero` (from `begin`, `encode`, `oid_frame`; not `resume`), `fill(0)` of the Security Header and Trailer | input length: the reserved frame in the caller's buffer; constant 3 |
-| `writer.rs` `UslpFrameWriter::finish` | `copy_within` moving the Security Trailer to follow the TFDZ; the final header (`zip`, at most 14); the OCF (`zip`, 4); `crc::write_fecf` over the frame | input length: the frame; constants 14 and 4 |
-| `validate.rs` `Reason::from_code` | `ALL.into_iter().find` | constant: 17 |
+| ID | Location | Loop | Bound |
+|---|---|---|---|
+| — | `config.rs` `VcTable::new` | `[None; V]`, `[None; M]` initialisation | compile-time capacity: `V`, `M` |
+| `config.rs VcTable::new #1` | `config.rs` `VcTable::new` | over the given Virtual Channels; each looks the VC up (`vc`) before storing it | input length, then capacity: at most `V` iterations store (one more fails with `CapacityExceeded`), each a lookup over at most `V` entries: O(V²) |
+| `config.rs VcTable::new #2` | `config.rs` `VcTable::new` | over the given MAPs; each looks up its VC (`vc`) and the MAP (`map`) | input length, then capacity: at most `M` iterations store, each O(V + M): O(M · (V + M)) |
+| `config.rs VcTable::new #3`, `config.rs VcTable::uses_sdls #1` | `config.rs` `VcTable::new` | over the stored VCs, each with `uses_sdls`, which runs `any` over the stored MAPs | capacities: O(V · M) |
+| `config.rs VcTable::has_spacecraft #1`, `config.rs VcTable::vc #1`, `config.rs VcTable::map #1` | `config.rs` `VcLookup for VcTable` `has_spacecraft`, `vc`, `map`; `VcTable::vcs`, `maps` | `iter().flatten()` with `any` / `find` | compile-time capacity: `V` or `M` |
+| `header.rs read_vcf_count #1` | `header.rs` `read_vcf_count` | `fold` over the VCF Count octets | constant: at most 7 |
+| `header.rs primary_octets #1` | `header.rs` `primary_octets` | `zip` of the 14-octet array with the header and the count octets | constant: 14 |
+| — | `view.rs` `parse_full` (via `crc::verify_fecf`) | CRC over the frame | input length: the frame |
+| `writer.rs encode #1` | `writer.rs` `encode` | copies the TFDZ into the reservation (`zip`) | input length: the TFDZ |
+| `writer.rs encode_oid #1`, `writer.rs encode_oid_galois #1` | `writer.rs` `oid_frame`, for `encode_oid` and `encode_oid_galois` (via `OidGenerator::fill` or `OidGeneratorGalois::fill`) | fills the TFDZ | input length: the TFDZ, within the caller's buffer |
+| `writer.rs encode_truncated #1` | `writer.rs` `encode_truncated` | writes the frame (`zip` over the chained header, zeros, TFDF Header, TFDZ, zeros) | constant: the truncated frame length, at most 32 |
+| `writer.rs UslpFrameWriter::start #1 #2 #3 #4` | `writer.rs` `UslpFrameWriter::start` | writes the unfinished header and the Insert Zone (`zip` over a chain), then the TFDF Header (`zip`, at most 3); with `zero` (from `begin`, `encode`, `oid_frame`; not `resume`), `fill(0)` of the Security Header and Trailer | input length: the reserved frame in the caller's buffer; constant 3 |
+| `writer.rs UslpFrameWriter::finish #1 #2 #3` | `writer.rs` `UslpFrameWriter::finish` | `copy_within` moving the Security Trailer to follow the TFDZ; the final header (`zip`, at most 14); the OCF (`zip`, 4); `crc::write_fecf` over the frame | input length: the frame; constants 14 and 4 |
+| `validate.rs Reason::from_code #1` | `validate.rs` `Reason::from_code` | `ALL.into_iter().find` | constant: 17 |
 
 `upid.rs` and the generated `upid/table.rs` have no loop: `Upid::from_bits`, `Upid::from_field`, `Upid::bits`, and `is_assigned` are `match` expressions over the 32 values. `tfdf.rs`, `truncated.rs`, and `delimit.rs` have no loop: `TfdfHeader::parse` reads one header; `view::take` splits once; `next_frame` reads one header and makes at most one VC lookup; `FrameDelimiter::next` makes one call. A caller that iterates a `FrameDelimiter` or calls `next_frame` repeatedly is bounded by the unit's length, since every item takes at least one octet (`Delimited::len`, never 0), and an `IncompleteFrame`, `NoTruncatedLength`, or `Fill` takes the rest.
 

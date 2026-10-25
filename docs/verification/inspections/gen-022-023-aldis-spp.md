@@ -9,22 +9,23 @@
 | Repeat | when `aldis-spp` gains a loop or a call between its own functions, and before each release |
 | History | First inspected 2026-10-19 on branch `m1/spp` (M1 WP-2 part 1, based on `main` a8e9ad8), approved 2026-10-19 maintainer; revised since as below |
 | Revised | 2026-10-19, M1 WP-2 part 2 (branch `m1/spp-part2`): `segment.rs` adds one loop, the copy in `Reassembler::append` (below); `Segmenter::next_packet` writes one packet per call through `encode`, so the caller drives the segment loop. `secondary.rs` adds no loop: the time layout calls the `aldis-time` decoders, whose loops the [`aldis-time` inspection](gen-022-023-aldis-time.md) bounds (a P-field of at most 8 octets, a T-field of at most 17). No recursion. Confirmed 2026-10-19, maintainer |
+| Revised | 2026-10-24, m2/wp7-checks (WP-7), prepared by the agent, pending exit review: the Loops table gains the first column `ID`, which names each loop that `cargo xtask loops` finds (file, item, and index; GEN-022, M2 plan WP-7), or holds `—` for a row that names none; the other columns are unchanged |
 
 ## Loops
 
 Every loop in library code, with its bound. `header.rs`, `view.rs`, `secondary.rs`, `config.rs`, `octet.rs`, and `anomaly.rs` contain none, and `Segmenter` loops only through its caller; the `anomaly_flags!` expansion contains none at run time. Copies and comparisons of fixed-size arrays (`to_be_bytes`, derived `Clone`/`PartialEq`/`Hash`) run over a constant length and are listed only where the length is a capacity.
 
-| Location | Loop | Bound |
-|---|---|---|
-| `writer.rs` `write_packet` (used by `encode` and `OctetStringEncoder::encode`) | zip of the output with the 6 header octets chained with the two parts | total packet length ≤ 65 542 (`SppConfig` checks it before the call) |
-| `writer.rs` `SpacePacketWriter::begin`, `finish` | zip of the buffer with the 6 header octets | constant 6 |
-| `idle.rs` `IdlePacket::encode` | zip of the output with the 6 header octets chained with the pattern, `cycle().take(n)` | total packet length ≤ 65 542 (`IdlePacket::new` checks it); `take` bounds the cycle |
-| `sequence.rs` `SequenceTracker::track`, `last` | `find` over the tracked APIDs | capacity `N` (const generic) |
-| `sequence.rs` `SequenceTracker::forget` | `position` over the tracked APIDs | capacity `N` |
-| `sequence.rs` `SequenceTracker::new`, derived `PartialEq` | the `aldis-core` `FixedVec` initialiser and slice comparison | capacity `N` |
-| `segment.rs` `Segmenter::next_packet` | none in the call: one packet per call through `encode` (`write_packet` above); draining an SDU takes ⌈SDU length / `max_user_len`⌉ calls, and `max_user_len` ≥ 1 (`Segmenter::new` checks it) | — |
-| `segment.rs` `Reassembler::append` | zip of the buffer slice with one packet's user data | user data length ≤ 65 536 and the caller's buffer length (the slice is taken only if it fits) |
-| `secondary.rs` `TimeHeaderLayout::decode` (feature `time`) | none in `aldis-spp`: calls the `aldis-time` decoders and `TimeFormat::pfield`, whose loops the [`aldis-time` inspection](gen-022-023-aldis-time.md) bounds (constant 7, 8, or 17) | — |
+| ID | Location | Loop | Bound |
+|---|---|---|---|
+| `writer.rs write_packet #1` | `writer.rs` `write_packet` (used by `encode` and `OctetStringEncoder::encode`) | zip of the output with the 6 header octets chained with the two parts | total packet length ≤ 65 542 (`SppConfig` checks it before the call) |
+| `writer.rs SpacePacketWriter::begin #1`, `writer.rs SpacePacketWriter::finish #1` | `writer.rs` `SpacePacketWriter::begin`, `finish` | zip of the buffer with the 6 header octets | constant 6 |
+| `idle.rs IdlePacket::encode #1` | `idle.rs` `IdlePacket::encode` | zip of the output with the 6 header octets chained with the pattern, `cycle().take(n)` | total packet length ≤ 65 542 (`IdlePacket::new` checks it); `take` bounds the cycle |
+| `sequence.rs SequenceTracker::track #1`, `sequence.rs SequenceTracker::last #1` | `sequence.rs` `SequenceTracker::track`, `last` | `find` over the tracked APIDs | capacity `N` (const generic) |
+| `sequence.rs SequenceTracker::forget #1` | `sequence.rs` `SequenceTracker::forget` | `position` over the tracked APIDs | capacity `N` |
+| — | `sequence.rs` `SequenceTracker::new`, derived `PartialEq` | the `aldis-core` `FixedVec` initialiser and slice comparison | capacity `N` |
+| — | `segment.rs` `Segmenter::next_packet` | none in the call: one packet per call through `encode` (`write_packet` above); draining an SDU takes ⌈SDU length / `max_user_len`⌉ calls, and `max_user_len` ≥ 1 (`Segmenter::new` checks it) | — |
+| `segment.rs Reassembler::append #1` | `segment.rs` `Reassembler::append` | zip of the buffer slice with one packet's user data | user data length ≤ 65 536 and the caller's buffer length (the slice is taken only if it fits) |
+| — | `secondary.rs` `TimeHeaderLayout::decode` (feature `time`) | none in `aldis-spp`: calls the `aldis-time` decoders and `TimeFormat::pfield`, whose loops the [`aldis-time` inspection](gen-022-023-aldis-time.md) bounds (constant 7, 8, or 17) | — |
 
 ## Recursion
 
