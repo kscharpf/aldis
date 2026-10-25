@@ -2621,7 +2621,7 @@ fn uslp_json(v: &aldis_uslp_frame_t, bytes: &[u8]) -> Value {
     if v.truncated {
         assert_eq!(
             (v.kind, v.ocf_flag, v.vcf_count, v.has_fecf),
-            (0, false, 0, false)
+            (ALDIS_USLP_KIND_EXPEDITED, false, 0, false)
         );
         return out;
     }
@@ -2899,6 +2899,7 @@ fn uslp_delimit(case: &CodecCase, ch: &UslpChannels) -> R<Value> {
             ALDIS_USLP_DELIMITED_INCOMPLETE_FRAME => "incomplete",
             ALDIS_USLP_DELIMITED_NO_TRUNCATED_LENGTH => "no_truncated_length",
             ALDIS_USLP_DELIMITED_FILL => "fill",
+            ALDIS_USLP_DELIMITED_NON_TRUNCATED_NOT_ALLOWED => "non_truncated_not_allowed",
             other => panic!("delimited kind {other}"),
         };
         assert!(item.len > 0);

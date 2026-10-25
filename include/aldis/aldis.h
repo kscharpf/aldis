@@ -2066,6 +2066,12 @@
 #define ALDIS_USLP_REASON_OID_HEADER_MISMATCH 17
 
 /**
+ * Reason 18: a non-truncated frame on a VC that has a truncated frame length and so carries
+ * only truncated frames (Annex D1.2.1, USLP-002; OI-48).
+ */
+#define ALDIS_USLP_REASON_NON_TRUNCATED_FRAME_NOT_ALLOWED 18
+
+/**
  * Delimited item: no octets remain at the offset (732.1 §4.3.11.2; USLP-015).
  */
 #define ALDIS_USLP_DELIMITED_END 0
@@ -2092,6 +2098,12 @@
  * Delimited item: the rest of the unit, discarded as Fill Data (732.1 §4.3.11.2.4 a–b).
  */
 #define ALDIS_USLP_DELIMITED_FILL 4
+
+/**
+ * Delimited item: the rest of the unit, discarded: a non-truncated header on a VC that has a
+ * truncated frame length and so carries only truncated frames (USLP-015; OI-48).
+ */
+#define ALDIS_USLP_DELIMITED_NON_TRUNCATED_NOT_ALLOWED 5
 
 /**
  * Handle of an OID generator in caller storage (CMN-020…023, CABI-032).
@@ -4306,7 +4318,8 @@ typedef struct {
    */
   aldis_uslp_channel_t channel;
   /**
-   * Frame kind, `ALDIS_USLP_KIND_*` (Table 4-1); 0 for a truncated frame.
+   * Frame kind, `ALDIS_USLP_KIND_*` (Table 4-1); `ALDIS_USLP_KIND_EXPEDITED` for a truncated
+   * frame, which is processed as expedited user data (Annex D1.3.1 note 3; USLP-002; OI-52).
    */
   uint8_t kind;
   /**
@@ -6216,7 +6229,8 @@ int32_t aldis_time_convert(const aldis_time_instant_t *from,
  *
  * # Errors
  * `ALDIS_ERR_INVALID_CONFIG` (`frame_len`) for a frame too short for the Primary Header, one
- * data octet, and the FECF, with that minimum; CABI-022 violations.
+ * data octet, and the FECF, with that minimum, or longer than 4 095 octets, with that maximum
+ * (TM-001, OI-51); CABI-022 violations.
  *
  * # Safety
  * `pc` is valid for a read; `err` is `NULL` or valid for one write.

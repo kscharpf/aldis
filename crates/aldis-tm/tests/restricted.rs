@@ -22,6 +22,7 @@ use aldis_testkit::strategies::tm::{
     first_header_pointer, fsh_len, packet_offset, physical_channel, segment_length_id,
 };
 use aldis_testkit::strategies::{self, octets};
+use aldis_tm::MAX_FRAME_LEN;
 use aldis_tm::field;
 use aldis_tm::header::PRIMARY_HEADER_LEN;
 use aldis_tm::{
@@ -295,20 +296,21 @@ fn packet_pointer_classifies_every_raw_value() {
 }
 
 /// The shortest frame holds the 6-octet Primary Header, one data octet, and the FECF if
-/// present; 132.0 sets no upper bound (132.0 §4.1.1.1, §4.1.1.2). `new` accepts exactly the
-/// lengths from that minimum up, rejects the shorter ones with `InvalidConfig` (`frame_len`)
-/// and the minimum, and a frame of every accepted length up to 300 octets encodes and decodes
+/// present; 132.0 sets no upper bound (132.0 §4.1.1.1, §4.1.1.2), and the project sets 4 095
+/// octets (OI-51: above it the CRC-16 misses some double-bit errors). `new` accepts exactly the
+/// lengths from that minimum to 4 095, rejects the shorter ones with `InvalidConfig`
+/// (`frame_len`) and the minimum, the longer ones with `InvalidConfig` (`frame_len`) and 4 095, and a frame of every accepted length up to 300 octets encodes and decodes
 /// at that length.
 #[test]
 fn physical_channel_frame_length_has_its_minimum() {
     // restricted: TmPhysicalChannelConfig
-    // req: TM-001, TM-006, API-040, GEN-041, VER-023
+    // req: TM-001, TM-006, API-040, GEN-041, VER-023, VER-064
     for fecf in [false, true] {
         let min = PRIMARY_HEADER_LEN + DATA_MIN + if fecf { FECF_OCTETS } else { 0 };
-        for len in (0..=300).chain([usize::MAX - 1, usize::MAX]) {
+        for len in (0..=300).chain([4094, 4095, 4096, 4097, usize::MAX - 1, usize::MAX]) {
             match TmPhysicalChannelConfig::new(len, fecf) {
                 Ok(pc) => {
-                    assert!(len >= min, "{len}");
+                    assert!((min..=MAX_FRAME_LEN).contains(&len), "{len}");
                     assert_eq!((pc.frame_len(), pc.fecf()), (len, fecf));
                     if len <= 300 {
                         let mc = channel(len, fecf, DataFieldContent::Packets, None);
@@ -317,13 +319,14 @@ fn physical_channel_frame_length_has_its_minimum() {
                     }
                 }
                 Err(e) => {
-                    assert!(len < min, "{len}");
+                    assert!(len < min || len > MAX_FRAME_LEN, "{len}");
+                    let bound = if len < min { min } else { MAX_FRAME_LEN };
                     assert_eq!(
                         e,
                         Error::new(ErrorKind::InvalidConfig)
                             .with_field(field::FRAME_LEN)
                             .with_detail(ErrorDetail::Expected {
-                                expected: u64::try_from(min).unwrap(),
+                                expected: u64::try_from(bound).unwrap(),
                                 found: u64::try_from(len).unwrap(),
                             })
                     );

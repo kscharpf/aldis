@@ -60,7 +60,7 @@ On a merge conflict in the header, merge the sources and regenerate ([M2 plan](.
 | Feature | Effect |
 |---|---|
 | `std` (default) | Hosted builds, for ground systems |
-| `panic-handler` | A minimal `#[panic_handler]` for `no_std` static-library builds. It only satisfies the linker: no panic path is reachable (GEN-020, VER-010) |
+| `panic-handler` | A `#[panic_handler]` for `no_std` static-library builds. No panic path is reachable (GEN-020, VER-010), so it satisfies the linker; if it ever runs, it executes a trapping instruction (`udf` on Arm, `ebreak` on RISC-V, `brk` on AArch64, `ud2` on x86) and then spins. On a target without stable inline assembly (SPARC V8) it only spins (OI-49; c-abi.md §1) |
 | `panic-unreachable` | A `#[panic_handler]` that calls the undefined `aldis_panic_is_unreachable`, for the exerciser's link check (VER-010). Not for integrators |
 
 A bare-metal static library is built with:

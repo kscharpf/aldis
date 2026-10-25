@@ -695,16 +695,28 @@ pub(crate) mod tests {
 
     /// A variable-length channel of at most 512 octets with FECF: VC 4 (OCF allowed, VCF 0/1,
     /// truncated 12, MAPs 0 and 2), VC 5 (SDLS per MAP: MAP 1 with 6/16, truncated 28), VC 6
-    /// (fixed-length TFDZ, MAP 0).
-    pub(crate) fn variable() -> VcTable<4, 4> {
+    /// (fixed-length TFDZ, MAP 0), and VC 8 (MAP 0, no truncated frame length). VC 4 and VC 5
+    /// carry only truncated frames (Annex D1.2.1; OI-48); VC 6 and VC 8 only non-truncated ones.
+    pub(crate) fn variable() -> VcTable<4, 8> {
+        variable_with(true)
+    }
+
+    /// The channel of [`variable`] without truncated frame lengths: VC 4 and VC 5 carry
+    /// non-truncated frames.
+    pub(crate) fn plain_variable() -> VcTable<4, 8> {
+        variable_with(false)
+    }
+
+    fn variable_with(truncated: bool) -> VcTable<4, 8> {
         let pc = PhysicalChannelConfig::new(TransferFrameType::Variable, 512, 0, true).unwrap();
+        let len = |n| truncated.then(|| TruncatedFrameLen::new(n).unwrap());
         let vc4 = VcParams {
             ocf: OcfUse::Allowed,
-            truncated_frame_len: Some(TruncatedFrameLen::new(12).unwrap()),
+            truncated_frame_len: len(12),
             ..params(TransferFrameType::Variable, 0, 1)
         };
         let vc5 = VcParams {
-            truncated_frame_len: Some(TruncatedFrameLen::new(28).unwrap()),
+            truncated_frame_len: len(28),
             security: SecurityScope::PerMap,
             ..params(TransferFrameType::Variable, 0, 0)
         };
@@ -714,12 +726,14 @@ pub(crate) mod tests {
                 vc(4, vc4),
                 vc(5, vc5),
                 vc(6, params(TransferFrameType::Fixed, 0, 0)),
+                vc(8, params(TransferFrameType::Variable, 0, 0)),
             ],
             &[
                 map(4, 0, 0, 0),
                 map(4, 2, 0, 0),
                 map(5, 1, 6, 16),
                 map(6, 0, 0, 0),
+                map(8, 0, 0, 0),
             ],
         )
         .unwrap()

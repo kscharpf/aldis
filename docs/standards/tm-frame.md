@@ -37,7 +37,7 @@ Secondary Header: ID octet = version `00` (2 bits) ‖ length − 1 (6 bits), fo
 
 | ID | Requirement | Source | Verif. |
 |---|---|---|---|
-| TM-001 | The decoder SHALL require the configured fixed frame length and the configured FECF presence (API-012). | §4.1.1.2, §4.1.6.1.2 | V |
+| TM-001 | The decoder SHALL require the configured fixed frame length and the configured FECF presence (API-012). A physical channel SHALL be configured with a frame length of at most 4 095 octets, else `InvalidConfig` (`frame_len`) with that maximum (OI-51: above it the CRC-16 misses some double-bit errors, VER-064; `hz:HZ-TM-04`). | §4.1.1.2, §4.1.6.1.2 | V |
 | TM-002 | The decoder SHALL reject TFVN ≠ `00` with `UnsupportedVersion`. | §4.1.2.2.2.2 | V |
 | TM-003 | If the Secondary Header Flag is set, the decoder SHALL read the FSH length from its ID octet. It SHALL reject FSH version ≠ `00`, and an FSH that would overrun the frame. It SHALL reject a Secondary Header Length field of 0 (a Secondary Header with no data octet; the field must be 1 to 63) with `InvalidField` (`fsh_len`). | §4.1.3.1.3 b, §4.1.3.2 | V |
 | TM-004 | If the OCF Flag is set, the decoder SHALL expose the 4 OCF octets ([common §2](common-link-features.md#2-operational-control-field)). | §4.1.5 | V |
@@ -69,4 +69,4 @@ The Blue Book does not decide these; they are the project's, and the second revi
 - A frame with no data octet is rejected (CMN-041, whose source is none). The error names `frame_data_field` (7) when a configured field (FSH, OCF, Security fields) leaves none, and `frame_len` (68) for a physical channel too short for its own header and FECF when no VC is configured (`tm-inv-cfg-001`).
 - The FECF is checked before the version (TM-005), so a frame with both faults is `CrcMismatch` (`tm-inv-crc-002`); `tm-inv-ver-001` and `-002` carry valid FECFs.
 - Sync = 0 with Packet Order Flag = 1 is `ReservedValue` in strict mode (TM-007): the Blue Book gives the rule in a NOTE (§4.1.2.7.4). The error kinds and fields for a VC whose content does not fit the writer's request (TM-009, TM-010) are `InvalidField` naming `sync_flag`.
-- Frames longer than 2048 octets are accepted: 132.0-B-3 states no maximum (131.0-B-6 §11 gives 2048 because of the 11-bit FHP), so that the FHP offsets 2045 and 2046 are testable (`tm-fhp-enc-005`, `tm-fhp-enc-err-002`).
+- Frames longer than 2048 octets are accepted up to 4 095 octets: 132.0-B-3 states no maximum (131.0-B-6 §11 gives 2048 because of the 11-bit FHP), so that the FHP offsets 2045 and 2046 are testable (`tm-fhp-enc-005`, `tm-fhp-enc-err-002`). Above 4 095 octets the channel is refused (TM-001, OI-51), since the CRC-16 no longer detects every double-bit error there (VER-064).

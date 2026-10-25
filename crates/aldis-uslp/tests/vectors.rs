@@ -313,6 +313,7 @@ fn delimit_case(case: &CodecCase) -> Result<Value, Error> {
                     ("incomplete", json!(declared_len))
                 }
                 Delimited::NoTruncatedLength(_) => ("no_truncated_length", Value::Null),
+                Delimited::NonTruncatedNotAllowed(_) => ("non_truncated_not_allowed", Value::Null),
                 Delimited::Fill(_) => ("fill", Value::Null),
             };
             let v = json!({

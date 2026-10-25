@@ -698,6 +698,7 @@ fn delimit_case(case: &Case, o: &mut Out) -> Run {
                 ("incomplete", Some(wide(declared_len)))
             }
             Delimited::NoTruncatedLength(_) => ("no_truncated_length", None),
+            Delimited::NonTruncatedNotAllowed(_) => ("non_truncated_not_allowed", None),
             Delimited::Fill(_) => ("fill", None),
         };
         list.obj(|i| {

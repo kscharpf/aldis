@@ -11,7 +11,8 @@
 //! octets whose TFVN is `1100`, and either has the End of Frame Primary Header Flag 1, its length
 //! being its VC's truncated frame length (Annex D1.3.2; OI-35 item 8), or has the flag 0, at
 //! least 7 octets, and a Frame Length that declares at least the Primary Header with its VCF
-//! Count, a 1-octet TFDF Header, and one TFDZ octet. Fill Data of `01010101` octets has TFVN
+//! Count, a 1-octet TFDF Header, and one TFDZ octet, on a VC that has no truncated frame length
+//! (a VC that has one carries only truncated frames, OI-48). Fill Data of `01010101` octets has TFVN
 //! `0101`, so it is never a valid header.
 
 use crate::config::VcLookup;
@@ -34,6 +35,11 @@ pub enum Delimited<'a> {
     /// The rest of the unit, discarded: a truncated header whose SCID and VCID name no
     /// configured VC, or a VC without a truncated frame length (USLP-015; OI-35 item 8).
     NoTruncatedLength(&'a [u8]),
+    /// The rest of the unit, discarded: a non-truncated header on a configured VC that has a
+    /// truncated frame length and so carries only truncated frames, which a bit error in the
+    /// End of Frame Primary Header Flag of a truncated frame makes (USLP-002, USLP-015; OI-48).
+    /// The Frame Length of such a header is not trusted.
+    NonTruncatedNotAllowed(&'a [u8]),
     /// The rest of the unit, discarded as Fill Data: it does not start with a valid header
     /// (§4.3.11.2.4 a–b).
     Fill(&'a [u8]),
@@ -47,6 +53,7 @@ impl<'a> Delimited<'a> {
             Delimited::Frame(octets)
             | Delimited::IncompleteFrame { octets, .. }
             | Delimited::NoTruncatedLength(octets)
+            | Delimited::NonTruncatedNotAllowed(octets)
             | Delimited::Fill(octets) => octets,
         }
     }
@@ -64,24 +71,39 @@ impl<'a> Delimited<'a> {
     }
 }
 
-/// The frame length the header at the start of `rest` declares, `Err(())` for a truncated
-/// header without a known length, or `None` for no valid header (§3.2 of the standard
-/// document).
-fn declared_len<L: VcLookup + ?Sized>(rest: &[u8], channels: &L) -> Option<Result<usize, ()>> {
+/// What the header at the start of the octets declares (§3.2 of the standard document).
+enum Declared {
+    /// A frame of this many octets.
+    Len(usize),
+    /// A truncated header whose VC is unknown or has no truncated frame length.
+    NoTruncatedLength,
+    /// A non-truncated header on a VC that has a truncated frame length (OI-48).
+    TruncatedOnly,
+}
+
+/// What the header at the start of `rest` declares, or `None` for no valid header.
+fn declared_len<L: VcLookup + ?Sized>(rest: &[u8], channels: &L) -> Option<Declared> {
     let start = RawStart::parse(rest).filter(|s| s.version == VERSION)?;
+    let ch = start.channel;
+    let truncated_len = channels
+        .vc(ch.spacecraft_id, ch.vc_id)
+        .and_then(|vc| vc.truncated_frame_len())
+        .map(crate::config::TruncatedFrameLen::get);
     if start.truncated {
-        let ch = start.channel;
-        let len = channels
-            .vc(ch.spacecraft_id, ch.vc_id)
-            .and_then(|vc| vc.truncated_frame_len())
-            .map(crate::config::TruncatedFrameLen::get);
-        return Some(len.ok_or(()));
+        return Some(truncated_len.map_or(Declared::NoTruncatedLength, Declared::Len));
     }
     let raw = RawRest::parse(rest)?;
     let shortest = PRIMARY_HEADER_LEN
         .saturating_add(raw.vcf_count_len.octets())
         .saturating_add(2);
-    (raw.frame_len >= shortest).then_some(Ok(raw.frame_len))
+    if raw.frame_len < shortest {
+        return None;
+    }
+    Some(if truncated_len.is_some() {
+        Declared::TruncatedOnly
+    } else {
+        Declared::Len(raw.frame_len)
+    })
 }
 
 /// The next item of the octets `rest` of a data unit that are not yet delimited, or `None` when
@@ -95,14 +117,15 @@ pub fn next_frame<'a, L: VcLookup + ?Sized>(rest: &'a [u8], channels: &L) -> Opt
         return None;
     }
     let item = match declared_len(rest, channels) {
-        Some(Ok(len)) => match rest.split_at_checked(len) {
+        Some(Declared::Len(len)) => match rest.split_at_checked(len) {
             Some((frame, _)) => Delimited::Frame(frame),
             None => Delimited::IncompleteFrame {
                 octets: rest,
                 declared_len: len,
             },
         },
-        Some(Err(())) => Delimited::NoTruncatedLength(rest),
+        Some(Declared::NoTruncatedLength) => Delimited::NoTruncatedLength(rest),
+        Some(Declared::TruncatedOnly) => Delimited::NonTruncatedNotAllowed(rest),
         None => Delimited::Fill(rest),
     };
     Some(item)
@@ -150,10 +173,13 @@ impl<L: VcLookup + ?Sized> core::iter::FusedIterator for FrameDelimiter<'_, '_, 
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::{Delimited, FrameDelimiter, next_frame};
-    use crate::config::tests::variable;
+    use crate::config::tests::{plain_variable, variable};
 
-    /// A 10-octet frame on VC 4 MAP 0 of the variable channel: rule 111, TFDZ `AA`, FECF.
-    const FRAME: [u8; 10] = [0xC0, 0x15, 0x50, 0x80, 0x00, 0x09, 0x00, 0xE0, 0xAA, 0x12];
+    /// A 10-octet frame on VC 8 MAP 0 of the variable channel: rule 111, TFDZ `AA`, FECF.
+    const FRAME: [u8; 10] = [0xC0, 0x15, 0x51, 0x00, 0x00, 0x09, 0x00, 0xE0, 0xAA, 0x12];
+
+    /// A 10-octet non-truncated frame on VC 4 MAP 0, which has a truncated frame length.
+    const FRAME_VC4: [u8; 10] = [0xC0, 0x15, 0x50, 0x80, 0x00, 0x09, 0x00, 0xE0, 0xAA, 0x12];
 
     #[test]
     fn frames_incomplete_and_fill() {
@@ -189,9 +215,9 @@ mod tests {
         for fill in [
             &[0x55_u8; 3][..],
             &[0x55; 8],
-            &[0xC0, 0x15, 0x50, 0x80, 0x00, 0x07, 0x00, 0xE0],
-            &[0xC0, 0x15, 0x50, 0x80, 0x00, 0x09],
-            &[0xC0, 0x15, 0x50, 0x80, 0x00, 0x08, 0x01, 0xE0, 0, 0],
+            &[0xC0, 0x15, 0x51, 0x00, 0x00, 0x07, 0x00, 0xE0],
+            &[0xC0, 0x15, 0x51, 0x00, 0x00, 0x09],
+            &[0xC0, 0x15, 0x51, 0x00, 0x00, 0x08, 0x01, 0xE0, 0, 0],
             &[0xD0, 0x15, 0x50, 0x81],
         ] {
             assert_eq!(
@@ -212,5 +238,33 @@ mod tests {
             );
             assert_eq!(item.map(|i| i.octets()), Some(none));
         }
+    }
+
+    #[test]
+    fn a_vc_with_a_truncated_length_carries_only_truncated_frames() {
+        // req: USLP-015, USLP-002
+        let t = variable();
+        // A non-truncated header on VC 4, which has a truncated frame length: its Frame Length is
+        // not trusted, so the rest of the unit is discarded.
+        let mut unit = FRAME_VC4.to_vec();
+        unit.extend_from_slice(&FRAME);
+        assert_eq!(
+            next_frame(&unit, &t),
+            Some(Delimited::NonTruncatedNotAllowed(&unit))
+        );
+        let item = next_frame(&FRAME_VC4, &t).unwrap();
+        assert_eq!((item.len(), item.octets()), (10, &FRAME_VC4[..]));
+        // The same header with a Frame Length too short to be valid is Fill, as on any VC.
+        let short = [0xC0, 0x15, 0x50, 0x80, 0x00, 0x07, 0x00, 0xE0];
+        assert_eq!(next_frame(&short, &t), Some(Delimited::Fill(&short)));
+        // A channel without truncated frame lengths delimits the same octets as a frame.
+        let p = plain_variable();
+        assert_eq!(
+            next_frame(&FRAME_VC4, &p),
+            Some(Delimited::Frame(&FRAME_VC4))
+        );
+        // An unknown VC is not refused here: the validation checks reject it (reason 5).
+        let unknown = [0xC0, 0x15, 0x50, 0x60, 0x00, 0x09, 0x00, 0xE0, 0xAA, 0x12];
+        assert_eq!(next_frame(&unknown, &t), Some(Delimited::Frame(&unknown)));
     }
 }
