@@ -6,6 +6,8 @@ Surviving mutants from `cargo mutants` (`-p aldis-core -p aldis-time -p aldis-ep
 
 `TmFrameWriter::begin_oid` rejects a VC that uses SDLS (`aldis-tm`), and `VcTable` answers VCID 63 without an entry on a fixed-length channel (`aldis-uslp`, `config.rs` `given_vc` and `VcLookup::vc`). The mutants of the changed lines, `cargo mutants -p aldis-tm -p aldis-uslp --all-features --in-diff <diff against main>` (with `PROPTEST_CASES=32`): 12 mutants: 9 caught, 3 unviable, 0 missed, 0 timeouts. No survivor to triage. The `aldis-ffi` change (the Galois branch of `aldis_tm_oid_writer_begin` calls `begin_oid`) is outside the crates this file lists.
 
+After the review of #117 the check moved from `begin_oid` into `Plan::new` (`crates/aldis-tm/src/writer.rs`), so every writer applies it. `cargo mutants -p aldis-tm --all-features --in-diff <diff against cf5e035>`: 1 mutant, unviable (`begin_oid` replaced by `Ok(Default::default())`). cargo-mutants makes no mutant of a function named `new`, so the condition in `Plan::new` has none. Unit test `oid_frames_continue_the_sequence` covers it in both directions: `begin`, `resume`, and `encode` reject Only Idle Data on the SDLS VC 0, and `begin_oid` accepts VC 5 without SDLS. Vectors `tm-sec-enc-004`…`007` cover it too.
+
 ## 2026-10-25, branch `m2/wp7-tests` (M2 WP-7, review of #116)
 
 `aldis_aos::PacketPointer::classify` rejects raw values wider than the Issue 4 pointer, `to_raw` and `header_octets` return `Option`, and `writer.rs` `mpdu_header` takes the edition check from them. The mutants of the changed lines of `mpdu.rs` and `writer.rs`, `cargo mutants -p aldis-aos --all-features --in-diff <diff against 87a48ce>` (cargo-mutants 27.1.0, with `PROPTEST_CASES=32`): 22 mutants: 21 caught, 1 unviable. None missed.
