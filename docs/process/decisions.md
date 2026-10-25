@@ -123,3 +123,4 @@ One line for each decision the maintainer takes, under the [decision rights](dec
 - 2026-10-24 · process · #113 · Stack budgets rust = 1024 and c-abi = 10240 bytes on every embedded target (xtask/stack-budgets.toml), revisited at the M2 exit; the check stack gates every pull request; Display impls stay entry points with the caller's writer not counted
 - 2026-10-24 · process · #113 · If the nightly diagnostics show the mutants job exhausting the runner, split it by crate across a matrix
 - 2026-10-24 · plan · #113 · OI-45: the frame C ABI's stack use (VC tables built on the stack) is decided at the M2 exit review; the shipped static library's missing LTO is investigated as a follow-up
+- 2026-10-24 · process · chat · An independent review cites the file and line behind every statement about the implementation; a review that misdescribes the code does not count and is done again (AGENTS.md, after the review of #113)
