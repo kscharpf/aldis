@@ -64,6 +64,17 @@ pub fn spp_config() -> impl Strategy<Value = SppConfig> {
     .prop_filter_map("length in range", |len| SppConfig::new(len).ok())
 }
 
+/// Maximum Packet Lengths that `SppConfig::new` rejects: below 7 or above 65 542 octets, the
+/// values next to the range drawn most often (133.0 §4.1.2.2; SPP-006, GEN-060).
+pub fn max_packet_len_out_of_range() -> BoxedStrategy<usize> {
+    prop_oneof![
+        2 => prop_oneof![Just(MIN_PACKET_LEN - 1), Just(MAX_PACKET_LEN + 1)],
+        1 => 0..MIN_PACKET_LEN,
+        1 => MAX_PACKET_LEN + 1..=usize::MAX,
+    ]
+    .boxed()
+}
+
 /// A Space Packet built by `SppConfig::packet` and `encode`, with the parts it was built from
 /// (133.0 §4.1; SPP-002, SPP-005, API-020, API-021).
 #[derive(Debug, Clone, PartialEq, Eq)]

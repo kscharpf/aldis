@@ -180,6 +180,66 @@ pub fn mod_counter_and_value() -> impl Strategy<Value = (ModCounter, u64)> {
     mod_counter().prop_flat_map(|c| (Just(c), counter_value(c.bits())))
 }
 
+/// A width and a value that `ModCounter::new` rejects: width 0, a width above 64, or a width of
+/// 1–63 bits with a value that needs more bits (CMN-030, RS-020).
+pub fn mod_counter_out_of_range() -> BoxedStrategy<(u8, u64)> {
+    prop_oneof![
+        1 => any::<u64>().prop_map(|v| (0, v)),
+        1 => (65_u8..=u8::MAX, any::<u64>()),
+        4 => (1_u8..64).prop_flat_map(|bits| {
+            let first = 1_u64 << bits;
+            (Just(bits), prop_oneof![Just(first), first..=u64::MAX])
+        }),
+    ]
+    .boxed()
+}
+
+/// Four Operational Control Field octets, each of the four values of bits 0–1 drawn equally
+/// often (132.0 §4.1.5.4–5, 732.0 §4.1.5.4–5, 732.1 §4.1.5.2; CMN-010).
+pub fn ocf_octets() -> impl Strategy<Value = [u8; 4]> {
+    (0_u8..4, any::<[u8; 4]>()).prop_map(|(flags, [first, rest @ ..])| {
+        let [a, b, c] = rest;
+        [(flags << 6) | (first & 0x3F), a, b, c]
+    })
+}
+
+/// Three octet ranges for `SecuredFields::new` (355.0 §4.1; API-070, RS-020).
+///
+/// A Security Header, a data field, and a Security Trailer that are in order and adjacent, or
+/// the same with one range end moved by one or two octets, which may reverse a range.
+pub fn secured_ranges() -> BoxedStrategy<[core::ops::Range<usize>; 3]> {
+    let adjacent = (0_usize..100, 0_usize..70, 0_usize..2000, 0_usize..40).prop_map(
+        |(start, header, data, trailer)| {
+            let data_start = start + header;
+            let trailer_start = data_start + data;
+            [
+                start..data_start,
+                data_start..trailer_start,
+                trailer_start..trailer_start + trailer,
+            ]
+        },
+    );
+    let moved = (adjacent.clone(), 0_usize..6, 1_usize..=2, any::<bool>()).prop_map(
+        |(mut r, bound, by, up)| {
+            let edge = match bound % 6 {
+                0 => &mut r[0].start,
+                1 => &mut r[0].end,
+                2 => &mut r[1].start,
+                3 => &mut r[1].end,
+                4 => &mut r[2].start,
+                _ => &mut r[2].end,
+            };
+            *edge = if up {
+                *edge + by
+            } else {
+                edge.saturating_sub(by)
+            };
+            r
+        },
+    );
+    prop_oneof![1 => adjacent, 2 => moved].boxed()
+}
+
 /// A bit-field access: a buffer, a bit offset that may run past it, a width of 1–64 bits, and a
 /// value that fits the width (GEN-050, GEN-051).
 #[derive(Debug, Clone, PartialEq, Eq)]

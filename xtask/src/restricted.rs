@@ -235,7 +235,7 @@ fn scan_file(text: &str) -> Result<FileScan, String> {
             }
             "!" if i > 0 && matches!(t.get(i + 1).map(|t| t.text.as_str()), Some("(" | "{")) => {
                 let mac = t[i - 1].text.clone();
-                if i > 1 && is(&t, i - 2, "macro_rules") || mac == "macro_rules" {
+                if mac == "macro_rules" {
                     continue;
                 }
                 let mut k = i + 2;
@@ -252,8 +252,8 @@ fn scan_file(text: &str) -> Result<FileScan, String> {
     Ok(scan)
 }
 
-/// The restricted types of crate `krate`, each with its checked constructors; `read` lists the
-/// crate's source files as (path, text).
+/// The restricted types of a crate whose source files are `files`, as (path, text), each with
+/// its checked constructors.
 fn restricted_types(files: &[(String, String)]) -> Result<BTreeMap<String, Vec<String>>, String> {
     let mut public = BTreeSet::new();
     let mut checked: Vec<(String, String, Option<String>)> = Vec::new();

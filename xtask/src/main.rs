@@ -87,12 +87,12 @@ commands:
   changelog release <version> <YYYY-MM-DD>
                                move every fragment into a new section of CHANGELOG.md
   ci                           the quick checks of the verification run, without a build:
-                               spec-lint, links, decisions, layers, consistency, rs020, restricted,
-                               refapp-deps,
-                               vectors validate, vectors schema --check, fields, header (needs
-                               the pinned cbindgen), sana, trace --scope m0 --strict,
-                               trace --scope m1 --strict, trace --scope m2, trace --scope c0,
-                               changelog check, cpp unsafe-optouts; a step that cannot run
+                               spec-lint, links, decisions, layers, consistency, rs020,
+                               restricted, refapp-deps, vectors validate, vectors schema --check,
+                               fields, header (needs the pinned cbindgen), sana,
+                               trace --scope m0 --strict, trace --scope m1 --strict,
+                               trace --scope m2, trace --scope c0, changelog check,
+                               cpp unsafe-optouts; a step that cannot run
                                counts as a problem, and the others still run
 
 C++ checks (docs/milestones/c0-foundations.md D12):
