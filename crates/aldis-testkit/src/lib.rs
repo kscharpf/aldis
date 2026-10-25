@@ -14,6 +14,7 @@
 //! .assert_passed();
 //! ```
 
+pub mod bitflip;
 pub mod hex;
 pub mod model;
 pub mod oracle;

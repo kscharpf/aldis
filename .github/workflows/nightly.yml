@@ -202,6 +202,25 @@ jobs:
           regression vector (VER-022)."
           fi
 
+  bit-flips:
+    name: bit-flip completeness ${{ matrix.crate }} (M2 WP-7, VER-023)
+    # The exhaustive runs that the gated tests only sample: every double-bit error of the longest
+    # TM and TC frames, every single-bit error of the longest AOS and USLP frames, and every
+    # double-bit error of their 4 095-octet frames, the longest the CRC-16 covers
+    # (docs/verification/derivations/crc16-bit-flips.md). Release mode, on every core.
+    strategy:
+      fail-fast: false
+      matrix:
+        crate: [aldis-tm, aldis-tc, aldis-aos, aldis-uslp]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup-rust
+        with:
+          cache-key: bit-flips
+      - run: cargo test --release --all-features -p ${{ matrix.crate }} --test bit_flips -- --ignored
+
   mutants:
     name: mutation testing (VER-025, report only)
     runs-on: ubuntu-24.04
@@ -312,7 +331,7 @@ jobs:
 
   issue:
     name: open an issue on a nightly failure (VER-059)
-    needs: [big-endian-bare-metal, verify, stack-sizes, fuzz, mutants, ccsds-urls, sana-registries]
+    needs: [big-endian-bare-metal, verify, stack-sizes, fuzz, bit-flips, mutants, ccsds-urls, sana-registries]
     if: failure() && github.event_name == 'schedule'
     runs-on: ubuntu-24.04
     permissions:
