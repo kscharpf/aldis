@@ -26,7 +26,7 @@ members = [
 version = "0.2.0"
 edition = "2024"
 rust-version = "1.99.1"        # RS-001: equals rust-toolchain.toml (OI-07)
-license = "MIT"                # OI-01 (resolved)
+license = "MIT OR Apache-2.0"  # OI-01 (resolved; dual since 2026-10-24)
 repository = "https://github.com/kscharpf/aldis"
 
 # Lint set required by docs/profiles/rust.md §5 and docs/06-verification.md VER-001.
