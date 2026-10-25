@@ -134,6 +134,14 @@ pub const KANI: PathList = PathList {
     ],
 };
 
+/// Read by the check `stack` (VER-011, GEN-022): the library crates and `aldis-ffi`, whose
+/// static library it builds for each bare-metal target. Its budgets and exemptions
+/// (`xtask/stack-budgets.toml`), its module, and the tooling nightly that builds it are in `RUN`.
+pub const STACK: PathList = PathList {
+    name: "stack",
+    patterns: &["crates/**"],
+};
+
 /// Documentation: read by `spec` only (spec lint, links, vectors, field catalogue, traces,
 /// changelog check), so a change to these paths alone runs only `spec`; a change to the field
 /// catalogue in `docs/03-api-model.md` alone fails `spec` until `cargo xtask fields --write`
@@ -239,6 +247,7 @@ const RUST_TEST_INPUTS: Inputs = Inputs::Paths(&[&RUN, &RUST, &XTASK_TESTS]);
 const CPP_INPUTS: Inputs = Inputs::Paths(&[&RUN, &CPP]);
 const FFI_INPUTS: Inputs = Inputs::Paths(&[&RUN, &FFI]);
 const KANI_INPUTS: Inputs = Inputs::Paths(&[&RUN, &KANI]);
+const STACK_INPUTS: Inputs = Inputs::Paths(&[&RUN, &STACK]);
 
 /// One check of the verification run.
 #[derive(Clone, Debug)]
@@ -352,6 +361,14 @@ fn rust() -> Vec<Check> {
     for t in RUST_BARE_METAL {
         out.push(check(format!("exerciser-{t}"), c, false, 10, exerciser(t)));
     }
+    // The worst-case stack of every entry point within its budget, the call graph complete
+    // (VER-011, GEN-022; M2 plan WP-7). Three builds of the C ABI library on the tooling
+    // nightly with `core` from source, about 25 s each on a warm host; the duration is an
+    // estimate until the GitHub-hosted runs measure it.
+    out.push(reading(
+        STACK_INPUTS,
+        check("stack", c, false, 90, "cargo xtask stack\n"),
+    ));
     out.push(Check {
         gating: false,
         ..check("rust-sparc-leon3", c, false, 45, RUST_LEON3)
@@ -825,6 +842,10 @@ mod tests {
                 assert_eq!(lists, [&RUN, &KANI]);
                 continue;
             }
+            if c.name == "stack" {
+                assert_eq!(lists, [&RUN, &STACK]);
+                continue;
+            }
             assert_eq!(lists.contains(&&CPP), c.cpp, "{}", c.name);
             assert_eq!(lists.contains(&&RUST), !c.cpp, "{}", c.name);
             let tests = matches!(c.name.as_str(), "test" | "test-macos" | "big-endian");
@@ -946,6 +967,32 @@ mod tests {
         assert!(header.script.contains("cargo xtask header\n"));
         assert!(header.script.contains("c-smoke gcc-14 g++-14"));
         assert!(header.script.contains("c-smoke clang clang++"));
+    }
+
+    // req: VER-011, VER-056
+    #[test]
+    fn the_stack_check_reads_the_library_its_budgets_and_the_nightly() {
+        let stack = all().into_iter().find(|c| c.name == "stack").unwrap();
+        assert!(stack.gating && !stack.nightly);
+        for path in [
+            "crates/aldis-core/src/crc.rs",
+            "crates/aldis-ffi/src/tc.rs",
+            "crates/aldis-ffi/capacities.toml",
+            "xtask/stack-budgets.toml",
+            "xtask/src/stack.rs",
+            "tooling-nightly",
+            "Cargo.lock",
+        ] {
+            assert!(stack.inputs.contains(path), "{path}");
+        }
+        for path in [
+            "test-vectors/spp/encode.json",
+            "cpp/src/x.cpp",
+            "exerciser/src/main.rs",
+        ] {
+            assert!(!stack.inputs.contains(path), "{path}");
+        }
+        assert_eq!(stack.script, "cargo xtask stack\n");
     }
 
     // req: VER-010, GEN-021

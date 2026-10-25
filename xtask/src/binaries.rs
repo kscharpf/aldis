@@ -1,14 +1,13 @@
-//! Binary-level checks: per-function stack usage (VER-011) and symbol inspection of a minimal
-//! build (VER-031, GEN-003).
+//! Binary-level checks: symbol inspection of a minimal build (VER-031, GEN-003) and of the
+//! bare-metal C ABI library (CABI-004). The stack bound of VER-011 is `stack.rs`.
 
-use std::fmt::Write as _;
 use std::path::PathBuf;
 use std::process::Command;
 
 use crate::repo;
 
 /// Path to an LLVM tool from the pinned toolchain's `llvm-tools` component.
-fn llvm_tool(name: &str) -> Result<PathBuf, String> {
+pub fn llvm_tool(name: &str) -> Result<PathBuf, String> {
     let rustc = |args: &[&str]| -> Result<String, String> {
         let out = Command::new("rustc")
             .args(args)
@@ -50,76 +49,6 @@ fn run(cmd: &mut Command, what: &str) -> Result<String, String> {
         ));
     }
     String::from_utf8(out.stdout).map_err(|e| e.to_string())
-}
-
-/// `xtask stack-sizes <target>`: builds the exerciser with `-Z emit-stack-sizes` using the
-/// pinned tooling nightly (RS-002) and writes `target/spec/stack-sizes-<target>.md`.
-pub fn stack_sizes(target: &str) -> Result<usize, String> {
-    let nightly = repo::tooling_nightly()?;
-    let target_dir = repo::root().join("target/stack-sizes");
-    run(
-        Command::new("rustup")
-            .args(["run", &nightly, "cargo", "rustc", "--release"])
-            .args([
-                "--manifest-path",
-                "exerciser/Cargo.toml",
-                "--target",
-                target,
-                "--",
-                "-Z",
-                "emit-stack-sizes",
-            ])
-            .env("CARGO_TARGET_DIR", &target_dir),
-        "nightly exerciser build",
-    )?;
-    let elf = target_dir.join(target).join("release/exerciser");
-    let report = run(
-        Command::new(llvm_tool("llvm-readobj")?)
-            .arg("--stack-sizes")
-            .arg("--demangle")
-            .arg(&elf),
-        "llvm-readobj --stack-sizes",
-    )?;
-
-    let mut entries: Vec<(u64, String)> = Vec::new();
-    let mut pending: Option<String> = None;
-    for line in report.lines().map(str::trim) {
-        if let Some(f) = line
-            .strip_prefix("Functions: [")
-            .and_then(|s| s.strip_suffix(']'))
-        {
-            pending = Some(f.to_owned());
-        } else if let (Some(hex), Some(name)) = (line.strip_prefix("Size: 0x"), pending.take()) {
-            let size = u64::from_str_radix(hex, 16).map_err(|e| format!("{line}: {e}"))?;
-            entries.push((size, name));
-        }
-    }
-    if entries.is_empty() {
-        return Err("no stack size entries found".to_owned());
-    }
-    entries.sort_by(|a, b| b.cmp(a));
-
-    let mut md = format!(
-        "# Stack usage per function — exerciser, `{target}` (VER-011)\n\n\
-         Frame sizes after LTO (functions inlined into callers are included in the caller).\n\
-         Worst-case depth is the sum along the deepest call path; the exerciser calls at most\n\
-         `_start` → one test group → one `aldis-core` API.\n\n\
-         | Bytes | Function |\n|---:|---|\n"
-    );
-    for (size, name) in &entries {
-        let _ = writeln!(md, "| {size} | `{name}` |");
-    }
-    let out = repo::root().join("target/spec");
-    std::fs::create_dir_all(&out).map_err(|e| e.to_string())?;
-    let file = out.join(format!("stack-sizes-{target}.md"));
-    std::fs::write(&file, md).map_err(|e| e.to_string())?;
-    let max = entries.first().map_or(0, |e| e.0);
-    println!(
-        "stack-sizes: {} function(s), largest frame {max} bytes; report: {}",
-        entries.len(),
-        repo::rel(&file)
-    );
-    Ok(0)
 }
 
 /// Crates whose code must not appear in a build of `aldis-spp` alone (GEN-003).

@@ -99,14 +99,18 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-rust
+      # `core` is built from source (`-Z build-std`), so the nightly needs rust-src, not the target.
       - run: |
           rustup toolchain install "$(cat tooling-nightly)" --profile minimal \
-            --target ${{ matrix.target }}
-      - run: cargo xtask stack-sizes ${{ matrix.target }}
+            --component rust-src --component llvm-tools
+      # The worst case of every entry point against its budget (xtask/stack-budgets.toml); the
+      # report is the VER-011 table, kept even when a budget fails.
+      - run: cargo xtask stack ${{ matrix.target }}
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
         with:
           name: stack-sizes-${{ matrix.target }}
-          path: target/spec/stack-sizes-${{ matrix.target }}.md
+          path: target/spec/stack-${{ matrix.target }}.md
           if-no-files-found: error
 
   fuzz:

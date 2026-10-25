@@ -23,6 +23,7 @@ mod repo;
 mod rs020;
 mod sana;
 mod spec;
+mod stack;
 mod trace;
 mod vectors;
 mod verify;
@@ -69,7 +70,10 @@ commands:
   symbols                      no frame-protocol code in a build of aldis-spp alone (VER-031)
   ffi-imports <target>         the bare-metal aldis-ffi static library needs nothing from the
                                integrator beyond memcpy/memset equivalents (CABI-004)
-  stack-sizes <target>         per-function stack usage of the exerciser (VER-011; tooling nightly)
+  stack [<target>...]          the worst-case stack of every entry point of the library on each
+                               bare-metal target (or those named) within the budgets of
+                               xtask/stack-budgets.toml, the call graph complete; writes
+                               target/spec/stack-<target>.md (VER-011, GEN-022; tooling nightly)
   features                     `alloc` and `std` are additive: no API gated on them, and every
                                test passes alike without them, with `alloc`, and with `std`
                                (GEN-006)
@@ -167,7 +171,7 @@ fn run(args: &[&str]) -> Result<usize, String> {
         ["refapp-deps"] => refapp::check(),
         ["symbols"] => binaries::symbols(),
         ["ffi-imports", target] => binaries::ffi_imports(target),
-        ["stack-sizes", target] => binaries::stack_sizes(target),
+        ["stack", rest @ ..] => stack::run(rest),
         ["coverage"] => coverage::run(),
         ["kani"] => kani::run(),
         ["features"] => features::check(),
