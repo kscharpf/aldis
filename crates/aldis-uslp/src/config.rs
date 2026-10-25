@@ -144,7 +144,7 @@ pub enum SecurityScope {
 /// A Truncated Transfer Frame Length, 6 to 32 octets (732.1 Table 5-3 note 5, Annex D1.3.2
 /// notes 2–3; USLP-002).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct TruncatedFrameLen(u8);
+pub struct TruncatedFrameLen(usize);
 
 impl TruncatedFrameLen {
     /// The length with SDLS has at least 28 octets (Annex D1.2.4; USLP-012, API-075).
@@ -154,18 +154,18 @@ impl TruncatedFrameLen {
     ///
     /// # Errors
     /// `InvalidConfig` (`truncated_frame_len`) outside 6–32.
-    pub fn new(octets: usize) -> Result<TruncatedFrameLen> {
-        u8::try_from(octets)
-            .ok()
-            .filter(|n| (6..=32).contains(n))
-            .map(TruncatedFrameLen)
-            .ok_or(bad(field::TRUNCATED_FRAME_LEN))
+    pub const fn new(octets: usize) -> Result<TruncatedFrameLen> {
+        if matches!(octets, 6..=32) {
+            Ok(TruncatedFrameLen(octets))
+        } else {
+            Err(bad(field::TRUNCATED_FRAME_LEN))
+        }
     }
 
     /// The length in octets, the whole truncated frame (Annex D1.3.2.1).
     #[must_use]
-    pub fn get(self) -> usize {
-        usize::from(self.0)
+    pub const fn get(self) -> usize {
+        self.0
     }
 }
 

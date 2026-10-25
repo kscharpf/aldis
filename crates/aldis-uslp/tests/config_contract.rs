@@ -52,6 +52,22 @@ static VC: VcConfig = match VcConfig::new(SCID, VCID, PARAMS) {
     Ok(vc) => vc,
     Err(_) => panic!("valid"),
 };
+/// A VC with a truncated frame length, built in `const` context (RS-012): `TruncatedFrameLen::new`
+/// is a `const fn`.
+static TRUNCATED_VC: VcConfig = match VcConfig::new(
+    SCID,
+    VCID,
+    VcParams {
+        truncated_frame_len: Some(match TruncatedFrameLen::new(12) {
+            Ok(len) => len,
+            Err(_) => panic!("valid"),
+        }),
+        ..PARAMS
+    },
+) {
+    Ok(vc) => vc,
+    Err(_) => panic!("valid"),
+};
 static MAP: MapConfig = MapConfig::new(SCID, VCID, MAPID, SecurityLayout::NONE);
 
 #[test]
@@ -89,13 +105,15 @@ fn configurations_are_plain_data_built_in_const_context() {
     );
     // The constructors validate: a variable-length channel with an Insert Zone is an error.
     assert!(PhysicalChannelConfig::new(TransferFrameType::Variable, 1024, 4, true).is_err());
-    // A VC with a truncated frame length is built at run time: `TruncatedFrameLen::new` is not
-    // a `const fn`.
-    let truncated = VcParams {
-        truncated_frame_len: Some(TruncatedFrameLen::new(12).unwrap()),
-        ..PARAMS
-    };
-    assert!(VcConfig::new(SCID, VCID, truncated).is_ok());
+    // A VC with a truncated frame length fills a `static` too, and the length reads back.
+    assert_eq!(
+        TRUNCATED_VC
+            .params()
+            .truncated_frame_len
+            .map(TruncatedFrameLen::get),
+        Some(12)
+    );
+    assert!(TruncatedFrameLen::new(5).is_err() && TruncatedFrameLen::new(33).is_err());
     // The table is validated at run time (its checks loop over the entries), so it is not a
     // `const`; it is plain data all the same, and equal tables are equal values.
     let t = VcTable::<1, 1>::new(PC, &[VC], &[MAP]).unwrap();
