@@ -115,12 +115,19 @@ class Oid:
 
 # ---- configuration (Tables 5-1 to 5-3, 6-1), built in the handler's order
 
+# The longest frame of a physical channel, TM-001 (OI-51: the CRC-16 of Annex B misses some
+# double-bit errors above it, VER-064).
+MAX_FRAME_LEN = 4095
+
+
 def build_config(cfg):
     """The configuration, or Fail. Keys: frame_len, fecf, and for a master channel scid, mc_fsh,
     mc_ocf, vcs (vcid, content, fsh, ocf, security_header_len, security_trailer_len)."""
     fecf = cfg["fecf"]
     minimum = 6 + 1 + (2 if fecf else 0)
     if cfg["frame_len"] < minimum:
+        raise Fail("InvalidConfig", F["frame_len"])
+    if cfg["frame_len"] > MAX_FRAME_LEN:    # OI-51, TM-001
         raise Fail("InvalidConfig", F["frame_len"])
     pc = {"frame_len": cfg["frame_len"], "fecf": fecf}
     if "scid" not in cfg:
@@ -888,6 +895,26 @@ def invalid():
              channel(20, True, 1, [vc(0, ocf=True)], mc_fsh=8)),
         case("tm-inv-cfg-009", ["API-040"], "VCID 3 configured twice", "config",
              channel(20, False, 1, [vc(3), vc(3, "vca_sdu")])),
+        # Added 2026-10-25 by a blind Claude Sonnet 5.5 agent (m2/hazard-controls, OI-51).
+        case("tm-inv-cfg-010", ["TM-001", "API-040"],
+             "OI-51: a physical channel of 4095 octets with FECF, the longest allowed: accepted",
+             "config", pc_only(4095, True)),
+        case("tm-inv-cfg-011", ["TM-001", "API-040"],
+             "OI-51: a physical channel of 4096 octets with FECF: InvalidConfig (frame_len)",
+             "config", pc_only(4096, True)),
+        case("tm-inv-cfg-012", ["TM-001", "API-040"],
+             "OI-51: 4096 octets without FECF: InvalidConfig (frame_len), whether or not the "
+             "FECF is configured", "config", pc_only(4096, False)),
+        case("tm-inv-cfg-013", ["TM-001", "API-040"],
+             "OI-51: a master channel of 4095 octets with a VC: accepted", "config",
+             channel(4095, True, 1, [vc(0)])),
+        case("tm-inv-cfg-014", ["TM-001", "API-040"],
+             "OI-51: a master channel of 4096 octets with a VC: InvalidConfig (frame_len)",
+             "config", channel(4096, True, 1, [vc(0)])),
+        case("tm-inv-cfg-015", ["TM-001", "API-040"],
+             "OI-51: the Physical Channel is checked before the Master Channel, so 4096 octets "
+             "with SCID 1024 names frame_len, not spacecraft_id", "config",
+             channel(4096, False, 1024, [])),
     ]
     return cases
 
@@ -927,10 +954,19 @@ FILES = {
 }
 
 
+NOTE_INVALID = (
+    " The cases tm-inv-cfg-010 to tm-inv-cfg-015 (OI-51, the 4095-octet maximum of TM-001) "
+    "were added on 2026-10-25 (m2/hazard-controls) by a blind Claude Sonnet 5.5 agent, briefed "
+    "to read only the Blue Book, docs/, and the vectors, never the implementation, and to "
+    "extend this model."
+)
+
+
 def generate(name):
     make, standard = FILES[name]
+    note = NOTE + (NOTE_INVALID if name == "invalid" else "")
     return {"kind": "codec", "standard": standard, "provenance": "hand-derived",
-            "provenance_note": NOTE + " This file covers " + standard + ".", "cases": make()}
+            "provenance_note": note + " This file covers " + standard + ".", "cases": make()}
 
 
 def check_field_codes(path):

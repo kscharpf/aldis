@@ -142,6 +142,21 @@ USLP (`test-vectors/models/uslp_frame.py`; the model now resolves VCID 63 of a k
 13. Five octets with TFVN 0000 or an unknown SCID: `uslp-inv-045`, `uslp-inv-046` (decode: `Incomplete`), `uslp-val-038` to `uslp-val-040` (validate: reason 13 before reasons 1 and 2).
 14. Protocol control frame on a fixed-length VC: `uslp-pc-014` (encode, `InvalidField` `tfdz_construction_rule`), `uslp-pc-015` (decode strict), `uslp-pc-016` (lenient), `uslp-pc-017` (validate, reason 15). The Blue Book puts Control Commands in rule 111, which is variable-length (§4.1.4.2.2.2.8 d), and USLP-016 rejects rule 111 on a fixed-length VC. A frame with flags 11 and a fixed-length rule (000 to 010) is not rejected by any requirement and is not covered.
 
+## Cases after the hazard analysis
+
+Written on 2026-10-25 (`m2/hazard-controls`) by a blind Claude Sonnet 5.5 agent (TV-023: the Blue Books, `docs/`, and the vectors, never the implementation), by extending the USLP, TM, and AOS models and generating the files with their `--write`. Each item with the cases that cover it:
+
+USLP (`test-vectors/models/uslp_frame.py`), OI-48 (a VC with a truncated frame length carries only truncated frames; validation reason 18 `NonTruncatedFrameNotAllowed`, delimiter item `non_truncated_not_allowed`):
+- Superseded: `uslp-tsdls-003` and `uslp-tsdls-004` (a non-truncated frame on VC 6, truncated length 32), with their released expectations kept. Replaced by `uslp-tsdls-017`/`-018` (the same frame on VC 12, which has the layout 8/8 and no truncated length: encode, decode) and the refusals on VC 6: `uslp-tsdls-019` (encode), `-020` (decode, strict), `-021` (decode, lenient).
+- Encode, decode, `peek_length`: `uslp-trunc-039` to `-055` (writer refusal on VC 5 and VC 8, its place in the writer order against the MAP check and the rule check; decoder refusal in both modes, before the length check, after reasons 3, 4, and 6, before reason 8; `peek_length` with 4 and 6 octets, and the control on VC 1).
+- Validate: `uslp-val-041` to `-053` (reason 18 in both modes; reason 6 before it; it before reasons 8, 9, 11, 13, 14, and 15; reason 4 before it in strict mode; the control on VC 1).
+- Delimit: `uslp-delim-017` to `-022` (`non_truncated_not_allowed` with the rest; the Frame Length of the header not trusted, so not `incomplete`; fewer than 7 octets, and a Frame Length below the minimum, are `fill`; a non-truncated header on an unconfigured VC is a `frame`).
+- P-USLP-07 (`hz:HZ-USLP-05`): `uslp-delim-023` (a frame and six octets of non-`0x55` fill that read as the truncated header of VC 8, truncated length 6: a second `frame`), `uslp-delim-026` (`validate` accepts those six octets), `uslp-delim-024` (the same octets where no VC has length 6, the other half of `asm:ASM-12`: `no_truncated_length`), `uslp-delim-025` (OI-48 interaction: six fill octets that read as a non-truncated header on VC 8 are `fill`, since a non-truncated header needs 7).
+
+TM (`test-vectors/models/tm_frame.py`), OI-51 (frame length at most 4 095 octets, TM-001): `tm-inv-cfg-010` to `-015` (4 095 accepted and 4 096 refused, with and without FECF, on a plain physical channel and a master channel; the Physical Channel is checked before the Master Channel). `tm-fhp-enc-005` and `tm-fhp-enc-err-002` (2 100 octets) are unchanged and still pass the model.
+
+AOS (`test-vectors/models/aos_frame.py`), P-AOS-04 (`hz:HZ-AOS-09`): `aos-i4-dec-009` and `aos-i4-dec-010` (the octets of an Issue 4 frame with a 2 052-octet Packet Zone and the pointer `0x7FF`, then `0x7FE`, read with the `issue5` edition in the configuration: `StartsAt(2047)` and `StartsAt(2046)`, no anomaly). The vector format expresses the receiver's edition in `config`, so no case was skipped.
+
 ## Not verified
 
 - The independent models were not read by the reviewers, by design; their independence rests on the notes above.
