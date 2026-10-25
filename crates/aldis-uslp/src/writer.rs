@@ -1213,6 +1213,10 @@ mod tests {
             )
         );
         assert_eq!(
+            e(ch(9, 0), ns, &[1], &mut out),
+            (ErrorKind::UnknownChannel, Some(field::VC_ID))
+        );
+        assert_eq!(
             e(ch(4, 1), ns, &[1], &mut out),
             (ErrorKind::UnknownChannel, Some(field::MAP_ID))
         );
