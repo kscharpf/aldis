@@ -576,7 +576,8 @@ pub(crate) fn view(f: &TmFrame<'_>) -> aldis_tm_frame_t {
 ///
 /// # Errors
 /// `ALDIS_ERR_INVALID_CONFIG` (`frame_len`) for a frame too short for the Primary Header, one
-/// data octet, and the FECF, with that minimum; CABI-022 violations.
+/// data octet, and the FECF, with that minimum, or longer than 4 095 octets, with that maximum
+/// (TM-001, OI-51); CABI-022 violations.
 ///
 /// # Safety
 /// `pc` is valid for a read; `err` is `NULL` or valid for one write.

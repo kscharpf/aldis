@@ -12,8 +12,8 @@ use core::ptr::{null, null_mut};
 
 use aldis_ffi::error::*;
 use aldis_ffi::field::{
-    ALDIS_FIELD_FIRST_HEADER_POINTER, ALDIS_FIELD_SPACECRAFT_ID, ALDIS_FIELD_SYNC_FLAG,
-    ALDIS_FIELD_VC_ID,
+    ALDIS_FIELD_FIRST_HEADER_POINTER, ALDIS_FIELD_FRAME_LEN, ALDIS_FIELD_SPACECRAFT_ID,
+    ALDIS_FIELD_SYNC_FLAG, ALDIS_FIELD_VC_ID,
 };
 use aldis_ffi::oid::*;
 use aldis_ffi::tm::*;
@@ -524,6 +524,24 @@ fn writer_arguments_are_checked() {
             ),
             ALDIS_ERR_INVALID_FIELD
         );
+    }
+}
+
+/// A frame length above 4 095 octets is refused with the maximum (TM-001, OI-51).
+#[test]
+fn config_check_refuses_a_frame_length_above_4095() {
+    // req: TM-001, CABI-022, VER-064
+    let mut pc = mc().pc;
+    for (len, ok) in [(4095, true), (4096, false)] {
+        pc.frame_len = len;
+        let mut d = detail();
+        let status = unsafe { aldis_tm_config_check(&raw const pc, &raw mut d) };
+        if ok {
+            assert_eq!(status, ALDIS_OK);
+        } else {
+            assert_eq!(status, ALDIS_ERR_INVALID_CONFIG);
+            assert_eq!((d.field, d.expected), (ALDIS_FIELD_FRAME_LEN, 4095));
+        }
     }
 }
 
