@@ -2,7 +2,7 @@
   "kind": "codec",
   "standard": "132.0-B-3 §6.3, Table 6-1",
   "provenance": "hand-derived",
-  "provenance_note": "132.0-B-3 prints no example frame; only the first OID octets of Annex D. Cases hand-derived from 132.0-B-3 §4.1 (figures 4-1 to 4-4, the Data Field Status of §4.1.2.7, the Secondary Header of §4.1.3, OID frames of §4.1.4.6 and Annex D, the FECF of §4.1.6), §5 Tables 5-1 to 5-3, and §6.3, with the readings of docs/standards/tm-frame.md (TM-001...TM-011 and the anomaly list) and the error kinds and field codes of docs/03-api-model.md §9 and §9.1. Inputs assembled bit by bit from the figure widths; expected values computed by an independent Python model of those clauses, written from the Blue Book after the Rust codec but not from its code, and sharing no code with it (the FECF by polynomial division, the OID data by the Annex D recurrence). The model is committed as test-vectors/models/tm_frame.py (TV-023); `python3 -I test-vectors/models/tm_frame.py --check test-vectors/tm/*.json` recomputes every expected value. One frame is worked by hand in docs/verification/derivations/tm-frame.md. Author of the model: an AI agent, Claude Opus 5.5, recorded as co-author of commit 5e1235e (2026-10-23); it wrote the model from 132.0-B-3 and docs/standards/tm-frame.md, and states that it did not write it from the code of the Rust codec (the history shows the codec already existed and records no briefing of the agent beyond that statement; TV-023). The cases tm-oid-005 to tm-oid-009 and tm-sec-dec-006, tm-sec-enc-003, tm-sec-val-003 were added on 2026-10-25 (M2 WP-8) by a second agent, Claude Sonnet 5.5, briefed to read only the Blue Book, docs/, and the vectors, never the implementation, and to extend this model. The cases tm-sec-enc-004 to tm-sec-enc-007 were added on 2026-10-25 by a blind Claude Sonnet 5.5 agent, after the review of #117. This file covers 132.0-B-3 §6.3, Table 6-1.",
+  "provenance_note": "132.0-B-3 prints no example frame; only the first OID octets of Annex D. Cases hand-derived from 132.0-B-3 §4.1 (figures 4-1 to 4-4, the Data Field Status of §4.1.2.7, the Secondary Header of §4.1.3, OID frames of §4.1.4.6 and Annex D, the FECF of §4.1.6), §5 Tables 5-1 to 5-3, and §6.3, with the readings of docs/standards/tm-frame.md (TM-001...TM-011 and the anomaly list) and the error kinds and field codes of docs/03-api-model.md §9 and §9.1. Inputs assembled bit by bit from the figure widths; expected values computed by an independent Python model of those clauses, written from the Blue Book after the Rust codec but not from its code, and sharing no code with it (the FECF by polynomial division, the OID data by the Annex D recurrence). The model is committed as test-vectors/models/tm_frame.py (TV-023); `python3 -I test-vectors/models/tm_frame.py --check test-vectors/tm/*.json` recomputes every expected value. One frame is worked by hand in docs/verification/derivations/tm-frame.md. Author of the model: an AI agent, Claude Opus 5.5, recorded as co-author of commit 5e1235e (2026-10-23); it wrote the model from 132.0-B-3 and docs/standards/tm-frame.md, and states that it did not write it from the code of the Rust codec (the history shows the codec already existed and records no briefing of the agent beyond that statement; TV-023). The cases tm-oid-005 to tm-oid-009 and tm-sec-dec-006, tm-sec-enc-003, tm-sec-val-003 were added on 2026-10-25 (M2 WP-8) by a second agent, Claude Sonnet 5.5, briefed to read only the Blue Book, docs/, and the vectors, never the implementation, and to extend this model. The cases tm-sec-enc-004 to tm-sec-enc-007 were added on 2026-10-25 by a blind Claude Sonnet 5.5 agent, after the review of #117. The cases tm-sec-dec-007 to tm-sec-dec-022 and tm-sec-val-004 to tm-sec-val-008 were added on 2026-10-25 by a blind Claude Sonnet 5.5 agent (OI-54: the decoder's rule for an Only Idle Data frame on a VC that uses SDLS), briefed to read only the Blue Book, docs/, and the vectors, never the implementation. This file covers 132.0-B-3 §6.3, Table 6-1.",
   "cases": [
     {
       "id": "tm-sec-dec-001",
@@ -818,6 +818,1517 @@
       "expect": {
         "ok": true,
         "output_hex": "2A5600001FFE0000000000000000000000000000000000000000000000000000000000000000BEEA"
+      }
+    },
+    {
+      "id": "tm-sec-dec-007",
+      "requirements": [
+        "TM-010",
+        "TM-011",
+        "API-031",
+        "API-032"
+      ],
+      "description": "decode_with, strict: Only Idle Data on VC 0, which has a Security Header (2) and Trailer (1): InvalidField naming vc_id (132.0-B-3 §6.4.6.2, OI-54)",
+      "operation": "decode_with",
+      "config": {
+        "frame_len": 40,
+        "fecf": true,
+        "scid": 677,
+        "mc_fsh": null,
+        "mc_ocf": false,
+        "vcs": [
+          {
+            "vcid": 0,
+            "content": "packets",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 2,
+            "security_trailer_len": 1
+          },
+          {
+            "vcid": 1,
+            "content": "packets",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 3,
+            "security_trailer_len": 0
+          },
+          {
+            "vcid": 2,
+            "content": "packets",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 1
+          },
+          {
+            "vcid": 3,
+            "content": "packets",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "vcid": 4,
+            "content": "vca_sdu",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 2,
+            "security_trailer_len": 1
+          }
+        ]
+      },
+      "input_hex": "2A5000001FFEA5A5303132333435363738393A3B3C3D3E3F404142434445464748494A4B4C5A2383",
+      "expect": {
+        "ok": false,
+        "error": "InvalidField",
+        "field": 2
+      }
+    },
+    {
+      "id": "tm-sec-dec-008",
+      "requirements": [
+        "TM-010",
+        "TM-011",
+        "API-031",
+        "API-032"
+      ],
+      "description": "decode_with, strict: Only Idle Data on VC 1, which has a Security Header (3) and no Trailer: InvalidField naming vc_id (132.0-B-3 §6.4.6.2, OI-54)",
+      "operation": "decode_with",
+      "config": {
+        "frame_len": 40,
+        "fecf": true,
+        "scid": 677,
+        "mc_fsh": null,
+        "mc_ocf": false,
+        "vcs": [
+          {
+            "vcid": 0,
+            "content": "packets",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 2,
+            "security_trailer_len": 1
+          },
+          {
+            "vcid": 1,
+            "content": "packets",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 3,
+            "security_trailer_len": 0
+          },
+          {
+            "vcid": 2,
+            "content": "packets",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 1
+          },
+          {
+            "vcid": 3,
+            "content": "packets",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "vcid": 4,
+            "content": "vca_sdu",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 2,
+            "security_trailer_len": 1
+          }
+        ]
+      },
+      "input_hex": "2A5200001FFEA5A5A5303132333435363738393A3B3C3D3E3F404142434445464748494A4B4C4C1D",
+      "expect": {
+        "ok": false,
+        "error": "InvalidField",
+        "field": 2
+      }
+    },
+    {
+      "id": "tm-sec-dec-009",
+      "requirements": [
+        "TM-010",
+        "TM-011",
+        "API-031",
+        "API-032"
+      ],
+      "description": "decode_with, strict: Only Idle Data on VC 2, which has a Security Trailer (1) and no Header: InvalidField naming vc_id (132.0-B-3 §6.4.6.2, OI-54)",
+      "operation": "decode_with",
+      "config": {
+        "frame_len": 40,
+        "fecf": true,
+        "scid": 677,
+        "mc_fsh": null,
+        "mc_ocf": false,
+        "vcs": [
+          {
+            "vcid": 0,
+            "content": "packets",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 2,
+            "security_trailer_len": 1
+          },
+          {
+            "vcid": 1,
+            "content": "packets",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 3,
+            "security_trailer_len": 0
+          },
+          {
+            "vcid": 2,
+            "content": "packets",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 1
+          },
+          {
+            "vcid": 3,
+            "content": "packets",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "vcid": 4,
+            "content": "vca_sdu",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 2,
+            "security_trailer_len": 1
+          }
+        ]
+      },
+      "input_hex": "2A5400001FFE303132333435363738393A3B3C3D3E3F404142434445464748494A4B4C4D4E5A25E1",
+      "expect": {
+        "ok": false,
+        "error": "InvalidField",
+        "field": 2
+      }
+    },
+    {
+      "id": "tm-sec-dec-010",
+      "requirements": [
+        "TM-010",
+        "TM-011",
+        "API-031",
+        "API-032"
+      ],
+      "description": "decode_with, lenient: the frame of tm-sec-dec-007 is accepted with the anomaly OnlyIdleDataOnSdlsVc (132.0-B-3 §6.4.6.2, OI-54)",
+      "operation": "decode_with",
+      "mode": "lenient",
+      "config": {
+        "frame_len": 40,
+        "fecf": true,
+        "scid": 677,
+        "mc_fsh": null,
+        "mc_ocf": false,
+        "vcs": [
+          {
+            "vcid": 0,
+            "content": "packets",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 2,
+            "security_trailer_len": 1
+          },
+          {
+            "vcid": 1,
+            "content": "packets",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 3,
+            "security_trailer_len": 0
+          },
+          {
+            "vcid": 2,
+            "content": "packets",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 1
+          },
+          {
+            "vcid": 3,
+            "content": "packets",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "vcid": 4,
+            "content": "vca_sdu",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 2,
+            "security_trailer_len": 1
+          }
+        ]
+      },
+      "input_hex": "2A5000001FFEA5A5303132333435363738393A3B3C3D3E3F404142434445464748494A4B4C5A2383",
+      "expect": {
+        "ok": true,
+        "scid": 677,
+        "vcid": 0,
+        "ocf_flag": false,
+        "mc_frame_count": 0,
+        "vc_frame_count": 0,
+        "fsh_flag": false,
+        "sync_flag": false,
+        "packet_order_flag": false,
+        "segment_length_id": 3,
+        "first_header_pointer": 2046,
+        "pointer": "only_idle_data",
+        "packet_offset": null,
+        "fsh_len": null,
+        "fsh_data_hex": null,
+        "security_header_hex": "A5A5",
+        "data_hex": "303132333435363738393A3B3C3D3E3F404142434445464748494A4B4C",
+        "security_trailer_hex": "5A",
+        "ocf_hex": null,
+        "ocf_report": null,
+        "fecf": 9091,
+        "consumed": 40,
+        "anomalies": [
+          "OnlyIdleDataOnSdlsVc"
+        ]
+      }
+    },
+    {
+      "id": "tm-sec-dec-011",
+      "requirements": [
+        "TM-010",
+        "TM-011",
+        "API-031",
+        "API-032"
+      ],
+      "description": "decode_with, lenient: Security Header only (VC 1): accepted with OnlyIdleDataOnSdlsVc",
+      "operation": "decode_with",
+      "mode": "lenient",
+      "config": {
+        "frame_len": 40,
+        "fecf": true,
+        "scid": 677,
+        "mc_fsh": null,
+        "mc_ocf": false,
+        "vcs": [
+          {
+            "vcid": 0,
+            "content": "packets",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 2,
+            "security_trailer_len": 1
+          },
+          {
+            "vcid": 1,
+            "content": "packets",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 3,
+            "security_trailer_len": 0
+          },
+          {
+            "vcid": 2,
+            "content": "packets",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 1
+          },
+          {
+            "vcid": 3,
+            "content": "packets",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "vcid": 4,
+            "content": "vca_sdu",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 2,
+            "security_trailer_len": 1
+          }
+        ]
+      },
+      "input_hex": "2A5200001FFEA5A5A5303132333435363738393A3B3C3D3E3F404142434445464748494A4B4C4C1D",
+      "expect": {
+        "ok": true,
+        "scid": 677,
+        "vcid": 1,
+        "ocf_flag": false,
+        "mc_frame_count": 0,
+        "vc_frame_count": 0,
+        "fsh_flag": false,
+        "sync_flag": false,
+        "packet_order_flag": false,
+        "segment_length_id": 3,
+        "first_header_pointer": 2046,
+        "pointer": "only_idle_data",
+        "packet_offset": null,
+        "fsh_len": null,
+        "fsh_data_hex": null,
+        "security_header_hex": "A5A5A5",
+        "data_hex": "303132333435363738393A3B3C3D3E3F404142434445464748494A4B4C",
+        "security_trailer_hex": "",
+        "ocf_hex": null,
+        "ocf_report": null,
+        "fecf": 19485,
+        "consumed": 40,
+        "anomalies": [
+          "OnlyIdleDataOnSdlsVc"
+        ]
+      }
+    },
+    {
+      "id": "tm-sec-dec-012",
+      "requirements": [
+        "TM-010",
+        "TM-011",
+        "API-031",
+        "API-032"
+      ],
+      "description": "decode_with, lenient: Security Trailer only (VC 2): accepted with OnlyIdleDataOnSdlsVc",
+      "operation": "decode_with",
+      "mode": "lenient",
+      "config": {
+        "frame_len": 40,
+        "fecf": true,
+        "scid": 677,
+        "mc_fsh": null,
+        "mc_ocf": false,
+        "vcs": [
+          {
+            "vcid": 0,
+            "content": "packets",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 2,
+            "security_trailer_len": 1
+          },
+          {
+            "vcid": 1,
+            "content": "packets",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 3,
+            "security_trailer_len": 0
+          },
+          {
+            "vcid": 2,
+            "content": "packets",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 1
+          },
+          {
+            "vcid": 3,
+            "content": "packets",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "vcid": 4,
+            "content": "vca_sdu",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 2,
+            "security_trailer_len": 1
+          }
+        ]
+      },
+      "input_hex": "2A5400001FFE303132333435363738393A3B3C3D3E3F404142434445464748494A4B4C4D4E5A25E1",
+      "expect": {
+        "ok": true,
+        "scid": 677,
+        "vcid": 2,
+        "ocf_flag": false,
+        "mc_frame_count": 0,
+        "vc_frame_count": 0,
+        "fsh_flag": false,
+        "sync_flag": false,
+        "packet_order_flag": false,
+        "segment_length_id": 3,
+        "first_header_pointer": 2046,
+        "pointer": "only_idle_data",
+        "packet_offset": null,
+        "fsh_len": null,
+        "fsh_data_hex": null,
+        "security_header_hex": "",
+        "data_hex": "303132333435363738393A3B3C3D3E3F404142434445464748494A4B4C4D4E",
+        "security_trailer_hex": "5A",
+        "ocf_hex": null,
+        "ocf_report": null,
+        "fecf": 9697,
+        "consumed": 40,
+        "anomalies": [
+          "OnlyIdleDataOnSdlsVc"
+        ]
+      }
+    },
+    {
+      "id": "tm-sec-dec-013",
+      "requirements": [
+        "TM-010",
+        "TM-011",
+        "API-031",
+        "API-032"
+      ],
+      "description": "decode_with, lenient: Packet Order Flag 1 and Segment Length ID 01 as well: the three anomalies together, PacketOrderFlagSet, SegmentLengthIdNot11, OnlyIdleDataOnSdlsVc",
+      "operation": "decode_with",
+      "mode": "lenient",
+      "config": {
+        "frame_len": 40,
+        "fecf": true,
+        "scid": 677,
+        "mc_fsh": null,
+        "mc_ocf": false,
+        "vcs": [
+          {
+            "vcid": 0,
+            "content": "packets",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 2,
+            "security_trailer_len": 1
+          },
+          {
+            "vcid": 1,
+            "content": "packets",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 3,
+            "security_trailer_len": 0
+          },
+          {
+            "vcid": 2,
+            "content": "packets",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 1
+          },
+          {
+            "vcid": 3,
+            "content": "packets",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "vcid": 4,
+            "content": "vca_sdu",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 2,
+            "security_trailer_len": 1
+          }
+        ]
+      },
+      "input_hex": "2A5000002FFEA5A5303132333435363738393A3B3C3D3E3F404142434445464748494A4B4C5AD608",
+      "expect": {
+        "ok": true,
+        "scid": 677,
+        "vcid": 0,
+        "ocf_flag": false,
+        "mc_frame_count": 0,
+        "vc_frame_count": 0,
+        "fsh_flag": false,
+        "sync_flag": false,
+        "packet_order_flag": true,
+        "segment_length_id": 1,
+        "first_header_pointer": 2046,
+        "pointer": "only_idle_data",
+        "packet_offset": null,
+        "fsh_len": null,
+        "fsh_data_hex": null,
+        "security_header_hex": "A5A5",
+        "data_hex": "303132333435363738393A3B3C3D3E3F404142434445464748494A4B4C",
+        "security_trailer_hex": "5A",
+        "ocf_hex": null,
+        "ocf_report": null,
+        "fecf": 54792,
+        "consumed": 40,
+        "anomalies": [
+          "PacketOrderFlagSet",
+          "SegmentLengthIdNot11",
+          "OnlyIdleDataOnSdlsVc"
+        ]
+      }
+    },
+    {
+      "id": "tm-sec-dec-014",
+      "requirements": [
+        "TM-010",
+        "TM-011",
+        "API-031",
+        "API-032"
+      ],
+      "description": "decode (no channel table), strict: the frame of tm-sec-dec-007 is accepted and reports no anomaly; the plain decoder reads every VC as one without SDLS",
+      "operation": "decode",
+      "config": {
+        "frame_len": 40,
+        "fecf": true
+      },
+      "input_hex": "2A5000001FFEA5A5303132333435363738393A3B3C3D3E3F404142434445464748494A4B4C5A2383",
+      "expect": {
+        "ok": true,
+        "scid": 677,
+        "vcid": 0,
+        "ocf_flag": false,
+        "mc_frame_count": 0,
+        "vc_frame_count": 0,
+        "fsh_flag": false,
+        "sync_flag": false,
+        "packet_order_flag": false,
+        "segment_length_id": 3,
+        "first_header_pointer": 2046,
+        "pointer": "only_idle_data",
+        "packet_offset": null,
+        "fsh_len": null,
+        "fsh_data_hex": null,
+        "security_header_hex": "",
+        "data_hex": "A5A5303132333435363738393A3B3C3D3E3F404142434445464748494A4B4C5A",
+        "security_trailer_hex": "",
+        "ocf_hex": null,
+        "ocf_report": null,
+        "fecf": 9091,
+        "consumed": 40,
+        "anomalies": []
+      }
+    },
+    {
+      "id": "tm-sec-dec-015",
+      "requirements": [
+        "TM-010",
+        "TM-011",
+        "API-031",
+        "API-032"
+      ],
+      "description": "decode (no channel table), lenient: the frame of tm-sec-dec-007 is accepted with no anomaly",
+      "operation": "decode",
+      "mode": "lenient",
+      "config": {
+        "frame_len": 40,
+        "fecf": true
+      },
+      "input_hex": "2A5000001FFEA5A5303132333435363738393A3B3C3D3E3F404142434445464748494A4B4C5A2383",
+      "expect": {
+        "ok": true,
+        "scid": 677,
+        "vcid": 0,
+        "ocf_flag": false,
+        "mc_frame_count": 0,
+        "vc_frame_count": 0,
+        "fsh_flag": false,
+        "sync_flag": false,
+        "packet_order_flag": false,
+        "segment_length_id": 3,
+        "first_header_pointer": 2046,
+        "pointer": "only_idle_data",
+        "packet_offset": null,
+        "fsh_len": null,
+        "fsh_data_hex": null,
+        "security_header_hex": "",
+        "data_hex": "A5A5303132333435363738393A3B3C3D3E3F404142434445464748494A4B4C5A",
+        "security_trailer_hex": "",
+        "ocf_hex": null,
+        "ocf_report": null,
+        "fecf": 9091,
+        "consumed": 40,
+        "anomalies": []
+      }
+    },
+    {
+      "id": "tm-sec-dec-016",
+      "requirements": [
+        "TM-010",
+        "TM-011",
+        "API-031",
+        "API-032"
+      ],
+      "description": "decode_with, strict: Packet Order Flag 1 and Only Idle Data on VC 0: the earlier fault, ReservedValue naming packet_order_flag, is reported (TM-010: the SDLS rule is the last check)",
+      "operation": "decode_with",
+      "config": {
+        "frame_len": 40,
+        "fecf": true,
+        "scid": 677,
+        "mc_fsh": null,
+        "mc_ocf": false,
+        "vcs": [
+          {
+            "vcid": 0,
+            "content": "packets",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 2,
+            "security_trailer_len": 1
+          },
+          {
+            "vcid": 1,
+            "content": "packets",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 3,
+            "security_trailer_len": 0
+          },
+          {
+            "vcid": 2,
+            "content": "packets",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 1
+          },
+          {
+            "vcid": 3,
+            "content": "packets",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "vcid": 4,
+            "content": "vca_sdu",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 2,
+            "security_trailer_len": 1
+          }
+        ]
+      },
+      "input_hex": "2A5000003FFEA5A5303132333435363738393A3B3C3D3E3F404142434445464748494A4B4C5A8571",
+      "expect": {
+        "ok": false,
+        "error": "ReservedValue",
+        "field": 72
+      }
+    },
+    {
+      "id": "tm-sec-dec-017",
+      "requirements": [
+        "TM-010",
+        "TM-011",
+        "API-031",
+        "API-032"
+      ],
+      "description": "decode_with, strict: Segment Length ID 01 and Only Idle Data on VC 0: the earlier fault, InvalidField naming segment_length_id, is reported",
+      "operation": "decode_with",
+      "config": {
+        "frame_len": 40,
+        "fecf": true,
+        "scid": 677,
+        "mc_fsh": null,
+        "mc_ocf": false,
+        "vcs": [
+          {
+            "vcid": 0,
+            "content": "packets",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 2,
+            "security_trailer_len": 1
+          },
+          {
+            "vcid": 1,
+            "content": "packets",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 3,
+            "security_trailer_len": 0
+          },
+          {
+            "vcid": 2,
+            "content": "packets",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 1
+          },
+          {
+            "vcid": 3,
+            "content": "packets",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "vcid": 4,
+            "content": "vca_sdu",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 2,
+            "security_trailer_len": 1
+          }
+        ]
+      },
+      "input_hex": "2A5000000FFEA5A5303132333435363738393A3B3C3D3E3F404142434445464748494A4B4C5A70FA",
+      "expect": {
+        "ok": false,
+        "error": "InvalidField",
+        "field": 73
+      }
+    },
+    {
+      "id": "tm-sec-dec-018",
+      "requirements": [
+        "TM-010",
+        "TM-011",
+        "API-031",
+        "API-032"
+      ],
+      "description": "decode_with, strict: FECF wrong and Only Idle Data on VC 0: CrcMismatch",
+      "operation": "decode_with",
+      "config": {
+        "frame_len": 40,
+        "fecf": true,
+        "scid": 677,
+        "mc_fsh": null,
+        "mc_ocf": false,
+        "vcs": [
+          {
+            "vcid": 0,
+            "content": "packets",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 2,
+            "security_trailer_len": 1
+          },
+          {
+            "vcid": 1,
+            "content": "packets",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 3,
+            "security_trailer_len": 0
+          },
+          {
+            "vcid": 2,
+            "content": "packets",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 1
+          },
+          {
+            "vcid": 3,
+            "content": "packets",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "vcid": 4,
+            "content": "vca_sdu",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 2,
+            "security_trailer_len": 1
+          }
+        ]
+      },
+      "input_hex": "2A5000001FFEA5A5303132333435363738393A3B3C3D3E3F404142434445464748494A4B4C5A237C",
+      "expect": {
+        "ok": false,
+        "error": "CrcMismatch"
+      }
+    },
+    {
+      "id": "tm-sec-dec-019",
+      "requirements": [
+        "TM-010",
+        "TM-011",
+        "API-031",
+        "API-032"
+      ],
+      "description": "decode_with, strict: Sync Flag 1 and FHP 0x7FE on VC 0: the FHP is undefined with Sync Flag 1 (TM-008), nothing is checked, accepted",
+      "operation": "decode_with",
+      "config": {
+        "frame_len": 40,
+        "fecf": true,
+        "scid": 677,
+        "mc_fsh": null,
+        "mc_ocf": false,
+        "vcs": [
+          {
+            "vcid": 0,
+            "content": "packets",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 2,
+            "security_trailer_len": 1
+          },
+          {
+            "vcid": 1,
+            "content": "packets",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 3,
+            "security_trailer_len": 0
+          },
+          {
+            "vcid": 2,
+            "content": "packets",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 1
+          },
+          {
+            "vcid": 3,
+            "content": "packets",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "vcid": 4,
+            "content": "vca_sdu",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 2,
+            "security_trailer_len": 1
+          }
+        ]
+      },
+      "input_hex": "2A5000005FFEA5A5303132333435363738393A3B3C3D3E3F404142434445464748494A4B4C5A7E46",
+      "expect": {
+        "ok": true,
+        "scid": 677,
+        "vcid": 0,
+        "ocf_flag": false,
+        "mc_frame_count": 0,
+        "vc_frame_count": 0,
+        "fsh_flag": false,
+        "sync_flag": true,
+        "packet_order_flag": false,
+        "segment_length_id": 3,
+        "first_header_pointer": 2046,
+        "pointer": null,
+        "packet_offset": null,
+        "fsh_len": null,
+        "fsh_data_hex": null,
+        "security_header_hex": "A5A5",
+        "data_hex": "303132333435363738393A3B3C3D3E3F404142434445464748494A4B4C",
+        "security_trailer_hex": "5A",
+        "ocf_hex": null,
+        "ocf_report": null,
+        "fecf": 32326,
+        "consumed": 40,
+        "anomalies": []
+      }
+    },
+    {
+      "id": "tm-sec-dec-020",
+      "requirements": [
+        "TM-010",
+        "TM-011",
+        "API-031",
+        "API-032"
+      ],
+      "description": "decode_with, strict: Sync Flag 1 and FHP 0x7FF on VC 0: accepted",
+      "operation": "decode_with",
+      "config": {
+        "frame_len": 40,
+        "fecf": true,
+        "scid": 677,
+        "mc_fsh": null,
+        "mc_ocf": false,
+        "vcs": [
+          {
+            "vcid": 0,
+            "content": "packets",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 2,
+            "security_trailer_len": 1
+          },
+          {
+            "vcid": 1,
+            "content": "packets",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 3,
+            "security_trailer_len": 0
+          },
+          {
+            "vcid": 2,
+            "content": "packets",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 1
+          },
+          {
+            "vcid": 3,
+            "content": "packets",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "vcid": 4,
+            "content": "vca_sdu",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 2,
+            "security_trailer_len": 1
+          }
+        ]
+      },
+      "input_hex": "2A5000005FFFA5A5303132333435363738393A3B3C3D3E3F404142434445464748494A4B4C5AF39A",
+      "expect": {
+        "ok": true,
+        "scid": 677,
+        "vcid": 0,
+        "ocf_flag": false,
+        "mc_frame_count": 0,
+        "vc_frame_count": 0,
+        "fsh_flag": false,
+        "sync_flag": true,
+        "packet_order_flag": false,
+        "segment_length_id": 3,
+        "first_header_pointer": 2047,
+        "pointer": null,
+        "packet_offset": null,
+        "fsh_len": null,
+        "fsh_data_hex": null,
+        "security_header_hex": "A5A5",
+        "data_hex": "303132333435363738393A3B3C3D3E3F404142434445464748494A4B4C",
+        "security_trailer_hex": "5A",
+        "ocf_hex": null,
+        "ocf_report": null,
+        "fecf": 62362,
+        "consumed": 40,
+        "anomalies": []
+      }
+    },
+    {
+      "id": "tm-sec-dec-021",
+      "requirements": [
+        "TM-010",
+        "TM-011",
+        "API-031",
+        "API-032"
+      ],
+      "description": "decode_with, strict: Sync Flag 0 and FHP 0x7FF (no packet start, not Only Idle Data) on VC 0: accepted",
+      "operation": "decode_with",
+      "config": {
+        "frame_len": 40,
+        "fecf": true,
+        "scid": 677,
+        "mc_fsh": null,
+        "mc_ocf": false,
+        "vcs": [
+          {
+            "vcid": 0,
+            "content": "packets",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 2,
+            "security_trailer_len": 1
+          },
+          {
+            "vcid": 1,
+            "content": "packets",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 3,
+            "security_trailer_len": 0
+          },
+          {
+            "vcid": 2,
+            "content": "packets",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 1
+          },
+          {
+            "vcid": 3,
+            "content": "packets",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "vcid": 4,
+            "content": "vca_sdu",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 2,
+            "security_trailer_len": 1
+          }
+        ]
+      },
+      "input_hex": "2A5000001FFFA5A5303132333435363738393A3B3C3D3E3F404142434445464748494A4B4C5AAE5F",
+      "expect": {
+        "ok": true,
+        "scid": 677,
+        "vcid": 0,
+        "ocf_flag": false,
+        "mc_frame_count": 0,
+        "vc_frame_count": 0,
+        "fsh_flag": false,
+        "sync_flag": false,
+        "packet_order_flag": false,
+        "segment_length_id": 3,
+        "first_header_pointer": 2047,
+        "pointer": "no_packet_start",
+        "packet_offset": null,
+        "fsh_len": null,
+        "fsh_data_hex": null,
+        "security_header_hex": "A5A5",
+        "data_hex": "303132333435363738393A3B3C3D3E3F404142434445464748494A4B4C",
+        "security_trailer_hex": "5A",
+        "ocf_hex": null,
+        "ocf_report": null,
+        "fecf": 44639,
+        "consumed": 40,
+        "anomalies": []
+      }
+    },
+    {
+      "id": "tm-sec-dec-022",
+      "requirements": [
+        "TM-010",
+        "TM-011",
+        "API-031",
+        "API-032"
+      ],
+      "description": "decode_with, strict: Only Idle Data on VC 3, which does not use SDLS: accepted",
+      "operation": "decode_with",
+      "config": {
+        "frame_len": 40,
+        "fecf": true,
+        "scid": 677,
+        "mc_fsh": null,
+        "mc_ocf": false,
+        "vcs": [
+          {
+            "vcid": 0,
+            "content": "packets",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 2,
+            "security_trailer_len": 1
+          },
+          {
+            "vcid": 1,
+            "content": "packets",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 3,
+            "security_trailer_len": 0
+          },
+          {
+            "vcid": 2,
+            "content": "packets",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 1
+          },
+          {
+            "vcid": 3,
+            "content": "packets",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "vcid": 4,
+            "content": "vca_sdu",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 2,
+            "security_trailer_len": 1
+          }
+        ]
+      },
+      "input_hex": "2A5600001FFE303132333435363738393A3B3C3D3E3F404142434445464748494A4B4C4D4E4F9FC2",
+      "expect": {
+        "ok": true,
+        "scid": 677,
+        "vcid": 3,
+        "ocf_flag": false,
+        "mc_frame_count": 0,
+        "vc_frame_count": 0,
+        "fsh_flag": false,
+        "sync_flag": false,
+        "packet_order_flag": false,
+        "segment_length_id": 3,
+        "first_header_pointer": 2046,
+        "pointer": "only_idle_data",
+        "packet_offset": null,
+        "fsh_len": null,
+        "fsh_data_hex": null,
+        "security_header_hex": "",
+        "data_hex": "303132333435363738393A3B3C3D3E3F404142434445464748494A4B4C4D4E4F",
+        "security_trailer_hex": "",
+        "ocf_hex": null,
+        "ocf_report": null,
+        "fecf": 40898,
+        "consumed": 40,
+        "anomalies": []
+      }
+    },
+    {
+      "id": "tm-sec-val-004",
+      "requirements": [
+        "TM-010",
+        "TM-011",
+        "API-031",
+        "API-032"
+      ],
+      "description": "validate, strict: Only Idle Data on VC 0, which uses SDLS: InvalidField naming vc_id (132.0-B-3 §6.4.6.2, OI-54)",
+      "operation": "validate",
+      "config": {
+        "frame_len": 40,
+        "fecf": true,
+        "scid": 677,
+        "mc_fsh": null,
+        "mc_ocf": false,
+        "vcs": [
+          {
+            "vcid": 0,
+            "content": "packets",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 2,
+            "security_trailer_len": 1
+          },
+          {
+            "vcid": 1,
+            "content": "packets",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 3,
+            "security_trailer_len": 0
+          },
+          {
+            "vcid": 2,
+            "content": "packets",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 1
+          },
+          {
+            "vcid": 3,
+            "content": "packets",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "vcid": 4,
+            "content": "vca_sdu",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 2,
+            "security_trailer_len": 1
+          }
+        ]
+      },
+      "input_hex": "2A5000001FFEA5A5303132333435363738393A3B3C3D3E3F404142434445464748494A4B4C5A2383",
+      "expect": {
+        "ok": false,
+        "error": "InvalidField",
+        "field": 2
+      }
+    },
+    {
+      "id": "tm-sec-val-005",
+      "requirements": [
+        "TM-010",
+        "TM-011",
+        "API-031",
+        "API-032"
+      ],
+      "description": "validate, lenient: the same frame, decoded with the anomaly, is rejected by validate: InvalidField naming vc_id",
+      "operation": "validate",
+      "mode": "lenient",
+      "config": {
+        "frame_len": 40,
+        "fecf": true,
+        "scid": 677,
+        "mc_fsh": null,
+        "mc_ocf": false,
+        "vcs": [
+          {
+            "vcid": 0,
+            "content": "packets",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 2,
+            "security_trailer_len": 1
+          },
+          {
+            "vcid": 1,
+            "content": "packets",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 3,
+            "security_trailer_len": 0
+          },
+          {
+            "vcid": 2,
+            "content": "packets",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 1
+          },
+          {
+            "vcid": 3,
+            "content": "packets",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "vcid": 4,
+            "content": "vca_sdu",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 2,
+            "security_trailer_len": 1
+          }
+        ]
+      },
+      "input_hex": "2A5000001FFEA5A5303132333435363738393A3B3C3D3E3F404142434445464748494A4B4C5A2383",
+      "expect": {
+        "ok": false,
+        "error": "InvalidField",
+        "field": 2
+      }
+    },
+    {
+      "id": "tm-sec-val-006",
+      "requirements": [
+        "TM-010",
+        "TM-011",
+        "API-031",
+        "API-032"
+      ],
+      "description": "validate, lenient: Security Trailer only (VC 2): InvalidField naming vc_id",
+      "operation": "validate",
+      "mode": "lenient",
+      "config": {
+        "frame_len": 40,
+        "fecf": true,
+        "scid": 677,
+        "mc_fsh": null,
+        "mc_ocf": false,
+        "vcs": [
+          {
+            "vcid": 0,
+            "content": "packets",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 2,
+            "security_trailer_len": 1
+          },
+          {
+            "vcid": 1,
+            "content": "packets",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 3,
+            "security_trailer_len": 0
+          },
+          {
+            "vcid": 2,
+            "content": "packets",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 1
+          },
+          {
+            "vcid": 3,
+            "content": "packets",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "vcid": 4,
+            "content": "vca_sdu",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 2,
+            "security_trailer_len": 1
+          }
+        ]
+      },
+      "input_hex": "2A5400001FFE303132333435363738393A3B3C3D3E3F404142434445464748494A4B4C4D4E5A25E1",
+      "expect": {
+        "ok": false,
+        "error": "InvalidField",
+        "field": 2
+      }
+    },
+    {
+      "id": "tm-sec-val-007",
+      "requirements": [
+        "TM-010",
+        "TM-011",
+        "API-031",
+        "API-032"
+      ],
+      "description": "validate, strict: Only Idle Data on VC 3, which does not use SDLS, matches its channel",
+      "operation": "validate",
+      "config": {
+        "frame_len": 40,
+        "fecf": true,
+        "scid": 677,
+        "mc_fsh": null,
+        "mc_ocf": false,
+        "vcs": [
+          {
+            "vcid": 0,
+            "content": "packets",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 2,
+            "security_trailer_len": 1
+          },
+          {
+            "vcid": 1,
+            "content": "packets",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 3,
+            "security_trailer_len": 0
+          },
+          {
+            "vcid": 2,
+            "content": "packets",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 1
+          },
+          {
+            "vcid": 3,
+            "content": "packets",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "vcid": 4,
+            "content": "vca_sdu",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 2,
+            "security_trailer_len": 1
+          }
+        ]
+      },
+      "input_hex": "2A5600001FFE303132333435363738393A3B3C3D3E3F404142434445464748494A4B4C4D4E4F9FC2",
+      "expect": {
+        "ok": true
+      }
+    },
+    {
+      "id": "tm-sec-val-008",
+      "requirements": [
+        "TM-010",
+        "TM-011",
+        "API-031",
+        "API-032"
+      ],
+      "description": "validate, lenient: Only Idle Data (Sync Flag 0) on VC 4, a VCA_SDU VC that uses SDLS: the Sync Flag mismatch is reported, the SDLS rule is the last check of validate (TM-011)",
+      "operation": "validate",
+      "mode": "lenient",
+      "config": {
+        "frame_len": 40,
+        "fecf": true,
+        "scid": 677,
+        "mc_fsh": null,
+        "mc_ocf": false,
+        "vcs": [
+          {
+            "vcid": 0,
+            "content": "packets",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 2,
+            "security_trailer_len": 1
+          },
+          {
+            "vcid": 1,
+            "content": "packets",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 3,
+            "security_trailer_len": 0
+          },
+          {
+            "vcid": 2,
+            "content": "packets",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 1
+          },
+          {
+            "vcid": 3,
+            "content": "packets",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "vcid": 4,
+            "content": "vca_sdu",
+            "fsh": null,
+            "ocf": false,
+            "security_header_len": 2,
+            "security_trailer_len": 1
+          }
+        ]
+      },
+      "input_hex": "2A5800001FFEA5A5303132333435363738393A3B3C3D3E3F404142434445464748494A4B4C5AF13C",
+      "expect": {
+        "ok": false,
+        "error": "InvalidField",
+        "field": 71
       }
     },
     {

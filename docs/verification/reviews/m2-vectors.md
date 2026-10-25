@@ -155,6 +155,14 @@ USLP (`test-vectors/models/uslp_frame.py`), OI-48 (a VC with a truncated frame l
 
 TM (`test-vectors/models/tm_frame.py`), OI-51 (frame length at most 4 095 octets, TM-001): `tm-inv-cfg-010` to `-015` (4 095 accepted and 4 096 refused, with and without FECF, on a plain physical channel and a master channel; the Physical Channel is checked before the Master Channel). `tm-fhp-enc-005` and `tm-fhp-enc-err-002` (2 100 octets) are unchanged and still pass the model.
 
+TM (`test-vectors/models/tm_frame.py`), OI-54 (an Only Idle Data frame on a VC that uses SDLS; TM-010, TM-011; 132.0-B-3 §6.4.6.2), added 2026-10-25 by a blind Claude Sonnet 5.5 agent in `test-vectors/tm/security_layout.json`: no existing vector changed its expectation, so none is superseded. No case for `decode_unchecked`: the vector operation of that name takes no channel table, so the rule cannot apply to it (TM-010 names `decode_unchecked` with the rule).
+- `decode_with`, strict, `InvalidField` `vc_id`: `tm-sec-dec-007` (Security Header and Trailer), `-008` (Header only), `-009` (Trailer only).
+- `decode_with`, lenient, accepted with `OnlyIdleDataOnSdlsVc`: `tm-sec-dec-010`, `-011`, `-012` (the same three VCs); `tm-sec-dec-013` (with `PacketOrderFlagSet` and `SegmentLengthIdNot11`).
+- `decode` without the table, accepted and no anomaly: `tm-sec-dec-014` (strict), `-015` (lenient).
+- Check order: `tm-sec-dec-016` (Packet Order Flag: `ReservedValue`), `-017` (Segment Length ID: `InvalidField` `segment_length_id`), `-018` (wrong FECF: `CrcMismatch`).
+- Not triggered: `tm-sec-dec-019` (Sync Flag 1, FHP `0x7FE`), `-020` (Sync Flag 1, FHP `0x7FF`), `-021` (Sync Flag 0, FHP `0x7FF`), `-022` (Only Idle Data on a VC without SDLS).
+- `validate`: `tm-sec-val-004` (strict) and `-005` (lenient) `InvalidField` `vc_id`; `-006` (lenient, Trailer only); `-007` (no SDLS: accepted); `-008` (lenient, a VCA_SDU VC with SDLS: `sync_flag` first, the SDLS rule is validate's last check).
+
 AOS (`test-vectors/models/aos_frame.py`), P-AOS-04 (`hz:HZ-AOS-09`): `aos-i4-dec-009` and `aos-i4-dec-010` (the octets of an Issue 4 frame with a 2 052-octet Packet Zone and the pointer `0x7FF`, then `0x7FE`, read with the `issue5` edition in the configuration: `StartsAt(2047)` and `StartsAt(2046)`, no anomaly). The vector format expresses the receiver's edition in `config`, so no case was skipped.
 
 ## Not verified
