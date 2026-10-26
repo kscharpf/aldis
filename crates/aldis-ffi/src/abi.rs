@@ -123,8 +123,11 @@ pub(crate) unsafe fn read<T: Copy>(ptr: *const T) -> Result<T> {
     reason = "checked access to caller memory (CABI-022, GEN-071)"
 )]
 pub(crate) unsafe fn config<T: Copy>(ptr: *const T) -> Result<T> {
+    if ptr.is_null() || !ptr.is_aligned() {
+        return Err(invalid_argument());
+    }
     let size = ptr.cast::<u32>();
-    if ptr.is_null() || !ptr.is_aligned() || !size.is_aligned() {
+    if !size.is_aligned() {
         return Err(invalid_argument());
     }
     // SAFETY: non-null and aligned for `u32`, checked above; the first four octets of the
@@ -216,8 +219,11 @@ pub(crate) unsafe fn configs<'a, T: Copy>(ptr: *const T, len: usize) -> Result<C
     if len == 0 {
         return Ok(empty);
     }
+    if ptr.is_null() || !ptr.is_aligned() {
+        return Err(invalid_argument());
+    }
     let size = ptr.cast::<u32>();
-    if ptr.is_null() || !ptr.is_aligned() || !size.is_aligned() {
+    if !size.is_aligned() {
         return Err(invalid_argument());
     }
     // SAFETY: non-null and aligned for `u32`, checked above; the first four octets of the
@@ -319,13 +325,13 @@ pub(crate) unsafe fn bytes_mut<'a>(
 /// `detail`, except `struct_size` itself (CABI-021, CABI-033).
 ///
 /// # Safety
-/// `detail` is non-null, aligned, and valid for writes of `struct_size` octets.
+/// `detail` is aligned and valid for writes of `struct_size` octets.
 #[expect(
     unsafe_code,
     reason = "writes caller memory within its struct_size (CABI-021, GEN-071)"
 )]
 unsafe fn write_detail(
-    detail: *mut aldis_error_detail_t,
+    detail: NonNull<aldis_error_detail_t>,
     struct_size: usize,
     value: &aldis_error_detail_t,
 ) {
@@ -335,7 +341,7 @@ unsafe fn write_detail(
             .checked_add(len)
             .is_some_and(|end| end <= struct_size)
     };
-    let d = detail;
+    let d = detail.as_ptr();
     // SAFETY: each member is written only when it lies wholly inside the `struct_size` octets
     // the caller made writable (`fits`); a field projection of the aligned struct is aligned
     // for the field's type, and no member outside `struct_size` is projected.
@@ -382,26 +388,27 @@ pub(crate) unsafe fn call(
     detail: *mut aldis_error_detail_t,
     f: impl FnOnce() -> Result<()>,
 ) -> i32 {
-    let size = if detail.is_null() {
-        None
-    } else {
-        if !detail.is_aligned() {
-            return ALDIS_ERR_INVALID_FIELD;
+    let target = match NonNull::new(detail) {
+        None => None,
+        Some(d) => {
+            if !d.as_ptr().is_aligned() {
+                return ALDIS_ERR_INVALID_FIELD;
+            }
+            // SAFETY: `d` is NonNull and aligned; the caller set `struct_size`.
+            let struct_size = unsafe { d.cast::<u32>().as_ptr().read() };
+            if struct_size < ALDIS_ERROR_DETAIL_MIN_SIZE {
+                return ALDIS_ERR_INVALID_FIELD;
+            }
+            Some((d, usize::try_from(struct_size).unwrap_or(usize::MAX)))
         }
-        // SAFETY: non-null and aligned, checked above; the caller set `struct_size`.
-        let struct_size = unsafe { detail.cast::<u32>().read() };
-        if struct_size < ALDIS_ERROR_DETAIL_MIN_SIZE {
-            return ALDIS_ERR_INVALID_FIELD;
-        }
-        Some(usize::try_from(struct_size).unwrap_or(usize::MAX))
     };
     match f() {
         Ok(()) => ALDIS_OK,
         Err(e) => {
-            if let Some(struct_size) = size {
-                // SAFETY: non-null and aligned, checked above; valid for writes of
+            if let Some((d, struct_size)) = target {
+                // SAFETY: `d` is NonNull and aligned, checked above; valid for writes of
                 // `struct_size` octets by the caller's contract.
-                unsafe { write_detail(detail, struct_size, &aldis_error_detail_t::from(e)) };
+                unsafe { write_detail(d, struct_size, &aldis_error_detail_t::from(e)) };
             }
             status(e)
         }
