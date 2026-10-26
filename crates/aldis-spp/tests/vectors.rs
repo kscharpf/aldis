@@ -218,6 +218,11 @@ fn segment_case(case: &CodecCase) -> Result<Value, Error> {
     let mut out = vec![0_u8; 70_000];
     while let Some(n) = seg.next_packet(&mut counter, &sec, &mut out)? {
         packets.push(json!(hex::encode(&out[..n])));
+        assert!(
+            packets.len() <= sdu.len(),
+            "too many packets for SDU: {}",
+            case.id
+        );
         assert_eq!(seg.remaining() == 0, seg.is_done(), "{}", case.id);
     }
     assert!(seg.is_done());
