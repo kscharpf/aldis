@@ -20,6 +20,12 @@ use aldis_core::{Error, ErrorKind, Result};
 use crate::field;
 use crate::header::{FshLen, PRIMARY_HEADER_LEN, len_u64, mismatch};
 
+/// The longest frame a physical channel may be configured with: 4 095 octets.
+///
+/// It is the longest for which the CRC-16 detects every double-bit error (TM-001, OI-51,
+/// VER-064, `docs/verification/derivations/crc16-bit-flips.md`). 132.0 states no maximum.
+pub const MAX_FRAME_LEN: usize = 4095;
+
 /// Managed parameters of a physical channel (132.0 §5.1 Table 5-1; TM-001, API-041, RS-012).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct TmPhysicalChannelConfig {
@@ -32,11 +38,13 @@ impl TmPhysicalChannelConfig {
     /// §4.1.6.1.2).
     ///
     /// 132.0 sets no upper bound on the frame length; the channel coding of the physical layer
-    /// does (§4.1.1.2).
+    /// does (§4.1.1.2). The project sets one, [`MAX_FRAME_LEN`] octets, because above it the
+    /// CRC-16 of the FECF no longer detects every double-bit error (TM-001, OI-51, VER-064).
     ///
     /// # Errors
     /// `InvalidConfig` (`frame_len`) if a frame cannot hold the Primary Header, one data octet,
-    /// and the FECF (132.0 §4.1.1.1; CMN-041), with that minimum.
+    /// and the FECF (132.0 §4.1.1.1; CMN-041), with that minimum, or is longer than
+    /// [`MAX_FRAME_LEN`] (OI-51), with that maximum.
     pub const fn new(frame_len: usize, fecf: bool) -> Result<TmPhysicalChannelConfig> {
         let min = TmPhysicalChannelConfig::min_frame_len(fecf);
         if frame_len < min {
@@ -44,6 +52,14 @@ impl TmPhysicalChannelConfig {
                 ErrorKind::InvalidConfig,
                 field::FRAME_LEN,
                 len_u64(min),
+                len_u64(frame_len),
+            ));
+        }
+        if frame_len > MAX_FRAME_LEN {
+            return Err(mismatch(
+                ErrorKind::InvalidConfig,
+                field::FRAME_LEN,
+                len_u64(MAX_FRAME_LEN),
                 len_u64(frame_len),
             ));
         }

@@ -144,7 +144,7 @@ pub enum SecurityScope {
 /// A Truncated Transfer Frame Length, 6 to 32 octets (732.1 Table 5-3 note 5, Annex D1.3.2
 /// notes 2–3; USLP-002).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct TruncatedFrameLen(u8);
+pub struct TruncatedFrameLen(usize);
 
 impl TruncatedFrameLen {
     /// The length with SDLS has at least 28 octets (Annex D1.2.4; USLP-012, API-075).
@@ -154,18 +154,18 @@ impl TruncatedFrameLen {
     ///
     /// # Errors
     /// `InvalidConfig` (`truncated_frame_len`) outside 6–32.
-    pub fn new(octets: usize) -> Result<TruncatedFrameLen> {
-        u8::try_from(octets)
-            .ok()
-            .filter(|n| (6..=32).contains(n))
-            .map(TruncatedFrameLen)
-            .ok_or(bad(field::TRUNCATED_FRAME_LEN))
+    pub const fn new(octets: usize) -> Result<TruncatedFrameLen> {
+        if matches!(octets, 6..=32) {
+            Ok(TruncatedFrameLen(octets))
+        } else {
+            Err(bad(field::TRUNCATED_FRAME_LEN))
+        }
     }
 
     /// The length in octets, the whole truncated frame (Annex D1.3.2.1).
     #[must_use]
-    pub fn get(self) -> usize {
-        usize::from(self.0)
+    pub const fn get(self) -> usize {
+        self.0
     }
 }
 
@@ -469,6 +469,9 @@ impl<const V: usize, const M: usize> VcTable<V, M> {
     /// (`frame_data_field`) for a MAP of a VC with lengths per MAP that leaves no TFDZ octet;
     /// `CapacityExceeded` (`map_id`) for more than `M`.
     ///
+    /// Before any of these, `InvalidConfig` (`vc_id`) if `vcs` is empty: a Physical Channel
+    /// without a Virtual Channel has no Spacecraft ID to accept an OID frame for (OI-55).
+    ///
     /// Then `InvalidConfig` (`truncated_frame_len`) for a VC with a truncated frame length below
     /// 28 that uses SDLS, by its own lengths or a MAP's (Annex D1.2.4; USLP-012, API-075).
     pub fn new(
@@ -476,6 +479,9 @@ impl<const V: usize, const M: usize> VcTable<V, M> {
         vcs: &[VcConfig],
         maps: &[MapConfig],
     ) -> Result<VcTable<V, M>> {
+        if vcs.is_empty() {
+            return Err(bad(field::VC_ID));
+        }
         let mut table = VcTable {
             physical,
             vcs: [None; V],
@@ -695,16 +701,28 @@ pub(crate) mod tests {
 
     /// A variable-length channel of at most 512 octets with FECF: VC 4 (OCF allowed, VCF 0/1,
     /// truncated 12, MAPs 0 and 2), VC 5 (SDLS per MAP: MAP 1 with 6/16, truncated 28), VC 6
-    /// (fixed-length TFDZ, MAP 0).
-    pub(crate) fn variable() -> VcTable<4, 4> {
+    /// (fixed-length TFDZ, MAP 0), and VC 8 (MAP 0, no truncated frame length). VC 4 and VC 5
+    /// carry only truncated frames (Annex D1.2.1; OI-48); VC 6 and VC 8 only non-truncated ones.
+    pub(crate) fn variable() -> VcTable<4, 8> {
+        variable_with(true)
+    }
+
+    /// The channel of [`variable`] without truncated frame lengths: VC 4 and VC 5 carry
+    /// non-truncated frames.
+    pub(crate) fn plain_variable() -> VcTable<4, 8> {
+        variable_with(false)
+    }
+
+    fn variable_with(truncated: bool) -> VcTable<4, 8> {
         let pc = PhysicalChannelConfig::new(TransferFrameType::Variable, 512, 0, true).unwrap();
+        let len = |n| truncated.then(|| TruncatedFrameLen::new(n).unwrap());
         let vc4 = VcParams {
             ocf: OcfUse::Allowed,
-            truncated_frame_len: Some(TruncatedFrameLen::new(12).unwrap()),
+            truncated_frame_len: len(12),
             ..params(TransferFrameType::Variable, 0, 1)
         };
         let vc5 = VcParams {
-            truncated_frame_len: Some(TruncatedFrameLen::new(28).unwrap()),
+            truncated_frame_len: len(28),
             security: SecurityScope::PerMap,
             ..params(TransferFrameType::Variable, 0, 0)
         };
@@ -714,12 +732,14 @@ pub(crate) mod tests {
                 vc(4, vc4),
                 vc(5, vc5),
                 vc(6, params(TransferFrameType::Fixed, 0, 0)),
+                vc(8, params(TransferFrameType::Variable, 0, 0)),
             ],
             &[
                 map(4, 0, 0, 0),
                 map(4, 2, 0, 0),
                 map(5, 1, 6, 16),
                 map(6, 0, 0, 0),
+                map(8, 0, 0, 0),
             ],
         )
         .unwrap()
@@ -906,6 +926,16 @@ pub(crate) mod tests {
         );
         assert_eq!(frame_security(&vc5, None), SecurityLayout::NONE);
         assert_eq!(frame_security(&vc4, m51.as_ref()), SecurityLayout::NONE);
+    }
+
+    #[test]
+    fn a_table_without_a_virtual_channel_is_rejected() {
+        // req: USLP-017, GEN-060, API-040
+        let pc = PhysicalChannelConfig::new(TransferFrameType::Fixed, 64, 0, true).unwrap();
+        let ic = (ErrorKind::InvalidConfig, Some(field::VC_ID));
+        assert_eq!(kf(VcTable::<4, 4>::new(pc, &[], &[])), ic);
+        // Before the MAPs are looked at: the VC is what is missing.
+        assert_eq!(kf(VcTable::<4, 4>::new(pc, &[], &[map(6, 0, 0, 0)])), ic);
     }
 
     #[test]

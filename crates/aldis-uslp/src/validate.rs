@@ -62,11 +62,14 @@ pub enum Reason {
     /// 17, strict mode only: a frame on VCID 63 whose OID header fields deviate (§4.1.4.1.8–9;
     /// OI-44 item 1).
     OidHeaderMismatch,
+    /// 18, test (c): a non-truncated frame on a VC that has a truncated frame length, which
+    /// carries only truncated frames (Annex D1.2.1, D1.2.4 notes; USLP-002; OI-48).
+    NonTruncatedFrameNotAllowed,
 }
 
 impl Reason {
     /// Every reason, in code order.
-    pub const ALL: [Reason; 17] = [
+    pub const ALL: [Reason; 18] = [
         Reason::UnexpectedVersion,
         Reason::UnexpectedSpacecraft,
         Reason::ReservedFlags,
@@ -84,9 +87,10 @@ impl Reason {
         Reason::ConstructionRuleMismatch,
         Reason::PointerBeyondZone,
         Reason::OidHeaderMismatch,
+        Reason::NonTruncatedFrameNotAllowed,
     ];
 
-    /// The stable numeric code, 1–17 (`docs/standards/uslp-frame.md` §3.1; M2 plan D14).
+    /// The stable numeric code, 1–18 (`docs/standards/uslp-frame.md` §3.1; M2 plan D14).
     #[must_use]
     pub const fn code(self) -> u8 {
         match self {
@@ -107,6 +111,7 @@ impl Reason {
             Reason::ConstructionRuleMismatch => 15,
             Reason::PointerBeyondZone => 16,
             Reason::OidHeaderMismatch => 17,
+            Reason::NonTruncatedFrameNotAllowed => 18,
         }
     }
 
@@ -188,7 +193,7 @@ mod tests {
             assert_eq!(Reason::from_code(code), Some(r));
         }
         assert_eq!(Reason::from_code(0), None);
-        assert_eq!(Reason::from_code(18), None);
+        assert_eq!(Reason::from_code(19), None);
     }
 
     #[test]

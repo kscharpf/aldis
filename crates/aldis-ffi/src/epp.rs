@@ -402,6 +402,10 @@ pub unsafe extern "C" fn aldis_epp_writer_begin(
 /// outside the configured limits, and `ALDIS_ERR_INVALID_FIELD` (`epi`) for an empty data field
 /// with a non-idle EPI.
 ///
+/// The call re-runs `begin`, so a finish with other arguments than `begin`'s gives a valid
+/// packet for the arguments of the finish; OI-50's header check is not applied to it
+/// (maintainer decision of 2026-10-25, revisited in M3).
+///
 /// # Safety
 /// As [`aldis_epp_writer_begin`]; `out_len` is valid for one write.
 #[expect(

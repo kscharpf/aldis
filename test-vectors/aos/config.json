@@ -12,7 +12,7 @@
         "AOS-001",
         "CMN-041"
       ],
-      "description": "Shortest physical channel: 6 + 1 octets",
+      "description": "Shortest physical channel: 6 + 1 octets, with one VCA_SDU virtual channel (a configuration with none is rejected, OI-55)",
       "operation": "config",
       "config": {
         "frame_len": 7,
@@ -20,7 +20,16 @@
         "insert_zone_len": 0,
         "fecf": false,
         "edition": "issue5",
-        "vcs": []
+        "vcs": [
+          {
+            "scid": 1,
+            "vcid": 1,
+            "content": "vca_sdu",
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          }
+        ]
       },
       "expect": {
         "ok": true
@@ -81,7 +90,7 @@
         "CMN-041",
         "AOS-013"
       ],
-      "description": "...and 13 accepted",
+      "description": "...and 13 accepted, with one VCA_SDU virtual channel",
       "operation": "config",
       "config": {
         "frame_len": 13,
@@ -89,7 +98,16 @@
         "insert_zone_len": 2,
         "fecf": true,
         "edition": "issue5",
-        "vcs": []
+        "vcs": [
+          {
+            "scid": 1,
+            "vcid": 1,
+            "content": "vca_sdu",
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          }
+        ]
       },
       "expect": {
         "ok": true
@@ -326,6 +344,29 @@
       "expect": {
         "ok": false,
         "error": "OutOfRange",
+        "field": 2
+      }
+    },
+    {
+      "id": "aos-cfg-012",
+      "requirements": [
+        "API-040",
+        "GEN-060",
+        "AOS-020"
+      ],
+      "description": "No virtual channel: InvalidConfig (vc_id). The valid Spacecraft IDs are those of the virtual channels, so a physical channel without one would reject every frame, OID frames included (OI-55)",
+      "operation": "config",
+      "config": {
+        "frame_len": 20,
+        "fhec": false,
+        "insert_zone_len": 0,
+        "fecf": false,
+        "edition": "issue5",
+        "vcs": []
+      },
+      "expect": {
+        "ok": false,
+        "error": "InvalidConfig",
         "field": 2
       }
     }

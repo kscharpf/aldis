@@ -40,7 +40,7 @@ The codec keeps the parameters it reads, in `aldis_tc::config`; the others belon
 | `PhysicalChannelConfig` | Maximum Transfer Frame Length, FECF present (Table 5-1) | 6 (8 with FECF) to 1024 octets |
 | `VcConfig` | SCID, VCID, Maximum Transfer Frame Length, `SegmentHeaderUse::{Absent(SecurityLayout), Present}` (Tables 5-3, 6-2) | 6 to 1024 octets |
 | `MapConfig` | SCID, VCID, MAP ID, `SecurityLayout` (Tables 5-4, 6-3) | — |
-| `VcTable<V, M>` | the channels of one Physical Channel; implements the `VcLookup` trait the decoder, writers, and validator take (M2 D14). The valid SCIDs (Table 5-1) and each Master Channel's valid VCIDs (Table 5-2) are those of its Virtual Channels | VCs and MAPs unique; a MAP only on a VC with Segment Headers; every VC and MAP leaves at least one data octet in its longest frame (CMN-041); at most `V` VCs and `M` MAPs |
+| `VcTable<V, M>` | the channels of one Physical Channel; implements the `VcLookup` trait the decoder, writers, and validator take (M2 D14). The valid SCIDs (Table 5-1) and each Master Channel's valid VCIDs (Table 5-2) are those of its Virtual Channels | no VC (`vc_id`; TC-024); VCs and MAPs unique; a MAP only on a VC with Segment Headers; every VC and MAP leaves at least one data octet in its longest frame (CMN-041); at most `V` VCs and `M` MAPs |
 
 A frame's limit is the smaller of its Virtual and Physical Channel's maximum. The Master Channel's own maximum (Table 5-2) is not kept separately: each of its Virtual Channels carries one.
 
@@ -66,6 +66,7 @@ A frame's limit is the smaller of its Virtual and Physical Channel's maximum. Th
 | TC-021 | `validate_frame(&config)` SHALL implement the **Frame Validation Checks**: (a) expected TFVN; (b) expected MCID (TFVN + SCID); (c) header values consistent with implemented features (VCID valid, flags not reserved, Segment Header consistent); (d) Frame Length consistent with the octets present; (e) FECF matches if present. Each failure SHALL be reported with a distinct reason. | §4.4.9.3.3 | V |
 | TC-022 | Frames with an invalid VCID SHALL be discarded with reason `InvalidVcid`. FDUs with an invalid MAP ID SHALL be discarded with reason `InvalidMapId`. | §4.4.7.3, §4.4.3.3 | V |
 | TC-023 | Validation SHALL be applied identically to Type-A and Type-B frames, before any FARM-1 processing. | §4.4.9.3.1 | T |
+| TC-024 | A channel table (`VcTable::new`) SHALL be rejected with `InvalidConfig` naming `vc_id` when it holds no Virtual Channel. A Physical Channel with none cannot receive a frame (every frame names a VCID, TC-022), and the error a frame then got named `spacecraft_id`, not `vc_id` (OI-55). | 232.0 §5, Table 5-2 | T |
 
 ### 4.1 Check order and validation reasons
 

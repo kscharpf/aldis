@@ -115,12 +115,19 @@ class Oid:
 
 # ---- configuration (Tables 5-1 to 5-3, 6-1), built in the handler's order
 
+# The longest frame of a physical channel, TM-001 (OI-51: the CRC-16 of Annex B misses some
+# double-bit errors above it, VER-064).
+MAX_FRAME_LEN = 4095
+
+
 def build_config(cfg):
     """The configuration, or Fail. Keys: frame_len, fecf, and for a master channel scid, mc_fsh,
     mc_ocf, vcs (vcid, content, fsh, ocf, security_header_len, security_trailer_len)."""
     fecf = cfg["fecf"]
     minimum = 6 + 1 + (2 if fecf else 0)
     if cfg["frame_len"] < minimum:
+        raise Fail("InvalidConfig", F["frame_len"])
+    if cfg["frame_len"] > MAX_FRAME_LEN:    # OI-51, TM-001
         raise Fail("InvalidConfig", F["frame_len"])
     pc = {"frame_len": cfg["frame_len"], "fecf": fecf}
     if "scid" not in cfg:
@@ -216,6 +223,13 @@ def decode(octets, pc, mc, mode, check_fecf, lookup):
             if mode == "strict":
                 raise Fail("InvalidField", F["segment_length_id"])
             anomalies.append("SegmentLengthIdNot11")
+        # TM-010, 132.0 §6.4.6.2, OI-54: an Only Idle Data frame (Sync Flag 0, FHP 0x7FE) on a
+        # VC with a Security Header or Trailer. The last check of the decoder, and only a
+        # decode that takes the VC's security layout (a channel table) can make it.
+        if lookup and pointer == "only_idle_data" and (sh or st):
+            if mode == "strict":
+                raise Fail("InvalidField", F["vc_id"])
+            anomalies.append("OnlyIdleDataOnSdlsVc")
     at = 6
     fields = {}
     for name, length in [("fsh", fsh), ("sh", sh), ("data", n), ("st", st),
@@ -266,6 +280,10 @@ def validate(octets, pc, mc, mode):
         raise Fail("LengthMismatch", F["security_header_len"])
     if len(v["security_trailer_hex"]) // 2 != vc["st"]:
         raise Fail("LengthMismatch", F["security_trailer_len"])
+    # TM-011, TM-010, 132.0 §6.4.6.2, OI-54: the last check, in both modes (a lenient decode
+    # accepts the frame and flags it; validate rejects it).
+    if not v["sync_flag"] and v["pointer"] == "only_idle_data" and (vc["sh"] or vc["st"]):
+        raise Fail("InvalidField", F["vc_id"])
     return {}
 
 
@@ -682,6 +700,82 @@ def oid_sequence():
     ]
 
 
+def oid_sdls_cases():
+    """OI-54, TM-010, TM-011: Only Idle Data (Sync Flag 0, FHP 0x7FE) on a VC with SDLS."""
+    mc = channel(40, True, SCID, [vc(0, sh=2, st=1), vc(1, sh=3), vc(2, st=1), vc(3),
+                                  vc(4, "vca_sdu", sh=2, st=1)])
+    refs = ["TM-010", "TM-011", "API-031", "API-032"]
+    layouts = {0: (2, 1), 1: (3, 0), 2: (0, 1), 3: (0, 0), 4: (2, 1)}
+
+    def f(vcid, fields=None, fecf_ok=True):
+        h = {"scid": SCID, "vcid": vcid, "first_header_pointer": ONLY_IDLE_DATA}
+        h.update(fields or {})
+        sh, st = layouts[vcid]
+        out = frame(40, True, h, sh=b"\xA5" * sh, data=seq(0x30, 32 - sh - st), st=b"\x5A" * st)
+        return out if fecf_ok else out[:-1] + bytes([out[-1] ^ 0xFF])
+    why = "(132.0-B-3 §6.4.6.2, OI-54)"
+    return [
+        case("tm-sec-dec-007", refs, f"decode_with, strict: Only Idle Data on VC 0, which has a "
+             f"Security Header (2) and Trailer (1): InvalidField naming vc_id {why}",
+             "decode_with", mc, f(0)),
+        case("tm-sec-dec-008", refs, f"decode_with, strict: Only Idle Data on VC 1, which has a "
+             f"Security Header (3) and no Trailer: InvalidField naming vc_id {why}",
+             "decode_with", mc, f(1)),
+        case("tm-sec-dec-009", refs, f"decode_with, strict: Only Idle Data on VC 2, which has a "
+             f"Security Trailer (1) and no Header: InvalidField naming vc_id {why}",
+             "decode_with", mc, f(2)),
+        case("tm-sec-dec-010", refs, f"decode_with, lenient: the frame of tm-sec-dec-007 is "
+             f"accepted with the anomaly OnlyIdleDataOnSdlsVc {why}", "decode_with", mc, f(0),
+             mode="lenient"),
+        case("tm-sec-dec-011", refs, "decode_with, lenient: Security Header only (VC 1): "
+             "accepted with OnlyIdleDataOnSdlsVc", "decode_with", mc, f(1), mode="lenient"),
+        case("tm-sec-dec-012", refs, "decode_with, lenient: Security Trailer only (VC 2): "
+             "accepted with OnlyIdleDataOnSdlsVc", "decode_with", mc, f(2), mode="lenient"),
+        case("tm-sec-dec-013", refs, "decode_with, lenient: Packet Order Flag 1 and Segment "
+             "Length ID 01 as well: the three anomalies together, PacketOrderFlagSet, "
+             "SegmentLengthIdNot11, OnlyIdleDataOnSdlsVc", "decode_with", mc,
+             f(0, {"packet_order_flag": 1, "segment_length_id": 1}), mode="lenient"),
+        case("tm-sec-dec-014", refs, "decode (no channel table), strict: the frame of "
+             "tm-sec-dec-007 is accepted and reports no anomaly; the plain decoder reads every "
+             "VC as one without SDLS", "decode", pc_only(40, True), f(0)),
+        case("tm-sec-dec-015", refs, "decode (no channel table), lenient: the frame of "
+             "tm-sec-dec-007 is accepted with no anomaly", "decode", pc_only(40, True), f(0),
+             mode="lenient"),
+        case("tm-sec-dec-016", refs, "decode_with, strict: Packet Order Flag 1 and Only Idle "
+             "Data on VC 0: the earlier fault, ReservedValue naming packet_order_flag, is "
+             "reported (TM-010: the SDLS rule is the last check)", "decode_with", mc,
+             f(0, {"packet_order_flag": 1})),
+        case("tm-sec-dec-017", refs, "decode_with, strict: Segment Length ID 01 and Only Idle "
+             "Data on VC 0: the earlier fault, InvalidField naming segment_length_id, is "
+             "reported", "decode_with", mc, f(0, {"segment_length_id": 1})),
+        case("tm-sec-dec-018", refs, "decode_with, strict: FECF wrong and Only Idle Data on "
+             "VC 0: CrcMismatch", "decode_with", mc, f(0, fecf_ok=False)),
+        case("tm-sec-dec-019", refs, "decode_with, strict: Sync Flag 1 and FHP 0x7FE on VC 0: "
+             "the FHP is undefined with Sync Flag 1 (TM-008), nothing is checked, accepted",
+             "decode_with", mc, f(0, {"sync_flag": 1})),
+        case("tm-sec-dec-020", refs, "decode_with, strict: Sync Flag 1 and FHP 0x7FF on VC 0: "
+             "accepted", "decode_with", mc,
+             f(0, {"sync_flag": 1, "first_header_pointer": NO_PACKET_START})),
+        case("tm-sec-dec-021", refs, "decode_with, strict: Sync Flag 0 and FHP 0x7FF (no packet "
+             "start, not Only Idle Data) on VC 0: accepted", "decode_with", mc,
+             f(0, {"first_header_pointer": NO_PACKET_START})),
+        case("tm-sec-dec-022", refs, "decode_with, strict: Only Idle Data on VC 3, which does not "
+             "use SDLS: accepted", "decode_with", mc, f(3)),
+        case("tm-sec-val-004", refs, f"validate, strict: Only Idle Data on VC 0, which uses "
+             f"SDLS: InvalidField naming vc_id {why}", "validate", mc, f(0)),
+        case("tm-sec-val-005", refs, "validate, lenient: the same frame, decoded with the "
+             "anomaly, is rejected by validate: InvalidField naming vc_id", "validate", mc,
+             f(0), mode="lenient"),
+        case("tm-sec-val-006", refs, "validate, lenient: Security Trailer only (VC 2): "
+             "InvalidField naming vc_id", "validate", mc, f(2), mode="lenient"),
+        case("tm-sec-val-007", refs, "validate, strict: Only Idle Data on VC 3, which does not "
+             "use SDLS, matches its channel", "validate", mc, f(3)),
+        case("tm-sec-val-008", refs, "validate, lenient: Only Idle Data (Sync Flag 0) on VC 4, a "
+             "VCA_SDU VC that uses SDLS: the Sync Flag mismatch is reported, the SDLS rule is "
+             "the last check of validate (TM-011)", "validate", mc, f(4), mode="lenient"),
+    ]
+
+
 def security_layout():
     mc = channel(40, True, SCID, [vc(4, sh=6, st=8), vc(5, "vca_sdu", ocf=True, sh=3)])
     pattern = frame(40, True, {"scid": SCID, "vcid": 4, "first_header_pointer": 0},
@@ -761,6 +855,9 @@ def security_layout():
              "Encode FHP 0x7FE on VC 3, which does not use SDLS: accepted, the counterpart "
              "of tm-sec-enc-004 to -006 (132.0-B-3 §6.4.6.2)", "encode", oid_mc,
              params=idle_enc(3, 32)),
+        # Added 2026-10-25 by a blind Claude Sonnet 5.5 agent (OI-54: the decoder checks an
+        # Only Idle Data frame on a VC that uses SDLS, TM-010, 132.0-B-3 §6.4.6.2).
+        *oid_sdls_cases(),
         case("tm-sec-cfg-001", ["API-040", "API-071"],
              "Security Header longer than 64 octets", "config",
              channel(200, False, 1, [vc(0, sh=65)])),
@@ -888,6 +985,26 @@ def invalid():
              channel(20, True, 1, [vc(0, ocf=True)], mc_fsh=8)),
         case("tm-inv-cfg-009", ["API-040"], "VCID 3 configured twice", "config",
              channel(20, False, 1, [vc(3), vc(3, "vca_sdu")])),
+        # Added 2026-10-25 by a blind Claude Sonnet 5.5 agent (m2/hazard-controls, OI-51).
+        case("tm-inv-cfg-010", ["TM-001", "API-040"],
+             "OI-51: a physical channel of 4095 octets with FECF, the longest allowed: accepted",
+             "config", pc_only(4095, True)),
+        case("tm-inv-cfg-011", ["TM-001", "API-040"],
+             "OI-51: a physical channel of 4096 octets with FECF: InvalidConfig (frame_len)",
+             "config", pc_only(4096, True)),
+        case("tm-inv-cfg-012", ["TM-001", "API-040"],
+             "OI-51: 4096 octets without FECF: InvalidConfig (frame_len), whether or not the "
+             "FECF is configured", "config", pc_only(4096, False)),
+        case("tm-inv-cfg-013", ["TM-001", "API-040"],
+             "OI-51: a master channel of 4095 octets with a VC: accepted", "config",
+             channel(4095, True, 1, [vc(0)])),
+        case("tm-inv-cfg-014", ["TM-001", "API-040"],
+             "OI-51: a master channel of 4096 octets with a VC: InvalidConfig (frame_len)",
+             "config", channel(4096, True, 1, [vc(0)])),
+        case("tm-inv-cfg-015", ["TM-001", "API-040"],
+             "OI-51: the Physical Channel is checked before the Master Channel, so 4096 octets "
+             "with SCID 1024 names frame_len, not spacecraft_id", "config",
+             channel(4096, False, 1024, [])),
     ]
     return cases
 
@@ -914,7 +1031,10 @@ NOTE = (
     "a second agent, Claude Sonnet 5.5, briefed to read only the Blue Book, docs/, and the "
     "vectors, never the implementation, and to extend this model. The cases tm-sec-enc-004 to "
     "tm-sec-enc-007 were added on 2026-10-25 by a blind Claude Sonnet 5.5 agent, after the "
-    "review of #117."
+    "review of #117. The cases tm-sec-dec-007 to tm-sec-dec-022 and tm-sec-val-004 to "
+    "tm-sec-val-008 were added on 2026-10-25 by a blind Claude Sonnet 5.5 agent (OI-54: the "
+    "decoder's rule for an Only Idle Data frame on a VC that uses SDLS), briefed to read only "
+    "the Blue Book, docs/, and the vectors, never the implementation."
 )
 
 FILES = {
@@ -927,10 +1047,19 @@ FILES = {
 }
 
 
+NOTE_INVALID = (
+    " The cases tm-inv-cfg-010 to tm-inv-cfg-015 (OI-51, the 4095-octet maximum of TM-001) "
+    "were added on 2026-10-25 (m2/hazard-controls) by a blind Claude Sonnet 5.5 agent, briefed "
+    "to read only the Blue Book, docs/, and the vectors, never the implementation, and to "
+    "extend this model."
+)
+
+
 def generate(name):
     make, standard = FILES[name]
+    note = NOTE + (NOTE_INVALID if name == "invalid" else "")
     return {"kind": "codec", "standard": standard, "provenance": "hand-derived",
-            "provenance_note": NOTE + " This file covers " + standard + ".", "cases": make()}
+            "provenance_note": note + " This file covers " + standard + ".", "cases": make()}
 
 
 def check_field_codes(path):

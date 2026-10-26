@@ -26,8 +26,9 @@
 //! **Writers.** No call keeps a pointer or state (API-023, API-060): `_writer_begin` writes an
 //! unfinished header, the Segment Header, and zeros in the Security Header and Trailer, the
 //! caller fills the fields at the offsets of the [`aldis_tc_layout_t`] it returns, and
-//! `_writer_finish`, given the same arguments and the User Data length used, writes the header
-//! and the FECF (`TcFrameWriter::resume`).
+//! `_writer_finish`, given the same arguments and the User Data length used, checks that the
+//! buffer holds the headers `_writer_begin` wrote, else `ALDIS_ERR_INVALID_STATE`, and writes
+//! the header and the FECF (`TcFrameWriter::resume`; OI-50).
 
 use aldis::core::field;
 use aldis::core::ids::FrameSeqNum;
@@ -704,8 +705,8 @@ pub unsafe extern "C" fn aldis_tc_config_check(
 /// `map_id`); `ALDIS_ERR_CAPACITY_EXCEEDED` (`vc_id`) for more than `ALDIS_TC_MAX_VCS` virtual
 /// channels and (`map_id`) for more than `ALDIS_TC_MAX_MAPS` MAPs, before any of them is read
 /// (CABI-030); `ALDIS_ERR_INVALID_CONFIG` (`security_header_len`) for a Security Header above 64
-/// octets, (`max_frame_len`) for a VC maximum outside 6 to 1024 octets, (`vc_id`) for a VCID
-/// given twice, (`map_id`) for a MAP given twice or on a VC that is not given or has no Segment
+/// octets, (`max_frame_len`) for a VC maximum outside 6 to 1024 octets, (`vc_id`) for
+/// `vc_count` 0 (OI-55) or a VCID given twice, (`map_id`) for a MAP given twice or on a VC that is not given or has no Segment
 /// Header, and (`frame_data_field`) for a VC or MAP whose fields leave no data octet; CABI-022
 /// violations, including a struct whose `struct_size` differs from its array's first, and a VC
 /// with Segment Headers whose security lengths are not 0.
@@ -1045,13 +1046,18 @@ pub unsafe extern "C" fn aldis_tc_writer_begin(
 /// Finishes a two-phase write begun with the same arguments, with `user_len` octets of User
 /// Data (232.0 §4.1.2.7, §4.1.4; TC-007, API-021, API-023).
 ///
-/// Writes the Primary Header with the Frame Length, moves the Security Trailer to follow the
-/// User Data when `user_len` is below `max_user_len`, computes the FECF if configured, and
-/// returns the frame length; the frame is the first `*out_len` octets of `out`.
+/// First checks that `out` holds the unfinished Primary Header (with the reserved frame length)
+/// and Segment Header that [`aldis_tc_writer_begin`] wrote for these arguments
+/// (`TcFrameWriter::resume`; OI-50); the User Data and the Security Header and Trailer are not
+/// compared. Then writes the Primary Header with the Frame Length, moves the Security Trailer
+/// to follow the User Data when `user_len` is below `max_user_len`, computes the FECF if
+/// configured, and returns the frame length; the frame is the first `*out_len` octets of `out`.
 ///
 /// # Errors
-/// On error `out` is unchanged. As [`aldis_tc_writer_begin`]; then `ALDIS_ERR_OUT_OF_RANGE`
-/// (`user_len`) above `max_user_len` and `ALDIS_ERR_INVALID_FIELD` (`frame_data_field`) for 0.
+/// On error `out` is unchanged. As [`aldis_tc_writer_begin`]; `ALDIS_ERR_INVALID_STATE` if `out`
+/// does not hold the unfinished headers `aldis_tc_writer_begin` writes for these arguments (other
+/// arguments, or a buffer never begun); then `ALDIS_ERR_OUT_OF_RANGE` (`user_len`) above
+/// `max_user_len` and `ALDIS_ERR_INVALID_FIELD` (`frame_data_field`) for 0.
 ///
 /// # Safety
 /// As [`aldis_tc_writer_begin`]; `out_len` is valid for one write.

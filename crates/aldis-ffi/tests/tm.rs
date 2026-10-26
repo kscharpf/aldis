@@ -12,12 +12,12 @@ use core::ptr::{null, null_mut};
 
 use aldis_ffi::error::*;
 use aldis_ffi::field::{
-    ALDIS_FIELD_FIRST_HEADER_POINTER, ALDIS_FIELD_SPACECRAFT_ID, ALDIS_FIELD_SYNC_FLAG,
-    ALDIS_FIELD_VC_ID,
+    ALDIS_FIELD_FIRST_HEADER_POINTER, ALDIS_FIELD_FRAME_LEN, ALDIS_FIELD_SPACECRAFT_ID,
+    ALDIS_FIELD_SYNC_FLAG, ALDIS_FIELD_VC_ID,
 };
 use aldis_ffi::oid::*;
 use aldis_ffi::tm::*;
-use aldis_ffi::{ALDIS_MODE_STRICT, aldis_error_detail_t};
+use aldis_ffi::{ALDIS_MODE_LENIENT, ALDIS_MODE_STRICT, aldis_error_detail_t};
 
 fn size<T>() -> u32 {
     u32::try_from(size_of::<T>()).unwrap()
@@ -527,6 +527,25 @@ fn writer_arguments_are_checked() {
     }
 }
 
+/// A frame length above 4 095 octets is refused with the maximum (TM-001, OI-51).
+#[test]
+fn config_check_refuses_a_frame_length_above_4095() {
+    // req: TM-001, CABI-022, VER-064
+    let mut pc = mc().pc;
+    for (len, ok) in [(4095, true), (4096, false)] {
+        pc.frame_len = len;
+        let mut d = detail();
+        // SAFETY: both pointers are to live locals.
+        let status = unsafe { aldis_tm_config_check(&raw const pc, &raw mut d) };
+        if ok {
+            assert_eq!(status, ALDIS_OK);
+        } else {
+            assert_eq!(status, ALDIS_ERR_INVALID_CONFIG);
+            assert_eq!((d.field, d.expected), (ALDIS_FIELD_FRAME_LEN, 4095));
+        }
+    }
+}
+
 #[test]
 fn the_oid_writer_takes_a_generator_handle() {
     // req: TM-010, CMN-021, CMN-022, CABI-022, CABI-032, GEN-042
@@ -707,6 +726,239 @@ fn write_all(
         "the three writers disagree"
     );
     results[0]
+}
+
+#[test]
+fn finish_checks_the_buffer_was_begun_with_these_arguments() {
+    // req: API-023, CABI-022, TM-009, TM-010 (OI-50)
+    let (mc, [sdls, vca]) = (mc(), vcs());
+    let vcs = [
+        sdls,
+        vca,
+        aldis_tm_vc_config_t {
+            vcid: 6,
+            security_header_len: 0,
+            security_trailer_len: 0,
+            ..sdls
+        },
+    ];
+    let call = |begin: bool, fields: &aldis_tm_fields_t, frame: &mut [u8]| {
+        let mut l = aldis_tm_layout_t::default();
+        let mut n = 0_usize;
+        // SAFETY: every pointer is to a live local or into `frame`, with its length.
+        unsafe {
+            if begin {
+                aldis_tm_writer_begin(
+                    &raw const mc,
+                    vcs.as_ptr(),
+                    3,
+                    fields,
+                    frame.as_mut_ptr(),
+                    frame.len(),
+                    &raw mut l,
+                    null_mut(),
+                )
+            } else {
+                aldis_tm_writer_finish(
+                    &raw const mc,
+                    vcs.as_ptr(),
+                    3,
+                    fields,
+                    frame.as_mut_ptr(),
+                    frame.len(),
+                    &raw mut n,
+                    null_mut(),
+                )
+            }
+        }
+    };
+    let begun = aldis_tm_fields_t {
+        mc_frame_count: 7,
+        vc_frame_count: 9,
+        packet_offset: 3,
+        ..packets(4)
+    };
+    let mut frame = [0xEE_u8; 40];
+    assert_eq!(call(true, &begun, &mut frame), ALDIS_OK);
+    let written = frame;
+    let other = [
+        aldis_tm_fields_t {
+            mc_frame_count: 8,
+            ..begun
+        },
+        aldis_tm_fields_t {
+            vc_frame_count: 10,
+            ..begun
+        },
+        aldis_tm_fields_t {
+            packet_offset: 4,
+            ..begun
+        },
+        aldis_tm_fields_t {
+            pointer: ALDIS_TM_POINTER_NO_PACKET_START,
+            ..begun
+        },
+        aldis_tm_fields_t { vcid: 6, ..begun },
+    ];
+    for f in other {
+        assert_eq!(
+            call(false, &f, &mut frame),
+            ALDIS_ERR_INVALID_STATE,
+            "{f:?}"
+        );
+        assert_eq!(frame, written, "a failed finish leaves the frame unchanged");
+    }
+    assert_eq!(call(false, &begun, &mut frame), ALDIS_OK);
+    // A buffer never begun.
+    for fill in [0x00_u8, 0xA5] {
+        let mut never = [fill; 40];
+        assert_eq!(call(false, &begun, &mut never), ALDIS_ERR_INVALID_STATE);
+        assert_eq!(never, [fill; 40]);
+    }
+}
+
+#[test]
+fn the_oid_finish_checks_the_buffer_was_begun_with_these_arguments() {
+    // req: API-023, CABI-022, TM-010 (OI-50)
+    let (mc, [sdls, vca]) = (mc(), vcs());
+    let vcs = [
+        sdls,
+        vca,
+        aldis_tm_vc_config_t {
+            vcid: 6,
+            security_header_len: 0,
+            security_trailer_len: 0,
+            ..sdls
+        },
+    ];
+    let call = |fields: &aldis_tm_fields_t, frame: &mut [u8]| {
+        let mut l = aldis_tm_layout_t::default();
+        // SAFETY: every pointer is to a live local or into `frame`, with its length.
+        unsafe {
+            aldis_tm_writer_begin(
+                &raw const mc,
+                vcs.as_ptr(),
+                3,
+                fields,
+                frame.as_mut_ptr(),
+                frame.len(),
+                &raw mut l,
+                null_mut(),
+            )
+        }
+    };
+    // The OID writer: the headers of `aldis_tm_oid_writer_begin` are those of an Only Idle Data
+    // frame, so the plain writer's begin with that status stands in for it here.
+    let idle = aldis_tm_fields_t {
+        mc_frame_count: 2,
+        vc_frame_count: 3,
+        pointer: ALDIS_TM_POINTER_ONLY_IDLE_DATA,
+        ..packets(6)
+    };
+    let mut oid = [0xEE_u8; 40];
+    assert_eq!(call(&idle, &mut oid), ALDIS_OK);
+    let begun_oid = oid;
+    let finish_oid = |vcid: u8, mc_count: u8, vc_count: u8, frame: &mut [u8]| {
+        let mut n = 0_usize;
+        // SAFETY: every pointer is to a live local or into `frame`, with its length.
+        unsafe {
+            aldis_tm_oid_writer_finish(
+                &raw const mc,
+                vcs.as_ptr(),
+                3,
+                vcid,
+                mc_count,
+                vc_count,
+                frame.as_mut_ptr(),
+                frame.len(),
+                &raw mut n,
+                null_mut(),
+            )
+        }
+    };
+    assert_eq!(finish_oid(6, 2, 4, &mut oid), ALDIS_ERR_INVALID_STATE);
+    assert_eq!(finish_oid(6, 1, 3, &mut oid), ALDIS_ERR_INVALID_STATE);
+    assert_eq!(oid, begun_oid);
+    let mut never = [0xA5_u8; 40];
+    assert_eq!(finish_oid(6, 2, 3, &mut never), ALDIS_ERR_INVALID_STATE);
+    assert_eq!(never, [0xA5; 40]);
+    assert_eq!(finish_oid(6, 2, 3, &mut oid), ALDIS_OK);
+}
+
+#[test]
+fn an_only_idle_data_frame_on_an_sdls_vc_is_refused_or_flagged() {
+    // req: TM-010, TM-011, API-031, API-032, CABI-012 (OI-54)
+    let (mc, vcs) = (mc(), vcs());
+    // The frame of VC 4 with FHP 0x7FE (Synchronization Flag 0, Segment Length ID 11).
+    let mut frame = sdls_frame();
+    frame[4..6].copy_from_slice(&[0x1F, 0xFE]);
+    aldis::core::crc::write_fecf(&mut frame).unwrap();
+    let mut v = aldis_tm_frame_t::default();
+    let mut d = detail();
+    // SAFETY: every pointer is to a live local.
+    unsafe {
+        for decode in [aldis_tm_decode_with, aldis_tm_decode_unchecked_with] {
+            assert_eq!(
+                decode(
+                    frame.as_ptr(),
+                    40,
+                    &raw const mc,
+                    vcs.as_ptr(),
+                    2,
+                    ALDIS_MODE_STRICT,
+                    &raw mut v,
+                    &raw mut d
+                ),
+                ALDIS_ERR_INVALID_FIELD
+            );
+            assert_eq!(d.field, ALDIS_FIELD_VC_ID);
+            assert_eq!(
+                decode(
+                    frame.as_ptr(),
+                    40,
+                    &raw const mc,
+                    vcs.as_ptr(),
+                    2,
+                    ALDIS_MODE_LENIENT,
+                    &raw mut v,
+                    &raw mut d
+                ),
+                ALDIS_OK
+            );
+            assert_eq!(v.anomalies, ALDIS_TM_ANOMALY_ONLY_IDLE_DATA_ON_SDLS_VC);
+            assert_eq!(v.pointer, ALDIS_TM_POINTER_ONLY_IDLE_DATA);
+        }
+        // Validation refuses it in both modes: the managed parameters forbid it.
+        for mode in [ALDIS_MODE_STRICT, ALDIS_MODE_LENIENT] {
+            assert_eq!(
+                aldis_tm_validate(
+                    frame.as_ptr(),
+                    40,
+                    &raw const mc,
+                    vcs.as_ptr(),
+                    2,
+                    mode,
+                    &raw mut d
+                ),
+                ALDIS_ERR_INVALID_FIELD
+            );
+            assert_eq!(d.field, ALDIS_FIELD_VC_ID);
+        }
+        // The decoder without the VC array has no SDLS knowledge, so it reads the layout of a
+        // channel without SDLS and flags nothing.
+        assert_eq!(
+            aldis_tm_decode(
+                frame.as_ptr(),
+                40,
+                &raw const mc.pc,
+                ALDIS_MODE_LENIENT,
+                &raw mut v,
+                &raw mut d
+            ),
+            ALDIS_OK
+        );
+        assert_eq!(v.anomalies, 0);
+    }
 }
 
 #[test]

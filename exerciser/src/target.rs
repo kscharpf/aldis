@@ -37,6 +37,17 @@ pub fn failed(id: &str) {
     line.write();
 }
 
+/// Writes `FAILED <file>:<line>` for a hand-written check that failed.
+pub fn failed_at(file: &str, line: u32) {
+    let mut text = Line::new();
+    text.push(b"FAILED ");
+    text.push(file.as_bytes());
+    text.push(b":");
+    text.number(line);
+    text.push(b"\n");
+    text.write();
+}
+
 /// Ends the run; QEMU's exit status is 0 only on `success`.
 pub fn exit(success: bool) -> ! {
     console::exit(success)

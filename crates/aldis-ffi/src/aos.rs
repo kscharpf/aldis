@@ -29,8 +29,9 @@
 //! **Writers.** No call keeps a pointer or state (API-023, API-060): `_writer_begin` writes the
 //! Primary Header with its FHEC and the `M_PDU` or `B_PDU` Header and zero-fills the rest of
 //! the frame, the caller fills the fields at the offsets of the [`aldis_aos_layout_t`] it
-//! returns, the OCF included, and `_writer_finish`, given the same arguments, rewrites the
-//! headers and computes the FECF (`AosFrameWriter::resume`).
+//! returns, the OCF included, and `_writer_finish`, given the same arguments, checks that the
+//! buffer holds the headers `_writer_begin` wrote, else `ALDIS_ERR_INVALID_STATE`, and
+//! computes the FECF (`AosFrameWriter::resume`; OI-50).
 
 use core::ops::Range;
 
@@ -803,7 +804,8 @@ pub unsafe extern "C" fn aldis_aos_config_check(
 /// The errors of [`aldis_aos_config_check`]; `ALDIS_ERR_OUT_OF_RANGE` (`spacecraft_id`, `vc_id`)
 /// for an SCID above 1023 or a VCID above 63; `ALDIS_ERR_INVALID_CONFIG` (`vc_id`) for VCID 63,
 /// which is reserved for OID frames, and (`security_header_len`) for a Security Header above 64
-/// octets; then, for the first virtual channel that fails: `ALDIS_ERR_INVALID_CONFIG` (`vc_id`)
+/// octets; `ALDIS_ERR_INVALID_CONFIG` (`vc_id`) for `vc_count` 0 (AOS-020, OI-55); then, for
+/// the first virtual channel that fails: `ALDIS_ERR_INVALID_CONFIG` (`vc_id`)
 /// for a VCID given twice, (`spacecraft_id`) for an SCID above 255 in Issue 4, (`frame_data_field`)
 /// for a VC left no data octet or, for an `M_PDU` or `B_PDU`, no octet after its header, and
 /// for a VC that carries `B_PDUs` (`frame_len`) for frames longer than 2 048 octets in Issue 5
@@ -1159,13 +1161,15 @@ pub unsafe extern "C" fn aldis_aos_writer_begin(
 /// by [`aldis_aos_oid_writer_begin`] without its generator (732.0 §4.1.6.2; AOS-019, API-021,
 /// API-023).
 ///
-/// Rewrites the Primary Header with its FHEC and the `M_PDU` or `B_PDU` Header, leaves every
-/// field the caller filled and the OID data, computes the FECF if configured, and returns the
-/// frame length (`AosFrameWriter::resume`).
+/// First checks that `out` holds the Primary Header with its FHEC and the `M_PDU` or `B_PDU`
+/// Header that the begin function wrote for these arguments (`AosFrameWriter::resume`; OI-50);
+/// the other fields are not compared. Then leaves every field the caller filled and the OID
+/// data, computes the FECF if configured, and returns the frame length.
 ///
 /// # Errors
 /// As [`aldis_aos_writer_begin`], or for `fields->vcid` 63 as [`aldis_aos_oid_writer_begin`];
-/// on error `out` is unchanged.
+/// `ALDIS_ERR_INVALID_STATE` if `out` does not hold the headers the begin function writes for
+/// these arguments (other arguments, or a buffer never begun); on error `out` is unchanged.
 ///
 /// # Safety
 /// As [`aldis_aos_writer_begin`]; `out_len` is valid for one write.

@@ -28,7 +28,8 @@
 //! **Writers.** No call keeps a pointer or state (API-023, API-060): `_writer_begin` writes the
 //! headers and zero-fills the frame, the caller fills the fields at the offsets of the
 //! [`aldis_tm_layout_t`] it returns, the OCF included, and `_writer_finish`, given the same
-//! arguments, rewrites the headers and computes the FECF (`TmFrameWriter::resume`).
+//! arguments, checks that the buffer holds the headers `_writer_begin` wrote, else
+//! `ALDIS_ERR_INVALID_STATE`, and computes the FECF (`TmFrameWriter::resume`; OI-50).
 
 use core::ops::Range;
 
@@ -85,6 +86,9 @@ pub const ALDIS_TM_ANOMALY_PACKET_ORDER_FLAG_SET: u32 = 1 << 0;
 /// Anomaly bit: Segment Length Identifier other than `11` with the Synchronization Flag `0`
 /// (bit 1; 132.0 §4.1.2.7.5.2; TM-007, API-032).
 pub const ALDIS_TM_ANOMALY_SEGMENT_LENGTH_ID_NOT_11: u32 = 1 << 1;
+/// Anomaly bit: an Only Idle Data frame (FHP `0x7FE`) on a virtual channel that uses SDLS
+/// (bit 2; 132.0 §6.4.6.2; TM-010, OI-54). Set only by the decoders that take the VC array.
+pub const ALDIS_TM_ANOMALY_ONLY_IDLE_DATA_ON_SDLS_VC: u32 = 1 << 2;
 
 /// Managed parameters of a physical channel (132.0 §5.1 Table 5-1; TM-001, API-041,
 /// CABI-033). The configuration `aldis_tm_peek_length` takes (M2 plan D14).
@@ -576,7 +580,8 @@ pub(crate) fn view(f: &TmFrame<'_>) -> aldis_tm_frame_t {
 ///
 /// # Errors
 /// `ALDIS_ERR_INVALID_CONFIG` (`frame_len`) for a frame too short for the Primary Header, one
-/// data octet, and the FECF, with that minimum; CABI-022 violations.
+/// data octet, and the FECF, with that minimum, or longer than 4 095 octets, with that maximum
+/// (TM-001, OI-51); CABI-022 violations.
 ///
 /// # Safety
 /// `pc` is valid for a read; `err` is `NULL` or valid for one write.
@@ -1013,11 +1018,15 @@ pub unsafe extern "C" fn aldis_tm_writer_begin(
 /// Finishes a two-phase write begun with the same arguments (132.0 §4.1.6.2; TM-009, API-021,
 /// API-023).
 ///
-/// Rewrites the headers, leaves every field the caller filled, computes the FECF if
-/// configured, and returns the frame length.
+/// First checks that `out` holds the Primary Header and the Secondary Header Identification
+/// Field that [`aldis_tm_writer_begin`] wrote for these arguments (`TmFrameWriter::resume`;
+/// OI-50); the other fields are not compared. Then leaves every field the caller filled,
+/// computes the FECF if configured, and returns the frame length.
 ///
 /// # Errors
-/// As [`aldis_tm_writer_begin`]; on error `out` is unchanged.
+/// As [`aldis_tm_writer_begin`]; `ALDIS_ERR_INVALID_STATE` if `out` does not hold the headers
+/// `aldis_tm_writer_begin` writes for these arguments (other arguments, or a buffer never
+/// begun); on error `out` is unchanged.
 ///
 /// # Safety
 /// As [`aldis_tm_writer_begin`]; `out_len` is valid for one write.
@@ -1127,8 +1136,9 @@ pub unsafe extern "C" fn aldis_tm_oid_writer_begin(
 /// Finishes an Only Idle Data frame begun with [`aldis_tm_oid_writer_begin`] (132.0 §4.1.4.6,
 /// §4.1.6.2; TM-010, API-023).
 ///
-/// Given the same arguments, it rewrites the headers, leaves the Idle Data and every field the
-/// caller filled, computes the FECF if configured, and returns the frame length.
+/// Given the same arguments, it first checks the headers as [`aldis_tm_writer_finish`] does
+/// (OI-50), leaves the Idle Data and every field the caller filled, computes the FECF if
+/// configured, and returns the frame length.
 ///
 /// # Errors
 /// As [`aldis_tm_writer_finish`] for the fields of an OID frame, including
@@ -1185,6 +1195,10 @@ mod tests {
         assert_eq!(
             ALDIS_TM_ANOMALY_SEGMENT_LENGTH_ID_NOT_11,
             1 << TmAnomaly::SegmentLengthIdNot11.bit()
+        );
+        assert_eq!(
+            ALDIS_TM_ANOMALY_ONLY_IDLE_DATA_ON_SDLS_VC,
+            1 << TmAnomaly::OnlyIdleDataOnSdlsVc.bit()
         );
         assert_eq!(
             usize::try_from(ALDIS_TM_PRIMARY_HEADER_LEN),

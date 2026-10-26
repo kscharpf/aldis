@@ -41,7 +41,7 @@ pub mod writer;
 
 pub use anomaly::TmAnomaly;
 pub use config::{
-    DataFieldContent, NoSdls, TmMasterChannelConfig, TmPhysicalChannelConfig,
+    DataFieldContent, MAX_FRAME_LEN, NoSdls, TmMasterChannelConfig, TmPhysicalChannelConfig,
     TmVirtualChannelConfig, VcLookup,
 };
 pub use header::{

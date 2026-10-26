@@ -147,4 +147,8 @@ One line for each decision the maintainer takes, under the [decision rights](dec
 - 2026-10-25 · spec · #118 · TM-003 states that a Secondary Header Length field of 0 is rejected with `InvalidField` (`fsh_len`) (132.0 §4.1.3.1.3 b); no behaviour change
 - 2026-10-25 · api · #118 · API-031 lists two more exceptions to strict rejection: an unregistered USLP UPID, and truncated and non-truncated USLP frames mixed in one data unit or, until OI-48 is implemented, on one VC
 - 2026-10-25 · spec · #118 · ASM-8 of the assurance case: the receiver's managed parameters equal the sender's, for every codec
+- 2026-10-25 · api · #122 · strict TM decode rejects an Only Idle Data frame on an SDLS VC (OI-54); lenient flags it
 - 2026-10-25 · process · #119 · AGENTS.md trimmed to actionable agent rules; detailed review protocol moved to docs/process/review.md and local container setup notes to docs/06-verification.md
+- 2026-10-25 · api · #122 · OI-55: an empty VC list is rejected with `InvalidConfig` (`vc_id`) in TC, AOS and USLP (TC-024, AOS-020, USLP-017)
+- 2026-10-25 · api · #122 · `aldis_spp_writer_finish` and `aldis_epp_writer_finish` re-run `begin` and stay without OI-50's header check; the residual is documented in `docs/profiles/c-abi.md`, and the check is revisited with the packet-codec hazard analysis in M3
+- 2026-10-25 · plan · #122 · the USLP `VcConfig::new` check of a truncated frame length below 28 with SDLS (`SecurityScope::Vc`, RS-020) moves to M3

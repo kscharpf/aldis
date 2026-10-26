@@ -186,14 +186,18 @@ fn run(u: &mut Unstructured<'_>) -> Result<()> {
             assert_eq!(f.ocf(), ocf);
             assert!(f.anomalies().is_empty());
             let mut two = vec![0x5A_u8; n];
-            let mut w = AosFrameWriter::begin(&mut two, &pc, &vcs_table, &fields).unwrap();
-            w.insert_zone_mut().copy_from_slice(&iz);
-            w.security_header_mut().copy_from_slice(&sh);
-            w.zone_mut().copy_from_slice(&zone);
-            w.security_trailer_mut().copy_from_slice(&st);
-            if let Some(ocf) = ocf {
-                w.set_ocf(ocf).unwrap();
+            {
+                let mut w = AosFrameWriter::begin(&mut two, &pc, &vcs_table, &fields).unwrap();
+                w.insert_zone_mut().copy_from_slice(&iz);
+                w.security_header_mut().copy_from_slice(&sh);
+                w.zone_mut().copy_from_slice(&zone);
+                w.security_trailer_mut().copy_from_slice(&st);
+                if let Some(ocf) = ocf {
+                    w.set_ocf(ocf).unwrap();
+                }
             }
+            // A stateless finish takes up the same buffer with the same arguments (OI-50).
+            let w = AosFrameWriter::resume(&mut two, &pc, &vcs_table, &fields).unwrap();
             assert_eq!(w.finish(), n);
             assert_eq!(two[..n], out[..n]);
             corrected(u, &pc, &vcs_table, &out[..n], &f)?;

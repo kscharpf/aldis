@@ -16,17 +16,21 @@ use aldis_uslp::{
 };
 
 // A variable-length channel (as over TC Synchronization and Channel Coding) with FECF; VC 4
-// carries truncated frames of 12 octets too.
+// carries the non-truncated frames, VC 5 only truncated frames of 12 octets (OI-48).
 let scid = UslpSpacecraftId::new(0x155).unwrap();
 let (vcid, map) = (UslpVcId::new(4).unwrap(), UslpMapId::new(0).unwrap());
+let truncated_vcid = UslpVcId::new(5).unwrap();
 let pc = PhysicalChannelConfig::new(TransferFrameType::Variable, 1024, 0, true).unwrap();
-let params = VcParams {
+let truncated = VcParams {
     truncated_frame_len: Some(TruncatedFrameLen::new(12).unwrap()),
     ..VcParams::new(TransferFrameType::Variable)
 };
-let channels = VcTable::<1, 1>::new(
+let channels = VcTable::<2, 1>::new(
     pc,
-    &[VcConfig::new(scid, vcid, params).unwrap()],
+    &[
+        VcConfig::new(scid, vcid, VcParams::new(TransferFrameType::Variable)).unwrap(),
+        VcConfig::new(scid, truncated_vcid, truncated).unwrap(),
+    ],
     &[MapConfig::new(scid, vcid, map, SecurityLayout::NONE)],
 )
 .unwrap();

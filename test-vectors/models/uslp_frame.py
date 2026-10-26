@@ -59,6 +59,7 @@ REASONS = {
     "VcfCountLengthMismatch": 8, "OcfFlagMismatch": 9, "FixedLengthMismatch": 10,
     "FrameTooLong": 11, "FrameTooShort": 12, "LengthMismatch": 13, "FecfMismatch": 14,
     "ConstructionRuleMismatch": 15, "PointerBeyondZone": 16, "OidHeaderMismatch": 17,
+    "NonTruncatedFrameNotAllowed": 18,
 }
 
 # Anomaly flags in bit order, docs/standards/uslp-frame.md §4.
@@ -92,6 +93,12 @@ VC_CAPACITY, MAP_CAPACITY = 16, 32
 
 SCID = 0x155        # the fictional SCID of the reference scenario (APP-026)
 SCID16 = 0xF0A5     # a fictional 16-bit SCID
+
+
+# True only while the generator rebuilds the two cases released before OI-48 (uslp-tsdls-003 and
+# -004), which carry a non-truncated frame on a VC with a truncated frame length: their input and
+# expectation stay as released (TV-021).
+LEGACY = False
 
 
 class Fail(Exception):
@@ -422,6 +429,8 @@ def parse(cfg, data, mode, exact):
         m = map_of(cfg, h["scid"], h["vcid"], h["map"])
         if m is None:
             fail("UnknownChannel", "map_id", "InvalidMapId")
+    if v["trunc"] is not None and not LEGACY:        # OI-48, Annex D1.2.1: such a VC carries truncated frames only
+        fail("InvalidField", "end_of_frame_primary_header_flag", "NonTruncatedFrameNotAllowed")
     if h["vcf_len"] != v["len"][h["bypass"]]:
         fail("LengthMismatch", "vcf_count_len", "VcfCountLengthMismatch")
     if h["ocf"] == 1 and v["ocf"] == "absent" or h["ocf"] == 0 and v["ocf"] == "required":
@@ -537,6 +546,9 @@ def peek(cfg, prefix):
         if v["trunc"] is None:
             fail("InvalidField", "end_of_frame_primary_header_flag")
         return v["trunc"]
+    v = vc_lookup(cfg, t["scid"], t["vcid"])
+    if v is not None and v["trunc"] is not None and not LEGACY:             # OI-48
+        fail("InvalidField", "end_of_frame_primary_header_flag")
     if cfg["fixed"]:
         return cfg["len"]
     if len(prefix) < 6:
@@ -568,6 +580,8 @@ def encode(cfg, p, op):
             fail("UnknownChannel", "map_id")
     if op == "encode_truncated":
         return encode_truncated(cfg, p, v, m)
+    if op == "encode" and v["trunc"] is not None and not LEGACY:            # OI-48
+        fail("InvalidField", "end_of_frame_primary_header_flag")
     if op == "encode_oid":
         rule, upid = 0b001, UPID_IDLE
     else:
@@ -660,6 +674,10 @@ def delimit(cfg, unit):
             total = h["frame_len"] + 1
             if total < FIXED_HEADER + h["vcf_len"] + 2:
                 item("fill", rest)
+                break
+            w = vc_lookup(cfg, h["scid"], h["vcid"])
+            if w is not None and w["trunc"] is not None and not LEGACY:     # OI-48
+                item("non_truncated_not_allowed", rest)
                 break
         if total > len(rest):
             item("incomplete", rest, total)
@@ -763,6 +781,11 @@ TRUNC = pc("variable", 128, [
 ], [mp(1, 0), mp(5, 2), mp(8, 0), mp(10, 0), mp(11, 4, scid=SCID16), mp(6, 0), mp(7, 0),
     mp(7, 1, 4, 0)])
 
+# The channel of TRUNC with one more VC, VC 12, which has the SDLS layout 8/8 of VC 6 and no
+# truncated frame length: it carries the non-truncated frames that VC 6 no longer may (OI-48).
+TRUNC_NT = pc("variable", 128, TRUNC["vcs"] + [vc(12, "variable", sec=(8, 8))],
+              TRUNC["maps"] + [mp(12, 0)])
+
 # OID frames: a fixed-length channel with a 3-octet Insert Zone and FECF; and one whose
 # VCs carry an OCF ("Inclusion of OCF Required") and a VCF Count on VCID 63.
 OID = pc("fixed", 24, [vc(OID_VCID, seq=0, exp=0), vc(1, seq=1, exp=1)], [mp(1, 0)], iz=3)
@@ -779,6 +802,12 @@ DELIM = pc("variable", 64, [vc(1, "variable", seq=1, exp=1), vc(3, "variable", s
                             vc(5, "variable", trunc=8), vc(6, "variable", trunc=28,
                                                            sec=(6, 16))],
            [mp(1, 0), mp(3, 0), mp(5, 2), mp(6, 0)])
+
+
+# The channel of DELIM with a VC whose truncated frame length is 6, the shortest (Annex D1.3.2
+# note 2): HZ-USLP-05.
+DELIM6 = pc("variable", 64, DELIM["vcs"] + [vc(8, "variable", trunc=6)],
+            DELIM["maps"] + [mp(8, 0)])
 
 
 def pat(n, start=0x10, step=1):
@@ -819,6 +848,17 @@ def zone(c, vcid, map_id=0, kind="sequence_controlled", ocf=False, scid=SCID):
 
 def frame_of(c, p, op="encode"):
     return encode(config(c), p, op)
+
+
+def refused_frame(c, p):
+    """The octets of a non-truncated frame on a VC with a truncated frame length, which no
+    writer produces since OI-48 (built with the check off, for the cases that refuse it)."""
+    global LEGACY
+    LEGACY = True
+    try:
+        return frame_of(c, p)
+    finally:
+        LEGACY = False
 
 
 def hdr(vcid, total, map_id=0, kind=None, flags=None, spare=0, ocf=0, vcf_len=1, tfvn=TFVN,
@@ -1155,6 +1195,55 @@ def gen_truncated():
           "InvalidField", "peek_length", FIXED, data=thdr(1))
     b.add(req + ["USLP-002"], "A truncated frame length on a fixed-length VC: InvalidConfig",
           "config", pc("fixed", 40, [vc(1, trunc=12)], [mp(1, 0)]))
+    # Added 2026-10-25 by a blind Claude Sonnet 5.5 agent (m2/hazard-controls, OI-48): a VC
+    # with a truncated frame length carries only truncated frames (uslp-frame.md USLP-002,
+    # sections 3.1 and 3.3).
+    o48 = ["USLP-002"]
+    nt = params(5, pat(4, 0x71), rule=7, count=1, map_id=2)
+    nt5 = refused_frame(TRUNC, nt)
+    b.enc(o48 + WERR, "OI-48: encode of a non-truncated frame on VC 5 (truncated frame length "
+          "12): InvalidField (end_of_frame_primary_header_flag)", TRUNC, nt)
+    b.enc(o48 + WERR, "OI-48: encode of a non-truncated frame on VC 8 (truncated frame length "
+          "6, the shortest): InvalidField (end_of_frame_primary_header_flag)", TRUNC,
+          params(8, pat(4, 0x71), rule=7, count=1))
+    b.enc(o48 + WERR, "OI-48: encode on VC 5 with MAP 0, not configured: UnknownChannel "
+          "(map_id) comes before the refusal (writer order, uslp-frame.md section 3.3)",
+          TRUNC, params(5, pat(4, 0x71), rule=7, count=1, map_id=0))
+    b.enc(o48 + WERR + ["USLP-016"], "OI-48: encode on VC 5 with the fixed-length rule 000: "
+          "the refusal of the frame comes before the rule check, InvalidField "
+          "(end_of_frame_primary_header_flag)", TRUNC,
+          params(5, pat(4, 0x71), rule=0, pointer=0, map_id=2))
+    b.dec(o48 + ["API-031"], "OI-48: a non-truncated frame on VC 5, strict: InvalidField "
+          "(end_of_frame_primary_header_flag)", TRUNC, nt5)
+    b.dec(o48 + ["API-032"], "OI-48: a non-truncated frame on VC 5, lenient: the same error "
+          "in both modes", TRUNC, nt5, mode="lenient")
+    b.dec(o48 + ["API-011"], "OI-48: a non-truncated frame on VC 5 followed by 3 more octets: "
+          "the same error", TRUNC, nt5 + pat(3, 0xC0))
+    b.dec(o48, "OI-48: the frame one octet short: the refusal (reason 18) comes before the "
+          "length check, so not Incomplete", TRUNC, nt5[:-1])
+    b.dec(o48, "OI-48: a non-truncated header of 7 octets on VC 5: the refusal, not "
+          "Incomplete", TRUNC, nt5[:7])
+    b.dec(o48 + ["USLP-004"], "OI-48: a non-truncated frame on VC 5 with VCF Count Length 2 "
+          "(the VC's is 1): the refusal comes before the count length check", TRUNC,
+          reheader(nt5, vcf_len=2))
+    b.dec(o48, "OI-48: a non-truncated frame on VC 5 with MAP 3, not configured: "
+          "UnknownChannel (map_id) comes before the refusal", TRUNC, reheader(nt5, map=3))
+    b.dec(o48 + ["USLP-001"], "OI-48: a non-truncated frame on VC 5 with the reserved flags "
+          "01: ReservedValue comes before the refusal", TRUNC, reheader(nt5, bypass=0, pcc=1))
+    b.dec(o48 + ["API-031"], "OI-48: a non-truncated frame on VC 5 with Reserve Spares 01, "
+          "strict: ReservedValue comes before the refusal", TRUNC, reheader(nt5, spare=1))
+    b.dec(o48 + ["API-032"], "OI-48: a non-truncated frame on VC 5 with Reserve Spares 01, "
+          "lenient: the anomaly, then the refusal", TRUNC, reheader(nt5, spare=1),
+          mode="lenient")
+    b.add(o48 + ["API-013"], "OI-48: peek_length, 4 octets of a non-truncated header on VC 5: "
+          "InvalidField (end_of_frame_primary_header_flag), no more octets needed", "peek_length",
+          TRUNC, data=nt5[:4])
+    b.add(o48 + ["API-013"], "OI-48: peek_length, 6 octets of a non-truncated header on VC 5: "
+          "InvalidField (end_of_frame_primary_header_flag)", "peek_length", TRUNC,
+          data=nt5[:6])
+    b.add(o48 + ["API-013"], "OI-48: peek_length, 6 octets of a non-truncated header on VC 1, "
+          "which has no truncated frame length: its Frame Length + 1", "peek_length", TRUNC,
+          data=frame_of(TRUNC, params(1, pat(4, 0x71), rule=7, count=1))[:6])
     return b.cases
 
 
@@ -1164,8 +1253,11 @@ def gen_truncated_sdls():
     b.pair(req, "Truncated frame on VC 6 (SDLS 8/8 on full frames): the 6-octet Security "
            "Header and 16-octet Trailer of Annex D1.2.3, 5 TFDZ octets", TRUNC,
            tparams(6, pat(5, 0x91)), op="encode_truncated")
+    global LEGACY
+    LEGACY = True
     b.pair(["API-070", "API-072"], "A non-truncated frame on the same VC 6 keeps its own 8/8 "
            "layout", TRUNC, params(6, pat(4, 0x81), rule=7, count=1))
+    LEGACY = False
     b.pair(req, "Truncated frame on VC 7 MAP 1 (SDLS per MAP, header 4): 6/16, length 28, one "
            "TFDZ octet", TRUNC, tparams(7, b"\xEE", map_id=1), op="encode_truncated")
     b.pair(req, "Truncated frame on VC 7 MAP 0 (no SDLS on that MAP): no security fields, 23 "
@@ -1188,6 +1280,22 @@ def gen_truncated_sdls():
                        [mp(2, 0), mp(2, 1)]))
     b.add(req, "VC without SDLS (0/0) and truncated frame length 6: accepted", "config",
           pc("variable", 64, [vc(2, "variable", trunc=6)], [mp(2, 0)]))
+    # Added 2026-10-25 by a blind Claude Sonnet 5.5 agent (m2/hazard-controls, OI-48): uslp-
+    # tsdls-003 and -004 are replaced by the same frame on VC 12, which has the layout 8/8 and no
+    # truncated frame length, and by the refusal of that frame on VC 6.
+    vc6 = params(6, pat(4, 0x81), rule=7, count=1)
+    b.pair(["API-070", "API-072"], "OI-48: the frame of uslp-tsdls-003 on VC 12, which has the "
+           "same layout 8/8 and no truncated frame length (it replaces uslp-tsdls-003 and -004)",
+           TRUNC_NT, params(12, pat(4, 0x81), rule=7, count=1))
+    b.enc(["USLP-002", "API-070"] + WERR, "OI-48: the frame of uslp-tsdls-003 on VC 6, which "
+          "has a truncated frame length and so carries only truncated frames: InvalidField "
+          "(end_of_frame_primary_header_flag)", TRUNC_NT, vc6)
+    nt = refused_frame(TRUNC_NT, vc6)
+    b.dec(["USLP-002", "API-031", "API-070"], "OI-48: the octets of uslp-tsdls-003 on VC 6, "
+          "strict: InvalidField (end_of_frame_primary_header_flag)", TRUNC_NT, nt)
+    b.dec(["USLP-002", "API-032", "API-070"], "OI-48: the octets of uslp-tsdls-003 on VC 6, "
+          "lenient: the same error in both modes, a configuration rule and not a reserved "
+          "value", TRUNC_NT, nt, mode="lenient")
     return b.cases
 
 
@@ -1443,6 +1551,40 @@ def gen_delimit():
     d("A frame with the reserved flags 01: the delimiter does not check them",
       reheader(f1, bypass=0, pcc=1) + fill)
     d("An empty data unit", b"")
+    # Added 2026-10-25 by a blind Claude Sonnet 5.5 agent (m2/hazard-controls): OI-48 and
+    # HZ-USLP-05 (P-USLP-07).
+    o48 = ["USLP-015", "USLP-002"]
+    nt5 = refused_frame(DELIM, params(5, pat(4, 0x71), rule=7, count=1, map_id=2))
+    d2 = lambda desc, unit, c=DELIM, reqs=o48: b.add(reqs, desc, "delimit", c, data=unit)
+    d2("OI-48: a frame, then a non-truncated frame on VC 5 (truncated frame length 8), then "
+       "another frame: the frame, then non_truncated_not_allowed with the rest, whose Frame "
+       "Length is not trusted", f1 + nt5 + f2)
+    d2("OI-48: a non-truncated frame on VC 5 alone", nt5)
+    d2("OI-48: a non-truncated frame on VC 5 that declares more octets than remain: "
+       "non_truncated_not_allowed, not incomplete (its Frame Length is not trusted)",
+       nt5[:-3])
+    d2("OI-48: a non-truncated header on VC 5 of 6 octets: fewer than 7, so fill, not "
+       "non_truncated_not_allowed", f1 + hdr(5, 40, map_id=2)[:6])
+    d2("OI-48: a non-truncated header on VC 5 whose Frame Length + 1 = 9 with a 1-octet VCF "
+       "Count is not a valid header: fill", f1 + hdr(5, 9, map_id=2, vcf_len=1) + bytes(2))
+    d2("OI-48: a non-truncated header on VC 12, which is not configured: a frame (the delimiter "
+       "does not check the VC of a non-truncated header)",
+       reheader(f1, vcid=12) + fill)
+    # HZ-USLP-05: fill added after randomization, derandomized to six non-0x55 octets that read as
+    # the truncated header of a VC whose truncated frame length is 6, plus one rule/UPID octet
+    # and one data octet (Annex D1.2.1, D1.3.1; 732.1-B-3 4.3.11.2.4 note 2).
+    six = thdr(8) + bytes([0xB3, 0x6D])
+    d2("HZ-USLP-05: a frame and six octets of fill (not 0x55) that read as the truncated header "
+       "of VC 8, whose truncated frame length is 6: a second frame (the case ASM-12 closes, "
+       "uslp-frame.md section 3.2)", f1 + six, DELIM6, ["USLP-015", "USLP-002"])
+    d2("HZ-USLP-05: the same six octets where no VC has truncated frame length 6: "
+       "no_truncated_length", f1 + six, DELIM, ["USLP-015", "USLP-002"])
+    d2("HZ-USLP-05 with OI-48: six octets of fill that read as the first six octets of a "
+       "non-truncated header (End of Frame Primary Header Flag 0) on VC 8: fewer than 7, "
+       "fill", f1 + hdr(8, 40)[:6], DELIM6, ["USLP-015", "USLP-002"])
+    b.add(["USLP-014", "USLP-002", "USLP-015"], "HZ-USLP-05: validate accepts the six octets "
+          "of fill that the delimiter yielded as a truncated frame of VC 8", "validate", DELIM6,
+          data=six)
     return b.cases
 
 
@@ -1525,6 +1667,35 @@ def gen_validation():
       "unknown SCID 0x0001", FIXED, five(TFVN, 1))
     v(["USLP-014", "USLP-001"], "Reason 13 comes before reasons 1 and 2: five octets with "
       "TFVN 0000 and the unknown SCID 0x0001", FIXED, five(0, 1))
+    # Added 2026-10-25 by a blind Claude Sonnet 5.5 agent (m2/hazard-controls, OI-48): reason 18,
+    # a non-truncated frame on a VC with a truncated frame length, checked after reason 6 and
+    # before reason 8, in both modes (uslp-frame.md section 3.1).
+    o48 = ["USLP-002", "USLP-014"]
+    nt5 = refused_frame(TRUNC, params(5, pat(4, 0x71), rule=7, count=1, map_id=2))
+    v(o48, "Reason 18: a non-truncated frame on VC 5, which has a truncated frame length",
+      TRUNC, nt5)
+    v(o48 + ["API-032"], "Reason 18 in lenient mode: the same", TRUNC, nt5, mode="lenient")
+    v(o48, "Reason 18: 7 octets, the header of a non-truncated frame on VC 5", TRUNC, nt5[:7])
+    v(o48, "Reason 6 comes before reason 18: a non-truncated frame on VC 5 with MAP 3", TRUNC,
+      reheader(nt5, map=3))
+    v(o48 + ["USLP-004"], "Reason 18 comes before reason 8: VCF Count Length 2 on VC 5", TRUNC,
+      reheader(nt5, vcf_len=2))
+    v(o48, "Reason 18 comes before reason 9: OCF Flag 1 on VC 5, which has no OCF", TRUNC,
+      reheader(nt5, ocf=1))
+    v(o48, "Reason 18 comes before reason 11: 129 octets declared on a 128-octet channel",
+      TRUNC, hdr(5, 129, map_id=2) + bytes(1))
+    v(o48, "Reason 18 comes before reason 13: one octet more than Frame Length + 1", TRUNC,
+      nt5 + b"\x00")
+    v(o48, "Reason 18 comes before reason 14: FECF wrong", TRUNC,
+      nt5[:-1] + bytes([nt5[-1] ^ 1]))
+    v(o48 + ["USLP-016"], "Reason 18 comes before reason 15: rule 000 in the TFDF Header", TRUNC,
+      retfdf(nt5, 8, bytes([UPID_MSI1])))
+    v(o48 + ["API-031"], "Reason 4 comes before reason 18: Reserve Spares 01, strict", TRUNC,
+      reheader(nt5, spare=1))
+    v(o48 + ["API-032"], "Reason 18 in lenient mode with Reserve Spares 01: the anomaly does "
+      "not accept the frame", TRUNC, reheader(nt5, spare=1), mode="lenient")
+    v(o48, "A non-truncated frame on VC 1, which has no truncated frame length: accepted", TRUNC,
+      frame_of(TRUNC, params(1, pat(4, 0x71), rule=7, count=1)))
     return b.cases
 
 
@@ -1784,7 +1955,16 @@ NOTE = (
 )
 
 
+OI48 = ("OI-48 (maintainer decision of 2026-10-25): a VC with a truncated frame length carries "
+        "only truncated frames (732.1-B-3 Annex D1.2.1, D1.2.4 note), so this non-truncated "
+        "frame on VC 6, which has truncated frame length 32, is refused with InvalidField "
+        "(end_of_frame_primary_header_flag) by the writer and the decoder; the same frame on a "
+        "VC without a truncated frame length is {}, and the refusal is {}")
+
 SUPERSEDED = {
+    "uslp-tsdls-003": (OI48.format("uslp-tsdls-017", "uslp-tsdls-019"), "uslp-tsdls-017"),
+    "uslp-tsdls-004": (OI48.format("uslp-tsdls-018", "uslp-tsdls-020 and -021"),
+                       "uslp-tsdls-018"),
     "uslp-oid-019": (
         "VCID 63 is valid on a fixed-length channel without an entry (maintainer decision of "
         "2026-10-25 following 732.1-B-3 Table 5-2 note 2): encode_oid on a channel that does "
@@ -1819,6 +1999,21 @@ EXTRA = {
 }
 
 
+ADDED = {name: (
+    " The cases " + ids + " were added on 2026-10-25 (m2/hazard-controls) by a blind Claude "
+    "Sonnet 5.5 agent, briefed to read only the Blue Book, docs/, and the vectors, never the "
+    "implementation, and to extend this model: " + why)
+    for name, ids, why in [
+        ("truncated_sdls_layout.json", "uslp-tsdls-017 to uslp-tsdls-021",
+         "OI-48, with uslp-tsdls-003 and -004 superseded (their released expectations are kept)."),
+        ("truncated.json", "uslp-trunc-039 onward",
+         "OI-48, a VC with a truncated frame length carries only truncated frames."),
+        ("validation_failures.json", "uslp-val-041 onward",
+         "OI-48, validation reason 18 and its order."),
+        ("delimit_multiple_frames_with_fill.json", "uslp-delim-017 onward",
+         "OI-48 (the non_truncated_not_allowed item) and HZ-USLP-05 (P-USLP-07).")]}
+
+
 def generate():
     out = {}
     for name, (gen, title) in FILES.items():
@@ -1829,10 +2024,12 @@ def generate():
             if c["id"] in SUPERSEDED:
                 reason, by = SUPERSEDED[c["id"]]
                 c["superseded"] = {"reason": reason, "by": by}
-                c["expect"] = RELEASED_EXPECT[c["id"]]
+                if c["id"] in RELEASED_EXPECT:
+                    c["expect"] = RELEASED_EXPECT[c["id"]]
         out[name] = {"kind": "codec", "standard": "732.1-B-3 — " + title,
                      "provenance": "hand-derived",
-                     "provenance_note": NOTE + " This file covers " + title + ".",
+                     "provenance_note": NOTE + ADDED.get(name, "") + " This file covers "
+                                        + title + ".",
                      "cases": cases}
     return out
 

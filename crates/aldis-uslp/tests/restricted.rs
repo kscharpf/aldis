@@ -71,7 +71,7 @@ const OID: u8 = 63;
 
 /// The validation reasons and their stable codes, as `docs/standards/uslp-frame.md` §3.1 lists
 /// them (M2 plan D14; USLP-014).
-const REASONS: [(u8, &str); 17] = [
+const REASONS: [(u8, &str); 18] = [
     (1, "UnexpectedVersion"),
     (2, "UnexpectedSpacecraft"),
     (3, "ReservedFlags"),
@@ -89,6 +89,7 @@ const REASONS: [(u8, &str); 17] = [
     (15, "ConstructionRuleMismatch"),
     (16, "PointerBeyondZone"),
     (17, "OidHeaderMismatch"),
+    (18, "NonTruncatedFrameNotAllowed"),
 ];
 
 /// `InvalidConfig` naming `fld`.

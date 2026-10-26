@@ -38,6 +38,10 @@ impl<'a> TmFrame<'a> {
     /// Decodes a frame of a physical channel on which no virtual channel uses SDLS (132.0 §4.1;
     /// TM-001…TM-008). The same as [`decode_with`](Self::decode_with) and [`NoSdls`].
     ///
+    /// It has no knowledge of the virtual channels, so it cannot tell whether an Only Idle Data
+    /// frame is on a channel that uses SDLS, and never reports that (TM-010, HZ-TM-07, OI-54);
+    /// use [`decode_with`](Self::decode_with) for such a channel.
+    ///
     /// # Errors
     /// As for [`decode_with`](Self::decode_with), except `UnknownChannel`.
     pub fn decode(
@@ -71,7 +75,11 @@ impl<'a> TmFrame<'a> {
     /// - in strict mode, with the Synchronization Flag `0`, `ReservedValue`
     ///   (`packet_order_flag`) for a Packet Order Flag `1` and `InvalidField`
     ///   (`segment_length_id`) for a Segment Length Identifier other than `11`; lenient mode
-    ///   reports them as [`TmAnomaly`] flags (TM-007, API-032).
+    ///   reports them as [`TmAnomaly`] flags (TM-007, API-032);
+    /// - last, with the Synchronization Flag `0` and the First Header Pointer `0x7FE` (Only Idle
+    ///   Data) on a virtual channel whose security layout is not empty: in strict mode
+    ///   `InvalidField` (`vc_id`), in lenient mode the flag
+    ///   [`TmAnomaly::OnlyIdleDataOnSdlsVc`] (132.0 §6.4.6.2; TM-010, OI-54).
     pub fn decode_with<L: VcLookup + ?Sized>(
         bytes: &'a [u8],
         pc: &TmPhysicalChannelConfig,
@@ -187,6 +195,15 @@ impl<'a> TmFrame<'a> {
                         ));
                     }
                     DecodeMode::Lenient => anomalies.insert(TmAnomaly::SegmentLengthIdNot11),
+                }
+            }
+            // An Only Idle Data frame uses a VCID that does not use SDLS (132.0 §6.4.6.2; TM-010).
+            if pointer == PacketPointer::OnlyIdleData && !security.is_none() {
+                match mode {
+                    DecodeMode::Strict => {
+                        return Err(Error::new(ErrorKind::InvalidField).with_field(field::VC_ID));
+                    }
+                    DecodeMode::Lenient => anomalies.insert(TmAnomaly::OnlyIdleDataOnSdlsVc),
                 }
             }
             DataFieldStatus::Packets(pointer)
@@ -640,7 +657,13 @@ mod tests {
         );
         slid[4] |= 0x20;
         let f = TmFrame::decode(&slid, &channel, LENIENT).unwrap();
-        assert_eq!(f.anomalies(), AnomalySet::from_flags(TmAnomaly::ALL));
+        assert_eq!(
+            f.anomalies(),
+            AnomalySet::from_flags(&[
+                TmAnomaly::PacketOrderFlagSet,
+                TmAnomaly::SegmentLengthIdNot11
+            ])
+        );
         assert_eq!(f.header().segment_length_id.get(), 1);
         assert_eq!(
             f.data_field_status(),
@@ -722,6 +745,80 @@ mod tests {
             );
             assert!(decode(&bytes, &channel, &mc, STRICT).is_ok());
         }
+    }
+
+    #[test]
+    fn only_idle_data_on_an_sdls_vc_is_refused_or_flagged() {
+        // req: TM-010, TM-011, API-031, API-032, GEN-043 (OI-54)
+        let channel = pc(20, true);
+        let sdls = |n| SecurityLayout::new(n, 0).unwrap();
+        let mc = |layout| {
+            TmMasterChannelConfig::new(channel, SpacecraftId::new(0x2A5).unwrap(), None, false)
+                .with_vc(
+                    TmVirtualChannelConfig::new(VcId::new(5).unwrap(), DataFieldContent::Packets)
+                        .with_security(layout),
+                )
+                .unwrap()
+        };
+        // VC 5, SDLS Header of 3 octets, FHP 0x7FE (Only Idle Data), Segment Length ID 11.
+        let mut oid = plain()[..4].to_vec();
+        oid.extend([0x1F, 0xFE]);
+        oid.extend([0xA5; 3]);
+        oid.extend([0x55; 9]);
+        oid.extend([0, 0]);
+        write_fecf(&mut oid).unwrap();
+        let with = mc(sdls(3));
+        for decode in [TmFrame::decode_with, TmFrame::decode_unchecked] {
+            let e = decode(&oid, &channel, &with, STRICT).unwrap_err();
+            assert_eq!(
+                (e.kind(), e.field()),
+                (ErrorKind::InvalidField, Some(field::VC_ID))
+            );
+            let f = decode(&oid, &channel, &with, LENIENT).unwrap();
+            assert_eq!(
+                f.anomalies(),
+                AnomalySet::from_flags(&[TmAnomaly::OnlyIdleDataOnSdlsVc])
+            );
+            assert_eq!(
+                f.data_field_status(),
+                DataFieldStatus::Packets(PacketPointer::OnlyIdleData)
+            );
+            assert_eq!(f.security_header(), &[0xA5; 3]);
+        }
+        // A Security Trailer alone also makes the VC use SDLS.
+        let trailer = SecurityLayout::new(0, 3).unwrap();
+        let e = TmFrame::decode_with(&oid, &channel, &mc(trailer), STRICT).unwrap_err();
+        assert_eq!(
+            (e.kind(), e.field()),
+            (ErrorKind::InvalidField, Some(field::VC_ID))
+        );
+        // `decode` has no table, so it reads a VC without SDLS and flags nothing.
+        let f = TmFrame::decode(&oid, &channel, LENIENT).unwrap();
+        assert_eq!(f.anomalies(), AnomalySet::empty());
+        // The pointer decides: no packet start (0x7FF) and a start at 0 are no OID frame, and a
+        // Synchronization Flag of 1 makes the pointer undefined.
+        for (octet4, octet5) in [(0x1F, 0xFF), (0x18, 0x00), (0x60 | 0x07, 0xFE)] {
+            let mut other = oid.clone();
+            other[4..6].copy_from_slice(&[octet4, octet5]);
+            write_fecf(&mut other).unwrap();
+            let f = TmFrame::decode_with(&other, &channel, &with, LENIENT);
+            assert_eq!(f.unwrap().anomalies(), AnomalySet::empty());
+        }
+        // Without SDLS on the VC, the frame is an ordinary OID frame, as in strict mode.
+        let none = mc(SecurityLayout::NONE);
+        let mut plain_oid = oid.clone();
+        plain_oid[6..9].fill(0x55);
+        write_fecf(&mut plain_oid).unwrap();
+        let f = TmFrame::decode_with(&plain_oid, &channel, &none, STRICT).unwrap();
+        assert_eq!(f.anomalies(), AnomalySet::empty());
+        // The Packet Order Flag and Segment Length ID errors come first.
+        let mut order = oid.clone();
+        order[4] |= 0x20;
+        write_fecf(&mut order).unwrap();
+        assert_eq!(
+            err(TmFrame::decode_with(&order, &channel, &with, STRICT)),
+            (ErrorKind::ReservedValue, Some(field::PACKET_ORDER_FLAG))
+        );
     }
 
     #[test]

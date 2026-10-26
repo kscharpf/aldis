@@ -80,12 +80,13 @@ use aldis_tm::{
 use aldis_ffi::uslp::{
     ALDIS_USLP_DELIMITED_END, ALDIS_USLP_DELIMITED_FILL, ALDIS_USLP_DELIMITED_FRAME,
     ALDIS_USLP_DELIMITED_INCOMPLETE_FRAME, ALDIS_USLP_DELIMITED_NO_TRUNCATED_LENGTH,
-    ALDIS_USLP_FRAME_FIXED, ALDIS_USLP_FRAME_VARIABLE, ALDIS_USLP_KIND_EXPEDITED,
-    ALDIS_USLP_KIND_PROTOCOL_CONTROL, ALDIS_USLP_KIND_SEQUENCE_CONTROLLED, ALDIS_USLP_OCF_ABSENT,
-    ALDIS_USLP_OCF_ALLOWED, ALDIS_USLP_OCF_REQUIRED, ALDIS_USLP_REASON_NONE,
-    ALDIS_USLP_SECURITY_PER_MAP, ALDIS_USLP_SECURITY_VC, aldis_uslp_config_t, aldis_uslp_decode,
-    aldis_uslp_delimited_t, aldis_uslp_frame_t, aldis_uslp_map_config_t, aldis_uslp_next_frame,
-    aldis_uslp_peek_length, aldis_uslp_validate, aldis_uslp_vc_config_t, aldis_uslp_vc_table_check,
+    ALDIS_USLP_DELIMITED_NON_TRUNCATED_NOT_ALLOWED, ALDIS_USLP_FRAME_FIXED,
+    ALDIS_USLP_FRAME_VARIABLE, ALDIS_USLP_KIND_EXPEDITED, ALDIS_USLP_KIND_PROTOCOL_CONTROL,
+    ALDIS_USLP_KIND_SEQUENCE_CONTROLLED, ALDIS_USLP_OCF_ABSENT, ALDIS_USLP_OCF_ALLOWED,
+    ALDIS_USLP_OCF_REQUIRED, ALDIS_USLP_REASON_NONE, ALDIS_USLP_SECURITY_PER_MAP,
+    ALDIS_USLP_SECURITY_VC, aldis_uslp_config_t, aldis_uslp_decode, aldis_uslp_delimited_t,
+    aldis_uslp_frame_t, aldis_uslp_map_config_t, aldis_uslp_next_frame, aldis_uslp_peek_length,
+    aldis_uslp_validate, aldis_uslp_vc_config_t, aldis_uslp_vc_table_check,
 };
 use aldis_uslp::{
     Delimited, FrameKind, MapConfig, OcfUse, PhysicalChannelConfig, SecurityScope,
@@ -1591,6 +1592,9 @@ fn uslp(data: &[u8], selector: u8, mode: DecodeMode, c_mode: u32) {
             ),
             Some(Delimited::NoTruncatedLength(o)) => {
                 (ALDIS_USLP_DELIMITED_NO_TRUNCATED_LENGTH, o.len(), 0)
+            }
+            Some(Delimited::NonTruncatedNotAllowed(o)) => {
+                (ALDIS_USLP_DELIMITED_NON_TRUNCATED_NOT_ALLOWED, o.len(), 0)
             }
             Some(Delimited::Fill(o)) => (ALDIS_USLP_DELIMITED_FILL, o.len(), 0),
         };

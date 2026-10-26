@@ -167,7 +167,7 @@ struct LaterVc {
 
 #[test]
 fn vc_arrays_step_by_their_struct_size() {
-    // req: CABI-033, CABI-022, API-040
+    // req: CABI-033, CABI-022, API-040, AOS-020
     let mc = mc();
     let check = |vcs: *const aldis_aos_vc_config_t, n: usize| {
         // SAFETY: `mc` is live; `vcs` is NULL or points to `n` live structs.
@@ -175,7 +175,8 @@ fn vc_arrays_step_by_their_struct_size() {
     };
     let base = vcs();
     assert_eq!(check(base.as_ptr(), 3), ALDIS_OK);
-    assert_eq!(check(null(), 0), ALDIS_OK);
+    // A master channel with no virtual channel receives nothing (OI-55).
+    assert_eq!(check(null(), 0), ALDIS_ERR_INVALID_CONFIG);
     assert_eq!(check(null(), 1), ALDIS_ERR_INVALID_FIELD);
     // A longer struct of a later header: the stride is its struct_size.
     let later = base.map(|vc| LaterVc {
@@ -287,7 +288,11 @@ fn a_master_channel_holds_vcids_0_to_62() {
     let mut d = detail();
     // SAFETY: every pointer is to a live local.
     let r = unsafe { aldis_aos_mc_config_check(&raw const issue4, oid.as_ptr(), 0, &raw mut d) };
-    assert_eq!(r, ALDIS_OK, "no VC: no SCID to check against the edition");
+    assert_eq!(
+        (r, d.field),
+        (ALDIS_ERR_INVALID_CONFIG, ALDIS_FIELD_VC_ID),
+        "no VC: rejected before the SCID is held to the edition"
+    );
     let first = [one];
     // SAFETY: as above.
     let r = unsafe { aldis_aos_mc_config_check(&raw const issue4, first.as_ptr(), 1, &raw mut d) };
@@ -399,7 +404,7 @@ fn the_decoder_takes_the_master_channels_vcs() {
         ),
         (12, 22, 12, ALDIS_AOS_POINTER_NONE)
     );
-    // Another SCID, an unknown VC, an empty master channel.
+    // Another SCID, an unknown VC.
     let other = aldis_aos_mc_config_t { scid: 0x0AC, ..mc };
     let (status, field, _) = decode(&frame, &other, &vcs, ALDIS_MODE_STRICT);
     assert_eq!(
@@ -475,10 +480,11 @@ fn the_decoder_takes_the_master_channels_vcs() {
         (12, 12, 0)
     );
     assert_eq!(oid[12..16], [0xFF; 4]);
+    // A master channel with no VC is not a configuration (AOS-020, OI-55).
     let (status, field, _) = decode(&oid, &mc, &[], ALDIS_MODE_STRICT);
     assert_eq!(
         (status, field),
-        (ALDIS_ERR_UNKNOWN_CHANNEL, ALDIS_FIELD_SPACECRAFT_ID)
+        (ALDIS_ERR_INVALID_CONFIG, ALDIS_FIELD_VC_ID)
     );
     // The mode takes only its constants.
     assert_eq!(decode(&frame, &mc, &vcs, 7).0, ALDIS_ERR_INVALID_FIELD);
@@ -904,6 +910,82 @@ fn writer_arguments_are_checked() {
             [0x00, 0x08],
             "pointer 8, the index of the ninth bit"
         );
+    }
+}
+
+#[test]
+fn finish_checks_the_buffer_was_begun_with_these_arguments() {
+    // req: AOS-019, API-023, CABI-022 (OI-50)
+    let (mc, vcs) = (mc(), vcs());
+    let call = |begin: bool, f: &aldis_aos_fields_t, frame: &mut [u8]| {
+        let mut l = aldis_aos_layout_t::default();
+        let mut n = 0_usize;
+        // SAFETY: every pointer is to a live local or into `frame`, with its length.
+        unsafe {
+            if begin {
+                aldis_aos_writer_begin(
+                    &raw const mc,
+                    vcs.as_ptr(),
+                    3,
+                    f,
+                    frame.as_mut_ptr(),
+                    frame.len(),
+                    &raw mut l,
+                    null_mut(),
+                )
+            } else {
+                aldis_aos_writer_finish(
+                    &raw const mc,
+                    vcs.as_ptr(),
+                    3,
+                    f,
+                    frame.as_mut_ptr(),
+                    frame.len(),
+                    &raw mut n,
+                    null_mut(),
+                )
+            }
+        }
+    };
+    let begun = fields(0, ALDIS_AOS_POINTER_STARTS_AT, 3);
+    let mut frame = [0xEE_u8; 40];
+    assert_eq!(call(true, &begun, &mut frame), ALDIS_OK);
+    let written = frame;
+    let other = [
+        aldis_aos_fields_t {
+            vc_frame_count: 0x12_3457,
+            ..begun
+        },
+        aldis_aos_fields_t {
+            replay_flag: 0,
+            ..begun
+        },
+        aldis_aos_fields_t { cycle: 8, ..begun },
+        aldis_aos_fields_t {
+            cycle_use_flag: 0,
+            ..begun
+        },
+        fields(0, ALDIS_AOS_POINTER_STARTS_AT, 4),
+        fields(0, ALDIS_AOS_POINTER_NO_PACKET_START, 0),
+        fields(1, ALDIS_AOS_POINTER_ALL_VALID, 0),
+    ];
+    for f in other {
+        assert_eq!(
+            call(false, &f, &mut frame),
+            ALDIS_ERR_INVALID_STATE,
+            "{f:?}"
+        );
+        assert_eq!(frame, written, "a failed finish leaves the frame unchanged");
+    }
+    assert_eq!(call(false, &begun, &mut frame), ALDIS_OK);
+    // A buffer never begun, for a data VC and for the OID VC.
+    let oid = fields(ALDIS_AOS_OID_VCID, ALDIS_AOS_POINTER_NONE, 0);
+    for fill in [0x00_u8, 0xA5] {
+        for f in [&begun, &oid] {
+            let mut never = [fill; 40];
+            assert_eq!(call(false, f, &mut never), ALDIS_ERR_INVALID_STATE);
+            assert_eq!(never, [fill; 40]);
+        }
     }
 }
 

@@ -1762,6 +1762,12 @@
 #define ALDIS_TM_ANOMALY_SEGMENT_LENGTH_ID_NOT_11 (1 << 1)
 
 /**
+ * Anomaly bit: an Only Idle Data frame (FHP `0x7FE`) on a virtual channel that uses SDLS
+ * (bit 2; 132.0 §6.4.6.2; TM-010, OI-54). Set only by the decoders that take the VC array.
+ */
+#define ALDIS_TM_ANOMALY_ONLY_IDLE_DATA_ON_SDLS_VC (1 << 2)
+
+/**
  * Length of the non-truncated Primary Header without its VCF Count, in octets (732.1
  * §4.1.2.1.2).
  */
@@ -2066,6 +2072,12 @@
 #define ALDIS_USLP_REASON_OID_HEADER_MISMATCH 17
 
 /**
+ * Reason 18: a non-truncated frame on a VC that has a truncated frame length and so carries
+ * only truncated frames (Annex D1.2.1, USLP-002; OI-48).
+ */
+#define ALDIS_USLP_REASON_NON_TRUNCATED_FRAME_NOT_ALLOWED 18
+
+/**
  * Delimited item: no octets remain at the offset (732.1 §4.3.11.2; USLP-015).
  */
 #define ALDIS_USLP_DELIMITED_END 0
@@ -2092,6 +2104,12 @@
  * Delimited item: the rest of the unit, discarded as Fill Data (732.1 §4.3.11.2.4 a–b).
  */
 #define ALDIS_USLP_DELIMITED_FILL 4
+
+/**
+ * Delimited item: the rest of the unit, discarded: a non-truncated header on a VC that has a
+ * truncated frame length and so carries only truncated frames (USLP-015; OI-48).
+ */
+#define ALDIS_USLP_DELIMITED_NON_TRUNCATED_NOT_ALLOWED 5
 
 /**
  * Handle of an OID generator in caller storage (CMN-020…023, CABI-032).
@@ -4306,7 +4324,8 @@ typedef struct {
    */
   aldis_uslp_channel_t channel;
   /**
-   * Frame kind, `ALDIS_USLP_KIND_*` (Table 4-1); 0 for a truncated frame.
+   * Frame kind, `ALDIS_USLP_KIND_*` (Table 4-1); `ALDIS_USLP_KIND_EXPEDITED` for a truncated
+   * frame, which is processed as expedited user data (Annex D1.3.1 note 3; USLP-002; OI-52).
    */
   uint8_t kind;
   /**
@@ -4499,7 +4518,8 @@ int32_t aldis_aos_config_check(const aldis_aos_config_t *pc, aldis_error_detail_
  * The errors of [`aldis_aos_config_check`]; `ALDIS_ERR_OUT_OF_RANGE` (`spacecraft_id`, `vc_id`)
  * for an SCID above 1023 or a VCID above 63; `ALDIS_ERR_INVALID_CONFIG` (`vc_id`) for VCID 63,
  * which is reserved for OID frames, and (`security_header_len`) for a Security Header above 64
- * octets; then, for the first virtual channel that fails: `ALDIS_ERR_INVALID_CONFIG` (`vc_id`)
+ * octets; `ALDIS_ERR_INVALID_CONFIG` (`vc_id`) for `vc_count` 0 (AOS-020, OI-55); then, for
+ * the first virtual channel that fails: `ALDIS_ERR_INVALID_CONFIG` (`vc_id`)
  * for a VCID given twice, (`spacecraft_id`) for an SCID above 255 in Issue 4, (`frame_data_field`)
  * for a VC left no data octet or, for an `M_PDU` or `B_PDU`, no octet after its header, and
  * for a VC that carries `B_PDUs` (`frame_len`) for frames longer than 2 048 octets in Issue 5
@@ -4721,13 +4741,15 @@ int32_t aldis_aos_writer_begin(const aldis_aos_mc_config_t *mc,
  * by [`aldis_aos_oid_writer_begin`] without its generator (732.0 §4.1.6.2; AOS-019, API-021,
  * API-023).
  *
- * Rewrites the Primary Header with its FHEC and the `M_PDU` or `B_PDU` Header, leaves every
- * field the caller filled and the OID data, computes the FECF if configured, and returns the
- * frame length (`AosFrameWriter::resume`).
+ * First checks that `out` holds the Primary Header with its FHEC and the `M_PDU` or `B_PDU`
+ * Header that the begin function wrote for these arguments (`AosFrameWriter::resume`; OI-50);
+ * the other fields are not compared. Then leaves every field the caller filled and the OID
+ * data, computes the FECF if configured, and returns the frame length.
  *
  * # Errors
  * As [`aldis_aos_writer_begin`], or for `fields->vcid` 63 as [`aldis_aos_oid_writer_begin`];
- * on error `out` is unchanged.
+ * `ALDIS_ERR_INVALID_STATE` if `out` does not hold the headers the begin function writes for
+ * these arguments (other arguments, or a buffer never begun); on error `out` is unchanged.
  *
  * # Safety
  * As [`aldis_aos_writer_begin`]; `out_len` is valid for one write.
@@ -4929,6 +4951,10 @@ int32_t aldis_epp_writer_begin(const aldis_epp_config_t *cfg,
  * As [`aldis_epp_writer_begin`], `ALDIS_ERR_OUT_OF_RANGE` (`data_len`) above `max_data_len` or
  * outside the configured limits, and `ALDIS_ERR_INVALID_FIELD` (`epi`) for an empty data field
  * with a non-idle EPI.
+ *
+ * The call re-runs `begin`, so a finish with other arguments than `begin`'s gives a valid
+ * packet for the arguments of the finish; OI-50's header check is not applied to it
+ * (maintainer decision of 2026-10-25, revisited in M3).
  *
  * # Safety
  * As [`aldis_epp_writer_begin`]; `out_len` is valid for one write.
@@ -5225,6 +5251,10 @@ int32_t aldis_spp_writer_begin(const aldis_spp_config_t *cfg,
  * # Errors
  * As [`aldis_spp_writer_begin`], and `ALDIS_ERR_OUT_OF_RANGE` (`user_len`) above
  * `max_user_len`.
+ *
+ * The call re-runs `begin`, so a finish with other arguments than `begin`'s gives a valid
+ * packet for the arguments of the finish; OI-50's header check is not applied to it
+ * (maintainer decision of 2026-10-25, revisited in M3).
  *
  * # Safety
  * As [`aldis_spp_writer_begin`]; `out_len` is valid for one write.
@@ -5646,8 +5676,8 @@ int32_t aldis_tc_config_check(const aldis_tc_config_t *pc, aldis_error_detail_t 
  * `map_id`); `ALDIS_ERR_CAPACITY_EXCEEDED` (`vc_id`) for more than `ALDIS_TC_MAX_VCS` virtual
  * channels and (`map_id`) for more than `ALDIS_TC_MAX_MAPS` MAPs, before any of them is read
  * (CABI-030); `ALDIS_ERR_INVALID_CONFIG` (`security_header_len`) for a Security Header above 64
- * octets, (`max_frame_len`) for a VC maximum outside 6 to 1024 octets, (`vc_id`) for a VCID
- * given twice, (`map_id`) for a MAP given twice or on a VC that is not given or has no Segment
+ * octets, (`max_frame_len`) for a VC maximum outside 6 to 1024 octets, (`vc_id`) for
+ * `vc_count` 0 (OI-55) or a VCID given twice, (`map_id`) for a MAP given twice or on a VC that is not given or has no Segment
  * Header, and (`frame_data_field`) for a VC or MAP whose fields leave no data octet; CABI-022
  * violations, including a struct whose `struct_size` differs from its array's first, and a VC
  * with Segment Headers whose security lengths are not 0.
@@ -5845,13 +5875,18 @@ int32_t aldis_tc_writer_begin(const aldis_tc_mc_config_t *mc,
  * Finishes a two-phase write begun with the same arguments, with `user_len` octets of User
  * Data (232.0 §4.1.2.7, §4.1.4; TC-007, API-021, API-023).
  *
- * Writes the Primary Header with the Frame Length, moves the Security Trailer to follow the
- * User Data when `user_len` is below `max_user_len`, computes the FECF if configured, and
- * returns the frame length; the frame is the first `*out_len` octets of `out`.
+ * First checks that `out` holds the unfinished Primary Header (with the reserved frame length)
+ * and Segment Header that [`aldis_tc_writer_begin`] wrote for these arguments
+ * (`TcFrameWriter::resume`; OI-50); the User Data and the Security Header and Trailer are not
+ * compared. Then writes the Primary Header with the Frame Length, moves the Security Trailer
+ * to follow the User Data when `user_len` is below `max_user_len`, computes the FECF if
+ * configured, and returns the frame length; the frame is the first `*out_len` octets of `out`.
  *
  * # Errors
- * On error `out` is unchanged. As [`aldis_tc_writer_begin`]; then `ALDIS_ERR_OUT_OF_RANGE`
- * (`user_len`) above `max_user_len` and `ALDIS_ERR_INVALID_FIELD` (`frame_data_field`) for 0.
+ * On error `out` is unchanged. As [`aldis_tc_writer_begin`]; `ALDIS_ERR_INVALID_STATE` if `out`
+ * does not hold the unfinished headers `aldis_tc_writer_begin` writes for these arguments (other
+ * arguments, or a buffer never begun); then `ALDIS_ERR_OUT_OF_RANGE` (`user_len`) above
+ * `max_user_len` and `ALDIS_ERR_INVALID_FIELD` (`frame_data_field`) for 0.
  *
  * # Safety
  * As [`aldis_tc_writer_begin`]; `out_len` is valid for one write.
@@ -6209,7 +6244,8 @@ int32_t aldis_time_convert(const aldis_time_instant_t *from,
  *
  * # Errors
  * `ALDIS_ERR_INVALID_CONFIG` (`frame_len`) for a frame too short for the Primary Header, one
- * data octet, and the FECF, with that minimum; CABI-022 violations.
+ * data octet, and the FECF, with that minimum, or longer than 4 095 octets, with that maximum
+ * (TM-001, OI-51); CABI-022 violations.
  *
  * # Safety
  * `pc` is valid for a read; `err` is `NULL` or valid for one write.
@@ -6471,11 +6507,15 @@ int32_t aldis_tm_writer_begin(const aldis_tm_mc_config_t *mc,
  * Finishes a two-phase write begun with the same arguments (132.0 §4.1.6.2; TM-009, API-021,
  * API-023).
  *
- * Rewrites the headers, leaves every field the caller filled, computes the FECF if
- * configured, and returns the frame length.
+ * First checks that `out` holds the Primary Header and the Secondary Header Identification
+ * Field that [`aldis_tm_writer_begin`] wrote for these arguments (`TmFrameWriter::resume`;
+ * OI-50); the other fields are not compared. Then leaves every field the caller filled,
+ * computes the FECF if configured, and returns the frame length.
  *
  * # Errors
- * As [`aldis_tm_writer_begin`]; on error `out` is unchanged.
+ * As [`aldis_tm_writer_begin`]; `ALDIS_ERR_INVALID_STATE` if `out` does not hold the headers
+ * `aldis_tm_writer_begin` writes for these arguments (other arguments, or a buffer never
+ * begun); on error `out` is unchanged.
  *
  * # Safety
  * As [`aldis_tm_writer_begin`]; `out_len` is valid for one write.
@@ -6528,8 +6568,9 @@ int32_t aldis_tm_oid_writer_begin(const aldis_tm_mc_config_t *mc,
  * Finishes an Only Idle Data frame begun with [`aldis_tm_oid_writer_begin`] (132.0 §4.1.4.6,
  * §4.1.6.2; TM-010, API-023).
  *
- * Given the same arguments, it rewrites the headers, leaves the Idle Data and every field the
- * caller filled, computes the FECF if configured, and returns the frame length.
+ * Given the same arguments, it first checks the headers as [`aldis_tm_writer_finish`] does
+ * (OI-50), leaves the Idle Data and every field the caller filled, computes the FECF if
+ * configured, and returns the frame length.
  *
  * # Errors
  * As [`aldis_tm_writer_finish`] for the fields of an OID frame, including
@@ -6581,7 +6622,8 @@ int32_t aldis_uslp_config_check(const aldis_uslp_config_t *pc, aldis_error_detai
  * `ocf_flag`, `transfer_frame_type`, `vc_id`, `map_id`, `frame_data_field`) as `aldis-uslp`'s
  * constructors return them (`docs/standards/uslp-frame.md` §2.1); CABI-022 violations,
  * including an enumeration member that is no constant and a struct whose `struct_size` differs
- * from its array's first one.
+ * from its array's first one. `vc_count` 0 is `ALDIS_ERR_INVALID_CONFIG` (`vc_id`) once
+ * the structs have parsed (USLP-017, OI-55).
  *
  * # Safety
  * `pc` is valid for a read; `vcs` is valid for reads of `vc_count` structs of the first one's
@@ -6765,14 +6807,18 @@ int32_t aldis_uslp_writer_begin(const aldis_uslp_config_t *pc,
  * Finishes a two-phase write begun with the same arguments, with `tfdz_len` TFDZ octets
  * (732.1 §4.1.2.7, §4.1.5, §4.1.6; USLP-010, API-021, API-023).
  *
- * Rewrites the unfinished headers without zero-filling (`UslpFrameWriter::resume`), keeps the
- * TFDZ and the security fields the caller filled, moves the Security Trailer to follow a TFDZ
+ * First checks that `out` holds the unfinished Primary Header (with the reserved frame
+ * length), the Insert Zone, and the TFDF Header that [`aldis_uslp_writer_begin`] wrote for these
+ * arguments (`UslpFrameWriter::resume`; OI-50); the Security Header and Trailer and the TFDZ are
+ * not compared. Then keeps the TFDZ and the security fields the caller filled, moves the Security Trailer to follow a TFDZ
  * shorter than the reservation, writes the Frame Length, the OCF, and the FECF if configured,
  * and returns the frame length. The frame is the first `*out_len` octets of `out`; the octets
  * after it keep unspecified values (`UslpFrameWriter::finish`).
  *
  * # Errors
- * As [`aldis_uslp_writer_begin`]; then `ALDIS_ERR_OUT_OF_RANGE` (`user_len`) above
+ * As [`aldis_uslp_writer_begin`]; `ALDIS_ERR_INVALID_STATE` if `out` does not hold the unfinished
+ * headers `aldis_uslp_writer_begin` writes for these arguments (other arguments, or a buffer
+ * never begun); then `ALDIS_ERR_OUT_OF_RANGE` (`user_len`) above
  * `max_tfdz_len`, `ALDIS_ERR_INVALID_FIELD` (`frame_data_field`) for 0,
  * `ALDIS_ERR_LENGTH_MISMATCH` (`frame_data_field`) below it on a fixed-length channel, and
  * `ALDIS_ERR_OUT_OF_RANGE` (`fhp_lvo_pointer`) for a pointer not below `tfdz_len`. On error
