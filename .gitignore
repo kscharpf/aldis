@@ -8,6 +8,9 @@ mutants.out/
 mutants.out.old/
 # Git worktrees created by Claude Code for parallel sessions
 /.claude/worktrees/
+# Agent skills and lockfile
+.agents/
+skills-lock.json
 # Python bytecode (the vector models, test-vectors/models/)
 __pycache__/
 *.pyc
