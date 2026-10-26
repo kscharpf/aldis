@@ -10,6 +10,8 @@
 //! across the call or aliases the call's buffers (GEN-071). M3 and M4 reuse this pattern for
 //! FOP-1, FARM-1, and the link engines.
 
+use core::ptr::NonNull;
+
 use aldis::core::{Error, ErrorKind, Result};
 
 use crate::abi::invalid_argument;
@@ -39,7 +41,7 @@ pub(crate) struct Slot<T> {
 /// A checked handle: the slot it points to carries the tag of its helper.
 #[derive(Debug)]
 pub(crate) struct Handle<T> {
-    slot: *mut Slot<T>,
+    slot: NonNull<Slot<T>>,
 }
 
 impl<T> Handle<T> {
@@ -49,9 +51,10 @@ impl<T> Handle<T> {
         reason = "reads caller storage behind a checked tag (GEN-071)"
     )]
     pub(crate) fn load(&self) -> T {
+        let slot = self.slot.as_ptr();
         // SAFETY: `get` checked that the slot is non-null, aligned, and tagged by `init`, which
         // wrote an initialized `T`; the caller's contract keeps the storage valid for the call.
-        unsafe { (&raw const (*self.slot).state).read() }
+        unsafe { (&raw const (*slot).state).read() }
     }
 
     /// Writes the helper's state back.
@@ -60,14 +63,18 @@ impl<T> Handle<T> {
         reason = "writes caller storage behind a checked tag (GEN-071)"
     )]
     pub(crate) fn store(&self, state: T) {
+        let slot = self.slot.as_ptr();
         // SAFETY: as for `load`; the old state has no drop glue to run (`T: Copy` or plain
         // data), so overwriting it is sound.
-        unsafe { (&raw mut (*self.slot).state).write(state) }
+        unsafe { (&raw mut (*slot).state).write(state) }
     }
 
     /// The storage's address range, which the call's output buffers must not overlap.
     pub(crate) const fn range(&self) -> (*const u8, usize) {
-        (self.slot.cast_const().cast::<u8>(), size_of::<Slot<T>>())
+        (
+            self.slot.as_ptr().cast_const().cast::<u8>(),
+            size_of::<Slot<T>>(),
+        )
     }
 }
 
@@ -88,11 +95,11 @@ pub(crate) unsafe fn init<T>(
     magic: u32,
     state: T,
 ) -> Result<*mut Slot<T>> {
+    if storage.is_null() || !storage.addr().is_multiple_of(ALDIS_STORAGE_ALIGN) {
+        return Err(invalid_argument());
+    }
     let slot = storage.cast::<Slot<T>>();
-    if storage.is_null()
-        || !storage.addr().is_multiple_of(ALDIS_STORAGE_ALIGN)
-        || !slot.is_aligned()
-    {
+    if !slot.is_aligned() {
         return Err(invalid_argument());
     }
     if storage_len < size || storage_len < size_of::<Slot<T>>() {
@@ -125,19 +132,21 @@ pub(crate) unsafe fn init<T>(
     reason = "reads the tag of caller storage (CABI-032, GEN-071)"
 )]
 pub(crate) unsafe fn get<T>(slot: *mut Slot<T>, magic: u32) -> Result<Handle<T>> {
-    if slot.is_null() || !slot.is_aligned() {
-        return Err(invalid_argument());
-    }
-    // SAFETY: non-null and aligned, checked above; the caller's contract makes the tag
-    // readable. Only the tag's plain integers are read before it is checked.
+    let slot = match NonNull::new(slot) {
+        Some(s) if s.as_ptr().is_aligned() => s,
+        _ => return Err(invalid_argument()),
+    };
+    let p = slot.as_ptr();
+    // SAFETY: `slot` is NonNull and aligned, checked above; the caller's contract makes the
+    // tag readable. Only the tag's plain integers are read before it is checked.
     let (m, g, a) = unsafe {
         (
-            (&raw const (*slot).magic).read(),
-            (&raw const (*slot).generation).read(),
-            (&raw const (*slot).addr).read(),
+            (&raw const (*p).magic).read(),
+            (&raw const (*p).generation).read(),
+            (&raw const (*p).addr).read(),
         )
     };
-    if m != magic || m == DEAD || g != GENERATION || a != slot.addr() {
+    if m != magic || m == DEAD || g != GENERATION || a != p.addr() {
         return Err(Error::new(ErrorKind::InvalidHandle));
     }
     Ok(Handle { slot })
@@ -155,8 +164,8 @@ pub(crate) unsafe fn get<T>(slot: *mut Slot<T>, magic: u32) -> Result<Handle<T>>
 pub(crate) unsafe fn deinit<T>(slot: *mut Slot<T>, magic: u32) {
     // SAFETY: as for `get`, whose checks pass before the tag is written.
     unsafe {
-        if get(slot, magic).is_ok() {
-            (&raw mut (*slot).magic).write(DEAD);
+        if let Ok(h) = get(slot, magic) {
+            (&raw mut (*h.slot.as_ptr()).magic).write(DEAD);
         }
     }
 }
