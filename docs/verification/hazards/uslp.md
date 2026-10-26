@@ -313,7 +313,7 @@ Integrator obligations: as for TC (`asm:ASM-2`, `asm:ASM-4`).
 | Cause | A C caller that reads `kind` and the other full-frame members without `truncated` |
 | Mission effect | A short telecommand handled by the sequence-controlled path of the receiving procedure, which expects a VCF Count the frame does not have: it is discarded or counted out of sequence instead of delivered |
 | Requirements | USLP-002, CABI-012 |
-| Evidence | `test:crates/aldis-ffi/tests/uslp.rs::full_and_truncated_frames_cross_as_one_tagged_view`; `test:crates/aldis-ffi/tests/vectors.rs::uslp_truncated`; `test:crates/aldis-ffi/tests/vectors.rs::uslp_truncated_sdls_layout`; `vector:uslp-trunc-002`;  |
+| Evidence | `test:crates/aldis-ffi/tests/uslp.rs::full_and_truncated_frames_cross_as_one_tagged_view`; `test:crates/aldis-ffi/tests/vectors.rs::uslp_truncated`; `test:crates/aldis-ffi/tests/vectors.rs::uslp_truncated_sdls_layout`; `vector:uslp-trunc-002`; `vector:uslp-trunc-056`; `fuzz:ffi_decode` |
 | Residual risk | `view` sets `kind` to `ALDIS_USLP_KIND_EXPEDITED` for a truncated frame (`crates/aldis-ffi/src/uslp.rs:808`; OI-52), so a caller that ignores `truncated` still routes the frame as the Blue Book says; `vcf_count_len` and `ocf_flag` are 0 and false, which is true of a frame with no count and no OCF. `truncated` is the first member and the header documents the others. Proposal P-USLP-12 was accepted as OI-52 and its row is removed |
 | Assumptions | — |
 | Proposals | — |
