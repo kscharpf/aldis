@@ -154,3 +154,5 @@ One line for each decision the maintainer takes, under the [decision rights](dec
 - 2026-10-25 · plan · #122 · the USLP `VcConfig::new` check of a truncated frame length below 28 with SDLS (`SecurityScope::Vc`, RS-020) moves to M3
 - 2026-10-25 · approval · #123 · GEN-022/023 inspection records of aldis-tm, aldis-tc, aldis-aos, aldis-uslp, and aldis-ffi approved at the M2 exit review (VER-061)
 - 2026-10-26 · housekeeping · chat · Adopt additional Clippy restriction and nursery lints across the workspace
+- 2026-10-26 · spec · #133 · P-AOS-02: AOS Insert Service on rejected frames is documented in docs/standards/aos-frame.md §4 and extraction is deferred to the M4 link engine (LNK-053)
+- 2026-10-26 · api · #133 · P-AOS-05: comparing physical channel and channel table in AOS is declined for M2; caller obligation is documented and covered by asm:ASM-8
