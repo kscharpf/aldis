@@ -6,7 +6,7 @@
 | Scope | `crates/aldis-tc/src/*.rs`, library code only (test modules excluded), on branch `m2/tc-codec` (M2 WP-3, modules 1–7, based on `main` 46bfe0f): `config`, `header`, `view`, `writer`, `control`, `anomaly`, `clcw`, `delimit`, `validate`, `field` (re-exports only), and `lib.rs` (module declarations and re-exports) |
 | Inspected | 2026-10-23, prepared by Claude Code: first inspection. Every loop, every call between the crate's own functions, and every blocking construct checked. No unbounded loop, no recursion |
 | Revised | 2026-10-25, `m2/hc-finish` (OI-50), prepared by Claude Sonnet 5.5 (agent of OI-50), pending exit review: `writer.rs` `TcFrameWriter::start` takes a `write` flag; with it (from `begin`, `begin_oid`, `encode`) it zero-fills and writes the headers as before, without it (from `resume`) it writes nothing and compares the headers with an `all` over a `zip`, at most 6 octets. The unfinished header now holds the reserved frame length: `primary_octets` is called with `plan.total`, no new call. No recursion; the Loops table is updated |
-| Approved | — (pending exit review, VER-061) |
+| Approved | 2026-10-25, maintainer |
 | Repeat | when `aldis-tc` gains a loop or a call between its own functions (the C ABI of module 8 is in `aldis-ffi`), and before each release |
 
 ## Revisions
