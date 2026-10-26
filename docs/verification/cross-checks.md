@@ -191,9 +191,9 @@ Observed in cFE `MSG` v7.0.1, not discrepancies in a checked value (its unchecke
 
 ## 4. Standards with no independent implementation
 
-The features `spacepackets` does not cover (§2), searched 2026-10-20. cFE `MSG` (§1, run since 2026-10-21) adds a second implementation of the primary header and of CUC 4+2 time codes without a P-field, which `spacepackets` already covers, and of the count increment modulo 2^14 (§4.6); it covers none of the features below otherwise. Search covered crates.io (the `ccsds` query and the crates it lists), PyPI, GitHub, and agency and mission tools. A candidate qualifies when it is open source under a license that allows running it as a test oracle, shares no code or authors with Aldis, and implements the feature as 301.0 or 133.1 define it. Candidates were read at source level unless the entry says otherwise.
+The features `spacepackets` does not cover (§2), searched 2026-10-20 for packets and time (M1) and 2026-10-26 for the four frame standards (M2 D15, WP-6). cFE `MSG` (§1, run since 2026-10-21) adds a second implementation of the primary header and of CUC 4+2 time codes without a P-field, which `spacepackets` already covers, and of the count increment modulo 2^14 (§4.6); it covers none of the features below otherwise. Search covered crates.io (the `ccsds` query and the crates it lists), PyPI, GitHub, and agency and mission tools. A candidate qualifies when it is open source under a license that allows running it as a test oracle, shares no code or authors with Aldis, and implements the feature as 132.0, 133.1, 232.0, 301.0, 732.0, or 732.1 define it. Candidates were read at source level unless the entry says otherwise.
 
-Every candidate below is independent of Aldis. None is run yet: each that qualifies needs a JVM, Python, or a Prolog runtime in `crosscheck/`, or is a single-maintainer beta crate. Maintainer decision 2026-10-20: M1 closes with the `spacepackets` checks above, and running these candidates is [OI-32](../09-open-issues.md), targeted at M2. Until then the vectors of these features stay `hand-derived`, with the derivation written down (D5).
+Every candidate below is independent of Aldis. None is run yet: each that qualifies needs a JVM, Python, or a Prolog runtime in `crosscheck/`, or is a single-maintainer beta crate. Maintainer decision 2026-10-20: M1 closes with the `spacepackets` checks above, and running these candidates is [OI-32](../09-open-issues.md), targeted at M2. In M2 WP-6 the frame candidates were evaluated (D15; §4.7–§4.10); none was wired into `crosscheck/`. Until an independent oracle is run, the vectors of these features stay `hand-derived`, with the derivation written down (D5) and reviewed by an independent session (M1 §5; M2 WP-8, [m2-vectors.md](reviews/m2-vectors.md)).
 
 ### 4.1 CUC P-field octet 2 and the agency epoch (Level 2)
 
@@ -271,6 +271,63 @@ No implementation of the subset rules of §3.5.1.3 was found.
 
 No sender-side segmentation was found: libraries expose the Sequence Flags but do not split an SDU.
 
-### 4.7 Not available
+### 4.7 TM Transfer Frame (132.0-B-3)
+
+`tm/*`: `fhp_values`, `fsh_ocf_fecf`, `invalid`, `minimal`, `oid_sequence`, `security_layout`, `config`. Evaluated 2026-10-26 (M2 D15).
+
+| Candidate | License | Coverage | Verdict |
+|---|---|---|---|
+| `eu.dariolucia.ccsds` `TmTransferFrame` (Java; [repository](https://github.com/dariol83/ccsds), archived 2024) | Apache-2.0 | Decode and encode of TM transfer frames with MC/VC counters, FHP packet extraction, OCF, and FECF (CRC-16). Does not model SDLS Security Header/Trailer layout inside the frame | Qualifies for primary header and OCF decoding; not run in `crosscheck/` because it needs a JVM runtime (OI-32) |
+| Yamcs `TmTransferFrame` / `TmFrameDecoder` (Java; [repository](https://github.com/yamcs/yamcs)) | AGPL-3.0 | Frame length, VCID, MC/VC counters, FHP pointer, OCF, CRC-16. Part of the Yamcs mission control server framework | Does not qualify: AGPL-3.0 copyleft, requires the full Yamcs runtime and a JVM (OI-32) |
+| NASA CryptoLib `crypto_tm.c` ([repository](https://github.com/nasa/CryptoLib)) | NOSA 1.3 | Space Data Link Security (CCSDS 355.0-B-1) processing on TM frames only (SPI lookup, IV, MAC authentication, decryption). Does not decode or validate TM primary header fields (SCID, VCID, MCFC, VCFC, FHP, POF, SLID) or OCF | Does not qualify: an SDLS security processor, not a transfer frame codec |
+| `spacepackets` (Rust; crates.io) | Apache-2.0 | Space Packet Protocol (133.0) and PUS packets only; no TM transfer frame (132.0) implementation | Does not qualify: no TM frame support |
+| `gr-satellites` `ccsds_combined_deframer` / `ccsds_demux` (Python/C++; [repository](https://github.com/daniestevez/gr-satellites)) | GPL-3.0 | CADU synchronization, pseudo-noise derandomization, Reed-Solomon (255, 223), and demuxing packets from a telemetry stream. No standalone TM transfer frame codec or validator | Does not qualify: a streaming physical-layer deframer with GNU Radio runtime dependencies; no structured frame codec |
+| Wireshark `epan/dissectors/packet-ccsds.c` (C; [GitLab](https://gitlab.com/wireshark/wireshark)) | GPL-2.0 | Dissects Space Packets (`packet-ccsds.c`) and CFDP (`packet-cfdp.c`). Upstream Wireshark has no TM transfer frame dissector | Does not qualify: no upstream TM transfer frame dissector |
+| `ccsds` crate (bmflynn, Rust; crates.io) | MIT OR Apache-2.0 | CADU synchronization, derandomization, RS decoding, and packet extraction using FHP. Exposes raw CADU bytes; no TM frame primary header decoder (MC/VC counters, FSH, OCF, SLID, POF) | Does not qualify: deframer only, no TM frame header codec |
+| Orekit (Java, CS GROUP) | Apache-2.0 | Navigation Data Messages (NDM) and time codes; no TM transfer frames | Does not qualify: no frame support |
+
+### 4.8 TC Transfer Frame and CLCW (232.0-B-4)
+
+`tc/*`: `ad`, `bd`, `bc_unlock`, `bc_setvr`, `clcw`, `config`, `decode_errors`, `delimit_multiple_frames_with_fill`, `max_length`, `segment_header`, `validation_failures`. Evaluated 2026-10-26 (M2 D15).
+
+| Candidate | License | Coverage | Verdict |
+|---|---|---|---|
+| `eu.dariolucia.ccsds` `TcTransferFrame` / `Clcw` (Java; [repository](https://github.com/dariol83/ccsds), archived 2024) | Apache-2.0 | Decode and encode of variable-length TC transfer frames (bypass and sequence-controlled flags, VCID, frame length, sequence number), COP-1 control commands, Segment Header, and CLCW (including COP-1 FARM status fields). Does not model SDLS layout or the delimiting and fill data removal algorithm (TC-020) | Qualifies for TC frame header and CLCW decoding; not run in `crosscheck/` because it needs a JVM runtime (OI-32) |
+| Yamcs `TcTransferFrame` / `TcFrameDecoder` (Java; [repository](https://github.com/yamcs/yamcs)) | AGPL-3.0 | TC frame encoding, multiplexing, and CLCW parsing from return link OCF. Part of the Yamcs mission control server framework | Does not qualify: AGPL-3.0 copyleft, requires the full Yamcs runtime and a JVM (OI-32) |
+| NASA CryptoLib `crypto_tc.c` ([repository](https://github.com/nasa/CryptoLib)) | NOSA 1.3 | SDLS (CCSDS 355.0-B-1) processing on TC frames only (SPI lookup, IV, authentication and decryption). Does not decode TC frame headers, Segment Headers, or CLCW | Does not qualify: an SDLS security processor, not a transfer frame codec |
+| `spacepackets` (Rust; crates.io) | Apache-2.0 | Space Packet Protocol (133.0) and PUS telecommands only; no TC transfer frame (232.0) or CLCW support | Does not qualify: no TC frame support |
+| `gr-satellites` (Python/C++; [repository](https://github.com/daniestevez/gr-satellites)) | GPL-3.0 | Downlink telemetry reception only; no TC frame codec, delimiter, or CLCW support | Does not qualify: no TC frame support |
+| Wireshark (C; [GitLab](https://gitlab.com/wireshark/wireshark)) | GPL-2.0 | Upstream Wireshark has no TC transfer frame or CLCW dissector | Does not qualify: no upstream TC frame dissector |
+| `ccsds` crate (bmflynn, Rust; crates.io) | MIT OR Apache-2.0 | Telemetry framing only; no TC frame or CLCW support | Does not qualify: no TC frame support |
+
+### 4.9 AOS Transfer Frame and FHEC (732.0-B-5 EC1)
+
+`aos/*`: `minimal`, `fhec_frame`, `fhec_encode`, `fhec_correct_1_symbol`, `fhec_correct_2_symbols`, `fhec_uncorrectable`, `fhec_miscorrection`, `insert_zone`, `security_layout`, `mpdu_pointers`, `bpdu_pointers`, `oid`, `issue4_compat`, `scid_10bit`, `config`, `invalid`. Evaluated 2026-10-26 (M2 D15).
+
+| Candidate | License | Coverage | Verdict |
+|---|---|---|---|
+| `eu.dariolucia.ccsds` `AosTransferFrame` (Java; [repository](https://github.com/dariol83/ccsds), archived 2024) | Apache-2.0 | Decode and encode of AOS Transfer Frames conforming to Issue 4 (CCSDS 732.0-B-4, 8-bit SCID). Uses Project Nayuki Reed-Solomon for check-only; explicitly lacks error correction capabilities, so it cannot correct 1 or 2 symbol errors in the FHEC (AOS-013, AOS-014). No Issue 5 (10-bit SCID) support | Partial (Issue 4 parsing only; no FHEC correction); not run in `crosscheck/` because it needs a JVM runtime (OI-32) |
+| Yamcs `AosTransferFrame` / `AosFrameHeaderErrorCorr` (Java; [repository](https://github.com/yamcs/yamcs)) | AGPL-3.0 | AOS frame decoding, Insert Zone, M_PDU/B_PDU, Reed-Solomon (10,6) FHEC error detection and correction. Part of the Yamcs mission control server framework | Does not qualify: AGPL-3.0 copyleft, requires the full Yamcs runtime and a JVM (OI-32) |
+| NASA CryptoLib `crypto_aos.c` ([repository](https://github.com/nasa/CryptoLib)) | NOSA 1.3 | SDLS processing on AOS frames only (SPI, IV, MAC, encryption/decryption). Does not decode AOS primary header fields, FHEC, M_PDU, or B_PDU pointers | Does not qualify: an SDLS security processor, not an AOS frame codec |
+| `spacepackets` (Rust; crates.io) | Apache-2.0 | No AOS frame (732.0) or FHEC support | Does not qualify: no AOS support |
+| `gr-satellites` (Python/C++; [repository](https://github.com/daniestevez/gr-satellites)) | GPL-3.0 | No AOS frame or FHEC support | Does not qualify: no AOS support |
+| Wireshark (C; [GitLab](https://gitlab.com/wireshark/wireshark)) | GPL-2.0 | Upstream Wireshark has no AOS dissector | Does not qualify: no upstream AOS dissector |
+| `ccsds` crate (bmflynn, Rust; crates.io) | MIT OR Apache-2.0 | No AOS frame or FHEC support | Does not qualify: no AOS support |
+
+### 4.10 USLP Transfer Frame (732.1-B-3)
+
+`uslp/*`: `fixed_packets_rule000`, `fixed_mapa_rules001_010`, `variable_rules011_111`, `vcf_count_lengths_0_to_7`, `truncated`, `truncated_sdls_layout`, `oid`, `insert_zone`, `protocol_control_cop1`, `delimit_multiple_frames_with_fill`, `validation_failures`, `config`, `invalid`. Evaluated 2026-10-26 (M2 D15).
+
+| Candidate | License | Coverage | Verdict |
+|---|---|---|---|
+| `spacepackets` `uslp` module (`TransferFrameReader`, `TransferFrameCreator`; Rust; [crates.io](https://crates.io/crates/spacepackets)) | Apache-2.0 | Primary Header (16-bit SCID, Source/Dest, VCID, MAP ID, Frame Length, Sequence Control, Protocol Control, OCF flag, 0–7 octet VCF count) and TFDF Header (rules 000–111, FHP/LVO, closed `UslpProtocolId` enum). Rejects truncated frames (`UslpError::HeaderIsTruncated`, Annex D); assumes Insert Zone length 0; no Security Header or Trailer support; closed protocol ID enum rejects registered SANA UPIDs outside its enum (USLP-007); no frame delimiting or fill data removal (USLP-014, USLP-015); no USLP Frame Validation checks | Partial: primary header and basic TFDF decoding of fixed/variable user data frames without insert zone or security. Does not cover truncated frames, insert zone, SDLS, delimiting, or validation |
+| Yamcs `org.yamcs.tctm.ccsds` USLP classes (Java; [repository](https://github.com/yamcs/yamcs)) | AGPL-3.0 | USLP uplink frame building and encoding according to CCSDS 732.1-B-3. Part of the Yamcs mission control server framework | Does not qualify: AGPL-3.0 copyleft, requires the full Yamcs runtime and a JVM (OI-32) |
+| `eu.dariolucia.ccsds` (Java; [repository](https://github.com/dariol83/ccsds), archived 2024) | Apache-2.0 | No USLP (CCSDS 732.1) support | Does not qualify: no USLP support |
+| NASA CryptoLib (C; [repository](https://github.com/nasa/CryptoLib)) | NOSA 1.3 | No USLP (CCSDS 732.1) support | Does not qualify: no USLP support |
+| `gr-satellites` (Python/C++; [repository](https://github.com/daniestevez/gr-satellites)) | GPL-3.0 | No USLP support | Does not qualify: no USLP support |
+| Wireshark (C; [GitLab](https://gitlab.com/wireshark/wireshark)) | GPL-2.0 | Upstream Wireshark has no USLP dissector | Does not qualify: no upstream USLP dissector |
+| `ccsds` crate (bmflynn, Rust; crates.io) | MIT OR Apache-2.0 | No USLP support | Does not qualify: no USLP support |
+
+### 4.11 Not available
 
 ESA SCOS-2000, EGOS, and libgcs are not published as open source. OpenC3 COSMOS is not under an OSI license and has only day, millisecond, and microsecond helpers. `satrs` and `tmtccmd` share authors with `spacepackets`. NASA cFE's `MSG` module is run (§1, §2); its `CFE_TIME` module, which converts and formats times, is not examined. Not examined either: AMMOS MMTC, SpacePy, astropy, libCSP, and Go or JavaScript packages.
