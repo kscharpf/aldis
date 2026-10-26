@@ -211,7 +211,7 @@ struct LaterMap {
 
 #[test]
 fn channel_arrays_step_by_their_struct_size() {
-    // req: CABI-033, CABI-022, CABI-030, GEN-011, API-040
+    // req: CABI-033, CABI-022, CABI-030, GEN-011, API-040, TC-024
     let mc = mc();
     let (base, base_maps) = (vcs(), maps());
     let mut e = detail();
@@ -219,7 +219,12 @@ fn channel_arrays_step_by_their_struct_size() {
         check_mc(&mc, base.as_ptr(), 3, base_maps.as_ptr(), 2, &mut e),
         ALDIS_OK
     );
-    assert_eq!(check_mc(&mc, null(), 0, null(), 0, &mut e), ALDIS_OK);
+    // A master channel with no virtual channel receives nothing (OI-55).
+    assert_eq!(
+        check_mc(&mc, null(), 0, null(), 0, &mut e),
+        ALDIS_ERR_INVALID_CONFIG
+    );
+    assert_eq!(e.field, ALDIS_FIELD_VC_ID);
     assert_eq!(
         check_mc(&mc, null(), 1, null(), 0, &mut e),
         ALDIS_ERR_INVALID_FIELD

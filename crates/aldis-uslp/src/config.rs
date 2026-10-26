@@ -469,6 +469,9 @@ impl<const V: usize, const M: usize> VcTable<V, M> {
     /// (`frame_data_field`) for a MAP of a VC with lengths per MAP that leaves no TFDZ octet;
     /// `CapacityExceeded` (`map_id`) for more than `M`.
     ///
+    /// Before any of these, `InvalidConfig` (`vc_id`) if `vcs` is empty: a Physical Channel
+    /// without a Virtual Channel has no Spacecraft ID to accept an OID frame for (OI-55).
+    ///
     /// Then `InvalidConfig` (`truncated_frame_len`) for a VC with a truncated frame length below
     /// 28 that uses SDLS, by its own lengths or a MAP's (Annex D1.2.4; USLP-012, API-075).
     pub fn new(
@@ -476,6 +479,9 @@ impl<const V: usize, const M: usize> VcTable<V, M> {
         vcs: &[VcConfig],
         maps: &[MapConfig],
     ) -> Result<VcTable<V, M>> {
+        if vcs.is_empty() {
+            return Err(bad(field::VC_ID));
+        }
         let mut table = VcTable {
             physical,
             vcs: [None; V],
@@ -920,6 +926,16 @@ pub(crate) mod tests {
         );
         assert_eq!(frame_security(&vc5, None), SecurityLayout::NONE);
         assert_eq!(frame_security(&vc4, m51.as_ref()), SecurityLayout::NONE);
+    }
+
+    #[test]
+    fn a_table_without_a_virtual_channel_is_rejected() {
+        // req: USLP-017, GEN-060, API-040
+        let pc = PhysicalChannelConfig::new(TransferFrameType::Fixed, 64, 0, true).unwrap();
+        let ic = (ErrorKind::InvalidConfig, Some(field::VC_ID));
+        assert_eq!(kf(VcTable::<4, 4>::new(pc, &[], &[])), ic);
+        // Before the MAPs are looked at: the VC is what is missing.
+        assert_eq!(kf(VcTable::<4, 4>::new(pc, &[], &[map(6, 0, 0, 0)])), ic);
     }
 
     #[test]

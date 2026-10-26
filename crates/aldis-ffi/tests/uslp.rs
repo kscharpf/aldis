@@ -287,7 +287,7 @@ struct LaterMap {
 
 #[test]
 fn vc_and_map_arrays_step_by_their_struct_size() {
-    // req: CABI-033, CABI-022, CABI-030, API-040
+    // req: CABI-033, CABI-022, CABI-030, API-040, USLP-017
     let ch = variable();
     let check = |vcs: *const aldis_uslp_vc_config_t,
                  len: usize,
@@ -298,7 +298,8 @@ fn vc_and_map_arrays_step_by_their_struct_size() {
         unsafe { aldis_uslp_vc_table_check(&raw const ch.pc, vcs, len, maps, mp, null_mut()) }
     };
     assert_eq!(ch.check(), ALDIS_OK);
-    assert_eq!(check(null(), 0, null(), 0), ALDIS_OK);
+    // A table with no virtual channel receives nothing (OI-55).
+    assert_eq!(check(null(), 0, null(), 0), ALDIS_ERR_INVALID_CONFIG);
     assert_eq!(check(null(), 1, null(), 0), ALDIS_ERR_INVALID_FIELD);
     assert_eq!(check(null(), 0, null(), 1), ALDIS_ERR_INVALID_FIELD);
     // Longer structs of a later header: each array's stride is its struct_size.

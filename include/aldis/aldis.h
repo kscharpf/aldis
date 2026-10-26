@@ -4518,7 +4518,8 @@ int32_t aldis_aos_config_check(const aldis_aos_config_t *pc, aldis_error_detail_
  * The errors of [`aldis_aos_config_check`]; `ALDIS_ERR_OUT_OF_RANGE` (`spacecraft_id`, `vc_id`)
  * for an SCID above 1023 or a VCID above 63; `ALDIS_ERR_INVALID_CONFIG` (`vc_id`) for VCID 63,
  * which is reserved for OID frames, and (`security_header_len`) for a Security Header above 64
- * octets; then, for the first virtual channel that fails: `ALDIS_ERR_INVALID_CONFIG` (`vc_id`)
+ * octets; `ALDIS_ERR_INVALID_CONFIG` (`vc_id`) for `vc_count` 0 (AOS-020, OI-55); then, for
+ * the first virtual channel that fails: `ALDIS_ERR_INVALID_CONFIG` (`vc_id`)
  * for a VCID given twice, (`spacecraft_id`) for an SCID above 255 in Issue 4, (`frame_data_field`)
  * for a VC left no data octet or, for an `M_PDU` or `B_PDU`, no octet after its header, and
  * for a VC that carries `B_PDUs` (`frame_len`) for frames longer than 2 048 octets in Issue 5
@@ -4951,6 +4952,10 @@ int32_t aldis_epp_writer_begin(const aldis_epp_config_t *cfg,
  * outside the configured limits, and `ALDIS_ERR_INVALID_FIELD` (`epi`) for an empty data field
  * with a non-idle EPI.
  *
+ * The call re-runs `begin`, so a finish with other arguments than `begin`'s gives a valid
+ * packet for the arguments of the finish; OI-50's header check is not applied to it
+ * (maintainer decision of 2026-10-25, revisited in M3).
+ *
  * # Safety
  * As [`aldis_epp_writer_begin`]; `out_len` is valid for one write.
  */
@@ -5246,6 +5251,10 @@ int32_t aldis_spp_writer_begin(const aldis_spp_config_t *cfg,
  * # Errors
  * As [`aldis_spp_writer_begin`], and `ALDIS_ERR_OUT_OF_RANGE` (`user_len`) above
  * `max_user_len`.
+ *
+ * The call re-runs `begin`, so a finish with other arguments than `begin`'s gives a valid
+ * packet for the arguments of the finish; OI-50's header check is not applied to it
+ * (maintainer decision of 2026-10-25, revisited in M3).
  *
  * # Safety
  * As [`aldis_spp_writer_begin`]; `out_len` is valid for one write.
@@ -5667,8 +5676,8 @@ int32_t aldis_tc_config_check(const aldis_tc_config_t *pc, aldis_error_detail_t 
  * `map_id`); `ALDIS_ERR_CAPACITY_EXCEEDED` (`vc_id`) for more than `ALDIS_TC_MAX_VCS` virtual
  * channels and (`map_id`) for more than `ALDIS_TC_MAX_MAPS` MAPs, before any of them is read
  * (CABI-030); `ALDIS_ERR_INVALID_CONFIG` (`security_header_len`) for a Security Header above 64
- * octets, (`max_frame_len`) for a VC maximum outside 6 to 1024 octets, (`vc_id`) for a VCID
- * given twice, (`map_id`) for a MAP given twice or on a VC that is not given or has no Segment
+ * octets, (`max_frame_len`) for a VC maximum outside 6 to 1024 octets, (`vc_id`) for
+ * `vc_count` 0 (OI-55) or a VCID given twice, (`map_id`) for a MAP given twice or on a VC that is not given or has no Segment
  * Header, and (`frame_data_field`) for a VC or MAP whose fields leave no data octet; CABI-022
  * violations, including a struct whose `struct_size` differs from its array's first, and a VC
  * with Segment Headers whose security lengths are not 0.
@@ -6613,7 +6622,8 @@ int32_t aldis_uslp_config_check(const aldis_uslp_config_t *pc, aldis_error_detai
  * `ocf_flag`, `transfer_frame_type`, `vc_id`, `map_id`, `frame_data_field`) as `aldis-uslp`'s
  * constructors return them (`docs/standards/uslp-frame.md` §2.1); CABI-022 violations,
  * including an enumeration member that is no constant and a struct whose `struct_size` differs
- * from its array's first one.
+ * from its array's first one. `vc_count` 0 is `ALDIS_ERR_INVALID_CONFIG` (`vc_id`) once
+ * the structs have parsed (USLP-017, OI-55).
  *
  * # Safety
  * `pc` is valid for a read; `vcs` is valid for reads of `vc_count` structs of the first one's

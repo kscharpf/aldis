@@ -26,5 +26,10 @@
   `TmAnomaly::OnlyIdleDataOnSdlsVc` (bit 2; C: `ALDIS_TM_ANOMALY_ONLY_IDLE_DATA_ON_SDLS_VC`).
   `TmFrame::validate` rejects it in both modes. `TmFrame::decode`, which has no channel table,
   cannot check and never reports it.
+- **Breaking:** `aldis-tc`, `aldis-aos`, `aldis-uslp`: `VcTable::new` returns `InvalidConfig`
+  (`vc_id`) when no Virtual Channel is given (OI-55; TC-024, AOS-020, USLP-017). It was accepted,
+  and every frame was then rejected, Only Idle Data frames included. The C ABI follows:
+  `aldis_tc_mc_config_check`, `aldis_aos_mc_config_check`, `aldis_uslp_vc_table_check`, and every
+  call that builds the table, with `vc_count` 0.
 - `aldis-uslp`: `TruncatedFrameLen::new` and `get` are `const fn` (RS-012), so a `VcConfig` with a
   truncated frame length can be built in a `static`. Not breaking.

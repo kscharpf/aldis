@@ -330,7 +330,10 @@ impl<const N: usize> VcTable<N> {
     /// The virtual channels of `pc` (732.0 §5; GEN-060, API-040).
     ///
     /// # Errors
-    /// For the first virtual channel that fails, in this order:
+    /// - `InvalidConfig` (`vc_id`) if `vcs` is empty: a physical channel without a virtual
+    ///   channel has no Spacecraft ID to accept an OID frame for (OI-55).
+    ///
+    /// Then, for the first virtual channel that fails, in this order:
     /// - `InvalidConfig` (`vc_id`) for a virtual channel given twice;
     /// - `InvalidConfig` (`spacecraft_id`) for an SCID above 255 in `Issue4Compatible`, which
     ///   has 8 bits for it (AOS-002), with that limit;
@@ -346,6 +349,9 @@ impl<const N: usize> VcTable<N> {
         pc: AosPhysicalChannelConfig,
         vcs: &[AosVirtualChannelConfig],
     ) -> Result<VcTable<N>> {
+        if vcs.is_empty() {
+            return Err(Error::new(ErrorKind::InvalidConfig).with_field(field::VC_ID));
+        }
         let mut slots = [None; N];
         fill(&mut slots, &pc, vcs)?;
         Ok(VcTable { pc, vcs: slots })
@@ -624,6 +630,17 @@ pub(crate) mod tests {
                     found: 63
                 }
             )
+        );
+    }
+
+    #[test]
+    fn a_table_without_a_virtual_channel_is_rejected() {
+        // req: AOS-020, GEN-060, API-040
+        let p = pc(20, false, 2, true, AosEdition::Issue5);
+        let (kind, field, _) = invalid(VcTable::<4>::new(p, &[]));
+        assert_eq!(
+            (kind, field),
+            (ErrorKind::InvalidConfig, Some(field::VC_ID))
         );
     }
 

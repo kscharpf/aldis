@@ -705,8 +705,8 @@ pub unsafe extern "C" fn aldis_tc_config_check(
 /// `map_id`); `ALDIS_ERR_CAPACITY_EXCEEDED` (`vc_id`) for more than `ALDIS_TC_MAX_VCS` virtual
 /// channels and (`map_id`) for more than `ALDIS_TC_MAX_MAPS` MAPs, before any of them is read
 /// (CABI-030); `ALDIS_ERR_INVALID_CONFIG` (`security_header_len`) for a Security Header above 64
-/// octets, (`max_frame_len`) for a VC maximum outside 6 to 1024 octets, (`vc_id`) for a VCID
-/// given twice, (`map_id`) for a MAP given twice or on a VC that is not given or has no Segment
+/// octets, (`max_frame_len`) for a VC maximum outside 6 to 1024 octets, (`vc_id`) for
+/// `vc_count` 0 (OI-55) or a VCID given twice, (`map_id`) for a MAP given twice or on a VC that is not given or has no Segment
 /// Header, and (`frame_data_field`) for a VC or MAP whose fields leave no data octet; CABI-022
 /// violations, including a struct whose `struct_size` differs from its array's first, and a VC
 /// with Segment Headers whose security lengths are not 0.

@@ -1505,14 +1505,32 @@ struct AosChannels {
 }
 
 impl AosChannels {
-    /// The master channel of `scid`, with no virtual channel if the configuration has none of
-    /// that SCID: a caller with several master channels picks the one of a frame's SCID.
+    /// The master channel of `scid`: a caller with several master channels picks the one of a
+    /// frame's SCID. If the configuration has none of that SCID, the first master channel
+    /// stands in, which rejects the frame as `UnknownChannel` (`spacecraft_id`), since a master
+    /// channel without a virtual channel is not a configuration (AOS-020, OI-55).
     fn mc(&self, scid: u16) -> (aldis_aos_mc_config_t, Vec<aldis_aos_vc_config_t>) {
         self.mcs
             .iter()
             .find(|(m, _)| m.scid == scid)
+            .or_else(|| self.mcs.first())
             .cloned()
             .unwrap_or_else(|| (aos_mc(scid, self.pc), Vec::new()))
+    }
+}
+
+impl AosChannels {
+    /// The master channel of `scid` for a call that builds a frame of that SCID: a caller with
+    /// no master channel of it has nothing to pass, and reports an unknown Spacecraft ID.
+    fn mc_for_frame(&self, scid: u16) -> R<(aldis_aos_mc_config_t, Vec<aldis_aos_vc_config_t>)> {
+        self.mcs
+            .iter()
+            .find(|(m, _)| m.scid == scid)
+            .cloned()
+            .ok_or_else(|| Fail {
+                kind: ErrorKind::UnknownChannel.name().to_owned(),
+                field: NonZeroU16::new(aldis_ffi::field::ALDIS_FIELD_SPACECRAFT_ID),
+            })
     }
 }
 
@@ -1757,7 +1775,7 @@ fn aos_put(frame: &mut [u8], offset: usize, len: usize, src: &[u8]) {
 /// (API-020, API-023).
 fn aos_encode(case: &CodecCase, ch: &AosChannels) -> R<Value> {
     let par = params(case);
-    let (mc, vcs) = ch.mc(u16_of(&par, "scid"));
+    let (mc, vcs) = ch.mc_for_frame(u16_of(&par, "scid"))?;
     let fields = aos_fields(&par);
     let (iz, sh, zone, st, ocf) = (
         aos_octets(&par, "insert_zone_hex"),
@@ -1855,7 +1873,7 @@ fn aos_encode(case: &CodecCase, ch: &AosChannels) -> R<Value> {
 /// Consecutive OID frames of one SCID from one generator of `form` (AOS-016, CMN-021).
 fn aos_oid_frames(case: &CodecCase, ch: &AosChannels, form: u32) -> R<Vec<String>> {
     let p = params(case);
-    let (mc, vcs) = ch.mc(u16_of(&p, "scid"));
+    let (mc, vcs) = ch.mc_for_frame(u16_of(&p, "scid"))?;
     let oid = Oid::new(form);
     let mut frames = Vec::new();
     for f in get(&p, "frames").as_array().unwrap() {
@@ -1945,6 +1963,13 @@ fn aos_run(case: &CodecCase) -> R<Value> {
     for (mc, vcs) in &ch.mcs {
         // SAFETY: as above.
         call(|e| unsafe { aldis_aos_mc_config_check(mc, vcs.as_ptr(), vcs.len(), e) })?;
+    }
+    if ch.mcs.is_empty() {
+        // A configuration without a virtual channel names no master channel; its SCID is the
+        // caller's to give, and the check rejects it whatever it is (AOS-020, OI-55).
+        let mc = aos_mc(1, ch.pc);
+        // SAFETY: as above.
+        call(|e| unsafe { aldis_aos_mc_config_check(&raw const mc, core::ptr::null(), 0, e) })?;
     }
     let bytes = input(case);
     match case.operation.as_str() {

@@ -167,7 +167,7 @@ struct LaterVc {
 
 #[test]
 fn vc_arrays_step_by_their_struct_size() {
-    // req: CABI-033, CABI-022, API-040
+    // req: CABI-033, CABI-022, API-040, AOS-020
     let mc = mc();
     let check = |vcs: *const aldis_aos_vc_config_t, n: usize| {
         // SAFETY: `mc` is live; `vcs` is NULL or points to `n` live structs.
@@ -175,7 +175,8 @@ fn vc_arrays_step_by_their_struct_size() {
     };
     let base = vcs();
     assert_eq!(check(base.as_ptr(), 3), ALDIS_OK);
-    assert_eq!(check(null(), 0), ALDIS_OK);
+    // A master channel with no virtual channel receives nothing (OI-55).
+    assert_eq!(check(null(), 0), ALDIS_ERR_INVALID_CONFIG);
     assert_eq!(check(null(), 1), ALDIS_ERR_INVALID_FIELD);
     // A longer struct of a later header: the stride is its struct_size.
     let later = base.map(|vc| LaterVc {
@@ -287,7 +288,11 @@ fn a_master_channel_holds_vcids_0_to_62() {
     let mut d = detail();
     // SAFETY: every pointer is to a live local.
     let r = unsafe { aldis_aos_mc_config_check(&raw const issue4, oid.as_ptr(), 0, &raw mut d) };
-    assert_eq!(r, ALDIS_OK, "no VC: no SCID to check against the edition");
+    assert_eq!(
+        (r, d.field),
+        (ALDIS_ERR_INVALID_CONFIG, ALDIS_FIELD_VC_ID),
+        "no VC: rejected before the SCID is held to the edition"
+    );
     let first = [one];
     // SAFETY: as above.
     let r = unsafe { aldis_aos_mc_config_check(&raw const issue4, first.as_ptr(), 1, &raw mut d) };
@@ -399,7 +404,7 @@ fn the_decoder_takes_the_master_channels_vcs() {
         ),
         (12, 22, 12, ALDIS_AOS_POINTER_NONE)
     );
-    // Another SCID, an unknown VC, an empty master channel.
+    // Another SCID, an unknown VC.
     let other = aldis_aos_mc_config_t { scid: 0x0AC, ..mc };
     let (status, field, _) = decode(&frame, &other, &vcs, ALDIS_MODE_STRICT);
     assert_eq!(
@@ -475,10 +480,11 @@ fn the_decoder_takes_the_master_channels_vcs() {
         (12, 12, 0)
     );
     assert_eq!(oid[12..16], [0xFF; 4]);
+    // A master channel with no VC is not a configuration (AOS-020, OI-55).
     let (status, field, _) = decode(&oid, &mc, &[], ALDIS_MODE_STRICT);
     assert_eq!(
         (status, field),
-        (ALDIS_ERR_UNKNOWN_CHANNEL, ALDIS_FIELD_SPACECRAFT_ID)
+        (ALDIS_ERR_INVALID_CONFIG, ALDIS_FIELD_VC_ID)
     );
     // The mode takes only its constants.
     assert_eq!(decode(&frame, &mc, &vcs, 7).0, ALDIS_ERR_INVALID_FIELD);

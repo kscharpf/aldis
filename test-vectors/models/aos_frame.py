@@ -170,6 +170,9 @@ def build_config(cfg):
           "edition": edition}
     if pc["frame_len"] < header_len(pc) + pc["iz"] + 1 + (2 if pc["fecf"] else 0):
         raise Fail("InvalidConfig", F["frame_len"])
+    if not cfg.get("vcs"):
+        # AOS-020 (OI-55): a physical channel with no virtual channel is not a configuration.
+        raise Fail("InvalidConfig", F["vc_id"])
     parsed = []
     for vc in cfg.get("vcs", []):
         if vc["scid"] > 1023:
@@ -1031,14 +1034,15 @@ def config():
     reqs = ["API-040", "GEN-060"]
     return [
         case("aos-cfg-001", reqs + ["AOS-001", "CMN-041"],
-             "Shortest physical channel: 6 + 1 octets", "config", channel(7, [])),
+             "Shortest physical channel: 6 + 1 octets, with one VCA_SDU virtual channel (a configuration with none is rejected, OI-55)",
+             "config", channel(7, [vc(1, 1, "vca_sdu")])),
         case("aos-cfg-002", reqs + ["CMN-041"], "6 octets: no data octet (CMN-041, a project rule); the error names the Physical Channel's frame_len (68)", "config",
              channel(6, [])),
         case("aos-cfg-003", reqs + ["CMN-041", "AOS-013"],
              "With FHEC, Insert Zone 2, and FECF the shortest frame is 13 octets: 12 rejected (frame_len, 68)",
              "config", channel(12, [], fhec=True, iz=2, fecf=True)),
-        case("aos-cfg-004", reqs + ["CMN-041", "AOS-013"], "...and 13 accepted", "config",
-             channel(13, [], fhec=True, iz=2, fecf=True)),
+        case("aos-cfg-004", reqs + ["CMN-041", "AOS-013"], "...and 13 accepted, with one VCA_SDU virtual channel", "config",
+             channel(13, [vc(1, 1, "vca_sdu")], fhec=True, iz=2, fecf=True)),
         case("aos-cfg-005", reqs, "The same VC given twice: InvalidConfig (vc_id)", "config",
              channel(20, [vc(1, 1, "mpdu"), vc(1, 1, "vca_sdu")])),
         case("aos-cfg-006", reqs, "The same VCID on two spacecraft: accepted", "config",
@@ -1056,6 +1060,9 @@ def config():
              channel(20, [vc(1024, 1, "mpdu")])),
         case("aos-cfg-011", reqs, "A VC of VCID 64: OutOfRange", "config",
              channel(20, [vc(1, 64, "mpdu")])),
+        case("aos-cfg-012", ["API-040", "GEN-060", "AOS-020"],
+             "No virtual channel: InvalidConfig (vc_id). The valid Spacecraft IDs are those of the virtual channels, so a physical channel without one would reject every frame, OID frames included (OI-55)",
+             "config", channel(20, [])),
     ]
 
 

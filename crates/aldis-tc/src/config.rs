@@ -271,7 +271,8 @@ impl<const V: usize, const M: usize> VcTable<V, M> {
     /// # Errors
     /// - `CapacityExceeded` (`vc_id`, `map_id`) for more than `V` Virtual Channels or `M`
     ///   MAPs (GEN-011).
-    /// - `InvalidConfig` (`vc_id`) for a Virtual Channel given twice; (`map_id`) for a MAP
+    /// - `InvalidConfig` (`vc_id`) for no Virtual Channel at all (a Physical Channel with none
+    ///   receives nothing, OI-55), or for a Virtual Channel given twice; (`map_id`) for a MAP
     ///   given twice, or on a Virtual Channel that is not given or has no Segment Header
     ///   (232.0 §4.1.3.2.2.1.2).
     /// - `InvalidConfig` (`frame_data_field`) for a Virtual Channel or MAP whose Segment
@@ -282,6 +283,9 @@ impl<const V: usize, const M: usize> VcTable<V, M> {
         vcs: &[VcConfig],
         maps: &[MapConfig],
     ) -> Result<VcTable<V, M>> {
+        if vcs.is_empty() {
+            return Err(Error::new(ErrorKind::InvalidConfig).with_field(field::VC_ID));
+        }
         let mut table = VcTable {
             physical,
             vcs: [None; V],
@@ -497,6 +501,23 @@ pub(crate) mod tests {
         assert_eq!(t.map(scid(0x155), vcid(2), mapid(1)), None);
         assert_eq!(t.map(scid(0x155), vcid(1), mapid(0)), None);
         assert_eq!(t.map(scid(0x156), vcid(2), mapid(0)), None);
+    }
+
+    #[test]
+    fn a_table_without_a_virtual_channel_is_rejected() {
+        // req: TC-024, GEN-060, API-040
+        let pc = PhysicalChannelConfig::new(1024, true).unwrap();
+        let e = VcTable::<2, 2>::new(pc, &[], &[]).unwrap_err();
+        assert_eq!(
+            (e.kind(), e.field()),
+            (ErrorKind::InvalidConfig, Some(field::VC_ID))
+        );
+        // A MAP does not make up for it: the VC is what is missing.
+        let e = VcTable::<2, 2>::new(pc, &[], &[map(1, 0, 0, 0)]).unwrap_err();
+        assert_eq!(
+            (e.kind(), e.field()),
+            (ErrorKind::InvalidConfig, Some(field::VC_ID))
+        );
     }
 
     #[test]

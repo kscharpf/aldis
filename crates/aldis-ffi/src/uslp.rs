@@ -881,7 +881,8 @@ pub unsafe extern "C" fn aldis_uslp_config_check(
 /// `ocf_flag`, `transfer_frame_type`, `vc_id`, `map_id`, `frame_data_field`) as `aldis-uslp`'s
 /// constructors return them (`docs/standards/uslp-frame.md` §2.1); CABI-022 violations,
 /// including an enumeration member that is no constant and a struct whose `struct_size` differs
-/// from its array's first one.
+/// from its array's first one. `vc_count` 0 is `ALDIS_ERR_INVALID_CONFIG` (`vc_id`) once
+/// the structs have parsed (USLP-017, OI-55).
 ///
 /// # Safety
 /// `pc` is valid for a read; `vcs` is valid for reads of `vc_count` structs of the first one's
