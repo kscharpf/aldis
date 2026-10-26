@@ -96,7 +96,7 @@ unreachable_pub = "warn"
 [workspace.lints.clippy]
 all = { level = "deny", priority = -1 }
 pedantic = { level = "deny", priority = -1 }
-# Selected restriction lints (GEN-020)
+# Selected restriction lints (GEN-010, GEN-020, GEN-030, GEN-070)
 unwrap_used = "deny"
 expect_used = "deny"
 panic = "deny"
@@ -107,11 +107,28 @@ as_conversions = "deny"
 unreachable = "deny"
 todo = "deny"
 unimplemented = "deny"
+undocumented_unsafe_blocks = "deny"
+alloc_instead_of_core = "deny"
+dbg_macro = "deny"
+print_stdout = "deny"
+print_stderr = "deny"
+string_slice = "deny"
+infinite_loop = "deny"
+mem_forget = "deny"
+as_pointer_underscore = "deny"
+lossy_float_literal = "deny"
 # Selected nursery lints (RS-019). The nursery group itself stays off.
 missing_const_for_fn = "deny"
 derive_partial_eq_without_eq = "deny"
 too_long_first_doc_paragraph = "deny"
 redundant_clone = "deny"
+fallible_impl_from = "deny"
+non_send_fields_in_send_ty = "deny"
+transmute_undefined_repr = "deny"
+debug_assert_with_mut_call = "deny"
+needless_pass_by_ref_mut = "deny"
+large_stack_frames = "deny"
+collection_is_never_read = "deny"
 ```
 
 The Clippy `nursery` group holds lints that are still under development and may report false positives, so it is not enabled as a group. Individual nursery lints are adopted once they have been checked against this code base (RS-019):
@@ -122,10 +139,20 @@ The Clippy `nursery` group holds lints that are still under development and may 
 | `derive_partial_eq_without_eq` | Denied | Types with total equality derive `Eq`, so callers can use them as keys and in `assert_eq!` of containing types. |
 | `too_long_first_doc_paragraph` | Denied | rustdoc shows the first paragraph as the item summary, so it is one short sentence. |
 | `redundant_clone` | Denied | A clone whose original is never used again is dead work. |
+| `fallible_impl_from` | Denied | `From` must be infallible (RS-010, GEN-020). Fallible conversions implement `TryFrom`. |
+| `non_send_fields_in_send_ty` | Denied | Prevents manual `Send` implementations on types whose fields are not `Send` (RS-013, GEN-033). |
+| `transmute_undefined_repr` | Denied | Transmuting types without defined representation (`#[repr(C)]`) is immediate undefined behavior (GEN-070, CABI-004). |
+| `debug_assert_with_mut_call` | Denied | Mutating calls inside `debug_assert!` diverge between debug and release builds, violating determinism (GEN-032). |
+| `needless_pass_by_ref_mut` | Denied | Avoids unnecessary `&mut` parameters that restrict caller concurrency without mutating state. |
+| `large_stack_frames` | Denied | Embedded bare-metal targets (Cortex-M, SPARC LEON3) have strictly bounded stack sizes (GEN-011, VER-010). |
+| `collection_is_never_read` | Denied | Containers populated but never read waste storage and cycles (GEN-011). |
 | `redundant_pub_crate` | Not adopted | Conflicts with `unreachable_pub`: in a private module it asks for `pub`, which `unreachable_pub` then reports. |
 | `or_fun_call` | Not adopted | The arguments it flags are `const fn` error constructors with no side effects that return a small `Copy` value (RS-011). Eager construction costs nothing, and a closure adds a coverage region (VER-024). |
 | `option_if_let_else` | Not adopted | The suggested `map_or_else` takes closures, which a `const fn` cannot call, so it conflicts with `missing_const_for_fn`. Elsewhere it does not improve readability. |
 | `use_self` | Deferred | Style only. The code mostly names the type rather than writing `Self`. Adopting it is a separate, mechanical change. |
+| `suspicious_operation_groupings` | Not adopted | False positives on contiguous interval validation chains. |
+| `trailing_empty_array` | Not adopted | Flags zero-sized C ABI storage handle types (`aldis_oid_generator_t`). |
+| `useless_let_if_seq` | Not adopted | Flags multi-stage conditional state machine parsing in `aldis-spp`. |
 
 | ID | Requirement | Source | Verif. |
 |---|---|---|---|
