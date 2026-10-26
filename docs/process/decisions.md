@@ -153,3 +153,4 @@ One line for each decision the maintainer takes, under the [decision rights](dec
 - 2026-10-25 · api · #122 · `aldis_spp_writer_finish` and `aldis_epp_writer_finish` re-run `begin` and stay without OI-50's header check; the residual is documented in `docs/profiles/c-abi.md`, and the check is revisited with the packet-codec hazard analysis in M3
 - 2026-10-25 · plan · #122 · the USLP `VcConfig::new` check of a truncated frame length below 28 with SDLS (`SecurityScope::Vc`, RS-020) moves to M3
 - 2026-10-25 · approval · #123 · GEN-022/023 inspection records of aldis-tm, aldis-tc, aldis-aos, aldis-uslp, and aldis-ffi approved at the M2 exit review (VER-061)
+- 2026-10-26 · housekeeping · chat · Adopt additional Clippy restriction and nursery lints across the workspace
