@@ -1244,6 +1244,13 @@ def gen_truncated():
     b.add(o48 + ["API-013"], "OI-48: peek_length, 6 octets of a non-truncated header on VC 1, "
           "which has no truncated frame length: its Frame Length + 1", "peek_length", TRUNC,
           data=frame_of(TRUNC, params(1, pat(4, 0x71), rule=7, count=1))[:6])
+    # Regression case for issue #124 (VER-022, TV-020): the failing 6-octet truncated frame
+    # C000C01DA22E found by ffi_decode (Annex D, USLP-002, CABI-012).
+    c124 = pc("variable", 128, [vc(0, "variable", trunc=6, scid=12)], [mp(0, 14, scid=12)])
+    b.dec(["USLP-002", "CABI-012", "VER-022", "TV-020"],
+          "Regression for issue #124 (VER-022): the 6-octet truncated frame C000C01DA22E found "
+          "by ffi_decode on VC 0 (MAP 14, SCID 12, length 6): rule 101, UPID Packets, 1 TFDZ octet",
+          c124, bytes.fromhex("C000C01DA22E"))
     return b.cases
 
 
@@ -2006,12 +2013,16 @@ ADDED = {name: (
     for name, ids, why in [
         ("truncated_sdls_layout.json", "uslp-tsdls-017 to uslp-tsdls-021",
          "OI-48, with uslp-tsdls-003 and -004 superseded (their released expectations are kept)."),
-        ("truncated.json", "uslp-trunc-039 onward",
+        ("truncated.json", "uslp-trunc-039 to uslp-trunc-055",
          "OI-48, a VC with a truncated frame length carries only truncated frames."),
         ("validation_failures.json", "uslp-val-041 onward",
          "OI-48, validation reason 18 and its order."),
         ("delimit_multiple_frames_with_fill.json", "uslp-delim-017 onward",
          "OI-48 (the non_truncated_not_allowed item) and HZ-USLP-05 (P-USLP-07).")]}
+ADDED["truncated.json"] += (
+    " Case uslp-trunc-056 was added on 2026-10-26 as a regression vector for issue #124 "
+    "(VER-022, TV-020): the failing 6-octet truncated frame C000C01DA22E found by ffi_decode."
+)
 
 
 def generate():
