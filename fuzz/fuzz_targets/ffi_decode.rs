@@ -1329,7 +1329,7 @@ fn uslp_same(view: &aldis_uslp_frame_t, frame: &UslpFrame<'_>, data: &[u8]) {
     } else {
         assert_eq!(
             (view.kind, view.ocf_flag, view.vcf_count_len, view.vcf_count),
-            (0, false, 0, 0)
+            (ALDIS_USLP_KIND_EXPEDITED, false, 0, 0)
         );
         assert_eq!((l.insert_zone_len, l.ocf_len, l.fecf_len), (0, 0, 0));
         assert!(!view.has_fecf);
@@ -1387,7 +1387,11 @@ fn uslp_channels(
             (false, true) => ALDIS_USLP_OCF_ALLOWED,
             (_, false) => ALDIS_USLP_OCF_ABSENT,
         },
-        truncated_frame_len: if fixed { 0 } else { 6 + vcid % 27 },
+        truncated_frame_len: if !fixed && selector & 0x08 != 0 {
+            6 + vcid % 27
+        } else {
+            0
+        },
         security: if per_map {
             ALDIS_USLP_SECURITY_PER_MAP
         } else {
