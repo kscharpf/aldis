@@ -88,8 +88,43 @@ fn has_code(text: &str) -> bool {
     })
 }
 
-/// The crates named by `-p` on the `cargo mutants` line of a workflow.
+/// The `crate` matrix of the workflow job `job`.
+fn matrix_crates(workflow: &str, job: &str) -> Option<BTreeSet<String>> {
+    let mut lines = workflow
+        .lines()
+        .skip_while(|l| l.trim_end() != format!("  {job}:"))
+        .skip(1)
+        .take_while(|l| l.is_empty() || l.starts_with("   "));
+    let mut rest = lines
+        .by_ref()
+        .skip_while(|l| !l.trim().starts_with("crate:"));
+    let first = rest.next()?;
+    if let Some(list) = first.trim().strip_prefix("crate:") {
+        let trimmed = list.trim();
+        if trimmed.starts_with('[') && trimmed.ends_with(']') {
+            return Some(
+                trimmed[1..trimmed.len() - 1]
+                    .split(',')
+                    .map(str::trim)
+                    .filter(|s| !s.is_empty())
+                    .map(ToOwned::to_owned)
+                    .collect(),
+            );
+        }
+    }
+    let block: BTreeSet<String> = rest
+        .map(str::trim)
+        .take_while(|l| l.starts_with("- "))
+        .filter_map(|l| l.strip_prefix("- ").map(|n| n.trim().to_owned()))
+        .collect();
+    if block.is_empty() { None } else { Some(block) }
+}
+
+/// The crates of the nightly `mutants` job: from its `matrix.crate` list, or `-p` on the `cargo mutants` line.
 fn mutants_crates(workflow: &str) -> Result<BTreeSet<String>, String> {
+    if let Some(crates) = matrix_crates(workflow, "mutants") {
+        return Ok(crates);
+    }
     let line = workflow
         .lines()
         .find(|l| l.contains("cargo mutants"))
@@ -775,6 +810,11 @@ mod tests {
         assert!(matrix_targets(yml, "mutants").is_err());
         assert_eq!(
             mutants_crates(yml).unwrap(),
+            names(&["aldis-core", "aldis-aos"])
+        );
+        let yml_matrix = "jobs:\n  mutants:\n    strategy:\n      matrix:\n        crate: [aldis-core, aldis-aos]\n";
+        assert_eq!(
+            mutants_crates(yml_matrix).unwrap(),
             names(&["aldis-core", "aldis-aos"])
         );
         assert!(mutants_crates("no such line").is_err());
