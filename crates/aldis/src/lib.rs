@@ -16,8 +16,8 @@
 //! | `epp` | `aldis::epp` (`aldis-epp`): Encapsulation Packet codec | 133.1 §4.1–4.3, §5 | EPP-001…EPP-012 |
 //! | `tm` | `aldis::tm` (`aldis-tm`): TM Transfer Frames | 132.0 | TM-001…TM-011 |
 //! | `tc` | `aldis::tc` (`aldis-tc`): TC Transfer Frames, CLCW | 232.0 | TC-001…TC-031 |
-//! | `aos` | `aldis::aos` (`aldis-aos`): AOS Transfer Frames | 732.0 | AOS-001…AOS-019 |
-//! | `uslp` | `aldis::uslp` (`aldis-uslp`): USLP Transfer Frames, truncated frames, delimiting, validation | 732.1 | USLP-001…USLP-016 |
+//! | `aos` | `aldis::aos` (`aldis-aos`): AOS Transfer Frames | 732.0 | AOS-001…AOS-020 |
+//! | `uslp` | `aldis::uslp` (`aldis-uslp`): USLP Transfer Frames, truncated frames, delimiting, validation | 732.1 | USLP-001…USLP-017 |
 //! | `link` | `aldis::link` (`aldis-link`): sending and receiving engines | `docs/04-engines.md` | LNK-001…LNK-073 |
 //! | `cop1` | `aldis::cop1` (`aldis-cop1`): FOP-1 and FARM-1 | 232.1 | COP-001…COP-041 |
 //! | `framework` | `aldis::framework` (`aldis-framework`): transports, clocks, stacks | `docs/05-framework.md` | FW-001…FW-021 |
@@ -25,11 +25,11 @@
 //! | `full` | Every crate above, `spp-time`, and the cross-crate features of `aldis-link` and `aldis-cop1` | — | — |
 //!
 //! `spp` alone keeps `aldis-time` out of the build; `spp-time` brings it in only for the time
-//! secondary header (GEN-002). The frame, link, COP-1, and framework crates are skeletons until
-//! their milestones (`docs/08-roadmap.md`).
+//! secondary header (GEN-002). The link, COP-1, and framework crates are skeletons until their
+//! milestones (`docs/08-roadmap.md`).
 #![no_std]
 
-/// AOS Space Data Link Protocol frames (732.0; AOS-001…AOS-019). Feature `aos`.
+/// AOS Space Data Link Protocol frames (732.0; AOS-001…AOS-020). Feature `aos`.
 #[cfg(feature = "aos")]
 pub use aldis_aos as aos;
 /// COP-1: FOP-1 and FARM-1 (232.1; COP-001…COP-041). Feature `cop1`.
@@ -62,7 +62,7 @@ pub use aldis_time as time;
 /// TM Space Data Link Protocol frames (132.0; TM-001…TM-011). Feature `tm`.
 #[cfg(feature = "tm")]
 pub use aldis_tm as tm;
-/// Unified Space Data Link Protocol frames (732.1; USLP-001…USLP-016). Feature `uslp`.
+/// Unified Space Data Link Protocol frames (732.1; USLP-001…USLP-017). Feature `uslp`.
 #[cfg(feature = "uslp")]
 pub use aldis_uslp as uslp;
 

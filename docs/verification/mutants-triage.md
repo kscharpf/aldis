@@ -2,6 +2,22 @@
 
 Surviving mutants from `cargo mutants` (`-p aldis-core -p aldis-time -p aldis-epp -p aldis-spp -p aldis-aos -p aldis-tm -p aldis-tc -p aldis-uslp --all-features`) (cargo-mutants 27.1.0), triaged per VER-025. The nightly job `mutants` publishes the full report. Update this file when a new survivor appears.
 
+## 2026-10-27, Nightly run 40437244324 on main 01e380f (M2 release triage)
+
+Full workspace mutation testing across all eight Layer 1 and Layer 2 crates (`aldis-core`, `aldis-time`, `aldis-epp`, `aldis-spp`, `aldis-tm`, `aldis-tc`, `aldis-aos`, `aldis-uslp`), run in the nightly workflow (job `mutants`, [run 40437244324](https://github.com/kscharpf/aldis/actions/runs/40437244324)). Total: 3,080 mutants tested: 2,092 caught, 76 missed, 912 unviable, 0 timeouts.
+
+| Crate | Total | Caught | Missed | Unviable | Timeouts | Status |
+|---|---|---|---|---|---|---|
+| `aldis-aos` | 428 | 291 | 10 | 127 | 0 | All 10 missed are equivalent (bitwise disjunction of non-overlapping bitfields; triaged below) |
+| `aldis-core` | 525 | 317 | 6 | 202 | 0 | All 6 missed are equivalent (CRC / bitwise non-overlapping bitfields; triaged M0) |
+| `aldis-epp` | 220 | 166 | 3 | 51 | 0 | All 3 missed are equivalent (non-overlapping bitfields; triaged M1) |
+| `aldis-spp` | 223 | 148 | 6 | 69 | 0 | All 6 missed are equivalent (non-overlapping bitfields; triaged M1) |
+| `aldis-tc` | 302 | 191 | 11 | 100 | 0 | All 11 missed are equivalent (non-overlapping bitfields; triaged M2) |
+| `aldis-time` | 649 | 512 | 15 | 122 | 0 | All 15 missed are equivalent (calendar/time bitfields and formatting; triaged M0) |
+| `aldis-tm` | 265 | 168 | 15 | 82 | 0 | All 15 missed are equivalent (non-overlapping bitfields; triaged M2) |
+| `aldis-uslp` | 468 | 299 | 10 | 159 | 0 | All 10 missed are equivalent (non-overlapping bitfields; triaged M2) |
+| **Total** | **3,080** | **2,092** | **76** | **912** | **0** | **100% viable mutants caught or triaged equivalent (VER-025)** |
+
 ## 2026-10-25, branch `m2/hazard-controls` (OI-48 to OI-52, OI-54)
 
 The branch merges the hc agents' work: `resume` of the TM, TC, AOS, and USLP two-phase writers compares the headers `begin` wrote (OI-50, `writer.rs` `start` of each crate, `matches_at` in `aldis-aos`), the TM frame length cap (OI-51) and the Only Idle Data rule of the decoder (OI-54), the USLP rules for a VC with a truncated frame length (OI-48: `view.rs`, `writer.rs`, `delimit.rs`, `validate.rs`), the C view `kind` of a truncated frame (OI-52), and the panic handler (OI-49). It replaces the entry the OI-50 agent wrote for `m2/hc-finish`, whose 17 mutants are among these. `cargo mutants -p aldis-tm -p aldis-tc -p aldis-aos -p aldis-uslp -p aldis-ffi --all-features --in-diff <diff of the five crates' src against 5086748>` (cargo-mutants 27.1.0, with `PROPTEST_CASES=32`): 47 mutants: 33 caught, 12 unviable, 2 missed, 0 timeouts. cargo-mutants makes no mutant of a function named `new`, so the conditions in `TmPhysicalChannelConfig::new` and `Plan::new` have none; the unit and C ABI tests of OI-51 and OI-54 cover them.

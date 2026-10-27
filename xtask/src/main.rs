@@ -102,10 +102,10 @@ commands:
                                move every fragment into a new section of CHANGELOG.md
   ci                           the quick checks of the verification run, without a build:
                                spec-lint, links, decisions, layers, consistency, rs020,
-                               restricted, loops, assurance, refapp-deps, vectors validate,
+                               restricted, loops, assurance --strict, refapp-deps, vectors validate,
                                vectors schema --check, fields, header (needs the pinned
                                cbindgen), sana, trace --scope m0 --strict,
-                               trace --scope m1 --strict, trace --scope m2, trace --scope c0,
+                               trace --scope m1 --strict, trace --scope m2 --strict, trace --scope c0,
                                changelog check, cpp unsafe-optouts; a step that cannot run
                                counts as a problem, and the others still run
 
@@ -129,7 +129,7 @@ pub(crate) const CI: &[Step] = &[
     ("rs020", rs020::check),
     ("restricted", || restricted::run(false)),
     ("loops", || loops::run(&[])),
-    ("assurance", || assurance::run(false)),
+    ("assurance --strict", || assurance::run(true)),
     ("refapp-deps", refapp::check),
     ("vectors validate", vectors::validate),
     ("vectors schema --check", || vectors::schema(true)),
@@ -139,8 +139,8 @@ pub(crate) const CI: &[Step] = &[
     // M0 and M1 are closed: every in-scope requirement must keep an artefact.
     ("trace --scope m0 --strict", || trace::run(Some("m0"), true)),
     ("trace --scope m1 --strict", || trace::run(Some("m1"), true)),
-    // M2 is open: report its trace without failing (strict at the M2 exit, D1).
-    ("trace --scope m2", || trace::run(Some("m2"), false)),
+    // M2 is closed: every in-scope requirement must keep an artefact (D1).
+    ("trace --scope m2 --strict", || trace::run(Some("m2"), true)),
     // C0 is open: report its trace without failing (strict at the C0 exit, D17).
     ("trace --scope c0", || trace::run(Some("c0"), false)),
     ("changelog check", changelog::check),

@@ -160,3 +160,4 @@ One line for each decision the maintainer takes, under the [decision rights](dec
 - 2026-10-26 · plan · chat · OI-45: channel table stack use decided as option (d) (keep and document); the 4096-byte (Rust) and 10240-byte (C ABI) budgets are confirmed
 - 2026-10-26 · plan · chat · Signed verification evidence (#110) remains parked at M2 exit; DF-5 stays an open defeater
 - 2026-10-26 · plan · chat · M2 plan D15 amendment: the JVM cross-check harness is deferred to future milestones; M2 frame cross-checks are satisfied by the candidate search (docs/verification/cross-checks.md §4.7–§4.10, VER-040), hand derivations, blind models, and the approved second review
+- 2026-10-27 · release · chat · Release v0.3.0-m2 (Milestone 2: Frame codecs)

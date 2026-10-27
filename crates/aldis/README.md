@@ -2,7 +2,7 @@
 
 The facade crate: it re-exports the Aldis crates as modules, each behind a Cargo feature, so that an application depends on one crate and enables only the standards it uses.
 
-**Status:** in place since Milestone 0. The re-exported crates for time codes, Space Packets, and Encapsulation Packets are implemented (release `v0.2.0-m1`); the frame, link, COP-1, and framework crates are skeletons until their milestones ([roadmap](../../docs/08-roadmap.md) §1).
+**Status:** in place since Milestone 0. The re-exported crates for time codes, Space Packets, Encapsulation Packets, and the four frame codecs (TM, TC, AOS, USLP) are implemented (release `v0.3.0-m2`); the link, COP-1, and framework crates are skeletons until their milestones ([roadmap](../../docs/08-roadmap.md) §1).
 
 ## Where it sits
 
@@ -17,10 +17,10 @@ Outside the layers of the [architecture](../../docs/01-architecture.md) §2: it 
 | `spp` | `aldis::spp` | [`aldis-spp`](../aldis-spp/README.md), without its feature `time` | Implemented (M1) |
 | `spp-time` | `aldis::spp` and `aldis::time` | `aldis-spp` with its feature `time`: the typed time secondary header (SPP-008) | Implemented (M1) |
 | `epp` | `aldis::epp` | [`aldis-epp`](../aldis-epp/README.md) | Implemented (M1) |
-| `tm` | `aldis::tm` | [`aldis-tm`](../aldis-tm/README.md) | Implemented (M2; C ABI to follow) |
-| `tc` | `aldis::tc` | [`aldis-tc`](../aldis-tc/README.md) | Skeleton (M2) |
-| `aos` | `aldis::aos` | [`aldis-aos`](../aldis-aos/README.md) | Implemented (M2; C ABI to follow) |
-| `uslp` | `aldis::uslp` | [`aldis-uslp`](../aldis-uslp/README.md) | Implemented (M2 WP-5; C ABI to follow) |
+| `tm` | `aldis::tm` | [`aldis-tm`](../aldis-tm/README.md) | Implemented (M2) |
+| `tc` | `aldis::tc` | [`aldis-tc`](../aldis-tc/README.md) | Implemented (M2) |
+| `aos` | `aldis::aos` | [`aldis-aos`](../aldis-aos/README.md) | Implemented (M2) |
+| `uslp` | `aldis::uslp` | [`aldis-uslp`](../aldis-uslp/README.md) | Implemented (M2) |
 | `cop1` | `aldis::cop1` | [`aldis-cop1`](../aldis-cop1/README.md) | Skeleton (M3) |
 | `link` | `aldis::link` | [`aldis-link`](../aldis-link/README.md) | Skeleton (M4) |
 | `framework` | `aldis::framework` | [`aldis-framework`](../aldis-framework/README.md) | Skeleton (M6) |

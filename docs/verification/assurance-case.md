@@ -450,7 +450,7 @@ graph TD
 
 | Evidence | Shows | Requirements |
 |---|---|---|
-| `record:VER-020`; `ci:trace --scope m2` | The trace of the M2 scope, strict at the exit | VER-020 |
+| `record:VER-020`; `ci:trace --scope m2 --strict` | The trace of the M2 scope, strict at the exit | VER-020 |
 | `record:VER-024`; `check:coverage` | 100 % regions, functions, lines, and branches, with no waiver; MC/DC is not measured (`df:DF-14`) | VER-024 |
 | `record:VER-025`; `job:mutants`; `file:docs/verification/mutants-triage.md` | Mutation testing every night and its triage | VER-025 |
 
@@ -460,7 +460,7 @@ graph TD
 
 | Evidence | Shows | Requirements |
 |---|---|---|
-| `record:VER-059`; `job:verify` | The nightly run of every check through `cargo xtask verify` on both Linux architectures; it is failing at the time of writing (`df:DF-8`) | VER-059 |
+| `record:VER-059`; `job:verify` | The nightly run of every check through `cargo xtask verify` on both Linux architectures (`df:DF-8` closed) | VER-059 |
 
 ## Assumptions and context
 
@@ -489,12 +489,12 @@ What weakens the case now. A defeater is `open` until what it names is done; `ca
 |---|---|---|---|---|
 | DF-1 | The channel tables' stack use is decided (OI-45 option (d)): the budgets are 4 096 bytes (Rust) and 10 240 bytes (C ABI), documented in record:VER-011; integrators bound task stacks to hold them | `ac:AC-4.2` | `oi:OI-45`; `record:VER-011` | `closed` |
 | DF-2 | The Kani proofs run only at night and are not gating; the method for proven requirements is open | `ac:AC-3.1` | `oi:OI-42`; `nightly-check:kani` | `open` |
-| DF-3 | The one CPU-hour per fuzz target of VER-022 is due before the release; the nightly runs give 600 s per target | `ac:AC-2.3` | `record:VER-022`; `job:fuzz` | `open` |
+| DF-3 | The one CPU-hour per fuzz target of VER-022 ran and passed on main (run 40437244324: 34 targets, 3 600 s each, 0 failures) | `ac:AC-2.3` | `record:VER-022`; `job:fuzz` | `closed` |
 | DF-4 | The GEN-022/023 inspections of all crates changed in M2 (aldis-core, aldis-time, aldis-epp, aldis-spp, aldis-tm, aldis-tc, aldis-aos, aldis-uslp, and aldis-ffi) are approved at the M2 exit review (VER-061) | `ac:AC-3.1`; `ac:AC-3.3` | `record:VER-061`; `file:docs/verification/inspections/gen-022-023-aldis-tc.md` | `closed` |
 | DF-5 | The verification records are git notes without a signature; the signed evidence of #107 is parked | `ac:AC-7.1` | `gh:#110` | `open` |
 | DF-6 | The shipped `aldis-ffi` static library is built without LTO, so the link check of VER-010, made on the exerciser's LTO build, does not cover it as shipped; a panic that reaches its handler traps (OI-49, `proposal:P-X-02`, implemented) instead of spinning, and a check of its panic paths is `proposal:P-X-01` | `ac:AC-2.1` | `gh:#114`; `hz:HZ-X-02` | `open` |
 | DF-7 | No check runs `aldis-ffi` under Miri, which GEN-071 requires; it was run once by hand in WP-0c; the C harness with sanitizers is M5's | `ac:AC-6.2` | `gh:#71` | `open` |
-| DF-8 | The nightly run is failing: on 2026-10-25 the check `coverage` stopped on an index panic in the test strategy `crates/aldis-testkit/src/strategies/aos.rs`, inside the property test `arbitrary_octets_never_panic` (a test fixture, not library code), the mutants job was interrupted, and the non-gating `cpp-leon3` failed. That run was of `6c4966d`; the strategy's out-of-bounds write was fixed on `main` by `ed30cb3` (#116), and the defeater closes when a nightly run on a later `main` passes. Until then the independent nightly repetition gives no evidence | `ac:AC-7.6`; `ac:AC-7.5` | `gh:#96`; `job:verify` | `open` |
+| DF-8 | The nightly run on main passed all checks (run 40437244324 on main 01e380f: verify on x86_64 and aarch64, coverage 100%, 34 fuzz targets 3 600 s, all 8 crates mutation tested with 0 timeouts, big-endian bare-metal, bit-flips, and stack sizes; #96 closed) | `ac:AC-7.6`; `ac:AC-7.5` | `gh:#96`; `job:verify` | `closed` |
 | DF-9 | No independent implementation has cross-checked any frame codec yet (M2 plan D15); frame conformance rests on Blue Book material, hand derivations, blind models, and the second review | `ac:AC-1` | `file:docs/verification/cross-checks.md`; `oi:OI-32` | `open` |
 | DF-10 | The link check covers the generic instantiations the exerciser makes; an integrator's other capacities are not linked; LEON3 is not gating (OI-08) | `ac:AC-2.1` | `record:VER-010`; `nightly-check:rust-sparc-leon3` | `open` |
 | DF-11 | The stack bound leaves out interrupts and the caller's own frames | `ac:AC-4.2` | `record:VER-011` | `open` |
