@@ -1,9 +1,9 @@
 # Image of the verification run, `cargo xtask verify` (docs/06-verification.md §7, VER-056).
 #
 # Built for the host's native architecture from the files of the commit under test; its tag is a
-# hash of this file, entrypoint.sh, rust-toolchain.toml, tooling-nightly, cpp/toolchains.lock,
+# hash of this file, entrypoint.sh, rust-toolchain.toml, tooling-nightly, toolchains.lock,
 # and setup_cpp.py, so a change to any pin builds a new image. The base image is pinned by
-# digest, the C++ tools come from cpp/toolchains.lock through setup_cpp.py (CPP-001), and Rust
+# digest, the shared tools come from toolchains.lock through setup_cpp.py, and Rust
 # from rust-toolchain.toml and tooling-nightly (RS-001, RS-002). The LEON3 linker and QEMU
 # machine are Ubuntu packages whose upstream versions are asserted where they are installed. The
 # other Ubuntu packages are utilities (git, Python, archivers); their versions are listed in
@@ -19,10 +19,11 @@ RUN apt-get update -q \
  && rm -rf /var/lib/apt/lists/* \
  && git config --system --add safe.directory '*'
 
-# C++ tools, every version from the lock file. setup_cpp.py finds the lock relative to itself, so
-# both keep their repository paths under /opt/aldis. It records the tool directories and root
-# variables in the GITHUB_PATH and GITHUB_ENV files; entrypoint.sh applies them.
-COPY cpp/toolchains.lock /opt/aldis/cpp/
+# Shared toolchains from the lock file: LLVM (clang, llvm-cov, etc.), GCC (host and s390x cross),
+# and QEMU (VER-056). setup_cpp.py finds the lock relative to itself under /opt/aldis. It
+# records the tool directories and root variables in the GITHUB_PATH and GITHUB_ENV files;
+# entrypoint.sh applies them.
+COPY toolchains.lock /opt/aldis/
 COPY .github/actions/setup-cpp/setup_cpp.py /opt/aldis/.github/actions/setup-cpp/
 RUN mkdir -p /opt/aldis-cpp \
  && GITHUB_PATH=/opt/aldis-cpp/path GITHUB_ENV=/opt/aldis-cpp/env \
@@ -62,13 +63,13 @@ RUN cd /opt/aldis-rust \
 # LEON3 (SPARC V8) for the non-gating check rust-sparc-leon3 (OI-08): GNU ld, because rust-lld
 # links no 32-bit SPARC, and QEMU's leon3_generic machine. Ubuntu 24.04 packages for both host
 # architectures (Gaisler's BCC2 exists only for x86_64). As for the other QEMU systems, the
-# upstream versions are asserted (binutils 2.42; QEMU_VERSION of cpp/toolchains.lock) and the
+# upstream versions are asserted (binutils 2.42; QEMU_VERSION of toolchains.lock) and the
 # Ubuntu revision may float; every evidence record lists it.
 RUN apt-get update -q \
  && apt-get install -y -q --no-install-recommends binutils-sparc64-linux-gnu qemu-system-sparc \
  && rm -rf /var/lib/apt/lists/* \
  && sparc64-linux-gnu-ld --version | head -n 1 | grep -q ' 2\.42$' \
- && qemu="$(sed -n 's/^QEMU_VERSION=//p' /opt/aldis/cpp/toolchains.lock)" \
+ && qemu="$(sed -n 's/^QEMU_VERSION=//p' /opt/aldis/toolchains.lock)" \
  && qemu-system-sparc --version | head -n 1 | grep -q "version $qemu "
 
 # Kani for the non-gating check kani (OI-42, docs/verification/formal-proofs.md §7). The release

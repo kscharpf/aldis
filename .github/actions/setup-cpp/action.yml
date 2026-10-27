@@ -1,21 +1,20 @@
-name: Set up pinned C++ toolchains
+name: Set up pinned toolchains
 description: >
-  Installs the C++ toolchains pinned in cpp/toolchains.lock (CPP-001; c0 plan D1, D2): archives
-  verified by SHA-256 and cached by checksum, apt packages at their exact locked version. Checks
-  and prints every installed version. Never installs a floating version. The counterpart of
-  setup-rust.
+  Installs the toolchains pinned in toolchains.lock: archives verified by SHA-256 and cached by
+  checksum, apt packages at their exact locked version. Checks and prints every installed version.
+  Never installs a floating version. The counterpart of setup-rust.
 
 inputs:
   tools:
     description: >
-      Space-separated tools: llvm gcc gcc-s390x arm-gnu riscv-gnu bcc2 cmake ninja qemu codeql,
-      or "all" for every tool the lock file provides for the runner's architecture.
+      Space-separated tools: llvm gcc gcc-s390x qemu, or "all" for every tool the lock file provides
+      for the runner's architecture.
     required: true
 
 runs:
   using: composite
   steps:
-    - name: Cache keys from cpp/toolchains.lock
+    - name: Cache keys from toolchains.lock
       id: keys
       shell: bash
       env:
@@ -30,42 +29,6 @@ runs:
       with:
         path: ~/.cache/aldis-cpp/llvm
         key: aldis-cpp-llvm-${{ steps.keys.outputs.llvm }}
-    - name: Cache Arm GNU Toolchain archive
-      if: steps.keys.outputs.arm-gnu != ''
-      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-      with:
-        path: ~/.cache/aldis-cpp/arm-gnu
-        key: aldis-cpp-arm-gnu-${{ steps.keys.outputs.arm-gnu }}
-    - name: Cache RISC-V GCC archive
-      if: steps.keys.outputs.riscv-gnu != ''
-      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-      with:
-        path: ~/.cache/aldis-cpp/riscv-gnu
-        key: aldis-cpp-riscv-gnu-${{ steps.keys.outputs.riscv-gnu }}
-    - name: Cache BCC2 archive
-      if: steps.keys.outputs.bcc2 != ''
-      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-      with:
-        path: ~/.cache/aldis-cpp/bcc2
-        key: aldis-cpp-bcc2-${{ steps.keys.outputs.bcc2 }}
-    - name: Cache CMake archive
-      if: steps.keys.outputs.cmake != ''
-      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-      with:
-        path: ~/.cache/aldis-cpp/cmake
-        key: aldis-cpp-cmake-${{ steps.keys.outputs.cmake }}
-    - name: Cache Ninja archive
-      if: steps.keys.outputs.ninja != ''
-      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-      with:
-        path: ~/.cache/aldis-cpp/ninja
-        key: aldis-cpp-ninja-${{ steps.keys.outputs.ninja }}
-    - name: Cache CodeQL archives
-      if: steps.keys.outputs.codeql != ''
-      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-      with:
-        path: ~/.cache/aldis-cpp/codeql
-        key: aldis-cpp-codeql-${{ steps.keys.outputs.codeql }}
 
     - name: Install and check versions
       shell: bash

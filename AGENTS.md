@@ -18,7 +18,7 @@ v1 is built in three tracks: **R** (Rust reference, milestones M0–M6), **C** (
 
 A milestone plan carries a work-package status table, one row per WP or sub-part (WP, State, PRs, Notes); update only your WP's row. Never write requirement counts into a plan: `cargo xtask trace --scope <id>` reports them (roadmap §6 rule 1). Before calling a work package done, go through its checklist in [docs/milestones/checklists.md](docs/milestones/checklists.md) (adding a codec module, a crate, a vector file, a fuzz target, C ABI functions; a spec-readings PR; a milestone exit); `cargo xtask consistency` checks the registrations it marks.
 
-The rules and checks below are written for the Rust crates unless noted; the native C++ code follows [docs/profiles/cpp.md](docs/profiles/cpp.md).
+The rules and checks below are written for the Rust crates and the reference application.
 
 ## Decision rights
 
@@ -34,8 +34,8 @@ Every maintainer decision gets a line in the [decision log](docs/process/decisio
 
 Detailed protocol: [docs/process/review.md](docs/process/review.md).
 
-- Don't re-run the gate's checks; read the published record (`cargo xtask verify check <head>`), including non-gating checks (`cpp-leon3`, `rust-sparc-leon3`; `kani` is nightly-only, VER-059).
-- Read every suppression the change adds (`#[expect(…, reason = "…")]` RS-016, `// NOLINT(<check>): <reason>` CPP-042, `coverage-waivers.toml` VER-024, and equivalent mutants in [mutants-triage.md](docs/verification/mutants-triage.md) VER-025) and verify the reason holds on the smallest region.
+- Don't re-run the gate's checks; read the published record (`cargo xtask verify check <head>`), including non-gating checks (`rust-sparc-leon3`; `kani` is nightly-only, VER-059).
+- Read every suppression the change adds (`#[expect(…, reason = "…")]` RS-016, `coverage-waivers.toml` VER-024, and equivalent mutants in [mutants-triage.md](docs/verification/mutants-triage.md) VER-025) and verify the reason holds on the smallest region.
 - Spend the review on what no check covers: the Blue Book readings (cite the clause), requirements and test/vector coverage, `unsafe` soundness, and the public API and C ABI shape.
 - **Every statement about the implementation cites `path:line`**, quoting the code where the point depends on it; a review whose description of the code does not match the code does not count and is done again.
 
@@ -79,19 +79,18 @@ cargo fmt --all --check
 cargo clippy --workspace --all-features --all-targets
 cargo test --workspace --all-features
 cargo clippy -p aldis --no-default-features --features full --target thumbv7em-none-eabihf
-cargo xtask ci        # spec lint, links, decision log, layering, registrations (consistency), bare integers in the codec APIs (rs020), loops against the inspection records (loops), vectors, schema, generated files (field codes, C header), traces, changelog, C++ opt-outs
+cargo xtask ci        # spec lint, links, decision log, layering, registrations (consistency), bare integers in the codec APIs (rs020), loops against the inspection records (loops), vectors, schema, generated files (field codes, C header), traces, changelog
 ```
 
 | Directory | Extra commands |
 |---|---|
 | `crates/aldis-core` | `cargo xtask coverage` (VER-024)<br>`(cd exerciser && cargo build --release --target thumbv7em-none-eabihf)` (VER-010)<br>`cargo clippy --manifest-path fuzz/Cargo.toml --all-targets` |
 | `crates/aldis-ffi` (or wrapped crates) | `cargo xtask header --write && cargo xtask header` (CABI-002, CABI-003)<br>`cargo xtask header c-smoke cc c++` (CABI-001; requires `cargo install --locked cbindgen@0.29.4`; never edit `include/aldis/aldis.h` by hand) |
-| `cpp/` ([C++ profile](docs/profiles/cpp.md), pinned in `cpp/toolchains.lock`) | `(cd cpp && cmake --preset host-gcc && cmake --build --preset host-gcc && ctest --preset host-gcc)` (and `host-clang`)<br>`cargo xtask cpp unsafe-optouts` (CPP-031)<br>`cargo xtask cpp layers target/cpp/host-gcc` (CPP-010) |
 | `refapp/` ([refapp/README.md](refapp/README.md)) | `(cd refapp && cargo fmt --all --check && cargo clippy --workspace --all-targets && cargo test --workspace && cargo build -p refapp-flight --target thumbv7em-none-eabihf)` |
 
 A failed exerciser link with `undefined symbol: aldis_panic_is_unreachable` means a panic path is reachable in `aldis-core`. Remove it; do not work around the check. Mark new test modules `#[cfg_attr(coverage_nightly, coverage(off))]`.
 
-Each check in `xtask/src/verify/checks.rs` declares its inputs (`cargo xtask verify list` shows which checks HEAD needs); when a check starts reading a new path, add that path to its inputs in the same change. Suppress a C++ warning or clang-tidy finding only on the smallest region, naming the check (CPP-042).
+Each check in `xtask/src/verify/checks.rs` declares its inputs (`cargo xtask verify list` shows which checks HEAD needs); when a check starts reading a new path, add that path to its inputs in the same change.
 
 Clippy runs with the `all` and `pedantic` groups denied, plus restriction lints and selected nursery lints ([docs/profiles/rust.md](docs/profiles/rust.md) §5). Do not enable the whole `nursery` group; adopt a nursery lint only after checking its findings, and record the decision there (RS-019). To relax a lint, use a local `#[expect(clippy::<lint>, reason = "…")]` on the smallest item (RS-016). Never use crate-wide `allow`.
 
@@ -100,7 +99,7 @@ Clippy runs with the `all` and `pedantic` groups denied, plus restriction lints 
 - **Traceability:** every public item's docs cite the CCSDS clause and requirement IDs it implements (RS-015). Every test names the requirements it covers with a `// req: <ID>` comment (VER-020).
 - **Verification records:** requirements verified by a check of `cargo xtask verify` or by review (method A/I) each have a record file in [docs/verification/records/](docs/verification/records/), named after its first requirement ID, in the format of [analysis-records.md](docs/verification/analysis-records.md). Change only the record you touch; there is no index.
 - **Inspections (GEN-022/023):** when your change adds or changes a loop, a call between a crate's own functions, or a blocking construct in library code, revise that crate's record in [docs/verification/inspections/](docs/verification/inspections/) in the same change: update the loop table (its `ID` column names each loop by file, item, and index, as `cargo xtask loops list` prints it; `cargo xtask loops` fails on a loop the table lacks) and call graph, and add a `Revised` row "<date>, <branch> (<WP>), prepared by <you>, pending exit review: …". Do not ask for or wait for a maintainer approval, and never edit an `Approved` row: the maintainer approves every pending revision once, in the milestone exit review or before a release (VER-061).
-- **Test vectors** in [`test-vectors/`](test-vectors/README.md) are shared across the Rust, C ABI, and C++ implementations. Follow [docs/07-test-vectors.md](docs/07-test-vectors.md). Record provenance, and never edit a released vector: add a new case and mark the old one `superseded`. An independent model (TV-023) is written blind: by an agent or person who has not read the implementation it checks, from the Blue Book and `docs/` only; brief a model-writing agent that way, and give it no implementation paths.
+- **Test vectors** in [`test-vectors/`](test-vectors/README.md) are shared across the Rust and C ABI implementations. Follow [docs/07-test-vectors.md](docs/07-test-vectors.md). Record provenance, and never edit a released vector: add a new case and mark the old one `superseded`. An independent model (TV-023) is written blind: by an agent or person who has not read the implementation it checks, from the Blue Book and `docs/` only; brief a model-writing agent that way, and give it no implementation paths.
 - **Changelog:** never edit `CHANGELOG.md` in a pull request. Add one fragment file to [`changelog.d/`](changelog.d/README.md), named after the branch; `cargo xtask changelog check` validates it.
 - **Errors** use the stable catalogue in [docs/03-api-model.md](docs/03-api-model.md) §9. Do not renumber error codes.
 - **Field codes** come from the catalogue of [docs/03-api-model.md](docs/03-api-model.md) §9.1; `cargo xtask fields` checks the per-crate and common blocks.
@@ -119,8 +118,6 @@ Clippy runs with the `all` and `pedantic` groups denied, plus restriction lints 
 | Stateful protocol behavior | `crates/aldis-link`, or `crates/aldis-cop1` for COP-1 |
 | Transports, run loop, adapters | `crates/aldis-framework` |
 | C interface | `crates/aldis-ffi` (capacities in `capacities.toml`) |
-| Differential tests, Rust vs. native (VER-053) | `difftest/` |
 | Reference application (track A) | `refapp/` |
 | Requirements and design | `docs/` |
 | Conformance data | `test-vectors/` |
-| Native C++ implementation (track C) | `cpp/` ([cpp/README.md](cpp/README.md)) |

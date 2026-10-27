@@ -257,24 +257,3 @@ pub fn lint() -> Result<usize, String> {
     );
     Ok(problems.len())
 }
-
-#[cfg(test)]
-mod tests {
-    use super::{CPP_EXTENSIONS, referencing_files};
-    use crate::repo;
-
-    #[test]
-    fn cpp_sources_are_checked_for_requirement_ids() {
-        // req: CPP-057
-        let scanned: Vec<String> = referencing_files().iter().map(|p| repo::rel(p)).collect();
-        let cpp = repo::files("cpp", CPP_EXTENSIONS);
-        assert!(!cpp.is_empty(), "no C++ files under cpp/");
-        for path in cpp {
-            assert!(
-                scanned.contains(&repo::rel(&path)),
-                "{} not scanned",
-                repo::rel(&path)
-            );
-        }
-    }
-}

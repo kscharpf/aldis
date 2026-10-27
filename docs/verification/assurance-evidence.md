@@ -42,7 +42,7 @@ The target is taken as written: no trimming inside the code span, no wildcard.
 | `superseded-vector` | as `vector` | the case exists and is superseded | as `vector` |
 | `record` | a requirement ID, such as `VER-011` | `records::load` returns a record whose file is `docs/verification/records/<ID>.md` | `records::load`, `records::DIR` |
 | `check` | a check name of `cargo xtask verify list`, such as `stack` | `verify::checks::all()` has a check of that name with `gating` true and `nightly` false | `verify::checks::all` |
-| `nightly-check` | as `check` | the check exists and has `gating` false or `nightly` true (today `kani`, `rust-sparc-leon3`, `cpp-leon3`) | `verify::checks::all` |
+| `nightly-check` | as `check` | the check exists and has `gating` false or `nightly` true (today `kani`, `rust-sparc-leon3`) | `verify::checks::all` |
 | `ci` | a step name of `cargo xtask ci`, such as `loops` or `trace --scope m2` | it is the name of a step of `CI` in `xtask/src/main.rs` (make `CI` `pub(crate)` or move it to its own module) | `CI` |
 | `job` | a job of the nightly workflow, such as `bit-flips` | `.github/workflows/nightly.yml` has, after the line `jobs:`, a line that is exactly two spaces, the name, and `:` | none: read the file as text (`consistency::matrix_targets` reads the same file for one job's matrix) |
 | `fuzz` | a fuzz target, such as `tc_decode` | `fuzz/Cargo.toml` has a `[[bin]]` table whose `name = "<target>"` | `consistency::bin_targets` (make it `pub(crate)`) |

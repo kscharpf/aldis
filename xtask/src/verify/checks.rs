@@ -71,7 +71,7 @@ pub const RUN: PathList = PathList {
         "crates/aldis-testkit/**",
         "rust-toolchain.toml",
         "tooling-nightly",
-        "cpp/toolchains.lock",
+        "toolchains.lock",
         ".github/actions/setup-cpp/setup_cpp.py",
     ],
 };
@@ -101,19 +101,16 @@ pub const RUST: PathList = PathList {
     ],
 };
 
-/// Also read by the checks that run the xtask unit tests (`test`, `test-macos`, `big-endian`):
-/// `spec::tests::cpp_sources_are_checked_for_requirement_ids` lists the C++ files (CPP-057).
+/// Historical C++ test input list, empty with Track C retired.
 pub const XTASK_TESTS: PathList = PathList {
     name: "xtask-tests",
-    patterns: &["cpp/**"],
+    patterns: &[],
 };
 
-/// Read by the C++ checks: the C++ tree and the vectors (read by the C++ tests from C1). The C++
-/// setup script, which the image runs, is in `RUN`; the action's definition and the workflow
-/// `cpp.yml` are in `GITHUB`.
+/// Read by the former C++ checks; empty with Track C retired.
 pub const CPP: PathList = PathList {
     name: "cpp",
-    patterns: &["cpp/**", "test-vectors/**"],
+    patterns: &[],
 };
 
 /// Read by the `header` check (CABI-001…003): the C ABI crate `aldis-ffi`, every crate that its
@@ -460,59 +457,8 @@ timeout 120 cargo +"$nightly" run "${std[@]}" --release --locked --target $t \
   || timeout 120 cargo +"$nightly" run "${std[@]}" --release --locked --target $t
 "#;
 
-fn cpp() -> Vec<Check> {
-    let c = Host::Container;
-    let mut out = vec![
-        check("cpp-toolchains", c, true, 2, CPP_TOOLCHAINS),
-        check("cpp-format", c, true, 0, CPP_FORMAT),
-    ];
-    for (compiler, cxx, secs) in [("gcc", "g++-14", 32), ("clang", "clang++", 24)] {
-        out.push(check(
-            format!("cpp-build-{compiler}"),
-            c,
-            true,
-            secs,
-            format!(
-                "cd cpp\n\
-                 cmake --preset host-{compiler}\n\
-                 cmake --build --preset host-{compiler}\n\
-                 ctest --preset host-{compiler}\n\
-                 # Install, then build and run a consumer of the package (CPP-012).\n\
-                 cmake --install ../target/cpp/host-{compiler} --prefix \"$RUNNER_TEMP/aldis\"\n\
-                 cmake -S tests/package -B \"$RUNNER_TEMP/consumer\" -G Ninja \\\n\
-                 \x20 -DCMAKE_CXX_COMPILER={cxx} -DCMAKE_PREFIX_PATH=\"$RUNNER_TEMP/aldis\"\n\
-                 cmake --build \"$RUNNER_TEMP/consumer\"\n\
-                 \"$RUNNER_TEMP/consumer/consumer\"\n"
-            ),
-        ));
-    }
-    out.extend([
-        check("cpp-tidy", c, true, 90, CPP_TIDY),
-        check("cpp-sanitize", c, true, 26, CPP_SANITIZE),
-        check("cpp-big-endian", c, true, 39, CPP_BIG_ENDIAN),
-    ]);
-    for target in ["cortex-m4f", "cortex-r5f", "rv32imac"] {
-        for compiler in ["gcc", "clang"] {
-            out.push(check(
-                format!("cpp-bare-metal-{target}-{compiler}"),
-                c,
-                true,
-                10,
-                format!(
-                    "cd cpp\n\
-                     # Header checks; the exerciser, link check, and QEMU join in C0 WP-5.\n\
-                     cmake --preset {target}-{compiler}\n\
-                     cmake --build --preset {target}-{compiler}\n"
-                ),
-            ));
-        }
-    }
-    out.push(Check {
-        gating: false,
-        ..check("cpp-leon3", Host::ContainerX64, true, 1, CPP_LEON3)
-    });
-    out.push(check("cpp-layers", c, true, 0, CPP_LAYERS));
-    out
+const fn cpp() -> Vec<Check> {
+    Vec::new()
 }
 
 const FMT: &str = "\
@@ -611,8 +557,6 @@ cargo xtask trace --scope m0 --strict
 cargo xtask trace --scope m1 --strict
 # M2 is closed: every in-scope requirement must keep an artefact (VER-020, m2 plan D1).
 cargo xtask trace --scope m2 --strict
-# C0 is open: its trace is reported, and becomes --strict at the C0 exit (c0 plan D17).
-cargo xtask trace --scope c0
 ";
 
 const DENY: &str = "\
@@ -622,97 +566,6 @@ cargo deny --manifest-path refapp/Cargo.toml --all-features --log-level info che
 # The cross-check workspace's own deny.toml: the root policy plus the exceptions recorded in
 # docs/verification/cross-checks.md §1.
 cargo deny --manifest-path crosscheck/Cargo.toml --all-features --log-level info check
-";
-
-const CPP_TOOLCHAINS: &str = r#"
-setup=.github/actions/setup-cpp/setup_cpp.py
-python3 -I "$setup" check-lock
-# The image installed every pinned tool for this architecture; check what is on PATH.
-python3 -I "$setup" versions all
-# A changed checksum fails the install: change the last hex digit of the Ninja checksum.
-python3 -I - "$RUNNER_TEMP/changed.lock" <<'EOF'
-import platform, sys
-key = "NINJA_" + ("X64" if platform.machine() == "x86_64" else "ARM64") + "_SHA256="
-lines = open("cpp/toolchains.lock", encoding="utf-8").read().splitlines()
-for i, line in enumerate(lines):
-    if line.startswith(key):
-        lines[i] = line[:-1] + ("1" if line[-1] == "0" else "0")
-open(sys.argv[1], "w", encoding="utf-8").write("\n".join(lines) + "\n")
-EOF
-if cmp -s cpp/toolchains.lock "$RUNNER_TEMP/changed.lock"; then
-  echo "the test did not change the checksum" >&2
-  exit 1
-fi
-if python3 -I "$setup" --lock "$RUNNER_TEMP/changed.lock" --downloads "$RUNNER_TEMP/downloads" \
-     --tools-dir "$RUNNER_TEMP/tools" install ninja 2> "$RUNNER_TEMP/changed.log"; then
-  echo "setup-cpp accepted an archive whose checksum differs from the lock" >&2
-  exit 1
-fi
-cat "$RUNNER_TEMP/changed.log"
-grep -q "checksum mismatch" "$RUNNER_TEMP/changed.log"
-echo "the changed checksum was rejected, as it should be"
-# The configure-time compiler check accepts the pinned compilers ...
-cmake -S cpp/cmake/selftest/toolchain-check -B "$RUNNER_TEMP/tc-gcc" -G Ninja \
-  -DCMAKE_CXX_COMPILER=g++-14 -DALDIS_TOOLCHAIN=GCC
-cmake -S cpp/cmake/selftest/toolchain-check -B "$RUNNER_TEMP/tc-clang" -G Ninja \
-  -DCMAKE_CXX_COMPILER=clang++ -DALDIS_TOOLCHAIN=LLVM
-# ... and rejects other compilers and versions.
-sed -E 's/^GCC_VERSION=.*/GCC_VERSION=14.1.0/' cpp/toolchains.lock > "$RUNNER_TEMP/old-gcc.lock"
-for args in "-DCMAKE_CXX_COMPILER=g++-14 -DALDIS_TOOLCHAIN=LLVM" \
-            "-DCMAKE_CXX_COMPILER=clang++ -DALDIS_TOOLCHAIN=GCC" \
-            "-DCMAKE_CXX_COMPILER=g++-14 -DALDIS_TOOLCHAIN=GCC -DALDIS_TOOLCHAINS_LOCK=$RUNNER_TEMP/old-gcc.lock" \
-            "-DCMAKE_CXX_COMPILER=g++-14 -DALDIS_TOOLCHAIN=LLVM -DALDIS_ALLOW_UNPINNED_COMPILER=ON"; do
-  rm -rf "$RUNNER_TEMP/tc-bad"
-  # args is split into words on purpose.
-  if cmake -S cpp/cmake/selftest/toolchain-check -B "$RUNNER_TEMP/tc-bad" -G Ninja $args; then
-    echo "configure accepted a compiler that differs from the lock ($args)" >&2
-    exit 1
-  fi
-done
-echo "every mismatching compiler was rejected, as it should be"
-"#;
-
-const CPP_FORMAT: &str = "\
-git ls-files -z -- 'cpp/*.hpp' 'cpp/*.cpp' 'cpp/*.h' \
-| xargs -0 --no-run-if-empty clang-format --dry-run --Werror
-";
-
-const CPP_TIDY: &str = "\
-cd cpp
-cmake --preset host-clang
-# The tests include the generated vector cases (c0 plan D5): generate them first.
-cmake --build --preset host-clang --target aldis_vectors_generate
-# Findings are errors (WarningsAsErrors in cpp/.clang-tidy); GoogleTest is not analysed.
-run-clang-tidy -quiet -p ../target/cpp/host-clang '/header_check/|/cpp/tests/|/cpp/vectors/'
-";
-
-const CPP_SANITIZE: &str = "\
-cd cpp
-cmake --preset host-clang-sanitize
-cmake --build --preset host-clang-sanitize
-ctest --preset host-clang-sanitize
-";
-
-const CPP_BIG_ENDIAN: &str = "\
-cd cpp
-cmake --preset s390x-gcc
-cmake --build --preset s390x-gcc
-ctest --preset s390x-gcc
-";
-
-const CPP_LEON3: &str = "\
-# Reported against OI-08, never a gate (c0 plan D2).
-cd cpp
-cmake --preset leon3-gcc
-cmake --build --preset leon3-gcc
-";
-
-const CPP_LAYERS: &str = "\
-# Bounds-checking opt-outs only in aldis/core/bytes.hpp; every NOLINT names its check.
-cargo xtask cpp unsafe-optouts
-(cd cpp && cmake --preset host-gcc)
-# CMake target graph against the layer rules.
-cargo xtask cpp layers target/cpp/host-gcc
 ";
 
 #[cfg(test)]
@@ -762,8 +615,8 @@ mod tests {
         }
         // The checks that fail in seconds come before the builds; kani is last.
         let at = |name: &str| order.iter().position(|c| c.name == name).unwrap();
-        for quick in ["fmt", "layers", "deny", "header", "cpp-format"] {
-            for slow in ["clippy", "test", "spec", "coverage", "cpp-tidy"] {
+        for quick in ["fmt", "layers", "deny", "header"] {
+            for slow in ["clippy", "test", "spec", "coverage"] {
                 assert!(at(quick) < at(slow), "{quick} before {slow}");
             }
         }
@@ -788,7 +641,7 @@ mod tests {
             .filter(|c| !c.gating)
             .map(|c| c.name)
             .collect();
-        assert_eq!(non_gating, ["rust-sparc-leon3", "kani", "cpp-leon3"]);
+        assert_eq!(non_gating, ["rust-sparc-leon3", "kani"]);
     }
 
     // req: VER-010, VER-056

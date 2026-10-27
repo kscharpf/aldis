@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Install the C++ toolchains pinned in cpp/toolchains.lock (c0 plan D1, D2; CPP-001, CPP-003).
+"""Install the toolchains pinned in toolchains.lock.
 
 Every archive is verified against its SHA-256 before it is unpacked, every apt package is
 installed at its exact locked version (QEMU: upstream version asserted, see the lock file), and
@@ -15,11 +15,11 @@ commands:
   versions TOOL...     check the versions of tools already installed and on PATH (the
                        verification image, VER-056)
 
-tools: llvm gcc gcc-s390x arm-gnu riscv-gnu bcc2 cmake ninja qemu codeql, or "all" for every
+tools: llvm gcc gcc-s390x qemu, or "all" for every
 tool the lock file provides for this host's architecture.
 
 On GitHub Actions the tools' bin directories are appended to $GITHUB_PATH and their roots
-exported through $GITHUB_ENV (ALDIS_LLVM_ROOT, ALDIS_ARM_GNU_ROOT, ...).
+exported through $GITHUB_ENV (ALDIS_LLVM_ROOT, ...).
 """
 
 from __future__ import annotations
@@ -37,7 +37,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[3]
-DEFAULT_LOCK = REPO / "cpp" / "toolchains.lock"
+DEFAULT_LOCK = REPO / "toolchains.lock"
 KEY_RE = re.compile(r"^[A-Z][A-Z0-9_]*$")
 SHA_RE = re.compile(r"^[0-9a-f]{64}$")
 
@@ -135,40 +135,6 @@ def tools(lock: dict[str, str]) -> dict[str, Tool]:
                 version_cmds=[["s390x-linux-gnu-g++-14", "-dumpfullversion"]],
             ),
             Tool(
-                "arm-gnu",
-                "ARM_GNU_VERSION",
-                [Archive("ARM_GNU")],
-                env="ALDIS_ARM_GNU_ROOT",
-                version_cmds=[["arm-none-eabi-g++", "-dumpfullversion"]],
-            ),
-            Tool(
-                "riscv-gnu",
-                "RISCV_GNU_VERSION",
-                [Archive("RISCV_GNU")],
-                env="ALDIS_RISCV_GNU_ROOT",
-                version_cmds=[["riscv-none-elf-g++", "-dumpfullversion"]],
-            ),
-            Tool(
-                "bcc2",
-                "BCC2_VERSION",
-                [Archive("BCC2")],
-                env="ALDIS_BCC2_ROOT",
-                version_cmds=[["sparc-gaisler-elf-g++", "-dumpfullversion"]],
-            ),
-            Tool(
-                "cmake",
-                "CMAKE_VERSION",
-                [Archive("CMAKE")],
-                version_cmds=[["cmake", "--version"], ["ctest", "--version"]],
-            ),
-            Tool(
-                "ninja",
-                "NINJA_VERSION",
-                [Archive("NINJA", strip_top=False)],
-                bin_dir=".",
-                version_cmds=[["ninja", "--version"]],
-            ),
-            Tool(
                 "qemu",
                 "QEMU_VERSION",
                 apt_packages_key="QEMU_APT_PACKAGES",
@@ -177,14 +143,6 @@ def tools(lock: dict[str, str]) -> dict[str, Tool]:
                     ["qemu-system-riscv32", "--version"],
                     ["qemu-s390x", "--version"],
                 ],
-            ),
-            Tool(
-                "codeql",
-                "CODEQL_VERSION",
-                [Archive("CODEQL"), Archive("CODEQL_PACKS", strip_top=False)],
-                env="ALDIS_CODEQL_ROOT",
-                bin_dir=".",  # the bundle keeps the `codeql` launcher at its top level
-                version_cmds=[["codeql", "version", "--format=terse"]],
             ),
         ]
     }
@@ -270,7 +228,7 @@ def fetch(url: str, expected: str, dest_dir: Path) -> Path:
         partial.unlink()
         raise Failure(
             f"checksum mismatch for {url}: expected {expected}, got {actual} "
-            "(cpp/toolchains.lock is the reference; never update it without checking the source)"
+            "(toolchains.lock is the reference; never update it without checking the source)"
         )
     partial.replace(path)
     return path
@@ -375,7 +333,7 @@ def install(selected: list[Tool], lock: dict[str, str], arch: str, downloads: Pa
         env = {tool.env: str(dest)} if tool.env else {}
         export([(dest / tool.bin_dir).resolve()], env)
     report = [line for tool in selected for line in check_versions(tool, lock)]
-    print("setup-cpp: installed versions (all match cpp/toolchains.lock)")
+    print("setup-cpp: installed versions (all match toolchains.lock)")
     for line in report:
         print(f"  {line}")
 
@@ -406,7 +364,7 @@ def main(argv: list[str]) -> int:
                     print(f"{tool.name}={arch.lower()}-{'-'.join(shas)}")
             return 0
         if args.command == "versions":
-            print("setup-cpp: versions on PATH (all match cpp/toolchains.lock)")
+            print("setup-cpp: versions on PATH (all match toolchains.lock)")
             for line in (line for tool in selected for line in check_versions(tool, lock)):
                 print(f"  {line}")
             return 0

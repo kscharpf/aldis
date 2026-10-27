@@ -8,7 +8,6 @@ mod binaries;
 mod changelog;
 mod consistency;
 mod coverage;
-mod cpp;
 mod decisions;
 mod features;
 mod fields;
@@ -105,11 +104,10 @@ commands:
                                restricted, loops, assurance --strict, refapp-deps, vectors validate,
                                vectors schema --check, fields, header (needs the pinned
                                cbindgen), sana, trace --scope m0 --strict,
-                               trace --scope m1 --strict, trace --scope m2 --strict, trace --scope c0,
-                               changelog check, cpp unsafe-optouts; a step that cannot run
+                               trace --scope m1 --strict, trace --scope m2 --strict,
+                               changelog check; a step that cannot run
                                counts as a problem, and the others still run
 
-C++ checks (docs/milestones/c0-foundations.md D12):
 ";
 
 /// One step of `cargo xtask ci`: its name, as `cargo xtask help` lists it, and the check.
@@ -142,9 +140,7 @@ pub(crate) const CI: &[Step] = &[
     // M2 is closed: every in-scope requirement must keep an artefact (D1).
     ("trace --scope m2 --strict", || trace::run(Some("m2"), true)),
     // C0 is open: report its trace without failing (strict at the C0 exit, D17).
-    ("trace --scope c0", || trace::run(Some("c0"), false)),
     ("changelog check", changelog::check),
-    ("cpp unsafe-optouts", cpp::optouts::check),
 ];
 
 /// Runs `steps`; returns the number of problems. A step that cannot run (a missing tool, an
@@ -200,7 +196,6 @@ fn run(args: &[&str]) -> Result<usize, String> {
         ["loops", rest @ ..] => loops::run(rest),
         ["assurance"] => assurance::run(false),
         ["assurance", "--strict"] => assurance::run(true),
-        ["cpp", rest @ ..] => cpp::run(rest),
         ["verify", rest @ ..] => verify::run(rest),
         ["metrics", rest @ ..] => metrics::run(rest),
         ["changelog", "check"] => changelog::check(),
@@ -208,13 +203,12 @@ fn run(args: &[&str]) -> Result<usize, String> {
         ["changelog", "release", version, date] => changelog::release(version, date),
         ["ci"] => Ok(run_steps(CI)),
         [] | ["help" | "-h" | "--help"] => {
-            print!("{HELP}{}\n{}\n{}", cpp::HELP, verify::HELP, metrics::HELP);
+            print!("{HELP}{}\n{}", verify::HELP, metrics::HELP);
             Ok(0)
         }
         _ => Err(format!(
-            "unknown command: {}\n\n{HELP}{}\n{}\n{}",
+            "unknown command: {}\n\n{HELP}{}\n{}",
             args.join(" "),
-            cpp::HELP,
             verify::HELP,
             metrics::HELP
         )),

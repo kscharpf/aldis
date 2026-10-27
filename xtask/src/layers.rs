@@ -5,9 +5,6 @@
 //! GEN-003  aldis-spp alone pulls in no frame-protocol crate.
 //! GEN-004  Layer 3: third-party runtime dependencies only behind non-default features.
 //! Tooling crates (std, dev-only) may be used by library crates only as dev-dependencies.
-//!
-//! The layer table is shared with `xtask cpp layers`, which applies the same rules to the C++
-//! modules (CPP-010).
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::process::Command;
