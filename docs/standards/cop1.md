@@ -6,7 +6,11 @@ COP-1 provides the Sequence-Controlled (AD) and Expedited (BD) services of TC an
 
 ## 1. Normative basis
 
-The FOP-1 State Table (232.1 Table 5-1) and FARM-1 State Table (Table 6-1) are normative. This document does not restate their cells. It defines how the engines expose them.
+The FOP-1 State Table (232.1 Table 5-1: states S1–S6 × events E1–E46, E101–E104) and FARM-1 State Table (Table 6-1: states S1–S3 × events E1–E11) are normative. The cell-by-cell review record against CCSDS 232.1-B-2 and Cor. 1 is published in [cop1-tables.md](../verification/reviews/cop1-tables.md) (COP-003, VER-041).
+
+FOP-1 protocol states (232.1 §5.1.2): S1 (`Active`), S2 (`Retransmit without wait`), S3 (`Retransmit with wait`), S4 (`Initializing without BC frame`), S5 (`Initializing with BC frame`), S6 (`Initial`). Suspension is tracked by the state variable `Suspend_State` ($SS \in \{0..4\}$) while the engine resides in S6 (§5.1.11).
+
+FARM-1 protocol states (232.1 §6.2): S1 (`Open`), S2 (`Wait`), S3 (`Lockout`).
 
 | ID | Requirement | Source | Verif. |
 |---|---|---|---|

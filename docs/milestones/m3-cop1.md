@@ -7,9 +7,11 @@
 
 | WP | State | PRs | Notes |
 |---|---|---|---|
-| Plan | planned | — | This plan, D1–D12, and `--scope m3` trace gate |
-| WP-0 Infrastructure & setup | in progress | #140, #141 | WP-0a Track C retirement (#141), WP-0b agent boundaries (#140), WP-0c fuzz smoke check (#135) |
-| WP-1 Spec readings & tables as data | planned | — | CCSDS 232.1 Table 5-1 and Table 6-1 cell review, closed enums, typestates, const table data (COP-001…004, RS-021) |
+| Plan | merged | #143 | This plan, D1–D12, and `--scope m3` trace gate |
+| WP-0 Infrastructure & setup | complete | #135, #140, #141, #143 | WP-0a Track C retirement (#141), WP-0b agent boundaries (#140), WP-0c fuzz smoke check (#135), WP-0d plan & CI scope (#143) |
+| WP-1a Spec readings & cell review | in progress | — | CCSDS 232.1 Table 5-1 and Table 6-1 cell review `cop1-tables.md`, field codes 150–199 (COP-003, VER-041, API-082) |
+| WP-1b Common types & FARM-1 table | planned | — | Directives, alerts, notifications, FARM-1 S1–S3 × E1–E11 const table data, cell tests (COP-002, COP-004, RS-021) |
+| WP-1c FOP-1 table as data | planned | — | FOP-1 S1–S6 × E1–E46/E101–E104 const table data, Cor. 1 verification, cell tests (COP-001, COP-004, RS-021) |
 | WP-2 Blind vectors & model | planned | — | Python blind oracle model (TV-023), conformance scenarios in `test-vectors/cop1/` with 1 vector per cell (COP-005, TV-011) |
 | WP-3 `aldis-cop1`: FARM-1 | planned | — | FARM-1 engine: S1–S3, E1–E11, window check, buffer models, FARM-B counter, CLCW emission (COP-030…036) |
 | WP-4 `aldis-cop1`: FOP-1 | planned | — | FOP-1 engine: S1–S6, E1–E46, E101–E104, sliding window, T1 timer, Suspend/Resume, frame construction (COP-010…017) |
@@ -57,21 +59,21 @@ History:
 Size: **S** ≈ small, **M** ≈ medium, **L** ≈ large.
 
 ```
-WP-0 Infra, Track C retirement, setup ───▶ WP-1 Spec readings & tables as data ─┬─▶ WP-3 FARM-1 ──┐
-                                       └─▶ WP-2 Blind vectors & model ─────────┴─▶ WP-4 FOP-1 ───┼─▶ WP-5 Closed loop ─▶ WP-6 C ABI ─▶ WP-7 Gates ─▶ WP-8 Exit
+WP-0 Infra, setup ───▶ WP-1a Spec readings ─┬─▶ WP-1b FARM-1 table ─┬─▶ WP-3 FARM-1 ──┐
+                     │                      └─▶ WP-1c FOP-1 table ──┼─▶ WP-4 FOP-1 ───┼─▶ WP-5 Closed loop ─▶ WP-6 C ABI ─▶ WP-7 Gates ─▶ WP-8 Exit
+                     └─▶ WP-2 Blind vectors & model ────────────────┘
 ```
 
 ### WP-0 Infrastructure & setup (M) — VER-022, VER-056, RS-001
 - **WP-0a:** Track C retirement, shared toolchains decoupling, OI-08 reopening (merged, #141).
 - **WP-0b:** Agent search boundaries and structured CLI commands (merged, #140).
 - **WP-0c:** Fuzz target smoke/corpus check in `cargo xtask verify` (#135).
-- **WP-0d:** Milestone plan (this PR) and `--scope m3` trace scope in CI.
+- **WP-0d:** Milestone plan and `--scope m3` trace scope in CI (merged, #143).
 
-### WP-1 Spec readings & tables as data (M) — COP-001…004, RS-021
-- Table 5-1 (FOP-1: S1–S6, E1–E46, E101–E104) and Table 6-1 (FARM-1: S1–S3, E1–E11) cell-by-cell review against CCSDS 232.1-B-2 and Cor. 1.
-- Represent tables as `const` data in `crates/aldis-cop1/src/{fop1_table, farm1_table}.rs`.
-- Define state, event, directive, and alert enums with `non_exhaustive` or closed mappings.
-- Publish cell review record in `docs/verification/reviews/cop1-tables.md`.
+### WP-1 Spec readings & tables as data (M) — COP-001…004, RS-021, VER-041, API-082
+- **WP-1a Spec readings & cell review:** Table 5-1 (FOP-1: S1–S6, E1–E46, E101–E104) and Table 6-1 (FARM-1: S1–S3, E1–E11) cell-by-cell review against CCSDS 232.1-B-2 and Cor. 1 published in `docs/verification/reviews/cop1-tables.md`; allocate COP-1 field codes (150–199) in `docs/03-api-model.md` §9.1 and regenerate `aldis_core::field`. No crate engine code (spec-readings PR).
+- **WP-1b Common types & FARM-1 table:** Define `Directive`, `AlertReason`, `TransferNotification`, `DirectiveNotification` in `crates/aldis-cop1/src/notify.rs`; represent FARM-1 Table 6-1 as `const` data in `crates/aldis-cop1/src/farm1_table.rs` with closed enums `Farm1State`, `Farm1Event`, and `Farm1Action`; exhaustive 33-cell unit tests.
+- **WP-1c FOP-1 table as data:** Represent FOP-1 Table 5-1 as `const` data in `crates/aldis-cop1/src/fop1_table.rs` with closed enums `Fop1State`, `Fop1Event` (50 variants), and `Fop1Action`; verify Cor. 1 amendments; exhaustive 300-cell unit tests.
 
 ### WP-2 Blind conformance vectors & independent model (L) — COP-005, TV-010…012, TV-020, TV-021, TV-023
 - Independent model written blind in Python (`test-vectors/models/cop1.py`) from 232.1 specification text only (TV-023).
