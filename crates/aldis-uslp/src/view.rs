@@ -41,11 +41,11 @@ pub(crate) const fn length(exact: bool, len: usize) -> Rejection {
     fail(Reason::LengthMismatch, error)
 }
 
-/// The first `n` octets of `cursor`, which moves past them; `None` if fewer.
-fn take<'a>(cursor: &mut &'a [u8], n: usize) -> Option<&'a [u8]> {
-    let (head, rest) = cursor.split_at_checked(n)?;
+/// The first `n` octets of `cursor`, which moves past them; all that remain if fewer.
+fn take<'a>(cursor: &mut &'a [u8], n: usize) -> &'a [u8] {
+    let (head, rest) = cursor.split_at(n.min(cursor.len()));
     *cursor = rest;
-    Some(head)
+    head
 }
 
 /// The reason of a TFDF Header error (USLP-006, USLP-016, CMN-041).
@@ -224,21 +224,13 @@ fn parse_full<'a, L: VcLookup + ?Sized>(
         .trailer_len()
         .saturating_add(ocf_len)
         .saturating_add(if physical.fecf() { FECF_LEN } else { 0 });
-    let mut cursor = frame
-        .get(header_len..)
-        .ok_or_else(|| length(whole, total))?;
-    let insert_zone =
-        take(&mut cursor, physical.insert_zone_len()).ok_or_else(|| length(whole, total))?;
-    let security_header =
-        take(&mut cursor, security.header_len()).ok_or_else(|| length(whole, total))?;
-    let tfdf_len = cursor
-        .len()
-        .checked_sub(tail_len)
-        .ok_or_else(|| length(whole, total))?;
-    let data_field = take(&mut cursor, tfdf_len).ok_or_else(|| length(whole, total))?;
-    let security_trailer =
-        take(&mut cursor, security.trailer_len()).ok_or_else(|| length(whole, total))?;
-    let ocf_octets = take(&mut cursor, ocf_len).ok_or_else(|| length(whole, total))?;
+    let mut cursor = frame.get(header_len..).unwrap_or_default();
+    let insert_zone = take(&mut cursor, physical.insert_zone_len());
+    let security_header = take(&mut cursor, security.header_len());
+    let tfdf_len = cursor.len().saturating_sub(tail_len);
+    let data_field = take(&mut cursor, tfdf_len);
+    let security_trailer = take(&mut cursor, security.trailer_len());
+    let ocf_octets = take(&mut cursor, ocf_len);
     let (tfdf_header, tfdz) =
         TfdfHeader::parse(data_field, vc.fixed_tfdz()).map_err(tfdf_rejection)?;
     if oid && let Some(f) = oid_deviation(ch.map_id, tfdf_header, tfdz.len()) {

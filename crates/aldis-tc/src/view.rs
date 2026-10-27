@@ -190,7 +190,7 @@ pub(crate) fn parse<'a, L: VcLookup + ?Sized>(
         fecf,
     })
     .map_err(|_| too_short())?;
-    let data = frame.get(layout.data()).ok_or_else(too_short)?;
+    let data = frame.get(layout.data()).unwrap_or_default();
     let control_command = if control {
         control_command(data, mode, &mut anomalies)?
     } else {
@@ -202,14 +202,12 @@ pub(crate) fn parse<'a, L: VcLookup + ?Sized>(
         vc_id: raw.vc_id,
         sequence_number: raw.sequence_number,
     };
-    let security_header = frame.get(layout.security_header()).ok_or_else(too_short)?;
-    let security_trailer = frame.get(layout.security_trailer()).ok_or_else(too_short)?;
     Ok(TcFrame {
         header: TcFrameHeader::new(fields, total, segment_header),
         octets: frame,
-        security_header,
+        security_header: frame.get(layout.security_header()).unwrap_or_default(),
         data,
-        security_trailer,
+        security_trailer: frame.get(layout.security_trailer()).unwrap_or_default(),
         fecf: frame
             .get(layout.fecf())
             .and_then(<[u8]>::first_chunk::<FECF_LEN>)

@@ -403,12 +403,7 @@ impl<'b> AosFrameWriter<'b> {
             .get_mut(..frame_len)
             .ok_or(Error::buffer_too_small(frame_len))?;
         let header_octets = plan.header.to_octets();
-        let header_len = plan.header.len().min(header_octets.len());
-        #[expect(
-            clippy::indexing_slicing,
-            reason = "plan.header.len() <= 8 by construction"
-        )]
-        let header = &header_octets[..header_len];
+        let header = header_octets.get(..plan.header.len()).unwrap_or_default();
         let data = plan.layout.data();
         let pdu: &[u8] = plan.pdu.as_ref().map_or(&[], |p| p.as_slice());
         let zone_start = data.start.saturating_add(pdu.len());
@@ -428,13 +423,7 @@ impl<'b> AosFrameWriter<'b> {
 
     /// The octets of `range`, which lies inside the frame by construction (CMN-040).
     fn field_mut(&mut self, range: Range<usize>) -> &mut [u8] {
-        let start = range.start.min(self.frame.len());
-        let end = range.end.min(self.frame.len()).max(start);
-        #[expect(
-            clippy::indexing_slicing,
-            reason = "clamped to self.frame.len() so slice is guaranteed in-bounds"
-        )]
-        &mut self.frame[start..end]
+        self.frame.get_mut(range).unwrap_or_default()
     }
 
     /// The Insert Zone to fill in place with an `IN_SDU`; empty without one (732.0 §4.1.3;
@@ -485,10 +474,8 @@ impl<'b> AosFrameWriter<'b> {
     #[must_use = "the frame length"]
     pub fn finish(self) -> usize {
         let fecf = self.layout.fecf();
-        if !fecf.is_empty()
-            && let Some(prefix) = self.frame.get(..fecf.start)
-        {
-            let crc = crc16(prefix);
+        if !fecf.is_empty() {
+            let crc = crc16(self.frame.get(..fecf.start).unwrap_or_default());
             write_at(self.frame, fecf.start, &crc.to_be_bytes());
         }
         self.layout.frame_len()

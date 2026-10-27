@@ -95,13 +95,9 @@ impl<'b> EncapsulationWriter<'b> {
     /// The data field to fill in place: `max_data_len` octets after the header (133.1 §4.1.3;
     /// API-020, GEN-014).
     pub fn data_mut(&mut self) -> &mut [u8] {
-        let start = self.header.header_len().octets().min(self.out.len());
-        let end = start.saturating_add(self.max_data_len).min(self.out.len());
-        #[expect(
-            clippy::indexing_slicing,
-            reason = "clamped to self.out.len() so slice is guaranteed in-bounds"
-        )]
-        &mut self.out[start..end]
+        let start = self.header.header_len().octets();
+        let end = start.saturating_add(self.max_data_len);
+        self.out.get_mut(start..end).unwrap_or_default()
     }
 
     /// Completes the packet with `data_len` octets of data; returns the total length (133.1

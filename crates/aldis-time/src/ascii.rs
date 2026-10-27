@@ -640,7 +640,7 @@ impl Raw {
     /// Reads the digits of every subfield of `shape` from `text`.
     fn read(&mut self, text: &[u8], shape: &Shape) -> Result<()> {
         for &(part, at, len) in shape.parts {
-            let digits = text.get(at..at.wrapping_add(len)).ok_or_else(malformed)?;
+            let digits = text.get(at..at.wrapping_add(len)).unwrap_or_default();
             let value = Some(number(digits, part.field())?);
             match part {
                 Part::Year => self.year = value,
@@ -692,9 +692,7 @@ impl AsciiSubset {
             return Err(malformed());
         }
         let mut halves = text.splitn(2, |&b| b == b'T');
-        let Some(first) = halves.next() else {
-            return Err(malformed());
-        };
+        let first = halves.next().unwrap_or_default();
         let (calendar, time) = match halves.next() {
             Some(time) if first.is_empty() || time.is_empty() => return Err(malformed()),
             Some(time) => (first, time),
@@ -706,7 +704,7 @@ impl AsciiSubset {
         let mut variation = None;
         let mut fraction = None;
         if !calendar.is_empty() {
-            let shape = shape_of(calendar, &CALENDAR).ok_or_else(malformed)?;
+            let shape = shape_of(calendar, &CALENDAR).ok_or(malformed())?;
             if !time.is_empty() && !shape.ends_full {
                 return Err(malformed());
             }
@@ -719,9 +717,7 @@ impl AsciiSubset {
             }
         } else {
             let mut pieces = time.splitn(2, |&b| b == b'.');
-            let Some(clock) = pieces.next() else {
-                return Err(malformed());
-            };
+            let clock = pieces.next().unwrap_or_default();
             let digits = pieces.next();
             let shape = shape_of(clock, &TIME).ok_or(malformed())?;
             let bare_separators = shape.parts.is_empty() && digits.is_none();

@@ -389,10 +389,11 @@ impl RawRest {
 /// (732.1 §4.1.2.12.2).
 pub(crate) fn read_vcf_count(frame: &[u8], len: VcfCountLen) -> VcfCount {
     let end = PRIMARY_HEADER_LEN.saturating_add(len.octets());
-    let value = match frame.get(PRIMARY_HEADER_LEN..end) {
-        Some(slice) => slice.iter().fold(0_u64, |v, &o| (v << 8) | u64::from(o)),
-        None => 0,
-    };
+    let value = frame
+        .get(PRIMARY_HEADER_LEN..end)
+        .unwrap_or_default()
+        .iter()
+        .fold(0_u64, |v, &o| (v << 8) | u64::from(o));
     VcfCount { len, value }
 }
 

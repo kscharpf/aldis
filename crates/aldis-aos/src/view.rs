@@ -1,6 +1,8 @@
 //! Zero-copy AOS Transfer Frame view (732.0-B-5 §4.1, §4.3.7, §6.3; AOS-010…AOS-017, API-010,
 //! API-012…API-014, API-030…API-032, API-072, GEN-013, GEN-043).
 
+use core::ops::Range;
+
 use aldis_core::crc::{crc16, crc16_update};
 use aldis_core::ids::{SpacecraftId, VcId};
 use aldis_core::layout::{FECF_LEN, FrameLayout, OCF_LEN};
@@ -72,12 +74,6 @@ pub struct AosFrame<'a> {
     bytes: &'a [u8],
     header: AosPrimaryHeader,
     layout: FrameLayout,
-    insert_zone: &'a [u8],
-    security_header: &'a [u8],
-    data_field: &'a [u8],
-    security_trailer: &'a [u8],
-    ocf: Option<Ocf>,
-    fecf: Option<u16>,
     unit: DataUnit<'a>,
     anomalies: AnomalySet<AosAnomaly>,
 }
@@ -208,38 +204,7 @@ impl<'a> AosFrame<'a> {
                 ),
             );
         }
-        let insert_zone = bytes
-            .get(layout.secondary())
-            .ok_or_else(|| Error::new(ErrorKind::InternalError))?;
-        let security_header = bytes
-            .get(layout.security_header())
-            .ok_or_else(|| Error::new(ErrorKind::InternalError))?;
-        let data = bytes
-            .get(layout.data())
-            .ok_or_else(|| Error::new(ErrorKind::InternalError))?;
-        let security_trailer = bytes
-            .get(layout.security_trailer())
-            .ok_or_else(|| Error::new(ErrorKind::InternalError))?;
-        let ocf = if ocf {
-            let ocf_bytes = bytes
-                .get(layout.ocf())
-                .ok_or_else(|| Error::new(ErrorKind::InternalError))?;
-            let chunk = <[u8; OCF_LEN]>::try_from(ocf_bytes)
-                .map_err(|_| Error::new(ErrorKind::InternalError))?;
-            Some(Ocf::decode(chunk))
-        } else {
-            None
-        };
-        let fecf = if pc.fecf() {
-            let fecf_bytes = bytes
-                .get(layout.fecf())
-                .ok_or_else(|| Error::new(ErrorKind::InternalError))?;
-            let chunk = <[u8; FECF_LEN]>::try_from(fecf_bytes)
-                .map_err(|_| Error::new(ErrorKind::InternalError))?;
-            Some(u16::from_be_bytes(chunk))
-        } else {
-            None
-        };
+        let data = bytes.get(layout.data()).unwrap_or_default();
         let unit = match content {
             DataFieldContent::Mpdu => {
                 DataUnit::Mpdu(Mpdu::parse(data, pc.edition(), &mut deviations)?)
@@ -253,15 +218,14 @@ impl<'a> AosFrame<'a> {
             bytes,
             header,
             layout,
-            insert_zone,
-            security_header,
-            data_field: data,
-            security_trailer,
-            ocf,
-            fecf,
             unit,
             anomalies,
         })
+    }
+
+    /// The octets of `range`, which lies inside the frame by construction (CMN-040).
+    fn slice(&self, range: Range<usize>) -> &'a [u8] {
+        self.bytes.get(range).unwrap_or_default()
     }
 
     /// The Primary Header as owned values, after FHEC correction (732.0 §4.1.2; API-014).
@@ -314,20 +278,20 @@ impl<'a> AosFrame<'a> {
 
     /// The Insert Zone, of the configured length; empty without one (732.0 §4.1.3; AOS-015).
     #[must_use]
-    pub const fn insert_zone(&self) -> &'a [u8] {
-        self.insert_zone
+    pub fn insert_zone(&self) -> &'a [u8] {
+        self.slice(self.layout.secondary())
     }
 
     /// The Security Header, opaque; empty without SDLS (732.0 §6.3.4; API-072).
     #[must_use]
-    pub const fn security_header(&self) -> &'a [u8] {
-        self.security_header
+    pub fn security_header(&self) -> &'a [u8] {
+        self.slice(self.layout.security_header())
     }
 
     /// The Transfer Frame Data Field, never empty (732.0 §4.1.4.1; GEN-013).
     #[must_use]
-    pub const fn data_field(&self) -> &'a [u8] {
-        self.data_field
+    pub fn data_field(&self) -> &'a [u8] {
+        self.slice(self.layout.data())
     }
 
     /// The data field as its virtual channel's content (AOS-017).
@@ -338,21 +302,25 @@ impl<'a> AosFrame<'a> {
 
     /// The Security Trailer, opaque; empty without SDLS (732.0 §6.3.6; API-072).
     #[must_use]
-    pub const fn security_trailer(&self) -> &'a [u8] {
-        self.security_trailer
+    pub fn security_trailer(&self) -> &'a [u8] {
+        self.slice(self.layout.security_trailer())
     }
 
     /// The Operational Control Field, classified, if the virtual channel has one (732.0 §4.1.5;
     /// CMN-010). A Type-1 Report is decoded with `aldis-tc` (CMN-011).
     #[must_use]
-    pub const fn ocf(&self) -> Option<Ocf> {
-        self.ocf
+    pub fn ocf(&self) -> Option<Ocf> {
+        <[u8; OCF_LEN]>::try_from(self.slice(self.layout.ocf()))
+            .ok()
+            .map(Ocf::decode)
     }
 
     /// The Frame Error Control Field, if the physical channel has one (732.0 §4.1.6).
     #[must_use]
-    pub const fn fecf(&self) -> Option<u16> {
-        self.fecf
+    pub fn fecf(&self) -> Option<u16> {
+        <[u8; FECF_LEN]>::try_from(self.slice(self.layout.fecf()))
+            .ok()
+            .map(u16::from_be_bytes)
     }
 
     /// The octet ranges of the frame's fields, for a security hook (CMN-040, API-074).
@@ -391,13 +359,8 @@ impl<'a> AosFrame<'a> {
 /// `CrcMismatch` unless the FECF in the last two octets of `bytes` is the CRC of the corrected
 /// header followed by the rest of the frame (732.0 §4.1.6.3, §4.3.7.2–3; AOS-014).
 fn check_fecf(bytes: &[u8], received: &Received) -> Result<()> {
-    let end = bytes
-        .len()
-        .checked_sub(FECF_LEN)
-        .ok_or_else(|| Error::incomplete(FECF_LEN))?;
-    let rest = bytes
-        .get(received.len..end)
-        .ok_or_else(|| Error::new(ErrorKind::InternalError))?;
+    let end = bytes.len().saturating_sub(FECF_LEN);
+    let rest = bytes.get(received.len..end).unwrap_or_default();
     let crc = crc16_update(crc16(received.as_slice()), rest);
     let fecf = bytes
         .get(end..)

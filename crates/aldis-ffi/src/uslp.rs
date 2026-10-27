@@ -593,10 +593,11 @@ fn table(
     for (i, slot) in m.iter_mut().enumerate().take(maps.len()) {
         *slot = map_channel(&maps.get(i)?)?;
     }
-    let v_len = vcs.len().min(v.len());
-    let m_len = maps.len().min(m.len());
-    #[expect(clippy::indexing_slicing, reason = "clamped to array lengths")]
-    Table::new(physical, &v[..v_len], &m[..m_len])
+    Table::new(
+        physical,
+        v.get(..vcs.len()).unwrap_or_default(),
+        m.get(..maps.len()).unwrap_or_default(),
+    )
 }
 
 /// The channel table of the physical channel at `pc`, the `vc_count` virtual channels at

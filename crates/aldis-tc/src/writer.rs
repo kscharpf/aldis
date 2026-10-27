@@ -271,28 +271,18 @@ impl<'b> TcFrameWriter<'b> {
         Ok(w)
     }
 
-    fn slice_mut(&mut self, start: usize, end: usize) -> &mut [u8] {
-        let start = start.min(self.out.len());
-        let end = end.min(self.out.len()).max(start);
-        #[expect(
-            clippy::indexing_slicing,
-            reason = "clamped to self.out.len() so slice is guaranteed in-bounds"
-        )]
-        &mut self.out[start..end]
-    }
-
     /// The Security Header to fill in place; empty without SDLS (232.0 §6.3.4; API-072).
     pub fn security_header_mut(&mut self) -> &mut [u8] {
         let end = self.plan.data_start;
         let start = end.saturating_sub(self.plan.security_header_len);
-        self.slice_mut(start, end)
+        self.out.get_mut(start..end).unwrap_or_default()
     }
 
     /// The User Data to fill in place, `max_user_len` octets (232.0 §4.1.3.2; GEN-014).
     pub fn user_data_mut(&mut self) -> &mut [u8] {
         let start = self.plan.data_start;
         let end = start.saturating_add(self.max_user_len);
-        self.slice_mut(start, end)
+        self.out.get_mut(start..end).unwrap_or_default()
     }
 
     /// The Security Trailer to fill in place, after the reserved User Data; empty without SDLS.
@@ -300,7 +290,7 @@ impl<'b> TcFrameWriter<'b> {
     pub fn security_trailer_mut(&mut self) -> &mut [u8] {
         let start = self.plan.data_start.saturating_add(self.max_user_len);
         let end = start.saturating_add(self.plan.security_trailer_len);
-        self.slice_mut(start, end)
+        self.out.get_mut(start..end).unwrap_or_default()
     }
 
     /// Completes the frame with `user_len` octets of User Data; returns the frame length
@@ -332,16 +322,10 @@ impl<'b> TcFrameWriter<'b> {
         let tail_end = tail_start
             .saturating_add(unused)
             .saturating_add(plan.security_trailer_len);
-        let tail = self
-            .out
-            .get_mut(tail_start..tail_end)
-            .ok_or_else(|| Error::new(ErrorKind::InternalError))?;
+        let tail = self.out.get_mut(tail_start..tail_end).unwrap_or_default();
         let from = unused.min(tail.len());
         tail.copy_within(from.., 0);
-        let frame = self
-            .out
-            .get_mut(..total)
-            .ok_or_else(|| Error::new(ErrorKind::InternalError))?;
+        let frame = self.out.get_mut(..total).unwrap_or_default();
         let header = primary_octets(VERSION, plan.fields, total);
         for (d, s) in frame.iter_mut().zip(header) {
             *d = s;

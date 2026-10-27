@@ -192,7 +192,7 @@ impl<const N: usize> ByteQueue<N> {
 
     /// Copies `out.len()` (≤ N) octets starting at ring offset `at` (< N), wrapping.
     fn read_at(&self, at: usize, out: &mut [u8]) {
-        let (before, from_at) = self.ring.split_at(at.min(N));
+        let (before, from_at) = self.ring.split_at_checked(at).unwrap_or_default();
         for (o, &r) in out.iter_mut().zip(from_at.iter().chain(before)) {
             *o = r;
         }
@@ -201,7 +201,7 @@ impl<const N: usize> ByteQueue<N> {
     /// Writes `data` (≤ N octets) starting at ring offset `at` (< N), wrapping; returns the
     /// offset after the last octet written.
     fn write_at(&mut self, at: usize, data: &[u8]) -> usize {
-        let (before, from_at) = self.ring.split_at_mut(at.min(N));
+        let (before, from_at) = self.ring.split_at_mut_checked(at).unwrap_or_default();
         for (slot, &d) in from_at.iter_mut().chain(before).zip(data) {
             *slot = d;
         }
@@ -327,15 +327,13 @@ impl<T: Copy + Default, const N: usize> FixedVec<T, N> {
     /// The stored items.
     #[must_use]
     pub fn as_slice(&self) -> &[T] {
-        let len = self.len.min(N);
-        &self.items[..len]
+        self.items.get(..self.len).unwrap_or_default()
     }
 
     /// Mutable access to the stored items.
     #[must_use]
     pub fn as_mut_slice(&mut self) -> &mut [T] {
-        let len = self.len.min(N);
-        &mut self.items[..len]
+        self.items.get_mut(..self.len).unwrap_or_default()
     }
 
     /// Number of stored items.

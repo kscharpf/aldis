@@ -6,10 +6,10 @@
 //! integer casts are used (VER-001 exception, each justified with `#[expect]`).
 //!
 //! A field is addressed by its bit offset from the start of the buffer and its width in bits
-//! (1–64). Every function is total: out-of-range arguments return [`ErrorKind::OutOfRange`]
+//! (1–64). Every function is total: out-of-range arguments return [`ErrorKind::OutOfRange`](crate::error::ErrorKind::OutOfRange)
 //! and never panic (GEN-020).
 
-use crate::error::{Error, ErrorKind, Result, as_u64};
+use crate::error::{Error, Result, as_u64};
 use crate::field;
 
 /// Octets covered by a field, and the shift that right-aligns it.
@@ -74,9 +74,7 @@ impl Span {
 )]
 pub fn get(buf: &[u8], bit_offset: usize, width: u8) -> Result<u64> {
     let span = Span::new(buf.len(), bit_offset, width)?;
-    let octets = buf
-        .get(span.first..=span.last)
-        .ok_or_else(|| Error::new(ErrorKind::InternalError))?;
+    let octets = buf.get(span.first..=span.last).unwrap_or_default();
     let acc = octets
         .iter()
         .fold(0_u128, |acc, &b| (acc << 8) | u128::from(b));
@@ -98,9 +96,7 @@ pub fn set(buf: &mut [u8], bit_offset: usize, width: u8, value: u64) -> Result<(
     if value & !span.mask != 0 {
         return Err(Error::out_of_range(field::VALUE, span.mask, value));
     }
-    let octets = buf
-        .get_mut(span.first..=span.last)
-        .ok_or_else(|| Error::new(ErrorKind::InternalError))?;
+    let octets = buf.get_mut(span.first..=span.last).unwrap_or_default();
     let acc = octets
         .iter()
         .fold(0_u128, |acc, &b| (acc << 8) | u128::from(b));

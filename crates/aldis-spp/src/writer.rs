@@ -100,27 +100,19 @@ impl<'b> SpacePacketWriter<'b> {
         })
     }
 
-    fn slice_mut(&mut self, start: usize, end: usize) -> &mut [u8] {
-        let start = start.min(self.out.len());
-        let end = end.min(self.out.len()).max(start);
-        #[expect(
-            clippy::indexing_slicing,
-            reason = "clamped to self.out.len() so slice is guaranteed in-bounds"
-        )]
-        &mut self.out[start..end]
-    }
-
     /// The secondary header to fill in place, `secondary_len` octets (133.0 §4.1.4.2, GEN-014).
     pub fn secondary_header_mut(&mut self) -> &mut [u8] {
         let end = PRIMARY_HEADER_LEN.saturating_add(self.secondary_len);
-        self.slice_mut(PRIMARY_HEADER_LEN, end)
+        self.out
+            .get_mut(PRIMARY_HEADER_LEN..end)
+            .unwrap_or_default()
     }
 
     /// The user data field to fill in place, `max_user_len` octets (133.0 §4.1.4.3, GEN-014).
     pub fn user_data_mut(&mut self) -> &mut [u8] {
         let start = PRIMARY_HEADER_LEN.saturating_add(self.secondary_len);
         let end = start.saturating_add(self.max_user_len);
-        self.slice_mut(start, end)
+        self.out.get_mut(start..end).unwrap_or_default()
     }
 
     /// Completes the packet with `user_len` octets of user data; returns the total length (133.0

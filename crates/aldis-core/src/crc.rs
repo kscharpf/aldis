@@ -122,10 +122,13 @@ pub fn crc16(data: &[u8]) -> u16 {
 fn split_fecf(frame: &[u8]) -> Result<(&[u8], u16)> {
     let body_len = frame.len().checked_sub(2).ok_or(Error::incomplete(2))?;
     let (body, fecf) = frame.split_at(body_len);
-    let Some(&octets) = fecf.first_chunk::<2>() else {
-        return Err(Error::new(ErrorKind::InternalError));
-    };
-    Ok((body, u16::from_be_bytes(octets)))
+    Ok((
+        body,
+        u16::from_be_bytes([
+            fecf.first().copied().unwrap_or(0),
+            fecf.get(1).copied().unwrap_or(0),
+        ]),
+    ))
 }
 
 /// Verifies the FECF in the last two octets of `frame` by recomputing the CRC over the rest

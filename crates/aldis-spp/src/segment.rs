@@ -84,18 +84,12 @@ impl<'s> Segmenter<'s> {
         secondary_header: &[u8],
         out: &mut [u8],
     ) -> Result<Option<usize>> {
-        let Some(rest) = self.sdu.get(self.offset..) else {
-            return Ok(None);
-        };
+        let rest = self.sdu.get(self.offset..).unwrap_or_default();
         if rest.is_empty() {
             return Ok(None);
         }
         let take = rest.len().min(self.max_user_len);
-        #[expect(
-            clippy::indexing_slicing,
-            reason = "take <= rest.len() so chunk is guaranteed in-bounds"
-        )]
-        let chunk = &rest[..take];
+        let chunk = rest.get(..take).unwrap_or_default();
         let first = self.offset == 0;
         let last = take == rest.len();
         let sequence_flags = match (first, last) {
@@ -361,12 +355,7 @@ impl<'b> Reassembler<'b> {
     /// SPP-013).
     #[must_use]
     pub fn sdu(&self) -> &[u8] {
-        let len = self.complete.min(self.buf.len());
-        #[expect(
-            clippy::indexing_slicing,
-            reason = "clamped to self.buf.len() so slice is guaranteed in-bounds"
-        )]
-        &self.buf[..len]
+        self.buf.get(..self.complete).unwrap_or_default()
     }
 
     /// Whether a partial SDU is in progress (133.0 §4.1.3.4.2, SPP-013).
