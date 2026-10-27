@@ -2,7 +2,6 @@
 //!
 //! Layer 2 of Aldis. Specification: `docs/standards/cop1.md`.
 //!
-//! **Status:** skeleton. Modules are declared but not yet implemented.
 //! Requirements are traced by ID in each module's documentation.
 #![no_std]
 #![cfg_attr(docsrs, feature(doc_auto_cfg))]
@@ -15,3 +14,12 @@ pub mod farm1_table;
 pub mod fop1;
 pub mod fop1_table;
 pub mod notify;
+
+pub use farm1_table::{
+    EVENT_COUNT as FARM1_EVENT_COUNT, FARM1_TABLE, Farm1Action, Farm1Cell, Farm1Event, Farm1State,
+    STATE_COUNT as FARM1_STATE_COUNT,
+};
+pub use notify::{
+    Alert, AlertReason, Directive, DirectiveNotification, DirectiveNotify, TimeoutType,
+    TransferNotification, TransferNotify,
+};
