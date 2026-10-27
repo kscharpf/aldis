@@ -582,7 +582,7 @@ impl<'b> UslpFrameWriter<'b> {
     /// 0; `LengthMismatch` (`frame_data_field`) below the reservation on a fixed-length
     /// channel; `OutOfRange` (`fhp_lvo_pointer`) for a pointer not below `tfdz_len`. On error
     /// the buffer keeps its unfinished state.
-    pub fn finish(mut self, tfdz_len: usize) -> Result<usize> {
+    pub fn finish(self, tfdz_len: usize) -> Result<usize> {
         let plan = self.plan;
         if tfdz_len > plan.tfdz_len {
             return Err(Error::out_of_range(
@@ -604,7 +604,10 @@ impl<'b> UslpFrameWriter<'b> {
         let tail_end = tail_start
             .saturating_add(unused)
             .saturating_add(plan.security.trailer_len());
-        let tail = self.slice_mut(tail_start, tail_end);
+        let tail = self
+            .out
+            .get_mut(tail_start..tail_end)
+            .ok_or_else(|| Error::new(ErrorKind::InternalError))?;
         let from = unused.min(tail.len());
         tail.copy_within(from.., 0);
         let frame = self

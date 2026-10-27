@@ -485,13 +485,10 @@ impl<'b> AosFrameWriter<'b> {
     #[must_use = "the frame length"]
     pub fn finish(self) -> usize {
         let fecf = self.layout.fecf();
-        if !fecf.is_empty() {
-            let end = fecf.start.min(self.frame.len());
-            #[expect(
-                clippy::indexing_slicing,
-                reason = "clamped to self.frame.len() so slice is guaranteed in-bounds"
-            )]
-            let crc = crc16(&self.frame[..end]);
+        if !fecf.is_empty()
+            && let Some(prefix) = self.frame.get(..fecf.start)
+        {
+            let crc = crc16(prefix);
             write_at(self.frame, fecf.start, &crc.to_be_bytes());
         }
         self.layout.frame_len()

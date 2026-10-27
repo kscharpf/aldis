@@ -313,7 +313,7 @@ impl<'b> TcFrameWriter<'b> {
     /// # Errors
     /// `OutOfRange` (`user_len`) above the reservation; `InvalidField` (`frame_data_field`)
     /// for 0. On error the buffer keeps its unfinished state.
-    pub fn finish(mut self, user_len: usize) -> Result<usize> {
+    pub fn finish(self, user_len: usize) -> Result<usize> {
         if user_len > self.max_user_len {
             return Err(Error::out_of_range(
                 field::USER_LEN,
@@ -332,7 +332,10 @@ impl<'b> TcFrameWriter<'b> {
         let tail_end = tail_start
             .saturating_add(unused)
             .saturating_add(plan.security_trailer_len);
-        let tail = self.slice_mut(tail_start, tail_end);
+        let tail = self
+            .out
+            .get_mut(tail_start..tail_end)
+            .ok_or_else(|| Error::new(ErrorKind::InternalError))?;
         let from = unused.min(tail.len());
         tail.copy_within(from.., 0);
         let frame = self

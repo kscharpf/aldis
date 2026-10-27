@@ -1,8 +1,6 @@
 //! Zero-copy TM Transfer Frame view (132.0-B-3 §4.1, §6.3; TM-001…TM-008, API-010, API-012…014,
 //! API-072, GEN-013, GEN-043, GEN-053).
 
-use core::ops::Range;
-
 use aldis_core::crc::verify_fecf;
 use aldis_core::ids::{SpacecraftId, VcId};
 use aldis_core::layout::{FrameLayout, LayoutSpec, OCF_LEN};
@@ -30,6 +28,12 @@ pub struct TmFrame<'a> {
     header: TmPrimaryHeader,
     fsh_len: Option<FshLen>,
     layout: FrameLayout,
+    secondary_header_data: Option<&'a [u8]>,
+    security_header: &'a [u8],
+    data_field: &'a [u8],
+    security_trailer: &'a [u8],
+    ocf: Option<Ocf>,
+    fecf: Option<u16>,
     status: DataFieldStatus,
     anomalies: AnomalySet<TmAnomaly>,
 }
@@ -162,71 +166,61 @@ impl<'a> TmFrame<'a> {
         })
         .map_err(|_| Error::new(ErrorKind::Malformed).with_field(field::FRAME_DATA_FIELD))?;
         let mut anomalies = AnomalySet::empty();
-        let status = if header.sync_flag {
-            DataFieldStatus::VcaSdu {
-                packet_order_flag: header.packet_order_flag,
-                segment_length_id: header.segment_length_id,
-                first_header_pointer: header.first_header_pointer,
-            }
+        let status = parse_status(&header, layout.data().len(), security, mode, &mut anomalies)?;
+        let secondary_header_data = if fsh_len.is_some() {
+            let sec = bytes
+                .get(layout.secondary())
+                .ok_or_else(|| Error::new(ErrorKind::InternalError))?;
+            Some(
+                sec.get(1..)
+                    .ok_or_else(|| Error::new(ErrorKind::InternalError))?,
+            )
         } else {
-            let pointer =
-                PacketPointer::classify(header.first_header_pointer, layout.data().len())?;
-            if header.packet_order_flag {
-                match mode {
-                    DecodeMode::Strict => {
-                        return Err(mismatch(
-                            ErrorKind::ReservedValue,
-                            field::PACKET_ORDER_FLAG,
-                            0,
-                            1,
-                        ));
-                    }
-                    DecodeMode::Lenient => anomalies.insert(TmAnomaly::PacketOrderFlagSet),
-                }
-            }
-            if header.segment_length_id != SegmentLengthId::NO_SEGMENTS {
-                match mode {
-                    DecodeMode::Strict => {
-                        return Err(mismatch(
-                            ErrorKind::InvalidField,
-                            field::SEGMENT_LENGTH_ID,
-                            u64::from(SegmentLengthId::MAX),
-                            u64::from(header.segment_length_id.get()),
-                        ));
-                    }
-                    DecodeMode::Lenient => anomalies.insert(TmAnomaly::SegmentLengthIdNot11),
-                }
-            }
-            // An Only Idle Data frame uses a VCID that does not use SDLS (132.0 §6.4.6.2; TM-010).
-            if pointer == PacketPointer::OnlyIdleData && !security.is_none() {
-                match mode {
-                    DecodeMode::Strict => {
-                        return Err(Error::new(ErrorKind::InvalidField).with_field(field::VC_ID));
-                    }
-                    DecodeMode::Lenient => anomalies.insert(TmAnomaly::OnlyIdleDataOnSdlsVc),
-                }
-            }
-            DataFieldStatus::Packets(pointer)
+            None
+        };
+        let security_header = bytes
+            .get(layout.security_header())
+            .ok_or_else(|| Error::new(ErrorKind::InternalError))?;
+        let data_field = bytes
+            .get(layout.data())
+            .ok_or_else(|| Error::new(ErrorKind::InternalError))?;
+        let security_trailer = bytes
+            .get(layout.security_trailer())
+            .ok_or_else(|| Error::new(ErrorKind::InternalError))?;
+        let ocf = if header.ocf_flag {
+            let ocf_bytes = bytes
+                .get(layout.ocf())
+                .ok_or_else(|| Error::new(ErrorKind::InternalError))?;
+            let chunk = <[u8; OCF_LEN]>::try_from(ocf_bytes)
+                .map_err(|_| Error::new(ErrorKind::InternalError))?;
+            Some(Ocf::decode(chunk))
+        } else {
+            None
+        };
+        let fecf = if pc.fecf() {
+            let fecf_bytes = bytes
+                .get(layout.fecf())
+                .ok_or_else(|| Error::new(ErrorKind::InternalError))?;
+            let chunk = <[u8; 2]>::try_from(fecf_bytes)
+                .map_err(|_| Error::new(ErrorKind::InternalError))?;
+            Some(u16::from_be_bytes(chunk))
+        } else {
+            None
         };
         Ok(TmFrame {
             bytes,
             header,
             fsh_len,
             layout,
+            secondary_header_data,
+            security_header,
+            data_field,
+            security_trailer,
+            ocf,
+            fecf,
             status,
             anomalies,
         })
-    }
-
-    /// The octets of `range`, which lies inside the frame by construction (CMN-040).
-    fn slice(&self, range: Range<usize>) -> &'a [u8] {
-        let start = range.start.min(self.bytes.len());
-        let end = range.end.min(self.bytes.len()).max(start);
-        #[expect(
-            clippy::indexing_slicing,
-            reason = "clamped to self.bytes.len() so slice is guaranteed in-bounds"
-        )]
-        &self.bytes[start..end]
     }
 
     /// The Primary Header as plain values (132.0 §4.1.2; API-014).
@@ -275,44 +269,39 @@ impl<'a> TmFrame<'a> {
     /// The Secondary Header Data Field, after the Identification Field; `None` if the frame has
     /// no Secondary Header (132.0 §4.1.3.3; TM-003, GEN-013).
     #[must_use]
-    pub fn secondary_header_data(&self) -> Option<&'a [u8]> {
-        self.fsh_len
-            .and_then(|_| self.slice(self.layout.secondary()).get(1..))
+    pub const fn secondary_header_data(&self) -> Option<&'a [u8]> {
+        self.secondary_header_data
     }
 
     /// The Security Header, opaque; empty without SDLS (132.0 §6.3.4; API-072).
     #[must_use]
-    pub fn security_header(&self) -> &'a [u8] {
-        self.slice(self.layout.security_header())
+    pub const fn security_header(&self) -> &'a [u8] {
+        self.security_header
     }
 
     /// The Transfer Frame Data Field, never empty (132.0 §4.1.4, §6.3.5; TM-006, GEN-013).
     #[must_use]
-    pub fn data_field(&self) -> &'a [u8] {
-        self.slice(self.layout.data())
+    pub const fn data_field(&self) -> &'a [u8] {
+        self.data_field
     }
 
     /// The Security Trailer, opaque; empty without SDLS (132.0 §6.3.6; API-072).
     #[must_use]
-    pub fn security_trailer(&self) -> &'a [u8] {
-        self.slice(self.layout.security_trailer())
+    pub const fn security_trailer(&self) -> &'a [u8] {
+        self.security_trailer
     }
 
     /// The Operational Control Field, classified, if the OCF Flag is set (132.0 §4.1.5; TM-004,
     /// CMN-010). A Type-1 Report is decoded with `aldis-tc` (CMN-011).
     #[must_use]
-    pub fn ocf(&self) -> Option<Ocf> {
-        <[u8; OCF_LEN]>::try_from(self.slice(self.layout.ocf()))
-            .ok()
-            .map(Ocf::decode)
+    pub const fn ocf(&self) -> Option<Ocf> {
+        self.ocf
     }
 
     /// The Frame Error Control Field, if the physical channel has one (132.0 §4.1.6; TM-005).
     #[must_use]
-    pub fn fecf(&self) -> Option<u16> {
-        <[u8; 2]>::try_from(self.slice(self.layout.fecf()))
-            .ok()
-            .map(u16::from_be_bytes)
+    pub const fn fecf(&self) -> Option<u16> {
+        self.fecf
     }
 
     /// The octet ranges of the frame's fields, for a security hook (CMN-040, API-074).
@@ -357,6 +346,61 @@ const fn check_len(bytes: &[u8], pc: &TmPhysicalChannelConfig) -> Result<()> {
             len_u64(pc.frame_len()),
             len_u64(bytes.len()),
         ))
+    }
+}
+
+/// The data field status and anomalies from the header fields.
+fn parse_status(
+    header: &TmPrimaryHeader,
+    data_len: usize,
+    security: SecurityLayout,
+    mode: DecodeMode,
+    anomalies: &mut AnomalySet<TmAnomaly>,
+) -> Result<DataFieldStatus> {
+    if header.sync_flag {
+        Ok(DataFieldStatus::VcaSdu {
+            packet_order_flag: header.packet_order_flag,
+            segment_length_id: header.segment_length_id,
+            first_header_pointer: header.first_header_pointer,
+        })
+    } else {
+        let pointer = PacketPointer::classify(header.first_header_pointer, data_len)?;
+        if header.packet_order_flag {
+            match mode {
+                DecodeMode::Strict => {
+                    return Err(mismatch(
+                        ErrorKind::ReservedValue,
+                        field::PACKET_ORDER_FLAG,
+                        0,
+                        1,
+                    ));
+                }
+                DecodeMode::Lenient => anomalies.insert(TmAnomaly::PacketOrderFlagSet),
+            }
+        }
+        if header.segment_length_id != SegmentLengthId::NO_SEGMENTS {
+            match mode {
+                DecodeMode::Strict => {
+                    return Err(mismatch(
+                        ErrorKind::InvalidField,
+                        field::SEGMENT_LENGTH_ID,
+                        u64::from(SegmentLengthId::MAX),
+                        u64::from(header.segment_length_id.get()),
+                    ));
+                }
+                DecodeMode::Lenient => anomalies.insert(TmAnomaly::SegmentLengthIdNot11),
+            }
+        }
+        // An Only Idle Data frame uses a VCID that does not use SDLS (132.0 §6.4.6.2; TM-010).
+        if pointer == PacketPointer::OnlyIdleData && !security.is_none() {
+            match mode {
+                DecodeMode::Strict => {
+                    return Err(Error::new(ErrorKind::InvalidField).with_field(field::VC_ID));
+                }
+                DecodeMode::Lenient => anomalies.insert(TmAnomaly::OnlyIdleDataOnSdlsVc),
+            }
+        }
+        Ok(DataFieldStatus::Packets(pointer))
     }
 }
 

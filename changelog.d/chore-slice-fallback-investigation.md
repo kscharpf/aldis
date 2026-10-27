@@ -3,4 +3,4 @@
 - `aldis-ffi`: exposed `ALDIS_ERR_INTERNAL_ERROR = -18` in C ABI (CABI-001).
 
 ### Changed
-- `aldis-core`, `aldis-tm`, `aldis-tc`, `aldis-aos`, `aldis-uslp`, `aldis-time`, `aldis-spp`, `aldis-epp`, `aldis-ffi`: eliminated silent `.unwrap_or_default()` and default-fallback slice indexing patterns. Replaced untrusted wire input fallbacks with explicit errors (`Incomplete`, `LengthMismatch`, `InvalidField`) and invariant-backed internal accessors with `ErrorKind::InternalError` or mathematically proven clamped slicing (`self.len.min(N)`).
+- `aldis-core`, `aldis-tm`, `aldis-tc`, `aldis-aos`, `aldis-uslp`, `aldis-time`, `aldis-spp`, `aldis-epp`, `aldis-ffi`: eliminated silent `.unwrap_or_default()` and default-fallback slice indexing patterns. Replaced untrusted wire input fallbacks with explicit errors (`Incomplete`, `LengthMismatch`, `InvalidField`) and invariant-backed internal accessors with `ErrorKind::InternalError` or pre-sliced sub-slices during construction.
