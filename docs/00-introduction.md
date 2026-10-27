@@ -7,7 +7,7 @@ These libraries add **CCSDS space data system protocols** to two kinds of applic
 - **Flight software:** bare-metal and RTOS spacecraft processors with static memory and no heap.
 - **Ground systems:** mission control systems, ground-station front ends, simulators, test equipment, and analysis tools.
 
-A single **Rust reference implementation** is the source of truth for behavior, and it is the recommended choice: it carries the strongest correctness evidence. It is exposed to C and C++ through a stable **C ABI**, and later to Java, C#, Python, and Go through bindings over that ABI. A **native C++ implementation** is developed alongside it for legacy flight software that cannot easily take a Rust toolchain; a **native C implementation** is planned later. Native implementations must implement this same specification, pass the same conformance vectors (see [07](07-test-vectors.md)), and match the Rust reference in differential tests (VER-053).
+A single **Rust reference implementation** is the source of truth for behavior, and it is the recommended choice: it carries the strongest correctness evidence. It is exposed to C and C++ through a stable **C ABI** and the header-only `aldis.hpp` wrapper (CABI-072), and later to Java, C#, Python, and Go through bindings over that ABI. Native C/C++ implementations are planned for Phase 3 of the roadmap (see [08](08-roadmap.md)).
 
 ## 2. v1 scope
 

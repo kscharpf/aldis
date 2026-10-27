@@ -1044,8 +1044,7 @@ mod tests {
     #[test]
     fn code_runs_its_checks() {
         // kani is nightly-only: no change runs it without --all.
-        let rust = names(|c| !c.cpp && !c.nightly);
-        let cpp = names(|c| c.cpp || c.name == "spec");
+        let rust = names(|c| !c.nightly);
         let everything = names(|c| !c.nightly);
         // A crate README is a doctest.
         assert_eq!(
@@ -1076,15 +1075,7 @@ mod tests {
             ),
             rust
         );
-        // The C++ tree: spec, the C++ checks, and the checks running the xtask tests.
-        let mut cpp_and_tests = cpp;
-        cpp_and_tests.extend(["test", "test-macos", "big-endian"].map(str::to_owned));
-        let mut want = names(|c| cpp_and_tests.contains(&c.name));
-        assert_eq!(
-            running(&changed(&["cpp/src/core/crc.cpp"]), Force::default()),
-            want
-        );
-        // The vectors are read by both implementations, not by the header check.
+        // The vectors are read by tests, not by the header check.
         assert_eq!(
             running(&changed(&["test-vectors/README.md"]), Force::default()),
             names(|c| c.name != "header" && !c.nightly)
@@ -1098,7 +1089,7 @@ mod tests {
         for path in [
             "xtask/src/main.rs",
             "xtask/verify/Containerfile",
-            "cpp/toolchains.lock",
+            "toolchains.lock",
             "tooling-nightly",
             "Cargo.lock",
             "crates/aldis-testkit/src/lib.rs",
@@ -1109,18 +1100,6 @@ mod tests {
                 "{path}"
             );
         }
-        // --all-cpp adds the C++ checks.
-        want = rust;
-        want.extend(names(|c| c.cpp));
-        want = names(|c| want.contains(&c.name));
-        let all_cpp = Force {
-            all: false,
-            cpp: true,
-        };
-        assert_eq!(
-            running(&changed(&["crates/aldis/src/lib.rs"]), all_cpp),
-            want
-        );
     }
 
     // req: VER-056
@@ -1193,7 +1172,7 @@ mod tests {
     // req: VER-056
     #[test]
     fn reuse_from_an_earlier_commit_of_the_branch() {
-        // The branch changed crates/; main then changed cpp/, and the branch merged main.
+        // The branch changed crates/; main then changed docs/, and the branch merged main.
         let change = changed(&["crates/x/src/lib.rs"]);
         let source = |c: char| Source {
             commit: c.to_string().repeat(40),
@@ -1210,7 +1189,7 @@ mod tests {
                 .into_iter()
                 .map(|c| {
                     let base = origins(&["crates/x/src/lib.rs"], 'c');
-                    (c.name, vec![base, origins(&["cpp/src/a.cpp"], 'e')])
+                    (c.name, vec![base, origins(&["docs/a.md"], 'e')])
                 })
                 .collect(),
             none: None,
@@ -1223,40 +1202,21 @@ mod tests {
                 .map(|d| d.name.clone())
                 .collect()
         };
-        let xtask_tests = ["test", "test-macos", "big-endian"];
         assert_eq!(
             of(Some(Outcome::Reused)),
-            names(|c| {
-                !c.cpp
-                    && !matches!(c.name.as_str(), "spec" | "kani")
-                    && !xtask_tests.contains(&c.name.as_str())
-            })
+            names(|c| !matches!(c.name.as_str(), "spec" | "kani"))
         );
-        assert_eq!(of(Some(Outcome::Skipped)), names(|c| c.cpp));
+        assert_eq!(of(Some(Outcome::Skipped)), Vec::<String>::new());
         // kani is nightly-only: neither skipped nor reused, whatever the records say.
         assert_eq!(of(Some(Outcome::NotRun)), ["kani"]);
         let kani = p.checks.iter().find(|d| d.name == "kani").unwrap();
         assert_eq!((kani.why.as_str(), &kani.source), (NIGHTLY_ONLY, &None));
-        let mut run = vec!["spec".to_owned()];
-        run.extend(xtask_tests.map(str::to_owned));
-        assert_eq!(of(None), names(|c| run.contains(&c.name)));
+        assert_eq!(of(None), ["spec"]);
         let clippy = p.checks.iter().find(|d| d.name == "clippy");
         assert_eq!(clippy.and_then(|d| d.source.clone()), Some(source('e')));
         assert_eq!(
             clippy.map(|d| d.why.clone()),
             Some(reuse_reason(&source('e')))
-        );
-        // --all-cpp runs the C++ checks whatever the records say.
-        let forced = Force {
-            all: false,
-            cpp: true,
-        };
-        let p = plan(&all_checks(), &change, forced, sources);
-        assert!(
-            p.checks
-                .iter()
-                .filter(|d| d.name.starts_with("cpp-"))
-                .all(|d| d.run && d.why == "--all-cpp")
         );
     }
 
@@ -1636,7 +1596,6 @@ mod tests {
         origin.write("docs/a.md", "a\n");
         origin.write("crates/x/src/lib.rs", "//! x\n");
         origin.write("crates/y/src/lib.rs", "//! y\n");
-        origin.write("cpp/src/a.cpp", "// a\n");
         origin.commit("start");
         origin.git(&["checkout", "-q", "-b", "pr0"]);
         origin.write("docs/a.md", "a, PR 0\n");
@@ -1649,12 +1608,11 @@ mod tests {
         clone.write("crates/x/src/lib.rs", "//! x, on the branch\n");
         let p1 = clone.commit("topic");
         clone.git(&["push", "-q", "origin", "topic"]);
-        let src0 = json!({"commit": head0, "record": sha0});
         origin.publish(
             &p1,
             &entries(&checks, |c| {
-                if c.cpp {
-                    ("skipped", Some(src0.clone()))
+                if c.name == "kani" {
+                    ("not-run", None)
                 } else {
                     ("pass", None)
                 }
@@ -1701,37 +1659,29 @@ mod tests {
 
     // req: VER-056, VER-057, VER-058
     #[test]
-    fn a_main_merge_that_changes_only_cpp_reuses_the_rust_checks() {
-        let r = reverify("reuse", "cpp/src/a.cpp");
+    fn a_main_merge_that_changes_only_docs_reuses_the_rust_checks() {
+        let r = reverify("reuse", "docs/b.md");
         let checks = all();
         let p = plan_of(&r);
         assert_eq!(p.base_record.as_deref(), Some(r.head1.as_str()));
         assert_eq!(p.branch, std::slice::from_ref(&r.p1));
-        let xtask_tests = ["test", "test-macos", "big-endian"];
         // The Rust checks: their inputs are those of the branch's verified head.
-        let rust = names(|c| {
-            !c.cpp
-                && !matches!(c.name.as_str(), "spec" | "kani")
-                && !xtask_tests.contains(&c.name.as_str())
-        });
+        let rust = names(|c| !matches!(c.name.as_str(), "spec" | "kani"));
         assert_eq!(
             decided(&p, Some(Outcome::Reused)),
             (rust.clone(), vec![r.p1.clone()])
         );
-        // The C++ checks: unchanged against the base, which PR 1's record covers.
         assert_eq!(
             decided(&p, Some(Outcome::Skipped)),
-            (names(|c| c.cpp), vec![r.head1.clone()])
+            (Vec::<String>::new(), Vec::<String>::new())
         );
         assert_eq!(decided(&p, Some(Outcome::NotRun)).0, ["kani"]);
-        // spec reads every path; the xtask tests read cpp/.
-        let mut run = xtask_tests.map(str::to_owned).to_vec();
-        run.push("spec".to_owned());
-        assert_eq!(decided(&p, None).0, names(|c| run.contains(&c.name)));
+        // spec reads docs/b.md.
+        assert_eq!(decided(&p, None).0, ["spec"]);
         let lines = describe(&p, &checks);
         assert!(
             lines[0].ends_with(&format!(
-                "4 of {} checks run, 15 skipped, {} reused, 1 nightly only",
+                "1 of {} checks run, 0 skipped, {} reused, 1 nightly only",
                 checks.len(),
                 rust.len()
             )),
@@ -1769,15 +1719,16 @@ mod tests {
             recheck(&r.clone.0, &skip, &checks),
             ["clippy: skipped, but changes crates/x/src/lib.rs"]
         );
-        // A source that did not run the check: the branch head skipped cpp-tidy.
+        // A source that did not run the check: the branch head did not run kani.
         let mut skipped_there = rec;
-        skipped_there["checks"][at("cpp-tidy")]["source"] = json!({"commit": r.p1,
+        skipped_there["checks"][at("kani")]["result"] = json!("reused");
+        skipped_there["checks"][at("kani")]["source"] = json!({"commit": r.p1,
             "record": record::sha256_hex(publish::published(&r.clone.0, &r.p1).unwrap().as_bytes())});
         let problems = recheck(&r.clone.0, &skipped_there, &checks);
         assert_eq!(
             problems,
             [format!(
-                "cpp-tidy: skipped, but it did not run and pass in the record of {}",
+                "kani: reused, but it did not run and pass in the record of {}",
                 r.p1
             )]
         );
@@ -1788,10 +1739,10 @@ mod tests {
     fn a_main_merge_that_changes_a_rust_input_runs_the_rust_checks() {
         let r = reverify("rust-input", "crates/y/src/lib.rs");
         let p = plan_of(&r);
-        assert_eq!(decided(&p, None).0, names(|c| !c.cpp && !c.nightly));
+        assert_eq!(decided(&p, None).0, names(|c| !c.nightly));
         assert_eq!(
             decided(&p, Some(Outcome::Skipped)),
-            (names(|c| c.cpp), vec![r.head1])
+            (Vec::<String>::new(), Vec::<String>::new())
         );
         assert_eq!(decided(&p, Some(Outcome::Reused)).0, Vec::<String>::new());
         let clippy = p.checks.iter().find(|d| d.name == "clippy").unwrap();
@@ -1801,7 +1752,7 @@ mod tests {
     // req: VER-056, VER-058
     #[test]
     fn a_source_whose_record_fails_the_gate_is_not_used() {
-        let r = reverify("failing", "cpp/src/a.cpp");
+        let r = reverify("failing", "docs/b.md");
         let checks = all();
         let rec = record_from(&r.clone, &r.h, &plan_of(&r), &checks);
         // The branch head is verified again, and fmt fails.
@@ -1820,13 +1771,8 @@ mod tests {
         assert_eq!(decided(&p, Some(Outcome::Reused)).0, Vec::<String>::new());
         // The record that reused it no longer passes.
         let problems = recheck(&r.clone.0, &rec, &checks);
-        // One problem per reused check: the Rust checks outside spec and the xtask tests.
-        let xtask_tests = ["test", "test-macos", "big-endian"];
-        let reused = names(|c| {
-            !c.cpp
-                && !matches!(c.name.as_str(), "spec" | "kani")
-                && !xtask_tests.contains(&c.name.as_str())
-        });
+        // One problem per reused check: the Rust checks outside spec.
+        let reused = names(|c| !matches!(c.name.as_str(), "spec" | "kani"));
         assert_eq!(problems.len(), reused.len(), "{problems:?}");
         assert!(
             problems[0].ends_with(&format!(
@@ -1840,7 +1786,7 @@ mod tests {
     // req: VER-056, VER-058
     #[test]
     fn a_source_that_is_not_an_ancestor_is_not_used() {
-        let r = reverify("side", "cpp/src/a.cpp");
+        let r = reverify("side", "docs/b.md");
         let checks = all();
         // A side branch with the same crates as the merged head, verified.
         r.clone
@@ -1888,16 +1834,44 @@ mod tests {
     // req: VER-056, VER-057
     #[test]
     fn origins_are_followed_through_format_2_and_3_records() {
-        let r = reverify("origins", "cpp/src/a.cpp");
+        let r = reverify("origins", "docs/b.md");
         let checks = all();
-        let mut notes = Notes::fetch(&r.clone.0).unwrap();
+        // Give head0 a record with cpp-tidy passing so Format 1 traversal can resolve it.
+        let mut head0_rec = r.origin.record_for(
+            record::FORMAT,
+            &r.head0,
+            &entries(&checks, |_| ("pass", None)),
+        );
+        head0_rec["checks"].as_array_mut().unwrap().push(json!({
+            "name": "cpp-tidy",
+            "host": "container",
+            "gating": true,
+            "result": "pass"
+        }));
+        let sha0 = r.origin.publish_record(&head0_rec);
         let from0 = Source {
             commit: r.head0.clone(),
-            record: r.sha0.clone(),
+            record: sha0,
         };
         // Format 3: the source the entry names.
+        let three = r.origin.record_for(
+            record::FORMAT,
+            &r.p1,
+            &entries(&checks, |c| {
+                if c.name == "header" {
+                    (
+                        "skipped",
+                        Some(json!({"commit": r.head0, "record": from0.record})),
+                    )
+                } else {
+                    ("pass", None)
+                }
+            }),
+        );
+        r.origin.publish_record(&three);
+        let mut notes = Notes::fetch(&r.clone.0).unwrap();
         assert_eq!(
-            notes.origin(&r.p1, "cpp-tidy", ORIGIN_DEPTH),
+            notes.origin(&r.p1, "header", ORIGIN_DEPTH),
             Some(from0.clone())
         );
         // Format 2: the record covering the base.
@@ -1905,7 +1879,7 @@ mod tests {
             record::FORMAT_2,
             &r.p1,
             &entries(&checks, |c| {
-                if c.cpp {
+                if c.name == "header" {
                     ("skipped", None)
                 } else {
                     ("pass", None)
@@ -1916,15 +1890,23 @@ mod tests {
         r.origin.publish_record(&two);
         let mut notes = Notes::fetch(&r.clone.0).unwrap();
         assert_eq!(
-            notes.origin(&r.p1, "cpp-tidy", ORIGIN_DEPTH),
+            notes.origin(&r.p1, "header", ORIGIN_DEPTH),
             Some(from0.clone())
         );
-        assert_eq!(notes.origin(&r.p1, "cpp-tidy", 0), None);
+        assert_eq!(notes.origin(&r.p1, "header", 0), None);
         // Format 1: the record that covers its base, the merge of PR 0.
         let merge0 = r.clone.git(&["rev-parse", &format!("{}^", r.p1)]);
         let mut one = two;
         one["format"] = json!(record::FORMAT_1);
         one["cpp"] = json!({"affected": false, "base": merge0});
+        let mut checks_with_cpp = entries(&checks, |_| ("pass", None));
+        checks_with_cpp.as_array_mut().unwrap().push(json!({
+            "name": "cpp-tidy",
+            "host": "container",
+            "gating": true,
+            "result": "skipped"
+        }));
+        one["checks"] = checks_with_cpp;
         r.origin.publish_record(&one);
         let mut notes = Notes::fetch(&r.clone.0).unwrap();
         assert_eq!(notes.origin(&r.p1, "cpp-tidy", ORIGIN_DEPTH), Some(from0));
@@ -1933,7 +1915,7 @@ mod tests {
             record::FORMAT,
             &r.p1,
             &entries(&checks, |c| {
-                if c.cpp {
+                if c.name == "header" {
                     ("reused", Some(json!({"commit": r.p1, "record": "x"})))
                 } else {
                     ("pass", None)
@@ -1943,14 +1925,14 @@ mod tests {
         own["scope"]["base"] = json!(r.head0);
         r.origin.publish_record(&own);
         let mut notes = Notes::fetch(&r.clone.0).unwrap();
-        assert_eq!(notes.origin(&r.p1, "cpp-tidy", ORIGIN_DEPTH), None);
+        assert_eq!(notes.origin(&r.p1, "header", ORIGIN_DEPTH), None);
         assert!(notes.origin(&r.p1, "clippy", ORIGIN_DEPTH).is_some());
     }
 
     // req: VER-056, VER-058
     #[test]
     fn a_check_that_did_not_run_is_never_a_source() {
-        let r = reverify("stopped", "cpp/src/a.cpp");
+        let r = reverify("stopped", "docs/b.md");
         let checks = all();
         let stopped = "the run stopped after the gating check header failed (--fail-fast)";
         // A record that passes the gate, in which kani, nightly-only, did not run: kani takes no
@@ -2068,7 +2050,7 @@ mod tests {
         let p = clone.commit("topic");
         clone.git(&["push", "-q", "origin", "topic"]);
         // main moves while p is verified.
-        origin.write("cpp/src/a.cpp", "// main moved\n");
+        origin.write("docs/b.md", "// main moved\n");
         origin.commit("main moved");
         let passing = clone.record_for(record::FORMAT, &p, &entries(&checks, |_| ("pass", None)));
         write_record(&clone, &passing);
@@ -2095,8 +2077,8 @@ mod tests {
             clippy.source.as_ref().map(|s| s.commit.as_str()),
             Some(p.as_str())
         );
-        let cpp = plan_h.checks.iter().find(|d| d.name == "cpp-tidy").unwrap();
-        assert!(cpp.run, "{cpp:?}");
+        let spec = plan_h.checks.iter().find(|d| d.name == "spec").unwrap();
+        assert!(spec.run, "{spec:?}");
         // Its record passes, re-derived from git and p's record, and sets the status.
         let rec_h = record_from(&clone, &h, &plan_h, &checks);
         assert_eq!(recheck(&clone.0, &rec_h, &checks), Vec::<String>::new());

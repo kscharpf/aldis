@@ -22,7 +22,6 @@ Libraries that add CCSDS protocol support to spacecraft flight software and grou
 | M1 Packets and time (`v0.2.0-m1`) | Released: the Layer 1 codecs for time codes, Space Packets, and Encapsulation Packets (`aldis-time`, `aldis-spp`, `aldis-epp`) |
 | M2 Frame codecs (`v0.3.0-m2`) | Released: the Layer 1 codecs for TM, TC, AOS, and USLP Transfer Frames (`aldis-tm`, `aldis-tc`, `aldis-aos`, `aldis-uslp`), each with its C ABI functions, the hazard analysis, and the assurance case |
 | M3–M6 | Not started: the Layer 2–3 crates (COP-1, link engines, framework) are skeletons |
-| C0 native C++ foundations | In progress |
 | A0 reference application scenario | In progress |
 
 See the [roadmap](docs/08-roadmap.md) for every milestone and track.

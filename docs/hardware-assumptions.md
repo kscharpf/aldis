@@ -9,7 +9,7 @@ What Aldis assumes of the platform it runs on, why, and what happens when an ass
 - **engine state**, from Milestone 3: FOP-1 and FARM-1 counters, windows, and protocol states, and later the link engines;
 - **helper storage** in caller memory, such as the segmenter and reassembler, and the C ABI handles.
 
-"Protected" means error-correcting memory (EDAC/ECC) with scrubbing, or an equivalent the platform provides. Single-bit errors are then corrected before software reads them, and uncorrectable errors are reported to the platform (a trap or a reset) rather than silently read. Radiation-tolerant processors commonly provide this. An example is the fault-tolerant LEON parts, the main LEON path for Aldis (OI-08). The integrator confirms it for the actual part and memory map.
+"Protected" means error-correcting memory (EDAC/ECC) with scrubbing, or an equivalent the platform provides. Single-bit errors are then corrected before software reads them, and uncorrectable errors are reported to the platform (a trap or a reset) rather than silently read. Radiation-tolerant processors commonly provide this. An example is the fault-tolerant LEON parts, for which Aldis provides best-effort Rust support (OI-08). The integrator confirms it for the actual part and memory map.
 
 Data received on a link is **not** covered by this assumption, and needs no such protection. Bit errors in frames on the link are the job of the frame checks (FECF, FHEC; TM-006, TC-006, AOS-013/014, USLP's FECF), and Aldis rejects a corrupted frame with an error.
 

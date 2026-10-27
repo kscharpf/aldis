@@ -1,18 +1,18 @@
 # 08 — Roadmap
 
-v1 is built in three **tracks** against one specification. Each track has its own milestones and can be worked on independently, but a track milestone starts only when its **entry gate** (results merged on `main` from other tracks) is met.
+v1 is built in two active tracks against one specification (Track C, native C++, was retired from v1 and deferred to roadmap Phase 3; archived at git tag `c0-archive`). Each track has its own milestones and can be worked on independently, but a track milestone starts only when its **entry gate** (results merged on `main` from other tracks) is met.
 
 | Track | Purpose | Milestones | Directories it owns |
 |---|---|---|---|
 | **R — Rust reference** | The reference implementation and the recommended choice: Rust crates, the C ABI over them (`aldis-ffi`), and the C++ wrapper | M0–M6 (§1) | `crates/`, `fuzz/`, `exerciser/`, `crosscheck/`, the generated C header |
-| **C — Native C++** | A native C++ implementation for legacy flight software that cannot easily take a Rust toolchain ([C++ profile](profiles/cpp.md)). It follows the Rust crates module by module and must match them (VER-053) | C0–C5 (§2) | `cpp/`, `difftest/` |
-| **A — Reference application** | An end-to-end flight↔ground application that uses only the public APIs, grown one milestone at a time. It gives API feedback before v1 freezes, shows that the Rust-backed and native libraries are interchangeable, and is the integrators' starting point | A0–A6 (§3) | `refapp/` |
+| **A — Reference application** | An end-to-end flight↔ground application that uses only the public APIs, grown one milestone at a time. It gives API feedback before v1 freezes and is the integrators' starting point | A0–A6 (§3) | `refapp/` |
+| **C — Native C++ (Phase 3)** | Retired from v1 and deferred to roadmap Phase 3 (archived at tag `c0-archive`) | C0–C5 (§2) | — |
 
 §4 shows how the tracks overlap, §5 defines the releases, and §6 the rules that let separate contributors or agents work on the tracks at the same time.
 
 ## 1. Track R — Rust reference (M0–M6)
 
-Every milestone defines the **C ABI for what it adds**: a codec milestone adds its codecs' functions to `aldis.h`, and an engine milestone adds its engines' handles. The native C++ track calls through that header for differential testing (VER-053), so it cannot wait for M5.
+Every milestone defines the **C ABI for what it adds**: a codec milestone adds its codecs' functions to `aldis.h`, and an engine milestone adds its engines' handles.
 
 | Milestone | Content | Entry gate | Exit criteria |
 |---|---|---|---|
@@ -24,20 +24,11 @@ Every milestone defines the **C ABI for what it adds**: a codec milestone adds i
 | **M5 C ABI completion** | C test harness with sanitizers and Miri (VER-026), header compile checks (VER-050), ABI versioning (CABI-060), and the header-only C++ wrapper `aldis.hpp` (CABI-072) | M4 | All CABI requirements traced; vectors pass via the C ABI and via `aldis.hpp` |
 | **M6 Framework** | `aldis-framework` traits, stacks, loopback, std adapters, trace/replay (the FW-013 trace format extractable from, or sharing the record encoding of, the reference application's golden traces, OI-25) | M5 | FW requirements traced; loopback stack tested end to end (the reference application, A6, is the full demo) |
 
-Layer 3 (`aldis-framework`) is Rust-only in v1. Native C++ users drive the engines from their own executive, as legacy flight software already does.
+Layer 3 (`aldis-framework`) is Rust-only in v1.
 
-## 2. Track C — Native C++ (C0–C5)
+## 2. Track C — Native C++ (Retired from v1, deferred to Phase 3)
 
-Each C++ milestone ports a Rust milestone that has already exited, so the C++ track runs about one milestone behind track R. The Rust crates are never held back for the C++ port. A C++ module is done when it passes the vector suite and the differential tests against its Rust crate (VER-053) and meets the [C++ profile](profiles/cpp.md). The language is C++20 (OI-19), and engine capacities are template parameters (OI-20).
-
-| Milestone | Content | Entry gate | Exit criteria |
-|---|---|---|---|
-| **C0 Foundations** ([plan](milestones/c0-foundations.md)) | `cpp/` CMake project, presets, and toolchain files for the bare-metal targets; CI jobs for both compilers, clang-tidy, clang-format, sanitizers, coverage, the freestanding link check with its canary, and stack usage; the CodeQL AUTOSAR C++14 and CERT C++ checks running (CPP-043) and IKOS evaluated (OI-22); `xtask` scans C++ sources for `// req:` (CPP-057); `aldis_core`; the C++ vector runner, on the host and under QEMU | — | `aldis_core` passes the core vectors on every CI target with 100 % coverage; CPP-001…003, CPP-010…012, CPP-020, CPP-021, CPP-023, CPP-025, CPP-026, CPP-030…034, CPP-040…044, CPP-050…053, CPP-056, CPP-057 traced for `aldis_core` ([plan](milestones/c0-foundations.md) D18) |
-| **C1 Packets & time** | `aldis_time`, `aldis_spp`, `aldis_epp`; their part of `aldis_capi` (CPP-035) with the header comparison (CABI-070); the `difftest/` workspace (bridge, differential property tests and fuzz targets for codecs); native fuzz targets; mutation testing | C0; M1; M2 WP-0 | M1 vectors pass; VER-053 met for every M1 codec; CPP-035, CPP-054, CPP-055, CPP-060, CPP-061 traced |
-| **C2 Frame codecs** | `aldis_tm`, `aldis_tc`, `aldis_aos`, `aldis_uslp` with their C ABI functions and differential tests | C1; M2 | M2 vectors pass; VER-053 met for every M2 codec |
-| **C3 COP-1** | `aldis_cop1` with its C ABI handles; differential state-machine tests that drive the Rust and C++ engines in lockstep | C2; M3 | M3 vectors pass; VER-053 met for FOP-1 and FARM-1 |
-| **C4 Link engines** | `aldis_link` with its C ABI handles and differential state-machine tests | C3; M4 | M4 vectors pass; VER-053 met for every engine |
-| **C5 C ABI parity** | The native library passes the M5 C test harness, and `aldis.hpp` builds and passes unchanged over both the Rust-backed and the native library (CABI-072) | C4; M5 | Every CABI requirement met by the native library; native C++ release candidate (§5) |
+Track C (native C++, C0–C5) was retired from v1 and deferred to roadmap Phase 3 (`chore/retire-track-c`). The C0 foundations code was archived at git tag `c0-archive`. All 34 `CPP-*` requirements and `VER-052`/`VER-053` were withdrawn.
 
 ## 3. Track A — Reference application (A0–A6)
 
@@ -50,7 +41,7 @@ The reference application lives in its own workspace, `refapp/`, and uses only t
 | **A2 Frames** | Downlink TM frames and uplink TC frames, multiplexed and demultiplexed by hand-written loops in the application | A1; M2 | Trace reproduced in CI; API issues found are filed |
 | **A3 COP-1** | FOP-1 on the ground, FARM-1 on the flight side, CLCW in the OCF; injected frame loss exercises retransmission | A2; M3 | Trace reproduced in CI, including the fault cases |
 | **A4 Engines** | The hand-written loops are replaced by the `aldis-link` engines | A3; M4 | Same trace as A3 for the same scenario |
-| **A5 C and C++** | A C++ flight side using `aldis.hpp`, built once against the Rust-backed library and once against the native library | A4; M5; C5 to exit | The Rust, Rust-via-C-ABI, and native C++ builds reproduce the same golden trace |
+| **A5 C and C++** | A C++ flight side using `aldis.hpp`, built against the Rust-backed library (`aldis-ffi`) | A4; M5 | The Rust and Rust-via-C-ABI builds reproduce the same golden trace |
 | **A6 Framework and target** | The application moves onto `aldis-framework` stacks and trace/replay; the flight side runs bare-metal under QEMU; footprint, stack, and timing figures published | A5; M6 | End-to-end ground↔flight demo; figures included in the v1.0 tables |
 | **ACFS cFS flight side** ([plan](milestones/acfs-flight-side.md)) | A second flight side: NASA cFS apps (cFE, OSAL, pc-linux PSP) that call Aldis through `aldis.h`, run in lockstep with the harness, and reproduce the Rust flight side's golden traces ([reference-application.md](reference-application.md) §10). Four phases, below | Per phase, below | Every phase's traces reproduced in the nightly job; gates no release |
 
@@ -69,15 +60,15 @@ The alternative to one milestone with phases is four milestones, one per row; th
 
 Each row is a set of milestones expected to run at the same time. The rows are not time boxes: a track milestone starts as soon as its entry gate is met.
 
-| Stage | Track R | Track C | Track A |
-|---|---|---|---|
-| 1 | M1 (complete, `v0.2.0-m1`) | C0 | A0 |
-| 2 | M2 (next) | C1 (after M2 WP-0) | A1 |
-| 3 | M3 | C2 | A2 |
-| 4 | M4 | C3 | A3 |
-| 5 | M5 | C4 | A4 |
-| 6 | M6 | C5 | A5 |
-| 7 | v1.0 release | Native C++ release | A6 |
+| Stage | Track R | Track A |
+|---|---|---|
+| 1 | M1 (complete, `v0.2.0-m1`) | A0 |
+| 2 | M2 (complete, `v0.3.0-m2`) | A1 |
+| 3 | M3 | A2 |
+| 4 | M4 | A3 |
+| 5 | M5 | A4 |
+| 6 | M6 | A5 |
+| 7 | v1.0 release | A6 |
 
 ## 5. Releases
 
@@ -85,9 +76,8 @@ Each row is a set of milestones expected to run at the same time. The rows are n
 |---|---|---|
 | `v0.N.0-mN` | Rust crates after milestone MN (as today) | MN exit |
 | **v1.0** | Rust crates, C ABI, `aldis.hpp`; docs, trace matrix, coverage waivers, stack-usage tables, changelog | M6 and A6 exited; all R-track requirements verified |
-| **Native C++ 1.0** | The native C++ library, with `aldis.h` and `aldis.hpp` | C5 exited. It ships with v1.0 if ready, or after it. A native release carries the version of the Rust release it was differentially verified against (VER-053) |
 
-C and A milestones do not cut releases. Their exit is recorded in their milestone plans.
+A milestones do not cut releases. Their exit is recorded in their milestone plans.
 
 ## 6. Working in parallel
 
@@ -114,18 +104,17 @@ These rules let separate contributors, or separate agents, each own one track.
 | v3 | 734.x DTN (BP/LTP), 702.1 IPoC | Networking |
 | v4 | Ground formats: 502–509 navigation messages, 660.0 XTCE; SLE/CSTS (911–922, 913.1) | Ground segment; `std` likely |
 
-Each later standard follows the same three tracks: the Rust crate first, then its native C++ port and its use in the reference application.
+Each later standard follows the active tracks: the Rust crate first, then its use in the reference application.
 
 ## 8. Language rollout
 
 | Phase | Language | Approach |
 |---|---|---|
 | 1 | Rust | Reference implementation (track R); the recommended choice |
-| 1 | C / C++ | C ABI over Rust (`aldis-ffi`) + header-only C++ wrapper (track R, M5) |
-| 1 | C++ (native) | Native implementation (track C); same header (CABI-070) and C++ wrapper API (CABI-072) |
+| 1 | C / C++ | C ABI over Rust (`aldis-ffi`) + header-only C++ wrapper (`aldis.hpp`, track R, M5, CABI-072) |
 | 2 | Python | Bindings over the C ABI (or PyO3 over the Rust crates) with an idiomatic API; vectors run under pytest |
 | 2 | Go | cgo bindings over the C ABI |
 | 2 | Java / C# | Panama (FFM) or JNI / P/Invoke over the C ABI |
-| 3 | C (native) | Full native implementation of this specification; same header (CABI-070) |
+| 3 | Native C / C++ | Full native implementations of this specification; same C ABI and C++ wrapper API |
 
 Every phase is gated on passing the shared vector suite (TV-*).

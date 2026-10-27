@@ -235,7 +235,7 @@ mod tests {
 
     #[test]
     fn cpp_annotations_are_traced() {
-        // req: CPP-057, VER-020
+        // req: VER-020
         assert_eq!(CPP_LABEL, "test (C++)");
         assert_eq!(CPP_EXTENSIONS, ["hpp", "cpp", "h"]);
         let text =

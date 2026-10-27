@@ -37,7 +37,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[3]
-DEFAULT_LOCK = REPO / "cpp" / "toolchains.lock"
+DEFAULT_LOCK = REPO / "toolchains.lock"
 KEY_RE = re.compile(r"^[A-Z][A-Z0-9_]*$")
 SHA_RE = re.compile(r"^[0-9a-f]{64}$")
 
@@ -135,40 +135,6 @@ def tools(lock: dict[str, str]) -> dict[str, Tool]:
                 version_cmds=[["s390x-linux-gnu-g++-14", "-dumpfullversion"]],
             ),
             Tool(
-                "arm-gnu",
-                "ARM_GNU_VERSION",
-                [Archive("ARM_GNU")],
-                env="ALDIS_ARM_GNU_ROOT",
-                version_cmds=[["arm-none-eabi-g++", "-dumpfullversion"]],
-            ),
-            Tool(
-                "riscv-gnu",
-                "RISCV_GNU_VERSION",
-                [Archive("RISCV_GNU")],
-                env="ALDIS_RISCV_GNU_ROOT",
-                version_cmds=[["riscv-none-elf-g++", "-dumpfullversion"]],
-            ),
-            Tool(
-                "bcc2",
-                "BCC2_VERSION",
-                [Archive("BCC2")],
-                env="ALDIS_BCC2_ROOT",
-                version_cmds=[["sparc-gaisler-elf-g++", "-dumpfullversion"]],
-            ),
-            Tool(
-                "cmake",
-                "CMAKE_VERSION",
-                [Archive("CMAKE")],
-                version_cmds=[["cmake", "--version"], ["ctest", "--version"]],
-            ),
-            Tool(
-                "ninja",
-                "NINJA_VERSION",
-                [Archive("NINJA", strip_top=False)],
-                bin_dir=".",
-                version_cmds=[["ninja", "--version"]],
-            ),
-            Tool(
                 "qemu",
                 "QEMU_VERSION",
                 apt_packages_key="QEMU_APT_PACKAGES",
@@ -177,14 +143,6 @@ def tools(lock: dict[str, str]) -> dict[str, Tool]:
                     ["qemu-system-riscv32", "--version"],
                     ["qemu-s390x", "--version"],
                 ],
-            ),
-            Tool(
-                "codeql",
-                "CODEQL_VERSION",
-                [Archive("CODEQL"), Archive("CODEQL_PACKS", strip_top=False)],
-                env="ALDIS_CODEQL_ROOT",
-                bin_dir=".",  # the bundle keeps the `codeql` launcher at its top level
-                version_cmds=[["codeql", "version", "--format=terse"]],
             ),
         ]
     }

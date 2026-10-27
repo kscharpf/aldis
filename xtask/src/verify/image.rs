@@ -33,8 +33,8 @@ const PULL_VAR: &str = "ALDIS_VERIFY_PULL";
 /// The files the image is built from, at their repository paths.
 pub const INPUTS: &[&str] = &[
     ".github/actions/setup-cpp/setup_cpp.py",
-    "cpp/toolchains.lock",
     "rust-toolchain.toml",
+    "toolchains.lock",
     "tooling-nightly",
     "xtask/verify/Containerfile",
     "xtask/verify/entrypoint.sh",

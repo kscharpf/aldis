@@ -32,7 +32,7 @@
 | VER-024 | Coverage targets: **100 % statement and 100 % branch coverage** for Layers 0–2, measured with `cargo llvm-cov` on the host. Any uncovered region SHALL be justified in a coverage waiver file reviewed per release. MC/DC is reserved for a future certification effort ([open issues](09-open-issues.md) OI-09). | — | A |
 | VER-025 | Mutation testing (e.g. `cargo-mutants`) SHALL run on Layers 0–2 before each release. Surviving mutants SHALL be triaged. | — | A |
 | VER-026 | The FFI layer SHALL be tested under Miri and with AddressSanitizer/UBSan from a C test harness. | GEN-071 | T |
-| VER-054 | Property-test input strategies (generators of valid and invalid identifiers, configurations, headers, data units, and engine input sequences) SHALL be defined once, in a tooling crate (RS-017), and used by both the Rust property tests (VER-023) and the differential tests (VER-053). | — | I |
+| VER-054 | Property-test input strategies (generators of valid and invalid identifiers, configurations, headers, data units, and engine input sequences) SHALL be defined once, in a tooling crate (RS-017), and used by the Rust property tests (VER-023). | — | I |
 
 ## 4. Targets and CI matrix
 
@@ -63,8 +63,8 @@
 |---|---|---|---|
 | VER-050 | Generated C headers SHALL compile cleanly as C99, C11, and C++11/17 with `-Wall -Wextra -Wpedantic -Werror` on GCC and Clang. | — | A |
 | VER-051 | C example and test code, and the native C implementation, SHALL follow the **SEI CERT C Coding Standard**, checked with a free static analyser (VER-055). Deviations SHALL be recorded in a deviation log. | — | A |
-| VER-052 | The native C++ implementation SHALL follow the **SEI CERT C++ Coding Standard** and the **AUTOSAR C++14 Guidelines**, both freely available, checked in CI with free static analysers ([C++ profile](profiles/cpp.md) §5, CPP-043). Deviations, including uses of C++17 and C++20 features that the AUTOSAR C++14 rules do not address (OI-19), SHALL be recorded in a deviation log. Exceptions and RTTI SHALL be disabled, and there SHALL be no dynamic allocation. | — | A |
-| VER-053 | Each native implementation SHALL be tested **differentially** against the Rust reference crates. Every decoder, encoder, and engine input that has a fuzz target (VER-022) or a property test (VER-023) SHALL also have a differential fuzz target and a differential property test that run the Rust crates and the native implementation, called through its C ABI (CABI-070), on the same inputs. They SHALL assert identical results: output octets, consumed length, error kind, field identifier, error detail, and anomaly flags; for engines, every `poll_*` output and event, in order, for generated input sequences. Every divergence SHALL be resolved by reference to the Blue Book, fixed in the defective implementation, and added as a regression [test vector](07-test-vectors.md). | GEN-030, API-020 | F |
+| VER-052 | Withdrawn: Track C retired and deferred to Phase 3 (chore/retire-track-c). | — | — |
+| VER-053 | Withdrawn: Track C retired and deferred to Phase 3 (chore/retire-track-c). | — | — |
 
 ## 7. Verification runs and the merge gate
 

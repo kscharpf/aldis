@@ -888,7 +888,7 @@ mod tests {
     #[test]
     fn a_non_gating_failure_never_stops_a_run() {
         let order = runs_without_all();
-        let (entries, stopped, ran) = simulate(&fail_fast(true), &["cpp-leon3", "kani"]);
+        let (entries, stopped, ran) = simulate(&fail_fast(true), &["rust-sparc-leon3", "kani"]);
         assert_eq!(stopped, None);
         assert_eq!(ran, order);
         let failed: Vec<String> = results(&entries)
@@ -896,7 +896,7 @@ mod tests {
             .filter(|r| r.1 == "fail")
             .map(|r| r.0)
             .collect();
-        assert_eq!(failed, ["cpp-leon3"]);
+        assert_eq!(failed, ["rust-sparc-leon3"]);
     }
 
     /// The checks of the run order that a run without `--all` runs: all but the nightly-only.
@@ -1109,13 +1109,13 @@ mod tests {
         // Every check skipped or reused, or only the non-gating checks without a passing source,
         // or a gating check on the host alone: no container.
         assert!(none(&[], None, true));
-        assert!(none(&["cpp-leon3"], None, true));
-        assert!(none(&["cpp-leon3"], None, false));
+        assert!(none(&["rust-sparc-leon3"], None, true));
+        assert!(none(&["rust-sparc-leon3"], None, false));
         assert!(none(&["test-macos"], None, true));
         // The nightly-only kani never starts one on its own, even selected with --only.
         assert!(none(&[], Some(&["kani"]), true));
         // A gating container check, or a check that --only selects, starts one.
-        assert!(!none(&["cpp-leon3", "clippy"], None, true));
+        assert!(!none(&["rust-sparc-leon3", "clippy"], None, true));
         assert!(!none(&["spec"], None, false));
         assert!(!none(
             &["rust-sparc-leon3"],
@@ -1123,16 +1123,13 @@ mod tests {
             true
         ));
         assert!(none(&["rust-sparc-leon3"], Some(&["fmt"]), true));
-        // A check for an x86_64 host that --only selects runs on no other host.
-        assert!(none(&["cpp-leon3"], Some(&["cpp-leon3"]), false));
-        assert!(!none(&["cpp-leon3"], Some(&["cpp-leon3"]), true));
     }
 
     // req: VER-056, VER-057, VER-058
     #[test]
     fn the_record_of_a_run_without_a_container_passes_the_gate() {
         let all = checks::all();
-        let plan = plan_running(&["cpp-leon3", "test-macos"]);
+        let plan = plan_running(&["rust-sparc-leon3", "test-macos"]);
         let opts = opts_of(&plan, None);
         for x86_64 in [true, false] {
             let checks = without_container(&opts, x86_64).unwrap();
@@ -1143,8 +1140,7 @@ mod tests {
             );
             for (name, result, reason) in &rows {
                 let want = match name.as_str() {
-                    "cpp-leon3" if !x86_64 => ("not-run", Some("needs an x86_64 host")),
-                    "cpp-leon3" => ("not-run", Some(NO_CONTAINER_REASON)),
+                    "rust-sparc-leon3" => ("not-run", Some(NO_CONTAINER_REASON)),
                     "kani" => ("not-run", Some(checks::NIGHTLY_ONLY)),
                     _ => ("skipped", None),
                 };

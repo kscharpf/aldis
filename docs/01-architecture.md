@@ -118,8 +118,6 @@ The goal of GEN-001 to GEN-003 is to **keep the certification surface minimal**.
 | GEN-006 | The `alloc` and `std` features SHALL be strictly additive. Enabling them SHALL NOT change the behavior or wire output of any existing API. | — | T/V |
 | GEN-007 | Behavior SHALL be identical across targets of different endianness and pointer width. | — | V |
 
-## 5. Relationship to native C/C++ implementations
+## 5. Relationship to native C/C++ implementations (Phase 3)
 
-The native C++ implementation (developed alongside the Rust crates, [C++ profile](profiles/cpp.md)) and the later native C implementation (see [roadmap](08-roadmap.md)) mirror this layering module for module: `aldis_core`, `aldis_spp`, …, `aldis_cop1`, `aldis_link`. They implement the *language-neutral* requirements in this specification and the [C ABI profile](profiles/c-abi.md). They are verified against the same [test vectors](07-test-vectors.md), and differentially against the Rust crates (VER-053). Because every native library exposes the same C ABI (CABI-070), an application can switch between the Rust-backed and a native library **without source changes**.
-
-The Rust crates remain the reference: where a native implementation and the Rust crates disagree, the Blue Book decides which is wrong, and the fix lands in the defective implementation together with a regression vector.
+Native C and C++ implementations are planned in Phase 3 of the [roadmap](08-roadmap.md) (Track C native C++ was retired from v1 and deferred to Phase 3). When implemented, they mirror this layering module for module and expose the same C ABI and C++ wrapper API (`aldis.hpp`).
