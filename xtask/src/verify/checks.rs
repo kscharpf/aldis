@@ -358,6 +358,7 @@ fn rust() -> Vec<Check> {
         ),
         check("layers", c, false, 1, LAYERS),
         check("refapp", c, false, 10, REFAPP),
+        check("fuzz-smoke", c, false, 15, "cargo xtask fuzz smoke\n"),
     ]);
     for t in RUST_BARE_METAL {
         out.push(check(format!("exerciser-{t}"), c, false, 10, exerciser(t)));
@@ -883,5 +884,22 @@ mod tests {
                 "{name}"
             );
         }
+    }
+
+    // req: VER-022, VER-056
+    #[test]
+    fn the_fuzz_smoke_check_reads_rust_and_gates() {
+        let fuzz_smoke = all().into_iter().find(|c| c.name == "fuzz-smoke").unwrap();
+        assert!(fuzz_smoke.gating && !fuzz_smoke.nightly);
+        for path in [
+            "fuzz/fuzz_targets/ffi_decode.rs",
+            "crates/aldis-core/src/crc.rs",
+            "crates/aldis-ffi/src/tc.rs",
+            "Cargo.lock",
+        ] {
+            assert!(fuzz_smoke.inputs.contains(path), "{path}");
+        }
+        assert!(!fuzz_smoke.inputs.contains("docs/06-verification.md"));
+        assert_eq!(fuzz_smoke.script, "cargo xtask fuzz smoke\n");
     }
 }

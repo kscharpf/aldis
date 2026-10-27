@@ -11,6 +11,7 @@ mod coverage;
 mod decisions;
 mod features;
 mod fields;
+mod fuzz;
 mod header;
 mod kani;
 mod layers;
@@ -92,6 +93,8 @@ commands:
                                (GEN-006)
   coverage                     100 % region/function/line/branch gate for aldis-core (VER-024;
                                tooling nightly + cargo-llvm-cov >= 0.9)
+  fuzz smoke [<target>...]     run a smoke pass (-runs=1 -max_total_time=2) on all fuzz targets
+                               (or those named) to catch broken assertions before merge (VER-022)
   kani                         run the Kani proof harnesses and print each one's result and
                                time; a spike, not a gate (docs/verification/formal-proofs.md,
                                OI-42; needs the pinned Kani)
@@ -188,6 +191,7 @@ fn run(args: &[&str]) -> Result<usize, String> {
         ["ffi-imports", target] => binaries::ffi_imports(target),
         ["stack", rest @ ..] => stack::run(rest),
         ["coverage"] => coverage::run(),
+        ["fuzz", "smoke", rest @ ..] => fuzz::smoke(rest),
         ["kani"] => kani::run(),
         ["features"] => features::check(),
         ["consistency"] => consistency::check(),
