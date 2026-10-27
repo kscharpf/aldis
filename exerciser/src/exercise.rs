@@ -212,7 +212,7 @@ fn apis_errors_ids(tally: &mut Tally) {
         };
         tally.check(write!(text, "{err}").is_ok() && text.len > 0);
     }
-    tally.check(ErrorKind::ALL.len() == 17);
+    tally.check(ErrorKind::ALL.len() == 18);
 
     // bits octet helpers
     let mut octets = [0_u8; 8];

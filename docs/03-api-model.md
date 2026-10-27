@@ -184,6 +184,7 @@ Numeric codes are stable across profiles. In the C ABI, `0` is success and error
 | 15 | `CapacityExceeded` | Configuration exceeds compile-time capacity |
 | 16 | `InvalidHandle` | Unknown or stale transmit/request handle |
 | 17 | `Malformed` | Structurally impossible input (e.g. pointer beyond data field) |
+| 18 | `InternalError` | An internal invariant or consistency check failed |
 
 ### 9.1 Field codes
 

@@ -339,6 +339,11 @@
 #define ALDIS_ERR_MALFORMED (-17)
 
 /**
+ * An internal invariant or consistency check failed (code 18; CABI-020).
+ */
+#define ALDIS_ERR_INTERNAL_ERROR (-18)
+
+/**
  * [`aldis_error_detail_t::detail`]: the error carries no further detail (GEN-041, CABI-021).
  */
 #define ALDIS_DETAIL_NONE 0
