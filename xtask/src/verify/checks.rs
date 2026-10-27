@@ -599,7 +599,7 @@ cargo xtask restricted
 # and every loop a record names exists (GEN-022).
 cargo xtask loops
 # Every reference of the hazard analysis and the assurance case resolves (VER-065, VER-066).
-cargo xtask assurance
+cargo xtask assurance --strict
 # Independent cross-check of the vectors (VER-040); fails on any disagreement. Its own tests
 # first: the harness must report a difference it is shown.
 cargo test --manifest-path crosscheck/Cargo.toml
@@ -609,8 +609,8 @@ cargo xtask changelog check
 cargo xtask trace --scope m0 --strict
 # M1 is closed: every in-scope requirement must keep an artefact (VER-020, m1 plan D8).
 cargo xtask trace --scope m1 --strict
-# M2 is open: its trace is reported, and becomes --strict at the M2 exit (m2 plan D1).
-cargo xtask trace --scope m2
+# M2 is closed: every in-scope requirement must keep an artefact (VER-020, m2 plan D1).
+cargo xtask trace --scope m2 --strict
 # C0 is open: its trace is reported, and becomes --strict at the C0 exit (c0 plan D17).
 cargo xtask trace --scope c0
 ";

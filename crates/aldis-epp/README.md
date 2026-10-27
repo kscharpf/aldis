@@ -2,7 +2,7 @@
 
 Codec for the CCSDS 133.1-B-3 Encapsulation Packet Protocol: decoding and encoding Encapsulation Packets with all four header lengths, idle packets, and the managed parameters.
 
-**Status:** implemented in Milestone 1, release `v0.2.0-m1` ([plan](../../docs/milestones/m1-packets-time.md)). The C ABI functions for this crate follow in Milestone 2, work package 0 ([roadmap](../../docs/08-roadmap.md) §1, OI-21).
+**Status:** implemented in Milestone 1, release `v0.2.0-m1` ([plan](../../docs/milestones/m1-packets-time.md)); C ABI functions `aldis_epp_*` implemented in Milestone 2 in `aldis-ffi` ([M2 plan](../../docs/milestones/m2-frame-codecs.md) WP-0c, release `v0.3.0-m2`).
 
 ## Where it sits
 

@@ -758,7 +758,8 @@ pub unsafe extern "C" fn aldis_tm_decode(
 /// # Errors
 /// As [`aldis_tm_decode`], with, after the version check, `ALDIS_ERR_UNKNOWN_CHANNEL`
 /// (`spacecraft_id`, with the configured and found SCID, or `vc_id`) for a channel `mc` does not
-/// configure; the errors of [`aldis_tm_mc_config_check`].
+/// configure; in strict mode, `ALDIS_ERR_INVALID_FIELD` (`vc_id`) for an Only Idle Data frame on
+/// an SDLS VC (OI-54); the errors of [`aldis_tm_mc_config_check`].
 ///
 /// # Safety
 /// `bytes` is valid for `len` octets (or `NULL` with 0); `mc` and `vcs` as for
@@ -871,10 +872,11 @@ pub unsafe extern "C" fn aldis_tm_decode_unchecked_with(
 /// master channel always uses its layouts (c-abi.md §11).
 ///
 /// # Errors
-/// The errors of [`aldis_tm_decode_with`]; then, in this order, each with the configured and
-/// the found value: `ALDIS_ERR_INVALID_FIELD` (`ocf_flag`, `fsh_flag`, `sync_flag`) for a flag
-/// that disagrees with the configuration, and `ALDIS_ERR_LENGTH_MISMATCH` (`fsh_len`) for
-/// another Secondary Header length.
+/// The errors of [`aldis_tm_decode_with`]; `ALDIS_ERR_INVALID_FIELD` (`vc_id`) for an Only Idle
+/// Data frame on an SDLS VC (OI-54); then, in this order, each with the configured and the found
+/// value: `ALDIS_ERR_INVALID_FIELD` (`ocf_flag`, `fsh_flag`, `sync_flag`) for a flag that
+/// disagrees with the configuration, and `ALDIS_ERR_LENGTH_MISMATCH` (`fsh_len`) for another
+/// Secondary Header length.
 ///
 /// # Safety
 /// As [`aldis_tm_decode_with`], without `out`.

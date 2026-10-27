@@ -20,7 +20,7 @@ Libraries that add CCSDS protocol support to spacecraft flight software and grou
 |---|---|
 | M0 Foundations (`v0.1.0-m0`) | Released: the specification, the verification tooling, and `aldis-core` (Layer 0) |
 | M1 Packets and time (`v0.2.0-m1`) | Released: the Layer 1 codecs for time codes, Space Packets, and Encapsulation Packets (`aldis-time`, `aldis-spp`, `aldis-epp`) |
-| M2 Frame codecs | In progress. The four frame codecs are implemented, each with its C ABI: TM (`aldis-tm`); TC with the CLCW, frame delimiting, and validation (`aldis-tc`); AOS in both editions with the Frame Header Error Control, the M_PDU, and the B_PDU (`aldis-aos`); USLP with truncated frames, delimiting, and validation (`aldis-uslp`). The remaining verification gates and the exit review are next |
+| M2 Frame codecs (`v0.3.0-m2`) | Released: the Layer 1 codecs for TM, TC, AOS, and USLP Transfer Frames (`aldis-tm`, `aldis-tc`, `aldis-aos`, `aldis-uslp`), each with its C ABI functions, the hazard analysis, and the assurance case |
 | M3–M6 | Not started: the Layer 2–3 crates (COP-1, link engines, framework) are skeletons |
 | C0 native C++ foundations | In progress |
 | A0 reference application scenario | In progress |

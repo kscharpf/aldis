@@ -1785,7 +1785,7 @@ fn proves() {}
                 ("kani".to_owned(), (false, true)),
                 ("rust-sparc-leon3".to_owned(), (false, false)),
             ]),
-            ci: set(&["loops", "trace --scope m2"]),
+            ci: set(&["loops", "trace --scope m2 --strict"]),
             jobs: set(&["bit-flips"]),
             fuzz: set(&["tc_decode"]),
             ois: BTreeMap::from([
@@ -1830,7 +1830,7 @@ fn proves() {}
             ("record", "VER-011", "VER-012"),
             ("check", "stack", "nope"),
             ("nightly-check", "kani", "nope"),
-            ("ci", "trace --scope m2", "trace --scope m9"),
+            ("ci", "trace --scope m2 --strict", "trace --scope m9"),
             ("job", "bit-flips", "nope"),
             ("fuzz", "tc_decode", "nope"),
             ("oi", "OI-45", "OI-99"),
@@ -2370,18 +2370,22 @@ fn proves() {}
     // req: VER-066, VER-065
     #[test]
     fn the_hazards_and_the_case_of_the_repository_have_no_problem() {
-        assert_eq!(run(false), Ok(0));
+        assert_eq!(run(true), Ok(0));
     }
 
     // req: VER-066
     #[test]
     fn the_check_runs_in_ci_and_in_the_verify_check_spec() {
-        assert!(crate::CI.iter().any(|(name, _)| *name == "assurance"));
+        assert!(
+            crate::CI
+                .iter()
+                .any(|(name, _)| *name == "assurance --strict")
+        );
         let spec = crate::verify::all_checks()
             .into_iter()
             .find(|c| c.name == "spec")
             .unwrap();
-        assert!(spec.script.contains("cargo xtask assurance"));
+        assert!(spec.script.contains("cargo xtask assurance --strict"));
         assert!(workflow_jobs("name: x\njobs:\n  a-b:\n    runs-on: x\n  c:\n").contains("a-b"));
         assert!(!workflow_jobs("  early:\njobs:\n  a:\n").contains("early"));
     }

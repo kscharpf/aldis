@@ -919,8 +919,10 @@ pub unsafe extern "C" fn aldis_uslp_vc_table_check(
 /// `ALDIS_ERR_INCOMPLETE` (`needed` 4) for a shorter prefix; `ALDIS_ERR_UNSUPPORTED_VERSION`
 /// (`frame_version`); for a truncated header `ALDIS_ERR_UNKNOWN_CHANNEL` (`spacecraft_id`,
 /// `vc_id`) or `ALDIS_ERR_INVALID_FIELD` (`end_of_frame_primary_header_flag`) for a VC without
-/// a truncated frame length; on a variable-length channel `ALDIS_ERR_INCOMPLETE` (`needed` 6);
-/// the errors of [`aldis_uslp_vc_table_check`] without MAPs; CABI-022 violations.
+/// a truncated frame length; for a non-truncated header on a configured VC with a truncated frame
+/// length, `ALDIS_ERR_INVALID_FIELD` (`end_of_frame_primary_header_flag`, OI-48); on a
+/// variable-length channel `ALDIS_ERR_INCOMPLETE` (`needed` 6); the errors of
+/// [`aldis_uslp_vc_table_check`] without MAPs; CABI-022 violations.
 ///
 /// # Safety
 /// `prefix` is valid for `prefix_len` octets (or `NULL` with 0); `pc` and `vcs` as for
@@ -966,9 +968,9 @@ pub unsafe extern "C" fn aldis_uslp_peek_length(
 /// `ALDIS_ERR_UNKNOWN_CHANNEL` (`spacecraft_id`, `vc_id`, `map_id`), `ALDIS_ERR_RESERVED_VALUE`
 /// (`protocol_control_command_flag`, and `uslp_header_spare` in strict mode),
 /// `ALDIS_ERR_LENGTH_MISMATCH` (`vcf_count_len`, `frame_len`), `ALDIS_ERR_CRC_MISMATCH`,
-/// `ALDIS_ERR_INVALID_FIELD` (`tfdz_construction_rule`, `frame_data_field`, and the OID header
-/// fields in strict mode), and `ALDIS_ERR_MALFORMED` (`fhp_lvo_pointer`); the errors of
-/// [`aldis_uslp_vc_table_check`]; CABI-022 violations.
+/// `ALDIS_ERR_INVALID_FIELD` (`end_of_frame_primary_header_flag`, `tfdz_construction_rule`,
+/// `frame_data_field`, and the OID header fields in strict mode), and `ALDIS_ERR_MALFORMED`
+/// (`fhp_lvo_pointer`); the errors of [`aldis_uslp_vc_table_check`]; CABI-022 violations.
 ///
 /// # Safety
 /// `bytes` is valid for `len` octets (or `NULL` with 0); `pc`, `vcs`, and `maps` as for
@@ -1074,7 +1076,8 @@ pub unsafe extern "C" fn aldis_uslp_validate(
 /// those of `docs/standards/uslp-frame.md` §3.3, in its order: `ALDIS_ERR_UNKNOWN_CHANNEL`
 /// (`spacecraft_id`, `vc_id`, `map_id`); `ALDIS_ERR_INVALID_FIELD` (`vc_id`) for VCID 63, whose
 /// frames [`aldis_uslp_encode_oid`] writes; `ALDIS_ERR_INVALID_FIELD`
-/// (`tfdz_construction_rule`); `ALDIS_ERR_OUT_OF_RANGE` (`vcf_count`); `ALDIS_ERR_INVALID_FIELD`
+/// (`end_of_frame_primary_header_flag`) for a VC with a truncated frame length (OI-48);
+/// `ALDIS_ERR_INVALID_FIELD` (`tfdz_construction_rule`); `ALDIS_ERR_OUT_OF_RANGE` (`vcf_count`); `ALDIS_ERR_INVALID_FIELD`
 /// (`ocf_flag`); `ALDIS_ERR_LENGTH_MISMATCH` (`insert_zone_len`); `ALDIS_ERR_INVALID_FIELD` and
 /// `ALDIS_ERR_LENGTH_MISMATCH` (`frame_data_field`); `ALDIS_ERR_OUT_OF_RANGE` (`frame_len`,
 /// `fhp_lvo_pointer`); `ALDIS_ERR_BUFFER_TOO_SMALL` (`needed` = frame length);

@@ -2,7 +2,7 @@
 
 Codec for the CCSDS 133.0-B-2 Space Packet Protocol: decoding, encoding, idle packets, sequence counting, the Octet String service, and segmentation of user data.
 
-**Status:** implemented in Milestone 1, release `v0.2.0-m1` ([plan](../../docs/milestones/m1-packets-time.md)). The C ABI functions for this crate follow in Milestone 2, work package 0 ([roadmap](../../docs/08-roadmap.md) §1, OI-21).
+**Status:** implemented in Milestone 1, release `v0.2.0-m1` ([plan](../../docs/milestones/m1-packets-time.md)); C ABI functions `aldis_spp_*` implemented in Milestone 2 in `aldis-ffi` ([M2 plan](../../docs/milestones/m2-frame-codecs.md) WP-0c, release `v0.3.0-m2`).
 
 ## Where it sits
 
