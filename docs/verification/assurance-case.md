@@ -230,7 +230,7 @@ graph TD
 
 | Evidence | Shows | Requirements |
 |---|---|---|
-| `record:GEN-022` | The inspections, one per crate, with each loop's bound, and how they are kept current (VER-061); their approval is pending for the M2 crates (`df:DF-4`) | GEN-022, GEN-023, VER-061 |
+| `record:GEN-022` | The inspections, one per crate, with each loop's bound, and how they are kept current (VER-061); all M2 crate inspections approved at the exit review (`df:DF-4`) | GEN-022, GEN-023, VER-061 |
 | `file:docs/verification/inspections/gen-022-023-aldis-tm.md`; `file:docs/verification/inspections/gen-022-023-aldis-tc.md`; `file:docs/verification/inspections/gen-022-023-aldis-aos.md`; `file:docs/verification/inspections/gen-022-023-aldis-uslp.md`; `file:docs/verification/inspections/gen-022-023-aldis-ffi.md` | The loop tables and call graphs of the M2 crates | GEN-022, GEN-023 |
 | `ci:loops`; `check:spec` | Every loop the scanner finds in library code is in its crate's table with a bound, and every loop a table names exists, on every commit | GEN-022 |
 | `proof:crates/aldis-core/src/proofs.rs::error_kind_lookup_is_bounded`; `nightly-check:kani`; `file:docs/verification/formal-proofs.md` | A machine proof of one loop's bound, and of the CRC and bit-field loops up to their input lengths; nightly only (`df:DF-2`) | GEN-022 |
@@ -277,10 +277,10 @@ graph TD
 
 | Evidence | Shows | Requirements |
 |---|---|---|
-| `record:VER-011`; `check:stack` | The worst case per entry point from `-Z emit-stack-sizes` and the complete call graph, against the budgets, gating; the measurements of 2026-10-25 and the functions over the Rust budget until OI-45 is decided (`df:DF-1`) | VER-011 |
+| `record:VER-011`; `check:stack` | The worst case per entry point from `-Z emit-stack-sizes` and the complete call graph, against the budgets, gating; channel table stack use decided per OI-45 (`df:DF-1`) | VER-011 |
 | `file:xtask/stack-budgets.toml` | The budgets (4 096 bytes Rust, 10 240 bytes C ABI, every target) and the stated exemptions | VER-011 |
 | `job:stack-sizes` | The per-target table published every night, and for the release | VER-011 |
-| `oi:OI-45` | The open question of the channel tables' stack | VER-011, GEN-012 |
+| `oi:OI-45` | The channel tables' stack use decided per option (d) | VER-011, GEN-012 |
 
 ### AC-4.3 Outputs stay within their buffers and the data unit
 
@@ -487,10 +487,10 @@ What weakens the case now. A defeater is `open` until what it names is done; `ca
 
 | ID | Defeater | Weakens | References | Status |
 |---|---|---|---|---|
-| DF-1 | The channel tables' stack is undecided: the Rust budget is 4 096 bytes until the maintainer decides, and the largest C ABI function needs about 8.6 KB | `ac:AC-4.2` | `oi:OI-45`; `record:VER-011` | `open` |
+| DF-1 | The channel tables' stack use is decided (OI-45 option (d)): the budgets are 4 096 bytes (Rust) and 10 240 bytes (C ABI), documented in record:VER-011; integrators bound task stacks to hold them | `ac:AC-4.2` | `oi:OI-45`; `record:VER-011` | `closed` |
 | DF-2 | The Kani proofs run only at night and are not gating; the method for proven requirements is open | `ac:AC-3.1` | `oi:OI-42`; `nightly-check:kani` | `open` |
 | DF-3 | The one CPU-hour per fuzz target of VER-022 is due before the release; the nightly runs give 600 s per target | `ac:AC-2.3` | `record:VER-022`; `job:fuzz` | `open` |
-| DF-4 | The GEN-022/023 inspections of `aldis-tm`, `aldis-tc`, `aldis-uslp`, and `aldis-ffi` are prepared and pending the exit review (VER-061) | `ac:AC-3.1`; `ac:AC-3.3` | `record:VER-061`; `file:docs/verification/inspections/gen-022-023-aldis-tc.md` | `open` |
+| DF-4 | The GEN-022/023 inspections of all crates changed in M2 (aldis-core, aldis-time, aldis-epp, aldis-spp, aldis-tm, aldis-tc, aldis-aos, aldis-uslp, and aldis-ffi) are approved at the M2 exit review (VER-061) | `ac:AC-3.1`; `ac:AC-3.3` | `record:VER-061`; `file:docs/verification/inspections/gen-022-023-aldis-tc.md` | `closed` |
 | DF-5 | The verification records are git notes without a signature; the signed evidence of #107 is parked | `ac:AC-7.1` | `gh:#110` | `open` |
 | DF-6 | The shipped `aldis-ffi` static library is built without LTO, so the link check of VER-010, made on the exerciser's LTO build, does not cover it as shipped; a panic that reaches its handler traps (OI-49, `proposal:P-X-02`, implemented) instead of spinning, and a check of its panic paths is `proposal:P-X-01` | `ac:AC-2.1` | `gh:#114`; `hz:HZ-X-02` | `open` |
 | DF-7 | No check runs `aldis-ffi` under Miri, which GEN-071 requires; it was run once by hand in WP-0c; the C harness with sanitizers is M5's | `ac:AC-6.2` | `gh:#71` | `open` |
