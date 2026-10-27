@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Install the C++ toolchains pinned in cpp/toolchains.lock (c0 plan D1, D2; CPP-001, CPP-003).
+"""Install the toolchains pinned in toolchains.lock.
 
 Every archive is verified against its SHA-256 before it is unpacked, every apt package is
 installed at its exact locked version (QEMU: upstream version asserted, see the lock file), and
@@ -15,11 +15,11 @@ commands:
   versions TOOL...     check the versions of tools already installed and on PATH (the
                        verification image, VER-056)
 
-tools: llvm gcc gcc-s390x arm-gnu riscv-gnu bcc2 cmake ninja qemu codeql, or "all" for every
+tools: llvm gcc gcc-s390x qemu, or "all" for every
 tool the lock file provides for this host's architecture.
 
 On GitHub Actions the tools' bin directories are appended to $GITHUB_PATH and their roots
-exported through $GITHUB_ENV (ALDIS_LLVM_ROOT, ALDIS_ARM_GNU_ROOT, ...).
+exported through $GITHUB_ENV (ALDIS_LLVM_ROOT, ...).
 """
 
 from __future__ import annotations
@@ -228,7 +228,7 @@ def fetch(url: str, expected: str, dest_dir: Path) -> Path:
         partial.unlink()
         raise Failure(
             f"checksum mismatch for {url}: expected {expected}, got {actual} "
-            "(cpp/toolchains.lock is the reference; never update it without checking the source)"
+            "(toolchains.lock is the reference; never update it without checking the source)"
         )
     partial.replace(path)
     return path
@@ -333,7 +333,7 @@ def install(selected: list[Tool], lock: dict[str, str], arch: str, downloads: Pa
         env = {tool.env: str(dest)} if tool.env else {}
         export([(dest / tool.bin_dir).resolve()], env)
     report = [line for tool in selected for line in check_versions(tool, lock)]
-    print("setup-cpp: installed versions (all match cpp/toolchains.lock)")
+    print("setup-cpp: installed versions (all match toolchains.lock)")
     for line in report:
         print(f"  {line}")
 
@@ -364,7 +364,7 @@ def main(argv: list[str]) -> int:
                     print(f"{tool.name}={arch.lower()}-{'-'.join(shas)}")
             return 0
         if args.command == "versions":
-            print("setup-cpp: versions on PATH (all match cpp/toolchains.lock)")
+            print("setup-cpp: versions on PATH (all match toolchains.lock)")
             for line in (line for tool in selected for line in check_versions(tool, lock)):
                 print(f"  {line}")
             return 0
