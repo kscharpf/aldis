@@ -1,10 +1,11 @@
 //! `xtask fuzz`: run fuzz targets (VER-022, VER-056).
 //!
 //! `cargo xtask fuzz smoke` builds the fuzz target binaries and executes each one with
-//! `-runs=1 -max_total_time=2` (passing `fuzz/corpus/<target>` when that directory exists)
-//! to catch broken or stale assertions quickly before merge.
+//! `-runs=1 -max_total_time=2` (passing `fuzz/corpus/<target>` and `fuzz/artifacts/<target>`
+//! when those directories exist) to catch broken or stale assertions quickly before merge.
 
 use std::collections::BTreeSet;
+use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -12,9 +13,9 @@ use crate::consistency::bin_targets;
 use crate::repo;
 
 /// Arguments passed to the target binary for a smoke run.
-pub(crate) fn fuzz_args(corpus_dir: Option<&Path>) -> Vec<String> {
+pub(crate) fn fuzz_args(seed_dirs: &[&Path]) -> Vec<String> {
     let mut args = Vec::new();
-    if let Some(dir) = corpus_dir {
+    for dir in seed_dirs {
         args.push(dir.to_string_lossy().into_owned());
     }
     args.push("-runs=1".to_owned());
@@ -22,16 +23,26 @@ pub(crate) fn fuzz_args(corpus_dir: Option<&Path>) -> Vec<String> {
     args
 }
 
+/// Resolves the fuzz build target directory, anchoring relative paths to repository root.
+pub(crate) fn resolve_target_dir(raw: Option<&OsStr>) -> PathBuf {
+    raw.map_or_else(
+        || repo::root().join("fuzz/target"),
+        |dir| {
+            let path = PathBuf::from(dir);
+            if path.is_absolute() {
+                path
+            } else {
+                repo::root().join(path)
+            }
+        },
+    )
+}
+
 /// Path to the compiled fuzz target binary.
 pub(crate) fn target_binary_path(target: &str) -> PathBuf {
     let name = format!("{target}{}", std::env::consts::EXE_SUFFIX);
-    if let Some(target_dir) = std::env::var_os("CARGO_TARGET_DIR") {
-        let path = PathBuf::from(target_dir).join("debug").join(&name);
-        if path.exists() {
-            return path;
-        }
-    }
-    repo::root().join("fuzz/target/debug").join(name)
+    let target_dir = resolve_target_dir(std::env::var_os("CARGO_TARGET_DIR").as_deref());
+    target_dir.join("debug").join(name)
 }
 
 /// Builds the requested fuzz target binaries.
@@ -76,12 +87,14 @@ pub fn smoke(targets: &[&str]) -> Result<usize, String> {
     let selected: Vec<String> = if targets.is_empty() {
         all_targets.iter().cloned().collect()
     } else {
+        let mut set = BTreeSet::new();
         for t in targets {
             if !all_targets.contains(*t) {
                 return Err(format!("unknown fuzz target: {t}"));
             }
+            set.insert((*t).to_owned());
         }
-        targets.iter().map(|s| (*s).to_owned()).collect()
+        set.into_iter().collect()
     };
 
     build_targets(&selected, all_targets.len())?;
@@ -90,14 +103,18 @@ pub fn smoke(targets: &[&str]) -> Result<usize, String> {
     for target in &selected {
         let bin = target_binary_path(target);
         let corpus_dir = root.join("fuzz/corpus").join(target);
-        let corpus_arg = if corpus_dir.is_dir() {
-            Some(corpus_dir.as_path())
-        } else {
-            None
-        };
-        let args = fuzz_args(corpus_arg);
+        let artifacts_dir = root.join("fuzz/artifacts").join(target);
+        let mut seed_dirs = Vec::new();
+        if corpus_dir.is_dir() {
+            seed_dirs.push(corpus_dir.as_path());
+        }
+        if artifacts_dir.is_dir() {
+            seed_dirs.push(artifacts_dir.as_path());
+        }
+        let args = fuzz_args(&seed_dirs);
         let output = Command::new(&bin)
             .current_dir(&root)
+            .env("RUST_BACKTRACE", "1")
             .args(&args)
             .output()
             .map_err(|e| format!("failed to run {}: {e}", bin.display()))?;
@@ -139,14 +156,20 @@ mod tests {
     // req: VER-022, VER-056
     #[test]
     fn fuzz_args_contain_runs_and_timeout() {
-        let without_corpus = fuzz_args(None);
+        let without_corpus = fuzz_args(&[]);
         assert_eq!(without_corpus, ["-runs=1", "-max_total_time=2"]);
 
         let corpus = Path::new("fuzz/corpus/bits_roundtrip");
-        let with_corpus = fuzz_args(Some(corpus));
+        let artifacts = Path::new("fuzz/artifacts/bits_roundtrip");
+        let with_both = fuzz_args(&[corpus, artifacts]);
         assert_eq!(
-            with_corpus,
-            ["fuzz/corpus/bits_roundtrip", "-runs=1", "-max_total_time=2"]
+            with_both,
+            [
+                "fuzz/corpus/bits_roundtrip",
+                "fuzz/artifacts/bits_roundtrip",
+                "-runs=1",
+                "-max_total_time=2"
+            ]
         );
     }
 
@@ -159,6 +182,23 @@ mod tests {
             path.file_name().and_then(|n| n.to_str()),
             Some(expected_name.as_str())
         );
+    }
+
+    // req: VER-022, VER-056
+    #[test]
+    fn resolve_target_dir_handles_none_relative_and_absolute() {
+        let root = repo::root();
+        assert_eq!(resolve_target_dir(None), root.join("fuzz/target"));
+        assert_eq!(
+            resolve_target_dir(Some(OsStr::new("custom/target"))),
+            root.join("custom/target")
+        );
+        let abs = if cfg!(windows) {
+            PathBuf::from(r"C:\abs\target")
+        } else {
+            PathBuf::from("/abs/target")
+        };
+        assert_eq!(resolve_target_dir(Some(abs.as_os_str())), abs);
     }
 
     // req: VER-022
