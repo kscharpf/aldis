@@ -70,7 +70,7 @@ gh workflow run verify.yml --ref <branch>   # or "Run workflow" on the Actions t
 gh run watch                                # then: cargo xtask verify check
 ```
 
-`cargo xtask verify` refuses a dirty working tree, runs in a fresh checkout of HEAD (`cargo xtask verify list` names the checks; `--only <check>,...` runs a subset while working, which never passes the gate), and runs on one machine wait for each other. A record is tied to the commit's tree, so any new commit—including a merge from `main`—needs a new run. If `main` moves during a passing run, `--publish` still publishes the record for reuse, but sets no `aldis/verify` status: merge `main` and verify again (see [docs/06-verification.md](docs/06-verification.md) §7 for container engine memory and disk setup).
+`cargo xtask verify` refuses a dirty working tree, runs in a fresh checkout of HEAD (`cargo xtask verify list` names the checks; `--only <check>,...` runs a subset while working, which never passes the gate), and runs on one machine wait for each other. A record is tied to the commit's tree, so any new commit—including a merge from `main`—needs a new run. If `main` moves during a passing run, `--publish` still publishes the record for reuse, but sets no `aldis/verify` status: merge `main` and verify again (see [docs/06-verification.md](docs/06-verification.md) §7 for container engine memory and disk setup). Source `scripts/agent-env.sh` to configure the agent environment (`NO_COLOR=1`, `GH_FORCE_TTY=0`, `GH_NO_UPDATE_NOTIFIER=1`, and `gh run-status`).
 
 While you work, run these. All must pass with **zero warnings**:
 
@@ -106,6 +106,8 @@ Clippy runs with the `all` and `pedantic` groups denied, plus restriction lints 
 - **Field codes** come from the catalogue of [docs/03-api-model.md](docs/03-api-model.md) §9.1; `cargo xtask fields` checks the per-crate and common blocks.
 - **C ABI names** use the `aldis_` / `ALDIS_` prefix ([docs/profiles/c-abi.md](docs/profiles/c-abi.md)).
 - **Agent comments:** end every comment or review an agent posts on GitHub with the line `🤖 Generated with [Claude Code](https://claude.com/claude-code)`. Agents post under the maintainer's account, and `cargo xtask metrics` tells their words apart by this marker.
+- **Search boundaries:** confine all file and text searches strictly to the active repository workspace; prefer git-aware search tools (`git grep`, `git ls-files`) over recursive filesystem walks (`grep -r`, `find .`). Never inspect external application or cache directories (e.g. `~/.gemini/`, `~/.cache`), `.git/`, or internal session worktrees (`.claude/`).
+- **GitHub CLI queries:** always query GitHub CLI commands with structured output flags (`--json` or `-q`), never raw interactive commands (e.g. use `gh run view --json status,conclusion,jobs` or `gh run list --workflow= -L 1`).
 - **Spec changes:** when behavior changes, update the requirement table in the same change. New requirements get the next free ID in their area; IDs are never reused.
 
 ## Where things go
