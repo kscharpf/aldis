@@ -176,11 +176,14 @@ impl FieldId {
 
     /// The catalogued field with code `code`, or `None` for 0 and codes the catalogue does not
     /// have (API-082, CABI-021): the counterpart of [`ErrorKind::from_code`] for a code that
-    /// crossed the C ABI. Code `n` is `field::ALL[n - 1]`, since codes run from 1 in order.
+    /// crossed the C ABI.
     #[must_use]
     pub fn from_code(code: u16) -> Option<FieldId> {
-        let index = usize::from(code).checked_sub(1)?;
-        crate::field::ALL.get(index).copied()
+        let code = NonZeroU16::new(code)?;
+        crate::field::ALL
+            .binary_search_by_key(&code, |f| f.code())
+            .ok()
+            .and_then(|index| crate::field::ALL.get(index).copied())
     }
 }
 
@@ -481,9 +484,11 @@ mod tests {
     #[test]
     fn field_codes_are_the_catalogue() {
         // req: API-082, GEN-041
-        // Codes run from 1 in order with no gap, as `cargo xtask fields` checks the table.
+        // Codes run in strictly increasing order, as `cargo xtask fields` checks the table.
         for (i, f) in field::ALL.into_iter().enumerate() {
-            assert_eq!(usize::from(f.code().get()), i + 1);
+            if i > 0 {
+                assert!(field::ALL[i - 1].code() < f.code());
+            }
         }
         assert_eq!(field::SPACECRAFT_ID.code().get(), 1);
         assert_eq!(field::APID.code().get(), 5);
@@ -505,8 +510,8 @@ mod tests {
         }
         assert_eq!(FieldId::from_code(5).map(FieldId::name), Some("apid"));
         assert_eq!(FieldId::from_code(0), None);
-        let past = u16::try_from(field::ALL.len() + 1).unwrap();
-        assert_eq!(FieldId::from_code(past), None);
+        // Code 107 is in the common block and unassigned
+        assert_eq!(FieldId::from_code(107), None);
         assert_eq!(FieldId::from_code(u16::MAX), None);
     }
 

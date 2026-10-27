@@ -6,7 +6,7 @@
 //! integer casts are used (VER-001 exception, each justified with `#[expect]`).
 //!
 //! A field is addressed by its bit offset from the start of the buffer and its width in bits
-//! (1–64). Every function is total: out-of-range arguments return [`ErrorKind::OutOfRange`](crate::error::ErrorKind::OutOfRange)
+//! (1–64). Every function is total: out-of-range arguments return [`ErrorKind::OutOfRange`]
 //! and never panic (GEN-020).
 
 use crate::error::{Error, ErrorKind, Result, as_u64};

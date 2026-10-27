@@ -557,6 +557,81 @@ pub const ALDIS_FIELD_BPDU_SPARE: u16 = 105;
 /// Code 106, a field (732.0 §4.1.4.3.3; API-082, CABI-021).
 pub const ALDIS_FIELD_BITSTREAM_DATA_POINTER: u16 = 106;
 
+/// Transmitter Frame Sequence Number V(S).
+///
+/// Code 150, a parameter (232.1 §5.1.8; API-082, CABI-021).
+pub const ALDIS_FIELD_V_S: u16 = 150;
+
+/// Receiver Frame Sequence Number V(R).
+///
+/// Code 151, a parameter (232.1 §6.1.8.1; API-082, CABI-021).
+pub const ALDIS_FIELD_V_R: u16 = 151;
+
+/// Expected Acknowledgement Frame Sequence Number NN(R).
+///
+/// Code 152, a parameter (232.1 §5.1.8; API-082, CABI-021).
+pub const ALDIS_FIELD_NN_R: u16 = 152;
+
+/// FOP-1 Sliding Window Width K.
+///
+/// Code 153, a parameter (232.1 §5.1.8, §7.2 Table 7-1; API-082, CABI-021).
+pub const ALDIS_FIELD_SLIDING_WINDOW_K: u16 = 153;
+
+/// FARM-1 Sliding Window Width W.
+///
+/// Code 154, a parameter (232.1 §6.1.8.2, §7.3 Table 7-2; API-082, CABI-021).
+pub const ALDIS_FIELD_FARM_SLIDING_WINDOW_W: u16 = 154;
+
+/// FARM-1 Positive Window Width PW.
+///
+/// Code 155, a parameter (232.1 §6.1.8.3, §7.3 Table 7-2; API-082, CABI-021).
+pub const ALDIS_FIELD_FARM_POSITIVE_WINDOW_PW: u16 = 155;
+
+/// FARM-1 Negative Window Width NW.
+///
+/// Code 156, a parameter (232.1 §6.1.8.3, §7.3 Table 7-2; API-082, CABI-021).
+pub const ALDIS_FIELD_FARM_NEGATIVE_WINDOW_NW: u16 = 156;
+
+/// FOP-1 Initial Timer T1 Duration.
+///
+/// Code 157, a parameter (232.1 §5.1.9.1, §7.2 Table 7-1; API-082, CABI-021).
+pub const ALDIS_FIELD_T1_INITIAL: u16 = 157;
+
+/// FOP-1 Transmission Limit.
+///
+/// Code 158, a parameter (232.1 §5.1.9.2, §7.2 Table 7-1; API-082, CABI-021).
+pub const ALDIS_FIELD_TRANSMISSION_LIMIT: u16 = 158;
+
+/// FOP-1 Timeout Type (TT0 or TT1).
+///
+/// Code 159, a parameter (232.1 §5.1.9.1, §7.2 Table 7-1; API-082, CABI-021).
+pub const ALDIS_FIELD_TIMEOUT_TYPE: u16 = 159;
+
+/// FOP-1 Suspend State (SS = 0..4).
+///
+/// Code 160, a parameter (232.1 §5.1.11; API-082, CABI-021).
+pub const ALDIS_FIELD_SUSPEND_STATE: u16 = 160;
+
+/// FOP-1 AD Repetitions.
+///
+/// Code 161, a parameter (232.1 §5.1.9.3, §7.2 Table 7-1; API-082, CABI-021).
+pub const ALDIS_FIELD_AD_REPETITIONS: u16 = 161;
+
+/// FOP-1 BC Repetitions.
+///
+/// Code 162, a parameter (232.1 §5.1.9.3, §7.2 Table 7-1; API-082, CABI-021).
+pub const ALDIS_FIELD_BC_REPETITIONS: u16 = 162;
+
+/// Identifier of a FOP-1 directive.
+///
+/// Code 163, a parameter (232.1 §4.2; API-082, CABI-021).
+pub const ALDIS_FIELD_DIRECTIVE_ID: u16 = 163;
+
+/// Identifier of a FOP-1 transfer request.
+///
+/// Code 164, a parameter (232.1 §4.4; API-082, CABI-021).
+pub const ALDIS_FIELD_REQUEST_ID: u16 = 164;
+
 // Each code is the code of its `aldis_core::field` constant (API-082).
 const _: () = {
     assert!(ALDIS_FIELD_SPACECRAFT_ID == field::SPACECRAFT_ID.code().get());
@@ -671,4 +746,19 @@ const _: () = {
     assert!(ALDIS_FIELD_MPDU_SPARE == field::MPDU_SPARE.code().get());
     assert!(ALDIS_FIELD_BPDU_SPARE == field::BPDU_SPARE.code().get());
     assert!(ALDIS_FIELD_BITSTREAM_DATA_POINTER == field::BITSTREAM_DATA_POINTER.code().get());
+    assert!(ALDIS_FIELD_V_S == field::V_S.code().get());
+    assert!(ALDIS_FIELD_V_R == field::V_R.code().get());
+    assert!(ALDIS_FIELD_NN_R == field::NN_R.code().get());
+    assert!(ALDIS_FIELD_SLIDING_WINDOW_K == field::SLIDING_WINDOW_K.code().get());
+    assert!(ALDIS_FIELD_FARM_SLIDING_WINDOW_W == field::FARM_SLIDING_WINDOW_W.code().get());
+    assert!(ALDIS_FIELD_FARM_POSITIVE_WINDOW_PW == field::FARM_POSITIVE_WINDOW_PW.code().get());
+    assert!(ALDIS_FIELD_FARM_NEGATIVE_WINDOW_NW == field::FARM_NEGATIVE_WINDOW_NW.code().get());
+    assert!(ALDIS_FIELD_T1_INITIAL == field::T1_INITIAL.code().get());
+    assert!(ALDIS_FIELD_TRANSMISSION_LIMIT == field::TRANSMISSION_LIMIT.code().get());
+    assert!(ALDIS_FIELD_TIMEOUT_TYPE == field::TIMEOUT_TYPE.code().get());
+    assert!(ALDIS_FIELD_SUSPEND_STATE == field::SUSPEND_STATE.code().get());
+    assert!(ALDIS_FIELD_AD_REPETITIONS == field::AD_REPETITIONS.code().get());
+    assert!(ALDIS_FIELD_BC_REPETITIONS == field::BC_REPETITIONS.code().get());
+    assert!(ALDIS_FIELD_DIRECTIVE_ID == field::DIRECTIVE_ID.code().get());
+    assert!(ALDIS_FIELD_REQUEST_ID == field::REQUEST_ID.code().get());
 };

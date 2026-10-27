@@ -530,6 +530,81 @@
       "code": 106,
       "name": "bitstream_data_pointer",
       "kind": "field"
+    },
+    {
+      "code": 150,
+      "name": "v_s",
+      "kind": "parameter"
+    },
+    {
+      "code": 151,
+      "name": "v_r",
+      "kind": "parameter"
+    },
+    {
+      "code": 152,
+      "name": "nn_r",
+      "kind": "parameter"
+    },
+    {
+      "code": 153,
+      "name": "sliding_window_k",
+      "kind": "parameter"
+    },
+    {
+      "code": 154,
+      "name": "farm_sliding_window_w",
+      "kind": "parameter"
+    },
+    {
+      "code": 155,
+      "name": "farm_positive_window_pw",
+      "kind": "parameter"
+    },
+    {
+      "code": 156,
+      "name": "farm_negative_window_nw",
+      "kind": "parameter"
+    },
+    {
+      "code": 157,
+      "name": "t1_initial",
+      "kind": "parameter"
+    },
+    {
+      "code": 158,
+      "name": "transmission_limit",
+      "kind": "parameter"
+    },
+    {
+      "code": 159,
+      "name": "timeout_type",
+      "kind": "parameter"
+    },
+    {
+      "code": 160,
+      "name": "suspend_state",
+      "kind": "parameter"
+    },
+    {
+      "code": 161,
+      "name": "ad_repetitions",
+      "kind": "parameter"
+    },
+    {
+      "code": 162,
+      "name": "bc_repetitions",
+      "kind": "parameter"
+    },
+    {
+      "code": 163,
+      "name": "directive_id",
+      "kind": "parameter"
+    },
+    {
+      "code": 164,
+      "name": "request_id",
+      "kind": "parameter"
     }
   ]
 }

@@ -218,7 +218,7 @@ The table is the registry. `cargo xtask fields --write` generates from it the Ru
 | Code | Name | Kind | Meaning | Used by | Defined by |
 |---|---|---|---|---|---|
 | 1 | `spacecraft_id` | field | Spacecraft Identifier | core, tm, tc, uslp, aos | 132.0 §4.1.2.2.3; 232.0 §4.1.2.5; 732.0 §4.1.2.2.3; 732.1 §4.1.2.2.3 |
-| 2 | `vc_id` | field | Virtual Channel Identifier | core, tm, tc, uslp, aos | 132.0 §4.1.2.3; 232.0 §4.1.2.6; 732.0 §4.1.2.3; 732.1 §4.1.2.4 |
+| 2 | `vc_id` | field | Virtual Channel Identifier | core, tm, tc, uslp, aos, cop1 | 132.0 §4.1.2.3; 232.0 §4.1.2.6; 732.0 §4.1.2.3; 732.1 §4.1.2.4 |
 | 3 | `map_id` | field | Multiplexer Access Point Identifier | core, tc, uslp | 232.0 §4.1.3.2.2.3; 732.1 §4.1.2.5 |
 | 4 | `packet_version` | field | Packet Version Number | core, spp, epp | 133.0 §4.1.3.2; 133.1 §4.1.2.2 |
 | 5 | `apid` | field | Application Process Identifier | core, spp | 133.0 §4.1.3.3.4 |
@@ -304,7 +304,7 @@ The table is the registry. `cargo xtask fields --write` generates from it the Ru
 | 85 | `cop_in_effect` | field | COP in Effect of the CLCW, bits 6–7 | tc | 232.0 §4.2.1.5 |
 | 86 | `clcw_spare_14_15` | field | Reserved Spare of the CLCW, bits 14–15 | tc | 232.0 §4.2.1.7 |
 | 87 | `clcw_spare_23` | field | Reserved Spare of the CLCW, bit 23 | tc | 232.0 §4.2.1.10 |
-| 88 | `farm_b_counter` | field | FARM-B Counter of the CLCW, bits 21–22 | tc | 232.0 §4.2.1.9 |
+| 88 | `farm_b_counter` | field | FARM-B Counter of the CLCW, bits 21–22 | tc, cop1 | 232.0 §4.2.1.9 |
 | 89 | `protocol_control_command_flag` | field | Protocol Control Command Flag of the USLP Primary Header, read with the Bypass/Sequence Control Flag as Table 4-1 | uslp | 732.1 §4.1.2.8.2, Table 4-1 |
 | 90 | `uslp_header_spare` | field | Reserve Spares of the USLP Primary Header, bits 50–51 | uslp | 732.1 §4.1.2.9 |
 | 91 | `end_of_frame_primary_header_flag` | field | End of Frame Primary Header Flag: a truncated Primary Header | uslp | 732.1 §4.1.2.6; Annex D1.3 |
@@ -323,3 +323,18 @@ The table is the registry. `cargo xtask fields --write` generates from it the Ru
 | 104 | `mpdu_spare` | field | Reserved Spare of the `M_PDU` Header, bits 0–4, in Issue 4 and earlier | aos | 732.0-B-4 §4.1.4.2.2 |
 | 105 | `bpdu_spare` | field | Reserved Spare of the `B_PDU` Header, bits 0–1 | aos | 732.0 §4.1.4.3.2 |
 | 106 | `bitstream_data_pointer` | field | Bitstream Data Pointer of the `B_PDU` Header | aos | 732.0 §4.1.4.3.3 |
+| 150 | `v_s` | parameter | Transmitter Frame Sequence Number V(S) | cop1 | 232.1 §5.1.8 |
+| 151 | `v_r` | parameter | Receiver Frame Sequence Number V(R) | cop1 | 232.1 §6.1.8.1 |
+| 152 | `nn_r` | parameter | Expected Acknowledgement Frame Sequence Number NN(R) | cop1 | 232.1 §5.1.8 |
+| 153 | `sliding_window_k` | parameter | FOP-1 Sliding Window Width K | cop1 | 232.1 §5.1.8, §7.2 Table 7-1 |
+| 154 | `farm_sliding_window_w` | parameter | FARM-1 Sliding Window Width W | cop1 | 232.1 §6.1.8.2, §7.3 Table 7-2 |
+| 155 | `farm_positive_window_pw` | parameter | FARM-1 Positive Window Width PW | cop1 | 232.1 §6.1.8.3, §7.3 Table 7-2 |
+| 156 | `farm_negative_window_nw` | parameter | FARM-1 Negative Window Width NW | cop1 | 232.1 §6.1.8.3, §7.3 Table 7-2 |
+| 157 | `t1_initial` | parameter | FOP-1 Initial Timer T1 Duration | cop1 | 232.1 §5.1.9.1, §7.2 Table 7-1 |
+| 158 | `transmission_limit` | parameter | FOP-1 Transmission Limit | cop1 | 232.1 §5.1.9.2, §7.2 Table 7-1 |
+| 159 | `timeout_type` | parameter | FOP-1 Timeout Type (TT0 or TT1) | cop1 | 232.1 §5.1.9.1, §7.2 Table 7-1 |
+| 160 | `suspend_state` | parameter | FOP-1 Suspend State (SS = 0..4) | cop1 | 232.1 §5.1.11 |
+| 161 | `ad_repetitions` | parameter | FOP-1 AD Repetitions | cop1 | 232.1 §5.1.9.3, §7.2 Table 7-1 |
+| 162 | `bc_repetitions` | parameter | FOP-1 BC Repetitions | cop1 | 232.1 §5.1.9.3, §7.2 Table 7-1 |
+| 163 | `directive_id` | parameter | Identifier of a FOP-1 directive | cop1 | 232.1 §4.2 |
+| 164 | `request_id` | parameter | Identifier of a FOP-1 transfer request | cop1 | 232.1 §4.4 |

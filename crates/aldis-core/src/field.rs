@@ -562,8 +562,83 @@ pub const BPDU_SPARE: FieldId = FieldId::catalogued::<105>("bpdu_spare");
 /// Code 106, a field (732.0 §4.1.4.3.3; API-082).
 pub const BITSTREAM_DATA_POINTER: FieldId = FieldId::catalogued::<106>("bitstream_data_pointer");
 
+/// Transmitter Frame Sequence Number V(S).
+///
+/// Code 150, a parameter (232.1 §5.1.8; API-082).
+pub const V_S: FieldId = FieldId::catalogued::<150>("v_s");
+
+/// Receiver Frame Sequence Number V(R).
+///
+/// Code 151, a parameter (232.1 §6.1.8.1; API-082).
+pub const V_R: FieldId = FieldId::catalogued::<151>("v_r");
+
+/// Expected Acknowledgement Frame Sequence Number NN(R).
+///
+/// Code 152, a parameter (232.1 §5.1.8; API-082).
+pub const NN_R: FieldId = FieldId::catalogued::<152>("nn_r");
+
+/// FOP-1 Sliding Window Width K.
+///
+/// Code 153, a parameter (232.1 §5.1.8, §7.2 Table 7-1; API-082).
+pub const SLIDING_WINDOW_K: FieldId = FieldId::catalogued::<153>("sliding_window_k");
+
+/// FARM-1 Sliding Window Width W.
+///
+/// Code 154, a parameter (232.1 §6.1.8.2, §7.3 Table 7-2; API-082).
+pub const FARM_SLIDING_WINDOW_W: FieldId = FieldId::catalogued::<154>("farm_sliding_window_w");
+
+/// FARM-1 Positive Window Width PW.
+///
+/// Code 155, a parameter (232.1 §6.1.8.3, §7.3 Table 7-2; API-082).
+pub const FARM_POSITIVE_WINDOW_PW: FieldId = FieldId::catalogued::<155>("farm_positive_window_pw");
+
+/// FARM-1 Negative Window Width NW.
+///
+/// Code 156, a parameter (232.1 §6.1.8.3, §7.3 Table 7-2; API-082).
+pub const FARM_NEGATIVE_WINDOW_NW: FieldId = FieldId::catalogued::<156>("farm_negative_window_nw");
+
+/// FOP-1 Initial Timer T1 Duration.
+///
+/// Code 157, a parameter (232.1 §5.1.9.1, §7.2 Table 7-1; API-082).
+pub const T1_INITIAL: FieldId = FieldId::catalogued::<157>("t1_initial");
+
+/// FOP-1 Transmission Limit.
+///
+/// Code 158, a parameter (232.1 §5.1.9.2, §7.2 Table 7-1; API-082).
+pub const TRANSMISSION_LIMIT: FieldId = FieldId::catalogued::<158>("transmission_limit");
+
+/// FOP-1 Timeout Type (TT0 or TT1).
+///
+/// Code 159, a parameter (232.1 §5.1.9.1, §7.2 Table 7-1; API-082).
+pub const TIMEOUT_TYPE: FieldId = FieldId::catalogued::<159>("timeout_type");
+
+/// FOP-1 Suspend State (SS = 0..4).
+///
+/// Code 160, a parameter (232.1 §5.1.11; API-082).
+pub const SUSPEND_STATE: FieldId = FieldId::catalogued::<160>("suspend_state");
+
+/// FOP-1 AD Repetitions.
+///
+/// Code 161, a parameter (232.1 §5.1.9.3, §7.2 Table 7-1; API-082).
+pub const AD_REPETITIONS: FieldId = FieldId::catalogued::<161>("ad_repetitions");
+
+/// FOP-1 BC Repetitions.
+///
+/// Code 162, a parameter (232.1 §5.1.9.3, §7.2 Table 7-1; API-082).
+pub const BC_REPETITIONS: FieldId = FieldId::catalogued::<162>("bc_repetitions");
+
+/// Identifier of a FOP-1 directive.
+///
+/// Code 163, a parameter (232.1 §4.2; API-082).
+pub const DIRECTIVE_ID: FieldId = FieldId::catalogued::<163>("directive_id");
+
+/// Identifier of a FOP-1 transfer request.
+///
+/// Code 164, a parameter (232.1 §4.4; API-082).
+pub const REQUEST_ID: FieldId = FieldId::catalogued::<164>("request_id");
+
 /// Every field code, in code order from 1 (API-082).
-pub const ALL: [FieldId; 106] = [
+pub const ALL: [FieldId; 121] = [
     SPACECRAFT_ID,
     VC_ID,
     MAP_ID,
@@ -670,4 +745,19 @@ pub const ALL: [FieldId; 106] = [
     MPDU_SPARE,
     BPDU_SPARE,
     BITSTREAM_DATA_POINTER,
+    V_S,
+    V_R,
+    NN_R,
+    SLIDING_WINDOW_K,
+    FARM_SLIDING_WINDOW_W,
+    FARM_POSITIVE_WINDOW_PW,
+    FARM_NEGATIVE_WINDOW_NW,
+    T1_INITIAL,
+    TRANSMISSION_LIMIT,
+    TIMEOUT_TYPE,
+    SUSPEND_STATE,
+    AD_REPETITIONS,
+    BC_REPETITIONS,
+    DIRECTIVE_ID,
+    REQUEST_ID,
 ];

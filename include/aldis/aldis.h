@@ -1129,6 +1129,111 @@
 #define ALDIS_FIELD_BITSTREAM_DATA_POINTER 106
 
 /**
+ * Transmitter Frame Sequence Number V(S).
+ *
+ * Code 150, a parameter (232.1 §5.1.8; API-082, CABI-021).
+ */
+#define ALDIS_FIELD_V_S 150
+
+/**
+ * Receiver Frame Sequence Number V(R).
+ *
+ * Code 151, a parameter (232.1 §6.1.8.1; API-082, CABI-021).
+ */
+#define ALDIS_FIELD_V_R 151
+
+/**
+ * Expected Acknowledgement Frame Sequence Number NN(R).
+ *
+ * Code 152, a parameter (232.1 §5.1.8; API-082, CABI-021).
+ */
+#define ALDIS_FIELD_NN_R 152
+
+/**
+ * FOP-1 Sliding Window Width K.
+ *
+ * Code 153, a parameter (232.1 §5.1.8, §7.2 Table 7-1; API-082, CABI-021).
+ */
+#define ALDIS_FIELD_SLIDING_WINDOW_K 153
+
+/**
+ * FARM-1 Sliding Window Width W.
+ *
+ * Code 154, a parameter (232.1 §6.1.8.2, §7.3 Table 7-2; API-082, CABI-021).
+ */
+#define ALDIS_FIELD_FARM_SLIDING_WINDOW_W 154
+
+/**
+ * FARM-1 Positive Window Width PW.
+ *
+ * Code 155, a parameter (232.1 §6.1.8.3, §7.3 Table 7-2; API-082, CABI-021).
+ */
+#define ALDIS_FIELD_FARM_POSITIVE_WINDOW_PW 155
+
+/**
+ * FARM-1 Negative Window Width NW.
+ *
+ * Code 156, a parameter (232.1 §6.1.8.3, §7.3 Table 7-2; API-082, CABI-021).
+ */
+#define ALDIS_FIELD_FARM_NEGATIVE_WINDOW_NW 156
+
+/**
+ * FOP-1 Initial Timer T1 Duration.
+ *
+ * Code 157, a parameter (232.1 §5.1.9.1, §7.2 Table 7-1; API-082, CABI-021).
+ */
+#define ALDIS_FIELD_T1_INITIAL 157
+
+/**
+ * FOP-1 Transmission Limit.
+ *
+ * Code 158, a parameter (232.1 §5.1.9.2, §7.2 Table 7-1; API-082, CABI-021).
+ */
+#define ALDIS_FIELD_TRANSMISSION_LIMIT 158
+
+/**
+ * FOP-1 Timeout Type (TT0 or TT1).
+ *
+ * Code 159, a parameter (232.1 §5.1.9.1, §7.2 Table 7-1; API-082, CABI-021).
+ */
+#define ALDIS_FIELD_TIMEOUT_TYPE 159
+
+/**
+ * FOP-1 Suspend State (SS = 0..4).
+ *
+ * Code 160, a parameter (232.1 §5.1.11; API-082, CABI-021).
+ */
+#define ALDIS_FIELD_SUSPEND_STATE 160
+
+/**
+ * FOP-1 AD Repetitions.
+ *
+ * Code 161, a parameter (232.1 §5.1.9.3, §7.2 Table 7-1; API-082, CABI-021).
+ */
+#define ALDIS_FIELD_AD_REPETITIONS 161
+
+/**
+ * FOP-1 BC Repetitions.
+ *
+ * Code 162, a parameter (232.1 §5.1.9.3, §7.2 Table 7-1; API-082, CABI-021).
+ */
+#define ALDIS_FIELD_BC_REPETITIONS 162
+
+/**
+ * Identifier of a FOP-1 directive.
+ *
+ * Code 163, a parameter (232.1 §4.2; API-082, CABI-021).
+ */
+#define ALDIS_FIELD_DIRECTIVE_ID 163
+
+/**
+ * Identifier of a FOP-1 transfer request.
+ *
+ * Code 164, a parameter (232.1 §4.4; API-082, CABI-021).
+ */
+#define ALDIS_FIELD_REQUEST_ID 164
+
+/**
  * Alignment, in octets, of every helper's storage: a C caller gets it with a `uint64_t`
  * array (CABI-031).
  */
