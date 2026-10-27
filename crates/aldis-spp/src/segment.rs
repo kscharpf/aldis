@@ -675,6 +675,10 @@ mod tests {
         let mut out = [0_u8; 16];
         while let Some(n) = seg.next_packet(&mut counter, &[], &mut out).unwrap() {
             whole.push(out[..n].to_vec());
+            assert!(
+                whole.len() <= sdu.len(),
+                "too many packets generated for SDU"
+            );
         }
         let mut counter = SequenceCounter::default();
         let mut state = Segmenter::new(&cfg, PacketType::Telemetry, apid(9), &sdu, 2)
@@ -687,6 +691,10 @@ mod tests {
                 break;
             };
             parts.push(out[..n].to_vec());
+            assert!(
+                parts.len() <= sdu.len(),
+                "too many packets generated for SDU"
+            );
             state = seg.suspend();
         }
         assert_eq!(parts, whole);
