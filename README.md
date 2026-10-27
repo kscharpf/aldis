@@ -36,6 +36,7 @@ Aldis is built to the practices of safety- and mission-critical software. It is 
 - No `unsafe` outside the C ABI crate, enforced by `unsafe_code = "forbid"` (GEN-070). Every `unsafe` block in `aldis-ffi` carries a `// SAFETY:` argument.
 - What Aldis assumes of the platform, above all memory protected against single-event upsets, and what happens without it: [hardware assumptions](docs/hardware-assumptions.md) (GEN-015).
 - Every loop bounded and no recursion (GEN-022), recorded per crate in [inspection records](docs/verification/inspections/).
+- Worst-case stack bounds computed per embedded target for every public entry point and checked against fixed budgets ([stack bounds](docs/verification/records/VER-011.md), VER-011).
 - **Parse, don't validate** (RS-020): restricted values are their own types, so invalid values cannot be constructed; `cargo xtask rs020` checks the public API mechanically. State machines make invalid states unrepresentable (RS-021).
 - A strict lint set (Clippy `all` and `pedantic` denied, plus restriction lints), with every exception local and reasoned (RS-016).
 
@@ -52,8 +53,7 @@ Aldis is built to the practices of safety- and mission-critical software. It is 
 - **The merge gate is a reproducible run** of every check in a container image pinned by digest, on the exact commit (VER-056). It produces an **evidence record**, published as a git note, that a pull request must carry to merge (VER-057, VER-058). Every night, every check runs again from scratch on `main` (VER-059).
 - Independent review of every pull request reads the published evidence and audits what no check covers: the Blue Book readings, `unsafe`, the API shape, and every suppression ([AGENTS.md](AGENTS.md)).
 - Every maintainer decision is logged ([decision log](docs/process/decisions.md)), and open questions are tracked as numbered issues ([open issues](docs/09-open-issues.md)).
-
-**Still to come in Milestone 2** ([plan](docs/milestones/m2-frame-codecs.md) WP-7, WP-8): a worst-case stack bound per target, a mechanical check of loop bounds against the inspection records, bit-flip completeness tests for every frame check sequence, an assurance case, and a hazard and failure-mode analysis.
+- An [assurance case](docs/verification/assurance-case.md) and systematic [hazard analysis](docs/verification/hazards.md) argue fitness against failure modes and claims (VER-065, VER-066).
 
 ## Layout
 
