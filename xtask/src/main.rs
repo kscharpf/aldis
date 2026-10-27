@@ -108,7 +108,7 @@ commands:
                                vectors schema --check, fields, header (needs the pinned
                                cbindgen), sana, trace --scope m0 --strict,
                                trace --scope m1 --strict, trace --scope m2 --strict,
-                               changelog check; a step that cannot run
+                               trace --scope m3, changelog check; a step that cannot run
                                counts as a problem, and the others still run
 
 ";
@@ -142,7 +142,8 @@ pub(crate) const CI: &[Step] = &[
     ("trace --scope m1 --strict", || trace::run(Some("m1"), true)),
     // M2 is closed: every in-scope requirement must keep an artefact (D1).
     ("trace --scope m2 --strict", || trace::run(Some("m2"), true)),
-    // C0 is open: report its trace without failing (strict at the C0 exit, D17).
+    // M3 is open: report its trace without failing (strict at the M3 exit, D1).
+    ("trace --scope m3", || trace::run(Some("m3"), false)),
     ("changelog check", changelog::check),
 ];
 

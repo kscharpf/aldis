@@ -558,6 +558,8 @@ cargo xtask trace --scope m0 --strict
 cargo xtask trace --scope m1 --strict
 # M2 is closed: every in-scope requirement must keep an artefact (VER-020, m2 plan D1).
 cargo xtask trace --scope m2 --strict
+# M3 is open: its trace is reported, and becomes --strict at the M3 exit (m3 plan D1).
+cargo xtask trace --scope m3
 ";
 
 const DENY: &str = "\
