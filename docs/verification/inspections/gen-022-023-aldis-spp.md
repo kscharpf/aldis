@@ -5,7 +5,7 @@
 | Requirements | GEN-022 (every loop bounded by an input length, a compile-time capacity, or a constant; no recursion), GEN-023 (time bounded by O(input length + capacities); nothing blocks or waits) |
 | Scope | `crates/aldis-spp/src/*.rs`, library code only (test modules excluded), at `main` 5f40e8b: the whole crate as released in `v0.2.0-m1`, including segmentation, reassembly, and the time secondary header (PR #42, and PR #45 from its review: 03d6120) and the documentation pass of M1 WP-6 (990a4cf, comments only) |
 | Inspected | 2026-10-20, prepared by Claude Code: pre-release re-inspection for `v0.2.0-m1` (M1 exit). Every loop, every call between the crate's own functions, and every blocking construct re-checked; the table and the call graph below are confirmed and made more complete. No unbounded loop, no recursion |
-| Approved | 2026-10-20, maintainer |
+| Approved | 2026-10-26, maintainer |
 | Repeat | when `aldis-spp` gains a loop or a call between its own functions, and before each release |
 | History | First inspected 2026-10-19 on branch `m1/spp` (M1 WP-2 part 1, based on `main` a8e9ad8), approved 2026-10-19 maintainer; revised since as below |
 | Revised | 2026-10-19, M1 WP-2 part 2 (branch `m1/spp-part2`): `segment.rs` adds one loop, the copy in `Reassembler::append` (below); `Segmenter::next_packet` writes one packet per call through `encode`, so the caller drives the segment loop. `secondary.rs` adds no loop: the time layout calls the `aldis-time` decoders, whose loops the [`aldis-time` inspection](gen-022-023-aldis-time.md) bounds (a P-field of at most 8 octets, a T-field of at most 17). No recursion. Confirmed 2026-10-19, maintainer |

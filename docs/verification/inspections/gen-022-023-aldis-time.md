@@ -5,7 +5,7 @@
 | Requirements | GEN-022 (every loop bounded by an input length, a compile-time capacity, or a constant; no recursion), GEN-023 (time bounded by O(input length + capacities); nothing blocks or waits) |
 | Scope | `crates/aldis-time/src/*.rs`, library code only (test modules excluded), at `main` 5f40e8b: the whole crate as released in `v0.2.0-m1`, including the ASCII codes and conversions (PR #30) and the documentation pass of M1 WP-6 (990a4cf, comments only) |
 | Inspected | 2026-10-20, prepared by Claude Code: pre-release re-inspection for `v0.2.0-m1` (M1 exit). Every loop, every call between the crate's own functions, and every blocking construct re-checked; the table and the call graph below are confirmed. No unbounded loop, no recursion |
-| Approved | 2026-10-20, maintainer |
+| Approved | 2026-10-26, maintainer |
 | Repeat | when `aldis-time` gains a loop or a call between its own functions, and before each release |
 | History | First inspected 2026-10-18 on branch `m1/time` (M1 WP-1 part 1, based on `main` b817d0f), approved 2026-10-19 maintainer; revised since as below |
 | Revised | 2026-10-19, value types (parse, don't validate): new module `calendar.rs` (range-checked `Year`, `Month`, `Hour`, `Minute`, `Second`, `CalendarDate`; the leap-year rules moved here from `util.rs`) and the `bounded!` macro in `util.rs` add no loop and no recursion. `ccs.rs` `validate` is removed; `Ccs::from_t` and `Cds::from_t` call the field constructors directly. Loops unchanged. Confirmed 2026-10-19, maintainer |

@@ -154,7 +154,7 @@ Each codec file has:
 | Mission effect | On a target without a stack guard the overrun silently overwrites other memory (S1); with a guard it traps (S2) |
 | Requirements | VER-011, GEN-022, GEN-012 |
 | Evidence | `record:VER-011`; `check:stack`; `file:xtask/stack-budgets.toml`; `job:stack-sizes`; `oi:OI-45` |
-| Residual risk | The bound is per entry point and leaves out interrupts and the caller's own frames (`record:VER-011`). The budgets are 4 096 bytes (Rust) and 10 240 bytes (C ABI) on every target; the largest C ABI function needs about 8.6 KB, mostly a channel table rebuilt on each call (OI-45, open). Whether a task can afford it is the integrator's |
+| Residual risk | The bound is per entry point and leaves out interrupts and the caller's own frames (`record:VER-011`). The budgets are 4 096 bytes (Rust) and 10 240 bytes (C ABI) on every target; the largest C ABI function needs about 8.6 KB, mostly a channel table rebuilt on each call (OI-45, decided: option (d), keep and document). Whether a task can afford it is the integrator's |
 | Assumptions | `asm:ASM-3` |
 | Proposals | — |
 | Claims | `ac:AC-4.2` |

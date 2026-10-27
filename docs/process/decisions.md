@@ -156,3 +156,7 @@ One line for each decision the maintainer takes, under the [decision rights](dec
 - 2026-10-26 · housekeeping · chat · Adopt additional Clippy restriction and nursery lints across the workspace
 - 2026-10-26 · spec · #133 · P-AOS-02: AOS Insert Service on rejected frames is documented in docs/standards/aos-frame.md §4 and extraction is deferred to the M4 link engine (LNK-053)
 - 2026-10-26 · api · #133 · P-AOS-05: comparing physical channel and channel table in AOS is declined for M2; caller obligation is documented and covered by asm:ASM-8
+- 2026-10-26 · approval · chat · GEN-022/023 inspection records of aldis-core, aldis-time, aldis-epp, and aldis-spp approved at the M2 exit review (VER-061)
+- 2026-10-26 · plan · chat · OI-45: channel table stack use decided as option (d) (keep and document); the 4096-byte (Rust) and 10240-byte (C ABI) budgets are confirmed
+- 2026-10-26 · plan · chat · Signed verification evidence (#110) remains parked at M2 exit; DF-5 stays an open defeater
+- 2026-10-26 · plan · chat · M2 plan D15 amendment: the JVM cross-check harness is deferred to future milestones; M2 frame cross-checks are satisfied by the candidate search (docs/verification/cross-checks.md §4.7–§4.10, VER-040), hand derivations, blind models, and the approved second review
