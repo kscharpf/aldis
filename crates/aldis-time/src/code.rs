@@ -124,7 +124,12 @@ impl Agency {
     /// The raw T-field (301.0 §3.6.1, TIME-006).
     #[must_use]
     pub fn tfield(&self) -> &[u8] {
-        self.t.get(..self.format.t_len()).unwrap_or_default()
+        let len = self.format.t_len().min(self.t.len());
+        #[expect(
+            clippy::indexing_slicing,
+            reason = "clamped to self.t.len() so slice is guaranteed in-bounds"
+        )]
+        &self.t[..len]
     }
 }
 

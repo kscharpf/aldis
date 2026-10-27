@@ -189,7 +189,12 @@ pub(crate) struct Received {
 impl Received {
     /// The header octets as received after correction.
     pub(crate) fn as_slice(&self) -> &[u8] {
-        self.octets.get(..self.len).unwrap_or_default()
+        let len = self.len.min(self.octets.len());
+        #[expect(
+            clippy::indexing_slicing,
+            reason = "clamped to self.octets.len() so slice is guaranteed in-bounds"
+        )]
+        &self.octets[..len]
     }
 }
 

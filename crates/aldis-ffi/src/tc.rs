@@ -463,7 +463,10 @@ fn parse_all<C: Copy, T: Copy, const N: usize>(
 
 /// The parsed configurations as a slice; empty for none.
 fn slice<T, const N: usize>(parsed: Option<&Parsed<T, N>>) -> &[T] {
-    parsed.map_or(&[], |p| p.items.get(..p.len).unwrap_or_default())
+    parsed.map_or(&[], |p| {
+        let len = p.len.min(N);
+        &p.items[..len]
+    })
 }
 
 /// The master channel of C structs: its physical channel and Spacecraft ID, then each virtual

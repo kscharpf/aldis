@@ -49,11 +49,13 @@ pub enum ErrorKind {
     InvalidHandle = 16,
     /// Structurally impossible input.
     Malformed = 17,
+    /// An internal invariant or consistency check failed.
+    InternalError = 18,
 }
 
 impl ErrorKind {
     /// Every kind, in code order.
-    pub const ALL: [ErrorKind; 17] = [
+    pub const ALL: [ErrorKind; 18] = [
         ErrorKind::BufferTooSmall,
         ErrorKind::Incomplete,
         ErrorKind::LengthMismatch,
@@ -71,6 +73,7 @@ impl ErrorKind {
         ErrorKind::CapacityExceeded,
         ErrorKind::InvalidHandle,
         ErrorKind::Malformed,
+        ErrorKind::InternalError,
     ];
 
     /// The stable numeric code (GEN-040).
@@ -110,6 +113,7 @@ impl ErrorKind {
             ErrorKind::CapacityExceeded => "CapacityExceeded",
             ErrorKind::InvalidHandle => "InvalidHandle",
             ErrorKind::Malformed => "Malformed",
+            ErrorKind::InternalError => "InternalError",
         }
     }
 
@@ -435,7 +439,7 @@ mod tests {
             assert_eq!(ErrorKind::from_name(kind.name()), Some(kind));
         }
         assert_eq!(ErrorKind::from_code(0), None);
-        assert_eq!(ErrorKind::from_code(18), None);
+        assert_eq!(ErrorKind::from_code(19), None);
         assert_eq!(ErrorKind::from_name("NoSuchKind"), None);
     }
 

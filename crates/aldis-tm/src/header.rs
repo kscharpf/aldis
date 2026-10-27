@@ -397,9 +397,7 @@ impl TmPrimaryHeader {
     /// `Incomplete` (`needed` = 6) if `prefix` is shorter than the header; `UnsupportedVersion`
     /// (`frame_version`) if the Transfer Frame Version Number is not `00` (TM-002).
     pub fn decode(prefix: &[u8]) -> Result<TmPrimaryHeader> {
-        let Ok([o0, o1, o2, o3, o4, o5]) = <[u8; PRIMARY_HEADER_LEN]>::try_from(
-            prefix.get(..PRIMARY_HEADER_LEN).unwrap_or_default(),
-        ) else {
+        let Some(&[o0, o1, o2, o3, o4, o5]) = prefix.first_chunk::<PRIMARY_HEADER_LEN>() else {
             return Err(Error::incomplete(PRIMARY_HEADER_LEN));
         };
         let version = o0 >> 6;

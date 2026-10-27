@@ -162,3 +162,4 @@ One line for each decision the maintainer takes, under the [decision rights](dec
 - 2026-10-26 · plan · chat · M2 plan D15 amendment: the JVM cross-check harness is deferred to future milestones; M2 frame cross-checks are satisfied by the candidate search (docs/verification/cross-checks.md §4.7–§4.10, VER-040), hand derivations, blind models, and the approved second review
 - 2026-10-27 · release · chat · Release v0.3.0-m2 (Milestone 2: Frame codecs)
 - 2026-10-27 · scope · chat · Retire Track C from v1: archive native C++ at tag c0-archive, delete cpp/ and cpp.yml, withdraw 34 CPP-* requirements, VER-052, VER-053, CABI-070, and CABI-071, keep CABI-072, reopen OI-08, and move native C/C++ to roadmap Phase 3
+- 2026-10-27 · api · chat · Allocate ErrorKind::InternalError = 18 for invariant and internal check failures, replacing silent fallbacks to default values on slice indexing, and approve scoped indexing_slicing on ArrayVec::as_slice

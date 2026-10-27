@@ -512,7 +512,9 @@ impl<'b> UslpFrameWriter<'b> {
             for (d, s) in buf.iter_mut().zip(head) {
                 *d = s;
             }
-            let slot = buf.get_mut(tfdf_start..).unwrap_or_default();
+            let slot = buf
+                .get_mut(tfdf_start..)
+                .ok_or_else(|| Error::new(ErrorKind::InternalError))?;
             for (d, s) in slot.iter_mut().zip(tfdf) {
                 *d = s;
             }
@@ -531,6 +533,16 @@ impl<'b> UslpFrameWriter<'b> {
         Ok(w)
     }
 
+    fn slice_mut(&mut self, start: usize, end: usize) -> &mut [u8] {
+        let start = start.min(self.out.len());
+        let end = end.min(self.out.len()).max(start);
+        #[expect(
+            clippy::indexing_slicing,
+            reason = "clamped to self.out.len() so slice is guaranteed in-bounds"
+        )]
+        &mut self.out[start..end]
+    }
+
     /// The Security Header to fill in place; empty without SDLS (§6.3.4; API-072).
     pub fn security_header_mut(&mut self) -> &mut [u8] {
         let start = self
@@ -538,14 +550,14 @@ impl<'b> UslpFrameWriter<'b> {
             .header_len
             .saturating_add(self.plan.insert_zone_len);
         let end = start.saturating_add(self.plan.security.header_len());
-        self.out.get_mut(start..end).unwrap_or_default()
+        self.slice_mut(start, end)
     }
 
     /// The TFDZ to fill in place, the reserved maximum (§4.1.4.3; GEN-014).
     pub fn tfdz_mut(&mut self) -> &mut [u8] {
         let start = self.plan.tfdz_start();
         let end = start.saturating_add(self.plan.tfdz_len);
-        self.out.get_mut(start..end).unwrap_or_default()
+        self.slice_mut(start, end)
     }
 
     /// The Security Trailer to fill in place, after the reserved TFDZ; empty without SDLS.
@@ -553,7 +565,7 @@ impl<'b> UslpFrameWriter<'b> {
     pub fn security_trailer_mut(&mut self) -> &mut [u8] {
         let start = self.plan.tfdz_start().saturating_add(self.plan.tfdz_len);
         let end = start.saturating_add(self.plan.security.trailer_len());
-        self.out.get_mut(start..end).unwrap_or_default()
+        self.slice_mut(start, end)
     }
 
     /// Completes the frame with `tfdz_len` TFDZ octets; returns the frame length (732.1
@@ -570,7 +582,7 @@ impl<'b> UslpFrameWriter<'b> {
     /// 0; `LengthMismatch` (`frame_data_field`) below the reservation on a fixed-length
     /// channel; `OutOfRange` (`fhp_lvo_pointer`) for a pointer not below `tfdz_len`. On error
     /// the buffer keeps its unfinished state.
-    pub fn finish(self, tfdz_len: usize) -> Result<usize> {
+    pub fn finish(mut self, tfdz_len: usize) -> Result<usize> {
         let plan = self.plan;
         if tfdz_len > plan.tfdz_len {
             return Err(Error::out_of_range(
@@ -592,10 +604,13 @@ impl<'b> UslpFrameWriter<'b> {
         let tail_end = tail_start
             .saturating_add(unused)
             .saturating_add(plan.security.trailer_len());
-        let tail = self.out.get_mut(tail_start..tail_end).unwrap_or_default();
+        let tail = self.slice_mut(tail_start, tail_end);
         let from = unused.min(tail.len());
         tail.copy_within(from.., 0);
-        let frame = self.out.get_mut(..total).unwrap_or_default();
+        let frame = self
+            .out
+            .get_mut(..total)
+            .ok_or_else(|| Error::new(ErrorKind::InternalError))?;
         let header = primary_octets(
             VERSION,
             plan.channel,
@@ -610,7 +625,9 @@ impl<'b> UslpFrameWriter<'b> {
         let fecf_len = if plan.fecf { FECF_LEN } else { 0 };
         if let Some(ocf) = plan.ocf {
             let at = total.saturating_sub(fecf_len).saturating_sub(OCF_LEN);
-            let slot = frame.get_mut(at..).unwrap_or_default();
+            let slot = frame
+                .get_mut(at..)
+                .ok_or_else(|| Error::new(ErrorKind::InternalError))?;
             for (d, s) in slot.iter_mut().zip(ocf.to_octets()) {
                 *d = s;
             }

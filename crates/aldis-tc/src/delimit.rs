@@ -119,7 +119,13 @@ impl<'a> Iterator for FrameDelimiter<'a> {
 
     fn next(&mut self) -> Option<Delimited<'a>> {
         let item = next_frame(self.rest)?;
-        self.rest = self.rest.get(item.len()..).unwrap_or_default();
+        let len = item.len().min(self.rest.len());
+        #[expect(
+            clippy::indexing_slicing,
+            reason = "item.len() <= self.rest.len() by construction"
+        )]
+        let rest = &self.rest[len..];
+        self.rest = rest;
         Some(item)
     }
 }

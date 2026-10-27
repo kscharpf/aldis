@@ -59,7 +59,12 @@ impl ControlOctets {
     /// The octets (232.0 §4.1.3.3; API-020).
     #[must_use]
     pub fn as_slice(&self) -> &[u8] {
-        self.octets.get(..self.len).unwrap_or_default()
+        let len = self.len.min(self.octets.len());
+        #[expect(
+            clippy::indexing_slicing,
+            reason = "clamped to self.octets.len() so slice is guaranteed in-bounds"
+        )]
+        &self.octets[..len]
     }
 }
 

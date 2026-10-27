@@ -497,7 +497,8 @@ fn master_channel(
         None => VcTable::new(pc, &[])?,
         Some(first) => {
             let channels = list.map(|vc| vc.unwrap_or(first));
-            VcTable::new(pc, channels.get(..n).unwrap_or_default())?
+            #[expect(clippy::indexing_slicing, reason = "n <= TABLE == channels.len()")]
+            VcTable::new(pc, &channels[..n])?
         }
     };
     Ok(Master { pc, scid, vcs })

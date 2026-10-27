@@ -48,7 +48,7 @@ A loop is unrolled to the bound of its `#[kani::unwind(N)]`, and Kani adds an *u
 | `octet_integers` | 10 | the copy runs over at most 8 octets |
 | `decode_rejects_exactly_per_spec` | 9 | the slice comparisons run over at most 8 octets |
 | `packet_encode_decode` | 13 | the copy loop of `encode` runs at most 12 times |
-| `error_kind_lookup_is_bounded` | 18 | the lookup of `ErrorKind::from_code` runs over the 17 kinds of the catalogue, for every code: the GEN-022 bound of that loop (added 2026-10-24, M2 WP-7; 9 s) |
+| `error_kind_lookup_is_bounded` | 19 | the lookup of `ErrorKind::from_code` runs over the 18 kinds of the catalogue, for every code: the GEN-022 bound of that loop (added 2026-10-24, M2 WP-7; 9 s) |
 | the others | none | no loops |
 
 ## 3. What is proven, and up to what

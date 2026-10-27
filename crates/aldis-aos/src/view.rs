@@ -204,7 +204,9 @@ impl<'a> AosFrame<'a> {
                 ),
             );
         }
-        let data = bytes.get(layout.data()).unwrap_or_default();
+        let data = bytes
+            .get(layout.data())
+            .ok_or_else(|| Error::new(ErrorKind::InternalError))?;
         let unit = match content {
             DataFieldContent::Mpdu => {
                 DataUnit::Mpdu(Mpdu::parse(data, pc.edition(), &mut deviations)?)
@@ -225,7 +227,13 @@ impl<'a> AosFrame<'a> {
 
     /// The octets of `range`, which lies inside the frame by construction (CMN-040).
     fn slice(&self, range: Range<usize>) -> &'a [u8] {
-        self.bytes.get(range).unwrap_or_default()
+        let start = range.start.min(self.bytes.len());
+        let end = range.end.min(self.bytes.len()).max(start);
+        #[expect(
+            clippy::indexing_slicing,
+            reason = "clamped to self.bytes.len() so slice is guaranteed in-bounds"
+        )]
+        &self.bytes[start..end]
     }
 
     /// The Primary Header as owned values, after FHEC correction (732.0 §4.1.2; API-014).
@@ -359,8 +367,13 @@ impl<'a> AosFrame<'a> {
 /// `CrcMismatch` unless the FECF in the last two octets of `bytes` is the CRC of the corrected
 /// header followed by the rest of the frame (732.0 §4.1.6.3, §4.3.7.2–3; AOS-014).
 fn check_fecf(bytes: &[u8], received: &Received) -> Result<()> {
-    let end = bytes.len().saturating_sub(FECF_LEN);
-    let rest = bytes.get(received.len..end).unwrap_or_default();
+    let end = bytes
+        .len()
+        .checked_sub(FECF_LEN)
+        .ok_or_else(|| Error::incomplete(FECF_LEN))?;
+    let rest = bytes
+        .get(received.len..end)
+        .ok_or_else(|| Error::new(ErrorKind::InternalError))?;
     let crc = crc16_update(crc16(received.as_slice()), rest);
     let fecf = bytes
         .get(end..)

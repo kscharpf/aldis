@@ -292,7 +292,13 @@ impl<'b> TmFrameWriter<'b> {
 
     /// The octets of `range`, which lies inside the frame by construction (CMN-040).
     fn field_mut(&mut self, range: Range<usize>) -> &mut [u8] {
-        self.frame.get_mut(range).unwrap_or_default()
+        let start = range.start.min(self.frame.len());
+        let end = range.end.min(self.frame.len()).max(start);
+        #[expect(
+            clippy::indexing_slicing,
+            reason = "clamped to self.frame.len() so slice is guaranteed in-bounds"
+        )]
+        &mut self.frame[start..end]
     }
 
     /// The Secondary Header Data Field to fill in place, after the Identification Field; empty
@@ -343,7 +349,12 @@ impl<'b> TmFrameWriter<'b> {
     pub fn finish(self) -> usize {
         let fecf = self.layout.fecf();
         if !fecf.is_empty() {
-            let crc = crc16(self.frame.get(..fecf.start).unwrap_or_default());
+            let end = fecf.start.min(self.frame.len());
+            #[expect(
+                clippy::indexing_slicing,
+                reason = "clamped to self.frame.len() so slice is guaranteed in-bounds"
+            )]
+            let crc = crc16(&self.frame[..end]);
             write_at(self.frame, fecf.start, &crc.to_be_bytes());
         }
         self.layout.frame_len()

@@ -946,11 +946,9 @@ pub unsafe extern "C" fn aldis_time_format_pfield(
             let out = abi::bytes_mut(out, cap, &[])?;
             let out_len = abi::out(out_len)?;
             let (octets, n) = pfield_octets(&format.pfield());
-            write_octets(
-                octets.get(..usize::from(n)).unwrap_or_default(),
-                out,
-                out_len,
-            )
+            let n = usize::from(n).min(octets.len());
+            #[expect(clippy::indexing_slicing, reason = "n <= octets.len() by construction")]
+            write_octets(&octets[..n], out, out_len)
         })
     }
 }

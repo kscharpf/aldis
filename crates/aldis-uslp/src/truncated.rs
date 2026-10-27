@@ -71,12 +71,19 @@ pub(crate) fn parse<'a, L: VcLookup + ?Sized>(
         _ => return Err(length(exact, len)),
     };
     let security = truncated_security(frame_security(&vc, map.as_ref()));
-    let body = frame.get(TRUNCATED_HEADER_LEN..).unwrap_or_default();
+    let body = frame
+        .get(TRUNCATED_HEADER_LEN..)
+        .ok_or_else(|| length(exact, len))?;
     let (security_header, rest) = body
         .split_at_checked(security.header_len())
-        .unwrap_or_default();
-    let tfdf_len = rest.len().saturating_sub(security.trailer_len());
-    let (data_field, security_trailer) = rest.split_at_checked(tfdf_len).unwrap_or_default();
+        .ok_or_else(|| length(exact, len))?;
+    let tfdf_len = rest
+        .len()
+        .checked_sub(security.trailer_len())
+        .ok_or_else(|| length(exact, len))?;
+    let (data_field, security_trailer) = rest
+        .split_at_checked(tfdf_len)
+        .ok_or_else(|| length(exact, len))?;
     let (tfdf_header, tfdz) = TfdfHeader::parse(data_field, false).map_err(tfdf_rejection)?;
     Ok(UslpTruncatedFrame {
         channel,

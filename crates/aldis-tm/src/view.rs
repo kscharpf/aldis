@@ -220,7 +220,13 @@ impl<'a> TmFrame<'a> {
 
     /// The octets of `range`, which lies inside the frame by construction (CMN-040).
     fn slice(&self, range: Range<usize>) -> &'a [u8] {
-        self.bytes.get(range).unwrap_or_default()
+        let start = range.start.min(self.bytes.len());
+        let end = range.end.min(self.bytes.len()).max(start);
+        #[expect(
+            clippy::indexing_slicing,
+            reason = "clamped to self.bytes.len() so slice is guaranteed in-bounds"
+        )]
+        &self.bytes[start..end]
     }
 
     /// The Primary Header as plain values (132.0 §4.1.2; API-014).
@@ -270,11 +276,8 @@ impl<'a> TmFrame<'a> {
     /// no Secondary Header (132.0 §4.1.3.3; TM-003, GEN-013).
     #[must_use]
     pub fn secondary_header_data(&self) -> Option<&'a [u8]> {
-        self.fsh_len.map(|_| {
-            self.slice(self.layout.secondary())
-                .get(1..)
-                .unwrap_or_default()
-        })
+        self.fsh_len
+            .and_then(|_| self.slice(self.layout.secondary()).get(1..))
     }
 
     /// The Security Header, opaque; empty without SDLS (132.0 §6.3.4; API-072).
@@ -359,7 +362,9 @@ const fn check_len(bytes: &[u8], pc: &TmPhysicalChannelConfig) -> Result<()> {
 
 /// The Secondary Header length from its Identification Field (132.0 §4.1.3.2; TM-003).
 fn fsh_id(bytes: &[u8]) -> Result<FshLen> {
-    let id = bytes.get(PRIMARY_HEADER_LEN).copied().unwrap_or_default();
+    let &id = bytes
+        .get(PRIMARY_HEADER_LEN)
+        .ok_or_else(|| Error::incomplete(PRIMARY_HEADER_LEN.saturating_add(1)))?;
     let version = id >> 6;
     if version != FSH_VERSION {
         return Err(mismatch(

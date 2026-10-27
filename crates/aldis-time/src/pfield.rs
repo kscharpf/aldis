@@ -248,7 +248,12 @@ impl PFieldTail {
     /// The octets (301.0 §3.1.1, TIME-005).
     #[must_use]
     pub fn as_bytes(&self) -> &[u8] {
-        self.octets.get(..usize::from(self.len)).unwrap_or_default()
+        let len = usize::from(self.len).min(self.octets.len());
+        #[expect(
+            clippy::indexing_slicing,
+            reason = "clamped to self.octets.len() so slice is guaranteed in-bounds"
+        )]
+        &self.octets[..len]
     }
 
     /// Number of octets (301.0 §3.1.1, TIME-005).

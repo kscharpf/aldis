@@ -292,6 +292,23 @@
         "code": 17,
         "c_abi": -17
       }
+    },
+    {
+      "id": "error-code-InternalError",
+      "requirements": [
+        "GEN-040",
+        "CABI-020"
+      ],
+      "description": "InternalError has stable code 18",
+      "operation": "error_code",
+      "params": {
+        "kind": "InternalError"
+      },
+      "expect": {
+        "ok": true,
+        "code": 18,
+        "c_abi": -18
+      }
     }
   ]
 }

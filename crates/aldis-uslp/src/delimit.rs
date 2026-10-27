@@ -162,7 +162,13 @@ impl<'a, L: VcLookup + ?Sized> Iterator for FrameDelimiter<'a, '_, L> {
 
     fn next(&mut self) -> Option<Delimited<'a>> {
         let item = next_frame(self.rest, self.channels)?;
-        self.rest = self.rest.get(item.len()..).unwrap_or_default();
+        let len = item.len().min(self.rest.len());
+        #[expect(
+            clippy::indexing_slicing,
+            reason = "item.len() <= self.rest.len() by construction"
+        )]
+        let rest = &self.rest[len..];
+        self.rest = rest;
         Some(item)
     }
 }

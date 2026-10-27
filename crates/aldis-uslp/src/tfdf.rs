@@ -308,7 +308,9 @@ impl TfdfHeader {
     /// `0xFFFF` that is not below the TFDZ length (USLP-006); `InvalidField`
     /// (`frame_data_field`) if `tfdf` holds no TFDZ octet after the header (CMN-041).
     pub(crate) fn parse(data_field: &[u8], fixed_tfdz: bool) -> Result<(TfdfHeader, &[u8]), Error> {
-        let first = data_field.first().copied().unwrap_or(0);
+        let &first = data_field
+            .first()
+            .ok_or_else(|| invalid(field::FRAME_DATA_FIELD))?;
         let rule = ConstructionRule::from_bits(first >> 5);
         if rule.is_fixed_length() != fixed_tfdz {
             return Err(invalid(field::TFDZ_CONSTRUCTION_RULE));
@@ -468,7 +470,8 @@ pub(crate) mod tests {
             fe(&[0x20, 0, 0], true),
             (ErrorKind::InvalidField, Some(field::FRAME_DATA_FIELD))
         );
-        assert_eq!(fe(&[], false).1, Some(field::TFDZ_CONSTRUCTION_RULE));
+        assert_eq!(fe(&[], false).1, Some(field::FRAME_DATA_FIELD));
+        assert_eq!(fe(&[], true).1, Some(field::FRAME_DATA_FIELD));
         let (h, _) = TfdfHeader::parse(&[0x20, 0xFF, 0xFF, 1], true).unwrap();
         assert_eq!(h.rule, TfdzRule::SduStart(LastValidOctet::SduContinues));
         assert!(h.check_pointer(1).is_ok());

@@ -44,6 +44,8 @@ pub const ALDIS_ERR_CAPACITY_EXCEEDED: i32 = -15;
 pub const ALDIS_ERR_INVALID_HANDLE: i32 = -16;
 /// Structurally impossible input (code 17; CABI-020).
 pub const ALDIS_ERR_MALFORMED: i32 = -17;
+/// An internal invariant or consistency check failed (code 18; CABI-020).
+pub const ALDIS_ERR_INTERNAL_ERROR: i32 = -18;
 
 /// [`aldis_error_detail_t::detail`]: the error carries no further detail (GEN-041, CABI-021).
 pub const ALDIS_DETAIL_NONE: u16 = 0;
@@ -176,6 +178,7 @@ mod tests {
             ALDIS_ERR_CAPACITY_EXCEEDED,
             ALDIS_ERR_INVALID_HANDLE,
             ALDIS_ERR_MALFORMED,
+            ALDIS_ERR_INTERNAL_ERROR,
         ];
         assert_eq!(constants.len(), ErrorKind::ALL.len());
         for (kind, constant) in ErrorKind::ALL.into_iter().zip(constants) {

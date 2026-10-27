@@ -169,23 +169,21 @@ pub(crate) struct RawHeader {
 impl RawHeader {
     /// Reads the first five octets; `None` if `bytes` is shorter (232.0 §4.1.2).
     pub(crate) fn parse(bytes: &[u8]) -> Option<RawHeader> {
-        let octets = bytes.first_chunk::<PRIMARY_HEADER_LEN>().copied();
-        let [b0, b1, b2, b3, b4] = octets.unwrap_or_default();
+        let &[b0, b1, b2, b3, b4] = bytes.first_chunk::<PRIMARY_HEADER_LEN>()?;
         let scid = u16::from_be_bytes([b0 & 0b11, b1]);
         let count = u16::from_be_bytes([b2 & 0b11, b3]);
-        let ids = TcSpacecraftId::new(scid).zip(TcVcId::new(b2 >> 2));
-        octets
-            .zip(ids)
-            .map(|(_, (spacecraft_id, vc_id))| RawHeader {
-                version: b0 >> 6,
-                bypass: b0 & 0x20 != 0,
-                control_command: b0 & 0x10 != 0,
-                spare: (b0 >> 2) & 0b11,
-                spacecraft_id,
-                vc_id,
-                frame_len: usize::from(count).saturating_add(1),
-                sequence_number: FrameSeqNum::new(b4),
-            })
+        let spacecraft_id = TcSpacecraftId::new(scid)?;
+        let vc_id = TcVcId::new(b2 >> 2)?;
+        Some(RawHeader {
+            version: b0 >> 6,
+            bypass: b0 & 0x20 != 0,
+            control_command: b0 & 0x10 != 0,
+            spare: (b0 >> 2) & 0b11,
+            spacecraft_id,
+            vc_id,
+            frame_len: usize::from(count).saturating_add(1),
+            sequence_number: FrameSeqNum::new(b4),
+        })
     }
 
     /// `UnsupportedVersion` naming `frame_version` unless the version is `00` (232.0
