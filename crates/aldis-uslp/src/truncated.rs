@@ -18,7 +18,7 @@ use crate::field;
 use crate::header::{ChannelFields, OID_VCID, TRUNCATED_HEADER_LEN, invalid, unknown};
 use crate::tfdf::TfdfHeader;
 use crate::validate::{Reason, Rejection};
-use crate::view::{fail, internal, length, tfdf_rejection};
+use crate::view::{cut, fail, length, tfdf_rejection};
 
 /// A decoded truncated USLP Transfer Frame borrowing its fields from the input (732.1 Annex
 /// D; USLP-002, USLP-012, API-010, GEN-013).
@@ -108,7 +108,7 @@ struct Parts<'a> {
 /// Cuts a truncated `frame` with the SDLS lengths `security` at its layout and parses the TFDF
 /// Header; an octet range outside the frame is a broken invariant (GEN-020).
 fn split(frame: &[u8], security: SecurityLayout) -> Result<Parts<'_>, Rejection> {
-    FrameLayout::compute(&LayoutSpec {
+    let layout = FrameLayout::compute(&LayoutSpec {
         frame_len: frame.len(),
         primary_header_len: TRUNCATED_HEADER_LEN,
         secondary_len: 0,
@@ -116,28 +116,17 @@ fn split(frame: &[u8], security: SecurityLayout) -> Result<Parts<'_>, Rejection>
         ocf: false,
         fecf: false,
     })
-    .ok()
-    .ok_or(fail(
-        Reason::FrameTooShort,
-        invalid(field::FRAME_DATA_FIELD),
-    ))
-    .and_then(|layout| {
-        frame
-            .get(layout.security_header())
-            .zip(frame.get(layout.data()))
-            .zip(frame.get(layout.security_trailer()))
-            .ok_or(internal())
-            .and_then(|((security_header, data), security_trailer)| {
-                TfdfHeader::parse(data, false)
-                    .map(|(tfdf_header, tfdz)| Parts {
-                        layout,
-                        security_header,
-                        tfdf_header,
-                        tfdz,
-                        security_trailer,
-                    })
-                    .map_err(tfdf_rejection)
-            })
+    .map_err(|_| fail(Reason::FrameTooShort, invalid(field::FRAME_DATA_FIELD)))?;
+    let security_header = cut(frame, layout.security_header())?;
+    let data = cut(frame, layout.data())?;
+    let security_trailer = cut(frame, layout.security_trailer())?;
+    let (tfdf_header, tfdz) = TfdfHeader::parse(data, false).map_err(tfdf_rejection)?;
+    Ok(Parts {
+        layout,
+        security_header,
+        tfdf_header,
+        tfdz,
+        security_trailer,
     })
 }
 

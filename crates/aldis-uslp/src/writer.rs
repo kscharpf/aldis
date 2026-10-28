@@ -125,18 +125,19 @@ fn find_vc<L: VcLookup + ?Sized>(
     Ok(vc)
 }
 
-/// The layout of a frame of `tfdz_len` TFDZ octets after a TFDF Header of `header_len` octets, and that
+/// The layout of a frame of `tfdz_len` TFDZ octets after the TFDF Header of the VC, and that
 /// number of octets: all that the channel leaves in a frame of `base.frame_len` octets when
 /// `None`, as for an OID frame (§4.1.4.1.10). `base` is the layout of the longest frame.
 ///
 /// # Errors
-/// `InvalidField` (`frame_data_field`) for an empty TFDZ; `LengthMismatch` (`frame_data_field`)
+/// `InvalidField` (`frame_data_field`) for an empty TFDZ, and for a channel whose longest frame
+/// leaves no TFDZ octet, whatever `tfdz_len` is (`check_room` rejects that channel when its table
+/// is built, so only a `VcLookup` that skips the check reaches it); `LengthMismatch` (`frame_data_field`)
 /// for a TFDZ that does not fill a fixed-length frame; `OutOfRange` (`frame_len`) above a
 /// variable-length channel's maximum.
 fn reserve(
     physical: &PhysicalChannelConfig,
     vc: &VcConfig,
-    header_len: usize,
     base: LayoutSpec,
     tfdz_len: Option<usize>,
 ) -> Result<(FrameLayout, usize)> {
@@ -147,7 +148,7 @@ fn reserve(
             let overhead = physical
                 .frame_len()
                 .saturating_sub(longest.data().len())
-                .saturating_add(header_len);
+                .saturating_add(crate::tfdf::header_len(vc.fixed_tfdz()));
             let tfdz_len =
                 tfdz_len.unwrap_or_else(|| physical.frame_len().saturating_sub(overhead));
             if tfdz_len == 0 {
@@ -238,7 +239,7 @@ impl Plan {
             ocf: content.ocf.is_some(),
             fecf: physical.fecf(),
         };
-        let (layout, tfdz_len) = reserve(&physical, &vc, content.tfdf.len(), base, tfdz_len)?;
+        let (layout, tfdz_len) = reserve(&physical, &vc, base, tfdz_len)?;
         let tfdf = if oid {
             oid_tfdf(tfdz_len)
         } else {
@@ -557,6 +558,9 @@ impl<'b> UslpFrameWriter<'b> {
 
     /// Where the fields of the reserved frame lie in the buffer, with the TFDF (header and
     /// reserved TFDZ) in the data field (CMN-040).
+    ///
+    /// This is the layout of the longest frame, a provisional one: [`finish`](Self::finish) with
+    /// a shorter TFDZ shortens the frame and moves the Security Trailer, the OCF, and the FECF.
     #[must_use]
     pub const fn layout(&self) -> &FrameLayout {
         &self.plan.layout

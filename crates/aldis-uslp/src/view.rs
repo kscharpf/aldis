@@ -63,29 +63,28 @@ fn split_full<'a>(
     layout: &FrameLayout,
     fixed_tfdz: bool,
 ) -> core::result::Result<FullParts<'a>, Rejection> {
-    let at = |r: Range<usize>| frame.get(r);
-    at(layout.secondary())
-        .zip(at(layout.security_header()))
-        .zip(at(layout.data()))
-        .zip(at(layout.security_trailer()))
-        .zip(at(layout.ocf()))
-        .zip(at(layout.fecf()))
-        .ok_or(internal())
-        .and_then(
-            |(((((insert_zone, security_header), data), security_trailer), ocf), fecf)| {
-                TfdfHeader::parse(data, fixed_tfdz)
-                    .map(|(tfdf_header, tfdz)| FullParts {
-                        insert_zone,
-                        security_header,
-                        tfdf_header,
-                        tfdz,
-                        security_trailer,
-                        ocf,
-                        fecf,
-                    })
-                    .map_err(tfdf_rejection)
-            },
-        )
+    let insert_zone = cut(frame, layout.secondary())?;
+    let security_header = cut(frame, layout.security_header())?;
+    let data = cut(frame, layout.data())?;
+    let security_trailer = cut(frame, layout.security_trailer())?;
+    let ocf = cut(frame, layout.ocf())?;
+    let fecf = cut(frame, layout.fecf())?;
+    let (tfdf_header, tfdz) = TfdfHeader::parse(data, fixed_tfdz).map_err(tfdf_rejection)?;
+    Ok(FullParts {
+        insert_zone,
+        security_header,
+        tfdf_header,
+        tfdz,
+        security_trailer,
+        ocf,
+        fecf,
+    })
+}
+
+/// The octets of `frame` in `range`; a range outside the frame is a broken invariant, since
+/// every range comes from a layout computed for the frame's length (GEN-020).
+pub(crate) fn cut(frame: &[u8], range: Range<usize>) -> core::result::Result<&[u8], Rejection> {
+    frame.get(range).ok_or(internal())
 }
 
 /// The rejection for a layout that does not lie inside its frame: a broken invariant.
@@ -663,7 +662,7 @@ impl<'a> UslpFullFrame<'a> {
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     extern crate std;
-    use super::{UslpFrame, oid_deviation, tfdf_rejection};
+    use super::{UslpFrame, cut, oid_deviation, tfdf_rejection};
     use crate::anomaly::UslpAnomaly;
     use crate::config::tests::{fixed, mapid, plain_variable, variable};
     use crate::field;
@@ -1027,5 +1026,14 @@ mod tests {
         // The length peek of an unknown VC is not refused.
         let vc9 = [0xC0, 0x15, 0x51, 0x20, 0x00, 0x09];
         assert_eq!(UslpFrame::peek_length(&vc9, &t), Ok(10));
+    }
+
+    #[test]
+    fn a_range_outside_the_frame_is_an_internal_error() {
+        // req: GEN-020
+        let frame = [0_u8; 4];
+        assert_eq!(cut(&frame, 1..3).ok(), Some(&frame[1..3]));
+        let e = cut(&frame, 2..5).err().map(|r| r.error().kind());
+        assert_eq!(e, Some(aldis_core::ErrorKind::InternalError));
     }
 }
