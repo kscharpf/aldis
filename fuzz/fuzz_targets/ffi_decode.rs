@@ -940,7 +940,7 @@ mod tc_ffi {
                 Some(IntakeItem::Accepted { frame, .. }) => {
                     assert_eq!(item.kind, ALDIS_TC_STREAM_ACCEPTED);
                     assert_eq!(item.len, frame.len());
-                    same(&item.frame, data, &frame);
+                    same(&item.frame, frame.octets(), &frame);
                 }
                 Some(IntakeItem::Discarded { reason, octets, .. }) => {
                     assert_eq!(item.kind, ALDIS_TC_STREAM_DISCARDED);
@@ -1682,7 +1682,7 @@ fn uslp(data: &[u8], selector: u8, mode: DecodeMode, c_mode: u32) {
             Some(UslpIntakeItem::Accepted { frame, .. }) => {
                 assert_eq!(item.kind, ALDIS_USLP_STREAM_ACCEPTED);
                 assert_eq!(item.len, frame.len());
-                uslp_same(&item.frame, &frame, data);
+                uslp_same(&item.frame, &frame, frame.octets());
             }
             Some(UslpIntakeItem::Discarded { reason, octets, .. }) => {
                 assert_eq!(item.kind, ALDIS_USLP_STREAM_DISCARDED);

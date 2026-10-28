@@ -71,8 +71,8 @@ impl DiscardReason {
             DiscardReason::FecfMismatch => 9,
             DiscardReason::InvalidMapId => 10,
             DiscardReason::ReservedControlCommand => 11,
-            DiscardReason::TruncatedFrame { .. } => 20,
-            DiscardReason::Fill => 21,
+            DiscardReason::Fill => 20,
+            DiscardReason::TruncatedFrame { .. } => 21,
         }
     }
 
@@ -196,41 +196,50 @@ impl<'a, L: VcLookup + ?Sized> Iterator for FrameStream<'a, '_, L> {
             return None;
         }
 
-        match RawHeader::parse(self.rest) {
-            Some(h) if h.version == 0 && h.frame_len >= MIN_FRAME_LEN => {
-                if let Some((frame_bytes, remaining)) = self.rest.split_at_checked(h.frame_len) {
-                    self.rest = remaining;
-                    match parse(frame_bytes, self.channels, self.mode, true) {
-                        Ok((frame, vc, map)) => Some(IntakeItem::Accepted { frame, vc, map }),
-                        Err(rejection) => Some(IntakeItem::Discarded {
-                            reason: DiscardReason::from(rejection.reason()),
-                            octets: frame_bytes,
-                            error: rejection.error(),
-                        }),
-                    }
-                } else {
-                    let octets = self.rest;
-                    self.rest = &[];
-                    Some(IntakeItem::Discarded {
-                        reason: DiscardReason::TruncatedFrame {
-                            declared_len: h.frame_len,
-                        },
-                        octets,
-                        error: Error::incomplete(h.frame_len),
-                    })
-                }
+        if let Some(h) = RawHeader::parse(self.rest) {
+            // A frame header declares at least 5 octets (its own primary header length).
+            // If the declared length is available in self.rest, reconstruct and validate the frame.
+            let full_frame = if h.frame_len >= 5 {
+                self.rest.split_at_checked(h.frame_len)
+            } else {
+                None
+            };
+            if let Some((frame_bytes, remaining)) = full_frame {
+                self.rest = remaining;
+                return match parse(frame_bytes, self.channels, self.mode, true) {
+                    Ok((frame, vc, map)) => Some(IntakeItem::Accepted { frame, vc, map }),
+                    Err(rejection) => Some(IntakeItem::Discarded {
+                        reason: DiscardReason::from(rejection.reason()),
+                        octets: frame_bytes,
+                        error: rejection.error(),
+                    }),
+                };
             }
-            _ => {
+
+            // A valid header (TFVN 00 and declared length >= MIN_FRAME_LEN) declaring more octets
+            // than remain in the data unit is discarded as a truncated frame (232.0 §4.4.9.2.5; OI-41).
+            if h.version == 0 && h.frame_len >= MIN_FRAME_LEN {
                 let octets = self.rest;
                 self.rest = &[];
-                Some(IntakeItem::Discarded {
-                    reason: DiscardReason::Fill,
+                return Some(IntakeItem::Discarded {
+                    reason: DiscardReason::TruncatedFrame {
+                        declared_len: h.frame_len,
+                    },
                     octets,
-                    error: Error::new(ErrorKind::Malformed)
-                        .with_field(crate::field::FRAME_DATA_FIELD),
-                })
+                    error: Error::incomplete(h.frame_len),
+                });
             }
         }
+
+        // Unparseable header, frame_len < 5, or fill pattern (such as 0x55 with TFVN 01; §4.4.9.2.6 note 2)
+        // is discarded as fill data taking the rest of the unit (232.0 §4.4.9.2.6 b; OI-41).
+        let octets = self.rest;
+        self.rest = &[];
+        Some(IntakeItem::Discarded {
+            reason: DiscardReason::Fill,
+            octets,
+            error: Error::new(ErrorKind::Malformed).with_field(crate::field::FRAME_DATA_FIELD),
+        })
     }
 }
 
@@ -319,6 +328,53 @@ mod tests {
                 ..
             }
         ));
+        assert_eq!(stream.next(), None);
+    }
+
+    #[test]
+    fn stream_discards_unexpected_version_and_continues() {
+        // req: TC-021
+        let table = standard(false);
+        // Header with version 01 (0x71) declaring 6 octets, followed by a valid Unlock frame
+        let mut unit = [0_u8; 12];
+        unit[..6].copy_from_slice(&[0x71, 0x55, 0x04, 0x05, 0x00, 0x00]);
+        unit[6..].copy_from_slice(&UNLOCK);
+
+        let mut stream = FrameStream::new(&unit, &table, DecodeMode::Strict);
+        let first = stream.next().unwrap();
+        match first {
+            IntakeItem::Discarded { reason, octets, .. } => {
+                assert_eq!(reason, DiscardReason::UnexpectedVersion);
+                assert_eq!(octets.len(), 6);
+            }
+            IntakeItem::Accepted { .. } => panic!("expected version rejection"),
+        }
+        let second = stream.next().unwrap();
+        assert!(matches!(second, IntakeItem::Accepted { ref frame, .. } if frame.len() == 6));
+        assert_eq!(stream.next(), None);
+    }
+
+    #[test]
+    fn stream_discards_frame_too_short_and_continues() {
+        // req: TC-021
+        let table = standard(false);
+        // Header with version 00 declaring 5 octets (leaving 0 data octets; FrameTooShort),
+        // followed by a valid Unlock frame
+        let mut unit = [0_u8; 11];
+        unit[..5].copy_from_slice(&[0x31, 0x55, 0x04, 0x04, 0x00]);
+        unit[5..].copy_from_slice(&UNLOCK);
+
+        let mut stream = FrameStream::new(&unit, &table, DecodeMode::Strict);
+        let first = stream.next().unwrap();
+        match first {
+            IntakeItem::Discarded { reason, octets, .. } => {
+                assert_eq!(reason, DiscardReason::FrameTooShort);
+                assert_eq!(octets.len(), 5);
+            }
+            IntakeItem::Accepted { .. } => panic!("expected frame too short rejection"),
+        }
+        let second = stream.next().unwrap();
+        assert!(matches!(second, IntakeItem::Accepted { ref frame, .. } if frame.len() == 6));
         assert_eq!(stream.next(), None);
     }
 }

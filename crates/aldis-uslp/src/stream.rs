@@ -13,6 +13,7 @@ use aldis_core::{DecodeMode, Error, ErrorKind};
 use crate::config::{MapConfig, VcConfig, VcLookup};
 use crate::delimit::{Declared, declared_len};
 use crate::field;
+use crate::header::{RawRest, RawStart, VERSION};
 use crate::validate::Reason;
 use crate::view::{UslpFrame, parse};
 
@@ -29,8 +30,6 @@ pub enum DiscardReason {
     },
     /// A truncated header whose SCID and VCID name no configured VC or no truncated length.
     NoTruncatedLength,
-    /// A non-truncated header on a VC that carries only truncated frames (OI-48).
-    NonTruncatedNotAllowed,
     /// 1, test (a): TFVN is not `1100` (§4.1.2.2.2; USLP-001).
     UnexpectedVersion,
     /// 2, test (b): SCID names no Master Channel of the Physical Channel.
@@ -73,7 +72,7 @@ impl DiscardReason {
     /// Stable numeric code for C ABI and telemetry classification.
     ///
     /// Codes 1–18 match the validation check reasons; 20 is Fill, 21 `IncompleteFrame`,
-    /// 22 `NoTruncatedLength`, 23 `NonTruncatedNotAllowed`.
+    /// 22 `NoTruncatedLength`.
     #[must_use]
     pub const fn code(self) -> u8 {
         match self {
@@ -98,7 +97,6 @@ impl DiscardReason {
             DiscardReason::Fill => 20,
             DiscardReason::IncompleteFrame { .. } => 21,
             DiscardReason::NoTruncatedLength => 22,
-            DiscardReason::NonTruncatedNotAllowed => 23,
         }
     }
 
@@ -126,8 +124,7 @@ impl DiscardReason {
             DiscardReason::NonTruncatedFrameNotAllowed => Some(Reason::NonTruncatedFrameNotAllowed),
             DiscardReason::Fill
             | DiscardReason::IncompleteFrame { .. }
-            | DiscardReason::NoTruncatedLength
-            | DiscardReason::NonTruncatedNotAllowed => None,
+            | DiscardReason::NoTruncatedLength => None,
         }
     }
 }
@@ -239,6 +236,39 @@ impl<'a, L: VcLookup + ?Sized> Iterator for FrameStream<'a, '_, L> {
             return None;
         }
 
+        // If an unexpected-version frame is present with its declared length available in rest,
+        // pass it to parse to report DiscardReason::UnexpectedVersion and advance past it.
+        let unexpected_version_frame = (|| {
+            let start = RawStart::parse(self.rest)?;
+            if start.version == VERSION {
+                return None;
+            }
+            let len = if start.truncated {
+                self.channels
+                    .vc(start.channel.spacecraft_id, start.channel.vc_id)
+                    .and_then(|vc| vc.truncated_frame_len())?
+                    .get()
+            } else {
+                let raw = RawRest::parse(self.rest)?;
+                if raw.frame_len < 7 {
+                    return None;
+                }
+                raw.frame_len
+            };
+            self.rest.split_at_checked(len)
+        })();
+        if let Some((frame_bytes, remaining)) = unexpected_version_frame {
+            self.rest = remaining;
+            return match parse(frame_bytes, self.channels, self.mode, true) {
+                Ok((frame, vc, map)) => Some(IntakeItem::Accepted { frame, vc, map }),
+                Err(rejection) => Some(IntakeItem::Discarded {
+                    reason: DiscardReason::from(rejection.reason()),
+                    octets: frame_bytes,
+                    error: rejection.error(),
+                }),
+            };
+        }
+
         match declared_len(self.rest, self.channels) {
             Some(Declared::Len(len)) => {
                 if let Some((frame_bytes, remaining)) = self.rest.split_at_checked(len) {
@@ -274,7 +304,7 @@ impl<'a, L: VcLookup + ?Sized> Iterator for FrameStream<'a, '_, L> {
                 let octets = self.rest;
                 self.rest = &[];
                 Some(IntakeItem::Discarded {
-                    reason: DiscardReason::NonTruncatedNotAllowed,
+                    reason: DiscardReason::NonTruncatedFrameNotAllowed,
                     octets,
                     error: Error::new(ErrorKind::InvalidField)
                         .with_field(field::END_OF_FRAME_PRIMARY_HEADER_FLAG),
@@ -322,6 +352,50 @@ mod tests {
         assert!(
             matches!(third, IntakeItem::Discarded { reason: DiscardReason::Fill, octets, .. } if octets.len() == 3)
         );
+        assert_eq!(stream.next(), None);
+    }
+
+    #[test]
+    fn stream_discards_unexpected_version_and_continues() {
+        // req: USLP-014, USLP-015
+        let table = variable();
+        // A truncated frame with version 0 instead of 12 (0x00 instead of 0xC0) followed by a valid frame
+        let mut bad = TRUNCATED;
+        bad[0] = 0x00;
+        let mut unit = [0_u8; 24];
+        unit[..12].copy_from_slice(&bad);
+        unit[12..].copy_from_slice(&TRUNCATED);
+
+        let mut stream = FrameStream::new(&unit, &table, DecodeMode::Strict);
+        let first = stream.next().unwrap();
+        match first {
+            IntakeItem::Discarded { reason, octets, .. } => {
+                assert_eq!(reason, DiscardReason::UnexpectedVersion);
+                assert_eq!(octets.len(), 12);
+            }
+            IntakeItem::Accepted { .. } => panic!("expected version rejection"),
+        }
+        let second = stream.next().unwrap();
+        assert!(matches!(second, IntakeItem::Accepted { ref frame, .. } if frame.len() == 12));
+        assert_eq!(stream.next(), None);
+    }
+
+    #[test]
+    fn stream_discards_non_truncated_frame_not_allowed() {
+        // req: USLP-014, USLP-015
+        let table = variable();
+        // VC 4 requires truncated frames; a non-truncated frame is rejected with NonTruncatedFrameNotAllowed
+        // 7-octet primary header: version 12 (0xC0), SCID 0x155, VCID 4, non-truncated flag (0)
+        let bad = [0xC0, 0x15, 0x58, 0x84, 0x00, 0x10, 0x00];
+        let mut stream = FrameStream::new(&bad, &table, DecodeMode::Strict);
+        let first = stream.next().unwrap();
+        match first {
+            IntakeItem::Discarded { reason, octets, .. } => {
+                assert_eq!(reason, DiscardReason::NonTruncatedFrameNotAllowed);
+                assert_eq!(octets.len(), 7);
+            }
+            IntakeItem::Accepted { .. } => panic!("expected non-truncated rejection"),
+        }
         assert_eq!(stream.next(), None);
     }
 }

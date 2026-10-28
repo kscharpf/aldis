@@ -1657,14 +1657,14 @@
 #define ALDIS_TC_DISCARD_RESERVED_CONTROL_COMMAND 11
 
 /**
- * Discard reason: truncated frame whose declared length exceeds remaining octets (232.0 §4.4.9.2.5; TC-020).
- */
-#define ALDIS_TC_DISCARD_TRUNCATED_FRAME 20
-
-/**
  * Discard reason: fill data (232.0 §4.4.9.2.6; TC-020).
  */
-#define ALDIS_TC_DISCARD_FILL 21
+#define ALDIS_TC_DISCARD_FILL 20
+
+/**
+ * Discard reason: truncated frame whose declared length exceeds remaining octets (232.0 §4.4.9.2.5; TC-020).
+ */
+#define ALDIS_TC_DISCARD_TRUNCATED_FRAME 21
 
 /**
  * Alias for [`ALDIS_TC_DISCARD_NONE`].
@@ -2301,7 +2301,7 @@
 /**
  * Discard reason: non-truncated header on a VC that carries only truncated frames (732.1 OI-48; USLP-015).
  */
-#define ALDIS_USLP_DISCARD_NON_TRUNCATED_NOT_ALLOWED 23
+#define ALDIS_USLP_DISCARD_NON_TRUNCATED_NOT_ALLOWED ALDIS_USLP_DISCARD_NON_TRUNCATED_FRAME_NOT_ALLOWED
 
 /**
  * Alias for [`ALDIS_USLP_DISCARD_NONE`].

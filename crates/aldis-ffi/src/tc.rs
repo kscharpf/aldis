@@ -130,10 +130,10 @@ pub const ALDIS_TC_DISCARD_FECF_MISMATCH: u32 = 9;
 pub const ALDIS_TC_DISCARD_INVALID_MAP_ID: u32 = 10;
 /// Discard reason: strict mode only, Type-C data field is not a recognized command (232.0 §4.1.3.3.4; TC-005).
 pub const ALDIS_TC_DISCARD_RESERVED_CONTROL_COMMAND: u32 = 11;
-/// Discard reason: truncated frame whose declared length exceeds remaining octets (232.0 §4.4.9.2.5; TC-020).
-pub const ALDIS_TC_DISCARD_TRUNCATED_FRAME: u32 = 20;
 /// Discard reason: fill data (232.0 §4.4.9.2.6; TC-020).
-pub const ALDIS_TC_DISCARD_FILL: u32 = 21;
+pub const ALDIS_TC_DISCARD_FILL: u32 = 20;
+/// Discard reason: truncated frame whose declared length exceeds remaining octets (232.0 §4.4.9.2.5; TC-020).
+pub const ALDIS_TC_DISCARD_TRUNCATED_FRAME: u32 = 21;
 
 // Aliases for validation check codes
 /// Alias for [`ALDIS_TC_DISCARD_NONE`].
@@ -1019,15 +1019,21 @@ pub unsafe extern "C" fn aldis_tc_stream_next(
     out: *mut aldis_tc_stream_item_t,
     err: *mut crate::aldis_error_detail_t,
 ) -> i32 {
-    // SAFETY: every pointer is valid as `# Safety` states; `abi` checks NULL and alignment.
+    // SAFETY: every pointer is valid as `# Safety` states; `abi` checks NULL, alignment, and overlap.
     unsafe {
         abi::call(err, || {
             let table = master_channel_at(mc, vcs, vc_count, maps, map_count)?;
             let unit = abi::bytes(unit, unit_len)?;
-            let offset_ref = abi::inout(offset)?;
+            let offset_ref = abi::inout(offset, &[(unit.as_ptr(), unit.len())])?;
             let current_offset = *offset_ref;
             let mode = abi::mode(mode)?;
-            let out = abi::out(out)?;
+            let out = abi::out_disjoint(
+                out,
+                &[
+                    (unit.as_ptr(), unit.len()),
+                    (offset.cast::<u8>(), core::mem::size_of::<usize>()),
+                ],
+            )?;
 
             if current_offset > unit_len {
                 return Err(invalid_argument());

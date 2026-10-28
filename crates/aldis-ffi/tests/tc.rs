@@ -1021,3 +1021,52 @@ fn the_stream_intake_pipeline() {
         (ALDIS_OK, ALDIS_TC_STREAM_END, 0, unit.len())
     );
 }
+
+#[test]
+fn stream_rejects_overlapping_pointers() {
+    // req: CABI-022
+    let (mc, vcs, maps) = (mc(), vcs(), maps());
+    let unit = [0x31_u8, 0x55, 0x04, 0x05, 0x00, 0x00];
+    let mut item = aldis_tc_stream_item_t::default();
+
+    // 1. offset pointing into unit buffer is rejected
+    let mut buffer = [0_usize; 8];
+    let unit_ptr = buffer.as_ptr().cast::<u8>();
+    let offset_ptr = buffer.as_mut_ptr();
+    // SAFETY: pointers point to valid aligned stack buffer
+    let status = unsafe {
+        aldis_tc_stream_next(
+            unit_ptr,
+            buffer.len().saturating_mul(core::mem::size_of::<usize>()),
+            offset_ptr,
+            &raw const mc,
+            vcs.as_ptr(),
+            vcs.len(),
+            maps.as_ptr(),
+            maps.len(),
+            ALDIS_MODE_STRICT,
+            &raw mut item,
+            null_mut(),
+        )
+    };
+    assert_eq!(status, ALDIS_ERR_INVALID_FIELD);
+
+    // 2. out overlapping offset is rejected (e.g. &item.offset as offset and &item as out)
+    // SAFETY: pointers point to valid stack item
+    let status = unsafe {
+        aldis_tc_stream_next(
+            unit.as_ptr(),
+            unit.len(),
+            &raw mut item.offset,
+            &raw const mc,
+            vcs.as_ptr(),
+            vcs.len(),
+            maps.as_ptr(),
+            maps.len(),
+            ALDIS_MODE_STRICT,
+            &raw mut item,
+            null_mut(),
+        )
+    };
+    assert_eq!(status, ALDIS_ERR_INVALID_FIELD);
+}

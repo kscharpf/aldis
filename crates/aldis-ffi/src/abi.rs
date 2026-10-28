@@ -108,10 +108,11 @@ pub(crate) unsafe fn read<T: Copy>(ptr: *const T) -> Result<T> {
     Ok(unsafe { ptr.read() })
 }
 
-/// `ptr` as an in-out location (CABI-022).
+/// `ptr` as an in-out location, disjoint from `inputs` (CABI-022).
 ///
 /// # Errors
-/// `InvalidField` (no field) when `ptr` is `NULL` or misaligned.
+/// `InvalidField` (no field) when `ptr` is `NULL` or misaligned, the range wraps, or it
+/// overlaps one of `inputs`.
 ///
 /// # Safety
 /// A non-null, aligned `ptr` must be valid for reads and writes of `T` during `'a`.
@@ -119,12 +120,56 @@ pub(crate) unsafe fn read<T: Copy>(ptr: *const T) -> Result<T> {
     unsafe_code,
     reason = "checked access to caller memory (CABI-022, GEN-071)"
 )]
-pub(crate) unsafe fn inout<'a, T: Copy>(ptr: *mut T) -> Result<&'a mut T> {
+pub(crate) unsafe fn inout<'a, T: Copy>(
+    ptr: *mut T,
+    inputs: &[(*const u8, usize)],
+) -> Result<&'a mut T> {
     if ptr.is_null() || !ptr.is_aligned() {
         return Err(invalid_argument());
     }
-    // SAFETY: non-null and aligned, checked above; valid for reads and writes by caller contract.
+    let size = core::mem::size_of::<T>();
+    let Some((start, end)) = range(ptr.cast::<u8>(), size) else {
+        return Err(invalid_argument());
+    };
+    let overlaps = inputs
+        .iter()
+        .any(|&(p, len)| len != 0 && range(p, len).is_none_or(|(s, e)| s < end && start < e));
+    if overlaps {
+        return Err(invalid_argument());
+    }
+    // SAFETY: non-null, aligned, and disjoint from inputs, checked above; valid for reads and writes by caller contract.
     Ok(unsafe { &mut *ptr })
+}
+
+/// `ptr` as an output location disjoint from `inputs` (CABI-022).
+///
+/// # Errors
+/// `InvalidField` (no field) when `ptr` is `NULL` or misaligned, the range wraps, or it
+/// overlaps one of `inputs`.
+///
+/// # Safety
+/// A non-null, aligned `ptr` must be valid for one write of `T` for `'a`.
+#[expect(
+    unsafe_code,
+    reason = "checked access to caller memory (CABI-022, GEN-071)"
+)]
+pub(crate) unsafe fn out_disjoint<'a, T>(
+    ptr: *mut T,
+    inputs: &[(*const u8, usize)],
+) -> Result<Out<'a, T>> {
+    // SAFETY: caller guaranteed ptr is valid for one write of T.
+    let out = unsafe { out(ptr) }?;
+    let size = core::mem::size_of::<T>();
+    let Some((start, end)) = range(ptr.cast::<u8>(), size) else {
+        return Err(invalid_argument());
+    };
+    let overlaps = inputs
+        .iter()
+        .any(|&(p, len)| len != 0 && range(p, len).is_none_or(|(s, e)| s < end && start < e));
+    if overlaps {
+        return Err(invalid_argument());
+    }
+    Ok(out)
 }
 
 /// The configuration struct that `ptr` points to, whose first field is `uint32_t struct_size`

@@ -209,7 +209,8 @@ pub const ALDIS_USLP_DISCARD_INCOMPLETE_FRAME: u32 = 21;
 /// Discard reason: truncated header whose SCID and VCID name no configured VC or no truncated length (732.1 USLP-015).
 pub const ALDIS_USLP_DISCARD_NO_TRUNCATED_LENGTH: u32 = 22;
 /// Discard reason: non-truncated header on a VC that carries only truncated frames (732.1 OI-48; USLP-015).
-pub const ALDIS_USLP_DISCARD_NON_TRUNCATED_NOT_ALLOWED: u32 = 23;
+pub const ALDIS_USLP_DISCARD_NON_TRUNCATED_NOT_ALLOWED: u32 =
+    ALDIS_USLP_DISCARD_NON_TRUNCATED_FRAME_NOT_ALLOWED;
 
 // Aliases for validation check codes
 /// Alias for [`ALDIS_USLP_DISCARD_NONE`].
@@ -1186,15 +1187,21 @@ pub unsafe extern "C" fn aldis_uslp_stream_next(
     out: *mut aldis_uslp_stream_item_t,
     err: *mut crate::aldis_error_detail_t,
 ) -> i32 {
-    // SAFETY: every pointer is valid as `# Safety` states; `abi` checks NULL and alignment.
+    // SAFETY: every pointer is valid as `# Safety` states; `abi` checks NULL, alignment, and overlap.
     unsafe {
         abi::call(err, || {
             let t = table_at(pc, vcs, vc_count, maps, map_count)?;
             let unit = abi::bytes(unit, unit_len)?;
-            let offset_ref = abi::inout(offset)?;
+            let offset_ref = abi::inout(offset, &[(unit.as_ptr(), unit.len())])?;
             let current_offset = *offset_ref;
             let mode = abi::mode(mode)?;
-            let out = abi::out(out)?;
+            let out = abi::out_disjoint(
+                out,
+                &[
+                    (unit.as_ptr(), unit.len()),
+                    (offset.cast::<u8>(), core::mem::size_of::<usize>()),
+                ],
+            )?;
 
             if current_offset > unit_len {
                 return Err(invalid_argument());
