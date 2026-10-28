@@ -77,15 +77,14 @@ use aldis_ffi::tm::{
 };
 // ---- USLP (M2 WP-5 module 9)
 use aldis_ffi::uslp::{
-    ALDIS_USLP_DELIMITED_FRAME, ALDIS_USLP_FRAME_FIXED, ALDIS_USLP_FRAME_VARIABLE,
-    ALDIS_USLP_KIND_EXPEDITED, ALDIS_USLP_OID_VCID, ALDIS_USLP_REASON_NONE,
-    ALDIS_USLP_RULE_NO_SEGMENTATION, ALDIS_USLP_RULE_OCTET_STREAM, ALDIS_USLP_UPID_OCTET_STREAM,
-    aldis_uslp_channel_t, aldis_uslp_config_check, aldis_uslp_config_t, aldis_uslp_content_t,
-    aldis_uslp_decode, aldis_uslp_delimited_t, aldis_uslp_encode, aldis_uslp_encode_oid,
-    aldis_uslp_encode_truncated, aldis_uslp_fields_t, aldis_uslp_frame_t, aldis_uslp_layout_t,
-    aldis_uslp_map_config_t, aldis_uslp_next_frame, aldis_uslp_peek_length, aldis_uslp_tfdf_t,
-    aldis_uslp_validate, aldis_uslp_vc_config_t, aldis_uslp_vc_table_check,
-    aldis_uslp_writer_begin, aldis_uslp_writer_finish,
+    ALDIS_USLP_FRAME_FIXED, ALDIS_USLP_FRAME_VARIABLE, ALDIS_USLP_KIND_EXPEDITED,
+    ALDIS_USLP_OID_VCID, ALDIS_USLP_RULE_NO_SEGMENTATION, ALDIS_USLP_RULE_OCTET_STREAM,
+    ALDIS_USLP_STREAM_ACCEPTED, ALDIS_USLP_UPID_OCTET_STREAM, aldis_uslp_channel_t,
+    aldis_uslp_config_check, aldis_uslp_config_t, aldis_uslp_content_t, aldis_uslp_decode,
+    aldis_uslp_encode, aldis_uslp_encode_oid, aldis_uslp_encode_truncated, aldis_uslp_fields_t,
+    aldis_uslp_frame_t, aldis_uslp_layout_t, aldis_uslp_map_config_t, aldis_uslp_peek_length,
+    aldis_uslp_stream_item_t, aldis_uslp_stream_next, aldis_uslp_tfdf_t, aldis_uslp_vc_config_t,
+    aldis_uslp_vc_table_check, aldis_uslp_writer_begin, aldis_uslp_writer_finish,
 };
 // ---- end USLP
 use aldis_ffi::{ALDIS_MODE_LENIENT, ALDIS_MODE_STRICT};
@@ -1322,16 +1321,16 @@ fn tc_channels() -> (
 #[expect(unsafe_code, reason = "calls the C ABI with valid pointers")]
 #[expect(clippy::too_many_lines, reason = "one call per exported function")]
 fn tc(t: &mut Tally) {
-    use aldis_ffi::error::{ALDIS_ERR_CRC_MISMATCH, ALDIS_ERR_RESERVED_VALUE};
+    use aldis_ffi::error::ALDIS_ERR_RESERVED_VALUE;
     use aldis_ffi::tc::{
-        ALDIS_TC_CONTROL_SET_VR, ALDIS_TC_DELIMITED_FILL, ALDIS_TC_DELIMITED_FRAME,
-        ALDIS_TC_FRAME_AD, ALDIS_TC_FRAME_BC, ALDIS_TC_REASON_FECF_MISMATCH, ALDIS_TC_REASON_NONE,
-        ALDIS_TC_SEQ_UNSEGMENTED, aldis_clcw_decode, aldis_clcw_encode, aldis_clcw_t,
+        ALDIS_TC_CONTROL_SET_VR, ALDIS_TC_DISCARD_FECF_MISMATCH, ALDIS_TC_DISCARD_FILL,
+        ALDIS_TC_FRAME_AD, ALDIS_TC_FRAME_BC, ALDIS_TC_SEQ_UNSEGMENTED, ALDIS_TC_STREAM_ACCEPTED,
+        ALDIS_TC_STREAM_DISCARDED, aldis_clcw_decode, aldis_clcw_encode, aldis_clcw_t,
         aldis_tc_config_check, aldis_tc_content_t, aldis_tc_control_decode,
-        aldis_tc_control_encode, aldis_tc_control_t, aldis_tc_decode, aldis_tc_delimited_t,
-        aldis_tc_encode, aldis_tc_fields_t, aldis_tc_frame_t, aldis_tc_header_decode,
-        aldis_tc_header_t, aldis_tc_layout_t, aldis_tc_mc_config_check, aldis_tc_next_frame,
-        aldis_tc_peek_length, aldis_tc_validate, aldis_tc_writer_begin, aldis_tc_writer_finish,
+        aldis_tc_control_encode, aldis_tc_control_t, aldis_tc_decode, aldis_tc_encode,
+        aldis_tc_fields_t, aldis_tc_frame_t, aldis_tc_header_decode, aldis_tc_header_t,
+        aldis_tc_layout_t, aldis_tc_mc_config_check, aldis_tc_peek_length, aldis_tc_stream_item_t,
+        aldis_tc_stream_next, aldis_tc_writer_begin, aldis_tc_writer_finish,
     };
     let (mc, vcs, maps) = tc_channels();
     let mut det = detail();
@@ -1373,10 +1372,9 @@ fn tc(t: &mut Tally) {
     let mut layout = aldis_tc_layout_t::default();
     let mut view = aldis_tc_frame_t::default();
     let mut header = aldis_tc_header_t::default();
-    let mut item = aldis_tc_delimited_t::default();
     let mut control = aldis_tc_control_t::default();
     let mut clcw = aldis_clcw_t::default();
-    let (mut n, mut reason, mut word, mut anomalies) = (0_usize, 0_u32, 0_u32, 0_u32);
+    let (mut n, mut word, mut anomalies) = (0_usize, 0_u32, 0_u32);
     let mut octets = [0_u8; 3];
     // SAFETY: every pointer is to a live local; lengths are those of the buffers.
     unsafe {
@@ -1484,59 +1482,63 @@ fn tc(t: &mut Tally) {
                 && view.has_segment_header
                 && view.layout.security_header_len == 3,
         );
+        let mut s_offset = bb(0);
+        let mut s_item = aldis_tc_stream_item_t::default();
         t.check(
-            aldis_tc_next_frame(
+            aldis_tc_stream_next(
                 unit.as_ptr(),
                 unit.len(),
-                bb(0),
-                &raw mut item,
-                &raw mut det,
-            ) == ALDIS_OK
-                && item.kind == ALDIS_TC_DELIMITED_FRAME
-                && item.len == 10,
-        );
-        t.check(
-            aldis_tc_validate(
-                unit.as_ptr(),
-                item.len,
-                &raw const mc,
-                vcs.as_ptr(),
-                bb(2),
-                maps.as_ptr(),
-                bb(1),
-                bb(ALDIS_MODE_LENIENT),
-                &raw mut view,
-                &raw mut reason,
-                &raw mut det,
-            ) == ALDIS_OK
-                && reason == ALDIS_TC_REASON_NONE,
-        );
-        unit[7] ^= bb(1);
-        t.check(
-            aldis_tc_validate(
-                unit.as_ptr(),
-                bb(10),
+                &raw mut s_offset,
                 &raw const mc,
                 vcs.as_ptr(),
                 bb(2),
                 maps.as_ptr(),
                 bb(1),
                 bb(ALDIS_MODE_STRICT),
-                &raw mut view,
-                &raw mut reason,
-                &raw mut det,
-            ) == ALDIS_ERR_CRC_MISMATCH
-                && reason == ALDIS_TC_REASON_FECF_MISMATCH,
-        );
-        t.check(
-            aldis_tc_next_frame(
-                unit.as_ptr(),
-                unit.len(),
-                bb(10),
-                &raw mut item,
+                &raw mut s_item,
                 &raw mut det,
             ) == ALDIS_OK
-                && item.kind == ALDIS_TC_DELIMITED_FILL,
+                && s_item.kind == ALDIS_TC_STREAM_ACCEPTED
+                && s_item.len == 10
+                && s_offset == 10,
+        );
+        unit[7] ^= bb(1);
+        s_offset = bb(0);
+        t.check(
+            aldis_tc_stream_next(
+                unit.as_ptr(),
+                unit.len(),
+                &raw mut s_offset,
+                &raw const mc,
+                vcs.as_ptr(),
+                bb(2),
+                maps.as_ptr(),
+                bb(1),
+                bb(ALDIS_MODE_STRICT),
+                &raw mut s_item,
+                &raw mut det,
+            ) == ALDIS_OK
+                && s_item.kind == ALDIS_TC_STREAM_DISCARDED
+                && s_item.discard_reason == ALDIS_TC_DISCARD_FECF_MISMATCH
+                && s_offset == 10,
+        );
+        t.check(
+            aldis_tc_stream_next(
+                unit.as_ptr(),
+                unit.len(),
+                &raw mut s_offset,
+                &raw const mc,
+                vcs.as_ptr(),
+                bb(2),
+                maps.as_ptr(),
+                bb(1),
+                bb(ALDIS_MODE_STRICT),
+                &raw mut s_item,
+                &raw mut det,
+            ) == ALDIS_OK
+                && s_item.kind == ALDIS_TC_STREAM_DISCARDED
+                && s_item.discard_reason == ALDIS_TC_DISCARD_FILL
+                && s_offset == 12,
         );
         t.check(
             aldis_tc_control_encode(
@@ -1688,8 +1690,6 @@ fn uslp(t: &mut Tally) {
     let mut two = [0_u8; 64];
     let mut layout = aldis_uslp_layout_t::default();
     let mut view = aldis_uslp_frame_t::default();
-    let mut item = aldis_uslp_delimited_t::default();
-    let mut reason = u32::MAX;
     let mut n = 0_usize;
     let mut words = [0_u64; ALDIS_OID_GENERATOR_STORAGE_SIZE / 8];
     let mut oid: *mut aldis_oid_generator_t = null_mut();
@@ -1787,35 +1787,24 @@ fn uslp(t: &mut Tally) {
                 && view.layout.tfdz_len == 3
                 && !view.truncated,
         );
+        let mut us_offset = bb(0);
+        let mut us_item = aldis_uslp_stream_item_t::default();
         t.check(
-            aldis_uslp_validate(
+            aldis_uslp_stream_next(
                 frame.as_ptr(),
                 bb(13),
+                &raw mut us_offset,
                 &raw const pc,
                 &raw const vc3,
                 bb(1),
                 &raw const map3,
                 bb(1),
-                bb(ALDIS_MODE_LENIENT),
-                &raw mut view,
-                &raw mut reason,
+                bb(ALDIS_MODE_STRICT),
+                &raw mut us_item,
                 &raw mut det,
             ) == ALDIS_OK
-                && reason == ALDIS_USLP_REASON_NONE,
-        );
-        t.check(
-            aldis_uslp_next_frame(
-                frame.as_ptr(),
-                bb(13),
-                bb(0),
-                &raw const pc,
-                &raw const vc3,
-                bb(1),
-                &raw mut item,
-                &raw mut det,
-            ) == ALDIS_OK
-                && item.kind == ALDIS_USLP_DELIMITED_FRAME
-                && item.len == 13,
+                && us_item.kind == ALDIS_USLP_STREAM_ACCEPTED
+                && us_offset == 13,
         );
         t.check(
             aldis_uslp_encode_truncated(

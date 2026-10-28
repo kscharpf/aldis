@@ -169,7 +169,7 @@ fn parse_full<'a, L: VcLookup + ?Sized>(
     channels: &L,
     mode: DecodeMode,
     exact: bool,
-) -> core::result::Result<UslpFullFrame<'a>, Rejection> {
+) -> core::result::Result<(UslpFullFrame<'a>, VcConfig, Option<MapConfig>), Rejection> {
     let mut anomalies = AnomalySet::empty();
     let (vc, map, kind) = check_channel(start.channel, rest, channels, mode, &mut anomalies)?;
     let ch = start.channel;
@@ -239,28 +239,32 @@ fn parse_full<'a, L: VcLookup + ?Sized>(
             DecodeMode::Lenient => anomalies.insert(UslpAnomaly::OidHeaderMismatch),
         }
     }
-    Ok(UslpFullFrame {
-        header: UslpPrimaryHeader::new(
-            ch,
-            total,
-            kind,
-            rest.ocf_flag,
-            read_vcf_count(frame, rest.vcf_count_len),
-        ),
-        octets: frame,
-        insert_zone,
-        security_header,
-        tfdf_header,
-        tfdz,
-        security_trailer,
-        ocf: ocf_octets
-            .first_chunk::<OCF_LEN>()
-            .map(|&octets| Ocf::decode(octets)),
-        fecf: cursor
-            .first_chunk::<FECF_LEN>()
-            .map(|&octets| u16::from_be_bytes(octets)),
-        anomalies,
-    })
+    Ok((
+        UslpFullFrame {
+            header: UslpPrimaryHeader::new(
+                ch,
+                total,
+                kind,
+                rest.ocf_flag,
+                read_vcf_count(frame, rest.vcf_count_len),
+            ),
+            octets: frame,
+            insert_zone,
+            security_header,
+            tfdf_header,
+            tfdz,
+            security_trailer,
+            ocf: ocf_octets
+                .first_chunk::<OCF_LEN>()
+                .map(|&octets| Ocf::decode(octets)),
+            fecf: cursor
+                .first_chunk::<FECF_LEN>()
+                .map(|&octets| u16::from_be_bytes(octets)),
+            anomalies,
+        },
+        vc,
+        map,
+    ))
 }
 
 /// The decoder and the USLP Frame Validation Checks, in the order of
@@ -273,7 +277,7 @@ pub(crate) fn parse<'a, L: VcLookup + ?Sized>(
     channels: &L,
     mode: DecodeMode,
     exact: bool,
-) -> core::result::Result<UslpFrame<'a>, Rejection> {
+) -> core::result::Result<(UslpFrame<'a>, VcConfig, Option<MapConfig>), Rejection> {
     let start = RawStart::parse(bytes).ok_or(length(exact, TRUNCATED_HEADER_LEN))?;
     let rest = if start.truncated {
         None
@@ -291,8 +295,14 @@ pub(crate) fn parse<'a, L: VcLookup + ?Sized>(
         ));
     }
     match rest {
-        None => truncated::parse(bytes, start.channel, channels, exact).map(UslpFrame::Truncated),
-        Some(rest) => parse_full(bytes, (start, rest), channels, mode, exact).map(UslpFrame::Full),
+        None => {
+            let (frame, vc, map) = truncated::parse(bytes, start.channel, channels, exact)?;
+            Ok((UslpFrame::Truncated(frame), vc, map))
+        }
+        Some(rest) => {
+            let (frame, vc, map) = parse_full(bytes, (start, rest), channels, mode, exact)?;
+            Ok((UslpFrame::Full(frame), vc, map))
+        }
     }
 }
 
@@ -333,7 +343,9 @@ impl<'a> UslpFrame<'a> {
         channels: &L,
         mode: DecodeMode,
     ) -> Result<UslpFrame<'a>> {
-        parse(bytes, channels, mode, false).map_err(Error::from)
+        parse(bytes, channels, mode, false)
+            .map(|(frame, _, _)| frame)
+            .map_err(Error::from)
     }
 
     /// Total length of the frame that starts `prefix` (732.1 §4.1.2.7, Annex D1.3.2; API-013,

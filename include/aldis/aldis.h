@@ -1561,87 +1561,89 @@
 #define ALDIS_TC_ANOMALY_CLCW_SPARE_SET (1 << 2)
 
 /**
- * Delimiter item: no octets of the unit remain (232.0 §4.4.9.2; TC-020).
+ * Stream item: no octets of the unit remain (232.0 §4.4.9.2; TC-020).
  */
-#define ALDIS_TC_DELIMITED_END 0
+#define ALDIS_TC_STREAM_END 0
 
 /**
- * Delimiter item: one frame, as long as its Frame Length declares (232.0 §4.4.9.2.4; TC-020).
+ * Stream item: one validated frame (232.0 §4.4.9.2, §4.4.9.3; TC-020, TC-021).
  */
-#define ALDIS_TC_DELIMITED_FRAME 1
+#define ALDIS_TC_STREAM_ACCEPTED 1
 
 /**
- * Delimiter item: the rest of the unit, discarded: a valid header that declares more octets
- * than remain (232.0 §4.4.9.2.5; TC-020).
+ * Stream item: discarded octets (fill, truncated frame, or failed validation) (232.0 §4.4.9.2, §4.4.9.3; TC-020, TC-021).
  */
-#define ALDIS_TC_DELIMITED_TRUNCATED_FRAME 2
+#define ALDIS_TC_STREAM_DISCARDED 2
 
 /**
- * Delimiter item: the rest of the unit, discarded as Fill Data (232.0 §4.4.9.2.6; TC-020).
+ * Discard reason: accepted frame (not discarded).
  */
-#define ALDIS_TC_DELIMITED_FILL 3
+#define ALDIS_TC_DISCARD_NONE 0
 
 /**
- * No rejection: the frame passed the Frame Validation Checks, or the call failed before they
- * ran (TC-021).
+ * Discard reason: check (a), Transfer Frame Version Number is not `00` (232.0 §4.4.9.3.3; TC-021).
  */
-#define ALDIS_TC_REASON_NONE 0
+#define ALDIS_TC_DISCARD_UNEXPECTED_VERSION 1
 
 /**
- * Check (a): the Transfer Frame Version Number is not `00` (232.0 §4.4.9.3.3; TC-021).
+ * Discard reason: check (b), Spacecraft ID is not that of the master channel (232.0 §4.4.9.3.3; TC-021).
  */
-#define ALDIS_TC_REASON_UNEXPECTED_VERSION 1
+#define ALDIS_TC_DISCARD_UNEXPECTED_SPACECRAFT 2
 
 /**
- * Check (b): the Spacecraft ID is not that of the master channel (232.0 §4.4.9.3.3; TC-021).
+ * Discard reason: check (c), Bypass Flag `0` with Control Command Flag `1` (232.0 Table 4-1; TC-002, TC-021).
  */
-#define ALDIS_TC_REASON_UNEXPECTED_SPACECRAFT 2
+#define ALDIS_TC_DISCARD_RESERVED_FLAGS 3
 
 /**
- * Check (c): Bypass Flag `0` with Control Command Flag `1` (232.0 Table 4-1; TC-002, TC-021).
+ * Discard reason: check (c), strict mode only: Reserved Spare is not `00` (232.0 §4.1.2.4; TC-003).
  */
-#define ALDIS_TC_REASON_RESERVED_FLAGS 3
+#define ALDIS_TC_DISCARD_RESERVED_SPARE 4
 
 /**
- * Check (c), strict mode only: the Reserved Spare is not `00` (232.0 §4.1.2.4; TC-003).
+ * Discard reason: check (c), VCID is not configured (232.0 §4.4.7.3; TC-022).
  */
-#define ALDIS_TC_REASON_RESERVED_SPARE 4
+#define ALDIS_TC_DISCARD_INVALID_VCID 5
 
 /**
- * Check (c): the VCID is not configured (232.0 §4.4.7.3; TC-022).
+ * Discard reason: check (c), Frame Length exceeds the channel's maximum (232.0 Tables 5-1, 5-3; TC-021).
  */
-#define ALDIS_TC_REASON_INVALID_VCID 5
+#define ALDIS_TC_DISCARD_FRAME_TOO_LONG 6
 
 /**
- * Check (c): the Frame Length exceeds the channel's maximum (232.0 Tables 5-1, 5-3; TC-021).
+ * Discard reason: check (c), Frame Length leaves no data octet (232.0 §4.1.1; TC-021, CMN-041).
  */
-#define ALDIS_TC_REASON_FRAME_TOO_LONG 6
+#define ALDIS_TC_DISCARD_FRAME_TOO_SHORT 7
 
 /**
- * Check (c): the Frame Length leaves no data octet (232.0 §4.1.1; TC-021, CMN-041).
+ * Discard reason: check (d), Frame Length disagrees with the octets present (232.0 §4.4.9.3.3; TC-021).
  */
-#define ALDIS_TC_REASON_FRAME_TOO_SHORT 7
+#define ALDIS_TC_DISCARD_LENGTH_MISMATCH 8
 
 /**
- * Check (d): the Frame Length disagrees with the octets present (232.0 §4.4.9.3.3; TC-021).
+ * Discard reason: check (e), FECF does not match (232.0 §4.1.4; TC-006, TC-021).
  */
-#define ALDIS_TC_REASON_LENGTH_MISMATCH 8
+#define ALDIS_TC_DISCARD_FECF_MISMATCH 9
 
 /**
- * Check (e): the FECF does not match (232.0 §4.1.4; TC-006, TC-021).
+ * Discard reason: MAP ID is not configured on the Virtual Channel (232.0 §4.4.3.3; TC-022).
  */
-#define ALDIS_TC_REASON_FECF_MISMATCH 9
+#define ALDIS_TC_DISCARD_INVALID_MAP_ID 10
 
 /**
- * The MAP ID is not configured on the Virtual Channel (232.0 §4.4.3.3; TC-022).
+ * Discard reason: strict mode only, Type-C data field is not a recognized command (232.0 §4.1.3.3.4; TC-005).
  */
-#define ALDIS_TC_REASON_INVALID_MAP_ID 10
+#define ALDIS_TC_DISCARD_RESERVED_CONTROL_COMMAND 11
 
 /**
- * Strict mode only: a Type-C data field that is neither Unlock nor Set V(R) (232.0
- * §4.1.3.3.4; TC-005).
+ * Discard reason: fill data (232.0 §4.4.9.2.6; TC-020).
  */
-#define ALDIS_TC_REASON_RESERVED_CONTROL_COMMAND 11
+#define ALDIS_TC_DISCARD_FILL 20
+
+/**
+ * Discard reason: truncated frame whose declared length exceeds remaining octets (232.0 §4.4.9.2.5; TC-020).
+ */
+#define ALDIS_TC_DISCARD_TRUNCATED_FRAME 21
 
 /**
  * COP in Effect `01`: COP-1 (232.0 §4.2.1.5).
@@ -2091,135 +2093,134 @@
 #define ALDIS_USLP_ANOMALY_OID_HEADER_MISMATCH (1 << 1)
 
 /**
- * Validation reason: none, the frame was accepted (USLP-014).
+ * Stream item: no octets of the unit remain (732.1 §4.3.11.2; USLP-015).
  */
-#define ALDIS_USLP_REASON_NONE 0
+#define ALDIS_USLP_STREAM_END 0
 
 /**
- * Reason 1, test (a): the TFVN is not `1100` (732.1 §4.3.11.3.4 a; USLP-014).
+ * Stream item: one validated frame (732.1 §4.3.11.2, §4.3.11.3; USLP-014, USLP-015).
  */
-#define ALDIS_USLP_REASON_UNEXPECTED_VERSION 1
+#define ALDIS_USLP_STREAM_ACCEPTED 1
 
 /**
- * Reason 2, test (b): the SCID names no master channel of the physical channel.
+ * Stream item: discarded octets (fill, incomplete frame, or failed validation) (732.1 §4.3.11.2, §4.3.11.3; USLP-014, USLP-015).
  */
-#define ALDIS_USLP_REASON_UNEXPECTED_SPACECRAFT 2
+#define ALDIS_USLP_STREAM_DISCARDED 2
 
 /**
- * Reason 3, test (c): the reserved flag combination `01` (Table 4-1).
+ * Discard reason: accepted frame (not discarded).
  */
-#define ALDIS_USLP_REASON_RESERVED_FLAGS 3
+#define ALDIS_USLP_DISCARD_NONE 0
 
 /**
- * Reason 4, test (c), strict mode only: the Reserve Spares are not `00`.
+ * Discard reason: test (a), TFVN is not `1100` (732.1 §4.1.2.2.2; USLP-001).
  */
-#define ALDIS_USLP_REASON_RESERVED_SPARE 4
+#define ALDIS_USLP_DISCARD_UNEXPECTED_VERSION 1
 
 /**
- * Reason 5, test (c): the VCID is not configured.
+ * Discard reason: test (b), Spacecraft ID names no Master Channel of the Physical Channel (732.1 §4.3.11.3; USLP-014).
  */
-#define ALDIS_USLP_REASON_INVALID_VCID 5
+#define ALDIS_USLP_DISCARD_UNEXPECTED_SPACECRAFT 2
 
 /**
- * Reason 6, test (c): the MAP ID is not configured on the VC.
+ * Discard reason: test (c), Bypass Flag `0` with Protocol Control Command Flag `1` (732.1 Table 4-1; USLP-001).
  */
-#define ALDIS_USLP_REASON_INVALID_MAP_ID 6
+#define ALDIS_USLP_DISCARD_RESERVED_FLAGS 3
 
 /**
- * Reason 7, test (c): a truncated frame on a VC without a truncated frame length.
+ * Discard reason: test (c), strict mode only: Reserve Spares are not `00` (732.1 §4.1.2.9.2).
  */
-#define ALDIS_USLP_REASON_TRUNCATED_FRAME_NOT_ALLOWED 7
+#define ALDIS_USLP_DISCARD_RESERVED_SPARE 4
 
 /**
- * Reason 8, test (c): the VCF Count Length is not the VC's for the frame's service.
+ * Discard reason: test (c), VCID is not valid on the Master Channel (732.1 §4.3.11.3; USLP-014).
  */
-#define ALDIS_USLP_REASON_VCF_COUNT_LENGTH_MISMATCH 8
+#define ALDIS_USLP_DISCARD_INVALID_VCID 5
 
 /**
- * Reason 9, test (c): the OCF Flag disagrees with the VC's OCF use.
+ * Discard reason: test (c), MAP ID is not valid on the VC (732.1 §4.3.11.3; USLP-014).
  */
-#define ALDIS_USLP_REASON_OCF_FLAG_MISMATCH 9
+#define ALDIS_USLP_DISCARD_INVALID_MAP_ID 6
 
 /**
- * Reason 10, test (c): the Frame Length is not a fixed-length channel's frame length.
+ * Discard reason: test (c), a truncated frame on a VC without a truncated frame length (732.1 Annex D1.2.1; USLP-002).
  */
-#define ALDIS_USLP_REASON_FIXED_LENGTH_MISMATCH 10
+#define ALDIS_USLP_DISCARD_TRUNCATED_FRAME_NOT_ALLOWED 7
 
 /**
- * Reason 11, test (c): the Frame Length exceeds a variable-length channel's maximum.
+ * Discard reason: test (c), VCF Count Length is not the VC's for the frame's quality of service (732.1 §4.1.2.11.4; USLP-004).
  */
-#define ALDIS_USLP_REASON_FRAME_TOO_LONG 11
+#define ALDIS_USLP_DISCARD_VCF_COUNT_LENGTH_MISMATCH 8
 
 /**
- * Reason 12, test (c): the Frame Length leaves no TFDZ octet (OI-44 item 2).
+ * Discard reason: test (c), OCF Flag disagrees with the VC's OCF use (732.1 §4.1.5.3–4).
  */
-#define ALDIS_USLP_REASON_FRAME_TOO_SHORT 12
+#define ALDIS_USLP_DISCARD_OCF_FLAG_MISMATCH 9
 
 /**
- * Reason 13, test (d): the octets present disagree with the frame length.
+ * Discard reason: test (c), on a fixed-length Physical Channel, Frame Length is not the configured length (732.1 §4.1.2.7; USLP-003).
  */
-#define ALDIS_USLP_REASON_LENGTH_MISMATCH 13
+#define ALDIS_USLP_DISCARD_FIXED_LENGTH_MISMATCH 10
 
 /**
- * Reason 14, test (e): the FECF does not match.
+ * Discard reason: test (c), on a variable-length Physical Channel, Frame Length exceeds the maximum (732.1 Table 5-1; USLP-003).
  */
-#define ALDIS_USLP_REASON_FECF_MISMATCH 14
+#define ALDIS_USLP_DISCARD_FRAME_TOO_LONG 11
 
 /**
- * Reason 15: the TFDZ Construction Rule is of the other TFDZ type than the VC's (USLP-016).
+ * Discard reason: test (c), Frame Length leaves no TFDZ octet after the fields present (CMN-041; OI-44 item 2).
  */
-#define ALDIS_USLP_REASON_CONSTRUCTION_RULE_MISMATCH 15
+#define ALDIS_USLP_DISCARD_FRAME_TOO_SHORT 12
 
 /**
- * Reason 16: the First Header or Last Valid Octet Pointer lies beyond the TFDZ (USLP-006).
+ * Discard reason: test (d), octets present disagree with Frame Length or truncated frame length (732.1 §4.3.11.3.4 d).
  */
-#define ALDIS_USLP_REASON_POINTER_BEYOND_ZONE 16
+#define ALDIS_USLP_DISCARD_LENGTH_MISMATCH 13
 
 /**
- * Reason 17, strict mode only: a frame on VCID 63 whose OID header fields deviate (OI-44
- * item 1).
+ * Discard reason: test (e), FECF does not match recomputed CRC (732.1 §4.1.6; Annex B).
  */
-#define ALDIS_USLP_REASON_OID_HEADER_MISMATCH 17
+#define ALDIS_USLP_DISCARD_FECF_MISMATCH 14
 
 /**
- * Reason 18: a non-truncated frame on a VC that has a truncated frame length and so carries
- * only truncated frames (Annex D1.2.1, USLP-002; OI-48).
+ * Discard reason: TFDZ Construction Rule is of the other TFDZ type than the VC's (732.1 USLP-016).
  */
-#define ALDIS_USLP_REASON_NON_TRUNCATED_FRAME_NOT_ALLOWED 18
+#define ALDIS_USLP_DISCARD_CONSTRUCTION_RULE_MISMATCH 15
 
 /**
- * Delimited item: no octets remain at the offset (732.1 §4.3.11.2; USLP-015).
+ * Discard reason: First Header or Last Valid Octet Pointer lies beyond the TFDZ (732.1 USLP-006).
  */
-#define ALDIS_USLP_DELIMITED_END 0
+#define ALDIS_USLP_DISCARD_POINTER_BEYOND_ZONE 16
 
 /**
- * Delimited item: one frame, as long as its header declares, for the validation checks
- * (732.1 §4.3.11.2.2, §4.3.11.2.4 c).
+ * Discard reason: OID frame on VCID 63 deviates from required header or length (732.1 Annex D1.2.4; USLP-007).
  */
-#define ALDIS_USLP_DELIMITED_FRAME 1
+#define ALDIS_USLP_DISCARD_OID_HEADER_MISMATCH 17
 
 /**
- * Delimited item: the rest of the unit, discarded: a valid header that declares more octets
- * than remain, `declared_len` (732.1 §4.3.11.2.3).
+ * Discard reason: a non-truncated frame on a VC that has a truncated frame length (732.1 Annex D1.2.1; USLP-002; OI-48).
  */
-#define ALDIS_USLP_DELIMITED_INCOMPLETE_FRAME 2
+#define ALDIS_USLP_DISCARD_NON_TRUNCATED_FRAME_NOT_ALLOWED 18
 
 /**
- * Delimited item: the rest of the unit, discarded: a truncated header of no configured VC, or
- * of a VC without a truncated frame length (USLP-015; OI-35 item 8).
+ * Discard reason: fill data (732.1 §4.3.11.2.4 a–b; USLP-015).
  */
-#define ALDIS_USLP_DELIMITED_NO_TRUNCATED_LENGTH 3
+#define ALDIS_USLP_DISCARD_FILL 20
 
 /**
- * Delimited item: the rest of the unit, discarded as Fill Data (732.1 §4.3.11.2.4 a–b).
+ * Discard reason: incomplete frame whose declared length exceeds remaining octets (732.1 §4.3.11.2.3; USLP-015).
  */
-#define ALDIS_USLP_DELIMITED_FILL 4
+#define ALDIS_USLP_DISCARD_INCOMPLETE_FRAME 21
 
 /**
- * Delimited item: the rest of the unit, discarded: a non-truncated header on a VC that has a
- * truncated frame length and so carries only truncated frames (USLP-015; OI-48).
+ * Discard reason: truncated header whose SCID and VCID name no configured VC or no truncated length (732.1 USLP-015).
  */
-#define ALDIS_USLP_DELIMITED_NON_TRUNCATED_NOT_ALLOWED 5
+#define ALDIS_USLP_DISCARD_NO_TRUNCATED_LENGTH 22
+
+/**
+ * Discard reason: non-truncated header on a VC that carries only truncated frames (732.1 OI-48; USLP-015).
+ */
+#define ALDIS_USLP_DISCARD_NON_TRUNCATED_NOT_ALLOWED ALDIS_USLP_DISCARD_NON_TRUNCATED_FRAME_NOT_ALLOWED
 
 /**
  * Handle of an OID generator in caller storage (CMN-020…023, CABI-032).
@@ -3484,6 +3485,52 @@ typedef struct {
 } aldis_tc_frame_t;
 
 /**
+ * One item yielded by [`aldis_tc_stream_next`] (232.0 §4.4.9.2, §4.4.9.3; TC-020, TC-021).
+ */
+typedef struct {
+  /**
+   * Item kind: [`ALDIS_TC_STREAM_END`], [`ALDIS_TC_STREAM_ACCEPTED`], or [`ALDIS_TC_STREAM_DISCARDED`].
+   */
+  uint8_t kind;
+  /**
+   * Reserved padding octets, set to zero.
+   */
+  uint8_t reserved[3];
+  /**
+   * Starting offset of this item in the caller's unit buffer.
+   */
+  size_t offset;
+  /**
+   * Length of this item in octets consumed from the unit buffer.
+   */
+  size_t len;
+  /**
+   * The frame length declared in the header (valid when accepted or truncated).
+   */
+  size_t declared_len;
+  /**
+   * The decoded frame view (valid when `kind == ALDIS_TC_STREAM_ACCEPTED`).
+   */
+  aldis_tc_frame_t frame;
+  /**
+   * Discard reason code: `ALDIS_TC_DISCARD_*` (valid when `kind == ALDIS_TC_STREAM_DISCARDED`).
+   */
+  uint32_t discard_reason;
+  /**
+   * The error code of the discard (e.g. `ALDIS_ERR_CRC_MISMATCH`, negative integer).
+   */
+  int32_t error_code;
+  /**
+   * The field code of the error (0 if none).
+   */
+  uint16_t error_field;
+  /**
+   * Reserved padding octets, set to zero.
+   */
+  uint8_t reserved2[2];
+} aldis_tc_stream_item_t;
+
+/**
  * The header fields a sender chooses (232.0 §4.1.2, §4.1.3.2.2; TC-004, TC-008). The Frame
  * Length and the Reserved Spare are written by the library (API-021).
  *
@@ -3544,30 +3591,6 @@ typedef struct {
    */
   aldis_tc_control_t control;
 } aldis_tc_content_t;
-
-/**
- * One item of a data unit, from [`aldis_tc_next_frame`] (232.0 §4.4.9.2; TC-020, M2 plan D14).
- */
-typedef struct {
-  /**
-   * `ALDIS_TC_DELIMITED_*`.
-   */
-  uint8_t kind;
-  /**
-   * Offset of the item in the unit: the `offset` the call was given.
-   */
-  size_t offset;
-  /**
-   * Octets the item takes, which the caller adds to `offset` for the next call; 0 only for
-   * `ALDIS_TC_DELIMITED_END`.
-   */
-  size_t len;
-  /**
-   * The frame length the header declares: `len` for a frame, more than `len` for a
-   * truncated frame, 0 for fill and the end.
-   */
-  size_t declared_len;
-} aldis_tc_delimited_t;
 
 /**
  * A Communications Link Control Word as plain values (232.0 §4.2.1; TC-030, TC-031, M2 plan
@@ -4477,6 +4500,52 @@ typedef struct {
 } aldis_uslp_frame_t;
 
 /**
+ * One item yielded by [`aldis_uslp_stream_next`] (732.1 §4.3.11.2, §4.3.11.3; USLP-014, USLP-015).
+ */
+typedef struct {
+  /**
+   * Item kind: [`ALDIS_USLP_STREAM_END`], [`ALDIS_USLP_STREAM_ACCEPTED`], or [`ALDIS_USLP_STREAM_DISCARDED`].
+   */
+  uint8_t kind;
+  /**
+   * Reserved padding octets, set to zero.
+   */
+  uint8_t reserved[3];
+  /**
+   * Starting offset of this item in the caller's unit buffer.
+   */
+  size_t offset;
+  /**
+   * Length of this item in octets consumed from the unit buffer.
+   */
+  size_t len;
+  /**
+   * The frame length declared in the header or VC config (valid when accepted or incomplete).
+   */
+  size_t declared_len;
+  /**
+   * The decoded frame view (valid when `kind == ALDIS_USLP_STREAM_ACCEPTED`).
+   */
+  aldis_uslp_frame_t frame;
+  /**
+   * Discard reason code: `ALDIS_USLP_DISCARD_*` (valid when `kind == ALDIS_USLP_STREAM_DISCARDED`).
+   */
+  uint32_t discard_reason;
+  /**
+   * The error code of the discard (e.g. `ALDIS_ERR_CRC_MISMATCH`, negative integer).
+   */
+  int32_t error_code;
+  /**
+   * The field code of the error (0 if none).
+   */
+  uint16_t error_field;
+  /**
+   * Reserved padding octets, set to zero.
+   */
+  uint8_t reserved2[2];
+} aldis_uslp_stream_item_t;
+
+/**
  * The Primary Header fields a sender chooses (732.1 §4.1.2; USLP-010, API-021). The TFVN, the
  * Frame Length, the Reserve Spares, the OCF Flag, and the VCF Count Length are derived.
  */
@@ -4534,32 +4603,6 @@ typedef struct {
    */
   size_t ocf_len;
 } aldis_uslp_content_t;
-
-/**
- * One item of a data unit (732.1 §4.3.11.2; USLP-015, M2 plan D14): its octets are the `len`
- * octets of the unit at `offset`.
- */
-typedef struct {
-  /**
-   * `ALDIS_USLP_DELIMITED_*`.
-   */
-  uint8_t kind;
-  /**
-   * Offset of the item in the unit: the offset the call was given.
-   */
-  size_t offset;
-  /**
-   * Octets the item takes; 0 only for `ALDIS_USLP_DELIMITED_END`. Every item but a frame
-   * takes the rest of the unit.
-   */
-  size_t len;
-  /**
-   * The frame length the header declares, or its VC's truncated frame length: `len` for a
-   * frame, more than `len` for `ALDIS_USLP_DELIMITED_INCOMPLETE_FRAME`, 0 for the other kinds,
-   * as `aldis_tc_delimited_t` gives it.
-   */
-  size_t declared_len;
-} aldis_uslp_delimited_t;
 
 #ifdef __cplusplus
 extern "C" {
@@ -5878,37 +5921,35 @@ int32_t aldis_tc_decode(const uint8_t *bytes,
                         aldis_error_detail_t *err);
 
 /**
- * Applies the Frame Validation Checks to `frame`, the octets of exactly one frame (232.0
- * §4.4.9.3; TC-021…TC-023), as `validate_frame` does, with the security layouts of the master
- * channel (c-abi.md §11).
+ * Steps through the clean data unit `unit` using the unified Frame Intake Stream
+ * (232.0 §4.4.9.2, §4.4.9.3; TC-020, TC-021).
  *
- * A frame that passes is written to `out` and `reason` is set to `ALDIS_TC_REASON_NONE`. A
- * frame that fails sets `reason` to the `ALDIS_TC_REASON_*` of the first check that failed,
- * and the call returns that check's error. Type-A and Type-B frames are checked alike
- * (TC-023).
+ * Reads from `*offset` and advances `*offset` by the octets consumed for the yielded item.
+ * When `out.kind == ALDIS_TC_STREAM_ACCEPTED`, `out.frame` holds the validated frame view.
+ * When `out.kind == ALDIS_TC_STREAM_DISCARDED`, `out.discard_reason` holds the `ALDIS_TC_DISCARD_*`
+ * code, and `out.error_code` holds the negative error code.
+ * When `out.kind == ALDIS_TC_STREAM_END`, the unit is exhausted.
  *
  * # Errors
- * The errors of [`aldis_tc_mc_config_check`], with `out` and `reason` unchanged; then the
- * error of the failed check, as for [`aldis_tc_decode`], except that a frame shorter or longer
- * than its Frame Length is `ALDIS_ERR_LENGTH_MISMATCH` (`frame_len`); CABI-022 violations,
- * with `out` and `reason` unchanged.
+ * The errors of [`aldis_tc_mc_config_check`]; `ALDIS_ERR_INVALID_ARGUMENT` if `*offset > unit_len`;
+ * CABI-022 violations.
  *
  * # Safety
- * `frame` is valid for `len` octets (or `NULL` with 0); `mc`, `vcs`, and `maps` as for
- * [`aldis_tc_mc_config_check`]; `out` and `reason` are valid for one write each; `err` is
- * `NULL` or valid for one write.
+ * `unit` is valid for `unit_len` octets (or `NULL` with 0); `offset` is valid for read and write;
+ * `mc`, `vcs`, and `maps` as for [`aldis_tc_mc_config_check`]; `out` is valid for one write; `err`
+ * is `NULL` or valid for one write.
  */
-int32_t aldis_tc_validate(const uint8_t *frame,
-                          size_t len,
-                          const aldis_tc_mc_config_t *mc,
-                          const aldis_tc_vc_config_t *vcs,
-                          size_t vc_count,
-                          const aldis_tc_map_config_t *maps,
-                          size_t map_count,
-                          uint32_t mode,
-                          aldis_tc_frame_t *out,
-                          uint32_t *reason,
-                          aldis_error_detail_t *err);
+int32_t aldis_tc_stream_next(const uint8_t *unit,
+                             size_t unit_len,
+                             size_t *offset,
+                             const aldis_tc_mc_config_t *mc,
+                             const aldis_tc_vc_config_t *vcs,
+                             size_t vc_count,
+                             const aldis_tc_map_config_t *maps,
+                             size_t map_count,
+                             uint32_t mode,
+                             aldis_tc_stream_item_t *out,
+                             aldis_error_detail_t *err);
 
 /**
  * Encodes one frame into the start of `out` in one call (232.0 §4.1, §6.3; TC-004, TC-005,
@@ -6013,28 +6054,6 @@ int32_t aldis_tc_writer_finish(const aldis_tc_mc_config_t *mc,
                                size_t cap,
                                size_t *out_len,
                                aldis_error_detail_t *err);
-
-/**
- * The item of the data unit `unit` that starts at `offset` (232.0 §4.4.9.2; TC-020, M2 plan
- * D14), as `next_frame` gives it for the octets from `offset` on.
- *
- * The unit is the octets of one data unit that the Channel Coding Sublayer declared clean. A
- * caller starts at offset 0 and adds each item's `len` until the item is
- * `ALDIS_TC_DELIMITED_END`; a truncated frame or fill takes the rest of the unit. Each frame is
- * then passed to [`aldis_tc_validate`] at its offset, with its length. No state is kept.
- *
- * # Errors
- * CABI-022 violations, including an `offset` past the end of the unit.
- *
- * # Safety
- * `unit` is valid for `unit_len` octets (or `NULL` with 0); `out` is valid for one write; `err`
- * is `NULL` or valid for one write.
- */
-int32_t aldis_tc_next_frame(const uint8_t *unit,
-                            size_t unit_len,
-                            size_t offset,
-                            aldis_tc_delimited_t *out,
-                            aldis_error_detail_t *err);
 
 /**
  * Decodes the Control Command that the data field `octets` of a Type-C frame holds exactly
@@ -6814,34 +6833,35 @@ int32_t aldis_uslp_decode(const uint8_t *bytes,
                           aldis_error_detail_t *err);
 
 /**
- * Applies the USLP Frame Validation Checks to `bytes`, the octets of exactly one frame, as the
- * delimiter yields them (732.1 §4.3.11.3; USLP-014, M2 plan D14, D17), as `validate_frame`
- * does.
+ * Steps through the clean data unit `unit` using the unified Frame Intake Stream
+ * (732.1 §4.3.11.2, §4.3.11.3; USLP-014, USLP-015).
  *
- * On success the frame is written to `out`, as [`aldis_uslp_decode`] writes it, and `reason`
- * is `ALDIS_USLP_REASON_NONE`. When a check fails, `reason` is its stable code,
- * `ALDIS_USLP_REASON_*` (`docs/standards/uslp-frame.md` §3.1), the call returns the decoder's
- * error for it, and `out` is unchanged.
+ * Reads from `*offset` and advances `*offset` by the octets consumed for the yielded item.
+ * When `out.kind == ALDIS_USLP_STREAM_ACCEPTED`, `out.frame` holds the validated frame view.
+ * When `out.kind == ALDIS_USLP_STREAM_DISCARDED`, `out.discard_reason` holds the `ALDIS_USLP_DISCARD_*`
+ * code, and `out.error_code` holds the negative error code.
+ * When `out.kind == ALDIS_USLP_STREAM_END`, the unit is exhausted.
  *
  * # Errors
- * The errors of [`aldis_uslp_decode`], with `ALDIS_ERR_LENGTH_MISMATCH` (`frame_len`) where it
- * returns `ALDIS_ERR_INCOMPLETE`, each with its reason; the errors of
- * [`aldis_uslp_vc_table_check`] and CABI-022 violations, which write no reason.
+ * The errors of [`aldis_uslp_vc_table_check`]; `ALDIS_ERR_INVALID_ARGUMENT` if `*offset > unit_len`;
+ * CABI-022 violations.
  *
  * # Safety
- * As [`aldis_uslp_decode`]; `reason` is valid for one write.
+ * `unit` is valid for `unit_len` octets (or `NULL` with 0); `offset` is valid for read and write;
+ * `pc`, `vcs`, and `maps` as for [`aldis_uslp_vc_table_check`]; `out` is valid for one write; `err`
+ * is `NULL` or valid for one write.
  */
-int32_t aldis_uslp_validate(const uint8_t *bytes,
-                            size_t len,
-                            const aldis_uslp_config_t *pc,
-                            const aldis_uslp_vc_config_t *vcs,
-                            size_t vc_count,
-                            const aldis_uslp_map_config_t *maps,
-                            size_t map_count,
-                            uint32_t mode,
-                            aldis_uslp_frame_t *out,
-                            uint32_t *reason,
-                            aldis_error_detail_t *err);
+int32_t aldis_uslp_stream_next(const uint8_t *unit,
+                               size_t unit_len,
+                               size_t *offset,
+                               const aldis_uslp_config_t *pc,
+                               const aldis_uslp_vc_config_t *vcs,
+                               size_t vc_count,
+                               const aldis_uslp_map_config_t *maps,
+                               size_t map_count,
+                               uint32_t mode,
+                               aldis_uslp_stream_item_t *out,
+                               aldis_error_detail_t *err);
 
 /**
  * Encodes one non-truncated frame into the start of `out` in one call (732.1 §4.1, §6.3;
@@ -7026,37 +7046,6 @@ int32_t aldis_uslp_encode_oid(const aldis_uslp_config_t *pc,
                               uint8_t *out,
                               size_t cap,
                               size_t *out_len,
-                              aldis_error_detail_t *err);
-
-/**
- * The next item of the data unit `unit` from `offset`, the first octet not yet delimited
- * (732.1 §4.3.11.2; USLP-015, M2 plan D14, D17).
- *
- * As `aldis_uslp::next_frame` gives it: a frame, which the caller passes to
- * [`aldis_uslp_validate`] and steps over, or the rest of the unit, discarded. A C caller loops
- * from offset 0, adding each item's `len`, until the kind is `ALDIS_USLP_DELIMITED_END`;
- * every other item takes at least one octet.
- *
- * The unit is the octets of one data unit that TC Synchronization and Channel Coding delivered
- * error-free (§4.3.11.2.1). Truncated frames are delimited by their VC's truncated frame
- * length, which is why the call takes the virtual channels.
- *
- * # Errors
- * The errors of [`aldis_uslp_vc_table_check`] without MAPs; CABI-022 violations, including an
- * `offset` beyond `unit_len`.
- *
- * # Safety
- * `unit` is valid for `unit_len` octets (or `NULL` with 0); `pc` and `vcs` as for
- * [`aldis_uslp_vc_table_check`]; `out` is valid for one write; `err` is `NULL` or valid for one
- * write.
- */
-int32_t aldis_uslp_next_frame(const uint8_t *unit,
-                              size_t unit_len,
-                              size_t offset,
-                              const aldis_uslp_config_t *pc,
-                              const aldis_uslp_vc_config_t *vcs,
-                              size_t vc_count,
-                              aldis_uslp_delimited_t *out,
                               aldis_error_detail_t *err);
 
 #ifdef __cplusplus

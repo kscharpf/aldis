@@ -41,6 +41,7 @@ pub mod control;
 pub mod delimit;
 pub mod field;
 pub mod header;
+pub mod stream;
 pub mod validate;
 pub mod view;
 pub mod writer;
@@ -54,6 +55,7 @@ pub use header::{
     FrameFields, FrameType, MAX_FRAME_LEN, MIN_FRAME_LEN, PRIMARY_HEADER_LEN, SEGMENT_HEADER_LEN,
     SegmentHeader, SequenceFlags, TcFrameHeader, TcMapId, TcSpacecraftId, TcVcId,
 };
+pub use stream::{DiscardReason, FrameStream, IntakeItem};
 pub use validate::{Reason, Rejection, validate_frame};
 pub use view::TcFrame;
 pub use writer::{FrameData, TcFrameWriter, encode};
