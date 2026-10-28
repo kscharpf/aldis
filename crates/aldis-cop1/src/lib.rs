@@ -19,6 +19,10 @@ pub use farm1_table::{
     EVENT_COUNT as FARM1_EVENT_COUNT, FARM1_TABLE, Farm1Action, Farm1Cell, Farm1Event, Farm1State,
     STATE_COUNT as FARM1_STATE_COUNT,
 };
+pub use fop1_table::{
+    BcCommand, EVENT_COUNT as FOP1_EVENT_COUNT, FOP1_TABLE, Fop1Action, Fop1Cell, Fop1Event,
+    Fop1State, FrameKind, STATE_COUNT as FOP1_STATE_COUNT,
+};
 pub use notify::{
     Alert, AlertReason, Directive, DirectiveNotification, DirectiveNotify, TimeoutType,
     TransferNotification, TransferNotify,
