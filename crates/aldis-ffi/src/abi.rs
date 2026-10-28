@@ -108,6 +108,25 @@ pub(crate) unsafe fn read<T: Copy>(ptr: *const T) -> Result<T> {
     Ok(unsafe { ptr.read() })
 }
 
+/// `ptr` as an in-out location (CABI-022).
+///
+/// # Errors
+/// `InvalidField` (no field) when `ptr` is `NULL` or misaligned.
+///
+/// # Safety
+/// A non-null, aligned `ptr` must be valid for reads and writes of `T` during `'a`.
+#[expect(
+    unsafe_code,
+    reason = "checked access to caller memory (CABI-022, GEN-071)"
+)]
+pub(crate) unsafe fn inout<'a, T: Copy>(ptr: *mut T) -> Result<&'a mut T> {
+    if ptr.is_null() || !ptr.is_aligned() {
+        return Err(invalid_argument());
+    }
+    // SAFETY: non-null and aligned, checked above; valid for reads and writes by caller contract.
+    Ok(unsafe { &mut *ptr })
+}
+
 /// The configuration struct that `ptr` points to, whose first field is `uint32_t struct_size`
 /// (CABI-033, CABI-022).
 ///

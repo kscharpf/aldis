@@ -2,11 +2,10 @@
 //! M2 plan D4, D14; CABI-010…012, CABI-020…022, CABI-033).
 //!
 //! Calls: [`aldis_tc_config_check`] and [`aldis_tc_mc_config_check`]; [`aldis_tc_peek_length`]
-//! and [`aldis_tc_header_decode`]; the decoder [`aldis_tc_decode`]; the Frame Validation
-//! Checks [`aldis_tc_validate`]; the one-shot [`aldis_tc_encode`], which takes the frame's data
+//! and [`aldis_tc_header_decode`]; the decoder [`aldis_tc_decode`]; the unified Frame Intake
+//! Stream [`aldis_tc_stream_next`]; the one-shot [`aldis_tc_encode`], which takes the frame's data
 //! field in an [`aldis_tc_content_t`]; the two-phase writer as [`aldis_tc_writer_begin`] and
-//! [`aldis_tc_writer_finish`]; the Frame Delimiting and Fill Removal Procedure as the stateless
-//! [`aldis_tc_next_frame`]; the Control Commands [`aldis_tc_control_decode`] and
+//! [`aldis_tc_writer_finish`]; the Control Commands [`aldis_tc_control_decode`] and
 //! [`aldis_tc_control_encode`]; and the CLCW [`aldis_clcw_decode`] and [`aldis_clcw_encode`].
 //!
 //! **Channels** (c-abi.md §11). A physical channel is an [`aldis_tc_config_t`] (232.0 §5.1
@@ -20,7 +19,7 @@
 //!
 //! **Security layouts** (API-070, c-abi.md §11). `TcFrame::decode` always takes the layouts of
 //! the frame's Virtual Channel or MAP from its channels; there is no decoder without them, so
-//! the TC C ABI has no `_with` pair: [`aldis_tc_decode`], [`aldis_tc_validate`], and the
+//! the TC C ABI has no `_with` pair: [`aldis_tc_decode`], [`aldis_tc_stream_next`], and the
 //! writers take a master channel and use its layouts.
 //!
 //! **Writers.** No call keeps a pointer or state (API-023, API-060): `_writer_begin` writes an
@@ -37,8 +36,8 @@ use aldis::core::security::SecurityLayout;
 use aldis::core::{Error, ErrorKind, Result};
 use aldis::tc::{
     Clcw, ClcwStatus, ControlCommand, CopInEffect, Delimited, FarmBCounter, FrameData, FrameFields,
-    FrameType, MapConfig, PRIMARY_HEADER_LEN, PhysicalChannelConfig, SegmentHeader,
-    SegmentHeaderUse, SequenceFlags, TcFrame, TcFrameHeader, TcFrameWriter, TcMapId,
+    FrameStream, FrameType, IntakeItem, MapConfig, PRIMARY_HEADER_LEN, PhysicalChannelConfig,
+    SegmentHeader, SegmentHeaderUse, SequenceFlags, TcFrame, TcFrameHeader, TcFrameWriter, TcMapId,
     TcSpacecraftId, TcVcId, VcConfig, VcTable, encode, next_frame, validate_frame,
 };
 
@@ -100,32 +99,67 @@ pub const ALDIS_TC_DELIMITED_TRUNCATED_FRAME: u8 = 2;
 /// Delimiter item: the rest of the unit, discarded as Fill Data (232.0 §4.4.9.2.6; TC-020).
 pub const ALDIS_TC_DELIMITED_FILL: u8 = 3;
 
-/// No rejection: the frame passed the Frame Validation Checks, or the call failed before they
-/// ran (TC-021).
-pub const ALDIS_TC_REASON_NONE: u32 = 0;
-/// Check (a): the Transfer Frame Version Number is not `00` (232.0 §4.4.9.3.3; TC-021).
-pub const ALDIS_TC_REASON_UNEXPECTED_VERSION: u32 = 1;
-/// Check (b): the Spacecraft ID is not that of the master channel (232.0 §4.4.9.3.3; TC-021).
-pub const ALDIS_TC_REASON_UNEXPECTED_SPACECRAFT: u32 = 2;
-/// Check (c): Bypass Flag `0` with Control Command Flag `1` (232.0 Table 4-1; TC-002, TC-021).
-pub const ALDIS_TC_REASON_RESERVED_FLAGS: u32 = 3;
-/// Check (c), strict mode only: the Reserved Spare is not `00` (232.0 §4.1.2.4; TC-003).
-pub const ALDIS_TC_REASON_RESERVED_SPARE: u32 = 4;
-/// Check (c): the VCID is not configured (232.0 §4.4.7.3; TC-022).
-pub const ALDIS_TC_REASON_INVALID_VCID: u32 = 5;
-/// Check (c): the Frame Length exceeds the channel's maximum (232.0 Tables 5-1, 5-3; TC-021).
-pub const ALDIS_TC_REASON_FRAME_TOO_LONG: u32 = 6;
-/// Check (c): the Frame Length leaves no data octet (232.0 §4.1.1; TC-021, CMN-041).
-pub const ALDIS_TC_REASON_FRAME_TOO_SHORT: u32 = 7;
-/// Check (d): the Frame Length disagrees with the octets present (232.0 §4.4.9.3.3; TC-021).
-pub const ALDIS_TC_REASON_LENGTH_MISMATCH: u32 = 8;
-/// Check (e): the FECF does not match (232.0 §4.1.4; TC-006, TC-021).
-pub const ALDIS_TC_REASON_FECF_MISMATCH: u32 = 9;
-/// The MAP ID is not configured on the Virtual Channel (232.0 §4.4.3.3; TC-022).
-pub const ALDIS_TC_REASON_INVALID_MAP_ID: u32 = 10;
-/// Strict mode only: a Type-C data field that is neither Unlock nor Set V(R) (232.0
-/// §4.1.3.3.4; TC-005).
-pub const ALDIS_TC_REASON_RESERVED_CONTROL_COMMAND: u32 = 11;
+/// Stream item: no octets of the unit remain (232.0 §4.4.9.2; TC-020).
+pub const ALDIS_TC_STREAM_END: u8 = 0;
+/// Stream item: one validated frame (232.0 §4.4.9.2, §4.4.9.3; TC-020, TC-021).
+pub const ALDIS_TC_STREAM_ACCEPTED: u8 = 1;
+/// Stream item: discarded octets (fill, truncated frame, or failed validation) (232.0 §4.4.9.2, §4.4.9.3; TC-020, TC-021).
+pub const ALDIS_TC_STREAM_DISCARDED: u8 = 2;
+
+/// Discard reason: accepted frame (not discarded).
+pub const ALDIS_TC_DISCARD_NONE: u32 = 0;
+/// Discard reason: check (a), Transfer Frame Version Number is not `00` (232.0 §4.4.9.3.3; TC-021).
+pub const ALDIS_TC_DISCARD_UNEXPECTED_VERSION: u32 = 1;
+/// Discard reason: check (b), Spacecraft ID is not that of the master channel (232.0 §4.4.9.3.3; TC-021).
+pub const ALDIS_TC_DISCARD_UNEXPECTED_SPACECRAFT: u32 = 2;
+/// Discard reason: check (c), Bypass Flag `0` with Control Command Flag `1` (232.0 Table 4-1; TC-002, TC-021).
+pub const ALDIS_TC_DISCARD_RESERVED_FLAGS: u32 = 3;
+/// Discard reason: check (c), strict mode only: Reserved Spare is not `00` (232.0 §4.1.2.4; TC-003).
+pub const ALDIS_TC_DISCARD_RESERVED_SPARE: u32 = 4;
+/// Discard reason: check (c), VCID is not configured (232.0 §4.4.7.3; TC-022).
+pub const ALDIS_TC_DISCARD_INVALID_VCID: u32 = 5;
+/// Discard reason: check (c), Frame Length exceeds the channel's maximum (232.0 Tables 5-1, 5-3; TC-021).
+pub const ALDIS_TC_DISCARD_FRAME_TOO_LONG: u32 = 6;
+/// Discard reason: check (c), Frame Length leaves no data octet (232.0 §4.1.1; TC-021, CMN-041).
+pub const ALDIS_TC_DISCARD_FRAME_TOO_SHORT: u32 = 7;
+/// Discard reason: check (d), Frame Length disagrees with the octets present (232.0 §4.4.9.3.3; TC-021).
+pub const ALDIS_TC_DISCARD_LENGTH_MISMATCH: u32 = 8;
+/// Discard reason: check (e), FECF does not match (232.0 §4.1.4; TC-006, TC-021).
+pub const ALDIS_TC_DISCARD_FECF_MISMATCH: u32 = 9;
+/// Discard reason: MAP ID is not configured on the Virtual Channel (232.0 §4.4.3.3; TC-022).
+pub const ALDIS_TC_DISCARD_INVALID_MAP_ID: u32 = 10;
+/// Discard reason: strict mode only, Type-C data field is not a recognized command (232.0 §4.1.3.3.4; TC-005).
+pub const ALDIS_TC_DISCARD_RESERVED_CONTROL_COMMAND: u32 = 11;
+/// Discard reason: truncated frame whose declared length exceeds remaining octets (232.0 §4.4.9.2.5; TC-020).
+pub const ALDIS_TC_DISCARD_TRUNCATED_FRAME: u32 = 20;
+/// Discard reason: fill data (232.0 §4.4.9.2.6; TC-020).
+pub const ALDIS_TC_DISCARD_FILL: u32 = 21;
+
+// Aliases for validation check codes
+/// Alias for [`ALDIS_TC_DISCARD_NONE`].
+pub const ALDIS_TC_REASON_NONE: u32 = ALDIS_TC_DISCARD_NONE;
+/// Alias for [`ALDIS_TC_DISCARD_UNEXPECTED_VERSION`].
+pub const ALDIS_TC_REASON_UNEXPECTED_VERSION: u32 = ALDIS_TC_DISCARD_UNEXPECTED_VERSION;
+/// Alias for [`ALDIS_TC_DISCARD_UNEXPECTED_SPACECRAFT`].
+pub const ALDIS_TC_REASON_UNEXPECTED_SPACECRAFT: u32 = ALDIS_TC_DISCARD_UNEXPECTED_SPACECRAFT;
+/// Alias for [`ALDIS_TC_DISCARD_RESERVED_FLAGS`].
+pub const ALDIS_TC_REASON_RESERVED_FLAGS: u32 = ALDIS_TC_DISCARD_RESERVED_FLAGS;
+/// Alias for [`ALDIS_TC_DISCARD_RESERVED_SPARE`].
+pub const ALDIS_TC_REASON_RESERVED_SPARE: u32 = ALDIS_TC_DISCARD_RESERVED_SPARE;
+/// Alias for [`ALDIS_TC_DISCARD_INVALID_VCID`].
+pub const ALDIS_TC_REASON_INVALID_VCID: u32 = ALDIS_TC_DISCARD_INVALID_VCID;
+/// Alias for [`ALDIS_TC_DISCARD_FRAME_TOO_LONG`].
+pub const ALDIS_TC_REASON_FRAME_TOO_LONG: u32 = ALDIS_TC_DISCARD_FRAME_TOO_LONG;
+/// Alias for [`ALDIS_TC_DISCARD_FRAME_TOO_SHORT`].
+pub const ALDIS_TC_REASON_FRAME_TOO_SHORT: u32 = ALDIS_TC_DISCARD_FRAME_TOO_SHORT;
+/// Alias for [`ALDIS_TC_DISCARD_LENGTH_MISMATCH`].
+pub const ALDIS_TC_REASON_LENGTH_MISMATCH: u32 = ALDIS_TC_DISCARD_LENGTH_MISMATCH;
+/// Alias for [`ALDIS_TC_DISCARD_FECF_MISMATCH`].
+pub const ALDIS_TC_REASON_FECF_MISMATCH: u32 = ALDIS_TC_DISCARD_FECF_MISMATCH;
+/// Alias for [`ALDIS_TC_DISCARD_INVALID_MAP_ID`].
+pub const ALDIS_TC_REASON_INVALID_MAP_ID: u32 = ALDIS_TC_DISCARD_INVALID_MAP_ID;
+/// Alias for [`ALDIS_TC_DISCARD_RESERVED_CONTROL_COMMAND`].
+pub const ALDIS_TC_REASON_RESERVED_CONTROL_COMMAND: u32 = ALDIS_TC_DISCARD_RESERVED_CONTROL_COMMAND;
 
 /// COP in Effect `01`: COP-1 (232.0 §4.2.1.5).
 pub const ALDIS_CLCW_COP_1: u8 = 0b01;
@@ -355,6 +389,40 @@ pub struct aldis_tc_delimited_t {
     /// The frame length the header declares: `len` for a frame, more than `len` for a
     /// truncated frame, 0 for fill and the end.
     pub declared_len: usize,
+}
+
+/// One item yielded by [`aldis_tc_stream_next`] (232.0 §4.4.9.2, §4.4.9.3; TC-020, TC-021).
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct aldis_tc_stream_item_t {
+    /// Item kind: [`ALDIS_TC_STREAM_END`], [`ALDIS_TC_STREAM_ACCEPTED`], or [`ALDIS_TC_STREAM_DISCARDED`].
+    pub kind: u8,
+    /// Reserved padding octets, set to zero.
+    pub reserved: [u8; 3],
+    /// Starting offset of this item in the caller's unit buffer.
+    pub offset: usize,
+    /// Length of this item in octets consumed from the unit buffer.
+    pub len: usize,
+    /// The decoded frame view (valid when `kind == ALDIS_TC_STREAM_ACCEPTED`).
+    pub frame: aldis_tc_frame_t,
+    /// Discard reason code: [`ALDIS_TC_DISCARD_*`] (valid when `kind == ALDIS_TC_STREAM_DISCARDED`).
+    pub discard_reason: u32,
+    /// The error code of the discard (e.g. `ALDIS_ERR_CRC_MISMATCH`, negative integer).
+    pub error_code: i32,
+}
+
+impl Default for aldis_tc_stream_item_t {
+    fn default() -> Self {
+        Self {
+            kind: ALDIS_TC_STREAM_END,
+            reserved: [0; 3],
+            offset: 0,
+            len: 0,
+            frame: aldis_tc_frame_t::default(),
+            discard_reason: 0,
+            error_code: 0,
+        }
+    }
 }
 
 /// A Communications Link Control Word as plain values (232.0 §4.2.1; TC-030, TC-031, M2 plan
@@ -912,6 +980,123 @@ pub unsafe extern "C" fn aldis_tc_validate(
                     Err(r.error())
                 }
             }
+        })
+    }
+}
+
+/// Steps through the clean data unit `unit` using the unified Frame Intake Stream
+/// (232.0 §4.4.9.2, §4.4.9.3; TC-020, TC-021).
+///
+/// Reads from `*offset` and advances `*offset` by the octets consumed for the yielded item.
+/// When `out.kind == ALDIS_TC_STREAM_ACCEPTED`, `out.frame` holds the validated frame view.
+/// When `out.kind == ALDIS_TC_STREAM_DISCARDED`, `out.discard_reason` holds the [`ALDIS_TC_DISCARD_*`]
+/// code, and `out.error_code` holds the negative error code.
+/// When `out.kind == ALDIS_TC_STREAM_END`, the unit is exhausted.
+///
+/// # Errors
+/// The errors of [`aldis_tc_mc_config_check`]; `ALDIS_ERR_INVALID_ARGUMENT` if `*offset > unit_len`;
+/// CABI-022 violations.
+///
+/// # Safety
+/// `unit` is valid for `unit_len` octets (or `NULL` with 0); `offset` is valid for read and write;
+/// `mc`, `vcs`, and `maps` as for [`aldis_tc_mc_config_check`]; `out` is valid for one write; `err`
+/// is `NULL` or valid for one write.
+#[expect(
+    unsafe_code,
+    reason = "C ABI entry point: unmangled, takes raw pointers (GEN-071)"
+)]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn aldis_tc_stream_next(
+    unit: *const u8,
+    unit_len: usize,
+    offset: *mut usize,
+    mc: *const aldis_tc_mc_config_t,
+    vcs: *const aldis_tc_vc_config_t,
+    vc_count: usize,
+    maps: *const aldis_tc_map_config_t,
+    map_count: usize,
+    mode: u32,
+    out: *mut aldis_tc_stream_item_t,
+    err: *mut crate::aldis_error_detail_t,
+) -> i32 {
+    // SAFETY: every pointer is valid as `# Safety` states; `abi` checks NULL and alignment.
+    unsafe {
+        abi::call(err, || {
+            let table = master_channel_at(mc, vcs, vc_count, maps, map_count)?;
+            let unit = abi::bytes(unit, unit_len)?;
+            let offset_ref = abi::inout(offset)?;
+            let current_offset = *offset_ref;
+            let mode = abi::mode(mode)?;
+            let out = abi::out(out)?;
+
+            if current_offset > unit_len {
+                return Err(invalid_argument());
+            }
+            if current_offset == unit_len {
+                out.write(aldis_tc_stream_item_t {
+                    kind: ALDIS_TC_STREAM_END,
+                    reserved: [0; 3],
+                    offset: current_offset,
+                    len: 0,
+                    frame: aldis_tc_frame_t::default(),
+                    discard_reason: 0,
+                    error_code: 0,
+                });
+                return Ok(());
+            }
+
+            let Some(rest) = unit.get(current_offset..) else {
+                return Err(invalid_argument());
+            };
+            let mut stream = FrameStream::new(rest, &table, mode);
+            match stream.next() {
+                None => {
+                    out.write(aldis_tc_stream_item_t {
+                        kind: ALDIS_TC_STREAM_END,
+                        reserved: [0; 3],
+                        offset: current_offset,
+                        len: 0,
+                        frame: aldis_tc_frame_t::default(),
+                        discard_reason: 0,
+                        error_code: 0,
+                    });
+                }
+                Some(IntakeItem::Accepted { frame, .. }) => {
+                    let len = frame.len();
+                    *offset_ref = current_offset
+                        .checked_add(len)
+                        .ok_or_else(invalid_argument)?;
+                    out.write(aldis_tc_stream_item_t {
+                        kind: ALDIS_TC_STREAM_ACCEPTED,
+                        reserved: [0; 3],
+                        offset: current_offset,
+                        len,
+                        frame: view(&frame),
+                        discard_reason: 0,
+                        error_code: 0,
+                    });
+                }
+                Some(IntakeItem::Discarded {
+                    reason,
+                    octets,
+                    error,
+                }) => {
+                    let len = octets.len();
+                    *offset_ref = current_offset
+                        .checked_add(len)
+                        .ok_or_else(invalid_argument)?;
+                    out.write(aldis_tc_stream_item_t {
+                        kind: ALDIS_TC_STREAM_DISCARDED,
+                        reserved: [0; 3],
+                        offset: current_offset,
+                        len,
+                        frame: aldis_tc_frame_t::default(),
+                        discard_reason: u32::from(reason.code()),
+                        error_code: crate::error::status(error),
+                    });
+                }
+            }
+            Ok(())
         })
     }
 }

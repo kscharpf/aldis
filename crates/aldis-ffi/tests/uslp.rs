@@ -1370,3 +1370,130 @@ fn content_and_fields_are_checked_as_arguments() {
         "the expedited VCF Count Length of VC 4"
     );
 }
+
+#[test]
+#[expect(
+    clippy::too_many_lines,
+    reason = "straight-line intake stream scenario"
+)]
+fn the_uslp_stream_intake_pipeline() {
+    // req: USLP-014, USLP-015, CABI-012, CABI-022
+    let ch = variable();
+    let data = [0x10, 0x20, 0x30];
+    let ct = aldis_uslp_content_t {
+        tfdf: octet_stream(),
+        tfdz: data.as_ptr(),
+        tfdz_len: data.len(),
+        ..aldis_uslp_content_t::default()
+    };
+    let fl = fields(4, 0, ALDIS_USLP_KIND_EXPEDITED, 7);
+    let mut frame = [0_u8; 64];
+    let mut det = detail();
+    let (rc, len) = ch.encode(&fl, &ct, &mut frame, &mut det);
+    assert_eq!(rc, ALDIS_OK);
+
+    let mut unit = frame[..len].to_vec();
+    unit.extend_from_slice(&frame[..len]);
+    unit.extend_from_slice(&[0x55, 0x55, 0x55]);
+
+    let mut offset = 0;
+    let mut item = aldis_uslp_stream_item_t::default();
+    // SAFETY: pointers point to valid stack and slice buffers and counts match.
+    let rc = unsafe {
+        aldis_uslp_stream_next(
+            unit.as_ptr(),
+            unit.len(),
+            &raw mut offset,
+            &raw const ch.pc,
+            ch.vcs.as_ptr(),
+            ch.vcs.len(),
+            ch.maps.as_ptr(),
+            ch.maps.len(),
+            ALDIS_MODE_STRICT,
+            &raw mut item,
+            null_mut(),
+        )
+    };
+    assert_eq!(
+        (rc, item.kind, item.offset, item.len, offset),
+        (ALDIS_OK, ALDIS_USLP_STREAM_ACCEPTED, 0, len, len)
+    );
+    assert_eq!(item.frame.channel.scid, 0x155);
+
+    // SAFETY: pointers point to valid stack and slice buffers and counts match.
+    let rc = unsafe {
+        aldis_uslp_stream_next(
+            unit.as_ptr(),
+            unit.len(),
+            &raw mut offset,
+            &raw const ch.pc,
+            ch.vcs.as_ptr(),
+            ch.vcs.len(),
+            ch.maps.as_ptr(),
+            ch.maps.len(),
+            ALDIS_MODE_STRICT,
+            &raw mut item,
+            null_mut(),
+        )
+    };
+    assert_eq!(
+        (rc, item.kind, item.offset, item.len, offset),
+        (ALDIS_OK, ALDIS_USLP_STREAM_ACCEPTED, len, len, len * 2)
+    );
+
+    // SAFETY: pointers point to valid stack and slice buffers and counts match.
+    let rc = unsafe {
+        aldis_uslp_stream_next(
+            unit.as_ptr(),
+            unit.len(),
+            &raw mut offset,
+            &raw const ch.pc,
+            ch.vcs.as_ptr(),
+            ch.vcs.len(),
+            ch.maps.as_ptr(),
+            ch.maps.len(),
+            ALDIS_MODE_STRICT,
+            &raw mut item,
+            null_mut(),
+        )
+    };
+    assert_eq!(
+        (
+            rc,
+            item.kind,
+            item.offset,
+            item.len,
+            item.discard_reason,
+            offset
+        ),
+        (
+            ALDIS_OK,
+            ALDIS_USLP_STREAM_DISCARDED,
+            len * 2,
+            3,
+            ALDIS_USLP_DISCARD_FILL,
+            unit.len()
+        )
+    );
+
+    // SAFETY: pointers point to valid stack and slice buffers and counts match.
+    let rc = unsafe {
+        aldis_uslp_stream_next(
+            unit.as_ptr(),
+            unit.len(),
+            &raw mut offset,
+            &raw const ch.pc,
+            ch.vcs.as_ptr(),
+            ch.vcs.len(),
+            ch.maps.as_ptr(),
+            ch.maps.len(),
+            ALDIS_MODE_STRICT,
+            &raw mut item,
+            null_mut(),
+        )
+    };
+    assert_eq!(
+        (rc, item.kind, item.len, offset),
+        (ALDIS_OK, ALDIS_USLP_STREAM_END, 0, unit.len())
+    );
+}

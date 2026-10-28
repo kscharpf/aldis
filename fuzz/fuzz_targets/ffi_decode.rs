@@ -84,14 +84,17 @@ use aldis_ffi::uslp::{
     ALDIS_USLP_FRAME_VARIABLE, ALDIS_USLP_KIND_EXPEDITED, ALDIS_USLP_KIND_PROTOCOL_CONTROL,
     ALDIS_USLP_KIND_SEQUENCE_CONTROLLED, ALDIS_USLP_OCF_ABSENT, ALDIS_USLP_OCF_ALLOWED,
     ALDIS_USLP_OCF_REQUIRED, ALDIS_USLP_REASON_NONE, ALDIS_USLP_SECURITY_PER_MAP,
-    ALDIS_USLP_SECURITY_VC, aldis_uslp_config_t, aldis_uslp_decode, aldis_uslp_delimited_t,
+    ALDIS_USLP_SECURITY_VC, ALDIS_USLP_STREAM_ACCEPTED, ALDIS_USLP_STREAM_DISCARDED,
+    ALDIS_USLP_STREAM_END, aldis_uslp_config_t, aldis_uslp_decode, aldis_uslp_delimited_t,
     aldis_uslp_frame_t, aldis_uslp_map_config_t, aldis_uslp_next_frame, aldis_uslp_peek_length,
-    aldis_uslp_validate, aldis_uslp_vc_config_t, aldis_uslp_vc_table_check,
+    aldis_uslp_stream_item_t, aldis_uslp_stream_next, aldis_uslp_validate, aldis_uslp_vc_config_t,
+    aldis_uslp_vc_table_check,
 };
 use aldis_uslp::{
-    Delimited, FrameKind, MapConfig, OcfUse, PhysicalChannelConfig, SecurityScope,
-    TransferFrameType, TruncatedFrameLen, Upid, UslpFrame, UslpMapId, UslpSpacecraftId, UslpVcId,
-    VcConfig, VcParams, VcTable as UslpVcTable, VcfCountLen, next_frame, validate_frame,
+    Delimited, FrameKind, FrameStream as UslpFrameStream, IntakeItem as UslpIntakeItem,
+    MapConfig, OcfUse, PhysicalChannelConfig, SecurityScope, TransferFrameType, TruncatedFrameLen,
+    Upid, UslpFrame, UslpMapId, UslpSpacecraftId, UslpVcId, VcConfig, VcParams,
+    VcTable as UslpVcTable, VcfCountLen, next_frame, validate_frame,
 };
 // ---- end USLP
 use libfuzzer_sys::fuzz_target;
@@ -634,17 +637,19 @@ mod tc_ffi {
         ALDIS_TC_CONTROL_NONE, ALDIS_TC_CONTROL_SET_VR, ALDIS_TC_CONTROL_UNLOCK,
         ALDIS_TC_DELIMITED_END, ALDIS_TC_DELIMITED_FILL, ALDIS_TC_DELIMITED_FRAME,
         ALDIS_TC_DELIMITED_TRUNCATED_FRAME, ALDIS_TC_FRAME_AD, ALDIS_TC_FRAME_BC,
-        ALDIS_TC_FRAME_BD, ALDIS_TC_REASON_NONE, aldis_clcw_decode, aldis_clcw_t,
+        ALDIS_TC_FRAME_BD, ALDIS_TC_REASON_NONE, ALDIS_TC_STREAM_ACCEPTED,
+        ALDIS_TC_STREAM_DISCARDED, ALDIS_TC_STREAM_END, aldis_clcw_decode, aldis_clcw_t,
         aldis_tc_config_t, aldis_tc_control_decode, aldis_tc_control_t, aldis_tc_decode,
         aldis_tc_delimited_t, aldis_tc_frame_t, aldis_tc_header_decode, aldis_tc_header_t,
         aldis_tc_map_config_t, aldis_tc_mc_config_check, aldis_tc_mc_config_t, aldis_tc_next_frame,
-        aldis_tc_peek_length, aldis_tc_validate, aldis_tc_vc_config_t,
+        aldis_tc_peek_length, aldis_tc_stream_item_t, aldis_tc_stream_next, aldis_tc_validate,
+        aldis_tc_vc_config_t,
     };
     use aldis_ffi::{ALDIS_OK, aldis_error_detail_t};
     use aldis_tc::{
-        Clcw, ControlCommand, Delimited, FrameType, MapConfig, PhysicalChannelConfig,
-        SegmentHeaderUse, TcFrame, TcFrameHeader, TcMapId, TcSpacecraftId, TcVcId, VcConfig,
-        VcTable, next_frame, validate_frame,
+        Clcw, ControlCommand, Delimited, FrameStream, FrameType, IntakeItem, MapConfig,
+        PhysicalChannelConfig, SegmentHeaderUse, TcFrame, TcFrameHeader, TcMapId, TcSpacecraftId,
+        TcVcId, VcConfig, VcTable, next_frame, validate_frame,
     };
 
     use super::expect;
@@ -906,6 +911,45 @@ mod tc_ffi {
             offset += item.len;
         }
         assert_eq!(offset, data.len());
+        let mut stream_offset = 0;
+        let mut rust_stream = FrameStream::new(data, &table, mode);
+        loop {
+            let mut item = aldis_tc_stream_item_t::default();
+            // SAFETY: as above.
+            let status = unsafe {
+                aldis_tc_stream_next(
+                    data.as_ptr(),
+                    data.len(),
+                    &raw mut stream_offset,
+                    &raw const mc,
+                    vcs.as_ptr(),
+                    vcs.len(),
+                    maps.as_ptr(),
+                    maps.len(),
+                    c_mode,
+                    &raw mut item,
+                    null_mut(),
+                )
+            };
+            assert_eq!(status, ALDIS_OK);
+            match rust_stream.next() {
+                None => {
+                    assert_eq!(item.kind, ALDIS_TC_STREAM_END);
+                    break;
+                }
+                Some(IntakeItem::Accepted { frame, .. }) => {
+                    assert_eq!(item.kind, ALDIS_TC_STREAM_ACCEPTED);
+                    assert_eq!(item.len, frame.len());
+                    same(&item.frame, data, &frame);
+                }
+                Some(IntakeItem::Discarded { reason, octets, .. }) => {
+                    assert_eq!(item.kind, ALDIS_TC_STREAM_DISCARDED);
+                    assert_eq!(item.len, octets.len());
+                    assert_eq!(item.discard_reason, u32::from(reason.code()));
+                }
+            }
+        }
+        assert_eq!(stream_offset, data.len());
         let rust = ControlCommand::parse(data);
         let mut control = aldis_tc_control_t::default();
         // SAFETY: as above.
@@ -1609,6 +1653,45 @@ fn uslp(data: &[u8], selector: u8, mode: DecodeMode, c_mode: u32) {
         }
         at += item.len;
     }
+    let mut stream_at = 0;
+    let mut rust_stream = UslpFrameStream::new(data, &table, mode);
+    loop {
+        let mut item = aldis_uslp_stream_item_t::default();
+        // SAFETY: as above.
+        let status = unsafe {
+            aldis_uslp_stream_next(
+                data.as_ptr(),
+                data.len(),
+                &raw mut stream_at,
+                &raw const pc,
+                &raw const vc,
+                1,
+                maps.as_ptr(),
+                maps.len(),
+                c_mode,
+                &raw mut item,
+                null_mut(),
+            )
+        };
+        assert_eq!(status, ALDIS_OK);
+        match rust_stream.next() {
+            None => {
+                assert_eq!(item.kind, ALDIS_USLP_STREAM_END);
+                break;
+            }
+            Some(UslpIntakeItem::Accepted { frame, .. }) => {
+                assert_eq!(item.kind, ALDIS_USLP_STREAM_ACCEPTED);
+                assert_eq!(item.len, frame.len());
+                uslp_same(&item.frame, &frame, data);
+            }
+            Some(UslpIntakeItem::Discarded { reason, octets, .. }) => {
+                assert_eq!(item.kind, ALDIS_USLP_STREAM_DISCARDED);
+                assert_eq!(item.len, octets.len());
+                assert_eq!(item.discard_reason, u32::from(reason.code()));
+            }
+        }
+    }
+    assert_eq!(stream_at, data.len());
 }
 
 // ---- end USLP

@@ -138,7 +138,7 @@ pub fn validate_frame<'a, L: VcLookup + ?Sized>(
     channels: &L,
     mode: DecodeMode,
 ) -> Result<TcFrame<'a>, Rejection> {
-    parse(frame, channels, mode, true)
+    parse(frame, channels, mode, true).map(|(f, _, _)| f)
 }
 
 #[cfg(test)]

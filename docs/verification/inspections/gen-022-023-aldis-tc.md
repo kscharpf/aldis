@@ -16,6 +16,7 @@
 | 2026-10-23, `m2/tc-codec` (WP-3), prepared by Claude Code, pending exit review | First inspection: modules 1–7 of WP-3 |
 | 2026-10-24, `m2/tc-c-abi` (WP-3 module 8), prepared by Claude Code (agent of WP-3 module 8), pending exit review | For the C ABI: `view.rs` adds `TcFrame::peek_header` → `RawHeader::parse`, `check_version`, `frame_type`, `TcFrameHeader::new`, and `peek_length` now → `peek_header`, `TcFrameHeader::frame_len`; `writer.rs` adds `TcFrameWriter::resume` → `Plan::new`, `TcFrameWriter::start`, and `start` takes a `write` flag: the unfinished header, the Segment Header, and the zeros of the Security Header and Trailer are written only for `begin` and `encode`. No loop added (the existing ones in `start` are now conditional), no recursion |
 | 2026-10-24, m2/wp7-checks (WP-7), prepared by the agent, pending exit review | The Loops table gains the first column `ID`, which names each loop that `cargo xtask loops` finds (file, item, and index; GEN-022, M2 plan WP-7), or holds `—` for a row that names none; the other columns are unchanged |
+| 2026-10-28, chore/frame-intake-stream, prepared by Antigravity, pending exit review | Unified Frame Intake Stream: added `stream.rs` with `FrameStream` (iterates in-place zero-allocation data units calling `RawHeader::parse` and `parse`). No loop added, no recursion |
 
 ## Loops
 
@@ -50,6 +51,7 @@ No function calls itself, directly or through another `aldis-tc` function. The i
 - `TcFrameHeader::primary_header_octets` → `primary_octets`, `TcFrameHeader::frame_len`; the `TcFrame` accessors → the `TcFrameHeader` accessors.
 - `Clcw::decode` → `fixed`, `reserved`, `ClcwStatus::masked`, `CopInEffect::masked`, `FarmBCounter::masked`; `decode_report` → `decode`; `to_word`, `to_ocf` → `to_octets` → `flag`; the `TryFrom` implementations → `new`.
 - `FrameDelimiter::next` → `next_frame` → `RawHeader::parse`; `Delimited::len` → `Delimited::octets`.
+- `FrameStream::next` → `RawHeader::parse`, `parse`.
 
 Calls out of the crate go to `aldis-core` (errors, identifiers, `crc`, `layout`, `ocf`, `anomaly`), which has its own inspection, and to the caller's `VcLookup` implementation, whose bounds are the caller's; `VcTable`'s are listed above.
 

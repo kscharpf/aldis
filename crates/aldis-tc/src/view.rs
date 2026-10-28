@@ -8,7 +8,7 @@ use aldis_core::security::SecurityLayout;
 use aldis_core::{AnomalySet, DecodeMode, Error, Result};
 
 use crate::anomaly::TcAnomaly;
-use crate::config::{PhysicalChannelConfig, VcConfig, VcLookup};
+use crate::config::{MapConfig, PhysicalChannelConfig, VcConfig, VcLookup};
 use crate::control::ControlCommand;
 use crate::field;
 use crate::header::{
@@ -153,7 +153,7 @@ pub(crate) fn parse<'a, L: VcLookup + ?Sized>(
     channels: &L,
     mode: DecodeMode,
     exact: bool,
-) -> core::result::Result<TcFrame<'a>, Rejection> {
+) -> core::result::Result<(TcFrame<'a>, VcConfig, Option<MapConfig>), Rejection> {
     let mut anomalies = AnomalySet::empty();
     let head = check_head(bytes, channels, mode, exact, &mut anomalies)?;
     let (raw, total) = (head.raw, head.raw.frame_len);
@@ -173,13 +173,15 @@ pub(crate) fn parse<'a, L: VcLookup + ?Sized>(
         None
     };
     let control = head.frame_type.control_command_flag();
-    let security = match segment_header {
-        Some(sh) => channels
-            .map(raw.spacecraft_id, raw.vc_id, sh.map_id)
-            .ok_or(fail(Reason::InvalidMapId, unknown(field::MAP_ID)))?
-            .security(),
-        None if control => SecurityLayout::NONE,
-        None => head.vc.security(),
+    let (security, map_config) = match segment_header {
+        Some(sh) => {
+            let m = channels
+                .map(raw.spacecraft_id, raw.vc_id, sh.map_id)
+                .ok_or(fail(Reason::InvalidMapId, unknown(field::MAP_ID)))?;
+            (m.security(), Some(m))
+        }
+        None if control => (SecurityLayout::NONE, None),
+        None => (head.vc.security(), None),
     };
     let layout = FrameLayout::compute(&LayoutSpec {
         frame_len: total,
@@ -202,19 +204,23 @@ pub(crate) fn parse<'a, L: VcLookup + ?Sized>(
         vc_id: raw.vc_id,
         sequence_number: raw.sequence_number,
     };
-    Ok(TcFrame {
-        header: TcFrameHeader::new(fields, total, segment_header),
-        octets: frame,
-        security_header: frame.get(layout.security_header()).unwrap_or_default(),
-        data,
-        security_trailer: frame.get(layout.security_trailer()).unwrap_or_default(),
-        fecf: frame
-            .get(layout.fecf())
-            .and_then(<[u8]>::first_chunk::<FECF_LEN>)
-            .map(|&octets| u16::from_be_bytes(octets)),
-        control_command,
-        anomalies,
-    })
+    Ok((
+        TcFrame {
+            header: TcFrameHeader::new(fields, total, segment_header),
+            octets: frame,
+            security_header: frame.get(layout.security_header()).unwrap_or_default(),
+            data,
+            security_trailer: frame.get(layout.security_trailer()).unwrap_or_default(),
+            fecf: frame
+                .get(layout.fecf())
+                .and_then(<[u8]>::first_chunk::<FECF_LEN>)
+                .map(|&octets| u16::from_be_bytes(octets)),
+            control_command,
+            anomalies,
+        },
+        head.vc,
+        map_config,
+    ))
 }
 
 impl<'a> TcFrame<'a> {
@@ -251,7 +257,9 @@ impl<'a> TcFrame<'a> {
         channels: &L,
         mode: DecodeMode,
     ) -> Result<TcFrame<'a>> {
-        parse(bytes, channels, mode, false).map_err(Error::from)
+        parse(bytes, channels, mode, false)
+            .map(|(frame, _, _)| frame)
+            .map_err(Error::from)
     }
 
     /// Total length of the frame that starts `prefix`, from its first five octets (232.0

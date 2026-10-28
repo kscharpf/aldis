@@ -72,7 +72,8 @@ impl<'a> Delimited<'a> {
 }
 
 /// What the header at the start of the octets declares (§3.2 of the standard document).
-enum Declared {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Declared {
     /// A frame of this many octets.
     Len(usize),
     /// A truncated header whose VC is unknown or has no truncated frame length.
@@ -82,7 +83,7 @@ enum Declared {
 }
 
 /// What the header at the start of `rest` declares, or `None` for no valid header.
-fn declared_len<L: VcLookup + ?Sized>(rest: &[u8], channels: &L) -> Option<Declared> {
+pub(crate) fn declared_len<L: VcLookup + ?Sized>(rest: &[u8], channels: &L) -> Option<Declared> {
     let start = RawStart::parse(rest).filter(|s| s.version == VERSION)?;
     let ch = start.channel;
     let truncated_len = channels

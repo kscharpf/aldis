@@ -299,6 +299,25 @@ int main(void) {
         offset += item.len;
     }
     check(tc_frames == 1 && tc_fill == 1 && offset == sizeof unit, "aldis_tc_next_frame");
+    size_t stream_offset = 0;
+    int stream_frames = 0;
+    int stream_fill = 0;
+    aldis_tc_stream_item_t s_item;
+    while (aldis_tc_stream_next(unit, sizeof unit, &stream_offset, &tc_mc, &tc_vc, 1, NULL, 0,
+                                ALDIS_MODE_STRICT, &s_item, &err) == ALDIS_OK &&
+           s_item.kind != ALDIS_TC_STREAM_END) {
+        if (s_item.kind == ALDIS_TC_STREAM_ACCEPTED) {
+            check(s_item.frame.header.sequence_number == 4 && s_item.frame.layout.data_len == 3 &&
+                      unit[s_item.offset + s_item.frame.layout.data_offset] == 1,
+                  "stream TC frame (CABI-012)");
+            stream_frames++;
+        } else if (s_item.kind == ALDIS_TC_STREAM_DISCARDED) {
+            if (s_item.discard_reason == ALDIS_TC_DISCARD_FILL) {
+                stream_fill++;
+            }
+        }
+    }
+    check(stream_frames == 1 && stream_fill == 1 && stream_offset == sizeof unit, "aldis_tc_stream_next");
     aldis_clcw_t clcw;
     uint32_t clcw_anomalies = 99;
     check(aldis_clcw_decode(0x01140C2Au, ALDIS_MODE_STRICT, &clcw, &clcw_anomalies, &err) ==
@@ -381,6 +400,23 @@ int main(void) {
     check(aldis_uslp_next_frame(uframe, ulen, ulen, &upc, &uvc, 1, &uitem, NULL) == ALDIS_OK &&
               uitem.kind == ALDIS_USLP_DELIMITED_END,
           "the delimiter ends at the end of the unit");
+    size_t ustream_offset = 0;
+    aldis_uslp_stream_item_t us_item;
+    check(aldis_uslp_stream_next(uframe, ulen, &ustream_offset, &upc, &uvc, 1, &umap, 1,
+                                 ALDIS_MODE_STRICT, &us_item, NULL) == ALDIS_OK &&
+              us_item.kind == ALDIS_USLP_STREAM_DISCARDED &&
+              us_item.discard_reason == ALDIS_USLP_DISCARD_FECF_MISMATCH &&
+              us_item.error_code == ALDIS_ERR_CRC_MISMATCH &&
+              ustream_offset == ulen,
+          "aldis_uslp_stream_next discards frame with bad FECF");
+    uframe[ulen - 1] ^= 1;
+    ustream_offset = 0;
+    check(aldis_uslp_stream_next(uframe, ulen, &ustream_offset, &upc, &uvc, 1, &umap, 1,
+                                 ALDIS_MODE_STRICT, &us_item, NULL) == ALDIS_OK &&
+              us_item.kind == ALDIS_USLP_STREAM_ACCEPTED &&
+              us_item.len == ulen &&
+              ustream_offset == ulen,
+          "aldis_uslp_stream_next accepts valid frame");
     check(limits.uslp_max_vcs == ALDIS_USLP_MAX_VCS && limits.uslp_max_maps == ALDIS_USLP_MAX_MAPS,
           "USLP channel table capacities");
     /* ---- end USLP ---- */

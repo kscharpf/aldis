@@ -86,11 +86,19 @@ reason = "full width: the 8-bit Virtual Channel Frame Count, modulo 256; every u
 item = "aldis_tc::delimit::Delimited::TruncatedFrame.declared_len"
 reason = "output: the frame length in octets a header declares, which the delimiter reports for discarded octets (TC-020)"
 
+[[exemption]]
+item = "aldis_tc::stream::DiscardReason::TruncatedFrame.declared_len"
+reason = "output: the frame length in octets a header declares, which the stream reports for discarded octets (TC-020)"
+
 # aldis-uslp
 
 [[exemption]]
 item = "aldis_uslp::delimit::Delimited::IncompleteFrame.declared_len"
 reason = "output: the frame length in octets a header declares, which the delimiter reports for discarded octets (USLP-015)"
+
+[[exemption]]
+item = "aldis_uslp::stream::DiscardReason::IncompleteFrame.declared_len"
+reason = "output: the frame length in octets a header declares, which the stream reports for discarded octets (USLP-015)"
 
 [[exemption]]
 item = "aldis_uslp::writer::FrameFields.vcf_count"

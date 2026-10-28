@@ -44,6 +44,7 @@ pub mod config;
 pub mod delimit;
 pub mod field;
 pub mod header;
+pub mod stream;
 pub mod tfdf;
 pub mod truncated;
 pub mod upid;
@@ -62,6 +63,7 @@ pub use header::{
     TRUNCATED_HEADER_LEN, UslpMapId, UslpPrimaryHeader, UslpSpacecraftId, UslpVcId, VcfCount,
     VcfCountLen,
 };
+pub use stream::{DiscardReason, FrameStream, IntakeItem};
 pub use tfdf::{
     ConstructionRule, FirstHeaderPointer, LastValidOctet, POINTER_NONE, TfdfHeader, TfdzOffset,
     TfdzRule,

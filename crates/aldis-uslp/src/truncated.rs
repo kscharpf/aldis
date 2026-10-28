@@ -47,7 +47,14 @@ pub(crate) fn parse<'a, L: VcLookup + ?Sized>(
     channel: ChannelFields,
     channels: &L,
     exact: bool,
-) -> Result<UslpTruncatedFrame<'a>, Rejection> {
+) -> Result<
+    (
+        UslpTruncatedFrame<'a>,
+        crate::config::VcConfig,
+        Option<crate::config::MapConfig>,
+    ),
+    Rejection,
+> {
     let vc = channels
         .vc(channel.spacecraft_id, channel.vc_id)
         .ok_or(fail(Reason::InvalidVcid, unknown(field::VC_ID)))?;
@@ -78,14 +85,18 @@ pub(crate) fn parse<'a, L: VcLookup + ?Sized>(
     let tfdf_len = rest.len().saturating_sub(security.trailer_len());
     let (data_field, security_trailer) = rest.split_at_checked(tfdf_len).unwrap_or_default();
     let (tfdf_header, tfdz) = TfdfHeader::parse(data_field, false).map_err(tfdf_rejection)?;
-    Ok(UslpTruncatedFrame {
-        channel,
-        octets: frame,
-        security_header,
-        tfdf_header,
-        tfdz,
-        security_trailer,
-    })
+    Ok((
+        UslpTruncatedFrame {
+            channel,
+            octets: frame,
+            security_header,
+            tfdf_header,
+            tfdz,
+            security_trailer,
+        },
+        vc,
+        map,
+    ))
 }
 
 impl<'a> UslpTruncatedFrame<'a> {
