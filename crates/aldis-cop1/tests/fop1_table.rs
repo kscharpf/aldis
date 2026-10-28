@@ -10,70 +10,16 @@ use aldis_cop1::{
     Fop1Action, Fop1Cell, Fop1Event, Fop1State, FrameKind, TransferNotification,
 };
 
-const fn state_idx(s: Fop1State) -> usize {
-    match s {
-        Fop1State::Active => 0,
-        Fop1State::RetransmitWithoutWait => 1,
-        Fop1State::RetransmitWithWait => 2,
-        Fop1State::InitializingWithoutBcFrame => 3,
-        Fop1State::InitializingWithBcFrame => 4,
-        Fop1State::Initial => 5,
-    }
-}
-
-const fn event_idx(e: Fop1Event) -> usize {
-    match e {
-        Fop1Event::E1 => 0,
-        Fop1Event::E2 => 1,
-        Fop1Event::E3 => 2,
-        Fop1Event::E4 => 3,
-        Fop1Event::E5 => 4,
-        Fop1Event::E6 => 5,
-        Fop1Event::E7 => 6,
-        Fop1Event::E8 => 7,
-        Fop1Event::E9 => 8,
-        Fop1Event::E10 => 9,
-        Fop1Event::E11 => 10,
-        Fop1Event::E12 => 11,
-        Fop1Event::E13 => 12,
-        Fop1Event::E14 => 13,
-        Fop1Event::E15 => 14,
-        Fop1Event::E16 => 15,
-        Fop1Event::E17 => 16,
-        Fop1Event::E18 => 17,
-        Fop1Event::E19 => 18,
-        Fop1Event::E20 => 19,
-        Fop1Event::E21 => 20,
-        Fop1Event::E22 => 21,
-        Fop1Event::E23 => 22,
-        Fop1Event::E24 => 23,
-        Fop1Event::E25 => 24,
-        Fop1Event::E26 => 25,
-        Fop1Event::E27 => 26,
-        Fop1Event::E28 => 27,
-        Fop1Event::E29 => 28,
-        Fop1Event::E30 => 29,
-        Fop1Event::E31 => 30,
-        Fop1Event::E32 => 31,
-        Fop1Event::E33 => 32,
-        Fop1Event::E34 => 33,
-        Fop1Event::E35 => 34,
-        Fop1Event::E36 => 35,
-        Fop1Event::E37 => 36,
-        Fop1Event::E38 => 37,
-        Fop1Event::E39 => 38,
-        Fop1Event::E40 => 39,
-        Fop1Event::E41 => 40,
-        Fop1Event::E42 => 41,
-        Fop1Event::E43 => 42,
-        Fop1Event::E44 => 43,
-        Fop1Event::E45 => 44,
-        Fop1Event::E46 => 45,
-        Fop1Event::E101 => 46,
-        Fop1Event::E102 => 47,
-        Fop1Event::E103 => 48,
-        Fop1Event::E104 => 49,
-    }
+#[expect(
+    clippy::as_conversions,
+    reason = "Fop1State and Fop1Event are repr(usize) with contiguous zero-based discriminants"
+)]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "state and event discriminants are bounded within [0..6] and [0..50]"
+)]
+const fn cell(state: Fop1State, event: Fop1Event) -> Fop1Cell {
+    FOP1_TABLE[state as usize][event as usize]
 }
 
 const fn event_number(e: Fop1Event) -> u8 {
@@ -185,14 +131,6 @@ const fn from_event_number(n: u8) -> Option<Fop1Event> {
         104 => Some(Fop1Event::E104),
         _ => None,
     }
-}
-
-#[expect(
-    clippy::indexing_slicing,
-    reason = "state_idx and event_idx are bounded within [0..6] and [0..50] by exhaustive enum mapping"
-)]
-const fn cell(state: Fop1State, event: Fop1Event) -> Fop1Cell {
-    FOP1_TABLE[state_idx(state)][event_idx(event)]
 }
 
 #[test]

@@ -246,6 +246,193 @@ pub struct Fop1Cell {
     pub next_state: Option<Fop1State>,
 }
 
+// --- Reusable named cell constants for Table 5-1 (COP-001, COP-003) ---
+
+/// Transition not applicable (COP-005, `InvalidState`).
+pub const NOT_APPLICABLE: Fop1Cell = Fop1Cell {
+    actions: &[],
+    next_state: None,
+};
+
+/// Ignore event and remain in State S6 (`Initial`).
+pub const IGNORE_INITIAL: Fop1Cell = Fop1Cell {
+    actions: &[],
+    next_state: Some(Fop1State::Initial),
+};
+
+/// Ignore event and remain in State S2 (`RetransmitWithoutWait`).
+pub const IGNORE_RETR_NO_WAIT: Fop1Cell = Fop1Cell {
+    actions: &[],
+    next_state: Some(Fop1State::RetransmitWithoutWait),
+};
+
+/// Ignore event and remain in State S3 (`RetransmitWithWait`).
+pub const IGNORE_RETR_WAIT: Fop1Cell = Fop1Cell {
+    actions: &[],
+    next_state: Some(Fop1State::RetransmitWithWait),
+};
+
+/// Emit `Alert[synch]` and transition to State S6 (`Initial`).
+pub const ALERT_SYNCH: Fop1Cell = Fop1Cell {
+    actions: &[Fop1Action::Alert(AlertReason::Synch)],
+    next_state: Some(Fop1State::Initial),
+};
+
+/// Emit `Alert[CLCW]` and transition to State S6 (`Initial`).
+pub const ALERT_CLCW: Fop1Cell = Fop1Cell {
+    actions: &[Fop1Action::Alert(AlertReason::Clcw)],
+    next_state: Some(Fop1State::Initial),
+};
+
+/// Emit `Alert[Lockout]` and transition to State S6 (`Initial`).
+pub const ALERT_LOCKOUT: Fop1Cell = Fop1Cell {
+    actions: &[Fop1Action::Alert(AlertReason::Lockout)],
+    next_state: Some(Fop1State::Initial),
+};
+
+/// Emit `Alert[NN(R)]` and transition to State S6 (`Initial`).
+pub const ALERT_NNR: Fop1Cell = Fop1Cell {
+    actions: &[Fop1Action::Alert(AlertReason::NnR)],
+    next_state: Some(Fop1State::Initial),
+};
+
+/// Emit `Alert[Limit]` and transition to State S6 (`Initial`).
+pub const ALERT_LIMIT: Fop1Cell = Fop1Cell {
+    actions: &[Fop1Action::Alert(AlertReason::Limit)],
+    next_state: Some(Fop1State::Initial),
+};
+
+/// Emit `Alert[T1]` and transition to State S6 (`Initial`).
+pub const ALERT_T1: Fop1Cell = Fop1Cell {
+    actions: &[Fop1Action::Alert(AlertReason::T1)],
+    next_state: Some(Fop1State::Initial),
+};
+
+/// Emit `Alert[LLIF]` and transition to State S6 (`Initial`).
+pub const ALERT_LLIF: Fop1Cell = Fop1Cell {
+    actions: &[Fop1Action::Alert(AlertReason::Llif)],
+    next_state: Some(Fop1State::Initial),
+};
+
+/// E2 in S1..S3: Remove acknowledged frames from `Sent_Queue`, cancel timer, look for FDU.
+pub const CELL_E2: Fop1Cell = Fop1Cell {
+    actions: &[
+        Fop1Action::RemoveAckedFrames,
+        Fop1Action::CancelTimer,
+        Fop1Action::LookForFdu,
+    ],
+    next_state: Some(Fop1State::Active),
+};
+
+/// E6 in S1..S3: Remove acknowledged frames from `Sent_Queue`, look for FDU.
+pub const CELL_E6: Fop1Cell = Fop1Cell {
+    actions: &[Fop1Action::RemoveAckedFrames, Fop1Action::LookForFdu],
+    next_state: Some(Fop1State::Active),
+};
+
+/// E8 in S1..S3: Remove acked, initiate AD retransmission, look for FDU -> S2.
+pub const CELL_E8: Fop1Cell = Fop1Cell {
+    actions: &[
+        Fop1Action::RemoveAckedFrames,
+        Fop1Action::InitiateAdRetransmission,
+        Fop1Action::LookForFdu,
+    ],
+    next_state: Some(Fop1State::RetransmitWithoutWait),
+};
+
+/// E9 in S1..S3: Remove acknowledged frames from `Sent_Queue` -> S3.
+pub const CELL_E9: Fop1Cell = Fop1Cell {
+    actions: &[Fop1Action::RemoveAckedFrames],
+    next_state: Some(Fop1State::RetransmitWithWait),
+};
+
+/// E10 in S1, S3: Initiate AD retransmission, look for FDU -> S2.
+pub const CELL_E10: Fop1Cell = Fop1Cell {
+    actions: &[Fop1Action::InitiateAdRetransmission, Fop1Action::LookForFdu],
+    next_state: Some(Fop1State::RetransmitWithoutWait),
+};
+
+/// E101 in S1..S3: Remove acked frames, emit `Alert[Limit]` -> S6.
+pub const CELL_E101: Fop1Cell = Fop1Cell {
+    actions: &[
+        Fop1Action::RemoveAckedFrames,
+        Fop1Action::Alert(AlertReason::Limit),
+    ],
+    next_state: Some(Fop1State::Initial),
+};
+
+/// Reject directive and remain in State S1 (`Active`).
+pub const DIRECTIVE_REJECT_S1: Fop1Cell = Fop1Cell {
+    actions: &[Fop1Action::DirectiveNotify(DirectiveNotification::Reject)],
+    next_state: Some(Fop1State::Active),
+};
+
+/// Reject directive and remain in State S2 (`RetransmitWithoutWait`).
+pub const DIRECTIVE_REJECT_S2: Fop1Cell = Fop1Cell {
+    actions: &[Fop1Action::DirectiveNotify(DirectiveNotification::Reject)],
+    next_state: Some(Fop1State::RetransmitWithoutWait),
+};
+
+/// Reject directive and remain in State S3 (`RetransmitWithWait`).
+pub const DIRECTIVE_REJECT_S3: Fop1Cell = Fop1Cell {
+    actions: &[Fop1Action::DirectiveNotify(DirectiveNotification::Reject)],
+    next_state: Some(Fop1State::RetransmitWithWait),
+};
+
+/// Reject directive and remain in State S4 (`InitializingWithoutBcFrame`).
+pub const DIRECTIVE_REJECT_S4: Fop1Cell = Fop1Cell {
+    actions: &[Fop1Action::DirectiveNotify(DirectiveNotification::Reject)],
+    next_state: Some(Fop1State::InitializingWithoutBcFrame),
+};
+
+/// Reject directive and remain in State S5 (`InitializingWithBcFrame`).
+pub const DIRECTIVE_REJECT_S5: Fop1Cell = Fop1Cell {
+    actions: &[Fop1Action::DirectiveNotify(DirectiveNotification::Reject)],
+    next_state: Some(Fop1State::InitializingWithBcFrame),
+};
+
+/// Reject directive and remain in State S6 (`Initial`).
+pub const DIRECTIVE_REJECT_S6: Fop1Cell = Fop1Cell {
+    actions: &[Fop1Action::DirectiveNotify(DirectiveNotification::Reject)],
+    next_state: Some(Fop1State::Initial),
+};
+
+/// Reject transfer request and remain in State S1 (`Active`).
+pub const TRANSFER_REJECT_S1: Fop1Cell = Fop1Cell {
+    actions: &[Fop1Action::TransferNotify(TransferNotification::Reject)],
+    next_state: Some(Fop1State::Active),
+};
+
+/// Reject transfer request and remain in State S2 (`RetransmitWithoutWait`).
+pub const TRANSFER_REJECT_S2: Fop1Cell = Fop1Cell {
+    actions: &[Fop1Action::TransferNotify(TransferNotification::Reject)],
+    next_state: Some(Fop1State::RetransmitWithoutWait),
+};
+
+/// Reject transfer request and remain in State S3 (`RetransmitWithWait`).
+pub const TRANSFER_REJECT_S3: Fop1Cell = Fop1Cell {
+    actions: &[Fop1Action::TransferNotify(TransferNotification::Reject)],
+    next_state: Some(Fop1State::RetransmitWithWait),
+};
+
+/// Reject transfer request and remain in State S4 (`InitializingWithoutBcFrame`).
+pub const TRANSFER_REJECT_S4: Fop1Cell = Fop1Cell {
+    actions: &[Fop1Action::TransferNotify(TransferNotification::Reject)],
+    next_state: Some(Fop1State::InitializingWithoutBcFrame),
+};
+
+/// Reject transfer request and remain in State S5 (`InitializingWithBcFrame`).
+pub const TRANSFER_REJECT_S5: Fop1Cell = Fop1Cell {
+    actions: &[Fop1Action::TransferNotify(TransferNotification::Reject)],
+    next_state: Some(Fop1State::InitializingWithBcFrame),
+};
+
+/// Reject transfer request and remain in State S6 (`Initial`).
+pub const TRANSFER_REJECT_S6: Fop1Cell = Fop1Cell {
+    actions: &[Fop1Action::TransferNotify(TransferNotification::Reject)],
+    next_state: Some(Fop1State::Initial),
+};
+
 /// FOP-1 State Table 5-1 represented as `const` data (CCSDS 232.1-B-2 Table 5-1, COP-001, COP-003, RS-021).
 ///
 /// Indexed as `FOP1_TABLE[state as usize][event as usize]`.
@@ -258,93 +445,43 @@ pub const FOP1_TABLE: [[Fop1Cell; EVENT_COUNT]; STATE_COUNT] = [
             next_state: Some(Fop1State::Active),
         },
         // E2: Remove acked, Cancel Timer, Look for FDU
-        Fop1Cell {
-            actions: &[
-                Fop1Action::RemoveAckedFrames,
-                Fop1Action::CancelTimer,
-                Fop1Action::LookForFdu,
-            ],
-            next_state: Some(Fop1State::Active),
-        },
+        CELL_E2,
         // E3: Alert[CLCW]
-        Fop1Cell {
-            actions: &[Fop1Action::Alert(AlertReason::Clcw)],
-            next_state: Some(Fop1State::Initial),
-        },
+        ALERT_CLCW,
         // E4: Alert[synch]
-        Fop1Cell {
-            actions: &[Fop1Action::Alert(AlertReason::Synch)],
-            next_state: Some(Fop1State::Initial),
-        },
+        ALERT_SYNCH,
         // E5: Ignore
         Fop1Cell {
             actions: &[],
             next_state: Some(Fop1State::Active),
         },
         // E6: Remove acked, Look for FDU
-        Fop1Cell {
-            actions: &[Fop1Action::RemoveAckedFrames, Fop1Action::LookForFdu],
-            next_state: Some(Fop1State::Active),
-        },
+        CELL_E6,
         // E7: Alert[CLCW]
-        Fop1Cell {
-            actions: &[Fop1Action::Alert(AlertReason::Clcw)],
-            next_state: Some(Fop1State::Initial),
-        },
+        ALERT_CLCW,
         // E8: Remove acked, Initiate AD Retransmission, Look for FDU
-        Fop1Cell {
-            actions: &[
-                Fop1Action::RemoveAckedFrames,
-                Fop1Action::InitiateAdRetransmission,
-                Fop1Action::LookForFdu,
-            ],
-            next_state: Some(Fop1State::RetransmitWithoutWait),
-        },
+        CELL_E8,
         // E9: Remove acked
-        Fop1Cell {
-            actions: &[Fop1Action::RemoveAckedFrames],
-            next_state: Some(Fop1State::RetransmitWithWait),
-        },
+        CELL_E9,
         // E10: Initiate AD Retransmission, Look for FDU
-        Fop1Cell {
-            actions: &[Fop1Action::InitiateAdRetransmission, Fop1Action::LookForFdu],
-            next_state: Some(Fop1State::RetransmitWithoutWait),
-        },
+        CELL_E10,
         // E11: Ignore
-        Fop1Cell {
-            actions: &[],
-            next_state: Some(Fop1State::RetransmitWithWait),
-        },
+        IGNORE_RETR_WAIT,
         // E12: Ignore
-        Fop1Cell {
-            actions: &[],
-            next_state: Some(Fop1State::RetransmitWithoutWait),
-        },
+        IGNORE_RETR_NO_WAIT,
         // E13: Alert[NN(R)]
-        Fop1Cell {
-            actions: &[Fop1Action::Alert(AlertReason::NnR)],
-            next_state: Some(Fop1State::Initial),
-        },
+        ALERT_NNR,
         // E14: Alert[Lockout]
-        Fop1Cell {
-            actions: &[Fop1Action::Alert(AlertReason::Lockout)],
-            next_state: Some(Fop1State::Initial),
-        },
+        ALERT_LOCKOUT,
         // E15: Alert[CLCW]
-        Fop1Cell {
-            actions: &[Fop1Action::Alert(AlertReason::Clcw)],
-            next_state: Some(Fop1State::Initial),
-        },
+        ALERT_CLCW,
         // E16: Initiate AD Retransmission, Look for FDU
         Fop1Cell {
             actions: &[Fop1Action::InitiateAdRetransmission, Fop1Action::LookForFdu],
             next_state: Some(Fop1State::Active),
         },
         // E17: Alert[T1]
-        Fop1Cell {
-            actions: &[Fop1Action::Alert(AlertReason::T1)],
-            next_state: Some(Fop1State::Initial),
-        },
+        ALERT_T1,
         // E18: SS:=1, Suspend
         Fop1Cell {
             actions: &[Fop1Action::SetSuspendState(1), Fop1Action::Suspend],
@@ -356,10 +493,7 @@ pub const FOP1_TABLE: [[Fop1Cell; EVENT_COUNT]; STATE_COUNT] = [
             next_state: Some(Fop1State::Active),
         },
         // E20: Reject
-        Fop1Cell {
-            actions: &[Fop1Action::TransferNotify(TransferNotification::Reject)],
-            next_state: Some(Fop1State::Active),
-        },
+        TRANSFER_REJECT_S1,
         // E21: Accept, Transmit BD frame
         Fop1Cell {
             actions: &[
@@ -369,40 +503,19 @@ pub const FOP1_TABLE: [[Fop1Cell; EVENT_COUNT]; STATE_COUNT] = [
             next_state: Some(Fop1State::Active),
         },
         // E22: Reject
-        Fop1Cell {
-            actions: &[Fop1Action::TransferNotify(TransferNotification::Reject)],
-            next_state: Some(Fop1State::Active),
-        },
+        TRANSFER_REJECT_S1,
         // E23: Reject
-        Fop1Cell {
-            actions: &[Fop1Action::DirectiveNotify(DirectiveNotification::Reject)],
-            next_state: Some(Fop1State::Active),
-        },
+        DIRECTIVE_REJECT_S1,
         // E24: Reject
-        Fop1Cell {
-            actions: &[Fop1Action::DirectiveNotify(DirectiveNotification::Reject)],
-            next_state: Some(Fop1State::Active),
-        },
+        DIRECTIVE_REJECT_S1,
         // E25: Reject
-        Fop1Cell {
-            actions: &[Fop1Action::DirectiveNotify(DirectiveNotification::Reject)],
-            next_state: Some(Fop1State::Active),
-        },
+        DIRECTIVE_REJECT_S1,
         // E26: Reject
-        Fop1Cell {
-            actions: &[Fop1Action::DirectiveNotify(DirectiveNotification::Reject)],
-            next_state: Some(Fop1State::Active),
-        },
+        DIRECTIVE_REJECT_S1,
         // E27: Reject
-        Fop1Cell {
-            actions: &[Fop1Action::DirectiveNotify(DirectiveNotification::Reject)],
-            next_state: Some(Fop1State::Active),
-        },
+        DIRECTIVE_REJECT_S1,
         // E28: Reject
-        Fop1Cell {
-            actions: &[Fop1Action::DirectiveNotify(DirectiveNotification::Reject)],
-            next_state: Some(Fop1State::Active),
-        },
+        DIRECTIVE_REJECT_S1,
         // E29: Accept, Alert[term], Confirm
         Fop1Cell {
             actions: &[
@@ -413,35 +526,17 @@ pub const FOP1_TABLE: [[Fop1Cell; EVENT_COUNT]; STATE_COUNT] = [
             next_state: Some(Fop1State::Initial),
         },
         // E30: Reject
-        Fop1Cell {
-            actions: &[Fop1Action::DirectiveNotify(DirectiveNotification::Reject)],
-            next_state: Some(Fop1State::Active),
-        },
+        DIRECTIVE_REJECT_S1,
         // E31: Not applicable
-        Fop1Cell {
-            actions: &[],
-            next_state: None,
-        },
+        NOT_APPLICABLE,
         // E32: Not applicable
-        Fop1Cell {
-            actions: &[],
-            next_state: None,
-        },
+        NOT_APPLICABLE,
         // E33: Not applicable
-        Fop1Cell {
-            actions: &[],
-            next_state: None,
-        },
+        NOT_APPLICABLE,
         // E34: Not applicable
-        Fop1Cell {
-            actions: &[],
-            next_state: None,
-        },
+        NOT_APPLICABLE,
         // E35: Reject
-        Fop1Cell {
-            actions: &[Fop1Action::DirectiveNotify(DirectiveNotification::Reject)],
-            next_state: Some(Fop1State::Active),
-        },
+        DIRECTIVE_REJECT_S1,
         // E36: Accept, Set K, Confirm
         Fop1Cell {
             actions: &[
@@ -479,10 +574,7 @@ pub const FOP1_TABLE: [[Fop1Cell; EVENT_COUNT]; STATE_COUNT] = [
             next_state: Some(Fop1State::Active),
         },
         // E40: Reject
-        Fop1Cell {
-            actions: &[Fop1Action::DirectiveNotify(DirectiveNotification::Reject)],
-            next_state: Some(Fop1State::Active),
-        },
+        DIRECTIVE_REJECT_S1,
         // E41: AD_Out_Flag = Ready, Look for FDU
         Fop1Cell {
             actions: &[
@@ -492,20 +584,14 @@ pub const FOP1_TABLE: [[Fop1Cell; EVENT_COUNT]; STATE_COUNT] = [
             next_state: Some(Fop1State::Active),
         },
         // E42: Alert[LLIF]
-        Fop1Cell {
-            actions: &[Fop1Action::Alert(AlertReason::Llif)],
-            next_state: Some(Fop1State::Initial),
-        },
+        ALERT_LLIF,
         // E43: BC_Out_Flag = Ready
         Fop1Cell {
             actions: &[Fop1Action::SetOutFlagReady(FrameKind::Bc)],
             next_state: Some(Fop1State::Active),
         },
         // E44: Alert[LLIF]
-        Fop1Cell {
-            actions: &[Fop1Action::Alert(AlertReason::Llif)],
-            next_state: Some(Fop1State::Initial),
-        },
+        ALERT_LLIF,
         // E45: BD_Out_Flag = Ready, Accept
         Fop1Cell {
             actions: &[
@@ -515,28 +601,13 @@ pub const FOP1_TABLE: [[Fop1Cell; EVENT_COUNT]; STATE_COUNT] = [
             next_state: Some(Fop1State::Active),
         },
         // E46: Alert[LLIF]
-        Fop1Cell {
-            actions: &[Fop1Action::Alert(AlertReason::Llif)],
-            next_state: Some(Fop1State::Initial),
-        },
+        ALERT_LLIF,
         // E101: Remove acked, Alert[Limit]
-        Fop1Cell {
-            actions: &[
-                Fop1Action::RemoveAckedFrames,
-                Fop1Action::Alert(AlertReason::Limit),
-            ],
-            next_state: Some(Fop1State::Initial),
-        },
+        CELL_E101,
         // E102: Alert[Limit]
-        Fop1Cell {
-            actions: &[Fop1Action::Alert(AlertReason::Limit)],
-            next_state: Some(Fop1State::Initial),
-        },
+        ALERT_LIMIT,
         // E103: Ignore
-        Fop1Cell {
-            actions: &[],
-            next_state: Some(Fop1State::RetransmitWithWait),
-        },
+        IGNORE_RETR_WAIT,
         // E104: Initiate AD Retransmission, Look for FDU
         Fop1Cell {
             actions: &[Fop1Action::InitiateAdRetransmission, Fop1Action::LookForFdu],
@@ -546,98 +617,39 @@ pub const FOP1_TABLE: [[Fop1Cell; EVENT_COUNT]; STATE_COUNT] = [
     // State: RetransmitWithoutWait (Retransmit without wait (S2))
     [
         // E1: Alert[synch]
-        Fop1Cell {
-            actions: &[Fop1Action::Alert(AlertReason::Synch)],
-            next_state: Some(Fop1State::Initial),
-        },
+        ALERT_SYNCH,
         // E2: Remove acked, Cancel Timer, Look for FDU
-        Fop1Cell {
-            actions: &[
-                Fop1Action::RemoveAckedFrames,
-                Fop1Action::CancelTimer,
-                Fop1Action::LookForFdu,
-            ],
-            next_state: Some(Fop1State::Active),
-        },
+        CELL_E2,
         // E3: Alert[CLCW]
-        Fop1Cell {
-            actions: &[Fop1Action::Alert(AlertReason::Clcw)],
-            next_state: Some(Fop1State::Initial),
-        },
+        ALERT_CLCW,
         // E4: Alert[synch]
-        Fop1Cell {
-            actions: &[Fop1Action::Alert(AlertReason::Synch)],
-            next_state: Some(Fop1State::Initial),
-        },
+        ALERT_SYNCH,
         // E5: Alert[synch]
-        Fop1Cell {
-            actions: &[Fop1Action::Alert(AlertReason::Synch)],
-            next_state: Some(Fop1State::Initial),
-        },
+        ALERT_SYNCH,
         // E6: Remove acked, Look for FDU
-        Fop1Cell {
-            actions: &[Fop1Action::RemoveAckedFrames, Fop1Action::LookForFdu],
-            next_state: Some(Fop1State::Active),
-        },
+        CELL_E6,
         // E7: Alert[CLCW]
-        Fop1Cell {
-            actions: &[Fop1Action::Alert(AlertReason::Clcw)],
-            next_state: Some(Fop1State::Initial),
-        },
+        ALERT_CLCW,
         // E8: Remove acked, Initiate AD Retransmission, Look for FDU
-        Fop1Cell {
-            actions: &[
-                Fop1Action::RemoveAckedFrames,
-                Fop1Action::InitiateAdRetransmission,
-                Fop1Action::LookForFdu,
-            ],
-            next_state: Some(Fop1State::RetransmitWithoutWait),
-        },
+        CELL_E8,
         // E9: Remove acked
-        Fop1Cell {
-            actions: &[Fop1Action::RemoveAckedFrames],
-            next_state: Some(Fop1State::RetransmitWithWait),
-        },
+        CELL_E9,
         // E10: Ignore
-        Fop1Cell {
-            actions: &[],
-            next_state: Some(Fop1State::RetransmitWithoutWait),
-        },
+        IGNORE_RETR_NO_WAIT,
         // E11: Ignore
-        Fop1Cell {
-            actions: &[],
-            next_state: Some(Fop1State::RetransmitWithWait),
-        },
+        IGNORE_RETR_WAIT,
         // E12: Ignore
-        Fop1Cell {
-            actions: &[],
-            next_state: Some(Fop1State::RetransmitWithoutWait),
-        },
+        IGNORE_RETR_NO_WAIT,
         // E13: Alert[NN(R)]
-        Fop1Cell {
-            actions: &[Fop1Action::Alert(AlertReason::NnR)],
-            next_state: Some(Fop1State::Initial),
-        },
+        ALERT_NNR,
         // E14: Alert[Lockout]
-        Fop1Cell {
-            actions: &[Fop1Action::Alert(AlertReason::Lockout)],
-            next_state: Some(Fop1State::Initial),
-        },
+        ALERT_LOCKOUT,
         // E15: Alert[CLCW]
-        Fop1Cell {
-            actions: &[Fop1Action::Alert(AlertReason::Clcw)],
-            next_state: Some(Fop1State::Initial),
-        },
+        ALERT_CLCW,
         // E16: Initiate AD Retransmission, Look for FDU
-        Fop1Cell {
-            actions: &[Fop1Action::InitiateAdRetransmission, Fop1Action::LookForFdu],
-            next_state: Some(Fop1State::RetransmitWithoutWait),
-        },
+        CELL_E10,
         // E17: Alert[T1]
-        Fop1Cell {
-            actions: &[Fop1Action::Alert(AlertReason::T1)],
-            next_state: Some(Fop1State::Initial),
-        },
+        ALERT_T1,
         // E18: SS:=2, Suspend
         Fop1Cell {
             actions: &[Fop1Action::SetSuspendState(2), Fop1Action::Suspend],
@@ -649,10 +661,7 @@ pub const FOP1_TABLE: [[Fop1Cell; EVENT_COUNT]; STATE_COUNT] = [
             next_state: Some(Fop1State::RetransmitWithoutWait),
         },
         // E20: Reject
-        Fop1Cell {
-            actions: &[Fop1Action::TransferNotify(TransferNotification::Reject)],
-            next_state: Some(Fop1State::RetransmitWithoutWait),
-        },
+        TRANSFER_REJECT_S2,
         // E21: Accept, Transmit BD frame
         Fop1Cell {
             actions: &[
@@ -662,40 +671,19 @@ pub const FOP1_TABLE: [[Fop1Cell; EVENT_COUNT]; STATE_COUNT] = [
             next_state: Some(Fop1State::RetransmitWithoutWait),
         },
         // E22: Reject
-        Fop1Cell {
-            actions: &[Fop1Action::TransferNotify(TransferNotification::Reject)],
-            next_state: Some(Fop1State::RetransmitWithoutWait),
-        },
+        TRANSFER_REJECT_S2,
         // E23: Reject
-        Fop1Cell {
-            actions: &[Fop1Action::DirectiveNotify(DirectiveNotification::Reject)],
-            next_state: Some(Fop1State::RetransmitWithoutWait),
-        },
+        DIRECTIVE_REJECT_S2,
         // E24: Reject
-        Fop1Cell {
-            actions: &[Fop1Action::DirectiveNotify(DirectiveNotification::Reject)],
-            next_state: Some(Fop1State::RetransmitWithoutWait),
-        },
+        DIRECTIVE_REJECT_S2,
         // E25: Reject
-        Fop1Cell {
-            actions: &[Fop1Action::DirectiveNotify(DirectiveNotification::Reject)],
-            next_state: Some(Fop1State::RetransmitWithoutWait),
-        },
+        DIRECTIVE_REJECT_S2,
         // E26: Reject
-        Fop1Cell {
-            actions: &[Fop1Action::DirectiveNotify(DirectiveNotification::Reject)],
-            next_state: Some(Fop1State::RetransmitWithoutWait),
-        },
+        DIRECTIVE_REJECT_S2,
         // E27: Reject
-        Fop1Cell {
-            actions: &[Fop1Action::DirectiveNotify(DirectiveNotification::Reject)],
-            next_state: Some(Fop1State::RetransmitWithoutWait),
-        },
+        DIRECTIVE_REJECT_S2,
         // E28: Reject
-        Fop1Cell {
-            actions: &[Fop1Action::DirectiveNotify(DirectiveNotification::Reject)],
-            next_state: Some(Fop1State::RetransmitWithoutWait),
-        },
+        DIRECTIVE_REJECT_S2,
         // E29: Accept, Alert[term], Confirm
         Fop1Cell {
             actions: &[
@@ -706,35 +694,17 @@ pub const FOP1_TABLE: [[Fop1Cell; EVENT_COUNT]; STATE_COUNT] = [
             next_state: Some(Fop1State::Initial),
         },
         // E30: Reject
-        Fop1Cell {
-            actions: &[Fop1Action::DirectiveNotify(DirectiveNotification::Reject)],
-            next_state: Some(Fop1State::RetransmitWithoutWait),
-        },
+        DIRECTIVE_REJECT_S2,
         // E31: Not applicable
-        Fop1Cell {
-            actions: &[],
-            next_state: None,
-        },
+        NOT_APPLICABLE,
         // E32: Not applicable
-        Fop1Cell {
-            actions: &[],
-            next_state: None,
-        },
+        NOT_APPLICABLE,
         // E33: Not applicable
-        Fop1Cell {
-            actions: &[],
-            next_state: None,
-        },
+        NOT_APPLICABLE,
         // E34: Not applicable
-        Fop1Cell {
-            actions: &[],
-            next_state: None,
-        },
+        NOT_APPLICABLE,
         // E35: Reject
-        Fop1Cell {
-            actions: &[Fop1Action::DirectiveNotify(DirectiveNotification::Reject)],
-            next_state: Some(Fop1State::RetransmitWithoutWait),
-        },
+        DIRECTIVE_REJECT_S2,
         // E36: Accept, Set K, Confirm
         Fop1Cell {
             actions: &[
@@ -772,10 +742,7 @@ pub const FOP1_TABLE: [[Fop1Cell; EVENT_COUNT]; STATE_COUNT] = [
             next_state: Some(Fop1State::RetransmitWithoutWait),
         },
         // E40: Reject
-        Fop1Cell {
-            actions: &[Fop1Action::DirectiveNotify(DirectiveNotification::Reject)],
-            next_state: Some(Fop1State::RetransmitWithoutWait),
-        },
+        DIRECTIVE_REJECT_S2,
         // E41: AD_Out_Flag = Ready, Look for FDU
         Fop1Cell {
             actions: &[
@@ -785,20 +752,14 @@ pub const FOP1_TABLE: [[Fop1Cell; EVENT_COUNT]; STATE_COUNT] = [
             next_state: Some(Fop1State::RetransmitWithoutWait),
         },
         // E42: Alert[LLIF]
-        Fop1Cell {
-            actions: &[Fop1Action::Alert(AlertReason::Llif)],
-            next_state: Some(Fop1State::Initial),
-        },
+        ALERT_LLIF,
         // E43: BC_Out_Flag = Ready
         Fop1Cell {
             actions: &[Fop1Action::SetOutFlagReady(FrameKind::Bc)],
             next_state: Some(Fop1State::RetransmitWithoutWait),
         },
         // E44: Alert[LLIF]
-        Fop1Cell {
-            actions: &[Fop1Action::Alert(AlertReason::Llif)],
-            next_state: Some(Fop1State::Initial),
-        },
+        ALERT_LLIF,
         // E45: BD_Out_Flag = Ready, Accept
         Fop1Cell {
             actions: &[
@@ -808,129 +769,52 @@ pub const FOP1_TABLE: [[Fop1Cell; EVENT_COUNT]; STATE_COUNT] = [
             next_state: Some(Fop1State::RetransmitWithoutWait),
         },
         // E46: Alert[LLIF]
-        Fop1Cell {
-            actions: &[Fop1Action::Alert(AlertReason::Llif)],
-            next_state: Some(Fop1State::Initial),
-        },
+        ALERT_LLIF,
         // E101: Remove acked, Alert[Limit]
-        Fop1Cell {
-            actions: &[
-                Fop1Action::RemoveAckedFrames,
-                Fop1Action::Alert(AlertReason::Limit),
-            ],
-            next_state: Some(Fop1State::Initial),
-        },
+        CELL_E101,
         // E102: Alert[Limit]
-        Fop1Cell {
-            actions: &[Fop1Action::Alert(AlertReason::Limit)],
-            next_state: Some(Fop1State::Initial),
-        },
+        ALERT_LIMIT,
         // E103: Ignore
-        Fop1Cell {
-            actions: &[],
-            next_state: Some(Fop1State::RetransmitWithWait),
-        },
+        IGNORE_RETR_WAIT,
         // E104: Initiate AD Retransmission, Look for FDU
-        Fop1Cell {
-            actions: &[Fop1Action::InitiateAdRetransmission, Fop1Action::LookForFdu],
-            next_state: Some(Fop1State::RetransmitWithoutWait),
-        },
+        CELL_E10,
     ],
     // State: RetransmitWithWait (Retransmit with wait (S3))
     [
         // E1: Alert[synch]
-        Fop1Cell {
-            actions: &[Fop1Action::Alert(AlertReason::Synch)],
-            next_state: Some(Fop1State::Initial),
-        },
+        ALERT_SYNCH,
         // E2: Remove acked, Cancel Timer, Look for FDU
-        Fop1Cell {
-            actions: &[
-                Fop1Action::RemoveAckedFrames,
-                Fop1Action::CancelTimer,
-                Fop1Action::LookForFdu,
-            ],
-            next_state: Some(Fop1State::Active),
-        },
+        CELL_E2,
         // E3: Alert[CLCW]
-        Fop1Cell {
-            actions: &[Fop1Action::Alert(AlertReason::Clcw)],
-            next_state: Some(Fop1State::Initial),
-        },
+        ALERT_CLCW,
         // E4: Alert[synch]
-        Fop1Cell {
-            actions: &[Fop1Action::Alert(AlertReason::Synch)],
-            next_state: Some(Fop1State::Initial),
-        },
+        ALERT_SYNCH,
         // E5: Alert[synch]
-        Fop1Cell {
-            actions: &[Fop1Action::Alert(AlertReason::Synch)],
-            next_state: Some(Fop1State::Initial),
-        },
+        ALERT_SYNCH,
         // E6: Remove acked, Look for FDU
-        Fop1Cell {
-            actions: &[Fop1Action::RemoveAckedFrames, Fop1Action::LookForFdu],
-            next_state: Some(Fop1State::Active),
-        },
+        CELL_E6,
         // E7: Alert[CLCW]
-        Fop1Cell {
-            actions: &[Fop1Action::Alert(AlertReason::Clcw)],
-            next_state: Some(Fop1State::Initial),
-        },
+        ALERT_CLCW,
         // E8: Remove acked, Initiate AD Retransmission, Look for FDU
-        Fop1Cell {
-            actions: &[
-                Fop1Action::RemoveAckedFrames,
-                Fop1Action::InitiateAdRetransmission,
-                Fop1Action::LookForFdu,
-            ],
-            next_state: Some(Fop1State::RetransmitWithoutWait),
-        },
+        CELL_E8,
         // E9: Remove acked
-        Fop1Cell {
-            actions: &[Fop1Action::RemoveAckedFrames],
-            next_state: Some(Fop1State::RetransmitWithWait),
-        },
+        CELL_E9,
         // E10: Initiate AD Retransmission, Look for FDU
-        Fop1Cell {
-            actions: &[Fop1Action::InitiateAdRetransmission, Fop1Action::LookForFdu],
-            next_state: Some(Fop1State::RetransmitWithoutWait),
-        },
+        CELL_E10,
         // E11: Ignore
-        Fop1Cell {
-            actions: &[],
-            next_state: Some(Fop1State::RetransmitWithWait),
-        },
+        IGNORE_RETR_WAIT,
         // E12: Ignore
-        Fop1Cell {
-            actions: &[],
-            next_state: Some(Fop1State::RetransmitWithoutWait),
-        },
+        IGNORE_RETR_NO_WAIT,
         // E13: Alert[NN(R)]
-        Fop1Cell {
-            actions: &[Fop1Action::Alert(AlertReason::NnR)],
-            next_state: Some(Fop1State::Initial),
-        },
+        ALERT_NNR,
         // E14: Alert[Lockout]
-        Fop1Cell {
-            actions: &[Fop1Action::Alert(AlertReason::Lockout)],
-            next_state: Some(Fop1State::Initial),
-        },
+        ALERT_LOCKOUT,
         // E15: Alert[CLCW]
-        Fop1Cell {
-            actions: &[Fop1Action::Alert(AlertReason::Clcw)],
-            next_state: Some(Fop1State::Initial),
-        },
+        ALERT_CLCW,
         // E16: Ignore
-        Fop1Cell {
-            actions: &[],
-            next_state: Some(Fop1State::RetransmitWithWait),
-        },
+        IGNORE_RETR_WAIT,
         // E17: Alert[T1]
-        Fop1Cell {
-            actions: &[Fop1Action::Alert(AlertReason::T1)],
-            next_state: Some(Fop1State::Initial),
-        },
+        ALERT_T1,
         // E18: SS:=3, Suspend
         Fop1Cell {
             actions: &[Fop1Action::SetSuspendState(3), Fop1Action::Suspend],
@@ -942,10 +826,7 @@ pub const FOP1_TABLE: [[Fop1Cell; EVENT_COUNT]; STATE_COUNT] = [
             next_state: Some(Fop1State::RetransmitWithWait),
         },
         // E20: Reject
-        Fop1Cell {
-            actions: &[Fop1Action::TransferNotify(TransferNotification::Reject)],
-            next_state: Some(Fop1State::RetransmitWithWait),
-        },
+        TRANSFER_REJECT_S3,
         // E21: Accept, Transmit BD frame
         Fop1Cell {
             actions: &[
@@ -955,40 +836,19 @@ pub const FOP1_TABLE: [[Fop1Cell; EVENT_COUNT]; STATE_COUNT] = [
             next_state: Some(Fop1State::RetransmitWithWait),
         },
         // E22: Reject
-        Fop1Cell {
-            actions: &[Fop1Action::TransferNotify(TransferNotification::Reject)],
-            next_state: Some(Fop1State::RetransmitWithWait),
-        },
+        TRANSFER_REJECT_S3,
         // E23: Reject
-        Fop1Cell {
-            actions: &[Fop1Action::DirectiveNotify(DirectiveNotification::Reject)],
-            next_state: Some(Fop1State::RetransmitWithWait),
-        },
+        DIRECTIVE_REJECT_S3,
         // E24: Reject
-        Fop1Cell {
-            actions: &[Fop1Action::DirectiveNotify(DirectiveNotification::Reject)],
-            next_state: Some(Fop1State::RetransmitWithWait),
-        },
+        DIRECTIVE_REJECT_S3,
         // E25: Reject
-        Fop1Cell {
-            actions: &[Fop1Action::DirectiveNotify(DirectiveNotification::Reject)],
-            next_state: Some(Fop1State::RetransmitWithWait),
-        },
+        DIRECTIVE_REJECT_S3,
         // E26: Reject
-        Fop1Cell {
-            actions: &[Fop1Action::DirectiveNotify(DirectiveNotification::Reject)],
-            next_state: Some(Fop1State::RetransmitWithWait),
-        },
+        DIRECTIVE_REJECT_S3,
         // E27: Reject
-        Fop1Cell {
-            actions: &[Fop1Action::DirectiveNotify(DirectiveNotification::Reject)],
-            next_state: Some(Fop1State::RetransmitWithWait),
-        },
+        DIRECTIVE_REJECT_S3,
         // E28: Reject
-        Fop1Cell {
-            actions: &[Fop1Action::DirectiveNotify(DirectiveNotification::Reject)],
-            next_state: Some(Fop1State::RetransmitWithWait),
-        },
+        DIRECTIVE_REJECT_S3,
         // E29: Accept, Alert[term], Confirm
         Fop1Cell {
             actions: &[
@@ -999,35 +859,17 @@ pub const FOP1_TABLE: [[Fop1Cell; EVENT_COUNT]; STATE_COUNT] = [
             next_state: Some(Fop1State::Initial),
         },
         // E30: Reject
-        Fop1Cell {
-            actions: &[Fop1Action::DirectiveNotify(DirectiveNotification::Reject)],
-            next_state: Some(Fop1State::RetransmitWithWait),
-        },
+        DIRECTIVE_REJECT_S3,
         // E31: Not applicable
-        Fop1Cell {
-            actions: &[],
-            next_state: None,
-        },
+        NOT_APPLICABLE,
         // E32: Not applicable
-        Fop1Cell {
-            actions: &[],
-            next_state: None,
-        },
+        NOT_APPLICABLE,
         // E33: Not applicable
-        Fop1Cell {
-            actions: &[],
-            next_state: None,
-        },
+        NOT_APPLICABLE,
         // E34: Not applicable
-        Fop1Cell {
-            actions: &[],
-            next_state: None,
-        },
+        NOT_APPLICABLE,
         // E35: Reject
-        Fop1Cell {
-            actions: &[Fop1Action::DirectiveNotify(DirectiveNotification::Reject)],
-            next_state: Some(Fop1State::RetransmitWithWait),
-        },
+        DIRECTIVE_REJECT_S3,
         // E36: Accept, Set K, Confirm
         Fop1Cell {
             actions: &[
@@ -1065,30 +907,21 @@ pub const FOP1_TABLE: [[Fop1Cell; EVENT_COUNT]; STATE_COUNT] = [
             next_state: Some(Fop1State::RetransmitWithWait),
         },
         // E40: Reject
-        Fop1Cell {
-            actions: &[Fop1Action::DirectiveNotify(DirectiveNotification::Reject)],
-            next_state: Some(Fop1State::RetransmitWithWait),
-        },
+        DIRECTIVE_REJECT_S3,
         // E41: AD_Out_Flag = Ready
         Fop1Cell {
             actions: &[Fop1Action::SetOutFlagReady(FrameKind::Ad)],
             next_state: Some(Fop1State::RetransmitWithWait),
         },
         // E42: Alert[LLIF]
-        Fop1Cell {
-            actions: &[Fop1Action::Alert(AlertReason::Llif)],
-            next_state: Some(Fop1State::Initial),
-        },
+        ALERT_LLIF,
         // E43: BC_Out_Flag = Ready
         Fop1Cell {
             actions: &[Fop1Action::SetOutFlagReady(FrameKind::Bc)],
             next_state: Some(Fop1State::RetransmitWithWait),
         },
         // E44: Alert[LLIF]
-        Fop1Cell {
-            actions: &[Fop1Action::Alert(AlertReason::Llif)],
-            next_state: Some(Fop1State::Initial),
-        },
+        ALERT_LLIF,
         // E45: BD_Out_Flag = Ready, Accept
         Fop1Cell {
             actions: &[
@@ -1098,33 +931,15 @@ pub const FOP1_TABLE: [[Fop1Cell; EVENT_COUNT]; STATE_COUNT] = [
             next_state: Some(Fop1State::RetransmitWithWait),
         },
         // E46: Alert[LLIF]
-        Fop1Cell {
-            actions: &[Fop1Action::Alert(AlertReason::Llif)],
-            next_state: Some(Fop1State::Initial),
-        },
+        ALERT_LLIF,
         // E101: Remove acked, Alert[Limit]
-        Fop1Cell {
-            actions: &[
-                Fop1Action::RemoveAckedFrames,
-                Fop1Action::Alert(AlertReason::Limit),
-            ],
-            next_state: Some(Fop1State::Initial),
-        },
+        CELL_E101,
         // E102: Alert[Limit]
-        Fop1Cell {
-            actions: &[Fop1Action::Alert(AlertReason::Limit)],
-            next_state: Some(Fop1State::Initial),
-        },
+        ALERT_LIMIT,
         // E103: Ignore
-        Fop1Cell {
-            actions: &[],
-            next_state: Some(Fop1State::RetransmitWithWait),
-        },
+        IGNORE_RETR_WAIT,
         // E104: Ignore
-        Fop1Cell {
-            actions: &[],
-            next_state: Some(Fop1State::RetransmitWithWait),
-        },
+        IGNORE_RETR_WAIT,
     ],
     // State: InitializingWithoutBcFrame (Initializing without BC frame (S4))
     [
@@ -1137,100 +952,46 @@ pub const FOP1_TABLE: [[Fop1Cell; EVENT_COUNT]; STATE_COUNT] = [
             next_state: Some(Fop1State::Active),
         },
         // E2: Not applicable
-        Fop1Cell {
-            actions: &[],
-            next_state: None,
-        },
+        NOT_APPLICABLE,
         // E3: Alert[CLCW]
-        Fop1Cell {
-            actions: &[Fop1Action::Alert(AlertReason::Clcw)],
-            next_state: Some(Fop1State::Initial),
-        },
+        ALERT_CLCW,
         // E4: Alert[synch]
-        Fop1Cell {
-            actions: &[Fop1Action::Alert(AlertReason::Synch)],
-            next_state: Some(Fop1State::Initial),
-        },
+        ALERT_SYNCH,
         // E5: Not applicable
-        Fop1Cell {
-            actions: &[],
-            next_state: None,
-        },
+        NOT_APPLICABLE,
         // E6: Not applicable
-        Fop1Cell {
-            actions: &[],
-            next_state: None,
-        },
+        NOT_APPLICABLE,
         // E7: Not applicable
-        Fop1Cell {
-            actions: &[],
-            next_state: None,
-        },
+        NOT_APPLICABLE,
         // E8: Not applicable
-        Fop1Cell {
-            actions: &[],
-            next_state: None,
-        },
+        NOT_APPLICABLE,
         // E9: Not applicable
-        Fop1Cell {
-            actions: &[],
-            next_state: None,
-        },
+        NOT_APPLICABLE,
         // E10: Not applicable
-        Fop1Cell {
-            actions: &[],
-            next_state: None,
-        },
+        NOT_APPLICABLE,
         // E11: Not applicable
-        Fop1Cell {
-            actions: &[],
-            next_state: None,
-        },
+        NOT_APPLICABLE,
         // E12: Not applicable
-        Fop1Cell {
-            actions: &[],
-            next_state: None,
-        },
+        NOT_APPLICABLE,
         // E13: Alert[NN(R)]
-        Fop1Cell {
-            actions: &[Fop1Action::Alert(AlertReason::NnR)],
-            next_state: Some(Fop1State::Initial),
-        },
+        ALERT_NNR,
         // E14: Alert[Lockout]
-        Fop1Cell {
-            actions: &[Fop1Action::Alert(AlertReason::Lockout)],
-            next_state: Some(Fop1State::Initial),
-        },
+        ALERT_LOCKOUT,
         // E15: Alert[CLCW]
-        Fop1Cell {
-            actions: &[Fop1Action::Alert(AlertReason::Clcw)],
-            next_state: Some(Fop1State::Initial),
-        },
+        ALERT_CLCW,
         // E16: Alert[T1]
-        Fop1Cell {
-            actions: &[Fop1Action::Alert(AlertReason::T1)],
-            next_state: Some(Fop1State::Initial),
-        },
+        ALERT_T1,
         // E17: Alert[T1]
-        Fop1Cell {
-            actions: &[Fop1Action::Alert(AlertReason::T1)],
-            next_state: Some(Fop1State::Initial),
-        },
+        ALERT_T1,
         // E18: SS:=4, Suspend
         Fop1Cell {
             actions: &[Fop1Action::SetSuspendState(4), Fop1Action::Suspend],
             next_state: Some(Fop1State::Initial),
         },
         // E19: Reject
-        Fop1Cell {
-            actions: &[Fop1Action::TransferNotify(TransferNotification::Reject)],
-            next_state: Some(Fop1State::InitializingWithoutBcFrame),
-        },
+        TRANSFER_REJECT_S4,
         // E20: Reject
-        Fop1Cell {
-            actions: &[Fop1Action::TransferNotify(TransferNotification::Reject)],
-            next_state: Some(Fop1State::InitializingWithoutBcFrame),
-        },
+        TRANSFER_REJECT_S4,
         // E21: Accept, Transmit BD frame
         Fop1Cell {
             actions: &[
@@ -1240,40 +1001,19 @@ pub const FOP1_TABLE: [[Fop1Cell; EVENT_COUNT]; STATE_COUNT] = [
             next_state: Some(Fop1State::InitializingWithoutBcFrame),
         },
         // E22: Reject
-        Fop1Cell {
-            actions: &[Fop1Action::TransferNotify(TransferNotification::Reject)],
-            next_state: Some(Fop1State::InitializingWithoutBcFrame),
-        },
+        TRANSFER_REJECT_S4,
         // E23: Reject
-        Fop1Cell {
-            actions: &[Fop1Action::DirectiveNotify(DirectiveNotification::Reject)],
-            next_state: Some(Fop1State::InitializingWithoutBcFrame),
-        },
+        DIRECTIVE_REJECT_S4,
         // E24: Reject
-        Fop1Cell {
-            actions: &[Fop1Action::DirectiveNotify(DirectiveNotification::Reject)],
-            next_state: Some(Fop1State::InitializingWithoutBcFrame),
-        },
+        DIRECTIVE_REJECT_S4,
         // E25: Reject
-        Fop1Cell {
-            actions: &[Fop1Action::DirectiveNotify(DirectiveNotification::Reject)],
-            next_state: Some(Fop1State::InitializingWithoutBcFrame),
-        },
+        DIRECTIVE_REJECT_S4,
         // E26: Reject
-        Fop1Cell {
-            actions: &[Fop1Action::DirectiveNotify(DirectiveNotification::Reject)],
-            next_state: Some(Fop1State::InitializingWithoutBcFrame),
-        },
+        DIRECTIVE_REJECT_S4,
         // E27: Reject
-        Fop1Cell {
-            actions: &[Fop1Action::DirectiveNotify(DirectiveNotification::Reject)],
-            next_state: Some(Fop1State::InitializingWithoutBcFrame),
-        },
+        DIRECTIVE_REJECT_S4,
         // E28: Reject
-        Fop1Cell {
-            actions: &[Fop1Action::DirectiveNotify(DirectiveNotification::Reject)],
-            next_state: Some(Fop1State::InitializingWithoutBcFrame),
-        },
+        DIRECTIVE_REJECT_S4,
         // E29: Accept, Alert[term], Confirm
         Fop1Cell {
             actions: &[
@@ -1284,35 +1024,17 @@ pub const FOP1_TABLE: [[Fop1Cell; EVENT_COUNT]; STATE_COUNT] = [
             next_state: Some(Fop1State::Initial),
         },
         // E30: Reject
-        Fop1Cell {
-            actions: &[Fop1Action::DirectiveNotify(DirectiveNotification::Reject)],
-            next_state: Some(Fop1State::InitializingWithoutBcFrame),
-        },
+        DIRECTIVE_REJECT_S4,
         // E31: Not applicable
-        Fop1Cell {
-            actions: &[],
-            next_state: None,
-        },
+        NOT_APPLICABLE,
         // E32: Not applicable
-        Fop1Cell {
-            actions: &[],
-            next_state: None,
-        },
+        NOT_APPLICABLE,
         // E33: Not applicable
-        Fop1Cell {
-            actions: &[],
-            next_state: None,
-        },
+        NOT_APPLICABLE,
         // E34: Not applicable
-        Fop1Cell {
-            actions: &[],
-            next_state: None,
-        },
+        NOT_APPLICABLE,
         // E35: Reject
-        Fop1Cell {
-            actions: &[Fop1Action::DirectiveNotify(DirectiveNotification::Reject)],
-            next_state: Some(Fop1State::InitializingWithoutBcFrame),
-        },
+        DIRECTIVE_REJECT_S4,
         // E36: Accept, Set K, Confirm
         Fop1Cell {
             actions: &[
@@ -1350,30 +1072,21 @@ pub const FOP1_TABLE: [[Fop1Cell; EVENT_COUNT]; STATE_COUNT] = [
             next_state: Some(Fop1State::InitializingWithoutBcFrame),
         },
         // E40: Reject
-        Fop1Cell {
-            actions: &[Fop1Action::DirectiveNotify(DirectiveNotification::Reject)],
-            next_state: Some(Fop1State::InitializingWithoutBcFrame),
-        },
+        DIRECTIVE_REJECT_S4,
         // E41: AD_Out_Flag = Ready
         Fop1Cell {
             actions: &[Fop1Action::SetOutFlagReady(FrameKind::Ad)],
             next_state: Some(Fop1State::InitializingWithoutBcFrame),
         },
         // E42: Alert[LLIF]
-        Fop1Cell {
-            actions: &[Fop1Action::Alert(AlertReason::Llif)],
-            next_state: Some(Fop1State::Initial),
-        },
+        ALERT_LLIF,
         // E43: BC_Out_Flag = Ready
         Fop1Cell {
             actions: &[Fop1Action::SetOutFlagReady(FrameKind::Bc)],
             next_state: Some(Fop1State::InitializingWithoutBcFrame),
         },
         // E44: Alert[LLIF]
-        Fop1Cell {
-            actions: &[Fop1Action::Alert(AlertReason::Llif)],
-            next_state: Some(Fop1State::Initial),
-        },
+        ALERT_LLIF,
         // E45: BD_Out_Flag = Ready, Accept
         Fop1Cell {
             actions: &[
@@ -1383,25 +1096,13 @@ pub const FOP1_TABLE: [[Fop1Cell; EVENT_COUNT]; STATE_COUNT] = [
             next_state: Some(Fop1State::InitializingWithoutBcFrame),
         },
         // E46: Alert[LLIF]
-        Fop1Cell {
-            actions: &[Fop1Action::Alert(AlertReason::Llif)],
-            next_state: Some(Fop1State::Initial),
-        },
+        ALERT_LLIF,
         // E101: Not applicable
-        Fop1Cell {
-            actions: &[],
-            next_state: None,
-        },
+        NOT_APPLICABLE,
         // E102: Not applicable
-        Fop1Cell {
-            actions: &[],
-            next_state: None,
-        },
+        NOT_APPLICABLE,
         // E103: Not applicable
-        Fop1Cell {
-            actions: &[],
-            next_state: None,
-        },
+        NOT_APPLICABLE,
         // E104: SS:=4, Suspend
         Fop1Cell {
             actions: &[Fop1Action::SetSuspendState(4), Fop1Action::Suspend],
@@ -1420,60 +1121,30 @@ pub const FOP1_TABLE: [[Fop1Cell; EVENT_COUNT]; STATE_COUNT] = [
             next_state: Some(Fop1State::Active),
         },
         // E2: Not applicable
-        Fop1Cell {
-            actions: &[],
-            next_state: None,
-        },
+        NOT_APPLICABLE,
         // E3: Alert[CLCW]
-        Fop1Cell {
-            actions: &[Fop1Action::Alert(AlertReason::Clcw)],
-            next_state: Some(Fop1State::Initial),
-        },
+        ALERT_CLCW,
         // E4: Ignore
         Fop1Cell {
             actions: &[],
             next_state: Some(Fop1State::InitializingWithBcFrame),
         },
         // E5: Not applicable
-        Fop1Cell {
-            actions: &[],
-            next_state: None,
-        },
+        NOT_APPLICABLE,
         // E6: Not applicable
-        Fop1Cell {
-            actions: &[],
-            next_state: None,
-        },
+        NOT_APPLICABLE,
         // E7: Not applicable
-        Fop1Cell {
-            actions: &[],
-            next_state: None,
-        },
+        NOT_APPLICABLE,
         // E8: Not applicable
-        Fop1Cell {
-            actions: &[],
-            next_state: None,
-        },
+        NOT_APPLICABLE,
         // E9: Not applicable
-        Fop1Cell {
-            actions: &[],
-            next_state: None,
-        },
+        NOT_APPLICABLE,
         // E10: Not applicable
-        Fop1Cell {
-            actions: &[],
-            next_state: None,
-        },
+        NOT_APPLICABLE,
         // E11: Not applicable
-        Fop1Cell {
-            actions: &[],
-            next_state: None,
-        },
+        NOT_APPLICABLE,
         // E12: Not applicable
-        Fop1Cell {
-            actions: &[],
-            next_state: None,
-        },
+        NOT_APPLICABLE,
         // E13: Ignore
         Fop1Cell {
             actions: &[],
@@ -1485,10 +1156,7 @@ pub const FOP1_TABLE: [[Fop1Cell; EVENT_COUNT]; STATE_COUNT] = [
             next_state: Some(Fop1State::InitializingWithBcFrame),
         },
         // E15: Alert[CLCW]
-        Fop1Cell {
-            actions: &[Fop1Action::Alert(AlertReason::Clcw)],
-            next_state: Some(Fop1State::Initial),
-        },
+        ALERT_CLCW,
         // E16: Initiate BC Retransmission, Look for Directive
         Fop1Cell {
             actions: &[
@@ -1498,25 +1166,13 @@ pub const FOP1_TABLE: [[Fop1Cell; EVENT_COUNT]; STATE_COUNT] = [
             next_state: Some(Fop1State::InitializingWithBcFrame),
         },
         // E17: Alert[T1]
-        Fop1Cell {
-            actions: &[Fop1Action::Alert(AlertReason::T1)],
-            next_state: Some(Fop1State::Initial),
-        },
+        ALERT_T1,
         // E18: Alert[T1]
-        Fop1Cell {
-            actions: &[Fop1Action::Alert(AlertReason::T1)],
-            next_state: Some(Fop1State::Initial),
-        },
+        ALERT_T1,
         // E19: Reject
-        Fop1Cell {
-            actions: &[Fop1Action::TransferNotify(TransferNotification::Reject)],
-            next_state: Some(Fop1State::InitializingWithBcFrame),
-        },
+        TRANSFER_REJECT_S5,
         // E20: Reject
-        Fop1Cell {
-            actions: &[Fop1Action::TransferNotify(TransferNotification::Reject)],
-            next_state: Some(Fop1State::InitializingWithBcFrame),
-        },
+        TRANSFER_REJECT_S5,
         // E21: Accept, Transmit BD frame
         Fop1Cell {
             actions: &[
@@ -1526,40 +1182,19 @@ pub const FOP1_TABLE: [[Fop1Cell; EVENT_COUNT]; STATE_COUNT] = [
             next_state: Some(Fop1State::InitializingWithBcFrame),
         },
         // E22: Reject
-        Fop1Cell {
-            actions: &[Fop1Action::TransferNotify(TransferNotification::Reject)],
-            next_state: Some(Fop1State::InitializingWithBcFrame),
-        },
+        TRANSFER_REJECT_S5,
         // E23: Reject
-        Fop1Cell {
-            actions: &[Fop1Action::DirectiveNotify(DirectiveNotification::Reject)],
-            next_state: Some(Fop1State::InitializingWithBcFrame),
-        },
+        DIRECTIVE_REJECT_S5,
         // E24: Reject
-        Fop1Cell {
-            actions: &[Fop1Action::DirectiveNotify(DirectiveNotification::Reject)],
-            next_state: Some(Fop1State::InitializingWithBcFrame),
-        },
+        DIRECTIVE_REJECT_S5,
         // E25: Reject
-        Fop1Cell {
-            actions: &[Fop1Action::DirectiveNotify(DirectiveNotification::Reject)],
-            next_state: Some(Fop1State::InitializingWithBcFrame),
-        },
+        DIRECTIVE_REJECT_S5,
         // E26: Reject
-        Fop1Cell {
-            actions: &[Fop1Action::DirectiveNotify(DirectiveNotification::Reject)],
-            next_state: Some(Fop1State::InitializingWithBcFrame),
-        },
+        DIRECTIVE_REJECT_S5,
         // E27: Reject
-        Fop1Cell {
-            actions: &[Fop1Action::DirectiveNotify(DirectiveNotification::Reject)],
-            next_state: Some(Fop1State::InitializingWithBcFrame),
-        },
+        DIRECTIVE_REJECT_S5,
         // E28: Reject
-        Fop1Cell {
-            actions: &[Fop1Action::DirectiveNotify(DirectiveNotification::Reject)],
-            next_state: Some(Fop1State::InitializingWithBcFrame),
-        },
+        DIRECTIVE_REJECT_S5,
         // E29: Accept, Alert[term], Confirm
         Fop1Cell {
             actions: &[
@@ -1570,35 +1205,17 @@ pub const FOP1_TABLE: [[Fop1Cell; EVENT_COUNT]; STATE_COUNT] = [
             next_state: Some(Fop1State::Initial),
         },
         // E30: Reject
-        Fop1Cell {
-            actions: &[Fop1Action::DirectiveNotify(DirectiveNotification::Reject)],
-            next_state: Some(Fop1State::InitializingWithBcFrame),
-        },
+        DIRECTIVE_REJECT_S5,
         // E31: Not applicable
-        Fop1Cell {
-            actions: &[],
-            next_state: None,
-        },
+        NOT_APPLICABLE,
         // E32: Not applicable
-        Fop1Cell {
-            actions: &[],
-            next_state: None,
-        },
+        NOT_APPLICABLE,
         // E33: Not applicable
-        Fop1Cell {
-            actions: &[],
-            next_state: None,
-        },
+        NOT_APPLICABLE,
         // E34: Not applicable
-        Fop1Cell {
-            actions: &[],
-            next_state: None,
-        },
+        NOT_APPLICABLE,
         // E35: Reject
-        Fop1Cell {
-            actions: &[Fop1Action::DirectiveNotify(DirectiveNotification::Reject)],
-            next_state: Some(Fop1State::InitializingWithBcFrame),
-        },
+        DIRECTIVE_REJECT_S5,
         // E36: Accept, Set K, Confirm
         Fop1Cell {
             actions: &[
@@ -1636,20 +1253,14 @@ pub const FOP1_TABLE: [[Fop1Cell; EVENT_COUNT]; STATE_COUNT] = [
             next_state: Some(Fop1State::InitializingWithBcFrame),
         },
         // E40: Reject
-        Fop1Cell {
-            actions: &[Fop1Action::DirectiveNotify(DirectiveNotification::Reject)],
-            next_state: Some(Fop1State::InitializingWithBcFrame),
-        },
+        DIRECTIVE_REJECT_S5,
         // E41: AD_Out_Flag = Ready
         Fop1Cell {
             actions: &[Fop1Action::SetOutFlagReady(FrameKind::Ad)],
             next_state: Some(Fop1State::InitializingWithBcFrame),
         },
         // E42: Alert[LLIF]
-        Fop1Cell {
-            actions: &[Fop1Action::Alert(AlertReason::Llif)],
-            next_state: Some(Fop1State::Initial),
-        },
+        ALERT_LLIF,
         // E43: BC_Out_Flag = Ready, Look for Directive
         Fop1Cell {
             actions: &[
@@ -1659,10 +1270,7 @@ pub const FOP1_TABLE: [[Fop1Cell; EVENT_COUNT]; STATE_COUNT] = [
             next_state: Some(Fop1State::InitializingWithBcFrame),
         },
         // E44: Alert[LLIF]
-        Fop1Cell {
-            actions: &[Fop1Action::Alert(AlertReason::Llif)],
-            next_state: Some(Fop1State::Initial),
-        },
+        ALERT_LLIF,
         // E45: BD_Out_Flag = Ready, Accept
         Fop1Cell {
             actions: &[
@@ -1672,25 +1280,13 @@ pub const FOP1_TABLE: [[Fop1Cell; EVENT_COUNT]; STATE_COUNT] = [
             next_state: Some(Fop1State::InitializingWithBcFrame),
         },
         // E46: Alert[LLIF]
-        Fop1Cell {
-            actions: &[Fop1Action::Alert(AlertReason::Llif)],
-            next_state: Some(Fop1State::Initial),
-        },
+        ALERT_LLIF,
         // E101: Not applicable
-        Fop1Cell {
-            actions: &[],
-            next_state: None,
-        },
+        NOT_APPLICABLE,
         // E102: Not applicable
-        Fop1Cell {
-            actions: &[],
-            next_state: None,
-        },
+        NOT_APPLICABLE,
         // E103: Not applicable
-        Fop1Cell {
-            actions: &[],
-            next_state: None,
-        },
+        NOT_APPLICABLE,
         // E104: Initiate BC Retransmission, Look for Directive
         Fop1Cell {
             actions: &[
@@ -1703,105 +1299,45 @@ pub const FOP1_TABLE: [[Fop1Cell; EVENT_COUNT]; STATE_COUNT] = [
     // State: Initial (Initial / unconfigured / suspended (S6))
     [
         // E1: Ignore
-        Fop1Cell {
-            actions: &[],
-            next_state: Some(Fop1State::Initial),
-        },
+        IGNORE_INITIAL,
         // E2: Ignore
-        Fop1Cell {
-            actions: &[],
-            next_state: Some(Fop1State::Initial),
-        },
+        IGNORE_INITIAL,
         // E3: Ignore
-        Fop1Cell {
-            actions: &[],
-            next_state: Some(Fop1State::Initial),
-        },
+        IGNORE_INITIAL,
         // E4: Ignore
-        Fop1Cell {
-            actions: &[],
-            next_state: Some(Fop1State::Initial),
-        },
+        IGNORE_INITIAL,
         // E5: Ignore
-        Fop1Cell {
-            actions: &[],
-            next_state: Some(Fop1State::Initial),
-        },
+        IGNORE_INITIAL,
         // E6: Ignore
-        Fop1Cell {
-            actions: &[],
-            next_state: Some(Fop1State::Initial),
-        },
+        IGNORE_INITIAL,
         // E7: Ignore
-        Fop1Cell {
-            actions: &[],
-            next_state: Some(Fop1State::Initial),
-        },
+        IGNORE_INITIAL,
         // E8: Ignore
-        Fop1Cell {
-            actions: &[],
-            next_state: Some(Fop1State::Initial),
-        },
+        IGNORE_INITIAL,
         // E9: Ignore
-        Fop1Cell {
-            actions: &[],
-            next_state: Some(Fop1State::Initial),
-        },
+        IGNORE_INITIAL,
         // E10: Ignore
-        Fop1Cell {
-            actions: &[],
-            next_state: Some(Fop1State::Initial),
-        },
+        IGNORE_INITIAL,
         // E11: Ignore
-        Fop1Cell {
-            actions: &[],
-            next_state: Some(Fop1State::Initial),
-        },
+        IGNORE_INITIAL,
         // E12: Ignore
-        Fop1Cell {
-            actions: &[],
-            next_state: Some(Fop1State::Initial),
-        },
+        IGNORE_INITIAL,
         // E13: Ignore
-        Fop1Cell {
-            actions: &[],
-            next_state: Some(Fop1State::Initial),
-        },
+        IGNORE_INITIAL,
         // E14: Ignore
-        Fop1Cell {
-            actions: &[],
-            next_state: Some(Fop1State::Initial),
-        },
+        IGNORE_INITIAL,
         // E15: Ignore
-        Fop1Cell {
-            actions: &[],
-            next_state: Some(Fop1State::Initial),
-        },
+        IGNORE_INITIAL,
         // E16: Not applicable
-        Fop1Cell {
-            actions: &[],
-            next_state: None,
-        },
+        NOT_APPLICABLE,
         // E17: Not applicable
-        Fop1Cell {
-            actions: &[],
-            next_state: None,
-        },
+        NOT_APPLICABLE,
         // E18: Not applicable
-        Fop1Cell {
-            actions: &[],
-            next_state: None,
-        },
+        NOT_APPLICABLE,
         // E19: Reject
-        Fop1Cell {
-            actions: &[Fop1Action::TransferNotify(TransferNotification::Reject)],
-            next_state: Some(Fop1State::Initial),
-        },
+        TRANSFER_REJECT_S6,
         // E20: Reject
-        Fop1Cell {
-            actions: &[Fop1Action::TransferNotify(TransferNotification::Reject)],
-            next_state: Some(Fop1State::Initial),
-        },
+        TRANSFER_REJECT_S6,
         // E21: Accept, Transmit BD frame
         Fop1Cell {
             actions: &[
@@ -1811,10 +1347,7 @@ pub const FOP1_TABLE: [[Fop1Cell; EVENT_COUNT]; STATE_COUNT] = [
             next_state: Some(Fop1State::Initial),
         },
         // E22: Reject
-        Fop1Cell {
-            actions: &[Fop1Action::TransferNotify(TransferNotification::Reject)],
-            next_state: Some(Fop1State::Initial),
-        },
+        TRANSFER_REJECT_S6,
         // E23: Accept, Initialize, Confirm
         Fop1Cell {
             actions: &[
@@ -1843,10 +1376,7 @@ pub const FOP1_TABLE: [[Fop1Cell; EVENT_COUNT]; STATE_COUNT] = [
             next_state: Some(Fop1State::InitializingWithBcFrame),
         },
         // E26: Reject
-        Fop1Cell {
-            actions: &[Fop1Action::DirectiveNotify(DirectiveNotification::Reject)],
-            next_state: Some(Fop1State::Initial),
-        },
+        DIRECTIVE_REJECT_S6,
         // E27: Accept, Initialize, V(S):=V*(R), NN(R):=V*(R), Transmit Set V(R) BC
         Fop1Cell {
             actions: &[
@@ -1858,10 +1388,7 @@ pub const FOP1_TABLE: [[Fop1Cell; EVENT_COUNT]; STATE_COUNT] = [
             next_state: Some(Fop1State::InitializingWithBcFrame),
         },
         // E28: Reject
-        Fop1Cell {
-            actions: &[Fop1Action::DirectiveNotify(DirectiveNotification::Reject)],
-            next_state: Some(Fop1State::Initial),
-        },
+        DIRECTIVE_REJECT_S6,
         // E29: Accept, Confirm
         Fop1Cell {
             actions: &[
@@ -1871,10 +1398,7 @@ pub const FOP1_TABLE: [[Fop1Cell; EVENT_COUNT]; STATE_COUNT] = [
             next_state: Some(Fop1State::Initial),
         },
         // E30: Reject
-        Fop1Cell {
-            actions: &[Fop1Action::DirectiveNotify(DirectiveNotification::Reject)],
-            next_state: Some(Fop1State::Initial),
-        },
+        DIRECTIVE_REJECT_S6,
         // E31: Accept, Resume, Confirm
         Fop1Cell {
             actions: &[
@@ -1953,30 +1477,21 @@ pub const FOP1_TABLE: [[Fop1Cell; EVENT_COUNT]; STATE_COUNT] = [
             next_state: Some(Fop1State::Initial),
         },
         // E40: Reject
-        Fop1Cell {
-            actions: &[Fop1Action::DirectiveNotify(DirectiveNotification::Reject)],
-            next_state: Some(Fop1State::Initial),
-        },
+        DIRECTIVE_REJECT_S6,
         // E41: AD_Out_Flag = Ready
         Fop1Cell {
             actions: &[Fop1Action::SetOutFlagReady(FrameKind::Ad)],
             next_state: Some(Fop1State::Initial),
         },
         // E42: Alert[LLIF]
-        Fop1Cell {
-            actions: &[Fop1Action::Alert(AlertReason::Llif)],
-            next_state: Some(Fop1State::Initial),
-        },
+        ALERT_LLIF,
         // E43: BC_Out_Flag = Ready
         Fop1Cell {
             actions: &[Fop1Action::SetOutFlagReady(FrameKind::Bc)],
             next_state: Some(Fop1State::Initial),
         },
         // E44: Alert[LLIF]
-        Fop1Cell {
-            actions: &[Fop1Action::Alert(AlertReason::Llif)],
-            next_state: Some(Fop1State::Initial),
-        },
+        ALERT_LLIF,
         // E45: BD_Out_Flag = Ready, Accept
         Fop1Cell {
             actions: &[
@@ -1986,29 +1501,14 @@ pub const FOP1_TABLE: [[Fop1Cell; EVENT_COUNT]; STATE_COUNT] = [
             next_state: Some(Fop1State::Initial),
         },
         // E46: Alert[LLIF]
-        Fop1Cell {
-            actions: &[Fop1Action::Alert(AlertReason::Llif)],
-            next_state: Some(Fop1State::Initial),
-        },
+        ALERT_LLIF,
         // E101: Ignore
-        Fop1Cell {
-            actions: &[],
-            next_state: Some(Fop1State::Initial),
-        },
+        IGNORE_INITIAL,
         // E102: Ignore
-        Fop1Cell {
-            actions: &[],
-            next_state: Some(Fop1State::Initial),
-        },
+        IGNORE_INITIAL,
         // E103: Ignore
-        Fop1Cell {
-            actions: &[],
-            next_state: Some(Fop1State::Initial),
-        },
+        IGNORE_INITIAL,
         // E104: Not applicable
-        Fop1Cell {
-            actions: &[],
-            next_state: None,
-        },
+        NOT_APPLICABLE,
     ],
 ];
