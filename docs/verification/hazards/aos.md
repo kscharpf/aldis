@@ -12,7 +12,7 @@ Failure modes of `aldis-aos` and its C ABI (`aldis_aos_*`), in the format of [ha
 | `truncation` | HZ-AOS-07 | done |
 | `wrong-value` | HZ-AOS-08, HZ-AOS-09, HZ-AOS-10 | done |
 | `nonconformant-output` | HZ-AOS-11, HZ-AOS-12, HZ-AOS-13 | done |
-| `unbounded-time` | — | n/a: AOS adds no loop, wait, or call pattern of its own to HZ-X-03; every loop is listed in the inspection record gen-022-023-aldis-aos.md, a constant (the FHEC), the caller's input length, or the capacity N of a VcTable |
+| `unbounded-time` | — | n/a: AOS adds no loop, wait, or call pattern of its own to HZ-X-03; every loop is bounded (record:GEN-022), a constant (the FHEC), the caller's input length, or the capacity N of a VcTable |
 | `memory` | HZ-AOS-14 | done |
 | `panic` | — | n/a: AOS adds no panic path to HZ-X-02; its decoder and writer evidence (the aos_decode and aos_roundtrip fuzz targets, the decoders_never_panic property) backs the claims of HZ-X-02 and is cited there |
 | `state-corruption` | HZ-AOS-15 | done |

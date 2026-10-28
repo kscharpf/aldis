@@ -12,7 +12,7 @@ Failure modes of `aldis-uslp` and its C ABI (`aldis_uslp_*`), in the format of [
 | `truncation` | HZ-USLP-01 | done |
 | `wrong-value` | HZ-USLP-09, HZ-USLP-10, HZ-USLP-11 | done |
 | `nonconformant-output` | HZ-USLP-12, HZ-USLP-13 | done |
-| `unbounded-time` | — | n/a: `aldis-uslp` adds no failure mode of its own to `hz:HZ-X-03`. Every loop of the crate is bounded by an input length, a capacity, or a constant (the loop table of `gen-022-023-aldis-uslp.md`), and `next_frame` (`crates/aldis-uslp/src/delimit.rs:93`–`112`) returns `None` only for an empty rest and otherwise an item of at least 6 octets or the whole rest, so a caller that skips each item's length terminates |
+| `unbounded-time` | — | n/a: `aldis-uslp` adds no failure mode of its own to `hz:HZ-X-03`. Every loop of the crate is bounded by an input length, a capacity, or a constant (`record:GEN-022`), and `next_frame` (`crates/aldis-uslp/src/delimit.rs:93`–`112`) returns `None` only for an empty rest and otherwise an item of at least 6 octets or the whole rest, so a caller that skips each item's length terminates |
 | `memory` | HZ-USLP-14 | done |
 | `panic` | — | n/a: no USLP-specific panic path beyond `hz:HZ-X-02`. The crate's arithmetic on wire lengths is saturating or checked (for example `crates/aldis-uslp/src/view.rs:194`–`201`), and the property `decoder_never_panics` and the fuzz targets `uslp_decode`, `uslp_truncated`, and `uslp_roundtrip` drive every decoder, writer, and delimiter entry point, which `hz:HZ-X-02` lists as evidence |
 | `state-corruption` | HZ-USLP-15 | done |

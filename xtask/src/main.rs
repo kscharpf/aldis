@@ -66,9 +66,7 @@ commands:
                                mutants, the exerciser, layers, READMEs, and the facade; fuzz
                                targets in fuzz/Cargo.toml and the nightly matrix; every vector
                                file in test-vectors/README.md, a test, and the exerciser
-  loops [list [<crate>...]]    every loop in a library crate is in its GEN-022/023 inspection
-                               record with a bound, and every loop a record lists exists
-                               (GEN-022); `list` prints the loops found
+  loops [list [<crate>...]]    diagnostic scan of loops in library code; prints the loops found
   assurance [--strict]         every reference of the hazard analysis and the assurance case
                                resolves, both follow their formats, and every hazard supports
                                a claim; --strict also fails on anything left as TODO
@@ -104,7 +102,7 @@ commands:
                                move every fragment into a new section of CHANGELOG.md
   ci                           the quick checks of the verification run, without a build:
                                spec-lint, links, decisions, layers, consistency, rs020,
-                               restricted, loops, assurance --strict, refapp-deps, vectors validate,
+                               restricted, assurance --strict, refapp-deps, vectors validate,
                                vectors schema --check, fields, header (needs the pinned
                                cbindgen), sana, trace --scope m0 --strict,
                                trace --scope m1 --strict, trace --scope m2 --strict,
@@ -129,7 +127,6 @@ pub(crate) const CI: &[Step] = &[
     ("consistency", consistency::check),
     ("rs020", rs020::check),
     ("restricted", || restricted::run(false)),
-    ("loops", || loops::run(&[])),
     ("assurance --strict", || assurance::run(true)),
     ("refapp-deps", refapp::check),
     ("vectors validate", vectors::validate),

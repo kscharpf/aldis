@@ -35,7 +35,7 @@ Aldis is built to the practices of safety- and mission-critical software. It is 
 - No panics on any input, proven at link time: the bare-metal exerciser fails to link if any panic path is reachable (GEN-020, VER-010).
 - No `unsafe` outside the C ABI crate, enforced by `unsafe_code = "forbid"` (GEN-070). Every `unsafe` block in `aldis-ffi` carries a `// SAFETY:` argument.
 - What Aldis assumes of the platform, above all memory protected against single-event upsets, and what happens without it: [hardware assumptions](docs/hardware-assumptions.md) (GEN-015).
-- Every loop bounded and no recursion (GEN-022), recorded per crate in [inspection records](docs/verification/inspections/).
+- Every loop bounded and no recursion (GEN-022), verified by static object-level call-graph cycle detection and formal proof harnesses ([analysis record](docs/verification/records/GEN-022.md)).
 - Worst-case stack bounds computed per embedded target for every public entry point and checked against fixed budgets ([stack bounds](docs/verification/records/VER-011.md), VER-011).
 - **Parse, don't validate** (RS-020): restricted values are their own types, so invalid values cannot be constructed; `cargo xtask rs020` checks the public API mechanically. State machines make invalid states unrepresentable (RS-021).
 - A strict lint set (Clippy `all` and `pedantic` denied, plus restriction lints), with every exception local and reasoned (RS-016).

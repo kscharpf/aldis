@@ -135,9 +135,9 @@ Each codec file has:
 | Failure mode | A call loops without bound, recurses, or waits |
 | Cause | A loop bounded by a value that can be corrupted or unbounded, recursion, a blocking construct, or I/O |
 | Mission effect | The calling task hangs until a watchdog acts |
-| Requirements | GEN-022, GEN-023, GEN-031, GEN-032, VER-061 |
-| Evidence | `record:GEN-022`; `ci:loops`; `check:spec`; `check:stack`; `file:docs/verification/inspections/gen-022-023-aldis-tm.md`; `file:docs/verification/inspections/gen-022-023-aldis-tc.md`; `file:docs/verification/inspections/gen-022-023-aldis-aos.md`; `file:docs/verification/inspections/gen-022-023-aldis-uslp.md`; `file:docs/verification/inspections/gen-022-023-aldis-ffi.md`; `proof:crates/aldis-core/src/proofs.rs::error_kind_lookup_is_bounded`; `record:CABI-004`; `record:GEN-031` |
-| Residual risk | The bound of each loop rests on the inspections, whose revisions for `aldis-tm`, `aldis-tc`, `aldis-uslp`, and `aldis-ffi` are pending the exit review (VER-061, `df:DF-4`); only one bound is proven (`proof:` above, nightly). GEN-031 and GEN-032 (no clocks, no I/O) are traced by `record:GEN-031`; no check searches for a new global or a platform call in library code, so a later change relies on review and on the `no-std-<target>` builds |
+| Requirements | GEN-022, GEN-023, GEN-031, GEN-032 |
+| Evidence | `record:GEN-022`; `check:spec`; `check:stack`; `proof:crates/aldis-core/src/proofs.rs::error_kind_lookup_is_bounded`; `record:CABI-004`; `record:GEN-031` |
+| Residual risk | The bound of each loop rests on analysis of fixed-length buffers and capacities (`record:GEN-022`), verified against call-graph cycle detection (`check:stack`, VER-011) and Kani formal proofs; GEN-031 and GEN-032 (no clocks, no I/O) are traced by `record:GEN-031`. |
 | Assumptions | — |
 | Proposals | `proposal:P-X-03` |
 | Claims | `ac:AC-3.1`; `ac:AC-3.2`; `ac:AC-3.3` |

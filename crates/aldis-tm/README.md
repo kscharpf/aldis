@@ -69,7 +69,7 @@ fn main() -> Result<(), aldis_core::Error> {
 - No panic on any input (GEN-020). Checked by the bare-metal panic-freedom link check in [`exerciser/`](../../exerciser/) (VER-010) and by the fuzz targets `tm_decode` and `tm_roundtrip` in [`fuzz/`](../../fuzz/fuzz_targets/) (VER-022).
 - No clock, I/O, or global state (GEN-031, GEN-032).
 
-The shared conformance vectors are in [`test-vectors/tm/`](../../test-vectors/tm/), computed by the independent model [`test-vectors/models/tm_frame.py`](../../test-vectors/models/tm_frame.py), with one decode and one encode worked by hand in [docs/verification/derivations/tm-frame.md](../../docs/verification/derivations/tm-frame.md). 100 % coverage (VER-024); the bounded-loop inspection is [gen-022-023-aldis-tm.md](../../docs/verification/inspections/gen-022-023-aldis-tm.md). No independent implementation has been run against the TM vectors yet ([cross-checks.md](../../docs/verification/cross-checks.md), M2 plan D15).
+The shared conformance vectors are in [`test-vectors/tm/`](../../test-vectors/tm/), computed by the independent model [`test-vectors/models/tm_frame.py`](../../test-vectors/models/tm_frame.py), with one decode and one encode worked by hand in [docs/verification/derivations/tm-frame.md](../../docs/verification/derivations/tm-frame.md). 100 % coverage (VER-024); the bounded-loop analysis record is [GEN-022](../../docs/verification/records/GEN-022.md). No independent implementation has been run against the TM vectors yet ([cross-checks.md](../../docs/verification/cross-checks.md), M2 plan D15).
 
 ## Specification
 

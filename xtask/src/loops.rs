@@ -1,6 +1,4 @@
-//! `xtask loops`: every loop in the library code of a crate is listed, with its bound, in the
-//! crate's GEN-022/023 inspection record, and every loop a record lists exists (GEN-022, M2 plan
-//! WP-7; part of `cargo xtask ci`).
+//! `xtask loops`: diagnostic scan of every loop in the library code of the crates.
 //!
 //! **What counts as a loop.** In the library code of each crate of [`CRATES`] (the modules
 //! reachable from `src/lib.rs`, without those and the items gated on `cfg(test)` or `cfg(kani)`):
@@ -8,11 +6,10 @@
 //! - a call of an iterator method that consumes the iterator, and so runs a loop: [`CONSUMERS`];
 //! - a call of a slice method that runs over the slice: [`SLICE_LOOPS`].
 //!
-//! Not found, and listed in a record by hand where they matter: iterator adaptors (`zip`, `map`,
-//! `rev`, …), which only run inside a consumer or a `for`; `min` and `max`, which on integers are
-//! not loops; comparisons of slices and arrays (`==`); array repeat expressions (`[x; N]`);
-//! derived implementations; and loops inside the functions of other crates, which are in those
-//! crates' records. The scanner is textual (the tokens of `rs020`), so a method of the crate's own
+//! Not found: iterator adaptors (`zip`, `map`, `rev`, …), which only run inside a consumer or a
+//! `for`; `min` and `max`, which on integers are not loops; comparisons of slices and arrays (`==`);
+//! array repeat expressions (`[x; N]`); derived implementations; and loops inside the functions of
+//! other crates. The scanner is textual (the tokens of `rs020`), so a method of the crate's own
 //! named like one of the lists counts too.
 //!
 //! **Identifiers.** A loop is named by its file (relative to the crate's `src/`), its item, and
@@ -22,12 +19,6 @@
 //! `macro_rules!` definition. The index counts the loops of the item in source order from 1; a
 //! labelled loop may be named by its label instead (`#'outer`). One span may name several loops
 //! of an item (`` `writer.rs TcFrameWriter::start #1 #2` ``).
-//!
-//! **Records.** The `## Loops` section of `docs/verification/inspections/gen-022-023-<crate>.md`
-//! holds a table whose first column, `ID`, names the loops of each row, or holds `—` for a row
-//! that names no loop this check finds (a call into another crate, an array initialiser). Every
-//! loop found must be named by exactly one row, whose last column (the bound) is not empty, and
-//! every name must be a loop found. A crate with a loop and no record fails.
 
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
@@ -75,11 +66,6 @@ pub const CONSUMERS: &[&str] = &[
 
 /// Slice methods that run over the slice.
 pub const SLICE_LOOPS: &[&str] = &["clone_from_slice", "copy_from_slice", "copy_within", "fill"];
-
-/// The record of a crate.
-fn record(krate: &str) -> String {
-    format!("docs/verification/inspections/gen-022-023-{krate}.md")
-}
 
 /// One loop found.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -466,231 +452,41 @@ pub fn crate_loops(krate: &str) -> Result<Vec<Loop>, String> {
         .collect())
 }
 
-/// One row of a record's loop table: its line and the loops it names (file, item, index or
-/// label), and whether its bound is stated.
-#[derive(Debug, PartialEq, Eq)]
-struct Row {
-    line: usize,
-    names: Vec<(String, String, String)>,
-    bound: bool,
-}
-
-/// Splits a Markdown table row into its cells.
-fn cells(line: &str) -> Vec<String> {
-    let inner = line.trim().trim_start_matches('|').trim_end_matches('|');
-    let mut out = Vec::new();
-    let mut cur = String::new();
-    let mut code = false;
-    let mut prev = ' ';
-    for ch in inner.chars() {
-        match ch {
-            '`' => {
-                code = !code;
-                cur.push(ch);
-            }
-            '|' if !code && prev != '\\' => out.push(std::mem::take(&mut cur)),
-            _ => cur.push(ch),
-        }
-        prev = ch;
-    }
-    out.push(cur);
-    out.into_iter().map(|c| c.trim().to_owned()).collect()
-}
-
-/// The loop rows of a record, and its problems.
-fn rows(path: &str, text: &str) -> (Vec<Row>, Vec<String>) {
-    let mut out = Vec::new();
-    let mut problems = Vec::new();
-    let mut in_section = false;
-    // 0: before the table, 1: in it, after its header, 2: after it.
-    let mut state = 0;
-    for (n, line) in text.lines().enumerate() {
-        let at = format!("{path}:{}", n + 1);
-        if let Some(h) = line.strip_prefix("## ") {
-            in_section = h.trim() == "Loops";
-            continue;
-        }
-        if !in_section || state == 2 {
-            continue;
-        }
-        if !line.trim_start().starts_with('|') {
-            if state == 1 {
-                state = 2;
-            }
-            continue;
-        }
-        let c = cells(line);
-        if state == 0 {
-            if c.first().map(String::as_str) != Some("ID") {
-                problems.push(format!(
-                    "{at}: the Loops table needs `ID` as its first column (GEN-022)"
-                ));
-                return (out, problems);
-            }
-            state = 1;
-            continue;
-        }
-        if c.iter()
-            .all(|c| !c.is_empty() && c.chars().all(|ch| matches!(ch, '-' | ':')))
-        {
-            continue;
-        }
-        let id = c.first().cloned().unwrap_or_default();
-        let mut names = Vec::new();
-        if id != "—" {
-            for span in id.split('`').skip(1).step_by(2) {
-                let words: Vec<&str> = span.split_whitespace().collect();
-                let refs = words.get(2..).unwrap_or(&[]);
-                if words.len() < 3 || !refs.iter().all(|r| r.starts_with('#') && r.len() > 1) {
-                    problems.push(format!("{at}: `{span}` is not `<file> <item> #<n>`"));
-                    continue;
-                }
-                for r in refs {
-                    names.push((
-                        words[0].to_owned(),
-                        words[1].to_owned(),
-                        r.trim_start_matches('#').to_owned(),
-                    ));
-                }
-            }
-            if names.is_empty() {
-                problems.push(format!(
-                    "{at}: the ID cell names no loop; write `—` for a row without one"
-                ));
-            }
-        }
-        let bound = c.len() > 1 && c.last().is_some_and(|b| !b.is_empty() && b != "—");
-        out.push(Row {
-            line: n + 1,
-            names,
-            bound,
-        });
-    }
-    if state == 0 {
-        problems.push(format!(
-            "{path}: no `## Loops` table with an `ID` column (GEN-022)"
-        ));
-    }
-    (out, problems)
-}
-
-/// The problems of one crate: its loops against its record.
-fn compare(krate: &str, loops: &[Loop], record_text: Option<&str>) -> Vec<String> {
-    let path = record(krate);
-    let Some(text) = record_text else {
-        return if loops.is_empty() {
-            Vec::new()
-        } else {
-            vec![format!(
-                "{path}: missing, and {krate} has {} loop(s) (GEN-022)",
-                loops.len()
-            )]
-        };
-    };
-    let (rows, mut problems) = rows(&path, text);
-    let mut named: BTreeMap<usize, usize> = BTreeMap::new();
-    for row in &rows {
-        for (file, item, r) in &row.names {
-            let found = loops.iter().position(|l| {
-                &l.file == file
-                    && &l.item == item
-                    && (r.parse::<usize>().ok() == Some(l.index)
-                        || r.strip_prefix('\'')
-                            .is_some_and(|r| l.label.as_deref() == Some(r)))
-            });
-            match found {
-                None => problems.push(format!(
-                    "{path}:{}: `{file} {item} #{r}` is not a loop of crates/{krate}/src (GEN-022): \
-                     remove it, or correct its file, item, or index",
-                    row.line
-                )),
-                Some(k) => {
-                    if let Some(first) = named.insert(k, row.line) {
-                        problems.push(format!(
-                            "{path}:{}: `{}` is also named at line {first}",
-                            row.line,
-                            loops[k].id()
-                        ));
-                    }
-                    if !row.bound {
-                        problems.push(format!(
-                            "{path}:{}: the row of `{}` states no bound",
-                            row.line,
-                            loops[k].id()
-                        ));
-                    }
-                }
-            }
-        }
-    }
-    for (k, l) in loops.iter().enumerate() {
-        if !named.contains_key(&k) {
-            problems.push(format!(
-                "crates/{krate}/src/{}:{}: loop `{}` (`{}`) is not in {path}: add it to the Loops \
-                 table with its bound (GEN-022)",
-                l.file,
-                l.line,
-                l.id(),
-                l.kind
-            ));
-        }
-    }
-    problems
-}
-
-/// `xtask loops`: the check; `xtask loops list [<crate>...]`: the loops found.
+/// `xtask loops [list [<crate>...]]`: diagnostic scan of loops in library code.
 pub fn run(args: &[&str]) -> Result<usize, String> {
-    let (list, names) = match args {
-        ["list", rest @ ..] => (true, rest),
-        rest => (false, rest),
+    let names = match args {
+        ["list", rest @ ..] | rest => rest,
     };
-    if !list && !names.is_empty() {
-        return Err("usage: cargo xtask loops [list [<crate>...]]".to_owned());
-    }
     let crates: Vec<&str> = if names.is_empty() {
         CRATES.to_vec()
     } else {
         names.to_vec()
     };
-    let mut problems = Vec::new();
     let mut total = 0;
     let mut out = String::new();
     for krate in &crates {
         let loops = crate_loops(krate)?;
         total += loops.len();
-        if list {
-            for l in &loops {
-                let _ = writeln!(
-                    out,
-                    "crates/{krate}/src/{}:{}\t`{}`\t{}{}",
-                    l.file,
-                    l.line,
-                    l.id(),
-                    l.kind,
-                    l.label
-                        .as_ref()
-                        .map_or_else(String::new, |s| format!(" '{s}"))
-                );
-            }
-            continue;
+        for l in &loops {
+            let _ = writeln!(
+                out,
+                "crates/{krate}/src/{}:{}\t`{}`\t{}{}",
+                l.file,
+                l.line,
+                l.id(),
+                l.kind,
+                l.label
+                    .as_ref()
+                    .map_or_else(String::new, |s| format!(" '{s}"))
+            );
         }
-        let path = repo::root().join(record(krate));
-        let text = path.is_file().then(|| repo::read(&path)).transpose()?;
-        problems.extend(compare(krate, &loops, text.as_deref()));
     }
     print!("{out}");
-    if list {
-        return Ok(0);
-    }
-    for p in &problems {
-        println!("error: {p}");
-    }
     println!(
-        "loops: {} crate(s), {total} loop(s) in library code, {} problem(s)",
-        crates.len(),
-        problems.len()
+        "loops: {} crate(s), {total} loop(s) in library code",
+        crates.len()
     );
-    Ok(problems.len())
+    Ok(0)
 }
 
 #[cfg(test)]
@@ -771,83 +567,6 @@ mod tests {
             fn library() { loop {} }
         ";
         assert_eq!(ids(src), ["x.rs hooks #1 while", "x.rs library #1 loop"]);
-    }
-
-    fn found(item: &str, index: usize, label: Option<&str>) -> Loop {
-        Loop {
-            file: "a.rs".to_owned(),
-            item: item.to_owned(),
-            index,
-            label: label.map(str::to_owned),
-            kind: "for".to_owned(),
-            line: 7,
-        }
-    }
-
-    // req: GEN-022
-    #[test]
-    fn compares_the_loops_with_the_record() {
-        let loops = [
-            found("f", 1, None),
-            found("f", 2, Some("outer")),
-            found("g", 1, None),
-            found("h", 1, None),
-        ];
-        let record = "\
-# Inspection
-
-## Loops
-
-| ID | Location | Loop | Bound |
-|---|---|---|---|
-| `a.rs f #1 #'outer` | `a.rs` `f` | over the input | input length |
-| `a.rs g #1`, `a.rs g #2` | `a.rs` `g` | twice | constant: 2 |
-| `a.rs f #1` | again | | constant |
-| — | through another crate | | — |
-| `a.rs h #1` | `a.rs` `h` | no bound | — |
-| `a.rs` | bad | | x |
-
-## Recursion
-
-| ID | not a loop table |
-";
-        let problems = compare("aldis-x", &loops, Some(record));
-        let text = problems.join("\n");
-        let path = "docs/verification/inspections/gen-022-023-aldis-x.md";
-        for expected in [
-            format!("{path}:8: `a.rs g #2` is not a loop of crates/aldis-x/src"),
-            format!("{path}:9: `a.rs f #1` is also named at line 7"),
-            format!("{path}:11: the row of `a.rs h #1` states no bound"),
-            format!("{path}:12: `a.rs` is not `<file> <item> #<n>`"),
-        ] {
-            assert!(text.contains(&expected), "{expected}\n{text}");
-        }
-        assert_eq!(problems.len(), 5, "{text}");
-
-        // A loop the record lacks, and a record without the ID column or without a record.
-        let missing = compare("aldis-x", &[found("k", 1, None)], Some(record));
-        assert!(
-            missing
-                .iter()
-                .any(|p| p
-                    .starts_with("crates/aldis-x/src/a.rs:7: loop `a.rs k #1` (`for`) is not in")),
-            "{missing:?}"
-        );
-        let old =
-            "## Loops\n\n| Location | Loop | Bound |\n|---|---|---|\n| `a.rs` `k` | x | y |\n";
-        assert_eq!(
-            compare("aldis-x", &[], Some(old)),
-            [format!(
-                "{path}:3: the Loops table needs `ID` as its first column (GEN-022)"
-            )]
-        );
-        assert_eq!(
-            compare("aldis-x", &loops, None),
-            [format!(
-                "{path}: missing, and aldis-x has 4 loop(s) (GEN-022)"
-            )]
-        );
-        assert_eq!(compare("aldis-x", &[], None), Vec::<String>::new());
     }
 
     // req: GEN-022

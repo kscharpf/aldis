@@ -43,7 +43,7 @@ assert_eq!(frames.count(), 1); // the six octets of 0x55 fill
 ## Verification
 
 - Unit tests in each module; the shared vectors of [`test-vectors/tc/`](../../test-vectors/tc/), whose expected values come from the independent model [`test-vectors/models/tc_frame.py`](../../test-vectors/models/tc_frame.py), with one frame and one CLCW worked by hand in [docs/verification/derivations/tc-frame.md](../../docs/verification/derivations/tc-frame.md).
-- Property tests in [`tests/properties.rs`](tests/properties.rs) drawn from the shared strategies of `aldis-testkit` (`strategies-tc`); the fuzz targets `tc_decode`, `tc_roundtrip`, `tc_delimit`, and `tc_clcw`; the exerciser on three bare-metal targets; 100 % coverage (VER-024); the [GEN-022/023 inspection](../../docs/verification/inspections/gen-022-023-aldis-tc.md).
+- Property tests in [`tests/properties.rs`](tests/properties.rs) drawn from the shared strategies of `aldis-testkit` (`strategies-tc`); the fuzz targets `tc_decode`, `tc_roundtrip`, `tc_delimit`, and `tc_clcw`; the exerciser on three bare-metal targets; 100 % coverage (VER-024); the [GEN-022/023 analysis record](../../docs/verification/records/GEN-022.md).
 
 ## Where it sits
 

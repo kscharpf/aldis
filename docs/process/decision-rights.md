@@ -70,7 +70,7 @@ A file name is a promise about its contents: a case that does not fit its file's
 
 | Maintainer only | Coordinator | Agent in a work package |
 |---|---|---|
-| The merge gate and the verification policy (VER-056…VER-061); these decision rights; the non-negotiable rules of AGENTS.md; the toolchain pin (RS-001, OI-07); the lint set (RS-016, RS-019); standing policies for agents (cleanup, review watch); how often approvals happen; keeping or dropping a restructure that splits a crate or moves a directory | A tooling fix, or a new check that enforces a rule already written, that loosens no gate; a check's declared inputs; documentation that restates existing rules | The registrations its work package needs (the checklists); fixing a check that is wrong for its change (a judgement call) |
+| The merge gate and the verification policy (VER-056…VER-060); these decision rights; the non-negotiable rules of AGENTS.md; the toolchain pin (RS-001, OI-07); the lint set (RS-016, RS-019); standing policies for agents (cleanup, review watch); how often approvals happen; keeping or dropping a restructure that splits a crate or moves a directory | A tooling fix, or a new check that enforces a rule already written, that loosens no gate; a check's declared inputs; documentation that restates existing rules | The registrations its work package needs (the checklists); fixing a check that is wrong for its change (a judgement call) |
 
 Example: inspection approval once per milestone (VER-061, #74), the cleanup and review-watch policies, and holding the `xtask` split (#75). Instead of asking: build it on a branch, measure what it changes, and propose it with the measurement.
 

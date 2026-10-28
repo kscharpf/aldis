@@ -167,7 +167,7 @@ M0 is complete when every item below is green on `main`:
 | Static | VER-001, VER-002, VER-003, VER-004 | CI `fmt`, `clippy`, `deny` |
 | Panic freedom | VER-010, GEN-020, GEN-021 (exerciser links on all bare-metal targets) | CI `exerciser`, 3 targets; canary fails as required |
 | Portability | GEN-005, GEN-007, VER-030 (big-endian), VER-031 / GEN-003 (minimal build) | CI `no-std`, `big-endian`, `layers` (+ `symbols`) |
-| `aldis-core` requirements | GEN-010…012, GEN-022…024, GEN-040…042, GEN-050, GEN-051, GEN-081, API-001…003, API-070, API-071, API-073, API-075, CMN-001…004, CMN-020…023, CMN-030…031, CMN-040…041, RS-010, RS-011, RS-012, RS-015, RS-016, RS-018 | Tests, vectors, fuzz targets; GEN-022/023 by [inspection](../verification/inspections/gen-022-023-aldis-core.md) |
+| `aldis-core` requirements | GEN-010…012, GEN-022…024, GEN-040…042, GEN-050, GEN-051, GEN-081, API-001…003, API-070, API-071, API-073, API-075, CMN-001…004, CMN-020…023, CMN-030…031, CMN-040…041, RS-010, RS-011, RS-012, RS-015, RS-016, RS-018 | Tests, vectors, fuzz targets; GEN-022/023 by [analysis record](../verification/records/GEN-022.md) |
 | Vectors and trace | TV-001…003, TV-012, TV-020…022, VER-020 (`xtask trace --scope m0` has no gaps), VER-021 | 60/60 traced; CI `spec` now runs `--strict` |
 | Gates | VER-022 (fuzz targets exist and run nightly), VER-024 (100 % coverage for `aldis-core`) | 6 targets in `nightly.yml`; CI `coverage` 100 % regions/functions/lines/branches |
 | Docs | Roadmap updated; `CHANGELOG.md` entry for 0.1.0-m0; open issues updated | Done (OI-14 added) |

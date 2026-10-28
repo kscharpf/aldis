@@ -22,4 +22,4 @@ Free text: what the check or review establishes, its files, and when it was last
 - The file is named after the first ID of `Requirements`, and a requirement has at most one record. To add a requirement to an existing check, extend that record; to give it its own, move it to a new file.
 - `cargo xtask trace` fails on a record that breaks these rules; `cargo xtask ci` and the verify check `spec` run it.
 
-The inspections of GEN-022 and GEN-023, one per crate, are in [`inspections/`](inspections/); their record is [`records/GEN-022.md`](records/GEN-022.md).
+GEN-022 and GEN-023 are traced by [`records/GEN-022.md`](records/GEN-022.md).
