@@ -398,63 +398,54 @@ fn the_header_and_length_peek_alone() {
 }
 
 #[test]
-fn validation_reports_the_reason() {
+fn stream_reports_the_discard_reason() {
     // req: TC-021, TC-022, TC-023, CABI-020, CABI-021
     let (mc, vcs, maps) = (mc(), vcs(), maps());
-    let validate = |frame: &[u8], mc: &aldis_tc_mc_config_t, reason: *mut u32| {
-        let mut view = aldis_tc_frame_t::default();
+    let step = |frame: &[u8], mc: &aldis_tc_mc_config_t| {
+        let mut item = aldis_tc_stream_item_t::default();
+        let mut offset = 0;
         let mut e = detail();
-        // SAFETY: every pointer is to a live local, with its length; `reason` is NULL or live.
+        // SAFETY: every pointer is to a live local, with its length.
         let status = unsafe {
-            aldis_tc_validate(
+            aldis_tc_stream_next(
                 frame.as_ptr(),
                 frame.len(),
+                &raw mut offset,
                 mc,
                 vcs.as_ptr(),
                 vcs.len(),
                 maps.as_ptr(),
                 maps.len(),
                 ALDIS_MODE_STRICT,
-                &raw mut view,
-                reason,
+                &raw mut item,
                 &raw mut e,
             )
         };
-        (status, e.field, view)
+        (status, offset, item)
     };
     let (frame, _) = written(&ad(1, None), 2, &[1, 2]);
-    let mut reason = u32::MAX;
-    let (status, _, view) = validate(&frame, &mc, &raw mut reason);
-    assert_eq!((status, reason), (ALDIS_OK, ALDIS_TC_REASON_NONE));
-    assert_eq!(view.layout.frame_len, frame.len());
-    // One octet more than the Frame Length: check (d), as the decoder does not check it.
-    let mut longer = frame.clone();
-    longer.push(0);
-    let (status, _, _) = validate(&longer, &mc, &raw mut reason);
-    assert_eq!(
-        (status, reason),
-        (ALDIS_ERR_LENGTH_MISMATCH, ALDIS_TC_REASON_LENGTH_MISMATCH)
-    );
-    let mut view = aldis_tc_frame_t::default();
-    assert_eq!(decode(&longer, ALDIS_MODE_STRICT, &mut view), ALDIS_OK);
+    let (status, offset, item) = step(&frame, &mc);
+    assert_eq!(status, ALDIS_OK);
+    assert_eq!(item.kind, ALDIS_TC_STREAM_ACCEPTED);
+    assert_eq!(item.discard_reason, ALDIS_TC_DISCARD_NONE);
+    assert_eq!(item.len, frame.len());
+    assert_eq!(item.frame.layout.frame_len, frame.len());
+    assert_eq!(offset, frame.len());
+
     // Another Spacecraft ID: check (b).
     let other = aldis_tc_mc_config_t { scid: 0x156, ..mc };
-    let (status, field, _) = validate(&frame, &other, &raw mut reason);
-    assert_eq!(
-        (status, field, reason),
-        (
-            ALDIS_ERR_UNKNOWN_CHANNEL,
-            ALDIS_FIELD_SPACECRAFT_ID,
-            ALDIS_TC_REASON_UNEXPECTED_SPACECRAFT
-        )
-    );
-    // A configuration error is not a rejection: `reason` is left as it was.
+    let (status, offset, item) = step(&frame, &other);
+    assert_eq!(status, ALDIS_OK);
+    assert_eq!(item.kind, ALDIS_TC_STREAM_DISCARDED);
+    assert_eq!(item.discard_reason, ALDIS_TC_DISCARD_UNEXPECTED_SPACECRAFT);
+    assert_eq!(item.error_field, ALDIS_FIELD_SPACECRAFT_ID);
+    assert_eq!(item.len, frame.len());
+    assert_eq!(offset, frame.len());
+
+    // A configuration error fails the call with an error code and writes no item.
     let bad = aldis_tc_mc_config_t { scid: 0x400, ..mc };
-    reason = u32::MAX;
-    let (status, _, _) = validate(&frame, &bad, &raw mut reason);
-    assert_eq!((status, reason), (ALDIS_ERR_OUT_OF_RANGE, u32::MAX));
-    let (status, _, _) = validate(&frame, &mc, null_mut());
-    assert_eq!(status, ALDIS_ERR_INVALID_FIELD);
+    let (status, _, _) = step(&frame, &bad);
+    assert_eq!(status, ALDIS_ERR_OUT_OF_RANGE);
 }
 
 #[test]
@@ -716,46 +707,6 @@ fn finish_checks_the_buffer_was_begun_with_these_arguments() {
         assert_eq!(never, [fill; 64]);
     }
     assert_eq!(call(false, &begun, 4, &mut frame), ALDIS_ERR_INVALID_STATE);
-}
-
-#[test]
-fn the_delimiter_is_stateless() {
-    // req: TC-020, CABI-012, CABI-022
-    // An Unlock frame without FECF, then three octets of fill.
-    let unit = [0x31, 0x55, 0x04, 0x05, 0x00, 0x00, 0x55, 0x55, 0x55];
-    let next = |unit: *const u8, len: usize, offset: usize| {
-        let mut item = aldis_tc_delimited_t::default();
-        // SAFETY: `unit` is NULL or live for `len` octets; `item` is live.
-        let status = unsafe { aldis_tc_next_frame(unit, len, offset, &raw mut item, null_mut()) };
-        (status, item)
-    };
-    let (status, item) = next(unit.as_ptr(), unit.len(), 0);
-    assert_eq!(
-        (status, item.kind, item.len, item.declared_len),
-        (ALDIS_OK, ALDIS_TC_DELIMITED_FRAME, 6, 6)
-    );
-    // The same call gives the same item: nothing is kept.
-    assert_eq!(next(unit.as_ptr(), unit.len(), 0).1, item);
-    let (_, item) = next(unit.as_ptr(), unit.len(), 6);
-    assert_eq!(
-        (item.kind, item.offset, item.len),
-        (ALDIS_TC_DELIMITED_FILL, 6, 3)
-    );
-    assert_eq!(
-        next(unit.as_ptr(), unit.len(), 9).1.kind,
-        ALDIS_TC_DELIMITED_END
-    );
-    assert_eq!(next(null(), 0, 0).1.kind, ALDIS_TC_DELIMITED_END);
-    assert_eq!(
-        next(unit.as_ptr(), unit.len(), 10).0,
-        ALDIS_ERR_INVALID_FIELD
-    );
-    // A valid header declaring more octets than remain.
-    let (_, item) = next(unit.as_ptr(), 5, 0);
-    assert_eq!(
-        (item.kind, item.len, item.declared_len),
-        (ALDIS_TC_DELIMITED_TRUNCATED_FRAME, 5, 6)
-    );
 }
 
 #[test]

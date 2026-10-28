@@ -767,7 +767,7 @@ fn full_and_truncated_frames_cross_as_one_tagged_view() {
 }
 
 #[test]
-fn validation_reports_a_stable_reason() {
+fn stream_reports_the_discard_reason() {
     // req: USLP-014, CABI-020, CABI-021
     let ch = variable();
     let payload = [1_u8, 2, 3];
@@ -786,182 +786,48 @@ fn validation_reports_a_stable_reason() {
         &mut det,
     );
     assert_eq!(rc, ALDIS_OK);
-    let validate = |bytes: &[u8], view: &mut aldis_uslp_frame_t, reason: *mut u32, det| {
-        // SAFETY: every pointer is to a live local, struct, or vector, or `reason` is NULL.
-        unsafe {
-            aldis_uslp_validate(
+    let step = |bytes: &[u8], det| {
+        let mut item = aldis_uslp_stream_item_t::default();
+        let mut offset = 0;
+        // SAFETY: every pointer is to a live local, struct, or vector.
+        let status = unsafe {
+            aldis_uslp_stream_next(
                 bytes.as_ptr(),
                 bytes.len(),
+                &raw mut offset,
                 &raw const ch.pc,
                 ch.vcs.as_ptr(),
                 2,
                 ch.maps.as_ptr(),
                 3,
                 ALDIS_MODE_STRICT,
-                view,
-                reason,
+                &raw mut item,
                 det,
             )
-        }
+        };
+        (status, offset, item)
     };
-    let mut view = aldis_uslp_frame_t::default();
-    let mut reason = u32::MAX;
-    assert_eq!(
-        validate(&frame[..len], &mut view, &raw mut reason, &raw mut det),
-        ALDIS_OK
-    );
-    assert_eq!(
-        (reason, view.layout.frame_len),
-        (ALDIS_USLP_REASON_NONE, len)
-    );
-    // Test (d): exactly one frame, so a trailing octet is a length mismatch.
-    let mut v2 = aldis_uslp_frame_t::default();
-    assert_eq!(
-        validate(&frame[..=len], &mut v2, &raw mut reason, &raw mut det),
-        ALDIS_ERR_LENGTH_MISMATCH
-    );
-    assert_eq!(reason, ALDIS_USLP_REASON_LENGTH_MISMATCH);
-    assert_eq!(v2, aldis_uslp_frame_t::default(), "out unchanged");
-    // Test (e): a wrong FECF.
-    frame[len - 1] ^= 1;
-    assert_eq!(
-        validate(&frame[..len], &mut v2, &raw mut reason, &raw mut det),
-        ALDIS_ERR_CRC_MISMATCH
-    );
-    assert_eq!((reason, det.field), (ALDIS_USLP_REASON_FECF_MISMATCH, 0));
-    // An argument error writes no reason.
-    reason = u32::MAX;
-    assert_eq!(
-        validate(&frame[..len], &mut v2, null_mut(), &raw mut det),
-        ALDIS_ERR_INVALID_FIELD
-    );
-    let mode = 7;
-    // SAFETY: as above.
-    let rc = unsafe {
-        aldis_uslp_validate(
-            frame.as_ptr(),
-            len,
-            &raw const ch.pc,
-            ch.vcs.as_ptr(),
-            2,
-            ch.maps.as_ptr(),
-            3,
-            mode,
-            &raw mut v2,
-            &raw mut reason,
-            null_mut(),
-        )
-    };
-    assert_eq!((rc, reason), (ALDIS_ERR_INVALID_FIELD, u32::MAX));
-}
+    let (rc, offset, item) = step(&frame[..len], &raw mut det);
+    assert_eq!(rc, ALDIS_OK);
+    assert_eq!(item.kind, ALDIS_USLP_STREAM_ACCEPTED);
+    assert_eq!(item.discard_reason, ALDIS_USLP_DISCARD_NONE);
+    assert_eq!(item.len, len);
+    assert_eq!(offset, len);
 
-#[test]
-fn the_delimiter_is_a_stateless_call() {
-    // req: USLP-015, M2 plan D14
-    let ch = variable();
-    let payload = [1_u8, 2, 3];
-    let ct = aldis_uslp_content_t {
-        tfdf: octet_stream(),
-        tfdz: payload.as_ptr(),
-        tfdz_len: 3,
-        ..aldis_uslp_content_t::default()
-    };
-    let mut unit = vec![0_u8; 64];
-    let mut det = detail();
-    let (rc, len) = ch.encode(
-        &fields(4, 0, ALDIS_USLP_KIND_SEQUENCE_CONTROLLED, 0),
-        &ct,
-        &mut unit,
-        &mut det,
-    );
+    // Test (e): a wrong FECF discards the frame.
+    frame[len - 1] ^= 1;
+    let (rc, offset, item) = step(&frame[..len], &raw mut det);
     assert_eq!(rc, ALDIS_OK);
-    unit.truncate(len);
-    unit.extend_from_within(..len);
-    unit.extend_from_slice(&[0x55; 3]);
-    let delimit = |offset: usize, item: &mut aldis_uslp_delimited_t| {
-        // SAFETY: every pointer is to a live local, struct, or vector, with its length.
-        unsafe {
-            aldis_uslp_next_frame(
-                unit.as_ptr(),
-                unit.len(),
-                offset,
-                &raw const ch.pc,
-                ch.vcs.as_ptr(),
-                2,
-                item,
-                null_mut(),
-            )
-        }
-    };
-    let mut items = Vec::new();
-    let mut at = 0;
-    loop {
-        let mut item = aldis_uslp_delimited_t::default();
-        assert_eq!(delimit(at, &mut item), ALDIS_OK);
-        if item.kind == ALDIS_USLP_DELIMITED_END {
-            break;
-        }
-        items.push(item);
-        at += item.len;
-    }
-    let item = |kind, offset, len| aldis_uslp_delimited_t {
-        kind,
-        offset,
-        len,
-        declared_len: 0,
-    };
-    assert_eq!(
-        items,
-        [
-            aldis_uslp_delimited_t {
-                declared_len: len,
-                ..item(ALDIS_USLP_DELIMITED_FRAME, 0, len)
-            },
-            aldis_uslp_delimited_t {
-                declared_len: len,
-                ..item(ALDIS_USLP_DELIMITED_FRAME, len, len)
-            },
-            item(ALDIS_USLP_DELIMITED_FILL, 2 * len, 3),
-        ]
-    );
-    // An offset past the unit is an argument error; at its end, nothing remains.
-    let mut last = aldis_uslp_delimited_t::default();
-    assert_eq!(delimit(unit.len() + 1, &mut last), ALDIS_ERR_INVALID_FIELD);
-    assert_eq!(delimit(unit.len(), &mut last), ALDIS_OK);
-    assert_eq!(last, item(ALDIS_USLP_DELIMITED_END, unit.len(), 0));
-    // A frame cut short: the rest is discarded with the length its header declares.
-    let mut cut = aldis_uslp_delimited_t::default();
-    // SAFETY: as above.
-    let rc = unsafe {
-        aldis_uslp_next_frame(
-            unit.as_ptr(),
-            len - 1,
-            0,
-            &raw const ch.pc,
-            ch.vcs.as_ptr(),
-            2,
-            &raw mut cut,
-            null_mut(),
-        )
-    };
-    assert_eq!(rc, ALDIS_OK);
-    assert_eq!(
-        cut,
-        aldis_uslp_delimited_t {
-            declared_len: len,
-            ..item(ALDIS_USLP_DELIMITED_INCOMPLETE_FRAME, 0, len - 1)
-        }
-    );
+    assert_eq!(item.kind, ALDIS_USLP_STREAM_DISCARDED);
+    assert_eq!(item.discard_reason, ALDIS_USLP_DISCARD_FECF_MISMATCH);
+    assert_eq!(item.error_code, ALDIS_ERR_CRC_MISMATCH);
+    assert_eq!(offset, len);
 }
 
 /// A VC with a truncated frame length carries only truncated frames: every C entry point that
 /// meets a non-truncated frame on it reports the flag, and the delimiter discards the rest
 /// (Annex D1.2.1; USLP-002, USLP-014, USLP-015; OI-48).
 #[test]
-#[expect(
-    clippy::too_many_lines,
-    reason = "one check per entry point of the C ABI"
-)]
 fn a_vc_with_a_truncated_length_refuses_non_truncated_frames() {
     // req: USLP-002, USLP-014, USLP-015, CABI-020, CABI-021
     let plain = variable();
@@ -1018,28 +884,42 @@ fn a_vc_with_a_truncated_length_refuses_non_truncated_frames() {
         )
     };
     assert_eq!(got(rc, &det), flag);
-    // The validation: reason 18, and the same error.
-    let mut reason = 0_u32;
+    // The stream intake: discarded, reason NON_TRUNCATED_FRAME_NOT_ALLOWED.
+    let mut item = aldis_uslp_stream_item_t::default();
     let mut det = detail();
+    let mut offset = 0;
     // SAFETY: as above.
     let rc = unsafe {
-        aldis_uslp_validate(
+        aldis_uslp_stream_next(
             frame.as_ptr(),
             len,
+            &raw mut offset,
             &raw const ch.pc,
             ch.vcs.as_ptr(),
             2,
             ch.maps.as_ptr(),
             3,
             ALDIS_MODE_STRICT,
-            &raw mut view,
-            &raw mut reason,
+            &raw mut item,
             &raw mut det,
         )
     };
+    assert_eq!(rc, ALDIS_OK);
     assert_eq!(
-        (got(rc, &det), reason),
-        (flag, ALDIS_USLP_REASON_NON_TRUNCATED_FRAME_NOT_ALLOWED)
+        (
+            item.kind,
+            item.discard_reason,
+            item.offset,
+            item.len,
+            offset
+        ),
+        (
+            ALDIS_USLP_STREAM_DISCARDED,
+            ALDIS_USLP_DISCARD_NON_TRUNCATED_FRAME_NOT_ALLOWED,
+            0,
+            len,
+            len,
+        )
     );
     // The length of the frame that starts the prefix.
     let mut n = 0;
@@ -1057,26 +937,6 @@ fn a_vc_with_a_truncated_length_refuses_non_truncated_frames() {
         )
     };
     assert_eq!(got(rc, &det), flag);
-    // The delimiter discards the rest of the unit.
-    let mut item = aldis_uslp_delimited_t::default();
-    // SAFETY: as above.
-    let rc = unsafe {
-        aldis_uslp_next_frame(
-            frame.as_ptr(),
-            len,
-            0,
-            &raw const ch.pc,
-            ch.vcs.as_ptr(),
-            2,
-            &raw mut item,
-            null_mut(),
-        )
-    };
-    assert_eq!(rc, ALDIS_OK);
-    assert_eq!(
-        (item.kind, item.offset, item.len, item.declared_len),
-        (ALDIS_USLP_DELIMITED_NON_TRUNCATED_NOT_ALLOWED, 0, len, 0)
-    );
 }
 
 #[test]

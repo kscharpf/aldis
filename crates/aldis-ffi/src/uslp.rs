@@ -44,11 +44,11 @@ use aldis::core::security::SecurityLayout;
 use aldis::core::{Error, ErrorKind, Result};
 use aldis::uslp::field;
 use aldis::uslp::{
-    ChannelFields, ConstructionRule, Delimited, FrameContent, FrameFields, FrameKind, FrameStream,
-    IntakeItem, MapConfig, OcfUse, PhysicalChannelConfig, SecurityScope, SourceOrDestination,
-    TfdfHeader, TfdzRule, TransferFrameType, TruncatedFrameLen, Upid, UslpFrame, UslpFrameWriter,
-    UslpMapId, UslpSpacecraftId, UslpVcId, VcConfig, VcParams, VcTable, VcfCountLen, encode,
-    encode_oid, encode_oid_galois, encode_truncated, next_frame, validate_frame,
+    ChannelFields, ConstructionRule, FrameContent, FrameFields, FrameKind, FrameStream, IntakeItem,
+    MapConfig, OcfUse, PhysicalChannelConfig, SecurityScope, SourceOrDestination, TfdfHeader,
+    TfdzRule, TransferFrameType, TruncatedFrameLen, Upid, UslpFrame, UslpFrameWriter, UslpMapId,
+    UslpSpacecraftId, UslpVcId, VcConfig, VcParams, VcTable, VcfCountLen, encode, encode_oid,
+    encode_oid_galois, encode_truncated,
 };
 
 use crate::abi::{self, Configs, invalid_argument};
@@ -211,67 +211,6 @@ pub const ALDIS_USLP_DISCARD_NO_TRUNCATED_LENGTH: u32 = 22;
 /// Discard reason: non-truncated header on a VC that carries only truncated frames (732.1 OI-48; USLP-015).
 pub const ALDIS_USLP_DISCARD_NON_TRUNCATED_NOT_ALLOWED: u32 =
     ALDIS_USLP_DISCARD_NON_TRUNCATED_FRAME_NOT_ALLOWED;
-
-// Aliases for validation check codes
-/// Alias for [`ALDIS_USLP_DISCARD_NONE`].
-pub const ALDIS_USLP_REASON_NONE: u32 = ALDIS_USLP_DISCARD_NONE;
-/// Alias for [`ALDIS_USLP_DISCARD_UNEXPECTED_VERSION`].
-pub const ALDIS_USLP_REASON_UNEXPECTED_VERSION: u32 = ALDIS_USLP_DISCARD_UNEXPECTED_VERSION;
-/// Alias for [`ALDIS_USLP_DISCARD_UNEXPECTED_SPACECRAFT`].
-pub const ALDIS_USLP_REASON_UNEXPECTED_SPACECRAFT: u32 = ALDIS_USLP_DISCARD_UNEXPECTED_SPACECRAFT;
-/// Alias for [`ALDIS_USLP_DISCARD_RESERVED_FLAGS`].
-pub const ALDIS_USLP_REASON_RESERVED_FLAGS: u32 = ALDIS_USLP_DISCARD_RESERVED_FLAGS;
-/// Alias for [`ALDIS_USLP_DISCARD_RESERVED_SPARE`].
-pub const ALDIS_USLP_REASON_RESERVED_SPARE: u32 = ALDIS_USLP_DISCARD_RESERVED_SPARE;
-/// Alias for [`ALDIS_USLP_DISCARD_INVALID_VCID`].
-pub const ALDIS_USLP_REASON_INVALID_VCID: u32 = ALDIS_USLP_DISCARD_INVALID_VCID;
-/// Alias for [`ALDIS_USLP_DISCARD_INVALID_MAP_ID`].
-pub const ALDIS_USLP_REASON_INVALID_MAP_ID: u32 = ALDIS_USLP_DISCARD_INVALID_MAP_ID;
-/// Alias for [`ALDIS_USLP_DISCARD_TRUNCATED_FRAME_NOT_ALLOWED`].
-pub const ALDIS_USLP_REASON_TRUNCATED_FRAME_NOT_ALLOWED: u32 =
-    ALDIS_USLP_DISCARD_TRUNCATED_FRAME_NOT_ALLOWED;
-/// Alias for [`ALDIS_USLP_DISCARD_VCF_COUNT_LENGTH_MISMATCH`].
-pub const ALDIS_USLP_REASON_VCF_COUNT_LENGTH_MISMATCH: u32 =
-    ALDIS_USLP_DISCARD_VCF_COUNT_LENGTH_MISMATCH;
-/// Alias for [`ALDIS_USLP_DISCARD_OCF_FLAG_MISMATCH`].
-pub const ALDIS_USLP_REASON_OCF_FLAG_MISMATCH: u32 = ALDIS_USLP_DISCARD_OCF_FLAG_MISMATCH;
-/// Alias for [`ALDIS_USLP_DISCARD_FIXED_LENGTH_MISMATCH`].
-pub const ALDIS_USLP_REASON_FIXED_LENGTH_MISMATCH: u32 = ALDIS_USLP_DISCARD_FIXED_LENGTH_MISMATCH;
-/// Alias for [`ALDIS_USLP_DISCARD_FRAME_TOO_LONG`].
-pub const ALDIS_USLP_REASON_FRAME_TOO_LONG: u32 = ALDIS_USLP_DISCARD_FRAME_TOO_LONG;
-/// Alias for [`ALDIS_USLP_DISCARD_FRAME_TOO_SHORT`].
-pub const ALDIS_USLP_REASON_FRAME_TOO_SHORT: u32 = ALDIS_USLP_DISCARD_FRAME_TOO_SHORT;
-/// Alias for [`ALDIS_USLP_DISCARD_LENGTH_MISMATCH`].
-pub const ALDIS_USLP_REASON_LENGTH_MISMATCH: u32 = ALDIS_USLP_DISCARD_LENGTH_MISMATCH;
-/// Alias for [`ALDIS_USLP_DISCARD_FECF_MISMATCH`].
-pub const ALDIS_USLP_REASON_FECF_MISMATCH: u32 = ALDIS_USLP_DISCARD_FECF_MISMATCH;
-/// Alias for [`ALDIS_USLP_DISCARD_CONSTRUCTION_RULE_MISMATCH`].
-pub const ALDIS_USLP_REASON_CONSTRUCTION_RULE_MISMATCH: u32 =
-    ALDIS_USLP_DISCARD_CONSTRUCTION_RULE_MISMATCH;
-/// Alias for [`ALDIS_USLP_DISCARD_POINTER_BEYOND_ZONE`].
-pub const ALDIS_USLP_REASON_POINTER_BEYOND_ZONE: u32 = ALDIS_USLP_DISCARD_POINTER_BEYOND_ZONE;
-/// Alias for [`ALDIS_USLP_DISCARD_OID_HEADER_MISMATCH`].
-pub const ALDIS_USLP_REASON_OID_HEADER_MISMATCH: u32 = ALDIS_USLP_DISCARD_OID_HEADER_MISMATCH;
-/// Alias for [`ALDIS_USLP_DISCARD_NON_TRUNCATED_FRAME_NOT_ALLOWED`].
-pub const ALDIS_USLP_REASON_NON_TRUNCATED_FRAME_NOT_ALLOWED: u32 =
-    ALDIS_USLP_DISCARD_NON_TRUNCATED_FRAME_NOT_ALLOWED;
-
-/// Delimited item: no octets remain at the offset (732.1 §4.3.11.2; USLP-015).
-pub const ALDIS_USLP_DELIMITED_END: u8 = 0;
-/// Delimited item: one frame, as long as its header declares, for the validation checks
-/// (732.1 §4.3.11.2.2, §4.3.11.2.4 c).
-pub const ALDIS_USLP_DELIMITED_FRAME: u8 = 1;
-/// Delimited item: the rest of the unit, discarded: a valid header that declares more octets
-/// than remain, `declared_len` (732.1 §4.3.11.2.3).
-pub const ALDIS_USLP_DELIMITED_INCOMPLETE_FRAME: u8 = 2;
-/// Delimited item: the rest of the unit, discarded: a truncated header of no configured VC, or
-/// of a VC without a truncated frame length (USLP-015; OI-35 item 8).
-pub const ALDIS_USLP_DELIMITED_NO_TRUNCATED_LENGTH: u8 = 3;
-/// Delimited item: the rest of the unit, discarded as Fill Data (732.1 §4.3.11.2.4 a–b).
-pub const ALDIS_USLP_DELIMITED_FILL: u8 = 4;
-/// Delimited item: the rest of the unit, discarded: a non-truncated header on a VC that has a
-/// truncated frame length and so carries only truncated frames (USLP-015; OI-48).
-pub const ALDIS_USLP_DELIMITED_NON_TRUNCATED_NOT_ALLOWED: u8 = 5;
 
 /// Managed parameters of a physical channel (732.1 §5 Table 5-1; USLP-003, USLP-008, API-040,
 /// CABI-033).
@@ -520,24 +459,6 @@ pub struct aldis_uslp_frame_t {
     pub layout: aldis_uslp_layout_t,
 }
 
-/// One item of a data unit (732.1 §4.3.11.2; USLP-015, M2 plan D14): its octets are the `len`
-/// octets of the unit at `offset`.
-#[repr(C)]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct aldis_uslp_delimited_t {
-    /// `ALDIS_USLP_DELIMITED_*`.
-    pub kind: u8,
-    /// Offset of the item in the unit: the offset the call was given.
-    pub offset: usize,
-    /// Octets the item takes; 0 only for `ALDIS_USLP_DELIMITED_END`. Every item but a frame
-    /// takes the rest of the unit.
-    pub len: usize,
-    /// The frame length the header declares, or its VC's truncated frame length: `len` for a
-    /// frame, more than `len` for `ALDIS_USLP_DELIMITED_INCOMPLETE_FRAME`, 0 for the other kinds,
-    /// as `aldis_tc_delimited_t` gives it.
-    pub declared_len: usize,
-}
-
 /// One item yielded by [`aldis_uslp_stream_next`] (732.1 §4.3.11.2, §4.3.11.3; USLP-014, USLP-015).
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -550,12 +471,18 @@ pub struct aldis_uslp_stream_item_t {
     pub offset: usize,
     /// Length of this item in octets consumed from the unit buffer.
     pub len: usize,
+    /// The frame length declared in the header or VC config (valid when accepted or incomplete).
+    pub declared_len: usize,
     /// The decoded frame view (valid when `kind == ALDIS_USLP_STREAM_ACCEPTED`).
     pub frame: aldis_uslp_frame_t,
     /// Discard reason code: [`ALDIS_USLP_DISCARD_*`] (valid when `kind == ALDIS_USLP_STREAM_DISCARDED`).
     pub discard_reason: u32,
     /// The error code of the discard (e.g. `ALDIS_ERR_CRC_MISMATCH`, negative integer).
     pub error_code: i32,
+    /// The field code of the error (0 if none).
+    pub error_field: u16,
+    /// Reserved padding octets, set to zero.
+    pub reserved2: [u8; 2],
 }
 
 impl Default for aldis_uslp_stream_item_t {
@@ -565,9 +492,12 @@ impl Default for aldis_uslp_stream_item_t {
             reserved: [0; 3],
             offset: 0,
             len: 0,
+            declared_len: 0,
             frame: aldis_uslp_frame_t::default(),
             discard_reason: 0,
             error_code: 0,
+            error_field: 0,
+            reserved2: [0; 2],
         }
     }
 }
@@ -1095,63 +1025,6 @@ pub unsafe extern "C" fn aldis_uslp_decode(
     }
 }
 
-/// Applies the USLP Frame Validation Checks to `bytes`, the octets of exactly one frame, as the
-/// delimiter yields them (732.1 §4.3.11.3; USLP-014, M2 plan D14, D17), as `validate_frame`
-/// does.
-///
-/// On success the frame is written to `out`, as [`aldis_uslp_decode`] writes it, and `reason`
-/// is `ALDIS_USLP_REASON_NONE`. When a check fails, `reason` is its stable code,
-/// `ALDIS_USLP_REASON_*` (`docs/standards/uslp-frame.md` §3.1), the call returns the decoder's
-/// error for it, and `out` is unchanged.
-///
-/// # Errors
-/// The errors of [`aldis_uslp_decode`], with `ALDIS_ERR_LENGTH_MISMATCH` (`frame_len`) where it
-/// returns `ALDIS_ERR_INCOMPLETE`, each with its reason; the errors of
-/// [`aldis_uslp_vc_table_check`] and CABI-022 violations, which write no reason.
-///
-/// # Safety
-/// As [`aldis_uslp_decode`]; `reason` is valid for one write.
-#[expect(
-    unsafe_code,
-    reason = "C ABI entry point: unmangled, takes raw pointers (GEN-071)"
-)]
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn aldis_uslp_validate(
-    bytes: *const u8,
-    len: usize,
-    pc: *const aldis_uslp_config_t,
-    vcs: *const aldis_uslp_vc_config_t,
-    vc_count: usize,
-    maps: *const aldis_uslp_map_config_t,
-    map_count: usize,
-    mode: u32,
-    out: *mut aldis_uslp_frame_t,
-    reason: *mut u32,
-    err: *mut crate::aldis_error_detail_t,
-) -> i32 {
-    // SAFETY: every pointer is valid as `# Safety` states; `abi` checks NULL and alignment.
-    unsafe {
-        abi::call(err, || {
-            let t = table_at(pc, vcs, vc_count, maps, map_count)?;
-            let bytes = abi::bytes(bytes, len)?;
-            let mode = abi::mode(mode)?;
-            let out = abi::out(out)?;
-            let reason = abi::out(reason)?;
-            match validate_frame(bytes, &t, mode) {
-                Ok(f) => {
-                    out.write(view(&f, bytes));
-                    reason.write(ALDIS_USLP_REASON_NONE);
-                    Ok(())
-                }
-                Err(r) => {
-                    reason.write(u32::from(r.reason().code()));
-                    Err(r.error())
-                }
-            }
-        })
-    }
-}
-
 /// Steps through the clean data unit `unit` using the unified Frame Intake Stream
 /// (732.1 §4.3.11.2, §4.3.11.3; USLP-014, USLP-015).
 ///
@@ -1172,6 +1045,10 @@ pub unsafe extern "C" fn aldis_uslp_validate(
 #[expect(
     unsafe_code,
     reason = "C ABI entry point: unmangled, takes raw pointers (GEN-071)"
+)]
+#[expect(
+    clippy::too_many_lines,
+    reason = "C ABI stream intake dispatch with channel table and item population"
 )]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn aldis_uslp_stream_next(
@@ -1212,9 +1089,12 @@ pub unsafe extern "C" fn aldis_uslp_stream_next(
                     reserved: [0; 3],
                     offset: current_offset,
                     len: 0,
+                    declared_len: 0,
                     frame: aldis_uslp_frame_t::default(),
                     discard_reason: 0,
                     error_code: 0,
+                    error_field: 0,
+                    reserved2: [0; 2],
                 });
                 return Ok(());
             }
@@ -1230,9 +1110,12 @@ pub unsafe extern "C" fn aldis_uslp_stream_next(
                         reserved: [0; 3],
                         offset: current_offset,
                         len: 0,
+                        declared_len: 0,
                         frame: aldis_uslp_frame_t::default(),
                         discard_reason: 0,
                         error_code: 0,
+                        error_field: 0,
+                        reserved2: [0; 2],
                     });
                 }
                 Some(IntakeItem::Accepted { frame, .. }) => {
@@ -1245,9 +1128,12 @@ pub unsafe extern "C" fn aldis_uslp_stream_next(
                         reserved: [0; 3],
                         offset: current_offset,
                         len,
+                        declared_len: len,
                         frame: view(&frame, frame.octets()),
                         discard_reason: 0,
                         error_code: 0,
+                        error_field: 0,
+                        reserved2: [0; 2],
                     });
                 }
                 Some(IntakeItem::Discarded {
@@ -1259,14 +1145,23 @@ pub unsafe extern "C" fn aldis_uslp_stream_next(
                     *offset_ref = current_offset
                         .checked_add(len)
                         .ok_or_else(invalid_argument)?;
+                    let declared_len = match reason {
+                        aldis::uslp::DiscardReason::IncompleteFrame { declared_len } => {
+                            declared_len
+                        }
+                        _ => 0,
+                    };
                     out.write(aldis_uslp_stream_item_t {
                         kind: ALDIS_USLP_STREAM_DISCARDED,
                         reserved: [0; 3],
                         offset: current_offset,
                         len,
+                        declared_len,
                         frame: aldis_uslp_frame_t::default(),
                         discard_reason: u32::from(reason.code()),
                         error_code: crate::error::status(error),
+                        error_field: error.field().map_or(0, |f| f.code().get()),
+                        reserved2: [0; 2],
                     });
                 }
             }
@@ -1581,78 +1476,6 @@ pub unsafe extern "C" fn aldis_uslp_encode_oid(
     }
 }
 
-/// The next item of the data unit `unit` from `offset`, the first octet not yet delimited
-/// (732.1 §4.3.11.2; USLP-015, M2 plan D14, D17).
-///
-/// As `aldis_uslp::next_frame` gives it: a frame, which the caller passes to
-/// [`aldis_uslp_validate`] and steps over, or the rest of the unit, discarded. A C caller loops
-/// from offset 0, adding each item's `len`, until the kind is `ALDIS_USLP_DELIMITED_END`;
-/// every other item takes at least one octet.
-///
-/// The unit is the octets of one data unit that TC Synchronization and Channel Coding delivered
-/// error-free (§4.3.11.2.1). Truncated frames are delimited by their VC's truncated frame
-/// length, which is why the call takes the virtual channels.
-///
-/// # Errors
-/// The errors of [`aldis_uslp_vc_table_check`] without MAPs; CABI-022 violations, including an
-/// `offset` beyond `unit_len`.
-///
-/// # Safety
-/// `unit` is valid for `unit_len` octets (or `NULL` with 0); `pc` and `vcs` as for
-/// [`aldis_uslp_vc_table_check`]; `out` is valid for one write; `err` is `NULL` or valid for one
-/// write.
-#[expect(
-    unsafe_code,
-    reason = "C ABI entry point: unmangled, takes raw pointers (GEN-071)"
-)]
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn aldis_uslp_next_frame(
-    unit: *const u8,
-    unit_len: usize,
-    offset: usize,
-    pc: *const aldis_uslp_config_t,
-    vcs: *const aldis_uslp_vc_config_t,
-    vc_count: usize,
-    out: *mut aldis_uslp_delimited_t,
-    err: *mut crate::aldis_error_detail_t,
-) -> i32 {
-    // SAFETY: every pointer is valid as `# Safety` states; `abi` checks NULL and alignment.
-    unsafe {
-        abi::call(err, || {
-            let t = table_at(pc, vcs, vc_count, core::ptr::null(), 0)?;
-            let unit = abi::bytes(unit, unit_len)?;
-            let rest = unit.get(offset..).ok_or_else(invalid_argument)?;
-            let out = abi::out(out)?;
-            let item = |kind, len, declared_len| aldis_uslp_delimited_t {
-                kind,
-                offset,
-                len,
-                declared_len,
-            };
-            out.write(match next_frame(rest, &t) {
-                None => item(ALDIS_USLP_DELIMITED_END, 0, 0),
-                Some(Delimited::Frame(o)) => item(ALDIS_USLP_DELIMITED_FRAME, o.len(), o.len()),
-                Some(Delimited::IncompleteFrame {
-                    octets,
-                    declared_len,
-                }) => item(
-                    ALDIS_USLP_DELIMITED_INCOMPLETE_FRAME,
-                    octets.len(),
-                    declared_len,
-                ),
-                Some(Delimited::NoTruncatedLength(o)) => {
-                    item(ALDIS_USLP_DELIMITED_NO_TRUNCATED_LENGTH, o.len(), 0)
-                }
-                Some(Delimited::NonTruncatedNotAllowed(o)) => {
-                    item(ALDIS_USLP_DELIMITED_NON_TRUNCATED_NOT_ALLOWED, o.len(), 0)
-                }
-                Some(Delimited::Fill(o)) => item(ALDIS_USLP_DELIMITED_FILL, o.len(), 0),
-            });
-            Ok(())
-        })
-    }
-}
-
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
@@ -1771,24 +1594,24 @@ mod tests {
         assert_eq!(assigned, upids.len());
         assert_eq!(Upid::from_bits(ALDIS_USLP_UPID_MAX + 1), None);
         let reasons = [
-            ALDIS_USLP_REASON_UNEXPECTED_VERSION,
-            ALDIS_USLP_REASON_UNEXPECTED_SPACECRAFT,
-            ALDIS_USLP_REASON_RESERVED_FLAGS,
-            ALDIS_USLP_REASON_RESERVED_SPARE,
-            ALDIS_USLP_REASON_INVALID_VCID,
-            ALDIS_USLP_REASON_INVALID_MAP_ID,
-            ALDIS_USLP_REASON_TRUNCATED_FRAME_NOT_ALLOWED,
-            ALDIS_USLP_REASON_VCF_COUNT_LENGTH_MISMATCH,
-            ALDIS_USLP_REASON_OCF_FLAG_MISMATCH,
-            ALDIS_USLP_REASON_FIXED_LENGTH_MISMATCH,
-            ALDIS_USLP_REASON_FRAME_TOO_LONG,
-            ALDIS_USLP_REASON_FRAME_TOO_SHORT,
-            ALDIS_USLP_REASON_LENGTH_MISMATCH,
-            ALDIS_USLP_REASON_FECF_MISMATCH,
-            ALDIS_USLP_REASON_CONSTRUCTION_RULE_MISMATCH,
-            ALDIS_USLP_REASON_POINTER_BEYOND_ZONE,
-            ALDIS_USLP_REASON_OID_HEADER_MISMATCH,
-            ALDIS_USLP_REASON_NON_TRUNCATED_FRAME_NOT_ALLOWED,
+            ALDIS_USLP_DISCARD_UNEXPECTED_VERSION,
+            ALDIS_USLP_DISCARD_UNEXPECTED_SPACECRAFT,
+            ALDIS_USLP_DISCARD_RESERVED_FLAGS,
+            ALDIS_USLP_DISCARD_RESERVED_SPARE,
+            ALDIS_USLP_DISCARD_INVALID_VCID,
+            ALDIS_USLP_DISCARD_INVALID_MAP_ID,
+            ALDIS_USLP_DISCARD_TRUNCATED_FRAME_NOT_ALLOWED,
+            ALDIS_USLP_DISCARD_VCF_COUNT_LENGTH_MISMATCH,
+            ALDIS_USLP_DISCARD_OCF_FLAG_MISMATCH,
+            ALDIS_USLP_DISCARD_FIXED_LENGTH_MISMATCH,
+            ALDIS_USLP_DISCARD_FRAME_TOO_LONG,
+            ALDIS_USLP_DISCARD_FRAME_TOO_SHORT,
+            ALDIS_USLP_DISCARD_LENGTH_MISMATCH,
+            ALDIS_USLP_DISCARD_FECF_MISMATCH,
+            ALDIS_USLP_DISCARD_CONSTRUCTION_RULE_MISMATCH,
+            ALDIS_USLP_DISCARD_POINTER_BEYOND_ZONE,
+            ALDIS_USLP_DISCARD_OID_HEADER_MISMATCH,
+            ALDIS_USLP_DISCARD_NON_TRUNCATED_FRAME_NOT_ALLOWED,
         ];
         assert!(
             reasons
@@ -1797,7 +1620,7 @@ mod tests {
                 .eq(Reason::ALL.iter().map(|r| u32::from(r.code())))
         );
         assert_eq!(Reason::from_code(0), None);
-        assert_eq!(ALDIS_USLP_REASON_NONE, 0);
+        assert_eq!(ALDIS_USLP_DISCARD_NONE, 0);
         assert_eq!(
             (ALDIS_USLP_SOURCE, ALDIS_USLP_DESTINATION),
             (

@@ -48,7 +48,7 @@ const fn length(exact: bool, len: usize) -> Rejection {
 }
 
 /// The header of a frame that passed checks (a)–(c) (232.0 §4.4.9.3.3).
-struct Head {
+pub(crate) struct Head {
     raw: RawHeader,
     frame_type: FrameType,
     vc: VcConfig,
@@ -59,7 +59,7 @@ struct Head {
 
 /// Checks (a)–(c), which need only the header and the channels (232.0 §4.4.9.3.3 a–c;
 /// TC-002, TC-003, TC-007, TC-021, TC-022).
-fn check_head<L: VcLookup + ?Sized>(
+pub(crate) fn check_head<L: VcLookup + ?Sized>(
     bytes: &[u8],
     channels: &L,
     mode: DecodeMode,

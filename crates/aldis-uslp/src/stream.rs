@@ -231,6 +231,10 @@ impl<'a, 'c, L: VcLookup + ?Sized> FrameStream<'a, 'c, L> {
 impl<'a, L: VcLookup + ?Sized> Iterator for FrameStream<'a, '_, L> {
     type Item = IntakeItem<'a>;
 
+    #[expect(
+        clippy::too_many_lines,
+        reason = "stream intake state machine and header check order"
+    )]
     fn next(&mut self) -> Option<Self::Item> {
         if self.rest.is_empty() {
             return None;
@@ -284,6 +288,15 @@ impl<'a, L: VcLookup + ?Sized> Iterator for FrameStream<'a, '_, L> {
                 } else {
                     let octets = self.rest;
                     self.rest = &[];
+                    if let Err(rejection) = parse(octets, self.channels, self.mode, true)
+                        && rejection.reason() != Reason::LengthMismatch
+                    {
+                        return Some(IntakeItem::Discarded {
+                            reason: DiscardReason::from(rejection.reason()),
+                            octets,
+                            error: rejection.error(),
+                        });
+                    }
                     Some(IntakeItem::Discarded {
                         reason: DiscardReason::IncompleteFrame { declared_len: len },
                         octets,
@@ -303,6 +316,15 @@ impl<'a, L: VcLookup + ?Sized> Iterator for FrameStream<'a, '_, L> {
             Some(Declared::TruncatedOnly) => {
                 let octets = self.rest;
                 self.rest = &[];
+                if let Err(rejection) = parse(octets, self.channels, self.mode, true)
+                    && rejection.reason() != Reason::LengthMismatch
+                {
+                    return Some(IntakeItem::Discarded {
+                        reason: DiscardReason::from(rejection.reason()),
+                        octets,
+                        error: rejection.error(),
+                    });
+                }
                 Some(IntakeItem::Discarded {
                     reason: DiscardReason::NonTruncatedFrameNotAllowed,
                     octets,

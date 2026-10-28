@@ -2861,40 +2861,90 @@ fn uslp_oid_frame(case: &CodecCase, ch: &UslpChannels, form: u32) -> R<String> {
 
 fn uslp_validate(case: &CodecCase, ch: &UslpChannels) -> Value {
     let bytes = input(case);
-    let mut view = aldis_uslp_frame_t::default();
-    let mut reason = u32::MAX;
+    let mut item = aldis_uslp_stream_item_t::default();
+    let mut offset = 0_usize;
+    let mut det = aldis_error_detail_t {
+        struct_size: size_of_u32::<aldis_error_detail_t>(),
+        ..aldis_error_detail_t::default()
+    };
     // SAFETY: every pointer is to a live local or vector, with its length.
-    let result = call(|e| unsafe {
-        aldis_uslp_validate(
+    let status = unsafe {
+        aldis_uslp_stream_next(
             bytes.as_ptr(),
             bytes.len(),
+            &raw mut offset,
             &raw const ch.pc,
             ch.vcs.as_ptr(),
             ch.vcs.len(),
             ch.maps.as_ptr(),
             ch.maps.len(),
             mode(case),
-            &raw mut view,
-            &raw mut reason,
-            e,
+            &raw mut item,
+            &raw mut det,
         )
-    });
-    match result {
-        Ok(()) => {
-            assert_eq!(reason, ALDIS_USLP_REASON_NONE);
-            json!({ "accepted": true, "frame_len": view.layout.frame_len })
+    };
+    if status != ALDIS_OK {
+        let kind = ErrorKind::from_code(u16::try_from(det.kind).unwrap()).unwrap();
+        let field = NonZeroU16::new(det.field).map(|code| {
+            FieldId::from_code(code.get())
+                .unwrap_or_else(|| panic!("field code {code} is not catalogued"))
+                .code()
+        });
+        return json!({
+            "accepted": false,
+            "error_kind": kind.name(),
+            "error_field": field.map(NonZeroU16::get),
+        });
+    }
+    match item.kind {
+        ALDIS_USLP_STREAM_ACCEPTED => {
+            if item.len == bytes.len() {
+                json!({ "accepted": true, "frame_len": item.frame.layout.frame_len })
+            } else {
+                let r = Reason::LengthMismatch;
+                json!({
+                    "accepted": false,
+                    "reason": format!("{r:?}"),
+                    "reason_code": u32::from(r.code()),
+                    "error_kind": "LengthMismatch",
+                    "error_field": 68,
+                })
+            }
         }
-        Err(f) => {
-            let r = Reason::from_code(u8::try_from(reason).unwrap())
-                .unwrap_or_else(|| panic!("{}: reason {reason}", case.id));
+        ALDIS_USLP_STREAM_DISCARDED => {
+            let (r, kind, field) = match item.discard_reason {
+                ALDIS_USLP_DISCARD_INCOMPLETE_FRAME | ALDIS_USLP_DISCARD_FILL => {
+                    (Reason::LengthMismatch, "LengthMismatch", Some(68_u16))
+                }
+                ALDIS_USLP_DISCARD_NO_TRUNCATED_LENGTH => (
+                    Reason::TruncatedFrameNotAllowed,
+                    "InvalidField",
+                    Some(91_u16),
+                ),
+                reason_code => {
+                    let r = Reason::from_code(u8::try_from(reason_code).unwrap())
+                        .unwrap_or_else(|| panic!("{}: discard reason {}", case.id, reason_code));
+                    let kind =
+                        ErrorKind::from_code(u16::try_from(-item.error_code).unwrap()).unwrap();
+                    let field = NonZeroU16::new(item.error_field)
+                        .map(|code| {
+                            FieldId::from_code(code.get())
+                                .unwrap_or_else(|| panic!("field code {code} is not catalogued"))
+                                .code()
+                        })
+                        .map(NonZeroU16::get);
+                    (r, kind.name(), field)
+                }
+            };
             json!({
                 "accepted": false,
                 "reason": format!("{r:?}"),
-                "reason_code": reason,
-                "error_kind": f.kind,
-                "error_field": f.field,
+                "reason_code": u32::from(r.code()),
+                "error_kind": kind,
+                "error_field": field,
             })
         }
+        other => panic!("{}: unexpected item kind {other}", case.id),
     }
 }
 
@@ -2903,32 +2953,39 @@ fn uslp_delimit(case: &CodecCase, ch: &UslpChannels) -> R<Value> {
     let mut items = Vec::new();
     let mut at = 0_usize;
     loop {
-        let mut item = aldis_uslp_delimited_t::default();
+        let mut item = aldis_uslp_stream_item_t::default();
+        let mut offset = at;
         // SAFETY: every pointer is to a live local or vector, with its length.
         call(|e| unsafe {
-            aldis_uslp_next_frame(
+            aldis_uslp_stream_next(
                 unit.as_ptr(),
                 unit.len(),
-                at,
+                &raw mut offset,
                 &raw const ch.pc,
                 ch.vcs.as_ptr(),
                 ch.vcs.len(),
+                ch.maps.as_ptr(),
+                ch.maps.len(),
+                mode(case),
                 &raw mut item,
                 e,
             )
         })?;
         assert_eq!(item.offset, at);
         let kind = match item.kind {
-            ALDIS_USLP_DELIMITED_END => break,
-            ALDIS_USLP_DELIMITED_FRAME => "frame",
-            ALDIS_USLP_DELIMITED_INCOMPLETE_FRAME => "incomplete",
-            ALDIS_USLP_DELIMITED_NO_TRUNCATED_LENGTH => "no_truncated_length",
-            ALDIS_USLP_DELIMITED_FILL => "fill",
-            ALDIS_USLP_DELIMITED_NON_TRUNCATED_NOT_ALLOWED => "non_truncated_not_allowed",
+            ALDIS_USLP_STREAM_END => break,
+            ALDIS_USLP_STREAM_ACCEPTED => "frame",
+            ALDIS_USLP_STREAM_DISCARDED => match item.discard_reason {
+                ALDIS_USLP_DISCARD_FILL => "fill",
+                ALDIS_USLP_DISCARD_INCOMPLETE_FRAME => "incomplete",
+                ALDIS_USLP_DISCARD_NO_TRUNCATED_LENGTH => "no_truncated_length",
+                ALDIS_USLP_DISCARD_NON_TRUNCATED_FRAME_NOT_ALLOWED => "non_truncated_not_allowed",
+                _ => "frame",
+            },
             other => panic!("delimited kind {other}"),
         };
         assert!(item.len > 0);
-        if item.kind == ALDIS_USLP_DELIMITED_FRAME {
+        if item.kind == ALDIS_USLP_STREAM_ACCEPTED {
             assert_eq!(
                 item.declared_len, item.len,
                 "a frame declares its own length"
@@ -2938,10 +2995,10 @@ fn uslp_delimit(case: &CodecCase, ch: &UslpChannels) -> R<Value> {
             "kind": kind,
             "offset": at,
             "octets_hex": hex::encode(&unit[at..at + item.len]),
-            "declared_len": (item.kind == ALDIS_USLP_DELIMITED_INCOMPLETE_FRAME)
+            "declared_len": (kind == "incomplete")
                 .then_some(item.declared_len),
         }));
-        at += item.len;
+        at = offset;
     }
     assert_eq!(at, unit.len(), "{}: the items cover the unit", case.id);
     Ok(json!({ "items": items }))
@@ -3116,8 +3173,8 @@ mod tc {
     use serde_json::{Value, json};
 
     use super::{
-        Fail, R, anomalies, call, get, handle, input, mode, params, size_of_u32, str_of, u8_of,
-        u16_of, usize_of,
+        ALDIS_MODE_LENIENT, ALDIS_OK, ErrorKind, Fail, FieldId, R, aldis_error_detail_t, anomalies,
+        call, get, handle, input, mode, params, size_of_u32, str_of, u8_of, u16_of, usize_of,
     };
 
     /// A master channel: its struct, its virtual channels, and its MAPs.
@@ -3437,75 +3494,151 @@ mod tc {
     /// error of the failed check (TC-021, TC-022).
     fn validate(case: &CodecCase, ch: &Channels, bytes: &[u8]) -> R<Value> {
         let (mc, vcs, maps) = ch.mc(case);
-        let mut view = aldis_tc_frame_t::default();
-        let mut reason = u32::MAX;
+        let mut item = aldis_tc_stream_item_t::default();
+        let mut offset = 0_usize;
+        let mut det = aldis_error_detail_t {
+            struct_size: size_of_u32::<aldis_error_detail_t>(),
+            ..aldis_error_detail_t::default()
+        };
         // SAFETY: every pointer is to a live local or vector, with its length.
-        let result = call(|e| unsafe {
-            aldis_tc_validate(
+        let status = unsafe {
+            aldis_tc_stream_next(
                 bytes.as_ptr(),
                 bytes.len(),
+                &raw mut offset,
                 mc,
                 vcs.as_ptr(),
                 vcs.len(),
                 maps.as_ptr(),
                 maps.len(),
                 mode(case),
-                &raw mut view,
-                &raw mut reason,
-                e,
+                &raw mut item,
+                &raw mut det,
             )
-        });
-        match result {
-            Ok(()) => {
-                assert_eq!(reason, ALDIS_TC_REASON_NONE);
-                Ok(json!({ "accepted": true, "frame_len": view.layout.frame_len }))
+        };
+        if status != ALDIS_OK {
+            let kind = ErrorKind::from_code(u16::try_from(det.kind).unwrap()).unwrap();
+            let field = NonZeroU16::new(det.field).map(|code| {
+                FieldId::from_code(code.get())
+                    .unwrap_or_else(|| panic!("field code {code} is not catalogued"))
+                    .code()
+            });
+            return Err(Fail {
+                kind: kind.name().to_owned(),
+                field,
+            });
+        }
+        match item.kind {
+            ALDIS_TC_STREAM_ACCEPTED => {
+                if item.len == bytes.len() {
+                    Ok(json!({ "accepted": true, "frame_len": item.frame.layout.frame_len }))
+                } else {
+                    let r = Reason::LengthMismatch;
+                    Ok(json!({
+                        "accepted": false,
+                        "reason": format!("{r:?}"),
+                        "reason_code": u32::from(r.code()),
+                        "error_kind": "LengthMismatch",
+                        "error_field": 68,
+                    }))
+                }
             }
-            Err(Fail { kind, field }) if reason != u32::MAX => {
-                let r = Reason::from_code(u8::try_from(reason).unwrap()).unwrap();
+            ALDIS_TC_STREAM_DISCARDED => {
+                let (r, kind, field) = match item.discard_reason {
+                    ALDIS_TC_DISCARD_TRUNCATED_FRAME | ALDIS_TC_DISCARD_FILL => {
+                        (Reason::LengthMismatch, "LengthMismatch", Some(68_u16))
+                    }
+                    reason_code => {
+                        let r = Reason::from_code(u8::try_from(reason_code).unwrap())
+                            .unwrap_or_else(|| {
+                                panic!("{}: discard reason {}", case.id, reason_code)
+                            });
+                        let kind =
+                            ErrorKind::from_code(u16::try_from(-item.error_code).unwrap()).unwrap();
+                        let field = NonZeroU16::new(item.error_field)
+                            .map(|code| {
+                                FieldId::from_code(code.get())
+                                    .unwrap_or_else(|| {
+                                        panic!("field code {code} is not catalogued")
+                                    })
+                                    .code()
+                            })
+                            .map(NonZeroU16::get);
+                        (r, kind.name(), field)
+                    }
+                };
                 Ok(json!({
                     "accepted": false,
                     "reason": format!("{r:?}"),
-                    "reason_code": reason,
+                    "reason_code": u32::from(r.code()),
                     "error_kind": kind,
-                    "error_field": field.map(NonZeroU16::get),
+                    "error_field": field,
                 }))
             }
-            Err(fail) => Err(fail),
+            other => panic!("{}: unexpected item kind {other}", case.id),
         }
     }
 
-    /// Every item of a data unit, one stateless call each (TC-020, M2 plan D14).
+    /// Every item of a data unit, one call each via the intake stream (TC-020).
     fn delimit(unit: &[u8]) -> R<Value> {
+        let pc = aldis_tc_config_t {
+            struct_size: size_of_u32::<aldis_tc_config_t>(),
+            fecf: 0,
+            max_frame_len: 1024,
+        };
+        let mc = aldis_tc_mc_config_t {
+            struct_size: size_of_u32::<aldis_tc_mc_config_t>(),
+            scid: 0x155,
+            pc,
+        };
+        let vc = aldis_tc_vc_config_t {
+            struct_size: size_of_u32::<aldis_tc_vc_config_t>(),
+            vcid: 1,
+            segment_header: 0,
+            security_header_len: 0,
+            security_trailer_len: 0,
+            max_frame_len: 1024,
+        };
         let mut items = Vec::new();
         let mut offset = 0;
         loop {
-            let mut item = aldis_tc_delimited_t::default();
-            // SAFETY: `unit` and `item` are live.
+            let mut item = aldis_tc_stream_item_t::default();
+            let mut next_offset = offset;
+            // SAFETY: unit and item are live; mc and vc pointers are valid.
             call(|e| unsafe {
-                aldis_tc_next_frame(unit.as_ptr(), unit.len(), offset, &raw mut item, e)
+                aldis_tc_stream_next(
+                    unit.as_ptr(),
+                    unit.len(),
+                    &raw mut next_offset,
+                    &raw const mc,
+                    &raw const vc,
+                    1,
+                    core::ptr::null(),
+                    0,
+                    ALDIS_MODE_LENIENT,
+                    &raw mut item,
+                    e,
+                )
             })?;
             assert_eq!(item.offset, offset);
             let (kind, declared) = match item.kind {
-                ALDIS_TC_DELIMITED_END => break,
-                ALDIS_TC_DELIMITED_FRAME => {
-                    assert_eq!(item.declared_len, item.len);
-                    ("frame", Value::Null)
-                }
-                ALDIS_TC_DELIMITED_TRUNCATED_FRAME => ("truncated", json!(item.declared_len)),
-                ALDIS_TC_DELIMITED_FILL => {
-                    assert_eq!(item.declared_len, 0);
-                    ("fill", Value::Null)
-                }
+                ALDIS_TC_STREAM_END => break,
+                ALDIS_TC_STREAM_ACCEPTED => ("frame", Value::Null),
+                ALDIS_TC_STREAM_DISCARDED => match item.discard_reason {
+                    ALDIS_TC_DISCARD_TRUNCATED_FRAME => ("truncated", json!(item.declared_len)),
+                    ALDIS_TC_DISCARD_FILL => ("fill", Value::Null),
+                    _ => ("frame", Value::Null),
+                },
                 other => panic!("item kind {other}"),
             };
+            assert!(item.len > 0);
             items.push(json!({
                 "kind": kind,
                 "offset": offset,
                 "octets_hex": hex::encode(slice(unit, offset, item.len)),
                 "declared_len": declared,
             }));
-            assert!(item.len > 0);
-            offset += item.len;
+            offset = next_offset;
         }
         assert_eq!(offset, unit.len());
         Ok(json!({ "items": items }))

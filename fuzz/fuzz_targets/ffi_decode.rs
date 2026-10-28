@@ -9,8 +9,7 @@
 //! `aldis_tm_decode`, `aldis_tm_decode_unchecked`, `aldis_tm_peek_length`,
 //! `aldis_tm_header_decode`, `aldis_tm_decode_with`, and `aldis_tm_validate`; and so does that
 //! of `aldis-tc` and the CLCW (`tc_ffi`), and that of `aldis-uslp`: `aldis_uslp_vc_table_check`,
-//! `aldis_uslp_decode`, `aldis_uslp_validate`, `aldis_uslp_peek_length`, and
-//! `aldis_uslp_next_frame`.
+//! `aldis_uslp_decode`, `aldis_uslp_peek_length`, and `aldis_uslp_stream_next`.
 //!
 //! AOS (M2 WP-4 module 8): every input also runs through the C ABI of `aldis-aos`, which agrees
 //! with it: `aldis_aos_fhec_encode`, `aldis_aos_fhec_decode`, `aldis_aos_mpdu_decode`,
@@ -78,23 +77,19 @@ use aldis_tm::{
 };
 // ---- USLP (M2 WP-5 module 9)
 use aldis_ffi::uslp::{
-    ALDIS_USLP_DELIMITED_END, ALDIS_USLP_DELIMITED_FILL, ALDIS_USLP_DELIMITED_FRAME,
-    ALDIS_USLP_DELIMITED_INCOMPLETE_FRAME, ALDIS_USLP_DELIMITED_NO_TRUNCATED_LENGTH,
-    ALDIS_USLP_DELIMITED_NON_TRUNCATED_NOT_ALLOWED, ALDIS_USLP_FRAME_FIXED,
-    ALDIS_USLP_FRAME_VARIABLE, ALDIS_USLP_KIND_EXPEDITED, ALDIS_USLP_KIND_PROTOCOL_CONTROL,
-    ALDIS_USLP_KIND_SEQUENCE_CONTROLLED, ALDIS_USLP_OCF_ABSENT, ALDIS_USLP_OCF_ALLOWED,
-    ALDIS_USLP_OCF_REQUIRED, ALDIS_USLP_REASON_NONE, ALDIS_USLP_SECURITY_PER_MAP,
+    ALDIS_USLP_FRAME_FIXED, ALDIS_USLP_FRAME_VARIABLE, ALDIS_USLP_KIND_EXPEDITED,
+    ALDIS_USLP_KIND_PROTOCOL_CONTROL, ALDIS_USLP_KIND_SEQUENCE_CONTROLLED, ALDIS_USLP_OCF_ABSENT,
+    ALDIS_USLP_OCF_ALLOWED, ALDIS_USLP_OCF_REQUIRED, ALDIS_USLP_SECURITY_PER_MAP,
     ALDIS_USLP_SECURITY_VC, ALDIS_USLP_STREAM_ACCEPTED, ALDIS_USLP_STREAM_DISCARDED,
-    ALDIS_USLP_STREAM_END, aldis_uslp_config_t, aldis_uslp_decode, aldis_uslp_delimited_t,
-    aldis_uslp_frame_t, aldis_uslp_map_config_t, aldis_uslp_next_frame, aldis_uslp_peek_length,
-    aldis_uslp_stream_item_t, aldis_uslp_stream_next, aldis_uslp_validate, aldis_uslp_vc_config_t,
-    aldis_uslp_vc_table_check,
+    ALDIS_USLP_STREAM_END, aldis_uslp_config_t, aldis_uslp_decode, aldis_uslp_frame_t,
+    aldis_uslp_map_config_t, aldis_uslp_peek_length, aldis_uslp_stream_item_t,
+    aldis_uslp_stream_next, aldis_uslp_vc_config_t, aldis_uslp_vc_table_check,
 };
 use aldis_uslp::{
-    Delimited, FrameKind, FrameStream as UslpFrameStream, IntakeItem as UslpIntakeItem,
-    MapConfig, OcfUse, PhysicalChannelConfig, SecurityScope, TransferFrameType, TruncatedFrameLen,
-    Upid, UslpFrame, UslpMapId, UslpSpacecraftId, UslpVcId, VcConfig, VcParams,
-    VcTable as UslpVcTable, VcfCountLen, next_frame, validate_frame,
+    FrameKind, FrameStream as UslpFrameStream, IntakeItem as UslpIntakeItem, MapConfig, OcfUse,
+    PhysicalChannelConfig, SecurityScope, TransferFrameType, TruncatedFrameLen, Upid, UslpFrame,
+    UslpMapId, UslpSpacecraftId, UslpVcId, VcConfig, VcParams, VcTable as UslpVcTable,
+    VcfCountLen,
 };
 // ---- end USLP
 use libfuzzer_sys::fuzz_target;
@@ -625,9 +620,8 @@ fn tm(data: &[u8], fecf: bool, mode: DecodeMode, c_mode: u32) {
 /// `aldis_tc_peek_length` and `aldis_tc_header_decode`; on a master channel of the frame's SCID
 /// with eight VCs, the odd ones with Segment Headers and four MAPs each, the even ones with
 /// SDLS layouts of `n % 5` header and `n % 3` trailer octets, `aldis_tc_mc_config_check`,
-/// `aldis_tc_decode`, and `aldis_tc_validate` with its reason; `aldis_tc_next_frame` at every
-/// item of the input as a data unit; `aldis_tc_control_decode`; and `aldis_clcw_decode` on the
-/// first four octets (TC-001…TC-006, TC-020…TC-022, TC-030, API-070).
+/// `aldis_tc_decode`, and `aldis_tc_stream_next` over the input; `aldis_tc_control_decode`;
+/// and `aldis_clcw_decode` on the first four octets (TC-001…TC-006, TC-020…TC-022, TC-030, API-070).
 mod tc_ffi {
     use core::ptr::null_mut;
 
@@ -635,21 +629,18 @@ mod tc_ffi {
     use aldis_core::{DecodeMode, Error};
     use aldis_ffi::tc::{
         ALDIS_TC_CONTROL_NONE, ALDIS_TC_CONTROL_SET_VR, ALDIS_TC_CONTROL_UNLOCK,
-        ALDIS_TC_DELIMITED_END, ALDIS_TC_DELIMITED_FILL, ALDIS_TC_DELIMITED_FRAME,
-        ALDIS_TC_DELIMITED_TRUNCATED_FRAME, ALDIS_TC_FRAME_AD, ALDIS_TC_FRAME_BC,
-        ALDIS_TC_FRAME_BD, ALDIS_TC_REASON_NONE, ALDIS_TC_STREAM_ACCEPTED,
+        ALDIS_TC_FRAME_AD, ALDIS_TC_FRAME_BC, ALDIS_TC_FRAME_BD, ALDIS_TC_STREAM_ACCEPTED,
         ALDIS_TC_STREAM_DISCARDED, ALDIS_TC_STREAM_END, aldis_clcw_decode, aldis_clcw_t,
         aldis_tc_config_t, aldis_tc_control_decode, aldis_tc_control_t, aldis_tc_decode,
-        aldis_tc_delimited_t, aldis_tc_frame_t, aldis_tc_header_decode, aldis_tc_header_t,
-        aldis_tc_map_config_t, aldis_tc_mc_config_check, aldis_tc_mc_config_t, aldis_tc_next_frame,
-        aldis_tc_peek_length, aldis_tc_stream_item_t, aldis_tc_stream_next, aldis_tc_validate,
-        aldis_tc_vc_config_t,
+        aldis_tc_frame_t, aldis_tc_header_decode, aldis_tc_header_t, aldis_tc_map_config_t,
+        aldis_tc_mc_config_check, aldis_tc_mc_config_t, aldis_tc_peek_length,
+        aldis_tc_stream_item_t, aldis_tc_stream_next, aldis_tc_vc_config_t,
     };
     use aldis_ffi::{ALDIS_OK, aldis_error_detail_t};
     use aldis_tc::{
-        Clcw, ControlCommand, Delimited, FrameStream, FrameType, IntakeItem, MapConfig,
+        Clcw, ControlCommand, FrameStream, FrameType, IntakeItem, MapConfig,
         PhysicalChannelConfig, SegmentHeaderUse, TcFrame, TcFrameHeader, TcMapId, TcSpacecraftId,
-        TcVcId, VcConfig, VcTable, next_frame, validate_frame,
+        TcVcId, VcConfig, VcTable,
     };
 
     use super::expect;
@@ -855,62 +846,7 @@ mod tc_ffi {
         if let Ok(f) = &rust {
             same(&view, data, f);
         }
-        let rust = validate_frame(data, &table, mode);
-        let mut reason = u32::MAX;
-        // SAFETY: as above.
-        let status = unsafe {
-            aldis_tc_validate(
-                data.as_ptr(),
-                data.len(),
-                &raw const mc,
-                vcs.as_ptr(),
-                vcs.len(),
-                maps.as_ptr(),
-                maps.len(),
-                c_mode,
-                &raw mut view,
-                &raw mut reason,
-                &raw mut detail,
-            )
-        };
-        expect(&rust.map_err(Error::from), status, &detail);
-        match &rust {
-            Ok(f) => {
-                assert_eq!(reason, ALDIS_TC_REASON_NONE);
-                same(&view, data, f);
-            }
-            Err(r) => assert_eq!(reason, u32::from(r.reason().code())),
-        }
-        // The input as one data unit, item by item.
-        let mut offset = 0;
-        loop {
-            let mut item = aldis_tc_delimited_t::default();
-            // SAFETY: as above.
-            let status = unsafe {
-                aldis_tc_next_frame(data.as_ptr(), data.len(), offset, &raw mut item, null_mut())
-            };
-            assert_eq!((status, item.offset), (ALDIS_OK, offset));
-            let rust = next_frame(&data[offset..]);
-            let expected = match rust {
-                None => (ALDIS_TC_DELIMITED_END, 0, 0),
-                Some(Delimited::Frame(f)) => (ALDIS_TC_DELIMITED_FRAME, f.len(), f.len()),
-                Some(Delimited::TruncatedFrame {
-                    octets,
-                    declared_len,
-                }) => (
-                    ALDIS_TC_DELIMITED_TRUNCATED_FRAME,
-                    octets.len(),
-                    declared_len,
-                ),
-                Some(Delimited::Fill(f)) => (ALDIS_TC_DELIMITED_FILL, f.len(), 0),
-            };
-            assert_eq!((item.kind, item.len, item.declared_len), expected);
-            if item.kind == ALDIS_TC_DELIMITED_END {
-                break;
-            }
-            offset += item.len;
-        }
-        assert_eq!(offset, data.len());
+
         let mut stream_offset = 0;
         let mut rust_stream = FrameStream::new(data, &table, mode);
         loop {
@@ -1518,11 +1454,9 @@ fn uslp_table(
 }
 
 /// The C ABI of `aldis-uslp` agrees with `aldis-uslp` on the input as one frame or data unit
-/// (M2 plan D14): `aldis_uslp_vc_table_check`, `aldis_uslp_decode`, `aldis_uslp_validate` with
-/// its reason, `aldis_uslp_peek_length`, and `aldis_uslp_next_frame` over the whole input
-/// (USLP-001…USLP-007, USLP-014…USLP-016, API-070).
+/// (M2 plan D14): `aldis_uslp_vc_table_check`, `aldis_uslp_decode`, `aldis_uslp_peek_length`,
+/// and `aldis_uslp_stream_next` over the whole input (USLP-001…USLP-007, USLP-014…USLP-016, API-070).
 #[expect(unsafe_code, reason = "calls the C ABI with valid pointers")]
-#[expect(clippy::too_many_lines, reason = "one comparison per C function")]
 fn uslp(data: &[u8], selector: u8, mode: DecodeMode, c_mode: u32) {
     let (pc, vc, maps) = uslp_channels(data, selector);
     let rust_table = uslp_table(&pc, &vc, &maps);
@@ -1563,34 +1497,6 @@ fn uslp(data: &[u8], selector: u8, mode: DecodeMode, c_mode: u32) {
     if let Ok(f) = &rust {
         uslp_same(&view, f, data);
     }
-    let rust = validate_frame(data, &table, mode);
-    let mut reason = u32::MAX;
-    // SAFETY: as above.
-    let status = unsafe {
-        aldis_uslp_validate(
-            data.as_ptr(),
-            data.len(),
-            &raw const pc,
-            &raw const vc,
-            1,
-            maps.as_ptr(),
-            maps.len(),
-            c_mode,
-            &raw mut view,
-            &raw mut reason,
-            &raw mut detail,
-        )
-    };
-    match &rust {
-        Ok(f) => {
-            assert_eq!((status, reason), (ALDIS_OK, ALDIS_USLP_REASON_NONE));
-            uslp_same(&view, f, data);
-        }
-        Err(r) => {
-            expect(&Err::<(), _>(r.error()), status, &detail);
-            assert_eq!(reason, u32::from(r.reason().code()));
-        }
-    }
     let rust = UslpFrame::peek_length(data, &table);
     let mut len = 0;
     // SAFETY: as above.
@@ -1608,50 +1514,6 @@ fn uslp(data: &[u8], selector: u8, mode: DecodeMode, c_mode: u32) {
     expect(&rust, status, &detail);
     if let Ok(n) = rust {
         assert_eq!(len, n);
-    }
-    // The delimiter, item by item, against `next_frame` (USLP-015).
-    let mut at = 0;
-    loop {
-        let mut item = aldis_uslp_delimited_t::default();
-        // SAFETY: as above.
-        let status = unsafe {
-            aldis_uslp_next_frame(
-                data.as_ptr(),
-                data.len(),
-                at,
-                &raw const pc,
-                &raw const vc,
-                1,
-                &raw mut item,
-                &raw mut detail,
-            )
-        };
-        assert_eq!((status, item.offset), (ALDIS_OK, at));
-        let expected = match next_frame(&data[at..], &table) {
-            None => (ALDIS_USLP_DELIMITED_END, 0, 0),
-            Some(Delimited::Frame(o)) => (ALDIS_USLP_DELIMITED_FRAME, o.len(), o.len()),
-            Some(Delimited::IncompleteFrame {
-                octets,
-                declared_len,
-            }) => (
-                ALDIS_USLP_DELIMITED_INCOMPLETE_FRAME,
-                octets.len(),
-                declared_len,
-            ),
-            Some(Delimited::NoTruncatedLength(o)) => {
-                (ALDIS_USLP_DELIMITED_NO_TRUNCATED_LENGTH, o.len(), 0)
-            }
-            Some(Delimited::NonTruncatedNotAllowed(o)) => {
-                (ALDIS_USLP_DELIMITED_NON_TRUNCATED_NOT_ALLOWED, o.len(), 0)
-            }
-            Some(Delimited::Fill(o)) => (ALDIS_USLP_DELIMITED_FILL, o.len(), 0),
-        };
-        assert_eq!((item.kind, item.len, item.declared_len), expected);
-        if item.kind == ALDIS_USLP_DELIMITED_END {
-            assert_eq!(at, data.len());
-            break;
-        }
-        at += item.len;
     }
     let mut stream_at = 0;
     let mut rust_stream = UslpFrameStream::new(data, &table, mode);

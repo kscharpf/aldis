@@ -8,12 +8,12 @@
 //! and optional [`MapConfig`]. Corrupted frames, fill data, and truncated headers are yielded as
 //! [`IntakeItem::Discarded`], classified by a unified [`DiscardReason`].
 
-use aldis_core::{DecodeMode, Error, ErrorKind};
+use aldis_core::{AnomalySet, DecodeMode, Error, ErrorKind};
 
 use crate::config::{MapConfig, VcConfig, VcLookup};
 use crate::header::{MIN_FRAME_LEN, RawHeader};
 use crate::validate::Reason;
-use crate::view::{TcFrame, parse};
+use crate::view::{TcFrame, check_head, parse};
 
 /// Why wire octets or a frame were discarded (232.0 §4.4.9.2, §4.4.9.3; TC-020, TC-021).
 ///
@@ -196,15 +196,11 @@ impl<'a, L: VcLookup + ?Sized> Iterator for FrameStream<'a, '_, L> {
             return None;
         }
 
-        if let Some(h) = RawHeader::parse(self.rest) {
-            // A frame header declares at least 5 octets (its own primary header length).
+        if let Some(h) = RawHeader::parse(self.rest)
+            && h.frame_len >= MIN_FRAME_LEN
+        {
             // If the declared length is available in self.rest, reconstruct and validate the frame.
-            let full_frame = if h.frame_len >= 5 {
-                self.rest.split_at_checked(h.frame_len)
-            } else {
-                None
-            };
-            if let Some((frame_bytes, remaining)) = full_frame {
+            if let Some((frame_bytes, remaining)) = self.rest.split_at_checked(h.frame_len) {
                 self.rest = remaining;
                 return match parse(frame_bytes, self.channels, self.mode, true) {
                     Ok((frame, vc, map)) => Some(IntakeItem::Accepted { frame, vc, map }),
@@ -216,9 +212,25 @@ impl<'a, L: VcLookup + ?Sized> Iterator for FrameStream<'a, '_, L> {
                 };
             }
 
-            // A valid header (TFVN 00 and declared length >= MIN_FRAME_LEN) declaring more octets
-            // than remain in the data unit is discarded as a truncated frame (232.0 §4.4.9.2.5; OI-41).
-            if h.version == 0 && h.frame_len >= MIN_FRAME_LEN {
+            // If fewer octets remain than declared and TFVN == 0, validate the header first:
+            // Check (a) version, (b) spacecraft, and (c) flags, spares, VCID, FrameTooLong, FrameTooShort
+            // take precedence before the length consistency check (d) (232.0 §4.4.9.3; docs/standards/tc-frame.md §2.1).
+            if h.version == 0 {
+                let mut anomalies = AnomalySet::empty();
+                if let Err(rejection) =
+                    check_head(self.rest, self.channels, self.mode, false, &mut anomalies)
+                {
+                    let octets = self.rest;
+                    self.rest = &[];
+                    return Some(IntakeItem::Discarded {
+                        reason: DiscardReason::from(rejection.reason()),
+                        octets,
+                        error: rejection.error(),
+                    });
+                }
+
+                // A valid header declaring more octets than remain in the data unit is discarded as a
+                // truncated frame (232.0 §4.4.9.2.5; OI-41).
                 let octets = self.rest;
                 self.rest = &[];
                 return Some(IntakeItem::Discarded {
@@ -231,7 +243,7 @@ impl<'a, L: VcLookup + ?Sized> Iterator for FrameStream<'a, '_, L> {
             }
         }
 
-        // Unparseable header, frame_len < 5, or fill pattern (such as 0x55 with TFVN 01; §4.4.9.2.6 note 2)
+        // Unparseable header, frame_len < MIN_FRAME_LEN, or fill pattern (such as 0x55 with TFVN 01; §4.4.9.2.6 note 2)
         // is discarded as fill data taking the rest of the unit (232.0 §4.4.9.2.6 b; OI-41).
         let octets = self.rest;
         self.rest = &[];
@@ -357,24 +369,27 @@ mod tests {
     #[test]
     fn stream_discards_frame_too_short_and_continues() {
         // req: TC-021
-        let table = standard(false);
-        // Header with version 00 declaring 5 octets (leaving 0 data octets; FrameTooShort),
-        // followed by a valid Unlock frame
-        let mut unit = [0_u8; 11];
-        unit[..5].copy_from_slice(&[0x31, 0x55, 0x04, 0x04, 0x00]);
-        unit[5..].copy_from_slice(&UNLOCK);
+        let table = standard(true); // FECF required: minimum frame length is 8
+        // Header with version 00 declaring 6 octets (leaving no room for FECF; FrameTooShort),
+        // followed by a valid Unlock frame with FECF
+        let mut unlock_fecf = [0x31, 0x55, 0x04, 0x07, 0x00, 0x00, 0x00, 0x00];
+        let _ = aldis_core::crc::write_fecf(&mut unlock_fecf);
+
+        let mut unit = [0_u8; 14];
+        unit[..6].copy_from_slice(&[0x31, 0x55, 0x04, 0x05, 0x00, 0x00]);
+        unit[6..].copy_from_slice(&unlock_fecf);
 
         let mut stream = FrameStream::new(&unit, &table, DecodeMode::Strict);
         let first = stream.next().unwrap();
         match first {
             IntakeItem::Discarded { reason, octets, .. } => {
                 assert_eq!(reason, DiscardReason::FrameTooShort);
-                assert_eq!(octets.len(), 5);
+                assert_eq!(octets.len(), 6);
             }
             IntakeItem::Accepted { .. } => panic!("expected frame too short rejection"),
         }
         let second = stream.next().unwrap();
-        assert!(matches!(second, IntakeItem::Accepted { ref frame, .. } if frame.len() == 6));
+        assert!(matches!(second, IntakeItem::Accepted { ref frame, .. } if frame.len() == 8));
         assert_eq!(stream.next(), None);
     }
 }

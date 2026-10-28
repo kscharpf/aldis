@@ -276,29 +276,6 @@ int main(void) {
           "aldis_tc_writer_finish");
     const uint8_t tc_frame[10] = {0x01, 0x55, 0x04, 0x09, 0x04, 0x01, 0x02, 0x03, 0xE0, 0xC0};
     check(memcmp(unit, tc_frame, sizeof tc_frame) == 0, "TC frame octets (tc/ad.json)");
-    size_t offset = 0;
-    int tc_frames = 0;
-    int tc_fill = 0;
-    aldis_tc_delimited_t item;
-    while (aldis_tc_next_frame(unit, sizeof unit, offset, &item, &err) == ALDIS_OK &&
-           item.kind != ALDIS_TC_DELIMITED_END) {
-        if (item.kind == ALDIS_TC_DELIMITED_FRAME) {
-            aldis_tc_frame_t tc_view;
-            uint32_t reason = 99;
-            check(aldis_tc_validate(unit + item.offset, item.len, &tc_mc, &tc_vc, 1, NULL, 0,
-                                    ALDIS_MODE_STRICT, &tc_view, &reason, &err) == ALDIS_OK &&
-                      reason == ALDIS_TC_REASON_NONE,
-                  "aldis_tc_validate");
-            check(tc_view.header.sequence_number == 4 && tc_view.layout.data_len == 3 &&
-                      unit[item.offset + tc_view.layout.data_offset] == 1,
-                  "validated TC frame (CABI-012)");
-            tc_frames++;
-        } else if (item.kind == ALDIS_TC_DELIMITED_FILL) {
-            tc_fill++;
-        }
-        offset += item.len;
-    }
-    check(tc_frames == 1 && tc_fill == 1 && offset == sizeof unit, "aldis_tc_next_frame");
     size_t stream_offset = 0;
     int stream_frames = 0;
     int stream_fill = 0;
@@ -383,23 +360,7 @@ int main(void) {
               uview.tfdf.rule == ALDIS_USLP_RULE_OCTET_STREAM && uview.upid_assigned &&
               uview.layout.tfdz_len == 4 && uframe[uview.layout.tfdz_offset] == 0xD0,
           "decoded USLP frame (CABI-012)");
-    uint32_t ureason = 0xFFFFFFFFu;
-    check(aldis_uslp_validate(uframe, ulen, &upc, &uvc, 1, &umap, 1, ALDIS_MODE_STRICT, &uview,
-                              &ureason, NULL) == ALDIS_OK &&
-              ureason == ALDIS_USLP_REASON_NONE,
-          "aldis_uslp_validate");
     uframe[ulen - 1] ^= 1;
-    check(aldis_uslp_validate(uframe, ulen, &upc, &uvc, 1, &umap, 1, ALDIS_MODE_STRICT, &uview,
-                              &ureason, NULL) == ALDIS_ERR_CRC_MISMATCH &&
-              ureason == ALDIS_USLP_REASON_FECF_MISMATCH,
-          "a wrong FECF fails test (e) (USLP-014)");
-    aldis_uslp_delimited_t uitem;
-    check(aldis_uslp_next_frame(uframe, ulen, 0, &upc, &uvc, 1, &uitem, NULL) == ALDIS_OK &&
-              uitem.kind == ALDIS_USLP_DELIMITED_FRAME && uitem.len == ulen,
-          "aldis_uslp_next_frame");
-    check(aldis_uslp_next_frame(uframe, ulen, ulen, &upc, &uvc, 1, &uitem, NULL) == ALDIS_OK &&
-              uitem.kind == ALDIS_USLP_DELIMITED_END,
-          "the delimiter ends at the end of the unit");
     size_t ustream_offset = 0;
     aldis_uslp_stream_item_t us_item;
     check(aldis_uslp_stream_next(uframe, ulen, &ustream_offset, &upc, &uvc, 1, &umap, 1,
@@ -408,7 +369,7 @@ int main(void) {
               us_item.discard_reason == ALDIS_USLP_DISCARD_FECF_MISMATCH &&
               us_item.error_code == ALDIS_ERR_CRC_MISMATCH &&
               ustream_offset == ulen,
-          "aldis_uslp_stream_next discards frame with bad FECF");
+          "aldis_uslp_stream_next discards frame with bad FECF (USLP-014)");
     uframe[ulen - 1] ^= 1;
     ustream_offset = 0;
     check(aldis_uslp_stream_next(uframe, ulen, &ustream_offset, &upc, &uvc, 1, &umap, 1,
