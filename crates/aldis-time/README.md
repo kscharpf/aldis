@@ -54,7 +54,7 @@ fn main() -> Result<(), aldis_core::Error> {
 - No panic on any input (GEN-020). Checked by the bare-metal panic-freedom link check in [`exerciser/`](../../exerciser/) (VER-010) and by the fuzz targets `time_*` in [`fuzz/`](../../fuzz/fuzz_targets/) (VER-022).
 - No clock, I/O, or global state (GEN-031, GEN-032).
 
-The evidence for the release is the exit table of the [M1 plan](../../docs/milestones/m1-packets-time.md) §4: coverage, fuzzing, mutation testing, vectors on the host, on s390x, and under QEMU, and the cross-checks ([cross-checks.md](../../docs/verification/cross-checks.md)). The bounded-loop inspection is [gen-022-023-aldis-time.md](../../docs/verification/inspections/gen-022-023-aldis-time.md), and the second review of the hand-derived vectors is [m1-vectors.md](../../docs/verification/reviews/m1-vectors.md). The shared conformance vectors are in [`test-vectors/time/`](../../test-vectors/time/).
+The evidence for the release is the exit table of the [M1 plan](../../docs/milestones/m1-packets-time.md) §4: coverage, fuzzing, mutation testing, vectors on the host, on s390x, and under QEMU, and the cross-checks ([cross-checks.md](../../docs/verification/cross-checks.md)). The bounded-loop analysis record is [GEN-022](../../docs/verification/records/GEN-022.md), and the second review of the hand-derived vectors is [m1-vectors.md](../../docs/verification/reviews/m1-vectors.md). The shared conformance vectors are in [`test-vectors/time/`](../../test-vectors/time/).
 
 ## Specification
 

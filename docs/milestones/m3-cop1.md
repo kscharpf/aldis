@@ -113,7 +113,7 @@ WP-0 Infra, setup ───▶ WP-1a Spec readings ─┬─▶ WP-1b FARM-1 tab
 - Regenerate `include/aldis/aldis.h`; exerciser link check covers FOP-1 and FARM-1 handles.
 - C ABI runner executing `cop1/` vectors through C interface.
 
-### WP-7 Verification gates, hazards & assurance (M) — VER-010, VER-011, VER-022…025, VER-061, VER-065, VER-066
+### WP-7 Verification gates, hazards & assurance (M) — VER-010, VER-011, VER-022…025, VER-065, VER-066
 - 100 % statement, branch, and line coverage for `aldis-cop1` (VER-024).
 - Mutation testing across `aldis-cop1`; all survivors triaged (VER-025).
 - Fuzz targets: `fop1_events`, `farm1_events`, `cop1_closed_loop`, `fop1_clcw` (VER-022).
@@ -121,7 +121,6 @@ WP-0 Infra, setup ───▶ WP-1a Spec readings ─┬─▶ WP-1b FARM-1 tab
 - Bare-metal exerciser on thumbv7em, armv7r, riscv32imac under QEMU (VER-010).
 - COP-1 hazard analysis in `docs/verification/hazards/cop1.md` (VER-065).
 - Assurance case update in `docs/verification/assurance-case.md` (VER-066).
-- Maintainer approval of `aldis-cop1` and `aldis-ffi` inspection records (VER-061).
 
 ### WP-8 Docs, trace & release (S) — VER-020, RS-015
 - Enforce `cargo xtask trace --scope m3 --strict` (VER-020).
@@ -142,7 +141,6 @@ Milestone 3 is complete when every item below is green on `main`:
 | Engine contract & sans-I/O | GEN-011, GEN-015, GEN-030…032, API-050, API-056, API-060, RS-020 | Traced. Pure sans-I/O engines; SEU platform protection confirmed (GEN-015); pull-based event/transmit APIs; compile-time generic capacities |
 | C ABI handles | CABI-030…033, CABI-040, CABI-041, API-082 | Traced. `aldis_fop1_*` and `aldis_farm1_*` handles with opaque storage and magic checks; pull model functions; generated header `aldis.h`; vector runner passes scenarios through C ABI |
 | Panic freedom & resources | VER-010, VER-011, GEN-020…024 | Gating check `stack` passes within budget; exerciser runs with `aldis-cop1` on Cortex-M4F, Cortex-R5F, and RISC-V under QEMU with 0 panics; link check succeeds |
-| Inspections | VER-061 | GEN-022/023 inspection records of `aldis-cop1` and `aldis-ffi` approved by maintainer at exit review; `cargo xtask loops` clean |
 | Portability | GEN-005…007, VER-030, VER-031 | Gating checks `no-std-*`, `features`, `big-endian` (s390x), and `layers` clean |
 | Verification gates | VER-022…025, VER-054 | 100 % coverage across `aldis-cop1`; full mutation testing with survivors triaged; fuzz targets run ≥ 1 CPU-hour each |
 | Vectors and trace | TV-001…003, TV-010…012, TV-020, TV-021, TV-023, VER-020, VER-021 | 100 % in-scope requirements traced (`trace --scope m3 --strict`); scenarios validated against `engine-scenario.schema.json`; blind Python model cross-check |

@@ -19,8 +19,8 @@ These rules apply to every crate in Layers 0–2, and to the C ABI. Layer 3 foll
 |---|---|---|---|
 | GEN-020 | No public API SHALL panic, abort, or trap for **any** input value, buffer content, or call sequence. This includes arithmetic overflow, slice indexing, and division. Misuse SHALL be reported as an error. | — | A/F |
 | GEN-021 | Panic freedom SHALL be demonstrated by analysis: a release build of each crate's API exerciser, linked with a panic handler that references an undefined symbol, SHALL link successfully (see VER-010). | — | A |
-| GEN-022 | Every loop SHALL be bounded by the length of an input buffer, a compile-time capacity, or a constant. There SHALL be no recursion. | — | I |
-| GEN-023 | Every engine operation SHALL complete in time bounded by O(input length + configured capacities). No operation SHALL block or wait. | — | I |
+| GEN-022 | Every loop SHALL be bounded by the length of an input buffer, a compile-time capacity, or a constant. There SHALL be no recursion. | — | A |
+| GEN-023 | Every engine operation SHALL complete in time bounded by O(input length + configured capacities). No operation SHALL block or wait. | — | A |
 | GEN-024 | Arithmetic on wire fields SHALL use explicit wrapping, checked, or saturating operations matching the field's modulus. For example, VC frame counts are modulo 2⁸, 2²⁴, or 2^(8·n), and Space Packet sequence counts are modulo 2¹⁴. | 133.0 §4.1.3.4.3.4; 132.0 §4.1.2.5–6; 732.0 §4.1.2.4; 732.1 §4.1.2.12 | T/V |
 
 ## 3. Determinism

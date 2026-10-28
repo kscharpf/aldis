@@ -65,7 +65,7 @@ fn main() -> Result<(), aldis_core::Error> {
 ## Verification
 
 - Unit tests in every module; property tests in `tests/properties.rs` drawing from `aldis_testkit::strategies::aos` (VER-023, VER-054); the FHEC checked against the independent table model `aldis_testkit::oracle::fhec` on all 65 536 syndromes.
-- Vectors in [`test-vectors/aos/`](../../test-vectors/aos/), computed by the independent models [`aos_fhec.py`](../../test-vectors/models/aos_fhec.py) and [`aos_frame.py`](../../test-vectors/models/aos_frame.py), with the hand derivations in [aos-fhec.md](../../docs/verification/derivations/aos-fhec.md) and [aos-frame.md](../../docs/verification/derivations/aos-frame.md); the fuzz targets `aos_fhec_model`, `aos_decode`, and `aos_roundtrip`; the exerciser on three bare-metal targets; 100 % coverage (VER-024); the [GEN-022/023 inspection](../../docs/verification/inspections/gen-022-023-aldis-aos.md).
+- Vectors in [`test-vectors/aos/`](../../test-vectors/aos/), computed by the independent models [`aos_fhec.py`](../../test-vectors/models/aos_fhec.py) and [`aos_frame.py`](../../test-vectors/models/aos_frame.py), with the hand derivations in [aos-fhec.md](../../docs/verification/derivations/aos-fhec.md) and [aos-frame.md](../../docs/verification/derivations/aos-frame.md); the fuzz targets `aos_fhec_model`, `aos_decode`, and `aos_roundtrip`; the exerciser on three bare-metal targets; 100 % coverage (VER-024); the [GEN-022/023 analysis record](../../docs/verification/records/GEN-022.md).
 
 ## Specification
 
