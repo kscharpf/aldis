@@ -3513,7 +3513,7 @@ typedef struct {
    */
   aldis_tc_frame_t frame;
   /**
-   * Discard reason code: [`ALDIS_TC_DISCARD_*`] (valid when `kind == ALDIS_TC_STREAM_DISCARDED`).
+   * Discard reason code: `ALDIS_TC_DISCARD_*` (valid when `kind == ALDIS_TC_STREAM_DISCARDED`).
    */
   uint32_t discard_reason;
   /**
@@ -4528,7 +4528,7 @@ typedef struct {
    */
   aldis_uslp_frame_t frame;
   /**
-   * Discard reason code: [`ALDIS_USLP_DISCARD_*`] (valid when `kind == ALDIS_USLP_STREAM_DISCARDED`).
+   * Discard reason code: `ALDIS_USLP_DISCARD_*` (valid when `kind == ALDIS_USLP_STREAM_DISCARDED`).
    */
   uint32_t discard_reason;
   /**
@@ -5926,7 +5926,7 @@ int32_t aldis_tc_decode(const uint8_t *bytes,
  *
  * Reads from `*offset` and advances `*offset` by the octets consumed for the yielded item.
  * When `out.kind == ALDIS_TC_STREAM_ACCEPTED`, `out.frame` holds the validated frame view.
- * When `out.kind == ALDIS_TC_STREAM_DISCARDED`, `out.discard_reason` holds the [`ALDIS_TC_DISCARD_*`]
+ * When `out.kind == ALDIS_TC_STREAM_DISCARDED`, `out.discard_reason` holds the `ALDIS_TC_DISCARD_*`
  * code, and `out.error_code` holds the negative error code.
  * When `out.kind == ALDIS_TC_STREAM_END`, the unit is exhausted.
  *
@@ -6838,7 +6838,7 @@ int32_t aldis_uslp_decode(const uint8_t *bytes,
  *
  * Reads from `*offset` and advances `*offset` by the octets consumed for the yielded item.
  * When `out.kind == ALDIS_USLP_STREAM_ACCEPTED`, `out.frame` holds the validated frame view.
- * When `out.kind == ALDIS_USLP_STREAM_DISCARDED`, `out.discard_reason` holds the [`ALDIS_USLP_DISCARD_*`]
+ * When `out.kind == ALDIS_USLP_STREAM_DISCARDED`, `out.discard_reason` holds the `ALDIS_USLP_DISCARD_*`
  * code, and `out.error_code` holds the negative error code.
  * When `out.kind == ALDIS_USLP_STREAM_END`, the unit is exhausted.
  *

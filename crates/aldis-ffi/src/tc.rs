@@ -355,7 +355,7 @@ pub struct aldis_tc_stream_item_t {
     pub declared_len: usize,
     /// The decoded frame view (valid when `kind == ALDIS_TC_STREAM_ACCEPTED`).
     pub frame: aldis_tc_frame_t,
-    /// Discard reason code: [`ALDIS_TC_DISCARD_*`] (valid when `kind == ALDIS_TC_STREAM_DISCARDED`).
+    /// Discard reason code: `ALDIS_TC_DISCARD_*` (valid when `kind == ALDIS_TC_STREAM_DISCARDED`).
     pub discard_reason: u32,
     /// The error code of the discard (e.g. `ALDIS_ERR_CRC_MISMATCH`, negative integer).
     pub error_code: i32,
@@ -886,7 +886,7 @@ pub unsafe extern "C" fn aldis_tc_decode(
 ///
 /// Reads from `*offset` and advances `*offset` by the octets consumed for the yielded item.
 /// When `out.kind == ALDIS_TC_STREAM_ACCEPTED`, `out.frame` holds the validated frame view.
-/// When `out.kind == ALDIS_TC_STREAM_DISCARDED`, `out.discard_reason` holds the [`ALDIS_TC_DISCARD_*`]
+/// When `out.kind == ALDIS_TC_STREAM_DISCARDED`, `out.discard_reason` holds the `ALDIS_TC_DISCARD_*`
 /// code, and `out.error_code` holds the negative error code.
 /// When `out.kind == ALDIS_TC_STREAM_END`, the unit is exhausted.
 ///
