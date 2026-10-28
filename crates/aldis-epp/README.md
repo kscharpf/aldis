@@ -64,7 +64,7 @@ fn main() -> Result<(), aldis_core::Error> {
 - No panic on any input (GEN-020). Checked by the bare-metal panic-freedom link check in [`exerciser/`](../../exerciser/) (VER-010) and by the fuzz targets `epp_*` in [`fuzz/`](../../fuzz/fuzz_targets/) (VER-022).
 - No clock, I/O, or global state (GEN-031, GEN-032).
 
-The evidence for the release is the exit table of the [M1 plan](../../docs/milestones/m1-packets-time.md) §4: coverage, fuzzing, mutation testing, and vectors on the host, on s390x, and under QEMU. No independent implementation has been run against the EPP vectors yet ([cross-checks.md](../../docs/verification/cross-checks.md) §4.5, OI-32); they are hand-derived, and their second review is [m1-vectors.md](../../docs/verification/reviews/m1-vectors.md). The bounded-loop inspection is [gen-022-023-aldis-epp.md](../../docs/verification/inspections/gen-022-023-aldis-epp.md). The shared conformance vectors are in [`test-vectors/epp/`](../../test-vectors/epp/).
+The evidence for the release is the exit table of the [M1 plan](../../docs/milestones/m1-packets-time.md) §4: coverage, fuzzing, mutation testing, and vectors on the host, on s390x, and under QEMU. No independent implementation has been run against the EPP vectors yet ([cross-checks.md](../../docs/verification/cross-checks.md) §4.5, OI-32); they are hand-derived, and their second review is [m1-vectors.md](../../docs/verification/reviews/m1-vectors.md). The bounded-loop analysis record is [GEN-022](../../docs/verification/records/GEN-022.md). The shared conformance vectors are in [`test-vectors/epp/`](../../test-vectors/epp/).
 
 ## Specification
 

@@ -163,3 +163,4 @@ One line for each decision the maintainer takes, under the [decision rights](dec
 - 2026-10-27 · release · chat · Release v0.3.0-m2 (Milestone 2: Frame codecs)
 - 2026-10-27 · scope · chat · Retire Track C from v1: archive native C++ at tag c0-archive, delete cpp/ and cpp.yml, withdraw 34 CPP-* requirements, VER-052, VER-053, CABI-070, and CABI-071, keep CABI-072, reopen OI-08, and move native C/C++ to roadmap Phase 3
 - 2026-10-27 · api · chat · Allocate ErrorKind::InternalError = 18 for invariant and internal check failures, replacing silent fallbacks to default values on slice indexing, and approve scoped indexing_slicing on FixedVec::as_slice
+- 2026-10-28 · process · chat · Retire GEN-022/GEN-023 inspection documents and delete VER-061; change GEN-022/GEN-023 verification method from I to A (analysis via xtask stack and formal proofs)

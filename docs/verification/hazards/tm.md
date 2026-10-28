@@ -12,7 +12,7 @@ Failure modes of `aldis-tm` and its C ABI (`aldis_tm_*`), in the format of [haza
 | `truncation` | HZ-TM-06 | done |
 | `wrong-value` | HZ-TM-07 | done |
 | `nonconformant-output` | HZ-TM-08, HZ-TM-09, HZ-TM-10 | done |
-| `unbounded-time` | — | n/a: every loop of `aldis-tm` is bounded by the frame length, the eight VC slots, or a constant (inspection `docs/verification/inspections/gen-022-023-aldis-tm.md`), and no call waits; TM adds no failure mode to `hz:HZ-X-03` |
+| `unbounded-time` | — | n/a: every loop of `aldis-tm` is bounded by the frame length, the eight VC slots, or a constant (`record:GEN-022`), and no call waits; TM adds no failure mode to `hz:HZ-X-03` |
 | `memory` | HZ-TM-11 | done |
 | `panic` | — | n/a: TM adds no panic path to `hz:HZ-X-02`; its decoders and writers are covered by the same link check, the fuzz targets `tm_decode` and `tm_roundtrip`, and the property tests, cited there and in `hz:HZ-TM-11` |
 | `state-corruption` | HZ-TM-12 | done |

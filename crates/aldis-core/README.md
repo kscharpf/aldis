@@ -65,7 +65,7 @@ fn main() -> Result<(), aldis_core::Error> {
 - No panic on any input (GEN-020). Checked by the bare-metal panic-freedom link check in [`exerciser/`](../../exerciser/) (VER-010) and by the core fuzz targets in [`fuzz/`](../../fuzz/fuzz_targets/) (VER-022).
 - No clock, randomness, I/O, or global state (GEN-031, GEN-032).
 
-The evidence is in the exit tables of the [M0 plan](../../docs/milestones/m0-foundations.md) §4 and the [M1 plan](../../docs/milestones/m1-packets-time.md) §4 (coverage, fuzzing, mutation testing, vectors on every target), the bounded-loop inspection [gen-022-023-aldis-core.md](../../docs/verification/inspections/gen-022-023-aldis-core.md), the [mutants triage](../../docs/verification/mutants-triage.md), and the [analysis records](../../docs/verification/analysis-records.md). The shared conformance vectors are in [`test-vectors/core/`](../../test-vectors/core/).
+The evidence is in the exit tables of the [M0 plan](../../docs/milestones/m0-foundations.md) §4 and the [M1 plan](../../docs/milestones/m1-packets-time.md) §4 (coverage, fuzzing, mutation testing, vectors on every target), the bounded-loop analysis record [GEN-022](../../docs/verification/records/GEN-022.md), the [mutants triage](../../docs/verification/mutants-triage.md), and the [analysis records](../../docs/verification/analysis-records.md). The shared conformance vectors are in [`test-vectors/core/`](../../test-vectors/core/).
 
 ## Specification
 

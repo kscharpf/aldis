@@ -66,7 +66,7 @@ assert_eq!(frames.count(), 1); // the three octets of 0x55 fill
 ## Verification
 
 - Unit tests in each module; the shared vectors of [`test-vectors/uslp/`](../../test-vectors/uslp/), whose expected values come from the independent model [`test-vectors/models/uslp_frame.py`](../../test-vectors/models/uslp_frame.py), with frames worked by hand in [docs/verification/derivations/uslp-frame.md](../../docs/verification/derivations/uslp-frame.md); [`tests/protocol_control.rs`](tests/protocol_control.rs) decodes COP-1 control commands with `aldis-tc`, a dev-dependency only (USLP-013, M2 plan D8).
-- Property tests in [`tests/properties.rs`](tests/properties.rs) drawn from the shared strategies of `aldis-testkit` (`strategies-uslp`); the fuzz targets `uslp_decode`, `uslp_truncated`, and `uslp_roundtrip`; the exerciser on three bare-metal targets; 100 % coverage (VER-024); the [GEN-022/023 inspection](../../docs/verification/inspections/gen-022-023-aldis-uslp.md).
+- Property tests in [`tests/properties.rs`](tests/properties.rs) drawn from the shared strategies of `aldis-testkit` (`strategies-uslp`); the fuzz targets `uslp_decode`, `uslp_truncated`, and `uslp_roundtrip`; the exerciser on three bare-metal targets; 100 % coverage (VER-024); the [GEN-022/023 analysis record](../../docs/verification/records/GEN-022.md).
 
 ## Where it sits
 
