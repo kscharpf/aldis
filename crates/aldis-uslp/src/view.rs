@@ -6,14 +6,16 @@
 //! two share (Annex D1.3.1 note 2). The checks, their order, and their errors are those of
 //! `docs/standards/uslp-frame.md` §3.1.
 
+use core::ops::Range;
+
 use aldis_core::crc;
-use aldis_core::layout::{FECF_LEN, OCF_LEN};
+use aldis_core::layout::{FECF_LEN, FrameLayout, LayoutSpec, OCF_LEN};
 use aldis_core::ocf::Ocf;
 use aldis_core::security::SecurityLayout;
 use aldis_core::{AnomalySet, DecodeMode, Error, ErrorKind, FieldId, Result};
 
 use crate::anomaly::UslpAnomaly;
-use crate::config::{MapConfig, OcfUse, VcConfig, VcLookup, frame_security};
+use crate::config::{MapConfig, OcfUse, VcConfig, VcLookup, frame_layout, frame_security};
 use crate::field;
 use crate::header::{
     ChannelFields, FrameKind, OID_VCID, PRIMARY_HEADER_LEN, RawRest, RawStart, SourceOrDestination,
@@ -41,11 +43,57 @@ pub(crate) const fn length(exact: bool, len: usize) -> Rejection {
     fail(Reason::LengthMismatch, error)
 }
 
-/// The first `n` octets of `cursor`, which moves past them; all that remain if fewer.
-fn take<'a>(cursor: &mut &'a [u8], n: usize) -> &'a [u8] {
-    let (head, rest) = cursor.split_at(n.min(cursor.len()));
-    *cursor = rest;
-    head
+/// The fields of a non-truncated frame, cut at its layout.
+struct FullParts<'a> {
+    insert_zone: &'a [u8],
+    security_header: &'a [u8],
+    tfdf_header: TfdfHeader,
+    tfdz: &'a [u8],
+    security_trailer: &'a [u8],
+    ocf: &'a [u8],
+    fecf: &'a [u8],
+}
+
+/// Cuts `frame` at `layout` and parses the TFDF Header of the data field.
+///
+/// A layout computed for the frame's length always lies inside the frame, so a missing range is
+/// a broken invariant, reported as `InternalError` instead of a silently empty field (GEN-020).
+fn split_full<'a>(
+    frame: &'a [u8],
+    layout: &FrameLayout,
+    fixed_tfdz: bool,
+) -> core::result::Result<FullParts<'a>, Rejection> {
+    let at = |r: Range<usize>| frame.get(r);
+    at(layout.secondary())
+        .zip(at(layout.security_header()))
+        .zip(at(layout.data()))
+        .zip(at(layout.security_trailer()))
+        .zip(at(layout.ocf()))
+        .zip(at(layout.fecf()))
+        .ok_or(internal())
+        .and_then(
+            |(((((insert_zone, security_header), data), security_trailer), ocf), fecf)| {
+                TfdfHeader::parse(data, fixed_tfdz)
+                    .map(|(tfdf_header, tfdz)| FullParts {
+                        insert_zone,
+                        security_header,
+                        tfdf_header,
+                        tfdz,
+                        security_trailer,
+                        ocf,
+                        fecf,
+                    })
+                    .map_err(tfdf_rejection)
+            },
+        )
+}
+
+/// The rejection for a layout that does not lie inside its frame: a broken invariant.
+pub(crate) const fn internal() -> Rejection {
+    fail(
+        Reason::LengthMismatch,
+        Error::new(ErrorKind::InternalError).with_field(field::FRAME_LEN),
+    )
 }
 
 /// The reason of a TFDF Header error (USLP-006, USLP-016, CMN-041).
@@ -62,10 +110,11 @@ pub(crate) fn tfdf_rejection(e: Error) -> Rejection {
 
 /// A decoded non-truncated USLP Transfer Frame borrowing its fields from the input (732.1
 /// §4.1, §6.3; USLP-001, USLP-003…USLP-007, API-010, GEN-013).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UslpFullFrame<'a> {
     header: UslpPrimaryHeader,
     octets: &'a [u8],
+    layout: FrameLayout,
     insert_zone: &'a [u8],
     security_header: &'a [u8],
     tfdf_header: TfdfHeader,
@@ -77,7 +126,7 @@ pub struct UslpFullFrame<'a> {
 }
 
 /// A decoded USLP frame: non-truncated or truncated (732.1 §4.1.2.6; M2 plan D12, USLP-002).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum UslpFrame<'a> {
     /// End of Frame Primary Header Flag `0` (§4.1.2).
     Full(UslpFullFrame<'a>),
@@ -197,20 +246,18 @@ fn parse_full<'a, L: VcLookup + ?Sized>(
     } else {
         frame_security(&vc, map.as_ref())
     };
-    let header_len = PRIMARY_HEADER_LEN.saturating_add(rest.vcf_count_len.octets());
-    let overhead = header_len
-        .saturating_add(physical.insert_zone_len())
-        .saturating_add(security.header_len())
-        .saturating_add(if vc.fixed_tfdz() { 3 } else { 1 })
-        .saturating_add(security.trailer_len())
-        .saturating_add(if rest.ocf_flag { OCF_LEN } else { 0 })
-        .saturating_add(if physical.fecf() { FECF_LEN } else { 0 });
-    if total <= overhead {
-        return Err(fail(
-            Reason::FrameTooShort,
-            invalid(field::FRAME_DATA_FIELD),
-        ));
-    }
+    let spec = LayoutSpec {
+        frame_len: total,
+        primary_header_len: PRIMARY_HEADER_LEN.saturating_add(rest.vcf_count_len.octets()),
+        secondary_len: physical.insert_zone_len(),
+        security,
+        ocf: rest.ocf_flag,
+        fecf: physical.fecf(),
+    };
+    let layout = frame_layout(&spec, vc.fixed_tfdz()).ok_or(fail(
+        Reason::FrameTooShort,
+        invalid(field::FRAME_DATA_FIELD),
+    ))?;
     let whole = exact || physical.is_fixed();
     let frame = match bytes.get(..total) {
         Some(frame) if !whole || bytes.len() == total => frame,
@@ -219,20 +266,8 @@ fn parse_full<'a, L: VcLookup + ?Sized>(
     if physical.fecf() {
         crc::verify_fecf(frame).map_err(|e| fail(Reason::FecfMismatch, e))?;
     }
-    let ocf_len = if rest.ocf_flag { OCF_LEN } else { 0 };
-    let tail_len = security
-        .trailer_len()
-        .saturating_add(ocf_len)
-        .saturating_add(if physical.fecf() { FECF_LEN } else { 0 });
-    let mut cursor = frame.get(header_len..).unwrap_or_default();
-    let insert_zone = take(&mut cursor, physical.insert_zone_len());
-    let security_header = take(&mut cursor, security.header_len());
-    let tfdf_len = cursor.len().saturating_sub(tail_len);
-    let data_field = take(&mut cursor, tfdf_len);
-    let security_trailer = take(&mut cursor, security.trailer_len());
-    let ocf_octets = take(&mut cursor, ocf_len);
-    let (tfdf_header, tfdz) =
-        TfdfHeader::parse(data_field, vc.fixed_tfdz()).map_err(tfdf_rejection)?;
+    let parts = split_full(frame, &layout, vc.fixed_tfdz())?;
+    let (tfdf_header, tfdz) = (parts.tfdf_header, parts.tfdz);
     if oid && let Some(f) = oid_deviation(ch.map_id, tfdf_header, tfdz.len()) {
         match mode {
             DecodeMode::Strict => return Err(fail(Reason::OidHeaderMismatch, invalid(f))),
@@ -249,15 +284,18 @@ fn parse_full<'a, L: VcLookup + ?Sized>(
                 read_vcf_count(frame, rest.vcf_count_len),
             ),
             octets: frame,
-            insert_zone,
-            security_header,
+            layout,
+            insert_zone: parts.insert_zone,
+            security_header: parts.security_header,
             tfdf_header,
             tfdz,
-            security_trailer,
-            ocf: ocf_octets
+            security_trailer: parts.security_trailer,
+            ocf: parts
+                .ocf
                 .first_chunk::<OCF_LEN>()
                 .map(|&octets| Ocf::decode(octets)),
-            fecf: cursor
+            fecf: parts
+                .fecf
                 .first_chunk::<FECF_LEN>()
                 .map(|&octets| u16::from_be_bytes(octets)),
             anomalies,
@@ -486,6 +524,17 @@ impl<'a> UslpFrame<'a> {
         }
     }
 
+    /// Where the fields lie in [`octets`](Self::octets): the Primary Header, the Insert Zone (the
+    /// secondary slot; empty for a truncated frame), the Security Header, the TFDF (header and
+    /// TFDZ), the Security Trailer, the OCF, and the FECF (732.1 §4.1, Annex D1.2; CMN-040).
+    #[must_use]
+    pub const fn layout(&self) -> &FrameLayout {
+        match self {
+            UslpFrame::Full(f) => &f.layout,
+            UslpFrame::Truncated(t) => t.layout(),
+        }
+    }
+
     /// The octets of the whole frame, borrowed from the input (GEN-013).
     #[must_use]
     pub const fn octets(&self) -> &'a [u8] {
@@ -579,6 +628,12 @@ impl<'a> UslpFullFrame<'a> {
         self.fecf
     }
 
+    /// Where the fields lie in [`octets`](Self::octets) (CMN-040).
+    #[must_use]
+    pub const fn layout(&self) -> &FrameLayout {
+        &self.layout
+    }
+
     /// The octets of the whole frame, borrowed from the input (GEN-013).
     #[must_use]
     pub const fn octets(&self) -> &'a [u8] {
@@ -650,6 +705,24 @@ mod tests {
     fn err_of(r: aldis_core::Result<UslpFrame<'_>>) -> Outcome {
         let e = r.unwrap_err();
         (e.kind(), e.field())
+    }
+
+    #[test]
+    fn layout_places_the_fields() {
+        // req: CMN-040, CMN-041, USLP-008
+        let t = fixed();
+        let bytes = fixed_frame();
+        let f = UslpFrame::decode(&bytes, &t, DecodeMode::Strict).unwrap();
+        let l = f.layout();
+        // Primary Header with a 2-octet VCF Count, Insert Zone, TFDF Header and TFDZ, OCF, FECF.
+        assert_eq!(
+            l.ranges(),
+            [0..9, 9..11, 11..11, 11..58, 58..58, 58..62, 62..64]
+        );
+        assert_eq!(f.full().unwrap().layout(), l);
+        assert_eq!(l.frame_len(), f.len());
+        assert_eq!(&bytes[l.secondary()], f.full().unwrap().insert_zone());
+        assert_eq!(l.data().len(), 3 + f.tfdz().len());
     }
 
     #[test]

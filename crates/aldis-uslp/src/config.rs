@@ -15,7 +15,7 @@
 //! Parameters that only the engines use (multiplexing schemes, repetitions, delays, COP in
 //! Effect, SDU types, UPIDs supported) are not kept here (`docs/standards/uslp-frame.md` §2.1).
 
-use aldis_core::layout::{FECF_LEN, OCF_LEN};
+use aldis_core::layout::{FrameLayout, LayoutSpec};
 use aldis_core::security::SecurityLayout;
 use aldis_core::{Error, ErrorKind, Result};
 
@@ -412,6 +412,16 @@ pub trait VcLookup {
     ) -> Option<MapConfig>;
 }
 
+/// The layout of a non-truncated frame of `spec`, the Insert Zone in the secondary slot and the
+/// TFDF in the data field (732.1 §4.1, §6.3; CMN-040), or `None` unless the data field holds the
+/// TFDF Header of a VC with a fixed-length TFDZ (`fixed_tfdz`) or without and at least one TFDZ
+/// octet (CMN-041; OI-44 item 2).
+pub(crate) fn frame_layout(spec: &LayoutSpec, fixed_tfdz: bool) -> Option<FrameLayout> {
+    FrameLayout::compute(spec)
+        .ok()
+        .filter(|layout| layout.data().len() > crate::tfdf::header_len(fixed_tfdz))
+}
+
 /// `InvalidConfig` (`frame_data_field`) unless the longest non-truncated frame of `vc` with
 /// the SDLS lengths `security` leaves a TFDZ octet (CMN-041; OI-44 item 2).
 fn check_room(
@@ -419,20 +429,18 @@ fn check_room(
     vc: &VcConfig,
     security: SecurityLayout,
 ) -> Result<()> {
-    let overhead = PRIMARY_HEADER_LEN
-        .saturating_add(vc.longest_vcf_count())
-        .saturating_add(physical.insert_zone_len)
-        .saturating_add(security.header_len())
-        .saturating_add(if vc.fixed_tfdz() { 3 } else { 1 })
-        .saturating_add(security.trailer_len())
-        .saturating_add(match vc.params.ocf {
-            OcfUse::Absent => 0,
-            OcfUse::Allowed | OcfUse::Required => OCF_LEN,
-        })
-        .saturating_add(if physical.fecf { FECF_LEN } else { 0 });
-    if physical.frame_len <= overhead {
-        return Err(bad(field::FRAME_DATA_FIELD));
-    }
+    let spec = LayoutSpec {
+        frame_len: physical.frame_len,
+        primary_header_len: PRIMARY_HEADER_LEN.saturating_add(vc.longest_vcf_count()),
+        secondary_len: physical.insert_zone_len,
+        security,
+        ocf: match vc.params.ocf {
+            OcfUse::Absent => false,
+            OcfUse::Allowed | OcfUse::Required => true,
+        },
+        fecf: physical.fecf,
+    };
+    frame_layout(&spec, vc.fixed_tfdz()).ok_or(bad(field::FRAME_DATA_FIELD))?;
     Ok(())
 }
 

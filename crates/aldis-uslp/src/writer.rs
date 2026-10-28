@@ -12,13 +12,15 @@
 //! order.
 
 use aldis_core::crc;
-use aldis_core::layout::{FECF_LEN, OCF_LEN};
+use aldis_core::layout::{FrameLayout, LayoutSpec, OCF_LEN};
 use aldis_core::ocf::Ocf;
 use aldis_core::oid::{OidGenerator, OidGeneratorGalois};
 use aldis_core::security::SecurityLayout;
 use aldis_core::{Error, ErrorKind, Result};
 
-use crate::config::{OcfUse, VcConfig, VcLookup, frame_security};
+use crate::config::{
+    OcfUse, PhysicalChannelConfig, VcConfig, VcLookup, frame_layout, frame_security,
+};
 use crate::field;
 use crate::header::{
     ChannelFields, FrameKind, OID_VCID, PRIMARY_HEADER_LEN, TRUNCATED_HEADER_LEN,
@@ -71,7 +73,7 @@ pub struct FrameContent<'a> {
 }
 
 /// Where the fields of a non-truncated frame go, checked against the channels (§4.1, §6.3).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 struct Plan {
     channel: ChannelFields,
     kind: FrameKind,
@@ -79,12 +81,8 @@ struct Plan {
     tfdf: TfdfHeader,
     ocf: Option<Ocf>,
     fixed: bool,
-    fecf: bool,
-    header_len: usize,
-    insert_zone_len: usize,
-    security: SecurityLayout,
-    /// The frame length with `tfdz_len` TFDZ octets.
-    total: usize,
+    /// The frame with `tfdz_len` TFDZ octets: its length is the reserved frame length.
+    layout: FrameLayout,
     tfdz_len: usize,
 }
 
@@ -125,6 +123,55 @@ fn find_vc<L: VcLookup + ?Sized>(
         return Err(invalid(field::VC_ID));
     }
     Ok(vc)
+}
+
+/// The layout of a frame of `tfdz_len` TFDZ octets after a TFDF Header of `header_len` octets, and that
+/// number of octets: all that the channel leaves in a frame of `base.frame_len` octets when
+/// `None`, as for an OID frame (§4.1.4.1.10). `base` is the layout of the longest frame.
+///
+/// # Errors
+/// `InvalidField` (`frame_data_field`) for an empty TFDZ; `LengthMismatch` (`frame_data_field`)
+/// for a TFDZ that does not fill a fixed-length frame; `OutOfRange` (`frame_len`) above a
+/// variable-length channel's maximum.
+fn reserve(
+    physical: &PhysicalChannelConfig,
+    vc: &VcConfig,
+    header_len: usize,
+    base: LayoutSpec,
+    tfdz_len: Option<usize>,
+) -> Result<(FrameLayout, usize)> {
+    // The longest frame of the channel shows what surrounds the TFDZ.
+    frame_layout(&base, vc.fixed_tfdz())
+        .ok_or(invalid(field::FRAME_DATA_FIELD))
+        .and_then(|longest| {
+            let overhead = physical
+                .frame_len()
+                .saturating_sub(longest.data().len())
+                .saturating_add(header_len);
+            let tfdz_len =
+                tfdz_len.unwrap_or_else(|| physical.frame_len().saturating_sub(overhead));
+            if tfdz_len == 0 {
+                return Err(invalid(field::FRAME_DATA_FIELD));
+            }
+            let total = overhead.saturating_add(tfdz_len);
+            if physical.is_fixed() && total != physical.frame_len() {
+                return Err(mismatch(field::FRAME_DATA_FIELD));
+            }
+            if total > physical.frame_len() {
+                return Err(Error::out_of_range(
+                    field::FRAME_LEN,
+                    len_u64(physical.frame_len()),
+                    len_u64(total),
+                ));
+            }
+            let spec = LayoutSpec {
+                frame_len: total,
+                ..base
+            };
+            frame_layout(&spec, vc.fixed_tfdz())
+                .map(|layout| (layout, tfdz_len))
+                .ok_or(invalid(field::FRAME_DATA_FIELD))
+        })
 }
 
 impl Plan {
@@ -183,30 +230,15 @@ impl Plan {
         } else {
             frame_security(&vc, map.as_ref())
         };
-        let header_len = PRIMARY_HEADER_LEN.saturating_add(count_len.octets());
-        let overhead = header_len
-            .saturating_add(physical.insert_zone_len())
-            .saturating_add(security.header_len())
-            .saturating_add(content.tfdf.len())
-            .saturating_add(security.trailer_len())
-            .saturating_add(if content.ocf.is_some() { OCF_LEN } else { 0 })
-            .saturating_add(if physical.fecf() { FECF_LEN } else { 0 });
-        // An OID frame's TFDZ fills the fixed-length frame (§4.1.4.1.10).
-        let tfdz_len = tfdz_len.unwrap_or_else(|| physical.frame_len().saturating_sub(overhead));
-        if tfdz_len == 0 {
-            return Err(invalid(field::FRAME_DATA_FIELD));
-        }
-        let total = overhead.saturating_add(tfdz_len);
-        if physical.is_fixed() && total != physical.frame_len() {
-            return Err(mismatch(field::FRAME_DATA_FIELD));
-        }
-        if total > physical.frame_len() {
-            return Err(Error::out_of_range(
-                field::FRAME_LEN,
-                len_u64(physical.frame_len()),
-                len_u64(total),
-            ));
-        }
+        let base = LayoutSpec {
+            frame_len: physical.frame_len(),
+            primary_header_len: PRIMARY_HEADER_LEN.saturating_add(count_len.octets()),
+            secondary_len: physical.insert_zone_len(),
+            security,
+            ocf: content.ocf.is_some(),
+            fecf: physical.fecf(),
+        };
+        let (layout, tfdz_len) = reserve(&physical, &vc, content.tfdf.len(), base, tfdz_len)?;
         let tfdf = if oid {
             oid_tfdf(tfdz_len)
         } else {
@@ -227,21 +259,14 @@ impl Plan {
             tfdf,
             ocf: content.ocf,
             fixed: physical.is_fixed(),
-            fecf: physical.fecf(),
-            header_len,
-            insert_zone_len: physical.insert_zone_len(),
-            security,
-            total,
+            layout,
             tfdz_len,
         })
     }
 
     /// Offset of the TFDZ.
-    const fn tfdz_start(&self) -> usize {
-        self.header_len
-            .saturating_add(self.insert_zone_len)
-            .saturating_add(self.security.header_len())
-            .saturating_add(self.tfdf.len())
+    fn tfdz_start(&self) -> usize {
+        self.layout.data().start.saturating_add(self.tfdf.len())
     }
 }
 
@@ -489,20 +514,19 @@ impl<'b> UslpFrameWriter<'b> {
         insert_zone: &[u8],
         write: bool,
     ) -> Result<UslpFrameWriter<'b>> {
-        let buf = out
-            .get_mut(..plan.total)
-            .ok_or(Error::buffer_too_small(plan.total))?;
+        let total = plan.layout.frame_len();
+        let buf = out.get_mut(..total).ok_or(Error::buffer_too_small(total))?;
         let header = primary_octets(
             UNFINISHED_VERSION,
             plan.channel,
-            plan.total,
+            total,
             plan.kind,
             plan.ocf.is_some(),
             plan.count,
         );
         let head = header
             .iter()
-            .take(plan.header_len)
+            .take(plan.layout.primary_header().len())
             .chain(insert_zone)
             .copied();
         let tfdf = plan.tfdf.octets();
@@ -531,14 +555,18 @@ impl<'b> UslpFrameWriter<'b> {
         Ok(w)
     }
 
+    /// Where the fields of the reserved frame lie in the buffer, with the TFDF (header and
+    /// reserved TFDZ) in the data field (CMN-040).
+    #[must_use]
+    pub const fn layout(&self) -> &FrameLayout {
+        &self.plan.layout
+    }
+
     /// The Security Header to fill in place; empty without SDLS (§6.3.4; API-072).
     pub fn security_header_mut(&mut self) -> &mut [u8] {
-        let start = self
-            .plan
-            .header_len
-            .saturating_add(self.plan.insert_zone_len);
-        let end = start.saturating_add(self.plan.security.header_len());
-        self.out.get_mut(start..end).unwrap_or_default()
+        self.out
+            .get_mut(self.plan.layout.security_header())
+            .unwrap_or_default()
     }
 
     /// The TFDZ to fill in place, the reserved maximum (§4.1.4.3; GEN-014).
@@ -551,9 +579,9 @@ impl<'b> UslpFrameWriter<'b> {
     /// The Security Trailer to fill in place, after the reserved TFDZ; empty without SDLS.
     /// [`finish`](Self::finish) moves it to follow the TFDZ (§6.3.6; API-072).
     pub fn security_trailer_mut(&mut self) -> &mut [u8] {
-        let start = self.plan.tfdz_start().saturating_add(self.plan.tfdz_len);
-        let end = start.saturating_add(self.plan.security.trailer_len());
-        self.out.get_mut(start..end).unwrap_or_default()
+        self.out
+            .get_mut(self.plan.layout.security_trailer())
+            .unwrap_or_default()
     }
 
     /// Completes the frame with `tfdz_len` TFDZ octets; returns the frame length (732.1
@@ -587,11 +615,11 @@ impl<'b> UslpFrameWriter<'b> {
         }
         plan.tfdf.check_pointer(tfdz_len)?;
         let unused = plan.tfdz_len.saturating_sub(tfdz_len);
-        let total = plan.total.saturating_sub(unused);
+        let total = plan.layout.frame_len().saturating_sub(unused);
         let tail_start = plan.tfdz_start().saturating_add(tfdz_len);
         let tail_end = tail_start
             .saturating_add(unused)
-            .saturating_add(plan.security.trailer_len());
+            .saturating_add(plan.layout.security_trailer().len());
         let tail = self.out.get_mut(tail_start..tail_end).unwrap_or_default();
         let from = unused.min(tail.len());
         tail.copy_within(from.., 0);
@@ -604,10 +632,13 @@ impl<'b> UslpFrameWriter<'b> {
             plan.ocf.is_some(),
             plan.count,
         );
-        for (d, s) in frame.iter_mut().zip(header.iter().take(plan.header_len)) {
+        for (d, s) in frame
+            .iter_mut()
+            .zip(header.iter().take(plan.layout.primary_header().len()))
+        {
             *d = *s;
         }
-        let fecf_len = if plan.fecf { FECF_LEN } else { 0 };
+        let fecf_len = plan.layout.fecf().len();
         if let Some(ocf) = plan.ocf {
             let at = total.saturating_sub(fecf_len).saturating_sub(OCF_LEN);
             let slot = frame.get_mut(at..).unwrap_or_default();
@@ -615,7 +646,7 @@ impl<'b> UslpFrameWriter<'b> {
                 *d = s;
             }
         }
-        if plan.fecf {
+        if fecf_len > 0 {
             // The frame holds at least the Primary Header and the FECF, so this cannot fail.
             let _ = crc::write_fecf(frame);
         }
@@ -693,6 +724,22 @@ mod tests {
         w.tfdz_mut().copy_from_slice(&tfdz);
         assert_eq!(w.finish(44), Ok(64));
         assert_eq!(two, out[..64]);
+    }
+
+    #[test]
+    fn the_writer_reports_the_layout_of_the_reserved_frame() {
+        // req: CMN-040, API-020
+        let tbl = fixed();
+        let ocf = Some(Ocf::decode([1, 2, 3, 4]));
+        let rule = TfdzRule::PacketsSpanningFrames(FirstHeaderPointer::PacketStartsAt(offset(2)));
+        let c = content(rule, Upid::Packets, &[0xAA, 0xBB], ocf);
+        let f = fields(1, 3, FrameKind::Expedited, 1);
+        let mut out = [0_u8; 64];
+        let w = UslpFrameWriter::begin(&mut out, &tbl, f, c, 44).unwrap();
+        assert_eq!(
+            w.layout().ranges(),
+            [0..9, 9..11, 11..11, 11..58, 58..58, 58..62, 62..64]
+        );
     }
 
     #[test]

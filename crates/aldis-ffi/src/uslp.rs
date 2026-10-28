@@ -38,7 +38,9 @@
 //! `ALDIS_ERR_INVALID_STATE` (`UslpFrameWriter::resume`; OI-50), and finishes the frame:
 //! the Frame Length, the OCF, and the FECF.
 
-use aldis::core::layout::{FECF_LEN, OCF_LEN};
+use core::ops::Range;
+
+use aldis::core::layout::{FrameLayout, OCF_LEN};
 use aldis::core::ocf::Ocf;
 use aldis::core::security::SecurityLayout;
 use aldis::core::{Error, ErrorKind, Result};
@@ -765,58 +767,53 @@ const fn kind_view(k: FrameKind) -> u8 {
     }
 }
 
-/// The offset of `part`, a subslice of `whole`, in `whole` (CABI-012).
-fn offset(whole: &[u8], part: &[u8]) -> usize {
-    part.as_ptr().addr().saturating_sub(whole.as_ptr().addr())
-}
-
-/// The layout of the fields that follow the Security Trailer at `trailer_end`: the OCF and the
-/// FECF, each present or not (§4.1.5, §4.1.6).
-const fn tail(l: &mut aldis_uslp_layout_t, trailer_end: usize, ocf: bool, fecf: bool) {
-    l.ocf_offset = trailer_end;
-    l.ocf_len = if ocf { OCF_LEN } else { 0 };
-    l.fecf_offset = l.ocf_offset.saturating_add(l.ocf_len);
-    l.fecf_len = if fecf { FECF_LEN } else { 0 };
-}
-
-/// The C view of a decoded frame, its offsets into `bytes`, the decoder's input (CABI-012).
-fn view(f: &UslpFrame<'_>, bytes: &[u8]) -> aldis_uslp_frame_t {
-    let tfdf = f.tfdf_header();
-    let tfdz_offset = offset(bytes, f.tfdz());
-    let security_trailer_offset = offset(bytes, f.security_trailer());
-    let mut layout = aldis_uslp_layout_t {
-        frame_len: f.len(),
-        insert_zone_offset: aldis::uslp::TRUNCATED_HEADER_LEN,
-        insert_zone_len: 0,
-        security_header_offset: offset(bytes, f.security_header()),
-        security_header_len: f.security_header().len(),
-        tfdf_header_offset: tfdz_offset.saturating_sub(tfdf.len()),
-        tfdf_header_len: tfdf.len(),
-        tfdz_offset,
-        tfdz_len: f.tfdz().len(),
+/// The C form of a frame layout whose data field holds a TFDF Header of `tfdf_len` octets
+/// before the TFDZ (732.1 §4.1, Annex D1.2; CMN-040, CABI-012).
+fn layout(l: &FrameLayout, tfdf_len: usize) -> aldis_uslp_layout_t {
+    let (insert_zone_offset, insert_zone_len) = span(&l.secondary());
+    let (security_header_offset, security_header_len) = span(&l.security_header());
+    let data = l.data();
+    let (security_trailer_offset, security_trailer_len) = span(&l.security_trailer());
+    let (ocf_offset, ocf_len) = span(&l.ocf());
+    let (fecf_offset, fecf_len) = span(&l.fecf());
+    aldis_uslp_layout_t {
+        frame_len: l.frame_len(),
+        insert_zone_offset,
+        insert_zone_len,
+        security_header_offset,
+        security_header_len,
+        tfdf_header_offset: data.start,
+        tfdf_header_len: tfdf_len,
+        tfdz_offset: data.start.saturating_add(tfdf_len),
+        tfdz_len: data.len().saturating_sub(tfdf_len),
         security_trailer_offset,
-        security_trailer_len: f.security_trailer().len(),
-        ..aldis_uslp_layout_t::default()
-    };
-    let trailer_end = security_trailer_offset.saturating_add(f.security_trailer().len());
+        security_trailer_len,
+        ocf_offset,
+        ocf_len,
+        fecf_offset,
+        fecf_len,
+    }
+}
+
+/// The offset and length of a range.
+fn span(r: &Range<usize>) -> (usize, usize) {
+    (r.start, r.len())
+}
+
+/// The C view of a decoded frame (CABI-012).
+fn view(f: &UslpFrame<'_>) -> aldis_uslp_frame_t {
+    let tfdf = f.tfdf_header();
     let mut v = aldis_uslp_frame_t {
         truncated: f.is_truncated(),
         channel: channel_view(f.channel()),
         tfdf: tfdf_view(tfdf),
         upid_assigned: !matches!(tfdf.upid, Upid::Other(_)),
         anomalies: f.anomalies().bits(),
+        layout: layout(f.layout(), tfdf.len()),
         ..aldis_uslp_frame_t::default()
     };
     if let Some(full) = f.full() {
         let h = full.header();
-        layout.insert_zone_offset = offset(bytes, full.insert_zone());
-        layout.insert_zone_len = full.insert_zone().len();
-        tail(
-            &mut layout,
-            trailer_end,
-            full.ocf().is_some(),
-            full.fecf().is_some(),
-        );
         v.kind = kind_view(h.kind());
         v.ocf_flag = h.ocf_flag();
         v.vcf_count_len = h.vcf_count().len().get();
@@ -825,41 +822,8 @@ fn view(f: &UslpFrame<'_>, bytes: &[u8]) -> aldis_uslp_frame_t {
         v.fecf = full.fecf().unwrap_or(0);
     } else {
         v.kind = kind_view(FrameKind::Expedited);
-        tail(&mut layout, trailer_end, false, false);
     }
-    v.layout = layout;
     v
-}
-
-/// The layout of a frame reserved by `w` in the buffer that starts at address `base` (§4.1,
-/// §6.3; CABI-012).
-fn writer_layout(
-    base: usize,
-    w: &mut UslpFrameWriter<'_>,
-    content: &FrameContent<'_>,
-    fecf: bool,
-) -> aldis_uslp_layout_t {
-    let at = |s: &[u8]| (s.as_ptr().addr().saturating_sub(base), s.len());
-    let (security_header_offset, security_header_len) = at(w.security_header_mut());
-    let (tfdz_offset, tfdz_len) = at(w.tfdz_mut());
-    let (security_trailer_offset, security_trailer_len) = at(w.security_trailer_mut());
-    let mut l = aldis_uslp_layout_t {
-        insert_zone_offset: security_header_offset.saturating_sub(content.insert_zone.len()),
-        insert_zone_len: content.insert_zone.len(),
-        security_header_offset,
-        security_header_len,
-        tfdf_header_offset: tfdz_offset.saturating_sub(content.tfdf.len()),
-        tfdf_header_len: content.tfdf.len(),
-        tfdz_offset,
-        tfdz_len,
-        security_trailer_offset,
-        security_trailer_len,
-        ..aldis_uslp_layout_t::default()
-    };
-    let trailer_end = security_trailer_offset.saturating_add(security_trailer_len);
-    tail(&mut l, trailer_end, content.ocf.is_some(), fecf);
-    l.frame_len = l.fecf_offset.saturating_add(l.fecf_len);
-    l
 }
 
 /// Checks a physical channel configuration (732.1 §5 Table 5-1; USLP-003, USLP-008, API-040).
@@ -1019,7 +983,7 @@ pub unsafe extern "C" fn aldis_uslp_decode(
             let bytes = abi::bytes(bytes, len)?;
             let mode = abi::mode(mode)?;
             let out = abi::out(out)?;
-            out.write(view(&UslpFrame::decode(bytes, &t, mode)?, bytes));
+            out.write(view(&UslpFrame::decode(bytes, &t, mode)?));
             Ok(())
         })
     }
@@ -1129,7 +1093,7 @@ pub unsafe extern "C" fn aldis_uslp_stream_next(
                         offset: current_offset,
                         len,
                         declared_len: len,
-                        frame: view(&frame, frame.octets()),
+                        frame: view(&frame),
                         discard_reason: 0,
                         error_code: 0,
                         error_field: 0,
@@ -1281,10 +1245,8 @@ pub unsafe extern "C" fn aldis_uslp_writer_begin(
             let content = frame_content(&c)?;
             let out = abi::bytes_mut(out, cap, &c.buffers())?;
             let layout = abi::out(layout)?;
-            let base = out.as_ptr().addr();
-            let mut w = UslpFrameWriter::begin(out, &t, fields, content, max_tfdz_len)?;
-            let fecf = t.physical().fecf();
-            layout.write(writer_layout(base, &mut w, &content, fecf));
+            let w = UslpFrameWriter::begin(out, &t, fields, content, max_tfdz_len)?;
+            layout.write(self::layout(w.layout(), content.tfdf.len()));
             Ok(())
         })
     }

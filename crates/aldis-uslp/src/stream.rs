@@ -156,6 +156,10 @@ impl From<Reason> for DiscardReason {
 
 /// An item yielded by [`FrameStream`] (732.1 §4.3.11.2, §4.3.11.3; USLP-014, USLP-015).
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[expect(
+    clippy::large_enum_variant,
+    reason = "no heap to box the frame with (GEN-010); an accepted frame is the common item"
+)]
 pub enum IntakeItem<'a> {
     /// A validated USLP Transfer Frame, bundled with its matched Virtual Channel and MAP configurations.
     Accepted {
