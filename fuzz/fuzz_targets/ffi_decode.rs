@@ -88,8 +88,7 @@ use aldis_ffi::uslp::{
 use aldis_uslp::{
     FrameKind, FrameStream as UslpFrameStream, IntakeItem as UslpIntakeItem, MapConfig, OcfUse,
     PhysicalChannelConfig, SecurityScope, TransferFrameType, TruncatedFrameLen, Upid, UslpFrame,
-    UslpMapId, UslpSpacecraftId, UslpVcId, VcConfig, VcParams, VcTable as UslpVcTable,
-    VcfCountLen,
+    UslpMapId, UslpSpacecraftId, UslpVcId, VcConfig, VcParams, VcTable as UslpVcTable, VcfCountLen,
 };
 // ---- end USLP
 use libfuzzer_sys::fuzz_target;
@@ -628,19 +627,19 @@ mod tc_ffi {
     use aldis_core::security::SecurityLayout;
     use aldis_core::{DecodeMode, Error};
     use aldis_ffi::tc::{
-        ALDIS_TC_CONTROL_NONE, ALDIS_TC_CONTROL_SET_VR, ALDIS_TC_CONTROL_UNLOCK,
-        ALDIS_TC_FRAME_AD, ALDIS_TC_FRAME_BC, ALDIS_TC_FRAME_BD, ALDIS_TC_STREAM_ACCEPTED,
-        ALDIS_TC_STREAM_DISCARDED, ALDIS_TC_STREAM_END, aldis_clcw_decode, aldis_clcw_t,
-        aldis_tc_config_t, aldis_tc_control_decode, aldis_tc_control_t, aldis_tc_decode,
-        aldis_tc_frame_t, aldis_tc_header_decode, aldis_tc_header_t, aldis_tc_map_config_t,
-        aldis_tc_mc_config_check, aldis_tc_mc_config_t, aldis_tc_peek_length,
-        aldis_tc_stream_item_t, aldis_tc_stream_next, aldis_tc_vc_config_t,
+        ALDIS_TC_CONTROL_NONE, ALDIS_TC_CONTROL_SET_VR, ALDIS_TC_CONTROL_UNLOCK, ALDIS_TC_FRAME_AD,
+        ALDIS_TC_FRAME_BC, ALDIS_TC_FRAME_BD, ALDIS_TC_STREAM_ACCEPTED, ALDIS_TC_STREAM_DISCARDED,
+        ALDIS_TC_STREAM_END, aldis_clcw_decode, aldis_clcw_t, aldis_tc_config_t,
+        aldis_tc_control_decode, aldis_tc_control_t, aldis_tc_decode, aldis_tc_frame_t,
+        aldis_tc_header_decode, aldis_tc_header_t, aldis_tc_map_config_t, aldis_tc_mc_config_check,
+        aldis_tc_mc_config_t, aldis_tc_peek_length, aldis_tc_stream_item_t, aldis_tc_stream_next,
+        aldis_tc_vc_config_t,
     };
     use aldis_ffi::{ALDIS_OK, aldis_error_detail_t};
     use aldis_tc::{
-        Clcw, ControlCommand, FrameStream, FrameType, IntakeItem, MapConfig,
-        PhysicalChannelConfig, SegmentHeaderUse, TcFrame, TcFrameHeader, TcMapId, TcSpacecraftId,
-        TcVcId, VcConfig, VcTable,
+        Clcw, ControlCommand, FrameStream, FrameType, IntakeItem, MapConfig, PhysicalChannelConfig,
+        SegmentHeaderUse, TcFrame, TcFrameHeader, TcMapId, TcSpacecraftId, TcVcId, VcConfig,
+        VcTable,
     };
 
     use super::expect;

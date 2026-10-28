@@ -1324,14 +1324,13 @@ fn tc(t: &mut Tally) {
     use aldis_ffi::error::ALDIS_ERR_RESERVED_VALUE;
     use aldis_ffi::tc::{
         ALDIS_TC_CONTROL_SET_VR, ALDIS_TC_DISCARD_FECF_MISMATCH, ALDIS_TC_DISCARD_FILL,
-        ALDIS_TC_FRAME_AD, ALDIS_TC_FRAME_BC, ALDIS_TC_SEQ_UNSEGMENTED,
-        ALDIS_TC_STREAM_ACCEPTED, ALDIS_TC_STREAM_DISCARDED, aldis_clcw_decode, aldis_clcw_encode,
-        aldis_clcw_t, aldis_tc_config_check, aldis_tc_content_t, aldis_tc_control_decode,
+        ALDIS_TC_FRAME_AD, ALDIS_TC_FRAME_BC, ALDIS_TC_SEQ_UNSEGMENTED, ALDIS_TC_STREAM_ACCEPTED,
+        ALDIS_TC_STREAM_DISCARDED, aldis_clcw_decode, aldis_clcw_encode, aldis_clcw_t,
+        aldis_tc_config_check, aldis_tc_content_t, aldis_tc_control_decode,
         aldis_tc_control_encode, aldis_tc_control_t, aldis_tc_decode, aldis_tc_encode,
         aldis_tc_fields_t, aldis_tc_frame_t, aldis_tc_header_decode, aldis_tc_header_t,
-        aldis_tc_layout_t, aldis_tc_mc_config_check, aldis_tc_peek_length,
-        aldis_tc_stream_item_t, aldis_tc_stream_next, aldis_tc_writer_begin,
-        aldis_tc_writer_finish,
+        aldis_tc_layout_t, aldis_tc_mc_config_check, aldis_tc_peek_length, aldis_tc_stream_item_t,
+        aldis_tc_stream_next, aldis_tc_writer_begin, aldis_tc_writer_finish,
     };
     let (mc, vcs, maps) = tc_channels();
     let mut det = detail();
