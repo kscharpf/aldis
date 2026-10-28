@@ -11,7 +11,7 @@
 | WP-0 Infrastructure & setup | complete | #135, #140, #141, #143 | WP-0a Track C retirement (#141), WP-0b agent boundaries (#140), WP-0c fuzz smoke check (#135), WP-0d plan & CI scope (#143) |
 | WP-1a Spec readings & cell review | in progress | — | CCSDS 232.1 Table 5-1 and Table 6-1 cell review `cop1-tables.md`, field codes 150–199 (COP-003, VER-041, API-082) |
 | WP-1b Common types & FARM-1 table | in progress | #147 | Directives, alerts, notifications, FARM-1 S1–S3 × E1–E11 const table data, cell tests (COP-002, COP-004, RS-021) |
-| WP-1c FOP-1 table as data | in progress | — | FOP-1 S1–S6 × E1–E46/E101–E104 const table data, Cor. 1 verification, cell tests (COP-001, COP-004, RS-021) |
+| WP-1c FOP-1 table as data | in progress | #149 | FOP-1 S1–S6 × E1–E46/E101–E104 const table data, Cor. 1 verification, cell tests (COP-001, COP-004, RS-021) |
 | WP-2 Blind vectors & model | planned | — | Python blind oracle model (TV-023), conformance scenarios in `test-vectors/cop1/` with 1 vector per cell (COP-005, TV-011) |
 | WP-3 `aldis-cop1`: FARM-1 | planned | — | FARM-1 engine: S1–S3, E1–E11, window check, buffer models, FARM-B counter, CLCW emission (COP-030…036) |
 | WP-4 `aldis-cop1`: FOP-1 | planned | — | FOP-1 engine: S1–S6, E1–E46, E101–E104, sliding window, T1 timer, Suspend/Resume, frame construction (COP-010…017) |
