@@ -392,4 +392,137 @@ mod tests {
         assert!(matches!(second, IntakeItem::Accepted { ref frame, .. } if frame.len() == 8));
         assert_eq!(stream.next(), None);
     }
+
+    #[test]
+    fn item_accessors_and_remaining() {
+        // req: TC-020, TC-021
+        let table = standard(false);
+        let mut stream = FrameStream::new(&UNLOCK, &table, DecodeMode::Strict);
+        assert_eq!(stream.remaining(), &UNLOCK);
+        let item = stream.next().unwrap();
+        assert_eq!(item.octets(), &UNLOCK);
+        assert_eq!(item.len(), 6);
+        assert!(!item.is_empty());
+        assert_eq!(stream.remaining(), &[]);
+        assert_eq!(stream.next(), None);
+
+        // Also test discarded item accessors
+        let fill = [0x55_u8; 3];
+        let mut stream_fill = FrameStream::new(&fill, &table, DecodeMode::Strict);
+        let discarded = stream_fill.next().unwrap();
+        assert_eq!(discarded.octets(), &fill);
+        assert_eq!(discarded.len(), 3);
+        assert!(!discarded.is_empty());
+    }
+
+    #[test]
+    fn discard_reason_codes_and_validation_conversions() {
+        // req: TC-021
+        use crate::validate::Reason;
+
+        let pairs = [
+            (
+                DiscardReason::UnexpectedVersion,
+                1,
+                Some(Reason::UnexpectedVersion),
+            ),
+            (
+                DiscardReason::UnexpectedSpacecraft,
+                2,
+                Some(Reason::UnexpectedSpacecraft),
+            ),
+            (DiscardReason::ReservedFlags, 3, Some(Reason::ReservedFlags)),
+            (DiscardReason::ReservedSpare, 4, Some(Reason::ReservedSpare)),
+            (DiscardReason::InvalidVcid, 5, Some(Reason::InvalidVcid)),
+            (DiscardReason::FrameTooLong, 6, Some(Reason::FrameTooLong)),
+            (DiscardReason::FrameTooShort, 7, Some(Reason::FrameTooShort)),
+            (
+                DiscardReason::LengthMismatch,
+                8,
+                Some(Reason::LengthMismatch),
+            ),
+            (DiscardReason::FecfMismatch, 9, Some(Reason::FecfMismatch)),
+            (DiscardReason::InvalidMapId, 10, Some(Reason::InvalidMapId)),
+            (
+                DiscardReason::ReservedControlCommand,
+                11,
+                Some(Reason::ReservedControlCommand),
+            ),
+            (DiscardReason::Fill, 20, None),
+            (DiscardReason::TruncatedFrame { declared_len: 10 }, 21, None),
+        ];
+
+        for (reason, code, val) in pairs {
+            assert_eq!(reason.code(), code);
+            assert_eq!(reason.validation_reason(), val);
+            if let Some(r) = val {
+                assert_eq!(DiscardReason::from(r), reason);
+            }
+        }
+    }
+
+    #[test]
+    fn stream_discards_truncated_header_check_failure() {
+        // req: TC-020, TC-021
+        let table = standard(false);
+        // Header claiming 10 bytes (h.frame_len == 10), but SCID is 0x000 (UnexpectedSpacecraft)
+        // rest has only 6 bytes, so fewer octets remain than declared, and check_head fails on check (b).
+        let unit: [u8; 6] = [0x00, 0x00, 0x04, 0x09, 0x00, 0x00];
+        let mut stream = FrameStream::new(&unit, &table, DecodeMode::Strict);
+        let item = stream.next().unwrap();
+        match item {
+            IntakeItem::Discarded { reason, octets, .. } => {
+                assert_eq!(reason, DiscardReason::UnexpectedSpacecraft);
+                assert_eq!(octets.len(), 6);
+            }
+            IntakeItem::Accepted { .. } => panic!("expected spacecraft discard"),
+        }
+        assert_eq!(stream.next(), None);
+
+        // Header with version 1 claiming 10 bytes when only 6 bytes are present.
+        // Falls through the if h.version == 0 check to Fill.
+        let v1_unit: [u8; 6] = [0x40, 0x55, 0x04, 0x09, 0x00, 0x00];
+        let mut stream_v1 = FrameStream::new(&v1_unit, &table, DecodeMode::Strict);
+        let item_v1 = stream_v1.next().unwrap();
+        assert_eq!(item_v1.octets().len(), 6);
+        assert!(matches!(
+            item_v1,
+            IntakeItem::Discarded {
+                reason: DiscardReason::Fill,
+                ..
+            }
+        ));
+        assert_eq!(stream_v1.next(), None);
+
+        // Header claiming 5 bytes (< MIN_FRAME_LEN 6).
+        let short_hdr: [u8; 6] = [0x00, 0x55, 0x04, 0x04, 0x00, 0x00];
+        let mut stream_short = FrameStream::new(&short_hdr, &table, DecodeMode::Strict);
+        let item_short = stream_short.next().unwrap();
+        assert!(matches!(
+            item_short,
+            IntakeItem::Discarded {
+                reason: DiscardReason::Fill,
+                ..
+            }
+        ));
+        assert_eq!(stream_short.next(), None);
+    }
+
+    #[test]
+    fn stream_accepts_segmented_frame_with_map() {
+        // req: TC-020
+        let table = standard(false);
+        // VC 2 (segmented): SCID 0x155, VCID 2, len 7 (8 octets), seq unsegmented (0xC0 = MAP 0)
+        let frame: [u8; 8] = [0x01, 0x55, 0x08, 0x07, 0x00, 0xC0, 0x11, 0x22];
+        let mut stream = FrameStream::new(&frame, &table, DecodeMode::Strict);
+        let item = stream.next().unwrap();
+        match item {
+            IntakeItem::Accepted { frame, map, .. } => {
+                assert_eq!(frame.len(), 8);
+                assert!(map.is_some());
+            }
+            IntakeItem::Discarded { .. } => panic!("expected accepted frame"),
+        }
+        assert_eq!(stream.next(), None);
+    }
 }

@@ -13,7 +13,7 @@ use aldis_core::{DecodeMode, Error, ErrorKind};
 use crate::config::{MapConfig, VcConfig, VcLookup};
 use crate::delimit::{Declared, declared_len};
 use crate::field;
-use crate::header::{RawRest, RawStart, VERSION};
+use crate::header::{RawRest, RawStart};
 use crate::validate::Reason;
 use crate::view::{UslpFrame, parse};
 
@@ -231,22 +231,16 @@ impl<'a, 'c, L: VcLookup + ?Sized> FrameStream<'a, 'c, L> {
 impl<'a, L: VcLookup + ?Sized> Iterator for FrameStream<'a, '_, L> {
     type Item = IntakeItem<'a>;
 
-    #[expect(
-        clippy::too_many_lines,
-        reason = "stream intake state machine and header check order"
-    )]
     fn next(&mut self) -> Option<Self::Item> {
         if self.rest.is_empty() {
             return None;
         }
 
         // If an unexpected-version frame is present with its declared length available in rest,
-        // pass it to parse to report DiscardReason::UnexpectedVersion and advance past it.
+        // report DiscardReason::UnexpectedVersion and advance past it.
         let unexpected_version_frame = (|| {
             let start = RawStart::parse(self.rest)?;
-            if start.version == VERSION {
-                return None;
-            }
+            let error = start.check_version().err()?;
             let len = if start.truncated {
                 self.channels
                     .vc(start.channel.spacecraft_id, start.channel.vc_id)
@@ -259,87 +253,67 @@ impl<'a, L: VcLookup + ?Sized> Iterator for FrameStream<'a, '_, L> {
                 }
                 raw.frame_len
             };
-            self.rest.split_at_checked(len)
+            let (frame_bytes, remaining) = self.rest.split_at_checked(len)?;
+            Some((frame_bytes, remaining, error))
         })();
-        if let Some((frame_bytes, remaining)) = unexpected_version_frame {
+        if let Some((frame_bytes, remaining, error)) = unexpected_version_frame {
             self.rest = remaining;
-            return match parse(frame_bytes, self.channels, self.mode, true) {
+            return Some(IntakeItem::Discarded {
+                reason: DiscardReason::UnexpectedVersion,
+                octets: frame_bytes,
+                error,
+            });
+        }
+
+        let len = match declared_len(self.rest, self.channels) {
+            Some(Declared::Len(len)) => len,
+            Some(Declared::TruncatedOnly) => self.rest.len(),
+            Some(Declared::NoTruncatedLength) => {
+                let octets = self.rest;
+                self.rest = &[];
+                return Some(IntakeItem::Discarded {
+                    reason: DiscardReason::NoTruncatedLength,
+                    octets,
+                    error: Error::new(ErrorKind::UnknownChannel).with_field(field::VC_ID),
+                });
+            }
+            None => {
+                let octets = self.rest;
+                self.rest = &[];
+                return Some(IntakeItem::Discarded {
+                    reason: DiscardReason::Fill,
+                    octets,
+                    error: Error::new(ErrorKind::Malformed).with_field(field::FRAME_DATA_FIELD),
+                });
+            }
+        };
+
+        if let Some((frame_bytes, remaining)) = self.rest.split_at_checked(len) {
+            self.rest = remaining;
+            match parse(frame_bytes, self.channels, self.mode, true) {
                 Ok((frame, vc, map)) => Some(IntakeItem::Accepted { frame, vc, map }),
                 Err(rejection) => Some(IntakeItem::Discarded {
                     reason: DiscardReason::from(rejection.reason()),
                     octets: frame_bytes,
                     error: rejection.error(),
                 }),
-            };
-        }
-
-        match declared_len(self.rest, self.channels) {
-            Some(Declared::Len(len)) => {
-                if let Some((frame_bytes, remaining)) = self.rest.split_at_checked(len) {
-                    self.rest = remaining;
-                    match parse(frame_bytes, self.channels, self.mode, true) {
-                        Ok((frame, vc, map)) => Some(IntakeItem::Accepted { frame, vc, map }),
-                        Err(rejection) => Some(IntakeItem::Discarded {
-                            reason: DiscardReason::from(rejection.reason()),
-                            octets: frame_bytes,
-                            error: rejection.error(),
-                        }),
-                    }
-                } else {
-                    let octets = self.rest;
-                    self.rest = &[];
-                    if let Err(rejection) = parse(octets, self.channels, self.mode, true)
-                        && rejection.reason() != Reason::LengthMismatch
-                    {
-                        return Some(IntakeItem::Discarded {
-                            reason: DiscardReason::from(rejection.reason()),
-                            octets,
-                            error: rejection.error(),
-                        });
-                    }
+            }
+        } else {
+            let octets = self.rest;
+            self.rest = &[];
+            match parse(octets, self.channels, self.mode, true) {
+                Err(rejection) if rejection.reason() != Reason::LengthMismatch => {
                     Some(IntakeItem::Discarded {
-                        reason: DiscardReason::IncompleteFrame { declared_len: len },
-                        octets,
-                        error: Error::incomplete(len),
-                    })
-                }
-            }
-            Some(Declared::NoTruncatedLength) => {
-                let octets = self.rest;
-                self.rest = &[];
-                Some(IntakeItem::Discarded {
-                    reason: DiscardReason::NoTruncatedLength,
-                    octets,
-                    error: Error::new(ErrorKind::UnknownChannel).with_field(field::VC_ID),
-                })
-            }
-            Some(Declared::TruncatedOnly) => {
-                let octets = self.rest;
-                self.rest = &[];
-                if let Err(rejection) = parse(octets, self.channels, self.mode, true)
-                    && rejection.reason() != Reason::LengthMismatch
-                {
-                    return Some(IntakeItem::Discarded {
                         reason: DiscardReason::from(rejection.reason()),
                         octets,
                         error: rejection.error(),
-                    });
+                    })
                 }
-                Some(IntakeItem::Discarded {
-                    reason: DiscardReason::NonTruncatedFrameNotAllowed,
+                _ => Some(IntakeItem::Discarded {
+                    reason: DiscardReason::IncompleteFrame { declared_len: len },
                     octets,
-                    error: Error::new(ErrorKind::InvalidField)
-                        .with_field(field::END_OF_FRAME_PRIMARY_HEADER_FLAG),
-                })
-            }
-            None => {
-                let octets = self.rest;
-                self.rest = &[];
-                Some(IntakeItem::Discarded {
-                    reason: DiscardReason::Fill,
-                    octets,
-                    error: Error::new(ErrorKind::Malformed).with_field(field::FRAME_DATA_FIELD),
-                })
+                    error: Error::incomplete(len),
+                }),
             }
         }
     }
@@ -418,6 +392,263 @@ mod tests {
             }
             IntakeItem::Accepted { .. } => panic!("expected non-truncated rejection"),
         }
+        assert_eq!(stream.next(), None);
+    }
+
+    #[test]
+    fn item_accessors_and_remaining() {
+        // req: USLP-014, USLP-015
+        let table = variable();
+        let mut stream = FrameStream::new(&TRUNCATED, &table, DecodeMode::Strict);
+        assert_eq!(stream.remaining(), &TRUNCATED);
+        let item = stream.next().unwrap();
+        assert_eq!(item.octets(), &TRUNCATED);
+        assert_eq!(item.len(), 12);
+        assert!(!item.is_empty());
+        assert_eq!(stream.remaining(), &[]);
+        assert_eq!(stream.next(), None);
+
+        // Discarded item accessors
+        let fill = [0x55_u8; 3];
+        let mut stream_fill = FrameStream::new(&fill, &table, DecodeMode::Strict);
+        let discarded = stream_fill.next().unwrap();
+        assert_eq!(discarded.octets(), &fill);
+        assert_eq!(discarded.len(), 3);
+        assert!(!discarded.is_empty());
+    }
+
+    #[test]
+    fn discard_reason_codes_and_validation_conversions() {
+        // req: USLP-015
+        use crate::validate::Reason;
+
+        let pairs = [
+            (
+                DiscardReason::UnexpectedVersion,
+                1,
+                Some(Reason::UnexpectedVersion),
+            ),
+            (
+                DiscardReason::UnexpectedSpacecraft,
+                2,
+                Some(Reason::UnexpectedSpacecraft),
+            ),
+            (DiscardReason::ReservedFlags, 3, Some(Reason::ReservedFlags)),
+            (DiscardReason::ReservedSpare, 4, Some(Reason::ReservedSpare)),
+            (DiscardReason::InvalidVcid, 5, Some(Reason::InvalidVcid)),
+            (DiscardReason::InvalidMapId, 6, Some(Reason::InvalidMapId)),
+            (
+                DiscardReason::TruncatedFrameNotAllowed,
+                7,
+                Some(Reason::TruncatedFrameNotAllowed),
+            ),
+            (
+                DiscardReason::VcfCountLengthMismatch,
+                8,
+                Some(Reason::VcfCountLengthMismatch),
+            ),
+            (
+                DiscardReason::OcfFlagMismatch,
+                9,
+                Some(Reason::OcfFlagMismatch),
+            ),
+            (
+                DiscardReason::FixedLengthMismatch,
+                10,
+                Some(Reason::FixedLengthMismatch),
+            ),
+            (DiscardReason::FrameTooLong, 11, Some(Reason::FrameTooLong)),
+            (
+                DiscardReason::FrameTooShort,
+                12,
+                Some(Reason::FrameTooShort),
+            ),
+            (
+                DiscardReason::LengthMismatch,
+                13,
+                Some(Reason::LengthMismatch),
+            ),
+            (DiscardReason::FecfMismatch, 14, Some(Reason::FecfMismatch)),
+            (
+                DiscardReason::ConstructionRuleMismatch,
+                15,
+                Some(Reason::ConstructionRuleMismatch),
+            ),
+            (
+                DiscardReason::PointerBeyondZone,
+                16,
+                Some(Reason::PointerBeyondZone),
+            ),
+            (
+                DiscardReason::OidHeaderMismatch,
+                17,
+                Some(Reason::OidHeaderMismatch),
+            ),
+            (
+                DiscardReason::NonTruncatedFrameNotAllowed,
+                18,
+                Some(Reason::NonTruncatedFrameNotAllowed),
+            ),
+            (DiscardReason::Fill, 20, None),
+            (
+                DiscardReason::IncompleteFrame { declared_len: 20 },
+                21,
+                None,
+            ),
+            (DiscardReason::NoTruncatedLength, 22, None),
+        ];
+
+        for (reason, code, val) in pairs {
+            assert_eq!(reason.code(), code);
+            assert_eq!(reason.validation_reason(), val);
+            if let Some(r) = val {
+                assert_eq!(DiscardReason::from(r), reason);
+            }
+        }
+    }
+
+    #[test]
+    fn stream_discards_no_truncated_length() {
+        // req: USLP-014
+        let table = variable();
+        // Truncated frame (flag = 1) targeting VC 8, which has no truncated length configured
+        let mut frame = TRUNCATED;
+        frame[..4].copy_from_slice(&[0xC0, 0x15, 0x59, 0x01]);
+        let mut stream = FrameStream::new(&frame, &table, DecodeMode::Strict);
+        let item = stream.next().unwrap();
+        assert!(matches!(
+            item,
+            IntakeItem::Discarded {
+                reason: DiscardReason::NoTruncatedLength,
+                ..
+            }
+        ));
+        assert_eq!(stream.next(), None);
+    }
+
+    #[test]
+    fn stream_handles_incomplete_frames_and_early_errors() {
+        // req: USLP-014, USLP-015
+        let table = variable();
+        // VC 8 non-truncated frame declaring 20 bytes (0x00, 0x13), but only 10 bytes present
+        let mut unit = [0_u8; 10];
+        unit[..7].copy_from_slice(&[0xC0, 0x15, 0x59, 0x00, 0x00, 0x13, 0x00]);
+        let mut stream = FrameStream::new(&unit, &table, DecodeMode::Strict);
+        let item = stream.next().unwrap();
+        match item {
+            IntakeItem::Discarded { reason, octets, .. } => {
+                assert_eq!(reason, DiscardReason::IncompleteFrame { declared_len: 20 });
+                assert_eq!(octets.len(), 10);
+            }
+            IntakeItem::Accepted { .. } => panic!("expected incomplete discard"),
+        }
+        assert_eq!(stream.next(), None);
+
+        // Same incomplete frame, but with unknown SCID 0x000 (check b fails before check d)
+        let mut bad_scid = unit;
+        bad_scid[..4].copy_from_slice(&[0xC0, 0x00, 0x09, 0x00]);
+        let mut stream_scid = FrameStream::new(&bad_scid, &table, DecodeMode::Strict);
+        let item_scid = stream_scid.next().unwrap();
+        assert!(matches!(
+            item_scid,
+            IntakeItem::Discarded {
+                reason: DiscardReason::UnexpectedSpacecraft,
+                ..
+            }
+        ));
+        assert_eq!(stream_scid.next(), None);
+    }
+
+    #[test]
+    fn stream_handles_unexpected_version_variants() {
+        // req: USLP-014, USLP-015
+        let table = variable();
+        // 1. Non-truncated with version 0, length 12 >= 7, available in rest
+        let mut v0_avail = [0_u8; 12];
+        v0_avail[..7].copy_from_slice(&[0x00, 0x15, 0x59, 0x00, 0x00, 0x0B, 0x00]);
+        let mut stream1 = FrameStream::new(&v0_avail, &table, DecodeMode::Strict);
+        let item1 = stream1.next().unwrap();
+        assert!(matches!(
+            item1,
+            IntakeItem::Discarded {
+                reason: DiscardReason::UnexpectedVersion,
+                ..
+            }
+        ));
+        assert_eq!(stream1.next(), None);
+
+        // 2. Non-truncated with version 0, raw.frame_len < 7 (e.g. 5) -> falls through to Fill
+        let mut v0_short = [0_u8; 8];
+        v0_short[..7].copy_from_slice(&[0x00, 0x15, 0x59, 0x00, 0x00, 0x04, 0x00]);
+        let mut stream2 = FrameStream::new(&v0_short, &table, DecodeMode::Strict);
+        let item2 = stream2.next().unwrap();
+        assert!(matches!(
+            item2,
+            IntakeItem::Discarded {
+                reason: DiscardReason::Fill,
+                ..
+            }
+        ));
+        assert_eq!(stream2.next(), None);
+
+        // 3. Non-truncated with version 0, len > rest.len() -> split_at_checked is None -> falls through to Fill
+        let mut v0_trunc = [0_u8; 8];
+        v0_trunc[..7].copy_from_slice(&[0x00, 0x15, 0x59, 0x00, 0x00, 0x14, 0x00]);
+        let mut stream3 = FrameStream::new(&v0_trunc, &table, DecodeMode::Strict);
+        let item3 = stream3.next().unwrap();
+        assert!(matches!(
+            item3,
+            IntakeItem::Discarded {
+                reason: DiscardReason::Fill,
+                ..
+            }
+        ));
+        assert_eq!(stream3.next(), None);
+
+        // 4. Truncated with version 0, targeting VC 8 (no truncated length) -> ? returns None -> falls through to Fill
+        let mut v0_no_trunc = TRUNCATED;
+        v0_no_trunc[..4].copy_from_slice(&[0x00, 0x15, 0x59, 0x01]);
+        let mut stream4 = FrameStream::new(&v0_no_trunc, &table, DecodeMode::Strict);
+        let item4 = stream4.next().unwrap();
+        assert!(matches!(
+            item4,
+            IntakeItem::Discarded {
+                reason: DiscardReason::Fill,
+                ..
+            }
+        ));
+        assert_eq!(stream4.next(), None);
+
+        // 5. Non-truncated with version 0, rest.len() < 7 -> RawRest::parse is None -> ? returns None -> falls through to Fill
+        let v0_fewer_than_7 = [0x00, 0x15, 0x59, 0x00, 0x00];
+        let mut stream5 = FrameStream::new(&v0_fewer_than_7, &table, DecodeMode::Strict);
+        let item5 = stream5.next().unwrap();
+        assert!(matches!(
+            item5,
+            IntakeItem::Discarded {
+                reason: DiscardReason::Fill,
+                ..
+            }
+        ));
+        assert_eq!(stream5.next(), None);
+    }
+
+    #[test]
+    fn stream_discards_validation_failure_on_available_len() {
+        // req: USLP-015
+        let table = variable();
+        // Non-truncated frame on VC 8 (12 bytes) with bad FECF (e.g. zeroed)
+        let mut bad_fecf = [0_u8; 12];
+        bad_fecf[..7].copy_from_slice(&[0xC0, 0x15, 0x59, 0x00, 0x00, 0x0B, 0x00]);
+        let mut stream = FrameStream::new(&bad_fecf, &table, DecodeMode::Strict);
+        let item = stream.next().unwrap();
+        assert!(matches!(
+            item,
+            IntakeItem::Discarded {
+                reason: DiscardReason::FecfMismatch,
+                ..
+            }
+        ));
         assert_eq!(stream.next(), None);
     }
 }
