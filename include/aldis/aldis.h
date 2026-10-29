@@ -1857,11 +1857,10 @@ typedef uint32_t aldis_spp_track;
  * The status a fallible function returns (03-api-model.md §9; CABI-020, GEN-040).
  *
  * [`ALDIS_OK`], or the catalogue code of the error. Every `ALDIS_ERR_*` has the value of
- * `ErrorKind::code()` of the kind it is named for, and a test checks each one against
- * `ErrorKind::ALL` (OI-57 convention 3).
+ * `ErrorKind::code()` of the kind it is named for, which the build checks.
  *
- * A function returns a `uint32_t`; the type itself is not a field or return type of the header
- * (OI-57 convention 2; CABI-010).
+ * A function returns a `uint32_t`; the type itself is not a field or return type of the
+ * header (OI-57 convention 2; CABI-010).
  *
  */
 enum aldis_status
@@ -1874,19 +1873,19 @@ enum aldis_status
    */
   ALDIS_OK = 0,
   /**
-   * Output buffer too small; the detail carries `needed` (03-api-model.md §9 code 1; CABI-020).
+   * Output buffer too small; carries `needed` (code 1; CABI-020).
    */
   ALDIS_ERR_BUFFER_TOO_SMALL = 1,
   /**
-   * Input shorter than required; the detail carries `needed` (code 2; CABI-020).
+   * Input shorter than required; carries `needed` (code 2; CABI-020).
    */
   ALDIS_ERR_INCOMPLETE = 2,
   /**
-   * Length field, configured length, and buffer length disagree (code 3; CABI-020).
+   * Length field / configured length / buffer length disagree (code 3; CABI-020).
    */
   ALDIS_ERR_LENGTH_MISMATCH = 3,
   /**
-   * Version number field is not the one this codec handles (code 4; CABI-020).
+   * Version number field not the one this codec handles (code 4; CABI-020).
    */
   ALDIS_ERR_UNSUPPORTED_VERSION = 4,
   /**
@@ -1894,12 +1893,11 @@ enum aldis_status
    */
   ALDIS_ERR_OUT_OF_RANGE = 5,
   /**
-   * A field holds a value the Blue Book forbids, or an argument violates CABI-022 (code 6;
-   * CABI-020, CABI-022).
+   * A field holds a value the Blue Book forbids (carries field id) (code 6; CABI-020).
    */
   ALDIS_ERR_INVALID_FIELD = 6,
   /**
-   * A field holds a value CCSDS reserves, in strict mode (code 7; CABI-020).
+   * A field holds a value CCSDS reserves (strict mode) (code 7; CABI-020).
    */
   ALDIS_ERR_RESERVED_VALUE = 7,
   /**
@@ -1907,39 +1905,41 @@ enum aldis_status
    */
   ALDIS_ERR_CRC_MISMATCH = 8,
   /**
-   * AOS Frame Header Error Control detected an uncorrectable error (code 9; CABI-020).
+   * AOS FHEC detected an uncorrectable error (code 9; CABI-020).
    */
   ALDIS_ERR_HEADER_UNCORRECTABLE = 9,
   /**
-   * SCID, VCID, MAP ID, APID, or EPI not in the configuration (code 10; CABI-020).
+   * SCID/VCID/MAP ID/APID not in the configuration (code 10; CABI-020).
    */
   ALDIS_ERR_UNKNOWN_CHANNEL = 10,
   /**
-   * Configuration violates a Blue Book constraint (code 11; CABI-020).
+   * Configuration violates a Blue Book constraint (carries parameter id) (code 11; CABI-020).
    */
   ALDIS_ERR_INVALID_CONFIG = 11,
   /**
-   * Engine queue full; input rejected without state change (code 12; CABI-020).
+   * Engine input storage full; input rejected without state change (code 12; CABI-020).
    */
   ALDIS_ERR_WOULD_BLOCK = 12,
   /**
-   * Operation not permitted in the engine's current state (code 13; CABI-020).
+   * Operation not permitted in the engine's current state (non-CCSDS misuse) (code 13;
+   * CABI-020).
    */
   ALDIS_ERR_INVALID_STATE = 13,
   /**
-   * Security hook reported failure (code 14; CABI-020).
+   * SDLS processing (a security hook, applied by the caller) reported failure (code 14;
+   * CABI-020).
    */
   ALDIS_ERR_SECURITY = 14,
   /**
-   * Configuration exceeds a compile-time capacity (code 15; CABI-020).
+   * Configuration exceeds compile-time capacity (code 15; CABI-020).
    */
   ALDIS_ERR_CAPACITY_EXCEEDED = 15,
   /**
-   * Unknown, uninitialized, or stale handle (code 16; CABI-020, CABI-032).
+   * Unknown or stale transmit/request handle (code 16; CABI-020).
    */
   ALDIS_ERR_INVALID_HANDLE = 16,
   /**
-   * Structurally impossible input (code 17; CABI-020).
+   * Structurally impossible input (e.g. pointer beyond data field) (code 17; CABI-020).
    */
   ALDIS_ERR_MALFORMED = 17,
   /**

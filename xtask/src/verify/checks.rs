@@ -184,8 +184,9 @@ pub const STACK: PathList = PathList {
 
 /// Documentation: read by `spec` only (spec lint, links, vectors, field catalogue, traces,
 /// changelog check), so a change to these paths alone runs only `spec`; a change to the field
-/// catalogue in `docs/03-api-model.md` alone fails `spec` until `cargo xtask fields --write`
-/// regenerates its files, which are Rust and C++ inputs. Not documentation: the crate READMEs,
+/// catalogue or the error catalogue in `docs/03-api-model.md` alone fails `spec` until
+/// `cargo xtask fields --write` or `cargo xtask status --write` regenerates its files, which are
+/// Rust and C++ inputs. Not documentation: the crate READMEs,
 /// which are doctests, `test-vectors/README.md`, which lies under the Rust and C++ input
 /// `test-vectors/`, and every other `.md` file outside these paths, such as `cpp/README.md`
 /// (installed by the C++ build) and `refapp/golden/CHANGES.md`.
@@ -632,6 +633,8 @@ cargo xtask vectors validate
 cargo xtask vectors schema --check
 # The field catalogue of docs/03-api-model.md §9.1 and the files generated from it (API-082).
 cargo xtask fields
+# The error catalogue of docs/03-api-model.md §9 and the C ABI status codes generated from it (CABI-020).
+cargo xtask status
 # The SANA registry snapshots of specs/sana/ and the tables generated from them (M2 plan D13).
 cargo xtask sana
 # The per-crate registrations (coverage, features, mutants, exerciser, layers, fuzz matrix,

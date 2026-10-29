@@ -2,93 +2,14 @@
 //!
 //! Every fallible function returns a `uint32_t`: [`ALDIS_OK`] (0), or the code of the error
 //! catalogue (03-api-model.md §9), one `ALDIS_ERR_*` constant per kind, declared by
-//! [`aldis_status`]. A code is `ErrorKind::code()` and is never renumbered; there is no second
-//! list to keep in step. An optional [`aldis_error_detail_t`] receives the kind, the field code,
+//! [`aldis_status`], which `cargo xtask status --write` generates from that table (the module
+//! `status`, re-exported here). A code is `ErrorKind::code()` and is never renumbered; the build
+//! checks each constant against its `ErrorKind`. An optional [`aldis_error_detail_t`] receives the kind, the field code,
 //! and the detail of the error.
 
 use aldis::core::{Error, ErrorDetail};
 
-use crate::mirror::mirror;
-
-/// The status a fallible function returns (03-api-model.md §9; CABI-020, GEN-040).
-///
-/// [`ALDIS_OK`], or the catalogue code of the error. Every `ALDIS_ERR_*` has the value of
-/// `ErrorKind::code()` of the kind it is named for, and a test checks each one against
-/// `ErrorKind::ALL` (OI-57 convention 3).
-///
-/// A function returns a `uint32_t`; the type itself is not a field or return type of the header
-/// (OI-57 convention 2; CABI-010).
-///
-/// cbindgen:prefix-with-name=false
-/// cbindgen:rename-all=None
-#[repr(u32)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[expect(
-    non_camel_case_types,
-    reason = "the variants are the C constants (OI-57 convention 2)"
-)]
-pub enum aldis_status {
-    /// Success (CABI-020).
-    ALDIS_OK = 0,
-    /// Output buffer too small; the detail carries `needed` (03-api-model.md §9 code 1; CABI-020).
-    ALDIS_ERR_BUFFER_TOO_SMALL = 1,
-    /// Input shorter than required; the detail carries `needed` (code 2; CABI-020).
-    ALDIS_ERR_INCOMPLETE = 2,
-    /// Length field, configured length, and buffer length disagree (code 3; CABI-020).
-    ALDIS_ERR_LENGTH_MISMATCH = 3,
-    /// Version number field is not the one this codec handles (code 4; CABI-020).
-    ALDIS_ERR_UNSUPPORTED_VERSION = 4,
-    /// A value exceeds its field range or a configured limit (code 5; CABI-020).
-    ALDIS_ERR_OUT_OF_RANGE = 5,
-    /// A field holds a value the Blue Book forbids, or an argument violates CABI-022 (code 6;
-    /// CABI-020, CABI-022).
-    ALDIS_ERR_INVALID_FIELD = 6,
-    /// A field holds a value CCSDS reserves, in strict mode (code 7; CABI-020).
-    ALDIS_ERR_RESERVED_VALUE = 7,
-    /// FECF check failed (code 8; CABI-020).
-    ALDIS_ERR_CRC_MISMATCH = 8,
-    /// AOS Frame Header Error Control detected an uncorrectable error (code 9; CABI-020).
-    ALDIS_ERR_HEADER_UNCORRECTABLE = 9,
-    /// SCID, VCID, MAP ID, APID, or EPI not in the configuration (code 10; CABI-020).
-    ALDIS_ERR_UNKNOWN_CHANNEL = 10,
-    /// Configuration violates a Blue Book constraint (code 11; CABI-020).
-    ALDIS_ERR_INVALID_CONFIG = 11,
-    /// Engine queue full; input rejected without state change (code 12; CABI-020).
-    ALDIS_ERR_WOULD_BLOCK = 12,
-    /// Operation not permitted in the engine's current state (code 13; CABI-020).
-    ALDIS_ERR_INVALID_STATE = 13,
-    /// Security hook reported failure (code 14; CABI-020).
-    ALDIS_ERR_SECURITY = 14,
-    /// Configuration exceeds a compile-time capacity (code 15; CABI-020).
-    ALDIS_ERR_CAPACITY_EXCEEDED = 15,
-    /// Unknown, uninitialized, or stale handle (code 16; CABI-020, CABI-032).
-    ALDIS_ERR_INVALID_HANDLE = 16,
-    /// Structurally impossible input (code 17; CABI-020).
-    ALDIS_ERR_MALFORMED = 17,
-    /// An internal invariant or consistency check failed (code 18; CABI-020).
-    ALDIS_ERR_INTERNAL_ERROR = 18,
-}
-mirror!(pub aldis_status: u32 {
-    ALDIS_OK,
-    ALDIS_ERR_BUFFER_TOO_SMALL,
-    ALDIS_ERR_INCOMPLETE,
-    ALDIS_ERR_LENGTH_MISMATCH,
-    ALDIS_ERR_UNSUPPORTED_VERSION,
-    ALDIS_ERR_OUT_OF_RANGE,
-    ALDIS_ERR_INVALID_FIELD,
-    ALDIS_ERR_RESERVED_VALUE,
-    ALDIS_ERR_CRC_MISMATCH,
-    ALDIS_ERR_HEADER_UNCORRECTABLE,
-    ALDIS_ERR_UNKNOWN_CHANNEL,
-    ALDIS_ERR_INVALID_CONFIG,
-    ALDIS_ERR_WOULD_BLOCK,
-    ALDIS_ERR_INVALID_STATE,
-    ALDIS_ERR_SECURITY,
-    ALDIS_ERR_CAPACITY_EXCEEDED,
-    ALDIS_ERR_INVALID_HANDLE,
-    ALDIS_ERR_MALFORMED,
-    ALDIS_ERR_INTERNAL_ERROR,
-});
+pub use crate::status::*;
 
 /// [`aldis_error_detail_t::detail`]: the error carries no further detail (GEN-041, CABI-021).
 pub const ALDIS_DETAIL_NONE: u16 = 0;

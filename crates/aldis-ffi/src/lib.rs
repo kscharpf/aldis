@@ -46,6 +46,7 @@ pub mod ocf;
 pub mod oid;
 pub mod spp;
 pub mod spp_state;
+pub mod status;
 pub mod tc;
 pub mod time;
 pub mod tm;

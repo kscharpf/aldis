@@ -182,7 +182,7 @@ Engines report notable occurrences as typed events, returned among the actions o
 
 ## 9. Error catalogue
 
-Numeric codes are stable across profiles. In the C ABI, `0` is success and errors are negative (see [C ABI profile](profiles/c-abi.md)).
+Numeric codes are stable across profiles. In the C ABI, `0` is success and an error is its code, as an unsigned status (see [C ABI profile](profiles/c-abi.md)). `cargo xtask status --write` generates from this table the `ALDIS_ERR_*` constants of the C ABI (`crates/aldis-ffi/src/status.rs`, which the header publishes), each asserted at compile time to equal `ErrorKind::<Kind>.code()`; `cargo xtask status` checks that the table runs from code 1 without a gap and that the file matches it. The file is not edited by hand.
 
 | Code | Kind | Meaning |
 |---|---|---|

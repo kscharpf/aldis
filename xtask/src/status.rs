@@ -1,0 +1,326 @@
+//! The error catalogue of `docs/03-api-model.md` §9 and the C ABI status codes generated from it
+//! (OI-57 convention 3; CABI-020, GEN-040): `aldis_status`, with `ALDIS_OK` and one `ALDIS_ERR_*`
+//! per row, in `crates/aldis-ffi/src/status.rs`.
+//!
+//! `cargo xtask status` checks the catalogue and that the file matches it; `cargo xtask status
+//! --write` regenerates it. The catalogue's rows run from code 1 without a gap and each names its
+//! `ErrorKind` variant in `UpperCamelCase`. The file asserts at compile time that each constant
+//! equals `ErrorKind::<Kind>.code()`, so a code that differs from `aldis-core` fails the build;
+//! that every `ErrorKind` has a row is checked by a test of `aldis-ffi`.
+
+use std::fmt::Write as _;
+
+use crate::{md, repo};
+
+/// The document that holds the catalogue.
+const DOC: &str = "docs/03-api-model.md";
+/// The generated status codes of the C ABI (CABI-020).
+pub const FFI: &str = "crates/aldis-ffi/src/status.rs";
+/// Header of the catalogue table.
+const HEADER: [&str; 3] = ["Code", "Kind", "Meaning"];
+/// rustfmt's default line width, which the generated module keeps to.
+const MAX_WIDTH: usize = 100;
+
+/// One row of the catalogue table.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct Entry {
+    code: u16,
+    kind: String,
+    meaning: String,
+}
+
+impl Entry {
+    /// The C constant: `ALDIS_ERR_` and the kind in upper snake case (`CrcMismatch` is
+    /// `ALDIS_ERR_CRC_MISMATCH`).
+    fn constant(&self) -> String {
+        let mut name = String::from("ALDIS_ERR_");
+        for (i, c) in self.kind.chars().enumerate() {
+            if c.is_ascii_uppercase() && i > 0 {
+                name.push('_');
+            }
+            name.push(c.to_ascii_uppercase());
+        }
+        name
+    }
+}
+
+/// Whether `kind` is an `UpperCamelCase` identifier: an upper-case letter, then letters and digits.
+fn is_kind_name(kind: &str) -> bool {
+    let mut chars = kind.chars();
+    chars.next().is_some_and(|c| c.is_ascii_uppercase()) && chars.all(|c| c.is_ascii_alphanumeric())
+}
+
+/// The rows of the error catalogue in `text`; problems for a misshapen table or row.
+fn catalogue(text: &str, doc: &str, problems: &mut Vec<String>) -> Vec<Entry> {
+    let tables: Vec<md::Table> = md::tables(text)
+        .into_iter()
+        .filter(|t| t.header == HEADER)
+        .collect();
+    let [table] = tables.as_slice() else {
+        problems.push(format!(
+            "{doc}: expected one error catalogue table ({}), found {}",
+            HEADER.join(" | "),
+            tables.len()
+        ));
+        return Vec::new();
+    };
+    let mut entries: Vec<Entry> = Vec::new();
+    for (line, cells) in &table.rows {
+        let at = format!("{doc}:{line}");
+        let [code, kind, meaning] = cells.as_slice() else {
+            problems.push(format!(
+                "{at}: expected {} cells, found {}",
+                HEADER.len(),
+                cells.len()
+            ));
+            continue;
+        };
+        let Ok(code) = code.parse::<u16>() else {
+            problems.push(format!("{at}: code {code:?} is not a 16-bit number"));
+            continue;
+        };
+        let kind = kind.trim_matches('`').to_owned();
+        if !is_kind_name(&kind) {
+            problems.push(format!("{at}: kind {kind:?} is not `UpperCamelCase`"));
+        }
+        if meaning.is_empty() {
+            problems.push(format!("{at}: empty Meaning"));
+        }
+        let expected = entries
+            .last()
+            .map_or(Some(1), |e| e.code.checked_add(1))
+            .unwrap_or(0);
+        if code != expected {
+            problems.push(format!(
+                "{at}: code {code} follows code {}; the codes run from 1 without a gap",
+                expected.saturating_sub(1)
+            ));
+        }
+        if entries.iter().any(|e| e.kind == kind) {
+            problems.push(format!("{at}: kind {kind:?} is named twice"));
+        }
+        entries.push(Entry {
+            code,
+            kind,
+            meaning: meaning.clone(),
+        });
+    }
+    if entries.is_empty() && problems.is_empty() {
+        problems.push(format!("{doc}: the error catalogue has no rows"));
+    }
+    entries
+}
+
+/// `text` as `///` lines indented by `indent`, each at most [`MAX_WIDTH`] characters, broken
+/// between words.
+fn doc_comment(text: &str, indent: usize) -> String {
+    let pad = " ".repeat(indent);
+    let mut out = String::new();
+    let mut line = format!("{pad}///");
+    for word in text.split_whitespace() {
+        if line.len() > indent + 3 && line.chars().count() + 1 + word.chars().count() > MAX_WIDTH {
+            out.push_str(&line);
+            out.push('\n');
+            line = format!("{pad}///");
+        }
+        line.push(' ');
+        line.push_str(word);
+    }
+    out.push_str(&line);
+    out.push('\n');
+    out
+}
+
+/// The generated module.
+fn module(entries: &[Entry]) -> String {
+    let mut out = String::from(
+        "// Generated by `cargo xtask status --write` from the error catalogue in\n\
+         // docs/03-api-model.md §9. Do not edit: change the table and regenerate.\n\
+         \n\
+         //! Status codes of the C ABI (OI-57 convention 3; CABI-020, GEN-040): `ALDIS_OK`, and one\n\
+         //! `ALDIS_ERR_*` per row of the error catalogue, whose value is the code of the row.\n\
+         \n\
+         use aldis::core::ErrorKind;\n\
+         \n\
+         use crate::mirror::mirror;\n\
+         \n\
+         /// The status a fallible function returns (03-api-model.md §9; CABI-020, GEN-040).\n\
+         ///\n\
+         /// [`ALDIS_OK`], or the catalogue code of the error. Every `ALDIS_ERR_*` has the value of\n\
+         /// `ErrorKind::code()` of the kind it is named for, which the build checks.\n\
+         ///\n\
+         /// A function returns a `uint32_t`; the type itself is not a field or return type of the\n\
+         /// header (OI-57 convention 2; CABI-010).\n\
+         ///\n\
+         /// cbindgen:prefix-with-name=false\n\
+         /// cbindgen:rename-all=None\n\
+         #[repr(u32)]\n\
+         #[derive(Debug, Clone, Copy, PartialEq, Eq)]\n\
+         #[expect(\n    non_camel_case_types,\n    reason = \"the variants are the C constants (OI-57 convention 2)\"\n)]\n\
+         pub enum aldis_status {\n\
+         \x20   /// Success (CABI-020).\n\
+         \x20   ALDIS_OK = 0,\n",
+    );
+    for e in entries {
+        let meaning = e.meaning.trim_end_matches('.');
+        out.push_str(&doc_comment(
+            &format!("{meaning} (code {}; CABI-020).", e.code),
+            4,
+        ));
+        let _ = writeln!(out, "    {} = {},", e.constant(), e.code);
+    }
+    out.push_str("}\nmirror!(pub aldis_status: u32 {\n    ALDIS_OK,\n");
+    for e in entries {
+        let _ = writeln!(out, "    {},", e.constant());
+    }
+    out.push_str(
+        "});\n\
+         \n\
+         /// The code of an error kind, widened to the `u32` of a status.\n\
+         #[expect(clippy::as_conversions, reason = \"widening the `u16` code of a kind\")]\n\
+         const fn code(kind: ErrorKind) -> u32 {\n\
+         \x20   kind.code() as u32\n\
+         }\n\
+         \n\
+         // Each status is the code of its `ErrorKind` (OI-57 convention 3).\n\
+         const _: () = {\n",
+    );
+    for e in entries {
+        let _ = writeln!(
+            out,
+            "    assert!({} == code(ErrorKind::{}));",
+            e.constant(),
+            e.kind
+        );
+    }
+    out.push_str("};\n");
+    out
+}
+
+/// Checks the catalogue and the generated file, or with `write` regenerates the file; returns the
+/// number of problems.
+pub fn run(write: bool) -> Result<usize, String> {
+    let root = repo::root();
+    let text = repo::read(&root.join(DOC))?;
+    let mut problems = Vec::new();
+    let entries = catalogue(&text, DOC, &mut problems);
+    if problems.is_empty() {
+        let generated = module(&entries);
+        if write {
+            std::fs::write(root.join(FFI), &generated).map_err(|e| format!("{FFI}: {e}"))?;
+            println!("wrote {FFI}");
+        } else if std::fs::read_to_string(root.join(FFI)).ok().as_deref()
+            != Some(generated.as_str())
+        {
+            problems.push(format!(
+                "{FFI} differs from the catalogue in {DOC} §9; run `cargo xtask status --write`"
+            ));
+        }
+    }
+    for p in &problems {
+        println!("error: {p}");
+    }
+    println!(
+        "status: {} code(s) in the catalogue, {} problem(s)",
+        entries.len(),
+        problems.len()
+    );
+    Ok(problems.len())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{HEADER, catalogue, doc_comment, module};
+
+    /// A document with the catalogue `rows`.
+    fn doc_with(rows: &[&str]) -> String {
+        let mut text = format!("# Doc\n\n| {} |\n|---|---|---|\n", HEADER.join(" | "));
+        for row in rows {
+            text.push_str(row);
+            text.push('\n');
+        }
+        text
+    }
+
+    fn problems_of(rows: &[&str]) -> Vec<String> {
+        let mut problems = Vec::new();
+        catalogue(&doc_with(rows), "doc.md", &mut problems);
+        problems
+    }
+
+    // req: CABI-020, GEN-040
+    #[test]
+    fn a_row_gives_a_constant_named_for_its_kind() {
+        let mut problems = Vec::new();
+        let entries = catalogue(
+            &doc_with(&[
+                "| 1 | `BufferTooSmall` | Output buffer too small; carries `needed` |",
+                "| 8 | `CrcMismatch` | FECF check failed |",
+            ]),
+            "doc.md",
+            &mut problems,
+        );
+        assert_eq!(entries.len(), 2);
+        assert_eq!(
+            problems,
+            ["doc.md:6: code 8 follows code 1; the codes run from 1 without a gap"]
+        );
+        let names: Vec<String> = entries.iter().map(super::Entry::constant).collect();
+        assert_eq!(
+            names,
+            ["ALDIS_ERR_BUFFER_TOO_SMALL", "ALDIS_ERR_CRC_MISMATCH"]
+        );
+    }
+
+    // req: CABI-020, GEN-040
+    #[test]
+    fn a_dense_catalogue_has_no_problem() {
+        assert_eq!(
+            problems_of(&["| 1 | `A` | One |", "| 2 | `Bb` | Two |"]),
+            Vec::<String>::new()
+        );
+    }
+
+    // req: CABI-020, GEN-040
+    #[test]
+    fn a_misshapen_catalogue_is_reported() {
+        assert!(problems_of(&["| 2 | `A` | Two |"])[0].contains("from 1 without a gap"));
+        assert!(problems_of(&["| 1 | `a_b` | One |"])[0].contains("UpperCamelCase"));
+        assert!(problems_of(&["| 1 | `A` | |"])[0].contains("empty Meaning"));
+        assert!(problems_of(&["| 1 | `A` | One |", "| 2 | `A` | Two |"])[0].contains("twice"));
+        assert!(problems_of(&["| x | `A` | One |"])[0].contains("16-bit"));
+        assert!(problems_of(&[])[0].contains("no rows"));
+        let mut problems = Vec::new();
+        catalogue("no table\n", "doc.md", &mut problems);
+        assert!(problems[0].contains("expected one error catalogue table"));
+    }
+
+    // req: CABI-020, GEN-040
+    #[test]
+    fn the_module_asserts_each_code_against_its_kind() {
+        let mut problems = Vec::new();
+        let entries = catalogue(
+            &doc_with(&["| 1 | `BufferTooSmall` | Output buffer too small. |"]),
+            "doc.md",
+            &mut problems,
+        );
+        let text = module(&entries);
+        assert!(text.contains("    ALDIS_ERR_BUFFER_TOO_SMALL = 1,\n"));
+        assert!(text.contains("/// Output buffer too small (code 1; CABI-020).\n"));
+        assert!(text.contains(
+            "    assert!(ALDIS_ERR_BUFFER_TOO_SMALL == code(ErrorKind::BufferTooSmall));\n"
+        ));
+        assert!(text.contains("mirror!(pub aldis_status: u32 {\n    ALDIS_OK,\n"));
+    }
+
+    // req: CABI-020
+    #[test]
+    fn doc_comments_wrap_at_the_line_width() {
+        let text = doc_comment(&"word ".repeat(40), 4);
+        assert!(
+            text.lines()
+                .all(|l| l.len() <= 100 && l.starts_with("    ///"))
+        );
+        assert!(text.lines().count() > 1);
+    }
+}
