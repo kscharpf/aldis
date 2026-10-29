@@ -42,15 +42,15 @@ impl Host {
 /// group is a tool for the hosted run only; a local run runs every check in one container.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Group {
-    /// The host build of the workspace: format, lints, tests, features, the C header, the fuzz
-    /// smoke run, and the Cortex-R exerciser.
+    /// The host build of the workspace: format, lints, tests, features, and the C header.
     Host,
     /// Builds for other targets: the bare-metal builds, the big-endian run, the RISC-V exerciser.
     Cross,
-    /// The instrumented build and the checks that read the whole tree.
+    /// The instrumented build, the checks that read the whole tree, the reference application,
+    /// and the fuzz smoke run.
     Coverage,
     /// The tooling nightly with `core` built from source: stack depth, the LEON3 build, and the
-    /// Cortex-M exerciser.
+    /// Cortex-M and Cortex-R exercisers.
     Embedded,
 }
 
@@ -307,8 +307,8 @@ pub struct Check {
     /// maintainer decision 2026-10-24).
     pub nightly: bool,
     /// Its typical duration in seconds, which orders the run only ([`run_order`]): its duration
-    /// in each group of a GitHub-hosted run of VER-060 alone (`x86_64`, an empty build cache,
-    /// 2026-10-29), rounded; for `test-macos`, which runs on macOS only, the median of the local
+    /// in the GitHub-hosted run of VER-060 of 2026-10-29 that made every check, the four groups
+    /// side by side (`x86_64`, an empty build cache; run 40953455694), rounded; for `test-macos`, which runs on macOS only, the median of the local
     /// runs. A value that has
     /// gone stale changes the order in which the checks run, never a result.
     pub secs: u16,
@@ -373,11 +373,11 @@ pub fn run_order() -> Vec<Check> {
 fn rust() -> Vec<Check> {
     let c = Host::Container;
     let mut out = vec![
-        grouped(Group::Host, check("fmt", c, false, 2, FMT)),
-        grouped(Group::Host, check("clippy", c, false, 28, CLIPPY)),
+        grouped(Group::Host, check("fmt", c, false, 4, FMT)),
+        grouped(Group::Host, check("clippy", c, false, 37, CLIPPY)),
         grouped(
             Group::Host,
-            reading(RUST_TEST_INPUTS, check("test", c, false, 34, TEST)),
+            reading(RUST_TEST_INPUTS, check("test", c, false, 53, TEST)),
         ),
         reading(
             RUST_TEST_INPUTS,
@@ -386,11 +386,11 @@ fn rust() -> Vec<Check> {
         // The alloc and std features are additive (GEN-006).
         grouped(
             Group::Host,
-            check("features", c, false, 93, "cargo xtask features\n"),
+            check("features", c, false, 157, "cargo xtask features\n"),
         ),
         grouped(
             Group::Host,
-            reading(FFI_INPUTS, check("header", c, false, 9, HEADER)),
+            reading(FFI_INPUTS, check("header", c, false, 11, HEADER)),
         ),
     ];
     for t in RUST_BARE_METAL {
@@ -400,7 +400,7 @@ fn rust() -> Vec<Check> {
                 format!("no-std-{t}"),
                 c,
                 false,
-                4,
+                6,
                 format!(
                 "cargo build --locked -p aldis --no-default-features --features full --target {t}\n\
                  cargo clippy --locked -p aldis --no-default-features --features full --target {t}\n\
@@ -417,14 +417,14 @@ fn rust() -> Vec<Check> {
             Group::Cross,
             reading(
                 RUST_TEST_INPUTS,
-                check("big-endian", c, false, 158, BIG_ENDIAN),
+                check("big-endian", c, false, 199, BIG_ENDIAN),
             ),
         ),
         grouped(Group::Cross, check("layers", c, false, 1, LAYERS)),
-        grouped(Group::Coverage, check("refapp", c, false, 9, REFAPP)),
+        grouped(Group::Coverage, check("refapp", c, false, 12, REFAPP)),
         grouped(
-            Group::Host,
-            check("fuzz-smoke", c, false, 15, "cargo xtask fuzz smoke\n"),
+            Group::Coverage,
+            check("fuzz-smoke", c, false, 16, "cargo xtask fuzz smoke\n"),
         ),
     ]);
     out.extend(RUST_BARE_METAL.iter().map(|t| exerciser_check(t)));
@@ -436,14 +436,14 @@ fn rust() -> Vec<Check> {
         Group::Embedded,
         reading(
             STACK_INPUTS,
-            check("stack", c, false, 131, "cargo xtask stack\n"),
+            check("stack", c, false, 124, "cargo xtask stack\n"),
         ),
     ));
     out.push(grouped(
         Group::Embedded,
         Check {
             gating: false,
-            ..check("rust-sparc-leon3", c, false, 68, RUST_LEON3)
+            ..check("rust-sparc-leon3", c, false, 66, RUST_LEON3)
         },
     ));
     // The Kani proof harnesses (OI-42, docs/verification/formal-proofs.md): reported, not gating,
@@ -459,12 +459,12 @@ fn rust() -> Vec<Check> {
     out.extend([
         grouped(
             Group::Coverage,
-            check("coverage", c, false, 167, "cargo xtask coverage\n"),
+            check("coverage", c, false, 196, "cargo xtask coverage\n"),
         ),
         // Spec lint, links, vectors, traces, and changelog: it reads every part of the tree.
         grouped(
             Group::Coverage,
-            reading(Inputs::Everything, check("spec", c, false, 27, SPEC)),
+            reading(Inputs::Everything, check("spec", c, false, 35, SPEC)),
         ),
         grouped(Group::Cross, check("deny", c, false, 2, DENY)),
     ]);
@@ -475,9 +475,9 @@ fn rust() -> Vec<Check> {
 /// durations (VER-067).
 fn exerciser_check(target: &str) -> Check {
     let (group, secs) = match target {
-        "thumbv7em-none-eabihf" => (Group::Embedded, 34),
-        "armv7r-none-eabihf" => (Group::Host, 30),
-        _ => (Group::Cross, 26),
+        "thumbv7em-none-eabihf" => (Group::Embedded, 33),
+        "armv7r-none-eabihf" => (Group::Embedded, 31),
+        _ => (Group::Cross, 32),
     };
     grouped(
         group,
