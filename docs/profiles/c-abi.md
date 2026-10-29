@@ -67,12 +67,14 @@ void    aldis_fop1_deinit(aldis_fop1_t *h);   /* no-op for memory; marks handle 
 | CABI-032 | A handle SHALL carry a magic/generation tag. Calls with a deinitialized or foreign handle SHALL fail with `ALDIS_ERR_INVALID_HANDLE` where detectable. | — | T |
 | CABI-033 | Configuration structs SHALL begin with a `uint32_t struct_size` field set by the caller, for forward-compatible extension. | GEN-080 | T |
 
-## 6. Engines without callbacks; security hooks with callbacks
+## 6. Engines as step calls, without callbacks
+
+An engine call is the step function of [03 §5](../03-api-model.md#5-engines-the-sans-io-contract) behind a handle. It loads the state from the caller's storage by value and writes it back only when the call succeeds (the mechanism of `handle.rs`, CABI-032), so the C ABI is the step contract with no adaptation.
 
 | ID | Requirement | Source | Verif. |
 |---|---|---|---|
-| CABI-040 | Engine inputs and outputs SHALL follow the pull model of [03 §5](../03-api-model.md#5-engines-the-sans-io-contract) (`aldis_fop1_poll_transmit`, `aldis_fop1_poll_event`, …). No engine API SHALL take a callback. | API-050 | I |
-| CABI-041 | Security hooks SHALL be passed as a `const aldis_security_ops_t *` vtable `{ protect, verify, user_ctx }`. The library SHALL call them only synchronously, within the API call that needs them, and never concurrently. | API-074 | T |
+| CABI-040 | Each engine input SHALL be one call that runs the step function of API-057 and returns its actions (illustratively `aldis_fop1_step(h, const aldis_fop1_input_t *in, aldis_instant_t now, uint8_t *out, size_t out_cap, aldis_fop1_actions_t *actions)`), and `next_deadline` and the status snapshot SHALL be calls that only read. The `actions` struct SHALL have a fixed capacity `ALDIS_*_MAX_ACTIONS` (the bound `N`, CABI-030), the octets of each action SHALL be a range of `out` (API-061), and a call that fails SHALL leave the state in the handle unchanged (API-058). No `poll_*` call exists. No engine API SHALL take a callback. | API-050, API-057, API-058, API-061 | I/T |
+| CABI-041 | Withdrawn: engines take no security hook (API-050, API-074; OI-56). A C caller applies SDLS itself to the ranges that a `Transmit` action returns, and finishes the frame with the codec's writer call; on reception it checks the FECF and applies SDLS before the frame input. The library has no `aldis_security_ops_t`. | — | — |
 
 ## 7. Threading
 

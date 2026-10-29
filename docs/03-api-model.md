@@ -91,75 +91,94 @@ PacketTransferConfig   { valid_pvns, max_packet_len, deliver_incomplete }
 | API-040 | Configuration constructors SHALL reject combinations the Blue Book forbids. Examples: TM VC_FSH length outside 2–64; a USLP Insert Zone with variable-length frames; AOS VCID 63 used for a data VC; K > PW for FOP-1. | 132.0 Table 5-2; 732.1 Table 5-1 note 5; 732.0 Table 5-3; 232.1 §5.1.12 | T |
 | API-041 | Configurations SHALL be plain data (no references to external state), so they can be serialized, compared, and placed in read-only memory. | — | I |
 
-## 5. Engines: the sans-I/O contract
+## 5. Engines: the sans-I/O step contract
 
-Every Layer 2 engine follows one contract, so that the framework (Layer 3) and every binding can drive any engine the same way.
+Every Layer 2 engine follows one contract, so that the framework (Layer 3) and every binding can drive any engine the same way. An engine is a **pure transition function** over plain-data state. It has no output queues, no timers of its own, and no callbacks. Everything it wants done is returned to the caller as a bounded list of **actions**, and the caller decides what to do with them and when.
 
 ```
-Engine::new(config, [storage]) -> Result<Engine, Error>
+// The engine's behaviour (neutral notation; the profiles choose the exact form, see API-058)
+step(state, input, now: Instant, out: &mut [u8]) -> Result<(state', Actions<N>), Error>
 
-// inputs (each returns Result<(), Error>, plus input-specific handles)
-engine.handle_<input>(now: Instant, …)          // e.g. handle_frame, handle_clcw, submit_packet, directive
-engine.handle_timeout(now: Instant)
+// inputs: one variant per event the engine reacts to
+Input = Frame(..) | Clcw(..) | Packet(..) | Directive(..) | TransmitDone(handle, response)
+      | Timeout                                    // the deadline has passed
+      | TransmitOpportunity | BufferReleased | …   // per engine, see 04 and the standards
 
-// outputs (pull-based; caller drains until None)
-engine.poll_transmit(out_buf) -> Option<Transmit{len, meta}>   // octets to send downward
-engine.poll_deliver(out_buf)  -> Option<Deliver{len, meta}>    // SDUs to deliver upward
-engine.poll_event()           -> Option<Event>                 // notifications, alerts, statistics
-engine.poll_timeout()         -> Option<Instant>               // earliest deadline needing handle_timeout
+// outputs: a fixed-capacity list, in the order the protocol procedure produces them
+Action = Transmit{ range-in-out, meta, handle? }   // octets to send downward
+       | Deliver{ range-in-out, meta }             // an SDU to deliver upward
+       | Notify(Event)                             // notification, alert, indication, statistic
+
+// queries: pure functions of the state
+next_deadline(state) -> Option<Instant>    // earliest instant at which `Timeout` must be fed
+status(state) -> Status                    // state, counters, occupancy
 ```
+
+`state` holds everything the Blue Book defines as protocol state (V(S), V(R), the Sent_Queue and Wait_Queue, the state of the timers, the FARM-1 flags and counters) plus the data an engine must retain between inputs (API-060). It holds **no output**. A timer is state, a deadline and an armed flag, so "start timer" and "cancel timer" in a state table are state updates that `next_deadline` reports. They are not actions.
 
 | ID | Requirement | Source | Verif. |
 |---|---|---|---|
-| API-050 | Engines SHALL NOT invoke caller code (no callbacks), except through the security hooks of §7. | — | I |
-| API-051 | All outputs produced by an input SHALL be queued inside the engine's fixed-capacity output queues. The caller SHALL be able to drain them in any interleaving of `poll_*` calls without changing their content or relative order within each output kind. | — | T/V |
-| API-052 | If an input would overflow an output queue, the engine SHALL reject the input with `WouldBlock` and SHALL NOT change state (GEN-042). The exception is an input defined by CCSDS to cause a protocol-level reaction to resource exhaustion, which SHALL produce that reaction instead (e.g. FARM-1 Wait state, [COP-1](standards/cop1.md) §4). | 232.1 §6.1.2 | T |
-| API-053 | `poll_timeout` SHALL return the earliest instant at which `handle_timeout` must be called for correct behavior, or `None`. Calling `handle_timeout` early or repeatedly SHALL be harmless. | — | T |
-| API-054 | Every engine output that crosses the engine boundary SHALL carry enough metadata (VC/MAP, sequence numbers, request handle, QoS) for the caller to correlate it with inputs, without inspecting octets. | — | T |
-| API-055 | A `Transmit` that represents a frame requiring Lower-Procedure acknowledgement (the COP-1 AD/BC/BD Out flags) SHALL carry a **transmit handle**. The caller SHALL report completion with `transmit_done(handle, accepted\|rejected)`. | 232.1 §5.1.6 | T/V |
-| API-056 | Engines SHALL expose read-only **status snapshots** (state, counters, queue occupancy) for housekeeping telemetry, without side effects. | — | T |
+| API-050 | Engines SHALL NOT invoke caller code: no callbacks, with no exception. Anything an engine needs from the caller, including SDLS processing (§7), is an input, and anything it wants done is an action it returns. | — | I |
+| API-051 | Withdrawn: the output-queue contract is replaced by the step contract (API-057, API-059; OI-56). | — | — |
+| API-052 | If an input would overflow the engine's **input-side storage** (the data it must retain under API-060: the packet queue, the Wait_Queue, and similar), the engine SHALL reject the input with `WouldBlock` and SHALL NOT change state (API-058, GEN-042). An engine has no output storage to overflow (API-059). The exception is an input defined by CCSDS to cause a protocol-level reaction to resource exhaustion, which SHALL produce that reaction instead: for FARM-1, the Wait state and the buffer-availability inputs (COP-033, [COP-1](standards/cop1.md) §3). | 232.1 §3.3.2, §6.3.2.3, Table 6-1 E1, E2, E10 | T |
+| API-053 | `next_deadline` SHALL return the earliest instant at which `Timeout` must be fed for correct behavior, or `None`, and SHALL be a pure function of the state. Timer expiry SHALL be an input. A `Timeout` fed early, or repeatedly, SHALL be harmless: it SHALL change nothing while no deadline has passed (API-003 applies). | — | T |
+| API-054 | Every action that crosses the engine boundary SHALL carry enough metadata (VC/MAP, sequence numbers, request handle, QoS) for the caller to correlate it with inputs, without inspecting octets. | — | T |
+| API-055 | A `Transmit` action that represents a frame requiring Lower-Procedure acknowledgement (the COP-1 AD/BC/BD Out flags) SHALL carry a **transmit handle**. The caller SHALL report completion with the input `TransmitDone(handle, accepted\|rejected)`. | 232.1 §5.1.6 | T/V |
+| API-056 | Engines SHALL expose read-only **status snapshots** (state, counters, occupancy of the retained input data) for housekeeping telemetry, as pure functions of the state, without side effects. | — | T |
+| API-057 | The behaviour of an engine for one input SHALL be a pure, deterministic function of (state, input, `now`) that returns the next state and an `Actions<N>` list. `N`, the largest number of actions one input can produce, SHALL be a compile-time bound that the engine documents, derived from its capacities and, for COP-1, from the actions listed in each cell of Table 5-1 and Table 6-1. The actions SHALL appear in the order in which the procedure produces them (for COP-1, the order of the cell). No action SHALL be dropped, coalesced, or deferred to a later input. | 232.1 Tables 5-1, 6-1 (COP-1) | T/V |
+| API-058 | An input that returns an error SHALL leave the state unchanged and SHALL produce no action, except where the CCSDS procedure itself defines a state change for it (GEN-042). The pure function of API-057 is the unit that tests, vectors, the state-table check, and formal proofs address. A profile MAY realise it as one function that returns the next state, or, where copying the state is too costly, as a pure `decide` that returns a plan and an infallible `commit` that applies the plan; both SHALL be observably identical to the function of API-057. | GEN-042 | T/V |
+| API-059 | Engines SHALL hold no output queue. Queuing of actions, and the choice of when to feed the next input, belong to the caller or the framework ([05](05-framework.md)). The caller SHALL be able to consume the actions of one input in any way and at any time before it feeds the next, without changing what the engine does. | — | I |
 
-### 5.1 Why sans-I/O
+### 5.1 Why sans-I/O, and why a step function
 
 Engines are fully deterministic (GEN-030). The same vectors therefore test them on a desktop and on the flight target. They don't care whether bytes travel over a UART, SpaceWire, a modem FPGA, UDP, or an SLE link. And the C ABI never has to marshal callbacks or threads across the language boundary.
+
+A step function over plain state, in place of an object that queues and is drained, gives each engine one place where its behaviour is defined and checked: the state table maps to the function, the function maps to a vector, and the C ABI, which loads state by value and writes it back per call, maps onto it without change. The resource limits are explicit in the types: `N` bounds the actions, the capacities bound the state, and the output area (§6) bounds the octets. See OI-56.
 
 ## 6. Ownership of buffers
 
 | ID | Requirement | Source | Verif. |
 |---|---|---|---|
 | API-060 | Input buffers passed to engines SHALL be copied into engine-owned fixed storage if the engine needs them after the call returns, e.g. packets queued for a later frame. Engines SHALL NOT retain borrowed references across calls. | — | I |
-| API-061 | Output buffers SHALL be caller-supplied. A `poll_*` call with a buffer too small for the next output SHALL return `BufferTooSmall{needed}` and leave that output queued. | — | T |
+| API-061 | The octets of an action (a frame to transmit, an SDU to deliver) SHALL be written into a **caller-supplied output area** passed with the input, and the action SHALL hold the range of the area and the metadata, not a copy and not a pointer into engine state. The ranges of one input's actions SHALL NOT overlap. An area too small for them SHALL make the input fail with `BufferTooSmall{needed}` and leave the state unchanged (API-058). The ranges stay valid until the caller reuses the area. | — | T |
+| API-062 | Every engine SHALL document, for each input, the largest number of octets it can write to the output area (a function of its capacities), so that a caller can size the area once. | — | I |
 
-## 7. Security hooks (SDLS reservation)
+## 7. Security: SDLS applied by the caller
 
 v1 does not implement SDLS, but every frame codec and engine reserves its fields so that SDLS (355.0) can be added later without breaking APIs. In TM, AOS, and USLP, the Security Header follows the Primary Header/FSH/Insert Zone and precedes the data field, and the Security Trailer follows the data field and precedes the OCF and FECF (132.0 §6.3; 732.0 §6.3; 732.1 §6.3). In TC, the Security Header follows the Segment Header if one is present, otherwise the Primary Header. It is never present in Type-C (control command) frames (232.0 §6.3.4).
+
+**SDLS is not inside an engine** (OI-56). An engine never calls security code. On the sending side it returns a `Transmit` action that carries the frame as the engine built it, with the Security Header and Trailer reserved at the configured lengths and the FHEC and FECF not yet computed, together with the ranges of the header, the data, and the trailer (`FrameLayout`, CMN-040). The caller applies SDLS to those ranges, then finishes the frame with the codec's writer, which computes the FHEC and the FECF last. On the receiving side the caller decodes the frame, checks the FECF (and corrects the AOS FHEC), applies SDLS verification, and only then gives the plain frame to the engine. The engine sees the frame as it was before protection.
 
 ```
 SecurityLayout { header_len: 0..=64, trailer_len: 0..=N }      // per VC (TM/AOS) or per VC/MAP (TC/USLP)
 
+// A codec-level helper in aldis-core, applied by the caller; engines do not take it.
 trait SecurityHook {
     fn protect(&mut self, ctx: FrameCtx, frame: &mut [u8], header: Range, data: Range, trailer: Range) -> Result<(), Error>;
     fn verify (&mut self, ctx: FrameCtx, frame: &mut [u8], header: Range, data: Range, trailer: Range) -> Result<Range /*plain data*/, Error>;
 }
 ```
 
+`SecurityHook` stays, in `aldis-core`, as the shape of the call that applies SDLS to the ranges of a frame. It is a helper for the code that surrounds an engine: the framework's stages, an application, and the tests. It is no longer a type parameter of an engine and no engine holds one. It stays, rather than being withdrawn, because the contract between a real SDLS implementation and the frame (which ranges it gets, in which order it runs, which error it returns) must be written once, and the two reference hooks below need a trait to implement.
+
 | ID | Requirement | Source | Verif. |
 |---|---|---|---|
 | API-070 | Every frame codec SHALL accept a `SecurityLayout` per VC (and per MAP where SDLS may be applied per MAP). Data field lengths SHALL be computed accounting for the Security Header and Trailer. | 132.0 §6.3.5.2; 232.0 §6.3; 732.0 §6.3; 732.1 §6.3; 355.0 §4.1.1.1.1 | T/V |
 | API-071 | A Security Header length SHALL be limited to ≤ 64 octets. A Security Trailer length SHALL be limited to ≤ 65 535 octets, the capacity of `SecurityLayout` (a project limit; no Blue Book states one). Header and trailer lengths SHALL be fixed for the configuration's lifetime. | 355.0 §4.1.1.1.4, §4.1.1.3.3 | T |
-| API-072 | Views SHALL expose the Security Header and Trailer as opaque slices. Writers SHALL expose them as mutable slices for the hook to fill. | — | T |
-| API-073 | v1 SHALL ship a `NoSecurity` hook (layout 0/0, identity), plus a test-only `FixedPatternSecurity` hook that writes known patterns into non-zero-length header and trailer. The second one exercises length accounting and field placement. | — | T/V |
-| API-074 | Engines SHALL call `protect` after all other frame fields except the FECF are final, and SHALL compute the FECF after `protect` returns. On reception, the FECF SHALL be checked before `verify` is called. These rules follow the SDLS processing order. | 355.0 §2.3; 232.0 Cor. 1 §6.5.2 | T |
+| API-072 | Views SHALL expose the Security Header and Trailer as opaque slices. Writers SHALL expose them as mutable slices for the caller's SDLS processing to fill. | — | T |
+| API-073 | v1 SHALL ship a `NoSecurity` hook (layout 0/0, identity), plus a test-only `FixedPatternSecurity` hook that writes known patterns into non-zero-length header and trailer. The second one exercises length accounting and field placement and, applied by a test around an engine's `Transmit` action, the order of API-074. | — | T/V |
+| API-074 | A sending-side engine SHALL return the frame with every field final except the Security Header and Trailer contents, the FHEC, and the FECF, and SHALL return the ranges of the Security Header, the data, and the Security Trailer. The caller SHALL apply `protect` after all other frame fields except the FECF are final, and SHALL compute the FHEC (AOS) and the FECF after `protect` returns, with the codec writer. On reception, the caller SHALL check the FECF before `verify` is called, and SHALL give the engine only a frame that has passed both. These rules follow the SDLS processing order. | 355.0 §2.3; 232.0 Cor. 1 §6.5.2 | T |
 | API-075 | On USLP truncated frames with SDLS, the layout SHALL be the fixed 6-octet header / 16-octet trailer, and the truncated frame length SHALL be ≥ 28 octets. | 732.1 Annex D1.2.3–D1.2.4 | T |
 
 ## 8. Events
 
-Engines report notable occurrences as typed events. These include frame-count gaps, discarded frames with reasons, idle frames seen, OCF/FSH received, COP-1 notifications and alerts, and SDU delivery failures. Event types are defined per engine in [04](04-engines.md) and [COP-1](standards/cop1.md).
+Engines report notable occurrences as typed events, returned among the actions of the input that caused them. These include frame-count gaps, discarded frames with reasons, idle frames seen, OCF/FSH received, COP-1 notifications and alerts, and SDU delivery failures. Event types are defined per engine in [04](04-engines.md) and [COP-1](standards/cop1.md).
 
 | ID | Requirement | Source | Verif. |
 |---|---|---|---|
 | API-080 | Each event SHALL have a stable numeric kind code shared by all profiles, and a fixed-size payload. | — | V |
-| API-081 | When the event queue is full, an engine SHALL drop the *oldest* informational event and increment an `events_dropped` counter. Events that the CCSDS procedure requires to reach the user (COP-1 notifications, alerts, and data-loss indications) SHALL NOT be dropped. Instead, the input that would generate them SHALL return `WouldBlock` (API-052). | — | T |
+| API-081 | Withdrawn: the drop-oldest rule and the `events_dropped` counter belong to the event queue, which no longer exists (API-059; OI-56). | — | — |
+| API-083 | An event SHALL be returned as an action of the input that causes it, and SHALL NOT be dropped or coalesced by the engine (API-057). In particular the events that the CCSDS procedure requires to reach the user (COP-1 notifications, alerts, and data-loss indications) cannot be lost in the engine. Counters of occurrences that are not events (discards by reason, gaps) are state (API-056). | 232.1 §4.2–§4.4 | T |
 
 ## 9. Error catalogue
 
@@ -178,9 +197,9 @@ Numeric codes are stable across profiles. In the C ABI, `0` is success and error
 | 9 | `HeaderUncorrectable` | AOS FHEC detected an uncorrectable error |
 | 10 | `UnknownChannel` | SCID/VCID/MAP ID/APID not in the configuration |
 | 11 | `InvalidConfig` | Configuration violates a Blue Book constraint (carries parameter id) |
-| 12 | `WouldBlock` | Engine queue full; input rejected without state change |
+| 12 | `WouldBlock` | Engine input storage full; input rejected without state change |
 | 13 | `InvalidState` | Operation not permitted in the engine's current state (non-CCSDS misuse) |
-| 14 | `Security` | Security hook reported failure |
+| 14 | `Security` | SDLS processing (a security hook, applied by the caller) reported failure |
 | 15 | `CapacityExceeded` | Configuration exceeds compile-time capacity |
 | 16 | `InvalidHandle` | Unknown or stale transmit/request handle |
 | 17 | `Malformed` | Structurally impossible input (e.g. pointer beyond data field) |

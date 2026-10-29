@@ -18,7 +18,7 @@
 |---|---|---|---|
 | VER-010 | For each crate, CI SHALL build a `no_std` **exerciser** binary that calls every public API with inputs from the vectors. It SHALL link with a `#[panic_handler]` that references an undefined external symbol. A successful link proves that no panic path survives optimization in the exercised code. | GEN-020, GEN-021 | A |
 | VER-011 | Stack usage of every public function SHALL be measured for each embedded target (e.g. `-Z emit-stack-sizes` or an equivalent static analysis) and published as a table per release. | GEN-023 | A |
-| VER-012 | Worst-case execution paths SHALL be documented for engine `handle_*` and `poll_*` functions as a function of input length and capacities. | GEN-023 | I |
+| VER-012 | Worst-case execution paths SHALL be documented for the step function of each engine (API-057) and its `next_deadline` query, as a function of input length and capacities. | GEN-023 | I |
 
 ## 3. Dynamic testing
 

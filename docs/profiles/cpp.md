@@ -86,7 +86,9 @@ public:
 
 namespace aldis::cop1 {
 
-// Engines: capacities as template parameters (OI-20), hooks as concepts (CPP-024).
+// Engines: capacities as template parameters (OI-20). Deferred sketch (Track C is withdrawn): it
+// predates the step contract of 03 §5 (API-057, OI-56); a Phase 3 C++ engine follows that contract,
+// with a pure step over plain state and no output queue, poll_* call, or security-hook parameter.
 template <std::size_t Sent, std::size_t MaxFrame, core::SecurityHook H = core::NoSecurity>
 class Fop1 {
 public:

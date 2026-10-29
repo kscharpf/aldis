@@ -41,10 +41,10 @@ The framework provides pre-wired **stacks**, built from the engines of [04](04-e
 
 ```
 loop step(now):
-    pull frames from FrameSource      → engine.handle_frame(now, …)
-    drain engine outputs              → FrameSink.send / SduSink.deliver / EventSink.event
-    acknowledge sends (COP-1 Out flags) → engine.transmit_done(…)
-    if now ≥ min(poll_timeout)        → engine.handle_timeout(now)
+    pull frames from FrameSource      → check FECF, SDLS verify → engine step(Frame, now, out)
+    apply the returned actions        → SDLS protect + codec finish → FrameSink.send / SduSink.deliver / EventSink.event
+    acknowledge sends (COP-1 Out flags) → engine step(TransmitDone, now, out)
+    if now ≥ min(next_deadline)       → engine step(Timeout, now, out)
     return next deadline              → caller sleeps / waits for interrupt until then
 ```
 
@@ -53,6 +53,7 @@ loop step(now):
 | FW-010 | `Stack::step(now) -> Option<Instant>` SHALL perform one bounded pass as above and return the next deadline. It SHALL be callable from a cyclic executive, an RTOS task, an interrupt-deferred handler, or a host event loop. | — | T |
 | FW-011 | `step` SHALL process at most a configured number of frames per call, to bound its execution time (GEN-023). | — | T |
 | FW-012 | Stacks SHALL expose their constituent engines for direct access (status snapshots, directives), so applications can mix framework and library usage. | — | I |
+| FW-014 | The framework SHALL own the queues of engine actions (API-059). It SHALL feed an engine an input only when its queues have room for the engine's documented bound `N` of actions and its output area has room for the documented octets (API-057, API-062), so that no action is lost. When they have not, it SHALL hold the input back (back-pressure on the `FrameSource` or the caller), not drop an action. | API-057, API-059 | T |
 | FW-013 | A stack's behavior SHALL be reproducible from a recorded trace of `(now, FrameSource input, FrameSink readiness)`. The framework SHALL provide a trace recorder and a replayer behind the `trace` feature. | GEN-030 | T |
 
 ## 3. Reference adapters

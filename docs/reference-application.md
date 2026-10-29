@@ -281,7 +281,7 @@ Frame layout: primary header 5 ‖ Segment Header 1 ‖ user data ≤ 120 ‖ FE
 | FARM_Sliding_Window_Width W | 8, retransmission allowed: PW = NW = 4 | 232.1 §6.1.8.2, §6.1.8.3.1, Table 7-2 |
 | Transmission_Limit; Timeout_Type | 3; 0 (Alert when the limit is reached) | 232.1 §5.1.10.2–3, Table 7-1 |
 | T1_Initial | 1 000 000 µs (≥ 395 000 µs, the sum below) | 232.1 §5.1.9.2 |
-| FARM-1 buffer model | Internal, depth 2 (COP-032) | 232.1 §6.3.2.3 |
+| FARM-1 delivery buffer | Caller-owned (the harness), depth 2; `buffer_available` per frame (COP-033) | 232.1 §3.3.2, §6.3.2.3 |
 
 | 232.1 §5.1.9.2 delay | Value in the link model (§6) |
 |---|---|

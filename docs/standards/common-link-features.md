@@ -76,7 +76,7 @@ The first 20 output octets are `FF FF FF FF 6D B6 D8 61 45 1F 11 F1 97 16 72 3C 
 
 ## 5. Field placement with SDLS
 
-All frame codecs use one layout calculator (`FrameLayout`) that computes the octet ranges of every field. Its inputs are the protocol, the configuration, the header flags, and the `SecurityLayout` (see [03 §7](../03-api-model.md#7-security-hooks-sdls-reservation)).
+All frame codecs use one layout calculator (`FrameLayout`) that computes the octet ranges of every field. Its inputs are the protocol, the configuration, the header flags, and the `SecurityLayout` (see [03 §7](../03-api-model.md#7-security-sdls-applied-by-the-caller)).
 
 | ID | Requirement | Source | Verif. |
 |---|---|---|---|
