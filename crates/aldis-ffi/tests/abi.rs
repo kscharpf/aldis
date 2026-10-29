@@ -280,89 +280,59 @@ fn configurations_need_a_struct_size() {
     }
 }
 
+const fn tracker_storage() -> aldis_spp_tracker_t {
+    aldis_spp_tracker_t {
+        words: [0; ALDIS_SPP_TRACKER_WORDS],
+    }
+}
+
 #[test]
-#[expect(clippy::too_many_lines, reason = "one check per storage rule")]
-fn storage_is_checked_at_init() {
+fn storage_is_typed() {
     // req: CABI-031, CABI-030
     let cfg = aldis_spp_tracker_config_t {
         struct_size: size::<aldis_spp_tracker_config_t>(),
         capacity: 2,
     };
-    let mut words = vec![0_u64; ALDIS_SPP_TRACKER_STORAGE_SIZE / 8 + 1];
-    let mut h: *mut aldis_spp_tracker_t = null_mut();
-    let mut d = aldis_error_detail_t::default();
+    // The C compiler supplies size and alignment: the type is its words, at the alignment of
+    // `uint64_t`.
     assert_eq!(
-        aldis_spp_tracker_storage_size(),
-        ALDIS_SPP_TRACKER_STORAGE_SIZE
+        size_of::<aldis_spp_tracker_t>(),
+        8 * ALDIS_SPP_TRACKER_WORDS
     );
     assert_eq!(
-        aldis_spp_tracker_storage_align(),
-        ALDIS_SPP_TRACKER_STORAGE_ALIGN
+        size_of::<aldis_spp_segmenter_t>(),
+        8 * ALDIS_SPP_SEGMENTER_WORDS
     );
     assert_eq!(
-        aldis_spp_segmenter_storage_size(),
-        ALDIS_SPP_SEGMENTER_STORAGE_SIZE
+        size_of::<aldis_spp_reassembler_t>(),
+        8 * ALDIS_SPP_REASSEMBLER_WORDS
     );
     assert_eq!(
-        aldis_spp_segmenter_storage_align(),
-        ALDIS_SPP_SEGMENTER_STORAGE_ALIGN
+        size_of::<aldis_oid_generator_t>(),
+        8 * ALDIS_OID_GENERATOR_WORDS
     );
-    assert_eq!(
-        aldis_spp_reassembler_storage_size(),
-        ALDIS_SPP_REASSEMBLER_STORAGE_SIZE
-    );
-    assert_eq!(
-        aldis_spp_reassembler_storage_align(),
-        ALDIS_SPP_REASSEMBLER_STORAGE_ALIGN
-    );
-    let base = words.as_mut_ptr().cast::<core::ffi::c_void>();
-    // SAFETY: every pointer is NULL or into `words`, which has room for the slot at either
-    // offset.
+    for align in [
+        align_of::<aldis_spp_tracker_t>(),
+        align_of::<aldis_spp_segmenter_t>(),
+        align_of::<aldis_spp_reassembler_t>(),
+        align_of::<aldis_oid_generator_t>(),
+    ] {
+        assert_eq!(align, align_of::<u64>());
+    }
+    let mut tracker = tracker_storage();
+    // SAFETY: every pointer is NULL, to `tracker`, or an unaligned address that is rejected
+    // before any access.
     unsafe {
-        assert_eq!(
-            aldis_spp_tracker_init(
-                base,
-                ALDIS_SPP_TRACKER_STORAGE_SIZE - 1,
-                &raw const cfg,
-                &raw mut h,
-                &raw mut d
-            ),
-            ALDIS_ERR_BUFFER_TOO_SMALL
-        );
-        assert_eq!(
-            d.needed,
-            u64::try_from(ALDIS_SPP_TRACKER_STORAGE_SIZE).unwrap()
-        );
-        let odd = base.cast::<u8>().add(4).cast::<core::ffi::c_void>();
-        assert_eq!(
-            aldis_spp_tracker_init(
-                odd,
-                ALDIS_SPP_TRACKER_STORAGE_SIZE,
-                &raw const cfg,
-                &raw mut h,
-                null_mut()
-            ),
-            ALDIS_ERR_INVALID_FIELD
-        );
-        assert_eq!(
-            aldis_spp_tracker_init(
-                null_mut(),
-                ALDIS_SPP_TRACKER_STORAGE_SIZE,
-                &raw const cfg,
-                &raw mut h,
-                null_mut()
-            ),
-            ALDIS_ERR_INVALID_FIELD
-        );
+        let odd = (&raw mut tracker).wrapping_byte_add(4);
+        for storage in [odd, null_mut()] {
+            assert_eq!(
+                aldis_spp_tracker_init(storage, &raw const cfg, null_mut()),
+                ALDIS_ERR_INVALID_FIELD
+            );
+        }
         let zero = aldis_spp_tracker_config_t { capacity: 0, ..cfg };
         assert_eq!(
-            aldis_spp_tracker_init(
-                base,
-                ALDIS_SPP_TRACKER_STORAGE_SIZE,
-                &raw const zero,
-                &raw mut h,
-                null_mut()
-            ),
+            aldis_spp_tracker_init(&raw mut tracker, &raw const zero, null_mut()),
             ALDIS_ERR_INVALID_CONFIG
         );
         let big = aldis_spp_tracker_config_t {
@@ -370,27 +340,13 @@ fn storage_is_checked_at_init() {
             ..cfg
         };
         assert_eq!(
-            aldis_spp_tracker_init(
-                base,
-                ALDIS_SPP_TRACKER_STORAGE_SIZE,
-                &raw const big,
-                &raw mut h,
-                null_mut()
-            ),
+            aldis_spp_tracker_init(&raw mut tracker, &raw const big, null_mut()),
             ALDIS_ERR_CAPACITY_EXCEEDED
         );
-        assert!(h.is_null());
         assert_eq!(
-            aldis_spp_tracker_init(
-                base,
-                ALDIS_SPP_TRACKER_STORAGE_SIZE,
-                &raw const cfg,
-                &raw mut h,
-                null_mut()
-            ),
+            aldis_spp_tracker_init(&raw mut tracker, &raw const cfg, null_mut()),
             ALDIS_OK
         );
-        assert_eq!(h.cast::<core::ffi::c_void>(), base);
     }
 }
 
@@ -401,26 +357,19 @@ fn handles_are_tagged() {
         struct_size: size::<aldis_spp_tracker_config_t>(),
         capacity: 1,
     };
-    let mut words = vec![0_u64; ALDIS_SPP_TRACKER_STORAGE_SIZE / 8];
-    let mut h: *mut aldis_spp_tracker_t = null_mut();
+    let mut storage = tracker_storage();
+    let h = &raw mut storage;
     let mut t = aldis_spp_tracked_t::default();
     let mut len = 0;
-    let base = words.as_mut_ptr().cast::<core::ffi::c_void>();
-    // SAFETY: every handle points into `words` or is NULL.
+    // SAFETY: every handle points to `storage` or is NULL.
     unsafe {
         // Never initialized.
         assert_eq!(
-            aldis_spp_tracker_len(base.cast(), &raw mut len, null_mut()),
+            aldis_spp_tracker_len(h, &raw mut len, null_mut()),
             ALDIS_ERR_INVALID_HANDLE
         );
         assert_eq!(
-            aldis_spp_tracker_init(
-                base,
-                words.len() * 8,
-                &raw const cfg,
-                &raw mut h,
-                null_mut()
-            ),
+            aldis_spp_tracker_init(h, &raw const cfg, null_mut()),
             ALDIS_OK
         );
         assert_eq!(
@@ -478,32 +427,27 @@ fn handles_are_tagged() {
 #[test]
 fn a_moved_storage_is_foreign() {
     // req: CABI-032
-    let mut words = vec![0_u64; 2 * ALDIS_SPP_REASSEMBLER_STORAGE_SIZE / 8];
-    let half = ALDIS_SPP_REASSEMBLER_STORAGE_SIZE / 8;
-    let mut h: *mut aldis_spp_reassembler_t = null_mut();
+    let mut pair = [
+        aldis_spp_reassembler_t {
+            words: [0; ALDIS_SPP_REASSEMBLER_WORDS],
+        },
+        aldis_spp_reassembler_t {
+            words: [0; ALDIS_SPP_REASSEMBLER_WORDS],
+        },
+    ];
+    let h = pair.as_mut_ptr();
     let mut assembling = true;
-    // SAFETY: both halves of `words` hold a slot; the copy is made with `copy_within`.
+    // SAFETY: both elements of `pair` are live storage; the copy is made with
+    // `copy_nonoverlapping`.
     unsafe {
-        assert_eq!(
-            aldis_spp_reassembler_init(
-                words.as_mut_ptr().cast(),
-                half * 8,
-                7,
-                &raw mut h,
-                null_mut()
-            ),
-            ALDIS_OK
-        );
+        assert_eq!(aldis_spp_reassembler_init(h, 7, null_mut()), ALDIS_OK);
         assert_eq!(
             aldis_spp_reassembler_is_assembling(h, &raw mut assembling, null_mut()),
             ALDIS_OK
         );
         assert!(!assembling);
-    }
-    words.copy_within(..half, half);
-    let moved = words[half..].as_mut_ptr().cast::<aldis_spp_reassembler_t>();
-    // SAFETY: `moved` points to the copy in `words`.
-    unsafe {
+        let moved = h.add(1);
+        core::ptr::copy_nonoverlapping(h, moved, 1);
         assert_eq!(
             aldis_spp_reassembler_is_assembling(moved, &raw mut assembling, null_mut()),
             ALDIS_ERR_INVALID_HANDLE
@@ -512,7 +456,6 @@ fn a_moved_storage_is_foreign() {
             aldis_spp_reassembler_reset(moved, null_mut()),
             ALDIS_ERR_INVALID_HANDLE
         );
-        let h = words.as_mut_ptr().cast::<aldis_spp_reassembler_t>();
         assert_eq!(aldis_spp_reassembler_reset(h, null_mut()), ALDIS_OK);
         aldis_spp_reassembler_deinit(h);
         assert_eq!(
@@ -523,76 +466,36 @@ fn a_moved_storage_is_foreign() {
 }
 
 #[test]
-#[expect(
-    clippy::too_many_lines,
-    reason = "one check per storage and handle rule"
-)]
 fn the_oid_generator_follows_the_handle_pattern() {
     // req: CABI-031, CABI-032, CABI-022, CMN-021, CMN-023
-    const WORDS: usize = ALDIS_OID_GENERATOR_STORAGE_SIZE / 8;
-    assert_eq!(
-        aldis_oid_generator_storage_size(),
-        ALDIS_OID_GENERATOR_STORAGE_SIZE
-    );
-    assert_eq!(
-        aldis_oid_generator_storage_align(),
-        ALDIS_OID_GENERATOR_STORAGE_ALIGN
-    );
-    let mut words = vec![0_u64; 2 * WORDS];
-    let base = words.as_mut_ptr().cast::<core::ffi::c_void>();
-    let mut h: *mut aldis_oid_generator_t = null_mut();
-    let mut d = aldis_error_detail_t::default();
+    let new = || aldis_oid_generator_t {
+        words: [0; ALDIS_OID_GENERATOR_WORDS],
+    };
+    let mut pair = [new(), new()];
+    let h = pair.as_mut_ptr();
     let mut out = [0_u8; 4];
-    // SAFETY: every pointer is NULL, into `words`, or to a live local.
+    // SAFETY: every pointer is NULL, into `pair`, or to a live local.
     unsafe {
         // Never initialized.
         assert_eq!(
-            aldis_oid_generator_fill(base.cast(), out.as_mut_ptr(), 4, null_mut()),
+            aldis_oid_generator_fill(h, out.as_mut_ptr(), 4, null_mut()),
             ALDIS_ERR_INVALID_HANDLE
         );
-        assert_eq!(
-            aldis_oid_generator_init(
-                base,
-                ALDIS_OID_GENERATOR_STORAGE_SIZE - 1,
-                ALDIS_OID_FIBONACCI,
-                &raw mut h,
-                &raw mut d
-            ),
-            ALDIS_ERR_BUFFER_TOO_SMALL
-        );
-        assert_eq!(
-            d.needed,
-            u64::try_from(ALDIS_OID_GENERATOR_STORAGE_SIZE).unwrap()
-        );
-        let odd = base.cast::<u8>().add(4).cast::<core::ffi::c_void>();
+        let odd = h.wrapping_byte_add(4);
         for (storage, form) in [
             (odd, ALDIS_OID_FIBONACCI),
             (null_mut(), ALDIS_OID_FIBONACCI),
-            (base, 2),
+            (h, 2),
         ] {
             assert_eq!(
-                aldis_oid_generator_init(
-                    storage,
-                    ALDIS_OID_GENERATOR_STORAGE_SIZE,
-                    form,
-                    &raw mut h,
-                    null_mut()
-                ),
+                aldis_oid_generator_init(storage, form, null_mut()),
                 ALDIS_ERR_INVALID_FIELD
             );
         }
-        assert!(h.is_null());
         assert_eq!(
-            aldis_oid_generator_init(
-                base,
-                ALDIS_OID_GENERATOR_STORAGE_SIZE,
-                ALDIS_OID_GALOIS,
-                &raw mut h,
-                null_mut()
-            ),
+            aldis_oid_generator_init(h, ALDIS_OID_GALOIS, null_mut()),
             ALDIS_OK
         );
-        assert_eq!(h.cast::<core::ffi::c_void>(), base);
         assert_eq!(
             aldis_oid_generator_fill(h, out.as_mut_ptr(), 4, null_mut()),
             ALDIS_OK
@@ -600,7 +503,7 @@ fn the_oid_generator_follows_the_handle_pattern() {
         assert_eq!(out, [0xFF; 4]);
         // A rejected fill (the output overlaps the storage) leaves the generator as it was.
         assert_eq!(
-            aldis_oid_generator_fill(h, base.cast::<u8>().add(8), 4, null_mut()),
+            aldis_oid_generator_fill(h, h.cast::<u8>().add(8), 4, null_mut()),
             ALDIS_ERR_INVALID_FIELD
         );
         // A NULL handle is an invalid argument (CABI-022); a tracker is foreign.
@@ -613,13 +516,9 @@ fn the_oid_generator_follows_the_handle_pattern() {
             aldis_spp_tracker_len(h.cast(), &raw mut len, null_mut()),
             ALDIS_ERR_INVALID_HANDLE
         );
-    }
-    // Moved: a copy of the storage is foreign; the original continues the sequence.
-    words.copy_within(..WORDS, WORDS);
-    let moved = words[WORDS..].as_mut_ptr().cast::<aldis_oid_generator_t>();
-    let h = words.as_mut_ptr().cast::<aldis_oid_generator_t>();
-    // SAFETY: `moved` and `h` point into `words`; `out` is a live local.
-    unsafe {
+        // Moved: a copy of the storage is foreign; the original continues the sequence.
+        let moved = h.add(1);
+        core::ptr::copy_nonoverlapping(h, moved, 1);
         assert_eq!(
             aldis_oid_generator_fill(moved, out.as_mut_ptr(), 4, null_mut()),
             ALDIS_ERR_INVALID_HANDLE
@@ -653,22 +552,22 @@ fn helpers_never_keep_a_buffer() {
         max_user_len: 2,
     };
     let sdu = [1_u8, 2, 3];
-    let mut words = vec![0_u64; ALDIS_SPP_SEGMENTER_STORAGE_SIZE / 8];
-    let mut h: *mut aldis_spp_segmenter_t = null_mut();
+    let mut storage = aldis_spp_segmenter_t {
+        words: [0; ALDIS_SPP_SEGMENTER_WORDS],
+    };
+    let h = &raw mut storage;
     let mut out = [0_u8; 16];
     let (mut n, mut next) = (0, 0_u16);
     let mut d = aldis_error_detail_t::default();
-    // SAFETY: every pointer is to a live local or into `words`.
+    // SAFETY: every pointer is to a live local.
     unsafe {
         assert_eq!(
             aldis_spp_segmenter_init(
-                words.as_mut_ptr().cast(),
-                words.len() * 8,
+                h,
                 &raw const spp,
                 &raw const cfg,
                 sdu.as_ptr(),
                 3,
-                &raw mut h,
                 null_mut()
             ),
             ALDIS_OK
@@ -718,7 +617,7 @@ fn helpers_never_keep_a_buffer() {
                 1,
                 null(),
                 0,
-                words.as_mut_ptr().cast(),
+                h.cast(),
                 16,
                 &raw mut n,
                 &raw mut next,
@@ -750,23 +649,16 @@ fn reassembly_takes_the_buffer_on_every_push() {
         },
         ..aldis_spp_secondary_layout_t::default()
     };
-    let mut words = vec![0_u64; ALDIS_SPP_REASSEMBLER_STORAGE_SIZE / 8];
-    let mut h: *mut aldis_spp_reassembler_t = null_mut();
+    let mut storage = aldis_spp_reassembler_t {
+        words: [0; ALDIS_SPP_REASSEMBLER_WORDS],
+    };
+    let h = &raw mut storage;
     let mut buf = [0_u8; 8];
     let mut r = aldis_spp_reassembly_t::default();
     let mut d = aldis_error_detail_t::default();
-    // SAFETY: every pointer is to a live local or into `words`.
+    // SAFETY: every pointer is to a live local.
     unsafe {
-        assert_eq!(
-            aldis_spp_reassembler_init(
-                words.as_mut_ptr().cast(),
-                words.len() * 8,
-                7,
-                &raw mut h,
-                null_mut()
-            ),
-            ALDIS_OK
-        );
+        assert_eq!(aldis_spp_reassembler_init(h, 7, null_mut()), ALDIS_OK);
         assert_eq!(
             aldis_spp_reassembler_push(
                 h,

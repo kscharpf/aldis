@@ -397,25 +397,20 @@ fn the_decoder_takes_the_master_channels_vcs() {
     // An OID frame needs a master channel with a VC, as a `VcTable` does (Table 5-1).
     let mut oid = [0_u8; 40];
     let oid_fields = fields(ALDIS_AOS_OID_VCID, ALDIS_AOS_POINTER_NONE, 0);
-    let mut words = [0_u64; ALDIS_OID_GENERATOR_STORAGE_SIZE / 8];
-    let mut generator: *mut aldis_oid_generator_t = null_mut();
+    let mut storage = aldis_oid_generator_t {
+        words: [0; ALDIS_OID_GENERATOR_WORDS],
+    };
+    let generator = &raw mut storage;
     let iz = [0_u8; 4];
     let content = aldis_aos_content_t {
         insert_zone: iz.as_ptr(),
         insert_zone_len: 4,
         ..aldis_aos_content_t::default()
     };
-    // SAFETY: every pointer is to a live local; the storage is aligned and of the published
-    // size.
+    // SAFETY: every pointer is to a live local.
     unsafe {
         assert_eq!(
-            aldis_oid_generator_init(
-                words.as_mut_ptr().cast(),
-                ALDIS_OID_GENERATOR_STORAGE_SIZE,
-                ALDIS_OID_FIBONACCI,
-                &raw mut generator,
-                null_mut()
-            ),
+            aldis_oid_generator_init(generator, ALDIS_OID_FIBONACCI, null_mut()),
             ALDIS_OK
         );
         let mut n = 0;
@@ -856,9 +851,10 @@ fn encode_oid_takes_a_generator_handle() {
     // req: AOS-021, AOS-016, CMN-021, CMN-022, CABI-022, CABI-032, GEN-042, API-020
     let (mc, vcs) = (mc(), vcs());
     let f = fields(ALDIS_AOS_OID_VCID, ALDIS_AOS_POINTER_NONE, 0);
-    let mut words = vec![0_u64; 64];
-    let storage = words.as_mut_ptr();
-    let mut h: *mut aldis_oid_generator_t = null_mut();
+    let mut storage = aldis_oid_generator_t {
+        words: [0; ALDIS_OID_GENERATOR_WORDS],
+    };
+    let h = &raw mut storage;
     let mut frame = [0_u8; 40];
     let iz = [0x11_u8; 4];
     let content = aldis_aos_content_t {
@@ -890,16 +886,10 @@ fn encode_oid_takes_a_generator_handle() {
         };
         (status, len, det.field)
     };
-    // SAFETY: the storage lies in `words`, aligned to 8.
+    // SAFETY: `h` points to live storage.
     unsafe {
         assert_eq!(
-            aldis_oid_generator_init(
-                storage.cast(),
-                ALDIS_OID_GENERATOR_STORAGE_SIZE,
-                ALDIS_OID_GALOIS,
-                &raw mut h,
-                null_mut()
-            ),
+            aldis_oid_generator_init(h, ALDIS_OID_GALOIS, null_mut()),
             ALDIS_OK
         );
     }
@@ -950,7 +940,7 @@ fn encode_oid_takes_a_generator_handle() {
     }
     assert_eq!(encode(&f, &content, h, p, 39).0, ALDIS_ERR_BUFFER_TOO_SMALL);
     // The output inside the generator's storage, and inside the Insert Zone.
-    let in_storage = storage.cast::<u8>().wrapping_add(16);
+    let in_storage = h.cast::<u8>().wrapping_add(16);
     assert_eq!(
         encode(&f, &content, h, in_storage, 40).0,
         ALDIS_ERR_INVALID_FIELD
@@ -990,24 +980,22 @@ fn encode_oid_forms_give_the_same_frame() {
         insert_zone_len: 4,
         ..aldis_aos_content_t::default()
     };
-    let mut words = [vec![0_u64; 64], vec![0_u64; 64]];
-    let mut handles = [null_mut::<aldis_oid_generator_t>(); 2];
-    for (i, kind) in [ALDIS_OID_FIBONACCI, ALDIS_OID_GALOIS]
+    let mut storage = [
+        aldis_oid_generator_t {
+            words: [0; ALDIS_OID_GENERATOR_WORDS],
+        },
+        aldis_oid_generator_t {
+            words: [0; ALDIS_OID_GENERATOR_WORDS],
+        },
+    ];
+    let handles = [&raw mut storage[0], &raw mut storage[1]];
+    for (h, kind) in handles
         .into_iter()
-        .enumerate()
+        .zip([ALDIS_OID_FIBONACCI, ALDIS_OID_GALOIS])
     {
-        // SAFETY: the storage lies in `words`, aligned to 8.
+        // SAFETY: `h` points to live storage.
         unsafe {
-            assert_eq!(
-                aldis_oid_generator_init(
-                    words[i].as_mut_ptr().cast(),
-                    ALDIS_OID_GENERATOR_STORAGE_SIZE,
-                    kind,
-                    &raw mut handles[i],
-                    null_mut()
-                ),
-                ALDIS_OK
-            );
+            assert_eq!(aldis_oid_generator_init(h, kind, null_mut()), ALDIS_OK);
         }
     }
     let mut previous = [0_u8; 40];
