@@ -320,7 +320,7 @@ pub unsafe extern "C" fn aldis_spp_decode(
     mode: u32,
     out: *mut aldis_spp_packet_t,
     err: *mut crate::aldis_error_detail_t,
-) -> i32 {
+) -> u32 {
     // SAFETY: every pointer is valid as `# Safety` states; `abi` checks NULL and alignment.
     unsafe {
         abi::call(err, || {
@@ -349,7 +349,7 @@ pub unsafe extern "C" fn aldis_spp_peek_length(
     prefix_len: usize,
     out_len: *mut usize,
     err: *mut crate::aldis_error_detail_t,
-) -> i32 {
+) -> u32 {
     // SAFETY: every pointer is valid as `# Safety` states; `abi` checks NULL and alignment.
     unsafe {
         abi::call(err, || {
@@ -390,7 +390,7 @@ pub unsafe extern "C" fn aldis_spp_encode(
     cap: usize,
     out_len: *mut usize,
     err: *mut crate::aldis_error_detail_t,
-) -> i32 {
+) -> u32 {
     // SAFETY: every pointer is valid as `# Safety` states; `abi` checks NULL, alignment, and
     // that `out` overlaps no input.
     unsafe {
@@ -435,7 +435,7 @@ pub unsafe extern "C" fn aldis_spp_idle(
     cap: usize,
     out_len: *mut usize,
     err: *mut crate::aldis_error_detail_t,
-) -> i32 {
+) -> u32 {
     // SAFETY: every pointer is valid as `# Safety` states; `abi` checks NULL, alignment, and
     // overlap.
     unsafe {
@@ -486,7 +486,7 @@ pub unsafe extern "C" fn aldis_spp_octet_string_encode(
     out_len: *mut usize,
     next_count: *mut u16,
     err: *mut crate::aldis_error_detail_t,
-) -> i32 {
+) -> u32 {
     // SAFETY: every pointer is valid as `# Safety` states; `abi` checks NULL, alignment, and
     // overlap.
     unsafe {
@@ -523,7 +523,7 @@ pub unsafe extern "C" fn aldis_spp_sequence_count_next(
     count: u16,
     next: *mut u16,
     err: *mut crate::aldis_error_detail_t,
-) -> i32 {
+) -> u32 {
     // SAFETY: every pointer is valid as `# Safety` states; `abi` checks NULL and alignment.
     unsafe {
         abi::call(err, || {
@@ -552,7 +552,7 @@ pub unsafe extern "C" fn aldis_spp_sequence_count_next(
 pub unsafe extern "C" fn aldis_spp_config_check(
     cfg: *const aldis_spp_config_t,
     err: *mut crate::aldis_error_detail_t,
-) -> i32 {
+) -> u32 {
     // SAFETY: every pointer is valid as `# Safety` states; `abi` checks NULL and alignment.
     unsafe { abi::call(err, || config(abi::config(cfg)?).map(|_| ())) }
 }
@@ -585,7 +585,7 @@ pub unsafe extern "C" fn aldis_spp_split(
     layout: *const aldis_spp_secondary_layout_t,
     out: *mut aldis_spp_split_t,
     err: *mut crate::aldis_error_detail_t,
-) -> i32 {
+) -> u32 {
     // SAFETY: every pointer is valid as `# Safety` states; `abi` checks NULL and alignment.
     unsafe {
         abi::call(err, || {

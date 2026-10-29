@@ -15,7 +15,7 @@
 /**
  * ABI minor version (CABI-060).
  */
-#define ALDIS_ABI_VERSION_MINOR 4
+#define ALDIS_ABI_VERSION_MINOR 5
 
 /**
  * ABI patch version (CABI-060).
@@ -160,102 +160,6 @@
  * Anomaly bit: non-zero CCSDS Defined Field (bit 1; 133.1 §4.1.2.7; API-032).
  */
 #define ALDIS_EPP_ANOMALY_NON_ZERO_CCSDS_DEFINED (1 << 1)
-
-/**
- * Success (CABI-020).
- */
-#define ALDIS_OK 0
-
-/**
- * Output buffer too small; the detail carries `needed` (03-api-model.md §9 code 1; CABI-020).
- */
-#define ALDIS_ERR_BUFFER_TOO_SMALL (-1)
-
-/**
- * Input shorter than required; the detail carries `needed` (code 2; CABI-020).
- */
-#define ALDIS_ERR_INCOMPLETE (-2)
-
-/**
- * Length field, configured length, and buffer length disagree (code 3; CABI-020).
- */
-#define ALDIS_ERR_LENGTH_MISMATCH (-3)
-
-/**
- * Version number field is not the one this codec handles (code 4; CABI-020).
- */
-#define ALDIS_ERR_UNSUPPORTED_VERSION (-4)
-
-/**
- * A value exceeds its field range or a configured limit (code 5; CABI-020).
- */
-#define ALDIS_ERR_OUT_OF_RANGE (-5)
-
-/**
- * A field holds a value the Blue Book forbids, or an argument violates CABI-022 (code 6;
- * CABI-020, CABI-022).
- */
-#define ALDIS_ERR_INVALID_FIELD (-6)
-
-/**
- * A field holds a value CCSDS reserves, in strict mode (code 7; CABI-020).
- */
-#define ALDIS_ERR_RESERVED_VALUE (-7)
-
-/**
- * FECF check failed (code 8; CABI-020).
- */
-#define ALDIS_ERR_CRC_MISMATCH (-8)
-
-/**
- * AOS Frame Header Error Control detected an uncorrectable error (code 9; CABI-020).
- */
-#define ALDIS_ERR_HEADER_UNCORRECTABLE (-9)
-
-/**
- * SCID, VCID, MAP ID, APID, or EPI not in the configuration (code 10; CABI-020).
- */
-#define ALDIS_ERR_UNKNOWN_CHANNEL (-10)
-
-/**
- * Configuration violates a Blue Book constraint (code 11; CABI-020).
- */
-#define ALDIS_ERR_INVALID_CONFIG (-11)
-
-/**
- * Engine queue full; input rejected without state change (code 12; CABI-020).
- */
-#define ALDIS_ERR_WOULD_BLOCK (-12)
-
-/**
- * Operation not permitted in the engine's current state (code 13; CABI-020).
- */
-#define ALDIS_ERR_INVALID_STATE (-13)
-
-/**
- * Security hook reported failure (code 14; CABI-020).
- */
-#define ALDIS_ERR_SECURITY (-14)
-
-/**
- * Configuration exceeds a compile-time capacity (code 15; CABI-020).
- */
-#define ALDIS_ERR_CAPACITY_EXCEEDED (-15)
-
-/**
- * Unknown, uninitialized, or stale handle (code 16; CABI-020, CABI-032).
- */
-#define ALDIS_ERR_INVALID_HANDLE (-16)
-
-/**
- * Structurally impossible input (code 17; CABI-020).
- */
-#define ALDIS_ERR_MALFORMED (-17)
-
-/**
- * An internal invariant or consistency check failed (code 18; CABI-020).
- */
-#define ALDIS_ERR_INTERNAL_ERROR (-18)
 
 /**
  * [`aldis_error_detail_t::detail`]: the error carries no further detail (GEN-041, CABI-021).
@@ -1950,6 +1854,108 @@ typedef uint32_t aldis_spp_track;
 #endif // __cplusplus
 
 /**
+ * The status a fallible function returns (03-api-model.md §9; CABI-020, GEN-040).
+ *
+ * [`ALDIS_OK`], or the catalogue code of the error. Every `ALDIS_ERR_*` has the value of
+ * `ErrorKind::code()` of the kind it is named for, which the build checks.
+ *
+ * A function returns a `uint32_t`; the type itself is not a field or return type of the
+ * header (OI-57 convention 2; CABI-010).
+ *
+ */
+enum aldis_status
+#if defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+  : uint32_t
+#endif // defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+ {
+  /**
+   * Success (CABI-020).
+   */
+  ALDIS_OK = 0,
+  /**
+   * Output buffer too small; carries `needed` (code 1; CABI-020).
+   */
+  ALDIS_ERR_BUFFER_TOO_SMALL = 1,
+  /**
+   * Input shorter than required; carries `needed` (code 2; CABI-020).
+   */
+  ALDIS_ERR_INCOMPLETE = 2,
+  /**
+   * Length field / configured length / buffer length disagree (code 3; CABI-020).
+   */
+  ALDIS_ERR_LENGTH_MISMATCH = 3,
+  /**
+   * Version number field not the one this codec handles (code 4; CABI-020).
+   */
+  ALDIS_ERR_UNSUPPORTED_VERSION = 4,
+  /**
+   * A value exceeds its field range or a configured limit (code 5; CABI-020).
+   */
+  ALDIS_ERR_OUT_OF_RANGE = 5,
+  /**
+   * A field holds a value the Blue Book forbids (carries field id) (code 6; CABI-020).
+   */
+  ALDIS_ERR_INVALID_FIELD = 6,
+  /**
+   * A field holds a value CCSDS reserves (strict mode) (code 7; CABI-020).
+   */
+  ALDIS_ERR_RESERVED_VALUE = 7,
+  /**
+   * FECF check failed (code 8; CABI-020).
+   */
+  ALDIS_ERR_CRC_MISMATCH = 8,
+  /**
+   * AOS FHEC detected an uncorrectable error (code 9; CABI-020).
+   */
+  ALDIS_ERR_HEADER_UNCORRECTABLE = 9,
+  /**
+   * SCID/VCID/MAP ID/APID not in the configuration (code 10; CABI-020).
+   */
+  ALDIS_ERR_UNKNOWN_CHANNEL = 10,
+  /**
+   * Configuration violates a Blue Book constraint (carries parameter id) (code 11; CABI-020).
+   */
+  ALDIS_ERR_INVALID_CONFIG = 11,
+  /**
+   * Engine input storage full; input rejected without state change (code 12; CABI-020).
+   */
+  ALDIS_ERR_WOULD_BLOCK = 12,
+  /**
+   * Operation not permitted in the engine's current state (non-CCSDS misuse) (code 13;
+   * CABI-020).
+   */
+  ALDIS_ERR_INVALID_STATE = 13,
+  /**
+   * SDLS processing (a security hook, applied by the caller) reported failure (code 14;
+   * CABI-020).
+   */
+  ALDIS_ERR_SECURITY = 14,
+  /**
+   * Configuration exceeds compile-time capacity (code 15; CABI-020).
+   */
+  ALDIS_ERR_CAPACITY_EXCEEDED = 15,
+  /**
+   * Unknown or stale transmit/request handle (code 16; CABI-020).
+   */
+  ALDIS_ERR_INVALID_HANDLE = 16,
+  /**
+   * Structurally impossible input (e.g. pointer beyond data field) (code 17; CABI-020).
+   */
+  ALDIS_ERR_MALFORMED = 17,
+  /**
+   * An internal invariant or consistency check failed (code 18; CABI-020).
+   */
+  ALDIS_ERR_INTERNAL_ERROR = 18,
+};
+#ifndef __cplusplus
+#if __STDC_VERSION__ >= 202311L
+typedef enum aldis_status aldis_status;
+#else
+typedef uint32_t aldis_status;
+#endif // __STDC_VERSION__ >= 202311L
+#endif // __cplusplus
+
+/**
  * The Control Command of a BC frame (232.1 §4.1.3).
  *
  * A `uint8_t` argument or field is one of the enumerators below; the type itself is not a
@@ -2735,7 +2741,7 @@ typedef struct {
    */
   uint32_t struct_size;
   /**
-   * The error kind: its catalogue code, the negation of the returned status (03 §9).
+   * The error kind: its catalogue code, the returned status (03 §9).
    */
   uint32_t kind;
   /**
@@ -4006,9 +4012,9 @@ typedef struct {
    */
   uint32_t discard_reason;
   /**
-   * The error code of the discard (e.g. `ALDIS_ERR_CRC_MISMATCH`, negative integer).
+   * The error code of the discard (e.g. `ALDIS_ERR_CRC_MISMATCH`).
    */
-  int32_t error_code;
+  uint32_t error_code;
   /**
    * The field code of the error (0 if none).
    */
@@ -5021,9 +5027,9 @@ typedef struct {
    */
   uint32_t discard_reason;
   /**
-   * The error code of the discard (e.g. `ALDIS_ERR_CRC_MISMATCH`, negative integer).
+   * The error code of the discard (e.g. `ALDIS_ERR_CRC_MISMATCH`).
    */
-  int32_t error_code;
+  uint32_t error_code;
   /**
    * The field code of the error (0 if none).
    */
@@ -5110,10 +5116,10 @@ extern "C" {
  * `header` is valid for `header_len` octets (or `NULL` with 0); `out` is valid for one write;
  * `err` is `NULL` or valid for one write.
  */
-int32_t aldis_aos_fhec_encode(const uint8_t *header,
-                              size_t header_len,
-                              uint16_t *out,
-                              aldis_error_detail_t *err);
+uint32_t aldis_aos_fhec_encode(const uint8_t *header,
+                               size_t header_len,
+                               uint16_t *out,
+                               aldis_error_detail_t *err);
 
 /**
  * Checks a received Primary Header with its FHEC and corrects up to two symbol errors (732.0
@@ -5130,10 +5136,10 @@ int32_t aldis_aos_fhec_encode(const uint8_t *header,
  * `received` is valid for `received_len` octets (or `NULL` with 0); `out` is valid for one
  * write; `err` is `NULL` or valid for one write.
  */
-int32_t aldis_aos_fhec_decode(const uint8_t *received,
-                              size_t received_len,
-                              aldis_aos_corrected_header_t *out,
-                              aldis_error_detail_t *err);
+uint32_t aldis_aos_fhec_decode(const uint8_t *received,
+                               size_t received_len,
+                               aldis_aos_corrected_header_t *out,
+                               aldis_error_detail_t *err);
 
 /**
  * Checks a physical channel configuration (732.0 §5.2 Table 5-1; AOS-001, API-040, CMN-041).
@@ -5146,7 +5152,7 @@ int32_t aldis_aos_fhec_decode(const uint8_t *received,
  * # Safety
  * `pc` is valid for a read; `err` is `NULL` or valid for one write.
  */
-int32_t aldis_aos_config_check(const aldis_aos_config_t *pc, aldis_error_detail_t *err);
+uint32_t aldis_aos_config_check(const aldis_aos_config_t *pc, aldis_error_detail_t *err);
 
 /**
  * Checks a master channel configuration and its virtual channels (732.0 §5 Tables 5-1 to 5-3,
@@ -5172,10 +5178,10 @@ int32_t aldis_aos_config_check(const aldis_aos_config_t *pc, aldis_error_detail_
  * `mc` is valid for a read; `vcs` is valid for reads of `vc_count` structs of the first one's
  * `struct_size` (or `NULL` with 0); `err` is `NULL` or valid for one write.
  */
-int32_t aldis_aos_mc_config_check(const aldis_aos_mc_config_t *mc,
-                                  const aldis_aos_vc_config_t *vcs,
-                                  size_t vc_count,
-                                  aldis_error_detail_t *err);
+uint32_t aldis_aos_mc_config_check(const aldis_aos_mc_config_t *mc,
+                                   const aldis_aos_vc_config_t *vcs,
+                                   size_t vc_count,
+                                   aldis_error_detail_t *err);
 
 /**
  * The length of the frame that `prefix` begins: the configured frame length (732.0 §4.1.1.2;
@@ -5194,11 +5200,11 @@ int32_t aldis_aos_mc_config_check(const aldis_aos_mc_config_t *mc,
  * `prefix` is valid for `prefix_len` octets (or `NULL` with 0); `cfg` is valid for a read;
  * `out_len` is valid for one write; `err` is `NULL` or valid for one write.
  */
-int32_t aldis_aos_peek_length(const uint8_t *prefix,
-                              size_t prefix_len,
-                              const aldis_aos_config_t *cfg,
-                              size_t *out_len,
-                              aldis_error_detail_t *err);
+uint32_t aldis_aos_peek_length(const uint8_t *prefix,
+                               size_t prefix_len,
+                               const aldis_aos_config_t *cfg,
+                               size_t *out_len,
+                               aldis_error_detail_t *err);
 
 /**
  * Decodes the Primary Header that `prefix` begins, after the FHEC has corrected it if
@@ -5219,11 +5225,11 @@ int32_t aldis_aos_peek_length(const uint8_t *prefix,
  * `prefix` is valid for `prefix_len` octets (or `NULL` with 0); `cfg` is valid for a read;
  * `out` is valid for one write; `err` is `NULL` or valid for one write.
  */
-int32_t aldis_aos_header_decode(const uint8_t *prefix,
-                                size_t prefix_len,
-                                const aldis_aos_config_t *cfg,
-                                aldis_aos_header_t *out,
-                                aldis_error_detail_t *err);
+uint32_t aldis_aos_header_decode(const uint8_t *prefix,
+                                 size_t prefix_len,
+                                 const aldis_aos_config_t *cfg,
+                                 aldis_aos_header_t *out,
+                                 aldis_error_detail_t *err);
 
 /**
  * Decodes one frame of the master channel `mc`, with the parameters of its virtual channel
@@ -5252,14 +5258,14 @@ int32_t aldis_aos_header_decode(const uint8_t *prefix,
  * [`aldis_aos_mc_config_check`]; `out` is valid for one write; `err` is `NULL` or valid for one
  * write.
  */
-int32_t aldis_aos_decode(const uint8_t *bytes,
-                         size_t len,
-                         const aldis_aos_mc_config_t *mc,
-                         const aldis_aos_vc_config_t *vcs,
-                         size_t vc_count,
-                         uint32_t mode,
-                         aldis_aos_frame_t *out,
-                         aldis_error_detail_t *err);
+uint32_t aldis_aos_decode(const uint8_t *bytes,
+                          size_t len,
+                          const aldis_aos_mc_config_t *mc,
+                          const aldis_aos_vc_config_t *vcs,
+                          size_t vc_count,
+                          uint32_t mode,
+                          aldis_aos_frame_t *out,
+                          aldis_error_detail_t *err);
 
 /**
  * Decodes an `M_PDU` that fills `field`, the data field of a frame of a VC that carries
@@ -5278,12 +5284,12 @@ int32_t aldis_aos_decode(const uint8_t *bytes,
  * `field` is valid for `len` octets (or `NULL` with 0); `out` is valid for one write; `err` is
  * `NULL` or valid for one write.
  */
-int32_t aldis_aos_mpdu_decode(const uint8_t *field,
-                              size_t len,
-                              uint8_t edition,
-                              uint32_t mode,
-                              aldis_aos_pdu_t *out,
-                              aldis_error_detail_t *err);
+uint32_t aldis_aos_mpdu_decode(const uint8_t *field,
+                               size_t len,
+                               uint8_t edition,
+                               uint32_t mode,
+                               aldis_aos_pdu_t *out,
+                               aldis_error_detail_t *err);
 
 /**
  * Decodes a `B_PDU` that fills `field`, the data field of a frame of a VC that carries
@@ -5302,11 +5308,11 @@ int32_t aldis_aos_mpdu_decode(const uint8_t *field,
  * `field` is valid for `len` octets (or `NULL` with 0); `out` is valid for one write; `err` is
  * `NULL` or valid for one write.
  */
-int32_t aldis_aos_bpdu_decode(const uint8_t *field,
-                              size_t len,
-                              uint32_t mode,
-                              aldis_aos_pdu_t *out,
-                              aldis_error_detail_t *err);
+uint32_t aldis_aos_bpdu_decode(const uint8_t *field,
+                               size_t len,
+                               uint32_t mode,
+                               aldis_aos_pdu_t *out,
+                               aldis_error_detail_t *err);
 
 /**
  * Encodes one frame of (`mc->scid`, `fields->vcid`) into the start of `out` in one call (732.0
@@ -5338,15 +5344,15 @@ int32_t aldis_aos_bpdu_decode(const uint8_t *field,
  * read; each buffer of `content` is valid for its length (or `NULL` with 0); `out` is valid for
  * `cap` octets; `out_len` is valid for one write; `err` is `NULL` or valid for one write.
  */
-int32_t aldis_aos_encode(const aldis_aos_mc_config_t *mc,
-                         const aldis_aos_vc_config_t *vcs,
-                         size_t vc_count,
-                         const aldis_aos_fields_t *fields,
-                         const aldis_aos_content_t *content,
-                         uint8_t *out,
-                         size_t cap,
-                         size_t *out_len,
-                         aldis_error_detail_t *err);
+uint32_t aldis_aos_encode(const aldis_aos_mc_config_t *mc,
+                          const aldis_aos_vc_config_t *vcs,
+                          size_t vc_count,
+                          const aldis_aos_fields_t *fields,
+                          const aldis_aos_content_t *content,
+                          uint8_t *out,
+                          size_t cap,
+                          size_t *out_len,
+                          aldis_error_detail_t *err);
 
 /**
  * Encodes an OID Transfer Frame of `mc->scid` on VCID 63 in one call (732.0 §4.1.4.1.5;
@@ -5376,16 +5382,16 @@ int32_t aldis_aos_encode(const aldis_aos_mc_config_t *mc,
  * As [`aldis_aos_encode`]; `oid` is a handle from `aldis_oid_generator_init` whose storage is
  * still valid, or detectably invalid storage.
  */
-int32_t aldis_aos_encode_oid(const aldis_aos_mc_config_t *mc,
-                             const aldis_aos_vc_config_t *vcs,
-                             size_t vc_count,
-                             const aldis_aos_fields_t *fields,
-                             const aldis_aos_content_t *content,
-                             aldis_oid_generator_t *oid,
-                             uint8_t *out,
-                             size_t cap,
-                             size_t *out_len,
-                             aldis_error_detail_t *err);
+uint32_t aldis_aos_encode_oid(const aldis_aos_mc_config_t *mc,
+                              const aldis_aos_vc_config_t *vcs,
+                              size_t vc_count,
+                              const aldis_aos_fields_t *fields,
+                              const aldis_aos_content_t *content,
+                              aldis_oid_generator_t *oid,
+                              uint8_t *out,
+                              size_t cap,
+                              size_t *out_len,
+                              aldis_error_detail_t *err);
 
 /**
  * The CRC-16 of the `len` octets at `data` (132.0 §4.1.6.2; CMN-001, CMN-004).
@@ -5402,7 +5408,7 @@ int32_t aldis_aos_encode_oid(const aldis_aos_mc_config_t *mc,
  * `data` is valid for reads of `len` octets (or `NULL` with `len` 0); `crc` is valid for one
  * write; `err` is `NULL` or valid for one write.
  */
-int32_t aldis_crc16(const uint8_t *data, size_t len, uint16_t *crc, aldis_error_detail_t *err);
+uint32_t aldis_crc16(const uint8_t *data, size_t len, uint16_t *crc, aldis_error_detail_t *err);
 
 /**
  * Decodes one Encapsulation Packet (133.1 §4.1; EPP-001…007, API-010, API-011, API-030).
@@ -5418,11 +5424,11 @@ int32_t aldis_crc16(const uint8_t *data, size_t len, uint16_t *crc, aldis_error_
  * `bytes` is valid for `len` octets (or `NULL` with 0); `out` is valid for one write; `err` is
  * `NULL` or valid for one write.
  */
-int32_t aldis_epp_decode(const uint8_t *bytes,
-                         size_t len,
-                         uint32_t mode,
-                         aldis_epp_packet_t *out,
-                         aldis_error_detail_t *err);
+uint32_t aldis_epp_decode(const uint8_t *bytes,
+                          size_t len,
+                          uint32_t mode,
+                          aldis_epp_packet_t *out,
+                          aldis_error_detail_t *err);
 
 /**
  * The total length of the Encapsulation Packet that `prefix` begins, from its header alone
@@ -5437,10 +5443,10 @@ int32_t aldis_epp_decode(const uint8_t *bytes,
  * `prefix` is valid for `prefix_len` octets (or `NULL` with 0); `out_len` is valid for one
  * write; `err` is `NULL` or valid for one write.
  */
-int32_t aldis_epp_peek_length(const uint8_t *prefix,
-                              size_t prefix_len,
-                              size_t *out_len,
-                              aldis_error_detail_t *err);
+uint32_t aldis_epp_peek_length(const uint8_t *prefix,
+                               size_t prefix_len,
+                               size_t *out_len,
+                               aldis_error_detail_t *err);
 
 /**
  * Decodes one Encapsulation Packet and checks it against the managed parameters (133.1 §5;
@@ -5457,11 +5463,11 @@ int32_t aldis_epp_peek_length(const uint8_t *prefix,
  * `bytes` is valid for `len` octets (or `NULL` with 0); `cfg` is valid for a read; `err` is
  * `NULL` or valid for one write.
  */
-int32_t aldis_epp_validate(const uint8_t *bytes,
-                           size_t len,
-                           uint32_t mode,
-                           const aldis_epp_config_t *cfg,
-                           aldis_error_detail_t *err);
+uint32_t aldis_epp_validate(const uint8_t *bytes,
+                            size_t len,
+                            uint32_t mode,
+                            const aldis_epp_config_t *cfg,
+                            aldis_error_detail_t *err);
 
 /**
  * Checks an EPI, an optional Protocol ID Extension, and a data field length against the
@@ -5475,12 +5481,12 @@ int32_t aldis_epp_validate(const uint8_t *bytes,
  * # Safety
  * `cfg` is valid for a read; `err` is `NULL` or valid for one write.
  */
-int32_t aldis_epp_check(const aldis_epp_config_t *cfg,
-                        uint8_t epi,
-                        bool has_extension,
-                        uint8_t epi_extension,
-                        size_t data_len,
-                        aldis_error_detail_t *err);
+uint32_t aldis_epp_check(const aldis_epp_config_t *cfg,
+                         uint8_t epi,
+                         bool has_extension,
+                         uint8_t epi_extension,
+                         size_t data_len,
+                         aldis_error_detail_t *err);
 
 /**
  * Encodes an Encapsulation Packet in one call; `header_size` is `ALDIS_EPP_HEADER_AUTO` or a
@@ -5498,15 +5504,15 @@ int32_t aldis_epp_check(const aldis_epp_config_t *cfg,
  * with 0); `out` is valid for `cap` octets; `out_len` is valid for one write; `err` is `NULL`
  * or valid for one write.
  */
-int32_t aldis_epp_encode(const aldis_epp_config_t *cfg,
-                         const aldis_epp_fields_t *fields,
-                         uint32_t header_size,
-                         const uint8_t *data,
-                         size_t data_len,
-                         uint8_t *out,
-                         size_t cap,
-                         size_t *out_len,
-                         aldis_error_detail_t *err);
+uint32_t aldis_epp_encode(const aldis_epp_config_t *cfg,
+                          const aldis_epp_fields_t *fields,
+                          uint32_t header_size,
+                          const uint8_t *data,
+                          size_t data_len,
+                          uint8_t *out,
+                          size_t cap,
+                          size_t *out_len,
+                          aldis_error_detail_t *err);
 
 /**
  * Encodes only the header of a packet with `data_len` octets of data, as
@@ -5520,15 +5526,15 @@ int32_t aldis_epp_encode(const aldis_epp_config_t *cfg,
  * `cfg` and `fields` are valid for reads; `out` is valid for `cap` octets; `out_len` and
  * `packet_len` are valid for one write each; `err` is `NULL` or valid for one write.
  */
-int32_t aldis_epp_header_encode(const aldis_epp_config_t *cfg,
-                                const aldis_epp_fields_t *fields,
-                                uint32_t header_size,
-                                size_t data_len,
-                                uint8_t *out,
-                                size_t cap,
-                                size_t *out_len,
-                                uint32_t *packet_len,
-                                aldis_error_detail_t *err);
+uint32_t aldis_epp_header_encode(const aldis_epp_config_t *cfg,
+                                 const aldis_epp_fields_t *fields,
+                                 uint32_t header_size,
+                                 size_t data_len,
+                                 uint8_t *out,
+                                 size_t cap,
+                                 size_t *out_len,
+                                 uint32_t *packet_len,
+                                 aldis_error_detail_t *err);
 
 /**
  * Builds an Idle Packet of `total_len` octets with the smallest header for the length and
@@ -5542,12 +5548,12 @@ int32_t aldis_epp_header_encode(const aldis_epp_config_t *cfg,
  * `out` is valid for `cap` octets; `out_len` is valid for one write; `err` is `NULL` or valid
  * for one write.
  */
-int32_t aldis_epp_idle(size_t total_len,
-                       uint8_t fill,
-                       uint8_t *out,
-                       size_t cap,
-                       size_t *out_len,
-                       aldis_error_detail_t *err);
+uint32_t aldis_epp_idle(size_t total_len,
+                        uint8_t fill,
+                        uint8_t *out,
+                        size_t cap,
+                        size_t *out_len,
+                        aldis_error_detail_t *err);
 
 /**
  * Encodes only the header of an Idle Packet of `total_len` octets (133.1 §4.1.2.3;
@@ -5560,12 +5566,12 @@ int32_t aldis_epp_idle(size_t total_len,
  * `out` is valid for `cap` octets; `out_len` and `packet_len` are valid for one write each;
  * `err` is `NULL` or valid for one write.
  */
-int32_t aldis_epp_idle_header(size_t total_len,
-                              uint8_t *out,
-                              size_t cap,
-                              size_t *out_len,
-                              uint32_t *packet_len,
-                              aldis_error_detail_t *err);
+uint32_t aldis_epp_idle_header(size_t total_len,
+                               uint8_t *out,
+                               size_t cap,
+                               size_t *out_len,
+                               uint32_t *packet_len,
+                               aldis_error_detail_t *err);
 
 /**
  * Checks a configuration: the minimum data length is at most the maximum, and the maximum
@@ -5577,7 +5583,7 @@ int32_t aldis_epp_idle_header(size_t total_len,
  * # Safety
  * `cfg` is valid for a read; `err` is `NULL` or valid for one write.
  */
-int32_t aldis_epp_config_check(const aldis_epp_config_t *cfg, aldis_error_detail_t *err);
+uint32_t aldis_epp_config_check(const aldis_epp_config_t *cfg, aldis_error_detail_t *err);
 
 /**
  * Fills `limits` with the capacities of this build (CABI-030).
@@ -5589,7 +5595,7 @@ int32_t aldis_epp_config_check(const aldis_epp_config_t *cfg, aldis_error_detail
  * # Safety
  * `limits` is valid for a read of its `struct_size` and one write of `aldis_limits_t`.
  */
-int32_t aldis_limits(aldis_limits_t *limits);
+uint32_t aldis_limits(aldis_limits_t *limits);
 
 /**
  * Classifies the four OCF octets at `ocf` by bits 0–1 (CMN-010).
@@ -5606,10 +5612,10 @@ int32_t aldis_limits(aldis_limits_t *limits);
  * `ocf` is valid for reads of `ocf_len` octets; `report` is valid for one write; `err` is
  * `NULL` or valid for one write.
  */
-int32_t aldis_ocf_classify(const uint8_t *ocf,
-                           size_t ocf_len,
-                           uint32_t *report,
-                           aldis_error_detail_t *err);
+uint32_t aldis_ocf_classify(const uint8_t *ocf,
+                            size_t ocf_len,
+                            uint32_t *report,
+                            aldis_error_detail_t *err);
 
 /**
  * Checks that the four OCF octets at `ocf` hold the report `report` (CMN-010).
@@ -5626,10 +5632,10 @@ int32_t aldis_ocf_classify(const uint8_t *ocf,
  * # Safety
  * `ocf` is valid for reads of `ocf_len` octets; `err` is `NULL` or valid for one write.
  */
-int32_t aldis_ocf_check(const uint8_t *ocf,
-                        size_t ocf_len,
-                        uint32_t report,
-                        aldis_error_detail_t *err);
+uint32_t aldis_ocf_check(const uint8_t *ocf,
+                         size_t ocf_len,
+                         uint32_t report,
+                         aldis_error_detail_t *err);
 
 /**
  * Places an OID generator of the form `form` (`ALDIS_OID_FIBONACCI` or `ALDIS_OID_GALOIS`) in
@@ -5645,9 +5651,9 @@ int32_t aldis_ocf_check(const uint8_t *ocf,
  * `storage` is valid for writes of one `aldis_oid_generator_t` and outlives its use; `err` is
  * `NULL` or valid for one write.
  */
-int32_t aldis_oid_generator_init(aldis_oid_generator_t *storage,
-                                 uint32_t form,
-                                 aldis_error_detail_t *err);
+uint32_t aldis_oid_generator_init(aldis_oid_generator_t *storage,
+                                  uint32_t form,
+                                  aldis_error_detail_t *err);
 
 /**
  * Fills the `len` octets at `out` with the next `len` octets of the OID sequence (CMN-023).
@@ -5664,10 +5670,10 @@ int32_t aldis_oid_generator_init(aldis_oid_generator_t *storage,
  * invalid storage; `out` is valid for writes of `len` octets (or `NULL` with `len` 0); `err`
  * is `NULL` or valid for one write.
  */
-int32_t aldis_oid_generator_fill(aldis_oid_generator_t *h,
-                                 uint8_t *out,
-                                 size_t len,
-                                 aldis_error_detail_t *err);
+uint32_t aldis_oid_generator_fill(aldis_oid_generator_t *h,
+                                  uint8_t *out,
+                                  size_t len,
+                                  aldis_error_detail_t *err);
 
 /**
  * Releases an OID generator: later calls with `h` fail with `ALDIS_ERR_INVALID_HANDLE`
@@ -5694,11 +5700,11 @@ void aldis_oid_generator_deinit(aldis_oid_generator_t *h);
  * `bytes` is valid for `len` octets (or `NULL` with `len` 0); `out` is valid for one write;
  * `err` is `NULL` or valid for one write.
  */
-int32_t aldis_spp_decode(const uint8_t *bytes,
-                         size_t len,
-                         uint32_t mode,
-                         aldis_spp_packet_t *out,
-                         aldis_error_detail_t *err);
+uint32_t aldis_spp_decode(const uint8_t *bytes,
+                          size_t len,
+                          uint32_t mode,
+                          aldis_spp_packet_t *out,
+                          aldis_error_detail_t *err);
 
 /**
  * The total length of the Space Packet that `prefix` begins, from its Primary Header alone
@@ -5712,10 +5718,10 @@ int32_t aldis_spp_decode(const uint8_t *bytes,
  * `prefix` is valid for `prefix_len` octets (or `NULL` with `prefix_len` 0); `out_len` is
  * valid for one write; `err` is `NULL` or valid for one write.
  */
-int32_t aldis_spp_peek_length(const uint8_t *prefix,
-                              size_t prefix_len,
-                              size_t *out_len,
-                              aldis_error_detail_t *err);
+uint32_t aldis_spp_peek_length(const uint8_t *prefix,
+                               size_t prefix_len,
+                               size_t *out_len,
+                               aldis_error_detail_t *err);
 
 /**
  * Encodes a Space Packet from its fields, secondary header, and User Data Field in one call
@@ -5732,16 +5738,16 @@ int32_t aldis_spp_peek_length(const uint8_t *prefix,
  * (or `NULL` with length 0); `out` is valid for `cap` octets; `out_len` is valid for one write;
  * `err` is `NULL` or valid for one write.
  */
-int32_t aldis_spp_encode(const aldis_spp_config_t *cfg,
-                         const aldis_spp_fields_t *fields,
-                         const uint8_t *secondary,
-                         size_t secondary_len,
-                         const uint8_t *user,
-                         size_t user_len,
-                         uint8_t *out,
-                         size_t cap,
-                         size_t *out_len,
-                         aldis_error_detail_t *err);
+uint32_t aldis_spp_encode(const aldis_spp_config_t *cfg,
+                          const aldis_spp_fields_t *fields,
+                          const uint8_t *secondary,
+                          size_t secondary_len,
+                          const uint8_t *user,
+                          size_t user_len,
+                          uint8_t *out,
+                          size_t cap,
+                          size_t *out_len,
+                          aldis_error_detail_t *err);
 
 /**
  * Builds an Idle Packet of `total_len` octets: APID 2047, Sequence Flags `11`, and the data
@@ -5757,15 +5763,15 @@ int32_t aldis_spp_encode(const aldis_spp_config_t *cfg,
  * `out` is valid for `cap` octets; `out_len` is valid for one write; `err` is `NULL` or valid
  * for one write.
  */
-int32_t aldis_spp_idle(const aldis_spp_config_t *cfg,
-                       size_t total_len,
-                       uint16_t sequence_count,
-                       const uint8_t *pattern,
-                       size_t pattern_len,
-                       uint8_t *out,
-                       size_t cap,
-                       size_t *out_len,
-                       aldis_error_detail_t *err);
+uint32_t aldis_spp_idle(const aldis_spp_config_t *cfg,
+                        size_t total_len,
+                        uint16_t sequence_count,
+                        const uint8_t *pattern,
+                        size_t pattern_len,
+                        uint8_t *out,
+                        size_t cap,
+                        size_t *out_len,
+                        aldis_error_detail_t *err);
 
 /**
  * Encodes one octet string as a packet of the Octet String service (133.0 §3.4, §4.2.2;
@@ -5784,18 +5790,18 @@ int32_t aldis_spp_idle(const aldis_spp_config_t *cfg,
  * `cap` octets; `out_len` and `next_count` are valid for one write; `err` is `NULL` or valid
  * for one write.
  */
-int32_t aldis_spp_octet_string_encode(const aldis_spp_config_t *cfg,
-                                      uint8_t packet_type,
-                                      uint16_t apid,
-                                      uint16_t sequence_count,
-                                      bool secondary_header_indicator,
-                                      const uint8_t *octets,
-                                      size_t octets_len,
-                                      uint8_t *out,
-                                      size_t cap,
-                                      size_t *out_len,
-                                      uint16_t *next_count,
-                                      aldis_error_detail_t *err);
+uint32_t aldis_spp_octet_string_encode(const aldis_spp_config_t *cfg,
+                                       uint8_t packet_type,
+                                       uint16_t apid,
+                                       uint16_t sequence_count,
+                                       bool secondary_header_indicator,
+                                       const uint8_t *octets,
+                                       size_t octets_len,
+                                       uint8_t *out,
+                                       size_t cap,
+                                       size_t *out_len,
+                                       uint16_t *next_count,
+                                       aldis_error_detail_t *err);
 
 /**
  * The Packet Sequence Count after `count`, modulo 16384 (133.0 §4.1.3.4.3.3; SPP-011).
@@ -5806,7 +5812,7 @@ int32_t aldis_spp_octet_string_encode(const aldis_spp_config_t *cfg,
  * # Safety
  * `next` is valid for one write; `err` is `NULL` or valid for one write.
  */
-int32_t aldis_spp_sequence_count_next(uint16_t count, uint16_t *next, aldis_error_detail_t *err);
+uint32_t aldis_spp_sequence_count_next(uint16_t count, uint16_t *next, aldis_error_detail_t *err);
 
 /**
  * Checks a configuration: the Maximum Packet Length is 7 to 65 542 octets (133.0 §5.2
@@ -5818,7 +5824,7 @@ int32_t aldis_spp_sequence_count_next(uint16_t count, uint16_t *next, aldis_erro
  * # Safety
  * `cfg` is valid for a read; `err` is `NULL` or valid for one write.
  */
-int32_t aldis_spp_config_check(const aldis_spp_config_t *cfg, aldis_error_detail_t *err);
+uint32_t aldis_spp_config_check(const aldis_spp_config_t *cfg, aldis_error_detail_t *err);
 
 /**
  * Decodes one Space Packet and splits its data field by the APID's secondary header layout
@@ -5838,12 +5844,12 @@ int32_t aldis_spp_config_check(const aldis_spp_config_t *cfg, aldis_error_detail
  * `bytes` is valid for `len` octets (or `NULL` with 0); `layout` is valid for a read; `out` is
  * valid for one write; `err` is `NULL` or valid for one write.
  */
-int32_t aldis_spp_split(const uint8_t *bytes,
-                        size_t len,
-                        uint32_t mode,
-                        const aldis_spp_secondary_layout_t *layout,
-                        aldis_spp_split_t *out,
-                        aldis_error_detail_t *err);
+uint32_t aldis_spp_split(const uint8_t *bytes,
+                         size_t len,
+                         uint32_t mode,
+                         const aldis_spp_secondary_layout_t *layout,
+                         aldis_spp_split_t *out,
+                         aldis_error_detail_t *err);
 
 /**
  * Places an empty Packet Sequence Count tracker in `storage` (SPP-011; CABI-031, CABI-032).
@@ -5857,9 +5863,9 @@ int32_t aldis_spp_split(const uint8_t *bytes,
  * `storage` is valid for writes of one storage struct and outlives its use; `cfg` is
  * valid for a read; `err` is `NULL` or valid for one write.
  */
-int32_t aldis_spp_tracker_init(aldis_spp_tracker_t *storage,
-                               const aldis_spp_tracker_config_t *cfg,
-                               aldis_error_detail_t *err);
+uint32_t aldis_spp_tracker_init(aldis_spp_tracker_t *storage,
+                                const aldis_spp_tracker_config_t *cfg,
+                                aldis_error_detail_t *err);
 
 /**
  * Classifies the count `count` of `apid` against the last one tracked (133.0 §4.1.3.4.3.3–4;
@@ -5874,11 +5880,11 @@ int32_t aldis_spp_tracker_init(aldis_spp_tracker_t *storage,
  * `h` is a handle from `aldis_spp_tracker_init` whose storage is still valid, or detectably
  * invalid storage; `err` is `NULL` or valid for one write.
  */
-int32_t aldis_spp_tracker_track(aldis_spp_tracker_t *h,
-                                uint16_t apid,
-                                uint16_t count,
-                                aldis_spp_tracked_t *out,
-                                aldis_error_detail_t *err);
+uint32_t aldis_spp_tracker_track(aldis_spp_tracker_t *h,
+                                 uint16_t apid,
+                                 uint16_t count,
+                                 aldis_spp_tracked_t *out,
+                                 aldis_error_detail_t *err);
 
 /**
  * Stops tracking `apid`; `forgot` says whether it was tracked (SPP-011).
@@ -5889,10 +5895,10 @@ int32_t aldis_spp_tracker_track(aldis_spp_tracker_t *h,
  * # Safety
  * As for [`aldis_spp_tracker_track`]; `forgot` is valid for one write.
  */
-int32_t aldis_spp_tracker_forget(aldis_spp_tracker_t *h,
-                                 uint16_t apid,
-                                 bool *forgot,
-                                 aldis_error_detail_t *err);
+uint32_t aldis_spp_tracker_forget(aldis_spp_tracker_t *h,
+                                  uint16_t apid,
+                                  bool *forgot,
+                                  aldis_error_detail_t *err);
 
 /**
  * The last count tracked for `apid`: `known` is false when it is not tracked (SPP-011).
@@ -5903,11 +5909,11 @@ int32_t aldis_spp_tracker_forget(aldis_spp_tracker_t *h,
  * # Safety
  * As for [`aldis_spp_tracker_track`]; `known` and `count` are valid for one write each.
  */
-int32_t aldis_spp_tracker_last(aldis_spp_tracker_t *h,
-                               uint16_t apid,
-                               bool *known,
-                               uint16_t *count,
-                               aldis_error_detail_t *err);
+uint32_t aldis_spp_tracker_last(aldis_spp_tracker_t *h,
+                                uint16_t apid,
+                                bool *known,
+                                uint16_t *count,
+                                aldis_error_detail_t *err);
 
 /**
  * The number of APIDs tracked (SPP-011).
@@ -5918,7 +5924,7 @@ int32_t aldis_spp_tracker_last(aldis_spp_tracker_t *h,
  * # Safety
  * As for [`aldis_spp_tracker_track`]; `len` is valid for one write.
  */
-int32_t aldis_spp_tracker_len(aldis_spp_tracker_t *h, size_t *len, aldis_error_detail_t *err);
+uint32_t aldis_spp_tracker_len(aldis_spp_tracker_t *h, size_t *len, aldis_error_detail_t *err);
 
 /**
  * Releases a tracker: later calls with `h` fail with `ALDIS_ERR_INVALID_HANDLE` (CABI-032).
@@ -5946,12 +5952,12 @@ void aldis_spp_tracker_deinit(aldis_spp_tracker_t *h);
  * `cfg` are valid for reads; `sdu` is valid for `sdu_len` octets; `err` is `NULL` or
  * valid for one write.
  */
-int32_t aldis_spp_segmenter_init(aldis_spp_segmenter_t *storage,
-                                 const aldis_spp_config_t *spp,
-                                 const aldis_spp_segmenter_config_t *cfg,
-                                 const uint8_t *sdu,
-                                 size_t sdu_len,
-                                 aldis_error_detail_t *err);
+uint32_t aldis_spp_segmenter_init(aldis_spp_segmenter_t *storage,
+                                  const aldis_spp_config_t *spp,
+                                  const aldis_spp_segmenter_config_t *cfg,
+                                  const uint8_t *sdu,
+                                  size_t sdu_len,
+                                  aldis_error_detail_t *err);
 
 /**
  * Encodes the next segment of `sdu` with the count `sequence_count` and the secondary header
@@ -5971,17 +5977,17 @@ int32_t aldis_spp_segmenter_init(aldis_spp_segmenter_t *storage,
  * `out` is valid for `cap` octets; `out_len` and `next_count` are valid for one write each;
  * `err` is `NULL` or valid for one write.
  */
-int32_t aldis_spp_segmenter_next(aldis_spp_segmenter_t *h,
-                                 const uint8_t *sdu,
-                                 size_t sdu_len,
-                                 uint16_t sequence_count,
-                                 const uint8_t *secondary,
-                                 size_t secondary_len,
-                                 uint8_t *out,
-                                 size_t cap,
-                                 size_t *out_len,
-                                 uint16_t *next_count,
-                                 aldis_error_detail_t *err);
+uint32_t aldis_spp_segmenter_next(aldis_spp_segmenter_t *h,
+                                  const uint8_t *sdu,
+                                  size_t sdu_len,
+                                  uint16_t sequence_count,
+                                  const uint8_t *secondary,
+                                  size_t secondary_len,
+                                  uint8_t *out,
+                                  size_t cap,
+                                  size_t *out_len,
+                                  uint16_t *next_count,
+                                  aldis_error_detail_t *err);
 
 /**
  * SDU octets not yet written (133.0 §4.1.3.4.2; SPP-013).
@@ -5992,9 +5998,9 @@ int32_t aldis_spp_segmenter_next(aldis_spp_segmenter_t *h,
  * # Safety
  * As for [`aldis_spp_tracker_track`]; `remaining` is valid for one write.
  */
-int32_t aldis_spp_segmenter_remaining(aldis_spp_segmenter_t *h,
-                                      size_t *remaining,
-                                      aldis_error_detail_t *err);
+uint32_t aldis_spp_segmenter_remaining(aldis_spp_segmenter_t *h,
+                                       size_t *remaining,
+                                       aldis_error_detail_t *err);
 
 /**
  * Releases a segmenter (CABI-032); an invalid handle is ignored.
@@ -6017,9 +6023,9 @@ void aldis_spp_segmenter_deinit(aldis_spp_segmenter_t *h);
  * # Safety
  * `storage` is valid for writes of one storage struct and outlives its use; `err` is `NULL` or valid for one write.
  */
-int32_t aldis_spp_reassembler_init(aldis_spp_reassembler_t *storage,
-                                   uint16_t apid,
-                                   aldis_error_detail_t *err);
+uint32_t aldis_spp_reassembler_init(aldis_spp_reassembler_t *storage,
+                                    uint16_t apid,
+                                    aldis_error_detail_t *err);
 
 /**
  * Decodes one Space Packet, splits its data field by `layout`, and pushes its User Data Field
@@ -6038,15 +6044,15 @@ int32_t aldis_spp_reassembler_init(aldis_spp_reassembler_t *storage,
  * `layout` is valid for a read; `buf` is valid for `buf_len` octets and holds what earlier
  * pushes wrote; `err` is `NULL` or valid for one write.
  */
-int32_t aldis_spp_reassembler_push(aldis_spp_reassembler_t *h,
-                                   const uint8_t *packet,
-                                   size_t packet_len,
-                                   uint32_t mode,
-                                   const aldis_spp_secondary_layout_t *layout,
-                                   uint8_t *buf,
-                                   size_t buf_len,
-                                   aldis_spp_reassembly_t *out,
-                                   aldis_error_detail_t *err);
+uint32_t aldis_spp_reassembler_push(aldis_spp_reassembler_t *h,
+                                    const uint8_t *packet,
+                                    size_t packet_len,
+                                    uint32_t mode,
+                                    const aldis_spp_secondary_layout_t *layout,
+                                    uint8_t *buf,
+                                    size_t buf_len,
+                                    aldis_spp_reassembly_t *out,
+                                    aldis_error_detail_t *err);
 
 /**
  * Discards any partial SDU and forgets the last count (133.0 §4.1.3.4.2; SPP-013).
@@ -6057,7 +6063,7 @@ int32_t aldis_spp_reassembler_push(aldis_spp_reassembler_t *h,
  * # Safety
  * As for [`aldis_spp_tracker_track`].
  */
-int32_t aldis_spp_reassembler_reset(aldis_spp_reassembler_t *h, aldis_error_detail_t *err);
+uint32_t aldis_spp_reassembler_reset(aldis_spp_reassembler_t *h, aldis_error_detail_t *err);
 
 /**
  * Whether a partial SDU is in progress (133.0 §4.1.3.4.2; SPP-013).
@@ -6068,9 +6074,9 @@ int32_t aldis_spp_reassembler_reset(aldis_spp_reassembler_t *h, aldis_error_deta
  * # Safety
  * As for [`aldis_spp_tracker_track`]; `assembling` is valid for one write.
  */
-int32_t aldis_spp_reassembler_is_assembling(aldis_spp_reassembler_t *h,
-                                            bool *assembling,
-                                            aldis_error_detail_t *err);
+uint32_t aldis_spp_reassembler_is_assembling(aldis_spp_reassembler_t *h,
+                                             bool *assembling,
+                                             aldis_error_detail_t *err);
 
 /**
  * Releases a reassembler (CABI-032); an invalid handle is ignored.
@@ -6090,7 +6096,7 @@ void aldis_spp_reassembler_deinit(aldis_spp_reassembler_t *h);
  * # Safety
  * `pc` is valid for a read; `err` is `NULL` or valid for one write.
  */
-int32_t aldis_tc_config_check(const aldis_tc_config_t *pc, aldis_error_detail_t *err);
+uint32_t aldis_tc_config_check(const aldis_tc_config_t *pc, aldis_error_detail_t *err);
 
 /**
  * Checks a master channel configuration with its virtual channels and MAPs (232.0 §5 Tables
@@ -6117,12 +6123,12 @@ int32_t aldis_tc_config_check(const aldis_tc_config_t *pc, aldis_error_detail_t 
  * `map_count` structs of their first one's `struct_size` (or `NULL` with 0); `err` is `NULL`
  * or valid for one write.
  */
-int32_t aldis_tc_mc_config_check(const aldis_tc_mc_config_t *mc,
-                                 const aldis_tc_vc_config_t *vcs,
-                                 size_t vc_count,
-                                 const aldis_tc_map_config_t *maps,
-                                 size_t map_count,
-                                 aldis_error_detail_t *err);
+uint32_t aldis_tc_mc_config_check(const aldis_tc_mc_config_t *mc,
+                                  const aldis_tc_vc_config_t *vcs,
+                                  size_t vc_count,
+                                  const aldis_tc_map_config_t *maps,
+                                  size_t map_count,
+                                  aldis_error_detail_t *err);
 
 /**
  * The length of the frame that `prefix` begins, from its Frame Length field (232.0
@@ -6138,10 +6144,10 @@ int32_t aldis_tc_mc_config_check(const aldis_tc_mc_config_t *mc,
  * `prefix` is valid for `prefix_len` octets (or `NULL` with 0); `out_len` is valid for one
  * write; `err` is `NULL` or valid for one write.
  */
-int32_t aldis_tc_peek_length(const uint8_t *prefix,
-                             size_t prefix_len,
-                             size_t *out_len,
-                             aldis_error_detail_t *err);
+uint32_t aldis_tc_peek_length(const uint8_t *prefix,
+                              size_t prefix_len,
+                              size_t *out_len,
+                              aldis_error_detail_t *err);
 
 /**
  * Decodes the Primary Header that `prefix` begins (232.0 §4.1.2; TC-001, TC-002, API-014), as
@@ -6157,10 +6163,10 @@ int32_t aldis_tc_peek_length(const uint8_t *prefix,
  * `prefix` is valid for `prefix_len` octets (or `NULL` with 0); `out` is valid for one write;
  * `err` is `NULL` or valid for one write.
  */
-int32_t aldis_tc_header_decode(const uint8_t *prefix,
-                               size_t prefix_len,
-                               aldis_tc_header_t *out,
-                               aldis_error_detail_t *err);
+uint32_t aldis_tc_header_decode(const uint8_t *prefix,
+                                size_t prefix_len,
+                                aldis_tc_header_t *out,
+                                aldis_error_detail_t *err);
 
 /**
  * Decodes the frame that `bytes` begins, on the master channel `mc` (232.0 §4.1, §6.3;
@@ -6186,16 +6192,16 @@ int32_t aldis_tc_header_decode(const uint8_t *prefix,
  * [`aldis_tc_mc_config_check`]; `out` is valid for one write; `err` is `NULL` or valid for one
  * write.
  */
-int32_t aldis_tc_decode(const uint8_t *bytes,
-                        size_t len,
-                        const aldis_tc_mc_config_t *mc,
-                        const aldis_tc_vc_config_t *vcs,
-                        size_t vc_count,
-                        const aldis_tc_map_config_t *maps,
-                        size_t map_count,
-                        uint32_t mode,
-                        aldis_tc_frame_t *out,
-                        aldis_error_detail_t *err);
+uint32_t aldis_tc_decode(const uint8_t *bytes,
+                         size_t len,
+                         const aldis_tc_mc_config_t *mc,
+                         const aldis_tc_vc_config_t *vcs,
+                         size_t vc_count,
+                         const aldis_tc_map_config_t *maps,
+                         size_t map_count,
+                         uint32_t mode,
+                         aldis_tc_frame_t *out,
+                         aldis_error_detail_t *err);
 
 /**
  * Steps through the clean data unit `unit` using the unified Frame Intake Stream
@@ -6204,7 +6210,7 @@ int32_t aldis_tc_decode(const uint8_t *bytes,
  * Reads from `*offset` and advances `*offset` by the octets consumed for the yielded item.
  * When `out.kind == ALDIS_TC_STREAM_ACCEPTED`, `out.frame` holds the validated frame view.
  * When `out.kind == ALDIS_TC_STREAM_DISCARDED`, `out.discard_reason` holds the `ALDIS_TC_DISCARD_*`
- * code, and `out.error_code` holds the negative error code.
+ * code, and `out.error_code` holds the error status.
  * When `out.kind == ALDIS_TC_STREAM_END`, the unit is exhausted.
  *
  * # Errors
@@ -6216,17 +6222,17 @@ int32_t aldis_tc_decode(const uint8_t *bytes,
  * `mc`, `vcs`, and `maps` as for [`aldis_tc_mc_config_check`]; `out` is valid for one write; `err`
  * is `NULL` or valid for one write.
  */
-int32_t aldis_tc_stream_next(const uint8_t *unit,
-                             size_t unit_len,
-                             size_t *offset,
-                             const aldis_tc_mc_config_t *mc,
-                             const aldis_tc_vc_config_t *vcs,
-                             size_t vc_count,
-                             const aldis_tc_map_config_t *maps,
-                             size_t map_count,
-                             uint32_t mode,
-                             aldis_tc_stream_item_t *out,
-                             aldis_error_detail_t *err);
+uint32_t aldis_tc_stream_next(const uint8_t *unit,
+                              size_t unit_len,
+                              size_t *offset,
+                              const aldis_tc_mc_config_t *mc,
+                              const aldis_tc_vc_config_t *vcs,
+                              size_t vc_count,
+                              const aldis_tc_map_config_t *maps,
+                              size_t map_count,
+                              uint32_t mode,
+                              aldis_tc_stream_item_t *out,
+                              aldis_error_detail_t *err);
 
 /**
  * Encodes one frame into the start of `out` in one call (232.0 §4.1, §6.3; TC-004, TC-005,
@@ -6252,17 +6258,17 @@ int32_t aldis_tc_stream_next(const uint8_t *unit,
  * valid for `cap` octets; `out_len` is valid for one write; `err` is `NULL` or valid for one
  * write.
  */
-int32_t aldis_tc_encode(const aldis_tc_mc_config_t *mc,
-                        const aldis_tc_vc_config_t *vcs,
-                        size_t vc_count,
-                        const aldis_tc_map_config_t *maps,
-                        size_t map_count,
-                        const aldis_tc_fields_t *fields,
-                        const aldis_tc_content_t *content,
-                        uint8_t *out,
-                        size_t cap,
-                        size_t *out_len,
-                        aldis_error_detail_t *err);
+uint32_t aldis_tc_encode(const aldis_tc_mc_config_t *mc,
+                         const aldis_tc_vc_config_t *vcs,
+                         size_t vc_count,
+                         const aldis_tc_map_config_t *maps,
+                         size_t map_count,
+                         const aldis_tc_fields_t *fields,
+                         const aldis_tc_content_t *content,
+                         uint8_t *out,
+                         size_t cap,
+                         size_t *out_len,
+                         aldis_error_detail_t *err);
 
 /**
  * Decodes the Control Command that the data field `octets` of a Type-C frame holds exactly
@@ -6276,10 +6282,10 @@ int32_t aldis_tc_encode(const aldis_tc_mc_config_t *mc,
  * `octets` is valid for `len` octets (or `NULL` with 0); `out` is valid for one write; `err` is
  * `NULL` or valid for one write.
  */
-int32_t aldis_tc_control_decode(const uint8_t *octets,
-                                size_t len,
-                                aldis_tc_control_t *out,
-                                aldis_error_detail_t *err);
+uint32_t aldis_tc_control_decode(const uint8_t *octets,
+                                 size_t len,
+                                 aldis_tc_control_t *out,
+                                 aldis_error_detail_t *err);
 
 /**
  * Encodes a Control Command into the start of `out`, as a Type-C frame's data field carries it
@@ -6293,11 +6299,11 @@ int32_t aldis_tc_control_decode(const uint8_t *octets,
  * `command` is valid for a read; `out` is valid for `cap` octets; `out_len` is valid for one
  * write; `err` is `NULL` or valid for one write.
  */
-int32_t aldis_tc_control_encode(const aldis_tc_control_t *command,
-                                uint8_t *out,
-                                size_t cap,
-                                size_t *out_len,
-                                aldis_error_detail_t *err);
+uint32_t aldis_tc_control_encode(const aldis_tc_control_t *command,
+                                 uint8_t *out,
+                                 size_t cap,
+                                 size_t *out_len,
+                                 aldis_error_detail_t *err);
 
 /**
  * Decodes a CLCW given as a 32-bit word, bit 0 of 232.0 §4.2.1 the most significant (232.0
@@ -6316,11 +6322,11 @@ int32_t aldis_tc_control_encode(const aldis_tc_control_t *command,
  * # Safety
  * `out` and `anomalies` are valid for one write each; `err` is `NULL` or valid for one write.
  */
-int32_t aldis_clcw_decode(uint32_t word,
-                          uint32_t mode,
-                          aldis_clcw_t *out,
-                          uint32_t *anomalies,
-                          aldis_error_detail_t *err);
+uint32_t aldis_clcw_decode(uint32_t word,
+                           uint32_t mode,
+                           aldis_clcw_t *out,
+                           uint32_t *anomalies,
+                           aldis_error_detail_t *err);
 
 /**
  * Encodes a CLCW as a 32-bit word, bit 0 of 232.0 §4.2.1 the most significant (232.0 §4.2.1;
@@ -6338,7 +6344,7 @@ int32_t aldis_clcw_decode(uint32_t word,
  * `clcw` is valid for a read; `out` is valid for one write; `err` is `NULL` or valid for one
  * write.
  */
-int32_t aldis_clcw_encode(const aldis_clcw_t *clcw, uint32_t *out, aldis_error_detail_t *err);
+uint32_t aldis_clcw_encode(const aldis_clcw_t *clcw, uint32_t *out, aldis_error_detail_t *err);
 
 /**
  * Decodes a time code that starts with its P-field (301.0 §3.1; TIME-001…006, TIME-010…030,
@@ -6354,11 +6360,11 @@ int32_t aldis_clcw_encode(const aldis_clcw_t *clcw, uint32_t *out, aldis_error_d
  * `bytes` is valid for `len` octets (or `NULL` with 0); `out` is valid for one write; `err` is
  * `NULL` or valid for one write.
  */
-int32_t aldis_time_decode(const uint8_t *bytes,
-                          size_t len,
-                          uint32_t mode,
-                          aldis_time_decoded_t *out,
-                          aldis_error_detail_t *err);
+uint32_t aldis_time_decode(const uint8_t *bytes,
+                           size_t len,
+                           uint32_t mode,
+                           aldis_time_decoded_t *out,
+                           aldis_error_detail_t *err);
 
 /**
  * Decodes the T-field of a time code whose format is implicit (301.0 §3.1; TIME-003).
@@ -6370,12 +6376,12 @@ int32_t aldis_time_decode(const uint8_t *bytes,
  * `bytes` is valid for `len` octets (or `NULL` with 0); `format` is valid for a read; `out` is
  * valid for one write; `err` is `NULL` or valid for one write.
  */
-int32_t aldis_time_decode_implicit(const uint8_t *bytes,
-                                   size_t len,
-                                   const aldis_time_format_t *format,
-                                   uint32_t mode,
-                                   aldis_time_decoded_t *out,
-                                   aldis_error_detail_t *err);
+uint32_t aldis_time_decode_implicit(const uint8_t *bytes,
+                                    size_t len,
+                                    const aldis_time_format_t *format,
+                                    uint32_t mode,
+                                    aldis_time_decoded_t *out,
+                                    aldis_error_detail_t *err);
 
 /**
  * Encodes a time code, with its P-field when `include_pfield` (301.0 §3; TIME-001…033,
@@ -6391,13 +6397,13 @@ int32_t aldis_time_decode_implicit(const uint8_t *bytes,
  * `format` and `value` are valid for reads; `out` is valid for `cap` octets; `out_len` is valid
  * for one write; `err` is `NULL` or valid for one write.
  */
-int32_t aldis_time_encode(const aldis_time_format_t *format,
-                          const aldis_time_value_t *value,
-                          bool include_pfield,
-                          uint8_t *out,
-                          size_t cap,
-                          size_t *out_len,
-                          aldis_error_detail_t *err);
+uint32_t aldis_time_encode(const aldis_time_format_t *format,
+                           const aldis_time_value_t *value,
+                           bool include_pfield,
+                           uint8_t *out,
+                           size_t cap,
+                           size_t *out_len,
+                           aldis_error_detail_t *err);
 
 /**
  * Parses the P-field that `bytes` begins with (301.0 §3.1.1; TIME-001, TIME-005).
@@ -6410,10 +6416,10 @@ int32_t aldis_time_encode(const aldis_time_format_t *format,
  * `bytes` is valid for `len` octets (or `NULL` with 0); `out` is valid for one write; `err` is
  * `NULL` or valid for one write.
  */
-int32_t aldis_time_pfield_parse(const uint8_t *bytes,
-                                size_t len,
-                                aldis_time_pfield_t *out,
-                                aldis_error_detail_t *err);
+uint32_t aldis_time_pfield_parse(const uint8_t *bytes,
+                                 size_t len,
+                                 aldis_time_pfield_t *out,
+                                 aldis_error_detail_t *err);
 
 /**
  * The P-field octets of a format (301.0 §3.1.1; TIME-001, TIME-005).
@@ -6425,11 +6431,11 @@ int32_t aldis_time_pfield_parse(const uint8_t *bytes,
  * `format` is valid for a read; `out` is valid for `cap` octets; `out_len` is valid for one
  * write; `err` is `NULL` or valid for one write.
  */
-int32_t aldis_time_format_pfield(const aldis_time_format_t *format,
-                                 uint8_t *out,
-                                 size_t cap,
-                                 size_t *out_len,
-                                 aldis_error_detail_t *err);
+uint32_t aldis_time_format_pfield(const aldis_time_format_t *format,
+                                  uint8_t *out,
+                                  size_t cap,
+                                  size_t *out_len,
+                                  aldis_error_detail_t *err);
 
 /**
  * The T-field length of a format in octets (301.0 §3; TIME-003).
@@ -6441,9 +6447,9 @@ int32_t aldis_time_format_pfield(const aldis_time_format_t *format,
  * `format` is valid for a read; `t_len` is valid for one write; `err` is `NULL` or valid for
  * one write.
  */
-int32_t aldis_time_format_t_len(const aldis_time_format_t *format,
-                                size_t *t_len,
-                                aldis_error_detail_t *err);
+uint32_t aldis_time_format_t_len(const aldis_time_format_t *format,
+                                 size_t *t_len,
+                                 aldis_error_detail_t *err);
 
 /**
  * CUC time as seconds and nanoseconds, the fraction truncated (301.0 §3.2; TIME-011). Only
@@ -6459,10 +6465,10 @@ int32_t aldis_time_format_t_len(const aldis_time_format_t *format,
  * `value` is valid for a read; `seconds` and `nanoseconds` are valid for one write each; `err`
  * is `NULL` or valid for one write.
  */
-int32_t aldis_time_cuc_to_ns(const aldis_time_value_t *value,
-                             uint64_t *seconds,
-                             uint32_t *nanoseconds,
-                             aldis_error_detail_t *err);
+uint32_t aldis_time_cuc_to_ns(const aldis_time_value_t *value,
+                              uint64_t *seconds,
+                              uint32_t *nanoseconds,
+                              aldis_error_detail_t *err);
 
 /**
  * CUC time of a CUC format for seconds and nanoseconds, the fraction rounded down to the
@@ -6480,11 +6486,11 @@ int32_t aldis_time_cuc_to_ns(const aldis_time_value_t *value,
  * `format` is valid for a read; `out` is valid for one write; `err` is `NULL` or valid for one
  * write.
  */
-int32_t aldis_time_cuc_from_ns(const aldis_time_format_t *format,
-                               uint64_t seconds,
-                               uint32_t nanoseconds,
-                               aldis_time_value_t *out,
-                               aldis_error_detail_t *err);
+uint32_t aldis_time_cuc_from_ns(const aldis_time_format_t *format,
+                                uint64_t seconds,
+                                uint32_t nanoseconds,
+                                aldis_time_value_t *out,
+                                aldis_error_detail_t *err);
 
 /**
  * Parses a complete ASCII code A or B; `text` must be exactly the code, without a NUL
@@ -6500,11 +6506,11 @@ int32_t aldis_time_cuc_from_ns(const aldis_time_format_t *format,
  * `text` is valid for `len` octets (or `NULL` with 0); `options` is valid for a read; `out` is
  * valid for one write; `err` is `NULL` or valid for one write.
  */
-int32_t aldis_time_ascii_parse(const uint8_t *text,
-                               size_t len,
-                               const aldis_time_ascii_options_t *options,
-                               aldis_time_ascii_t *out,
-                               aldis_error_detail_t *err);
+uint32_t aldis_time_ascii_parse(const uint8_t *text,
+                                size_t len,
+                                const aldis_time_ascii_options_t *options,
+                                aldis_time_ascii_t *out,
+                                aldis_error_detail_t *err);
 
 /**
  * Writes a complete ASCII code A or B, without a NUL (301.0 §3.5.1; TIME-031, API-022).
@@ -6518,11 +6524,11 @@ int32_t aldis_time_ascii_parse(const uint8_t *text,
  * `time` is valid for a read; `out` is valid for `cap` octets; `out_len` is valid for one
  * write; `err` is `NULL` or valid for one write.
  */
-int32_t aldis_time_ascii_format(const aldis_time_ascii_t *time,
-                                uint8_t *out,
-                                size_t cap,
-                                size_t *out_len,
-                                aldis_error_detail_t *err);
+uint32_t aldis_time_ascii_format(const aldis_time_ascii_t *time,
+                                 uint8_t *out,
+                                 size_t cap,
+                                 size_t *out_len,
+                                 aldis_error_detail_t *err);
 
 /**
  * The length in octets that [`aldis_time_ascii_format`] writes for `time`, at most
@@ -6535,9 +6541,9 @@ int32_t aldis_time_ascii_format(const aldis_time_ascii_t *time,
  * `time` is valid for a read; `out_len` is valid for one write; `err` is `NULL` or valid for
  * one write.
  */
-int32_t aldis_time_ascii_encoded_len(const aldis_time_ascii_t *time,
-                                     size_t *out_len,
-                                     aldis_error_detail_t *err);
+uint32_t aldis_time_ascii_encoded_len(const aldis_time_ascii_t *time,
+                                      size_t *out_len,
+                                      aldis_error_detail_t *err);
 
 /**
  * Parses a complete ASCII code or any subset of 301.0 §3.5.1.3; `text` must be exactly the
@@ -6552,11 +6558,11 @@ int32_t aldis_time_ascii_encoded_len(const aldis_time_ascii_t *time,
  * `text` is valid for `len` octets (or `NULL` with 0); `options` is valid for a read; `out` is
  * valid for one write; `err` is `NULL` or valid for one write.
  */
-int32_t aldis_time_ascii_subset_parse(const uint8_t *text,
-                                      size_t len,
-                                      const aldis_time_ascii_options_t *options,
-                                      aldis_time_ascii_subset_t *out,
-                                      aldis_error_detail_t *err);
+uint32_t aldis_time_ascii_subset_parse(const uint8_t *text,
+                                       size_t len,
+                                       const aldis_time_ascii_options_t *options,
+                                       aldis_time_ascii_subset_t *out,
+                                       aldis_error_detail_t *err);
 
 /**
  * Converts a CDS, CCS, or ASCII time to another of the three through UTC, exactly where the
@@ -6572,10 +6578,10 @@ int32_t aldis_time_ascii_subset_parse(const uint8_t *text,
  * `from` and `cfg` are valid for reads; `out` is valid for one write; `err` is `NULL` or valid
  * for one write.
  */
-int32_t aldis_time_convert(const aldis_time_instant_t *from,
-                           const aldis_time_convert_config_t *cfg,
-                           aldis_time_instant_t *out,
-                           aldis_error_detail_t *err);
+uint32_t aldis_time_convert(const aldis_time_instant_t *from,
+                            const aldis_time_convert_config_t *cfg,
+                            aldis_time_instant_t *out,
+                            aldis_error_detail_t *err);
 
 /**
  * Checks a physical channel configuration (132.0 §5.1 Table 5-1; TM-001, API-040, CMN-041).
@@ -6588,7 +6594,7 @@ int32_t aldis_time_convert(const aldis_time_instant_t *from,
  * # Safety
  * `pc` is valid for a read; `err` is `NULL` or valid for one write.
  */
-int32_t aldis_tm_config_check(const aldis_tm_config_t *pc, aldis_error_detail_t *err);
+uint32_t aldis_tm_config_check(const aldis_tm_config_t *pc, aldis_error_detail_t *err);
 
 /**
  * Checks a master channel configuration and its virtual channels (132.0 §5 Tables 5-1 to 5-3,
@@ -6610,10 +6616,10 @@ int32_t aldis_tm_config_check(const aldis_tm_config_t *pc, aldis_error_detail_t 
  * `mc` is valid for a read; `vcs` is valid for reads of `vc_count` structs of the first one's
  * `struct_size` (or `NULL` with 0); `err` is `NULL` or valid for one write.
  */
-int32_t aldis_tm_mc_config_check(const aldis_tm_mc_config_t *mc,
-                                 const aldis_tm_vc_config_t *vcs,
-                                 size_t vc_count,
-                                 aldis_error_detail_t *err);
+uint32_t aldis_tm_mc_config_check(const aldis_tm_mc_config_t *mc,
+                                  const aldis_tm_vc_config_t *vcs,
+                                  size_t vc_count,
+                                  aldis_error_detail_t *err);
 
 /**
  * The length of the frame that `prefix` begins: the configured frame length (132.0 §4.1.1.2;
@@ -6630,11 +6636,11 @@ int32_t aldis_tm_mc_config_check(const aldis_tm_mc_config_t *mc,
  * `prefix` is valid for `prefix_len` octets (or `NULL` with 0); `cfg` is valid for a read;
  * `out_len` is valid for one write; `err` is `NULL` or valid for one write.
  */
-int32_t aldis_tm_peek_length(const uint8_t *prefix,
-                             size_t prefix_len,
-                             const aldis_tm_config_t *cfg,
-                             size_t *out_len,
-                             aldis_error_detail_t *err);
+uint32_t aldis_tm_peek_length(const uint8_t *prefix,
+                              size_t prefix_len,
+                              const aldis_tm_config_t *cfg,
+                              size_t *out_len,
+                              aldis_error_detail_t *err);
 
 /**
  * Decodes the Primary Header that `prefix` begins (132.0 §4.1.2; TM-002, API-014).
@@ -6651,10 +6657,10 @@ int32_t aldis_tm_peek_length(const uint8_t *prefix,
  * `prefix` is valid for `prefix_len` octets (or `NULL` with 0); `out` is valid for one write;
  * `err` is `NULL` or valid for one write.
  */
-int32_t aldis_tm_header_decode(const uint8_t *prefix,
-                               size_t prefix_len,
-                               aldis_tm_header_t *out,
-                               aldis_error_detail_t *err);
+uint32_t aldis_tm_header_decode(const uint8_t *prefix,
+                                size_t prefix_len,
+                                aldis_tm_header_t *out,
+                                aldis_error_detail_t *err);
 
 /**
  * Decodes one frame of a physical channel on which no virtual channel uses SDLS (132.0 §4.1;
@@ -6678,12 +6684,12 @@ int32_t aldis_tm_header_decode(const uint8_t *prefix,
  * `bytes` is valid for `len` octets (or `NULL` with 0); `cfg` is valid for a read; `out` is
  * valid for one write; `err` is `NULL` or valid for one write.
  */
-int32_t aldis_tm_decode(const uint8_t *bytes,
-                        size_t len,
-                        const aldis_tm_config_t *cfg,
-                        uint32_t mode,
-                        aldis_tm_frame_t *out,
-                        aldis_error_detail_t *err);
+uint32_t aldis_tm_decode(const uint8_t *bytes,
+                         size_t len,
+                         const aldis_tm_config_t *cfg,
+                         uint32_t mode,
+                         aldis_tm_frame_t *out,
+                         aldis_error_detail_t *err);
 
 /**
  * Decodes one frame of the master channel `mc` with the security layout of its virtual
@@ -6703,14 +6709,14 @@ int32_t aldis_tm_decode(const uint8_t *bytes,
  * [`aldis_tm_mc_config_check`]; `out` is valid for one write; `err` is `NULL` or valid for one
  * write.
  */
-int32_t aldis_tm_decode_with(const uint8_t *bytes,
-                             size_t len,
-                             const aldis_tm_mc_config_t *mc,
-                             const aldis_tm_vc_config_t *vcs,
-                             size_t vc_count,
-                             uint32_t mode,
-                             aldis_tm_frame_t *out,
-                             aldis_error_detail_t *err);
+uint32_t aldis_tm_decode_with(const uint8_t *bytes,
+                              size_t len,
+                              const aldis_tm_mc_config_t *mc,
+                              const aldis_tm_vc_config_t *vcs,
+                              size_t vc_count,
+                              uint32_t mode,
+                              aldis_tm_frame_t *out,
+                              aldis_error_detail_t *err);
 
 /**
  * Decodes one frame as [`aldis_tm_decode`] does, but without checking the FECF: for
@@ -6723,12 +6729,12 @@ int32_t aldis_tm_decode_with(const uint8_t *bytes,
  * # Safety
  * As [`aldis_tm_decode`].
  */
-int32_t aldis_tm_decode_unchecked(const uint8_t *bytes,
-                                  size_t len,
-                                  const aldis_tm_config_t *cfg,
-                                  uint32_t mode,
-                                  aldis_tm_frame_t *out,
-                                  aldis_error_detail_t *err);
+uint32_t aldis_tm_decode_unchecked(const uint8_t *bytes,
+                                   size_t len,
+                                   const aldis_tm_config_t *cfg,
+                                   uint32_t mode,
+                                   aldis_tm_frame_t *out,
+                                   aldis_error_detail_t *err);
 
 /**
  * Decodes one frame as [`aldis_tm_decode_with`] does, but without checking the FECF (TM-005),
@@ -6740,14 +6746,14 @@ int32_t aldis_tm_decode_unchecked(const uint8_t *bytes,
  * # Safety
  * As [`aldis_tm_decode_with`].
  */
-int32_t aldis_tm_decode_unchecked_with(const uint8_t *bytes,
-                                       size_t len,
-                                       const aldis_tm_mc_config_t *mc,
-                                       const aldis_tm_vc_config_t *vcs,
-                                       size_t vc_count,
-                                       uint32_t mode,
-                                       aldis_tm_frame_t *out,
-                                       aldis_error_detail_t *err);
+uint32_t aldis_tm_decode_unchecked_with(const uint8_t *bytes,
+                                        size_t len,
+                                        const aldis_tm_mc_config_t *mc,
+                                        const aldis_tm_vc_config_t *vcs,
+                                        size_t vc_count,
+                                        uint32_t mode,
+                                        aldis_tm_frame_t *out,
+                                        aldis_error_detail_t *err);
 
 /**
  * Checks a frame against the managed parameters of a master channel (132.0 §5 Tables 5-1 to
@@ -6767,13 +6773,13 @@ int32_t aldis_tm_decode_unchecked_with(const uint8_t *bytes,
  * # Safety
  * As [`aldis_tm_decode_with`], without `out`.
  */
-int32_t aldis_tm_validate(const uint8_t *bytes,
-                          size_t len,
-                          const aldis_tm_mc_config_t *mc,
-                          const aldis_tm_vc_config_t *vcs,
-                          size_t vc_count,
-                          uint32_t mode,
-                          aldis_error_detail_t *err);
+uint32_t aldis_tm_validate(const uint8_t *bytes,
+                           size_t len,
+                           const aldis_tm_mc_config_t *mc,
+                           const aldis_tm_vc_config_t *vcs,
+                           size_t vc_count,
+                           uint32_t mode,
+                           aldis_error_detail_t *err);
 
 /**
  * Encodes one frame of `fields->vcid` into the start of `out` in one call (132.0 §4.1, §6.3;
@@ -6801,15 +6807,15 @@ int32_t aldis_tm_validate(const uint8_t *bytes,
  * read; each buffer of `content` is valid for its length (or `NULL` with 0); `out` is valid
  * for `cap` octets; `out_len` is valid for one write; `err` is `NULL` or valid for one write.
  */
-int32_t aldis_tm_encode(const aldis_tm_mc_config_t *mc,
-                        const aldis_tm_vc_config_t *vcs,
-                        size_t vc_count,
-                        const aldis_tm_fields_t *fields,
-                        const aldis_tm_content_t *content,
-                        uint8_t *out,
-                        size_t cap,
-                        size_t *out_len,
-                        aldis_error_detail_t *err);
+uint32_t aldis_tm_encode(const aldis_tm_mc_config_t *mc,
+                         const aldis_tm_vc_config_t *vcs,
+                         size_t vc_count,
+                         const aldis_tm_fields_t *fields,
+                         const aldis_tm_content_t *content,
+                         uint8_t *out,
+                         size_t cap,
+                         size_t *out_len,
+                         aldis_error_detail_t *err);
 
 /**
  * Encodes an Only Idle Data frame on `vcid` in one call (132.0 §4.1.4.6; TM-010, CMN-020…022,
@@ -6840,18 +6846,18 @@ int32_t aldis_tm_encode(const aldis_tm_mc_config_t *mc,
  * As [`aldis_tm_encode`] without `fields`; `oid` is a handle from `aldis_oid_generator_init`
  * whose storage is still valid, or detectably invalid storage.
  */
-int32_t aldis_tm_encode_oid(const aldis_tm_mc_config_t *mc,
-                            const aldis_tm_vc_config_t *vcs,
-                            size_t vc_count,
-                            uint8_t vcid,
-                            uint8_t mc_frame_count,
-                            uint8_t vc_frame_count,
-                            const aldis_tm_content_t *content,
-                            aldis_oid_generator_t *oid,
-                            uint8_t *out,
-                            size_t cap,
-                            size_t *out_len,
-                            aldis_error_detail_t *err);
+uint32_t aldis_tm_encode_oid(const aldis_tm_mc_config_t *mc,
+                             const aldis_tm_vc_config_t *vcs,
+                             size_t vc_count,
+                             uint8_t vcid,
+                             uint8_t mc_frame_count,
+                             uint8_t vc_frame_count,
+                             const aldis_tm_content_t *content,
+                             aldis_oid_generator_t *oid,
+                             uint8_t *out,
+                             size_t cap,
+                             size_t *out_len,
+                             aldis_error_detail_t *err);
 
 /**
  * Checks a physical channel configuration (732.1 §5 Table 5-1; USLP-003, USLP-008, API-040).
@@ -6865,7 +6871,7 @@ int32_t aldis_tm_encode_oid(const aldis_tm_mc_config_t *mc,
  * # Safety
  * `pc` is valid for a read; `err` is `NULL` or valid for one write.
  */
-int32_t aldis_uslp_config_check(const aldis_uslp_config_t *pc, aldis_error_detail_t *err);
+uint32_t aldis_uslp_config_check(const aldis_uslp_config_t *pc, aldis_error_detail_t *err);
 
 /**
  * Checks a channel table: a physical channel with its virtual channels and MAPs (732.1 §5
@@ -6891,12 +6897,12 @@ int32_t aldis_uslp_config_check(const aldis_uslp_config_t *pc, aldis_error_detai
  * `struct_size`, and `maps` of `map_count` (each `NULL` with 0); `err` is `NULL` or valid for
  * one write.
  */
-int32_t aldis_uslp_vc_table_check(const aldis_uslp_config_t *pc,
-                                  const aldis_uslp_vc_config_t *vcs,
-                                  size_t vc_count,
-                                  const aldis_uslp_map_config_t *maps,
-                                  size_t map_count,
-                                  aldis_error_detail_t *err);
+uint32_t aldis_uslp_vc_table_check(const aldis_uslp_config_t *pc,
+                                   const aldis_uslp_vc_config_t *vcs,
+                                   size_t vc_count,
+                                   const aldis_uslp_map_config_t *maps,
+                                   size_t map_count,
+                                   aldis_error_detail_t *err);
 
 /**
  * The length of the frame that `prefix` begins (732.1 §4.1.2.7, Annex D1.3.2; API-013, M2 plan
@@ -6919,13 +6925,13 @@ int32_t aldis_uslp_vc_table_check(const aldis_uslp_config_t *pc,
  * [`aldis_uslp_vc_table_check`]; `out_len` is valid for one write; `err` is `NULL` or valid
  * for one write.
  */
-int32_t aldis_uslp_peek_length(const uint8_t *prefix,
-                               size_t prefix_len,
-                               const aldis_uslp_config_t *pc,
-                               const aldis_uslp_vc_config_t *vcs,
-                               size_t vc_count,
-                               size_t *out_len,
-                               aldis_error_detail_t *err);
+uint32_t aldis_uslp_peek_length(const uint8_t *prefix,
+                                size_t prefix_len,
+                                const aldis_uslp_config_t *pc,
+                                const aldis_uslp_vc_config_t *vcs,
+                                size_t vc_count,
+                                size_t *out_len,
+                                aldis_error_detail_t *err);
 
 /**
  * Decodes one frame, full or truncated, with the managed parameters of the channel table
@@ -6951,16 +6957,16 @@ int32_t aldis_uslp_peek_length(const uint8_t *prefix,
  * [`aldis_uslp_vc_table_check`]; `out` is valid for one write; `err` is `NULL` or valid for
  * one write.
  */
-int32_t aldis_uslp_decode(const uint8_t *bytes,
-                          size_t len,
-                          const aldis_uslp_config_t *pc,
-                          const aldis_uslp_vc_config_t *vcs,
-                          size_t vc_count,
-                          const aldis_uslp_map_config_t *maps,
-                          size_t map_count,
-                          uint32_t mode,
-                          aldis_uslp_frame_t *out,
-                          aldis_error_detail_t *err);
+uint32_t aldis_uslp_decode(const uint8_t *bytes,
+                           size_t len,
+                           const aldis_uslp_config_t *pc,
+                           const aldis_uslp_vc_config_t *vcs,
+                           size_t vc_count,
+                           const aldis_uslp_map_config_t *maps,
+                           size_t map_count,
+                           uint32_t mode,
+                           aldis_uslp_frame_t *out,
+                           aldis_error_detail_t *err);
 
 /**
  * Steps through the clean data unit `unit` using the unified Frame Intake Stream
@@ -6969,7 +6975,7 @@ int32_t aldis_uslp_decode(const uint8_t *bytes,
  * Reads from `*offset` and advances `*offset` by the octets consumed for the yielded item.
  * When `out.kind == ALDIS_USLP_STREAM_ACCEPTED`, `out.frame` holds the validated frame view.
  * When `out.kind == ALDIS_USLP_STREAM_DISCARDED`, `out.discard_reason` holds the `ALDIS_USLP_DISCARD_*`
- * code, and `out.error_code` holds the negative error code.
+ * code, and `out.error_code` holds the error status.
  * When `out.kind == ALDIS_USLP_STREAM_END`, the unit is exhausted.
  *
  * # Errors
@@ -6981,17 +6987,17 @@ int32_t aldis_uslp_decode(const uint8_t *bytes,
  * `pc`, `vcs`, and `maps` as for [`aldis_uslp_vc_table_check`]; `out` is valid for one write; `err`
  * is `NULL` or valid for one write.
  */
-int32_t aldis_uslp_stream_next(const uint8_t *unit,
-                               size_t unit_len,
-                               size_t *offset,
-                               const aldis_uslp_config_t *pc,
-                               const aldis_uslp_vc_config_t *vcs,
-                               size_t vc_count,
-                               const aldis_uslp_map_config_t *maps,
-                               size_t map_count,
-                               uint32_t mode,
-                               aldis_uslp_stream_item_t *out,
-                               aldis_error_detail_t *err);
+uint32_t aldis_uslp_stream_next(const uint8_t *unit,
+                                size_t unit_len,
+                                size_t *offset,
+                                const aldis_uslp_config_t *pc,
+                                const aldis_uslp_vc_config_t *vcs,
+                                size_t vc_count,
+                                const aldis_uslp_map_config_t *maps,
+                                size_t map_count,
+                                uint32_t mode,
+                                aldis_uslp_stream_item_t *out,
+                                aldis_error_detail_t *err);
 
 /**
  * Encodes one non-truncated frame into the start of `out` in one call (732.1 §4.1, §6.3;
@@ -7021,17 +7027,17 @@ int32_t aldis_uslp_stream_next(const uint8_t *unit,
  * is valid for `cap` octets; `out_len` is valid for one write; `err` is `NULL` or valid for one
  * write.
  */
-int32_t aldis_uslp_encode(const aldis_uslp_config_t *pc,
-                          const aldis_uslp_vc_config_t *vcs,
-                          size_t vc_count,
-                          const aldis_uslp_map_config_t *maps,
-                          size_t map_count,
-                          const aldis_uslp_fields_t *fields,
-                          const aldis_uslp_content_t *content,
-                          uint8_t *out,
-                          size_t cap,
-                          size_t *out_len,
-                          aldis_error_detail_t *err);
+uint32_t aldis_uslp_encode(const aldis_uslp_config_t *pc,
+                           const aldis_uslp_vc_config_t *vcs,
+                           size_t vc_count,
+                           const aldis_uslp_map_config_t *maps,
+                           size_t map_count,
+                           const aldis_uslp_fields_t *fields,
+                           const aldis_uslp_content_t *content,
+                           uint8_t *out,
+                           size_t cap,
+                           size_t *out_len,
+                           aldis_error_detail_t *err);
 
 /**
  * Encodes one truncated frame into the start of `out`; its length is the VC's truncated frame
@@ -7055,17 +7061,17 @@ int32_t aldis_uslp_encode(const aldis_uslp_config_t *pc,
  * # Safety
  * As [`aldis_uslp_encode`], with `channel` in place of `fields`.
  */
-int32_t aldis_uslp_encode_truncated(const aldis_uslp_config_t *pc,
-                                    const aldis_uslp_vc_config_t *vcs,
-                                    size_t vc_count,
-                                    const aldis_uslp_map_config_t *maps,
-                                    size_t map_count,
-                                    const aldis_uslp_channel_t *channel,
-                                    const aldis_uslp_content_t *content,
-                                    uint8_t *out,
-                                    size_t cap,
-                                    size_t *out_len,
-                                    aldis_error_detail_t *err);
+uint32_t aldis_uslp_encode_truncated(const aldis_uslp_config_t *pc,
+                                     const aldis_uslp_vc_config_t *vcs,
+                                     size_t vc_count,
+                                     const aldis_uslp_map_config_t *maps,
+                                     size_t map_count,
+                                     const aldis_uslp_channel_t *channel,
+                                     const aldis_uslp_content_t *content,
+                                     uint8_t *out,
+                                     size_t cap,
+                                     size_t *out_len,
+                                     aldis_error_detail_t *err);
 
 /**
  * Encodes an OID frame on VCID 63 into the start of `out` and fills its TFDZ with the next
@@ -7092,18 +7098,18 @@ int32_t aldis_uslp_encode_truncated(const aldis_uslp_config_t *pc,
  * As [`aldis_uslp_encode`]; `oid` is a handle from `aldis_oid_generator_init` whose storage is
  * still valid, or detectably invalid storage.
  */
-int32_t aldis_uslp_encode_oid(const aldis_uslp_config_t *pc,
-                              const aldis_uslp_vc_config_t *vcs,
-                              size_t vc_count,
-                              const aldis_uslp_map_config_t *maps,
-                              size_t map_count,
-                              const aldis_uslp_fields_t *fields,
-                              const aldis_uslp_content_t *content,
-                              aldis_oid_generator_t *oid,
-                              uint8_t *out,
-                              size_t cap,
-                              size_t *out_len,
-                              aldis_error_detail_t *err);
+uint32_t aldis_uslp_encode_oid(const aldis_uslp_config_t *pc,
+                               const aldis_uslp_vc_config_t *vcs,
+                               size_t vc_count,
+                               const aldis_uslp_map_config_t *maps,
+                               size_t map_count,
+                               const aldis_uslp_fields_t *fields,
+                               const aldis_uslp_content_t *content,
+                               aldis_oid_generator_t *oid,
+                               uint8_t *out,
+                               size_t cap,
+                               size_t *out_len,
+                               aldis_error_detail_t *err);
 
 #ifdef __cplusplus
 }  // extern "C"

@@ -10,7 +10,7 @@ use core::num::NonZeroU16;
 
 /// Error kind with a stable numeric code shared by all profiles (03-api-model.md §9).
 ///
-/// The C ABI returns the negated code (CABI-020). Codes are never renumbered.
+/// The C ABI returns the code itself as an unsigned status (CABI-020). Codes are never renumbered.
 #[non_exhaustive]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 #[repr(u16)]

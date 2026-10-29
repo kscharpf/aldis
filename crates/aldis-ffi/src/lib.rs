@@ -12,7 +12,7 @@
 //! `capacities.toml` ([`capacities`], CABI-030).
 //!
 //! **Conventions** (c-abi.md §3–5):
-//! - Every fallible function returns `int32_t`: [`ALDIS_OK`] or a negative `ALDIS_ERR_*` code
+//! - Every fallible function returns a `uint32_t`: [`ALDIS_OK`] or an `ALDIS_ERR_*` code
 //!   of the error catalogue (CABI-020), and takes an optional [`aldis_error_detail_t`] as its
 //!   last parameter (CABI-021).
 //! - Every pointer and length is checked (CABI-022, [`abi`]): `NULL` is allowed only for an
@@ -46,6 +46,7 @@ pub mod ocf;
 pub mod oid;
 pub mod spp;
 pub mod spp_state;
+pub mod status;
 pub mod tc;
 pub mod time;
 pub mod tm;
@@ -59,7 +60,7 @@ pub use error::{ALDIS_OK, aldis_error_detail_t};
 /// ABI major version; changes on any ABI-breaking change (CABI-060).
 pub const ALDIS_ABI_VERSION_MAJOR: u32 = 0;
 /// ABI minor version (CABI-060).
-pub const ALDIS_ABI_VERSION_MINOR: u32 = 4;
+pub const ALDIS_ABI_VERSION_MINOR: u32 = 5;
 /// ABI patch version (CABI-060).
 pub const ALDIS_ABI_VERSION_PATCH: u32 = 0;
 

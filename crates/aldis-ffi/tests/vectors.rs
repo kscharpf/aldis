@@ -5,7 +5,7 @@
 //! call the C ABI, and write the outputs from the C structs, so every value the vectors check
 //! crosses the ABI, including the field codes of errors (M2 plan D3).
 //!
-//! Every error must come back consistently: the returned status is the negated kind of the
+//! Every error must come back consistently: the returned status equals the kind code of the
 //! detail (CABI-020, CABI-021).
 //!
 //! AOS (M2 WP-4 module 8): every live case of `test-vectors/aos/` runs through `aldis_aos_*`,
@@ -53,7 +53,7 @@ struct Fail {
 type R<T> = Result<T, Fail>;
 
 /// Calls `f` with a detail and turns a failure into its kind and field code.
-fn call(f: impl FnOnce(*mut aldis_error_detail_t) -> i32) -> R<()> {
+fn call(f: impl FnOnce(*mut aldis_error_detail_t) -> u32) -> R<()> {
     let mut d = aldis_error_detail_t {
         struct_size: size_of_u32::<aldis_error_detail_t>(),
         ..aldis_error_detail_t::default()
@@ -64,12 +64,7 @@ fn call(f: impl FnOnce(*mut aldis_error_detail_t) -> i32) -> R<()> {
     }
     // The library never writes the caller's struct_size (CABI-021).
     assert_eq!(d.struct_size, size_of_u32::<aldis_error_detail_t>());
-    assert!(status < 0, "status {status}");
-    assert_eq!(
-        -status,
-        i32::try_from(d.kind).unwrap(),
-        "status and detail disagree"
-    );
+    assert_eq!(status, d.kind, "status and detail disagree");
     let kind = ErrorKind::from_code(u16::try_from(d.kind).unwrap()).unwrap();
     // A field code crosses the ABI only if the catalogue has it (API-082).
     let field = NonZeroU16::new(d.field).map(|code| {
@@ -2621,7 +2616,7 @@ fn uslp_validate(case: &CodecCase, ch: &UslpChannels) -> Value {
                     let r = Reason::from_code(u8::try_from(reason_code).unwrap())
                         .unwrap_or_else(|| panic!("{}: discard reason {}", case.id, reason_code));
                     let kind =
-                        ErrorKind::from_code(u16::try_from(-item.error_code).unwrap()).unwrap();
+                        ErrorKind::from_code(u16::try_from(item.error_code).unwrap()).unwrap();
                     let field = NonZeroU16::new(item.error_field)
                         .map(|code| {
                             FieldId::from_code(code.get())
@@ -3191,7 +3186,7 @@ mod tc {
                                 panic!("{}: discard reason {}", case.id, reason_code)
                             });
                         let kind =
-                            ErrorKind::from_code(u16::try_from(-item.error_code).unwrap()).unwrap();
+                            ErrorKind::from_code(u16::try_from(item.error_code).unwrap()).unwrap();
                         let field = NonZeroU16::new(item.error_field)
                             .map(|code| {
                                 FieldId::from_code(code.get())

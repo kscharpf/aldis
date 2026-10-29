@@ -10,7 +10,7 @@ Every pull request also: changes one track's directories ([roadmap](../08-roadma
 - [ ] Public items cite their clause and requirement IDs (RS-015, `missing_docs`); range-restricted fields are their own types with checked constructors (RS-020; `cargo xtask rs020` flags a bare integer in a public field or enum payload, which needs a type or a reasoned exemption).
 - [ ] No panic, heap, I/O, or `unsafe` (GEN-010, GEN-020, GEN-030, GEN-070): Clippy with the workspace lint set (VER-001, verify check `clippy`).
 - [ ] Unit tests with `// req: <ID>` on every test (VER-020; `cargo xtask trace`, **(ci)**); test modules marked `#[cfg_attr(coverage_nightly, coverage(off))]`.
-- [ ] Fields the module's errors name are rows of the field catalogue ([03 §9.1](../03-api-model.md#91-field-codes)), regenerated with `cargo xtask fields --write` (API-082; `cargo xtask fields`, **(ci)**).
+- [ ] Fields the module's errors name are rows of the field catalogue ([03 §9.1](../03-api-model.md#91-field-codes)), regenerated with `cargo xtask fields --write` (API-082; `cargo xtask fields`, **(ci)**). A new error kind is a row of the error catalogue ([03 §9](../03-api-model.md#9-error-catalogue)), added with its `ErrorKind` variant and followed by `cargo xtask status --write` for the C ABI status code (CABI-020; `cargo xtask status`, **(ci)**).
 - [ ] Anomaly flags listed with their bit indices in the standard document (API-033, review).
 - [ ] Vectors where the Verif. column says V (see below), a property-based round trip drawn from the shared strategies of `aldis-testkit` (VER-023, VER-054), and the fuzz target the plan names (below).
 - [ ] 100 % regions, functions, lines, and branches (VER-024, verify check `coverage`).

@@ -128,7 +128,7 @@ int main(void) {
     /* CABI-022: a NULL output is rejected, and NULL detail is allowed. */
     check(aldis_spp_peek_length(packet, len, NULL, NULL) == ALDIS_ERR_INVALID_FIELD,
           "NULL output rejected");
-    check(-ALDIS_ERR_INCOMPLETE == 2, "status codes are negated catalogue codes");
+    check(ALDIS_ERR_INCOMPLETE == 2, "status codes are the catalogue codes");
 
     /* A CUC time code with its P-field. */
     aldis_time_decoded_t decoded;

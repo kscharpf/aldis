@@ -449,7 +449,7 @@ unsafe fn write_detail(
     }
 }
 
-/// Runs `f` and reports its result: [`ALDIS_OK`], or the negated catalogue code with the
+/// Runs `f` and reports its result: [`ALDIS_OK`], or the catalogue code with the
 /// detail written to `detail` when it is not `NULL` (CABI-020, CABI-021).
 ///
 /// A misaligned `detail`, or one whose `struct_size` is below
@@ -466,7 +466,7 @@ unsafe fn write_detail(
 pub(crate) unsafe fn call(
     detail: *mut aldis_error_detail_t,
     f: impl FnOnce() -> Result<()>,
-) -> i32 {
+) -> u32 {
     let target = match NonNull::new(detail) {
         None => None,
         Some(d) => {
@@ -661,7 +661,7 @@ mod tests {
                 call(core::ptr::null_mut(), || Err(invalid_argument())),
                 ALDIS_ERR_INVALID_FIELD
             );
-            assert_eq!(call(&raw mut d, || Err(invalid_argument())), -6);
+            assert_eq!(call(&raw mut d, || Err(invalid_argument())), 6);
             assert_eq!((d.kind, d.field, d.detail), (6, 0, ALDIS_DETAIL_NONE));
             let words = [0_u64; 8];
             let misaligned = words

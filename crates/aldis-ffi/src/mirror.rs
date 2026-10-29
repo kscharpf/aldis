@@ -76,6 +76,7 @@ mod tests {
     use super::*;
     use crate::abi::aldis_mode;
     use crate::aos::{aldis_aos_content, aldis_aos_edition, aldis_aos_pointer};
+    use crate::error::aldis_status;
     use crate::ocf::aldis_ocf_report;
     use crate::oid::aldis_oid_form;
     use crate::spp::{aldis_spp_packet_type, aldis_spp_secondary, aldis_spp_sequence_flags};
@@ -182,6 +183,7 @@ mod tests {
         check::<aldis_spp_secondary>("aldis_spp_secondary", header, &mut seen);
         check::<aldis_spp_sequence_flags>("aldis_spp_sequence_flags", header, &mut seen);
         check::<aldis_spp_track>("aldis_spp_track", header, &mut seen);
+        check::<aldis_status>("aldis_status", header, &mut seen);
         check::<aldis_tc_control>("aldis_tc_control", header, &mut seen);
         check::<aldis_tc_discard>("aldis_tc_discard", header, &mut seen);
         check::<aldis_tc_frame>("aldis_tc_frame", header, &mut seen);
