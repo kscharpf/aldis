@@ -61,7 +61,7 @@ fn check_frame(
             {
                 let mut writer =
                     UslpFrameWriter::begin(&mut two, table, fields, content, zone.len()).unwrap();
-                writer.tfdz_mut().copy_from_slice(zone);
+                writer.tfdz_mut().unwrap().copy_from_slice(zone);
             }
             // A stateless finish takes up the same buffer with the same arguments (OI-50).
             let writer =

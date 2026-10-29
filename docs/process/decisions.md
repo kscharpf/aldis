@@ -165,3 +165,5 @@ One line for each decision the maintainer takes, under the [decision rights](dec
 - 2026-10-27 · api · chat · Allocate ErrorKind::InternalError = 18 for invariant and internal check failures, replacing silent fallbacks to default values on slice indexing, and approve scoped indexing_slicing on FixedVec::as_slice
 - 2026-10-28 · api · chat · C ABI backward-compatibility is dropped for the unified frame intake refactor; aldis_tc_stream_next and aldis_uslp_stream_next replace aldis_*_delimiter_next and aldis_*_validate directly
 - 2026-10-28 · process · chat · Retire GEN-022/GEN-023 inspection documents and delete VER-061; change GEN-022/GEN-023 verification method from I to A (analysis via xtask stack and formal proofs)
+- 2026-10-28 · api · #154 · Core FrameLayout helpers (constructor for a given data length, checked frame-and-layout type, TFDF header length) go in one follow-up PR for TM, TC, AOS, and USLP, not in #153; API backward-compatibility is not required
+- 2026-10-28 · api · #153 · Invariant failures in frame decoding keep ErrorKind::InternalError carried by Reason::LengthMismatch; no separate Reason is added

@@ -273,6 +273,13 @@ pub struct TfdfHeader {
     pub upid: Upid,
 }
 
+/// Length of the TFDF Header of a VC: 3 octets with the pointer of a fixed-length TFDZ, 1
+/// without (§4.1.4.2.1.2; USLP-005).
+#[must_use]
+pub(crate) const fn header_len(fixed_tfdz: bool) -> usize {
+    if fixed_tfdz { 3 } else { 1 }
+}
+
 impl TfdfHeader {
     /// Length of the header: 3 octets with the pointer, 1 without (§4.1.4.2.1.2; USLP-005).
     #[must_use]
@@ -316,7 +323,7 @@ impl TfdfHeader {
             return Err(invalid(field::TFDZ_CONSTRUCTION_RULE));
         }
         let upid = Upid::from_field(first);
-        let header_len = if fixed_tfdz { 3 } else { 1 };
+        let header_len = header_len(fixed_tfdz);
         let (head, zone) = data_field
             .split_at_checked(header_len)
             .filter(|(_, z)| !z.is_empty())

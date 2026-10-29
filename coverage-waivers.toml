@@ -11,4 +11,10 @@
 # count = 1
 # justification = "src/x.rs:12 — why this cannot be reached by a test"
 #
-# No waivers: aldis-core is fully covered.
+# aldis-core is fully covered.
+
+[[waiver]]
+crate = "aldis-uslp"
+metric = "regions"
+count = 18
+justification = "src/view.rs (6), src/truncated.rs (3), src/writer.rs (9) — the error return of `?` on `cut()` and `slot()`, the one checked slice site of each module. Every range comes from a `FrameLayout` computed for the length of the slice it cuts (CMN-040), so the error is a broken invariant that no input reaches (GEN-020). The two helpers are unit-tested directly with an out-of-range argument."

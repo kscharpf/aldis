@@ -75,7 +75,7 @@ proptest! {
                 let content = FrameContent { tfdf: *tfdf, insert_zone, ocf: *ocf };
                 let mut two = vec![fill; f.octets.len()];
                 let mut w = UslpFrameWriter::begin(&mut two, t, *fields, content, f.tfdz.len()).unwrap();
-                w.tfdz_mut().copy_from_slice(&f.tfdz);
+                w.tfdz_mut().unwrap().copy_from_slice(&f.tfdz);
                 prop_assert_eq!(w.finish(f.tfdz.len()), Ok(f.octets.len()));
                 prop_assert_eq!(&two, &f.octets);
                 // One octet short: nothing is written (API-022).
@@ -99,19 +99,24 @@ proptest! {
 
     #[test]
     fn decoder_never_panics((c, v) in uslp_frame_decoder_input()) {
-        // req: GEN-020, GEN-042, API-030, API-031, API-032, USLP-001, VER-023
+        // req: GEN-020, GEN-042, API-030, API-031, API-032, USLP-001, CMN-040, VER-023
         let t = &c.table;
         let strict = UslpFrame::decode(&v, t, DecodeMode::Strict);
         let lenient = UslpFrame::decode(&v, t, DecodeMode::Lenient);
-        if let Ok(s) = strict {
+        if let Ok(s) = &strict {
             // Strict ⊆ lenient, with the same view and no anomaly.
             prop_assert!(s.anomalies().is_empty());
-            let l = lenient.unwrap();
+            let l = lenient.as_ref().unwrap();
             prop_assert_eq!(s.octets(), l.octets());
             prop_assert_eq!(s.tfdz(), l.tfdz());
         }
-        if let Ok(f) = lenient {
+        if let Ok(f) = &lenient {
             prop_assert!(f.len() <= v.len() && f.octets() == &v[..f.len()]);
+            // The layout covers the frame exactly and the fields lie where it says (CMN-040).
+            prop_assert_eq!(f.layout().frame_len(), f.len());
+            prop_assert_eq!(&f.octets()[f.layout().security_header()], f.security_header());
+            prop_assert_eq!(&f.octets()[f.layout().security_trailer()], f.security_trailer());
+            prop_assert!(f.layout().data().len() > f.tfdz().len());
             prop_assert_eq!(UslpFrame::peek_length(&v, t), Ok(f.len()));
             prop_assert!(validate_frame(f.octets(), t, DecodeMode::Lenient).is_ok());
             if f.anomalies().contains(UslpAnomaly::OidHeaderMismatch) {

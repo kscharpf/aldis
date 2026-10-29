@@ -258,9 +258,13 @@ fn frame_group(t: &mut Tally) {
     let mut two = [0_u8; 64];
     match UslpFrameWriter::begin(&mut two, &vt, full, content, bb(10)) {
         Ok(mut w) => {
-            t.check(w.security_header_mut().is_empty() && w.security_trailer_mut().is_empty());
-            let ok =
-                crate::vectors::copy(w.tfdz_mut().get_mut(..3).unwrap_or_default(), &[1, 2, 3]);
+            t.check(
+                w.security_header_mut().is_ok_and(|s| s.is_empty())
+                    && w.security_trailer_mut().is_ok_and(|s| s.is_empty()),
+            );
+            let ok = w.tfdz_mut().is_ok_and(|z| {
+                crate::vectors::copy(z.get_mut(..3).unwrap_or_default(), &[1, 2, 3])
+            });
             t.check(ok && w.finish(bb(3)) == Ok(18));
             t.check(two.get(..18) == Some(frame));
         }
@@ -269,7 +273,8 @@ fn frame_group(t: &mut Tally) {
     // `resume` keeps the TFDZ the caller filled, as the C ABI's finish uses it (API-023).
     let mut three = [0_u8; 64];
     let begun = UslpFrameWriter::begin(&mut three, &vt, full, content, bb(10)).map(|mut w| {
-        crate::vectors::copy(w.tfdz_mut().get_mut(..3).unwrap_or_default(), &[1, 2, 3])
+        w.tfdz_mut()
+            .is_ok_and(|z| crate::vectors::copy(z.get_mut(..3).unwrap_or_default(), &[1, 2, 3]))
     });
     t.check(begun == Ok(true));
     let resumed = UslpFrameWriter::resume(&mut three, &vt, full, content, bb(10));
@@ -641,7 +646,7 @@ fn encode_case(case: &Case, o: &mut Out, scratch: &mut Scratch) -> Run {
     // The two-phase writer must produce the same octets (API-020).
     let two = need(scratch.b.get_mut(..n))?;
     let mut w = UslpFrameWriter::begin(two, &tbl, fields, content, zone.len())?;
-    if !crate::vectors::copy(w.tfdz_mut(), zone) || w.finish(zone.len()) != Ok(n) {
+    if !w.tfdz_mut().is_ok_and(|z| crate::vectors::copy(z, zone)) || w.finish(zone.len()) != Ok(n) {
         return Err(Fail::Vector);
     }
     if scratch.b.get(..n) != scratch.a.get(..n) {
