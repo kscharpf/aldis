@@ -7,10 +7,11 @@
 # under .claude/worktrees/reverify-<n>); refuse when that worktree is dirty or holds commits the
 # remote lacks; merge origin/main; run `cargo xtask ci`; push; then, if the merged head needs no
 # container (`cargo xtask verify list`: every gating check skipped or reused, as for a stacked
-# PR whose base has merged, VER-056), run `cargo xtask verify --publish` here, which takes
-# seconds; otherwise dispatch verify.yml on the branch and note the new run. A branch already
-# up to date with origin/main whose head has a successful or in-progress run reuses that run.
-# A failure marks the PR failed and goes on.
+# PR whose base has merged, VER-056), run `cargo xtask verify --publish` here (no image, no
+# engine; on macOS it also runs the host-bound test-macos, about two minutes); otherwise
+# dispatch verify.yml on the branch and note the new run. A branch already up to date with
+# origin/main whose head has a successful or in-progress run reuses that run. A failure marks
+# the PR failed and goes on.
 # Phase 2: wait for the dispatched runs (they run concurrently on GitHub) and print one line per
 # PR: `#<n> <branch> <run-id> <conclusion>` (`local` for a run made here) or
 # `#<n> failed: <reason>`. A run that did not succeed is labelled STALE when its head does not
@@ -21,7 +22,7 @@
 set -euo pipefail
 
 if [ $# -eq 0 ]; then
-    sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'
+    sed -n '2,21p' "$0" | sed 's/^# \{0,1\}//'
     exit 2
 fi
 
