@@ -2,23 +2,9 @@
 
 Codec for the CCSDS 133.1-B-3 Encapsulation Packet Protocol: decoding and encoding Encapsulation Packets with all four header lengths, idle packets, and the managed parameters.
 
-**Status:** implemented in Milestone 1, release `v0.2.0-m1` ([plan](../../docs/milestones/m1-packets-time.md)); C ABI functions `aldis_epp_*` implemented in Milestone 2 in `aldis-ffi` ([M2 plan](../../docs/milestones/m2-frame-codecs.md) WP-0c, release `v0.3.0-m2`).
-
 ## Where it sits
 
 Layer 1 (codecs) of the [architecture](../../docs/01-architecture.md) §2. It depends only on `aldis-core`, is stateless, and does no I/O.
-
-## What it provides
-
-- A zero-copy decoder, `EncapsulationPacket`, that borrows the input buffer and gives the header fields and the data (133.1 §4.1). `EncapsulationPacket::peek_length` reads the total length from the header alone, for splitting a stream into packets.
-- Encoders: the one-shot `encode`, the two-phase `EncapsulationWriter`, and `idle` for Encapsulation Idle Packets (133.1 §4.1, §4.2.1). `HeaderSize` chooses the header length, or lets the encoder pick the smallest that fits (133.1 §4.1.2.1.1).
-- Range-checked header fields (`Epi`, `EpiExtension`, `UserDefined`, `HeaderLen`) and the owned header `EncapsulationHeader` (133.1 §4.1.2).
-- The managed parameters in `EppConfig`: data unit length limits and the sets of valid EPIs and extended EPIs (133.1 §5 Table 5-1). The sending end builds a checked `DataUnit` from it, and the receiving end checks a decoded packet with `EncapsulationPacket::validate`.
-- Strict and lenient decoding (`aldis_core::DecodeMode`); a lenient decode reports what it accepted as `EppAnomaly` flags.
-
-It embeds no SANA registry. Which Encapsulation Protocol IDs are valid is a managed parameter the caller supplies in `EppConfig` (EPP-010; M1 decision D4, OI-06), so no EPI value assigned by SANA is written into the code.
-
-The module table in [`src/lib.rs`](src/lib.rs) maps every module to its 133.1 clauses and requirement IDs.
 
 ## Features
 

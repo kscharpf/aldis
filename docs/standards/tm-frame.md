@@ -4,34 +4,13 @@
 
 ## 1. Wire format (§4.1)
 
-```
-Primary Header (6) ‖ [Secondary Header (2–64)] ‖ [Security Header] ‖ Data Field ‖ [Security Trailer] ‖ [OCF (4)] ‖ [FECF (2)]
-```
-
-| Bits | Field | Size | Notes |
-|---|---|---|---|
-| 0–1 | Transfer Frame Version Number | 2 | `00` |
-| 2–11 | Spacecraft ID | 10 | |
-| 12–14 | Virtual Channel ID | 3 | 0–7 |
-| 15 | OCF Flag | 1 | static per MC/VC |
-| 16–23 | Master Channel Frame Count | 8 | mod 256 |
-| 24–31 | Virtual Channel Frame Count | 8 | mod 256 |
-| 32 | Secondary Header Flag | 1 | static per MC/VC |
-| 33 | Synchronization Flag | 1 | 0 = packets/idle (octet-synchronized, forward-ordered), 1 = VCA_SDU |
-| 34 | Packet Order Flag | 1 | `0` (reserved) when Sync = 0; undefined when Sync = 1 |
-| 35–36 | Segment Length ID | 2 | `11` when Sync = 0; undefined when Sync = 1 |
-| 37–47 | First Header Pointer | 11 | offset of first packet header; `0x7FF` no packet starts; `0x7FE` OID frame |
+The field layout is that of the Blue Book clause cited in the heading, and of the rustdoc of the view and writer types; the vectors pin the octets.
 
 Secondary Header: ID octet = version `00` (2 bits) ‖ length − 1 (6 bits), followed by 1–63 data octets (total 2–64, fixed per MC/VC).
 
 ## 2. Configuration (managed parameters, §5)
 
-| Level | Parameters |
-|---|---|
-| Physical channel | frame length (fixed), FECF present, valid SCIDs, MC multiplexing policy |
-| Master channel | SCID, valid VCIDs (0–7), MC_FSH present/length (2–64), MC_OCF present |
-| Virtual channel | VCID, data field content (Packets / VCA_SDU), VC_FSH present/length, VC_OCF present, `SecurityLayout` |
-| Packet transfer | valid PVNs, max packet length, deliver incomplete packets |
+The managed parameters are those of the Blue Book clause cited in the heading; the configuration types carry them, with their ranges, in their rustdoc.
 
 ## 3. Requirements
 
@@ -62,7 +41,7 @@ Secondary Header: ID octet = version `00` (2 bits) ‖ length − 1 (6 bits), fo
 
 ## 5. Test-vector categories
 
-`tm/minimal` (no FSH/OCF/FECF), `tm/fsh_ocf_fecf`, `tm/fhp_values`, `tm/oid_sequence` (consecutive OID frames continue the PN sequence; the OID frame of a VC with SDLS is rejected), `tm/security_layout` (FixedPatternSecurity), `tm/invalid`.
+The case groups are the directories of `test-vectors/` for this standard; see [test vectors](../07-test-vectors.md).
 
 ## 6. Project rules and choices the vectors pin
 

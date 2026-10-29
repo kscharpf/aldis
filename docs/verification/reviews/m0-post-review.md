@@ -1,5 +1,7 @@
 # Code review: `m0/post-review`
 
+> Dated review: identifiers reflect the code at the time.
+
 Four rounds: [Round 1](#round-1) reviews the branch as first submitted; [Round 2](#round-2)
 re-checks it after the fixes in `812deb1`; [Round 3](#round-3) re-checks the fixes for Round 2
 (committed as `4162d92`); [Round 4](#round-4) re-checks the fixes for Round 3 in `2dbe2eb`.

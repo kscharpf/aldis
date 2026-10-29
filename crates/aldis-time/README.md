@@ -2,22 +2,9 @@
 
 Codec for the CCSDS 301.0-B-4 Time Code Formats: CUC, CDS, CCS, the ASCII time codes, agency-defined codes, and conversions between the UTC-based codes.
 
-**Status:** implemented in Milestone 1, release `v0.2.0-m1` ([plan](../../docs/milestones/m1-packets-time.md)); C ABI functions `aldis_time_*` implemented in Milestone 2 in `aldis-ffi` ([M2 plan](../../docs/milestones/m2-frame-codecs.md) WP-0c, release `v0.3.0-m2`).
-
 ## Where it sits
 
 Layer 1 (codecs) of the [architecture](../../docs/01-architecture.md) §2. It depends only on `aldis-core`. `aldis-spp` uses it, behind its feature `time`, to decode a time code in a packet's secondary header.
-
-## What it provides
-
-- P-field parsing (`PField`, `TimeCodeId`) and two decoders: `decode_with_pfield` for a code that carries its P-field, and `decode_implicit` for a T-field whose `TimeFormat` is known from management (301.0 §3.1). Both return a `TimeCode`, which encodes back to octets with or without the P-field.
-- One value type per code, each with a format type that fixes its layout: `Cuc` (301.0 §3.2), `Cds` (§3.3), `Ccs` (§3.4), `AsciiTime` for ASCII codes A and B and their subsets (§3.5), and `Agency` for agency-defined codes (§3.6). The values are range-checked when they are constructed or decoded (RS-020).
-- Conversions: CUC to and from seconds and nanoseconds, and `UtcInstant` to convert between CDS, CCS, and ASCII (301.0 §3.3–3.5).
-- Strict and lenient decoding (`aldis_core::DecodeMode`); a lenient decode reports what it accepted as `TimeAnomaly` flags.
-
-It does not read a clock or a time zone (TIME-004), and it does not convert between time scales. CUC Level 1 counts TAI seconds and takes no leap seconds (TIME-014); CDS and CCS are UTC-based, and leap-second handling is the caller's (TIME-022). A leap-second table is deferred to v1.1 (OI-10).
-
-The module table in [`src/lib.rs`](src/lib.rs) maps every module to its 301.0 clauses and requirement IDs.
 
 ## Features
 
