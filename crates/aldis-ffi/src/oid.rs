@@ -137,11 +137,9 @@ pub unsafe extern "C" fn aldis_oid_generator_fill(
     // SAFETY: every pointer is valid as `# Safety` states; `abi` and `handle` check them.
     unsafe {
         abi::call(err, || {
-            let h = generator(h)?;
+            let mut h = generator(h)?;
             let out = abi::bytes_mut(out, len, &[h.range()])?;
-            let mut state = h.load();
-            state.fill(out);
-            h.store(state);
+            h.update(|state| state.fill(out));
             Ok(())
         })
     }
