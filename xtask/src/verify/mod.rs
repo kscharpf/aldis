@@ -16,6 +16,7 @@
 mod checks;
 mod image;
 mod inside;
+mod parts;
 mod publish;
 mod record;
 mod scope;
@@ -27,7 +28,7 @@ use std::time::Instant;
 
 use serde_json::{Map, Value, json};
 
-use checks::{Check, Host};
+use checks::{Check, Group, Host};
 use record::Outcome;
 
 use crate::repo;
@@ -68,6 +69,16 @@ Verification run and merge gate (docs/06-verification.md §7):
                                When no gating check needs the container, none is started and
                                no image is pulled or built. --push-image pushes the image the
                                run builds to <repository>, as `verify image --push` does
+  verify part <group> [--all] [--no-fail-fast] [--push-image <repository>]
+                               the part of a hosted run (VER-067): run the checks of one group
+                               (host, cross, coverage, embedded) as `verify --only` does, and
+                               write the part record to target/verify/<commit>/record.json; it
+                               never publishes, and fails when a gating check of the group
+                               failed
+  verify assemble [--publish] <part record>...
+                               the last step of a hosted run: make the one record of a run from
+                               the part records of all four groups, which must fit together
+                               (VER-067), and judge and publish it as `verify` does
   verify publish [<rev>]       push the passing record of <rev> (default HEAD) as a git note
                                under refs/notes/verify and, when <rev> contains the tip of
                                origin/main, set the commit status aldis/verify (VER-058); a
@@ -122,6 +133,25 @@ pub fn run(args: &[&str]) -> Result<usize, String> {
             let opts = parse_options(rest)?.0;
             inside::run(Path::new(out), &opts)
         }
+        ["part", group, rest @ ..] => {
+            let group = Group::parse(group).ok_or_else(|| {
+                format!("unknown group `{group}`: one of host, cross, coverage, embedded")
+            })?;
+            let (mut opts, force, publish) = run_options(rest)?;
+            if publish || opts.only.is_some() {
+                return Err("a part takes neither --publish nor --only".to_owned());
+            }
+            opts.fail_fast.get_or_insert(true);
+            opts.only = Some(
+                checks::all()
+                    .into_iter()
+                    .filter(|c| c.group == Some(group))
+                    .map(|c| c.name)
+                    .collect(),
+            );
+            verify(opts, force, false, Some(group))
+        }
+        ["assemble", rest @ ..] => assemble(rest),
         ["publish"] => publish::publish(&git(&["rev-parse", "HEAD"])?),
         ["publish", rev] => publish::publish(&git(&["rev-parse", rev])?),
         ["check"] => publish::check("HEAD"),
@@ -148,7 +178,7 @@ pub fn run(args: &[&str]) -> Result<usize, String> {
         ["scope", rev, "--main", main] => show(rev, scope::Main::Rev(main)),
         rest => {
             let (opts, force, publish) = run_options(rest)?;
-            verify(opts, force, publish)
+            verify(opts, force, publish, None)
         }
     }
 }
@@ -683,8 +713,14 @@ fn container_run(
     })
 }
 
-/// The whole run on HEAD; returns the number of merge-gate problems.
-fn verify(mut opts: Options, force: scope::Force, publish: bool) -> Result<usize, String> {
+/// The whole run on HEAD, or with `part` the part of a hosted run that makes the checks of that
+/// group (VER-067); returns the number of merge-gate problems, or of failed checks of the part.
+fn verify(
+    mut opts: Options,
+    force: scope::Force,
+    publish: bool,
+    part: Option<Group>,
+) -> Result<usize, String> {
     let dirty = git(&["status", "--porcelain"])?;
     if !dirty.is_empty() {
         return Err(format!(
@@ -743,7 +779,7 @@ fn verify(mut opts: Options, force: scope::Force, publish: bool) -> Result<usize
         &container,
         host_results.into_iter().chain(carried).collect(),
     )?;
-    let record = json!({
+    let mut record = json!({
         "format": record::FORMAT,
         "commit": commit,
         "tree": tree,
@@ -762,20 +798,48 @@ fn verify(mut opts: Options, force: scope::Force, publish: bool) -> Result<usize
         "scope": scope::to_json(&plan, &all),
         "checks": results,
     });
-    let text = record::canonical(&record);
+    if let (Some(group), Some(obj)) = (part, record.as_object_mut()) {
+        obj.insert("part".to_owned(), json!({"group": group.name()}));
+    }
+    write_record(&out, &record)?;
+    if let Some(group) = part {
+        let failed = parts::failures(&record, group, &all);
+        for f in &failed {
+            println!("verify: part {}: {f}", group.name());
+        }
+        return Ok(failed.len());
+    }
+    conclude(&root, &record, &commit, &all, publish)
+}
+
+/// Writes `record` as `record.json` in `out` and prints its path and SHA-256.
+fn write_record(out: &Path, record: &Value) -> Result<(), String> {
+    let text = record::canonical(record);
     let path = out.join("record.json");
     std::fs::write(&path, &text).map_err(|e| format!("{}: {e}", path.display()))?;
-    let mut problems = record::gate_problems(&record);
-    problems.extend(scope::recheck(&root, &record, &all));
     println!(
         "verify: record {} (sha256 {})",
         repo::rel(&path),
         record::sha256_hex(text.as_bytes())
     );
+    Ok(())
+}
+
+/// Judges the record of `commit` against the merge gate (VER-058) and, with `publish`, publishes
+/// it when it passes; returns the number of problems.
+fn conclude(
+    root: &Path,
+    record: &Value,
+    commit: &str,
+    all: &[Check],
+    publish: bool,
+) -> Result<usize, String> {
+    let mut problems = record::gate_problems(record);
+    problems.extend(scope::recheck(root, record, all));
     if problems.is_empty() {
         println!("verify: the record passes the merge gate (VER-058)");
         if publish {
-            return publish::publish(&commit);
+            return publish::publish(commit);
         }
     } else {
         for p in &problems {
@@ -783,6 +847,32 @@ fn verify(mut opts: Options, force: scope::Force, publish: bool) -> Result<usize
         }
     }
     Ok(problems.len())
+}
+
+/// `verify assemble`: the record of a hosted run from the part records `args` name (VER-067).
+fn assemble(args: &[&str]) -> Result<usize, String> {
+    let (publish, files): (Vec<&str>, Vec<&str>) = args.iter().partition(|a| **a == "--publish");
+    let records = files
+        .iter()
+        .map(|f| {
+            let text = repo::read(Path::new(f))?;
+            serde_json::from_str(&text).map_err(|e| format!("{f}: {e}"))
+        })
+        .collect::<Result<Vec<Value>, String>>()?;
+    let all = checks::all();
+    let record = parts::assemble(&records, &all).map_err(|p| {
+        format!(
+            "the part records do not fit together:\n  {}",
+            p.join("\n  ")
+        )
+    })?;
+    let commit = git(&["rev-parse", "HEAD"])?;
+    if record.get("commit").and_then(Value::as_str) != Some(commit.as_str()) {
+        return Err(format!("the part records are not of HEAD, {commit}"));
+    }
+    let out = out_dir(&commit)?;
+    write_record(&out, &record)?;
+    conclude(&repo::root(), &record, &commit, &all, !publish.is_empty())
 }
 
 /// Every check's result entry, in table order, with its host, gating, and script added.
