@@ -5,16 +5,24 @@
 #
 # Phase 1, per PR in order: check it is open; use the worktree of its head branch (or add one
 # under .claude/worktrees/reverify-<n>); refuse when that worktree is dirty or holds commits the
-# remote lacks; merge origin/main; run `cargo xtask ci`; push; dispatch verify.yml on the branch
-# and note the new run. A branch already up to date with origin/main whose head has a
-# successful or in-progress run reuses that run. A failure marks the PR failed and goes on.
-# Phase 2: wait for all the runs (they run concurrently on GitHub) and print one line per PR:
-# `#<n> <branch> <run-id> <conclusion>` or `#<n> failed: <reason>`. Exits non-zero if any PR
-# failed or any run did not succeed. Deletes nothing (see prune-agent-branches).
+# remote lacks; merge origin/main; run `cargo xtask ci`; push; then, if the merged head needs no
+# container (`cargo xtask verify list`: every gating check skipped or reused, as for a stacked
+# PR whose base has merged, VER-056), run `cargo xtask verify --publish` here (no image, no
+# engine; on macOS it also runs the host-bound test-macos, about two minutes); otherwise
+# dispatch verify.yml on the branch and note the new run. A branch already up to date with
+# origin/main whose head has a successful or in-progress run reuses that run. A failure marks
+# the PR failed and goes on.
+# Phase 2: wait for the dispatched runs (they run concurrently on GitHub) and print one line per
+# PR: `#<n> <branch> <run-id> <conclusion>` (`local` for a run made here) or
+# `#<n> failed: <reason>`. A run that did not succeed is labelled STALE when its head does not
+# contain the tip of origin/main (main moved: merge it and run again; the record is published
+# for reuse) and FAILED otherwise, decided by ancestry, never by reading logs (VER-058). Exits
+# non-zero if any PR failed or any run did not succeed. Deletes nothing (see
+# prune-agent-branches).
 set -euo pipefail
 
 if [ $# -eq 0 ]; then
-    sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//'
+    sed -n '2,21p' "$0" | sed 's/^# \{0,1\}//'
     exit 2
 fi
 
@@ -33,6 +41,19 @@ worktree_of() {
 reason=""
 branch=""
 run_id=""
+work_dir=""
+work_head=""
+
+# STALE when `$2` does not contain the tip of origin/main (fetched first), else FAILED: the label
+# of a verification that did not succeed. Ancestry decides, not the logs.
+failure_label() {
+    if git -C "$1" fetch --quiet origin main &&
+        ! git -C "$1" merge-base --is-ancestor origin/main "$2"; then
+        echo STALE
+    else
+        echo FAILED
+    fi
+}
 
 # Record why the PR failed; always returns 1.
 fail() {
@@ -42,10 +63,12 @@ fail() {
 
 # Prepare one PR. Sets `branch`, `run_id` (dispatched or reused) and, on failure, `reason`.
 prepare_one() {
-    local pr="$1" info state dir head dispatched before found
+    local pr="$1" info state dir head dispatched before found plan
     reason=""
     branch=""
     run_id=""
+    work_dir=""
+    work_head=""
     info="$(gh pr view "$pr" --json state,headRefName --jq '.state + " " + .headRefName')" ||
         fail "cannot read the pull request" || return 1
     state="${info%% *}"
@@ -79,6 +102,8 @@ prepare_one() {
         fail "merge conflict with origin/main; resolve by hand in $dir" || return 1
     fi
     head="$(git -C "$dir" rev-parse HEAD)"
+    work_dir="$dir"
+    work_head="$head"
 
     # Up to date with main (the merge changed nothing): reuse a good run of this exact head.
     if [ "$head" = "$(git -C "$dir" rev-parse "origin/$branch")" ]; then
@@ -95,6 +120,23 @@ prepare_one() {
 
     (cd "$dir" && cargo xtask ci) || fail "cargo xtask ci failed in $dir" || return 1
     git -C "$dir" push --quiet origin "HEAD:refs/heads/$branch" || fail "push failed" || return 1
+
+    # The head needs no container when the input rule skips or reuses every gating check: then
+    # the run is made here, with no engine, and the commit is already on GitHub (VER-056).
+    plan="$(cd "$dir" && cargo xtask verify list 2>&1)" ||
+        fail "cargo xtask verify list failed in $dir" || return 1
+    if grep -q 'the run would start a container' <<<"$plan"; then
+        :
+    elif grep -q 'no container would be started' <<<"$plan"; then
+        echo "#$pr: no container is needed; verifying here"
+        (cd "$dir" && cargo xtask verify --publish) ||
+            fail "$(failure_label "$dir" "$head"): cargo xtask verify --publish in $dir" ||
+            return 1
+        run_id="local"
+        return 0
+    else
+        fail "cannot read the plan of cargo xtask verify list" || return 1
+    fi
 
     dispatched="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
     before="$(gh run list --workflow=verify.yml --branch "$branch" -L 1 --json databaseId --jq '.[0].databaseId // 0')" ||
@@ -118,8 +160,12 @@ prs=()
 branches=()
 runs=()
 reasons=()
+dirs=()
+heads=()
 for pr in "$@"; do
     prepare_one "$pr" || true
+    dirs+=("$work_dir")
+    heads+=("$work_head")
     prs+=("$pr")
     branches+=("$branch")
     runs+=("$run_id")
@@ -133,10 +179,20 @@ for i in "${!prs[@]}"; do
         failed=$((failed + 1))
         continue
     fi
+    if [ "${runs[$i]}" = "local" ]; then
+        # `verify --publish` exited 0: the record passed and the status is set.
+        echo "#${prs[$i]} ${branches[$i]} local success"
+        continue
+    fi
     gh run watch "${runs[$i]}" --interval 60 --exit-status >/dev/null 2>&1 || true
     conclusion="$(gh run view "${runs[$i]}" --json conclusion --jq '.conclusion')" ||
         conclusion="unknown"
-    echo "#${prs[$i]} ${branches[$i]} ${runs[$i]} $conclusion"
-    [ "$conclusion" = "success" ] || failed=$((failed + 1))
+    if [ "$conclusion" = "success" ]; then
+        echo "#${prs[$i]} ${branches[$i]} ${runs[$i]} $conclusion"
+    else
+        label="$(failure_label "${dirs[$i]}" "${heads[$i]}")"
+        echo "#${prs[$i]} ${branches[$i]} ${runs[$i]} $label ($conclusion)"
+        failed=$((failed + 1))
+    fi
 done
 [ "$failed" -eq 0 ] || { echo "reverify: $failed of $# PR(s) not verified"; exit 1; }

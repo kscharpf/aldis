@@ -1734,6 +1734,75 @@ mod tests {
         );
     }
 
+    // req: VER-056, VER-058
+    #[test]
+    fn a_stacked_branch_whose_base_merged_reuses_every_check_and_starts_no_container() {
+        let checks = all();
+        let origin = Repo::new("stack-origin");
+        origin.write("docs/a.md", "a\n");
+        origin.write("crates/x/src/lib.rs", "//! x\n");
+        origin.write("crates/y/src/lib.rs", "//! y\n");
+        origin.commit("start");
+        // PR A changes x; PR B is stacked on A's branch and changes y.
+        origin.git(&["checkout", "-q", "-b", "a"]);
+        origin.write("crates/x/src/lib.rs", "//! x, PR A\n");
+        let head_a = origin.commit("a");
+        origin.git(&["checkout", "-q", "-b", "b"]);
+        origin.write("crates/y/src/lib.rs", "//! y, PR B\n");
+        let head_b = origin.commit("b");
+        let verified = |c: &Check| {
+            if c.name == "kani" {
+                ("not-run", None)
+            } else {
+                ("pass", None)
+            }
+        };
+        origin.publish(&head_a, &entries(&checks, verified));
+        origin.publish(&head_b, &entries(&checks, verified));
+        // PR A merges into main with a merge commit; B's head does not contain it.
+        origin.git(&["checkout", "-q", "main"]);
+        origin.git(&["merge", "-q", "--no-ff", "-m", "merge a", "a"]);
+        let clone = Repo::clone_of(&origin, "stack-clone");
+        clone.git(&["checkout", "-q", "-b", "topic", "origin/b"]);
+        clone.git(&["merge", "-q", "--no-edit", "origin/main"]);
+        let merged = clone.git(&["rev-parse", "HEAD"]);
+        assert_ne!(merged, head_b, "the merge makes a new commit");
+        // Main moved only by A, which B already contains: the tree is B's verified tree.
+        assert_eq!(
+            clone.git(&["rev-parse", "HEAD^{tree}"]),
+            clone.git(&["rev-parse", &format!("{head_b}^{{tree}}")])
+        );
+
+        let changes = change(&clone.0, &merged, Main::Origin);
+        let decisions = plan(&checks, &changes, Force::default(), |base| {
+            sources(&clone.0, &merged, base, "origin/main", &checks)
+        });
+        // No check runs: each takes its result from B's verified head, or is skipped on the
+        // strength of the record that covers the base; kani is nightly only.
+        assert_eq!(decided(&decisions, None).0, Vec::<String>::new());
+        assert_eq!(decided(&decisions, Some(Outcome::NotRun)).0, ["kani"]);
+        let (mut taken, mut sources_used) = decided(&decisions, Some(Outcome::Reused));
+        let (skipped, skip_sources) = decided(&decisions, Some(Outcome::Skipped));
+        taken.extend(skipped);
+        sources_used.extend(skip_sources);
+        sources_used.sort();
+        sources_used.dedup();
+        assert_eq!(taken.len(), checks.len() - 1);
+        assert!(sources_used.contains(&head_b), "{sources_used:?}");
+        // So the run starts no container, and its record passes the gate with every reuse
+        // re-derived from git.
+        let none = crate::verify::no_container(
+            &checks,
+            &decisions,
+            &crate::verify::Options::default(),
+            true,
+        );
+        assert!(none.is_some(), "the run would start a container");
+        let rec = record_from(&clone, &merged, &decisions, &checks);
+        assert_eq!(record::gate_problems(&rec), Vec::<String>::new());
+        assert_eq!(recheck(&clone.0, &rec, &checks), Vec::<String>::new());
+    }
+
     // req: VER-056
     #[test]
     fn a_main_merge_that_changes_a_rust_input_runs_the_rust_checks() {
@@ -2030,6 +2099,48 @@ mod tests {
             .env("GIT_CONFIG_GLOBAL", "/dev/null")
             .output()
             .is_ok_and(|o| o.status.success())
+    }
+
+    // req: VER-058
+    #[test]
+    fn a_head_behind_main_is_refused_up_front_unless_stale_ok() {
+        let (origin, clone, _) = history("preflight");
+        // The head contains the tip of main: the run goes ahead.
+        assert_eq!(publish::preflight(&clone.0, "HEAD", false), Ok(true));
+        // Main moves: the run is refused before any check, naming the way out.
+        origin.write("docs/b.md", "main moved\n");
+        origin.commit("main moved");
+        let refused = publish::preflight(&clone.0, "HEAD", false).unwrap_err();
+        assert!(
+            refused.contains("does not contain the tip of origin/main"),
+            "{refused}"
+        );
+        assert!(refused.contains("merge main"), "{refused}");
+        assert!(refused.contains("--stale-ok"), "{refused}");
+        // A development run asks for it anyway, and is told the head is behind.
+        assert_eq!(publish::preflight(&clone.0, "HEAD", true), Ok(false));
+        // Merging main makes the head current again.
+        clone.git(&["merge", "-q", "--no-edit", "origin/main"]);
+        assert_eq!(publish::preflight(&clone.0, "HEAD", false), Ok(true));
+    }
+
+    // req: VER-058, VER-060
+    #[test]
+    fn a_run_that_finished_behind_main_is_announced_as_stale() {
+        let plain = publish::stale_notice("abc", false);
+        assert_eq!(plain.len(), 1);
+        assert!(
+            plain[0].starts_with("verify: STALE: main moved during the run"),
+            "{plain:?}"
+        );
+        // On GitHub Actions the run also carries an annotation, which shows on the run page.
+        let github = publish::stale_notice("abc", true);
+        assert_eq!(github.len(), 2);
+        assert_eq!(github[0], plain[0]);
+        assert!(
+            github[1].starts_with("::error title=Behind main::abc: STALE: main moved"),
+            "{github:?}"
+        );
     }
 
     // req: VER-056, VER-057, VER-058
