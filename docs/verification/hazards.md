@@ -170,7 +170,7 @@ Each codec file has:
 | Cause | A defect in the caller |
 | Mission effect | Undefined behaviour in the caller's process |
 | Requirements | CABI-022, CABI-021, CABI-031, CABI-032, CABI-033, GEN-071 |
-| Evidence | `test:crates/aldis-ffi/tests/tc.rs::writer_arguments_are_checked`; `test:crates/aldis-ffi/tests/tm.rs::vc_arrays_step_by_their_struct_size`; `test:crates/aldis-ffi/tests/uslp.rs::content_and_fields_are_checked_as_arguments`; `test:crates/aldis-ffi/tests/tc.rs::the_stream_intake_pipeline`; `fuzz:ffi_decode`; `record:CABI-010`; `record:CABI-030` |
+| Evidence | `test:crates/aldis-ffi/tests/tc.rs::encode_arguments_are_checked`; `test:crates/aldis-ffi/tests/tm.rs::vc_arrays_step_by_their_struct_size`; `test:crates/aldis-ffi/tests/uslp.rs::content_and_fields_are_checked_as_arguments`; `test:crates/aldis-ffi/tests/tc.rs::the_stream_intake_pipeline`; `fuzz:ffi_decode`; `record:CABI-010`; `record:CABI-030` |
 | Residual risk | C cannot tell a valid pointer from a wrong non-null one, or a length from the true size of the buffer behind it: CABI-022 checks null pointers and the consistency of lengths, and a wrong non-null pointer or an overstated length stays undefined behaviour the library cannot detect. No check runs the C ABI under Miri (GEN-071; `gh:#71`, `df:DF-7`), and the C harness with sanitizers is M5's (VER-026) |
 | Assumptions | `asm:ASM-6` |
 | Proposals | — |

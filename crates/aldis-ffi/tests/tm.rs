@@ -1,19 +1,15 @@
 //! The contract of the TM part of the C ABI, called as a C caller calls it: the virtual channel
-//! arrays (CABI-033, M2 plan D14), the security layout variants (API-070), the stateless
-//! writers (API-023), and the argument checks (CABI-022) the vectors do not reach.
-#![expect(
-    clippy::unwrap_used,
-    clippy::indexing_slicing,
-    reason = "test-only harness (RS-018)"
-)]
+//! arrays (CABI-033, M2 plan D14), the security layout variants (API-070), the one-shot
+//! encoders (API-023), and the argument checks (CABI-022) the vectors do not reach.
+#![expect(clippy::unwrap_used, reason = "test-only harness (RS-018)")]
 #![expect(unsafe_code, reason = "the tests call the C ABI")]
 
 use core::ptr::{null, null_mut};
 
 use aldis_ffi::error::*;
 use aldis_ffi::field::{
-    ALDIS_FIELD_FIRST_HEADER_POINTER, ALDIS_FIELD_FRAME_LEN, ALDIS_FIELD_SPACECRAFT_ID,
-    ALDIS_FIELD_SYNC_FLAG, ALDIS_FIELD_VC_ID,
+    ALDIS_FIELD_FIRST_HEADER_POINTER, ALDIS_FIELD_FRAME_LEN, ALDIS_FIELD_FSH_LEN,
+    ALDIS_FIELD_OCF_FLAG, ALDIS_FIELD_SPACECRAFT_ID, ALDIS_FIELD_SYNC_FLAG, ALDIS_FIELD_VC_ID,
 };
 use aldis_ffi::oid::*;
 use aldis_ffi::tm::*;
@@ -80,40 +76,26 @@ fn sdls_frame() -> Vec<u8> {
     let (mc, vcs) = (mc(), vcs());
     let fields = packets(4);
     let mut frame = vec![0_u8; 40];
-    let mut l = aldis_tm_layout_t::default();
+    let (sh, data, st) = ([0xA5_u8; 6], [0xD0_u8; 18], [0x5A_u8; 8]);
+    let content = aldis_tm_content_t {
+        security_header: sh.as_ptr(),
+        security_header_len: 6,
+        data: data.as_ptr(),
+        data_len: 18,
+        security_trailer: st.as_ptr(),
+        security_trailer_len: 8,
+        ..aldis_tm_content_t::default()
+    };
+    let mut n = 0;
     // SAFETY: every pointer is to a live local.
     unsafe {
         assert_eq!(
-            aldis_tm_writer_begin(
+            aldis_tm_encode(
                 &raw const mc,
                 vcs.as_ptr(),
                 2,
                 &raw const fields,
-                frame.as_mut_ptr(),
-                40,
-                &raw mut l,
-                null_mut()
-            ),
-            ALDIS_OK
-        );
-        assert_eq!(
-            (l.security_header_offset, l.data_offset, l.data_len),
-            (6, 12, 18)
-        );
-        assert_eq!(
-            (l.security_trailer_offset, l.ocf_len, l.fecf_offset),
-            (30, 0, 38)
-        );
-        frame[6..12].fill(0xA5);
-        frame[12..30].fill(0xD0);
-        frame[30..38].fill(0x5A);
-        let mut n = 0;
-        assert_eq!(
-            aldis_tm_writer_finish(
-                &raw const mc,
-                vcs.as_ptr(),
-                2,
-                &raw const fields,
+                &raw const content,
                 frame.as_mut_ptr(),
                 40,
                 &raw mut n,
@@ -352,7 +334,7 @@ fn the_header_decodes_alone() {
 
 #[test]
 #[expect(clippy::too_many_lines, reason = "one check per argument rule")]
-fn writer_arguments_are_checked() {
+fn encode_arguments_are_checked() {
     // req: CABI-022, CABI-011, API-022, TM-009
     let (mc, vcs) = (mc(), vcs());
     let fields = packets(4);
@@ -451,17 +433,17 @@ fn writer_arguments_are_checked() {
     assert!(frame.iter().all(|&b| b == 0xEE));
     let mut vca = fields;
     vca.sync_flag = 1;
-    let mut layout = aldis_tm_layout_t::default();
     let mut view = aldis_tm_frame_t::default();
     // SAFETY: every pointer is to a live local.
     unsafe {
         let mut d = detail();
         assert_eq!(
-            aldis_tm_writer_finish(
+            aldis_tm_encode(
                 &raw const mc,
                 vcs.as_ptr(),
                 2,
                 &raw const vca,
+                &raw const content,
                 frame.as_mut_ptr(),
                 40,
                 &raw mut n,
@@ -475,34 +457,25 @@ fn writer_arguments_are_checked() {
         );
         assert!(
             frame.iter().all(|&b| b == 0xEE),
-            "finish rejects without writing"
+            "encode rejects without writing"
         );
-        assert_eq!(
-            aldis_tm_writer_begin(
-                &raw const mc,
-                vcs.as_ptr(),
-                2,
-                null(),
-                frame.as_mut_ptr(),
-                40,
-                &raw mut layout,
-                null_mut()
-            ),
-            ALDIS_ERR_INVALID_FIELD
-        );
-        assert_eq!(
-            aldis_tm_writer_begin(
-                &raw const mc,
-                vcs.as_ptr(),
-                2,
-                &raw const fields,
-                frame.as_mut_ptr(),
-                40,
-                null_mut(),
-                null_mut()
-            ),
-            ALDIS_ERR_INVALID_FIELD
-        );
+        // A NULL `fields` and a NULL `out_len` (CABI-022).
+        for (f, l) in [(null(), &raw mut n), (&raw const fields, null_mut())] {
+            assert_eq!(
+                aldis_tm_encode(
+                    &raw const mc,
+                    vcs.as_ptr(),
+                    2,
+                    f,
+                    &raw const content,
+                    frame.as_mut_ptr(),
+                    40,
+                    l,
+                    null_mut()
+                ),
+                ALDIS_ERR_INVALID_FIELD
+            );
+        }
         let mut pc = mc.pc;
         pc.fecf = 2;
         assert_eq!(
@@ -546,11 +519,10 @@ fn config_check_refuses_a_frame_length_above_4095() {
     }
 }
 
-#[test]
-fn the_oid_writer_takes_a_generator_handle() {
-    // req: TM-010, CMN-021, CMN-022, CABI-022, CABI-032, GEN-042
+/// VCs 4 (SDLS packets), 5 (`VCA_SDUs`), and 6 (packets without SDLS, the only kind of channel
+/// an OID frame may use).
+fn oid_setup() -> (aldis_tm_mc_config_t, [aldis_tm_vc_config_t; 3]) {
     let (mc, [sdls, vca]) = (mc(), vcs());
-    // VC 6 carries packets without SDLS, the only kind of channel an OID frame may use.
     let vcs = [
         sdls,
         vca,
@@ -561,31 +533,44 @@ fn the_oid_writer_takes_a_generator_handle() {
             ..sdls
         },
     ];
+    (mc, vcs)
+}
+
+#[test]
+fn encode_oid_takes_a_generator_handle() {
+    // req: TM-012, TM-010, CMN-021, CMN-022, CABI-022, CABI-032, GEN-042, API-020
+    let (mc, vcs) = oid_setup();
     let mut words = vec![0_u64; 64];
     let storage = words.as_mut_ptr();
     let mut h: *mut aldis_oid_generator_t = null_mut();
     let mut frame = [0_u8; 40];
-    let mut l = aldis_tm_layout_t::default();
-    let begin =
-        |vcid: u8, h: *mut aldis_oid_generator_t, out: *mut u8, l: *mut aldis_tm_layout_t| {
-            // SAFETY: `mc`, `vcs`, and `l` are live; `out` points to 40 live octets; `h` is a
-            // handle into live storage or invalid.
-            unsafe {
-                aldis_tm_oid_writer_begin(
-                    &raw const mc,
-                    vcs.as_ptr(),
-                    3,
-                    vcid,
-                    0,
-                    0,
-                    h,
-                    out,
-                    40,
-                    l,
-                    null_mut(),
-                )
-            }
+    let content = aldis_tm_content_t::default();
+    let encode = |vcid: u8,
+                  content: *const aldis_tm_content_t,
+                  h: *mut aldis_oid_generator_t,
+                  out: *mut u8,
+                  cap: usize| {
+        let mut n = 0_usize;
+        // SAFETY: `mc`, `vcs`, and `content` are live; `out` points to `cap` live octets; `h` is
+        // a handle into live storage or invalid.
+        let status = unsafe {
+            aldis_tm_encode_oid(
+                &raw const mc,
+                vcs.as_ptr(),
+                3,
+                vcid,
+                0,
+                0,
+                content,
+                h,
+                out,
+                cap,
+                &raw mut n,
+                null_mut(),
+            )
         };
+        (status, n)
+    };
     // SAFETY: the storage lies in `words`, aligned to 8.
     unsafe {
         assert_eq!(
@@ -599,65 +584,192 @@ fn the_oid_writer_takes_a_generator_handle() {
             ALDIS_OK
         );
     }
+    let c = &raw const content;
     // Rejected: VC 5 carries VCA_SDUs (132.0 §4.1.4.6.3), and the generator does not advance.
     assert_eq!(
-        begin(5, h, frame.as_mut_ptr(), &raw mut l),
+        encode(5, c, h, frame.as_mut_ptr(), 40).0,
         ALDIS_ERR_INVALID_FIELD
     );
     // Rejected: VC 4 uses SDLS (132.0 §6.4.6.2), and nothing is written.
     assert_eq!(
-        begin(4, h, frame.as_mut_ptr(), &raw mut l),
+        encode(4, c, h, frame.as_mut_ptr(), 40).0,
+        ALDIS_ERR_INVALID_FIELD
+    );
+    assert_eq!(
+        encode(3, c, h, frame.as_mut_ptr(), 40).0,
+        ALDIS_ERR_UNKNOWN_CHANNEL
+    );
+    assert_eq!(
+        encode(6, c, h, frame.as_mut_ptr(), 39).0,
+        ALDIS_ERR_BUFFER_TOO_SMALL
+    );
+    assert_eq!(
+        encode(6, null(), h, frame.as_mut_ptr(), 40).0,
         ALDIS_ERR_INVALID_FIELD
     );
     assert_eq!(frame, [0; 40]);
     // The output inside the generator's storage.
     let in_storage = storage.cast::<u8>().wrapping_add(16);
-    assert_eq!(begin(6, h, in_storage, &raw mut l), ALDIS_ERR_INVALID_FIELD);
-    assert_eq!(begin(6, h, frame.as_mut_ptr(), &raw mut l), ALDIS_OK);
-    assert_eq!((l.data_offset, l.data_len), (6, 32));
+    assert_eq!(encode(6, c, h, in_storage, 40).0, ALDIS_ERR_INVALID_FIELD);
+    // None of the failures advanced the generator: this is the start of the sequence.
+    assert_eq!(encode(6, c, h, frame.as_mut_ptr(), 40), (ALDIS_OK, 40));
     // The first octets of the sequence of 132.0 Annex D (CMN-020).
     assert_eq!(frame[6..12], [0xFF, 0xFF, 0xFF, 0xFF, 0x6D, 0xB6]);
+    assert_eq!(frame[4..6], [0x1F, 0xFE], "Segment Length ID 11, FHP 0x7FE");
     // SAFETY: as above.
-    unsafe {
-        let mut n = 0;
-        assert_eq!(
-            aldis_tm_oid_writer_finish(
-                &raw const mc,
-                vcs.as_ptr(),
-                3,
-                6,
-                0,
-                0,
-                frame.as_mut_ptr(),
-                40,
-                &raw mut n,
-                null_mut()
-            ),
-            ALDIS_OK
-        );
-        assert_eq!(n, 40);
-        assert_eq!(frame[4..6], [0x1F, 0xFE], "Segment Length ID 11, FHP 0x7FE");
-        aldis_oid_generator_deinit(h);
-    }
+    unsafe { aldis_oid_generator_deinit(h) };
     assert_eq!(
-        begin(6, h, frame.as_mut_ptr(), &raw mut l),
+        encode(6, c, h, frame.as_mut_ptr(), 40).0,
         ALDIS_ERR_INVALID_HANDLE
     );
     assert_eq!(
-        begin(6, null_mut(), frame.as_mut_ptr(), &raw mut l),
+        encode(6, c, null_mut(), frame.as_mut_ptr(), 40).0,
         ALDIS_ERR_INVALID_FIELD
     );
 }
 
-/// One call of `aldis_tm_encode`, `aldis_tm_writer_begin`, and `aldis_tm_writer_finish` with
-/// `fields` on `mc`, `vcs`, each into a fresh 2100-octet buffer: the status and the detail of
-/// each, which must agree.
+#[test]
+#[expect(clippy::too_many_lines, reason = "one check per argument rule")]
+fn encode_oid_forms_agree_and_check_the_content() {
+    // req: TM-012, TM-010, CMN-020, CMN-022, CABI-022, GEN-042, API-020
+    let (mut mc, mut vcs) = oid_setup();
+    mc.ocf = 1;
+    vcs[2].fsh_len = 4;
+    let mut handles = [null_mut::<aldis_oid_generator_t>(); 2];
+    let mut words = [vec![0_u64; 64], vec![0_u64; 64]];
+    for (i, kind) in [ALDIS_OID_FIBONACCI, ALDIS_OID_GALOIS]
+        .into_iter()
+        .enumerate()
+    {
+        // SAFETY: the storage lies in `words`, aligned to 8.
+        unsafe {
+            assert_eq!(
+                aldis_oid_generator_init(
+                    words[i].as_mut_ptr().cast(),
+                    ALDIS_OID_GENERATOR_STORAGE_SIZE,
+                    kind,
+                    &raw mut handles[i],
+                    null_mut()
+                ),
+                ALDIS_OK
+            );
+        }
+    }
+    let (fsh, ocf) = ([1_u8, 2, 3], [0x01_u8, 0, 0, 0]);
+    let good = aldis_tm_content_t {
+        fsh_data: fsh.as_ptr(),
+        fsh_data_len: 3,
+        ocf: ocf.as_ptr(),
+        ocf_len: 4,
+        ..aldis_tm_content_t::default()
+    };
+    let call = |content: &aldis_tm_content_t, h, out: &mut [u8]| {
+        let (mut n, mut d) = (0_usize, detail());
+        // SAFETY: every pointer is to a live local or into `out`.
+        let s = unsafe {
+            aldis_tm_encode_oid(
+                &raw const mc,
+                vcs.as_ptr(),
+                3,
+                6,
+                1,
+                2,
+                content,
+                h,
+                out.as_mut_ptr(),
+                out.len(),
+                &raw mut n,
+                &raw mut d,
+            )
+        };
+        (s, n, d)
+    };
+    let (mut a, mut b) = ([0_u8; 40], [0_u8; 40]);
+    assert_eq!(call(&good, handles[0], &mut a).0, ALDIS_OK);
+    assert_eq!(call(&good, handles[1], &mut b).0, ALDIS_OK);
+    assert_eq!(a, b, "the Fibonacci and Galois forms give the same frame");
+    assert_eq!(a[6..10], [0x03, 1, 2, 3], "Secondary Header");
+    assert_eq!(a[34..38], ocf);
+    // Rejected content leaves the buffer and the generator untouched.
+    let mut out = [0xEE_u8; 40];
+    let short = aldis_tm_content_t {
+        fsh_data_len: 2,
+        ..good
+    };
+    let (s, _, d) = call(&short, handles[0], &mut out);
+    assert_eq!(
+        (s, d.field),
+        (ALDIS_ERR_LENGTH_MISMATCH, ALDIS_FIELD_FSH_LEN)
+    );
+    let no_ocf = aldis_tm_content_t {
+        ocf: null(),
+        ocf_len: 0,
+        ..good
+    };
+    let (s, _, d) = call(&no_ocf, handles[0], &mut out);
+    assert_eq!(
+        (s, d.field),
+        (ALDIS_ERR_INVALID_FIELD, ALDIS_FIELD_OCF_FLAG)
+    );
+    let bad_ocf = aldis_tm_content_t { ocf_len: 2, ..good };
+    assert_eq!(
+        call(&bad_ocf, handles[0], &mut out).0,
+        ALDIS_ERR_INVALID_FIELD
+    );
+    // A buffer the call does not take must be empty (CABI-022).
+    let junk = [0_u8; 4];
+    for forbidden in [
+        aldis_tm_content_t {
+            data: junk.as_ptr(),
+            data_len: 4,
+            ..good
+        },
+        aldis_tm_content_t {
+            security_header: junk.as_ptr(),
+            security_header_len: 4,
+            ..good
+        },
+        aldis_tm_content_t {
+            security_trailer: junk.as_ptr(),
+            security_trailer_len: 4,
+            ..good
+        },
+    ] {
+        assert_eq!(
+            call(&forbidden, handles[0], &mut out).0,
+            ALDIS_ERR_INVALID_FIELD
+        );
+    }
+    // The output overlapping the content.
+    let overlapping = aldis_tm_content_t {
+        fsh_data: out.as_ptr().wrapping_add(7),
+        ..good
+    };
+    assert_eq!(
+        call(&overlapping, handles[0], &mut out).0,
+        ALDIS_ERR_INVALID_FIELD
+    );
+    assert_eq!(out, [0xEE; 40]);
+    // The second frame continues the sequence, equal in both forms.
+    let first = a;
+    assert_eq!(call(&good, handles[0], &mut a).0, ALDIS_OK);
+    assert_eq!(call(&good, handles[1], &mut b).0, ALDIS_OK);
+    assert_eq!(a, b);
+    assert_ne!(a[10..34], first[10..34]);
+    // SAFETY: both handles are live.
+    unsafe {
+        aldis_oid_generator_deinit(handles[0]);
+        aldis_oid_generator_deinit(handles[1]);
+    }
+}
+
+/// One call of `aldis_tm_encode` with `fields` on `mc`, `vcs` into a fresh 2100-octet buffer:
+/// the status and the detail, with the buffer unchanged.
 fn write_all(
     mc: &aldis_tm_mc_config_t,
     vcs: &[aldis_tm_vc_config_t],
     fields: &aldis_tm_fields_t,
     data_len: usize,
-    layout: bool,
 ) -> (i32, aldis_error_detail_t) {
     let data = vec![0xD0_u8; data_len];
     let content = aldis_tm_content_t {
@@ -665,224 +777,24 @@ fn write_all(
         data_len,
         ..aldis_tm_content_t::default()
     };
-    let mut results = Vec::new();
-    for call in 0..3 {
-        let mut frame = vec![0xEE_u8; 2100];
-        let (mut d, mut n, mut l) = (detail(), 0_usize, aldis_tm_layout_t::default());
-        let l_ptr: *mut aldis_tm_layout_t = if layout { &raw mut l } else { null_mut() };
-        // SAFETY: every pointer is to a live local or NULL.
-        let status = unsafe {
-            match call {
-                0 => aldis_tm_encode(
-                    mc,
-                    vcs.as_ptr(),
-                    vcs.len(),
-                    fields,
-                    &raw const content,
-                    frame.as_mut_ptr(),
-                    frame.len(),
-                    &raw mut n,
-                    &raw mut d,
-                ),
-                1 => aldis_tm_writer_begin(
-                    mc,
-                    vcs.as_ptr(),
-                    vcs.len(),
-                    fields,
-                    frame.as_mut_ptr(),
-                    frame.len(),
-                    l_ptr,
-                    &raw mut d,
-                ),
-                _ => aldis_tm_writer_finish(
-                    mc,
-                    vcs.as_ptr(),
-                    vcs.len(),
-                    fields,
-                    frame.as_mut_ptr(),
-                    frame.len(),
-                    &raw mut n,
-                    &raw mut d,
-                ),
-            }
-        };
-        assert!(
-            frame.iter().all(|&b| b == 0xEE),
-            "call {call} wrote on error"
-        );
-        results.push((status, d));
-    }
-    assert!(
-        results
-            .iter()
-            .all(|r| (r.0, r.1.kind, r.1.field, r.1.expected, r.1.found)
-                == (
-                    results[0].0,
-                    results[0].1.kind,
-                    results[0].1.field,
-                    results[0].1.expected,
-                    results[0].1.found
-                )),
-        "the three writers disagree"
-    );
-    results[0]
-}
-
-#[test]
-fn finish_checks_the_buffer_was_begun_with_these_arguments() {
-    // req: API-023, CABI-022, TM-009, TM-010 (OI-50)
-    let (mc, [sdls, vca]) = (mc(), vcs());
-    let vcs = [
-        sdls,
-        vca,
-        aldis_tm_vc_config_t {
-            vcid: 6,
-            security_header_len: 0,
-            security_trailer_len: 0,
-            ..sdls
-        },
-    ];
-    let call = |begin: bool, fields: &aldis_tm_fields_t, frame: &mut [u8]| {
-        let mut l = aldis_tm_layout_t::default();
-        let mut n = 0_usize;
-        // SAFETY: every pointer is to a live local or into `frame`, with its length.
-        unsafe {
-            if begin {
-                aldis_tm_writer_begin(
-                    &raw const mc,
-                    vcs.as_ptr(),
-                    3,
-                    fields,
-                    frame.as_mut_ptr(),
-                    frame.len(),
-                    &raw mut l,
-                    null_mut(),
-                )
-            } else {
-                aldis_tm_writer_finish(
-                    &raw const mc,
-                    vcs.as_ptr(),
-                    3,
-                    fields,
-                    frame.as_mut_ptr(),
-                    frame.len(),
-                    &raw mut n,
-                    null_mut(),
-                )
-            }
-        }
+    let mut frame = vec![0xEE_u8; 2100];
+    let (mut d, mut n) = (detail(), 0_usize);
+    // SAFETY: every pointer is to a live local.
+    let status = unsafe {
+        aldis_tm_encode(
+            mc,
+            vcs.as_ptr(),
+            vcs.len(),
+            fields,
+            &raw const content,
+            frame.as_mut_ptr(),
+            frame.len(),
+            &raw mut n,
+            &raw mut d,
+        )
     };
-    let begun = aldis_tm_fields_t {
-        mc_frame_count: 7,
-        vc_frame_count: 9,
-        packet_offset: 3,
-        ..packets(4)
-    };
-    let mut frame = [0xEE_u8; 40];
-    assert_eq!(call(true, &begun, &mut frame), ALDIS_OK);
-    let written = frame;
-    let other = [
-        aldis_tm_fields_t {
-            mc_frame_count: 8,
-            ..begun
-        },
-        aldis_tm_fields_t {
-            vc_frame_count: 10,
-            ..begun
-        },
-        aldis_tm_fields_t {
-            packet_offset: 4,
-            ..begun
-        },
-        aldis_tm_fields_t {
-            pointer: ALDIS_TM_POINTER_NO_PACKET_START,
-            ..begun
-        },
-        aldis_tm_fields_t { vcid: 6, ..begun },
-    ];
-    for f in other {
-        assert_eq!(
-            call(false, &f, &mut frame),
-            ALDIS_ERR_INVALID_STATE,
-            "{f:?}"
-        );
-        assert_eq!(frame, written, "a failed finish leaves the frame unchanged");
-    }
-    assert_eq!(call(false, &begun, &mut frame), ALDIS_OK);
-    // A buffer never begun.
-    for fill in [0x00_u8, 0xA5] {
-        let mut never = [fill; 40];
-        assert_eq!(call(false, &begun, &mut never), ALDIS_ERR_INVALID_STATE);
-        assert_eq!(never, [fill; 40]);
-    }
-}
-
-#[test]
-fn the_oid_finish_checks_the_buffer_was_begun_with_these_arguments() {
-    // req: API-023, CABI-022, TM-010 (OI-50)
-    let (mc, [sdls, vca]) = (mc(), vcs());
-    let vcs = [
-        sdls,
-        vca,
-        aldis_tm_vc_config_t {
-            vcid: 6,
-            security_header_len: 0,
-            security_trailer_len: 0,
-            ..sdls
-        },
-    ];
-    let call = |fields: &aldis_tm_fields_t, frame: &mut [u8]| {
-        let mut l = aldis_tm_layout_t::default();
-        // SAFETY: every pointer is to a live local or into `frame`, with its length.
-        unsafe {
-            aldis_tm_writer_begin(
-                &raw const mc,
-                vcs.as_ptr(),
-                3,
-                fields,
-                frame.as_mut_ptr(),
-                frame.len(),
-                &raw mut l,
-                null_mut(),
-            )
-        }
-    };
-    // The OID writer: the headers of `aldis_tm_oid_writer_begin` are those of an Only Idle Data
-    // frame, so the plain writer's begin with that status stands in for it here.
-    let idle = aldis_tm_fields_t {
-        mc_frame_count: 2,
-        vc_frame_count: 3,
-        pointer: ALDIS_TM_POINTER_ONLY_IDLE_DATA,
-        ..packets(6)
-    };
-    let mut oid = [0xEE_u8; 40];
-    assert_eq!(call(&idle, &mut oid), ALDIS_OK);
-    let begun_oid = oid;
-    let finish_oid = |vcid: u8, mc_count: u8, vc_count: u8, frame: &mut [u8]| {
-        let mut n = 0_usize;
-        // SAFETY: every pointer is to a live local or into `frame`, with its length.
-        unsafe {
-            aldis_tm_oid_writer_finish(
-                &raw const mc,
-                vcs.as_ptr(),
-                3,
-                vcid,
-                mc_count,
-                vc_count,
-                frame.as_mut_ptr(),
-                frame.len(),
-                &raw mut n,
-                null_mut(),
-            )
-        }
-    };
-    assert_eq!(finish_oid(6, 2, 4, &mut oid), ALDIS_ERR_INVALID_STATE);
-    assert_eq!(finish_oid(6, 1, 3, &mut oid), ALDIS_ERR_INVALID_STATE);
-    assert_eq!(oid, begun_oid);
-    let mut never = [0xA5_u8; 40];
-    assert_eq!(finish_oid(6, 2, 3, &mut never), ALDIS_ERR_INVALID_STATE);
-    assert_eq!(never, [0xA5; 40]);
-    assert_eq!(finish_oid(6, 2, 3, &mut oid), ALDIS_OK);
+    assert!(frame.iter().all(|&b| b == 0xEE), "encode wrote on error");
+    (status, d)
 }
 
 #[test]
@@ -962,7 +874,7 @@ fn an_only_idle_data_frame_on_an_sdls_vc_is_refused_or_flagged() {
 }
 
 #[test]
-fn packet_offsets_above_0x7fd_fail_as_the_writer_checks_them() {
+fn packet_offsets_above_0x7fd_fail_as_the_encoder_checks_them() {
     // req: TM-009, CABI-020, CABI-022, RS-020
     let (mc, vcs) = (mc(), vcs());
     let beyond = |vcid| aldis_tm_fields_t {
@@ -970,7 +882,7 @@ fn packet_offsets_above_0x7fd_fail_as_the_writer_checks_them() {
         ..packets(vcid)
     };
     // Inside the 18-octet data field of VC 4: the largest valid offset, 17.
-    let (status, d) = write_all(&mc, &vcs, &beyond(4), 18, true);
+    let (status, d) = write_all(&mc, &vcs, &beyond(4), 18);
     assert_eq!(
         (status, d.field, d.detail, d.expected, d.found),
         (
@@ -986,7 +898,7 @@ fn packet_offsets_above_0x7fd_fail_as_the_writer_checks_them() {
             packet_offset: offset,
             ..packets(4)
         };
-        let (status, d) = write_all(&mc, &vcs, &f, 18, true);
+        let (status, d) = write_all(&mc, &vcs, &f, 18);
         assert_eq!(
             (status, d.expected, d.found),
             (ALDIS_ERR_OUT_OF_RANGE, 17, u64::from(offset))
@@ -1006,7 +918,7 @@ fn packet_offsets_above_0x7fd_fail_as_the_writer_checks_them() {
         security_trailer_len: 0,
         ..vcs[0]
     }];
-    let (status, d) = write_all(&big, &plain, &beyond(4), 2094, true);
+    let (status, d) = write_all(&big, &plain, &beyond(4), 2094);
     assert_eq!(
         (status, d.field, d.expected, d.found),
         (
@@ -1017,31 +929,14 @@ fn packet_offsets_above_0x7fd_fail_as_the_writer_checks_them() {
         )
     );
     // The checks before the pointer's come first: the VC, then the Synchronization Flag.
-    let (status, d) = write_all(&mc, &vcs, &beyond(3), 18, true);
+    let (status, d) = write_all(&mc, &vcs, &beyond(3), 18);
     assert_eq!(
         (status, d.field),
         (ALDIS_ERR_UNKNOWN_CHANNEL, ALDIS_FIELD_VC_ID)
     );
-    let (status, d) = write_all(&mc, &vcs, &beyond(5), 18, true);
+    let (status, d) = write_all(&mc, &vcs, &beyond(5), 18);
     assert_eq!(
         (status, d.field, d.expected, d.found),
         (ALDIS_ERR_INVALID_FIELD, ALDIS_FIELD_SYNC_FLAG, 1, 0)
     );
-    // And an argument the C ABI checks first stays first (CABI-022): a NULL layout for begin.
-    let mut frame = vec![0_u8; 40];
-    let f = beyond(4);
-    // SAFETY: every pointer is to a live local or NULL.
-    let status = unsafe {
-        aldis_tm_writer_begin(
-            &raw const mc,
-            vcs.as_ptr(),
-            2,
-            &raw const f,
-            frame.as_mut_ptr(),
-            40,
-            null_mut(),
-            null_mut(),
-        )
-    };
-    assert_eq!(status, ALDIS_ERR_INVALID_FIELD);
 }

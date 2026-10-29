@@ -6,9 +6,8 @@
 //! [`aldis_aos_peek_length`] and [`aldis_aos_header_decode`]; the frame decoder
 //! [`aldis_aos_decode`]; the data unit decoders [`aldis_aos_mpdu_decode`] and
 //! [`aldis_aos_bpdu_decode`]; the one-shot [`aldis_aos_encode`], which takes the frame's variable
-//! fields in an [`aldis_aos_content_t`]; the two-phase writer as [`aldis_aos_writer_begin`] and
-//! [`aldis_aos_writer_finish`]; and the OID frame writer on VCID 63,
-//! [`aldis_aos_oid_writer_begin`], which `aldis_aos_writer_finish` also finishes.
+//! fields in an [`aldis_aos_content_t`]; and the one-shot OID frame encoder on VCID 63,
+//! [`aldis_aos_encode_oid`], which takes an `aldis_oid_generator_t`.
 //!
 //! **Channels.** A physical channel is an [`aldis_aos_config_t`] (732.0 §5.2 Table 5-1, with
 //! the edition; AOS-001), the configuration that `peek_length` and the header decoder take
@@ -26,12 +25,9 @@
 //! decoder, which needs the virtual channel's Data Field Content as well, so the decoder takes
 //! the master channel and has no `_with` pair.
 //!
-//! **Writers.** No call keeps a pointer or state (API-023, API-060): `_writer_begin` writes the
-//! Primary Header with its FHEC and the `M_PDU` or `B_PDU` Header and zero-fills the rest of
-//! the frame, the caller fills the fields at the offsets of the [`aldis_aos_layout_t`] it
-//! returns, the OCF included, and `_writer_finish`, given the same arguments, checks that the
-//! buffer holds the headers `_writer_begin` wrote, else `ALDIS_ERR_INVALID_STATE`, and
-//! computes the FECF (`AosFrameWriter::resume`; OI-50).
+//! **Encoders.** A frame is built in one call, with no state between calls (API-023, API-060):
+//! [`aldis_aos_encode`] and [`aldis_aos_encode_oid`] take the frame's variable fields and write
+//! the headers, the FHEC, and the FECF. The C ABI has no two-phase writer (OI-57).
 
 use core::ops::Range;
 
@@ -40,16 +36,15 @@ use aldis::aos::fhec;
 use aldis::aos::header::{FHEC_LEN, PRIMARY_HEADER_LEN};
 use aldis::aos::mpdu::MPDU_HEADER_LEN;
 use aldis::aos::{
-    AosEdition, AosFrame, AosFrameContent, AosFrameFields, AosFrameWriter,
-    AosPhysicalChannelConfig, AosPrimaryHeader, AosVirtualChannelConfig, BitstreamPointer, Bpdu,
-    DataFieldContent, DataUnit, FrameCountCycle, Mpdu, PacketOffset, PacketPointer, PduHeader,
-    ValidBitCount, VcFrameCount, VcTable, encode,
+    AosEdition, AosFrame, AosFrameContent, AosFrameFields, AosPhysicalChannelConfig,
+    AosPrimaryHeader, AosVirtualChannelConfig, BitstreamPointer, Bpdu, DataFieldContent, DataUnit,
+    FrameCountCycle, Mpdu, PacketOffset, PacketPointer, PduHeader, ValidBitCount, VcFrameCount,
+    VcTable, encode, encode_oid, encode_oid_galois,
 };
 use aldis::core::Result;
 use aldis::core::ids::{SpacecraftId, VcId};
 use aldis::core::layout::{FrameLayout, OCF_LEN};
 use aldis::core::ocf::Ocf;
-use aldis::core::oid::OidGenerator;
 use aldis::core::security::SecurityLayout;
 
 use crate::abi::{self, Configs, invalid_argument};
@@ -198,7 +193,7 @@ pub struct aldis_aos_vc_config_t {
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct aldis_aos_fields_t {
     /// Virtual Channel Identifier: a configured VC, or `ALDIS_AOS_OID_VCID` for
-    /// `aldis_aos_oid_writer_begin` (732.0 §4.1.2.3).
+    /// `aldis_aos_encode_oid` (732.0 §4.1.2.3).
     pub vcid: u8,
     /// Virtual Channel Frame Count, at most `ALDIS_AOS_VC_FRAME_COUNT_MAX` (732.0 §4.1.2.4).
     pub vc_frame_count: u32,
@@ -667,15 +662,6 @@ fn layout(l: &FrameLayout, pdu_header_len: usize) -> aldis_aos_layout_t {
     }
 }
 
-/// The length of the data unit header a writer puts before the zone (AOS-019).
-const fn pdu_header_len(pdu: PduHeader) -> usize {
-    match pdu {
-        PduHeader::Mpdu(_) => MPDU_HEADER_LEN,
-        PduHeader::Bpdu(_) => BPDU_HEADER_LEN,
-        PduHeader::None => 0,
-    }
-}
-
 /// The C view of a decoded frame.
 pub(crate) fn view(f: &AosFrame<'_>) -> aldis_aos_frame_t {
     let (pdu, header_len) = match f.data_unit() {
@@ -1056,7 +1042,7 @@ pub unsafe extern "C" fn aldis_aos_bpdu_decode(
 /// `first_header_pointer`, `bitstream_data_pointer`) for a value of `fields` outside its field:
 /// a packet offset above `0xFFFD`, or a count of valid bits of 0 or above
 /// `ALDIS_AOS_VALID_BITS_MAX`; then, as `AosFrameWriter::begin` checks them,
-/// `ALDIS_ERR_INVALID_FIELD` (`vc_id`) for VCID 63, whose frames `aldis_aos_oid_writer_begin`
+/// `ALDIS_ERR_INVALID_FIELD` (`vc_id`) for VCID 63, whose frames `aldis_aos_encode_oid`
 /// writes; `ALDIS_ERR_UNKNOWN_CHANNEL` (`spacecraft_id` or `vc_id`) for a VC not in `vcs`;
 /// `ALDIS_ERR_INVALID_FIELD` (`data_field_content`) for a pointer not of the VC's data unit;
 /// `ALDIS_ERR_OUT_OF_RANGE` (`first_header_pointer`, `bitstream_data_pointer`) for a pointer
@@ -1109,108 +1095,25 @@ pub unsafe extern "C" fn aldis_aos_encode(
     }
 }
 
-/// Starts a two-phase write of one frame of (`mc->scid`, `fields->vcid`) (732.0 §4.1; AOS-019,
-/// API-023, M2 plan D4).
-///
-/// Checks the arguments, writes the Primary Header with its FHEC and the `M_PDU` or `B_PDU`
-/// Header in the first frame-length octets of `out`, zero-fills every other octet of the frame,
-/// and reports where each field lies.
-///
-/// The caller fills the fields at the offsets of `layout`, the OCF included (check a report
-/// with `aldis_ocf_check`), and calls [`aldis_aos_writer_finish`] with the same arguments. No
-/// state is kept.
-///
-/// # Errors
-/// On error `out` is unchanged (API-022). The errors of [`aldis_aos_encode`] before
-/// `ALDIS_ERR_BUFFER_TOO_SMALL`, that one included; CABI-022 violations.
-///
-/// # Safety
-/// `mc` and `vcs` as for [`aldis_aos_mc_config_check`]; `fields` is valid for a read; `out` is
-/// valid for `cap` octets; `layout` is valid for one write; `err` is `NULL` or valid for one
-/// write.
-#[expect(
-    unsafe_code,
-    reason = "C ABI entry point: unmangled, takes raw pointers (GEN-071)"
-)]
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn aldis_aos_writer_begin(
-    mc: *const aldis_aos_mc_config_t,
-    vcs: *const aldis_aos_vc_config_t,
-    vc_count: usize,
-    fields: *const aldis_aos_fields_t,
-    out: *mut u8,
-    cap: usize,
-    layout: *mut aldis_aos_layout_t,
-    err: *mut crate::aldis_error_detail_t,
-) -> i32 {
-    // SAFETY: every pointer is valid as `# Safety` states; `abi` checks NULL and alignment.
-    unsafe {
-        abi::call(err, || {
-            let m = master_channel_at(mc, vcs, vc_count)?;
-            let fields = self::fields(m.scid, abi::read(fields)?)?;
-            let out = abi::bytes_mut(out, cap, &[])?;
-            let layout = abi::out(layout)?;
-            let writer = AosFrameWriter::begin(out, &m.pc, &m.vcs, &fields)?;
-            layout.write(self::layout(writer.layout(), pdu_header_len(fields.pdu)));
-            Ok(())
-        })
+/// `InvalidField` (no field) unless a buffer the call does not take is empty (CABI-022).
+const fn empty(len: usize) -> Result<()> {
+    if len == 0 {
+        Ok(())
+    } else {
+        Err(invalid_argument())
     }
 }
 
-/// Finishes a two-phase write begun with the same arguments by [`aldis_aos_writer_begin`], or
-/// by [`aldis_aos_oid_writer_begin`] without its generator (732.0 §4.1.6.2; AOS-019, API-021,
-/// API-023).
+/// Encodes an OID Transfer Frame of `mc->scid` on VCID 63 in one call (732.0 §4.1.4.1.5;
+/// AOS-016, CMN-020…022, API-020).
 ///
-/// First checks that `out` holds the Primary Header with its FHEC and the `M_PDU` or `B_PDU`
-/// Header that the begin function wrote for these arguments (`AosFrameWriter::resume`; OI-50);
-/// the other fields are not compared. Then leaves every field the caller filled and the OID
-/// data, computes the FECF if configured, and returns the frame length.
+/// The frame goes into the start of `out`, its data field filled with the next octets of the OID
+/// generator `oid`, as `aldis_aos::encode_oid` does with the
+/// Fibonacci form, and `encode_oid_galois` with the Galois form, which gives the same octets.
 ///
-/// # Errors
-/// As [`aldis_aos_writer_begin`], or for `fields->vcid` 63 as [`aldis_aos_oid_writer_begin`];
-/// `ALDIS_ERR_INVALID_STATE` if `out` does not hold the headers the begin function writes for
-/// these arguments (other arguments, or a buffer never begun); on error `out` is unchanged.
-///
-/// # Safety
-/// As [`aldis_aos_writer_begin`]; `out_len` is valid for one write.
-#[expect(
-    unsafe_code,
-    reason = "C ABI entry point: unmangled, takes raw pointers (GEN-071)"
-)]
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn aldis_aos_writer_finish(
-    mc: *const aldis_aos_mc_config_t,
-    vcs: *const aldis_aos_vc_config_t,
-    vc_count: usize,
-    fields: *const aldis_aos_fields_t,
-    out: *mut u8,
-    cap: usize,
-    out_len: *mut usize,
-    err: *mut crate::aldis_error_detail_t,
-) -> i32 {
-    // SAFETY: every pointer is valid as `# Safety` states; `abi` checks NULL and alignment.
-    unsafe {
-        abi::call(err, || {
-            let m = master_channel_at(mc, vcs, vc_count)?;
-            let fields = self::fields(m.scid, abi::read(fields)?)?;
-            let out = abi::bytes_mut(out, cap, &[])?;
-            let out_len = abi::out(out_len)?;
-            out_len.write(AosFrameWriter::resume(out, &m.pc, &m.vcs, &fields)?.finish());
-            Ok(())
-        })
-    }
-}
-
-/// Starts an OID Transfer Frame of `mc->scid` on VCID 63 (732.0 §4.1.4.1.5; AOS-016, CMN-020,
-/// CMN-021).
-///
-/// The frame has no OCF or SDLS fields, and the whole data field holds the next octets of the
-/// OID generator `oid`, as `AosFrameWriter::begin_oid` writes it; the Galois form gives the
-/// same octets (CMN-022). Reports where each field lies, as [`aldis_aos_writer_begin`] does.
-///
-/// `fields->vcid` is `ALDIS_AOS_OID_VCID` and `fields->pointer` `ALDIS_AOS_POINTER_NONE`. The
-/// caller may fill the Insert Zone (AOS-015) and calls [`aldis_aos_writer_finish`] with the same
-/// arguments, without `oid`.
+/// The frame has no OCF or SDLS fields. `fields->vcid` is `ALDIS_AOS_OID_VCID` and
+/// `fields->pointer` `ALDIS_AOS_POINTER_NONE`. `content` gives the Insert Zone (AOS-015),
+/// empty when none is configured; its other buffers must be empty.
 ///
 /// # Errors
 /// On error neither `out` nor the generator is changed (GEN-042). The errors of
@@ -1218,28 +1121,30 @@ pub unsafe extern "C" fn aldis_aos_writer_finish(
 /// `ALDIS_ERR_INVALID_FIELD` (`vc_id`) unless `fields->vcid` is 63, and (`data_field_content`)
 /// unless `fields->pointer` is `ALDIS_AOS_POINTER_NONE`; `ALDIS_ERR_UNKNOWN_CHANNEL`
 /// (`spacecraft_id`) if `vcs` is empty; `ALDIS_ERR_BUFFER_TOO_SMALL` (`needed` = frame length);
-/// `ALDIS_ERR_INVALID_HANDLE` for an invalid generator; CABI-022 violations, including `out`
-/// overlapping the generator's storage.
+/// `ALDIS_ERR_LENGTH_MISMATCH` (`insert_zone_len`) for an Insert Zone of another length than the
+/// configured one; `ALDIS_ERR_INVALID_HANDLE` for an invalid generator; CABI-022 violations,
+/// including a non-empty `content->zone`, `content->security_header`,
+/// `content->security_trailer`, or `content->ocf`, and `out` overlapping the Insert Zone or the
+/// generator's storage.
 ///
 /// # Safety
-/// `mc` and `vcs` as for [`aldis_aos_mc_config_check`]; `fields` is valid for a read; `oid` is a
-/// handle from `aldis_oid_generator_init` whose storage is still valid, or detectably invalid
-/// storage; `out` is valid for `cap` octets; `layout` is valid for one write; `err` is `NULL` or
-/// valid for one write.
+/// As [`aldis_aos_encode`]; `oid` is a handle from `aldis_oid_generator_init` whose storage is
+/// still valid, or detectably invalid storage.
 #[expect(
     unsafe_code,
     reason = "C ABI entry point: unmangled, takes raw pointers (GEN-071)"
 )]
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn aldis_aos_oid_writer_begin(
+pub unsafe extern "C" fn aldis_aos_encode_oid(
     mc: *const aldis_aos_mc_config_t,
     vcs: *const aldis_aos_vc_config_t,
     vc_count: usize,
     fields: *const aldis_aos_fields_t,
+    content: *const aldis_aos_content_t,
     oid: *mut aldis_oid_generator_t,
     out: *mut u8,
     cap: usize,
-    layout: *mut aldis_aos_layout_t,
+    out_len: *mut usize,
     err: *mut crate::aldis_error_detail_t,
 ) -> i32 {
     // SAFETY: every pointer is valid as `# Safety` states; `abi` and `handle` check them.
@@ -1247,26 +1152,27 @@ pub unsafe extern "C" fn aldis_aos_oid_writer_begin(
         abi::call(err, || {
             let m = master_channel_at(mc, vcs, vc_count)?;
             let fields = self::fields(m.scid, abi::read(fields)?)?;
+            let c = abi::read(content)?;
+            empty(c.zone_len)?;
+            empty(c.security_header_len)?;
+            empty(c.security_trailer_len)?;
+            empty(c.ocf_len)?;
+            let insert_zone = abi::bytes(c.insert_zone, c.insert_zone_len)?;
             let h = generator(oid)?;
-            let out = abi::bytes_mut(out, cap, &[h.range()])?;
-            let layout = abi::out(layout)?;
+            let [iz, _, _, _, _] = c.buffers();
+            let out = abi::bytes_mut(out, cap, &[iz, h.range()])?;
+            let out_len = abi::out(out_len)?;
             let mut state = h.load();
-            let writer = match &mut state {
+            let n = match &mut state {
                 GeneratorState::Fibonacci(g) => {
-                    AosFrameWriter::begin_oid(out, &m.pc, &m.vcs, &fields, g)?
+                    encode_oid(&m.pc, &m.vcs, &fields, insert_zone, g, out)?
                 }
-                // `begin_oid` with a scratch generator, its data field then overwritten by the
-                // Galois form, which gives the same sequence (CMN-022).
                 GeneratorState::Galois(g) => {
-                    let mut scratch = OidGenerator::new();
-                    let mut writer =
-                        AosFrameWriter::begin_oid(out, &m.pc, &m.vcs, &fields, &mut scratch)?;
-                    g.fill(writer.zone_mut());
-                    writer
+                    encode_oid_galois(&m.pc, &m.vcs, &fields, insert_zone, g, out)?
                 }
             };
-            layout.write(self::layout(writer.layout(), 0));
             h.store(state);
+            out_len.write(n);
             Ok(())
         })
     }

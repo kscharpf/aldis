@@ -5,9 +5,8 @@
 //! and [`aldis_tm_header_decode`]; the decoders [`aldis_tm_decode`], [`aldis_tm_decode_with`],
 //! [`aldis_tm_decode_unchecked`], and [`aldis_tm_decode_unchecked_with`]; the check against
 //! the managed parameters [`aldis_tm_validate`]; the one-shot [`aldis_tm_encode`], which takes
-//! the frame's variable fields in an [`aldis_tm_content_t`]; the two-phase writer as [`aldis_tm_writer_begin`] and
-//! [`aldis_tm_writer_finish`]; and the OID frame writer as [`aldis_tm_oid_writer_begin`] and
-//! [`aldis_tm_oid_writer_finish`].
+//! the frame's variable fields in an [`aldis_tm_content_t`]; and the one-shot Only Idle Data
+//! frame encoder [`aldis_tm_encode_oid`], which takes an `aldis_oid_generator_t`.
 //!
 //! **Channels.** A physical channel is an [`aldis_tm_config_t`] (132.0 §5.1 Table 5-1), the
 //! configuration that `peek_length` takes (D14). A master channel is an
@@ -25,25 +24,22 @@
 //! channel that carries several master channels is decoded by reading the SCID first with
 //! [`aldis_tm_header_decode`].
 //!
-//! **Writers.** No call keeps a pointer or state (API-023, API-060): `_writer_begin` writes the
-//! headers and zero-fills the frame, the caller fills the fields at the offsets of the
-//! [`aldis_tm_layout_t`] it returns, the OCF included, and `_writer_finish`, given the same
-//! arguments, checks that the buffer holds the headers `_writer_begin` wrote, else
-//! `ALDIS_ERR_INVALID_STATE`, and computes the FECF (`TmFrameWriter::resume`; OI-50).
+//! **Encoders.** A frame is built in one call, with no state between calls (API-023, API-060):
+//! [`aldis_tm_encode`] and [`aldis_tm_encode_oid`] take the frame's variable fields and write
+//! the headers and the FECF. The C ABI has no two-phase writer (OI-57).
 
 use core::ops::Range;
 
 use aldis::core::ids::{SpacecraftId, VcId};
 use aldis::core::layout::{FrameLayout, OCF_LEN};
 use aldis::core::ocf::Ocf;
-use aldis::core::oid::OidGenerator;
 use aldis::core::security::SecurityLayout;
 use aldis::core::{Error, ErrorDetail, ErrorKind, Result};
 use aldis::tm::{
     DataFieldContent, DataFieldStatus, FirstHeaderPointer, FshLen, NoSdls, PacketOffset,
-    PacketPointer, SegmentLengthId, TmFrame, TmFrameContent, TmFrameFields, TmFrameWriter,
-    TmMasterChannelConfig, TmPhysicalChannelConfig, TmPrimaryHeader, TmVirtualChannelConfig,
-    encode,
+    PacketPointer, SegmentLengthId, TmFrame, TmFrameContent, TmFrameFields, TmMasterChannelConfig,
+    TmPhysicalChannelConfig, TmPrimaryHeader, TmVirtualChannelConfig, encode, encode_oid,
+    encode_oid_galois,
 };
 
 use crate::abi::{self, Configs, invalid_argument};
@@ -481,14 +477,13 @@ fn fields(f: aldis_tm_fields_t) -> Result<Fields> {
     })
 }
 
-/// The fields of an Only Idle Data frame, as `TmFrameWriter::begin_oid` sets them (TM-010).
-fn oid_fields(vcid: u8, mc_frame_count: u8, vc_frame_count: u8) -> Result<TmFrameFields> {
-    Ok(TmFrameFields::new(
-        VcId::try_from(vcid)?,
-        mc_frame_count,
-        vc_frame_count,
-        DataFieldStatus::Packets(PacketPointer::OnlyIdleData),
-    ))
+/// `InvalidField` (no field) unless a buffer the call does not take is empty (CABI-022).
+const fn empty(len: usize) -> Result<()> {
+    if len == 0 {
+        Ok(())
+    } else {
+        Err(invalid_argument())
+    }
 }
 
 /// An optional OCF buffer: 0 octets for none, `ALDIS_OCF_LEN` for one (CABI-011, CABI-022).
@@ -967,136 +962,50 @@ pub unsafe extern "C" fn aldis_tm_encode(
     }
 }
 
-/// Starts a two-phase write of one frame of `fields->vcid` (132.0 §4.1; TM-009, API-023, M2
-/// plan D4).
+/// Encodes an Only Idle Data frame on `vcid` in one call (132.0 §4.1.4.6; TM-010, CMN-020…022,
+/// API-020).
 ///
-/// Checks the arguments, writes the Primary Header and the Secondary Header Identification
-/// Field in the first frame-length octets of `out`, zero-fills every other octet of the frame,
-/// and reports where each field lies.
+/// The frame goes into the start of `out`, its data field filled with the next octets of the OID
+/// generator `oid`, as `aldis_tm::encode_oid` does with the Fibonacci form, and
+/// `encode_oid_galois` with the Galois form, which gives the same octets.
 ///
-/// The caller fills the fields at the offsets of `layout`, the OCF included (check a report
-/// with `aldis_ocf_check`), and calls [`aldis_tm_writer_finish`] with the same arguments. No
-/// state is kept.
+/// The First Header Pointer is `0x7FE`. `content` gives the Secondary Header Data Field and the
+/// OCF (132.0 §4.1.4.6.3 note 1); its other buffers must be empty, since the library fills the
+/// data field and a VC that uses SDLS cannot carry an OID frame.
 ///
 /// # Errors
-/// On error `out` is unchanged (API-022). The errors of [`aldis_tm_mc_config_check`]; then
-/// `ALDIS_ERR_UNKNOWN_CHANNEL` (`vc_id`), `ALDIS_ERR_INVALID_FIELD` (`sync_flag`),
-/// `ALDIS_ERR_OUT_OF_RANGE` (`first_header_pointer`), and `ALDIS_ERR_BUFFER_TOO_SMALL` as for
-/// [`aldis_tm_encode`]; CABI-022 violations.
+/// On error neither `out` nor the generator is changed (GEN-042). The errors of
+/// [`aldis_tm_mc_config_check`]; then `ALDIS_ERR_UNKNOWN_CHANNEL` (`vc_id`);
+/// `ALDIS_ERR_INVALID_FIELD` (`sync_flag`) if the VC carries `VCA_SDUs` (132.0 §4.1.4.6.3),
+/// then (`vc_id`) if the VC uses SDLS (132.0 §6.4.6.2; TM-010); `ALDIS_ERR_LENGTH_MISMATCH`
+/// (`fsh_len`) for a Secondary Header Data Field of another length than the configured one;
+/// `ALDIS_ERR_INVALID_FIELD` (`ocf_flag`) for an OCF given where none is configured or missing
+/// where one is; `ALDIS_ERR_BUFFER_TOO_SMALL` (`needed` = frame length);
+/// `ALDIS_ERR_INVALID_HANDLE` for an invalid generator; CABI-022 violations, including a
+/// non-empty `content->data`, `content->security_header`, or `content->security_trailer`, an
+/// `ocf_len` other than 0 or `ALDIS_OCF_LEN`, and `out` overlapping a buffer of `content` or
+/// the generator's storage.
 ///
 /// # Safety
-/// `mc` and `vcs` as for [`aldis_tm_mc_config_check`]; `fields` is valid for a read; `out` is
-/// valid for `cap` octets; `layout` is valid for one write; `err` is `NULL` or valid for one
-/// write.
+/// As [`aldis_tm_encode`] without `fields`; `oid` is a handle from `aldis_oid_generator_init`
+/// whose storage is still valid, or detectably invalid storage.
 #[expect(
     unsafe_code,
     reason = "C ABI entry point: unmangled, takes raw pointers (GEN-071)"
 )]
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn aldis_tm_writer_begin(
-    mc: *const aldis_tm_mc_config_t,
-    vcs: *const aldis_tm_vc_config_t,
-    vc_count: usize,
-    fields: *const aldis_tm_fields_t,
-    out: *mut u8,
-    cap: usize,
-    layout: *mut aldis_tm_layout_t,
-    err: *mut crate::aldis_error_detail_t,
-) -> i32 {
-    // SAFETY: every pointer is valid as `# Safety` states; `abi` checks NULL and alignment.
-    unsafe {
-        abi::call(err, || {
-            let mc = master_channel_at(mc, vcs, vc_count)?;
-            let fields = self::fields(abi::read(fields)?)?;
-            let out = abi::bytes_mut(out, cap, &[])?;
-            let layout = abi::out(layout)?;
-            let writer = TmFrameWriter::begin(out, &mc, fields.checked(&mc)?)?;
-            layout.write(self::layout(writer.layout()));
-            Ok(())
-        })
-    }
-}
-
-/// Finishes a two-phase write begun with the same arguments (132.0 §4.1.6.2; TM-009, API-021,
-/// API-023).
-///
-/// First checks that `out` holds the Primary Header and the Secondary Header Identification
-/// Field that [`aldis_tm_writer_begin`] wrote for these arguments (`TmFrameWriter::resume`;
-/// OI-50); the other fields are not compared. Then leaves every field the caller filled,
-/// computes the FECF if configured, and returns the frame length.
-///
-/// # Errors
-/// As [`aldis_tm_writer_begin`]; `ALDIS_ERR_INVALID_STATE` if `out` does not hold the headers
-/// `aldis_tm_writer_begin` writes for these arguments (other arguments, or a buffer never
-/// begun); on error `out` is unchanged.
-///
-/// # Safety
-/// As [`aldis_tm_writer_begin`]; `out_len` is valid for one write.
-#[expect(
-    unsafe_code,
-    reason = "C ABI entry point: unmangled, takes raw pointers (GEN-071)"
-)]
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn aldis_tm_writer_finish(
-    mc: *const aldis_tm_mc_config_t,
-    vcs: *const aldis_tm_vc_config_t,
-    vc_count: usize,
-    fields: *const aldis_tm_fields_t,
-    out: *mut u8,
-    cap: usize,
-    out_len: *mut usize,
-    err: *mut crate::aldis_error_detail_t,
-) -> i32 {
-    // SAFETY: every pointer is valid as `# Safety` states; `abi` checks NULL and alignment.
-    unsafe {
-        abi::call(err, || {
-            let mc = master_channel_at(mc, vcs, vc_count)?;
-            let fields = self::fields(abi::read(fields)?)?;
-            let out = abi::bytes_mut(out, cap, &[])?;
-            let out_len = abi::out(out_len)?;
-            out_len.write(TmFrameWriter::resume(out, &mc, fields.checked(&mc)?)?.finish());
-            Ok(())
-        })
-    }
-}
-
-/// Starts an Only Idle Data frame on `vcid` (132.0 §4.1.4.6; TM-010, CMN-020, CMN-021).
-///
-/// The First Header Pointer is `0x7FE` and the data field holds the next octets of the OID
-/// generator `oid`, as `TmFrameWriter::begin_oid` writes them; the Galois form gives the same
-/// octets (CMN-022). Reports where each field lies, as [`aldis_tm_writer_begin`] does.
-///
-/// The caller may fill the Secondary Header and the OCF (132.0 §4.1.4.6.3 note 1) and calls
-/// [`aldis_tm_oid_writer_finish`] with the same arguments, without `oid`.
-///
-/// # Errors
-/// As [`aldis_tm_writer_begin`]; `ALDIS_ERR_INVALID_FIELD` (`sync_flag`) if the VC carries
-/// `VCA_SDUs` (132.0 §4.1.4.6.3), then (`vc_id`) if the VC uses SDLS (132.0 §6.4.6.2; TM-010);
-/// `ALDIS_ERR_INVALID_HANDLE` for an invalid generator; CABI-022
-/// violations, including `out` overlapping the generator's storage. On error neither `out` nor
-/// the generator is changed (GEN-042).
-///
-/// # Safety
-/// `mc` and `vcs` as for [`aldis_tm_mc_config_check`]; `oid` is a handle from
-/// `aldis_oid_generator_init` whose storage is still valid, or detectably invalid storage; `out`
-/// is valid for `cap` octets; `layout` is valid for one write; `err` is `NULL` or valid for one
-/// write.
-#[expect(
-    unsafe_code,
-    reason = "C ABI entry point: unmangled, takes raw pointers (GEN-071)"
-)]
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn aldis_tm_oid_writer_begin(
+pub unsafe extern "C" fn aldis_tm_encode_oid(
     mc: *const aldis_tm_mc_config_t,
     vcs: *const aldis_tm_vc_config_t,
     vc_count: usize,
     vcid: u8,
     mc_frame_count: u8,
     vc_frame_count: u8,
+    content: *const aldis_tm_content_t,
     oid: *mut aldis_oid_generator_t,
     out: *mut u8,
     cap: usize,
-    layout: *mut aldis_tm_layout_t,
+    out_len: *mut usize,
     err: *mut crate::aldis_error_detail_t,
 ) -> i32 {
     // SAFETY: every pointer is valid as `# Safety` states; `abi` and `handle` check them.
@@ -1104,77 +1013,41 @@ pub unsafe extern "C" fn aldis_tm_oid_writer_begin(
         abi::call(err, || {
             let mc = master_channel_at(mc, vcs, vc_count)?;
             let vcid = VcId::try_from(vcid)?;
+            let c = abi::read(content)?;
+            empty(c.data_len)?;
+            empty(c.security_header_len)?;
+            empty(c.security_trailer_len)?;
+            let fsh_data = abi::bytes(c.fsh_data, c.fsh_data_len)?;
+            let ocf = self::ocf(abi::bytes(c.ocf, c.ocf_len)?)?;
             let h = generator(oid)?;
-            let out = abi::bytes_mut(out, cap, &[h.range()])?;
-            let layout = abi::out(layout)?;
-            let mut state = h.load();
-            let writer = match &mut state {
-                GeneratorState::Fibonacci(g) => {
-                    TmFrameWriter::begin_oid(out, &mc, vcid, mc_frame_count, vc_frame_count, g)?
-                }
-                // `begin_oid` with a scratch Fibonacci generator, which makes the same checks,
-                // then the Galois form fills the data field with the same sequence (CMN-022).
-                GeneratorState::Galois(g) => {
-                    let mut scratch = OidGenerator::new();
-                    let mut writer = TmFrameWriter::begin_oid(
-                        out,
-                        &mc,
-                        vcid,
-                        mc_frame_count,
-                        vc_frame_count,
-                        &mut scratch,
-                    )?;
-                    g.fill(writer.data_field_mut());
-                    writer
-                }
-            };
-            layout.write(self::layout(writer.layout()));
-            h.store(state);
-            Ok(())
-        })
-    }
-}
-
-/// Finishes an Only Idle Data frame begun with [`aldis_tm_oid_writer_begin`] (132.0 §4.1.4.6,
-/// §4.1.6.2; TM-010, API-023).
-///
-/// Given the same arguments, it first checks the headers as [`aldis_tm_writer_finish`] does
-/// (OI-50), leaves the Idle Data and every field the caller filled, computes the FECF if
-/// configured, and returns the frame length.
-///
-/// # Errors
-/// As [`aldis_tm_writer_finish`] for the fields of an OID frame, including
-/// `ALDIS_ERR_INVALID_FIELD` (`vc_id`) for a VC that uses SDLS, as [`aldis_tm_oid_writer_begin`]
-/// (132.0 §6.4.6.2; TM-010); on error `out` is unchanged.
-///
-/// # Safety
-/// `mc` and `vcs` as for [`aldis_tm_mc_config_check`]; `out` is valid for `cap` octets;
-/// `out_len` is valid for one write; `err` is `NULL` or valid for one write.
-#[expect(
-    unsafe_code,
-    reason = "C ABI entry point: unmangled, takes raw pointers (GEN-071)"
-)]
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn aldis_tm_oid_writer_finish(
-    mc: *const aldis_tm_mc_config_t,
-    vcs: *const aldis_tm_vc_config_t,
-    vc_count: usize,
-    vcid: u8,
-    mc_frame_count: u8,
-    vc_frame_count: u8,
-    out: *mut u8,
-    cap: usize,
-    out_len: *mut usize,
-    err: *mut crate::aldis_error_detail_t,
-) -> i32 {
-    // SAFETY: every pointer is valid as `# Safety` states; `abi` checks NULL and alignment.
-    unsafe {
-        abi::call(err, || {
-            let mc = master_channel_at(mc, vcs, vc_count)?;
-            let fields = oid_fields(vcid, mc_frame_count, vc_frame_count)?;
-            let out = abi::bytes_mut(out, cap, &[])?;
+            let [fsh, _, _, _, oc] = c.buffers();
+            let out = abi::bytes_mut(out, cap, &[fsh, oc, h.range()])?;
             let out_len = abi::out(out_len)?;
-            out_len.write(TmFrameWriter::resume(out, &mc, &fields)?.finish());
+            let mut state = h.load();
+            let n = match &mut state {
+                GeneratorState::Fibonacci(g) => encode_oid(
+                    &mc,
+                    vcid,
+                    mc_frame_count,
+                    vc_frame_count,
+                    fsh_data,
+                    ocf,
+                    g,
+                    out,
+                )?,
+                GeneratorState::Galois(g) => encode_oid_galois(
+                    &mc,
+                    vcid,
+                    mc_frame_count,
+                    vc_frame_count,
+                    fsh_data,
+                    ocf,
+                    g,
+                    out,
+                )?,
+            };
+            h.store(state);
+            out_len.write(n);
             Ok(())
         })
     }

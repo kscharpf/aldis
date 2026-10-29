@@ -4,9 +4,8 @@
 //! Calls: [`aldis_uslp_config_check`] and [`aldis_uslp_vc_table_check`];
 //! [`aldis_uslp_peek_length`]; the decoder [`aldis_uslp_decode`]; the unified Frame Intake
 //! Stream [`aldis_uslp_stream_next`]; the one-shot [`aldis_uslp_encode`], which takes the frame's
-//! variable fields in an [`aldis_uslp_content_t`]; the two-phase writer as
-//! [`aldis_uslp_writer_begin`] and [`aldis_uslp_writer_finish`]; [`aldis_uslp_encode_truncated`];
-//! and the OID frame writer [`aldis_uslp_encode_oid`], which takes an `aldis_oid_generator_t`.
+//! variable fields in an [`aldis_uslp_content_t`]; [`aldis_uslp_encode_truncated`];
+//! and the OID frame encoder [`aldis_uslp_encode_oid`], which takes an `aldis_oid_generator_t`.
 //!
 //! **Channels.** A physical channel is an [`aldis_uslp_config_t`] (732.1 §5 Table 5-1). The
 //! virtual channels and MAPs it carries are passed beside it as two arrays, of
@@ -30,13 +29,10 @@
 //! `ALDIS_USLP_KIND_EXPEDITED` (USLP-002; OI-52). Every field lies at an offset and a length of
 //! its [`aldis_uslp_layout_t`] (CABI-012).
 //!
-//! **Writers.** No call keeps a pointer or state (API-023, API-060). `_writer_begin` writes the
-//! unfinished header, the Insert Zone, and the TFDF Header, zero-fills the Security Header and
-//! Trailer, and reports where each field lies; the caller fills the TFDZ and the security
-//! fields in place; `_writer_finish`, given the same arguments and the TFDZ length used,
-//! checks that the buffer holds the headers `_writer_begin` wrote, else
-//! `ALDIS_ERR_INVALID_STATE` (`UslpFrameWriter::resume`; OI-50), and finishes the frame:
-//! the Frame Length, the OCF, and the FECF.
+//! **Encoders.** A frame is built in one call, with no state between calls (API-023, API-060):
+//! [`aldis_uslp_encode`], [`aldis_uslp_encode_truncated`], and [`aldis_uslp_encode_oid`] write
+//! the headers, the Frame Length, the OCF, and the FECF. The C ABI has no two-phase writer
+//! (OI-57).
 
 use core::ops::Range;
 
@@ -48,9 +44,9 @@ use aldis::uslp::field;
 use aldis::uslp::{
     ChannelFields, ConstructionRule, FrameContent, FrameFields, FrameKind, FrameStream, IntakeItem,
     MapConfig, OcfUse, PhysicalChannelConfig, SecurityScope, SourceOrDestination, TfdfHeader,
-    TfdzRule, TransferFrameType, TruncatedFrameLen, Upid, UslpFrame, UslpFrameWriter, UslpMapId,
-    UslpSpacecraftId, UslpVcId, VcConfig, VcParams, VcTable, VcfCountLen, encode, encode_oid,
-    encode_oid_galois, encode_truncated,
+    TfdzRule, TransferFrameType, TruncatedFrameLen, Upid, UslpFrame, UslpMapId, UslpSpacecraftId,
+    UslpVcId, VcConfig, VcParams, VcTable, VcfCountLen, encode, encode_oid, encode_oid_galois,
+    encode_truncated,
 };
 
 use crate::abi::{self, Configs, invalid_argument};
@@ -1147,8 +1143,7 @@ pub unsafe extern "C" fn aldis_uslp_stream_next(
 ///
 /// `content` gives the TFDF Header, the Insert Zone, the TFDZ, and the OCF. The library writes
 /// the Frame Length, the OCF Flag, the VCF Count Length, and the FECF; with SDLS, the Security
-/// Header and Trailer are zeros, for which [`aldis_uslp_writer_begin`] gives the place to fill
-/// (API-072).
+/// Header and Trailer are zeros (API-072).
 ///
 /// # Errors
 /// On error `out` is unchanged (API-022). The errors of [`aldis_uslp_vc_table_check`]; then
@@ -1199,122 +1194,6 @@ pub unsafe extern "C" fn aldis_uslp_encode(
             let out = abi::bytes_mut(out, cap, &c.buffers())?;
             let out_len = abi::out(out_len)?;
             out_len.write(encode(&t, fields, content, tfdz, out)?);
-            Ok(())
-        })
-    }
-}
-
-/// Starts a two-phase write of one non-truncated frame with room for up to `max_tfdz_len` TFDZ
-/// octets (732.1 §4.1, §6.3; USLP-010, API-020, API-023, API-072; M2 plan D4).
-///
-/// Checks the arguments, writes the unfinished Primary Header (TFVN `1111`, which every decoder
-/// rejects), the Insert Zone, and the TFDF Header in the first octets of `out`, zero-fills the
-/// Security Header and Trailer, and reports where each field lies. On a fixed-length channel
-/// `max_tfdz_len` must fill the frame.
-///
-/// The caller fills the TFDZ and, with SDLS, the Security Header and Trailer at the offsets of
-/// `layout`, and calls [`aldis_uslp_writer_finish`] with the same arguments. `content->tfdz`
-/// must be empty: the TFDZ is filled in place. No state is kept.
-///
-/// # Errors
-/// On error `out` is unchanged (API-022). The errors of [`aldis_uslp_encode`] for a frame with
-/// `max_tfdz_len` TFDZ octets, except the pointer, which [`aldis_uslp_writer_finish`] checks;
-/// CABI-022 violations, including a non-empty `content->tfdz`.
-///
-/// # Safety
-/// As [`aldis_uslp_encode`], with `layout` valid for one write in place of `out_len`.
-#[expect(
-    unsafe_code,
-    reason = "C ABI entry point: unmangled, takes raw pointers (GEN-071)"
-)]
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn aldis_uslp_writer_begin(
-    pc: *const aldis_uslp_config_t,
-    vcs: *const aldis_uslp_vc_config_t,
-    vc_count: usize,
-    maps: *const aldis_uslp_map_config_t,
-    map_count: usize,
-    fields: *const aldis_uslp_fields_t,
-    content: *const aldis_uslp_content_t,
-    max_tfdz_len: usize,
-    out: *mut u8,
-    cap: usize,
-    layout: *mut aldis_uslp_layout_t,
-    err: *mut crate::aldis_error_detail_t,
-) -> i32 {
-    // SAFETY: every pointer is valid as `# Safety` states; `abi` checks NULL, alignment, and
-    // overlap.
-    unsafe {
-        abi::call(err, || {
-            let t = table_at(pc, vcs, vc_count, maps, map_count)?;
-            let fields = self::fields(abi::read(fields)?)?;
-            let c = abi::read(content)?;
-            empty(c.tfdz_len)?;
-            let content = frame_content(&c)?;
-            let out = abi::bytes_mut(out, cap, &c.buffers())?;
-            let layout = abi::out(layout)?;
-            let w = UslpFrameWriter::begin(out, &t, fields, content, max_tfdz_len)?;
-            layout.write(self::layout(w.layout(), content.tfdf.len())?);
-            Ok(())
-        })
-    }
-}
-
-/// Finishes a two-phase write begun with the same arguments, with `tfdz_len` TFDZ octets
-/// (732.1 §4.1.2.7, §4.1.5, §4.1.6; USLP-010, API-021, API-023).
-///
-/// First checks that `out` holds the unfinished Primary Header (with the reserved frame
-/// length), the Insert Zone, and the TFDF Header that [`aldis_uslp_writer_begin`] wrote for these
-/// arguments (`UslpFrameWriter::resume`; OI-50); the Security Header and Trailer and the TFDZ are
-/// not compared. Then keeps the TFDZ and the security fields the caller filled, moves the Security Trailer to follow a TFDZ
-/// shorter than the reservation, writes the Frame Length, the OCF, and the FECF if configured,
-/// and returns the frame length. The frame is the first `*out_len` octets of `out`; the octets
-/// after it keep unspecified values (`UslpFrameWriter::finish`).
-///
-/// # Errors
-/// As [`aldis_uslp_writer_begin`]; `ALDIS_ERR_INVALID_STATE` if `out` does not hold the unfinished
-/// headers `aldis_uslp_writer_begin` writes for these arguments (other arguments, or a buffer
-/// never begun); then `ALDIS_ERR_OUT_OF_RANGE` (`user_len`) above
-/// `max_tfdz_len`, `ALDIS_ERR_INVALID_FIELD` (`frame_data_field`) for 0,
-/// `ALDIS_ERR_LENGTH_MISMATCH` (`frame_data_field`) below it on a fixed-length channel, and
-/// `ALDIS_ERR_OUT_OF_RANGE` (`fhp_lvo_pointer`) for a pointer not below `tfdz_len`. On error
-/// `out` is unchanged, or, after the argument checks, holds the unfinished frame.
-///
-/// # Safety
-/// As [`aldis_uslp_encode`].
-#[expect(
-    unsafe_code,
-    reason = "C ABI entry point: unmangled, takes raw pointers (GEN-071)"
-)]
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn aldis_uslp_writer_finish(
-    pc: *const aldis_uslp_config_t,
-    vcs: *const aldis_uslp_vc_config_t,
-    vc_count: usize,
-    maps: *const aldis_uslp_map_config_t,
-    map_count: usize,
-    fields: *const aldis_uslp_fields_t,
-    content: *const aldis_uslp_content_t,
-    max_tfdz_len: usize,
-    tfdz_len: usize,
-    out: *mut u8,
-    cap: usize,
-    out_len: *mut usize,
-    err: *mut crate::aldis_error_detail_t,
-) -> i32 {
-    // SAFETY: every pointer is valid as `# Safety` states; `abi` checks NULL, alignment, and
-    // overlap.
-    unsafe {
-        abi::call(err, || {
-            let t = table_at(pc, vcs, vc_count, maps, map_count)?;
-            let fields = self::fields(abi::read(fields)?)?;
-            let c = abi::read(content)?;
-            empty(c.tfdz_len)?;
-            let content = frame_content(&c)?;
-            let out = abi::bytes_mut(out, cap, &c.buffers())?;
-            let out_len = abi::out(out_len)?;
-            let w = UslpFrameWriter::resume(out, &t, fields, content, max_tfdz_len)?;
-            out_len.write(w.finish(tfdz_len)?);
             Ok(())
         })
     }

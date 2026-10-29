@@ -12,18 +12,17 @@ use aldis_ffi::aos::{
     ALDIS_AOS_CONTENT_BPDU, ALDIS_AOS_CONTENT_MPDU, ALDIS_AOS_EDITION_ISSUE5, ALDIS_AOS_OID_VCID,
     ALDIS_AOS_POINTER_NONE, ALDIS_AOS_POINTER_STARTS_AT, ALDIS_AOS_POINTER_VALID_BITS,
     aldis_aos_bpdu_decode, aldis_aos_config_check, aldis_aos_config_t, aldis_aos_content_t,
-    aldis_aos_corrected_header_t, aldis_aos_decode, aldis_aos_encode, aldis_aos_fhec_decode,
-    aldis_aos_fhec_encode, aldis_aos_fields_t, aldis_aos_frame_t, aldis_aos_header_decode,
-    aldis_aos_header_t, aldis_aos_layout_t, aldis_aos_mc_config_check, aldis_aos_mc_config_t,
-    aldis_aos_mpdu_decode, aldis_aos_oid_writer_begin, aldis_aos_pdu_t, aldis_aos_peek_length,
-    aldis_aos_vc_config_t, aldis_aos_writer_begin, aldis_aos_writer_finish,
+    aldis_aos_corrected_header_t, aldis_aos_decode, aldis_aos_encode, aldis_aos_encode_oid,
+    aldis_aos_fhec_decode, aldis_aos_fhec_encode, aldis_aos_fields_t, aldis_aos_frame_t,
+    aldis_aos_header_decode, aldis_aos_header_t, aldis_aos_mc_config_check, aldis_aos_mc_config_t,
+    aldis_aos_mpdu_decode, aldis_aos_pdu_t, aldis_aos_peek_length, aldis_aos_vc_config_t,
 };
 use aldis_ffi::crc::aldis_crc16;
 use aldis_ffi::epp::{
     ALDIS_EPP_HEADER_AUTO, aldis_epp_check, aldis_epp_config_check, aldis_epp_config_t,
     aldis_epp_decode, aldis_epp_encode, aldis_epp_fields_t, aldis_epp_header_encode,
     aldis_epp_idle, aldis_epp_idle_header, aldis_epp_packet_t, aldis_epp_peek_length,
-    aldis_epp_validate, aldis_epp_writer_begin, aldis_epp_writer_finish, aldis_epp_writer_layout_t,
+    aldis_epp_validate,
 };
 use aldis_ffi::error::{
     ALDIS_ERR_INCOMPLETE, ALDIS_ERR_INVALID_FIELD, ALDIS_ERR_INVALID_HANDLE, ALDIS_OK,
@@ -41,7 +40,7 @@ use aldis_ffi::spp::{
     aldis_spp_decode, aldis_spp_encode, aldis_spp_fields_t, aldis_spp_idle,
     aldis_spp_octet_string_encode, aldis_spp_packet_t, aldis_spp_peek_length,
     aldis_spp_secondary_layout_t, aldis_spp_sequence_count_next, aldis_spp_split,
-    aldis_spp_split_t, aldis_spp_writer_begin, aldis_spp_writer_finish, aldis_spp_writer_layout_t,
+    aldis_spp_split_t,
 };
 use aldis_ffi::spp_state::{
     ALDIS_SPP_REASSEMBLER_STORAGE_SIZE, ALDIS_SPP_SEGMENTER_STORAGE_SIZE,
@@ -70,10 +69,9 @@ use aldis_ffi::tm::{
     ALDIS_TM_CONTENT_PACKETS, ALDIS_TM_CONTENT_VCA_SDU, ALDIS_TM_POINTER_STARTS_AT,
     aldis_tm_config_check, aldis_tm_config_t, aldis_tm_content_t, aldis_tm_decode,
     aldis_tm_decode_unchecked, aldis_tm_decode_unchecked_with, aldis_tm_decode_with,
-    aldis_tm_encode, aldis_tm_fields_t, aldis_tm_frame_t, aldis_tm_header_decode,
-    aldis_tm_header_t, aldis_tm_layout_t, aldis_tm_mc_config_check, aldis_tm_mc_config_t,
-    aldis_tm_oid_writer_begin, aldis_tm_oid_writer_finish, aldis_tm_peek_length, aldis_tm_validate,
-    aldis_tm_vc_config_t, aldis_tm_writer_begin, aldis_tm_writer_finish,
+    aldis_tm_encode, aldis_tm_encode_oid, aldis_tm_fields_t, aldis_tm_frame_t,
+    aldis_tm_header_decode, aldis_tm_header_t, aldis_tm_mc_config_check, aldis_tm_mc_config_t,
+    aldis_tm_peek_length, aldis_tm_validate, aldis_tm_vc_config_t,
 };
 // ---- USLP (M2 WP-5 module 9)
 use aldis_ffi::uslp::{
@@ -82,9 +80,8 @@ use aldis_ffi::uslp::{
     ALDIS_USLP_STREAM_ACCEPTED, ALDIS_USLP_UPID_OCTET_STREAM, aldis_uslp_channel_t,
     aldis_uslp_config_check, aldis_uslp_config_t, aldis_uslp_content_t, aldis_uslp_decode,
     aldis_uslp_encode, aldis_uslp_encode_oid, aldis_uslp_encode_truncated, aldis_uslp_fields_t,
-    aldis_uslp_frame_t, aldis_uslp_layout_t, aldis_uslp_map_config_t, aldis_uslp_peek_length,
-    aldis_uslp_stream_item_t, aldis_uslp_stream_next, aldis_uslp_tfdf_t, aldis_uslp_vc_config_t,
-    aldis_uslp_vc_table_check, aldis_uslp_writer_begin, aldis_uslp_writer_finish,
+    aldis_uslp_frame_t, aldis_uslp_map_config_t, aldis_uslp_peek_length, aldis_uslp_stream_item_t,
+    aldis_uslp_stream_next, aldis_uslp_tfdf_t, aldis_uslp_vc_config_t, aldis_uslp_vc_table_check,
 };
 // ---- end USLP
 use aldis_ffi::{ALDIS_MODE_LENIENT, ALDIS_MODE_STRICT};
@@ -143,7 +140,6 @@ fn absent_layout() -> aldis_spp_secondary_layout_t {
 }
 
 #[expect(unsafe_code, reason = "calls the C ABI with valid pointers")]
-#[expect(clippy::too_many_lines, reason = "one call per exported function")]
 fn spp(t: &mut Tally) {
     let (cfg, fields, mut det) = (spp_cfg(), spp_fields(), detail());
     let packet = bb(PACKET);
@@ -181,34 +177,6 @@ fn spp(t: &mut Tally) {
                 &raw mut det,
             ) == ALDIS_OK
                 && written == 10,
-        );
-        let mut layout = aldis_spp_writer_layout_t::default();
-        t.check(
-            aldis_spp_writer_begin(
-                &raw const cfg,
-                &raw const fields,
-                bb(0),
-                bb(4),
-                out.as_mut_ptr(),
-                out.len(),
-                &raw mut layout,
-                &raw mut det,
-            ) == ALDIS_OK
-                && layout.user_data_offset == 6,
-        );
-        t.check(
-            aldis_spp_writer_finish(
-                &raw const cfg,
-                &raw const fields,
-                bb(0),
-                bb(4),
-                bb(3),
-                out.as_mut_ptr(),
-                out.len(),
-                &raw mut written,
-                &raw mut det,
-            ) == ALDIS_OK
-                && written == 9,
         );
         t.check(
             aldis_spp_idle(
@@ -576,7 +544,6 @@ fn time(t: &mut Tally) {
 }
 
 #[expect(unsafe_code, reason = "calls the C ABI with valid pointers")]
-#[expect(clippy::too_many_lines, reason = "one call per exported function")]
 fn epp(t: &mut Tally) {
     let mut det = detail();
     let cfg = aldis_epp_config_t {
@@ -636,34 +603,6 @@ fn epp(t: &mut Tally) {
         );
         t.check(
             aldis_epp_check(&raw const cfg, bb(2), bb(false), 0, bb(3), &raw mut det) == ALDIS_OK,
-        );
-        let mut layout = aldis_epp_writer_layout_t::default();
-        t.check(
-            aldis_epp_writer_begin(
-                &raw const cfg,
-                &raw const fields,
-                bb(4),
-                bb(3),
-                out.as_mut_ptr(),
-                out.len(),
-                &raw mut layout,
-                &raw mut det,
-            ) == ALDIS_OK
-                && layout.data_offset == 4,
-        );
-        t.check(
-            aldis_epp_writer_finish(
-                &raw const cfg,
-                &raw const fields,
-                bb(4),
-                bb(3),
-                bb(2),
-                out.as_mut_ptr(),
-                out.len(),
-                &raw mut written,
-                &raw mut det,
-            ) == ALDIS_OK
-                && written == 6,
         );
         t.check(
             aldis_epp_header_encode(
@@ -838,8 +777,7 @@ fn aos(t: &mut Tally) {
         ocf_len: bb(4),
     };
     let mut frame = [0_u8; 40];
-    let mut two = [0_u8; 40];
-    let mut layout = aldis_aos_layout_t::default();
+    let mut two: [u8; 40];
     let mut view = aldis_aos_frame_t::default();
     let mut header = aldis_aos_header_t::default();
     let mut corrected = aldis_aos_corrected_header_t::default();
@@ -869,38 +807,7 @@ fn aos(t: &mut Tally) {
             ) == ALDIS_OK
                 && n == 40,
         );
-        t.check(
-            aldis_aos_writer_begin(
-                &raw const mc,
-                vcs.as_ptr(),
-                bb(2),
-                &raw const fields,
-                two.as_mut_ptr(),
-                two.len(),
-                &raw mut layout,
-                &raw mut det,
-            ) == ALDIS_OK
-                && layout.zone_offset == 16
-                && layout.zone_len == 17,
-        );
-        two[8..12].fill(0x11);
-        two[12..14].fill(0xA5);
-        two[16..33].fill(0xD0);
-        two[33] = 0x5A;
-        two[34] = 0x01;
-        t.check(
-            aldis_aos_writer_finish(
-                &raw const mc,
-                vcs.as_ptr(),
-                bb(2),
-                &raw const fields,
-                two.as_mut_ptr(),
-                two.len(),
-                &raw mut n,
-                &raw mut det,
-            ) == ALDIS_OK
-                && two == frame,
-        );
+        two = frame;
         t.check(
             aldis_aos_fhec_encode(frame.as_ptr(), bb(6), &raw mut fhec, &raw mut det) == ALDIS_OK
                 && fhec.to_be_bytes() == [frame[6], frame[7]],
@@ -992,32 +899,52 @@ fn aos(t: &mut Tally) {
             pointer: bb(ALDIS_AOS_POINTER_NONE),
             ..fields
         };
+        let idle_content = aldis_aos_content_t {
+            insert_zone: iz.as_ptr(),
+            insert_zone_len: bb(4),
+            ..aldis_aos_content_t::default()
+        };
         t.check(
-            aldis_aos_oid_writer_begin(
+            aldis_aos_encode_oid(
                 &raw const mc,
                 vcs.as_ptr(),
                 bb(2),
                 &raw const idle,
+                &raw const idle_content,
                 oid,
-                frame.as_mut_ptr(),
-                frame.len(),
-                &raw mut layout,
-                &raw mut det,
-            ) == ALDIS_OK
-                && frame.get(12..16) == Some(&[0xFF; 4][..]),
-        );
-        t.check(
-            aldis_aos_writer_finish(
-                &raw const mc,
-                vcs.as_ptr(),
-                bb(2),
-                &raw const idle,
                 frame.as_mut_ptr(),
                 frame.len(),
                 &raw mut n,
                 &raw mut det,
             ) == ALDIS_OK
-                && n == 40,
+                && n == 40
+                && frame.get(12..16) == Some(&[0xFF; 4][..]),
+        );
+        aldis_oid_generator_deinit(oid);
+        t.check(
+            aldis_oid_generator_init(
+                words.as_mut_ptr().cast(),
+                bb(ALDIS_OID_GENERATOR_STORAGE_SIZE),
+                bb(ALDIS_OID_FIBONACCI),
+                &raw mut oid,
+                &raw mut det,
+            ) == ALDIS_OK,
+        );
+        t.check(
+            aldis_aos_encode_oid(
+                &raw const mc,
+                vcs.as_ptr(),
+                bb(2),
+                &raw const idle,
+                &raw const idle_content,
+                oid,
+                two.as_mut_ptr(),
+                two.len(),
+                &raw mut n,
+                &raw mut det,
+            ) == ALDIS_OK
+                && n == 40
+                && two.get(12..16) == Some(&[0xFF; 4][..]),
         );
         aldis_oid_generator_deinit(oid);
     }
@@ -1080,7 +1007,6 @@ fn tm(t: &mut Tally) {
     };
     let mut frame = [0_u8; 32];
     let mut two = [0_u8; 32];
-    let mut layout = aldis_tm_layout_t::default();
     let mut view = aldis_tm_frame_t::default();
     let mut header = aldis_tm_header_t::default();
     let mut n = 0_usize;
@@ -1106,36 +1032,6 @@ fn tm(t: &mut Tally) {
                 &raw mut det,
             ) == ALDIS_OK
                 && n == 32,
-        );
-        t.check(
-            aldis_tm_writer_begin(
-                &raw const mc,
-                vcs.as_ptr(),
-                bb(2),
-                &raw const fields,
-                two.as_mut_ptr(),
-                two.len(),
-                &raw mut layout,
-                &raw mut det,
-            ) == ALDIS_OK
-                && layout.data_offset == 8
-                && layout.data_len == 21,
-        );
-        two[6..8].fill(0xA5);
-        two[8..29].fill(0xD0);
-        two[29] = 0x5A;
-        t.check(
-            aldis_tm_writer_finish(
-                &raw const mc,
-                vcs.as_ptr(),
-                bb(2),
-                &raw const fields,
-                two.as_mut_ptr(),
-                two.len(),
-                &raw mut n,
-                &raw mut det,
-            ) == ALDIS_OK
-                && two == frame,
         );
         t.check(
             aldis_tm_peek_length(
@@ -1238,36 +1134,52 @@ fn tm(t: &mut Tally) {
                 &raw mut det,
             ) == ALDIS_OK,
         );
+        let idle_content = aldis_tm_content_t::default();
         t.check(
-            aldis_tm_oid_writer_begin(
+            aldis_tm_encode_oid(
                 &raw const mc,
                 oid_vcs.as_ptr(),
                 bb(3),
                 bb(2),
                 bb(0),
                 bb(0),
+                &raw const idle_content,
                 oid,
-                frame.as_mut_ptr(),
-                frame.len(),
-                &raw mut layout,
-                &raw mut det,
-            ) == ALDIS_OK
-                && frame.get(6..10) == Some(&[0xFF; 4][..]),
-        );
-        t.check(
-            aldis_tm_oid_writer_finish(
-                &raw const mc,
-                oid_vcs.as_ptr(),
-                bb(3),
-                bb(2),
-                bb(0),
-                bb(0),
                 frame.as_mut_ptr(),
                 frame.len(),
                 &raw mut n,
                 &raw mut det,
             ) == ALDIS_OK
-                && n == 32,
+                && n == 32
+                && frame.get(6..10) == Some(&[0xFF; 4][..]),
+        );
+        aldis_oid_generator_deinit(oid);
+        t.check(
+            aldis_oid_generator_init(
+                words.as_mut_ptr().cast(),
+                bb(ALDIS_OID_GENERATOR_STORAGE_SIZE),
+                bb(ALDIS_OID_GALOIS),
+                &raw mut oid,
+                &raw mut det,
+            ) == ALDIS_OK,
+        );
+        t.check(
+            aldis_tm_encode_oid(
+                &raw const mc,
+                oid_vcs.as_ptr(),
+                bb(3),
+                bb(2),
+                bb(0),
+                bb(0),
+                &raw const idle_content,
+                oid,
+                two.as_mut_ptr(),
+                two.len(),
+                &raw mut n,
+                &raw mut det,
+            ) == ALDIS_OK
+                && n == 32
+                && two.get(6..10) == Some(&[0xFF; 4][..]),
         );
         aldis_oid_generator_deinit(oid);
     }
@@ -1329,8 +1241,8 @@ fn tc(t: &mut Tally) {
         aldis_tc_config_check, aldis_tc_content_t, aldis_tc_control_decode,
         aldis_tc_control_encode, aldis_tc_control_t, aldis_tc_decode, aldis_tc_encode,
         aldis_tc_fields_t, aldis_tc_frame_t, aldis_tc_header_decode, aldis_tc_header_t,
-        aldis_tc_layout_t, aldis_tc_mc_config_check, aldis_tc_peek_length, aldis_tc_stream_item_t,
-        aldis_tc_stream_next, aldis_tc_writer_begin, aldis_tc_writer_finish,
+        aldis_tc_mc_config_check, aldis_tc_peek_length, aldis_tc_stream_item_t,
+        aldis_tc_stream_next,
     };
     let (mc, vcs, maps) = tc_channels();
     let mut det = detail();
@@ -1362,6 +1274,11 @@ fn tc(t: &mut Tally) {
         user_data_len: bb(3),
         ..aldis_tc_content_t::default()
     };
+    let one = aldis_tc_content_t {
+        user_data: user.as_ptr(),
+        user_data_len: bb(1),
+        ..aldis_tc_content_t::default()
+    };
     let command = aldis_tc_content_t {
         control: set_vr,
         ..aldis_tc_content_t::default()
@@ -1369,7 +1286,6 @@ fn tc(t: &mut Tally) {
     // The AD frame of `tc/ad.json` followed by two octets of fill, in one data unit.
     let mut unit = [0x55_u8; 12];
     let mut two = [0_u8; 16];
-    let mut layout = aldis_tc_layout_t::default();
     let mut view = aldis_tc_frame_t::default();
     let mut header = aldis_tc_header_t::default();
     let mut control = aldis_tc_control_t::default();
@@ -1423,33 +1339,14 @@ fn tc(t: &mut Tally) {
                 && n == 10,
         );
         t.check(
-            aldis_tc_writer_begin(
+            aldis_tc_encode(
                 &raw const mc,
                 vcs.as_ptr(),
                 bb(2),
                 maps.as_ptr(),
                 bb(1),
                 &raw const seg,
-                bb(4),
-                two.as_mut_ptr(),
-                two.len(),
-                &raw mut layout,
-                &raw mut det,
-            ) == ALDIS_OK
-                && layout.security_header_offset == 6
-                && layout.data_offset == 9,
-        );
-        two[9] = bb(0x11);
-        t.check(
-            aldis_tc_writer_finish(
-                &raw const mc,
-                vcs.as_ptr(),
-                bb(2),
-                maps.as_ptr(),
-                bb(1),
-                &raw const seg,
-                bb(4),
-                bb(1),
+                &raw const one,
                 two.as_mut_ptr(),
                 two.len(),
                 &raw mut n,
@@ -1663,11 +1560,6 @@ fn uslp(t: &mut Tally) {
         tfdz_len: bb(3),
         ..aldis_uslp_content_t::default()
     };
-    let in_place = aldis_uslp_content_t {
-        tfdz: null(),
-        tfdz_len: 0,
-        ..content
-    };
     let seven = [0x31_u8; 7];
     let truncated = aldis_uslp_content_t {
         tfdf: aldis_uslp_tfdf_t {
@@ -1688,7 +1580,6 @@ fn uslp(t: &mut Tally) {
     let idle = aldis_uslp_content_t::default();
     let mut frame = [0_u8; 64];
     let mut two = [0_u8; 64];
-    let mut layout = aldis_uslp_layout_t::default();
     let mut view = aldis_uslp_frame_t::default();
     let mut n = 0_usize;
     let mut words = [0_u64; ALDIS_OID_GENERATOR_STORAGE_SIZE / 8];
@@ -1724,34 +1615,14 @@ fn uslp(t: &mut Tally) {
                 && n == 13,
         );
         t.check(
-            aldis_uslp_writer_begin(
+            aldis_uslp_encode(
                 &raw const pc,
                 &raw const vc3,
                 bb(1),
                 &raw const map3,
                 bb(1),
                 &raw const fields,
-                &raw const in_place,
-                bb(3),
-                two.as_mut_ptr(),
-                two.len(),
-                &raw mut layout,
-                &raw mut det,
-            ) == ALDIS_OK
-                && layout.tfdz_offset == 8,
-        );
-        two[8..11].fill(0xD0);
-        t.check(
-            aldis_uslp_writer_finish(
-                &raw const pc,
-                &raw const vc3,
-                bb(1),
-                &raw const map3,
-                bb(1),
-                &raw const fields,
-                &raw const in_place,
-                bb(3),
-                bb(3),
+                &raw const content,
                 two.as_mut_ptr(),
                 two.len(),
                 &raw mut n,
