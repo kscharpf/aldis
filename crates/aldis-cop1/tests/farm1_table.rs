@@ -3,8 +3,6 @@
 //! Verifies all 33 cells (S1–S3 × E1–E11) of Table 6-1 against CCSDS 232.1-B-2
 //! and `docs/verification/reviews/cop1-tables.md` (COP-002, COP-003, COP-004, RS-021).
 
-#![cfg_attr(coverage_nightly, coverage(off))]
-
 use core::time::Duration;
 
 use aldis_cop1::{

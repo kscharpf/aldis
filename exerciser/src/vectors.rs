@@ -41,6 +41,11 @@ pub enum Group {
     Tm,
     Tc,
     Uslp,
+    #[expect(
+        dead_code,
+        reason = "test-vectors/cop1/ holds no scenario yet, so no generated case builds it (M3 WP-2)"
+    )]
+    Cop1,
 }
 
 /// The expected outcome of a case.
@@ -451,6 +456,7 @@ pub fn run(t: &mut Tally) {
             Group::Tm => crate::tm::vector(case, &mut out, &mut scratch),
             Group::Tc => crate::tc::vector(case, &mut out, &mut scratch),
             Group::Uslp => crate::uslp::vector(case, &mut out, &mut scratch),
+            Group::Cop1 => crate::farm1::vector(case),
         };
         let passed = match (result, &case.expect) {
             (Err(Fail::NotRepresentable), _) => {
