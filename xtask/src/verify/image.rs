@@ -438,11 +438,15 @@ mod tests {
         assert_eq!(revision_hash(&head), Ok(hash.clone()));
         assert!(revision_hash("HEAD").is_err());
         assert!(revision_hash(&"0".repeat(40)).is_err());
-        // The reference is that tag in the repository, for this host's architecture.
-        let reference = reference(&head, "ghcr.io/o/aldis-verify").unwrap();
-        assert_eq!(
-            reference,
-            remote_tag("ghcr.io/o/aldis-verify", &hash, arch().unwrap())
-        );
+        // The reference is that tag in the repository, for this host's architecture; a host of
+        // another architecture (the big-endian run is on s390x) has none.
+        let reference = reference(&head, "ghcr.io/o/aldis-verify");
+        match arch() {
+            Ok(arch) => assert_eq!(
+                reference,
+                Ok(remote_tag("ghcr.io/o/aldis-verify", &hash, arch))
+            ),
+            Err(why) => assert_eq!(reference, Err(why)),
+        }
     }
 }
