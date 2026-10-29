@@ -178,3 +178,5 @@ One line for each decision the maintainer takes, under the [decision rights](dec
 - 2026-10-29 · api · chat · Config and detail structs lose `struct_size` and `aldis_limits` goes; the ABI major version is the only compatibility mechanism (OI-57)
 - 2026-10-29 · api · chat · An engine call accesses its state in the caller storage in place (`&mut`, `decide`/`commit`), not by value, because FOP-1 state is at least 16 KiB against the 10 240-byte C ABI stack budget (OI-57, OI-45)
 - 2026-10-29 · api · chat · Engine inputs are flat structs with a `kind` field; actions are a fixed-capacity array of flat output structs (a `kind` field, unused fields zero, no union) carrying `aldis_range_t` ranges, also used in views; a failed call writes no actions; the header stays C99 (OI-57)
+- 2026-10-29 · spec · chat · FARM-1 start-up values: S1, Lockout, Wait and Retransmit Flags and FARM-B_Counter 0, V(R) a parameter of `Farm1::new` (OI-58)
+- 2026-10-29 · api · chat · FARM-1 in S2 given a Type-AD frame with N(S) = V(R) and a buffer available (Table 6-1 "Not applicable") returns `InvalidState` without a state change (COP-005); the C ABI mapping states it (CABI-040)
