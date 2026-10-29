@@ -853,7 +853,7 @@ fn encode_arguments_are_checked() {
 #[test]
 #[expect(clippy::too_many_lines, reason = "one check per argument rule")]
 fn encode_oid_takes_a_generator_handle() {
-    // req: AOS-016, CMN-021, CMN-022, CABI-022, CABI-032, GEN-042, API-020
+    // req: AOS-021, AOS-016, CMN-021, CMN-022, CABI-022, CABI-032, GEN-042, API-020
     let (mc, vcs) = (mc(), vcs());
     let f = fields(ALDIS_AOS_OID_VCID, ALDIS_AOS_POINTER_NONE, 0);
     let mut words = vec![0_u64; 64];
@@ -981,7 +981,7 @@ fn encode_oid_takes_a_generator_handle() {
 
 #[test]
 fn encode_oid_forms_give_the_same_frame() {
-    // req: AOS-016, CMN-020, CMN-022, API-020
+    // req: AOS-021, AOS-016, CMN-020, CMN-022, API-020
     let (mc, vcs) = (mc(), vcs());
     let f = fields(ALDIS_AOS_OID_VCID, ALDIS_AOS_POINTER_NONE, 0);
     let iz = [0x11_u8; 4];

@@ -538,7 +538,7 @@ fn oid_setup() -> (aldis_tm_mc_config_t, [aldis_tm_vc_config_t; 3]) {
 
 #[test]
 fn encode_oid_takes_a_generator_handle() {
-    // req: TM-010, CMN-021, CMN-022, CABI-022, CABI-032, GEN-042, API-020
+    // req: TM-012, TM-010, CMN-021, CMN-022, CABI-022, CABI-032, GEN-042, API-020
     let (mc, vcs) = oid_setup();
     let mut words = vec![0_u64; 64];
     let storage = words.as_mut_ptr();
@@ -631,7 +631,7 @@ fn encode_oid_takes_a_generator_handle() {
 #[test]
 #[expect(clippy::too_many_lines, reason = "one check per argument rule")]
 fn encode_oid_forms_agree_and_check_the_content() {
-    // req: TM-010, CMN-020, CMN-022, CABI-022, GEN-042, API-020
+    // req: TM-012, TM-010, CMN-020, CMN-022, CABI-022, GEN-042, API-020
     let (mut mc, mut vcs) = oid_setup();
     mc.ocf = 1;
     vcs[2].fsh_len = 4;

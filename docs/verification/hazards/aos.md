@@ -233,7 +233,7 @@ Failure modes of `aldis-aos` and its C ABI (`aldis_aos_*`), in the format of [ha
 | Status | `residual` |
 | Severity | S1 |
 | Failure mode | The data fields of successive OID frames of a physical channel restart or repeat the pseudo-noise sequence instead of continuing it |
-| Cause | A caller that gives `begin_oid` (or `aldis_aos_oid_writer_begin`) a new `OidGenerator` per frame, or one generator per VC or per master channel, where 732.0 §4.1.4.1.5.2.1–2 has the register initialised at device start-up and never restarted |
+| Cause | A caller that gives `begin_oid` (or `aldis_aos_encode_oid`) a new `OidGenerator` per frame, or one generator per VC or per master channel, where 732.0 §4.1.4.1.5.2.1–2 has the register initialised at device start-up and never restarted |
 | Mission effect | OID frames with the same data field, and so insufficient randomization for the receiver's frame synchronization, which the sequence exists to avoid (§4.1.4.1.5 note 3) |
 | Requirements | AOS-016, CMN-020, CMN-021, GEN-042 |
 | Evidence | `vector:aos-oid-enc-001`; `vector:aos-oid-enc-002`; `vector:aos-oid-dec-001`; `test:crates/aldis-aos/src/writer.rs::oid_frames_continue_the_sequence`; `test:crates/aldis-aos/tests/properties.rs::oid_frames_decode_as_idle_data`; `test:crates/aldis-aos/tests/vectors.rs::oid`; `test:crates/aldis-ffi/tests/aos.rs::encode_oid_takes_a_generator_handle`; `test:crates/aldis-ffi/tests/vectors.rs::aos_oid`; `record:CABI-030` |

@@ -1730,7 +1730,7 @@ fn aos_encode(case: &CodecCase, ch: &AosChannels) -> R<Value> {
     Ok(json!({ "output_hex": hex::encode(&out[..written]) }))
 }
 
-/// Consecutive OID frames of one SCID from one generator of `form` (AOS-016, CMN-021).
+/// Consecutive OID frames of one SCID from one generator of `form` (AOS-021, AOS-016, CMN-021).
 fn aos_oid_frames(case: &CodecCase, ch: &AosChannels, form: u32) -> R<Vec<String>> {
     let p = params(case);
     let (mc, vcs) = ch.mc_for_frame(u16_of(&p, "scid"))?;
@@ -2111,7 +2111,7 @@ fn tm_encode(case: &CodecCase, ch: &TmChannels) -> R<Value> {
     Ok(json!({ "output_hex": hex::encode(&out[..written]) }))
 }
 
-/// Consecutive OID frames from one generator of `form` (TM-010, CMN-021).
+/// Consecutive OID frames from one generator of `form` (TM-012, TM-010, CMN-021).
 fn tm_oid_frames(case: &CodecCase, ch: &TmChannels, form: u32) -> R<Vec<String>> {
     let (mc, vcs) = ch.mc(case);
     let p = params(case);
