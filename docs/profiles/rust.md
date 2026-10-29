@@ -51,17 +51,24 @@ impl<'a> TmFrame<'a> {
     pub fn decode(bytes: &'a [u8], pc: &TmPhysicalChannelConfig, mode: DecodeMode) -> Result<Self, Error>;
 }
 
-// Engines: capacities are const generics (GEN-011).
-pub struct Fop1<const SENT: usize, const MAX_FRAME: usize> { /* … */ }
-impl<const SENT: usize, const MAX_FRAME: usize> Fop1<SENT, MAX_FRAME> {
+// Engines: capacities are const generics (GEN-011). State is plain data; behaviour is a pure
+// function of (state, input, now), API-057. No output queue, no security hook parameter.
+#[derive(Clone)]
+pub struct Fop1State<const SENT: usize, const MAX_FRAME: usize> { /* … */ }
+pub enum Fop1Input<'a> { RequestAd(&'a [u8]), Clcw(Clcw), Timeout, TransmitDone(TransmitHandle, LowerResponse) /* … */ }
+pub enum Fop1Action { Transmit { range: Range<usize>, meta: TransmitMeta }, Notify(Event) /* … */ }
+pub struct Actions<A, const N: usize> { /* fixed capacity, #[must_use], no heap */ }
+
+impl<const SENT: usize, const MAX_FRAME: usize> Fop1State<SENT, MAX_FRAME> {
     pub fn new(cfg: Fop1Config) -> Result<Self, Error>;
-    pub fn request_ad(&mut self, now: Instant, fdu: &[u8]) -> Result<RequestHandle, Error>;
-    pub fn handle_clcw(&mut self, now: Instant, clcw: Clcw) -> Result<(), Error>;
-    pub fn handle_timeout(&mut self, now: Instant);
-    pub fn poll_transmit(&mut self, out: &mut [u8]) -> Result<Option<Transmit>, Error>;
-    pub fn poll_event(&mut self) -> Option<Event>;
-    pub fn poll_timeout(&self) -> Option<Instant>;
-    pub fn transmit_done(&mut self, h: TransmitHandle, r: LowerResponse) -> Result<(), Error>;
+    /// Form 1: returns the next state. An error leaves `self` untouched (API-058).
+    pub fn step(&self, input: Fop1Input<'_>, now: Instant, out: &mut [u8])
+        -> Result<(Self, Actions<Fop1Action, { Self::MAX_ACTIONS }>), Error>;
+    /// Form 2, where copying the state costs too much (the Sent_Queue): a pure plan, then an
+    /// infallible commit. `step` and `decide` + `commit` are observably identical.
+    pub fn decide(&self, input: Fop1Input<'_>, now: Instant, out: &mut [u8]) -> Result<Fop1Plan, Error>;
+    pub fn commit(&mut self, plan: Fop1Plan) -> Actions<Fop1Action, { Self::MAX_ACTIONS }>;
+    pub fn next_deadline(&self) -> Option<Instant>;
     pub fn status(&self) -> Fop1Status;
 }
 ```
@@ -72,10 +79,12 @@ impl<const SENT: usize, const MAX_FRAME: usize> Fop1<SENT, MAX_FRAME> {
 | RS-011 | `Error` SHALL be a small `Copy` struct `{ kind: ErrorKind, field: Option<FieldId>, detail: ErrorDetail }` with `#[non_exhaustive]` enums (GEN-041, GEN-081). With `std`, it SHALL implement `std::error::Error`. With `core`, it SHALL implement `core::error::Error` (Rust ≥ 1.81). | GEN-040 | T |
 | RS-012 | Configuration types SHALL have private fields, validated constructors or builders, and `Clone + PartialEq + Debug`. They SHALL be constructible in `const` context where the validation is `const`-evaluable. | GEN-060, API-041 | T |
 | RS-013 | Engines SHALL implement `Send` when their contents do. They SHALL NOT implement `Sync`-dependent interior mutability (GEN-033). | GEN-033 | A |
-| RS-014 | Security hooks SHALL be generic type parameters (`Fop1<…, H: SecurityHook = NoSecurity>`) so that the no-security path compiles to zero overhead. | API-073 | A |
+| RS-014 | Withdrawn: engines take no security hook type parameter (API-050, API-074; OI-56). SDLS is applied by the caller, and RS-023 gives its order a typestate. | — | — |
 | RS-015 | Public items SHALL be documented. Each item's documentation SHALL cite the CCSDS clause(s) and requirement IDs it implements. `#![deny(missing_docs)]` SHALL be set. | VER-020 | A |
 | RS-020 | **Parse, don't validate.** A public type SHALL be able to hold only values valid for it. A field with a restricted range or set of values SHALL be a type that enforces it (RS-010 newtypes, enums). A constraint between fields SHALL be enforced by the constructor of the type that holds them, and such a type SHALL keep its fields private unless every field type is valid by construction and no constraint spans fields. Untrusted input (wire octets, caller integers, configuration values) SHALL be checked once, where it is turned into the type, by a constructor, `TryFrom`, or decoder that returns the type or an error; code that receives the type SHALL rely on it rather than re-check. A constructor that combines independently valid values MAY check only the relation between them (for example, that a value fits a format, or a packet against managed parameters, EPP-010). A function that takes an already-built value of the crate's own type and returns `Result<()>` SHALL NOT exist for a constraint the type could enforce. Verified by review, and for one pattern also mechanically: `cargo xtask rs020` flags every bare integer in a public field or enum payload of a codec crate that `xtask/rs020-exemptions.toml` does not exempt with a reason. | GEN-020, API-001, GEN-060 | I/A |
 | RS-021 | **Invalid states are unrepresentable.** A state machine SHALL make every state and every transition the specification does not allow impossible to represent. Where the caller's sequence of calls determines the next state (a lifecycle such as unconfigured, configured, and active; a two-phase writer; a builder; a segmentation or reassembly session), it SHALL use the **typestate** pattern: each state is a distinct type, and an operation is available only on the states that allow it and consumes the value, returning the next state's type. Where an external event determines the next state (the protocol states of FOP-1 and FARM-1, driven by received frames, CLCWs, and timers), the state SHALL be a closed `enum`, and the transition function SHALL be generated from the state table or checked against it cell by cell, with an exhaustive `match` and no wildcard arm. A C ABI handle (CABI-030) MAY hold either form behind its opaque storage. | GEN-020, API-001 | I |
+| RS-022 | **Engine step.** An engine SHALL be a plain-data state type with a `step` (or `decide` and `commit`) of API-057 and API-058: `&self` for the pure part, the state returned or committed only on success, `Actions<A, N>` a fixed-capacity `#[must_use]` list with `N` a `const`, and the input an enum with one variant per event. Where an engine's protocol state is event-driven (COP-1), RS-021 applies to its state enum, and the table-driven transition is the pure function that is verified (a Kani target and the cell-by-cell check, COP-003). `decide` SHALL be used only where copying the state is too costly, and then SHALL be tested for equivalence with the one-function form on the same vectors (API-058). | API-057, API-058, RS-021 | I/T |
+| RS-023 | **Frame finishing typestate.** The codec writers' frame SHALL be a typestate `Frame<Unprotected>` (the engine's action: every field final except the Security Header and Trailer contents, the FHEC, and the FECF; with the ranges of API-074) → `Frame<Protected>` (after `SecurityHook::protect`, or `NoSecurity`, consuming the unprotected frame) → `Frame<Finalized>` (FHEC and FECF computed last, consuming the protected frame), and only a `Finalized` frame SHALL expose its octets for transmission. On reception, `Received` → `Checked` (FECF checked, AOS FHEC corrected) → `Plain` (SDLS verified, or no SDLS), and an engine's frame input SHALL take only `Plain`. An operation out of order SHALL not compile (RS-021). | API-074; 355.0 §2.3; 232.0 Cor. 1 §6.5.2 | I |
 
 ## 4. Module layout convention
 

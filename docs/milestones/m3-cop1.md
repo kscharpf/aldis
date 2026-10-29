@@ -46,11 +46,12 @@ History:
 | D3 | Typestates vs. closed enums (RS-021) | Protocol states (`Fop1State` S1–S6, `Farm1State` S1–S3) are closed enums checked against the state tables. High-level engine lifecycle (Uninitialized vs Initialized/Active) uses typestate pattern where call sequence enforces valid order | Proposed |
 | D4 | Field codes for `aldis-cop1` (API-082) | Block 150–199 reserved in `docs/03-api-model.md` §9.1 (M2 plan D2 amendment); initial codes allocated for COP-1 fields (`v_s`, `v_r`, `nn_r`, `sliding_window_k`, `window_w`, etc.) and generated via `cargo xtask fields --write` | Proposed |
 | D5 | Blind conformance vectors (COP-005, TV-011, TV-023) | Conformance vectors in `test-vectors/cop1/` generated from an independent model written blind from CCSDS 232.1-B-2 (+ Cor. 1) without reading implementation code. At least one vector per non-"Not applicable" cell, and one per "Not applicable" cell asserting `InvalidState` | Proposed |
-| D6 | FARM-1 buffer models (COP-032, COP-033) | Both models implemented: `Internal{depth}` uses fixed-capacity const generic delivery queue and automatically signals E10 when drained below full; `External` requires caller to declare buffer availability and explicitly signal `buffer_released()` | Proposed |
+| D6 | FARM-1 buffer availability (COP-033; COP-032 withdrawn) | One model: the delivery buffer is the caller's. The `Frame` input carries `buffer_available` (E1 or E2) and the caller feeds `BufferReleased` (E10) when space for one more maximum-size frame is available (232.1 §3.3.2, §6.3.2.3). The engine holds no delivery queue | Accepted (maintainer, 2026-10-29, OI-56) |
 | D7 | Closed-loop link simulation (COP-040) | Test harness in `tests/closed_loop.rs` connects FOP-1 and FARM-1 across a simulated bidirectional channel with configurable loss, duplication, reordering, delay, and CLCW sampling rate, asserting reliable duplicate-free delivery for Sequence-Controlled (AD) service | Proposed |
 | D8 | SEU hardening of long-lived state (GEN-015, hardware assumptions §4) | Confirm Option (a): rely on platform memory protection (EDAC with scrubbing, GEN-015) and mission reset trap. State corruption is an application reset condition; engines are restartable via Initiate AD directives. No runtime checksum overhead | Proposed |
 | D9 | Formal proofs & Kani harnesses (OI-42) | Bounded Kani proof harnesses in `crates/aldis-cop1/tests/proofs.rs` verify state transition table exhaustiveness and modulo-256 window arithmetic invariants; runs in nightly non-gating suite (`verify --all`, VER-059). Deductive proof tools deferred | Proposed |
-| D10 | C ABI handles and capacities (CABI-030…033, CABI-040) | Caller-owned opaque storage with magic/generation tags for `aldis_fop1_t` and `aldis_farm1_t`. Capacities fixed from `capacities.toml` (`[fop1]`, `[farm1]`). Engine outputs follow pull model (`aldis_fop1_poll_transmit`, `aldis_fop1_poll_event`, etc.) | Proposed |
+| D10 | C ABI handles and capacities (CABI-030…033, CABI-040) | Caller-owned opaque storage with magic/generation tags for `aldis_fop1_t` and `aldis_farm1_t`. Capacities fixed from `capacities.toml` (`[fop1]`, `[farm1]`). Each engine input is one step call that returns a fixed-capacity actions struct (`aldis_fop1_step`, `aldis_farm1_step`; no `poll_*` calls), `next_deadline` and status are read-only calls (CABI-040) | Accepted (maintainer, 2026-10-29, OI-56) |
+| D11 | Engine step contract (API-057…API-059, API-061, RS-022; OI-56) | FOP-1 and FARM-1 are pure step functions over plain state: `step(&self, input, now, out) -> Result<(State, Actions<N>)>`, or `decide` plus an infallible `commit` for FOP-1 where copying the Sent_Queue is too costly. `N` is derived from the cells of Tables 5-1 and 6-1 (COP-006). No output queue, no `poll_*`; timer expiry is the `Timeout` input and `next_deadline` a pure query. Frame and SDU octets go to a caller-supplied output area, and the actions hold ranges of it | Accepted (maintainer, 2026-10-29, OI-56) |
 | D11 | TC & USLP Delimiter fill bound (OI-47 carry-over) | `next_frame` in `aldis-tc` and `aldis-uslp` takes caller-specified maximum fill length (e.g. 6 for TC BCH) and reports excess leftover fill as `LeftoverFill` item (with C ABI code), closing hazard controls P-TC-01 and P-USLP-01 | Proposed |
 | D12 | USLP truncated frame check with SDLS (carry-over #122) | `aldis_uslp::VcConfig::new` rejects a virtual channel configuration with truncated frame length < 28 when SDLS is configured (`SecurityScope::Vc`, RS-020) | Proposed |
 
@@ -85,7 +86,7 @@ WP-0 Infra, setup ───▶ WP-1a Spec readings ─┬─▶ WP-1b FARM-1 tab
 - Protocol states S1 (Open), S2 (Wait), S3 (Lockout); events E1–E11.
 - Modulo-256 window classification: V(R), positive window PW, negative window NW (COP-030).
 - Command frame validation: Unlock and Set V(R) (COP-031, COP-036).
-- Buffer models: `Internal{depth}` with auto E10 on queue drain vs. `External` (COP-032, COP-033).
+- Buffer availability as an input: `buffer_available` on the `Frame` input and the `BufferReleased` input (COP-033).
 - FARM-B counter modulo 4 increment on Type-B frames (COP-034).
 - CLCW generation matching current state, flags, and physical RF/bit-lock inputs (COP-035).
 
@@ -94,7 +95,7 @@ WP-0 Infra, setup ───▶ WP-1a Spec readings ─┬─▶ WP-1b FARM-1 tab
 - Frame building: Type-AD with N(S) = V(S), Type-BD with N(S) = 0, Type-BC carrying Unlock / Set V(R), for TC and USLP targets (COP-010).
 - Sent_Queue master copy and ordered retransmission (COP-011).
 - Modulo-256 N(R) validity check against NN(R) and V(S) (COP-012).
-- T1 timer management and timeout polling (COP-013).
+- T1 timer state, `next_deadline`, and the `Timeout` input (COP-013, API-053).
 - Suspend/Resume handling with Suspend_State SS = 0..4 (COP-014).
 - Directives (Initiate AD, Terminate, Resume, Set V(S), Set K, etc.) and Set K bound check (COP-015).
 - Repetition metadata annotation (COP-016) and Alert suppression (COP-017).
@@ -105,11 +106,11 @@ WP-0 Infra, setup ───▶ WP-1a Spec readings ─┬─▶ WP-1b FARM-1 tab
 - Implement OI-47: TC and USLP delimiter fill bound in `aldis-tc` and `aldis-uslp`.
 - Implement USLP `VcConfig::new` truncated frame length check with SDLS.
 
-### WP-6 C ABI handles & capacities (M) — CABI-030…033, CABI-040, CABI-041, API-082
+### WP-6 C ABI handles & capacities (M) — CABI-030…033, CABI-040, API-082
 - C ABI exported functions `aldis_fop1_*` and `aldis_farm1_*` in `crates/aldis-ffi`.
 - Opaque storage with size/alignment validation and magic generation tags (CABI-031, CABI-032).
 - Build-time engine capacities from `capacities.toml` (`[fop1]`, `[farm1]`) reported via `aldis_limits` (CABI-030).
-- Pull model APIs for polling transmissions and events (CABI-040).
+- Step-call APIs that return the actions of an input (CABI-040).
 - Regenerate `include/aldis/aldis.h`; exerciser link check covers FOP-1 and FARM-1 handles.
 - C ABI runner executing `cop1/` vectors through C interface.
 
@@ -138,8 +139,8 @@ Milestone 3 is complete when every item below is green on `main`:
 | FOP-1 engine | COP-010…017 | Traced. Complete FOP-1 state machine, sliding window, T1 timer, Suspend/Resume, AD/BD/BC frame building for TC and USLP |
 | FARM-1 engine | COP-030…036 | Traced. Complete FARM-1 state machine, window classification, buffer models, FARM-B counter, CLCW generation |
 | Closed-loop testing | COP-040, COP-041 | Traced. Simulated link harness tests loss, duplication, reordering, and delay; property tests assert no unreachable states and GEN-020 |
-| Engine contract & sans-I/O | GEN-011, GEN-015, GEN-030…032, API-050, API-056, API-060, RS-020 | Traced. Pure sans-I/O engines; SEU platform protection confirmed (GEN-015); pull-based event/transmit APIs; compile-time generic capacities |
-| C ABI handles | CABI-030…033, CABI-040, CABI-041, API-082 | Traced. `aldis_fop1_*` and `aldis_farm1_*` handles with opaque storage and magic checks; pull model functions; generated header `aldis.h`; vector runner passes scenarios through C ABI |
+| Engine contract & sans-I/O | GEN-011, GEN-015, GEN-030…032, API-050, API-056, API-060, RS-020 | Traced. Pure sans-I/O engines; SEU platform protection confirmed (GEN-015); step functions with returned actions (API-057) and no output queues; compile-time generic capacities |
+| C ABI handles | CABI-030…033, CABI-040, API-082 | Traced. `aldis_fop1_*` and `aldis_farm1_*` handles with opaque storage and magic checks; step-call functions; generated header `aldis.h`; vector runner passes scenarios through C ABI |
 | Panic freedom & resources | VER-010, VER-011, GEN-020…024 | Gating check `stack` passes within budget; exerciser runs with `aldis-cop1` on Cortex-M4F, Cortex-R5F, and RISC-V under QEMU with 0 panics; link check succeeds |
 | Portability | GEN-005…007, VER-030, VER-031 | Gating checks `no-std-*`, `features`, `big-endian` (s390x), and `layers` clean |
 | Verification gates | VER-022…025, VER-054 | 100 % coverage across `aldis-cop1`; full mutation testing with survivors triaged; fuzz targets run ≥ 1 CPU-hour each |

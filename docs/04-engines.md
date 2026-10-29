@@ -32,7 +32,7 @@ Fills fixed-length frame data fields (TM data field, AOS M_PDU packet zone, USLP
 |---|---|---|---|
 | LNK-010 | `submit_packet(now, octets)` SHALL accept a packet only if its PVN is in the configured valid set and its length ≤ the configured maximum. It SHALL be delimitable by `peek_length` (SPP or EPP). Otherwise it SHALL return `InvalidField`/`OutOfRange`. | 132.0 §3.3; Table 5-4 | T |
 | LNK-011 | Packets SHALL be placed contiguously and in submission order. The FHP of each data field SHALL point to the first packet *starting* in it, or SHALL be the protocol's "no packet starts" value. | 132.0 §4.1.2.7.6, §4.1.4.5; 732.0 §4.1.4.2.2; 732.1 §4.1.4.2.4.3–4 | V |
-| LNK-012 | A data field SHALL be released when it is full, or when the configured **release deadline** expires after its first octet was written (USLP: "maximum delay … for a TFDF to be completed", Table 5-3; TM/AOS: equivalent mission parameter). The generator SHALL report the deadline via `poll_timeout`. | 732.1 Table 5-3; 132.0 §4.2 | V |
+| LNK-012 | A data field SHALL be released when it is full, or when the configured **release deadline** expires after its first octet was written (USLP: "maximum delay … for a TFDF to be completed", Table 5-3; TM/AOS: equivalent mission parameter). The generator SHALL report the deadline via `next_deadline` (API-053) and SHALL release the field on the `Timeout` input. | 732.1 Table 5-3; 132.0 §4.2 | V |
 | LNK-013 | On deadline release of a partly filled data field, the remainder SHALL be completed with an **idle packet**. TM/AOS: a Space Packet Idle Packet (APID 2047), or an Encapsulation Idle Packet if EPP is a valid PVN on the VC. If the remainder is smaller than the minimum idle packet length (7 for SPP), the idle packet SHALL continue into the next data field. USLP: an Encapsulation Idle Packet, which can be as short as 1 octet, so it always fits. | 132.0 §4.1.4.6; 732.0 §4.1.4.2.3.4; 732.1 §4.1.4.3.4 | V |
 | LNK-014 | When no packet data is available at frame release time and the VC carries packets, the generator SHALL produce an idle-only data field (TM: handled by the ChannelMux as OID or idle-packet frame per policy; AOS: M_PDU with FHP = "only idle data"). | 132.0 §4.1.4.6; 732.0 §4.1.4.2.3.4 | V |
 | LNK-015 | Packet queue capacity (octets) SHALL be compile-time. `submit_packet` SHALL return `WouldBlock` when full (API-052). | — | T |
@@ -46,16 +46,16 @@ Fills fixed-length frame data fields (TM data field, AOS M_PDU packet zone, USLP
 
 ### 2.3 ChannelMux (per physical channel; TM, AOS, fixed-length USLP)
 
-Multiplexes VCs into master channels and master channels into the physical channel. It owns the MC and VC frame counters, inserts FSH/OCF/Insert Zone, generates OID frames, invokes security hooks, and computes the FECF.
+Multiplexes VCs into master channels and master channels into the physical channel. It owns the MC and VC frame counters, inserts FSH/OCF/Insert Zone, and generates OID frames. It returns each frame as a `Transmit` action ready for the caller's SDLS processing, with the security ranges; the caller applies SDLS and the codec writer computes the FHEC and the FECF (API-074).
 
 | ID | Requirement | Source | Verif. |
 |---|---|---|---|
-| LNK-030 | `poll_transmit(now, out)` SHALL always be able to produce the next frame for a synchronous physical channel. If no VC has a ready data field, it SHALL produce an **OID frame** (TM: on a configured packet VC; AOS/USLP: VCID 63). | 132.0 §4.1.4.6; 732.0 §4.1.4.1.5; 732.1 §4.1.4.1.5–7 | V |
+| LNK-030 | The input `TransmitOpportunity` SHALL always return a `Transmit` action with the next frame for a synchronous physical channel. If no VC has a ready data field, it SHALL produce an **OID frame** (TM: on a configured packet VC; AOS/USLP: VCID 63). | 132.0 §4.1.4.6; 732.0 §4.1.4.1.5; 732.1 §4.1.4.1.5–7 | V |
 | LNK-031 | VC selection SHALL be delegated to a `MuxPolicy`. The library SHALL provide `FixedPriority`, `RoundRobin`, and `WeightedRoundRobin` policies. Custom policies SHALL be pure functions of mux state (GEN-030). | 132.0 §4.2 (mission-specific scheme) | T |
 | LNK-032 | TM MC frame count SHALL increment on every frame of the master channel, including OID frames. VC frame counts SHALL increment per VC (AOS: 24-bit, with the cycle counter when enabled). | 132.0 §4.1.2.5–6; 732.0 §4.1.2.4–5 | V |
 | LNK-033 | MC_OCF and VC_OCF content SHALL come from an `OcfSource` slot that the caller updates (e.g. with the latest FARM-1 CLCW). The mux SHALL insert the slot's current value into every frame where the OCF is configured. | 132.0 §4.1.5; 232.0 §4.2.1.1.1 note 2 | V |
 | LNK-034 | Insert Zone content (AOS/USLP) SHALL come from an `InsertSource` slot. The newest IN_SDU SHALL be inserted into every frame, including OID frames. If no new IN_SDU has arrived since the last frame, the mux SHALL insert the configured fill and raise an `InSduLoss` indication (USLP: IN_SDU Loss Flag). | 732.0 §4.1.3; 732.1 §3.11.2.4, §4.1.3 | V |
-| LNK-035 | Each frame SHALL be finalized in this order: all header and data fields → `SecurityHook::protect` → FHEC (AOS) → FECF (API-074). | 355.0 §2.3 | T |
+| LNK-035 | Each frame SHALL be finalized in this order: all header and data fields (by the mux, which returns them with the security ranges) → `SecurityHook::protect` (by the caller) → FHEC (AOS) → FECF (by the codec writer, API-074; RS-023 makes the order a typestate). | 355.0 §2.3 | T |
 | LNK-036 | The OID generator state SHALL persist across OID frames for the life of the mux (CMN-021). | 132.0 §4.1.4.6.2 | V |
 
 ### 2.4 MapSegmenter (TC; USLP variable-length)
@@ -74,7 +74,7 @@ Multiplexes VCs into master channels and master channels into the physical chann
 
 | ID | Requirement | Source | Verif. |
 |---|---|---|---|
-| LNK-050 | `handle_frame(now, octets)` SHALL decode with the protocol codec, verify the FECF (and correct the AOS FHEC), validate SCID/VCID/flags against configuration, call `SecurityHook::verify`, and route the frame to its VC. Each discarded frame SHALL raise `FrameDiscarded{reason}`. | 132.0 §4.3; 232.0 §4.4.9; 732.0 §4.3; 732.1 §4.3 | V |
+| LNK-050 | The input `Frame(octets)` SHALL be a frame that the caller has decoded with the protocol codec, whose FECF it has checked (correcting the AOS FHEC), and whose SDLS processing it has verified (`SecurityHook::verify`, API-074; RS-023 makes this a typestate). The engine SHALL validate SCID/VCID/flags against configuration and route the frame to its VC. Each frame the engine discards SHALL return a `FrameDiscarded{reason}` action. A frame the caller discards before the engine (FECF, FHEC, SDLS) is counted and reported with the same event by the caller or the framework stage. | 132.0 §4.3; 232.0 §4.4.9; 732.0 §4.3; 732.1 §4.3 | V |
 | LNK-051 | The receiver SHALL track MC and VC frame counts (CMN-030) and raise `FrameGap{vc, missing}` on discontinuity. A gap SHALL be propagated to the VC's extractor/reassembler so that it discards partial data. | 132.0 §4.1.2.6 note; 732.1 §4.1.2.12 note 3 | V |
 | LNK-052 | OID frames SHALL be counted and their data discarded. Their Insert Zone, OCF, and FSH SHALL still be delivered. | 132.0 §4.1.4.6 note 1; 732.0 §4.1.3.3 | V |
 | LNK-053 | OCF contents SHALL be emitted as `Event::Ocf{vc, report}`. CLCWs SHALL be decodable for direct feed into FOP-1. FSH and Insert Zone contents SHALL be emitted as events or delivered SDUs per configuration. | 132.0 §3.5–3.9; 732.0 §3.6, §3.9 | V |
