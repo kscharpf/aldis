@@ -4,8 +4,8 @@
 //!
 //! **Crates.** A library crate of Layers 0–2 *has code* when a non-comment line of its `src/`
 //! declares a function (`fn `); the skeletons declare modules only. Every crate with code is in
-//! the coverage gate ([`crate::coverage::GATED`], VER-024), and every gated crate has code. The
-//! same set must appear in the `features` check ([`crate::features::CRATES`], GEN-006), the
+//! the coverage gate ([`crate::layers::gated`], VER-024), and every gated crate has code. The
+//! same set must appear in the `features` check ([`crate::features::crates`], GEN-006), the
 //! `-p` list of the nightly `mutants` job (`.github/workflows/nightly.yml`, VER-025), and the
 //! exerciser (`exerciser/Cargo.toml` dependencies, VER-010), and each crate other than
 //! `aldis-core`, whose vectors the exerciser names one by one, has a vector group in
@@ -30,7 +30,7 @@
 //! the test itself fails when the file does not pass. When the area's crate is exercised, the
 //! exerciser embeds the file: `exerciser/build.rs` names `"<name>.json"` for `core`, and lists
 //! the area as a vector group otherwise (it then embeds every file of the directory). An area
-//! of a codec with C ABI functions (`FFI_AREAS`: `time`, `spp`, `epp`, `tm`, `tc`, `aos`, `uslp`), or that the C ABI
+//! of a codec with C ABI functions (`crates/aldis-ffi/src/<area>.rs` exists), or that the C ABI
 //! runner `crates/aldis-ffi/tests/vectors.rs` already covers (it names one of its files in a
 //! `vector_test!` invocation), is covered whole by that runner, and the runner names no missing file
 //! (M2 plan D4). `aldis-core` has a C ABI for part of its modules only (M2 plan D14): the runner
@@ -42,6 +42,7 @@ use std::process::Command;
 
 use serde_json::Value;
 
+use crate::layers::{gated, has_code};
 use crate::md::tables;
 use crate::repo;
 
@@ -64,6 +65,9 @@ struct Crates {
     exerciser: BTreeSet<String>,
     /// Vector groups of `exerciser/build.rs`.
     groups: BTreeSet<String>,
+    /// Vector directories of the codecs with C ABI functions: `crates/aldis-ffi/src/<area>.rs`
+    /// exists. Every file in them runs through the C ABI runner (M2 plan D4, WP-0c).
+    ffi_areas: BTreeSet<String>,
     /// Whether the exerciser has its `ffi` group: `mod ffi;` in `exerciser/src/main.rs`, run
     /// by `exerciser/src/exercise.rs` (M2 plan D16).
     ffi_group: bool,
@@ -79,13 +83,6 @@ struct Crates {
 
 fn names(list: &[&str]) -> BTreeSet<String> {
     list.iter().map(|s| (*s).to_owned()).collect()
-}
-
-/// Whether a source file declares a function outside comments.
-fn has_code(text: &str) -> bool {
-    text.lines().map(str::trim_start).any(|l| {
-        !l.starts_with("//") && (l.starts_with("fn ") || l.contains(" fn ") || l.contains("(fn "))
-    })
 }
 
 /// The `crate` matrix of the workflow job `job`.
@@ -244,7 +241,7 @@ fn crate_problems(c: &Crates) -> Vec<String> {
     let code: BTreeSet<String> = c.with_code.intersection(&low).cloned().collect();
     for n in code.difference(&c.coverage) {
         p.push(format!(
-            "{n}: has code but is not in the coverage gate (`GATED`, xtask/src/coverage.rs)"
+            "{n}: has code but is not in the coverage gate (derived: Layer 0-2 crates with code, xtask/src/layers.rs)"
         ));
     }
     for n in c.coverage.difference(&code) {
@@ -256,7 +253,7 @@ fn crate_problems(c: &Crates) -> Vec<String> {
     for n in c.boundary.intersection(&c.with_code) {
         if n != "aldis" && !c.reported.contains(n) {
             p.push(format!(
-                "{n}: has code but is in neither `GATED` nor `REPORTED` (xtask/src/coverage.rs)"
+                "{n}: has code but is neither a gated crate (Layers 0-2) nor in `REPORTED` (xtask/src/coverage.rs)"
             ));
         }
     }
@@ -276,7 +273,7 @@ fn crate_problems(c: &Crates) -> Vec<String> {
     let exercised: BTreeSet<String> = gated.union(&c.reported).cloned().collect();
     diff(
         &mut p,
-        "the features check (`CRATES`, xtask/src/features.rs)",
+        "the features check (derived, xtask/src/features.rs)",
         gated,
         &c.features,
     );
@@ -456,7 +453,7 @@ fn vector_problems(
         .filter_map(|f| f.split('/').next())
         .filter(|area| !partial.contains(area))
         .collect();
-    ffi_areas.extend(FFI_AREAS);
+    ffi_areas.extend(c.ffi_areas.iter().map(String::as_str));
     for f in &ffi {
         if !files.contains(f) {
             p.push(format!(
@@ -516,16 +513,6 @@ fn vector_problems(
 /// The vector runner through the C ABI (M2 plan D4).
 const FFI_RUNNER: &str = "crates/aldis-ffi/tests/vectors.rs";
 
-/// The vector directories of the codecs that have C ABI functions: every file in them runs
-/// through [`FFI_RUNNER`] (M2 plan D4, WP-0c). A codec's directory joins when its C ABI does;
-/// a directory the runner already names is required whole in any case.
-const FFI_AREAS: &[&str] = &[
-    "time", "spp", "epp", "tm",   // M1 codecs, WP-0c; TM, WP-2 module 7
-    "tc",   // TC, WP-3 module 8
-    "aos",  // AOS, WP-4 module 8
-    "uslp", // USLP, WP-5 module 9
-];
-
 /// The vector files of an area whose crate has a C ABI for some of its modules only: each runs
 /// through [`FFI_RUNNER`], and the rest of the area need not (M2 plan D14, WP-1: the CRC-16,
 /// the OCF, and the OID generator of `aldis-core`).
@@ -547,6 +534,21 @@ fn metadata() -> Result<Value, String> {
     serde_json::from_slice(&out.stdout).map_err(|e| e.to_string())
 }
 
+/// The vector areas with a C ABI module: a directory of `test-vectors/` other than `core`
+/// (whose C ABI covers some modules only, `FFI_FILES`) with a file `<area>.rs` in
+/// `crates/aldis-ffi/src/`.
+fn ffi_areas() -> BTreeSet<String> {
+    let src: BTreeSet<String> = repo::files("crates/aldis-ffi/src", &["rs"])
+        .iter()
+        .filter_map(|p| p.file_stem().and_then(|n| n.to_str()).map(str::to_owned))
+        .collect();
+    repo::files("test-vectors", &["json"])
+        .iter()
+        .filter_map(|p| repo::rel(p).split('/').nth(1).map(str::to_owned))
+        .filter(|area| area != "core" && src.contains(area))
+        .collect()
+}
+
 fn read(rel: &str) -> Result<String, String> {
     repo::read(&repo::root().join(rel))
 }
@@ -560,13 +562,10 @@ fn crates() -> Result<Crates, String> {
             .iter()
             .map(|(n, l)| ((*n).to_owned(), *l))
             .collect(),
-        coverage: names(crate::coverage::GATED),
+        coverage: names(&gated()?),
         reported: names(crate::coverage::REPORTED),
         boundary: names(crate::layers::BOUNDARY),
-        features: crate::features::CRATES
-            .iter()
-            .map(|(n, _)| (*n).to_owned())
-            .collect(),
+        features: names(&gated()?),
         mutants: mutants_crates(&read(".github/workflows/nightly.yml")?)
             .map_err(|e| format!(".github/workflows/nightly.yml: {e}"))?,
         exerciser: aldis_dependencies(&read("exerciser/Cargo.toml")?),
@@ -574,6 +573,7 @@ fn crates() -> Result<Crates, String> {
         ffi_group: read("exerciser/src/main.rs")?.contains("mod ffi;")
             && read("exerciser/src/exercise.rs")?.contains("crate::ffi::run("),
         root_readme: read("README.md")?,
+        ffi_areas: ffi_areas(),
         ..Crates::default()
     };
     for pkg in meta["packages"].as_array().into_iter().flatten() {
@@ -720,6 +720,7 @@ mod tests {
                 .join(" "),
             facade,
             facade_deps: names(&members),
+            ffi_areas: names(&["time", "spp", "epp", "tm", "tc", "aos", "uslp"]),
             ..Crates::default()
         }
     }
@@ -738,7 +739,7 @@ mod tests {
         c.features.remove("aldis-aos");
         assert_eq!(
             crate_problems(&c),
-            ["aldis-aos: missing from the features check (`CRATES`, xtask/src/features.rs)"]
+            ["aldis-aos: missing from the features check (derived, xtask/src/features.rs)"]
         );
         // An M1 crate dropped from each list in turn is caught as well.
         for list in 0..4 {
@@ -761,7 +762,9 @@ mod tests {
         c.with_code.insert("aldis-tm".to_owned());
         assert_eq!(
             crate_problems(&c),
-            ["aldis-tm: has code but is not in the coverage gate (`GATED`, xtask/src/coverage.rs)"]
+            [
+                "aldis-tm: has code but is not in the coverage gate (derived: Layer 0-2 crates with code, xtask/src/layers.rs)"
+            ]
         );
         let mut c = consistent();
         c.with_code.remove("aldis-aos");
@@ -898,7 +901,7 @@ mod tests {
                 "test-vectors/core/layout.json: aldis-core is exercised but exerciser/build.rs does not embed it",
                 "test-vectors/uslp/frame.json: not listed in test-vectors/README.md",
                 "test-vectors/uslp/frame.json: no test in crates/*/tests/ runs it",
-                // ---- USLP (M2 WP-5 module 9): `uslp` is an area of `FFI_AREAS`.
+                // ---- USLP (M2 WP-5 module 9): `uslp` is an area of the C ABI.
                 "test-vectors/uslp/frame.json: the C ABI runner crates/aldis-ffi/tests/vectors.rs covers `uslp/` but not this file",
                 "test-vectors/README.md: `aos/gone.json` matches no vector file",
             ]
@@ -952,7 +955,7 @@ mod tests {
             ]
         );
         // Another directory joins only when the runner names one of its files (a fictitious one,
-        // since every frame codec's directory is in `FFI_AREAS`).
+        // since every frame codec's directory has a C ABI module).
         let readme = "| File |\n|---|\n| `demo/*.json` |\n";
         let demo = ["demo/fhec.json".to_owned(), "demo/other.json".to_owned()];
         let tests = ["(\"demo/fhec.json\") (\"demo/other.json\")".to_owned()];
@@ -1017,7 +1020,7 @@ mod tests {
         assert_eq!(
             crate_problems(&c),
             [
-                "aldis-ffi: has code but is in neither `GATED` nor `REPORTED` (xtask/src/coverage.rs)"
+                "aldis-ffi: has code but is neither a gated crate (Layers 0-2) nor in `REPORTED` (xtask/src/coverage.rs)"
             ]
         );
         c.reported.insert("aldis-ffi".to_owned());

@@ -31,6 +31,14 @@ pub struct Spec {
     pub problems: Vec<String>,
 }
 
+impl Requirement {
+    /// Whether the requirement is withdrawn: its text starts `Withdrawn:` (VER-052, COP-032).
+    /// A withdrawn requirement has nothing to trace.
+    pub fn withdrawn(&self) -> bool {
+        self.text.trim_start().starts_with("Withdrawn:")
+    }
+}
+
 const REQ_HEADER: [&str; 4] = ["ID", "Requirement", "Source", "Verif."];
 
 fn strip_code(s: &str) -> String {

@@ -176,15 +176,26 @@ fn scope_ids(spec: &Spec, scope: &str) -> Result<BTreeSet<String>, String> {
     Ok(ids)
 }
 
+/// `ids` without the withdrawn requirements: a scope that names a range (`COP-030…036`) covers
+/// a withdrawn row, which has no artefact to trace (VER-020).
+fn live_ids(spec: &Spec, ids: BTreeSet<String>) -> BTreeSet<String> {
+    ids.into_iter()
+        .filter(|id| spec.requirements.get(id).is_some_and(|r| !r.withdrawn()))
+        .collect()
+}
+
 /// Runs the trace. Returns the number of in-scope requirements without artefacts when
 /// `strict`, otherwise 0.
 pub fn run(scope: Option<&str>, strict: bool) -> Result<usize, String> {
     let spec = Spec::load()?;
     let arts = artefacts(&spec)?;
-    let in_scope: BTreeSet<String> = match scope {
-        Some(s) => scope_ids(&spec, s)?,
-        None => spec.requirements.keys().cloned().collect(),
-    };
+    let in_scope = live_ids(
+        &spec,
+        match scope {
+            Some(s) => scope_ids(&spec, s)?,
+            None => spec.requirements.keys().cloned().collect(),
+        },
+    );
 
     let mut md = format!(
         "# Trace matrix{}\n\n| ID | Verif. | Status | Artefacts |\n|---|---|---|---|\n",
@@ -229,7 +240,7 @@ pub fn run(scope: Option<&str>, strict: bool) -> Result<usize, String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{CPP_LABEL, golden_requirements, req_annotations};
+    use super::{CPP_LABEL, golden_requirements, live_ids, req_annotations};
     use crate::md::{IdRef, scan_ids};
     use crate::spec::CPP_EXTENSIONS;
 
@@ -255,5 +266,39 @@ mod tests {
         assert!(golden_requirements("{\"kind\":\"unit_sent\"}\n").is_err());
         assert!(golden_requirements("{\"kind\":\"header\"}\n").is_err());
         assert!(golden_requirements("").is_err());
+    }
+
+    // req: VER-020
+    #[test]
+    fn withdrawn_requirements_are_not_in_scope() {
+        use crate::spec::{Requirement, Spec};
+        let req = |number: u16, text: &str| Requirement {
+            id: format!("COP-{number:03}"),
+            area: "COP".to_owned(),
+            number,
+            doc: "standards/cop1.md".to_owned(),
+            line: 1,
+            text: text.to_owned(),
+            source: "-".to_owned(),
+            verif: "T".to_owned(),
+        };
+        let spec = Spec {
+            areas: std::collections::BTreeMap::default(),
+            requirements: [
+                req(31, "The engine does a thing."),
+                req(32, "Withdrawn: the buffer model."),
+            ]
+            .into_iter()
+            .map(|r| (r.id.clone(), r))
+            .collect(),
+            error_kinds: std::collections::BTreeSet::default(),
+            problems: Vec::new(),
+        };
+        let ids = ["COP-031", "COP-032"]
+            .map(String::from)
+            .into_iter()
+            .collect();
+        let live: Vec<String> = live_ids(&spec, ids).into_iter().collect();
+        assert_eq!(live, ["COP-031"]);
     }
 }

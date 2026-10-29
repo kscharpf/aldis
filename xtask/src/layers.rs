@@ -11,6 +11,8 @@ use std::process::Command;
 
 use serde_json::Value;
 
+use crate::repo;
+
 /// Layer of each library crate (docs/01-architecture.md §2).
 pub const LAYERS: &[(&str, u8)] = &[
     ("aldis-core", 0),
@@ -25,6 +27,35 @@ pub const LAYERS: &[(&str, u8)] = &[
     ("aldis-cop1", 2),
     ("aldis-framework", 3),
 ];
+/// Whether a source file declares a function outside comments.
+pub(crate) fn has_code(text: &str) -> bool {
+    text.lines().map(str::trim_start).any(|l| {
+        !l.starts_with("//") && (l.starts_with("fn ") || l.contains(" fn ") || l.contains("(fn "))
+    })
+}
+
+/// The crates of Layers 0-2 whose `src/` declares a function, in `LAYERS` order: the crates
+/// the coverage gate (VER-024), the `features` check (GEN-006), the nightly mutation run
+/// (VER-025), and the exerciser (VER-010) cover. A skeleton joins when it gets code, with no
+/// list to edit; the nightly workflow and the exerciser manifest are written by
+/// `cargo xtask fix`.
+pub fn gated() -> Result<Vec<&'static str>, String> {
+    let mut out = Vec::new();
+    for (name, layer) in LAYERS {
+        if *layer > 2 {
+            continue;
+        }
+        let mut code = false;
+        for file in repo::files(&format!("crates/{name}/src"), &["rs"]) {
+            code |= has_code(&repo::read(&file)?);
+        }
+        if code {
+            out.push(*name);
+        }
+    }
+    Ok(out)
+}
+
 /// Boundary crates: they may depend on every layer, and nothing depends on them.
 pub const BOUNDARY: &[&str] = &["aldis", "aldis-ffi"];
 const TOOLING: &[&str] = &["aldis-testkit", "xtask"];
