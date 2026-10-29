@@ -309,7 +309,7 @@ pub struct Check {
     /// maintainer decision 2026-10-24).
     pub nightly: bool,
     /// Its typical duration in seconds, which orders the run only ([`run_order`]) and balances
-    /// the groups (VER-067): the mean of its durations in two full GitHub-hosted runs of VER-060
+    /// the groups (VER-067): the mean of its durations in three full GitHub-hosted runs of VER-060
     /// (`x86_64`, an empty build cache, the groups side by side; 2026-10-29), rounded; for
     /// `test-macos`, which runs on macOS only, the median of the local runs. A value that has
     /// gone stale changes the order in which the checks run, never a result.
@@ -376,10 +376,10 @@ fn rust() -> Vec<Check> {
     let c = Host::Container;
     let mut out = vec![
         grouped(Group::Host, check("fmt", c, false, 4, FMT)),
-        grouped(Group::Host, check("clippy", c, false, 40, CLIPPY)),
+        grouped(Group::Host, check("clippy", c, false, 38, CLIPPY)),
         grouped(
             Group::Host,
-            reading(RUST_TEST_INPUTS, check("test", c, false, 52, TEST)),
+            reading(RUST_TEST_INPUTS, check("test", c, false, 48, TEST)),
         ),
         reading(
             RUST_TEST_INPUTS,
@@ -388,7 +388,7 @@ fn rust() -> Vec<Check> {
         // The alloc and std features are additive (GEN-006).
         grouped(
             Group::Host,
-            check("features", c, false, 156, "cargo xtask features\n"),
+            check("features", c, false, 145, "cargo xtask features\n"),
         ),
         grouped(
             Group::Coverage,
@@ -419,14 +419,14 @@ fn rust() -> Vec<Check> {
             Group::Cross,
             reading(
                 RUST_TEST_INPUTS,
-                check("big-endian", c, false, 202, BIG_ENDIAN),
+                check("big-endian", c, false, 187, BIG_ENDIAN),
             ),
         ),
         grouped(Group::Cross, check("layers", c, false, 1, LAYERS)),
-        grouped(Group::Coverage, check("refapp", c, false, 10, REFAPP)),
+        grouped(Group::Coverage, check("refapp", c, false, 11, REFAPP)),
         grouped(
             Group::Coverage,
-            check("fuzz-smoke", c, false, 13, "cargo xtask fuzz smoke\n"),
+            check("fuzz-smoke", c, false, 14, "cargo xtask fuzz smoke\n"),
         ),
     ]);
     out.extend(RUST_BARE_METAL.iter().map(|t| exerciser_check(t)));
@@ -461,12 +461,12 @@ fn rust() -> Vec<Check> {
     out.extend([
         grouped(
             Group::Coverage,
-            check("coverage", c, false, 160, "cargo xtask coverage\n"),
+            check("coverage", c, false, 170, "cargo xtask coverage\n"),
         ),
         // Spec lint, links, vectors, traces, and changelog: it reads every part of the tree.
         grouped(
             Group::Coverage,
-            reading(Inputs::Everything, check("spec", c, false, 29, SPEC)),
+            reading(Inputs::Everything, check("spec", c, false, 32, SPEC)),
         ),
         grouped(Group::Cross, check("deny", c, false, 2, DENY)),
     ]);
@@ -478,8 +478,8 @@ fn rust() -> Vec<Check> {
 fn exerciser_check(target: &str) -> Check {
     let (group, secs) = match target {
         "thumbv7em-none-eabihf" => (Group::Embedded, 31),
-        "armv7r-none-eabihf" => (Group::Embedded, 32),
-        _ => (Group::Cross, 32),
+        "armv7r-none-eabihf" => (Group::Embedded, 30),
+        _ => (Group::Cross, 30),
     };
     grouped(
         group,
