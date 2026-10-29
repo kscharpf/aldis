@@ -53,7 +53,7 @@ Detailed protocol: [docs/process/review.md](docs/process/review.md).
 
 ## Checks
 
-While you work, run `cargo xtask check` and fix everything it reports (**zero warnings**). It stops at the first failure and prints what it ran and skipped: format, clippy, tests, the bare-metal clippy build, `cargo xtask ci`, then the extras of each of `crates/aldis-core`, `crates/aldis-ffi`, and `refapp/` that differs from `origin/main`. Coverage needs the tooling nightly, the header checks need `cargo install --locked cbindgen@0.29.4`. `cargo xtask fix` runs the generators (field codes, vector schema, SANA tables, C header), then `consistency`; never edit `include/aldis/aldis.h` by hand.
+While you work, run `cargo xtask check` and fix everything it reports (**zero warnings**). It stops at the first failure and prints what it ran and skipped: format, clippy, tests, the bare-metal clippy build, `cargo xtask ci`, then the extras for what differs from `origin/main`: the exerciser's clippy and build for any crate, and the extras of `crates/aldis-core`, `crates/aldis-ffi`, and `refapp/`. Coverage needs the tooling nightly, the header checks need `cargo install --locked cbindgen@0.29.4`. `cargo xtask fix` runs the generators (field codes, vector schema, SANA tables, C header), then `consistency`; never edit `include/aldis/aldis.h` by hand.
 
 **Implementation agents commit and stop.** The coordinator runs the merge gate (`cargo xtask verify --publish`, VER-058) per [docs/06-verification.md](docs/06-verification.md) §7, brings open PRs up to date with `scripts/reverify <pr>...`, and clears finished worktrees and `worktree-agent-*` branches with `scripts/prune-agent-branches` (dry run; `--apply` acts). Source `scripts/agent-env.sh` first.
 

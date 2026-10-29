@@ -51,6 +51,8 @@ const fn cmd_in(
 /// Which directories with extra checks a change touches.
 #[derive(Debug, Default, PartialEq, Eq)]
 struct Touched {
+    /// A library crate or the exerciser: the exerciser calls every public API (VER-010).
+    exerciser: bool,
     core: bool,
     ffi: bool,
     refapp: bool,
@@ -60,6 +62,7 @@ struct Touched {
 fn touched(changed: &[String]) -> Touched {
     let any = |prefix: &str| changed.iter().any(|p| p.starts_with(prefix));
     Touched {
+        exerciser: any("crates/") || any("exerciser/"),
         core: any("crates/aldis-core/"),
         ffi: any("crates/aldis-ffi/"),
         refapp: any("refapp/"),
@@ -105,13 +108,21 @@ fn plan(t: &Touched, tools: Tools) -> (Vec<Item>, Vec<String>) {
         },
     ];
     let mut skipped = Vec::new();
-    if t.core {
+    if t.exerciser {
+        run.push(cmd_in(
+            "exerciser clippy",
+            "exerciser",
+            "cargo",
+            &["clippy", "--release", "--target", "thumbv7em-none-eabihf"],
+        ));
         run.push(cmd_in(
             "exerciser build",
             "exerciser",
             "cargo",
             &["build", "--release", "--target", "thumbv7em-none-eabihf"],
         ));
+    }
+    if t.core {
         run.push(cmd(
             "fuzz clippy",
             "cargo",
@@ -293,13 +304,18 @@ mod tests {
 
     #[test]
     fn paths_select_directories() {
+        assert_eq!(touched(&paths(&["docs/x.md"])), Touched::default());
         assert_eq!(
-            touched(&paths(&["docs/x.md", "crates/aldis-spp/a.rs"])),
-            Touched::default()
+            touched(&paths(&["crates/aldis-spp/a.rs"])),
+            Touched {
+                exerciser: true,
+                ..Touched::default()
+            }
         );
         assert_eq!(
             touched(&paths(&["crates/aldis-core/src/lib.rs"])),
             Touched {
+                exerciser: true,
                 core: true,
                 ..Touched::default()
             }
@@ -310,6 +326,7 @@ mod tests {
                 "refapp/Cargo.toml"
             ])),
             Touched {
+                exerciser: true,
                 ffi: true,
                 refapp: true,
                 ..Touched::default()
@@ -318,7 +335,10 @@ mod tests {
         // A sibling whose name only starts alike does not count.
         assert_eq!(
             touched(&paths(&["crates/aldis-core-x/a.rs", "refapp-x/a"])),
-            Touched::default()
+            Touched {
+                exerciser: true,
+                ..Touched::default()
+            }
         );
     }
 
@@ -335,12 +355,13 @@ mod tests {
     #[test]
     fn extras_follow_the_touched_directories() {
         let t = Touched {
+            exerciser: true,
             core: true,
             ffi: true,
             refapp: true,
         };
         let (n, skipped) = names(&t, ALL);
-        assert_eq!(n.len(), 5 + 3 + 2 + 4);
+        assert_eq!(n.len(), 5 + 2 + 2 + 2 + 4);
         assert!(n.contains(&"xtask coverage") && n.contains(&"xtask header c-smoke"));
         assert_eq!(skipped.len(), 0);
     }
@@ -348,13 +369,14 @@ mod tests {
     #[test]
     fn missing_tools_skip_with_a_reason() {
         let t = Touched {
+            exerciser: true,
             core: true,
             ffi: true,
             refapp: false,
         };
         let (n, skipped) = names(&t, NONE);
         assert!(!n.contains(&"xtask coverage") && !n.contains(&"xtask header"));
-        assert!(n.contains(&"exerciser build") && n.contains(&"fuzz clippy"));
+        assert!(n.contains(&"exerciser clippy") && n.contains(&"fuzz clippy"));
         assert_eq!(skipped.len(), 2);
     }
 }
