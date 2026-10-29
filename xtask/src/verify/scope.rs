@@ -1080,10 +1080,12 @@ mod tests {
             running(&changed(&["test-vectors/README.md"]), Force::default()),
             names(|c| c.name != "header" && !c.nightly)
         );
-        // The committed header is read by the header check (and spec) alone.
+        // The committed header is read by the header check and spec, and by a test of `aldis-ffi`
+        // that compares it with the mirror enums, so by every Rust check but `stack`, which builds
+        // the libraries and runs no test.
         assert_eq!(
             running(&changed(&["include/aldis/aldis.h"]), Force::default()),
-            names(|c| c.name == "header" || c.name == "spec")
+            names(|c| c.name != "stack" && !c.nightly)
         );
         // xtask and the image run everything.
         for path in [

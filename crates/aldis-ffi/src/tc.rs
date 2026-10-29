@@ -39,6 +39,7 @@ use aldis::tc::{
 
 use crate::abi::{self, Configs, invalid_argument};
 use crate::capacities::ALDIS_TC_MAX_MAPS;
+use crate::mirror::{mirror, parse};
 
 /// Length of the TC Transfer Frame Primary Header in octets (232.0 §4.1.2).
 pub const ALDIS_TC_PRIMARY_HEADER_LEN: u32 = 5;
@@ -51,29 +52,77 @@ pub const ALDIS_TC_MAX_FRAME_LEN: u32 = 1024;
 /// Virtual channels a master channel can have: VCIDs 0 to 63 (232.0 §4.1.2; M2 plan D14).
 pub const ALDIS_TC_MAX_VCS: usize = 64;
 
-/// Frame type AD: Bypass Flag `0`, Control Command Flag `0` (232.0 §4.1.2, Table 4-1).
-pub const ALDIS_TC_FRAME_AD: u8 = 0;
-/// Frame type BD: Bypass Flag `1`, Control Command Flag `0` (232.0 Table 4-1).
-pub const ALDIS_TC_FRAME_BD: u8 = 1;
-/// Frame type BC: Bypass Flag `1`, Control Command Flag `1` (232.0 Table 4-1).
-pub const ALDIS_TC_FRAME_BC: u8 = 2;
+/// The TC frame type (232.0 §4.1.2.3).
+///
+/// A `uint8_t` argument or field is one of the enumerators below; the type itself is not a
+/// field type of the header (OI-57 convention 2; CABI-010).
+///
+/// cbindgen:prefix-with-name=false
+/// cbindgen:rename-all=None
+#[repr(u8)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[expect(
+    non_camel_case_types,
+    reason = "the variants are the C constants (OI-57 convention 2)"
+)]
+pub enum aldis_tc_frame {
+    /// Frame type AD: Bypass Flag `0`, Control Command Flag `0` (232.0 §4.1.2, Table 4-1).
+    ALDIS_TC_FRAME_AD = 0,
+    /// Frame type BD: Bypass Flag `1`, Control Command Flag `0` (232.0 Table 4-1).
+    ALDIS_TC_FRAME_BD = 1,
+    /// Frame type BC: Bypass Flag `1`, Control Command Flag `1` (232.0 Table 4-1).
+    ALDIS_TC_FRAME_BC = 2,
+}
+mirror!(pub aldis_tc_frame: u8 { ALDIS_TC_FRAME_AD, ALDIS_TC_FRAME_BD, ALDIS_TC_FRAME_BC });
 
-/// Sequence Flags `00`: a continuing segment (232.0 §4.1.3.2.2).
-pub const ALDIS_TC_SEQ_CONTINUING: u8 = 0b00;
-/// Sequence Flags `01`: the first segment (232.0 §4.1.3.2.2).
-pub const ALDIS_TC_SEQ_FIRST: u8 = 0b01;
-/// Sequence Flags `10`: the last segment (232.0 §4.1.3.2.2).
-pub const ALDIS_TC_SEQ_LAST: u8 = 0b10;
-/// Sequence Flags `11`: no segmentation (232.0 §4.1.3.2.2).
-pub const ALDIS_TC_SEQ_UNSEGMENTED: u8 = 0b11;
+/// The TC Sequence Flags (232.0 §4.1.4.2.2).
+///
+/// A `uint8_t` argument or field is one of the enumerators below; the type itself is not a
+/// field type of the header (OI-57 convention 2; CABI-010).
+///
+/// cbindgen:prefix-with-name=false
+/// cbindgen:rename-all=None
+#[repr(u8)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[expect(
+    non_camel_case_types,
+    reason = "the variants are the C constants (OI-57 convention 2)"
+)]
+pub enum aldis_tc_sequence_flags {
+    /// Sequence Flags `00`: a continuing segment (232.0 §4.1.3.2.2).
+    ALDIS_TC_SEQ_CONTINUING = 0b00,
+    /// Sequence Flags `01`: the first segment (232.0 §4.1.3.2.2).
+    ALDIS_TC_SEQ_FIRST = 0b01,
+    /// Sequence Flags `10`: the last segment (232.0 §4.1.3.2.2).
+    ALDIS_TC_SEQ_LAST = 0b10,
+    /// Sequence Flags `11`: no segmentation (232.0 §4.1.3.2.2).
+    ALDIS_TC_SEQ_UNSEGMENTED = 0b11,
+}
+mirror!(pub aldis_tc_sequence_flags: u8 { ALDIS_TC_SEQ_CONTINUING, ALDIS_TC_SEQ_FIRST, ALDIS_TC_SEQ_LAST, ALDIS_TC_SEQ_UNSEGMENTED });
 
-/// No Control Command: the data field of a Type-D frame, or, in lenient mode, a Type-C data
-/// field that is neither command (232.0 §4.1.3.3.4; TC-005).
-pub const ALDIS_TC_CONTROL_NONE: u8 = 0;
-/// The Unlock Control Command, one octet of zeros (232.0 §4.1.3.3.2; TC-005).
-pub const ALDIS_TC_CONTROL_UNLOCK: u8 = 1;
-/// The Set V(R) Control Command, `82 00` and the new V(R) (232.0 §4.1.3.3.3; TC-005).
-pub const ALDIS_TC_CONTROL_SET_VR: u8 = 2;
+/// The Control Command of a BC frame (232.1 §4.1.3).
+///
+/// A `uint8_t` argument or field is one of the enumerators below; the type itself is not a
+/// field type of the header (OI-57 convention 2; CABI-010).
+///
+/// cbindgen:prefix-with-name=false
+/// cbindgen:rename-all=None
+#[repr(u8)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[expect(
+    non_camel_case_types,
+    reason = "the variants are the C constants (OI-57 convention 2)"
+)]
+pub enum aldis_tc_control {
+    /// No Control Command: the data field of a Type-D frame, or, in lenient mode, a Type-C data
+    /// field that is neither command (232.0 §4.1.3.3.4; TC-005).
+    ALDIS_TC_CONTROL_NONE = 0,
+    /// The Unlock Control Command, one octet of zeros (232.0 §4.1.3.3.2; TC-005).
+    ALDIS_TC_CONTROL_UNLOCK = 1,
+    /// The Set V(R) Control Command, `82 00` and the new V(R) (232.0 §4.1.3.3.3; TC-005).
+    ALDIS_TC_CONTROL_SET_VR = 2,
+}
+mirror!(pub aldis_tc_control: u8 { ALDIS_TC_CONTROL_NONE, ALDIS_TC_CONTROL_UNLOCK, ALDIS_TC_CONTROL_SET_VR });
 
 /// Anomaly bit: Reserved Spare of the Primary Header not `00` (bit 0 of `TcAnomaly`; 232.0
 /// §4.1.2.4; TC-003, API-032).
@@ -85,41 +134,73 @@ pub const ALDIS_TC_ANOMALY_UNKNOWN_CONTROL_COMMAND: u32 = 1 << 1;
 /// TC-030, API-032).
 pub const ALDIS_TC_ANOMALY_CLCW_SPARE_SET: u32 = 1 << 2;
 
-/// Stream item: no octets of the unit remain (232.0 §4.4.9.2; TC-020).
-pub const ALDIS_TC_STREAM_END: u8 = 0;
-/// Stream item: one validated frame (232.0 §4.4.9.2, §4.4.9.3; TC-020, TC-021).
-pub const ALDIS_TC_STREAM_ACCEPTED: u8 = 1;
-/// Stream item: discarded octets (fill, truncated frame, or failed validation) (232.0 §4.4.9.2, §4.4.9.3; TC-020, TC-021).
-pub const ALDIS_TC_STREAM_DISCARDED: u8 = 2;
+/// The result of one step of a TC frame stream.
+///
+/// A `uint8_t` argument or field is one of the enumerators below; the type itself is not a
+/// field type of the header (OI-57 convention 2; CABI-010).
+///
+/// cbindgen:prefix-with-name=false
+/// cbindgen:rename-all=None
+#[repr(u8)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[expect(
+    non_camel_case_types,
+    reason = "the variants are the C constants (OI-57 convention 2)"
+)]
+pub enum aldis_tc_stream {
+    /// Stream item: no octets of the unit remain (232.0 §4.4.9.2; TC-020).
+    ALDIS_TC_STREAM_END = 0,
+    /// Stream item: one validated frame (232.0 §4.4.9.2, §4.4.9.3; TC-020, TC-021).
+    ALDIS_TC_STREAM_ACCEPTED = 1,
+    /// Stream item: discarded octets (fill, truncated frame, or failed validation) (232.0 §4.4.9.2, §4.4.9.3; TC-020, TC-021).
+    ALDIS_TC_STREAM_DISCARDED = 2,
+}
+mirror!(pub aldis_tc_stream: u8 { ALDIS_TC_STREAM_END, ALDIS_TC_STREAM_ACCEPTED, ALDIS_TC_STREAM_DISCARDED });
 
-/// Discard reason: accepted frame (not discarded).
-pub const ALDIS_TC_DISCARD_NONE: u32 = 0;
+/// Why a TC frame was discarded.
+///
+/// A `uint32_t` argument or field is one of the enumerators below; the type itself is not a
+/// field type of the header (OI-57 convention 2; CABI-010).
+///
+/// cbindgen:prefix-with-name=false
+/// cbindgen:rename-all=None
+#[repr(u32)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[expect(
+    non_camel_case_types,
+    reason = "the variants are the C constants (OI-57 convention 2)"
+)]
+pub enum aldis_tc_discard {
+    /// Discard reason: accepted frame (not discarded).
+    ALDIS_TC_DISCARD_NONE = 0,
+    /// Discard reason: check (b), Spacecraft ID is not that of the master channel (232.0 §4.4.9.3.3; TC-021).
+    ALDIS_TC_DISCARD_UNEXPECTED_SPACECRAFT = 2,
+    /// Discard reason: check (c), Bypass Flag `0` with Control Command Flag `1` (232.0 Table 4-1; TC-002, TC-021).
+    ALDIS_TC_DISCARD_RESERVED_FLAGS = 3,
+    /// Discard reason: check (c), strict mode only: Reserved Spare is not `00` (232.0 §4.1.2.4; TC-003).
+    ALDIS_TC_DISCARD_RESERVED_SPARE = 4,
+    /// Discard reason: check (c), VCID is not configured (232.0 §4.4.7.3; TC-022).
+    ALDIS_TC_DISCARD_INVALID_VCID = 5,
+    /// Discard reason: check (c), Frame Length exceeds the channel's maximum (232.0 Tables 5-1, 5-3; TC-021).
+    ALDIS_TC_DISCARD_FRAME_TOO_LONG = 6,
+    /// Discard reason: check (c), Frame Length leaves no data octet (232.0 §4.1.1; TC-021, CMN-041).
+    ALDIS_TC_DISCARD_FRAME_TOO_SHORT = 7,
+    /// Discard reason: check (d), Frame Length disagrees with the octets present (232.0 §4.4.9.3.3; TC-021).
+    ALDIS_TC_DISCARD_LENGTH_MISMATCH = 8,
+    /// Discard reason: check (e), FECF does not match (232.0 §4.1.4; TC-006, TC-021).
+    ALDIS_TC_DISCARD_FECF_MISMATCH = 9,
+    /// Discard reason: MAP ID is not configured on the Virtual Channel (232.0 §4.4.3.3; TC-022).
+    ALDIS_TC_DISCARD_INVALID_MAP_ID = 10,
+    /// Discard reason: strict mode only, Type-C data field is not a recognized command (232.0 §4.1.3.3.4; TC-005).
+    ALDIS_TC_DISCARD_RESERVED_CONTROL_COMMAND = 11,
+    /// Discard reason: fill data (232.0 §4.4.9.2.6; TC-020).
+    ALDIS_TC_DISCARD_FILL = 20,
+    /// Discard reason: truncated frame whose declared length exceeds remaining octets (232.0 §4.4.9.2.5; TC-020).
+    ALDIS_TC_DISCARD_TRUNCATED_FRAME = 21,
+}
+mirror!(pub aldis_tc_discard: u32 { ALDIS_TC_DISCARD_NONE, ALDIS_TC_DISCARD_UNEXPECTED_SPACECRAFT, ALDIS_TC_DISCARD_RESERVED_FLAGS, ALDIS_TC_DISCARD_RESERVED_SPARE, ALDIS_TC_DISCARD_INVALID_VCID, ALDIS_TC_DISCARD_FRAME_TOO_LONG, ALDIS_TC_DISCARD_FRAME_TOO_SHORT, ALDIS_TC_DISCARD_LENGTH_MISMATCH, ALDIS_TC_DISCARD_FECF_MISMATCH, ALDIS_TC_DISCARD_INVALID_MAP_ID, ALDIS_TC_DISCARD_RESERVED_CONTROL_COMMAND, ALDIS_TC_DISCARD_FILL, ALDIS_TC_DISCARD_TRUNCATED_FRAME });
 /// Discard reason: check (a), Transfer Frame Version Number is not `00` (232.0 §4.4.9.3.3; TC-021).
 pub const ALDIS_TC_DISCARD_UNEXPECTED_VERSION: u32 = 1;
-/// Discard reason: check (b), Spacecraft ID is not that of the master channel (232.0 §4.4.9.3.3; TC-021).
-pub const ALDIS_TC_DISCARD_UNEXPECTED_SPACECRAFT: u32 = 2;
-/// Discard reason: check (c), Bypass Flag `0` with Control Command Flag `1` (232.0 Table 4-1; TC-002, TC-021).
-pub const ALDIS_TC_DISCARD_RESERVED_FLAGS: u32 = 3;
-/// Discard reason: check (c), strict mode only: Reserved Spare is not `00` (232.0 §4.1.2.4; TC-003).
-pub const ALDIS_TC_DISCARD_RESERVED_SPARE: u32 = 4;
-/// Discard reason: check (c), VCID is not configured (232.0 §4.4.7.3; TC-022).
-pub const ALDIS_TC_DISCARD_INVALID_VCID: u32 = 5;
-/// Discard reason: check (c), Frame Length exceeds the channel's maximum (232.0 Tables 5-1, 5-3; TC-021).
-pub const ALDIS_TC_DISCARD_FRAME_TOO_LONG: u32 = 6;
-/// Discard reason: check (c), Frame Length leaves no data octet (232.0 §4.1.1; TC-021, CMN-041).
-pub const ALDIS_TC_DISCARD_FRAME_TOO_SHORT: u32 = 7;
-/// Discard reason: check (d), Frame Length disagrees with the octets present (232.0 §4.4.9.3.3; TC-021).
-pub const ALDIS_TC_DISCARD_LENGTH_MISMATCH: u32 = 8;
-/// Discard reason: check (e), FECF does not match (232.0 §4.1.4; TC-006, TC-021).
-pub const ALDIS_TC_DISCARD_FECF_MISMATCH: u32 = 9;
-/// Discard reason: MAP ID is not configured on the Virtual Channel (232.0 §4.4.3.3; TC-022).
-pub const ALDIS_TC_DISCARD_INVALID_MAP_ID: u32 = 10;
-/// Discard reason: strict mode only, Type-C data field is not a recognized command (232.0 §4.1.3.3.4; TC-005).
-pub const ALDIS_TC_DISCARD_RESERVED_CONTROL_COMMAND: u32 = 11;
-/// Discard reason: fill data (232.0 §4.4.9.2.6; TC-020).
-pub const ALDIS_TC_DISCARD_FILL: u32 = 20;
-/// Discard reason: truncated frame whose declared length exceeds remaining octets (232.0 §4.4.9.2.5; TC-020).
-pub const ALDIS_TC_DISCARD_TRUNCATED_FRAME: u32 = 21;
 
 /// COP in Effect `01`: COP-1 (232.0 §4.2.1.5).
 pub const ALDIS_CLCW_COP_1: u8 = 0b01;
@@ -531,11 +612,10 @@ unsafe fn master_channel_at(
 /// The sender's fields of a C struct, each parsed into its type (232.0 §4.1.2, §4.1.3.2.2;
 /// RS-020).
 fn fields(f: aldis_tc_fields_t) -> Result<(FrameFields, Option<SegmentHeader>)> {
-    let frame_type = match f.frame_type {
-        ALDIS_TC_FRAME_AD => FrameType::Ad,
-        ALDIS_TC_FRAME_BD => FrameType::Bd,
-        ALDIS_TC_FRAME_BC => FrameType::Bc,
-        _ => return Err(invalid_argument()),
+    let frame_type = match parse::<aldis_tc_frame>(f.frame_type)? {
+        aldis_tc_frame::ALDIS_TC_FRAME_AD => FrameType::Ad,
+        aldis_tc_frame::ALDIS_TC_FRAME_BD => FrameType::Bd,
+        aldis_tc_frame::ALDIS_TC_FRAME_BC => FrameType::Bc,
     };
     let fields = FrameFields {
         frame_type,
@@ -558,14 +638,13 @@ fn fields(f: aldis_tc_fields_t) -> Result<(FrameFields, Option<SegmentHeader>)> 
 }
 
 /// The Control Command of a C struct, or `None` for `ALDIS_TC_CONTROL_NONE` (TC-005).
-const fn command(c: aldis_tc_control_t) -> Result<Option<ControlCommand>> {
-    match c.command {
-        ALDIS_TC_CONTROL_NONE => Ok(None),
-        ALDIS_TC_CONTROL_UNLOCK => Ok(Some(ControlCommand::Unlock)),
-        ALDIS_TC_CONTROL_SET_VR => Ok(Some(ControlCommand::SetVr(FrameSeqNum::new(
-            c.set_vr_value,
-        )))),
-        _ => Err(invalid_argument()),
+fn command(c: aldis_tc_control_t) -> Result<Option<ControlCommand>> {
+    match parse::<aldis_tc_control>(c.command)? {
+        aldis_tc_control::ALDIS_TC_CONTROL_NONE => Ok(None),
+        aldis_tc_control::ALDIS_TC_CONTROL_UNLOCK => Ok(Some(ControlCommand::Unlock)),
+        aldis_tc_control::ALDIS_TC_CONTROL_SET_VR => Ok(Some(ControlCommand::SetVr(
+            FrameSeqNum::new(c.set_vr_value),
+        ))),
     }
 }
 

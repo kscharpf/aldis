@@ -23,38 +23,103 @@ use aldis::time::{
 };
 
 use crate::abi::{self, Out, invalid_argument};
+use crate::mirror::{mirror, parse};
 
-/// [`aldis_time_format_t::code`]: CCSDS Unsegmented Time Code (301.0 §3.2).
-pub const ALDIS_TIME_CUC: u32 = 0;
-/// [`aldis_time_format_t::code`]: CCSDS Day Segmented Time Code (301.0 §3.3).
-pub const ALDIS_TIME_CDS: u32 = 1;
-/// [`aldis_time_format_t::code`]: CCSDS Calendar Segmented Time Code (301.0 §3.4).
-pub const ALDIS_TIME_CCS: u32 = 2;
-/// [`aldis_time_format_t::code`]: agency-defined code (301.0 §3.6).
-pub const ALDIS_TIME_AGENCY: u32 = 3;
-/// [`aldis_time_format_t::code`] of a decoded P-field whose time code ID is reserved, decoded
-/// in lenient mode (TIME-002); never accepted as an input format.
-pub const ALDIS_TIME_UNKNOWN: u32 = 4;
-/// [`aldis_time_format_t::code`] for [`aldis_time_convert`] only: an ASCII code A or B
-/// (301.0 §3.5).
-pub const ALDIS_TIME_ASCII: u32 = 5;
+/// The time code of a format or a value (CCSDS 301.0-B-4 §3.2).
+///
+/// A `uint32_t` argument or field is one of the enumerators below; the type itself is not a
+/// field type of the header (OI-57 convention 2; CABI-010).
+///
+/// cbindgen:prefix-with-name=false
+/// cbindgen:rename-all=None
+#[repr(u32)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[expect(
+    non_camel_case_types,
+    reason = "the variants are the C constants (OI-57 convention 2)"
+)]
+pub enum aldis_time_code {
+    /// [`aldis_time_format_t::code`]: CCSDS Unsegmented Time Code (301.0 §3.2).
+    ALDIS_TIME_CUC = 0,
+    /// [`aldis_time_format_t::code`]: CCSDS Day Segmented Time Code (301.0 §3.3).
+    ALDIS_TIME_CDS = 1,
+    /// [`aldis_time_format_t::code`]: CCSDS Calendar Segmented Time Code (301.0 §3.4).
+    ALDIS_TIME_CCS = 2,
+    /// [`aldis_time_format_t::code`]: agency-defined code (301.0 §3.6).
+    ALDIS_TIME_AGENCY = 3,
+    /// [`aldis_time_format_t::code`] of a decoded P-field whose time code ID is reserved, decoded
+    /// in lenient mode (TIME-002); never accepted as an input format.
+    ALDIS_TIME_UNKNOWN = 4,
+    /// [`aldis_time_format_t::code`] for [`aldis_time_convert`] only: an ASCII code A or B
+    /// (301.0 §3.5).
+    ALDIS_TIME_ASCII = 5,
+}
+mirror!(pub aldis_time_code: u32 { ALDIS_TIME_CUC, ALDIS_TIME_CDS, ALDIS_TIME_CCS, ALDIS_TIME_AGENCY, ALDIS_TIME_UNKNOWN, ALDIS_TIME_ASCII });
 
-/// [`aldis_time_format_t::day_len`]: a 16-bit CDS day segment (301.0 §3.3.2).
-pub const ALDIS_TIME_CDS_DAY_16: u8 = 0;
-/// [`aldis_time_format_t::day_len`]: a 24-bit CDS day segment (301.0 §3.3.2).
-pub const ALDIS_TIME_CDS_DAY_24: u8 = 1;
-/// [`aldis_time_format_t::subms`]: no CDS submillisecond segment (301.0 §3.3.2).
-pub const ALDIS_TIME_CDS_SUBMS_NONE: u8 = 0;
-/// [`aldis_time_format_t::subms`]: microseconds of millisecond, 16 bits (301.0 §3.3.2).
-pub const ALDIS_TIME_CDS_SUBMS_MICROS: u8 = 1;
-/// [`aldis_time_format_t::subms`]: picoseconds of millisecond, 32 bits (301.0 §3.3.2).
-pub const ALDIS_TIME_CDS_SUBMS_PICOS: u8 = 2;
-/// CCS and ASCII variation: month and day of month, CCS bit 4 = 0, ASCII code A
-/// (301.0 §3.4.2, §3.5.1.1).
-pub const ALDIS_TIME_MONTH_DAY: u8 = 0;
-/// CCS and ASCII variation: day of year, CCS bit 4 = 1, ASCII code B (301.0 §3.4.2,
-/// §3.5.1.2).
-pub const ALDIS_TIME_DAY_OF_YEAR: u8 = 1;
+/// The day segment of a CDS code (301.0 §3.3).
+///
+/// A `uint8_t` argument or field is one of the enumerators below; the type itself is not a
+/// field type of the header (OI-57 convention 2; CABI-010).
+///
+/// cbindgen:prefix-with-name=false
+/// cbindgen:rename-all=None
+#[repr(u8)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[expect(
+    non_camel_case_types,
+    reason = "the variants are the C constants (OI-57 convention 2)"
+)]
+pub enum aldis_time_cds_day {
+    /// [`aldis_time_format_t::day_len`]: a 16-bit CDS day segment (301.0 §3.3.2).
+    ALDIS_TIME_CDS_DAY_16 = 0,
+    /// [`aldis_time_format_t::day_len`]: a 24-bit CDS day segment (301.0 §3.3.2).
+    ALDIS_TIME_CDS_DAY_24 = 1,
+}
+mirror!(pub aldis_time_cds_day: u8 { ALDIS_TIME_CDS_DAY_16, ALDIS_TIME_CDS_DAY_24 });
+/// The sub-millisecond segment of a CDS code (301.0 §3.3).
+///
+/// A `uint8_t` argument or field is one of the enumerators below; the type itself is not a
+/// field type of the header (OI-57 convention 2; CABI-010).
+///
+/// cbindgen:prefix-with-name=false
+/// cbindgen:rename-all=None
+#[repr(u8)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[expect(
+    non_camel_case_types,
+    reason = "the variants are the C constants (OI-57 convention 2)"
+)]
+pub enum aldis_time_cds_submillis {
+    /// [`aldis_time_format_t::subms`]: no CDS submillisecond segment (301.0 §3.3.2).
+    ALDIS_TIME_CDS_SUBMS_NONE = 0,
+    /// [`aldis_time_format_t::subms`]: microseconds of millisecond, 16 bits (301.0 §3.3.2).
+    ALDIS_TIME_CDS_SUBMS_MICROS = 1,
+    /// [`aldis_time_format_t::subms`]: picoseconds of millisecond, 32 bits (301.0 §3.3.2).
+    ALDIS_TIME_CDS_SUBMS_PICOS = 2,
+}
+mirror!(pub aldis_time_cds_submillis: u8 { ALDIS_TIME_CDS_SUBMS_NONE, ALDIS_TIME_CDS_SUBMS_MICROS, ALDIS_TIME_CDS_SUBMS_PICOS });
+/// The calendar variation of a CCS code (301.0 §3.4).
+///
+/// A `uint8_t` argument or field is one of the enumerators below; the type itself is not a
+/// field type of the header (OI-57 convention 2; CABI-010).
+///
+/// cbindgen:prefix-with-name=false
+/// cbindgen:rename-all=None
+#[repr(u8)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[expect(
+    non_camel_case_types,
+    reason = "the variants are the C constants (OI-57 convention 2)"
+)]
+pub enum aldis_time_ccs_variation {
+    /// CCS and ASCII variation: month and day of month, CCS bit 4 = 0, ASCII code A
+    /// (301.0 §3.4.2, §3.5.1.1).
+    ALDIS_TIME_MONTH_DAY = 0,
+    /// CCS and ASCII variation: day of year, CCS bit 4 = 1, ASCII code B (301.0 §3.4.2,
+    /// §3.5.1.2).
+    ALDIS_TIME_DAY_OF_YEAR = 1,
+}
+mirror!(pub aldis_time_ccs_variation: u8 { ALDIS_TIME_MONTH_DAY, ALDIS_TIME_DAY_OF_YEAR });
 
 /// Largest P-field, in octets (301.0 §3.1.1).
 pub const ALDIS_TIME_MAX_PFIELD_LEN: u32 = 8;
@@ -326,11 +391,10 @@ pub struct aldis_time_convert_config_t {
     pub agency_epoch: aldis_time_date_t,
 }
 
-const fn variation(value: u8) -> Result<CcsVariation> {
-    match value {
-        ALDIS_TIME_MONTH_DAY => Ok(CcsVariation::MonthDay),
-        ALDIS_TIME_DAY_OF_YEAR => Ok(CcsVariation::DayOfYear),
-        _ => Err(invalid_argument()),
+fn variation(value: u8) -> Result<CcsVariation> {
+    match parse::<aldis_time_ccs_variation>(value)? {
+        aldis_time_ccs_variation::ALDIS_TIME_MONTH_DAY => Ok(CcsVariation::MonthDay),
+        aldis_time_ccs_variation::ALDIS_TIME_DAY_OF_YEAR => Ok(CcsVariation::DayOfYear),
     }
 }
 
@@ -355,8 +419,8 @@ pub(crate) fn time_format(f: &aldis_time_format_t) -> Result<TimeFormat> {
         return Err(invalid_argument());
     }
     let epoch = abi::flag(f.agency_epoch)?;
-    Ok(match f.code {
-        ALDIS_TIME_CUC => {
+    Ok(match parse::<aldis_time_code>(f.code)? {
+        aldis_time_code::ALDIS_TIME_CUC => {
             let level = if epoch {
                 CucEpoch::Agency
             } else {
@@ -375,17 +439,15 @@ pub(crate) fn time_format(f: &aldis_time_format_t) -> Result<TimeFormat> {
             }
             TimeFormat::Cuc(c)
         }
-        ALDIS_TIME_CDS => {
-            let day = match f.day_len {
-                ALDIS_TIME_CDS_DAY_16 => CdsDayLen::Bits16,
-                ALDIS_TIME_CDS_DAY_24 => CdsDayLen::Bits24,
-                _ => return Err(invalid_argument()),
+        aldis_time_code::ALDIS_TIME_CDS => {
+            let day = match parse::<aldis_time_cds_day>(f.day_len)? {
+                aldis_time_cds_day::ALDIS_TIME_CDS_DAY_16 => CdsDayLen::Bits16,
+                aldis_time_cds_day::ALDIS_TIME_CDS_DAY_24 => CdsDayLen::Bits24,
             };
-            let subms = match f.subms {
-                ALDIS_TIME_CDS_SUBMS_NONE => CdsSubMs::None,
-                ALDIS_TIME_CDS_SUBMS_MICROS => CdsSubMs::Micros,
-                ALDIS_TIME_CDS_SUBMS_PICOS => CdsSubMs::Picos,
-                _ => return Err(invalid_argument()),
+            let subms = match parse::<aldis_time_cds_submillis>(f.subms)? {
+                aldis_time_cds_submillis::ALDIS_TIME_CDS_SUBMS_NONE => CdsSubMs::None,
+                aldis_time_cds_submillis::ALDIS_TIME_CDS_SUBMS_MICROS => CdsSubMs::Micros,
+                aldis_time_cds_submillis::ALDIS_TIME_CDS_SUBMS_PICOS => CdsSubMs::Picos,
             };
             let epoch = if epoch {
                 CdsEpoch::Agency
@@ -394,11 +456,16 @@ pub(crate) fn time_format(f: &aldis_time_format_t) -> Result<TimeFormat> {
             };
             TimeFormat::Cds(CdsFormat::new(epoch, day, subms).with_tail(tail(f)?))
         }
-        ALDIS_TIME_CCS => TimeFormat::Ccs(
+        aldis_time_code::ALDIS_TIME_CCS => TimeFormat::Ccs(
             CcsFormat::new(variation(f.variation)?, f.subsecond_octets)?.with_tail(tail(f)?),
         ),
-        ALDIS_TIME_AGENCY => TimeFormat::Agency(AgencyFormat::new(f.t_len)?.with_tail(tail(f)?)),
-        _ => return Err(invalid_argument()),
+        aldis_time_code::ALDIS_TIME_AGENCY => {
+            TimeFormat::Agency(AgencyFormat::new(f.t_len)?.with_tail(tail(f)?))
+        }
+        // Values of a decoded time only: a reserved code and an ASCII time are not encodable.
+        aldis_time_code::ALDIS_TIME_UNKNOWN | aldis_time_code::ALDIS_TIME_ASCII => {
+            return Err(invalid_argument());
+        }
     })
 }
 

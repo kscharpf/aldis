@@ -16,14 +16,30 @@ use core::ptr::NonNull;
 
 use aldis::core::{DecodeMode, Error, ErrorKind, Result};
 
+use crate::mirror::{mirror, parse};
+
 use crate::error::{
     ALDIS_ERR_INVALID_FIELD, ALDIS_ERROR_DETAIL_MIN_SIZE, ALDIS_OK, aldis_error_detail_t, status,
 };
 
-/// Mode argument: strict decoding, the default (API-030, API-031).
-pub const ALDIS_MODE_STRICT: u32 = 0;
-/// Mode argument: lenient decoding, with anomaly flags (API-030, API-032).
-pub const ALDIS_MODE_LENIENT: u32 = 1;
+/// The decode mode argument (API-030; OI-57 convention 2). The argument is a `uint32_t`: an
+/// enumerator of this type, which no field of the header uses (CABI-010).
+///
+/// cbindgen:prefix-with-name=false
+/// cbindgen:rename-all=None
+#[repr(u32)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[expect(
+    non_camel_case_types,
+    reason = "the variants are the C constants (OI-57 convention 2)"
+)]
+pub enum aldis_mode {
+    /// Strict decoding, the default (API-030, API-031).
+    ALDIS_MODE_STRICT = 0,
+    /// Lenient decoding, with anomaly flags (API-030, API-032).
+    ALDIS_MODE_LENIENT = 1,
+}
+mirror!(pub aldis_mode: u32 { ALDIS_MODE_STRICT, ALDIS_MODE_LENIENT });
 
 /// The error of a CABI-022 violation: `InvalidField` naming no field.
 pub(crate) const fn invalid_argument() -> Error {
@@ -31,11 +47,10 @@ pub(crate) const fn invalid_argument() -> Error {
 }
 
 /// The decode mode of a `uint32_t` mode argument (API-030; CABI-010, CABI-022).
-pub(crate) const fn mode(mode: u32) -> Result<DecodeMode> {
-    match mode {
-        ALDIS_MODE_STRICT => Ok(DecodeMode::Strict),
-        ALDIS_MODE_LENIENT => Ok(DecodeMode::Lenient),
-        _ => Err(invalid_argument()),
+pub(crate) fn mode(mode: u32) -> Result<DecodeMode> {
+    match parse::<aldis_mode>(mode)? {
+        aldis_mode::ALDIS_MODE_STRICT => Ok(DecodeMode::Strict),
+        aldis_mode::ALDIS_MODE_LENIENT => Ok(DecodeMode::Lenient),
     }
 }
 

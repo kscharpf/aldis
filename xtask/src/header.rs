@@ -304,8 +304,10 @@ fn native_static_libs(note: &str) -> Vec<String> {
         .collect()
 }
 
-/// `xtask header c-smoke <cc> <c++>`: the host libraries (CABI-001) and the header as C99 and
-/// C++11 (CABI-003), through a C program that calls the library.
+/// `xtask header c-smoke <cc> <c++>`: the host libraries (CABI-001) and the header as C99, C23,
+/// and C++11 (CABI-003), through a C program that calls the library. The C23 build takes the
+/// branch of each enumeration that declares its underlying type (c-abi.md §12.3, spike 1); a
+/// compiler that does not define `__STDC_VERSION__` as C23 yet compiles the C99 branch.
 pub fn c_smoke(cc: &str, cxx: &str) -> Result<usize, String> {
     let root = repo::root();
     // The static library's native dependencies, printed while it is built (CABI-001). Without
@@ -358,6 +360,20 @@ pub fn c_smoke(cc: &str, cxx: &str) -> Result<usize, String> {
             .arg("-o")
             .arg(&c_exe),
     )?;
+    // C23 (`-std=c2x` for the compilers before the spelling `c23`) against the static library.
+    let c23_exe = out_dir.join("smoke-c23");
+    run_cmd(
+        Command::new(cc)
+            .args(["-std=c2x"])
+            .args(warnings)
+            .arg("-I")
+            .arg(&include)
+            .arg(&smoke)
+            .arg(lib_dir.join("libaldis_ffi.a"))
+            .args(native_static_libs(&note))
+            .arg("-o")
+            .arg(&c23_exe),
+    )?;
     // C++11 against the shared library.
     let cxx_exe = out_dir.join("smoke-cxx11");
     run_cmd(
@@ -373,10 +389,10 @@ pub fn c_smoke(cc: &str, cxx: &str) -> Result<usize, String> {
             .arg("-o")
             .arg(&cxx_exe),
     )?;
-    for exe in [&c_exe, &cxx_exe] {
+    for exe in [&c_exe, &c23_exe, &cxx_exe] {
         print!("{}", run_cmd(&mut Command::new(exe))?);
     }
-    println!("c-smoke: {cc} (C99, static) and {cxx} (C++11, shared) passed");
+    println!("c-smoke: {cc} (C99 and C23, static) and {cxx} (C++11, shared) passed");
     Ok(0)
 }
 

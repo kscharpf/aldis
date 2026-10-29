@@ -48,6 +48,7 @@ use aldis::core::ocf::Ocf;
 use aldis::core::security::SecurityLayout;
 
 use crate::abi::{self, Configs, invalid_argument};
+use crate::mirror::{mirror, parse};
 use crate::oid::{GeneratorState, aldis_oid_generator_t, generator};
 
 /// Length of the AOS Transfer Frame Primary Header without the FHEC, in octets (732.0
@@ -76,45 +77,93 @@ pub const ALDIS_AOS_VALID_BITS_MIN: u16 = 1;
 /// the last index below the reserved values (732.0 §4.1.4.3.3.3–4; AOS-017).
 pub const ALDIS_AOS_VALID_BITS_MAX: u16 = 0x3FFE;
 
-/// Edition: 732.0-B-5, a 10-bit SCID and a 16-bit First Header Pointer; the default (732.0
-/// §4.1.2.2.3, §4.1.4.2.1.4; AOS-001, GEN-062).
-pub const ALDIS_AOS_EDITION_ISSUE5: u8 = 0;
-/// Edition: the wire format of 732.0-B-4 and earlier (AOS-002, AOS-003).
+/// The AOS edition (AOS-001; 732.0-B-5, 732.0-B-4).
 ///
-/// An 8-bit SCID, Primary Header bits 42–43 a spare, and an `M_PDU` Header of a 5-bit spare and
-/// an 11-bit First Header Pointer (732.0-B-4 §4.1.2.2.3, §4.1.2.5.4, §4.1.4.2.2–3).
-pub const ALDIS_AOS_EDITION_ISSUE4: u8 = 1;
+/// A `uint8_t` argument or field is one of the enumerators below; the type itself is not a
+/// field type of the header (OI-57 convention 2; CABI-010).
+///
+/// cbindgen:prefix-with-name=false
+/// cbindgen:rename-all=None
+#[repr(u8)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[expect(
+    non_camel_case_types,
+    reason = "the variants are the C constants (OI-57 convention 2)"
+)]
+pub enum aldis_aos_edition {
+    /// Edition: 732.0-B-5, a 10-bit SCID and a 16-bit First Header Pointer; the default (732.0
+    /// §4.1.2.2.3, §4.1.4.2.1.4; AOS-001, GEN-062).
+    ALDIS_AOS_EDITION_ISSUE5 = 0,
+    /// Edition: the wire format of 732.0-B-4 and earlier (AOS-002, AOS-003).
+    ///
+    /// An 8-bit SCID, Primary Header bits 42–43 a spare, and an `M_PDU` Header of a 5-bit spare and
+    /// an 11-bit First Header Pointer (732.0-B-4 §4.1.2.2.3, §4.1.2.5.4, §4.1.4.2.2–3).
+    ALDIS_AOS_EDITION_ISSUE4 = 1,
+}
+mirror!(pub aldis_aos_edition: u8 { ALDIS_AOS_EDITION_ISSUE5, ALDIS_AOS_EDITION_ISSUE4 });
 
-/// Data Field Content: one `M_PDU` per frame (732.0 §4.1.4.2, Table 5-3).
-pub const ALDIS_AOS_CONTENT_MPDU: u8 = 0;
-/// Data Field Content: one `B_PDU` per frame (732.0 §4.1.4.3, Table 5-3; AOS-018).
-pub const ALDIS_AOS_CONTENT_BPDU: u8 = 1;
-/// Data Field Content: one `VCA_SDU` per frame, opaque (732.0 §4.1.4.1.3, Table 5-3).
-pub const ALDIS_AOS_CONTENT_VCA_SDU: u8 = 2;
-/// Data Field Content: Idle Data, the content of an OID frame's data field too (732.0
-/// §4.1.4.1.3, §4.1.4.1.5, Table 5-3).
-pub const ALDIS_AOS_CONTENT_IDLE_DATA: u8 = 3;
+/// The Data Field Content of a virtual channel (732.0 Table 5-3).
+///
+/// A `uint8_t` argument or field is one of the enumerators below; the type itself is not a
+/// field type of the header (OI-57 convention 2; CABI-010).
+///
+/// cbindgen:prefix-with-name=false
+/// cbindgen:rename-all=None
+#[repr(u8)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[expect(
+    non_camel_case_types,
+    reason = "the variants are the C constants (OI-57 convention 2)"
+)]
+pub enum aldis_aos_content {
+    /// Data Field Content: one `M_PDU` per frame (732.0 §4.1.4.2, Table 5-3).
+    ALDIS_AOS_CONTENT_MPDU = 0,
+    /// Data Field Content: one `B_PDU` per frame (732.0 §4.1.4.3, Table 5-3; AOS-018).
+    ALDIS_AOS_CONTENT_BPDU = 1,
+    /// Data Field Content: one `VCA_SDU` per frame, opaque (732.0 §4.1.4.1.3, Table 5-3).
+    ALDIS_AOS_CONTENT_VCA_SDU = 2,
+    /// Data Field Content: Idle Data, the content of an OID frame's data field too (732.0
+    /// §4.1.4.1.3, §4.1.4.1.5, Table 5-3).
+    ALDIS_AOS_CONTENT_IDLE_DATA = 3,
+}
+mirror!(pub aldis_aos_content: u8 { ALDIS_AOS_CONTENT_MPDU, ALDIS_AOS_CONTENT_BPDU, ALDIS_AOS_CONTENT_VCA_SDU, ALDIS_AOS_CONTENT_IDLE_DATA });
 
-/// Pointer: no `M_PDU` or `B_PDU` Header: a `VCA_SDU` or Idle Data (732.0 §4.1.4.1.3).
-pub const ALDIS_AOS_POINTER_NONE: u8 = 0;
-/// `M_PDU` First Header Pointer: the first Packet that starts in the Packet Zone starts at the
-/// octet `pointer_value` (732.0 §4.1.4.2.2.3; AOS-017).
-pub const ALDIS_AOS_POINTER_STARTS_AT: u8 = 1;
-/// `M_PDU` First Header Pointer all ones: no Packet starts in the Packet Zone (732.0
-/// §4.1.4.2.2.4).
-pub const ALDIS_AOS_POINTER_NO_PACKET_START: u8 = 2;
-/// `M_PDU` First Header Pointer all ones minus one: the Packet Zone holds only Idle Data (732.0
-/// §4.1.4.2.2.5).
-pub const ALDIS_AOS_POINTER_ONLY_IDLE_DATA: u8 = 3;
-/// `B_PDU` Bitstream Data Pointer: the first `pointer_value` bits of the Bitstream Data Zone are
-/// user data, the rest idle data (732.0 §4.1.4.3.3.2; AOS-017, GEN-053).
-pub const ALDIS_AOS_POINTER_VALID_BITS: u8 = 4;
-/// `B_PDU` Bitstream Data Pointer all ones: the zone holds only user data (732.0
-/// §4.1.4.3.3.3).
-pub const ALDIS_AOS_POINTER_ALL_VALID: u8 = 5;
-/// `B_PDU` Bitstream Data Pointer all ones minus one: the zone holds only idle data (732.0
-/// §4.1.4.3.3.4).
-pub const ALDIS_AOS_POINTER_ONLY_IDLE: u8 = 6;
+/// The kind of `M_PDU` or `B_PDU` Header pointer of a frame (732.0 §4.1.4.2, §4.1.4.3).
+///
+/// A `uint8_t` argument or field is one of the enumerators below; the type itself is not a
+/// field type of the header (OI-57 convention 2; CABI-010).
+///
+/// cbindgen:prefix-with-name=false
+/// cbindgen:rename-all=None
+#[repr(u8)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[expect(
+    non_camel_case_types,
+    reason = "the variants are the C constants (OI-57 convention 2)"
+)]
+pub enum aldis_aos_pointer {
+    /// Pointer: no `M_PDU` or `B_PDU` Header: a `VCA_SDU` or Idle Data (732.0 §4.1.4.1.3).
+    ALDIS_AOS_POINTER_NONE = 0,
+    /// `M_PDU` First Header Pointer: the first Packet that starts in the Packet Zone starts at the
+    /// octet `pointer_value` (732.0 §4.1.4.2.2.3; AOS-017).
+    ALDIS_AOS_POINTER_STARTS_AT = 1,
+    /// `M_PDU` First Header Pointer all ones: no Packet starts in the Packet Zone (732.0
+    /// §4.1.4.2.2.4).
+    ALDIS_AOS_POINTER_NO_PACKET_START = 2,
+    /// `M_PDU` First Header Pointer all ones minus one: the Packet Zone holds only Idle Data (732.0
+    /// §4.1.4.2.2.5).
+    ALDIS_AOS_POINTER_ONLY_IDLE_DATA = 3,
+    /// `B_PDU` Bitstream Data Pointer: the first `pointer_value` bits of the Bitstream Data Zone are
+    /// user data, the rest idle data (732.0 §4.1.4.3.3.2; AOS-017, GEN-053).
+    ALDIS_AOS_POINTER_VALID_BITS = 4,
+    /// `B_PDU` Bitstream Data Pointer all ones: the zone holds only user data (732.0
+    /// §4.1.4.3.3.3).
+    ALDIS_AOS_POINTER_ALL_VALID = 5,
+    /// `B_PDU` Bitstream Data Pointer all ones minus one: the zone holds only idle data (732.0
+    /// §4.1.4.3.3.4).
+    ALDIS_AOS_POINTER_ONLY_IDLE = 6,
+}
+mirror!(pub aldis_aos_pointer: u8 { ALDIS_AOS_POINTER_NONE, ALDIS_AOS_POINTER_STARTS_AT, ALDIS_AOS_POINTER_NO_PACKET_START, ALDIS_AOS_POINTER_ONLY_IDLE_DATA, ALDIS_AOS_POINTER_VALID_BITS, ALDIS_AOS_POINTER_ALL_VALID, ALDIS_AOS_POINTER_ONLY_IDLE });
 
 /// Anomaly bit: Virtual Channel Frame Count Cycle other than `0000` with its Use Flag `0`
 /// (bit 0 of `AosAnomaly`; 732.0 §4.1.2.5.5.3; AOS-012, API-032).
@@ -410,11 +459,10 @@ pub struct aldis_aos_frame_t {
 }
 
 /// The edition of a C constant (AOS-001; CABI-010, CABI-022).
-const fn edition(value: u8) -> Result<AosEdition> {
-    match value {
-        ALDIS_AOS_EDITION_ISSUE5 => Ok(AosEdition::Issue5),
-        ALDIS_AOS_EDITION_ISSUE4 => Ok(AosEdition::Issue4Compatible),
-        _ => Err(invalid_argument()),
+fn edition(value: u8) -> Result<AosEdition> {
+    match parse::<aldis_aos_edition>(value)? {
+        aldis_aos_edition::ALDIS_AOS_EDITION_ISSUE5 => Ok(AosEdition::Issue5),
+        aldis_aos_edition::ALDIS_AOS_EDITION_ISSUE4 => Ok(AosEdition::Issue4Compatible),
     }
 }
 
@@ -440,12 +488,11 @@ fn virtual_channel(
     v: &aldis_aos_vc_config_t,
 ) -> Result<AosVirtualChannelConfig> {
     let vcid = VcId::try_from(v.vcid)?;
-    let content = match v.content {
-        ALDIS_AOS_CONTENT_MPDU => DataFieldContent::Mpdu,
-        ALDIS_AOS_CONTENT_BPDU => DataFieldContent::Bpdu,
-        ALDIS_AOS_CONTENT_VCA_SDU => DataFieldContent::VcaSdu,
-        ALDIS_AOS_CONTENT_IDLE_DATA => DataFieldContent::IdleData,
-        _ => return Err(invalid_argument()),
+    let content = match parse::<aldis_aos_content>(v.content)? {
+        aldis_aos_content::ALDIS_AOS_CONTENT_MPDU => DataFieldContent::Mpdu,
+        aldis_aos_content::ALDIS_AOS_CONTENT_BPDU => DataFieldContent::Bpdu,
+        aldis_aos_content::ALDIS_AOS_CONTENT_VCA_SDU => DataFieldContent::VcaSdu,
+        aldis_aos_content::ALDIS_AOS_CONTENT_IDLE_DATA => DataFieldContent::IdleData,
     };
     let mut vc = AosVirtualChannelConfig::new(scid, vcid, content)?;
     if abi::flag(v.ocf)? {
@@ -526,19 +573,26 @@ fn fields(scid: SpacecraftId<10>, f: aldis_aos_fields_t) -> Result<AosFrameField
     } else {
         None
     };
-    let pdu = match f.pointer {
-        ALDIS_AOS_POINTER_NONE => PduHeader::None,
-        ALDIS_AOS_POINTER_STARTS_AT => PduHeader::Mpdu(PacketPointer::StartsAt(
+    let pdu = match parse::<aldis_aos_pointer>(f.pointer)? {
+        aldis_aos_pointer::ALDIS_AOS_POINTER_NONE => PduHeader::None,
+        aldis_aos_pointer::ALDIS_AOS_POINTER_STARTS_AT => PduHeader::Mpdu(PacketPointer::StartsAt(
             PacketOffset::try_from(f.pointer_value)?,
         )),
-        ALDIS_AOS_POINTER_NO_PACKET_START => PduHeader::Mpdu(PacketPointer::NoPacketStart),
-        ALDIS_AOS_POINTER_ONLY_IDLE_DATA => PduHeader::Mpdu(PacketPointer::OnlyIdleData),
-        ALDIS_AOS_POINTER_VALID_BITS => PduHeader::Bpdu(BitstreamPointer::ValidBits(
-            ValidBitCount::try_from(f.pointer_value)?,
-        )),
-        ALDIS_AOS_POINTER_ALL_VALID => PduHeader::Bpdu(BitstreamPointer::AllValid),
-        ALDIS_AOS_POINTER_ONLY_IDLE => PduHeader::Bpdu(BitstreamPointer::OnlyIdle),
-        _ => return Err(invalid_argument()),
+        aldis_aos_pointer::ALDIS_AOS_POINTER_NO_PACKET_START => {
+            PduHeader::Mpdu(PacketPointer::NoPacketStart)
+        }
+        aldis_aos_pointer::ALDIS_AOS_POINTER_ONLY_IDLE_DATA => {
+            PduHeader::Mpdu(PacketPointer::OnlyIdleData)
+        }
+        aldis_aos_pointer::ALDIS_AOS_POINTER_VALID_BITS => PduHeader::Bpdu(
+            BitstreamPointer::ValidBits(ValidBitCount::try_from(f.pointer_value)?),
+        ),
+        aldis_aos_pointer::ALDIS_AOS_POINTER_ALL_VALID => {
+            PduHeader::Bpdu(BitstreamPointer::AllValid)
+        }
+        aldis_aos_pointer::ALDIS_AOS_POINTER_ONLY_IDLE => {
+            PduHeader::Bpdu(BitstreamPointer::OnlyIdle)
+        }
     };
     Ok(AosFrameFields {
         scid,

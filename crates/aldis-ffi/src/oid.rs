@@ -15,15 +15,32 @@
 use aldis::core::Result;
 use aldis::core::oid::{OidGenerator, OidGeneratorGalois};
 
-use crate::abi::{self, invalid_argument};
+use crate::abi::{self};
 use crate::handle::{self, Storage};
+use crate::mirror::{mirror, parse};
 
-/// [`aldis_oid_generator_init`] `form`: the Fibonacci form, the reference implementation
-/// (132.0 Annex D; CMN-020).
-pub const ALDIS_OID_FIBONACCI: u32 = 0;
-/// [`aldis_oid_generator_init`] `form`: the Galois form, with the seed of 132.0 Annex D
-/// (CMN-022).
-pub const ALDIS_OID_GALOIS: u32 = 1;
+/// The form of an Only Idle Data generator (CMN-020).
+///
+/// A `uint32_t` argument or field is one of the enumerators below; the type itself is not a
+/// field type of the header (OI-57 convention 2; CABI-010).
+///
+/// cbindgen:prefix-with-name=false
+/// cbindgen:rename-all=None
+#[repr(u32)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[expect(
+    non_camel_case_types,
+    reason = "the variants are the C constants (OI-57 convention 2)"
+)]
+pub enum aldis_oid_form {
+    /// [`aldis_oid_generator_init`] `form`: the Fibonacci form, the reference implementation
+    /// (132.0 Annex D; CMN-020).
+    ALDIS_OID_FIBONACCI = 0,
+    /// [`aldis_oid_generator_init`] `form`: the Galois form, with the seed of 132.0 Annex D
+    /// (CMN-022).
+    ALDIS_OID_GALOIS = 1,
+}
+mirror!(pub aldis_oid_form: u32 { ALDIS_OID_FIBONACCI, ALDIS_OID_GALOIS });
 
 /// 64-bit words of one `aldis_oid_generator_t` (CABI-031; M2 plan D5, D14).
 pub const ALDIS_OID_GENERATOR_WORDS: usize = 4;
@@ -87,10 +104,13 @@ pub unsafe extern "C" fn aldis_oid_generator_init(
     // SAFETY: every pointer is valid as `# Safety` states; `abi` and `handle` check them.
     unsafe {
         abi::call(err, || {
-            let state = match form {
-                ALDIS_OID_FIBONACCI => GeneratorState::Fibonacci(OidGenerator::new()),
-                ALDIS_OID_GALOIS => GeneratorState::Galois(OidGeneratorGalois::new()),
-                _ => return Err(invalid_argument()),
+            let state = match parse::<aldis_oid_form>(form)? {
+                aldis_oid_form::ALDIS_OID_FIBONACCI => {
+                    GeneratorState::Fibonacci(OidGenerator::new())
+                }
+                aldis_oid_form::ALDIS_OID_GALOIS => {
+                    GeneratorState::Galois(OidGeneratorGalois::new())
+                }
             };
             handle::init(storage, state)
         })
