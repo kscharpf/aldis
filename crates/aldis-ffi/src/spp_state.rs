@@ -298,12 +298,10 @@ pub unsafe extern "C" fn aldis_spp_tracker_track(
     // SAFETY: every pointer is valid as `# Safety` states; `abi` and `handle` check them.
     unsafe {
         abi::call(err, || {
-            let h = tracker(h)?;
+            let mut h = tracker(h)?;
             let apid = Apid::try_from(apid)?;
             let count = SeqCount::try_from(count)?;
-            let mut state = h.load();
-            let tracked = state.track(apid, count)?;
-            h.store(state);
+            let tracked = h.update(|state| state.track(apid, count))?;
             out.write(continuity(tracked));
             Ok(())
         })
@@ -331,12 +329,10 @@ pub unsafe extern "C" fn aldis_spp_tracker_forget(
     // SAFETY: every pointer is valid as `# Safety` states; `abi` and `handle` check them.
     unsafe {
         abi::call(err, || {
-            let h = tracker(h)?;
+            let mut h = tracker(h)?;
             let forgot = abi::out(forgot)?;
             let apid = Apid::try_from(apid)?;
-            let mut state = h.load();
-            let was = state.tracker.forget(apid);
-            h.store(state);
+            let was = h.update(|state| state.tracker.forget(apid));
             forgot.write(was);
             Ok(())
         })
@@ -368,7 +364,8 @@ pub unsafe extern "C" fn aldis_spp_tracker_last(
             let h = tracker(h)?;
             let known = abi::out(known)?;
             let count = abi::out(count)?;
-            let last = h.load().tracker.last(Apid::try_from(apid)?);
+            let apid = Apid::try_from(apid)?;
+            let last = h.read(|state| state.tracker.last(apid));
             known.write(last.is_some());
             count.write(last.map_or(0, SeqCount::get));
             Ok(())
@@ -397,7 +394,7 @@ pub unsafe extern "C" fn aldis_spp_tracker_len(
     unsafe {
         abi::call(err, || {
             let h = tracker(h)?;
-            abi::out(len)?.write(h.load().tracker.len());
+            abi::out(len)?.write(h.read(|state| state.tracker.len()));
             Ok(())
         })
     }
@@ -551,7 +548,7 @@ pub unsafe extern "C" fn aldis_spp_segmenter_remaining(
     unsafe {
         abi::call(err, || {
             let h = segmenter(h)?;
-            abi::out(remaining)?.write(h.load().remaining());
+            abi::out(remaining)?.write(h.read(SegmenterState::remaining));
             Ok(())
         })
     }
@@ -689,8 +686,8 @@ pub unsafe extern "C" fn aldis_spp_reassembler_reset(
     // SAFETY: every pointer is valid as `# Safety` states; `abi` and `handle` check them.
     unsafe {
         abi::call(err, || {
-            let h = reassembler(h)?;
-            h.store(ReassemblerState::new(h.load().apid()));
+            let mut h = reassembler(h)?;
+            h.update(|r| *r = ReassemblerState::new(r.apid()));
             Ok(())
         })
     }
@@ -717,7 +714,7 @@ pub unsafe extern "C" fn aldis_spp_reassembler_is_assembling(
     unsafe {
         abi::call(err, || {
             let h = reassembler(h)?;
-            abi::out(assembling)?.write(h.load().is_assembling());
+            abi::out(assembling)?.write(h.read(ReassemblerState::is_assembling));
             Ok(())
         })
     }
