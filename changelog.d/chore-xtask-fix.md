@@ -4,5 +4,4 @@
 
 ### Changed
 
-- The coverage gate, the `features` crate list, and the C ABI vector areas are derived from the workspace (crates of Layers 0-2 with code; `aldis-ffi/src/<area>.rs`) instead of stored in `GATED`, `CRATES`, and `FFI_AREAS`; `consistency` no longer carries the two checks that compared those lists.
-- `cargo xtask trace` skips withdrawn requirements (text starting `Withdrawn:`), so a scope range that covers one no longer counts it as untraced.
+- The coverage gate, the `features` crate list, and the C ABI vector areas are derived from the workspace (crates of Layers 0-2 with code; `aldis-ffi/src/<area>.rs`) instead of stored in `GATED`, `CRATES`, and `FFI_AREAS`; `consistency` no longer carries the four checks that compared those lists.

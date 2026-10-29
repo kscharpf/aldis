@@ -220,26 +220,9 @@ fn diff(problems: &mut Vec<String>, what: &str, want: &BTreeSet<String>, have: &
 fn crate_problems(c: &Crates) -> Vec<String> {
     let mut p = Vec::new();
     let layered: BTreeSet<String> = c.layers.iter().map(|(n, _)| n.clone()).collect();
-    let low: BTreeSet<String> = c
-        .layers
-        .iter()
-        .filter(|(_, l)| *l <= 2)
-        .map(|(n, _)| n.clone())
-        .collect();
     for n in layered.difference(&c.members) {
         p.push(format!(
             "{n}: in the layers check (xtask/src/layers.rs) but not a workspace member"
-        ));
-    }
-    for n in c.coverage.difference(&low) {
-        p.push(format!(
-            "{n}: in the coverage gate but not a crate of Layers 0–2 in xtask/src/layers.rs"
-        ));
-    }
-    let code: BTreeSet<String> = c.with_code.intersection(&low).cloned().collect();
-    for n in c.coverage.difference(&code) {
-        p.push(format!(
-            "{n}: in the coverage gate but declares no function (a skeleton)"
         ));
     }
     // The C ABI crate, once it exports functions, is measured (M2 plan D16) and exercised.
@@ -720,9 +703,9 @@ mod tests {
     fn a_crate_missing_from_one_registration_is_reported() {
         // req: VER-024, VER-025, VER-010, GEN-006
         // An M1 crate dropped from each list in turn is caught as well.
-        for list in 0..3 {
+        for list in 0..2 {
             let mut c = consistent();
-            let set = [&mut c.mutants, &mut c.exerciser, &mut c.coverage];
+            let set = [&mut c.mutants, &mut c.exerciser];
             for (i, s) in set.into_iter().enumerate() {
                 if i == list {
                     s.remove("aldis-spp");
@@ -730,10 +713,6 @@ mod tests {
             }
             assert!(!crate_problems(&c).is_empty(), "list {list}");
         }
-        // A gated skeleton.
-        let mut c = consistent();
-        c.with_code.remove("aldis-aos");
-        assert_eq!(crate_problems(&c).len(), 1);
         // A crate in a list that is not a crate with code.
         let mut c = consistent();
         c.mutants.insert("aldis-tm".to_owned());
