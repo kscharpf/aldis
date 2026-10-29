@@ -1,5 +1,7 @@
 # Human review: four time-code readings (CCSDS 301.0-B-4)
 
+> Dated review: identifiers reflect the code at the time.
+
 **Status:** in progress (all four readings recorded; Q4 changes Aldis, OI-40 resolved; Q3's question is deferred, OI-39; the comparisons with the vectors and with §3 D1–D4 are open) · **Reviewer:** the maintainer · **Prepared:** 2026-10-21
 
 ## Purpose

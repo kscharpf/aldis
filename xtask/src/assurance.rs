@@ -18,6 +18,13 @@ use crate::spec::Spec;
 const HAZARDS: &str = "docs/verification/hazards.md";
 const HAZARD_DIR: &str = "docs/verification/hazards";
 const CASE: &str = "docs/verification/assurance-case.md";
+const RECORD_DIR: &str = "docs/verification/records";
+/// Files outside the hazard analysis whose prose the code-name rule also covers (§2.5).
+const PROSE_FILES: [&str; 2] = [
+    "docs/verification/cross-checks.md",
+    "docs/verification/formal-proofs.md",
+];
+const HEADER: &str = "include/aldis/aldis.h";
 const CODECS: [&str; 5] = ["X", "TM", "TC", "AOS", "USLP"];
 const FILE_CODECS: [(&str, &str); 4] = [
     ("tm.md", "TM"),
@@ -54,7 +61,7 @@ const ROWS: [&str; 12] = [
     "Claims",
 ];
 const STATUSES: [&str; 4] = ["todo", "controlled", "residual", "gap"];
-const KINDS: [&str; 19] = [
+const KINDS: [&str; 20] = [
     "file",
     "test",
     "nightly-test",
@@ -74,6 +81,7 @@ const KINDS: [&str; 19] = [
     "asm",
     "df",
     "proposal",
+    "sym",
 ];
 const EVIDENCE_HEADER: [&str; 3] = ["Evidence", "Shows", "Requirements"];
 const ASSUMPTION_HEADER: [&str; 4] = ["ID", "Assumption", "Basis", "Integrator obligation"];
@@ -317,6 +325,53 @@ struct Env {
     fuzz: BTreeSet<String>,
     /// OI ID -> status (the last cell).
     ois: BTreeMap<String, String>,
+    /// The identifiers of the C header.
+    symbols: BTreeSet<String>,
+}
+
+/// The identifiers of `text`: the maximal runs of letters, digits, and `_`.
+fn identifiers(text: &str) -> BTreeSet<String> {
+    text.split(|c: char| !(c.is_ascii_alphanumeric() || c == '_'))
+        .filter(|w| !w.is_empty())
+        .map(str::to_owned)
+        .collect()
+}
+
+/// What a code span that is not a reference names in the code (§2.5): an `aldis_` symbol, a
+/// path of a `.rs`, `.h`, or `.toml` file (with or without a line or a range), or a `::` path.
+fn code_name(span: &str) -> Option<&'static str> {
+    if span.contains("::") {
+        return Some("a `::` path");
+    }
+    let word = |c: char| !(c.is_ascii_alphanumeric() || c == '_');
+    if span.split(word).any(|w| w.starts_with("aldis_")) {
+        return Some("an `aldis_` symbol");
+    }
+    span.split_whitespace()
+        .filter_map(|t| t.trim_matches(['(', ')', ',', ';']).split(':').next())
+        .any(|path| [".rs", ".h", ".toml"].iter().any(|e| path.ends_with(e)))
+        .then_some("a source file")
+}
+
+/// The code-name rule (§2.5): outside fenced code, a code span that is not a reference of a kind
+/// of §2.3 names no code item.
+fn code_names(rep: &mut Report, doc: &Doc) {
+    for (n, line) in doc.lines.iter().enumerate() {
+        if doc.in_fence[n] {
+            continue;
+        }
+        for span in spans(line).unwrap_or_default() {
+            if parse_ref(span).is_some_and(|(k, _)| KINDS.contains(&k)) {
+                continue;
+            }
+            if let Some(what) = code_name(span) {
+                rep.add(
+                    doc.at(n + 1),
+                    format!("`{span}` names {what}: cite a reference (`sym:`, `file:`, `test:`) or state the property"),
+                );
+            }
+        }
+    }
 }
 
 /// The jobs of a workflow: the lines of two spaces, a name, and `:` after `jobs:`.
@@ -389,6 +444,7 @@ impl Env {
             jobs: workflow_jobs(&text(".github/workflows/nightly.yml")?),
             fuzz: crate::consistency::bin_targets(&text("fuzz/Cargo.toml")?),
             ois: open_issues(&text("docs/09-open-issues.md")?),
+            symbols: identifiers(&text(HEADER)?),
             spec,
         })
     }
@@ -524,6 +580,10 @@ impl Env {
             "asm" => found(defs.asm.contains(target), "assumption or context row"),
             "df" => found(defs.df.contains(target), "defeater"),
             "proposal" => found(defs.proposals.contains_key(target), "proposal"),
+            "sym" => found(
+                target.starts_with("aldis_") && self.symbols.contains(target),
+                "`aldis_` symbol in the C header",
+            ),
             _ => Err("unknown kind".to_owned()),
         }
     }
@@ -1494,6 +1554,8 @@ struct Source {
     path: String,
     /// The codec of a hazard file, `None` for the case.
     codec: Option<&'static str>,
+    /// A file checked for its references and the code-name rule only (§2.5).
+    prose: bool,
     text: String,
 }
 
@@ -1521,9 +1583,11 @@ fn analyse(env: &Env, sources: &[Source], strict: bool) -> Analysis {
     for s in sources {
         let doc = Doc::new(&s.path, &s.text);
         match s.codec {
+            _ if s.prose => {}
             Some(codec) => pass.hazard_file(&doc, codec),
             None => pass.case(&doc),
         }
+        code_names(&mut pass.rep, &doc);
         refs.extend(scan_references(&doc));
     }
     cross_checks(&mut pass, &refs);
@@ -1598,6 +1662,7 @@ fn load_sources() -> Result<(Vec<Source>, Vec<String>), String> {
     let mut sources = vec![Source {
         path: HAZARDS.to_owned(),
         codec: Some("X"),
+        prose: false,
         text: repo::read(&root.join(HAZARDS))?,
     }];
     let mut problems = Vec::new();
@@ -1608,6 +1673,7 @@ fn load_sources() -> Result<(Vec<Source>, Vec<String>), String> {
             Some((_, codec)) => sources.push(Source {
                 path: rel.clone(),
                 codec: Some(codec),
+                prose: false,
                 text: repo::read(&path)?,
             }),
             None => problems.push(format!("{rel}:1: not a codec file (tm, tc, aos, uslp)")),
@@ -1616,8 +1682,22 @@ fn load_sources() -> Result<(Vec<Source>, Vec<String>), String> {
     sources.push(Source {
         path: CASE.to_owned(),
         codec: None,
+        prose: false,
         text: repo::read(&root.join(CASE))?,
     });
+    let mut prose: Vec<String> = repo::files(RECORD_DIR, &["md"])
+        .iter()
+        .map(|p| repo::rel(p))
+        .collect();
+    prose.extend(PROSE_FILES.iter().map(|p| (*p).to_owned()));
+    for rel in prose {
+        sources.push(Source {
+            text: repo::read(&root.join(&rel))?,
+            path: rel,
+            codec: None,
+            prose: true,
+        });
+    }
     Ok((sources, problems))
 }
 
@@ -1792,6 +1872,7 @@ fn proves() {}
                 ("OI-45".to_owned(), "Open".to_owned()),
                 ("OI-07".to_owned(), "Resolved".to_owned()),
             ]),
+            symbols: set(&["aldis_tc_stream_next"]),
         }
     }
 
@@ -1840,6 +1921,7 @@ fn proves() {}
             ("asm", "CTX-1", "ASM-9"),
             ("df", "DF-1", "DF-9"),
             ("proposal", "P-TC-01", "P-TC-09"),
+            ("sym", "aldis_tc_stream_next", "aldis_tc_next_frame"),
         ];
         assert_eq!(cases.len(), KINDS.len());
         for (kind, good, bad) in cases {
@@ -2025,11 +2107,13 @@ fn proves() {}
             Source {
                 path: "hz/tc.md".to_owned(),
                 codec: Some("TC"),
+                prose: false,
                 text: tc.to_owned(),
             },
             Source {
                 path: "case.md".to_owned(),
                 codec: None,
+                prose: false,
                 text: case.to_owned(),
             },
         ];
@@ -2150,16 +2234,19 @@ fn proves() {}
             Source {
                 path: "hz/tc.md".to_owned(),
                 codec: Some("TC"),
+                prose: false,
                 text: t.clone(),
             },
             Source {
                 path: "hz/other.md".to_owned(),
                 codec: Some("TC"),
+                prose: false,
                 text: t,
             },
             Source {
                 path: "case.md".to_owned(),
                 codec: None,
+                prose: false,
                 text: case(),
             },
         ];
@@ -2371,6 +2458,65 @@ fn proves() {}
     #[test]
     fn the_hazards_and_the_case_of_the_repository_have_no_problem() {
         assert_eq!(run(true), Ok(0));
+    }
+
+    // req: VER-066
+    #[test]
+    fn code_names_are_problems_and_references_are_not() {
+        let t = tc();
+        for (span, what) in [
+            ("aldis_tc_stream_next", "an `aldis_` symbol"),
+            (
+                "crates/aldis-tc/src/view.rs:104\u{2013}109",
+                "a source file",
+            ),
+            ("config.toml", "a source file"),
+            ("include/x.h", "a source file"),
+            ("Frame::decode", "a `::` path"),
+        ] {
+            let p = tc_problems(&changed(
+                &t,
+                "| Cause | c |",
+                &format!("| Cause | `{span}` |"),
+            ));
+            assert!(has(&p, what), "{span}: {p:?}");
+        }
+        // References, and spans that name no code, pass.
+        for span in [
+            "sym:aldis_tc_stream_next",
+            "file:p/c.rs",
+            "validate_frame",
+            "00",
+        ] {
+            let p = tc_problems(&changed(
+                &t,
+                "| Cause | c |",
+                &format!("| Cause | `{span}` |"),
+            ));
+            assert!(!has(&p, "names"), "{span}: {p:?}");
+        }
+        // The rule also covers the case, and a fenced block is exempt.
+        let c = changed(
+            &case(),
+            "| `file:docs/x.md` | s |",
+            "| `file:docs/x.md` | s `aldis_x` |",
+        );
+        assert!(has(&case_problems(&c), "an `aldis_` symbol"));
+        let doc = Doc::new("f.md", "```\n`aldis_x`\n```\n");
+        let mut rep = Report::default();
+        code_names(&mut rep, &doc);
+        assert_eq!(rep.problems, Vec::<String>::new());
+    }
+
+    // req: VER-066
+    #[test]
+    fn sym_resolves_a_name_of_the_header() {
+        let (e, d) = (env(), defs());
+        assert_eq!(e.resolve(&d, "sym", "aldis_tc_stream_next"), Ok(()));
+        assert!(e.resolve(&d, "sym", "aldis_tc_next_frame").is_err());
+        assert!(e.resolve(&d, "sym", "stream").is_err());
+        let ids = identifiers("int aldis_a(void); #define ALDIS_B 1");
+        assert!(ids.contains("aldis_a") && ids.contains("ALDIS_B") && !ids.contains("aldis"));
     }
 
     // req: VER-066

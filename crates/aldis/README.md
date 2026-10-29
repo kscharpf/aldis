@@ -2,29 +2,27 @@
 
 The facade crate: it re-exports the Aldis crates as modules, each behind a Cargo feature, so that an application depends on one crate and enables only the standards it uses.
 
-**Status:** in place since Milestone 0. The re-exported crates for time codes, Space Packets, Encapsulation Packets, and the four frame codecs (TM, TC, AOS, USLP) are implemented (release `v0.3.0-m2`); the link, COP-1, and framework crates are skeletons until their milestones ([roadmap](../../docs/08-roadmap.md) §1).
-
 ## Where it sits
 
 Outside the layers of the [architecture](../../docs/01-architecture.md) §2: it depends on every library crate, each one optional, and contains no code of its own. No feature is enabled by default, and with none it builds for a `no_std` target (GEN-005). A mission that enables only `spp` compiles only `aldis-core` and `aldis-spp`, and has only those to qualify (GEN-002, GEN-003).
 
 ## Features
 
-| Feature | Module | Crate | Status |
-|---|---|---|---|
-| `core` | `aldis::core` | [`aldis-core`](../aldis-core/README.md) | Implemented (M0) |
-| `time` | `aldis::time` | [`aldis-time`](../aldis-time/README.md) | Implemented (M1) |
-| `spp` | `aldis::spp` | [`aldis-spp`](../aldis-spp/README.md), without its feature `time` | Implemented (M1) |
-| `spp-time` | `aldis::spp` and `aldis::time` | `aldis-spp` with its feature `time`: the typed time secondary header (SPP-008) | Implemented (M1) |
-| `epp` | `aldis::epp` | [`aldis-epp`](../aldis-epp/README.md) | Implemented (M1) |
-| `tm` | `aldis::tm` | [`aldis-tm`](../aldis-tm/README.md) | Implemented (M2) |
-| `tc` | `aldis::tc` | [`aldis-tc`](../aldis-tc/README.md) | Implemented (M2) |
-| `aos` | `aldis::aos` | [`aldis-aos`](../aldis-aos/README.md) | Implemented (M2) |
-| `uslp` | `aldis::uslp` | [`aldis-uslp`](../aldis-uslp/README.md) | Implemented (M2) |
-| `cop1` | `aldis::cop1` | [`aldis-cop1`](../aldis-cop1/README.md) | Skeleton (M3) |
-| `link` | `aldis::link` | [`aldis-link`](../aldis-link/README.md) | Skeleton (M4) |
-| `framework` | `aldis::framework` | [`aldis-framework`](../aldis-framework/README.md) | Skeleton (M6) |
-| `alloc`, `std` | — | The same feature of every enabled crate; strictly additive (GEN-006) | — |
+| Feature | Module | Crate |
+|---|---|---|
+| `core` | `aldis::core` | [`aldis-core`](../aldis-core/README.md) |
+| `time` | `aldis::time` | [`aldis-time`](../aldis-time/README.md) |
+| `spp` | `aldis::spp` | [`aldis-spp`](../aldis-spp/README.md), without its feature `time` |
+| `spp-time` | `aldis::spp` and `aldis::time` | `aldis-spp` with its feature `time`: the typed time secondary header (SPP-008) |
+| `epp` | `aldis::epp` | [`aldis-epp`](../aldis-epp/README.md) |
+| `tm` | `aldis::tm` | [`aldis-tm`](../aldis-tm/README.md) |
+| `tc` | `aldis::tc` | [`aldis-tc`](../aldis-tc/README.md) |
+| `aos` | `aldis::aos` | [`aldis-aos`](../aldis-aos/README.md) |
+| `uslp` | `aldis::uslp` | [`aldis-uslp`](../aldis-uslp/README.md) |
+| `cop1` | `aldis::cop1` | [`aldis-cop1`](../aldis-cop1/README.md) |
+| `link` | `aldis::link` | [`aldis-link`](../aldis-link/README.md) |
+| `framework` | `aldis::framework` | [`aldis-framework`](../aldis-framework/README.md) |
+| `alloc`, `std` | — | The same feature of every enabled crate; strictly additive (GEN-006) |
 | `full` | — | Every crate above, `spp-time`, and the cross-crate features of `aldis-link` and `aldis-cop1` | — |
 
 The crate documentation in [`src/lib.rs`](src/lib.rs) gives the standard and the requirement IDs behind each feature.

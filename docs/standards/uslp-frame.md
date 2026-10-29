@@ -4,55 +4,17 @@
 
 ## 1. Wire format (§4.1, Annex D)
 
-```
-Non-truncated:  Primary Header (7–14) ‖ [Insert Zone] ‖ [Security Header] ‖ TFDF ‖ [Security Trailer] ‖ [OCF (4)] ‖ [FECF (2)]
-Truncated:      Truncated Primary Header (4) ‖ [Security Header (6)] ‖ TFDF ‖ [Security Trailer (16)]
-TFDF          = TFDF Header (1 or 3) ‖ TFDZ
-```
-
-**Primary Header (non-truncated)**
-
-| Bits | Field | Size | Notes |
-|---|---|---|---|
-| 0–3 | TFVN | 4 | `1100` |
-| 4–19 | Spacecraft ID | 16 | |
-| 20 | Source-or-Destination ID | 1 | 0 = SCID is source, 1 = destination |
-| 21–26 | VCID | 6 | 63 = OID |
-| 27–30 | MAP ID | 4 | 0–15; OID frames use 0 |
-| 31 | End of Frame Primary Header Flag | 1 | 1 = truncated header (Annex D) |
-| 32–47 | Frame Length (total − 1) | 16 | up to 65 536 octets |
-| 48 | Bypass/Sequence Control Flag | 1 | 0 = sequence-controlled, 1 = expedited |
-| 49 | Protocol Control Command Flag | 1 | 1 = TFDF carries protocol control (COP / SDLS) |
-| 50–51 | Reserve Spares | 2 | `00` |
-| 52 | OCF Flag | 1 | |
-| 53–55 | VCF Count Length | 3 | 0–7 octets |
-| 56… | VCF Count | 0–56 | mod 2^(8·len) |
+The field layout is that of the Blue Book clause cited in the heading, and of the rustdoc of the view and writer types; the vectors pin the octets.
 
 Flag combinations (Table 4-1): `00` sequence-controlled user data, `01` **reserved**, `10` expedited user data, `11` protocol control commands (sequence-controlled service).
 
 **TFDF Header:** TFDZ Construction Rule (3 bits) ‖ UPID (5 bits) ‖ [First Header / Last Valid Octet Pointer (16 bits)].
 
-| Rule | TFDZ | Meaning | Pointer |
-|---|---|---|---|
-| `000` | fixed | Packets spanning frames | FHP (`0xFFFF` = no packet starts or ends) |
-| `001` | fixed | Start of MAPA_SDU / VCA_SDU | LVO (`0xFFFF` = SDU continues) |
-| `010` | fixed | Continuing portion of MAPA_SDU / VCA_SDU | LVO (`0xFFFF` = SDU continues) |
-| `011` | variable | Octet stream | — |
-| `100` | variable | Starting segment | — |
-| `101` | variable | Continuing segment | — |
-| `110` | variable | Last segment | — |
-| `111` | variable | No segmentation (one MAPA/VCA SDU, complete packets, control commands, or Prox-1 SPDUs) | — |
-
 The TFDZ is fixed-length on a VC whose VC Transfer Frame Type is fixed-length, and variable-length otherwise (§4.1.4.2.2.1.1), so a VC's frame type fixes which rules it may carry (USLP-016) and whether the pointer is present (USLP-005).
 
 ## 2. Configuration (managed parameters, §5)
 
-| Level | Parameters |
-|---|---|
-| Physical channel | frame type (fixed/variable), frame length (fixed) or max length (variable), Insert Zone present/length (fixed only), FECF present, max frames per C&S data unit, max repetitions |
-| Master channel | frame type, SCID (0–65535), valid VCIDs (0–62, +63), OCF required (fixed only) |
-| Virtual channel | frame type (fixed when the physical or master channel is fixed, Table 5-3 note 2), VCID, VCF count length for sequence-controlled and expedited QoS, COP in effect (COP-1/COP-P/none), MAP IDs, truncated frame length (6–32; only on a variable-length VC, Annex D1.2.1; at least 28 with SDLS, Annex D1.2.4), SDU type, OCF allowed (variable) / required (fixed), repetitions, max TFDF completion delay, max inter-frame delay, `SecurityLayout` (per VC/MAP) |
-| MAP | MAP ID, SDU type (Packet / MAPA_SDU / Octet stream), UPID |
+The managed parameters are those of the Blue Book clause cited in the heading; the configuration types carry them, with their ranges, in their rustdoc.
 
 ### 2.1 What the codec keeps
 
@@ -78,7 +40,7 @@ The valid VCIDs of a Master Channel are its `VcConfig` entries, and VCID 63 on a
 | ID | Requirement | Source | Verif. |
 |---|---|---|---|
 | USLP-001 | The decoder SHALL reject TFVN ≠ `1100` and the reserved flag combination `01`. | §4.1.2.2.2, Table 4-1 | V |
-| USLP-002 | If the End of Frame Primary Header Flag = 1, the decoder SHALL decode a truncated frame. Its total length SHALL come from the VC configuration (`truncated_frame_length`, 6–32 octets). Truncated frames are allowed only on a VC whose VC Transfer Frame Type is variable-length: the VC configuration SHALL reject a truncated frame length on a fixed-length VC with `InvalidConfig`, and a truncated frame on a configured VC that has no truncated frame length SHALL be `InvalidField` (End of Frame Primary Header Flag) in both modes (OI-35 item 2). A VC that has a truncated frame length carries only truncated frames (Annex D1.2.1, D1.2.4 note; OI-48): `encode`, the two-phase writer, and `aldis_uslp_encode` SHALL reject a non-truncated frame on it with `InvalidField` (End of Frame Primary Header Flag), and the decoder, `validate_frame` (reason 18), `peek_length`, and the delimiter SHALL treat a non-truncated frame on it as an error, in both modes, since this is a configuration rule and not a reserved value. No VC accepts both kinds, so a bit error in the flag always turns a frame into one its VC refuses, and cannot make a non-truncated frame pass as a truncated one without an FECF (`hz:HZ-USLP-02`). The decoder SHALL treat the frame as expedited user data with a 1-octet TFDF header and no Insert Zone, OCF, or FECF. Its construction rule is one of `011`–`111` (USLP-016). Annex D1.4.1.2 gives rule `111` and the UPID "Mission Specific Information-1" only in notes, so the decoder SHALL expose both and check neither beyond USLP-016, in both modes ([open issues](../09-open-issues.md) OI-35 item 1). The C view of a decoded truncated frame SHALL report `kind` as expedited (`ALDIS_USLP_KIND_EXPEDITED`), the processing of Annex D1.3.1 note 3, and not as the 0 of the members only a full frame has (OI-52). | Annex D1.2.1, D1.2.2, D1.3.1 note 3, D1.3.2, D1.4.1.2 | V |
+| USLP-002 | If the End of Frame Primary Header Flag = 1, the decoder SHALL decode a truncated frame. Its total length SHALL come from the VC configuration (`truncated_frame_len`, 6–32 octets). Truncated frames are allowed only on a VC whose VC Transfer Frame Type is variable-length: the VC configuration SHALL reject a truncated frame length on a fixed-length VC with `InvalidConfig`, and a truncated frame on a configured VC that has no truncated frame length SHALL be `InvalidField` (End of Frame Primary Header Flag) in both modes (OI-35 item 2). A VC that has a truncated frame length carries only truncated frames (Annex D1.2.1, D1.2.4 note; OI-48): `encode`, the two-phase writer, and `aldis_uslp_encode` SHALL reject a non-truncated frame on it with `InvalidField` (End of Frame Primary Header Flag), and the decoder, `validate_frame` (reason 18), `peek_length`, and the delimiter SHALL treat a non-truncated frame on it as an error, in both modes, since this is a configuration rule and not a reserved value. No VC accepts both kinds, so a bit error in the flag always turns a frame into one its VC refuses, and cannot make a non-truncated frame pass as a truncated one without an FECF (`hz:HZ-USLP-02`). The decoder SHALL treat the frame as expedited user data with a 1-octet TFDF header and no Insert Zone, OCF, or FECF. Its construction rule is one of `011`–`111` (USLP-016). Annex D1.4.1.2 gives rule `111` and the UPID "Mission Specific Information-1" only in notes, so the decoder SHALL expose both and check neither beyond USLP-016, in both modes ([open issues](../09-open-issues.md) OI-35 item 1). The C view of a decoded truncated frame SHALL report `kind` as expedited (`ALDIS_USLP_KIND_EXPEDITED`), the processing of Annex D1.3.1 note 3, and not as the 0 of the members only a full frame has (OI-52). | Annex D1.2.1, D1.2.2, D1.3.1 note 3, D1.3.2, D1.4.1.2 | V |
 | USLP-003 | For fixed-length physical channels, the frame length SHALL equal the configured length. For variable-length channels, the Frame Length field SHALL govern and the decoder SHALL consume exactly that many octets. | §4.1.2.7; Table 5-1 | V |
 | USLP-004 | The VCF Count SHALL be decoded with the length in the header. A VCF Count Length that differs from the VC's configured count length for the frame's QoS (sequence-controlled or expedited, by the Bypass/Sequence Control Flag) SHALL be `LengthMismatch` in both modes, because the field sets where the header ends (API-032; [open issues](../09-open-issues.md) OI-33). | §4.1.2.11–12, §4.1.2.11.4; Table 5-3 | V |
 | USLP-005 | The TFDF header SHALL be 3 octets, with the First Header/Last Valid Octet Pointer, for construction rules `000`, `001`, and `010`, and 1 octet, without it, for `011`–`111`. With USLP-016 the pointer is present exactly when the VC's TFDZ is fixed-length ([open issues](../09-open-issues.md) OI-05, resolved). | §4.1.4.2.1.2, §4.1.4.2.2.2.1–3, §4.1.4.2.4.1, §4.1.4.2.4.3, §4.1.4.2.4.5; Annex C3.1; Annex D1.4.1.2 | V |
@@ -177,4 +139,4 @@ Until `UslpFrameWriter::finish`, the buffer holds a Primary Header whose TFVN is
 
 ## 5. Test-vector categories
 
-`uslp/fixed_packets_rule000`, `uslp/fixed_mapa_rules001_010`, `uslp/variable_rules011_111`, `uslp/vcf_count_lengths_0_to_7`, `uslp/truncated`, `uslp/truncated_sdls_layout`, `uslp/oid`, `uslp/insert_zone`, `uslp/protocol_control_cop1`, `uslp/delimit_multiple_frames_with_fill`, `uslp/validation_failures`, `uslp/invalid`, and `uslp/config` (the configuration errors of §2.1).
+The case groups are the directories of `test-vectors/` for this standard; see [test vectors](../07-test-vectors.md).

@@ -4,21 +4,7 @@
 
 ## 1. Wire format (§4.1)
 
-```
-Primary Header (5) ‖ [Segment Header (1)] ‖ [Security Header] ‖ Data ‖ [Security Trailer] ‖ [FECF (2)]
-Total length 6 … 1024 octets (Frame Length field = total − 1)
-```
-
-| Bits | Field | Size |
-|---|---|---|
-| 0–1 | Transfer Frame Version Number `00` | 2 |
-| 2 | Bypass Flag (0 = Type-A, 1 = Type-B) | 1 |
-| 3 | Control Command Flag (0 = Type-D data, 1 = Type-C control) | 1 |
-| 4–5 | Reserved Spare `00` | 2 |
-| 6–15 | Spacecraft ID | 10 |
-| 16–21 | Virtual Channel ID | 6 |
-| 22–31 | Frame Length (total − 1) | 10 |
-| 32–39 | Frame Sequence Number N(S) | 8 |
+The field layout is that of the Blue Book clause cited in the heading, and of the rustdoc of the view and writer types; the vectors pin the octets.
 
 Flag combinations (Table 4-1): `00` AD, `01` **reserved**, `10` BD, `11` BC.
 Segment Header (optional per VC, never in Type-C frames): Sequence Flags (2 b: `01` first, `00` continuing, `10` last, `11` unsegmented) ‖ MAP ID (6 b).
@@ -26,21 +12,9 @@ Control commands (Type-C data field): **Unlock** = `00`; **Set V(R)** = `82 00 v
 
 ## 2. Configuration (managed parameters, §5)
 
-| Level | Parameters |
-|---|---|
-| Physical channel | max frame length (≤ 1024), FECF present, valid SCIDs, max frames per CLTU, max repetitions |
-| Master channel | SCID, valid VCIDs (0–63), max frame length |
-| Virtual channel | VCID, Segment Header present, data field content (Packets/VCA_SDU, if no Segment Header), valid MAP IDs, blocking permitted, repetitions (Type-A, Type-BC), `SecurityLayout` (per VC, or per MAP) |
-| MAP | MAP ID, content (Packets/MAP_SDU), blocking, segmentation, max MAP_SDU length, max FDU length (≤ 1019) |
+The managed parameters are those of the Blue Book clause cited in the heading; the configuration types carry them, with their ranges, in their rustdoc.
 
 The codec keeps the parameters it reads, in `aldis_tc::config`; the others belong to the engines that use them (M4: data field content, blocking, segmentation, the MAP_SDU and FDU limits, repetitions, frames per data unit, the multiplexing schemes, the CLCW reporting rate):
-
-| Type | Parameters | Checked by its constructor |
-|---|---|---|
-| `PhysicalChannelConfig` | Maximum Transfer Frame Length, FECF present (Table 5-1) | 6 (8 with FECF) to 1024 octets |
-| `VcConfig` | SCID, VCID, Maximum Transfer Frame Length, `SegmentHeaderUse::{Absent(SecurityLayout), Present}` (Tables 5-3, 6-2) | 6 to 1024 octets |
-| `MapConfig` | SCID, VCID, MAP ID, `SecurityLayout` (Tables 5-4, 6-3) | — |
-| `VcTable<V, M>` | the channels of one Physical Channel; implements the `VcLookup` trait the decoder, writers, and validator take (M2 D14). The valid SCIDs (Table 5-1) and each Master Channel's valid VCIDs (Table 5-2) are those of its Virtual Channels | no VC (`vc_id`; TC-024); VCs and MAPs unique; a MAP only on a VC with Segment Headers; every VC and MAP leaves at least one data octet in its longest frame (CMN-041); at most `V` VCs and `M` MAPs |
 
 A frame's limit is the smaller of its Virtual and Physical Channel's maximum. The Master Channel's own maximum (Table 5-2) is not kept separately: each of its Virtual Channels carries one.
 
@@ -134,4 +108,4 @@ The Control Word Type and the CLCW Version Number are errors in both modes (`Inv
 
 ## 7. Test-vector categories
 
-`tc/ad`, `tc/bd`, `tc/bc_unlock`, `tc/bc_setvr`, `tc/segment_header`, `tc/max_length`, `tc/delimit_multiple_frames_with_fill`, `tc/validation_failures` (one per check a–e, and every reason of §4.1), `tc/clcw`; and `tc/decode_errors` (the decoder's errors and lenient anomalies) and `tc/config` (the managed parameters of §2).
+The case groups are the directories of `test-vectors/` for this standard; see [test vectors](../07-test-vectors.md).

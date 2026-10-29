@@ -2,23 +2,9 @@
 
 Codec for the CCSDS 133.0-B-2 Space Packet Protocol: decoding, encoding, idle packets, sequence counting, the Octet String service, and segmentation of user data.
 
-**Status:** implemented in Milestone 1, release `v0.2.0-m1` ([plan](../../docs/milestones/m1-packets-time.md)); C ABI functions `aldis_spp_*` implemented in Milestone 2 in `aldis-ffi` ([M2 plan](../../docs/milestones/m2-frame-codecs.md) WP-0c, release `v0.3.0-m2`).
-
 ## Where it sits
 
 Layer 1 (codecs) of the [architecture](../../docs/01-architecture.md) §2. It depends on `aldis-core`, and on `aldis-time` only with the feature `time`. That optional dependency is the one Layer 1 → Layer 1 dependency GEN-002 allows. The codec functions are stateless; the only state is in the sequence counter, tracker, segmenter, and reassembler values the caller owns.
-
-## What it provides
-
-- A zero-copy decoder, `SpacePacket`, that borrows the input buffer and gives the primary header fields and the Packet Data Field (133.0 §4.1.2, §4.1.3). `SpacePacket::peek_length` reads the total length from the header alone, for splitting a stream into packets.
-- Encoders: the one-shot `encode` and the two-phase `SpacePacketWriter`, which reserves the header and lets the caller fill the data field in place (133.0 §4.1). Both take parts already checked by `SppConfig`, which holds the managed parameter Maximum Packet Length (133.0 §5.2 Table 5-1). The Secondary Header Flag and the Packet Data Length are derived, never set by hand.
-- Secondary headers through a caller-supplied `SecondaryHeaderLayout` per APID (133.0 §4.1.4.2). Without the feature `time` a secondary header is opaque octets; with it, `TimeHeaderLayout` decodes a time code there (133.0 §4.1.4.2.2).
-- Idle Packets (`IdlePacket`, 133.0 §4.1.3.3.4.4), the Packet Sequence Count (`SequenceCounter` for one APID, `SequenceTracker` for up to a fixed number of APIDs, 133.0 §4.1.3.4.3, §4.3.2.2), the Octet String service (`OctetStringEncoder`, 133.0 §4.2.2), and segmentation and reassembly of user data with the Sequence Flags (`Segmenter`, `Reassembler`, 133.0 §4.1.3.4.2 note).
-- Strict and lenient decoding (`aldis_core::DecodeMode`); a lenient decode reports what it accepted as `SppAnomaly` flags.
-
-It keeps no table of secondary-header layouts: the caller looks the layout up for the APID and passes it in (OI-30). Packets are carried in frames by the link engines of `aldis-link`, not here.
-
-The module table in [`src/lib.rs`](src/lib.rs) maps every module to its 133.0 clauses and requirement IDs.
 
 ## Features
 
