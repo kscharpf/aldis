@@ -179,3 +179,5 @@ One line for each decision the maintainer takes, under the [decision rights](dec
 - 2026-10-29 · api · chat · Config and detail structs lose `struct_size` and `aldis_limits` goes; the ABI major version is the only compatibility mechanism (OI-57)
 - 2026-10-29 · api · chat · An engine call accesses its state in the caller storage in place (`&mut`, `decide`/`commit`), not by value, because FOP-1 state is at least 16 KiB against the 10 240-byte C ABI stack budget (OI-57, OI-45)
 - 2026-10-29 · api · chat · Engine inputs are flat structs with a `kind` field; actions are a fixed-capacity array of flat output structs (a `kind` field, unused fields zero, no union) carrying `aldis_range_t` ranges, also used in views; a failed call writes no actions; the header stays C99 (OI-57)
+- 2026-10-29 · api · chat · While the C ABI major version is 0, an ABI-breaking change bumps the minor version (CABI-060 amended); one-shot encoders bump it to 0.2.0
+- 2026-10-29 · api · chat · The TC and USLP one-shot encoders get Security Header and Trailer content fields, as TM and AOS have, in a follow-up pull request

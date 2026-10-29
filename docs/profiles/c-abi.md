@@ -86,7 +86,7 @@ An engine call is the step function of [03 §5](../03-api-model.md#5-engines-the
 
 | ID | Requirement | Source | Verif. |
 |---|---|---|---|
-| CABI-060 | The header SHALL define `ALDIS_ABI_VERSION_MAJOR/MINOR/PATCH`. `aldis_abi_version()` SHALL return the library's version. The major version SHALL change on any ABI-breaking change. | GEN-080 | T |
+| CABI-060 | The header SHALL define `ALDIS_ABI_VERSION_MAJOR/MINOR/PATCH`. `aldis_abi_version()` SHALL return the library's version. The major version SHALL change on any ABI-breaking change; while the major version is 0 (pre-release, GEN-080), the minor version SHALL change instead, as in Cargo's semantic versioning of 0.x releases. | GEN-080 | T |
 
 ## 9. C++ wrapper API (aldis.hpp)
 
