@@ -330,6 +330,40 @@ fn storage_is_typed() {
                 ALDIS_ERR_INVALID_FIELD
             );
         }
+        // The other helpers reject the same pointers through their own `_init`.
+        let seg_cfg = aldis_spp_segmenter_config_t {
+            struct_size: size::<aldis_spp_segmenter_config_t>(),
+            packet_type: ALDIS_SPP_TELEMETRY,
+            apid: 9,
+            max_user_len: 2,
+        };
+        let spp = spp_cfg();
+        let sdu = [1_u8];
+        let mut seg = aldis_spp_segmenter_t {
+            words: [0; ALDIS_SPP_SEGMENTER_WORDS],
+        };
+        let mut rea = aldis_spp_reassembler_t {
+            words: [0; ALDIS_SPP_REASSEMBLER_WORDS],
+        };
+        for storage in [(&raw mut seg).wrapping_byte_add(4), null_mut()] {
+            assert_eq!(
+                aldis_spp_segmenter_init(
+                    storage,
+                    &raw const spp,
+                    &raw const seg_cfg,
+                    sdu.as_ptr(),
+                    1,
+                    null_mut()
+                ),
+                ALDIS_ERR_INVALID_FIELD
+            );
+        }
+        for storage in [(&raw mut rea).wrapping_byte_add(4), null_mut()] {
+            assert_eq!(
+                aldis_spp_reassembler_init(storage, 7, null_mut()),
+                ALDIS_ERR_INVALID_FIELD
+            );
+        }
         let zero = aldis_spp_tracker_config_t { capacity: 0, ..cfg };
         assert_eq!(
             aldis_spp_tracker_init(&raw mut tracker, &raw const zero, null_mut()),

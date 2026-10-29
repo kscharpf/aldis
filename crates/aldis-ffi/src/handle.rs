@@ -35,6 +35,16 @@ pub(crate) struct Slot<T> {
     state: T,
 }
 
+/// The typed storage struct of one helper (`aldis_x_t`), bound to the state it holds and the
+/// magic of its tag, so that no call pairs a storage struct with another helper's state
+/// (RS-020; CABI-031, CABI-032).
+pub(crate) trait Storage {
+    /// The state that `_init` places in the storage.
+    type State;
+    /// The magic of the helper's tag: one per helper (CABI-032).
+    const MAGIC: u32;
+}
+
 /// A checked handle: the slot it points to carries the tag of its helper.
 #[derive(Debug)]
 pub(crate) struct Handle<T> {
@@ -76,8 +86,9 @@ impl<T> Handle<T> {
 
 /// Places `state` in `storage` and returns the handle (CABI-031, CABI-032).
 ///
-/// `S` is the helper's typed storage struct; the build fails when the slot of `T` does not fit
-/// it (CABI-031).
+/// The build fails when the slot of the helper's state does not fit `S` (CABI-031). A live
+/// helper in `storage` is overwritten: its tag cannot tell live storage from the garbage of an
+/// uninitialized object (CABI-031).
 ///
 /// # Errors
 /// `InvalidField` (no field) when `storage` is `NULL` or misaligned for `S` (CABI-022).
@@ -85,18 +96,18 @@ impl<T> Handle<T> {
 /// # Safety
 /// A non-null, aligned `storage` must be valid for writes of one `S`.
 #[expect(unsafe_code, reason = "initializes caller storage (CABI-031, GEN-071)")]
-pub(crate) unsafe fn init<S, T>(storage: *mut S, magic: u32, state: T) -> Result<()> {
-    const { assert!(fits::<S, T>()) };
+pub(crate) unsafe fn init<S: Storage>(storage: *mut S, state: S::State) -> Result<()> {
+    const { assert!(fits::<S, S::State>()) };
     if storage.is_null() || !storage.is_aligned() {
         return Err(invalid_argument());
     }
-    let slot = storage.cast::<Slot<T>>();
+    let slot = storage.cast::<Slot<S::State>>();
     // SAFETY: non-null and aligned for `S`, checked above, hence for `Slot<T>` (its alignment is
     // at most that of `S`); valid for `size_of::<Slot<T>>()` ≤ `size_of::<S>()` octets by the
     // caller's contract and the check of `fits`.
     unsafe {
         slot.write(Slot {
-            magic,
+            magic: S::MAGIC,
             generation: GENERATION,
             addr: storage.addr(),
             state,
@@ -105,7 +116,7 @@ pub(crate) unsafe fn init<S, T>(storage: *mut S, magic: u32, state: T) -> Result
     Ok(())
 }
 
-/// The handle `storage` checked against `magic` (CABI-032).
+/// The handle `storage` checked against the magic of `S` (CABI-032).
 ///
 /// # Errors
 /// `InvalidField` (no field) for `NULL` or a misaligned pointer (CABI-022); `InvalidHandle`
@@ -118,13 +129,13 @@ pub(crate) unsafe fn init<S, T>(storage: *mut S, magic: u32, state: T) -> Result
     unsafe_code,
     reason = "reads the tag of caller storage (CABI-032, GEN-071)"
 )]
-pub(crate) unsafe fn get<S, T>(storage: *mut S, magic: u32) -> Result<Handle<T>> {
-    const { assert!(fits::<S, T>()) };
+pub(crate) unsafe fn get<S: Storage>(storage: *mut S) -> Result<Handle<S::State>> {
+    const { assert!(fits::<S, S::State>()) };
     let storage = match NonNull::new(storage) {
         Some(s) if s.as_ptr().is_aligned() => s,
         _ => return Err(invalid_argument()),
     };
-    let slot = storage.cast::<Slot<T>>();
+    let slot = storage.cast::<Slot<S::State>>();
     let p = slot.as_ptr();
     // SAFETY: `slot` is NonNull and aligned, checked above; the caller's contract makes the
     // tag readable. Only the tag's plain integers are read before it is checked.
@@ -135,7 +146,7 @@ pub(crate) unsafe fn get<S, T>(storage: *mut S, magic: u32) -> Result<Handle<T>>
             (&raw const (*p).addr).read(),
         )
     };
-    if m != magic || m == DEAD || g != GENERATION || a != p.addr() {
+    if m != S::MAGIC || m == DEAD || g != GENERATION || a != p.addr() {
         return Err(Error::new(ErrorKind::InvalidHandle));
     }
     Ok(Handle {
@@ -153,10 +164,10 @@ pub(crate) unsafe fn get<S, T>(storage: *mut S, magic: u32) -> Result<Handle<T>>
     unsafe_code,
     reason = "clears the tag of caller storage (CABI-032, GEN-071)"
 )]
-pub(crate) unsafe fn deinit<S, T>(storage: *mut S, magic: u32) {
+pub(crate) unsafe fn deinit<S: Storage>(storage: *mut S) {
     // SAFETY: as for `get`, whose checks pass before the tag is written.
     unsafe {
-        if let Ok(h) = get::<S, T>(storage, magic) {
+        if let Ok(h) = get(storage) {
             (&raw mut (*h.slot.as_ptr()).magic).write(DEAD);
         }
     }
@@ -177,12 +188,39 @@ mod tests {
 
     /// A typed storage struct as the header declares them: four words.
     #[repr(C)]
-    struct Storage {
+    struct Words {
         words: [u64; 4],
     }
 
+    /// Storage of a `u32` state.
+    #[repr(C)]
+    struct Storage(Words);
+
+    /// Storage of another helper, with another magic.
+    #[repr(C)]
+    struct Other(Words);
+
+    impl super::Storage for Storage {
+        type State = u32;
+        const MAGIC: u32 = MAGIC;
+    }
+
+    impl super::Storage for Other {
+        type State = u32;
+        const MAGIC: u32 = MAGIC + 1;
+    }
+
+    /// Storage whose magic is the one of released storage: it never matches.
+    #[repr(C)]
+    struct Released(Words);
+
+    impl super::Storage for Released {
+        type State = u32;
+        const MAGIC: u32 = DEAD;
+    }
+
     const fn storage() -> Storage {
-        Storage { words: [0; 4] }
+        Storage(Words { words: [0; 4] })
     }
 
     #[test]
@@ -192,16 +230,16 @@ mod tests {
         // SAFETY: every pointer is NULL or to `s`, or an unaligned address that is never read.
         unsafe {
             assert_eq!(
-                init(core::ptr::null_mut::<Storage>(), MAGIC, 7_u32),
+                init(core::ptr::null_mut::<Storage>(), 7_u32),
                 Err(invalid_argument())
             );
             let odd = (&raw mut s).wrapping_byte_add(4);
-            assert_eq!(init(odd, MAGIC, 7_u32), Err(invalid_argument()));
-            init(&raw mut s, MAGIC, 7_u32).unwrap();
-            let h = get::<Storage, u32>(&raw mut s, MAGIC).unwrap();
+            assert_eq!(init(odd, 7_u32), Err(invalid_argument()));
+            init(&raw mut s, 7_u32).unwrap();
+            let h = get(&raw mut s).unwrap();
             assert_eq!(h.load(), 7);
             h.store(9);
-            assert_eq!(get::<Storage, u32>(&raw mut s, MAGIC).unwrap().load(), 9);
+            assert_eq!(get(&raw mut s).unwrap().load(), 9);
             assert_eq!(
                 h.range(),
                 ((&raw const s).cast::<u8>(), size_of::<Storage>())
@@ -210,11 +248,23 @@ mod tests {
     }
 
     #[test]
+    fn init_replaces_live_storage() {
+        // req: CABI-031
+        let mut s = storage();
+        // SAFETY: every pointer is to `s`.
+        unsafe {
+            init(&raw mut s, 7_u32).unwrap();
+            init(&raw mut s, 3_u32).unwrap();
+            assert_eq!(get(&raw mut s).unwrap().load(), 3);
+        }
+    }
+
+    #[test]
     fn a_slot_fits_its_storage() {
         // req: CABI-031
-        assert!(fits::<Storage, u32>());
-        assert!(fits::<Storage, [u64; 2]>());
-        assert!(!fits::<Storage, [u64; 3]>());
+        assert!(fits::<Words, u32>());
+        assert!(fits::<Words, [u64; 2]>());
+        assert!(!fits::<Words, [u64; 3]>());
         assert!(!fits::<[u32; 8], u32>());
     }
 
@@ -228,40 +278,40 @@ mod tests {
             let first = base;
             // Never initialized: zeroed storage.
             assert_eq!(
-                get::<Storage, u32>(first, MAGIC).map(|_| ()),
+                get(first).map(|_| ()),
                 Err(Error::new(ErrorKind::InvalidHandle))
             );
-            init(first, MAGIC, 1_u32).unwrap();
+            init(first, 1_u32).unwrap();
             // Foreign: another helper's magic.
             assert_eq!(
-                get::<Storage, u32>(first, MAGIC + 1).map(|_| ()),
+                get(first.cast::<Other>()).map(|_| ()),
                 Err(Error::new(ErrorKind::InvalidHandle))
             );
             // Copied elsewhere: the address no longer matches.
             let copy = base.add(1);
             core::ptr::copy_nonoverlapping(first, copy, 1);
             assert_eq!(
-                get::<Storage, u32>(copy, MAGIC).map(|_| ()),
+                get(copy).map(|_| ()),
                 Err(Error::new(ErrorKind::InvalidHandle))
             );
             // Another generation.
             (&raw mut (*first.cast::<Slot<u32>>()).generation).write(GENERATION + 1);
-            assert!(get::<Storage, u32>(first, MAGIC).is_err());
+            assert!(get(first).is_err());
             (&raw mut (*first.cast::<Slot<u32>>()).generation).write(GENERATION);
-            assert!(get::<Storage, u32>(first, MAGIC).is_ok());
+            assert!(get(first).is_ok());
             // Deinitialized.
-            deinit::<Storage, u32>(first, MAGIC);
+            deinit(first);
             assert_eq!(
-                get::<Storage, u32>(first, MAGIC).map(|_| ()),
+                get(first).map(|_| ()),
                 Err(Error::new(ErrorKind::InvalidHandle))
             );
-            deinit::<Storage, u32>(first, MAGIC);
+            deinit(first);
             assert_eq!(
-                get::<Storage, u32>(first, DEAD).map(|_| ()),
+                get(first.cast::<Released>()).map(|_| ()),
                 Err(Error::new(ErrorKind::InvalidHandle))
             );
             assert_eq!(
-                get::<Storage, u32>(core::ptr::null_mut(), MAGIC).map(|_| ()),
+                get(core::ptr::null_mut::<Storage>()).map(|_| ()),
                 Err(invalid_argument())
             );
         }

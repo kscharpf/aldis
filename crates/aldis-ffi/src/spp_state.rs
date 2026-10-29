@@ -18,7 +18,7 @@ use aldis::spp::{
 
 use crate::abi::{self, invalid_argument};
 use crate::capacities::ALDIS_SPP_TRACKER_MAX_APIDS;
-use crate::handle;
+use crate::handle::{self, Storage};
 use crate::spp::{
     aldis_spp_config_t, aldis_spp_secondary_layout_t, config, layout as secondary_layout,
     packet_type,
@@ -68,10 +68,6 @@ pub const ALDIS_SPP_REASSEMBLY_COMPLETE: u32 = 1;
 /// [`aldis_spp_reassembly_t::status`]: the packet was dropped for `reason` (SPP-013).
 pub const ALDIS_SPP_REASSEMBLY_DROPPED: u32 = 2;
 
-const TRACKER_MAGIC: u32 = 0x414C_5354; // "ALST"
-const SEGMENTER_MAGIC: u32 = 0x414C_5347; // "ALSG"
-const REASSEMBLER_MAGIC: u32 = 0x414C_5352; // "ALSR"
-
 /// The state of an `aldis_spp_tracker_t`: the tracker at the build capacity, and the
 /// capacity the caller chose.
 #[derive(Debug, Clone)]
@@ -90,6 +86,11 @@ pub struct aldis_spp_tracker_t {
     pub words: [u64; ALDIS_SPP_TRACKER_WORDS],
 }
 
+impl Storage for aldis_spp_tracker_t {
+    type State = TrackerState;
+    const MAGIC: u32 = 0x414C_5354; // "ALST"
+}
+
 /// An SDU segmenter in caller storage: the caller declares an object of this type, and the
 /// pointer to it is the handle (SPP-013, CABI-031, CABI-032).
 ///
@@ -100,6 +101,11 @@ pub struct aldis_spp_segmenter_t {
     pub words: [u64; ALDIS_SPP_SEGMENTER_WORDS],
 }
 
+impl Storage for aldis_spp_segmenter_t {
+    type State = SegmenterState;
+    const MAGIC: u32 = 0x414C_5347; // "ALSG"
+}
+
 /// An SDU reassembler in caller storage: the caller declares an object of this type, and the
 /// pointer to it is the handle (SPP-013, CABI-031, CABI-032).
 ///
@@ -108,6 +114,11 @@ pub struct aldis_spp_segmenter_t {
 pub struct aldis_spp_reassembler_t {
     /// The slot of [`handle`]: the tag, then the state.
     pub words: [u64; ALDIS_SPP_REASSEMBLER_WORDS],
+}
+
+impl Storage for aldis_spp_reassembler_t {
+    type State = ReassemblerState;
+    const MAGIC: u32 = 0x414C_5352; // "ALSR"
 }
 
 /// Configuration of a tracker (SPP-011, CABI-033).
@@ -246,7 +257,7 @@ pub unsafe extern "C" fn aldis_spp_tracker_init(
                 limit,
                 tracker: SequenceTracker::new(),
             };
-            handle::init(storage, TRACKER_MAGIC, state)
+            handle::init(storage, state)
         })
     }
 }
@@ -258,7 +269,7 @@ pub unsafe extern "C" fn aldis_spp_tracker_init(
 #[expect(unsafe_code, reason = "checks a caller handle (CABI-032, GEN-071)")]
 unsafe fn tracker(h: *mut aldis_spp_tracker_t) -> Result<handle::Handle<TrackerState>> {
     // SAFETY: forwarded from the caller.
-    unsafe { handle::get(h, TRACKER_MAGIC) }
+    unsafe { handle::get(h) }
 }
 
 /// Classifies the count `count` of `apid` against the last one tracked (133.0 §4.1.3.4.3.3–4;
@@ -404,7 +415,7 @@ pub unsafe extern "C" fn aldis_spp_tracker_len(
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn aldis_spp_tracker_deinit(h: *mut aldis_spp_tracker_t) {
     // SAFETY: as `# Safety` states; `handle` checks the tag before writing.
-    unsafe { handle::deinit::<_, TrackerState>(h, TRACKER_MAGIC) }
+    unsafe { handle::deinit(h) }
 }
 
 /// Places a segmenter for `sdu` in `storage` (133.0 §4.1.3.4.2; SPP-013; CABI-031, CABI-032).
@@ -443,8 +454,10 @@ pub unsafe extern "C" fn aldis_spp_segmenter_init(
             let sdu = abi::bytes(sdu, sdu_len)?;
             let packet_type = packet_type(cfg.packet_type)?;
             let apid = Apid::try_from(cfg.apid)?;
+            // `suspend` keeps only the SDU's length and position, so nothing borrows `sdu` when
+            // `init` writes the storage, even if the caller put the SDU inside it (API-060).
             let state = Segmenter::new(&spp, packet_type, apid, sdu, cfg.max_user_len)?.suspend();
-            handle::init(storage, SEGMENTER_MAGIC, state)
+            handle::init(storage, state)
         })
     }
 }
@@ -456,7 +469,7 @@ pub unsafe extern "C" fn aldis_spp_segmenter_init(
 #[expect(unsafe_code, reason = "checks a caller handle (CABI-032, GEN-071)")]
 unsafe fn segmenter(h: *mut aldis_spp_segmenter_t) -> Result<handle::Handle<SegmenterState>> {
     // SAFETY: forwarded from the caller.
-    unsafe { handle::get(h, SEGMENTER_MAGIC) }
+    unsafe { handle::get(h) }
 }
 
 /// Encodes the next segment of `sdu` with the count `sequence_count` and the secondary header
@@ -555,7 +568,7 @@ pub unsafe extern "C" fn aldis_spp_segmenter_remaining(
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn aldis_spp_segmenter_deinit(h: *mut aldis_spp_segmenter_t) {
     // SAFETY: as `# Safety` states; `handle` checks the tag before writing.
-    unsafe { handle::deinit::<_, SegmenterState>(h, SEGMENTER_MAGIC) }
+    unsafe { handle::deinit(h) }
 }
 
 /// Places a reassembler for `apid` in `storage` (133.0 §4.1.3.4.2; SPP-013; CABI-031,
@@ -583,7 +596,7 @@ pub unsafe extern "C" fn aldis_spp_reassembler_init(
     unsafe {
         abi::call(err, || {
             let state = ReassemblerState::new(Apid::try_from(apid)?);
-            handle::init(storage, REASSEMBLER_MAGIC, state)
+            handle::init(storage, state)
         })
     }
 }
@@ -595,7 +608,7 @@ pub unsafe extern "C" fn aldis_spp_reassembler_init(
 #[expect(unsafe_code, reason = "checks a caller handle (CABI-032, GEN-071)")]
 unsafe fn reassembler(h: *mut aldis_spp_reassembler_t) -> Result<handle::Handle<ReassemblerState>> {
     // SAFETY: forwarded from the caller.
-    unsafe { handle::get(h, REASSEMBLER_MAGIC) }
+    unsafe { handle::get(h) }
 }
 
 /// Decodes one Space Packet, splits its data field by `layout`, and pushes its User Data Field
@@ -721,5 +734,5 @@ pub unsafe extern "C" fn aldis_spp_reassembler_is_assembling(
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn aldis_spp_reassembler_deinit(h: *mut aldis_spp_reassembler_t) {
     // SAFETY: as `# Safety` states; `handle` checks the tag before writing.
-    unsafe { handle::deinit::<_, ReassemblerState>(h, REASSEMBLER_MAGIC) }
+    unsafe { handle::deinit(h) }
 }

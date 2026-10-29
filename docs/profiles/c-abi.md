@@ -62,7 +62,7 @@ The words belong to the library: a C caller never reads or writes them. The word
 | ID | Requirement | Source | Verif. |
 |---|---|---|---|
 | CABI-030 | Engine capacities (const generics in Rust) SHALL be fixed when the library is built. They SHALL be read from a build configuration file (`aldis-ffi/capacities.toml`) and emitted as `ALDIS_*_MAX_*` constants in the header. `aldis_limits(aldis_limits_t *)` SHALL report them at run time. | GEN-011 | A |
-| CABI-031 | The storage of a stateful helper SHALL be a typed struct of `uint64_t` words that the caller declares, and `*_init` SHALL take a pointer to it, with no storage length. The build SHALL fail when the helper's state does not fit the struct. `*_init` SHALL fail with `ALDIS_ERR_INVALID_FIELD` for `NULL` or a pointer misaligned for its type (CABI-022). | — | T |
+| CABI-031 | The storage of a stateful helper SHALL be a typed struct of `uint64_t` words that the caller declares, and `*_init` SHALL take a pointer to it, with no storage length. The build SHALL fail when the helper's state does not fit the struct. `*_init` SHALL fail with `ALDIS_ERR_INVALID_FIELD` for `NULL` or a pointer misaligned for its type (CABI-022). `*_init` SHALL NOT read the storage first: it replaces whatever the storage holds, because the tag of live storage cannot be told from the garbage of an uninitialized object. | — | T |
 | CABI-032 | A handle SHALL carry a magic/generation tag. Calls with a deinitialized or foreign handle SHALL fail with `ALDIS_ERR_INVALID_HANDLE` where detectable. | — | T |
 | CABI-033 | Configuration structs SHALL begin with a `uint32_t struct_size` field set by the caller, for forward-compatible extension. | GEN-080 | T |
 

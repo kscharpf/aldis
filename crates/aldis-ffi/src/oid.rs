@@ -16,7 +16,7 @@ use aldis::core::Result;
 use aldis::core::oid::{OidGenerator, OidGeneratorGalois};
 
 use crate::abi::{self, invalid_argument};
-use crate::handle;
+use crate::handle::{self, Storage};
 
 /// [`aldis_oid_generator_init`] `form`: the Fibonacci form, the reference implementation
 /// (132.0 Annex D; CMN-020).
@@ -27,8 +27,6 @@ pub const ALDIS_OID_GALOIS: u32 = 1;
 
 /// 64-bit words of one `aldis_oid_generator_t` (CABI-031; M2 plan D5, D14).
 pub const ALDIS_OID_GENERATOR_WORDS: usize = 4;
-
-const GENERATOR_MAGIC: u32 = 0x414C_4F47; // "ALOG"
 
 /// The state of an `aldis_oid_generator_t`: the generator in the form `_init` chose.
 #[derive(Debug, Clone)]
@@ -57,6 +55,11 @@ impl GeneratorState {
 pub struct aldis_oid_generator_t {
     /// The slot of [`handle`]: the tag, then the state.
     pub words: [u64; ALDIS_OID_GENERATOR_WORDS],
+}
+
+impl Storage for aldis_oid_generator_t {
+    type State = GeneratorState;
+    const MAGIC: u32 = 0x414C_4F47; // "ALOG"
 }
 
 /// Places an OID generator of the form `form` (`ALDIS_OID_FIBONACCI` or `ALDIS_OID_GALOIS`) in
@@ -89,7 +92,7 @@ pub unsafe extern "C" fn aldis_oid_generator_init(
                 ALDIS_OID_GALOIS => GeneratorState::Galois(OidGeneratorGalois::new()),
                 _ => return Err(invalid_argument()),
             };
-            handle::init(storage, GENERATOR_MAGIC, state)
+            handle::init(storage, state)
         })
     }
 }
@@ -104,7 +107,7 @@ pub(crate) unsafe fn generator(
     h: *mut aldis_oid_generator_t,
 ) -> Result<handle::Handle<GeneratorState>> {
     // SAFETY: forwarded from the caller.
-    unsafe { handle::get(h, GENERATOR_MAGIC) }
+    unsafe { handle::get(h) }
 }
 
 /// Fills the `len` octets at `out` with the next `len` octets of the OID sequence (CMN-023).
@@ -156,7 +159,7 @@ pub unsafe extern "C" fn aldis_oid_generator_fill(
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn aldis_oid_generator_deinit(h: *mut aldis_oid_generator_t) {
     // SAFETY: as `# Safety` states; `handle` checks the tag before writing.
-    unsafe { handle::deinit::<_, GeneratorState>(h, GENERATOR_MAGIC) }
+    unsafe { handle::deinit(h) }
 }
 
 #[cfg(test)]
