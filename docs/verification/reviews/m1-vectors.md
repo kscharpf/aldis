@@ -1,5 +1,7 @@
 # Review: hand-derived M1 vectors (EPP, CCS, ASCII)
 
+> Dated review: identifiers reflect the code at the time.
+
 The second review the [M1 plan](../../milestones/m1-packets-time.md) §5 asks for: the hand-derived vectors that no independent implementation checks ([cross-checks.md](../cross-checks.md) §4, OI-32) are read by a reviewer other than the one who derived them, so that a misreading of the Blue Book shared by the vectors and the code can surface.
 
 ## Round 1

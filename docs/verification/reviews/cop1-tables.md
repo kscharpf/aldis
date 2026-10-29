@@ -1,5 +1,7 @@
 # Review: COP-1 State Tables (CCSDS 232.1-B-2 and Cor. 1)
 
+> Dated review: identifiers reflect the code at the time.
+
 This review fulfills [COP-003](file:///Users/kevinscharpf/school/ccsds/code/docs/standards/cop1.md#L15) and the first inspection pass of [VER-041](file:///Users/kevinscharpf/school/ccsds/code/docs/06-verification.md#L69) for Milestone 3 ([M3 plan](file:///Users/kevinscharpf/school/ccsds/code/docs/milestones/m3-cop1.md#L73-L77) WP-1a). Every cell of Table 5-1 (FOP-1, 300 cells) and Table 6-1 (FARM-1, 33 cells) is verified against the normative text of CCSDS 232.1-B-2 (September 2010) and Technical Corrigendum 1 (CCSDS 232.1-B-2 Cor. 1 / TC 19-11, April 2021).
 
 ## Metadata

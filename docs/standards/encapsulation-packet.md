@@ -4,12 +4,7 @@
 
 ## 1. Wire format (§4.1)
 
-| Length of Length (bits 6–7) | Header length | Fields after octet 0 | Packet length range |
-|---|---|---|---|
-| `00` | 1 octet | none (Idle Packet only) | exactly 1 |
-| `01` | 2 octets | Packet Length (1 octet) | 2 – 255 |
-| `10` | 4 octets | User Defined (4 b) ‖ Protocol ID Extension (4 b) ‖ Packet Length (2 octets) | 4 – 65 535 |
-| `11` | 8 octets | User Defined (4 b) ‖ Protocol ID Extension (4 b) ‖ CCSDS Defined (2 octets) ‖ Packet Length (4 octets) | 8 – 4 294 967 295 |
+The field layout is that of the Blue Book clause cited in the heading, and of the rustdoc of the view and writer types; the vectors pin the octets.
 
 Octet 0 holds the Packet Version Number `111` (bits 0–2), the Encapsulation Protocol ID (EPI, bits 3–5), and the Length of Length (bits 6–7).
 EPI `000` is the Idle Packet, `110` means "use the Protocol ID Extension", and `111` means mission-specific. The other values are assigned by SANA.
@@ -44,4 +39,4 @@ EPI `000` is the Idle Packet, `110` means "use the Protocol ID Extension", and `
 
 ## 4. Test-vector categories
 
-`epp/header_1`, `epp/header_2`, `epp/header_4`, `epp/header_8`, `epp/idle`, `epp/auto_size_boundaries` (255/256, 65 535/65 536 total length), `epp/invalid`, `epp/config` (managed parameters, EPP-010).
+The case groups are the directories of `test-vectors/` for this standard; see [test vectors](../07-test-vectors.md).

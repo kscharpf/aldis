@@ -2,21 +2,9 @@
 
 Frame codec for the CCSDS 132.0-B-3 TM Space Data Link Protocol: TM Transfer Frames.
 
-**Status:** implemented in Milestone 2, work package 2 ([plan](../../docs/milestones/m2-frame-codecs.md)), modules 1–6: configuration, header and view, anomalies, writers, OID frames, and validation; module 7, its C ABI, is in `aldis-ffi` (`aldis_tm_*`, [README](../aldis-ffi/README.md)).
-
 ## Where it sits
 
 Layer 1 (codecs) of the [architecture](../../docs/01-architecture.md) §2. It depends only on `aldis-core`, is stateless, and does no I/O. Frame counts and the OID generator's state belong to the caller, the engines of Milestone 4.
-
-## What it provides
-
-- The managed parameters of 132.0 §5: `TmPhysicalChannelConfig` (frame length, FECF), `TmMasterChannelConfig` (SCID, MC_FSH, MC_OCF, and up to eight virtual channels), and `TmVirtualChannelConfig` (data field content, VC_FSH, VC_OCF, and the SDLS Security Header and Trailer of §6.3). Building a master channel rejects what 132.0 forbids, and computes the layout of every VC's frames.
-- A zero-copy decoder, `TmFrame`, that borrows the frame and gives every field (132.0 §4.1): `decode` for a channel without SDLS, `decode_with` taking each VC's security layout from a `VcLookup` (a master channel, or a slice of them), `decode_unchecked` without the FECF check for diagnostics, and `peek_length`. The OCF is an `aldis_core::ocf::Ocf`; a CLCW in it is decoded with `aldis-tc`.
-- `TmFrame::validate`, which checks a decoded frame against its master channel: SCID, VCID, OCF and Secondary Header flags and lengths, the Synchronization Flag against the data field content, and the security layout.
-- Encoders: the one-shot `encode`, the two-phase `TmFrameWriter`, and `TmFrameWriter::begin_oid` and the one-shot `encode_oid` for Only Idle Data frames from an `OidGenerator` (132.0 §4.1.4.6). They compute the Secondary Header Identification Field, the OCF Flag, and the FECF themselves.
-- Strict and lenient decoding (`aldis_core::DecodeMode`); a lenient decode reports the Packet Order Flag and Segment Length Identifier deviations it accepted as `TmAnomaly` flags.
-
-The module table in [`src/lib.rs`](src/lib.rs) maps every module to its 132.0 clauses and requirement IDs.
 
 ## Features
 

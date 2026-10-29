@@ -96,4 +96,4 @@ TAI↔UTC conversion requires a leap-second table that changes over a mission's 
 
 ## 8. Test-vector categories
 
-`time/pfield` (P-field chains, reserved IDs, agency-defined codes), `time/cuc`, `time/cds`, `time/ccs`, `time/ascii`, `time/convert`.
+The case groups are the directories of `test-vectors/` for this standard; see [test vectors](../07-test-vectors.md).

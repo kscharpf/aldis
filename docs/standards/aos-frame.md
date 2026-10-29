@@ -4,21 +4,7 @@
 
 ## 1. Wire format (§4.1)
 
-```
-Primary Header (6, or 8 with FHEC) ‖ [Insert Zone] ‖ [Security Header] ‖ Data Field ‖ [Security Trailer] ‖ [OCF (4)] ‖ [FECF (2)]
-```
-
-| Bits | Field | Size | Notes |
-|---|---|---|---|
-| 0–1 | Transfer Frame Version Number | 2 | `01` |
-| 2–9 | Spacecraft ID (8 LSBs) | 8 | |
-| 10–15 | Virtual Channel ID | 6 | 63 = OID frames |
-| 16–39 | VC Frame Count | 24 | mod 2²⁴ |
-| 40 | Replay Flag | 1 | 0 realtime / 1 replay |
-| 41 | VC Frame Count Cycle Use Flag | 1 | |
-| 42–43 | Spacecraft ID (2 MSBs) | 2 | **Issue 5**; reserved `00` in Issue ≤4 |
-| 44–47 | VC Frame Count Cycle | 4 | `0000` if unused |
-| 48–63 | Frame Header Error Control (optional) | 16 | Reed-Solomon (15,11) over GF(2⁴), shortened by 5 symbols to a binary (40,24) code (AOS-013) |
+The field layout is that of the Blue Book clause cited in the heading, and of the rustdoc of the view and writer types; the vectors pin the octets.
 
 The data field holds exactly one of: an **M_PDU** (packets), a **B_PDU** (bitstream), a **VCA_SDU**, or Idle Data (OID frame), fixed per VC.
 
@@ -37,12 +23,7 @@ Issue 5 extended the SCID to 10 bits using former spare bits 42–43, and the M_
 
 ## 3. Configuration (managed parameters, §5)
 
-| Level | Parameters |
-|---|---|
-| Physical channel | frame length, FHEC present, Insert Zone present/length, FECF present, edition, valid SCIDs, MC mux policy |
-| Master channel | SCID, valid VCIDs (0–62; 63 always valid for OID) |
-| Virtual channel | VCID (0–62), content (M_PDU / B_PDU / VCA_SDU / idle), VC_OCF present, `SecurityLayout` |
-| Packet transfer | valid PVNs, max packet length, deliver incomplete packets |
+The managed parameters are those of the Blue Book clause cited in the heading; the configuration types carry them, with their ranges, in their rustdoc.
 
 There is **no OCF flag in the AOS header**. OCF presence is a per-VC managed parameter, so decoding requires the VC configuration. The codec keeps the physical channel in `AosPhysicalChannelConfig` and the virtual channels, each with its SCID, in `AosVirtualChannelConfig`; the valid SCIDs of the physical channel and the valid VCIDs of each master channel are those of the configured virtual channels, which a `VcTable<N>` holds (at least one, AOS-020) and the decoder and writers reach through the `VcLookup` trait (M2 plan D14). An M_PDU or B_PDU VC needs a data field of at least three octets, its 2-octet header and a zone octet, since the zone is mandatory (§4.1.4.2.1.3 b, §4.1.4.3.1.3 b).
 
@@ -83,4 +64,4 @@ There is **no OCF flag in the AOS header**. OCF presence is a per-VC managed par
 
 ## 6. Test-vector categories
 
-`aos/minimal`, `aos/fhec_encode`, `aos/fhec_correct_1_symbol`, `aos/fhec_correct_2_symbols`, `aos/fhec_miscorrection` (three or more symbol errors the code cannot detect, AOS-014), `aos/fhec_uncorrectable`, `aos/fhec_frame` (the FHEC in a frame, then the FECF over the corrected header), `aos/insert_zone`, `aos/security_layout`, `aos/mpdu_pointers`, `aos/bpdu_pointers`, `aos/oid`, `aos/issue4_compat`, `aos/scid_10bit`, `aos/config`, `aos/invalid`.
+The case groups are the directories of `test-vectors/` for this standard; see [test vectors](../07-test-vectors.md).

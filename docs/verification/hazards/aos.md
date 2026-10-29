@@ -283,7 +283,7 @@ Failure modes of `aldis-aos` and its C ABI (the AOS functions), in the format of
 | Category | `abi-misuse` |
 | Status | `residual` |
 | Severity | S1 |
-| Failure mode | Removed by OI-57: the C ABI has no `_writer_finish` and the deleted AOS writer resume is deleted, so no call finishes a frame that another call began, with other arguments or on a buffer never begun. A frame is built by the one-shot C ABI encode function in one call, or in Rust by `AosFrameWriter`, whose `finish(self)` consumes the writer that `begin` returned and so holds the layout `begin` computed |
+| Failure mode | Removed by OI-57: the C ABI has no two-phase writers and the Rust writers have no resume, so no call finishes a frame that another call began, with other arguments or on a buffer never begun. A frame is built in one call, or in Rust by `AosFrameWriter`, whose `finish(self)` consumes the writer that `begin` returned and so holds the layout `begin` computed |
 | Cause | Before OI-57, the stateless finish of the C ABI (OI-50) took the arguments again and trusted them; no such call exists |
 | Mission effect | A frame that passes every check of a conformant receiver, with the Insert Zone, the Security Header, the data, and the OCF at places the receiver does not expect |
 | Requirements | API-022, API-023, AOS-019, CABI-022 |

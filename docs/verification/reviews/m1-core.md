@@ -1,5 +1,7 @@
 # Code review: `m1/core`
 
+> Dated review: identifiers reflect the code at the time.
+
 ## Round 1
 
 - **Date:** 2026-10-17

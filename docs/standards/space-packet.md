@@ -4,16 +4,7 @@
 
 ## 1. Wire format (§4.1)
 
-| Bits | Field | Size | Values |
-|---|---|---|---|
-| 0–2 | Packet Version Number | 3 | `000` |
-| 3 | Packet Type | 1 | 0 = telemetry/reporting, 1 = telecommand/requesting |
-| 4 | Secondary Header Flag | 1 | 1 = secondary header present |
-| 5–15 | APID | 11 | 0–2047; 2047 (all ones) = Idle Packet |
-| 16–17 | Sequence Flags | 2 | `00` continuation, `01` first, `10` last, `11` unsegmented |
-| 18–31 | Packet Sequence Count or Packet Name | 14 | 0–16383 |
-| 32–47 | Packet Data Length | 16 | (octets in Packet Data Field) − 1 |
-| 48… | Packet Data Field | 1–65 536 octets | [Secondary Header] ‖ [User Data] |
+The field layout is that of the Blue Book clause cited in the heading, and of the rustdoc of the view and writer types; the vectors pin the octets.
 
 Total packet length is 7 to 65 542 octets (§4.1.2.2).
 
@@ -45,7 +36,7 @@ Total packet length is 7 to 65 542 octets (§4.1.2.2).
 
 ## 4. Test-vector categories
 
-`spp/decode_valid`, `spp/decode_invalid` (each error), `spp/encode` (round trip), `spp/idle`, `spp/sequence_tracker`, `spp/secondary_header_time` (with `aldis-time`), `spp/stream` (several concatenated packets in one buffer), `spp/octet_string` (SPP-012), `spp/split` (opaque secondary header, SPP-007).
+The case groups are the directories of `test-vectors/` for this standard; see [test vectors](../07-test-vectors.md).
 
 ## 5. Behavior details (OI-30)
 

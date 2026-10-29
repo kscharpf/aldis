@@ -2,21 +2,9 @@
 
 Frame codec for the CCSDS 732.0-B-5 AOS Space Data Link Protocol: AOS Transfer Frames, the Frame Header Error Control, the M_PDU, and the B_PDU, in Issue 5 and in the wire format of Issue 4 and earlier.
 
-**Status:** implemented in Milestone 2, work package 4 ([plan](../../docs/milestones/m2-frame-codecs.md)), modules 1–7: the FHEC, configuration and editions, the Primary Header, the frame view, the M_PDU and B_PDU, the writers, and the anomaly flags; and module 8, its C ABI functions `aldis_aos_*` in `aldis-ffi`.
-
 ## Where it sits
 
 Layer 1 (codecs) of the [architecture](../../docs/01-architecture.md) §2. It depends only on `aldis-core`, is stateless, and does no I/O. Frame counts and the OID generator's state belong to the caller, the engines of Milestone 4.
-
-## What it provides
-
-- The edition (`AosEdition::Issue5`, the default, or `Issue4Compatible`; AOS-001, GEN-062) and the managed parameters of 732.0 §5: `AosPhysicalChannelConfig` (frame length, FHEC, Insert Zone, FECF, edition) and `AosVirtualChannelConfig` (SCID, VCID 0–62, data field content, `VC_OCF`, and the SDLS Security Header and Trailer of §6.3), gathered in a fixed-capacity `VcTable<N>` that implements the `VcLookup` trait. Building them rejects what 732.0 forbids, including VCID 63 for a data VC, an SCID too wide for Issue 4, and the B_PDU limits of AOS-018.
-- `AosPrimaryHeader::decode`, which corrects up to two symbol errors with the FHEC before any field is read and reads the SCID as the edition defines it (AOS-002, AOS-010, AOS-014), and the `fhec` module itself (AOS-013).
-- A zero-copy decoder, `AosFrame::decode`, that takes the physical channel and a `VcLookup`, checks the FECF over the corrected header (732.0 §4.3.7.2–3), and gives every field: the Insert Zone, the security slices, the data field as a `DataUnit` (`Mpdu`, `Bpdu`, `VcaSdu`, or `IdleData` for OID frames on VCID 63), the OCF as an `aldis_core::ocf::Ocf`, the FECF, and `corrected_symbols()`; and `peek_length`. `Mpdu::decode` and `Bpdu::decode` classify their pointers in both editions (AOS-003, AOS-017).
-- Encoders: the one-shot `encode`, the two-phase `AosFrameWriter`, and `AosFrameWriter::begin_oid` and the one-shot `encode_oid` for OID frames on VCID 63 from an `OidGenerator` (AOS-016). They compute the FHEC, the M_PDU or B_PDU Header, and the FECF themselves (AOS-019).
-- Strict and lenient decoding (`aldis_core::DecodeMode`); a lenient decode reports the deviations it accepted as `AosAnomaly` flags.
-
-The module table in [`src/lib.rs`](src/lib.rs) maps every module to its 732.0 clauses and requirement IDs.
 
 ## Features
 

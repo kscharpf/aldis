@@ -1,5 +1,7 @@
 # Review: hand-derived M2 frame vectors (TM, TC, AOS, USLP)
 
+> Dated review: identifiers reflect the code at the time.
+
 The second review the [M2 plan](../../milestones/m2-frame-codecs.md) WP-6 asks for (model: [m1-vectors.md](m1-vectors.md)): the hand-derived frame vectors that no independent implementation checks ([cross-checks.md](../cross-checks.md) §4) are read by reviewers other than the sessions that derived them, so that a misreading of the Blue Book shared by the vectors and the code can surface.
 
 ## Round 1
