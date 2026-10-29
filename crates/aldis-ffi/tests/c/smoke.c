@@ -156,11 +156,10 @@ int main(void) {
     check(aldis_ocf_check(ocf, sizeof ocf, ALDIS_OCF_SDLS_FSR, &err) == ALDIS_ERR_INVALID_FIELD &&
               err.field == ALDIS_FIELD_OCF_TYPE_FLAG,
           "aldis_ocf_check names the Type Flag");
-    uint64_t oid_storage[ALDIS_OID_GENERATOR_STORAGE_SIZE / 8];
-    aldis_oid_generator_t *oid = NULL;
+    aldis_oid_generator_t oid_storage;
+    aldis_oid_generator_t *oid = &oid_storage;
     uint8_t idle_data[6];
-    check(aldis_oid_generator_init(oid_storage, sizeof oid_storage, ALDIS_OID_GALOIS, &oid,
-                                   &err) == ALDIS_OK,
+    check(aldis_oid_generator_init(oid, ALDIS_OID_GALOIS, &err) == ALDIS_OK,
           "aldis_oid_generator_init");
     check(aldis_oid_generator_fill(oid, idle_data, sizeof idle_data, &err) == ALDIS_OK &&
               idle_data[0] == 0xFF && idle_data[4] == 0x6D && idle_data[5] == 0xB6,
@@ -210,12 +209,11 @@ int main(void) {
     check(aldis_tm_validate(frame, len, &mc, &vc, 1, ALDIS_MODE_STRICT, NULL) == ALDIS_OK,
           "aldis_tm_validate");
     /* An Only Idle Data frame in one call, its data field from the OID generator. */
-    aldis_oid_generator_t *tm_oid = NULL;
-    uint64_t tm_oid_storage[ALDIS_OID_GENERATOR_STORAGE_SIZE / 8];
+    aldis_oid_generator_t tm_oid_storage;
+    aldis_oid_generator_t *tm_oid = &tm_oid_storage;
     aldis_tm_content_t no_content;
     memset(&no_content, 0, sizeof no_content);
-    check(aldis_oid_generator_init(tm_oid_storage, sizeof tm_oid_storage, ALDIS_OID_FIBONACCI,
-                                   &tm_oid, &err) == ALDIS_OK &&
+    check(aldis_oid_generator_init(tm_oid, ALDIS_OID_FIBONACCI, &err) == ALDIS_OK &&
               aldis_tm_encode_oid(&mc, &vc, 1, 5, 0, 0, &no_content, tm_oid, frame, sizeof frame,
                                   &len, &err) == ALDIS_OK &&
               len == 16 && frame[6] == 0xFF && frame[7] == 0xFF,

@@ -797,29 +797,18 @@ fn decode_stream(case: &CodecCase) -> Value {
     json!({ "packets": packets, "stop_error": stop, "offset": at })
 }
 
-/// Storage for one helper: `uint64_t` words, as a C caller declares it (CABI-031).
-fn storage(size: usize) -> Vec<u64> {
-    vec![0_u64; size.div_ceil(8)]
-}
-
 fn track(case: &CodecCase) -> Value {
-    let mut words = storage(aldis_spp_tracker_storage_size());
+    let mut storage = aldis_spp_tracker_t {
+        words: [0; ALDIS_SPP_TRACKER_WORDS],
+    };
+    let h = &raw mut storage;
     let cfg = aldis_spp_tracker_config_t {
         struct_size: size_of_u32::<aldis_spp_tracker_config_t>(),
         capacity: u32::try_from(usize_of(&params(case), "capacity")).unwrap(),
     };
-    let mut h: *mut aldis_spp_tracker_t = core::ptr::null_mut();
-    // SAFETY: `words` is live, aligned storage of the published size.
-    call(|e| unsafe {
-        aldis_spp_tracker_init(
-            words.as_mut_ptr().cast(),
-            words.len() * 8,
-            &raw const cfg,
-            &raw mut h,
-            e,
-        )
-    })
-    .unwrap_or_else(|_| panic!("{}: tracker_init", case.id));
+    // SAFETY: `h` points to live storage; `cfg` is a live local.
+    call(|e| unsafe { aldis_spp_tracker_init(h, &raw const cfg, e) })
+        .unwrap_or_else(|_| panic!("{}: tracker_init", case.id));
     let mut results = Vec::new();
     for ev in param(case, "events").as_array().unwrap() {
         let apid = u16_of(ev, "apid");
@@ -866,18 +855,18 @@ fn segment(case: &CodecCase) -> R<Value> {
         apid: u16_of(&p, "apid"),
         max_user_len: usize_of(&p, "max_user_len"),
     };
-    let mut words = storage(ALDIS_SPP_SEGMENTER_STORAGE_SIZE);
-    let mut h: *mut aldis_spp_segmenter_t = core::ptr::null_mut();
-    // SAFETY: `words` is live, aligned storage of the published size; the rest are locals.
+    let mut storage = aldis_spp_segmenter_t {
+        words: [0; ALDIS_SPP_SEGMENTER_WORDS],
+    };
+    let h = &raw mut storage;
+    // SAFETY: `h` points to live storage; the rest are locals.
     call(|e| unsafe {
         aldis_spp_segmenter_init(
-            words.as_mut_ptr().cast(),
-            words.len() * 8,
+            h,
             &raw const cfg,
             &raw const seg_cfg,
             sdu.as_ptr(),
             sdu.len(),
-            &raw mut h,
             e,
         )
     })?;
@@ -932,19 +921,13 @@ fn discard_name(d: u32) -> &'static str {
 fn reassemble(case: &CodecCase) -> Value {
     let p = params(case);
     let mut buf = vec![0_u8; usize_of(&p, "buffer_len")];
-    let mut words = storage(ALDIS_SPP_REASSEMBLER_STORAGE_SIZE);
-    let mut h: *mut aldis_spp_reassembler_t = core::ptr::null_mut();
-    // SAFETY: `words` is live, aligned storage of the published size.
-    call(|e| unsafe {
-        aldis_spp_reassembler_init(
-            words.as_mut_ptr().cast(),
-            words.len() * 8,
-            u16_of(&p, "apid"),
-            &raw mut h,
-            e,
-        )
-    })
-    .unwrap_or_else(|_| panic!("{}: reassembler_init", case.id));
+    let mut storage = aldis_spp_reassembler_t {
+        words: [0; ALDIS_SPP_REASSEMBLER_WORDS],
+    };
+    let h = &raw mut storage;
+    // SAFETY: `h` points to live storage.
+    call(|e| unsafe { aldis_spp_reassembler_init(h, u16_of(&p, "apid"), e) })
+        .unwrap_or_else(|_| panic!("{}: reassembler_init", case.id));
     let layout = spp_layout(ALDIS_SPP_SECONDARY_ABSENT);
     let mut results = Vec::new();
     for packet in get(&p, "packets_hex").as_array().unwrap() {
@@ -1303,29 +1286,26 @@ fn epp_run(case: &CodecCase) -> R<Value> {
 
 // ---------------------------------------------------------------- aldis-core: CRC, OCF, OID
 
-/// An OID generator of one form in storage of its own (CABI-031): the storage, and the handle
-/// into it.
+/// An OID generator of one form in storage of its own (CABI-031): the storage, boxed so that
+/// moving the `Oid` does not move it (CABI-032), and the handle into it.
 struct Oid {
-    _words: Vec<u64>,
+    _storage: Box<aldis_oid_generator_t>,
     h: *mut aldis_oid_generator_t,
 }
 
 impl Oid {
     fn new(form: u32) -> Oid {
-        let mut words = storage(aldis_oid_generator_storage_size());
-        let mut h = core::ptr::null_mut();
-        // SAFETY: `words` is live, aligned storage of the published size.
-        call(|e| unsafe {
-            aldis_oid_generator_init(
-                words.as_mut_ptr().cast(),
-                words.len() * 8,
-                form,
-                &raw mut h,
-                e,
-            )
-        })
-        .unwrap_or_else(|f| panic!("aldis_oid_generator_init: {}", f.kind));
-        Oid { _words: words, h }
+        let mut storage = Box::new(aldis_oid_generator_t {
+            words: [0; ALDIS_OID_GENERATOR_WORDS],
+        });
+        let h: *mut aldis_oid_generator_t = &raw mut *storage;
+        // SAFETY: `h` points to live storage.
+        call(|e| unsafe { aldis_oid_generator_init(h, form, e) })
+            .unwrap_or_else(|f| panic!("aldis_oid_generator_init: {}", f.kind));
+        Oid {
+            _storage: storage,
+            h,
+        }
     }
 
     /// The next `len` octets, from `aldis_oid_generator_fill`.

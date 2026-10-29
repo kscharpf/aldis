@@ -5,7 +5,7 @@
 //! integration test on the host, so one call per function suffices here.
 
 use core::hint::black_box as bb;
-use core::ptr::{null, null_mut};
+use core::ptr::null;
 
 use aldis_ffi::aldis_error_detail_t;
 use aldis_ffi::aos::{
@@ -30,9 +30,8 @@ use aldis_ffi::error::{
 use aldis_ffi::limits::{aldis_limits, aldis_limits_t};
 use aldis_ffi::ocf::{ALDIS_OCF_CLCW, ALDIS_OCF_SDLS_FSR, aldis_ocf_check, aldis_ocf_classify};
 use aldis_ffi::oid::{
-    ALDIS_OID_FIBONACCI, ALDIS_OID_GALOIS, ALDIS_OID_GENERATOR_STORAGE_SIZE,
-    aldis_oid_generator_deinit, aldis_oid_generator_fill, aldis_oid_generator_init,
-    aldis_oid_generator_storage_align, aldis_oid_generator_storage_size, aldis_oid_generator_t,
+    ALDIS_OID_FIBONACCI, ALDIS_OID_GALOIS, ALDIS_OID_GENERATOR_WORDS, aldis_oid_generator_deinit,
+    aldis_oid_generator_fill, aldis_oid_generator_init, aldis_oid_generator_t,
 };
 use aldis_ffi::spp::{
     ALDIS_SPP_MAX_PACKET_LEN, ALDIS_SPP_SECONDARY_ABSENT, ALDIS_SPP_SECONDARY_OPAQUE,
@@ -43,18 +42,14 @@ use aldis_ffi::spp::{
     aldis_spp_split_t,
 };
 use aldis_ffi::spp_state::{
-    ALDIS_SPP_REASSEMBLER_STORAGE_SIZE, ALDIS_SPP_SEGMENTER_STORAGE_SIZE,
-    ALDIS_SPP_TRACKER_STORAGE_SIZE, aldis_spp_reassembler_deinit, aldis_spp_reassembler_init,
-    aldis_spp_reassembler_is_assembling, aldis_spp_reassembler_push, aldis_spp_reassembler_reset,
-    aldis_spp_reassembler_storage_align, aldis_spp_reassembler_storage_size,
-    aldis_spp_reassembler_t, aldis_spp_reassembly_t, aldis_spp_segmenter_config_t,
-    aldis_spp_segmenter_deinit, aldis_spp_segmenter_init, aldis_spp_segmenter_next,
-    aldis_spp_segmenter_remaining, aldis_spp_segmenter_storage_align,
-    aldis_spp_segmenter_storage_size, aldis_spp_segmenter_t, aldis_spp_tracked_t,
-    aldis_spp_tracker_config_t, aldis_spp_tracker_deinit, aldis_spp_tracker_forget,
-    aldis_spp_tracker_init, aldis_spp_tracker_last, aldis_spp_tracker_len,
-    aldis_spp_tracker_storage_align, aldis_spp_tracker_storage_size, aldis_spp_tracker_t,
-    aldis_spp_tracker_track,
+    ALDIS_SPP_REASSEMBLER_WORDS, ALDIS_SPP_SEGMENTER_WORDS, ALDIS_SPP_TRACKER_WORDS,
+    aldis_spp_reassembler_deinit, aldis_spp_reassembler_init, aldis_spp_reassembler_is_assembling,
+    aldis_spp_reassembler_push, aldis_spp_reassembler_reset, aldis_spp_reassembler_t,
+    aldis_spp_reassembly_t, aldis_spp_segmenter_config_t, aldis_spp_segmenter_deinit,
+    aldis_spp_segmenter_init, aldis_spp_segmenter_next, aldis_spp_segmenter_remaining,
+    aldis_spp_segmenter_t, aldis_spp_tracked_t, aldis_spp_tracker_config_t,
+    aldis_spp_tracker_deinit, aldis_spp_tracker_forget, aldis_spp_tracker_init,
+    aldis_spp_tracker_last, aldis_spp_tracker_len, aldis_spp_tracker_t, aldis_spp_tracker_track,
 };
 use aldis_ffi::time::{
     ALDIS_TIME_ASCII, ALDIS_TIME_CCS, ALDIS_TIME_CDS, ALDIS_TIME_CUC, aldis_time_ascii_encoded_len,
@@ -240,6 +235,13 @@ fn spp(t: &mut Tally) {
     }
 }
 
+/// Storage for one OID generator, as a C caller declares it (CABI-031).
+const fn oid_storage() -> aldis_oid_generator_t {
+    aldis_oid_generator_t {
+        words: [0; ALDIS_OID_GENERATOR_WORDS],
+    }
+}
+
 #[expect(
     unsafe_code,
     reason = "calls the C ABI with valid pointers and storage"
@@ -247,31 +249,20 @@ fn spp(t: &mut Tally) {
 #[expect(clippy::too_many_lines, reason = "one call per exported function")]
 fn spp_state(t: &mut Tally) {
     let mut det = detail();
-    t.check(aldis_spp_tracker_storage_size() == ALDIS_SPP_TRACKER_STORAGE_SIZE);
-    t.check(aldis_spp_tracker_storage_align() == 8 && aldis_spp_segmenter_storage_align() == 8);
-    t.check(aldis_spp_segmenter_storage_size() == ALDIS_SPP_SEGMENTER_STORAGE_SIZE);
-    t.check(aldis_spp_reassembler_storage_size() == ALDIS_SPP_REASSEMBLER_STORAGE_SIZE);
-    t.check(aldis_spp_reassembler_storage_align() == 8);
-    let mut tracker_words = [0_u64; ALDIS_SPP_TRACKER_STORAGE_SIZE / 8];
+    let mut tracker_storage = aldis_spp_tracker_t {
+        words: [0; ALDIS_SPP_TRACKER_WORDS],
+    };
+    let h = &raw mut tracker_storage;
     let cfg = aldis_spp_tracker_config_t {
         struct_size: size::<aldis_spp_tracker_config_t>(),
         capacity: bb(2),
     };
-    let mut h: *mut aldis_spp_tracker_t = null_mut();
     let mut tracked = aldis_spp_tracked_t::default();
     let (mut flag, mut count, mut len) = (false, 0_u16, 0_usize);
-    // SAFETY: the storage is a live, aligned local of the published size; the handle points
-    // into it; every other pointer is to a live local.
+    // SAFETY: the storage is a live local of the published type, and the handle is a pointer
+    // to it; every other pointer is to a live local.
     unsafe {
-        t.check(
-            aldis_spp_tracker_init(
-                tracker_words.as_mut_ptr().cast(),
-                bb(ALDIS_SPP_TRACKER_STORAGE_SIZE),
-                &raw const cfg,
-                &raw mut h,
-                &raw mut det,
-            ) == ALDIS_OK,
-        );
+        t.check(aldis_spp_tracker_init(h, &raw const cfg, &raw mut det) == ALDIS_OK);
         t.check(
             aldis_spp_tracker_track(h, bb(5), bb(1), &raw mut tracked, &raw mut det) == ALDIS_OK,
         );
@@ -300,10 +291,14 @@ fn spp_state(t: &mut Tally) {
         max_user_len: bb(2),
     };
     let sdu = bb([1_u8, 2, 3]);
-    let mut seg_words = [0_u64; ALDIS_SPP_SEGMENTER_STORAGE_SIZE / 8];
-    let mut seg: *mut aldis_spp_segmenter_t = null_mut();
-    let mut ra_words = [0_u64; ALDIS_SPP_REASSEMBLER_STORAGE_SIZE / 8];
-    let mut ra: *mut aldis_spp_reassembler_t = null_mut();
+    let mut seg_storage = aldis_spp_segmenter_t {
+        words: [0; ALDIS_SPP_SEGMENTER_WORDS],
+    };
+    let seg = &raw mut seg_storage;
+    let mut ra_storage = aldis_spp_reassembler_t {
+        words: [0; ALDIS_SPP_REASSEMBLER_WORDS],
+    };
+    let ra = &raw mut ra_storage;
     let layout = absent_layout();
     let mut buf = [0_u8; 8];
     let mut out = [0_u8; 16];
@@ -313,25 +308,15 @@ fn spp_state(t: &mut Tally) {
     unsafe {
         t.check(
             aldis_spp_segmenter_init(
-                seg_words.as_mut_ptr().cast(),
-                bb(ALDIS_SPP_SEGMENTER_STORAGE_SIZE),
+                seg,
                 &raw const spp,
                 &raw const seg_cfg,
                 sdu.as_ptr(),
                 bb(3),
-                &raw mut seg,
                 &raw mut det,
             ) == ALDIS_OK,
         );
-        t.check(
-            aldis_spp_reassembler_init(
-                ra_words.as_mut_ptr().cast(),
-                bb(ALDIS_SPP_REASSEMBLER_STORAGE_SIZE),
-                bb(9),
-                &raw mut ra,
-                &raw mut det,
-            ) == ALDIS_OK,
-        );
+        t.check(aldis_spp_reassembler_init(ra, bb(9), &raw mut det) == ALDIS_OK);
         for _ in 0..2 {
             t.check(
                 aldis_spp_segmenter_next(
@@ -652,15 +637,12 @@ fn core(t: &mut Tally) {
     let mut crc = 0_u16;
     let ocf = bb([0xC1_u8, 0x23, 0x45, 0x67]);
     let mut report = 0_u32;
-    t.check(aldis_oid_generator_storage_size() == ALDIS_OID_GENERATOR_STORAGE_SIZE);
-    t.check(aldis_oid_generator_storage_align() == 8);
-    let mut fib_words = [0_u64; ALDIS_OID_GENERATOR_STORAGE_SIZE / 8];
-    let mut gal_words = [0_u64; ALDIS_OID_GENERATOR_STORAGE_SIZE / 8];
-    let mut fib: *mut aldis_oid_generator_t = null_mut();
-    let mut gal: *mut aldis_oid_generator_t = null_mut();
+    let mut fib_storage = oid_storage();
+    let fib = &raw mut fib_storage;
+    let mut gal_storage = oid_storage();
+    let gal = &raw mut gal_storage;
     let (mut a, mut b) = ([0_u8; 6], [0_u8; 6]);
-    // SAFETY: every pointer is to a live local; the storage is aligned and of the published
-    // size, and the handles point into it.
+    // SAFETY: every pointer is to a live local; the handles point to the storage locals.
     unsafe {
         t.check(
             aldis_crc16(check_string.as_ptr(), bb(9), &raw mut crc, &raw mut det) == ALDIS_OK
@@ -676,24 +658,8 @@ fn core(t: &mut Tally) {
                 && det.expected == 0
                 && det.found == 1,
         );
-        t.check(
-            aldis_oid_generator_init(
-                fib_words.as_mut_ptr().cast(),
-                bb(ALDIS_OID_GENERATOR_STORAGE_SIZE),
-                bb(ALDIS_OID_FIBONACCI),
-                &raw mut fib,
-                &raw mut det,
-            ) == ALDIS_OK,
-        );
-        t.check(
-            aldis_oid_generator_init(
-                gal_words.as_mut_ptr().cast(),
-                bb(ALDIS_OID_GENERATOR_STORAGE_SIZE),
-                bb(ALDIS_OID_GALOIS),
-                &raw mut gal,
-                &raw mut det,
-            ) == ALDIS_OK,
-        );
+        t.check(aldis_oid_generator_init(fib, bb(ALDIS_OID_FIBONACCI), &raw mut det) == ALDIS_OK);
+        t.check(aldis_oid_generator_init(gal, bb(ALDIS_OID_GALOIS), &raw mut det) == ALDIS_OK);
         t.check(aldis_oid_generator_fill(fib, a.as_mut_ptr(), bb(6), &raw mut det) == ALDIS_OK);
         t.check(aldis_oid_generator_fill(gal, b.as_mut_ptr(), bb(6), &raw mut det) == ALDIS_OK);
         t.check(a == b && a == [0xFF, 0xFF, 0xFF, 0xFF, 0x6D, 0xB6]);
@@ -784,10 +750,10 @@ fn aos(t: &mut Tally) {
     let mut pdu = aldis_aos_pdu_t::default();
     let mut fhec = 0_u16;
     let mut n = 0_usize;
-    let mut words = [0_u64; ALDIS_OID_GENERATOR_STORAGE_SIZE / 8];
-    let mut oid: *mut aldis_oid_generator_t = null_mut();
-    // SAFETY: every pointer is to a live local; lengths are those of the buffers; the
-    // generator's storage is aligned and of the published size.
+    let mut oid_store = oid_storage();
+    let oid = &raw mut oid_store;
+    // SAFETY: every pointer is to a live local; lengths are those of the buffers; `oid` points
+    // to the generator's storage.
     unsafe {
         t.check(aldis_aos_config_check(&raw const mc.pc, &raw mut det) == ALDIS_OK);
         t.check(
@@ -885,15 +851,7 @@ fn aos(t: &mut Tally) {
                 && pdu.pointer == ALDIS_AOS_POINTER_VALID_BITS
                 && pdu.pointer_value == 9,
         );
-        t.check(
-            aldis_oid_generator_init(
-                words.as_mut_ptr().cast(),
-                bb(ALDIS_OID_GENERATOR_STORAGE_SIZE),
-                bb(ALDIS_OID_GALOIS),
-                &raw mut oid,
-                &raw mut det,
-            ) == ALDIS_OK,
-        );
+        t.check(aldis_oid_generator_init(oid, bb(ALDIS_OID_GALOIS), &raw mut det) == ALDIS_OK);
         let idle = aldis_aos_fields_t {
             vcid: bb(ALDIS_AOS_OID_VCID),
             pointer: bb(ALDIS_AOS_POINTER_NONE),
@@ -921,15 +879,7 @@ fn aos(t: &mut Tally) {
                 && frame.get(12..16) == Some(&[0xFF; 4][..]),
         );
         aldis_oid_generator_deinit(oid);
-        t.check(
-            aldis_oid_generator_init(
-                words.as_mut_ptr().cast(),
-                bb(ALDIS_OID_GENERATOR_STORAGE_SIZE),
-                bb(ALDIS_OID_FIBONACCI),
-                &raw mut oid,
-                &raw mut det,
-            ) == ALDIS_OK,
-        );
+        t.check(aldis_oid_generator_init(oid, bb(ALDIS_OID_FIBONACCI), &raw mut det) == ALDIS_OK);
         t.check(
             aldis_aos_encode_oid(
                 &raw const mc,
@@ -1010,10 +960,10 @@ fn tm(t: &mut Tally) {
     let mut view = aldis_tm_frame_t::default();
     let mut header = aldis_tm_header_t::default();
     let mut n = 0_usize;
-    let mut words = [0_u64; ALDIS_OID_GENERATOR_STORAGE_SIZE / 8];
-    let mut oid: *mut aldis_oid_generator_t = null_mut();
-    // SAFETY: every pointer is to a live local; lengths are those of the buffers; the
-    // generator's storage is aligned and of the published size.
+    let mut oid_store = oid_storage();
+    let oid = &raw mut oid_store;
+    // SAFETY: every pointer is to a live local; lengths are those of the buffers; `oid` points
+    // to the generator's storage.
     unsafe {
         t.check(aldis_tm_config_check(&raw const mc.pc, &raw mut det) == ALDIS_OK);
         t.check(
@@ -1125,15 +1075,7 @@ fn tm(t: &mut Tally) {
                 ..vcs[0]
             },
         ];
-        t.check(
-            aldis_oid_generator_init(
-                words.as_mut_ptr().cast(),
-                bb(ALDIS_OID_GENERATOR_STORAGE_SIZE),
-                bb(ALDIS_OID_FIBONACCI),
-                &raw mut oid,
-                &raw mut det,
-            ) == ALDIS_OK,
-        );
+        t.check(aldis_oid_generator_init(oid, bb(ALDIS_OID_FIBONACCI), &raw mut det) == ALDIS_OK);
         let idle_content = aldis_tm_content_t::default();
         t.check(
             aldis_tm_encode_oid(
@@ -1154,15 +1096,7 @@ fn tm(t: &mut Tally) {
                 && frame.get(6..10) == Some(&[0xFF; 4][..]),
         );
         aldis_oid_generator_deinit(oid);
-        t.check(
-            aldis_oid_generator_init(
-                words.as_mut_ptr().cast(),
-                bb(ALDIS_OID_GENERATOR_STORAGE_SIZE),
-                bb(ALDIS_OID_GALOIS),
-                &raw mut oid,
-                &raw mut det,
-            ) == ALDIS_OK,
-        );
+        t.check(aldis_oid_generator_init(oid, bb(ALDIS_OID_GALOIS), &raw mut det) == ALDIS_OK);
         t.check(
             aldis_tm_encode_oid(
                 &raw const mc,
@@ -1582,10 +1516,10 @@ fn uslp(t: &mut Tally) {
     let mut two = [0_u8; 64];
     let mut view = aldis_uslp_frame_t::default();
     let mut n = 0_usize;
-    let mut words = [0_u64; ALDIS_OID_GENERATOR_STORAGE_SIZE / 8];
-    let mut oid: *mut aldis_oid_generator_t = null_mut();
-    // SAFETY: every pointer is to a live local; lengths are those of the buffers; the
-    // generator's storage is aligned and of the published size.
+    let mut oid_store = oid_storage();
+    let oid = &raw mut oid_store;
+    // SAFETY: every pointer is to a live local; lengths are those of the buffers; `oid` points
+    // to the generator's storage.
     unsafe {
         t.check(aldis_uslp_config_check(&raw const pc, &raw mut det) == ALDIS_OK);
         t.check(
@@ -1693,15 +1627,7 @@ fn uslp(t: &mut Tally) {
             ) == ALDIS_OK
                 && n == 12,
         );
-        t.check(
-            aldis_oid_generator_init(
-                words.as_mut_ptr().cast(),
-                bb(ALDIS_OID_GENERATOR_STORAGE_SIZE),
-                bb(ALDIS_OID_GALOIS),
-                &raw mut oid,
-                &raw mut det,
-            ) == ALDIS_OK,
-        );
+        t.check(aldis_oid_generator_init(oid, bb(ALDIS_OID_GALOIS), &raw mut det) == ALDIS_OK);
         t.check(
             aldis_uslp_encode_oid(
                 &raw const fixed,

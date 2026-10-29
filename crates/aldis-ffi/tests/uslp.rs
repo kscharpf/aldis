@@ -795,22 +795,21 @@ fn encode_oid_takes_a_generator_handle() {
         insert_zone_len: 2,
         ..aldis_uslp_content_t::default()
     };
-    let mut words = [[0_u64; 8]; 2];
-    let mut handles = [null_mut(); 2];
-    for (i, form) in [ALDIS_OID_FIBONACCI, ALDIS_OID_GALOIS]
+    let mut storage = [
+        aldis_oid_generator_t {
+            words: [0; ALDIS_OID_GENERATOR_WORDS],
+        },
+        aldis_oid_generator_t {
+            words: [0; ALDIS_OID_GENERATOR_WORDS],
+        },
+    ];
+    let handles = [&raw mut storage[0], &raw mut storage[1]];
+    for (h, form) in handles
         .into_iter()
-        .enumerate()
+        .zip([ALDIS_OID_FIBONACCI, ALDIS_OID_GALOIS])
     {
-        // SAFETY: the storage lies in `words`, aligned to 8.
-        let rc = unsafe {
-            aldis_oid_generator_init(
-                words[i].as_mut_ptr().cast(),
-                ALDIS_OID_GENERATOR_STORAGE_SIZE,
-                form,
-                &raw mut handles[i],
-                null_mut(),
-            )
-        };
+        // SAFETY: `h` points to live storage.
+        let rc = unsafe { aldis_oid_generator_init(h, form, null_mut()) };
         assert_eq!(rc, ALDIS_OK);
     }
     let oid = |fl: &aldis_uslp_fields_t,
@@ -862,7 +861,7 @@ fn encode_oid_takes_a_generator_handle() {
             oid(&fl, &with_tfdz, hd, frames[i].as_mut_ptr()).0,
             ALDIS_ERR_INVALID_FIELD
         );
-        let in_storage = words[i].as_mut_ptr().cast::<u8>();
+        let in_storage = handles[i].cast::<u8>();
         assert_eq!(oid(&fl, &ct, hd, in_storage).0, ALDIS_ERR_INVALID_FIELD);
     }
     // Both forms give the same frames, from the start of the sequence (CMN-020, CMN-022).

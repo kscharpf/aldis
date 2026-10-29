@@ -53,8 +53,8 @@ use aldis_ffi::ocf::{
     aldis_ocf_classify,
 };
 use aldis_ffi::oid::{
-    ALDIS_OID_FIBONACCI, ALDIS_OID_GALOIS, ALDIS_OID_GENERATOR_STORAGE_SIZE,
-    aldis_oid_generator_deinit, aldis_oid_generator_fill, aldis_oid_generator_init,
+    ALDIS_OID_FIBONACCI, ALDIS_OID_GALOIS, ALDIS_OID_GENERATOR_WORDS, aldis_oid_generator_deinit,
+    aldis_oid_generator_fill, aldis_oid_generator_init, aldis_oid_generator_t,
 };
 use aldis_ffi::spp::{aldis_spp_decode, aldis_spp_packet_t, aldis_spp_peek_length};
 use aldis_ffi::time::{
@@ -371,19 +371,14 @@ fn core(data: &[u8]) {
     let mut rust = vec![0_u8; data.len()];
     OidGenerator::new().fill(&mut rust);
     for form in [ALDIS_OID_FIBONACCI, ALDIS_OID_GALOIS] {
-        let mut storage = [0_u64; ALDIS_OID_GENERATOR_STORAGE_SIZE / 8];
-        let mut h = null_mut();
+        let mut storage = aldis_oid_generator_t {
+            words: [0; ALDIS_OID_GENERATOR_WORDS],
+        };
+        let h = &raw mut storage;
         let mut out = vec![0_u8; data.len()];
-        // SAFETY: `storage` is live, aligned, and of the published size; `h` points into it;
-        // `out` is live.
+        // SAFETY: `h` points to the live storage; `out` is live.
         unsafe {
-            let status = aldis_oid_generator_init(
-                storage.as_mut_ptr().cast(),
-                ALDIS_OID_GENERATOR_STORAGE_SIZE,
-                form,
-                &raw mut h,
-                null_mut(),
-            );
+            let status = aldis_oid_generator_init(h, form, null_mut());
             assert_eq!(status, ALDIS_OK);
             let status = aldis_oid_generator_fill(h, out.as_mut_ptr(), out.len(), null_mut());
             assert_eq!(status, ALDIS_OK);

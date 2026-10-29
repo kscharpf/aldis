@@ -58,7 +58,7 @@ pub use error::{ALDIS_OK, aldis_error_detail_t};
 /// ABI major version; changes on any ABI-breaking change (CABI-060).
 pub const ALDIS_ABI_VERSION_MAJOR: u32 = 0;
 /// ABI minor version (CABI-060).
-pub const ALDIS_ABI_VERSION_MINOR: u32 = 2;
+pub const ALDIS_ABI_VERSION_MINOR: u32 = 3;
 /// ABI patch version (CABI-060).
 pub const ALDIS_ABI_VERSION_PATCH: u32 = 0;
 
