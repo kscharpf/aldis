@@ -6,8 +6,9 @@
 # The run makes the checks of `cargo xtask verify` in parallel parts, one job per group of
 # checks (VER-067), and assembles one record from them:
 #
-#   prepare   decides whether the run needs the verification image and makes sure the
-#             registry has it
+#   prepare   builds xtask once and passes it to the other jobs, decides whether the run needs
+#             the verification image, and makes sure the registry has it (by its reference: a
+#             manifest lookup, no pull; a part checks the image's labels when it pulls it)
 #   part      `cargo xtask verify part <group>` for host, cross, coverage, and embedded, side
 #             by side; the first gating failure cancels the others; each uploads its part
 #             record and logs, also when it failed
@@ -28,14 +29,20 @@
 # run as STALE, and a run in which a check failed as FAILED.
 #
 # A part starts pulling the image by the reference `prepare` found while it checks out the
-# repository and installs the toolchain; the preinstalled SDKs are cleared only on a runner
-# with less than 40 GB free.
+# repository and gets xtask; the preinstalled SDKs are cleared only on a runner with less than
+# 40 GB free. The parts and `assemble` run the xtask that `prepare` built (an artifact of the
+# run) and install no Rust toolchain: the checks run in the image, and the host side of a run
+# needs only git, the container engine, and `gh`. A job uses that binary only when it was built
+# from the commit the job checked out, in the same workspace path; else it builds xtask itself
+# (the composite action .github/actions/get-xtask, which both jobs use).
 #
 # The verification image comes from ghcr.io/kscharpf/aldis-verify when a workflow of this
 # repository has pushed it for the same image inputs (tag `<input hash>-amd64`), and its labels
 # hold; otherwise `prepare` builds it and pushes it (`verify image --push`, VER-060), and the
-# parts only pull it. The record names the image's source and digest, or, when no gating check
-# needed the container, that no image was used. The first push creates the package as private:
+# parts only pull it. `prepare` finds it by `verify image --ref` and a manifest lookup; it builds
+# and pushes the image only when the registry says the manifest does not exist, and fails on any
+# other answer (a rate limit, the network, the login). The record names the image's source and
+# digest, or, when no gating check needed the container, that no image was used. The first push creates the package as private:
 # make it public once, under the package's settings (Package settings, Danger Zone, Change
 # visibility), and check that "Manage Actions access" gives kscharpf/aldis the Write role.
 name: verify
@@ -83,12 +90,29 @@ jobs:
       - uses: ./.github/actions/setup-rust
         with:
           cache-key: verify
+      # The other jobs run this binary, so that none of them installs a toolchain or compiles
+      # xtask. It is the binary `cargo xtask` runs (the dev profile). The commit and the workspace
+      # path go with it: xtask finds the repository by the path it was compiled at.
+      - name: Build xtask for the run
+        run: |
+          cargo build --locked -p xtask
+          bin="$RUNNER_TEMP/xtask-bin"
+          mkdir -p "$bin"
+          cp target/debug/xtask "$bin/xtask"
+          git rev-parse HEAD > "$bin/commit"
+          printf '%s' "$GITHUB_WORKSPACE" > "$bin/workspace"
+          echo "XTASK=$bin/xtask" >> "$GITHUB_ENV"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: xtask
+          path: ${{ runner.temp }}/xtask-bin/
+          retention-days: 1
       # Whether the run starts a container at all (VER-056): when the input rule skips or
       # reuses every gating check, no image is pulled or built.
       - name: Does the run need the image?
         id: plan
         run: |
-          cargo xtask verify list | tee "$RUNNER_TEMP/plan.txt"
+          "$XTASK" verify list | tee "$RUNNER_TEMP/plan.txt"
           if grep -q 'the run would start a container' "$RUNNER_TEMP/plan.txt"; then
             echo "container=true" >> "$GITHUB_OUTPUT"
           else
@@ -100,26 +124,34 @@ jobs:
           ACTOR: ${{ github.actor }}
           GH_TOKEN: ${{ github.token }}
         run: printf '%s' "$GH_TOKEN" | docker login ghcr.io -u "$ACTOR" --password-stdin
-      - name: Room for the image
-        if: steps.plan.outputs.container == 'true'
-        run: |
-          # A hosted runner of 2026-10 has about 86 GB free; clear the preinstalled SDKs (one to two
-          # minutes) only when a runner has less than the image (about 8 GB) and the build cache need.
-          avail="$(df --output=avail -BG / | tail -n 1 | tr -dc '0-9')"
-          if [ "$avail" -lt 40 ]; then
-            echo "only ${avail} GB free: removing preinstalled SDKs"
-            sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
-          fi
-          df -h /
-      # The image is pulled when the registry has it for the pins and its labels hold, else
-      # built here and pushed, once, before any part starts (VER-060). The parts start pulling it
-      # by its reference while they check out the repository.
+      # The registry has the image when a manifest exists for the reference of the commit's image
+      # inputs: no pull here. Each part checks the labels when it pulls (VER-060) and builds the
+      # image itself if they do not hold. The image is built here and pushed, once, before any
+      # part starts, only when the registry answers that the manifest does not exist; any other
+      # failure of the lookup (rate limit, network, login) fails the job, since rebuilding and
+      # pushing over a good tag costs 20 to 30 minutes.
       - name: Make sure the registry has the image
         id: image
         if: steps.plan.outputs.container == 'true' && github.repository == 'kscharpf/aldis'
         run: |
-          cargo xtask verify image --push ghcr.io/kscharpf/aldis-verify | tee "$RUNNER_TEMP/image.txt"
-          echo "ref=$(grep -o -m1 'ghcr.io/kscharpf/aldis-verify:[0-9a-f]*-[a-z0-9_]*' "$RUNNER_TEMP/image.txt" | head -1)" >> "$GITHUB_OUTPUT"
+          df -h /
+          ref="$("$XTASK" verify image --ref ghcr.io/kscharpf/aldis-verify)"
+          if err="$(docker manifest inspect "$ref" 2>&1 > /dev/null)"; then
+            echo "$ref is in the registry"
+          elif printf '%s' "$err" | grep -qiE 'manifest unknown|no such manifest|not found'; then
+            echo "$ref is not in the registry: building it"
+            avail="$(df --output=avail -BG / | tail -n 1 | tr -dc '0-9')"
+            if [ "$avail" -lt 40 ]; then
+              echo "only ${avail} GB free: removing preinstalled SDKs"
+              sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+            fi
+            df -h /
+            "$XTASK" verify image --push ghcr.io/kscharpf/aldis-verify
+          else
+            echo "::error title=Registry::could not look up $ref: $err"
+            exit 1
+          fi
+          echo "ref=$ref" >> "$GITHUB_OUTPUT"
 
   part:
     name: ${{ matrix.group }}
@@ -135,8 +167,8 @@ jobs:
       matrix:
         group: [host, cross, coverage, embedded]
     steps:
-      # The image is pulled while the repository is checked out and the toolchain installed: the
-      # pull is an optimisation, `verify part` pulls it again (a no-op by then) or builds it.
+      # The image is pulled while the repository is checked out and xtask fetched: the pull is
+      # an optimisation, `verify part` pulls it again (a no-op by then) or builds it.
       - name: Log in to ghcr.io
         if: needs.prepare.outputs.container == 'true' && github.repository == 'kscharpf/aldis'
         env:
@@ -154,9 +186,7 @@ jobs:
         with:
           fetch-depth: 0
           fetch-tags: true
-      - uses: ./.github/actions/setup-rust
-        with:
-          cache-key: verify
+      - uses: ./.github/actions/get-xtask
       - name: Room for the image, and the pull
         if: needs.prepare.outputs.container == 'true'
         run: |
@@ -169,6 +199,7 @@ jobs:
           fi
           df -h /
           if [ -n "${{ needs.prepare.outputs.image }}" ]; then
+            # bound: 300 rounds of 2 s; the loop leaves as soon as the background pull has ended
             for _ in $(seq 300); do
               [ -e "$RUNNER_TEMP/image-pulled" ] && break
               sleep 2
@@ -178,7 +209,7 @@ jobs:
       - name: The checks of the group ${{ matrix.group }} (VER-067)
         env:
           GH_TOKEN: ${{ github.token }}
-        run: cargo xtask verify part ${{ matrix.group }}
+        run: '"$XTASK" verify part ${{ matrix.group }}'
       # Also after a failure: the part record and the logs say which check failed.
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
@@ -201,9 +232,7 @@ jobs:
         with:
           fetch-depth: 0
           fetch-tags: true
-      - uses: ./.github/actions/setup-rust
-        with:
-          cache-key: verify
+      - uses: ./.github/actions/get-xtask
       - name: Author of the git note
         run: |
           git config user.name "github-actions[bot]"
@@ -216,7 +245,7 @@ jobs:
       - name: The record of the run from its parts; publish a passing record
         env:
           GH_TOKEN: ${{ github.token }}
-        run: cargo xtask verify assemble --publish "$RUNNER_TEMP"/parts/*/*/record.json
+        run: '"$XTASK" verify assemble --publish "$RUNNER_TEMP"/parts/*/*/record.json'
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
