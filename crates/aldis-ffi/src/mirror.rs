@@ -140,17 +140,22 @@ mod tests {
     fn every_mirror_enum_is_in_the_header_with_the_same_values() {
         // Each variant of a mirror enum, by `Debug` name and value, is an enumerator of the `enum` of
         // the same name in the generated header, and the header has no other enumerator.
-        fn check<E: Mirror + core::fmt::Debug>(name: &str, header: &str)
+        fn check<E: Mirror + core::fmt::Debug>(name: &str, header: &str, seen: &mut Vec<String>)
         where
             E::Repr: Into<u64>,
         {
+            seen.push(name.to_owned());
             let (_, after) = header
-                .split_once(&format!("enum {name}\n"))
+                .split_once(&format!("\nenum {name}\n"))
                 .unwrap_or_else(|| panic!("`enum {name}` is not in the header"));
-            let (body, _) = after.split_once("\n};").unwrap();
             let mut listed = Vec::new();
-            for line in body.lines() {
+            // The enumerators are the lines that start with `ALDIS_` up to the closing brace; the
+            // brace style and the preprocessor lines of the fixed underlying type do not matter.
+            for line in after.lines().skip_while(|l| !l.contains('{')) {
                 let line = line.trim();
+                if line.starts_with('}') {
+                    break;
+                }
                 if line.starts_with("ALDIS_") {
                     let (id, value) = line.trim_end_matches(',').split_once(" = ").unwrap();
                     listed.push((id.to_owned(), value.parse::<u64>().unwrap()));
@@ -164,36 +169,57 @@ mod tests {
         }
 
         let header = include_str!("../../../include/aldis/aldis.h");
-        check::<aldis_aos_content>("aldis_aos_content", header);
-        check::<aldis_aos_edition>("aldis_aos_edition", header);
-        check::<aldis_aos_pointer>("aldis_aos_pointer", header);
-        check::<aldis_mode>("aldis_mode", header);
-        check::<aldis_ocf_report>("aldis_ocf_report", header);
-        check::<aldis_oid_form>("aldis_oid_form", header);
-        check::<aldis_spp_discard>("aldis_spp_discard", header);
-        check::<aldis_spp_packet_type>("aldis_spp_packet_type", header);
-        check::<aldis_spp_reassembly>("aldis_spp_reassembly", header);
-        check::<aldis_spp_secondary>("aldis_spp_secondary", header);
-        check::<aldis_spp_sequence_flags>("aldis_spp_sequence_flags", header);
-        check::<aldis_spp_track>("aldis_spp_track", header);
-        check::<aldis_tc_control>("aldis_tc_control", header);
-        check::<aldis_tc_discard>("aldis_tc_discard", header);
-        check::<aldis_tc_frame>("aldis_tc_frame", header);
-        check::<aldis_tc_sequence_flags>("aldis_tc_sequence_flags", header);
-        check::<aldis_tc_stream>("aldis_tc_stream", header);
-        check::<aldis_time_ccs_variation>("aldis_time_ccs_variation", header);
-        check::<aldis_time_cds_day>("aldis_time_cds_day", header);
-        check::<aldis_time_cds_submillis>("aldis_time_cds_submillis", header);
-        check::<aldis_time_code>("aldis_time_code", header);
-        check::<aldis_tm_content>("aldis_tm_content", header);
-        check::<aldis_tm_pointer>("aldis_tm_pointer", header);
-        check::<aldis_uslp_direction>("aldis_uslp_direction", header);
-        check::<aldis_uslp_discard>("aldis_uslp_discard", header);
-        check::<aldis_uslp_frame>("aldis_uslp_frame", header);
-        check::<aldis_uslp_kind>("aldis_uslp_kind", header);
-        check::<aldis_uslp_ocf>("aldis_uslp_ocf", header);
-        check::<aldis_uslp_rule>("aldis_uslp_rule", header);
-        check::<aldis_uslp_security>("aldis_uslp_security", header);
-        check::<aldis_uslp_stream>("aldis_uslp_stream", header);
+        let mut seen = Vec::new();
+        check::<aldis_aos_content>("aldis_aos_content", header, &mut seen);
+        check::<aldis_aos_edition>("aldis_aos_edition", header, &mut seen);
+        check::<aldis_aos_pointer>("aldis_aos_pointer", header, &mut seen);
+        check::<aldis_mode>("aldis_mode", header, &mut seen);
+        check::<aldis_ocf_report>("aldis_ocf_report", header, &mut seen);
+        check::<aldis_oid_form>("aldis_oid_form", header, &mut seen);
+        check::<aldis_spp_discard>("aldis_spp_discard", header, &mut seen);
+        check::<aldis_spp_packet_type>("aldis_spp_packet_type", header, &mut seen);
+        check::<aldis_spp_reassembly>("aldis_spp_reassembly", header, &mut seen);
+        check::<aldis_spp_secondary>("aldis_spp_secondary", header, &mut seen);
+        check::<aldis_spp_sequence_flags>("aldis_spp_sequence_flags", header, &mut seen);
+        check::<aldis_spp_track>("aldis_spp_track", header, &mut seen);
+        check::<aldis_tc_control>("aldis_tc_control", header, &mut seen);
+        check::<aldis_tc_discard>("aldis_tc_discard", header, &mut seen);
+        check::<aldis_tc_frame>("aldis_tc_frame", header, &mut seen);
+        check::<aldis_tc_sequence_flags>("aldis_tc_sequence_flags", header, &mut seen);
+        check::<aldis_tc_stream>("aldis_tc_stream", header, &mut seen);
+        check::<aldis_time_ccs_variation>("aldis_time_ccs_variation", header, &mut seen);
+        check::<aldis_time_cds_day>("aldis_time_cds_day", header, &mut seen);
+        check::<aldis_time_cds_submillis>("aldis_time_cds_submillis", header, &mut seen);
+        check::<aldis_time_code>("aldis_time_code", header, &mut seen);
+        check::<aldis_tm_content>("aldis_tm_content", header, &mut seen);
+        check::<aldis_tm_pointer>("aldis_tm_pointer", header, &mut seen);
+        check::<aldis_uslp_direction>("aldis_uslp_direction", header, &mut seen);
+        check::<aldis_uslp_discard>("aldis_uslp_discard", header, &mut seen);
+        check::<aldis_uslp_frame>("aldis_uslp_frame", header, &mut seen);
+        check::<aldis_uslp_kind>("aldis_uslp_kind", header, &mut seen);
+        check::<aldis_uslp_ocf>("aldis_uslp_ocf", header, &mut seen);
+        check::<aldis_uslp_rule>("aldis_uslp_rule", header, &mut seen);
+        check::<aldis_uslp_security>("aldis_uslp_security", header, &mut seen);
+        check::<aldis_uslp_stream>("aldis_uslp_stream", header, &mut seen);
+
+        // Completeness: the checks above, the `enum`s of the header, and the `include` list of
+        // `cbindgen.toml` name the same set, so a new mirror enum left out of any of them fails here.
+        seen.sort();
+        let mut in_header: Vec<String> = header
+            .lines()
+            .filter_map(|l| l.strip_prefix("enum aldis_"))
+            .map(|n| format!("aldis_{}", n.trim()))
+            .collect();
+        in_header.sort();
+        assert_eq!(seen, in_header, "enums of the header");
+        let config = include_str!("../cbindgen.toml");
+        let mut included: Vec<String> = config
+            .lines()
+            .filter_map(|l| l.trim().strip_prefix("\"aldis_"))
+            .filter_map(|n| n.strip_suffix("\","))
+            .map(|n| format!("aldis_{n}"))
+            .collect();
+        included.sort();
+        assert_eq!(seen, included, "`include` of cbindgen.toml");
     }
 }
