@@ -100,8 +100,8 @@ prepare_one() {
     before="$(gh run list --workflow=verify.yml --branch "$branch" -L 1 --json databaseId --jq '.[0].databaseId // 0')" ||
         before=0
     gh workflow run verify.yml --ref "$branch" || fail "dispatch failed" || return 1
-    for _ in $(seq 1 30); do
-        sleep 2
+    for _ in $(seq 1 20); do
+        sleep 5
         found="$(gh run list --workflow=verify.yml --branch "$branch" -L 1 --json databaseId,createdAt \
             --jq ".[0] | select(.createdAt >= \"$dispatched\" and .databaseId != $before) | .databaseId")" ||
             found=""
@@ -133,7 +133,7 @@ for i in "${!prs[@]}"; do
         failed=$((failed + 1))
         continue
     fi
-    gh run watch "${runs[$i]}" --exit-status >/dev/null 2>&1 || true
+    gh run watch "${runs[$i]}" --interval 60 --exit-status >/dev/null 2>&1 || true
     conclusion="$(gh run view "${runs[$i]}" --json conclusion --jq '.conclusion')" ||
         conclusion="unknown"
     echo "#${prs[$i]} ${branches[$i]} ${runs[$i]} $conclusion"
