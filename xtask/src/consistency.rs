@@ -4,10 +4,9 @@
 //!
 //! **Crates.** A library crate of Layers 0–2 *has code* when a non-comment line of its `src/`
 //! declares a function (`fn `); the skeletons declare modules only. Every crate with code is in
-//! the coverage gate ([`crate::layers::gated`], VER-024), and every gated crate has code. The
-//! same set must appear in the `features` check ([`crate::features::crates`], GEN-006), the
-//! `-p` list of the nightly `mutants` job (`.github/workflows/nightly.yml`, VER-025), and the
-//! exerciser (`exerciser/Cargo.toml` dependencies, VER-010), and each crate other than
+//! the coverage gate and the `features` check ([`crate::layers::gated`], VER-024, GEN-006),
+//! which derive their crates from that set. The same set must appear in the `-p` list of the
+//! nightly `mutants` job (`.github/workflows/nightly.yml`, VER-025), and the exerciser (`exerciser/Cargo.toml` dependencies, VER-010), and each crate other than
 //! `aldis-core`, whose vectors the exerciser names one by one, has a vector group in
 //! `exerciser/build.rs`. Every crate of the layers check ([`crate::layers::LAYERS`], GEN-002) is
 //! a workspace member, and every gated crate is in it. A boundary crate other than the facade
@@ -60,7 +59,6 @@ struct Crates {
     reported: BTreeSet<String>,
     /// Boundary crates (`BOUNDARY`, xtask/src/layers.rs).
     boundary: BTreeSet<String>,
-    features: BTreeSet<String>,
     mutants: BTreeSet<String>,
     exerciser: BTreeSet<String>,
     /// Vector groups of `exerciser/build.rs`.
@@ -239,11 +237,6 @@ fn crate_problems(c: &Crates) -> Vec<String> {
         ));
     }
     let code: BTreeSet<String> = c.with_code.intersection(&low).cloned().collect();
-    for n in code.difference(&c.coverage) {
-        p.push(format!(
-            "{n}: has code but is not in the coverage gate (derived: Layer 0-2 crates with code, xtask/src/layers.rs)"
-        ));
-    }
     for n in c.coverage.difference(&code) {
         p.push(format!(
             "{n}: in the coverage gate but declares no function (a skeleton)"
@@ -271,12 +264,6 @@ fn crate_problems(c: &Crates) -> Vec<String> {
     }
     let gated = &c.coverage;
     let exercised: BTreeSet<String> = gated.union(&c.reported).cloned().collect();
-    diff(
-        &mut p,
-        "the features check (derived, xtask/src/features.rs)",
-        gated,
-        &c.features,
-    );
     diff(
         &mut p,
         "the nightly mutants job (`-p`, .github/workflows/nightly.yml)",
@@ -565,7 +552,6 @@ fn crates() -> Result<Crates, String> {
         coverage: names(&gated()?),
         reported: names(crate::coverage::REPORTED),
         boundary: names(crate::layers::BOUNDARY),
-        features: names(&gated()?),
         mutants: mutants_crates(&read(".github/workflows/nightly.yml")?)
             .map_err(|e| format!(".github/workflows/nightly.yml: {e}"))?,
         exerciser: aldis_dependencies(&read("exerciser/Cargo.toml")?),
@@ -708,7 +694,6 @@ mod tests {
             members: names(&members),
             with_code: names(&code),
             coverage: names(&code),
-            features: names(&code),
             mutants: names(&code),
             exerciser: names(&code),
             groups: names(&["time", "spp", "epp", "aos"]),
@@ -734,22 +719,10 @@ mod tests {
     #[test]
     fn a_crate_missing_from_one_registration_is_reported() {
         // req: VER-024, VER-025, VER-010, GEN-006
-        // `aldis-aos` joined the coverage gate in M2 WP-4 but not the features check.
-        let mut c = consistent();
-        c.features.remove("aldis-aos");
-        assert_eq!(
-            crate_problems(&c),
-            ["aldis-aos: missing from the features check (derived, xtask/src/features.rs)"]
-        );
         // An M1 crate dropped from each list in turn is caught as well.
-        for list in 0..4 {
+        for list in 0..3 {
             let mut c = consistent();
-            let set = [
-                &mut c.features,
-                &mut c.mutants,
-                &mut c.exerciser,
-                &mut c.coverage,
-            ];
+            let set = [&mut c.mutants, &mut c.exerciser, &mut c.coverage];
             for (i, s) in set.into_iter().enumerate() {
                 if i == list {
                     s.remove("aldis-spp");
@@ -757,15 +730,7 @@ mod tests {
             }
             assert!(!crate_problems(&c).is_empty(), "list {list}");
         }
-        // A crate that gains code without joining the gate, and a gated skeleton.
-        let mut c = consistent();
-        c.with_code.insert("aldis-tm".to_owned());
-        assert_eq!(
-            crate_problems(&c),
-            [
-                "aldis-tm: has code but is not in the coverage gate (derived: Layer 0-2 crates with code, xtask/src/layers.rs)"
-            ]
-        );
+        // A gated skeleton.
         let mut c = consistent();
         c.with_code.remove("aldis-aos");
         assert_eq!(crate_problems(&c).len(), 1);

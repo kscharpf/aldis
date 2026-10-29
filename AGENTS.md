@@ -16,7 +16,7 @@ Never write protocol values from memory. Look them up in the Blue Book. Registry
 
 v1 is built in three tracks: **R** (Rust reference, milestones M0–M6), **C** (native C++, C0–C5), and **A** (reference application, A0–A6). Before starting work, find your track and milestone in [docs/08-roadmap.md](docs/08-roadmap.md), check that its entry gate is met on `main`, and follow the parallel-work rules in §6: one track's directories per PR, branch prefix `m<N>/`, `c<N>/`, or `a<N>/`, and the Rust crates as the reference when implementations disagree.
 
-A milestone plan carries a work-package status table, one row per WP or sub-part (WP, State, PRs, Notes); update only your WP's row. Never write requirement counts into a plan: `cargo xtask trace --scope <id>` reports them (roadmap §6 rule 1). Before calling a work package done, go through its checklist in [docs/milestones/checklists.md](docs/milestones/checklists.md) (adding a codec module, a crate, a vector file, a fuzz target, C ABI functions; a spec-readings PR; a milestone exit); `cargo xtask fix` writes the registrations it can derive, and `cargo xtask consistency` checks the rest.
+A milestone plan carries a work-package status table, one row per WP or sub-part (WP, State, PRs, Notes); update only your WP's row. Never write requirement counts into a plan: `cargo xtask trace --scope <id>` reports them (roadmap §6 rule 1). Before calling a work package done, go through its checklist in [docs/milestones/checklists.md](docs/milestones/checklists.md) (adding a codec module, a crate, a vector file, a fuzz target, C ABI functions; a spec-readings PR; a milestone exit); `cargo xtask consistency` checks the registrations it marks.
 
 The rules and checks below are written for the Rust crates and the reference application.
 
@@ -76,7 +76,6 @@ gh run watch                                # then: cargo xtask verify check
 While you work, run these. All must pass with **zero warnings**:
 
 ```sh
-cargo xtask fix       # first: writes every derivable registration (generated files, nightly matrices, exerciser and facade entries) and lists what only you can write
 cargo fmt --all --check
 cargo clippy --workspace --all-features --all-targets
 cargo test --workspace --all-features
@@ -84,10 +83,12 @@ cargo clippy -p aldis --no-default-features --features full --target thumbv7em-n
 cargo xtask ci        # spec lint, links, decision log, layering, registrations (consistency), bare integers in the codec APIs (rs020), vectors, schema, generated files (field codes, C header), traces, changelog
 ```
 
+`cargo xtask fix` runs the generators (field codes, vector schema, SANA tables, C header), then `consistency`.
+
 | Directory | Extra commands |
 |---|---|
 | `crates/aldis-core` | `cargo xtask coverage` (VER-024)<br>`(cd exerciser && cargo build --release --target thumbv7em-none-eabihf)` (VER-010)<br>`cargo clippy --manifest-path fuzz/Cargo.toml --all-targets` |
-| `crates/aldis-ffi` (or wrapped crates) | `cargo xtask header` (CABI-002, CABI-003; `cargo xtask fix` regenerates the header)<br>`cargo xtask header c-smoke cc c++` (CABI-001; requires `cargo install --locked cbindgen@0.29.4`; never edit `include/aldis/aldis.h` by hand) |
+| `crates/aldis-ffi` (or wrapped crates) | `cargo xtask header --write && cargo xtask header` (CABI-002, CABI-003)<br>`cargo xtask header c-smoke cc c++` (CABI-001; requires `cargo install --locked cbindgen@0.29.4`; never edit `include/aldis/aldis.h` by hand) |
 | `refapp/` ([refapp/README.md](refapp/README.md)) | `(cd refapp && cargo fmt --all --check && cargo clippy --workspace --all-targets && cargo test --workspace && cargo build -p refapp-flight --target thumbv7em-none-eabihf)` |
 
 A failed exerciser link with `undefined symbol: aldis_panic_is_unreachable` means a panic path is reachable in `aldis-core`. Remove it; do not work around the check. Mark new test modules `#[cfg_attr(coverage_nightly, coverage(off))]`.

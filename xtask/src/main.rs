@@ -11,7 +11,6 @@ mod coverage;
 mod decisions;
 mod features;
 mod fields;
-mod fix;
 mod fuzz;
 mod header;
 mod kani;
@@ -61,11 +60,8 @@ commands:
   sana import <registry>       download a SANA registry, write its snapshot and its table
   sana check-live              fail when a SANA registry differs from its snapshot (nightly)
   links                        relative Markdown links resolve inside the repository
-  fix                          write every registration that can be derived: run the generators
-                               (fields, vectors schema, sana, header), rewrite the nightly
-                               mutants and fuzz matrices, the exerciser dependencies, and the
-                               facade features; then print what consistency still finds missing
-                               and needs hand-written content (idempotent)
+  fix                          run the generators (fields, vectors schema, sana, header),
+                               then consistency
   decisions                    the decision log docs/process/decisions.md is well formed (VER-062)
   layers                       crate dependency rules (GEN-001..004)
   consistency                  the registrations agree: crates with code in coverage, features,
@@ -166,6 +162,15 @@ fn run_steps(steps: &[Step]) -> usize {
     failed
 }
 
+/// `xtask fix`: the generators, then `consistency`, which reports what is still missing.
+fn fix() -> Result<usize, String> {
+    Ok(fields::run(true)?
+        + vectors::schema(false)?
+        + sana::run(&["--write"])?
+        + header::run(true)?
+        + consistency::check()?)
+}
+
 fn run(args: &[&str]) -> Result<usize, String> {
     match args {
         ["spec-lint"] => spec::lint(),
@@ -186,7 +191,7 @@ fn run(args: &[&str]) -> Result<usize, String> {
         ["header", "--write"] => header::run(true),
         ["header", "c-smoke", cc, cxx] => header::c_smoke(cc, cxx),
         ["sana", rest @ ..] => sana::run(rest),
-        ["fix"] => fix::run(),
+        ["fix"] => fix(),
         ["links"] => links::check(),
         ["decisions"] => decisions::check(),
         ["layers"] => layers::check(),
