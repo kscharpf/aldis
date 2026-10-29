@@ -783,7 +783,7 @@ fn layout(l: &FrameLayout, tfdf_len: usize) -> Result<aldis_uslp_layout_t> {
     let tfdz = data
         .len()
         .checked_sub(tfdf_len)
-        .ok_or(Error::new(ErrorKind::InternalError))?;
+        .ok_or(Error::new(ErrorKind::InternalError).with_field(field::FRAME_LEN))?;
     Ok(aldis_uslp_layout_t {
         frame_len: l.frame_len(),
         insert_zone_offset,

@@ -117,10 +117,12 @@ fn re_encode(table: &VcTable<4, 4>, f: &UslpFrame<'_>) {
             let zone = full.tfdz();
             let mut w =
                 UslpFrameWriter::begin(&mut out, table, fields, content, zone.len()).unwrap();
-            w.tfdz_mut().copy_from_slice(zone);
+            w.tfdz_mut().unwrap().copy_from_slice(zone);
             w.security_header_mut()
+                .unwrap()
                 .copy_from_slice(full.security_header());
             w.security_trailer_mut()
+                .unwrap()
                 .copy_from_slice(full.security_trailer());
             assert_eq!(w.finish(zone.len()), Ok(f.len()));
             assert_eq!(out, f.octets());

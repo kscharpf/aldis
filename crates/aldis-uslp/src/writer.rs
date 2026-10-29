@@ -640,6 +640,8 @@ impl<'b> UslpFrameWriter<'b> {
         let tail_end = tail_start
             .saturating_add(unused)
             .saturating_add(plan.layout.security_trailer().len());
+        // Nothing is modified before every range is known to lie in the buffer.
+        slot(self.out, ..plan.layout.frame_len())?;
         let tail = slot(self.out, tail_start..tail_end)?;
         let from = unused.min(tail.len());
         tail.copy_within(from.., 0);
