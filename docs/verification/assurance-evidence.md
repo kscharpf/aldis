@@ -6,9 +6,10 @@ What `cargo xtask assurance` checks in the [hazard analysis](hazards.md) and the
 
 - `docs/verification/hazards.md`, the **cross-codec file**, codec `X`;
 - every `.md` file of `docs/verification/hazards/`, the **codec files**: `tm.md` (codec `TM`), `tc.md` (`TC`), `aos.md` (`AOS`), `uslp.md` (`USLP`); any other file there is a problem;
-- `docs/verification/assurance-case.md`, the **case**.
+- `docs/verification/assurance-case.md`, the **case**;
+- the **prose files**, which only the references (§2) and the code-name rule (§2.5) apply to: every `.md` file of `docs/verification/records/`, `docs/verification/cross-checks.md`, and `docs/verification/formal-proofs.md`.
 
-Together they are the **analysed files**. Line numbers in messages are 1-based lines of the file.
+Together they are the **analysed files**. Dated history is not analysed, because it describes the code as it was: `docs/verification/reviews/`, `docs/milestones/`, and `docs/process/decisions.md`. Line numbers in messages are 1-based lines of the file.
 
 ## 2. References
 
@@ -20,7 +21,7 @@ A **reference** is a Markdown code span (text between single backticks) whose wh
 ^([a-z]+(-[a-z]+)*):([^:].*)$
 ```
 
-with the first group a **kind** of §2.3 and the third the **target**. `core::fmt` is not a reference (the colon is doubled), and neither is `` `stack` `` (no colon). A code span that matches the pattern with a kind not in §2.3 is a problem in an `Evidence` cell (§3, §4) and is ignored elsewhere.
+with the first group a **kind** of §2.3 and the third the **target**. `core::fmt` is not a reference (the colon is doubled; §2.5 makes it a problem), and neither is `` `stack` `` (no colon). A code span that matches the pattern with a kind not in §2.3 is a problem in an `Evidence` cell (§3, §4) and is ignored elsewhere.
 
 In an `Evidence` cell (the `Evidence` row of a hazard table, the first column of a claim's evidence table, the `References` column of the defeaters table), every code span must be a reference, and the cell must hold at least one; the only other content allowed is the text between references (`; ` and words), and the cell `TODO` on its own (§3.2, §4.2). Code spans are found by splitting the cell at backticks: the odd-numbered pieces are code spans. A cell with an odd number of backticks is a problem.
 
@@ -53,6 +54,7 @@ The target is taken as written: no trimming inside the code span, no wildcard.
 | `asm` | `ASM-n` or `CTX-n` | the case's assumptions table has the row (§4.3) | — |
 | `df` | `DF-n` | the case's defeaters table has the row (§4.4) | — |
 | `proposal` | a proposal ID, such as `P-TC-01` | a proposals table of an analysed file has the row (§3.4) | — |
+| `sym` | an `aldis_` name of the C ABI, such as `aldis_tc_stream_next` | `include/aldis/aldis.h` holds it as an identifier (token lookup: the maximal runs of letters, digits, and `_`) | — |
 
 ### 2.4 When a file defines a test
 
@@ -63,6 +65,16 @@ Tokenize the file with `rs020::tokens`, which removes comments and literals. A f
 - **(c) A test made by a macro.** The file defines `macro_rules! M` whose body holds the tokens `# [ test ]`, and the file invokes `M ! (` (or `[`, `{`) with `<name>` as the first token inside the group, as `vector_test!(tc_validation_failures, …)` does in `crates/aldis-ffi/tests/vectors.rs`. It is ignored when the macro body holds the token `ignore`.
 
 A name that the file defines more than once (in different modules) resolves when every definition agrees on whether it is ignored; otherwise the reference is a problem ("`<name>` is both ignored and not ignored in `<path>`").
+
+### 2.5 Code names
+
+Prose goes stale when it names code. In every analysed file, outside fenced code, a code span that is not a reference of a kind of §2.3 is a problem when it holds any of:
+
+- a word that starts with `aldis_` (a C ABI symbol: cite it as `sym:`, or describe the function);
+- a path ending in `.rs`, `.h`, or `.toml`, with or without a `:N` line or range (cite `file:`; a line or range is never stated);
+- a `::` path (cite `test:` for a test; otherwise state the property).
+
+State the property and the requirement or clause instead of the mechanism; put a mechanism that is evidence in the `Evidence` cell as `test:`, `file:`, or `sym:`. Names of other projects (`spacepackets`, Kani) are written without a code span when they carry a `::`.
 
 ## 3. The hazard files
 
@@ -179,7 +191,7 @@ Unit tests in `xtask/src/assurance.rs`, each on small fixture texts and a fixtur
 3. `proof:` resolves a `#[kani::proof]` function and rejects a `#[test]` one.
 4. `vector:` rejects a superseded case, and `superseded-vector:` a live one.
 5. `check:` rejects `kani` and `rust-sparc-leon3`; `nightly-check:` rejects `stack`.
-6. `core::fmt` and `stack` are not references; an unknown kind is a problem in an Evidence cell and ignored in a `Failure mode` cell; an odd number of backticks is a problem.
+6. `stack` is not a reference; an unknown kind is a problem in an Evidence cell and ignored in a `Failure mode` cell; an odd number of backticks is a problem.
 7. Requirement IDs: an undefined ID, a range with an undefined end, a range that expands to nothing, and a deleted requirement are problems.
 8. Hazard tables: a missing row, rows out of order, an unknown category, status, or severity; `gap` without a proposal; `gap` whose proposals are all `accepted`; `controlled` with a proposal; `residual` with `—`; `TODO` evidence with a status other than `todo`; an ID whose codec is not the file's; a duplicate ID across files; numbers that do not increase.
 9. Coverage tables: a missing or misplaced slug; `done` with no hazard; `done` with a `todo` hazard; a hazard missing from its category's row; a hazard listed under another category; `n/a:` without a reason; `n/a` with a hazard.
@@ -187,5 +199,6 @@ Unit tests in `xtask/src/assurance.rs`, each on small fixture texts and a fixtur
 11. Claims: a missing parent; a wrong heading level; a leaf without an evidence table; a non-leaf with one; a missing `**Claim.**` or `**Strategy.**`; a `TODO` row passes without `--strict` and fails with it.
 12. Defeaters: an `open` defeater naming a resolved OI is a problem, a `closed` one is not; an assumption that nothing names is a problem.
 13. Strict mode counts each `todo` status, `TODO` coverage state, and `TODO` evidence row as a problem, and non-strict mode counts none.
-14. On the repository: `run(false)` reports no problem (as `cpp_sources_are_checked_for_requirement_ids` in `xtask/src/spec.rs` checks the repository).
+14. On the repository: `run(false)` reports no problem.
+14a. Code names (§2.5): an `aldis_` symbol, a `.rs`, `.h`, or `.toml` path with or without a line, and a `::` path are problems in any analysed file, also in a prose file; a reference of a kind of §2.3 is not; `sym:` resolves only a name the header holds.
 15. `CI` contains `assurance` and `SPEC` contains `cargo xtask assurance`.
