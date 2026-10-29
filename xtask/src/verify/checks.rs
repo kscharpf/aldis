@@ -42,14 +42,15 @@ impl Host {
 /// group is a tool for the hosted run only; a local run runs every check in one container.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Group {
-    /// The host build of the workspace: format, lints, tests, features, the C header.
+    /// The host build of the workspace: format, lints, tests, features, the C header, the fuzz
+    /// smoke run, and the Cortex-R exerciser.
     Host,
     /// Builds for other targets: the bare-metal builds, the big-endian run, the RISC-V exerciser.
     Cross,
     /// The instrumented build and the checks that read the whole tree.
     Coverage,
-    /// The tooling nightly with `core` built from source: stack depth, the LEON3 build, and two
-    /// exercisers.
+    /// The tooling nightly with `core` built from source: stack depth, the LEON3 build, and the
+    /// Cortex-M exerciser.
     Embedded,
 }
 

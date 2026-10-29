@@ -849,6 +849,15 @@ fn conclude(
     Ok(problems.len())
 }
 
+/// Whether `record` is of the commit `head`.
+fn of_head(record: &Value, head: &str) -> Result<(), String> {
+    if record.get("commit").and_then(Value::as_str) == Some(head) {
+        Ok(())
+    } else {
+        Err(format!("the part records are not of HEAD, {head}"))
+    }
+}
+
 /// `verify assemble`: the record of a hosted run from the part records `args` name (VER-067).
 fn assemble(args: &[&str]) -> Result<usize, String> {
     let (publish, files): (Vec<&str>, Vec<&str>) = args.iter().partition(|a| **a == "--publish");
@@ -867,9 +876,7 @@ fn assemble(args: &[&str]) -> Result<usize, String> {
         )
     })?;
     let commit = git(&["rev-parse", "HEAD"])?;
-    if record.get("commit").and_then(Value::as_str) != Some(commit.as_str()) {
-        return Err(format!("the part records are not of HEAD, {commit}"));
-    }
+    of_head(&record, &commit)?;
     let out = out_dir(&commit)?;
     write_record(&out, &record)?;
     conclude(&repo::root(), &record, &commit, &all, !publish.is_empty())
@@ -906,6 +913,37 @@ fn merge_results(container: &Value, host: Vec<Value>) -> Result<Vec<Value>, Stri
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // req: VER-067
+    #[test]
+    fn a_part_takes_no_publish_no_only_and_a_known_group() {
+        for args in [["part", "host", "--publish"], ["part", "host", "--only"]] {
+            assert!(run(&args).is_err(), "{args:?}");
+        }
+        assert!(
+            run(&["part", "host", "--only", "fmt"])
+                .unwrap_err()
+                .contains("neither")
+        );
+        assert!(
+            run(&["part", "kani"])
+                .unwrap_err()
+                .contains("unknown group")
+        );
+    }
+
+    // req: VER-067
+    #[test]
+    fn assembled_parts_must_be_of_head() {
+        let record = json!({"commit": "abc"});
+        assert!(of_head(&record, "abc").is_ok());
+        assert!(
+            of_head(&record, "def")
+                .unwrap_err()
+                .contains("not of HEAD, def")
+        );
+        assert!(of_head(&json!({}), "abc").is_err());
+    }
 
     /// A result entry of `check` with `result`.
     fn entry(check: &Check, result: Outcome) -> Value {

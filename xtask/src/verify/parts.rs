@@ -120,7 +120,7 @@ fn bound(parts: &ByGroup<'_>, field: &str, latest: bool, problems: &mut Vec<Stri
 /// tool, the same commit, tree, source, scope, host, image inputs, and image where one was used,
 /// tools that agree, and there is exactly one for each [`Group`]. Each check's entry is taken
 /// from the part of its group, so that it is the entry of the run that made the check; a check in
-/// no group (`test-macos`, `kani`) is not run by any part, and its entry is the first part's.
+/// no group (`test-macos`, `kani`) is not run by any part, and its entry is the host part's.
 /// Whether the checks passed is for the merge gate (`record::gate_problems`), as for any record.
 pub fn assemble(parts: &[Value], all: &[Check]) -> Result<Value, Vec<String>> {
     let by_group = by_group(parts)?;
@@ -216,7 +216,9 @@ fn by_group(parts: &[Value]) -> Result<BTreeMap<Group, &Value>, Vec<String>> {
     }
 }
 
-/// The image a part used, else the one the parts that used none all describe.
+/// The image a part used, else the one the parts that used none all describe. Taking it from one
+/// part is sound because [`assemble`] has required the parts that used an image to agree on its
+/// ID and tag, and an ID names the image's content whichever way (`source`) it was obtained.
 fn image(parts: &ByGroup<'_>) -> Value {
     parts
         .iter()
@@ -332,6 +334,22 @@ mod tests {
             .collect();
         assert_eq!(groups, ["host", "cross", "coverage", "embedded"]);
         assert_eq!(record::gate_problems(&rec), Vec::<String>::new());
+    }
+
+    // req: VER-067
+    #[test]
+    fn no_part_passes_the_gate_by_itself() {
+        // The design rests on this: a part runs `--only` its group, so every other portable
+        // check is not run in it, and the gate refuses it.
+        for p in parts() {
+            let problems = record::gate_problems(&p);
+            assert!(
+                problems
+                    .iter()
+                    .any(|m| m.ends_with("portable check not run")),
+                "{problems:?}"
+            );
+        }
     }
 
     // req: VER-067
