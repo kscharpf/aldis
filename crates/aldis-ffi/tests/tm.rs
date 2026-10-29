@@ -540,9 +540,10 @@ fn oid_setup() -> (aldis_tm_mc_config_t, [aldis_tm_vc_config_t; 3]) {
 fn encode_oid_takes_a_generator_handle() {
     // req: TM-012, TM-010, CMN-021, CMN-022, CABI-022, CABI-032, GEN-042, API-020
     let (mc, vcs) = oid_setup();
-    let mut words = vec![0_u64; 64];
-    let storage = words.as_mut_ptr();
-    let mut h: *mut aldis_oid_generator_t = null_mut();
+    let mut storage = aldis_oid_generator_t {
+        words: [0; ALDIS_OID_GENERATOR_WORDS],
+    };
+    let h = &raw mut storage;
     let mut frame = [0_u8; 40];
     let content = aldis_tm_content_t::default();
     let encode = |vcid: u8,
@@ -571,16 +572,10 @@ fn encode_oid_takes_a_generator_handle() {
         };
         (status, n)
     };
-    // SAFETY: the storage lies in `words`, aligned to 8.
+    // SAFETY: `h` points to live storage.
     unsafe {
         assert_eq!(
-            aldis_oid_generator_init(
-                storage.cast(),
-                ALDIS_OID_GENERATOR_STORAGE_SIZE,
-                ALDIS_OID_GALOIS,
-                &raw mut h,
-                null_mut()
-            ),
+            aldis_oid_generator_init(h, ALDIS_OID_GALOIS, null_mut()),
             ALDIS_OK
         );
     }
@@ -609,7 +604,7 @@ fn encode_oid_takes_a_generator_handle() {
     );
     assert_eq!(frame, [0; 40]);
     // The output inside the generator's storage.
-    let in_storage = storage.cast::<u8>().wrapping_add(16);
+    let in_storage = h.cast::<u8>().wrapping_add(16);
     assert_eq!(encode(6, c, h, in_storage, 40).0, ALDIS_ERR_INVALID_FIELD);
     // None of the failures advanced the generator: this is the start of the sequence.
     assert_eq!(encode(6, c, h, frame.as_mut_ptr(), 40), (ALDIS_OK, 40));
@@ -635,24 +630,22 @@ fn encode_oid_forms_agree_and_check_the_content() {
     let (mut mc, mut vcs) = oid_setup();
     mc.ocf = 1;
     vcs[2].fsh_len = 4;
-    let mut handles = [null_mut::<aldis_oid_generator_t>(); 2];
-    let mut words = [vec![0_u64; 64], vec![0_u64; 64]];
-    for (i, kind) in [ALDIS_OID_FIBONACCI, ALDIS_OID_GALOIS]
+    let mut storage = [
+        aldis_oid_generator_t {
+            words: [0; ALDIS_OID_GENERATOR_WORDS],
+        },
+        aldis_oid_generator_t {
+            words: [0; ALDIS_OID_GENERATOR_WORDS],
+        },
+    ];
+    let handles = [&raw mut storage[0], &raw mut storage[1]];
+    for (h, kind) in handles
         .into_iter()
-        .enumerate()
+        .zip([ALDIS_OID_FIBONACCI, ALDIS_OID_GALOIS])
     {
-        // SAFETY: the storage lies in `words`, aligned to 8.
+        // SAFETY: `h` points to live storage.
         unsafe {
-            assert_eq!(
-                aldis_oid_generator_init(
-                    words[i].as_mut_ptr().cast(),
-                    ALDIS_OID_GENERATOR_STORAGE_SIZE,
-                    kind,
-                    &raw mut handles[i],
-                    null_mut()
-                ),
-                ALDIS_OK
-            );
+            assert_eq!(aldis_oid_generator_init(h, kind, null_mut()), ALDIS_OK);
         }
     }
     let (fsh, ocf) = ([1_u8, 2, 3], [0x01_u8, 0, 0, 0]);

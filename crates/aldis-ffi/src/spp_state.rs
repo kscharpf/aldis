@@ -2,11 +2,11 @@
 //! `Segmenter`, and `Reassembler` (133.0 §4.1.3.4; SPP-011, SPP-013; M2 plan D5;
 //! CABI-030…032).
 //!
-//! Each helper has `_SIZE` and `_ALIGN` constants for its storage, queries of both, an
-//! `_init` that checks the storage and returns a handle, calls on the handle, and a
-//! `_deinit`. The SDU and the reassembly buffer are passed on every call and never stored
+//! Each helper has a typed storage struct of `uint64_t` words that the caller declares, an
+//! `_init` that places the helper in it (the pointer to it is the handle), calls on the handle,
+//! and a `_deinit`. The SDU and the reassembly buffer are passed on every call and never stored
 //! (API-060). The storage sizes hold on every supported target, 32- and 64-bit; the
-//! compile-time checks below prove it for the target being built.
+//! compile-time check of `handle` proves it for the target being built.
 
 use aldis::core::counter::Continuity;
 use aldis::core::ids::{Apid, SeqCount};
@@ -18,24 +18,21 @@ use aldis::spp::{
 
 use crate::abi::{self, invalid_argument};
 use crate::capacities::ALDIS_SPP_TRACKER_MAX_APIDS;
-use crate::handle::{self, ALDIS_STORAGE_ALIGN, Slot, slot_align, slot_size};
+use crate::handle::{self, Storage};
 use crate::spp::{
     aldis_spp_config_t, aldis_spp_secondary_layout_t, config, layout as secondary_layout,
     packet_type,
 };
 
-/// Storage octets of one `aldis_spp_tracker_t` (CABI-031; M2 plan D5).
-pub const ALDIS_SPP_TRACKER_STORAGE_SIZE: usize = 32 + 8 * ALDIS_SPP_TRACKER_MAX_APIDS;
-/// Storage alignment of one `aldis_spp_tracker_t` (CABI-031).
-pub const ALDIS_SPP_TRACKER_STORAGE_ALIGN: usize = 8;
-/// Storage octets of one `aldis_spp_segmenter_t` (CABI-031; M2 plan D5).
-pub const ALDIS_SPP_SEGMENTER_STORAGE_SIZE: usize = 96;
-/// Storage alignment of one `aldis_spp_segmenter_t` (CABI-031).
-pub const ALDIS_SPP_SEGMENTER_STORAGE_ALIGN: usize = 8;
-/// Storage octets of one `aldis_spp_reassembler_t` (CABI-031; M2 plan D5).
-pub const ALDIS_SPP_REASSEMBLER_STORAGE_SIZE: usize = 64;
-/// Storage alignment of one `aldis_spp_reassembler_t` (CABI-031).
-pub const ALDIS_SPP_REASSEMBLER_STORAGE_ALIGN: usize = 8;
+/// 64-bit words of one `aldis_spp_tracker_t` (CABI-031; M2 plan D5).
+///
+/// The tag, the capacity, and the tracker at `ALDIS_SPP_TRACKER_MAX_APIDS`; the build fails when
+/// the state outgrows it.
+pub const ALDIS_SPP_TRACKER_WORDS: usize = 20;
+/// 64-bit words of one `aldis_spp_segmenter_t` (CABI-031; M2 plan D5).
+pub const ALDIS_SPP_SEGMENTER_WORDS: usize = 12;
+/// 64-bit words of one `aldis_spp_reassembler_t` (CABI-031; M2 plan D5).
+pub const ALDIS_SPP_REASSEMBLER_WORDS: usize = 8;
 
 /// [`aldis_spp_tracked_t::continuity`]: the first count of an APID (SPP-011).
 pub const ALDIS_SPP_TRACK_FIRST: u32 = 0;
@@ -71,10 +68,6 @@ pub const ALDIS_SPP_REASSEMBLY_COMPLETE: u32 = 1;
 /// [`aldis_spp_reassembly_t::status`]: the packet was dropped for `reason` (SPP-013).
 pub const ALDIS_SPP_REASSEMBLY_DROPPED: u32 = 2;
 
-const TRACKER_MAGIC: u32 = 0x414C_5354; // "ALST"
-const SEGMENTER_MAGIC: u32 = 0x414C_5347; // "ALSG"
-const REASSEMBLER_MAGIC: u32 = 0x414C_5352; // "ALSR"
-
 /// The state of an `aldis_spp_tracker_t`: the tracker at the build capacity, and the
 /// capacity the caller chose.
 #[derive(Debug, Clone)]
@@ -83,34 +76,49 @@ pub(crate) struct TrackerState {
     tracker: SequenceTracker<ALDIS_SPP_TRACKER_MAX_APIDS>,
 }
 
-const _: () = {
-    assert!(slot_size::<TrackerState>() <= ALDIS_SPP_TRACKER_STORAGE_SIZE);
-    assert!(slot_size::<SegmenterState>() <= ALDIS_SPP_SEGMENTER_STORAGE_SIZE);
-    assert!(slot_size::<ReassemblerState>() <= ALDIS_SPP_REASSEMBLER_STORAGE_SIZE);
-    assert!(slot_align::<TrackerState>() <= ALDIS_SPP_TRACKER_STORAGE_ALIGN);
-    assert!(slot_align::<SegmenterState>() <= ALDIS_SPP_SEGMENTER_STORAGE_ALIGN);
-    assert!(slot_align::<ReassemblerState>() <= ALDIS_SPP_REASSEMBLER_STORAGE_ALIGN);
-    assert!(ALDIS_SPP_TRACKER_STORAGE_ALIGN == ALDIS_STORAGE_ALIGN);
-    assert!(ALDIS_SPP_SEGMENTER_STORAGE_ALIGN == ALDIS_STORAGE_ALIGN);
-    assert!(ALDIS_SPP_REASSEMBLER_STORAGE_ALIGN == ALDIS_STORAGE_ALIGN);
-};
-
-/// Handle of a Packet Sequence Count tracker in caller storage (SPP-011, CABI-032).
-#[expect(non_camel_case_types, reason = "C ABI type name (c-abi.md §2)")]
+/// A Packet Sequence Count tracker in caller storage: the caller declares an object of this
+/// type, and the pointer to it is the handle (SPP-011, CABI-031, CABI-032).
+///
+/// The words are the library's: a C caller never reads or writes them.
+#[repr(C)]
 pub struct aldis_spp_tracker_t {
-    _opaque: [u8; 0],
+    /// The slot of [`handle`]: the tag, then the state.
+    pub words: [u64; ALDIS_SPP_TRACKER_WORDS],
 }
 
-/// Handle of an SDU segmenter in caller storage (SPP-013, CABI-032).
-#[expect(non_camel_case_types, reason = "C ABI type name (c-abi.md §2)")]
+impl Storage for aldis_spp_tracker_t {
+    type State = TrackerState;
+    const MAGIC: u32 = 0x414C_5354; // "ALST"
+}
+
+/// An SDU segmenter in caller storage: the caller declares an object of this type, and the
+/// pointer to it is the handle (SPP-013, CABI-031, CABI-032).
+///
+/// The words are the library's: a C caller never reads or writes them.
+#[repr(C)]
 pub struct aldis_spp_segmenter_t {
-    _opaque: [u8; 0],
+    /// The slot of [`handle`]: the tag, then the state.
+    pub words: [u64; ALDIS_SPP_SEGMENTER_WORDS],
 }
 
-/// Handle of an SDU reassembler in caller storage (SPP-013, CABI-032).
-#[expect(non_camel_case_types, reason = "C ABI type name (c-abi.md §2)")]
+impl Storage for aldis_spp_segmenter_t {
+    type State = SegmenterState;
+    const MAGIC: u32 = 0x414C_5347; // "ALSG"
+}
+
+/// An SDU reassembler in caller storage: the caller declares an object of this type, and the
+/// pointer to it is the handle (SPP-013, CABI-031, CABI-032).
+///
+/// The words are the library's: a C caller never reads or writes them.
+#[repr(C)]
 pub struct aldis_spp_reassembler_t {
-    _opaque: [u8; 0],
+    /// The slot of [`handle`]: the tag, then the state.
+    pub words: [u64; ALDIS_SPP_REASSEMBLER_WORDS],
+}
+
+impl Storage for aldis_spp_reassembler_t {
+    type State = ReassemblerState;
+    const MAGIC: u32 = 0x414C_5352; // "ALSR"
 }
 
 /// Configuration of a tracker (SPP-011, CABI-033).
@@ -203,50 +211,30 @@ impl TrackerState {
     }
 }
 
-/// The storage octets an `aldis_spp_tracker_t` needs: `ALDIS_SPP_TRACKER_STORAGE_SIZE`
-/// (CABI-031).
-#[unsafe(no_mangle)]
-#[expect(unsafe_code, reason = "C ABI entry point: unmangled (GEN-071)")]
-pub const extern "C" fn aldis_spp_tracker_storage_size() -> usize {
-    ALDIS_SPP_TRACKER_STORAGE_SIZE
-}
-
-/// The storage alignment an `aldis_spp_tracker_t` needs: `ALDIS_SPP_TRACKER_STORAGE_ALIGN`
-/// (CABI-031).
-#[unsafe(no_mangle)]
-#[expect(unsafe_code, reason = "C ABI entry point: unmangled (GEN-071)")]
-pub const extern "C" fn aldis_spp_tracker_storage_align() -> usize {
-    ALDIS_SPP_TRACKER_STORAGE_ALIGN
-}
-
 /// Places an empty Packet Sequence Count tracker in `storage` (SPP-011; CABI-031, CABI-032).
 ///
 /// # Errors
-/// `ALDIS_ERR_BUFFER_TOO_SMALL` (with `needed`) for storage smaller than
-/// `ALDIS_SPP_TRACKER_STORAGE_SIZE`; `ALDIS_ERR_INVALID_FIELD` for `NULL` or misaligned storage;
+/// `ALDIS_ERR_INVALID_FIELD` for `NULL` or misaligned storage;
 /// `ALDIS_ERR_INVALID_CONFIG` for a capacity of 0 and `ALDIS_ERR_CAPACITY_EXCEEDED` for one
 /// above `ALDIS_SPP_TRACKER_MAX_APIDS`; CABI-022 violations.
 ///
 /// # Safety
-/// `storage` is valid for writes of `storage_len` octets and outlives the handle; `cfg` is
-/// valid for a read; `out` is valid for one write; `err` is `NULL` or valid for one write.
+/// `storage` is valid for writes of one storage struct and outlives its use; `cfg` is
+/// valid for a read; `err` is `NULL` or valid for one write.
 #[expect(
     unsafe_code,
     reason = "C ABI entry point: unmangled, takes raw pointers (GEN-071)"
 )]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn aldis_spp_tracker_init(
-    storage: *mut core::ffi::c_void,
-    storage_len: usize,
+    storage: *mut aldis_spp_tracker_t,
     cfg: *const aldis_spp_tracker_config_t,
-    out: *mut *mut aldis_spp_tracker_t,
     err: *mut crate::aldis_error_detail_t,
 ) -> i32 {
     // SAFETY: every pointer is valid as `# Safety` states; `abi` and `handle` check them.
     unsafe {
         abi::call(err, || {
             let cfg = abi::config(cfg)?;
-            let out = abi::out(out)?;
             let limit = usize::try_from(cfg.capacity).map_err(|_| invalid_argument())?;
             let wide = |n: usize| u64::try_from(n).unwrap_or(u64::MAX);
             if limit == 0 {
@@ -269,15 +257,7 @@ pub unsafe extern "C" fn aldis_spp_tracker_init(
                 limit,
                 tracker: SequenceTracker::new(),
             };
-            let slot = handle::init(
-                storage,
-                storage_len,
-                ALDIS_SPP_TRACKER_STORAGE_SIZE,
-                TRACKER_MAGIC,
-                state,
-            )?;
-            out.write(slot.cast::<aldis_spp_tracker_t>());
-            Ok(())
+            handle::init(storage, state)
         })
     }
 }
@@ -289,7 +269,7 @@ pub unsafe extern "C" fn aldis_spp_tracker_init(
 #[expect(unsafe_code, reason = "checks a caller handle (CABI-032, GEN-071)")]
 unsafe fn tracker(h: *mut aldis_spp_tracker_t) -> Result<handle::Handle<TrackerState>> {
     // SAFETY: forwarded from the caller.
-    unsafe { handle::get(h.cast::<Slot<TrackerState>>(), TRACKER_MAGIC) }
+    unsafe { handle::get(h) }
 }
 
 /// Classifies the count `count` of `apid` against the last one tracked (133.0 §4.1.3.4.3.3–4;
@@ -302,7 +282,7 @@ unsafe fn tracker(h: *mut aldis_spp_tracker_t) -> Result<handle::Handle<TrackerS
 ///
 /// # Safety
 /// `h` is a handle from `aldis_spp_tracker_init` whose storage is still valid, or detectably
-/// invalid storage; `out` is valid for one write; `err` is `NULL` or valid for one write.
+/// invalid storage; `err` is `NULL` or valid for one write.
 #[expect(
     unsafe_code,
     reason = "C ABI entry point: unmangled, takes raw pointers (GEN-071)"
@@ -319,7 +299,6 @@ pub unsafe extern "C" fn aldis_spp_tracker_track(
     unsafe {
         abi::call(err, || {
             let h = tracker(h)?;
-            let out = abi::out(out)?;
             let apid = Apid::try_from(apid)?;
             let count = SeqCount::try_from(count)?;
             let mut state = h.load();
@@ -436,23 +415,7 @@ pub unsafe extern "C" fn aldis_spp_tracker_len(
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn aldis_spp_tracker_deinit(h: *mut aldis_spp_tracker_t) {
     // SAFETY: as `# Safety` states; `handle` checks the tag before writing.
-    unsafe { handle::deinit(h.cast::<Slot<TrackerState>>(), TRACKER_MAGIC) }
-}
-
-/// The storage octets an `aldis_spp_segmenter_t` needs: `ALDIS_SPP_SEGMENTER_STORAGE_SIZE`
-/// (CABI-031).
-#[unsafe(no_mangle)]
-#[expect(unsafe_code, reason = "C ABI entry point: unmangled (GEN-071)")]
-pub const extern "C" fn aldis_spp_segmenter_storage_size() -> usize {
-    ALDIS_SPP_SEGMENTER_STORAGE_SIZE
-}
-
-/// The storage alignment an `aldis_spp_segmenter_t` needs: `ALDIS_SPP_SEGMENTER_STORAGE_ALIGN`
-/// (CABI-031).
-#[unsafe(no_mangle)]
-#[expect(unsafe_code, reason = "C ABI entry point: unmangled (GEN-071)")]
-pub const extern "C" fn aldis_spp_segmenter_storage_align() -> usize {
-    ALDIS_SPP_SEGMENTER_STORAGE_ALIGN
+    unsafe { handle::deinit(h) }
 }
 
 /// Places a segmenter for `sdu` in `storage` (133.0 §4.1.3.4.2; SPP-013; CABI-031, CABI-032).
@@ -467,22 +430,20 @@ pub const extern "C" fn aldis_spp_segmenter_storage_align() -> usize {
 /// [`aldis_spp_tracker_init`]; CABI-022 violations.
 ///
 /// # Safety
-/// `storage` is valid for writes of `storage_len` octets and outlives the handle; `spp` and
-/// `cfg` are valid for reads; `sdu` is valid for `sdu_len` octets; `out` is valid for one
-/// write; `err` is `NULL` or valid for one write.
+/// `storage` is valid for writes of one storage struct and outlives its use; `spp` and
+/// `cfg` are valid for reads; `sdu` is valid for `sdu_len` octets; `err` is `NULL` or
+/// valid for one write.
 #[expect(
     unsafe_code,
     reason = "C ABI entry point: unmangled, takes raw pointers (GEN-071)"
 )]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn aldis_spp_segmenter_init(
-    storage: *mut core::ffi::c_void,
-    storage_len: usize,
+    storage: *mut aldis_spp_segmenter_t,
     spp: *const aldis_spp_config_t,
     cfg: *const aldis_spp_segmenter_config_t,
     sdu: *const u8,
     sdu_len: usize,
-    out: *mut *mut aldis_spp_segmenter_t,
     err: *mut crate::aldis_error_detail_t,
 ) -> i32 {
     // SAFETY: every pointer is valid as `# Safety` states; `abi` and `handle` check them.
@@ -491,19 +452,12 @@ pub unsafe extern "C" fn aldis_spp_segmenter_init(
             let spp = config(abi::config(spp)?)?;
             let cfg = abi::config(cfg)?;
             let sdu = abi::bytes(sdu, sdu_len)?;
-            let out = abi::out(out)?;
             let packet_type = packet_type(cfg.packet_type)?;
             let apid = Apid::try_from(cfg.apid)?;
+            // `suspend` keeps only the SDU's length and position, so nothing borrows `sdu` when
+            // `init` writes the storage, even if the caller put the SDU inside it (API-060).
             let state = Segmenter::new(&spp, packet_type, apid, sdu, cfg.max_user_len)?.suspend();
-            let slot = handle::init(
-                storage,
-                storage_len,
-                ALDIS_SPP_SEGMENTER_STORAGE_SIZE,
-                SEGMENTER_MAGIC,
-                state,
-            )?;
-            out.write(slot.cast::<aldis_spp_segmenter_t>());
-            Ok(())
+            handle::init(storage, state)
         })
     }
 }
@@ -515,7 +469,7 @@ pub unsafe extern "C" fn aldis_spp_segmenter_init(
 #[expect(unsafe_code, reason = "checks a caller handle (CABI-032, GEN-071)")]
 unsafe fn segmenter(h: *mut aldis_spp_segmenter_t) -> Result<handle::Handle<SegmenterState>> {
     // SAFETY: forwarded from the caller.
-    unsafe { handle::get(h.cast::<Slot<SegmenterState>>(), SEGMENTER_MAGIC) }
+    unsafe { handle::get(h) }
 }
 
 /// Encodes the next segment of `sdu` with the count `sequence_count` and the secondary header
@@ -614,23 +568,7 @@ pub unsafe extern "C" fn aldis_spp_segmenter_remaining(
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn aldis_spp_segmenter_deinit(h: *mut aldis_spp_segmenter_t) {
     // SAFETY: as `# Safety` states; `handle` checks the tag before writing.
-    unsafe { handle::deinit(h.cast::<Slot<SegmenterState>>(), SEGMENTER_MAGIC) }
-}
-
-/// The storage octets an `aldis_spp_reassembler_t` needs:
-/// `ALDIS_SPP_REASSEMBLER_STORAGE_SIZE` (CABI-031).
-#[unsafe(no_mangle)]
-#[expect(unsafe_code, reason = "C ABI entry point: unmangled (GEN-071)")]
-pub const extern "C" fn aldis_spp_reassembler_storage_size() -> usize {
-    ALDIS_SPP_REASSEMBLER_STORAGE_SIZE
-}
-
-/// The storage alignment an `aldis_spp_reassembler_t` needs:
-/// `ALDIS_SPP_REASSEMBLER_STORAGE_ALIGN` (CABI-031).
-#[unsafe(no_mangle)]
-#[expect(unsafe_code, reason = "C ABI entry point: unmangled (GEN-071)")]
-pub const extern "C" fn aldis_spp_reassembler_storage_align() -> usize {
-    ALDIS_SPP_REASSEMBLER_STORAGE_ALIGN
+    unsafe { handle::deinit(h) }
 }
 
 /// Places a reassembler for `apid` in `storage` (133.0 §4.1.3.4.2; SPP-013; CABI-031,
@@ -643,34 +581,22 @@ pub const extern "C" fn aldis_spp_reassembler_storage_align() -> usize {
 /// CABI-022 violations.
 ///
 /// # Safety
-/// `storage` is valid for writes of `storage_len` octets and outlives the handle; `out` is
-/// valid for one write; `err` is `NULL` or valid for one write.
+/// `storage` is valid for writes of one storage struct and outlives its use; `err` is `NULL` or valid for one write.
 #[expect(
     unsafe_code,
     reason = "C ABI entry point: unmangled, takes raw pointers (GEN-071)"
 )]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn aldis_spp_reassembler_init(
-    storage: *mut core::ffi::c_void,
-    storage_len: usize,
+    storage: *mut aldis_spp_reassembler_t,
     apid: u16,
-    out: *mut *mut aldis_spp_reassembler_t,
     err: *mut crate::aldis_error_detail_t,
 ) -> i32 {
     // SAFETY: every pointer is valid as `# Safety` states; `abi` and `handle` check them.
     unsafe {
         abi::call(err, || {
-            let out = abi::out(out)?;
             let state = ReassemblerState::new(Apid::try_from(apid)?);
-            let slot = handle::init(
-                storage,
-                storage_len,
-                ALDIS_SPP_REASSEMBLER_STORAGE_SIZE,
-                REASSEMBLER_MAGIC,
-                state,
-            )?;
-            out.write(slot.cast::<aldis_spp_reassembler_t>());
-            Ok(())
+            handle::init(storage, state)
         })
     }
 }
@@ -682,7 +608,7 @@ pub unsafe extern "C" fn aldis_spp_reassembler_init(
 #[expect(unsafe_code, reason = "checks a caller handle (CABI-032, GEN-071)")]
 unsafe fn reassembler(h: *mut aldis_spp_reassembler_t) -> Result<handle::Handle<ReassemblerState>> {
     // SAFETY: forwarded from the caller.
-    unsafe { handle::get(h.cast::<Slot<ReassemblerState>>(), REASSEMBLER_MAGIC) }
+    unsafe { handle::get(h) }
 }
 
 /// Decodes one Space Packet, splits its data field by `layout`, and pushes its User Data Field
@@ -699,7 +625,7 @@ unsafe fn reassembler(h: *mut aldis_spp_reassembler_t) -> Result<handle::Handle<
 /// # Safety
 /// `h` is as for [`aldis_spp_tracker_track`]; `packet` is valid for `packet_len` octets;
 /// `layout` is valid for a read; `buf` is valid for `buf_len` octets and holds what earlier
-/// pushes wrote; `out` is valid for one write; `err` is `NULL` or valid for one write.
+/// pushes wrote; `err` is `NULL` or valid for one write.
 #[expect(
     unsafe_code,
     reason = "C ABI entry point: unmangled, takes raw pointers (GEN-071)"
@@ -723,7 +649,6 @@ pub unsafe extern "C" fn aldis_spp_reassembler_push(
             let bytes = abi::bytes(packet, packet_len)?;
             let layout = secondary_layout(&abi::config(layout)?)?;
             let buf = abi::bytes_mut(buf, buf_len, &[(packet, packet_len), h.range()])?;
-            let out = abi::out(out)?;
             let p = SpacePacket::decode(bytes, abi::mode(mode)?)?;
             let user_data = p.split(&layout)?.user_data();
             let mut r = h.load().resume(buf)?;
@@ -809,5 +734,5 @@ pub unsafe extern "C" fn aldis_spp_reassembler_is_assembling(
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn aldis_spp_reassembler_deinit(h: *mut aldis_spp_reassembler_t) {
     // SAFETY: as `# Safety` states; `handle` checks the tag before writing.
-    unsafe { handle::deinit(h.cast::<Slot<ReassemblerState>>(), REASSEMBLER_MAGIC) }
+    unsafe { handle::deinit(h) }
 }

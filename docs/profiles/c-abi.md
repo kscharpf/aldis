@@ -43,12 +43,14 @@ This profile defines the C interface. The Rust reference implementation exposes 
 
 ## 5. Memory model
 
-Engines are opaque objects placed in **caller-owned storage**. No heap is used.
+Engines and stateful helpers are placed in **caller-owned storage**. No heap is used. The storage is a typed struct of `uint64_t` words that the caller declares as an object of that type, so the C compiler supplies its size and alignment and no length crosses the ABI (OI-57 convention 4). The pointer to the object is the handle.
+
+The words belong to the library: a C caller never reads or writes them. The word count of each type is one `pub const` in Rust, and a compile-time check proves that the helper's state and its tag fit it on every supported target.
 
 | ID | Requirement | Source | Verif. |
 |---|---|---|---|
 | CABI-030 | Engine capacities (const generics in Rust) SHALL be fixed when the library is built. They SHALL be read from a build configuration file (`aldis-ffi/capacities.toml`) and emitted as `ALDIS_*_MAX_*` constants in the header. `aldis_limits(aldis_limits_t *)` SHALL report them at run time. | GEN-011 | A |
-| CABI-031 | `*_init` SHALL validate storage size and alignment and fail with `ALDIS_ERR_BUFFER_TOO_SMALL` / `ALDIS_ERR_INVALID_FIELD` if they are inadequate. | — | T |
+| CABI-031 | The storage of a stateful helper SHALL be a typed struct of `uint64_t` words that the caller declares, and `*_init` SHALL take a pointer to it, with no storage length. The build SHALL fail when the helper's state does not fit the struct. `*_init` SHALL fail with `ALDIS_ERR_INVALID_FIELD` for `NULL` or a pointer misaligned for its type (CABI-022). `*_init` SHALL NOT read the storage first: it replaces whatever the storage holds, because the tag of live storage cannot be told from the garbage of an uninitialized object. | — | T |
 | CABI-032 | A handle SHALL carry a magic/generation tag. Calls with a deinitialized or foreign handle SHALL fail with `ALDIS_ERR_INVALID_HANDLE` where detectable. | — | T |
 | CABI-033 | Configuration structs SHALL begin with a `uint32_t struct_size` field set by the caller, for forward-compatible extension. | GEN-080 | T |
 
@@ -79,7 +81,7 @@ An engine call is the step function of [03 §5](../03-api-model.md#5-engines-the
 |---|---|---|---|
 | CABI-070 | Withdrawn: Track C retired and deferred to Phase 3 (chore/retire-track-c). | — | — |
 | CABI-071 | Withdrawn: Track C retired and deferred to Phase 3 (chore/retire-track-c). | — | — |
-| CABI-072 | The C++ API SHALL be a header-only, idiomatic wrapper (`aldis.hpp`) over the Rust-backed C ABI: RAII handle types with storage in `alignas(N) std::byte[N]` members (`std::aligned_storage` is deprecated in C++23), `std::span` views, and `expected`-like results, in C++20 (OI-19). Engine capacities SHALL be template parameters, checked with `static_assert` against the build-time `ALDIS_*_MAX_*` constants (CABI-030, OI-20). It SHALL NOT use exceptions. | — | T |
+| CABI-072 | The C++ API SHALL be a header-only, idiomatic wrapper (`aldis.hpp`) over the Rust-backed C ABI: RAII handle types with storage in members of the typed storage struct of the C ABI (CABI-031; `std::aligned_storage` is deprecated in C++23), `std::span` views, and `expected`-like results, in C++20 (OI-19). Engine capacities SHALL be template parameters, checked with `static_assert` against the build-time `ALDIS_*_MAX_*` constants (CABI-030, OI-20). It SHALL NOT use exceptions. | — | T |
 
 ## 10. Details settled for the M1 codecs
 
@@ -92,7 +94,7 @@ The C ABI of `aldis-time`, `aldis-spp`, and `aldis-epp` ([M2 plan](../milestones
 - **One-shot encoders** (D4, API-020, API-023; OI-57): the C ABI has no two-phase writer. A frame or packet is built in one call, `aldis_<std>_encode`, that takes every variable field and keeps no state; an Only Idle Data frame by `aldis_tm_encode_oid`, `aldis_aos_encode_oid`, or `aldis_uslp_encode_oid`, which take an `aldis_oid_generator_t`. The earlier `_writer_begin` and `_writer_finish` functions (OI-50) are removed. A frame codec whose one-shot encoder has no field for the Security Header and Trailer (TC, USLP) writes zeros there (API-072); a caller that applies SDLS through the C ABI uses TM or AOS, or a later encoder variant.
 - **Flags and enumerations** (CABI-010): flags in input structs are `uint8_t` 0 or 1; flags in output structs are `bool`. Enumerations are `uint8_t` or `uint32_t` fields with `ALDIS_*` constants.
 - **Time codes** (D4): one flat format struct and one flat value struct for CUC, CDS, CCS, and agency-defined codes, selected by `code`. CUC fine time is `uint8_t fine[10]`, left-aligned, with `fine_len`; octets from `fine_len` on must be 0. A reserved time code ID decoded in lenient mode is `ALDIS_TIME_UNKNOWN`, with its P-field and no value; it cannot be encoded through the C ABI. Conversions go directly between CDS, CCS, and ASCII (`aldis_time_convert`); the intermediate UTC instant does not cross the ABI.
-- **Stateful helpers** (D5, CABI-030…032): storage of at least `ALDIS_*_STORAGE_SIZE` octets, aligned to `ALDIS_*_STORAGE_ALIGN`, which is 8 for every helper, so a C caller declares it as a `uint64_t` array; the sizes hold on every supported target. `_init(storage, storage_len, …, aldis_*_t **out, err)` fails with `ALDIS_ERR_BUFFER_TOO_SMALL` (with `needed`) or `ALDIS_ERR_INVALID_FIELD`. The storage starts with a tag: a magic number per helper, the layout generation, and the storage's own address; a call fails with `ALDIS_ERR_INVALID_HANDLE` when the tag is not that of its helper at that address, which detects uninitialized, released (`_deinit`), foreign, and copied storage. A `NULL` handle is `ALDIS_ERR_INVALID_FIELD`. `_deinit` returns nothing and ignores an invalid handle. Buffers are passed on every call and never stored (API-060): the segmenter takes the same SDU on each call (another length is `ALDIS_ERR_LENGTH_MISMATCH`), and the reassembler the same reassembly buffer. The tracker's capacity is a build-time maximum, `ALDIS_SPP_TRACKER_MAX_APIDS` (`capacities.toml` `[spp]`), and its configuration chooses a capacity up to it.
+- **Stateful helpers** (D5, CABI-030…032; OI-57 convention 4): the storage is a typed struct, `aldis_spp_tracker_t`, `aldis_spp_segmenter_t`, `aldis_spp_reassembler_t`, or `aldis_oid_generator_t`, each a `uint64_t words[ALDIS_*_WORDS]`, which the caller declares as an object of that type; the sizes hold on every supported target. `_init(storage, …, err)` takes a pointer to it, which is also the handle, and fails with `ALDIS_ERR_INVALID_FIELD` for `NULL` or a misaligned pointer. The storage starts with a tag: a magic number per helper, the layout generation, and the storage's own address; a call fails with `ALDIS_ERR_INVALID_HANDLE` when the tag is not that of its helper at that address, which detects uninitialized, released (`_deinit`), foreign, and copied storage. A `NULL` handle is `ALDIS_ERR_INVALID_FIELD`. `_deinit` returns nothing and ignores an invalid handle. Buffers are passed on every call and never stored (API-060): the segmenter takes the same SDU on each call (another length is `ALDIS_ERR_LENGTH_MISMATCH`), and the reassembler the same reassembly buffer. The tracker's capacity is a build-time maximum, `ALDIS_SPP_TRACKER_MAX_APIDS` (`capacities.toml` `[spp]`), and its configuration chooses a capacity up to it.
 
 ## 11. Details settled for the frame codecs
 
@@ -113,7 +115,7 @@ The C ABI of `aldis-tm` ([M2 plan](../milestones/m2-frame-codecs.md) WP-2 module
 
 ## 12. Conventions adopted 2026-10-29 (implementation pending)
 
-The maintainer decided seven conventions for the C ABI on 2026-10-29 (OI-57; decision log). The project is pre-release, so backward compatibility of the C ABI is not a constraint, and the goal is the simplest C ABI that keeps the high-assurance properties. **The code still implements the conventions of §1 to §11 until the follow-up pull requests below land.** Until then, a row of §3 to §5, §8, §10, or §11 that this section changes describes the code that exists and stays as written: it is the as-built behaviour, and this section is what the implementing pull request makes true. Each implementing pull request rewrites or withdraws the rows it changes, in the same change as the code. The engine rows (CABI-040 and the introduction of §6) have no code yet and are rewritten now.
+The maintainer decided seven conventions for the C ABI on 2026-10-29 (OI-57; decision log). The project is pre-release, so backward compatibility of the C ABI is not a constraint, and the goal is the simplest C ABI that keeps the high-assurance properties. **The code still implements the conventions of §1 to §11 until the follow-up pull requests below land; items 1 (one-shot encoders) and 4 (typed storage) have landed.** Until then, a row of §3 to §5, §8, §10, or §11 that this section changes describes the code that exists and stays as written: it is the as-built behaviour, and this section is what the implementing pull request makes true. Each implementing pull request rewrites or withdraws the rows it changes, in the same change as the code. The engine rows (CABI-040 and the introduction of §6) have no code yet and are rewritten now.
 
 | # | Convention | Rationale |
 |---|---|---|
@@ -141,7 +143,7 @@ CABI-001 to CABI-004, CABI-011, CABI-013, CABI-032, CABI-050, and CABI-041 (with
 ### 12.2 Order of the follow-up pull requests
 
 1. Delete the C two-phase writers (and their layout structs and header entries) and the Rust `resume`; add the missing one-shot Only Idle Data encoders for TM and AOS.
-2. Typed storage (item 4).
+2. Typed storage (item 4). Done: `_init` takes the storage struct and no `out` handle, since the handle is the pointer to the storage (maintainer, 2026-10-29).
 3. In-place engine state (item 6): the `handle.rs` mechanism for engines, before any engine has a C module.
 4. Enumeration glue per codec (item 2): mirror enums and the generic parser.
 5. Status codes (item 3).

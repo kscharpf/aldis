@@ -15,7 +15,7 @@
 /**
  * ABI minor version (CABI-060).
  */
-#define ALDIS_ABI_VERSION_MINOR 2
+#define ALDIS_ABI_VERSION_MINOR 3
 
 /**
  * ABI patch version (CABI-060).
@@ -1234,12 +1234,6 @@
 #define ALDIS_FIELD_REQUEST_ID 164
 
 /**
- * Alignment, in octets, of every helper's storage: a C caller gets it with a `uint64_t`
- * array (CABI-031).
- */
-#define ALDIS_STORAGE_ALIGN 8
-
-/**
  * Length of the Operational Control Field in octets (132.0 §4.1.5.1, 732.0 §4.1.5.1,
  * 732.1 §4.1.5.2; CMN-010).
  */
@@ -1276,14 +1270,9 @@
 #define ALDIS_OID_GALOIS 1
 
 /**
- * Storage octets of one `aldis_oid_generator_t` (CABI-031; M2 plan D5, D14).
+ * 64-bit words of one `aldis_oid_generator_t` (CABI-031; M2 plan D5, D14).
  */
-#define ALDIS_OID_GENERATOR_STORAGE_SIZE 32
-
-/**
- * Storage alignment of one `aldis_oid_generator_t` (CABI-031).
- */
-#define ALDIS_OID_GENERATOR_STORAGE_ALIGN 8
+#define ALDIS_OID_GENERATOR_WORDS 4
 
 /**
  * [`aldis_spp_fields_t::packet_type`]: telemetry, Packet Type 0 (133.0 §4.1.3.3.2).
@@ -1360,34 +1349,22 @@
 #define ALDIS_SPP_SECONDARY_TIME 2
 
 /**
- * Storage octets of one `aldis_spp_tracker_t` (CABI-031; M2 plan D5).
+ * 64-bit words of one `aldis_spp_tracker_t` (CABI-031; M2 plan D5).
+ *
+ * The tag, the capacity, and the tracker at `ALDIS_SPP_TRACKER_MAX_APIDS`; the build fails when
+ * the state outgrows it.
  */
-#define ALDIS_SPP_TRACKER_STORAGE_SIZE (32 + (8 * ALDIS_SPP_TRACKER_MAX_APIDS))
+#define ALDIS_SPP_TRACKER_WORDS 20
 
 /**
- * Storage alignment of one `aldis_spp_tracker_t` (CABI-031).
+ * 64-bit words of one `aldis_spp_segmenter_t` (CABI-031; M2 plan D5).
  */
-#define ALDIS_SPP_TRACKER_STORAGE_ALIGN 8
+#define ALDIS_SPP_SEGMENTER_WORDS 12
 
 /**
- * Storage octets of one `aldis_spp_segmenter_t` (CABI-031; M2 plan D5).
+ * 64-bit words of one `aldis_spp_reassembler_t` (CABI-031; M2 plan D5).
  */
-#define ALDIS_SPP_SEGMENTER_STORAGE_SIZE 96
-
-/**
- * Storage alignment of one `aldis_spp_segmenter_t` (CABI-031).
- */
-#define ALDIS_SPP_SEGMENTER_STORAGE_ALIGN 8
-
-/**
- * Storage octets of one `aldis_spp_reassembler_t` (CABI-031; M2 plan D5).
- */
-#define ALDIS_SPP_REASSEMBLER_STORAGE_SIZE 64
-
-/**
- * Storage alignment of one `aldis_spp_reassembler_t` (CABI-031).
- */
-#define ALDIS_SPP_REASSEMBLER_STORAGE_ALIGN 8
+#define ALDIS_SPP_REASSEMBLER_WORDS 8
 
 /**
  * [`aldis_spp_tracked_t::continuity`]: the first count of an APID (SPP-011).
@@ -2223,26 +2200,6 @@
 #define ALDIS_USLP_DISCARD_NON_TRUNCATED_NOT_ALLOWED ALDIS_USLP_DISCARD_NON_TRUNCATED_FRAME_NOT_ALLOWED
 
 /**
- * Handle of an OID generator in caller storage (CMN-020…023, CABI-032).
- */
-typedef struct aldis_oid_generator_t aldis_oid_generator_t;
-
-/**
- * Handle of an SDU reassembler in caller storage (SPP-013, CABI-032).
- */
-typedef struct aldis_spp_reassembler_t aldis_spp_reassembler_t;
-
-/**
- * Handle of an SDU segmenter in caller storage (SPP-013, CABI-032).
- */
-typedef struct aldis_spp_segmenter_t aldis_spp_segmenter_t;
-
-/**
- * Handle of a Packet Sequence Count tracker in caller storage (SPP-011, CABI-032).
- */
-typedef struct aldis_spp_tracker_t aldis_spp_tracker_t;
-
-/**
  * Detail of a failed call, written only when the call fails (CABI-021, GEN-041).
  *
  * Every function takes an optional `aldis_error_detail_t *` as its last parameter; `NULL`
@@ -2689,6 +2646,19 @@ typedef struct {
 } aldis_aos_content_t;
 
 /**
+ * An OID generator in caller storage: the caller declares an object of this type, and the
+ * pointer to it is the handle (CMN-020…023, CABI-031, CABI-032).
+ *
+ * The words are the library's: a C caller never reads or writes them.
+ */
+typedef struct {
+  /**
+   * The slot of [`handle`]: the tag, then the state.
+   */
+  uint64_t words[ALDIS_OID_GENERATOR_WORDS];
+} aldis_oid_generator_t;
+
+/**
  * A decoded Encapsulation Packet: its header and where its data field lies in the input
  * (133.1 §4.1; EPP-001…007, API-010, API-014, CABI-012).
  */
@@ -3131,6 +3101,19 @@ typedef struct {
 } aldis_spp_split_t;
 
 /**
+ * A Packet Sequence Count tracker in caller storage: the caller declares an object of this
+ * type, and the pointer to it is the handle (SPP-011, CABI-031, CABI-032).
+ *
+ * The words are the library's: a C caller never reads or writes them.
+ */
+typedef struct {
+  /**
+   * The slot of [`handle`]: the tag, then the state.
+   */
+  uint64_t words[ALDIS_SPP_TRACKER_WORDS];
+} aldis_spp_tracker_t;
+
+/**
  * Configuration of a tracker (SPP-011, CABI-033).
  */
 typedef struct {
@@ -3159,6 +3142,19 @@ typedef struct {
 } aldis_spp_tracked_t;
 
 /**
+ * An SDU segmenter in caller storage: the caller declares an object of this type, and the
+ * pointer to it is the handle (SPP-013, CABI-031, CABI-032).
+ *
+ * The words are the library's: a C caller never reads or writes them.
+ */
+typedef struct {
+  /**
+   * The slot of [`handle`]: the tag, then the state.
+   */
+  uint64_t words[ALDIS_SPP_SEGMENTER_WORDS];
+} aldis_spp_segmenter_t;
+
+/**
  * Configuration of a segmenter (133.0 §4.1.3.4.2; SPP-013, CABI-033).
  */
 typedef struct {
@@ -3179,6 +3175,19 @@ typedef struct {
    */
   size_t max_user_len;
 } aldis_spp_segmenter_config_t;
+
+/**
+ * An SDU reassembler in caller storage: the caller declares an object of this type, and the
+ * pointer to it is the handle (SPP-013, CABI-031, CABI-032).
+ *
+ * The words are the library's: a C caller never reads or writes them.
+ */
+typedef struct {
+  /**
+   * The slot of [`handle`]: the tag, then the state.
+   */
+  uint64_t words[ALDIS_SPP_REASSEMBLER_WORDS];
+} aldis_spp_reassembler_t;
 
 /**
  * The outcome of one reassembler push (133.0 §4.1.3.4.2; SPP-013).
@@ -5107,35 +5116,21 @@ int32_t aldis_ocf_check(const uint8_t *ocf,
                         aldis_error_detail_t *err);
 
 /**
- * The storage octets an `aldis_oid_generator_t` needs: `ALDIS_OID_GENERATOR_STORAGE_SIZE`
- * (CABI-031).
- */
-size_t aldis_oid_generator_storage_size(void);
-
-/**
- * The storage alignment an `aldis_oid_generator_t` needs: `ALDIS_OID_GENERATOR_STORAGE_ALIGN`
- * (CABI-031).
- */
-size_t aldis_oid_generator_storage_align(void);
-
-/**
  * Places an OID generator of the form `form` (`ALDIS_OID_FIBONACCI` or `ALDIS_OID_GALOIS`) in
- * `storage`, in its device start-up state (132.0 §4.1.4.6.2, Annex D; CMN-020, CMN-022;
- * CABI-031, CABI-032).
+ * `storage`, in its device start-up state (132.0 §4.1.4.6.2, Annex D; CMN-020, CMN-022).
+ *
+ * `storage` is the handle (CABI-031, CABI-032).
  *
  * # Errors
- * `ALDIS_ERR_BUFFER_TOO_SMALL` (with `needed`) for storage smaller than
- * `ALDIS_OID_GENERATOR_STORAGE_SIZE`; `ALDIS_ERR_INVALID_FIELD` for `NULL` or misaligned
- * storage, or a `form` that is no `ALDIS_OID_*` constant; CABI-022 violations.
+ * `ALDIS_ERR_INVALID_FIELD` for `NULL` or misaligned storage, or a `form` that is no
+ * `ALDIS_OID_*` constant; CABI-022 violations.
  *
  * # Safety
- * `storage` is valid for writes of `storage_len` octets and outlives the handle; `out` is
- * valid for one write; `err` is `NULL` or valid for one write.
+ * `storage` is valid for writes of one `aldis_oid_generator_t` and outlives its use; `err` is
+ * `NULL` or valid for one write.
  */
-int32_t aldis_oid_generator_init(void *storage,
-                                 size_t storage_len,
+int32_t aldis_oid_generator_init(aldis_oid_generator_t *storage,
                                  uint32_t form,
-                                 aldis_oid_generator_t **out,
                                  aldis_error_detail_t *err);
 
 /**
@@ -5335,34 +5330,19 @@ int32_t aldis_spp_split(const uint8_t *bytes,
                         aldis_error_detail_t *err);
 
 /**
- * The storage octets an `aldis_spp_tracker_t` needs: `ALDIS_SPP_TRACKER_STORAGE_SIZE`
- * (CABI-031).
- */
-size_t aldis_spp_tracker_storage_size(void);
-
-/**
- * The storage alignment an `aldis_spp_tracker_t` needs: `ALDIS_SPP_TRACKER_STORAGE_ALIGN`
- * (CABI-031).
- */
-size_t aldis_spp_tracker_storage_align(void);
-
-/**
  * Places an empty Packet Sequence Count tracker in `storage` (SPP-011; CABI-031, CABI-032).
  *
  * # Errors
- * `ALDIS_ERR_BUFFER_TOO_SMALL` (with `needed`) for storage smaller than
- * `ALDIS_SPP_TRACKER_STORAGE_SIZE`; `ALDIS_ERR_INVALID_FIELD` for `NULL` or misaligned storage;
+ * `ALDIS_ERR_INVALID_FIELD` for `NULL` or misaligned storage;
  * `ALDIS_ERR_INVALID_CONFIG` for a capacity of 0 and `ALDIS_ERR_CAPACITY_EXCEEDED` for one
  * above `ALDIS_SPP_TRACKER_MAX_APIDS`; CABI-022 violations.
  *
  * # Safety
- * `storage` is valid for writes of `storage_len` octets and outlives the handle; `cfg` is
- * valid for a read; `out` is valid for one write; `err` is `NULL` or valid for one write.
+ * `storage` is valid for writes of one storage struct and outlives its use; `cfg` is
+ * valid for a read; `err` is `NULL` or valid for one write.
  */
-int32_t aldis_spp_tracker_init(void *storage,
-                               size_t storage_len,
+int32_t aldis_spp_tracker_init(aldis_spp_tracker_t *storage,
                                const aldis_spp_tracker_config_t *cfg,
-                               aldis_spp_tracker_t **out,
                                aldis_error_detail_t *err);
 
 /**
@@ -5376,7 +5356,7 @@ int32_t aldis_spp_tracker_init(void *storage,
  *
  * # Safety
  * `h` is a handle from `aldis_spp_tracker_init` whose storage is still valid, or detectably
- * invalid storage; `out` is valid for one write; `err` is `NULL` or valid for one write.
+ * invalid storage; `err` is `NULL` or valid for one write.
  */
 int32_t aldis_spp_tracker_track(aldis_spp_tracker_t *h,
                                 uint16_t apid,
@@ -5434,18 +5414,6 @@ int32_t aldis_spp_tracker_len(aldis_spp_tracker_t *h, size_t *len, aldis_error_d
 void aldis_spp_tracker_deinit(aldis_spp_tracker_t *h);
 
 /**
- * The storage octets an `aldis_spp_segmenter_t` needs: `ALDIS_SPP_SEGMENTER_STORAGE_SIZE`
- * (CABI-031).
- */
-size_t aldis_spp_segmenter_storage_size(void);
-
-/**
- * The storage alignment an `aldis_spp_segmenter_t` needs: `ALDIS_SPP_SEGMENTER_STORAGE_ALIGN`
- * (CABI-031).
- */
-size_t aldis_spp_segmenter_storage_align(void);
-
-/**
  * Places a segmenter for `sdu` in `storage` (133.0 §4.1.3.4.2; SPP-013; CABI-031, CABI-032).
  *
  * The segmenter keeps only the SDU's length and its position: every call to
@@ -5458,17 +5426,15 @@ size_t aldis_spp_segmenter_storage_align(void);
  * [`aldis_spp_tracker_init`]; CABI-022 violations.
  *
  * # Safety
- * `storage` is valid for writes of `storage_len` octets and outlives the handle; `spp` and
- * `cfg` are valid for reads; `sdu` is valid for `sdu_len` octets; `out` is valid for one
- * write; `err` is `NULL` or valid for one write.
+ * `storage` is valid for writes of one storage struct and outlives its use; `spp` and
+ * `cfg` are valid for reads; `sdu` is valid for `sdu_len` octets; `err` is `NULL` or
+ * valid for one write.
  */
-int32_t aldis_spp_segmenter_init(void *storage,
-                                 size_t storage_len,
+int32_t aldis_spp_segmenter_init(aldis_spp_segmenter_t *storage,
                                  const aldis_spp_config_t *spp,
                                  const aldis_spp_segmenter_config_t *cfg,
                                  const uint8_t *sdu,
                                  size_t sdu_len,
-                                 aldis_spp_segmenter_t **out,
                                  aldis_error_detail_t *err);
 
 /**
@@ -5523,18 +5489,6 @@ int32_t aldis_spp_segmenter_remaining(aldis_spp_segmenter_t *h,
 void aldis_spp_segmenter_deinit(aldis_spp_segmenter_t *h);
 
 /**
- * The storage octets an `aldis_spp_reassembler_t` needs:
- * `ALDIS_SPP_REASSEMBLER_STORAGE_SIZE` (CABI-031).
- */
-size_t aldis_spp_reassembler_storage_size(void);
-
-/**
- * The storage alignment an `aldis_spp_reassembler_t` needs:
- * `ALDIS_SPP_REASSEMBLER_STORAGE_ALIGN` (CABI-031).
- */
-size_t aldis_spp_reassembler_storage_align(void);
-
-/**
  * Places a reassembler for `apid` in `storage` (133.0 §4.1.3.4.2; SPP-013; CABI-031,
  * CABI-032).
  *
@@ -5545,13 +5499,10 @@ size_t aldis_spp_reassembler_storage_align(void);
  * CABI-022 violations.
  *
  * # Safety
- * `storage` is valid for writes of `storage_len` octets and outlives the handle; `out` is
- * valid for one write; `err` is `NULL` or valid for one write.
+ * `storage` is valid for writes of one storage struct and outlives its use; `err` is `NULL` or valid for one write.
  */
-int32_t aldis_spp_reassembler_init(void *storage,
-                                   size_t storage_len,
+int32_t aldis_spp_reassembler_init(aldis_spp_reassembler_t *storage,
                                    uint16_t apid,
-                                   aldis_spp_reassembler_t **out,
                                    aldis_error_detail_t *err);
 
 /**
@@ -5569,7 +5520,7 @@ int32_t aldis_spp_reassembler_init(void *storage,
  * # Safety
  * `h` is as for [`aldis_spp_tracker_track`]; `packet` is valid for `packet_len` octets;
  * `layout` is valid for a read; `buf` is valid for `buf_len` octets and holds what earlier
- * pushes wrote; `out` is valid for one write; `err` is `NULL` or valid for one write.
+ * pushes wrote; `err` is `NULL` or valid for one write.
  */
 int32_t aldis_spp_reassembler_push(aldis_spp_reassembler_t *h,
                                    const uint8_t *packet,
