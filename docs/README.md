@@ -13,7 +13,7 @@ This directory holds the specification for a family of libraries that add CCSDS 
 | 01 | [Architecture](01-architecture.md) | Layers (codecs → engines → framework), crate map, dependency rules, data flows |
 | 02 | [Design rules](02-design-rules.md) | `no_std`/no-heap, panic freedom, bounded resources, error model, bit conventions |
 | — | [Hardware assumptions](hardware-assumptions.md) | What Aldis assumes of the platform: memory protected against single-event upsets (GEN-015), and what an upset in unprotected memory does |
-| 03 | [API model](03-api-model.md) | Language-neutral concepts: views, writers, configs, sans-I/O engines, security hooks, error catalogue |
+| 03 | [API model](03-api-model.md) | Language-neutral concepts: views, writers, configs, sans-I/O engine step contract, SDLS applied by the caller, error catalogue |
 | 04 | [Engines](04-engines.md) | Stateful protocol behavior: packet multiplexing and extraction, channel multiplexing, segmentation |
 | 05 | [Framework](05-framework.md) | Optional layer: transport/clock traits, run loop, reference adapters |
 | 06 | [Verification](06-verification.md) | Mission-grade assurance: lints, panic-freedom, fuzzing, coverage, traceability |

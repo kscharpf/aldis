@@ -1,9 +1,9 @@
-//! Fixed-capacity containers for heapless engines (GEN-010, GEN-011, GEN-012, API-061).
+//! Fixed-capacity containers for heapless engines (GEN-010, GEN-011, GEN-012, API-060).
 //!
 //! Capacities are const generics, so an engine's memory footprint is known at compile time
 //! (`core::mem::size_of`). Nothing allocates, and no operation panics: a full container
 //! rejects the item (engines report `WouldBlock`, API-052), and a too-small output buffer
-//! leaves the item queued (API-061).
+//! leaves the record queued (GEN-042).
 
 use crate::error::{Error, ErrorKind, Result};
 use crate::field;
@@ -119,7 +119,7 @@ impl<T, const N: usize> Default for FixedQueue<T, N> {
 /// FIFO of variable-length octet records in a ring of `N` octets.
 ///
 /// Each record costs its length plus a 4-octet length prefix. Used for queued packets and
-/// SDUs whose sizes vary (API-060, API-061).
+/// SDUs whose sizes vary (API-060).
 #[derive(Debug, Clone)]
 pub struct ByteQueue<const N: usize> {
     ring: [u8; N],
@@ -248,7 +248,7 @@ impl<const N: usize> ByteQueue<N> {
     ///
     /// # Errors
     /// `BufferTooSmall { needed }` if `out` is shorter than the record; the record stays
-    /// queued (API-061).
+    /// queued (GEN-042).
     pub fn pop_into(&mut self, out: &mut [u8]) -> Result<Option<usize>> {
         let Some(len) = self.peek_len() else {
             return Ok(None);
@@ -390,7 +390,7 @@ mod tests {
 
     #[test]
     fn queue_basics_and_zero_capacity() {
-        // req: GEN-010, GEN-011, API-051
+        // req: GEN-010, GEN-011
         let mut q: FixedQueue<u8, 2> = FixedQueue::default();
         assert_eq!((q.capacity(), q.peek(), q.is_full()), (2, None, false));
         assert_eq!(q.push(1), Ok(()));
@@ -412,7 +412,7 @@ mod tests {
 
     #[test]
     fn byte_queue_errors_keep_records() {
-        // req: API-061, GEN-042
+        // req: GEN-042
         let mut q: ByteQueue<16> = ByteQueue::default();
         assert_eq!(q.capacity(), 16);
         let too_long = q.push(&[0; 13]).unwrap_err();

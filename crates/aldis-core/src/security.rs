@@ -2,9 +2,10 @@
 //!
 //! v1 implements no cryptography. Every frame codec reserves the Security Header and Trailer
 //! of the Space Data Link Security Protocol (355.0-B-2 §4.1) through these types, so SDLS can
-//! be added later without breaking APIs. Engines call [`SecurityHook::protect`] after every
-//! other frame field except the FECF is final, then compute the FECF; on reception the FECF
-//! is checked before [`SecurityHook::verify`] (API-074; 355.0 §2.3, 232.0 Cor. 1 §6.5.2).
+//! be added later without breaking APIs. Engines never call a hook (API-050): the caller applies
+//! [`SecurityHook::protect`] after every other frame field except the FECF is final, then the
+//! codec writer computes the FECF; on reception the FECF is checked before
+//! [`SecurityHook::verify`] (API-074; 355.0 §2.3, 232.0 Cor. 1 §6.5.2).
 
 use core::ops::Range;
 

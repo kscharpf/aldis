@@ -32,10 +32,10 @@ The libraries are split into three layers plus a foreign-function boundary. Each
 
 Each protocol behavior is available in two ways:
 
-- **Library behavior (Layers 1–2).** The application keeps control. It calls codecs, feeds bytes and the current time into engines, and takes output bytes, events, and timer deadlines back out. Nothing happens unless the application calls in. This is the mode for flight software, which has its own scheduler, and for integrating into existing ground systems.
+- **Library behavior (Layers 1–2).** The application keeps control. It calls codecs, feeds inputs and the current time into engines, and takes the returned actions (frames to send, SDUs, events) and the next timer deadline back out. Nothing happens unless the application calls in. This is the mode for flight software, which has its own scheduler, and for integrating into existing ground systems.
 - **Framework behavior (Layer 3).** The application provides implementations of small transport and clock traits. The framework's run loop pumps the engines, sends their output, arms timers, and dispatches events to handlers. Retransmission (COP-1), frame release timing, and OID insertion then just happen. It is still `no_std` and heapless, but it owns the control flow.
 
-Retransmission logic (FOP-1/FARM-1) lives in its own crate, `aldis-cop1`, at Layer 2. It is therefore usable as a plain library (`fop.handle_clcw(..)`, `fop.poll_transmit(..)`) and also as part of the framework, without code duplication.
+Retransmission logic (FOP-1/FARM-1) lives in its own crate, `aldis-cop1`, at Layer 2. It is therefore usable as a plain library (`fop.step(Input::Clcw(..), now, out)` returns the next state and the frames to transmit, API-057) and also as part of the framework, without code duplication.
 
 ## 2. Crate map
 
