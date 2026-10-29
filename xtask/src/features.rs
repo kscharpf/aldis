@@ -1,17 +1,17 @@
 //! `xtask features`: the `alloc` and `std` features are strictly additive (GEN-006).
 //!
-//! For every crate in [`CRATES`] the command checks three things:
+//! For every crate in [`crates`] the command checks three things:
 //!
 //! 1. **Sources.** `feature = "alloc"` and `feature = "std"` appear in `src/` only as
 //!    `#[cfg(feature = "alloc")]` directly above `extern crate alloc;` (and the same for `std`).
 //!    No item, signature, trait impl, or code path is gated on either feature, so enabling one
 //!    cannot change an existing API.
 //! 2. **Manifest.** The `alloc` and `std` features enable nothing but the same features of
-//!    crates in [`CRATES`] (and `std` enables `alloc`), read with `cargo metadata`. They cannot
+//!    crates in [`crates`] (and `std` enables `alloc`), read with `cargo metadata`. They cannot
 //!    switch on another feature, such as `crc-table`, that changes behavior.
 //! 3. **Tests.** The crate's tests, among them the shared vector suite run by the exact-match
 //!    runner of `aldis-testkit` (TV-012), pass with `--no-default-features`, with `alloc`, and
-//!    with `std`, on each base feature set in [`CRATES`]; the `alloc` and `std` runs pass the
+//!    with `std`, on each base feature set in [`crates`]; the `alloc` and `std` runs pass the
 //!    same tests as the run without them. Every vector output is compared with the expected
 //!    octets, so the wire output is the same in each configuration.
 
@@ -22,18 +22,21 @@ use serde_json::Value;
 
 use crate::repo;
 
-/// The crates checked, each with the base feature sets its tests run on. Crates join as
-/// their milestone adds code.
-pub const CRATES: &[(&str, &[&str])] = &[
-    ("aldis-core", &[""]),
-    ("aldis-time", &[""]),
-    ("aldis-epp", &[""]),
-    ("aldis-spp", &["", "time"]),
-    ("aldis-aos", &[""]),
-    ("aldis-tm", &[""]),
-    ("aldis-tc", &[""]),
-    ("aldis-uslp", &[""]),
-];
+/// Base feature sets a crate's tests run on besides the empty one (a deliberate choice).
+const EXTRA_BASES: &[(&str, &str)] = &[("aldis-spp", "time")];
+
+/// The crates checked, each with the base feature sets its tests run on: the crates with code
+/// ([`crate::layers::gated`]), so a crate joins when it gets code.
+pub fn crates() -> Result<Vec<(&'static str, Vec<&'static str>)>, String> {
+    Ok(crate::layers::gated()?
+        .into_iter()
+        .map(|c| {
+            let mut bases = vec![""];
+            bases.extend(EXTRA_BASES.iter().filter(|(n, _)| *n == c).map(|(_, b)| *b));
+            (c, bases)
+        })
+        .collect())
+}
 
 /// The features GEN-006 requires to be additive.
 const ADDITIVE: &[&str] = &["alloc", "std"];
@@ -65,8 +68,12 @@ fn source_problems(text: &str) -> Vec<(usize, String)> {
 }
 
 /// Problems in the `features` table of one package from `cargo metadata`.
-fn manifest_problems(name: &str, features: &BTreeMap<String, Vec<String>>) -> Vec<String> {
-    let checked = |dep: &str| CRATES.iter().any(|(c, _)| *c == dep);
+fn manifest_problems(
+    name: &str,
+    features: &BTreeMap<String, Vec<String>>,
+    checked_crates: &[&str],
+) -> Vec<String> {
+    let checked = |dep: &str| checked_crates.contains(&dep);
     let mut out = Vec::new();
     for feature in ADDITIVE {
         let Some(enables) = features.get(*feature) else {
@@ -182,7 +189,9 @@ fn label(features: &str) -> String {
 pub fn check() -> Result<usize, String> {
     let mut problems = 0;
     let metadata = metadata_features()?;
-    for (krate, bases) in CRATES {
+    let crates = crates()?;
+    let names: Vec<&str> = crates.iter().map(|(c, _)| *c).collect();
+    for (krate, bases) in &crates {
         let src = format!("crates/{krate}/src");
         for path in repo::files(&src, &["rs"]) {
             for (line, text) in source_problems(&repo::read(&path)?) {
@@ -197,18 +206,18 @@ pub fn check() -> Result<usize, String> {
         let features = metadata
             .get(*krate)
             .ok_or_else(|| format!("cargo metadata: no package {krate}"))?;
-        for p in manifest_problems(krate, features) {
+        for p in manifest_problems(krate, features, &names) {
             println!("error: GEN-006 {p}");
             problems += 1;
         }
-        for base in *bases {
+        for base in bases {
             problems += check_tests(krate, base)?;
         }
     }
     if problems == 0 {
         println!(
             "features: `alloc` and `std` are additive in {} crates",
-            CRATES.len()
+            crates.len()
         );
     }
     Ok(problems)
@@ -259,7 +268,7 @@ fn check_tests(krate: &str, base: &str) -> Result<usize, String> {
 mod tests {
     use std::collections::BTreeMap;
 
-    use super::{manifest_problems, passed_tests, source_problems};
+    use super::{passed_tests, source_problems};
 
     #[test]
     fn only_extern_crate_may_be_gated() {
@@ -285,6 +294,22 @@ mod tests {
     #[test]
     fn features_enable_only_alloc_and_std() {
         // req: GEN-006
+        let manifest_problems = |name: &str, f: &BTreeMap<String, Vec<String>>| {
+            super::manifest_problems(
+                name,
+                f,
+                &[
+                    "aldis-core",
+                    "aldis-time",
+                    "aldis-epp",
+                    "aldis-spp",
+                    "aldis-aos",
+                    "aldis-tm",
+                    "aldis-tc",
+                    "aldis-uslp",
+                ],
+            )
+        };
         let table = |alloc: &[&str], std: &[&str]| {
             let own = |l: &[&str]| l.iter().map(|s| (*s).to_owned()).collect();
             BTreeMap::from([

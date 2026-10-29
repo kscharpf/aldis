@@ -83,6 +83,8 @@ cargo clippy -p aldis --no-default-features --features full --target thumbv7em-n
 cargo xtask ci        # spec lint, links, decision log, layering, registrations (consistency), bare integers in the codec APIs (rs020), vectors, schema, generated files (field codes, C header), traces, changelog
 ```
 
+`cargo xtask fix` runs the generators (field codes, vector schema, SANA tables, C header), then `consistency`.
+
 | Directory | Extra commands |
 |---|---|
 | `crates/aldis-core` | `cargo xtask coverage` (VER-024)<br>`(cd exerciser && cargo build --release --target thumbv7em-none-eabihf)` (VER-010)<br>`cargo clippy --manifest-path fuzz/Cargo.toml --all-targets` |

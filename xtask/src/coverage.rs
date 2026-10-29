@@ -1,5 +1,5 @@
 //! Coverage gate (VER-024): 100 % of regions, functions, lines, and branches for the crates in
-//! [`GATED`], measured with `cargo llvm-cov --branch` on the pinned tooling nightly (RS-002).
+//! [`gated`], measured with `cargo llvm-cov --branch` on the pinned tooling nightly (RS-002).
 //!
 //! Test modules carry `#[cfg_attr(coverage_nightly, coverage(off))]`, so only library code is
 //! measured. Uncovered code is justified in `coverage-waivers.toml`; the gate accepts a crate
@@ -14,17 +14,8 @@ use serde_json::Value;
 
 use crate::repo;
 
-/// Crates gated in M0 (Layer 0). Layers 1–2 join as they gain code (VER-024).
-pub const GATED: &[&str] = &[
-    "aldis-core",
-    "aldis-time",
-    "aldis-epp",
-    "aldis-spp",
-    "aldis-aos",
-    "aldis-tm",
-    "aldis-tc",
-    "aldis-uslp",
-];
+/// Crates gated: the crates of Layers 0–2 with code, derived ([`crate::layers::gated`], VER-024).
+use crate::layers::gated;
 
 /// Crates measured and reported, not gated (M2 plan D16).
 pub const REPORTED: &[&str] = &["aldis-ffi"];
@@ -81,7 +72,7 @@ fn waivers(krate: &str) -> Result<[u64; 4], String> {
             return Err("coverage-waivers.toml: empty justification".to_owned());
         }
         let target_crate = get("crate")?;
-        if !GATED.contains(&target_crate) {
+        if !gated()?.contains(&target_crate) {
             return Err(format!(
                 "coverage-waivers.toml: unknown or ungated crate `{target_crate}`"
             ));
@@ -112,7 +103,7 @@ fn count(summary: &Value, metric: &str, key: &str) -> u64 {
         .unwrap_or(0)
 }
 
-/// `xtask coverage`: runs the gate for every crate in [`GATED`] and writes
+/// `xtask coverage`: runs the gate for every crate in [`gated`] and writes
 /// `target/spec/coverage-<crate>.md`.
 pub fn run() -> Result<usize, String> {
     let nightly = repo::tooling_nightly()?;
@@ -121,7 +112,7 @@ pub fn run() -> Result<usize, String> {
     let cov_dir = repo::root().join("target/llvm-cov-target");
 
     let mut problems = 0;
-    for krate in GATED {
+    for krate in gated()? {
         problems += check_crate(krate, &nightly, &out_dir, &cov_dir, true)?;
     }
     for krate in REPORTED {
