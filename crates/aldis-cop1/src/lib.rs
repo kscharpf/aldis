@@ -4,17 +4,24 @@
 //!
 //! Requirements are traced by ID in each module's documentation.
 #![no_std]
+#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 #![cfg_attr(docsrs, feature(doc_auto_cfg))]
 
 #[cfg(feature = "std")]
 extern crate std;
 
+pub mod actions;
 pub mod farm1;
 pub mod farm1_table;
 pub mod fop1;
 pub mod fop1_table;
 pub mod notify;
 
+pub use actions::{Actions, OutRange};
+pub use farm1::{
+    FARM1_MAX_ACTIONS, Farm1, Farm1Actions, Farm1Config, Farm1Frame, Farm1Input, Farm1Notify,
+    Farm1Output, Farm1Window, FduKind,
+};
 pub use farm1_table::{
     EVENT_COUNT as FARM1_EVENT_COUNT, FARM1_TABLE, Farm1Action, Farm1Cell, Farm1Event, Farm1State,
     STATE_COUNT as FARM1_STATE_COUNT,
@@ -27,3 +34,8 @@ pub use notify::{
     Alert, AlertReason, Directive, DirectiveNotification, DirectiveNotify, TimeoutType,
     TransferNotification, TransferNotify,
 };
+
+/// Compiles and runs the examples in `README.md` as doctests; not part of the API.
+#[cfg(doctest)]
+#[doc = include_str!("../README.md")]
+struct ReadmeDoctests;

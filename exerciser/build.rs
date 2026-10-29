@@ -341,6 +341,7 @@ fn main() {
         ("tm", "Tm"),
         ("tc", "Tc"),
         ("uslp", "Uslp"),
+        ("cop1", "Cop1"),
     ] {
         let dir = manifest.join("../test-vectors").join(group);
         println!("cargo:rerun-if-changed={}", dir.display());

@@ -23,3 +23,6 @@ std = ["alloc", "aldis-core/std", "aldis-tc/std", "aldis-uslp?/std"]
 
 [lints]
 workspace = true
+
+[dev-dependencies]
+aldis-testkit = { path = "../aldis-testkit", features = ["strategies-tc"] }
