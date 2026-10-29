@@ -50,6 +50,10 @@ const fn cmd_in(
 
 /// Which directories with extra checks a change touches.
 #[derive(Debug, Default, PartialEq, Eq)]
+#[expect(
+    clippy::struct_excessive_bools,
+    reason = "independent flags, one per directory with extra checks"
+)]
 struct Touched {
     /// A library crate or the exerciser: the exerciser calls every public API (VER-010).
     exerciser: bool,
@@ -79,6 +83,7 @@ struct Tools {
 }
 
 /// The steps to run and the extras skipped, each with the reason.
+#[expect(clippy::too_many_lines, reason = "one entry per check step")]
 fn plan(t: &Touched, tools: Tools) -> (Vec<Item>, Vec<String>) {
     let mut run = vec![
         cmd("fmt", "cargo", &["fmt", "--all", "--check"]),
@@ -243,6 +248,7 @@ pub fn run() -> Result<usize, String> {
         Some(paths) => (touched(&paths), None),
         None => (
             Touched {
+                exerciser: true,
                 core: true,
                 ffi: true,
                 refapp: true,
