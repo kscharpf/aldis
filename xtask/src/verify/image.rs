@@ -348,6 +348,13 @@ pub fn unused(commit: &str, why: &str) -> Result<Value, String> {
     }))
 }
 
+/// The reference in `repository` of the image for the inputs of `commit` on this host (VER-060):
+/// what `verify image --push` pushes, computed from git alone, with no engine and no network.
+pub fn reference(commit: &str, repository: &str) -> Result<String, String> {
+    let (inputs, _) = input_hash(commit)?;
+    Ok(remote_tag(repository, &inputs, arch()?))
+}
+
 /// The first 16 hex digits of a hash: the tag of the image.
 fn short(hash: &str) -> &str {
     hash.get(..16).unwrap_or(hash)
@@ -428,8 +435,14 @@ mod tests {
         let (hash, files) = input_hash(&head).unwrap();
         assert_eq!(hash.len(), 64);
         assert_eq!(files.len(), INPUTS.len());
-        assert_eq!(revision_hash(&head), Ok(hash));
+        assert_eq!(revision_hash(&head), Ok(hash.clone()));
         assert!(revision_hash("HEAD").is_err());
         assert!(revision_hash(&"0".repeat(40)).is_err());
+        // The reference is that tag in the repository, for this host's architecture.
+        let reference = reference(&head, "ghcr.io/o/aldis-verify").unwrap();
+        assert_eq!(
+            reference,
+            remote_tag("ghcr.io/o/aldis-verify", &hash, arch().unwrap())
+        );
     }
 }
