@@ -1,7 +1,7 @@
 //! The contract of the USLP part of the C ABI, called as a C caller calls it: the virtual
 //! channel and MAP arrays and their capacities (CABI-030, CABI-033, M2 plan D14), the full and
-//! truncated views and their layouts (CABI-012, M2 plan D12), the stateless writers and the SDLS
-//! fields they leave to the caller (API-023, API-072), the validation reasons (USLP-014), the
+//! truncated views and their layouts (CABI-012, M2 plan D12), the one-shot encoders and the SDLS
+//! fields they leave zero (API-023, API-072), the validation reasons (USLP-014), the
 //! stateless delimiter (USLP-015), the OID generator handle (CMN-022), and the argument checks
 //! (CABI-022) the vectors do not reach.
 #![expect(clippy::unwrap_used, reason = "test-only harness (RS-018)")]
@@ -14,7 +14,7 @@ use aldis_ffi::capacities::{ALDIS_USLP_MAX_MAPS, ALDIS_USLP_MAX_VCS};
 use aldis_ffi::error::*;
 use aldis_ffi::field::{
     ALDIS_FIELD_END_OF_FRAME_PRIMARY_HEADER_FLAG, ALDIS_FIELD_MAP_ID, ALDIS_FIELD_UPID,
-    ALDIS_FIELD_USER_LEN, ALDIS_FIELD_VC_ID,
+    ALDIS_FIELD_VC_ID,
 };
 use aldis_ffi::oid::*;
 use aldis_ffi::uslp::*;
@@ -191,65 +191,6 @@ impl Channels {
         (rc, len)
     }
 
-    fn begin(
-        &self,
-        fl: &aldis_uslp_fields_t,
-        ct: &aldis_uslp_content_t,
-        max: usize,
-        out: &mut [u8],
-        lay: &mut aldis_uslp_layout_t,
-        det: &mut aldis_error_detail_t,
-    ) -> i32 {
-        // SAFETY: as for `encode`.
-        unsafe {
-            aldis_uslp_writer_begin(
-                &raw const self.pc,
-                self.vcs.as_ptr(),
-                self.vcs.len(),
-                self.maps.as_ptr(),
-                self.maps.len(),
-                fl,
-                ct,
-                max,
-                out.as_mut_ptr(),
-                out.len(),
-                lay,
-                det,
-            )
-        }
-    }
-
-    fn finish(
-        &self,
-        fl: &aldis_uslp_fields_t,
-        ct: &aldis_uslp_content_t,
-        max: usize,
-        used: usize,
-        out: &mut [u8],
-        det: &mut aldis_error_detail_t,
-    ) -> (i32, usize) {
-        let mut len = 0;
-        // SAFETY: as for `encode`.
-        let rc = unsafe {
-            aldis_uslp_writer_finish(
-                &raw const self.pc,
-                self.vcs.as_ptr(),
-                self.vcs.len(),
-                self.maps.as_ptr(),
-                self.maps.len(),
-                fl,
-                ct,
-                max,
-                used,
-                out.as_mut_ptr(),
-                out.len(),
-                &raw mut len,
-                det,
-            )
-        };
-        (rc, len)
-    }
-
     fn decode(&self, bytes: &[u8], view: &mut aldis_uslp_frame_t) -> i32 {
         // SAFETY: as for `encode`.
         unsafe {
@@ -410,77 +351,38 @@ fn the_tables_have_the_build_capacities() {
 }
 
 #[test]
-fn the_writer_leaves_the_sdls_fields_to_the_caller() {
-    // req: API-023, API-072, USLP-010, USLP-012, CABI-012
+fn the_encoder_leaves_the_sdls_fields_zero() {
+    // req: API-072, USLP-010, USLP-012, CABI-012, CABI-022
     let ch = variable();
     let fl = fields(5, 1, ALDIS_USLP_KIND_SEQUENCE_CONTROLLED, 0);
+    let three = [7_u8, 8, 9];
     let ct = aldis_uslp_content_t {
         tfdf: octet_stream(),
+        tfdz: three.as_ptr(),
+        tfdz_len: 3,
         ..aldis_uslp_content_t::default()
     };
     let mut det = detail();
     let mut buf = [0xEE_u8; 64];
-    let mut lay = aldis_uslp_layout_t::default();
-    assert_eq!(
-        ch.begin(&fl, &ct, 10, &mut buf, &mut lay, &mut det),
-        ALDIS_OK
-    );
-    let expect = aldis_uslp_layout_t {
-        frame_len: 42,
-        insert_zone_offset: 7,
-        insert_zone_len: 0,
-        security_header_offset: 7,
-        security_header_len: 6,
-        tfdf_header_offset: 13,
-        tfdf_header_len: 1,
-        tfdz_offset: 14,
-        tfdz_len: 10,
-        security_trailer_offset: 24,
-        security_trailer_len: 16,
-        ocf_offset: 40,
-        ocf_len: 0,
-        fecf_offset: 40,
-        fecf_len: 2,
-    };
-    assert_eq!(lay, expect);
-    assert_eq!(buf[7..13], [0; 6], "begin zero-fills the Security Header");
-    assert_eq!(buf[24..40], [0; 16], "and the Security Trailer");
-    buf[7..13].fill(0x51);
-    buf[24..40].fill(0x52);
-    buf[14..17].copy_from_slice(&[7, 8, 9]);
-    // The TFDZ is filled in place: a TFDZ in the content struct is an argument error.
-    let three = [7_u8, 8, 9];
-    let with_tfdz = aldis_uslp_content_t {
-        tfdz: three.as_ptr(),
-        tfdz_len: 3,
-        ..ct
-    };
-    assert_eq!(
-        ch.finish(&fl, &with_tfdz, 10, 3, &mut buf, &mut det).0,
-        ALDIS_ERR_INVALID_FIELD
-    );
-    let mut probe = [0_u8; 64];
-    assert_eq!(
-        ch.begin(&fl, &with_tfdz, 10, &mut probe, &mut lay, &mut det),
-        ALDIS_ERR_INVALID_FIELD
-    );
-    // More TFDZ octets than reserved.
-    let (rc, _) = ch.finish(&fl, &ct, 10, 11, &mut buf, &mut det);
-    assert_eq!(
-        (rc, det.field),
-        (ALDIS_ERR_OUT_OF_RANGE, ALDIS_FIELD_USER_LEN)
-    );
-    // The finish keeps the caller's security fields and moves the Trailer after the TFDZ.
-    let (rc, len) = ch.finish(&fl, &ct, 10, 3, &mut buf, &mut det);
+    let (rc, len) = ch.encode(&fl, &ct, &mut buf, &mut det);
     assert_eq!((rc, len), (ALDIS_OK, 35));
     let mut view = aldis_uslp_frame_t::default();
     assert_eq!(ch.decode(&buf[..len], &mut view), ALDIS_OK);
     let lv = view.layout;
-    assert_eq!(buf[lv.security_header_offset..][..6], [0x51; 6]);
+    assert_eq!(
+        (lv.security_header_offset, lv.security_header_len),
+        (7, 6),
+        "SDLS 6/16 on VC 5"
+    );
+    assert_eq!(buf[7..13], [0; 6], "the Security Header is zero");
     assert_eq!(buf[lv.tfdz_offset..][..lv.tfdz_len], [7, 8, 9]);
-    assert_eq!(buf[lv.security_trailer_offset..][..16], [0x52; 16]);
-    assert_eq!((lv.security_trailer_offset, lv.fecf_offset), (17, 33));
-    // The same octets as the Rust two-phase writer.
+    assert_eq!(
+        (lv.security_trailer_offset, lv.security_trailer_len),
+        (17, 16)
+    );
+    assert_eq!(buf[17..33], [0; 16], "and the Security Trailer");
+    assert_eq!((lv.fecf_offset, lv.fecf_len), (33, 2));
+    // The same octets as the Rust two-phase writer (typestate) without filling the security fields.
     let tbl = rust_variable();
     let rf = aldis::uslp::FrameFields {
         spacecraft_id: aldis::uslp::UslpSpacecraftId::new(0x155).unwrap(),
@@ -499,64 +401,15 @@ fn the_writer_leaves_the_sdls_fields_to_the_caller() {
         ocf: None,
     };
     let mut rust = [0_u8; 64];
-    let mut w = aldis::uslp::UslpFrameWriter::begin(&mut rust, &tbl, rf, rc, 10).unwrap();
-    w.security_header_mut().unwrap().fill(0x51);
-    w.security_trailer_mut().unwrap().fill(0x52);
+    let mut w = aldis::uslp::UslpFrameWriter::begin(&mut rust, &tbl, rf, rc, 3).unwrap();
     w.tfdz_mut().unwrap()[..3].copy_from_slice(&[7, 8, 9]);
     assert_eq!(w.finish(3), Ok(35));
     assert_eq!(rust[..35], buf[..35]);
-}
-
-#[test]
-fn finish_checks_the_buffer_was_begun_with_these_arguments() {
-    // req: API-023, USLP-010, CABI-022 (OI-50)
-    let ch = variable();
-    let fl = fields(5, 1, ALDIS_USLP_KIND_SEQUENCE_CONTROLLED, 0);
-    let ct = aldis_uslp_content_t {
-        tfdf: octet_stream(),
-        ..aldis_uslp_content_t::default()
-    };
-    let mut det = detail();
-    let mut buf = [0xEE_u8; 64];
-    let mut lay = aldis_uslp_layout_t::default();
-    assert_eq!(
-        ch.begin(&fl, &ct, 10, &mut buf, &mut lay, &mut det),
-        ALDIS_OK
-    );
-    let written = buf;
-    // Without SDLS, where `begin` had SDLS 6/16 (VC 4, MAP 0), and the other arguments.
-    let other_tfdf = aldis_uslp_content_t {
-        tfdf: aldis_uslp_tfdf_t {
-            upid: ALDIS_USLP_UPID_PACKETS,
-            ..octet_stream()
-        },
-        ..ct
-    };
-    let cases = [
-        (fields(4, 0, ALDIS_USLP_KIND_SEQUENCE_CONTROLLED, 0), ct, 10),
-        (fields(5, 1, ALDIS_USLP_KIND_EXPEDITED, 0), ct, 10),
-        (fl, other_tfdf, 10),
-        (fl, ct, 9),
-        (fl, ct, 11),
-    ];
-    for (f, c, max) in cases {
-        let (rc, _) = ch.finish(&f, &c, max, 3, &mut buf, &mut det);
-        assert_eq!(rc, ALDIS_ERR_INVALID_STATE, "{max}");
-        assert_eq!(buf, written, "a failed finish leaves the frame unchanged");
-    }
-    // The same arguments finish it, and the finished frame is not an unfinished one.
-    assert_eq!(ch.finish(&fl, &ct, 10, 3, &mut buf, &mut det).0, ALDIS_OK);
-    assert_eq!(
-        ch.finish(&fl, &ct, 10, 3, &mut buf, &mut det).0,
-        ALDIS_ERR_INVALID_STATE
-    );
-    // A buffer never begun.
-    for fill in [0x00_u8, 0xA5] {
-        let mut never = [fill; 64];
-        let (rc, _) = ch.finish(&fl, &ct, 10, 3, &mut never, &mut det);
-        assert_eq!(rc, ALDIS_ERR_INVALID_STATE);
-        assert_eq!(never, [fill; 64]);
-    }
+    // Too small an output: nothing written.
+    let mut small = [0xEE_u8; 34];
+    let (rc, _) = ch.encode(&fl, &ct, &mut small, &mut det);
+    assert_eq!(rc, ALDIS_ERR_BUFFER_TOO_SMALL);
+    assert_eq!(small, [0xEE; 34]);
 }
 
 /// The Rust table of [`variable`].
@@ -849,21 +702,10 @@ fn a_vc_with_a_truncated_length_refuses_non_truncated_frames() {
         ALDIS_FIELD_END_OF_FRAME_PRIMARY_HEADER_FLAG,
     );
     let got = |rc: i32, det: &aldis_error_detail_t| (rc, det.field);
-    // The encoder, the two-phase writer's `begin` and `finish`.
+    // The encoder.
     let mut out = [0_u8; 64];
     let mut det = detail();
     let (rc, _) = ch.encode(&fl, &ct, &mut out, &mut det);
-    assert_eq!((got(rc, &det), out), (flag, [0; 64]));
-    let mut det = detail();
-    let open = aldis_uslp_content_t {
-        tfdf: octet_stream(),
-        ..aldis_uslp_content_t::default()
-    };
-    let mut lay = aldis_uslp_layout_t::default();
-    let rc = ch.begin(&fl, &open, 3, &mut out, &mut lay, &mut det);
-    assert_eq!((got(rc, &det), out), (flag, [0; 64]));
-    let mut det = detail();
-    let (rc, _) = ch.finish(&fl, &open, 3, 3, &mut out, &mut det);
     assert_eq!((got(rc, &det), out), (flag, [0; 64]));
     // The decoder.
     let mut view = aldis_uslp_frame_t::default();
@@ -942,9 +784,9 @@ fn a_vc_with_a_truncated_length_refuses_non_truncated_frames() {
 #[test]
 #[expect(
     clippy::too_many_lines,
-    reason = "both generator forms, against the Rust writer"
+    reason = "both generator forms, against the Rust encoder"
 )]
-fn the_oid_writer_takes_a_generator_handle() {
+fn encode_oid_takes_a_generator_handle() {
     // req: USLP-009, CMN-021, CMN-022, CABI-022, CABI-032, GEN-042
     let ch = fixed();
     let iz = [0xAA_u8, 0xBB];
