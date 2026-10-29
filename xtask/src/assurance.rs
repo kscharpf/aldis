@@ -393,12 +393,12 @@ impl Env {
         })
     }
 
-    /// A requirement whose cell begins with `Deleted` (00-introduction.md §5.2).
+    /// A withdrawn requirement (00-introduction.md §5.2).
     fn is_deleted(&self, id: &str) -> bool {
         self.spec
             .requirements
             .get(id)
-            .is_some_and(|r| r.text.trim_start_matches(['*', '_']).starts_with("Deleted"))
+            .is_some_and(|r| crate::spec::is_withdrawn(&r.text))
     }
 
     fn repo_file(&self, target: &str) -> Result<(), String> {
@@ -1762,7 +1762,7 @@ fn proves() {}
                 .iter()
                 .map(|id| {
                     let text = if *id == "TM-003" {
-                        "**Deleted** 2026"
+                        "Withdrawn: superseded 2026"
                     } else {
                         "The frame"
                     };

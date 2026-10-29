@@ -26,7 +26,7 @@ In an `Evidence` cell (the `Evidence` row of a hazard table, the first column of
 
 ### 2.2 Requirement IDs
 
-In a `Requirements` row or column, requirement IDs are written as plain text, found by `md::scan_ids` with the areas of `Spec::load`, ranges (`TC-001…008`) expanded by `Spec::expand`. Each ID, and each end of a range, must be a requirement of a requirement table, and none may be **deleted**: a requirement whose `Requirement` cell, with leading `*` and `_` removed, begins with `Deleted` ([00-introduction.md](../00-introduction.md) §5.2 keeps a deleted requirement's ID; no requirement is deleted today, so the tests use a fixture). A range that expands to no requirement is a problem. The cell must hold at least one ID, or be `TODO` where §3.2 allows it. Elsewhere in the analysed files, an undefined ID is already reported by `cargo xtask spec-lint`, which reads every Markdown file.
+In a `Requirements` row or column, requirement IDs are written as plain text, found by `md::scan_ids` with the areas of `Spec::load`, ranges (`TC-001…008`) expanded by `Spec::expand`. Each ID, and each end of a range, must be a requirement of a requirement table, and none may be **deleted**: a requirement whose `Requirement` cell begins `Withdrawn:` ([00-introduction.md](../00-introduction.md) §5.2). A range that expands to no requirement is a problem. The cell must hold at least one ID, or be `TODO` where §3.2 allows it. Elsewhere in the analysed files, an undefined ID is already reported by `cargo xtask spec-lint`, which reads every Markdown file.
 
 ### 2.3 Kinds and how each resolves
 
