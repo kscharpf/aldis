@@ -962,6 +962,7 @@ mod tests {
         // #95: GitHub Actions version bumps.
         let dependabot = changed(&[
             ".github/actions/setup-rust/action.yml",
+            ".github/actions/get-xtask/action.yml",
             ".github/workflows/ci.yml",
             ".github/workflows/nightly.yml",
         ]);

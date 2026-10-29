@@ -42,12 +42,13 @@ impl Host {
 /// group is a tool for the hosted run only; a local run runs every check in one container.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Group {
-    /// The host build of the workspace: format, lints, tests, and the feature combinations.
+    /// The host build of the workspace: format, lints, tests, the feature combinations, the C
+    /// header, and the bare-metal builds of the library.
     Host,
     /// The big-endian run, the RISC-V exerciser, and the layering and dependency checks.
     Cross,
     /// The instrumented build, the checks that read the whole tree, the reference application,
-    /// the fuzz smoke run, the C header, and the bare-metal builds of the library.
+    /// and the fuzz smoke run.
     Coverage,
     /// The tooling nightly with `core` built from source: stack depth, the LEON3 build, and the
     /// Cortex-M and Cortex-R exercisers.
@@ -214,6 +215,7 @@ pub const GITHUB: PathList = PathList {
     patterns: &[
         ".github/workflows/**",
         ".github/actions/setup-rust/**",
+        ".github/actions/get-xtask/**",
         ".github/actions/setup-cpp/action.yml",
         ".github/pull_request_template.md",
         ".github/CODEOWNERS",
@@ -391,13 +393,13 @@ fn rust() -> Vec<Check> {
             check("features", c, false, 145, "cargo xtask features\n"),
         ),
         grouped(
-            Group::Coverage,
+            Group::Host,
             reading(FFI_INPUTS, check("header", c, false, 11, HEADER)),
         ),
     ];
     for t in RUST_BARE_METAL {
         out.push(grouped(
-            Group::Coverage,
+            Group::Host,
             check(
                 format!("no-std-{t}"),
                 c,

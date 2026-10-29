@@ -440,13 +440,10 @@ mod tests {
         assert!(revision_hash(&"0".repeat(40)).is_err());
         // The reference is that tag in the repository, for this host's architecture; a host of
         // another architecture (the big-endian run is on s390x) has none.
-        let reference = reference(&head, "ghcr.io/o/aldis-verify");
+        let made = reference(&head, "ghcr.io/o/aldis-verify");
         match arch() {
-            Ok(arch) => assert_eq!(
-                reference,
-                Ok(remote_tag("ghcr.io/o/aldis-verify", &hash, arch))
-            ),
-            Err(why) => assert_eq!(reference, Err(why)),
+            Ok(arch) => assert_eq!(made, Ok(remote_tag("ghcr.io/o/aldis-verify", &hash, arch))),
+            Err(why) => assert_eq!(made, Err(why)),
         }
     }
 }

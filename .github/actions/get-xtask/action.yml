@@ -1,0 +1,44 @@
+name: Get the xtask of the run
+description: >
+  Makes `$XTASK` the xtask binary that the `prepare` job of verify.yml built and uploaded, for a
+  job that has checked out the repository (VER-060). The binary is used only when it was built
+  from the commit this job checked out, at the same workspace path (xtask finds the repository
+  by the path it was compiled at), and runs; otherwise xtask is built here, with the pinned
+  toolchain. This is the one place that decides it: the jobs that publish a record
+  (`assemble`) run the binary this action chose.
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+      continue-on-error: true
+      with:
+        name: xtask
+        path: ${{ runner.temp }}/xtask-bin
+    - name: Use the xtask of this run
+      id: xtask
+      shell: bash
+      run: |
+        bin="$RUNNER_TEMP/xtask-bin"
+        # The artifact does not keep the executable bit.
+        chmod +x "$bin/xtask" 2> /dev/null || true
+        if [ -x "$bin/xtask" ] \
+          && [ "$(cat "$bin/commit" 2> /dev/null)" = "$(git rev-parse HEAD)" ] \
+          && [ "$(cat "$bin/workspace" 2> /dev/null)" = "$GITHUB_WORKSPACE" ] \
+          && "$bin/xtask" help > /dev/null 2>&1; then
+          echo "XTASK=$bin/xtask" >> "$GITHUB_ENV"
+          echo "ok=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "::warning title=xtask::the xtask of the prepare job is missing or not of this commit: building it here"
+          echo "ok=false" >> "$GITHUB_OUTPUT"
+        fi
+    - uses: ./.github/actions/setup-rust
+      if: steps.xtask.outputs.ok != 'true'
+      with:
+        cache-key: verify
+    - name: Build xtask here
+      if: steps.xtask.outputs.ok != 'true'
+      shell: bash
+      run: |
+        cargo build --locked -p xtask
+        echo "XTASK=$GITHUB_WORKSPACE/target/debug/xtask" >> "$GITHUB_ENV"
