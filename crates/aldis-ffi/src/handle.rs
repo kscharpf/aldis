@@ -9,12 +9,12 @@
 //! (CABI-032). `_deinit` clears the magic.
 //!
 //! A call reaches the state in one of two ways. A small helper reads it by value
-//! ([`Handle::load`]) and writes it back ([`Handle::store`]). An engine works **in place**
-//! (CABI-040; c-abi.md §12 item 6): [`Handle::read`] and [`Handle::update`] lend the state in
+//! (`Handle::load`) and writes it back (`Handle::store`). An engine works **in place**
+//! (CABI-040; c-abi.md §12 item 6): `Handle::read` and `Handle::update` lend the state in
 //! the caller's storage to a closure as `&T` or `&mut T` for the duration of the call, so no
 //! copy of the state is made on the stack (FOP-1's state is 16 KiB, the stack budget 10 240
 //! octets; OI-45). No Rust reference outlives the closure, and the call's buffers are checked
-//! not to overlap the storage ([`Handle::range`]), so the reference aliases nothing (GEN-071).
+//! not to overlap the storage (`Handle::range`), so the reference aliases nothing (GEN-071).
 //! M3 and M4 use `update` for FOP-1, FARM-1, and the link engines.
 
 use core::ptr::NonNull;
