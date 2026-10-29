@@ -3,14 +3,18 @@
 #
 # Usage: scripts/reverify <pr-number>...
 #
-# Per PR: check it is open; use the worktree of its head branch (or add one under
-# .claude/worktrees/reverify-<n>); refuse when that worktree is dirty or holds commits the
-# remote lacks; merge origin/main; run `cargo xtask ci`; push; dispatch verify.yml on the
-# branch; wait for the run and print its conclusion. Deletes nothing (see prune-agent-branches).
+# Phase 1, per PR in order: check it is open; use the worktree of its head branch (or add one
+# under .claude/worktrees/reverify-<n>); refuse when that worktree is dirty or holds commits the
+# remote lacks; merge origin/main; run `cargo xtask ci`; push; dispatch verify.yml on the branch
+# and note the new run. A branch already up to date with origin/main whose head has a
+# successful or in-progress run reuses that run. A failure marks the PR failed and goes on.
+# Phase 2: wait for all the runs (they run concurrently on GitHub) and print one line per PR:
+# `#<n> <branch> <run-id> <conclusion>` or `#<n> failed: <reason>`. Exits non-zero if any PR
+# failed or any run did not succeed. Deletes nothing (see prune-agent-branches).
 set -euo pipefail
 
 if [ $# -eq 0 ]; then
-    sed -n '2,9p' "$0" | sed 's/^# \{0,1\}//'
+    sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//'
     exit 2
 fi
 
@@ -26,72 +30,113 @@ worktree_of() {
         $1 == "branch" && $2 == ref { print path; exit }'
 }
 
-reverify_one() {
-    local pr="$1" info state branch dir run_id before conclusion
-    info="$(gh pr view "$pr" --json state,headRefName --jq '.state + " " + .headRefName')" || return 1
+reason=""
+branch=""
+run_id=""
+
+# Record why the PR failed; always returns 1.
+fail() {
+    reason="$1"
+    return 1
+}
+
+# Prepare one PR. Sets `branch`, `run_id` (dispatched or reused) and, on failure, `reason`.
+prepare_one() {
+    local pr="$1" info state dir head dispatched before found
+    reason=""
+    branch=""
+    run_id=""
+    info="$(gh pr view "$pr" --json state,headRefName --jq '.state + " " + .headRefName')" ||
+        fail "cannot read the pull request" || return 1
     state="${info%% *}"
     branch="${info#* }"
-    if [ "$state" != "OPEN" ]; then
-        echo "#$pr: $state, not OPEN; skipped"
-        return 1
-    fi
+    [ "$state" = "OPEN" ] || fail "$state, not OPEN" || return 1
 
     dir="$(worktree_of "$branch")"
     if [ -z "$dir" ]; then
         dir="$main_checkout/.claude/worktrees/reverify-$pr"
         if git -C "$main_checkout" show-ref --verify --quiet "refs/heads/$branch"; then
-            git -C "$main_checkout" worktree add "$dir" "$branch" || return 1
+            git -C "$main_checkout" worktree add "$dir" "$branch" ||
+                fail "cannot add a worktree for $branch" || return 1
         else
-            git -C "$main_checkout" worktree add -b "$branch" "$dir" "origin/$branch" || return 1
+            git -C "$main_checkout" worktree add -b "$branch" "$dir" "origin/$branch" ||
+                fail "cannot add a worktree for $branch" || return 1
         fi
     fi
     echo "#$pr: branch $branch in $dir"
 
     if [ -n "$(git -C "$dir" status --porcelain)" ]; then
-        echo "#$pr: worktree is dirty; commit or discard first"
-        return 1
+        fail "worktree $dir is dirty; commit or discard first" || return 1
     fi
     if [ "$(git -C "$dir" rev-list --count "origin/$branch..HEAD")" -gt 0 ]; then
-        echo "#$pr: the worktree has commits origin/$branch lacks; push or resolve first"
-        return 1
+        fail "worktree $dir has commits origin/$branch lacks; push or resolve first" || return 1
     fi
-    git -C "$dir" merge --ff-only --quiet "origin/$branch" || {
-        echo "#$pr: cannot fast-forward to origin/$branch"
-        return 1
-    }
+    git -C "$dir" merge --ff-only --quiet "origin/$branch" ||
+        fail "cannot fast-forward to origin/$branch" || return 1
 
     if ! git -C "$dir" merge --no-edit origin/main; then
         git -C "$dir" merge --abort || true
-        echo "#$pr: merge conflict with origin/main; resolve by hand in $dir"
-        return 1
+        fail "merge conflict with origin/main; resolve by hand in $dir" || return 1
     fi
-    (cd "$dir" && cargo xtask ci) || {
-        echo "#$pr: cargo xtask ci failed in $dir"
-        return 1
-    }
-    git -C "$dir" push --quiet origin "HEAD:refs/heads/$branch" || return 1
+    head="$(git -C "$dir" rev-parse HEAD)"
 
-    before="$(gh run list --workflow=verify.yml --branch "$branch" -L 1 --json databaseId --jq '.[0].databaseId // 0')"
-    gh workflow run verify.yml --ref "$branch" || return 1
-    run_id="$before"
-    for _ in $(seq 1 30); do
-        sleep 4
-        run_id="$(gh run list --workflow=verify.yml --branch "$branch" -L 1 --json databaseId --jq '.[0].databaseId // 0')"
-        [ "$run_id" != "$before" ] && break
-    done
-    if [ "$run_id" = "$before" ]; then
-        echo "#$pr: the dispatched run did not appear"
-        return 1
+    # Up to date with main (the merge changed nothing): reuse a good run of this exact head.
+    if [ "$head" = "$(git -C "$dir" rev-parse "origin/$branch")" ]; then
+        found="$(gh run list --workflow=verify.yml --branch "$branch" -L 20 \
+            --json databaseId,headSha,status,conclusion \
+            --jq "[.[] | select(.headSha == \"$head\" and (.status != \"completed\" or .conclusion == \"success\"))][0].databaseId // empty")" ||
+            found=""
+        if [ -n "$found" ]; then
+            run_id="$found"
+            echo "#$pr: reusing run $run_id for $head"
+            return 0
+        fi
     fi
-    echo "#$pr: watching run $run_id"
-    gh run watch "$run_id" --exit-status >/dev/null || true
-    conclusion="$(gh run view "$run_id" --json conclusion --jq '.conclusion')"
-    echo "#$pr: verify run $run_id: $conclusion"
-    [ "$conclusion" = "success" ]
+
+    (cd "$dir" && cargo xtask ci) || fail "cargo xtask ci failed in $dir" || return 1
+    git -C "$dir" push --quiet origin "HEAD:refs/heads/$branch" || fail "push failed" || return 1
+
+    dispatched="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    before="$(gh run list --workflow=verify.yml --branch "$branch" -L 1 --json databaseId --jq '.[0].databaseId // 0')" ||
+        before=0
+    gh workflow run verify.yml --ref "$branch" || fail "dispatch failed" || return 1
+    for _ in $(seq 1 30); do
+        sleep 2
+        found="$(gh run list --workflow=verify.yml --branch "$branch" -L 1 --json databaseId,createdAt \
+            --jq ".[0] | select(.createdAt >= \"$dispatched\" and .databaseId != $before) | .databaseId")" ||
+            found=""
+        if [ -n "$found" ]; then
+            run_id="$found"
+            echo "#$pr: dispatched run $run_id"
+            return 0
+        fi
+    done
+    fail "the dispatched run did not appear" || return 1
 }
 
-failed=0
+prs=()
+branches=()
+runs=()
+reasons=()
 for pr in "$@"; do
-    reverify_one "$pr" || failed=$((failed + 1))
+    prepare_one "$pr" || true
+    prs+=("$pr")
+    branches+=("$branch")
+    runs+=("$run_id")
+    reasons+=("$reason")
+done
+
+failed=0
+for i in "${!prs[@]}"; do
+    if [ -n "${reasons[$i]}" ]; then
+        echo "#${prs[$i]} failed: ${reasons[$i]}"
+        failed=$((failed + 1))
+        continue
+    fi
+    gh run watch "${runs[$i]}" --exit-status >/dev/null 2>&1 || true
+    conclusion="$(gh run view "${runs[$i]}" --json conclusion --jq '.conclusion')" ||
+        conclusion="unknown"
+    echo "#${prs[$i]} ${branches[$i]} ${runs[$i]} $conclusion"
+    [ "$conclusion" = "success" ] || failed=$((failed + 1))
 done
 [ "$failed" -eq 0 ] || { echo "reverify: $failed of $# PR(s) not verified"; exit 1; }
