@@ -22,8 +22,7 @@ Every pull request also: changes one track's directories ([roadmap](../08-roadma
 A crate *has code* once its `src/` declares a function. In the change that gives it code:
 
 - [ ] Layer assigned in `LAYERS` of `xtask/src/layers.rs` and in [01-architecture.md](../01-architecture.md) §2; dependencies only on lower layers (GEN-001…004, `cargo xtask layers`, **(ci)**).
-- [ ] In the coverage gate, `GATED` in `xtask/src/coverage.rs` (VER-024) **(consistency)**.
-- [ ] In the `features` check, `CRATES` in `xtask/src/features.rs`, with `alloc` and `std` gating only the crate-root `extern crate` lines (GEN-006, verify check `features`) **(consistency)**.
+- [ ] `alloc` and `std` gate only the crate-root `extern crate` lines (GEN-006, verify check `features`). The coverage gate (VER-024) and the `features` check take every Layer 0–2 crate with code and need no edit.
 - [ ] In the `-p` list of the nightly `mutants` job, `.github/workflows/nightly.yml` (VER-025) **(consistency)**; survivors triaged in [mutants-triage.md](../verification/mutants-triage.md) before the release.
 - [ ] An exerciser dependency in `exerciser/Cargo.toml`, a module calling its API, and a vector group in `exerciser/build.rs` and `Group` (`exerciser/src/vectors.rs`) (VER-010) **(consistency)** for the dependency and the group.
 - [ ] A `README.md` in the crate, linked from the root `README.md` **(consistency)**, and the crate named in the root `README.md` status.
@@ -39,7 +38,7 @@ A crate *has code* once its `src/` declares a function. In the change that gives
 - [ ] A row in [`test-vectors/README.md`](../../test-vectors/README.md) **(consistency)**.
 - [ ] Run by a host test in `crates/<crate>/tests/` through the `aldis-testkit` exact-match runner and a handler (VER-021, TV-012) **(consistency)** for a test naming the file.
 - [ ] Embedded and run by the exerciser when its crate is exercised (VER-010, M1 D6) **(consistency)**.
-- [ ] For a codec that has C ABI functions, run through the C ABI by the `aldis-ffi` vector runner, `crates/aldis-ffi/tests/vectors.rs` (M2 plan D4) **(consistency)**: every file of `test-vectors/{time,spp,epp,tm,tc,aos,uslp}/` (`FFI_AREAS` in `xtask/src/consistency.rs`), and every file of a directory the runner names at least one file of; in `test-vectors/core/`, whose crate has a C ABI for some modules only (M2 plan D14), the files of those modules (`FFI_FILES`).
+- [ ] For a codec that has C ABI functions, run through the C ABI by the `aldis-ffi` vector runner, `crates/aldis-ffi/tests/vectors.rs` (M2 plan D4) **(consistency)**: every file of `test-vectors/<area>/` for which `crates/aldis-ffi/src/<area>.rs` exists, and every file of a directory the runner names at least one file of; in `test-vectors/core/`, whose crate has a C ABI for some modules only (M2 plan D14), the files of those modules (`FFI_FILES`).
 - [ ] Each case in the file whose name describes it; a case not yet released that does not fit moves to one that does, without asking ([decision rights](../process/decision-rights.md) §2.5).
 - [ ] Never edit a released case: add a new case and mark the old one `superseded` (TV-021, `cargo xtask vectors validate`).
 
@@ -57,7 +56,7 @@ A crate *has code* once its `src/` declares a function. In the change that gives
 - [ ] The generated header `include/aldis/aldis.h` regenerated with `cargo xtask header --write`, never merged by hand (CABI-002; verify check `header`).
 - [ ] Capacities of stateful helpers in `crates/aldis-ffi/capacities.toml` and reported by `aldis_limits` (CABI-030).
 - [ ] The functions called by the exerciser's `aldis-ffi` group, `exerciser/src/ffi.rs` (M2 plan D16, VER-010; the dependency, the `ffi` group run by `exerciser/src/exercise.rs`, and `REPORTED` in `xtask/src/coverage.rs` **(consistency)**) and compared with the Rust decoders by the `ffi_decode` fuzz target (M2 WP-7).
-- [ ] Every vector file of the codec run through the C ABI by the `aldis-ffi` vector runner (D4); add the codec's directory to `FFI_AREAS` in `xtask/src/consistency.rs`, or for an `aldis-core` module its file to `FFI_FILES` **(consistency)**.
+- [ ] Every vector file of the codec run through the C ABI by the `aldis-ffi` vector runner (D4); the area follows from the module `crates/aldis-ffi/src/<area>.rs`; for an `aldis-core` module, add its file to `FFI_FILES` in `xtask/src/consistency.rs` **(consistency)**.
 - [ ] The C++ owner told when the header changes (roadmap §6 rule 4).
 
 ## A spec-readings pull request before a codec

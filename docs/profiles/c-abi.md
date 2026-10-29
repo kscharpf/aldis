@@ -69,11 +69,11 @@ void    aldis_fop1_deinit(aldis_fop1_t *h);   /* no-op for memory; marks handle 
 
 ## 6. Engines as step calls, without callbacks
 
-An engine call is the step function of [03 §5](../03-api-model.md#5-engines-the-sans-io-contract) behind a handle. It loads the state from the caller's storage by value and writes it back only when the call succeeds (the mechanism of `handle.rs`, CABI-032), so the C ABI is the step contract with no adaptation.
+An engine call is the step function of [03 §5](../03-api-model.md#5-engines-the-sans-io-contract) behind a handle. It accesses the engine's state **in place**, in the caller's storage, as `&mut` for the duration of one call, and uses the `decide`/`commit` form that API-058 permits, so a failed call leaves the state unchanged without a copy of the state on the stack (FOP-1's state is at least 16 KiB, against the 10 240-byte stack budget of the C ABI; OI-45, OI-57). The handle's tag check (CABI-032) is the one of `handle.rs`. The conventions of [§12](#12-conventions-adopted-2026-10-29-implementation-pending) (flat input structs, flat action structs, ranges) apply.
 
 | ID | Requirement | Source | Verif. |
 |---|---|---|---|
-| CABI-040 | Each engine input SHALL be one call that runs the step function of API-057 and returns its actions (illustratively `aldis_fop1_step(h, const aldis_fop1_input_t *in, aldis_instant_t now, uint8_t *out, size_t out_cap, aldis_fop1_actions_t *actions)`), and `next_deadline` and the status snapshot SHALL be calls that only read. The `actions` struct SHALL have a fixed capacity `ALDIS_*_MAX_ACTIONS` (the bound `N`, CABI-030), the octets of each action SHALL be a range of `out` (API-061), and a call that fails SHALL leave the state in the handle unchanged (API-058). No `poll_*` call exists. No engine API SHALL take a callback. | API-050, API-057, API-058, API-061 | I/T |
+| CABI-040 | Each engine input SHALL be one call that runs the step function of API-057 and returns its actions (illustratively `uint32_t aldis_fop1_step(aldis_fop1_t *h, const aldis_fop1_input_t *in, aldis_instant_t now, uint8_t *out, size_t out_cap, aldis_fop1_actions_t *actions, aldis_error_detail_t *err)`), and `next_deadline` and the status snapshot SHALL be calls that only read. The engine's state SHALL be accessed in place in the caller's storage, for the duration of one call, as `decide` followed by `commit` where API-058 applies; the call SHALL NOT load the state onto the stack by value and write it back. The input SHALL be a flat struct with a `kind` field (an input enumeration, a plain integer with `ALDIS_*` constants, §12 item 2) that the library parses once into the Rust input type. The `actions` struct SHALL hold a fixed-capacity array, `ALDIS_*_MAX_ACTIONS` (the bound `N`, CABI-030), of flat action structs written only by the library: a `kind` field (an output enumeration, §12 item 2) and the fields of every kind, with no union (the header stays C99, CABI-003); a field that a kind does not use SHALL be zero. The octets of each action SHALL be an `aldis_range_t` (`{ size_t offset; size_t len; }`) into `out` (API-061). A call that fails SHALL leave the state unchanged (API-058) and SHALL write no actions. No `poll_*` call exists. No engine API SHALL take a callback. | API-050, API-057, API-058, API-061 | I/T |
 | CABI-041 | Withdrawn: engines take no security hook (API-050, API-074; OI-56). A C caller applies SDLS itself to the ranges that a `Transmit` action returns, and finishes the frame with the codec's writer call; on reception it checks the FECF and applies SDLS before the frame input. The library has no `aldis_security_ops_t`. | — | — |
 
 ## 7. Threading
@@ -125,3 +125,108 @@ The C ABI of `aldis-tm` ([M2 plan](../milestones/m2-frame-codecs.md) WP-2 module
 - **TM frame length** (TM-001; OI-51): `aldis_tm_config_check` and every call that takes a physical channel reject a frame length above 4 095 octets with `ALDIS_ERR_INVALID_CONFIG` (`frame_len`, `expected` 4095), since the CRC-16 misses some double-bit errors beyond it (VER-064).
 - **Empty channel table** (TC-024, AOS-020, USLP-017; OI-55): `aldis_tc_mc_config_check`, `aldis_aos_mc_config_check`, `aldis_uslp_vc_table_check`, and every call that builds the channel table from a VC array reject `vc_count` 0 with `ALDIS_ERR_INVALID_CONFIG` (`vc_id`). A physical channel with no virtual channel has no Spacecraft ID to accept an OID frame for.
 - **Channel shapes**: a codec whose Rust configuration has a master channel type passes the master channel, which embeds its physical channel and carries the SCID: TC with separate arrays of VC and MAP structs, AOS and TM with an array of VC structs whose structs carry no SCID. A codec whose Rust configuration has no master channel type (USLP, whose `VcTable` spans every master channel of the physical channel) passes the physical channel configuration with flat arrays of VC and MAP structs, each tagged with its SCID, as the Rust constructor takes them.
+
+## 12. Conventions adopted 2026-10-29 (implementation pending)
+
+The maintainer decided seven conventions for the C ABI on 2026-10-29 (OI-57; decision log). The project is pre-release, so backward compatibility of the C ABI is not a constraint, and the goal is the simplest C ABI that keeps the high-assurance properties. **The code still implements the conventions of §1 to §11 until the follow-up pull requests below land.** Until then, a row of §3 to §5, §8, §10, or §11 that this section changes describes the code that exists and stays as written: it is the as-built behaviour, and this section is what the implementing pull request makes true. Each implementing pull request rewrites or withdraws the rows it changes, in the same change as the code. The engine rows (CABI-040 and the introduction of §6) have no code yet and are rewritten now.
+
+| # | Convention | Rationale |
+|---|---|---|
+| 1 | **One-shot encoders only.** The C ABI has no two-phase writers: the 15 functions `aldis_<std>_writer_begin` and `_writer_finish` (TM, AOS, TC, USLP, SPP, EPP) and their `*_layout_t` structs go. Frames and packets are built with the one-shot encoders (`aldis_tm_encode`, `aldis_tc_encode`, `aldis_uslp_encode`, `aldis_uslp_encode_oid`, `aldis_spp_encode`, `aldis_epp_encode`, …), plus a one-shot Only Idle Data encoder for TM and AOS where one is missing. The Rust typestate writers (`begin`/`finish`, RS-021) stay; their `resume`, which exists only for the stateless C finish, goes. | A stateless finish cannot know that the buffer holds what `begin` wrote: finish twice, other arguments, wrong layout, an unchecked security layout, and no check at all for SPP and EPP (OI-50). No requirement mandates zero-copy payload fill from C. Not chosen: an opaque writer state in caller storage. |
+| 2 | **Enumerations.** A value the caller passes in stays a plain `uint8_t` or `uint32_t` with a generated `ALDIS_*` constant and is parsed once on the Rust side; an out-of-range value from C never becomes a Rust enum (that is undefined behaviour). A C `enum` type (`#[repr(u32)]` in Rust, emitted by cbindgen) may be used only for a field the library writes. No union crosses the C ABI (item 7). FFI-local `#[repr(u32)]` mirror enums with exhaustive conversions and one generic parser replace the hand-written constant and `match` pairs. | Keeps invalid values unrepresentable (RS-020) at the one place untrusted input enters. Relaxes CABI-010's "never as C enum types in struct fields" for output fields only. |
+| 3 | **Status codes.** A fallible function returns `uint32_t`: `0` is OK, any other value is `ErrorKind::code()`, generated from `aldis-core`'s `ErrorKind`. The negative `ALDIS_ERR_*` convention and the hand-written mirror go. | One source of truth for the catalogue of 03 §9. Not chosen: keeping the negatives and the hand mirror. |
+| 4 | **Typed caller storage.** The storage of each stateful helper is a typed struct, `typedef struct aldis_x { uint64_t words[N]; } aldis_x_t;`, declared by the caller as an object of that type, so the C compiler supplies size and alignment. The `ALDIS_*_STORAGE_SIZE` and `_STORAGE_ALIGN` constants, the `aldis_*_storage_size` and `_storage_align` functions, and the `storage_len` argument go. The tag check of `handle.rs` (magic, generation, address) stays. | Removes the size and alignment checks and their error paths. |
+| 5 | **No `struct_size`, no `aldis_limits`.** Configuration and detail structs lose `struct_size`. The ABI major version (`aldis_abi_version`, `ALDIS_ABI_VERSION_MAJOR`) is the only compatibility mechanism. `aldis_limits` and `aldis_limits_t` go; the header already carries the `ALDIS_*_MAX_*` capacities. | Accepted cost: after the first release, extending a struct needs a new function or a major version change. |
+| 6 | **Engine state in place.** An engine call accesses its state in the caller's storage as `&mut` for the duration of the call, with the `decide`/`commit` form of API-058, instead of loading it by value and writing it back. | FOP-1's state is at least 16 KiB (`capacities.toml` `[fop1]`: 16 frames of 1 024 octets) against the 10 240-byte C ABI stack budget (OI-45). Spike 3 below measures it. |
+| 7 | **Engine input and output shape.** Inputs cross as flat structs with a `kind` field (an input enumeration, item 2) that the library parses once into the Rust input type. Actions are a fixed-capacity array of flat structs that only the library writes: a `kind` field and the fields of every kind, unused fields zero, with `aldis_range_t { size_t offset; size_t len; }` ranges into the caller's output area (API-061). No union: cbindgen emits a `#[repr(C, u32)]` enum as an anonymous union, which is C11, and the header stays C99 (CABI-003; maintainer, 2026-10-29); C does not check which union member is read, and MISRA C:2012 Rule 19.2 advises against unions. `aldis_range_t` is also the type of every offset and length pair in views (CABI-012). A failed call writes no actions. | One shape for every engine; ranges stay valid if the caller moves the buffer. |
+
+### 12.1 Requirements each convention will change
+
+| Convention | Rows changed when implemented |
+|---|---|
+| 1 | API-023 (the `resume` and stateless-finish text; OI-50 superseded); §10 "Two-phase writers"; §11 "Stateless finish of a writer that zero-fills"; the C ABI parts of the writer requirements of the codecs (TM-009, TC-004, TC-007, AOS-019, USLP-010); new rows for the one-shot Only Idle Data encoders |
+| 2 | CABI-010 (enumerations clause); §10 "Flags and enumerations"; CABI-022 (an enumeration argument with no constant stays `INVALID_FIELD`) |
+| 3 | CABI-020 and CABI-022 (the returned type and the value of an error); §10 "Status codes"; the §2 naming example (`ALDIS_ERR_CRC_MISMATCH`); the `ALDIS_ERR_*` mentions in §5, §10, §11 |
+| 4 | §5 text and example; CABI-031 (`_init` no longer validates size and alignment); §10 "Stateful helpers"; CABI-072 (the C++ wrapper's `alignas(N) std::byte[N]` members become the typed struct) |
+| 5 | CABI-021 (`struct_size` of the detail, `ALDIS_ERROR_DETAIL_MIN_SIZE`); CABI-030 (`aldis_limits`); CABI-033 (withdrawn); CABI-060 (stays: the sole mechanism); §10 "Detail" and "Configuration size"; §11 "Arrays of versioned structs" (the stride is `sizeof` of the struct) and the embedded-struct text of "Master channels" |
+| 6 and 7 | CABI-040 and the §6 introduction (rewritten now); CABI-012 (ranges as `aldis_range_t`) |
+
+CABI-001 to CABI-004, CABI-011, CABI-013, CABI-032, CABI-050, and CABI-041 (withdrawn) are not affected.
+
+### 12.2 Order of the follow-up pull requests
+
+1. Delete the C two-phase writers (and their layout structs and header entries) and the Rust `resume`; add the missing one-shot Only Idle Data encoders for TM and AOS.
+2. Typed storage (item 4).
+3. In-place engine state (item 6): the `handle.rs` mechanism for engines, before any engine has a C module.
+4. Enumeration glue per codec (item 2): mirror enums and the generic parser.
+5. Status codes (item 3).
+6. `aldis_range_t` in views (item 7).
+7. Drop `struct_size` and `aldis_limits` (item 5).
+
+Then the FARM-1 and FOP-1 C modules (M3), built on items 2, 3, 4, 6, and 7. Each pull request changes one track's directories and keeps the Rust crates as the reference.
+
+### 12.3 Spikes (2026-10-29, throwaway, not committed)
+
+Run with cbindgen 0.29.4 and the language, `[export]`, and `[enum]` settings of `crates/aldis-ffi/cbindgen.toml` (`language = "C"`, `cpp_compat`, `style = "type"`, `usize_is_size_t`, `prefix_with_name`, `rename_variants = "ScreamingSnakeCase"`), on a scratch crate. None contradicts a decision; points for the implementing pull requests are marked **Open point**.
+
+**Spike 1: `#[repr(u32)]` fieldless enum.** `#[repr(u32)] pub enum aldis_kind_t { Alpha = 0, BetaGamma = 7 }` is emitted as an `enum` with a fixed underlying type under C23 and C++, plus, in C before C23, a `typedef uint32_t`:
+
+```c
+enum aldis_kind_t
+#if defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+  : uint32_t
+#endif // defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+ {
+  ALDIS_KIND_T_ALPHA = 0,
+  ALDIS_KIND_T_BETA_GAMMA = 7,
+};
+#ifndef __cplusplus
+#if __STDC_VERSION__ >= 202311L
+typedef enum aldis_kind_t aldis_kind_t;
+#else
+typedef uint32_t aldis_kind_t;
+#endif // __STDC_VERSION__ >= 202311L
+#endif // __cplusplus
+```
+
+So in C99 a field of the type is a `uint32_t` (fixed width, never `int`-sized), and the constants are enumerators of an `enum` that no field uses. `prefix_with_name` makes each constant `<TYPE NAME>_<VARIANT>` with the type's `_t` inside (`ALDIS_KIND_T_ALPHA`). **Open point:** to get a constant such as `ALDIS_TM_KIND_ALPHA`, the Rust enum is named for the constants it should produce, without the `_t`, and the typedef name is given by a rename, or the variants carry the full name; the enumeration-glue pull request (item 4) chooses. The header stays valid C99 and C++11 (CABI-003); the C23 branch should also be compiled once by the `c-smoke` check.
+
+**Spike 2a: typed storage.** `#[repr(C)] pub struct aldis_x_t { pub words: [u64; N_WORDS] }` with `pub const N_WORDS: usize = 4;` is emitted as
+
+```c
+#define N_WORDS 4
+typedef struct {
+  uint64_t words[N_WORDS];
+} aldis_x_t;
+```
+
+The array length keeps the constant's name, and the constant becomes a `#define`. **Open point:** a length that is an arithmetic expression of constants (`(FRAMES * FRAME_LEN + FRAMES * 2 + 8) / 8 + 1`) made cbindgen emit the type as an opaque forward declaration (`typedef struct aldis_fop1_t aldis_fop1_t;`) with no body and no warning. The word count of each storage struct must therefore be one `pub const` (computed in Rust, with a `const` assertion that the state fits), and the implementing pull request checks the generated header for the body of every storage type.
+
+**Spike 2b: `#[repr(C, u32)]` enum with payload variants.** Variants `None`, `Transmit { range: aldis_range_t, vc: u8 }`, and `Event { code: u32 }` are emitted as a tag enum, one body struct per variant, and a struct of the tag and an anonymous union:
+
+```c
+enum aldis_action_t_Tag
+#if defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+  : uint32_t
+#endif
+ { ALDIS_ACTION_T_NONE, ALDIS_ACTION_T_TRANSMIT, ALDIS_ACTION_T_EVENT, };
+/* typedef uint32_t aldis_action_t_Tag;  (C before C23) */
+typedef struct { aldis_range_t range; uint8_t vc; } aldis_action_t_Transmit_Body;
+typedef struct { uint32_t code; } aldis_action_t_Event_Body;
+typedef struct {
+  aldis_action_t_Tag tag;
+  union {
+    aldis_action_t_Transmit_Body TRANSMIT;
+    aldis_action_t_Event_Body EVENT;
+  };
+} aldis_action_t;
+```
+
+`aldis_range_t` is `typedef struct { size_t offset; size_t len; } aldis_range_t;`, and a fixed array of the union in a struct is `aldis_action_t actions[3];`. cbindgen therefore emits the shape of convention 7. The union is **anonymous**, which is C11 (a GNU extension in C99), and CABI-003 requires valid C99. **Settled (maintainer, 2026-10-29):** the header stays C99, so convention 7 uses flat action structs and no union crosses the C ABI.
+
+**Spike 3: stack use of in-place access.** A scratch crate on `thumbv7em-none-eabihf`, release profile with `opt-level = "s"` and `panic = "abort"`, holds a 16 420-octet state (16 frames of 1 024 octets, 16 lengths, a head counter) in `aldis_fop1_t { words: [u64; 2053] }`. Two `extern "C"` functions run the same `push` of a frame:
+
+- `inplace(s: *mut aldis_fop1_t, …)` casts to `&mut State` and calls `push`. Its own frame is 8 octets (`push {r7, lr}`) and it ends in a tail call to `push`, which saves 20 octets (`push {r4-r7, lr}`) and has no local frame. **Worst case about 28 octets.**
+- `byvalue(s: *mut aldis_fop1_t, …)` does `ptr::read` of the state, calls `step(self, …) -> (State, u32)`, and `ptr::write`s the result back: the by-value form of the former CABI-040 wording. Its frame is 32 octets of saved registers plus `sub sp, #32768` and `sub sp, #80`, so **32 880 octets**; `step` adds 24 and `push` 20: **worst case about 32 924 octets**, two copies of the state and over three times the 10 240-byte budget.
+
+The numbers are the frames in the compiler's assembly (`cargo rustc --release --target thumbv7em-none-eabihf -- --emit=asm`), summed along the deepest call path; they were not taken with `cargo xtask stack`, which builds the workspace with `-Z build-std` on the tooling nightly and does not see a scratch crate. The implementing pull request for convention 6 measures the real engine with `cargo xtask stack`. In-place access fits the budget for any state that fits the caller's storage; by-value access cannot hold FOP-1 at its default capacity at all.
