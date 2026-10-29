@@ -270,16 +270,6 @@ fn frame_group(t: &mut Tally) {
         }
         Err(_) => t.check(false),
     }
-    // `resume` keeps the TFDZ the caller filled, as the C ABI's finish uses it (API-023).
-    let mut three = [0_u8; 64];
-    let begun = UslpFrameWriter::begin(&mut three, &vt, full, content, bb(10)).map(|mut w| {
-        w.tfdz_mut()
-            .is_ok_and(|z| crate::vectors::copy(z.get_mut(..3).unwrap_or_default(), &[1, 2, 3]))
-    });
-    t.check(begun == Ok(true));
-    let resumed = UslpFrameWriter::resume(&mut three, &vt, full, content, bb(10));
-    t.check(resumed.and_then(|w| w.finish(bb(3))) == Ok(18));
-    t.check(three.get(..18) == Some(frame));
     truncated_and_oid(t, &vt, full);
 }
 

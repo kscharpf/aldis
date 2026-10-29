@@ -1,6 +1,6 @@
 //! The contract of the TC part of the C ABI, called as a C caller calls it: the virtual channel
 //! and MAP arrays (CABI-033, M2 plan D14), the security layouts of a VC or a MAP (API-070), the
-//! stateless writers and delimiter (API-023, TC-020), the validation reasons (TC-021), the
+//! one-shot encoder and delimiter (API-023, TC-020), the validation reasons (TC-021), the
 //! Control Commands and the CLCW (TC-005, TC-030), and the argument checks (CABI-022) the
 //! vectors do not reach.
 #![expect(
@@ -16,8 +16,7 @@ use aldis_ffi::capacities::ALDIS_TC_MAX_MAPS;
 use aldis_ffi::error::*;
 use aldis_ffi::field::{
     ALDIS_FIELD_CONTROL_COMMAND, ALDIS_FIELD_CONTROL_COMMAND_FLAG, ALDIS_FIELD_FRAME_DATA_FIELD,
-    ALDIS_FIELD_MAP_ID, ALDIS_FIELD_SEGMENT_HEADER, ALDIS_FIELD_SPACECRAFT_ID,
-    ALDIS_FIELD_USER_LEN, ALDIS_FIELD_VC_ID,
+    ALDIS_FIELD_MAP_ID, ALDIS_FIELD_SEGMENT_HEADER, ALDIS_FIELD_SPACECRAFT_ID, ALDIS_FIELD_VC_ID,
 };
 use aldis_ffi::tc::*;
 use aldis_ffi::{ALDIS_MODE_LENIENT, ALDIS_MODE_STRICT, aldis_error_detail_t};
@@ -138,58 +137,49 @@ fn decode(bytes: &[u8], mode: u32, out: &mut aldis_tc_frame_t) -> i32 {
     }
 }
 
-/// A frame through the two-phase writer with `max` octets reserved and `user` written, the
-/// Security Header filled with `A5` and the Trailer with `5A`.
-fn written(fields: &aldis_tc_fields_t, max: usize, user: &[u8]) -> (Vec<u8>, aldis_tc_layout_t) {
+/// A frame from `aldis_tc_encode` with `user` as the User Data, its Security Header (zeros from
+/// the encoder) filled in place with `A5`, its Trailer with `5A`, and the FECF computed again
+/// as a security layer does (API-072); with its layout from the decoder.
+fn written(fields: &aldis_tc_fields_t, user: &[u8]) -> (Vec<u8>, aldis_tc_layout_t) {
     let (mc, vcs, maps) = (mc(), vcs(), maps());
     let mut frame = vec![0xEE_u8; 64];
-    let mut l = aldis_tc_layout_t::default();
-    // SAFETY: every pointer is to a live local or vector, with its length.
-    let begun = unsafe {
-        aldis_tc_writer_begin(
-            &raw const mc,
-            vcs.as_ptr(),
-            vcs.len(),
-            maps.as_ptr(),
-            maps.len(),
-            fields,
-            max,
-            frame.as_mut_ptr(),
-            frame.len(),
-            &raw mut l,
-            null_mut(),
-        )
+    let content = aldis_tc_content_t {
+        user_data: user.as_ptr(),
+        user_data_len: user.len(),
+        control: aldis_tc_control_t::default(),
     };
-    assert_eq!(begun, ALDIS_OK);
-    // The unfinished header is version `11`, which every decoder rejects (API-023).
-    let mut view = aldis_tc_frame_t::default();
-    assert_eq!(
-        decode(&frame, ALDIS_MODE_LENIENT, &mut view),
-        ALDIS_ERR_UNSUPPORTED_VERSION
-    );
-    frame[l.security_header_offset..][..l.security_header_len].fill(0xA5);
-    frame[l.data_offset..][..user.len()].copy_from_slice(user);
-    frame[l.security_trailer_offset..][..l.security_trailer_len].fill(0x5A);
     let mut n = 0_usize;
-    // SAFETY: as above.
-    let finished = unsafe {
-        aldis_tc_writer_finish(
+    // SAFETY: every pointer is to a live local or vector, with its length.
+    let encoded = unsafe {
+        aldis_tc_encode(
             &raw const mc,
             vcs.as_ptr(),
             vcs.len(),
             maps.as_ptr(),
             maps.len(),
             fields,
-            max,
-            user.len(),
+            &raw const content,
             frame.as_mut_ptr(),
             frame.len(),
             &raw mut n,
             null_mut(),
         )
     };
-    assert_eq!(finished, ALDIS_OK);
+    assert_eq!(encoded, ALDIS_OK);
     frame.truncate(n);
+    let mut view = aldis_tc_frame_t::default();
+    assert_eq!(decode(&frame, ALDIS_MODE_STRICT, &mut view), ALDIS_OK);
+    let l = view.layout;
+    assert!(
+        frame[l.security_header_offset..][..l.security_header_len]
+            .iter()
+            .chain(&frame[l.security_trailer_offset..][..l.security_trailer_len])
+            .all(|&b| b == 0),
+        "the encoder leaves the security fields zero"
+    );
+    frame[l.security_header_offset..][..l.security_header_len].fill(0xA5);
+    frame[l.security_trailer_offset..][..l.security_trailer_len].fill(0x5A);
+    aldis::core::crc::write_fecf(&mut frame).unwrap();
     (frame, l)
 }
 
@@ -314,14 +304,14 @@ fn channel_arrays_step_by_their_struct_size() {
 
 #[test]
 fn security_layouts_come_from_the_vc_or_its_map() {
-    // req: API-070, API-072, API-023, TC-004, CABI-012
-    // VC 3: Security Header 4, Trailer 2; four octets reserved, two used, so the Trailer moves.
-    let (frame, l) = written(&ad(3, None), 4, &[1, 2]);
+    // req: API-070, API-072, TC-004, CABI-012
+    // VC 3: Security Header 4, Trailer 2; two octets of User Data.
+    let (frame, l) = written(&ad(3, None), &[1, 2]);
     assert_eq!(
         (l.security_header_offset, l.data_offset, l.data_len),
-        (5, 9, 4)
+        (5, 9, 2)
     );
-    assert_eq!((l.security_trailer_offset, l.frame_len), (13, 17));
+    assert_eq!((l.security_trailer_offset, l.frame_len), (11, 15));
     assert_eq!(frame.len(), 5 + 4 + 2 + 2 + 2);
     let mut view = aldis_tc_frame_t::default();
     assert_eq!(decode(&frame, ALDIS_MODE_STRICT, &mut view), ALDIS_OK);
@@ -337,7 +327,7 @@ fn security_layouts_come_from_the_vc_or_its_map() {
     );
     assert!(!view.has_segment_header && view.has_fecf && v.fecf_len == 2);
     // VC 2, MAP 9: the Segment Header, then the MAP's Security Header 3 and Trailer 1.
-    let (frame, l) = written(&ad(2, Some(9)), 3, &[7, 8, 9]);
+    let (frame, l) = written(&ad(2, Some(9)), &[7, 8, 9]);
     assert_eq!((l.segment_header_offset, l.segment_header_len), (5, 1));
     assert_eq!((l.security_header_offset, l.security_header_len), (6, 3));
     assert_eq!(frame[5], 0xC9, "Sequence Flags 11, MAP 9");
@@ -349,7 +339,7 @@ fn security_layouts_come_from_the_vc_or_its_map() {
     );
     assert_eq!(view.layout, l);
     // MAP 0 of the same VC has no SDLS.
-    let (frame, _) = written(&ad(2, Some(0)), 3, &[7, 8, 9]);
+    let (frame, _) = written(&ad(2, Some(0)), &[7, 8, 9]);
     assert_eq!(decode(&frame, ALDIS_MODE_STRICT, &mut view), ALDIS_OK);
     assert_eq!(
         (view.layout.security_header_len, view.layout.data_offset),
@@ -423,7 +413,7 @@ fn stream_reports_the_discard_reason() {
         };
         (status, offset, item)
     };
-    let (frame, _) = written(&ad(1, None), 2, &[1, 2]);
+    let (frame, _) = written(&ad(1, None), &[1, 2]);
     let (status, offset, item) = step(&frame, &mc);
     assert_eq!(status, ALDIS_OK);
     assert_eq!(item.kind, ALDIS_TC_STREAM_ACCEPTED);
@@ -450,7 +440,7 @@ fn stream_reports_the_discard_reason() {
 
 #[test]
 #[expect(clippy::too_many_lines, reason = "one check per argument rule")]
-fn writer_arguments_are_checked() {
+fn encode_arguments_are_checked() {
     // req: CABI-022, CABI-011, API-022, TC-004, TC-005, TC-007
     let (mc, vcs, maps) = (mc(), vcs(), maps());
     let mut frame = [0xEE_u8; 64];
@@ -548,165 +538,27 @@ fn writer_arguments_are_checked() {
         (status, e.field),
         (ALDIS_ERR_INVALID_FIELD, ALDIS_FIELD_SEGMENT_HEADER)
     );
-    // The two-phase writer: a Type-BC frame, and User Data above the reservation or empty.
-    let begin = |fields: &aldis_tc_fields_t, max: usize, frame: &mut [u8]| {
-        let mut l = aldis_tc_layout_t::default();
-        let mut e = detail();
-        // SAFETY: every pointer is to a live local or into `frame`, with its length.
-        let status = unsafe {
-            aldis_tc_writer_begin(
-                &raw const mc,
-                vcs.as_ptr(),
-                vcs.len(),
-                maps.as_ptr(),
-                maps.len(),
-                fields,
-                max,
-                frame.as_mut_ptr(),
-                frame.len(),
-                &raw mut l,
-                &raw mut e,
-            )
-        };
-        (status, e)
+    // A frame above the channel's maximum of 64 octets (TC-007).
+    let big = [0_u8; 60];
+    let too_big = aldis_tc_content_t {
+        user_data: big.as_ptr(),
+        user_data_len: 60,
+        ..content
     };
-    let finish = |fields: &aldis_tc_fields_t, max: usize, used: usize, frame: &mut [u8]| {
-        let mut n = 0_usize;
-        let mut e = detail();
-        // SAFETY: as above.
-        let status = unsafe {
-            aldis_tc_writer_finish(
-                &raw const mc,
-                vcs.as_ptr(),
-                vcs.len(),
-                maps.as_ptr(),
-                maps.len(),
-                fields,
-                max,
-                used,
-                frame.as_mut_ptr(),
-                frame.len(),
-                &raw mut n,
-                &raw mut e,
-            )
-        };
-        (status, e, n)
+    let mut roomy = [0xEE_u8; 128];
+    let (status, _) = encode(&fields, &raw const too_big, roomy.as_mut_ptr(), 128);
+    assert_eq!(status, ALDIS_ERR_OUT_OF_RANGE);
+    assert!(roomy.iter().all(|&b| b == 0xEE));
+    // An empty User Data on a Type-D frame (TC-004).
+    let empty = aldis_tc_content_t {
+        user_data_len: 0,
+        ..content
     };
-    let (status, e) = begin(&bc, 1, &mut frame);
-    assert_eq!(
-        (status, e.field),
-        (ALDIS_ERR_INVALID_FIELD, ALDIS_FIELD_CONTROL_COMMAND_FLAG)
-    );
-    assert_eq!(begin(&fields, 4, &mut frame).0, ALDIS_OK);
-    let before = frame;
-    let (status, e, _) = finish(&fields, 4, 5, &mut frame);
-    assert_eq!(
-        (status, e.field),
-        (ALDIS_ERR_OUT_OF_RANGE, ALDIS_FIELD_USER_LEN)
-    );
-    let (status, e, _) = finish(&fields, 4, 0, &mut frame);
+    let (status, e) = encode(&fields, &raw const empty, frame.as_mut_ptr(), 64);
     assert_eq!(
         (status, e.field),
         (ALDIS_ERR_INVALID_FIELD, ALDIS_FIELD_FRAME_DATA_FIELD)
     );
-    assert_eq!(frame, before, "a failed finish leaves the frame unchanged");
-    let (status, _, n) = finish(&fields, 4, 4, &mut frame);
-    assert_eq!((status, n), (ALDIS_OK, 11));
-    // A frame above the channel's maximum of 64 octets (TC-007).
-    let (status, _) = begin(&fields, 60, &mut frame);
-    assert_eq!(status, ALDIS_ERR_OUT_OF_RANGE);
-}
-
-#[test]
-fn finish_checks_the_buffer_was_begun_with_these_arguments() {
-    // req: API-023, CABI-022, TC-004 (OI-50)
-    let (mc, vcs, maps) = (mc(), vcs(), maps());
-    let call = |begin: bool, fields: &aldis_tc_fields_t, max: usize, frame: &mut [u8]| {
-        let mut l = aldis_tc_layout_t::default();
-        let mut n = 0_usize;
-        // SAFETY: every pointer is to a live local or into `frame`, with its length.
-        unsafe {
-            if begin {
-                aldis_tc_writer_begin(
-                    &raw const mc,
-                    vcs.as_ptr(),
-                    vcs.len(),
-                    maps.as_ptr(),
-                    maps.len(),
-                    fields,
-                    max,
-                    frame.as_mut_ptr(),
-                    frame.len(),
-                    &raw mut l,
-                    null_mut(),
-                )
-            } else {
-                aldis_tc_writer_finish(
-                    &raw const mc,
-                    vcs.as_ptr(),
-                    vcs.len(),
-                    maps.as_ptr(),
-                    maps.len(),
-                    fields,
-                    max,
-                    1,
-                    frame.as_mut_ptr(),
-                    frame.len(),
-                    &raw mut n,
-                    null_mut(),
-                )
-            }
-        }
-    };
-    // Another MAP, VC, frame type, sequence number, sequence flags, and reservation.
-    let begun = ad(2, Some(0));
-    let mut frame = [0xEE_u8; 64];
-    assert_eq!(call(true, &begun, 4, &mut frame), ALDIS_OK);
-    let written = frame;
-    let other = [
-        (ad(2, Some(9)), 4),
-        (ad(3, None), 4),
-        (
-            aldis_tc_fields_t {
-                frame_type: ALDIS_TC_FRAME_BD,
-                ..begun
-            },
-            4,
-        ),
-        (
-            aldis_tc_fields_t {
-                sequence_number: 8,
-                ..begun
-            },
-            4,
-        ),
-        (
-            aldis_tc_fields_t {
-                sequence_flags: ALDIS_TC_SEQ_FIRST,
-                ..begun
-            },
-            4,
-        ),
-        (begun, 3),
-        (begun, 5),
-    ];
-    for (f, max) in other {
-        assert_eq!(
-            call(false, &f, max, &mut frame),
-            ALDIS_ERR_INVALID_STATE,
-            "{f:?} {max}"
-        );
-        assert_eq!(frame, written, "a failed finish leaves the frame unchanged");
-    }
-    // The same arguments finish it.
-    assert_eq!(call(false, &begun, 4, &mut frame), ALDIS_OK);
-    // A buffer never begun, and a finished frame.
-    for fill in [0x00_u8, 0xA5] {
-        let mut never = [fill; 64];
-        assert_eq!(call(false, &begun, 4, &mut never), ALDIS_ERR_INVALID_STATE);
-        assert_eq!(never, [fill; 64]);
-    }
-    assert_eq!(call(false, &begun, 4, &mut frame), ALDIS_ERR_INVALID_STATE);
 }
 
 #[test]
@@ -854,7 +706,7 @@ fn the_clcw_crosses_as_a_word() {
 fn the_stream_intake_pipeline() {
     // req: TC-020, TC-021, CABI-012, CABI-022
     let (mc, vcs, maps) = (mc(), vcs(), maps());
-    let (frame, _) = written(&ad(1, None), 2, &[1, 2]);
+    let (frame, _) = written(&ad(1, None), &[1, 2]);
     let mut unit = frame.clone();
     unit.extend_from_slice(&frame);
     unit.extend_from_slice(&[0x55, 0x55, 0x55]);

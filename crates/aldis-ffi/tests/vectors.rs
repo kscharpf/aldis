@@ -698,47 +698,6 @@ fn spp_encode(case: &CodecCase) -> R<Value> {
             e,
         )
     })?;
-    // The two-phase writer, as two stateless calls, writes the same octets (API-020, D4).
-    let mut two = vec![0_u8; n];
-    let mut layout = aldis_spp_writer_layout_t::default();
-    // SAFETY: every pointer is to a live local or vector.
-    call(|e| unsafe {
-        aldis_spp_writer_begin(
-            &raw const cfg,
-            &raw const fields,
-            sec.len(),
-            user.len(),
-            two.as_mut_ptr(),
-            two.len(),
-            &raw mut layout,
-            e,
-        )
-    })
-    .unwrap_or_else(|_| panic!("{}: writer_begin", case.id));
-    two[layout.secondary_header_offset..][..layout.secondary_header_len].copy_from_slice(&sec);
-    two[layout.user_data_offset..][..layout.user_data_cap].copy_from_slice(&user);
-    let mut m = 0;
-    // SAFETY: as above.
-    call(|e| unsafe {
-        aldis_spp_writer_finish(
-            &raw const cfg,
-            &raw const fields,
-            sec.len(),
-            user.len(),
-            user.len(),
-            two.as_mut_ptr(),
-            two.len(),
-            &raw mut m,
-            e,
-        )
-    })
-    .unwrap_or_else(|_| panic!("{}: writer_finish", case.id));
-    assert_eq!(
-        (m, &two[..]),
-        (n, &out[..n]),
-        "{}: two-phase writer differs",
-        case.id
-    );
     Ok(json!({ "output_hex": hex::encode(&out[..n]) }))
 }
 
@@ -1221,46 +1180,6 @@ fn epp_encode(case: &CodecCase) -> R<Value> {
             e,
         )
     })?;
-    // The two-phase writer, as two stateless calls, writes the same octets (API-020, D4).
-    let mut two = vec![0_u8; data.len() + 8];
-    let mut layout = aldis_epp_writer_layout_t::default();
-    // SAFETY: as above.
-    call(|e| unsafe {
-        aldis_epp_writer_begin(
-            &raw const cfg,
-            &raw const fields,
-            size,
-            data.len(),
-            two.as_mut_ptr(),
-            two.len(),
-            &raw mut layout,
-            e,
-        )
-    })
-    .unwrap_or_else(|_| panic!("{}: writer_begin", case.id));
-    two[layout.data_offset..][..layout.data_cap].copy_from_slice(&data);
-    let mut m = 0;
-    // SAFETY: as above.
-    call(|e| unsafe {
-        aldis_epp_writer_finish(
-            &raw const cfg,
-            &raw const fields,
-            size,
-            data.len(),
-            data.len(),
-            two.as_mut_ptr(),
-            two.len(),
-            &raw mut m,
-            e,
-        )
-    })
-    .unwrap_or_else(|_| panic!("{}: writer_finish", case.id));
-    assert_eq!(
-        (m, &two[..m]),
-        (n, &out[..n]),
-        "{}: two-phase writer differs",
-        case.id
-    );
     Ok(json!({ "output_hex": hex::encode(&out[..n]) }))
 }
 
@@ -1761,18 +1680,7 @@ fn aos_octets(p: &Value, name: &str) -> Vec<u8> {
         .unwrap_or_default()
 }
 
-/// Copies `src` to `offset` in `frame`, where the writer's layout gives it `len` octets.
-fn aos_put(frame: &mut [u8], offset: usize, len: usize, src: &[u8]) {
-    assert_eq!(
-        src.len(),
-        len,
-        "a field of another length than the layout's"
-    );
-    frame[offset..offset + len].copy_from_slice(src);
-}
-
-/// Encodes one frame with `aldis_aos_encode` and checks that the two-phase writer agrees
-/// (API-020, API-023).
+/// Encodes one frame with `aldis_aos_encode` (API-020).
 fn aos_encode(case: &CodecCase, ch: &AosChannels) -> R<Value> {
     let par = params(case);
     let (mc, vcs) = ch.mc_for_frame(u16_of(&par, "scid"))?;
@@ -1819,58 +1727,10 @@ fn aos_encode(case: &CodecCase, ch: &AosChannels) -> R<Value> {
         assert!(out.iter().all(|&b| b == 0xEE), "{}: out changed", case.id);
     }
     result?;
-    // The two-phase writer: begin, fill each field at its offset, finish (API-023).
-    let mut two = vec![0xEE_u8; written];
-    let mut l = aldis_aos_layout_t::default();
-    // SAFETY: every pointer is to a live local or vector, with its length.
-    call(|e| unsafe {
-        aldis_aos_writer_begin(
-            &raw const mc,
-            vcs.as_ptr(),
-            vcs.len(),
-            &raw const fields,
-            two.as_mut_ptr(),
-            two.len(),
-            &raw mut l,
-            e,
-        )
-    })?;
-    assert_eq!(l.frame_len, written);
-    aos_put(&mut two, l.insert_zone_offset, l.insert_zone_len, &iz);
-    aos_put(
-        &mut two,
-        l.security_header_offset,
-        l.security_header_len,
-        &sh,
-    );
-    aos_put(&mut two, l.zone_offset, l.zone_len, &zone);
-    aos_put(
-        &mut two,
-        l.security_trailer_offset,
-        l.security_trailer_len,
-        &st,
-    );
-    aos_put(&mut two, l.ocf_offset, l.ocf_len, &ocf);
-    let mut finished = 0_usize;
-    // SAFETY: as above.
-    call(|e| unsafe {
-        aldis_aos_writer_finish(
-            &raw const mc,
-            vcs.as_ptr(),
-            vcs.len(),
-            &raw const fields,
-            two.as_mut_ptr(),
-            two.len(),
-            &raw mut finished,
-            e,
-        )
-    })?;
-    assert_eq!(finished, written, "{}", case.id);
-    assert_eq!(two, out[..written], "{}: two-phase writer differs", case.id);
     Ok(json!({ "output_hex": hex::encode(&out[..written]) }))
 }
 
-/// Consecutive OID frames of one SCID from one generator of `form` (AOS-016, CMN-021).
+/// Consecutive OID frames of one SCID from one generator of `form` (AOS-021, AOS-016, CMN-021).
 fn aos_oid_frames(case: &CodecCase, ch: &AosChannels, form: u32) -> R<Vec<String>> {
     let p = params(case);
     let (mc, vcs) = ch.mc_for_frame(u16_of(&p, "scid"))?;
@@ -1878,38 +1738,26 @@ fn aos_oid_frames(case: &CodecCase, ch: &AosChannels, form: u32) -> R<Vec<String
     let mut frames = Vec::new();
     for f in get(&p, "frames").as_array().unwrap() {
         let fields = aos_fields(f);
+        let iz = f.get("insert_zone_hex").map_or_else(
+            || vec![0; ch.pc.insert_zone_len],
+            |_| hex_of(f, "insert_zone_hex"),
+        );
+        let content = aldis_aos_content_t {
+            insert_zone: iz.as_ptr(),
+            insert_zone_len: iz.len(),
+            ..aldis_aos_content_t::default()
+        };
         let mut out = vec![0xEE_u8; ch.pc.frame_len];
-        let mut l = aldis_aos_layout_t::default();
+        let mut n = 0_usize;
         // SAFETY: every pointer is to a live local or vector; `oid.h` is a live handle.
         call(|e| unsafe {
-            aldis_aos_oid_writer_begin(
+            aldis_aos_encode_oid(
                 &raw const mc,
                 vcs.as_ptr(),
                 vcs.len(),
                 &raw const fields,
+                &raw const content,
                 oid.h,
-                out.as_mut_ptr(),
-                out.len(),
-                &raw mut l,
-                e,
-            )
-        })?;
-        if f.get("insert_zone_hex").is_some() {
-            aos_put(
-                &mut out,
-                l.insert_zone_offset,
-                l.insert_zone_len,
-                &hex_of(f, "insert_zone_hex"),
-            );
-        }
-        let mut n = 0_usize;
-        // SAFETY: as above.
-        call(|e| unsafe {
-            aldis_aos_writer_finish(
-                &raw const mc,
-                vcs.as_ptr(),
-                vcs.len(),
-                &raw const fields,
                 out.as_mut_ptr(),
                 out.len(),
                 &raw mut n,
@@ -2213,18 +2061,7 @@ fn tm_ocf(p: &Value) -> Vec<u8> {
         .unwrap_or_default()
 }
 
-/// Copies `src` to `offset` in `frame`, where the writer's layout gives it `len` octets.
-fn tm_put(frame: &mut [u8], offset: usize, len: usize, src: &[u8]) {
-    assert_eq!(
-        src.len(),
-        len,
-        "a field of another length than the layout's"
-    );
-    frame[offset..offset + len].copy_from_slice(src);
-}
-
-/// Encodes one frame with `aldis_tm_encode` and checks that the two-phase writer agrees
-/// (API-020, API-023).
+/// Encodes one frame with `aldis_tm_encode` (API-020).
 fn tm_encode(case: &CodecCase, ch: &TmChannels) -> R<Value> {
     let (mc, vcs) = ch.mc(case);
     let par = params(case);
@@ -2271,58 +2108,10 @@ fn tm_encode(case: &CodecCase, ch: &TmChannels) -> R<Value> {
         assert!(out.iter().all(|&b| b == 0xEE), "{}: out changed", case.id);
     }
     result?;
-    // The two-phase writer: begin, fill each field at its offset, finish (API-023).
-    let mut two = vec![0xEE_u8; written];
-    let mut layout = aldis_tm_layout_t::default();
-    // SAFETY: every pointer is to a live local or vector, with its length.
-    call(|e| unsafe {
-        aldis_tm_writer_begin(
-            mc,
-            vcs.as_ptr(),
-            vcs.len(),
-            &raw const fields,
-            two.as_mut_ptr(),
-            two.len(),
-            &raw mut layout,
-            e,
-        )
-    })?;
-    assert_eq!(layout.frame_len, written);
-    tm_put(&mut two, layout.fsh_data_offset, layout.fsh_data_len, &fsh);
-    tm_put(
-        &mut two,
-        layout.security_header_offset,
-        layout.security_header_len,
-        &sh,
-    );
-    tm_put(&mut two, layout.data_offset, layout.data_len, &data);
-    tm_put(
-        &mut two,
-        layout.security_trailer_offset,
-        layout.security_trailer_len,
-        &st,
-    );
-    tm_put(&mut two, layout.ocf_offset, layout.ocf_len, &ocf);
-    let mut finished = 0_usize;
-    // SAFETY: as above.
-    call(|e| unsafe {
-        aldis_tm_writer_finish(
-            mc,
-            vcs.as_ptr(),
-            vcs.len(),
-            &raw const fields,
-            two.as_mut_ptr(),
-            two.len(),
-            &raw mut finished,
-            e,
-        )
-    })?;
-    assert_eq!(finished, written, "{}", case.id);
-    assert_eq!(two, out[..written], "{}: two-phase writer differs", case.id);
     Ok(json!({ "output_hex": hex::encode(&out[..written]) }))
 }
 
-/// Consecutive OID frames from one generator of `form` (TM-010, CMN-021).
+/// Consecutive OID frames from one generator of `form` (TM-012, TM-010, CMN-021).
 fn tm_oid_frames(case: &CodecCase, ch: &TmChannels, form: u32) -> R<Vec<String>> {
     let (mc, vcs) = ch.mc(case);
     let p = params(case);
@@ -2331,46 +2120,30 @@ fn tm_oid_frames(case: &CodecCase, ch: &TmChannels, form: u32) -> R<Vec<String>>
     let mut frames = Vec::new();
     for f in get(&p, "frames").as_array().unwrap() {
         let (mcc, vcc) = (u8_of(f, "mc_frame_count"), u8_of(f, "vc_frame_count"));
+        let fsh = f
+            .get("fsh_data_hex")
+            .map_or_else(Vec::new, |_| hex_of(f, "fsh_data_hex"));
+        let ocf = tm_ocf(f);
+        let content = aldis_tm_content_t {
+            fsh_data: fsh.as_ptr(),
+            fsh_data_len: fsh.len(),
+            ocf: ocf.as_ptr(),
+            ocf_len: ocf.len(),
+            ..aldis_tm_content_t::default()
+        };
         let mut out = vec![0xEE_u8; ch.pc.frame_len];
-        let mut l = aldis_tm_layout_t::default();
+        let mut n = 0_usize;
         // SAFETY: every pointer is to a live local or vector; `oid.h` is a live handle.
         call(|e| unsafe {
-            aldis_tm_oid_writer_begin(
+            aldis_tm_encode_oid(
                 mc,
                 vcs.as_ptr(),
                 vcs.len(),
                 vcid,
                 mcc,
                 vcc,
+                &raw const content,
                 oid.h,
-                out.as_mut_ptr(),
-                out.len(),
-                &raw mut l,
-                e,
-            )
-        })?;
-        if f.get("fsh_data_hex").is_some() {
-            tm_put(
-                &mut out,
-                l.fsh_data_offset,
-                l.fsh_data_len,
-                &hex_of(f, "fsh_data_hex"),
-            );
-        }
-        let ocf = tm_ocf(f);
-        if !ocf.is_empty() {
-            tm_put(&mut out, l.ocf_offset, l.ocf_len, &ocf);
-        }
-        let mut n = 0_usize;
-        // SAFETY: as above.
-        call(|e| unsafe {
-            aldis_tm_oid_writer_finish(
-                mc,
-                vcs.as_ptr(),
-                vcs.len(),
-                vcid,
-                mcc,
-                vcc,
                 out.as_mut_ptr(),
                 out.len(),
                 &raw mut n,
@@ -2691,14 +2464,7 @@ fn uslp_json(v: &aldis_uslp_frame_t, bytes: &[u8]) -> Value {
     out
 }
 
-/// Copies `src` to `offset` in `frame`, where the writer's layout gives it at least `src.len()`
-/// octets.
-fn uslp_put(frame: &mut [u8], offset: usize, src: &[u8]) {
-    frame[offset..offset + src.len()].copy_from_slice(src);
-}
-
-/// Encodes one frame with `aldis_uslp_encode` and checks that the two-phase writer agrees
-/// (API-020, API-023).
+/// Encodes one frame with `aldis_uslp_encode` (API-020).
 fn uslp_encode(case: &CodecCase, ch: &UslpChannels) -> R<Value> {
     let p = params(case);
     let fields = uslp_fields(&p);
@@ -2707,7 +2473,7 @@ fn uslp_encode(case: &CodecCase, ch: &UslpChannels) -> R<Value> {
         hex_of(&p, "tfdz_hex"),
         uslp_ocf(&p),
     );
-    let mut content = aldis_uslp_content_t {
+    let content = aldis_uslp_content_t {
         tfdf: uslp_tfdf(&p),
         insert_zone: iz.as_ptr(),
         insert_zone_len: iz.len(),
@@ -2738,56 +2504,6 @@ fn uslp_encode(case: &CodecCase, ch: &UslpChannels) -> R<Value> {
         assert!(out.iter().all(|&b| b == 0xEE), "{}: out changed", case.id);
     }
     result?;
-    // The two-phase writer: begin, fill the TFDZ at its offset, finish (API-023).
-    content.tfdz = core::ptr::null();
-    content.tfdz_len = 0;
-    let mut two = vec![0xEE_u8; written];
-    let mut layout = aldis_uslp_layout_t::default();
-    // SAFETY: as above.
-    call(|e| unsafe {
-        aldis_uslp_writer_begin(
-            &raw const ch.pc,
-            ch.vcs.as_ptr(),
-            ch.vcs.len(),
-            ch.maps.as_ptr(),
-            ch.maps.len(),
-            &raw const fields,
-            &raw const content,
-            tfdz.len(),
-            two.as_mut_ptr(),
-            two.len(),
-            &raw mut layout,
-            e,
-        )
-    })?;
-    assert_eq!(
-        (layout.frame_len, layout.tfdz_len),
-        (written, tfdz.len()),
-        "{}",
-        case.id
-    );
-    uslp_put(&mut two, layout.tfdz_offset, &tfdz);
-    let mut finished = 0_usize;
-    // SAFETY: as above.
-    call(|e| unsafe {
-        aldis_uslp_writer_finish(
-            &raw const ch.pc,
-            ch.vcs.as_ptr(),
-            ch.vcs.len(),
-            ch.maps.as_ptr(),
-            ch.maps.len(),
-            &raw const fields,
-            &raw const content,
-            tfdz.len(),
-            tfdz.len(),
-            two.as_mut_ptr(),
-            two.len(),
-            &raw mut finished,
-            e,
-        )
-    })?;
-    assert_eq!(finished, written, "{}", case.id);
-    assert_eq!(two, out[..written], "{}: two-phase writer differs", case.id);
     Ok(json!({ "output_hex": hex::encode(&out[..written]) }))
 }
 
@@ -3413,14 +3129,7 @@ mod tc {
         }
         result?;
         let frame = &out[..written];
-        if control.command == ALDIS_TC_CONTROL_NONE {
-            assert_eq!(
-                writer(mc, vcs, maps, &fields, &user)?,
-                frame,
-                "{}: two-phase writer differs",
-                case.id
-            );
-        } else {
+        if control.command != ALDIS_TC_CONTROL_NONE {
             let mut octets = [0_u8; 3];
             let mut n = 0_usize;
             // SAFETY: every pointer is to a live local.
@@ -3436,58 +3145,6 @@ mod tc {
             assert_eq!(&frame[5..5 + n], &octets[..n], "{}", case.id);
         }
         Ok(json!({ "output_hex": hex::encode(frame) }))
-    }
-
-    /// The frame of `user` through the two-phase writer: begin, fill the User Data at its
-    /// offset, finish (API-023).
-    fn writer(
-        mc: &aldis_tc_mc_config_t,
-        vcs: &[aldis_tc_vc_config_t],
-        maps: &[aldis_tc_map_config_t],
-        fields: &aldis_tc_fields_t,
-        user: &[u8],
-    ) -> R<Vec<u8>> {
-        let mut two = vec![0xEE_u8; 1100];
-        let mut l = aldis_tc_layout_t::default();
-        // SAFETY: every pointer is to a live local or vector, with its length.
-        call(|e| unsafe {
-            aldis_tc_writer_begin(
-                mc,
-                vcs.as_ptr(),
-                vcs.len(),
-                maps.as_ptr(),
-                maps.len(),
-                fields,
-                user.len(),
-                two.as_mut_ptr(),
-                two.len(),
-                &raw mut l,
-                e,
-            )
-        })?;
-        assert_eq!(l.data_len, user.len());
-        two[l.data_offset..l.data_offset + l.data_len].copy_from_slice(user);
-        let mut n = 0_usize;
-        // SAFETY: as above.
-        call(|e| unsafe {
-            aldis_tc_writer_finish(
-                mc,
-                vcs.as_ptr(),
-                vcs.len(),
-                maps.as_ptr(),
-                maps.len(),
-                fields,
-                user.len(),
-                user.len(),
-                two.as_mut_ptr(),
-                two.len(),
-                &raw mut n,
-                e,
-            )
-        })?;
-        assert_eq!(n, l.frame_len);
-        two.truncate(n);
-        Ok(two)
     }
 
     /// The Frame Validation Checks: an accepted frame, or a rejection with its reason and the

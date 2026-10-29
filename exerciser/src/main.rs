@@ -25,6 +25,7 @@ mod aos;
 mod cases;
 mod epp;
 mod exercise;
+mod farm1;
 mod ffi;
 mod ocf;
 mod spp;

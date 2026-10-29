@@ -230,7 +230,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        crate: [aldis-core, aldis-time, aldis-epp, aldis-spp, aldis-aos, aldis-tm, aldis-tc, aldis-uslp]
+        crate: [aldis-core, aldis-time, aldis-epp, aldis-spp, aldis-aos, aldis-tm, aldis-tc, aldis-uslp, aldis-cop1]
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     env:

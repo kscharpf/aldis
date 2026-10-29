@@ -2,16 +2,14 @@
 //! CABI-010…012, CABI-020…022, CABI-033).
 //!
 //! Calls: [`aldis_epp_decode`], [`aldis_epp_peek_length`], [`aldis_epp_validate`],
-//! [`aldis_epp_check`], [`aldis_epp_encode`], the two-phase writer as
-//! [`aldis_epp_writer_begin`] and [`aldis_epp_writer_finish`], [`aldis_epp_header_encode`],
+//! [`aldis_epp_check`], [`aldis_epp_encode`], [`aldis_epp_header_encode`],
 //! [`aldis_epp_idle`], [`aldis_epp_idle_header`], and [`aldis_epp_config_check`]. EPI sets
 //! are bit masks: bit `n` stands for EPI (or extended EPI) `n` (M2 plan D4).
 
 use aldis::core::Result;
 use aldis::epp::{
-    EncapsulationFields, EncapsulationHeader, EncapsulationPacket, EncapsulationWriter, Epi,
-    EpiExtension, EpiSet, EppConfig, ExtendedEpiSet, HeaderLen, HeaderSize, UserDefined, encode,
-    idle,
+    EncapsulationFields, EncapsulationHeader, EncapsulationPacket, Epi, EpiExtension, EpiSet,
+    EppConfig, ExtendedEpiSet, HeaderLen, HeaderSize, UserDefined, encode, idle,
 };
 
 use crate::abi::{self, Out, invalid_argument};
@@ -91,16 +89,6 @@ pub struct aldis_epp_packet_t {
     pub data_offset: usize,
     /// Length of the Encapsulated Data Field.
     pub data_len: usize,
-}
-
-/// Where a two-phase writer's caller fills in the data field (API-023, CABI-012).
-#[repr(C)]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct aldis_epp_writer_layout_t {
-    /// Offset of the Encapsulated Data Field in the output buffer: the header length.
-    pub data_offset: usize,
-    /// Capacity of the data field: the `max_data_len` given.
-    pub data_cap: usize,
 }
 
 /// The configuration of a C struct (133.1 §5; EPP-009, EPP-010, API-040).
@@ -342,99 +330,6 @@ pub unsafe extern "C" fn aldis_epp_encode(
             let out_len = abi::out(out_len)?;
             let unit = config.data_unit(fields, data_bytes)?;
             out_len.write(encode(&unit, size, out)?);
-            Ok(())
-        })
-    }
-}
-
-/// Starts a two-phase write: checks the arguments, writes the header with Packet Length 0,
-/// and reports where the caller fills in the data field (133.1 §4.1; API-023, M2 plan D4).
-///
-/// No state is kept: [`aldis_epp_writer_finish`] takes the same arguments again.
-///
-/// # Errors
-/// As [`aldis_epp_encode`], with the header sized for `max_data_len`.
-///
-/// # Safety
-/// `cfg` and `fields` are valid for reads; `out` is valid for `cap` octets; `layout` is valid
-/// for one write; `err` is `NULL` or valid for one write.
-#[expect(
-    unsafe_code,
-    reason = "C ABI entry point: unmangled, takes raw pointers (GEN-071)"
-)]
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn aldis_epp_writer_begin(
-    cfg: *const aldis_epp_config_t,
-    fields: *const aldis_epp_fields_t,
-    header_size: u32,
-    max_data_len: usize,
-    out: *mut u8,
-    cap: usize,
-    layout: *mut aldis_epp_writer_layout_t,
-    err: *mut crate::aldis_error_detail_t,
-) -> i32 {
-    // SAFETY: every pointer is valid as `# Safety` states; `abi` checks NULL and alignment.
-    unsafe {
-        abi::call(err, || {
-            let config = config(&abi::config(cfg)?)?;
-            let fields = self::fields(abi::read(fields)?)?;
-            let size = self::header_size(header_size)?;
-            let out = abi::bytes_mut(out, cap, &[])?;
-            let layout = abi::out(layout)?;
-            let base = out.as_ptr().addr();
-            let mut w = EncapsulationWriter::begin(out, &config, fields, size, max_data_len)?;
-            // The data field follows the header that `begin` chose for `max_data_len`.
-            let data = w.data_mut();
-            layout.write(aldis_epp_writer_layout_t {
-                data_offset: data.as_ptr().addr().saturating_sub(base),
-                data_cap: data.len(),
-            });
-            Ok(())
-        })
-    }
-}
-
-/// Finishes a two-phase write begun with the same arguments: writes the Packet Length for
-/// `data_len` octets and returns the packet length (133.1 §4.1; API-021, API-023).
-///
-/// # Errors
-/// As [`aldis_epp_writer_begin`], `ALDIS_ERR_OUT_OF_RANGE` (`data_len`) above `max_data_len` or
-/// outside the configured limits, and `ALDIS_ERR_INVALID_FIELD` (`epi`) for an empty data field
-/// with a non-idle EPI.
-///
-/// The call re-runs `begin`, so a finish with other arguments than `begin`'s gives a valid
-/// packet for the arguments of the finish; OI-50's header check is not applied to it
-/// (maintainer decision of 2026-10-25, revisited in M3).
-///
-/// # Safety
-/// As [`aldis_epp_writer_begin`]; `out_len` is valid for one write.
-#[expect(
-    unsafe_code,
-    reason = "C ABI entry point: unmangled, takes raw pointers (GEN-071)"
-)]
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn aldis_epp_writer_finish(
-    cfg: *const aldis_epp_config_t,
-    fields: *const aldis_epp_fields_t,
-    header_size: u32,
-    max_data_len: usize,
-    data_len: usize,
-    out: *mut u8,
-    cap: usize,
-    out_len: *mut usize,
-    err: *mut crate::aldis_error_detail_t,
-) -> i32 {
-    // SAFETY: every pointer is valid as `# Safety` states; `abi` checks NULL and alignment.
-    unsafe {
-        abi::call(err, || {
-            let config = config(&abi::config(cfg)?)?;
-            let fields = self::fields(abi::read(fields)?)?;
-            let size = self::header_size(header_size)?;
-            let out = abi::bytes_mut(out, cap, &[])?;
-            let out_len = abi::out(out_len)?;
-            // `begin` rewrites only the header; the data field the caller filled in stays.
-            let w = EncapsulationWriter::begin(out, &config, fields, size, max_data_len)?;
-            out_len.write(w.finish(data_len)?);
             Ok(())
         })
     }

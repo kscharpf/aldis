@@ -15,7 +15,7 @@
 /**
  * ABI minor version (CABI-060).
  */
-#define ALDIS_ABI_VERSION_MINOR 1
+#define ALDIS_ABI_VERSION_MINOR 2
 
 /**
  * ABI patch version (CABI-060).
@@ -2600,7 +2600,7 @@ typedef struct {
 typedef struct {
   /**
    * Virtual Channel Identifier: a configured VC, or `ALDIS_AOS_OID_VCID` for
-   * `aldis_aos_oid_writer_begin` (732.0 §4.1.2.3).
+   * `aldis_aos_encode_oid` (732.0 §4.1.2.3).
    */
   uint8_t vcid;
   /**
@@ -2785,20 +2785,6 @@ typedef struct {
 } aldis_epp_fields_t;
 
 /**
- * Where a two-phase writer's caller fills in the data field (API-023, CABI-012).
- */
-typedef struct {
-  /**
-   * Offset of the Encapsulated Data Field in the output buffer: the header length.
-   */
-  size_t data_offset;
-  /**
-   * Capacity of the data field: the `max_data_len` given.
-   */
-  size_t data_cap;
-} aldis_epp_writer_layout_t;
-
-/**
  * The capacities this library was built with: the `ALDIS_*_MAX_*` constants (CABI-030).
  *
  * Later ABI versions append fields; `struct_size` tells the library how many the caller's
@@ -2901,28 +2887,6 @@ typedef struct {
    */
   uint32_t max_packet_len;
 } aldis_spp_config_t;
-
-/**
- * Where a two-phase writer's caller fills in the packet (API-023, CABI-012).
- */
-typedef struct {
-  /**
-   * Offset of the secondary header in the output buffer: always 6.
-   */
-  size_t secondary_header_offset;
-  /**
-   * Length of the secondary header.
-   */
-  size_t secondary_header_len;
-  /**
-   * Offset of the User Data Field in the output buffer.
-   */
-  size_t user_data_offset;
-  /**
-   * Capacity of the User Data Field: the `max_user_len` given.
-   */
-  size_t user_data_cap;
-} aldis_spp_writer_layout_t;
 
 /**
  * A time code format: what a P-field carries, or an implicit format (301.0 §3; TIME-001…006,
@@ -4833,7 +4797,7 @@ int32_t aldis_aos_bpdu_decode(const uint8_t *field,
  * `first_header_pointer`, `bitstream_data_pointer`) for a value of `fields` outside its field:
  * a packet offset above `0xFFFD`, or a count of valid bits of 0 or above
  * `ALDIS_AOS_VALID_BITS_MAX`; then, as `AosFrameWriter::begin` checks them,
- * `ALDIS_ERR_INVALID_FIELD` (`vc_id`) for VCID 63, whose frames `aldis_aos_oid_writer_begin`
+ * `ALDIS_ERR_INVALID_FIELD` (`vc_id`) for VCID 63, whose frames `aldis_aos_encode_oid`
  * writes; `ALDIS_ERR_UNKNOWN_CHANNEL` (`spacecraft_id` or `vc_id`) for a VC not in `vcs`;
  * `ALDIS_ERR_INVALID_FIELD` (`data_field_content`) for a pointer not of the VC's data unit;
  * `ALDIS_ERR_OUT_OF_RANGE` (`first_header_pointer`, `bitstream_data_pointer`) for a pointer
@@ -4860,73 +4824,16 @@ int32_t aldis_aos_encode(const aldis_aos_mc_config_t *mc,
                          aldis_error_detail_t *err);
 
 /**
- * Starts a two-phase write of one frame of (`mc->scid`, `fields->vcid`) (732.0 §4.1; AOS-019,
- * API-023, M2 plan D4).
+ * Encodes an OID Transfer Frame of `mc->scid` on VCID 63 in one call (732.0 §4.1.4.1.5;
+ * AOS-016, CMN-020…022, API-020).
  *
- * Checks the arguments, writes the Primary Header with its FHEC and the `M_PDU` or `B_PDU`
- * Header in the first frame-length octets of `out`, zero-fills every other octet of the frame,
- * and reports where each field lies.
+ * The frame goes into the start of `out`, its data field filled with the next octets of the OID
+ * generator `oid`, as `aldis_aos::encode_oid` does with the
+ * Fibonacci form, and `encode_oid_galois` with the Galois form, which gives the same octets.
  *
- * The caller fills the fields at the offsets of `layout`, the OCF included (check a report
- * with `aldis_ocf_check`), and calls [`aldis_aos_writer_finish`] with the same arguments. No
- * state is kept.
- *
- * # Errors
- * On error `out` is unchanged (API-022). The errors of [`aldis_aos_encode`] before
- * `ALDIS_ERR_BUFFER_TOO_SMALL`, that one included; CABI-022 violations.
- *
- * # Safety
- * `mc` and `vcs` as for [`aldis_aos_mc_config_check`]; `fields` is valid for a read; `out` is
- * valid for `cap` octets; `layout` is valid for one write; `err` is `NULL` or valid for one
- * write.
- */
-int32_t aldis_aos_writer_begin(const aldis_aos_mc_config_t *mc,
-                               const aldis_aos_vc_config_t *vcs,
-                               size_t vc_count,
-                               const aldis_aos_fields_t *fields,
-                               uint8_t *out,
-                               size_t cap,
-                               aldis_aos_layout_t *layout,
-                               aldis_error_detail_t *err);
-
-/**
- * Finishes a two-phase write begun with the same arguments by [`aldis_aos_writer_begin`], or
- * by [`aldis_aos_oid_writer_begin`] without its generator (732.0 §4.1.6.2; AOS-019, API-021,
- * API-023).
- *
- * First checks that `out` holds the Primary Header with its FHEC and the `M_PDU` or `B_PDU`
- * Header that the begin function wrote for these arguments (`AosFrameWriter::resume`; OI-50);
- * the other fields are not compared. Then leaves every field the caller filled and the OID
- * data, computes the FECF if configured, and returns the frame length.
- *
- * # Errors
- * As [`aldis_aos_writer_begin`], or for `fields->vcid` 63 as [`aldis_aos_oid_writer_begin`];
- * `ALDIS_ERR_INVALID_STATE` if `out` does not hold the headers the begin function writes for
- * these arguments (other arguments, or a buffer never begun); on error `out` is unchanged.
- *
- * # Safety
- * As [`aldis_aos_writer_begin`]; `out_len` is valid for one write.
- */
-int32_t aldis_aos_writer_finish(const aldis_aos_mc_config_t *mc,
-                                const aldis_aos_vc_config_t *vcs,
-                                size_t vc_count,
-                                const aldis_aos_fields_t *fields,
-                                uint8_t *out,
-                                size_t cap,
-                                size_t *out_len,
-                                aldis_error_detail_t *err);
-
-/**
- * Starts an OID Transfer Frame of `mc->scid` on VCID 63 (732.0 §4.1.4.1.5; AOS-016, CMN-020,
- * CMN-021).
- *
- * The frame has no OCF or SDLS fields, and the whole data field holds the next octets of the
- * OID generator `oid`, as `AosFrameWriter::begin_oid` writes it; the Galois form gives the
- * same octets (CMN-022). Reports where each field lies, as [`aldis_aos_writer_begin`] does.
- *
- * `fields->vcid` is `ALDIS_AOS_OID_VCID` and `fields->pointer` `ALDIS_AOS_POINTER_NONE`. The
- * caller may fill the Insert Zone (AOS-015) and calls [`aldis_aos_writer_finish`] with the same
- * arguments, without `oid`.
+ * The frame has no OCF or SDLS fields. `fields->vcid` is `ALDIS_AOS_OID_VCID` and
+ * `fields->pointer` `ALDIS_AOS_POINTER_NONE`. `content` gives the Insert Zone (AOS-015),
+ * empty when none is configured; its other buffers must be empty.
  *
  * # Errors
  * On error neither `out` nor the generator is changed (GEN-042). The errors of
@@ -4934,24 +4841,26 @@ int32_t aldis_aos_writer_finish(const aldis_aos_mc_config_t *mc,
  * `ALDIS_ERR_INVALID_FIELD` (`vc_id`) unless `fields->vcid` is 63, and (`data_field_content`)
  * unless `fields->pointer` is `ALDIS_AOS_POINTER_NONE`; `ALDIS_ERR_UNKNOWN_CHANNEL`
  * (`spacecraft_id`) if `vcs` is empty; `ALDIS_ERR_BUFFER_TOO_SMALL` (`needed` = frame length);
- * `ALDIS_ERR_INVALID_HANDLE` for an invalid generator; CABI-022 violations, including `out`
- * overlapping the generator's storage.
+ * `ALDIS_ERR_LENGTH_MISMATCH` (`insert_zone_len`) for an Insert Zone of another length than the
+ * configured one; `ALDIS_ERR_INVALID_HANDLE` for an invalid generator; CABI-022 violations,
+ * including a non-empty `content->zone`, `content->security_header`,
+ * `content->security_trailer`, or `content->ocf`, and `out` overlapping the Insert Zone or the
+ * generator's storage.
  *
  * # Safety
- * `mc` and `vcs` as for [`aldis_aos_mc_config_check`]; `fields` is valid for a read; `oid` is a
- * handle from `aldis_oid_generator_init` whose storage is still valid, or detectably invalid
- * storage; `out` is valid for `cap` octets; `layout` is valid for one write; `err` is `NULL` or
- * valid for one write.
+ * As [`aldis_aos_encode`]; `oid` is a handle from `aldis_oid_generator_init` whose storage is
+ * still valid, or detectably invalid storage.
  */
-int32_t aldis_aos_oid_writer_begin(const aldis_aos_mc_config_t *mc,
-                                   const aldis_aos_vc_config_t *vcs,
-                                   size_t vc_count,
-                                   const aldis_aos_fields_t *fields,
-                                   aldis_oid_generator_t *oid,
-                                   uint8_t *out,
-                                   size_t cap,
-                                   aldis_aos_layout_t *layout,
-                                   aldis_error_detail_t *err);
+int32_t aldis_aos_encode_oid(const aldis_aos_mc_config_t *mc,
+                             const aldis_aos_vc_config_t *vcs,
+                             size_t vc_count,
+                             const aldis_aos_fields_t *fields,
+                             const aldis_aos_content_t *content,
+                             aldis_oid_generator_t *oid,
+                             uint8_t *out,
+                             size_t cap,
+                             size_t *out_len,
+                             aldis_error_detail_t *err);
 
 /**
  * The CRC-16 of the `len` octets at `data` (132.0 §4.1.6.2; CMN-001, CMN-004).
@@ -5073,54 +4982,6 @@ int32_t aldis_epp_encode(const aldis_epp_config_t *cfg,
                          size_t cap,
                          size_t *out_len,
                          aldis_error_detail_t *err);
-
-/**
- * Starts a two-phase write: checks the arguments, writes the header with Packet Length 0,
- * and reports where the caller fills in the data field (133.1 §4.1; API-023, M2 plan D4).
- *
- * No state is kept: [`aldis_epp_writer_finish`] takes the same arguments again.
- *
- * # Errors
- * As [`aldis_epp_encode`], with the header sized for `max_data_len`.
- *
- * # Safety
- * `cfg` and `fields` are valid for reads; `out` is valid for `cap` octets; `layout` is valid
- * for one write; `err` is `NULL` or valid for one write.
- */
-int32_t aldis_epp_writer_begin(const aldis_epp_config_t *cfg,
-                               const aldis_epp_fields_t *fields,
-                               uint32_t header_size,
-                               size_t max_data_len,
-                               uint8_t *out,
-                               size_t cap,
-                               aldis_epp_writer_layout_t *layout,
-                               aldis_error_detail_t *err);
-
-/**
- * Finishes a two-phase write begun with the same arguments: writes the Packet Length for
- * `data_len` octets and returns the packet length (133.1 §4.1; API-021, API-023).
- *
- * # Errors
- * As [`aldis_epp_writer_begin`], `ALDIS_ERR_OUT_OF_RANGE` (`data_len`) above `max_data_len` or
- * outside the configured limits, and `ALDIS_ERR_INVALID_FIELD` (`epi`) for an empty data field
- * with a non-idle EPI.
- *
- * The call re-runs `begin`, so a finish with other arguments than `begin`'s gives a valid
- * packet for the arguments of the finish; OI-50's header check is not applied to it
- * (maintainer decision of 2026-10-25, revisited in M3).
- *
- * # Safety
- * As [`aldis_epp_writer_begin`]; `out_len` is valid for one write.
- */
-int32_t aldis_epp_writer_finish(const aldis_epp_config_t *cfg,
-                                const aldis_epp_fields_t *fields,
-                                uint32_t header_size,
-                                size_t max_data_len,
-                                size_t data_len,
-                                uint8_t *out,
-                                size_t cap,
-                                size_t *out_len,
-                                aldis_error_detail_t *err);
 
 /**
  * Encodes only the header of a packet with `data_len` octets of data, as
@@ -5370,57 +5231,6 @@ int32_t aldis_spp_encode(const aldis_spp_config_t *cfg,
                          size_t cap,
                          size_t *out_len,
                          aldis_error_detail_t *err);
-
-/**
- * Starts a two-phase write (133.0 §4.1; SPP-005, API-023, M2 plan D4).
- *
- * Checks the arguments, writes an unfinished Primary Header (version `111`, which no decoder
- * accepts), and reports where the caller fills in the secondary header and the User Data Field.
- *
- * No state is kept: [`aldis_spp_writer_finish`] takes the same arguments again. The buffer
- * holds no valid packet until it is finished (API-023).
- *
- * # Errors
- * As [`aldis_spp_encode`], with the packet length taken as `6 + secondary_len + max_user_len`.
- *
- * # Safety
- * `cfg` and `fields` are valid for reads; `out` is valid for `cap` octets; `layout` is valid
- * for one write; `err` is `NULL` or valid for one write.
- */
-int32_t aldis_spp_writer_begin(const aldis_spp_config_t *cfg,
-                               const aldis_spp_fields_t *fields,
-                               size_t secondary_len,
-                               size_t max_user_len,
-                               uint8_t *out,
-                               size_t cap,
-                               aldis_spp_writer_layout_t *layout,
-                               aldis_error_detail_t *err);
-
-/**
- * Finishes a two-phase write begun with the same arguments: writes the final Primary Header
- * for `user_len` octets of user data and returns the packet length (133.0 §4.1; SPP-005,
- * API-021, API-023).
- *
- * # Errors
- * As [`aldis_spp_writer_begin`], and `ALDIS_ERR_OUT_OF_RANGE` (`user_len`) above
- * `max_user_len`.
- *
- * The call re-runs `begin`, so a finish with other arguments than `begin`'s gives a valid
- * packet for the arguments of the finish; OI-50's header check is not applied to it
- * (maintainer decision of 2026-10-25, revisited in M3).
- *
- * # Safety
- * As [`aldis_spp_writer_begin`]; `out_len` is valid for one write.
- */
-int32_t aldis_spp_writer_finish(const aldis_spp_config_t *cfg,
-                                const aldis_spp_fields_t *fields,
-                                size_t secondary_len,
-                                size_t max_user_len,
-                                size_t user_len,
-                                uint8_t *out,
-                                size_t cap,
-                                size_t *out_len,
-                                aldis_error_detail_t *err);
 
 /**
  * Builds an Idle Packet of `total_len` octets: APID 2047, Sequence Flags `11`, and the data
@@ -5988,74 +5798,6 @@ int32_t aldis_tc_encode(const aldis_tc_mc_config_t *mc,
                         aldis_error_detail_t *err);
 
 /**
- * Starts a two-phase write of one Type-D frame with room for up to `max_user_len` octets of
- * User Data (232.0 §4.1, §6.3; TC-004, TC-007, API-020, API-023, API-072, M2 plan D4).
- *
- * Checks the arguments, writes an unfinished Primary Header (version `11`, which every decoder
- * rejects), the Segment Header, and zeros in the Security Header and Trailer, and reports where
- * each field lies: the data field is the reserved User Data, `max_user_len` octets, and the
- * Security Trailer follows it.
- *
- * The caller fills the User Data and, with SDLS, the Security Header and Trailer at the
- * offsets of `layout`, and calls [`aldis_tc_writer_finish`] with the same arguments and the
- * User Data length used. No state is kept.
- *
- * # Errors
- * On error `out` is unchanged (API-022). As [`aldis_tc_encode`] for a frame with
- * `max_user_len` octets of User Data, with `ALDIS_ERR_INVALID_FIELD` (`control_command_flag`)
- * for a Type-BC frame; CABI-022 violations.
- *
- * # Safety
- * `mc`, `vcs`, and `maps` as for [`aldis_tc_mc_config_check`]; `fields` is valid for a read;
- * `out` is valid for `cap` octets; `layout` is valid for one write; `err` is `NULL` or valid
- * for one write.
- */
-int32_t aldis_tc_writer_begin(const aldis_tc_mc_config_t *mc,
-                              const aldis_tc_vc_config_t *vcs,
-                              size_t vc_count,
-                              const aldis_tc_map_config_t *maps,
-                              size_t map_count,
-                              const aldis_tc_fields_t *fields,
-                              size_t max_user_len,
-                              uint8_t *out,
-                              size_t cap,
-                              aldis_tc_layout_t *layout,
-                              aldis_error_detail_t *err);
-
-/**
- * Finishes a two-phase write begun with the same arguments, with `user_len` octets of User
- * Data (232.0 §4.1.2.7, §4.1.4; TC-007, API-021, API-023).
- *
- * First checks that `out` holds the unfinished Primary Header (with the reserved frame length)
- * and Segment Header that [`aldis_tc_writer_begin`] wrote for these arguments
- * (`TcFrameWriter::resume`; OI-50); the User Data and the Security Header and Trailer are not
- * compared. Then writes the Primary Header with the Frame Length, moves the Security Trailer
- * to follow the User Data when `user_len` is below `max_user_len`, computes the FECF if
- * configured, and returns the frame length; the frame is the first `*out_len` octets of `out`.
- *
- * # Errors
- * On error `out` is unchanged. As [`aldis_tc_writer_begin`]; `ALDIS_ERR_INVALID_STATE` if `out`
- * does not hold the unfinished headers `aldis_tc_writer_begin` writes for these arguments (other
- * arguments, or a buffer never begun); then `ALDIS_ERR_OUT_OF_RANGE` (`user_len`) above
- * `max_user_len` and `ALDIS_ERR_INVALID_FIELD` (`frame_data_field`) for 0.
- *
- * # Safety
- * As [`aldis_tc_writer_begin`]; `out_len` is valid for one write.
- */
-int32_t aldis_tc_writer_finish(const aldis_tc_mc_config_t *mc,
-                               const aldis_tc_vc_config_t *vcs,
-                               size_t vc_count,
-                               const aldis_tc_map_config_t *maps,
-                               size_t map_count,
-                               const aldis_tc_fields_t *fields,
-                               size_t max_user_len,
-                               size_t user_len,
-                               uint8_t *out,
-                               size_t cap,
-                               size_t *out_len,
-                               aldis_error_detail_t *err);
-
-/**
  * Decodes the Control Command that the data field `octets` of a Type-C frame holds exactly
  * (232.0 §4.1.3.3; TC-005), as `ControlCommand::parse` does.
  *
@@ -6603,125 +6345,46 @@ int32_t aldis_tm_encode(const aldis_tm_mc_config_t *mc,
                         aldis_error_detail_t *err);
 
 /**
- * Starts a two-phase write of one frame of `fields->vcid` (132.0 §4.1; TM-009, API-023, M2
- * plan D4).
+ * Encodes an Only Idle Data frame on `vcid` in one call (132.0 §4.1.4.6; TM-010, CMN-020…022,
+ * API-020).
  *
- * Checks the arguments, writes the Primary Header and the Secondary Header Identification
- * Field in the first frame-length octets of `out`, zero-fills every other octet of the frame,
- * and reports where each field lies.
+ * The frame goes into the start of `out`, its data field filled with the next octets of the OID
+ * generator `oid`, as `aldis_tm::encode_oid` does with the Fibonacci form, and
+ * `encode_oid_galois` with the Galois form, which gives the same octets.
  *
- * The caller fills the fields at the offsets of `layout`, the OCF included (check a report
- * with `aldis_ocf_check`), and calls [`aldis_tm_writer_finish`] with the same arguments. No
- * state is kept.
- *
- * # Errors
- * On error `out` is unchanged (API-022). The errors of [`aldis_tm_mc_config_check`]; then
- * `ALDIS_ERR_UNKNOWN_CHANNEL` (`vc_id`), `ALDIS_ERR_INVALID_FIELD` (`sync_flag`),
- * `ALDIS_ERR_OUT_OF_RANGE` (`first_header_pointer`), and `ALDIS_ERR_BUFFER_TOO_SMALL` as for
- * [`aldis_tm_encode`]; CABI-022 violations.
- *
- * # Safety
- * `mc` and `vcs` as for [`aldis_tm_mc_config_check`]; `fields` is valid for a read; `out` is
- * valid for `cap` octets; `layout` is valid for one write; `err` is `NULL` or valid for one
- * write.
- */
-int32_t aldis_tm_writer_begin(const aldis_tm_mc_config_t *mc,
-                              const aldis_tm_vc_config_t *vcs,
-                              size_t vc_count,
-                              const aldis_tm_fields_t *fields,
-                              uint8_t *out,
-                              size_t cap,
-                              aldis_tm_layout_t *layout,
-                              aldis_error_detail_t *err);
-
-/**
- * Finishes a two-phase write begun with the same arguments (132.0 §4.1.6.2; TM-009, API-021,
- * API-023).
- *
- * First checks that `out` holds the Primary Header and the Secondary Header Identification
- * Field that [`aldis_tm_writer_begin`] wrote for these arguments (`TmFrameWriter::resume`;
- * OI-50); the other fields are not compared. Then leaves every field the caller filled,
- * computes the FECF if configured, and returns the frame length.
+ * The First Header Pointer is `0x7FE`. `content` gives the Secondary Header Data Field and the
+ * OCF (132.0 §4.1.4.6.3 note 1); its other buffers must be empty, since the library fills the
+ * data field and a VC that uses SDLS cannot carry an OID frame.
  *
  * # Errors
- * As [`aldis_tm_writer_begin`]; `ALDIS_ERR_INVALID_STATE` if `out` does not hold the headers
- * `aldis_tm_writer_begin` writes for these arguments (other arguments, or a buffer never
- * begun); on error `out` is unchanged.
+ * On error neither `out` nor the generator is changed (GEN-042). The errors of
+ * [`aldis_tm_mc_config_check`]; then `ALDIS_ERR_UNKNOWN_CHANNEL` (`vc_id`);
+ * `ALDIS_ERR_INVALID_FIELD` (`sync_flag`) if the VC carries `VCA_SDUs` (132.0 §4.1.4.6.3),
+ * then (`vc_id`) if the VC uses SDLS (132.0 §6.4.6.2; TM-010); `ALDIS_ERR_LENGTH_MISMATCH`
+ * (`fsh_len`) for a Secondary Header Data Field of another length than the configured one;
+ * `ALDIS_ERR_INVALID_FIELD` (`ocf_flag`) for an OCF given where none is configured or missing
+ * where one is; `ALDIS_ERR_BUFFER_TOO_SMALL` (`needed` = frame length);
+ * `ALDIS_ERR_INVALID_HANDLE` for an invalid generator; CABI-022 violations, including a
+ * non-empty `content->data`, `content->security_header`, or `content->security_trailer`, an
+ * `ocf_len` other than 0 or `ALDIS_OCF_LEN`, and `out` overlapping a buffer of `content` or
+ * the generator's storage.
  *
  * # Safety
- * As [`aldis_tm_writer_begin`]; `out_len` is valid for one write.
+ * As [`aldis_tm_encode`] without `fields`; `oid` is a handle from `aldis_oid_generator_init`
+ * whose storage is still valid, or detectably invalid storage.
  */
-int32_t aldis_tm_writer_finish(const aldis_tm_mc_config_t *mc,
-                               const aldis_tm_vc_config_t *vcs,
-                               size_t vc_count,
-                               const aldis_tm_fields_t *fields,
-                               uint8_t *out,
-                               size_t cap,
-                               size_t *out_len,
-                               aldis_error_detail_t *err);
-
-/**
- * Starts an Only Idle Data frame on `vcid` (132.0 §4.1.4.6; TM-010, CMN-020, CMN-021).
- *
- * The First Header Pointer is `0x7FE` and the data field holds the next octets of the OID
- * generator `oid`, as `TmFrameWriter::begin_oid` writes them; the Galois form gives the same
- * octets (CMN-022). Reports where each field lies, as [`aldis_tm_writer_begin`] does.
- *
- * The caller may fill the Secondary Header and the OCF (132.0 §4.1.4.6.3 note 1) and calls
- * [`aldis_tm_oid_writer_finish`] with the same arguments, without `oid`.
- *
- * # Errors
- * As [`aldis_tm_writer_begin`]; `ALDIS_ERR_INVALID_FIELD` (`sync_flag`) if the VC carries
- * `VCA_SDUs` (132.0 §4.1.4.6.3), then (`vc_id`) if the VC uses SDLS (132.0 §6.4.6.2; TM-010);
- * `ALDIS_ERR_INVALID_HANDLE` for an invalid generator; CABI-022
- * violations, including `out` overlapping the generator's storage. On error neither `out` nor
- * the generator is changed (GEN-042).
- *
- * # Safety
- * `mc` and `vcs` as for [`aldis_tm_mc_config_check`]; `oid` is a handle from
- * `aldis_oid_generator_init` whose storage is still valid, or detectably invalid storage; `out`
- * is valid for `cap` octets; `layout` is valid for one write; `err` is `NULL` or valid for one
- * write.
- */
-int32_t aldis_tm_oid_writer_begin(const aldis_tm_mc_config_t *mc,
-                                  const aldis_tm_vc_config_t *vcs,
-                                  size_t vc_count,
-                                  uint8_t vcid,
-                                  uint8_t mc_frame_count,
-                                  uint8_t vc_frame_count,
-                                  aldis_oid_generator_t *oid,
-                                  uint8_t *out,
-                                  size_t cap,
-                                  aldis_tm_layout_t *layout,
-                                  aldis_error_detail_t *err);
-
-/**
- * Finishes an Only Idle Data frame begun with [`aldis_tm_oid_writer_begin`] (132.0 §4.1.4.6,
- * §4.1.6.2; TM-010, API-023).
- *
- * Given the same arguments, it first checks the headers as [`aldis_tm_writer_finish`] does
- * (OI-50), leaves the Idle Data and every field the caller filled, computes the FECF if
- * configured, and returns the frame length.
- *
- * # Errors
- * As [`aldis_tm_writer_finish`] for the fields of an OID frame, including
- * `ALDIS_ERR_INVALID_FIELD` (`vc_id`) for a VC that uses SDLS, as [`aldis_tm_oid_writer_begin`]
- * (132.0 §6.4.6.2; TM-010); on error `out` is unchanged.
- *
- * # Safety
- * `mc` and `vcs` as for [`aldis_tm_mc_config_check`]; `out` is valid for `cap` octets;
- * `out_len` is valid for one write; `err` is `NULL` or valid for one write.
- */
-int32_t aldis_tm_oid_writer_finish(const aldis_tm_mc_config_t *mc,
-                                   const aldis_tm_vc_config_t *vcs,
-                                   size_t vc_count,
-                                   uint8_t vcid,
-                                   uint8_t mc_frame_count,
-                                   uint8_t vc_frame_count,
-                                   uint8_t *out,
-                                   size_t cap,
-                                   size_t *out_len,
-                                   aldis_error_detail_t *err);
+int32_t aldis_tm_encode_oid(const aldis_tm_mc_config_t *mc,
+                            const aldis_tm_vc_config_t *vcs,
+                            size_t vc_count,
+                            uint8_t vcid,
+                            uint8_t mc_frame_count,
+                            uint8_t vc_frame_count,
+                            const aldis_tm_content_t *content,
+                            aldis_oid_generator_t *oid,
+                            uint8_t *out,
+                            size_t cap,
+                            size_t *out_len,
+                            aldis_error_detail_t *err);
 
 /**
  * Checks a physical channel configuration (732.1 §5 Table 5-1; USLP-003, USLP-008, API-040).
@@ -6869,8 +6532,7 @@ int32_t aldis_uslp_stream_next(const uint8_t *unit,
  *
  * `content` gives the TFDF Header, the Insert Zone, the TFDZ, and the OCF. The library writes
  * the Frame Length, the OCF Flag, the VCF Count Length, and the FECF; with SDLS, the Security
- * Header and Trailer are zeros, for which [`aldis_uslp_writer_begin`] gives the place to fill
- * (API-072).
+ * Header and Trailer are zeros (API-072).
  *
  * # Errors
  * On error `out` is unchanged (API-022). The errors of [`aldis_uslp_vc_table_check`]; then
@@ -6903,78 +6565,6 @@ int32_t aldis_uslp_encode(const aldis_uslp_config_t *pc,
                           size_t cap,
                           size_t *out_len,
                           aldis_error_detail_t *err);
-
-/**
- * Starts a two-phase write of one non-truncated frame with room for up to `max_tfdz_len` TFDZ
- * octets (732.1 §4.1, §6.3; USLP-010, API-020, API-023, API-072; M2 plan D4).
- *
- * Checks the arguments, writes the unfinished Primary Header (TFVN `1111`, which every decoder
- * rejects), the Insert Zone, and the TFDF Header in the first octets of `out`, zero-fills the
- * Security Header and Trailer, and reports where each field lies. On a fixed-length channel
- * `max_tfdz_len` must fill the frame.
- *
- * The caller fills the TFDZ and, with SDLS, the Security Header and Trailer at the offsets of
- * `layout`, and calls [`aldis_uslp_writer_finish`] with the same arguments. `content->tfdz`
- * must be empty: the TFDZ is filled in place. No state is kept.
- *
- * # Errors
- * On error `out` is unchanged (API-022). The errors of [`aldis_uslp_encode`] for a frame with
- * `max_tfdz_len` TFDZ octets, except the pointer, which [`aldis_uslp_writer_finish`] checks;
- * CABI-022 violations, including a non-empty `content->tfdz`.
- *
- * # Safety
- * As [`aldis_uslp_encode`], with `layout` valid for one write in place of `out_len`.
- */
-int32_t aldis_uslp_writer_begin(const aldis_uslp_config_t *pc,
-                                const aldis_uslp_vc_config_t *vcs,
-                                size_t vc_count,
-                                const aldis_uslp_map_config_t *maps,
-                                size_t map_count,
-                                const aldis_uslp_fields_t *fields,
-                                const aldis_uslp_content_t *content,
-                                size_t max_tfdz_len,
-                                uint8_t *out,
-                                size_t cap,
-                                aldis_uslp_layout_t *layout,
-                                aldis_error_detail_t *err);
-
-/**
- * Finishes a two-phase write begun with the same arguments, with `tfdz_len` TFDZ octets
- * (732.1 §4.1.2.7, §4.1.5, §4.1.6; USLP-010, API-021, API-023).
- *
- * First checks that `out` holds the unfinished Primary Header (with the reserved frame
- * length), the Insert Zone, and the TFDF Header that [`aldis_uslp_writer_begin`] wrote for these
- * arguments (`UslpFrameWriter::resume`; OI-50); the Security Header and Trailer and the TFDZ are
- * not compared. Then keeps the TFDZ and the security fields the caller filled, moves the Security Trailer to follow a TFDZ
- * shorter than the reservation, writes the Frame Length, the OCF, and the FECF if configured,
- * and returns the frame length. The frame is the first `*out_len` octets of `out`; the octets
- * after it keep unspecified values (`UslpFrameWriter::finish`).
- *
- * # Errors
- * As [`aldis_uslp_writer_begin`]; `ALDIS_ERR_INVALID_STATE` if `out` does not hold the unfinished
- * headers `aldis_uslp_writer_begin` writes for these arguments (other arguments, or a buffer
- * never begun); then `ALDIS_ERR_OUT_OF_RANGE` (`user_len`) above
- * `max_tfdz_len`, `ALDIS_ERR_INVALID_FIELD` (`frame_data_field`) for 0,
- * `ALDIS_ERR_LENGTH_MISMATCH` (`frame_data_field`) below it on a fixed-length channel, and
- * `ALDIS_ERR_OUT_OF_RANGE` (`fhp_lvo_pointer`) for a pointer not below `tfdz_len`. On error
- * `out` is unchanged, or, after the argument checks, holds the unfinished frame.
- *
- * # Safety
- * As [`aldis_uslp_encode`].
- */
-int32_t aldis_uslp_writer_finish(const aldis_uslp_config_t *pc,
-                                 const aldis_uslp_vc_config_t *vcs,
-                                 size_t vc_count,
-                                 const aldis_uslp_map_config_t *maps,
-                                 size_t map_count,
-                                 const aldis_uslp_fields_t *fields,
-                                 const aldis_uslp_content_t *content,
-                                 size_t max_tfdz_len,
-                                 size_t tfdz_len,
-                                 uint8_t *out,
-                                 size_t cap,
-                                 size_t *out_len,
-                                 aldis_error_detail_t *err);
 
 /**
  * Encodes one truncated frame into the start of `out`; its length is the VC's truncated frame

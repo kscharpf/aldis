@@ -71,7 +71,7 @@ The actions of one input, in the order of the table cell (COP-006). The frame oc
 
 ### 3.1 Configuration (managed parameters, §7.3)
 
-`Farm1Config { vcid, window_w, window_mode: RetransmissionAllowed (PW = NW = W/2, W even 2..=254) | RetransmissionNotAllowed (1 ≤ PW ≤ W ≤ 256, NW = W − PW), clcw_status_field: u3 }`
+`Farm1Config { vc_id, status: ClcwStatus, window: Farm1Window }`, where `Farm1Window` is built by `retransmission_allowed(W)` (PW = NW = W/2, W even 2..=254) or `retransmission_not_allowed(W, PW)` (1 ≤ PW ≤ W ≤ 256, NW = W − PW ≤ 127, Table 7-2), so an invalid pair cannot exist (API-040, RS-020). `Farm1::new(config, v_r)` starts in S1 with the flags and the FARM-B Counter at 0 (OI-58).
 
 The engine holds no delivery buffer: the buffers of 232.1 §3.3.2 belong to the caller, which tells FARM-1 whether a buffer is available (COP-033). The `Internal{depth}` buffer model of earlier drafts is withdrawn with COP-032.
 
@@ -79,16 +79,18 @@ The engine holds no delivery buffer: the buffers of 232.1 §3.3.2 belong to the 
 
 | Input | Events |
 |---|---|
-| `Frame(ValidatedTcFrame \| ValidatedUslpFrame, buffer_available: bool)` | E1–E9 (frames must already have passed Frame Validation Checks, TC-021). `buffer_available` selects E1 or E2 for a Type-AD frame with N(S) = V(R) (COP-033) |
+| `Frame(ValidatedTcFrame \| ValidatedUslpFrame, buffer_available: bool)` | E1–E9 (frames must already have passed Frame Validation Checks, TC-021). `buffer_available` selects E1 or E2 for a Type-AD frame with N(S) = V(R) (COP-033). E1 in S2 is the cell Table 6-1 marks "Not applicable": the step fails with `InvalidState` (COP-005), and the caller feeds `BufferReleased` first |
+| `InvalidFrame` | E9: a frame the Lower Procedures rejected. A Type-BC frame carrying neither Unlock nor Set V(R) is `Frame` with no command and is E9 too (COP-031) |
 | `BufferReleased` | E10 (COP-033) |
 | `clcw(state) -> Clcw` | E11 (a pure query of the state, any time; not an input) |
 | `SetPhysicalFlags(no_rf_available, no_bit_lock)` | sets CLCW flags (not part of COP) |
 
 | Action | Content |
 |---|---|
-| `Deliver` | accepted FDU (AD or BD; range of the output area), frame type, N(S) |
-| `Notify(FrameDiscarded)` | event number + reason |
-| `Notify(StateChanged)` | old → new state |
+| `Deliver` | accepted FDU (AD or BD; range of the output area from offset 0), frame type, N(S) (0 for BD) |
+| `Notify(FrameDiscarded)` | event number + state before: with Table 6-1 they say why (E2 no buffer, E3 gap, E4 duplicate, E5 outside the window, any frame in S3 Lockout; COP-004) |
+| `Notify(StateChanged)` | event number, old → new state |
+| `Notify(Unlocked)` | an Unlock command was executed (E7; COP-036) |
 
 ### 3.3 Requirements
 

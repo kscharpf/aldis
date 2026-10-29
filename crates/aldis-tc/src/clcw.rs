@@ -78,6 +78,15 @@ clcw_field!(
     FarmBCounter, 0b11, field::FARM_B_COUNTER
 );
 
+impl FarmBCounter {
+    /// The next count, modulo 4: FARM-1 increments the counter for every valid Type-B frame
+    /// (232.0 §4.2.1.9; 232.1 §6.1.6; COP-034).
+    #[must_use]
+    pub const fn next(self) -> FarmBCounter {
+        FarmBCounter(self.0.wrapping_add(1) & FarmBCounter::MAX)
+    }
+}
+
 impl CopInEffect {
     /// COP-1, `01` (232.0 §4.2.1.5.2).
     pub const COP_1: CopInEffect = CopInEffect(0b01);
@@ -320,7 +329,7 @@ mod tests {
 
     #[test]
     fn field_types() {
-        // req: TC-030, API-001
+        // req: TC-030, API-001, COP-034
         assert_eq!(ClcwStatus::new(8), None);
         assert_eq!(CopInEffect::new(4), None);
         assert_eq!(FarmBCounter::new(4), None);
@@ -340,5 +349,8 @@ mod tests {
         );
         assert_eq!(u8::from(ClcwStatus::try_from(5).unwrap()), 5);
         assert_eq!(u8::from(FarmBCounter::masked(0xFF)), 3);
+        // The FARM-B Counter wraps modulo 4 (232.1 §6.1.6; COP-034).
+        let counts: [u8; 5] = [0, 1, 2, 3, 0].map(|v| FarmBCounter::masked(v).next().get());
+        assert_eq!(counts, [1, 2, 3, 0, 1]);
     }
 }
