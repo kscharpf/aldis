@@ -3,8 +3,6 @@
 //! Verifies all 300 cells (S1–S6 × E1–E46/E101–E104) of Table 5-1 against CCSDS 232.1-B-2
 //! and `docs/verification/reviews/cop1-tables.md` §3 (COP-001, COP-003, COP-004, RS-021).
 
-#![cfg_attr(coverage_nightly, coverage(off))]
-
 use aldis_cop1::{
     AlertReason, BcCommand, DirectiveNotification, FOP1_EVENT_COUNT, FOP1_STATE_COUNT, FOP1_TABLE,
     Fop1Action, Fop1Cell, Fop1Event, Fop1State, FrameKind, TransferNotification,
