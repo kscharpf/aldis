@@ -230,7 +230,7 @@ graph TD
 
 | Evidence | Shows | Requirements |
 |---|---|---|
-| `record:GEN-022` | The analysis record tracing loop bounds, termination, and verification methods | GEN-022, GEN-023 |
+| `check:spec`; `record:GEN-022` | `cargo xtask loops` finds every loop of library code: one over a slice, an array, or a closed range is bounded by what it iterates; every `while`, `while let`, `loop`, and open or endless iteration carries a `// bound:` comment with its bound, and the check fails on a missing comment or one that is not above a loop | GEN-022 |
 | `check:stack`; `record:VER-011` | Object-level static analysis confirming recursion freedom and entry-point stack depth | GEN-022 |
 | `proof:crates/aldis-core/src/proofs.rs::error_kind_lookup_is_bounded`; `nightly-check:kani`; `file:docs/verification/formal-proofs.md` | A machine proof of one loop's bound, and of the CRC and bit-field loops up to their input lengths; nightly only (`df:DF-2`) | GEN-022 |
 
@@ -241,7 +241,6 @@ graph TD
 | Evidence | Shows | Requirements |
 |---|---|---|
 | `check:stack`; `record:VER-011` | The call graph of the shipped C ABI library and of the exerciser, built from object code on three targets, is checked complete (no indirect call outside stated exemptions) and fails on a cycle | GEN-022 |
-| `record:GEN-022` | The analysis record confirming acyclicity across all crates | GEN-022 |
 
 ### AC-3.3 Nothing blocks
 

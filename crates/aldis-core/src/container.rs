@@ -104,6 +104,7 @@ impl<T, const N: usize> FixedQueue<T, N> {
 
     /// Removes all items.
     pub fn clear(&mut self) {
+        // bound: at most N passes; each pass removes one item and the queue holds at most N.
         while self.pop().is_some() {}
         self.head = 0;
     }
