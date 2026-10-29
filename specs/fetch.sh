@@ -39,6 +39,21 @@ if { [ "$verify_only" -eq 0 ] || [ "$check_urls" -eq 1 ]; } && ! command -v curl
     echo "error: need curl" >&2; exit 2
 fi
 
+# A worktree starts without the git-ignored PDFs: link them from the main checkout when it
+# has them (a symlink; a copy if linking fails) instead of downloading them again.
+if [ "$check_urls" -eq 0 ] && [ "$verify_only" -eq 0 ] && [ ! -e "$dest" ] \
+    && common="$(git -C "$here" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)"; then
+    main_pdf="$(dirname "$common")/specs/pdf"
+    if [ "$main_pdf" != "$dest" ] && ls "$main_pdf"/*.pdf >/dev/null 2>&1; then
+        if ln -s "$main_pdf" "$dest" 2>/dev/null; then
+            echo "linked  specs/pdf -> $main_pdf"
+        else
+            cp -R "$main_pdf" "$dest"
+            echo "copied  $main_pdf -> specs/pdf"
+        fi
+    fi
+fi
+
 [ "$check_urls" -eq 1 ] || mkdir -p "$dest"
 ok=0; failed=0; mismatched=0
 

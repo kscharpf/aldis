@@ -20,5 +20,5 @@ __pycache__/
 .DS_Store
 
 # CCSDS documents are fetched locally (specs/fetch.sh), never committed
-/specs/pdf/
+/specs/pdf
 *.pdf
