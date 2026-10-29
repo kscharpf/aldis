@@ -18,6 +18,7 @@ pub const PRESET: u16 = 0xFFFF;
 const fn step_bitwise(mut crc: u16, octet: u8) -> u16 {
     crc ^= u8_to_u16(octet) << 8;
     let mut bit = 0_u8;
+    // bound: exactly 8 passes; `bit` starts at 0 and rises by 1 each pass.
     while bit < 8 {
         crc = if crc & 0x8000 != 0 {
             (crc << 1) ^ POLY
@@ -33,6 +34,7 @@ const fn step_bitwise(mut crc: u16, octet: u8) -> u16 {
 #[must_use]
 pub const fn crc16_update_bitwise(mut crc: u16, data: &[u8]) -> u16 {
     let mut rest = data;
+    // bound: data.len() passes; each pass drops the first octet of `rest`.
     while let [octet, tail @ ..] = rest {
         crc = step_bitwise(crc, *octet);
         rest = tail;
@@ -51,6 +53,7 @@ pub const fn crc16_bitwise(data: &[u8]) -> u16 {
 static TABLE: [u16; 256] = {
     let mut table = [0_u16; 256];
     let mut i = 0_usize;
+    // bound: exactly 256 passes; `i` starts at 0 and rises by 1 each pass.
     while i < 256 {
         #[expect(
             clippy::as_conversions,

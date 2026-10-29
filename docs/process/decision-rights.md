@@ -32,7 +32,7 @@ Example: OI-35 items 1 and 8 (notes only; 231.0 against 732.1) and AOS-018's lim
 |---|---|---|
 | A milestone's exit table or entry gate, beyond requirements of the standards it already covers; removing or weakening a requirement; a new requirement area; moving work between milestones | A new requirement for a SHALL of a Blue Book in the milestone's scope that no requirement covers, with the next free ID, added to the exit table (USLP-016, #61); wording that changes no behaviour | Proposing such a requirement in its report; renumbering after an ID clash (roadmap §6 rule 7) |
 
-Example: adding TV-023 and VER-061 to the M2 exit table (#74) was the maintainer's: neither comes from a frame standard. Instead of asking: write the requirement, leave it out of the exit table, and ask in the PR description.
+Example: adding TV-023 to the M2 exit table (#74) was the maintainer's: it comes from no frame standard. Instead of asking: write the requirement, leave it out of the exit table, and ask in the PR description.
 
 ### 2.3 Plan decisions (`plan`)
 
@@ -72,7 +72,7 @@ A file name is a promise about its contents: a case that does not fit its file's
 |---|---|---|
 | The merge gate and the verification policy (VER-056…VER-060); these decision rights; the non-negotiable rules of AGENTS.md; the toolchain pin (RS-001, OI-07); the lint set (RS-016, RS-019); standing policies for agents (cleanup, review watch); how often approvals happen; keeping or dropping a restructure that splits a crate or moves a directory | A tooling fix, or a new check that enforces a rule already written, that loosens no gate; a check's declared inputs; documentation that restates existing rules | The registrations its work package needs (the checklists); fixing a check that is wrong for its change (a judgement call) |
 
-Example: inspection approval once per milestone (VER-061, #74), the cleanup and review-watch policies, and holding the `xtask` split (#75). Instead of asking: build it on a branch, measure what it changes, and propose it with the measurement.
+Example: the cleanup and review-watch policies, and holding the `xtask` split (#75). Instead of asking: build it on a branch, measure what it changes, and propose it with the measurement.
 
 ### 2.8 Dependencies and licences (`deps`)
 
@@ -108,9 +108,8 @@ Merges are not logged: GitHub records them. A merge that also decides something,
 
 | Maintainer only | Coordinator | Agent in a work package |
 |---|---|---|
-| Approving inspection records (VER-061), once per milestone at the exit review or before a release; accepting a milestone exit | Listing the pending revisions for the exit review; writing the approval into each `Approved` row once given | Preparing a revision, "pending exit review"; never editing an `Approved` row |
+| Accepting a milestone exit | Recording the acceptance in the decision log | — |
 
-Example: the GEN-022/023 approvals of 2026-10-20 and 2026-10-21 (#54, #60, #64, #68), which VER-061 now collects into the exit review. Instead of asking: leave the revision pending; no pull request waits for an approval.
 
 ## 3. Asking the maintainer
 
