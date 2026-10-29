@@ -75,7 +75,7 @@ proptest! {
                 let content = FrameContent { tfdf: *tfdf, insert_zone, ocf: *ocf };
                 let mut two = vec![fill; f.octets.len()];
                 let mut w = UslpFrameWriter::begin(&mut two, t, *fields, content, f.tfdz.len()).unwrap();
-                w.tfdz_mut().copy_from_slice(&f.tfdz);
+                w.tfdz_mut().unwrap().copy_from_slice(&f.tfdz);
                 prop_assert_eq!(w.finish(f.tfdz.len()), Ok(f.octets.len()));
                 prop_assert_eq!(&two, &f.octets);
                 // One octet short: nothing is written (API-022).

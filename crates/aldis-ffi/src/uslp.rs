@@ -769,14 +769,22 @@ const fn kind_view(k: FrameKind) -> u8 {
 
 /// The C form of a frame layout whose data field holds a TFDF Header of `tfdf_len` octets
 /// before the TFDZ (732.1 §4.1, Annex D1.2; CMN-040, CABI-012).
-fn layout(l: &FrameLayout, tfdf_len: usize) -> aldis_uslp_layout_t {
+///
+/// # Errors
+/// `InternalError` if the TFDF Header is longer than the data field, which the callers' frames
+/// rule out.
+fn layout(l: &FrameLayout, tfdf_len: usize) -> Result<aldis_uslp_layout_t> {
     let (insert_zone_offset, insert_zone_len) = span(&l.secondary());
     let (security_header_offset, security_header_len) = span(&l.security_header());
     let data = l.data();
     let (security_trailer_offset, security_trailer_len) = span(&l.security_trailer());
     let (ocf_offset, ocf_len) = span(&l.ocf());
     let (fecf_offset, fecf_len) = span(&l.fecf());
-    aldis_uslp_layout_t {
+    let tfdz = data
+        .len()
+        .checked_sub(tfdf_len)
+        .ok_or(Error::new(ErrorKind::InternalError))?;
+    Ok(aldis_uslp_layout_t {
         frame_len: l.frame_len(),
         insert_zone_offset,
         insert_zone_len,
@@ -785,14 +793,14 @@ fn layout(l: &FrameLayout, tfdf_len: usize) -> aldis_uslp_layout_t {
         tfdf_header_offset: data.start,
         tfdf_header_len: tfdf_len,
         tfdz_offset: data.start.saturating_add(tfdf_len),
-        tfdz_len: data.len().saturating_sub(tfdf_len),
+        tfdz_len: tfdz,
         security_trailer_offset,
         security_trailer_len,
         ocf_offset,
         ocf_len,
         fecf_offset,
         fecf_len,
-    }
+    })
 }
 
 /// The offset and length of a range.
@@ -801,7 +809,7 @@ fn span(r: &Range<usize>) -> (usize, usize) {
 }
 
 /// The C view of a decoded frame (CABI-012).
-fn view(f: &UslpFrame<'_>) -> aldis_uslp_frame_t {
+fn view(f: &UslpFrame<'_>) -> Result<aldis_uslp_frame_t> {
     let tfdf = f.tfdf_header();
     let mut v = aldis_uslp_frame_t {
         truncated: f.is_truncated(),
@@ -809,7 +817,7 @@ fn view(f: &UslpFrame<'_>) -> aldis_uslp_frame_t {
         tfdf: tfdf_view(tfdf),
         upid_assigned: !matches!(tfdf.upid, Upid::Other(_)),
         anomalies: f.anomalies().bits(),
-        layout: layout(f.layout(), tfdf.len()),
+        layout: layout(f.layout(), tfdf.len())?,
         ..aldis_uslp_frame_t::default()
     };
     if let Some(full) = f.full() {
@@ -823,7 +831,7 @@ fn view(f: &UslpFrame<'_>) -> aldis_uslp_frame_t {
     } else {
         v.kind = kind_view(FrameKind::Expedited);
     }
-    v
+    Ok(v)
 }
 
 /// Checks a physical channel configuration (732.1 §5 Table 5-1; USLP-003, USLP-008, API-040).
@@ -983,7 +991,7 @@ pub unsafe extern "C" fn aldis_uslp_decode(
             let bytes = abi::bytes(bytes, len)?;
             let mode = abi::mode(mode)?;
             let out = abi::out(out)?;
-            out.write(view(&UslpFrame::decode(bytes, &t, mode)?));
+            out.write(view(&UslpFrame::decode(bytes, &t, mode)?)?);
             Ok(())
         })
     }
@@ -1093,7 +1101,7 @@ pub unsafe extern "C" fn aldis_uslp_stream_next(
                         offset: current_offset,
                         len,
                         declared_len: len,
-                        frame: view(&frame),
+                        frame: view(&frame)?,
                         discard_reason: 0,
                         error_code: 0,
                         error_field: 0,
@@ -1246,7 +1254,7 @@ pub unsafe extern "C" fn aldis_uslp_writer_begin(
             let out = abi::bytes_mut(out, cap, &c.buffers())?;
             let layout = abi::out(layout)?;
             let w = UslpFrameWriter::begin(out, &t, fields, content, max_tfdz_len)?;
-            layout.write(self::layout(w.layout(), content.tfdf.len()));
+            layout.write(self::layout(w.layout(), content.tfdf.len())?);
             Ok(())
         })
     }
@@ -1655,5 +1663,25 @@ mod tests {
         assert_eq!(ocf(&[1, 2, 3]), Err(invalid_argument()));
         assert_eq!(ocf(&[]), Ok(None));
         assert_eq!(empty(1), Err(invalid_argument()));
+    }
+
+    #[test]
+    fn a_tfdf_header_longer_than_the_data_field_is_an_internal_error() {
+        // req: CABI-012, GEN-020
+        use aldis::core::layout::{FrameLayout, LayoutSpec};
+        let spec = LayoutSpec {
+            frame_len: 16,
+            primary_header_len: 4,
+            secondary_len: 0,
+            security: aldis::core::security::SecurityLayout::NONE,
+            ocf: false,
+            fecf: false,
+        };
+        let l = FrameLayout::compute(&spec).unwrap();
+        assert_eq!(layout(&l, 3).map(|v| v.tfdz_len), Ok(9));
+        assert_eq!(
+            layout(&l, 13).err().map(|e| e.kind()),
+            Some(ErrorKind::InternalError)
+        );
     }
 }

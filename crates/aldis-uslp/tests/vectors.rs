@@ -259,7 +259,7 @@ fn encode_case(case: &CodecCase) -> Result<Value, Error> {
     let mut two = vec![0xA5_u8; len];
     let mut writer =
         UslpFrameWriter::begin(&mut two, &tbl, frame_fields, content, tfdz.len()).unwrap();
-    writer.tfdz_mut().copy_from_slice(&tfdz);
+    writer.tfdz_mut().unwrap().copy_from_slice(&tfdz);
     assert_eq!(writer.finish(tfdz.len()), Ok(len), "{}", case.id);
     assert_eq!(two, out[..len], "{}: two-phase writer differs", case.id);
     Ok(json!({ "output_hex": hex::encode(&out[..len]) }))

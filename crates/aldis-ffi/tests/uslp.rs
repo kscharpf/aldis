@@ -500,9 +500,9 @@ fn the_writer_leaves_the_sdls_fields_to_the_caller() {
     };
     let mut rust = [0_u8; 64];
     let mut w = aldis::uslp::UslpFrameWriter::begin(&mut rust, &tbl, rf, rc, 10).unwrap();
-    w.security_header_mut().fill(0x51);
-    w.security_trailer_mut().fill(0x52);
-    w.tfdz_mut()[..3].copy_from_slice(&[7, 8, 9]);
+    w.security_header_mut().unwrap().fill(0x51);
+    w.security_trailer_mut().unwrap().fill(0x52);
+    w.tfdz_mut().unwrap()[..3].copy_from_slice(&[7, 8, 9]);
     assert_eq!(w.finish(3), Ok(35));
     assert_eq!(rust[..35], buf[..35]);
 }

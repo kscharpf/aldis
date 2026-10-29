@@ -115,11 +115,12 @@ fn begin_and_finish_write_only_the_reservation() {
             let mut out = before.clone();
             let mut w =
                 UslpFrameWriter::begin(&mut out, &t, fields(vc), CONTENT, max_tfdz).unwrap();
-            assert_eq!(w.tfdz_mut().len(), max_tfdz);
-            let security = w.security_header_mut().len() + w.security_trailer_mut().len();
+            assert_eq!(w.tfdz_mut().unwrap().len(), max_tfdz);
+            let security =
+                w.security_header_mut().unwrap().len() + w.security_trailer_mut().unwrap().len();
             // The Primary Header (7), the TFDF Header (1), the reservation, and the FECF (2).
             let total = 7 + 1 + security + max_tfdz + 2;
-            w.tfdz_mut()[..tfdz_len].fill(0x5C);
+            w.tfdz_mut().unwrap()[..tfdz_len].fill(0x5C);
             let n = w.finish(tfdz_len).unwrap();
             assert_eq!(n, total - (max_tfdz - tfdz_len));
             assert_eq!(out[total..], before[total..], "vc {vc}, {tfdz_len}");
