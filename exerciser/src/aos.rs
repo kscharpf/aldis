@@ -180,6 +180,10 @@ fn frame_group(t: &mut Tally) {
 
 /// Frames of `table`'s VC 0 (`M_PDUs`, an OCF, SDLS 2/1) and VC 1 (`VCA_SDUs`): the writers, the
 /// decoders, and OID frames.
+#[expect(
+    clippy::too_many_lines,
+    reason = "one call per writer, decoder, and OID encoder"
+)]
 fn frames(
     t: &mut Tally,
     pc: &AosPhysicalChannelConfig,

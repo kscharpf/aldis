@@ -140,7 +140,6 @@ fn absent_layout() -> aldis_spp_secondary_layout_t {
 }
 
 #[expect(unsafe_code, reason = "calls the C ABI with valid pointers")]
-#[expect(clippy::too_many_lines, reason = "one call per exported function")]
 fn spp(t: &mut Tally) {
     let (cfg, fields, mut det) = (spp_cfg(), spp_fields(), detail());
     let packet = bb(PACKET);
@@ -545,7 +544,6 @@ fn time(t: &mut Tally) {
 }
 
 #[expect(unsafe_code, reason = "calls the C ABI with valid pointers")]
-#[expect(clippy::too_many_lines, reason = "one call per exported function")]
 fn epp(t: &mut Tally) {
     let mut det = detail();
     let cfg = aldis_epp_config_t {
