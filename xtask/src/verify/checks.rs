@@ -116,7 +116,8 @@ pub const RUN: PathList = PathList {
 /// Read by every Rust check: the crates and the separate workspaces (`exerciser/`, `fuzz/`,
 /// `refapp/`, `crosscheck/`), their lint, format, licence, and coverage settings, the vectors that
 /// their tests and the exerciser load, and the SANA snapshots a test compares with the generated
-/// tables (`aldis-uslp/tests/restricted.rs`). One list for all of them: a finer split would save
+/// tables (`aldis-uslp/tests/restricted.rs`), and the committed header, which a test of `aldis-ffi`
+/// compares with its mirror enums (`src/mirror.rs`). One list for all of them: a finer split would save
 /// little and risk missing a path. The workflows, which no check reads, are in `GITHUB`.
 pub const RUST: PathList = PathList {
     name: "rust",
@@ -128,6 +129,7 @@ pub const RUST: PathList = PathList {
         "crosscheck/**",
         "test-vectors/**",
         "specs/sana/**",
+        "include/aldis/aldis.h",
         "clippy.toml",
         "rustfmt.toml",
         ".rustfmt.toml",

@@ -16,6 +16,41 @@ parse_deps = false
 
 [export]
 prefix = ""
+# The mirror enums of `src/mirror.rs`: no function or struct names them, because a field stays a
+# fixed-width integer (OI-57 convention 2), so cbindgen is told to emit them.
+include = [
+    "aldis_aos_content",
+    "aldis_aos_edition",
+    "aldis_aos_pointer",
+    "aldis_mode",
+    "aldis_ocf_report",
+    "aldis_oid_form",
+    "aldis_spp_discard",
+    "aldis_spp_packet_type",
+    "aldis_spp_reassembly",
+    "aldis_spp_secondary",
+    "aldis_spp_sequence_flags",
+    "aldis_spp_track",
+    "aldis_tc_control",
+    "aldis_tc_discard",
+    "aldis_tc_frame",
+    "aldis_tc_sequence_flags",
+    "aldis_tc_stream",
+    "aldis_time_ccs_variation",
+    "aldis_time_cds_day",
+    "aldis_time_cds_submillis",
+    "aldis_time_code",
+    "aldis_tm_content",
+    "aldis_tm_pointer",
+    "aldis_uslp_direction",
+    "aldis_uslp_discard",
+    "aldis_uslp_frame",
+    "aldis_uslp_kind",
+    "aldis_uslp_ocf",
+    "aldis_uslp_rule",
+    "aldis_uslp_security",
+    "aldis_uslp_stream",
+]
 
 [enum]
 rename_variants = "ScreamingSnakeCase"

@@ -12,20 +12,37 @@ use aldis::core::Result;
 use aldis::core::ocf::{FsrReport, OCF_LEN, Ocf, ProjectSpecificReport, Type1Report};
 
 use crate::abi::{self, invalid_argument};
+use crate::mirror::{mirror, parse};
 
 /// Length of the Operational Control Field in octets (132.0 §4.1.5.1, 732.0 §4.1.5.1,
 /// 732.1 §4.1.5.2; CMN-010).
 pub const ALDIS_OCF_LEN: u32 = 4;
 
-/// Report: Type Flag (bit 0) `0`, a Type-1 Report, the CLCW, or on USLP a CLCW or a PLCW
-/// (132.0 §4.1.5.4 a, 732.0 §4.1.5.4 a, 732.1 §4.1.5.2.1 a; CMN-010, CMN-011).
-pub const ALDIS_OCF_CLCW: u32 = 0;
-/// Report: bits 0–1 `10`, a project-specific Type-2 Report (132.0 §4.1.5.5 a, 732.0 §4.1.5.5 a,
-/// 732.1 §4.1.5.2.2 a; CMN-010).
-pub const ALDIS_OCF_PROJECT_SPECIFIC: u32 = 1;
-/// Report: bits 0–1 `11`, a Type-2 Report holding an SDLS Frame Security Report
-/// (132.0 §4.1.5.5 b, 732.0 §4.1.5.5 b, 732.1 §4.1.5.2.2 b; CMN-010).
-pub const ALDIS_OCF_SDLS_FSR: u32 = 2;
+/// The report an Operational Control Field holds (CMN-010).
+///
+/// A `uint32_t` argument or field is one of the enumerators below; the type itself is not a
+/// field type of the header (OI-57 convention 2; CABI-010).
+///
+/// cbindgen:prefix-with-name=false
+/// cbindgen:rename-all=None
+#[repr(u32)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[expect(
+    non_camel_case_types,
+    reason = "the variants are the C constants (OI-57 convention 2)"
+)]
+pub enum aldis_ocf_report {
+    /// Report: Type Flag (bit 0) `0`, a Type-1 Report, the CLCW, or on USLP a CLCW or a PLCW
+    /// (132.0 §4.1.5.4 a, 732.0 §4.1.5.4 a, 732.1 §4.1.5.2.1 a; CMN-010, CMN-011).
+    ALDIS_OCF_CLCW = 0,
+    /// Report: bits 0–1 `10`, a project-specific Type-2 Report (132.0 §4.1.5.5 a, 732.0 §4.1.5.5 a,
+    /// 732.1 §4.1.5.2.2 a; CMN-010).
+    ALDIS_OCF_PROJECT_SPECIFIC = 1,
+    /// Report: bits 0–1 `11`, a Type-2 Report holding an SDLS Frame Security Report
+    /// (132.0 §4.1.5.5 b, 732.0 §4.1.5.5 b, 732.1 §4.1.5.2.2 b; CMN-010).
+    ALDIS_OCF_SDLS_FSR = 2,
+}
+mirror!(pub aldis_ocf_report: u32 { ALDIS_OCF_CLCW, ALDIS_OCF_PROJECT_SPECIFIC, ALDIS_OCF_SDLS_FSR });
 
 const _: () = assert!(ALDIS_OCF_LEN == 4 && OCF_LEN == 4);
 
@@ -111,11 +128,12 @@ pub unsafe extern "C" fn aldis_ocf_check(
     unsafe {
         abi::call(err, || {
             let octets = octets(ocf, ocf_len)?;
-            match report {
-                ALDIS_OCF_CLCW => Type1Report::try_from(octets).map(drop),
-                ALDIS_OCF_PROJECT_SPECIFIC => ProjectSpecificReport::try_from(octets).map(drop),
-                ALDIS_OCF_SDLS_FSR => FsrReport::try_from(octets).map(drop),
-                _ => Err(invalid_argument()),
+            match parse::<aldis_ocf_report>(report)? {
+                aldis_ocf_report::ALDIS_OCF_CLCW => Type1Report::try_from(octets).map(drop),
+                aldis_ocf_report::ALDIS_OCF_PROJECT_SPECIFIC => {
+                    ProjectSpecificReport::try_from(octets).map(drop)
+                }
+                aldis_ocf_report::ALDIS_OCF_SDLS_FSR => FsrReport::try_from(octets).map(drop),
             }
         })
     }
