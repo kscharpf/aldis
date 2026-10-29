@@ -356,4 +356,23 @@ mod tests {
             Some(field::FRAME_DATA_FIELD)
         );
     }
+
+    #[test]
+    fn a_frame_too_short_for_a_tfdf_is_rejected() {
+        // req: CMN-041, USLP-012
+        // 4-octet header, 6-octet Security Header, and 16-octet Security Trailer leave no TFDF.
+        let rejected = super::split(
+            &[0_u8; 26],
+            aldis_core::security::SecurityLayout::USLP_TRUNCATED,
+        )
+        .err()
+        .map(|r| (r.reason(), r.error().field()));
+        assert_eq!(
+            rejected,
+            Some((
+                crate::validate::Reason::FrameTooShort,
+                Some(field::FRAME_DATA_FIELD)
+            ))
+        );
+    }
 }
