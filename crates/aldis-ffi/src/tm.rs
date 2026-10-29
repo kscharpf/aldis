@@ -43,6 +43,7 @@ use aldis::tm::{
 };
 
 use crate::abi::{self, Configs, invalid_argument};
+use crate::mirror::{mirror, parse};
 use crate::oid::{GeneratorState, aldis_oid_generator_t, generator};
 
 /// Length of the TM Transfer Frame Primary Header in octets (132.0 §4.1.2.1).
@@ -59,22 +60,54 @@ pub const ALDIS_TM_FHP_NO_PACKET_START: u16 = 0x7FF;
 /// §4.1.2.7.6.5; TM-008, TM-010).
 pub const ALDIS_TM_FHP_ONLY_IDLE_DATA: u16 = 0x7FE;
 
-/// Data Field Content: Packets, and Idle Data in OID frames; Synchronization Flag `0`
-/// (132.0 §4.1.4.4, Table 5-3).
-pub const ALDIS_TM_CONTENT_PACKETS: u8 = 0;
-/// Data Field Content: one `VCA_SDU` per frame; Synchronization Flag `1` (132.0 §4.1.4.4,
-/// Table 5-3).
-pub const ALDIS_TM_CONTENT_VCA_SDU: u8 = 1;
+/// The Data Field Content of a TM virtual channel (132.0 §4.1.4).
+///
+/// A `uint8_t` argument or field is one of the enumerators below; the type itself is not a
+/// field type of the header (OI-57 convention 2; CABI-010).
+///
+/// cbindgen:prefix-with-name=false
+/// cbindgen:rename-all=None
+#[repr(u8)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[expect(
+    non_camel_case_types,
+    reason = "the variants are the C constants (OI-57 convention 2)"
+)]
+pub enum aldis_tm_content {
+    /// Data Field Content: Packets, and Idle Data in OID frames; Synchronization Flag `0`
+    /// (132.0 §4.1.4.4, Table 5-3).
+    ALDIS_TM_CONTENT_PACKETS = 0,
+    /// Data Field Content: one `VCA_SDU` per frame; Synchronization Flag `1` (132.0 §4.1.4.4,
+    /// Table 5-3).
+    ALDIS_TM_CONTENT_VCA_SDU = 1,
+}
+mirror!(pub aldis_tm_content: u8 { ALDIS_TM_CONTENT_PACKETS, ALDIS_TM_CONTENT_VCA_SDU });
 
-/// Pointer, in a view: Synchronization Flag `1`, where the First Header Pointer is not defined
-/// and is given raw (132.0 §4.1.2.7.6.2; TM-007). Not valid in [`aldis_tm_fields_t`].
-pub const ALDIS_TM_POINTER_NONE: u8 = 0;
-/// Pointer: a packet starts at `packet_offset` in the data field (132.0 §4.1.2.7.6.3; TM-008).
-pub const ALDIS_TM_POINTER_STARTS_AT: u8 = 1;
-/// Pointer: no packet starts in the data field, FHP `0x7FF` (132.0 §4.1.2.7.6.4; TM-008).
-pub const ALDIS_TM_POINTER_NO_PACKET_START: u8 = 2;
-/// Pointer: Only Idle Data, FHP `0x7FE` (132.0 §4.1.2.7.6.5; TM-008, TM-010).
-pub const ALDIS_TM_POINTER_ONLY_IDLE_DATA: u8 = 3;
+/// The kind of First Header Pointer of a TM frame (132.0 §4.1.2.7.2).
+///
+/// A `uint8_t` argument or field is one of the enumerators below; the type itself is not a
+/// field type of the header (OI-57 convention 2; CABI-010).
+///
+/// cbindgen:prefix-with-name=false
+/// cbindgen:rename-all=None
+#[repr(u8)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[expect(
+    non_camel_case_types,
+    reason = "the variants are the C constants (OI-57 convention 2)"
+)]
+pub enum aldis_tm_pointer {
+    /// Pointer, in a view: Synchronization Flag `1`, where the First Header Pointer is not defined
+    /// and is given raw (132.0 §4.1.2.7.6.2; TM-007). Not valid in [`aldis_tm_fields_t`].
+    ALDIS_TM_POINTER_NONE = 0,
+    /// Pointer: a packet starts at `packet_offset` in the data field (132.0 §4.1.2.7.6.3; TM-008).
+    ALDIS_TM_POINTER_STARTS_AT = 1,
+    /// Pointer: no packet starts in the data field, FHP `0x7FF` (132.0 §4.1.2.7.6.4; TM-008).
+    ALDIS_TM_POINTER_NO_PACKET_START = 2,
+    /// Pointer: Only Idle Data, FHP `0x7FE` (132.0 §4.1.2.7.6.5; TM-008, TM-010).
+    ALDIS_TM_POINTER_ONLY_IDLE_DATA = 3,
+}
+mirror!(pub aldis_tm_pointer: u8 { ALDIS_TM_POINTER_NONE, ALDIS_TM_POINTER_STARTS_AT, ALDIS_TM_POINTER_NO_PACKET_START, ALDIS_TM_POINTER_ONLY_IDLE_DATA });
 
 /// Anomaly bit: Packet Order Flag `1` with the Synchronization Flag `0` (bit 0 of `TmAnomaly`;
 /// 132.0 §4.1.2.7.4; TM-007, API-032).
@@ -348,10 +381,9 @@ fn fsh_len(octets: u8) -> Result<Option<FshLen>> {
 /// Table 6-1; RS-020).
 fn virtual_channel(v: &aldis_tm_vc_config_t) -> Result<TmVirtualChannelConfig> {
     let vcid = VcId::try_from(v.vcid)?;
-    let content = match v.content {
-        ALDIS_TM_CONTENT_PACKETS => DataFieldContent::Packets,
-        ALDIS_TM_CONTENT_VCA_SDU => DataFieldContent::VcaSdu,
-        _ => return Err(invalid_argument()),
+    let content = match parse::<aldis_tm_content>(v.content)? {
+        aldis_tm_content::ALDIS_TM_CONTENT_PACKETS => DataFieldContent::Packets,
+        aldis_tm_content::ALDIS_TM_CONTENT_VCA_SDU => DataFieldContent::VcaSdu,
     };
     let mut vc = TmVirtualChannelConfig::new(vcid, content);
     if let Some(len) = fsh_len(v.fsh_len)? {
@@ -457,8 +489,8 @@ fn fields(f: aldis_tm_fields_t) -> Result<Fields> {
             first_header_pointer: FirstHeaderPointer::try_from(f.first_header_pointer)?,
         }
     } else {
-        DataFieldStatus::Packets(match f.pointer {
-            ALDIS_TM_POINTER_STARTS_AT => {
+        DataFieldStatus::Packets(match parse::<aldis_tm_pointer>(f.pointer)? {
+            aldis_tm_pointer::ALDIS_TM_POINTER_STARTS_AT => {
                 if let Ok(offset) = PacketOffset::try_from(f.packet_offset) {
                     PacketPointer::StartsAt(offset)
                 } else {
@@ -466,9 +498,9 @@ fn fields(f: aldis_tm_fields_t) -> Result<Fields> {
                     PacketPointer::NoPacketStart
                 }
             }
-            ALDIS_TM_POINTER_NO_PACKET_START => PacketPointer::NoPacketStart,
-            ALDIS_TM_POINTER_ONLY_IDLE_DATA => PacketPointer::OnlyIdleData,
-            _ => return Err(invalid_argument()),
+            aldis_tm_pointer::ALDIS_TM_POINTER_NO_PACKET_START => PacketPointer::NoPacketStart,
+            aldis_tm_pointer::ALDIS_TM_POINTER_ONLY_IDLE_DATA => PacketPointer::OnlyIdleData,
+            aldis_tm_pointer::ALDIS_TM_POINTER_NONE => return Err(invalid_argument()),
         })
     };
     Ok(Fields {

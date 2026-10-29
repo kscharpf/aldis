@@ -15,22 +15,12 @@
 /**
  * ABI minor version (CABI-060).
  */
-#define ALDIS_ABI_VERSION_MINOR 3
+#define ALDIS_ABI_VERSION_MINOR 4
 
 /**
  * ABI patch version (CABI-060).
  */
 #define ALDIS_ABI_VERSION_PATCH 0
-
-/**
- * Mode argument: strict decoding, the default (API-030, API-031).
- */
-#define ALDIS_MODE_STRICT 0
-
-/**
- * Mode argument: lenient decoding, with anomaly flags (API-030, API-032).
- */
-#define ALDIS_MODE_LENIENT 1
 
 /**
  * Length of the AOS Transfer Frame Primary Header without the FHEC, in octets (732.0
@@ -86,82 +76,6 @@
  * the last index below the reserved values (732.0 §4.1.4.3.3.3–4; AOS-017).
  */
 #define ALDIS_AOS_VALID_BITS_MAX 16382
-
-/**
- * Edition: 732.0-B-5, a 10-bit SCID and a 16-bit First Header Pointer; the default (732.0
- * §4.1.2.2.3, §4.1.4.2.1.4; AOS-001, GEN-062).
- */
-#define ALDIS_AOS_EDITION_ISSUE5 0
-
-/**
- * Edition: the wire format of 732.0-B-4 and earlier (AOS-002, AOS-003).
- *
- * An 8-bit SCID, Primary Header bits 42–43 a spare, and an `M_PDU` Header of a 5-bit spare and
- * an 11-bit First Header Pointer (732.0-B-4 §4.1.2.2.3, §4.1.2.5.4, §4.1.4.2.2–3).
- */
-#define ALDIS_AOS_EDITION_ISSUE4 1
-
-/**
- * Data Field Content: one `M_PDU` per frame (732.0 §4.1.4.2, Table 5-3).
- */
-#define ALDIS_AOS_CONTENT_MPDU 0
-
-/**
- * Data Field Content: one `B_PDU` per frame (732.0 §4.1.4.3, Table 5-3; AOS-018).
- */
-#define ALDIS_AOS_CONTENT_BPDU 1
-
-/**
- * Data Field Content: one `VCA_SDU` per frame, opaque (732.0 §4.1.4.1.3, Table 5-3).
- */
-#define ALDIS_AOS_CONTENT_VCA_SDU 2
-
-/**
- * Data Field Content: Idle Data, the content of an OID frame's data field too (732.0
- * §4.1.4.1.3, §4.1.4.1.5, Table 5-3).
- */
-#define ALDIS_AOS_CONTENT_IDLE_DATA 3
-
-/**
- * Pointer: no `M_PDU` or `B_PDU` Header: a `VCA_SDU` or Idle Data (732.0 §4.1.4.1.3).
- */
-#define ALDIS_AOS_POINTER_NONE 0
-
-/**
- * `M_PDU` First Header Pointer: the first Packet that starts in the Packet Zone starts at the
- * octet `pointer_value` (732.0 §4.1.4.2.2.3; AOS-017).
- */
-#define ALDIS_AOS_POINTER_STARTS_AT 1
-
-/**
- * `M_PDU` First Header Pointer all ones: no Packet starts in the Packet Zone (732.0
- * §4.1.4.2.2.4).
- */
-#define ALDIS_AOS_POINTER_NO_PACKET_START 2
-
-/**
- * `M_PDU` First Header Pointer all ones minus one: the Packet Zone holds only Idle Data (732.0
- * §4.1.4.2.2.5).
- */
-#define ALDIS_AOS_POINTER_ONLY_IDLE_DATA 3
-
-/**
- * `B_PDU` Bitstream Data Pointer: the first `pointer_value` bits of the Bitstream Data Zone are
- * user data, the rest idle data (732.0 §4.1.4.3.3.2; AOS-017, GEN-053).
- */
-#define ALDIS_AOS_POINTER_VALID_BITS 4
-
-/**
- * `B_PDU` Bitstream Data Pointer all ones: the zone holds only user data (732.0
- * §4.1.4.3.3.3).
- */
-#define ALDIS_AOS_POINTER_ALL_VALID 5
-
-/**
- * `B_PDU` Bitstream Data Pointer all ones minus one: the zone holds only idle data (732.0
- * §4.1.4.3.3.4).
- */
-#define ALDIS_AOS_POINTER_ONLY_IDLE 6
 
 /**
  * Anomaly bit: Virtual Channel Frame Count Cycle other than `0000` with its Use Flag `0`
@@ -1240,69 +1154,9 @@
 #define ALDIS_OCF_LEN 4
 
 /**
- * Report: Type Flag (bit 0) `0`, a Type-1 Report, the CLCW, or on USLP a CLCW or a PLCW
- * (132.0 §4.1.5.4 a, 732.0 §4.1.5.4 a, 732.1 §4.1.5.2.1 a; CMN-010, CMN-011).
- */
-#define ALDIS_OCF_CLCW 0
-
-/**
- * Report: bits 0–1 `10`, a project-specific Type-2 Report (132.0 §4.1.5.5 a, 732.0 §4.1.5.5 a,
- * 732.1 §4.1.5.2.2 a; CMN-010).
- */
-#define ALDIS_OCF_PROJECT_SPECIFIC 1
-
-/**
- * Report: bits 0–1 `11`, a Type-2 Report holding an SDLS Frame Security Report
- * (132.0 §4.1.5.5 b, 732.0 §4.1.5.5 b, 732.1 §4.1.5.2.2 b; CMN-010).
- */
-#define ALDIS_OCF_SDLS_FSR 2
-
-/**
- * [`aldis_oid_generator_init`] `form`: the Fibonacci form, the reference implementation
- * (132.0 Annex D; CMN-020).
- */
-#define ALDIS_OID_FIBONACCI 0
-
-/**
- * [`aldis_oid_generator_init`] `form`: the Galois form, with the seed of 132.0 Annex D
- * (CMN-022).
- */
-#define ALDIS_OID_GALOIS 1
-
-/**
  * 64-bit words of one `aldis_oid_generator_t` (CABI-031; M2 plan D5, D14).
  */
 #define ALDIS_OID_GENERATOR_WORDS 4
-
-/**
- * [`aldis_spp_fields_t::packet_type`]: telemetry, Packet Type 0 (133.0 §4.1.3.3.2).
- */
-#define ALDIS_SPP_TELEMETRY 0
-
-/**
- * [`aldis_spp_fields_t::packet_type`]: telecommand, Packet Type 1 (133.0 §4.1.3.3.2).
- */
-#define ALDIS_SPP_TELECOMMAND 1
-
-/**
- * Sequence Flags `00`: continuation segment (133.0 §4.1.3.4.2.2).
- */
-#define ALDIS_SPP_SEQ_CONTINUATION 0
-
-/**
- * Sequence Flags `01`: first segment (133.0 §4.1.3.4.2.2).
- */
-#define ALDIS_SPP_SEQ_FIRST 1
-
-/**
- * Sequence Flags `10`: last segment (133.0 §4.1.3.4.2.2).
- */
-#define ALDIS_SPP_SEQ_LAST 2
-
-/**
- * Sequence Flags `11`: unsegmented user data (133.0 §4.1.3.4.2.2).
- */
-#define ALDIS_SPP_SEQ_UNSEGMENTED 3
 
 /**
  * APID of Idle Packets (133.0 §4.1.3.3.4.4).
@@ -1332,23 +1186,6 @@
 #define ALDIS_SPP_ANOMALY_IDLE_WITH_SECONDARY_HEADER (1 << 0)
 
 /**
- * [`aldis_spp_secondary_layout_t::kind`]: no Packet Secondary Header (133.0 §4.1.4.2).
- */
-#define ALDIS_SPP_SECONDARY_ABSENT 0
-
-/**
- * [`aldis_spp_secondary_layout_t::kind`]: an opaque secondary header of `opaque_len` octets
- * (133.0 §4.1.4.2.1; SPP-007).
- */
-#define ALDIS_SPP_SECONDARY_OPAQUE 1
-
-/**
- * [`aldis_spp_secondary_layout_t::kind`]: a Time Code Field, then `ancillary_len` octets of
- * Ancillary Data (133.0 §4.1.4.2.2; SPP-008).
- */
-#define ALDIS_SPP_SECONDARY_TIME 2
-
-/**
  * 64-bit words of one `aldis_spp_tracker_t` (CABI-031; M2 plan D5).
  *
  * The tag, the capacity, and the tracker at `ALDIS_SPP_TRACKER_MAX_APIDS`; the build fails when
@@ -1365,83 +1202,6 @@
  * 64-bit words of one `aldis_spp_reassembler_t` (CABI-031; M2 plan D5).
  */
 #define ALDIS_SPP_REASSEMBLER_WORDS 8
-
-/**
- * [`aldis_spp_tracked_t::continuity`]: the first count of an APID (SPP-011).
- */
-#define ALDIS_SPP_TRACK_FIRST 0
-
-/**
- * [`aldis_spp_tracked_t::continuity`]: forward distance 1 (CMN-031, SPP-011).
- */
-#define ALDIS_SPP_TRACK_IN_SEQUENCE 1
-
-/**
- * [`aldis_spp_tracked_t::continuity`]: forward distance 2 to 8192; `missing` counts were
- * skipped (CMN-031, SPP-011).
- */
-#define ALDIS_SPP_TRACK_GAP 2
-
-/**
- * [`aldis_spp_tracked_t::continuity`]: the same count again (CMN-031, SPP-011).
- */
-#define ALDIS_SPP_TRACK_REPEAT 3
-
-/**
- * [`aldis_spp_tracked_t::continuity`]: any other distance, a reset (CMN-031, SPP-011).
- */
-#define ALDIS_SPP_TRACK_BACKWARDS 4
-
-/**
- * [`aldis_spp_reassembly_t::discarded`] and `reason`: nothing (SPP-013).
- */
-#define ALDIS_SPP_DISCARD_NONE 0
-
-/**
- * A sequence gap while assembling (SPP-013).
- */
-#define ALDIS_SPP_DISCARD_GAP 1
-
-/**
- * A first segment arrived while assembling (SPP-013).
- */
-#define ALDIS_SPP_DISCARD_RESTARTED 2
-
-/**
- * An unsegmented packet arrived while assembling (SPP-013).
- */
-#define ALDIS_SPP_DISCARD_INTERRUPTED 3
-
-/**
- * A continuation or last segment with nothing in progress (SPP-013).
- */
-#define ALDIS_SPP_DISCARD_ORPHAN 4
-
-/**
- * The SDU would exceed the buffer (SPP-013).
- */
-#define ALDIS_SPP_DISCARD_OVERFLOW 5
-
-/**
- * A reason that a later `aldis-spp` adds (GEN-081).
- */
-#define ALDIS_SPP_DISCARD_OTHER 255
-
-/**
- * [`aldis_spp_reassembly_t::status`]: the segment was stored (SPP-013).
- */
-#define ALDIS_SPP_REASSEMBLY_IN_PROGRESS 0
-
-/**
- * [`aldis_spp_reassembly_t::status`]: the SDU of `sdu_len` octets is complete at the start of
- * the buffer (SPP-013).
- */
-#define ALDIS_SPP_REASSEMBLY_COMPLETE 1
-
-/**
- * [`aldis_spp_reassembly_t::status`]: the packet was dropped for `reason` (SPP-013).
- */
-#define ALDIS_SPP_REASSEMBLY_DROPPED 2
 
 /**
  * Length of the TC Transfer Frame Primary Header in octets (232.0 §4.1.2).
@@ -1469,57 +1229,6 @@
 #define ALDIS_TC_MAX_VCS 64
 
 /**
- * Frame type AD: Bypass Flag `0`, Control Command Flag `0` (232.0 §4.1.2, Table 4-1).
- */
-#define ALDIS_TC_FRAME_AD 0
-
-/**
- * Frame type BD: Bypass Flag `1`, Control Command Flag `0` (232.0 Table 4-1).
- */
-#define ALDIS_TC_FRAME_BD 1
-
-/**
- * Frame type BC: Bypass Flag `1`, Control Command Flag `1` (232.0 Table 4-1).
- */
-#define ALDIS_TC_FRAME_BC 2
-
-/**
- * Sequence Flags `00`: a continuing segment (232.0 §4.1.3.2.2).
- */
-#define ALDIS_TC_SEQ_CONTINUING 0
-
-/**
- * Sequence Flags `01`: the first segment (232.0 §4.1.3.2.2).
- */
-#define ALDIS_TC_SEQ_FIRST 1
-
-/**
- * Sequence Flags `10`: the last segment (232.0 §4.1.3.2.2).
- */
-#define ALDIS_TC_SEQ_LAST 2
-
-/**
- * Sequence Flags `11`: no segmentation (232.0 §4.1.3.2.2).
- */
-#define ALDIS_TC_SEQ_UNSEGMENTED 3
-
-/**
- * No Control Command: the data field of a Type-D frame, or, in lenient mode, a Type-C data
- * field that is neither command (232.0 §4.1.3.3.4; TC-005).
- */
-#define ALDIS_TC_CONTROL_NONE 0
-
-/**
- * The Unlock Control Command, one octet of zeros (232.0 §4.1.3.3.2; TC-005).
- */
-#define ALDIS_TC_CONTROL_UNLOCK 1
-
-/**
- * The Set V(R) Control Command, `82 00` and the new V(R) (232.0 §4.1.3.3.3; TC-005).
- */
-#define ALDIS_TC_CONTROL_SET_VR 2
-
-/**
  * Anomaly bit: Reserved Spare of the Primary Header not `00` (bit 0 of `TcAnomaly`; 232.0
  * §4.1.2.4; TC-003, API-032).
  */
@@ -1538,163 +1247,14 @@
 #define ALDIS_TC_ANOMALY_CLCW_SPARE_SET (1 << 2)
 
 /**
- * Stream item: no octets of the unit remain (232.0 §4.4.9.2; TC-020).
- */
-#define ALDIS_TC_STREAM_END 0
-
-/**
- * Stream item: one validated frame (232.0 §4.4.9.2, §4.4.9.3; TC-020, TC-021).
- */
-#define ALDIS_TC_STREAM_ACCEPTED 1
-
-/**
- * Stream item: discarded octets (fill, truncated frame, or failed validation) (232.0 §4.4.9.2, §4.4.9.3; TC-020, TC-021).
- */
-#define ALDIS_TC_STREAM_DISCARDED 2
-
-/**
- * Discard reason: accepted frame (not discarded).
- */
-#define ALDIS_TC_DISCARD_NONE 0
-
-/**
  * Discard reason: check (a), Transfer Frame Version Number is not `00` (232.0 §4.4.9.3.3; TC-021).
  */
 #define ALDIS_TC_DISCARD_UNEXPECTED_VERSION 1
 
 /**
- * Discard reason: check (b), Spacecraft ID is not that of the master channel (232.0 §4.4.9.3.3; TC-021).
- */
-#define ALDIS_TC_DISCARD_UNEXPECTED_SPACECRAFT 2
-
-/**
- * Discard reason: check (c), Bypass Flag `0` with Control Command Flag `1` (232.0 Table 4-1; TC-002, TC-021).
- */
-#define ALDIS_TC_DISCARD_RESERVED_FLAGS 3
-
-/**
- * Discard reason: check (c), strict mode only: Reserved Spare is not `00` (232.0 §4.1.2.4; TC-003).
- */
-#define ALDIS_TC_DISCARD_RESERVED_SPARE 4
-
-/**
- * Discard reason: check (c), VCID is not configured (232.0 §4.4.7.3; TC-022).
- */
-#define ALDIS_TC_DISCARD_INVALID_VCID 5
-
-/**
- * Discard reason: check (c), Frame Length exceeds the channel's maximum (232.0 Tables 5-1, 5-3; TC-021).
- */
-#define ALDIS_TC_DISCARD_FRAME_TOO_LONG 6
-
-/**
- * Discard reason: check (c), Frame Length leaves no data octet (232.0 §4.1.1; TC-021, CMN-041).
- */
-#define ALDIS_TC_DISCARD_FRAME_TOO_SHORT 7
-
-/**
- * Discard reason: check (d), Frame Length disagrees with the octets present (232.0 §4.4.9.3.3; TC-021).
- */
-#define ALDIS_TC_DISCARD_LENGTH_MISMATCH 8
-
-/**
- * Discard reason: check (e), FECF does not match (232.0 §4.1.4; TC-006, TC-021).
- */
-#define ALDIS_TC_DISCARD_FECF_MISMATCH 9
-
-/**
- * Discard reason: MAP ID is not configured on the Virtual Channel (232.0 §4.4.3.3; TC-022).
- */
-#define ALDIS_TC_DISCARD_INVALID_MAP_ID 10
-
-/**
- * Discard reason: strict mode only, Type-C data field is not a recognized command (232.0 §4.1.3.3.4; TC-005).
- */
-#define ALDIS_TC_DISCARD_RESERVED_CONTROL_COMMAND 11
-
-/**
- * Discard reason: fill data (232.0 §4.4.9.2.6; TC-020).
- */
-#define ALDIS_TC_DISCARD_FILL 20
-
-/**
- * Discard reason: truncated frame whose declared length exceeds remaining octets (232.0 §4.4.9.2.5; TC-020).
- */
-#define ALDIS_TC_DISCARD_TRUNCATED_FRAME 21
-
-/**
  * COP in Effect `01`: COP-1 (232.0 §4.2.1.5).
  */
 #define ALDIS_CLCW_COP_1 1
-
-/**
- * [`aldis_time_format_t::code`]: CCSDS Unsegmented Time Code (301.0 §3.2).
- */
-#define ALDIS_TIME_CUC 0
-
-/**
- * [`aldis_time_format_t::code`]: CCSDS Day Segmented Time Code (301.0 §3.3).
- */
-#define ALDIS_TIME_CDS 1
-
-/**
- * [`aldis_time_format_t::code`]: CCSDS Calendar Segmented Time Code (301.0 §3.4).
- */
-#define ALDIS_TIME_CCS 2
-
-/**
- * [`aldis_time_format_t::code`]: agency-defined code (301.0 §3.6).
- */
-#define ALDIS_TIME_AGENCY 3
-
-/**
- * [`aldis_time_format_t::code`] of a decoded P-field whose time code ID is reserved, decoded
- * in lenient mode (TIME-002); never accepted as an input format.
- */
-#define ALDIS_TIME_UNKNOWN 4
-
-/**
- * [`aldis_time_format_t::code`] for [`aldis_time_convert`] only: an ASCII code A or B
- * (301.0 §3.5).
- */
-#define ALDIS_TIME_ASCII 5
-
-/**
- * [`aldis_time_format_t::day_len`]: a 16-bit CDS day segment (301.0 §3.3.2).
- */
-#define ALDIS_TIME_CDS_DAY_16 0
-
-/**
- * [`aldis_time_format_t::day_len`]: a 24-bit CDS day segment (301.0 §3.3.2).
- */
-#define ALDIS_TIME_CDS_DAY_24 1
-
-/**
- * [`aldis_time_format_t::subms`]: no CDS submillisecond segment (301.0 §3.3.2).
- */
-#define ALDIS_TIME_CDS_SUBMS_NONE 0
-
-/**
- * [`aldis_time_format_t::subms`]: microseconds of millisecond, 16 bits (301.0 §3.3.2).
- */
-#define ALDIS_TIME_CDS_SUBMS_MICROS 1
-
-/**
- * [`aldis_time_format_t::subms`]: picoseconds of millisecond, 32 bits (301.0 §3.3.2).
- */
-#define ALDIS_TIME_CDS_SUBMS_PICOS 2
-
-/**
- * CCS and ASCII variation: month and day of month, CCS bit 4 = 0, ASCII code A
- * (301.0 §3.4.2, §3.5.1.1).
- */
-#define ALDIS_TIME_MONTH_DAY 0
-
-/**
- * CCS and ASCII variation: day of year, CCS bit 4 = 1, ASCII code B (301.0 §3.4.2,
- * §3.5.1.2).
- */
-#define ALDIS_TIME_DAY_OF_YEAR 1
 
 /**
  * Largest P-field, in octets (301.0 §3.1.1).
@@ -1806,39 +1366,6 @@
 #define ALDIS_TM_FHP_ONLY_IDLE_DATA 2046
 
 /**
- * Data Field Content: Packets, and Idle Data in OID frames; Synchronization Flag `0`
- * (132.0 §4.1.4.4, Table 5-3).
- */
-#define ALDIS_TM_CONTENT_PACKETS 0
-
-/**
- * Data Field Content: one `VCA_SDU` per frame; Synchronization Flag `1` (132.0 §4.1.4.4,
- * Table 5-3).
- */
-#define ALDIS_TM_CONTENT_VCA_SDU 1
-
-/**
- * Pointer, in a view: Synchronization Flag `1`, where the First Header Pointer is not defined
- * and is given raw (132.0 §4.1.2.7.6.2; TM-007). Not valid in [`aldis_tm_fields_t`].
- */
-#define ALDIS_TM_POINTER_NONE 0
-
-/**
- * Pointer: a packet starts at `packet_offset` in the data field (132.0 §4.1.2.7.6.3; TM-008).
- */
-#define ALDIS_TM_POINTER_STARTS_AT 1
-
-/**
- * Pointer: no packet starts in the data field, FHP `0x7FF` (132.0 §4.1.2.7.6.4; TM-008).
- */
-#define ALDIS_TM_POINTER_NO_PACKET_START 2
-
-/**
- * Pointer: Only Idle Data, FHP `0x7FE` (132.0 §4.1.2.7.6.5; TM-008, TM-010).
- */
-#define ALDIS_TM_POINTER_ONLY_IDLE_DATA 3
-
-/**
  * Anomaly bit: Packet Order Flag `1` with the Synchronization Flag `0` (bit 0 of `TmAnomaly`;
  * 132.0 §4.1.2.7.4; TM-007, API-032).
  */
@@ -1900,109 +1427,6 @@
  * USLP-012, API-075).
  */
 #define ALDIS_USLP_TRUNCATED_MIN_LEN_WITH_SDLS 28
-
-/**
- * Transfer Frame Type: fixed-length frames (732.1 §5 Tables 5-1, 5-3).
- */
-#define ALDIS_USLP_FRAME_FIXED 0
-
-/**
- * Transfer Frame Type: variable-length frames (732.1 §5 Tables 5-1, 5-3).
- */
-#define ALDIS_USLP_FRAME_VARIABLE 1
-
-/**
- * OCF use of a virtual channel: no frame carries an OCF (732.1 §4.1.5, Table 5-3).
- */
-#define ALDIS_USLP_OCF_ABSENT 0
-
-/**
- * OCF use: a frame may carry an OCF, on a variable-length VC (732.1 §4.1.5.4).
- */
-#define ALDIS_USLP_OCF_ALLOWED 1
-
-/**
- * OCF use: every frame carries an OCF, on a fixed-length VC (732.1 §4.1.5.3).
- */
-#define ALDIS_USLP_OCF_REQUIRED 2
-
-/**
- * Security of a virtual channel: one layout for the VC, its lengths in the VC struct (732.1
- * §6.6 Table 6-1; API-070).
- */
-#define ALDIS_USLP_SECURITY_VC 0
-
-/**
- * Security of a virtual channel: a layout per MAP, in the MAP structs (732.1 §6.6; API-070).
- */
-#define ALDIS_USLP_SECURITY_PER_MAP 1
-
-/**
- * Source-or-Destination Identifier `0`: the SCID is the frame's source (732.1 §4.1.2.3).
- */
-#define ALDIS_USLP_SOURCE 0
-
-/**
- * Source-or-Destination Identifier `1`: the SCID is the frame's destination (732.1 §4.1.2.3).
- */
-#define ALDIS_USLP_DESTINATION 1
-
-/**
- * Frame kind: Bypass/Sequence Control and Protocol Control Command Flags `00`, user data of
- * the Sequence-Controlled service (732.1 Table 4-1; USLP-001).
- */
-#define ALDIS_USLP_KIND_SEQUENCE_CONTROLLED 0
-
-/**
- * Frame kind: flags `10`, user data of the Expedited service (732.1 Table 4-1; USLP-001).
- */
-#define ALDIS_USLP_KIND_EXPEDITED 1
-
-/**
- * Frame kind: flags `11`, Protocol Control Commands (732.1 Table 4-1; USLP-001, USLP-013).
- */
-#define ALDIS_USLP_KIND_PROTOCOL_CONTROL 2
-
-/**
- * TFDZ Construction Rule `000`: packets spanning frames, fixed-length TFDZ (732.1 Table 4-3).
- */
-#define ALDIS_USLP_RULE_PACKETS_SPANNING_FRAMES 0
-
-/**
- * Rule `001`: start of a `MAPA_SDU` or `VCA_SDU`, fixed-length TFDZ (732.1 Table 4-3).
- */
-#define ALDIS_USLP_RULE_SDU_START 1
-
-/**
- * Rule `010`: continuing portion of a `MAPA_SDU` or `VCA_SDU`, fixed-length TFDZ (732.1
- * Table 4-3).
- */
-#define ALDIS_USLP_RULE_SDU_CONTINUATION 2
-
-/**
- * Rule `011`: octet stream, variable-length TFDZ (732.1 Table 4-3).
- */
-#define ALDIS_USLP_RULE_OCTET_STREAM 3
-
-/**
- * Rule `100`: starting segment, variable-length TFDZ (732.1 Table 4-3).
- */
-#define ALDIS_USLP_RULE_STARTING_SEGMENT 4
-
-/**
- * Rule `101`: continuing segment, variable-length TFDZ (732.1 Table 4-3).
- */
-#define ALDIS_USLP_RULE_CONTINUING_SEGMENT 5
-
-/**
- * Rule `110`: last segment, variable-length TFDZ (732.1 Table 4-3).
- */
-#define ALDIS_USLP_RULE_LAST_SEGMENT 6
-
-/**
- * Rule `111`: no segmentation, variable-length TFDZ (732.1 Table 4-3).
- */
-#define ALDIS_USLP_RULE_NO_SEGMENTATION 7
 
 /**
  * Largest UPID: the field has 5 bits; every value from 0 up to it crosses the ABI, assigned
@@ -2070,134 +1494,1226 @@
 #define ALDIS_USLP_ANOMALY_OID_HEADER_MISMATCH (1 << 1)
 
 /**
- * Stream item: no octets of the unit remain (732.1 §4.3.11.2; USLP-015).
- */
-#define ALDIS_USLP_STREAM_END 0
-
-/**
- * Stream item: one validated frame (732.1 §4.3.11.2, §4.3.11.3; USLP-014, USLP-015).
- */
-#define ALDIS_USLP_STREAM_ACCEPTED 1
-
-/**
- * Stream item: discarded octets (fill, incomplete frame, or failed validation) (732.1 §4.3.11.2, §4.3.11.3; USLP-014, USLP-015).
- */
-#define ALDIS_USLP_STREAM_DISCARDED 2
-
-/**
- * Discard reason: accepted frame (not discarded).
- */
-#define ALDIS_USLP_DISCARD_NONE 0
-
-/**
  * Discard reason: test (a), TFVN is not `1100` (732.1 §4.1.2.2.2; USLP-001).
  */
 #define ALDIS_USLP_DISCARD_UNEXPECTED_VERSION 1
 
 /**
- * Discard reason: test (b), Spacecraft ID names no Master Channel of the Physical Channel (732.1 §4.3.11.3; USLP-014).
- */
-#define ALDIS_USLP_DISCARD_UNEXPECTED_SPACECRAFT 2
-
-/**
- * Discard reason: test (c), Bypass Flag `0` with Protocol Control Command Flag `1` (732.1 Table 4-1; USLP-001).
- */
-#define ALDIS_USLP_DISCARD_RESERVED_FLAGS 3
-
-/**
- * Discard reason: test (c), strict mode only: Reserve Spares are not `00` (732.1 §4.1.2.9.2).
- */
-#define ALDIS_USLP_DISCARD_RESERVED_SPARE 4
-
-/**
- * Discard reason: test (c), VCID is not valid on the Master Channel (732.1 §4.3.11.3; USLP-014).
- */
-#define ALDIS_USLP_DISCARD_INVALID_VCID 5
-
-/**
- * Discard reason: test (c), MAP ID is not valid on the VC (732.1 §4.3.11.3; USLP-014).
- */
-#define ALDIS_USLP_DISCARD_INVALID_MAP_ID 6
-
-/**
- * Discard reason: test (c), a truncated frame on a VC without a truncated frame length (732.1 Annex D1.2.1; USLP-002).
- */
-#define ALDIS_USLP_DISCARD_TRUNCATED_FRAME_NOT_ALLOWED 7
-
-/**
- * Discard reason: test (c), VCF Count Length is not the VC's for the frame's quality of service (732.1 §4.1.2.11.4; USLP-004).
- */
-#define ALDIS_USLP_DISCARD_VCF_COUNT_LENGTH_MISMATCH 8
-
-/**
- * Discard reason: test (c), OCF Flag disagrees with the VC's OCF use (732.1 §4.1.5.3–4).
- */
-#define ALDIS_USLP_DISCARD_OCF_FLAG_MISMATCH 9
-
-/**
- * Discard reason: test (c), on a fixed-length Physical Channel, Frame Length is not the configured length (732.1 §4.1.2.7; USLP-003).
- */
-#define ALDIS_USLP_DISCARD_FIXED_LENGTH_MISMATCH 10
-
-/**
- * Discard reason: test (c), on a variable-length Physical Channel, Frame Length exceeds the maximum (732.1 Table 5-1; USLP-003).
- */
-#define ALDIS_USLP_DISCARD_FRAME_TOO_LONG 11
-
-/**
- * Discard reason: test (c), Frame Length leaves no TFDZ octet after the fields present (CMN-041; OI-44 item 2).
- */
-#define ALDIS_USLP_DISCARD_FRAME_TOO_SHORT 12
-
-/**
- * Discard reason: test (d), octets present disagree with Frame Length or truncated frame length (732.1 §4.3.11.3.4 d).
- */
-#define ALDIS_USLP_DISCARD_LENGTH_MISMATCH 13
-
-/**
- * Discard reason: test (e), FECF does not match recomputed CRC (732.1 §4.1.6; Annex B).
- */
-#define ALDIS_USLP_DISCARD_FECF_MISMATCH 14
-
-/**
- * Discard reason: TFDZ Construction Rule is of the other TFDZ type than the VC's (732.1 USLP-016).
- */
-#define ALDIS_USLP_DISCARD_CONSTRUCTION_RULE_MISMATCH 15
-
-/**
- * Discard reason: First Header or Last Valid Octet Pointer lies beyond the TFDZ (732.1 USLP-006).
- */
-#define ALDIS_USLP_DISCARD_POINTER_BEYOND_ZONE 16
-
-/**
- * Discard reason: OID frame on VCID 63 deviates from required header or length (732.1 Annex D1.2.4; USLP-007).
- */
-#define ALDIS_USLP_DISCARD_OID_HEADER_MISMATCH 17
-
-/**
- * Discard reason: a non-truncated frame on a VC that has a truncated frame length (732.1 Annex D1.2.1; USLP-002; OI-48).
- */
-#define ALDIS_USLP_DISCARD_NON_TRUNCATED_FRAME_NOT_ALLOWED 18
-
-/**
- * Discard reason: fill data (732.1 §4.3.11.2.4 a–b; USLP-015).
- */
-#define ALDIS_USLP_DISCARD_FILL 20
-
-/**
- * Discard reason: incomplete frame whose declared length exceeds remaining octets (732.1 §4.3.11.2.3; USLP-015).
- */
-#define ALDIS_USLP_DISCARD_INCOMPLETE_FRAME 21
-
-/**
- * Discard reason: truncated header whose SCID and VCID name no configured VC or no truncated length (732.1 USLP-015).
- */
-#define ALDIS_USLP_DISCARD_NO_TRUNCATED_LENGTH 22
-
-/**
  * Discard reason: non-truncated header on a VC that carries only truncated frames (732.1 OI-48; USLP-015).
  */
 #define ALDIS_USLP_DISCARD_NON_TRUNCATED_NOT_ALLOWED ALDIS_USLP_DISCARD_NON_TRUNCATED_FRAME_NOT_ALLOWED
+
+/**
+ * The Data Field Content of a virtual channel (732.0 Table 5-3).
+ *
+ * A `uint8_t` argument or field is one of the enumerators below; the type itself is not a
+ * field type of the header (OI-57 convention 2; CABI-010).
+ *
+ */
+enum aldis_aos_content
+#if defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+  : uint8_t
+#endif // defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+ {
+  /**
+   * Data Field Content: one `M_PDU` per frame (732.0 §4.1.4.2, Table 5-3).
+   */
+  ALDIS_AOS_CONTENT_MPDU = 0,
+  /**
+   * Data Field Content: one `B_PDU` per frame (732.0 §4.1.4.3, Table 5-3; AOS-018).
+   */
+  ALDIS_AOS_CONTENT_BPDU = 1,
+  /**
+   * Data Field Content: one `VCA_SDU` per frame, opaque (732.0 §4.1.4.1.3, Table 5-3).
+   */
+  ALDIS_AOS_CONTENT_VCA_SDU = 2,
+  /**
+   * Data Field Content: Idle Data, the content of an OID frame's data field too (732.0
+   * §4.1.4.1.3, §4.1.4.1.5, Table 5-3).
+   */
+  ALDIS_AOS_CONTENT_IDLE_DATA = 3,
+};
+#ifndef __cplusplus
+#if __STDC_VERSION__ >= 202311L
+typedef enum aldis_aos_content aldis_aos_content;
+#else
+typedef uint8_t aldis_aos_content;
+#endif // __STDC_VERSION__ >= 202311L
+#endif // __cplusplus
+
+/**
+ * The AOS edition (AOS-001; 732.0-B-5, 732.0-B-4).
+ *
+ * A `uint8_t` argument or field is one of the enumerators below; the type itself is not a
+ * field type of the header (OI-57 convention 2; CABI-010).
+ *
+ */
+enum aldis_aos_edition
+#if defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+  : uint8_t
+#endif // defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+ {
+  /**
+   * Edition: 732.0-B-5, a 10-bit SCID and a 16-bit First Header Pointer; the default (732.0
+   * §4.1.2.2.3, §4.1.4.2.1.4; AOS-001, GEN-062).
+   */
+  ALDIS_AOS_EDITION_ISSUE5 = 0,
+  /**
+   * Edition: the wire format of 732.0-B-4 and earlier (AOS-002, AOS-003).
+   *
+   * An 8-bit SCID, Primary Header bits 42–43 a spare, and an `M_PDU` Header of a 5-bit spare and
+   * an 11-bit First Header Pointer (732.0-B-4 §4.1.2.2.3, §4.1.2.5.4, §4.1.4.2.2–3).
+   */
+  ALDIS_AOS_EDITION_ISSUE4 = 1,
+};
+#ifndef __cplusplus
+#if __STDC_VERSION__ >= 202311L
+typedef enum aldis_aos_edition aldis_aos_edition;
+#else
+typedef uint8_t aldis_aos_edition;
+#endif // __STDC_VERSION__ >= 202311L
+#endif // __cplusplus
+
+/**
+ * The kind of `M_PDU` or `B_PDU` Header pointer of a frame (732.0 §4.1.4.2, §4.1.4.3).
+ *
+ * A `uint8_t` argument or field is one of the enumerators below; the type itself is not a
+ * field type of the header (OI-57 convention 2; CABI-010).
+ *
+ */
+enum aldis_aos_pointer
+#if defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+  : uint8_t
+#endif // defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+ {
+  /**
+   * Pointer: no `M_PDU` or `B_PDU` Header: a `VCA_SDU` or Idle Data (732.0 §4.1.4.1.3).
+   */
+  ALDIS_AOS_POINTER_NONE = 0,
+  /**
+   * `M_PDU` First Header Pointer: the first Packet that starts in the Packet Zone starts at the
+   * octet `pointer_value` (732.0 §4.1.4.2.2.3; AOS-017).
+   */
+  ALDIS_AOS_POINTER_STARTS_AT = 1,
+  /**
+   * `M_PDU` First Header Pointer all ones: no Packet starts in the Packet Zone (732.0
+   * §4.1.4.2.2.4).
+   */
+  ALDIS_AOS_POINTER_NO_PACKET_START = 2,
+  /**
+   * `M_PDU` First Header Pointer all ones minus one: the Packet Zone holds only Idle Data (732.0
+   * §4.1.4.2.2.5).
+   */
+  ALDIS_AOS_POINTER_ONLY_IDLE_DATA = 3,
+  /**
+   * `B_PDU` Bitstream Data Pointer: the first `pointer_value` bits of the Bitstream Data Zone are
+   * user data, the rest idle data (732.0 §4.1.4.3.3.2; AOS-017, GEN-053).
+   */
+  ALDIS_AOS_POINTER_VALID_BITS = 4,
+  /**
+   * `B_PDU` Bitstream Data Pointer all ones: the zone holds only user data (732.0
+   * §4.1.4.3.3.3).
+   */
+  ALDIS_AOS_POINTER_ALL_VALID = 5,
+  /**
+   * `B_PDU` Bitstream Data Pointer all ones minus one: the zone holds only idle data (732.0
+   * §4.1.4.3.3.4).
+   */
+  ALDIS_AOS_POINTER_ONLY_IDLE = 6,
+};
+#ifndef __cplusplus
+#if __STDC_VERSION__ >= 202311L
+typedef enum aldis_aos_pointer aldis_aos_pointer;
+#else
+typedef uint8_t aldis_aos_pointer;
+#endif // __STDC_VERSION__ >= 202311L
+#endif // __cplusplus
+
+/**
+ * The decode mode argument (API-030; OI-57 convention 2). The argument is a `uint32_t`: an
+ * enumerator of this type, which no field of the header uses (CABI-010).
+ *
+ */
+enum aldis_mode
+#if defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+  : uint32_t
+#endif // defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+ {
+  /**
+   * Strict decoding, the default (API-030, API-031).
+   */
+  ALDIS_MODE_STRICT = 0,
+  /**
+   * Lenient decoding, with anomaly flags (API-030, API-032).
+   */
+  ALDIS_MODE_LENIENT = 1,
+};
+#ifndef __cplusplus
+#if __STDC_VERSION__ >= 202311L
+typedef enum aldis_mode aldis_mode;
+#else
+typedef uint32_t aldis_mode;
+#endif // __STDC_VERSION__ >= 202311L
+#endif // __cplusplus
+
+/**
+ * The report an Operational Control Field holds (CMN-010).
+ *
+ * A `uint32_t` argument or field is one of the enumerators below; the type itself is not a
+ * field type of the header (OI-57 convention 2; CABI-010).
+ *
+ */
+enum aldis_ocf_report
+#if defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+  : uint32_t
+#endif // defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+ {
+  /**
+   * Report: Type Flag (bit 0) `0`, a Type-1 Report, the CLCW, or on USLP a CLCW or a PLCW
+   * (132.0 §4.1.5.4 a, 732.0 §4.1.5.4 a, 732.1 §4.1.5.2.1 a; CMN-010, CMN-011).
+   */
+  ALDIS_OCF_CLCW = 0,
+  /**
+   * Report: bits 0–1 `10`, a project-specific Type-2 Report (132.0 §4.1.5.5 a, 732.0 §4.1.5.5 a,
+   * 732.1 §4.1.5.2.2 a; CMN-010).
+   */
+  ALDIS_OCF_PROJECT_SPECIFIC = 1,
+  /**
+   * Report: bits 0–1 `11`, a Type-2 Report holding an SDLS Frame Security Report
+   * (132.0 §4.1.5.5 b, 732.0 §4.1.5.5 b, 732.1 §4.1.5.2.2 b; CMN-010).
+   */
+  ALDIS_OCF_SDLS_FSR = 2,
+};
+#ifndef __cplusplus
+#if __STDC_VERSION__ >= 202311L
+typedef enum aldis_ocf_report aldis_ocf_report;
+#else
+typedef uint32_t aldis_ocf_report;
+#endif // __STDC_VERSION__ >= 202311L
+#endif // __cplusplus
+
+/**
+ * The form of an Only Idle Data generator (CMN-020).
+ *
+ * A `uint32_t` argument or field is one of the enumerators below; the type itself is not a
+ * field type of the header (OI-57 convention 2; CABI-010).
+ *
+ */
+enum aldis_oid_form
+#if defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+  : uint32_t
+#endif // defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+ {
+  /**
+   * [`aldis_oid_generator_init`] `form`: the Fibonacci form, the reference implementation
+   * (132.0 Annex D; CMN-020).
+   */
+  ALDIS_OID_FIBONACCI = 0,
+  /**
+   * [`aldis_oid_generator_init`] `form`: the Galois form, with the seed of 132.0 Annex D
+   * (CMN-022).
+   */
+  ALDIS_OID_GALOIS = 1,
+};
+#ifndef __cplusplus
+#if __STDC_VERSION__ >= 202311L
+typedef enum aldis_oid_form aldis_oid_form;
+#else
+typedef uint32_t aldis_oid_form;
+#endif // __STDC_VERSION__ >= 202311L
+#endif // __cplusplus
+
+/**
+ * Why a reassembler discarded a packet.
+ *
+ * A `uint32_t` argument or field is one of the enumerators below; the type itself is not a
+ * field type of the header (OI-57 convention 2; CABI-010).
+ *
+ */
+enum aldis_spp_discard
+#if defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+  : uint32_t
+#endif // defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+ {
+  /**
+   * [`aldis_spp_reassembly_t::discarded`] and `reason`: nothing (SPP-013).
+   */
+  ALDIS_SPP_DISCARD_NONE = 0,
+  /**
+   * A sequence gap while assembling (SPP-013).
+   */
+  ALDIS_SPP_DISCARD_GAP = 1,
+  /**
+   * A first segment arrived while assembling (SPP-013).
+   */
+  ALDIS_SPP_DISCARD_RESTARTED = 2,
+  /**
+   * An unsegmented packet arrived while assembling (SPP-013).
+   */
+  ALDIS_SPP_DISCARD_INTERRUPTED = 3,
+  /**
+   * A continuation or last segment with nothing in progress (SPP-013).
+   */
+  ALDIS_SPP_DISCARD_ORPHAN = 4,
+  /**
+   * The SDU would exceed the buffer (SPP-013).
+   */
+  ALDIS_SPP_DISCARD_OVERFLOW = 5,
+  /**
+   * A reason that a later `aldis-spp` adds (GEN-081).
+   */
+  ALDIS_SPP_DISCARD_OTHER = 255,
+};
+#ifndef __cplusplus
+#if __STDC_VERSION__ >= 202311L
+typedef enum aldis_spp_discard aldis_spp_discard;
+#else
+typedef uint32_t aldis_spp_discard;
+#endif // __STDC_VERSION__ >= 202311L
+#endif // __cplusplus
+
+/**
+ * The Packet Type (133.0 §4.1.3.3.2).
+ *
+ * A `uint8_t` argument or field is one of the enumerators below; the type itself is not a
+ * field type of the header (OI-57 convention 2; CABI-010).
+ *
+ */
+enum aldis_spp_packet_type
+#if defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+  : uint8_t
+#endif // defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+ {
+  /**
+   * [`aldis_spp_fields_t::packet_type`]: telemetry, Packet Type 0 (133.0 §4.1.3.3.2).
+   */
+  ALDIS_SPP_TELEMETRY = 0,
+  /**
+   * [`aldis_spp_fields_t::packet_type`]: telecommand, Packet Type 1 (133.0 §4.1.3.3.2).
+   */
+  ALDIS_SPP_TELECOMMAND = 1,
+};
+#ifndef __cplusplus
+#if __STDC_VERSION__ >= 202311L
+typedef enum aldis_spp_packet_type aldis_spp_packet_type;
+#else
+typedef uint8_t aldis_spp_packet_type;
+#endif // __STDC_VERSION__ >= 202311L
+#endif // __cplusplus
+
+/**
+ * The state a reassembler reports after a segment.
+ *
+ * A `uint32_t` argument or field is one of the enumerators below; the type itself is not a
+ * field type of the header (OI-57 convention 2; CABI-010).
+ *
+ */
+enum aldis_spp_reassembly
+#if defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+  : uint32_t
+#endif // defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+ {
+  /**
+   * [`aldis_spp_reassembly_t::status`]: the segment was stored (SPP-013).
+   */
+  ALDIS_SPP_REASSEMBLY_IN_PROGRESS = 0,
+  /**
+   * [`aldis_spp_reassembly_t::status`]: the SDU of `sdu_len` octets is complete at the start of
+   * the buffer (SPP-013).
+   */
+  ALDIS_SPP_REASSEMBLY_COMPLETE = 1,
+  /**
+   * [`aldis_spp_reassembly_t::status`]: the packet was dropped for `reason` (SPP-013).
+   */
+  ALDIS_SPP_REASSEMBLY_DROPPED = 2,
+};
+#ifndef __cplusplus
+#if __STDC_VERSION__ >= 202311L
+typedef enum aldis_spp_reassembly aldis_spp_reassembly;
+#else
+typedef uint32_t aldis_spp_reassembly;
+#endif // __STDC_VERSION__ >= 202311L
+#endif // __cplusplus
+
+/**
+ * The layout of the Packet Secondary Header (133.0 §4.1.4.2).
+ *
+ * A `uint32_t` argument or field is one of the enumerators below; the type itself is not a
+ * field type of the header (OI-57 convention 2; CABI-010).
+ *
+ */
+enum aldis_spp_secondary
+#if defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+  : uint32_t
+#endif // defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+ {
+  /**
+   * [`aldis_spp_secondary_layout_t::kind`]: no Packet Secondary Header (133.0 §4.1.4.2).
+   */
+  ALDIS_SPP_SECONDARY_ABSENT = 0,
+  /**
+   * [`aldis_spp_secondary_layout_t::kind`]: an opaque secondary header of `opaque_len` octets
+   * (133.0 §4.1.4.2.1; SPP-007).
+   */
+  ALDIS_SPP_SECONDARY_OPAQUE = 1,
+  /**
+   * [`aldis_spp_secondary_layout_t::kind`]: a Time Code Field, then `ancillary_len` octets of
+   * Ancillary Data (133.0 §4.1.4.2.2; SPP-008).
+   */
+  ALDIS_SPP_SECONDARY_TIME = 2,
+};
+#ifndef __cplusplus
+#if __STDC_VERSION__ >= 202311L
+typedef enum aldis_spp_secondary aldis_spp_secondary;
+#else
+typedef uint32_t aldis_spp_secondary;
+#endif // __STDC_VERSION__ >= 202311L
+#endif // __cplusplus
+
+/**
+ * The Sequence Flags (133.0 §4.1.3.4.2).
+ *
+ * A `uint8_t` argument or field is one of the enumerators below; the type itself is not a
+ * field type of the header (OI-57 convention 2; CABI-010).
+ *
+ */
+enum aldis_spp_sequence_flags
+#if defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+  : uint8_t
+#endif // defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+ {
+  /**
+   * Sequence Flags `00`: continuation segment (133.0 §4.1.3.4.2.2).
+   */
+  ALDIS_SPP_SEQ_CONTINUATION = 0,
+  /**
+   * Sequence Flags `01`: first segment (133.0 §4.1.3.4.2.2).
+   */
+  ALDIS_SPP_SEQ_FIRST = 1,
+  /**
+   * Sequence Flags `10`: last segment (133.0 §4.1.3.4.2.2).
+   */
+  ALDIS_SPP_SEQ_LAST = 2,
+  /**
+   * Sequence Flags `11`: unsegmented user data (133.0 §4.1.3.4.2.2).
+   */
+  ALDIS_SPP_SEQ_UNSEGMENTED = 3,
+};
+#ifndef __cplusplus
+#if __STDC_VERSION__ >= 202311L
+typedef enum aldis_spp_sequence_flags aldis_spp_sequence_flags;
+#else
+typedef uint8_t aldis_spp_sequence_flags;
+#endif // __STDC_VERSION__ >= 202311L
+#endif // __cplusplus
+
+/**
+ * The sequence-count result of a tracker.
+ *
+ * A `uint32_t` argument or field is one of the enumerators below; the type itself is not a
+ * field type of the header (OI-57 convention 2; CABI-010).
+ *
+ */
+enum aldis_spp_track
+#if defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+  : uint32_t
+#endif // defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+ {
+  /**
+   * [`aldis_spp_tracked_t::continuity`]: the first count of an APID (SPP-011).
+   */
+  ALDIS_SPP_TRACK_FIRST = 0,
+  /**
+   * [`aldis_spp_tracked_t::continuity`]: forward distance 1 (CMN-031, SPP-011).
+   */
+  ALDIS_SPP_TRACK_IN_SEQUENCE = 1,
+  /**
+   * [`aldis_spp_tracked_t::continuity`]: forward distance 2 to 8192; `missing` counts were
+   * skipped (CMN-031, SPP-011).
+   */
+  ALDIS_SPP_TRACK_GAP = 2,
+  /**
+   * [`aldis_spp_tracked_t::continuity`]: the same count again (CMN-031, SPP-011).
+   */
+  ALDIS_SPP_TRACK_REPEAT = 3,
+  /**
+   * [`aldis_spp_tracked_t::continuity`]: any other distance, a reset (CMN-031, SPP-011).
+   */
+  ALDIS_SPP_TRACK_BACKWARDS = 4,
+};
+#ifndef __cplusplus
+#if __STDC_VERSION__ >= 202311L
+typedef enum aldis_spp_track aldis_spp_track;
+#else
+typedef uint32_t aldis_spp_track;
+#endif // __STDC_VERSION__ >= 202311L
+#endif // __cplusplus
+
+/**
+ * The Control Command of a BC frame (232.1 §4.1.3).
+ *
+ * A `uint8_t` argument or field is one of the enumerators below; the type itself is not a
+ * field type of the header (OI-57 convention 2; CABI-010).
+ *
+ */
+enum aldis_tc_control
+#if defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+  : uint8_t
+#endif // defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+ {
+  /**
+   * No Control Command: the data field of a Type-D frame, or, in lenient mode, a Type-C data
+   * field that is neither command (232.0 §4.1.3.3.4; TC-005).
+   */
+  ALDIS_TC_CONTROL_NONE = 0,
+  /**
+   * The Unlock Control Command, one octet of zeros (232.0 §4.1.3.3.2; TC-005).
+   */
+  ALDIS_TC_CONTROL_UNLOCK = 1,
+  /**
+   * The Set V(R) Control Command, `82 00` and the new V(R) (232.0 §4.1.3.3.3; TC-005).
+   */
+  ALDIS_TC_CONTROL_SET_VR = 2,
+};
+#ifndef __cplusplus
+#if __STDC_VERSION__ >= 202311L
+typedef enum aldis_tc_control aldis_tc_control;
+#else
+typedef uint8_t aldis_tc_control;
+#endif // __STDC_VERSION__ >= 202311L
+#endif // __cplusplus
+
+/**
+ * Why a TC frame was discarded.
+ *
+ * A `uint32_t` argument or field is one of the enumerators below; the type itself is not a
+ * field type of the header (OI-57 convention 2; CABI-010).
+ *
+ */
+enum aldis_tc_discard
+#if defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+  : uint32_t
+#endif // defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+ {
+  /**
+   * Discard reason: accepted frame (not discarded).
+   */
+  ALDIS_TC_DISCARD_NONE = 0,
+  /**
+   * Discard reason: check (b), Spacecraft ID is not that of the master channel (232.0 §4.4.9.3.3; TC-021).
+   */
+  ALDIS_TC_DISCARD_UNEXPECTED_SPACECRAFT = 2,
+  /**
+   * Discard reason: check (c), Bypass Flag `0` with Control Command Flag `1` (232.0 Table 4-1; TC-002, TC-021).
+   */
+  ALDIS_TC_DISCARD_RESERVED_FLAGS = 3,
+  /**
+   * Discard reason: check (c), strict mode only: Reserved Spare is not `00` (232.0 §4.1.2.4; TC-003).
+   */
+  ALDIS_TC_DISCARD_RESERVED_SPARE = 4,
+  /**
+   * Discard reason: check (c), VCID is not configured (232.0 §4.4.7.3; TC-022).
+   */
+  ALDIS_TC_DISCARD_INVALID_VCID = 5,
+  /**
+   * Discard reason: check (c), Frame Length exceeds the channel's maximum (232.0 Tables 5-1, 5-3; TC-021).
+   */
+  ALDIS_TC_DISCARD_FRAME_TOO_LONG = 6,
+  /**
+   * Discard reason: check (c), Frame Length leaves no data octet (232.0 §4.1.1; TC-021, CMN-041).
+   */
+  ALDIS_TC_DISCARD_FRAME_TOO_SHORT = 7,
+  /**
+   * Discard reason: check (d), Frame Length disagrees with the octets present (232.0 §4.4.9.3.3; TC-021).
+   */
+  ALDIS_TC_DISCARD_LENGTH_MISMATCH = 8,
+  /**
+   * Discard reason: check (e), FECF does not match (232.0 §4.1.4; TC-006, TC-021).
+   */
+  ALDIS_TC_DISCARD_FECF_MISMATCH = 9,
+  /**
+   * Discard reason: MAP ID is not configured on the Virtual Channel (232.0 §4.4.3.3; TC-022).
+   */
+  ALDIS_TC_DISCARD_INVALID_MAP_ID = 10,
+  /**
+   * Discard reason: strict mode only, Type-C data field is not a recognized command (232.0 §4.1.3.3.4; TC-005).
+   */
+  ALDIS_TC_DISCARD_RESERVED_CONTROL_COMMAND = 11,
+  /**
+   * Discard reason: fill data (232.0 §4.4.9.2.6; TC-020).
+   */
+  ALDIS_TC_DISCARD_FILL = 20,
+  /**
+   * Discard reason: truncated frame whose declared length exceeds remaining octets (232.0 §4.4.9.2.5; TC-020).
+   */
+  ALDIS_TC_DISCARD_TRUNCATED_FRAME = 21,
+};
+#ifndef __cplusplus
+#if __STDC_VERSION__ >= 202311L
+typedef enum aldis_tc_discard aldis_tc_discard;
+#else
+typedef uint32_t aldis_tc_discard;
+#endif // __STDC_VERSION__ >= 202311L
+#endif // __cplusplus
+
+/**
+ * The TC frame type (232.0 §4.1.2.3).
+ *
+ * A `uint8_t` argument or field is one of the enumerators below; the type itself is not a
+ * field type of the header (OI-57 convention 2; CABI-010).
+ *
+ */
+enum aldis_tc_frame
+#if defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+  : uint8_t
+#endif // defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+ {
+  /**
+   * Frame type AD: Bypass Flag `0`, Control Command Flag `0` (232.0 §4.1.2, Table 4-1).
+   */
+  ALDIS_TC_FRAME_AD = 0,
+  /**
+   * Frame type BD: Bypass Flag `1`, Control Command Flag `0` (232.0 Table 4-1).
+   */
+  ALDIS_TC_FRAME_BD = 1,
+  /**
+   * Frame type BC: Bypass Flag `1`, Control Command Flag `1` (232.0 Table 4-1).
+   */
+  ALDIS_TC_FRAME_BC = 2,
+};
+#ifndef __cplusplus
+#if __STDC_VERSION__ >= 202311L
+typedef enum aldis_tc_frame aldis_tc_frame;
+#else
+typedef uint8_t aldis_tc_frame;
+#endif // __STDC_VERSION__ >= 202311L
+#endif // __cplusplus
+
+/**
+ * The TC Sequence Flags (232.0 §4.1.4.2.2).
+ *
+ * A `uint8_t` argument or field is one of the enumerators below; the type itself is not a
+ * field type of the header (OI-57 convention 2; CABI-010).
+ *
+ */
+enum aldis_tc_sequence_flags
+#if defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+  : uint8_t
+#endif // defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+ {
+  /**
+   * Sequence Flags `00`: a continuing segment (232.0 §4.1.3.2.2).
+   */
+  ALDIS_TC_SEQ_CONTINUING = 0,
+  /**
+   * Sequence Flags `01`: the first segment (232.0 §4.1.3.2.2).
+   */
+  ALDIS_TC_SEQ_FIRST = 1,
+  /**
+   * Sequence Flags `10`: the last segment (232.0 §4.1.3.2.2).
+   */
+  ALDIS_TC_SEQ_LAST = 2,
+  /**
+   * Sequence Flags `11`: no segmentation (232.0 §4.1.3.2.2).
+   */
+  ALDIS_TC_SEQ_UNSEGMENTED = 3,
+};
+#ifndef __cplusplus
+#if __STDC_VERSION__ >= 202311L
+typedef enum aldis_tc_sequence_flags aldis_tc_sequence_flags;
+#else
+typedef uint8_t aldis_tc_sequence_flags;
+#endif // __STDC_VERSION__ >= 202311L
+#endif // __cplusplus
+
+/**
+ * The result of one step of a TC frame stream.
+ *
+ * A `uint8_t` argument or field is one of the enumerators below; the type itself is not a
+ * field type of the header (OI-57 convention 2; CABI-010).
+ *
+ */
+enum aldis_tc_stream
+#if defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+  : uint8_t
+#endif // defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+ {
+  /**
+   * Stream item: no octets of the unit remain (232.0 §4.4.9.2; TC-020).
+   */
+  ALDIS_TC_STREAM_END = 0,
+  /**
+   * Stream item: one validated frame (232.0 §4.4.9.2, §4.4.9.3; TC-020, TC-021).
+   */
+  ALDIS_TC_STREAM_ACCEPTED = 1,
+  /**
+   * Stream item: discarded octets (fill, truncated frame, or failed validation) (232.0 §4.4.9.2, §4.4.9.3; TC-020, TC-021).
+   */
+  ALDIS_TC_STREAM_DISCARDED = 2,
+};
+#ifndef __cplusplus
+#if __STDC_VERSION__ >= 202311L
+typedef enum aldis_tc_stream aldis_tc_stream;
+#else
+typedef uint8_t aldis_tc_stream;
+#endif // __STDC_VERSION__ >= 202311L
+#endif // __cplusplus
+
+/**
+ * The calendar variation of a CCS code (301.0 §3.4).
+ *
+ * A `uint8_t` argument or field is one of the enumerators below; the type itself is not a
+ * field type of the header (OI-57 convention 2; CABI-010).
+ *
+ */
+enum aldis_time_ccs_variation
+#if defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+  : uint8_t
+#endif // defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+ {
+  /**
+   * CCS and ASCII variation: month and day of month, CCS bit 4 = 0, ASCII code A
+   * (301.0 §3.4.2, §3.5.1.1).
+   */
+  ALDIS_TIME_MONTH_DAY = 0,
+  /**
+   * CCS and ASCII variation: day of year, CCS bit 4 = 1, ASCII code B (301.0 §3.4.2,
+   * §3.5.1.2).
+   */
+  ALDIS_TIME_DAY_OF_YEAR = 1,
+};
+#ifndef __cplusplus
+#if __STDC_VERSION__ >= 202311L
+typedef enum aldis_time_ccs_variation aldis_time_ccs_variation;
+#else
+typedef uint8_t aldis_time_ccs_variation;
+#endif // __STDC_VERSION__ >= 202311L
+#endif // __cplusplus
+
+/**
+ * The day segment of a CDS code (301.0 §3.3).
+ *
+ * A `uint8_t` argument or field is one of the enumerators below; the type itself is not a
+ * field type of the header (OI-57 convention 2; CABI-010).
+ *
+ */
+enum aldis_time_cds_day
+#if defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+  : uint8_t
+#endif // defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+ {
+  /**
+   * [`aldis_time_format_t::day_len`]: a 16-bit CDS day segment (301.0 §3.3.2).
+   */
+  ALDIS_TIME_CDS_DAY_16 = 0,
+  /**
+   * [`aldis_time_format_t::day_len`]: a 24-bit CDS day segment (301.0 §3.3.2).
+   */
+  ALDIS_TIME_CDS_DAY_24 = 1,
+};
+#ifndef __cplusplus
+#if __STDC_VERSION__ >= 202311L
+typedef enum aldis_time_cds_day aldis_time_cds_day;
+#else
+typedef uint8_t aldis_time_cds_day;
+#endif // __STDC_VERSION__ >= 202311L
+#endif // __cplusplus
+
+/**
+ * The sub-millisecond segment of a CDS code (301.0 §3.3).
+ *
+ * A `uint8_t` argument or field is one of the enumerators below; the type itself is not a
+ * field type of the header (OI-57 convention 2; CABI-010).
+ *
+ */
+enum aldis_time_cds_submillis
+#if defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+  : uint8_t
+#endif // defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+ {
+  /**
+   * [`aldis_time_format_t::subms`]: no CDS submillisecond segment (301.0 §3.3.2).
+   */
+  ALDIS_TIME_CDS_SUBMS_NONE = 0,
+  /**
+   * [`aldis_time_format_t::subms`]: microseconds of millisecond, 16 bits (301.0 §3.3.2).
+   */
+  ALDIS_TIME_CDS_SUBMS_MICROS = 1,
+  /**
+   * [`aldis_time_format_t::subms`]: picoseconds of millisecond, 32 bits (301.0 §3.3.2).
+   */
+  ALDIS_TIME_CDS_SUBMS_PICOS = 2,
+};
+#ifndef __cplusplus
+#if __STDC_VERSION__ >= 202311L
+typedef enum aldis_time_cds_submillis aldis_time_cds_submillis;
+#else
+typedef uint8_t aldis_time_cds_submillis;
+#endif // __STDC_VERSION__ >= 202311L
+#endif // __cplusplus
+
+/**
+ * The time code of a format or a value (CCSDS 301.0-B-4 §3.2).
+ *
+ * A `uint32_t` argument or field is one of the enumerators below; the type itself is not a
+ * field type of the header (OI-57 convention 2; CABI-010).
+ *
+ */
+enum aldis_time_code
+#if defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+  : uint32_t
+#endif // defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+ {
+  /**
+   * [`aldis_time_format_t::code`]: CCSDS Unsegmented Time Code (301.0 §3.2).
+   */
+  ALDIS_TIME_CUC = 0,
+  /**
+   * [`aldis_time_format_t::code`]: CCSDS Day Segmented Time Code (301.0 §3.3).
+   */
+  ALDIS_TIME_CDS = 1,
+  /**
+   * [`aldis_time_format_t::code`]: CCSDS Calendar Segmented Time Code (301.0 §3.4).
+   */
+  ALDIS_TIME_CCS = 2,
+  /**
+   * [`aldis_time_format_t::code`]: agency-defined code (301.0 §3.6).
+   */
+  ALDIS_TIME_AGENCY = 3,
+  /**
+   * [`aldis_time_format_t::code`] of a decoded P-field whose time code ID is reserved, decoded
+   * in lenient mode (TIME-002); never accepted as an input format.
+   */
+  ALDIS_TIME_UNKNOWN = 4,
+  /**
+   * [`aldis_time_format_t::code`] for [`aldis_time_convert`] only: an ASCII code A or B
+   * (301.0 §3.5).
+   */
+  ALDIS_TIME_ASCII = 5,
+};
+#ifndef __cplusplus
+#if __STDC_VERSION__ >= 202311L
+typedef enum aldis_time_code aldis_time_code;
+#else
+typedef uint32_t aldis_time_code;
+#endif // __STDC_VERSION__ >= 202311L
+#endif // __cplusplus
+
+/**
+ * The Data Field Content of a TM virtual channel (132.0 §4.1.4).
+ *
+ * A `uint8_t` argument or field is one of the enumerators below; the type itself is not a
+ * field type of the header (OI-57 convention 2; CABI-010).
+ *
+ */
+enum aldis_tm_content
+#if defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+  : uint8_t
+#endif // defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+ {
+  /**
+   * Data Field Content: Packets, and Idle Data in OID frames; Synchronization Flag `0`
+   * (132.0 §4.1.4.4, Table 5-3).
+   */
+  ALDIS_TM_CONTENT_PACKETS = 0,
+  /**
+   * Data Field Content: one `VCA_SDU` per frame; Synchronization Flag `1` (132.0 §4.1.4.4,
+   * Table 5-3).
+   */
+  ALDIS_TM_CONTENT_VCA_SDU = 1,
+};
+#ifndef __cplusplus
+#if __STDC_VERSION__ >= 202311L
+typedef enum aldis_tm_content aldis_tm_content;
+#else
+typedef uint8_t aldis_tm_content;
+#endif // __STDC_VERSION__ >= 202311L
+#endif // __cplusplus
+
+/**
+ * The kind of First Header Pointer of a TM frame (132.0 §4.1.2.7.2).
+ *
+ * A `uint8_t` argument or field is one of the enumerators below; the type itself is not a
+ * field type of the header (OI-57 convention 2; CABI-010).
+ *
+ */
+enum aldis_tm_pointer
+#if defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+  : uint8_t
+#endif // defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+ {
+  /**
+   * Pointer, in a view: Synchronization Flag `1`, where the First Header Pointer is not defined
+   * and is given raw (132.0 §4.1.2.7.6.2; TM-007). Not valid in [`aldis_tm_fields_t`].
+   */
+  ALDIS_TM_POINTER_NONE = 0,
+  /**
+   * Pointer: a packet starts at `packet_offset` in the data field (132.0 §4.1.2.7.6.3; TM-008).
+   */
+  ALDIS_TM_POINTER_STARTS_AT = 1,
+  /**
+   * Pointer: no packet starts in the data field, FHP `0x7FF` (132.0 §4.1.2.7.6.4; TM-008).
+   */
+  ALDIS_TM_POINTER_NO_PACKET_START = 2,
+  /**
+   * Pointer: Only Idle Data, FHP `0x7FE` (132.0 §4.1.2.7.6.5; TM-008, TM-010).
+   */
+  ALDIS_TM_POINTER_ONLY_IDLE_DATA = 3,
+};
+#ifndef __cplusplus
+#if __STDC_VERSION__ >= 202311L
+typedef enum aldis_tm_pointer aldis_tm_pointer;
+#else
+typedef uint8_t aldis_tm_pointer;
+#endif // __STDC_VERSION__ >= 202311L
+#endif // __cplusplus
+
+/**
+ * The Source-or-Destination Identifier (732.1 §4.1.2.2).
+ *
+ * A `uint8_t` argument or field is one of the enumerators below; the type itself is not a
+ * field type of the header (OI-57 convention 2; CABI-010).
+ *
+ */
+enum aldis_uslp_direction
+#if defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+  : uint8_t
+#endif // defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+ {
+  /**
+   * Source-or-Destination Identifier `0`: the SCID is the frame's source (732.1 §4.1.2.3).
+   */
+  ALDIS_USLP_SOURCE = 0,
+  /**
+   * Source-or-Destination Identifier `1`: the SCID is the frame's destination (732.1 §4.1.2.3).
+   */
+  ALDIS_USLP_DESTINATION = 1,
+};
+#ifndef __cplusplus
+#if __STDC_VERSION__ >= 202311L
+typedef enum aldis_uslp_direction aldis_uslp_direction;
+#else
+typedef uint8_t aldis_uslp_direction;
+#endif // __STDC_VERSION__ >= 202311L
+#endif // __cplusplus
+
+/**
+ * Why a USLP frame was discarded.
+ *
+ * A `uint32_t` argument or field is one of the enumerators below; the type itself is not a
+ * field type of the header (OI-57 convention 2; CABI-010).
+ *
+ */
+enum aldis_uslp_discard
+#if defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+  : uint32_t
+#endif // defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+ {
+  /**
+   * Discard reason: accepted frame (not discarded).
+   */
+  ALDIS_USLP_DISCARD_NONE = 0,
+  /**
+   * Discard reason: test (b), Spacecraft ID names no Master Channel of the Physical Channel (732.1 §4.3.11.3; USLP-014).
+   */
+  ALDIS_USLP_DISCARD_UNEXPECTED_SPACECRAFT = 2,
+  /**
+   * Discard reason: test (c), Bypass Flag `0` with Protocol Control Command Flag `1` (732.1 Table 4-1; USLP-001).
+   */
+  ALDIS_USLP_DISCARD_RESERVED_FLAGS = 3,
+  /**
+   * Discard reason: test (c), strict mode only: Reserve Spares are not `00` (732.1 §4.1.2.9.2).
+   */
+  ALDIS_USLP_DISCARD_RESERVED_SPARE = 4,
+  /**
+   * Discard reason: test (c), VCID is not valid on the Master Channel (732.1 §4.3.11.3; USLP-014).
+   */
+  ALDIS_USLP_DISCARD_INVALID_VCID = 5,
+  /**
+   * Discard reason: test (c), MAP ID is not valid on the VC (732.1 §4.3.11.3; USLP-014).
+   */
+  ALDIS_USLP_DISCARD_INVALID_MAP_ID = 6,
+  /**
+   * Discard reason: test (c), a truncated frame on a VC without a truncated frame length (732.1 Annex D1.2.1; USLP-002).
+   */
+  ALDIS_USLP_DISCARD_TRUNCATED_FRAME_NOT_ALLOWED = 7,
+  /**
+   * Discard reason: test (c), VCF Count Length is not the VC's for the frame's quality of service (732.1 §4.1.2.11.4; USLP-004).
+   */
+  ALDIS_USLP_DISCARD_VCF_COUNT_LENGTH_MISMATCH = 8,
+  /**
+   * Discard reason: test (c), OCF Flag disagrees with the VC's OCF use (732.1 §4.1.5.3–4).
+   */
+  ALDIS_USLP_DISCARD_OCF_FLAG_MISMATCH = 9,
+  /**
+   * Discard reason: test (c), on a fixed-length Physical Channel, Frame Length is not the configured length (732.1 §4.1.2.7; USLP-003).
+   */
+  ALDIS_USLP_DISCARD_FIXED_LENGTH_MISMATCH = 10,
+  /**
+   * Discard reason: test (c), on a variable-length Physical Channel, Frame Length exceeds the maximum (732.1 Table 5-1; USLP-003).
+   */
+  ALDIS_USLP_DISCARD_FRAME_TOO_LONG = 11,
+  /**
+   * Discard reason: test (c), Frame Length leaves no TFDZ octet after the fields present (CMN-041; OI-44 item 2).
+   */
+  ALDIS_USLP_DISCARD_FRAME_TOO_SHORT = 12,
+  /**
+   * Discard reason: test (d), octets present disagree with Frame Length or truncated frame length (732.1 §4.3.11.3.4 d).
+   */
+  ALDIS_USLP_DISCARD_LENGTH_MISMATCH = 13,
+  /**
+   * Discard reason: test (e), FECF does not match recomputed CRC (732.1 §4.1.6; Annex B).
+   */
+  ALDIS_USLP_DISCARD_FECF_MISMATCH = 14,
+  /**
+   * Discard reason: TFDZ Construction Rule is of the other TFDZ type than the VC's (732.1 USLP-016).
+   */
+  ALDIS_USLP_DISCARD_CONSTRUCTION_RULE_MISMATCH = 15,
+  /**
+   * Discard reason: First Header or Last Valid Octet Pointer lies beyond the TFDZ (732.1 USLP-006).
+   */
+  ALDIS_USLP_DISCARD_POINTER_BEYOND_ZONE = 16,
+  /**
+   * Discard reason: OID frame on VCID 63 deviates from required header or length (732.1 Annex D1.2.4; USLP-007).
+   */
+  ALDIS_USLP_DISCARD_OID_HEADER_MISMATCH = 17,
+  /**
+   * Discard reason: a non-truncated frame on a VC that has a truncated frame length (732.1 Annex D1.2.1; USLP-002; OI-48).
+   */
+  ALDIS_USLP_DISCARD_NON_TRUNCATED_FRAME_NOT_ALLOWED = 18,
+  /**
+   * Discard reason: fill data (732.1 §4.3.11.2.4 a–b; USLP-015).
+   */
+  ALDIS_USLP_DISCARD_FILL = 20,
+  /**
+   * Discard reason: incomplete frame whose declared length exceeds remaining octets (732.1 §4.3.11.2.3; USLP-015).
+   */
+  ALDIS_USLP_DISCARD_INCOMPLETE_FRAME = 21,
+  /**
+   * Discard reason: truncated header whose SCID and VCID name no configured VC or no truncated length (732.1 USLP-015).
+   */
+  ALDIS_USLP_DISCARD_NO_TRUNCATED_LENGTH = 22,
+};
+#ifndef __cplusplus
+#if __STDC_VERSION__ >= 202311L
+typedef enum aldis_uslp_discard aldis_uslp_discard;
+#else
+typedef uint32_t aldis_uslp_discard;
+#endif // __STDC_VERSION__ >= 202311L
+#endif // __cplusplus
+
+/**
+ * The USLP Transfer Frame Type (732.1 Table 5-1).
+ *
+ * A `uint8_t` argument or field is one of the enumerators below; the type itself is not a
+ * field type of the header (OI-57 convention 2; CABI-010).
+ *
+ */
+enum aldis_uslp_frame
+#if defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+  : uint8_t
+#endif // defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+ {
+  /**
+   * Transfer Frame Type: fixed-length frames (732.1 §5 Tables 5-1, 5-3).
+   */
+  ALDIS_USLP_FRAME_FIXED = 0,
+  /**
+   * Transfer Frame Type: variable-length frames (732.1 §5 Tables 5-1, 5-3).
+   */
+  ALDIS_USLP_FRAME_VARIABLE = 1,
+};
+#ifndef __cplusplus
+#if __STDC_VERSION__ >= 202311L
+typedef enum aldis_uslp_frame aldis_uslp_frame;
+#else
+typedef uint8_t aldis_uslp_frame;
+#endif // __STDC_VERSION__ >= 202311L
+#endif // __cplusplus
+
+/**
+ * The kind of a USLP frame (732.1 Table 5-3).
+ *
+ * A `uint8_t` argument or field is one of the enumerators below; the type itself is not a
+ * field type of the header (OI-57 convention 2; CABI-010).
+ *
+ */
+enum aldis_uslp_kind
+#if defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+  : uint8_t
+#endif // defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+ {
+  /**
+   * Frame kind: Bypass/Sequence Control and Protocol Control Command Flags `00`, user data of
+   * the Sequence-Controlled service (732.1 Table 4-1; USLP-001).
+   */
+  ALDIS_USLP_KIND_SEQUENCE_CONTROLLED = 0,
+  /**
+   * Frame kind: flags `10`, user data of the Expedited service (732.1 Table 4-1; USLP-001).
+   */
+  ALDIS_USLP_KIND_EXPEDITED = 1,
+  /**
+   * Frame kind: flags `11`, Protocol Control Commands (732.1 Table 4-1; USLP-001, USLP-013).
+   */
+  ALDIS_USLP_KIND_PROTOCOL_CONTROL = 2,
+};
+#ifndef __cplusplus
+#if __STDC_VERSION__ >= 202311L
+typedef enum aldis_uslp_kind aldis_uslp_kind;
+#else
+typedef uint8_t aldis_uslp_kind;
+#endif // __STDC_VERSION__ >= 202311L
+#endif // __cplusplus
+
+/**
+ * Whether a virtual channel carries an OCF (732.1 Table 5-3).
+ *
+ * A `uint8_t` argument or field is one of the enumerators below; the type itself is not a
+ * field type of the header (OI-57 convention 2; CABI-010).
+ *
+ */
+enum aldis_uslp_ocf
+#if defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+  : uint8_t
+#endif // defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+ {
+  /**
+   * OCF use of a virtual channel: no frame carries an OCF (732.1 §4.1.5, Table 5-3).
+   */
+  ALDIS_USLP_OCF_ABSENT = 0,
+  /**
+   * OCF use: a frame may carry an OCF, on a variable-length VC (732.1 §4.1.5.4).
+   */
+  ALDIS_USLP_OCF_ALLOWED = 1,
+  /**
+   * OCF use: every frame carries an OCF, on a fixed-length VC (732.1 §4.1.5.3).
+   */
+  ALDIS_USLP_OCF_REQUIRED = 2,
+};
+#ifndef __cplusplus
+#if __STDC_VERSION__ >= 202311L
+typedef enum aldis_uslp_ocf aldis_uslp_ocf;
+#else
+typedef uint8_t aldis_uslp_ocf;
+#endif // __STDC_VERSION__ >= 202311L
+#endif // __cplusplus
+
+/**
+ * The TFDF Construction Rule (732.1 Table 4-2).
+ *
+ * A `uint8_t` argument or field is one of the enumerators below; the type itself is not a
+ * field type of the header (OI-57 convention 2; CABI-010).
+ *
+ */
+enum aldis_uslp_rule
+#if defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+  : uint8_t
+#endif // defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+ {
+  /**
+   * TFDZ Construction Rule `000`: packets spanning frames, fixed-length TFDZ (732.1 Table 4-3).
+   */
+  ALDIS_USLP_RULE_PACKETS_SPANNING_FRAMES = 0,
+  /**
+   * Rule `001`: start of a `MAPA_SDU` or `VCA_SDU`, fixed-length TFDZ (732.1 Table 4-3).
+   */
+  ALDIS_USLP_RULE_SDU_START = 1,
+  /**
+   * Rule `010`: continuing portion of a `MAPA_SDU` or `VCA_SDU`, fixed-length TFDZ (732.1
+   * Table 4-3).
+   */
+  ALDIS_USLP_RULE_SDU_CONTINUATION = 2,
+  /**
+   * Rule `011`: octet stream, variable-length TFDZ (732.1 Table 4-3).
+   */
+  ALDIS_USLP_RULE_OCTET_STREAM = 3,
+  /**
+   * Rule `100`: starting segment, variable-length TFDZ (732.1 Table 4-3).
+   */
+  ALDIS_USLP_RULE_STARTING_SEGMENT = 4,
+  /**
+   * Rule `101`: continuing segment, variable-length TFDZ (732.1 Table 4-3).
+   */
+  ALDIS_USLP_RULE_CONTINUING_SEGMENT = 5,
+  /**
+   * Rule `110`: last segment, variable-length TFDZ (732.1 Table 4-3).
+   */
+  ALDIS_USLP_RULE_LAST_SEGMENT = 6,
+  /**
+   * Rule `111`: no segmentation, variable-length TFDZ (732.1 Table 4-3).
+   */
+  ALDIS_USLP_RULE_NO_SEGMENTATION = 7,
+};
+#ifndef __cplusplus
+#if __STDC_VERSION__ >= 202311L
+typedef enum aldis_uslp_rule aldis_uslp_rule;
+#else
+typedef uint8_t aldis_uslp_rule;
+#endif // __STDC_VERSION__ >= 202311L
+#endif // __cplusplus
+
+/**
+ * The scope of a security layout (732.1 Table 5-3).
+ *
+ * A `uint8_t` argument or field is one of the enumerators below; the type itself is not a
+ * field type of the header (OI-57 convention 2; CABI-010).
+ *
+ */
+enum aldis_uslp_security
+#if defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+  : uint8_t
+#endif // defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+ {
+  /**
+   * Security of a virtual channel: one layout for the VC, its lengths in the VC struct (732.1
+   * §6.6 Table 6-1; API-070).
+   */
+  ALDIS_USLP_SECURITY_VC = 0,
+  /**
+   * Security of a virtual channel: a layout per MAP, in the MAP structs (732.1 §6.6; API-070).
+   */
+  ALDIS_USLP_SECURITY_PER_MAP = 1,
+};
+#ifndef __cplusplus
+#if __STDC_VERSION__ >= 202311L
+typedef enum aldis_uslp_security aldis_uslp_security;
+#else
+typedef uint8_t aldis_uslp_security;
+#endif // __STDC_VERSION__ >= 202311L
+#endif // __cplusplus
+
+/**
+ * The result of one step of a USLP frame stream.
+ *
+ * A `uint8_t` argument or field is one of the enumerators below; the type itself is not a
+ * field type of the header (OI-57 convention 2; CABI-010).
+ *
+ */
+enum aldis_uslp_stream
+#if defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+  : uint8_t
+#endif // defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+ {
+  /**
+   * Stream item: no octets of the unit remain (732.1 §4.3.11.2; USLP-015).
+   */
+  ALDIS_USLP_STREAM_END = 0,
+  /**
+   * Stream item: one validated frame (732.1 §4.3.11.2, §4.3.11.3; USLP-014, USLP-015).
+   */
+  ALDIS_USLP_STREAM_ACCEPTED = 1,
+  /**
+   * Stream item: discarded octets (fill, incomplete frame, or failed validation) (732.1 §4.3.11.2, §4.3.11.3; USLP-014, USLP-015).
+   */
+  ALDIS_USLP_STREAM_DISCARDED = 2,
+};
+#ifndef __cplusplus
+#if __STDC_VERSION__ >= 202311L
+typedef enum aldis_uslp_stream aldis_uslp_stream;
+#else
+typedef uint8_t aldis_uslp_stream;
+#endif // __STDC_VERSION__ >= 202311L
+#endif // __cplusplus
 
 /**
  * Detail of a failed call, written only when the call fails (CABI-021, GEN-041).

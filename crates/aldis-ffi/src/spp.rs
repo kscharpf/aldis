@@ -17,20 +17,53 @@ use aldis::spp::{
 };
 
 use crate::abi::{self, Out, invalid_argument};
+use crate::mirror::{mirror, parse};
 use crate::time::{aldis_time_decoded_t, aldis_time_format_t, decoded, time_format};
 
-/// [`aldis_spp_fields_t::packet_type`]: telemetry, Packet Type 0 (133.0 §4.1.3.3.2).
-pub const ALDIS_SPP_TELEMETRY: u8 = 0;
-/// [`aldis_spp_fields_t::packet_type`]: telecommand, Packet Type 1 (133.0 §4.1.3.3.2).
-pub const ALDIS_SPP_TELECOMMAND: u8 = 1;
-/// Sequence Flags `00`: continuation segment (133.0 §4.1.3.4.2.2).
-pub const ALDIS_SPP_SEQ_CONTINUATION: u8 = 0b00;
-/// Sequence Flags `01`: first segment (133.0 §4.1.3.4.2.2).
-pub const ALDIS_SPP_SEQ_FIRST: u8 = 0b01;
-/// Sequence Flags `10`: last segment (133.0 §4.1.3.4.2.2).
-pub const ALDIS_SPP_SEQ_LAST: u8 = 0b10;
-/// Sequence Flags `11`: unsegmented user data (133.0 §4.1.3.4.2.2).
-pub const ALDIS_SPP_SEQ_UNSEGMENTED: u8 = 0b11;
+/// The Packet Type (133.0 §4.1.3.3.2).
+///
+/// A `uint8_t` argument or field is one of the enumerators below; the type itself is not a
+/// field type of the header (OI-57 convention 2; CABI-010).
+///
+/// cbindgen:prefix-with-name=false
+/// cbindgen:rename-all=None
+#[repr(u8)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[expect(
+    non_camel_case_types,
+    reason = "the variants are the C constants (OI-57 convention 2)"
+)]
+pub enum aldis_spp_packet_type {
+    /// [`aldis_spp_fields_t::packet_type`]: telemetry, Packet Type 0 (133.0 §4.1.3.3.2).
+    ALDIS_SPP_TELEMETRY = 0,
+    /// [`aldis_spp_fields_t::packet_type`]: telecommand, Packet Type 1 (133.0 §4.1.3.3.2).
+    ALDIS_SPP_TELECOMMAND = 1,
+}
+mirror!(pub aldis_spp_packet_type: u8 { ALDIS_SPP_TELEMETRY, ALDIS_SPP_TELECOMMAND });
+/// The Sequence Flags (133.0 §4.1.3.4.2).
+///
+/// A `uint8_t` argument or field is one of the enumerators below; the type itself is not a
+/// field type of the header (OI-57 convention 2; CABI-010).
+///
+/// cbindgen:prefix-with-name=false
+/// cbindgen:rename-all=None
+#[repr(u8)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[expect(
+    non_camel_case_types,
+    reason = "the variants are the C constants (OI-57 convention 2)"
+)]
+pub enum aldis_spp_sequence_flags {
+    /// Sequence Flags `00`: continuation segment (133.0 §4.1.3.4.2.2).
+    ALDIS_SPP_SEQ_CONTINUATION = 0b00,
+    /// Sequence Flags `01`: first segment (133.0 §4.1.3.4.2.2).
+    ALDIS_SPP_SEQ_FIRST = 0b01,
+    /// Sequence Flags `10`: last segment (133.0 §4.1.3.4.2.2).
+    ALDIS_SPP_SEQ_LAST = 0b10,
+    /// Sequence Flags `11`: unsegmented user data (133.0 §4.1.3.4.2.2).
+    ALDIS_SPP_SEQ_UNSEGMENTED = 0b11,
+}
+mirror!(pub aldis_spp_sequence_flags: u8 { ALDIS_SPP_SEQ_CONTINUATION, ALDIS_SPP_SEQ_FIRST, ALDIS_SPP_SEQ_LAST, ALDIS_SPP_SEQ_UNSEGMENTED });
 /// APID of Idle Packets (133.0 §4.1.3.3.4.4).
 pub const ALDIS_SPP_APID_IDLE: u16 = 2047;
 /// Primary Header length in octets (133.0 §4.1.3.1).
@@ -44,14 +77,30 @@ pub const ALDIS_SPP_MAX_PACKET_LEN: u32 = 65_542;
 /// 133.0 §4.1.3.3.3.4; API-032, GEN-043).
 pub const ALDIS_SPP_ANOMALY_IDLE_WITH_SECONDARY_HEADER: u32 = 1 << 0;
 
-/// [`aldis_spp_secondary_layout_t::kind`]: no Packet Secondary Header (133.0 §4.1.4.2).
-pub const ALDIS_SPP_SECONDARY_ABSENT: u32 = 0;
-/// [`aldis_spp_secondary_layout_t::kind`]: an opaque secondary header of `opaque_len` octets
-/// (133.0 §4.1.4.2.1; SPP-007).
-pub const ALDIS_SPP_SECONDARY_OPAQUE: u32 = 1;
-/// [`aldis_spp_secondary_layout_t::kind`]: a Time Code Field, then `ancillary_len` octets of
-/// Ancillary Data (133.0 §4.1.4.2.2; SPP-008).
-pub const ALDIS_SPP_SECONDARY_TIME: u32 = 2;
+/// The layout of the Packet Secondary Header (133.0 §4.1.4.2).
+///
+/// A `uint32_t` argument or field is one of the enumerators below; the type itself is not a
+/// field type of the header (OI-57 convention 2; CABI-010).
+///
+/// cbindgen:prefix-with-name=false
+/// cbindgen:rename-all=None
+#[repr(u32)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[expect(
+    non_camel_case_types,
+    reason = "the variants are the C constants (OI-57 convention 2)"
+)]
+pub enum aldis_spp_secondary {
+    /// [`aldis_spp_secondary_layout_t::kind`]: no Packet Secondary Header (133.0 §4.1.4.2).
+    ALDIS_SPP_SECONDARY_ABSENT = 0,
+    /// [`aldis_spp_secondary_layout_t::kind`]: an opaque secondary header of `opaque_len` octets
+    /// (133.0 §4.1.4.2.1; SPP-007).
+    ALDIS_SPP_SECONDARY_OPAQUE = 1,
+    /// [`aldis_spp_secondary_layout_t::kind`]: a Time Code Field, then `ancillary_len` octets of
+    /// Ancillary Data (133.0 §4.1.4.2.2; SPP-008).
+    ALDIS_SPP_SECONDARY_TIME = 2,
+}
+mirror!(pub aldis_spp_secondary: u32 { ALDIS_SPP_SECONDARY_ABSENT, ALDIS_SPP_SECONDARY_OPAQUE, ALDIS_SPP_SECONDARY_TIME });
 
 /// Managed parameters of the Space Packet Protocol (133.0 §5.2 Table 5-1; SPP-005, GEN-060,
 /// CABI-033).
@@ -146,11 +195,10 @@ pub(crate) fn config(c: aldis_spp_config_t) -> Result<SppConfig> {
 }
 
 /// A packet type argument (133.0 §4.1.3.3.2; CABI-022).
-pub(crate) const fn packet_type(value: u8) -> Result<PacketType> {
-    match value {
-        ALDIS_SPP_TELEMETRY => Ok(PacketType::Telemetry),
-        ALDIS_SPP_TELECOMMAND => Ok(PacketType::Telecommand),
-        _ => Err(invalid_argument()),
+pub(crate) fn packet_type(value: u8) -> Result<PacketType> {
+    match parse::<aldis_spp_packet_type>(value)? {
+        aldis_spp_packet_type::ALDIS_SPP_TELEMETRY => Ok(PacketType::Telemetry),
+        aldis_spp_packet_type::ALDIS_SPP_TELECOMMAND => Ok(PacketType::Telecommand),
     }
 }
 
@@ -198,12 +246,12 @@ pub(crate) fn view(p: &SpacePacket<'_>) -> aldis_spp_packet_t {
 
 /// The secondary header layout of a C struct (SPP-007, SPP-008).
 pub(crate) fn layout(l: &aldis_spp_secondary_layout_t) -> Result<SecondaryHeaderLayout> {
-    match l.kind {
-        ALDIS_SPP_SECONDARY_ABSENT => Ok(SecondaryHeaderLayout::Absent),
-        ALDIS_SPP_SECONDARY_OPAQUE => NonZeroUsize::new(l.opaque_len)
+    match parse::<aldis_spp_secondary>(l.kind)? {
+        aldis_spp_secondary::ALDIS_SPP_SECONDARY_ABSENT => Ok(SecondaryHeaderLayout::Absent),
+        aldis_spp_secondary::ALDIS_SPP_SECONDARY_OPAQUE => NonZeroUsize::new(l.opaque_len)
             .map(SecondaryHeaderLayout::Opaque)
             .ok_or_else(invalid_argument),
-        ALDIS_SPP_SECONDARY_TIME => {
+        aldis_spp_secondary::ALDIS_SPP_SECONDARY_TIME => {
             let format = time_format(&l.time_format)?;
             let pfield = abi::flag(l.time_pfield)?;
             Ok(SecondaryHeaderLayout::Time(TimeHeaderLayout::new(
@@ -212,7 +260,6 @@ pub(crate) fn layout(l: &aldis_spp_secondary_layout_t) -> Result<SecondaryHeader
                 l.ancillary_len,
             )?))
         }
-        _ => Err(invalid_argument()),
     }
 }
 

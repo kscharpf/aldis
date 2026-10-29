@@ -19,6 +19,7 @@ use aldis::spp::{
 use crate::abi::{self, invalid_argument};
 use crate::capacities::ALDIS_SPP_TRACKER_MAX_APIDS;
 use crate::handle::{self, Storage};
+use crate::mirror::mirror;
 use crate::spp::{
     aldis_spp_config_t, aldis_spp_secondary_layout_t, config, layout as secondary_layout,
     packet_type,
@@ -34,39 +35,87 @@ pub const ALDIS_SPP_SEGMENTER_WORDS: usize = 12;
 /// 64-bit words of one `aldis_spp_reassembler_t` (CABI-031; M2 plan D5).
 pub const ALDIS_SPP_REASSEMBLER_WORDS: usize = 8;
 
-/// [`aldis_spp_tracked_t::continuity`]: the first count of an APID (SPP-011).
-pub const ALDIS_SPP_TRACK_FIRST: u32 = 0;
-/// [`aldis_spp_tracked_t::continuity`]: forward distance 1 (CMN-031, SPP-011).
-pub const ALDIS_SPP_TRACK_IN_SEQUENCE: u32 = 1;
-/// [`aldis_spp_tracked_t::continuity`]: forward distance 2 to 8192; `missing` counts were
-/// skipped (CMN-031, SPP-011).
-pub const ALDIS_SPP_TRACK_GAP: u32 = 2;
-/// [`aldis_spp_tracked_t::continuity`]: the same count again (CMN-031, SPP-011).
-pub const ALDIS_SPP_TRACK_REPEAT: u32 = 3;
-/// [`aldis_spp_tracked_t::continuity`]: any other distance, a reset (CMN-031, SPP-011).
-pub const ALDIS_SPP_TRACK_BACKWARDS: u32 = 4;
+/// The sequence-count result of a tracker.
+///
+/// A `uint32_t` argument or field is one of the enumerators below; the type itself is not a
+/// field type of the header (OI-57 convention 2; CABI-010).
+///
+/// cbindgen:prefix-with-name=false
+/// cbindgen:rename-all=None
+#[repr(u32)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[expect(
+    non_camel_case_types,
+    reason = "the variants are the C constants (OI-57 convention 2)"
+)]
+pub enum aldis_spp_track {
+    /// [`aldis_spp_tracked_t::continuity`]: the first count of an APID (SPP-011).
+    ALDIS_SPP_TRACK_FIRST = 0,
+    /// [`aldis_spp_tracked_t::continuity`]: forward distance 1 (CMN-031, SPP-011).
+    ALDIS_SPP_TRACK_IN_SEQUENCE = 1,
+    /// [`aldis_spp_tracked_t::continuity`]: forward distance 2 to 8192; `missing` counts were
+    /// skipped (CMN-031, SPP-011).
+    ALDIS_SPP_TRACK_GAP = 2,
+    /// [`aldis_spp_tracked_t::continuity`]: the same count again (CMN-031, SPP-011).
+    ALDIS_SPP_TRACK_REPEAT = 3,
+    /// [`aldis_spp_tracked_t::continuity`]: any other distance, a reset (CMN-031, SPP-011).
+    ALDIS_SPP_TRACK_BACKWARDS = 4,
+}
+mirror!(pub aldis_spp_track: u32 { ALDIS_SPP_TRACK_FIRST, ALDIS_SPP_TRACK_IN_SEQUENCE, ALDIS_SPP_TRACK_GAP, ALDIS_SPP_TRACK_REPEAT, ALDIS_SPP_TRACK_BACKWARDS });
 
-/// [`aldis_spp_reassembly_t::discarded`] and `reason`: nothing (SPP-013).
-pub const ALDIS_SPP_DISCARD_NONE: u32 = 0;
-/// A sequence gap while assembling (SPP-013).
-pub const ALDIS_SPP_DISCARD_GAP: u32 = 1;
-/// A first segment arrived while assembling (SPP-013).
-pub const ALDIS_SPP_DISCARD_RESTARTED: u32 = 2;
-/// An unsegmented packet arrived while assembling (SPP-013).
-pub const ALDIS_SPP_DISCARD_INTERRUPTED: u32 = 3;
-/// A continuation or last segment with nothing in progress (SPP-013).
-pub const ALDIS_SPP_DISCARD_ORPHAN: u32 = 4;
-/// The SDU would exceed the buffer (SPP-013).
-pub const ALDIS_SPP_DISCARD_OVERFLOW: u32 = 5;
-/// A reason that a later `aldis-spp` adds (GEN-081).
-pub const ALDIS_SPP_DISCARD_OTHER: u32 = 255;
-/// [`aldis_spp_reassembly_t::status`]: the segment was stored (SPP-013).
-pub const ALDIS_SPP_REASSEMBLY_IN_PROGRESS: u32 = 0;
-/// [`aldis_spp_reassembly_t::status`]: the SDU of `sdu_len` octets is complete at the start of
-/// the buffer (SPP-013).
-pub const ALDIS_SPP_REASSEMBLY_COMPLETE: u32 = 1;
-/// [`aldis_spp_reassembly_t::status`]: the packet was dropped for `reason` (SPP-013).
-pub const ALDIS_SPP_REASSEMBLY_DROPPED: u32 = 2;
+/// Why a reassembler discarded a packet.
+///
+/// A `uint32_t` argument or field is one of the enumerators below; the type itself is not a
+/// field type of the header (OI-57 convention 2; CABI-010).
+///
+/// cbindgen:prefix-with-name=false
+/// cbindgen:rename-all=None
+#[repr(u32)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[expect(
+    non_camel_case_types,
+    reason = "the variants are the C constants (OI-57 convention 2)"
+)]
+pub enum aldis_spp_discard {
+    /// [`aldis_spp_reassembly_t::discarded`] and `reason`: nothing (SPP-013).
+    ALDIS_SPP_DISCARD_NONE = 0,
+    /// A sequence gap while assembling (SPP-013).
+    ALDIS_SPP_DISCARD_GAP = 1,
+    /// A first segment arrived while assembling (SPP-013).
+    ALDIS_SPP_DISCARD_RESTARTED = 2,
+    /// An unsegmented packet arrived while assembling (SPP-013).
+    ALDIS_SPP_DISCARD_INTERRUPTED = 3,
+    /// A continuation or last segment with nothing in progress (SPP-013).
+    ALDIS_SPP_DISCARD_ORPHAN = 4,
+    /// The SDU would exceed the buffer (SPP-013).
+    ALDIS_SPP_DISCARD_OVERFLOW = 5,
+    /// A reason that a later `aldis-spp` adds (GEN-081).
+    ALDIS_SPP_DISCARD_OTHER = 255,
+}
+mirror!(pub aldis_spp_discard: u32 { ALDIS_SPP_DISCARD_NONE, ALDIS_SPP_DISCARD_GAP, ALDIS_SPP_DISCARD_RESTARTED, ALDIS_SPP_DISCARD_INTERRUPTED, ALDIS_SPP_DISCARD_ORPHAN, ALDIS_SPP_DISCARD_OVERFLOW, ALDIS_SPP_DISCARD_OTHER });
+/// The state a reassembler reports after a segment.
+///
+/// A `uint32_t` argument or field is one of the enumerators below; the type itself is not a
+/// field type of the header (OI-57 convention 2; CABI-010).
+///
+/// cbindgen:prefix-with-name=false
+/// cbindgen:rename-all=None
+#[repr(u32)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[expect(
+    non_camel_case_types,
+    reason = "the variants are the C constants (OI-57 convention 2)"
+)]
+pub enum aldis_spp_reassembly {
+    /// [`aldis_spp_reassembly_t::status`]: the segment was stored (SPP-013).
+    ALDIS_SPP_REASSEMBLY_IN_PROGRESS = 0,
+    /// [`aldis_spp_reassembly_t::status`]: the SDU of `sdu_len` octets is complete at the start of
+    /// the buffer (SPP-013).
+    ALDIS_SPP_REASSEMBLY_COMPLETE = 1,
+    /// [`aldis_spp_reassembly_t::status`]: the packet was dropped for `reason` (SPP-013).
+    ALDIS_SPP_REASSEMBLY_DROPPED = 2,
+}
+mirror!(pub aldis_spp_reassembly: u32 { ALDIS_SPP_REASSEMBLY_IN_PROGRESS, ALDIS_SPP_REASSEMBLY_COMPLETE, ALDIS_SPP_REASSEMBLY_DROPPED });
 
 /// The state of an `aldis_spp_tracker_t`: the tracker at the build capacity, and the
 /// capacity the caller chose.
