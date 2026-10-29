@@ -97,9 +97,7 @@ fn handle(case: &CodecCase) -> Outcome {
         "error_code" => {
             let name = param(case, "kind").as_str().unwrap();
             match ErrorKind::from_name(name) {
-                Some(k) => {
-                    ok(&json!({ "code": k.code(), "c_abi": i32::from(k.code()).wrapping_neg() }))
-                }
+                Some(k) => ok(&json!({ "code": k.code(), "status": k.code() })),
                 None => Outcome::Err {
                     kind: "UnknownKind".to_owned(),
                     field: None,

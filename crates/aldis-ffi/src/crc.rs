@@ -33,7 +33,7 @@ pub unsafe extern "C" fn aldis_crc16(
     len: usize,
     crc: *mut u16,
     err: *mut crate::aldis_error_detail_t,
-) -> i32 {
+) -> u32 {
     // SAFETY: every pointer is valid as `# Safety` states; `abi` checks NULL and alignment.
     unsafe {
         abi::call(err, || {

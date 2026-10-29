@@ -44,7 +44,7 @@ pub struct aldis_limits_t {
     reason = "C ABI entry point: unmangled, takes raw pointers (GEN-071)"
 )]
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn aldis_limits(limits: *mut aldis_limits_t) -> i32 {
+pub unsafe extern "C" fn aldis_limits(limits: *mut aldis_limits_t) -> u32 {
     // SAFETY: `limits` is valid as `# Safety` states; `abi` checks NULL, alignment, and
     // `struct_size`.
     let checked = unsafe {

@@ -202,30 +202,7 @@ fn generate(root: &Path) -> Result<String, String> {
     if !status.success() {
         return Err("cbindgen failed".to_owned());
     }
-    Ok(parenthesize(&repo::read(&output)?))
-}
-
-/// `text` with every negative `#define` value in parentheses, so that `x -ALDIS_ERR_INCOMPLETE`
-/// cannot become `x --2`: cbindgen writes `-2` bare.
-fn parenthesize(text: &str) -> String {
-    let mut out = String::with_capacity(text.len());
-    for line in text.split_inclusive('\n') {
-        let body = line.trim_end_matches('\n');
-        let negative = body.strip_prefix("#define ").and_then(|rest| {
-            let (name, value) = rest.split_once(' ')?;
-            let digits = value.strip_prefix('-')?;
-            (!digits.is_empty() && digits.bytes().all(|b| b.is_ascii_digit()))
-                .then_some((name, value))
-        });
-        match negative {
-            Some((name, value)) => {
-                let _ = write!(out, "#define {name} ({value})");
-                out.push_str(&line[body.len()..]);
-            }
-            None => out.push_str(line),
-        }
-    }
-    out
+    repo::read(&output)
 }
 
 /// The problem of the generated file `path` when its committed text `committed` (`None` when
@@ -469,16 +446,6 @@ mod tests {
         let p = header_problems(bad);
         assert_eq!(p.len(), 2, "{p:?}");
         assert!(p[0].contains("<stdio.h>") && p[1].contains("extern"));
-    }
-
-    // req: CABI-002, CABI-020
-    #[test]
-    fn negative_constants_are_parenthesized() {
-        let text = "#define ALDIS_OK 0\n#define ALDIS_ERR_X -2\n#define Y (1 << 0)\n#define Z -\n";
-        assert_eq!(
-            parenthesize(text),
-            "#define ALDIS_OK 0\n#define ALDIS_ERR_X (-2)\n#define Y (1 << 0)\n#define Z -\n"
-        );
     }
 
     // req: CABI-001

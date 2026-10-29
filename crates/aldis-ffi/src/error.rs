@@ -1,51 +1,94 @@
 //! Status codes and error detail (c-abi.md §4; CABI-020, CABI-021, GEN-040, GEN-041).
 //!
-//! Every fallible function returns `int32_t`: [`ALDIS_OK`], or the negated code of the error
-//! catalogue (03-api-model.md §9), one `ALDIS_ERR_*` constant per kind. The constants are
-//! negative, as CABI-020 gives them (`ALDIS_ERR_BUFFER_TOO_SMALL` is −1). An optional
-//! [`aldis_error_detail_t`] receives the kind, the field code, and the detail of the error.
+//! Every fallible function returns a `uint32_t`: [`ALDIS_OK`] (0), or the code of the error
+//! catalogue (03-api-model.md §9), one `ALDIS_ERR_*` constant per kind, declared by
+//! [`aldis_status`]. A code is `ErrorKind::code()` and is never renumbered; there is no second
+//! list to keep in step. An optional [`aldis_error_detail_t`] receives the kind, the field code,
+//! and the detail of the error.
 
 use aldis::core::{Error, ErrorDetail};
 
-/// Success (CABI-020).
-pub const ALDIS_OK: i32 = 0;
-/// Output buffer too small; the detail carries `needed` (03-api-model.md §9 code 1; CABI-020).
-pub const ALDIS_ERR_BUFFER_TOO_SMALL: i32 = -1;
-/// Input shorter than required; the detail carries `needed` (code 2; CABI-020).
-pub const ALDIS_ERR_INCOMPLETE: i32 = -2;
-/// Length field, configured length, and buffer length disagree (code 3; CABI-020).
-pub const ALDIS_ERR_LENGTH_MISMATCH: i32 = -3;
-/// Version number field is not the one this codec handles (code 4; CABI-020).
-pub const ALDIS_ERR_UNSUPPORTED_VERSION: i32 = -4;
-/// A value exceeds its field range or a configured limit (code 5; CABI-020).
-pub const ALDIS_ERR_OUT_OF_RANGE: i32 = -5;
-/// A field holds a value the Blue Book forbids, or an argument violates CABI-022 (code 6;
-/// CABI-020, CABI-022).
-pub const ALDIS_ERR_INVALID_FIELD: i32 = -6;
-/// A field holds a value CCSDS reserves, in strict mode (code 7; CABI-020).
-pub const ALDIS_ERR_RESERVED_VALUE: i32 = -7;
-/// FECF check failed (code 8; CABI-020).
-pub const ALDIS_ERR_CRC_MISMATCH: i32 = -8;
-/// AOS Frame Header Error Control detected an uncorrectable error (code 9; CABI-020).
-pub const ALDIS_ERR_HEADER_UNCORRECTABLE: i32 = -9;
-/// SCID, VCID, MAP ID, APID, or EPI not in the configuration (code 10; CABI-020).
-pub const ALDIS_ERR_UNKNOWN_CHANNEL: i32 = -10;
-/// Configuration violates a Blue Book constraint (code 11; CABI-020).
-pub const ALDIS_ERR_INVALID_CONFIG: i32 = -11;
-/// Engine queue full; input rejected without state change (code 12; CABI-020).
-pub const ALDIS_ERR_WOULD_BLOCK: i32 = -12;
-/// Operation not permitted in the engine's current state (code 13; CABI-020).
-pub const ALDIS_ERR_INVALID_STATE: i32 = -13;
-/// Security hook reported failure (code 14; CABI-020).
-pub const ALDIS_ERR_SECURITY: i32 = -14;
-/// Configuration exceeds a compile-time capacity (code 15; CABI-020).
-pub const ALDIS_ERR_CAPACITY_EXCEEDED: i32 = -15;
-/// Unknown, uninitialized, or stale handle (code 16; CABI-020, CABI-032).
-pub const ALDIS_ERR_INVALID_HANDLE: i32 = -16;
-/// Structurally impossible input (code 17; CABI-020).
-pub const ALDIS_ERR_MALFORMED: i32 = -17;
-/// An internal invariant or consistency check failed (code 18; CABI-020).
-pub const ALDIS_ERR_INTERNAL_ERROR: i32 = -18;
+use crate::mirror::mirror;
+
+/// The status a fallible function returns (03-api-model.md §9; CABI-020, GEN-040).
+///
+/// [`ALDIS_OK`], or the catalogue code of the error. Every `ALDIS_ERR_*` has the value of
+/// `ErrorKind::code()` of the kind it is named for, and a test checks each one against
+/// `ErrorKind::ALL` (OI-57 convention 3).
+///
+/// A function returns a `uint32_t`; the type itself is not a field or return type of the header
+/// (OI-57 convention 2; CABI-010).
+///
+/// cbindgen:prefix-with-name=false
+/// cbindgen:rename-all=None
+#[repr(u32)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[expect(
+    non_camel_case_types,
+    reason = "the variants are the C constants (OI-57 convention 2)"
+)]
+pub enum aldis_status {
+    /// Success (CABI-020).
+    ALDIS_OK = 0,
+    /// Output buffer too small; the detail carries `needed` (03-api-model.md §9 code 1; CABI-020).
+    ALDIS_ERR_BUFFER_TOO_SMALL = 1,
+    /// Input shorter than required; the detail carries `needed` (code 2; CABI-020).
+    ALDIS_ERR_INCOMPLETE = 2,
+    /// Length field, configured length, and buffer length disagree (code 3; CABI-020).
+    ALDIS_ERR_LENGTH_MISMATCH = 3,
+    /// Version number field is not the one this codec handles (code 4; CABI-020).
+    ALDIS_ERR_UNSUPPORTED_VERSION = 4,
+    /// A value exceeds its field range or a configured limit (code 5; CABI-020).
+    ALDIS_ERR_OUT_OF_RANGE = 5,
+    /// A field holds a value the Blue Book forbids, or an argument violates CABI-022 (code 6;
+    /// CABI-020, CABI-022).
+    ALDIS_ERR_INVALID_FIELD = 6,
+    /// A field holds a value CCSDS reserves, in strict mode (code 7; CABI-020).
+    ALDIS_ERR_RESERVED_VALUE = 7,
+    /// FECF check failed (code 8; CABI-020).
+    ALDIS_ERR_CRC_MISMATCH = 8,
+    /// AOS Frame Header Error Control detected an uncorrectable error (code 9; CABI-020).
+    ALDIS_ERR_HEADER_UNCORRECTABLE = 9,
+    /// SCID, VCID, MAP ID, APID, or EPI not in the configuration (code 10; CABI-020).
+    ALDIS_ERR_UNKNOWN_CHANNEL = 10,
+    /// Configuration violates a Blue Book constraint (code 11; CABI-020).
+    ALDIS_ERR_INVALID_CONFIG = 11,
+    /// Engine queue full; input rejected without state change (code 12; CABI-020).
+    ALDIS_ERR_WOULD_BLOCK = 12,
+    /// Operation not permitted in the engine's current state (code 13; CABI-020).
+    ALDIS_ERR_INVALID_STATE = 13,
+    /// Security hook reported failure (code 14; CABI-020).
+    ALDIS_ERR_SECURITY = 14,
+    /// Configuration exceeds a compile-time capacity (code 15; CABI-020).
+    ALDIS_ERR_CAPACITY_EXCEEDED = 15,
+    /// Unknown, uninitialized, or stale handle (code 16; CABI-020, CABI-032).
+    ALDIS_ERR_INVALID_HANDLE = 16,
+    /// Structurally impossible input (code 17; CABI-020).
+    ALDIS_ERR_MALFORMED = 17,
+    /// An internal invariant or consistency check failed (code 18; CABI-020).
+    ALDIS_ERR_INTERNAL_ERROR = 18,
+}
+mirror!(pub aldis_status: u32 {
+    ALDIS_OK,
+    ALDIS_ERR_BUFFER_TOO_SMALL,
+    ALDIS_ERR_INCOMPLETE,
+    ALDIS_ERR_LENGTH_MISMATCH,
+    ALDIS_ERR_UNSUPPORTED_VERSION,
+    ALDIS_ERR_OUT_OF_RANGE,
+    ALDIS_ERR_INVALID_FIELD,
+    ALDIS_ERR_RESERVED_VALUE,
+    ALDIS_ERR_CRC_MISMATCH,
+    ALDIS_ERR_HEADER_UNCORRECTABLE,
+    ALDIS_ERR_UNKNOWN_CHANNEL,
+    ALDIS_ERR_INVALID_CONFIG,
+    ALDIS_ERR_WOULD_BLOCK,
+    ALDIS_ERR_INVALID_STATE,
+    ALDIS_ERR_SECURITY,
+    ALDIS_ERR_CAPACITY_EXCEEDED,
+    ALDIS_ERR_INVALID_HANDLE,
+    ALDIS_ERR_MALFORMED,
+    ALDIS_ERR_INTERNAL_ERROR,
+});
 
 /// [`aldis_error_detail_t::detail`]: the error carries no further detail (GEN-041, CABI-021).
 pub const ALDIS_DETAIL_NONE: u16 = 0;
@@ -76,7 +119,7 @@ pub const ALDIS_ERROR_DETAIL_MIN_SIZE: u32 = 12;
 pub struct aldis_error_detail_t {
     /// `sizeof(aldis_error_detail_t)`, set by the caller before the call (CABI-033).
     pub struct_size: u32,
-    /// The error kind: its catalogue code, the negation of the returned status (03 §9).
+    /// The error kind: its catalogue code, the returned status (03 §9).
     pub kind: u32,
     /// The field code of the field catalogue (03 §9.1, API-082), 0 for none.
     pub field: u16,
@@ -146,47 +189,40 @@ impl From<Error> for aldis_error_detail_t {
     }
 }
 
-/// The status a failed call returns: the negated catalogue code (CABI-020).
-pub(crate) fn status(e: Error) -> i32 {
-    i32::from(e.kind().code()).wrapping_neg()
+/// The status a failed call returns: the catalogue code (CABI-020).
+pub(crate) fn status(e: Error) -> u32 {
+    u32::from(e.kind().code())
 }
 
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::*;
+    use crate::mirror::Mirror;
     use aldis::core::{ErrorKind, field};
 
     #[test]
-    fn status_codes_are_the_negated_catalogue() {
+    fn status_codes_are_the_catalogue() {
         // req: CABI-020, GEN-040
-        let constants = [
-            ALDIS_ERR_BUFFER_TOO_SMALL,
-            ALDIS_ERR_INCOMPLETE,
-            ALDIS_ERR_LENGTH_MISMATCH,
-            ALDIS_ERR_UNSUPPORTED_VERSION,
-            ALDIS_ERR_OUT_OF_RANGE,
-            ALDIS_ERR_INVALID_FIELD,
-            ALDIS_ERR_RESERVED_VALUE,
-            ALDIS_ERR_CRC_MISMATCH,
-            ALDIS_ERR_HEADER_UNCORRECTABLE,
-            ALDIS_ERR_UNKNOWN_CHANNEL,
-            ALDIS_ERR_INVALID_CONFIG,
-            ALDIS_ERR_WOULD_BLOCK,
-            ALDIS_ERR_INVALID_STATE,
-            ALDIS_ERR_SECURITY,
-            ALDIS_ERR_CAPACITY_EXCEEDED,
-            ALDIS_ERR_INVALID_HANDLE,
-            ALDIS_ERR_MALFORMED,
-            ALDIS_ERR_INTERNAL_ERROR,
-        ];
-        assert_eq!(constants.len(), ErrorKind::ALL.len());
-        for (kind, constant) in ErrorKind::ALL.into_iter().zip(constants) {
-            assert_eq!(status(Error::new(kind)), constant, "{kind:?}");
-            assert_eq!(-constant, i32::from(kind.code()));
-        }
-        assert_eq!(ALDIS_ERR_BUFFER_TOO_SMALL, -1);
         assert_eq!(ALDIS_OK, 0);
+        assert_eq!(aldis_status::ALL[0], aldis_status::ALDIS_OK);
+        let errors = &aldis_status::ALL[1..];
+        assert_eq!(errors.len(), ErrorKind::ALL.len());
+        for (kind, constant) in ErrorKind::ALL.into_iter().zip(errors) {
+            assert_eq!(status(Error::new(kind)), constant.code(), "{kind:?}");
+            assert_eq!(constant.code(), u32::from(kind.code()));
+            // The constant is named for the kind: `ALDIS_ERR_` and the kind in upper snake case.
+            let name = kind.name();
+            let mut snake = String::from("ALDIS_ERR_");
+            for (i, c) in name.chars().enumerate() {
+                if c.is_ascii_uppercase() && i > 0 {
+                    snake.push('_');
+                }
+                snake.push(c.to_ascii_uppercase());
+            }
+            assert_eq!(format!("{constant:?}"), snake, "{kind:?}");
+        }
+        assert_eq!(ALDIS_ERR_BUFFER_TOO_SMALL, 1);
     }
 
     #[test]

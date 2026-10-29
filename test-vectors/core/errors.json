@@ -19,6 +19,10 @@
         "ok": true,
         "code": 1,
         "c_abi": -1
+      },
+      "superseded": {
+        "reason": "the C ABI returns the code itself, not its negation (OI-57 convention 3, CABI-020)",
+        "by": "error-code-BufferTooSmall-002"
       }
     },
     {
@@ -36,6 +40,10 @@
         "ok": true,
         "code": 2,
         "c_abi": -2
+      },
+      "superseded": {
+        "reason": "the C ABI returns the code itself, not its negation (OI-57 convention 3, CABI-020)",
+        "by": "error-code-Incomplete-002"
       }
     },
     {
@@ -53,6 +61,10 @@
         "ok": true,
         "code": 3,
         "c_abi": -3
+      },
+      "superseded": {
+        "reason": "the C ABI returns the code itself, not its negation (OI-57 convention 3, CABI-020)",
+        "by": "error-code-LengthMismatch-002"
       }
     },
     {
@@ -70,6 +82,10 @@
         "ok": true,
         "code": 4,
         "c_abi": -4
+      },
+      "superseded": {
+        "reason": "the C ABI returns the code itself, not its negation (OI-57 convention 3, CABI-020)",
+        "by": "error-code-UnsupportedVersion-002"
       }
     },
     {
@@ -87,6 +103,10 @@
         "ok": true,
         "code": 5,
         "c_abi": -5
+      },
+      "superseded": {
+        "reason": "the C ABI returns the code itself, not its negation (OI-57 convention 3, CABI-020)",
+        "by": "error-code-OutOfRange-002"
       }
     },
     {
@@ -104,6 +124,10 @@
         "ok": true,
         "code": 6,
         "c_abi": -6
+      },
+      "superseded": {
+        "reason": "the C ABI returns the code itself, not its negation (OI-57 convention 3, CABI-020)",
+        "by": "error-code-InvalidField-002"
       }
     },
     {
@@ -121,6 +145,10 @@
         "ok": true,
         "code": 7,
         "c_abi": -7
+      },
+      "superseded": {
+        "reason": "the C ABI returns the code itself, not its negation (OI-57 convention 3, CABI-020)",
+        "by": "error-code-ReservedValue-002"
       }
     },
     {
@@ -138,6 +166,10 @@
         "ok": true,
         "code": 8,
         "c_abi": -8
+      },
+      "superseded": {
+        "reason": "the C ABI returns the code itself, not its negation (OI-57 convention 3, CABI-020)",
+        "by": "error-code-CrcMismatch-002"
       }
     },
     {
@@ -155,6 +187,10 @@
         "ok": true,
         "code": 9,
         "c_abi": -9
+      },
+      "superseded": {
+        "reason": "the C ABI returns the code itself, not its negation (OI-57 convention 3, CABI-020)",
+        "by": "error-code-HeaderUncorrectable-002"
       }
     },
     {
@@ -172,6 +208,10 @@
         "ok": true,
         "code": 10,
         "c_abi": -10
+      },
+      "superseded": {
+        "reason": "the C ABI returns the code itself, not its negation (OI-57 convention 3, CABI-020)",
+        "by": "error-code-UnknownChannel-002"
       }
     },
     {
@@ -189,6 +229,10 @@
         "ok": true,
         "code": 11,
         "c_abi": -11
+      },
+      "superseded": {
+        "reason": "the C ABI returns the code itself, not its negation (OI-57 convention 3, CABI-020)",
+        "by": "error-code-InvalidConfig-002"
       }
     },
     {
@@ -206,6 +250,10 @@
         "ok": true,
         "code": 12,
         "c_abi": -12
+      },
+      "superseded": {
+        "reason": "the C ABI returns the code itself, not its negation (OI-57 convention 3, CABI-020)",
+        "by": "error-code-WouldBlock-002"
       }
     },
     {
@@ -223,6 +271,10 @@
         "ok": true,
         "code": 13,
         "c_abi": -13
+      },
+      "superseded": {
+        "reason": "the C ABI returns the code itself, not its negation (OI-57 convention 3, CABI-020)",
+        "by": "error-code-InvalidState-002"
       }
     },
     {
@@ -240,6 +292,10 @@
         "ok": true,
         "code": 14,
         "c_abi": -14
+      },
+      "superseded": {
+        "reason": "the C ABI returns the code itself, not its negation (OI-57 convention 3, CABI-020)",
+        "by": "error-code-Security-002"
       }
     },
     {
@@ -257,6 +313,10 @@
         "ok": true,
         "code": 15,
         "c_abi": -15
+      },
+      "superseded": {
+        "reason": "the C ABI returns the code itself, not its negation (OI-57 convention 3, CABI-020)",
+        "by": "error-code-CapacityExceeded-002"
       }
     },
     {
@@ -274,6 +334,10 @@
         "ok": true,
         "code": 16,
         "c_abi": -16
+      },
+      "superseded": {
+        "reason": "the C ABI returns the code itself, not its negation (OI-57 convention 3, CABI-020)",
+        "by": "error-code-InvalidHandle-002"
       }
     },
     {
@@ -291,6 +355,10 @@
         "ok": true,
         "code": 17,
         "c_abi": -17
+      },
+      "superseded": {
+        "reason": "the C ABI returns the code itself, not its negation (OI-57 convention 3, CABI-020)",
+        "by": "error-code-Malformed-002"
       }
     },
     {
@@ -308,6 +376,316 @@
         "ok": true,
         "code": 18,
         "c_abi": -18
+      },
+      "superseded": {
+        "reason": "the C ABI returns the code itself, not its negation (OI-57 convention 3, CABI-020)",
+        "by": "error-code-InternalError-002"
+      }
+    },
+    {
+      "id": "error-code-BufferTooSmall-002",
+      "requirements": [
+        "GEN-040",
+        "CABI-020"
+      ],
+      "description": "BufferTooSmall has stable code 1",
+      "operation": "error_code",
+      "params": {
+        "kind": "BufferTooSmall"
+      },
+      "expect": {
+        "ok": true,
+        "code": 1,
+        "status": 1
+      }
+    },
+    {
+      "id": "error-code-Incomplete-002",
+      "requirements": [
+        "GEN-040",
+        "CABI-020"
+      ],
+      "description": "Incomplete has stable code 2",
+      "operation": "error_code",
+      "params": {
+        "kind": "Incomplete"
+      },
+      "expect": {
+        "ok": true,
+        "code": 2,
+        "status": 2
+      }
+    },
+    {
+      "id": "error-code-LengthMismatch-002",
+      "requirements": [
+        "GEN-040",
+        "CABI-020"
+      ],
+      "description": "LengthMismatch has stable code 3",
+      "operation": "error_code",
+      "params": {
+        "kind": "LengthMismatch"
+      },
+      "expect": {
+        "ok": true,
+        "code": 3,
+        "status": 3
+      }
+    },
+    {
+      "id": "error-code-UnsupportedVersion-002",
+      "requirements": [
+        "GEN-040",
+        "CABI-020"
+      ],
+      "description": "UnsupportedVersion has stable code 4",
+      "operation": "error_code",
+      "params": {
+        "kind": "UnsupportedVersion"
+      },
+      "expect": {
+        "ok": true,
+        "code": 4,
+        "status": 4
+      }
+    },
+    {
+      "id": "error-code-OutOfRange-002",
+      "requirements": [
+        "GEN-040",
+        "CABI-020"
+      ],
+      "description": "OutOfRange has stable code 5",
+      "operation": "error_code",
+      "params": {
+        "kind": "OutOfRange"
+      },
+      "expect": {
+        "ok": true,
+        "code": 5,
+        "status": 5
+      }
+    },
+    {
+      "id": "error-code-InvalidField-002",
+      "requirements": [
+        "GEN-040",
+        "CABI-020"
+      ],
+      "description": "InvalidField has stable code 6",
+      "operation": "error_code",
+      "params": {
+        "kind": "InvalidField"
+      },
+      "expect": {
+        "ok": true,
+        "code": 6,
+        "status": 6
+      }
+    },
+    {
+      "id": "error-code-ReservedValue-002",
+      "requirements": [
+        "GEN-040",
+        "CABI-020"
+      ],
+      "description": "ReservedValue has stable code 7",
+      "operation": "error_code",
+      "params": {
+        "kind": "ReservedValue"
+      },
+      "expect": {
+        "ok": true,
+        "code": 7,
+        "status": 7
+      }
+    },
+    {
+      "id": "error-code-CrcMismatch-002",
+      "requirements": [
+        "GEN-040",
+        "CABI-020"
+      ],
+      "description": "CrcMismatch has stable code 8",
+      "operation": "error_code",
+      "params": {
+        "kind": "CrcMismatch"
+      },
+      "expect": {
+        "ok": true,
+        "code": 8,
+        "status": 8
+      }
+    },
+    {
+      "id": "error-code-HeaderUncorrectable-002",
+      "requirements": [
+        "GEN-040",
+        "CABI-020"
+      ],
+      "description": "HeaderUncorrectable has stable code 9",
+      "operation": "error_code",
+      "params": {
+        "kind": "HeaderUncorrectable"
+      },
+      "expect": {
+        "ok": true,
+        "code": 9,
+        "status": 9
+      }
+    },
+    {
+      "id": "error-code-UnknownChannel-002",
+      "requirements": [
+        "GEN-040",
+        "CABI-020"
+      ],
+      "description": "UnknownChannel has stable code 10",
+      "operation": "error_code",
+      "params": {
+        "kind": "UnknownChannel"
+      },
+      "expect": {
+        "ok": true,
+        "code": 10,
+        "status": 10
+      }
+    },
+    {
+      "id": "error-code-InvalidConfig-002",
+      "requirements": [
+        "GEN-040",
+        "CABI-020"
+      ],
+      "description": "InvalidConfig has stable code 11",
+      "operation": "error_code",
+      "params": {
+        "kind": "InvalidConfig"
+      },
+      "expect": {
+        "ok": true,
+        "code": 11,
+        "status": 11
+      }
+    },
+    {
+      "id": "error-code-WouldBlock-002",
+      "requirements": [
+        "GEN-040",
+        "CABI-020"
+      ],
+      "description": "WouldBlock has stable code 12",
+      "operation": "error_code",
+      "params": {
+        "kind": "WouldBlock"
+      },
+      "expect": {
+        "ok": true,
+        "code": 12,
+        "status": 12
+      }
+    },
+    {
+      "id": "error-code-InvalidState-002",
+      "requirements": [
+        "GEN-040",
+        "CABI-020"
+      ],
+      "description": "InvalidState has stable code 13",
+      "operation": "error_code",
+      "params": {
+        "kind": "InvalidState"
+      },
+      "expect": {
+        "ok": true,
+        "code": 13,
+        "status": 13
+      }
+    },
+    {
+      "id": "error-code-Security-002",
+      "requirements": [
+        "GEN-040",
+        "CABI-020"
+      ],
+      "description": "Security has stable code 14",
+      "operation": "error_code",
+      "params": {
+        "kind": "Security"
+      },
+      "expect": {
+        "ok": true,
+        "code": 14,
+        "status": 14
+      }
+    },
+    {
+      "id": "error-code-CapacityExceeded-002",
+      "requirements": [
+        "GEN-040",
+        "CABI-020"
+      ],
+      "description": "CapacityExceeded has stable code 15",
+      "operation": "error_code",
+      "params": {
+        "kind": "CapacityExceeded"
+      },
+      "expect": {
+        "ok": true,
+        "code": 15,
+        "status": 15
+      }
+    },
+    {
+      "id": "error-code-InvalidHandle-002",
+      "requirements": [
+        "GEN-040",
+        "CABI-020"
+      ],
+      "description": "InvalidHandle has stable code 16",
+      "operation": "error_code",
+      "params": {
+        "kind": "InvalidHandle"
+      },
+      "expect": {
+        "ok": true,
+        "code": 16,
+        "status": 16
+      }
+    },
+    {
+      "id": "error-code-Malformed-002",
+      "requirements": [
+        "GEN-040",
+        "CABI-020"
+      ],
+      "description": "Malformed has stable code 17",
+      "operation": "error_code",
+      "params": {
+        "kind": "Malformed"
+      },
+      "expect": {
+        "ok": true,
+        "code": 17,
+        "status": 17
+      }
+    },
+    {
+      "id": "error-code-InternalError-002",
+      "requirements": [
+        "GEN-040",
+        "CABI-020"
+      ],
+      "description": "InternalError has stable code 18",
+      "operation": "error_code",
+      "params": {
+        "kind": "InternalError"
+      },
+      "expect": {
+        "ok": true,
+        "code": 18,
+        "status": 18
       }
     }
   ]

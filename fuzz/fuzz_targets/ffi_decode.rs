@@ -94,11 +94,11 @@ use aldis_uslp::{
 use libfuzzer_sys::fuzz_target;
 
 /// The status and detail a C call returns for a Rust result.
-fn expect<T>(rust: &Result<T, Error>, status: i32, detail: &aldis_error_detail_t) {
+fn expect<T>(rust: &Result<T, Error>, status: u32, detail: &aldis_error_detail_t) {
     match rust {
         Ok(_) => assert_eq!(status, ALDIS_OK),
         Err(e) => {
-            assert_eq!(status, -i32::from(e.kind().code()));
+            assert_eq!(status, u32::from(e.kind().code()));
             assert_eq!(*detail, aldis_error_detail_t::from(*e));
         }
     }

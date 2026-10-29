@@ -168,7 +168,7 @@ pub unsafe extern "C" fn aldis_epp_decode(
     mode: u32,
     out: *mut aldis_epp_packet_t,
     err: *mut crate::aldis_error_detail_t,
-) -> i32 {
+) -> u32 {
     // SAFETY: every pointer is valid as `# Safety` states; `abi` checks NULL and alignment.
     unsafe {
         abi::call(err, || {
@@ -202,7 +202,7 @@ pub unsafe extern "C" fn aldis_epp_peek_length(
     prefix_len: usize,
     out_len: *mut usize,
     err: *mut crate::aldis_error_detail_t,
-) -> i32 {
+) -> u32 {
     // SAFETY: every pointer is valid as `# Safety` states; `abi` checks NULL and alignment.
     unsafe {
         abi::call(err, || {
@@ -238,7 +238,7 @@ pub unsafe extern "C" fn aldis_epp_validate(
     mode: u32,
     cfg: *const aldis_epp_config_t,
     err: *mut crate::aldis_error_detail_t,
-) -> i32 {
+) -> u32 {
     // SAFETY: every pointer is valid as `# Safety` states; `abi` checks NULL and alignment.
     unsafe {
         abi::call(err, || {
@@ -272,7 +272,7 @@ pub unsafe extern "C" fn aldis_epp_check(
     epi_extension: u8,
     data_len: usize,
     err: *mut crate::aldis_error_detail_t,
-) -> i32 {
+) -> u32 {
     // SAFETY: every pointer is valid as `# Safety` states; `abi` checks NULL and alignment.
     unsafe {
         abi::call(err, || {
@@ -317,7 +317,7 @@ pub unsafe extern "C" fn aldis_epp_encode(
     cap: usize,
     out_len: *mut usize,
     err: *mut crate::aldis_error_detail_t,
-) -> i32 {
+) -> u32 {
     // SAFETY: every pointer is valid as `# Safety` states; `abi` checks NULL, alignment, and
     // overlap.
     unsafe {
@@ -360,7 +360,7 @@ pub unsafe extern "C" fn aldis_epp_header_encode(
     out_len: *mut usize,
     packet_len: *mut u32,
     err: *mut crate::aldis_error_detail_t,
-) -> i32 {
+) -> u32 {
     // SAFETY: every pointer is valid as `# Safety` states; `abi` checks NULL and alignment.
     unsafe {
         abi::call(err, || {
@@ -400,7 +400,7 @@ pub unsafe extern "C" fn aldis_epp_idle(
     cap: usize,
     out_len: *mut usize,
     err: *mut crate::aldis_error_detail_t,
-) -> i32 {
+) -> u32 {
     // SAFETY: every pointer is valid as `# Safety` states; `abi` checks NULL and alignment.
     unsafe {
         abi::call(err, || {
@@ -433,7 +433,7 @@ pub unsafe extern "C" fn aldis_epp_idle_header(
     out_len: *mut usize,
     packet_len: *mut u32,
     err: *mut crate::aldis_error_detail_t,
-) -> i32 {
+) -> u32 {
     // SAFETY: every pointer is valid as `# Safety` states; `abi` checks NULL and alignment.
     unsafe {
         abi::call(err, || {
@@ -464,7 +464,7 @@ pub unsafe extern "C" fn aldis_epp_idle_header(
 pub unsafe extern "C" fn aldis_epp_config_check(
     cfg: *const aldis_epp_config_t,
     err: *mut crate::aldis_error_detail_t,
-) -> i32 {
+) -> u32 {
     // SAFETY: every pointer is valid as `# Safety` states; `abi` checks NULL and alignment.
     unsafe { abi::call(err, || config(&abi::config(cfg)?).map(|_| ())) }
 }
