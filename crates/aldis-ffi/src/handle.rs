@@ -6,10 +6,18 @@
 //! struct (CABI-031). `_init` writes the slot's tag: a magic number per helper, the generation
 //! of the slot layout, and the slot's own address. Every later call checks the tag and fails
 //! with `ALDIS_ERR_INVALID_HANDLE` on uninitialized, deinitialized, foreign, or copied storage
-//! (CABI-032). `_deinit` clears the magic. The state is read by value at the
-//! start of a call and written back at its end, so no Rust reference to caller storage lives
-//! across the call or aliases the call's buffers (GEN-071). M3 and M4 reuse this pattern for
-//! FOP-1, FARM-1, and the link engines.
+//! (CABI-032). `_deinit` clears the magic.
+//!
+//! A call reaches the state in one of two ways. A small helper reads it by value
+//! (`Handle::load`) and writes it back (`Handle::store`). An engine works **in place**
+//! (CABI-040; c-abi.md §12 item 6): `Handle::read` and `Handle::update` lend the state in
+//! the caller's storage to a closure as `&T` or `&mut T` for the duration of the call, so no
+//! copy of the state is made on the stack (FOP-1's state is at least 16 KiB, the stack budget
+//! 10 240 octets; OI-45). No Rust reference outlives the closure. That the reference aliases
+//! nothing rests on the caller serializing calls on a handle (CABI-050) and on the call's
+//! buffers not overlapping the storage (`Handle::range`); the handle does not enforce either
+//! (c-abi.md §12 item 3 lists the input-buffer check the first engine must add) (GEN-071).
+//! M3 and M4 use `update` for FOP-1, FARM-1, and the link engines.
 
 use core::ptr::NonNull;
 
@@ -76,6 +84,39 @@ impl<T> Handle<T> {
         // SAFETY: as for `load`; the old state has no drop glue to run (`T: Copy` or plain
         // data), so overwriting it is sound.
         unsafe { (&raw mut (*slot).state).write(state) }
+    }
+
+    /// Lends the state to `f` as `&T` for the duration of the call; the state is not copied.
+    #[expect(
+        unsafe_code,
+        reason = "borrows caller storage behind a checked tag (GEN-071)"
+    )]
+    pub(crate) fn read<R>(&self, f: impl FnOnce(&T) -> R) -> R {
+        // SAFETY: as for `load`. The reference lives only inside `f`, which cannot keep it
+        // (`R` does not borrow from the argument) and cannot reach the storage another way:
+        // the caller serializes calls on a handle (CABI-050) and the call's buffers do not
+        // overlap the storage (`range`).
+        f(unsafe { &self.slot.as_ref().state })
+    }
+
+    /// Lends the state to `f` as `&mut T` for the duration of the call; the state is not copied
+    /// (CABI-040).
+    ///
+    /// `f` is the whole engine step. `update` has no rollback: for the `decide`/`commit` form of
+    /// API-058 `f` must call the pure `decide` on the state and, only if that succeeds, the
+    /// infallible `commit` with the plan, so that an error leaves the state unchanged. `&mut self`
+    /// keeps a second reference to the state *through this handle* out of `f` (no `read` inside
+    /// it); that no other handle or pointer reaches the storage is the caller's obligation
+    /// (CABI-050).
+    #[expect(
+        unsafe_code,
+        reason = "borrows caller storage behind a checked tag (GEN-071)"
+    )]
+    pub(crate) fn update<R>(&mut self, f: impl FnOnce(&mut T) -> R) -> R {
+        // SAFETY: as for `read`; in addition `&mut self` means no reference to the state is made
+        // through this handle while `f` runs. Another `Handle` on the same storage is excluded
+        // only by CABI-050 (the caller serializes calls), not by the type.
+        f(unsafe { &mut self.slot.as_mut().state })
     }
 
     /// The storage's address range, which the call's output buffers must not overlap.
@@ -313,6 +354,122 @@ mod tests {
             assert_eq!(
                 get(core::ptr::null_mut::<Storage>()).map(|_| ()),
                 Err(invalid_argument())
+            );
+        }
+    }
+
+    /// The size of FOP-1's state at its default capacity (`capacities.toml` `[fop1]`): 16
+    /// frames of 1 024 octets, their lengths, and a head counter.
+    #[repr(C)]
+    struct Window {
+        frames: [[u8; 1024]; 16],
+        lens: [u16; 16],
+        head: u32,
+    }
+
+    /// Its storage struct, as the header declares it: 2 056 words.
+    #[repr(C)]
+    struct Big {
+        words: [u64; 2056],
+    }
+
+    impl super::Storage for Big {
+        type State = Window;
+        const MAGIC: u32 = MAGIC;
+    }
+
+    impl Window {
+        /// The pure part of a step: the plan, or an error that changes nothing (API-058).
+        fn decide(&self, len: u16) -> Result<usize> {
+            let at = usize::try_from(self.head).map_err(|_| invalid_argument())?;
+            if usize::from(len) > 1024 || at >= self.lens.len() {
+                return Err(invalid_argument());
+            }
+            Ok(at)
+        }
+
+        /// The infallible part: applies the plan.
+        fn commit(&mut self, at: usize, len: u16) {
+            if let Some(l) = self.lens.get_mut(at) {
+                *l = len;
+            }
+            self.head = self.head.wrapping_add(1);
+        }
+    }
+
+    /// Zeroed words for a `Big`, on the heap (the tests may allocate).
+    fn big_words() -> Vec<u64> {
+        vec![0; 2056]
+    }
+
+    const fn window() -> Window {
+        Window {
+            frames: [[0; 1024]; 16],
+            lens: [0; 16],
+            head: 0,
+        }
+    }
+
+    #[test]
+    fn a_large_state_is_borrowed_in_place() {
+        // req: CABI-040
+        const { assert!(size_of::<Window>() >= 16 * 1024) };
+        let mut words = big_words();
+        let big = words.as_mut_ptr().cast::<Big>();
+        let base = (big).addr();
+        let at = core::mem::offset_of!(Slot<Window>, state);
+        // SAFETY: every pointer is to `big`.
+        unsafe {
+            init(big, window()).unwrap();
+            let mut h = get(big).unwrap();
+            // The closure sees the state where it lives in the caller's storage: no copy.
+            h.read(|w| assert_eq!((&raw const *w).addr(), base.wrapping_add(at)));
+            h.update(|w| assert_eq!((&raw const *w).addr(), base.wrapping_add(at)));
+            h.update(|w| w.commit(0, 10));
+            assert_eq!(h.read(|w| (w.lens[0], w.head)), (10, 1));
+            // A second handle sees the update: it was made in the storage.
+            assert_eq!(get(big).unwrap().read(|w| w.head), 1);
+        }
+    }
+
+    #[test]
+    fn a_failed_step_leaves_the_state() {
+        // req: CABI-040
+        let mut words = big_words();
+        let big = words.as_mut_ptr().cast::<Big>();
+        // SAFETY: every pointer is to `big`.
+        unsafe {
+            init(big, window()).unwrap();
+            let mut h = get(big).unwrap();
+            let step = |h: &mut Handle<Window>, len: u16| {
+                h.update(|w| {
+                    let at = w.decide(len)?;
+                    w.commit(at, len);
+                    Ok(())
+                })
+            };
+            assert_eq!(step(&mut h, 5), Ok(()));
+            assert_eq!(step(&mut h, 2000), Err(invalid_argument()));
+            assert_eq!(h.read(|w| (w.lens[0], w.lens[1], w.head)), (5, 0, 1));
+        }
+    }
+
+    #[test]
+    fn engine_storage_is_tagged() {
+        // req: CABI-032
+        let mut words = big_words();
+        let big = words.as_mut_ptr().cast::<Big>();
+        // SAFETY: every pointer is to `big`.
+        unsafe {
+            assert_eq!(
+                get(big).map(|_| ()),
+                Err(Error::new(ErrorKind::InvalidHandle))
+            );
+            init(big, window()).unwrap();
+            deinit(big);
+            assert_eq!(
+                get(big).map(|_| ()),
+                Err(Error::new(ErrorKind::InvalidHandle))
             );
         }
     }
