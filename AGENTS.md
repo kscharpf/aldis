@@ -4,7 +4,7 @@ Guide for coding agents working on **Aldis**. Read [README.md](README.md) first 
 
 ## Sources of truth
 
-1. **CCSDS Blue Books** are authoritative for wire behavior. They are not in the repository. Run `specs/fetch.sh` to download them into `specs/pdf/` (see [specs/README.md](specs/README.md)). If this repository disagrees with a Blue Book, the Blue Book wins: fix the spec or the code, never the other way round. **Never commit the PDFs or text copied from them.** Cite them by document number and clause.
+1. **CCSDS Blue Books** are authoritative for wire behavior. They are not in the repository. Run `specs/fetch.sh`: it links `specs/pdf/` from the main checkout when that has them, else downloads them (see [specs/README.md](specs/README.md)). If this repository disagrees with a Blue Book, the Blue Book wins: fix the spec or the code, never the other way round. **Never commit the PDFs or text copied from them.** Cite them by document number and clause.
 2. **The specification** in [`docs/`](docs/README.md) defines everything else. Start with `docs/README.md`. Every requirement has an ID (e.g. `SPP-002`, `GEN-020`) and cites its CCSDS clause.
 3. **Open decisions** are tracked in [`docs/09-open-issues.md`](docs/09-open-issues.md). Do not silently resolve an open issue in code: update the issue.
 
@@ -51,45 +51,11 @@ Detailed protocol: [docs/process/review.md](docs/process/review.md).
 - **No clamped slice fallbacks or wire input defaults:** Never use clamped slicing (`start.min(len)..end.min(len).max(start)`) to satisfy `clippy::indexing_slicing` on slice lookups. Untrusted wire inputs MUST return explicit errors (`Incomplete`, `LengthMismatch`, `InvalidField`, `Malformed`) instead of silently synthesizing empty slices or zero-filled fields with `.unwrap_or_default()`. For accessors of optional or variable-length fields, returning an empty slice when absent or empty is expected.
 - **State machines** (RS-021): make invalid states and transitions unrepresentable. Always use the typestate pattern where the caller's call sequence decides the next state (lifecycles, two-phase writers, builders, sessions). Where an external event decides it (COP-1's protocol states), use a closed `enum` whose transition function is generated from, or checked against, the state table, with an exhaustive `match` and no wildcard arm.
 
-## Toolchain and checks
+## Checks
 
-The toolchain is pinned to Rust **1.99.1** in `rust-toolchain.toml`. Do not change it without updating RS-001 and OI-07.
+While you work, run `cargo xtask check` and fix everything it reports (**zero warnings**). It stops at the first failure and prints what it ran and skipped: format, clippy, tests, the bare-metal clippy build, `cargo xtask ci`, then the extras for what differs from `origin/main`: the exerciser's clippy and build for any crate, and the extras of `crates/aldis-core`, `crates/aldis-ffi`, and `refapp/`. Coverage needs the tooling nightly, the header checks need `cargo install --locked cbindgen@0.29.4`. `cargo xtask fix` runs the generators (field codes, vector schema, SANA tables, C header), then `consistency`; never edit `include/aldis/aldis.h` by hand.
 
-**The merge gate is local** ([docs/06-verification.md](docs/06-verification.md) §7, OI-31). GitHub Actions runs only at night (VER-059). A pull request merges when its head commit contains the tip of `main` and has a published, passing record of the verification run (VER-058):
-
-```sh
-git push                            # the commit must be on GitHub before its status can be set
-cargo xtask verify --publish        # every check, in the pinned image, stopping at the first failure; then the git note and status aldis/verify
-cargo xtask verify check            # re-check the published record of HEAD; it fails while HEAD lacks the tip of main
-```
-
-If you cannot run it locally, start the same run on a GitHub-hosted runner instead (VER-060). It takes 20 to 30 minutes when it has to build the image, and less when a workflow has already pushed the image for the same pins to `ghcr.io/kscharpf/aldis-verify` (VER-060). It publishes the same record and status, and names the run they came from:
-
-```sh
-git push
-gh workflow run verify.yml --ref <branch>   # or "Run workflow" on the Actions tab
-gh run watch                                # then: cargo xtask verify check
-```
-
-`cargo xtask verify` refuses a dirty working tree, runs in a fresh checkout of HEAD (`cargo xtask verify list` names the checks; `--only <check>,...` runs a subset while working, which never passes the gate), and runs on one machine wait for each other. A record is tied to the commit's tree, so any new commit—including a merge from `main`—needs a new run. If `main` moves during a passing run, `--publish` still publishes the record for reuse, but sets no `aldis/verify` status: merge `main` and verify again (see [docs/06-verification.md](docs/06-verification.md) §7 for container engine memory and disk setup). Source `scripts/agent-env.sh` to configure the agent environment (`NO_COLOR=1`, `GH_FORCE_TTY=0`, `GH_NO_UPDATE_NOTIFIER=1`, and `gh run-status`).
-
-While you work, run these. All must pass with **zero warnings**:
-
-```sh
-cargo fmt --all --check
-cargo clippy --workspace --all-features --all-targets
-cargo test --workspace --all-features
-cargo clippy -p aldis --no-default-features --features full --target thumbv7em-none-eabihf
-cargo xtask ci        # spec lint, links, decision log, layering, registrations (consistency), bare integers in the codec APIs (rs020), vectors, schema, generated files (field codes, C header), traces, changelog
-```
-
-`cargo xtask fix` runs the generators (field codes, vector schema, SANA tables, C header), then `consistency`.
-
-| Directory | Extra commands |
-|---|---|
-| `crates/aldis-core` | `cargo xtask coverage` (VER-024)<br>`(cd exerciser && cargo build --release --target thumbv7em-none-eabihf)` (VER-010)<br>`cargo clippy --manifest-path fuzz/Cargo.toml --all-targets` |
-| `crates/aldis-ffi` (or wrapped crates) | `cargo xtask header --write && cargo xtask header` (CABI-002, CABI-003)<br>`cargo xtask header c-smoke cc c++` (CABI-001; requires `cargo install --locked cbindgen@0.29.4`; never edit `include/aldis/aldis.h` by hand) |
-| `refapp/` ([refapp/README.md](refapp/README.md)) | `(cd refapp && cargo fmt --all --check && cargo clippy --workspace --all-targets && cargo test --workspace && cargo build -p refapp-flight --target thumbv7em-none-eabihf)` |
+**Implementation agents commit and stop.** The coordinator runs the merge gate (`cargo xtask verify --publish`, VER-058) per [docs/06-verification.md](docs/06-verification.md) §7, brings open PRs up to date with `scripts/reverify <pr>...`, and clears finished worktrees and `worktree-agent-*` branches with `scripts/prune-agent-branches` (dry run; `--apply` acts). Source `scripts/agent-env.sh` first.
 
 A failed exerciser link with `undefined symbol: aldis_panic_is_unreachable` means a panic path is reachable in `aldis-core`. Remove it; do not work around the check. Mark new test modules `#[cfg_attr(coverage_nightly, coverage(off))]`.
 

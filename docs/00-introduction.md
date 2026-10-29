@@ -68,7 +68,7 @@ CCSDS terms (Transfer Frame, Virtual Channel, MAP, FHP, OCF, FECF, CLCW, …) ar
 
 ### 5.2 Requirement identifiers
 
-Each requirement has a stable ID: `<AREA>-<NNN>`. IDs are never reused. A deleted requirement keeps its ID with status *Deleted*.
+Each requirement has a stable ID: `<AREA>-<NNN>`. IDs are never reused. A withdrawn requirement keeps its ID, and its text becomes `Withdrawn: <reason>`; spec-lint rejects any other form.
 
 | Area | Document |
 |---|---|

@@ -6,6 +6,7 @@ mod api;
 mod assurance;
 mod binaries;
 mod changelog;
+mod check;
 mod consistency;
 mod coverage;
 mod decisions;
@@ -105,6 +106,9 @@ commands:
   changelog show               print the unreleased changes as the next release will list them
   changelog release <version> <YYYY-MM-DD>
                                move every fragment into a new section of CHANGELOG.md
+  check                        the checks to run while working: fmt, clippy, test, the bare-metal
+                               clippy build, ci, then the extras of each touched directory
+                               (aldis-core, aldis-ffi, refapp/); stops at the first failure
   ci                           the quick checks of the verification run, without a build:
                                spec-lint, links, decisions, layers, consistency, rs020, loops,
                                restricted, assurance --strict, refapp-deps, vectors validate,
@@ -220,6 +224,7 @@ fn run(args: &[&str]) -> Result<usize, String> {
         ["changelog", "show"] => changelog::show(),
         ["changelog", "release", version, date] => changelog::release(version, date),
         ["ci"] => Ok(run_steps(CI)),
+        ["check"] => check::run(),
         [] | ["help" | "-h" | "--help"] => {
             print!("{HELP}{}\n{}", verify::HELP, metrics::HELP);
             Ok(0)
