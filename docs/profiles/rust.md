@@ -27,52 +27,6 @@ This profile binds the language-neutral specification to Rust. The Rust crates a
 
 ## 3. API shapes
 
-```rust
-// Views borrow input; decode never panics (GEN-020).
-pub struct SpacePacket<'a> { /* … */ }
-impl<'a> SpacePacket<'a> {
-    pub fn decode(bytes: &'a [u8], mode: DecodeMode) -> Result<Self, Error>;
-    pub fn peek_length(prefix: &[u8]) -> Result<usize, Error>;
-    pub fn apid(&self) -> Apid;
-    pub fn data_field(&self) -> &'a [u8];
-    pub fn anomalies(&self) -> AnomalySet<SppAnomaly>;
-    pub fn len(&self) -> usize;
-    pub fn header(&self) -> SpacePacketHeader;          // owned (API-014)
-}
-
-// Writers write into caller buffers.
-impl SpacePacketHeader {
-    pub fn encode(&self, data: &[u8], out: &mut [u8]) -> Result<usize, Error>;
-}
-pub struct SpacePacketWriter<'b> { /* two-phase, API-020..023 */ }
-
-// Fixed-length frames require configuration.
-impl<'a> TmFrame<'a> {
-    pub fn decode(bytes: &'a [u8], pc: &TmPhysicalChannelConfig, mode: DecodeMode) -> Result<Self, Error>;
-}
-
-// Engines: capacities are const generics (GEN-011). State is plain data; behaviour is a pure
-// function of (state, input, now), API-057. No output queue, no security hook parameter.
-#[derive(Clone)]
-pub struct Fop1State<const SENT: usize, const MAX_FRAME: usize> { /* … */ }
-pub enum Fop1Input<'a> { RequestAd(&'a [u8]), Clcw(Clcw), Timeout, TransmitDone(TransmitHandle, LowerResponse) /* … */ }
-pub enum Fop1Action { Transmit { range: Range<usize>, meta: TransmitMeta }, Notify(Event) /* … */ }
-pub struct Actions<A, const N: usize> { /* fixed capacity, #[must_use], no heap */ }
-
-impl<const SENT: usize, const MAX_FRAME: usize> Fop1State<SENT, MAX_FRAME> {
-    pub fn new(cfg: Fop1Config) -> Result<Self, Error>;
-    /// Form 1: returns the next state. An error leaves `self` untouched (API-058).
-    pub fn step(&self, input: Fop1Input<'_>, now: Instant, out: &mut [u8])
-        -> Result<(Self, Actions<Fop1Action, { Self::MAX_ACTIONS }>), Error>;
-    /// Form 2, where copying the state costs too much (the Sent_Queue): a pure plan, then an
-    /// infallible commit. `step` and `decide` + `commit` are observably identical.
-    pub fn decide(&self, input: Fop1Input<'_>, now: Instant, out: &mut [u8]) -> Result<Fop1Plan, Error>;
-    pub fn commit(&mut self, plan: Fop1Plan) -> Actions<Fop1Action, { Self::MAX_ACTIONS }>;
-    pub fn next_deadline(&self) -> Option<Instant>;
-    pub fn status(&self) -> Fop1Status;
-}
-```
-
 | ID | Requirement | Source | Verif. |
 |---|---|---|---|
 | RS-010 | Identifier types (API-001) SHALL be newtypes with private fields. Sub-width identifiers SHALL be constructed only through validating functions (`TryFrom<u8/u16/u32>`, `const fn new(..) -> Option<Self>`); full-width identifiers (such as `FrameSeqNum`) SHALL provide `const fn new(..) -> Self` and `From`. The public API SHALL NOT provide unchecked constructors that can produce an out-of-range value. | API-001 | T |

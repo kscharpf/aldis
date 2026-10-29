@@ -2,8 +2,6 @@
 
 Frame codec for the CCSDS 232.0-B-4 TC Space Data Link Protocol: TC Transfer Frames, the Segment Header, Control Commands, the CLCW, frame delimiting, and frame validation.
 
-**Status:** implemented in Milestone 2 ([roadmap](../../docs/08-roadmap.md) §1, [M2 plan](../../docs/milestones/m2-frame-codecs.md) WP-3), modules 1–7: the channel configuration and its `VcLookup` (`config`), the zero-copy decoder (`view`), the one-shot and two-phase writers (`writer`), Control Commands (`control`), lenient-mode anomalies (`anomaly`), the CLCW (`clcw`), Frame Delimiting and Fill Removal (`delimit`), and the Frame Validation Checks (`validate`); module 8, its C ABI, is in `aldis-ffi` (`aldis_tc_*`, `aldis_clcw_*`, [README](../aldis-ffi/README.md)). `TcFrame::peek_header` reads the Primary Header alone, for example to find the Spacecraft ID of a frame on a physical channel that carries several master channels.
-
 ## Example
 
 ```rust

@@ -45,18 +45,6 @@ This profile defines the C interface. The Rust reference implementation exposes 
 
 Engines and stateful helpers are placed in **caller-owned storage**. No heap is used. The storage is a typed struct of `uint64_t` words that the caller declares as an object of that type, so the C compiler supplies its size and alignment and no length crosses the ABI (OI-57 convention 4). The pointer to the object is the handle.
 
-```c
-/* The header declares the storage type; its word count is a generated constant. */
-#define ALDIS_FOP1_WORDS  /* generated */
-typedef struct aldis_fop1_t { uint64_t words[ALDIS_FOP1_WORDS]; } aldis_fop1_t;
-
-aldis_fop1_t fop1;                                  /* the caller's storage */
-int32_t aldis_fop1_init(aldis_fop1_t *storage,      /* placed in storage; also the handle */
-                        const aldis_fop1_config_t *cfg,
-                        aldis_error_detail_t *err);
-void    aldis_fop1_deinit(aldis_fop1_t *h);   /* no-op for memory; marks handle invalid */
-```
-
 The words belong to the library: a C caller never reads or writes them. The word count of each type is one `pub const` in Rust, and a compile-time check proves that the helper's state and its tag fit it on every supported target.
 
 | ID | Requirement | Source | Verif. |
@@ -168,58 +156,13 @@ Then the FARM-1 and FOP-1 C modules (M3), built on items 2, 3, 4, 6, and 7. Each
 
 Run with cbindgen 0.29.4 and the language, `[export]`, and `[enum]` settings of `crates/aldis-ffi/cbindgen.toml` (`language = "C"`, `cpp_compat`, `style = "type"`, `usize_is_size_t`, `prefix_with_name`, `rename_variants = "ScreamingSnakeCase"`), on a scratch crate. None contradicts a decision; points for the implementing pull requests are marked **Open point**.
 
-**Spike 1: `#[repr(u32)]` fieldless enum.** `#[repr(u32)] pub enum aldis_kind_t { Alpha = 0, BetaGamma = 7 }` is emitted as an `enum` with a fixed underlying type under C23 and C++, plus, in C before C23, a `typedef uint32_t`:
-
-```c
-enum aldis_kind_t
-#if defined(__cplusplus) || __STDC_VERSION__ >= 202311L
-  : uint32_t
-#endif // defined(__cplusplus) || __STDC_VERSION__ >= 202311L
- {
-  ALDIS_KIND_T_ALPHA = 0,
-  ALDIS_KIND_T_BETA_GAMMA = 7,
-};
-#ifndef __cplusplus
-#if __STDC_VERSION__ >= 202311L
-typedef enum aldis_kind_t aldis_kind_t;
-#else
-typedef uint32_t aldis_kind_t;
-#endif // __STDC_VERSION__ >= 202311L
-#endif // __cplusplus
-```
+**Spike 1: `#[repr(u32)]` fieldless enum.** `#[repr(u32)] pub enum aldis_kind_t { Alpha = 0, BetaGamma = 7 }` is emitted as an `enum` with a fixed underlying type under C23 and C++, plus, in C before C23, a `typedef uint32_t`.
 
 So in C99 a field of the type is a `uint32_t` (fixed width, never `int`-sized), and the constants are enumerators of an `enum` that no field uses. `prefix_with_name` makes each constant `<TYPE NAME>_<VARIANT>` with the type's `_t` inside (`ALDIS_KIND_T_ALPHA`). **Open point:** to get a constant such as `ALDIS_TM_KIND_ALPHA`, the Rust enum is named for the constants it should produce, without the `_t`, and the typedef name is given by a rename, or the variants carry the full name; the enumeration-glue pull request (item 4) chooses. The header stays valid C99 and C++11 (CABI-003); the C23 branch should also be compiled once by the `c-smoke` check.
 
-**Spike 2a: typed storage.** `#[repr(C)] pub struct aldis_x_t { pub words: [u64; N_WORDS] }` with `pub const N_WORDS: usize = 4;` is emitted as
+**Spike 2a: typed storage.** `#[repr(C)] pub struct aldis_x_t { pub words: [u64; N_WORDS] }` with `pub const N_WORDS: usize = 4;` is emitted as a struct. The array length keeps the constant's name, and the constant becomes a `#define`. **Open point:** a length that is an arithmetic expression of constants (`(FRAMES * FRAME_LEN + FRAMES * 2 + 8) / 8 + 1`) made cbindgen emit the type as an opaque forward declaration (`typedef struct aldis_fop1_t aldis_fop1_t;`) with no body and no warning. The word count of each storage struct must therefore be one `pub const` (computed in Rust, with a `const` assertion that the state fits), and the implementing pull request checks the generated header for the body of every storage type.
 
-```c
-#define N_WORDS 4
-typedef struct {
-  uint64_t words[N_WORDS];
-} aldis_x_t;
-```
-
-The array length keeps the constant's name, and the constant becomes a `#define`. **Open point:** a length that is an arithmetic expression of constants (`(FRAMES * FRAME_LEN + FRAMES * 2 + 8) / 8 + 1`) made cbindgen emit the type as an opaque forward declaration (`typedef struct aldis_fop1_t aldis_fop1_t;`) with no body and no warning. The word count of each storage struct must therefore be one `pub const` (computed in Rust, with a `const` assertion that the state fits), and the implementing pull request checks the generated header for the body of every storage type.
-
-**Spike 2b: `#[repr(C, u32)]` enum with payload variants.** Variants `None`, `Transmit { range: aldis_range_t, vc: u8 }`, and `Event { code: u32 }` are emitted as a tag enum, one body struct per variant, and a struct of the tag and an anonymous union:
-
-```c
-enum aldis_action_t_Tag
-#if defined(__cplusplus) || __STDC_VERSION__ >= 202311L
-  : uint32_t
-#endif
- { ALDIS_ACTION_T_NONE, ALDIS_ACTION_T_TRANSMIT, ALDIS_ACTION_T_EVENT, };
-/* typedef uint32_t aldis_action_t_Tag;  (C before C23) */
-typedef struct { aldis_range_t range; uint8_t vc; } aldis_action_t_Transmit_Body;
-typedef struct { uint32_t code; } aldis_action_t_Event_Body;
-typedef struct {
-  aldis_action_t_Tag tag;
-  union {
-    aldis_action_t_Transmit_Body TRANSMIT;
-    aldis_action_t_Event_Body EVENT;
-  };
-} aldis_action_t;
-```
+**Spike 2b: `#[repr(C, u32)]` enum with payload variants.** Variants `None`, `Transmit { range: aldis_range_t, vc: u8 }`, and `Event { code: u32 }` are emitted as a tag enum, one body struct per variant, and a struct of the tag and an anonymous union.
 
 `aldis_range_t` is `typedef struct { size_t offset; size_t len; } aldis_range_t;`, and a fixed array of the union in a struct is `aldis_action_t actions[3];`. cbindgen therefore emits the shape of convention 7. The union is **anonymous**, which is C11 (a GNU extension in C99), and CABI-003 requires valid C99. **Settled (maintainer, 2026-10-29):** the header stays C99, so convention 7 uses flat action structs and no union crosses the C ABI.
 
