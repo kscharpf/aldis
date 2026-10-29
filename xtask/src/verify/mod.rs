@@ -49,7 +49,7 @@ const CHECK_ENV: &[(&str, &str)] = &[
 pub const HELP: &str = "\
 Verification run and merge gate (docs/06-verification.md §7):
   verify [--only <check>,...] [--all | --all-cpp] [--publish] [--fail-fast | --no-fail-fast]
-         [--push-image <repository>]
+         [--push-image <repository>] [--stale-ok]
                                run the checks the change needs on HEAD in the verification
                                image (podman or Docker; ALDIS_VERIFY_ENGINE picks one) and write
                                the evidence record to target/verify/<commit>/record.json
@@ -68,8 +68,12 @@ Verification run and merge gate (docs/06-verification.md §7):
                                (such a run never publishes); --no-fail-fast runs every check.
                                When no gating check needs the container, none is started and
                                no image is pulled or built. --push-image pushes the image the
-                               run builds to <repository>, as `verify image --push` does
-  verify part <group> [--all] [--no-fail-fast] [--push-image <repository>]
+                               run builds to <repository>, as `verify image --push` does.
+                               A run with --publish, and a part, refuses a HEAD that does not
+                               contain the tip of origin/main before running any check
+                               (VER-058); --stale-ok runs it anyway, for a development run, and
+                               any other run only warns
+  verify part <group> [--all] [--no-fail-fast] [--push-image <repository>] [--stale-ok]
                                the part of a hosted run (VER-067): run the checks of one group
                                (host, cross, coverage, embedded) as `verify --only` does, and
                                write the part record to target/verify/<commit>/record.json; it
@@ -117,6 +121,9 @@ pub struct Options {
     push_image: Option<String>,
     /// `--all`: every check runs, the nightly-only ones too (VER-059).
     all: bool,
+    /// `--stale-ok`: a run that would publish, or a part, goes ahead although the head does not
+    /// contain the tip of `origin/main` (VER-058).
+    stale_ok: bool,
 }
 
 impl Options {
@@ -241,6 +248,7 @@ fn parse_options<'a>(args: &[&'a str]) -> Result<(Options, Vec<&'a str>), String
                 opts.all = true;
                 flags.push(*arg);
             }
+            "--stale-ok" => opts.stale_ok = true,
             "--all-cpp" | "--publish" => flags.push(*arg),
             other => return Err(format!("unknown argument `{other}`\n\n{HELP}")),
         }
@@ -731,6 +739,13 @@ fn verify(
     let root = repo::root();
     let commit = git(&["rev-parse", "HEAD"])?;
     let tree = git(&["rev-parse", "HEAD^{tree}"])?;
+    // A head behind main cannot merge: a run that would publish, or a part of one, refuses it
+    // before the checks; any other run only says so (VER-058).
+    if publish || part.is_some() {
+        publish::preflight(&root, &commit, opts.stale_ok)?;
+    } else if !publish::contains_main(&root, &commit)? {
+        println!("verify: warning: {commit} does not contain the tip of origin/main (VER-058)");
+    }
     let all = checks::all();
     let change = scope::change(&root, &commit, scope::Main::Origin);
     let plan = scope::plan(&all, &change, force, |b| {

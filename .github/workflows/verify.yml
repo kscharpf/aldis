@@ -18,6 +18,15 @@
 #             run, the record is published without the status, so that the merge from main
 #             can reuse it
 #
+# A head that does not contain the tip of main cannot merge (VER-058). The first step of
+# `prepare` stops such a run in seconds, with an annotation "Behind main"; `verify part` refuses
+# it as well. If main moves while a run is in progress, the run is NOT cancelled: it finishes,
+# publishes its record without the status, and ends with the annotation and a "STALE" line in
+# the job summary. The record is the source from which merging main into the branch takes every
+# result when only that merge moved main (a stacked pull request, VER-056), so cancelling would
+# throw away the evidence that makes the next refresh free. `scripts/reverify` reports such a
+# run as STALE, and a run in which a check failed as FAILED.
+#
 # A part starts pulling the image by the reference `prepare` found while it checks out the
 # repository and installs the toolchain; the preinstalled SDKs are cleared only on a runner
 # with less than 40 GB free.
@@ -63,6 +72,14 @@ jobs:
         with:
           fetch-depth: 0
           fetch-tags: true
+      # Before anything else: a head behind main cannot merge, so stop within seconds.
+      - name: Does the head contain the tip of main?
+        run: |
+          git fetch --quiet origin main
+          if ! git merge-base --is-ancestor origin/main HEAD; then
+            echo "::error title=Behind main::$(git rev-parse HEAD) does not contain the tip of origin/main ($(git rev-parse --short origin/main)): merge main into the branch and dispatch the run again (VER-058)"
+            exit 1
+          fi
       - uses: ./.github/actions/setup-rust
         with:
           cache-key: verify

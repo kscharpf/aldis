@@ -2101,6 +2101,48 @@ mod tests {
             .is_ok_and(|o| o.status.success())
     }
 
+    // req: VER-058
+    #[test]
+    fn a_head_behind_main_is_refused_up_front_unless_stale_ok() {
+        let (origin, clone, _) = history("preflight");
+        // The head contains the tip of main: the run goes ahead.
+        assert_eq!(publish::preflight(&clone.0, "HEAD", false), Ok(true));
+        // Main moves: the run is refused before any check, naming the way out.
+        origin.write("docs/b.md", "main moved\n");
+        origin.commit("main moved");
+        let refused = publish::preflight(&clone.0, "HEAD", false).unwrap_err();
+        assert!(
+            refused.contains("does not contain the tip of origin/main"),
+            "{refused}"
+        );
+        assert!(refused.contains("merge main"), "{refused}");
+        assert!(refused.contains("--stale-ok"), "{refused}");
+        // A development run asks for it anyway, and is told the head is behind.
+        assert_eq!(publish::preflight(&clone.0, "HEAD", true), Ok(false));
+        // Merging main makes the head current again.
+        clone.git(&["merge", "-q", "--no-edit", "origin/main"]);
+        assert_eq!(publish::preflight(&clone.0, "HEAD", false), Ok(true));
+    }
+
+    // req: VER-058, VER-060
+    #[test]
+    fn a_run_that_finished_behind_main_is_announced_as_stale() {
+        let plain = publish::stale_notice("abc", false);
+        assert_eq!(plain.len(), 1);
+        assert!(
+            plain[0].starts_with("verify: STALE: main moved during the run"),
+            "{plain:?}"
+        );
+        // On GitHub Actions the run also carries an annotation, which shows on the run page.
+        let github = publish::stale_notice("abc", true);
+        assert_eq!(github.len(), 2);
+        assert_eq!(github[0], plain[0]);
+        assert!(
+            github[1].starts_with("::error title=Behind main::abc: STALE: main moved"),
+            "{github:?}"
+        );
+    }
+
     // req: VER-056, VER-057, VER-058
     #[test]
     fn a_passing_record_of_a_commit_behind_main_is_published_without_a_status() {

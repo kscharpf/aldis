@@ -182,7 +182,7 @@ fn problems(dir: &Path, record: &Value) -> Vec<String> {
 }
 
 /// Whether `commit` contains the tip of `origin/main`, fetched first (VER-058).
-fn contains_main(dir: &Path, commit: &str) -> Result<bool, String> {
+pub(super) fn contains_main(dir: &Path, commit: &str) -> Result<bool, String> {
     git_in(dir, &["fetch", "-q", "origin", "main"])?;
     Ok(git_in(dir, &["merge-base", "--is-ancestor", "origin/main", commit]).is_ok())
 }
@@ -193,6 +193,34 @@ fn behind_main(commit: &str) -> String {
         "{commit} does not contain the tip of origin/main: merge main into the branch (or rebase \
          onto it) and verify again before it can merge (VER-058)"
     )
+}
+
+/// The check at the start of a run that would publish, or of a part of one (VER-058): whether
+/// `commit` contains the tip of `origin/main`. A head that does not cannot merge, so the run is
+/// refused before it spends minutes on checks, unless `stale_ok` asks for it anyway (a
+/// development run; a record behind `main` never sets the status, see [`publish_in`]).
+pub(super) fn preflight(dir: &Path, commit: &str, stale_ok: bool) -> Result<bool, String> {
+    let current = contains_main(dir, commit)?;
+    if !current && !stale_ok {
+        return Err(format!(
+            "{} (--stale-ok runs it anyway, for a development run; no status is ever set for it)",
+            behind_main(commit)
+        ));
+    }
+    Ok(current)
+}
+
+/// The notice of a run that finished behind `main` (VER-058, VER-060), which `publish_in`
+/// prints: the headline, the GitHub Actions annotation when `github` says it is one, and the line
+/// for the job summary. `main` moved during the run; the record is published all the same.
+pub(super) fn stale_notice(commit: &str, github: bool) -> Vec<String> {
+    let headline = "STALE: main moved during the run; the record is published for reuse; merge \
+                    main into the branch and verify again";
+    let mut lines = vec![format!("verify: {headline}")];
+    if github {
+        lines.push(format!("::error title=Behind main::{commit}: {headline}"));
+    }
+    lines
 }
 
 /// Publishes the local record of `commit` from `target/verify/<commit>/record.json`.
@@ -233,6 +261,23 @@ pub(super) fn publish_in(dir: &Path, commit: &str, forge: &dyn Forge) -> Result<
              take results from it (VER-056), but the commit status {CONTEXT} is not set"
         );
         println!("verify: gate: {}", behind_main(commit));
+        let github = std::env::var("GITHUB_ACTIONS").is_ok_and(|v| v == "true");
+        for line in stale_notice(commit, github) {
+            println!("{line}");
+        }
+        // The job summary of a GitHub Actions run gets the headline too, so that a stale run
+        // is recognised at a glance.
+        if let Some(path) = std::env::var_os("GITHUB_STEP_SUMMARY") {
+            let summary = format!(
+                "### STALE: behind `main`\n\n{}\n",
+                stale_notice(commit, false).join("\n")
+            );
+            let _ = std::fs::OpenOptions::new()
+                .append(true)
+                .create(true)
+                .open(path)
+                .and_then(|mut f| std::io::Write::write_all(&mut f, summary.as_bytes()));
+        }
         return Ok(1);
     }
     let url = run_url(&record);

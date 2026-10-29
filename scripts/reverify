@@ -13,12 +13,15 @@
 # A failure marks the PR failed and goes on.
 # Phase 2: wait for the dispatched runs (they run concurrently on GitHub) and print one line per
 # PR: `#<n> <branch> <run-id> <conclusion>` (`local` for a run made here) or
-# `#<n> failed: <reason>`. Exits non-zero if any PR failed or any run did not succeed. Deletes
-# nothing (see prune-agent-branches).
+# `#<n> failed: <reason>`. A run that did not succeed is labelled STALE when its head does not
+# contain the tip of origin/main (main moved: merge it and run again; the record is published
+# for reuse) and FAILED otherwise, decided by ancestry, never by reading logs (VER-058). Exits
+# non-zero if any PR failed or any run did not succeed. Deletes nothing (see
+# prune-agent-branches).
 set -euo pipefail
 
 if [ $# -eq 0 ]; then
-    sed -n '2,17p' "$0" | sed 's/^# \{0,1\}//'
+    sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'
     exit 2
 fi
 
@@ -37,6 +40,19 @@ worktree_of() {
 reason=""
 branch=""
 run_id=""
+work_dir=""
+work_head=""
+
+# STALE when `$2` does not contain the tip of origin/main (fetched first), else FAILED: the label
+# of a verification that did not succeed. Ancestry decides, not the logs.
+failure_label() {
+    if git -C "$1" fetch --quiet origin main &&
+        ! git -C "$1" merge-base --is-ancestor origin/main "$2"; then
+        echo STALE
+    else
+        echo FAILED
+    fi
+}
 
 # Record why the PR failed; always returns 1.
 fail() {
@@ -50,6 +66,8 @@ prepare_one() {
     reason=""
     branch=""
     run_id=""
+    work_dir=""
+    work_head=""
     info="$(gh pr view "$pr" --json state,headRefName --jq '.state + " " + .headRefName')" ||
         fail "cannot read the pull request" || return 1
     state="${info%% *}"
@@ -83,6 +101,8 @@ prepare_one() {
         fail "merge conflict with origin/main; resolve by hand in $dir" || return 1
     fi
     head="$(git -C "$dir" rev-parse HEAD)"
+    work_dir="$dir"
+    work_head="$head"
 
     # Up to date with main (the merge changed nothing): reuse a good run of this exact head.
     if [ "$head" = "$(git -C "$dir" rev-parse "origin/$branch")" ]; then
@@ -109,7 +129,7 @@ prepare_one() {
     elif grep -q 'no container would be started' <<<"$plan"; then
         echo "#$pr: no container is needed; verifying here"
         (cd "$dir" && cargo xtask verify --publish) ||
-            fail "cargo xtask verify --publish failed in $dir (main may have moved: run again)" ||
+            fail "$(failure_label "$dir" "$head"): cargo xtask verify --publish in $dir" ||
             return 1
         run_id="local"
         return 0
@@ -139,8 +159,12 @@ prs=()
 branches=()
 runs=()
 reasons=()
+dirs=()
+heads=()
 for pr in "$@"; do
     prepare_one "$pr" || true
+    dirs+=("$work_dir")
+    heads+=("$work_head")
     prs+=("$pr")
     branches+=("$branch")
     runs+=("$run_id")
@@ -162,7 +186,12 @@ for i in "${!prs[@]}"; do
     gh run watch "${runs[$i]}" --interval 60 --exit-status >/dev/null 2>&1 || true
     conclusion="$(gh run view "${runs[$i]}" --json conclusion --jq '.conclusion')" ||
         conclusion="unknown"
-    echo "#${prs[$i]} ${branches[$i]} ${runs[$i]} $conclusion"
-    [ "$conclusion" = "success" ] || failed=$((failed + 1))
+    if [ "$conclusion" = "success" ]; then
+        echo "#${prs[$i]} ${branches[$i]} ${runs[$i]} $conclusion"
+    else
+        label="$(failure_label "${dirs[$i]}" "${heads[$i]}")"
+        echo "#${prs[$i]} ${branches[$i]} ${runs[$i]} $label ($conclusion)"
+        failed=$((failed + 1))
+    fi
 done
 [ "$failed" -eq 0 ] || { echo "reverify: $failed of $# PR(s) not verified"; exit 1; }
