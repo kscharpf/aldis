@@ -89,7 +89,7 @@ WP-0 Infra, setup ───▶ WP-1a Spec readings ─┬─▶ WP-1b FARM-1 tab
 - Buffer availability as an input: `buffer_available` on the `Frame` input and the `BufferReleased` input (COP-033).
 - FARM-B counter modulo 4 increment on Type-B frames (COP-034).
 - CLCW generation matching current state, flags, and physical RF/bit-lock inputs (COP-035).
-- `Farm1::step` is the pure step of D11 with `out` for the delivered FDU. `N` is `FARM1_MAX_ACTIONS`, computed at compile time as the longest action list of any cell of Table 6-1 (COP-006).
+- `Farm1::step` is the pure step of D11 with `out` for the delivered FDU. `N` is `FARM1_MAX_ACTIONS`, computed at compile time from Table 6-1 as the most any cell can push: its Discard and Accept tokens plus the `Unlocked` and `StateChanged` notifications (COP-006); its value is 3.
 
 ### WP-4 `aldis-cop1`: FOP-1 engine (L) — COP-001, COP-010…017
 - Protocol states S1 (Active), S2 (Retransmit without wait), S3 (Retransmit with wait), S4 (Initial), S5 (Uninitialized), S6 (Suspended); events E1–E46, E101–E104.

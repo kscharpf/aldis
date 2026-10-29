@@ -257,7 +257,7 @@ pub fn run(t: &mut Tally) {
     accept_group(t, &f);
     window_events(t, &f);
     other_events(t, &f);
-    t.check(FARM1_TABLE.len() == 3 && FARM1_MAX_ACTIONS == 4);
+    t.check(FARM1_TABLE.len() == 3 && FARM1_MAX_ACTIONS == 3);
 }
 
 /// The `cop1/` vector group (CCSDS 232.1 engine scenarios, M3 WP-2). The directory holds no

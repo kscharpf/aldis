@@ -32,9 +32,11 @@
 //!
 //! # Action bound
 //!
-//! One input produces at most [`FARM1_MAX_ACTIONS`] actions, the length of the longest action
-//! list of any cell of Table 6-1, derived from [`FARM1_TABLE`] at compile time (COP-006). Its
-//! value is 4: S3 with E7, and S2 with E8.
+//! One input produces at most [`FARM1_MAX_ACTIONS`] actions, derived from [`FARM1_TABLE`] at
+//! compile time (COP-006): for each cell the number of its Discard and Accept tokens, which are
+//! returned as actions, plus the `Unlocked` and `StateChanged` notifications any cell may add;
+//! the longest cell sets the bound. Its value is 3, reached by a cell with one
+//! such token (S1 with E1 or E2); no cell actually pushes more than 2.
 
 use aldis_core::ids::FrameSeqNum;
 use aldis_core::time::Instant;
@@ -48,14 +50,17 @@ use crate::farm1_table::{
     EVENT_COUNT, FARM1_TABLE, Farm1Action, Farm1Cell, Farm1Event, Farm1State, STATE_COUNT,
 };
 
-/// The most actions one [`Farm1::step`] can produce: the longest action list of any cell of
-/// Table 6-1 (232.1 §6.3.3; COP-006, API-057).
+/// The most actions one [`Farm1::step`] can produce, derived from the action lists of Table 6-1
+/// (232.1 §6.3.3; COP-006, API-057).
 pub const FARM1_MAX_ACTIONS: usize = longest_cell();
 
 /// The actions of one FARM-1 input (API-057, RS-022).
 pub type Farm1Actions = Actions<Farm1Output, FARM1_MAX_ACTIONS>;
 
-/// The length of the longest action list of Table 6-1, computed at compile time (COP-006).
+/// The most actions any cell of Table 6-1 can push, computed at compile time (COP-006): the
+/// Discard and Accept tokens of its action list, which `run` returns as actions, plus the
+/// `Unlocked` and `StateChanged` notifications that any cell may add. The other tokens change
+/// state and return nothing.
 #[expect(
     clippy::indexing_slicing,
     reason = "evaluated at compile time only: both indices stay below the table dimensions, \
@@ -69,9 +74,19 @@ const fn longest_cell() -> usize {
         let mut event = 0;
         // bound: EVENT_COUNT passes, `event` grows by one per pass
         while event < EVENT_COUNT {
-            let len = FARM1_TABLE[state][event].actions.len();
-            if len > longest {
-                longest = len;
+            let actions = FARM1_TABLE[state][event].actions;
+            // Every cell can also push `Unlocked` and `StateChanged` (see `run`).
+            let mut pushes: usize = 2;
+            let mut i: usize = 0;
+            // bound: `actions.len()` passes, `i` grows by one per pass
+            while i < actions.len() {
+                if matches!(actions[i], Farm1Action::Discard | Farm1Action::DeliverFdu) {
+                    pushes = pushes.saturating_add(1);
+                }
+                i = i.saturating_add(1);
+            }
+            if pushes > longest {
+                longest = pushes;
             }
             event = event.saturating_add(1);
         }
@@ -616,8 +631,8 @@ impl Farm1 {
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::{
-        Context, FARM1_MAX_ACTIONS, Farm1, Farm1Actions, Farm1Config, Farm1Notify, Farm1Output,
-        Farm1Window, FduKind, cell, longest_cell,
+        Context, FARM1_MAX_ACTIONS, Farm1, Farm1Action, Farm1Actions, Farm1Config, Farm1Notify,
+        Farm1Output, Farm1Window, FduKind, cell, longest_cell,
     };
     use crate::farm1_table::{EVENT_COUNT, FARM1_TABLE, Farm1Event, Farm1State, STATE_COUNT};
     use aldis_core::ids::FrameSeqNum;
@@ -650,7 +665,7 @@ mod tests {
         [Farm1State::Open, Farm1State::Wait, Farm1State::Lockout];
 
     #[test]
-    fn lookup_matches_the_table_and_the_bound_is_its_longest_cell() {
+    fn lookup_matches_the_table_and_the_bound_covers_every_cell() {
         // req: COP-002, COP-003, COP-006
         let mut longest = 0;
         for (s, state) in STATES.into_iter().enumerate() {
@@ -662,13 +677,18 @@ mod tests {
                     s + 1,
                     e + 1
                 );
-                longest = longest.max(FARM1_TABLE[s][e].actions.len());
+                let returned = FARM1_TABLE[s][e]
+                    .actions
+                    .iter()
+                    .filter(|a| matches!(a, Farm1Action::Discard | Farm1Action::DeliverFdu))
+                    .count();
+                longest = longest.max(returned + 2);
             }
         }
         assert_eq!(FARM1_MAX_ACTIONS, longest);
         // The const evaluation of the bound, run once more at run time for the coverage gate.
         assert_eq!(longest_cell(), longest);
-        assert_eq!(FARM1_MAX_ACTIONS, 4);
+        assert_eq!(FARM1_MAX_ACTIONS, 3);
     }
 
     fn ctx() -> Context<'static> {
