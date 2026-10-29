@@ -12,9 +12,11 @@
 //! (`Handle::load`) and writes it back (`Handle::store`). An engine works **in place**
 //! (CABI-040; c-abi.md §12 item 6): `Handle::read` and `Handle::update` lend the state in
 //! the caller's storage to a closure as `&T` or `&mut T` for the duration of the call, so no
-//! copy of the state is made on the stack (FOP-1's state is 16 KiB, the stack budget 10 240
-//! octets; OI-45). No Rust reference outlives the closure, and the call's buffers are checked
-//! not to overlap the storage (`Handle::range`), so the reference aliases nothing (GEN-071).
+//! copy of the state is made on the stack (FOP-1's state is at least 16 KiB, the stack budget
+//! 10 240 octets; OI-45). No Rust reference outlives the closure. That the reference aliases
+//! nothing rests on the caller serializing calls on a handle (CABI-050) and on the call's
+//! buffers not overlapping the storage (`Handle::range`); the handle does not enforce either
+//! (c-abi.md §12 item 3 lists the input-buffer check the first engine must add) (GEN-071).
 //! M3 and M4 use `update` for FOP-1, FARM-1, and the link engines.
 
 use core::ptr::NonNull;
@@ -100,17 +102,20 @@ impl<T> Handle<T> {
     /// Lends the state to `f` as `&mut T` for the duration of the call; the state is not copied
     /// (CABI-040).
     ///
-    /// `f` is the whole engine step. For the `decide`/`commit` form of API-058 it calls the pure
-    /// `decide` on the state, and, only if that succeeds, the infallible `commit` with the plan,
-    /// so an error leaves the state unchanged. `&mut self` keeps a second reference to the state
-    /// out of `f`.
+    /// `f` is the whole engine step. `update` has no rollback: for the `decide`/`commit` form of
+    /// API-058 `f` must call the pure `decide` on the state and, only if that succeeds, the
+    /// infallible `commit` with the plan, so that an error leaves the state unchanged. `&mut self`
+    /// keeps a second reference to the state *through this handle* out of `f` (no `read` inside
+    /// it); that no other handle or pointer reaches the storage is the caller's obligation
+    /// (CABI-050).
     #[expect(
         unsafe_code,
         reason = "borrows caller storage behind a checked tag (GEN-071)"
     )]
     pub(crate) fn update<R>(&mut self, f: impl FnOnce(&mut T) -> R) -> R {
-        // SAFETY: as for `read`; in addition no other reference to the state exists, since
-        // `&mut self` is the handle's only one and `f` receives the only reference it makes.
+        // SAFETY: as for `read`; in addition `&mut self` means no reference to the state is made
+        // through this handle while `f` runs. Another `Handle` on the same storage is excluded
+        // only by CABI-050 (the caller serializes calls), not by the type.
         f(unsafe { &mut self.slot.as_mut().state })
     }
 

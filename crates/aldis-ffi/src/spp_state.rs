@@ -301,6 +301,8 @@ pub unsafe extern "C" fn aldis_spp_tracker_track(
             let mut h = tracker(h)?;
             let apid = Apid::try_from(apid)?;
             let count = SeqCount::try_from(count)?;
+            // `track` returns `Err` only before it changes the state, so `?` after an in-place
+            // `update` leaves the state as the by-value form did (API-058).
             let tracked = h.update(|state| state.track(apid, count))?;
             out.write(continuity(tracked));
             Ok(())
@@ -687,6 +689,8 @@ pub unsafe extern "C" fn aldis_spp_reassembler_reset(
     unsafe {
         abi::call(err, || {
             let mut h = reassembler(h)?;
+            // The state is small, so the temporary is cheap; a large state needs an in-place
+            // re-initialization method instead of `*r = …` (CABI-040).
             h.update(|r| *r = ReassemblerState::new(r.apid()));
             Ok(())
         })
