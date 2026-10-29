@@ -1,0 +1,77 @@
+#!/usr/bin/env bash
+# Prune the leftovers of agent sessions. Dry run unless --apply.
+#
+# Usage: scripts/prune-agent-branches [--apply]
+#
+# 1. Worktrees under .claude/worktrees/ that are clean, hold no commit missing from the
+#    remote, and whose branch is merged into origin/main or deleted on the remote: removed.
+# 2. Local branches named worktree-agent-* with no worktree and a tip that is an ancestor of
+#    origin/main (or of their remote branch): deleted.
+set -euo pipefail
+
+apply=0
+case "${1:-}" in
+    "") ;;
+    --apply) apply=1 ;;
+    *) sed -n '2,8p' "$0" | sed 's/^# \{0,1\}//'; exit 2 ;;
+esac
+
+main_checkout="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")"
+g() { git -C "$main_checkout" "$@"; }
+g fetch --quiet --prune origin
+
+act() { # act <description> <command...>
+    local what="$1"
+    shift
+    if [ "$apply" -eq 1 ]; then
+        echo "removing: $what"
+        "$@"
+    else
+        echo "would remove: $what"
+    fi
+}
+
+merged() { g merge-base --is-ancestor "$1" origin/main 2>/dev/null; }
+has_remote() { g show-ref --verify --quiet "refs/remotes/origin/$1"; }
+
+# Worktrees.
+path=""
+while IFS= read -r line; do
+    case "$line" in
+        "worktree "*) path="${line#worktree }"; ref="" ;;
+        "branch "*) ref="${line#branch refs/heads/}" ;;
+        "")
+            wt="$path"; path=""; [ -n "$wt" ] || continue
+            case "$wt" in "$main_checkout"/.claude/worktrees/*) ;; *) continue ;; esac
+            [ -n "${ref:-}" ] || { echo "keep: $wt (detached HEAD)"; continue; }
+            if [ -n "$(git -C "$wt" status --porcelain)" ]; then
+                echo "keep: $wt (dirty)"; continue
+            fi
+            if has_remote "$ref"; then
+                unpushed="$(g rev-list --count "origin/$ref..$ref")"
+            else
+                unpushed="$(g rev-list --count "origin/main..$ref")"
+            fi
+            if [ "$unpushed" -gt 0 ]; then
+                echo "keep: $wt ($ref has $unpushed unpushed commit(s))"; continue
+            fi
+            if merged "$ref" || ! has_remote "$ref"; then
+                act "worktree $wt (branch $ref)" git -C "$main_checkout" worktree remove "$wt"
+            else
+                echo "keep: $wt (branch $ref is open on the remote)"
+            fi
+            ;;
+    esac
+done < <(g worktree list --porcelain; echo)
+
+# Branches.
+in_worktree="$(g worktree list --porcelain | sed -n 's|^branch refs/heads/||p')"
+for b in $(g for-each-ref --format='%(refname:short)' 'refs/heads/worktree-agent-*'); do
+    if printf '%s\n' "$in_worktree" | grep -qx "$b"; then continue; fi
+    if merged "$b" || { has_remote "$b" && g merge-base --is-ancestor "$b" "origin/$b"; }; then
+        act "branch $b" g branch -D "$b"
+    else
+        echo "keep: branch $b (tip not on origin/main or its remote branch)"
+    fi
+done
+[ "$apply" -eq 1 ] || echo "dry run; pass --apply to act"

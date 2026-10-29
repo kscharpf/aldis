@@ -175,10 +175,9 @@ fn scope_ids(spec: &Spec, scope: &str) -> Result<BTreeSet<String>, String> {
     }
     // A withdrawn or deleted requirement (00-introduction.md §5.2) has nothing left to trace.
     ids.retain(|id| {
-        spec.requirements.get(id).is_none_or(|r| {
-            let t = r.text.trim_start_matches(['*', '_']);
-            !(t.starts_with("Withdrawn") || t.starts_with("Deleted"))
-        })
+        spec.requirements
+            .get(id)
+            .is_none_or(|r| !crate::spec::is_withdrawn(&r.text))
     });
     Ok(ids)
 }

@@ -182,6 +182,29 @@ pub fn referencing_files() -> Vec<std::path::PathBuf> {
     files
 }
 
+/// The one form of a withdrawn requirement (00-introduction.md §5.2): the text starts
+/// `Withdrawn: ` and a reason follows.
+pub fn is_withdrawn(text: &str) -> bool {
+    text.starts_with("Withdrawn:")
+}
+
+/// What is wrong with how `text` marks a requirement withdrawn, if it marks it so at all:
+/// any marker other than `Withdrawn: <reason>` (`Deleted`, `**Withdrawn**`, `~~…~~`), or an
+/// empty reason.
+fn withdrawal_problem(text: &str) -> Option<&'static str> {
+    if let Some(reason) = text.strip_prefix("Withdrawn:") {
+        return reason
+            .trim()
+            .is_empty()
+            .then_some("`Withdrawn:` needs a reason");
+    }
+    let lower = text
+        .trim_start_matches(['*', '_', '~', ' '])
+        .to_ascii_lowercase();
+    (text.starts_with("~~") || lower.starts_with("withdrawn") || lower.starts_with("deleted"))
+        .then_some("a withdrawn requirement starts `Withdrawn: <reason>`, in no other form")
+}
+
 fn check_verif(cell: &str) -> bool {
     cell == "—"
         || cell
@@ -210,6 +233,9 @@ pub fn lint() -> Result<usize, String> {
                 "{at}: {} has an empty Requirement or Source cell",
                 r.id
             ));
+        }
+        if let Some(why) = withdrawal_problem(&r.text) {
+            problems.push(format!("{at}: {}: {why}", r.id));
         }
         if !check_verif(&r.verif) {
             problems.push(format!(
@@ -256,4 +282,34 @@ pub fn lint() -> Result<usize, String> {
         problems.len()
     );
     Ok(problems.len())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{is_withdrawn, withdrawal_problem};
+
+    #[test]
+    fn one_withdrawn_form() {
+        assert!(is_withdrawn("Withdrawn: replaced by X-001."));
+        assert!(!is_withdrawn("Deleted"));
+        assert!(!is_withdrawn("withdrawn: x"));
+        assert!(!is_withdrawn("The frame SHALL be withdrawn: never."));
+        assert_eq!(withdrawal_problem("Withdrawn: replaced by X-001."), None);
+        assert_eq!(
+            withdrawal_problem("The frame SHALL carry a Deleted flag."),
+            None
+        );
+        for bad in [
+            "**Deleted**",
+            "Deleted",
+            "withdrawn",
+            "Withdrawn",
+            "**Withdrawn** 2026",
+            "~~The frame SHALL.~~",
+            "Withdrawn:",
+            "Withdrawn:   ",
+        ] {
+            assert!(withdrawal_problem(bad).is_some(), "{bad}");
+        }
+    }
 }

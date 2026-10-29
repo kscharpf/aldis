@@ -11,7 +11,7 @@ specs/fetch.sh --all           # everything in the manifest
 specs/fetch.sh --verify-only   # check existing files without downloading
 ```
 
-The script reads [`manifest.tsv`](manifest.tsv), downloads each document into `specs/pdf/`, and verifies its SHA-256 checksum. It needs `bash`, `curl`, and `sha256sum` or `shasum`.
+In a git worktree, the script first links `specs/pdf` to the main checkout's `specs/pdf` when that holds PDFs (a copy if linking fails), then verifies them. The script reads [`manifest.tsv`](manifest.tsv), downloads each document into `specs/pdf/`, and verifies its SHA-256 checksum. It needs `bash`, `curl`, and `sha256sum` or `shasum`.
 
 ## If a download fails or a checksum changes
 
