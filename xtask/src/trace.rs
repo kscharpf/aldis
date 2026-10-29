@@ -173,6 +173,13 @@ fn scope_ids(spec: &Spec, scope: &str) -> Result<BTreeSet<String>, String> {
     if ids.is_empty() {
         return Err(format!("{}: no Area/Criteria exit table", repo::rel(&file)));
     }
+    // A withdrawn or deleted requirement (00-introduction.md §5.2) has nothing left to trace.
+    ids.retain(|id| {
+        spec.requirements.get(id).is_none_or(|r| {
+            let t = r.text.trim_start_matches(['*', '_']);
+            !(t.starts_with("Withdrawn") || t.starts_with("Deleted"))
+        })
+    });
     Ok(ids)
 }
 

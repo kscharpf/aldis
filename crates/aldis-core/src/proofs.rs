@@ -233,7 +233,7 @@ fn octet_integers() {
     }
 }
 
-/// GEN-022 (loop `error.rs ErrorKind::from_code #1` of the inspection record): the lookup runs
+/// GEN-022 (loop `error.rs ErrorKind::from_code #1`, as `cargo xtask loops list` names it): the lookup runs
 /// over the constant catalogue `ErrorKind::ALL` (18 kinds) for every code. Unwind 19: 18
 /// iterations and the exit test; the unwinding assertion fails the proof if any code needed more.
 #[kani::proof]

@@ -230,7 +230,7 @@ graph TD
 
 | Evidence | Shows | Requirements |
 |---|---|---|
-| `record:GEN-022` | The analysis record tracing loop bounds, termination, and verification methods | GEN-022, GEN-023 |
+| `check:spec`; `record:GEN-022` | `cargo xtask loops` finds every loop of library code: one over a slice, an array, or a closed range is bounded by what it iterates; every `while`, `while let`, `loop`, and open or endless iteration carries a `// bound:` comment with its bound, and the check fails on a missing comment or one that is not above a loop | GEN-022 |
 | `check:stack`; `record:VER-011` | Object-level static analysis confirming recursion freedom and entry-point stack depth | GEN-022 |
 | `proof:crates/aldis-core/src/proofs.rs::error_kind_lookup_is_bounded`; `nightly-check:kani`; `file:docs/verification/formal-proofs.md` | A machine proof of one loop's bound, and of the CRC and bit-field loops up to their input lengths; nightly only (`df:DF-2`) | GEN-022 |
 
@@ -241,7 +241,6 @@ graph TD
 | Evidence | Shows | Requirements |
 |---|---|---|
 | `check:stack`; `record:VER-011` | The call graph of the shipped C ABI library and of the exerciser, built from object code on three targets, is checked complete (no indirect call outside stated exemptions) and fails on a cycle | GEN-022 |
-| `record:GEN-022` | The analysis record confirming acyclicity across all crates | GEN-022 |
 
 ### AC-3.3 Nothing blocks
 
@@ -489,7 +488,7 @@ What weakens the case now. A defeater is `open` until what it names is done; `ca
 | DF-1 | The channel tables' stack use is decided (OI-45 option (d)): the budgets are 4 096 bytes (Rust) and 10 240 bytes (C ABI), documented in record:VER-011; integrators bound task stacks to hold them | `ac:AC-4.2` | `oi:OI-45`; `record:VER-011` | `closed` |
 | DF-2 | The Kani proofs run only at night and are not gating; the method for proven requirements is open | `ac:AC-3.1` | `oi:OI-42`; `nightly-check:kani` | `open` |
 | DF-3 | The one CPU-hour per fuzz target of VER-022 ran and passed on main (run 40437244324: 34 targets, 3 600 s each, 0 failures) | `ac:AC-2.3` | `record:VER-022`; `job:fuzz` | `closed` |
-| DF-4 | The GEN-022/023 inspections of all crates changed in M2 (aldis-core, aldis-time, aldis-epp, aldis-spp, aldis-tm, aldis-tc, aldis-aos, aldis-uslp, and aldis-ffi) were approved at the M2 exit review (VER-061); inspections retired 2026-10-28 in favor of static stack/call-graph analysis | `ac:AC-3.1`; `ac:AC-3.3` | `record:VER-061`; `record:GEN-022` | `closed` |
+| DF-4 | The GEN-022/023 inspections of all crates changed in M2 (aldis-core, aldis-time, aldis-epp, aldis-spp, aldis-tm, aldis-tc, aldis-aos, aldis-uslp, and aldis-ffi) were approved at the M2 exit review; inspections retired 2026-10-28 in favor of static stack/call-graph analysis | `ac:AC-3.1`; `ac:AC-3.3` | `record:GEN-022` | `closed` |
 | DF-5 | The verification records are git notes without a signature; the signed evidence of #107 is parked | `ac:AC-7.1` | `gh:#110` | `open` |
 | DF-6 | The shipped `aldis-ffi` static library is built without LTO, so the link check of VER-010, made on the exerciser's LTO build, does not cover it as shipped; a panic that reaches its handler traps (OI-49, `proposal:P-X-02`, implemented) instead of spinning, and a check of its panic paths is `proposal:P-X-01` | `ac:AC-2.1` | `gh:#114`; `hz:HZ-X-02` | `open` |
 | DF-7 | No check runs `aldis-ffi` under Miri, which GEN-071 requires; it was run once by hand in WP-0c; the C harness with sanitizers is M5's | `ac:AC-6.2` | `gh:#71` | `open` |
