@@ -9,7 +9,7 @@ use aldis_core::crc::crc16;
 use aldis_core::ids::{SpacecraftId, VcId};
 use aldis_core::layout::FrameLayout;
 use aldis_core::ocf::Ocf;
-use aldis_core::oid::OidGenerator;
+use aldis_core::oid::{OidGenerator, OidGeneratorGalois};
 use aldis_core::security::SecurityLayout;
 use aldis_core::{Error, ErrorKind, Result};
 
@@ -289,11 +289,6 @@ fn write_at(buf: &mut [u8], at: usize, src: &[u8]) {
     }
 }
 
-/// Whether `buf` holds `src` from octet `at` on, as far as both reach.
-fn matches_at(buf: &[u8], at: usize, src: &[u8]) -> bool {
-    buf.iter().skip(at).zip(src).all(|(d, s)| d == s)
-}
-
 /// Two-phase frame writer (732.0 §4.1; AOS-019, API-020…API-023, API-072).
 ///
 /// [`begin`](Self::begin) writes the Primary Header with its FHEC and the `M_PDU` or `B_PDU`
@@ -336,37 +331,7 @@ impl<'b> AosFrameWriter<'b> {
         fields: &AosFrameFields,
     ) -> Result<AosFrameWriter<'b>> {
         let plan = Plan::new(pc, vcs, fields)?;
-        AosFrameWriter::start(out, plan, true)
-    }
-
-    /// Takes up a frame that [`begin`](Self::begin) or [`begin_oid`](Self::begin_oid) started in
-    /// `out` with the same `pc`, `vcs`, and `fields`, so that a writer which keeps no state
-    /// between calls, the C ABI's `aldis_aos_writer_finish`, can finish it (API-023; M2 plan D4).
-    ///
-    /// Checks the arguments as `begin` does, or as `begin_oid` does when `fields.vcid` is 63,
-    /// and writes nothing: every octet stays as the caller filled it, the OID data of
-    /// `begin_oid` included. It compares the Primary Header with its FHEC and the `M_PDU` or
-    /// `B_PDU` Header with what `begin` writes for these arguments (OI-50). The Insert Zone,
-    /// the Security Header and Trailer, the data zone, the OCF, and the FECF are not compared,
-    /// and a changed SDLS layout with an identical header is not caught.
-    ///
-    /// # Errors
-    /// As for [`begin`](Self::begin), or for VCID 63 as for [`begin_oid`](Self::begin_oid);
-    /// `InvalidState` if `out` does not start with the headers `begin` writes for these
-    /// arguments (other fields, or a buffer never begun). On error `out` is unchanged
-    /// (API-022, GEN-042).
-    pub fn resume<L: VcLookup + ?Sized>(
-        out: &'b mut [u8],
-        pc: &AosPhysicalChannelConfig,
-        vcs: &L,
-        fields: &AosFrameFields,
-    ) -> Result<AosFrameWriter<'b>> {
-        let plan = if fields.vcid == OID_VCID {
-            Plan::oid(pc, vcs, fields)?
-        } else {
-            Plan::new(pc, vcs, fields)?
-        };
-        AosFrameWriter::start(out, plan, false)
+        AosFrameWriter::start(out, plan)
     }
 
     /// Starts an OID Transfer Frame: VCID 63, no OCF or SDLS fields, and the whole data field
@@ -388,16 +353,14 @@ impl<'b> AosFrameWriter<'b> {
         oid: &mut OidGenerator,
     ) -> Result<AosFrameWriter<'b>> {
         let plan = Plan::oid(pc, vcs, fields)?;
-        let mut writer = AosFrameWriter::start(out, plan, true)?;
+        let mut writer = AosFrameWriter::start(out, plan)?;
         oid.fill(writer.zone_mut());
         Ok(writer)
     }
 
-    /// Takes up the frame of a checked plan in `out`. With `write`, as `begin` calls it, it
-    /// zero-fills the frame and writes the Primary Header and the `M_PDU` or `B_PDU` Header;
-    /// without, as `resume` calls it, it writes nothing and fails with `InvalidState` unless
-    /// those octets are what `begin` writes for the plan (OI-50).
-    fn start(out: &'b mut [u8], plan: Plan, write: bool) -> Result<AosFrameWriter<'b>> {
+    /// Takes up the frame of a checked plan in `out`: zero-fills it and writes the Primary
+    /// Header and the `M_PDU` or `B_PDU` Header.
+    fn start(out: &'b mut [u8], plan: Plan) -> Result<AosFrameWriter<'b>> {
         let frame_len = plan.layout.frame_len();
         let frame = out
             .get_mut(..frame_len)
@@ -407,13 +370,9 @@ impl<'b> AosFrameWriter<'b> {
         let data = plan.layout.data();
         let pdu: &[u8] = plan.pdu.as_ref().map_or(&[], |p| p.as_slice());
         let zone_start = data.start.saturating_add(pdu.len());
-        if write {
-            frame.fill(0);
-            write_at(frame, 0, header);
-            write_at(frame, data.start, pdu);
-        } else if !(matches_at(frame, 0, header) && matches_at(frame, data.start, pdu)) {
-            return Err(Error::new(ErrorKind::InvalidState));
-        }
+        frame.fill(0);
+        write_at(frame, 0, header);
+        write_at(frame, data.start, pdu);
         Ok(AosFrameWriter {
             frame,
             layout: plan.layout,
@@ -543,7 +502,7 @@ pub fn encode<L: VcLookup + ?Sized>(
             u64::from(content.ocf.is_some()),
         ));
     }
-    let writer = AosFrameWriter::start(out, plan, true)?;
+    let writer = AosFrameWriter::start(out, plan)?;
     // Each field has the length checked above, so it fills its range exactly.
     let layout = &writer.layout;
     for (at, src) in [
@@ -560,13 +519,89 @@ pub fn encode<L: VcLookup + ?Sized>(
     Ok(writer.finish())
 }
 
+/// Encodes an OID Transfer Frame of `fields.scid` into the start of `out`; returns its length
+/// (732.0 §4.1.4.1.5; AOS-016, AOS-021, CMN-020, CMN-021, API-020).
+///
+/// The data field is filled with the next octets of `oid`.
+///
+/// The frame has no OCF or SDLS fields; `insert_zone` fills the Insert Zone, which is empty
+/// when none is configured (AOS-015). Build `fields` with [`AosFrameFields::oid`].
+///
+/// # Errors
+/// The errors of [`AosFrameWriter::begin_oid`], checked first, and then `LengthMismatch`
+/// (`insert_zone_len`) for an `insert_zone` of another length than the configured one. On error
+/// neither `out` nor `oid` is changed (GEN-042).
+pub fn encode_oid<L: VcLookup + ?Sized>(
+    pc: &AosPhysicalChannelConfig,
+    vcs: &L,
+    fields: &AosFrameFields,
+    insert_zone: &[u8],
+    oid: &mut OidGenerator,
+    out: &mut [u8],
+) -> Result<usize> {
+    oid_frame(pc, vcs, fields, insert_zone, out, |zone| {
+        oid.fill(zone);
+    })
+}
+
+/// Encodes an OID frame as [`encode_oid`] does, with the OID generator in its Galois form
+/// (732.0 §4.1.4.1.5; AOS-016, CMN-022).
+///
+/// The two forms give the same sequence, so the frames are the same. For a caller that keeps
+/// the Galois form, such as the C ABI's `aldis_aos_encode_oid` with a generator initialized as
+/// `ALDIS_OID_GALOIS`.
+///
+/// # Errors
+/// As for [`encode_oid`]. On error neither `out` nor `oid` is changed (GEN-042).
+pub fn encode_oid_galois<L: VcLookup + ?Sized>(
+    pc: &AosPhysicalChannelConfig,
+    vcs: &L,
+    fields: &AosFrameFields,
+    insert_zone: &[u8],
+    oid: &mut OidGeneratorGalois,
+    out: &mut [u8],
+) -> Result<usize> {
+    oid_frame(pc, vcs, fields, insert_zone, out, |zone| {
+        oid.fill(zone);
+    })
+}
+
+/// The OID frame of [`encode_oid`], its data field filled by `fill` once every check has
+/// passed, so that a rejected frame leaves the generator unchanged (GEN-042).
+fn oid_frame<L: VcLookup + ?Sized>(
+    pc: &AosPhysicalChannelConfig,
+    vcs: &L,
+    fields: &AosFrameFields,
+    insert_zone: &[u8],
+    out: &mut [u8],
+    fill: impl FnOnce(&mut [u8]),
+) -> Result<usize> {
+    let plan = Plan::oid(pc, vcs, fields)?;
+    let expected = plan.layout.secondary().len();
+    if insert_zone.len() != expected {
+        return Err(mismatch(
+            ErrorKind::LengthMismatch,
+            field::INSERT_ZONE_LEN,
+            len_u64(expected),
+            len_u64(insert_zone.len()),
+        ));
+    }
+    let mut writer = AosFrameWriter::start(out, plan)?;
+    write_at(writer.frame, writer.layout.secondary().start, insert_zone);
+    fill(writer.zone_mut());
+    Ok(writer.finish())
+}
+
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     extern crate std;
     use std::vec;
 
-    use super::{AosFrameContent, AosFrameFields, AosFrameWriter, PduHeader, encode};
+    use super::{
+        AosFrameContent, AosFrameFields, AosFrameWriter, PduHeader, encode, encode_oid,
+        encode_oid_galois,
+    };
     use crate::bpdu::{BitstreamPointer, ValidBitCount};
     use crate::config::tests::{pc, scid, starts_at, vc, vcid};
     use crate::config::{AosEdition, AosVirtualChannelConfig, DataFieldContent, VcLookup, VcTable};
@@ -577,7 +612,7 @@ mod tests {
     use aldis_core::crc::syndrome;
     use aldis_core::ids::{SpacecraftId, VcId};
     use aldis_core::ocf::Ocf;
-    use aldis_core::oid::OidGenerator;
+    use aldis_core::oid::{OidGenerator, OidGeneratorGalois};
     use aldis_core::security::SecurityLayout;
     use aldis_core::{DecodeMode, ErrorDetail, ErrorKind, FieldId};
 
@@ -686,152 +721,6 @@ mod tests {
         assert_eq!(out[..6], [0x6A, 0xC1, 0, 0, 0, 0]);
         assert_eq!(out[12..14], [0x3F, 0xFE], "the B_PDU Header");
         assert!(out[14..].iter().all(|&b| b == 0));
-    }
-
-    #[test]
-    fn resume_keeps_what_the_caller_filled() {
-        // req: AOS-016, AOS-019, API-022, API-023, GEN-042
-        let t = table();
-        let phy = t.physical_channel();
-        let fields = mpdu(starts_at(3));
-        let fill = |w: &mut AosFrameWriter<'_>| {
-            w.insert_zone_mut().copy_from_slice(&[1, 2, 3, 4]);
-            w.security_header_mut().copy_from_slice(&[0xA5, 0xA5]);
-            w.zone_mut().fill(0xD0);
-            w.security_trailer_mut().copy_from_slice(&[0x5A]);
-            w.set_ocf(Ocf::decode([0x01, 0, 0, 0])).unwrap();
-        };
-        let mut one = [0_u8; 40];
-        let mut w = AosFrameWriter::begin(&mut one, &phy, &t, &fields).unwrap();
-        fill(&mut w);
-        assert_eq!(w.finish(), 40);
-        // The same frame in two steps that keep no writer.
-        let mut two = [0_u8; 40];
-        fill(&mut AosFrameWriter::begin(&mut two, &phy, &t, &fields).unwrap());
-        let before = two;
-        assert!(AosFrameWriter::resume(&mut two, &phy, &t, &fields).is_ok());
-        assert_eq!(two, before, "resume writes nothing");
-        let w = AosFrameWriter::resume(&mut two, &phy, &t, &fields).unwrap();
-        assert_eq!(w.finish(), 40);
-        assert_eq!(two, one);
-        // An OID frame: `begin_oid`, then `resume` with the same fields, VCID 63.
-        let oid_fields = AosFrameFields::oid(scid(0x0AB), count(5));
-        let mut oid = OidGenerator::new();
-        let mut three = [0_u8; 40];
-        AosFrameWriter::begin_oid(&mut three, &phy, &t, &oid_fields, &mut oid)
-            .unwrap()
-            .insert_zone_mut()
-            .copy_from_slice(&[7; 4]);
-        let w = AosFrameWriter::resume(&mut three, &phy, &t, &oid_fields).unwrap();
-        assert_eq!(w.finish(), 40);
-        assert_eq!(
-            (&three[8..12], &three[12..16]),
-            (&[7; 4][..], &[0xFF; 4][..])
-        );
-        assert_eq!(syndrome(&three), 0);
-        assert!(AosFrame::decode(&three, &phy, &t, STRICT).unwrap().is_oid());
-        // Rejected as `begin` and `begin_oid` reject them, with the buffer left as it was.
-        let mut four = [0xEE_u8; 40];
-        let e = AosFrameWriter::resume(
-            &mut four,
-            &phy,
-            &t,
-            &AosFrameFields::new(scid(0x0AB), vcid(9), count(0), PduHeader::None),
-        )
-        .unwrap_err();
-        assert_eq!(
-            (e.kind(), e.field()),
-            (ErrorKind::UnknownChannel, Some(field::VC_ID))
-        );
-        let e = AosFrameWriter::resume(
-            &mut four,
-            &phy,
-            &t,
-            &AosFrameFields::oid(scid(0x0AC), count(0)),
-        )
-        .unwrap_err();
-        assert_eq!(
-            (e.kind(), e.field()),
-            (ErrorKind::UnknownChannel, Some(field::SPACECRAFT_ID))
-        );
-        let e = AosFrameWriter::resume(&mut four[..39], &phy, &t, &oid_fields).unwrap_err();
-        assert_eq!(e.kind(), ErrorKind::BufferTooSmall);
-        assert!(four.iter().all(|&b| b == 0xEE));
-    }
-
-    #[test]
-    fn resume_rejects_another_frame_than_begun() {
-        // req: AOS-016, AOS-019, API-023, CABI-022 (OI-50)
-        let t = table();
-        let phy = t.physical_channel();
-        let fields = mpdu(starts_at(3));
-        let mut out = [0xEE_u8; 40];
-        AosFrameWriter::begin(&mut out, &phy, &t, &fields).unwrap();
-        let begun = out;
-        let bpdu = AosFrameFields::new(
-            scid(0x0AB),
-            vcid(1),
-            fields.vc_frame_count,
-            PduHeader::Bpdu(BitstreamPointer::AllValid),
-        );
-        let other = [
-            AosFrameFields {
-                vc_frame_count: count(0x12_3457),
-                ..fields
-            },
-            AosFrameFields {
-                replay_flag: false,
-                ..fields
-            },
-            AosFrameFields {
-                cycle: FrameCountCycle::new(8),
-                ..fields
-            },
-            AosFrameFields {
-                cycle: None,
-                ..fields
-            },
-            mpdu(starts_at(4)),
-            mpdu(PacketPointer::NoPacketStart),
-            AosFrameFields {
-                vcid: vcid(2),
-                pdu: PduHeader::None,
-                ..fields
-            },
-            bpdu,
-        ];
-        for f in other {
-            let e = AosFrameWriter::resume(&mut out, &phy, &t, &f).unwrap_err();
-            assert_eq!(e.kind(), ErrorKind::InvalidState, "{f:?}");
-            assert_eq!(out, begun, "the buffer is unchanged");
-        }
-        // The M_PDU Header and the FHEC alone are compared as well.
-        for at in [5, 14, 15] {
-            out[at] ^= 0x01;
-            let e = AosFrameWriter::resume(&mut out, &phy, &t, &fields).unwrap_err();
-            assert_eq!(e.kind(), ErrorKind::InvalidState, "octet {at}");
-            out[at] ^= 0x01;
-        }
-        // What the caller fills is not compared.
-        out[8..14].fill(0x5A);
-        out[16..].fill(0x5A);
-        assert!(AosFrameWriter::resume(&mut out, &phy, &t, &fields).is_ok());
-    }
-
-    #[test]
-    fn resume_rejects_a_buffer_never_begun() {
-        // req: AOS-019, API-023, CABI-022 (OI-50)
-        let t = table();
-        let phy = t.physical_channel();
-        for fill in [0x00_u8, 0xA5] {
-            let mut out = [fill; 40];
-            let e = AosFrameWriter::resume(&mut out, &phy, &t, &mpdu(starts_at(3))).unwrap_err();
-            assert_eq!(e.kind(), ErrorKind::InvalidState);
-            let oid_fields = AosFrameFields::oid(scid(0x0AB), count(5));
-            let e = AosFrameWriter::resume(&mut out, &phy, &t, &oid_fields).unwrap_err();
-            assert_eq!(e.kind(), ErrorKind::InvalidState);
-            assert_eq!(out, [fill; 40]);
-        }
     }
 
     #[test]
@@ -1246,5 +1135,72 @@ mod tests {
         assert_eq!(e.kind(), ErrorKind::BufferTooSmall);
         assert_eq!(oid, before);
         assert!(third.iter().all(|&b| b == 0xEE));
+    }
+
+    #[test]
+    fn encode_oid_matches_the_two_phase_frame() {
+        // req: AOS-021, AOS-016, AOS-015, CMN-020, CMN-021, CMN-022, API-020
+        let table = table();
+        let phy = table.physical_channel();
+        let fields = AosFrameFields::oid(scid(0x0AB), count(1));
+        let (mut fib, mut gal, mut two_phase) = (
+            OidGenerator::new(),
+            OidGeneratorGalois::new(),
+            OidGenerator::new(),
+        );
+        let (mut fib_frame, mut gal_frame, mut two_frame) =
+            ([0xEE_u8; 44], [0xEE_u8; 40], [0_u8; 40]);
+        let iz = [7, 6, 5, 4];
+        assert_eq!(
+            encode_oid(&phy, &table, &fields, &iz, &mut fib, &mut fib_frame),
+            Ok(40)
+        );
+        assert_eq!(
+            encode_oid_galois(&phy, &table, &fields, &iz, &mut gal, &mut gal_frame),
+            Ok(40)
+        );
+        let mut writer =
+            AosFrameWriter::begin_oid(&mut two_frame, &phy, &table, &fields, &mut two_phase)
+                .unwrap();
+        writer.insert_zone_mut().copy_from_slice(&iz);
+        assert_eq!(writer.finish(), 40);
+        assert_eq!(fib_frame[..40], two_frame);
+        assert_eq!(gal_frame, two_frame);
+        assert_eq!(fib_frame[40..], [0xEE; 4], "nothing written past the frame");
+        assert_eq!(fib, two_phase);
+        assert_eq!(gal.next_octet(), fib.next_octet());
+        assert_eq!(syndrome(&two_frame), 0);
+        let frame = AosFrame::decode(&two_frame, &phy, &table, STRICT).unwrap();
+        assert_eq!(frame.insert_zone(), &iz);
+    }
+
+    #[test]
+    fn encode_oid_rejects_without_writing() {
+        // req: AOS-021, AOS-016, API-022, GEN-042
+        let t = table();
+        let phy = t.physical_channel();
+        let mut oid = OidGenerator::new();
+        let before = oid.clone();
+        let mut out = [0xEE_u8; 40];
+        let kf = |e: super::Error| (e.kind(), e.field());
+        let ok = AosFrameFields::oid(scid(0x0AB), count(1));
+        let e = encode_oid(&phy, &t, &ok, &[0; 3], &mut oid, &mut out).unwrap_err();
+        assert_eq!(
+            kf(e),
+            (ErrorKind::LengthMismatch, Some(field::INSERT_ZONE_LEN))
+        );
+        let not_oid = AosFrameFields::new(scid(0x0AB), vcid(1), count(1), PduHeader::None);
+        let e = encode_oid(&phy, &t, &not_oid, &[0; 4], &mut oid, &mut out).unwrap_err();
+        assert_eq!(kf(e), (ErrorKind::InvalidField, Some(field::VC_ID)));
+        let other = AosFrameFields::oid(scid(0x0AC), count(1));
+        let e = encode_oid(&phy, &t, &other, &[0; 4], &mut oid, &mut out).unwrap_err();
+        assert_eq!(
+            kf(e),
+            (ErrorKind::UnknownChannel, Some(field::SPACECRAFT_ID))
+        );
+        let e = encode_oid(&phy, &t, &ok, &[0; 4], &mut oid, &mut out[..39]).unwrap_err();
+        assert_eq!(e.kind(), ErrorKind::BufferTooSmall);
+        assert_eq!(out, [0xEE; 40]);
+        assert_eq!(oid, before);
     }
 }

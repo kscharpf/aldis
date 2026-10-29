@@ -5,14 +5,15 @@ use core::hint::black_box as bb;
 
 use aldis_core::ids::{SpacecraftId, VcId};
 use aldis_core::ocf::Ocf;
-use aldis_core::oid::OidGenerator;
+use aldis_core::oid::{OidGenerator, OidGeneratorGalois};
 use aldis_core::security::SecurityLayout;
 use aldis_core::{Anomaly as _, AnomalySet, DecodeMode, ErrorKind};
 use aldis_tm::{
     DataFieldContent, DataFieldStatus, FirstHeaderPointer, FshLen, NoSdls, PacketOffset,
     PacketPointer, SegmentLengthId, TmAnomaly, TmFrame, TmFrameContent, TmFrameFields,
     TmFrameWriter, TmMasterChannelConfig, TmPhysicalChannelConfig, TmPrimaryHeader,
-    TmVirtualChannelConfig, VcLookup as _, encode,
+    TmVirtualChannelConfig, VcLookup as _, encode, encode_oid as encode_oid_frame,
+    encode_oid_galois,
 };
 
 use crate::exercise::Tally;
@@ -205,17 +206,13 @@ fn frames(t: &mut Tally, mc: &TmMasterChannelConfig, vc0: VcId<3>, vc1: VcId<3>,
             .is_ok_and(|w| w.finish() == 32),
     );
     t.check(frame.get(10..14) == Some(&[0xFF; 4][..]));
-    // `resume` keeps the Idle Data `begin_oid` wrote, as the C ABI's finish uses it (API-023).
-    let idle = TmFrameFields::new(
-        vc0,
-        0,
-        0,
-        DataFieldStatus::Packets(PacketPointer::OnlyIdleData),
-    );
-    t.check(
-        TmFrameWriter::resume(bb(&mut frame), &oid_mc, bb(&idle)).is_ok_and(|w| w.finish() == 32),
-    );
-    t.check(frame.get(10..14) == Some(&[0xFF; 4][..]));
+    // The one-shot encoders give the same frame from either form of the generator.
+    let (mut fib, mut gal, mut one) = (OidGenerator::new(), OidGeneratorGalois::new(), [0_u8; 32]);
+    t.check(encode_oid_frame(&oid_mc, vc0, 0, 0, &[0; 3], None, &mut fib, &mut one) == Ok(32));
+    t.check(one == frame);
+    one.fill(0);
+    t.check(encode_oid_galois(&oid_mc, vc0, 0, 0, &[0; 3], None, &mut gal, &mut one) == Ok(32));
+    t.check(one == frame);
 }
 
 /// Runs the `aldis-tm` group.

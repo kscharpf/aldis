@@ -4,8 +4,7 @@
 //! Calls: [`aldis_tc_config_check`] and [`aldis_tc_mc_config_check`]; [`aldis_tc_peek_length`]
 //! and [`aldis_tc_header_decode`]; the decoder [`aldis_tc_decode`]; the unified Frame Intake
 //! Stream [`aldis_tc_stream_next`]; the one-shot [`aldis_tc_encode`], which takes the frame's data
-//! field in an [`aldis_tc_content_t`]; the two-phase writer as [`aldis_tc_writer_begin`] and
-//! [`aldis_tc_writer_finish`]; the Control Commands [`aldis_tc_control_decode`] and
+//! field in an [`aldis_tc_content_t`]; the Control Commands [`aldis_tc_control_decode`] and
 //! [`aldis_tc_control_encode`]; and the CLCW [`aldis_clcw_decode`] and [`aldis_clcw_encode`].
 //!
 //! **Channels** (c-abi.md §11). A physical channel is an [`aldis_tc_config_t`] (232.0 §5.1
@@ -20,14 +19,11 @@
 //! **Security layouts** (API-070, c-abi.md §11). `TcFrame::decode` always takes the layouts of
 //! the frame's Virtual Channel or MAP from its channels; there is no decoder without them, so
 //! the TC C ABI has no `_with` pair: [`aldis_tc_decode`], [`aldis_tc_stream_next`], and the
-//! writers take a master channel and use its layouts.
+//! encoder take a master channel and use its layouts.
 //!
-//! **Writers.** No call keeps a pointer or state (API-023, API-060): `_writer_begin` writes an
-//! unfinished header, the Segment Header, and zeros in the Security Header and Trailer, the
-//! caller fills the fields at the offsets of the [`aldis_tc_layout_t`] it returns, and
-//! `_writer_finish`, given the same arguments and the User Data length used, checks that the
-//! buffer holds the headers `_writer_begin` wrote, else `ALDIS_ERR_INVALID_STATE`, and writes
-//! the header and the FECF (`TcFrameWriter::resume`; OI-50).
+//! **Encoders.** A frame is built in one call, with no state between calls (API-023, API-060):
+//! [`aldis_tc_encode`] takes the frame's data field and writes the header and the FECF. The C
+//! ABI has no two-phase writer (OI-57).
 
 use aldis::core::field;
 use aldis::core::ids::FrameSeqNum;
@@ -37,7 +33,7 @@ use aldis::core::{Error, ErrorKind, Result};
 use aldis::tc::{
     Clcw, ClcwStatus, ControlCommand, CopInEffect, FarmBCounter, FrameData, FrameFields,
     FrameStream, FrameType, IntakeItem, MapConfig, PRIMARY_HEADER_LEN, PhysicalChannelConfig,
-    SegmentHeader, SegmentHeaderUse, SequenceFlags, TcFrame, TcFrameHeader, TcFrameWriter, TcMapId,
+    SegmentHeader, SegmentHeaderUse, SequenceFlags, TcFrame, TcFrameHeader, TcMapId,
     TcSpacecraftId, TcVcId, VcConfig, VcTable, encode,
 };
 
@@ -1081,118 +1077,6 @@ pub unsafe extern "C" fn aldis_tc_encode(
             let out = abi::bytes_mut(out, cap, &[(c.user_data, c.user_data_len)])?;
             let out_len = abi::out(out_len)?;
             out_len.write(encode(&table, fields, data, out)?);
-            Ok(())
-        })
-    }
-}
-
-/// Starts a two-phase write of one Type-D frame with room for up to `max_user_len` octets of
-/// User Data (232.0 §4.1, §6.3; TC-004, TC-007, API-020, API-023, API-072, M2 plan D4).
-///
-/// Checks the arguments, writes an unfinished Primary Header (version `11`, which every decoder
-/// rejects), the Segment Header, and zeros in the Security Header and Trailer, and reports where
-/// each field lies: the data field is the reserved User Data, `max_user_len` octets, and the
-/// Security Trailer follows it.
-///
-/// The caller fills the User Data and, with SDLS, the Security Header and Trailer at the
-/// offsets of `layout`, and calls [`aldis_tc_writer_finish`] with the same arguments and the
-/// User Data length used. No state is kept.
-///
-/// # Errors
-/// On error `out` is unchanged (API-022). As [`aldis_tc_encode`] for a frame with
-/// `max_user_len` octets of User Data, with `ALDIS_ERR_INVALID_FIELD` (`control_command_flag`)
-/// for a Type-BC frame; CABI-022 violations.
-///
-/// # Safety
-/// `mc`, `vcs`, and `maps` as for [`aldis_tc_mc_config_check`]; `fields` is valid for a read;
-/// `out` is valid for `cap` octets; `layout` is valid for one write; `err` is `NULL` or valid
-/// for one write.
-#[expect(
-    unsafe_code,
-    reason = "C ABI entry point: unmangled, takes raw pointers (GEN-071)"
-)]
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn aldis_tc_writer_begin(
-    mc: *const aldis_tc_mc_config_t,
-    vcs: *const aldis_tc_vc_config_t,
-    vc_count: usize,
-    maps: *const aldis_tc_map_config_t,
-    map_count: usize,
-    fields: *const aldis_tc_fields_t,
-    max_user_len: usize,
-    out: *mut u8,
-    cap: usize,
-    layout: *mut aldis_tc_layout_t,
-    err: *mut crate::aldis_error_detail_t,
-) -> i32 {
-    // SAFETY: every pointer is valid as `# Safety` states; `abi` checks NULL and alignment.
-    unsafe {
-        abi::call(err, || {
-            let table = master_channel_at(mc, vcs, vc_count, maps, map_count)?;
-            let (fields, segment_header) = self::fields(abi::read(fields)?)?;
-            let out = abi::bytes_mut(out, cap, &[])?;
-            let layout = abi::out(layout)?;
-            let mut w = TcFrameWriter::begin(out, &table, fields, segment_header, max_user_len)?;
-            let security_header_len = w.security_header_mut().len();
-            let security_trailer_len = w.security_trailer_mut().len();
-            layout.write(self::layout(
-                segment_header.is_some(),
-                security_header_len,
-                w.user_data_mut().len(),
-                security_trailer_len,
-                table.physical().fecf(),
-            ));
-            Ok(())
-        })
-    }
-}
-
-/// Finishes a two-phase write begun with the same arguments, with `user_len` octets of User
-/// Data (232.0 §4.1.2.7, §4.1.4; TC-007, API-021, API-023).
-///
-/// First checks that `out` holds the unfinished Primary Header (with the reserved frame length)
-/// and Segment Header that [`aldis_tc_writer_begin`] wrote for these arguments
-/// (`TcFrameWriter::resume`; OI-50); the User Data and the Security Header and Trailer are not
-/// compared. Then writes the Primary Header with the Frame Length, moves the Security Trailer
-/// to follow the User Data when `user_len` is below `max_user_len`, computes the FECF if
-/// configured, and returns the frame length; the frame is the first `*out_len` octets of `out`.
-///
-/// # Errors
-/// On error `out` is unchanged. As [`aldis_tc_writer_begin`]; `ALDIS_ERR_INVALID_STATE` if `out`
-/// does not hold the unfinished headers `aldis_tc_writer_begin` writes for these arguments (other
-/// arguments, or a buffer never begun); then `ALDIS_ERR_OUT_OF_RANGE` (`user_len`) above
-/// `max_user_len` and `ALDIS_ERR_INVALID_FIELD` (`frame_data_field`) for 0.
-///
-/// # Safety
-/// As [`aldis_tc_writer_begin`]; `out_len` is valid for one write.
-#[expect(
-    unsafe_code,
-    reason = "C ABI entry point: unmangled, takes raw pointers (GEN-071)"
-)]
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn aldis_tc_writer_finish(
-    mc: *const aldis_tc_mc_config_t,
-    vcs: *const aldis_tc_vc_config_t,
-    vc_count: usize,
-    maps: *const aldis_tc_map_config_t,
-    map_count: usize,
-    fields: *const aldis_tc_fields_t,
-    max_user_len: usize,
-    user_len: usize,
-    out: *mut u8,
-    cap: usize,
-    out_len: *mut usize,
-    err: *mut crate::aldis_error_detail_t,
-) -> i32 {
-    // SAFETY: every pointer is valid as `# Safety` states; `abi` checks NULL and alignment.
-    unsafe {
-        abi::call(err, || {
-            let table = master_channel_at(mc, vcs, vc_count, maps, map_count)?;
-            let (fields, segment_header) = self::fields(abi::read(fields)?)?;
-            let out = abi::bytes_mut(out, cap, &[])?;
-            let out_len = abi::out(out_len)?;
-            let w = TcFrameWriter::resume(out, &table, fields, segment_header, max_user_len)?;
-            out_len.write(w.finish(user_len)?);
             Ok(())
         })
     }

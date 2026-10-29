@@ -148,18 +148,14 @@ fn run(u: &mut Unstructured<'_>) -> Result<()> {
             assert_eq!(f.ocf(), ocf);
             assert_eq!(f.validate(&mc), Ok(()));
             let mut two = vec![0x5A_u8; n];
-            {
-                let mut w = TmFrameWriter::begin(&mut two, &mc, &fields).unwrap();
-                w.secondary_header_data_mut().copy_from_slice(&fsh);
-                w.security_header_mut().copy_from_slice(&sh);
-                w.data_field_mut().copy_from_slice(&data);
-                w.security_trailer_mut().copy_from_slice(&st);
-                if let Some(ocf) = ocf {
-                    w.set_ocf(ocf).unwrap();
-                }
+            let mut w = TmFrameWriter::begin(&mut two, &mc, &fields).unwrap();
+            w.secondary_header_data_mut().copy_from_slice(&fsh);
+            w.security_header_mut().copy_from_slice(&sh);
+            w.data_field_mut().copy_from_slice(&data);
+            w.security_trailer_mut().copy_from_slice(&st);
+            if let Some(ocf) = ocf {
+                w.set_ocf(ocf).unwrap();
             }
-            // A stateless finish takes up the same buffer with the same arguments (OI-50).
-            let w = TmFrameWriter::resume(&mut two, &mc, &fields).unwrap();
             assert_eq!(w.finish(), n);
             assert_eq!(two[..n], out[..n]);
         }

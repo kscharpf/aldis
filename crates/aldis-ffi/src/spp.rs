@@ -1,8 +1,7 @@
 //! C ABI of the Space Packet codec `aldis-spp` (CCSDS 133.0-B-2; M2 plan D4; CABI-010…012,
 //! CABI-020…022, CABI-033).
 //!
-//! Stateless calls: [`aldis_spp_decode`], [`aldis_spp_peek_length`], [`aldis_spp_encode`], the
-//! two-phase writer as [`aldis_spp_writer_begin`] and [`aldis_spp_writer_finish`],
+//! Stateless calls: [`aldis_spp_decode`], [`aldis_spp_peek_length`], [`aldis_spp_encode`],
 //! [`aldis_spp_idle`], [`aldis_spp_octet_string_encode`], [`aldis_spp_sequence_count_next`],
 //! [`aldis_spp_config_check`], and [`aldis_spp_split`]. The stateful helpers are in
 //! [`crate::spp_state`].
@@ -13,8 +12,8 @@ use aldis::core::Result;
 use aldis::core::ids::{Apid, SeqCount};
 use aldis::spp::{
     IdlePacket, OctetStringEncoder, PRIMARY_HEADER_LEN, PacketFields, PacketType,
-    SecondaryHeaderLayout, SequenceCounter, SequenceFlags, SpacePacket, SpacePacketWriter,
-    SppConfig, TimeHeaderLayout, encode,
+    SecondaryHeaderLayout, SequenceCounter, SequenceFlags, SpacePacket, SppConfig,
+    TimeHeaderLayout, encode,
 };
 
 use crate::abi::{self, Out, invalid_argument};
@@ -98,20 +97,6 @@ pub struct aldis_spp_packet_t {
     pub data_len: usize,
     /// Octets consumed from the input: the total packet length (API-011).
     pub packet_len: usize,
-}
-
-/// Where a two-phase writer's caller fills in the packet (API-023, CABI-012).
-#[repr(C)]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct aldis_spp_writer_layout_t {
-    /// Offset of the secondary header in the output buffer: always 6.
-    pub secondary_header_offset: usize,
-    /// Length of the secondary header.
-    pub secondary_header_len: usize,
-    /// Offset of the User Data Field in the output buffer.
-    pub user_data_offset: usize,
-    /// Capacity of the User Data Field: the `max_user_len` given.
-    pub user_data_cap: usize,
 }
 
 /// How the Packet Data Field of an APID begins (133.0 §4.1.4.2; SPP-007, SPP-008, CABI-033).
@@ -263,18 +248,6 @@ fn split(
     Ok(())
 }
 
-/// Two-phase writer arguments shared by `begin` and `finish`.
-struct WriterArgs {
-    config: SppConfig,
-    fields: PacketFields,
-    secondary_len: usize,
-    max_user_len: usize,
-}
-
-fn writer<'b>(out: &'b mut [u8], a: &WriterArgs) -> Result<SpacePacketWriter<'b>> {
-    SpacePacketWriter::begin(out, &a.config, a.fields, a.secondary_len, a.max_user_len)
-}
-
 /// Decodes one Space Packet (133.0 §4.1; SPP-001…004, SPP-009, API-010, API-011, API-030).
 ///
 /// `bytes` may hold more than one packet: `out->packet_len` is the length of the first. The
@@ -383,107 +356,6 @@ pub unsafe extern "C" fn aldis_spp_encode(
             let out_len = abi::out(out_len)?;
             let packet = config.packet(fields, sec, user_data)?;
             out_len.write(encode(&packet, out)?);
-            Ok(())
-        })
-    }
-}
-
-/// Starts a two-phase write (133.0 §4.1; SPP-005, API-023, M2 plan D4).
-///
-/// Checks the arguments, writes an unfinished Primary Header (version `111`, which no decoder
-/// accepts), and reports where the caller fills in the secondary header and the User Data Field.
-///
-/// No state is kept: [`aldis_spp_writer_finish`] takes the same arguments again. The buffer
-/// holds no valid packet until it is finished (API-023).
-///
-/// # Errors
-/// As [`aldis_spp_encode`], with the packet length taken as `6 + secondary_len + max_user_len`.
-///
-/// # Safety
-/// `cfg` and `fields` are valid for reads; `out` is valid for `cap` octets; `layout` is valid
-/// for one write; `err` is `NULL` or valid for one write.
-#[expect(
-    unsafe_code,
-    reason = "C ABI entry point: unmangled, takes raw pointers (GEN-071)"
-)]
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn aldis_spp_writer_begin(
-    cfg: *const aldis_spp_config_t,
-    fields: *const aldis_spp_fields_t,
-    secondary_len: usize,
-    max_user_len: usize,
-    out: *mut u8,
-    cap: usize,
-    layout: *mut aldis_spp_writer_layout_t,
-    err: *mut crate::aldis_error_detail_t,
-) -> i32 {
-    // SAFETY: every pointer is valid as `# Safety` states; `abi` checks NULL and alignment.
-    unsafe {
-        abi::call(err, || {
-            let args = WriterArgs {
-                config: config(abi::config(cfg)?)?,
-                fields: self::fields(abi::read(fields)?)?,
-                secondary_len,
-                max_user_len,
-            };
-            let out = abi::bytes_mut(out, cap, &[])?;
-            let layout = abi::out(layout)?;
-            writer(out, &args)?;
-            layout.write(aldis_spp_writer_layout_t {
-                secondary_header_offset: PRIMARY_HEADER_LEN,
-                secondary_header_len: secondary_len,
-                user_data_offset: PRIMARY_HEADER_LEN.saturating_add(secondary_len),
-                user_data_cap: max_user_len,
-            });
-            Ok(())
-        })
-    }
-}
-
-/// Finishes a two-phase write begun with the same arguments: writes the final Primary Header
-/// for `user_len` octets of user data and returns the packet length (133.0 §4.1; SPP-005,
-/// API-021, API-023).
-///
-/// # Errors
-/// As [`aldis_spp_writer_begin`], and `ALDIS_ERR_OUT_OF_RANGE` (`user_len`) above
-/// `max_user_len`.
-///
-/// The call re-runs `begin`, so a finish with other arguments than `begin`'s gives a valid
-/// packet for the arguments of the finish; OI-50's header check is not applied to it
-/// (maintainer decision of 2026-10-25, revisited in M3).
-///
-/// # Safety
-/// As [`aldis_spp_writer_begin`]; `out_len` is valid for one write.
-#[expect(
-    unsafe_code,
-    reason = "C ABI entry point: unmangled, takes raw pointers (GEN-071)"
-)]
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn aldis_spp_writer_finish(
-    cfg: *const aldis_spp_config_t,
-    fields: *const aldis_spp_fields_t,
-    secondary_len: usize,
-    max_user_len: usize,
-    user_len: usize,
-    out: *mut u8,
-    cap: usize,
-    out_len: *mut usize,
-    err: *mut crate::aldis_error_detail_t,
-) -> i32 {
-    // SAFETY: every pointer is valid as `# Safety` states; `abi` checks NULL and alignment.
-    unsafe {
-        abi::call(err, || {
-            let args = WriterArgs {
-                config: config(abi::config(cfg)?)?,
-                fields: self::fields(abi::read(fields)?)?,
-                secondary_len,
-                max_user_len,
-            };
-            let out = abi::bytes_mut(out, cap, &[])?;
-            let out_len = abi::out(out_len)?;
-            // `begin` rewrites only the unfinished Primary Header; the data field the caller
-            // filled in stays as it is.
-            out_len.write(writer(out, &args)?.finish(user_len)?);
             Ok(())
         })
     }

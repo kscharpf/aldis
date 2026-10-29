@@ -8,12 +8,13 @@ use aldis_aos::{
     AosAnomaly, AosEdition, AosFrame, AosFrameContent, AosFrameFields, AosFrameWriter,
     AosPhysicalChannelConfig, AosPrimaryHeader, AosVirtualChannelConfig, BitstreamPointer, Bpdu,
     DataFieldContent, DataUnit, FrameCountCycle, Mpdu, OID_VCID, PacketPointer, PduHeader,
-    VcFrameCount, VcLookup as _, VcTable, encode,
+    VcFrameCount, VcLookup as _, VcTable, encode, encode_oid as encode_oid_frame,
+    encode_oid_galois,
 };
 use aldis_aos::{PacketOffset, ValidBitCount};
 use aldis_core::ids::{SpacecraftId, VcId};
 use aldis_core::ocf::Ocf;
-use aldis_core::oid::OidGenerator;
+use aldis_core::oid::{OidGenerator, OidGeneratorGalois};
 use aldis_core::security::SecurityLayout;
 use aldis_core::{Anomaly as _, AnomalySet, DecodeMode, ErrorKind};
 
@@ -283,23 +284,15 @@ fn frames(
         .is_ok_and(|w| w.finish() == 40),
     );
     t.check(frame.get(12..16) == Some(&[0xFF; 4][..]));
-    resume_oid(t, &mut frame, pc, table, AosFrameFields::oid(scid, zero));
     t.check(AosFrame::decode(bb(&frame), pc, table, DecodeMode::Strict).is_ok_and(|f| f.is_oid()));
-}
-
-/// `resume` takes up the OID frame `begin_oid` wrote in `frame`, keeping its OID data, as the
-/// C ABI's `aldis_aos_writer_finish` does (API-023).
-fn resume_oid(
-    t: &mut Tally,
-    frame: &mut [u8; 40],
-    pc: &AosPhysicalChannelConfig,
-    table: &VcTable<2>,
-    fields: AosFrameFields,
-) {
-    t.check(
-        AosFrameWriter::resume(bb(frame), pc, table, bb(&fields)).is_ok_and(|w| w.finish() == 40),
-    );
-    t.check(frame.get(12..16) == Some(&[0xFF; 4][..]));
+    // The one-shot encoders give the same frame from either form of the generator.
+    let (mut fib, mut gal, mut one) = (OidGenerator::new(), OidGeneratorGalois::new(), [0_u8; 40]);
+    let fields = AosFrameFields::oid(scid, zero);
+    t.check(encode_oid_frame(pc, table, bb(&fields), &[0; 4], &mut fib, &mut one) == Ok(40));
+    t.check(one == frame);
+    one.fill(0);
+    t.check(encode_oid_galois(pc, table, bb(&fields), &[0; 4], &mut gal, &mut one) == Ok(40));
+    t.check(one == frame);
 }
 
 /// Runs the `aldis-aos` group.

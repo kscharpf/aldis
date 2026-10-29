@@ -216,3 +216,7 @@ First run (`3b51e87`): 41 mutants: 19 caught, 20 unviable, 0 missed, 2 timeouts.
 After the fixes, a re-run on `container.rs` and `security.rs` found no survivors (89 mutants: 71 caught, 18 unviable). The six equivalent mutants remain and are expected in every report.
 
 These test gaps survived 100 % line, region, and branch coverage: the code was executed, but the result was never checked in the distinguishing state.
+
+## 2026-10-29, branch `m3/c-abi-one-shot` (OI-57 convention 1)
+
+The C two-phase writers and the Rust `resume` of `aldis-tm`, `aldis-tc`, `aldis-aos`, and `aldis-uslp` are deleted, with `matches_at` of `aldis-aos` and the `write` flag of each `start`; the entries above that triage mutants of that code (the OI-50 comparison in `start`, `matches_at`, the `aldis_*_writer_finish` and `aldis_tm_oid_writer_begin` lines) no longer name code that exists. The added code is `encode_oid`, `encode_oid_galois`, and `oid_frame` of `aldis-tm` and `aldis-aos`, with `aldis_tm_encode_oid` and `aldis_aos_encode_oid` of `aldis-ffi`. No mutant of the added code is waived: its unit tests (`encode_oid_matches_the_two_phase_frame`, `encode_oid_rejects_without_writing`) and the C ABI tests cover its checks, and any survivor is triaged by the merge run of `cargo xtask verify`.

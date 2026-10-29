@@ -105,8 +105,7 @@ fn run(u: &mut Unstructured<'_>) -> Result<()> {
     Ok(())
 }
 
-/// The two-phase writer, then a stateless finish by `resume` with the same arguments, give the
-/// frame of `encode` (API-023; OI-50).
+/// The two-phase writer gives the frame of `encode` (API-023).
 fn two_phase(
     table: &VcTable<2, 1>,
     fields: FrameFields,
@@ -115,12 +114,8 @@ fn two_phase(
     frame: &[u8],
 ) {
     let mut two = vec![0x5A_u8; frame.len()];
-    {
-        let mut w =
-            TcFrameWriter::begin(&mut two, table, fields, segment_header, user.len()).unwrap();
-        w.user_data_mut().copy_from_slice(user);
-    }
-    let w = TcFrameWriter::resume(&mut two, table, fields, segment_header, user.len()).unwrap();
+    let mut w = TcFrameWriter::begin(&mut two, table, fields, segment_header, user.len()).unwrap();
+    w.user_data_mut().copy_from_slice(user);
     assert_eq!(w.finish(user.len()), Ok(frame.len()));
     assert_eq!(two, frame);
 }

@@ -19,7 +19,7 @@ static void check(int ok, const char *what) {
 }
 
 /* AOS (M2 WP-4 module 8): an M_PDU frame of a 10-bit SCID with the FHEC and the FECF, through
- * the two-phase writer, the one-shot encoder, and the decoder after a corrected header hit. */
+ * the one-shot encoder and the decoder after a corrected header hit. */
 static void aos_smoke(void) {
     aldis_error_detail_t err;
     err.struct_size = (uint32_t)sizeof err;
@@ -44,31 +44,17 @@ static void aos_smoke(void) {
     fields.vc_frame_count = 7;
     fields.pointer = ALDIS_AOS_POINTER_STARTS_AT;
     uint8_t frame[16];
-    aldis_aos_layout_t layout;
-    check(aldis_aos_writer_begin(&mc, &vc, 1, &fields, frame, sizeof frame, &layout, &err) ==
-              ALDIS_OK,
-          "aldis_aos_writer_begin");
-    check(layout.data_offset == 8 && layout.zone_offset == 10 && layout.zone_len == 4 &&
-              layout.fecf_offset == 14,
-          "AOS frame layout");
-    memset(frame + layout.zone_offset, 0x5A, layout.zone_len);
-    size_t len = 0;
-    check(aldis_aos_writer_finish(&mc, &vc, 1, &fields, frame, sizeof frame, &len, &err) ==
-                  ALDIS_OK &&
-              len == 16,
-          "aldis_aos_writer_finish");
     uint8_t zone[4];
     memset(zone, 0x5A, sizeof zone);
     aldis_aos_content_t content;
     memset(&content, 0, sizeof content);
     content.zone = zone;
     content.zone_len = sizeof zone;
-    uint8_t one_shot[16];
-    size_t one_len = 0;
-    check(aldis_aos_encode(&mc, &vc, 1, &fields, &content, one_shot, sizeof one_shot, &one_len,
-                           &err) == ALDIS_OK &&
-              one_len == 16 && memcmp(one_shot, frame, 16) == 0,
-          "aldis_aos_encode agrees with the two-phase writer");
+    size_t len = 0;
+    check(aldis_aos_encode(&mc, &vc, 1, &fields, &content, frame, sizeof frame, &len, &err) ==
+                  ALDIS_OK &&
+              len == 16 && frame[10] == 0x5A,
+          "aldis_aos_encode");
     uint16_t fhec = 0;
     check(aldis_aos_fhec_encode(frame, ALDIS_AOS_PRIMARY_HEADER_LEN, &fhec, &err) == ALDIS_OK &&
               fhec == (uint16_t)((frame[6] << 8) | frame[7]),
@@ -184,7 +170,7 @@ int main(void) {
               ALDIS_ERR_INVALID_HANDLE,
           "a released generator is an invalid handle (CABI-032)");
 
-    /* A 16-octet TM Transfer Frame of VC 5 on SCID 677, through the two-phase writer and the
+    /* A 16-octet TM Transfer Frame of VC 5 on SCID 677, through the one-shot encoder and the
      * decoder (M2 plan D14): the master channel and an array of one virtual channel. */
     aldis_tm_mc_config_t mc;
     memset(&mc, 0, sizeof mc);
@@ -204,29 +190,16 @@ int main(void) {
     tm.vc_frame_count = 2;
     tm.pointer = ALDIS_TM_POINTER_STARTS_AT;
     uint8_t frame[16];
-    aldis_tm_layout_t layout;
-    check(aldis_tm_writer_begin(&mc, &vc, 1, &tm, frame, sizeof frame, &layout, &err) ==
-              ALDIS_OK,
-          "aldis_tm_writer_begin");
-    check(layout.data_offset == 6 && layout.data_len == 10 && layout.ocf_len == 0,
-          "TM frame layout");
-    memset(frame + layout.data_offset, 0xD0, layout.data_len);
-    check(aldis_tm_writer_finish(&mc, &vc, 1, &tm, frame, sizeof frame, &len, &err) == ALDIS_OK &&
-              len == 16,
-          "aldis_tm_writer_finish");
-    /* The same frame in one call, its data field given in the content struct. */
     uint8_t tm_data[10];
     memset(tm_data, 0xD0, sizeof tm_data);
     aldis_tm_content_t content;
     memset(&content, 0, sizeof content);
     content.data = tm_data;
     content.data_len = sizeof tm_data;
-    uint8_t one_shot[16];
-    size_t one_len = 0;
-    check(aldis_tm_encode(&mc, &vc, 1, &tm, &content, one_shot, sizeof one_shot, &one_len,
-                          &err) == ALDIS_OK &&
-              one_len == 16 && memcmp(one_shot, frame, 16) == 0,
-          "aldis_tm_encode agrees with the two-phase writer");
+    check(aldis_tm_encode(&mc, &vc, 1, &tm, &content, frame, sizeof frame, &len, &err) ==
+                  ALDIS_OK &&
+              len == 16,
+          "aldis_tm_encode");
     aldis_tm_frame_t tm_view;
     check(aldis_tm_decode(frame, len, &mc.pc, ALDIS_MODE_STRICT, &tm_view, NULL) == ALDIS_OK,
           "aldis_tm_decode");
@@ -236,9 +209,21 @@ int main(void) {
           "decoded TM frame (CABI-012)");
     check(aldis_tm_validate(frame, len, &mc, &vc, 1, ALDIS_MODE_STRICT, NULL) == ALDIS_OK,
           "aldis_tm_validate");
+    /* An Only Idle Data frame in one call, its data field from the OID generator. */
+    aldis_oid_generator_t *tm_oid = NULL;
+    uint64_t tm_oid_storage[ALDIS_OID_GENERATOR_STORAGE_SIZE / 8];
+    aldis_tm_content_t no_content;
+    memset(&no_content, 0, sizeof no_content);
+    check(aldis_oid_generator_init(tm_oid_storage, sizeof tm_oid_storage, ALDIS_OID_FIBONACCI,
+                                   &tm_oid, &err) == ALDIS_OK &&
+              aldis_tm_encode_oid(&mc, &vc, 1, 5, 0, 0, &no_content, tm_oid, frame, sizeof frame,
+                                  &len, &err) == ALDIS_OK &&
+              len == 16 && frame[6] == 0xFF && frame[7] == 0xFF,
+          "aldis_tm_encode_oid");
+    aldis_oid_generator_deinit(tm_oid);
 
     /* --- TC (M2 WP-3 module 8) ---
-     * A Type-AD frame of VC 1 on SCID 0x155 through the two-phase writer, followed by fill in
+     * A Type-AD frame of VC 1 on SCID 0x155 through the one-shot encoder, followed by fill in
      * one data unit, delimited and validated (M2 plan D14); then a CLCW as a word. */
     check(limits.tc_max_maps == ALDIS_TC_MAX_MAPS, "TC MAP capacity");
     aldis_tc_mc_config_t tc_mc;
@@ -261,19 +246,15 @@ int main(void) {
     tc.sequence_number = 4;
     uint8_t unit[16];
     memset(unit, 0x55, sizeof unit); /* Fill Data after the frame */
-    aldis_tc_layout_t tc_layout;
-    check(aldis_tc_writer_begin(&tc_mc, &tc_vc, 1, NULL, 0, &tc, 3, unit, sizeof unit,
-                                &tc_layout, &err) == ALDIS_OK,
-          "aldis_tc_writer_begin");
-    check(tc_layout.data_offset == 5 && tc_layout.data_len == 3 && tc_layout.fecf_len == 2,
-          "TC frame layout");
-    unit[5] = 1;
-    unit[6] = 2;
-    unit[7] = 3;
-    check(aldis_tc_writer_finish(&tc_mc, &tc_vc, 1, NULL, 0, &tc, 3, 3, unit, sizeof unit, &len,
-                                 &err) == ALDIS_OK &&
+    const uint8_t tc_data[3] = {1, 2, 3};
+    aldis_tc_content_t tc_content;
+    memset(&tc_content, 0, sizeof tc_content);
+    tc_content.user_data = tc_data;
+    tc_content.user_data_len = sizeof tc_data;
+    check(aldis_tc_encode(&tc_mc, &tc_vc, 1, NULL, 0, &tc, &tc_content, unit, sizeof unit, &len,
+                          &err) == ALDIS_OK &&
               len == 10,
-          "aldis_tc_writer_finish");
+          "aldis_tc_encode");
     const uint8_t tc_frame[10] = {0x01, 0x55, 0x04, 0x09, 0x04, 0x01, 0x02, 0x03, 0xE0, 0xC0};
     check(memcmp(unit, tc_frame, sizeof tc_frame) == 0, "TC frame octets (tc/ad.json)");
     size_t stream_offset = 0;
@@ -308,7 +289,7 @@ int main(void) {
 
     /* ---- USLP (M2 WP-5 module 9) ---- */
     /* A variable-length USLP frame of VC 4 MAP 0 on SCID 0x155 with an FECF, through the
-     * two-phase writer, the decoder, the validation checks, and the delimiter (M2 plan D14):
+     * one-shot encoder, the decoder, the validation checks, and the delimiter (M2 plan D14):
      * the physical channel and arrays of one virtual channel and one MAP. */
     aldis_uslp_config_t upc;
     memset(&upc, 0, sizeof upc);
@@ -341,17 +322,15 @@ int main(void) {
     ucontent.tfdf.rule = ALDIS_USLP_RULE_OCTET_STREAM;
     ucontent.tfdf.upid = ALDIS_USLP_UPID_OCTET_STREAM;
     uint8_t uframe[64];
-    aldis_uslp_layout_t ulayout;
-    check(aldis_uslp_writer_begin(&upc, &uvc, 1, &umap, 1, &ufields, &ucontent, 10, uframe,
-                                  sizeof uframe, &ulayout, &err) == ALDIS_OK &&
-              ulayout.tfdz_offset == 8 && ulayout.tfdz_len == 10,
-          "aldis_uslp_writer_begin");
-    memset(uframe + ulayout.tfdz_offset, 0xD0, 4);
+    uint8_t utfdz[4];
+    memset(utfdz, 0xD0, sizeof utfdz);
+    ucontent.tfdz = utfdz;
+    ucontent.tfdz_len = sizeof utfdz;
     size_t ulen = 0;
-    check(aldis_uslp_writer_finish(&upc, &uvc, 1, &umap, 1, &ufields, &ucontent, 10, 4, uframe,
-                                   sizeof uframe, &ulen, &err) == ALDIS_OK &&
+    check(aldis_uslp_encode(&upc, &uvc, 1, &umap, 1, &ufields, &ucontent, uframe, sizeof uframe,
+                            &ulen, &err) == ALDIS_OK &&
               ulen == 14,
-          "aldis_uslp_writer_finish");
+          "aldis_uslp_encode");
     aldis_uslp_frame_t uview;
     check(aldis_uslp_decode(uframe, ulen, &upc, &uvc, 1, &umap, 1, ALDIS_MODE_STRICT, &uview,
                             NULL) == ALDIS_OK,
