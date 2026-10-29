@@ -66,7 +66,10 @@ commands:
                                mutants, the exerciser, layers, READMEs, and the facade; fuzz
                                targets in fuzz/Cargo.toml and the nightly matrix; every vector
                                file in test-vectors/README.md, a test, and the exerciser
-  loops [list [<crate>...]]    diagnostic scan of loops in library code; prints the loops found
+  loops [list [<crate>...]]    every while, while let, and loop in a library crate, and every
+                               iteration over an open range or endless source, has a `// bound:`
+                               comment above it, and every such comment is above a loop
+                               (GEN-022); `list` prints the loops found
   assurance [--strict]         every reference of the hazard analysis and the assurance case
                                resolves, both follow their formats, and every hazard supports
                                a claim; --strict also fails on anything left as TODO
@@ -101,7 +104,7 @@ commands:
   changelog release <version> <YYYY-MM-DD>
                                move every fragment into a new section of CHANGELOG.md
   ci                           the quick checks of the verification run, without a build:
-                               spec-lint, links, decisions, layers, consistency, rs020,
+                               spec-lint, links, decisions, layers, consistency, rs020, loops,
                                restricted, assurance --strict, refapp-deps, vectors validate,
                                vectors schema --check, fields, header (needs the pinned
                                cbindgen), sana, trace --scope m0 --strict,
@@ -126,6 +129,7 @@ pub(crate) const CI: &[Step] = &[
     ("layers", layers::check),
     ("consistency", consistency::check),
     ("rs020", rs020::check),
+    ("loops", || loops::run(&[])),
     ("restricted", || restricted::run(false)),
     ("assurance --strict", || assurance::run(true)),
     ("refapp-deps", refapp::check),

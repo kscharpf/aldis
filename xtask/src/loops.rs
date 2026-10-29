@@ -1,4 +1,23 @@
-//! `xtask loops`: diagnostic scan of every loop in the library code of the crates.
+//! `xtask loops`: mechanical check of GEN-022 (every loop bounded) over the library code of the
+//! crates.
+//!
+//! **The rule.** A loop is bounded *by construction*, and needs nothing, when it runs over a
+//! slice, an array, a fixed container, or a range with an end: a `for` loop or an iterator
+//! consumer whose source the scanner does not find unbounded, and the slice methods of
+//! [`SLICE_LOOPS`]. Their bound is the length of what they iterate, which the type gives. A loop
+//! needs an *annotation* when its bound is an argument: every `while`, `while let`, and `loop`,
+//! and every `for` or consumer whose source holds an open range (`n..`) or one of
+//! [`UNBOUNDED_SOURCES`]. The annotation is a comment block directly above the line of the loop:
+//!
+//! ```text
+//! // bound: capacity N, each pass removes one item
+//! while let Some(x) = self.pop() {
+//! ```
+//!
+//! The block starts with `// bound:` and a non-empty reason (the bound and why the loop reaches
+//! it) and may continue on `//` lines. `xtask loops` fails on a loop that needs an annotation
+//! and has none, and on an annotation that is not directly above a loop. Recursion is not
+//! checked here: the verify check `stack` fails on any call cycle (VER-011).
 //!
 //! **What counts as a loop.** In the library code of each crate of [`CRATES`] (the modules
 //! reachable from `src/lib.rs`, without those and the items gated on `cfg(test)` or `cfg(kani)`):
@@ -67,6 +86,12 @@ pub const CONSUMERS: &[&str] = &[
 /// Slice methods that run over the slice.
 pub const SLICE_LOOPS: &[&str] = &["clone_from_slice", "copy_from_slice", "copy_within", "fill"];
 
+/// Sources of an iterator that have no end, or whose end the scanner cannot see.
+pub const UNBOUNDED_SOURCES: &[&str] = &["repeat", "repeat_with", "cycle", "from_fn", "successors"];
+
+/// The marker of a bound annotation.
+pub const MARKER: &str = "// bound:";
+
 /// One loop found.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Loop {
@@ -81,6 +106,8 @@ pub struct Loop {
     /// What it is: `for`, `while`, `loop`, or the method.
     pub kind: String,
     pub line: usize,
+    /// Why it needs a bound annotation, or `None` when it is bounded by construction.
+    pub needs_bound: Option<&'static str>,
 }
 
 impl Loop {
@@ -251,6 +278,81 @@ fn for_loop(t: &[Tok], i: usize) -> bool {
     false
 }
 
+/// The tokens between `in` and the `{` of the `for` loop at `i`.
+fn for_source(t: &[Tok], i: usize) -> &[Tok] {
+    let mut j = i + 1;
+    while j < t.len() && t[j].text != "in" {
+        j = if matches!(t[j].text.as_str(), "(" | "[") {
+            after_group(t, j)
+        } else {
+            j + 1
+        };
+    }
+    let start = (j + 1).min(t.len());
+    let mut end = start;
+    while end < t.len() && t[end].text != "{" {
+        end = if matches!(t[end].text.as_str(), "(" | "[") {
+            after_group(t, end)
+        } else {
+            end + 1
+        };
+    }
+    t.get(start..end).unwrap_or(&[])
+}
+
+/// The receiver expression of the method call whose `.` is at `dot`: the tokens back to the
+/// start of the expression (an unmatched opening bracket, or a `;`, `=`, `,`, `=>`, or keyword
+/// that ends one).
+fn receiver(t: &[Tok], dot: usize) -> &[Tok] {
+    let mut depth = 0_usize;
+    let mut start = dot;
+    while start > 0 {
+        match t[start - 1].text.as_str() {
+            ")" | "]" | "}" => depth += 1,
+            "(" | "[" | "{" if depth == 0 => break,
+            "(" | "[" | "{" => depth -= 1,
+            ";" | "=" | "," | "=>" | "return" | "let" | "if" | "else" | "match" | "in"
+                if depth == 0 =>
+            {
+                break;
+            }
+            _ => {}
+        }
+        start -= 1;
+    }
+    t.get(start..dot).unwrap_or(&[])
+}
+
+/// Why the source of an iteration is not bounded by construction: it holds an open range or one
+/// of [`UNBOUNDED_SOURCES`].
+fn unbounded_source(src: &[Tok]) -> Option<&'static str> {
+    if src
+        .iter()
+        .any(|t| UNBOUNDED_SOURCES.contains(&t.text.as_str()))
+    {
+        return Some("unbounded iterator source");
+    }
+    // `..` is two `.` tokens; `..=` has an end, and so has `..` followed by an expression.
+    let open_range = src.windows(2).enumerate().any(|(k, w)| {
+        w[0].text == "."
+            && w[1].text == "."
+            && src
+                .get(k + 2)
+                .is_none_or(|n| matches!(n.text.as_str(), ")" | "]" | ","))
+    });
+    open_range.then_some("open range")
+}
+
+/// Why the loop of `kind` at token `i` needs a bound annotation, or `None` when its type bounds it.
+fn needs_bound(t: &[Tok], i: usize, kind: &str) -> Option<&'static str> {
+    match kind {
+        "while" | "loop" => Some("not a for loop"),
+        "for" => unbounded_source(for_source(t, i)),
+        k if CONSUMERS.contains(&k) => unbounded_source(receiver(t, i)),
+        _ => None,
+    }
+}
+
 /// The loops of one file's source.
 pub fn scan(file: &str, src: &str) -> Vec<Loop> {
     let t = tokens(src);
@@ -352,6 +454,7 @@ pub fn scan(file: &str, src: &str) -> Vec<Loop> {
                 item,
                 index: *n,
                 label,
+                needs_bound: needs_bound(&t, i, &kind),
                 kind,
                 line: t[i].line,
             });
@@ -452,10 +555,84 @@ pub fn crate_loops(krate: &str) -> Result<Vec<Loop>, String> {
         .collect())
 }
 
-/// `xtask loops [list [<crate>...]]`: diagnostic scan of loops in library code.
+/// The bound annotations of a file: `(line of the marker, line directly below the block,
+/// reason)`. The loop must be on the second line.
+fn annotations(src: &str) -> Vec<(usize, usize, String)> {
+    let lines: Vec<&str> = src.lines().collect();
+    let mut out = Vec::new();
+    let mut n = 0;
+    while n < lines.len() {
+        let line = lines.get(n).map_or("", |l| l.trim_start());
+        if let Some(reason) = line.strip_prefix(MARKER) {
+            let mut text = reason.trim().to_owned();
+            let mut end = n + 1;
+            while let Some(next) = lines.get(end).map(|l| l.trim_start()) {
+                let Some(more) = next.strip_prefix("//").filter(|m| {
+                    !m.starts_with(['/', '!']) && !m.trim_start().starts_with("bound:")
+                }) else {
+                    break;
+                };
+                text.push(' ');
+                text.push_str(more.trim());
+                end += 1;
+            }
+            out.push((n + 1, end + 1, text.trim().to_owned()));
+            n = end;
+        } else {
+            n += 1;
+        }
+    }
+    out
+}
+
+/// The problems of one file: loops that need a bound annotation and have none, annotations
+/// without a reason, and annotations not directly above a loop.
+pub fn problems(prefix: &str, file: &str, src: &str) -> Vec<String> {
+    let loops = scan(file, src);
+    let file = format!("{prefix}{file}");
+    let notes = annotations(src);
+    let mut out = Vec::new();
+    for l in &loops {
+        if let Some(why) = l.needs_bound
+            && !notes.iter().any(|(_, below, _)| *below == l.line)
+        {
+            out.push(format!(
+                "{file}:{}: `{}` ({}, {why}) has no `{MARKER} <reason>` comment directly above it",
+                l.line,
+                l.id(),
+                l.kind,
+            ));
+        }
+    }
+    for (at, below, text) in &notes {
+        if text.is_empty() {
+            out.push(format!("{file}:{at}: `{MARKER}` gives no reason"));
+        }
+        if !loops.iter().any(|l| l.line == *below) {
+            out.push(format!(
+                "{file}:{at}: `{MARKER}` is not directly above a loop"
+            ));
+        }
+    }
+    out
+}
+
+/// The problems of a crate's library code.
+fn crate_problems(krate: &str) -> Result<Vec<String>, String> {
+    let src = repo::root().join("crates").join(krate).join("src");
+    Ok(modules(&src)?
+        .iter()
+        .flat_map(|(rel, text)| problems(&format!("crates/{krate}/src/"), rel, text))
+        .collect())
+}
+
+/// `xtask loops [list [<crate>...]]`: GEN-022 over the library code. It fails on a loop that
+/// needs a bound annotation and has none, and on an annotation not directly above a loop;
+/// `list` also prints every loop found.
 pub fn run(args: &[&str]) -> Result<usize, String> {
-    let names = match args {
-        ["list", rest @ ..] | rest => rest,
+    let (list, names) = match args {
+        ["list", rest @ ..] => (true, rest),
+        rest => (false, rest),
     };
     let crates: Vec<&str> = if names.is_empty() {
         CRATES.to_vec()
@@ -463,27 +640,43 @@ pub fn run(args: &[&str]) -> Result<usize, String> {
         names.to_vec()
     };
     let mut total = 0;
+    let mut annotated = 0;
     let mut out = String::new();
+    let mut failures = Vec::new();
     for krate in &crates {
         let loops = crate_loops(krate)?;
         total += loops.len();
+        annotated += loops.iter().filter(|l| l.needs_bound.is_some()).count();
+        failures.extend(crate_problems(krate)?);
         for l in &loops {
             let _ = writeln!(
                 out,
-                "crates/{krate}/src/{}:{}\t`{}`\t{}{}",
+                "crates/{krate}/src/{}:{}\t`{}`\t{}{}\t{}",
                 l.file,
                 l.line,
                 l.id(),
                 l.kind,
                 l.label
                     .as_ref()
-                    .map_or_else(String::new, |s| format!(" '{s}"))
+                    .map_or_else(String::new, |s| format!(" '{s}")),
+                l.needs_bound.map_or("by construction", |_| "annotated")
             );
         }
     }
-    print!("{out}");
+    if list {
+        print!("{out}");
+    }
+    if !failures.is_empty() {
+        for f in &failures {
+            eprintln!("loops: {f}");
+        }
+        return Err(format!(
+            "{} loop-bound problem(s) (GEN-022)",
+            failures.len()
+        ));
+    }
     println!(
-        "loops: {} crate(s), {total} loop(s) in library code",
+        "loops: {} crate(s), {total} loop(s) in library code: {annotated} with a bound annotation, the rest bounded by construction",
         crates.len()
     );
     Ok(0)
@@ -567,6 +760,66 @@ mod tests {
             fn library() { loop {} }
         ";
         assert_eq!(ids(src), ["x.rs hooks #1 while", "x.rs library #1 loop"]);
+    }
+
+    fn problems_of(src: &str) -> Vec<String> {
+        problems("", "x.rs", src)
+    }
+
+    // req: GEN-022
+    #[test]
+    fn a_while_or_loop_needs_a_bound_annotation() {
+        let bare = "fn f() { while go() {} }\nfn g() { loop { break; } }";
+        assert_eq!(problems_of(bare).len(), 2, "{:?}", problems_of(bare));
+        let ok = "fn f() {\n    // bound: 8 passes;\n    // each pass halves n.\n    while n > 0 {}\n    // bound: one pass\n    let x = loop { break 1; };\n}";
+        assert_eq!(problems_of(ok), Vec::<String>::new());
+    }
+
+    // req: GEN-022
+    #[test]
+    fn an_open_or_endless_source_needs_a_bound_annotation() {
+        for src in [
+            "fn f() {\n    for i in 0.. { }\n}",
+            "fn f() {\n    for i in (0..).step_by(2) { }\n}",
+            "fn f() {\n    let x = (3..).take(2).count();\n}",
+            "fn f() {\n    let x = core::iter::repeat(1).take(2).sum::<u8>();\n}",
+            "fn f() {\n    let x = it.cycle().take(5).all(|v| v);\n}",
+            "fn f() {\n    let x = core::iter::from_fn(g).last();\n}",
+        ] {
+            assert_eq!(problems_of(src).len(), 1, "{src}");
+        }
+        let ok = "fn f() {\n    // bound: take(2) ends it\n    let x = (3..).take(2).count();\n}";
+        assert_eq!(problems_of(ok), Vec::<String>::new());
+    }
+
+    // req: GEN-022
+    #[test]
+    fn a_loop_over_a_slice_or_a_closed_range_needs_nothing() {
+        let src = "fn f(a: &[u8], b: &mut [u8]) {\n    for x in a.iter().rev() {}\n    for i in 0..a.len() {}\n    for i in 0..=7 {}\n    let n = a.iter().filter(|x| **x > 0).count();\n    let m = (0..4).map(|x| x).sum::<u8>();\n    b.copy_from_slice(a);\n    b.fill(0);\n}";
+        assert_eq!(problems_of(src), Vec::<String>::new());
+    }
+
+    // req: GEN-022
+    #[test]
+    fn an_annotation_must_be_directly_above_a_loop_and_give_a_reason() {
+        let dangling =
+            "fn f() {\n    // bound: nothing here\n    let x = 1;\n    for i in 0..2 {}\n}";
+        assert_eq!(problems_of(dangling).len(), 1);
+        let gap = "fn f() {\n    // bound: 4 passes\n\n    while go() {}\n}";
+        assert_eq!(problems_of(gap).len(), 2);
+        let empty = "fn f() {\n    // bound:\n    while go() {}\n}";
+        assert_eq!(problems_of(empty).len(), 1);
+        // On a loop that is bounded by construction, an annotation is allowed.
+        let extra = "fn f() {\n    // bound: 2 passes\n    for i in 0..2 {}\n}";
+        assert_eq!(problems_of(extra), Vec::<String>::new());
+    }
+
+    // req: GEN-022
+    #[test]
+    fn the_library_has_no_unannotated_loop() {
+        for krate in CRATES {
+            assert_eq!(crate_problems(krate).unwrap(), Vec::<String>::new());
+        }
     }
 
     // req: GEN-022

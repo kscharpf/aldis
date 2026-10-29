@@ -82,6 +82,8 @@ compile_error!("features `panic-handler` and `panic-unreachable` each define the
 fn panic(_info: &core::panic::PanicInfo<'_>) -> ! {
     trap();
     // Reached only if the fault handler returns, or on a target with no trap instruction here.
+    // bound: none, by intent. This is the panic handler of a firmware build, after the trap; no
+    // API call reaches it (GEN-020, GEN-021), and an endless halt is the safe state.
     loop {}
 }
 
