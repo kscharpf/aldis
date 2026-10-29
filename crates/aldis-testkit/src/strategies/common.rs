@@ -322,7 +322,7 @@ pub fn byte_queue_ops(max_record: usize, max_ops: usize) -> impl Strategy<Value 
 }
 
 /// Up to `max_ops - 1` operations on a fixed queue of octets: `Some(v)` pushes `v`, `None` pops
-/// (GEN-010, API-051).
+/// (GEN-010).
 pub fn fixed_queue_ops(max_ops: usize) -> impl Strategy<Value = Vec<Option<u8>>> {
     proptest::collection::vec(proptest::option::of(any::<u8>()), 0..max_ops)
 }

@@ -88,7 +88,7 @@ proptest! {
 
     #[test]
     fn fixed_queue_matches_model(ops in fixed_queue_ops(200)) {
-        // req: GEN-010, API-051
+        // req: GEN-010
         let mut q: FixedQueue<u8, 5> = FixedQueue::new();
         let mut model: VecDeque<u8> = VecDeque::new();
         for op in ops {
