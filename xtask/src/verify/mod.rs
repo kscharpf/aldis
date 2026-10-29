@@ -94,6 +94,9 @@ Verification run and merge gate (docs/06-verification.md §7):
                                re-deriving its skipped and reused checks from git and the
                                sources' published records, and that <rev> contains the tip of
                                origin/main
+  verify image --ref <repository>
+                               print the reference in <repository> of the image for HEAD's
+                               image inputs (VER-060), from git alone: no engine, no network
   verify image [--push <repository>]
                                build the verification image for HEAD, or pull it from the
                                registry repository named in ALDIS_VERIFY_PULL when its labels
@@ -165,6 +168,13 @@ pub fn run(args: &[&str]) -> Result<usize, String> {
         ["nightly"] => nightly("HEAD"),
         ["nightly", rev] => nightly(rev),
         ["check", rev] => publish::check(rev),
+        ["image", "--ref", repository] => {
+            println!(
+                "{}",
+                image::reference(&git(&["rev-parse", "HEAD"])?, repository)?
+            );
+            Ok(0)
+        }
         ["image", rest @ ..] => {
             let engine = image::Engine::detect()?;
             let commit = git(&["rev-parse", "HEAD"])?;
