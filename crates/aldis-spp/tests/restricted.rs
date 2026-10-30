@@ -11,7 +11,7 @@
     reason = "test harness: lengths are small and bounded (RS-018)"
 )]
 
-use aldis_core::{DecodeMode, Error, ErrorDetail, ErrorKind};
+use aldis_core::{Error, ErrorDetail, ErrorKind};
 use aldis_spp::{MAX_PACKET_LEN, MIN_PACKET_LEN, SpacePacket, SppConfig, encode};
 use aldis_testkit::strategies::proptest::prelude::*;
 use aldis_testkit::strategies::spp::{max_packet_len_out_of_range, spp_config, user_packet_fields};
@@ -80,7 +80,7 @@ proptest! {
         let data = config.packet(fields, &[], &user).unwrap();
         let mut out = vec![0_u8; max];
         prop_assert_eq!(encode(&data, &mut out), Ok(max));
-        let p = SpacePacket::decode(&out, DecodeMode::Strict).unwrap();
+        let p = SpacePacket::decode(&out).unwrap();
         prop_assert_eq!(p.len(), max);
         prop_assert_eq!(p.data_field(), user.as_slice());
         let longer = vec![0x5A_u8; max - 5];
@@ -109,7 +109,7 @@ proptest! {
     reason = "test fixtures built from valid formats; a failure must be loud (RS-018)"
 )]
 mod time {
-    use aldis_core::{DecodeMode, Error, ErrorKind};
+    use aldis_core::{Error, ErrorKind};
     use aldis_spp::{
         PacketFields, SecondaryHeaderLayout, SpacePacket, SppConfig, TimeHeaderLayout, encode,
     };
@@ -236,7 +236,7 @@ mod time {
             // req: SPP-007, SPP-008, API-020, VER-023, VER-054
             let layout = TimeHeaderLayout::new(format, pfield, ancillary.len()).unwrap();
             let (octets, code) = packet(fields, &format, pfield, &ancillary);
-            let p = SpacePacket::decode(&octets, DecodeMode::Strict).unwrap();
+            let p = SpacePacket::decode(&octets).unwrap();
             let s = p.split(&SecondaryHeaderLayout::Time(layout)).unwrap();
             let t = s.time_code().unwrap();
             prop_assert_eq!(t.len(), code.len());

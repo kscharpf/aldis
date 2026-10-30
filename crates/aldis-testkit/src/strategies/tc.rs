@@ -323,7 +323,6 @@ pub fn tc_frame_decoder_input() -> BoxedStrategy<(TcChannels, Vec<u8>)> {
 mod tests {
     use super::{clcw, data_unit, tc_frame, tc_frame_decoder_input, with_length_delta};
     use crate::strategies::config;
-    use aldis_core::DecodeMode;
     use aldis_tc::{FrameType, TcFrame};
     use proptest::prelude::*;
 
@@ -347,7 +346,7 @@ mod tests {
         #[test]
         fn frames_decode(f in tc_frame()) {
             // req: VER-054
-            let d = TcFrame::decode(&f.octets, &f.channels.table, DecodeMode::Strict).unwrap();
+            let d = TcFrame::decode(&f.octets, &f.channels.table).unwrap();
             prop_assert_eq!(d.header().fields(), f.fields);
             prop_assert_eq!(d.control_command(), f.control);
             prop_assert_eq!(f.control.is_some(), f.fields.frame_type == FrameType::Bc);
@@ -364,7 +363,7 @@ mod tests {
         #[test]
         fn decoder_inputs_never_panic((c, v) in tc_frame_decoder_input()) {
             // req: VER-054, GEN-020
-            let _ = TcFrame::decode(&v, &c.table, DecodeMode::Lenient);
+            let _ = TcFrame::decode_lenient(&v, &c.table);
         }
     }
 }

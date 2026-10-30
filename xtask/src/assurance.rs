@@ -374,6 +374,75 @@ fn code_names(rep: &mut Report, doc: &Doc) {
     }
 }
 
+/// What a code span of a requirement row names in the code, beyond [`code_name`] (§2.5a): a Rust
+/// type, a function or method, or a signature.
+fn requirement_code_name(span: &str, kinds: &BTreeSet<String>) -> Option<&'static str> {
+    if let Some(what) = code_name(span) {
+        return Some(what);
+    }
+    if span.contains("->") || span.starts_with("fn ") || span.contains(" fn ") {
+        return Some("a signature");
+    }
+    let body = span.trim_start_matches(['&', '*']);
+    let end = body
+        .find(|c: char| !(c.is_ascii_alphanumeric() || c == '_' || c == '.'))
+        .unwrap_or(body.len());
+    let (name, rest) = body.split_at(end);
+    let group = rest.starts_with(['(', '<', '{']);
+    if !rest.is_empty() && !group {
+        return None;
+    }
+    let first = name.chars().next()?;
+    if !(first.is_ascii_alphabetic() || first == '_') {
+        return None;
+    }
+    if name.contains('.') {
+        return group.then_some("a method call");
+    }
+    if first.is_ascii_uppercase() {
+        let camel = name.chars().any(|c| c.is_ascii_lowercase());
+        return (camel && !kinds.contains(name)).then_some("a Rust type or variant");
+    }
+    if group && rest.starts_with('(') {
+        return Some("a function call");
+    }
+    // A bare lowercase word is a field, a configuration key, a lint, a feature, or a command as
+    // often as a function: it is not told apart (§2.5a).
+    None
+}
+
+/// The documents whose requirements are about a language's conventions, and so name its
+/// constructs (§2.5a).
+const PROFILE_DIR: &str = "docs/profiles/";
+
+/// The code-name rule on the requirement tables (§2.5a): a code span of a requirement that is not
+/// a reference of a kind of §2.3 states an obligation, so it names no code item.
+fn requirement_code_names(rep: &mut Report, spec: &Spec) {
+    for r in spec.requirements.values() {
+        if crate::spec::is_withdrawn(&r.text) {
+            continue;
+        }
+        let path = format!("docs/{}", r.doc);
+        if path.starts_with(PROFILE_DIR) {
+            continue;
+        }
+        for span in spans(&r.text).unwrap_or_default() {
+            if parse_ref(span).is_some_and(|(k, _)| KINDS.contains(&k)) {
+                continue;
+            }
+            if let Some(what) = requirement_code_name(span, &spec.error_kinds) {
+                rep.add(
+                    At {
+                        path: &path,
+                        line: r.line,
+                    },
+                    format!("{}: `{span}` names {what}: state the obligation, or cite a reference (`sym:`, `file:`)", r.id),
+                );
+            }
+        }
+    }
+}
+
 /// The jobs of a workflow: the lines of two spaces, a name, and `:` after `jobs:`.
 fn workflow_jobs(workflow: &str) -> BTreeSet<String> {
     workflow
@@ -1594,6 +1663,7 @@ fn analyse(env: &Env, sources: &[Source], strict: bool) -> Analysis {
         code_names(&mut pass.rep, &doc);
         refs.extend(scan_references(&doc));
     }
+    requirement_code_names(&mut pass.rep, &env.spec);
     cross_checks(&mut pass, &refs);
     for h in &pass.hazards {
         for c in &h.claims {
@@ -2509,6 +2579,39 @@ fn proves() {}
         let doc = Doc::new("f.md", "```\n`aldis_x`\n```\n");
         let mut rep = Report::default();
         code_names(&mut rep, &doc);
+        assert_eq!(rep.problems, Vec::<String>::new());
+    }
+
+    // req: VER-066
+    #[test]
+    fn requirement_spans_name_no_code() {
+        let kinds = BTreeSet::from(["InvalidField".to_owned()]);
+        for (span, what) in [
+            ("aldis_tc_decode", "an `aldis_` symbol"),
+            ("Frame::decode", "a `::` path"),
+            ("crates/x/src/a.rs", "a source file"),
+            ("const fn new(..) -> Self", "a signature"),
+            ("FrameLayout", "a Rust type or variant"),
+            ("Actions<N>", "a Rust type or variant"),
+            ("validate(&cfg)", "a function call"),
+            ("buf.len()", "a method call"),
+        ] {
+            assert_eq!(requirement_code_name(span, &kinds), Some(what), "{span}");
+        }
+        for span in [
+            "InvalidField",
+            "vc_id",
+            "decode",
+            "0x7FE",
+            "no_std",
+            "SHALL",
+            "<stdint.h>",
+            "x86_64",
+        ] {
+            assert_eq!(requirement_code_name(span, &kinds), None, "{span}");
+        }
+        let mut rep = Report::default();
+        requirement_code_names(&mut rep, &env().spec);
         assert_eq!(rep.problems, Vec::<String>::new());
     }
 

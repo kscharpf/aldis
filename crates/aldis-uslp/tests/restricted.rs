@@ -30,6 +30,19 @@ use aldis_uslp::{
     VcConfig, VcLookup, VcParams, VcTable, VcfCount, VcfCountLen, encode, encode_truncated,
 };
 
+/// `UslpFrame::decode` or `decode_lenient` as `mode` says, without the anomalies.
+fn decode_in<'a>(
+    bytes: &'a [u8],
+    table: &impl aldis_uslp::VcLookup,
+    mode: DecodeMode,
+) -> Result<UslpFrame<'a>, aldis_core::Error> {
+    mode.dispatch(
+        || UslpFrame::decode(bytes, table),
+        || UslpFrame::decode_lenient(bytes, table),
+    )
+    .map(|(frame, _)| frame)
+}
+
 /// Failing cases are saved here and replayed first.
 const REGRESSIONS: &str = concat!(
     env!("CARGO_MANIFEST_DIR"),
@@ -182,7 +195,7 @@ fn frame_kind_has_three_flag_combinations() {
                 );
                 let octets =
                     frame(&t, fields(kind, 0), short_tfdf(Upid::Packets), &[1, 2]).unwrap();
-                let d = UslpFrame::decode(&octets, &t, DecodeMode::Strict).unwrap();
+                let d = UslpFrame::decode(&octets, &t).unwrap();
                 assert_eq!(d.full().unwrap().kind(), kind);
             } else {
                 assert!(!bypass && control);
@@ -196,7 +209,7 @@ fn frame_kind_has_three_flag_combinations() {
                 // Bit 49, the Protocol Control Command Flag (§4.1.2.8.2.1).
                 octets[6] |= 0x40;
                 for mode in [DecodeMode::Strict, DecodeMode::Lenient] {
-                    let e = UslpFrame::decode(&octets, &t, mode).unwrap_err();
+                    let e = decode_in(&octets, &t, mode).unwrap_err();
                     assert_eq!(e.kind(), ErrorKind::ReservedValue);
                     assert_eq!(e.field(), Some(field::PROTOCOL_CONTROL_COMMAND_FLAG));
                 }
@@ -228,7 +241,7 @@ fn vcf_count_len_is_three_bits() {
                 let t = variable(64, params);
                 let f = fields(FrameKind::SequenceControlled, longest);
                 let octets = frame(&t, f, short_tfdf(Upid::Packets), &[9]).unwrap();
-                let d = UslpFrame::decode(&octets, &t, DecodeMode::Strict).unwrap();
+                let d = UslpFrame::decode(&octets, &t).unwrap();
                 assert_eq!(
                     d.full().unwrap().vcf_count(),
                     VcfCount::new(len, longest).unwrap()
@@ -367,7 +380,7 @@ fn physical_channel_carries_a_frame(pc: PhysicalChannelConfig) {
         &vec![0x77; tfdz_len],
     )
     .unwrap();
-    let d = UslpFrame::decode(&octets, &t, DecodeMode::Strict).unwrap();
+    let d = UslpFrame::decode(&octets, &t).unwrap();
     assert_eq!(d.len(), pc.frame_len());
 }
 
@@ -400,7 +413,7 @@ fn truncated_frame_len_is_six_to_thirty_two() {
                 let n =
                     encode_truncated(&t, channel, short_tfdf(Upid::OctetStream), &zone, &mut out)
                         .unwrap();
-                let d = UslpFrame::decode(&out[..n], &t, DecodeMode::Strict).unwrap();
+                let d = UslpFrame::decode(&out[..n], &t).unwrap();
                 assert_eq!((d.len(), d.is_truncated()), (v, true));
             }
             Err(e) => {
@@ -540,7 +553,7 @@ fn assert_offset_round_trips(t: &VcTable<1, 1>, offset: TfdzOffset, tfdz_len: us
             &vec![0_u8; tfdz_len],
         )
         .unwrap();
-        let d = UslpFrame::decode(&octets, t, DecodeMode::Strict).unwrap();
+        let d = UslpFrame::decode(&octets, t).unwrap();
         assert_eq!(d.tfdf_header(), tfdf);
     }
 }
@@ -597,7 +610,7 @@ fn upid_is_five_bits() {
                 assert_eq!(matches!(upid, Upid::Other(_)), !assigned.contains(&v));
                 let tfdf = short_tfdf(upid);
                 let octets = frame(&t, fields(FrameKind::Expedited, 0), tfdf, &[3, 4]).unwrap();
-                let d = UslpFrame::decode(&octets, &t, DecodeMode::Strict).unwrap();
+                let d = UslpFrame::decode(&octets, &t).unwrap();
                 assert_eq!(d.tfdf_header(), tfdf);
             }
             None => assert!(!in_range, "{v}"),
@@ -645,7 +658,7 @@ proptest! {
         };
         let t = variable(64, params);
         let octets = frame(&t, fields(kind, count.value()), short_tfdf(Upid::Packets), &[5]).unwrap();
-        let d = UslpFrame::decode(&octets, &t, DecodeMode::Strict).unwrap();
+        let d = UslpFrame::decode(&octets, &t).unwrap();
         let full = d.full().unwrap();
         prop_assert_eq!((full.kind(), full.vcf_count()), (kind, count));
         // Any 64-bit value fits exactly when it is at most the length's longest count.
@@ -672,7 +685,7 @@ proptest! {
         // req: USLP-007, VER-023, VER-054
         let t = variable(64, VcParams::new(TransferFrameType::Variable));
         let octets = frame(&t, fields(FrameKind::SequenceControlled, 0), short_tfdf(u), &[1]).unwrap();
-        prop_assert_eq!(UslpFrame::decode(&octets, &t, DecodeMode::Strict).map(|d| d.tfdf_header().upid), Ok(u));
+        prop_assert_eq!(UslpFrame::decode(&octets, &t).map(|d| d.tfdf_header().upid), Ok(u));
         if let Upid::Other(o) = u {
             prop_assert_eq!(UnassignedUpid::new(o.get()), Some(o));
         }
@@ -685,7 +698,7 @@ proptest! {
     fn configured_channels_carry_frames(f in uslp_frame()) {
         // restricted: PhysicalChannelConfig, VcConfig, TruncatedFrameLen
         // req: USLP-002, USLP-003, VER-023, VER-054
-        let d = UslpFrame::decode(&f.octets, &f.channels.table, DecodeMode::Strict).unwrap();
+        let d = UslpFrame::decode(&f.octets, &f.channels.table).unwrap();
         prop_assert_eq!(d.len(), f.octets.len());
         if let Some(tr) = d.truncated() {
             let vc = aldis_uslp::VcLookup::vc(&f.channels.table, d.spacecraft_id(), d.vc_id()).unwrap();
@@ -721,7 +734,7 @@ fn map_frame_round_trips(
     let tfdz = [0x5A_u8; 52];
     let mut out = [0_u8; 64];
     assert_eq!(encode(t, fields, content, &tfdz, &mut out), Ok(64));
-    let f = UslpFrame::decode(&out, t, DecodeMode::Strict).unwrap();
+    let f = UslpFrame::decode(&out, t).unwrap();
     assert_eq!(f.tfdz(), tfdz.as_slice());
 }
 
@@ -887,6 +900,6 @@ proptest! {
         let maps: Vec<MapConfig> = t.maps().copied().collect();
         let again = aldis_testkit::strategies::uslp::Channels::new(t.physical(), &vcs, &maps);
         prop_assert_eq!(again.as_ref(), Ok(t));
-        prop_assert!(UslpFrame::decode(&f.octets, t, DecodeMode::Strict).is_ok());
+        prop_assert!(UslpFrame::decode(&f.octets, t).is_ok());
     }
 }

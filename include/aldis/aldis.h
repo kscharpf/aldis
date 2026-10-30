@@ -15,7 +15,7 @@
 /**
  * ABI minor version (CABI-060).
  */
-#define ALDIS_ABI_VERSION_MINOR 6
+#define ALDIS_ABI_VERSION_MINOR 7
 
 /**
  * ABI patch version (CABI-060).
@@ -6514,7 +6514,8 @@ uint32_t aldis_tm_decode_unchecked_with(const uint8_t *bytes,
  *
  * The frame is decoded as [`aldis_tm_decode_with`] decodes it, with the security layout of its
  * virtual channel from `mc`, and checked as `TmFrame::validate` checks it. A call that takes a
- * master channel always uses its layouts (c-abi.md §11).
+ * master channel always uses its layouts (c-abi.md §11). `*anomalies` receives the
+ * `ALDIS_TM_ANOMALY_*` flags of the frame that passed, `0` in strict mode (API-032).
  *
  * # Errors
  * The errors of [`aldis_tm_decode_with`]; `ALDIS_ERR_INVALID_FIELD` (`vc_id`) for an Only Idle
@@ -6524,7 +6525,7 @@ uint32_t aldis_tm_decode_unchecked_with(const uint8_t *bytes,
  * Secondary Header length.
  *
  * # Safety
- * As [`aldis_tm_decode_with`], without `out`.
+ * As [`aldis_tm_decode_with`], with `anomalies` valid for one write instead of `out`.
  */
 uint32_t aldis_tm_validate(const uint8_t *bytes,
                            size_t len,
@@ -6532,6 +6533,7 @@ uint32_t aldis_tm_validate(const uint8_t *bytes,
                            const aldis_tm_vc_config_t *vcs,
                            size_t vc_count,
                            uint32_t mode,
+                           uint32_t *anomalies,
                            aldis_error_detail_t *err);
 
 /**

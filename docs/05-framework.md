@@ -24,7 +24,7 @@ trait EventSink  { fn event(&mut self, ev: &Event); }
 |---|---|---|---|
 | FW-001 | All traits SHALL be usable in `no_std` without `alloc`. No trait method SHALL require blocking. Implementations return "not ready" instead. | — | A |
 | FW-002 | The framework SHALL NOT spawn threads or tasks, nor depend on an async runtime, in its default configuration. An `async` feature MAY add `async fn` variants of the traits and the run loop. | — | A |
-| FW-003 | `TransportError` SHALL be reported to the `EventSink` and SHALL NOT corrupt engine state. A frame that fails to send is treated as a Lower-Procedure *reject* where COP-1 applies (E42/E44/E46). | 232.1 E41–E46 | T |
+| FW-003 | A transport error SHALL be reported to the event sink and SHALL NOT corrupt engine state. A frame that fails to send is treated as a Lower-Procedure *reject* where COP-1 applies (E42/E44/E46). | 232.1 E41–E46 | T |
 
 ## 2. Stacks and run loop
 
@@ -50,10 +50,10 @@ loop step(now):
 
 | ID | Requirement | Source | Verif. |
 |---|---|---|---|
-| FW-010 | `Stack::step(now) -> Option<Instant>` SHALL perform one bounded pass as above and return the next deadline. It SHALL be callable from a cyclic executive, an RTOS task, an interrupt-deferred handler, or a host event loop. | — | T |
+| FW-010 | The stack step, given the current instant, SHALL perform one bounded pass as above and return the next deadline, if any. It SHALL be callable from a cyclic executive, an RTOS task, an interrupt-deferred handler, or a host event loop. | — | T |
 | FW-011 | `step` SHALL process at most a configured number of frames per call, to bound its execution time (GEN-023). | — | T |
 | FW-012 | Stacks SHALL expose their constituent engines for direct access (status snapshots, directives), so applications can mix framework and library usage. | — | I |
-| FW-014 | The framework SHALL own the queues of engine actions (API-059). It SHALL feed an engine an input only when its queues have room for the engine's documented bound `N` of actions and its output area has room for the documented octets (API-057, API-062), so that no action is lost. When they have not, it SHALL hold the input back (back-pressure on the `FrameSource` or the caller), not drop an action. | API-057, API-059 | T |
+| FW-014 | The framework SHALL own the queues of engine actions (API-059). It SHALL feed an engine an input only when its queues have room for the engine's documented bound `N` of actions and its output area has room for the documented octets (API-057, API-062), so that no action is lost. When they have not, it SHALL hold the input back (back-pressure on the frame source or the caller), not drop an action. | API-057, API-059 | T |
 | FW-013 | A stack's behavior SHALL be reproducible from a recorded trace of `(now, FrameSource input, FrameSink readiness)`. The framework SHALL provide a trace recorder and a replayer behind the `trace` feature. | GEN-030 | T |
 
 ## 3. Reference adapters
@@ -68,5 +68,5 @@ loop step(now):
 
 | ID | Requirement | Source | Verif. |
 |---|---|---|---|
-| FW-020 | Each adapter SHALL be gated by its own feature and SHALL NOT be compiled by default except `LoopbackLink`. | GEN-004 | A |
+| FW-020 | Each adapter SHALL be gated by its own feature and SHALL NOT be compiled by default except the loopback link. | GEN-004 | A |
 | FW-021 | Socket-based adapters SHALL be documented as **test and ground integration tools**. Framing on sockets (length prefix, one frame per datagram) is a library convention, not a CCSDS standard. | — | I |

@@ -17,8 +17,8 @@ This is the CRC known in catalogues as **CRC-16/IBM-3740** (also called "CRC-16/
 
 | ID | Requirement | Source | Verif. |
 |---|---|---|---|
-| CMN-001 | `crc16(data)` SHALL compute the FECF exactly as specified above. | 132.0 §4.1.6.2 | V |
-| CMN-002 | `crc16(b"123456789")` SHALL equal `0x29B1`. This vector was verified against the generator definition during spec preparation. | — | V |
+| CMN-001 | The CRC-16 function SHALL compute the FECF exactly as specified above. | 132.0 §4.1.6.2 | V |
+| CMN-002 | The CRC-16 of the ASCII octets "123456789" SHALL equal `0x29B1`. This vector was verified against the generator definition during spec preparation. | — | V |
 | CMN-003 | FECF verification SHALL be performed either by recomputing the CRC over the frame minus the FECF and comparing, or by computing the syndrome over the whole frame and checking for zero. The two methods are equivalent; both SHALL be tested. | 132.0 §4.1.6.3 | T |
 | CMN-004 | An implementation SHALL provide a table-driven variant (256-entry table in read-only memory) and a bitwise variant selectable at build time. Both SHALL produce identical results. | — | T/V |
 
@@ -36,7 +36,7 @@ The table is the same in 132.0-B-3 §4.1.5.4–5, 732.0-B-4 and 732.0-B-5 §4.1.
 
 | ID | Requirement | Source | Verif. |
 |---|---|---|---|
-| CMN-010 | `Ocf::decode([u8;4])` SHALL classify the report as `Clcw(raw)`, `ProjectSpecific(raw)`, or `SdlsFsr(raw)` using bits 0–1. On USLP a Type-1 Report (`Clcw`) may also be a PLCW (732.1 §4.1.5.2.1 a); the variant keeps its name, and the caller that knows the channel decodes it. The enum is closed: the Blue Books assign all four values of the two bits (GEN-081 applies to enums that may grow). | 132.0 §4.1.5.4–5; 732.0 §4.1.5.4–5; 732.1 §4.1.5.2.1–2 | V |
+| CMN-010 | OCF decoding of the four octets SHALL classify the report as a CLCW, a project-specific report, or an SDLS FSR, each with its raw value, using bits 0–1. On USLP a Type-1 Report (the CLCW) may also be a PLCW (732.1 §4.1.5.2.1 a); the class keeps its name, and the caller that knows the channel decodes it. The enum is closed: the Blue Books assign all four values of the two bits (GEN-081 applies to enums that may grow). | 132.0 §4.1.5.4–5; 732.0 §4.1.5.4–5; 732.1 §4.1.5.2.1–2 | V |
 | CMN-011 | CLCW field decoding SHALL be delegated to the TC codec ([tc-frame.md §5](tc-frame.md#5-clcw)). `aldis-core` treats the CLCW as opaque except for bit 0. | 232.0 §4.2 | I |
 
 ## 3. Only-Idle-Data (OID) pattern
@@ -53,10 +53,10 @@ The first 20 output octets are `FF FF FF FF 6D B6 D8 61 45 1F 11 F1 97 16 72 3C 
 
 | ID | Requirement | Source | Verif. |
 |---|---|---|---|
-| CMN-020 | `OidGenerator` SHALL produce the sequence above, MSB first within each octet, starting at device start-up state. | 132.0 §4.1.4.6.2 & Annex D; 732.0 §4.1.4.1.5.2 & Annex D; 732.1 §4.1.4.1.10 & Annex H | V |
+| CMN-020 | The OID generator SHALL produce the sequence above, MSB first within each octet, starting at device start-up state. | 132.0 §4.1.4.6.2 & Annex D; 732.0 §4.1.4.1.5.2 & Annex D; 732.1 §4.1.4.1.10 & Annex H | V |
 | CMN-021 | The generator state SHALL persist across frames. A generator SHALL be owned by the physical channel multiplexer, one per physical channel, and SHALL NOT be reset by engine reconfiguration. A full engine re-initialization, representing a "device start-up", MAY reset it. A decoder is stateless and so does not check the data of a received OID frame against the sequence (TM-010, AOS-016, USLP-009); receivers discard it. | 132.0 §4.1.4.6.2.1; 732.0 §4.1.4.1.5.2; 732.1 §4.1.4.1.10 | T |
 | CMN-022 | A Galois-form implementation, if provided, SHALL use seed `0b00000000001111111111111111111101` and SHALL produce identical output. | 132.0 §4.1.4.6.2.2; 732.1 Annex H | V |
-| CMN-023 | `OidGenerator::fill(buf)` SHALL write the next `buf.len()` octets of the sequence and advance by exactly that amount. | — | T |
+| CMN-023 | Filling a buffer from the OID generator SHALL write the next as many octets as the buffer holds of the sequence and advance by exactly that amount. | — | T |
 | CMN-024 | Receivers SHALL NOT be required to verify OID content. A `verify_oid` utility MAY be provided for test equipment. | — | — |
 
 ## 4. Frame counters
@@ -71,7 +71,7 @@ The first 20 output octets are `FF FF FF FF 6D B6 D8 61 45 1F 11 F1 97 16 72 3C 
 
 | ID | Requirement | Source | Verif. |
 |---|---|---|---|
-| CMN-030 | `aldis-core` SHALL provide a modular counter type parameterized by width (1–64 bits). It SHALL support increment, `distance(prev, next)`, and gap classification: `InSequence`, `Gap{missing}`, `Repeat`, `Backwards`. | — | T/V |
+| CMN-030 | `aldis-core` SHALL provide a modular counter type parameterized by width (1–64 bits). It SHALL support increment, the distance between two counts, and classification of a count against the previous one: in sequence, gap (with the number missing), repeat, or backwards. | — | T/V |
 | CMN-031 | Gap classification SHALL treat a forward distance of 1 as in-sequence, 0 as repeat, a distance in `2..=modulus/2` as a gap, and anything else as backwards or reset. | — | T |
 
 ## 5. Field placement with SDLS
@@ -80,5 +80,5 @@ All frame codecs use one layout calculator (`FrameLayout`) that computes the oct
 
 | ID | Requirement | Source | Verif. |
 |---|---|---|---|
-| CMN-040 | `FrameLayout` SHALL return non-overlapping, contiguous ranges, in order, for: primary header, secondary header / insert zone, security header, data field, security trailer, OCF, FECF. The ranges SHALL cover the frame exactly. | 132.0 §6.3; 732.0 §6.3; 732.1 §6.3 | T/F |
+| CMN-040 | The frame layout SHALL give non-overlapping, contiguous ranges, in order, for: primary header, secondary header / insert zone, security header, data field, security trailer, OCF, FECF. The ranges SHALL cover the frame exactly. | 132.0 §6.3; 732.0 §6.3; 732.1 §6.3 | T/F |
 | CMN-041 | If the layout leaves a data field of zero or negative length, the configuration SHALL be rejected with `InvalidConfig`. A project rule: the Blue Books state no minimum data field length. | — | T |

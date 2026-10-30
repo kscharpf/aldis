@@ -8,7 +8,7 @@
     reason = "property helpers outside #[test] fail loudly; test buffer sizing on small bounded lengths (RS-018)"
 )]
 
-use aldis_core::{DecodeMode, ErrorKind};
+use aldis_core::ErrorKind;
 use aldis_epp::{EncapsulationFields, EncapsulationPacket, HeaderSize, encode};
 use aldis_testkit::strategies::epp::{
     accept_all, encapsulation_packet, encapsulation_packet_decoder_input,
@@ -26,7 +26,7 @@ const REGRESSIONS: &str = concat!(
 /// A strict decode re-encodes to exactly the octets decoded, and lenient decodes it the same
 /// (API-020, API-010, GEN-020).
 fn strict_re_encode_property(bytes: &[u8]) -> Result<(), TestCaseError> {
-    let Ok(p) = EncapsulationPacket::decode(bytes, DecodeMode::Strict) else {
+    let Ok(p) = EncapsulationPacket::decode(bytes) else {
         return Ok(());
     };
     let fields = EncapsulationFields::from_parts(
@@ -39,18 +39,22 @@ fn strict_re_encode_property(bytes: &[u8]) -> Result<(), TestCaseError> {
     let unit = accept_all().data_unit(fields, p.data()).unwrap();
     let n = encode(&unit, HeaderSize::Fixed(p.header_len()), &mut out).unwrap();
     prop_assert_eq!(&out[..n], &bytes[..p.len()]);
-    let lenient = EncapsulationPacket::decode(bytes, DecodeMode::Lenient).unwrap();
-    prop_assert_eq!(lenient, p);
+    let lenient = EncapsulationPacket::decode_lenient(bytes).unwrap();
+    prop_assert_eq!(*lenient, p);
+    prop_assert!(lenient.anomalies().is_empty());
     Ok(())
 }
 
 /// Lenient accepts whatever strict accepts, and more only with an anomaly flag (API-030,
 /// API-032, GEN-020).
 fn lenient_superset_property(bytes: &[u8]) -> Result<(), TestCaseError> {
-    let strict = EncapsulationPacket::decode(bytes, DecodeMode::Strict);
-    let lenient = EncapsulationPacket::decode(bytes, DecodeMode::Lenient);
+    let strict = EncapsulationPacket::decode(bytes);
+    let lenient = EncapsulationPacket::decode_lenient(bytes);
     match (strict, lenient) {
-        (Ok(s), Ok(l)) => prop_assert_eq!(s, l),
+        (Ok(s), Ok(l)) => {
+            prop_assert_eq!(s, *l);
+            prop_assert!(l.anomalies().is_empty());
+        }
         (Ok(_), Err(e)) => prop_assert!(false, "lenient rejected a strict packet: {e}"),
         (Err(s), Ok(l)) => {
             prop_assert_eq!(s.kind(), ErrorKind::ReservedValue);
@@ -71,7 +75,7 @@ proptest! {
         let n = encode(&p.data_unit(), p.size, &mut out).unwrap();
         out.truncate(n);
         out.extend_from_slice(&tail);
-        let d = EncapsulationPacket::decode(&out, DecodeMode::Strict).unwrap();
+        let d = EncapsulationPacket::decode(&out).unwrap();
         prop_assert_eq!(d.epi(), p.fields.epi());
         prop_assert_eq!(d.data(), p.data.as_slice());
         prop_assert_eq!(d.len(), n);
@@ -116,4 +120,20 @@ fn saved_regressions() {
     let bytes = [249, 3, 0, 0, 0, 0, 0, 0];
     strict_re_encode_property(&bytes).unwrap();
     lenient_superset_property(&bytes).unwrap();
+}
+
+proptest! {
+    #![proptest_config(strategies::config(256, REGRESSIONS))]
+
+    #[test]
+    fn strict_equals_lenient_without_anomalies(bytes in encapsulation_packet_decoder_input()) {
+        // req: API-030, API-031, API-032, EPP-005
+        let strict = EncapsulationPacket::decode(&bytes);
+        let lenient = EncapsulationPacket::decode_lenient(&bytes);
+        if let Ok(s) = strict {
+            let l = lenient.expect("lenient accepts what strict accepts");
+            prop_assert!(l.anomalies().is_empty());
+            prop_assert_eq!(s, l.into_view());
+        }
+    }
 }

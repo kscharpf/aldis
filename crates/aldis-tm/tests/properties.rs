@@ -7,8 +7,8 @@
     reason = "property helpers outside #[test] fail loudly (RS-018)"
 )]
 
+use aldis_core::ErrorKind;
 use aldis_core::security::{FrameCtx, PreFilledSecurity};
-use aldis_core::{DecodeMode, ErrorKind};
 use aldis_testkit::strategies::proptest::prelude::*;
 use aldis_testkit::strategies::proptest::test_runner::TestCaseError;
 use aldis_testkit::strategies::tm::{tm_frame, tm_frame_decoder_input};
@@ -30,12 +30,12 @@ fn strict_re_encode_property(
     mc: &TmMasterChannelConfig,
     bytes: &[u8],
 ) -> Result<(), TestCaseError> {
-    let Ok(f) = TmFrame::decode_with(bytes, mc.pc(), mc, DecodeMode::Strict) else {
+    let Ok(f) = TmFrame::decode_with(bytes, mc.pc(), mc) else {
         return Ok(());
     };
-    if f.validate(mc).is_err() {
+    let Ok(f) = f.validate(mc) else {
         return Ok(());
-    }
+    };
     let fields = TmFrameFields::new(
         f.vcid(),
         f.mc_frame_count(),
@@ -52,8 +52,8 @@ fn strict_re_encode_property(
     let mut out = vec![0_u8; bytes.len()];
     let n = encode(mc, &fields, &content, &mut out).unwrap();
     prop_assert_eq!(&out[..n], bytes);
-    let lenient = TmFrame::decode_with(bytes, mc.pc(), mc, DecodeMode::Lenient).unwrap();
-    prop_assert_eq!(lenient, f);
+    let lenient = TmFrame::decode_with_lenient(bytes, mc.pc(), mc).unwrap();
+    prop_assert_eq!(lenient.into_view(), f.into_frame());
     Ok(())
 }
 
@@ -63,10 +63,13 @@ fn lenient_superset_property(
     mc: &TmMasterChannelConfig,
     bytes: &[u8],
 ) -> Result<(), TestCaseError> {
-    let strict = TmFrame::decode_with(bytes, mc.pc(), mc, DecodeMode::Strict);
-    let lenient = TmFrame::decode_with(bytes, mc.pc(), mc, DecodeMode::Lenient);
+    let strict = TmFrame::decode_with(bytes, mc.pc(), mc);
+    let lenient = TmFrame::decode_with_lenient(bytes, mc.pc(), mc);
     match (strict, lenient) {
-        (Ok(s), Ok(l)) => prop_assert_eq!(s, l),
+        (Ok(s), Ok(l)) => {
+            prop_assert!(l.anomalies().is_empty());
+            prop_assert_eq!(s, l.into_view());
+        }
         (Ok(_), Err(e)) => prop_assert!(false, "lenient rejected a strict frame: {e}"),
         (Err(s), Ok(l)) => {
             prop_assert!(matches!(
@@ -83,7 +86,7 @@ fn lenient_superset_property(
 /// Every slice of a decoded view lies inside the input, in wire order, and the fields cover the
 /// frame exactly (API-010, CMN-040).
 fn slices_inside_property(mc: &TmMasterChannelConfig, bytes: &[u8]) -> Result<(), TestCaseError> {
-    let Ok(f) = TmFrame::decode_unchecked(bytes, mc.pc(), mc, DecodeMode::Lenient) else {
+    let Ok(f) = TmFrame::decode_unchecked_lenient(bytes, mc.pc(), mc) else {
         return Ok(());
     };
     prop_assert_eq!(f.len(), bytes.len());
@@ -107,7 +110,7 @@ proptest! {
     #[test]
     fn encode_then_decode_round_trips(f in tm_frame()) {
         // req: API-020, TM-009, TM-001, TM-004, TM-006, VER-023
-        let d = TmFrame::decode_with(&f.octets, f.mc.pc(), &f.mc, DecodeMode::Strict).unwrap();
+        let d = TmFrame::decode_with(&f.octets, f.mc.pc(), &f.mc).unwrap();
         prop_assert_eq!(d.vcid(), f.fields.vcid);
         prop_assert_eq!(d.scid(), f.mc.scid());
         prop_assert_eq!(d.mc_frame_count(), f.fields.mc_frame_count);
@@ -121,10 +124,12 @@ proptest! {
         prop_assert_eq!(d.data_field(), f.data.as_slice());
         prop_assert_eq!(d.security_trailer(), f.security_trailer.as_slice());
         prop_assert_eq!(d.ocf(), f.ocf);
-        prop_assert!(d.anomalies().is_empty());
-        prop_assert_eq!(d.validate(&f.mc), Ok(()));
         prop_assert_eq!(TmFrame::peek_length(&f.octets, f.mc.pc()), Ok(f.octets.len()));
-        prop_assert_eq!(TmFrame::decode_unchecked(&f.octets, f.mc.pc(), &f.mc, DecodeMode::Strict), Ok(d));
+        prop_assert_eq!(
+            TmFrame::decode_unchecked(&f.octets, f.mc.pc(), &f.mc).unwrap().check_fecf(),
+            Ok(d.clone())
+        );
+        prop_assert_eq!(d.validate(&f.mc).map(aldis_tm::ValidatedTmFrame::into_frame), TmFrame::decode_with(&f.octets, f.mc.pc(), &f.mc));
     }
 
     #[test]
@@ -165,10 +170,27 @@ proptest! {
     #[test]
     fn arbitrary_octets_never_panic((mc, _) in tm_frame_decoder_input(), bytes in octets(0..64)) {
         // req: GEN-020, VER-023
-        for mode in [DecodeMode::Strict, DecodeMode::Lenient] {
-            let _ = TmFrame::decode_with(&bytes, mc.pc(), &mc, mode);
-            let _ = TmFrame::decode(&bytes, mc.pc(), mode);
-        }
+        let _ = TmFrame::decode_with(&bytes, mc.pc(), &mc);
+        let _ = TmFrame::decode_with_lenient(&bytes, mc.pc(), &mc);
+        let _ = TmFrame::decode(&bytes, mc.pc());
+        let _ = TmFrame::decode_lenient(&bytes, mc.pc());
+        let _ = TmFrame::decode_unchecked(&bytes, mc.pc(), &mc);
         let _ = TmFrame::peek_length(&bytes, mc.pc());
+    }
+}
+
+proptest! {
+    #![proptest_config(strategies::config(256, REGRESSIONS))]
+
+    #[test]
+    fn strict_equals_lenient_without_anomalies((mc, bytes) in tm_frame_decoder_input()) {
+        // req: API-030, API-031, API-032, TM-007
+        let strict = TmFrame::decode_with(&bytes, mc.pc(), &mc);
+        let lenient = TmFrame::decode_with_lenient(&bytes, mc.pc(), &mc);
+        if let Ok(s) = strict {
+            let l = lenient.expect("lenient accepts what strict accepts");
+            prop_assert!(l.anomalies().is_empty());
+            prop_assert_eq!(s, l.into_view());
+        }
     }
 }

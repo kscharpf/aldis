@@ -69,16 +69,3 @@ cargo xtask ffi-imports thumbv7em-none-eabihf   # needs nothing beyond memcpy/me
 ```
 
 **LEON3 (`sparc-unknown-none-elf`, best-effort; OI-08).** The library builds on the tooling nightly with `-Z build-std=core` and `-C target-cpu=leon3`, and links with GNU ld for SPARC (rust-lld cannot). It deviates from CABI-004: the `compiler_builtins` in the archive refers to the SPARC quad-float routines `_Q_*`, which Aldis never calls. Link with `--gc-sections`, which drops them, or supply them ([CABI-004 record](../../docs/verification/records/CABI-004.md)).
-
-## Guarantees
-
-This is the only library crate in which `unsafe` is allowed. Its lint table sets `unsafe_code` to `deny` instead of the workspace's `forbid`; every entry point and pointer check carries `#[expect(unsafe_code)]`, and every `unsafe` block a `// SAFETY:` comment (GEN-070, GEN-071). Every caller memory access goes through `abi.rs` and `handle.rs`. No heap, threads, or C runtime are required on `no_std` targets (CABI-004).
-
-Verification: the C-ABI vector runner and `tests/abi.rs` on the host; Miri over both; the exerciser calls every exported function on the three bare-metal targets for the panic-freedom link check (M2 plan D16); the fuzz target `ffi_decode` compares the C ABI decoders with the Rust ones; `cargo xtask coverage` reports coverage without gating it (D16).
-
-## Specification
-
-- [docs/profiles/c-abi.md](../../docs/profiles/c-abi.md): requirement area CABI, with naming, types, errors, the memory model, and versioning. Every C name has the prefix `aldis_` or `ALDIS_`.
-- [docs/03-api-model.md](../../docs/03-api-model.md) §9: the error catalogue that the C error codes follow (CABI-020), and the field codes (API-082).
-- [docs/milestones/m2-frame-codecs.md](../../docs/milestones/m2-frame-codecs.md): D4 (the shape of the C ABI), D5 (the stateful helpers), D14 (`peek_length`), D16 (the gates).
-- [docs/09-open-issues.md](../../docs/09-open-issues.md): OI-21 (resolved: the M1 codecs' C ABI in M2), OI-27 (resolved: numeric field codes).

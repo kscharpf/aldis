@@ -53,10 +53,15 @@ fuzz_target!(|data: &[u8]| {
         DecodeMode::Lenient
     };
     let layout = TimeHeaderLayout::new(fmt, pfield, usize::from(options >> 4)).unwrap();
-    let Ok(p) = SpacePacket::decode(packet, mode) else {
+    let Ok((p, _)) = mode.dispatch(
+        || SpacePacket::decode(packet),
+        || SpacePacket::decode_lenient(packet),
+    ) else {
         return;
     };
-    let Ok(split) = p.split(&SecondaryHeaderLayout::Time(layout)) else {
+    let secondary = SecondaryHeaderLayout::Time(layout);
+    let Ok((split, _)) = mode.dispatch(|| p.split(&secondary), || p.split_lenient(&secondary))
+    else {
         return;
     };
     let time = split.time_code().unwrap();

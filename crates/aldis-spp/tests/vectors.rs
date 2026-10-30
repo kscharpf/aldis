@@ -15,7 +15,8 @@ use core::num::NonZeroUsize;
 
 use aldis_core::counter::Continuity;
 use aldis_core::ids::{Apid, SeqCount};
-use aldis_core::{DecodeMode, Error, FieldId};
+use aldis_core::{AnomalySet, DecodeMode, Error, FieldId};
+use aldis_spp::SppAnomaly;
 #[cfg(feature = "time")]
 use aldis_spp::TimeHeaderLayout;
 use aldis_spp::{
@@ -101,11 +102,22 @@ fn fields(case: &CodecCase) -> PacketFields {
     }
 }
 
-fn anomalies(p: &SpacePacket<'_>) -> Vec<String> {
-    p.anomalies().iter().map(|a| format!("{a:?}")).collect()
+fn anomalies(a: AnomalySet<SppAnomaly>) -> Vec<String> {
+    a.iter().map(|a| format!("{a:?}")).collect()
 }
 
-fn decoded(p: &SpacePacket<'_>) -> Value {
+/// The strict or lenient decode of the case's mode, with its anomalies (API-030).
+fn decode<'a>(
+    case: &CodecCase,
+    bytes: &'a [u8],
+) -> Result<(SpacePacket<'a>, AnomalySet<SppAnomaly>), Error> {
+    mode(case).dispatch(
+        || SpacePacket::decode(bytes),
+        || SpacePacket::decode_lenient(bytes),
+    )
+}
+
+fn decoded(p: &SpacePacket<'_>, found: AnomalySet<SppAnomaly>) -> Value {
     json!({
         "packet_type": match p.packet_type() {
             PacketType::Telemetry => 0,
@@ -121,7 +133,7 @@ fn decoded(p: &SpacePacket<'_>) -> Value {
         "packet_len": p.header().packet_len(),
         "data_hex": hex::encode(p.data_field()),
         "consumed": p.len(),
-        "anomalies": anomalies(p),
+        "anomalies": anomalies(found),
     })
 }
 
@@ -183,13 +195,13 @@ fn decode_stream(case: &CodecCase) -> Value {
     let bytes = input(case);
     let (mut at, mut packets, mut stop) = (0, Vec::new(), Value::Null);
     while at < bytes.len() {
-        match SpacePacket::decode(&bytes[at..], mode(case)) {
-            Ok(p) => {
+        match decode(case, &bytes[at..]) {
+            Ok((p, found)) => {
                 packets.push(json!({
                     "apid": p.apid().get(),
                     "sequence_count": p.sequence_count().get(),
                     "consumed": p.len(),
-                    "anomalies": anomalies(&p),
+                    "anomalies": anomalies(found),
                 }));
                 at += p.len();
             }
@@ -249,7 +261,7 @@ fn reassemble_case(case: &CodecCase) -> Value {
         .iter()
         .map(|h| {
             let bytes = hex::decode(h.as_str().unwrap()).unwrap();
-            let p = SpacePacket::decode(&bytes, DecodeMode::Strict).unwrap();
+            let p = SpacePacket::decode(&bytes).unwrap();
             match ra.push(&p.header(), p.data_field()) {
                 Err(e) => json!({ "error": e.kind().name() }),
                 Ok(o) => {
@@ -321,7 +333,13 @@ fn split_time_case(case: &CodecCase) -> Result<Value, Error> {
         usize::try_from(u64_of(&l["ancillary_len"])).unwrap(),
     )?;
     let bytes = input(case);
-    let s = SpacePacket::decode(&bytes, mode(case))?.split(&SecondaryHeaderLayout::Time(layout))?;
+    let layout = SecondaryHeaderLayout::Time(layout);
+    let s = match mode(case) {
+        DecodeMode::Strict => SpacePacket::decode(&bytes)?.split(&layout)?,
+        DecodeMode::Lenient => SpacePacket::decode_lenient(&bytes)?
+            .split_lenient(&layout)?
+            .into_view(),
+    };
     let t = s.time_code().unwrap();
     let time_code = &s.secondary_header()[..t.len()];
     // The decoded code re-encodes to the received octets (API-020).
@@ -345,7 +363,7 @@ fn run(case: &CodecCase) -> Result<Value, Error> {
     match case.operation.as_str() {
         "decode" => {
             let bytes = input(case);
-            SpacePacket::decode(&bytes, mode(case)).map(|p| decoded(&p))
+            decode(case, &bytes).map(|(p, found)| decoded(&p, found))
         }
         "peek_length" => SpacePacket::peek_length(&input(case)).map(|n| json!({ "len": n })),
         "encode" => encode_case(case),
@@ -388,7 +406,7 @@ fn run(case: &CodecCase) -> Result<Value, Error> {
                     NonZeroUsize::new(usize::try_from(u64_of(v)).unwrap()).unwrap(),
                 ),
             };
-            let s = SpacePacket::decode(&bytes, mode(case))?.split(&layout)?;
+            let s = decode(case, &bytes)?.0.split(&layout)?;
             Ok(json!({
                 "secondary_header_hex": hex::encode(s.secondary_header()),
                 "user_data_hex": hex::encode(s.user_data()),

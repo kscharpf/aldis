@@ -8,7 +8,7 @@ use aldis_core::ids::{SpacecraftId, VcId};
 use aldis_core::layout::{FECF_LEN, FrameLayout, OCF_LEN};
 use aldis_core::ocf::Ocf;
 use aldis_core::security::SecurityLayout;
-use aldis_core::{AnomalySet, DecodeMode, Error, ErrorKind, Result};
+use aldis_core::{AnomalySet, DecodeMode, Error, ErrorKind, Lenient, Result};
 
 use crate::anomaly::{AosAnomaly, Deviations};
 use crate::bpdu::Bpdu;
@@ -75,7 +75,6 @@ pub struct AosFrame<'a> {
     header: AosPrimaryHeader,
     layout: FrameLayout,
     unit: DataUnit<'a>,
-    anomalies: AnomalySet<AosAnomaly>,
 }
 
 impl<'a> AosFrame<'a> {
@@ -97,17 +96,41 @@ impl<'a> AosFrame<'a> {
     ///   (§4.3.5.4, §4.3.6.3);
     /// - `Malformed` (`frame_data_field`) if the fields leave no data octet, or an `M_PDU` or
     ///   `B_PDU` no octet after its header, which a `vcs` built for `pc` never allows (CMN-041);
-    /// - the pointer errors of [`Mpdu::decode`] and [`Bpdu::decode`], in both modes (AOS-017);
-    /// - in strict mode, for the first deviation found: `InvalidField` (`vc_frame_count_cycle`)
+    /// - the pointer errors of [`Mpdu::decode`] and [`Bpdu::decode`] (AOS-017);
+    /// - for the first deviation found: `InvalidField` (`vc_frame_count_cycle`)
     ///   for a cycle other than `0000` with its Use Flag `0` (AOS-012); `ReservedValue`
     ///   (`aos_header_spare`) for Issue 4 bits 42–43 other than `00` (AOS-002); the spare errors
-    ///   of the `M_PDU` and `B_PDU`. Lenient mode reports them as [`AosAnomaly`] flags (API-032).
+    ///   of the `M_PDU` and `B_PDU`. [`decode_lenient`](Self::decode_lenient) reports them as [`AosAnomaly`] flags (API-032).
     pub fn decode<L: VcLookup + ?Sized>(
         bytes: &'a [u8],
         pc: &AosPhysicalChannelConfig,
         vcs: &L,
-        mode: DecodeMode,
     ) -> Result<AosFrame<'a>> {
+        AosFrame::decode_in(bytes, pc, vcs, DecodeMode::Strict).map(|(frame, _)| frame)
+    }
+
+    /// Decodes one frame as [`decode`](Self::decode) does, in lenient mode: the deviations that
+    /// `decode` lists as strict-only errors are accepted and reported as [`AosAnomaly`] flags
+    /// (API-032, GEN-043).
+    ///
+    /// # Errors
+    /// As for [`decode`](Self::decode), except the deviations that are anomalies.
+    pub fn decode_lenient<L: VcLookup + ?Sized>(
+        bytes: &'a [u8],
+        pc: &AosPhysicalChannelConfig,
+        vcs: &L,
+    ) -> Result<Lenient<AosFrame<'a>, AosAnomaly>> {
+        AosFrame::decode_in(bytes, pc, vcs, DecodeMode::Lenient)
+            .map(|(frame, anomalies)| Lenient::new(frame, anomalies))
+    }
+
+    /// The decode of both entry points: the header checks, the channel lookup, and the rest.
+    fn decode_in<L: VcLookup + ?Sized>(
+        bytes: &'a [u8],
+        pc: &AosPhysicalChannelConfig,
+        vcs: &L,
+        mode: DecodeMode,
+    ) -> Result<(AosFrame<'a>, AnomalySet<AosAnomaly>)> {
         let header = AosFrame::check(bytes, pc)?;
         let (content, security, ocf) = if header.is_oid() {
             if !vcs.has_spacecraft(header.scid()) {
@@ -176,7 +199,7 @@ impl<'a> AosFrame<'a> {
         security: SecurityLayout,
         ocf: bool,
         mode: DecodeMode,
-    ) -> Result<AosFrame<'a>> {
+    ) -> Result<(AosFrame<'a>, AnomalySet<AosAnomaly>)> {
         let layout = frame_layout(pc, security, ocf)
             .map_err(|_| Error::new(ErrorKind::Malformed).with_field(field::FRAME_DATA_FIELD))?;
         let mut deviations = Deviations::new(mode);
@@ -214,13 +237,13 @@ impl<'a> AosFrame<'a> {
             DataFieldContent::IdleData => DataUnit::IdleData(data),
         };
         let anomalies = deviations.finish()?;
-        Ok(AosFrame {
+        let frame = AosFrame {
             bytes,
             header,
             layout,
             unit,
-            anomalies,
-        })
+        };
+        Ok((frame, anomalies))
     }
 
     /// The octets of `range`, which lies inside the frame by construction (CMN-040).
@@ -347,13 +370,6 @@ impl<'a> AosFrame<'a> {
     pub const fn is_empty(&self) -> bool {
         false
     }
-
-    /// Lenient-mode anomalies of the header and the data unit; always empty after a strict
-    /// decode (API-032, GEN-043).
-    #[must_use]
-    pub const fn anomalies(&self) -> AnomalySet<AosAnomaly> {
-        self.anomalies
-    }
 }
 
 /// `CrcMismatch` unless the FECF in the last two octets of `bytes` is the CRC of the corrected
@@ -392,10 +408,8 @@ pub(crate) mod tests {
     use aldis_core::crc::write_fecf;
     use aldis_core::ocf::Ocf;
     use aldis_core::security::SecurityLayout;
-    use aldis_core::{AnomalySet, DecodeMode, ErrorDetail, ErrorKind, FieldId, Result};
+    use aldis_core::{AnomalySet, ErrorDetail, ErrorKind, FieldId, Result};
 
-    const STRICT: DecodeMode = DecodeMode::Strict;
-    const LENIENT: DecodeMode = DecodeMode::Lenient;
     const ISSUE5: AosEdition = AosEdition::Issue5;
     const ISSUE4: AosEdition = AosEdition::Issue4Compatible;
 
@@ -415,7 +429,7 @@ pub(crate) mod tests {
         ]
     }
 
-    fn err(r: Result<AosFrame<'_>>) -> (ErrorKind, Option<FieldId>) {
+    fn err<T: core::fmt::Debug>(r: Result<T>) -> (ErrorKind, Option<FieldId>) {
         let e = r.unwrap_err();
         (e.kind(), e.field())
     }
@@ -452,7 +466,7 @@ pub(crate) mod tests {
             0,
             &[0x00, 0x00, 0xD0, 0xD1, 0xD2, 0xD3, 0xD4, 0xD5, 0xD6, 0xD7],
         );
-        let f = AosFrame::decode(&bytes, &phy, &t, STRICT).unwrap();
+        let f = AosFrame::decode(&bytes, &phy, &t).unwrap();
         assert_eq!((f.scid(), f.vcid()), (scid(0x2A5), vcid(5)));
         assert_eq!(f.vc_frame_count().get(), 0x0102);
         assert!(!f.replay_flag() && !f.is_oid());
@@ -480,7 +494,6 @@ pub(crate) mod tests {
             (f.len(), f.is_empty(), f.as_bytes()),
             (16, false, &bytes[..])
         );
-        assert_eq!(f.anomalies(), AnomalySet::empty());
         assert_eq!(f.layout().data(), 6..16);
         assert_eq!(f.header().to_octets()[..6], bytes[..6]);
     }
@@ -491,7 +504,7 @@ pub(crate) mod tests {
         let t = plain();
         let phy = t.physical_channel();
         let bytes = frame(6, 0, &[0x00, 0x09, 0xFF, 0xC0, 0, 0, 0, 0, 0, 0]);
-        let f = AosFrame::decode(&bytes, &phy, &t, STRICT).unwrap();
+        let f = AosFrame::decode(&bytes, &phy, &t).unwrap();
         let DataUnit::Bpdu(b) = f.data_unit() else {
             panic!("a B_PDU")
         };
@@ -508,13 +521,13 @@ pub(crate) mod tests {
             (8, DataFieldContent::IdleData),
         ] {
             let bytes = frame(v, 0, &[0xFF; 10]);
-            let f = AosFrame::decode(&bytes, &phy, &t, STRICT).unwrap();
+            let f = AosFrame::decode(&bytes, &phy, &t).unwrap();
             assert_eq!(f.data_unit().content(), content);
             assert_eq!(f.data_unit().zone(), &bytes[6..]);
         }
         // An OID frame needs only a valid SCID.
         let oid = frame(63, 0, &[0x5A; 10]);
-        let f = AosFrame::decode(&oid, &phy, &t, STRICT).unwrap();
+        let f = AosFrame::decode(&oid, &phy, &t).unwrap();
         assert!(f.is_oid());
         assert_eq!(f.data_unit(), DataUnit::IdleData(&oid[6..]));
     }
@@ -536,13 +549,13 @@ pub(crate) mod tests {
         fhec::write(&mut h);
         good[..8].copy_from_slice(&h);
         write_fecf(&mut good).unwrap();
-        let f = AosFrame::decode(&good, &phy, &t, STRICT).unwrap();
+        let f = AosFrame::decode(&good, &phy, &t).unwrap();
         assert_eq!(
             (f.header().fhec(), f.fecf()),
             (Some(0x3EDF), Some(u16::from_be_bytes([good[22], good[23]])))
         );
         assert_eq!(f.data_field(), &[0x33; 14]);
-        let e = AosFrame::decode(&good[..23], &phy, &t, STRICT).unwrap_err();
+        let e = AosFrame::decode(&good[..23], &phy, &t).unwrap_err();
         assert_eq!(
             (e.kind(), e.field(), e.detail()),
             (
@@ -558,7 +571,7 @@ pub(crate) mod tests {
         let mut two = good;
         two[0] = 0xC0;
         two[5] = 0x07;
-        let f = AosFrame::decode(&two, &phy, &t, STRICT).unwrap();
+        let f = AosFrame::decode(&two, &phy, &t).unwrap();
         assert_eq!(
             (f.corrected_symbols(), f.vcid()),
             (CorrectedSymbols::Two, vcid(1))
@@ -570,14 +583,14 @@ pub(crate) mod tests {
         let mut three = good;
         three[..8].copy_from_slice(&[0x51, 0x11, 0xAB, 0xCD, 0xEF, 0x00, 0x3E, 0xDF]);
         assert_eq!(
-            err(AosFrame::decode(&three, &phy, &t, STRICT)).0,
+            err(AosFrame::decode(&three, &phy, &t)).0,
             ErrorKind::HeaderUncorrectable
         );
         // A data octet hit: the FECF fails.
         let mut data = good;
         data[10] ^= 1;
         assert_eq!(
-            err(AosFrame::decode(&data, &phy, &t, STRICT)),
+            err(AosFrame::decode(&data, &phy, &t)),
             (ErrorKind::CrcMismatch, None)
         );
         // A wrong version under a valid FHEC and FECF.
@@ -588,7 +601,7 @@ pub(crate) mod tests {
         version[..8].copy_from_slice(&h);
         write_fecf(&mut version).unwrap();
         assert_eq!(
-            err(AosFrame::decode(&version, &phy, &t, STRICT)),
+            err(AosFrame::decode(&version, &phy, &t)),
             (ErrorKind::UnsupportedVersion, Some(field::FRAME_VERSION))
         );
     }
@@ -601,17 +614,17 @@ pub(crate) mod tests {
         let mut other_scid = frame(5, 0, &[0; 10]);
         other_scid[0] ^= 0x01;
         assert_eq!(
-            err(AosFrame::decode(&other_scid, &phy, &t, STRICT)),
+            err(AosFrame::decode(&other_scid, &phy, &t)),
             (ErrorKind::UnknownChannel, Some(field::SPACECRAFT_ID))
         );
         assert_eq!(
-            err(AosFrame::decode(&frame(9, 0, &[0; 10]), &phy, &t, LENIENT)),
+            err(AosFrame::decode_lenient(&frame(9, 0, &[0; 10]), &phy, &t)),
             (ErrorKind::UnknownChannel, Some(field::VC_ID))
         );
         let mut oid = frame(63, 0, &[0; 10]);
         oid[0] ^= 0x01;
         assert_eq!(
-            err(AosFrame::decode(&oid, &phy, &t, STRICT)),
+            err(AosFrame::decode(&oid, &phy, &t)),
             (ErrorKind::UnknownChannel, Some(field::SPACECRAFT_ID))
         );
     }
@@ -633,7 +646,7 @@ pub(crate) mod tests {
         bytes.extend([0xD0; 10]);
         bytes.extend([0x5A, 0x01, 0x02, 0x03, 0x04, 0, 0]);
         write_fecf(&mut bytes).unwrap();
-        let f = AosFrame::decode(&bytes, &phy, &t, STRICT).unwrap();
+        let f = AosFrame::decode(&bytes, &phy, &t).unwrap();
         assert_eq!(f.insert_zone(), &[0x1A, 0x1B, 0x1C]);
         assert_eq!(
             (f.security_header(), f.security_trailer()),
@@ -647,7 +660,7 @@ pub(crate) mod tests {
         oid.extend([0x77; 19]);
         oid.extend([0, 0]);
         write_fecf(&mut oid).unwrap();
-        let f = AosFrame::decode(&oid, &phy, &t, STRICT).unwrap();
+        let f = AosFrame::decode(&oid, &phy, &t).unwrap();
         assert_eq!(f.insert_zone(), &[0x1A, 0x1B, 0x1C]);
         assert_eq!((f.data_field(), f.ocf()), (&[0x77; 19][..], None));
         assert!(f.security_header().is_empty() && f.security_trailer().is_empty());
@@ -658,22 +671,29 @@ pub(crate) mod tests {
         // req: AOS-017, API-032
         let t = plain();
         let phy = t.physical_channel();
-        for mode in [STRICT, LENIENT] {
+        for lenient in [false, true] {
+            let decode = |bytes: &[u8]| {
+                if lenient {
+                    AosFrame::decode_lenient(bytes, &phy, &t).map(drop)
+                } else {
+                    AosFrame::decode(bytes, &phy, &t).map(drop)
+                }
+            };
             // Packet Zone of 8 octets: offset 8 is outside; even with the cycle deviation.
             let m = frame(5, 0x03, &[0x00, 0x08, 0, 0, 0, 0, 0, 0, 0, 0]);
             assert_eq!(
-                err(AosFrame::decode(&m, &phy, &t, mode)),
+                err(decode(&m)),
                 (ErrorKind::Malformed, Some(field::FIRST_HEADER_POINTER))
             );
             // Bitstream Data Zone of 64 bits: index 63 is the last bit, 64 outside.
             let b = frame(6, 0, &[0xC0, 63, 0, 0, 0, 0, 0, 0, 0, 0]);
             assert_eq!(
-                err(AosFrame::decode(&b, &phy, &t, mode)),
+                err(decode(&b)),
                 (ErrorKind::InvalidField, Some(field::BITSTREAM_DATA_POINTER))
             );
             let b = frame(6, 0, &[0x00, 64, 0, 0, 0, 0, 0, 0, 0, 0]);
             assert_eq!(
-                err(AosFrame::decode(&b, &phy, &t, mode)),
+                err(decode(&b)),
                 (ErrorKind::Malformed, Some(field::BITSTREAM_DATA_POINTER))
             );
         }
@@ -686,7 +706,7 @@ pub(crate) mod tests {
         let phy = t.physical_channel();
         // Use Flag 0 with cycle 0101.
         let cycle = frame(5, 0x05, &[0xFF, 0xFF, 0, 0, 0, 0, 0, 0, 0, 0]);
-        let e = AosFrame::decode(&cycle, &phy, &t, STRICT).unwrap_err();
+        let e = AosFrame::decode(&cycle, &phy, &t).unwrap_err();
         assert_eq!(
             (e.kind(), e.field(), e.detail()),
             (
@@ -698,7 +718,7 @@ pub(crate) mod tests {
                 }
             )
         );
-        let f = AosFrame::decode(&cycle, &phy, &t, LENIENT).unwrap();
+        let f = AosFrame::decode_lenient(&cycle, &phy, &t).unwrap();
         assert_eq!(
             f.anomalies(),
             AnomalySet::from_flags(&[AosAnomaly::CycleNonZeroWhileUnused])
@@ -709,7 +729,7 @@ pub(crate) mod tests {
         );
         // Use Flag 1: any cycle; replay set.
         let used = frame(5, 0xC5, &[0xFF, 0xFF, 0, 0, 0, 0, 0, 0, 0, 0]);
-        let f = AosFrame::decode(&used, &phy, &t, STRICT).unwrap();
+        let f = AosFrame::decode(&used, &phy, &t).unwrap();
         assert_eq!(
             (f.vc_frame_count_cycle(), f.replay_flag()),
             (FrameCountCycle::new(5), true)
@@ -717,10 +737,10 @@ pub(crate) mod tests {
         // B_PDU spare and the cycle together: strict reports the header's first.
         let both = frame(6, 0x01, &[0x7F, 0xFF, 0, 0, 0, 0, 0, 0, 0, 0]);
         assert_eq!(
-            err(AosFrame::decode(&both, &phy, &t, STRICT)),
+            err(AosFrame::decode(&both, &phy, &t)),
             (ErrorKind::InvalidField, Some(field::VC_FRAME_COUNT_CYCLE))
         );
-        let f = AosFrame::decode(&both, &phy, &t, LENIENT).unwrap();
+        let f = AosFrame::decode_lenient(&both, &phy, &t).unwrap();
         assert_eq!(
             f.anomalies(),
             AnomalySet::from_flags(&[
@@ -730,7 +750,7 @@ pub(crate) mod tests {
         );
         let spare_only = frame(6, 0, &[0x7F, 0xFF, 0, 0, 0, 0, 0, 0, 0, 0]);
         assert_eq!(
-            err(AosFrame::decode(&spare_only, &phy, &t, STRICT)),
+            err(AosFrame::decode(&spare_only, &phy, &t)),
             (ErrorKind::ReservedValue, Some(field::BPDU_SPARE))
         );
     }
@@ -747,7 +767,7 @@ pub(crate) mod tests {
         // SCID 0xA5, bits 42–43 = 00, M_PDU spare 00000, FHP 0x7FE.
         let mut good = hdr(0xA5, 5, 0, 0);
         good.extend([0x07, 0xFE, 1, 2, 3, 4]);
-        let f = AosFrame::decode(&good, &phy, &t, STRICT).unwrap();
+        let f = AosFrame::decode(&good, &phy, &t).unwrap();
         assert_eq!(f.scid(), scid(0xA5));
         let DataUnit::Mpdu(m) = f.data_unit() else {
             panic!("an M_PDU")
@@ -759,7 +779,7 @@ pub(crate) mod tests {
         // Bits 42–43 = 01: in Issue 5 an SCID MSB, in Issue 4 a spare.
         let mut header_spare = good.clone();
         header_spare[5] |= 0x10;
-        let e = AosFrame::decode(&header_spare, &phy, &t, STRICT).unwrap_err();
+        let e = AosFrame::decode(&header_spare, &phy, &t).unwrap_err();
         assert_eq!(
             (e.kind(), e.field(), e.detail()),
             (
@@ -771,7 +791,7 @@ pub(crate) mod tests {
                 }
             )
         );
-        let f = AosFrame::decode(&header_spare, &phy, &t, LENIENT).unwrap();
+        let f = AosFrame::decode_lenient(&header_spare, &phy, &t).unwrap();
         assert_eq!((f.scid(), f.header().issue4_spare()), (scid(0xA5), 1));
         assert_eq!(
             f.anomalies(),
@@ -780,10 +800,10 @@ pub(crate) mod tests {
         let mut mpdu_spare = good.clone();
         mpdu_spare[6] |= 0x08;
         assert_eq!(
-            err(AosFrame::decode(&mpdu_spare, &phy, &t, STRICT)),
+            err(AosFrame::decode(&mpdu_spare, &phy, &t)),
             (ErrorKind::ReservedValue, Some(field::MPDU_SPARE))
         );
-        let f = AosFrame::decode(&mpdu_spare, &phy, &t, LENIENT).unwrap();
+        let f = AosFrame::decode_lenient(&mpdu_spare, &phy, &t).unwrap();
         assert_eq!(
             f.anomalies(),
             AnomalySet::from_flags(&[AosAnomaly::Issue4SpareSet])
@@ -807,14 +827,14 @@ pub(crate) mod tests {
         let mut one = hdr(1, 1, 0, 0);
         one.extend([0; 4]);
         assert_eq!(
-            err(AosFrame::decode(&one, &small, &t, STRICT)),
+            err(AosFrame::decode(&one, &small, &t)),
             (ErrorKind::Malformed, Some(field::FRAME_DATA_FIELD))
         );
         let eleven = pc(12, false, 0, false, ISSUE5);
         let mut two = hdr(1, 2, 0, 0);
         two.extend([0; 6]);
         assert_eq!(
-            err(AosFrame::decode(&two, &eleven, &t, LENIENT)),
+            err(AosFrame::decode_lenient(&two, &eleven, &t)),
             (ErrorKind::Malformed, Some(field::FRAME_DATA_FIELD))
         );
     }

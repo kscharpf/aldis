@@ -5,7 +5,6 @@
 
 // req: TIME-010, TIME-011, TIME-012, TIME-013, API-020, VER-022
 
-use aldis_core::DecodeMode;
 use aldis_time::{
     Cuc, CucEpoch, CucFormat, CucValue, TimeCode, TimeFormat, decode_implicit, decode_with_pfield,
 };
@@ -67,15 +66,9 @@ fn run(u: &mut Unstructured<'_>) -> Result<()> {
     let code = TimeCode::Cuc(Cuc::new(format, CucValue::new(coarse, fine & mask)).unwrap());
     let mut out = [0_u8; 32];
     let n = code.encode(true, &mut out).unwrap();
-    assert_eq!(
-        decode_with_pfield(&out[..n], DecodeMode::Strict)
-            .unwrap()
-            .code(),
-        code
-    );
+    assert_eq!(decode_with_pfield(&out[..n]).unwrap().code(), code);
     let m = code.encode(false, &mut out).unwrap();
-    let implicit =
-        decode_implicit(&out[..m], &TimeFormat::Cuc(format), DecodeMode::Strict).unwrap();
+    let implicit = decode_implicit(&out[..m], &TimeFormat::Cuc(format)).unwrap();
     assert_eq!(implicit.code(), code);
     Ok(())
 }

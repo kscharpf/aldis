@@ -11,12 +11,14 @@ use aldis_core::ids::{SpacecraftId, VcId};
 use aldis_core::ocf::Ocf;
 use aldis_core::oid::OidGenerator;
 use aldis_core::security::{FrameCtx, PreFilledSecurity, SecurityLayout};
-use aldis_core::{DecodeMode, Error, FieldId};
+use aldis_core::{AnomalySet, DecodeMode, Error, FieldId};
 use aldis_testkit::{CodecCase, Mode, Outcome, hex, run_codec_file};
+use aldis_tm::TmAnomaly;
 use aldis_tm::{
     DataFieldContent, DataFieldStatus, FirstHeaderPointer, FshLen, NoSdls, PacketOffset,
     PacketPointer, SegmentLengthId, TmFrame, TmFrameContent, TmFrameFields, TmFrameWriter,
-    TmMasterChannelConfig, TmPhysicalChannelConfig, TmVirtualChannelConfig, encode,
+    TmMasterChannelConfig, TmPhysicalChannelConfig, TmVirtualChannelConfig, UncheckedTmFrame,
+    encode,
 };
 use serde_json::{Map, Value, json};
 
@@ -137,7 +139,7 @@ const fn report(ocf: Ocf) -> &'static str {
 }
 
 /// Every field the view exposes (TV-002).
-fn decoded(f: &TmFrame<'_>) -> Value {
+fn decoded(f: &UncheckedTmFrame<'_>, anomalies: AnomalySet<TmAnomaly>) -> Value {
     let h = f.header();
     let (pointer, offset) = match f.data_field_status() {
         DataFieldStatus::Packets(PacketPointer::StartsAt(n)) => (Some("starts_at"), Some(n.get())),
@@ -167,7 +169,7 @@ fn decoded(f: &TmFrame<'_>) -> Value {
         "ocf_report": f.ocf().map(report),
         "fecf": f.fecf(),
         "consumed": f.len(),
-        "anomalies": f.anomalies().iter().map(|a| format!("{a:?}")).collect::<Vec<_>>(),
+        "anomalies": anomalies.iter().map(|a| format!("{a:?}")).collect::<Vec<_>>(),
     })
 }
 
@@ -258,16 +260,35 @@ fn run(case: &CodecCase) -> Result<Value, Error> {
     match case.operation.as_str() {
         "config" => Ok(json!({})),
         "peek_length" => TmFrame::peek_length(&bytes, &pc).map(|n| json!({ "len": n })),
-        "decode" => TmFrame::decode(&bytes, &pc, mode(case)).map(|f| decoded(&f)),
-        "decode_with" => TmFrame::decode_with(&bytes, &pc, mc(), mode(case)).map(|f| decoded(&f)),
-        "decode_unchecked" => {
-            TmFrame::decode_unchecked(&bytes, &pc, &NoSdls, mode(case)).map(|f| decoded(&f))
-        }
+        "decode" => mode(case)
+            .dispatch(
+                || TmFrame::decode(&bytes, &pc).map(UncheckedTmFrame::from),
+                || TmFrame::decode_lenient(&bytes, &pc).map(|l| l.map(UncheckedTmFrame::from)),
+            )
+            .map(|(f, a)| decoded(&f, a)),
+        "decode_with" => mode(case)
+            .dispatch(
+                || TmFrame::decode_with(&bytes, &pc, mc()).map(UncheckedTmFrame::from),
+                || {
+                    TmFrame::decode_with_lenient(&bytes, &pc, mc())
+                        .map(|l| l.map(UncheckedTmFrame::from))
+                },
+            )
+            .map(|(f, a)| decoded(&f, a)),
+        "decode_unchecked" => mode(case)
+            .dispatch(
+                || TmFrame::decode_unchecked(&bytes, &pc, &NoSdls),
+                || TmFrame::decode_unchecked_lenient(&bytes, &pc, &NoSdls),
+            )
+            .map(|(f, a)| decoded(&f, a)),
         // Decoded with the master channel's security layouts, which it is checked against
         // (c-abi.md §11).
         "validate" => {
-            let f = TmFrame::decode_with(&bytes, &pc, mc(), mode(case))?;
-            f.validate(mc()).map(|()| json!({}))
+            let (f, _) = mode(case).dispatch(
+                || TmFrame::decode_with(&bytes, &pc, mc()),
+                || TmFrame::decode_with_lenient(&bytes, &pc, mc()),
+            )?;
+            f.validate(mc()).map(|_| json!({}))
         }
         "encode" => encode_case(case, mc()),
         "encode_oid" => encode_oid(case, mc()),

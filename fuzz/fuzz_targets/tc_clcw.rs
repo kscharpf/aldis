@@ -18,7 +18,7 @@ fuzz_target!(|data: &[u8]| {
     let bits = |first: u32, width: u32| (w >> (32 - first - width)) & ((1 << width) - 1);
     let spares = bits(14, 2) != 0 || bits(23, 1) != 0;
     for mode in [DecodeMode::Strict, DecodeMode::Lenient] {
-        let r = Clcw::decode(word, mode);
+        let r = mode.dispatch(|| Clcw::decode(word), || Clcw::decode_lenient(word));
         if bits(0, 1) == 1 {
             assert_eq!(r.unwrap_err().kind(), ErrorKind::InvalidField);
         } else if bits(1, 2) != 0 {
@@ -45,10 +45,7 @@ fuzz_target!(|data: &[u8]| {
             assert_eq!(u32::from(c.farm_b_counter.get()), bits(21, 2));
             assert_eq!(u32::from(c.report_value.get()), bits(24, 8));
             assert_eq!(c.to_word(), w & !0x0003_0100);
-            assert_eq!(
-                Clcw::decode(c.to_octets(), DecodeMode::Strict).unwrap().0,
-                c
-            );
+            assert_eq!(Clcw::decode(c.to_octets()).unwrap(), c);
         }
     }
 });

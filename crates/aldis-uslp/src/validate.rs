@@ -7,8 +7,11 @@
 //! the same code as [`UslpFrame::decode`] and reports each failure with a [`Reason`] whose
 //! numeric code is stable (`docs/standards/uslp-frame.md` §3.1).
 
-use aldis_core::{DecodeMode, Error};
+use core::ops::Deref;
 
+use aldis_core::{DecodeMode, Error, Lenient};
+
+use crate::anomaly::UslpAnomaly;
 use crate::config::VcLookup;
 use crate::view::{UslpFrame, parse};
 
@@ -155,25 +158,67 @@ impl From<Rejection> for Error {
     }
 }
 
+/// A frame that passed the USLP Frame Validation Checks (732.1 §4.3.11.3; USLP-014, API-016).
+///
+/// [`validate_frame`] returns it. It dereferences to the [`UslpFrame`]; holding one is the proof
+/// that the octets were exactly one frame and passed tests a–e (RS-023 `Checked`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ValidatedUslpFrame<'a> {
+    frame: UslpFrame<'a>,
+}
+
+impl<'a> ValidatedUslpFrame<'a> {
+    /// The frame that exact-length parsing returned.
+    pub(crate) const fn new(frame: UslpFrame<'a>) -> ValidatedUslpFrame<'a> {
+        ValidatedUslpFrame { frame }
+    }
+
+    /// The frame, without the proof.
+    #[must_use]
+    pub const fn into_frame(self) -> UslpFrame<'a> {
+        self.frame
+    }
+}
+
+impl<'a> Deref for ValidatedUslpFrame<'a> {
+    type Target = UslpFrame<'a>;
+
+    fn deref(&self) -> &UslpFrame<'a> {
+        &self.frame
+    }
+}
+
 /// Applies the USLP Frame Validation Checks to `frame`, the octets of exactly one frame (732.1
-/// §4.3.11.3; USLP-014).
+/// §4.3.11.3; USLP-014, API-016), in strict mode.
 ///
 /// The checks run in the order of `docs/standards/uslp-frame.md` §3.1: (a) the TFVN; (b) the
-/// SCID; (c) the flags, the Reserve Spares (strict mode), the VCID and MAP ID, a truncated frame
+/// SCID; (c) the flags, the Reserve Spares, the VCID and MAP ID, a truncated frame
 /// on its VC, the VCF Count Length, the OCF Flag, and the Frame Length against the channel;
 /// (d) the octets present against the Frame Length, or a truncated frame's against its VC's
-/// truncated frame length; (e) the FECF; then the TFDF Header's rule and pointer and, in strict
-/// mode, the OID header. A frame that passes is returned decoded, with the anomalies a lenient
-/// mode tolerated.
+/// truncated frame length; (e) the FECF; then the TFDF Header's rule and pointer and the OID
+/// header. A frame that passes is returned as a [`ValidatedUslpFrame`].
 ///
 /// # Errors
 /// The first check that fails, as a [`Rejection`].
 pub fn validate_frame<'a, L: VcLookup + ?Sized>(
     frame: &'a [u8],
     channels: &L,
-    mode: DecodeMode,
-) -> Result<UslpFrame<'a>, Rejection> {
-    parse(frame, channels, mode, true).map(|(f, _, _)| f)
+) -> Result<ValidatedUslpFrame<'a>, Rejection> {
+    parse(frame, channels, DecodeMode::Strict, true).map(|p| ValidatedUslpFrame::new(p.frame))
+}
+
+/// Applies the checks of [`validate_frame`] in lenient mode: nonzero Reserve Spares and a
+/// deviating OID header are tolerated and reported as [`UslpAnomaly`] flags (USLP-014,
+/// API-016, API-032).
+///
+/// # Errors
+/// The first check that fails, as a [`Rejection`].
+pub fn validate_frame_lenient<'a, L: VcLookup + ?Sized>(
+    frame: &'a [u8],
+    channels: &L,
+) -> Result<Lenient<ValidatedUslpFrame<'a>, UslpAnomaly>, Rejection> {
+    parse(frame, channels, DecodeMode::Lenient, true)
+        .map(|p| Lenient::new(ValidatedUslpFrame::new(p.frame), p.anomalies))
 }
 
 #[cfg(test)]
@@ -182,7 +227,7 @@ mod tests {
     use super::{Reason, Rejection, validate_frame};
     use crate::config::tests::variable;
     use crate::field;
-    use aldis_core::{DecodeMode, Error, ErrorKind};
+    use aldis_core::{Error, ErrorKind};
 
     #[test]
     fn reason_codes_are_stable() {
@@ -200,7 +245,7 @@ mod tests {
     fn rejections_carry_reason_and_error() {
         // req: USLP-014, GEN-041
         let t = variable();
-        let r = validate_frame(&[0xC1, 0x55], &t, DecodeMode::Strict).unwrap_err();
+        let r = validate_frame(&[0xC1, 0x55], &t).unwrap_err();
         assert_eq!(r.reason(), Reason::LengthMismatch);
         assert_eq!(
             (r.error().kind(), r.error().field()),

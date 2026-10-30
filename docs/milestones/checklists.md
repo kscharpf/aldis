@@ -28,7 +28,7 @@ A crate *has code* once its `src/` declares a function. In the change that gives
 - [ ] A `README.md` in the crate, linked from the root `README.md` **(consistency)**, and the crate named in the root `README.md` status.
 - [ ] A facade feature in `crates/aldis/Cargo.toml` that enables it, its `alloc` and `std` forwarded, and the feature in `full` **(consistency)**; the facade docs list it (RS-015).
 - [ ] Fuzz crate dependency in `fuzz/Cargo.toml` when it gets a target (below).
-- [ ] The records of VER-010, VER-024, VER-025, and GEN-006 in [`docs/verification/records/`](../verification/records/) name the crate.
+- [ ] The records of VER-010 and VER-025 in [`docs/verification/records/`](../verification/records/) name the crate, and the crate lists of the `coverage` and `features` checks include it.
 
 ## Adding a vector file
 
@@ -47,7 +47,7 @@ A crate *has code* once its `src/` declares a function. In the change that gives
 - [ ] A `[[bin]]` in `fuzz/Cargo.toml` and the target in `fuzz/fuzz_targets/`, asserting no panic, `decode(encode(x)) == x` for accepted inputs, and no state change on rejected inputs (VER-022, GEN-042); against an independent model where one exists.
 - [ ] The target in the nightly `fuzz` matrix of `.github/workflows/nightly.yml` **(consistency)**.
 - [ ] The fuzz crate still builds on stable: `cargo clippy --manifest-path fuzz/Cargo.toml --all-targets` (RS-002).
-- [ ] The target and what it asserts added to [`records/VER-022.md`](../verification/records/VER-022.md).
+- [ ] The target named in [`records/VER-022.md`](../verification/records/VER-022.md).
 - [ ] At least one CPU-hour per target before the release (VER-022; `nightly.yml` with `fuzz-seconds`).
 
 ## Adding C ABI functions

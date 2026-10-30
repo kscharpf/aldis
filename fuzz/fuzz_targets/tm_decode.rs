@@ -6,12 +6,13 @@
 
 // req: GEN-020, API-010, API-012, API-013, API-020, API-030, API-032, TM-001, TM-005, TM-008, TM-011, VER-022
 
+use aldis_core::ErrorKind;
 use aldis_core::ids::{SpacecraftId, VcId};
 use aldis_core::security::SecurityLayout;
-use aldis_core::{DecodeMode, ErrorKind};
 use aldis_tm::{
     DataFieldContent, DataFieldStatus, FshLen, PacketPointer, TmFrame, TmFrameContent,
-    TmFrameFields, TmMasterChannelConfig, TmPhysicalChannelConfig, TmVirtualChannelConfig, encode,
+    TmFrameFields, TmMasterChannelConfig, TmPhysicalChannelConfig, TmVirtualChannelConfig,
+    UncheckedTmFrame, encode,
 };
 use libfuzzer_sys::arbitrary::{Result, Unstructured};
 use libfuzzer_sys::fuzz_target;
@@ -63,10 +64,13 @@ fn run(u: &mut Unstructured<'_>) -> Result<()> {
         u.int_in_range(0..=320)?
     };
     let bytes = u.bytes(len.min(u.len()))?;
-    let strict = TmFrame::decode_with(bytes, pc, &mc, DecodeMode::Strict);
-    let lenient = TmFrame::decode_with(bytes, pc, &mc, DecodeMode::Lenient);
+    let strict = TmFrame::decode_with(bytes, pc, &mc);
+    let lenient = TmFrame::decode_with_lenient(bytes, pc, &mc);
     match (&strict, &lenient) {
-        (Ok(s), Ok(l)) => assert_eq!(s, l),
+        (Ok(s), Ok(l)) => {
+            assert!(l.anomalies().is_empty());
+            assert_eq!(s, &**l);
+        }
         (Ok(_), Err(e)) => panic!("lenient rejected a strict frame: {e}"),
         (Err(s), Ok(l)) => {
             assert!(matches!(
@@ -81,8 +85,8 @@ fn run(u: &mut Unstructured<'_>) -> Result<()> {
     if let Ok(f) = &lenient {
         assert_eq!(peek, Ok(f.len()));
         assert_eq!(
-            TmFrame::decode_unchecked(bytes, pc, &mc, DecodeMode::Lenient).as_ref(),
-            Ok(f)
+            TmFrame::decode_unchecked_lenient(bytes, pc, &mc).map(aldis_core::Lenient::into_view),
+            Ok(UncheckedTmFrame::from(f.clone().into_view()))
         );
         let mut at = 0;
         for range in f.layout().ranges() {
@@ -96,9 +100,8 @@ fn run(u: &mut Unstructured<'_>) -> Result<()> {
         }
     }
     if let Ok(f) = strict
-        && f.validate(&mc).is_ok()
+        && let Ok(f) = f.validate(&mc)
     {
-        assert!(f.anomalies().is_empty());
         let fields = TmFrameFields::new(
             f.vcid(),
             f.mc_frame_count(),

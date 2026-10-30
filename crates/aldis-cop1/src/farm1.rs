@@ -42,7 +42,8 @@ use aldis_core::ids::FrameSeqNum;
 use aldis_core::time::Instant;
 use aldis_core::{Error, ErrorKind, Result, field};
 use aldis_tc::{
-    Clcw, ClcwStatus, ControlCommand, CopInEffect, FarmBCounter, FrameType, TcFrame, TcVcId,
+    Clcw, ClcwStatus, ControlCommand, CopInEffect, FarmBCounter, FrameType, TcVcId,
+    ValidatedTcFrame,
 };
 
 use crate::actions::{Actions, OutRange};
@@ -246,12 +247,16 @@ pub enum Farm1Frame<'a> {
 }
 
 impl<'a> Farm1Frame<'a> {
-    /// The frame FARM-1 reads from a validated TC frame (232.0 §4.1.2.3; COP-031).
+    /// The frame FARM-1 reads from a validated TC frame (232.0 §4.1.2.3; COP-031, API-016).
+    ///
+    /// It takes a [`ValidatedTcFrame`], so that TC-023 (every frame is validated before any
+    /// FARM-1 processing) cannot be skipped by passing a frame from `TcFrame::decode`.
     ///
     /// A Type-BC frame whose Control Command the decoder did not recognise, which only lenient
     /// decoding passes, has `command: None`.
     #[must_use]
-    pub const fn from_tc(frame: &TcFrame<'a>) -> Farm1Frame<'a> {
+    pub const fn from_tc(validated: &ValidatedTcFrame<'a>) -> Farm1Frame<'a> {
+        let frame = validated.as_frame();
         match frame.frame_type() {
             FrameType::Ad => Farm1Frame::Ad {
                 sequence_number: frame.sequence_number(),

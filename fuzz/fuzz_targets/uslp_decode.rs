@@ -8,14 +8,14 @@
 
 // req: USLP-001, USLP-002, USLP-003, USLP-004, USLP-005, USLP-006, USLP-014, USLP-015, USLP-016, API-020, GEN-020, GEN-042, VER-022
 
+use aldis_core::ErrorKind;
 use aldis_core::crc::crc16;
 use aldis_core::security::{FrameCtx, PreFilledSecurity, SecurityLayout};
-use aldis_core::{DecodeMode, ErrorKind};
 use aldis_uslp::{
     Delimited, FrameContent, FrameFields, MapConfig, OcfUse, PhysicalChannelConfig, SecurityScope,
     TransferFrameType, TruncatedFrameLen, UslpFrame, UslpFrameWriter, UslpMapId, UslpSpacecraftId,
     UslpVcId, VcConfig, VcParams, VcTable, VcfCountLen, encode_truncated, next_frame,
-    validate_frame,
+    validate_frame_lenient,
 };
 use libfuzzer_sys::arbitrary::{Result, Unstructured};
 use libfuzzer_sys::fuzz_target;
@@ -181,32 +181,29 @@ fn run(u: &mut Unstructured<'_>) -> Result<()> {
         }
     }
     let input = bytes.clone();
-    let strict = UslpFrame::decode(&bytes, &table, DecodeMode::Strict);
-    let lenient = UslpFrame::decode(&bytes, &table, DecodeMode::Lenient);
+    let strict = UslpFrame::decode(&bytes, &table);
+    let lenient = UslpFrame::decode_lenient(&bytes, &table);
     assert_eq!(bytes, input, "decode changed its input");
     if let Ok(s) = &strict {
-        assert!(s.anomalies().is_empty());
         let l = lenient.as_ref().unwrap();
+        assert!(l.anomalies().is_empty());
         assert_eq!((s.octets(), s.tfdz()), (l.octets(), l.tfdz()));
     }
     match &lenient {
         Ok(f) => {
             assert_eq!(f.octets(), &bytes[..f.len()]);
             assert_eq!(UslpFrame::peek_length(&bytes, &table), Ok(f.len()));
-            let v = validate_frame(f.octets(), &table, DecodeMode::Lenient).unwrap();
-            assert_eq!(&v, f);
+            let v = validate_frame_lenient(f.octets(), &table).unwrap();
+            assert_eq!(&**v, &**f);
             if f.len() < bytes.len() {
-                assert!(validate_frame(&bytes, &table, DecodeMode::Lenient).is_err());
+                assert!(validate_frame_lenient(&bytes, &table).is_err());
             }
             assert!(
                 matches!(next_frame(&bytes, &table), Some(Delimited::Frame(d)) if d == f.octets())
             );
         }
         Err(e) => {
-            assert!(
-                validate_frame(&bytes, &table, DecodeMode::Lenient).is_err(),
-                "{e:?}"
-            );
+            assert!(validate_frame_lenient(&bytes, &table).is_err(), "{e:?}");
             if e.kind() == ErrorKind::Incomplete
                 && let Ok(n) = UslpFrame::peek_length(&bytes, &table)
             {

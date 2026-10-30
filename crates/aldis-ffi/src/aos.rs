@@ -34,16 +34,16 @@ use aldis::aos::fhec;
 use aldis::aos::header::{FHEC_LEN, PRIMARY_HEADER_LEN};
 use aldis::aos::mpdu::MPDU_HEADER_LEN;
 use aldis::aos::{
-    AosEdition, AosFrame, AosFrameContent, AosFrameFields, AosPhysicalChannelConfig,
+    AosAnomaly, AosEdition, AosFrame, AosFrameContent, AosFrameFields, AosPhysicalChannelConfig,
     AosPrimaryHeader, AosVirtualChannelConfig, BitstreamPointer, Bpdu, DataFieldContent, DataUnit,
     FrameCountCycle, Mpdu, PacketOffset, PacketPointer, PduHeader, ValidBitCount, VcFrameCount,
     VcTable, encode, encode_oid, encode_oid_galois,
 };
-use aldis::core::Result;
 use aldis::core::ids::{SpacecraftId, VcId};
 use aldis::core::layout::{FrameLayout, OCF_LEN};
 use aldis::core::ocf::Ocf;
 use aldis::core::security::SecurityLayout;
+use aldis::core::{AnomalySet, Result};
 
 use crate::abi::{self, Configs, invalid_argument};
 use crate::mirror::{mirror, parse};
@@ -619,7 +619,11 @@ fn mpdu(m: &Mpdu<'_>) -> aldis_aos_pdu_t {
         pointer_value,
         pointer_raw: m.first_header_pointer(),
         spare: m.issue4_spare(),
-        anomalies: m.anomalies().bits(),
+        anomalies: if m.issue4_spare() == 0 {
+            0
+        } else {
+            AnomalySet::from_flags(&[AosAnomaly::Issue4SpareSet]).bits()
+        },
     }
 }
 
@@ -636,7 +640,11 @@ fn bpdu(b: &Bpdu<'_>) -> aldis_aos_pdu_t {
         pointer_value,
         pointer_raw: b.bitstream_data_pointer(),
         spare: b.spare(),
-        anomalies: b.anomalies().bits(),
+        anomalies: if b.spare() == 0 {
+            0
+        } else {
+            AnomalySet::from_flags(&[AosAnomaly::BpduSpareSet]).bits()
+        },
     }
 }
 
@@ -677,7 +685,7 @@ fn layout(l: &FrameLayout, pdu_header_len: usize) -> aldis_aos_layout_t {
 }
 
 /// The C view of a decoded frame.
-pub(crate) fn view(f: &AosFrame<'_>) -> aldis_aos_frame_t {
+pub(crate) fn view(f: &AosFrame<'_>, anomalies: AnomalySet<AosAnomaly>) -> aldis_aos_frame_t {
     let (pdu, header_len) = match f.data_unit() {
         DataUnit::Mpdu(m) => (mpdu(&m), MPDU_HEADER_LEN),
         DataUnit::Bpdu(b) => (bpdu(&b), BPDU_HEADER_LEN),
@@ -689,7 +697,7 @@ pub(crate) fn view(f: &AosFrame<'_>) -> aldis_aos_frame_t {
         pdu,
         has_fecf: f.fecf().is_some(),
         fecf: f.fecf().unwrap_or(0),
-        anomalies: f.anomalies().bits(),
+        anomalies: anomalies.bits(),
         layout: layout(f.layout(), header_len),
     }
 }
@@ -956,7 +964,11 @@ pub unsafe extern "C" fn aldis_aos_decode(
             let bytes = abi::bytes(bytes, len)?;
             let mode = abi::mode(mode)?;
             let out = abi::out(out)?;
-            out.write(view(&AosFrame::decode(bytes, &m.pc, &m.vcs, mode)?));
+            let (frame, anomalies) = mode.dispatch(
+                || AosFrame::decode(bytes, &m.pc, &m.vcs),
+                || AosFrame::decode_lenient(bytes, &m.pc, &m.vcs),
+            )?;
+            out.write(view(&frame, anomalies));
             Ok(())
         })
     }
@@ -997,7 +1009,11 @@ pub unsafe extern "C" fn aldis_aos_mpdu_decode(
             let edition = self::edition(edition)?;
             let mode = abi::mode(mode)?;
             let out = abi::out(out)?;
-            out.write(mpdu(&Mpdu::decode(field, edition, mode)?));
+            let (unit, _) = mode.dispatch(
+                || Mpdu::decode(field, edition),
+                || Mpdu::decode_lenient(field, edition),
+            )?;
+            out.write(mpdu(&unit));
             Ok(())
         })
     }
@@ -1036,7 +1052,9 @@ pub unsafe extern "C" fn aldis_aos_bpdu_decode(
             let field = abi::bytes(field, len)?;
             let mode = abi::mode(mode)?;
             let out = abi::out(out)?;
-            out.write(bpdu(&Bpdu::decode(field, mode)?));
+            let (unit, _) =
+                mode.dispatch(|| Bpdu::decode(field), || Bpdu::decode_lenient(field))?;
+            out.write(bpdu(&unit));
             Ok(())
         })
     }

@@ -8,13 +8,14 @@
 
 use core::num::NonZeroUsize;
 
-use aldis::core::Result;
 use aldis::core::ids::{Apid, SeqCount};
+use aldis::core::{AnomalySet, DecodeMode, Result};
 use aldis::spp::{
     IdlePacket, OctetStringEncoder, PRIMARY_HEADER_LEN, PacketFields, PacketType,
-    SecondaryHeaderLayout, SequenceCounter, SequenceFlags, SpacePacket, SppConfig,
-    TimeHeaderLayout, encode,
+    SecondaryHeaderLayout, SequenceCounter, SequenceFlags, SpacePacket, SplitPacket, SppAnomaly,
+    SppConfig, TimeHeaderLayout, encode,
 };
+use aldis::time::TimeAnomaly;
 
 use crate::abi::{self, Out, invalid_argument};
 use crate::mirror::{mirror, parse};
@@ -214,7 +215,7 @@ pub(crate) fn fields(f: aldis_spp_fields_t) -> Result<PacketFields> {
 }
 
 /// The C view of a decoded packet.
-pub(crate) fn view(p: &SpacePacket<'_>) -> aldis_spp_packet_t {
+pub(crate) fn view(p: &SpacePacket<'_>, anomalies: AnomalySet<SppAnomaly>) -> aldis_spp_packet_t {
     let header = p.header();
     aldis_spp_packet_t {
         fields: aldis_spp_fields_t {
@@ -225,7 +226,7 @@ pub(crate) fn view(p: &SpacePacket<'_>) -> aldis_spp_packet_t {
         },
         secondary_header_flag: p.has_secondary_header(),
         idle: p.is_idle(),
-        anomalies: p.anomalies().bits(),
+        anomalies: anomalies.bits(),
         data: aldis_range_t {
             offset: PRIMARY_HEADER_LEN,
             len: header.data_len(),
@@ -253,9 +254,29 @@ pub(crate) fn layout(l: &aldis_spp_secondary_layout_t) -> Result<SecondaryHeader
     }
 }
 
+/// Decodes the packet in the given mode, with its anomalies.
+pub(crate) fn packet(
+    bytes: &[u8],
+    mode: DecodeMode,
+) -> Result<(SpacePacket<'_>, AnomalySet<SppAnomaly>)> {
+    mode.dispatch(
+        || SpacePacket::decode(bytes),
+        || SpacePacket::decode_lenient(bytes),
+    )
+}
+
+/// Splits the data field of `p` in the given mode, with the anomalies of its time code (SPP-008).
+pub(crate) fn split_by<'a>(
+    p: &SpacePacket<'a>,
+    mode: DecodeMode,
+    layout: &SecondaryHeaderLayout,
+) -> Result<(SplitPacket<'a>, AnomalySet<TimeAnomaly>)> {
+    mode.dispatch(|| p.split(layout), || p.split_lenient(layout))
+}
+
 fn decode(bytes: &[u8], mode: u32, out: Out<'_, aldis_spp_packet_t>) -> Result<()> {
-    let p = SpacePacket::decode(bytes, abi::mode(mode)?)?;
-    out.write(view(&p));
+    let (p, anomalies) = packet(bytes, abi::mode(mode)?)?;
+    out.write(view(&p, anomalies));
     Ok(())
 }
 
@@ -266,8 +287,9 @@ fn split(
     out: Out<'_, aldis_spp_split_t>,
 ) -> Result<()> {
     let layout = self::layout(layout)?;
-    let p = SpacePacket::decode(bytes, abi::mode(mode)?)?;
-    let s = p.split(&layout)?;
+    let mode = abi::mode(mode)?;
+    let (p, _) = packet(bytes, mode)?;
+    let (s, time_anomalies) = split_by(&p, mode, &layout)?;
     let time = s.time_code();
     let secondary_len = s.secondary_header().len();
     let end = PRIMARY_HEADER_LEN.saturating_add(secondary_len);
@@ -286,7 +308,9 @@ fn split(
             len: ancillary_len,
         },
         has_time: time.is_some(),
-        time: time.map(|t| decoded(&t)).unwrap_or_default(),
+        time: time
+            .map(|t| decoded(&t, time_anomalies))
+            .unwrap_or_default(),
     });
     Ok(())
 }

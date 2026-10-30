@@ -6,7 +6,6 @@
 
 // req: SPP-013, GEN-020, VER-022
 
-use aldis_core::DecodeMode;
 use aldis_core::ids::{Apid, SeqCount};
 use aldis_spp::{
     Discard, PacketType, Reassembler, Segmenter, SequenceCounter, SpacePacket, SppConfig, Status,
@@ -45,7 +44,7 @@ fn run(input: &mut Unstructured<'_>) -> Result<()> {
     let mut ra = Reassembler::new(apid, &mut buf);
     let mut last = None;
     for raw in &packets {
-        let p = SpacePacket::decode(raw, DecodeMode::Strict).unwrap();
+        let p = SpacePacket::decode(raw).unwrap();
         last = Some(ra.push(&p.header(), p.data_field()).unwrap());
     }
     let last = last.unwrap();
@@ -63,7 +62,7 @@ fn run(input: &mut Unstructured<'_>) -> Result<()> {
         let Some(raw) = packets.get(usize::from(input.arbitrary::<u8>()?) % packets.len()) else {
             break;
         };
-        let p = SpacePacket::decode(raw, DecodeMode::Strict).unwrap();
+        let p = SpacePacket::decode(raw).unwrap();
         let outcome = ra.push(&p.header(), p.data_field()).unwrap();
         match outcome.status {
             Status::Complete(n) => assert!(n <= cap && ra.sdu().len() == n && !ra.is_assembling()),

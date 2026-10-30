@@ -43,7 +43,7 @@ use aldis_aos::{
 };
 use aldis_core::ids::{SpacecraftId, VcId};
 use aldis_core::ocf::Ocf;
-use aldis_core::{DecodeMode, ErrorKind};
+use aldis_core::{DecodeMode, ErrorKind, Lenient};
 use aldis_testkit::bitflip::{
     CRC16_DOUBLE_BIT_BITS, CRC16_DOUBLE_BIT_OCTETS, each_bit, each_double, each_pair, each_single,
     filler, find_double, find_single, flip, sampled_bits, sampled_pairs,
@@ -68,7 +68,12 @@ impl Frame {
     }
 
     fn decode<'a>(&self, bytes: &'a [u8], mode: DecodeMode) -> aldis_core::Result<AosFrame<'a>> {
-        AosFrame::decode(bytes, &self.pc(), &self.table, mode)
+        match mode {
+            DecodeMode::Strict => AosFrame::decode(bytes, &self.pc(), &self.table),
+            DecodeMode::Lenient => {
+                AosFrame::decode_lenient(bytes, &self.pc(), &self.table).map(Lenient::into_view)
+            }
+        }
     }
 
     /// Whether bit `bit` is in one of the FHEC's symbols: header bits 0–15 and 40–63, when the

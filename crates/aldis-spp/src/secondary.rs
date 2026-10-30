@@ -7,9 +7,14 @@
 
 use core::num::NonZeroUsize;
 
+#[cfg(feature = "time")]
+use aldis_core::{AnomalySet, Lenient};
 use aldis_core::{DecodeMode, Error, ErrorDetail, ErrorKind, Result};
 #[cfg(feature = "time")]
-use aldis_time::{Decoded, PField, TimeFormat, decode_implicit, decode_with_pfield};
+use aldis_time::{
+    Decoded, PField, TimeAnomaly, TimeFormat, decode_implicit, decode_implicit_lenient,
+    decode_with_pfield, decode_with_pfield_lenient,
+};
 
 use crate::field;
 use crate::header::{invalid, len_u64};
@@ -96,7 +101,7 @@ impl TimeHeaderLayout {
     }
 
     /// Decodes the Time Code Field at the start of `data` (SPP-008, OI-30).
-    fn decode(&self, data: &[u8], mode: DecodeMode) -> Result<Decoded> {
+    fn decode(&self, data: &[u8], mode: DecodeMode) -> Result<(Decoded, AnomalySet<TimeAnomaly>)> {
         // `needed` counts the time code only; the Ancillary Data Field follows it.
         let short = |e: Error| match (e.kind(), e.detail()) {
             (ErrorKind::Incomplete, ErrorDetail::Needed(needed)) => {
@@ -105,7 +110,12 @@ impl TimeHeaderLayout {
             _ => e,
         };
         if !self.pfield {
-            return decode_implicit(data, &self.format, mode).map_err(short);
+            return mode
+                .dispatch(
+                    || decode_implicit(data, &self.format),
+                    || decode_implicit_lenient(data, &self.format),
+                )
+                .map_err(short);
         }
         // The characteristics may change, the code may not (133.0 §4.1.4.2.2.3–4).
         let id = PField::parse(data).map_err(short)?.id();
@@ -118,13 +128,33 @@ impl TimeHeaderLayout {
                 }),
             );
         }
-        decode_with_pfield(data, mode).map_err(short)
+        mode.dispatch(
+            || decode_with_pfield(data),
+            || decode_with_pfield_lenient(data),
+        )
+        .map_err(short)
     }
 }
 
+/// The anomalies a split reports: those of the time code, or none without the `time` feature.
+#[cfg(feature = "time")]
+type Found = AnomalySet<TimeAnomaly>;
+/// The anomalies a split reports: those of the time code, or none without the `time` feature.
+#[cfg(not(feature = "time"))]
+type Found = ();
+
+/// No anomalies.
+#[cfg(feature = "time")]
+const fn no_anomalies() -> Found {
+    AnomalySet::empty()
+}
+/// No anomalies.
+#[cfg(not(feature = "time"))]
+const fn no_anomalies() -> Found {}
+
 impl SecondaryHeaderLayout {
     /// Splits a Packet Data Field whose Secondary Header Flag is `flag`; a time code is decoded
-    /// under `mode` (SPP-007, SPP-008).
+    /// in strict mode (SPP-007, SPP-008).
     ///
     /// # Errors
     /// - `InvalidField` (`secondary_header_flag`) if the flag disagrees with the layout: set
@@ -134,16 +164,32 @@ impl SecondaryHeaderLayout {
     ///   including a time code cut off inside its P-field or T-field.
     /// - With a time layout: `InvalidField` (`time_code_id`) for a P-field with another time
     ///   code ID, and the other errors of the time code decoder.
+    pub(crate) fn split(self, flag: bool, data: &[u8]) -> Result<SplitPacket<'_>> {
+        self.split_in(flag, data, DecodeMode::Strict)
+            .map(|found| found.0)
+    }
+
+    /// As [`split`](Self::split), decoding a time code in lenient mode (API-032).
+    #[cfg(feature = "time")]
+    pub(crate) fn split_lenient(
+        self,
+        flag: bool,
+        data: &[u8],
+    ) -> Result<Lenient<SplitPacket<'_>, TimeAnomaly>> {
+        self.split_in(flag, data, DecodeMode::Lenient)
+            .map(|(split, anomalies)| Lenient::new(split, anomalies))
+    }
+
     #[cfg_attr(
         not(feature = "time"),
         expect(unused_variables, reason = "`mode` is used only to decode a time code")
     )]
-    pub(crate) fn split(
+    fn split_in(
         self,
         flag: bool,
         data: &[u8],
         mode: DecodeMode,
-    ) -> Result<SplitPacket<'_>> {
+    ) -> Result<(SplitPacket<'_>, Found)> {
         let present = !matches!(self, SecondaryHeaderLayout::Absent);
         if flag != present {
             return Err(invalid(field::SECONDARY_HEADER_FLAG));
@@ -153,7 +199,7 @@ impl SecondaryHeaderLayout {
             SecondaryHeaderLayout::Opaque(len) => (len.get(), 0),
             #[cfg(feature = "time")]
             SecondaryHeaderLayout::Time(time) => {
-                let decoded = time.decode(data, mode)?;
+                let (decoded, found) = time.decode(data, mode)?;
                 let time_len = decoded.len();
                 let (secondary_header, user_data) = data
                     .split_at_checked(time_len.saturating_add(time.ancillary_len))
@@ -161,24 +207,26 @@ impl SecondaryHeaderLayout {
                         time_len.saturating_add(time.ancillary_len),
                         data.len(),
                     ))?;
-                return Ok(SplitPacket {
+                let split = SplitPacket {
                     secondary_header,
                     user_data,
                     time_len,
                     time: Some(decoded),
-                });
+                };
+                return Ok((split, found));
             }
         };
         let (secondary_header, user_data) = data
             .split_at_checked(len)
             .ok_or(too_short(len, data.len()))?;
-        Ok(SplitPacket {
+        let split = SplitPacket {
             secondary_header,
             user_data,
             time_len,
             #[cfg(feature = "time")]
             time: None,
-        })
+        };
+        Ok((split, no_anomalies()))
     }
 }
 
@@ -231,41 +279,37 @@ impl<'a> SplitPacket<'a> {
 mod tests {
     use super::SecondaryHeaderLayout;
     use crate::field;
-    use aldis_core::{DecodeMode, ErrorDetail, ErrorKind};
+    use aldis_core::{ErrorDetail, ErrorKind};
     use core::num::NonZeroUsize;
-
-    const STRICT: DecodeMode = DecodeMode::Strict;
 
     #[test]
     fn split_rules() {
         // req: SPP-007, OI-30
         let two = SecondaryHeaderLayout::Opaque(NonZeroUsize::new(2).unwrap());
-        let s = two.split(true, &[1, 2, 3], STRICT).unwrap();
+        let s = two.split(true, &[1, 2, 3]).unwrap();
         assert_eq!(
             (s.secondary_header(), s.user_data()),
             (&[1, 2][..], &[3][..])
         );
         assert_eq!(s.ancillary_data(), &[1, 2]);
         assert_eq!(
-            two.split(true, &[1, 2], STRICT).unwrap().user_data(),
+            two.split(true, &[1, 2]).unwrap().user_data(),
             <&[u8]>::default()
         );
-        let s = SecondaryHeaderLayout::Absent
-            .split(false, &[9], STRICT)
-            .unwrap();
+        let s = SecondaryHeaderLayout::Absent.split(false, &[9]).unwrap();
         assert_eq!(
             (s.secondary_header(), s.user_data()),
             (<&[u8]>::default(), &[9][..])
         );
         assert_eq!(s.ancillary_data(), <&[u8]>::default());
         for (layout, flag) in [(SecondaryHeaderLayout::Absent, true), (two, false)] {
-            let e = layout.split(flag, &[1, 2, 3], STRICT).unwrap_err();
+            let e = layout.split(flag, &[1, 2, 3]).unwrap_err();
             assert_eq!(
                 (e.kind(), e.field()),
                 (ErrorKind::InvalidField, Some(field::SECONDARY_HEADER_FLAG))
             );
         }
-        let e = two.split(true, &[1], STRICT).unwrap_err();
+        let e = two.split(true, &[1]).unwrap_err();
         assert_eq!(
             (e.kind(), e.field()),
             (ErrorKind::LengthMismatch, Some(field::SECONDARY_HEADER))
@@ -281,10 +325,10 @@ mod tests {
 
     #[cfg(feature = "time")]
     mod time {
-        use super::{STRICT, SecondaryHeaderLayout};
+        use super::SecondaryHeaderLayout;
         use crate::field;
         use crate::secondary::TimeHeaderLayout;
-        use aldis_core::{DecodeMode, ErrorDetail, ErrorKind};
+        use aldis_core::{ErrorDetail, ErrorKind};
         use aldis_time::{
             CcsFormat, CcsVariation, CdsDayLen, CdsEpoch, CdsFormat, CdsSubMs, CucEpoch, CucFormat,
             TimeAnomaly, TimeCode, TimeFormat,
@@ -327,9 +371,7 @@ mod tests {
         fn time_split() {
             // req: SPP-008, SPP-007, OI-30
             let data = [0x12, 0x34, 0x56, 0x78, 0x80, 0x00, 0xAB, 0x01];
-            let s = layout(cuc(4, 2), false, 1)
-                .split(true, &data, STRICT)
-                .unwrap();
+            let s = layout(cuc(4, 2), false, 1).split(true, &data).unwrap();
             assert_eq!(
                 (
                     s.secondary_header().len(),
@@ -345,16 +387,14 @@ mod tests {
             );
             // With the P-field: CUC 4+2 is octet 0x1E.
             let with_p = [0x1E, 0x12, 0x34, 0x56, 0x78, 0x80, 0x00];
-            let s = layout(cuc(4, 2), true, 0)
-                .split(true, &with_p, STRICT)
-                .unwrap();
+            let s = layout(cuc(4, 2), true, 0).split(true, &with_p).unwrap();
             assert_eq!(
                 (s.time_code().unwrap().len(), s.user_data()),
                 (7, <&[u8]>::default())
             );
             // A CDS P-field (0x40) where CUC is configured.
             let e = layout(cuc(4, 2), true, 0)
-                .split(true, &[0x40, 0, 0, 0, 0, 0, 0], STRICT)
+                .split(true, &[0x40, 0, 0, 0, 0, 0, 0])
                 .unwrap_err();
             assert_eq!(
                 (e.kind(), e.field()),
@@ -376,7 +416,7 @@ mod tests {
                 (layout(cuc(5, 3), true, 2), &[0x9E][..], 4),
                 (layout(cuc(4, 2), false, 4), &data[..7], 10),
             ] {
-                let e = lay.split(true, d, STRICT).unwrap_err();
+                let e = lay.split(true, d).unwrap_err();
                 assert_eq!(
                     (e.kind(), e.field()),
                     (ErrorKind::LengthMismatch, Some(field::SECONDARY_HEADER))
@@ -394,13 +434,12 @@ mod tests {
                 .split(
                     true,
                     &[0x9E, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80],
-                    STRICT,
                 )
                 .unwrap_err();
             assert_eq!(e.kind(), ErrorKind::Malformed);
             assert_eq!(
                 layout(cuc(4, 2), false, 0)
-                    .split(false, &data, STRICT)
+                    .split(false, &data)
                     .unwrap_err()
                     .kind(),
                 ErrorKind::InvalidField
@@ -415,16 +454,18 @@ mod tests {
             let data = [0x9E, 0x80, 0x00, 0, 0, 0, 0, 0, 0];
             let lay = layout(cuc(4, 2), true, 0);
             assert_eq!(
-                lay.split(true, &data, STRICT).unwrap_err().kind(),
+                lay.split(true, &data).unwrap_err().kind(),
                 ErrorKind::ReservedValue
             );
-            let s = lay.split(true, &data, DecodeMode::Lenient).unwrap();
+            let s = lay.split_lenient(true, &data).unwrap();
             assert!(
-                s.time_code()
-                    .unwrap()
-                    .anomalies()
+                s.anomalies()
                     .contains(TimeAnomaly::UndefinedPFieldExtension)
             );
+            // An implicit P-field decodes in lenient mode too (SPP-008, API-032).
+            let implicit = layout(cuc(4, 2), false, 0);
+            let s = implicit.split_lenient(true, &[0; 6]).unwrap();
+            assert!(s.anomalies().is_empty());
         }
 
         fn aldis_core_len(d: &[u8]) -> u64 {

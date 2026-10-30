@@ -36,6 +36,7 @@ Detailed protocol: [docs/process/review.md](docs/process/review.md).
 - Read every suppression the change adds (`#[expect(…, reason = "…")]` RS-016, `coverage-waivers.toml` VER-024, and equivalent mutants in [mutants-triage.md](docs/verification/mutants-triage.md) VER-025) and verify the reason holds on the smallest region.
 - Spend the review on what no check covers: the Blue Book readings (cite the clause), requirements and test/vector coverage, `unsafe` soundness, and the public API and C ABI shape.
 - **Every statement about the implementation cites `path:line`**, quoting the code where the point depends on it; a review whose description of the code does not match the code does not count and is done again.
+- Report mismatches between documentation and code, or between two documents, as one batch of nits at the end; the implementer fixes them in the same round as the code findings.
 
 ## Non-negotiable rules (Layers 0–2)
 
@@ -66,9 +67,10 @@ Clippy runs with the `all` and `pedantic` groups denied, plus restriction lints 
 ## Conventions
 
 - **Traceability:** every public item's docs cite the CCSDS clause and requirement IDs it implements (RS-015). Every test names the requirements it covers with a `// req: <ID>` comment (VER-020).
-- **Verification records:** requirements verified by a check of `cargo xtask verify` or by review (method A/I) each have a record file in [docs/verification/records/](docs/verification/records/), named after its first requirement ID, in the format of [analysis-records.md](docs/verification/analysis-records.md). Change only the record you touch; there is no index.
+- **Verification records:** a requirement verified by test, vector, or a check of `cargo xtask verify` has no prose record: `cargo xtask trace` and the verify record are the evidence (a new check-to-requirement pair goes in `CHECK_REQUIREMENTS` in `xtask/src/trace.rs`). A requirement whose evidence is a person's judgement (method I, or an analysis no check runs) has a record file in [docs/verification/records/](docs/verification/records/), in the format of [analysis-records.md](docs/verification/analysis-records.md); it names its tests and checks and does not describe them. Change only the record you touch; there is no index.
 - **Loop bounds (GEN-022):** a loop over a slice, an array, or a closed range (`a..b`) needs nothing. Put `// bound: <the bound and why the loop reaches it>` directly above every `while`, `while let`, `loop`, and every iteration over an open range or `repeat`/`cycle`/`from_fn`/`successors`; `cargo xtask loops` fails without it (`loops list` prints the loops). No recursion: the `stack` check fails on a call cycle. There are no inspection tables to update.
 - **Test vectors** in [`test-vectors/`](test-vectors/README.md) are shared across the Rust and C ABI implementations. Follow [docs/07-test-vectors.md](docs/07-test-vectors.md). Record provenance, and never edit a released vector: add a new case and mark the old one `superseded`. An independent model (TV-023) is written blind: by an agent or person who has not read the implementation it checks, from the Blue Book and `docs/` only; brief a model-writing agent that way, and give it no implementation paths.
+- **Pull request body:** Summary, Evidence, Merge Danger; link decisions, never restate them ([docs/process/pr-body.md](docs/process/pr-body.md)).
 - **Changelog:** never edit `CHANGELOG.md` in a pull request. Add one fragment file to [`changelog.d/`](changelog.d/README.md), named after the branch; `cargo xtask changelog check` validates it.
 - **Errors** use the stable catalogue in [docs/03-api-model.md](docs/03-api-model.md) §9. Do not renumber error codes.
 - **Error codes** of the C ABI are generated from the catalogue of [docs/03-api-model.md](docs/03-api-model.md) §9 by `cargo xtask status --write`; never edit `crates/aldis-ffi/src/status.rs`.

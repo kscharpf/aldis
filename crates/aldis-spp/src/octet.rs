@@ -91,8 +91,8 @@ mod tests {
     use crate::header::{PacketType, SequenceFlags};
     use crate::sequence::SequenceCounter;
     use crate::view::SpacePacket;
+    use aldis_core::ErrorKind;
     use aldis_core::ids::{Apid, SeqCount};
-    use aldis_core::{DecodeMode, ErrorKind};
 
     #[test]
     fn octet_strings() {
@@ -110,7 +110,7 @@ mod tests {
             OctetStringEncoder::new(&cfg, PacketType::Telecommand, apid, counter).unwrap();
         let mut out = [0_u8; 10];
         assert_eq!(enc.encode(true, &[1, 2], &mut out), Ok(8));
-        let p = SpacePacket::decode(&out, DecodeMode::Strict).unwrap();
+        let p = SpacePacket::decode(&out).unwrap();
         assert_eq!(
             (p.apid(), p.sequence_flags(), p.sequence_count().get()),
             (apid, SequenceFlags::Unsegmented, 0x3FFF)

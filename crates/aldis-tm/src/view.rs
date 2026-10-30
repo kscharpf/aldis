@@ -8,7 +8,7 @@ use aldis_core::ids::{SpacecraftId, VcId};
 use aldis_core::layout::{FrameLayout, LayoutSpec, OCF_LEN};
 use aldis_core::ocf::Ocf;
 use aldis_core::security::SecurityLayout;
-use aldis_core::{AnomalySet, DecodeMode, Error, ErrorKind, Result};
+use aldis_core::{AnomalySet, DecodeMode, Error, ErrorKind, Lenient, Result};
 
 use crate::anomaly::TmAnomaly;
 use crate::config::{NoSdls, TmPhysicalChannelConfig, VcLookup};
@@ -21,9 +21,12 @@ use crate::header::{
 /// A decoded TM Transfer Frame borrowing its fields from the input (132.0 §4.1, §6.3; TM-001…
 /// TM-008, GEN-013).
 ///
-/// Holding one guarantees that the frame has the configured length, a correct FECF (unless built
-/// by [`decode_unchecked`](Self::decode_unchecked)), version `00`, a well-formed Secondary Header,
-/// a non-empty data field, and a First Header Pointer inside the data field (API-010).
+/// Holding one guarantees that the frame has the configured length, a correct FECF if the channel
+/// has one, version `00`, a well-formed Secondary Header, a non-empty data field, and a First
+/// Header Pointer inside the data field (API-010). A frame whose FECF was not checked is an
+/// [`UncheckedTmFrame`], which becomes a `TmFrame` only through
+/// [`check_fecf`](UncheckedTmFrame::check_fecf) (API-015). A strict decode returns the frame alone;
+/// a lenient one returns it in a [`Lenient`] with its anomalies (API-030).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TmFrame<'a> {
     bytes: &'a [u8],
@@ -31,12 +34,12 @@ pub struct TmFrame<'a> {
     fsh_len: Option<FshLen>,
     layout: FrameLayout,
     status: DataFieldStatus,
-    anomalies: AnomalySet<TmAnomaly>,
 }
 
 impl<'a> TmFrame<'a> {
     /// Decodes a frame of a physical channel on which no virtual channel uses SDLS (132.0 §4.1;
-    /// TM-001…TM-008). The same as [`decode_with`](Self::decode_with) and [`NoSdls`].
+    /// TM-001…TM-008), in strict mode. The same as [`decode_with`](Self::decode_with) and
+    /// [`NoSdls`].
     ///
     /// It has no knowledge of the virtual channels, so it cannot tell whether an Only Idle Data
     /// frame is on a channel that uses SDLS, and never reports that (TM-010, HZ-TM-07, OI-54);
@@ -44,16 +47,25 @@ impl<'a> TmFrame<'a> {
     ///
     /// # Errors
     /// As for [`decode_with`](Self::decode_with), except `UnknownChannel`.
-    pub fn decode(
-        bytes: &'a [u8],
-        pc: &TmPhysicalChannelConfig,
-        mode: DecodeMode,
-    ) -> Result<TmFrame<'a>> {
-        TmFrame::decode_with(bytes, pc, &NoSdls, mode)
+    pub fn decode(bytes: &'a [u8], pc: &TmPhysicalChannelConfig) -> Result<TmFrame<'a>> {
+        TmFrame::decode_with(bytes, pc, &NoSdls)
     }
 
-    /// Decodes one frame, taking the Security Header and Trailer lengths of its virtual channel
-    /// from `vcs` (132.0 §4.1, §6.3; TM-001…TM-008, API-012, API-070).
+    /// Decodes a frame as [`decode`](Self::decode) does, in lenient mode: the deviations that
+    /// [`decode_with_lenient`](Self::decode_with_lenient) lists are accepted and reported
+    /// (TM-007, API-032).
+    ///
+    /// # Errors
+    /// As for [`decode`](Self::decode), except the deviations that are anomalies.
+    pub fn decode_lenient(
+        bytes: &'a [u8],
+        pc: &TmPhysicalChannelConfig,
+    ) -> Result<Lenient<TmFrame<'a>, TmAnomaly>> {
+        TmFrame::decode_with_lenient(bytes, pc, &NoSdls)
+    }
+
+    /// Decodes one frame in strict mode, taking the Security Header and Trailer lengths of its
+    /// virtual channel from `vcs` (132.0 §4.1, §6.3; TM-001…TM-008, API-012, API-070).
     ///
     /// The Secondary Header and the OCF are placed by the frame's own flags; whether they match
     /// the configuration is checked by [`validate`](Self::validate) (TM-011).
@@ -71,28 +83,41 @@ impl<'a> TmFrame<'a> {
     ///   (TM-003);
     /// - `Malformed` (`frame_data_field`) if the fields leave no data octet (TM-006, CMN-041);
     /// - `Malformed` (`first_header_pointer`) with the Synchronization Flag `0` for a pointer
-    ///   outside the data field that is neither `0x7FE` nor `0x7FF`, in both modes (TM-008);
-    /// - in strict mode, with the Synchronization Flag `0`, `ReservedValue`
-    ///   (`packet_order_flag`) for a Packet Order Flag `1` and `InvalidField`
-    ///   (`segment_length_id`) for a Segment Length Identifier other than `11`; lenient mode
-    ///   reports them as [`TmAnomaly`] flags (TM-007, API-032);
+    ///   outside the data field that is neither `0x7FE` nor `0x7FF` (TM-008);
+    /// - with the Synchronization Flag `0`, `ReservedValue` (`packet_order_flag`) for a Packet
+    ///   Order Flag `1` and `InvalidField` (`segment_length_id`) for a Segment Length Identifier
+    ///   other than `11` (TM-007);
     /// - last, with the Synchronization Flag `0` and the First Header Pointer `0x7FE` (Only Idle
-    ///   Data) on a virtual channel whose security layout is not empty: in strict mode
-    ///   `InvalidField` (`vc_id`), in lenient mode the flag
-    ///   [`TmAnomaly::OnlyIdleDataOnSdlsVc`] (132.0 §6.4.6.2; TM-010, OI-54).
+    ///   Data) on a virtual channel whose security layout is not empty, `InvalidField` (`vc_id`)
+    ///   (132.0 §6.4.6.2; TM-010, OI-54).
     pub fn decode_with<L: VcLookup + ?Sized>(
         bytes: &'a [u8],
         pc: &TmPhysicalChannelConfig,
         vcs: &L,
-        mode: DecodeMode,
     ) -> Result<TmFrame<'a>> {
-        let header = TmFrame::check(bytes, pc, pc.fecf())?;
-        let security = vcs.security_layout(header.scid, header.vcid)?;
-        TmFrame::parse(bytes, pc, header, security, mode)
+        TmFrame::decode_in(bytes, pc, vcs, pc.fecf(), DecodeMode::Strict).map(|(frame, _)| frame)
     }
 
-    /// Decodes one frame as [`decode_with`](Self::decode_with) does, but without checking the
-    /// FECF: for diagnostics of frames that failed it (TM-005).
+    /// Decodes one frame as [`decode_with`](Self::decode_with) does, in lenient mode: a Packet
+    /// Order Flag `1` and a Segment Length Identifier other than `11`, both with the
+    /// Synchronization Flag `0`, and an Only Idle Data frame on a virtual channel that uses
+    /// SDLS are accepted and reported as [`TmAnomaly`] flags (TM-007, TM-010, API-032).
+    ///
+    /// # Errors
+    /// As for [`decode_with`](Self::decode_with), except the deviations that are anomalies.
+    pub fn decode_with_lenient<L: VcLookup + ?Sized>(
+        bytes: &'a [u8],
+        pc: &TmPhysicalChannelConfig,
+        vcs: &L,
+    ) -> Result<Lenient<TmFrame<'a>, TmAnomaly>> {
+        TmFrame::decode_in(bytes, pc, vcs, pc.fecf(), DecodeMode::Lenient)
+            .map(|(frame, anomalies)| Lenient::new(frame, anomalies))
+    }
+
+    /// Decodes one frame as [`decode_with`](Self::decode_with) does, in strict mode, but without
+    /// checking the FECF: for diagnostics of frames that failed it (TM-005, API-015). The result
+    /// is an [`UncheckedTmFrame`], which is not a `TmFrame` until
+    /// [`check_fecf`](UncheckedTmFrame::check_fecf) has verified the FECF.
     ///
     /// # Errors
     /// As for [`decode_with`](Self::decode_with), except `CrcMismatch`.
@@ -100,9 +125,35 @@ impl<'a> TmFrame<'a> {
         bytes: &'a [u8],
         pc: &TmPhysicalChannelConfig,
         vcs: &L,
+    ) -> Result<UncheckedTmFrame<'a>> {
+        TmFrame::decode_in(bytes, pc, vcs, false, DecodeMode::Strict)
+            .map(|(frame, _)| UncheckedTmFrame { frame })
+    }
+
+    /// Decodes one frame as [`decode_unchecked`](Self::decode_unchecked) does, in lenient mode
+    /// (TM-005, API-032, API-015).
+    ///
+    /// # Errors
+    /// As for [`decode_with_lenient`](Self::decode_with_lenient), except `CrcMismatch`.
+    pub fn decode_unchecked_lenient<L: VcLookup + ?Sized>(
+        bytes: &'a [u8],
+        pc: &TmPhysicalChannelConfig,
+        vcs: &L,
+    ) -> Result<Lenient<UncheckedTmFrame<'a>, TmAnomaly>> {
+        TmFrame::decode_in(bytes, pc, vcs, false, DecodeMode::Lenient)
+            .map(|(frame, anomalies)| Lenient::new(UncheckedTmFrame { frame }, anomalies))
+    }
+
+    /// The decode of every entry point: the length and Primary Header checks, the FECF check if
+    /// `fecf`, the security layout of the virtual channel, and the rest.
+    fn decode_in<L: VcLookup + ?Sized>(
+        bytes: &'a [u8],
+        pc: &TmPhysicalChannelConfig,
+        vcs: &L,
+        fecf: bool,
         mode: DecodeMode,
-    ) -> Result<TmFrame<'a>> {
-        let header = TmFrame::check(bytes, pc, false)?;
+    ) -> Result<(TmFrame<'a>, AnomalySet<TmAnomaly>)> {
+        let header = TmFrame::check(bytes, pc, fecf)?;
         let security = vcs.security_layout(header.scid, header.vcid)?;
         TmFrame::parse(bytes, pc, header, security, mode)
     }
@@ -146,7 +197,7 @@ impl<'a> TmFrame<'a> {
         header: TmPrimaryHeader,
         security: SecurityLayout,
         mode: DecodeMode,
-    ) -> Result<TmFrame<'a>> {
+    ) -> Result<(TmFrame<'a>, AnomalySet<TmAnomaly>)> {
         let fsh_len = if header.fsh_flag {
             Some(fsh_id(bytes)?)
         } else {
@@ -208,14 +259,14 @@ impl<'a> TmFrame<'a> {
             }
             DataFieldStatus::Packets(pointer)
         };
-        Ok(TmFrame {
+        let frame = TmFrame {
             bytes,
             header,
             fsh_len,
             layout,
             status,
-            anomalies,
-        })
+        };
+        Ok((frame, anomalies))
     }
 
     /// The octets of `range`, which lies inside the frame by construction (CMN-040).
@@ -335,11 +386,143 @@ impl<'a> TmFrame<'a> {
     pub const fn is_empty(&self) -> bool {
         false
     }
+}
 
-    /// Lenient-mode anomalies; always empty after a strict decode (TM-007, API-032, GEN-043).
+/// A TM Transfer Frame whose FECF was not checked (132.0 §4.1.6; TM-005, API-015).
+///
+/// [`TmFrame::decode_unchecked`] returns it for diagnostics of frames that failed the check. It
+/// offers the read accessors of a [`TmFrame`] and nothing that takes a checked frame: it
+/// becomes a `TmFrame` only through [`check_fecf`](Self::check_fecf). The other way, a `TmFrame`
+/// converts into an `UncheckedTmFrame` with `From`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UncheckedTmFrame<'a> {
+    frame: TmFrame<'a>,
+}
+
+impl<'a> UncheckedTmFrame<'a> {
+    /// Verifies the FECF of a channel that has one, and returns the frame as a [`TmFrame`]
+    /// (132.0 §4.1.6; TM-005, API-015). The same check as [`TmFrame::decode_with`] makes.
+    ///
+    /// # Errors
+    /// `CrcMismatch` if the FECF is wrong.
+    pub fn check_fecf(self) -> Result<TmFrame<'a>> {
+        if self.frame.fecf().is_some() {
+            verify_fecf(self.frame.bytes)?;
+        }
+        Ok(self.frame)
+    }
+
+    /// The Primary Header as plain values (132.0 §4.1.2; API-014).
     #[must_use]
-    pub const fn anomalies(&self) -> AnomalySet<TmAnomaly> {
-        self.anomalies
+    pub const fn header(&self) -> TmPrimaryHeader {
+        self.frame.header()
+    }
+
+    /// Spacecraft Identifier (132.0 §4.1.2.2.3).
+    #[must_use]
+    pub const fn scid(&self) -> SpacecraftId<10> {
+        self.frame.scid()
+    }
+
+    /// Virtual Channel Identifier (132.0 §4.1.2.3).
+    #[must_use]
+    pub const fn vcid(&self) -> VcId<3> {
+        self.frame.vcid()
+    }
+
+    /// Master Channel Frame Count (132.0 §4.1.2.5).
+    #[must_use]
+    pub const fn mc_frame_count(&self) -> u8 {
+        self.frame.mc_frame_count()
+    }
+
+    /// Virtual Channel Frame Count (132.0 §4.1.2.6).
+    #[must_use]
+    pub const fn vc_frame_count(&self) -> u8 {
+        self.frame.vc_frame_count()
+    }
+
+    /// The Synchronization Flag with the First Header Pointer classified or raw, as for
+    /// [`TmFrame::data_field_status`] (TM-007, TM-008).
+    #[must_use]
+    pub const fn data_field_status(&self) -> DataFieldStatus {
+        self.frame.data_field_status()
+    }
+
+    /// Total Secondary Header length, if the frame has one (132.0 §4.1.3.2.3; TM-003).
+    #[must_use]
+    pub const fn fsh_len(&self) -> Option<FshLen> {
+        self.frame.fsh_len()
+    }
+
+    /// The Secondary Header Data Field; `None` if the frame has no Secondary Header (132.0
+    /// §4.1.3.3; TM-003).
+    #[must_use]
+    pub fn secondary_header_data(&self) -> Option<&'a [u8]> {
+        self.frame.secondary_header_data()
+    }
+
+    /// The Security Header, opaque; empty without SDLS (132.0 §6.3.4; API-072).
+    #[must_use]
+    pub fn security_header(&self) -> &'a [u8] {
+        self.frame.security_header()
+    }
+
+    /// The Transfer Frame Data Field, never empty (132.0 §4.1.4; TM-006).
+    #[must_use]
+    pub fn data_field(&self) -> &'a [u8] {
+        self.frame.data_field()
+    }
+
+    /// The Security Trailer, opaque; empty without SDLS (132.0 §6.3.6; API-072).
+    #[must_use]
+    pub fn security_trailer(&self) -> &'a [u8] {
+        self.frame.security_trailer()
+    }
+
+    /// The Operational Control Field, classified, if the OCF Flag is set (132.0 §4.1.5; TM-004).
+    #[must_use]
+    pub fn ocf(&self) -> Option<Ocf> {
+        self.frame.ocf()
+    }
+
+    /// The Frame Error Control Field as received, if the physical channel has one, whether or
+    /// not it is correct (132.0 §4.1.6; TM-005).
+    #[must_use]
+    pub fn fecf(&self) -> Option<u16> {
+        self.frame.fecf()
+    }
+
+    /// The octet ranges of the frame's fields (CMN-040).
+    #[must_use]
+    pub const fn layout(&self) -> &FrameLayout {
+        self.frame.layout()
+    }
+
+    /// The whole frame (132.0 §4.1.1).
+    #[must_use]
+    pub const fn as_bytes(&self) -> &'a [u8] {
+        self.frame.as_bytes()
+    }
+
+    /// Octets consumed: the frame length (132.0 §4.1.1.2; API-012).
+    #[must_use]
+    pub const fn len(&self) -> usize {
+        self.frame.len()
+    }
+
+    /// Always `false`: a frame holds at least its Primary Header and one data octet.
+    #[must_use]
+    pub const fn is_empty(&self) -> bool {
+        false
+    }
+}
+
+impl<'a> From<TmFrame<'a>> for UncheckedTmFrame<'a> {
+    /// Forgets that the FECF was checked, to read a checked frame through the accessors of
+    /// the unchecked one (API-015).
+    fn from(frame: TmFrame<'a>) -> UncheckedTmFrame<'a> {
+        UncheckedTmFrame { frame }
     }
 }
 
@@ -394,7 +577,7 @@ mod tests {
     use std::vec;
     use std::vec::Vec;
 
-    use super::TmFrame;
+    use super::{TmFrame, UncheckedTmFrame};
     use crate::anomaly::TmAnomaly;
     use crate::config::{
         DataFieldContent, NoSdls, TmMasterChannelConfig, TmPhysicalChannelConfig,
@@ -409,10 +592,7 @@ mod tests {
     use aldis_core::ids::{SpacecraftId, VcId};
     use aldis_core::ocf::Ocf;
     use aldis_core::security::SecurityLayout;
-    use aldis_core::{AnomalySet, DecodeMode, ErrorDetail, ErrorKind};
-
-    const STRICT: DecodeMode = DecodeMode::Strict;
-    const LENIENT: DecodeMode = DecodeMode::Lenient;
+    use aldis_core::{AnomalySet, ErrorDetail, ErrorKind};
 
     fn pc(len: usize, fecf: bool) -> TmPhysicalChannelConfig {
         TmPhysicalChannelConfig::new(len, fecf).unwrap()
@@ -425,7 +605,9 @@ mod tests {
         f
     }
 
-    fn err(r: aldis_core::Result<TmFrame<'_>>) -> (ErrorKind, Option<aldis_core::FieldId>) {
+    fn err<T: core::fmt::Debug>(
+        r: aldis_core::Result<T>,
+    ) -> (ErrorKind, Option<aldis_core::FieldId>) {
         let e = r.unwrap_err();
         (e.kind(), e.field())
     }
@@ -434,7 +616,7 @@ mod tests {
     fn minimal_frame_accessors() {
         // req: TM-001, TM-006, TM-008, API-010, API-014, GEN-013
         let bytes = plain();
-        let f = TmFrame::decode(&bytes, &pc(16, false), STRICT).unwrap();
+        let f = TmFrame::decode(&bytes, &pc(16, false)).unwrap();
         assert_eq!(f.scid(), SpacecraftId::new(0x2A5).unwrap());
         assert_eq!(f.vcid(), VcId::new(5).unwrap());
         assert_eq!((f.mc_frame_count(), f.vc_frame_count()), (1, 2));
@@ -451,7 +633,6 @@ mod tests {
             (f.len(), f.is_empty(), f.as_bytes()),
             (16, false, &bytes[..])
         );
-        assert_eq!(f.anomalies(), AnomalySet::empty());
         assert_eq!(f.layout().data(), 6..16);
         assert_eq!(f.header().to_octets(), bytes[..6]);
     }
@@ -463,10 +644,10 @@ mod tests {
         bytes.extend([0, 0]);
         write_fecf(&mut bytes).unwrap();
         let channel = pc(18, true);
-        let f = TmFrame::decode(&bytes, &channel, STRICT).unwrap();
+        let f = TmFrame::decode(&bytes, &channel).unwrap();
         assert_eq!(f.fecf(), Some(u16::from_be_bytes([bytes[16], bytes[17]])));
         assert_eq!(f.data_field(), &bytes[6..16]);
-        let e = TmFrame::decode(&bytes[..17], &channel, STRICT).unwrap_err();
+        let e = TmFrame::decode(&bytes[..17], &channel).unwrap_err();
         assert_eq!(
             (e.kind(), e.field(), e.detail()),
             (
@@ -479,30 +660,65 @@ mod tests {
             )
         );
         assert_eq!(
-            err(TmFrame::decode_unchecked(
-                &bytes[..17],
-                &channel,
-                &NoSdls,
-                STRICT
-            ))
-            .0,
+            err(TmFrame::decode_unchecked(&bytes[..17], &channel, &NoSdls)).0,
             ErrorKind::LengthMismatch
         );
         // A corrupted version is reported as a CRC failure: the FECF is checked first.
         let mut bad = bytes.clone();
         bad[0] |= 0x40;
         assert_eq!(
-            err(TmFrame::decode(&bad, &channel, STRICT)).0,
+            err(TmFrame::decode(&bad, &channel)).0,
             ErrorKind::CrcMismatch
         );
         assert_eq!(
-            err(TmFrame::decode_unchecked(&bad, &channel, &NoSdls, STRICT)),
+            err(TmFrame::decode_unchecked(&bad, &channel, &NoSdls)),
             (ErrorKind::UnsupportedVersion, Some(field::FRAME_VERSION))
         );
         bad[0] = bytes[0];
         bad[10] ^= 1;
-        let f = TmFrame::decode_unchecked(&bad, &channel, &NoSdls, STRICT).unwrap();
+        let f = TmFrame::decode_unchecked(&bad, &channel, &NoSdls).unwrap();
         assert_eq!(f.data_field()[4], bytes[10] ^ 1);
+        // API-015: the unchecked frame is a `TmFrame` only after the FECF check.
+        assert_eq!(err(f.check_fecf()).0, ErrorKind::CrcMismatch);
+        let ok = TmFrame::decode_unchecked(&bytes, &channel, &NoSdls).unwrap();
+        assert_eq!(ok.check_fecf(), TmFrame::decode(&bytes, &channel));
+        let short = plain();
+        let no_fecf = TmFrame::decode_unchecked(&short, &pc(16, false), &NoSdls).unwrap();
+        assert_eq!(no_fecf.fecf(), None);
+        assert!(no_fecf.check_fecf().is_ok());
+    }
+
+    #[test]
+    fn the_unchecked_frame_reads_like_the_checked_one() {
+        // req: API-015, API-014, TM-003, TM-004, TM-006, API-072
+        let mut bytes = vec![0x00, 0x13, 0x07, 0x08, 0x98, 0x00, 0x02, 0xAA, 0xBB];
+        bytes.extend([0xD0, 0xD1, 0xD2, 0xD3, 0xD4, 0x01, 0x02, 0x03, 0x04]);
+        let channel = pc(18, false);
+        let checked = TmFrame::decode(&bytes, &channel).unwrap();
+        let u = UncheckedTmFrame::from(checked.clone());
+        assert_eq!(
+            u,
+            TmFrame::decode_unchecked(&bytes, &channel, &NoSdls).unwrap()
+        );
+        assert_eq!(u.header(), checked.header());
+        assert_eq!((u.scid(), u.vcid()), (checked.scid(), checked.vcid()));
+        assert_eq!((u.mc_frame_count(), u.vc_frame_count()), (7, 8));
+        assert_eq!(u.data_field_status(), checked.data_field_status());
+        assert_eq!(u.fsh_len(), checked.fsh_len());
+        assert_eq!(u.secondary_header_data(), Some(&[0xAA, 0xBB][..]));
+        assert_eq!(
+            (u.security_header(), u.security_trailer()),
+            (&[][..], &[][..])
+        );
+        assert_eq!(u.data_field(), &[0xD0, 0xD1, 0xD2, 0xD3, 0xD4]);
+        assert_eq!(u.ocf(), Some(Ocf::decode([1, 2, 3, 4])));
+        assert_eq!(u.fecf(), None);
+        assert_eq!(u.layout(), checked.layout());
+        assert_eq!(
+            (u.as_bytes(), u.len(), u.is_empty()),
+            (&bytes[..], 18, false)
+        );
+        assert_eq!(u.check_fecf(), Ok(checked));
     }
 
     #[test]
@@ -511,7 +727,7 @@ mod tests {
         // FSH of 3 octets (ID 0x02, data AA BB), data 5 octets, OCF 01 02 03 04.
         let mut bytes = vec![0x00, 0x13, 0x00, 0x00, 0x98, 0x00, 0x02, 0xAA, 0xBB];
         bytes.extend([0xD0, 0xD1, 0xD2, 0xD3, 0xD4, 0x01, 0x02, 0x03, 0x04]);
-        let f = TmFrame::decode(&bytes, &pc(18, false), STRICT).unwrap();
+        let f = TmFrame::decode(&bytes, &pc(18, false)).unwrap();
         assert_eq!(f.fsh_len().map(FshLen::get), Some(3));
         assert_eq!(f.secondary_header_data(), Some(&[0xAA, 0xBB][..]));
         assert_eq!(f.data_field(), &[0xD0, 0xD1, 0xD2, 0xD3, 0xD4]);
@@ -528,7 +744,7 @@ mod tests {
             b.extend([0; 5]);
             b
         };
-        let e = TmFrame::decode(&frame(0x41), &channel, STRICT).unwrap_err();
+        let e = TmFrame::decode(&frame(0x41), &channel).unwrap_err();
         assert_eq!(
             (e.kind(), e.field(), e.detail()),
             (
@@ -540,7 +756,7 @@ mod tests {
                 }
             )
         );
-        let e = TmFrame::decode(&frame(0x00), &channel, STRICT).unwrap_err();
+        let e = TmFrame::decode(&frame(0x00), &channel).unwrap_err();
         assert_eq!(
             (e.kind(), e.field(), e.detail()),
             (
@@ -553,7 +769,7 @@ mod tests {
             )
         );
         // 7 octets of FSH in a 12-octet frame run past its end.
-        let e = TmFrame::decode(&frame(0x06), &channel, STRICT).unwrap_err();
+        let e = TmFrame::decode(&frame(0x06), &channel).unwrap_err();
         assert_eq!(
             (e.kind(), e.field(), e.detail()),
             (
@@ -567,10 +783,10 @@ mod tests {
         );
         // 6 octets fit, but leave no data octet.
         assert_eq!(
-            err(TmFrame::decode(&frame(0x05), &channel, STRICT)),
+            err(TmFrame::decode(&frame(0x05), &channel)),
             (ErrorKind::Malformed, Some(field::FRAME_DATA_FIELD))
         );
-        assert!(TmFrame::decode(&frame(0x04), &channel, STRICT).is_ok());
+        assert!(TmFrame::decode(&frame(0x04), &channel).is_ok());
     }
 
     #[test]
@@ -578,7 +794,7 @@ mod tests {
         // req: TM-006, CMN-041
         let bytes = [0x00, 0x01, 0, 0, 0x18, 0x00, 1, 2, 3, 4];
         assert_eq!(
-            err(TmFrame::decode(&bytes, &pc(10, false), STRICT)),
+            err(TmFrame::decode(&bytes, &pc(10, false))),
             (ErrorKind::Malformed, Some(field::FRAME_DATA_FIELD))
         );
     }
@@ -599,11 +815,13 @@ mod tests {
             (0x7FF, PacketPointer::NoPacketStart),
         ] {
             let b = with_fhp(fhp);
-            let f = TmFrame::decode(&b, &channel, STRICT).unwrap();
+            let f = TmFrame::decode(&b, &channel).unwrap();
             assert_eq!(f.data_field_status(), DataFieldStatus::Packets(expected));
         }
-        for mode in [STRICT, LENIENT] {
-            let e = TmFrame::decode(&with_fhp(10), &channel, mode).unwrap_err();
+        for e in [
+            TmFrame::decode(&with_fhp(10), &channel).unwrap_err(),
+            TmFrame::decode_lenient(&with_fhp(10), &channel).unwrap_err(),
+        ] {
             assert_eq!(
                 (e.kind(), e.field(), e.detail()),
                 (
@@ -624,7 +842,7 @@ mod tests {
         let channel = pc(16, false);
         let mut pof = plain();
         pof[4] |= 0x20;
-        let e = TmFrame::decode(&pof, &channel, STRICT).unwrap_err();
+        let e = TmFrame::decode(&pof, &channel).unwrap_err();
         assert_eq!(
             (e.kind(), e.field(), e.detail()),
             (
@@ -636,14 +854,14 @@ mod tests {
                 }
             )
         );
-        let f = TmFrame::decode(&pof, &channel, LENIENT).unwrap();
+        let f = TmFrame::decode_lenient(&pof, &channel).unwrap();
         assert_eq!(
             f.anomalies(),
             AnomalySet::from_flags(&[TmAnomaly::PacketOrderFlagSet])
         );
         let mut slid = plain();
         slid[4] = 0x08; // Segment Length Identifier 01
-        let e = TmFrame::decode(&slid, &channel, STRICT).unwrap_err();
+        let e = TmFrame::decode(&slid, &channel).unwrap_err();
         assert_eq!(
             (e.kind(), e.field(), e.detail()),
             (
@@ -656,7 +874,7 @@ mod tests {
             )
         );
         slid[4] |= 0x20;
-        let f = TmFrame::decode(&slid, &channel, LENIENT).unwrap();
+        let f = TmFrame::decode_lenient(&slid, &channel).unwrap();
         assert_eq!(
             f.anomalies(),
             AnomalySet::from_flags(&[
@@ -677,8 +895,9 @@ mod tests {
         let mut b = plain();
         b[4] = 0x67; // sync 1, POF 1, SLID 00, FHP 0x7xx
         b[5] = 0xFD;
-        for mode in [STRICT, LENIENT] {
-            let f = TmFrame::decode(&b, &pc(16, false), mode).unwrap();
+        let strict = TmFrame::decode(&b, &pc(16, false)).unwrap();
+        let lenient = TmFrame::decode_lenient(&b, &pc(16, false)).unwrap();
+        for f in [&strict, &*lenient] {
             assert_eq!(
                 f.data_field_status(),
                 DataFieldStatus::VcaSdu {
@@ -687,8 +906,8 @@ mod tests {
                     first_header_pointer: FirstHeaderPointer::new(0x7FD).unwrap(),
                 }
             );
-            assert!(f.anomalies().is_empty());
         }
+        assert!(lenient.anomalies().is_empty());
     }
 
     #[test]
@@ -707,7 +926,7 @@ mod tests {
         bytes.extend([0x5A; 2]);
         bytes.extend([0, 0]);
         write_fecf(&mut bytes).unwrap();
-        let f = TmFrame::decode_with(&bytes, &channel, &mc, STRICT).unwrap();
+        let f = TmFrame::decode_with(&bytes, &channel, &mc).unwrap();
         assert_eq!(f.security_header(), &[0xA5; 3]);
         assert_eq!(f.data_field(), &bytes[9..16]);
         assert_eq!(f.security_trailer(), &[0x5A; 2]);
@@ -716,12 +935,12 @@ mod tests {
         other[5] = 7;
         write_fecf(&mut other).unwrap();
         assert_eq!(
-            err(TmFrame::decode_with(&other, &channel, &mc, STRICT)),
+            err(TmFrame::decode_with(&other, &channel, &mc)),
             (ErrorKind::Malformed, Some(field::FIRST_HEADER_POINTER))
         );
         // Without SDLS the same octets decode with a 10-octet data field.
         assert_eq!(
-            TmFrame::decode(&other, &channel, STRICT)
+            TmFrame::decode(&other, &channel)
                 .unwrap()
                 .data_field()
                 .len(),
@@ -731,20 +950,22 @@ mod tests {
         unknown[1] = 0x58; // VC 4
         write_fecf(&mut unknown).unwrap();
         assert_eq!(
-            err(TmFrame::decode_with(&unknown, &channel, &mc, STRICT)),
+            err(TmFrame::decode_with(&unknown, &channel, &mc)),
             (ErrorKind::UnknownChannel, Some(field::VC_ID))
         );
         assert_eq!(
-            err(TmFrame::decode_unchecked(&unknown, &channel, &mc, STRICT)),
+            err(TmFrame::decode_unchecked(&unknown, &channel, &mc)),
             (ErrorKind::UnknownChannel, Some(field::VC_ID))
         );
-        for decode in [TmFrame::decode_with, TmFrame::decode_unchecked] {
-            assert_eq!(
-                err(decode(&bytes[..19], &channel, &mc, STRICT)),
-                (ErrorKind::LengthMismatch, Some(field::FRAME_LEN))
-            );
-            assert!(decode(&bytes, &channel, &mc, STRICT).is_ok());
-        }
+        assert_eq!(
+            err(TmFrame::decode_with(&bytes[..19], &channel, &mc)),
+            (ErrorKind::LengthMismatch, Some(field::FRAME_LEN))
+        );
+        assert_eq!(
+            err(TmFrame::decode_unchecked(&bytes[..19], &channel, &mc)),
+            (ErrorKind::LengthMismatch, Some(field::FRAME_LEN))
+        );
+        assert!(TmFrame::decode_unchecked(&bytes, &channel, &mc).is_ok());
     }
 
     #[test]
@@ -768,32 +989,31 @@ mod tests {
         oid.extend([0, 0]);
         write_fecf(&mut oid).unwrap();
         let with = mc(sdls(3));
-        for decode in [TmFrame::decode_with, TmFrame::decode_unchecked] {
-            let e = decode(&oid, &channel, &with, STRICT).unwrap_err();
-            assert_eq!(
-                (e.kind(), e.field()),
-                (ErrorKind::InvalidField, Some(field::VC_ID))
-            );
-            let f = decode(&oid, &channel, &with, LENIENT).unwrap();
-            assert_eq!(
-                f.anomalies(),
-                AnomalySet::from_flags(&[TmAnomaly::OnlyIdleDataOnSdlsVc])
-            );
-            assert_eq!(
-                f.data_field_status(),
-                DataFieldStatus::Packets(PacketPointer::OnlyIdleData)
-            );
-            assert_eq!(f.security_header(), &[0xA5; 3]);
-        }
+        let oid_flag = AnomalySet::from_flags(&[TmAnomaly::OnlyIdleDataOnSdlsVc]);
+        let strict = [
+            err(TmFrame::decode_with(&oid, &channel, &with)),
+            err(TmFrame::decode_unchecked(&oid, &channel, &with)),
+        ];
+        assert_eq!(strict, [(ErrorKind::InvalidField, Some(field::VC_ID)); 2]);
+        let f = TmFrame::decode_with_lenient(&oid, &channel, &with).unwrap();
+        assert_eq!(f.anomalies(), oid_flag);
+        assert_eq!(
+            f.data_field_status(),
+            DataFieldStatus::Packets(PacketPointer::OnlyIdleData)
+        );
+        assert_eq!(f.security_header(), &[0xA5; 3]);
+        let u = TmFrame::decode_unchecked_lenient(&oid, &channel, &with).unwrap();
+        assert_eq!(u.anomalies(), oid_flag);
+        assert_eq!(u.header(), f.header());
         // A Security Trailer alone also makes the VC use SDLS.
         let trailer = SecurityLayout::new(0, 3).unwrap();
-        let e = TmFrame::decode_with(&oid, &channel, &mc(trailer), STRICT).unwrap_err();
+        let e = TmFrame::decode_with(&oid, &channel, &mc(trailer)).unwrap_err();
         assert_eq!(
             (e.kind(), e.field()),
             (ErrorKind::InvalidField, Some(field::VC_ID))
         );
         // `decode` has no table, so it reads a VC without SDLS and flags nothing.
-        let f = TmFrame::decode(&oid, &channel, LENIENT).unwrap();
+        let f = TmFrame::decode_lenient(&oid, &channel).unwrap();
         assert_eq!(f.anomalies(), AnomalySet::empty());
         // The pointer decides: no packet start (0x7FF) and a start at 0 are no OID frame, and a
         // Synchronization Flag of 1 makes the pointer undefined.
@@ -801,7 +1021,7 @@ mod tests {
             let mut other = oid.clone();
             other[4..6].copy_from_slice(&[octet4, octet5]);
             write_fecf(&mut other).unwrap();
-            let f = TmFrame::decode_with(&other, &channel, &with, LENIENT);
+            let f = TmFrame::decode_with_lenient(&other, &channel, &with);
             assert_eq!(f.unwrap().anomalies(), AnomalySet::empty());
         }
         // Without SDLS on the VC, the frame is an ordinary OID frame, as in strict mode.
@@ -809,14 +1029,17 @@ mod tests {
         let mut plain_oid = oid.clone();
         plain_oid[6..9].fill(0x55);
         write_fecf(&mut plain_oid).unwrap();
-        let f = TmFrame::decode_with(&plain_oid, &channel, &none, STRICT).unwrap();
-        assert_eq!(f.anomalies(), AnomalySet::empty());
+        let f = TmFrame::decode_with(&plain_oid, &channel, &none).unwrap();
+        assert_eq!(
+            f.data_field_status(),
+            DataFieldStatus::Packets(PacketPointer::OnlyIdleData)
+        );
         // The Packet Order Flag and Segment Length ID errors come first.
         let mut order = oid.clone();
         order[4] |= 0x20;
         write_fecf(&mut order).unwrap();
         assert_eq!(
-            err(TmFrame::decode_with(&order, &channel, &with, STRICT)),
+            err(TmFrame::decode_with(&order, &channel, &with)),
             (ErrorKind::ReservedValue, Some(field::PACKET_ORDER_FLAG))
         );
     }

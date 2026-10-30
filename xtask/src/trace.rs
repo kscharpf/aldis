@@ -5,7 +5,8 @@
 //! sources and headers under `cpp/` (labelled `test (C++)`, CPP-057), the `requirements` fields of test vectors and of
 //! golden-trace headers (`refapp/golden/*.jsonl`, docs/reference-application.md §7.2), and
 //! the analysis and inspection records, one file each in `docs/verification/records/`
-//! ([`crate::records`]).
+//! ([`crate::records`]), and the table [`CHECK_REQUIREMENTS`] of what a check of
+//! `cargo xtask verify` establishes (VER-020; docs/verification/analysis-records.md).
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
@@ -39,6 +40,25 @@ fn req_annotations(text: &str) -> impl Iterator<Item = (usize, &str)> {
         .enumerate()
         .filter_map(|(n, line)| line.split_once("// req:").map(|(_, ids)| (n + 1, ids)))
 }
+
+/// The requirements a check of `cargo xtask verify` establishes with no judgement of a person:
+/// the check, a name or a prefix ending in `-` for the checks of each target, and the
+/// requirement IDs or ranges. The check, its record in the run, and this trace are the evidence;
+/// no prose record repeats them (VER-020, OI-63).
+pub const CHECK_REQUIREMENTS: [(&str, &str); 12] = [
+    ("refapp", "APP-102…APP-104, APP-106, APP-107"),
+    ("header", "CABI-001…CABI-003, CABI-030"),
+    ("layers", "GEN-001…GEN-004, VER-031"),
+    ("no-std-", "GEN-005"),
+    ("features", "GEN-006"),
+    ("clippy", "VER-001, VER-002, GEN-070"),
+    ("deny", "VER-003"),
+    ("fmt", "VER-004"),
+    ("spec", "VER-020, VER-066, TV-023, TV-024, APP-108"),
+    ("coverage", "VER-024"),
+    ("big-endian", "VER-030, GEN-007"),
+    ("stack", "VER-011"),
+];
 
 /// Collects artefacts for every requirement.
 fn artefacts(spec: &Spec) -> Result<BTreeMap<String, BTreeSet<String>>, String> {
@@ -120,6 +140,15 @@ fn artefacts(spec: &Spec) -> Result<BTreeMap<String, BTreeSet<String>>, String> 
             .map_err(|e| format!("{rel}: {e} (run the refapp harness `check-golden`)"))?;
         let refs = scan_ids(&ids.join(" "), &areas);
         add(&mut map, spec, &refs, &format!("golden {rel}"));
+    }
+
+    for (check, ids) in CHECK_REQUIREMENTS {
+        add(
+            &mut map,
+            spec,
+            &scan_ids(ids, &areas),
+            &format!("verify check `{check}`"),
+        );
     }
 
     for record in crate::records::load(spec)? {
@@ -255,6 +284,33 @@ mod tests {
         let areas = ["CPP", "GEN"].iter().map(|a| (*a).to_owned()).collect();
         let ids: Vec<String> = scan_ids(found[0].1, &areas).iter().map(IdRef::id).collect();
         assert_eq!(ids, ["CPP-031", "GEN-013"]);
+    }
+
+    #[test]
+    fn checks_name_checks_and_requirements() {
+        // req: VER-020
+        let spec = crate::spec::Spec::load().unwrap();
+        let checks: Vec<String> = crate::verify::all_checks()
+            .into_iter()
+            .map(|c| c.name)
+            .collect();
+        for (name, ids) in super::CHECK_REQUIREMENTS {
+            assert!(
+                checks
+                    .iter()
+                    .any(|c| c == name || (name.ends_with('-') && c.starts_with(name))),
+                "{name} is no check"
+            );
+            let refs = scan_ids(ids, &spec.area_set());
+            assert!(!refs.is_empty(), "{name}");
+            for r in refs {
+                assert!(
+                    !spec.expand(&r.area, r.number, r.range_end).is_empty(),
+                    "{} is no requirement",
+                    r.id()
+                );
+            }
+        }
     }
 
     #[test]

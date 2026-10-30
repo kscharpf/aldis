@@ -28,12 +28,12 @@ use aldis::core::field;
 use aldis::core::ids::FrameSeqNum;
 use aldis::core::layout::FECF_LEN;
 use aldis::core::security::SecurityLayout;
-use aldis::core::{Error, ErrorKind, Result};
+use aldis::core::{AnomalySet, DecodeMode, Error, ErrorKind, Lenient, Result};
 use aldis::tc::{
     Clcw, ClcwStatus, ControlCommand, CopInEffect, FarmBCounter, FrameData, FrameFields,
-    FrameStream, FrameType, IntakeItem, MapConfig, PRIMARY_HEADER_LEN, PhysicalChannelConfig,
-    SegmentHeader, SegmentHeaderUse, SequenceFlags, TcFrame, TcFrameHeader, TcMapId,
-    TcSpacecraftId, TcVcId, VcConfig, VcTable, encode,
+    FrameStream, FrameType, IntakeItem, LenientFrameStream, MapConfig, PRIMARY_HEADER_LEN,
+    PhysicalChannelConfig, SegmentHeader, SegmentHeaderUse, SequenceFlags, TcAnomaly, TcFrame,
+    TcFrameHeader, TcMapId, TcSpacecraftId, TcVcId, VcConfig, VcTable, encode,
 };
 
 use crate::abi::{self, Configs, invalid_argument};
@@ -701,7 +701,7 @@ fn layout(
 }
 
 /// The C view of a decoded frame.
-pub(crate) fn view(f: &TcFrame<'_>) -> aldis_tc_frame_t {
+pub(crate) fn view(f: &TcFrame<'_>, anomalies: AnomalySet<TcAnomaly>) -> aldis_tc_frame_t {
     let segment = f.segment_header();
     aldis_tc_frame_t {
         header: header(&f.header()),
@@ -711,7 +711,7 @@ pub(crate) fn view(f: &TcFrame<'_>) -> aldis_tc_frame_t {
         control: control(f.control_command()),
         has_fecf: f.fecf().is_some(),
         fecf: f.fecf().unwrap_or(0),
-        anomalies: f.anomalies().bits(),
+        anomalies: anomalies.bits(),
         layout: layout(
             segment.is_some(),
             f.security_header().len(),
@@ -933,7 +933,11 @@ pub unsafe extern "C" fn aldis_tc_decode(
             let bytes = abi::bytes(bytes, len)?;
             let mode = abi::mode(mode)?;
             let out = abi::out(out)?;
-            out.write(view(&TcFrame::decode(bytes, &table, mode)?));
+            let (frame, anomalies) = mode.dispatch(
+                || TcFrame::decode(bytes, &table),
+                || TcFrame::decode_lenient(bytes, &table),
+            )?;
+            out.write(view(&frame, anomalies));
             Ok(())
         })
     }
@@ -1018,8 +1022,15 @@ pub unsafe extern "C" fn aldis_tc_stream_next(
             let Some(rest) = unit.get(current_offset..) else {
                 return Err(invalid_argument());
             };
-            let mut stream = FrameStream::new(rest, &table, mode);
-            match stream.next() {
+            let item = match mode {
+                DecodeMode::Strict => FrameStream::new(rest, &table)
+                    .next()
+                    .map(|item| item.map_frame(|frame| (frame, AnomalySet::empty()))),
+                DecodeMode::Lenient => LenientFrameStream::new(rest, &table)
+                    .next()
+                    .map(|item| item.map_frame(Lenient::into_parts)),
+            };
+            match item {
                 None => {
                     out.write(aldis_tc_stream_item_t {
                         kind: ALDIS_TC_STREAM_END,
@@ -1036,7 +1047,10 @@ pub unsafe extern "C" fn aldis_tc_stream_next(
                         reserved2: [0; 2],
                     });
                 }
-                Some(IntakeItem::Accepted { frame, .. }) => {
+                Some(IntakeItem::Accepted {
+                    frame: (frame, anomalies),
+                    ..
+                }) => {
                     let len = frame.len();
                     *offset_ref = current_offset
                         .checked_add(len)
@@ -1049,7 +1063,7 @@ pub unsafe extern "C" fn aldis_tc_stream_next(
                             len,
                         },
                         declared_len: len,
-                        frame: view(&frame),
+                        frame: view(&frame, anomalies),
                         discard_reason: 0,
                         error_code: 0,
                         error_field: 0,
@@ -1262,7 +1276,10 @@ pub unsafe extern "C" fn aldis_clcw_decode(
             let mode = abi::mode(mode)?;
             let out = abi::out(out)?;
             let anomalies = abi::out(anomalies)?;
-            let (c, found) = Clcw::decode(word.to_be_bytes(), mode)?;
+            let (c, found) = mode.dispatch(
+                || Clcw::decode(word.to_be_bytes()),
+                || Clcw::decode_lenient(word.to_be_bytes()),
+            )?;
             out.write(clcw_struct(&c));
             anomalies.write(found.bits());
             Ok(())

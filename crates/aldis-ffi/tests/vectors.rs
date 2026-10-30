@@ -2164,6 +2164,7 @@ fn tm_run(case: &CodecCase) -> R<Value> {
         }
         "validate" => {
             let (mc, vcs) = ch.mc(case);
+            let mut found = 0_u32;
             // SAFETY: as above.
             call(|e| unsafe {
                 aldis_tm_validate(
@@ -2173,6 +2174,7 @@ fn tm_run(case: &CodecCase) -> R<Value> {
                     vcs.as_ptr(),
                     vcs.len(),
                     mode(case),
+                    &raw mut found,
                     e,
                 )
             })?;
