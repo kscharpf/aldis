@@ -12,6 +12,8 @@ Who may decide what on Aldis, so that routine questions don't wait for the maint
 
 A contributor who is neither coordinator nor agent decides as an agent for their own pull request and asks the maintainer as §3 says.
 
+The coordinator briefs an agent as [agent-brief.md](agent-brief.md) says.
+
 The rules of [AGENTS.md](../../AGENTS.md), the [checklists](../milestones/checklists.md), and the checks of `cargo xtask` decide most questions already; nobody asks about those (§4). What follows covers what they leave open.
 
 ## 2. Who decides what

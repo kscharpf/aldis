@@ -1,0 +1,135 @@
+#!/usr/bin/env bash
+# Is a pull request ready to merge? Read-only: it posts nothing.
+#
+# Usage: scripts/pr-status <pr-number>...
+#
+# Per PR: state, head, commits behind origin/<base>, the required status contexts of branch
+# protection with their state on the head, the other checks (not required), the newest
+# verify.yml run on the head branch, whether a record is published for the head, the latest
+# review in full, the PR comments, and one verdict line: `READY`, or `NOT READY: <reasons>`.
+# READY means: open, not a draft, the head contains the tip of origin/<base>, no changes
+# requested and no review outstanding, and every required context is success on the head.
+# Exit status: 0 once every verdict is printed; 2 on a usage error or when gh fails.
+set -euo pipefail
+
+if [ $# -eq 0 ]; then
+    awk 'NR == 1 { next } /^#/ { sub(/^# ?/, ""); print; next } { exit }' "$0"
+    exit 2
+fi
+
+export NO_COLOR=1 GH_FORCE_TTY=0 GH_NO_UPDATE_NOTIFIER=1
+
+main_checkout="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")"
+g() { git -C "$main_checkout" "$@"; }
+
+g fetch --quiet origin
+if g ls-remote --exit-code origin refs/notes/verify >/dev/null 2>&1; then
+    g fetch --quiet origin '+refs/notes/verify:refs/notes/verify-origin'
+fi
+
+status_one() {
+    local n="$1" info state draft head branch base decision behind checks required ctx s
+    local run run_id run_status run_conclusion run_sha record reasons="" inline
+    info="$(gh pr view "$n" --json state,isDraft,headRefOid,headRefName,baseRefName,reviewDecision \
+        --jq '[.state,(.isDraft|tostring),.headRefOid,.headRefName,.baseRefName,(if (.reviewDecision // "") == "" then "none" else .reviewDecision end)]|@tsv')" \
+        || { echo "#$n: gh could not read the pull request" >&2; return 1; }
+    IFS=$'\t' read -r state draft head branch base decision <<<"$info"
+
+    if g cat-file -e "$head^{commit}" 2>/dev/null; then
+        behind="$(g rev-list --count "$head..origin/$base")"
+    else
+        behind="?"
+    fi
+
+    checks="$(gh pr view "$n" --json statusCheckRollup --jq '.statusCheckRollup[]
+        | [(.context // .name),
+           ((if (.state // "") != "" then .state
+             elif (.conclusion // "") != "" then .conclusion
+             else (.status // "unknown") end) | ascii_upcase)] | @tsv')"
+    required="$(gh api "repos/{owner}/{repo}/branches/$base/protection" --jq '[(.required_status_checks.contexts // [])[],
+        ((.required_status_checks.checks // [])[] | .context)] | unique | .[]' 2>/dev/null)" || required="?"
+
+    state_of() { printf '%s\n' "$checks" | awk -F'\t' -v c="$1" '$1 == c { print $2; exit }'; }
+
+    run="$(gh run list --workflow verify.yml --branch "$branch" -L 1 \
+        --json databaseId,status,conclusion,headSha \
+        --jq '.[0] // empty | [.databaseId, .status, ((.conclusion // "") | if . == "" then "-" else . end), .headSha] | @tsv')"
+    run_id="" run_status="" run_conclusion="" run_sha=""
+    if [ -n "$run" ]; then
+        IFS=$'\t' read -r run_id run_status run_conclusion run_sha <<<"$run"
+    fi
+    if g notes --ref=refs/notes/verify-origin show "$head" >/dev/null 2>&1; then record=yes; else record=no; fi
+    inline="$(gh api "repos/{owner}/{repo}/pulls/$n/comments" --jq 'length' 2>/dev/null || echo "?")"
+
+    echo "== #$n $state$([ "$draft" = true ] && echo ' (draft)') ${head:0:7} -> $base, $behind commit(s) behind origin/$base"
+    echo "required contexts:"
+    if [ "$required" = "?" ]; then
+        echo "  (unreadable: branch protection of $base)"
+    elif [ -z "$required" ]; then
+        echo "  (none)"
+    else
+        while IFS= read -r ctx; do
+            s="$(state_of "$ctx")"
+            echo "  $ctx: ${s:-missing}"
+        done <<<"$required"
+    fi
+    echo "other checks (not required):"
+    while IFS=$'\t' read -r ctx s; do
+        [ -n "$ctx" ] || continue
+        if ! printf '%s\n' "$required" | grep -Fxq -- "$ctx"; then
+            echo "  $ctx: $s"
+        fi
+    done <<<"$checks"
+    if [ -n "$run_id" ]; then
+        echo "newest verify run: $run_id $run_status/$run_conclusion on ${run_sha:0:7} ($([ "$run_sha" = "$head" ] && echo "the PR head" || echo "NOT the PR head"))"
+    else
+        echo "newest verify run: none"
+    fi
+    echo "published record for the head: $record"
+    echo "review decision: $decision; inline review comments: $inline"
+    echo "latest review:"
+    gh pr view "$n" --json reviews --jq '.reviews | if length == 0 then "  (none)"
+        else .[-1] | "  \(.author.login) \(.state) \(.submittedAt)\n\(.body)" end'
+    echo "comments:"
+    gh pr view "$n" --json comments --jq 'if (.comments | length) == 0 then "  (none)"
+        else .comments[] | "  \(.author.login) \(.createdAt): \(.body[0:300] | gsub("\n"; " "))" end'
+
+    [ "$state" = OPEN ] || reasons="$reasons; PR is $state"
+    [ "$draft" != true ] || reasons="$reasons; draft"
+    if [ "$state" != OPEN ]; then
+        :
+    elif [ "$behind" = "?" ]; then
+        reasons="$reasons; head not fetched, cannot tell whether it contains origin/$base"
+    elif [ "$behind" -gt 0 ]; then
+        reasons="$reasons; behind origin/$base by $behind"
+    fi
+    [ "$decision" != CHANGES_REQUESTED ] || reasons="$reasons; changes requested"
+    [ "$decision" != REVIEW_REQUIRED ] || reasons="$reasons; review required"
+    if [ "$required" = "?" ]; then
+        reasons="$reasons; required contexts unreadable"
+    elif [ -n "$required" ]; then
+        while IFS= read -r ctx; do
+            s="$(state_of "$ctx")"
+            if [ -z "$s" ]; then
+                reasons="$reasons; $ctx missing"
+                if [ "$run_sha" = "$head" ] && { [ "$run_status" = in_progress ] || [ "$run_status" = queued ]; }; then
+                    reasons="$reasons (run $run_id $run_status)"
+                fi
+            elif [ "$s" != SUCCESS ]; then
+                reasons="$reasons; $ctx $s"
+            fi
+        done <<<"$required"
+    fi
+    if [ -z "$reasons" ]; then
+        echo "#$n: READY"
+    else
+        echo "#$n: NOT READY:${reasons#;}"
+    fi
+}
+
+failed=0
+for n in "$@"; do
+    status_one "$n" || failed=1
+    echo
+done
+[ "$failed" -eq 0 ] || exit 2

@@ -16,7 +16,7 @@
 //! no published passing record covers the base or an earlier commit of the branch. A record is
 //! not used for any check when a path that differs from its commit is an input of no check and
 //! in none of the lists that `spec` alone reads (`SPEC_ONLY`: documentation, the GitHub
-//! configuration, and the root configuration that no other check reads).
+//! configuration, the root configuration, and the scripts that no other check reads).
 
 use std::collections::{BTreeMap, HashMap};
 use std::path::Path;
@@ -24,7 +24,7 @@ use std::rc::Rc;
 
 use serde_json::{Map, Value, json};
 
-use super::checks::{Check, DOCS, GITHUB, Inputs, NIGHTLY_ONLY, ROOT_CONFIG, SPEC_ONLY};
+use super::checks::{Check, DOCS, GITHUB, Inputs, NIGHTLY_ONLY, ROOT_CONFIG, SCRIPTS, SPEC_ONLY};
 use super::record::Outcome;
 use super::{git_bytes, git_in, publish, record};
 
@@ -656,6 +656,7 @@ pub fn to_json(plan: &Plan, checks: &[Check]) -> Value {
         "documentation": DOCS.patterns,
         "github": GITHUB.patterns,
         "root_config": ROOT_CONFIG.patterns,
+        "scripts": SCRIPTS.patterns,
         "every": plan.every,
         "inputs": inputs,
     })
@@ -1007,6 +1008,36 @@ mod tests {
         assert_eq!(
             running(&changed(&[".gitattributes"]), Force::default()),
             names(|c| !c.nightly)
+        );
+    }
+
+    // req: VER-056
+    #[test]
+    fn scripts_run_spec_only() {
+        assert_eq!(
+            running(&changed(&["scripts/pr-status"]), Force::default()),
+            ["spec"]
+        );
+        assert_eq!(
+            running(
+                &changed(&["scripts/reverify", "docs/a.md", ".gitignore"]),
+                Force::default()
+            ),
+            ["spec"]
+        );
+        // A file next to the scripts is in no list, so every check runs.
+        assert_eq!(
+            running(&changed(&["script/x"]), Force::default()),
+            names(|c| !c.nightly)
+        );
+        // With code, the code's checks run as before.
+        assert!(
+            running(
+                &changed(&["scripts/reverify", "crates/aldis-core/src/lib.rs"]),
+                Force::default()
+            )
+            .len()
+                > 1
         );
     }
 
