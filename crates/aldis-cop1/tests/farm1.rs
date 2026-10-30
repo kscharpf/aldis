@@ -322,14 +322,20 @@ fn every_cell_of_table_6_1_through_step() {
                     flag(before.retransmit_flag(), want.retransmit),
                     "{at}"
                 );
+                // The Wait and Lockout Flags are functions of the State (232.1 §6.1.3, §6.1.4;
+                // OI-64), so (S2, E5), which leaves Wait_Flag set in the table, reports it clear.
+                assert_eq!(after.wait_flag(), next == Farm1State::Wait, "{at}");
+                assert_eq!(after.lockout_flag(), next == Farm1State::Lockout, "{at}");
+                // The printed flag actions agree with that, from the flags the state implies.
+                let was = (state == Farm1State::Wait, state == Farm1State::Lockout);
+                let printed = (flag(was.0, want.wait), flag(was.1, want.lockout));
+                let exception = state == Farm1State::Wait && event == Farm1Event::E5;
                 assert_eq!(
-                    after.wait_flag(),
-                    flag(before.wait_flag(), want.wait),
-                    "{at}"
-                );
-                assert_eq!(
-                    after.lockout_flag(),
-                    flag(before.lockout_flag(), want.lockout),
+                    printed,
+                    (
+                        next == Farm1State::Wait || exception,
+                        next == Farm1State::Lockout
+                    ),
                     "{at}"
                 );
                 let b = before.farm_b_counter().get();
@@ -400,7 +406,7 @@ fn event_e11_reports_the_state_without_changing_it() {
 
 #[test]
 fn clcw_follows_the_state_after_every_input() {
-    // req: COP-035
+    // req: COP-035, OI-64
     let f = fresh(10);
     assert_eq!(f.state(), Farm1State::Open);
     let c = f.clcw();
@@ -417,7 +423,8 @@ fn clcw_follows_the_state_after_every_input() {
     let f = go(&f, ad(11, false)).0;
     assert!(f.clcw().retransmit && f.clcw().wait);
     let f = go(&f, ad(111, true)).0;
-    assert!(f.clcw().lockout && f.clcw().wait);
+    // Wait_Flag is 0 in Lockout, although the cell does not clear it (OI-64).
+    assert!(f.clcw().lockout && !f.clcw().wait);
     assert_eq!(f.state(), Farm1State::Lockout);
     let f = go(&f, bc(Some(ControlCommand::Unlock))).0;
     let c = f.clcw();
