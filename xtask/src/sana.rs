@@ -15,8 +15,8 @@
 //! SANA publishes no machine-readable export of its registries without an account (checked
 //! 2026-10-23: `/api/` asks for a login, and no CSV, JSON, or XML link exists on the registry
 //! page), so the import reads the HTML table of the public registry page, following its pager
-//! (the `per_page` query is ignored: pages hold 25 rows), and checks the row count against the
-//! count the pages state.
+//! (the `per_page` query is ignored: pages hold 25 rows). Fetching fails only without data; the
+//! comparison with the snapshot is the check.
 
 use std::fmt::Write as _;
 use std::process::Command;
@@ -182,24 +182,9 @@ fn text_of(html: &str) -> String {
     }
 }
 
-/// One page of a registry: its rows, the record count of the whole registry that it states, and
-/// its place in the pager.
-struct Page {
-    rows: Vec<Vec<String>>,
-    stated: usize,
-    number: usize,
-    total: usize,
-}
-
-/// The number after `marker` in `text`, if any.
-fn number_after(text: &str, marker: &str) -> Option<usize> {
-    text.split_once(marker)
-        .and_then(|(_, rest)| rest.split_whitespace().next())
-        .and_then(|n| n.parse().ok())
-}
-
-/// The rows of the registry table in a registry page, with the counts the page states.
-fn parse_page(html: &str) -> Result<Page, String> {
+/// The rows of the registry table in a registry page, and the number of pages its pager states
+/// (1 without a pager).
+fn parse_page(html: &str) -> Result<(Vec<Vec<String>>, usize), String> {
     let body = html
         .split_once("<tbody>")
         .and_then(|(_, rest)| rest.split_once("</tbody>"))
@@ -219,71 +204,30 @@ fn parse_page(html: &str) -> Result<Page, String> {
         }
         rows.push(row);
     }
-    let text = text_of(html);
-    let stated = text
-        .split_once(" records in registry")
-        .and_then(|(before, _)| before.rsplit(' ').next())
-        .and_then(|n| n.parse::<usize>().ok())
-        .ok_or("the page does not state its record count")?;
-    // A registry that fits one page has no pager.
-    let (number, total) = match number_after(&text, "Page ") {
-        Some(number) => (
-            number,
-            number_after(&text, &format!("Page {number} of "))
-                .ok_or("the pager states no page count")?,
-        ),
-        None => (1, 1),
-    };
-    Ok(Page {
-        rows,
-        stated,
-        number,
-        total,
-    })
+    let total = text_of(html)
+        .split_once("Page ")
+        .and_then(|(_, rest)| rest.split_whitespace().nth(2))
+        .and_then(|n| n.parse().ok())
+        .unwrap_or(1);
+    Ok((rows, total))
 }
 
-/// The URL of page `n` of the registry at `url` (which already has a query).
-fn page_url(url: &str, n: usize) -> String {
-    format!("{url}&page={n}")
-}
-
-/// All rows of a registry: page 1 and every page the pager announces, fetched with `get`. Fails
-/// when a page is not the page asked for, when the pages disagree on the record count, or when
-/// the rows of all pages are not as many as the count the registry states.
+/// All rows of a registry: page 1 and every further page its pager announces (`&page=N`),
+/// fetched with `get`, in order of the value, each once. The comparison with the snapshot is the
+/// check; this fails only without data: a fetch or parse error, or no rows.
 fn fetch_registry(
     url: &str,
     mut get: impl FnMut(&str) -> Result<String, String>,
 ) -> Result<Vec<Vec<String>>, String> {
-    let first = parse_page(&get(url)?)?;
-    if first.number != 1 {
-        return Err(format!("the first page is page {}", first.number));
-    }
-    let (stated, total) = (first.stated, first.total);
-    let mut rows = first.rows;
+    let (mut rows, total) = parse_page(&get(url)?)?;
     for n in 2..=total {
-        let page = parse_page(&get(&page_url(url, n))?)?;
-        if page.number != n || page.total != total || page.stated != stated {
-            return Err(format!(
-                "page {n} of the registry is page {} of {} and states {} records, not page \
-                 {n} of {total} and {stated} records",
-                page.number, page.total, page.stated
-            ));
-        }
-        rows.extend(page.rows);
+        rows.extend(parse_page(&get(&format!("{url}&page={n}"))?)?.0);
     }
-    if stated != rows.len() {
-        return Err(format!(
-            "the registry states {stated} records but its {total} page(s) have {} rows",
-            rows.len()
-        ));
-    }
-    // The pager does not keep the order of `sort=upid` across pages, so the order is ours.
+    // The pager does not keep the order of `sort=upid` across pages.
     rows.sort_by(|a, b| a.get(1).cmp(&b.get(1)));
-    if rows
-        .windows(2)
-        .any(|w| w.first().and_then(|r| r.get(1)) == w.get(1).and_then(|r| r.get(1)))
-    {
-        return Err("a value is on two pages: the registry changed while it was read".to_owned());
+    rows.dedup();
+    if rows.is_empty() {
+        return Err("the registry has no rows".to_owned());
     }
     Ok(rows)
 }
@@ -611,8 +555,13 @@ mod tests {
         s
     }
 
+    /// `page` with a pager of `n` of `total` pages.
+    fn paged(rows: &[(&str, &str, &str)], stated: usize, n: usize, total: usize) -> String {
+        format!("{}<li>Page {n} of {total}</li>", page(rows, stated))
+    }
+
     #[test]
-    fn page_rows_and_count() {
+    fn page_rows() {
         let html = page(
             &[
                 ("Assigned", "0b00000", "A &amp; B"),
@@ -620,74 +569,29 @@ mod tests {
             ],
             2,
         );
-        let rows = parse_page(&html).unwrap().rows;
+        let rows = parse_page(&html).unwrap().0;
         assert_eq!(rows[0], ["Assigned", "0b00000", "A & B", "", "1.2"]);
         assert_eq!(rows[1][2], "");
-        assert_eq!(
-            parse_page(&page(&[("Assigned", "0b00000", "x")], 3))
-                .unwrap()
-                .stated,
-            3
-        );
         assert!(parse_page("<p>no table</p>").is_err());
         assert_eq!(text_of("<a>x</a>\n  <b>y</b>"), "x y");
-    }
-
-    /// `page` with a pager of `n` of `total` pages.
-    fn paged(rows: &[(&str, &str, &str)], stated: usize, n: usize, total: usize) -> String {
-        format!("{}<li>Page {n} of {total}</li>", page(rows, stated))
     }
 
     #[test]
     fn registry_follows_pages() {
         let (a, b) = (("Assigned", "0b00000", "x"), ("Unassigned", "0b00001", "y"));
+        // Two pages, the second first in value.
         let pages = |url: &str| match url {
-            "u?q" => Ok(paged(&[a], 2, 1, 2)),
-            "u?q&page=2" => Ok(paged(&[b], 2, 2, 2)),
+            "u?q" => Ok(paged(&[b], 2, 1, 2)),
+            "u?q&page=2" => Ok(paged(&[a], 2, 2, 2)),
             _ => Err("unexpected".to_owned()),
         };
         let rows = fetch_registry("u?q", pages).unwrap();
-        assert_eq!(rows.len(), 2);
-        assert_eq!(rows[1][1], "0b00001");
-        // Pages in another order than the sort are put in order of the value.
-        let swapped = |url: &str| match url {
-            "u?q" => Ok(paged(&[b], 2, 1, 2)),
-            _ => Ok(paged(&[a], 2, 2, 2)),
-        };
-        assert_eq!(fetch_registry("u?q", swapped).unwrap()[0][1], "0b00000");
-        // A single page without a pager.
+        assert_eq!((rows.len(), rows[0][1].as_str()), (2, "0b00000"));
+        // One page without a pager.
         assert_eq!(
             fetch_registry("u?q", |_| Ok(page(&[a], 1))).unwrap().len(),
             1
         );
-        // The stated count is more than the rows of all pages.
-        let short = |url: &str| match url {
-            "u?q" => Ok(paged(&[a], 3, 1, 2)),
-            _ => Ok(paged(&[b], 3, 2, 2)),
-        };
-        assert!(
-            fetch_registry("u?q", short)
-                .unwrap_err()
-                .contains("states 3 records")
-        );
-        // The second page is the first again, or states another count.
-        let again = |_: &str| Ok(paged(&[a], 2, 1, 2));
-        assert!(fetch_registry("u?q", again).is_err());
-        // A row on both pages.
-        let twice = |url: &str| match url {
-            "u?q" => Ok(paged(&[a], 2, 1, 2)),
-            _ => Ok(paged(&[a], 2, 2, 2)),
-        };
-        assert!(
-            fetch_registry("u?q", twice)
-                .unwrap_err()
-                .contains("two pages")
-        );
-        let other = |url: &str| match url {
-            "u?q" => Ok(paged(&[a], 2, 1, 2)),
-            _ => Ok(paged(&[b], 5, 2, 2)),
-        };
-        assert!(fetch_registry("u?q", other).is_err());
     }
 
     #[test]
