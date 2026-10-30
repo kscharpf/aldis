@@ -11,9 +11,9 @@
 | WP-0 Infrastructure & setup | complete | #135, #140, #141, #143 | WP-0a Track C retirement (#141), WP-0b agent boundaries (#140), WP-0c fuzz smoke check (#135), WP-0d plan & CI scope (#143) |
 | WP-1a Spec readings & cell review | merged | #145 | CCSDS 232.1 Table 5-1 and Table 6-1 cell review `cop1-tables.md`, field codes 150–199 (COP-003, VER-041, API-082) |
 | WP-1b Common types & FARM-1 table | merged | #147 | Directives, alerts, notifications, FARM-1 S1–S3 × E1–E11 const table data, cell tests (COP-002, COP-004, RS-021) |
-| WP-1c FOP-1 table as data | in progress | #149 | FOP-1 S1–S6 × E1–E46/E101–E104 const table data, Cor. 1 verification, cell tests (COP-001, COP-004, RS-021) |
+| WP-1c FOP-1 table as data | merged | #149 | FOP-1 S1–S6 × E1–E46/E101–E104 const table data, Cor. 1 verification, cell tests (COP-001, COP-004, RS-021) |
 | WP-2 Blind vectors & model | planned | — | Python blind oracle model (TV-023), conformance scenarios in `test-vectors/cop1/` with 1 vector per cell (COP-005, TV-011) |
-| WP-3 `aldis-cop1`: FARM-1 | in progress | — | `Farm1::step` and `clcw` over `FARM1_TABLE`, window check, FARM-B counter, exerciser calls; `FARM1_MAX_ACTIONS` derived from the table (COP-030…036); OI-58 opened |
+| WP-3 `aldis-cop1`: FARM-1 | merged | #162 | `Farm1::step` and `clcw` over `FARM1_TABLE`, window check, FARM-B counter, exerciser calls; `FARM1_MAX_ACTIONS` derived from the table (COP-030…036); OI-58 opened |
 | WP-4 `aldis-cop1`: FOP-1 | planned | — | FOP-1 engine: S1–S6, E1–E46, E101–E104, sliding window, T1 timer, Suspend/Resume, frame construction (COP-010…017) |
 | WP-5 Closed loop & carry-overs | planned | — | Closed-loop simulated link harness (COP-040), event fuzzing (COP-041), OI-47 delimiter fill bound in TC/USLP, USLP truncated check |
 | WP-6 C ABI handles | planned | — | `aldis-ffi`: `aldis_fop1_*`, `aldis_farm1_*`, opaque handles (CABI-030…033, CABI-040), limits, exerciser group, header |
@@ -166,5 +166,5 @@ Not in M3: Link layer multiplexing and packet generator/extractor engines (M4); 
 | Track | Needs from M3 | When |
 |---|---|---|
 | A — A3 (COP-1 reference scenario) | `aldis-cop1` FOP-1 on ground, FARM-1 on flight side; TC and USLP frame targets; closed-loop loopback | M3 exit (A3 entry gate) |
-| R — M4 (Link engines) | FOP-1 frame submission interface for `MapSegmenter` (LNK-043) and FARM-1 delivery queue for `FrameReceiver` (LNK-053) | M3 exit |
+| R — M4 (Link engines) | FOP-1 frame submission interface for `MapSegmenter` (LNK-043) and FARM-1 `buffer_available` and `BufferReleased` inputs for `FrameReceiver`, whose caller owns the delivery buffer (LNK-053, COP-033) | M3 exit |
 | ACFS — P3 (cFS flight side) | FARM-1 C ABI handle (`aldis_farm1_t`) | M3 exit |
