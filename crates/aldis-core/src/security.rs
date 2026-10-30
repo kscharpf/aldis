@@ -218,6 +218,27 @@ impl SecuredFields {
         })
     }
 
+    /// The secured fields of a frame whose Security Header starts at `start`, followed by
+    /// `header_len`, `data_len`, and `trailer_len` octets, adjacent by construction (API-070,
+    /// RS-020).
+    ///
+    /// For a writer that fixes the data length after the layout was reserved (TC, USLP).
+    #[must_use]
+    pub const fn adjacent(
+        start: usize,
+        header_len: usize,
+        data_len: usize,
+        trailer_len: usize,
+    ) -> SecuredFields {
+        let header_end = start.saturating_add(header_len);
+        let data_end = header_end.saturating_add(data_len);
+        SecuredFields {
+            header: start..header_end,
+            data: header_end..data_end,
+            trailer: data_end..data_end.saturating_add(trailer_len),
+        }
+    }
+
     /// The secured fields of a computed frame layout, which are adjacent by construction
     /// (CMN-040, API-070).
     #[must_use]
@@ -453,6 +474,7 @@ mod tests {
         })
         .unwrap();
         let f = SecuredFields::from_layout(&layout);
+        assert_eq!(SecuredFields::adjacent(6, 2, 7, 3), f);
         assert_eq!((f.header(), f.data(), f.trailer()), (6..8, 8..15, 15..18));
     }
 

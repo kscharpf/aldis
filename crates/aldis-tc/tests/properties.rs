@@ -6,6 +6,7 @@
     reason = "test bookkeeping on lengths the strategies bound (RS-018)"
 )]
 
+use aldis_core::security::{FrameCtx, NoSecurity};
 use aldis_core::{DecodeMode, ErrorKind};
 use aldis_tc::{
     Clcw, Delimited, FrameDelimiter, TcAnomaly, TcFrame, TcFrameWriter, encode, next_frame,
@@ -52,7 +53,9 @@ proptest! {
         let mut two = vec![fill; f.octets.len()];
         let mut w = TcFrameWriter::begin(&mut two, t, f.fields, f.segment_header, f.user_data.len()).unwrap();
         w.user_data_mut().copy_from_slice(&f.user_data);
-        prop_assert_eq!(w.finish(f.user_data.len()), Ok(f.octets.len()));
+        let ctx = FrameCtx::Tc { scid: f.fields.spacecraft_id, vcid: f.fields.vc_id, map_id: None };
+        let done = w.protect(f.user_data.len(), &mut NoSecurity, &ctx).unwrap().finalize();
+        prop_assert_eq!(done.len(), f.octets.len());
         prop_assert_eq!(&two, &f.octets);
         // One octet short: nothing is written (API-022).
         let mut short = vec![fill; f.octets.len() - 1];

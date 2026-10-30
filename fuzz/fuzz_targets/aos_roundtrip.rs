@@ -16,7 +16,7 @@ use aldis_core::DecodeMode;
 use aldis_core::ids::{SpacecraftId, VcId};
 use aldis_core::ocf::Ocf;
 use aldis_core::oid::OidGenerator;
-use aldis_core::security::SecurityLayout;
+use aldis_core::security::{FrameCtx, NoSecurity, SecurityLayout};
 use libfuzzer_sys::arbitrary::{Result, Unstructured};
 use libfuzzer_sys::fuzz_target;
 
@@ -194,7 +194,14 @@ fn run(u: &mut Unstructured<'_>) -> Result<()> {
             if let Some(ocf) = ocf {
                 w.set_ocf(ocf).unwrap();
             }
-            assert_eq!(w.finish(), n);
+            let ctx = FrameCtx::Aos {
+                scid: fields.scid,
+                vcid: fields.vcid,
+            };
+            assert_eq!(
+                w.protect(&mut NoSecurity, &ctx).unwrap().finalize().len(),
+                n
+            );
             assert_eq!(two[..n], out[..n]);
             corrected(u, &pc, &vcs_table, &out[..n], &f)?;
         }
@@ -254,7 +261,7 @@ fn oid_frame(
     ) {
         Err(_) => assert_eq!(oid, before, "a rejected OID frame advanced the generator"),
         Ok(w) => {
-            let n = w.finish();
+            let n = w.unsecured().unwrap().finalize().len();
             let f = AosFrame::decode(&frame[..n], pc, vcs_table, DecodeMode::Strict).unwrap();
             assert!(f.is_oid());
             let mut expected = vec![0_u8; f.data_field().len()];

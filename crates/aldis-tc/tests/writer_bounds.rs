@@ -14,7 +14,7 @@
 )]
 
 use aldis_core::ids::FrameSeqNum;
-use aldis_core::security::SecurityLayout;
+use aldis_core::security::{FrameCtx, NoSecurity, SecurityLayout};
 use aldis_core::{DecodeMode, ErrorKind};
 use aldis_tc::{
     ControlCommand, FrameData, FrameFields, FrameType, MapConfig, PhysicalChannelConfig,
@@ -200,7 +200,16 @@ fn begin_and_finish_write_only_the_reservation() {
             let security = w.security_header_mut().len() + w.security_trailer_mut().len();
             let total = 5 + security + max_user + 2;
             w.user_data_mut()[..user_len].fill(0x5C);
-            let n = w.finish(user_len).unwrap();
+            let ctx = FrameCtx::Tc {
+                scid: f.spacecraft_id,
+                vcid: f.vc_id,
+                map_id: None,
+            };
+            let n = w
+                .protect(user_len, &mut NoSecurity, &ctx)
+                .unwrap()
+                .finalize()
+                .len();
             assert_eq!(n, total - (max_user - user_len));
             // Beyond the reservation nothing changes; inside it, the frame is a valid frame.
             assert_eq!(out[total..], before[total..], "vc {vc_id}, {user_len}");
@@ -243,7 +252,12 @@ fn a_failed_begin_or_finish_changes_nothing_of_the_frame() {
         let w = TcFrameWriter::begin(&mut out, &t, f, None, 40).unwrap();
         let begun = {
             // The writer borrows the buffer: compare after it is gone.
-            w.finish(user_len).unwrap_err();
+            let ctx = FrameCtx::Tc {
+                scid: f.spacecraft_id,
+                vcid: f.vc_id,
+                map_id: None,
+            };
+            w.protect(user_len, &mut NoSecurity, &ctx).unwrap_err();
             out.clone()
         };
         let mut again = before.clone();

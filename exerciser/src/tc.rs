@@ -6,7 +6,7 @@ use core::hint::black_box as bb;
 
 use aldis_core::ids::FrameSeqNum;
 use aldis_core::ocf::{Ocf, Type1Report};
-use aldis_core::security::SecurityLayout;
+use aldis_core::security::{FrameCtx, NoSecurity, SecurityLayout};
 use aldis_core::{Anomaly, DecodeMode, Error, ErrorKind};
 use aldis_tc::{
     Clcw, ClcwStatus, ControlCommand, CopInEffect, Delimited, FarmBCounter, FrameData,
@@ -166,12 +166,24 @@ fn frame_group(t: &mut Tally) {
         map_id,
     });
     let seg = fields(FrameType::Bd, 2);
+    let ctx = seg.map(|f| FrameCtx::Tc {
+        scid: f.spacecraft_id,
+        vcid: f.vc_id,
+        map_id: None,
+    });
     match seg.map(|f| TcFrameWriter::begin(&mut out, &table, f, sh, bb(4))) {
         Some(Ok(mut w)) => {
             w.security_header_mut().fill(0xA5);
             w.security_trailer_mut().fill(0x5A);
             w.user_data_mut().fill(0x11);
-            t.check(w.finish(bb(2)) == Ok(14));
+            match ctx.map(|c| w.protect(bb(2), bb(&mut NoSecurity), bb(&c))) {
+                Some(Ok(p)) => {
+                    let done = p.finalize();
+                    t.check(done.len() == 14 && !done.is_empty() && done.octets().len() == 14);
+                    t.check(done.into_octets().len() == 14);
+                }
+                _ => t.check(false),
+            }
         }
         _ => t.check(false),
     }
@@ -181,6 +193,14 @@ fn frame_group(t: &mut Tally) {
             && f.data_field() == [0x11; 2]
             && f.security_trailer() == [0x5A]
     }));
+    // Without `protect`, a channel with SDLS is not finished.
+    t.check(
+        seg.map(|f| TcFrameWriter::begin(&mut out, &table, f, sh, bb(4)))
+            .is_some_and(|w| {
+                w.and_then(|w| w.unsecured(bb(2)))
+                    .is_err_and(|e| e.kind() == ErrorKind::InvalidField)
+            }),
+    );
     t.check(TcAnomaly::from_bit(bb(1)).is_some_and(|a| a.bit() == 1));
 }
 
@@ -412,7 +432,19 @@ fn encode_case(case: &Case, o: &mut Out, scratch: &mut Scratch) -> Run {
         // The two-phase writer must produce the same octets (API-020).
         let two = fresh(&mut scratch.b, n)?;
         let mut w = TcFrameWriter::begin(two, &channels, fields, segment, user.len())?;
-        if !crate::vectors::copy(w.user_data_mut(), user) || w.finish(user.len()) != Ok(n) {
+        if !crate::vectors::copy(w.user_data_mut(), user) {
+            return Err(Fail::Vector);
+        }
+        let ctx = FrameCtx::Tc {
+            scid: fields.spacecraft_id,
+            vcid: fields.vc_id,
+            map_id: segment.map(|s| s.map_id),
+        };
+        if w.protect(user.len(), &mut NoSecurity, &ctx)?
+            .finalize()
+            .len()
+            != n
+        {
             return Err(Fail::Vector);
         }
         if scratch.b.get(..n) != scratch.a.get(..n) {

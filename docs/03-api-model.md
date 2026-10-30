@@ -52,10 +52,15 @@ Two encoding styles are required:
 // one-shot: header fields + payload slice → bytes
 encode(header, payload, out_buf) -> Result<usize, Error>
 
-// two-phase, zero-copy: reserve, fill in place, finalize (computes FECF, length fields, FHEC …)
-w = Writer::begin(out_buf, header, config) -> Result<Writer, Error>
+// two-phase, zero-copy: reserve, fill in place, protect, finalize (computes FECF, FHEC …)
+// The writer is a typestate (RS-023): each step consumes it and returns the next state.
+w = Writer::begin(out_buf, header, config) -> Result<Writer<Unprotected>, Error>
 w.payload_mut() -> mutable slice          // caller fills in place
-w.finish(payload_len) -> Result<usize, Error>
+w = w.protect(hook, ctx)  -> Result<Writer<Protected>, Error>   // SDLS (API-074); TC and USLP
+                                                               // take the payload length first
+w = w.unsecured()         -> Result<Writer<Protected>, Error>   // no SDLS: the NoSecurity path
+w = w.finalize()          -> Writer<Finalized>                  // FECF (and FHEC) last
+w.octets() / w.into_octets() / w.len()                          // only a Finalized frame
 ```
 
 | ID | Requirement | Source | Verif. |
@@ -63,7 +68,7 @@ w.finish(payload_len) -> Result<usize, Error>
 | API-020 | Encoders SHALL produce exactly the octets the Blue Book specifies for the given fields. The round trip `decode(encode(x)) == x` SHALL hold for every valid `x`. | — | V/F |
 | API-021 | Encoders SHALL compute derived fields themselves: length fields, FECF, FHEC, Secondary Header Length, Length-of-Length/header size. The caller SHALL NOT be able to supply an inconsistent derived value. | — | T |
 | API-022 | When `out_buf` is too small, encoders SHALL return `BufferTooSmall{needed}` and SHALL NOT write a partial data unit that could be mistaken for a valid one. | — | T |
-| API-023 | Two-phase writers SHALL leave the buffer in a defined state if `finish` is never called. They SHALL NOT have side effects beyond the supplied buffer. The two-phase writers are Rust typestate writers (`begin`/`finish`, RS-021); the C ABI has none and builds a frame or packet with a one-shot encoder, which keeps no state between calls (OI-57; OI-50 is superseded). | — | T |
+| API-023 | Two-phase writers SHALL leave the buffer in a defined state if `finalize` is never called. They SHALL NOT have side effects beyond the supplied buffer. The two-phase writers are Rust typestate writers (`begin`, `protect` or `unsecured`, `finalize`; RS-021, RS-023); the C ABI has none and builds a frame or packet with a one-shot encoder, which keeps no state between calls (OI-57; OI-50 is superseded). | — | T |
 
 ## 3. Strict and lenient decoding
 

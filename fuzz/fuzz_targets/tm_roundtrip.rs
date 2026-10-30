@@ -10,7 +10,7 @@ use aldis_core::DecodeMode;
 use aldis_core::ids::{SpacecraftId, VcId};
 use aldis_core::ocf::Ocf;
 use aldis_core::oid::OidGenerator;
-use aldis_core::security::SecurityLayout;
+use aldis_core::security::{FrameCtx, NoSecurity, SecurityLayout};
 use aldis_tm::{
     DataFieldContent, DataFieldStatus, FirstHeaderPointer, FshLen, PacketOffset, PacketPointer,
     SegmentLengthId, TmFrame, TmFrameContent, TmFrameFields, TmFrameWriter, TmMasterChannelConfig,
@@ -156,7 +156,14 @@ fn run(u: &mut Unstructured<'_>) -> Result<()> {
             if let Some(ocf) = ocf {
                 w.set_ocf(ocf).unwrap();
             }
-            assert_eq!(w.finish(), n);
+            let ctx = FrameCtx::Tm {
+                scid: mc.scid(),
+                vcid: fields.vcid,
+            };
+            assert_eq!(
+                w.protect(&mut NoSecurity, &ctx).unwrap().finalize().len(),
+                n
+            );
             assert_eq!(two[..n], out[..n]);
         }
     }
@@ -182,7 +189,7 @@ fn oid_frame(
     match TmFrameWriter::begin_oid(&mut frame, mc, vcid, 0, 0, &mut oid) {
         Err(_) => assert_eq!(oid, before, "a rejected OID frame advanced the generator"),
         Ok(w) => {
-            let n = w.finish();
+            let n = w.unsecured().unwrap().finalize().len();
             let f = TmFrame::decode_with(&frame[..n], mc.pc(), mc, DecodeMode::Strict).unwrap();
             assert_eq!(
                 f.data_field_status(),

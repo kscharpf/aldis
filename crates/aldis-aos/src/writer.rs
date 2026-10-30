@@ -1,16 +1,20 @@
-//! Encoders: one-shot [`encode`], the two-phase [`AosFrameWriter`], and OID frames.
+//! Encoders: one-shot [`encode`] and the two-phase [`AosFrameWriter`].
+//!
+//! The writer has a finishing typestate and writes OID frames.
 //!
 //! 732.0-B-5 §4.1, §4.1.4.1.5, §4.2.7, §6.3; AOS-002, AOS-003, AOS-015, AOS-016, AOS-019,
-//! API-020…API-023, API-072, GEN-014, GEN-042, GEN-052.
+//! API-020…API-023, API-072, API-074, RS-023, GEN-014, GEN-042, GEN-052.
 
+use core::marker::PhantomData;
 use core::ops::Range;
 
 use aldis_core::crc::crc16;
+use aldis_core::finishing::{Finalized, FrameState, Protected, Unprotected, require_unsecured};
 use aldis_core::ids::{SpacecraftId, VcId};
 use aldis_core::layout::FrameLayout;
 use aldis_core::ocf::Ocf;
 use aldis_core::oid::{OidGenerator, OidGeneratorGalois};
-use aldis_core::security::SecurityLayout;
+use aldis_core::security::{FrameCtx, SecuredFields, SecurityHook, SecurityLayout};
 use aldis_core::{Error, ErrorKind, Result};
 
 use crate::bpdu::{BitstreamPointer, ValidBitCount};
@@ -18,8 +22,12 @@ use crate::config::{
     AosPhysicalChannelConfig, DataFieldContent, VcLookup, frame_layout, pdu_header_len,
     unknown_channel,
 };
+use crate::fhec;
 use crate::field;
-use crate::header::{AosPrimaryHeader, FrameCountCycle, OID_VCID, VcFrameCount, len_u64, mismatch};
+use crate::header::{
+    AosPrimaryHeader, FrameCountCycle, OID_VCID, PRIMARY_HEADER_LEN, VcFrameCount, len_u64,
+    mismatch,
+};
 use crate::mpdu::PacketPointer;
 
 /// The `M_PDU` or `B_PDU` Header the writer puts at the start of the data field, or none (732.0
@@ -289,24 +297,42 @@ fn write_at(buf: &mut [u8], at: usize, src: &[u8]) {
     }
 }
 
-/// Two-phase frame writer (732.0 §4.1; AOS-019, API-020…API-023, API-072).
+/// Two-phase frame writer (732.0 §4.1; AOS-019, API-020…API-023, API-072, API-074, RS-023).
 ///
-/// [`begin`](Self::begin) writes the Primary Header with its FHEC and the `M_PDU` or `B_PDU`
-/// Header, the caller fills the other fields in place, and [`finish`](Self::finish) computes
-/// the FECF.
+/// [`begin`](Self::begin) writes the Primary Header, without its FHEC, and the `M_PDU` or
+/// `B_PDU` Header and returns the writer [`Unprotected`]; the caller fills the other fields in
+/// place and applies SDLS with [`protect`](AosFrameWriter::protect), or
+/// [`unsecured`](AosFrameWriter::unsecured) without it, which gives the writer [`Protected`];
+/// [`finalize`](AosFrameWriter::finalize) computes the FHEC and then the FECF, last, and gives
+/// it [`Finalized`], the only state that exposes the frame's octets. Each step consumes the
+/// writer, so a step out of order does not compile (RS-023, RS-021).
 ///
-/// `begin` zero-fills every octet after the headers, so until `finish` the frame is defined: its
-/// headers final, the fields the caller has not filled zero, and the FECF, if configured, zero
-/// (API-023). The FECF is computed last, after a security hook has filled the Security Header and
-/// Trailer (API-074).
+/// `begin` zero-fills every octet after the headers, so until `finalize` the frame is defined:
+/// its headers final but the FHEC, the fields the caller has not filled zero, and the FECF, if
+/// configured, zero (API-023).
 #[derive(Debug)]
-pub struct AosFrameWriter<'b> {
+pub struct AosFrameWriter<'b, S: FrameState = Unprotected> {
     frame: &'b mut [u8],
     layout: FrameLayout,
     zone_start: usize,
+    fhec: bool,
+    state: PhantomData<S>,
 }
 
-impl<'b> AosFrameWriter<'b> {
+impl<'b, S: FrameState> AosFrameWriter<'b, S> {
+    /// The same frame in state `T`: the one place a state changes.
+    const fn into_state<T: FrameState>(self) -> AosFrameWriter<'b, T> {
+        AosFrameWriter {
+            frame: self.frame,
+            layout: self.layout,
+            zone_start: self.zone_start,
+            fhec: self.fhec,
+            state: PhantomData,
+        }
+    }
+}
+
+impl<'b> AosFrameWriter<'b, Unprotected> {
     /// Starts a frame of (`fields.scid`, `fields.vcid`) in the first frame-length octets of
     /// `out` (AOS-019).
     ///
@@ -329,7 +355,7 @@ impl<'b> AosFrameWriter<'b> {
         pc: &AosPhysicalChannelConfig,
         vcs: &L,
         fields: &AosFrameFields,
-    ) -> Result<AosFrameWriter<'b>> {
+    ) -> Result<AosFrameWriter<'b, Unprotected>> {
         let plan = Plan::new(pc, vcs, fields)?;
         AosFrameWriter::start(out, plan)
     }
@@ -351,7 +377,7 @@ impl<'b> AosFrameWriter<'b> {
         vcs: &L,
         fields: &AosFrameFields,
         oid: &mut OidGenerator,
-    ) -> Result<AosFrameWriter<'b>> {
+    ) -> Result<AosFrameWriter<'b, Unprotected>> {
         let plan = Plan::oid(pc, vcs, fields)?;
         let mut writer = AosFrameWriter::start(out, plan)?;
         oid.fill(writer.zone_mut());
@@ -360,7 +386,7 @@ impl<'b> AosFrameWriter<'b> {
 
     /// Takes up the frame of a checked plan in `out`: zero-fills it and writes the Primary
     /// Header and the `M_PDU` or `B_PDU` Header.
-    fn start(out: &'b mut [u8], plan: Plan) -> Result<AosFrameWriter<'b>> {
+    fn start(out: &'b mut [u8], plan: Plan) -> Result<AosFrameWriter<'b, Unprotected>> {
         let frame_len = plan.layout.frame_len();
         let frame = out
             .get_mut(..frame_len)
@@ -370,13 +396,21 @@ impl<'b> AosFrameWriter<'b> {
         let data = plan.layout.data();
         let pdu: &[u8] = plan.pdu.as_ref().map_or(&[], |p| p.as_slice());
         let zone_start = data.start.saturating_add(pdu.len());
+        // The FHEC, if any, is computed last, by `finalize` (RS-023).
+        let fhec = header.len() > PRIMARY_HEADER_LEN;
         frame.fill(0);
-        write_at(frame, 0, header);
+        write_at(
+            frame,
+            0,
+            header.get(..PRIMARY_HEADER_LEN).unwrap_or_default(),
+        );
         write_at(frame, data.start, pdu);
         Ok(AosFrameWriter {
             frame,
             layout: plan.layout,
             zone_start,
+            fhec,
+            state: PhantomData,
         })
     }
 
@@ -428,16 +462,92 @@ impl<'b> AosFrameWriter<'b> {
         &self.layout
     }
 
-    /// Completes the frame: computes the FECF, if configured, over every other octet; returns
-    /// the frame length (732.0 §4.1.6.2, §4.2.7.4; AOS-019, API-021).
-    #[must_use = "the frame length"]
-    pub fn finish(self) -> usize {
+    /// Applies `hook` to the Security Header, the data field, and the Security Trailer, after
+    /// every other field except the FHEC and the FECF is final (355.0 §2.3; API-074, RS-023).
+    /// `ctx` identifies the channel for the hook's Security Association.
+    ///
+    /// # Errors
+    /// The hook's error, `Security`; the frame is then dropped and must not be transmitted.
+    pub fn protect<H: SecurityHook + ?Sized>(
+        self,
+        hook: &mut H,
+        ctx: &FrameCtx,
+    ) -> Result<AosFrameWriter<'b, Protected>> {
+        let fields = SecuredFields::from_layout(&self.layout);
+        let result = hook.protect(ctx, &mut *self.frame, &fields);
+        self.protected(result)
+    }
+
+    /// The writer [`Protected`] if the hook succeeded; the part of `protect` that does not
+    /// depend on the hook type.
+    fn protected(self, result: Result<()>) -> Result<AosFrameWriter<'b, Protected>> {
+        result.map(|()| self.into_state())
+    }
+
+    /// Moves to [`Protected`] on a channel without SDLS, the `NoSecurity` path (API-073,
+    /// RS-023).
+    ///
+    /// # Errors
+    /// `InvalidField` (`security_header_len` or `security_trailer_len`) if the VC reserves a
+    /// Security Header or Trailer, which need [`protect`](Self::protect).
+    pub fn unsecured(self) -> Result<AosFrameWriter<'b, Protected>> {
+        require_unsecured(
+            self.layout.security_header().len(),
+            self.layout.security_trailer().len(),
+        )?;
+        Ok(self.into_state())
+    }
+}
+
+impl<'b> AosFrameWriter<'b, Protected> {
+    /// Completes the frame: computes the FHEC, if configured, then the FECF, if configured,
+    /// over every other octet, last (732.0 §4.1.2.6, §4.1.6.2, §4.2.7.4; AOS-013, AOS-019,
+    /// API-021, API-074, RS-023).
+    #[must_use = "the finalized frame"]
+    pub fn finalize(self) -> AosFrameWriter<'b, Finalized> {
+        if self.fhec {
+            // The frame holds the eight header octets, so this is the one chunk.
+            self.frame
+                .first_chunk_mut::<8>()
+                .into_iter()
+                .for_each(fhec::write);
+        }
         let fecf = self.layout.fecf();
         if !fecf.is_empty() {
             let crc = crc16(self.frame.get(..fecf.start).unwrap_or_default());
             write_at(self.frame, fecf.start, &crc.to_be_bytes());
         }
+        self.into_state()
+    }
+}
+
+impl<'b> AosFrameWriter<'b, Finalized> {
+    /// The frame length (732.0 §4.1; AOS-019).
+    #[must_use]
+    pub const fn len(&self) -> usize {
         self.layout.frame_len()
+    }
+
+    /// Always `false`: a frame holds at least its Primary Header.
+    #[must_use]
+    pub const fn is_empty(&self) -> bool {
+        false
+    }
+
+    /// The octets of the finalized frame, for transmission (RS-023).
+    #[must_use]
+    pub fn octets(&self) -> &[u8] {
+        self.frame
+            .get(..self.layout.frame_len())
+            .unwrap_or_default()
+    }
+
+    /// The octets of the finalized frame, borrowed from the buffer `begin` took, for
+    /// transmission (RS-023).
+    #[must_use]
+    pub fn into_octets(self) -> &'b [u8] {
+        let len = self.layout.frame_len();
+        self.frame.get(..len).unwrap_or_default()
     }
 }
 
@@ -516,7 +626,8 @@ pub fn encode<L: VcLookup + ?Sized>(
     if let Some(ocf) = content.ocf {
         write_at(writer.frame, layout.ocf().start, &ocf.to_octets());
     }
-    Ok(writer.finish())
+    // The one-shot encoders take the Security Header and Trailer as given (API-072).
+    Ok(writer.into_state::<Protected>().finalize().len())
 }
 
 /// Encodes an OID Transfer Frame of `fields.scid` into the start of `out`; returns its length
@@ -589,7 +700,8 @@ fn oid_frame<L: VcLookup + ?Sized>(
     let mut writer = AosFrameWriter::start(out, plan)?;
     write_at(writer.frame, writer.layout.secondary().start, insert_zone);
     fill(writer.zone_mut());
-    Ok(writer.finish())
+    // The one-shot encoders take the Security Header and Trailer as given (API-072).
+    Ok(writer.into_state::<Protected>().finalize().len())
 }
 
 #[cfg(test)]
@@ -613,7 +725,7 @@ mod tests {
     use aldis_core::ids::{SpacecraftId, VcId};
     use aldis_core::ocf::Ocf;
     use aldis_core::oid::{OidGenerator, OidGeneratorGalois};
-    use aldis_core::security::SecurityLayout;
+    use aldis_core::security::{FrameCtx, NoSecurity, SecuredFields, SecurityHook, SecurityLayout};
     use aldis_core::{DecodeMode, ErrorDetail, ErrorKind, FieldId};
 
     const STRICT: DecodeMode = DecodeMode::Strict;
@@ -661,6 +773,115 @@ mod tests {
         (e.kind(), e.field(), e.detail())
     }
 
+    /// A hook that checks the frame state it is called in, and fills the Security fields.
+    struct OrderHook;
+
+    impl SecurityHook for OrderHook {
+        fn protect(
+            &mut self,
+            _: &FrameCtx,
+            frame: &mut [u8],
+            fields: &SecuredFields,
+        ) -> aldis_core::Result<()> {
+            // Neither the FHEC nor the FECF is computed yet.
+            assert_eq!(frame[6..8], [0, 0]);
+            assert_eq!(frame.last_chunk::<2>(), Some(&[0, 0]));
+            frame[fields.header()].fill(0xA5);
+            frame[fields.trailer()].fill(0x5A);
+            Ok(())
+        }
+
+        fn verify(
+            &mut self,
+            _: &FrameCtx,
+            _: &mut [u8],
+            fields: &SecuredFields,
+        ) -> aldis_core::Result<core::ops::Range<usize>> {
+            Ok(fields.data())
+        }
+    }
+
+    /// A hook whose protection fails.
+    struct Refuse;
+
+    impl SecurityHook for Refuse {
+        fn protect(
+            &mut self,
+            _: &FrameCtx,
+            _: &mut [u8],
+            _: &SecuredFields,
+        ) -> aldis_core::Result<()> {
+            Err(aldis_core::Error::new(ErrorKind::Security))
+        }
+
+        fn verify(
+            &mut self,
+            _: &FrameCtx,
+            _: &mut [u8],
+            fields: &SecuredFields,
+        ) -> aldis_core::Result<core::ops::Range<usize>> {
+            Ok(fields.data())
+        }
+    }
+
+    #[test]
+    fn a_failed_protect_gives_no_frame() {
+        // req: RS-023, API-073
+        let t = table();
+        let phy = t.physical_channel();
+        let ctx = FrameCtx::Aos {
+            scid: scid(0xAB),
+            vcid: vcid(0),
+        };
+        let mut out = [0xEE_u8; 40];
+        let w = AosFrameWriter::begin(&mut out, &phy, &t, &mpdu(starts_at(3))).unwrap();
+        let e = w.protect(&mut Refuse, &ctx).unwrap_err();
+        assert_eq!(e.kind(), ErrorKind::Security);
+    }
+
+    #[test]
+    fn protect_runs_before_the_fhec_and_the_fecf() {
+        // req: RS-023, API-074, API-073, AOS-013
+        let t = table();
+        let phy = t.physical_channel();
+        let ctx = FrameCtx::Aos {
+            scid: scid(0xAB),
+            vcid: vcid(0),
+        };
+        let mut out = [0xEE_u8; 40];
+        let w = AosFrameWriter::begin(&mut out, &phy, &t, &mpdu(starts_at(3))).unwrap();
+        let octets = w
+            .protect(&mut OrderHook, &ctx)
+            .unwrap()
+            .finalize()
+            .into_octets();
+        assert_eq!(syndrome(octets), 0);
+        let f = AosFrame::decode(octets, &phy, &t, STRICT).unwrap();
+        assert_eq!(
+            f.header().fhec().map(u16::to_be_bytes),
+            Some([octets[6], octets[7]])
+        );
+        assert_ne!(f.header().fhec(), Some(0));
+        assert_eq!(
+            (f.security_header(), f.security_trailer()),
+            (&[0xA5; 2][..], &[0x5A][..])
+        );
+    }
+
+    #[test]
+    fn unsecured_needs_a_channel_without_sdls() {
+        // req: RS-023, API-070
+        let t = table();
+        let phy = t.physical_channel();
+        let mut out = [0xEE_u8; 40];
+        let w = AosFrameWriter::begin(&mut out, &phy, &t, &mpdu(starts_at(3))).unwrap();
+        let e = w.unsecured().unwrap_err();
+        assert_eq!(
+            (e.kind(), e.field()),
+            (ErrorKind::InvalidField, Some(field::SECURITY_HEADER_LEN))
+        );
+    }
+
     #[test]
     fn two_phase_writer_fills_every_field() {
         // req: AOS-019, AOS-013, AOS-015, API-020, API-021, API-072, GEN-014
@@ -676,7 +897,13 @@ mod tests {
         w.zone_mut().fill(0xD0);
         w.security_trailer_mut().copy_from_slice(&[0x5A]);
         w.set_ocf(Ocf::decode([0x01, 0, 0, 0])).unwrap();
-        assert_eq!(w.finish(), 40);
+        let ctx = FrameCtx::Aos {
+            scid: scid(0xAB),
+            vcid: vcid(0),
+        };
+        let done = w.protect(&mut NoSecurity, &ctx).unwrap().finalize();
+        assert_eq!((done.len(), done.octets().len()), (40, 40));
+        assert!(!done.is_empty());
         assert_eq!(out[40..], [0xEE; 8], "nothing written past the frame");
         assert_eq!(syndrome(&out[..40]), 0);
         // SCID 0x0AB: LSBs 1010 1011, MSBs 00; VCID 0; replay 1, use 1, cycle 9.
@@ -845,7 +1072,7 @@ mod tests {
         let fields =
             |pointer| AosFrameFields::new(scid(0xFF), vcid(7), count(1), PduHeader::Mpdu(pointer));
         let w = AosFrameWriter::begin(&mut out, &p4, &t, &fields(starts_at(0x7FD))).unwrap();
-        assert_eq!(w.finish(), 2100);
+        assert_eq!(w.unsecured().unwrap().finalize().len(), 2100);
         // SCID 0xFF in bits 2–9, bits 42–43 00; spare 00000 and FHP 0x7FD.
         assert_eq!(out[..8], [0x7F, 0xC7, 0, 0, 1, 0x00, 0x07, 0xFD]);
         let f = AosFrame::decode(&out, &p4, &t, STRICT).unwrap();
@@ -868,7 +1095,7 @@ mod tests {
         let p5 = pc(2100, false, 0, false, AosEdition::Issue5);
         let t5 = VcTable::<1>::new(p5, &[vc(0xFF, 7, DataFieldContent::Mpdu)]).unwrap();
         let w = AosFrameWriter::begin(&mut out, &p5, &t5, &fields(starts_at(0x7FE))).unwrap();
-        assert_eq!(w.finish(), 2100);
+        assert_eq!(w.unsecured().unwrap().finalize().len(), 2100);
         assert_eq!(out[6..8], [0x07, 0xFE]);
         // An SCID above 8 bits from a lookup that did not check it.
         let wide = Any(vc(0x100, 7, DataFieldContent::Mpdu));
@@ -1037,7 +1264,7 @@ mod tests {
         );
         assert!(w.security_header_mut().is_empty() && w.security_trailer_mut().is_empty());
         assert_eq!(w.zone_mut().len(), 26);
-        assert_eq!(w.finish(), 40);
+        assert_eq!(w.unsecured().unwrap().finalize().len(), 40);
         // Without FHEC and FECF: nothing computed after the header.
         let plain = pc(12, false, 0, false, AosEdition::Issue5);
         let t = VcTable::<1>::new(plain, &[vc(1, 1, DataFieldContent::IdleData)]).unwrap();
@@ -1045,7 +1272,7 @@ mod tests {
         let f = AosFrameFields::new(scid(1), vcid(1), count(0), PduHeader::None);
         let w = AosFrameWriter::begin(&mut out, &plain, &t, &f).unwrap();
         assert!(w.layout().fecf().is_empty());
-        assert_eq!(w.finish(), 12);
+        assert_eq!(w.unsecured().unwrap().finalize().len(), 12);
         assert_eq!(out, [0x40, 0x41, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
     }
 
@@ -1066,7 +1293,7 @@ mod tests {
         )
         .unwrap();
         w.insert_zone_mut().copy_from_slice(&[7, 7, 7, 7]);
-        assert_eq!(w.finish(), 40);
+        assert_eq!(w.unsecured().unwrap().finalize().len(), 40);
         let w = AosFrameWriter::begin_oid(
             &mut second,
             &phy,
@@ -1075,7 +1302,7 @@ mod tests {
             &mut oid,
         )
         .unwrap();
-        assert_eq!(w.finish(), 40);
+        assert_eq!(w.unsecured().unwrap().finalize().len(), 40);
         // 40 − 8 − 4 − 2 = 26 data octets per frame.
         let mut reference = OidGenerator::new();
         let mut expected = [0_u8; 52];
@@ -1163,7 +1390,7 @@ mod tests {
             AosFrameWriter::begin_oid(&mut two_frame, &phy, &table, &fields, &mut two_phase)
                 .unwrap();
         writer.insert_zone_mut().copy_from_slice(&iz);
-        assert_eq!(writer.finish(), 40);
+        assert_eq!(writer.unsecured().unwrap().finalize().len(), 40);
         assert_eq!(fib_frame[..40], two_frame);
         assert_eq!(gal_frame, two_frame);
         assert_eq!(fib_frame[40..], [0xEE; 4], "nothing written past the frame");
