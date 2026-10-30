@@ -236,9 +236,21 @@ pub const ROOT_CONFIG: PathList = PathList {
     patterns: &[".gitignore"],
 };
 
-/// The lists that `spec` alone reads (VER-056): documentation, the GitHub configuration, and the
-/// root configuration that no other check reads.
-pub const SPEC_ONLY: [&PathList; 3] = [&DOCS, &GITHUB, &ROOT_CONFIG];
+/// The scripts of `scripts/`, which a coordinator or an agent runs on a contributor's machine
+/// (`reverify`, `pr-status`, `cleanup-merged`, `prune-agent-branches`, `agent-env.sh`). No check
+/// runs or reads them: the checks run `cargo xtask` and the commands of their own scripts here,
+/// the image does not contain them (`RUN` lists what it is built from), and the workflows call
+/// none (`verify.yml` names `reverify` in a comment). `spec` reads every path, so a script that
+/// names a requirement or a link is still checked. A change to these paths alone runs only
+/// `spec`, as documentation does.
+pub const SCRIPTS: PathList = PathList {
+    name: "scripts",
+    patterns: &["scripts/**"],
+};
+
+/// The lists that `spec` alone reads (VER-056): documentation, the GitHub configuration, the
+/// root configuration, and the scripts that no other check reads.
+pub const SPEC_ONLY: [&PathList; 4] = [&DOCS, &GITHUB, &ROOT_CONFIG, &SCRIPTS];
 
 /// What a check reads (VER-056).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
