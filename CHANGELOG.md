@@ -55,6 +55,7 @@ Generated at release: `cargo xtask changelog` lists the pull requests merged aft
 - `exerciser`: calls the FARM-1 API; registers the `cop1` vector group, empty until M3 WP-2.
 
 ### Changed
+- `cargo xtask check` prints each step's wall-clock time, after the step and in the final summary line.
 - `specs/fetch.sh` links `specs/pdf` from the main checkout when it has the PDFs; `.gitignore` ignores `specs/pdf` also as a symlink.
 - spec-lint: a withdrawn requirement starts `Withdrawn: <reason>` and in no other form; `trace` and the assurance check recognise only that form (00-introduction.md §5.2).
 - `docs/06-verification.md` §7 holds the merge-gate commands that AGENTS.md carried.
