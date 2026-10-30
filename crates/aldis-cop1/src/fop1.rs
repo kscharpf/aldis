@@ -1532,20 +1532,20 @@ impl<const Q: usize, const F: usize, const N: usize> Fop1<Q, F, N> {
             .fdu
             .get(..waiting.len)
             .ok_or(Error::new(ErrorKind::InternalError))?;
-        let mut frame = [0; F];
-        let len = self.target.encode(
-            FrameType::Ad,
-            sequence_number,
-            Payload::Fdu(fdu),
-            &mut frame,
-        )?;
-        let sent = Sent {
-            frame,
-            len,
+        // The master copy is encoded in place: no second buffer on the stack (VER-011).
+        let mut sent = Sent {
+            frame: [0; F],
+            len: 0,
             sequence_number,
             kind: SentKind::Ad(waiting.handle),
             to_be_retransmitted: false,
         };
+        sent.len = self.target.encode(
+            FrameType::Ad,
+            sequence_number,
+            Payload::Fdu(fdu),
+            &mut sent.frame,
+        )?;
         self.push_sent(sent)?;
         self.v_s = self.v_s.next();
         self.start_timer(now);
@@ -1578,20 +1578,19 @@ impl<const Q: usize, const F: usize, const N: usize> Fop1<Q, F, N> {
             BcCommand::SetVr => ControlCommand::SetVr(self.v_s),
         };
         let sequence_number = FrameSeqNum::new(0);
-        let mut frame = [0; F];
-        let len = self.target.encode(
-            FrameType::Bc,
-            sequence_number,
-            Payload::Control(command),
-            &mut frame,
-        )?;
-        let sent = Sent {
-            frame,
-            len,
+        let mut sent = Sent {
+            frame: [0; F],
+            len: 0,
             sequence_number,
             kind: SentKind::Bc,
             to_be_retransmitted: false,
         };
+        sent.len = self.target.encode(
+            FrameType::Bc,
+            sequence_number,
+            Payload::Control(command),
+            &mut sent.frame,
+        )?;
         self.push_sent(sent)?;
         self.transmission_count = 1;
         self.start_timer(ctx.now);
@@ -1808,6 +1807,167 @@ mod tests {
             0,
         )
         .0
+    }
+
+    /// The USLP target, as the integration tests of `tests/fop1_uslp.rs` use it; the unit tests
+    /// run the same instance so that coverage counts the lines in both builds (VER-024).
+    #[cfg(feature = "uslp")]
+    #[test]
+    fn the_uslp_target_builds_its_frames_and_refuses_what_it_cannot_fill() {
+        // req: COP-010, USLP-013, API-040
+        use aldis_core::security::SecurityLayout;
+        use aldis_uslp::{
+            FirstHeaderPointer, LastValidOctet, MapConfig, PhysicalChannelConfig, SecurityScope,
+            TfdfHeader, TfdzRule, TransferFrameType, TruncatedFrameLen, Upid, UslpMapId,
+            UslpSpacecraftId, UslpVcId, VcConfig, VcParams, VcfCountLen,
+        };
+        let scid = UslpSpacecraftId::new(0x155).unwrap();
+        let vcid = UslpVcId::new(1).unwrap();
+        let physical = |len, fecf| {
+            PhysicalChannelConfig::new(TransferFrameType::Variable, len, 0, fecf).unwrap()
+        };
+        let params = VcParams {
+            vcf_count_len_sequence: VcfCountLen::new(1).unwrap(),
+            ..VcParams::new(TransferFrameType::Variable)
+        };
+        let vc = |p: VcParams| VcConfig::new(scid, vcid, p).unwrap();
+        let map = MapConfig::new(scid, vcid, UslpMapId::new(2).unwrap(), SecurityLayout::NONE);
+        let tfdf = TfdfHeader {
+            rule: TfdzRule::NoSegmentation,
+            upid: Upid::OnlyIdleData,
+        };
+        let why = |physical, vc, map, tfdf| {
+            Fop1Target::uslp(physical, vc, map, tfdf)
+                .map(|_| ())
+                .map_err(|e| e.field())
+        };
+        let sdls = SecurityLayout::new(6, 0).unwrap();
+        let fixed = PhysicalChannelConfig::new(TransferFrameType::Fixed, F, 0, true).unwrap();
+        let fixed_vc = vc(VcParams::new(TransferFrameType::Fixed));
+        let truncated = vc(VcParams {
+            truncated_frame_len: Some(TruncatedFrameLen::new(12).unwrap()),
+            ..params
+        });
+        let longer = |p: fn(&mut VcParams)| {
+            let mut q = params;
+            p(&mut q);
+            vc(q)
+        };
+        let per_map = vc(VcParams {
+            security: SecurityScope::PerMap,
+            ..params
+        });
+        let rule = |rule| TfdfHeader { rule, ..tfdf };
+        let (p64, v) = (physical(F, true), vc(params));
+        let bad = |f| Err(Some(f));
+        assert_eq!(why(fixed, v, map, tfdf), bad(field::TRANSFER_FRAME_TYPE));
+        assert_eq!(
+            why(p64, fixed_vc, map, tfdf),
+            bad(field::TRANSFER_FRAME_TYPE)
+        );
+        assert_eq!(
+            why(p64, truncated, map, tfdf),
+            bad(field::TRUNCATED_FRAME_LEN)
+        );
+        let two = longer(|p| p.vcf_count_len_sequence = VcfCountLen::new(2).unwrap());
+        let counted = longer(|p| p.vcf_count_len_expedited = VcfCountLen::new(1).unwrap());
+        assert_eq!(why(p64, two, map, tfdf), bad(field::VCF_COUNT_LEN));
+        assert_eq!(why(p64, counted, map, tfdf), bad(field::VCF_COUNT_LEN));
+        let own = longer(|p| p.security = SecurityScope::Vc(SecurityLayout::new(6, 0).unwrap()));
+        assert_eq!(why(p64, own, map, tfdf), bad(field::SECURITY_HEADER_LEN));
+        let map_sdls = MapConfig::new(scid, vcid, map.map_id(), sdls);
+        assert_eq!(
+            why(p64, per_map, map_sdls, tfdf),
+            bad(field::SECURITY_HEADER_LEN)
+        );
+        assert_eq!(why(p64, per_map, map, tfdf), Ok(()));
+        for fixed_rule in [
+            TfdzRule::PacketsSpanningFrames(FirstHeaderPointer::from_raw(0)),
+            TfdzRule::SduStart(LastValidOctet::from_raw(0)),
+            TfdzRule::SduContinuation(LastValidOctet::from_raw(0)),
+        ] {
+            assert_eq!(
+                why(p64, v, map, rule(fixed_rule)),
+                bad(field::TFDZ_CONSTRUCTION_RULE)
+            );
+        }
+        assert_eq!(
+            why(physical(13, true), v, map, tfdf),
+            bad(field::MAX_FRAME_LEN)
+        );
+        assert_eq!(why(physical(12, false), v, map, tfdf), Ok(()));
+        let other = MapConfig::new(
+            scid,
+            UslpVcId::new(6).unwrap(),
+            map.map_id(),
+            SecurityLayout::NONE,
+        );
+        assert_eq!(why(p64, v, other, tfdf), bad(field::MAP_ID));
+
+        // The frames: a Type-BC with Unlock, a Type-AD, and a Type-BD.
+        let target = Fop1Target::uslp(p64, v, map, tfdf).unwrap();
+        assert_eq!(target.max_fdu_len(), F - 11);
+        assert!(matches!(target.channel(), Fop1Channel::Uslp { .. }));
+        let f = Engine::new(Fop1Config {
+            target,
+            ..config(TimeoutType::Tt0, 2)
+        })
+        .unwrap();
+        let (f, out) = go(&f, directive(1, Directive::InitiateAdWithUnlock), 0);
+        assert!(matches!(
+            out.last(),
+            Some(Fop1Output::Transmit {
+                kind: FrameKind::Bc,
+                ..
+            })
+        ));
+        let (f, _) = go(
+            &f,
+            Fop1Input::TransmitDone {
+                kind: FrameKind::Bc,
+                accepted: true,
+            },
+            1,
+        );
+        let mut area = [0u8; F];
+        let (f, actions) = f
+            .step(
+                clcw(false, false, false, 0),
+                Instant::from_micros(2),
+                &mut area,
+            )
+            .unwrap();
+        assert_eq!((f.state(), actions.len()), (Fop1State::Active, 1));
+        let (f, out) = go(
+            &f,
+            Fop1Input::RequestAd {
+                handle: 2,
+                fdu: &FDU,
+            },
+            3,
+        );
+        assert!(matches!(
+            out.last(),
+            Some(Fop1Output::Transmit {
+                kind: FrameKind::Ad,
+                ..
+            })
+        ));
+        let (_, out) = go(
+            &f,
+            Fop1Input::RequestBd {
+                handle: 3,
+                fdu: &FDU,
+            },
+            4,
+        );
+        assert!(matches!(
+            out.last(),
+            Some(Fop1Output::Transmit {
+                kind: FrameKind::Bd,
+                ..
+            })
+        ));
     }
 
     #[test]
