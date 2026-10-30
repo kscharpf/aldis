@@ -14,7 +14,7 @@
 | WP-1c FOP-1 table as data | merged | #149 | FOP-1 S1–S6 × E1–E46/E101–E104 const table data, Cor. 1 verification, cell tests (COP-001, COP-004, RS-021) |
 | WP-2 Blind vectors & model | merged | #183 | Python blind oracle model `test-vectors/models/cop1.py` (TV-023) and one scenario per cell of Tables 5-1 and 6-1 in `test-vectors/cop1/` (COP-005, TV-011); the testkit loader and the runners follow in WP-3 and WP-4 |
 | WP-3 `aldis-cop1`: FARM-1 | merged | #162 | `Farm1::step` and `clcw` over `FARM1_TABLE`, window check, FARM-B counter, exerciser calls; `FARM1_MAX_ACTIONS` derived from the table (COP-030…036); OI-58 opened |
-| WP-4 `aldis-cop1`: FOP-1 | planned | — | FOP-1 engine: S1–S6, E1–E46, E101–E104, sliding window, T1 timer, Suspend/Resume, frame construction (COP-010…017) |
+| WP-4 `aldis-cop1`: FOP-1 | planned | — | `Fop1::step` and `step_event` over `FOP1_TABLE` for TC frames, Sent_Queue master copies, Wait_Queue, T1, Suspend/Resume, COP-017 by the table (no Alert filter); `fop1_max_actions(Q)` derived from the table; all 317 FOP-1 scenarios of `test-vectors/cop1/` pass (COP-001, COP-010…017). USLP frame target not built |
 | WP-5 Closed loop & carry-overs | planned | — | Closed-loop simulated link harness (COP-040), event fuzzing (COP-041), OI-47 delimiter fill bound in TC/USLP, USLP truncated check |
 | WP-6 C ABI handles | planned | — | `aldis-ffi`: `aldis_fop1_*`, `aldis_farm1_*`, opaque handles (CABI-030…033, CABI-040), limits, exerciser group, header |
 | WP-7 Verification gates & hazards | planned | — | 100 % coverage, mutants, 4 fuzz targets, stack bounds, QEMU ×3 exerciser, COP-1 hazard analysis, assurance case |
@@ -102,7 +102,7 @@ WP-0 Infra, setup ───▶ WP-1a Spec readings ─┬─▶ WP-1b FARM-1 tab
 - T1 timer state, `next_deadline`, and the `Timeout` input (COP-013, API-053).
 - Suspend/Resume handling with Suspend_State SS = 0..4 (COP-014).
 - Directives (Initiate AD, Terminate, Resume, Set V(S), Set K, etc.) and Set K bound check (COP-015).
-- Repetition metadata annotation (COP-016) and Alert suppression (COP-017).
+- Repetition metadata annotation (COP-016); no Alert after an Alert until Initiate AD or Resume, by Table 5-1 (COP-017, OI-65).
 
 ### WP-5 Closed-loop testing & carry-overs (M) — COP-040, COP-041, OI-47
 - Closed-loop link test harness connecting FOP-1 and FARM-1 across simulated channel with loss, duplication, reordering, delay, and CLCW sampling (COP-040).

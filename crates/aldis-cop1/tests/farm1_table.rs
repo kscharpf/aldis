@@ -3,12 +3,14 @@
 //! Verifies all 33 cells (S1–S3 × E1–E11) of Table 6-1 against CCSDS 232.1-B-2
 //! and `docs/verification/reviews/cop1-tables.md` (COP-002, COP-003, COP-004, RS-021).
 
-use core::time::Duration;
+use aldis_core::ids::FrameSeqNum;
+use aldis_core::time::Duration;
+use core::num::NonZeroU8;
 
 use aldis_cop1::{
     Alert, AlertReason, Directive, DirectiveNotification, DirectiveNotify, FARM1_EVENT_COUNT,
-    FARM1_STATE_COUNT, FARM1_TABLE, Farm1Action, Farm1Cell, Farm1Event, Farm1State, TimeoutType,
-    TransferNotification, TransferNotify,
+    FARM1_STATE_COUNT, FARM1_TABLE, Farm1Action, Farm1Cell, Farm1Event, Farm1State, Fop1Event,
+    Fop1State, TimeoutType, TransferNotification, TransferNotify,
 };
 
 const fn state_idx(s: Farm1State) -> usize {
@@ -447,15 +449,21 @@ fn test_notify_types() {
     let d1 = Directive::InitiateAdWithoutClcwCheck;
     let d2 = Directive::InitiateAdWithClcwCheck;
     let d3 = Directive::InitiateAdWithUnlock;
-    let d4 = Directive::InitiateAdWithSetVr { v_r: 42 };
+    let d4 = Directive::InitiateAdWithSetVr {
+        v_r: FrameSeqNum::new(42),
+    };
     let d5 = Directive::TerminateAd;
     let d6 = Directive::ResumeAd;
-    let d7 = Directive::SetVs { v_s: 100 };
+    let d7 = Directive::SetVs {
+        v_s: FrameSeqNum::new(100),
+    };
     let d8 = Directive::SetSlidingWindowWidth { width: 10 };
     let d9 = Directive::SetT1Initial {
         duration: Duration::from_millis(500),
     };
-    let d10 = Directive::SetTransmissionLimit { limit: 5 };
+    let d10 = Directive::SetTransmissionLimit {
+        limit: NonZeroU8::MIN.saturating_add(4),
+    };
     let d11 = Directive::SetTimeoutType {
         timeout_type: TimeoutType::Tt0,
     };
@@ -465,9 +473,19 @@ fn test_notify_types() {
 
     assert_ne!(d1, d2);
     assert_ne!(d3, d5);
-    assert_eq!(d4, Directive::InitiateAdWithSetVr { v_r: 42 });
+    assert_eq!(
+        d4,
+        Directive::InitiateAdWithSetVr {
+            v_r: FrameSeqNum::new(42)
+        }
+    );
     assert_eq!(d6, Directive::ResumeAd);
-    assert_eq!(d7, Directive::SetVs { v_s: 100 });
+    assert_eq!(
+        d7,
+        Directive::SetVs {
+            v_s: FrameSeqNum::new(100)
+        }
+    );
     assert_eq!(d8, Directive::SetSlidingWindowWidth { width: 10 });
     assert_eq!(
         d9,
@@ -475,7 +493,12 @@ fn test_notify_types() {
             duration: Duration::from_millis(500)
         }
     );
-    assert_eq!(d10, Directive::SetTransmissionLimit { limit: 5 });
+    assert_eq!(
+        d10,
+        Directive::SetTransmissionLimit {
+            limit: NonZeroU8::MIN.saturating_add(4)
+        }
+    );
     assert_ne!(d11, d12);
 
     // TimeoutType enum values
@@ -498,12 +521,12 @@ fn test_notify_types() {
     // Alert struct with event number and prior state (COP-004)
     let alert = Alert {
         reason: AlertReason::Synch,
-        event_number: 1,
-        prior_state: Farm1State::Wait,
+        event: Fop1Event::E1,
+        prior_state: Fop1State::RetransmitWithoutWait,
     };
     assert_eq!(alert.reason, AlertReason::Synch);
-    assert_eq!(alert.event_number, 1);
-    assert_eq!(alert.prior_state, Farm1State::Wait);
+    assert_eq!(alert.event, Fop1Event::E1);
+    assert_eq!(alert.prior_state, Fop1State::RetransmitWithoutWait);
 
     // Notifications
     let t_notif = TransferNotification::PositiveConfirm;

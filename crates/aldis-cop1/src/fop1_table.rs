@@ -156,6 +156,22 @@ pub enum Fop1Event {
     E104 = 49,
 }
 
+/// `Suspend_State` SS: the state FOP-1 was in when the AD Service was suspended (CCSDS
+/// 232.1-B-2 §5.1.11; COP-014).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum SuspendState {
+    /// SS = 0: the AD Service is not suspended.
+    NotSuspended,
+    /// SS = 1: suspended in S1.
+    Active,
+    /// SS = 2: suspended in S2.
+    RetransmitWithoutWait,
+    /// SS = 3: suspended in S3.
+    RetransmitWithWait,
+    /// SS = 4: suspended in S4.
+    InitializingWithoutBcFrame,
+}
+
 /// Target frame kind for lower-procedure ready flags (CCSDS 232.1-B-2 Table 5-1, Events E41, E43, E45).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum FrameKind {
@@ -219,7 +235,7 @@ pub enum Fop1Action {
     /// Set timeout type TT from directive (Table 5-1, Event E39).
     SetTimeoutType,
     /// Record protocol state in `Suspend_State` ($SS := 1..4$) (CCSDS 232.1-B-2 §5.1.11, Table 5-1, Events E18, E104).
-    SetSuspendState(u8),
+    SetSuspendState(SuspendState),
     /// Suspend AD service and emit Suspend notification (CCSDS 232.1-B-2 §5.2.16).
     Suspend,
     /// Resume AD service from suspended state (CCSDS 232.1-B-2 §5.2.17).
@@ -484,7 +500,10 @@ pub const FOP1_TABLE: [[Fop1Cell; EVENT_COUNT]; STATE_COUNT] = [
         ALERT_T1,
         // E18: SS:=1, Suspend
         Fop1Cell {
-            actions: &[Fop1Action::SetSuspendState(1), Fop1Action::Suspend],
+            actions: &[
+                Fop1Action::SetSuspendState(SuspendState::Active),
+                Fop1Action::Suspend,
+            ],
             next_state: Some(Fop1State::Initial),
         },
         // E19: Add to Wait_Queue, Look for FDU
@@ -652,7 +671,10 @@ pub const FOP1_TABLE: [[Fop1Cell; EVENT_COUNT]; STATE_COUNT] = [
         ALERT_T1,
         // E18: SS:=2, Suspend
         Fop1Cell {
-            actions: &[Fop1Action::SetSuspendState(2), Fop1Action::Suspend],
+            actions: &[
+                Fop1Action::SetSuspendState(SuspendState::RetransmitWithoutWait),
+                Fop1Action::Suspend,
+            ],
             next_state: Some(Fop1State::Initial),
         },
         // E19: Add to Wait_Queue, Look for FDU
@@ -817,7 +839,10 @@ pub const FOP1_TABLE: [[Fop1Cell; EVENT_COUNT]; STATE_COUNT] = [
         ALERT_T1,
         // E18: SS:=3, Suspend
         Fop1Cell {
-            actions: &[Fop1Action::SetSuspendState(3), Fop1Action::Suspend],
+            actions: &[
+                Fop1Action::SetSuspendState(SuspendState::RetransmitWithWait),
+                Fop1Action::Suspend,
+            ],
             next_state: Some(Fop1State::Initial),
         },
         // E19: Add to Wait_Queue
@@ -985,7 +1010,10 @@ pub const FOP1_TABLE: [[Fop1Cell; EVENT_COUNT]; STATE_COUNT] = [
         ALERT_T1,
         // E18: SS:=4, Suspend
         Fop1Cell {
-            actions: &[Fop1Action::SetSuspendState(4), Fop1Action::Suspend],
+            actions: &[
+                Fop1Action::SetSuspendState(SuspendState::InitializingWithoutBcFrame),
+                Fop1Action::Suspend,
+            ],
             next_state: Some(Fop1State::Initial),
         },
         // E19: Reject
@@ -1105,7 +1133,10 @@ pub const FOP1_TABLE: [[Fop1Cell; EVENT_COUNT]; STATE_COUNT] = [
         NOT_APPLICABLE,
         // E104: SS:=4, Suspend
         Fop1Cell {
-            actions: &[Fop1Action::SetSuspendState(4), Fop1Action::Suspend],
+            actions: &[
+                Fop1Action::SetSuspendState(SuspendState::InitializingWithoutBcFrame),
+                Fop1Action::Suspend,
+            ],
             next_state: Some(Fop1State::Initial),
         },
     ],

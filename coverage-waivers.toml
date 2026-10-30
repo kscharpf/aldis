@@ -18,3 +18,10 @@ crate = "aldis-uslp"
 metric = "regions"
 count = 18
 justification = "src/view.rs (6), src/truncated.rs (3), src/writer.rs (9) — the error return of `?` on `cut()` and `slot()`, the one checked slice site of each module. Every range comes from a `FrameLayout` computed for the length of the slice it cuts (CMN-040), so the error is a broken invariant that no input reaches (GEN-020). The two helpers are unit-tested directly with an out-of-range argument."
+
+[[waiver]]
+crate = "aldis-cop1"
+metric = "regions"
+count = 7
+justification = "src/fop1.rs — the error return of `?` at seven sites whose callee cannot fail once its input has passed an earlier check: in `Fop1Target::tc`, `VcConfig::new` and `VcTable::new` (after `PhysicalChannelConfig::new` accepted the same length and FECF); the `encode` calls of TransmitBd in `act`, of `transmit_ad`, and of `transmit_bc` (the FDU was checked against `max_fdu_len` by `check_fdu` in `classify`, and a Control Command always fits); the `ok_or` on the Wait_Queue FDU in `transmit_ad` (its length is at most F by construction); and `push_sent` in `transmit_bc` (the cells that transmit a Type-BC frame run Initialize first, which empties the Sent_Queue). Each is an explicit `InternalError` or the callee's error, not a default (GEN-020); the sweep test `every_failure_of_a_cell_leaves_the_state_unchanged` reaches every other failure of a cell."
+
