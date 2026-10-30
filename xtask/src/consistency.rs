@@ -448,10 +448,14 @@ fn vector_problems(
                 "test-vectors/{f}: not listed in test-vectors/README.md"
             ));
         }
-        if !named_by_test(f, tests) {
-            p.push(format!(
+        match (named_by_test(f, tests), awaiting_runner(f)) {
+            (false, false) => p.push(format!(
                 "test-vectors/{f}: no test in crates/*/tests/ runs it"
-            ));
+            )),
+            (true, true) => p.push(format!(
+                "test-vectors/{f}: a test runs it, so `AWAITING_RUNNER` must not cover it any more"
+            )),
+            _ => {}
         }
         let Some((area, name)) = f.split_once('/') else {
             continue;
@@ -488,6 +492,17 @@ fn vector_problems(
         }
     }
     p
+}
+
+/// Vector directories whose files exist before the engines that run them (M3 plan WP-2 before
+/// WP-3 and WP-4): the test requirement is waived until the runner lands, and the entry is
+/// removed in the pull request that adds it.
+const AWAITING_RUNNER: &[&str] = &["cop1/scenarios/"];
+
+/// Whether `f`, relative to `test-vectors/`, is a vector file that no runner runs yet. Such a
+/// file is no evidence for `cargo xtask trace` either (`trace.rs`).
+pub fn awaiting_runner(f: &str) -> bool {
+    AWAITING_RUNNER.iter().any(|dir| f.starts_with(dir))
 }
 
 /// The vector runner through the C ABI (M2 plan D4).
@@ -815,10 +830,10 @@ pub fn check() -> Result<usize, String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        Crates, Form, aldis_dependencies, bin_targets, c_names, crate_problems, exerciser_groups,
-        expand_braces, ffi_runner_files, fuzz_problems, glob, has_code, header_name_problems,
-        matrix_targets, mutants_crates, named_by_test, names, readme_patterns, vector_problems,
-        without_c_comments,
+        Crates, Form, aldis_dependencies, awaiting_runner, bin_targets, c_names, crate_problems,
+        exerciser_groups, expand_braces, ffi_runner_files, fuzz_problems, glob, has_code,
+        header_name_problems, matrix_targets, mutants_crates, named_by_test, names,
+        readme_patterns, vector_problems, without_c_comments,
     };
 
     /// A consistent registration of the M1 crates and `aldis-aos`, with two skeletons.
@@ -996,6 +1011,26 @@ mod tests {
     /// A C ABI runner that runs `time/cuc.json` and `core/crc16.json`.
     const FFI_CUC: &str =
         "vector_test!(t, \"time\", \"cuc\", r);\nvector_test!(c, \"core\", \"crc16\", r);";
+
+    #[test]
+    fn an_exempt_vector_file_that_a_test_runs_is_a_stale_entry() {
+        // req: VER-021
+        let file = ["cop1/scenarios/fop1_table.json".to_owned()];
+        let readme = "| File |\n|---|\n| `cop1/scenarios/*.json` |\n";
+        let c = consistent();
+        assert!(awaiting_runner(&file[0]));
+        assert_eq!(
+            vector_problems(&file, readme, &[], "", "", &c),
+            Vec::<String>::new()
+        );
+        let tests = ["run_scenario_file(\"cop1/scenarios/fop1_table.json\")".to_owned()];
+        assert_eq!(
+            vector_problems(&file, readme, &tests, "", "", &c),
+            [
+                "test-vectors/cop1/scenarios/fop1_table.json: a test runs it, so `AWAITING_RUNNER` must not cover it any more"
+            ]
+        );
+    }
 
     #[test]
     fn vector_files_need_a_readme_row_a_test_and_the_exerciser() {

@@ -415,11 +415,10 @@ fn requirement_code_name(span: &str, kinds: &BTreeSet<String>) -> Option<&'stati
 /// constructs (§2.5a).
 const PROFILE_DIR: &str = "docs/profiles/";
 
-/// Requirements that open pull requests #183 and #184 reword; rewrite them there and delete this
-/// list when both have merged (OI-63).
-const PENDING_REWRITE: [&str; 11] = [
-    "AOS-010", "API-030", "API-031", "API-032", "COP-006", "EPP-010", "TC-021", "TM-011",
-    "USLP-014", "TV-010", "TV-011",
+/// Requirements that the open pull request #184 rewords; rewrite them there and delete this
+/// list when it has merged (OI-63).
+const PENDING_REWRITE: [&str; 8] = [
+    "AOS-010", "API-030", "API-031", "API-032", "EPP-010", "TC-021", "TM-011", "USLP-014",
 ];
 
 /// The code-name rule on the requirement tables (§2.5a): a code span of a requirement that is not
@@ -493,7 +492,11 @@ fn vector_ids() -> Result<BTreeMap<String, bool>, String> {
                     add(&c.id, c.superseded.is_some());
                 }
             }
-            Ok(VectorFile::EngineScenario(s)) => add(&s.id, s.superseded.is_some()),
+            Ok(VectorFile::EngineScenario(f)) => {
+                for s in &f.scenarios {
+                    add(&s.id, s.superseded.is_some());
+                }
+            }
             Err(e) => return Err(format!("{rel}: {e} (run `cargo xtask vectors validate`)")),
         }
     }
