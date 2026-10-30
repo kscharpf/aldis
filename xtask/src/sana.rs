@@ -14,8 +14,9 @@
 //!
 //! SANA publishes no machine-readable export of its registries without an account (checked
 //! 2026-10-23: `/api/` asks for a login, and no CSV, JSON, or XML link exists on the registry
-//! page), so the import reads the HTML table of the public registry page, one page of up to 100
-//! rows, and checks the row count against the count the page states.
+//! page), so the import reads the HTML table of the public registry page, following its pager
+//! (the `per_page` query is ignored: pages hold 25 rows). Fetching fails only without data; the
+//! comparison with the snapshot is the check.
 
 use std::fmt::Write as _;
 use std::process::Command;
@@ -28,7 +29,7 @@ use crate::repo;
 struct Registry {
     /// The registry's identifier in its URL.
     id: &'static str,
-    /// The page whose table is the snapshot: all rows on one page, sorted by value.
+    /// The page whose table is the snapshot: its pages are read in turn, sorted by value.
     url: &'static str,
     /// The snapshot.
     snapshot: &'static str,
@@ -181,8 +182,9 @@ fn text_of(html: &str) -> String {
     }
 }
 
-/// The rows of the registry table in a registry page.
-fn parse_page(html: &str) -> Result<Vec<Vec<String>>, String> {
+/// The rows of the registry table in a registry page, and the number of pages its pager states
+/// (1 without a pager).
+fn parse_page(html: &str) -> Result<(Vec<Vec<String>>, usize), String> {
     let body = html
         .split_once("<tbody>")
         .and_then(|(_, rest)| rest.split_once("</tbody>"))
@@ -202,16 +204,30 @@ fn parse_page(html: &str) -> Result<Vec<Vec<String>>, String> {
         }
         rows.push(row);
     }
-    let stated = text_of(html)
-        .split_once(" records in registry")
-        .and_then(|(before, _)| before.rsplit(' ').next())
-        .and_then(|n| n.parse::<usize>().ok())
-        .ok_or("the page does not state its record count")?;
-    if stated != rows.len() {
-        return Err(format!(
-            "the page states {stated} records but its table has {} rows (more than one page?)",
-            rows.len()
-        ));
+    let total = text_of(html)
+        .split_once("Page ")
+        .and_then(|(_, rest)| rest.split_whitespace().nth(2))
+        .and_then(|n| n.parse().ok())
+        .unwrap_or(1);
+    Ok((rows, total))
+}
+
+/// All rows of a registry: page 1 and every further page its pager announces (`&page=N`),
+/// fetched with `get`, in order of the value, each once. The comparison with the snapshot is the
+/// check; this fails only without data: a fetch or parse error, or no rows.
+fn fetch_registry(
+    url: &str,
+    mut get: impl FnMut(&str) -> Result<String, String>,
+) -> Result<Vec<Vec<String>>, String> {
+    let (mut rows, total) = parse_page(&get(url)?)?;
+    for n in 2..=total {
+        rows.extend(parse_page(&get(&format!("{url}&page={n}"))?)?.0);
+    }
+    // The pager does not keep the order of `sort=upid` across pages.
+    rows.sort_by(|a, b| a.get(1).cmp(&b.get(1)));
+    rows.dedup();
+    if rows.is_empty() {
+        return Err("the registry has no rows".to_owned());
     }
     Ok(rows)
 }
@@ -447,7 +463,7 @@ fn registry(id: &str) -> Result<&'static Registry, String> {
 /// Downloads registry `id`, writes its snapshot, and regenerates its table.
 fn import(id: &str) -> Result<usize, String> {
     let reg = registry(id)?;
-    let rows = parse_page(&download(reg.url)?)?;
+    let rows = fetch_registry(reg.url, download)?;
     let snap = Snapshot {
         url: reg.url.to_owned(),
         retrieved: crate::metrics::time::date(crate::metrics::time::now()),
@@ -469,7 +485,7 @@ fn check_live() -> Result<usize, String> {
     for reg in &REGISTRIES {
         let snap = Snapshot::parse(&repo::read(&repo::root().join(reg.snapshot))?)
             .map_err(|e| format!("{}: {e}", reg.snapshot))?;
-        let live = parse_page(&download(reg.url)?)?;
+        let live = fetch_registry(reg.url, download)?;
         if live == snap.rows {
             println!("{}: unchanged since {}", reg.id, snap.retrieved);
             continue;
@@ -516,7 +532,9 @@ pub fn run(args: &[&str]) -> Result<usize, String> {
 mod tests {
     use std::fmt::Write as _;
 
-    use super::{COLUMNS, Snapshot, digest, parse_page, text_of, upid_table, upid_value};
+    use super::{
+        COLUMNS, Snapshot, digest, fetch_registry, parse_page, text_of, upid_table, upid_value,
+    };
 
     fn row(status: &str, upid: &str, oid: &str) -> Vec<String> {
         [status, upid, "Some data.", "[ccsds-732.1-B-1]", oid]
@@ -537,8 +555,13 @@ mod tests {
         s
     }
 
+    /// `page` with a pager of `n` of `total` pages.
+    fn paged(rows: &[(&str, &str, &str)], stated: usize, n: usize, total: usize) -> String {
+        format!("{}<li>Page {n} of {total}</li>", page(rows, stated))
+    }
+
     #[test]
-    fn page_rows_and_count() {
+    fn page_rows() {
         let html = page(
             &[
                 ("Assigned", "0b00000", "A &amp; B"),
@@ -546,12 +569,29 @@ mod tests {
             ],
             2,
         );
-        let rows = parse_page(&html).unwrap();
+        let rows = parse_page(&html).unwrap().0;
         assert_eq!(rows[0], ["Assigned", "0b00000", "A & B", "", "1.2"]);
         assert_eq!(rows[1][2], "");
-        assert!(parse_page(&page(&[("Assigned", "0b00000", "x")], 3)).is_err());
         assert!(parse_page("<p>no table</p>").is_err());
         assert_eq!(text_of("<a>x</a>\n  <b>y</b>"), "x y");
+    }
+
+    #[test]
+    fn registry_follows_pages() {
+        let (a, b) = (("Assigned", "0b00000", "x"), ("Unassigned", "0b00001", "y"));
+        // Two pages, the second first in value.
+        let pages = |url: &str| match url {
+            "u?q" => Ok(paged(&[b], 2, 1, 2)),
+            "u?q&page=2" => Ok(paged(&[a], 2, 2, 2)),
+            _ => Err("unexpected".to_owned()),
+        };
+        let rows = fetch_registry("u?q", pages).unwrap();
+        assert_eq!((rows.len(), rows[0][1].as_str()), (2, "0b00000"));
+        // One page without a pager.
+        assert_eq!(
+            fetch_registry("u?q", |_| Ok(page(&[a], 1))).unwrap().len(),
+            1
+        );
     }
 
     #[test]
