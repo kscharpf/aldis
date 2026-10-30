@@ -60,6 +60,7 @@ name = "aldis-ffi"
 version = "0.3.0"
 dependencies = [
  "aldis",
+ "aldis-core",
  "aldis-testkit",
  "serde_json",
 ]

@@ -19,6 +19,7 @@
 //! | [`container`] | Fixed-capacity queues and vectors | GEN-010…GEN-012, API-061 |
 //! | [`security`] | SDLS reservation hooks | API-070…API-075 |
 //! | [`layout`] | Frame field layout | CMN-040, CMN-041 |
+//! | [`finishing`] | Frame finishing states of the codec writers | RS-023 |
 //!
 //! `no_std`, no allocation, no `unsafe`, and no panics on any input (GEN-010, GEN-020, GEN-070).
 #![no_std]
@@ -38,6 +39,7 @@ pub mod counter;
 pub mod crc;
 pub mod error;
 pub mod field;
+pub mod finishing;
 pub mod ids;
 pub mod layout;
 pub mod mode;

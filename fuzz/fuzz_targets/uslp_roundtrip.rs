@@ -11,7 +11,7 @@
 use aldis_core::DecodeMode;
 use aldis_core::ocf::Ocf;
 use aldis_core::oid::OidGenerator;
-use aldis_core::security::SecurityLayout;
+use aldis_core::security::{FrameCtx, PreFilledSecurity, SecurityLayout};
 use aldis_uslp::{
     ConstructionRule, FrameContent, FrameFields, FrameKind, MapConfig, OcfUse,
     PhysicalChannelConfig, SecurityScope, SourceOrDestination, TfdfHeader, TfdzRule,
@@ -61,7 +61,17 @@ fn check_frame(
             let mut writer =
                 UslpFrameWriter::begin(&mut two, table, fields, content, zone.len()).unwrap();
             writer.tfdz_mut().unwrap().copy_from_slice(zone);
-            assert_eq!(writer.finish(zone.len()), Ok(frame_len_out));
+            let ctx = FrameCtx::Uslp {
+                scid,
+                vcid,
+                map_id: Some(map),
+            };
+            let done = writer
+                .protect(zone.len(), &mut PreFilledSecurity, &ctx)
+                .unwrap()
+                .finalize()
+                .unwrap();
+            assert_eq!(done.len(), frame_len_out);
             assert_eq!(two, frame);
         }
         Err(_) => assert!(out.iter().all(|&b| b == fill), "a rejected encode wrote"),

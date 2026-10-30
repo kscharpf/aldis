@@ -10,7 +10,7 @@
 use aldis_core::ids::{SpacecraftId, VcId};
 use aldis_core::ocf::Ocf;
 use aldis_core::oid::OidGenerator;
-use aldis_core::security::SecurityLayout;
+use aldis_core::security::{FrameCtx, PreFilledSecurity, SecurityLayout};
 use aldis_core::{DecodeMode, Error, FieldId};
 use aldis_testkit::{CodecCase, Mode, Outcome, hex, run_codec_file};
 use aldis_tm::{
@@ -209,7 +209,12 @@ fn encode_case(case: &CodecCase, mc: &TmMasterChannelConfig) -> Result<Value, Er
     if let Some(ocf) = content.ocf {
         w.set_ocf(ocf).unwrap();
     }
-    assert_eq!(w.finish(), n, "{}", case.id);
+    let ctx = FrameCtx::Tm {
+        scid: mc.scid(),
+        vcid: fields.vcid,
+    };
+    let done = w.protect(&mut PreFilledSecurity, &ctx).unwrap().finalize();
+    assert_eq!(done.len(), n, "{}", case.id);
     assert_eq!(two, out[..n], "{}: two-phase writer differs", case.id);
     Ok(json!({ "output_hex": hex::encode(&out[..n]) }))
 }
@@ -237,7 +242,7 @@ fn encode_oid(case: &CodecCase, mc: &TmMasterChannelConfig) -> Result<Value, Err
         if let Some(ocf) = ocf_of(f.get("ocf_hex")) {
             w.set_ocf(ocf)?;
         }
-        let n = w.finish();
+        let n = w.unsecured().unwrap().finalize().len();
         frames.push(hex::encode(&out[..n]));
     }
     Ok(json!({ "frames_hex": frames }))
