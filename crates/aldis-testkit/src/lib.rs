@@ -24,7 +24,7 @@ pub mod strategies;
 
 pub use model::{
     CodecCase, CodecFile, Expect, FieldCatalogue, FieldEntry, FieldKind, Mode, Provenance,
-    ScenarioFile, Step, Superseded, VectorFile,
+    ResolvedScenario, Scenario, ScenarioFile, Setup, Step, Superseded, VectorFile,
 };
 pub use runner::{Failure, Outcome, Report, compare, run_codec, run_codec_file};
 
