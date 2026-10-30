@@ -206,7 +206,7 @@ fn frame_group(t: &mut Tally) {
 
 fn delimit_group(t: &mut Tally) {
     let unit = bb([0x31, 0x55, 0x04, 0x05, 0x00, 0x00, 0x55, 0x55]);
-    let mut d = FrameDelimiter::new(&unit);
+    let mut d = FrameDelimiter::new(&unit, bb(6));
     t.check(d.remaining().len() == 8);
     let first = d.next();
     t.check(
@@ -217,8 +217,18 @@ fn delimit_group(t: &mut Tally) {
             .is_some_and(|i| matches!(i, Delimited::Fill(f) if f.len() == 2)),
     );
     t.check(d.next().is_none());
+    // Fill above the bound is leftover fill (OI-47).
+    let long_fill = bb([0x55_u8; 7]);
+    t.check(matches!(
+        next_frame(&long_fill, bb(6)),
+        Some(Delimited::LeftoverFill(f)) if f.len() == 7
+    ));
+    t.check(matches!(
+        next_frame(&long_fill, bb(7)),
+        Some(Delimited::Fill(_))
+    ));
     let cut = bb([0x01, 0x55, 0x04, 0x09, 0x00, 0x00]);
-    t.check(next_frame(&cut).is_some_and(|i| {
+    t.check(next_frame(&cut, bb(6)).is_some_and(|i| {
         matches!(
             i,
             Delimited::TruncatedFrame {
@@ -492,13 +502,14 @@ fn validate_case(case: &Case, o: &mut Out) -> Run {
 fn delimit_case(case: &Case, o: &mut Out) {
     let mut list = o.list("items");
     let mut at = 0_usize;
-    for item in FrameDelimiter::new(bb(case.input)) {
+    for item in FrameDelimiter::new(bb(case.input), bb(usize::MAX)) {
         let (kind, declared) = match item {
             Delimited::Frame(_) => ("frame", None),
             Delimited::TruncatedFrame { declared_len, .. } => {
                 ("truncated", Some(wide(declared_len)))
             }
             Delimited::Fill(_) => ("fill", None),
+            Delimited::LeftoverFill(_) => ("leftover_fill", None),
         };
         list.obj(|i| {
             i.text("kind", kind);

@@ -89,7 +89,7 @@ fn run(u: &mut Unstructured<'_>) -> Result<()> {
     }
     let fill = u.int_in_range(0..=6)?;
     unit.extend(std::iter::repeat_n(0x55, fill));
-    let items: Vec<Delimited<'_>> = FrameDelimiter::new(&unit, &table).collect();
+    let items: Vec<Delimited<'_>> = FrameDelimiter::new(&unit, &table, 6).collect();
     let found: Vec<&[u8]> = items
         .iter()
         .filter_map(|i| match i {

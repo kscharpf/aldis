@@ -22,8 +22,13 @@ use crate::view::parse;
 #[non_exhaustive]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum DiscardReason {
-    /// Discarded as fill data (732.1 §4.3.11.2.4 a–b).
+    /// Discarded as fill data, no longer than the longest fill the coding sublayer appends
+    /// (732.1 §4.3.11.2.4 a–b).
     Fill,
+    /// Discarded: it does not start a valid header and is longer than the longest fill the
+    /// coding sublayer appends, so a Frame Length error may have shortened a frame before it
+    /// (732.1 §4.3.11.2.4 note 2; OI-47).
+    LeftoverFill,
     /// Discarded as an incomplete frame whose declared length exceeds remaining octets (§4.3.11.2.3).
     IncompleteFrame {
         /// The frame length declared in the header or by the VC's truncated length.
@@ -73,7 +78,7 @@ impl DiscardReason {
     /// Stable numeric code for C ABI and telemetry classification.
     ///
     /// Codes 1–18 match the validation check reasons; 20 is Fill, 21 `IncompleteFrame`,
-    /// 22 `NoTruncatedLength`.
+    /// 22 `NoTruncatedLength`, 23 `LeftoverFill`.
     #[must_use]
     pub const fn code(self) -> u8 {
         match self {
@@ -98,6 +103,7 @@ impl DiscardReason {
             DiscardReason::Fill => 20,
             DiscardReason::IncompleteFrame { .. } => 21,
             DiscardReason::NoTruncatedLength => 22,
+            DiscardReason::LeftoverFill => 23,
         }
     }
 
@@ -124,6 +130,7 @@ impl DiscardReason {
             DiscardReason::OidHeaderMismatch => Some(Reason::OidHeaderMismatch),
             DiscardReason::NonTruncatedFrameNotAllowed => Some(Reason::NonTruncatedFrameNotAllowed),
             DiscardReason::Fill
+            | DiscardReason::LeftoverFill
             | DiscardReason::IncompleteFrame { .. }
             | DiscardReason::NoTruncatedLength => None,
         }
@@ -255,6 +262,7 @@ impl<'a> IntakeItem<'a, Lenient<ValidatedUslpFrame<'a>, UslpAnomaly>> {
 struct Intake<'a, 'c, L: VcLookup + ?Sized> {
     rest: &'a [u8],
     channels: &'c L,
+    max_fill: usize,
 }
 
 /// In-place zero-allocation iterator over a received USLP data unit (732.1 §4.3.11.2, §4.3.11.3; USLP-014, USLP-015).
@@ -274,13 +282,16 @@ pub struct LenientFrameStream<'a, 'c, L: VcLookup + ?Sized> {
 }
 
 impl<'a, 'c, L: VcLookup + ?Sized> FrameStream<'a, 'c, L> {
-    /// Creates a new strict intake stream over one clean data unit.
+    /// Creates a new strict intake stream over one clean data unit, where `max_fill` is the
+    /// longest fill the coding sublayer appends (six octets for the BCH codeblock, seven or 31
+    /// for the LDPC codeblocks, 732.1 §4.3.11.2.4 note 2; OI-47).
     #[must_use]
-    pub const fn new(data_unit: &'a [u8], channels: &'c L) -> Self {
+    pub const fn new(data_unit: &'a [u8], channels: &'c L, max_fill: usize) -> Self {
         FrameStream {
             intake: Intake {
                 rest: data_unit,
                 channels,
+                max_fill,
             },
         }
     }
@@ -293,13 +304,15 @@ impl<'a, 'c, L: VcLookup + ?Sized> FrameStream<'a, 'c, L> {
 }
 
 impl<'a, 'c, L: VcLookup + ?Sized> LenientFrameStream<'a, 'c, L> {
-    /// Creates a new lenient intake stream over one clean data unit.
+    /// Creates a new lenient intake stream over one clean data unit, where `max_fill` is the
+    /// longest fill the coding sublayer appends (OI-47).
     #[must_use]
-    pub const fn new(data_unit: &'a [u8], channels: &'c L) -> Self {
+    pub const fn new(data_unit: &'a [u8], channels: &'c L, max_fill: usize) -> Self {
         LenientFrameStream {
             intake: Intake {
                 rest: data_unit,
                 channels,
+                max_fill,
             },
         }
     }
@@ -383,6 +396,17 @@ impl<'a, L: VcLookup + ?Sized> Intake<'a, '_, L> {
                     error: Error::new(ErrorKind::UnknownChannel).with_field(field::VC_ID),
                 });
             }
+            None if self.rest.len() > self.max_fill => {
+                // More than the coding sublayer appends: a Frame Length error may have
+                // shortened a frame (732.1 §4.3.11.2.4 note 2; OI-47).
+                let octets = self.rest;
+                self.rest = &[];
+                return Some(IntakeItem::Discarded {
+                    reason: DiscardReason::LeftoverFill,
+                    octets,
+                    error: Error::new(ErrorKind::Malformed).with_field(field::FRAME_LEN),
+                });
+            }
             None => {
                 let octets = self.rest;
                 self.rest = &[];
@@ -449,7 +473,7 @@ mod tests {
         unit[12..24].copy_from_slice(&TRUNCATED);
         unit[24..].copy_from_slice(&[0x55, 0x55, 0x55]);
 
-        let mut stream = FrameStream::new(&unit, &table);
+        let mut stream = FrameStream::new(&unit, &table, 31);
         let first = stream.next().unwrap();
         assert!(matches!(first, IntakeItem::Accepted { ref frame, .. } if frame.len() == 12));
         let second = stream.next().unwrap();
@@ -472,7 +496,7 @@ mod tests {
         unit[..12].copy_from_slice(&bad);
         unit[12..].copy_from_slice(&TRUNCATED);
 
-        let mut stream = FrameStream::new(&unit, &table);
+        let mut stream = FrameStream::new(&unit, &table, 31);
         let first = stream.next().unwrap();
         match first {
             IntakeItem::Discarded { reason, octets, .. } => {
@@ -493,7 +517,7 @@ mod tests {
         // VC 4 requires truncated frames; a non-truncated frame is rejected with NonTruncatedFrameNotAllowed
         // 7-octet primary header: version 12 (0xC0), SCID 0x155, VCID 4, non-truncated flag (0)
         let bad = [0xC0, 0x15, 0x58, 0x84, 0x00, 0x10, 0x00];
-        let mut stream = FrameStream::new(&bad, &table);
+        let mut stream = FrameStream::new(&bad, &table, 31);
         let first = stream.next().unwrap();
         match first {
             IntakeItem::Discarded { reason, octets, .. } => {
@@ -509,7 +533,7 @@ mod tests {
     fn item_accessors_and_remaining() {
         // req: USLP-014, USLP-015
         let table = variable();
-        let mut stream = FrameStream::new(&TRUNCATED, &table);
+        let mut stream = FrameStream::new(&TRUNCATED, &table, 31);
         assert_eq!(stream.remaining(), &TRUNCATED);
         let item = stream.next().unwrap();
         assert_eq!(item.octets(), &TRUNCATED);
@@ -519,7 +543,7 @@ mod tests {
         assert_eq!(stream.next(), None);
 
         // The lenient stream reports what is left too (API-030).
-        let mut lenient = LenientFrameStream::new(&TRUNCATED, &table);
+        let mut lenient = LenientFrameStream::new(&TRUNCATED, &table, 31);
         assert_eq!(lenient.remaining(), &TRUNCATED);
         let item = lenient.next().unwrap();
         assert_eq!(
@@ -531,13 +555,39 @@ mod tests {
 
         // Discarded item accessors
         let fill = [0x55_u8; 3];
-        let lenient_fill = LenientFrameStream::new(&fill, &table).next().unwrap();
+        let lenient_fill = LenientFrameStream::new(&fill, &table, 31).next().unwrap();
         assert_eq!(lenient_fill.octets(), &fill);
-        let mut stream_fill = FrameStream::new(&fill, &table);
+        let mut stream_fill = FrameStream::new(&fill, &table, 31);
         let discarded = stream_fill.next().unwrap();
         assert_eq!(discarded.octets(), &fill);
         assert_eq!(discarded.len(), 3);
         assert!(!discarded.is_empty());
+    }
+
+    #[test]
+    fn fill_above_the_bound_is_discarded_as_leftover_fill() {
+        // req: USLP-015
+        // OI-47: the rest that starts no valid header is Fill up to `max_fill` octets and
+        // LeftoverFill above, in the strict and the lenient stream.
+        let table = variable();
+        let fill = [0x55_u8; 7];
+        for max_fill in [6, 7] {
+            let want = if max_fill == 6 {
+                DiscardReason::LeftoverFill
+            } else {
+                DiscardReason::Fill
+            };
+            let mut strict = FrameStream::new(&fill, &table, max_fill);
+            let mut lenient = LenientFrameStream::new(&fill, &table, max_fill);
+            assert!(
+                matches!(strict.next(), Some(IntakeItem::Discarded { reason, octets, .. })
+                    if reason == want && octets.len() == 7)
+            );
+            assert!(
+                matches!(lenient.next(), Some(IntakeItem::Discarded { reason, .. }) if reason == want)
+            );
+            assert_eq!((strict.next(), lenient.next()), (None, None));
+        }
     }
 
     #[test]
@@ -613,6 +663,7 @@ mod tests {
                 Some(Reason::NonTruncatedFrameNotAllowed),
             ),
             (DiscardReason::Fill, 20, None),
+            (DiscardReason::LeftoverFill, 23, None),
             (
                 DiscardReason::IncompleteFrame { declared_len: 20 },
                 21,
@@ -637,7 +688,7 @@ mod tests {
         // Truncated frame (flag = 1) targeting VC 8, which has no truncated length configured
         let mut frame = TRUNCATED;
         frame[..4].copy_from_slice(&[0xC0, 0x15, 0x59, 0x01]);
-        let mut stream = FrameStream::new(&frame, &table);
+        let mut stream = FrameStream::new(&frame, &table, 31);
         let item = stream.next().unwrap();
         assert!(matches!(
             item,
@@ -656,7 +707,7 @@ mod tests {
         // VC 8 non-truncated frame declaring 20 bytes (0x00, 0x13), but only 10 bytes present
         let mut unit = [0_u8; 10];
         unit[..7].copy_from_slice(&[0xC0, 0x15, 0x59, 0x00, 0x00, 0x13, 0x00]);
-        let mut stream = FrameStream::new(&unit, &table);
+        let mut stream = FrameStream::new(&unit, &table, 31);
         let item = stream.next().unwrap();
         match item {
             IntakeItem::Discarded { reason, octets, .. } => {
@@ -670,7 +721,7 @@ mod tests {
         // Same incomplete frame, but with unknown SCID 0x000 (check b fails before check d)
         let mut bad_scid = unit;
         bad_scid[..4].copy_from_slice(&[0xC0, 0x00, 0x09, 0x00]);
-        let mut stream_scid = FrameStream::new(&bad_scid, &table);
+        let mut stream_scid = FrameStream::new(&bad_scid, &table, 31);
         let item_scid = stream_scid.next().unwrap();
         assert!(matches!(
             item_scid,
@@ -689,7 +740,7 @@ mod tests {
         // 1. Non-truncated with version 0, length 12 >= 7, available in rest
         let mut v0_avail = [0_u8; 12];
         v0_avail[..7].copy_from_slice(&[0x00, 0x15, 0x59, 0x00, 0x00, 0x0B, 0x00]);
-        let mut stream1 = FrameStream::new(&v0_avail, &table);
+        let mut stream1 = FrameStream::new(&v0_avail, &table, 31);
         let item1 = stream1.next().unwrap();
         assert!(matches!(
             item1,
@@ -703,7 +754,7 @@ mod tests {
         // 2. Non-truncated with version 0, raw.frame_len < 7 (e.g. 5) -> falls through to Fill
         let mut v0_short = [0_u8; 8];
         v0_short[..7].copy_from_slice(&[0x00, 0x15, 0x59, 0x00, 0x00, 0x04, 0x00]);
-        let mut stream2 = FrameStream::new(&v0_short, &table);
+        let mut stream2 = FrameStream::new(&v0_short, &table, 31);
         let item2 = stream2.next().unwrap();
         assert!(matches!(
             item2,
@@ -717,7 +768,7 @@ mod tests {
         // 3. Non-truncated with version 0, len > rest.len() -> split_at_checked is None -> falls through to Fill
         let mut v0_trunc = [0_u8; 8];
         v0_trunc[..7].copy_from_slice(&[0x00, 0x15, 0x59, 0x00, 0x00, 0x14, 0x00]);
-        let mut stream3 = FrameStream::new(&v0_trunc, &table);
+        let mut stream3 = FrameStream::new(&v0_trunc, &table, 31);
         let item3 = stream3.next().unwrap();
         assert!(matches!(
             item3,
@@ -731,7 +782,7 @@ mod tests {
         // 4. Truncated with version 0, targeting VC 8 (no truncated length) -> ? returns None -> falls through to Fill
         let mut v0_no_trunc = TRUNCATED;
         v0_no_trunc[..4].copy_from_slice(&[0x00, 0x15, 0x59, 0x01]);
-        let mut stream4 = FrameStream::new(&v0_no_trunc, &table);
+        let mut stream4 = FrameStream::new(&v0_no_trunc, &table, 31);
         let item4 = stream4.next().unwrap();
         assert!(matches!(
             item4,
@@ -744,7 +795,7 @@ mod tests {
 
         // 5. Non-truncated with version 0, rest.len() < 7 -> RawRest::parse is None -> ? returns None -> falls through to Fill
         let v0_fewer_than_7 = [0x00, 0x15, 0x59, 0x00, 0x00];
-        let mut stream5 = FrameStream::new(&v0_fewer_than_7, &table);
+        let mut stream5 = FrameStream::new(&v0_fewer_than_7, &table, 31);
         let item5 = stream5.next().unwrap();
         assert!(matches!(
             item5,
@@ -763,7 +814,7 @@ mod tests {
         // Non-truncated frame on VC 8 (12 bytes) with bad FECF (e.g. zeroed)
         let mut bad_fecf = [0_u8; 12];
         bad_fecf[..7].copy_from_slice(&[0xC0, 0x15, 0x59, 0x00, 0x00, 0x0B, 0x00]);
-        let mut stream = FrameStream::new(&bad_fecf, &table);
+        let mut stream = FrameStream::new(&bad_fecf, &table, 31);
         let item = stream.next().unwrap();
         assert!(matches!(
             item,

@@ -588,6 +588,7 @@ fn stream_reports_the_discard_reason() {
                 2,
                 ch.maps.as_ptr(),
                 3,
+                usize::MAX,
                 ALDIS_MODE_STRICT,
                 &raw mut item,
                 det,
@@ -676,6 +677,7 @@ fn a_vc_with_a_truncated_length_refuses_non_truncated_frames() {
             2,
             ch.maps.as_ptr(),
             3,
+            usize::MAX,
             ALDIS_MODE_STRICT,
             &raw mut item,
             &raw mut det,
@@ -1044,6 +1046,7 @@ fn the_uslp_stream_intake_pipeline() {
             ch.vcs.len(),
             ch.maps.as_ptr(),
             ch.maps.len(),
+            usize::MAX,
             ALDIS_MODE_STRICT,
             &raw mut item,
             null_mut(),
@@ -1066,6 +1069,7 @@ fn the_uslp_stream_intake_pipeline() {
             ch.vcs.len(),
             ch.maps.as_ptr(),
             ch.maps.len(),
+            usize::MAX,
             ALDIS_MODE_STRICT,
             &raw mut item,
             null_mut(),
@@ -1087,6 +1091,7 @@ fn the_uslp_stream_intake_pipeline() {
             ch.vcs.len(),
             ch.maps.as_ptr(),
             ch.maps.len(),
+            usize::MAX,
             ALDIS_MODE_STRICT,
             &raw mut item,
             null_mut(),
@@ -1122,6 +1127,7 @@ fn the_uslp_stream_intake_pipeline() {
             ch.vcs.len(),
             ch.maps.as_ptr(),
             ch.maps.len(),
+            usize::MAX,
             ALDIS_MODE_STRICT,
             &raw mut item,
             null_mut(),
@@ -1155,6 +1161,7 @@ fn stream_rejects_overlapping_pointers() {
             ch.vcs.len(),
             ch.maps.as_ptr(),
             ch.maps.len(),
+            usize::MAX,
             ALDIS_MODE_STRICT,
             &raw mut item,
             null_mut(),
@@ -1174,10 +1181,51 @@ fn stream_rejects_overlapping_pointers() {
             ch.vcs.len(),
             ch.maps.as_ptr(),
             ch.maps.len(),
+            usize::MAX,
             ALDIS_MODE_STRICT,
             &raw mut item,
             null_mut(),
         )
     };
     assert_eq!(rc, ALDIS_ERR_INVALID_FIELD);
+}
+
+#[test]
+fn fill_above_max_fill_is_reported_as_leftover_fill() {
+    // req: USLP-015, CABI-012, CABI-022
+    // OI-47: the rest that starts no valid header is ALDIS_USLP_DISCARD_FILL up to `max_fill`
+    // octets and ALDIS_USLP_DISCARD_LEFTOVER_FILL above it; both take all of the rest.
+    let ch = variable();
+    let unit = [0x55_u8; 7];
+    for (max_fill, want) in [
+        (6, ALDIS_USLP_DISCARD_LEFTOVER_FILL),
+        (7, ALDIS_USLP_DISCARD_FILL),
+        (0, ALDIS_USLP_DISCARD_LEFTOVER_FILL),
+    ] {
+        let mut offset = 0;
+        let mut item = aldis_uslp_stream_item_t::default();
+        // SAFETY: pointers point to valid stack and slice buffers and counts match.
+        let rc = unsafe {
+            aldis_uslp_stream_next(
+                unit.as_ptr(),
+                unit.len(),
+                &raw mut offset,
+                &raw const ch.pc,
+                ch.vcs.as_ptr(),
+                ch.vcs.len(),
+                ch.maps.as_ptr(),
+                ch.maps.len(),
+                max_fill,
+                ALDIS_MODE_STRICT,
+                &raw mut item,
+                null_mut(),
+            )
+        };
+        assert_eq!(
+            (rc, item.kind, item.range.len, item.discard_reason, offset),
+            (ALDIS_OK, ALDIS_USLP_STREAM_DISCARDED, 7, want, unit.len()),
+            "max_fill {max_fill}"
+        );
+    }
+    assert_eq!(ALDIS_USLP_DISCARD_LEFTOVER_FILL, 23);
 }

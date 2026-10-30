@@ -380,7 +380,7 @@ fn decode_may_accept_a_frame_length_error_as_a_shorter_frame() {
         // The delimiter reads the same field, so the unit yields the shorter frame, and
         // validate_frame of those octets accepts it: only a caller that compares the length
         // with the octets it was given sees the error.
-        let Some(Delimited::Frame(item)) = next_frame(&octets, &f.table) else {
+        let Some(Delimited::Frame(item)) = next_frame(&octets, &f.table, 31) else {
             panic!("not a frame");
         };
         assert_eq!(item.len(), 32);
@@ -582,7 +582,7 @@ fn a_flipped_end_of_frame_flag_of_a_truncated_frame_is_rejected_whatever_follows
                 // octet (a length far above the frame) without SDLS, which the delimiter does
                 // not trust (OI-48); two zero Security Header octets (a length of 1, below the
                 // shortest frame) with SDLS, which it takes for fill. Both discard the rest.
-                let item = next_frame(&f, &table).unwrap();
+                let item = next_frame(&f, &table, 31).unwrap();
                 if sdls {
                     assert!(matches!(item, Delimited::Fill(_)));
                 } else {

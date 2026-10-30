@@ -220,7 +220,8 @@ fn validate_case(case: &CodecCase) -> Result<Value, Error> {
 fn delimit_case(case: &CodecCase) -> Value {
     let unit = input(case);
     let mut at = 0;
-    let items: Vec<Value> = FrameDelimiter::new(&unit)
+    // The released cases hold any fill: the bound of OI-47 is tested in `delimit.rs`.
+    let items: Vec<Value> = FrameDelimiter::new(&unit, usize::MAX)
         .map(|item| {
             let (kind, declared) = match item {
                 Delimited::Frame(_) => ("frame", Value::Null),
@@ -228,6 +229,7 @@ fn delimit_case(case: &CodecCase) -> Value {
                     ("truncated", json!(declared_len))
                 }
                 Delimited::Fill(_) => ("fill", Value::Null),
+                Delimited::LeftoverFill(_) => ("leftover_fill", Value::Null),
             };
             let v = json!({
                 "kind": kind,

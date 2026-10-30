@@ -353,7 +353,7 @@ fn delimit_group(t: &mut Tally) {
     for (d, s) in unit.iter_mut().zip(start) {
         *d = s;
     }
-    let mut d = FrameDelimiter::new(bb(&unit), &v);
+    let mut d = FrameDelimiter::new(bb(&unit), &v, bb(6));
     t.check(
         d.next()
             .is_some_and(|i| matches!(i, Delimited::Frame(f) if f.len() == 12)),
@@ -365,7 +365,7 @@ fn delimit_group(t: &mut Tally) {
     );
     t.check(d.next().is_none());
     let cut = unit.get(..6).unwrap_or_default();
-    t.check(next_frame(bb(cut), &v).is_some_and(|i| {
+    t.check(next_frame(bb(cut), &v, bb(6)).is_some_and(|i| {
         matches!(
             i,
             Delimited::IncompleteFrame {
@@ -377,8 +377,18 @@ fn delimit_group(t: &mut Tally) {
     }));
     let unknown = [0xC0, 0x15, 0x50, 0xC1];
     t.check(matches!(
-        next_frame(bb(&unknown), &v),
+        next_frame(bb(&unknown), &v, bb(6)),
         Some(Delimited::NoTruncatedLength(_))
+    ));
+    // Fill above the bound is leftover fill (OI-47).
+    let long_fill = bb([0x55_u8; 7]);
+    t.check(matches!(
+        next_frame(&long_fill, &v, bb(6)),
+        Some(Delimited::LeftoverFill(f)) if f.len() == 7
+    ));
+    t.check(matches!(
+        next_frame(&long_fill, &v, bb(7)),
+        Some(Delimited::Fill(_))
     ));
 }
 
@@ -725,7 +735,7 @@ fn delimit_case(case: &Case, o: &mut Out) -> Run {
     let t = table(case)?;
     let mut list = o.list("items");
     let mut at = 0_usize;
-    for item in FrameDelimiter::new(bb(case.input), &t) {
+    for item in FrameDelimiter::new(bb(case.input), &t, bb(usize::MAX)) {
         let (kind, declared) = match item {
             Delimited::Frame(_) => ("frame", None),
             Delimited::IncompleteFrame { declared_len, .. } => {
@@ -734,6 +744,7 @@ fn delimit_case(case: &Case, o: &mut Out) -> Run {
             Delimited::NoTruncatedLength(_) => ("no_truncated_length", None),
             Delimited::NonTruncatedNotAllowed(_) => ("non_truncated_not_allowed", None),
             Delimited::Fill(_) => ("fill", None),
+            Delimited::LeftoverFill(_) => ("leftover_fill", None),
         };
         list.obj(|i| {
             i.text("kind", kind);

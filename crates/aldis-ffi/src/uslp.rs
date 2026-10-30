@@ -330,8 +330,11 @@ pub enum aldis_uslp_discard {
     ALDIS_USLP_DISCARD_INCOMPLETE_FRAME = 21,
     /// Discard reason: truncated header whose SCID and VCID name no configured VC or no truncated length (732.1 USLP-015).
     ALDIS_USLP_DISCARD_NO_TRUNCATED_LENGTH = 22,
+    /// Discard reason: leftover fill, more octets than the longest fill the coding sublayer appends
+    /// that start no valid header, perhaps after a Frame Length error (732.1 §4.3.11.2.4 note 2; USLP-015, OI-47).
+    ALDIS_USLP_DISCARD_LEFTOVER_FILL = 23,
 }
-mirror!(pub aldis_uslp_discard: u32 { ALDIS_USLP_DISCARD_NONE, ALDIS_USLP_DISCARD_UNEXPECTED_SPACECRAFT, ALDIS_USLP_DISCARD_RESERVED_FLAGS, ALDIS_USLP_DISCARD_RESERVED_SPARE, ALDIS_USLP_DISCARD_INVALID_VCID, ALDIS_USLP_DISCARD_INVALID_MAP_ID, ALDIS_USLP_DISCARD_TRUNCATED_FRAME_NOT_ALLOWED, ALDIS_USLP_DISCARD_VCF_COUNT_LENGTH_MISMATCH, ALDIS_USLP_DISCARD_OCF_FLAG_MISMATCH, ALDIS_USLP_DISCARD_FIXED_LENGTH_MISMATCH, ALDIS_USLP_DISCARD_FRAME_TOO_LONG, ALDIS_USLP_DISCARD_FRAME_TOO_SHORT, ALDIS_USLP_DISCARD_LENGTH_MISMATCH, ALDIS_USLP_DISCARD_FECF_MISMATCH, ALDIS_USLP_DISCARD_CONSTRUCTION_RULE_MISMATCH, ALDIS_USLP_DISCARD_POINTER_BEYOND_ZONE, ALDIS_USLP_DISCARD_OID_HEADER_MISMATCH, ALDIS_USLP_DISCARD_NON_TRUNCATED_FRAME_NOT_ALLOWED, ALDIS_USLP_DISCARD_FILL, ALDIS_USLP_DISCARD_INCOMPLETE_FRAME, ALDIS_USLP_DISCARD_NO_TRUNCATED_LENGTH });
+mirror!(pub aldis_uslp_discard: u32 { ALDIS_USLP_DISCARD_NONE, ALDIS_USLP_DISCARD_UNEXPECTED_SPACECRAFT, ALDIS_USLP_DISCARD_RESERVED_FLAGS, ALDIS_USLP_DISCARD_RESERVED_SPARE, ALDIS_USLP_DISCARD_INVALID_VCID, ALDIS_USLP_DISCARD_INVALID_MAP_ID, ALDIS_USLP_DISCARD_TRUNCATED_FRAME_NOT_ALLOWED, ALDIS_USLP_DISCARD_VCF_COUNT_LENGTH_MISMATCH, ALDIS_USLP_DISCARD_OCF_FLAG_MISMATCH, ALDIS_USLP_DISCARD_FIXED_LENGTH_MISMATCH, ALDIS_USLP_DISCARD_FRAME_TOO_LONG, ALDIS_USLP_DISCARD_FRAME_TOO_SHORT, ALDIS_USLP_DISCARD_LENGTH_MISMATCH, ALDIS_USLP_DISCARD_FECF_MISMATCH, ALDIS_USLP_DISCARD_CONSTRUCTION_RULE_MISMATCH, ALDIS_USLP_DISCARD_POINTER_BEYOND_ZONE, ALDIS_USLP_DISCARD_OID_HEADER_MISMATCH, ALDIS_USLP_DISCARD_NON_TRUNCATED_FRAME_NOT_ALLOWED, ALDIS_USLP_DISCARD_FILL, ALDIS_USLP_DISCARD_INCOMPLETE_FRAME, ALDIS_USLP_DISCARD_NO_TRUNCATED_LENGTH, ALDIS_USLP_DISCARD_LEFTOVER_FILL });
 /// Discard reason: test (a), TFVN is not `1100` (732.1 §4.1.2.2.2; USLP-001).
 pub const ALDIS_USLP_DISCARD_UNEXPECTED_VERSION: u32 = 1;
 /// Discard reason: non-truncated header on a VC that carries only truncated frames (732.1 OI-48; USLP-015).
@@ -1096,6 +1099,11 @@ pub unsafe extern "C" fn aldis_uslp_decode(
 /// code, and `out.error_code` holds the error status.
 /// When `out.kind == ALDIS_USLP_STREAM_END`, the unit is exhausted.
 ///
+/// `max_fill` is the longest fill the coding sublayer appends (six octets for the BCH codeblock,
+/// seven or 31 for the LDPC codeblocks, 732.1 §4.3.11.2.4 note 2): a rest that starts no valid
+/// header is discarded as `ALDIS_USLP_DISCARD_FILL` up to `max_fill` octets and as
+/// `ALDIS_USLP_DISCARD_LEFTOVER_FILL` above (OI-47).
+///
 /// # Errors
 /// The errors of [`aldis_uslp_vc_table_check`]; `ALDIS_ERR_INVALID_ARGUMENT` if `*offset > unit_len`;
 /// CABI-022 violations.
@@ -1122,6 +1130,7 @@ pub unsafe extern "C" fn aldis_uslp_stream_next(
     vc_count: usize,
     maps: *const aldis_uslp_map_config_t,
     map_count: usize,
+    max_fill: usize,
     mode: u32,
     out: *mut aldis_uslp_stream_item_t,
     err: *mut crate::aldis_error_detail_t,
@@ -1167,10 +1176,10 @@ pub unsafe extern "C" fn aldis_uslp_stream_next(
                 return Err(invalid_argument());
             };
             let item = match mode {
-                DecodeMode::Strict => FrameStream::new(rest, &t)
+                DecodeMode::Strict => FrameStream::new(rest, &t, max_fill)
                     .next()
                     .map(|item| item.map_frame(|frame| (frame, AnomalySet::empty()))),
-                DecodeMode::Lenient => LenientFrameStream::new(rest, &t)
+                DecodeMode::Lenient => LenientFrameStream::new(rest, &t, max_fill)
                     .next()
                     .map(|item| item.map_frame(Lenient::into_parts)),
             };

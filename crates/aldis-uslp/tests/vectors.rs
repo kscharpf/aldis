@@ -320,7 +320,8 @@ fn delimit_case(case: &CodecCase) -> Result<Value, Error> {
     let t = table(case)?;
     let unit = input(case);
     let mut at = 0;
-    let items: Vec<Value> = FrameDelimiter::new(&unit, &t)
+    // The released cases hold any fill: the bound of OI-47 is tested in `delimit.rs`.
+    let items: Vec<Value> = FrameDelimiter::new(&unit, &t, usize::MAX)
         .map(|item| {
             let (kind, declared) = match item {
                 Delimited::Frame(_) => ("frame", Value::Null),
@@ -330,6 +331,7 @@ fn delimit_case(case: &CodecCase) -> Result<Value, Error> {
                 Delimited::NoTruncatedLength(_) => ("no_truncated_length", Value::Null),
                 Delimited::NonTruncatedNotAllowed(_) => ("non_truncated_not_allowed", Value::Null),
                 Delimited::Fill(_) => ("fill", Value::Null),
+                Delimited::LeftoverFill(_) => ("leftover_fill", Value::Null),
             };
             let v = json!({
                 "kind": kind,
