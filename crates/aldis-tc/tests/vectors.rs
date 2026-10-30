@@ -9,7 +9,7 @@
 )]
 
 use aldis_core::ids::FrameSeqNum;
-use aldis_core::security::SecurityLayout;
+use aldis_core::security::{FrameCtx, PreFilledSecurity, SecurityLayout};
 use aldis_core::{DecodeMode, Error, FieldId};
 use aldis_tc::{
     Clcw, ClcwStatus, ControlCommand, CopInEffect, Delimited, FarmBCounter, FrameData,
@@ -171,7 +171,16 @@ fn encode_fdu(
     let mut two = vec![0_u8; n];
     let mut w = TcFrameWriter::begin(&mut two, channels, frame_fields, segment, user.len())?;
     w.user_data_mut().copy_from_slice(&user);
-    assert_eq!(w.finish(user.len()), Ok(n), "{}", case.id);
+    let ctx = FrameCtx::Tc {
+        scid: frame_fields.spacecraft_id,
+        vcid: frame_fields.vc_id,
+        map_id: segment.map(|s| s.map_id),
+    };
+    let done = w
+        .protect(user.len(), &mut PreFilledSecurity, &ctx)?
+        .finalize()
+        .unwrap();
+    assert_eq!(done.len(), n, "{}", case.id);
     assert_eq!(two, out[..n], "{}: two-phase writer differs", case.id);
     Ok(n)
 }

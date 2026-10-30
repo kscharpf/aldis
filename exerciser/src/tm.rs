@@ -6,7 +6,7 @@ use core::hint::black_box as bb;
 use aldis_core::ids::{SpacecraftId, VcId};
 use aldis_core::ocf::Ocf;
 use aldis_core::oid::{OidGenerator, OidGeneratorGalois};
-use aldis_core::security::SecurityLayout;
+use aldis_core::security::{FrameCtx, PreFilledSecurity, SecurityLayout};
 use aldis_core::{Anomaly as _, AnomalySet, DecodeMode, ErrorKind};
 use aldis_tm::{
     DataFieldContent, DataFieldStatus, FirstHeaderPointer, FshLen, NoSdls, PacketOffset,
@@ -148,7 +148,15 @@ fn frames(t: &mut Tally, mc: &TmMasterChannelConfig, vc0: VcId<3>, vc1: VcId<3>,
             t.check(copy(w.security_trailer_mut(), &[0x5A]));
             t.check(w.set_ocf(Ocf::decode([0; 4])).is_err());
             t.check(w.layout().frame_len() == 32);
-            t.check(w.finish() == 32);
+            let ctx = FrameCtx::Tm { scid, vcid: vc0 };
+            match w.protect(bb(&mut PreFilledSecurity), bb(&ctx)) {
+                Ok(p) => {
+                    let done = p.finalize();
+                    t.check(done.len() == 32 && !done.is_empty() && done.octets().len() == 32);
+                    t.check(done.into_octets().len() == 32);
+                }
+                Err(_) => t.check(false),
+            }
         }
         Err(_) => t.check(false),
     }
@@ -203,7 +211,8 @@ fn frames(t: &mut Tally, mc: &TmMasterChannelConfig, vc0: VcId<3>, vc1: VcId<3>,
     };
     t.check(
         TmFrameWriter::begin_oid(bb(&mut frame), &oid_mc, vc0, 0, 0, &mut oid)
-            .is_ok_and(|w| w.finish() == 32),
+            .and_then(TmFrameWriter::unsecured)
+            .is_ok_and(|w| w.finalize().len() == 32),
     );
     t.check(frame.get(10..14) == Some(&[0xFF; 4][..]));
     // The one-shot encoders give the same frame from either form of the generator.
@@ -392,7 +401,11 @@ fn encode_case(p: Map, mc: &TmMasterChannelConfig, out: &mut Out, scratch: &mut 
         && copy(w.data_field_mut(), content.data)
         && copy(w.security_trailer_mut(), content.security_trailer)
         && content.ocf.is_none_or(|o| w.set_ocf(o).is_ok());
-    if !ok || w.finish() != n {
+    let ctx = FrameCtx::Tm {
+        scid: mc.scid(),
+        vcid: fields.vcid,
+    };
+    if !ok || w.protect(&mut PreFilledSecurity, &ctx)?.finalize().len() != n {
         return Err(Fail::Vector);
     }
     let (written, two) = (need(scratch.a.get(..n))?, need(scratch.b.get(..n))?);
@@ -427,7 +440,7 @@ fn encode_oid(p: Map, mc: &TmMasterChannelConfig, out: &mut Out, scratch: &mut S
         if let Some(ocf) = ocf_of(crate::vectors::get(f, "ocf_hex"))? {
             w.set_ocf(ocf)?;
         }
-        let n = w.finish();
+        let n = w.unsecured()?.finalize().len();
         list.bytes(need(scratch.a.get(..n))?);
     }
     out.end(&list);

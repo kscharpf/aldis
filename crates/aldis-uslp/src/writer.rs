@@ -1,8 +1,11 @@
 //! Encoders: [`encode`], [`UslpFrameWriter`], [`encode_truncated`], [`encode_oid`], and
 //! [`encode_oid_galois`].
 //!
-//! 732.1 §4.1, §6.3, Annex D; USLP-009, USLP-010, USLP-016, API-020…API-023, API-072, GEN-014,
-//! GEN-042, GEN-052.
+//! 732.1 §4.1, §6.3, Annex D; USLP-009, USLP-010, USLP-016, API-020…API-023, API-072, API-074,
+//! RS-023, GEN-014, GEN-042, GEN-052.
+//!
+//! [`UslpFrameWriter`] carries the finishing typestate of RS-023: `Unprotected`, `Protected`,
+//! `Finalized`.
 //!
 //! The writers compute the Frame Length, the OCF Flag, the VCF Count Length (from the VC and
 //! the quality of service of the Bypass/Sequence Control Flag), the TFDF Header, and the FECF, and take the
@@ -11,11 +14,16 @@
 //! OI-34). Their checks and errors are those of `docs/standards/uslp-frame.md` §3.3, in its
 //! order.
 
+use core::marker::PhantomData;
+
 use aldis_core::crc;
+use aldis_core::finishing::{
+    Finalized, FrameState, Protected, Unprotected, require_layout, require_unsecured,
+};
 use aldis_core::layout::{FrameLayout, LayoutSpec, OCF_LEN};
 use aldis_core::ocf::Ocf;
 use aldis_core::oid::{OidGenerator, OidGeneratorGalois};
-use aldis_core::security::SecurityLayout;
+use aldis_core::security::{FrameCtx, SecuredFields, SecurityHook, SecurityLayout};
 use aldis_core::{Error, ErrorKind, Result};
 
 use crate::config::{
@@ -313,7 +321,9 @@ pub fn encode<L: VcLookup + ?Sized>(
     for (d, s) in w.tfdz_mut()?.iter_mut().zip(tfdz) {
         *d = *s;
     }
-    w.finish(tfdz.len())
+    w.fix_length(tfdz.len())
+        .and_then(UslpFrameWriter::finalize)
+        .map(|w| w.len())
 }
 
 /// Encodes an OID frame into the start of `out` and fills its TFDZ with the next octets of
@@ -383,7 +393,9 @@ fn oid_frame<L: VcLookup + ?Sized>(
     let tfdz_len = plan.tfdz_len;
     let mut w = UslpFrameWriter::start(out, plan, insert_zone)?;
     fill(w.tfdz_mut()?);
-    w.finish(tfdz_len)
+    w.fix_length(tfdz_len)
+        .and_then(UslpFrameWriter::finalize)
+        .map(|w| w.len())
 }
 
 /// Encodes a truncated frame into the start of `out`; returns its length, the VC's truncated
@@ -446,29 +458,50 @@ pub fn encode_truncated<L: VcLookup + ?Sized>(
     Ok(len)
 }
 
-/// Two-phase writer of a non-truncated frame (732.1 §4.1, §6.3; API-020…API-023, API-072).
+/// Two-phase writer of a non-truncated frame (732.1 §4.1, §6.3; API-020…API-023, API-072,
+/// API-074, RS-023).
 ///
-/// [`begin`](Self::begin) reserves the frame for up to a maximum TFDZ; the caller fills the
-/// TFDZ and, with SDLS, the Security Header and Trailer in place; [`finish`](Self::finish)
-/// writes the header, the OCF, and the FECF.
+/// [`begin`](Self::begin) reserves the frame for up to a maximum TFDZ and returns the writer
+/// [`Unprotected`]; the caller fills the TFDZ and, with SDLS, the Security Header and Trailer in
+/// place. [`protect`](UslpFrameWriter::protect) (or [`unsecured`](UslpFrameWriter::unsecured)
+/// without SDLS) fixes the TFDZ length, which decides the Frame Length and where the Security
+/// Trailer, the OCF, and the FECF lie, writes the header and the OCF, and applies SDLS; the
+/// writer is then [`Protected`]. [`finalize`](UslpFrameWriter::finalize) computes the FECF,
+/// last, and gives the [`Finalized`] writer, the only state that exposes the frame's octets.
+/// Each step consumes the writer, so a step out of order does not compile (RS-023, RS-021).
 ///
-/// Until `finish`, the buffer holds a Primary Header whose TFVN is `1111`, which every decoder
-/// rejects with `UnsupportedVersion` and the delimiter treats as fill, so an unfinished frame
-/// cannot be mistaken for a valid one (API-023). Its Frame Length field holds the reserved
-/// frame length.
+/// Until `protect` or `unsecured`, the buffer holds a Primary Header whose TFVN is `1111`, which
+/// every decoder rejects with `UnsupportedVersion` and the delimiter treats as fill, so an
+/// unfinished frame cannot be mistaken for a valid one (API-023). Its Frame Length field holds
+/// the reserved frame length.
 #[derive(Debug)]
-pub struct UslpFrameWriter<'b> {
+pub struct UslpFrameWriter<'b, S: FrameState = Unprotected> {
     out: &'b mut [u8],
     plan: Plan,
+    /// The frame length: the reserved one until the TFDZ length is fixed.
+    total: usize,
+    state: PhantomData<S>,
 }
 
-impl<'b> UslpFrameWriter<'b> {
+impl<'b, S: FrameState> UslpFrameWriter<'b, S> {
+    /// The same frame in state `T`: the one place a state changes.
+    const fn into_state<T: FrameState>(self) -> UslpFrameWriter<'b, T> {
+        UslpFrameWriter {
+            out: self.out,
+            plan: self.plan,
+            total: self.total,
+            state: PhantomData,
+        }
+    }
+}
+
+impl<'b> UslpFrameWriter<'b, Unprotected> {
     /// Reserves a frame with room for up to `max_tfdz_len` TFDZ octets (732.1 §4.1; USLP-010,
     /// API-020). On a fixed-length Physical Channel `max_tfdz_len` must fill the frame.
     ///
     /// # Errors
     /// The errors of [`encode`] for a frame with `max_tfdz_len` TFDZ octets, except the
-    /// pointer, which [`finish`](Self::finish) checks against the TFDZ it is given. On error
+    /// pointer, which [`protect`](Self::protect) and [`unsecured`](Self::unsecured) check against the TFDZ it is given. On error
     /// `out` is unchanged.
     pub fn begin<L: VcLookup + ?Sized>(
         out: &'b mut [u8],
@@ -476,7 +509,7 @@ impl<'b> UslpFrameWriter<'b> {
         fields: FrameFields,
         content: FrameContent<'_>,
         max_tfdz_len: usize,
-    ) -> Result<UslpFrameWriter<'b>> {
+    ) -> Result<UslpFrameWriter<'b, Unprotected>> {
         let purpose = Purpose::Data {
             check_pointer: false,
         };
@@ -486,7 +519,11 @@ impl<'b> UslpFrameWriter<'b> {
 
     /// Takes up the frame of a checked plan in `out`: writes the unfinished header, the Insert
     /// Zone, and the TFDF Header, and zeros in the Security Header and Trailer (API-023).
-    fn start(out: &'b mut [u8], plan: Plan, insert_zone: &[u8]) -> Result<UslpFrameWriter<'b>> {
+    fn start(
+        out: &'b mut [u8],
+        plan: Plan,
+        insert_zone: &[u8],
+    ) -> Result<UslpFrameWriter<'b, Unprotected>> {
         let total = plan.layout.frame_len();
         let buf = out.get_mut(..total).ok_or(Error::buffer_too_small(total))?;
         let header = primary_octets(
@@ -512,7 +549,12 @@ impl<'b> UslpFrameWriter<'b> {
         for (d, s) in target.iter_mut().zip(tfdf) {
             *d = s;
         }
-        let mut w = UslpFrameWriter { out, plan };
+        let mut w = UslpFrameWriter {
+            out,
+            plan,
+            total,
+            state: PhantomData,
+        };
         w.security_header_mut()?.fill(0);
         w.security_trailer_mut()?.fill(0);
         Ok(w)
@@ -521,7 +563,7 @@ impl<'b> UslpFrameWriter<'b> {
     /// Where the fields of the reserved frame lie in the buffer, with the TFDF (header and
     /// reserved TFDZ) in the data field (CMN-040).
     ///
-    /// This is the layout of the longest frame, a provisional one: [`finish`](Self::finish) with
+    /// This is the layout of the longest frame, a provisional one: [`protect`](Self::protect) with
     /// a shorter TFDZ shortens the frame and moves the Security Trailer, the OCF, and the FECF.
     #[must_use]
     pub const fn layout(&self) -> &FrameLayout {
@@ -548,7 +590,7 @@ impl<'b> UslpFrameWriter<'b> {
     }
 
     /// The Security Trailer to fill in place, after the reserved TFDZ; empty without SDLS.
-    /// [`finish`](Self::finish) moves it to follow the TFDZ (§6.3.6; API-072).
+    /// [`protect`](Self::protect) moves it to follow the TFDZ (§6.3.6; API-072).
     ///
     /// # Errors
     /// As [`security_header_mut`](Self::security_header_mut).
@@ -556,22 +598,63 @@ impl<'b> UslpFrameWriter<'b> {
         slot(self.out, self.plan.layout.security_trailer())
     }
 
-    /// Completes the frame with `tfdz_len` TFDZ octets; returns the frame length (732.1
-    /// §4.1.2.7, §4.1.5, §4.1.6; USLP-010, API-021, API-023).
+    /// Fixes the TFDZ at `tfdz_len` octets and applies `hook` to the Security Header, the TFDF,
+    /// and the Security Trailer, after every other field except the FECF is final (732.1
+    /// §4.1.2.7, §4.1.5, §6.3; USLP-010, API-074, RS-023). `ctx` identifies the channel for the
+    /// hook's Security Association.
     ///
-    /// The frame is the first `len` octets of the buffer. When `tfdz_len` is below the
-    /// reservation, the Security Trailer moves to follow the TFDZ, and the octets after the
-    /// frame keep unspecified values, which may include octets of the Security Trailer as it
-    /// was before the move; use only `out[..len]`, and clear the rest of the buffer if it may
-    /// hold sensitive data.
+    /// When `tfdz_len` is below the reservation, the Security Trailer moves to follow the TFDZ,
+    /// and the octets after the frame keep unspecified values, which may include octets of the
+    /// Security Trailer as it was before the move; use only the finalized frame's octets, and
+    /// clear the rest of the buffer if it may hold sensitive data.
     ///
     /// # Errors
-    /// `OutOfRange` (`user_len`) above the reservation; `InvalidField` (`frame_data_field`) for
-    /// 0; `LengthMismatch` (`frame_data_field`) below the reservation on a fixed-length
-    /// channel; `OutOfRange` (`fhp_lvo_pointer`) for a pointer not below `tfdz_len`. On error
-    /// the buffer keeps its unfinished state.
-    pub fn finish(self, tfdz_len: usize) -> Result<usize> {
-        let plan = self.plan;
+    /// As [`unsecured`](Self::unsecured), without the SDLS check, and the hook's error,
+    /// `Security`, after which the frame is dropped and must not be transmitted. On the other
+    /// errors the buffer keeps its unfinished state.
+    pub fn protect<H: SecurityHook + ?Sized>(
+        self,
+        tfdz_len: usize,
+        hook: &mut H,
+        ctx: &FrameCtx,
+    ) -> Result<UslpFrameWriter<'b, Protected>> {
+        require_layout(
+            hook.layout(),
+            self.plan.layout.security_header().len(),
+            self.plan.layout.security_trailer().len(),
+        )
+        .and_then(|()| self.fix_length(tfdz_len))
+        .and_then(|mut w| {
+            let result = w
+                .secured(tfdz_len)
+                .and_then(|(frame, fields)| hook.protect(ctx, frame, &fields));
+            w.checked(result)
+        })
+    }
+
+    /// Fixes the TFDZ at `tfdz_len` octets on a channel without SDLS, the `NoSecurity` path
+    /// (API-073, RS-023); the frame is then [`Protected`].
+    ///
+    /// # Errors
+    /// `InvalidField` (`security_header_len` or `security_trailer_len`) if the channel reserves
+    /// a Security Header or Trailer, which need [`protect`](Self::protect); `OutOfRange`
+    /// (`user_len`) above the reservation; `InvalidField` (`frame_data_field`) for 0;
+    /// `LengthMismatch` (`frame_data_field`) below the reservation on a fixed-length channel;
+    /// `OutOfRange` (`fhp_lvo_pointer`) for a pointer not below `tfdz_len`. On error the buffer
+    /// keeps its unfinished state.
+    pub fn unsecured(self, tfdz_len: usize) -> Result<UslpFrameWriter<'b, Protected>> {
+        require_unsecured(
+            self.plan.layout.security_header().len(),
+            self.plan.layout.security_trailer().len(),
+        )?;
+        self.fix_length(tfdz_len)
+    }
+
+    /// Fixes the length: moves the Security Trailer to follow `tfdz_len` octets of TFDZ and
+    /// writes the final Primary Header and the OCF (732.1 §4.1.2.7, §4.1.5; USLP-010,
+    /// API-023).
+    fn fix_length(self, tfdz_len: usize) -> Result<UslpFrameWriter<'b, Protected>> {
+        let plan = &self.plan;
         if tfdz_len > plan.tfdz_len {
             return Err(Error::out_of_range(
                 field::USER_LEN,
@@ -620,11 +703,100 @@ impl<'b> UslpFrameWriter<'b> {
                 *d = s;
             }
         }
-        if fecf_len > 0 {
-            // The frame holds at least the Primary Header and the FECF, so this cannot fail.
-            let _ = crc::write_fecf(frame);
+        let mut w = self;
+        w.total = total;
+        Ok(w.into_state())
+    }
+}
+
+impl<'b> UslpFrameWriter<'b, Protected> {
+    /// The frame and the ranges of its secured fields, for the hook of `protect`.
+    fn secured(&mut self, tfdz_len: usize) -> Result<(&mut [u8], SecuredFields)> {
+        let header = self.plan.layout.security_header();
+        let data_len = self
+            .plan
+            .tfdz_start()
+            .saturating_add(tfdz_len)
+            .saturating_sub(header.end);
+        let fields = SecuredFields::adjacent(
+            header.start,
+            header.len(),
+            data_len,
+            self.plan.layout.security_trailer().len(),
+        );
+        self.out
+            .get_mut(..self.total)
+            .map(|frame| (frame, fields))
+            .ok_or(Error::new(ErrorKind::InternalError).with_field(field::FRAME_LEN))
+    }
+
+    /// The writer if the hook succeeded; the part of `protect` that does not depend on the
+    /// hook type. After a failure the buffer holds the unfinished header again, which every
+    /// decoder rejects (API-023), not a final-looking frame.
+    fn checked(self, result: Result<()>) -> Result<Self> {
+        match result {
+            Ok(()) => Ok(self),
+            Err(e) => {
+                let plan = &self.plan;
+                let header = primary_octets(
+                    UNFINISHED_VERSION,
+                    plan.channel,
+                    plan.layout.frame_len(),
+                    plan.kind,
+                    plan.ocf.is_some(),
+                    plan.count,
+                );
+                let len = plan.layout.primary_header().len();
+                for (d, s) in self.out.iter_mut().zip(header.iter().take(len)) {
+                    *d = *s;
+                }
+                Err(e)
+            }
         }
-        Ok(total)
+    }
+
+    /// Completes the frame: computes the FECF, if configured, over every other octet, last
+    /// (732.1 §4.1.6; USLP-010, API-021, API-074, RS-023).
+    ///
+    /// # Errors
+    /// `InternalError` (`frame_len`) if the frame lies outside the buffer or is shorter than its
+    /// FECF, which `begin` and the length step rule out; the error is returned rather than
+    /// assumed away, and no frame is then finalized.
+    pub fn finalize(self) -> Result<UslpFrameWriter<'b, Finalized>> {
+        let written = if self.plan.layout.fecf().is_empty() {
+            Ok(())
+        } else {
+            slot(self.out, ..self.total).and_then(crc::write_fecf)
+        };
+        written.map(|()| self.into_state())
+    }
+}
+
+impl<'b> UslpFrameWriter<'b, Finalized> {
+    /// The frame length (732.1 §4.1.2.7; USLP-010).
+    #[must_use]
+    pub const fn len(&self) -> usize {
+        self.total
+    }
+
+    /// Always `false`: a frame holds at least its Primary Header.
+    #[must_use]
+    pub const fn is_empty(&self) -> bool {
+        false
+    }
+
+    /// The octets of the finalized frame, for transmission (RS-023).
+    #[must_use]
+    pub fn octets(&self) -> &[u8] {
+        self.out.get(..self.total).unwrap_or_default()
+    }
+
+    /// The octets of the finalized frame, borrowed from the buffer `begin` took, for
+    /// transmission (RS-023).
+    #[must_use]
+    pub fn into_octets(self) -> &'b [u8] {
+        let total = self.total;
+        self.out.get(..total).unwrap_or_default()
     }
 }
 
@@ -643,8 +815,12 @@ mod tests {
     use crate::tfdf::{FirstHeaderPointer, LastValidOctet, TfdfHeader, TfdzRule};
     use crate::upid::Upid;
     use crate::view::UslpFrame;
+    use aldis_core::crc::syndrome;
     use aldis_core::ocf::Ocf;
     use aldis_core::oid::{OidGenerator, OidGeneratorGalois};
+    use aldis_core::security::{
+        FrameCtx, HookLayout, NoSecurity, PreFilledSecurity, SecuredFields, SecurityHook,
+    };
     use aldis_core::{DecodeMode, Error, ErrorKind, FieldId};
     use std::vec::Vec;
 
@@ -667,8 +843,8 @@ mod tests {
         }
     }
 
-    fn kf(r: Result<usize, Error>) -> (ErrorKind, Option<FieldId>) {
-        let e = r.unwrap_err();
+    fn kf<T>(r: Result<T, Error>) -> (ErrorKind, Option<FieldId>) {
+        let e = r.err().unwrap();
         (e.kind(), e.field())
     }
 
@@ -699,7 +875,7 @@ mod tests {
                 && w.security_trailer_mut().unwrap().is_empty()
         );
         w.tfdz_mut().unwrap().copy_from_slice(&tfdz);
-        assert_eq!(w.finish(44), Ok(64));
+        assert_eq!(w.unsecured(44).unwrap().finalize().unwrap().len(), 64);
         assert_eq!(two, out[..64]);
     }
 
@@ -749,7 +925,7 @@ mod tests {
             let mut buf = [0_u8; 32];
             let mut writer = UslpFrameWriter::begin(&mut buf, &tbl, f, c, 4).unwrap();
             writer.tfdz_mut().unwrap()[..2].copy_from_slice(&[1, 2]);
-            let len = writer.finish(2).unwrap();
+            let len = writer.unsecured(2).unwrap().finalize().unwrap().len();
             assert_eq!(len, 10 + if ocf.is_some() { 4 } else { 0 });
             let dec = UslpFrame::decode(&buf[..len], &tbl, DecodeMode::Strict).unwrap();
             let full = dec.full().unwrap();
@@ -758,6 +934,132 @@ mod tests {
                 (&[1, 2][..], ocf, None)
             );
         }
+    }
+
+    fn ctx(vc: u8) -> FrameCtx {
+        FrameCtx::Uslp {
+            scid: scid(0x155),
+            vcid: vcid(vc),
+            map_id: None,
+        }
+    }
+
+    /// A hook that checks the frame state it is called in, and fills the Security fields.
+    struct OrderHook;
+
+    impl SecurityHook for OrderHook {
+        fn layout(&self) -> HookLayout {
+            HookLayout::Any
+        }
+
+        fn protect(
+            &mut self,
+            _: &FrameCtx,
+            frame: &mut [u8],
+            fields: &SecuredFields,
+        ) -> aldis_core::Result<()> {
+            // The frame has its final length and the Security Trailer follows the TFDF; the FECF
+            // is not yet computed (zero).
+            assert_eq!(fields.trailer().end.saturating_add(2), frame.len());
+            assert_eq!(frame.last_chunk::<2>(), Some(&[0, 0]));
+            frame[fields.header()].fill(0xA5);
+            frame[fields.trailer()].fill(0x5A);
+            Ok(())
+        }
+
+        fn verify(
+            &mut self,
+            _: &FrameCtx,
+            _: &mut [u8],
+            fields: &SecuredFields,
+        ) -> aldis_core::Result<core::ops::Range<usize>> {
+            Ok(fields.data())
+        }
+    }
+
+    /// A hook whose protection fails.
+    struct Refuse;
+
+    impl SecurityHook for Refuse {
+        fn layout(&self) -> HookLayout {
+            HookLayout::Any
+        }
+
+        fn protect(
+            &mut self,
+            _: &FrameCtx,
+            _: &mut [u8],
+            _: &SecuredFields,
+        ) -> aldis_core::Result<()> {
+            Err(aldis_core::Error::new(ErrorKind::Security))
+        }
+
+        fn verify(
+            &mut self,
+            _: &FrameCtx,
+            _: &mut [u8],
+            fields: &SecuredFields,
+        ) -> aldis_core::Result<core::ops::Range<usize>> {
+            Ok(fields.data())
+        }
+    }
+
+    #[test]
+    fn no_security_is_rejected_on_a_channel_with_sdls() {
+        // req: RS-023, API-070, API-073
+        let tbl = plain_variable();
+        let c = content(TfdzRule::NoSegmentation, Upid::OctetStream, &[], None);
+        let f = fields(5, 1, FrameKind::SequenceControlled, 0);
+        let mut buf = [0xEE_u8; 64];
+        let w = UslpFrameWriter::begin(&mut buf, &tbl, f, c, 10).unwrap();
+        let e = w.protect(3, &mut NoSecurity, &ctx(5)).unwrap_err();
+        assert_eq!(
+            (e.kind(), e.field()),
+            (
+                ErrorKind::InvalidField,
+                Some(aldis_core::field::SECURITY_HEADER_LEN)
+            )
+        );
+    }
+
+    #[test]
+    fn a_failed_protect_gives_no_frame() {
+        // req: RS-023, API-073
+        let tbl = plain_variable();
+        let c = content(TfdzRule::NoSegmentation, Upid::OctetStream, &[], None);
+        let f = fields(5, 1, FrameKind::SequenceControlled, 0);
+        let mut buf = [0xEE_u8; 64];
+        let w = UslpFrameWriter::begin(&mut buf, &tbl, f, c, 10).unwrap();
+        let e = w.protect(3, &mut Refuse, &ctx(5)).unwrap_err();
+        assert_eq!(e.kind(), ErrorKind::Security);
+        // The buffer holds the unfinished header again, which no decoder accepts (API-023).
+        let e = UslpFrame::decode(&buf, &tbl, DecodeMode::Lenient).unwrap_err();
+        assert_eq!(e.kind(), ErrorKind::UnsupportedVersion);
+    }
+
+    #[test]
+    fn protect_runs_after_the_length_and_before_the_fecf() {
+        // req: RS-023, API-074, API-073, USLP-010
+        let tbl = plain_variable();
+        let c = content(TfdzRule::NoSegmentation, Upid::OctetStream, &[], None);
+        let f = fields(5, 1, FrameKind::SequenceControlled, 0);
+        let mut buf = [0xEE_u8; 64];
+        let mut w = UslpFrameWriter::begin(&mut buf, &tbl, f, c, 10).unwrap();
+        w.tfdz_mut().unwrap()[..3].copy_from_slice(&[7, 8, 9]);
+        let done = w
+            .protect(3, &mut OrderHook, &ctx(5))
+            .unwrap()
+            .finalize()
+            .unwrap();
+        assert!(!done.is_empty());
+        assert_eq!(done.octets().len(), done.len());
+        let octets = done.into_octets();
+        assert_eq!(syndrome(octets), 0);
+        let dec = UslpFrame::decode(octets, &tbl, DecodeMode::Strict).unwrap();
+        assert_eq!(
+            (dec.security_header(), dec.tfdz(), dec.security_trailer()),
+            (&[0xA5; 6][..], &[7, 8, 9][..], &[0x5A; 16][..])
+        );
     }
 
     #[test]
@@ -771,7 +1073,12 @@ mod tests {
         w.security_header_mut().unwrap().fill(0x51);
         w.security_trailer_mut().unwrap().fill(0x52);
         w.tfdz_mut().unwrap()[..3].copy_from_slice(&[7, 8, 9]);
-        let len = w.finish(3).unwrap();
+        let len = w
+            .protect(3, &mut PreFilledSecurity, &ctx(5))
+            .unwrap()
+            .finalize()
+            .unwrap()
+            .len();
         let dec = UslpFrame::decode(&buf[..len], &tbl, DecodeMode::Strict).unwrap();
         assert_eq!(
             (dec.tfdz(), dec.security_header()),
@@ -790,13 +1097,21 @@ mod tests {
         assert_eq!(e.kind(), ErrorKind::UnsupportedVersion);
         let w = UslpFrameWriter::begin(&mut raw, &tbl, f, c, 10).unwrap();
         assert_eq!(
-            kf(w.finish(11)),
+            kf(w.protect(11, &mut PreFilledSecurity, &ctx(5))),
             (ErrorKind::OutOfRange, Some(field::USER_LEN))
         );
         let w = UslpFrameWriter::begin(&mut raw, &tbl, f, c, 10).unwrap();
         assert_eq!(
-            kf(w.finish(0)),
+            kf(w.protect(0, &mut PreFilledSecurity, &ctx(5))),
             (ErrorKind::InvalidField, Some(field::FRAME_DATA_FIELD))
+        );
+        let w = UslpFrameWriter::begin(&mut raw, &tbl, f, c, 10).unwrap();
+        assert_eq!(
+            kf(w.unsecured(3)),
+            (
+                ErrorKind::InvalidField,
+                Some(aldis_core::field::SECURITY_HEADER_LEN)
+            )
         );
         let unknown = FrameFields {
             vc_id: vcid(9),
@@ -939,7 +1254,7 @@ mod tests {
         let mut buf = [0_u8; 64];
         let w = UslpFrameWriter::begin(&mut buf, &tbl, f, ok, 45).unwrap();
         assert_eq!(
-            kf(w.finish(44)),
+            kf(w.unsecured(44)),
             (ErrorKind::LengthMismatch, Some(field::FRAME_DATA_FIELD))
         );
         let lvo = content(
@@ -953,7 +1268,7 @@ mod tests {
             UslpFrameWriter::begin(&mut buf, &v, fields(6, 0, FrameKind::Expedited, 0), lvo, 20)
                 .unwrap();
         assert_eq!(
-            kf(w.finish(9)),
+            kf(w.unsecured(9)),
             (ErrorKind::OutOfRange, Some(field::FHP_LVO_POINTER))
         );
     }

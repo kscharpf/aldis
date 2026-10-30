@@ -17,7 +17,7 @@ use aldis_aos::{PacketOffset, ValidBitCount};
 use aldis_core::ids::{SpacecraftId, VcId};
 use aldis_core::ocf::Ocf;
 use aldis_core::oid::OidGenerator;
-use aldis_core::security::SecurityLayout;
+use aldis_core::security::{FrameCtx, PreFilledSecurity, SecurityLayout};
 use aldis_core::{DecodeMode, Error, FieldId};
 use aldis_testkit::{CodecCase, Mode, Outcome, hex, run_codec_file};
 use serde_json::{Map, Value, json};
@@ -260,7 +260,12 @@ fn encode_case(case: &CodecCase, pc: &AosPhysicalChannelConfig, t: &Table) -> Re
     if let Some(ocf) = ocf {
         w.set_ocf(ocf).unwrap();
     }
-    assert_eq!(w.finish(), n, "{}", case.id);
+    let ctx = FrameCtx::Aos {
+        scid: fields.scid,
+        vcid: fields.vcid,
+    };
+    let done = w.protect(&mut PreFilledSecurity, &ctx).unwrap().finalize();
+    assert_eq!(done.len(), n, "{}", case.id);
     assert_eq!(two, out[..n], "{}: two-phase writer differs", case.id);
     Ok(json!({ "output_hex": hex::encode(&out[..n]) }))
 }
@@ -287,7 +292,7 @@ fn encode_oid(
         if let Some(iz) = f.get("insert_zone_hex") {
             w.insert_zone_mut().copy_from_slice(&octets(Some(iz)));
         }
-        let n = w.finish();
+        let n = w.unsecured().unwrap().finalize().len();
         frames.push(hex::encode(&out[..n]));
     }
     Ok(json!({ "frames_hex": frames }))

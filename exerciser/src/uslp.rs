@@ -6,7 +6,7 @@ use core::hint::black_box as bb;
 
 use aldis_core::ocf::Ocf;
 use aldis_core::oid::{OidGenerator, OidGeneratorGalois};
-use aldis_core::security::SecurityLayout;
+use aldis_core::security::{FrameCtx, PreFilledSecurity, SecurityLayout};
 use aldis_core::{Anomaly, DecodeMode};
 use aldis_uslp::{
     ChannelFields, ConstructionRule, Delimited, FirstHeaderPointer, FrameContent, FrameDelimiter,
@@ -265,7 +265,18 @@ fn frame_group(t: &mut Tally) {
             let ok = w.tfdz_mut().is_ok_and(|z| {
                 crate::vectors::copy(z.get_mut(..3).unwrap_or_default(), &[1, 2, 3])
             });
-            t.check(ok && w.finish(bb(3)) == Ok(18));
+            t.check(ok);
+            match w.unsecured(bb(3)) {
+                Ok(p) => {
+                    let Ok(done) = p.finalize() else {
+                        t.check(false);
+                        return;
+                    };
+                    t.check(done.len() == 18 && !done.is_empty() && done.octets().len() == 18);
+                    t.check(done.into_octets().len() == 18);
+                }
+                Err(_) => t.check(false),
+            }
             t.check(two.get(..18) == Some(frame));
         }
         Err(_) => t.check(false),
@@ -636,7 +647,19 @@ fn encode_case(case: &Case, o: &mut Out, scratch: &mut Scratch) -> Run {
     // The two-phase writer must produce the same octets (API-020).
     let two = need(scratch.b.get_mut(..n))?;
     let mut w = UslpFrameWriter::begin(two, &tbl, fields, content, zone.len())?;
-    if !w.tfdz_mut().is_ok_and(|z| crate::vectors::copy(z, zone)) || w.finish(zone.len()) != Ok(n) {
+    if !w.tfdz_mut().is_ok_and(|z| crate::vectors::copy(z, zone)) {
+        return Err(Fail::Vector);
+    }
+    let ctx = FrameCtx::Uslp {
+        scid: fields.spacecraft_id,
+        vcid: fields.vc_id,
+        map_id: Some(fields.map_id),
+    };
+    if w.protect(zone.len(), &mut PreFilledSecurity, &ctx)?
+        .finalize()?
+        .len()
+        != n
+    {
         return Err(Fail::Vector);
     }
     if scratch.b.get(..n) != scratch.a.get(..n) {

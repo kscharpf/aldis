@@ -12,6 +12,7 @@ use aldis_aos::{
     PduHeader, VcLookup, encode,
 };
 use aldis_core::oid::OidGenerator;
+use aldis_core::security::{FrameCtx, PreFilledSecurity};
 use aldis_core::{DecodeMode, ErrorKind};
 use aldis_testkit::strategies::aos::{
     AosTable, aos_frame, aos_frame_decoder_input, vc_frame_count, vc_table,
@@ -161,7 +162,8 @@ proptest! {
         if let Some(ocf) = f.ocf {
             w.set_ocf(ocf).unwrap();
         }
-        prop_assert_eq!(w.finish(), f.octets.len());
+        let ctx = FrameCtx::Aos { scid: f.fields.scid, vcid: f.fields.vcid };
+        prop_assert_eq!(w.protect(&mut PreFilledSecurity, &ctx).unwrap().finalize().len(), f.octets.len());
         prop_assert_eq!(out, f.octets);
     }
 
@@ -209,7 +211,7 @@ proptest! {
         reference.fill(&mut skipped);
         let mut out = vec![0_u8; pc.frame_len()];
         let w = AosFrameWriter::begin_oid(&mut out, &pc, &t, &AosFrameFields::oid(scid, count), &mut oid).unwrap();
-        prop_assert_eq!(w.finish(), pc.frame_len());
+        prop_assert_eq!(w.unsecured().unwrap().finalize().len(), pc.frame_len());
         let d = AosFrame::decode(&out, &pc, &t, DecodeMode::Strict).unwrap();
         prop_assert!(d.is_oid());
         prop_assert_eq!(d.vc_frame_count(), count);

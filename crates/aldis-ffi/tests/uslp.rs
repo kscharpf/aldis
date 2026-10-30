@@ -329,7 +329,17 @@ fn the_encoder_leaves_the_sdls_fields_zero() {
     let mut rust = [0_u8; 64];
     let mut w = aldis::uslp::UslpFrameWriter::begin(&mut rust, &tbl, rf, rc, 3).unwrap();
     w.tfdz_mut().unwrap()[..3].copy_from_slice(&[7, 8, 9]);
-    assert_eq!(w.finish(3), Ok(35));
+    let ctx = aldis::core::security::FrameCtx::Uslp {
+        scid: rf.spacecraft_id,
+        vcid: rf.vc_id,
+        map_id: Some(rf.map_id),
+    };
+    let done = w
+        .protect(3, &mut aldis::core::security::PreFilledSecurity, &ctx)
+        .unwrap()
+        .finalize()
+        .unwrap();
+    assert_eq!(done.len(), 35);
     assert_eq!(rust[..35], buf[..35]);
     // Too small an output: nothing written.
     let mut small = [0xEE_u8; 34];

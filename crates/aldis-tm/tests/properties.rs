@@ -7,6 +7,7 @@
     reason = "property helpers outside #[test] fail loudly (RS-018)"
 )]
 
+use aldis_core::security::{FrameCtx, PreFilledSecurity};
 use aldis_core::{DecodeMode, ErrorKind};
 use aldis_testkit::strategies::proptest::prelude::*;
 use aldis_testkit::strategies::proptest::test_runner::TestCaseError;
@@ -138,7 +139,8 @@ proptest! {
         if let Some(ocf) = f.ocf {
             w.set_ocf(ocf).unwrap();
         }
-        prop_assert_eq!(w.finish(), f.octets.len());
+        let ctx = FrameCtx::Tm { scid: f.mc.scid(), vcid: f.fields.vcid };
+        prop_assert_eq!(w.protect(&mut PreFilledSecurity, &ctx).unwrap().finalize().len(), f.octets.len());
         prop_assert_eq!(out, f.octets);
     }
 

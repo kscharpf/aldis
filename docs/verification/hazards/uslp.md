@@ -225,7 +225,7 @@ Integrator obligations: as for TC (`asm:ASM-2`, `asm:ASM-4`).
 | Status | `residual` |
 | Severity | S1 |
 | Failure mode | For a VC or MAP with SDLS, `encode`, the USLP writer's begin, and `encode_truncated` write the Security Header and Trailer as zeros for the SDLS layer to fill (API-072; `start` with `zero`, `file:crates/aldis-uslp/src/writer.rs`). The frame is well-formed, with a correct FECF over the zeros, so every Aldis decoder accepts it, but it carries no protection until the fields are filled. `encode` returns the finished frame at once, with its FECF computed over the zeros: a caller that then patches the fields in `out` leaves a FECF that no longer matches, and the receiver rejects the frame. Only the two-phase writer lets the caller fill the fields before the FECF is written |
-| Cause | A caller that does not apply SDLS between `begin` and `finish`, that uses the one-shot `encode` for an SDLS VC, or that sends frames before an SDLS layer exists (the engines' security hooks are outside M2, API-074, `asm:CTX-1`) |
+| Cause | A caller that does not apply SDLS between `begin` and `protect`, that uses the one-shot `encode` for an SDLS VC, or that sends frames before an SDLS layer exists (the engines' security hooks are outside M2, API-074, `asm:CTX-1`) |
 | Mission effect | A frame with zero authentication data is sent: a receiver that does not verify SDLS accepts it as if it were protected, which bypasses the security the VC was configured for; a receiver that verifies it rejects it, and the data is lost |
 | Requirements | API-070, API-072, API-075, USLP-010, USLP-012 |
 | Evidence | `vector:uslp-var-011`; `vector:uslp-var-012`; `vector:uslp-fixed000-011`; `vector:uslp-fixed000-013`; `vector:uslp-tsdls-001`; `vector:uslp-tsdls-005`; `vector:uslp-pc-001`; `test:crates/aldis-uslp/src/writer.rs::variable_frames_with_sdls_shrink`; `test:crates/aldis-uslp/src/writer.rs::the_writer_reports_the_layout_of_the_reserved_frame`; `test:crates/aldis-uslp/tests/properties.rs::encode_then_decode_round_trips`; `test:crates/aldis-ffi/tests/uslp.rs::the_encoder_leaves_the_sdls_fields_zero` |
@@ -292,12 +292,12 @@ Integrator obligations: as for TC (`asm:ASM-2`, `asm:ASM-4`).
 | Category | `abi-misuse` |
 | Status | `residual` |
 | Severity | S1 |
-| Failure mode | Removed by OI-57: the C ABI has no two-phase writers and the Rust writers have no resume, so no call finishes a frame that another call began, with other arguments or on a buffer never begun. A frame is built in one call, or in Rust by `UslpFrameWriter`, whose `finish(self)` consumes the writer that `begin` returned and so holds the layout `begin` computed |
+| Failure mode | Removed by OI-57: the C ABI has no two-phase writers and the Rust writers have no resume, so no call finishes a frame that another call began, with other arguments or on a buffer never begun. A frame is built in one call, or in Rust by `UslpFrameWriter`, whose typestate steps (`protect` or `unsecured`, then `finalize`; RS-023) consume the writer that `begin` returned and so hold the layout `begin` computed |
 | Cause | Before OI-57, the stateless finish of the C ABI (OI-50) took the arguments again and trusted them; no such call exists |
 | Mission effect | A frame with a valid FECF and other content than the caller placed, sent as valid: data in the place of the security fields, or security octets in the place of data |
 | Requirements | API-022, API-023, USLP-010, CABI-022 |
 | Evidence | `test:crates/aldis-uslp/src/writer.rs::the_writer_reports_the_layout_of_the_reserved_frame`; `test:crates/aldis-ffi/tests/uslp.rs::the_encoder_leaves_the_sdls_fields_zero`; `test:crates/aldis-ffi/tests/uslp.rs::content_and_fields_are_checked_as_arguments`; `test:crates/aldis-uslp/tests/writer_bounds.rs::begin_and_finish_write_only_the_reservation` |
-| Residual risk | The hazard is removed with the stateless finish (OI-57), so `proposal:P-USLP-11`, which hardened it under OI-50, is superseded and no residual of OI-50 remains. What is left is the Rust typestate: `finish(self)` completes the frame its own `begin` started, and a writer that is dropped leaves the defined buffer of API-023 |
+| Residual risk | The hazard is removed with the stateless finish (OI-57), so `proposal:P-USLP-11`, which hardened it under OI-50, is superseded and no residual of OI-50 remains. What is left is the Rust typestate: `finalize(self)` completes the frame its own `begin` started, and a writer that is dropped leaves the defined buffer of API-023 |
 | Assumptions | `asm:ASM-9` |
 | Proposals | `proposal:P-USLP-11` |
 | Claims | `ac:AC-6.2` |
