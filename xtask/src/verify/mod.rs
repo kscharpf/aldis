@@ -38,9 +38,9 @@ pub use publish::{fetch_notes, published};
 pub use record::utc;
 // For `cargo xtask assurance` (VER-066), which resolves `check:` references against the checks.
 pub(crate) use checks::all as all_checks;
-// For the tests of `cargo xtask check`, which run the same format and rustdoc commands.
-#[cfg(test)]
-pub(crate) use checks::{BIG_ENDIAN, CLIPPY, FMT, TEST};
+// For `cargo xtask check`, which runs a step when the verification run would run its check for the
+// changed paths (VER-068): the rule of VER-056, not a copy of it.
+pub(crate) use scope::differs as inputs_differ;
 
 /// Flags shared with the RUSTFLAGS of every check (the former `ci.yml` `env`).
 pub(crate) const CHECK_ENV: &[(&str, &str)] = &[

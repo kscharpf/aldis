@@ -109,19 +109,52 @@ pub fn run() -> Result<usize, String> {
     run_selected(&gated()?, REPORTED)
 }
 
-/// The crates that `-p <crate>` arguments name, in order.
+/// The crates that `-p <crate>` arguments name, each once, in order.
 fn packages<'a>(args: &[&'a str]) -> Result<Vec<&'a str>, String> {
-    let mut named = Vec::new();
+    let mut named: Vec<&str> = Vec::new();
     let mut rest = args;
     // bound: each pass consumes two words of `rest`.
     while let [flag, tail @ ..] = rest {
         let ("-p", [krate, tail @ ..]) = (*flag, tail) else {
             return Err("usage: cargo xtask coverage [-p <crate>]...".into());
         };
-        named.push(*krate);
+        if !named.contains(krate) {
+            named.push(krate);
+        }
         rest = tail;
     }
     Ok(named)
+}
+
+/// The gated and the reported crates among `named`, or an error that lists the measured crates
+/// for a name that is neither.
+fn measured<'a>(
+    named: &[&'a str],
+    gated: &[&'a str],
+    reported: &[&'a str],
+) -> Result<(Vec<&'a str>, Vec<&'a str>), String> {
+    if let Some(bad) = named
+        .iter()
+        .find(|n| !gated.contains(n) && !reported.contains(n))
+    {
+        return Err(format!(
+            "coverage: `{bad}` is not measured; the crates are: {}",
+            gated
+                .iter()
+                .chain(reported)
+                .copied()
+                .collect::<Vec<_>>()
+                .join(", ")
+        ));
+    }
+    let pick = |crates: &[&'a str]| -> Vec<&'a str> {
+        named
+            .iter()
+            .copied()
+            .filter(|n| crates.contains(n))
+            .collect()
+    };
+    Ok((pick(gated), pick(reported)))
 }
 
 /// `xtask coverage [-p <crate>]...`: the gate for every crate, or for the crates named.
@@ -130,62 +163,28 @@ pub fn main(args: &[&str]) -> Result<usize, String> {
     if named.is_empty() {
         return run();
     }
-    let gated = gated()?;
-    if let Some(bad) = named
-        .iter()
-        .find(|n| !gated.contains(n) && !REPORTED.contains(n))
-    {
-        return Err(format!(
-            "coverage: `{bad}` is not measured; the crates are: {}",
-            gated
-                .iter()
-                .chain(REPORTED)
-                .copied()
-                .collect::<Vec<_>>()
-                .join(", ")
-        ));
-    }
-    let pick = |crates: &[&str]| -> Vec<&str> {
-        named
-            .iter()
-            .copied()
-            .filter(|n| crates.contains(n))
-            .collect()
-    };
-    run_selected(&pick(&gated), &pick(REPORTED))
-}
-
-/// `xtask check --full`: the gate for the gated crates among `names` (directories of `crates/`),
-/// and the report of the reported ones; every crate when `aldis-core` is among them, since
-/// every crate builds on it ([`select`]).
-pub fn run_for(names: &[String]) -> Result<usize, String> {
-    let (gated, reported) = select(names, &gated()?, REPORTED);
-    if gated.is_empty() && reported.is_empty() {
-        println!(
-            "coverage: no gated crate among the changed ones: {}",
-            names.join(", ")
-        );
-        return Ok(0);
-    }
+    let (gated, reported) = measured(&named, &gated()?, REPORTED)?;
     run_selected(&gated, &reported)
 }
 
-/// The gated and the reported crates that a change to the crates `names` can affect: the ones
-/// named, or all of them when `aldis-core` is named.
-fn select<'a>(
-    names: &[String],
-    gated: &[&'a str],
-    reported: &[&'a str],
-) -> (Vec<&'a str>, Vec<&'a str>) {
-    let all = names.iter().any(|n| n == "aldis-core");
-    let pick = |crates: &[&'a str]| -> Vec<&'a str> {
-        crates
+/// The crates that `xtask check --full` measures for a change to the crates `names` (directories
+/// of `crates/`): those, or `None` for every crate. Every crate when `aldis-core` is among them,
+/// since every crate builds on it, and when a name is no measured crate (`aldis-testkit`, a
+/// facade): its tests reach code that the gate measures in other crates, so a scoped run could
+/// pass where the whole run fails. `names` empty is every crate as well.
+pub fn select(names: &[String], gated: &[&str], reported: &[&str]) -> Option<Vec<String>> {
+    let measured = |n: &String| gated.contains(&n.as_str()) || reported.contains(&n.as_str());
+    if names.is_empty() || names.iter().any(|n| n == "aldis-core" || !measured(n)) {
+        return None;
+    }
+    Some(
+        gated
             .iter()
-            .copied()
-            .filter(|c| all || names.iter().any(|n| n == c))
-            .collect()
-    };
-    (pick(gated), pick(reported))
+            .chain(reported)
+            .filter(|c| names.iter().any(|n| n == *c))
+            .map(|c| (*c).to_owned())
+            .collect(),
+    )
 }
 
 fn run_selected(gated: &[&str], reported: &[&str]) -> Result<usize, String> {
@@ -433,47 +432,61 @@ fn judge(
 
 #[cfg(test)]
 mod tests {
-    use super::{missed, packages, select};
+    use super::{measured, missed, packages, select};
 
     fn names(n: &[&str]) -> Vec<String> {
         n.iter().map(|s| (*s).to_owned()).collect()
     }
 
+    const GATED: [&str; 3] = ["aldis-core", "aldis-spp", "aldis-tm"];
+
     #[test]
     fn a_change_selects_its_own_crates() {
         // req: VER-068
-        let gated = ["aldis-core", "aldis-spp", "aldis-tm"];
-        let (g, r) = select(
-            &names(&["aldis-spp", "aldis-testkit"]),
-            &gated,
-            &["aldis-ffi"],
+        let sel = |n: &[&str]| select(&names(n), &GATED, &["aldis-ffi"]);
+        assert_eq!(sel(&["aldis-spp"]), Some(names(&["aldis-spp"])));
+        assert_eq!(
+            sel(&["aldis-tm", "aldis-spp", "aldis-ffi"]),
+            Some(names(&["aldis-spp", "aldis-tm", "aldis-ffi"]))
         );
-        assert_eq!((g, r), (vec!["aldis-spp"], vec![]));
-        let (g, r) = select(&names(&["aldis-ffi"]), &gated, &["aldis-ffi"]);
-        assert_eq!((g, r), (vec![], vec!["aldis-ffi"]));
-        let (g, r) = select(&names(&["aldis-testkit"]), &gated, &["aldis-ffi"]);
-        assert_eq!((g, r), (vec![], vec![]));
     }
 
     #[test]
-    fn aldis_core_selects_every_crate() {
+    fn a_change_that_may_reach_other_crates_selects_them_all() {
         // req: VER-068
-        let gated = ["aldis-core", "aldis-spp", "aldis-tm"];
-        let (g, r) = select(&names(&["aldis-core"]), &gated, &["aldis-ffi"]);
-        assert_eq!((g, r), (gated.to_vec(), vec!["aldis-ffi"]));
+        let sel = |n: &[&str]| select(&names(n), &GATED, &["aldis-ffi"]);
+        // `aldis-core` is under every crate; `aldis-testkit` is no measured crate, so a scoped
+        // run could pass where the whole run fails; nothing named is every crate too.
+        assert_eq!(sel(&["aldis-core"]), None);
+        assert_eq!(sel(&["aldis-spp", "aldis-testkit"]), None);
+        assert_eq!(sel(&["aldis-testkit"]), None);
+        assert_eq!(sel(&[]), None);
     }
 
     #[test]
-    fn packages_are_named_with_dash_p() {
+    fn packages_are_named_with_dash_p_once() {
         // req: VER-070
         assert_eq!(packages(&[]), Ok(vec![]));
         assert_eq!(
-            packages(&["-p", "aldis-spp", "-p", "aldis-tm"]),
+            packages(&["-p", "aldis-spp", "-p", "aldis-tm", "-p", "aldis-spp"]),
             Ok(vec!["aldis-spp", "aldis-tm"])
         );
         assert!(packages(&["-p"]).is_err());
         assert!(packages(&["aldis-spp"]).is_err());
         assert!(packages(&["-p", "aldis-spp", "--all"]).is_err());
+    }
+
+    #[test]
+    fn an_unmeasured_crate_is_refused_with_the_measured_ones_listed() {
+        // req: VER-070
+        let ok = measured(&["aldis-tm", "aldis-ffi"], &GATED, &["aldis-ffi"]);
+        assert_eq!(ok, Ok((vec!["aldis-tm"], vec!["aldis-ffi"])));
+        let err = measured(&["aldis-testkit"], &GATED, &["aldis-ffi"]).unwrap_err();
+        assert!(
+            err.contains("`aldis-testkit`")
+                && err.contains("aldis-core, aldis-spp, aldis-tm, aldis-ffi"),
+            "{err}"
+        );
     }
 
     #[test]

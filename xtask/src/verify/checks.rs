@@ -602,7 +602,7 @@ cargo xtask header c-smoke gcc-14 g++-14
 cargo xtask header c-smoke clang clang++
 ";
 
-pub(crate) const BIG_ENDIAN: &str = "\
+const BIG_ENDIAN: &str = "\
 # s390x under QEMU user mode, linked with the pinned cross GCC (VER-030, GEN-007).
 export CARGO_TARGET_S390X_UNKNOWN_LINUX_GNU_LINKER=s390x-linux-gnu-gcc-14
 export CARGO_TARGET_S390X_UNKNOWN_LINUX_GNU_RUNNER='qemu-s390x -L /usr/s390x-linux-gnu'
