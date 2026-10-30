@@ -27,6 +27,9 @@
 # result when only that merge moved main (a stacked pull request, VER-056), so cancelling would
 # throw away the evidence that makes the next refresh free. `scripts/reverify` reports such a
 # run as STALE, and a run in which a check failed as FAILED.
+# A run is cancelled only on request: `scripts/reverify --cancel <n>` (VER-060); it is reported as
+# cancelled, and it publishes no record. A newer dispatch on the same ref replaces the run in
+# progress (the concurrency group below).
 #
 # A part starts pulling the image by the reference `prepare` found while it checks out the
 # repository and gets xtask; the preinstalled SDKs are cleared only on a runner with less than
