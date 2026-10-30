@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Bring open pull requests up to date with main and start their verification run (VER-060).
 #
-# Usage: scripts/reverify <pr-number>...
+# Usage: scripts/reverify [--wait] [--stale-retries <n>] <pr-number>...
+#        scripts/reverify --status [--wait] <pr-number>
 #
 # Phase 1, per PR in order: check it is open; use the worktree of its head branch (or add one
 # under .claude/worktrees/reverify-<n>); refuse when that worktree is dirty or holds commits the
@@ -16,19 +17,179 @@
 # PR: `#<n> <branch> <run-id> <conclusion>` (`local` for a run made here) or
 # `#<n> failed: <reason>`. A run that did not succeed is labelled STALE when its head does not
 # contain the tip of origin/main (main moved: merge it and run again; the record is published
-# for reuse) and FAILED otherwise, decided by ancestry, never by reading logs (VER-058). Exits
-# non-zero if any PR failed or any run did not succeed. Deletes nothing (see
-# prune-agent-branches).
+# for reuse) and FAILED otherwise, decided by ancestry, never by reading logs (VER-058). A STALE
+# PR is brought up to date and verified again, at most `--stale-retries` times (default 2), and
+# each retry is printed; a FAILED one is never retried. Exits non-zero if any PR failed or any
+# run did not succeed. Deletes nothing (see prune-agent-branches).
+#
+# One reverify per PR at a time, across all worktrees: the PR's lock lives in the git common
+# directory (reverify/<n>.lock) and is released when the PR's final line is printed, or when the
+# script exits, however it ends. A second `scripts/reverify <n>` while one runs prints the
+# holder's pid and exits 3; with `--wait` it queues behind the holder and then runs. A lock whose
+# process is gone is taken over. Different PRs run side by side. A PR number is digits only; `07`
+# and `7` are one PR.
+#
+# `--status <n>` reads, with no network, one line: `#<n> running: ...` (exit 3) while a reverify
+# holds the lock, else the final line of the last reverify run on this machine with the head it is
+# about (exit 0 when it succeeded, 1 when it did not), else `#<n> no reverify recorded` (exit 4):
+# a run that aborts before its final line leaves no record. With `--wait` it first waits until no
+# reverify holds the lock, so that the line is the final one.
 set -euo pipefail
 
-if [ $# -eq 0 ]; then
-    sed -n '2,21p' "$0" | sed 's/^# \{0,1\}//'
+usage() { awk 'NR == 1 { next } /^#/ { sub(/^# ?/, ""); print; next } { exit }' "$0"; }
+
+wait_lock=0
+stale_retries=2
+status_mode=0
+args=()
+while [ $# -gt 0 ]; do
+    case "$1" in
+    --wait) wait_lock=1 ;;
+    --status) status_mode=1 ;;
+    --stale-retries)
+        [ $# -ge 2 ] && [[ "$2" =~ ^[0-9]+$ ]] || { usage; exit 2; }
+        stale_retries="$2"
+        shift
+        ;;
+    -h | --help)
+        usage
+        exit 0
+        ;;
+    -*)
+        usage
+        exit 2
+        ;;
+    *)
+        [[ "$1" =~ ^[0-9]+$ ]] || { usage; exit 2; }
+        args+=("$((10#$1))")
+        ;;
+    esac
+    shift
+done
+if [ "${#args[@]}" -eq 0 ] || { [ "$status_mode" -eq 1 ] && [ "${#args[@]}" -ne 1 ]; }; then
+    usage
     exit 2
 fi
 
 export NO_COLOR=1 GH_FORCE_TTY=0 GH_NO_UPDATE_NOTIFIER=1
 
 main_checkout="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")"
+state_dir="$(git rev-parse --path-format=absolute --git-common-dir)/reverify"
+mkdir -p "$state_dir"
+
+# The start time of process $1, empty when it is gone: with its pid, the identity of a lock holder
+# (a reused pid has another start time).
+proc_start() { ps -o lstart= -p "$1" 2>/dev/null | sed 's/^ *//; s/ *$//' || true; }
+
+# The final line of a PR, kept for `--status`; $1 pr, $2 ok or fail, $3 the line, $4 the head
+# commit it is about (empty when the run never got one).
+record_final() {
+    local head=""
+    [ -z "$4" ] || head="head ${4:0:7}, "
+    printf '%s\n%s (%sfinished %s)\n' "$2" "$3" "$head" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >"$state_dir/$1.last"
+}
+
+# True when the lock of PR $1 is held by a live process; sets `holder`.
+lock_held() {
+    holder="$(readlink "$state_dir/$1.lock" 2>/dev/null)" &&
+        [ -n "$(proc_start "${holder%%|*}")" ] &&
+        [ "$(proc_start "${holder%%|*}")" = "${holder#*|}" ]
+}
+
+if [ "$status_mode" -eq 1 ]; then
+    pr="${args[0]}"
+    if [ "$wait_lock" -eq 1 ]; then
+        # bound: ends when the holder's reverify ends; the caller bounds the wait (agent-brief.md).
+        while lock_held "$pr"; do sleep 5; done
+    fi
+    if lock_held "$pr"; then
+        echo "#$pr running: reverify pid ${holder%%|*} since ${holder#*|}"
+        exit 3
+    fi
+    if [ -s "$state_dir/$pr.last" ]; then
+        { read -r verdict; read -r line; } <"$state_dir/$pr.last"
+        echo "$line"
+        [ "$verdict" = ok ]
+        exit $?
+    fi
+    echo "#$pr no reverify recorded"
+    exit 4
+fi
+
+# Locks. A lock is a symlink `<n>.lock` whose target is `<pid>|<start time>` of the holder: creating
+# it is one atomic step, so there is no moment with a lock and no owner. Taking over a stale one
+# goes through a second symlink, `<n>.lock.take`, so that two takers cannot both win.
+me="$$|$(proc_start $$)"
+held=()
+
+release_locks() {
+    local pr
+    for pr in ${held[@]+"${held[@]}"}; do
+        if [ "$(readlink "$state_dir/$pr.lock" 2>/dev/null || true)" = "$me" ]; then
+            rm -f "$state_dir/$pr.lock"
+        fi
+    done
+    held=()
+}
+trap release_locks EXIT
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
+# True when the process named by the lock target $1 (`<pid>|<start>`) is still the holder.
+holder_alive() {
+    local start
+    start="$(proc_start "${1%%|*}")"
+    [ -n "$start" ] && [ "$start" = "${1#*|}" ]
+}
+
+# Take the lock of PR $1. Returns 3 when another reverify holds it (and --wait is off).
+lock_acquire() {
+    local pr="$1" lock="$state_dir/$1.lock" holder taker announced=0
+    # bound: each pass takes the lock, returns, or waits for a live holder (--wait only); a stale
+    # lock is removed by the one taker, and a crashed taker's mutex is removed as stale.
+    while true; do
+        if ln -s "$me" "$lock" 2>/dev/null; then
+            held+=("$pr")
+            return 0
+        fi
+        holder="$(readlink "$lock" 2>/dev/null)" || continue
+        if holder_alive "$holder"; then
+            if [ "$wait_lock" -eq 0 ]; then
+                echo "#$pr: a reverify is running (pid ${holder%%|*}, since ${holder#*|}); wait for its final line (scripts/reverify --status $pr), or run with --wait" >&2
+                return 3
+            fi
+            if [ "$announced" -eq 0 ]; then
+                echo "#$pr: waiting for the reverify of pid ${holder%%|*}"
+                announced=1
+            fi
+            sleep 5
+            continue
+        fi
+        if ln -s "$me" "$lock.take" 2>/dev/null; then
+            if [ "$(readlink "$lock" 2>/dev/null || true)" = "$holder" ]; then
+                echo "#$pr: the lock of pid ${holder%%|*} is stale; taking it over"
+                rm -f "$lock"
+            fi
+            rm -f "$lock.take"
+        else
+            taker="$(readlink "$lock.take" 2>/dev/null || true)"
+            if [ -n "$taker" ] && ! holder_alive "$taker"; then
+                rm -f "$lock.take"
+            fi
+            sleep 0.2
+        fi
+    done
+}
+
+sorted_prs="$(printf '%s\n' "${args[@]}" | sort -n -u)"
+# Ascending, so that two runs that queue for the same PRs cannot wait on each other.
+for pr in $sorted_prs; do
+    lock_acquire "$pr" || { rc=$?; release_locks; exit "$rc"; }
+    # A run that aborts before its final line must not leave the previous run's line as the result.
+    rm -f "$state_dir/$pr.last"
+done
+
 git -C "$main_checkout" fetch --quiet origin
 
 # The path of the worktree that has `refs/heads/$1` checked out, or nothing.
@@ -162,7 +323,7 @@ runs=()
 reasons=()
 dirs=()
 heads=()
-for pr in "$@"; do
+for pr in "${args[@]}"; do
     prepare_one "$pr" || true
     dirs+=("$work_dir")
     heads+=("$work_head")
@@ -172,27 +333,66 @@ for pr in "$@"; do
     reasons+=("$reason")
 done
 
+# Print and record the final line of PR $1: $2 ok or fail, $3 the line, $4 the head commit; then
+# release its lock, so that a waiter for this PR does not wait for the PRs that follow it.
+finish() {
+    echo "$3"
+    record_final "$1" "$2" "$3" "$4"
+    if [ "$(readlink "$state_dir/$1.lock" 2>/dev/null || true)" = "$me" ]; then
+        rm -f "$state_dir/$1.lock"
+    fi
+}
+
 failed=0
 for i in "${!prs[@]}"; do
-    if [ -n "${reasons[$i]}" ]; then
-        echo "#${prs[$i]} failed: ${reasons[$i]}"
-        failed=$((failed + 1))
-        continue
-    fi
-    if [ "${runs[$i]}" = "local" ]; then
-        # `verify --publish` exited 0: the record passed and the status is set.
-        echo "#${prs[$i]} ${branches[$i]} local success"
-        continue
-    fi
-    gh run watch "${runs[$i]}" --interval 60 --exit-status >/dev/null 2>&1 || true
-    conclusion="$(gh run view "${runs[$i]}" --json conclusion --jq '.conclusion')" ||
-        conclusion="unknown"
-    if [ "$conclusion" = "success" ]; then
-        echo "#${prs[$i]} ${branches[$i]} ${runs[$i]} $conclusion"
+    pr="${prs[$i]}"
+    tries=0
+    # bound: each pass either ends the PR or retries it, and retries stop at --stale-retries.
+    while true; do
+        verdict=""
+        line=""
+        if [ -n "${reasons[$i]}" ]; then
+            line="#$pr failed: ${reasons[$i]}"
+            case "${reasons[$i]}" in
+            STALE:*) verdict=stale ;;
+            *) verdict=fail ;;
+            esac
+        elif [ "${runs[$i]}" = "local" ]; then
+            # `verify --publish` exited 0: the record passed and the status is set.
+            line="#$pr ${branches[$i]} local success"
+            verdict=ok
+        else
+            gh run watch "${runs[$i]}" --interval 60 --exit-status >/dev/null 2>&1 || true
+            conclusion="$(gh run view "${runs[$i]}" --json conclusion --jq '.conclusion')" ||
+                conclusion="unknown"
+            if [ "$conclusion" = "success" ]; then
+                line="#$pr ${branches[$i]} ${runs[$i]} $conclusion"
+                verdict=ok
+            else
+                label="$(failure_label "${dirs[$i]}" "${heads[$i]}")"
+                line="#$pr ${branches[$i]} ${runs[$i]} $label ($conclusion)"
+                if [ "$label" = STALE ]; then verdict=stale; else verdict=fail; fi
+            fi
+        fi
+        if [ "$verdict" = stale ] && [ "$tries" -lt "$stale_retries" ]; then
+            tries=$((tries + 1))
+            echo "$line"
+            echo "#$pr: main moved during the run; retry $tries of $stale_retries (merge origin/main, push, verify again)"
+            prepare_one "$pr" || true
+            dirs[$i]="$work_dir"
+            heads[$i]="$work_head"
+            branches[$i]="$branch"
+            runs[$i]="$run_id"
+            reasons[$i]="$reason"
+            continue
+        fi
+        break
+    done
+    if [ "$verdict" = ok ]; then
+        finish "$pr" ok "$line" "${heads[$i]}"
     else
-        label="$(failure_label "${dirs[$i]}" "${heads[$i]}")"
-        echo "#${prs[$i]} ${branches[$i]} ${runs[$i]} $label ($conclusion)"
+        finish "$pr" fail "$line" "${heads[$i]}"
         failed=$((failed + 1))
     fi
 done
-[ "$failed" -eq 0 ] || { echo "reverify: $failed of $# PR(s) not verified"; exit 1; }
+[ "$failed" -eq 0 ] || { echo "reverify: $failed of ${#prs[@]} PR(s) not verified"; exit 1; }
