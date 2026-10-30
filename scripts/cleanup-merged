@@ -1,0 +1,108 @@
+#!/usr/bin/env bash
+# Remove the worktree and branches of named branches whose pull request has merged. Dry run
+# unless --apply.
+#
+# Usage: scripts/cleanup-merged [--apply] <branch>...
+#
+# A branch is cleaned only when all hold; otherwise the script says which does not and keeps it:
+#   - a merged pull request has it as its head branch;
+#   - its tip is an ancestor of origin/main (never of the local main, which may be stale);
+#   - its worktree, if it has one, is clean and is not the main checkout.
+# Then: the worktree is removed, the local branch deleted (-D: the ancestry test is the proof
+# it is merged), and the remote branch deleted if it still exists and is an ancestor of
+# origin/main. Bulk cleanup of leftovers is scripts/prune-agent-branches.
+set -euo pipefail
+
+apply=0
+branches=()
+for arg in "$@"; do
+    case "$arg" in
+        --apply) apply=1 ;;
+        -*) echo "unknown option $arg" >&2; sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//'; exit 2 ;;
+        *) branches+=("$arg") ;;
+    esac
+done
+if [ "${#branches[@]}" -eq 0 ]; then
+    sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//'
+    exit 2
+fi
+
+export NO_COLOR=1 GH_FORCE_TTY=0 GH_NO_UPDATE_NOTIFIER=1
+
+main_checkout="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")"
+g() { git -C "$main_checkout" "$@"; }
+g fetch --quiet --prune origin
+
+# The path of the worktree that has refs/heads/$1 checked out, or nothing.
+worktree_of() {
+    g worktree list --porcelain | awk -v ref="refs/heads/$1" '
+        $1 == "worktree" { path = substr($0, 10) }
+        $1 == "branch" && $2 == ref { print path; exit }'
+}
+
+act() { # act <description> <command...>
+    local what="$1"
+    shift
+    if [ "$apply" -eq 1 ]; then
+        echo "  removing: $what"
+        "$@"
+    else
+        echo "  would remove: $what"
+    fi
+}
+
+clean_one() {
+    local b="$1" pr wt local_branch=0 remote_branch=0
+    if g show-ref --verify --quiet "refs/heads/$b"; then local_branch=1; fi
+    if g show-ref --verify --quiet "refs/remotes/origin/$b"; then remote_branch=1; fi
+    if [ "$local_branch" -eq 0 ] && [ "$remote_branch" -eq 0 ]; then
+        echo "$b: nothing to clean (no local or remote branch)"
+        return 0
+    fi
+
+    pr="$(gh pr list --head "$b" --state merged --json number --jq '.[0].number // empty')" \
+        || { echo "$b: KEEP (gh could not list its pull requests)"; return 1; }
+    if [ -z "$pr" ]; then
+        echo "$b: KEEP (no merged pull request has it as its head branch)"
+        return 1
+    fi
+
+    if [ "$local_branch" -eq 1 ] && ! g merge-base --is-ancestor "refs/heads/$b" origin/main; then
+        echo "$b: KEEP (PR #$pr merged, but the tip is not an ancestor of origin/main: commits after the merge, or a squash merge)"
+        return 1
+    fi
+
+    echo "$b: PR #$pr merged"
+    wt="$(worktree_of "$b")"
+    if [ -n "$wt" ]; then
+        if [ "$wt" = "$main_checkout" ]; then
+            echo "  KEEP: $b is checked out in the main checkout"
+            return 1
+        fi
+        if [ -n "$(git -C "$wt" status --porcelain)" ]; then
+            echo "  KEEP: the worktree $wt is dirty"
+            return 1
+        fi
+        act "worktree $wt" g worktree remove "$wt"
+    fi
+    if [ "$local_branch" -eq 1 ]; then
+        act "local branch $b" g branch -D "$b"
+    fi
+    if [ "$remote_branch" -eq 1 ]; then
+        if g merge-base --is-ancestor "refs/remotes/origin/$b" origin/main; then
+            act "remote branch origin/$b" g push --quiet origin --delete "$b"
+        else
+            echo "  KEEP: origin/$b is not an ancestor of origin/main"
+            return 1
+        fi
+    else
+        echo "  the remote branch is already gone"
+    fi
+}
+
+kept=0
+for b in "${branches[@]}"; do
+    clean_one "$b" || kept=$((kept + 1))
+done
+[ "$apply" -eq 1 ] || echo "dry run; pass --apply to act"
+[ "$kept" -eq 0 ] || { echo "cleanup-merged: kept $kept of ${#branches[@]} branch(es)"; exit 1; }

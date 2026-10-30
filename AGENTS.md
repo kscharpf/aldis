@@ -57,6 +57,8 @@ While you work, run `cargo xtask check` and fix everything it reports (**zero wa
 
 **Implementation agents commit and stop.** The coordinator runs the merge gate (`cargo xtask verify --publish`, VER-058) per [docs/06-verification.md](docs/06-verification.md) §7, brings open PRs up to date with `scripts/reverify <pr>...` (a head that needs no container is verified at once, others on the hosted run), and clears finished worktrees and `worktree-agent-*` branches with `scripts/prune-agent-branches` (dry run; `--apply` acts). Source `scripts/agent-env.sh` first.
 
+Dispatching an agent: [docs/process/agent-brief.md](docs/process/agent-brief.md). Whether a pull request can merge: `scripts/pr-status <n>`. After it merges: `scripts/cleanup-merged <branch>`.
+
 A failed exerciser link with `undefined symbol: aldis_panic_is_unreachable` means a panic path is reachable in `aldis-core`. Remove it; do not work around the check. Mark new test modules `#[cfg_attr(coverage_nightly, coverage(off))]`.
 
 Each check in `xtask/src/verify/checks.rs` declares its inputs (`cargo xtask verify list` shows which checks HEAD needs); when a check starts reading a new path, add that path to its inputs in the same change.
