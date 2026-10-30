@@ -6,10 +6,6 @@ Codec for the CCSDS 133.1-B-3 Encapsulation Packet Protocol: decoding and encodi
 
 Layer 1 (codecs) of the [architecture](../../docs/01-architecture.md) §2. It depends only on `aldis-core`, is stateless, and does no I/O.
 
-## Features
-
-None by default (GEN-005). `alloc` and `std` are strictly additive: no change in behaviour or wire output (GEN-006).
-
 ## Example
 
 Encode a packet of mission-specific data and decode it again:
@@ -43,18 +39,3 @@ fn main() -> Result<(), aldis_core::Error> {
     Ok(())
 }
 ```
-
-## Guarantees
-
-- `no_std`, no heap allocation, and no `unsafe` (GEN-010, GEN-070).
-- No panic on any input (GEN-020). Checked by the bare-metal panic-freedom link check in [`exerciser/`](../../exerciser/) (VER-010) and by the fuzz targets `epp_*` in [`fuzz/`](../../fuzz/fuzz_targets/) (VER-022).
-- No clock, I/O, or global state (GEN-031, GEN-032).
-
-The evidence for the release is the exit table of the [M1 plan](../../docs/milestones/m1-packets-time.md) §4: coverage, fuzzing, mutation testing, and vectors on the host, on s390x, and under QEMU. No independent implementation has been run against the EPP vectors yet ([cross-checks.md](../../docs/verification/cross-checks.md) §4.5, OI-32); they are hand-derived, and their second review is [m1-vectors.md](../../docs/verification/reviews/m1-vectors.md). The bounded-loop analysis record is [GEN-022](../../docs/verification/records/GEN-022.md). The shared conformance vectors are in [`test-vectors/epp/`](../../test-vectors/epp/).
-
-## Specification
-
-- [docs/standards/encapsulation-packet.md](../../docs/standards/encapsulation-packet.md): requirement area EPP, with the 133.1 clause for each requirement.
-- [docs/03-api-model.md](../../docs/03-api-model.md): the codec contract (views, writers, decode modes, errors) shared by every codec.
-- [docs/09-open-issues.md](../../docs/09-open-issues.md): OI-06 (SANA registries, open); OI-17 (resolved) records the EPP readings taken in M1; OI-32 (independent implementations not yet run).
-- [docs/README.md](../../docs/README.md): the index of the specification.

@@ -6,27 +6,6 @@ The facade crate: it re-exports the Aldis crates as modules, each behind a Cargo
 
 Outside the layers of the [architecture](../../docs/01-architecture.md) §2: it depends on every library crate, each one optional, and contains no code of its own. No feature is enabled by default, and with none it builds for a `no_std` target (GEN-005). A mission that enables only `spp` compiles only `aldis-core` and `aldis-spp`, and has only those to qualify (GEN-002, GEN-003).
 
-## Features
-
-| Feature | Module | Crate |
-|---|---|---|
-| `core` | `aldis::core` | [`aldis-core`](../aldis-core/README.md) |
-| `time` | `aldis::time` | [`aldis-time`](../aldis-time/README.md) |
-| `spp` | `aldis::spp` | [`aldis-spp`](../aldis-spp/README.md), without its feature `time` |
-| `spp-time` | `aldis::spp` and `aldis::time` | `aldis-spp` with its feature `time`: the typed time secondary header (SPP-008) |
-| `epp` | `aldis::epp` | [`aldis-epp`](../aldis-epp/README.md) |
-| `tm` | `aldis::tm` | [`aldis-tm`](../aldis-tm/README.md) |
-| `tc` | `aldis::tc` | [`aldis-tc`](../aldis-tc/README.md) |
-| `aos` | `aldis::aos` | [`aldis-aos`](../aldis-aos/README.md) |
-| `uslp` | `aldis::uslp` | [`aldis-uslp`](../aldis-uslp/README.md) |
-| `cop1` | `aldis::cop1` | [`aldis-cop1`](../aldis-cop1/README.md) |
-| `link` | `aldis::link` | [`aldis-link`](../aldis-link/README.md) |
-| `framework` | `aldis::framework` | [`aldis-framework`](../aldis-framework/README.md) |
-| `alloc`, `std` | — | The same feature of every enabled crate; strictly additive (GEN-006) |
-| `full` | — | Every crate above, `spp-time`, and the cross-crate features of `aldis-link` and `aldis-cop1` | — |
-
-The crate documentation in [`src/lib.rs`](src/lib.rs) gives the standard and the requirement IDs behind each feature.
-
 ## Example
 
 With `aldis = { …, features = ["core", "spp"] }` in `Cargo.toml`, decode a Space Packet through the facade:
@@ -46,13 +25,3 @@ fn main() -> Result<(), aldis::core::Error> {
     Ok(())
 }
 ```
-
-## Guarantees
-
-The facade adds no code: it has the guarantees of the crates it re-exports (`no_std`, no heap, no panics, and no `unsafe`; GEN-010, GEN-020, GEN-070). The bare-metal check builds it with the feature `full` (`cargo clippy -p aldis --no-default-features --features full --target thumbv7em-none-eabihf`, see the root [README](../../README.md#building)). The tests in [`tests/`](tests/) check the `spp-time` feature combination.
-
-## Specification
-
-- [docs/01-architecture.md](../../docs/01-architecture.md) §2: the crate map and the dependency rules GEN-001…GEN-004.
-- [docs/profiles/rust.md](../../docs/profiles/rust.md) §2: crates and features.
-- [docs/README.md](../../docs/README.md): the index of the specification.

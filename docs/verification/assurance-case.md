@@ -205,9 +205,9 @@ graph TD
 
 | Evidence | Shows | Requirements |
 |---|---|---|
-| `record:VER-001`; `check:clippy` | The lint set that denies those constructs, and that every crate passes it with no warning | VER-001, GEN-020 |
+| `check:clippy`; `check:clippy` | The lint set that denies those constructs, and that every crate passes it with no warning | VER-001, GEN-020 |
 | `record:RS-016` | Exceptions are local `#[expect(…, reason)]` items, read by the reviewer of each pull request | RS-016 |
-| `record:GEN-070`; `record:VER-002` | `unsafe` is forbidden outside `aldis-ffi`, so safe Rust's own guarantees hold there | GEN-070, VER-002 |
+| `check:clippy`; `check:clippy` | `unsafe` is forbidden outside `aldis-ffi`, so safe Rust's own guarantees hold there | GEN-070, VER-002 |
 
 ### AC-2.3 Arbitrary inputs do not make a decoder panic
 
@@ -250,7 +250,7 @@ graph TD
 |---|---|---|
 | `record:GEN-022` | Analysis of architecture: `#![no_std]`, no heap allocation, no locks, atomics, or syscalls | GEN-023 |
 | `record:CABI-004`; `check:no-std-thumbv7em-none-eabihf`; `check:no-std-armv7r-none-eabihf`; `check:no-std-riscv32imac-unknown-none-elf` | The bare-metal static library needs nothing from the platform beyond `memcpy` and `memset` equivalents, so it calls no operating system service that could block; GEN-031 and GEN-032 have no record of their own (`df:DF-13`) | CABI-004, GEN-005 |
-| `record:GEN-001` | No third-party runtime dependency brings any in | GEN-001 |
+| `check:layers` | No third-party runtime dependency brings any in | GEN-001 |
 
 ## AC-4 Aldis uses bounded resources
 
@@ -265,9 +265,9 @@ graph TD
 | Evidence | Shows | Requirements |
 |---|---|---|
 | `record:GEN-010` | Fixed capacities, and builds with no allocator | GEN-010, GEN-012 |
-| `check:no-std-thumbv7em-none-eabihf`; `check:no-std-armv7r-none-eabihf`; `check:no-std-riscv32imac-unknown-none-elf`; `record:GEN-005` | The facade with every feature and the C ABI library build for bare metal without `alloc` | GEN-005, GEN-010 |
+| `check:no-std-thumbv7em-none-eabihf`; `check:no-std-armv7r-none-eabihf`; `check:no-std-riscv32imac-unknown-none-elf`; `check:no-std-thumbv7em-none-eabihf` | The facade with every feature and the C ABI library build for bare metal without `alloc` | GEN-005, GEN-010 |
 | `record:CABI-004` | The shipped static library imports no allocator | CABI-004 |
-| `record:GEN-006`; `check:features` | `alloc` and `std` add no API and change no result | GEN-006 |
+| `check:features`; `check:features` | `alloc` and `std` add no API and change no result | GEN-006 |
 
 ### AC-4.2 The stack of every entry point is bounded and within its budget
 
@@ -297,7 +297,7 @@ graph TD
 
 | Evidence | Shows | Requirements |
 |---|---|---|
-| `record:VER-001`; `check:clippy` | Unchecked indexing is denied | GEN-020 |
+| `check:clippy`; `check:clippy` | Unchecked indexing is denied | GEN-020 |
 | `record:GEN-015`; `file:docs/hardware-assumptions.md` | What an upset does and does not do, and the assumption that covers the rest | GEN-015 |
 
 ## AC-5 Aldis reports every deviation it can detect
@@ -380,7 +380,7 @@ graph TD
 |---|---|---|
 | `test:crates/aldis-ffi/tests/vectors.rs::tm_invalid`; `test:crates/aldis-ffi/tests/vectors.rs::tc_validation_failures`; `test:crates/aldis-ffi/tests/vectors.rs::aos_invalid`; `test:crates/aldis-ffi/tests/vectors.rs::uslp_validation_failures` | The vector files through the `extern "C"` functions with the same exact comparison (M2 plan D4), for example these four; `cargo xtask consistency` requires every file of the areas with a C ABI | VER-021, CABI-010, CABI-020, CABI-021 |
 | `fuzz:ffi_decode`; `record:VER-022` | The C ABI decoders, validators, and delimiters agree with the Rust ones on fuzzed octets | VER-022, CABI-010 |
-| `record:CABI-001`; `check:header` | The generated header matches the library and compiles as C99 and C++11 | CABI-001, CABI-002, CABI-003 |
+| `check:header`; `check:header` | The generated header matches the library and compiles as C99 and C++11 | CABI-001, CABI-002, CABI-003 |
 | `record:CABI-010` | Only C-representable types cross the ABI | CABI-010, CABI-011 |
 
 ### AC-6.2 Misuse within CABI-022's reach is an error
@@ -390,7 +390,7 @@ graph TD
 | Evidence | Shows | Requirements |
 |---|---|---|
 | `test:crates/aldis-ffi/tests/tc.rs::encode_arguments_are_checked`; `test:crates/aldis-ffi/tests/tm.rs::encode_arguments_are_checked`; `test:crates/aldis-ffi/tests/uslp.rs::content_and_fields_are_checked_as_arguments`; `test:crates/aldis-ffi/tests/tm.rs::vc_arrays_are_c_arrays`; `test:crates/aldis-ffi/tests/uslp.rs::vc_and_map_arrays_are_c_arrays` | Pointer and length checks of the frame functions | CABI-022 |
-| `record:CABI-030` | The capacities of the helper storage, generated and checked | CABI-030 |
+| `check:header` | The capacities of the helper storage, generated and checked | CABI-030 |
 
 ### AC-6.3 The C ABI library is freestanding
 
@@ -430,7 +430,7 @@ graph TD
 
 | Evidence | Shows | Requirements |
 |---|---|---|
-| `record:TV-023` | Every independent model a vector file names runs and agrees, and models are written blind | TV-023 |
+| `check:spec` | Every independent model a vector file names runs and agrees, and models are written blind | TV-023 |
 | `record:TV-021` | Released vectors are never edited | TV-021 |
 | `file:docs/verification/cross-checks.md` | The independent implementations searched and run; none yet for the frames (`df:DF-9`) | VER-040 |
 
@@ -448,8 +448,8 @@ graph TD
 
 | Evidence | Shows | Requirements |
 |---|---|---|
-| `record:VER-020`; `ci:trace --scope m2 --strict` | The trace of the M2 scope, strict at the exit | VER-020 |
-| `record:VER-024`; `check:coverage` | 100 % regions, functions, lines, and branches, with no waiver; MC/DC is not measured (`df:DF-14`) | VER-024 |
+| `check:spec`; `ci:trace --scope m2 --strict` | The trace of the M2 scope, strict at the exit | VER-020 |
+| `check:coverage`; `check:coverage` | 100 % regions, functions, lines, and branches, with no waiver; MC/DC is not measured (`df:DF-14`) | VER-024 |
 | `record:VER-025`; `job:mutants`; `file:docs/verification/mutants-triage.md` | Mutation testing every night and its triage | VER-025 |
 
 ### AC-7.6 An independent run repeats every check each night
@@ -499,5 +499,5 @@ What weakens the case now. A defeater is `open` until what it names is done; `ca
 | DF-11 | The stack bound leaves out interrupts and the caller's own frames | `ac:AC-4.2` | `record:VER-011` | `open` |
 | DF-12 | Skipping and reusing checks is sound only if every check's input list is complete; a missing path goes unchecked until the nightly run | `ac:AC-7.1` | `record:VER-056` | `open` |
 | DF-13 | GEN-031 and GEN-032 (no clocks, no I/O, no global state) had no verification record and were untraced; `record:GEN-031` traces them (`proposal:P-X-03`, accepted); no check searches for a new global or platform call in library code | `ac:AC-3.3` | `hz:HZ-X-03`; `record:GEN-031` | `closed` |
-| DF-14 | MC/DC is not measured | `ac:AC-7.5` | `oi:OI-09`; `record:VER-024` | `open` |
+| DF-14 | MC/DC is not measured | `ac:AC-7.5` | `oi:OI-09`; `check:coverage` | `open` |
 | DF-15 | The hazard analysis has no TODO category in any codec file (`cargo xtask assurance --strict`), and the independent M2 exit review (VER-065) confirmed that all identified failure modes map into the 12 categories of hazards.md §1.2 with no unrepresented categories found | `ac:AC-0` | `file:docs/verification/hazards.md` | `closed` |

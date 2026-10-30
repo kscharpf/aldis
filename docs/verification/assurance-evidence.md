@@ -76,6 +76,16 @@ Prose goes stale when it names code. In every analysed file, outside fenced code
 
 State the property and the requirement or clause instead of the mechanism; put a mechanism that is evidence in the `Evidence` cell as `test:`, `file:`, or `sym:`. Names of other projects (`spacepackets`, Kani) are written without a code span when they carry a `::`.
 
+### 2.5a Code names in requirements
+
+A requirement states an obligation, in protocol or API-model terms (OI-63). In the `Requirement` cell of every requirement row outside `docs/profiles/`, a code span that is not a reference of a kind of §2.3 is a problem when it holds any of §2.5, or:
+
+- a signature (`->`, or the keyword `fn`);
+- a function or method call: a lowercase name, with dots, followed by `(`;
+- a Rust type or variant: a name that starts with an upper-case letter, has a lower-case letter, and is not an error kind of the catalogue of [03-api-model.md](../03-api-model.md) §9, with or without a `<…>`, `(…)`, or `{…}` group.
+
+A bare lowercase word (`vc_id`, `decode`, `std`) is not told apart from a field, a key, a lint, a feature, or a command, and is not a problem. The requirements of `docs/profiles/` are about the conventions of a language, and name its constructs. Name an anomaly, an action, or an input in plain words; cite a file or a C ABI symbol as `file:` or `sym:`. The rows listed in `PENDING_REWRITE` in `xtask/src/assurance.rs` are exempt until the pull requests that reword them have merged.
+
 ## 3. The hazard files
 
 ### 3.1 Hazard sections
@@ -165,7 +175,7 @@ It writes `target/spec/assurance.json` (an object with `hazards`, each with `id`
 
 **Joining `cargo xtask verify`.** Add `cargo xtask assurance` to the script `SPEC` of `xtask/src/verify/checks.rs`, after `cargo xtask loops`, with the comment line `# Every reference of the hazard analysis and the assurance case resolves (VER-065, VER-066).`. The check `spec` reads every path (`Inputs::Everything`), so no input list changes: a change to a test, a vector, a record, or a check that the analysed files name runs `spec`, and a broken reference fails it on the same commit.
 
-**Records and changelog.** Add `docs/verification/records/VER-066.md` (method `A`, check "Verify check `spec`: `cargo xtask assurance`"), in the format of [analysis-records.md](analysis-records.md), and a changelog fragment for the branch.
+**Records and changelog.** VER-066 is traced by the check `spec` (`CHECK_REQUIREMENTS` in `xtask/src/trace.rs`); add a changelog fragment for the branch.
 
 ## 6. What a passing check means
 
@@ -200,5 +210,5 @@ Unit tests in `xtask/src/assurance.rs`, each on small fixture texts and a fixtur
 12. Defeaters: an `open` defeater naming a resolved OI is a problem, a `closed` one is not; an assumption that nothing names is a problem.
 13. Strict mode counts each `todo` status, `TODO` coverage state, and `TODO` evidence row as a problem, and non-strict mode counts none.
 14. On the repository: `run(false)` reports no problem.
-14a. Code names (§2.5): an `aldis_` symbol, a `.rs`, `.h`, or `.toml` path with or without a line, and a `::` path are problems in any analysed file, also in a prose file; a reference of a kind of §2.3 is not; `sym:` resolves only a name the header holds.
+14a. Code names (§2.5, and §2.5a in the requirement rows): an `aldis_` symbol, a `.rs`, `.h`, or `.toml` path with or without a line, and a `::` path are problems in any analysed file, also in a prose file; a reference of a kind of §2.3 is not; `sym:` resolves only a name the header holds.
 15. `CI` contains `assurance` and `SPEC` contains `cargo xtask assurance`.

@@ -58,14 +58,14 @@ The actions of one input, in the order of the table cell (COP-006). The frame oc
 
 | ID | Requirement | Source | Verif. |
 |---|---|---|---|
-| COP-010 | FOP-1 SHALL build Type-AD frames with N(S) = V(S), Type-BD frames with N(S) = 0, and Type-BC frames carrying Unlock or Set V(R) (TC-005). It SHALL use the TC or USLP codec selected by `FrameTarget`. | 232.0 §4.1.2.8 note 3; 232.1 §5.2 | V |
+| COP-010 | FOP-1 SHALL build Type-AD frames with N(S) = V(S), Type-BD frames with N(S) = 0, and Type-BC frames carrying Unlock or Set V(R) (TC-005). It SHALL use the TC or USLP codec selected by the frame target. | 232.0 §4.1.2.8 note 3; 232.1 §5.2 | V |
 | COP-011 | FOP-1 SHALL keep master copies of all unacknowledged AD frames (Sent_Queue) and SHALL retransmit them in order. On retransmission the frames SHALL be byte-identical to the original transmission. | 232.1 §5.1.7 | V |
 | COP-012 | FOP-1 SHALL compare N(R) arithmetic modulo 256 using NN(R) and V(S) exactly as the "valid N(R)" conditions in Table 5-1 define. | 232.1 §5.1.8, Table 5-1 | V |
 | COP-013 | The T1 timer SHALL be started or restarted on every AD or BC transmission (including retransmissions) and cancelled when the Sent_Queue empties. The timer is state, and `next_deadline` SHALL report its deadline (API-053). BD frames SHALL NOT start the timer. | 232.1 §5.1.9.1 | V |
 | COP-014 | Suspend/Resume SHALL record and restore states via Suspend_State (SS = 0–4), as specified for E18/E104 and E30–E34. | 232.1 §5.1.11 | V |
 | COP-015 | The Set K directive SHALL be rejected (Reject response) if K ∉ 1..=min(255, SENT_QUEUE capacity). | 232.1 §5.1.12 | T |
-| COP-016 | Systematic retransmission (repetitions) is **outside** FOP-1. The engine SHALL only annotate `Transmit` actions with the configured repetition value. It SHALL NOT duplicate frames itself. | 232.1 §5.1.9.3 note; 232.0 §2.4.2 | T |
-| COP-017 | After an Alert, no further Alert other than `Llif` SHALL be generated until an Initiate AD directive is accepted. | 232.1 §4.3 | V |
+| COP-016 | Systematic retransmission (repetitions) is **outside** FOP-1. The engine SHALL only annotate transmit actions with the configured repetition value. It SHALL NOT duplicate frames itself. | 232.1 §5.1.9.3 note; 232.0 §2.4.2 | T |
+| COP-017 | After an Alert, no further Alert other than Llif SHALL be generated until an Initiate AD directive is accepted. | 232.1 §4.3 | V |
 
 ## 3. FARM-1 engine
 
@@ -99,10 +99,10 @@ The engine holds no delivery buffer: the buffers of 232.1 §3.3.2 belong to the 
 | COP-030 | FARM-1 SHALL classify each Type-AD frame's N(S) relative to V(R) into the E1/E2 (N(S) = V(R)), E3 (positive window), E4 (negative window), or E5 (lockout area) cases, using modulo-256 arithmetic and the configured PW/NW. | 232.1 §6.1.8.3 | V |
 | COP-031 | Type-BC frames whose data field is not a valid Unlock or Set V(R) command SHALL be treated as invalid frames (E9). | 232.1 §6.3.2.1 | V |
 | COP-032 | Withdrawn: the `Internal{depth}` buffer model put a delivery queue inside FARM-1, which API-059 excludes. The delivery buffer is the caller's (COP-033; OI-56). | — | — |
-| COP-033 | "Buffer available" is an **input**. The `Frame` input SHALL carry `buffer_available`, which the caller sets from its own delivery buffer: true when there is a buffer for the FDU of an accepted Type-AD frame, and false otherwise, which selects E2 instead of E1 (Discard, `Retransmit_Flag := 1`, `Wait_Flag := 1`). When `Wait_Flag` is set, the caller SHALL feed `BufferReleased` (E10) once buffer space is available for at least one more maximum-size frame, which clears `Wait_Flag`. A Type-BD frame is accepted whatever `buffer_available` says, and an FDU erased in its favour is the caller's to report (the optional Aborted Indication). A caller without flow control SHALL always give `buffer_available = true`; FARM-1 then never enters Wait. The engine SHALL report `Wait_Flag` in its CLCW and status snapshot. | 232.1 §3.3.2, §6.3.2.3, Table 6-1 E1, E2, E10 | T |
+| COP-033 | "Buffer available" is an **input**. The frame input SHALL carry a buffer-available flag, which the caller sets from its own delivery buffer: true when there is a buffer for the FDU of an accepted Type-AD frame, and false otherwise, which selects E2 instead of E1 (Discard, Retransmit_Flag := 1, Wait_Flag := 1). When Wait_Flag is set, the caller SHALL feed the buffer-released input (E10) once buffer space is available for at least one more maximum-size frame, which clears Wait_Flag. A Type-BD frame is accepted whatever the buffer-available flag says, and an FDU erased in its favour is the caller's to report (the optional Aborted Indication). A caller without flow control SHALL always set the buffer-available flag; FARM-1 then never enters Wait. The engine SHALL report Wait_Flag in its CLCW and status snapshot. | 232.1 §3.3.2, §6.3.2.3, Table 6-1 E1, E2, E10 | T |
 | COP-034 | The FARM-B Counter SHALL increment modulo 4 for every accepted Type-B frame. | 232.0 §4.2.1.9 | V |
-| COP-035 | `clcw(state)` SHALL reflect the state after the most recent input. The CLCW SHALL carry COP in Effect = `01`, the configured VCID and Status Field, and the current flags. | 232.0 §4.2.1; 232.1 E11 | V |
-| COP-036 | The Unlock command SHALL reset only FARM-1. The engine SHALL return a `Notify(Unlocked)` action so that higher procedures can purge their buffers. | 232.1 §6.3.2.2 note | T |
+| COP-035 | The CLCW built from the state SHALL reflect the state after the most recent input. The CLCW SHALL carry COP in Effect = `01`, the configured VCID and Status Field, and the current flags. | 232.0 §4.2.1; 232.1 E11 | V |
+| COP-036 | The Unlock command SHALL reset only FARM-1. The engine SHALL return an unlocked notification action so that higher procedures can purge their buffers. | 232.1 §6.3.2.2 note | T |
 
 ## 4. Interaction and closed-loop testing
 

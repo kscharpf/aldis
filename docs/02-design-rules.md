@@ -8,7 +8,7 @@ These rules apply to every crate in Layers 0–2, and to the C ABI. Layer 3 foll
 |---|---|---|---|
 | GEN-010 | Layers 0–2 SHALL NOT allocate dynamically in any configuration. All storage SHALL be caller-provided buffers or fixed-capacity containers sized at compile time. | — | A |
 | GEN-011 | Every fixed capacity, such as queue depth, maximum frame length, or number of VCs/MAPs/APIDs, SHALL be a compile-time parameter (const generic in Rust, build-time constant in C). Its value SHALL be checked against the managed parameters when a configuration is constructed. | — | T |
-| GEN-012 | The memory footprint of every engine type SHALL be computable at compile time. The Rust profile exposes it through `core::mem::size_of`; the C ABI through `sizeof` of the typed storage struct (CABI-031). | — | A |
+| GEN-012 | The memory footprint of every engine type SHALL be computable at compile time. The Rust profile and the C ABI each expose it (CABI-031). | — | A |
 | GEN-013 | Decoders SHALL be zero-copy: payload accessors return sub-slices of the input buffer. | — | T |
 | GEN-014 | No API SHALL require the caller to provide more buffer space than the maximum size of the data unit being produced. | — | T |
 | GEN-015 | Aldis SHALL assume that memory holding its state between calls (configurations, engine state, and helper storage) is protected against single-event upsets by the platform (error-correcting memory with scrubbing, or equivalent), or holds data that does not change at run time. [Hardware assumptions](hardware-assumptions.md) SHALL state this assumption, what an upset in unprotected memory does to Aldis (an enum with an invalid discriminant is undefined behaviour; a restricted value is not checked again after construction, RS-020), and what the integrator does to meet it. | — | I |
@@ -27,10 +27,10 @@ These rules apply to every crate in Layers 0–2, and to the C ABI. Layer 3 foll
 
 | ID | Requirement | Source | Verif. |
 |---|---|---|---|
-| GEN-030 | For identical input sequences, including the supplied `Instant` values, every engine SHALL produce identical output sequences, byte for byte and event for event. | — | V |
+| GEN-030 | For identical input sequences, including the supplied instant values, every engine SHALL produce identical output sequences, byte for byte and event for event. | — | V |
 | GEN-031 | Layers 0–2 SHALL NOT read clocks, random sources, environment variables, or global mutable state. | — | I |
 | GEN-032 | Layers 0–2 SHALL NOT perform I/O or logging. Observable behavior is expressed only through return values and engine outputs and events. | — | I |
-| GEN-033 | Engines SHALL be safe to move between threads (Rust: `Send` where their contents are). They SHALL NOT be internally synchronized: callers serialize access to each instance. | — | I |
+| GEN-033 | Engines SHALL be safe to move between threads (in Rust, where their contents are). They SHALL NOT be internally synchronized: callers serialize access to each instance. | — | I |
 
 ## 4. Error model
 
@@ -65,7 +65,7 @@ All CCSDS standards in scope use the same convention, which these rules restate.
 | ID | Requirement | Source | Verif. |
 |---|---|---|---|
 | GEN-070 | Layers 0–3 SHALL forbid `unsafe` code (`#![forbid(unsafe_code)]`). | — | A |
-| GEN-071 | `unsafe` is permitted only in `aldis-ffi`, in the dev-only differential-test bridge (`difftest/`, VER-053), which calls a native implementation through its C ABI and is never part of a flight build, and in the module of the dev-only cross-checks that calls a C oracle (`crosscheck/src/cfe_msg.rs`, VER-040). Every `unsafe` block SHALL carry a `// SAFETY:` justification. `aldis-ffi` SHALL be tested under Miri. | — | A/I |
+| GEN-071 | `unsafe` is permitted only in `aldis-ffi`, in the dev-only differential-test bridge (`difftest/`, VER-053), which calls a native implementation through its C ABI and is never part of a flight build, and in the module of the dev-only cross-checks that calls a C oracle (`file:crosscheck/src/cfe_msg.rs`, VER-040). Every `unsafe` block SHALL carry a `// SAFETY:` justification. `aldis-ffi` SHALL be tested under Miri. | — | A/I |
 
 ## 8. Versioning and compatibility
 

@@ -30,9 +30,3 @@ assert_eq!(actions.len(), 1); // Deliver: the FDU is in `out`
 ## Where it sits
 
 Layer 2 (engines) of the [architecture](../../docs/01-architecture.md) §2. It depends on `aldis-core` and `aldis-tc`, and on `aldis-uslp` with the feature `uslp`. As a library, the application calls the engines directly; `aldis-framework` uses the same engines.
-
-## Specification
-
-- [docs/standards/cop1.md](../../docs/standards/cop1.md): requirement area COP.
-- [docs/04-engines.md](../../docs/04-engines.md): the sans-I/O contract every engine follows.
-- [docs/README.md](../../docs/README.md): the index of the specification.

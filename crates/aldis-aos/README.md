@@ -6,10 +6,6 @@ Frame codec for the CCSDS 732.0-B-5 AOS Space Data Link Protocol: AOS Transfer F
 
 Layer 1 (codecs) of the [architecture](../../docs/01-architecture.md) §2. It depends only on `aldis-core`, is stateless, and does no I/O. Frame counts and the OID generator's state belong to the caller, the engines of Milestone 4.
 
-## Features
-
-None by default (GEN-005). `alloc` and `std` are strictly additive: no change in behaviour or wire output (GEN-006).
-
 ## Example
 
 Encode a frame with the FHEC and an M_PDU and decode it again, after a header symbol was hit:
@@ -49,15 +45,3 @@ fn main() -> Result<(), aldis_core::Error> {
     Ok(())
 }
 ```
-
-## Verification
-
-- Unit tests in every module; property tests in `tests/properties.rs` drawing from `aldis_testkit::strategies::aos` (VER-023, VER-054); the FHEC checked against the independent table model `aldis_testkit::oracle::fhec` on all 65 536 syndromes.
-- Vectors in [`test-vectors/aos/`](../../test-vectors/aos/), computed by the independent models [`aos_fhec.py`](../../test-vectors/models/aos_fhec.py) and [`aos_frame.py`](../../test-vectors/models/aos_frame.py), with the hand derivations in [aos-fhec.md](../../docs/verification/derivations/aos-fhec.md) and [aos-frame.md](../../docs/verification/derivations/aos-frame.md); the fuzz targets `aos_fhec_model`, `aos_decode`, and `aos_roundtrip`; the exerciser on three bare-metal targets; 100 % coverage (VER-024); the [GEN-022/023 analysis record](../../docs/verification/records/GEN-022.md).
-
-## Specification
-
-- [docs/standards/aos-frame.md](../../docs/standards/aos-frame.md): requirement area AOS.
-- [docs/standards/common-link-features.md](../../docs/standards/common-link-features.md): the FECF, OID, counters, and field placement, implemented in `aldis-core`.
-- [docs/09-open-issues.md](../../docs/09-open-issues.md): OI-04 (the editions, resolved), OI-35 (FHEC miscorrection, the B_PDU limits), OI-43 (frames on VCID 63).
-- [docs/README.md](../../docs/README.md): the index of the specification.

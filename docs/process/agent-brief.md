@@ -21,7 +21,7 @@ Name the goal, the base, what done means, and what the agent leaves alone: other
 
 ## The report
 
-End with: the pull request URL; the evidence (command output, timings against the stated baseline, and the `verify check` result when you had the gate); **Judgement calls** (decisions the agent made under [decision-rights.md](decision-rights.md), each with its reason); **For the maintainer** (what only the maintainer can decide, as one question with a recommended option).
+The pull request body follows [pr-body.md](pr-body.md). End the report with: the pull request URL; the evidence (command output, timings against the stated baseline, and the `verify check` result when you had the gate); **Judgement calls** (decisions the agent made under [decision-rights.md](decision-rights.md), each with its reason); **For the maintainer** (what only the maintainer can decide, as one question with a recommended option).
 
 ## For the coordinator
 
