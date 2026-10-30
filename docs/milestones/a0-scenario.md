@@ -113,7 +113,7 @@ Every protocol value in the document cites its Blue Book clause, read from the B
 | Roadmap §3: A0 row links this plan; the "in-process" wording follows the OI-24 decision | [08-roadmap.md](../08-roadmap.md) |
 | OI-23 to OI-26 updated with the maintainer's decisions; OI-11 and OI-06 cross-referenced | [09-open-issues.md](../09-open-issues.md) |
 | APP IDs added to the exit table (§4) | this plan |
-| Changelog fragment | `changelog.d/` |
+| Changelog entry | the PR title (conventional commit) |
 
 ### WP-2 `refapp/` skeleton (M) — VER-001, VER-004, RS-017
 
@@ -155,7 +155,7 @@ A0 is complete when every item below is green on `main`. The APP requirements li
 | Scenario | `docs/reference-application.md` merged with area APP registered in 00 §5.2; maintainer approval recorded (WP-4); scenario rules reviewed: APP-001, APP-002, APP-005, APP-006, APP-014, APP-020, APP-025, APP-026, APP-061, APP-062, APP-070, APP-076, APP-077, APP-084, APP-087, APP-088, APP-091, APP-101 |
 | Skeleton | `refapp/` workspace builds and tests; `refapp-flight` builds `no_std` for `thumbv7em-none-eabihf`; flight node lint set VER-001, tooling crates RS-017, formatting VER-004; APP-102…APP-105; trace writer, canonical-form check, and comparator APP-080, APP-081, APP-085 |
 | Tooling | VER-055 (the `refapp` job uses only free tools); dependency rule and trace scanning in `xtask` (WP-3); APP-100, APP-106, APP-107, APP-108 |
-| Docs | Roadmap §3 linked; OI-23 to OI-26 decided or carried with an owner; changelog fragment |
+| Docs | Roadmap §3 linked; OI-23 to OI-26 decided or carried with an owner |
 
 ## 5. Risks
 

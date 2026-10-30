@@ -133,7 +133,7 @@ Ask one question per decision, numbered, in this shape:
 Anything a rule or a check already decides:
 
 - the checks: `cargo xtask ci`, `cargo xtask verify`, Clippy, the coverage gate, and the other gates of AGENTS.md. A failing check is fixed, never argued;
-- the rules of AGENTS.md: the Blue Book governs, nothing is copied from it, no protocol value from memory, open issues are never resolved silently, released vectors are never edited, the changelog fragment, the next free ID, the branch prefixes, one track per pull request;
+- the rules of AGENTS.md: the Blue Book governs, nothing is copied from it, no protocol value from memory, open issues are never resolved silently, released vectors are never edited, the conventional-commit PR title, the next free ID, the branch prefixes, one track per pull request;
 - the definitions of done in the [checklists](../milestones/checklists.md);
 - a Blue Book reading the normative text settles (§2.1);
 - whether to verify locally or on a GitHub-hosted runner (VER-060), and re-verifying after merging `main`;

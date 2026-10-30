@@ -33,6 +33,7 @@ mod status;
 mod trace;
 mod vectors;
 mod verify;
+mod wp_status;
 
 use std::process::ExitCode;
 
@@ -108,10 +109,13 @@ commands:
   kani                         run the Kani proof harnesses and print each one's result and
                                time; a spike, not a gate (docs/verification/formal-proofs.md,
                                OI-42; needs the pinned Kani)
-  changelog check              every fragment in changelog.d/ is well formed (GEN-080)
-  changelog show               print the unreleased changes as the next release will list them
+  changelog                    print the unreleased changes, generated from the titles of the
+                               merged pull requests after the base of CHANGELOG.md (GEN-080)
   changelog release <version> <YYYY-MM-DD>
-                               move every fragment into a new section of CHANGELOG.md
+                               write them as a new section of CHANGELOG.md
+  status-table [--write]       derive the State and PRs columns of the work-package status
+                               tables of docs/milestones/ from the pull requests of GitHub
+                               (needs gh; a coordinator tool, no check of the gate)
   check                        the checks to run while working: fmt, clippy, doc, test, the
                                bare-metal clippy build, ci, then the extras of each touched
                                directory (aldis-core, aldis-ffi, refapp/, and the fmt of
@@ -125,7 +129,7 @@ commands:
                                vectors generated, vectors schema --check, fields, header (needs the pinned
                                cbindgen), sana, trace --scope m0 --strict,
                                trace --scope m1 --strict, trace --scope m2 --strict,
-                               trace --scope m3, changelog check; a step that cannot run
+                               trace --scope m3; a step that cannot run
                                counts as a problem, and the others still run
 
 ";
@@ -163,7 +167,6 @@ pub(crate) const CI: &[Step] = &[
     ("trace --scope m2 --strict", || trace::run(Some("m2"), true)),
     // M3 is open: report its trace without failing (strict at the M3 exit, D1).
     ("trace --scope m3", || trace::run(Some("m3"), false)),
-    ("changelog check", changelog::check),
 ];
 
 /// Runs `steps`; returns the number of problems. A step that cannot run (a missing tool, an
@@ -237,9 +240,10 @@ fn run(args: &[&str]) -> Result<usize, String> {
         ["assurance", "--strict"] => assurance::run(true),
         ["verify", rest @ ..] => verify::run(rest),
         ["metrics", rest @ ..] => metrics::run(rest),
-        ["changelog", "check"] => changelog::check(),
-        ["changelog", "show"] => changelog::show(),
+        ["changelog"] => changelog::show(),
         ["changelog", "release", version, date] => changelog::release(version, date),
+        ["status-table"] => wp_status::run(false),
+        ["status-table", "--write"] => wp_status::run(true),
         ["ci"] => Ok(run_steps(CI)),
         ["check", rest @ ..] => check::run(rest),
         [] | ["help" | "-h" | "--help"] => {

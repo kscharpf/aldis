@@ -8,7 +8,7 @@
 //! requirement documents `docs/0*.md`, `docs/profiles/`, `docs/standards/`, and the rest of the
 //! specification (`docs/README.md`, `docs/glossary.md`, `docs/reference-application.md`). Every
 //! other path is **process**: `xtask/`, `.github/`, `docs/process/`, `docs/verification/`,
-//! `docs/milestones/`, `changelog.d/`, `AGENTS.md`, and the other files and directories at the
+//! `docs/milestones/`, `AGENTS.md`, and the other files and directories at the
 //! root. A pull request or a commit is product-only, process-only, or mixed by its changed
 //! paths. A commit is **bookkeeping-only** when every path it changes is a
 //! verification record (`docs/verification/records/`), or a milestone plan in which only rows of
