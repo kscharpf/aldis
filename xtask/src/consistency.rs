@@ -448,7 +448,7 @@ fn vector_problems(
                 "test-vectors/{f}: not listed in test-vectors/README.md"
             ));
         }
-        if !named_by_test(f, tests) && !AWAITING_RUNNER.iter().any(|dir| f.starts_with(dir)) {
+        if !named_by_test(f, tests) && !awaiting_runner(f) {
             p.push(format!(
                 "test-vectors/{f}: no test in crates/*/tests/ runs it"
             ));
@@ -494,6 +494,12 @@ fn vector_problems(
 /// WP-3 and WP-4): the test requirement is waived until the runner lands, and the entry is
 /// removed in the pull request that adds it.
 const AWAITING_RUNNER: &[&str] = &["cop1/"];
+
+/// Whether `f`, relative to `test-vectors/`, is a vector file that no runner runs yet. Such a
+/// file is no evidence for `cargo xtask trace` either (`trace.rs`).
+pub fn awaiting_runner(f: &str) -> bool {
+    AWAITING_RUNNER.iter().any(|dir| f.starts_with(dir))
+}
 
 /// The vector runner through the C ABI (M2 plan D4).
 const FFI_RUNNER: &str = "crates/aldis-ffi/tests/vectors.rs";

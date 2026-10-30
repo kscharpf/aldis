@@ -93,6 +93,10 @@ fn artefacts(spec: &Spec) -> Result<BTreeMap<String, BTreeSet<String>>, String> 
         if !crate::vectors::is_vector_file(&rel) {
             continue;
         }
+        // A vector that no runner runs yet verifies nothing (the exemption of `consistency`).
+        if crate::consistency::awaiting_runner(rel.strip_prefix("test-vectors/").unwrap_or(&rel)) {
+            continue;
+        }
         match VectorFile::from_json(&repo::read(&path)?) {
             Ok(VectorFile::Codec(f)) => {
                 for c in f.cases.iter().filter(|c| c.superseded.is_none()) {
@@ -251,6 +255,15 @@ mod tests {
         let areas = ["CPP", "GEN"].iter().map(|a| (*a).to_owned()).collect();
         let ids: Vec<String> = scan_ids(found[0].1, &areas).iter().map(IdRef::id).collect();
         assert_eq!(ids, ["CPP-031", "GEN-013"]);
+    }
+
+    #[test]
+    fn vectors_awaiting_a_runner_are_no_evidence() {
+        // req: VER-020
+        assert!(crate::consistency::awaiting_runner(
+            "cop1/fop1_table/s1_e01.json"
+        ));
+        assert!(!crate::consistency::awaiting_runner("tc/ad.json"));
     }
 
     #[test]

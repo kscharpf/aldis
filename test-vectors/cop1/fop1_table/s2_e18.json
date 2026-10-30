@@ -6,14 +6,11 @@
   "requirements": [
     "COP-001",
     "COP-005",
-    "COP-012",
-    "COP-010",
     "COP-013",
-    "COP-014",
-    "COP-006"
+    "COP-014"
   ],
   "provenance": "hand-derived",
-  "provenance_note": "Hand-derived from 232.1-B-2 Cor. 1 Table 5-1, 5.1 and 5.2, 232.0-B-4 4.1.2, 4.1.3.3, 4.1.4.2 and docs/standards/cop1.md; expected values come from the independent model test-vectors/models/cop1.py, written blind by an agent that had not read the implementation (TV-023).",
+  "provenance_note": "Hand-derived from 232.1-B-2 Cor. 1 Table 5-1, 5.1 and 5.2 and 232.0-B-4 4.1.2, 4.1.3.3, 4.1.4.2. Model test-vectors/models/cop1.py, written blind (TV-023) by a Claude agent from the Blue Books and docs/ only, without reading any implementation; docs/verification/reviews/cop1-tables.md was read as input and the transcription compared with it. The setup is the shortest input sequence found by breadth-first search over the model's input alphabet; the expected outputs are the model's.",
   "config": {
     "frame_target": "tc",
     "scid": 42,

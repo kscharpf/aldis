@@ -16,6 +16,12 @@ This program was written blind (TV-023): by an agent that had not read any imple
 stay independent of the Rust code: never port code from it, and never change the model to
 agree with it. When a model and an implementation disagree, the Blue Book decides.
 
+Both tables were transcribed from the Blue Book PDF. docs/verification/reviews/cop1-tables.md,
+the review record of the same two tables, was also read as specification input, and the
+transcription was then compared with it (Not applicable marks and next states agree); that
+comparison is a check, and the transcription's independence rests on the Blue Book, not on
+the review.
+
 The model holds parameters and code, never Blue Book text. Event descriptions below are
 paraphrases.
 
@@ -343,25 +349,19 @@ class Fop:
             self.pending is not None,
         )
 
-    def consistent(self):
-        """An empty Sent_Queue of AD frames leaves NN(R) at V(S) (5.1.8); states that break it
-        depend on how a purge treats NN(R), which the Blue Book does not say, and are not used
-        as setup."""
+    def coherent(self):
+        """Setup states that mean what they say. A suspension keeps the queues it had (5.1.11):
+        an Alert after it leaves Suspend_State set over purged queues, which no setup should
+        resume; and an Initiate AD directive that awaits its confirmation belongs to S4 or S5,
+        or to the S4 that was suspended (what a new Initiate does to it the Blue Book does not
+        say)."""
         ads = [e for e in self.sent if e[0] == "AD"]
-        if not ads and self.nnr != self.vs:
-            return False
-        # A suspension keeps the queues it had (5.1.11): an Alert after it leaves Suspend_State
-        # set over purged queues, which no setup should resume.
         if self.state == "S6" and self.ss in (1, 2, 3) and not ads:
             return False
         if self.state == "S6" and self.ss == 4 and self.pending is None:
             return False
-        # An Initiate AD directive that awaits its confirmation belongs to S4 or S5, or to the
-        # S4 that was suspended; what a new Initiate does to it the Blue Book does not say.
         waiting = self.state in ("S4", "S5") or (self.state == "S6" and self.ss == 4)
-        if waiting != (self.pending is not None):
-            return False
-        return True
+        return waiting == (self.pending is not None)
 
     # ---- classification: what happens before the table is entered -------------------------
     def classify(self, inp, now):
@@ -506,6 +506,7 @@ class Fop:
                 ctx["out"].append({"event": "transfer_notify", "handle": handle,
                                    "type": "negative_confirm"})
         self.sent = []
+        self.nnr = self.vs  # OI-60: an empty queue has no oldest frame (5.1.8)
 
     def purge_wait(self, ctx):
         if self.wait is not None:
@@ -1036,7 +1037,7 @@ def search_fop(cfg, max_depth=9, limit=400000):
                 nxt.step(inp, at)
             except Err:
                 continue
-            if not nxt.consistent():
+            if not nxt.coherent():
                 continue
             k = nxt.key()
             if k in seen:
@@ -1145,71 +1146,71 @@ FOP_CFG = {"frame_target": "tc", "scid": 42, "vcid": 1, "t1_initial_us": 2000000
 FARM_CFG = {"frame_target": "tc", "scid": 42, "vcid": 1, "fecf": True, "status_field": 0,
             "window": {"retransmission_allowed": True, "w": 8}, "v_r": 0}
 
-NOTE = (
-    "Hand-derived from 232.1-B-2 Cor. 1 {tables}, 232.0-B-4 {frames} and docs/standards/cop1.md; "
-    "expected values come from the independent model test-vectors/models/cop1.py, written blind "
-    "by an agent that had not read the implementation (TV-023). {extra}"
+BLIND = (
+    "Model test-vectors/models/cop1.py, written blind (TV-023) by a Claude agent from the Blue "
+    "Books and docs/ only, without reading any implementation; docs/verification/reviews/"
+    "cop1-tables.md was read as input and the transcription compared with it."
 )
 
 
-def note_for(engine, extra=""):
+def note_for(engine, how, tables, frames):
+    return ("Hand-derived from 232.1-B-2 Cor. 1 %s and 232.0-B-4 %s. %s %s" %
+            (tables, frames, BLIND, how))
+
+
+def provenance(engine, how):
     if engine == "fop1":
-        return NOTE.format(tables="Table 5-1, 5.1 and 5.2", frames="4.1.2, 4.1.3.3, 4.1.4.2",
-                           extra=extra).strip()
-    return NOTE.format(tables="Table 6-1, 6.1 and 6.2", frames="4.1.2, 4.1.3.3, 4.2.1",
-                       extra=extra).strip()
+        return note_for(engine, how, "Table 5-1, 5.1 and 5.2", "4.1.2, 4.1.3.3, 4.1.4.2")
+    return note_for(engine, how, "Table 6-1, 6.1 and 6.2", "4.1.2, 4.1.3.3, 4.2.1")
+
+
+SETUP_HOW = ("The setup is the shortest input sequence found by breadth-first search over the "
+             "model's input alphabet; the expected outputs are the model's.")
+SCRIPT_HOW = "The input script was chosen by hand; the expected outputs are the model's."
 
 
 def requirements_for(engine, scenario_cell, steps, reached, extra_reqs=()):
-    reqs = ["COP-001" if engine == "fop1" else "COP-002", "COP-005"] if scenario_cell else \
-        ["COP-001" if engine == "fop1" else "COP-002"]
-    text = json.dumps([s["expect"] for s in steps])
-    events = {e for (_, e) in reached if e is not None}
-    errors = '"error"' in text
-    if engine == "fop1":
-        if events & {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 101, 102, 103}:
-            reqs.append("COP-012")
-        if '"transmit"' in text:
-            reqs.append("COP-010")
-        if events & {8, 10, 12, 16, 17, 18, 104, 103, 11} and '"retransmission": true' in text:
-            reqs.append("COP-011")
-        if any("expect_timeout_us" in s for s in steps) or \
-                any("next_deadline" in json.dumps(s["expect"]) for s in steps):
-            reqs.append("COP-013")
-        if events & {18, 104, 30, 31, 32, 33, 34} or '"suspend"' in text:
-            reqs.append("COP-014")
-        if events & {36, 40} and any("set_k" in json.dumps(s["input"]) for s in steps):
-            reqs.append("COP-015")
-        if '"alert"' in text:
-            reqs.append("COP-017")
-    else:
-        if events & {1, 2, 3, 4, 5}:
-            reqs.append("COP-030")
-        if 9 in events:
-            reqs.append("COP-031")
-        if events & {1, 2, 10}:
-            reqs.append("COP-033")
-        if events & {6, 7, 8}:
-            reqs.append("COP-034")
-        if 11 in events or "clcw" in text:
-            reqs.append("COP-035")
-        if 7 in events:
-            reqs.append("COP-036")
-    if errors:
-        reqs.append("API-058")
-    if any(len(s["expect"]) > 1 for s in steps):
-        reqs.append("COP-006")
+    """Only what the vector exercises. A table cell lists the requirement of its engine, COP-005,
+    and what its trigger step shows; a scenario lists its engine's requirement and the ones its
+    author names."""
+    reqs = ["COP-001" if engine == "fop1" else "COP-002"]
+    if scenario_cell:
+        reqs.append("COP-005")
+        i = max(i for i, r in enumerate(reached) if r[0] is not None)
+        trig, event = steps[i], reached[i][1]
+        out = json.dumps(trig["expect"])
+        injected = "table_event" in trig["input"]
+        if '"error"' in out:
+            reqs.append("API-058")
+        if engine == "fop1" and not injected:
+            if event in (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 101, 102, 103):
+                reqs.append("COP-012")
+            if '"transmit"' in out and '"kind": "BD"' not in out:
+                reqs.append("COP-010")
+            if '"retransmission": true' in out:
+                reqs.append("COP-011")
+            if event in (16, 17, 18, 104) or (
+                    '"transmit"' in out and ('"kind": "AD"' in out or '"kind": "BC"' in out)):
+                reqs.append("COP-013")
+            if '"suspend"' in out or event in (31, 32, 33, 34):
+                reqs.append("COP-014")
+            if event == 36:
+                reqs.append("COP-015")
+            if '"alert"' in out:
+                reqs.append("COP-017")
+        if engine == "farm1":
+            for ids, req in (((1, 2, 3, 4, 5), "COP-030"), ((9,), "COP-031"),
+                             ((1, 2, 10), "COP-033"), ((6, 7, 8), "COP-034"),
+                             ((11,), "COP-035"), ((7,), "COP-036")):
+                if event in ids:
+                    reqs.append(req)
     for r in extra_reqs:
         if r not in reqs:
             reqs.append(r)
-    seen = []
-    for r in reqs:
-        if r not in seen:
-            seen.append(r)
-    return seen
+    return reqs
 
 
-def assemble(engine, sid, description, cfg, inputs, scenario_cell, extra_reqs=(), extra_note=""):
+def assemble(engine, sid, description, cfg, inputs, scenario_cell, extra_reqs=()):
     steps, reached, eng = replay(engine, cfg, inputs)
     return {
         "kind": "engine-scenario",
@@ -1218,7 +1219,7 @@ def assemble(engine, sid, description, cfg, inputs, scenario_cell, extra_reqs=()
         "description": description,
         "requirements": requirements_for(engine, scenario_cell, steps, reached, extra_reqs),
         "provenance": "hand-derived",
-        "provenance_note": note_for(engine, extra_note),
+        "provenance_note": provenance(engine, SETUP_HOW if scenario_cell else SCRIPT_HOW),
         "config": cfg,
         "steps": steps,
     }
@@ -1726,8 +1727,10 @@ def audit():
                 continue
             if event is not None and TABLE_FOP[event][STATES.index(eng.state)] is None:
                 bad.append(("fop1", eng.state, event, inp))
-    print("FOP-1: %d node(s) searched, %d Not applicable cell(s) reached" %
-          (len(fop_queue), len({(s, e) for _, s, e, _ in bad})))
+    print("FOP-1: bounded search, depth %d, %d node(s), alphabet of %d input(s); %d Not "
+          "applicable cell(s) reached (evidence, not a proof)" %
+          (max(len(p) for _, p, _ in fop_queue), len(fop_queue),
+           len(FOP_MOVES) + len(FOP_TRIGGERS), len({(s, e) for _, s, e, _ in bad})))
     for item in bad[:10]:
         print("  ", item)
     farm_na = set()
@@ -1741,8 +1744,9 @@ def audit():
                 continue
             if event is not None and TABLE_FARM[event][FARM_STATES.index(eng.state)] is None:
                 farm_na.add((eng.state, event))
-    print("FARM-1: %d node(s) searched, Not applicable cell(s) reached by an input: %s" %
-          (len(farm_queue), sorted(farm_na)))
+    print("FARM-1: bounded search, depth %d, %d node(s); Not applicable cell(s) reached by an "
+          "input: %s" % (max(len(p) for _, p, _ in farm_queue), len(farm_queue),
+                         sorted(farm_na)))
     return 0
 
 
