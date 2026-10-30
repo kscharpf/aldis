@@ -227,10 +227,15 @@ impl VcConfig {
     ///   D1.2.1; USLP-002);
     /// - (`transfer_frame_type`) for VCID 63 on a variable-length VC, since OID frames are
     ///   fixed-length (USLP-016, USLP-009);
-    /// - (`vc_id`) for VCID 63 with SDLS lengths per MAP: it carries no MAP channel.
+    /// - (`vc_id`) for VCID 63 with SDLS lengths per MAP: it carries no MAP channel;
+    /// - (`truncated_frame_len`) for a truncated frame length below 28 octets on a VC whose SDLS
+    ///   lengths are its own and not none: a truncated frame with SDLS is a 4-octet header, the
+    ///   6-octet Security Header, and the 16-octet Security Trailer, and one TFDZ octet or the
+    ///   Security Header's own room (Annex D1.2.3–4; USLP-012, API-075, D13 of the M3 plan).
     ///
-    /// Whether the frames leave room for a TFDZ, and the SDLS minimum of truncated frames, are
-    /// checked by [`VcTable::new`], which knows the Physical Channel and the MAPs.
+    /// Whether the frames leave room for a TFDZ, and the SDLS minimum of truncated frames of a VC
+    /// whose SDLS lengths are per MAP, are checked by [`VcTable::new`], which knows the Physical
+    /// Channel and the MAPs.
     pub const fn new(
         spacecraft_id: UslpSpacecraftId,
         vc_id: UslpVcId,
@@ -255,6 +260,12 @@ impl VcConfig {
             if matches!(params.security, SecurityScope::PerMap) {
                 return Err(bad(field::VC_ID));
             }
+        }
+        if let (Some(len), SecurityScope::Vc(layout)) = (params.truncated_frame_len, params.security)
+            && len.get() < TruncatedFrameLen::MIN_WITH_SDLS
+            && !layout.is_none()
+        {
+            return Err(bad(field::TRUNCATED_FRAME_LEN));
         }
         Ok(VcConfig {
             spacecraft_id,
@@ -1020,8 +1031,27 @@ pub(crate) mod tests {
                 },
             )
         };
+        // A VC with SDLS lengths of its own is refused where it is built (D13), at 27 octets but
+        // not at 28, and not without SDLS.
         let sdls = SecurityScope::Vc(SecurityLayout::new(1, 0).unwrap());
-        assert_eq!(t(vpc, &[short(sdls)], &[]), ic(field::TRUNCATED_FRAME_LEN));
+        let build = |len, security| {
+            VcConfig::new(
+                scid(0x155),
+                vcid(6),
+                VcParams {
+                    truncated_frame_len: Some(TruncatedFrameLen::new(len).unwrap()),
+                    security,
+                    ..params(Variable, 0, 0)
+                },
+            )
+        };
+        assert_eq!(
+            build(27, sdls).map_err(|e| (e.kind(), e.field())),
+            Err((ErrorKind::InvalidConfig, Some(field::TRUNCATED_FRAME_LEN)))
+        );
+        assert!(build(28, sdls).is_ok());
+        assert!(build(6, SecurityScope::Vc(SecurityLayout::NONE)).is_ok());
+        assert!(build(6, SecurityScope::PerMap).is_ok());
         assert_eq!(
             t(
                 vpc,
