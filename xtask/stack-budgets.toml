@@ -3,7 +3,7 @@
 #
 # [[budget]]: per bare-metal target, the most stack in bytes that one call of an entry point may
 # use, for the Rust entry points (`rust`) and the C ABI functions (`c-abi`). The values are the
-# maintainer's (docs/process/decisions.md, 2026-10-24, #113), revisited at the M2 exit. `rust` is
+# maintainer's (2026-10-24, #113), revisited at the M2 exit. `rust` is
 # 4096 because the channel-table constructors (`VcTable::new` of TC, AOS, and USLP) build the table
 # in their own frame and return it by value: about 3.6 KB for TC. OI-45 decides the table design.
 #

@@ -33,7 +33,7 @@ Changes merged since the last release are kept as one file per pull request in [
   instead of asking; how to ask the maintainer (one question, a recommended option first, the
   alternatives, what continues meanwhile; batched unless work is blocked); what never needs
   asking; and what continues while a question waits.
-- The decision log, [docs/process/decisions.md](docs/process/decisions.md): one line per
+- The decision log, `docs/process/decisions.md` (removed 2026-10-30): one line per
   maintainer decision, `- YYYY-MM-DD · <category> · <#N or chat> · <decision>`, appended by the
   coordinator, backfilled with the decisions of 2026-10-20 and 2026-10-21.
 - New VER-062 ([docs/06-verification.md](docs/06-verification.md) §10): decisions are taken by the

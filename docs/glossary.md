@@ -214,7 +214,6 @@ These are conventions of this repository, not CCSDS terms, unless the entry says
 | <a id="branch-prefix"></a>**Branch prefix** | `m<N>/`, `c<N>/`, `a<N>/` for track work; `spec/`, `chore/`, `fix/` for the rest. | [08-roadmap.md](08-roadmap.md) §6 rule 3 |
 | <a id="changelog-fragment"></a>**Changelog fragment** | The one file a pull request adds to [`changelog.d/`](../changelog.d/README.md), named after its branch, instead of editing `CHANGELOG.md`. | [changelog.d/README.md](../changelog.d/README.md) |
 | <a id="decision-rights"></a>**Decision rights** | Who may decide what: the **maintainer** (the project owner), the **coordinator** (the session that plans the work, dispatches agents, and opens and readies pull requests), or the **agent** of a work package, for each category of decision (`spec`, `scope`, `plan`, `api`, `vectors`, `review`, `process`, `deps`, `release`, `merge`, `housekeeping`, `approval`); how to ask the maintainer, and what continues while a question waits. Not to be confused with a plan's D-numbered [decisions](#decision). | [process/decision-rights.md](process/decision-rights.md); VER-062 |
-| <a id="decision-log"></a>**Decision log** | The index of the maintainer's decisions, one line each: `- YYYY-MM-DD · <category> · <#N or chat> · <decision>`. The coordinator appends a line whenever the maintainer decides something; `cargo xtask decisions` checks the format. | [process/decisions.md](process/decisions.md); VER-062 |
 
 ### 2.2 Requirements
 

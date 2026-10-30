@@ -1,12 +1,12 @@
 # Decision rights
 
-Who may decide what on Aldis, so that routine questions don't wait for the maintainer, and the questions that do reach the maintainer arrive with an answer ready to accept. Requirement: VER-062 ([06 §10](../06-verification.md#10-decision-rights)). This document is itself the maintainer's decision; changing it is a `process` decision (§2.7).
+Who may decide what on Aldis, so that routine questions don't wait for the maintainer, and the questions that do reach the maintainer arrive with an answer ready to accept. Requirement: VER-062 ([06 §10](../06-verification.md#10-decision-rights)). This document is itself the maintainer's decision; changing it is a process decision (§2.7).
 
 ## 1. Roles and where each records its decisions
 
 | Role | Who | Records a decision in |
 |---|---|---|
-| **Maintainer** | The project owner | The [decision log](decisions.md), one line per decision, appended by the coordinator; and wherever the rules below say (the OI, the plan's Decisions table, the requirement, the PR's "Maintainer decisions" section) |
+| **Maintainer** | The project owner | Where the rules below say: the OI, the plan's Decisions table, the requirement, the PR's "Maintainer decisions" section; a decision that has none of these goes in the description or commit message of the change it governs |
 | **Coordinator** | The Claude session that plans the work, dispatches agents, opens and readies pull requests, and answers reviews | The PR description, under **Coordinator decisions**, or its reply to the review |
 | **Agent** | A session dispatched for one work package or task, in its own worktree and branch | Its report, under **Judgement calls**; the coordinator copies them into the PR description |
 
@@ -16,9 +16,9 @@ The rules of [AGENTS.md](../../AGENTS.md), the [checklists](../milestones/checkl
 
 ## 2. Who decides what
 
-Each category has a slug, used in the [decision log](decisions.md). "Instead of asking" is what the role that may not decide does.
+"Instead of asking" is what the role that may not decide does.
 
-### 2.1 Spec interpretation (`spec`)
+### 2.1 Spec interpretation
 
 | Maintainer only | Coordinator | Agent in a work package |
 |---|---|---|
@@ -26,7 +26,7 @@ Each category has a slug, used in the [decision log](decisions.md). "Instead of 
 
 Example: OI-35 items 1 and 8 (notes only; 231.0 against 732.1) and AOS-018's limits went to the maintainer; items 2, 3, and 5–7 were answered from the text in the same PR (#61). Instead of asking: add or update the OI with the clauses, the options, and a recommendation (roadmap §6 rule 8), and continue as §5 says. Never settle it silently in code.
 
-### 2.2 Requirements and scope (`scope`)
+### 2.2 Requirements and scope
 
 | Maintainer only | Coordinator | Agent in a work package |
 |---|---|---|
@@ -34,7 +34,7 @@ Example: OI-35 items 1 and 8 (notes only; 231.0 against 732.1) and AOS-018's lim
 
 Example: adding TV-023 to the M2 exit table (#74) was the maintainer's: it comes from no frame standard. Instead of asking: write the requirement, leave it out of the exit table, and ask in the PR description.
 
-### 2.3 Plan decisions (`plan`)
+### 2.3 Plan decisions
 
 | Maintainer only | Coordinator | Agent in a work package |
 |---|---|---|
@@ -42,7 +42,7 @@ Example: adding TV-023 to the M2 exit table (#74) was the maintainer's: it comes
 
 Example: M2 decisions D1–D17 (#56). Instead of asking: the plan PR lists each decision as "Proposed", and no work package that depends on it starts.
 
-### 2.4 API and ABI shape (`api`)
+### 2.4 API and ABI shape
 
 | Maintainer only | Coordinator | Agent in a work package |
 |---|---|---|
@@ -50,7 +50,7 @@ Example: M2 decisions D1–D17 (#56). Instead of asking: the plan PR lists each 
 
 Example: the negative status codes and `struct_size` first in `aldis_error_detail_t` (#72); `Ocf` closed (#68); `packet_len` kept as one code (#60). Instead of asking: build the recommended shape, and put the question in the PR description under "For the maintainer"; the PR is not readied until it is answered.
 
-### 2.5 Test vectors (`vectors`)
+### 2.5 Test vectors
 
 | Maintainer only | Coordinator | Agent in a work package |
 |---|---|---|
@@ -58,7 +58,7 @@ Example: the negative status codes and `struct_size` first in `aldis_error_detai
 
 A file name is a promise about its contents: a case that does not fit its file's name moves to one that does, if no release holds it. Example: the C++ loader stays stricter than the Rust runner (#66, follow-up #67) was the maintainer's; moving the FHEC miscorrection case to `fhec_miscorrection.json` (#64) is routine under this rule. Instead of asking: never edit a released case; add a new one and mark the old `superseded`.
 
-### 2.6 Review findings (`review`)
+### 2.6 Review findings
 
 | Maintainer only | Coordinator | Agent in a work package |
 |---|---|---|
@@ -66,7 +66,7 @@ A file name is a promise about its contents: a case that does not fit its file's
 
 **Blocking** means a failing check, a broken rule of AGENTS.md, or a defect against a requirement or the Blue Book; anything else is non-blocking. Fixing code to meet the existing specification is not a behaviour change. Example: the OID and CRC check fix in `cpp/vectors/` (e73db7d, #66), and the follow-up issues #65, #67, #69, are routine. Instead of asking: fix or defer, and say which and why in the reply.
 
-### 2.7 Process and tooling (`process`)
+### 2.7 Process and tooling
 
 | Maintainer only | Coordinator | Agent in a work package |
 |---|---|---|
@@ -74,7 +74,7 @@ A file name is a promise about its contents: a case that does not fit its file's
 
 Example: the cleanup and review-watch policies, and holding the `xtask` split (#75). Instead of asking: build it on a branch, measure what it changes, and propose it with the measurement.
 
-### 2.8 Dependencies and licences (`deps`)
+### 2.8 Dependencies and licences
 
 | Maintainer only | Coordinator | Agent in a work package |
 |---|---|---|
@@ -82,7 +82,7 @@ Example: the cleanup and review-watch policies, and holding the `xtask` split (#
 
 Layers 0–2 take no third-party runtime dependency at all (GEN-001); that is a rule, not a decision. Instead of asking: name the tool, its licence, and what the requirement needs, in the plan's Decisions table.
 
-### 2.9 Releases, tags, visibility, and anything public or external (`release`)
+### 2.9 Releases, tags, visibility, and anything public or external
 
 | Maintainer only | Coordinator | Agent in a work package |
 |---|---|---|
@@ -90,25 +90,25 @@ Layers 0–2 take no third-party runtime dependency at all (GEN-001); that is a 
 
 Example: the tag `v0.2.0-m1` (#54), the repository made public (#57), the GHCR package `aldis-verify` made public (#63). Instead of asking: prepare everything up to the external step, and ask for that step only.
 
-### 2.10 Merges to `main` (`merge`)
+### 2.10 Merges to `main`
 
 | Maintainer only | Coordinator | Agent in a work package |
 |---|---|---|
 | Every merge into `main`, and any push to it | Opening pull requests, merging `main` into them, publishing the verification record (VER-058), marking them ready, and saying which are ready | Commits on its own branch; a push when the coordinator asks for one |
 
-Merges are not logged: GitHub records them. A merge that also decides something, such as merging over an open question, is logged under that question's category.
+GitHub records merges. A merge that also decides something, such as merging over an open question, says so in the pull request description.
 
-### 2.11 Repository housekeeping (`housekeeping`)
+### 2.11 Repository housekeeping
 
 | Maintainer only | Coordinator | Agent in a work package |
 |---|---|---|
 | Deleting work that is on no remote and not merged, or a branch kept on purpose (the `xtask` split, #75); rewriting pushed history | Merging `main` into open pull requests and re-verifying; deleting the worktrees and branches of merged pull requests under the cleanup policy; closing issues a merge finished; keeping the review watch running | Its own worktree |
 
-### 2.12 Approvals (`approval`)
+### 2.12 Approvals
 
 | Maintainer only | Coordinator | Agent in a work package |
 |---|---|---|
-| Accepting a milestone exit | Recording the acceptance in the decision log | — |
+| Accepting a milestone exit | Recording the acceptance in the milestone plan | — |
 
 
 ## 3. Asking the maintainer
@@ -124,7 +124,7 @@ Ask one question per decision, numbered, in this shape:
 - **Batch** the questions that block nothing: ask them together when a pull request is ready, or when a round of agents has reported, as one numbered list.
 - **Ask at once** only when work stops without the answer and nothing else can go ahead, or before an external or irreversible step (§2.9).
 - Never ask about what §2 gives the coordinator or an agent, or what §4 says needs no asking. When unsure, decide under the narrower right, and record it as a judgement call.
-- When the maintainer answers, the coordinator records the answer where §1 says, in the same pull request when there is one, and appends the line to the [decision log](decisions.md).
+- When the maintainer answers, the coordinator records the answer where §1 says, in the same pull request when there is one.
 
 ## 4. What never needs asking
 
@@ -148,7 +148,7 @@ Anything a rule or a check already decides:
 
 ## 6. The questions of 2026-10-20 and 2026-10-21
 
-The coordinator asked the maintainer about each of these. Those that were the maintainer's are in the [decision log](decisions.md). These were routine, and under §2 would not have been asked:
+The coordinator asked the maintainer about each of these. Those that were the maintainer's are recorded in the pull requests and open issues that settled them. These were routine, and under §2 would not have been asked:
 
 | Question | Category | Decided under these rights by | Rule |
 |---|---|---|---|

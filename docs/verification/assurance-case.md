@@ -440,7 +440,7 @@ graph TD
 
 | Evidence | Shows | Requirements |
 |---|---|---|
-| `record:VER-062`; `ci:decisions` | The decision rights and the format of the log, checked on every commit | VER-062 |
+| `record:VER-062` | The decision rights, inspected when a pull request changes them or records a maintainer decision | VER-062 |
 
 ### AC-7.5 The tests are adequate by measure
 

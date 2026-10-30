@@ -9,7 +9,6 @@ mod changelog;
 mod check;
 mod consistency;
 mod coverage;
-mod decisions;
 mod features;
 mod fields;
 mod fuzz;
@@ -66,7 +65,6 @@ commands:
   links                        relative Markdown links resolve inside the repository
   fix                          run the generators (fields, status, vectors schema, sana, header),
                                then consistency
-  decisions                    the decision log docs/process/decisions.md is well formed (VER-062)
   layers                       crate dependency rules (GEN-001..004)
   consistency                  the registrations agree: crates with code in coverage, features,
                                mutants, the exerciser, layers, READMEs, and the facade; fuzz
@@ -113,7 +111,7 @@ commands:
                                clippy build, ci, then the extras of each touched directory
                                (aldis-core, aldis-ffi, refapp/); stops at the first failure
   ci                           the quick checks of the verification run, without a build:
-                               spec-lint, links, decisions, layers, consistency, rs020, loops,
+                               spec-lint, links, layers, consistency, rs020, loops,
                                restricted, assurance --strict, refapp-deps, vectors validate,
                                vectors schema --check, fields, header (needs the pinned
                                cbindgen), sana, trace --scope m0 --strict,
@@ -135,7 +133,6 @@ type Step = (&'static str, fn() -> Result<usize, String>);
 pub(crate) const CI: &[Step] = &[
     ("spec-lint", spec::lint),
     ("links", links::check),
-    ("decisions", decisions::check),
     ("layers", layers::check),
     ("consistency", consistency::check),
     ("rs020", rs020::check),
@@ -209,7 +206,6 @@ fn run(args: &[&str]) -> Result<usize, String> {
         ["sana", rest @ ..] => sana::run(rest),
         ["fix"] => fix(),
         ["links"] => links::check(),
-        ["decisions"] => decisions::check(),
         ["layers"] => layers::check(),
         ["refapp-deps"] => refapp::check(),
         ["symbols"] => binaries::symbols(),

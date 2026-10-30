@@ -2,7 +2,7 @@
 
 A definition of done for the kinds of work that recur in every milestone. Each item names the requirement or check that enforces it. Items marked **(consistency)** are checked by `cargo xtask consistency`, part of `cargo xtask ci`; items marked **(ci)** by another command of `cargo xtask ci`; the rest by `cargo xtask verify` where a check is named, and otherwise by review. A milestone plan may add items for its own work packages; it does not repeat these.
 
-Every pull request also: changes one track's directories ([roadmap](../08-roadmap.md) §6 rule 2); adds one fragment to [`changelog.d/`](../../changelog.d/README.md) and never edits `CHANGELOG.md` (GEN-080; `cargo xtask changelog check`, **(ci)**); updates the requirement table in the same change when behaviour changes, with new IDs taking the next free number (`cargo xtask spec-lint`, **(ci)**); updates only its own row of the plan's work-package table (§6 rule 1); asks the maintainer only what the [decision rights](../process/decision-rights.md) give the maintainer, and adds a line to the [decision log](../process/decisions.md) for each maintainer decision it records (VER-062; `cargo xtask decisions`, **(ci)**); and is merged by the maintainer on a published, passing record of `cargo xtask verify` (VER-058).
+Every pull request also: changes one track's directories ([roadmap](../08-roadmap.md) §6 rule 2); adds one fragment to [`changelog.d/`](../../changelog.d/README.md) and never edits `CHANGELOG.md` (GEN-080; `cargo xtask changelog check`, **(ci)**); updates the requirement table in the same change when behaviour changes, with new IDs taking the next free number (`cargo xtask spec-lint`, **(ci)**); updates only its own row of the plan's work-package table (§6 rule 1); asks the maintainer only what the [decision rights](../process/decision-rights.md) give the maintainer (VER-062); and is merged by the maintainer on a published, passing record of `cargo xtask verify` (VER-058).
 
 ## Adding a codec module to an existing crate
 
@@ -65,7 +65,7 @@ Before a codec's work package starts, one pull request settles the Blue Book que
 
 - [ ] Each reading cites the clause it rests on; no text copied from the Blue Book (AGENTS.md).
 - [ ] Requirement tables and the standard document changed in the same pull request; new requirements take the next free ID (`cargo xtask spec-lint`, **(ci)**); new requirements in scope added to the plan's exit table, so that `cargo xtask trace --scope <id>` measures them.
-- [ ] OIs answered, updated, or opened in [09](../09-open-issues.md), and what is left to the maintainer named: the readings the Blue Book does not settle ([decision rights](../process/decision-rights.md) §2.1), each asked as one question with a recommended option (§3), and each answer a line of the [decision log](../process/decisions.md).
+- [ ] OIs answered, updated, or opened in [09](../09-open-issues.md), and what is left to the maintainer named: the readings the Blue Book does not settle ([decision rights](../process/decision-rights.md) §2.1), each asked as one question with a recommended option (§3), and each answer recorded in the pull request that settles it.
 - [ ] Anomaly lists and error kinds settled before the codec ships them (API-032, API-033).
 - [ ] No code: the codec follows in its own pull request.
 
