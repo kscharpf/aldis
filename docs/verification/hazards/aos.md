@@ -118,7 +118,7 @@ Failure modes of `aldis-aos` and its C ABI (the AOS functions), in the format of
 | Mission effect | A mission cannot configure a bitstream channel with larger frames; the error is returned when the table is built, not in flight |
 | Requirements | AOS-018, AOS-017 |
 | Evidence | `vector:aos-bpdu-cfg-001`; `vector:aos-bpdu-cfg-002`; `vector:aos-bpdu-cfg-003`; `vector:aos-bpdu-cfg-004`; `vector:aos-bpdu-cfg-005`; `test:crates/aldis-aos/src/config.rs::bitstream_limits`; `test:crates/aldis-aos/tests/restricted.rs::vc_tables_accept_exactly_the_configurable_channels`; `test:crates/aldis-aos/tests/vectors.rs::config_file`; `oi:OI-35` |
-| Residual risk | The maintainer decided both limits (decision log, 2026-10-20, #61, `file:docs/process/decisions.md`), so the rejection is a recorded choice, not a defect. The residual is a mission whose B_PDU channel needs a longer frame or zone: it must carry the data in M_PDUs or VCA_SDUs, or use another implementation |
+| Residual risk | The maintainer decided both limits (2026-10-20, #61), so the rejection is a recorded choice, not a defect. The residual is a mission whose B_PDU channel needs a longer frame or zone: it must carry the data in M_PDUs or VCA_SDUs, or use another implementation |
 | Assumptions | — |
 | Proposals | — |
 | Claims | `ac:AC-1.3` |

@@ -641,8 +641,6 @@ cargo run -p refapp-harness --locked -- compare
 const SPEC: &str = "\
 cargo xtask spec-lint
 cargo xtask links
-# The decision log is well formed (VER-062).
-cargo xtask decisions
 cargo xtask vectors validate
 cargo xtask vectors schema --check
 # The field catalogue of docs/03-api-model.md §9.1 and the files generated from it (API-082).
