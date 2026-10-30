@@ -271,8 +271,8 @@ Integrator obligations, in `asm:ASM-2` and `asm:ASM-4`: delimit with `FrameDelim
 | Mission effect | A frame built or decoded under values the caller did not mean |
 | Requirements | CABI-021, CABI-022, CABI-060, RS-020 |
 | Evidence | `test:crates/aldis-ffi/tests/tc.rs::the_clcw_crosses_as_a_word`; `test:crates/aldis-ffi/tests/tc.rs::control_commands`; `test:crates/aldis-ffi/tests/tc.rs::encode_arguments_are_checked`; `test:crates/aldis-ffi/tests/tc.rs::channel_arrays_are_c_arrays`; `test:crates/aldis-ffi/tests/tc.rs::the_stream_intake_pipeline`; `test:crates/aldis-ffi/src/abi.rs::modes_and_flags_take_only_their_constants`; `fuzz:ffi_decode` |
-| Residual risk | `fields` parses a frame type, a flag, and the Sequence Flags into their types and answers anything else with `InvalidField` (`file:crates/aldis-ffi/src/tc.rs`), `command` does the same for the Control Command, and the C ABI parsers of the mode and the flag accept only their constants. The tests above show each rejection. What no check can see is a wrong non-null pointer or an overstated length, which is `hz:HZ-X-05`; a stale buffer between `begin` and `finish` is `hz:HZ-TC-13` |
-| Assumptions | `asm:ASM-6` |
+| Residual risk | `fields` parses a frame type, a flag, and the Sequence Flags into their types and answers anything else with `InvalidField` (`file:crates/aldis-ffi/src/tc.rs`), `command` does the same for the Control Command, and the C ABI parsers of the mode and the flag accept only their constants. The tests above show each rejection. What no check can see is a wrong non-null pointer or an overstated length, or a header and a library of different versions (the structs carry no size, so a configuration array is stepped with the wrong stride; the caller compares `sym:aldis_abi_version` with `ALDIS_ABI_VERSION`, `asm:ASM-13`), which are `hz:HZ-X-05`; a stale buffer between `begin` and `finish` is `hz:HZ-TC-13` |
+| Assumptions | `asm:ASM-6`, `asm:ASM-13` |
 | Proposals | — |
 | Claims | `ac:AC-6.2` |
 

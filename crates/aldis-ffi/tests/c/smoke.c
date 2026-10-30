@@ -123,6 +123,13 @@ int main(void) {
     check(aldis_epp_idle(1, 0, idle, sizeof idle, &len, NULL) == ALDIS_OK && idle[0] == 0xE0,
           "aldis_epp_idle");
 
+    /* The library and the header are of one ABI version (CABI-060). */
+    check(aldis_abi_version() == ALDIS_ABI_VERSION &&
+              (aldis_abi_version() >> 16) == ALDIS_ABI_VERSION_MAJOR &&
+              ((aldis_abi_version() >> 8) & 0xFFu) == ALDIS_ABI_VERSION_MINOR &&
+              (aldis_abi_version() & 0xFFu) == ALDIS_ABI_VERSION_PATCH,
+          "aldis_abi_version matches the header (CABI-060)");
+
     /* The CRC-16, the OCF, and the OID generator of aldis-core (M2 plan D5, D14). */
     uint16_t crc = 0;
     check(aldis_crc16((const uint8_t *)"123456789", 9, &crc, NULL) == ALDIS_OK && crc == 0x29B1,

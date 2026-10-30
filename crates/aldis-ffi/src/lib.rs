@@ -63,6 +63,30 @@ pub const ALDIS_ABI_VERSION_MAJOR: u32 = 0;
 pub const ALDIS_ABI_VERSION_MINOR: u32 = 6;
 /// ABI patch version (CABI-060).
 pub const ALDIS_ABI_VERSION_PATCH: u32 = 0;
+/// The ABI version in one word (CABI-060).
+///
+/// Major in bits 31 to 16, minor in bits 15 to 8, patch in bits 7 to 0. The value
+/// `aldis_abi_version` returns for the library the header was generated for.
+pub const ALDIS_ABI_VERSION: u32 =
+    (ALDIS_ABI_VERSION_MAJOR << 16) | (ALDIS_ABI_VERSION_MINOR << 8) | ALDIS_ABI_VERSION_PATCH;
+
+// The minor version has 8 bits in the packed word; the major (16 bits) and the patch (8 bits)
+// are 0 and cannot overflow yet.
+const _: () = assert!(
+    ALDIS_ABI_VERSION_MINOR <= 0xFF,
+    "the packed ABI version has 8 bits for the minor"
+);
+
+/// The version of the library's C ABI, packed as [`ALDIS_ABI_VERSION`] is (CABI-060).
+///
+/// A caller compares it with `ALDIS_ABI_VERSION` at start-up: a header and a library of different
+/// versions disagree on the layout of the structs the calls pass (OI-57 convention 5), and no call
+/// can detect that (HZ-X-05). It cannot fail and takes no argument.
+#[expect(unsafe_code, reason = "C ABI entry point: unmangled export (GEN-071)")]
+#[unsafe(no_mangle)]
+pub const extern "C" fn aldis_abi_version() -> u32 {
+    ALDIS_ABI_VERSION
+}
 
 #[cfg(all(
     not(feature = "std"),

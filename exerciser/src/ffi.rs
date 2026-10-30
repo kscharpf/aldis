@@ -7,7 +7,7 @@
 use core::hint::black_box as bb;
 use core::ptr::null;
 
-use aldis_ffi::aldis_error_detail_t;
+use aldis_ffi::{ALDIS_ABI_VERSION, aldis_abi_version, aldis_error_detail_t};
 use aldis_ffi::aos::{
     ALDIS_AOS_CONTENT_BPDU, ALDIS_AOS_CONTENT_MPDU, ALDIS_AOS_EDITION_ISSUE5, ALDIS_AOS_OID_VCID,
     ALDIS_AOS_POINTER_NONE, ALDIS_AOS_POINTER_STARTS_AT, ALDIS_AOS_POINTER_VALID_BITS,
@@ -621,6 +621,7 @@ fn core(t: &mut Tally) {
     let (mut a, mut b) = ([0_u8; 6], [0_u8; 6]);
     // SAFETY: every pointer is to a live local; the handles point to the storage locals.
     unsafe {
+        t.check(aldis_abi_version() == ALDIS_ABI_VERSION);
         t.check(
             aldis_crc16(check_string.as_ptr(), bb(9), &raw mut crc, &raw mut det) == ALDIS_OK
                 && crc == 0x29B1,

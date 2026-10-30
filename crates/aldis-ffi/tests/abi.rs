@@ -12,7 +12,10 @@ use aldis_ffi::oid::*;
 use aldis_ffi::spp::*;
 use aldis_ffi::spp_state::*;
 use aldis_ffi::time::*;
-use aldis_ffi::{ALDIS_MODE_STRICT, aldis_error_detail_t};
+use aldis_ffi::{
+    ALDIS_ABI_VERSION, ALDIS_ABI_VERSION_MAJOR, ALDIS_ABI_VERSION_MINOR, ALDIS_ABI_VERSION_PATCH,
+    ALDIS_MODE_STRICT, aldis_abi_version, aldis_error_detail_t,
+};
 
 fn size<T>() -> u32 {
     u32::try_from(size_of::<T>()).unwrap()
@@ -807,4 +810,14 @@ fn the_detail_is_written_whole() {
     // Nothing beyond the struct is written.
     let o: Vec<u8> = words.iter().flat_map(|w| w.to_ne_bytes()).collect();
     assert!(o[full..].iter().all(|&b| b == 0xFF));
+}
+
+#[test]
+fn the_library_reports_its_abi_version() {
+    // req: CABI-060
+    let v = aldis_abi_version();
+    assert_eq!(v, ALDIS_ABI_VERSION);
+    assert_eq!(v >> 16, ALDIS_ABI_VERSION_MAJOR);
+    assert_eq!((v >> 8) & 0xFF, ALDIS_ABI_VERSION_MINOR);
+    assert_eq!(v & 0xFF, ALDIS_ABI_VERSION_PATCH);
 }

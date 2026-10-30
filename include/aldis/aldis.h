@@ -23,6 +23,14 @@
 #define ALDIS_ABI_VERSION_PATCH 0
 
 /**
+ * The ABI version in one word (CABI-060).
+ *
+ * Major in bits 31 to 16, minor in bits 15 to 8, patch in bits 7 to 0. The value
+ * `aldis_abi_version` returns for the library the header was generated for.
+ */
+#define ALDIS_ABI_VERSION (((ALDIS_ABI_VERSION_MAJOR << 16) | (ALDIS_ABI_VERSION_MINOR << 8)) | ALDIS_ABI_VERSION_PATCH)
+
+/**
  * Length of the AOS Transfer Frame Primary Header without the FHEC, in octets (732.0
  * §4.1.2.1).
  */
@@ -4852,6 +4860,15 @@ typedef struct {
 #ifdef __cplusplus
 extern "C" {
 #endif // __cplusplus
+
+/**
+ * The version of the library's C ABI, packed as [`ALDIS_ABI_VERSION`] is (CABI-060).
+ *
+ * A caller compares it with `ALDIS_ABI_VERSION` at start-up: a header and a library of different
+ * versions disagree on the layout of the structs the calls pass (OI-57 convention 5), and no call
+ * can detect that (HZ-X-05). It cannot fail and takes no argument.
+ */
+uint32_t aldis_abi_version(void);
 
 /**
  * Computes the FHEC of the six octets of a Primary Header: the four parity symbols, which form
