@@ -1,7 +1,7 @@
 //! FARM-1 engine (CCSDS 232.1-B-2 §6; COP-002, COP-006, COP-030…COP-036).
 //!
-//! [`Farm1`] is plain data: the State, the Lockout, Wait, and Retransmit Flags, V(R), the
-//! FARM-B Counter, and the physical-layer flags of the CLCW (232.1 §6.1). [`Farm1::step`] is
+//! [`Farm1`] is plain data: the State, the Retransmit Flag, V(R), the FARM-B Counter,
+//! (the Lockout and Wait Flags are derived from the State, OI-64) and the physical-layer flags of the CLCW (232.1 §6.1). [`Farm1::step`] is
 //! the pure function of API-057: from the state, one [`Farm1Input`], and `now` it returns the
 //! next state and the [`Farm1Actions`] of the cell of Table 6-1 ([`FARM1_TABLE`]), in the order
 //! the cell lists them. The transition reads the table with an exhaustive `match` and no
@@ -352,17 +352,13 @@ struct Context<'a> {
 /// The FARM-1 state of one Virtual Channel (232.1 §6.1; COP-002, API-060).
 ///
 /// Plain data without a delivery buffer or an output queue (COP-033, API-059).
-#[expect(
-    clippy::struct_excessive_bools,
-    reason = "the Lockout, Wait, and Retransmit Flags and the two physical flags of the CLCW, \
-              each a variable of 232.1 §6.1 or a flag of 232.0 §4.2.1.8"
-)]
+///
+/// The Lockout and Wait Flags are not stored: 232.1 §6.1.3 and §6.1.4 define them as functions
+/// of the State variable, so they are derived from it (OI-64; RS-021).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Farm1 {
     config: Farm1Config,
     state: Farm1State,
-    lockout: bool,
-    wait: bool,
     retransmit: bool,
     v_r: FrameSeqNum,
     farm_b_counter: FarmBCounter,
@@ -371,15 +367,13 @@ pub struct Farm1 {
 }
 
 impl Farm1 {
-    /// A FARM-1 in State S1 (Open) with the three flags and the FARM-B Counter at 0, expecting
+    /// A FARM-1 in State S1 (Open) with the Retransmit Flag and the FARM-B Counter at 0, expecting
     /// `v_r` as the next N(S) (232.1 §6.1; OI-58).
     #[must_use]
     pub fn new(config: Farm1Config, v_r: FrameSeqNum) -> Farm1 {
         Farm1 {
             config,
             state: Farm1State::Open,
-            lockout: false,
-            wait: false,
             retransmit: false,
             v_r,
             farm_b_counter: FarmBCounter::default(),
@@ -406,16 +400,16 @@ impl Farm1 {
         self.v_r
     }
 
-    /// The Lockout Flag (232.1 §6.1.3; API-056).
+    /// The Lockout Flag: set exactly in State S3 (232.1 §6.1.3; OI-64; API-056).
     #[must_use]
     pub const fn lockout_flag(&self) -> bool {
-        self.lockout
+        matches!(self.state, Farm1State::Lockout)
     }
 
-    /// The Wait Flag (232.1 §6.1.4; API-056).
+    /// The Wait Flag: set exactly in State S2 (232.1 §6.1.4; OI-64; API-056).
     #[must_use]
     pub const fn wait_flag(&self) -> bool {
-        self.wait
+        matches!(self.state, Farm1State::Wait)
     }
 
     /// The Retransmit Flag (232.1 §6.1.5; API-056).
@@ -434,7 +428,7 @@ impl Farm1 {
     /// §6.3.2.4, Table 6-1; COP-035).
     ///
     /// A pure query: it changes no state and may be asked at any time. The CLCW carries COP in
-    /// Effect `01`, the configured VCID and Status Field, the three flags, the FARM-B Counter,
+    /// Effect `01`, the configured VCID and Status Field, the three flags (two derived from the State), the FARM-B Counter,
     /// V(R) as the Report Value, and the physical-layer flags last set.
     #[must_use]
     pub const fn clcw(&self) -> Clcw {
@@ -444,8 +438,8 @@ impl Farm1 {
             vc_id: self.config.vc_id,
             no_rf_available: self.no_rf_available,
             no_bit_lock: self.no_bit_lock,
-            lockout: self.lockout,
-            wait: self.wait,
+            lockout: self.lockout_flag(),
+            wait: self.wait_flag(),
             retransmit: self.retransmit,
             farm_b_counter: self.farm_b_counter,
             report_value: self.v_r,
@@ -608,13 +602,16 @@ impl Farm1 {
                 Farm1Action::IncrementVr => now.v_r = now.v_r.next(),
                 Farm1Action::SetVr => now.v_r = ctx.v_star,
                 Farm1Action::SetRetransmitFlag(value) => now.retransmit = value,
-                Farm1Action::SetWaitFlag(value) => now.wait = value,
-                Farm1Action::SetLockoutFlag(value) => now.lockout = value,
                 Farm1Action::IncrementFarmBCounter => {
                     now.farm_b_counter = now.farm_b_counter.next();
                 }
-                // Event E11 reports the state through `clcw`: nothing to change or return.
-                Farm1Action::GenerateClcw => {}
+                // Event E11 reports the state through `clcw`: nothing to change or return. The
+                // Wait and Lockout Flags are functions of the State variable (232.1 §6.1.3,
+                // §6.1.4; OI-64): a test checks the table's actions on them against the next
+                // state, and they are not applied.
+                Farm1Action::GenerateClcw
+                | Farm1Action::SetWaitFlag(_)
+                | Farm1Action::SetLockoutFlag(_) => {}
             }
         }
         if matches!(event, Farm1Event::E7) {
@@ -694,6 +691,38 @@ mod tests {
         // The const evaluation of the bound, run once more at run time for the coverage gate.
         assert_eq!(longest_cell(), longest);
         assert_eq!(FARM1_MAX_ACTIONS, 3);
+    }
+
+    #[test]
+    fn flag_actions_of_every_cell_agree_with_the_next_state() {
+        // req: COP-002, COP-003, RS-021
+        // The Lockout and Wait Flags are functions of the State (232.1 §6.1.3, §6.1.4; OI-64).
+        // Starting from the flags the state implies, the flag actions of a cell must leave the
+        // flags the next state implies. The one exception is (S2, E5), which OI-64 names.
+        for (s, state) in STATES.into_iter().enumerate() {
+            for (e, event) in EVENTS.into_iter().enumerate() {
+                let cell = FARM1_TABLE[s][e];
+                let Some(next) = cell.next_state else {
+                    continue;
+                };
+                let mut lockout = state == Farm1State::Lockout;
+                let mut wait = state == Farm1State::Wait;
+                for action in cell.actions {
+                    match *action {
+                        Farm1Action::SetLockoutFlag(v) => lockout = v,
+                        Farm1Action::SetWaitFlag(v) => wait = v,
+                        _ => {}
+                    }
+                }
+                assert_eq!(lockout, next == Farm1State::Lockout, "{state:?} {event:?}");
+                let exception = state == Farm1State::Wait && event == Farm1Event::E5;
+                assert_eq!(
+                    wait,
+                    next == Farm1State::Wait || exception,
+                    "{state:?} {event:?}"
+                );
+            }
+        }
     }
 
     fn ctx() -> Context<'static> {
