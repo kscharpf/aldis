@@ -3,6 +3,9 @@
 //! Format, clippy, rustdoc, tests, the bare-metal clippy build, and `xtask ci`, then the extras of
 //! each directory the change touches (the paths that differ from `origin/main`, committed or
 //! not). Stops at the first failure. An extra whose tool is not installed is skipped and reported.
+//! One run at a time per worktree (`check_lock`). `check --from <step>` skips the steps before the
+//! named one, to go on after a failure without redoing what passed; such a run ends `partial`,
+//! never `passed`.
 //!
 //! Every command of the gate's `fmt`, `clippy`, and `test` scripts (`verify/checks.rs`) is a step
 //! here, with `--locked` as the gate passes it, so that a change that passes `check` does not fail
@@ -14,7 +17,7 @@
 use std::process::Command;
 use std::time::{Duration, Instant};
 
-use crate::repo;
+use crate::{check_lock, repo};
 
 /// What a step does.
 enum Action {
@@ -373,8 +376,28 @@ fn fmt_duration(d: Duration) -> String {
     }
 }
 
+/// The step `check --from` names, or `None` for a whole run.
+fn parse_args<'a>(args: &[&'a str]) -> Result<Option<&'a str>, String> {
+    match args {
+        [] => Ok(None),
+        ["--from", step] => Ok(Some(step)),
+        _ => Err("usage: cargo xtask check [--from <step>]".into()),
+    }
+}
+
+/// The position of the step `from` in `names`, or an error that lists them.
+fn from_index(names: &[&str], from: &str) -> Result<usize, String> {
+    names.iter().position(|n| *n == from).ok_or_else(|| {
+        format!(
+            "check --from: no step named `{from}`; the steps are: {}",
+            names.join(", ")
+        )
+    })
+}
+
 /// Runs the plan; `Ok(0)` when every step passed.
-pub fn run() -> Result<usize, String> {
+pub fn run(args: &[&str]) -> Result<usize, String> {
+    let from = parse_args(args)?;
     let (touched, note) = match changed_paths() {
         Some(paths) => (touched(&paths), None),
         None => (
@@ -395,8 +418,17 @@ pub fn run() -> Result<usize, String> {
     }
     let (items, skipped) = plan(&touched, tools());
     let total = items.len();
+    let first = match from {
+        Some(step) => from_index(&items.iter().map(|i| i.name).collect::<Vec<_>>(), step)?,
+        None => 0,
+    };
+    let _lock = check_lock::acquire()?;
+    let before: Vec<&str> = items.iter().take(first).map(|i| i.name).collect();
+    let partial = from.map_or_else(String::new, |step| {
+        format!(" (partial: --from {step} skipped {})", before.join(", "))
+    });
     let mut ran: Vec<String> = Vec::new();
-    for (i, item) in items.iter().enumerate() {
+    for (i, item) in items.iter().enumerate().skip(first) {
         println!("check: [{}/{total}] {}", i + 1, item.name);
         let started = Instant::now();
         let ok = match &item.action {
@@ -418,7 +450,7 @@ pub fn run() -> Result<usize, String> {
         println!("check: [{}/{total}] {} ({took})", i + 1, item.name);
         if !ok {
             println!(
-                "check: FAILED at {} ({took}); ran: {}",
+                "check: FAILED at {} ({took}); ran: {}{partial}",
                 item.name,
                 ran.join(", ")
             );
@@ -426,7 +458,15 @@ pub fn run() -> Result<usize, String> {
         }
         ran.push(format!("{} ({took})", item.name));
     }
-    println!("check: passed: {}", ran.join(", "));
+    if let Some(step) = from {
+        println!(
+            "check: partial, not a pass: ran from {step}: {}; skipped by --from: {}",
+            ran.join(", "),
+            before.join(", ")
+        );
+    } else {
+        println!("check: passed: {}", ran.join(", "));
+    }
     for s in &skipped {
         println!("check: skipped: {s}");
     }
@@ -436,7 +476,8 @@ pub fn run() -> Result<usize, String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        Action, DOC_ENV, SEPARATE_WORKSPACES, Tools, Touched, fmt_duration, plan, touched,
+        Action, DOC_ENV, SEPARATE_WORKSPACES, Tools, Touched, fmt_duration, from_index, parse_args,
+        plan, touched,
     };
     use crate::verify::{CHECK_ENV, CLIPPY, FMT, TEST};
     use std::time::Duration;
@@ -466,6 +507,23 @@ mod tests {
         assert_eq!(fmt_duration(Duration::from_secs(60)), "1m00s");
         assert_eq!(fmt_duration(Duration::from_secs(42)), "42s");
         assert_eq!(fmt_duration(Duration::from_millis(340)), "0.3s");
+    }
+
+    #[test]
+    fn from_names_a_step_of_the_plan() {
+        // req: VER-068
+        assert_eq!(parse_args(&[]), Ok(None));
+        assert_eq!(parse_args(&["--from", "test"]), Ok(Some("test")));
+        assert!(parse_args(&["--from"]).is_err());
+        assert!(parse_args(&["--quick"]).is_err());
+        let (n, _) = names(&Touched::default(), NONE);
+        assert_eq!(from_index(&n, "fmt"), Ok(0));
+        assert_eq!(from_index(&n, "test"), Ok(3));
+        let err = from_index(&n, "tset").unwrap_err();
+        assert!(
+            err.contains("`tset`") && err.contains("fmt, clippy, doc, test"),
+            "{err}"
+        );
     }
 
     #[test]

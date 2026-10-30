@@ -7,6 +7,7 @@ mod assurance;
 mod binaries;
 mod changelog;
 mod check;
+mod check_lock;
 mod consistency;
 mod coverage;
 mod features;
@@ -115,7 +116,9 @@ commands:
                                bare-metal clippy build, ci, then the extras of each touched
                                directory (aldis-core, aldis-ffi, refapp/, and the fmt of
                                exerciser/, fuzz/, crosscheck/); the commands of the merge
-                               gate; stops at the first failure
+                               gate; stops at the first failure; one run at a time per
+                               worktree; `check --from <step>` skips the steps before the
+                               named one and ends `partial`, which is not a pass
   ci                           the quick checks of the verification run, without a build:
                                spec-lint, links, layers, consistency, rs020, loops,
                                restricted, assurance --strict, refapp-deps, vectors validate,
@@ -238,7 +241,7 @@ fn run(args: &[&str]) -> Result<usize, String> {
         ["changelog", "show"] => changelog::show(),
         ["changelog", "release", version, date] => changelog::release(version, date),
         ["ci"] => Ok(run_steps(CI)),
-        ["check"] => check::run(),
+        ["check", rest @ ..] => check::run(rest),
         [] | ["help" | "-h" | "--help"] => {
             print!("{HELP}{}\n{}", verify::HELP, metrics::HELP);
             Ok(0)
