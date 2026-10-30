@@ -118,7 +118,8 @@ pub const ALDIS_TM_ANOMALY_SEGMENT_LENGTH_ID_NOT_11: u32 = 1 << 1;
 /// (bit 2; 132.0 §6.4.6.2; TM-010, OI-54). Set only by the decoders that take the VC array.
 pub const ALDIS_TM_ANOMALY_ONLY_IDLE_DATA_ON_SDLS_VC: u32 = 1 << 2;
 
-/// Managed parameters of a physical channel (132.0 §5.1 Table 5-1; TM-001, API-041). The configuration `aldis_tm_peek_length` takes (M2 plan D14).
+/// Managed parameters of a physical channel (132.0 §5.1 Table 5-1; TM-001, API-041). The
+/// configuration `aldis_tm_peek_length` takes (M2 plan D14).
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct aldis_tm_config_t {
@@ -297,7 +298,8 @@ pub struct aldis_tm_header_t {
 pub struct aldis_tm_layout_t {
     /// Transfer Frame Length: the octets the frame takes (132.0 §4.1.1.2; API-012).
     pub frame_len: usize,
-    /// The range of the Secondary Header Data Field, after the Identification Field; length 0 without a Secondary Header (§4.1.3.3).
+    /// The range of the Secondary Header Data Field, after the Identification Field; length 0
+    /// without a Secondary Header (§4.1.3.3).
     pub fsh_data: aldis_range_t,
     /// The range of the Security Header; length 0 without SDLS (§6.3.4).
     pub security_header: aldis_range_t,
@@ -602,7 +604,8 @@ pub unsafe extern "C" fn aldis_tm_config_check(
 /// configured twice (132.0 §4.1.3.1.4, §4.1.5.2); CABI-022 violations.
 ///
 /// # Safety
-/// `mc` is valid for a read; `vcs` is valid for reads of `vc_count` structs (or `NULL` with 0); `err` is `NULL` or valid for one write.
+/// `mc` is valid for a read; `vcs` is valid for reads of `vc_count` structs (or `NULL` with 0);
+/// `err` is `NULL` or valid for one write.
 #[expect(
     unsafe_code,
     reason = "C ABI entry point: unmangled, takes raw pointers (GEN-071)"

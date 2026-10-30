@@ -6,9 +6,8 @@
 //! misaligned for its type, or when its range wraps the address space; an output buffer is
 //! rejected when it overlaps an input buffer of the same call, so that no shared and mutable
 //! Rust references alias (GEN-071). Each rejection is `ALDIS_ERR_INVALID_FIELD` with field 0 and
-//! no detail. What cannot be checked, that a
-//! non-`NULL` pointer is valid for the access, is the caller's part of the contract, stated in
-//! every function's `# Safety` section.
+//! no detail. What cannot be checked, that a non-`NULL` pointer is valid for the access, is the
+//! caller's part of the contract, stated in every function's `# Safety` section.
 
 use core::marker::PhantomData;
 use core::ptr::NonNull;

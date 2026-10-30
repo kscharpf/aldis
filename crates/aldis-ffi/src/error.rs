@@ -4,8 +4,8 @@
 //! catalogue (03-api-model.md §9), one `ALDIS_ERR_*` constant per kind, declared by
 //! [`aldis_status`], which `cargo xtask status --write` generates from that table (the module
 //! `status`, re-exported here). A code is `ErrorKind::code()` and is never renumbered; the build
-//! checks each constant against its `ErrorKind`. An optional [`aldis_error_detail_t`] receives the kind, the field code,
-//! and the detail of the error.
+//! checks each constant against its `ErrorKind`. An optional [`aldis_error_detail_t`] receives the
+//! kind, the field code, and the detail of the error.
 
 use aldis::core::{Error, ErrorDetail};
 
