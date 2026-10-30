@@ -5,12 +5,17 @@ use core::hint::black_box as bb;
 use core::num::NonZeroU8;
 
 use aldis_cop1::{
-    Directive, Fop1, Fop1Config, Fop1Event, Fop1Input, Fop1Output, Fop1State, Fop1Target,
-    FrameKind, SuspendState, TimeoutType, fop1_max_actions,
+    Directive, Fop1, Fop1Channel, Fop1Config, Fop1Event, Fop1Input, Fop1Output, Fop1State,
+    Fop1Target, FrameKind, SuspendState, TimeoutType, fop1_max_actions,
 };
 use aldis_core::ids::FrameSeqNum;
+use aldis_core::security::SecurityLayout;
 use aldis_core::time::{Duration, Instant};
 use aldis_tc::{Clcw, ClcwStatus, CopInEffect, FarmBCounter, TcSpacecraftId, TcVcId};
+use aldis_uslp::{
+    MapConfig, PhysicalChannelConfig, TfdfHeader, TfdzRule, TransferFrameType, Upid, UslpMapId,
+    UslpSpacecraftId, UslpVcId, VcConfig, VcParams, VcfCountLen,
+};
 
 use crate::exercise::Tally;
 
@@ -53,7 +58,10 @@ fn fresh(t: &mut Tally) -> Option<Engine> {
     )
     .ok()?;
     t.check(target.max_frame_len() == F && target.max_fdu_len() == F - 7);
-    t.check(target.spacecraft_id().get() == 42 && target.vc_id().get() == 1);
+    t.check(matches!(
+        target.channel(),
+        Fop1Channel::Tc { spacecraft_id, vc_id } if spacecraft_id.get() == 42 && vc_id.get() == 1
+    ));
     let config = Fop1Config {
         target,
         t1_initial: Duration::from_micros(bb(1000)),
@@ -76,7 +84,7 @@ fn fresh(t: &mut Tally) -> Option<Engine> {
     t.check(f.transmission_limit().get() == 2 && f.timeout_type() == TimeoutType::Tt0);
     t.check(f.transmission_count() == 1 && f.suspend_state() == SuspendState::NotSuspended);
     t.check(f.sent_queue_len() == 0 && !f.wait_queue_occupied() && f.next_deadline().is_none());
-    t.check(f.out_flag_ready(FrameKind::Ad) && f.target().vc_id().get() == 1);
+    t.check(f.out_flag_ready(FrameKind::Ad) && f.target().max_frame_len() == F);
     Some(f)
 }
 
@@ -162,6 +170,122 @@ fn inputs(t: &mut Tally, f: &Engine) -> Option<()> {
     Some(())
 }
 
+/// The USLP target: a channel it refuses, one it accepts, and the frames of an engine on it.
+fn uslp_target(t: &mut Tally) -> Option<()> {
+    let scid = UslpSpacecraftId::new(bb(0x155))?;
+    let vcid = UslpVcId::new(bb(1))?;
+    let physical = PhysicalChannelConfig::new(TransferFrameType::Variable, bb(F), 0, true).ok()?;
+    let params = VcParams {
+        vcf_count_len_sequence: VcfCountLen::new(bb(1)).ok()?,
+        ..VcParams::new(TransferFrameType::Variable)
+    };
+    let vc = VcConfig::new(scid, vcid, params).ok()?;
+    let map = MapConfig::new(scid, vcid, UslpMapId::new(bb(2))?, SecurityLayout::NONE);
+    let tfdf = TfdfHeader {
+        rule: TfdzRule::NoSegmentation,
+        upid: Upid::OnlyIdleData,
+    };
+    let refused = VcConfig::new(
+        scid,
+        vcid,
+        VcParams {
+            vcf_count_len_sequence: VcfCountLen::new(bb(2)).ok()?,
+            ..VcParams::new(TransferFrameType::Variable)
+        },
+    )
+    .ok()?;
+    t.check(Fop1Target::uslp(physical, refused, map, tfdf).is_err());
+    let target = Fop1Target::uslp(physical, vc, map, tfdf).ok()?;
+    t.check(matches!(target.channel(), Fop1Channel::Uslp { .. }));
+    t.check(target.max_frame_len() == F && target.max_fdu_len() == F - 11);
+    let f = Engine::new(Fop1Config {
+        target,
+        t1_initial: Duration::from_micros(bb(1000)),
+        transmission_limit: NonZeroU8::new(bb(2))?,
+        timeout_type: TimeoutType::Tt0,
+        sliding_window_k: bb(2),
+        ad_repetitions: bb(1),
+        bc_repetitions: bb(1),
+    })
+    .ok()?;
+    uslp_frames(t, &f)
+}
+
+/// The frames of an engine on the USLP target: Type-BC, Type-AD, and Type-BD.
+fn uslp_frames(t: &mut Tally, f: &Engine) -> Option<()> {
+    let mut out = [0_u8; F];
+    // A Type-BC frame with the Unlock command, then a Type-AD and a Type-BD frame.
+    let (f, actions) = f
+        .step(
+            bb(Fop1Input::Directive {
+                handle: bb(1),
+                directive: Directive::InitiateAdWithUnlock,
+            }),
+            Instant::from_micros(0),
+            &mut out,
+        )
+        .ok()?;
+    t.check(actions.iter().any(|a| {
+        matches!(
+            a,
+            Fop1Output::Transmit {
+                kind: FrameKind::Bc,
+                ..
+            }
+        )
+    }));
+    let f = step(
+        &f,
+        Fop1Input::TransmitDone {
+            kind: FrameKind::Bc,
+            accepted: true,
+        },
+        1,
+        &mut out,
+    )?;
+    let f = step(&f, clcw(false, false, false, 0)?, 2, &mut out)?;
+    let fdu = bb([0xA0_u8, 1]);
+    let (f, actions) = f
+        .step(
+            bb(Fop1Input::RequestAd {
+                handle: bb(2),
+                fdu: &fdu,
+            }),
+            Instant::from_micros(3),
+            &mut out,
+        )
+        .ok()?;
+    t.check(actions.iter().any(|a| {
+        matches!(
+            a,
+            Fop1Output::Transmit {
+                kind: FrameKind::Ad,
+                ..
+            }
+        )
+    }));
+    let (_, actions) = f
+        .step(
+            bb(Fop1Input::RequestBd {
+                handle: bb(3),
+                fdu: &fdu,
+            }),
+            Instant::from_micros(4),
+            &mut out,
+        )
+        .ok()?;
+    t.check(actions.iter().any(|a| {
+        matches!(
+            a,
+            Fop1Output::Transmit {
+                kind: FrameKind::Bd,
+                ..
+            }
+        )
+    }));
+    Some(())
+}
+
 /// Every public FOP-1 API.
 pub fn run(t: &mut Tally) {
     t.check(fop1_max_actions(bb(Q)) == N);
@@ -170,5 +294,7 @@ pub fn run(t: &mut Tally) {
         return;
     };
     let ran = inputs(t, &f).is_some();
+    t.check(ran);
+    let ran = uslp_target(t).is_some();
     t.check(ran);
 }

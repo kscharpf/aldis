@@ -25,9 +25,11 @@ FARM-1 protocol states (232.1 §6.2): S1 (`Open`), S2 (`Wait`), S3 (`Lockout`).
 
 ### 2.1 Configuration (managed parameters, §7.2)
 
-`Fop1Config { target: Fop1Target (a TC Virtual Channel without Segment Header or SDLS; USLP VC+MAP not yet built), t1_initial: Duration ≥ 1 µs, transmission_limit: 1..=255, timeout_type: TT0 | TT1, sliding_window_k: 1..=min(255, Q) (≤ PW of the peer FARM), bc_repetitions, ad_repetitions }`
+`Fop1Config { target: Fop1Target (a TC Virtual Channel without Segment Header or SDLS, or, with the feature `uslp`, a USLP VC and MAP of a variable-length Physical Channel with a one-octet sequence-controlled VCF Count, no expedited count, and no SDLS fields; COP-010, USLP-013), t1_initial: Duration ≥ 1 µs, transmission_limit: 1..=255, timeout_type: TT0 | TT1, sliding_window_k: 1..=min(255, Q) (≤ PW of the peer FARM), bc_repetitions, ad_repetitions }`
 
 Capacities (compile-time): `Fop1<Q, F, N>` holds a Sent_Queue of `Q ≥ K` frames of at most `F` octets (`F` ≥ the Maximum Transfer Frame Length, at most 1024 for TC), and returns at most `N ≥ fop1_max_actions(Q)` actions per input, checked when the type is built (COP-006). One input writes at most one frame to the output area (API-062).
+
+**The USLP target** (feature `uslp`; `Fop1Target::uslp(physical, vc, map, tfdf)`, COP-010, USLP-013). FOP-1 supplies what 732.1 §4.2.7.4 gives it: the Bypass/Sequence Control and Protocol Control Command Flags and the Frame Sequence Number. A Type-AD frame is `00` with N(S) in the VCF Count, a Type-BD frame `10`, and a Type-BC frame `11` with the UPID "COP-1 Control Commands", rule `111`, and the Unlock or Set V(R) command as its TFDZ (decodable with the TC parser, USLP-013). The FDU of a Type-AD or Type-BD request is the TFDZ, under the TFDF Header `tfdf` of the target. The constructor refuses, once, a channel that FOP-1 could not fill: a fixed-length Physical Channel or VC (the TFDZ of a command is one or three octets), a VC with a truncated frame length (OI-48), a sequence-controlled VCF Count Length other than one octet (N(S) is modulo 256, 232.1 §5.1.3) or an expedited one other than none (FOP-1 keeps no expedited counter, 732.1 §4.1.2.12.5), SDLS fields on the VC or the MAP, a rule of a fixed-length TFDZ, and a frame too short for Set V(R). A frame has no Insert Zone and no OCF; the OCF of the return link is the CLCW that FOP-1 reads.
 
 ### 2.2 Inputs
 
