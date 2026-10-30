@@ -234,6 +234,24 @@ impl ScenarioFile {
                 return Err(format!("setup {:?} is defined twice", setup.name));
             }
         }
+        // Every setup is checked, whether or not a scenario uses it.
+        for setup in &self.setups {
+            let mut next = setup.extends.as_deref();
+            let mut hops = 0;
+            while let Some(name) = next {
+                let parent = by_name.get(name).ok_or_else(|| {
+                    format!(
+                        "setup {:?} extends {name:?}, which does not exist",
+                        setup.name
+                    )
+                })?;
+                hops += 1;
+                if hops > self.setups.len() {
+                    return Err(format!("setup {:?} extends in a loop", setup.name));
+                }
+                next = parent.extends.as_deref();
+            }
+        }
         let mut out = Vec::with_capacity(self.scenarios.len());
         for scenario in &self.scenarios {
             let mut chain: Vec<&Setup> = Vec::new();
@@ -242,9 +260,6 @@ impl ScenarioFile {
                 let setup = by_name
                     .get(name)
                     .ok_or_else(|| format!("{}: the setup {name:?} does not exist", scenario.id))?;
-                if chain.len() > self.setups.len() {
-                    return Err(format!("{}: the setups loop at {name:?}", scenario.id));
-                }
                 chain.push(setup);
                 next = setup.extends.as_deref();
             }
@@ -271,35 +286,36 @@ pub struct Step {
     pub input: Map<String, Value>,
     /// Complete, ordered outputs expected before the next step; anything else is a failure.
     pub expect: Vec<Map<String, Value>>,
-    /// Expected engine state after the step.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub expect_state: Option<String>,
-    /// Expected `next_deadline` after the step, in microseconds: absent means not asserted,
-    /// `null` means no deadline, a number is the deadline.
+    /// Expected engine state after the step; absent means not asserted (`null` is refused).
     #[serde(
         default,
-        deserialize_with = "present_or_null",
+        deserialize_with = "not_null",
         skip_serializing_if = "Option::is_none"
     )]
-    #[cfg_attr(feature = "schema", schemars(with = "Option<u64>"))]
-    #[expect(
-        clippy::option_option,
-        reason = "three states are the point: absent, null (no deadline), a number"
+    #[cfg_attr(feature = "schema", schemars(with = "String"))]
+    pub expect_state: Option<String>,
+    /// Expected `next_deadline` after the step, in microseconds; absent means not asserted
+    /// (`null` is refused). To assert that there is no deadline, set `expect_no_timeout`.
+    #[serde(
+        default,
+        deserialize_with = "not_null",
+        skip_serializing_if = "Option::is_none"
     )]
-    pub expect_timeout_us: Option<Option<u64>>,
+    #[cfg_attr(feature = "schema", schemars(with = "u64"))]
+    pub expect_timeout_us: Option<u64>,
+    /// Expected `next_deadline` is none. Not together with `expect_timeout_us`.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub expect_no_timeout: bool,
 }
 
-/// Reads a key that is present as `Some(value)`, where `null` is `Some(None)`; a key that is
-/// absent stays `None` through `#[serde(default)]`.
-#[expect(
-    clippy::option_option,
-    reason = "three states are the point: absent, null (no deadline), a number"
-)]
-fn present_or_null<'de, D>(deserializer: D) -> Result<Option<Option<u64>>, D::Error>
+/// Reads a key that is present as `Some(value)`; `null` is an error, so that one reading of
+/// `null` holds for every key of a step: it is not accepted.
+fn not_null<'de, D, T>(deserializer: D) -> Result<Option<T>, D::Error>
 where
     D: serde::Deserializer<'de>,
+    T: Deserialize<'de>,
 {
-    Option::<u64>::deserialize(deserializer).map(Some)
+    T::deserialize(deserializer).map(Some)
 }
 
 /// Kind of a field-catalogue entry (03-api-model.md §9.1).
@@ -379,7 +395,7 @@ mod tests {
       "setups": [
         {"name": "one", "steps": [{"at_us": 0, "input": {"x": 1}, "expect": []}]},
         {"name": "two", "extends": "one",
-         "steps": [{"at_us": 5, "input": {"x": 2}, "expect": [], "expect_timeout_us": null}]}
+         "steps": [{"at_us": 5, "input": {"x": 2}, "expect": [], "expect_no_timeout": true}]}
       ],
       "scenarios": [
         {"id": "s", "requirements": ["COP-001"], "setup": "two",
@@ -404,31 +420,65 @@ mod tests {
     }
 
     #[test]
-    fn the_deadline_is_absent_null_or_a_number() {
+    fn the_deadline_is_absent_a_number_or_none() {
         // req: TV-010
         let Ok(VectorFile::EngineScenario(file)) = VectorFile::from_json(FILE) else {
             panic!("not a scenario file");
         };
-        assert_eq!(file.setups[0].steps[0].expect_timeout_us, None);
-        assert_eq!(file.setups[1].steps[0].expect_timeout_us, Some(None));
-        assert_eq!(file.scenarios[0].steps[0].expect_timeout_us, Some(Some(7)));
+        let step = &file.setups[0].steps[0];
+        assert_eq!(
+            (step.expect_timeout_us, step.expect_no_timeout),
+            (None, false)
+        );
+        let step = &file.setups[1].steps[0];
+        assert_eq!(
+            (step.expect_timeout_us, step.expect_no_timeout),
+            (None, true)
+        );
+        assert_eq!(file.scenarios[0].steps[0].expect_timeout_us, Some(7));
+    }
+
+    #[test]
+    fn null_is_refused_everywhere() {
+        // req: TV-010
+        let null_deadline = FILE.replace("\"expect_timeout_us\": 7", "\"expect_timeout_us\": null");
+        assert!(VectorFile::from_json(&null_deadline).is_err());
+        let null_state = FILE.replace(
+            "\"x\": 3}, \"expect\": []",
+            "\"x\": 3}, \"expect\": [], \"expect_state\": null",
+        );
+        assert!(VectorFile::from_json(&null_state).is_err());
     }
 
     #[test]
     fn unknown_and_looping_setups_are_refused() {
         // req: TV-010
-        let missing = FILE.replace("\"setup\": \"two\"", "\"setup\": \"nope\"");
-        let Ok(VectorFile::EngineScenario(file)) = VectorFile::from_json(&missing) else {
-            panic!("not a scenario file");
+        let resolve = |text: &str| {
+            let Ok(VectorFile::EngineScenario(file)) = VectorFile::from_json(text) else {
+                panic!("not a scenario file");
+            };
+            file.resolve().map(|r| r.len())
         };
-        assert!(file.resolve().is_err());
+        assert_eq!(resolve(FILE), Ok(2));
+        let missing = FILE.replace("\"setup\": \"two\"", "\"setup\": \"nope\"");
+        assert!(resolve(&missing).is_err());
         let looped = FILE.replace(
             "\"name\": \"one\",",
             "\"name\": \"one\", \"extends\": \"two\",",
         );
-        let Ok(VectorFile::EngineScenario(file)) = VectorFile::from_json(&looped) else {
-            panic!("not a scenario file");
+        assert!(resolve(&looped).is_err());
+        // A setup that no scenario uses is checked too: a dangling extends and a loop.
+        let unused = |extra: &str| {
+            FILE.replace(
+                "{\"name\": \"two\"",
+                &format!("{extra}, {{\"name\": \"two\""),
+            )
         };
-        assert!(file.resolve().is_err());
+        let dangling = unused("{\"name\": \"u\", \"extends\": \"gone\", \"steps\": []}");
+        assert!(resolve(&dangling).is_err());
+        let cycle = unused(
+            "{\"name\": \"u\", \"extends\": \"v\", \"steps\": []}, {\"name\": \"v\", \"extends\": \"u\", \"steps\": []}",
+        );
+        assert!(resolve(&cycle).is_err());
     }
 }

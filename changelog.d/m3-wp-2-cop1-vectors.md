@@ -5,4 +5,4 @@
 ### Changed
 - `docs/09-open-issues.md`: OI-59 (FOP-1 start-up values), OI-60 (NN(R) after a purge), OI-61 (the two Accepts of E21 and E45), resolved by the maintainer; `docs/standards/cop1.md` records the Abort Request action, event precedence, and `StateChanged` rules.
 - `cargo xtask trace` ignores vectors that no runner runs yet; OI-62 (E15 precedence) opened.
-- `aldis-testkit`: an engine-scenario file holds many scenarios with named, shared setups (`ScenarioFile::resolve`); `expect_timeout_us` is absent, `null` (no deadline), or a value. `cargo xtask vectors generated` fails when `test-vectors/cop1/` differs from what the model writes.
+- `aldis-testkit`: an engine-scenario file holds many scenarios with named, shared setups (`ScenarioFile::resolve`); `expect_timeout_us` is a deadline and `expect_no_timeout` asserts none (`null` is refused); the released-file check treats setups as append-only. `cargo xtask vectors generated` fails when `test-vectors/cop1/` differs from what the model writes.

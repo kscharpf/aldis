@@ -77,7 +77,7 @@ An expected error may also give `field`: the code, from the field catalogue in [
       { "at_us": 0, "input": { "directive": { "handle": 1, "type": "initiate_ad_without_clcw_check" } },
         "expect": [ { "event": "directive_notify", "handle": 1, "type": "accept" },
                     { "event": "directive_notify", "handle": 1, "type": "positive_confirm" } ],
-        "expect_state": "S1", "expect_timeout_us": null } ] }
+        "expect_state": "S1", "expect_no_timeout": true } ] }
   ],
   "scenarios": [
     { "id": "fop1-first-ad",
@@ -92,11 +92,11 @@ An expected error may also give `field`: the code, from the field catalogue in [
 }
 ```
 
-One file holds many scenarios. The provenance, the `config`, and the named `setups` are given once per file. A setup is an input sequence that reaches a state, with its expectations; it may `extends` another setup. A scenario names a `setup` (optional), may replace the `config`, and lists only its own steps; the steps that run are the setup chain and then the scenario's. `expect_timeout_us` is absent (not asserted), `null` (no deadline), or the deadline.
+One file holds many scenarios. The provenance, the `config`, and the named `setups` are given once per file. A setup is an input sequence that reaches a state, with its expectations; it may `extends` another setup. A scenario names a `setup` (optional), may replace the `config`, and lists only its own steps; the steps that run are the setup chain and then the scenario's. `expect_timeout_us` is the deadline, `expect_no_timeout: true` asserts that there is none, and neither asserts nothing; `null` is not a value anywhere in a step.
 
 | ID | Requirement | Source | Verif. |
 |---|---|---|---|
-| TV-010 | Scenario steps SHALL supply an absolute `at_us` instant and one input. They SHALL list the **complete, ordered** set of outputs expected before the next step: transmits, deliveries, and events. They MAY assert state and the next timeout (absent, `null` for none, or a value). | GEN-030 | I |
+| TV-010 | Scenario steps SHALL supply an absolute `at_us` instant and one input. They SHALL list the **complete, ordered** set of outputs expected before the next step: transmits, deliveries, and events. They MAY assert state and the next timeout (`expect_timeout_us` for a deadline, `expect_no_timeout` for none). | GEN-030 | I |
 | TV-011 | The state-table vectors (`cop1/scenarios/fop1_table.json`, `cop1/scenarios/farm1_table.json`) SHALL contain one scenario per table cell. Each case gives a setup sequence that reaches the cell's state, the triggering event, and the expected actions and next state (COP-005). | COP-005 | V |
 | TV-012 | Harnesses SHALL fail on any **unexpected** output, not only on missing ones. | — | T |
 

@@ -10,8 +10,8 @@
       "description": "Frames numbered 254, 255, 0; N(R) = 0 acknowledges the first two across the wrap; N(R) = 2 afterwards is invalid.",
       "requirements": ["COP-001", "COP-012"],
       "steps": [
-        {"at_us": 0, "input": {"directive": {"handle": 1, "type": "set_v_s", "value": 254}}, "expect": [{"event": "directive_notify", "handle": 1, "type": "accept"}, {"event": "directive_notify", "handle": 1, "type": "positive_confirm"}], "expect_state": "S6", "expect_timeout_us": null},
-        {"at_us": 1000, "input": {"directive": {"handle": 2, "type": "initiate_ad_without_clcw_check"}}, "expect": [{"event": "directive_notify", "handle": 2, "type": "accept"}, {"event": "directive_notify", "handle": 2, "type": "positive_confirm"}], "expect_state": "S1", "expect_timeout_us": null},
+        {"at_us": 0, "input": {"directive": {"handle": 1, "type": "set_v_s", "value": 254}}, "expect": [{"event": "directive_notify", "handle": 1, "type": "accept"}, {"event": "directive_notify", "handle": 1, "type": "positive_confirm"}], "expect_state": "S6", "expect_no_timeout": true},
+        {"at_us": 1000, "input": {"directive": {"handle": 2, "type": "initiate_ad_without_clcw_check"}}, "expect": [{"event": "directive_notify", "handle": 2, "type": "accept"}, {"event": "directive_notify", "handle": 2, "type": "positive_confirm"}], "expect_state": "S1", "expect_no_timeout": true},
         {"at_us": 2000, "input": {"request_ad": {"handle": 3, "data_hex": "A003"}}, "expect": [{"event": "transfer_notify", "handle": 3, "type": "accept"}, {"transmit": {"kind": "AD", "ns": 254, "retransmission": false, "frame_hex": "002A0408FEA0039B4F"}}], "expect_state": "S1", "expect_timeout_us": 2002000},
         {"at_us": 3000, "input": {"transmit_done": {"kind": "AD", "response": "accept"}}, "expect": [], "expect_state": "S1", "expect_timeout_us": 2002000},
         {"at_us": 4000, "input": {"request_ad": {"handle": 4, "data_hex": "A004"}}, "expect": [{"event": "transfer_notify", "handle": 4, "type": "accept"}, {"transmit": {"kind": "AD", "ns": 255, "retransmission": false, "frame_hex": "002A0408FFA004DC98"}}], "expect_state": "S1", "expect_timeout_us": 2004000},
@@ -19,8 +19,8 @@
         {"at_us": 6000, "input": {"request_ad": {"handle": 5, "data_hex": "A005"}}, "expect": [{"event": "transfer_notify", "handle": 5, "type": "accept"}, {"transmit": {"kind": "AD", "ns": 0, "retransmission": false, "frame_hex": "002A040800A00503DA"}}], "expect_state": "S1", "expect_timeout_us": 2006000},
         {"at_us": 7000, "input": {"transmit_done": {"kind": "AD", "response": "accept"}}, "expect": [], "expect_state": "S1", "expect_timeout_us": 2006000},
         {"at_us": 8000, "input": {"clcw": {"lockout": false, "wait": false, "retransmit": false, "n_r": 0}}, "expect": [{"event": "transfer_notify", "handle": 3, "type": "positive_confirm"}, {"event": "transfer_notify", "handle": 4, "type": "positive_confirm"}], "expect_state": "S1", "expect_timeout_us": 2006000},
-        {"at_us": 9000, "input": {"clcw": {"lockout": false, "wait": false, "retransmit": false, "n_r": 1}}, "expect": [{"event": "transfer_notify", "handle": 5, "type": "positive_confirm"}], "expect_state": "S1", "expect_timeout_us": null},
-        {"at_us": 10000, "input": {"clcw": {"lockout": false, "wait": false, "retransmit": false, "n_r": 2}}, "expect": [{"event": "alert", "reason": "nn_r", "event_number": 13, "prior_state": "S1"}], "expect_state": "S6", "expect_timeout_us": null}
+        {"at_us": 9000, "input": {"clcw": {"lockout": false, "wait": false, "retransmit": false, "n_r": 1}}, "expect": [{"event": "transfer_notify", "handle": 5, "type": "positive_confirm"}], "expect_state": "S1", "expect_no_timeout": true},
+        {"at_us": 10000, "input": {"clcw": {"lockout": false, "wait": false, "retransmit": false, "n_r": 2}}, "expect": [{"event": "alert", "reason": "nn_r", "event_number": 13, "prior_state": "S1"}], "expect_state": "S6", "expect_no_timeout": true}
       ]
     },
     {
@@ -28,11 +28,11 @@
       "description": "V(S) = 255 after one frame from 254: N(R) = 2 is outside NN(R)..V(S) modulo 256 and raises Alert[NN(R)].",
       "requirements": ["COP-001", "COP-012"],
       "steps": [
-        {"at_us": 0, "input": {"directive": {"handle": 1, "type": "set_v_s", "value": 254}}, "expect": [{"event": "directive_notify", "handle": 1, "type": "accept"}, {"event": "directive_notify", "handle": 1, "type": "positive_confirm"}], "expect_state": "S6", "expect_timeout_us": null},
-        {"at_us": 1000, "input": {"directive": {"handle": 2, "type": "initiate_ad_without_clcw_check"}}, "expect": [{"event": "directive_notify", "handle": 2, "type": "accept"}, {"event": "directive_notify", "handle": 2, "type": "positive_confirm"}], "expect_state": "S1", "expect_timeout_us": null},
+        {"at_us": 0, "input": {"directive": {"handle": 1, "type": "set_v_s", "value": 254}}, "expect": [{"event": "directive_notify", "handle": 1, "type": "accept"}, {"event": "directive_notify", "handle": 1, "type": "positive_confirm"}], "expect_state": "S6", "expect_no_timeout": true},
+        {"at_us": 1000, "input": {"directive": {"handle": 2, "type": "initiate_ad_without_clcw_check"}}, "expect": [{"event": "directive_notify", "handle": 2, "type": "accept"}, {"event": "directive_notify", "handle": 2, "type": "positive_confirm"}], "expect_state": "S1", "expect_no_timeout": true},
         {"at_us": 2000, "input": {"request_ad": {"handle": 3, "data_hex": "A003"}}, "expect": [{"event": "transfer_notify", "handle": 3, "type": "accept"}, {"transmit": {"kind": "AD", "ns": 254, "retransmission": false, "frame_hex": "002A0408FEA0039B4F"}}], "expect_state": "S1", "expect_timeout_us": 2002000},
         {"at_us": 3000, "input": {"transmit_done": {"kind": "AD", "response": "accept"}}, "expect": [], "expect_state": "S1", "expect_timeout_us": 2002000},
-        {"at_us": 4000, "input": {"clcw": {"lockout": false, "wait": false, "retransmit": false, "n_r": 2}}, "expect": [{"event": "transfer_notify", "handle": 3, "type": "negative_confirm"}, {"event": "alert", "reason": "nn_r", "event_number": 13, "prior_state": "S1"}], "expect_state": "S6", "expect_timeout_us": null}
+        {"at_us": 4000, "input": {"clcw": {"lockout": false, "wait": false, "retransmit": false, "n_r": 2}}, "expect": [{"event": "transfer_notify", "handle": 3, "type": "negative_confirm"}, {"event": "alert", "reason": "nn_r", "event_number": 13, "prior_state": "S1"}], "expect_state": "S6", "expect_no_timeout": true}
       ]
     },
     {
@@ -40,14 +40,14 @@
       "description": "A K outside 1..255, a Transmission_Limit of 0, a Timeout_Type above 1, a T1_Initial of 0, a V(S) above 255, and an unknown directive are rejected; K = 2 is accepted.",
       "requirements": ["COP-001", "COP-015"],
       "steps": [
-        {"at_us": 0, "input": {"directive": {"handle": 1, "type": "set_k", "value": 0}}, "expect": [{"event": "directive_notify", "handle": 1, "type": "reject"}], "expect_state": "S6", "expect_timeout_us": null},
-        {"at_us": 1000, "input": {"directive": {"handle": 2, "type": "set_k", "value": 256}}, "expect": [{"event": "directive_notify", "handle": 2, "type": "reject"}], "expect_state": "S6", "expect_timeout_us": null},
-        {"at_us": 2000, "input": {"directive": {"handle": 3, "type": "set_k", "value": 2}}, "expect": [{"event": "directive_notify", "handle": 3, "type": "accept"}, {"event": "directive_notify", "handle": 3, "type": "positive_confirm"}], "expect_state": "S6", "expect_timeout_us": null},
-        {"at_us": 3000, "input": {"directive": {"handle": 4, "type": "set_transmission_limit", "value": 0}}, "expect": [{"event": "directive_notify", "handle": 4, "type": "reject"}], "expect_state": "S6", "expect_timeout_us": null},
-        {"at_us": 4000, "input": {"directive": {"handle": 5, "type": "set_timeout_type", "value": 2}}, "expect": [{"event": "directive_notify", "handle": 5, "type": "reject"}], "expect_state": "S6", "expect_timeout_us": null},
-        {"at_us": 5000, "input": {"directive": {"handle": 6, "type": "set_t1_initial", "value": 0}}, "expect": [{"event": "directive_notify", "handle": 6, "type": "reject"}], "expect_state": "S6", "expect_timeout_us": null},
-        {"at_us": 6000, "input": {"directive": {"handle": 7, "type": "no_such_directive"}}, "expect": [{"event": "directive_notify", "handle": 7, "type": "reject"}], "expect_state": "S6", "expect_timeout_us": null},
-        {"at_us": 7000, "input": {"directive": {"handle": 8, "type": "set_v_s", "value": 256}}, "expect": [{"event": "directive_notify", "handle": 8, "type": "reject"}], "expect_state": "S6", "expect_timeout_us": null}
+        {"at_us": 0, "input": {"directive": {"handle": 1, "type": "set_k", "value": 0}}, "expect": [{"event": "directive_notify", "handle": 1, "type": "reject"}], "expect_state": "S6", "expect_no_timeout": true},
+        {"at_us": 1000, "input": {"directive": {"handle": 2, "type": "set_k", "value": 256}}, "expect": [{"event": "directive_notify", "handle": 2, "type": "reject"}], "expect_state": "S6", "expect_no_timeout": true},
+        {"at_us": 2000, "input": {"directive": {"handle": 3, "type": "set_k", "value": 2}}, "expect": [{"event": "directive_notify", "handle": 3, "type": "accept"}, {"event": "directive_notify", "handle": 3, "type": "positive_confirm"}], "expect_state": "S6", "expect_no_timeout": true},
+        {"at_us": 3000, "input": {"directive": {"handle": 4, "type": "set_transmission_limit", "value": 0}}, "expect": [{"event": "directive_notify", "handle": 4, "type": "reject"}], "expect_state": "S6", "expect_no_timeout": true},
+        {"at_us": 4000, "input": {"directive": {"handle": 5, "type": "set_timeout_type", "value": 2}}, "expect": [{"event": "directive_notify", "handle": 5, "type": "reject"}], "expect_state": "S6", "expect_no_timeout": true},
+        {"at_us": 5000, "input": {"directive": {"handle": 6, "type": "set_t1_initial", "value": 0}}, "expect": [{"event": "directive_notify", "handle": 6, "type": "reject"}], "expect_state": "S6", "expect_no_timeout": true},
+        {"at_us": 6000, "input": {"directive": {"handle": 7, "type": "no_such_directive"}}, "expect": [{"event": "directive_notify", "handle": 7, "type": "reject"}], "expect_state": "S6", "expect_no_timeout": true},
+        {"at_us": 7000, "input": {"directive": {"handle": 8, "type": "set_v_s", "value": 256}}, "expect": [{"event": "directive_notify", "handle": 8, "type": "reject"}], "expect_state": "S6", "expect_no_timeout": true}
       ]
     }
   ]

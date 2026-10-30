@@ -91,12 +91,14 @@ fn check_by_links(
     }
 }
 
-/// Whether `a` and `b` hold the same keys with equal values, ignoring the key `skip`.
-fn same_except(a: &Map<String, Value>, b: &Map<String, Value>, skip: &str) -> bool {
+/// Whether `a` and `b` hold the same keys with equal values, ignoring the keys in `skip`.
+fn same_except(a: &Map<String, Value>, b: &Map<String, Value>, skip: &[&str]) -> bool {
     a.iter()
-        .filter(|(k, _)| *k != skip)
+        .filter(|(k, _)| !skip.contains(&k.as_str()))
         .all(|(k, v)| b.get(k) == Some(v))
-        && b.keys().filter(|k| *k != skip).all(|k| a.contains_key(k))
+        && b.keys()
+            .filter(|k| !skip.contains(&k.as_str()))
+            .all(|k| a.contains_key(k))
 }
 
 /// Problems found by comparing with the release tags, at most one per file or case. Tags are
@@ -126,7 +128,7 @@ fn check_superseded_transition(
     out: &mut ReleaseFindings<'_>,
 ) {
     let old_sup = old_obj.get("superseded");
-    if !same_except(old_obj, now_obj, "superseded")
+    if !same_except(old_obj, now_obj, &["superseded"])
         || (old_sup.is_some() && old_sup != now_obj.get("superseded"))
     {
         out.push(
@@ -170,11 +172,31 @@ fn check_against_released(
         None
     };
     if let Some(list) = list {
-        if !same_except(old_top, cur_top, list) {
+        // The named setups of a scenario file are append-only: a released setup stays as it was
+        // (a released scenario refers to it by name), and new ones may be added.
+        if !same_except(old_top, cur_top, &[list, "setups"]) {
             out.push(
                 rel,
                 format!("{rel}: file-level metadata changed since {tag} (TV-021)"),
             );
+        }
+        let cur_setups: BTreeMap<&str, &Map<String, Value>> = case_objects(cur_top, "setups")
+            .filter_map(|c| Some((c.get("name")?.as_str()?, c)))
+            .collect();
+        for old_setup in case_objects(old_top, "setups") {
+            let name = old_setup.get("name").and_then(Value::as_str).unwrap_or("?");
+            let at = format!("{rel}#setup {name}");
+            match cur_setups.get(name) {
+                None => out.push(
+                    &at,
+                    format!("{at}: setup released in {tag} was removed (TV-021)"),
+                ),
+                Some(now) if *now != old_setup => out.push(
+                    &at,
+                    format!("{at}: setup released in {tag} was modified in place (TV-021)"),
+                ),
+                Some(_) => {}
+            }
         }
         let cur_by_id: BTreeMap<&str, &Map<String, Value>> = case_objects(cur_top, list)
             .filter_map(|c| Some((c.get("id")?.as_str()?, c)))
@@ -529,6 +551,14 @@ fn check_scenario_file(
             for (k, v) in step.input.iter().chain(step.expect.iter().flatten()) {
                 check_hex(v, k, &at, problems);
             }
+        }
+        if r.steps
+            .iter()
+            .any(|s| s.expect_no_timeout && s.expect_timeout_us.is_some())
+        {
+            problems.push(format!(
+                "{at}: a step asserts a deadline and no deadline (TV-010)"
+            ));
         }
         found.push((sc.id.clone(), at, sc.superseded.is_some()));
     }
@@ -953,6 +983,53 @@ mod tests {
                 "f.json#old-001: superseded.by \"old-001\" (f.json#old-001) is itself superseded (TV-021)"
             ]
         );
+    }
+
+    #[test]
+    fn released_scenario_files_are_append_only() {
+        // req: TV-021
+        let step = json!({ "at_us": 0, "input": { "x": 1 }, "expect": [] });
+        let scenario = |id: &str| json!({ "id": id, "requirements": ["COP-001"], "setup": "S1-aa", "steps": [step] });
+        let released = json!({
+            "kind": "engine-scenario", "engine": "e", "provenance": "hand-derived",
+            "config": {},
+            "setups": [{ "name": "S1-aa", "steps": [step] }],
+            "scenarios": [scenario("s-001")],
+        });
+        assert_eq!(compare(&released, &released), Vec::<String>::new());
+
+        // A new scenario and a new setup pass.
+        let mut added = released.clone();
+        added["scenarios"]
+            .as_array_mut()
+            .unwrap()
+            .push(scenario("s-002"));
+        added["setups"]
+            .as_array_mut()
+            .unwrap()
+            .push(json!({ "name": "S1-bb", "steps": [step] }));
+        assert_eq!(compare(&released, &added), Vec::<String>::new());
+
+        // Editing a released scenario fails.
+        let mut edited = released.clone();
+        edited["scenarios"][0]["requirements"] = json!(["COP-002"]);
+        assert_eq!(compare(&released, &edited).len(), 1);
+
+        // Editing or removing a released setup fails.
+        let mut setup_edited = released.clone();
+        setup_edited["setups"][0]["steps"][0]["at_us"] = json!(5);
+        assert_eq!(
+            compare(&released, &setup_edited),
+            ["f.json#setup S1-aa: setup released in v0.1.0-m0 was modified in place (TV-021)"]
+        );
+        let mut setup_removed = released.clone();
+        setup_removed["setups"] = json!([]);
+        assert_eq!(compare(&released, &setup_removed).len(), 1);
+
+        // File-level metadata still may not change.
+        let mut meta = released.clone();
+        meta["config"] = json!({ "a": 1 });
+        assert_eq!(compare(&released, &meta).len(), 1);
     }
 
     #[test]

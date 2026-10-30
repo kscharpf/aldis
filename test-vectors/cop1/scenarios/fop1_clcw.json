@@ -6,9 +6,9 @@
   "config": {"frame_target": "tc", "scid": 42, "vcid": 1, "t1_initial_us": 2000000, "transmission_limit": 3, "timeout_type": 0, "k": 3, "fecf": true},
   "setups": [
     {
-      "name": "S1-1",
+      "name": "S1-b091e1b0",
       "steps": [
-        {"at_us": 0, "input": {"directive": {"handle": 1, "type": "initiate_ad_without_clcw_check"}}, "expect": [{"event": "directive_notify", "handle": 1, "type": "accept"}, {"event": "directive_notify", "handle": 1, "type": "positive_confirm"}], "expect_state": "S1", "expect_timeout_us": null}
+        {"at_us": 0, "input": {"directive": {"handle": 1, "type": "initiate_ad_without_clcw_check"}}, "expect": [{"event": "directive_notify", "handle": 1, "type": "accept"}, {"event": "directive_notify", "handle": 1, "type": "positive_confirm"}], "expect_state": "S1", "expect_no_timeout": true}
       ]
     }
   ],
@@ -17,44 +17,44 @@
       "id": "cop1-fop1-other-vcid",
       "description": "A CLCW for another virtual channel is refused with UnknownChannel and changes nothing.",
       "requirements": ["COP-001", "API-058"],
-      "setup": "S1-1",
+      "setup": "S1-b091e1b0",
       "steps": [
-        {"at_us": 1000, "input": {"clcw": {"lockout": false, "wait": false, "retransmit": false, "n_r": 0, "vcid": 2}}, "expect": [{"error": "UnknownChannel"}], "expect_state": "S1", "expect_timeout_us": null},
-        {"at_us": 2000, "input": {"clcw": {"lockout": false, "wait": false, "retransmit": true, "n_r": 0, "vcid": 2}}, "expect": [{"error": "UnknownChannel"}], "expect_state": "S1", "expect_timeout_us": null}
+        {"at_us": 1000, "input": {"clcw": {"lockout": false, "wait": false, "retransmit": false, "n_r": 0, "vcid": 2}}, "expect": [{"error": "UnknownChannel"}], "expect_state": "S1", "expect_no_timeout": true},
+        {"at_us": 2000, "input": {"clcw": {"lockout": false, "wait": false, "retransmit": true, "n_r": 0, "vcid": 2}}, "expect": [{"error": "UnknownChannel"}], "expect_state": "S1", "expect_no_timeout": true}
       ]
     },
     {
       "id": "cop1-fop1-clcw-pattern-type",
       "description": "A word whose Control Word Type is 1 is an invalid pattern (E15) and raises Alert[CLCW].",
       "requirements": ["COP-001"],
-      "setup": "S1-1",
+      "setup": "S1-b091e1b0",
       "steps": [
-        {"at_us": 1000, "input": {"clcw": {"lockout": false, "wait": false, "retransmit": false, "n_r": 0, "control_word_type": 1}}, "expect": [{"event": "alert", "reason": "clcw", "event_number": 15, "prior_state": "S1"}], "expect_state": "S6", "expect_timeout_us": null}
+        {"at_us": 1000, "input": {"clcw": {"lockout": false, "wait": false, "retransmit": false, "n_r": 0, "control_word_type": 1}}, "expect": [{"event": "alert", "reason": "clcw", "event_number": 15, "prior_state": "S1"}], "expect_state": "S6", "expect_no_timeout": true}
       ]
     },
     {
       "id": "cop1-fop1-clcw-pattern-cop",
       "description": "A word whose COP in Effect is not 01 is an invalid pattern (E15) and raises Alert[CLCW].",
       "requirements": ["COP-001"],
-      "setup": "S1-1",
+      "setup": "S1-b091e1b0",
       "steps": [
-        {"at_us": 1000, "input": {"clcw": {"lockout": false, "wait": false, "retransmit": false, "n_r": 0, "cop_in_effect": 2}}, "expect": [{"event": "alert", "reason": "clcw", "event_number": 15, "prior_state": "S1"}], "expect_state": "S6", "expect_timeout_us": null}
+        {"at_us": 1000, "input": {"clcw": {"lockout": false, "wait": false, "retransmit": false, "n_r": 0, "cop_in_effect": 2}}, "expect": [{"event": "alert", "reason": "clcw", "event_number": 15, "prior_state": "S1"}], "expect_state": "S6", "expect_no_timeout": true}
       ]
     },
     {
       "id": "cop1-fop1-alert-suppression",
       "description": "After Alert[Lockout] the CLCWs that would alert again are ignored; AD_Reject still raises Alert[LLIF]; a new Initiate AD lets the next Alert through.",
       "requirements": ["COP-001", "COP-017"],
-      "setup": "S1-1",
+      "setup": "S1-b091e1b0",
       "steps": [
         {"at_us": 1000, "input": {"request_ad": {"handle": 2, "data_hex": "A002"}}, "expect": [{"event": "transfer_notify", "handle": 2, "type": "accept"}, {"transmit": {"kind": "AD", "ns": 0, "retransmission": false, "frame_hex": "002A040800A002733D"}}], "expect_state": "S1", "expect_timeout_us": 2001000},
-        {"at_us": 2000, "input": {"clcw": {"lockout": true, "wait": false, "retransmit": false, "n_r": 0}}, "expect": [{"event": "transfer_notify", "handle": 2, "type": "negative_confirm"}, {"event": "alert", "reason": "lockout", "event_number": 14, "prior_state": "S1"}], "expect_state": "S6", "expect_timeout_us": null},
-        {"at_us": 3000, "input": {"clcw": {"lockout": true, "wait": false, "retransmit": false, "n_r": 0}}, "expect": [], "expect_state": "S6", "expect_timeout_us": null},
-        {"at_us": 4000, "input": {"clcw": {"lockout": false, "wait": false, "retransmit": false, "n_r": 5}}, "expect": [], "expect_state": "S6", "expect_timeout_us": null},
-        {"at_us": 5000, "input": {"clcw": {"lockout": false, "wait": true, "retransmit": false, "n_r": 0}}, "expect": [], "expect_state": "S6", "expect_timeout_us": null},
-        {"at_us": 6000, "input": {"transmit_done": {"kind": "AD", "response": "reject"}}, "expect": [{"event": "alert", "reason": "llif", "event_number": 42, "prior_state": "S6"}], "expect_state": "S6", "expect_timeout_us": null},
-        {"at_us": 7000, "input": {"directive": {"handle": 2, "type": "initiate_ad_without_clcw_check"}}, "expect": [{"event": "directive_notify", "handle": 2, "type": "accept"}, {"event": "directive_notify", "handle": 2, "type": "positive_confirm"}], "expect_state": "S1", "expect_timeout_us": null},
-        {"at_us": 8000, "input": {"clcw": {"lockout": true, "wait": false, "retransmit": false, "n_r": 0}}, "expect": [{"event": "alert", "reason": "lockout", "event_number": 14, "prior_state": "S1"}], "expect_state": "S6", "expect_timeout_us": null}
+        {"at_us": 2000, "input": {"clcw": {"lockout": true, "wait": false, "retransmit": false, "n_r": 0}}, "expect": [{"event": "transfer_notify", "handle": 2, "type": "negative_confirm"}, {"event": "alert", "reason": "lockout", "event_number": 14, "prior_state": "S1"}], "expect_state": "S6", "expect_no_timeout": true},
+        {"at_us": 3000, "input": {"clcw": {"lockout": true, "wait": false, "retransmit": false, "n_r": 0}}, "expect": [], "expect_state": "S6", "expect_no_timeout": true},
+        {"at_us": 4000, "input": {"clcw": {"lockout": false, "wait": false, "retransmit": false, "n_r": 5}}, "expect": [], "expect_state": "S6", "expect_no_timeout": true},
+        {"at_us": 5000, "input": {"clcw": {"lockout": false, "wait": true, "retransmit": false, "n_r": 0}}, "expect": [], "expect_state": "S6", "expect_no_timeout": true},
+        {"at_us": 6000, "input": {"transmit_done": {"kind": "AD", "response": "reject"}}, "expect": [{"event": "alert", "reason": "llif", "event_number": 42, "prior_state": "S6"}], "expect_state": "S6", "expect_no_timeout": true},
+        {"at_us": 7000, "input": {"directive": {"handle": 2, "type": "initiate_ad_without_clcw_check"}}, "expect": [{"event": "directive_notify", "handle": 2, "type": "accept"}, {"event": "directive_notify", "handle": 2, "type": "positive_confirm"}], "expect_state": "S1", "expect_no_timeout": true},
+        {"at_us": 8000, "input": {"clcw": {"lockout": true, "wait": false, "retransmit": false, "n_r": 0}}, "expect": [{"event": "alert", "reason": "lockout", "event_number": 14, "prior_state": "S1"}], "expect_state": "S6", "expect_no_timeout": true}
       ]
     }
   ]

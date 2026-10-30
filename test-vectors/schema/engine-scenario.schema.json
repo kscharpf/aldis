@@ -197,19 +197,17 @@
             "additionalProperties": true
           }
         },
+        "expect_no_timeout": {
+          "description": "Expected `next_deadline` is none. Not together with `expect_timeout_us`.",
+          "type": "boolean"
+        },
         "expect_state": {
-          "description": "Expected engine state after the step.",
-          "type": [
-            "string",
-            "null"
-          ]
+          "description": "Expected engine state after the step; absent means not asserted (`null` is refused).",
+          "type": "string"
         },
         "expect_timeout_us": {
-          "description": "Expected `next_deadline` after the step, in microseconds: absent means not asserted,\n`null` means no deadline, a number is the deadline.",
-          "type": [
-            "integer",
-            "null"
-          ],
+          "description": "Expected `next_deadline` after the step, in microseconds; absent means not asserted\n(`null` is refused). To assert that there is no deadline, set `expect_no_timeout`.",
+          "type": "integer",
           "format": "uint64",
           "minimum": 0
         },

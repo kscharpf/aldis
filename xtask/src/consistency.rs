@@ -448,10 +448,14 @@ fn vector_problems(
                 "test-vectors/{f}: not listed in test-vectors/README.md"
             ));
         }
-        if !named_by_test(f, tests) && !awaiting_runner(f) {
-            p.push(format!(
+        match (named_by_test(f, tests), awaiting_runner(f)) {
+            (false, false) => p.push(format!(
                 "test-vectors/{f}: no test in crates/*/tests/ runs it"
-            ));
+            )),
+            (true, true) => p.push(format!(
+                "test-vectors/{f}: a test runs it, so `AWAITING_RUNNER` must not cover it any more"
+            )),
+            _ => {}
         }
         let Some((area, name)) = f.split_once('/') else {
             continue;
@@ -1007,6 +1011,26 @@ mod tests {
     /// A C ABI runner that runs `time/cuc.json` and `core/crc16.json`.
     const FFI_CUC: &str =
         "vector_test!(t, \"time\", \"cuc\", r);\nvector_test!(c, \"core\", \"crc16\", r);";
+
+    #[test]
+    fn an_exempt_vector_file_that_a_test_runs_is_a_stale_entry() {
+        // req: VER-021
+        let file = ["cop1/scenarios/fop1_table.json".to_owned()];
+        let readme = "| File |\n|---|\n| `cop1/scenarios/*.json` |\n";
+        let c = consistent();
+        assert!(awaiting_runner(&file[0]));
+        assert_eq!(
+            vector_problems(&file, readme, &[], "", "", &c),
+            Vec::<String>::new()
+        );
+        let tests = ["run_scenario_file(\"cop1/scenarios/fop1_table.json\")".to_owned()];
+        assert_eq!(
+            vector_problems(&file, readme, &tests, "", "", &c),
+            [
+                "test-vectors/cop1/scenarios/fop1_table.json: a test runs it, so `AWAITING_RUNNER` must not cover it any more"
+            ]
+        );
+    }
 
     #[test]
     fn vector_files_need_a_readme_row_a_test_and_the_exerciser() {

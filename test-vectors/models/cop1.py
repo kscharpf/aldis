@@ -12,7 +12,9 @@ cop1-tables.md was read as specification input and cross-checked against the tra
 below.
 
 This program was written blind (TV-023): by an agent that had not read any implementation
-(crates/, exerciser/, fuzz/, include/, refapp/), from the Blue Books and docs/ only. It must
+under test (aldis-cop1, the codecs, aldis-ffi, exerciser/, fuzz/, include/, refapp/), from the
+Blue Books and docs/. For the file layout and schema change only, the author also read the test
+infrastructure crates/aldis-testkit and the schema generator, which hold no COP-1 logic. It must
 stay independent of the Rust code: never port code from it, and never change the model to
 agree with it. When a model and an implementation disagree, the Blue Book decides.
 
@@ -52,6 +54,7 @@ difference. --write regenerates test-vectors/cop1/ (cases and provenance notes),
 files that are not released yet (TV-021). --audit searches the reachable states for an input
 that reaches a "Not applicable" cell and reports any it finds (there should be none).
 """
+import hashlib
 import json
 import os
 import sys
@@ -883,7 +886,10 @@ def replay(engine, cfg, inputs):
             reached.append((eng.state, event))
         step = {"at_us": at, "input": inp, "expect": out, "expect_state": eng.state}
         if engine == "fop1":
-            step["expect_timeout_us"] = eng.timer  # null: no deadline
+            if eng.timer is None:
+                step["expect_no_timeout"] = True
+            else:
+                step["expect_timeout_us"] = eng.timer
         steps.append(step)
     return steps, reached, eng
 
@@ -1195,7 +1201,7 @@ def requirements_for(engine, scenario_cell, steps, reached, extra_reqs=()):
                 reqs.append("COP-013")
             if '"suspend"' in out or event in (31, 32, 33, 34):
                 reqs.append("COP-014")
-            if event == 36:
+            if event == 40 and "set_k" in json.dumps(trig["input"]):
                 reqs.append("COP-015")
             if '"alert"' in out:
                 reqs.append("COP-017")
@@ -1581,7 +1587,6 @@ def compile_file(engine, file_cfg, raws, how):
     with the same inputs."""
     setups = []
     names = {}  # tuple of the setup's inputs -> name
-    per_state = {}
     scenarios = []
     for sid, desc, cfg, inputs, split, cell, extra in raws:
         steps, reached, _ = replay(engine, cfg, inputs)
@@ -1590,8 +1595,8 @@ def compile_file(engine, file_cfg, raws, how):
             key = tuple(json.dumps(x, sort_keys=True) for x in inputs[:i])
             if key not in names:
                 state = steps[i - 1]["expect_state"]
-                per_state[state] = per_state.get(state, 0) + 1
-                name = "%s-%d" % (state, per_state[state])
+                digest = hashlib.sha1("\n".join(key).encode()).hexdigest()[:8]
+                name = "%s-%s" % (state, digest)
                 names[key] = name
                 entry = {"name": name}
                 if chain is not None:
