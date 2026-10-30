@@ -18,3 +18,21 @@ crate = "aldis-uslp"
 metric = "regions"
 count = 18
 justification = "src/view.rs (6), src/truncated.rs (3), src/writer.rs (9) — the error return of `?` on `cut()` and `slot()`, the one checked slice site of each module. Every range comes from a `FrameLayout` computed for the length of the slice it cuts (CMN-040), so the error is a broken invariant that no input reaches (GEN-020). The two helpers are unit-tested directly with an out-of-range argument."
+
+[[waiver]]
+crate = "aldis-cop1"
+metric = "regions"
+count = 13
+justification = "src/fop1.rs — the error return of `?` at seven sites whose callee cannot fail once its input has passed an earlier check, counted per instantiation: `Fop1Target::tc` (`VcConfig::new` and `VcTable::new` after `PhysicalChannelConfig::new` accepted the same length and FECF), `encode` in TransmitBd, `transmit_ad`, and `transmit_bc` (the FDU was checked against `max_fdu_len` by `check_fdu`, and a Control Command always fits), the `get` of the Wait_Queue FDU (its length is at most F by construction), and `push_sent` in `transmit_bc` (Initialize purges the Sent_Queue before every Type-BC frame). Each is an explicit `InternalError` or the callee's error, not a default (GEN-020); the sweep test `every_failure_of_a_cell_leaves_the_state_unchanged` reaches every other failure of a cell."
+
+[[waiver]]
+crate = "aldis-cop1"
+metric = "lines"
+count = 4
+justification = "src/fop1.rs — the four lines holding only `)?;` of the `?` sites of the regions waiver: `VcConfig::new` in `Fop1Target::tc` and the `encode` calls of TransmitBd, `transmit_ad`, and `transmit_bc`."
+
+[[waiver]]
+crate = "aldis-cop1"
+metric = "branches"
+count = 4
+justification = "src/fop1.rs — the error arms llvm-cov counts as branches at four of the `?` sites of the regions waiver; with instantiations merged, every branch of the file is taken."

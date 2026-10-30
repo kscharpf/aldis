@@ -5,7 +5,7 @@
 
 use aldis_cop1::{
     AlertReason, BcCommand, DirectiveNotification, FOP1_EVENT_COUNT, FOP1_STATE_COUNT, FOP1_TABLE,
-    Fop1Action, Fop1Cell, Fop1Event, Fop1State, FrameKind, TransferNotification,
+    Fop1Action, Fop1Cell, Fop1Event, Fop1State, FrameKind, SuspendState, TransferNotification,
 };
 
 #[expect(
@@ -430,7 +430,10 @@ fn test_fop1_active_cells() {
     assert_eq!(
         cell(s, Fop1Event::E18),
         Fop1Cell {
-            actions: &[Fop1Action::SetSuspendState(1), Fop1Action::Suspend],
+            actions: &[
+                Fop1Action::SetSuspendState(SuspendState::Active),
+                Fop1Action::Suspend
+            ],
             next_state: Some(Fop1State::Initial),
         }
     );
@@ -930,7 +933,10 @@ fn test_fop1_retransmit_without_wait_cells() {
     assert_eq!(
         cell(s, Fop1Event::E18),
         Fop1Cell {
-            actions: &[Fop1Action::SetSuspendState(2), Fop1Action::Suspend],
+            actions: &[
+                Fop1Action::SetSuspendState(SuspendState::RetransmitWithoutWait),
+                Fop1Action::Suspend
+            ],
             next_state: Some(Fop1State::Initial),
         }
     );
@@ -1430,7 +1436,10 @@ fn test_fop1_retransmit_with_wait_cells() {
     assert_eq!(
         cell(s, Fop1Event::E18),
         Fop1Cell {
-            actions: &[Fop1Action::SetSuspendState(3), Fop1Action::Suspend],
+            actions: &[
+                Fop1Action::SetSuspendState(SuspendState::RetransmitWithWait),
+                Fop1Action::Suspend
+            ],
             next_state: Some(Fop1State::Initial),
         }
     );
@@ -1922,7 +1931,10 @@ fn test_fop1_initializing_without_bc_frame_cells() {
     assert_eq!(
         cell(s, Fop1Event::E18),
         Fop1Cell {
-            actions: &[Fop1Action::SetSuspendState(4), Fop1Action::Suspend],
+            actions: &[
+                Fop1Action::SetSuspendState(SuspendState::InitializingWithoutBcFrame),
+                Fop1Action::Suspend
+            ],
             next_state: Some(Fop1State::Initial),
         }
     );
@@ -2236,7 +2248,10 @@ fn test_fop1_initializing_without_bc_frame_cells() {
     assert_eq!(
         cell(s, Fop1Event::E104),
         Fop1Cell {
-            actions: &[Fop1Action::SetSuspendState(4), Fop1Action::Suspend],
+            actions: &[
+                Fop1Action::SetSuspendState(SuspendState::InitializingWithoutBcFrame),
+                Fop1Action::Suspend
+            ],
             next_state: Some(Fop1State::Initial),
         }
     );

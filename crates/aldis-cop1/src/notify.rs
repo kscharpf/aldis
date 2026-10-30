@@ -6,7 +6,10 @@
 //! - Section 4.4 & Table 4-5: Transfer Service Notifications.
 //! - Section 5.1.10.3 & Table 7-1: Timeout Type configuration.
 
-use core::time::Duration;
+use aldis_core::ids::FrameSeqNum;
+use aldis_core::time::Duration;
+
+use crate::fop1_table::{Fop1Event, Fop1State};
 
 /// FOP-1 Timeout Type parameter (CCSDS 232.1-B-2 §5.1.10.3, Table 7-1).
 ///
@@ -38,7 +41,7 @@ pub enum Directive {
     /// Initiate AD Service with Set V(R) (CCSDS 232.1-B-2 Table 4-1, Events E27, E28).
     InitiateAdWithSetVr {
         /// Target sequence number V*(R) for the peer FARM-1.
-        v_r: u8,
+        v_r: FrameSeqNum,
     },
     /// Terminate AD Service (CCSDS 232.1-B-2 Table 4-1, Event E29).
     TerminateAd,
@@ -47,21 +50,24 @@ pub enum Directive {
     /// Set V(S) to a specific sequence number V*(S) (CCSDS 232.1-B-2 Table 4-1, Event E35).
     SetVs {
         /// New transmitter sequence number V*(S).
-        v_s: u8,
+        v_s: FrameSeqNum,
     },
     /// Set Sliding Window Width K (CCSDS 232.1-B-2 Table 4-1, Event E36).
     SetSlidingWindowWidth {
-        /// Sliding window width K (1..=255).
+        /// Sliding window width K: 1..=min(255, `Sent_Queue` capacity), else the directive is
+        /// invalid, event E40 (COP-015).
         width: u8,
     },
     /// Set `T1_Initial` timeout duration (CCSDS 232.1-B-2 Table 4-1, Event E37).
     SetT1Initial {
-        /// Initial timeout duration for timer T1.
+        /// Initial timeout duration for timer T1: at least 1 µs, else the directive is invalid,
+        /// event E40.
         duration: Duration,
     },
     /// Set `Transmission_Limit` (CCSDS 232.1-B-2 Table 4-1, Event E38).
     SetTransmissionLimit {
-        /// Maximum number of transmissions allowed for a frame (≥ 1).
+        /// Maximum number of transmissions allowed for a frame: at least 1, else the directive
+        /// is invalid, event E40.
         limit: u8,
     },
     /// Set `Timeout_Type` (CCSDS 232.1-B-2 Table 4-1, Event E39).
@@ -95,18 +101,17 @@ pub enum AlertReason {
     Term,
 }
 
-/// An Alert notification emitted by FOP-1 (CCSDS 232.1-B-2 §4.3, Table 4-4, COP-004).
+/// An Alert notification emitted by FOP-1 (CCSDS 232.1-B-2 §4.3, §5.2.15 e, Table 4-4; COP-004).
 ///
-/// Status snapshots and alert events include the reason, the event number,
-/// and the prior state that caused them (COP-004).
+/// It names the reason, the event that caused it, and the state before the event (COP-004).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct Alert<S> {
+pub struct Alert {
     /// The reason for the alert.
     pub reason: AlertReason,
-    /// The event number that triggered the alert (e.g. 13 for E13).
-    pub event_number: u8,
-    /// The prior protocol state before the transition to S6.
-    pub prior_state: S,
+    /// The event that triggered the alert (e.g. E13).
+    pub event: Fop1Event,
+    /// The protocol state before the transition to S6.
+    pub prior_state: Fop1State,
 }
 
 /// Transfer service notifications for Type-AD and Type-BD requests (CCSDS 232.1-B-2 §4.4, Table 4-5).

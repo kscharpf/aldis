@@ -27,6 +27,10 @@ assert_eq!(actions.len(), 1); // Deliver: the FDU is in `out`
 # }
 ```
 
+## Status
+
+FARM-1 (M3 WP-3) and FOP-1 (M3 WP-4) are implemented for TC frames; the FOP-1 USLP frame target and the C ABI (WP-6) are not yet built.
+
 ## Where it sits
 
 Layer 2 (engines) of the [architecture](../../docs/01-architecture.md) §2. It depends on `aldis-core` and `aldis-tc`, and on `aldis-uslp` with the feature `uslp`. As a library, the application calls the engines directly; `aldis-framework` uses the same engines.

@@ -25,9 +25,9 @@ FARM-1 protocol states (232.1 §6.2): S1 (`Open`), S2 (`Wait`), S3 (`Lockout`).
 
 ### 2.1 Configuration (managed parameters, §7.2)
 
-`Fop1Config { vc: FrameTarget (TC VC config | USLP VC+MAP config), t1_initial: Duration, transmission_limit: u8 ≥ 1, timeout_type: TT0 | TT1, sliding_window_k: 1..=255 (≤ PW of the peer FARM), bc_repetitions, ad_repetitions }`
+`Fop1Config { target: Fop1Target (a TC Virtual Channel without Segment Header or SDLS; USLP VC+MAP not yet built), t1_initial: Duration ≥ 1 µs, transmission_limit: 1..=255, timeout_type: TT0 | TT1, sliding_window_k: 1..=min(255, Q) (≤ PW of the peer FARM), bc_repetitions, ad_repetitions }`
 
-Capacities (compile-time): `SENT_QUEUE ≥ K` frames; `MAX_FRAME ≤ 1024` (TC) or the configured USLP max.
+Capacities (compile-time): `Fop1<Q, F, N>` holds a Sent_Queue of `Q ≥ K` frames of at most `F` octets (`F` ≥ the Maximum Transfer Frame Length, at most 1024 for TC), and returns at most `N ≥ fop1_max_actions(Q)` actions per input, checked when the type is built (COP-006). One input writes at most one frame to the output area (API-062).
 
 ### 2.2 Inputs
 
@@ -40,7 +40,11 @@ The inputs are the variants of `Fop1Input`; every one is fed to `step(state, inp
 | `Directive(directive)` | E23–E40 | Initiate AD (without CLCW check / with CLCW check / with Unlock / with Set V(R)), Terminate, Resume, Set V(S), Set K, Set T1_Initial, Set Transmission_Limit, Set Timeout_Type |
 | `Clcw(clcw)` | E1–E15, E101–E103 | The engine classifies the CLCW into the event. A CLCW whose bit pattern is invalid under COP-1 (e.g. COP in Effect ≠ `01`, or a non-zero Control Word Type) is E15. A CLCW for a different VCID SHALL be rejected with `UnknownChannel` without any state change, because it is a routing error, not a COP-1 event |
 | `Timeout` | E16–E18, E104 | Single timer T1. The engine classifies it with the state of the timer; a `Timeout` before the deadline changes nothing (API-053) |
-| `TransmitDone(handle, Accept\|Reject)` | E41–E46 | Lower-Procedure response for AD/BC/BD frames (Out flags) |
+| `TransmitDone(kind, Accept\|Reject)` | E41–E46 | Lower-Procedure response for AD/BC/BD frames (Out flags). At most one Transmit Request per kind is outstanding (§5.1.6), so the frame kind is the transmit handle (API-055) |
+| `InvalidClcw` | E15 | A word `Clcw::decode` refuses, such as Control Word Type `1` |
+| `InvalidDirective(handle)` | E40 | A directive the caller could not parse; a parsed directive with a value outside its range is also E40 |
+
+`Fop1::step_event(event, input)` runs the cell of `event` with the parameters of `input` and no classification: the table function of API-058 that the conformance vectors use for the cells no input reaches (COP-005).
 
 ### 2.3 Actions
 
