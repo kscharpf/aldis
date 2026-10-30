@@ -189,7 +189,7 @@ pub struct Step {
     /// Expected engine state after the step.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub expect_state: Option<String>,
-    /// Expected `poll_timeout` after the step, in microseconds.
+    /// Expected `next_deadline` after the step, in microseconds.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub expect_timeout_us: Option<u64>,
 }

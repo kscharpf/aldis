@@ -137,7 +137,7 @@
           ]
         },
         "expect_timeout_us": {
-          "description": "Expected `poll_timeout` after the step, in microseconds.",
+          "description": "Expected `next_deadline` after the step, in microseconds.",
           "type": [
             "integer",
             "null"
