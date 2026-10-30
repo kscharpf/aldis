@@ -23,15 +23,17 @@
 # run did not succeed. Deletes nothing (see prune-agent-branches).
 #
 # One reverify per PR at a time, across all worktrees: the PR's lock lives in the git common
-# directory (reverify/<n>.lock) and is released when the script exits, however it ends. A second
-# `scripts/reverify <n>` while one runs prints the holder's pid and exits 3; with `--wait` it
-# queues behind the holder and then runs. A lock whose process is gone is taken over. Different
-# PRs run side by side.
+# directory (reverify/<n>.lock) and is released when the PR's final line is printed, or when the
+# script exits, however it ends. A second `scripts/reverify <n>` while one runs prints the
+# holder's pid and exits 3; with `--wait` it queues behind the holder and then runs. A lock whose
+# process is gone is taken over. Different PRs run side by side. A PR number is digits only; `07`
+# and `7` are one PR.
 #
 # `--status <n>` reads, with no network, one line: `#<n> running: ...` (exit 3) while a reverify
-# holds the lock, else the final line of the last reverify run on this machine (exit 0 when it
-# succeeded, 1 when it did not), else `#<n> no reverify recorded` (exit 4). With `--wait` it first
-# waits until no reverify holds the lock, so that the line is the final one.
+# holds the lock, else the final line of the last reverify run on this machine with the head it is
+# about (exit 0 when it succeeded, 1 when it did not), else `#<n> no reverify recorded` (exit 4):
+# a run that aborts before its final line leaves no record. With `--wait` it first waits until no
+# reverify holds the lock, so that the line is the final one.
 set -euo pipefail
 
 usage() { awk 'NR == 1 { next } /^#/ { sub(/^# ?/, ""); print; next } { exit }' "$0"; }
@@ -57,7 +59,10 @@ while [ $# -gt 0 ]; do
         usage
         exit 2
         ;;
-    *) args+=("$1") ;;
+    *)
+        [[ "$1" =~ ^[0-9]+$ ]] || { usage; exit 2; }
+        args+=("$((10#$1))")
+        ;;
     esac
     shift
 done
@@ -76,9 +81,12 @@ mkdir -p "$state_dir"
 # (a reused pid has another start time).
 proc_start() { ps -o lstart= -p "$1" 2>/dev/null | sed 's/^ *//; s/ *$//' || true; }
 
-# The final line of a PR, kept for `--status`; $1 pr, $2 ok or fail, $3 the line.
+# The final line of a PR, kept for `--status`; $1 pr, $2 ok or fail, $3 the line, $4 the head
+# commit it is about (empty when the run never got one).
 record_final() {
-    printf '%s\n%s (finished %s)\n' "$2" "$3" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >"$state_dir/$1.last"
+    local head=""
+    [ -z "$4" ] || head="head ${4:0:7}, "
+    printf '%s\n%s (%sfinished %s)\n' "$2" "$3" "$head" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >"$state_dir/$1.last"
 }
 
 # True when the lock of PR $1 is held by a live process; sets `holder`.
@@ -178,6 +186,8 @@ sorted_prs="$(printf '%s\n' "${args[@]}" | sort -n -u)"
 # Ascending, so that two runs that queue for the same PRs cannot wait on each other.
 for pr in $sorted_prs; do
     lock_acquire "$pr" || { rc=$?; release_locks; exit "$rc"; }
+    # A run that aborts before its final line must not leave the previous run's line as the result.
+    rm -f "$state_dir/$pr.last"
 done
 
 git -C "$main_checkout" fetch --quiet origin
@@ -323,10 +333,14 @@ for pr in "${args[@]}"; do
     reasons+=("$reason")
 done
 
-# Print and record the final line of PR $1: $2 ok or fail, $3 the line.
+# Print and record the final line of PR $1: $2 ok or fail, $3 the line, $4 the head commit; then
+# release its lock, so that a waiter for this PR does not wait for the PRs that follow it.
 finish() {
     echo "$3"
-    record_final "$1" "$2" "$3"
+    record_final "$1" "$2" "$3" "$4"
+    if [ "$(readlink "$state_dir/$1.lock" 2>/dev/null || true)" = "$me" ]; then
+        rm -f "$state_dir/$1.lock"
+    fi
 }
 
 failed=0
@@ -375,9 +389,9 @@ for i in "${!prs[@]}"; do
         break
     done
     if [ "$verdict" = ok ]; then
-        finish "$pr" ok "$line"
+        finish "$pr" ok "$line" "${heads[$i]}"
     else
-        finish "$pr" fail "$line"
+        finish "$pr" fail "$line" "${heads[$i]}"
         failed=$((failed + 1))
     fi
 done

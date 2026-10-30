@@ -9,7 +9,8 @@
 # running, the last success, the last failure, and no record, and with `--wait` returns when the
 # run ends; a run that main overtook (STALE) is brought up to date and run again, at most
 # `--stale-retries` times, for a local and for a dispatched run; a failure with main unmoved
-# (FAILED) is never retried.
+# (FAILED) is never retried; a run that aborts leaves no record of an earlier run; a PR's lock is
+# released at its own final line; a PR number is digits only and `07` is `7`.
 # Not covered: GitHub itself (dispatch, watch, the real STALE gate of `verify assemble`).
 # VERBOSE=1 prints the output of the script under test after each failed case.
 # Exit status: 0 when every case holds, 1 otherwise.
@@ -74,7 +75,12 @@ case "$1 $2" in
     *"-L 1"*) echo 0 ;;
     esac
     ;;
-"run watch") ;;
+"run watch")
+    if [ "$3" = 102 ] && [ -e "$STUB/hold-watch" ]; then
+        # bound: polls until the test releases the watch.
+        while [ ! -e "$STUB/release-watch" ]; do /bin/sleep 0.1; done
+    fi
+    ;;
 "run view")
     id="$3"
     # $STUB/dispatch-script lists one line per dispatched run, in order: fail-moved, fail, or ok.
@@ -144,6 +150,7 @@ expect_not() {
     shift
     if "$@" >/dev/null 2>&1; then bad "$what"; else ok "$what"; fi
 }
+said_re() { printf '%s\n' "$out" | grep -Eq -- "$1"; }
 said() { printf '%s\n' "$out" | grep -Fq -- "$1"; }
 status_is() { [ "$rc" -eq "$1" ]; }
 publishes_are() { [ "$(cat "$stub/publishes" 2>/dev/null || echo 0)" -eq "$1" ]; }
@@ -164,7 +171,7 @@ bg() { # bg <tag> <args...>
     eval "pid_$tag=$!"
 }
 reset() { # reset <publish-script...>: clean counters, one script line per argument
-    rm -f "$stub/publishes" "$stub/runs" "$stub/release" "$stub/container" "$stub/publish-pids"
+    rm -f "$stub/publishes" "$stub/runs" "$stub/release" "$stub/release-watch" "$stub/hold-watch" "$stub/container" "$stub/publish-pids"
     printf '%s\n' "$@" >"$stub/publish-script"
     printf '%s\n' ok >"$stub/dispatch-script"
 }
@@ -184,7 +191,7 @@ expect "a local run succeeds" said "#7 pr-7 local success"
 expect "exit status 0" status_is 0
 expect "the lock is released" lock_gone 7
 run --status 7
-expect "--status: the last success" said "#7 pr-7 local success (finished"
+expect "--status: the last success" said_re "#7 pr-7 local success \\(head [0-9a-f]{7}, finished"
 expect "--status: exit status 0" status_is 0
 run --status 9
 expect "--status: no record" said "#9 no reverify recorded"
@@ -250,7 +257,7 @@ touch "$stub/release"
 wait "$pid_a"
 wait "$pid_b"
 rc_b=$?
-expect "--status --wait prints the final line" grep -Fq "#7 pr-7 local success (finished" "$work/bg.b"
+expect "--status --wait prints the final line" grep -Eq "#7 pr-7 local success \(head [0-9a-f]{7}, finished" "$work/bg.b"
 expect "--status --wait: exit status 0" [ "$rc_b" -eq 0 ]
 
 echo "# a lock whose process is gone is taken over"
@@ -288,7 +295,7 @@ expect "the retry succeeds" said "#7 pr-7 local success"
 expect "exit status 0" status_is 0
 expect "two runs" publishes_are 2
 run --status 7
-expect "--status: the retry's success" said "#7 pr-7 local success (finished"
+expect "--status: the retry's success" said_re "#7 pr-7 local success \\(head [0-9a-f]{7}, finished"
 
 echo "# STALE every time stops at the bound"
 reset fail-moved
@@ -322,6 +329,53 @@ run 7
 expect "a failed run with main unmoved is FAILED" said "pr-7 101 FAILED (failure)"
 expect "a FAILED run is not retried" bash -c '! printf "%s\n" "$0" | grep -Fq retry' "$out"
 expect "exit status 1" status_is 1
+
+echo "# an aborted run leaves no record of an earlier run"
+reset ok
+run 7
+run --status 7
+expect "the earlier run is recorded" said_re "#7 pr-7 local success \\(head"
+git -C "$repo" remote set-url origin "$work/missing.git"
+run 7
+git -C "$repo" remote set-url origin "$work/origin.git"
+expect "the aborted run fails" status_is 128
+expect "the aborted run released the lock" lock_gone 7
+run --status 7
+expect "--status: no record after an abort" said "#7 no reverify recorded"
+expect "--status: exit status 4 after an abort" status_is 4
+
+echo "# a PR's lock is released at its final line, not at the end of the invocation"
+reset ok
+touch "$stub/container"
+printf '%s\n' ok ok >"$stub/dispatch-script"
+touch "$stub/hold-watch"
+bg a 7 8
+i=0
+# Both locks are taken first; then PR 7's goes at its final line while PR 8's run is watched.
+until [ -L "$repo/.git/reverify/8.lock" ] || [ "$i" -ge 100 ]; do /bin/sleep 0.1; i=$((i + 1)); done
+until lock_gone 7 || [ "$i" -ge 200 ]; do /bin/sleep 0.1; i=$((i + 1)); done
+expect "PR 7's lock is released while PR 8 is still being watched" lock_gone 7
+expect_not "PR 8's lock is still held" lock_gone 8
+run --status 7
+expect "--status 7 has its final line already" said "#7 pr-7 101 success"
+touch "$stub/release-watch"
+wait "$pid_a"
+expect "both locks are released at the end" bash -c "[ ! -e '$repo/.git/reverify/8.lock' ]"
+rm -f "$stub/container"
+
+echo "# PR numbers are digits, and 07 is 7"
+reset block
+run ../x
+expect "a path is not a PR number" status_is 2
+run --status 7x
+expect "--status: a non-number is a usage error" status_is 2
+bg a 7
+wait_for "$stub/publish-pids"
+run 07
+expect "07 is refused while 7 runs" said "a reverify is running (pid $pid_a"
+expect "07: exit status 3" status_is 3
+touch "$stub/release"
+wait "$pid_a"
 
 echo "# several PRs, one invocation"
 reset ok
