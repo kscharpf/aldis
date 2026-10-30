@@ -104,8 +104,8 @@ fn artefacts(spec: &Spec) -> Result<BTreeMap<String, BTreeSet<String>>, String> 
                     add(&mut map, spec, &refs, &format!("vector {rel}#{}", c.id));
                 }
             }
-            Ok(VectorFile::EngineScenario(s)) => {
-                if s.superseded.is_none() {
+            Ok(VectorFile::EngineScenario(f)) => {
+                for s in f.scenarios.iter().filter(|s| s.superseded.is_none()) {
                     let refs = scan_ids(&s.requirements.join(" "), &areas);
                     add(&mut map, spec, &refs, &format!("vector {rel}#{}", s.id));
                 }
@@ -261,7 +261,7 @@ mod tests {
     fn vectors_awaiting_a_runner_are_no_evidence() {
         // req: VER-020
         assert!(crate::consistency::awaiting_runner(
-            "cop1/fop1_table/s1_e01.json"
+            "cop1/scenarios/fop1_table.json"
         ));
         assert!(!crate::consistency::awaiting_runner("tc/ad.json"));
     }

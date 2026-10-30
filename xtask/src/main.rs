@@ -46,6 +46,8 @@ commands:
   vectors validate             check test-vectors/ against the model and the spec (TV-*), and run
                                the independent model each provenance_note names
                                (python3 -I test-vectors/models/<m>.py --check, TV-023)
+  vectors generated [--write]  check that test-vectors/cop1/ is what the independent model writes
+                               (python3 -I test-vectors/models/cop1.py --write), or rewrite it
   vectors schema [--check]     (re)generate test-vectors/schema/, or check it is current
   fields [--write]             check the field catalogue (03-api-model.md §9.1) and that
                                aldis_core::field and test-vectors/core/fields.json match it,
@@ -117,7 +119,7 @@ commands:
   ci                           the quick checks of the verification run, without a build:
                                spec-lint, links, layers, consistency, rs020, loops,
                                restricted, assurance --strict, refapp-deps, vectors validate,
-                               vectors schema --check, fields, header (needs the pinned
+                               vectors generated, vectors schema --check, fields, header (needs the pinned
                                cbindgen), sana, trace --scope m0 --strict,
                                trace --scope m1 --strict, trace --scope m2 --strict,
                                trace --scope m3, changelog check; a step that cannot run
@@ -145,6 +147,7 @@ pub(crate) const CI: &[Step] = &[
     ("assurance --strict", || assurance::run(true)),
     ("refapp-deps", refapp::check),
     ("vectors validate", vectors::validate),
+    ("vectors generated", || vectors::generated(false)),
     ("vectors schema --check", || vectors::schema(true)),
     ("fields", || fields::run(false)),
     ("status", || status::run(false)),
@@ -181,6 +184,7 @@ fn fix() -> Result<usize, String> {
     Ok(fields::run(true)?
         + status::run(true)?
         + vectors::schema(false)?
+        + vectors::generated(true)?
         + sana::run(&["--write"])?
         + header::run(true)?
         + consistency::check()?)
@@ -198,6 +202,8 @@ fn run(args: &[&str]) -> Result<usize, String> {
             trace::run(scope, rest.contains(&"--strict"))
         }
         ["vectors", "validate"] => vectors::validate(),
+        ["vectors", "generated"] => vectors::generated(false),
+        ["vectors", "generated", "--write"] => vectors::generated(true),
         ["vectors", "schema"] => vectors::schema(false),
         ["vectors", "schema", "--check"] => vectors::schema(true),
         ["fields"] => fields::run(false),

@@ -367,8 +367,6 @@ class Fop:
     def classify(self, inp, now):
         """The event number of an input, or None when the input changes nothing."""
         (name, arg), = inp.items()
-        if name == "query":
-            return None
         if name == "table_event":
             return arg["event"]
         if name == "clcw":
@@ -453,8 +451,6 @@ class Fop:
     def step(self, inp, now):
         """Apply an input; return the ordered outputs. An error changes nothing."""
         (name, arg), = inp.items()
-        if name == "query":
-            return [{"next_deadline": self.timer}]
         event = self.classify(inp, now)
         if event is None:
             return []  # a Timeout before the deadline (API-053)
@@ -886,8 +882,8 @@ def replay(engine, cfg, inputs):
                 event = None
             reached.append((eng.state, event))
         step = {"at_us": at, "input": inp, "expect": out, "expect_state": eng.state}
-        if engine == "fop1" and eng.timer is not None:
-            step["expect_timeout_us"] = eng.timer
+        if engine == "fop1":
+            step["expect_timeout_us"] = eng.timer  # null: no deadline
         steps.append(step)
     return steps, reached, eng
 
@@ -1149,7 +1145,9 @@ FARM_CFG = {"frame_target": "tc", "scid": 42, "vcid": 1, "fecf": True, "status_f
 BLIND = (
     "Model test-vectors/models/cop1.py, written blind (TV-023) by a Claude agent from the Blue "
     "Books and docs/ only, without reading any implementation; docs/verification/reviews/"
-    "cop1-tables.md was read as input and the transcription compared with it."
+    "cop1-tables.md was read as input and the transcription compared with it. For the file "
+    "layout and schema change only, its author also read crates/aldis-testkit and the schema "
+    "generator, which are test infrastructure and not an implementation under test."
 )
 
 
@@ -1164,9 +1162,12 @@ def provenance(engine, how):
     return note_for(engine, how, "Table 6-1, 6.1 and 6.2", "4.1.2, 4.1.3.3, 4.2.1")
 
 
-SETUP_HOW = ("The setup is the shortest input sequence found by breadth-first search over the "
-             "model's input alphabet; the expected outputs are the model's.")
-SCRIPT_HOW = "The input script was chosen by hand; the expected outputs are the model's."
+SETUP_HOW = ("Each setup is the shortest input sequence found by breadth-first search over the "
+             "model's input alphabet, shared by the scenarios that start from it; the expected "
+             "outputs are the model's. The file is written by the model (--write) and never "
+             "edited by hand.")
+SCRIPT_HOW = ("The input scripts were chosen by hand; the expected outputs are the model's. The "
+              "file is written by the model (--write) and never edited by hand.")
 
 
 def requirements_for(engine, scenario_cell, steps, reached, extra_reqs=()):
@@ -1210,32 +1211,8 @@ def requirements_for(engine, scenario_cell, steps, reached, extra_reqs=()):
     return reqs
 
 
-def assemble(engine, sid, description, cfg, inputs, scenario_cell, extra_reqs=()):
-    steps, reached, eng = replay(engine, cfg, inputs)
-    return {
-        "kind": "engine-scenario",
-        "engine": engine,
-        "id": sid,
-        "description": description,
-        "requirements": requirements_for(engine, scenario_cell, steps, reached, extra_reqs),
-        "provenance": "hand-derived",
-        "provenance_note": provenance(engine, SETUP_HOW if scenario_cell else SCRIPT_HOW),
-        "config": cfg,
-        "steps": steps,
-    }
-
-
-def with_deadline_query(engine, inputs):
-    """Append a query step that asserts the next deadline (the schema cannot say 'none')."""
-    if engine != "fop1":
-        return inputs
-    last = inputs[-1][0]
-    return inputs + [(last, {"query": "next_deadline"})]
-
-
-def cell_scenario(engine, state, event, path, trigger, cfg):
-    inputs = list(path) + [trigger]
-    inputs = with_deadline_query(engine, inputs)
+def cell_scenario(engine, state, event, path, trigger):
+    """(id, description, inputs, split) of a table cell: the setup path, then the trigger."""
     injected = "table_event" in trigger[1]
     na = injected and TABLE_FOP[event][STATES.index(state)] is None
     text = (FOP_EVENT_TEXT if engine == "fop1" else FARM_EVENT_TEXT)[event]
@@ -1250,11 +1227,7 @@ def cell_scenario(engine, state, event, path, trigger, cfg):
         how = "setup of %d step(s), then the trigger" % len(path)
     description = "%s Table %s, %s x E%d: %s. %s." % (kind, table, state, event, text, how)
     sid = "cop1-%s-%s-e%d" % (engine, state.lower(), event)
-    return assemble(engine, sid, description, cfg, inputs, True)
-
-
-def cell_path(engine, state, event):
-    return "%s_table/%s_e%02d.json" % (engine, state.lower(), event)
+    return sid, description, list(path) + [trigger], len(path)
 
 
 # --- Scenarios that are not cells -------------------------------------------------------------
@@ -1584,41 +1557,109 @@ def farm_frame_for(cfg, ns, data="C0DE", buf=True):
 # Generating every file
 # --------------------------------------------------------------------------------------------
 
-def all_scenarios():
-    """Every scenario, as (relative path, scenario dict)."""
-    files = []
+# Topic files for the scenarios that are not cells: file name -> scenario ids.
+TOPICS = {
+    "fop1_ad_service.json": ["ad-run", "retransmit-in-order", "initiate-unlock",
+                             "initiate-set-vr", "bd-service", "terminate-purge"],
+    "fop1_window_timer.json": ["window-k", "wait-queue", "timer-and-limit", "suspend-resume"],
+    "fop1_wrap_directives.json": ["modulo-256", "nr-invalid-wrap", "directive-values"],
+    "fop1_clcw.json": ["other-vcid", "clcw-pattern-type", "clcw-pattern-cop",
+                       "alert-suppression"],
+    "farm1_window.json": ["window-positive-edge", "window-negative-edge", "vr-wrap",
+                          "window-not-allowed"],
+    "farm1_flow_clcw.json": ["farm-b-counter", "buffer-wait", "set-vr-in-lockout",
+                             "bc-not-a-command", "physical-flags", "clcw-fields"],
+}
+
+# A first step shared by many scenarios, kept as a named setup.
+INITIATE = (0, {"directive": {"handle": 1, "type": "initiate_ad_without_clcw_check"}})
+
+
+def compile_file(engine, file_cfg, raws, how):
+    """Build one file. `raws` are (id, description, cfg, inputs, split, cell, extra_reqs): the
+    first `split` inputs are the setup chain, shared by name between the scenarios that start
+    with the same inputs."""
+    setups = []
+    names = {}  # tuple of the setup's inputs -> name
+    per_state = {}
+    scenarios = []
+    for sid, desc, cfg, inputs, split, cell, extra in raws:
+        steps, reached, _ = replay(engine, cfg, inputs)
+        chain = None
+        for i in range(1, split + 1):
+            key = tuple(json.dumps(x, sort_keys=True) for x in inputs[:i])
+            if key not in names:
+                state = steps[i - 1]["expect_state"]
+                per_state[state] = per_state.get(state, 0) + 1
+                name = "%s-%d" % (state, per_state[state])
+                names[key] = name
+                entry = {"name": name}
+                if chain is not None:
+                    entry["extends"] = chain
+                entry["steps"] = [steps[i - 1]]
+                setups.append(entry)
+            chain = names[key]
+        sc = {"id": sid, "description": desc,
+              "requirements": requirements_for(engine, cell, steps, reached, extra)}
+        if chain is not None:
+            sc["setup"] = chain
+        if cfg != file_cfg:
+            sc["config"] = cfg
+        sc["steps"] = steps[split:]
+        scenarios.append(sc)
+    doc = {"kind": "engine-scenario", "engine": engine, "provenance": "hand-derived",
+           "provenance_note": provenance(engine, how), "config": file_cfg}
+    if setups:
+        doc["setups"] = setups
+    doc["scenarios"] = scenarios
+    return doc
+
+
+def all_files():
+    """Every file as {relative name: document}, and the cells found."""
+    files = {}
     fop_found, _ = search_fop(FOP_CFG)
+    raws = []
     for event in FOP_EVENTS:
-        for i, state in enumerate(STATES):
-            hit = fop_found.get((state, event))
-            if hit is None:
-                continue
-            path, trigger = hit
-            files.append((cell_path("fop1", state, event),
-                          cell_scenario("fop1", state, event, path, trigger, FOP_CFG)))
+        for state in STATES:
+            if (state, event) in fop_found:
+                path, trigger = fop_found[(state, event)]
+                sid, desc, inputs, split = cell_scenario("fop1", state, event, path, trigger)
+                raws.append((sid, desc, FOP_CFG, inputs, split, True, ()))
+    files["scenarios/fop1_table.json"] = compile_file("fop1", FOP_CFG, raws, SETUP_HOW)
     farm_found, _ = search_farm(FARM_CFG)
+    raws = []
     for event in FARM_EVENTS:
-        for i, state in enumerate(FARM_STATES):
-            hit = farm_found.get((state, event))
-            if hit is None:
-                continue
-            path, trigger = hit
-            files.append((cell_path("farm1", state, event),
-                          cell_scenario("farm1", state, event, path, trigger, FARM_CFG)))
-    for engine, sid, desc, cfg, inputs, reqs in extras_fop() + extras_farm():
-        files.append(("scenarios/%s.json" % sid.replace("cop1-", "", 1).replace("-", "_"),
-                      assemble(engine, sid, desc, cfg, inputs, False, reqs)))
+        for state in FARM_STATES:
+            if (state, event) in farm_found:
+                path, trigger = farm_found[(state, event)]
+                sid, desc, inputs, split = cell_scenario("farm1", state, event, path, trigger)
+                raws.append((sid, desc, FARM_CFG, inputs, split, True, ()))
+    files["scenarios/farm1_table.json"] = compile_file("farm1", FARM_CFG, raws, SETUP_HOW)
+    extras = {e[1].replace("cop1-fop1-", "").replace("cop1-farm1-", ""): e
+              for e in extras_fop() + extras_farm()}
+    listed = [i for ids in TOPICS.values() for i in ids]
+    assert sorted(listed) == sorted(extras), (set(listed) ^ set(extras))
+    for name, ids in TOPICS.items():
+        engine = "fop1" if name.startswith("fop1") else "farm1"
+        file_cfg = FOP_CFG if engine == "fop1" else FARM_CFG
+        raws = []
+        for i in ids:
+            _, sid, desc, cfg, inputs, reqs = extras[i]
+            split = 1 if engine == "fop1" and inputs[0] == INITIATE else 0
+            raws.append((sid, desc, cfg, inputs, split, False, reqs))
+        files["scenarios/" + name] = compile_file(engine, file_cfg, raws, SCRIPT_HOW)
     return files, fop_found, farm_found
 
 
 def missing_cells(fop_found, farm_found):
     miss = []
     for event in FOP_EVENTS:
-        for i, state in enumerate(STATES):
+        for state in STATES:
             if (state, event) not in fop_found:
                 miss.append(("fop1", state, event))
     for event in FARM_EVENTS:
-        for i, state in enumerate(FARM_STATES):
+        for state in FARM_STATES:
             if (state, event) not in farm_found:
                 miss.append(("farm1", state, event))
     return miss
@@ -1629,15 +1670,40 @@ def root_dir():
     return os.path.normpath(os.path.join(here, "..", ".."))
 
 
-def write_all():
-    files, fop_found, farm_found = all_scenarios()
-    base = os.path.join(root_dir(), "test-vectors", "cop1")
-    for rel, sc in files:
-        path = os.path.join(base, rel)
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        with open(path, "w") as f:
-            json.dump(sc, f, indent=2)
-            f.write("\n")
+def dump(obj, level=0):
+    """Deterministic text: a file, a setup, or a scenario is expanded, one key per line; a step
+    and every other small object is one line; the steps of a list go one to a line."""
+    pad = "  " * level
+    inner = "  " * (level + 1)
+    if isinstance(obj, dict) and ("kind" in obj or "name" in obj or "id" in obj):
+        items = []
+        for k, v in obj.items():
+            items.append('%s%s: %s' % (inner, json.dumps(k), dump(v, level + 1)))
+        return "{\n" + ",\n".join(items) + "\n" + pad + "}"
+    if isinstance(obj, list) and obj and all(isinstance(x, dict) for x in obj) and \
+            not (len(obj) and "at_us" in obj[0] and False):
+        items = [inner + dump(x, level + 1) for x in obj]
+        return "[\n" + ",\n".join(items) + "\n" + pad + "]"
+    return json.dumps(obj, separators=(", ", ": "))
+
+
+def render(doc):
+    return dump(doc) + "\n"
+
+
+def write_all(outdir=None):
+    files, fop_found, farm_found = all_files()
+    base = outdir or os.path.join(root_dir(), "test-vectors", "cop1")
+    os.makedirs(os.path.join(base, "scenarios"), exist_ok=True)
+    # Remove what the generator no longer writes.
+    for top, _, names in os.walk(base):
+        for name in sorted(names):
+            rel = os.path.relpath(os.path.join(top, name), base)
+            if name.endswith(".json") and rel not in files:
+                os.remove(os.path.join(top, name))
+    for name, doc in files.items():
+        with open(os.path.join(base, name), "w") as f:
+            f.write(render(doc))
     miss = missing_cells(fop_found, farm_found)
     print("wrote %d file(s); %d cell(s) not reached: %s" % (len(files), len(miss), miss))
     return 0
@@ -1656,36 +1722,48 @@ def parse_id(sid):
     return None
 
 
-def check_file(path):
+def check_file(path, generated):
     problems = []
     with open(path) as f:
         doc = json.load(f)
-    if doc.get("superseded"):
-        return problems
     engine = doc["engine"]
-    sid = doc["id"]
-    cfg = doc["config"]
-    inputs = [(s["at_us"], s["input"]) for s in doc["steps"]]
-    steps, reached, eng = replay(engine, cfg, inputs)
-    for i, (want, got) in enumerate(zip(steps, doc["steps"])):
-        if want != got:
-            problems.append("%s: step %d: model says %s, file says %s" %
-                            (sid, i, json.dumps(want), json.dumps(got)))
-    cell = parse_id(sid)
-    if cell:
-        _, state, event = cell
-        trigger = [r for r in reached if r[0] is not None][-1]
-        if trigger != (state, event):
-            problems.append("%s: the trigger reaches %s, not the cell of the id" % (sid, trigger))
-    extra = tuple(r for r in doc["requirements"])
-    rebuilt = assemble(engine, sid, doc.get("description"), cfg, inputs, bool(cell),
-                       extra if not cell else ())
-    for key in ("kind", "engine", "id", "provenance", "provenance_note", "config"):
-        if rebuilt[key] != doc.get(key):
-            problems.append("%s: %s differs from the generator's" % (sid, key))
-    if cell and rebuilt["requirements"] != doc["requirements"]:
-        problems.append("%s: requirements %s, generator says %s" %
-                        (sid, doc["requirements"], rebuilt["requirements"]))
+    by_name = {s["name"]: s for s in doc.get("setups", [])}
+    seen_ids = set()
+    for sc in doc["scenarios"]:
+        sid = sc["id"]
+        if sid in seen_ids:
+            problems.append("%s: scenario id twice" % sid)
+        seen_ids.add(sid)
+        if sc.get("superseded"):
+            continue
+        chain = []
+        name = sc.get("setup")
+        while name is not None:
+            if name not in by_name or len(chain) > len(by_name):
+                problems.append("%s: the setup %r is missing or loops" % (sid, name))
+                break
+            chain.append(by_name[name])
+            name = by_name[name].get("extends")
+        stored = [st for s in reversed(chain) for st in s["steps"]] + sc["steps"]
+        cfg = sc.get("config", doc["config"])
+        inputs = [(st["at_us"], st["input"]) for st in stored]
+        steps, reached, _ = replay(engine, cfg, inputs)
+        for i, (want, got) in enumerate(zip(steps, stored)):
+            if want != got:
+                problems.append("%s: step %d: model says %s, file says %s" %
+                                (sid, i, json.dumps(want), json.dumps(got)))
+        cell = parse_id(sid)
+        if cell:
+            _, state, event = cell
+            trigger = [r for r in reached if r[0] is not None][-1]
+            if trigger != (state, event):
+                problems.append("%s: the trigger reaches %s, not the cell of the id" %
+                                (sid, trigger))
+    rel = os.path.relpath(path, os.path.join(root_dir(), "test-vectors", "cop1"))
+    if rel not in generated:
+        problems.append("%s: not a file the generator writes" % rel)
+    elif generated[rel] != doc:
+        problems.append("%s: differs from what the generator writes (run --write)" % rel)
     return problems
 
 
@@ -1698,8 +1776,9 @@ def selftest():
 def check(paths):
     selftest()
     problems = []
+    generated, _, _ = all_files()
     for p in paths:
-        problems.extend(check_file(p))
+        problems.extend(check_file(p, generated))
     for p in problems:
         print("error:", p)
     print("cop1 model: %d file(s), %d problem(s)" % (len(paths), len(problems)))
@@ -1753,8 +1832,8 @@ def audit():
 def main(argv):
     if len(argv) >= 2 and argv[1] == "--check":
         return check(argv[2:])
-    if len(argv) == 2 and argv[1] == "--write":
-        return write_all()
+    if len(argv) in (2, 3) and argv[1] == "--write":
+        return write_all(argv[2] if len(argv) == 3 else None)
     if len(argv) == 2 and argv[1] == "--audit":
         return audit()
     print(__doc__.split("Usage")[1].split("--check recomputes")[0] if False else

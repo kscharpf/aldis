@@ -642,6 +642,8 @@ const SPEC: &str = "\
 cargo xtask spec-lint
 cargo xtask links
 cargo xtask vectors validate
+# The files of test-vectors/cop1/ are what the independent model writes (TV-023).
+cargo xtask vectors generated
 cargo xtask vectors schema --check
 # The field catalogue of docs/03-api-model.md §9.1 and the files generated from it (API-082).
 cargo xtask fields

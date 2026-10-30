@@ -1,0 +1,309 @@
+{
+  "kind": "engine-scenario",
+  "engine": "farm1",
+  "provenance": "hand-derived",
+  "provenance_note": "Hand-derived from 232.1-B-2 Cor. 1 Table 6-1, 6.1 and 6.2 and 232.0-B-4 4.1.2, 4.1.3.3, 4.2.1. Model test-vectors/models/cop1.py, written blind (TV-023) by a Claude agent from the Blue Books and docs/ only, without reading any implementation; docs/verification/reviews/cop1-tables.md was read as input and the transcription compared with it. For the file layout and schema change only, its author also read crates/aldis-testkit and the schema generator, which are test infrastructure and not an implementation under test. Each setup is the shortest input sequence found by breadth-first search over the model's input alphabet, shared by the scenarios that start from it; the expected outputs are the model's. The file is written by the model (--write) and never edited by hand.",
+  "config": {"frame_target": "tc", "scid": 42, "vcid": 1, "fecf": true, "status_field": 0, "window": {"retransmission_allowed": true, "w": 8}, "v_r": 0},
+  "setups": [
+    {
+      "name": "S2-1",
+      "steps": [
+        {"at_us": 1000, "input": {"frame": {"frame_hex": "002A040800C0DE72E6", "buffer_available": false}}, "expect": [{"event": "frame_discarded", "event_number": 2, "state": "S1"}, {"event": "state_changed", "event_number": 2, "from": "S1", "to": "S2"}], "expect_state": "S2"}
+      ]
+    },
+    {
+      "name": "S3-1",
+      "steps": [
+        {"at_us": 1000, "input": {"frame": {"frame_hex": "002A040804C0DEAE26", "buffer_available": true}}, "expect": [{"event": "frame_discarded", "event_number": 5, "state": "S1"}, {"event": "state_changed", "event_number": 5, "from": "S1", "to": "S3"}], "expect_state": "S3"}
+      ]
+    }
+  ],
+  "scenarios": [
+    {
+      "id": "cop1-farm1-s1-e1",
+      "description": "FARM-1 Table 6-1, S1 x E1: Valid Type-AD frame, N(S) = V(R), buffer available. setup of 0 step(s), then the trigger.",
+      "requirements": ["COP-002", "COP-005", "COP-030", "COP-033"],
+      "steps": [
+        {"at_us": 1000, "input": {"frame": {"frame_hex": "002A040800C0DE72E6", "buffer_available": true}}, "expect": [{"deliver": {"kind": "AD", "ns": 0, "data_hex": "C0DE"}}], "expect_state": "S1"}
+      ]
+    },
+    {
+      "id": "cop1-farm1-s2-e1",
+      "description": "FARM-1 Table 6-1, S2 x E1: Valid Type-AD frame, N(S) = V(R), buffer available. a cell the Blue Book marks Not applicable: the engine refuses it with InvalidState.",
+      "requirements": ["COP-002", "COP-005", "API-058", "COP-030", "COP-033"],
+      "setup": "S2-1",
+      "steps": [
+        {"at_us": 2000, "input": {"frame": {"frame_hex": "002A040800C0DE72E6", "buffer_available": true}}, "expect": [{"error": "InvalidState"}], "expect_state": "S2"}
+      ]
+    },
+    {
+      "id": "cop1-farm1-s3-e1",
+      "description": "FARM-1 Table 6-1, S3 x E1: Valid Type-AD frame, N(S) = V(R), buffer available. setup of 1 step(s), then the trigger.",
+      "requirements": ["COP-002", "COP-005", "COP-030", "COP-033"],
+      "setup": "S3-1",
+      "steps": [
+        {"at_us": 2000, "input": {"frame": {"frame_hex": "002A040800C0DE72E6", "buffer_available": true}}, "expect": [{"event": "frame_discarded", "event_number": 1, "state": "S3"}], "expect_state": "S3"}
+      ]
+    },
+    {
+      "id": "cop1-farm1-s1-e2",
+      "description": "FARM-1 Table 6-1, S1 x E2: Valid Type-AD frame, N(S) = V(R), no buffer available. setup of 0 step(s), then the trigger.",
+      "requirements": ["COP-002", "COP-005", "COP-030", "COP-033"],
+      "steps": [
+        {"at_us": 1000, "input": {"frame": {"frame_hex": "002A040800C0DE72E6", "buffer_available": false}}, "expect": [{"event": "frame_discarded", "event_number": 2, "state": "S1"}, {"event": "state_changed", "event_number": 2, "from": "S1", "to": "S2"}], "expect_state": "S2"}
+      ]
+    },
+    {
+      "id": "cop1-farm1-s2-e2",
+      "description": "FARM-1 Table 6-1, S2 x E2: Valid Type-AD frame, N(S) = V(R), no buffer available. setup of 1 step(s), then the trigger.",
+      "requirements": ["COP-002", "COP-005", "COP-030", "COP-033"],
+      "setup": "S2-1",
+      "steps": [
+        {"at_us": 2000, "input": {"frame": {"frame_hex": "002A040800C0DE72E6", "buffer_available": false}}, "expect": [{"event": "frame_discarded", "event_number": 2, "state": "S2"}], "expect_state": "S2"}
+      ]
+    },
+    {
+      "id": "cop1-farm1-s3-e2",
+      "description": "FARM-1 Table 6-1, S3 x E2: Valid Type-AD frame, N(S) = V(R), no buffer available. setup of 1 step(s), then the trigger.",
+      "requirements": ["COP-002", "COP-005", "COP-030", "COP-033"],
+      "setup": "S3-1",
+      "steps": [
+        {"at_us": 2000, "input": {"frame": {"frame_hex": "002A040800C0DE72E6", "buffer_available": false}}, "expect": [{"event": "frame_discarded", "event_number": 2, "state": "S3"}], "expect_state": "S3"}
+      ]
+    },
+    {
+      "id": "cop1-farm1-s1-e3",
+      "description": "FARM-1 Table 6-1, S1 x E3: Valid Type-AD frame, N(S) in the positive window, not V(R). setup of 0 step(s), then the trigger.",
+      "requirements": ["COP-002", "COP-005", "COP-030"],
+      "steps": [
+        {"at_us": 1000, "input": {"frame": {"frame_hex": "002A040801C0DE45D6", "buffer_available": true}}, "expect": [{"event": "frame_discarded", "event_number": 3, "state": "S1"}], "expect_state": "S1"}
+      ]
+    },
+    {
+      "id": "cop1-farm1-s2-e3",
+      "description": "FARM-1 Table 6-1, S2 x E3: Valid Type-AD frame, N(S) in the positive window, not V(R). setup of 1 step(s), then the trigger.",
+      "requirements": ["COP-002", "COP-005", "COP-030"],
+      "setup": "S2-1",
+      "steps": [
+        {"at_us": 2000, "input": {"frame": {"frame_hex": "002A040801C0DE45D6", "buffer_available": true}}, "expect": [{"event": "frame_discarded", "event_number": 3, "state": "S2"}], "expect_state": "S2"}
+      ]
+    },
+    {
+      "id": "cop1-farm1-s3-e3",
+      "description": "FARM-1 Table 6-1, S3 x E3: Valid Type-AD frame, N(S) in the positive window, not V(R). setup of 1 step(s), then the trigger.",
+      "requirements": ["COP-002", "COP-005", "COP-030"],
+      "setup": "S3-1",
+      "steps": [
+        {"at_us": 2000, "input": {"frame": {"frame_hex": "002A040801C0DE45D6", "buffer_available": true}}, "expect": [{"event": "frame_discarded", "event_number": 3, "state": "S3"}], "expect_state": "S3"}
+      ]
+    },
+    {
+      "id": "cop1-farm1-s1-e4",
+      "description": "FARM-1 Table 6-1, S1 x E4: Valid Type-AD frame, N(S) in the negative window. setup of 0 step(s), then the trigger.",
+      "requirements": ["COP-002", "COP-005", "COP-030"],
+      "steps": [
+        {"at_us": 1000, "input": {"frame": {"frame_hex": "002A0408FFC0DEBD85", "buffer_available": true}}, "expect": [{"event": "frame_discarded", "event_number": 4, "state": "S1"}], "expect_state": "S1"}
+      ]
+    },
+    {
+      "id": "cop1-farm1-s2-e4",
+      "description": "FARM-1 Table 6-1, S2 x E4: Valid Type-AD frame, N(S) in the negative window. setup of 1 step(s), then the trigger.",
+      "requirements": ["COP-002", "COP-005", "COP-030"],
+      "setup": "S2-1",
+      "steps": [
+        {"at_us": 2000, "input": {"frame": {"frame_hex": "002A0408FFC0DEBD85", "buffer_available": true}}, "expect": [{"event": "frame_discarded", "event_number": 4, "state": "S2"}], "expect_state": "S2"}
+      ]
+    },
+    {
+      "id": "cop1-farm1-s3-e4",
+      "description": "FARM-1 Table 6-1, S3 x E4: Valid Type-AD frame, N(S) in the negative window. setup of 1 step(s), then the trigger.",
+      "requirements": ["COP-002", "COP-005", "COP-030"],
+      "setup": "S3-1",
+      "steps": [
+        {"at_us": 2000, "input": {"frame": {"frame_hex": "002A0408FFC0DEBD85", "buffer_available": true}}, "expect": [{"event": "frame_discarded", "event_number": 4, "state": "S3"}], "expect_state": "S3"}
+      ]
+    },
+    {
+      "id": "cop1-farm1-s1-e5",
+      "description": "FARM-1 Table 6-1, S1 x E5: Valid Type-AD frame, N(S) outside the sliding window. setup of 0 step(s), then the trigger.",
+      "requirements": ["COP-002", "COP-005", "COP-030"],
+      "steps": [
+        {"at_us": 1000, "input": {"frame": {"frame_hex": "002A040804C0DEAE26", "buffer_available": true}}, "expect": [{"event": "frame_discarded", "event_number": 5, "state": "S1"}, {"event": "state_changed", "event_number": 5, "from": "S1", "to": "S3"}], "expect_state": "S3"}
+      ]
+    },
+    {
+      "id": "cop1-farm1-s2-e5",
+      "description": "FARM-1 Table 6-1, S2 x E5: Valid Type-AD frame, N(S) outside the sliding window. setup of 1 step(s), then the trigger.",
+      "requirements": ["COP-002", "COP-005", "COP-030"],
+      "setup": "S2-1",
+      "steps": [
+        {"at_us": 2000, "input": {"frame": {"frame_hex": "002A040804C0DEAE26", "buffer_available": true}}, "expect": [{"event": "frame_discarded", "event_number": 5, "state": "S2"}, {"event": "state_changed", "event_number": 5, "from": "S2", "to": "S3"}], "expect_state": "S3"}
+      ]
+    },
+    {
+      "id": "cop1-farm1-s3-e5",
+      "description": "FARM-1 Table 6-1, S3 x E5: Valid Type-AD frame, N(S) outside the sliding window. setup of 1 step(s), then the trigger.",
+      "requirements": ["COP-002", "COP-005", "COP-030"],
+      "setup": "S3-1",
+      "steps": [
+        {"at_us": 2000, "input": {"frame": {"frame_hex": "002A040804C0DEAE26", "buffer_available": true}}, "expect": [{"event": "frame_discarded", "event_number": 5, "state": "S3"}], "expect_state": "S3"}
+      ]
+    },
+    {
+      "id": "cop1-farm1-s1-e6",
+      "description": "FARM-1 Table 6-1, S1 x E6: Valid Type-BD frame. setup of 0 step(s), then the trigger.",
+      "requirements": ["COP-002", "COP-005", "COP-034"],
+      "steps": [
+        {"at_us": 1000, "input": {"frame": {"frame_hex": "202A040800BD015887", "buffer_available": true}}, "expect": [{"deliver": {"kind": "BD", "ns": 0, "data_hex": "BD01"}}], "expect_state": "S1"}
+      ]
+    },
+    {
+      "id": "cop1-farm1-s2-e6",
+      "description": "FARM-1 Table 6-1, S2 x E6: Valid Type-BD frame. setup of 1 step(s), then the trigger.",
+      "requirements": ["COP-002", "COP-005", "COP-034"],
+      "setup": "S2-1",
+      "steps": [
+        {"at_us": 2000, "input": {"frame": {"frame_hex": "202A040800BD015887", "buffer_available": true}}, "expect": [{"deliver": {"kind": "BD", "ns": 0, "data_hex": "BD01"}}], "expect_state": "S2"}
+      ]
+    },
+    {
+      "id": "cop1-farm1-s3-e6",
+      "description": "FARM-1 Table 6-1, S3 x E6: Valid Type-BD frame. setup of 1 step(s), then the trigger.",
+      "requirements": ["COP-002", "COP-005", "COP-034"],
+      "setup": "S3-1",
+      "steps": [
+        {"at_us": 2000, "input": {"frame": {"frame_hex": "202A040800BD015887", "buffer_available": true}}, "expect": [{"deliver": {"kind": "BD", "ns": 0, "data_hex": "BD01"}}], "expect_state": "S3"}
+      ]
+    },
+    {
+      "id": "cop1-farm1-s1-e7",
+      "description": "FARM-1 Table 6-1, S1 x E7: Valid Type-BC frame carrying Unlock. setup of 0 step(s), then the trigger.",
+      "requirements": ["COP-002", "COP-005", "COP-034", "COP-036"],
+      "steps": [
+        {"at_us": 1000, "input": {"frame": {"frame_hex": "302A0407000020E7", "buffer_available": true}}, "expect": [{"event": "unlocked"}], "expect_state": "S1"}
+      ]
+    },
+    {
+      "id": "cop1-farm1-s2-e7",
+      "description": "FARM-1 Table 6-1, S2 x E7: Valid Type-BC frame carrying Unlock. setup of 1 step(s), then the trigger.",
+      "requirements": ["COP-002", "COP-005", "COP-034", "COP-036"],
+      "setup": "S2-1",
+      "steps": [
+        {"at_us": 2000, "input": {"frame": {"frame_hex": "302A0407000020E7", "buffer_available": true}}, "expect": [{"event": "unlocked"}, {"event": "state_changed", "event_number": 7, "from": "S2", "to": "S1"}], "expect_state": "S1"}
+      ]
+    },
+    {
+      "id": "cop1-farm1-s3-e7",
+      "description": "FARM-1 Table 6-1, S3 x E7: Valid Type-BC frame carrying Unlock. setup of 1 step(s), then the trigger.",
+      "requirements": ["COP-002", "COP-005", "COP-034", "COP-036"],
+      "setup": "S3-1",
+      "steps": [
+        {"at_us": 2000, "input": {"frame": {"frame_hex": "302A0407000020E7", "buffer_available": true}}, "expect": [{"event": "unlocked"}, {"event": "state_changed", "event_number": 7, "from": "S3", "to": "S1"}], "expect_state": "S1"}
+      ]
+    },
+    {
+      "id": "cop1-farm1-s1-e8",
+      "description": "FARM-1 Table 6-1, S1 x E8: Valid Type-BC frame carrying Set V(R). setup of 0 step(s), then the trigger.",
+      "requirements": ["COP-002", "COP-005", "COP-034"],
+      "steps": [
+        {"at_us": 1000, "input": {"frame": {"frame_hex": "302A0409008200144308", "buffer_available": true}}, "expect": [], "expect_state": "S1"}
+      ]
+    },
+    {
+      "id": "cop1-farm1-s2-e8",
+      "description": "FARM-1 Table 6-1, S2 x E8: Valid Type-BC frame carrying Set V(R). setup of 1 step(s), then the trigger.",
+      "requirements": ["COP-002", "COP-005", "COP-034"],
+      "setup": "S2-1",
+      "steps": [
+        {"at_us": 2000, "input": {"frame": {"frame_hex": "302A0409008200144308", "buffer_available": true}}, "expect": [{"event": "state_changed", "event_number": 8, "from": "S2", "to": "S1"}], "expect_state": "S1"}
+      ]
+    },
+    {
+      "id": "cop1-farm1-s3-e8",
+      "description": "FARM-1 Table 6-1, S3 x E8: Valid Type-BC frame carrying Set V(R). setup of 1 step(s), then the trigger.",
+      "requirements": ["COP-002", "COP-005", "COP-034"],
+      "setup": "S3-1",
+      "steps": [
+        {"at_us": 2000, "input": {"frame": {"frame_hex": "302A0409008200144308", "buffer_available": true}}, "expect": [], "expect_state": "S3"}
+      ]
+    },
+    {
+      "id": "cop1-farm1-s1-e9",
+      "description": "FARM-1 Table 6-1, S1 x E9: Invalid frame, or a Type-BC frame carrying neither command. setup of 0 step(s), then the trigger.",
+      "requirements": ["COP-002", "COP-005", "COP-031"],
+      "steps": [
+        {"at_us": 1000, "input": {"frame": {"frame_hex": "302A0407000130C6", "buffer_available": true}}, "expect": [{"event": "frame_discarded", "event_number": 9, "state": "S1"}], "expect_state": "S1"}
+      ]
+    },
+    {
+      "id": "cop1-farm1-s2-e9",
+      "description": "FARM-1 Table 6-1, S2 x E9: Invalid frame, or a Type-BC frame carrying neither command. setup of 1 step(s), then the trigger.",
+      "requirements": ["COP-002", "COP-005", "COP-031"],
+      "setup": "S2-1",
+      "steps": [
+        {"at_us": 2000, "input": {"frame": {"frame_hex": "302A0407000130C6", "buffer_available": true}}, "expect": [{"event": "frame_discarded", "event_number": 9, "state": "S2"}], "expect_state": "S2"}
+      ]
+    },
+    {
+      "id": "cop1-farm1-s3-e9",
+      "description": "FARM-1 Table 6-1, S3 x E9: Invalid frame, or a Type-BC frame carrying neither command. setup of 1 step(s), then the trigger.",
+      "requirements": ["COP-002", "COP-005", "COP-031"],
+      "setup": "S3-1",
+      "steps": [
+        {"at_us": 2000, "input": {"frame": {"frame_hex": "302A0407000130C6", "buffer_available": true}}, "expect": [{"event": "frame_discarded", "event_number": 9, "state": "S3"}], "expect_state": "S3"}
+      ]
+    },
+    {
+      "id": "cop1-farm1-s1-e10",
+      "description": "FARM-1 Table 6-1, S1 x E10: Buffer release signal. setup of 0 step(s), then the trigger.",
+      "requirements": ["COP-002", "COP-005", "COP-033"],
+      "steps": [
+        {"at_us": 1000, "input": {"buffer_released": {}}, "expect": [], "expect_state": "S1"}
+      ]
+    },
+    {
+      "id": "cop1-farm1-s2-e10",
+      "description": "FARM-1 Table 6-1, S2 x E10: Buffer release signal. setup of 1 step(s), then the trigger.",
+      "requirements": ["COP-002", "COP-005", "COP-033"],
+      "setup": "S2-1",
+      "steps": [
+        {"at_us": 2000, "input": {"buffer_released": {}}, "expect": [{"event": "state_changed", "event_number": 10, "from": "S2", "to": "S1"}], "expect_state": "S1"}
+      ]
+    },
+    {
+      "id": "cop1-farm1-s3-e10",
+      "description": "FARM-1 Table 6-1, S3 x E10: Buffer release signal. setup of 1 step(s), then the trigger.",
+      "requirements": ["COP-002", "COP-005", "COP-033"],
+      "setup": "S3-1",
+      "steps": [
+        {"at_us": 2000, "input": {"buffer_released": {}}, "expect": [], "expect_state": "S3"}
+      ]
+    },
+    {
+      "id": "cop1-farm1-s1-e11",
+      "description": "FARM-1 Table 6-1, S1 x E11: CLCW report time. setup of 0 step(s), then the trigger.",
+      "requirements": ["COP-002", "COP-005", "COP-035"],
+      "steps": [
+        {"at_us": 1000, "input": {"query": "clcw"}, "expect": [{"clcw": {"lockout": false, "wait": false, "retransmit": false, "farm_b_counter": 0, "n_r": 0, "cop_in_effect": 1, "vcid": 1, "status_field": 0, "no_rf_available": false, "no_bit_lock": false}, "clcw_hex": "01040000"}], "expect_state": "S1"}
+      ]
+    },
+    {
+      "id": "cop1-farm1-s2-e11",
+      "description": "FARM-1 Table 6-1, S2 x E11: CLCW report time. setup of 1 step(s), then the trigger.",
+      "requirements": ["COP-002", "COP-005", "COP-035"],
+      "setup": "S2-1",
+      "steps": [
+        {"at_us": 2000, "input": {"query": "clcw"}, "expect": [{"clcw": {"lockout": false, "wait": true, "retransmit": true, "farm_b_counter": 0, "n_r": 0, "cop_in_effect": 1, "vcid": 1, "status_field": 0, "no_rf_available": false, "no_bit_lock": false}, "clcw_hex": "01041800"}], "expect_state": "S2"}
+      ]
+    },
+    {
+      "id": "cop1-farm1-s3-e11",
+      "description": "FARM-1 Table 6-1, S3 x E11: CLCW report time. setup of 1 step(s), then the trigger.",
+      "requirements": ["COP-002", "COP-005", "COP-035"],
+      "setup": "S3-1",
+      "steps": [
+        {"at_us": 2000, "input": {"query": "clcw"}, "expect": [{"clcw": {"lockout": true, "wait": false, "retransmit": false, "farm_b_counter": 0, "n_r": 0, "cop_in_effect": 1, "vcid": 1, "status_field": 0, "no_rf_available": false, "no_bit_lock": false}, "clcw_hex": "01042000"}], "expect_state": "S3"}
+      ]
+    }
+  ]
+}

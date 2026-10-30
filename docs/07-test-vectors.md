@@ -12,7 +12,7 @@ test-vectors/
                      fields.json, the field catalogue (generated, not a vector file)
   time/              cuc.json, cds.json, ccs.json, ascii.json, convert.json
   spp/  epp/  tm/  tc/  aos/  uslp/
-  cop1/              fop1_table/<state>_e<event>.json, farm1_table/<state>_e<event>.json, scenarios/*.json (README.md: vocabulary)
+  cop1/              scenarios/fop1_table.json, scenarios/farm1_table.json, and scenario files by topic (all under scenarios/) (README.md: vocabulary); written by test-vectors/models/cop1.py, never edited by hand
   link/              packet_generator/*.json, extractor/*.json, mux/*.json, segmenter/*.json
 ```
 
@@ -68,28 +68,36 @@ An expected error may also give `field`: the code, from the field catalogue in [
 {
   "kind": "engine-scenario",
   "engine": "fop1",
-  "id": "fop1-initiate-and-first-ad",
-  "requirements": ["COP-001", "COP-010", "COP-013"],
   "provenance": "hand-derived",
   "provenance_note": "Derived from 232.1-B-2 Table 5-1 (E23, E19)",
   "config": { "frame_target": "tc", "scid": 42, "vcid": 1, "t1_initial_us": 2000000,
               "transmission_limit": 3, "timeout_type": 0, "k": 8, "fecf": true },
-  "steps": [
-    { "at_us": 0,       "input": { "directive": "initiate_ad_without_clcw_check" },
-      "expect": [ { "event": "directive_notify", "handle": 1, "type": "accept" },
-                  { "event": "directive_notify", "handle": 1, "type": "positive_confirm" } ],
-      "expect_state": "S1" },
-    { "at_us": 10,      "input": { "request_ad": "AABBCC" },
-      "expect": [ { "transmit": { "kind": "AD", "ns": 0, "frame_hex": "…" } } ],
-      "expect_timeout_us": 2000010 }
+  "setups": [
+    { "name": "initiated", "steps": [
+      { "at_us": 0, "input": { "directive": { "handle": 1, "type": "initiate_ad_without_clcw_check" } },
+        "expect": [ { "event": "directive_notify", "handle": 1, "type": "accept" },
+                    { "event": "directive_notify", "handle": 1, "type": "positive_confirm" } ],
+        "expect_state": "S1", "expect_timeout_us": null } ] }
+  ],
+  "scenarios": [
+    { "id": "fop1-first-ad",
+      "requirements": ["COP-001", "COP-010", "COP-013"],
+      "setup": "initiated",
+      "steps": [
+        { "at_us": 10, "input": { "request_ad": { "handle": 2, "data_hex": "AABBCC" } },
+          "expect": [ { "event": "transfer_notify", "handle": 2, "type": "accept" },
+                      { "transmit": { "kind": "AD", "ns": 0, "retransmission": false, "frame_hex": "…" } } ],
+          "expect_state": "S1", "expect_timeout_us": 2000010 } ] }
   ]
 }
 ```
 
+One file holds many scenarios. The provenance, the `config`, and the named `setups` are given once per file. A setup is an input sequence that reaches a state, with its expectations; it may `extends` another setup. A scenario names a `setup` (optional), may replace the `config`, and lists only its own steps; the steps that run are the setup chain and then the scenario's. `expect_timeout_us` is absent (not asserted), `null` (no deadline), or the deadline.
+
 | ID | Requirement | Source | Verif. |
 |---|---|---|---|
-| TV-010 | Scenario steps SHALL supply an absolute `at_us` instant and one input. They SHALL list the **complete, ordered** set of outputs expected before the next step: transmits, deliveries, and events. They MAY assert state and the next timeout. | GEN-030 | I |
-| TV-011 | The state-table vectors (`cop1/fop1_table/`, `cop1/farm1_table/`) SHALL contain one case per table cell, one file per case (an engine scenario file holds one scenario). Each case gives a setup sequence that reaches the cell's state, the triggering event, and the expected actions and next state (COP-005). | COP-005 | V |
+| TV-010 | Scenario steps SHALL supply an absolute `at_us` instant and one input. They SHALL list the **complete, ordered** set of outputs expected before the next step: transmits, deliveries, and events. They MAY assert state and the next timeout (absent, `null` for none, or a value). | GEN-030 | I |
+| TV-011 | The state-table vectors (`cop1/scenarios/fop1_table.json`, `cop1/scenarios/farm1_table.json`) SHALL contain one scenario per table cell. Each case gives a setup sequence that reaches the cell's state, the triggering event, and the expected actions and next state (COP-005). | COP-005 | V |
 | TV-012 | Harnesses SHALL fail on any **unexpected** output, not only on missing ones. | — | T |
 
 ## 4. Provenance

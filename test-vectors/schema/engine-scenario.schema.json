@@ -1,27 +1,16 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "ScenarioFile",
-  "description": "A scripted sequence of inputs and expected outputs for one engine (TV-010…TV-012).",
+  "description": "A file of scripted scenarios for one engine (TV-010…TV-012). The provenance, the\nconfiguration, and the named setups are given once per file; each scenario refers to a setup\nand adds its own steps.",
   "type": "object",
   "properties": {
     "config": {
-      "description": "Engine configuration (managed parameters).",
+      "description": "Engine configuration (managed parameters), unless a scenario gives its own.",
       "type": "object",
       "additionalProperties": true
     },
-    "description": {
-      "description": "Human-readable description.",
-      "type": [
-        "string",
-        "null"
-      ]
-    },
     "engine": {
       "description": "Engine name (e.g. `fop1`, `farm1`, `packet-extractor`).",
-      "type": "string"
-    },
-    "id": {
-      "description": "Globally unique scenario identifier.",
       "type": "string"
     },
     "kind": {
@@ -29,51 +18,38 @@
       "$ref": "#/$defs/ScenarioKind"
     },
     "provenance": {
-      "description": "Origin of the expected values.",
+      "description": "Origin of the expected values, for every scenario of the file.",
       "$ref": "#/$defs/Provenance"
     },
     "provenance_note": {
-      "description": "Derivation or cross-check details.",
+      "description": "Derivation or cross-check details, for every scenario of the file.",
       "type": [
         "string",
         "null"
       ]
     },
-    "requirements": {
-      "description": "Requirement IDs the scenario verifies (TV-003).",
+    "scenarios": {
+      "description": "The scenarios, in file order.",
       "type": "array",
       "items": {
-        "type": "string"
+        "$ref": "#/$defs/Scenario"
       }
     },
-    "steps": {
-      "description": "Ordered steps.",
+    "setups": {
+      "description": "Named input sequences that reach a state, defined once and used by the scenarios.",
       "type": "array",
       "items": {
-        "$ref": "#/$defs/Step"
+        "$ref": "#/$defs/Setup"
       }
-    },
-    "superseded": {
-      "description": "Present when this released scenario has been replaced.",
-      "anyOf": [
-        {
-          "$ref": "#/$defs/Superseded"
-        },
-        {
-          "type": "null"
-        }
-      ]
     }
   },
   "additionalProperties": false,
   "required": [
     "kind",
     "engine",
-    "id",
-    "requirements",
     "provenance",
     "config",
-    "steps"
+    "scenarios"
   ],
   "$defs": {
     "Provenance": {
@@ -101,6 +77,69 @@
         }
       ]
     },
+    "Scenario": {
+      "description": "One scenario: an optional setup, then its own steps.",
+      "type": "object",
+      "properties": {
+        "config": {
+          "description": "Engine configuration that replaces the file's, for this scenario.",
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": true
+        },
+        "description": {
+          "description": "Human-readable description.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "id": {
+          "description": "Globally unique scenario identifier.",
+          "type": "string"
+        },
+        "requirements": {
+          "description": "Requirement IDs the scenario verifies (TV-003).",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "setup": {
+          "description": "The setup to run first.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "steps": {
+          "description": "Ordered steps, after the setup.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Step"
+          }
+        },
+        "superseded": {
+          "description": "Present when this released scenario has been replaced.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Superseded"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "requirements",
+        "steps"
+      ]
+    },
     "ScenarioKind": {
       "description": "Value of the `kind` field of an engine scenario file.",
       "oneOf": [
@@ -109,6 +148,35 @@
           "type": "string",
           "const": "engine-scenario"
         }
+      ]
+    },
+    "Setup": {
+      "description": "A named input sequence that reaches a state. Its steps are run, with their expectations,\nbefore the steps of a scenario that uses it.",
+      "type": "object",
+      "properties": {
+        "extends": {
+          "description": "The setup that runs first, when this one continues it.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "name": {
+          "description": "The name a scenario or another setup refers to; unique in the file.",
+          "type": "string"
+        },
+        "steps": {
+          "description": "Ordered steps.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Step"
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "steps"
       ]
     },
     "Step": {
@@ -137,7 +205,7 @@
           ]
         },
         "expect_timeout_us": {
-          "description": "Expected `next_deadline` after the step, in microseconds.",
+          "description": "Expected `next_deadline` after the step, in microseconds: absent means not asserted,\n`null` means no deadline, a number is the deadline.",
           "type": [
             "integer",
             "null"

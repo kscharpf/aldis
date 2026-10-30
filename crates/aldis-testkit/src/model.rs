@@ -145,7 +145,9 @@ pub enum ScenarioKind {
     EngineScenario,
 }
 
-/// A scripted sequence of inputs and expected outputs for one engine (TV-010…TV-012).
+/// A file of scripted scenarios for one engine (TV-010…TV-012). The provenance, the
+/// configuration, and the named setups are given once per file; each scenario refers to a setup
+/// and adds its own steps.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(deny_unknown_fields)]
@@ -154,25 +156,108 @@ pub struct ScenarioFile {
     pub kind: ScenarioKind,
     /// Engine name (e.g. `fop1`, `farm1`, `packet-extractor`).
     pub engine: String,
+    /// Origin of the expected values, for every scenario of the file.
+    pub provenance: Provenance,
+    /// Derivation or cross-check details, for every scenario of the file.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provenance_note: Option<String>,
+    /// Engine configuration (managed parameters), unless a scenario gives its own.
+    pub config: Map<String, Value>,
+    /// Named input sequences that reach a state, defined once and used by the scenarios.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub setups: Vec<Setup>,
+    /// The scenarios, in file order.
+    pub scenarios: Vec<Scenario>,
+}
+
+/// A named input sequence that reaches a state. Its steps are run, with their expectations,
+/// before the steps of a scenario that uses it.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[serde(deny_unknown_fields)]
+pub struct Setup {
+    /// The name a scenario or another setup refers to; unique in the file.
+    pub name: String,
+    /// The setup that runs first, when this one continues it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub extends: Option<String>,
+    /// Ordered steps.
+    pub steps: Vec<Step>,
+}
+
+/// One scenario: an optional setup, then its own steps.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[serde(deny_unknown_fields)]
+pub struct Scenario {
     /// Globally unique scenario identifier.
     pub id: String,
-    /// Requirement IDs the scenario verifies (TV-003).
-    pub requirements: Vec<String>,
     /// Human-readable description.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
-    /// Origin of the expected values.
-    pub provenance: Provenance,
-    /// Derivation or cross-check details.
+    /// Requirement IDs the scenario verifies (TV-003).
+    pub requirements: Vec<String>,
+    /// The setup to run first.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub provenance_note: Option<String>,
-    /// Engine configuration (managed parameters).
-    pub config: Map<String, Value>,
-    /// Ordered steps.
+    pub setup: Option<String>,
+    /// Engine configuration that replaces the file's, for this scenario.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub config: Option<Map<String, Value>>,
+    /// Ordered steps, after the setup.
     pub steps: Vec<Step>,
     /// Present when this released scenario has been replaced.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub superseded: Option<Superseded>,
+}
+
+/// A scenario with its setup chain expanded, ready to run.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ResolvedScenario<'a> {
+    /// The scenario.
+    pub scenario: &'a Scenario,
+    /// The configuration in force: the scenario's own, else the file's.
+    pub config: &'a Map<String, Value>,
+    /// The steps to run in order: the setup chain, then the scenario's.
+    pub steps: Vec<&'a Step>,
+}
+
+impl ScenarioFile {
+    /// Expands every scenario's setup chain.
+    ///
+    /// # Errors
+    /// Returns a message if a setup is named twice, a setup or scenario refers to a setup that
+    /// does not exist, or the `extends` chain loops.
+    pub fn resolve(&self) -> Result<Vec<ResolvedScenario<'_>>, String> {
+        let mut by_name = std::collections::BTreeMap::<&str, &Setup>::new();
+        for setup in &self.setups {
+            if by_name.insert(&setup.name, setup).is_some() {
+                return Err(format!("setup {:?} is defined twice", setup.name));
+            }
+        }
+        let mut out = Vec::with_capacity(self.scenarios.len());
+        for scenario in &self.scenarios {
+            let mut chain: Vec<&Setup> = Vec::new();
+            let mut next = scenario.setup.as_deref();
+            while let Some(name) = next {
+                let setup = by_name
+                    .get(name)
+                    .ok_or_else(|| format!("{}: the setup {name:?} does not exist", scenario.id))?;
+                if chain.len() > self.setups.len() {
+                    return Err(format!("{}: the setups loop at {name:?}", scenario.id));
+                }
+                chain.push(setup);
+                next = setup.extends.as_deref();
+            }
+            let mut steps: Vec<&Step> = chain.iter().rev().flat_map(|s| &s.steps).collect();
+            steps.extend(&scenario.steps);
+            out.push(ResolvedScenario {
+                scenario,
+                config: scenario.config.as_ref().unwrap_or(&self.config),
+                steps,
+            });
+        }
+        Ok(out)
+    }
 }
 
 /// One scenario step: one input at an absolute instant, and the complete ordered outputs.
@@ -189,9 +274,32 @@ pub struct Step {
     /// Expected engine state after the step.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub expect_state: Option<String>,
-    /// Expected `next_deadline` after the step, in microseconds.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub expect_timeout_us: Option<u64>,
+    /// Expected `next_deadline` after the step, in microseconds: absent means not asserted,
+    /// `null` means no deadline, a number is the deadline.
+    #[serde(
+        default,
+        deserialize_with = "present_or_null",
+        skip_serializing_if = "Option::is_none"
+    )]
+    #[cfg_attr(feature = "schema", schemars(with = "Option<u64>"))]
+    #[expect(
+        clippy::option_option,
+        reason = "three states are the point: absent, null (no deadline), a number"
+    )]
+    pub expect_timeout_us: Option<Option<u64>>,
+}
+
+/// Reads a key that is present as `Some(value)`, where `null` is `Some(None)`; a key that is
+/// absent stays `None` through `#[serde(default)]`.
+#[expect(
+    clippy::option_option,
+    reason = "three states are the point: absent, null (no deadline), a number"
+)]
+fn present_or_null<'de, D>(deserializer: D) -> Result<Option<Option<u64>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    Option::<u64>::deserialize(deserializer).map(Some)
 }
 
 /// Kind of a field-catalogue entry (03-api-model.md §9.1).
@@ -258,5 +366,69 @@ impl VectorFile {
             Some(other) => Err(format!("unknown kind {other:?}")),
             None => Err("missing string field \"kind\"".to_owned()),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const FILE: &str = r#"{
+      "kind": "engine-scenario", "engine": "e", "provenance": "hand-derived",
+      "provenance_note": "n", "config": {"a": 1},
+      "setups": [
+        {"name": "one", "steps": [{"at_us": 0, "input": {"x": 1}, "expect": []}]},
+        {"name": "two", "extends": "one",
+         "steps": [{"at_us": 5, "input": {"x": 2}, "expect": [], "expect_timeout_us": null}]}
+      ],
+      "scenarios": [
+        {"id": "s", "requirements": ["COP-001"], "setup": "two",
+         "steps": [{"at_us": 9, "input": {"x": 3}, "expect": [], "expect_timeout_us": 7}]},
+        {"id": "t", "requirements": ["COP-001"], "config": {"a": 2},
+         "steps": [{"at_us": 0, "input": {}, "expect": []}]}
+      ]
+    }"#;
+
+    #[test]
+    fn a_scenario_file_expands_its_setup_chain() {
+        // req: TV-010
+        let Ok(VectorFile::EngineScenario(file)) = VectorFile::from_json(FILE) else {
+            panic!("not a scenario file");
+        };
+        let resolved = file.resolve().unwrap();
+        let at: Vec<u64> = resolved[0].steps.iter().map(|s| s.at_us).collect();
+        assert_eq!(at, [0, 5, 9]);
+        assert_eq!(resolved[0].config["a"], 1);
+        assert_eq!(resolved[1].config["a"], 2);
+        assert_eq!(resolved[1].steps.len(), 1);
+    }
+
+    #[test]
+    fn the_deadline_is_absent_null_or_a_number() {
+        // req: TV-010
+        let Ok(VectorFile::EngineScenario(file)) = VectorFile::from_json(FILE) else {
+            panic!("not a scenario file");
+        };
+        assert_eq!(file.setups[0].steps[0].expect_timeout_us, None);
+        assert_eq!(file.setups[1].steps[0].expect_timeout_us, Some(None));
+        assert_eq!(file.scenarios[0].steps[0].expect_timeout_us, Some(Some(7)));
+    }
+
+    #[test]
+    fn unknown_and_looping_setups_are_refused() {
+        // req: TV-010
+        let missing = FILE.replace("\"setup\": \"two\"", "\"setup\": \"nope\"");
+        let Ok(VectorFile::EngineScenario(file)) = VectorFile::from_json(&missing) else {
+            panic!("not a scenario file");
+        };
+        assert!(file.resolve().is_err());
+        let looped = FILE.replace(
+            "\"name\": \"one\",",
+            "\"name\": \"one\", \"extends\": \"two\",",
+        );
+        let Ok(VectorFile::EngineScenario(file)) = VectorFile::from_json(&looped) else {
+            panic!("not a scenario file");
+        };
+        assert!(file.resolve().is_err());
     }
 }

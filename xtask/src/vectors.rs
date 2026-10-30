@@ -136,9 +136,12 @@ fn check_superseded_transition(
     }
 }
 
-/// The case objects of a codec file's `cases` array.
-fn case_objects(top: &Map<String, Value>) -> impl Iterator<Item = &Map<String, Value>> {
-    top.get("cases")
+/// The case objects of a file's `cases` (codec) or `scenarios` (engine scenario) array.
+fn case_objects<'a>(
+    top: &'a Map<String, Value>,
+    list: &str,
+) -> impl Iterator<Item = &'a Map<String, Value>> {
+    top.get(list)
         .and_then(Value::as_array)
         .into_iter()
         .flatten()
@@ -159,17 +162,24 @@ fn check_against_released(
         );
         return;
     };
-    if old_top.get("kind").and_then(Value::as_str) == Some("codec") {
-        if !same_except(old_top, cur_top, "cases") {
+    let list = if old_top.get("kind").and_then(Value::as_str) == Some("codec") {
+        Some("cases")
+    } else if old_top.contains_key("scenarios") {
+        Some("scenarios")
+    } else {
+        None
+    };
+    if let Some(list) = list {
+        if !same_except(old_top, cur_top, list) {
             out.push(
                 rel,
                 format!("{rel}: file-level metadata changed since {tag} (TV-021)"),
             );
         }
-        let cur_by_id: BTreeMap<&str, &Map<String, Value>> = case_objects(cur_top)
+        let cur_by_id: BTreeMap<&str, &Map<String, Value>> = case_objects(cur_top, list)
             .filter_map(|c| Some((c.get("id")?.as_str()?, c)))
             .collect();
-        for old_obj in case_objects(old_top) {
+        for old_obj in case_objects(old_top, list) {
             let id = old_obj.get("id").and_then(Value::as_str).unwrap_or("?");
             let at = format!("{rel}#{id}");
             let Some(&now_obj) = cur_by_id.get(id) else {
@@ -472,6 +482,59 @@ fn check_codec_case(
     }
 }
 
+/// Checks an engine-scenario file; returns `(id, location, superseded)` of each scenario.
+fn check_scenario_file(
+    rel: &str,
+    file: &ScenarioFile,
+    spec: &Spec,
+    by_links: &mut Vec<(String, String)>,
+    problems: &mut Vec<String>,
+) -> Vec<(String, String, bool)> {
+    if needs_note(file.provenance) && file.provenance_note.is_none() {
+        problems.push(format!(
+            "{rel}: provenance {:?} requires provenance_note (TV-020)",
+            file.provenance
+        ));
+    }
+    for (k, v) in &file.config {
+        check_hex(v, k, rel, problems);
+    }
+    let resolved = match file.resolve() {
+        Ok(resolved) => resolved,
+        Err(e) => {
+            problems.push(format!("{rel}: {e}"));
+            return Vec::new();
+        }
+    };
+    for setup in &file.setups {
+        for step in &setup.steps {
+            for (k, v) in step.input.iter().chain(step.expect.iter().flatten()) {
+                check_hex(v, k, &format!("{rel}#setup {}", setup.name), problems);
+            }
+        }
+    }
+    let mut found = Vec::new();
+    for r in resolved {
+        let sc = r.scenario;
+        let at = format!("{rel}#{}", sc.id);
+        check_requirements(&sc.requirements, spec, &at, problems);
+        check_superseded(sc.superseded.as_ref(), &at, by_links, problems);
+        if r.steps.windows(2).any(|w| w[1].at_us < w[0].at_us) {
+            problems.push(format!("{at}: step instants must not decrease (TV-010)"));
+        }
+        for (k, v) in r.config {
+            check_hex(v, k, &at, problems);
+        }
+        for step in &sc.steps {
+            for (k, v) in step.input.iter().chain(step.expect.iter().flatten()) {
+                check_hex(v, k, &at, problems);
+            }
+        }
+        found.push((sc.id.clone(), at, sc.superseded.is_some()));
+    }
+    found
+}
+
 /// Validates all vector files; returns the number of problems.
 pub fn validate() -> Result<usize, String> {
     let spec = Spec::load()?;
@@ -527,37 +590,13 @@ pub fn validate() -> Result<usize, String> {
                     check_codec_case(c, &spec, &field_codes, &at, &mut by_links, &mut problems);
                 }
             }
-            Ok(VectorFile::EngineScenario(ScenarioFile {
-                id,
-                requirements,
-                provenance,
-                provenance_note,
-                config,
-                steps,
-                superseded,
-                ..
-            })) => {
-                cases += 1;
-                let at = format!("{rel}#{id}");
-                unique(&id, &at, superseded.is_some(), &mut problems);
-                check_requirements(&requirements, &spec, &at, &mut problems);
-                check_superseded(superseded.as_ref(), &at, &mut by_links, &mut problems);
-                if needs_note(provenance) && provenance_note.is_none() {
-                    problems.push(format!(
-                        "{at}: provenance {provenance:?} requires provenance_note (TV-020)"
-                    ));
-                }
-                notes.extend(provenance_note.map(|n| (rel.clone(), n)));
-                if steps.windows(2).any(|w| w[1].at_us < w[0].at_us) {
-                    problems.push(format!("{at}: step instants must not decrease (TV-010)"));
-                }
-                for (k, v) in &config {
-                    check_hex(v, k, &at, &mut problems);
-                }
-                for step in &steps {
-                    for (k, v) in step.input.iter().chain(step.expect.iter().flatten()) {
-                        check_hex(v, k, &at, &mut problems);
-                    }
+            Ok(VectorFile::EngineScenario(file)) => {
+                notes.extend(file.provenance_note.clone().map(|n| (rel.clone(), n)));
+                for (id, at, superseded) in
+                    check_scenario_file(&rel, &file, &spec, &mut by_links, &mut problems)
+                {
+                    cases += 1;
+                    unique(&id, &at, superseded, &mut problems);
                 }
             }
         }
@@ -577,6 +616,102 @@ pub fn validate() -> Result<usize, String> {
         problems.len()
     );
     Ok(problems.len())
+}
+
+/// The directory of the vector files that `test-vectors/models/cop1.py` writes.
+const GENERATED_DIR: &str = "test-vectors/cop1";
+
+/// The model that writes [`GENERATED_DIR`].
+const GENERATED_BY: &str = "test-vectors/models/cop1.py";
+
+/// The `.json` files under `dir`, as paths relative to it.
+fn json_files(dir: &Path) -> Result<BTreeMap<String, String>, String> {
+    let mut out = BTreeMap::new();
+    let mut todo = vec![dir.to_path_buf()];
+    while let Some(d) = todo.pop() {
+        let Ok(entries) = std::fs::read_dir(&d) else {
+            continue;
+        };
+        for entry in entries {
+            let path = entry.map_err(|e| e.to_string())?.path();
+            if path.is_dir() {
+                todo.push(path);
+            } else if path.extension().is_some_and(|e| e == "json") {
+                let rel = path
+                    .strip_prefix(dir)
+                    .map_err(|e| e.to_string())?
+                    .to_string_lossy()
+                    .into_owned();
+                out.insert(
+                    rel,
+                    std::fs::read_to_string(&path).map_err(|e| e.to_string())?,
+                );
+            }
+        }
+    }
+    Ok(out)
+}
+
+/// Runs the model with `--write [dir]`.
+fn run_generator(dir: Option<&Path>) -> Result<(), String> {
+    let mut cmd = Command::new("python3");
+    cmd.args(["-I", GENERATED_BY, "--write"])
+        .current_dir(repo::root());
+    if let Some(dir) = dir {
+        cmd.arg(dir);
+    }
+    let out = cmd
+        .output()
+        .map_err(|e| format!("python3 -I {GENERATED_BY}: {e} (the models need python3, TV-023)"))?;
+    if out.status.success() {
+        Ok(())
+    } else {
+        Err(format!(
+            "{GENERATED_BY} --write failed:\n{}{}",
+            String::from_utf8_lossy(&out.stdout),
+            String::from_utf8_lossy(&out.stderr)
+        ))
+    }
+}
+
+/// `vectors generated`: the files of `test-vectors/cop1/` are written by the independent model
+/// and never edited by hand (TV-023). With `write` they are regenerated; otherwise the model
+/// writes them to a scratch directory and any difference from the committed files is a problem.
+pub fn generated(write: bool) -> Result<usize, String> {
+    if write {
+        run_generator(None)?;
+        println!("wrote {GENERATED_DIR}/ with {GENERATED_BY}");
+        return Ok(0);
+    }
+    let scratch = std::env::temp_dir().join(format!("aldis-cop1-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&scratch);
+    std::fs::create_dir_all(&scratch).map_err(|e| e.to_string())?;
+    let result = run_generator(Some(&scratch)).and_then(|()| {
+        Ok((
+            json_files(&scratch)?,
+            json_files(&repo::root().join(GENERATED_DIR))?,
+        ))
+    });
+    let _ = std::fs::remove_dir_all(&scratch);
+    let (fresh, committed) = result?;
+    let mut problems = 0;
+    for (rel, text) in &fresh {
+        if committed.get(rel) != Some(text) {
+            println!(
+                "error: {GENERATED_DIR}/{rel} differs from what {GENERATED_BY} writes; run `cargo xtask vectors generated --write`"
+            );
+            problems += 1;
+        }
+    }
+    for rel in committed.keys().filter(|r| !fresh.contains_key(*r)) {
+        println!("error: {GENERATED_DIR}/{rel} is not written by {GENERATED_BY}; delete it");
+        problems += 1;
+    }
+    println!(
+        "vectors generated: {} file(s), {problems} problem(s)",
+        fresh.len()
+    );
+    Ok(problems)
 }
 
 /// Generates the JSON Schemas from the testkit model, or checks the committed ones.

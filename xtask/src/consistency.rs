@@ -493,7 +493,7 @@ fn vector_problems(
 /// Vector directories whose files exist before the engines that run them (M3 plan WP-2 before
 /// WP-3 and WP-4): the test requirement is waived until the runner lands, and the entry is
 /// removed in the pull request that adds it.
-const AWAITING_RUNNER: &[&str] = &["cop1/"];
+const AWAITING_RUNNER: &[&str] = &["cop1/scenarios/"];
 
 /// Whether `f`, relative to `test-vectors/`, is a vector file that no runner runs yet. Such a
 /// file is no evidence for `cargo xtask trace` either (`trace.rs`).
