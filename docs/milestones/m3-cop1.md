@@ -129,7 +129,7 @@ WP-0 Infra, setup ───▶ WP-1a Spec readings ─┬─▶ WP-1b FARM-1 tab
 - Enforce `cargo xtask trace --scope m3 --strict` (VER-020).
 - Rustdoc with clause citations for all public COP-1 items (RS-015).
 - Update roadmap, README, and open issues.
-- Changelog fragment and release `v0.4.0-m3`.
+- Release `v0.4.0-m3` (changelog generated from the PR titles).
 
 ## 4. Exit criteria
 

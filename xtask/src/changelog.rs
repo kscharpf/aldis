@@ -14,12 +14,13 @@ use std::process::Command;
 use crate::repo;
 
 /// Keep a Changelog sections, in release order.
-const SECTIONS: [&str; 6] = [
+const SECTIONS: [&str; 7] = [
     "Added",
     "Changed",
     "Deprecated",
     "Removed",
     "Fixed",
+    "Deviations fixed",
     "Security",
 ];
 
@@ -27,7 +28,14 @@ const SECTIONS: [&str; 6] = [
 const ADDED: usize = 0;
 const CHANGED: usize = 1;
 const FIXED: usize = 4;
-const SECURITY: usize = 5;
+const DEVIATIONS: usize = 5;
+const SECURITY: usize = 6;
+
+/// The scope reserved for fixes of deviations from a CCSDS Blue Book (GEN-080).
+const BLUE_BOOK: &str = "blue-book";
+
+/// Types that are not user-visible and so are not listed (unless breaking).
+const UNLISTED: [&str; 6] = ["docs", "chore", "test", "ci", "build", "style"];
 
 /// The marker that names the commit after which merges are listed.
 const MARKER_OPEN: &str = "<!-- changelog-base: ";
@@ -60,10 +68,11 @@ fn parse_title(title: &str) -> Option<Title<'_>> {
     })
 }
 
-/// The section a title belongs to, or `None` when it is not user-visible (`docs`, `chore`,
-/// `test`, `ci`, `build`, `style`) and not breaking.
+/// The section a title belongs to; `None` for a type that is neither listed nor in [`UNLISTED`].
+/// A fix with the scope [`BLUE_BOOK`] is a fix of a deviation (GEN-080).
 fn section(t: &Title<'_>) -> Option<usize> {
     match t.kind {
+        "fix" if t.scope == Some(BLUE_BOOK) => Some(DEVIATIONS),
         _ if t.breaking => Some(CHANGED),
         "feat" => Some(ADDED),
         "fix" => Some(FIXED),
@@ -80,27 +89,43 @@ struct Merge {
     title: String,
 }
 
+/// The merge commits of a log: the pull requests, and one description per merge commit that is
+/// not usable (no `Merge pull request #N` subject, or an empty body).
+struct Merges {
+    prs: Vec<Merge>,
+    skipped: Vec<String>,
+    /// Merge commits in the log, skipped or not.
+    total: usize,
+}
+
 /// Reads the merges from `git log --first-parent --merges --format=%s%x1f%b%x1e` output, oldest
-/// first. A merge whose subject is not `Merge pull request #N ...` is not a pull request.
-fn parse_merges(log: &str) -> Vec<Merge> {
-    let mut out: Vec<Merge> = log
-        .split('\x1e')
-        .filter_map(|record| {
-            let (subject, body) = record.trim().split_once('\x1f')?;
-            let number = subject
-                .strip_prefix("Merge pull request #")?
-                .split_whitespace()
-                .next()?
-                .parse()
-                .ok()?;
-            let title = body.lines().map(str::trim).find(|l| !l.is_empty())?;
-            Some(Merge {
+/// first.
+fn parse_merges(log: &str) -> Merges {
+    let mut out = Merges {
+        prs: Vec::new(),
+        skipped: Vec::new(),
+        total: 0,
+    };
+    for record in log.split('\x1e').map(str::trim).filter(|r| !r.is_empty()) {
+        out.total += 1;
+        let (subject, body) = record.split_once('\x1f').unwrap_or((record, ""));
+        let number = subject
+            .strip_prefix("Merge pull request #")
+            .and_then(|r| r.split_whitespace().next())
+            .and_then(|n| n.parse().ok());
+        let title = body.lines().map(str::trim).find(|l| !l.is_empty());
+        match (number, title) {
+            (Some(number), Some(title)) => out.prs.push(Merge {
                 number,
                 title: title.to_owned(),
-            })
-        })
-        .collect();
-    out.reverse();
+            }),
+            (Some(number), None) => out
+                .skipped
+                .push(format!("#{number} has no title in its merge commit")),
+            (None, _) => out.skipped.push(format!("not a pull request: {subject}")),
+        }
+    }
+    out.prs.reverse();
     out
 }
 
@@ -119,13 +144,26 @@ fn generate(merges: &[Merge]) -> Generated {
     };
     for m in merges {
         let (i, line) = if let Some(t) = parse_title(&m.title) {
-            let Some(i) = section(&t) else { continue };
+            let Some(i) = section(&t) else {
+                if !UNLISTED.contains(&t.kind) {
+                    g.malformed.push(format!(
+                        "#{}: unknown type `{}`: {}",
+                        m.number, t.kind, m.title
+                    ));
+                    g.sections[CHANGED].push(format!("- {} (#{})", m.title, m.number));
+                }
+                continue;
+            };
             let mut line = String::from("- ");
             if t.breaking {
                 line.push_str("**Breaking:** ");
             }
-            // A milestone scope (`m3/wp-4`) names the plan, not the component: not printed.
-            if let Some(scope) = t.scope.filter(|s| !s.contains('/')) {
+            // A milestone scope (`m3/wp-4`) names the plan, and `blue-book` the section: neither
+            // is printed.
+            if let Some(scope) = t
+                .scope
+                .filter(|s| !s.contains('/') && (*s != BLUE_BOOK || t.kind != "fix"))
+            {
                 let _ = write!(line, "{scope}: ");
             }
             let _ = write!(line, "{} (#{})", t.description, m.number);
@@ -224,7 +262,7 @@ fn git(args: &[&str]) -> Result<String, String> {
 }
 
 /// The merged pull requests after the base, and the head commit.
-fn merges_since_base() -> Result<(Vec<Merge>, String, String), String> {
+fn merges_since_base() -> Result<(Merges, String, String), String> {
     let changelog = repo::read(&repo::root().join("CHANGELOG.md"))?;
     let (after, end) = unreleased_span(&changelog)?;
     let base = match marker(&changelog[after..end]) {
@@ -245,16 +283,32 @@ fn merges_since_base() -> Result<(Vec<Merge>, String, String), String> {
     Ok((parse_merges(&log), base, head))
 }
 
+/// Prints the count of merge commits before anything is skipped, then a warning for each merge
+/// commit that could not be used and for each title that is not a known conventional commit.
+fn report(merges: &Merges, g: &Generated, base: &str) {
+    println!(
+        "changelog: {} merge commit(s) after {base}: {} pull request(s), {} skipped",
+        merges.total,
+        merges.prs.len(),
+        merges.skipped.len()
+    );
+    for m in &merges.skipped {
+        println!("warning: merge commit skipped, {m}");
+    }
+    for m in &g.malformed {
+        println!(
+            "warning: listed under Changed, not `type(scope): description` with a known type: {m}"
+        );
+    }
+}
+
 /// `xtask changelog`: prints the entries the next release will list, from the merges after the
 /// base. Titles that are not conventional commits are reported after the entries.
 pub fn show() -> Result<usize, String> {
     let (merges, base, _) = merges_since_base()?;
-    let g = generate(&merges);
+    let g = generate(&merges.prs);
     print!("{}", render(&g.sections));
-    println!("changelog: {} pull request(s) after {base}", merges.len());
-    for m in &g.malformed {
-        println!("warning: title is not `type(scope): description`: {m}");
-    }
+    report(&merges, &g, &base);
     Ok(0)
 }
 
@@ -271,8 +325,8 @@ pub fn release(version: &str, date: &str) -> Result<usize, String> {
     if version.is_empty() || version.contains(char::is_whitespace) || !date_ok {
         return Err("usage: cargo xtask changelog release <version> <YYYY-MM-DD>".to_owned());
     }
-    let (merges, _, head) = merges_since_base()?;
-    let g = generate(&merges);
+    let (merges, base, head) = merges_since_base()?;
+    let g = generate(&merges.prs);
     let path = repo::root().join("CHANGELOG.md");
     let updated = insert_release(
         &repo::read(&path)?,
@@ -282,12 +336,9 @@ pub fn release(version: &str, date: &str) -> Result<usize, String> {
         &head,
     )?;
     std::fs::write(&path, updated).map_err(|e| format!("CHANGELOG.md: {e}"))?;
-    for m in &g.malformed {
-        println!("warning: title is not `type(scope): description`: {m}");
-    }
+    report(&merges, &g, &base);
     println!(
-        "changelog: {} pull request(s) released as {version}; add a summary line under the new heading if wanted",
-        merges.len()
+        "changelog: released as {version}; add a summary line under the new heading if wanted"
     );
     Ok(0)
 }
@@ -336,26 +387,43 @@ mod tests {
             merge(7, "security: close a hole"),
             merge(8, "no form"),
             merge(9, "feat(m3/wp-4): implement FOP-1"),
+            merge(10, "feature(tm): add X"),
+            merge(11, "fix(blue-book): wrap the count"),
+            merge(12, "fix(blue-book)!: change the field"),
+            merge(13, "style: fmt"),
         ]);
         assert_eq!(
             render(&g.sections),
             "### Added\n- spp: add a codec (#1)\n- implement FOP-1 (#9)\n\n\
-             ### Changed\n- **Breaking:** ffi: rename a call (#5)\n- faster (#6)\n- no form (#8)\n\n\
+             ### Changed\n- **Breaking:** ffi: rename a call (#5)\n- faster (#6)\n- no form (#8)\n- feature(tm): add X (#10)\n\n\
              ### Fixed\n- wrap the count (#2)\n\n\
+             ### Deviations fixed\n- wrap the count (#11)\n- **Breaking:** change the field (#12)\n\n\
              ### Security\n- close a hole (#7)\n\n"
         );
-        assert_eq!(g.malformed, ["#8: no form"]);
+        assert_eq!(
+            g.malformed,
+            [
+                "#8: no form",
+                "#10: unknown type `feature`: feature(tm): add X"
+            ]
+        );
     }
 
     #[test]
-    fn reads_merge_commits_oldest_first() {
+    fn reads_merge_commits_oldest_first_and_reports_what_it_skips() {
         let log = "Merge pull request #3 from a/b\x1ffix: later\n\n\x1e\
                    Merge pull request #2 from a/c\x1f\nfeat: earlier\n\nMore.\x1e\
                    Merge origin/main into x\x1f\x1e\
                    Merge pull request #1 from a/d\x1f\x1e";
+        let m = parse_merges(log);
+        assert_eq!(m.prs, [merge(2, "feat: earlier"), merge(3, "fix: later")]);
+        assert_eq!(m.total, 4);
         assert_eq!(
-            parse_merges(log),
-            [merge(2, "feat: earlier"), merge(3, "fix: later")]
+            m.skipped,
+            [
+                "not a pull request: Merge origin/main into x",
+                "#1 has no title in its merge commit"
+            ]
         );
     }
 

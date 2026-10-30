@@ -61,25 +61,41 @@ fn parse_prs(json: &str) -> Result<Vec<Pr>, String> {
         .collect()
 }
 
-/// The plan and work package a title scope names: `m<N>/wp-<n>[letter]` in `type(scope)!: ...`.
-fn title_location(title: &str) -> Option<(String, String)> {
-    let scope = title.split_once('(')?.1.split_once(')')?.0;
-    let (plan, wp) = scope.split_once('/')?;
-    let plan = plan.trim().to_lowercase();
-    let digits_ok = plan
-        .strip_prefix('m')
-        .is_some_and(|d| !d.is_empty() && d.chars().all(|c| c.is_ascii_digit()));
-    if !digits_ok || !wp.trim().to_lowercase().starts_with("wp") {
+/// The scope of a title, read only from the type prefix: `type(scope): ...` or
+/// `type(scope)!: ...` at the start of the title.
+fn title_scope(title: &str) -> Option<&str> {
+    let (head, _) = title.split_once(": ")?;
+    let head = head.strip_suffix('!').unwrap_or(head);
+    let (kind, rest) = head.split_once('(')?;
+    if kind.is_empty() || !kind.chars().all(|c| c.is_ascii_lowercase()) {
         return None;
     }
-    Some((plan, wp_token(wp)?))
+    rest.strip_suffix(')')
+}
+
+/// What a title scope names: `Some((plan, Some(token)))` for `m<N>/wp-<n>[letter]`,
+/// `Some((plan, None))` for a milestone scope that names no work package (`m3/other`), `None`
+/// when the scope is no milestone scope.
+fn title_location(title: &str) -> Option<(String, Option<String>)> {
+    let (plan, wp) = title_scope(title)?.split_once('/')?;
+    let plan = plan.trim().to_lowercase();
+    let is_plan = plan
+        .strip_prefix('m')
+        .is_some_and(|d| !d.is_empty() && d.chars().all(|c| c.is_ascii_digit()));
+    is_plan.then(|| {
+        (
+            plan,
+            wp_token(wp).filter(|_| wp.trim().to_lowercase().starts_with("wp")),
+        )
+    })
 }
 
 /// The plan and work package of a pull request: its title scope is authoritative; only a title
 /// without such a scope falls back to the branch name (`m3/wp-3b-farm1`), as older PRs have.
 fn locate(pr: &Pr) -> Option<(String, String)> {
-    if let Some(found) = title_location(&pr.title) {
-        return Some(found);
+    // A milestone scope decides, even when it names no work package.
+    if let Some((plan, token)) = title_location(&pr.title) {
+        return token.map(|t| (plan, t));
     }
     let (prefix, rest) = pr.branch.split_once('/')?;
     Some((prefix.to_lowercase(), wp_token(rest)?))
@@ -161,18 +177,26 @@ fn render_numbers(numbers: &BTreeSet<u64>) -> String {
     }
 }
 
+/// The new text of a plan, the orphan pull requests, and the warnings.
+type Derived = (String, Vec<String>, Vec<String>);
+
 /// Rewrites the State and PRs cells of the status table in `plan`, from the pull requests of
-/// milestone `id`. Returns the new text and the tokens no row takes.
-fn derive(plan: &str, id: &str, prs: &[Pr]) -> (String, Vec<String>) {
+/// milestone `id`. Returns the new text, the pull requests no row takes, and the rows kept as
+/// written because none of their pull requests is open or merged on GitHub. A table without a
+/// separator line is an error.
+fn derive(plan: &str, id: &str, prs: &[Pr]) -> Result<Derived, String> {
     let lines: Vec<&str> = plan.lines().collect();
     let Some(head) = lines.iter().position(|l| l.trim() == HEADER) else {
-        return (plan.to_owned(), Vec::new());
+        return Ok((plan.to_owned(), Vec::new(), Vec::new()));
     };
     let end = lines[head..]
         .iter()
         .position(|l| !l.starts_with('|'))
         .map_or(lines.len(), |n| head + n);
-    let rows = &lines[head + 2..end];
+    let rows = lines
+        .get(head + 2..end)
+        .ok_or("status table: the header is not followed by a separator line")?;
+    let mut warnings = Vec::new();
     let row_ids: Vec<String> = rows
         .iter()
         .filter_map(|l| {
@@ -233,8 +257,20 @@ fn derive(plan: &str, id: &str, prs: &[Pr]) -> (String, Vec<String>) {
             out.push((*row).to_owned());
             continue;
         }
-        let known: Vec<&Pr> = prs.iter().filter(|p| numbers.contains(&p.number)).collect();
-        let state = if known.iter().any(|p| p.open) || known.iter().all(|p| !p.merged) {
+        let known: Vec<&Pr> = prs
+            .iter()
+            .filter(|p| numbers.contains(&p.number) && (p.open || p.merged))
+            .collect();
+        // None of its pull requests is open or merged: GitHub did not tell, so the row stays.
+        if known.is_empty() {
+            warnings.push(format!(
+                "{rid}: none of {} is open or merged on GitHub; row kept",
+                render_numbers(&numbers)
+            ));
+            out.push((*row).to_owned());
+            continue;
+        }
+        let state = if known.iter().any(|p| p.open) {
             "in progress"
         } else {
             "merged"
@@ -252,7 +288,7 @@ fn derive(plan: &str, id: &str, prs: &[Pr]) -> (String, Vec<String>) {
     if plan.ends_with('\n') {
         text.push('\n');
     }
-    (text, orphans)
+    Ok((text, orphans, warnings))
 }
 
 /// The pull requests of the repository, from `gh`.
@@ -294,7 +330,11 @@ pub fn run(write: bool) -> Result<usize, String> {
         };
         let id = stem.split('-').next().unwrap_or_default().to_lowercase();
         let text = repo::read(&path)?;
-        let (new, orphans) = derive(&text, &id, &prs);
+        let (new, orphans, warnings) =
+            derive(&text, &id, &prs).map_err(|e| format!("{name}: {e}"))?;
+        for w in &warnings {
+            println!("{name}: warning: {w}");
+        }
         if new == text && orphans.is_empty() {
             continue;
         }
@@ -358,6 +398,14 @@ mod tests {
         assert_eq!(loc("feat(spp): x", "m3/wp-3a-engine"), some("m3", "WP-3a"));
         assert_eq!(loc("chore: x", "chore"), None);
         assert_eq!(loc("feat(m3/other): x", "feature"), None);
+        // A milestone scope without a work package does not fall back to the branch.
+        assert_eq!(loc("feat(m3/other): x", "m3/wp-2-x"), None);
+        // The scope is read from the type prefix only.
+        assert_eq!(loc("chore: x (m3/wp-4)", "chore"), None);
+        assert_eq!(
+            loc("fix: handle foo (m3/wp-2) case", "m3/wp-1-x"),
+            some("m3", "WP-1")
+        );
     }
 
     #[test]
@@ -403,7 +451,8 @@ mod tests {
             pr(16, "feat: closed", "m3/wp-4-x", "CLOSED"),
             pr(17, "feat: split", "m3/wp-5-x", "OPEN"),
         ];
-        let (text, orphans) = derive(PLAN, "m3", &prs);
+        let (text, orphans, warnings) = derive(PLAN, "m3", &prs).unwrap();
+        assert!(warnings.is_empty(), "{warnings:?}");
         // WP-5 has two rows, so a pull request cannot be placed in either.
         assert_eq!(orphans, ["#15 (WP-9)", "#17 (WP-5)"]);
         assert_eq!(
@@ -418,11 +467,23 @@ mod tests {
 | WP-5 Split | merged | #20 | a |\n| WP-5 Split | merged | #21 | b |\n\nAfter.\n"
         );
         // A derived table derives to itself.
-        assert_eq!(derive(&text, "m3", &prs).0, text);
+        assert_eq!(derive(&text, "m3", &prs).unwrap().0, text);
     }
 
     #[test]
     fn leaves_a_plan_without_a_table_alone() {
-        assert_eq!(derive("# x\n", "m3", &[]).0, "# x\n");
+        assert_eq!(derive("# x\n", "m3", &[]).unwrap().0, "# x\n");
+        // A header with no separator line is an error, not a panic.
+        assert!(derive("| WP | State | PRs | Notes |\n", "m3", &[]).is_err());
+        assert!(derive("| WP | State | PRs | Notes |\nText\n", "m3", &[]).is_err());
+    }
+
+    #[test]
+    fn keeps_a_row_whose_pull_requests_gh_did_not_return() {
+        let plan = "| WP | State | PRs | Notes |\n|---|---|---|---|\n| WP-0 Infra | merged | #2 | n |\n| WP-1 B | merged | #3 | n |\n";
+        let prs = [pr(3, "x", "c/x", "CLOSED")];
+        let (text, _, warnings) = derive(plan, "m3", &prs).unwrap();
+        assert_eq!(text, plan);
+        assert_eq!(warnings.len(), 2, "{warnings:?}");
     }
 }
