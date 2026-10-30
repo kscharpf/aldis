@@ -130,7 +130,6 @@ fn acquire_in(
 }
 
 #[cfg(test)]
-#[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::{acquire_in, alive, target};
     use std::path::PathBuf;
