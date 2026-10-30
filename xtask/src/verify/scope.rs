@@ -332,7 +332,7 @@ fn listed(checks: &[Check], path: &str) -> bool {
 /// Why the inputs of `check` may differ between two commits whose differing paths are `paths`;
 /// `None` when they are identical. A path that no check reads and that is not documentation may
 /// be read by any check, so it makes every check's inputs differ.
-fn differs(checks: &[Check], check: &Check, paths: &[String]) -> Option<String> {
+pub fn differs(checks: &[Check], check: &Check, paths: &[String]) -> Option<String> {
     if let Some(p) = paths.iter().find(|p| !listed(checks, p)) {
         return Some(format!(
             "{p} is an input of no check, and neither documentation nor configuration that \
