@@ -402,9 +402,9 @@ graph TD
 
 ## AC-7 The evidence is trustworthy
 
-**Claim.** The evidence above is what it says: produced from the commit it describes, by checks that cannot be skipped unnoticed, reviewed independently, and kept current.
+**Claim.** The evidence above is what it says: produced from the commit it describes, by checks that cannot be skipped unnoticed, reviewed, and kept current.
 
-**Strategy.** By the parts of the process that produce and judge the evidence: the merge gate and its records (AC-7.1), the independent review (AC-7.2), vectors and models independent of the implementation (AC-7.3), the recorded decisions (AC-7.4), the measures of test adequacy (AC-7.5), and the independent nightly run (AC-7.6).
+**Strategy.** By the parts of the process that produce and judge the evidence: the merge gate and its records (AC-7.1), the review (AC-7.2), vectors and models independent of the implementation (AC-7.3), the recorded decisions (AC-7.4), the measures of test adequacy (AC-7.5), and the independent nightly run (AC-7.6).
 
 ### AC-7.1 Every merged commit carries a passing record of every gating check
 
@@ -415,9 +415,9 @@ graph TD
 | `record:VER-056`; `record:VER-057`; `record:VER-058` | The run, its pinned image, the input rule for skips and reuses and its re-derivation, the record, and the branch protection that requires it; skips rest on complete input lists (`df:DF-12`); records are unsigned (`df:DF-5`) | VER-056, VER-057, VER-058 |
 | `record:VER-060` | A run on a GitHub-hosted runner meets the same rule | VER-060 |
 
-### AC-7.2 Every change is reviewed independently
+### AC-7.2 Changes are reviewed by an agent other than their author
 
-**Claim.** Each pull request is reviewed by someone other than its author, against the Blue Book and the requirements, citing the code.
+**Claim.** A work-package pull request is reviewed by an agent session other than the one that wrote it, against the Blue Book and the requirements, citing the code, and the maintainer decides its merge. Process and documentation pull requests may merge unreviewed, and reviewer and author share one account and one model (`df:DF-16`).
 
 | Evidence | Shows | Requirements |
 |---|---|---|
@@ -501,3 +501,4 @@ What weakens the case now. A defeater is `open` until what it names is done; `ca
 | DF-13 | GEN-031 and GEN-032 (no clocks, no I/O, no global state) had no verification record and were untraced; `record:GEN-031` traces them (`proposal:P-X-03`, accepted); no check searches for a new global or platform call in library code | `ac:AC-3.3` | `hz:HZ-X-03`; `record:GEN-031` | `closed` |
 | DF-14 | MC/DC is not measured | `ac:AC-7.5` | `oi:OI-09`; `check:coverage` | `open` |
 | DF-15 | The hazard analysis has no TODO category in any codec file (`cargo xtask assurance --strict`), and the independent M2 exit review (VER-065) confirmed that all identified failure modes map into the 12 categories of hazards.md §1.2 with no unrepresented categories found | `ac:AC-0` | `file:docs/verification/hazards.md` | `closed` |
+| DF-16 | The review of AC-7.2 is weaker than independent human review: reviews are written by agents posting under the maintainer's account, the same model as the author; branch protection requires no approval, so the review is not enforced; of the 60 pull requests merged up to #190, 29 had no review, most of them process pull requests, among them product pull requests #174, #189, and #190 | `ac:AC-7.2` | `file:docs/process/review.md`; `gh:#174` | `open` |

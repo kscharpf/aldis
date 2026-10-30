@@ -3,11 +3,11 @@
 **Goal:** a complete, verified implementation of CCSDS 232.1-B-2 COP-1 in `aldis-cop1` (FOP-1 and FARM-1 engines as deterministic sans-I/O state machines with state tables represented as data), closed-loop testing across simulated links, blind conformance vectors covering every cell, C ABI handles in `aldis-ffi`, and resolution of long-lived engine state SEU hardening. Verified to the project standard: 100 % coverage, bare-metal panic-freedom, fuzzing, mutation testing, worst-case stack measurement, and hazard analysis.
 **Roadmap entry:** [08-roadmap.md](../08-roadmap.md) §1 · **Builds on:** [M2](m2-frame-codecs.md) (`v0.3.0-m2`) · **Release:** `v0.4.0-m3`
 
-**Status: planned.** Entry gate: M2 (roadmap §1), met by PR #138 (release `v0.3.0-m2`). Decisions D1–D12 drafted for maintainer acceptance.
+**Status: planned.** Entry gate: M2 (roadmap §1), met by PR #138 (release `v0.3.0-m2`). Decisions D1–D13; each one's status is in §2.
 
 | WP | State | PRs | Notes |
 |---|---|---|---|
-| Plan | merged | #143 | This plan, D1–D12, and `--scope m3` trace gate |
+| Plan | merged | #143 | This plan, D1–D13, and `--scope m3` trace gate |
 | WP-0 Infrastructure & setup | merged | #135, #140, #141, #143 | WP-0a Track C retirement (#141), WP-0b agent boundaries (#140), WP-0c fuzz smoke check (#135), WP-0d plan & CI scope (#143) |
 | WP-1a Spec readings & cell review | merged | #145 | CCSDS 232.1 Table 5-1 and Table 6-1 cell review `cop1-tables.md`, field codes 150–199 (COP-003, VER-041, API-082) |
 | WP-1b Common types & FARM-1 table | merged | #147 | Directives, alerts, notifications, FARM-1 S1–S3 × E1–E11 const table data, cell tests (COP-002, COP-004, RS-021) |
@@ -21,6 +21,8 @@
 | WP-8 Docs, trace, release | planned | — | `--scope m3 --strict`, docs, RS-015 citations, changelog release `v0.4.0-m3` |
 
 A pull request that starts or merges a work package changes only its row (roadmap §6 rule 1).
+
+**Process freeze (maintainer, 2026-10-30).** Until the M3 exit, no pull request changes `xtask/`, `scripts/`, `.github/`, `docs/process/`, or the verification procedure of [06-verification.md](../06-verification.md), except to fix a gate that is broken and blocks merges. Process ideas wait for the M3 exit.
 
 History:
 - 2026-10-27: plan drafted following M2 exit and Track C retirement.
@@ -42,18 +44,18 @@ History:
 | # | Decision | Choice | Status |
 |---|---|---|---|
 | D1 | Trace scope | Add `--scope m3` from §4 to `cargo xtask ci`, the `spec` check of `cargo xtask verify`, and `ci.yml`, without `--strict`, in the plan PR, so progress is measured from the start; `--strict` at the M3 exit | Proposed |
-| D2 | State tables as data (COP-001…003, RS-021) | Table 5-1 (FOP-1: S1–S6 × E1–E46, E101–E104) and Table 6-1 (FARM-1: S1–S3 × E1–E11) are represented as `const` table data mapping `(State, Event) -> Cell { actions, next_state }`. The engine transition function executes the actions and updates state by reading the table, with exhaustive matching and no wildcard arms | Proposed |
-| D3 | Typestates vs. closed enums (RS-021) | Protocol states (`Fop1State` S1–S6, `Farm1State` S1–S3) are closed enums checked against the state tables. High-level engine lifecycle (Uninitialized vs Initialized/Active) uses typestate pattern where call sequence enforces valid order | Proposed |
+| D2 | State tables as data (COP-001…003, RS-021) | Table 5-1 (FOP-1: S1–S6 × E1–E46, E101–E104) and Table 6-1 (FARM-1: S1–S3 × E1–E11) are represented as `const` table data mapping `(State, Event) -> Cell { actions, next_state }`. The engine transition function executes the actions and updates state by reading the table, with exhaustive matching and no wildcard arms | Accepted (maintainer, 2026-10-30) |
+| D3 | Typestates vs. closed enums (RS-021) | Protocol states (`Fop1State` S1–S6, `Farm1State` S1–S3) are closed enums checked against the state tables. High-level engine lifecycle (Uninitialized vs Initialized/Active) uses typestate pattern where call sequence enforces valid order | Accepted (maintainer, 2026-10-30) |
 | D4 | Field codes for `aldis-cop1` (API-082) | Block 150–199 reserved in `docs/03-api-model.md` §9.1 (M2 plan D2 amendment); initial codes allocated for COP-1 fields (`v_s`, `v_r`, `nn_r`, `sliding_window_k`, `window_w`, etc.) and generated via `cargo xtask fields --write` | Proposed |
-| D5 | Blind conformance vectors (COP-005, TV-011, TV-023) | Conformance vectors in `test-vectors/cop1/` generated from an independent model written blind from CCSDS 232.1-B-2 (+ Cor. 1) without reading implementation code. At least one vector per non-"Not applicable" cell, and one per "Not applicable" cell asserting `InvalidState` | Proposed |
+| D5 | Blind conformance vectors (COP-005, TV-011, TV-023) | Conformance vectors in `test-vectors/cop1/` generated from an independent model written blind from CCSDS 232.1-B-2 (+ Cor. 1) without reading implementation code. At least one vector per non-"Not applicable" cell, and one per "Not applicable" cell asserting `InvalidState` | Accepted (maintainer, 2026-10-30) |
 | D6 | FARM-1 buffer availability (COP-033; COP-032 withdrawn) | One model: the delivery buffer is the caller's. The `Frame` input carries `buffer_available` (E1 or E2) and the caller feeds `BufferReleased` (E10) when space for one more maximum-size frame is available (232.1 §3.3.2, §6.3.2.3). The engine holds no delivery queue | Accepted (maintainer, 2026-10-29, OI-56) |
 | D7 | Closed-loop link simulation (COP-040) | Test harness in `tests/closed_loop.rs` connects FOP-1 and FARM-1 across a simulated bidirectional channel with configurable loss, duplication, reordering, delay, and CLCW sampling rate, asserting reliable duplicate-free delivery for Sequence-Controlled (AD) service | Proposed |
 | D8 | SEU hardening of long-lived state (GEN-015, hardware assumptions §4) | Confirm Option (a): rely on platform memory protection (EDAC with scrubbing, GEN-015) and mission reset trap. State corruption is an application reset condition; engines are restartable via Initiate AD directives. No runtime checksum overhead | Proposed |
 | D9 | Formal proofs & Kani harnesses (OI-42) | Bounded Kani proof harnesses in `crates/aldis-cop1/tests/proofs.rs` verify state transition table exhaustiveness and modulo-256 window arithmetic invariants; runs in nightly non-gating suite (`verify --all`, VER-059). Deductive proof tools deferred | Proposed |
 | D10 | C ABI handles and capacities (CABI-030…033, CABI-040) | Caller-owned opaque storage with magic/generation tags for `aldis_fop1_t` and `aldis_farm1_t`. Capacities fixed from `capacities.toml` (`[fop1]`, `[farm1]`). Each engine input is one step call that returns a fixed-capacity actions struct (`aldis_fop1_step`, `aldis_farm1_step`; no `poll_*` calls), `next_deadline` and status are read-only calls (CABI-040) | Accepted (maintainer, 2026-10-29, OI-56) |
 | D11 | Engine step contract (API-057…API-059, API-061, RS-022; OI-56) | FOP-1 and FARM-1 are pure step functions over plain state: `step(&self, input, now, out) -> Result<(State, Actions<N>)>`, or `decide` plus an infallible `commit` for FOP-1 where copying the Sent_Queue is too costly. `N` is derived from the cells of Tables 5-1 and 6-1 (COP-006). No output queue, no `poll_*`; timer expiry is the `Timeout` input and `next_deadline` a pure query. Frame and SDU octets go to a caller-supplied output area, and the actions hold ranges of it | Accepted (maintainer, 2026-10-29, OI-56) |
-| D11 | TC & USLP Delimiter fill bound (OI-47 carry-over) | `next_frame` in `aldis-tc` and `aldis-uslp` takes caller-specified maximum fill length (e.g. 6 for TC BCH) and reports excess leftover fill as `LeftoverFill` item (with C ABI code), closing hazard controls P-TC-01 and P-USLP-01 | Proposed |
-| D12 | USLP truncated frame check with SDLS (carry-over #122) | `aldis_uslp::VcConfig::new` rejects a virtual channel configuration with truncated frame length < 28 when SDLS is configured (`SecurityScope::Vc`, RS-020) | Proposed |
+| D12 | TC & USLP Delimiter fill bound (OI-47 carry-over) | `next_frame` in `aldis-tc` and `aldis-uslp` takes caller-specified maximum fill length (e.g. 6 for TC BCH) and reports excess leftover fill as `LeftoverFill` item (with C ABI code), closing hazard controls P-TC-01 and P-USLP-01 | Proposed |
+| D13 | USLP truncated frame check with SDLS (carry-over #122) | `aldis_uslp::VcConfig::new` rejects a virtual channel configuration with truncated frame length < 28 when SDLS is configured (`SecurityScope::Vc`, RS-020) | Proposed |
 
 ## 3. Work packages
 
