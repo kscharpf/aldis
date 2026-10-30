@@ -10,7 +10,7 @@ use aldis_cop1::{
 use aldis_core::ids::FrameSeqNum;
 use aldis_core::security::SecurityLayout;
 use aldis_core::time::Instant;
-use aldis_core::{DecodeMode, ErrorKind, field};
+use aldis_core::{ErrorKind, field};
 use aldis_tc::{
     ClcwStatus, ControlCommand, CopInEffect, FrameData, FrameFields, FrameType,
     PhysicalChannelConfig, SegmentHeaderUse, TcFrame, TcSpacecraftId, TcVcId, VcConfig, VcTable,
@@ -70,7 +70,7 @@ fn tc_group(t: &mut Tally) {
             continue;
         };
         let octets = buf.get(..n).unwrap_or_default();
-        let Ok(frame) = TcFrame::decode(bb(octets), &table, DecodeMode::Strict) else {
+        let Ok(frame) = TcFrame::decode(bb(octets), &table) else {
             t.check(false);
             continue;
         };

@@ -2,7 +2,6 @@
 //! §4.1.4.2.2, SPP-008) reachable through `aldis` without `full`.
 #![cfg(all(feature = "spp-time", feature = "core"))]
 
-use aldis::core::DecodeMode;
 use aldis::spp::{SecondaryHeaderLayout, SpacePacket, TimeHeaderLayout};
 use aldis::time::{CucEpoch, CucFormat, TimeCode, TimeFormat};
 
@@ -16,7 +15,7 @@ fn time_secondary_header_through_the_facade() {
     ];
     let format = TimeFormat::Cuc(CucFormat::new(CucEpoch::Tai1958, 4, 0).unwrap());
     let layout = SecondaryHeaderLayout::Time(TimeHeaderLayout::new(format, false, 0).unwrap());
-    let split = SpacePacket::decode(&packet, DecodeMode::Strict)
+    let split = SpacePacket::decode(&packet)
         .unwrap()
         .split(&layout)
         .unwrap();

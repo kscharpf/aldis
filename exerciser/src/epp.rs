@@ -72,10 +72,11 @@ fn ids_and_header(t: &mut Tally) {
 
 fn view_and_writers(t: &mut Tally) {
     let bytes = [0xE7, 0x01, 0x00, 0x01, 0, 0, 0, 9, 0xAB, 0xFF];
-    let strict = EncapsulationPacket::decode(bb(&bytes), DecodeMode::Strict);
+    let strict = EncapsulationPacket::decode(bb(&bytes));
     t.check(strict.is_err_and(|e| e.kind() == ErrorKind::ReservedValue));
-    match EncapsulationPacket::decode(bb(&bytes), bb(DecodeMode::Lenient)) {
-        Ok(p) => {
+    match EncapsulationPacket::decode_lenient(bb(&bytes)) {
+        Ok(lenient) => {
+            let p = *lenient;
             t.check(p.len() == 9 && !p.is_empty() && !p.is_idle() && p.data() == [0xAB]);
             t.check(p.epi().get() == 1 && p.extension().map(EpiExtension::get) == Some(1));
             t.check(
@@ -86,14 +87,14 @@ fn view_and_writers(t: &mut Tally) {
                 EppAnomaly::NonZeroEpiExtension,
                 EppAnomaly::NonZeroCcsdsDefined,
             ]);
-            t.check(p.anomalies() == expected);
+            t.check(lenient.anomalies() == expected);
             let cfg = EppConfig::new(
                 bb(1),
                 bb(4),
                 EpiSet::EMPTY.with(Epi::new(1).unwrap_or_default()),
                 ExtendedEpiSet::default(),
             );
-            t.check(cfg.is_ok_and(|c| p.validate(&c).is_ok()));
+            t.check(cfg.is_ok_and(|c| p.validate(&c).is_ok_and(|v| v.len() == 9)));
         }
         Err(_) => t.check(false),
     }
@@ -216,7 +217,7 @@ fn header_hex(o: &mut Out, key: &str, header: &EncapsulationHeader) -> Run {
     Ok(())
 }
 
-fn decoded(o: &mut Out, p: &EncapsulationPacket<'_>) {
+fn decoded(o: &mut Out, p: &EncapsulationPacket<'_>, anomalies: AnomalySet<EppAnomaly>) {
     o.num("epi", p.epi().get());
     o.opt_num("user_defined", p.user_defined().map(UserDefined::get));
     o.opt_num("epi_extension", p.extension().map(EpiExtension::get));
@@ -225,7 +226,7 @@ fn decoded(o: &mut Out, p: &EncapsulationPacket<'_>) {
     o.num("packet_len", p.header().packet_len());
     o.bytes("data_hex", p.data());
     o.num("consumed", wide(p.len()));
-    o.names("anomalies", p.anomalies().iter());
+    o.names("anomalies", anomalies.iter());
 }
 
 /// A `usize` as reported by the host suites.
@@ -242,9 +243,20 @@ pub fn vector(case: &Case, out: &mut Out, scratch: &mut Scratch) -> Run {
         DecodeMode::Strict
     };
     match case.op {
-        "decode" => decoded(out, &EncapsulationPacket::decode(bb(case.input), bb(mode))?),
+        "decode" => {
+            let (packet, found) = mode.dispatch(
+                || EncapsulationPacket::decode(bb(case.input)),
+                || EncapsulationPacket::decode_lenient(bb(case.input)),
+            )?;
+            decoded(out, &packet, found);
+        }
         "reencode_header" => {
-            let packet = EncapsulationPacket::decode(bb(case.input), bb(mode))?;
+            let packet = mode
+                .dispatch(
+                    || EncapsulationPacket::decode(bb(case.input)),
+                    || EncapsulationPacket::decode_lenient(bb(case.input)),
+                )?
+                .0;
             header_hex(out, "header_hex", &packet.header())?;
         }
         "peek_length" => out.num(
@@ -297,7 +309,7 @@ pub fn vector(case: &Case, out: &mut Out, scratch: &mut Scratch) -> Run {
         }
         "validate" => {
             let cfg = config_of(case.config)?;
-            let packet = EncapsulationPacket::decode(bb(case.input), DecodeMode::Strict)?;
+            let packet = EncapsulationPacket::decode(bb(case.input))?;
             packet.validate(bb(&cfg))?;
         }
         "config" => {

@@ -16,9 +16,9 @@ use aldis_aos::{
     AosPhysicalChannelConfig, AosVirtualChannelConfig, DataFieldContent, PacketOffset,
     PacketPointer, PduHeader, VcFrameCount, VcTable, encode,
 };
+use aldis_core::ErrorKind;
 use aldis_core::ids::{SpacecraftId, VcId};
 use aldis_core::ocf::Ocf;
-use aldis_core::{DecodeMode, ErrorKind};
 
 const FRAME: usize = 64;
 const BUFFER: usize = 200;
@@ -66,7 +66,7 @@ fn encode_writes_only_the_frame() {
     let mut out = before.clone();
     assert_eq!(encode(&pc, &table, &fields, &content, &mut out), Ok(FRAME));
     assert_eq!(out[FRAME..], before[FRAME..]);
-    assert!(AosFrame::decode(&out[..FRAME], &pc, &table, DecodeMode::Strict).is_ok());
+    assert!(AosFrame::decode(&out[..FRAME], &pc, &table).is_ok());
     // One octet short, and a zone of the wrong length: nothing is written.
     let mut short = before[..FRAME - 1].to_vec();
     let e = encode(&pc, &table, &fields, &content, &mut short).unwrap_err();

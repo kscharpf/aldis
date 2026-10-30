@@ -530,7 +530,7 @@ mod tests {
     use aldis_core::ocf::Ocf;
     use aldis_core::oid::{OidGenerator, OidGeneratorGalois};
     use aldis_core::security::SecurityLayout;
-    use aldis_core::{DecodeMode, ErrorDetail, ErrorKind};
+    use aldis_core::{ErrorDetail, ErrorKind};
 
     fn vcid(n: u8) -> VcId<3> {
         VcId::new(n).unwrap()
@@ -582,7 +582,7 @@ mod tests {
         // SCID 0x0AB, VC 0, OCF 1; FSH 1, sync 0, POF 0, SLID 11, FHP 3; FSH ID 0x03.
         assert_eq!(out[..7], [0x0A, 0xB1, 7, 9, 0x98, 0x03, 0x03]);
         let pc = *mc.pc();
-        let f = TmFrame::decode_with(&out[..32], &pc, &mc, DecodeMode::Strict).unwrap();
+        let f = TmFrame::decode_with(&out[..32], &pc, &mc).unwrap();
         assert_eq!(f.secondary_header_data(), Some(&[1, 2, 3][..]));
         assert_eq!(f.security_header(), &[0xA5, 0xA5]);
         assert_eq!(f.security_trailer(), &[0x5A]);
@@ -728,7 +728,7 @@ mod tests {
         // SCID 0x0AB, VC 1, OCF 1; FSH 0, sync 1, POF 1, SLID 10, FHP 0x123.
         assert_eq!(out[..6], [0x0A, 0xB3, 0xFF, 0x80, 0x71, 0x23]);
         assert_eq!(out[26..30], [0x80, 1, 2, 3]);
-        let f = TmFrame::decode(&out, mc.pc(), DecodeMode::Strict).unwrap();
+        let f = TmFrame::decode(&out, mc.pc()).unwrap();
         assert_eq!(f.data_field_status(), fields.status);
         assert_eq!(f.data_field(), &data);
     }
@@ -841,7 +841,7 @@ mod tests {
         );
         assert_eq!(w.secondary_header_data_mut().len(), 0);
         assert_eq!(w.finish(), 16);
-        let f = TmFrame::decode(&out, &pc, DecodeMode::Strict).unwrap();
+        let f = TmFrame::decode(&out, &pc).unwrap();
         assert_eq!((f.fecf(), f.ocf()), (None, None));
         let mut again = [0_u8; 16];
         let content = TmFrameContent::new(&out[6..]);
@@ -868,8 +868,8 @@ mod tests {
         let mut reference = OidGenerator::new();
         let mut expected = [0_u8; 32];
         reference.fill(&mut expected);
-        let one = TmFrame::decode_with(&first, mc.pc(), &mc, DecodeMode::Strict).unwrap();
-        let two = TmFrame::decode_with(&second, mc.pc(), &mc, DecodeMode::Strict).unwrap();
+        let one = TmFrame::decode_with(&first, mc.pc(), &mc).unwrap();
+        let two = TmFrame::decode_with(&second, mc.pc(), &mc).unwrap();
         assert_eq!(one.data_field(), &expected[..16]);
         assert_eq!(two.data_field(), &expected[16..]);
         assert_eq!(one.data_field()[..4], [0xFF; 4]);
@@ -967,7 +967,7 @@ mod tests {
         assert_eq!(syndrome(&two_frame), 0);
         assert_eq!(fib, two_phase);
         assert_eq!(gal.next_octet(), fib.next_octet());
-        let frame = TmFrame::decode_with(&two_frame, mc.pc(), &mc, DecodeMode::Strict).unwrap();
+        let frame = TmFrame::decode_with(&two_frame, mc.pc(), &mc).unwrap();
         assert_eq!(frame.secondary_header_data(), Some(&[1, 2, 3][..]));
         assert_eq!(frame.ocf(), Some(ocf));
         assert_eq!(
@@ -1029,7 +1029,7 @@ mod tests {
         let n = encode_oid(&mc, vcid(5), 1, 2, &[], None, &mut oid, &mut out).unwrap();
         assert_eq!(n, 32);
         assert_eq!(syndrome(&out), 0);
-        let frame = TmFrame::decode_with(&out, mc.pc(), &mc, DecodeMode::Strict).unwrap();
+        let frame = TmFrame::decode_with(&out, mc.pc(), &mc).unwrap();
         assert_eq!(frame.ocf(), None);
         assert_eq!(frame.data_field().len(), 32 - 6 - 2);
         let ocf = Some(Ocf::decode([0x01, 0, 0, 0]));

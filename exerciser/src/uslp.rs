@@ -7,7 +7,7 @@ use core::hint::black_box as bb;
 use aldis_core::ocf::Ocf;
 use aldis_core::oid::{OidGenerator, OidGeneratorGalois};
 use aldis_core::security::SecurityLayout;
-use aldis_core::{Anomaly, DecodeMode};
+use aldis_core::{Anomaly, AnomalySet, DecodeMode, Lenient};
 use aldis_uslp::{
     ChannelFields, ConstructionRule, Delimited, FirstHeaderPointer, FrameContent, FrameDelimiter,
     FrameFields, FrameKind, LastValidOctet, MapConfig, OcfUse, PhysicalChannelConfig, Reason,
@@ -15,6 +15,7 @@ use aldis_uslp::{
     TruncatedFrameLen, UnassignedUpid, Upid, UslpAnomaly, UslpFrame, UslpFrameWriter, UslpMapId,
     UslpSpacecraftId, UslpVcId, VcConfig, VcLookup, VcParams, VcTable, VcfCount, VcfCountLen,
     encode, encode_oid, encode_oid_galois, encode_truncated, next_frame, validate_frame,
+    validate_frame_lenient,
 };
 
 use crate::exercise::Tally;
@@ -220,14 +221,14 @@ fn frame_group(t: &mut Tally) {
     let len = encode(&vt, full, content, bb(&[1, 2, 3]), &mut out);
     t.check(len == Ok(18));
     let frame = out.get(..18).unwrap_or_default();
-    match UslpFrame::decode(bb(frame), &vt, DecodeMode::Strict) {
+    match UslpFrame::decode(bb(frame), &vt) {
         Ok(dec) => {
             t.check(!dec.is_truncated() && dec.truncated().is_none() && !dec.is_empty());
             t.check(dec.spacecraft_id().get() == SCID && dec.vc_id().get() == 3);
             t.check(dec.map_id().get() == 0 && dec.source_or_destination().bit());
             t.check(dec.tfdz() == [1, 2, 3] && dec.len() == 18 && dec.octets() == frame);
             t.check(dec.security_header().is_empty() && dec.security_trailer().is_empty());
-            t.check(dec.anomalies().is_empty() && dec.channel().vc_id.get() == 3);
+            t.check(dec.channel().vc_id.get() == 3);
             t.check(dec.tfdf_header().rule == TfdzRule::NoSegmentation);
             if let Some(view) = dec.full() {
                 let hdr = view.header();
@@ -237,7 +238,7 @@ fn frame_group(t: &mut Tally) {
                 );
                 t.check(view.tfdz().len() == 3 && view.len() == 18 && !view.is_empty());
                 t.check(view.security_header().is_empty() && view.security_trailer().is_empty());
-                t.check(view.octets() == frame && view.anomalies().is_empty());
+                t.check(view.octets() == frame);
                 t.check(view.tfdf_header() == dec.tfdf_header());
                 t.check(
                     hdr.len() == 8 && !hdr.is_empty() && hdr.frame_len() == 18 && hdr.ocf_flag(),
@@ -254,7 +255,11 @@ fn frame_group(t: &mut Tally) {
         Err(_) => t.check(false),
     }
     t.check(UslpFrame::peek_length(bb(frame), &vt) == Ok(18));
-    t.check(validate_frame(bb(frame), &vt, DecodeMode::Lenient).is_ok());
+    t.check(validate_frame(bb(frame), &vt).is_ok());
+    t.check(
+        validate_frame_lenient(bb(frame), &vt)
+            .is_ok_and(|v| v.anomalies().is_empty() && v.len() == 18),
+    );
     let mut two = [0_u8; 64];
     match UslpFrameWriter::begin(&mut two, &vt, full, content, bb(10)) {
         Ok(mut w) => {
@@ -296,19 +301,11 @@ fn truncated_and_oid(t: &mut Tally, vt: &VcTable<3, 3>, full: FrameFields) {
     };
     let len = encode_truncated(vt, tr, hdr, bb(&[9; 7]), &mut out);
     t.check(len == Ok(12));
-    match UslpFrame::decode(
-        bb(out.get(..12).unwrap_or_default()),
-        vt,
-        DecodeMode::Strict,
-    ) {
+    match UslpFrame::decode(bb(out.get(..12).unwrap_or_default()), vt) {
         Ok(dec) => match dec.truncated() {
             Some(view) => {
                 t.check(view.tfdz() == [9; 7] && view.len() == 12 && !view.is_empty());
-                t.check(
-                    view.channel() == tr
-                        && view.tfdf_header() == hdr
-                        && view.anomalies().is_empty(),
-                );
+                t.check(view.channel() == tr && view.tfdf_header() == hdr);
                 t.check(view.security_header().is_empty() && view.security_trailer().is_empty());
                 t.check(view.octets().len() == 12 && view.header_octets().first() == Some(&0xC0));
             }
@@ -323,7 +320,7 @@ fn truncated_and_oid(t: &mut Tally, vt: &VcTable<3, 3>, full: FrameFields) {
         let of = FrameFields { vcf_count: 0, ..of };
         let len = encode_oid(&ft, of, bb(&[1, 2]), None, &mut oid, &mut fixed_out);
         t.check(len == Ok(40));
-        let dec = UslpFrame::decode(bb(&fixed_out), &ft, DecodeMode::Strict);
+        let dec = UslpFrame::decode(bb(&fixed_out), &ft);
         t.check(dec.is_ok_and(|dec| dec.tfdf_header().upid == Upid::OnlyIdleData));
         // The Galois form writes the same frame (CMN-022).
         let mut galois = OidGeneratorGalois::new();
@@ -531,7 +528,7 @@ const fn pointer_kind(rule: TfdzRule) -> Option<&'static str> {
     }
 }
 
-fn decoded(o: &mut Out, f: &UslpFrame<'_>) {
+fn decoded(o: &mut Out, f: &UslpFrame<'_>, anomalies: AnomalySet<UslpAnomaly>) {
     let tfdf = f.tfdf_header();
     o.flag("truncated", f.is_truncated());
     o.num("spacecraft_id", f.spacecraft_id().get());
@@ -546,7 +543,7 @@ fn decoded(o: &mut Out, f: &UslpFrame<'_>) {
     o.bytes("tfdz_hex", f.tfdz());
     o.bytes("security_trailer_hex", f.security_trailer());
     o.num("consumed", wide(f.len()));
-    o.names("anomalies", f.anomalies().iter());
+    o.names("anomalies", anomalies.iter());
     if let Some(full) = f.full() {
         let h = full.header();
         o.text("kind", kind_name(h.kind()));
@@ -677,7 +674,11 @@ fn encode_oid_case(case: &Case, o: &mut Out, scratch: &mut Scratch) -> Run {
 
 fn validate_case(case: &Case, o: &mut Out) -> Run {
     let t = table(case)?;
-    match validate_frame(bb(case.input), &t, mode(case)) {
+    let validated = match mode(case) {
+        DecodeMode::Strict => validate_frame(bb(case.input), &t),
+        DecodeMode::Lenient => validate_frame_lenient(bb(case.input), &t).map(Lenient::into_view),
+    };
+    match validated {
         Ok(f) => {
             o.flag("accepted", true);
             o.num("frame_len", wide(f.len()));
@@ -733,7 +734,11 @@ pub fn vector(case: &Case, o: &mut Out, scratch: &mut Scratch) -> Run {
         }
         "decode" => {
             let t = table(case)?;
-            decoded(o, &UslpFrame::decode(bb(case.input), &t, mode(case))?);
+            let (f, a) = mode(case).dispatch(
+                || UslpFrame::decode(bb(case.input), &t),
+                || UslpFrame::decode_lenient(bb(case.input), &t),
+            )?;
+            decoded(o, &f, a);
         }
         "peek_length" => {
             let t = table(case)?;

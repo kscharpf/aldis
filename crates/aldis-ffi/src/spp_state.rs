@@ -12,8 +12,8 @@ use aldis::core::counter::Continuity;
 use aldis::core::ids::{Apid, SeqCount};
 use aldis::core::{Error, ErrorDetail, ErrorKind, Result, field};
 use aldis::spp::{
-    Discard, ReassemblerState, Segmenter, SegmenterState, SequenceCounter, SequenceTracker,
-    SpacePacket, Status, Tracked,
+    Discard, ReassemblerState, Segmenter, SegmenterState, SequenceCounter, SequenceTracker, Status,
+    Tracked,
 };
 
 use crate::abi::{self, invalid_argument};
@@ -693,8 +693,9 @@ pub unsafe extern "C" fn aldis_spp_reassembler_push(
             let bytes = abi::bytes(packet, packet_len)?;
             let layout = secondary_layout(&abi::read(layout)?)?;
             let buf = abi::bytes_mut(buf, buf_len, &[(packet, packet_len), h.range()])?;
-            let p = SpacePacket::decode(bytes, abi::mode(mode)?)?;
-            let user_data = p.split(&layout)?.user_data();
+            let mode = abi::mode(mode)?;
+            let (p, _) = crate::spp::packet(bytes, mode)?;
+            let user_data = crate::spp::split_by(&p, mode, &layout)?.0.user_data();
             let mut r = h.load().resume(buf)?;
             let outcome = r.push(&p.header(), user_data)?;
             h.store(r.suspend());

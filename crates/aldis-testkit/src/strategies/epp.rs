@@ -316,7 +316,7 @@ mod tests {
         encapsulation_packet_near_boundary, epp_config, idle_packet, with_length_delta,
     };
     use crate::strategies::config;
-    use aldis_core::{DecodeMode, ErrorKind};
+    use aldis_core::ErrorKind;
     use aldis_epp::config::MAX_DATA_LEN;
     use aldis_epp::{EncapsulationPacket, HeaderLen};
     use proptest::prelude::*;
@@ -332,11 +332,11 @@ mod tests {
         #[test]
         fn packets_decode_strictly(p in encapsulation_packet(), idle in idle_packet()) {
             // req: VER-054, EPP-002, EPP-009
-            let d = EncapsulationPacket::decode(&p.octets, DecodeMode::Strict).unwrap();
+            let d = EncapsulationPacket::decode(&p.octets).unwrap();
             prop_assert_eq!(d.epi(), p.fields.epi());
             prop_assert_eq!(d.data(), p.data.as_slice());
             prop_assert_eq!(p.data_unit().data(), p.data.as_slice());
-            prop_assert!(EncapsulationPacket::decode(&idle, DecodeMode::Strict).unwrap().is_idle());
+            prop_assert!(EncapsulationPacket::decode(&idle).unwrap().is_idle());
         }
 
         #[test]
@@ -347,7 +347,7 @@ mod tests {
             prop_assume!(u32::try_from(p.octets.len()).unwrap() < len.max_packet_len());
             let longer = with_length_delta(p.octets, 1);
             prop_assert_eq!(
-                EncapsulationPacket::decode(&longer, DecodeMode::Strict).unwrap_err().kind(),
+                EncapsulationPacket::decode(&longer).unwrap_err().kind(),
                 ErrorKind::Incomplete
             );
         }
@@ -361,8 +361,8 @@ mod tests {
             // req: VER-054, GEN-020
             prop_assert!(c.min_data_len() <= c.max_data_len() && c.max_data_len() <= MAX_DATA_LEN);
             for bytes in [a, b] {
-                let _ = EncapsulationPacket::decode(&bytes, DecodeMode::Strict);
-                let _ = EncapsulationPacket::decode(&bytes, DecodeMode::Lenient);
+                let _ = EncapsulationPacket::decode(&bytes);
+                let _ = EncapsulationPacket::decode_lenient(&bytes);
             }
         }
     }

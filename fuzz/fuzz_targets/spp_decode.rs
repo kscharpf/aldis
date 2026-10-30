@@ -5,13 +5,12 @@
 
 // req: SPP-001, SPP-002, SPP-003, SPP-004, API-010, API-011, API-013, GEN-020, VER-022
 
-use aldis_core::DecodeMode;
 use aldis_spp::{SpacePacket, SppAnomaly, SppConfig, encode};
 use libfuzzer_sys::fuzz_target;
 
 fuzz_target!(|data: &[u8]| {
-    let strict = SpacePacket::decode(data, DecodeMode::Strict);
-    let Ok(lenient) = SpacePacket::decode(data, DecodeMode::Lenient) else {
+    let strict = SpacePacket::decode(data);
+    let Ok(lenient) = SpacePacket::decode_lenient(data) else {
         assert!(strict.is_err());
         return;
     };
@@ -25,9 +24,10 @@ fuzz_target!(|data: &[u8]| {
         Err(_) => assert!(flagged),
         Ok(s) => {
             assert_eq!(
-                (s.header(), s.data_field(), s.anomalies()),
-                (lenient.header(), lenient.data_field(), lenient.anomalies())
+                (s.header(), s.data_field()),
+                (lenient.header(), lenient.data_field())
             );
+            assert!(lenient.anomalies().is_empty());
             // The data field is opaque here: put it all in the user data or, with the flag
             // set, all in the secondary header. Either way the octets must come back.
             let field = s.data_field();

@@ -11,7 +11,7 @@
 use aldis_core::ocf::Ocf;
 use aldis_core::oid::OidGenerator;
 use aldis_core::security::SecurityLayout;
-use aldis_core::{DecodeMode, Error, FieldId};
+use aldis_core::{AnomalySet, DecodeMode, Error, FieldId};
 use aldis_testkit::{CodecCase, Mode, Outcome, hex, run_codec_file};
 use aldis_uslp::{
     ChannelFields, ConstructionRule, Delimited, FirstHeaderPointer, FrameContent, FrameDelimiter,
@@ -19,6 +19,7 @@ use aldis_uslp::{
     SecurityScope, SourceOrDestination, TfdfHeader, TfdzRule, TransferFrameType, TruncatedFrameLen,
     Upid, UslpAnomaly, UslpFrame, UslpFrameWriter, UslpMapId, UslpSpacecraftId, UslpVcId, VcConfig,
     VcParams, VcTable, VcfCountLen, encode, encode_oid, encode_truncated, validate_frame,
+    validate_frame_lenient,
 };
 use serde_json::{Map, Value, json};
 
@@ -136,9 +137,10 @@ fn pointer_kind(rule: TfdzRule) -> Value {
     }
 }
 
-fn decoded(f: &UslpFrame<'_>) -> Value {
+fn decoded(f: &UslpFrame<'_>, anomalies: AnomalySet<UslpAnomaly>) -> Value {
     let tfdf = f.tfdf_header();
-    let anomalies: Vec<String> = f.anomalies().iter().map(|a| format!("{a:?}")).collect();
+    let reserve_spares = anomalies.contains(UslpAnomaly::ReserveSparesSet);
+    let anomalies: Vec<String> = anomalies.iter().map(|a| format!("{a:?}")).collect();
     let mut v = json!({
         "truncated": f.is_truncated(),
         "spacecraft_id": f.spacecraft_id().get(),
@@ -174,7 +176,7 @@ fn decoded(f: &UslpFrame<'_>) -> Value {
         }
         // The owned header re-encodes to the frame's first octets, with the Reserve Spares
         // `00` (API-014).
-        if !full.anomalies().contains(UslpAnomaly::ReserveSparesSet) {
+        if !reserve_spares {
             assert_eq!(h.octets()[..h.len()], full.octets()[..h.len()]);
         }
     } else {
@@ -289,8 +291,12 @@ fn encode_oid_case(case: &CodecCase) -> Result<Value, Error> {
 fn validate_case(case: &CodecCase) -> Result<Value, Error> {
     let t = table(case)?;
     let bytes = input(case);
-    Ok(match validate_frame(&bytes, &t, mode(case)) {
-        Ok(f) => json!({ "accepted": true, "frame_len": f.len() }),
+    let validated = match mode(case) {
+        DecodeMode::Strict => validate_frame(&bytes, &t).map(|f| f.len()),
+        DecodeMode::Lenient => validate_frame_lenient(&bytes, &t).map(|f| f.len()),
+    };
+    Ok(match validated {
+        Ok(len) => json!({ "accepted": true, "frame_len": len }),
         Err(r) => json!({
             "accepted": false,
             "reason": format!("{:?}", r.reason()),
@@ -338,7 +344,12 @@ fn run(case: &CodecCase) -> Result<Value, Error> {
         "decode" => {
             let t = table(case)?;
             let bytes = input(case);
-            UslpFrame::decode(&bytes, &t, mode(case)).map(|f| decoded(&f))
+            mode(case)
+                .dispatch(
+                    || UslpFrame::decode(&bytes, &t),
+                    || UslpFrame::decode_lenient(&bytes, &t),
+                )
+                .map(|(f, anomalies)| decoded(&f, anomalies))
         }
         "peek_length" => {
             let t = table(case)?;

@@ -8,8 +8,11 @@
 //! (§4.4.9.3.1; TC-023), and reports each failure with a [`Reason`] whose numeric code is
 //! stable (`docs/standards/tc-frame.md` §4).
 
-use aldis_core::{DecodeMode, Error};
+use core::ops::Deref;
 
+use aldis_core::{DecodeMode, Error, Lenient};
+
+use crate::anomaly::TcAnomaly;
 use crate::config::VcLookup;
 use crate::view::{TcFrame, parse};
 
@@ -120,34 +123,80 @@ impl From<Rejection> for Error {
     }
 }
 
+/// A [`TcFrame`] that passed the Frame Validation Checks as exactly one delimited frame
+/// (232.0 §4.4.9.3; TC-021…TC-023, API-016).
+///
+/// [`validate_frame`] and the [`FrameStream`](crate::stream::FrameStream) return it. It
+/// dereferences to the frame; holding one is the proof that the Frame Length equals the octets
+/// supplied, which [`TcFrame::decode`] does not check (RS-023 `Checked`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ValidatedTcFrame<'a> {
+    frame: TcFrame<'a>,
+}
+
+impl<'a> ValidatedTcFrame<'a> {
+    /// The frame, without the proof.
+    #[must_use]
+    pub const fn into_frame(self) -> TcFrame<'a> {
+        self.frame
+    }
+
+    /// The frame that exact-length parsing returned.
+    pub(crate) const fn new(frame: TcFrame<'a>) -> ValidatedTcFrame<'a> {
+        ValidatedTcFrame { frame }
+    }
+}
+
+impl<'a> Deref for ValidatedTcFrame<'a> {
+    type Target = TcFrame<'a>;
+
+    fn deref(&self) -> &TcFrame<'a> {
+        &self.frame
+    }
+}
+
 /// Applies the Frame Validation Checks to `frame`, the octets of exactly one frame (232.0
-/// §4.4.9.3; TC-021…TC-023).
+/// §4.4.9.3; TC-021…TC-023, API-016), in strict mode.
 ///
 /// The checks run in the order of [`Reason`]: (a) version; (b) Spacecraft ID; (c) the frame
-/// type flags, the Reserved Spare (strict mode), the VCID, and the Frame Length against the
-/// channel's limits; (d) the Frame Length against `frame.len()`; (e) the FECF; then the MAP ID
-/// of a Segment Header, the room left by the MAP's Security Header and Trailer, and, in strict
-/// mode, the Control Command of a Type-C frame. Type-A and Type-B frames are checked alike
-/// (TC-023). A frame that passes is returned decoded, with the anomalies a lenient mode
-/// tolerated.
+/// type flags, the Reserved Spare, the VCID, and the Frame Length against the channel's limits;
+/// (d) the Frame Length against `frame.len()`; (e) the FECF; then the MAP ID of a Segment
+/// Header, the room left by the MAP's Security Header and Trailer, and the Control Command of a
+/// Type-C frame. Type-A and Type-B frames are checked alike (TC-023). A frame that passes is
+/// returned as a [`ValidatedTcFrame`].
 ///
 /// # Errors
 /// The first check that fails, as a [`Rejection`].
 pub fn validate_frame<'a, L: VcLookup + ?Sized>(
     frame: &'a [u8],
     channels: &L,
-    mode: DecodeMode,
-) -> Result<TcFrame<'a>, Rejection> {
-    parse(frame, channels, mode, true).map(|(f, _, _)| f)
+) -> Result<ValidatedTcFrame<'a>, Rejection> {
+    parse(frame, channels, DecodeMode::Strict, true).map(|p| ValidatedTcFrame::new(p.frame))
+}
+
+/// Applies the Frame Validation Checks as [`validate_frame`] does, in lenient mode.
+///
+/// The Reserved Spare and the Control Command checks accept their deviations and report them as
+/// [`TcAnomaly`] flags (TC-003, TC-005, API-032).
+///
+/// # Errors
+/// The first check that fails, as a [`Rejection`].
+pub fn validate_frame_lenient<'a, L: VcLookup + ?Sized>(
+    frame: &'a [u8],
+    channels: &L,
+) -> Result<Lenient<ValidatedTcFrame<'a>, TcAnomaly>, Rejection> {
+    parse(frame, channels, DecodeMode::Lenient, true)
+        .map(|p| Lenient::new(ValidatedTcFrame::new(p.frame), p.anomalies))
 }
 
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
-    use super::{Reason, Rejection, validate_frame};
+    use super::{Reason, Rejection, validate_frame, validate_frame_lenient};
+    use crate::anomaly::TcAnomaly;
     use crate::config::tests::standard;
     use crate::field;
-    use aldis_core::{DecodeMode, Error, ErrorKind};
+    use aldis_core::{Error, ErrorKind};
 
     #[test]
     fn reason_codes_are_stable() {
@@ -165,7 +214,7 @@ mod tests {
     fn rejections_carry_reason_and_error() {
         // req: TC-021, TC-023, GEN-041
         let t = standard(true);
-        let r = validate_frame(&[0x01, 0x55, 0x04], &t, DecodeMode::Strict).unwrap_err();
+        let r = validate_frame(&[0x01, 0x55, 0x04], &t).unwrap_err();
         assert_eq!(r.reason(), Reason::LengthMismatch);
         assert_eq!(
             (r.error().kind(), r.error().field()),
@@ -174,5 +223,20 @@ mod tests {
         assert_eq!(Error::from(r), r.error());
         let x = Rejection::new(Reason::InvalidVcid, Error::new(ErrorKind::UnknownChannel));
         assert_eq!(x.reason().code(), 5);
+    }
+
+    #[test]
+    fn validated_frames_are_returned_by_both_modes() {
+        // req: API-016, API-030, API-032, TC-021
+        let t = standard(false);
+        // An Unlock command with a Reserved Spare of 01: strict rejects, lenient flags it.
+        let bytes = [0x35, 0x55, 0x04, 0x05, 0x00, 0x00];
+        let r = validate_frame(&bytes, &t).unwrap_err();
+        assert_eq!(r.reason(), Reason::ReservedSpare);
+        let v = validate_frame_lenient(&bytes, &t).unwrap();
+        assert!(v.anomalies().contains(TcAnomaly::ReservedSpareSet));
+        assert_eq!(v.len(), 6);
+        let proof = validate_frame(&[0x31, 0x55, 0x04, 0x05, 0x00, 0x00], &t).unwrap();
+        assert_eq!(proof.into_frame().len(), 6);
     }
 }

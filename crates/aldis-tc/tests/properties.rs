@@ -6,10 +6,10 @@
     reason = "test bookkeeping on lengths the strategies bound (RS-018)"
 )]
 
-use aldis_core::{DecodeMode, ErrorKind};
+use aldis_core::ErrorKind;
 use aldis_tc::{
     Clcw, Delimited, FrameDelimiter, TcAnomaly, TcFrame, TcFrameWriter, encode, next_frame,
-    validate_frame,
+    validate_frame, validate_frame_lenient,
 };
 use aldis_testkit::strategies::proptest::prelude::*;
 use aldis_testkit::strategies::tc::{clcw, data_unit, tc_frame, tc_frame_decoder_input};
@@ -28,7 +28,7 @@ proptest! {
     fn encode_then_decode_round_trips(f in tc_frame()) {
         // req: API-020, API-021, TC-001, TC-004, TC-005, TC-007, TC-008, VER-023
         let t = &f.channels.table;
-        let d = TcFrame::decode(&f.octets, t, DecodeMode::Strict).unwrap();
+        let d = TcFrame::decode(&f.octets, t).unwrap();
         prop_assert_eq!(d.header().fields(), f.fields);
         prop_assert_eq!(d.segment_header(), f.segment_header);
         prop_assert_eq!(d.control_command(), f.control);
@@ -41,7 +41,7 @@ proptest! {
         prop_assert!(d.security_header().iter().chain(d.security_trailer()).all(|&b| b == 0));
         prop_assert_eq!(d.header().primary_header_octets(), <[u8; 5]>::try_from(&f.octets[..5]).unwrap());
         // The same frame passes the Frame Validation Checks (TC-021, TC-023).
-        prop_assert_eq!(validate_frame(&f.octets, t, DecodeMode::Strict).map(|v| v.len()), Ok(f.octets.len()));
+        prop_assert_eq!(validate_frame(&f.octets, t).map(|v| v.len()), Ok(f.octets.len()));
     }
 
     #[test]
@@ -65,12 +65,12 @@ proptest! {
     fn decoder_never_panics((c, v) in tc_frame_decoder_input()) {
         // req: GEN-020, GEN-042, API-030, API-031, API-032, TC-001, VER-023
         let t = &c.table;
-        let strict = TcFrame::decode(&v, t, DecodeMode::Strict);
-        let lenient = TcFrame::decode(&v, t, DecodeMode::Lenient);
+        let strict = TcFrame::decode(&v, t);
+        let lenient = TcFrame::decode_lenient(&v, t);
         if let Ok(s) = strict {
             // Strict ⊆ lenient, with the same view and no anomaly.
-            prop_assert!(s.anomalies().is_empty());
-            let l = lenient.unwrap();
+            let l = lenient.clone().unwrap();
+            prop_assert!(l.anomalies().is_empty());
             prop_assert_eq!(s.header(), l.header());
             prop_assert_eq!(s.data_field(), l.data_field());
         }
@@ -78,14 +78,14 @@ proptest! {
             prop_assert!(f.len() <= v.len() && f.octets() == &v[..f.len()]);
             prop_assert_eq!(TcFrame::peek_length(&v), Ok(f.len()));
             // Exactly the frame passes validation in the same mode (TC-021 d).
-            prop_assert!(validate_frame(f.octets(), t, DecodeMode::Lenient).is_ok());
+            prop_assert!(validate_frame_lenient(f.octets(), t).is_ok());
             if !f.anomalies().contains(TcAnomaly::UnknownControlCommand) {
                 prop_assert_eq!(f.control_command().is_some(), f.frame_type().control_command_flag());
             }
         }
         // Validation of exactly the input agrees with decoding when the input is one frame.
-        match (validate_frame(&v, t, DecodeMode::Strict), TcFrame::decode(&v, t, DecodeMode::Strict)) {
-            (Ok(a), Ok(b)) => prop_assert_eq!(a, b),
+        match (validate_frame(&v, t), TcFrame::decode(&v, t)) {
+            (Ok(a), Ok(b)) => prop_assert_eq!(a.into_frame(), b),
             (Err(r), Ok(b)) => prop_assert!(b.len() < v.len(), "{:?}", r),
             (Ok(_), Err(e)) => prop_assert!(false, "validated but not decoded: {:?}", e),
             (Err(_), Err(_)) => {}
@@ -127,19 +127,19 @@ proptest! {
     #[test]
     fn clcw_round_trips(c in clcw()) {
         // req: TC-030, TC-031, API-020, VER-023
-        let (d, anomalies) = Clcw::decode(c.to_octets(), DecodeMode::Strict).unwrap();
-        prop_assert_eq!(d, c);
-        prop_assert!(anomalies.is_empty());
+        prop_assert_eq!(Clcw::decode(c.to_octets()).unwrap(), c);
+        prop_assert!(Clcw::decode_lenient(c.to_octets()).unwrap().anomalies().is_empty());
         prop_assert_eq!(c.to_word().to_be_bytes(), c.to_octets());
     }
 
     #[test]
     fn clcw_decodes_any_word(word in any::<[u8; 4]>()) {
         // req: TC-030, API-031, API-032, GEN-020
-        let lenient = Clcw::decode(word, DecodeMode::Lenient);
-        let strict = Clcw::decode(word, DecodeMode::Strict);
+        let lenient = Clcw::decode_lenient(word);
+        let strict = Clcw::decode(word);
         match lenient {
-            Ok((c, anomalies)) => {
+            Ok(l) => {
+                let (c, anomalies) = (*l, l.anomalies());
                 // The re-encoded word is the input with the spares cleared.
                 let mut cleared = word;
                 cleared[1] &= 0xFC;

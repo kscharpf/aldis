@@ -5,7 +5,7 @@
 //! | Module | Contents | Clauses | Requirements |
 //! |---|---|---|---|
 //! | [`header`] | `Epi`, `EpiExtension`, `UserDefined`, `HeaderLen`, `HeaderSize`, owned `EncapsulationHeader` | 133.1 §4.1.2 | EPP-001…EPP-008, API-014, API-021 |
-//! | [`view`] | Zero-copy `EncapsulationPacket` decoder, `peek_length` | 133.1 §4.1 | EPP-001…EPP-007, EPP-011, API-010, API-011, API-013 |
+//! | [`view`] | Zero-copy `EncapsulationPacket` decoder (strict and lenient), `validate` to `ValidatedEncapsulationPacket`, `peek_length` | 133.1 §4.1 | EPP-001…EPP-007, EPP-010, EPP-011, API-010, API-011, API-013, API-016 |
 //! | [`writer`] | One-shot `encode`, two-phase `EncapsulationWriter`, `idle` | 133.1 §4.1, §4.2.1 | EPP-008, EPP-009, API-020…API-023 |
 //! | [`config`] | `EppConfig` managed parameters, `EpiSet`, `ExtendedEpiSet`, the checked `DataUnit` | 133.1 §4.2.1.1.2, §5 Table 5-1 | EPP-010, GEN-060, GEN-061 |
 //! | [`anomaly`] | `EppAnomaly` lenient-mode flags | 133.1 §4.1.2.6.3, §4.1.2.7.2 | API-032, GEN-043 |
@@ -46,7 +46,7 @@ pub use config::{DataUnit, EpiSet, EppConfig, ExtendedEpiSet};
 pub use header::{
     EncapsulationFields, EncapsulationHeader, Epi, EpiExtension, HeaderLen, HeaderSize, UserDefined,
 };
-pub use view::EncapsulationPacket;
+pub use view::{EncapsulationPacket, ValidatedEncapsulationPacket};
 pub use writer::{EncapsulationWriter, encode, idle};
 
 /// Compiles and runs the examples in `README.md` as doctests; not part of the API.

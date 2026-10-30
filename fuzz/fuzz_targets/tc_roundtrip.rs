@@ -5,7 +5,6 @@
 
 // req: TC-004, TC-005, TC-007, TC-008, API-020, API-021, API-022, API-023, GEN-042, VER-022
 
-use aldis_core::DecodeMode;
 use aldis_core::ids::FrameSeqNum;
 use aldis_core::security::SecurityLayout;
 use aldis_tc::{
@@ -86,7 +85,7 @@ fn run(u: &mut Unstructured<'_>) -> Result<()> {
             "rejected encode wrote output"
         ),
         Ok(n) => {
-            let f = TcFrame::decode(&out[..n], &table, DecodeMode::Strict).unwrap();
+            let f = TcFrame::decode(&out[..n], &table).unwrap();
             assert_eq!(f.len(), n);
             assert_eq!(f.header().fields(), fields);
             match data {

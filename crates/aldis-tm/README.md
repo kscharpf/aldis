@@ -17,7 +17,6 @@ Encode a frame on a virtual channel with an OCF and decode it again:
 ```rust
 use aldis_core::ids::{SpacecraftId, VcId};
 use aldis_core::ocf::Ocf;
-use aldis_core::DecodeMode;
 use aldis_tm::{
     DataFieldContent, DataFieldStatus, PacketOffset, PacketPointer, TmFrame, TmFrameContent,
     TmFrameFields, TmMasterChannelConfig, TmPhysicalChannelConfig, TmVirtualChannelConfig, encode,
@@ -41,9 +40,8 @@ fn main() -> Result<(), aldis_core::Error> {
     let mut buf = [0_u8; 32];
     let len = encode(&mc, &fields, &content, &mut buf)?;
 
-    // The view borrows `buf`; `validate` checks it against the master channel.
-    let frame = TmFrame::decode_with(&buf[..len], mc.pc(), &mc, DecodeMode::Strict)?;
-    frame.validate(&mc)?;
+    // The view borrows `buf`; `validate` checks it against the master channel and returns it as a `ValidatedTmFrame`.
+    let frame = TmFrame::decode_with(&buf[..len], mc.pc(), &mc)?.validate(&mc)?;
     assert_eq!(frame.vcid(), vc1);
     assert_eq!(frame.data_field(), &data);
     assert_eq!(frame.ocf(), content.ocf);

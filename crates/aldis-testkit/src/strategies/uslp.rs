@@ -443,7 +443,7 @@ fn build_oid(c: &UslpChannels, common: Common, skip: usize) -> Option<EncodedUsl
     )
     .ok()?;
     out.truncate(n);
-    let tfdz = aldis_uslp::UslpFrame::decode(&out, &c.table, aldis_core::DecodeMode::Strict)
+    let tfdz = aldis_uslp::UslpFrame::decode(&out, &c.table)
         .ok()?
         .tfdz()
         .to_vec();
@@ -652,7 +652,6 @@ mod tests {
         FrameParts, data_unit, tfdz_offset, uslp_frame, uslp_frame_decoder_input, vcf_count,
     };
     use crate::strategies::config;
-    use aldis_core::DecodeMode;
     use aldis_uslp::{TfdzOffset, UslpFrame};
     use proptest::prelude::*;
 
@@ -667,7 +666,7 @@ mod tests {
         #[test]
         fn frames_decode(f in uslp_frame()) {
             // req: VER-054
-            let d = UslpFrame::decode(&f.octets, &f.channels.table, DecodeMode::Strict).unwrap();
+            let d = UslpFrame::decode(&f.octets, &f.channels.table).unwrap();
             prop_assert_eq!(d.tfdz(), f.tfdz.as_slice());
             prop_assert_eq!(d.is_truncated(), matches!(f.parts, FrameParts::Truncated { .. }));
         }
@@ -688,7 +687,7 @@ mod tests {
         #[test]
         fn decoder_inputs_never_panic((c, v) in uslp_frame_decoder_input()) {
             // req: VER-054, GEN-020
-            let _ = UslpFrame::decode(&v, &c.table, DecodeMode::Lenient);
+            let _ = UslpFrame::decode_lenient(&v, &c.table);
         }
     }
 }

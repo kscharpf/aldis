@@ -2,7 +2,7 @@
 //! API-011, API-013, API-014, GEN-013, GEN-043).
 
 use aldis_core::ids::{Apid, SeqCount};
-use aldis_core::{AnomalySet, DecodeMode, Error, Result};
+use aldis_core::{AnomalySet, DecodeMode, Error, Lenient, Result};
 
 use crate::anomaly::SppAnomaly;
 use crate::field;
@@ -12,28 +12,44 @@ use crate::secondary::{SecondaryHeaderLayout, SplitPacket};
 /// A decoded Space Packet borrowing its data field from the input (133.0 §4.1; SPP-001…SPP-004,
 /// API-010, GEN-013).
 ///
-/// The view keeps its decode mode, which [`split`](Self::split) applies to a time code; two
-/// views of the same octets decoded in different modes are not equal.
+/// A strict decode returns it alone; a lenient one returns it in a [`Lenient`] with its
+/// anomalies (API-030).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SpacePacket<'a> {
     header: SpacePacketHeader,
     data: &'a [u8],
-    mode: DecodeMode,
-    anomalies: AnomalySet<SppAnomaly>,
 }
 
 impl<'a> SpacePacket<'a> {
-    /// Decodes one packet from the start of `bytes`; any octets after it are ignored, so a stream
-    /// can be parsed packet by packet with [`len`](Self::len) (133.0 §4.1.3.5; SPP-002, API-011).
+    /// Decodes one packet from the start of `bytes`, in strict mode; any octets after it are
+    /// ignored, so a stream can be parsed packet by packet with [`len`](Self::len) (133.0
+    /// §4.1.3.5; SPP-002, API-011).
     ///
     /// # Errors
     /// - `Incomplete` (`needed` = 6) if `bytes` is shorter than the primary header, then
     ///   `needed` = 7 + Packet Data Length if it is shorter than the packet (SPP-002).
-    /// - `UnsupportedVersion` if the version is not `000`, in both modes (SPP-001).
-    /// - `InvalidField` (`secondary_header_flag`) in strict mode for an Idle Packet with the
-    ///   Secondary Header Flag set; lenient mode reports
-    ///   [`SppAnomaly::IdleWithSecondaryHeader`] instead (SPP-004, API-032).
-    pub fn decode(bytes: &'a [u8], mode: DecodeMode) -> Result<SpacePacket<'a>> {
+    /// - `UnsupportedVersion` if the version is not `000` (SPP-001).
+    /// - `InvalidField` (`secondary_header_flag`) for an Idle Packet with the Secondary Header
+    ///   Flag set (SPP-004).
+    pub fn decode(bytes: &'a [u8]) -> Result<SpacePacket<'a>> {
+        SpacePacket::decode_in(bytes, DecodeMode::Strict).map(|(packet, _)| packet)
+    }
+
+    /// Decodes one packet as [`decode`](Self::decode) does, in lenient mode: an Idle Packet with
+    /// the Secondary Header Flag set is accepted and reported as
+    /// [`SppAnomaly::IdleWithSecondaryHeader`] (SPP-004, API-032).
+    ///
+    /// # Errors
+    /// As for [`decode`](Self::decode), except the deviation that is an anomaly.
+    pub fn decode_lenient(bytes: &'a [u8]) -> Result<Lenient<SpacePacket<'a>, SppAnomaly>> {
+        SpacePacket::decode_in(bytes, DecodeMode::Lenient)
+            .map(|(packet, anomalies)| Lenient::new(packet, anomalies))
+    }
+
+    fn decode_in(
+        bytes: &'a [u8],
+        mode: DecodeMode,
+    ) -> Result<(SpacePacket<'a>, AnomalySet<SppAnomaly>)> {
         let header = SpacePacketHeader::parse(bytes)?;
         let total = header.packet_len();
         let data = bytes
@@ -46,12 +62,7 @@ impl<'a> SpacePacket<'a> {
                 DecodeMode::Lenient => anomalies.insert(SppAnomaly::IdleWithSecondaryHeader),
             }
         }
-        Ok(SpacePacket {
-            header,
-            data,
-            mode,
-            anomalies,
-        })
+        Ok((SpacePacket { header, data }, anomalies))
     }
 
     /// Total length of the packet that starts `prefix`, from its first 6 octets (133.0 §4.1.3.5;
@@ -65,8 +76,8 @@ impl<'a> SpacePacket<'a> {
     }
 
     /// Splits the data field into the secondary header and the user data with the APID's
-    /// layout, which the caller looks up (SPP-007, SPP-008, OI-30). A time code is decoded
-    /// in this packet's decode mode.
+    /// layout, which the caller looks up (SPP-007, SPP-008, OI-30). A time code is decoded in
+    /// strict mode (API-031); [`split_lenient`](Self::split_lenient) decodes it in lenient mode.
     ///
     /// # Errors
     /// - `InvalidField` (`secondary_header_flag`) if the Secondary Header Flag disagrees with
@@ -77,7 +88,21 @@ impl<'a> SpacePacket<'a> {
     /// - With a time layout: `InvalidField` (`time_code_id`) for a P-field with another time
     ///   code ID than the configured one, and the other errors of the time code decoder.
     pub fn split(&self, layout: &SecondaryHeaderLayout) -> Result<SplitPacket<'a>> {
-        layout.split(self.header.has_secondary_header(), self.data, self.mode)
+        layout.split(self.header.has_secondary_header(), self.data)
+    }
+
+    /// Splits the data field as [`split`](Self::split) does, decoding a time code in lenient mode:
+    /// the deviations of `aldis_time::decode_with_pfield_lenient` are accepted and reported
+    /// (SPP-008, TIME-002, TIME-005, API-032).
+    ///
+    /// # Errors
+    /// As for [`split`](Self::split), except the deviations that are anomalies.
+    #[cfg(feature = "time")]
+    pub fn split_lenient(
+        &self,
+        layout: &SecondaryHeaderLayout,
+    ) -> Result<Lenient<SplitPacket<'a>, aldis_time::TimeAnomaly>> {
+        layout.split_lenient(self.header.has_secondary_header(), self.data)
     }
 
     /// The header as plain values (133.0 §4.1.3, API-014).
@@ -145,13 +170,6 @@ impl<'a> SpacePacket<'a> {
     pub const fn is_empty(&self) -> bool {
         false
     }
-
-    /// Lenient-mode anomalies; always empty after a strict decode (133.0 §4.1.3.3.3.4; API-032,
-    /// GEN-043).
-    #[must_use]
-    pub const fn anomalies(&self) -> AnomalySet<SppAnomaly> {
-        self.anomalies
-    }
 }
 
 #[cfg(test)]
@@ -162,14 +180,14 @@ mod tests {
     use crate::field;
     use crate::header::{PacketType, SequenceFlags};
     use crate::secondary::SecondaryHeaderLayout;
-    use aldis_core::{DecodeMode, ErrorDetail, ErrorKind};
+    use aldis_core::{ErrorDetail, ErrorKind};
     use core::num::NonZeroUsize;
 
     #[test]
     fn view_accessors() {
         // req: SPP-002, SPP-009, API-010, API-011, API-014, GEN-013
         let bytes = [0x18, 0x23, 0x40, 0x07, 0x00, 0x01, 0xA0, 0xB0, 0xFF];
-        let p = SpacePacket::decode(&bytes, DecodeMode::Strict).unwrap();
+        let p = SpacePacket::decode(&bytes).unwrap();
         assert_eq!(
             (p.packet_type(), p.apid().get(), p.sequence_flags()),
             (PacketType::Telecommand, 0x023, SequenceFlags::First)
@@ -182,10 +200,7 @@ mod tests {
             (7, Some(7))
         );
         assert!(p.has_secondary_header() && !p.is_idle() && !p.is_empty());
-        assert_eq!(
-            (p.data_field(), p.len(), p.anomalies().is_empty()),
-            (&[0xA0, 0xB0][..], 8, true)
-        );
+        assert_eq!((p.data_field(), p.len()), (&[0xA0, 0xB0][..], 8));
         assert_eq!(p.header().packet_len(), 8);
         assert_eq!(SpacePacket::peek_length(&bytes[..6]), Ok(8));
         let s = p
@@ -195,23 +210,32 @@ mod tests {
             (s.secondary_header(), s.user_data()),
             (&[0xA0][..], &[0xB0][..])
         );
+        // The lenient split of an opaque layout has no time code to deviate (API-032).
+        #[cfg(feature = "time")]
+        {
+            let s = p
+                .split_lenient(&SecondaryHeaderLayout::Opaque(NonZeroUsize::MIN))
+                .unwrap();
+            assert!(s.anomalies().is_empty());
+            assert_eq!(s.user_data(), &[0xB0][..]);
+        }
     }
 
     #[test]
     fn errors_and_lenient_idle() {
         // req: SPP-002, SPP-004, API-032, GEN-041
-        let e = SpacePacket::decode(&[0, 1, 0xC0, 0, 0, 2, 1, 2], DecodeMode::Strict).unwrap_err();
+        let e = SpacePacket::decode(&[0, 1, 0xC0, 0, 0, 2, 1, 2]).unwrap_err();
         assert_eq!(
             (e.kind(), e.detail()),
             (ErrorKind::Incomplete, ErrorDetail::Needed(9))
         );
         let idle = [0x0F, 0xFF, 0xC0, 0, 0, 0, 0];
-        let e = SpacePacket::decode(&idle, DecodeMode::Strict).unwrap_err();
+        let e = SpacePacket::decode(&idle).unwrap_err();
         assert_eq!(
             (e.kind(), e.field()),
             (ErrorKind::InvalidField, Some(field::SECONDARY_HEADER_FLAG))
         );
-        let p = SpacePacket::decode(&idle, DecodeMode::Lenient).unwrap();
+        let p = SpacePacket::decode_lenient(&idle).unwrap();
         assert!(p.is_idle() && p.anomalies().contains(SppAnomaly::IdleWithSecondaryHeader));
         assert_eq!(SpacePacket::peek_length(&idle), Ok(7));
     }

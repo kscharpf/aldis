@@ -6,7 +6,7 @@
 //! ones minus one for "only idle data" (§4.1.4.3.1.4, §4.1.4.3.2–3). The same in Issue 4
 //! (732.0-B-4 §4.1.4.3).
 
-use aldis_core::{AnomalySet, DecodeMode, Error, ErrorKind, Result};
+use aldis_core::{AnomalySet, DecodeMode, Error, ErrorKind, Lenient, Result};
 
 use crate::anomaly::{AosAnomaly, Deviations};
 use crate::field;
@@ -189,11 +189,27 @@ impl<'a> Bpdu<'a> {
     /// - the errors of [`BitstreamPointer::classify`], in both modes;
     /// - in strict mode, `ReservedValue` (`bpdu_spare`) for a Reserved Spare other than `00`;
     ///   lenient mode reports it as [`AosAnomaly::BpduSpareSet`] (§4.1.4.3.2.2).
-    pub fn decode(field: &'a [u8], mode: DecodeMode) -> Result<Bpdu<'a>> {
+    pub fn decode(field: &'a [u8]) -> Result<Bpdu<'a>> {
+        Bpdu::decode_in(field, DecodeMode::Strict).map(|(bpdu, _)| bpdu)
+    }
+
+    /// Decodes a `B_PDU` as [`decode`](Self::decode) does, in lenient mode: a Reserved Spare
+    /// other than `00` is accepted and reported as [`AosAnomaly::BpduSpareSet`] (§4.1.4.3.2.2;
+    /// API-032).
+    ///
+    /// # Errors
+    /// As for [`decode`](Self::decode), except the spare error.
+    pub fn decode_lenient(field: &'a [u8]) -> Result<Lenient<Bpdu<'a>, AosAnomaly>> {
+        Bpdu::decode_in(field, DecodeMode::Lenient)
+            .map(|(bpdu, anomalies)| Lenient::new(bpdu, anomalies))
+    }
+
+    /// The decode of both entry points.
+    fn decode_in(field: &'a [u8], mode: DecodeMode) -> Result<(Bpdu<'a>, AnomalySet<AosAnomaly>)> {
         let mut deviations = Deviations::new(mode);
         let bpdu = Bpdu::parse(field, &mut deviations)?;
-        deviations.finish()?;
-        Ok(bpdu)
+        let anomalies = deviations.finish()?;
+        Ok((bpdu, anomalies))
     }
 
     /// Decodes the `B_PDU`, noting its deviations in `deviations`.
@@ -249,16 +265,6 @@ impl<'a> Bpdu<'a> {
     pub const fn data_zone(&self) -> &'a [u8] {
         self.zone
     }
-
-    /// Lenient-mode anomalies of the `B_PDU`; always empty after a strict decode (GEN-043).
-    #[must_use]
-    pub fn anomalies(&self) -> AnomalySet<AosAnomaly> {
-        let mut set = AnomalySet::empty();
-        if self.spare != 0 {
-            set.insert(AosAnomaly::BpduSpareSet);
-        }
-        set
-    }
 }
 
 #[cfg(test)]
@@ -267,10 +273,7 @@ mod tests {
     use super::{BitstreamPointer, Bpdu, ValidBitCount};
     use crate::anomaly::AosAnomaly;
     use crate::field;
-    use aldis_core::{AnomalySet, DecodeMode, ErrorDetail, ErrorKind};
-
-    const STRICT: DecodeMode = DecodeMode::Strict;
-    const LENIENT: DecodeMode = DecodeMode::Lenient;
+    use aldis_core::{AnomalySet, ErrorDetail, ErrorKind, Lenient};
 
     fn vb(n: u16) -> BitstreamPointer {
         BitstreamPointer::ValidBits(ValidBitCount::new(n).unwrap())
@@ -379,13 +382,12 @@ mod tests {
     fn decode_and_spare() {
         // req: AOS-017, API-031, API-032, GEN-043, GEN-013
         let field = [0x00, 0x05, 0xF8, 0x00];
-        let b = Bpdu::decode(&field, STRICT).unwrap();
+        let b = Bpdu::decode(&field).unwrap();
         assert_eq!((b.pointer(), b.bitstream_data_pointer()), (vb(6), 5));
         assert_eq!((b.data_zone(), b.spare()), (&field[2..], 0));
         assert_eq!(b.data_zone().as_ptr(), field[2..].as_ptr(), "zero-copy");
-        assert!(b.anomalies().is_empty());
         let spare = [0xBF, 0xFF, 0];
-        let e = Bpdu::decode(&spare, STRICT).unwrap_err();
+        let e = Bpdu::decode(&spare).unwrap_err();
         assert_eq!(
             (e.kind(), e.field(), e.detail()),
             (
@@ -397,19 +399,26 @@ mod tests {
                 }
             )
         );
-        let b = Bpdu::decode(&spare, LENIENT).unwrap();
+        let b = Bpdu::decode_lenient(&spare).unwrap();
         assert_eq!((b.pointer(), b.spare()), (BitstreamPointer::AllValid, 2));
         assert_eq!(
             b.anomalies(),
             AnomalySet::from_flags(&[AosAnomaly::BpduSpareSet])
         );
-        for mode in [STRICT, LENIENT] {
-            let e = Bpdu::decode(&[0xC0, 0x08, 0], mode).unwrap_err();
+        for lenient in [false, true] {
+            let decode = |field: &'static [u8]| {
+                if lenient {
+                    Bpdu::decode_lenient(field).map(Lenient::into_view)
+                } else {
+                    Bpdu::decode(field)
+                }
+            };
+            let e = decode(&[0xC0, 0x08, 0]).unwrap_err();
             assert_eq!(
                 (e.kind(), e.field()),
                 (ErrorKind::Malformed, Some(field::BITSTREAM_DATA_POINTER))
             );
-            let e = Bpdu::decode(&[0x3F, 0xFF], mode).unwrap_err();
+            let e = decode(&[0x3F, 0xFF]).unwrap_err();
             assert_eq!(
                 (e.kind(), e.field()),
                 (ErrorKind::Malformed, Some(field::FRAME_DATA_FIELD))

@@ -14,7 +14,7 @@
 
 use aldis_core::crc::write_fecf;
 use aldis_core::ids::{SpacecraftId, VcId};
-use aldis_core::{DecodeMode, Error, ErrorDetail, ErrorKind};
+use aldis_core::{Error, ErrorDetail, ErrorKind};
 use aldis_testkit::strategies::common::{spacecraft_id, vc_id};
 use aldis_testkit::strategies::proptest::prelude::*;
 use aldis_testkit::strategies::proptest::test_runner::TestCaseError;
@@ -107,7 +107,7 @@ fn round_trip(
         &content,
         &mut out,
     )?;
-    let f = TmFrame::decode_with(&out[..n], mc.pc(), mc, DecodeMode::Strict)?;
+    let f = TmFrame::decode_with(&out[..n], mc.pc(), mc)?;
     Ok((f.data_field_status(), f.fsh_len()))
 }
 
@@ -372,7 +372,7 @@ proptest! {
         let data = vec![0_u8; mc.frame_layout(vcid).unwrap().data().len()];
         let mut out = vec![0_u8; pc.frame_len()];
         let n = encode(&mc, &TmFrameFields::new(vcid, counts.0, counts.1, status), &TmFrameContent::new(&data), &mut out).unwrap();
-        let f = TmFrame::decode_with(&out[..n], mc.pc(), &mc, DecodeMode::Strict).unwrap();
+        let f = TmFrame::decode_with(&out[..n], mc.pc(), &mc).unwrap();
         prop_assert_eq!(f.data_field_status(), status);
     }
 
@@ -395,7 +395,7 @@ proptest! {
         let status = DataFieldStatus::Packets(PacketPointer::NoPacketStart);
         let mut out = vec![0_u8; pc.frame_len()];
         let n = encode(&mc, &TmFrameFields::new(vcid, 0, 0, status), &content, &mut out).unwrap();
-        let f = TmFrame::decode_with(&out[..n], mc.pc(), &mc, DecodeMode::Strict).unwrap();
+        let f = TmFrame::decode_with(&out[..n], mc.pc(), &mc).unwrap();
         prop_assert_eq!(f.fsh_len(), Some(len));
         prop_assert_eq!(f.secondary_header_data(), Some(fsh_data));
     }
@@ -424,7 +424,7 @@ proptest! {
         prop_assert_eq!(n, pc.frame_len());
         with_pointer(&mut out, raw, pc.fecf());
         let expected = PacketPointer::classify(FirstHeaderPointer::new(raw).unwrap(), data_len);
-        let got = TmFrame::decode_with(&out, mc.pc(), &mc, DecodeMode::Strict).map(|f| f.data_field_status());
+        let got = TmFrame::decode_with(&out, mc.pc(), &mc).map(|f| f.data_field_status());
         prop_assert_eq!(got, expected.map(DataFieldStatus::Packets));
     }
 }

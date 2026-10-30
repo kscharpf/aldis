@@ -8,7 +8,6 @@
 
 // req: USLP-003, USLP-004, USLP-005, USLP-006, USLP-009, USLP-010, USLP-014, API-020, API-021, API-022, GEN-042, VER-022
 
-use aldis_core::DecodeMode;
 use aldis_core::ocf::Ocf;
 use aldis_core::oid::OidGenerator;
 use aldis_core::security::SecurityLayout;
@@ -41,7 +40,7 @@ fn check_frame(
     match encode(table, fields, content, zone, &mut out) {
         Ok(frame_len_out) => {
             let frame = &out[..frame_len_out];
-            let dec = UslpFrame::decode(frame, table, DecodeMode::Strict).unwrap();
+            let dec = UslpFrame::decode(frame, table).unwrap();
             let view = dec.full().unwrap();
             let hdr = view.header();
             assert_eq!(
@@ -56,7 +55,7 @@ fn check_frame(
             assert_eq!((view.tfdf_header(), view.tfdz()), (tfdf, zone));
             assert_eq!((view.insert_zone(), view.ocf()), (content.insert_zone, ocf));
             assert_eq!(hdr.frame_len(), frame_len_out);
-            assert!(validate_frame(frame, table, DecodeMode::Strict).is_ok());
+            assert!(validate_frame(frame, table).is_ok());
             let mut two = vec![!fill; frame_len_out];
             let mut writer =
                 UslpFrameWriter::begin(&mut two, table, fields, content, zone.len()).unwrap();
@@ -89,7 +88,7 @@ fn check_oid(
     let mut out = vec![fill; 420];
     if let Ok(frame_len_out) = encode_oid(table, oid_fields, insert_zone, None, &mut oid, &mut out)
     {
-        let dec = UslpFrame::decode(&out[..frame_len_out], table, DecodeMode::Strict).unwrap();
+        let dec = UslpFrame::decode(&out[..frame_len_out], table).unwrap();
         let mut reference = before;
         let mut expect = vec![0_u8; dec.tfdz().len()];
         reference.fill(&mut expect);

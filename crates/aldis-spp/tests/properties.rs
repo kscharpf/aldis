@@ -7,7 +7,7 @@
 )]
 
 use aldis_core::ErrorKind;
-use aldis_core::{DecodeMode, ids::SeqCount};
+use aldis_core::ids::SeqCount;
 use aldis_spp::{
     Outcome, Reassembler, Segmenter, SequenceCounter, SequenceTracker, SpacePacket, SppConfig,
     Status, Tracked, encode,
@@ -32,7 +32,7 @@ proptest! {
         // req: API-020, API-021, SPP-002, SPP-005, VER-023
         let mut out = [0_u8; 64];
         let n = encode(&p.data(), &mut out).unwrap();
-        let d = SpacePacket::decode(&out[..n], DecodeMode::Strict).unwrap();
+        let d = SpacePacket::decode(&out[..n]).unwrap();
         prop_assert_eq!(d.header().fields(), p.fields);
         prop_assert_eq!(d.has_secondary_header(), !p.secondary_header.is_empty());
         let data = p.data_field();
@@ -82,7 +82,7 @@ proptest! {
         let mut last = None;
         let mut packets = 0;
         while let Some(n) = seg.next_packet(&mut counter, sec, &mut out).unwrap() {
-            let p = SpacePacket::decode(&out[..n], DecodeMode::Strict).unwrap();
+            let p = SpacePacket::decode(&out[..n]).unwrap();
             let user = p.data_field().get(sec.len()..).unwrap();
             prop_assert!(!user.is_empty() && user.len() <= max_user);
             last = Some(ra.push(&p.header(), user).unwrap());
@@ -122,12 +122,12 @@ proptest! {
     #[test]
     fn lenient_accepts_whatever_strict_accepts(bytes in space_packet_decoder_input()) {
         // req: GEN-020, API-010, API-031, SPP-003
-        let strict = SpacePacket::decode(&bytes, DecodeMode::Strict);
-        let lenient = SpacePacket::decode(&bytes, DecodeMode::Lenient);
+        let strict = SpacePacket::decode(&bytes);
+        let lenient = SpacePacket::decode_lenient(&bytes);
         if let Ok(s) = strict {
-            let l = lenient.unwrap();
-            prop_assert_eq!((l.header(), l.data_field(), l.anomalies()), (s.header(), s.data_field(), s.anomalies()));
-            prop_assert!(s.anomalies().is_empty());
+            let l = lenient.as_ref().unwrap();
+            prop_assert_eq!((l.header(), l.data_field()), (s.header(), s.data_field()));
+            prop_assert!(l.anomalies().is_empty());
         }
         if let Ok(l) = lenient {
             prop_assert_eq!(SpacePacket::peek_length(&bytes), Ok(l.len()));

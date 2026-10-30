@@ -37,14 +37,14 @@
 use aldis::core::layout::{FrameLayout, OCF_LEN};
 use aldis::core::ocf::Ocf;
 use aldis::core::security::SecurityLayout;
-use aldis::core::{Error, ErrorKind, Result};
+use aldis::core::{AnomalySet, DecodeMode, Error, ErrorKind, Lenient, Result};
 use aldis::uslp::field;
 use aldis::uslp::{
     ChannelFields, ConstructionRule, FrameContent, FrameFields, FrameKind, FrameStream, IntakeItem,
-    MapConfig, OcfUse, PhysicalChannelConfig, SecurityScope, SourceOrDestination, TfdfHeader,
-    TfdzRule, TransferFrameType, TruncatedFrameLen, Upid, UslpFrame, UslpMapId, UslpSpacecraftId,
-    UslpVcId, VcConfig, VcParams, VcTable, VcfCountLen, encode, encode_oid, encode_oid_galois,
-    encode_truncated,
+    LenientFrameStream, MapConfig, OcfUse, PhysicalChannelConfig, SecurityScope,
+    SourceOrDestination, TfdfHeader, TfdzRule, TransferFrameType, TruncatedFrameLen, Upid,
+    UslpAnomaly, UslpFrame, UslpMapId, UslpSpacecraftId, UslpVcId, VcConfig, VcParams, VcTable,
+    VcfCountLen, encode, encode_oid, encode_oid_galois, encode_truncated,
 };
 
 use crate::abi::{self, Configs, invalid_argument};
@@ -897,14 +897,14 @@ fn layout(l: &FrameLayout, tfdf_len: usize) -> Result<aldis_uslp_layout_t> {
 }
 
 /// The C view of a decoded frame (CABI-012).
-fn view(f: &UslpFrame<'_>) -> Result<aldis_uslp_frame_t> {
+fn view(f: &UslpFrame<'_>, anomalies: AnomalySet<UslpAnomaly>) -> Result<aldis_uslp_frame_t> {
     let tfdf = f.tfdf_header();
     let mut v = aldis_uslp_frame_t {
         truncated: f.is_truncated(),
         channel: channel_view(f.channel()),
         tfdf: tfdf_view(tfdf),
         upid_assigned: !matches!(tfdf.upid, Upid::Other(_)),
-        anomalies: f.anomalies().bits(),
+        anomalies: anomalies.bits(),
         layout: layout(f.layout(), tfdf.len())?,
         ..aldis_uslp_frame_t::default()
     };
@@ -1077,7 +1077,11 @@ pub unsafe extern "C" fn aldis_uslp_decode(
             let bytes = abi::bytes(bytes, len)?;
             let mode = abi::mode(mode)?;
             let out = abi::out(out)?;
-            out.write(view(&UslpFrame::decode(bytes, &t, mode)?)?);
+            let (frame, anomalies) = mode.dispatch(
+                || UslpFrame::decode(bytes, &t),
+                || UslpFrame::decode_lenient(bytes, &t),
+            )?;
+            out.write(view(&frame, anomalies)?);
             Ok(())
         })
     }
@@ -1162,8 +1166,15 @@ pub unsafe extern "C" fn aldis_uslp_stream_next(
             let Some(rest) = unit.get(current_offset..) else {
                 return Err(invalid_argument());
             };
-            let mut stream = FrameStream::new(rest, &t, mode);
-            match stream.next() {
+            let item = match mode {
+                DecodeMode::Strict => FrameStream::new(rest, &t)
+                    .next()
+                    .map(|item| (item, AnomalySet::empty())),
+                DecodeMode::Lenient => LenientFrameStream::new(rest, &t)
+                    .next()
+                    .map(Lenient::into_parts),
+            };
+            match item {
                 None => {
                     out.write(aldis_uslp_stream_item_t {
                         kind: ALDIS_USLP_STREAM_END,
@@ -1180,7 +1191,7 @@ pub unsafe extern "C" fn aldis_uslp_stream_next(
                         reserved2: [0; 2],
                     });
                 }
-                Some(IntakeItem::Accepted { frame, .. }) => {
+                Some((IntakeItem::Accepted { frame, .. }, anomalies)) => {
                     let len = frame.len();
                     *offset_ref = current_offset
                         .checked_add(len)
@@ -1193,18 +1204,21 @@ pub unsafe extern "C" fn aldis_uslp_stream_next(
                             len,
                         },
                         declared_len: len,
-                        frame: view(&frame)?,
+                        frame: view(&frame, anomalies)?,
                         discard_reason: 0,
                         error_code: 0,
                         error_field: 0,
                         reserved2: [0; 2],
                     });
                 }
-                Some(IntakeItem::Discarded {
-                    reason,
-                    octets,
-                    error,
-                }) => {
+                Some((
+                    IntakeItem::Discarded {
+                        reason,
+                        octets,
+                        error,
+                    },
+                    _,
+                )) => {
                     let len = octets.len();
                     *offset_ref = current_offset
                         .checked_add(len)

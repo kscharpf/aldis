@@ -72,15 +72,20 @@ fn frame(len: usize, extras: bool, seed: u32) -> Frame {
     };
     let mut octets = vec![0_u8; len];
     assert_eq!(encode(&mc, &fields, &content, &mut octets), Ok(len));
-    for mode in [DecodeMode::Strict, DecodeMode::Lenient] {
-        assert!(TmFrame::decode(&octets, mc.pc(), mode).is_ok());
-    }
+    assert!(TmFrame::decode(&octets, mc.pc()).is_ok());
+    assert!(TmFrame::decode_lenient(&octets, mc.pc()).is_ok());
     Frame { mc, octets }
 }
 
 /// Whether `bytes`, a valid frame with bit errors, is rejected with `CrcMismatch` (TM-005).
 fn rejected(f: &Frame, bytes: &[u8], mode: DecodeMode) -> bool {
-    TmFrame::decode(bytes, f.mc.pc(), mode).map_err(|e| e.kind()) == Err(ErrorKind::CrcMismatch)
+    let pc = f.mc.pc();
+    mode.dispatch(
+        || TmFrame::decode(bytes, pc),
+        || TmFrame::decode_lenient(bytes, pc),
+    )
+    .map_err(|e| e.kind())
+        == Err(ErrorKind::CrcMismatch)
 }
 
 /// The shortest frame with the FECF (9 octets: the header, one data octet, the FECF) and a

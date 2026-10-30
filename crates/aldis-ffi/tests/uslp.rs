@@ -9,7 +9,6 @@
 
 use core::ptr::{null, null_mut};
 
-use aldis::core::DecodeMode;
 use aldis_ffi::capacities::{ALDIS_USLP_MAX_MAPS, ALDIS_USLP_MAX_VCS};
 use aldis_ffi::error::*;
 use aldis_ffi::field::{
@@ -987,8 +986,7 @@ fn content_and_fields_are_checked_as_arguments() {
     // The decoder agrees with the Rust one on the encoded frame.
     let (rc, len) = ch.encode(&fl, &ct, &mut out, &mut det);
     assert_eq!(rc, ALDIS_OK);
-    let rust =
-        aldis::uslp::UslpFrame::decode(&out[..len], &rust_variable(), DecodeMode::Strict).unwrap();
+    let rust = aldis::uslp::UslpFrame::decode(&out[..len], &rust_variable()).unwrap();
     let mut view = aldis_uslp_frame_t::default();
     assert_eq!(ch.decode(&out[..len], &mut view), ALDIS_OK);
     assert_eq!(view.layout.tfdz.len, rust.tfdz().len());

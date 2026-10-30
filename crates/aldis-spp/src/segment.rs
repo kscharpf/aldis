@@ -478,7 +478,7 @@ mod tests {
     use crate::view::SpacePacket;
     use SequenceFlags::{Continuation as C, First as F, Last as L, Unsegmented as U};
     use aldis_core::ids::{Apid, SeqCount};
-    use aldis_core::{DecodeMode, ErrorDetail, ErrorKind};
+    use aldis_core::{ErrorDetail, ErrorKind};
 
     fn apid(n: u16) -> Apid {
         Apid::new(n).unwrap()
@@ -543,16 +543,14 @@ mod tests {
             (6, false, 9)
         );
         assert_eq!(seg.next_packet(&mut counter, &[], &mut out), Ok(Some(10)));
-        let p = SpacePacket::decode(&out, DecodeMode::Strict).unwrap();
+        let p = SpacePacket::decode(&out).unwrap();
         assert_eq!(
             (p.sequence_flags(), p.sequence_count().get(), p.data_field()),
             (SequenceFlags::First, 9, &[1, 2, 3, 4][..])
         );
         assert_eq!(seg.next_packet(&mut counter, &[], &mut out), Ok(Some(8)));
         assert_eq!(
-            SpacePacket::decode(&out, DecodeMode::Strict)
-                .unwrap()
-                .sequence_flags(),
+            SpacePacket::decode(&out).unwrap().sequence_flags(),
             SequenceFlags::Last
         );
         assert!(seg.is_done() && seg.remaining() == 0);

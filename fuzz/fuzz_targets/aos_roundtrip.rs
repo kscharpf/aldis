@@ -12,7 +12,6 @@ use aldis_aos::{
     DataUnit, FrameCountCycle, PacketPointer, PduHeader, VcFrameCount, VcTable, encode,
 };
 use aldis_aos::{PacketOffset, ValidBitCount};
-use aldis_core::DecodeMode;
 use aldis_core::ids::{SpacecraftId, VcId};
 use aldis_core::ocf::Ocf;
 use aldis_core::oid::OidGenerator;
@@ -166,7 +165,7 @@ fn run(u: &mut Unstructured<'_>) -> Result<()> {
             "rejected encode wrote output"
         ),
         Ok(n) => {
-            let f = AosFrame::decode(&out[..n], &pc, &vcs_table, DecodeMode::Strict).unwrap();
+            let f = AosFrame::decode(&out[..n], &pc, &vcs_table).unwrap();
             assert_eq!((f.scid(), f.vcid()), (fields.scid, fields.vcid));
             assert_eq!(f.vc_frame_count(), fields.vc_frame_count);
             assert_eq!(
@@ -184,7 +183,6 @@ fn run(u: &mut Unstructured<'_>) -> Result<()> {
             assert_eq!(f.data_unit().zone(), zone.as_slice());
             assert_eq!(f.security_trailer(), st.as_slice());
             assert_eq!(f.ocf(), ocf);
-            assert!(f.anomalies().is_empty());
             let mut two = vec![0x5A_u8; n];
             let mut w = AosFrameWriter::begin(&mut two, &pc, &vcs_table, &fields).unwrap();
             w.insert_zone_mut().copy_from_slice(&iz);
@@ -221,7 +219,7 @@ fn corrected(
         let octet = [0, 1, 5, 6, 7][symbol / 2];
         bad[octet] ^= if symbol % 2 == 0 { value << 4 } else { value };
     }
-    let f = AosFrame::decode(&bad, pc, vcs_table, DecodeMode::Strict).unwrap();
+    let f = AosFrame::decode(&bad, pc, vcs_table).unwrap();
     assert_eq!(f.header().to_octets(), clean.header().to_octets());
     assert_eq!(f.data_unit(), clean.data_unit());
     Ok(())
@@ -255,7 +253,7 @@ fn oid_frame(
         Err(_) => assert_eq!(oid, before, "a rejected OID frame advanced the generator"),
         Ok(w) => {
             let n = w.finish();
-            let f = AosFrame::decode(&frame[..n], pc, vcs_table, DecodeMode::Strict).unwrap();
+            let f = AosFrame::decode(&frame[..n], pc, vcs_table).unwrap();
             assert!(f.is_oid());
             let mut expected = vec![0_u8; f.data_field().len()];
             reference.fill(&mut expected);

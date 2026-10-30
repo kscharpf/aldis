@@ -11,8 +11,8 @@ use aldis_aos::{
     AosFrame, AosFrameContent, AosFrameFields, AosFrameWriter, CorrectedSymbols, DataUnit,
     PduHeader, VcLookup, encode,
 };
+use aldis_core::ErrorKind;
 use aldis_core::oid::OidGenerator;
-use aldis_core::{DecodeMode, ErrorKind};
 use aldis_testkit::strategies::aos::{
     AosTable, aos_frame, aos_frame_decoder_input, vc_frame_count, vc_table,
 };
@@ -39,12 +39,12 @@ const fn pdu_of(unit: DataUnit<'_>) -> PduHeader {
 /// decoded, and lenient decodes it the same (API-020, API-010, GEN-020).
 fn strict_re_encode_property(table: &AosTable, bytes: &[u8]) -> Result<(), TestCaseError> {
     let pc = table.physical_channel();
-    let Ok(f) = AosFrame::decode(bytes, &pc, table, DecodeMode::Strict) else {
+    let Ok(f) = AosFrame::decode(bytes, &pc, table) else {
         return Ok(());
     };
-    prop_assert!(f.anomalies().is_empty());
-    let lenient = AosFrame::decode(bytes, &pc, table, DecodeMode::Lenient).unwrap();
-    prop_assert_eq!(&lenient, &f);
+    let lenient = AosFrame::decode_lenient(bytes, &pc, table).unwrap();
+    prop_assert!(lenient.anomalies().is_empty());
+    prop_assert_eq!(&*lenient, &f);
     if f.is_oid() || f.corrected_symbols() != CorrectedSymbols::Zero {
         return Ok(());
     }
@@ -73,10 +73,13 @@ fn strict_re_encode_property(table: &AosTable, bytes: &[u8]) -> Result<(), TestC
 /// lenient reject with the same error otherwise (API-030, API-032, GEN-020).
 fn lenient_superset_property(table: &AosTable, bytes: &[u8]) -> Result<(), TestCaseError> {
     let pc = table.physical_channel();
-    let strict = AosFrame::decode(bytes, &pc, table, DecodeMode::Strict);
-    let lenient = AosFrame::decode(bytes, &pc, table, DecodeMode::Lenient);
+    let strict = AosFrame::decode(bytes, &pc, table);
+    let lenient = AosFrame::decode_lenient(bytes, &pc, table);
     match (strict, lenient) {
-        (Ok(s), Ok(l)) => prop_assert_eq!(s, l),
+        (Ok(s), Ok(l)) => {
+            prop_assert!(l.anomalies().is_empty());
+            prop_assert_eq!(s, l.into_view());
+        }
         (Ok(_), Err(e)) => prop_assert!(false, "lenient rejected a strict frame: {e}"),
         (Err(s), Ok(l)) => {
             prop_assert!(matches!(
@@ -94,7 +97,7 @@ fn lenient_superset_property(table: &AosTable, bytes: &[u8]) -> Result<(), TestC
 /// frame exactly, and a pointer lies inside its zone (API-010, CMN-040, AOS-017).
 fn slices_inside_property(table: &AosTable, bytes: &[u8]) -> Result<(), TestCaseError> {
     let pc = table.physical_channel();
-    let Ok(f) = AosFrame::decode(bytes, &pc, table, DecodeMode::Lenient) else {
+    let Ok(f) = AosFrame::decode_lenient(bytes, &pc, table) else {
         return Ok(());
     };
     prop_assert_eq!(f.len(), bytes.len());
@@ -129,7 +132,7 @@ proptest! {
     fn encode_then_decode_round_trips(f in aos_frame()) {
         // req: API-020, AOS-019, AOS-010, AOS-012, AOS-015, AOS-017, VER-023
         let pc = f.pc();
-        let d = AosFrame::decode(&f.octets, &pc, &f.table, DecodeMode::Strict).unwrap();
+        let d = AosFrame::decode(&f.octets, &pc, &f.table).unwrap();
         prop_assert_eq!((d.scid(), d.vcid()), (f.fields.scid, f.fields.vcid));
         prop_assert_eq!(d.vc_frame_count(), f.fields.vc_frame_count);
         prop_assert_eq!(d.replay_flag(), f.fields.replay_flag);
@@ -143,7 +146,6 @@ proptest! {
         prop_assert_eq!(d.header().fhec().is_some(), pc.fhec());
         prop_assert_eq!(d.fecf().is_some(), pc.fecf());
         prop_assert_eq!(d.corrected_symbols(), CorrectedSymbols::Zero);
-        prop_assert!(d.anomalies().is_empty());
         prop_assert_eq!(d.header().to_octets()[..d.header().len()].to_vec(), f.octets[..d.header().len()].to_vec());
         prop_assert_eq!(AosFrame::peek_length(&f.octets, &pc), Ok(f.octets.len()));
     }
@@ -188,8 +190,8 @@ proptest! {
             bad[octet] ^= if symbol % 2 == 0 { value << 4 } else { value };
         }
         let pc = f.pc();
-        let good = AosFrame::decode(&f.octets, &pc, &f.table, DecodeMode::Strict).unwrap();
-        let d = AosFrame::decode(&bad, &pc, &f.table, DecodeMode::Strict).unwrap();
+        let good = AosFrame::decode(&f.octets, &pc, &f.table).unwrap();
+        let d = AosFrame::decode(&bad, &pc, &f.table).unwrap();
         prop_assert_eq!(d.corrected_symbols().get(), u8::try_from(hits.len()).unwrap());
         prop_assert_eq!(d.header().to_octets(), good.header().to_octets());
         prop_assert_eq!(d.data_unit(), good.data_unit());
@@ -210,7 +212,7 @@ proptest! {
         let mut out = vec![0_u8; pc.frame_len()];
         let w = AosFrameWriter::begin_oid(&mut out, &pc, &t, &AosFrameFields::oid(scid, count), &mut oid).unwrap();
         prop_assert_eq!(w.finish(), pc.frame_len());
-        let d = AosFrame::decode(&out, &pc, &t, DecodeMode::Strict).unwrap();
+        let d = AosFrame::decode(&out, &pc, &t).unwrap();
         prop_assert!(d.is_oid());
         prop_assert_eq!(d.vc_frame_count(), count);
         let mut expected = vec![0_u8; d.data_field().len()];
@@ -232,11 +234,12 @@ proptest! {
     fn arbitrary_octets_never_panic((table, _) in aos_frame_decoder_input(), bytes in octets(0..64)) {
         // req: GEN-020, VER-023
         let pc = table.physical_channel();
-        for mode in [DecodeMode::Strict, DecodeMode::Lenient] {
-            let _ = AosFrame::decode(&bytes, &pc, &table, mode);
-            let _ = aldis_aos::Mpdu::decode(&bytes, pc.edition(), mode);
-            let _ = aldis_aos::Bpdu::decode(&bytes, mode);
-        }
+        let _ = AosFrame::decode(&bytes, &pc, &table);
+        let _ = AosFrame::decode_lenient(&bytes, &pc, &table);
+        let _ = aldis_aos::Mpdu::decode(&bytes, pc.edition());
+        let _ = aldis_aos::Mpdu::decode_lenient(&bytes, pc.edition());
+        let _ = aldis_aos::Bpdu::decode(&bytes);
+        let _ = aldis_aos::Bpdu::decode_lenient(&bytes);
         let _ = AosFrame::peek_length(&bytes, &pc);
         let _ = aldis_aos::AosPrimaryHeader::decode(&bytes, &pc);
     }

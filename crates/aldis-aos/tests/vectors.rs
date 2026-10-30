@@ -8,7 +8,7 @@
 )]
 
 use aldis_aos::{
-    AosEdition, AosFrame, AosFrameContent, AosFrameFields, AosFrameWriter,
+    AosAnomaly, AosEdition, AosFrame, AosFrameContent, AosFrameFields, AosFrameWriter,
     AosPhysicalChannelConfig, AosPrimaryHeader, AosVirtualChannelConfig, BitstreamPointer,
     DataFieldContent, DataUnit, FrameCountCycle, PacketPointer, PduHeader, VcFrameCount, VcTable,
     encode, fhec,
@@ -18,7 +18,7 @@ use aldis_core::ids::{SpacecraftId, VcId};
 use aldis_core::ocf::Ocf;
 use aldis_core::oid::OidGenerator;
 use aldis_core::security::SecurityLayout;
-use aldis_core::{DecodeMode, Error, FieldId};
+use aldis_core::{AnomalySet, DecodeMode, Error, FieldId};
 use aldis_testkit::{CodecCase, Mode, Outcome, hex, run_codec_file};
 use serde_json::{Map, Value, json};
 
@@ -131,7 +131,7 @@ fn header_fields(h: &AosPrimaryHeader) -> Map<String, Value> {
 }
 
 /// Every field the view exposes (TV-002).
-fn decoded(f: &AosFrame<'_>) -> Value {
+fn decoded(f: &AosFrame<'_>, anomalies: AnomalySet<AosAnomaly>) -> Value {
     let mut out = header_fields(&f.header());
     let (kind, raw, pointer, value, spare) = match f.data_unit() {
         DataUnit::Mpdu(m) => {
@@ -180,7 +180,7 @@ fn decoded(f: &AosFrame<'_>) -> Value {
         "pdu_spare": spare,
         "zone_hex": hex::encode(f.data_unit().zone()),
         "consumed": f.len(),
-        "anomalies": f.anomalies().iter().map(|a| format!("{a:?}")).collect::<Vec<_>>(),
+        "anomalies": anomalies.iter().map(|a| format!("{a:?}")).collect::<Vec<_>>(),
     });
     out.extend(rest.as_object().cloned().unwrap());
     Value::Object(out)
@@ -302,7 +302,12 @@ fn run(case: &CodecCase) -> Result<Value, Error> {
         "decode_header" => {
             AosPrimaryHeader::decode(&bytes, &pc).map(|h| Value::Object(header_fields(&h)))
         }
-        "decode" => AosFrame::decode(&bytes, &pc, &t, mode(case)).map(|f| decoded(&f)),
+        "decode" => mode(case)
+            .dispatch(
+                || AosFrame::decode(&bytes, &pc, &t),
+                || AosFrame::decode_lenient(&bytes, &pc, &t),
+            )
+            .map(|(f, anomalies)| decoded(&f, anomalies)),
         "encode" => encode_case(case, &pc, &t),
         "encode_oid" => encode_oid(case, &pc, &t),
         op => panic!("{}: unsupported operation {op}", case.id),

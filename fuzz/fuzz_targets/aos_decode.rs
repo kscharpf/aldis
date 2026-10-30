@@ -12,9 +12,9 @@ use aldis_aos::{
     AosPrimaryHeader, AosVirtualChannelConfig, BitstreamPointer, Bpdu, CorrectedSymbols,
     DataFieldContent, DataUnit, Mpdu, PacketPointer, PduHeader, VcTable, encode,
 };
+use aldis_core::ErrorKind;
 use aldis_core::ids::{SpacecraftId, VcId};
 use aldis_core::security::SecurityLayout;
-use aldis_core::{DecodeMode, ErrorKind};
 use libfuzzer_sys::arbitrary::{Result, Unstructured};
 use libfuzzer_sys::fuzz_target;
 
@@ -74,10 +74,13 @@ fn run(u: &mut Unstructured<'_>) -> Result<()> {
         u.int_in_range(0..=320)?
     };
     let bytes = u.bytes(len.min(u.len()))?;
-    let strict = AosFrame::decode(bytes, &pc, &vcs_table, DecodeMode::Strict);
-    let lenient = AosFrame::decode(bytes, &pc, &vcs_table, DecodeMode::Lenient);
+    let strict = AosFrame::decode(bytes, &pc, &vcs_table);
+    let lenient = AosFrame::decode_lenient(bytes, &pc, &vcs_table);
     match (&strict, &lenient) {
-        (Ok(s), Ok(l)) => assert_eq!(s, l),
+        (Ok(s), Ok(l)) => {
+            assert!(l.anomalies().is_empty());
+            assert_eq!(s, &**l);
+        }
         (Ok(_), Err(e)) => panic!("lenient rejected a strict frame: {e}"),
         (Err(s), Ok(l)) => {
             assert!(matches!(
@@ -90,10 +93,10 @@ fn run(u: &mut Unstructured<'_>) -> Result<()> {
     }
     let peek = AosFrame::peek_length(bytes, &pc);
     let header = AosPrimaryHeader::decode(bytes, &pc);
-    for mode in [DecodeMode::Strict, DecodeMode::Lenient] {
-        let _ = Mpdu::decode(bytes, pc.edition(), mode);
-        let _ = Bpdu::decode(bytes, mode);
-    }
+    let _ = Mpdu::decode(bytes, pc.edition());
+    let _ = Mpdu::decode_lenient(bytes, pc.edition());
+    let _ = Bpdu::decode(bytes);
+    let _ = Bpdu::decode_lenient(bytes);
     if let Ok(f) = &lenient {
         assert_eq!(peek, Ok(f.len()));
         assert_eq!(header, Ok(f.header()));
@@ -120,7 +123,6 @@ fn run(u: &mut Unstructured<'_>) -> Result<()> {
         && !f.is_oid()
         && f.corrected_symbols() == CorrectedSymbols::Zero
     {
-        assert!(f.anomalies().is_empty());
         let fields = AosFrameFields {
             scid: f.scid(),
             vcid: f.vcid(),

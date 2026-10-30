@@ -7,7 +7,6 @@
 use core::ptr::{null, null_mut};
 
 use aldis::aos::{AosEdition, Bpdu, Mpdu};
-use aldis::core::DecodeMode;
 use aldis_ffi::aos::*;
 use aldis_ffi::error::*;
 use aldis_ffi::field::{
@@ -528,7 +527,7 @@ fn the_data_units_decode_alone() {
         ),
         ALDIS_OK
     );
-    let rust = Mpdu::decode(&issue4, AosEdition::Issue4Compatible, DecodeMode::Lenient).unwrap();
+    let rust = Mpdu::decode_lenient(&issue4, AosEdition::Issue4Compatible).unwrap();
     assert_eq!(
         (
             p.pointer,
@@ -563,7 +562,7 @@ fn the_data_units_decode_alone() {
     // A B_PDU: 2 valid bits of a 1-octet zone, with the spare set in lenient mode.
     let bpdu = [0x40_u8, 0x01, 0xC0];
     assert_eq!(run(&bpdu, None, ALDIS_MODE_LENIENT, &mut p), ALDIS_OK);
-    let rust = Bpdu::decode(&bpdu, DecodeMode::Lenient).unwrap();
+    let rust = Bpdu::decode_lenient(&bpdu).unwrap();
     assert_eq!(
         (p.content, p.pointer, p.pointer_value, p.spare, p.anomalies),
         (

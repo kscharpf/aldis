@@ -21,7 +21,6 @@ use aldis_aos::{
     PacketPointer, PduHeader, VcFrameCount, VcTable, encode,
 };
 use aldis_core::ids::{SpacecraftId, VcId};
-use aldis_core::DecodeMode;
 
 fn main() -> Result<(), aldis_core::Error> {
     // 32-octet frames with the FHEC and the FECF; spacecraft 42, VC 1 carries M_PDUs.
@@ -43,7 +42,7 @@ fn main() -> Result<(), aldis_core::Error> {
     assert_eq!(n, 32);
 
     frame[1] ^= 0x01; // a bit of the VCID
-    let f = AosFrame::decode(&frame, &pc, &table, DecodeMode::Strict)?;
+    let f = AosFrame::decode(&frame, &pc, &table)?;
     assert_eq!((f.vcid(), f.corrected_symbols()), (vcid, CorrectedSymbols::One));
     assert!(matches!(f.data_unit(), DataUnit::Mpdu(m) if m.packet_zone() == zone));
     Ok(())

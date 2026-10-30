@@ -7,14 +7,14 @@
     reason = "test-only harness crate: malformed vectors must fail loudly (RS-018)"
 )]
 
-use aldis_core::{DecodeMode, Error, FieldId};
+use aldis_core::{AnomalySet, DecodeMode, Error, FieldId};
 use aldis_testkit::{CodecCase, Mode, Outcome, hex, run_codec_file};
 use aldis_time::{
     Agency, AgencyFormat, AsciiFormat, AsciiOptions, AsciiSubset, AsciiTime, CalendarDate, Ccs,
     CcsFormat, CcsValue, CcsVariation, Cds, CdsDayLen, CdsEpoch, CdsFormat, CdsSubMs, CdsValue,
     Cuc, CucEpoch, CucFormat, CucValue, Decoded, Fraction, Hour, Micros, Minute, Month, MsOfDay,
-    PFieldTail, Picos, Second, SubMillis, TimeCode, TimeFormat, UtcInstant, Year, decode_implicit,
-    decode_with_pfield,
+    PFieldTail, Picos, Second, SubMillis, TimeAnomaly, TimeCode, TimeFormat, UtcInstant, Year,
+    decode_implicit, decode_implicit_lenient, decode_with_pfield, decode_with_pfield_lenient,
 };
 use serde_json::{Map, Value, json};
 
@@ -258,7 +258,7 @@ fn describe(code: &TimeCode) -> (&'static str, Value, Value) {
     }
 }
 
-fn decoded(d: &Decoded) -> Value {
+fn decoded(d: &Decoded, found: AnomalySet<TimeAnomaly>) -> Value {
     let (code, format, value) = describe(&d.code());
     let pfield = d.pfield().map_or_else(String::new, |p| {
         let mut octets = vec![p.first()];
@@ -271,7 +271,7 @@ fn decoded(d: &Decoded) -> Value {
         "format": format,
         "value": value,
         "consumed": d.len(),
-        "anomalies": d.anomalies().iter().map(|a| format!("{a:?}")).collect::<Vec<_>>(),
+        "anomalies": found.iter().map(|a| format!("{a:?}")).collect::<Vec<_>>(),
     })
 }
 
@@ -399,11 +399,22 @@ fn run(case: &CodecCase) -> Result<Value, Error> {
     match case.operation.as_str() {
         "decode" => {
             let bytes = input(case);
-            decode_with_pfield(&bytes, mode(case)).map(|d| decoded(&d))
+            mode(case)
+                .dispatch(
+                    || decode_with_pfield(&bytes),
+                    || decode_with_pfield_lenient(&bytes),
+                )
+                .map(|(d, found)| decoded(&d, found))
         }
         "decode_implicit" => {
             let format = format_of(param(case, "format"))?;
-            decode_implicit(&input(case), &format, mode(case)).map(|d| decoded(&d))
+            let bytes = input(case);
+            mode(case)
+                .dispatch(
+                    || decode_implicit(&bytes, &format),
+                    || decode_implicit_lenient(&bytes, &format),
+                )
+                .map(|(d, found)| decoded(&d, found))
         }
         "encode" => {
             let format = format_of(param(case, "format"))?;

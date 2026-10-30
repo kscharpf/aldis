@@ -15,7 +15,6 @@ None by default (GEN-005). `alloc` and `std` are strictly additive: no change in
 Encode a packet of mission-specific data and decode it again:
 
 ```rust
-use aldis_core::DecodeMode;
 use aldis_epp::{
     EncapsulationFields, EncapsulationPacket, Epi, EpiSet, EppConfig, ExtendedEpiSet,
     HeaderSize, encode,
@@ -35,8 +34,8 @@ fn main() -> Result<(), aldis_core::Error> {
     let len = encode(&unit, HeaderSize::Auto, &mut buf)?;
 
     // The decoded view borrows `buf`; `validate` applies the managed parameters.
-    let packet = EncapsulationPacket::decode(&buf[..len], DecodeMode::Strict)?;
-    packet.validate(&config)?;
+    let packet = EncapsulationPacket::decode(&buf[..len])?;
+    let packet = packet.validate(&config)?;
     assert_eq!(packet.epi(), Epi::MISSION_SPECIFIC);
     assert_eq!(packet.data(), b"payload");
     assert_eq!(packet.len(), len);

@@ -25,15 +25,15 @@
 use core::ptr::null_mut;
 
 use aldis_aos::{
-    AosEdition, AosFrame, AosPhysicalChannelConfig, AosPrimaryHeader, AosVirtualChannelConfig,
-    BitstreamPointer, Bpdu, DataUnit, Mpdu, VcTable,
+    AosAnomaly, AosEdition, AosFrame, AosPhysicalChannelConfig, AosPrimaryHeader,
+    AosVirtualChannelConfig, BitstreamPointer, Bpdu, DataUnit, Mpdu, VcTable,
 };
 use aldis_core::crc::crc16;
 use aldis_core::ids::VcId;
 use aldis_core::ocf::{FsrReport, OCF_LEN, Ocf, ProjectSpecificReport, Type1Report};
 use aldis_core::oid::OidGenerator;
 use aldis_core::security::SecurityLayout;
-use aldis_core::{DecodeMode, Error};
+use aldis_core::{AnomalySet, DecodeMode, Error, Lenient};
 use aldis_epp::{EncapsulationPacket, EpiExtension, UserDefined};
 use aldis_ffi::aos::{
     ALDIS_AOS_CONTENT_BPDU, ALDIS_AOS_CONTENT_IDLE_DATA, ALDIS_AOS_CONTENT_MPDU,
@@ -70,10 +70,11 @@ use aldis_ffi::tm::{
 };
 use aldis_ffi::{ALDIS_MODE_LENIENT, ALDIS_MODE_STRICT, ALDIS_OK, aldis_error_detail_t};
 use aldis_spp::SpacePacket;
-use aldis_time::{AsciiOptions, AsciiTime, PField, decode_with_pfield};
+use aldis_time::{AsciiOptions, AsciiTime, PField, decode_with_pfield, decode_with_pfield_lenient};
 use aldis_tm::{
-    DataFieldContent, DataFieldStatus, FshLen, NoSdls, PacketPointer, TmFrame,
+    DataFieldContent, DataFieldStatus, FshLen, NoSdls, PacketPointer, TmAnomaly, TmFrame,
     TmMasterChannelConfig, TmPhysicalChannelConfig, TmPrimaryHeader, TmVirtualChannelConfig,
+    UncheckedTmFrame,
 };
 // ---- USLP (M2 WP-5 module 9)
 use aldis_ffi::uslp::{
@@ -86,9 +87,10 @@ use aldis_ffi::uslp::{
     aldis_uslp_stream_next, aldis_uslp_vc_config_t, aldis_uslp_vc_table_check,
 };
 use aldis_uslp::{
-    FrameKind, FrameStream as UslpFrameStream, IntakeItem as UslpIntakeItem, MapConfig, OcfUse,
-    PhysicalChannelConfig, SecurityScope, TransferFrameType, TruncatedFrameLen, Upid, UslpFrame,
-    UslpMapId, UslpSpacecraftId, UslpVcId, VcConfig, VcParams, VcTable as UslpVcTable, VcfCountLen,
+    FrameKind, FrameStream as UslpFrameStream, IntakeItem as UslpIntakeItem,
+    LenientFrameStream as UslpLenientFrameStream, MapConfig, OcfUse, PhysicalChannelConfig,
+    SecurityScope, TransferFrameType, TruncatedFrameLen, Upid, UslpAnomaly, UslpFrame, UslpMapId,
+    UslpSpacecraftId, UslpVcId, VcConfig, VcParams, VcTable as UslpVcTable, VcfCountLen,
 };
 // ---- end USLP
 use libfuzzer_sys::fuzz_target;
@@ -106,7 +108,10 @@ fn expect<T>(rust: &Result<T, Error>, status: u32, detail: &aldis_error_detail_t
 
 #[expect(unsafe_code, reason = "calls the C ABI with valid pointers")]
 fn spp(data: &[u8], mode: DecodeMode, c_mode: u32) {
-    let rust = SpacePacket::decode(data, mode);
+    let rust = mode.dispatch(
+        || SpacePacket::decode(data),
+        || SpacePacket::decode_lenient(data),
+    );
     let mut view = aldis_spp_packet_t::default();
     let mut detail = aldis_error_detail_t::default();
     // SAFETY: `data`, `view`, and `detail` are live.
@@ -120,7 +125,7 @@ fn spp(data: &[u8], mode: DecodeMode, c_mode: u32) {
         )
     };
     expect(&rust, status, &detail);
-    if let Ok(p) = rust {
+    if let Ok((p, anomalies)) = rust {
         assert_eq!(
             (
                 view.fields.apid,
@@ -135,7 +140,7 @@ fn spp(data: &[u8], mode: DecodeMode, c_mode: u32) {
         );
         assert_eq!(
             (view.secondary_header_flag, view.idle, view.anomalies),
-            (p.has_secondary_header(), p.is_idle(), p.anomalies().bits())
+            (p.has_secondary_header(), p.is_idle(), anomalies.bits())
         );
         assert_eq!(&data[view.data.offset..][..view.data.len], p.data_field());
         assert_eq!(view.packet_len, p.len());
@@ -153,7 +158,10 @@ fn spp(data: &[u8], mode: DecodeMode, c_mode: u32) {
 
 #[expect(unsafe_code, reason = "calls the C ABI with valid pointers")]
 fn epp(data: &[u8], mode: DecodeMode, c_mode: u32) {
-    let rust = EncapsulationPacket::decode(data, mode);
+    let rust = mode.dispatch(
+        || EncapsulationPacket::decode(data),
+        || EncapsulationPacket::decode_lenient(data),
+    );
     let mut view = aldis_epp_packet_t::default();
     let mut detail = aldis_error_detail_t::default();
     // SAFETY: `data`, `view`, and `detail` are live.
@@ -167,7 +175,7 @@ fn epp(data: &[u8], mode: DecodeMode, c_mode: u32) {
         )
     };
     expect(&rust, status, &detail);
-    if let Ok(p) = rust {
+    if let Ok((p, anomalies)) = rust {
         assert_eq!(view.epi, p.epi().get());
         assert_eq!(usize::from(view.header_len), p.header_len().octets());
         assert_eq!(view.has_extension, p.extension().is_some());
@@ -182,7 +190,7 @@ fn epp(data: &[u8], mode: DecodeMode, c_mode: u32) {
         assert_eq!(view.ccsds_defined, p.ccsds_defined().unwrap_or(0));
         assert_eq!(
             (view.packet_len, view.anomalies),
-            (p.header().packet_len(), p.anomalies().bits())
+            (p.header().packet_len(), anomalies.bits())
         );
         assert_eq!(&data[view.data.offset..][..view.data.len], p.data());
     }
@@ -199,7 +207,10 @@ fn epp(data: &[u8], mode: DecodeMode, c_mode: u32) {
 
 #[expect(unsafe_code, reason = "calls the C ABI with valid pointers")]
 fn time(data: &[u8], mode: DecodeMode, c_mode: u32) {
-    let rust = decode_with_pfield(data, mode);
+    let rust = mode.dispatch(
+        || decode_with_pfield(data),
+        || decode_with_pfield_lenient(data),
+    );
     let mut d = aldis_time_decoded_t::default();
     let mut detail = aldis_error_detail_t::default();
     // SAFETY: `data`, `d`, and `detail` are live.
@@ -213,8 +224,8 @@ fn time(data: &[u8], mode: DecodeMode, c_mode: u32) {
         )
     };
     expect(&rust, status, &detail);
-    if let Ok(r) = rust {
-        assert_eq!((d.len, d.anomalies), (r.len(), r.anomalies().bits()));
+    if let Ok((r, anomalies)) = rust {
+        assert_eq!((d.len, d.anomalies), (r.len(), anomalies.bits()));
         assert_eq!(
             &d.pfield[..usize::from(d.pfield_len)],
             &data[..r.pfield().map_or(0, |p| p.len())]
@@ -364,7 +375,11 @@ fn core(data: &[u8]) {
 
 /// The C view of a TM frame agrees with the Rust view: header, pointer, Secondary Header
 /// length, FECF, anomalies, and every field's offset and length (CABI-012).
-fn tm_same(view: &aldis_tm_frame_t, frame: &TmFrame<'_>) {
+fn tm_same(
+    view: &aldis_tm_frame_t,
+    frame: &UncheckedTmFrame<'_>,
+    anomalies: AnomalySet<TmAnomaly>,
+) {
     let rust = frame.header();
     let c_header = &view.header;
     assert_eq!(
@@ -413,7 +428,7 @@ fn tm_same(view: &aldis_tm_frame_t, frame: &TmFrame<'_>) {
     assert_eq!((view.pointer, view.packet_offset), pointer);
     assert_eq!(view.fsh_len, frame.fsh_len().map_or(0, FshLen::get));
     assert_eq!(view.has_fecf.then_some(view.fecf), frame.fecf());
-    assert_eq!(view.anomalies, frame.anomalies().bits());
+    assert_eq!(view.anomalies, anomalies.bits());
     let c_layout = &view.layout;
     let ranges = frame.layout();
     let span = |at: usize, len: usize| at..at + len;
@@ -457,7 +472,12 @@ fn tm(data: &[u8], fecf: bool, mode: DecodeMode, c_mode: u32) {
     let rust_pc = TmPhysicalChannelConfig::new(data.len(), fecf);
     let mut view = aldis_tm_frame_t::default();
     let mut detail = aldis_error_detail_t::default();
-    let rust = rust_pc.and_then(|p| TmFrame::decode(data, &p, mode));
+    let rust = rust_pc.and_then(|p| {
+        mode.dispatch(
+            || TmFrame::decode(data, &p).map(UncheckedTmFrame::from),
+            || TmFrame::decode_lenient(data, &p).map(|l| l.map(UncheckedTmFrame::from)),
+        )
+    });
     // SAFETY: `data`, `pc`, `view`, and `detail` are live.
     let status = unsafe {
         aldis_tm_decode(
@@ -470,10 +490,15 @@ fn tm(data: &[u8], fecf: bool, mode: DecodeMode, c_mode: u32) {
         )
     };
     expect(&rust, status, &detail);
-    if let Ok(f) = &rust {
-        tm_same(&view, f);
+    if let Ok((f, a)) = &rust {
+        tm_same(&view, f, *a);
     }
-    let rust = rust_pc.and_then(|p| TmFrame::decode_unchecked(data, &p, &NoSdls, mode));
+    let rust = rust_pc.and_then(|p| {
+        mode.dispatch(
+            || TmFrame::decode_unchecked(data, &p, &NoSdls),
+            || TmFrame::decode_unchecked_lenient(data, &p, &NoSdls),
+        )
+    });
     // SAFETY: as above.
     let status = unsafe {
         aldis_tm_decode_unchecked(
@@ -486,8 +511,8 @@ fn tm(data: &[u8], fecf: bool, mode: DecodeMode, c_mode: u32) {
         )
     };
     expect(&rust, status, &detail);
-    if let Ok(f) = &rust {
-        tm_same(&view, f);
+    if let Ok((f, a)) = &rust {
+        tm_same(&view, f, *a);
     }
     let rust = rust_pc.and_then(|p| TmFrame::peek_length(data, &p));
     let mut len = 0;
@@ -542,10 +567,12 @@ fn tm(data: &[u8], fecf: bool, mode: DecodeMode, c_mode: u32) {
         }
         Ok(m)
     });
-    let rust = rust_master
-        .as_ref()
-        .map_err(|e| *e)
-        .and_then(|m| TmFrame::decode_with(data, m.pc(), m, mode));
+    let rust = rust_master.as_ref().map_err(|e| *e).and_then(|m| {
+        mode.dispatch(
+            || TmFrame::decode_with(data, m.pc(), m).map(UncheckedTmFrame::from),
+            || TmFrame::decode_with_lenient(data, m.pc(), m).map(|l| l.map(UncheckedTmFrame::from)),
+        )
+    });
     // SAFETY: as above; `vcs` holds 8 structs.
     let status = unsafe {
         aldis_tm_decode_with(
@@ -560,10 +587,16 @@ fn tm(data: &[u8], fecf: bool, mode: DecodeMode, c_mode: u32) {
         )
     };
     expect(&rust, status, &detail);
-    if let Ok(f) = &rust {
-        tm_same(&view, f);
+    if let Ok((f, a)) = &rust {
+        tm_same(&view, f, *a);
     }
-    let rust = rust_master.and_then(|m| TmFrame::decode_with(data, m.pc(), &m, mode)?.validate(&m));
+    let rust = rust_master.and_then(|m| {
+        let (frame, _) = mode.dispatch(
+            || TmFrame::decode_with(data, m.pc(), &m),
+            || TmFrame::decode_with_lenient(data, m.pc(), &m),
+        )?;
+        frame.validate(&m).map(drop)
+    });
     // SAFETY: as above.
     let status = unsafe {
         aldis_tm_validate(
@@ -591,7 +624,7 @@ mod tc_ffi {
     use core::ptr::null_mut;
 
     use aldis_core::security::SecurityLayout;
-    use aldis_core::{DecodeMode, Error};
+    use aldis_core::{AnomalySet, DecodeMode, Error, Lenient};
     use aldis_ffi::tc::{
         ALDIS_TC_CONTROL_NONE, ALDIS_TC_CONTROL_SET_VR, ALDIS_TC_CONTROL_UNLOCK, ALDIS_TC_FRAME_AD,
         ALDIS_TC_FRAME_BC, ALDIS_TC_FRAME_BD, ALDIS_TC_STREAM_ACCEPTED, ALDIS_TC_STREAM_DISCARDED,
@@ -603,9 +636,9 @@ mod tc_ffi {
     };
     use aldis_ffi::{ALDIS_OK, aldis_error_detail_t};
     use aldis_tc::{
-        Clcw, ControlCommand, FrameStream, FrameType, IntakeItem, MapConfig, PhysicalChannelConfig,
-        SegmentHeaderUse, TcFrame, TcFrameHeader, TcMapId, TcSpacecraftId, TcVcId, VcConfig,
-        VcTable,
+        Clcw, ControlCommand, FrameStream, FrameType, IntakeItem, LenientFrameStream, MapConfig,
+        PhysicalChannelConfig, SegmentHeaderUse, TcAnomaly, TcFrame, TcFrameHeader, TcMapId,
+        TcSpacecraftId, TcVcId, VcConfig, VcTable,
     };
 
     use super::expect;
@@ -707,7 +740,12 @@ mod tc_ffi {
 
     /// The C view agrees with the Rust view: header, Segment Header, Control Command, FECF,
     /// anomalies, and every field's offset and length (CABI-012).
-    fn same(view: &aldis_tc_frame_t, data: &[u8], f: &TcFrame<'_>) {
+    fn same(
+        view: &aldis_tc_frame_t,
+        data: &[u8],
+        f: &TcFrame<'_>,
+        anomalies: AnomalySet<TcAnomaly>,
+    ) {
         same_header(&view.header, &f.header());
         let sh = f.segment_header();
         assert_eq!(view.has_segment_header, sh.is_some());
@@ -722,7 +760,7 @@ mod tc_ffi {
         };
         assert_eq!((view.control.command, view.control.set_vr_value), control);
         assert_eq!(view.has_fecf.then_some(view.fecf), f.fecf());
-        assert_eq!(view.anomalies, f.anomalies().bits());
+        assert_eq!(view.anomalies, anomalies.bits());
         let l = &view.layout;
         assert_eq!(l.frame_len, f.len());
         assert_eq!(l.segment_header.len, usize::from(sh.is_some()));
@@ -782,7 +820,10 @@ mod tc_ffi {
         };
         expect(&table, status, &detail);
         let table = table.unwrap();
-        let rust = TcFrame::decode(data, &table, mode);
+        let rust = mode.dispatch(
+            || TcFrame::decode(data, &table),
+            || TcFrame::decode_lenient(data, &table),
+        );
         let mut view = aldis_tc_frame_t::default();
         // SAFETY: as above.
         let status = unsafe {
@@ -800,12 +841,13 @@ mod tc_ffi {
             )
         };
         expect(&rust, status, &detail);
-        if let Ok(f) = &rust {
-            same(&view, data, f);
+        if let Ok((f, a)) = &rust {
+            same(&view, data, f, *a);
         }
 
         let mut stream_offset = 0;
-        let mut rust_stream = FrameStream::new(data, &table, mode);
+        let mut strict_stream = FrameStream::new(data, &table);
+        let mut lenient_stream = LenientFrameStream::new(data, &table);
         loop {
             let mut item = aldis_tc_stream_item_t::default();
             // SAFETY: as above.
@@ -825,15 +867,25 @@ mod tc_ffi {
                 )
             };
             assert_eq!(status, ALDIS_OK);
-            match rust_stream.next() {
+            let next = match mode {
+                DecodeMode::Strict => strict_stream
+                    .next()
+                    .map(|item| item.map_frame(|frame| (frame, AnomalySet::empty()))),
+                DecodeMode::Lenient => lenient_stream
+                    .next()
+                    .map(|item| item.map_frame(Lenient::into_parts)),
+            };
+            match next {
                 None => {
                     assert_eq!(item.kind, ALDIS_TC_STREAM_END);
                     break;
                 }
-                Some(IntakeItem::Accepted { frame, .. }) => {
+                Some(IntakeItem::Accepted {
+                    frame: (frame, a), ..
+                }) => {
                     assert_eq!(item.kind, ALDIS_TC_STREAM_ACCEPTED);
                     assert_eq!(item.range.len, frame.len());
-                    same(&item.frame, frame.octets(), &frame);
+                    same(&item.frame, frame.octets(), &frame, a);
                 }
                 Some(IntakeItem::Discarded { reason, octets, .. }) => {
                     assert_eq!(item.kind, ALDIS_TC_STREAM_DISCARDED);
@@ -854,7 +906,7 @@ mod tc_ffi {
             assert_eq!(control.set_vr_value, vr.get());
         }
         if let Some(&octets) = data.first_chunk::<4>() {
-            let rust = Clcw::decode(octets, mode);
+            let rust = mode.dispatch(|| Clcw::decode(octets), || Clcw::decode_lenient(octets));
             let mut clcw = aldis_clcw_t::default();
             let mut anomalies = u32::MAX;
             // SAFETY: as above.
@@ -896,7 +948,11 @@ fn aos_pdu_same(view: &aldis_aos_pdu_t, unit: &DataUnit<'_>) {
                 kind,
                 value,
                 header,
-                mpdu.anomalies().bits(),
+                if mpdu.issue4_spare() == 0 {
+                    0
+                } else {
+                    AnomalySet::from_flags(&[AosAnomaly::Issue4SpareSet]).bits()
+                },
             )
         }
         DataUnit::Bpdu(bpdu) => {
@@ -911,7 +967,11 @@ fn aos_pdu_same(view: &aldis_aos_pdu_t, unit: &DataUnit<'_>) {
                 kind,
                 value,
                 header,
-                bpdu.anomalies().bits(),
+                if bpdu.spare() == 0 {
+                    0
+                } else {
+                    AnomalySet::from_flags(&[AosAnomaly::BpduSpareSet]).bits()
+                },
             )
         }
         DataUnit::VcaSdu(_) => (
@@ -972,11 +1032,11 @@ fn aos_header_same(c: &aldis_aos_header_t, h: &AosPrimaryHeader) {
 
 /// The C view of an AOS frame agrees with the Rust view: header, data unit, FECF, anomalies,
 /// and every field's offset and length (CABI-012).
-fn aos_same(view: &aldis_aos_frame_t, frame: &AosFrame<'_>) {
+fn aos_same(view: &aldis_aos_frame_t, frame: &AosFrame<'_>, anomalies: AnomalySet<AosAnomaly>) {
     aos_header_same(&view.header, &frame.header());
     aos_pdu_same(&view.pdu, &frame.data_unit());
     assert_eq!(view.has_fecf.then_some(view.fecf), frame.fecf());
-    assert_eq!(view.anomalies, frame.anomalies().bits());
+    assert_eq!(view.anomalies, anomalies.bits());
     let c = &view.layout;
     let ranges = frame.layout();
     let span = |at: usize, len: usize| at..at + len;
@@ -1048,7 +1108,10 @@ fn aos(data: &[u8], selector: u8, mode: DecodeMode, c_mode: u32) {
     }
     // The data units on the whole input (AOS-003, AOS-017).
     let mut pdu = aldis_aos_pdu_t::default();
-    let rust = Mpdu::decode(data, edition, mode);
+    let rust = mode.dispatch(
+        || Mpdu::decode(data, edition),
+        || Mpdu::decode_lenient(data, edition),
+    );
     // SAFETY: as above.
     let status = unsafe {
         aldis_aos_mpdu_decode(
@@ -1061,10 +1124,10 @@ fn aos(data: &[u8], selector: u8, mode: DecodeMode, c_mode: u32) {
         )
     };
     expect(&rust, status, &detail);
-    if let Ok(m) = rust {
+    if let Ok((m, _)) = rust {
         aos_pdu_same(&pdu, &DataUnit::Mpdu(m));
     }
-    let rust = Bpdu::decode(data, mode);
+    let rust = mode.dispatch(|| Bpdu::decode(data), || Bpdu::decode_lenient(data));
     // SAFETY: as above.
     let status = unsafe {
         aldis_aos_bpdu_decode(
@@ -1076,7 +1139,7 @@ fn aos(data: &[u8], selector: u8, mode: DecodeMode, c_mode: u32) {
         )
     };
     expect(&rust, status, &detail);
-    if let Ok(b) = rust {
+    if let Ok((b, _)) = rust {
         aos_pdu_same(&pdu, &DataUnit::Bpdu(b));
     }
     let pc = aldis_aos_config_t {
@@ -1157,10 +1220,12 @@ fn aos(data: &[u8], selector: u8, mode: DecodeMode, c_mode: u32) {
         }
         VcTable::<63>::new(p, &list).map(|t| (p, t))
     });
-    let rust = rust_table
-        .as_ref()
-        .map_err(|e| *e)
-        .and_then(|(p, t)| AosFrame::decode(data, p, t, mode));
+    let rust = rust_table.as_ref().map_err(|e| *e).and_then(|(p, t)| {
+        mode.dispatch(
+            || AosFrame::decode(data, p, t),
+            || AosFrame::decode_lenient(data, p, t),
+        )
+    });
     let mut view = aldis_aos_frame_t::default();
     // SAFETY: as above; `vcs` holds 63 structs.
     let status = unsafe {
@@ -1176,8 +1241,8 @@ fn aos(data: &[u8], selector: u8, mode: DecodeMode, c_mode: u32) {
         )
     };
     expect(&rust, status, &detail);
-    if let Ok(f) = &rust {
-        aos_same(&view, f);
+    if let Ok((f, a)) = &rust {
+        aos_same(&view, f, *a);
     }
 }
 
@@ -1191,7 +1256,12 @@ fn uslp_offset(whole: &[u8], part: &[u8]) -> usize {
 /// The C view of a USLP frame agrees with the Rust view: the tag, the shared fields, the TFDF
 /// Header, the full frame's header fields, the FECF, the anomalies, and every field's offset
 /// and length (CABI-012; M2 plan D12).
-fn uslp_same(view: &aldis_uslp_frame_t, frame: &UslpFrame<'_>, data: &[u8]) {
+fn uslp_same(
+    view: &aldis_uslp_frame_t,
+    frame: &UslpFrame<'_>,
+    anomalies: AnomalySet<UslpAnomaly>,
+    data: &[u8],
+) {
     let ch = frame.channel();
     assert_eq!(view.truncated, frame.is_truncated());
     assert_eq!(
@@ -1218,7 +1288,7 @@ fn uslp_same(view: &aldis_uslp_frame_t, frame: &UslpFrame<'_>, data: &[u8]) {
         )
     );
     assert_eq!(view.upid_assigned, !matches!(tfdf.upid, Upid::Other(_)));
-    assert_eq!(view.anomalies, frame.anomalies().bits());
+    assert_eq!(view.anomalies, anomalies.bits());
     let l = &view.layout;
     let span = |at: usize, len: usize| at..at + len;
     let of = |s: &[u8]| span(uslp_offset(data, s), s.len());
@@ -1428,7 +1498,10 @@ fn uslp(data: &[u8], selector: u8, mode: DecodeMode, c_mode: u32) {
         return;
     };
     let mut view = aldis_uslp_frame_t::default();
-    let rust = UslpFrame::decode(data, &table, mode);
+    let rust = mode.dispatch(
+        || UslpFrame::decode(data, &table),
+        || UslpFrame::decode_lenient(data, &table),
+    );
     // SAFETY: as above.
     let status = unsafe {
         aldis_uslp_decode(
@@ -1445,8 +1518,8 @@ fn uslp(data: &[u8], selector: u8, mode: DecodeMode, c_mode: u32) {
         )
     };
     expect(&rust, status, &detail);
-    if let Ok(f) = &rust {
-        uslp_same(&view, f, data);
+    if let Ok((f, a)) = &rust {
+        uslp_same(&view, f, *a, data);
     }
     let rust = UslpFrame::peek_length(data, &table);
     let mut len = 0;
@@ -1467,7 +1540,8 @@ fn uslp(data: &[u8], selector: u8, mode: DecodeMode, c_mode: u32) {
         assert_eq!(len, n);
     }
     let mut stream_at = 0;
-    let mut rust_stream = UslpFrameStream::new(data, &table, mode);
+    let mut strict_stream = UslpFrameStream::new(data, &table);
+    let mut lenient_stream = UslpLenientFrameStream::new(data, &table);
     loop {
         let mut item = aldis_uslp_stream_item_t::default();
         // SAFETY: as above.
@@ -1487,17 +1561,21 @@ fn uslp(data: &[u8], selector: u8, mode: DecodeMode, c_mode: u32) {
             )
         };
         assert_eq!(status, ALDIS_OK);
-        match rust_stream.next() {
+        let next = match mode {
+            DecodeMode::Strict => strict_stream.next().map(|item| (item, AnomalySet::empty())),
+            DecodeMode::Lenient => lenient_stream.next().map(Lenient::into_parts),
+        };
+        match next {
             None => {
                 assert_eq!(item.kind, ALDIS_USLP_STREAM_END);
                 break;
             }
-            Some(UslpIntakeItem::Accepted { frame, .. }) => {
+            Some((UslpIntakeItem::Accepted { frame, .. }, a)) => {
                 assert_eq!(item.kind, ALDIS_USLP_STREAM_ACCEPTED);
                 assert_eq!(item.range.len, frame.len());
-                uslp_same(&item.frame, &frame, frame.octets());
+                uslp_same(&item.frame, &frame, a, frame.octets());
             }
-            Some(UslpIntakeItem::Discarded { reason, octets, .. }) => {
+            Some((UslpIntakeItem::Discarded { reason, octets, .. }, _)) => {
                 assert_eq!(item.kind, ALDIS_USLP_STREAM_DISCARDED);
                 assert_eq!(item.range.len, octets.len());
                 assert_eq!(item.discard_reason, u32::from(reason.code()));

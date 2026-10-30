@@ -7,7 +7,7 @@
 //! |---|---|---|
 //! | [`error`] | Stable error catalogue, `Error`, `FieldId` | GEN-040, GEN-041, RS-011 |
 //! | [`field`] | Field codes of the catalogue, generated (03-api-model.md §9.1) | API-082 |
-//! | [`mode`] | `DecodeMode` (strict/lenient) | API-030…API-032 |
+//! | [`mode`] | `Lenient`, `DecodeMode` (strict/lenient) | API-030…API-032 |
 //! | [`anomaly`] | Lenient-mode anomaly flags, `AnomalySet` | GEN-043, GEN-081 |
 //! | [`bits`] | Big-endian bit-field primitives | GEN-050, GEN-051 |
 //! | [`ids`] | Range-checked identifiers | API-001, API-002, RS-010 |
@@ -52,7 +52,7 @@ mod proofs;
 
 pub use anomaly::{Anomaly, AnomalySet};
 pub use error::{Error, ErrorDetail, ErrorKind, FieldId, Result};
-pub use mode::DecodeMode;
+pub use mode::{DecodeMode, Lenient};
 
 /// Compiles and runs the examples in `README.md` as doctests; not part of the API.
 #[cfg(doctest)]

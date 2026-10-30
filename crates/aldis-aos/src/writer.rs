@@ -614,9 +614,7 @@ mod tests {
     use aldis_core::ocf::Ocf;
     use aldis_core::oid::{OidGenerator, OidGeneratorGalois};
     use aldis_core::security::SecurityLayout;
-    use aldis_core::{DecodeMode, ErrorDetail, ErrorKind, FieldId};
-
-    const STRICT: DecodeMode = DecodeMode::Strict;
+    use aldis_core::{ErrorDetail, ErrorKind, FieldId};
 
     fn count(n: u32) -> VcFrameCount {
         VcFrameCount::new(n).unwrap()
@@ -682,7 +680,7 @@ mod tests {
         // SCID 0x0AB: LSBs 1010 1011, MSBs 00; VCID 0; replay 1, use 1, cycle 9.
         assert_eq!(out[..6], [0x6A, 0xC0, 0x12, 0x34, 0x56, 0xC9]);
         assert_eq!(out[14..16], [0x00, 0x03], "the M_PDU Header");
-        let f = AosFrame::decode(&out[..40], &phy, &t, STRICT).unwrap();
+        let f = AosFrame::decode(&out[..40], &phy, &t).unwrap();
         assert_eq!(
             f.header().fhec().map(u16::to_be_bytes),
             Some([out[6], out[7]])
@@ -848,7 +846,7 @@ mod tests {
         assert_eq!(w.finish(), 2100);
         // SCID 0xFF in bits 2–9, bits 42–43 00; spare 00000 and FHP 0x7FD.
         assert_eq!(out[..8], [0x7F, 0xC7, 0, 0, 1, 0x00, 0x07, 0xFD]);
-        let f = AosFrame::decode(&out, &p4, &t, STRICT).unwrap();
+        let f = AosFrame::decode(&out, &p4, &t).unwrap();
         assert_eq!(
             (f.scid(), f.header().edition()),
             (scid(0xFF), AosEdition::Issue4Compatible)
@@ -985,7 +983,7 @@ mod tests {
         assert_eq!(e.kind(), ErrorKind::BufferTooSmall);
         assert!(out.iter().all(|&b| b == 0xEE), "out unchanged on error");
         assert_eq!(encode(&phy, &t, &fields, &ok, &mut out), Ok(40));
-        let f = AosFrame::decode(&out, &phy, &t, STRICT).unwrap();
+        let f = AosFrame::decode(&out, &phy, &t).unwrap();
         assert_eq!(f.data_unit().zone(), &zone);
     }
 
@@ -1003,7 +1001,7 @@ mod tests {
             ..AosFrameContent::new(&sdu)
         };
         assert_eq!(encode(&phy, &t, &vca, &content, &mut out), Ok(40));
-        let f = AosFrame::decode(&out, &phy, &t, STRICT).unwrap();
+        let f = AosFrame::decode(&out, &phy, &t).unwrap();
         assert_eq!((f.data_unit(), f.ocf()), (DataUnit::VcaSdu(&sdu), None));
         let e = encode(
             &phy,
@@ -1080,8 +1078,8 @@ mod tests {
         let mut reference = OidGenerator::new();
         let mut expected = [0_u8; 52];
         reference.fill(&mut expected);
-        let one = AosFrame::decode(&first, &phy, &t, STRICT).unwrap();
-        let two = AosFrame::decode(&second, &phy, &t, STRICT).unwrap();
+        let one = AosFrame::decode(&first, &phy, &t).unwrap();
+        let two = AosFrame::decode(&second, &phy, &t).unwrap();
         assert!(one.is_oid() && two.is_oid());
         assert_eq!(
             (one.data_field(), two.data_field()),
@@ -1170,7 +1168,7 @@ mod tests {
         assert_eq!(fib, two_phase);
         assert_eq!(gal.next_octet(), fib.next_octet());
         assert_eq!(syndrome(&two_frame), 0);
-        let frame = AosFrame::decode(&two_frame, &phy, &table, STRICT).unwrap();
+        let frame = AosFrame::decode(&two_frame, &phy, &table).unwrap();
         assert_eq!(frame.insert_zone(), &iz);
     }
 

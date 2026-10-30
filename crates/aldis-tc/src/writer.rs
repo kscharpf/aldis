@@ -306,7 +306,7 @@ mod tests {
     use crate::header::{FrameFields, FrameType, SegmentHeader, SequenceFlags};
     use crate::view::TcFrame;
     use aldis_core::ids::FrameSeqNum;
-    use aldis_core::{DecodeMode, ErrorDetail, ErrorKind};
+    use aldis_core::{ErrorDetail, ErrorKind};
 
     fn fields(frame_type: FrameType, vc: u8) -> FrameFields {
         FrameFields {
@@ -331,7 +331,7 @@ mod tests {
         let mut out = [0_u8; 32];
         let n = encode(&t, fields(FrameType::Bd, 1), fdu(None, &[7, 8]), &mut out).unwrap();
         assert_eq!(n, 9);
-        let f = TcFrame::decode(&out[..n], &t, DecodeMode::Strict).unwrap();
+        let f = TcFrame::decode(&out[..n], &t).unwrap();
         assert_eq!(
             (f.frame_type(), f.sequence_number().get()),
             (FrameType::Bd, 9)
@@ -345,7 +345,7 @@ mod tests {
             &mut out,
         )
         .unwrap();
-        let f = TcFrame::decode(&out[..n], &t, DecodeMode::Strict).unwrap();
+        let f = TcFrame::decode(&out[..n], &t).unwrap();
         assert_eq!((f.control_command(), f.segment_header()), (Some(set), None));
     }
 
@@ -468,7 +468,7 @@ mod tests {
         w.user_data_mut()[..2].copy_from_slice(&[1, 2]);
         let n = w.finish(2).unwrap();
         assert_eq!(n, 5 + 1 + 3 + 2 + 1 + 2);
-        let f = TcFrame::decode(&out[..n], &t, DecodeMode::Strict).unwrap();
+        let f = TcFrame::decode(&out[..n], &t).unwrap();
         assert_eq!(f.security_header(), [0xA, 0xB, 0xC]);
         assert_eq!(
             (f.data_field(), f.security_trailer()),
@@ -487,7 +487,7 @@ mod tests {
             (e.kind(), e.field()),
             (ErrorKind::OutOfRange, Some(field::USER_LEN))
         );
-        let e = TcFrame::decode(&out, &t, DecodeMode::Lenient).unwrap_err();
+        let e = TcFrame::decode_lenient(&out, &t).unwrap_err();
         assert_eq!(e.kind(), ErrorKind::UnsupportedVersion);
         let w = TcFrameWriter::begin(&mut out, &t, fields(FrameType::Ad, 1), None, 4).unwrap();
         let e = w.finish(0).unwrap_err();

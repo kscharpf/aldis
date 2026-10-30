@@ -49,7 +49,7 @@ use aldis_core::crc::crc16;
 use aldis_core::ocf::Ocf;
 use aldis_core::oid::OidGenerator;
 use aldis_core::security::SecurityLayout;
-use aldis_core::{DecodeMode, ErrorKind};
+use aldis_core::{AnomalySet, DecodeMode, ErrorKind};
 use aldis_testkit::bitflip::{
     CRC16_DOUBLE_BIT_BITS, CRC16_DOUBLE_BIT_OCTETS, each_bit, each_double, each_pair, each_single,
     filler, find_double, find_single, flip, sampled_bits, sampled_pairs,
@@ -60,8 +60,48 @@ use aldis_uslp::{
     MapConfig, OcfUse, PhysicalChannelConfig, Reason, SecurityScope, SourceOrDestination,
     TfdfHeader, TfdzRule, TransferFrameType, TruncatedFrameLen, Upid, UslpAnomaly, UslpFrame,
     UslpMapId, UslpSpacecraftId, UslpVcId, VcConfig, VcParams, VcTable, VcfCountLen, encode,
-    encode_oid, encode_truncated, validate_frame,
+    encode_oid, encode_truncated, validate_frame, validate_frame_lenient,
 };
+
+/// `UslpFrame::decode` or `decode_lenient` as `mode` says, without the anomalies.
+fn decode_in<'a>(
+    bytes: &'a [u8],
+    table: &impl aldis_uslp::VcLookup,
+    mode: DecodeMode,
+) -> Result<UslpFrame<'a>, aldis_core::Error> {
+    mode.dispatch(
+        || UslpFrame::decode(bytes, table),
+        || UslpFrame::decode_lenient(bytes, table),
+    )
+    .map(|(frame, _)| frame)
+}
+
+/// `validate_frame` or `validate_frame_lenient` as `mode` says, with the anomalies (empty in
+/// strict mode).
+fn validate_with<'a>(
+    bytes: &'a [u8],
+    table: &impl aldis_uslp::VcLookup,
+    mode: DecodeMode,
+) -> Result<(UslpFrame<'a>, AnomalySet<UslpAnomaly>), aldis_uslp::Rejection> {
+    match mode {
+        DecodeMode::Strict => {
+            validate_frame(bytes, table).map(|v| (v.into_frame(), AnomalySet::empty()))
+        }
+        DecodeMode::Lenient => validate_frame_lenient(bytes, table).map(|v| {
+            let (v, anomalies) = v.into_parts();
+            (v.into_frame(), anomalies)
+        }),
+    }
+}
+
+/// `validate_with` without the anomalies.
+fn validate_in<'a>(
+    bytes: &'a [u8],
+    table: &impl aldis_uslp::VcLookup,
+    mode: DecodeMode,
+) -> Result<UslpFrame<'a>, aldis_uslp::Rejection> {
+    validate_with(bytes, table, mode).map(|(frame, _)| frame)
+}
 
 /// The Frame Length field: bits 32–47 of the Primary Header (732.1 §4.1.2.7.1).
 const FRAME_LENGTH_BITS: Range<usize> = 32..48;
@@ -138,7 +178,7 @@ fn frame(table: Channels, tfdz: usize, ocf: bool, seed: u32) -> Frame {
     let n = encode(&table, fields, content, &filler(tfdz, seed), &mut octets).unwrap();
     octets.truncate(n);
     for mode in [DecodeMode::Strict, DecodeMode::Lenient] {
-        assert!(validate_frame(&octets, &table, mode).is_ok());
+        assert!(validate_in(&octets, &table, mode).is_ok());
     }
     Frame { table, octets }
 }
@@ -213,8 +253,8 @@ fn expected(bits: &[usize]) -> Outcome {
 /// `bits`, the expected outcome. An undetected error passes the FECF check; whatever the other
 /// checks then make of it is not this property's.
 fn as_expected(f: &Frame, bytes: &[u8], bits: &[usize], mode: DecodeMode) -> bool {
-    let validated = validate_frame(bytes, &f.table, mode);
-    let decoded = UslpFrame::decode(bytes, &f.table, mode);
+    let validated = validate_in(bytes, &f.table, mode);
+    let decoded = decode_in(bytes, &f.table, mode);
     match expected(bits) {
         Outcome::Rejected => {
             let in_length = bits.iter().any(|b| FRAME_LENGTH_BITS.contains(b));
@@ -288,8 +328,8 @@ fn a_double_bit_error_32767_bits_apart_passes_the_fecf() {
     let mut bytes = longest.octets.clone();
     flip(&mut bytes, i);
     flip(&mut bytes, j);
-    let sent = validate_frame(&longest.octets, &longest.table, DecodeMode::Strict).unwrap();
-    let got = validate_frame(&bytes, &longest.table, DecodeMode::Strict).unwrap();
+    let sent = validate_frame(&longest.octets, &longest.table).unwrap();
+    let got = validate_frame(&bytes, &longest.table).unwrap();
     assert_eq!(got.len(), sent.len());
     assert_ne!(got.tfdz(), sent.tfdz());
 }
@@ -331,11 +371,11 @@ fn decode_may_accept_a_frame_length_error_as_a_shorter_frame() {
     let fecf = crc16(&octets[..62]).to_be_bytes();
     octets[62..].copy_from_slice(&fecf);
     for mode in [DecodeMode::Strict, DecodeMode::Lenient] {
-        assert!(validate_frame(&octets, &f.table, mode).is_ok());
+        assert!(validate_in(&octets, &f.table, mode).is_ok());
     }
     octets[5] ^= 0x20;
     for mode in [DecodeMode::Strict, DecodeMode::Lenient] {
-        let short = UslpFrame::decode(&octets, &f.table, mode).unwrap();
+        let short = decode_in(&octets, &f.table, mode).unwrap();
         assert_eq!(short.len(), 32);
         // The delimiter reads the same field, so the unit yields the shorter frame, and
         // validate_frame of those octets accepts it: only a caller that compares the length
@@ -344,9 +384,9 @@ fn decode_may_accept_a_frame_length_error_as_a_shorter_frame() {
             panic!("not a frame");
         };
         assert_eq!(item.len(), 32);
-        assert!(validate_frame(item, &f.table, mode).is_ok());
+        assert!(validate_in(item, &f.table, mode).is_ok());
         // Given the 64 octets it was sent as, it is rejected.
-        let rejection = validate_frame(&octets, &f.table, mode).unwrap_err();
+        let rejection = validate_in(&octets, &f.table, mode).unwrap_err();
         assert_eq!(rejection.reason(), Reason::LengthMismatch);
     }
 }
@@ -410,7 +450,7 @@ fn truncated(table: &Channels, len: usize, sdls: bool, fill: u8) -> Vec<u8> {
     assert_eq!(n, len);
     out.truncate(n);
     for mode in [DecodeMode::Strict, DecodeMode::Lenient] {
-        assert!(validate_frame(&out, table, mode).is_ok());
+        assert!(validate_in(&out, table, mode).is_ok());
     }
     out
 }
@@ -473,13 +513,13 @@ fn every_single_bit_error_of_a_truncated_frame_is_as_pinned() {
         each_single(&f, |bit, bytes| {
             let want = expected_flip(bit, len, sdls);
             for mode in [DecodeMode::Strict, DecodeMode::Lenient] {
-                let got = match validate_frame(bytes, &table, mode) {
+                let got = match validate_in(bytes, &table, mode) {
                     Ok(_) => Flip::Accepted,
                     Err(r) => Flip::Rejected(r.reason()),
                 };
                 assert_eq!(got, want, "{len} octets, sdls {sdls}, bit {bit}, {mode:?}");
                 assert_eq!(
-                    UslpFrame::decode(bytes, &table, mode).is_ok(),
+                    decode_in(bytes, &table, mode).is_ok(),
                     want == Flip::Accepted,
                     "{len} octets, sdls {sdls}, bit {bit}, {mode:?}"
                 );
@@ -529,10 +569,10 @@ fn a_flipped_end_of_frame_flag_of_a_truncated_frame_is_rejected_whatever_follows
                 input.resize(len + trailing, 0xA5);
                 for (mode, reason) in [(DecodeMode::Strict, strict), (DecodeMode::Lenient, lenient)]
                 {
-                    let r = validate_frame(&input[..len], &table, mode).unwrap_err();
+                    let r = validate_in(&input[..len], &table, mode).unwrap_err();
                     assert_eq!(r.reason(), reason, "{len} octets, sdls {sdls}, {octet:#x}");
                     if trailing != 0 {
-                        let e = UslpFrame::decode(&input, &table, mode).unwrap_err();
+                        let e = decode_in(&input, &table, mode).unwrap_err();
                         assert_eq!(e.kind(), r.error().kind());
                     }
                 }
@@ -564,9 +604,9 @@ fn a_flipped_end_of_frame_flag_of_a_non_truncated_frame_is_rejected() {
         let mut bytes = f.octets.clone();
         bytes[3] ^= 0x01;
         for mode in [DecodeMode::Strict, DecodeMode::Lenient] {
-            let r = validate_frame(&bytes, &f.table, mode).unwrap_err();
+            let r = validate_in(&bytes, &f.table, mode).unwrap_err();
             assert_eq!(r.reason(), Reason::TruncatedFrameNotAllowed);
-            assert!(UslpFrame::decode(&bytes, &f.table, mode).is_err());
+            assert!(decode_in(&bytes, &f.table, mode).is_err());
         }
     }
 }
@@ -642,14 +682,14 @@ fn without_the_fecf_most_flag_errors_are_accepted() {
         for kind in [FrameKind::SequenceControlled, FrameKind::Expedited] {
             for ocf in [false, true] {
                 let octets = no_fecf_frame(&table, kind, ocf);
-                let sent = validate_frame(&octets, &table, mode).unwrap();
+                let sent = validate_in(&octets, &table, mode).unwrap();
                 // The identifier is read as the other end's.
                 let b = flipped(&octets, 20);
-                let got = validate_frame(&b, &table, mode).unwrap();
+                let got = validate_in(&b, &table, mode).unwrap();
                 assert_ne!(got.source_or_destination(), sent.source_or_destination());
                 // The Bypass flag: the quality of service changes (equal count lengths).
                 let b = flipped(&octets, 48);
-                let got = validate_frame(&b, &table, mode).unwrap();
+                let got = validate_in(&b, &table, mode).unwrap();
                 let other = if kind == FrameKind::Expedited {
                     FrameKind::SequenceControlled
                 } else {
@@ -658,7 +698,7 @@ fn without_the_fecf_most_flag_errors_are_accepted() {
                 assert_eq!(got.full().unwrap().kind(), other);
                 // The OCF Flag: the last four TFDZ octets become the OCF, or the reverse.
                 let b = flipped(&octets, 52);
-                let got = validate_frame(&b, &table, mode).unwrap();
+                let got = validate_in(&b, &table, mode).unwrap();
                 let got = got.full().unwrap();
                 assert_eq!(got.ocf().is_some(), !ocf);
                 assert_eq!(got.tfdz().len(), if ocf { 24 } else { 16 });
@@ -668,18 +708,18 @@ fn without_the_fecf_most_flag_errors_are_accepted() {
         // accepted; a sequence-controlled one becomes the reserved `01`, reason 3.
         let sent = no_fecf_frame(&table, FrameKind::Expedited, false);
         let b = flipped(&sent, 49);
-        let got = validate_frame(&b, &table, mode).unwrap();
+        let got = validate_in(&b, &table, mode).unwrap();
         assert_eq!(got.full().unwrap().kind(), FrameKind::ProtocolControl);
         let sent = no_fecf_frame(&table, FrameKind::SequenceControlled, false);
         let b = flipped(&sent, 49);
-        let r = validate_frame(&b, &table, mode).unwrap_err();
+        let r = validate_in(&b, &table, mode).unwrap_err();
         assert_eq!(r.reason(), Reason::ReservedFlags);
         // A protocol control frame whose Bypass flag flips is `01`: reason 3.
         let sent = no_fecf_frame(&table, FrameKind::ProtocolControl, false);
         let b = flipped(&sent, 48);
-        let r = validate_frame(&b, &table, mode).unwrap_err();
+        let r = validate_in(&b, &table, mode).unwrap_err();
         assert_eq!(r.reason(), Reason::ReservedFlags);
-        assert!(validate_frame(&flipped(&sent, 49), &table, mode).is_ok());
+        assert!(validate_in(&flipped(&sent, 49), &table, mode).is_ok());
     }
 }
 
@@ -747,16 +787,16 @@ fn without_the_fecf_a_vcid_error_between_a_data_frame_and_an_oid_frame_is_pinned
     .unwrap();
     assert_eq!(n, 64);
     for mode in [DecodeMode::Strict, DecodeMode::Lenient] {
-        assert!(validate_frame(&data, &table, mode).is_ok());
-        assert!(validate_frame(&oid, &table, mode).is_ok());
+        assert!(validate_in(&data, &table, mode).is_ok());
+        assert!(validate_in(&oid, &table, mode).is_ok());
     }
     for bit in 21..27 {
         // Only the most significant bit of the VCID (bit 21) leads from 31 (011111) to 63
         // (111111) and back.
         for mode in [DecodeMode::Strict, DecodeMode::Lenient] {
             let (d, o) = (flipped(&data, bit), flipped(&oid, bit));
-            let got = validate_frame(&d, &table, mode);
-            let from_oid = validate_frame(&o, &table, mode);
+            let got = validate_with(&d, &table, mode);
+            let from_oid = validate_with(&o, &table, mode);
             if bit == 21 {
                 // A data frame read as an OID frame: its rule, UPID, or pointer deviate.
                 // Strict mode rejects it (reason 17); lenient mode accepts it and reports the
@@ -766,16 +806,16 @@ fn without_the_fecf_a_vcid_error_between_a_data_frame_and_an_oid_frame_is_pinned
                         assert_eq!(got.unwrap_err().reason(), Reason::OidHeaderMismatch);
                     }
                     DecodeMode::Lenient => {
-                        let got = got.unwrap();
+                        let (got, anomalies) = got.unwrap();
                         assert_eq!(got.vc_id().get(), 63);
-                        assert!(got.anomalies().contains(UslpAnomaly::OidHeaderMismatch));
+                        assert!(anomalies.contains(UslpAnomaly::OidHeaderMismatch));
                     }
                 }
                 // An OID frame read as a data frame of VC 31: accepted in both modes with no
                 // anomaly, and its UPID is "Only Idle Data".
-                let sent = from_oid.unwrap();
+                let (sent, anomalies) = from_oid.unwrap();
                 assert_eq!(sent.vc_id().get(), 31);
-                assert!(sent.anomalies().is_empty());
+                assert!(anomalies.is_empty());
                 assert_eq!(sent.tfdf_header().upid, Upid::OnlyIdleData);
             } else {
                 assert_eq!(got.unwrap_err().reason(), Reason::InvalidVcid, "bit {bit}");

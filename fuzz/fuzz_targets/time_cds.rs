@@ -4,9 +4,9 @@
 
 // req: TIME-020, TIME-021, GEN-020, API-020, VER-022
 
-use aldis_core::DecodeMode;
 use aldis_time::{
-    CdsDayLen, CdsEpoch, CdsFormat, CdsSubMs, MsOfDay, TimeCode, TimeFormat, decode_implicit,
+    CdsDayLen, CdsEpoch, CdsFormat, CdsSubMs, MsOfDay, TimeCode, TimeFormat,
+    decode_implicit_lenient,
 };
 use libfuzzer_sys::fuzz_target;
 
@@ -25,7 +25,7 @@ fuzz_target!(|data: &[u8]| {
         _ => CdsSubMs::Picos,
     };
     let format = CdsFormat::new(CdsEpoch::Ccsds1958, day, subms);
-    let Ok(d) = decode_implicit(t, &TimeFormat::Cds(format), DecodeMode::Lenient) else {
+    let Ok(d) = decode_implicit_lenient(t, &TimeFormat::Cds(format)) else {
         return;
     };
     let TimeCode::Cds(c) = d.code() else {

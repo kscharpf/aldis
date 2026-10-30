@@ -8,8 +8,9 @@
 //! and optional [`MapConfig`]. Discarded frames, fill data, and truncated headers are yielded as
 //! [`IntakeItem::Discarded`], classified by a unified [`DiscardReason`].
 
-use aldis_core::{DecodeMode, Error, ErrorKind};
+use aldis_core::{AnomalySet, DecodeMode, Error, ErrorKind, Lenient};
 
+use crate::anomaly::UslpAnomaly;
 use crate::config::{MapConfig, VcConfig, VcLookup};
 use crate::delimit::{Declared, declared_len};
 use crate::field;
@@ -208,31 +209,64 @@ impl<'a> IntakeItem<'a> {
     }
 }
 
-/// In-place zero-allocation iterator over a received USLP data unit (732.1 §4.3.11.2, §4.3.11.3; USLP-014, USLP-015).
-///
-/// Fuses delimiting, fill removal, and channel validation in a single pass.
+/// The position in a data unit and the channels, shared by the strict and the lenient stream.
 #[derive(Debug, Clone)]
-pub struct FrameStream<'a, 'c, L: VcLookup + ?Sized> {
+struct Intake<'a, 'c, L: VcLookup + ?Sized> {
     rest: &'a [u8],
     channels: &'c L,
-    mode: DecodeMode,
+}
+
+/// In-place zero-allocation iterator over a received USLP data unit (732.1 §4.3.11.2, §4.3.11.3; USLP-014, USLP-015).
+///
+/// Fuses delimiting, fill removal, and channel validation in a single pass, in strict mode.
+/// [`LenientFrameStream`] is the lenient one (API-030).
+#[derive(Debug, Clone)]
+pub struct FrameStream<'a, 'c, L: VcLookup + ?Sized> {
+    intake: Intake<'a, 'c, L>,
+}
+
+/// The lenient twin of [`FrameStream`]: each item comes with the anomalies of the frame it
+/// accepted, none for a discarded item (732.1 §4.3.11.2, §4.3.11.3; USLP-014, API-032).
+#[derive(Debug, Clone)]
+pub struct LenientFrameStream<'a, 'c, L: VcLookup + ?Sized> {
+    intake: Intake<'a, 'c, L>,
 }
 
 impl<'a, 'c, L: VcLookup + ?Sized> FrameStream<'a, 'c, L> {
-    /// Creates a new intake stream over one clean data unit.
+    /// Creates a new strict intake stream over one clean data unit.
     #[must_use]
-    pub const fn new(data_unit: &'a [u8], channels: &'c L, mode: DecodeMode) -> Self {
+    pub const fn new(data_unit: &'a [u8], channels: &'c L) -> Self {
         FrameStream {
-            rest: data_unit,
-            channels,
-            mode,
+            intake: Intake {
+                rest: data_unit,
+                channels,
+            },
         }
     }
 
     /// The remaining unconsumed octets of the data unit.
     #[must_use]
     pub const fn remaining(&self) -> &'a [u8] {
-        self.rest
+        self.intake.rest
+    }
+}
+
+impl<'a, 'c, L: VcLookup + ?Sized> LenientFrameStream<'a, 'c, L> {
+    /// Creates a new lenient intake stream over one clean data unit.
+    #[must_use]
+    pub const fn new(data_unit: &'a [u8], channels: &'c L) -> Self {
+        LenientFrameStream {
+            intake: Intake {
+                rest: data_unit,
+                channels,
+            },
+        }
+    }
+
+    /// The remaining unconsumed octets of the data unit.
+    #[must_use]
+    pub const fn remaining(&self) -> &'a [u8] {
+        self.intake.rest
     }
 }
 
@@ -240,6 +274,29 @@ impl<'a, L: VcLookup + ?Sized> Iterator for FrameStream<'a, '_, L> {
     type Item = IntakeItem<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
+        // A strict decode has no anomalies; the set stays empty and is dropped.
+        let mut anomalies = AnomalySet::empty();
+        self.intake.next_in(DecodeMode::Strict, &mut anomalies)
+    }
+}
+
+impl<'a, L: VcLookup + ?Sized> Iterator for LenientFrameStream<'a, '_, L> {
+    type Item = Lenient<IntakeItem<'a>, UslpAnomaly>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let mut anomalies = AnomalySet::empty();
+        let item = self.intake.next_in(DecodeMode::Lenient, &mut anomalies)?;
+        Some(Lenient::new(item, anomalies))
+    }
+}
+
+impl<'a, L: VcLookup + ?Sized> Intake<'a, '_, L> {
+    /// The next item; `anomalies` receives those of an accepted frame.
+    fn next_in(
+        &mut self,
+        mode: DecodeMode,
+        anomalies: &mut AnomalySet<UslpAnomaly>,
+    ) -> Option<IntakeItem<'a>> {
         if self.rest.is_empty() {
             return None;
         }
@@ -298,8 +355,15 @@ impl<'a, L: VcLookup + ?Sized> Iterator for FrameStream<'a, '_, L> {
 
         if let Some((frame_bytes, remaining)) = self.rest.split_at_checked(len) {
             self.rest = remaining;
-            match parse(frame_bytes, self.channels, self.mode, true) {
-                Ok((frame, vc, map)) => Some(IntakeItem::Accepted { frame, vc, map }),
+            match parse(frame_bytes, self.channels, mode, true) {
+                Ok(p) => {
+                    *anomalies = p.anomalies;
+                    Some(IntakeItem::Accepted {
+                        frame: p.frame,
+                        vc: p.vc,
+                        map: p.map,
+                    })
+                }
                 Err(rejection) => Some(IntakeItem::Discarded {
                     reason: DiscardReason::from(rejection.reason()),
                     octets: frame_bytes,
@@ -309,7 +373,7 @@ impl<'a, L: VcLookup + ?Sized> Iterator for FrameStream<'a, '_, L> {
         } else {
             let octets = self.rest;
             self.rest = &[];
-            match parse(octets, self.channels, self.mode, true) {
+            match parse(octets, self.channels, mode, true) {
                 Err(rejection) if rejection.reason() != Reason::LengthMismatch => {
                     Some(IntakeItem::Discarded {
                         reason: DiscardReason::from(rejection.reason()),
@@ -329,12 +393,12 @@ impl<'a, L: VcLookup + ?Sized> Iterator for FrameStream<'a, '_, L> {
 
 impl<L: VcLookup + ?Sized> core::iter::FusedIterator for FrameStream<'_, '_, L> {}
 
+impl<L: VcLookup + ?Sized> core::iter::FusedIterator for LenientFrameStream<'_, '_, L> {}
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
-    use super::{DiscardReason, FrameStream, IntakeItem};
+    use super::{DiscardReason, FrameStream, IntakeItem, LenientFrameStream};
     use crate::config::tests::variable;
-    use aldis_core::DecodeMode;
 
     const TRUNCATED: [u8; 12] = [0xC0, 0x15, 0x58, 0x85, 0xE5, 1, 2, 3, 4, 5, 6, 7];
 
@@ -347,7 +411,7 @@ mod tests {
         unit[12..24].copy_from_slice(&TRUNCATED);
         unit[24..].copy_from_slice(&[0x55, 0x55, 0x55]);
 
-        let mut stream = FrameStream::new(&unit, &table, DecodeMode::Strict);
+        let mut stream = FrameStream::new(&unit, &table);
         let first = stream.next().unwrap();
         assert!(matches!(first, IntakeItem::Accepted { ref frame, .. } if frame.len() == 12));
         let second = stream.next().unwrap();
@@ -370,7 +434,7 @@ mod tests {
         unit[..12].copy_from_slice(&bad);
         unit[12..].copy_from_slice(&TRUNCATED);
 
-        let mut stream = FrameStream::new(&unit, &table, DecodeMode::Strict);
+        let mut stream = FrameStream::new(&unit, &table);
         let first = stream.next().unwrap();
         match first {
             IntakeItem::Discarded { reason, octets, .. } => {
@@ -391,7 +455,7 @@ mod tests {
         // VC 4 requires truncated frames; a non-truncated frame is rejected with NonTruncatedFrameNotAllowed
         // 7-octet primary header: version 12 (0xC0), SCID 0x155, VCID 4, non-truncated flag (0)
         let bad = [0xC0, 0x15, 0x58, 0x84, 0x00, 0x10, 0x00];
-        let mut stream = FrameStream::new(&bad, &table, DecodeMode::Strict);
+        let mut stream = FrameStream::new(&bad, &table);
         let first = stream.next().unwrap();
         match first {
             IntakeItem::Discarded { reason, octets, .. } => {
@@ -407,7 +471,7 @@ mod tests {
     fn item_accessors_and_remaining() {
         // req: USLP-014, USLP-015
         let table = variable();
-        let mut stream = FrameStream::new(&TRUNCATED, &table, DecodeMode::Strict);
+        let mut stream = FrameStream::new(&TRUNCATED, &table);
         assert_eq!(stream.remaining(), &TRUNCATED);
         let item = stream.next().unwrap();
         assert_eq!(item.octets(), &TRUNCATED);
@@ -416,9 +480,16 @@ mod tests {
         assert_eq!(stream.remaining(), &[]);
         assert_eq!(stream.next(), None);
 
+        // The lenient stream reports what is left too (API-030).
+        let mut lenient = LenientFrameStream::new(&TRUNCATED, &table);
+        assert_eq!(lenient.remaining(), &TRUNCATED);
+        assert_eq!(lenient.next().map(|l| l.len()), Some(12));
+        assert_eq!(lenient.remaining(), &[]);
+        assert!(lenient.next().is_none());
+
         // Discarded item accessors
         let fill = [0x55_u8; 3];
-        let mut stream_fill = FrameStream::new(&fill, &table, DecodeMode::Strict);
+        let mut stream_fill = FrameStream::new(&fill, &table);
         let discarded = stream_fill.next().unwrap();
         assert_eq!(discarded.octets(), &fill);
         assert_eq!(discarded.len(), 3);
@@ -522,7 +593,7 @@ mod tests {
         // Truncated frame (flag = 1) targeting VC 8, which has no truncated length configured
         let mut frame = TRUNCATED;
         frame[..4].copy_from_slice(&[0xC0, 0x15, 0x59, 0x01]);
-        let mut stream = FrameStream::new(&frame, &table, DecodeMode::Strict);
+        let mut stream = FrameStream::new(&frame, &table);
         let item = stream.next().unwrap();
         assert!(matches!(
             item,
@@ -541,7 +612,7 @@ mod tests {
         // VC 8 non-truncated frame declaring 20 bytes (0x00, 0x13), but only 10 bytes present
         let mut unit = [0_u8; 10];
         unit[..7].copy_from_slice(&[0xC0, 0x15, 0x59, 0x00, 0x00, 0x13, 0x00]);
-        let mut stream = FrameStream::new(&unit, &table, DecodeMode::Strict);
+        let mut stream = FrameStream::new(&unit, &table);
         let item = stream.next().unwrap();
         match item {
             IntakeItem::Discarded { reason, octets, .. } => {
@@ -555,7 +626,7 @@ mod tests {
         // Same incomplete frame, but with unknown SCID 0x000 (check b fails before check d)
         let mut bad_scid = unit;
         bad_scid[..4].copy_from_slice(&[0xC0, 0x00, 0x09, 0x00]);
-        let mut stream_scid = FrameStream::new(&bad_scid, &table, DecodeMode::Strict);
+        let mut stream_scid = FrameStream::new(&bad_scid, &table);
         let item_scid = stream_scid.next().unwrap();
         assert!(matches!(
             item_scid,
@@ -574,7 +645,7 @@ mod tests {
         // 1. Non-truncated with version 0, length 12 >= 7, available in rest
         let mut v0_avail = [0_u8; 12];
         v0_avail[..7].copy_from_slice(&[0x00, 0x15, 0x59, 0x00, 0x00, 0x0B, 0x00]);
-        let mut stream1 = FrameStream::new(&v0_avail, &table, DecodeMode::Strict);
+        let mut stream1 = FrameStream::new(&v0_avail, &table);
         let item1 = stream1.next().unwrap();
         assert!(matches!(
             item1,
@@ -588,7 +659,7 @@ mod tests {
         // 2. Non-truncated with version 0, raw.frame_len < 7 (e.g. 5) -> falls through to Fill
         let mut v0_short = [0_u8; 8];
         v0_short[..7].copy_from_slice(&[0x00, 0x15, 0x59, 0x00, 0x00, 0x04, 0x00]);
-        let mut stream2 = FrameStream::new(&v0_short, &table, DecodeMode::Strict);
+        let mut stream2 = FrameStream::new(&v0_short, &table);
         let item2 = stream2.next().unwrap();
         assert!(matches!(
             item2,
@@ -602,7 +673,7 @@ mod tests {
         // 3. Non-truncated with version 0, len > rest.len() -> split_at_checked is None -> falls through to Fill
         let mut v0_trunc = [0_u8; 8];
         v0_trunc[..7].copy_from_slice(&[0x00, 0x15, 0x59, 0x00, 0x00, 0x14, 0x00]);
-        let mut stream3 = FrameStream::new(&v0_trunc, &table, DecodeMode::Strict);
+        let mut stream3 = FrameStream::new(&v0_trunc, &table);
         let item3 = stream3.next().unwrap();
         assert!(matches!(
             item3,
@@ -616,7 +687,7 @@ mod tests {
         // 4. Truncated with version 0, targeting VC 8 (no truncated length) -> ? returns None -> falls through to Fill
         let mut v0_no_trunc = TRUNCATED;
         v0_no_trunc[..4].copy_from_slice(&[0x00, 0x15, 0x59, 0x01]);
-        let mut stream4 = FrameStream::new(&v0_no_trunc, &table, DecodeMode::Strict);
+        let mut stream4 = FrameStream::new(&v0_no_trunc, &table);
         let item4 = stream4.next().unwrap();
         assert!(matches!(
             item4,
@@ -629,7 +700,7 @@ mod tests {
 
         // 5. Non-truncated with version 0, rest.len() < 7 -> RawRest::parse is None -> ? returns None -> falls through to Fill
         let v0_fewer_than_7 = [0x00, 0x15, 0x59, 0x00, 0x00];
-        let mut stream5 = FrameStream::new(&v0_fewer_than_7, &table, DecodeMode::Strict);
+        let mut stream5 = FrameStream::new(&v0_fewer_than_7, &table);
         let item5 = stream5.next().unwrap();
         assert!(matches!(
             item5,
@@ -648,7 +719,7 @@ mod tests {
         // Non-truncated frame on VC 8 (12 bytes) with bad FECF (e.g. zeroed)
         let mut bad_fecf = [0_u8; 12];
         bad_fecf[..7].copy_from_slice(&[0xC0, 0x15, 0x59, 0x00, 0x00, 0x0B, 0x00]);
-        let mut stream = FrameStream::new(&bad_fecf, &table, DecodeMode::Strict);
+        let mut stream = FrameStream::new(&bad_fecf, &table);
         let item = stream.next().unwrap();
         assert!(matches!(
             item,

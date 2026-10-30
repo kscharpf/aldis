@@ -137,7 +137,7 @@ mod tests {
     use crate::field;
     use crate::header::{EncapsulationFields, Epi, HeaderLen, HeaderSize};
     use crate::view::EncapsulationPacket;
-    use aldis_core::{DecodeMode, ErrorDetail, ErrorKind};
+    use aldis_core::{ErrorDetail, ErrorKind};
 
     const MISSION: EncapsulationFields = EncapsulationFields::new(Epi::MISSION_SPECIFIC);
 
@@ -225,7 +225,7 @@ mod tests {
                         .unwrap();
                 w.data_mut().copy_from_slice(&[1, 2, 3, 4]);
             }
-            let e = EncapsulationPacket::decode(&out, DecodeMode::Lenient).unwrap_err();
+            let e = EncapsulationPacket::decode_lenient(&out).unwrap_err();
             assert_eq!(e.kind(), ErrorKind::LengthMismatch, "{size:?}");
             assert_eq!(out[12..], [0xFF; 4], "nothing written past the reservation");
         }

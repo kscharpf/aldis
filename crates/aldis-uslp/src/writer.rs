@@ -645,7 +645,7 @@ mod tests {
     use crate::view::UslpFrame;
     use aldis_core::ocf::Ocf;
     use aldis_core::oid::{OidGenerator, OidGeneratorGalois};
-    use aldis_core::{DecodeMode, Error, ErrorKind, FieldId};
+    use aldis_core::{Error, ErrorKind, FieldId};
     use std::vec::Vec;
 
     fn fields(vc: u8, map: u8, kind: FrameKind, count: u64) -> FrameFields {
@@ -684,7 +684,7 @@ mod tests {
         let mut out = [0_u8; 80];
         let n = encode(&tbl, f, c, &tfdz, &mut out).unwrap();
         assert_eq!(n, 64);
-        let dec = UslpFrame::decode(&out[..n], &tbl, DecodeMode::Strict).unwrap();
+        let dec = UslpFrame::decode(&out[..n], &tbl).unwrap();
         let full = dec.full().unwrap();
         assert_eq!(
             (full.tfdz(), full.ocf(), full.insert_zone()),
@@ -751,7 +751,7 @@ mod tests {
             writer.tfdz_mut().unwrap()[..2].copy_from_slice(&[1, 2]);
             let len = writer.finish(2).unwrap();
             assert_eq!(len, 10 + if ocf.is_some() { 4 } else { 0 });
-            let dec = UslpFrame::decode(&buf[..len], &tbl, DecodeMode::Strict).unwrap();
+            let dec = UslpFrame::decode(&buf[..len], &tbl).unwrap();
             let full = dec.full().unwrap();
             assert_eq!(
                 (full.tfdz(), full.ocf(), full.fecf()),
@@ -772,7 +772,7 @@ mod tests {
         w.security_trailer_mut().unwrap().fill(0x52);
         w.tfdz_mut().unwrap()[..3].copy_from_slice(&[7, 8, 9]);
         let len = w.finish(3).unwrap();
-        let dec = UslpFrame::decode(&buf[..len], &tbl, DecodeMode::Strict).unwrap();
+        let dec = UslpFrame::decode(&buf[..len], &tbl).unwrap();
         assert_eq!(
             (dec.tfdz(), dec.security_header()),
             (&[7, 8, 9][..], &[0x51; 6][..])
@@ -786,7 +786,7 @@ mod tests {
         {
             let _unfinished = UslpFrameWriter::begin(&mut raw, &tbl, f, c, 10).unwrap();
         }
-        let e = UslpFrame::decode(&raw, &tbl, DecodeMode::Lenient).unwrap_err();
+        let e = UslpFrame::decode_lenient(&raw, &tbl).unwrap_err();
         assert_eq!(e.kind(), ErrorKind::UnsupportedVersion);
         let w = UslpFrameWriter::begin(&mut raw, &tbl, f, c, 10).unwrap();
         assert_eq!(
@@ -967,8 +967,7 @@ mod tests {
         let f = fields(63, 0, FrameKind::Expedited, 5);
         let n = encode_oid(&tbl, f, &[0xAA, 0xBB], None, &mut oid, &mut out).unwrap();
         assert_eq!(n, 64);
-        let dec = UslpFrame::decode(&out, &tbl, DecodeMode::Strict).unwrap();
-        assert!(dec.anomalies().is_empty());
+        let dec = UslpFrame::decode(&out, &tbl).unwrap();
         assert_eq!(dec.tfdf_header().upid, Upid::OnlyIdleData);
         let mut reference = OidGenerator::new();
         let mut expect = [0_u8; 49];
@@ -1083,7 +1082,7 @@ mod tests {
         )
         .unwrap();
         assert_eq!(n, 12);
-        let dec = UslpFrame::decode(&out[..n], &tbl, DecodeMode::Strict).unwrap();
+        let dec = UslpFrame::decode(&out[..n], &tbl).unwrap();
         assert_eq!(
             (dec.tfdz(), dec.tfdf_header()),
             (&[1, 2, 3, 4, 5, 6, 7][..], hdr(TfdzRule::NoSegmentation))
@@ -1091,7 +1090,7 @@ mod tests {
         let n =
             encode_truncated(&tbl, ch(5, 1), hdr(TfdzRule::OctetStream), &[9], &mut out).unwrap();
         assert_eq!(n, 28);
-        let dec = UslpFrame::decode(&out[..n], &tbl, DecodeMode::Strict).unwrap();
+        let dec = UslpFrame::decode(&out[..n], &tbl).unwrap();
         assert_eq!(
             (dec.security_header().len(), dec.security_trailer().len()),
             (6, 16)

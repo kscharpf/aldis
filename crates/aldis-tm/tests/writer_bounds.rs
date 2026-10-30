@@ -11,8 +11,8 @@
     reason = "test fixtures fail loudly (RS-018)"
 )]
 
+use aldis_core::ErrorKind;
 use aldis_core::ids::{SpacecraftId, VcId};
-use aldis_core::{DecodeMode, ErrorKind};
 use aldis_tm::{
     DataFieldContent, DataFieldStatus, FshLen, PacketOffset, PacketPointer, TmFrame,
     TmFrameContent, TmFrameFields, TmFrameWriter, TmMasterChannelConfig, TmPhysicalChannelConfig,
@@ -61,7 +61,7 @@ fn encode_writes_only_the_frame() {
     let mut out = before.clone();
     assert_eq!(encode(&mc, &fields, &content, &mut out), Ok(FRAME));
     assert_eq!(out[FRAME..], before[FRAME..]);
-    assert!(TmFrame::decode(&out[..FRAME], mc.pc(), DecodeMode::Strict).is_ok());
+    assert!(TmFrame::decode(&out[..FRAME], mc.pc()).is_ok());
     // One octet short, and a data field of the wrong length: nothing is written.
     let mut short = before[..FRAME - 1].to_vec();
     let e = encode(&mc, &fields, &content, &mut short).unwrap_err();

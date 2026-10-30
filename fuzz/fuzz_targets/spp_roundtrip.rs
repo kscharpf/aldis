@@ -8,7 +8,6 @@
 
 use core::num::NonZeroUsize;
 
-use aldis_core::DecodeMode;
 use aldis_core::ids::{Apid, SeqCount};
 use aldis_spp::{
     IdlePacket, OctetStringEncoder, PacketFields, PacketType, SecondaryHeaderLayout,
@@ -44,7 +43,7 @@ fn check_packet(config: SppConfig, fields: PacketFields, sec: &[u8], user: &[u8]
         );
         return;
     };
-    let decoded = SpacePacket::decode(&out, DecodeMode::Strict).unwrap();
+    let decoded = SpacePacket::decode(&out).unwrap();
     assert_eq!((decoded.len(), decoded.header().fields()), (len, fields));
     let layout = NonZeroUsize::new(sec.len())
         .map_or(SecondaryHeaderLayout::Absent, SecondaryHeaderLayout::Opaque);
@@ -79,7 +78,7 @@ fn check_octet(
             assert!(buf.iter().all(|&b| b == 0xA5));
         }
         Ok(len) => {
-            let decoded = SpacePacket::decode(&buf, DecodeMode::Strict).unwrap();
+            let decoded = SpacePacket::decode(&buf).unwrap();
             assert_eq!(
                 (
                     decoded.len(),
@@ -103,7 +102,7 @@ fn check_idle(config: SppConfig, count: SeqCount, pattern: &[u8], total: usize, 
     let idle = idle.with_pattern(pattern).with_sequence_count(count);
     let mut buf = vec![0_u8; cap];
     if let Ok(len) = idle.encode(&mut buf) {
-        let decoded = SpacePacket::decode(&buf[..len], DecodeMode::Strict).unwrap();
+        let decoded = SpacePacket::decode(&buf[..len]).unwrap();
         assert!(decoded.is_idle() && !decoded.has_secondary_header() && decoded.len() == total);
         let fill: &[u8] = if pattern.is_empty() { &[0] } else { pattern };
         assert!(

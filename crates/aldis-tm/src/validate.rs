@@ -1,6 +1,8 @@
 //! A decoded frame checked against its master channel's managed parameters (132.0-B-3 §5,
 //! §4.1.2.4.3, §4.1.2.7.2.3, §4.1.2.7.3.3, §4.1.3.2.3.3, §6.6; TM-011).
 
+use core::ops::Deref;
+
 use aldis_core::{Error, ErrorKind, Result};
 
 use crate::config::{TmMasterChannelConfig, unknown_scid};
@@ -8,9 +10,37 @@ use crate::field;
 use crate::header::{DataFieldStatus, FshLen, PacketPointer, len_u64, mismatch};
 use crate::view::TmFrame;
 
-impl TmFrame<'_> {
+/// A [`TmFrame`] that matches the managed parameters of a master channel (132.0 §5 Tables 5-1 to
+/// 5-3, §6.6 Table 6-1; TM-011, API-016).
+///
+/// [`TmFrame::validate`] returns it. It dereferences to the frame; holding one is the proof that
+/// the frame has the frame length, the SCID, the flags, and the lengths of its virtual channel
+/// (RS-023 `Checked`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ValidatedTmFrame<'a> {
+    frame: TmFrame<'a>,
+}
+
+impl<'a> ValidatedTmFrame<'a> {
+    /// The frame, without the proof.
+    #[must_use]
+    pub const fn into_frame(self) -> TmFrame<'a> {
+        self.frame
+    }
+}
+
+impl<'a> Deref for ValidatedTmFrame<'a> {
+    type Target = TmFrame<'a>;
+
+    fn deref(&self) -> &TmFrame<'a> {
+        &self.frame
+    }
+}
+
+impl<'a> TmFrame<'a> {
     /// Checks the frame against the managed parameters of `mc` and its virtual channels
-    /// (132.0 §5 Tables 5-1 to 5-3, §6.6 Table 6-1; TM-011).
+    /// (132.0 §5 Tables 5-1 to 5-3, §6.6 Table 6-1; TM-011, API-016) and returns it as a
+    /// [`ValidatedTmFrame`].
     ///
     /// # Errors
     /// In this order, each with the configured value and the value found:
@@ -29,7 +59,7 @@ impl TmFrame<'_> {
     /// - `InvalidField` (`vc_id`) for an Only Idle Data frame (First Header Pointer `0x7FE`) on a
     ///   VC that uses SDLS, which a lenient decode accepts with an anomaly flag (132.0 §6.4.6.2;
     ///   TM-010, OI-54).
-    pub fn validate(&self, mc: &TmMasterChannelConfig) -> Result<()> {
+    pub fn validate(self, mc: &TmMasterChannelConfig) -> Result<ValidatedTmFrame<'a>> {
         let frame_len = mc.pc().frame_len();
         if self.len() != frame_len {
             return Err(mismatch(
@@ -94,7 +124,7 @@ impl TmFrame<'_> {
         {
             return Err(Error::new(ErrorKind::InvalidField).with_field(field::VC_ID));
         }
-        Ok(())
+        Ok(ValidatedTmFrame { frame: self })
     }
 }
 
@@ -114,7 +144,7 @@ mod tests {
     use crate::view::TmFrame;
     use aldis_core::ids::{SpacecraftId, VcId};
     use aldis_core::security::SecurityLayout;
-    use aldis_core::{DecodeMode, ErrorDetail, ErrorKind, FieldId};
+    use aldis_core::{ErrorDetail, ErrorKind, FieldId};
 
     const PC: TmPhysicalChannelConfig = match TmPhysicalChannelConfig::new(24, false) {
         Ok(pc) => pc,
@@ -158,7 +188,7 @@ mod tests {
         bytes: &[u8],
         mc: &TmMasterChannelConfig,
     ) -> (ErrorKind, Option<FieldId>, ErrorDetail) {
-        let f = TmFrame::decode(bytes, mc.pc(), DecodeMode::Strict).unwrap();
+        let f = TmFrame::decode(bytes, mc.pc()).unwrap();
         let e = f.validate(mc).unwrap_err();
         (e.kind(), e.field(), e.detail())
     }
@@ -169,7 +199,7 @@ mod tests {
 
     #[test]
     fn matching_frames_pass() {
-        // req: TM-011
+        // req: TM-011, API-016
         let mc = mc();
         for (bytes, sdls) in [
             (frame(0, false, 0x98, 3), false),
@@ -177,12 +207,12 @@ mod tests {
             (frame(2, false, 0x18, 0), true),
         ] {
             let f = if sdls {
-                TmFrame::decode_with(&bytes, mc.pc(), &mc, DecodeMode::Strict)
+                TmFrame::decode_with(&bytes, mc.pc(), &mc)
             } else {
-                TmFrame::decode(&bytes, mc.pc(), DecodeMode::Strict)
+                TmFrame::decode(&bytes, mc.pc())
             }
             .unwrap();
-            assert_eq!(f.validate(&mc), Ok(()));
+            assert!(f.validate(&mc).is_ok());
         }
     }
 
@@ -204,7 +234,7 @@ mod tests {
         assert_eq!((kind, f), (ErrorKind::UnknownChannel, Some(field::VC_ID)));
         let short = TmPhysicalChannelConfig::new(23, false).unwrap();
         let bytes = frame(0, false, 0x98, 3);
-        let f = TmFrame::decode(&bytes[..23], &short, DecodeMode::Strict).unwrap();
+        let f = TmFrame::decode(&bytes[..23], &short).unwrap();
         let e = f.validate(&mc).unwrap_err();
         assert_eq!(
             (e.kind(), e.field(), e.detail()),
@@ -218,7 +248,7 @@ mod tests {
 
     #[test]
     fn flag_and_length_mismatches() {
-        // req: TM-011
+        // req: TM-011, API-016
         let mc = mc();
         let invalid = |f| (ErrorKind::InvalidField, Some(f), exp(0, 1));
         assert_eq!(
@@ -268,7 +298,7 @@ mod tests {
                         .with_security(SecurityLayout::new(2, 0).unwrap()),
                 )
                 .unwrap();
-        let f = TmFrame::decode_with(&bytes, &PC, &header_only, DecodeMode::Strict).unwrap();
+        let f = TmFrame::decode_with(&bytes, &PC, &header_only).unwrap();
         let e = f.validate(&mc).unwrap_err();
         assert_eq!(
             (e.kind(), e.field(), e.detail()),
@@ -278,7 +308,7 @@ mod tests {
                 exp(2, 0)
             )
         );
-        assert!(TmFrame::decode_with(&bytes, &PC, &NoSdls, DecodeMode::Strict).is_ok());
+        assert!(TmFrame::decode_with(&bytes, &PC, &NoSdls).is_ok());
     }
 
     #[test]
@@ -288,8 +318,8 @@ mod tests {
         // VC 2 uses SDLS; FHP 0x7FE, Segment Length ID 11. A lenient decode accepts it.
         let mut bytes = frame(2, false, 0x1F, 0);
         bytes[5] = 0xFE;
-        let f = TmFrame::decode_with(&bytes, &PC, &mc, DecodeMode::Lenient).unwrap();
-        let e = f.validate(&mc).unwrap_err();
+        let f = TmFrame::decode_with_lenient(&bytes, &PC, &mc).unwrap();
+        let e = f.into_view().validate(&mc).unwrap_err();
         assert_eq!(
             (e.kind(), e.field()),
             (ErrorKind::InvalidField, Some(field::VC_ID))
@@ -297,7 +327,7 @@ mod tests {
         // The same frame on VC 0 (no SDLS, a Secondary Header of 3 octets) is valid.
         let mut ok = frame(0, false, 0x9F, 3);
         ok[5] = 0xFE;
-        let f = TmFrame::decode(&ok, &PC, DecodeMode::Strict).unwrap();
-        assert_eq!(f.validate(&mc), Ok(()));
+        let f = TmFrame::decode(&ok, &PC).unwrap();
+        assert!(f.validate(&mc).is_ok());
     }
 }

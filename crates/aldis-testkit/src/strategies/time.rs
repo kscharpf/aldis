@@ -603,16 +603,16 @@ mod tests {
         time_code_with_tail,
     };
     use crate::strategies::config;
-    use aldis_core::{DecodeMode, ErrorKind};
+    use aldis_core::ErrorKind;
     use aldis_time::{
         AsciiOptions, AsciiTime, Ccs, CcsValue, CdsDayLen, Cuc, CucValue, Fraction, MsOfDay, Picos,
-        TimeCode, decode_with_pfield,
+        TimeCode, decode_with_pfield, decode_with_pfield_lenient,
     };
     use proptest::prelude::*;
 
-    /// Whether `octets` decode as `code` in `mode`.
-    fn decodes_as(octets: &[u8], code: &TimeCode, mode: DecodeMode) -> bool {
-        decode_with_pfield(octets, mode).is_ok_and(|d| d.code() == *code && d.len() == octets.len())
+    /// Whether `d` is `code` and spans `octets`.
+    fn is(d: &aldis_time::Decoded, octets: &[u8], code: &TimeCode) -> bool {
+        d.code() == *code && d.len() == octets.len()
     }
 
     const REGRESSIONS: &str = concat!(
@@ -627,7 +627,7 @@ mod tests {
         fn conformant_codes_decode_strictly(code in time_code()) {
             // req: VER-054, TIME-001, TIME-003
             let octets = encode_with_pfield(&code);
-            prop_assert!(decodes_as(&octets, &code, DecodeMode::Strict));
+            prop_assert!(is(&decode_with_pfield(&octets).unwrap(), &octets, &code));
         }
 
         #[test]
@@ -635,18 +635,18 @@ mod tests {
             // req: VER-054, TIME-005
             let octets = encode_with_pfield(&code);
             prop_assert_eq!(
-                decode_with_pfield(&octets, DecodeMode::Strict).map_err(|e| e.kind()).err(),
+                decode_with_pfield(&octets).map_err(|e| e.kind()).err(),
                 Some(ErrorKind::ReservedValue)
             );
-            prop_assert!(decodes_as(&octets, &code, DecodeMode::Lenient));
+            prop_assert!(is(&decode_with_pfield_lenient(&octets).unwrap(), &octets, &code));
         }
 
         #[test]
         fn boundary_inputs_never_panic(a in time_code_near_boundary(), b in time_code_decoder_input()) {
             // req: VER-054, GEN-020
             for bytes in [a, b] {
-                let _ = decode_with_pfield(&bytes, DecodeMode::Strict);
-                let _ = decode_with_pfield(&bytes, DecodeMode::Lenient);
+                let _ = decode_with_pfield(&bytes);
+                let _ = decode_with_pfield_lenient(&bytes);
             }
         }
 

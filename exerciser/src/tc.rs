@@ -7,12 +7,13 @@ use core::hint::black_box as bb;
 use aldis_core::ids::FrameSeqNum;
 use aldis_core::ocf::{Ocf, Type1Report};
 use aldis_core::security::SecurityLayout;
-use aldis_core::{Anomaly, DecodeMode, Error, ErrorKind};
+use aldis_core::{Anomaly, AnomalySet, DecodeMode, Error, ErrorKind, Lenient};
 use aldis_tc::{
     Clcw, ClcwStatus, ControlCommand, CopInEffect, Delimited, FarmBCounter, FrameData,
     FrameDelimiter, FrameFields, FrameType, MapConfig, PhysicalChannelConfig, Reason,
     SegmentHeader, SegmentHeaderUse, SequenceFlags, TcAnomaly, TcFrame, TcFrameWriter, TcMapId,
     TcSpacecraftId, TcVcId, VcConfig, VcLookup, VcTable, encode, next_frame, validate_frame,
+    validate_frame_lenient,
 };
 
 use crate::exercise::Tally;
@@ -122,7 +123,7 @@ fn frame_group(t: &mut Tally) {
     let n = encode(&table, ad, data, &mut out);
     t.check(n == Ok(10));
     let frame = out.get(..10).unwrap_or_default();
-    match TcFrame::decode(bb(frame), &table, DecodeMode::Strict) {
+    match TcFrame::decode(bb(frame), &table) {
         Ok(f) => {
             let h = f.header();
             t.check(f.frame_type() == FrameType::Ad && f.spacecraft_id().get() == SCID);
@@ -130,7 +131,7 @@ fn frame_group(t: &mut Tally) {
             t.check(f.segment_header().is_none() && f.security_header().is_empty());
             t.check(f.data_field() == [1, 2, 3] && f.security_trailer().is_empty());
             t.check(f.fecf().is_some() && f.control_command().is_none() && f.octets() == frame);
-            t.check(f.len() == 10 && !f.is_empty() && f.anomalies().is_empty());
+            t.check(f.len() == 10 && !f.is_empty());
             t.check(h.fields() == ad && h.frame_type() == FrameType::Ad && h.frame_len() == 10);
             t.check(h.spacecraft_id() == ad.spacecraft_id && h.vc_id() == ad.vc_id);
             t.check(h.sequence_number() == ad.sequence_number && h.segment_header().is_none());
@@ -140,12 +141,8 @@ fn frame_group(t: &mut Tally) {
     }
     t.check(TcFrame::peek_length(bb(frame)) == Ok(10));
     t.check(TcFrame::peek_header(bb(frame)).is_ok_and(|h| h.fields() == ad && h.frame_len() == 10));
-    t.check(validate_frame(bb(frame), &table, DecodeMode::Strict).is_ok_and(|f| f.len() == 10));
-    match validate_frame(
-        bb(frame.get(..9).unwrap_or_default()),
-        &table,
-        DecodeMode::Strict,
-    ) {
+    t.check(validate_frame(bb(frame), &table).is_ok_and(|f| f.len() == 10));
+    match validate_frame(bb(frame.get(..9).unwrap_or_default()), &table) {
         Ok(_) => t.check(false),
         Err(r) => {
             t.check(r.reason() == Reason::LengthMismatch && r.reason().code() == 8);
@@ -175,7 +172,7 @@ fn frame_group(t: &mut Tally) {
         }
         _ => t.check(false),
     }
-    let f = TcFrame::decode(bb(&out), &table, DecodeMode::Strict);
+    let f = TcFrame::decode(bb(&out), &table);
     t.check(f.is_ok_and(|f| {
         f.security_header() == [0xA5; 3]
             && f.data_field() == [0x11; 2]
@@ -211,17 +208,22 @@ fn delimit_group(t: &mut Tally) {
 
 fn clcw_group(t: &mut Tally) {
     let word = bb([0x01, 0x14, 0x0C, 0x2A]);
-    match Clcw::decode(word, DecodeMode::Strict) {
-        Ok((c, a)) => {
-            t.check(a.is_empty() && c.to_octets() == word && c.to_word() == 0x0114_0C2A);
+    t.check(Clcw::decode_lenient(word).is_ok_and(|l| l.anomalies().is_empty()));
+    match Clcw::decode(word) {
+        Ok(c) => {
+            t.check(c.to_octets() == word && c.to_word() == 0x0114_0C2A);
             t.check(c.cop_in_effect == CopInEffect::COP_1 && c.retransmit);
             t.check(matches!(c.to_ocf(), Ocf::Clcw(r) if r.to_octets() == word));
         }
         Err(_) => t.check(false),
     }
     let report = Type1Report::new(word);
-    t.check(report.is_some_and(|r| Clcw::decode_report(r, DecodeMode::Lenient).is_ok()));
-    t.check(Clcw::decode(bb([0x01, 0x01, 0, 0]), DecodeMode::Strict).is_err());
+    t.check(
+        report.is_some_and(|r| {
+            Clcw::decode_report_lenient(r).is_ok() && Clcw::decode_report(r).is_ok()
+        }),
+    );
+    t.check(Clcw::decode(bb([0x01, 0x01, 0, 0])).is_err());
     t.check(ClcwStatus::new(bb(7)).map(ClcwStatus::get) == Some(7));
     t.check(ClcwStatus::try_from(bb(8)).is_err() && CopInEffect::try_from(bb(4)).is_err());
     t.check(FarmBCounter::try_from(bb(3)).map(u8::from) == Ok(3));
@@ -325,7 +327,7 @@ const fn frame_type_name(t: FrameType) -> &'static str {
     }
 }
 
-fn decoded(o: &mut Out, f: &TcFrame<'_>) {
+fn decoded(o: &mut Out, f: &TcFrame<'_>, anomalies: AnomalySet<TcAnomaly>) {
     o.text("frame_type", frame_type_name(f.frame_type()));
     o.num("bypass_flag", u8::from(f.frame_type().bypass_flag()));
     o.num(
@@ -358,7 +360,7 @@ fn decoded(o: &mut Out, f: &TcFrame<'_>) {
     o.opt_text("control_command", command);
     o.opt_num("set_vr_value", vr);
     o.num("consumed", wide(f.len()));
-    o.names("anomalies", f.anomalies().iter());
+    o.names("anomalies", anomalies.iter());
 }
 
 /// `usize` → `u64` for a comparison.
@@ -426,7 +428,13 @@ fn encode_case(case: &Case, o: &mut Out, scratch: &mut Scratch) -> Run {
 
 fn validate_case(case: &Case, o: &mut Out) -> Run {
     let channels = table(case)?;
-    match validate_frame(bb(case.input), &channels, mode(case)) {
+    let validated = match mode(case) {
+        DecodeMode::Strict => validate_frame(bb(case.input), &channels),
+        DecodeMode::Lenient => {
+            validate_frame_lenient(bb(case.input), &channels).map(Lenient::into_view)
+        }
+    };
+    match validated {
         Ok(f) => {
             o.flag("accepted", true);
             o.num("frame_len", wide(f.len()));
@@ -475,7 +483,8 @@ fn clcw_case(case: &Case, o: &mut Out) -> Run {
             .filter(|_| case.input.len() == 4)
             .copied(),
     )?;
-    let (c, anomalies) = Clcw::decode(bb(word), mode(case))?;
+    let (c, anomalies) =
+        mode(case).dispatch(|| Clcw::decode(bb(word)), || Clcw::decode_lenient(bb(word)))?;
     clcw_out(o, &c);
     o.names("anomalies", anomalies.iter());
     Ok(())
@@ -522,7 +531,11 @@ pub fn vector(case: &Case, o: &mut Out, s: &mut Scratch) -> Run {
         }
         "decode" => {
             let t = table(case)?;
-            decoded(o, &TcFrame::decode(bb(case.input), &t, mode(case))?);
+            let (frame, found) = mode(case).dispatch(
+                || TcFrame::decode(bb(case.input), &t),
+                || TcFrame::decode_lenient(bb(case.input), &t),
+            )?;
+            decoded(o, &frame, found);
         }
         "peek_length" => o.num("frame_len", wide(TcFrame::peek_length(bb(case.input))?)),
         "encode" => encode_case(case, o, s)?,

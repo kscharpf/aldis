@@ -12,7 +12,7 @@
     reason = "test harness: lengths are small and bounded, a failure must be loud (RS-018)"
 )]
 
-use aldis_core::{DecodeMode, Error, ErrorDetail, ErrorKind, FieldId};
+use aldis_core::{Error, ErrorDetail, ErrorKind, FieldId};
 use aldis_epp::config::MAX_DATA_LEN;
 use aldis_epp::{
     EncapsulationFields, EncapsulationHeader, EncapsulationPacket, Epi, EpiExtension, EpiSet,
@@ -50,7 +50,7 @@ fn through_header(fields: EncapsulationFields, len: HeaderLen) -> Ids {
     let unit = accept_all().data_unit(fields, &[0x3C]).unwrap();
     let mut out = [0_u8; 9];
     let n = encode(&unit, HeaderSize::Fixed(len), &mut out).unwrap();
-    let p = EncapsulationPacket::decode(out.get(..n).unwrap(), DecodeMode::Strict).unwrap();
+    let p = EncapsulationPacket::decode(out.get(..n).unwrap()).unwrap();
     assert_eq!((p.header_len(), p.data()), (len, &[0x3C_u8][..]));
     (p.epi(), p.extension(), p.user_defined())
 }
@@ -216,7 +216,7 @@ fn idle_header_accepts_exactly_the_packet_lengths() {
                 if total <= 300 {
                     let mut packet = vec![0_u8; total];
                     assert_eq!(idle(total, 0x55, &mut packet), Ok(total));
-                    let p = EncapsulationPacket::decode(&packet, DecodeMode::Strict).unwrap();
+                    let p = EncapsulationPacket::decode(&packet).unwrap();
                     assert!(p.is_idle());
                     assert_eq!((p.len(), p.header_len()), (total, len));
                 }
@@ -295,10 +295,10 @@ proptest! {
                 prop_assert!((min..=max).contains(&len));
                 let mut out = vec![0_u8; data.len() + 8];
                 let n = encode(&unit, HeaderSize::Auto, &mut out).unwrap();
-                let p = EncapsulationPacket::decode(out.get(..n).unwrap(), DecodeMode::Strict)
+                let p = EncapsulationPacket::decode(out.get(..n).unwrap())
                     .unwrap();
                 prop_assert_eq!(p.data(), data.as_slice());
-                prop_assert_eq!(p.validate(&config), Ok(()));
+                prop_assert!(p.validate(&config).is_ok());
             }
             Err(err) => {
                 prop_assert!(!(min..=max).contains(&len));

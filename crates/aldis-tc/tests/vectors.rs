@@ -10,12 +10,12 @@
 
 use aldis_core::ids::FrameSeqNum;
 use aldis_core::security::SecurityLayout;
-use aldis_core::{DecodeMode, Error, FieldId};
+use aldis_core::{AnomalySet, DecodeMode, Error, FieldId};
 use aldis_tc::{
     Clcw, ClcwStatus, ControlCommand, CopInEffect, Delimited, FarmBCounter, FrameData,
     FrameDelimiter, FrameFields, FrameType, MapConfig, PhysicalChannelConfig, SegmentHeader,
-    SegmentHeaderUse, SequenceFlags, TcFrame, TcFrameWriter, TcMapId, TcSpacecraftId, TcVcId,
-    VcConfig, VcTable, encode, validate_frame,
+    SegmentHeaderUse, SequenceFlags, TcAnomaly, TcFrame, TcFrameWriter, TcMapId, TcSpacecraftId,
+    TcVcId, VcConfig, VcTable, encode, validate_frame, validate_frame_lenient,
 };
 use aldis_testkit::{CodecCase, Mode, Outcome, hex, run_codec_file};
 use serde_json::{Map, Value, json};
@@ -87,7 +87,7 @@ const fn frame_type_name(t: FrameType) -> &'static str {
     }
 }
 
-fn decoded(f: &TcFrame<'_>) -> Value {
+fn decoded(f: &TcFrame<'_>, anomalies: AnomalySet<TcAnomaly>) -> Value {
     let (command, vr) = match f.control_command() {
         None => (Value::Null, Value::Null),
         Some(ControlCommand::Unlock) => (json!("unlock"), Value::Null),
@@ -112,7 +112,7 @@ fn decoded(f: &TcFrame<'_>) -> Value {
         "control_command": command,
         "set_vr_value": vr,
         "consumed": f.len(),
-        "anomalies": f.anomalies().iter().map(|a| format!("{a:?}")).collect::<Vec<_>>(),
+        "anomalies": anomalies.iter().map(|a| format!("{a:?}")).collect::<Vec<_>>(),
     })
 }
 
@@ -192,8 +192,12 @@ fn encode_case(case: &CodecCase) -> Result<Value, Error> {
 fn validate_case(case: &CodecCase) -> Result<Value, Error> {
     let t = table(case)?;
     let bytes = input(case);
-    Ok(match validate_frame(&bytes, &t, mode(case)) {
-        Ok(f) => json!({ "accepted": true, "frame_len": f.len() }),
+    let result = match mode(case) {
+        DecodeMode::Strict => validate_frame(&bytes, &t).map(|f| f.len()),
+        DecodeMode::Lenient => validate_frame_lenient(&bytes, &t).map(|f| f.len()),
+    };
+    Ok(match result {
+        Ok(len) => json!({ "accepted": true, "frame_len": len }),
         Err(r) => json!({
             "accepted": false,
             "reason": format!("{:?}", r.reason()),
@@ -273,7 +277,12 @@ fn run(case: &CodecCase) -> Result<Value, Error> {
         }
         "decode" => {
             let t = table(case)?;
-            TcFrame::decode(&bytes, &t, mode(case)).map(|f| decoded(&f))
+            mode(case)
+                .dispatch(
+                    || TcFrame::decode(&bytes, &t),
+                    || TcFrame::decode_lenient(&bytes, &t),
+                )
+                .map(|(f, anomalies)| decoded(&f, anomalies))
         }
         "peek_length" => TcFrame::peek_length(&bytes).map(|n| json!({ "frame_len": n })),
         "encode" => encode_case(case),
@@ -281,9 +290,11 @@ fn run(case: &CodecCase) -> Result<Value, Error> {
         "delimit" => Ok(delimit_case(case)),
         "clcw_decode" => {
             let octets: [u8; 4] = bytes.try_into().unwrap();
-            Clcw::decode(octets, mode(case)).map(|(c, a)| {
-                clcw_value(&c, &a.iter().map(|x| format!("{x:?}")).collect::<Vec<_>>())
-            })
+            mode(case)
+                .dispatch(|| Clcw::decode(octets), || Clcw::decode_lenient(octets))
+                .map(|(c, a)| {
+                    clcw_value(&c, &a.iter().map(|x| format!("{x:?}")).collect::<Vec<_>>())
+                })
         }
         "clcw_encode" => clcw_encode(case),
         other => panic!("{}: operation {other}", case.id),

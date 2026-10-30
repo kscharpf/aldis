@@ -5,7 +5,6 @@
 
 // req: API-020, API-021, API-022, API-023, EPP-008, EPP-010, GEN-042, VER-022
 
-use aldis_core::DecodeMode;
 use aldis_epp::{
     EncapsulationFields, EncapsulationPacket, EncapsulationWriter, Epi, EpiExtension, EpiSet,
     EppConfig, ExtendedEpiSet, HeaderLen, HeaderSize, UserDefined, encode,
@@ -56,7 +55,7 @@ fn run(u: &mut Unstructured<'_>) -> Result<()> {
             "rejected encode wrote output"
         ),
         Ok(n) => {
-            let p = EncapsulationPacket::decode(&out, DecodeMode::Strict).unwrap();
+            let p = EncapsulationPacket::decode(&out).unwrap();
             assert_eq!(
                 (p.len(), p.epi(), p.data()),
                 (n, fields.epi(), data.as_slice())
