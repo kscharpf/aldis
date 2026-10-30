@@ -93,6 +93,7 @@ WP-0 Infra, setup ───▶ WP-1a Spec readings ─┬─▶ WP-1b FARM-1 tab
 
 ### WP-4 `aldis-cop1`: FOP-1 engine (L) — COP-001, COP-010…017
 - Protocol states S1 (Active), S2 (Retransmit without wait), S3 (Retransmit with wait), S4 (Initial), S5 (Uninitialized), S6 (Suspended); events E1–E46, E101–E104.
+- `Fop1::step` bound: `N` counts the Abort Request of Initiate AD (or BC) Retransmission as an action (COP-006, OI-59…OI-61 context in cop1.md).
 - Frame building: Type-AD with N(S) = V(S), Type-BD with N(S) = 0, Type-BC carrying Unlock / Set V(R), for TC and USLP targets (COP-010).
 - Sent_Queue master copy and ordered retransmission (COP-011).
 - Modulo-256 N(R) validity check against NN(R) and V(S) (COP-012).

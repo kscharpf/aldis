@@ -67,12 +67,13 @@ Coverage is every cell of both tables. These cells are driven differently from t
 
 ## Readings the model makes
 
-The Blue Book does not settle these; the model's choices are proposals for the maintainer (see the report of the pull request that added these files), and a change to one changes the vectors that depend on it.
+The maintainer accepted these on 2026-10-30 (chat). The start-up values, the effect of a purge on NN(R), and the two Accepts are OI-59, OI-60, and OI-61; the rest are written into [cop1.md](../../docs/standards/cop1.md).
 
-1. Start-up values of FOP-1 (above).
-2. Whether a purge sets NN(R) to V(S). The model leaves NN(R) alone, and no setup passes through a purge (a state whose queue is empty with NN(R) different from V(S) is not used).
-3. E21 and E45 both list "Accept". The model emits an accept at E21 and another, for the same handle, at E45.
-4. The Abort Request of "Initiate AD (or BC) Retransmission" (5.2.7 a) is an output, `abort`, and does not change the Out flags.
+1. Start-up values of FOP-1 (above): OI-59.
+2. A purge of the Sent_Queue sets NN(R) := V(S): OI-60. No setup passes through a purge that leaves the two different, so the vectors hold under either reading.
+3. E21 and E45 both list "Accept"; both are kept as printed: OI-61. The question to CCSDS whether the E45 Accept is a Rev. B leftover stays open, and `fop1_table/s*_e45.json` and `scenarios/fop1_bd_service.json` change with its answer.
+4. The Abort Request of "Initiate AD (or BC) Retransmission" (5.2.7 a) is an output, `abort`, and does not change the Out flags; it counts in FOP-1's `N` (COP-006).
 5. A Type-BC frame in the Sent_Queue is purged without a notification of its own; an Initiate AD directive that awaits its confirmation gets its negative confirmation from Alert (5.2.15 d).
-6. Lockout (E14) is classified before the N(R) check (E13), and an invalid bit pattern (E15) before both (5.3.2.1).
+6. An invalid bit pattern (E15) is classified before Lockout (E14), and Lockout before an invalid N(R) (E13) (5.3.2.1).
 7. FARM-1 emits `state_changed` when, and only when, the state changes, after the actions of the cell, and `unlocked` for every Unlock (COP-036).
+8. `table_event` and a tri-state `expect_timeout_us` (a value, none, not asserted) are accepted for the testkit and the schema. The change lives in `crates/` and is made in the runner pull request, which also removes `"cop1/"` from `AWAITING_RUNNER` in `xtask/src/consistency.rs` (the exemption from the "a test runs it" check). Until then a table-cell file ends with a `{"query": "next_deadline"}` step.

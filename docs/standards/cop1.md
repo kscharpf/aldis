@@ -18,7 +18,7 @@ FARM-1 protocol states (232.1 §6.2): S1 (`Open`), S2 (`Wait`), S3 (`Lockout`).
 | COP-002 | FARM-1 SHALL implement every cell of Table 6-1: states S1–S3, events E1–E11. | 232.1 §6.3, Table 6-1 | V |
 | COP-003 | Each state table SHALL be represented in the implementation as **data** (a table of state × event → actions + next state), not as scattered conditionals. The table SHALL be reviewed cell by cell against the Blue Book (inspection record kept). | — | I |
 | COP-004 | Every engine transition SHALL be attributable to an event number. Status snapshots and alert events SHALL include the event number and prior state that caused them. | 232.1 §4.3 note (Alert) | T |
-| COP-006 | Each engine SHALL implement the step contract of [03 §5](../03-api-model.md#5-engines-the-sans-io-contract) (API-057, API-058): `Fop1::step` and `Farm1::step` map (state, event, `now`) to the next state and the action list of the table cell, in the order the cell lists them. Their action bounds `N` SHALL be derived from the table data (the longest action list of any cell, with a Transmit action producing one frame), not written by hand, and recorded in the M3 plan. The pure step function (or `decide`) is what the cell-by-cell check of COP-003 and the Kani targets address. | 232.1 Tables 5-1, 6-1; API-057 | T/V |
+| COP-006 | Each engine SHALL implement the step contract of [03 §5](../03-api-model.md#5-engines-the-sans-io-contract) (API-057, API-058): `Fop1::step` and `Farm1::step` map (state, event, `now`) to the next state and the action list of the table cell, in the order the cell lists them. Their action bounds `N` SHALL be derived from the table data (the longest action list of any cell, with a Transmit action producing one frame, and the Abort Request of 232.1 §5.2.7 a counted as an action of Initiate AD (or BC) Retransmission), not written by hand, and recorded in the M3 plan. The pure step function (or `decide`) is what the cell-by-cell check of COP-003 and the Kani targets address. | 232.1 Tables 5-1, 6-1; API-057 | T/V |
 | COP-005 | The conformance suite SHALL contain at least one vector per non-"Not applicable" cell of each table, and one per "Not applicable" cell asserting that the engine treats it as `InvalidState` (unreachable by construction). | — | V |
 
 ## 2. FOP-1 engine
@@ -44,7 +44,7 @@ The inputs are the variants of `Fop1Input`; every one is fed to `step(state, inp
 
 ### 2.3 Actions
 
-The actions of one input, in the order of the table cell (COP-006). The frame octets are written to the output area (API-061).
+The actions of one input, in the order of the table cell (COP-006). A Type-BC frame in the Sent_Queue is purged without a notification of its own; an Initiate AD directive that still awaits its confirmation gets its Negative Confirm from Alert (§5.2.15 d). A CLCW is classified in the order of §5.3.2.1: an invalid bit pattern (E15), then the Lockout Flag (E14), then N(R) (E13), then the flags. The frame octets are written to the output area (API-061).
 
 | Action | Content |
 |---|---|
@@ -53,6 +53,7 @@ The actions of one input, in the order of the table cell (COP-006). The frame oc
 | `Notify(DirectiveNotify)` | directive handle + {Accept, Reject, PositiveConfirm, NegativeConfirm} (§4.2, Table 4-2) |
 | `Notify(Alert)` | reason ∈ {Limit, T1, Lockout, Synch, NnR, Clcw, Llif, Term} + event number + prior state (§4.3, Table 4-4) |
 | `Notify(Suspend)` | (§4.3) |
+| `Abort` | Abort Request to the Lower Procedures, the first action of Initiate AD (or BC) Retransmission (§5.2.7 a, §3.2.3 b); it changes no Out flag. It counts in `N` of FOP-1 (COP-006) |
 
 ### 2.4 Requirements
 
@@ -90,7 +91,9 @@ The engine holds no delivery buffer: the buffers of 232.1 §3.3.2 belong to the 
 | `Deliver` | accepted FDU (AD or BD; range of the output area from offset 0), frame type, N(S) (0 for BD) |
 | `Notify(FrameDiscarded)` | event number + state before: with Table 6-1 they say why (E2 no buffer, E3 gap, E4 duplicate, E5 outside the window, any frame in S3 Lockout; COP-004) |
 | `Notify(StateChanged)` | event number, old → new state |
-| `Notify(Unlocked)` | an Unlock command was executed (E7; COP-036) |
+| `Notify(Unlocked)` | an Unlock command was executed, in every state (E7; COP-036) |
+
+`Notify(StateChanged)` is returned when, and only when, the state changes, after the other actions of the cell, which "Finally" updates the state (§6.3.1).
 
 ### 3.3 Requirements
 
@@ -103,6 +106,8 @@ The engine holds no delivery buffer: the buffers of 232.1 §3.3.2 belong to the 
 | COP-034 | The FARM-B Counter SHALL increment modulo 4 for every accepted Type-B frame. | 232.0 §4.2.1.9 | V |
 | COP-035 | `clcw(state)` SHALL reflect the state after the most recent input. The CLCW SHALL carry COP in Effect = `01`, the configured VCID and Status Field, and the current flags. | 232.0 §4.2.1; 232.1 E11 | V |
 | COP-036 | The Unlock command SHALL reset only FARM-1. The engine SHALL return a `Notify(Unlocked)` action so that higher procedures can purge their buffers. | 232.1 §6.3.2.2 note | T |
+
+FOP-1 start-up values are OI-59, the effect of a purge on NN(R) is OI-60, and the two Accepts of E21 and E45 are OI-61.
 
 ## 4. Interaction and closed-loop testing
 
