@@ -12,7 +12,7 @@ test-vectors/
                      fields.json, the field catalogue (generated, not a vector file)
   time/              cuc.json, cds.json, ccs.json, ascii.json, convert.json
   spp/  epp/  tm/  tc/  aos/  uslp/
-  cop1/              fop1_table.json, farm1_table.json, scenarios/*.json
+  cop1/              fop1_table/<state>_e<event>.json, farm1_table/<state>_e<event>.json, scenarios/*.json (README.md: vocabulary)
   link/              packet_generator/*.json, extractor/*.json, mux/*.json, segmenter/*.json
 ```
 
@@ -89,7 +89,7 @@ An expected error may also give `field`: the code, from the field catalogue in [
 | ID | Requirement | Source | Verif. |
 |---|---|---|---|
 | TV-010 | Scenario steps SHALL supply an absolute `at_us` instant and one input. They SHALL list the **complete, ordered** set of outputs expected before the next step: transmits, deliveries, and events. They MAY assert state and the next timeout. | GEN-030 | I |
-| TV-011 | The state-table vectors (`fop1_table.json`, `farm1_table.json`) SHALL contain one case per table cell. Each case gives a setup sequence that reaches the cell's state, the triggering event, and the expected actions and next state (COP-005). | COP-005 | V |
+| TV-011 | The state-table vectors (`cop1/fop1_table/`, `cop1/farm1_table/`) SHALL contain one case per table cell, one file per case (an engine scenario file holds one scenario). Each case gives a setup sequence that reaches the cell's state, the triggering event, and the expected actions and next state (COP-005). | COP-005 | V |
 | TV-012 | Harnesses SHALL fail on any **unexpected** output, not only on missing ones. | — | T |
 
 ## 4. Provenance

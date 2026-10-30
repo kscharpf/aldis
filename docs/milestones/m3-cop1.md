@@ -12,7 +12,7 @@
 | WP-1a Spec readings & cell review | merged | #145 | CCSDS 232.1 Table 5-1 and Table 6-1 cell review `cop1-tables.md`, field codes 150–199 (COP-003, VER-041, API-082) |
 | WP-1b Common types & FARM-1 table | merged | #147 | Directives, alerts, notifications, FARM-1 S1–S3 × E1–E11 const table data, cell tests (COP-002, COP-004, RS-021) |
 | WP-1c FOP-1 table as data | in progress | #149 | FOP-1 S1–S6 × E1–E46/E101–E104 const table data, Cor. 1 verification, cell tests (COP-001, COP-004, RS-021) |
-| WP-2 Blind vectors & model | planned | — | Python blind oracle model (TV-023), conformance scenarios in `test-vectors/cop1/` with 1 vector per cell (COP-005, TV-011) |
+| WP-2 Blind vectors & model | in progress | #183 | Python blind oracle model `test-vectors/models/cop1.py` (TV-023) and one scenario per cell of Tables 5-1 and 6-1 in `test-vectors/cop1/` (COP-005, TV-011); the testkit loader and the runners follow in WP-3 and WP-4 |
 | WP-3 `aldis-cop1`: FARM-1 | in progress | — | `Farm1::step` and `clcw` over `FARM1_TABLE`, window check, FARM-B counter, exerciser calls; `FARM1_MAX_ACTIONS` derived from the table (COP-030…036); OI-58 opened |
 | WP-4 `aldis-cop1`: FOP-1 | planned | — | FOP-1 engine: S1–S6, E1–E46, E101–E104, sliding window, T1 timer, Suspend/Resume, frame construction (COP-010…017) |
 | WP-5 Closed loop & carry-overs | planned | — | Closed-loop simulated link harness (COP-040), event fuzzing (COP-041), OI-47 delimiter fill bound in TC/USLP, USLP truncated check |

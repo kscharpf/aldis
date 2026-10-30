@@ -1,0 +1,132 @@
+{
+  "kind": "engine-scenario",
+  "engine": "fop1",
+  "id": "cop1-fop1-s2-e36",
+  "description": "FOP-1 Table 5-1, S2 x E36: Directive Set FOP_Sliding_Window_Width (K). setup of 3 step(s), then the trigger.",
+  "requirements": [
+    "COP-001",
+    "COP-005",
+    "COP-012",
+    "COP-010",
+    "COP-013",
+    "COP-015",
+    "COP-006"
+  ],
+  "provenance": "hand-derived",
+  "provenance_note": "Hand-derived from 232.1-B-2 Cor. 1 Table 5-1, 5.1 and 5.2, 232.0-B-4 4.1.2, 4.1.3.3, 4.1.4.2 and docs/standards/cop1.md; expected values come from the independent model test-vectors/models/cop1.py, written blind by an agent that had not read the implementation (TV-023).",
+  "config": {
+    "frame_target": "tc",
+    "scid": 42,
+    "vcid": 1,
+    "t1_initial_us": 2000000,
+    "transmission_limit": 3,
+    "timeout_type": 0,
+    "k": 3,
+    "fecf": true
+  },
+  "steps": [
+    {
+      "at_us": 1000,
+      "input": {
+        "directive": {
+          "handle": 1,
+          "type": "initiate_ad_without_clcw_check"
+        }
+      },
+      "expect": [
+        {
+          "event": "directive_notify",
+          "handle": 1,
+          "type": "accept"
+        },
+        {
+          "event": "directive_notify",
+          "handle": 1,
+          "type": "positive_confirm"
+        }
+      ],
+      "expect_state": "S1"
+    },
+    {
+      "at_us": 2000,
+      "input": {
+        "request_ad": {
+          "handle": 2,
+          "data_hex": "A002"
+        }
+      },
+      "expect": [
+        {
+          "event": "transfer_notify",
+          "handle": 2,
+          "type": "accept"
+        },
+        {
+          "transmit": {
+            "kind": "AD",
+            "ns": 0,
+            "retransmission": false,
+            "frame_hex": "002A040800A002733D"
+          }
+        }
+      ],
+      "expect_state": "S1",
+      "expect_timeout_us": 2002000
+    },
+    {
+      "at_us": 3000,
+      "input": {
+        "clcw": {
+          "lockout": false,
+          "wait": false,
+          "retransmit": true,
+          "n_r": 0
+        }
+      },
+      "expect": [
+        {
+          "event": "abort"
+        }
+      ],
+      "expect_state": "S2",
+      "expect_timeout_us": 2003000
+    },
+    {
+      "at_us": 4000,
+      "input": {
+        "directive": {
+          "handle": 4,
+          "type": "set_k",
+          "value": 2
+        }
+      },
+      "expect": [
+        {
+          "event": "directive_notify",
+          "handle": 4,
+          "type": "accept"
+        },
+        {
+          "event": "directive_notify",
+          "handle": 4,
+          "type": "positive_confirm"
+        }
+      ],
+      "expect_state": "S2",
+      "expect_timeout_us": 2003000
+    },
+    {
+      "at_us": 4000,
+      "input": {
+        "query": "next_deadline"
+      },
+      "expect": [
+        {
+          "next_deadline": 2003000
+        }
+      ],
+      "expect_state": "S2",
+      "expect_timeout_us": 2003000
+    }
+  ]
+}
