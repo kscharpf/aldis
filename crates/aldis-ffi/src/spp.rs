@@ -1,5 +1,5 @@
 //! C ABI of the Space Packet codec `aldis-spp` (CCSDS 133.0-B-2; M2 plan D4; CABI-010…012,
-//! CABI-020…022, CABI-033).
+//! CABI-020…022).
 //!
 //! Stateless calls: [`aldis_spp_decode`], [`aldis_spp_peek_length`], [`aldis_spp_encode`],
 //! [`aldis_spp_idle`], [`aldis_spp_octet_string_encode`], [`aldis_spp_sequence_count_next`],
@@ -18,6 +18,7 @@ use aldis::spp::{
 
 use crate::abi::{self, Out, invalid_argument};
 use crate::mirror::{mirror, parse};
+use crate::range::aldis_range_t;
 use crate::time::{aldis_time_decoded_t, aldis_time_format_t, decoded, time_format};
 
 /// The Packet Type (133.0 §4.1.3.3.2).
@@ -102,13 +103,10 @@ pub enum aldis_spp_secondary {
 }
 mirror!(pub aldis_spp_secondary: u32 { ALDIS_SPP_SECONDARY_ABSENT, ALDIS_SPP_SECONDARY_OPAQUE, ALDIS_SPP_SECONDARY_TIME });
 
-/// Managed parameters of the Space Packet Protocol (133.0 §5.2 Table 5-1; SPP-005, GEN-060,
-/// CABI-033).
+/// Managed parameters of the Space Packet Protocol (133.0 §5.2 Table 5-1; SPP-005, GEN-060).
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct aldis_spp_config_t {
-    /// `sizeof(aldis_spp_config_t)`, set by the caller (CABI-033).
-    pub struct_size: u32,
     /// Maximum Packet Length, 7 to `ALDIS_SPP_MAX_PACKET_LEN` octets.
     pub max_packet_len: u32,
 }
@@ -140,20 +138,16 @@ pub struct aldis_spp_packet_t {
     pub idle: bool,
     /// Lenient-mode anomaly flags, `ALDIS_SPP_ANOMALY_*`; 0 in strict mode (API-032).
     pub anomalies: u32,
-    /// Offset of the Packet Data Field in the input: always 6.
-    pub data_offset: usize,
-    /// Length of the Packet Data Field.
-    pub data_len: usize,
+    /// The range of the Packet Data Field in the input: always 6.
+    pub data: aldis_range_t,
     /// Octets consumed from the input: the total packet length (API-011).
     pub packet_len: usize,
 }
 
-/// How the Packet Data Field of an APID begins (133.0 §4.1.4.2; SPP-007, SPP-008, CABI-033).
+/// How the Packet Data Field of an APID begins (133.0 §4.1.4.2; SPP-007, SPP-008).
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct aldis_spp_secondary_layout_t {
-    /// `sizeof(aldis_spp_secondary_layout_t)`, set by the caller (CABI-033).
-    pub struct_size: u32,
     /// `ALDIS_SPP_SECONDARY_ABSENT`, `_OPAQUE`, or `_TIME`.
     pub kind: u32,
     /// `_OPAQUE`: the secondary header length, at least 1.
@@ -171,21 +165,15 @@ pub struct aldis_spp_secondary_layout_t {
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct aldis_spp_split_t {
-    /// Offset of the Packet Secondary Header: always 6.
-    pub secondary_header_offset: usize,
-    /// Length of the Packet Secondary Header; 0 when absent.
-    pub secondary_header_len: usize,
-    /// Offset of the User Data Field.
-    pub user_data_offset: usize,
-    /// Length of the User Data Field.
-    pub user_data_len: usize,
-    /// Offset of the Ancillary Data Field: the secondary header after the time code.
-    pub ancillary_offset: usize,
-    /// Length of the Ancillary Data Field; without a time code, the whole secondary header.
-    pub ancillary_len: usize,
+    /// The range of the Packet Secondary Header: always 6; length 0 when absent.
+    pub secondary_header: aldis_range_t,
+    /// The range of the User Data Field.
+    pub user_data: aldis_range_t,
+    /// The range of the Ancillary Data Field: the secondary header after the time code; its length is without a time code, the whole secondary header.
+    pub ancillary: aldis_range_t,
     /// Whether `time` holds the decoded time code of a time secondary header.
     pub has_time: bool,
-    /// The decoded Time Code Field, when `has_time`; it starts at `secondary_header_offset`.
+    /// The decoded Time Code Field, when `has_time`; it starts at `secondary_header.offset`.
     pub time: aldis_time_decoded_t,
 }
 
@@ -238,8 +226,10 @@ pub(crate) fn view(p: &SpacePacket<'_>) -> aldis_spp_packet_t {
         secondary_header_flag: p.has_secondary_header(),
         idle: p.is_idle(),
         anomalies: p.anomalies().bits(),
-        data_offset: PRIMARY_HEADER_LEN,
-        data_len: header.data_len(),
+        data: aldis_range_t {
+            offset: PRIMARY_HEADER_LEN,
+            len: header.data_len(),
+        },
         packet_len: p.len(),
     }
 }
@@ -283,12 +273,18 @@ fn split(
     let end = PRIMARY_HEADER_LEN.saturating_add(secondary_len);
     let ancillary_len = s.ancillary_data().len();
     out.write(aldis_spp_split_t {
-        secondary_header_offset: PRIMARY_HEADER_LEN,
-        secondary_header_len: secondary_len,
-        user_data_offset: end,
-        user_data_len: s.user_data().len(),
-        ancillary_offset: end.saturating_sub(ancillary_len),
-        ancillary_len,
+        secondary_header: aldis_range_t {
+            offset: PRIMARY_HEADER_LEN,
+            len: secondary_len,
+        },
+        user_data: aldis_range_t {
+            offset: end,
+            len: s.user_data().len(),
+        },
+        ancillary: aldis_range_t {
+            offset: end.saturating_sub(ancillary_len),
+            len: ancillary_len,
+        },
         has_time: time.is_some(),
         time: time.map(|t| decoded(&t)).unwrap_or_default(),
     });
@@ -298,7 +294,7 @@ fn split(
 /// Decodes one Space Packet (133.0 §4.1; SPP-001…004, SPP-009, API-010, API-011, API-030).
 ///
 /// `bytes` may hold more than one packet: `out->packet_len` is the length of the first. The
-/// data field is `bytes[data_offset .. data_offset + data_len]`.
+/// data field is `bytes[data.offset .. data.offset + data.len]`.
 ///
 /// # Errors
 /// `ALDIS_ERR_INCOMPLETE` (with `needed`) when `bytes` is shorter than the header or the
@@ -395,7 +391,7 @@ pub unsafe extern "C" fn aldis_spp_encode(
     // that `out` overlaps no input.
     unsafe {
         abi::call(err, || {
-            let config = config(abi::config(cfg)?)?;
+            let config = config(abi::read(cfg)?)?;
             let fields = self::fields(abi::read(fields)?)?;
             let sec = abi::bytes(secondary, secondary_len)?;
             let user_data = abi::bytes(user, user_len)?;
@@ -440,7 +436,7 @@ pub unsafe extern "C" fn aldis_spp_idle(
     // overlap.
     unsafe {
         abi::call(err, || {
-            let config = config(abi::config(cfg)?)?;
+            let config = config(abi::read(cfg)?)?;
             let pattern_bytes = abi::bytes(pattern, pattern_len)?;
             let out = abi::bytes_mut(out, cap, &[(pattern, pattern_len)])?;
             let out_len = abi::out(out_len)?;
@@ -491,7 +487,7 @@ pub unsafe extern "C" fn aldis_spp_octet_string_encode(
     // overlap.
     unsafe {
         abi::call(err, || {
-            let config = config(abi::config(cfg)?)?;
+            let config = config(abi::read(cfg)?)?;
             let packet_type = self::packet_type(packet_type)?;
             let apid = Apid::try_from(apid)?;
             let counter = SequenceCounter::new(SeqCount::try_from(sequence_count)?);
@@ -554,7 +550,7 @@ pub unsafe extern "C" fn aldis_spp_config_check(
     err: *mut crate::aldis_error_detail_t,
 ) -> u32 {
     // SAFETY: every pointer is valid as `# Safety` states; `abi` checks NULL and alignment.
-    unsafe { abi::call(err, || config(abi::config(cfg)?).map(|_| ())) }
+    unsafe { abi::call(err, || config(abi::read(cfg)?).map(|_| ())) }
 }
 
 /// Decodes one Space Packet and splits its data field by the APID's secondary header layout
@@ -590,7 +586,7 @@ pub unsafe extern "C" fn aldis_spp_split(
     unsafe {
         abi::call(err, || {
             let bytes = abi::bytes(bytes, len)?;
-            let layout = abi::config(layout)?;
+            let layout = abi::read(layout)?;
             split(bytes, mode, &layout, abi::out(out)?)
         })
     }
@@ -636,15 +632,5 @@ mod tests {
         ] {
             assert_eq!(f.bits(), c);
         }
-    }
-
-    #[test]
-    fn configurations_start_with_struct_size() {
-        // req: CABI-033
-        assert_eq!(core::mem::offset_of!(aldis_spp_config_t, struct_size), 0);
-        assert_eq!(
-            core::mem::offset_of!(aldis_spp_secondary_layout_t, struct_size),
-            0
-        );
     }
 }

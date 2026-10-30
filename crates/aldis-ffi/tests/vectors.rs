@@ -55,15 +55,12 @@ type R<T> = Result<T, Fail>;
 /// Calls `f` with a detail and turns a failure into its kind and field code.
 fn call(f: impl FnOnce(*mut aldis_error_detail_t) -> u32) -> R<()> {
     let mut d = aldis_error_detail_t {
-        struct_size: size_of_u32::<aldis_error_detail_t>(),
         ..aldis_error_detail_t::default()
     };
     let status = f(&raw mut d);
     if status == ALDIS_OK {
         return Ok(());
     }
-    // The library never writes the caller's struct_size (CABI-021).
-    assert_eq!(d.struct_size, size_of_u32::<aldis_error_detail_t>());
     assert_eq!(status, d.kind, "status and detail disagree");
     let kind = ErrorKind::from_code(u16::try_from(d.kind).unwrap()).unwrap();
     // A field code crosses the ABI only if the catalogue has it (API-082).
@@ -152,15 +149,7 @@ fn anomalies<A: Anomaly>(mask: u32) -> Vec<String> {
         .collect()
 }
 
-fn size_of_u32<T>() -> u32 {
-    u32::try_from(size_of::<T>()).unwrap()
-}
-
 // ---------------------------------------------------------------- time
-
-fn format_size() -> u32 {
-    size_of_u32::<aldis_time_format_t>()
-}
 
 fn with_tail(mut f: aldis_time_format_t, obj: &Value) -> aldis_time_format_t {
     let tail = hex::decode(
@@ -177,7 +166,6 @@ fn with_tail(mut f: aldis_time_format_t, obj: &Value) -> aldis_time_format_t {
 /// The C format of a vector's format object (time vectors' names).
 fn format_of(obj: &Value) -> aldis_time_format_t {
     let base = aldis_time_format_t {
-        struct_size: format_size(),
         ..aldis_time_format_t::default()
     };
     let f = match str_of(obj, "code") {
@@ -367,7 +355,6 @@ fn time_encode(f: &aldis_time_format_t, v: &aldis_time_value_t, pfield: bool) ->
 
 fn ascii_options(case: &CodecCase) -> aldis_time_ascii_options_t {
     aldis_time_ascii_options_t {
-        struct_size: size_of_u32::<aldis_time_ascii_options_t>(),
         max_fraction_digits: case
             .params
             .as_ref()
@@ -458,7 +445,6 @@ fn with_code(format: &Value, code: &str) -> Value {
 
 fn convert(case: &CodecCase) -> R<Value> {
     let mut cfg = aldis_time_convert_config_t {
-        struct_size: size_of_u32::<aldis_time_convert_config_t>(),
         ..aldis_time_convert_config_t::default()
     };
     if let Some(e) = case.params.as_ref().and_then(|p| p.get("epoch")) {
@@ -474,11 +460,9 @@ fn convert(case: &CodecCase) -> R<Value> {
     match str_of(from, "code") {
         "ascii" => {
             let options = aldis_time_ascii_options_t {
-                struct_size: size_of_u32::<aldis_time_ascii_options_t>(),
                 max_fraction_digits: 12,
             };
             instant.format = aldis_time_format_t {
-                struct_size: format_size(),
                 code: ALDIS_TIME_ASCII,
                 ..aldis_time_format_t::default()
             };
@@ -492,7 +476,6 @@ fn convert(case: &CodecCase) -> R<Value> {
     let to = param(case, "to");
     if str_of(to, "code") == "ascii" {
         cfg.to = aldis_time_format_t {
-            struct_size: format_size(),
             code: ALDIS_TIME_ASCII,
             ..aldis_time_format_t::default()
         };
@@ -567,7 +550,6 @@ fn time_run(case: &CodecCase) -> R<Value> {
         "cuc_from_ns" => {
             let p = params(case);
             let f = aldis_time_format_t {
-                struct_size: format_size(),
                 code: ALDIS_TIME_CUC,
                 coarse_octets: u8_of(&p, "coarse_octets"),
                 fine_octets: u8_of(&p, "fine_octets"),
@@ -629,7 +611,6 @@ fn time_run(case: &CodecCase) -> R<Value> {
 
 fn spp_config(case: &CodecCase) -> aldis_spp_config_t {
     aldis_spp_config_t {
-        struct_size: size_of_u32::<aldis_spp_config_t>(),
         max_packet_len: case.config.as_ref().map_or(ALDIS_SPP_MAX_PACKET_LEN, |c| {
             u32::try_from(c["max_packet_len"].as_u64().unwrap()).unwrap()
         }),
@@ -662,9 +643,9 @@ fn spp_json(p: &aldis_spp_packet_t, bytes: &[u8]) -> Value {
         "sequence_flags": p.fields.sequence_flags,
         "sequence_count": p.fields.sequence_count,
         "packet_name": if tc { json!(p.fields.sequence_count) } else { Value::Null },
-        "data_len": p.data_len,
+        "data_len": p.data.len,
         "packet_len": p.packet_len,
-        "data_hex": hex::encode(&bytes[p.data_offset..p.data_offset + p.data_len]),
+        "data_hex": hex::encode(&bytes[p.data.offset..p.data.offset + p.data.len]),
         "consumed": p.packet_len,
         "anomalies": anomalies::<SppAnomaly>(p.anomalies),
     })
@@ -698,10 +679,8 @@ fn spp_encode(case: &CodecCase) -> R<Value> {
 
 fn spp_layout(kind: u32) -> aldis_spp_secondary_layout_t {
     aldis_spp_secondary_layout_t {
-        struct_size: size_of_u32::<aldis_spp_secondary_layout_t>(),
         kind,
         time_format: aldis_time_format_t {
-            struct_size: format_size(),
             ..aldis_time_format_t::default()
         },
         ..aldis_spp_secondary_layout_t::default()
@@ -751,7 +730,7 @@ fn split_time(case: &CodecCase) -> R<Value> {
     let bytes = input(case);
     let s = spp_split(&bytes, mode(case), &layout)?;
     assert!(s.has_time, "{}", case.id);
-    let sec = &bytes[s.secondary_header_offset..][..s.secondary_header_len];
+    let sec = &bytes[s.secondary_header.offset..][..s.secondary_header.len];
     let time_code = &sec[..s.time.len];
     // The decoded code re-encodes to the received octets through the C ABI (API-020).
     let reencoded = time_encode(&s.time.format, &s.time.value, s.time.pfield_len > 0)
@@ -763,9 +742,9 @@ fn split_time(case: &CodecCase) -> R<Value> {
     );
     Ok(json!({
         "secondary_header_hex": hex::encode(sec),
-        "user_data_hex": hex::encode(&bytes[s.user_data_offset..][..s.user_data_len]),
+        "user_data_hex": hex::encode(&bytes[s.user_data.offset..][..s.user_data.len]),
         "time_code_hex": hex::encode(time_code),
-        "ancillary_hex": hex::encode(&bytes[s.ancillary_offset..][..s.ancillary_len]),
+        "ancillary_hex": hex::encode(&bytes[s.ancillary.offset..][..s.ancillary.len]),
     }))
 }
 
@@ -798,7 +777,6 @@ fn track(case: &CodecCase) -> Value {
     };
     let h = &raw mut storage;
     let cfg = aldis_spp_tracker_config_t {
-        struct_size: size_of_u32::<aldis_spp_tracker_config_t>(),
         capacity: u32::try_from(usize_of(&params(case), "capacity")).unwrap(),
     };
     // SAFETY: `h` points to live storage; `cfg` is a live local.
@@ -845,7 +823,6 @@ fn segment(case: &CodecCase) -> R<Value> {
     let sdu = hex_of(&p, "sdu_hex");
     let sec = hex_of(&p, "secondary_header_hex");
     let seg_cfg = aldis_spp_segmenter_config_t {
-        struct_size: size_of_u32::<aldis_spp_segmenter_config_t>(),
         packet_type: u8_of(&p, "packet_type"),
         apid: u16_of(&p, "apid"),
         max_user_len: usize_of(&p, "max_user_len"),
@@ -1046,8 +1023,8 @@ fn spp_run(case: &CodecCase) -> R<Value> {
             let s = spp_split(&bytes, mode(case), &layout)?;
             assert!(!s.has_time);
             Ok(json!({
-                "secondary_header_hex": hex::encode(&bytes[s.secondary_header_offset..][..s.secondary_header_len]),
-                "user_data_hex": hex::encode(&bytes[s.user_data_offset..][..s.user_data_len]),
+                "secondary_header_hex": hex::encode(&bytes[s.secondary_header.offset..][..s.secondary_header.len]),
+                "user_data_hex": hex::encode(&bytes[s.user_data.offset..][..s.user_data.len]),
             }))
         }
         "split_time" => split_time(case),
@@ -1060,9 +1037,8 @@ fn spp_run(case: &CodecCase) -> R<Value> {
 
 // ---------------------------------------------------------------- EPP
 
-fn epp_any_config() -> aldis_epp_config_t {
+const fn epp_any_config() -> aldis_epp_config_t {
     aldis_epp_config_t {
-        struct_size: size_of_u32::<aldis_epp_config_t>(),
         min_data_len: 0,
         max_data_len: ALDIS_EPP_MAX_DATA_LEN,
         valid_epis: 0xFF,
@@ -1081,7 +1057,6 @@ fn epp_config(case: &CodecCase) -> aldis_epp_config_t {
             .fold(0, |a, b| a | b)
     };
     aldis_epp_config_t {
-        struct_size: size_of_u32::<aldis_epp_config_t>(),
         min_data_len: u32_of(&c, "min_data_len"),
         max_data_len: u32_of(&c, "max_data_len"),
         valid_epis: u8::try_from(mask("valid_epis")).unwrap(),
@@ -1174,7 +1149,7 @@ fn epp_run(case: &CodecCase) -> R<Value> {
                 "ccsds_defined": if p.has_ccsds_defined { json!(p.ccsds_defined) } else { Value::Null },
                 "header_len": p.header_len,
                 "packet_len": p.packet_len,
-                "data_hex": hex::encode(&bytes[p.data_offset..][..p.data_len]),
+                "data_hex": hex::encode(&bytes[p.data.offset..][..p.data.len]),
                 "consumed": p.packet_len,
                 "anomalies": anomalies::<EppAnomaly>(p.anomalies),
             }))
@@ -1196,7 +1171,7 @@ fn epp_run(case: &CodecCase) -> R<Value> {
                 &epp_any_config(),
                 &fields,
                 u32::from(p.header_len),
-                p.data_len,
+                p.data.len,
             )
             .unwrap_or_else(|_| panic!("{}: re-encode", case.id));
             Ok(json!({ "header_hex": header_hex }))
@@ -1428,12 +1403,8 @@ impl AosChannels {
     }
 }
 
-fn aos_mc(scid: u16, pc: aldis_aos_config_t) -> aldis_aos_mc_config_t {
-    aldis_aos_mc_config_t {
-        struct_size: size_of_u32::<aldis_aos_mc_config_t>(),
-        scid,
-        pc,
-    }
+const fn aos_mc(scid: u16, pc: aldis_aos_config_t) -> aldis_aos_mc_config_t {
+    aldis_aos_mc_config_t { scid, pc }
 }
 
 fn aos_flag(obj: &Value, name: &str) -> u8 {
@@ -1447,7 +1418,6 @@ fn aos_size(obj: &Value, name: &str) -> u64 {
 fn aos_channels(case: &CodecCase) -> AosChannels {
     let cfg = Value::Object(case.config.clone().unwrap());
     let pc = aldis_aos_config_t {
-        struct_size: size_of_u32::<aldis_aos_config_t>(),
         fhec: aos_flag(&cfg, "fhec"),
         fecf: aos_flag(&cfg, "fecf"),
         edition: match cfg.get("edition").and_then(Value::as_str) {
@@ -1467,7 +1437,6 @@ fn aos_channels(case: &CodecCase) -> AosChannels {
     {
         let scid = u16_of(v, "scid");
         let vc = aldis_aos_vc_config_t {
-            struct_size: size_of_u32::<aldis_aos_vc_config_t>(),
             vcid: u8_of(v, "vcid"),
             content: match str_of(v, "content") {
                 "mpdu" => ALDIS_AOS_CONTENT_MPDU,
@@ -1541,7 +1510,7 @@ fn aos_pdu_names(p: &aldis_aos_pdu_t) -> (&'static str, Option<&'static str>, Op
 /// Every field the view exposes (TV-002), read from the C view and the caller's input.
 fn aos_json(v: &aldis_aos_frame_t, bytes: &[u8], pc: &aldis_aos_config_t, mode: u32) -> R<Value> {
     let (l, p) = (&v.layout, &v.pdu);
-    let ocf = (l.ocf_len != 0).then(|| aos_slice(bytes, l.ocf_offset, l.ocf_len));
+    let ocf = (l.ocf.len != 0).then(|| aos_slice(bytes, l.ocf.offset, l.ocf.len));
     let report = match ocf {
         Some(o) => {
             let mut report = u32::MAX;
@@ -1558,7 +1527,7 @@ fn aos_json(v: &aldis_aos_frame_t, bytes: &[u8], pc: &aldis_aos_config_t, mode: 
         aldis_aos_header_decode(bytes.as_ptr(), bytes.len(), pc, &raw mut header, e)
     })?;
     assert_eq!(header, v.header);
-    let data = aos_slice(bytes, l.data_offset, l.data_len);
+    let data = aos_slice(bytes, l.data.offset, l.data.len);
     // The data unit alone decodes to the view's (AOS-017).
     let mut alone = *p;
     if p.content == ALDIS_AOS_CONTENT_MPDU {
@@ -1585,17 +1554,17 @@ fn aos_json(v: &aldis_aos_frame_t, bytes: &[u8], pc: &aldis_aos_config_t, mode: 
     let unit = p.content == ALDIS_AOS_CONTENT_MPDU || p.content == ALDIS_AOS_CONTENT_BPDU;
     let mut out = aos_header_json(&v.header);
     let rest = json!({
-        "insert_zone_hex": hex::encode(aos_slice(bytes, l.insert_zone_offset, l.insert_zone_len)),
+        "insert_zone_hex": hex::encode(aos_slice(bytes, l.insert_zone.offset, l.insert_zone.len)),
         "security_header_hex": hex::encode(aos_slice(
             bytes,
-            l.security_header_offset,
-            l.security_header_len
+            l.security_header.offset,
+            l.security_header.len
         )),
         "data_field_hex": hex::encode(data),
         "security_trailer_hex": hex::encode(aos_slice(
             bytes,
-            l.security_trailer_offset,
-            l.security_trailer_len
+            l.security_trailer.offset,
+            l.security_trailer.len
         )),
         "ocf_hex": ocf.map(hex::encode),
         "ocf_report": report,
@@ -1605,7 +1574,7 @@ fn aos_json(v: &aldis_aos_frame_t, bytes: &[u8], pc: &aldis_aos_config_t, mode: 
         "pointer": pointer,
         "pointer_value": value,
         "pdu_spare": unit.then_some(p.spare),
-        "zone_hex": hex::encode(aos_slice(bytes, l.zone_offset, l.zone_len)),
+        "zone_hex": hex::encode(aos_slice(bytes, l.zone.offset, l.zone.len)),
         "consumed": l.frame_len,
         "anomalies": anomalies::<AosAnomaly>(v.anomalies),
     });
@@ -1891,7 +1860,6 @@ fn tm_fsh(v: Option<&Value>) -> u8 {
 fn tm_channels(case: &CodecCase) -> TmChannels {
     let cfg = Value::Object(case.config.clone().unwrap());
     let pc = aldis_tm_config_t {
-        struct_size: size_of_u32::<aldis_tm_config_t>(),
         fecf: u8::from(get(&cfg, "fecf").as_bool().unwrap()),
         frame_len: usize_of(&cfg, "frame_len"),
     };
@@ -1899,7 +1867,6 @@ fn tm_channels(case: &CodecCase) -> TmChannels {
         return TmChannels { pc, mc: None };
     };
     let mc = aldis_tm_mc_config_t {
-        struct_size: size_of_u32::<aldis_tm_mc_config_t>(),
         scid: u16::try_from(scid.as_u64().unwrap()).unwrap(),
         fsh_len: tm_fsh(cfg.get("mc_fsh")),
         ocf: u8::from(cfg.get("mc_ocf").and_then(Value::as_bool).unwrap_or(false)),
@@ -1911,7 +1878,6 @@ fn tm_channels(case: &CodecCase) -> TmChannels {
         .into_iter()
         .flatten()
         .map(|v| aldis_tm_vc_config_t {
-            struct_size: size_of_u32::<aldis_tm_vc_config_t>(),
             vcid: u8_of(v, "vcid"),
             content: match str_of(v, "content") {
                 "packets" => ALDIS_TM_CONTENT_PACKETS,
@@ -1978,7 +1944,7 @@ fn tm_json(v: &aldis_tm_frame_t, bytes: &[u8]) -> R<Value> {
         other => panic!("pointer {other}"),
     };
     assert_eq!(v.pointer == ALDIS_TM_POINTER_NONE, h.sync_flag);
-    let ocf = (l.ocf_len != 0).then(|| tm_slice(bytes, l.ocf_offset, l.ocf_len));
+    let ocf = (l.ocf.len != 0).then(|| tm_slice(bytes, l.ocf.offset, l.ocf.len));
     let report = match ocf {
         Some(o) => {
             let mut report = u32::MAX;
@@ -2008,17 +1974,17 @@ fn tm_json(v: &aldis_tm_frame_t, bytes: &[u8]) -> R<Value> {
         "packet_offset": (v.pointer == ALDIS_TM_POINTER_STARTS_AT).then_some(v.packet_offset),
         "fsh_len": (v.fsh_len != 0).then_some(v.fsh_len),
         "fsh_data_hex": (v.fsh_len != 0)
-            .then(|| hex::encode(tm_slice(bytes, l.fsh_data_offset, l.fsh_data_len))),
+            .then(|| hex::encode(tm_slice(bytes, l.fsh_data.offset, l.fsh_data.len))),
         "security_header_hex": hex::encode(tm_slice(
             bytes,
-            l.security_header_offset,
-            l.security_header_len
+            l.security_header.offset,
+            l.security_header.len
         )),
-        "data_hex": hex::encode(tm_slice(bytes, l.data_offset, l.data_len)),
+        "data_hex": hex::encode(tm_slice(bytes, l.data.offset, l.data.len)),
         "security_trailer_hex": hex::encode(tm_slice(
             bytes,
-            l.security_trailer_offset,
-            l.security_trailer_len
+            l.security_trailer.offset,
+            l.security_trailer.len
         )),
         "ocf_hex": ocf.map(hex::encode),
         "ocf_report": report,
@@ -2244,7 +2210,6 @@ fn uslp_frame_type(v: &Value) -> u8 {
 fn uslp_channels(case: &CodecCase) -> UslpChannels {
     let cfg = Value::Object(case.config.clone().unwrap());
     let pc = aldis_uslp_config_t {
-        struct_size: size_of_u32::<aldis_uslp_config_t>(),
         frame_type: uslp_frame_type(get(&cfg, "frame_type")),
         fecf: u8::from(get(&cfg, "fecf").as_bool().unwrap()),
         frame_len: usize_of(&cfg, "frame_len"),
@@ -2258,7 +2223,6 @@ fn uslp_channels(case: &CodecCase) -> UslpChannels {
             let security = get(v, "security");
             let per_map = security.as_str() == Some("per_map");
             aldis_uslp_vc_config_t {
-                struct_size: size_of_u32::<aldis_uslp_vc_config_t>(),
                 scid: u16_of(v, "scid"),
                 vcid: u8_of(v, "vcid"),
                 frame_type: uslp_frame_type(get(v, "frame_type")),
@@ -2297,7 +2261,6 @@ fn uslp_channels(case: &CodecCase) -> UslpChannels {
         .unwrap()
         .iter()
         .map(|m| aldis_uslp_map_config_t {
-            struct_size: size_of_u32::<aldis_uslp_map_config_t>(),
             scid: u16_of(m, "scid"),
             vcid: u8_of(m, "vcid"),
             map_id: u8_of(m, "map_id"),
@@ -2379,18 +2342,18 @@ fn uslp_json(v: &aldis_uslp_frame_t, bytes: &[u8]) -> Value {
         "vc_id": c.vcid,
         "map_id": c.map_id,
         "frame_len": l.frame_len,
-        "security_header_hex": part(l.security_header_offset, l.security_header_len),
+        "security_header_hex": part(l.security_header.offset, l.security_header.len),
         "tfdz_construction_rule": t.rule,
         "upid": t.upid,
         "upid_assigned": v.upid_assigned,
-        "tfdz_hex": part(l.tfdz_offset, l.tfdz_len),
-        "security_trailer_hex": part(l.security_trailer_offset, l.security_trailer_len),
+        "tfdz_hex": part(l.tfdz.offset, l.tfdz.len),
+        "security_trailer_hex": part(l.security_trailer.offset, l.security_trailer.len),
         "consumed": l.frame_len,
         "anomalies": anomalies::<UslpAnomaly>(v.anomalies),
     });
     // The fields tile the frame in wire order (CABI-012).
-    assert_eq!(l.tfdf_header_offset + l.tfdf_header_len, l.tfdz_offset);
-    assert_eq!(l.fecf_offset + l.fecf_len, l.frame_len);
+    assert_eq!(l.tfdf_header.offset + l.tfdf_header.len, l.tfdz.offset);
+    assert_eq!(l.fecf.offset + l.fecf.len, l.frame_len);
     if v.truncated {
         assert_eq!(
             (v.kind, v.ocf_flag, v.vcf_count, v.has_fecf),
@@ -2420,16 +2383,16 @@ fn uslp_json(v: &aldis_uslp_frame_t, bytes: &[u8]) -> Value {
         "ocf_flag": v.ocf_flag,
         "vcf_count_len": v.vcf_count_len,
         "vcf_count": v.vcf_count,
-        "insert_zone_hex": part(l.insert_zone_offset, l.insert_zone_len),
+        "insert_zone_hex": part(l.insert_zone.offset, l.insert_zone.len),
         "pointer": has_pointer.then_some(t.pointer),
         "pointer_kind": pointer_kind,
-        "ocf_hex": (l.ocf_len != 0).then(|| part(l.ocf_offset, l.ocf_len)),
+        "ocf_hex": (l.ocf.len != 0).then(|| part(l.ocf.offset, l.ocf.len)),
         "fecf_hex": v.has_fecf.then(|| format!("{:04X}", v.fecf)),
     });
-    assert_eq!(v.ocf_flag, l.ocf_len != 0);
+    assert_eq!(v.ocf_flag, l.ocf.len != 0);
     if v.has_fecf {
         assert_eq!(
-            uslp_slice(bytes, l.fecf_offset, l.fecf_len),
+            uslp_slice(bytes, l.fecf.offset, l.fecf.len),
             v.fecf.to_be_bytes()
         );
     }
@@ -2555,7 +2518,6 @@ fn uslp_validate(case: &CodecCase, ch: &UslpChannels) -> Value {
     let mut item = aldis_uslp_stream_item_t::default();
     let mut offset = 0_usize;
     let mut det = aldis_error_detail_t {
-        struct_size: size_of_u32::<aldis_error_detail_t>(),
         ..aldis_error_detail_t::default()
     };
     // SAFETY: every pointer is to a live local or vector, with its length.
@@ -2589,7 +2551,7 @@ fn uslp_validate(case: &CodecCase, ch: &UslpChannels) -> Value {
     }
     match item.kind {
         ALDIS_USLP_STREAM_ACCEPTED => {
-            if item.len == bytes.len() {
+            if item.range.len == bytes.len() {
                 json!({ "accepted": true, "frame_len": item.frame.layout.frame_len })
             } else {
                 let r = Reason::LengthMismatch;
@@ -2662,7 +2624,7 @@ fn uslp_delimit(case: &CodecCase, ch: &UslpChannels) -> R<Value> {
                 e,
             )
         })?;
-        assert_eq!(item.offset, at);
+        assert_eq!(item.range.offset, at);
         let kind = match item.kind {
             ALDIS_USLP_STREAM_END => break,
             ALDIS_USLP_STREAM_ACCEPTED => "frame",
@@ -2675,17 +2637,17 @@ fn uslp_delimit(case: &CodecCase, ch: &UslpChannels) -> R<Value> {
             },
             other => panic!("delimited kind {other}"),
         };
-        assert!(item.len > 0);
+        assert!(item.range.len > 0);
         if item.kind == ALDIS_USLP_STREAM_ACCEPTED {
             assert_eq!(
-                item.declared_len, item.len,
+                item.declared_len, item.range.len,
                 "a frame declares its own length"
             );
         }
         items.push(json!({
             "kind": kind,
             "offset": at,
-            "octets_hex": hex::encode(&unit[at..at + item.len]),
+            "octets_hex": hex::encode(&unit[at..at + item.range.len]),
             "declared_len": (kind == "incomplete")
                 .then_some(item.declared_len),
         }));
@@ -2865,7 +2827,7 @@ mod tc {
 
     use super::{
         ALDIS_MODE_LENIENT, ALDIS_OK, ErrorKind, Fail, FieldId, R, aldis_error_detail_t, anomalies,
-        call, get, handle, input, mode, params, size_of_u32, str_of, u8_of, u16_of, usize_of,
+        call, get, handle, input, mode, params, str_of, u8_of, u16_of, usize_of,
     };
 
     /// A master channel: its struct, its virtual channels, and its MAPs.
@@ -2907,7 +2869,6 @@ mod tc {
     fn channels(case: &CodecCase) -> Option<Channels> {
         let cfg = Value::Object(case.config.clone()?);
         let pc = aldis_tc_config_t {
-            struct_size: size_of_u32::<aldis_tc_config_t>(),
             fecf: flag(&cfg, "fecf"),
             max_frame_len: usize_of(&cfg, "max_frame_len"),
         };
@@ -2923,17 +2884,12 @@ mod tc {
         let mcs = scids
             .into_iter()
             .map(|scid| {
-                let mc = aldis_tc_mc_config_t {
-                    struct_size: size_of_u32::<aldis_tc_mc_config_t>(),
-                    scid,
-                    pc,
-                };
+                let mc = aldis_tc_mc_config_t { scid, pc };
                 let on = |v: &&Value| u16_of(v, "scid") == scid;
                 let vcs = vcs
                     .iter()
                     .filter(on)
                     .map(|v| aldis_tc_vc_config_t {
-                        struct_size: size_of_u32::<aldis_tc_vc_config_t>(),
                         vcid: u8_of(v, "vcid"),
                         segment_header: flag(v, "segment_header"),
                         security_header_len: opt_u8(v, "security_header_len"),
@@ -2945,7 +2901,6 @@ mod tc {
                     .iter()
                     .filter(on)
                     .map(|m| aldis_tc_map_config_t {
-                        struct_size: size_of_u32::<aldis_tc_map_config_t>(),
                         vcid: u8_of(m, "vcid"),
                         map_id: u8_of(m, "map_id"),
                         security_header_len: opt_u8(m, "security_header_len"),
@@ -2983,7 +2938,7 @@ mod tc {
         })?;
         assert_eq!(header, *h);
         assert_eq!(l.frame_len, h.frame_len);
-        let data = slice(bytes, l.data_offset, l.data_len);
+        let data = slice(bytes, l.data.offset, l.data.len);
         let (command, vr) = match v.control.command {
             ALDIS_TC_CONTROL_NONE => (Value::Null, Value::Null),
             ALDIS_TC_CONTROL_UNLOCK => (json!("unlock"), Value::Null),
@@ -3013,14 +2968,14 @@ mod tc {
             })),
             "security_header_hex": hex::encode(slice(
                 bytes,
-                l.security_header_offset,
-                l.security_header_len
+                l.security_header.offset,
+                l.security_header.len
             )),
             "data_hex": hex::encode(data),
             "security_trailer_hex": hex::encode(slice(
                 bytes,
-                l.security_trailer_offset,
-                l.security_trailer_len
+                l.security_trailer.offset,
+                l.security_trailer.len
             )),
             "fecf_hex": v.has_fecf.then(|| format!("{:04X}", v.fecf)),
             "control_command": command,
@@ -3129,7 +3084,6 @@ mod tc {
         let mut item = aldis_tc_stream_item_t::default();
         let mut offset = 0_usize;
         let mut det = aldis_error_detail_t {
-            struct_size: size_of_u32::<aldis_error_detail_t>(),
             ..aldis_error_detail_t::default()
         };
         // SAFETY: every pointer is to a live local or vector, with its length.
@@ -3162,7 +3116,7 @@ mod tc {
         }
         match item.kind {
             ALDIS_TC_STREAM_ACCEPTED => {
-                if item.len == bytes.len() {
+                if item.range.len == bytes.len() {
                     Ok(json!({ "accepted": true, "frame_len": item.frame.layout.frame_len }))
                 } else {
                     let r = Reason::LengthMismatch;
@@ -3214,17 +3168,11 @@ mod tc {
     /// Every item of a data unit, one call each via the intake stream (TC-020).
     fn delimit(unit: &[u8]) -> R<Value> {
         let pc = aldis_tc_config_t {
-            struct_size: size_of_u32::<aldis_tc_config_t>(),
             fecf: 0,
             max_frame_len: 1024,
         };
-        let mc = aldis_tc_mc_config_t {
-            struct_size: size_of_u32::<aldis_tc_mc_config_t>(),
-            scid: 0x155,
-            pc,
-        };
+        let mc = aldis_tc_mc_config_t { scid: 0x155, pc };
         let vc = aldis_tc_vc_config_t {
-            struct_size: size_of_u32::<aldis_tc_vc_config_t>(),
             vcid: 1,
             segment_header: 0,
             security_header_len: 0,
@@ -3252,7 +3200,7 @@ mod tc {
                     e,
                 )
             })?;
-            assert_eq!(item.offset, offset);
+            assert_eq!(item.range.offset, offset);
             let (kind, declared) = match item.kind {
                 ALDIS_TC_STREAM_END => break,
                 ALDIS_TC_STREAM_ACCEPTED => ("frame", Value::Null),
@@ -3263,11 +3211,11 @@ mod tc {
                 },
                 other => panic!("item kind {other}"),
             };
-            assert!(item.len > 0);
+            assert!(item.range.len > 0);
             items.push(json!({
                 "kind": kind,
                 "offset": offset,
-                "octets_hex": hex::encode(slice(unit, offset, item.len)),
+                "octets_hex": hex::encode(slice(unit, offset, item.range.len)),
                 "declared_len": declared,
             }));
             offset = next_offset;

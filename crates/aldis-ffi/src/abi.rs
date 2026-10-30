@@ -5,9 +5,8 @@
 //! [`crate::handle`]. A pointer is rejected when it is `NULL` (unless its length is 0),
 //! misaligned for its type, or when its range wraps the address space; an output buffer is
 //! rejected when it overlaps an input buffer of the same call, so that no shared and mutable
-//! Rust references alias (GEN-071). A configuration struct is rejected when its `struct_size`
-//! is smaller than the struct this library knows (CABI-033). Each rejection is
-//! `ALDIS_ERR_INVALID_FIELD` with field 0 and no detail. What cannot be checked, that a
+//! Rust references alias (GEN-071). Each rejection is `ALDIS_ERR_INVALID_FIELD` with field 0 and
+//! no detail. What cannot be checked, that a
 //! non-`NULL` pointer is valid for the access, is the caller's part of the contract, stated in
 //! every function's `# Safety` section.
 
@@ -18,9 +17,7 @@ use aldis::core::{DecodeMode, Error, ErrorKind, Result};
 
 use crate::mirror::{mirror, parse};
 
-use crate::error::{
-    ALDIS_ERR_INVALID_FIELD, ALDIS_ERROR_DETAIL_MIN_SIZE, ALDIS_OK, aldis_error_detail_t, status,
-};
+use crate::error::{ALDIS_ERR_INVALID_FIELD, ALDIS_OK, aldis_error_detail_t, status};
 
 /// The decode mode argument (API-030; OI-57 convention 2). The argument is a `uint32_t`: an
 /// enumerator of this type, which no field of the header uses (CABI-010).
@@ -187,48 +184,11 @@ pub(crate) unsafe fn out_disjoint<'a, T>(
     Ok(out)
 }
 
-/// The configuration struct that `ptr` points to, whose first field is `uint32_t struct_size`
-/// (CABI-033, CABI-022).
-///
-/// # Errors
-/// `InvalidField` (no field) when `ptr` is `NULL` or misaligned, or `struct_size` is smaller
-/// than `T`.
-///
-/// # Safety
-/// A non-null, aligned `ptr` must be valid for reads of `struct_size` initialized octets, of
-/// which the first four hold `struct_size`. `T` must be `#[repr(C)]` with a `u32` first field.
-#[expect(
-    unsafe_code,
-    reason = "checked access to caller memory (CABI-022, GEN-071)"
-)]
-pub(crate) unsafe fn config<T: Copy>(ptr: *const T) -> Result<T> {
-    if ptr.is_null() || !ptr.is_aligned() {
-        return Err(invalid_argument());
-    }
-    let size = ptr.cast::<u32>();
-    if !size.is_aligned() {
-        return Err(invalid_argument());
-    }
-    // SAFETY: non-null and aligned for `u32`, checked above; the first four octets of the
-    // struct are its `struct_size` by the caller's contract.
-    let struct_size = unsafe { size.read() };
-    if usize::try_from(struct_size).map_or(true, |n| n < size_of::<T>()) {
-        return Err(invalid_argument());
-    }
-    // SAFETY: aligned for `T`, and valid for `struct_size` ≥ `size_of::<T>()` octets.
-    Ok(unsafe { ptr.read() })
-}
-
-/// An array of configuration structs in caller memory, each starting with `uint32_t
-/// struct_size` (CABI-033, CABI-022; M2 plan D14): `len` structs, `stride` octets apart.
-///
-/// The stride is the `struct_size` of the first struct, which every struct repeats, so that a
-/// caller built against a later header, with a longer struct, still passes an array this
-/// library can step through; the library reads the struct it knows from each element.
+/// An array of configuration structs in caller memory (CABI-022; M2 plan D14): `len` structs,
+/// `size_of::<T>()` octets apart, as a C array of the struct.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct Configs<'a, T> {
     ptr: *const T,
-    stride: usize,
     len: usize,
     life: PhantomData<&'a T>,
 }
@@ -242,48 +202,33 @@ impl<T: Copy> Configs<'_, T> {
     /// The struct at index `i`, read by value.
     ///
     /// # Errors
-    /// `InvalidField` (no field) when `i` is not below [`len`](Self::len), or the struct's
-    /// `struct_size` is not the array's stride.
+    /// `InvalidField` (no field) when `i` is not below [`len`](Self::len).
     #[expect(
         unsafe_code,
         reason = "reads caller memory that `configs` checked (CABI-022, GEN-071)"
     )]
-    pub(crate) fn get(&self, i: usize) -> Result<T> {
+    pub(crate) const fn get(&self, i: usize) -> Result<T> {
         if i >= self.len {
             return Err(invalid_argument());
         }
-        let offset = i.checked_mul(self.stride).ok_or_else(invalid_argument)?;
-        // SAFETY: `configs` checked that the `len × stride` octets at `ptr` form one range that
-        // neither wraps nor exceeds `isize::MAX`, and its caller made them valid for reads; with
-        // `i < len`, the struct at `offset` lies inside that range.
-        let element = unsafe { self.ptr.cast::<u8>().add(offset) }.cast::<T>();
-        // `ptr` is aligned for `T` and for `u32`, and `stride` a multiple of both alignments, so
-        // `element` is too.
-        let size = element.cast::<u32>();
-        // SAFETY: inside the checked range and aligned for `u32`; the first four octets of
-        // every struct are its `struct_size` by the caller's contract.
-        let struct_size = unsafe { size.read() };
-        if usize::try_from(struct_size) != Ok(self.stride) {
-            return Err(invalid_argument());
-        }
-        // SAFETY: aligned for `T`, and `stride` ≥ `size_of::<T>()` octets of it lie inside the
-        // checked range and hold an initialized `T` by the caller's contract.
-        Ok(unsafe { element.read() })
+        // SAFETY: `configs` checked that the `len × size_of::<T>()` octets at `ptr` form one
+        // range that neither wraps nor exceeds `isize::MAX`, and that `ptr` is aligned for `T`;
+        // its caller made them valid for reads of initialized `T`. With `i < len`, the element
+        // lies inside that range and is aligned.
+        Ok(unsafe { self.ptr.add(i).read() })
     }
 }
 
-/// The `len` configuration structs at `ptr` as an array (CABI-033, CABI-022; M2 plan D14).
-/// `NULL` is allowed for an empty array.
+/// The `len` configuration structs at `ptr` as an array (CABI-022; M2 plan D14). `NULL` is
+/// allowed for an empty array.
 ///
 /// # Errors
-/// `InvalidField` (no field) when `ptr` is `NULL` and `len` is not 0, `ptr` is misaligned, the
-/// first `struct_size` (the stride) is smaller than `T` or not a multiple of its alignment, or
-/// the `len × stride` octets wrap or exceed `isize::MAX`.
+/// `InvalidField` (no field) when `ptr` is `NULL` and `len` is not 0, `ptr` is misaligned, or
+/// the `len × size_of::<T>()` octets wrap or exceed `isize::MAX`.
 ///
 /// # Safety
-/// For `len` > 0, `ptr` must be valid for reads of `len × struct_size` initialized octets, of
-/// which each struct's first four hold its `struct_size`, not written during `'a`. `T` must be
-/// `#[repr(C)]` with a `u32` first field.
+/// For `len` > 0, `ptr` must be valid for reads of `len` initialized `T`, not written during
+/// `'a`.
 #[expect(
     unsafe_code,
     reason = "checked access to caller memory (CABI-022, GEN-071)"
@@ -291,7 +236,6 @@ impl<T: Copy> Configs<'_, T> {
 pub(crate) unsafe fn configs<'a, T: Copy>(ptr: *const T, len: usize) -> Result<Configs<'a, T>> {
     let empty = Configs {
         ptr,
-        stride: 0,
         len: 0,
         life: PhantomData,
     };
@@ -301,30 +245,13 @@ pub(crate) unsafe fn configs<'a, T: Copy>(ptr: *const T, len: usize) -> Result<C
     if ptr.is_null() || !ptr.is_aligned() {
         return Err(invalid_argument());
     }
-    let size = ptr.cast::<u32>();
-    if !size.is_aligned() {
-        return Err(invalid_argument());
-    }
-    // SAFETY: non-null and aligned for `u32`, checked above; the first four octets of the
-    // first struct are its `struct_size` by the caller's contract.
-    let stride = usize::try_from(unsafe { size.read() }).map_err(|_| invalid_argument())?;
-    // A multiple of both alignments keeps every element aligned for `T` and for the `u32`
-    // `struct_size` that `Configs::get` reads first, whatever `T` is.
-    if stride < size_of::<T>()
-        || !stride.is_multiple_of(align_of::<T>())
-        || !stride.is_multiple_of(align_of::<u32>())
-    {
-        return Err(invalid_argument());
-    }
-    let total = stride.checked_mul(len).ok_or_else(invalid_argument)?;
+    let total = size_of::<T>()
+        .checked_mul(len)
+        .ok_or_else(invalid_argument)?;
     if range(ptr.cast::<u8>(), total).is_none() || isize::try_from(total).is_err() {
         return Err(invalid_argument());
     }
-    Ok(Configs {
-        stride,
-        len,
-        ..empty
-    })
+    Ok(Configs { len, ..empty })
 }
 
 /// The address range `[start, end)` of `len` octets at `ptr`, if it does not wrap.
@@ -400,65 +327,14 @@ pub(crate) unsafe fn bytes_mut<'a>(
     Ok(unsafe { core::slice::from_raw_parts_mut(ptr, cap) })
 }
 
-/// Writes the members of `value` that lie wholly inside the caller's `struct_size` octets at
-/// `detail`, except `struct_size` itself (CABI-021, CABI-033).
-///
-/// # Safety
-/// `detail` is aligned and valid for writes of `struct_size` octets.
-#[expect(
-    unsafe_code,
-    reason = "writes caller memory within its struct_size (CABI-021, GEN-071)"
-)]
-unsafe fn write_detail(
-    detail: NonNull<aldis_error_detail_t>,
-    struct_size: usize,
-    value: &aldis_error_detail_t,
-) {
-    use core::mem::offset_of;
-    let fits = |offset: usize, len: usize| {
-        offset
-            .checked_add(len)
-            .is_some_and(|end| end <= struct_size)
-    };
-    let d = detail.as_ptr();
-    // SAFETY: each member is written only when it lies wholly inside the `struct_size` octets
-    // the caller made writable (`fits`); a field projection of the aligned struct is aligned
-    // for the field's type, and no member outside `struct_size` is projected.
-    unsafe {
-        if fits(offset_of!(aldis_error_detail_t, kind), 4) {
-            (&raw mut (*d).kind).write(value.kind);
-        }
-        if fits(offset_of!(aldis_error_detail_t, field), 2) {
-            (&raw mut (*d).field).write(value.field);
-        }
-        if fits(offset_of!(aldis_error_detail_t, detail), 2) {
-            (&raw mut (*d).detail).write(value.detail);
-        }
-        if fits(offset_of!(aldis_error_detail_t, reserved), 4) {
-            (&raw mut (*d).reserved).write(value.reserved);
-        }
-        if fits(offset_of!(aldis_error_detail_t, needed), 8) {
-            (&raw mut (*d).needed).write(value.needed);
-        }
-        if fits(offset_of!(aldis_error_detail_t, expected), 8) {
-            (&raw mut (*d).expected).write(value.expected);
-        }
-        if fits(offset_of!(aldis_error_detail_t, found), 8) {
-            (&raw mut (*d).found).write(value.found);
-        }
-    }
-}
-
 /// Runs `f` and reports its result: [`ALDIS_OK`], or the catalogue code with the
 /// detail written to `detail` when it is not `NULL` (CABI-020, CABI-021).
 ///
-/// A misaligned `detail`, or one whose `struct_size` is below
-/// [`ALDIS_ERROR_DETAIL_MIN_SIZE`], is rejected before `f` runs, with
-/// `ALDIS_ERR_INVALID_FIELD`; the detail is then not written.
+/// A misaligned `detail` is rejected before `f` runs, with `ALDIS_ERR_INVALID_FIELD`; the
+/// detail is then not written.
 ///
 /// # Safety
-/// A non-null, aligned `detail` must be valid for a read of its first four octets, the
-/// `struct_size` the caller set, and for writes of `struct_size` octets.
+/// A non-null, aligned `detail` must be valid for one write of `aldis_error_detail_t`.
 #[expect(
     unsafe_code,
     reason = "checked access to caller memory (CABI-022, GEN-071)"
@@ -469,25 +345,16 @@ pub(crate) unsafe fn call(
 ) -> u32 {
     let target = match NonNull::new(detail) {
         None => None,
-        Some(d) => {
-            if !d.as_ptr().is_aligned() {
-                return ALDIS_ERR_INVALID_FIELD;
-            }
-            // SAFETY: `d` is NonNull and aligned; the caller set `struct_size`.
-            let struct_size = unsafe { d.cast::<u32>().as_ptr().read() };
-            if struct_size < ALDIS_ERROR_DETAIL_MIN_SIZE {
-                return ALDIS_ERR_INVALID_FIELD;
-            }
-            Some((d, usize::try_from(struct_size).unwrap_or(usize::MAX)))
-        }
+        Some(d) if d.as_ptr().is_aligned() => Some(d),
+        Some(_) => return ALDIS_ERR_INVALID_FIELD,
     };
     match f() {
         Ok(()) => ALDIS_OK,
         Err(e) => {
-            if let Some((d, struct_size)) = target {
-                // SAFETY: `d` is NonNull and aligned, checked above; valid for writes of
-                // `struct_size` octets by the caller's contract.
-                unsafe { write_detail(d, struct_size, &aldis_error_detail_t::from(e)) };
+            if let Some(d) = target {
+                // SAFETY: `d` is NonNull and aligned, checked above; valid for one write by the
+                // caller's contract.
+                unsafe { d.as_ptr().write(aldis_error_detail_t::from(e)) };
             }
             status(e)
         }
@@ -561,7 +428,6 @@ mod tests {
     #[repr(C)]
     #[derive(Clone, Copy, Debug, PartialEq, Eq)]
     struct Cfg {
-        struct_size: u32,
         value: u32,
     }
 
@@ -570,21 +436,11 @@ mod tests {
         clippy::cast_ptr_alignment,
         reason = "a misaligned pointer, rejected before any access"
     )]
-    fn configurations_need_their_struct_size() {
-        // req: CABI-033, CABI-022
-        let ok = Cfg {
-            struct_size: 8,
-            value: 7,
-        };
-        let small = Cfg {
-            struct_size: 4,
-            value: 7,
-        };
+    fn configurations_are_read_by_value() {
+        // req: CABI-022
+        let ok = Cfg { value: 7 };
         // SAFETY: each pointer is NULL or points to a live `Cfg`.
         unsafe {
-            assert_eq!(config(&raw const ok), Ok(ok));
-            assert_eq!(config(&raw const small), Err(invalid_argument()));
-            assert_eq!(config::<Cfg>(core::ptr::null()), Err(invalid_argument()));
             assert_eq!(read(&raw const ok), Ok(ok));
             assert_eq!(read::<Cfg>(core::ptr::null()), Err(invalid_argument()));
         }
@@ -592,7 +448,6 @@ mod tests {
         let misaligned = words.as_ptr().cast::<u8>().wrapping_add(1).cast::<Cfg>();
         // SAFETY: misaligned pointers are rejected before any access.
         unsafe {
-            assert_eq!(config(misaligned), Err(invalid_argument()));
             assert_eq!(read(misaligned), Err(invalid_argument()));
             assert!(out(misaligned.cast_mut()).is_err());
             assert!(out::<Cfg>(core::ptr::null_mut()).is_err());
@@ -600,18 +455,9 @@ mod tests {
     }
 
     #[test]
-    fn configuration_arrays_step_by_their_struct_size() {
-        // req: CABI-033, CABI-022
-        let cfgs = [
-            Cfg {
-                struct_size: 8,
-                value: 1,
-            },
-            Cfg {
-                struct_size: 8,
-                value: 2,
-            },
-        ];
+    fn configuration_arrays_are_c_arrays() {
+        // req: CABI-022
+        let cfgs = [Cfg { value: 1 }, Cfg { value: 2 }];
         // SAFETY: each pointer is NULL with length 0 or points to `len` live `Cfg`s.
         unsafe {
             let array = configs(cfgs.as_ptr(), 2).unwrap();

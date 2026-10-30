@@ -109,7 +109,7 @@ fn capacities_rs(entries: &[(String, String, u64)]) -> Result<String, String> {
          // Do not edit: change capacities.toml and regenerate.\n\
          \n\
          //! Build-time capacities of the C ABI (CABI-030, GEN-011): the `ALDIS_*_MAX_*` constants\n\
-         //! of the header, which `aldis_limits` reports at run time.\n",
+         //! of the header.\n",
     );
     for c in CAPACITIES {
         let found: Vec<u64> = entries

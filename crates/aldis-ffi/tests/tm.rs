@@ -1,7 +1,6 @@
 //! The contract of the TM part of the C ABI, called as a C caller calls it: the virtual channel
-//! arrays (CABI-033, M2 plan D14), the security layout variants (API-070), the one-shot
+//! arrays (M2 plan D14), the security layout variants (API-070), the one-shot
 //! encoders (API-023), and the argument checks (CABI-022) the vectors do not reach.
-#![expect(clippy::unwrap_used, reason = "test-only harness (RS-018)")]
 #![expect(unsafe_code, reason = "the tests call the C ABI")]
 
 use core::ptr::{null, null_mut};
@@ -15,26 +14,19 @@ use aldis_ffi::oid::*;
 use aldis_ffi::tm::*;
 use aldis_ffi::{ALDIS_MODE_LENIENT, ALDIS_MODE_STRICT, aldis_error_detail_t};
 
-fn size<T>() -> u32 {
-    u32::try_from(size_of::<T>()).unwrap()
-}
-
 fn detail() -> aldis_error_detail_t {
     aldis_error_detail_t {
-        struct_size: size::<aldis_error_detail_t>(),
         ..aldis_error_detail_t::default()
     }
 }
 
 /// 40-octet frames with an FECF on SCID 677.
-fn mc() -> aldis_tm_mc_config_t {
+const fn mc() -> aldis_tm_mc_config_t {
     aldis_tm_mc_config_t {
-        struct_size: size::<aldis_tm_mc_config_t>(),
         scid: 677,
         fsh_len: 0,
         ocf: 0,
         pc: aldis_tm_config_t {
-            struct_size: size::<aldis_tm_config_t>(),
             fecf: 1,
             frame_len: 40,
         },
@@ -44,7 +36,6 @@ fn mc() -> aldis_tm_mc_config_t {
 /// VC 4 carries packets with a Security Header of 6 octets and a Trailer of 8; VC 5 `VCA_SDUs`.
 fn vcs() -> [aldis_tm_vc_config_t; 2] {
     let vc = aldis_tm_vc_config_t {
-        struct_size: size::<aldis_tm_vc_config_t>(),
         vcid: 4,
         content: ALDIS_TM_CONTENT_PACKETS,
         security_header_len: 6,
@@ -108,17 +99,9 @@ fn sdls_frame() -> Vec<u8> {
     frame
 }
 
-/// A VC struct of a later header, with a member this library does not know.
-#[repr(C)]
-#[derive(Clone, Copy)]
-struct LaterVc {
-    vc: aldis_tm_vc_config_t,
-    later: u32,
-}
-
 #[test]
-fn vc_arrays_step_by_their_struct_size() {
-    // req: CABI-033, CABI-022, API-070
+fn vc_arrays_are_c_arrays() {
+    // req: CABI-022, API-070
     let mc = mc();
     let check = |vcs: *const aldis_tm_vc_config_t, n: usize| {
         // SAFETY: `mc` is live; `vcs` is NULL or points to `n` live structs.
@@ -128,27 +111,6 @@ fn vc_arrays_step_by_their_struct_size() {
     assert_eq!(check(base.as_ptr(), 2), ALDIS_OK);
     assert_eq!(check(null(), 0), ALDIS_OK);
     assert_eq!(check(null(), 1), ALDIS_ERR_INVALID_FIELD);
-    // A longer struct of a later header: the stride is its struct_size.
-    let later = base.map(|vc| LaterVc {
-        vc: aldis_tm_vc_config_t {
-            struct_size: size::<LaterVc>(),
-            ..vc
-        },
-        later: u32::MAX,
-    });
-    assert_eq!(check(later.as_ptr().cast(), 2), ALDIS_OK);
-    // Every struct repeats the stride.
-    let mut mixed = later;
-    mixed[1].vc.struct_size = size::<aldis_tm_vc_config_t>();
-    assert_eq!(check(mixed.as_ptr().cast(), 2), ALDIS_ERR_INVALID_FIELD);
-    // Shorter than the struct this library knows, or not a multiple of its alignment.
-    for struct_size in [8, size::<aldis_tm_vc_config_t>() + 2] {
-        let mut v = later;
-        for e in &mut v {
-            e.vc.struct_size = struct_size;
-        }
-        assert_eq!(check(v.as_ptr().cast(), 2), ALDIS_ERR_INVALID_FIELD);
-    }
     // A misaligned array.
     let words = [0_u32; 8];
     let misaligned = words.as_ptr().cast::<u8>().wrapping_add(1).cast();
@@ -158,17 +120,6 @@ fn vc_arrays_step_by_their_struct_size() {
         check(base.as_ptr(), usize::MAX / 4),
         ALDIS_ERR_INVALID_FIELD
     );
-    // The embedded physical channel carries its own struct_size (CABI-033).
-    let mut small = mc;
-    small.pc.struct_size = 4;
-    // SAFETY: as above.
-    let r = unsafe { aldis_tm_mc_config_check(&raw const small, base.as_ptr(), 2, null_mut()) };
-    assert_eq!(r, ALDIS_ERR_INVALID_FIELD);
-    small = mc;
-    small.struct_size = 4;
-    // SAFETY: as above.
-    let r = unsafe { aldis_tm_mc_config_check(&raw const small, base.as_ptr(), 2, null_mut()) };
-    assert_eq!(r, ALDIS_ERR_INVALID_FIELD);
 }
 
 #[test]
@@ -196,10 +147,10 @@ fn the_with_functions_take_the_vc_security_layout() {
         let l = v.layout;
         assert_eq!(
             (
-                l.security_header_len,
-                l.data_offset,
-                l.data_len,
-                l.security_trailer_len
+                l.security_header.len,
+                l.data.offset,
+                l.data.len,
+                l.security_trailer.len
             ),
             (6, 12, 18, 8)
         );
@@ -286,7 +237,7 @@ fn the_with_functions_take_the_vc_security_layout() {
             ALDIS_OK
         );
         assert_eq!(
-            (v.layout.data_len, v.fecf),
+            (v.layout.data.len, v.fecf),
             (18, u16::from_be_bytes([frame[38], frame[39]]))
         );
         assert_eq!(
@@ -300,7 +251,7 @@ fn the_with_functions_take_the_vc_security_layout() {
             ),
             ALDIS_OK
         );
-        assert_eq!(v.layout.data_len, 32);
+        assert_eq!(v.layout.data.len, 32);
     }
 }
 
@@ -902,7 +853,6 @@ fn packet_offsets_above_0x7fd_fail_as_the_encoder_checks_them() {
         pc: aldis_tm_config_t {
             fecf: 0,
             frame_len: 2100,
-            ..mc.pc
         },
         ..mc
     };

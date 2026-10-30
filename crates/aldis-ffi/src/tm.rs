@@ -1,5 +1,5 @@
 //! C ABI of the TM Transfer Frame codec `aldis-tm` (CCSDS 132.0-B-3; M2 plan D4, D14;
-//! CABI-010…012, CABI-020…022, CABI-033).
+//! CABI-010…012, CABI-020…022).
 //!
 //! Calls: [`aldis_tm_config_check`] and [`aldis_tm_mc_config_check`]; [`aldis_tm_peek_length`]
 //! and [`aldis_tm_header_decode`]; the decoders [`aldis_tm_decode`], [`aldis_tm_decode_with`],
@@ -12,8 +12,8 @@
 //! configuration that `peek_length` takes (D14). A master channel is an
 //! [`aldis_tm_mc_config_t`], which holds its physical channel, with an array of
 //! [`aldis_tm_vc_config_t`] and its count (Tables 5-2, 5-3, 6-1; D14): the C form of
-//! `TmMasterChannelConfig`, built and checked on every call. The array's stride is the
-//! `struct_size` of its structs, which must all be the same (`abi::configs`).
+//! `TmMasterChannelConfig`, built and checked on every call. The array is a C array of the
+//! struct (`abi::configs`).
 //!
 //! **Security layouts** (API-070; decisions of #90 and #94, c-abi.md §11). The `_with`
 //! decoders take the Security Header and Trailer lengths of a frame's virtual channel from the
@@ -27,8 +27,6 @@
 //! **Encoders.** A frame is built in one call, with no state between calls (API-023, API-060):
 //! [`aldis_tm_encode`] and [`aldis_tm_encode_oid`] take the frame's variable fields and write
 //! the headers and the FECF. The C ABI has no two-phase writer (OI-57).
-
-use core::ops::Range;
 
 use aldis::core::ids::{SpacecraftId, VcId};
 use aldis::core::layout::{FrameLayout, OCF_LEN};
@@ -45,6 +43,7 @@ use aldis::tm::{
 use crate::abi::{self, Configs, invalid_argument};
 use crate::mirror::{mirror, parse};
 use crate::oid::{GeneratorState, aldis_oid_generator_t, generator};
+use crate::range::aldis_range_t;
 
 /// Length of the TM Transfer Frame Primary Header in octets (132.0 §4.1.2.1).
 pub const ALDIS_TM_PRIMARY_HEADER_LEN: u32 = 6;
@@ -119,13 +118,10 @@ pub const ALDIS_TM_ANOMALY_SEGMENT_LENGTH_ID_NOT_11: u32 = 1 << 1;
 /// (bit 2; 132.0 §6.4.6.2; TM-010, OI-54). Set only by the decoders that take the VC array.
 pub const ALDIS_TM_ANOMALY_ONLY_IDLE_DATA_ON_SDLS_VC: u32 = 1 << 2;
 
-/// Managed parameters of a physical channel (132.0 §5.1 Table 5-1; TM-001, API-041,
-/// CABI-033). The configuration `aldis_tm_peek_length` takes (M2 plan D14).
+/// Managed parameters of a physical channel (132.0 §5.1 Table 5-1; TM-001, API-041). The configuration `aldis_tm_peek_length` takes (M2 plan D14).
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct aldis_tm_config_t {
-    /// `sizeof(aldis_tm_config_t)`, set by the caller (CABI-033).
-    pub struct_size: u32,
     /// 1 if every frame ends with a Frame Error Control Field, else 0 (132.0 §4.1.6.1.2).
     pub fecf: u8,
     /// Transfer Frame Length in octets: at least the Primary Header, one data octet, and the
@@ -133,15 +129,13 @@ pub struct aldis_tm_config_t {
     pub frame_len: usize,
 }
 
-/// Managed parameters of a master channel (132.0 §5.2 Table 5-2; TM-011, API-040, CABI-033).
+/// Managed parameters of a master channel (132.0 §5.2 Table 5-2; TM-011, API-040).
 ///
 /// Its virtual channels are passed beside it, as an array of [`aldis_tm_vc_config_t`] and its
 /// count (M2 plan D14).
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct aldis_tm_mc_config_t {
-    /// `sizeof(aldis_tm_mc_config_t)`, set by the caller (CABI-033).
-    pub struct_size: u32,
     /// Spacecraft Identifier, 0 to 1023 (132.0 §4.1.2.2.3).
     pub scid: u16,
     /// `MC_FSH` length in octets, `ALDIS_TM_FSH_MIN_LEN` to `ALDIS_TM_FSH_MAX_LEN`, or 0 for none
@@ -149,18 +143,14 @@ pub struct aldis_tm_mc_config_t {
     pub fsh_len: u8,
     /// 1 for an `MC_OCF`, else 0 (132.0 §4.1.5.2, Table 5-2).
     pub ocf: u8,
-    /// The physical channel, with its own `struct_size` (CABI-033).
+    /// The physical channel.
     pub pc: aldis_tm_config_t,
 }
 
-/// Managed parameters of a virtual channel (132.0 §5.3 Table 5-3, §6.6 Table 6-1; API-070,
-/// CABI-033).
+/// Managed parameters of a virtual channel (132.0 §5.3 Table 5-3, §6.6 Table 6-1; API-070).
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct aldis_tm_vc_config_t {
-    /// `sizeof(aldis_tm_vc_config_t)`, set by the caller, the same for every struct of an
-    /// array (CABI-033).
-    pub struct_size: u32,
     /// Virtual Channel Identifier, 0 to 7 (132.0 §4.1.2.3).
     pub vcid: u8,
     /// Data Field Content, `ALDIS_TM_CONTENT_*` (132.0 §4.1.4.4, Table 5-3).
@@ -307,30 +297,18 @@ pub struct aldis_tm_header_t {
 pub struct aldis_tm_layout_t {
     /// Transfer Frame Length: the octets the frame takes (132.0 §4.1.1.2; API-012).
     pub frame_len: usize,
-    /// Offset of the Secondary Header Data Field, after the Identification Field.
-    pub fsh_data_offset: usize,
-    /// Length of the Secondary Header Data Field; 0 without a Secondary Header (§4.1.3.3).
-    pub fsh_data_len: usize,
-    /// Offset of the Security Header.
-    pub security_header_offset: usize,
-    /// Length of the Security Header; 0 without SDLS (§6.3.4).
-    pub security_header_len: usize,
-    /// Offset of the Transfer Frame Data Field.
-    pub data_offset: usize,
-    /// Length of the Transfer Frame Data Field, never 0 (§4.1.4).
-    pub data_len: usize,
-    /// Offset of the Security Trailer.
-    pub security_trailer_offset: usize,
-    /// Length of the Security Trailer; 0 without SDLS (§6.3.6).
-    pub security_trailer_len: usize,
-    /// Offset of the Operational Control Field.
-    pub ocf_offset: usize,
-    /// Length of the Operational Control Field: `ALDIS_OCF_LEN` or 0 (§4.1.5).
-    pub ocf_len: usize,
-    /// Offset of the Frame Error Control Field.
-    pub fecf_offset: usize,
-    /// Length of the Frame Error Control Field: 2 or 0 (§4.1.6).
-    pub fecf_len: usize,
+    /// The range of the Secondary Header Data Field, after the Identification Field; length 0 without a Secondary Header (§4.1.3.3).
+    pub fsh_data: aldis_range_t,
+    /// The range of the Security Header; length 0 without SDLS (§6.3.4).
+    pub security_header: aldis_range_t,
+    /// The range of the Transfer Frame Data Field; length never 0 (§4.1.4).
+    pub data: aldis_range_t,
+    /// The range of the Security Trailer; length 0 without SDLS (§6.3.6).
+    pub security_trailer: aldis_range_t,
+    /// The range of the Operational Control Field; its length is `ALDIS_OCF_LEN` or 0 (§4.1.5).
+    pub ocf: aldis_range_t,
+    /// The range of the Frame Error Control Field; its length is 2 or 0 (§4.1.6).
+    pub fecf: aldis_range_t,
 }
 
 /// A decoded TM Transfer Frame: its fields and where they lie in the input (132.0 §4.1, §6.3;
@@ -360,12 +338,8 @@ pub struct aldis_tm_frame_t {
     pub layout: aldis_tm_layout_t,
 }
 
-/// The physical channel of a C struct, with its `struct_size` checked as an embedded struct's
-/// (132.0 §5.1; CABI-033).
+/// The physical channel of a C struct (132.0 §5.1).
 fn physical(c: &aldis_tm_config_t) -> Result<TmPhysicalChannelConfig> {
-    if usize::try_from(c.struct_size).map_or(true, |n| n < size_of::<aldis_tm_config_t>()) {
-        return Err(invalid_argument());
-    }
     TmPhysicalChannelConfig::new(c.frame_len, abi::flag(c.fecf)?)
 }
 
@@ -379,7 +353,7 @@ fn fsh_len(octets: u8) -> Result<Option<FshLen>> {
 
 /// The virtual channel of a C struct, each parameter parsed into its type (Table 5-3,
 /// Table 6-1; RS-020).
-fn virtual_channel(v: &aldis_tm_vc_config_t) -> Result<TmVirtualChannelConfig> {
+fn virtual_channel(v: aldis_tm_vc_config_t) -> Result<TmVirtualChannelConfig> {
     let vcid = VcId::try_from(v.vcid)?;
     let content = match parse::<aldis_tm_content>(v.content)? {
         aldis_tm_content::ALDIS_TM_CONTENT_PACKETS => DataFieldContent::Packets,
@@ -410,16 +384,15 @@ fn master_channel(
     let fsh = fsh_len(mc.fsh_len)?;
     let mut config = TmMasterChannelConfig::new(pc, scid, fsh, abi::flag(mc.ocf)?);
     for i in 0..vcs.len() {
-        config = config.with_vc(virtual_channel(&vcs.get(i)?)?)?;
+        config = config.with_vc(virtual_channel(vcs.get(i)?)?)?;
     }
     Ok(config)
 }
 
-/// The master channel at `mc` with the `vc_count` virtual channels at `vcs` (CABI-022,
-/// CABI-033).
+/// The master channel at `mc` with the `vc_count` virtual channels at `vcs` (CABI-022).
 ///
 /// # Safety
-/// As for `abi::config` and `abi::configs`.
+/// As for `abi::read` and `abi::configs`.
 #[expect(unsafe_code, reason = "checked access to caller memory (CABI-022)")]
 unsafe fn master_channel_at(
     mc: *const aldis_tm_mc_config_t,
@@ -427,7 +400,7 @@ unsafe fn master_channel_at(
     vc_count: usize,
 ) -> Result<TmMasterChannelConfig> {
     // SAFETY: forwarded from the caller.
-    let (mc, vcs) = unsafe { (abi::config(mc)?, abi::configs(vcs, vc_count)?) };
+    let (mc, vcs) = unsafe { (abi::read(mc)?, abi::configs(vcs, vc_count)?) };
     master_channel(&mc, &vcs)
 }
 
@@ -544,36 +517,25 @@ const fn header(h: &TmPrimaryHeader) -> aldis_tm_header_t {
     }
 }
 
-/// The offset and length of a range.
-fn span(r: &Range<usize>) -> (usize, usize) {
-    (r.start, r.len())
-}
-
 /// The C form of a frame layout; the Secondary Header Data Field follows its Identification
 /// Field (132.0 §4.1.3; CMN-040).
 fn layout(l: &FrameLayout) -> aldis_tm_layout_t {
     let fsh = l.secondary();
     let fsh_data = fsh.start.saturating_add(1).min(fsh.end)..fsh.end;
-    let (fsh_data_offset, fsh_data_len) = span(&fsh_data);
-    let (security_header_offset, security_header_len) = span(&l.security_header());
-    let (data_offset, data_len) = span(&l.data());
-    let (security_trailer_offset, security_trailer_len) = span(&l.security_trailer());
-    let (ocf_offset, ocf_len) = span(&l.ocf());
-    let (fecf_offset, fecf_len) = span(&l.fecf());
+    let fsh_data = aldis_range_t::from(&fsh_data);
+    let security_header = aldis_range_t::from(&l.security_header());
+    let data = aldis_range_t::from(&l.data());
+    let security_trailer = aldis_range_t::from(&l.security_trailer());
+    let ocf = aldis_range_t::from(&l.ocf());
+    let fecf = aldis_range_t::from(&l.fecf());
     aldis_tm_layout_t {
         frame_len: l.frame_len(),
-        fsh_data_offset,
-        fsh_data_len,
-        security_header_offset,
-        security_header_len,
-        data_offset,
-        data_len,
-        security_trailer_offset,
-        security_trailer_len,
-        ocf_offset,
-        ocf_len,
-        fecf_offset,
-        fecf_len,
+        fsh_data,
+        security_header,
+        data,
+        security_trailer,
+        ocf,
+        fecf,
     }
 }
 
@@ -622,7 +584,7 @@ pub unsafe extern "C" fn aldis_tm_config_check(
     err: *mut crate::aldis_error_detail_t,
 ) -> u32 {
     // SAFETY: every pointer is valid as `# Safety` states; `abi` checks NULL and alignment.
-    unsafe { abi::call(err, || physical(&abi::config(pc)?).map(drop)) }
+    unsafe { abi::call(err, || physical(&abi::read(pc)?).map(drop)) }
 }
 
 /// Checks a master channel configuration and its virtual channels (132.0 §5 Tables 5-1 to 5-3,
@@ -637,12 +599,10 @@ pub unsafe extern "C" fn aldis_tm_config_check(
 /// `fsh_len`); `ALDIS_ERR_INVALID_CONFIG` (`security_header_len`) for a Security Header above 64
 /// octets, and (`fsh_len`, `ocf_flag`, `frame_data_field`, `vc_id`) for a Secondary Header or an
 /// OCF on both the master and the virtual channel, a frame with no data octet left, or a VCID
-/// configured twice (132.0 §4.1.3.1.4, §4.1.5.2); CABI-022 violations, including a VC struct
-/// whose `struct_size` differs from the first one's.
+/// configured twice (132.0 §4.1.3.1.4, §4.1.5.2); CABI-022 violations.
 ///
 /// # Safety
-/// `mc` is valid for a read; `vcs` is valid for reads of `vc_count` structs of the first one's
-/// `struct_size` (or `NULL` with 0); `err` is `NULL` or valid for one write.
+/// `mc` is valid for a read; `vcs` is valid for reads of `vc_count` structs (or `NULL` with 0); `err` is `NULL` or valid for one write.
 #[expect(
     unsafe_code,
     reason = "C ABI entry point: unmangled, takes raw pointers (GEN-071)"
@@ -686,7 +646,7 @@ pub unsafe extern "C" fn aldis_tm_peek_length(
     // SAFETY: every pointer is valid as `# Safety` states; `abi` checks NULL and alignment.
     unsafe {
         abi::call(err, || {
-            let pc = physical(&abi::config(cfg)?)?;
+            let pc = physical(&abi::read(cfg)?)?;
             let prefix = abi::bytes(prefix, prefix_len)?;
             let out_len = abi::out(out_len)?;
             out_len.write(TmFrame::peek_length(prefix, &pc)?);
@@ -766,7 +726,7 @@ pub unsafe extern "C" fn aldis_tm_decode(
     // SAFETY: every pointer is valid as `# Safety` states; `abi` checks NULL and alignment.
     unsafe {
         abi::call(err, || {
-            let pc = physical(&abi::config(cfg)?)?;
+            let pc = physical(&abi::read(cfg)?)?;
             let bytes = abi::bytes(bytes, len)?;
             let mode = abi::mode(mode)?;
             let out = abi::out(out)?;
@@ -845,7 +805,7 @@ pub unsafe extern "C" fn aldis_tm_decode_unchecked(
     // SAFETY: every pointer is valid as `# Safety` states; `abi` checks NULL and alignment.
     unsafe {
         abi::call(err, || {
-            let pc = physical(&abi::config(cfg)?)?;
+            let pc = physical(&abi::read(cfg)?)?;
             let bytes = abi::bytes(bytes, len)?;
             let mode = abi::mode(mode)?;
             let out = abi::out(out)?;
@@ -1123,9 +1083,6 @@ mod tests {
             ALDIS_TM_FHP_ONLY_IDLE_DATA,
             FirstHeaderPointer::ONLY_IDLE_DATA.get()
         );
-        assert_eq!(core::mem::offset_of!(aldis_tm_config_t, struct_size), 0);
-        assert_eq!(core::mem::offset_of!(aldis_tm_mc_config_t, struct_size), 0);
-        assert_eq!(core::mem::offset_of!(aldis_tm_vc_config_t, struct_size), 0);
     }
 
     #[test]
@@ -1142,18 +1099,11 @@ mod tests {
         };
         assert_eq!(fields(f), Err(invalid_argument()));
         let vc = aldis_tm_vc_config_t {
-            struct_size: 12,
             content: 2,
             ..aldis_tm_vc_config_t::default()
         };
-        assert_eq!(virtual_channel(&vc), Err(invalid_argument()));
+        assert_eq!(virtual_channel(vc), Err(invalid_argument()));
         assert_eq!(ocf(&[1, 2, 3]), Err(invalid_argument()));
         assert_eq!(ocf(&[]), Ok(None));
-        let pc = aldis_tm_config_t {
-            struct_size: 4,
-            fecf: 0,
-            frame_len: 16,
-        };
-        assert_eq!(physical(&pc), Err(invalid_argument()));
     }
 }

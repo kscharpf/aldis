@@ -1,5 +1,5 @@
 //! C ABI of the USLP Transfer Frame codec `aldis-uslp` (CCSDS 732.1-B-3; M2 plan D4, D12, D14,
-//! D17; CABI-010…012, CABI-020…022, CABI-033).
+//! D17; CABI-010…012, CABI-020…022).
 //!
 //! Calls: [`aldis_uslp_config_check`] and [`aldis_uslp_vc_table_check`];
 //! [`aldis_uslp_peek_length`]; the decoder [`aldis_uslp_decode`]; the unified Frame Intake
@@ -14,8 +14,8 @@
 //! the two lists, built and checked on every call into a `VcTable` of the build-time
 //! capacities `ALDIS_USLP_MAX_VCS` and `ALDIS_USLP_MAX_MAPS` (CABI-030). As in `aldis-uslp`,
 //! each virtual channel and MAP names its own SCID, so one table holds every master channel of
-//! the physical channel. Each array's stride is the `struct_size` of its first struct, which
-//! every struct repeats (`abi::configs`; c-abi.md §11). `aldis_uslp_peek_length` takes the
+//! the physical channel. Each array is a C array of the struct
+//! (`abi::configs`; c-abi.md §11). `aldis_uslp_peek_length` takes the
 //! virtual channels only (M2 plan D14), since only a VC's truncated frame length delimits a frame.
 //!
 //! **Security layouts** (API-070, API-075; c-abi.md §11). Every call that takes the channels
@@ -34,8 +34,6 @@
 //! the headers, the Frame Length, the OCF, and the FECF. The C ABI has no two-phase writer
 //! (OI-57).
 
-use core::ops::Range;
-
 use aldis::core::layout::{FrameLayout, OCF_LEN};
 use aldis::core::ocf::Ocf;
 use aldis::core::security::SecurityLayout;
@@ -53,6 +51,7 @@ use crate::abi::{self, Configs, invalid_argument};
 use crate::capacities::{ALDIS_USLP_MAX_MAPS, ALDIS_USLP_MAX_VCS};
 use crate::mirror::{mirror, parse};
 use crate::oid::{GeneratorState, aldis_oid_generator_t, generator};
+use crate::range::aldis_range_t;
 
 /// Length of the non-truncated Primary Header without its VCF Count, in octets (732.1
 /// §4.1.2.1.2).
@@ -339,13 +338,10 @@ pub const ALDIS_USLP_DISCARD_UNEXPECTED_VERSION: u32 = 1;
 pub const ALDIS_USLP_DISCARD_NON_TRUNCATED_NOT_ALLOWED: u32 =
     ALDIS_USLP_DISCARD_NON_TRUNCATED_FRAME_NOT_ALLOWED;
 
-/// Managed parameters of a physical channel (732.1 §5 Table 5-1; USLP-003, USLP-008, API-040,
-/// CABI-033).
+/// Managed parameters of a physical channel (732.1 §5 Table 5-1; USLP-003, USLP-008, API-040).
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct aldis_uslp_config_t {
-    /// `sizeof(aldis_uslp_config_t)`, set by the caller (CABI-033).
-    pub struct_size: u32,
     /// Transfer Frame Type, `ALDIS_USLP_FRAME_*` (Table 5-1).
     pub frame_type: u8,
     /// 1 if every frame ends with a Frame Error Control Field, else 0 (732.1 §4.1.6).
@@ -359,13 +355,10 @@ pub struct aldis_uslp_config_t {
 }
 
 /// Managed parameters of a virtual channel (732.1 §5 Table 5-3, §6.6 Table 6-1, Annex D1.2;
-/// USLP-002, USLP-004, USLP-012, API-070, CABI-033).
+/// USLP-002, USLP-004, USLP-012, API-070).
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct aldis_uslp_vc_config_t {
-    /// `sizeof(aldis_uslp_vc_config_t)`, set by the caller, the same for every struct of an
-    /// array (CABI-033).
-    pub struct_size: u32,
     /// Spacecraft Identifier of the VC's master channel (732.1 §4.1.2.2.3).
     pub scid: u16,
     /// Virtual Channel Identifier, 0 to 63; 63 for OID frames (732.1 §4.1.2.4).
@@ -392,13 +385,10 @@ pub struct aldis_uslp_vc_config_t {
     pub security_trailer_len: u32,
 }
 
-/// Managed parameters of a MAP channel (732.1 §5 Table 5-4, §6.6; API-070, CABI-033).
+/// Managed parameters of a MAP channel (732.1 §5 Table 5-4, §6.6; API-070).
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct aldis_uslp_map_config_t {
-    /// `sizeof(aldis_uslp_map_config_t)`, set by the caller, the same for every struct of an
-    /// array (CABI-033).
-    pub struct_size: u32,
     /// Spacecraft Identifier of the MAP's virtual channel (732.1 §4.1.2.2.3).
     pub scid: u16,
     /// Virtual Channel Identifier of the MAP's virtual channel, which must be configured
@@ -519,34 +509,20 @@ impl aldis_uslp_content_t {
 pub struct aldis_uslp_layout_t {
     /// Transfer Frame length: the octets the frame takes (732.1 §4.1.2.7, Annex D1.3.2).
     pub frame_len: usize,
-    /// Offset of the Insert Zone, after the Primary Header and its VCF Count.
-    pub insert_zone_offset: usize,
-    /// Length of the Insert Zone; 0 without one (§4.1.3).
-    pub insert_zone_len: usize,
-    /// Offset of the Security Header.
-    pub security_header_offset: usize,
-    /// Length of the Security Header; 0 without SDLS (§6.3.4).
-    pub security_header_len: usize,
-    /// Offset of the TFDF Header.
-    pub tfdf_header_offset: usize,
-    /// Length of the TFDF Header: 3 for rules `000` to `010`, else 1 (§4.1.4.2.1.2; USLP-005).
-    pub tfdf_header_len: usize,
-    /// Offset of the Transfer Frame Data Zone.
-    pub tfdz_offset: usize,
-    /// Length of the TFDZ, never 0 (§4.1.4.3).
-    pub tfdz_len: usize,
-    /// Offset of the Security Trailer.
-    pub security_trailer_offset: usize,
-    /// Length of the Security Trailer; 0 without one (§6.3.6).
-    pub security_trailer_len: usize,
-    /// Offset of the Operational Control Field.
-    pub ocf_offset: usize,
-    /// Length of the OCF: `ALDIS_OCF_LEN` or 0 (§4.1.5).
-    pub ocf_len: usize,
-    /// Offset of the Frame Error Control Field.
-    pub fecf_offset: usize,
-    /// Length of the FECF: 2 or 0 (§4.1.6).
-    pub fecf_len: usize,
+    /// The range of the Insert Zone, after the Primary Header and its VCF Count; length 0 without one (§4.1.3).
+    pub insert_zone: aldis_range_t,
+    /// The range of the Security Header; length 0 without SDLS (§6.3.4).
+    pub security_header: aldis_range_t,
+    /// The range of the TFDF Header; its length is 3 for rules `000` to `010`, else 1 (§4.1.4.2.1.2; USLP-005).
+    pub tfdf_header: aldis_range_t,
+    /// The range of the Transfer Frame Data Zone; length never 0 (§4.1.4.3).
+    pub tfdz: aldis_range_t,
+    /// The range of the Security Trailer; length 0 without one (§6.3.6).
+    pub security_trailer: aldis_range_t,
+    /// The range of the Operational Control Field; its length is `ALDIS_OCF_LEN` or 0 (§4.1.5).
+    pub ocf: aldis_range_t,
+    /// The range of the Frame Error Control Field; its length is 2 or 0 (§4.1.6).
+    pub fecf: aldis_range_t,
 }
 
 /// A decoded USLP Transfer Frame, full or truncated (732.1 §4.1, §6.3, Annex D; USLP-001…USLP-007,
@@ -594,10 +570,9 @@ pub struct aldis_uslp_stream_item_t {
     pub kind: u8,
     /// Reserved padding octets, set to zero.
     pub reserved: [u8; 3],
-    /// Starting offset of this item in the caller's unit buffer.
-    pub offset: usize,
-    /// Length of this item in octets consumed from the unit buffer.
-    pub len: usize,
+    /// The range of this item in the caller's unit buffer: where it starts and the octets it
+    /// consumes.
+    pub range: aldis_range_t,
     /// The frame length declared in the header or VC config (valid when accepted or incomplete).
     pub declared_len: usize,
     /// The decoded frame view (valid when `kind == ALDIS_USLP_STREAM_ACCEPTED`).
@@ -617,8 +592,7 @@ impl Default for aldis_uslp_stream_item_t {
         Self {
             kind: ALDIS_USLP_STREAM_END,
             reserved: [0; 3],
-            offset: 0,
-            len: 0,
+            range: aldis_range_t { offset: 0, len: 0 },
             declared_len: 0,
             frame: aldis_uslp_frame_t::default(),
             discard_reason: 0,
@@ -744,10 +718,10 @@ fn table(
 }
 
 /// The channel table of the physical channel at `pc`, the `vc_count` virtual channels at
-/// `vcs`, and the `map_count` MAPs at `maps` (CABI-022, CABI-033).
+/// `vcs`, and the `map_count` MAPs at `maps` (CABI-022).
 ///
 /// # Safety
-/// As for `abi::config` and `abi::configs`.
+/// As for `abi::read` and `abi::configs`.
 #[expect(unsafe_code, reason = "checked access to caller memory (CABI-022)")]
 unsafe fn table_at(
     pc: *const aldis_uslp_config_t,
@@ -759,7 +733,7 @@ unsafe fn table_at(
     // SAFETY: forwarded from the caller.
     let (pc, vcs, maps) = unsafe {
         (
-            abi::config(pc)?,
+            abi::read(pc)?,
             abi::configs(vcs, vc_count)?,
             abi::configs(maps, map_count)?,
         )
@@ -894,38 +868,32 @@ const fn kind_view(k: FrameKind) -> u8 {
 /// `InternalError` if the TFDF Header is longer than the data field, which the callers' frames
 /// rule out.
 fn layout(l: &FrameLayout, tfdf_len: usize) -> Result<aldis_uslp_layout_t> {
-    let (insert_zone_offset, insert_zone_len) = span(&l.secondary());
-    let (security_header_offset, security_header_len) = span(&l.security_header());
+    let insert_zone = aldis_range_t::from(&l.secondary());
+    let security_header = aldis_range_t::from(&l.security_header());
     let data = l.data();
-    let (security_trailer_offset, security_trailer_len) = span(&l.security_trailer());
-    let (ocf_offset, ocf_len) = span(&l.ocf());
-    let (fecf_offset, fecf_len) = span(&l.fecf());
+    let security_trailer = aldis_range_t::from(&l.security_trailer());
+    let ocf = aldis_range_t::from(&l.ocf());
+    let fecf = aldis_range_t::from(&l.fecf());
     let tfdz = data
         .len()
         .checked_sub(tfdf_len)
         .ok_or(Error::new(ErrorKind::InternalError).with_field(field::FRAME_LEN))?;
     Ok(aldis_uslp_layout_t {
         frame_len: l.frame_len(),
-        insert_zone_offset,
-        insert_zone_len,
-        security_header_offset,
-        security_header_len,
-        tfdf_header_offset: data.start,
-        tfdf_header_len: tfdf_len,
-        tfdz_offset: data.start.saturating_add(tfdf_len),
-        tfdz_len: tfdz,
-        security_trailer_offset,
-        security_trailer_len,
-        ocf_offset,
-        ocf_len,
-        fecf_offset,
-        fecf_len,
+        insert_zone,
+        security_header,
+        tfdf_header: aldis_range_t {
+            offset: data.start,
+            len: tfdf_len,
+        },
+        tfdz: aldis_range_t {
+            offset: data.start.saturating_add(tfdf_len),
+            len: tfdz,
+        },
+        security_trailer,
+        ocf,
+        fecf,
     })
-}
-
-/// The offset and length of a range.
-fn span(r: &Range<usize>) -> (usize, usize) {
-    (r.start, r.len())
 }
 
 /// The C view of a decoded frame (CABI-012).
@@ -974,7 +942,7 @@ pub unsafe extern "C" fn aldis_uslp_config_check(
     err: *mut crate::aldis_error_detail_t,
 ) -> u32 {
     // SAFETY: every pointer is valid as `# Safety` states; `abi` checks NULL and alignment.
-    unsafe { abi::call(err, || physical(&abi::config(pc)?).map(drop)) }
+    unsafe { abi::call(err, || physical(&abi::read(pc)?).map(drop)) }
 }
 
 /// Checks a channel table: a physical channel with its virtual channels and MAPs (732.1 §5
@@ -991,13 +959,11 @@ pub unsafe extern "C" fn aldis_uslp_config_check(
 /// (`vcf_count_len`, `truncated_frame_len`, `security_header_len`, `security_trailer_len`,
 /// `ocf_flag`, `transfer_frame_type`, `vc_id`, `map_id`, `frame_data_field`) as `aldis-uslp`'s
 /// constructors return them (`docs/standards/uslp-frame.md` §2.1); CABI-022 violations,
-/// including an enumeration member that is no constant and a struct whose `struct_size` differs
-/// from its array's first one. `vc_count` 0 is `ALDIS_ERR_INVALID_CONFIG` (`vc_id`) once
+/// including an enumeration member that is no constant. `vc_count` 0 is `ALDIS_ERR_INVALID_CONFIG` (`vc_id`) once
 /// the structs have parsed (USLP-017, OI-55).
 ///
 /// # Safety
-/// `pc` is valid for a read; `vcs` is valid for reads of `vc_count` structs of the first one's
-/// `struct_size`, and `maps` of `map_count` (each `NULL` with 0); `err` is `NULL` or valid for
+/// `pc` is valid for a read; `vcs` is valid for reads of `vc_count` structs, and `maps` of `map_count` (each `NULL` with 0); `err` is `NULL` or valid for
 /// one write.
 #[expect(
     unsafe_code,
@@ -1179,8 +1145,10 @@ pub unsafe extern "C" fn aldis_uslp_stream_next(
                 out.write(aldis_uslp_stream_item_t {
                     kind: ALDIS_USLP_STREAM_END,
                     reserved: [0; 3],
-                    offset: current_offset,
-                    len: 0,
+                    range: aldis_range_t {
+                        offset: current_offset,
+                        len: 0,
+                    },
                     declared_len: 0,
                     frame: aldis_uslp_frame_t::default(),
                     discard_reason: 0,
@@ -1200,8 +1168,10 @@ pub unsafe extern "C" fn aldis_uslp_stream_next(
                     out.write(aldis_uslp_stream_item_t {
                         kind: ALDIS_USLP_STREAM_END,
                         reserved: [0; 3],
-                        offset: current_offset,
-                        len: 0,
+                        range: aldis_range_t {
+                            offset: current_offset,
+                            len: 0,
+                        },
                         declared_len: 0,
                         frame: aldis_uslp_frame_t::default(),
                         discard_reason: 0,
@@ -1218,8 +1188,10 @@ pub unsafe extern "C" fn aldis_uslp_stream_next(
                     out.write(aldis_uslp_stream_item_t {
                         kind: ALDIS_USLP_STREAM_ACCEPTED,
                         reserved: [0; 3],
-                        offset: current_offset,
-                        len,
+                        range: aldis_range_t {
+                            offset: current_offset,
+                            len,
+                        },
                         declared_len: len,
                         frame: view(&frame)?,
                         discard_reason: 0,
@@ -1246,8 +1218,10 @@ pub unsafe extern "C" fn aldis_uslp_stream_next(
                     out.write(aldis_uslp_stream_item_t {
                         kind: ALDIS_USLP_STREAM_DISCARDED,
                         reserved: [0; 3],
-                        offset: current_offset,
-                        len,
+                        range: aldis_range_t {
+                            offset: current_offset,
+                            len,
+                        },
                         declared_len,
                         frame: aldis_uslp_frame_t::default(),
                         discard_reason: u32::from(reason.code()),
@@ -1601,15 +1575,6 @@ mod tests {
                 u8::from(SourceOrDestination::Destination.bit())
             )
         );
-        assert_eq!(core::mem::offset_of!(aldis_uslp_config_t, struct_size), 0);
-        assert_eq!(
-            core::mem::offset_of!(aldis_uslp_vc_config_t, struct_size),
-            0
-        );
-        assert_eq!(
-            core::mem::offset_of!(aldis_uslp_map_config_t, struct_size),
-            0
-        );
     }
 
     #[test]
@@ -1681,7 +1646,7 @@ mod tests {
             fecf: false,
         };
         let l = FrameLayout::compute(&spec).unwrap();
-        assert_eq!(layout(&l, 3).map(|v| v.tfdz_len), Ok(9));
+        assert_eq!(layout(&l, 3).map(|v| v.tfdz.len), Ok(9));
         assert_eq!(
             layout(&l, 13).err().map(|e| e.kind()),
             Some(ErrorKind::InternalError)

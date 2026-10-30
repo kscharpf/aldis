@@ -389,7 +389,7 @@ graph TD
 
 | Evidence | Shows | Requirements |
 |---|---|---|
-| `test:crates/aldis-ffi/tests/tc.rs::encode_arguments_are_checked`; `test:crates/aldis-ffi/tests/tm.rs::encode_arguments_are_checked`; `test:crates/aldis-ffi/tests/uslp.rs::content_and_fields_are_checked_as_arguments`; `test:crates/aldis-ffi/tests/tm.rs::vc_arrays_step_by_their_struct_size`; `test:crates/aldis-ffi/tests/uslp.rs::vc_and_map_arrays_step_by_their_struct_size` | Pointer, length, and struct-size checks of the frame functions | CABI-022, CABI-033 |
+| `test:crates/aldis-ffi/tests/tc.rs::encode_arguments_are_checked`; `test:crates/aldis-ffi/tests/tm.rs::encode_arguments_are_checked`; `test:crates/aldis-ffi/tests/uslp.rs::content_and_fields_are_checked_as_arguments`; `test:crates/aldis-ffi/tests/tm.rs::vc_arrays_are_c_arrays`; `test:crates/aldis-ffi/tests/uslp.rs::vc_and_map_arrays_are_c_arrays` | Pointer and length checks of the frame functions | CABI-022 |
 | `record:CABI-030` | The capacities of the helper storage, generated and checked | CABI-030 |
 
 ### AC-6.3 The C ABI library is freestanding

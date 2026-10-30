@@ -10,7 +10,7 @@
 //! (CMN-022); both give the same sequence. The generator is in its device start-up state after
 //! `_init`, and every fill continues the sequence where the last one stopped (CMN-021,
 //! CMN-023): one generator per physical channel, never reinitialized by reconfiguration
-//! (CMN-021). It has no build-time capacity, so `aldis_limits` reports nothing for it.
+//! (CMN-021). It has no build-time capacity.
 
 use aldis::core::Result;
 use aldis::core::oid::{OidGenerator, OidGeneratorGalois};

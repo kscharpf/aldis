@@ -15,7 +15,7 @@
 /**
  * ABI minor version (CABI-060).
  */
-#define ALDIS_ABI_VERSION_MINOR 5
+#define ALDIS_ABI_VERSION_MINOR 6
 
 /**
  * ABI patch version (CABI-060).
@@ -176,12 +176,6 @@
  * (GEN-041, CABI-021).
  */
 #define ALDIS_DETAIL_EXPECTED 2
-
-/**
- * The smallest `struct_size` of an [`aldis_error_detail_t`]: `struct_size`, `kind`, `field`,
- * and `detail`, 12 octets (CABI-021, CABI-033).
- */
-#define ALDIS_ERROR_DETAIL_MIN_SIZE 12
 
 /**
  * Spacecraft Identifier.
@@ -2725,21 +2719,15 @@ typedef uint8_t aldis_uslp_stream;
  * Detail of a failed call, written only when the call fails (CABI-021, GEN-041).
  *
  * Every function takes an optional `aldis_error_detail_t *` as its last parameter; `NULL`
- * is allowed. The caller sets `struct_size`, at least `ALDIS_ERROR_DETAIL_MIN_SIZE`; the
- * library writes only the members that lie wholly inside it, never `struct_size` itself, so
- * a later ABI version can append members (CABI-033). A smaller `struct_size`, or a
- * misaligned pointer, fails the call with `ALDIS_ERR_INVALID_FIELD` before it does anything,
- * and the detail is not written.
+ * is allowed. The library writes the whole struct when the call fails. A misaligned pointer
+ * fails the call with `ALDIS_ERR_INVALID_FIELD` before it does anything, and the detail is not
+ * written.
  *
  * A violation of CABI-022 (a `NULL` or misaligned pointer, an inconsistent length,
- * overlapping buffers, a `struct_size` too small, or an enumeration value with no constant)
- * is `ALDIS_ERR_INVALID_FIELD` with field 0 and no detail.
+ * overlapping buffers, or an enumeration value with no constant) is
+ * `ALDIS_ERR_INVALID_FIELD` with field 0 and no detail.
  */
 typedef struct {
-  /**
-   * `sizeof(aldis_error_detail_t)`, set by the caller before the call (CABI-033).
-   */
-  uint32_t struct_size;
   /**
    * The error kind: its catalogue code, the returned status (03 §9).
    */
@@ -2752,10 +2740,6 @@ typedef struct {
    * `ALDIS_DETAIL_NONE`, `ALDIS_DETAIL_NEEDED`, or `ALDIS_DETAIL_EXPECTED`.
    */
   uint16_t detail;
-  /**
-   * Reserved, written as 0.
-   */
-  uint32_t reserved;
   /**
    * Octets (or bits, where documented) required, for `ALDIS_DETAIL_NEEDED`.
    */
@@ -2787,14 +2771,9 @@ typedef struct {
 } aldis_aos_corrected_header_t;
 
 /**
- * Managed parameters of a physical channel (732.0 §5.2 Table 5-1; AOS-001, AOS-015, API-041,
- * CABI-033). The configuration `aldis_aos_peek_length` takes (M2 plan D14).
+ * Managed parameters of a physical channel (732.0 §5.2 Table 5-1; AOS-001, AOS-015, API-041). The configuration `aldis_aos_peek_length` takes (M2 plan D14).
  */
 typedef struct {
-  /**
-   * `sizeof(aldis_aos_config_t)`, set by the caller (CABI-033).
-   */
-  uint32_t struct_size;
   /**
    * 1 if every Primary Header ends with the Frame Header Error Control, else 0 (732.0
    * §4.1.2.6.2; AOS-013).
@@ -2821,37 +2800,28 @@ typedef struct {
 
 /**
  * A master channel: the Spacecraft ID of the virtual channels passed beside it, and its
- * physical channel (732.0 §5.3 Table 5-2; API-040, CABI-033; c-abi.md §11).
+ * physical channel (732.0 §5.3 Table 5-2; API-040; c-abi.md §11).
  *
  * Its virtual channels are passed beside it, as an array of [`aldis_aos_vc_config_t`] and its
  * count (M2 plan D14).
  */
 typedef struct {
   /**
-   * `sizeof(aldis_aos_mc_config_t)`, set by the caller (CABI-033).
-   */
-  uint32_t struct_size;
-  /**
    * Spacecraft Identifier, 0 to 1023; at most 255 for a virtual channel in Issue 4 (732.0
    * §4.1.2.2.3; AOS-002).
    */
   uint16_t scid;
   /**
-   * The physical channel, with its own `struct_size` (CABI-033).
+   * The physical channel.
    */
   aldis_aos_config_t pc;
 } aldis_aos_mc_config_t;
 
 /**
  * Managed parameters of a virtual channel (732.0 §5.4 Table 5-3, §6.6.2 Table 6-1; API-040,
- * API-070, CABI-033).
+ * API-070).
  */
 typedef struct {
-  /**
-   * `sizeof(aldis_aos_vc_config_t)`, set by the caller, the same for every struct of an
-   * array (CABI-033).
-   */
-  uint32_t struct_size;
   /**
    * Virtual Channel Identifier, 0 to 62; 63 is reserved for OID frames (732.0 §4.1.2.3,
    * Table 5-3 note 2).
@@ -2968,6 +2938,24 @@ typedef struct {
 } aldis_aos_pdu_t;
 
 /**
+ * A part of a buffer: `len` octets from `offset` octets after its start (CABI-012, API-061).
+ *
+ * The type of every offset and length pair in a view. A range is relative to the buffer the
+ * call was given, never a pointer, so it stays valid if the caller moves the buffer. A
+ * range of length 0 is an absent part, at the offset where it would start.
+ */
+typedef struct {
+  /**
+   * Octets from the start of the buffer to the first octet of the range.
+   */
+  size_t offset;
+  /**
+   * Octets in the range.
+   */
+  size_t len;
+} aldis_range_t;
+
+/**
  * Where each field of a frame lies (732.0 §4.1, §6.3; CMN-040, API-072, CABI-012).
  *
  * Offsets and lengths are in octets from the start of the frame. An absent field has length 0
@@ -2979,61 +2967,33 @@ typedef struct {
    */
   size_t frame_len;
   /**
-   * Offset of the Insert Zone.
+   * The range of the Insert Zone; length 0 without one (§4.1.3; AOS-015).
    */
-  size_t insert_zone_offset;
+  aldis_range_t insert_zone;
   /**
-   * Length of the Insert Zone; 0 without one (§4.1.3; AOS-015).
+   * The range of the Security Header; length 0 without SDLS (§6.3.4).
    */
-  size_t insert_zone_len;
+  aldis_range_t security_header;
   /**
-   * Offset of the Security Header.
+   * The range of the Transfer Frame Data Field; length never 0 (§4.1.4).
    */
-  size_t security_header_offset;
+  aldis_range_t data;
   /**
-   * Length of the Security Header; 0 without SDLS (§6.3.4).
+   * The range of the zone after the `M_PDU` or `B_PDU` Header, or of the data field; length never 0 (§4.1.4.2.3, §4.1.4.3.4).
    */
-  size_t security_header_len;
+  aldis_range_t zone;
   /**
-   * Offset of the Transfer Frame Data Field.
+   * The range of the Security Trailer; length 0 without SDLS (§6.3.6).
    */
-  size_t data_offset;
+  aldis_range_t security_trailer;
   /**
-   * Length of the Transfer Frame Data Field, never 0 (§4.1.4).
+   * The range of the Operational Control Field; its length is `ALDIS_OCF_LEN` or 0 (§4.1.5).
    */
-  size_t data_len;
+  aldis_range_t ocf;
   /**
-   * Offset of the zone after the `M_PDU` or `B_PDU` Header, or of the data field.
+   * The range of the Frame Error Control Field; its length is 2 or 0 (§4.1.6).
    */
-  size_t zone_offset;
-  /**
-   * Length of that zone, never 0 (§4.1.4.2.3, §4.1.4.3.4).
-   */
-  size_t zone_len;
-  /**
-   * Offset of the Security Trailer.
-   */
-  size_t security_trailer_offset;
-  /**
-   * Length of the Security Trailer; 0 without SDLS (§6.3.6).
-   */
-  size_t security_trailer_len;
-  /**
-   * Offset of the Operational Control Field.
-   */
-  size_t ocf_offset;
-  /**
-   * Length of the Operational Control Field: `ALDIS_OCF_LEN` or 0 (§4.1.5).
-   */
-  size_t ocf_len;
-  /**
-   * Offset of the Frame Error Control Field.
-   */
-  size_t fecf_offset;
-  /**
-   * Length of the Frame Error Control Field: 2 or 0 (§4.1.6).
-   */
-  size_t fecf_len;
+  aldis_range_t fecf;
 } aldis_aos_layout_t;
 
 /**
@@ -3222,24 +3182,16 @@ typedef struct {
    */
   uint32_t anomalies;
   /**
-   * Offset of the Encapsulated Data Field in the input: the header length.
+   * The range of the Encapsulated Data Field in the input: the header length.
    */
-  size_t data_offset;
-  /**
-   * Length of the Encapsulated Data Field.
-   */
-  size_t data_len;
+  aldis_range_t data;
 } aldis_epp_packet_t;
 
 /**
  * Managed parameters of the Encapsulation Packet Protocol (133.1 §5 Table 5-1; EPP-009,
- * EPP-010, CABI-033).
+ * EPP-010).
  */
 typedef struct {
-  /**
-   * `sizeof(aldis_epp_config_t)`, set by the caller (CABI-033).
-   */
-  uint32_t struct_size;
   /**
    * Minimum Data Unit Length, octets.
    */
@@ -3275,38 +3227,6 @@ typedef struct {
    */
   uint8_t user_defined;
 } aldis_epp_fields_t;
-
-/**
- * The capacities this library was built with: the `ALDIS_*_MAX_*` constants (CABI-030).
- *
- * Later ABI versions append fields; `struct_size` tells the library how many the caller's
- * struct has (CABI-033).
- */
-typedef struct {
-  /**
-   * `sizeof(aldis_limits_t)`, set by the caller before the call (CABI-033).
-   */
-  uint32_t struct_size;
-  /**
-   * `ALDIS_SPP_TRACKER_MAX_APIDS`: APIDs one `aldis_spp_tracker_t` tracks (SPP-011).
-   */
-  uint32_t spp_tracker_max_apids;
-  /**
-   * `ALDIS_TC_MAX_MAPS`: MAPs one `aldis_tc_*` call takes with a master channel (232.0
-   * Table 5-4; M2 plan D14).
-   */
-  uint32_t tc_max_maps;
-  /**
-   * `ALDIS_USLP_MAX_VCS`: virtual channels in the channel table of one `aldis_uslp_*` call
-   * (API-040; M2 plan D14).
-   */
-  uint32_t uslp_max_vcs;
-  /**
-   * `ALDIS_USLP_MAX_MAPS`: MAP channels in the channel table of one `aldis_uslp_*` call
-   * (API-040; M2 plan D14).
-   */
-  uint32_t uslp_max_maps;
-} aldis_limits_t;
 
 /**
  * The sender-chosen Primary Header fields of a packet (133.0 §4.1.3; SPP-001…003).
@@ -3352,13 +3272,9 @@ typedef struct {
    */
   uint32_t anomalies;
   /**
-   * Offset of the Packet Data Field in the input: always 6.
+   * The range of the Packet Data Field in the input: always 6.
    */
-  size_t data_offset;
-  /**
-   * Length of the Packet Data Field.
-   */
-  size_t data_len;
+  aldis_range_t data;
   /**
    * Octets consumed from the input: the total packet length (API-011).
    */
@@ -3366,14 +3282,9 @@ typedef struct {
 } aldis_spp_packet_t;
 
 /**
- * Managed parameters of the Space Packet Protocol (133.0 §5.2 Table 5-1; SPP-005, GEN-060,
- * CABI-033).
+ * Managed parameters of the Space Packet Protocol (133.0 §5.2 Table 5-1; SPP-005, GEN-060).
  */
 typedef struct {
-  /**
-   * `sizeof(aldis_spp_config_t)`, set by the caller (CABI-033).
-   */
-  uint32_t struct_size;
   /**
    * Maximum Packet Length, 7 to `ALDIS_SPP_MAX_PACKET_LEN` octets.
    */
@@ -3381,16 +3292,11 @@ typedef struct {
 } aldis_spp_config_t;
 
 /**
- * A time code format: what a P-field carries, or an implicit format (301.0 §3; TIME-001…006,
- * CABI-033).
+ * A time code format: what a P-field carries, or an implicit format (301.0 §3; TIME-001…006).
  *
  * `code` selects the fields that apply; the others are ignored on input and 0 on output.
  */
 typedef struct {
-  /**
-   * `sizeof(aldis_time_format_t)`, set by the caller (CABI-033).
-   */
-  uint32_t struct_size;
   /**
    * `ALDIS_TIME_CUC`, `_CDS`, `_CCS`, or `_AGENCY` (`_UNKNOWN` on output only).
    */
@@ -3447,13 +3353,9 @@ typedef struct {
 } aldis_time_format_t;
 
 /**
- * How the Packet Data Field of an APID begins (133.0 §4.1.4.2; SPP-007, SPP-008, CABI-033).
+ * How the Packet Data Field of an APID begins (133.0 §4.1.4.2; SPP-007, SPP-008).
  */
 typedef struct {
-  /**
-   * `sizeof(aldis_spp_secondary_layout_t)`, set by the caller (CABI-033).
-   */
-  uint32_t struct_size;
   /**
    * `ALDIS_SPP_SECONDARY_ABSENT`, `_OPAQUE`, or `_TIME`.
    */
@@ -3589,35 +3491,23 @@ typedef struct {
  */
 typedef struct {
   /**
-   * Offset of the Packet Secondary Header: always 6.
+   * The range of the Packet Secondary Header: always 6; length 0 when absent.
    */
-  size_t secondary_header_offset;
+  aldis_range_t secondary_header;
   /**
-   * Length of the Packet Secondary Header; 0 when absent.
+   * The range of the User Data Field.
    */
-  size_t secondary_header_len;
+  aldis_range_t user_data;
   /**
-   * Offset of the User Data Field.
+   * The range of the Ancillary Data Field: the secondary header after the time code; its length is without a time code, the whole secondary header.
    */
-  size_t user_data_offset;
-  /**
-   * Length of the User Data Field.
-   */
-  size_t user_data_len;
-  /**
-   * Offset of the Ancillary Data Field: the secondary header after the time code.
-   */
-  size_t ancillary_offset;
-  /**
-   * Length of the Ancillary Data Field; without a time code, the whole secondary header.
-   */
-  size_t ancillary_len;
+  aldis_range_t ancillary;
   /**
    * Whether `time` holds the decoded time code of a time secondary header.
    */
   bool has_time;
   /**
-   * The decoded Time Code Field, when `has_time`; it starts at `secondary_header_offset`.
+   * The decoded Time Code Field, when `has_time`; it starts at `secondary_header.offset`.
    */
   aldis_time_decoded_t time;
 } aldis_spp_split_t;
@@ -3636,13 +3526,9 @@ typedef struct {
 } aldis_spp_tracker_t;
 
 /**
- * Configuration of a tracker (SPP-011, CABI-033).
+ * Configuration of a tracker (SPP-011).
  */
 typedef struct {
-  /**
-   * `sizeof(aldis_spp_tracker_config_t)`, set by the caller (CABI-033).
-   */
-  uint32_t struct_size;
   /**
    * APIDs to track, 1 to `ALDIS_SPP_TRACKER_MAX_APIDS`.
    */
@@ -3677,13 +3563,9 @@ typedef struct {
 } aldis_spp_segmenter_t;
 
 /**
- * Configuration of a segmenter (133.0 §4.1.3.4.2; SPP-013, CABI-033).
+ * Configuration of a segmenter (133.0 §4.1.3.4.2; SPP-013).
  */
 typedef struct {
-  /**
-   * `sizeof(aldis_spp_segmenter_config_t)`, set by the caller (CABI-033).
-   */
-  uint32_t struct_size;
   /**
    * `ALDIS_SPP_TELEMETRY` or `ALDIS_SPP_TELECOMMAND`.
    */
@@ -3734,13 +3616,9 @@ typedef struct {
 } aldis_spp_reassembly_t;
 
 /**
- * Managed parameters of a physical channel (232.0 §5.1 Table 5-1; GEN-060, CABI-033).
+ * Managed parameters of a physical channel (232.0 §5.1 Table 5-1; GEN-060).
  */
 typedef struct {
-  /**
-   * `sizeof(aldis_tc_config_t)`, set by the caller (CABI-033).
-   */
-  uint32_t struct_size;
   /**
    * 1 if every frame ends with a Frame Error Control Field, else 0 (232.0 §4.1.4.1).
    */
@@ -3753,36 +3631,27 @@ typedef struct {
 } aldis_tc_config_t;
 
 /**
- * Managed parameters of a master channel (232.0 §5.2 Table 5-2; GEN-060, CABI-033).
+ * Managed parameters of a master channel (232.0 §5.2 Table 5-2; GEN-060).
  *
  * Its virtual channels and MAPs are passed beside it, each as an array and its count (M2 plan
  * D14).
  */
 typedef struct {
   /**
-   * `sizeof(aldis_tc_mc_config_t)`, set by the caller (CABI-033).
-   */
-  uint32_t struct_size;
-  /**
    * Spacecraft ID, 0 to 1023 (232.0 §4.1.2, Table 5-2).
    */
   uint16_t scid;
   /**
-   * The physical channel, with its own `struct_size` (CABI-033).
+   * The physical channel.
    */
   aldis_tc_config_t pc;
 } aldis_tc_mc_config_t;
 
 /**
  * Managed parameters of a virtual channel (232.0 §5.3 Table 5-3, §6.6.1 Table 6-2; TC-004,
- * API-070, CABI-033).
+ * API-070).
  */
 typedef struct {
-  /**
-   * `sizeof(aldis_tc_vc_config_t)`, set by the caller, the same for every struct of an
-   * array (CABI-033).
-   */
-  uint32_t struct_size;
   /**
    * Virtual Channel Identifier, 0 to 63 (232.0 §4.1.2).
    */
@@ -3810,14 +3679,9 @@ typedef struct {
 
 /**
  * Managed parameters of a MAP channel (232.0 §5.4 Table 5-4, §6.6.2 Table 6-3; TC-022,
- * API-070, CABI-033).
+ * API-070).
  */
 typedef struct {
-  /**
-   * `sizeof(aldis_tc_map_config_t)`, set by the caller, the same for every struct of an
-   * array (CABI-033).
-   */
-  uint32_t struct_size;
   /**
    * The VCID of its virtual channel, which must have Segment Headers (232.0
    * §4.1.3.2.2.1.2).
@@ -3894,45 +3758,25 @@ typedef struct {
    */
   size_t frame_len;
   /**
-   * Offset of the Segment Header.
+   * The range of the Segment Header; its length is `ALDIS_TC_SEGMENT_HEADER_LEN` or 0 (232.0 §4.1.3.2.2).
    */
-  size_t segment_header_offset;
+  aldis_range_t segment_header;
   /**
-   * Length of the Segment Header: `ALDIS_TC_SEGMENT_HEADER_LEN` or 0 (232.0 §4.1.3.2.2).
+   * The range of the Security Header; length 0 without SDLS (232.0 §6.3.4).
    */
-  size_t segment_header_len;
+  aldis_range_t security_header;
   /**
-   * Offset of the Security Header.
+   * The range of the data field: the User Data or the Control Command.
    */
-  size_t security_header_offset;
+  aldis_range_t data;
   /**
-   * Length of the Security Header; 0 without SDLS (232.0 §6.3.4).
+   * The range of the Security Trailer; length 0 without SDLS (232.0 §6.3.6).
    */
-  size_t security_header_len;
+  aldis_range_t security_trailer;
   /**
-   * Offset of the data field: the User Data or the Control Command.
+   * The range of the Frame Error Control Field; its length is 2 or 0 (232.0 §4.1.4).
    */
-  size_t data_offset;
-  /**
-   * Length of the data field (232.0 §4.1.3).
-   */
-  size_t data_len;
-  /**
-   * Offset of the Security Trailer.
-   */
-  size_t security_trailer_offset;
-  /**
-   * Length of the Security Trailer; 0 without SDLS (232.0 §6.3.6).
-   */
-  size_t security_trailer_len;
-  /**
-   * Offset of the Frame Error Control Field.
-   */
-  size_t fecf_offset;
-  /**
-   * Length of the Frame Error Control Field: 2 or 0 (232.0 §4.1.4).
-   */
-  size_t fecf_len;
+  aldis_range_t fecf;
 } aldis_tc_layout_t;
 
 /**
@@ -3992,13 +3836,10 @@ typedef struct {
    */
   uint8_t reserved[3];
   /**
-   * Starting offset of this item in the caller's unit buffer.
+   * The range of this item in the caller's unit buffer: where it starts and the octets it
+   * consumes.
    */
-  size_t offset;
-  /**
-   * Length of this item in octets consumed from the unit buffer.
-   */
-  size_t len;
+  aldis_range_t range;
   /**
    * The frame length declared in the header (valid when accepted or truncated).
    */
@@ -4162,13 +4003,9 @@ typedef struct {
 } aldis_time_pfield_t;
 
 /**
- * Options of the ASCII parsers (301.0 §3.5.1; TIME-031, CABI-033).
+ * Options of the ASCII parsers (301.0 §3.5.1; TIME-031).
  */
 typedef struct {
-  /**
-   * `sizeof(aldis_time_ascii_options_t)`, set by the caller (CABI-033).
-   */
-  uint32_t struct_size;
   /**
    * Largest number of fraction digits accepted, 0 to 12.
    */
@@ -4335,13 +4172,9 @@ typedef struct {
 } aldis_time_date_t;
 
 /**
- * What [`aldis_time_convert`] produces (TIME-033, CABI-033).
+ * What [`aldis_time_convert`] produces (TIME-033).
  */
 typedef struct {
-  /**
-   * `sizeof(aldis_time_convert_config_t)`, set by the caller (CABI-033).
-   */
-  uint32_t struct_size;
   /**
    * The target: a CDS or CCS format, or `code` = `ALDIS_TIME_ASCII`.
    */
@@ -4361,14 +4194,9 @@ typedef struct {
 } aldis_time_convert_config_t;
 
 /**
- * Managed parameters of a physical channel (132.0 §5.1 Table 5-1; TM-001, API-041,
- * CABI-033). The configuration `aldis_tm_peek_length` takes (M2 plan D14).
+ * Managed parameters of a physical channel (132.0 §5.1 Table 5-1; TM-001, API-041). The configuration `aldis_tm_peek_length` takes (M2 plan D14).
  */
 typedef struct {
-  /**
-   * `sizeof(aldis_tm_config_t)`, set by the caller (CABI-033).
-   */
-  uint32_t struct_size;
   /**
    * 1 if every frame ends with a Frame Error Control Field, else 0 (132.0 §4.1.6.1.2).
    */
@@ -4381,16 +4209,12 @@ typedef struct {
 } aldis_tm_config_t;
 
 /**
- * Managed parameters of a master channel (132.0 §5.2 Table 5-2; TM-011, API-040, CABI-033).
+ * Managed parameters of a master channel (132.0 §5.2 Table 5-2; TM-011, API-040).
  *
  * Its virtual channels are passed beside it, as an array of [`aldis_tm_vc_config_t`] and its
  * count (M2 plan D14).
  */
 typedef struct {
-  /**
-   * `sizeof(aldis_tm_mc_config_t)`, set by the caller (CABI-033).
-   */
-  uint32_t struct_size;
   /**
    * Spacecraft Identifier, 0 to 1023 (132.0 §4.1.2.2.3).
    */
@@ -4405,21 +4229,15 @@ typedef struct {
    */
   uint8_t ocf;
   /**
-   * The physical channel, with its own `struct_size` (CABI-033).
+   * The physical channel.
    */
   aldis_tm_config_t pc;
 } aldis_tm_mc_config_t;
 
 /**
- * Managed parameters of a virtual channel (132.0 §5.3 Table 5-3, §6.6 Table 6-1; API-070,
- * CABI-033).
+ * Managed parameters of a virtual channel (132.0 §5.3 Table 5-3, §6.6 Table 6-1; API-070).
  */
 typedef struct {
-  /**
-   * `sizeof(aldis_tm_vc_config_t)`, set by the caller, the same for every struct of an
-   * array (CABI-033).
-   */
-  uint32_t struct_size;
   /**
    * Virtual Channel Identifier, 0 to 7 (132.0 §4.1.2.3).
    */
@@ -4505,53 +4323,29 @@ typedef struct {
    */
   size_t frame_len;
   /**
-   * Offset of the Secondary Header Data Field, after the Identification Field.
+   * The range of the Secondary Header Data Field, after the Identification Field; length 0 without a Secondary Header (§4.1.3.3).
    */
-  size_t fsh_data_offset;
+  aldis_range_t fsh_data;
   /**
-   * Length of the Secondary Header Data Field; 0 without a Secondary Header (§4.1.3.3).
+   * The range of the Security Header; length 0 without SDLS (§6.3.4).
    */
-  size_t fsh_data_len;
+  aldis_range_t security_header;
   /**
-   * Offset of the Security Header.
+   * The range of the Transfer Frame Data Field; length never 0 (§4.1.4).
    */
-  size_t security_header_offset;
+  aldis_range_t data;
   /**
-   * Length of the Security Header; 0 without SDLS (§6.3.4).
+   * The range of the Security Trailer; length 0 without SDLS (§6.3.6).
    */
-  size_t security_header_len;
+  aldis_range_t security_trailer;
   /**
-   * Offset of the Transfer Frame Data Field.
+   * The range of the Operational Control Field; its length is `ALDIS_OCF_LEN` or 0 (§4.1.5).
    */
-  size_t data_offset;
+  aldis_range_t ocf;
   /**
-   * Length of the Transfer Frame Data Field, never 0 (§4.1.4).
+   * The range of the Frame Error Control Field; its length is 2 or 0 (§4.1.6).
    */
-  size_t data_len;
-  /**
-   * Offset of the Security Trailer.
-   */
-  size_t security_trailer_offset;
-  /**
-   * Length of the Security Trailer; 0 without SDLS (§6.3.6).
-   */
-  size_t security_trailer_len;
-  /**
-   * Offset of the Operational Control Field.
-   */
-  size_t ocf_offset;
-  /**
-   * Length of the Operational Control Field: `ALDIS_OCF_LEN` or 0 (§4.1.5).
-   */
-  size_t ocf_len;
-  /**
-   * Offset of the Frame Error Control Field.
-   */
-  size_t fecf_offset;
-  /**
-   * Length of the Frame Error Control Field: 2 or 0 (§4.1.6).
-   */
-  size_t fecf_len;
+  aldis_range_t fecf;
 } aldis_tm_layout_t;
 
 /**
@@ -4701,14 +4495,9 @@ typedef struct {
 } aldis_tm_content_t;
 
 /**
- * Managed parameters of a physical channel (732.1 §5 Table 5-1; USLP-003, USLP-008, API-040,
- * CABI-033).
+ * Managed parameters of a physical channel (732.1 §5 Table 5-1; USLP-003, USLP-008, API-040).
  */
 typedef struct {
-  /**
-   * `sizeof(aldis_uslp_config_t)`, set by the caller (CABI-033).
-   */
-  uint32_t struct_size;
   /**
    * Transfer Frame Type, `ALDIS_USLP_FRAME_*` (Table 5-1).
    */
@@ -4731,14 +4520,9 @@ typedef struct {
 
 /**
  * Managed parameters of a virtual channel (732.1 §5 Table 5-3, §6.6 Table 6-1, Annex D1.2;
- * USLP-002, USLP-004, USLP-012, API-070, CABI-033).
+ * USLP-002, USLP-004, USLP-012, API-070).
  */
 typedef struct {
-  /**
-   * `sizeof(aldis_uslp_vc_config_t)`, set by the caller, the same for every struct of an
-   * array (CABI-033).
-   */
-  uint32_t struct_size;
   /**
    * Spacecraft Identifier of the VC's master channel (732.1 §4.1.2.2.3).
    */
@@ -4786,14 +4570,9 @@ typedef struct {
 } aldis_uslp_vc_config_t;
 
 /**
- * Managed parameters of a MAP channel (732.1 §5 Table 5-4, §6.6; API-070, CABI-033).
+ * Managed parameters of a MAP channel (732.1 §5 Table 5-4, §6.6; API-070).
  */
 typedef struct {
-  /**
-   * `sizeof(aldis_uslp_map_config_t)`, set by the caller, the same for every struct of an
-   * array (CABI-033).
-   */
-  uint32_t struct_size;
   /**
    * Spacecraft Identifier of the MAP's virtual channel (732.1 §4.1.2.2.3).
    */
@@ -4876,61 +4655,33 @@ typedef struct {
    */
   size_t frame_len;
   /**
-   * Offset of the Insert Zone, after the Primary Header and its VCF Count.
+   * The range of the Insert Zone, after the Primary Header and its VCF Count; length 0 without one (§4.1.3).
    */
-  size_t insert_zone_offset;
+  aldis_range_t insert_zone;
   /**
-   * Length of the Insert Zone; 0 without one (§4.1.3).
+   * The range of the Security Header; length 0 without SDLS (§6.3.4).
    */
-  size_t insert_zone_len;
+  aldis_range_t security_header;
   /**
-   * Offset of the Security Header.
+   * The range of the TFDF Header; its length is 3 for rules `000` to `010`, else 1 (§4.1.4.2.1.2; USLP-005).
    */
-  size_t security_header_offset;
+  aldis_range_t tfdf_header;
   /**
-   * Length of the Security Header; 0 without SDLS (§6.3.4).
+   * The range of the Transfer Frame Data Zone; length never 0 (§4.1.4.3).
    */
-  size_t security_header_len;
+  aldis_range_t tfdz;
   /**
-   * Offset of the TFDF Header.
+   * The range of the Security Trailer; length 0 without one (§6.3.6).
    */
-  size_t tfdf_header_offset;
+  aldis_range_t security_trailer;
   /**
-   * Length of the TFDF Header: 3 for rules `000` to `010`, else 1 (§4.1.4.2.1.2; USLP-005).
+   * The range of the Operational Control Field; its length is `ALDIS_OCF_LEN` or 0 (§4.1.5).
    */
-  size_t tfdf_header_len;
+  aldis_range_t ocf;
   /**
-   * Offset of the Transfer Frame Data Zone.
+   * The range of the Frame Error Control Field; its length is 2 or 0 (§4.1.6).
    */
-  size_t tfdz_offset;
-  /**
-   * Length of the TFDZ, never 0 (§4.1.4.3).
-   */
-  size_t tfdz_len;
-  /**
-   * Offset of the Security Trailer.
-   */
-  size_t security_trailer_offset;
-  /**
-   * Length of the Security Trailer; 0 without one (§6.3.6).
-   */
-  size_t security_trailer_len;
-  /**
-   * Offset of the Operational Control Field.
-   */
-  size_t ocf_offset;
-  /**
-   * Length of the OCF: `ALDIS_OCF_LEN` or 0 (§4.1.5).
-   */
-  size_t ocf_len;
-  /**
-   * Offset of the Frame Error Control Field.
-   */
-  size_t fecf_offset;
-  /**
-   * Length of the FECF: 2 or 0 (§4.1.6).
-   */
-  size_t fecf_len;
+  aldis_range_t fecf;
 } aldis_uslp_layout_t;
 
 /**
@@ -5007,13 +4758,10 @@ typedef struct {
    */
   uint8_t reserved[3];
   /**
-   * Starting offset of this item in the caller's unit buffer.
+   * The range of this item in the caller's unit buffer: where it starts and the octets it
+   * consumes.
    */
-  size_t offset;
-  /**
-   * Length of this item in octets consumed from the unit buffer.
-   */
-  size_t len;
+  aldis_range_t range;
   /**
    * The frame length declared in the header or VC config (valid when accepted or incomplete).
    */
@@ -5172,11 +4920,10 @@ uint32_t aldis_aos_config_check(const aldis_aos_config_t *pc, aldis_error_detail
  * for a VC left no data octet or, for an `M_PDU` or `B_PDU`, no octet after its header, and
  * for a VC that carries `B_PDUs` (`frame_len`) for frames longer than 2 048 octets in Issue 5
  * and (`frame_data_field`) for a Bitstream Data Zone longer than 2 047 octets (AOS-018);
- * CABI-022 violations, including a VC struct whose `struct_size` differs from the first one's.
+ * CABI-022 violations.
  *
  * # Safety
- * `mc` is valid for a read; `vcs` is valid for reads of `vc_count` structs of the first one's
- * `struct_size` (or `NULL` with 0); `err` is `NULL` or valid for one write.
+ * `mc` is valid for a read; `vcs` is valid for reads of `vc_count` structs (or `NULL` with 0); `err` is `NULL` or valid for one write.
  */
 uint32_t aldis_aos_mc_config_check(const aldis_aos_mc_config_t *mc,
                                    const aldis_aos_vc_config_t *vcs,
@@ -5586,18 +5333,6 @@ uint32_t aldis_epp_idle_header(size_t total_len,
 uint32_t aldis_epp_config_check(const aldis_epp_config_t *cfg, aldis_error_detail_t *err);
 
 /**
- * Fills `limits` with the capacities of this build (CABI-030).
- *
- * # Errors
- * `ALDIS_ERR_INVALID_FIELD` when `limits` is `NULL` or misaligned, or its `struct_size` is
- * smaller than `aldis_limits_t` (CABI-022).
- *
- * # Safety
- * `limits` is valid for a read of its `struct_size` and one write of `aldis_limits_t`.
- */
-uint32_t aldis_limits(aldis_limits_t *limits);
-
-/**
  * Classifies the four OCF octets at `ocf` by bits 0–1 (CMN-010).
  *
  * `report` receives `ALDIS_OCF_CLCW`, `ALDIS_OCF_PROJECT_SPECIFIC`, or `ALDIS_OCF_SDLS_FSR`
@@ -5688,7 +5423,7 @@ void aldis_oid_generator_deinit(aldis_oid_generator_t *h);
  * Decodes one Space Packet (133.0 §4.1; SPP-001…004, SPP-009, API-010, API-011, API-030).
  *
  * `bytes` may hold more than one packet: `out->packet_len` is the length of the first. The
- * data field is `bytes[data_offset .. data_offset + data_len]`.
+ * data field is `bytes[data.offset .. data.offset + data.len]`.
  *
  * # Errors
  * `ALDIS_ERR_INCOMPLETE` (with `needed`) when `bytes` is shorter than the header or the
@@ -6115,12 +5850,12 @@ uint32_t aldis_tc_config_check(const aldis_tc_config_t *pc, aldis_error_detail_t
  * octets, (`max_frame_len`) for a VC maximum outside 6 to 1024 octets, (`vc_id`) for
  * `vc_count` 0 (OI-55) or a VCID given twice, (`map_id`) for a MAP given twice or on a VC that is not given or has no Segment
  * Header, and (`frame_data_field`) for a VC or MAP whose fields leave no data octet; CABI-022
- * violations, including a struct whose `struct_size` differs from its array's first, and a VC
+ * violations, including a VC
  * with Segment Headers whose security lengths are not 0.
  *
  * # Safety
  * `mc` is valid for a read; `vcs` and `maps` are valid for reads of `vc_count` and
- * `map_count` structs of their first one's `struct_size` (or `NULL` with 0); `err` is `NULL`
+ * `map_count` structs (or `NULL` with 0); `err` is `NULL`
  * or valid for one write.
  */
 uint32_t aldis_tc_mc_config_check(const aldis_tc_mc_config_t *mc,
@@ -6609,12 +6344,10 @@ uint32_t aldis_tm_config_check(const aldis_tm_config_t *pc, aldis_error_detail_t
  * `fsh_len`); `ALDIS_ERR_INVALID_CONFIG` (`security_header_len`) for a Security Header above 64
  * octets, and (`fsh_len`, `ocf_flag`, `frame_data_field`, `vc_id`) for a Secondary Header or an
  * OCF on both the master and the virtual channel, a frame with no data octet left, or a VCID
- * configured twice (132.0 §4.1.3.1.4, §4.1.5.2); CABI-022 violations, including a VC struct
- * whose `struct_size` differs from the first one's.
+ * configured twice (132.0 §4.1.3.1.4, §4.1.5.2); CABI-022 violations.
  *
  * # Safety
- * `mc` is valid for a read; `vcs` is valid for reads of `vc_count` structs of the first one's
- * `struct_size` (or `NULL` with 0); `err` is `NULL` or valid for one write.
+ * `mc` is valid for a read; `vcs` is valid for reads of `vc_count` structs (or `NULL` with 0); `err` is `NULL` or valid for one write.
  */
 uint32_t aldis_tm_mc_config_check(const aldis_tm_mc_config_t *mc,
                                   const aldis_tm_vc_config_t *vcs,
@@ -6888,13 +6621,11 @@ uint32_t aldis_uslp_config_check(const aldis_uslp_config_t *pc, aldis_error_deta
  * (`vcf_count_len`, `truncated_frame_len`, `security_header_len`, `security_trailer_len`,
  * `ocf_flag`, `transfer_frame_type`, `vc_id`, `map_id`, `frame_data_field`) as `aldis-uslp`'s
  * constructors return them (`docs/standards/uslp-frame.md` §2.1); CABI-022 violations,
- * including an enumeration member that is no constant and a struct whose `struct_size` differs
- * from its array's first one. `vc_count` 0 is `ALDIS_ERR_INVALID_CONFIG` (`vc_id`) once
+ * including an enumeration member that is no constant. `vc_count` 0 is `ALDIS_ERR_INVALID_CONFIG` (`vc_id`) once
  * the structs have parsed (USLP-017, OI-55).
  *
  * # Safety
- * `pc` is valid for a read; `vcs` is valid for reads of `vc_count` structs of the first one's
- * `struct_size`, and `maps` of `map_count` (each `NULL` with 0); `err` is `NULL` or valid for
+ * `pc` is valid for a read; `vcs` is valid for reads of `vc_count` structs, and `maps` of `map_count` (each `NULL` with 0); `err` is `NULL` or valid for
  * one write.
  */
 uint32_t aldis_uslp_vc_table_check(const aldis_uslp_config_t *pc,

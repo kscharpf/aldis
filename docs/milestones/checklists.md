@@ -54,7 +54,7 @@ A crate *has code* once its `src/` declares a function. In the change that gives
 
 - [ ] Functions in the codec's own module of `crates/aldis-ffi` (M2 plan §3), named `aldis_<std>_…` ([C ABI profile](../profiles/c-abi.md)), in the shape of M2 plan D4 and D14 (a convention they do not fix, such as status codes or struct layout, is the maintainer's: [decision rights](../process/decision-rights.md) §2.4); every pointer and length checked (CABI-022); every `unsafe` block with a `// SAFETY:` comment (GEN-070).
 - [ ] The generated header `include/aldis/aldis.h` regenerated with `cargo xtask header --write`, never merged by hand (CABI-002; verify check `header`).
-- [ ] Capacities of stateful helpers in `crates/aldis-ffi/capacities.toml` and reported by `aldis_limits` (CABI-030).
+- [ ] Capacities of stateful helpers in `crates/aldis-ffi/capacities.toml` (CABI-030); the header is the only report of them.
 - [ ] The functions called by the exerciser's `aldis-ffi` group, `exerciser/src/ffi.rs` (M2 plan D16, VER-010; the dependency, the `ffi` group run by `exerciser/src/exercise.rs`, and `REPORTED` in `xtask/src/coverage.rs` **(consistency)**) and compared with the Rust decoders by the `ffi_decode` fuzz target (M2 WP-7).
 - [ ] Every vector file of the codec run through the C ABI by the `aldis-ffi` vector runner (D4); the area follows from the module `crates/aldis-ffi/src/<area>.rs`; for an `aldis-core` module, add its file to `FFI_FILES` in `xtask/src/consistency.rs` **(consistency)**.
 - [ ] The C++ owner told when the header changes (roadmap §6 rule 4).

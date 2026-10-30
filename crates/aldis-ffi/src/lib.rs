@@ -19,8 +19,8 @@
 //!   empty buffer and for the detail; a violation is `ALDIS_ERR_INVALID_FIELD` naming no
 //!   field.
 //! - Buffers are `(const uint8_t *, size_t)` inputs and `(uint8_t *, size_t cap, size_t
-//!   *out_len)` outputs (CABI-011); views are POD structs with offset/length pairs into the
-//!   input (CABI-012); configuration structs start with `uint32_t struct_size` (CABI-033).
+//!   *out_len)` outputs (CABI-011); views are POD structs with `aldis_range_t` offset/length
+//!   ranges into the input (CABI-012).
 //! - The decode mode is a `uint32_t` (`ALDIS_MODE_STRICT`, `ALDIS_MODE_LENIENT`), and
 //!   anomalies a `uint32_t` mask whose bit `n` is the flag with the `Anomaly` index `n`.
 //! - No call keeps a pointer it is given (API-060); the stateful helpers keep their state in
@@ -40,10 +40,10 @@ pub mod epp;
 pub mod error;
 pub mod field;
 pub mod handle;
-pub mod limits;
 mod mirror;
 pub mod ocf;
 pub mod oid;
+pub mod range;
 pub mod spp;
 pub mod spp_state;
 pub mod status;
@@ -60,7 +60,7 @@ pub use error::{ALDIS_OK, aldis_error_detail_t};
 /// ABI major version; changes on any ABI-breaking change (CABI-060).
 pub const ALDIS_ABI_VERSION_MAJOR: u32 = 0;
 /// ABI minor version (CABI-060).
-pub const ALDIS_ABI_VERSION_MINOR: u32 = 5;
+pub const ALDIS_ABI_VERSION_MINOR: u32 = 6;
 /// ABI patch version (CABI-060).
 pub const ALDIS_ABI_VERSION_PATCH: u32 = 0;
 

@@ -1,5 +1,5 @@
 //! The contract of the C ABI itself, called as a C caller calls it: argument checks
-//! (CABI-022), error detail (CABI-020, CABI-021), configuration sizes (CABI-033), and the
+//! (CABI-022), error detail (CABI-020, CABI-021), and the
 //! storage and handles of the stateful helpers (CABI-031, CABI-032).
 #![expect(clippy::unwrap_used, reason = "test-only harness (RS-018)")]
 #![expect(unsafe_code, reason = "the tests call the C ABI")]
@@ -18,9 +18,8 @@ fn size<T>() -> u32 {
     u32::try_from(size_of::<T>()).unwrap()
 }
 
-fn spp_cfg() -> aldis_spp_config_t {
+const fn spp_cfg() -> aldis_spp_config_t {
     aldis_spp_config_t {
-        struct_size: size::<aldis_spp_config_t>(),
         max_packet_len: ALDIS_SPP_MAX_PACKET_LEN,
     }
 }
@@ -193,11 +192,9 @@ fn errors_carry_their_field_code_and_values() {
     assert_eq!(
         d,
         aldis_error_detail_t {
-            struct_size: size::<aldis_error_detail_t>(),
             kind: 5,
             field: aldis_ffi::field::ALDIS_FIELD_APID,
             detail: ALDIS_DETAIL_EXPECTED,
-            reserved: 0,
             needed: 0,
             expected: 2047,
             found: 4096,
@@ -224,31 +221,17 @@ fn errors_carry_their_field_code_and_values() {
 }
 
 #[test]
-fn configurations_need_a_struct_size() {
-    // req: CABI-033, CABI-022
-    let small = aldis_spp_config_t {
-        struct_size: 4,
-        max_packet_len: ALDIS_SPP_MAX_PACKET_LEN,
-    };
-    let larger = aldis_spp_config_t {
-        struct_size: 64,
-        ..spp_cfg()
-    };
-    // SAFETY: the configs are live locals; `larger` claims more than it has, which the
-    // library never reads (it reads only the struct it knows).
+fn configurations_are_checked_where_they_are_parsed() {
+    // req: CABI-022
+    let ok = spp_cfg();
+    // SAFETY: the configs are live locals.
     unsafe {
+        assert_eq!(aldis_spp_config_check(&raw const ok, null_mut()), ALDIS_OK);
         assert_eq!(
-            aldis_spp_config_check(&raw const small, null_mut()),
+            aldis_spp_config_check(core::ptr::null(), null_mut()),
             ALDIS_ERR_INVALID_FIELD
         );
-        assert_eq!(
-            aldis_spp_config_check(&raw const larger, null_mut()),
-            ALDIS_OK
-        );
-        let bad = aldis_spp_config_t {
-            max_packet_len: 6,
-            ..spp_cfg()
-        };
+        let bad = aldis_spp_config_t { max_packet_len: 6 };
         let mut d = aldis_error_detail_t::default();
         assert_eq!(
             aldis_spp_config_check(&raw const bad, &raw mut d),
@@ -257,7 +240,6 @@ fn configurations_need_a_struct_size() {
         assert_eq!(d.field, aldis_ffi::field::ALDIS_FIELD_MAX_PACKET_LEN);
     }
     let format = aldis_time_format_t {
-        struct_size: 8,
         code: ALDIS_TIME_CDS,
         ..aldis_time_format_t::default()
     };
@@ -266,17 +248,17 @@ fn configurations_need_a_struct_size() {
     unsafe {
         assert_eq!(
             aldis_time_format_t_len(&raw const format, &raw mut t_len, null_mut()),
-            ALDIS_ERR_INVALID_FIELD
-        );
-        let format = aldis_time_format_t {
-            struct_size: size::<aldis_time_format_t>(),
-            ..format
-        };
-        assert_eq!(
-            aldis_time_format_t_len(&raw const format, &raw mut t_len, null_mut()),
             ALDIS_OK
         );
         assert_eq!(t_len, 6);
+        let flag = aldis_time_format_t {
+            agency_epoch: 2,
+            ..format
+        };
+        assert_eq!(
+            aldis_time_format_t_len(&raw const flag, &raw mut t_len, null_mut()),
+            ALDIS_ERR_INVALID_FIELD
+        );
     }
 }
 
@@ -289,10 +271,7 @@ const fn tracker_storage() -> aldis_spp_tracker_t {
 #[test]
 fn storage_is_typed() {
     // req: CABI-031, CABI-030
-    let cfg = aldis_spp_tracker_config_t {
-        struct_size: size::<aldis_spp_tracker_config_t>(),
-        capacity: 2,
-    };
+    let cfg = aldis_spp_tracker_config_t { capacity: 2 };
     // The C compiler supplies size and alignment: the type is its words, at the alignment of
     // `uint64_t`.
     assert_eq!(
@@ -332,7 +311,6 @@ fn storage_is_typed() {
         }
         // The other helpers reject the same pointers through their own `_init`.
         let seg_cfg = aldis_spp_segmenter_config_t {
-            struct_size: size::<aldis_spp_segmenter_config_t>(),
             packet_type: ALDIS_SPP_TELEMETRY,
             apid: 9,
             max_user_len: 2,
@@ -364,14 +342,13 @@ fn storage_is_typed() {
                 ALDIS_ERR_INVALID_FIELD
             );
         }
-        let zero = aldis_spp_tracker_config_t { capacity: 0, ..cfg };
+        let zero = aldis_spp_tracker_config_t { capacity: 0 };
         assert_eq!(
             aldis_spp_tracker_init(&raw mut tracker, &raw const zero, null_mut()),
             ALDIS_ERR_INVALID_CONFIG
         );
         let big = aldis_spp_tracker_config_t {
             capacity: u32::try_from(ALDIS_SPP_TRACKER_MAX_APIDS).unwrap() + 1,
-            ..cfg
         };
         assert_eq!(
             aldis_spp_tracker_init(&raw mut tracker, &raw const big, null_mut()),
@@ -387,10 +364,7 @@ fn storage_is_typed() {
 #[test]
 fn handles_are_tagged() {
     // req: CABI-032
-    let cfg = aldis_spp_tracker_config_t {
-        struct_size: size::<aldis_spp_tracker_config_t>(),
-        capacity: 1,
-    };
+    let cfg = aldis_spp_tracker_config_t { capacity: 1 };
     let mut storage = tracker_storage();
     let h = &raw mut storage;
     let mut t = aldis_spp_tracked_t::default();
@@ -580,7 +554,6 @@ fn helpers_never_keep_a_buffer() {
     // req: API-060, SPP-013, CABI-022
     let spp = spp_cfg();
     let cfg = aldis_spp_segmenter_config_t {
-        struct_size: size::<aldis_spp_segmenter_config_t>(),
         packet_type: ALDIS_SPP_TELEMETRY,
         apid: 9,
         max_user_len: 2,
@@ -675,10 +648,8 @@ fn reassembly_takes_the_buffer_on_every_push() {
     let first = [0x00_u8, 0x07, 0x40, 0x00, 0x00, 0x01, 0xA1, 0xA2];
     let last = [0x00_u8, 0x07, 0x80, 0x01, 0x00, 0x00, 0xA3];
     let layout = aldis_spp_secondary_layout_t {
-        struct_size: size::<aldis_spp_secondary_layout_t>(),
         kind: ALDIS_SPP_SECONDARY_ABSENT,
         time_format: aldis_time_format_t {
-            struct_size: size::<aldis_time_format_t>(),
             ..aldis_time_format_t::default()
         },
         ..aldis_spp_secondary_layout_t::default()
@@ -773,7 +744,6 @@ fn counts_and_epi_checks() {
     let mut next = 0_u16;
     let mut d = aldis_error_detail_t::default();
     let cfg = aldis_ffi::epp::aldis_epp_config_t {
-        struct_size: size::<aldis_ffi::epp::aldis_epp_config_t>(),
         min_data_len: 1,
         max_data_len: 8,
         valid_epis: 1 << 2,
@@ -813,72 +783,28 @@ fn counts_and_epi_checks() {
 }
 
 /// Calls `aldis_spp_peek_length` on a 3-octet prefix, which fails with `Incomplete`
-/// (`needed` = 6), writing the detail into `words` with the given `struct_size`.
-fn short_peek(words: &mut [u64], struct_size: u32) -> u32 {
+/// (`needed` = 6), writing the detail into `words`.
+fn short_peek(words: &mut [u64]) -> u32 {
     words.fill(u64::MAX);
     let detail = words.as_mut_ptr().cast::<aldis_error_detail_t>();
     let mut n = 0;
-    // SAFETY: `words` is aligned to 8 and holds `struct_size` octets or more; the library
-    // reads only `struct_size` and writes only within it.
-    unsafe {
-        detail.cast::<u32>().write(struct_size);
-        aldis_spp_peek_length(PACKET.as_ptr(), 3, &raw mut n, detail)
-    }
-}
-
-/// The octets of `words`.
-fn octets(words: &[u64]) -> Vec<u8> {
-    words.iter().flat_map(|w| w.to_ne_bytes()).collect()
+    // SAFETY: `words` is aligned to 8 and holds a whole detail or more.
+    unsafe { aldis_spp_peek_length(PACKET.as_ptr(), 3, &raw mut n, detail) }
 }
 
 #[test]
-fn the_detail_is_written_within_its_struct_size() {
-    // req: CABI-021, CABI-033
+fn the_detail_is_written_whole() {
+    // req: CABI-021
     let full = usize::try_from(size::<aldis_error_detail_t>()).unwrap();
-    // Too short for the fixed prefix: the call fails before it runs, nothing is written.
     let mut words = vec![0_u64; 8];
-    assert_eq!(
-        short_peek(&mut words, ALDIS_ERROR_DETAIL_MIN_SIZE - 1),
-        ALDIS_ERR_INVALID_FIELD
-    );
-    assert!(octets(&words)[4..].iter().all(|&b| b == 0xFF));
-    // Exactly the prefix: kind, field, and detail, nothing after them.
-    assert_eq!(
-        short_peek(&mut words, ALDIS_ERROR_DETAIL_MIN_SIZE),
-        ALDIS_ERR_INCOMPLETE
-    );
-    let o = octets(&words);
-    assert_eq!(u32::from_ne_bytes(o[4..8].try_into().unwrap()), 2);
-    assert_eq!(u16::from_ne_bytes(o[8..10].try_into().unwrap()), 0);
-    assert_eq!(
-        u16::from_ne_bytes(o[10..12].try_into().unwrap()),
-        ALDIS_DETAIL_NEEDED
-    );
-    assert!(o[12..].iter().all(|&b| b == 0xFF));
-    // Through `needed`: the 64-bit members after it are left alone.
-    assert_eq!(short_peek(&mut words, 24), ALDIS_ERR_INCOMPLETE);
-    let o = octets(&words);
-    assert_eq!(u64::from_ne_bytes(o[16..24].try_into().unwrap()), 6);
-    assert!(o[24..].iter().all(|&b| b == 0xFF));
-    // The size this library knows: every member.
-    assert_eq!(
-        short_peek(&mut words, size::<aldis_error_detail_t>()),
-        ALDIS_ERR_INCOMPLETE
-    );
+    assert_eq!(short_peek(&mut words), ALDIS_ERR_INCOMPLETE);
     // SAFETY: `words` holds a whole, aligned detail.
     let d = unsafe { words.as_ptr().cast::<aldis_error_detail_t>().read() };
     assert_eq!(
-        (d.kind, d.detail, d.reserved, d.needed, d.expected, d.found),
-        (2, 1, 0, 6, 0, 0)
+        (d.kind, d.field, d.detail, d.needed, d.expected, d.found),
+        (2, 0, ALDIS_DETAIL_NEEDED, 6, 0, 0)
     );
-    assert_eq!(d.struct_size, size::<aldis_error_detail_t>());
-    // A larger struct of a later version: the known members, nothing beyond them.
-    assert_eq!(short_peek(&mut words, 64), ALDIS_ERR_INCOMPLETE);
-    let o = octets(&words);
-    assert_eq!(
-        u32::from_ne_bytes(o[0..4].try_into().unwrap()),
-        64,
-        "struct_size is the caller's"
-    );
+    // Nothing beyond the struct is written.
+    let o: Vec<u8> = words.iter().flat_map(|w| w.to_ne_bytes()).collect();
     assert!(o[full..].iter().all(|&b| b == 0xFF));
 }
