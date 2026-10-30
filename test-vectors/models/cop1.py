@@ -719,8 +719,35 @@ FARM_EVENT_TEXT = {
 }
 
 
+def check_farm_flag_actions():
+    """Each cell's Lockout_Flag and Wait_Flag actions agree with its next state. 232.1-B-2 6.1.3
+    and 6.1.4 define the Lockout_Flag as "the state is S3" and the Wait_Flag as "the state is
+    S2", so a cell that sets or clears a flag must leave it equal to that function of the next
+    state, and a cell that enters or leaves S3 (S2) must set or clear the Lockout (Wait) Flag.
+    Cell (S2, E5) moves to S3 and does not clear the Wait_Flag: the one exception (OI-64). The
+    model derives both flags from the state and does not apply these actions."""
+    problems = []
+    for event, row in TABLE_FARM.items():
+        for state, cell in zip(FARM_STATES, row):
+            if cell is None:
+                continue
+            tokens, nxt = cell
+            acts = {t.split(":")[0]: int(t.split(":")[1]) for t in tokens if ":" in t}
+            for flag, own in (("lock", "S3"), ("wait", "S2")):
+                if flag in acts and acts[flag] != (nxt == own):
+                    problems.append((state, event, flag + " action disagrees with the next state"))
+                if flag not in acts and (state == own) != (nxt == own):
+                    problems.append((state, event, flag + " not set or cleared on entering or "
+                                     "leaving " + own))
+    return sorted(problems)
+
+
+FARM_FLAG_EXCEPTIONS = [("S2", 5, "wait not set or cleared on entering or leaving S2")]
+
+
 class Farm:
-    """FARM-1 for one virtual channel: variables of 6.1, Table 6-1."""
+    """FARM-1 for one virtual channel: variables of 6.1, Table 6-1. The Lockout_Flag and the
+    Wait_Flag are functions of the state (6.1.3, 6.1.4; OI-64) and are not stored."""
 
     def __init__(self, cfg):
         self.cfg = cfg
@@ -735,7 +762,7 @@ class Farm:
             self.pw = window["pw"]  # 6.1.8.3.2 (Cor. 1)
             self.nw = window["w"] - window["pw"]
         self.state = "S1"
-        self.lock = self.wait = self.retx = 0
+        self.retx = 0
         self.farm_b = 0
         self.vr = cfg["v_r"]
         self.no_rf = self.no_bit_lock = 0
@@ -747,8 +774,16 @@ class Farm:
         other.__dict__.update(self.__dict__)
         return other
 
+    @property
+    def lock(self):
+        return int(self.state == "S3")  # 6.1.3
+
+    @property
+    def wait(self):
+        return int(self.state == "S2")  # 6.1.4
+
     def key(self):
-        return (self.state, self.lock, self.wait, self.retx, self.farm_b, self.vr)
+        return (self.state, self.retx, self.farm_b, self.vr)
 
     def clcw(self):
         word = clcw_word(self.lock, self.wait, self.retx, self.farm_b, self.vr, self.vcid,
@@ -822,10 +857,8 @@ class Farm:
                 self.vr = wrap(self.vr + 1)
             elif what == "retx":
                 self.retx = int(val)
-            elif what == "wait":
-                self.wait = int(val)
-            elif what == "lock":
-                self.lock = int(val)
+            elif what in ("wait", "lock"):
+                pass  # the flags follow the state (6.1.3, 6.1.4; OI-64)
             elif what == "farmb_inc":
                 self.farm_b = (self.farm_b + 1) & 3
             elif what == "set_vr":
@@ -1165,7 +1198,9 @@ def note_for(engine, how, tables, frames):
 def provenance(engine, how):
     if engine == "fop1":
         return note_for(engine, how, "Table 5-1, 5.1 and 5.2", "4.1.2, 4.1.3.3, 4.1.4.2")
-    return note_for(engine, how, "Table 6-1, 6.1 and 6.2", "4.1.2, 4.1.3.3, 4.2.1")
+    return note_for(engine, how, "Table 6-1, 6.1 and 6.2", "4.1.2, 4.1.3.3, 4.2.1") + (
+        " The Lockout and Wait Flags are derived from the state (6.1.3, 6.1.4), not stored, "
+        "so the CLCW after (S2, E5) shows Wait 0 and Lockout 1 (OI-64).")
 
 
 SETUP_HOW = ("Each setup is the shortest input sequence found by breadth-first search over the "
@@ -1540,6 +1575,14 @@ def extras_farm():
                 "positive, 255 is the negative window, 254 is outside and locks out.", cfgna,
                 inputs, ("COP-030",)))
 
+    # Entering Lockout from Wait: the CLCW shows Lockout and no Wait (6.1.3, 6.1.4; OI-64).
+    inputs = timed([{"frame": ad(0, False)}, q, {"frame": ad(4)}, q])
+    out.append(("farm1", "cop1-farm1-wait-to-lockout", "No buffer for the expected frame puts "
+                "FARM-1 in Wait (Wait 1); a frame outside the sliding window then moves it from "
+                "Wait to Lockout (S2, E5). The Wait Flag is set exactly in Wait and the Lockout "
+                "Flag exactly in Lockout, so the CLCW then shows Wait 0 and Lockout 1 (OI-64).",
+                cfg, inputs, ("COP-030", "COP-033", "COP-035")))
+
     # The physical flags reach the CLCW (COP-035).
     inputs = timed([q, {"set_physical_flags": {"no_rf_available": True, "no_bit_lock": False}}, q,
                     {"set_physical_flags": {"no_rf_available": False, "no_bit_lock": True}}, q])
@@ -1574,7 +1617,7 @@ TOPICS = {
     "farm1_window.json": ["window-positive-edge", "window-negative-edge", "vr-wrap",
                           "window-not-allowed"],
     "farm1_flow_clcw.json": ["farm-b-counter", "buffer-wait", "set-vr-in-lockout",
-                             "bc-not-a-command", "physical-flags", "clcw-fields"],
+                             "wait-to-lockout", "bc-not-a-command", "physical-flags", "clcw-fields"],
 }
 
 # A first step shared by many scenarios, kept as a named setup.
@@ -1622,6 +1665,7 @@ def compile_file(engine, file_cfg, raws, how):
 
 def all_files():
     """Every file as {relative name: document}, and the cells found."""
+    assert check_farm_flag_actions() == FARM_FLAG_EXCEPTIONS, check_farm_flag_actions()
     files = {}
     fop_found, _ = search_fop(FOP_CFG)
     raws = []
