@@ -811,7 +811,7 @@ only if at least one commit was authored then; a run without one re-ran a head.
 in the specification: `docs/` except `docs/process/`, `docs/verification/`, and \
 `docs/milestones/` (so `docs/0*.md`, `docs/profiles/`, `docs/standards/`, and the other \
 documents of `docs/`). Every other path is *process*: `xtask/`, `.github/`, those three parts of \
-`docs/`, `changelog.d/`, `AGENTS.md`, and the other root files. A pull request is product-only, \
+`docs/`, `AGENTS.md`, and the other root files. A pull request is product-only, \
 process-only, or mixed by the files it changed (`pulls/{{n}}/files`), a commit other than a merge \
 by the paths it changes against its parent (`git diff-tree`); merges are not classified. A \
 *bookkeeping-only* commit changes only files under \

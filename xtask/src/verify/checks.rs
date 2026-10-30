@@ -183,8 +183,8 @@ pub const STACK: PathList = PathList {
     patterns: &["crates/**", "exerciser/**", "test-vectors/**"],
 };
 
-/// Documentation: read by `spec` only (spec lint, links, vectors, field catalogue, traces,
-/// changelog check), so a change to these paths alone runs only `spec`; a change to the field
+/// Documentation: read by `spec` only (spec lint, links, vectors, field catalogue, traces), so a
+/// change to these paths alone runs only `spec`; a change to the field
 /// catalogue or the error catalogue in `docs/03-api-model.md` alone fails `spec` until
 /// `cargo xtask fields --write` or `cargo xtask status --write` regenerates its files, which are
 /// Rust and C++ inputs. Not documentation: the crate READMEs,
@@ -193,13 +193,7 @@ pub const STACK: PathList = PathList {
 /// (installed by the C++ build) and `refapp/golden/CHANGES.md`.
 pub const DOCS: PathList = PathList {
     name: "docs",
-    patterns: &[
-        "docs/**",
-        "changelog.d/**",
-        "*.md",
-        "specs/README.md",
-        "specs/manifest.tsv",
-    ],
+    patterns: &["docs/**", "*.md", "specs/README.md", "specs/manifest.tsv"],
 };
 
 /// The GitHub configuration that no check reads but `spec` (which reads every path: spec lint
@@ -478,7 +472,7 @@ fn rust() -> Vec<Check> {
             Group::Coverage,
             check("coverage", c, false, 170, "cargo xtask coverage\n"),
         ),
-        // Spec lint, links, vectors, traces, and changelog: it reads every part of the tree.
+        // Spec lint, links, vectors, and traces: it reads every part of the tree.
         grouped(
             Group::Coverage,
             reading(Inputs::Everything, check("spec", c, false, 32, SPEC)),
@@ -666,7 +660,6 @@ cargo xtask assurance --strict
 # first: the harness must report a difference it is shown.
 cargo test --manifest-path crosscheck/Cargo.toml
 cargo run --manifest-path crosscheck/Cargo.toml
-cargo xtask changelog check
 # M0 is closed: every in-scope requirement must keep an artefact (VER-020).
 cargo xtask trace --scope m0 --strict
 # M1 is closed: every in-scope requirement must keep an artefact (VER-020, m1 plan D8).
@@ -864,7 +857,7 @@ mod tests {
         let docs = [
             "docs/06-verification.md",
             "docs/milestones/m2-plan.md",
-            "changelog.d/chore-x.md",
+            "docs/process/pr-body.md",
             "README.md",
             "AGENTS.md",
             "CHANGELOG.md",

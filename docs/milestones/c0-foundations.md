@@ -161,7 +161,7 @@ As built: the loader follows the schemas (closed objects reject unknown keys; nu
 |---|---|
 | `cargo xtask trace --scope c0 --strict` in CI | `ci.yml` |
 | §4 results column; roadmap §2 row (C0 complete; D18 scope); open issues updated (OI-08, OI-22, OI-27, OI-28) | docs |
-| Changelog fragment for the C0 exit | `changelog.d/` |
+| Changelog entry for the C0 exit | the PR title (conventional commit) |
 
 ## 4. Exit criteria
 
@@ -178,7 +178,7 @@ C0 is complete when every item below is green on `main`. The criteria apply to `
 | Trace | CPP-057 (`cargo xtask trace --scope c0 --strict` passes) |
 | Conformance | All live cases of `test-vectors/core/` pass on every C++ CI target of D3, with both compilers |
 | Evaluation | IKOS evaluated and the recommendation recorded (OI-22); LEON3 result reported against OI-08 |
-| Docs | Roadmap §2 row updated; changelog fragment; deviation log and analysis records current; open issues updated |
+| Docs | Roadmap §2 row updated; deviation log and analysis records current; open issues updated |
 
 Not in C0: CPP-022 (decoders, C1), CPP-024 (engines, C3), CPP-035 and the C ABI layer (C1), CPP-054 (native fuzz and property tests, C1), CPP-055 (mutation testing, C1), CPP-060 and CPP-061 (differential tests, C1, although D1 already picks the Clang version CPP-061 needs), and VER-053 for any module.
 

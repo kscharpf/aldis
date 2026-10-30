@@ -1,3 +1,0 @@
-### Changed
-- Documentation overhead (OI-63): requirement rows state obligations, and `cargo xtask assurance` rejects code names in them (`docs/verification/assurance-evidence.md` §2.5a); a requirement verified by a check of the verification run has no prose record, and `cargo xtask trace` reads the check from a table; provenance is stated once per file (TV-024); pull request bodies have three sections (`docs/process/pr-body.md`); documentation mismatches are reviewed as one batch of nits; crate READMEs keep the example and "where it sits".
-- Removed 20 verification record files that restated a check.

@@ -1046,7 +1046,7 @@ mod tests {
     fn documentation_runs_spec_only() {
         let docs = changed(&[
             "docs/06-verification.md",
-            "changelog.d/chore-x.md",
+            "docs/process/pr-body.md",
             "README.md",
             "AGENTS.md",
             "specs/manifest.tsv",
