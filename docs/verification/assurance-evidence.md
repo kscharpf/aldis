@@ -175,7 +175,7 @@ It writes `target/spec/assurance.json` (an object with `hazards`, each with `id`
 
 **Joining `cargo xtask verify`.** Add `cargo xtask assurance` to the script `SPEC` of `xtask/src/verify/checks.rs`, after `cargo xtask loops`, with the comment line `# Every reference of the hazard analysis and the assurance case resolves (VER-065, VER-066).`. The check `spec` reads every path (`Inputs::Everything`), so no input list changes: a change to a test, a vector, a record, or a check that the analysed files name runs `spec`, and a broken reference fails it on the same commit.
 
-**Records and changelog.** VER-066 is traced by the check `spec` (`CHECK_REQUIREMENTS` in `xtask/src/trace.rs`); add a changelog fragment for the branch.
+**Records and changelog.** VER-066 is traced by the check `spec` (`CHECK_REQUIREMENTS` in `xtask/src/trace.rs`).
 
 ## 6. What a passing check means
 

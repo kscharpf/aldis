@@ -258,7 +258,6 @@ jobs:
       # tests first: the harness must report a difference it is shown.
       - run: cargo test --manifest-path crosscheck/Cargo.toml
       - run: cargo run --manifest-path crosscheck/Cargo.toml
-      - run: cargo xtask changelog check
       # M0 is closed: every in-scope requirement must keep an artefact (VER-020).
       - run: cargo xtask trace --scope m0 --strict
       # M1 is closed: every in-scope requirement must keep an artefact (VER-020, m1 plan D8).

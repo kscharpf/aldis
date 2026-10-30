@@ -4,7 +4,7 @@ For the coordinator who dispatches an agent, and for the agent. A dispatched for
 
 ## The brief
 
-Name the goal, the base, what done means, and what the agent leaves alone: other pull requests, other tracks' directories ([roadmap §6](../08-roadmap.md)). Add what the agent cannot find in the repository: a decision already made in chat, a measurement to compare against, a pull request to stack on.
+Name the goal, the base, what done means, and what the agent leaves alone: other pull requests, other tracks' directories ([roadmap §6](../08-roadmap.md)). Title the pull request of a work package `feat(m3/wp-4): Implement …` ([pr-body.md](pr-body.md)). Add what the agent cannot find in the repository: a decision already made in chat, a measurement to compare against, a pull request to stack on.
 
 ## Conventions for the agent
 

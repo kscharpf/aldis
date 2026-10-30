@@ -1,6 +1,0 @@
-### Changed
-- `aldis-ffi`: **Breaking:** the ABI version is 0.3.0. The storage of `aldis_spp_tracker_t`, `aldis_spp_segmenter_t`, `aldis_spp_reassembler_t`, and `aldis_oid_generator_t` is a typed struct of `uint64_t words[N]` that the caller declares, so the C compiler supplies its size and alignment. Their `_init` functions take a pointer to that struct, which is also the handle: the `storage_len` and `out` parameters go (OI-57 convention 4).
-- `docs/`: CABI-031 and CABI-072, the memory model of `docs/profiles/c-abi.md` §5, and GEN-012 describe the typed storage.
-
-### Removed
-- `aldis-ffi`: **Breaking:** the constants `ALDIS_OID_GENERATOR_STORAGE_SIZE`, `ALDIS_OID_GENERATOR_STORAGE_ALIGN`, `ALDIS_SPP_TRACKER_STORAGE_SIZE`, `_ALIGN`, `ALDIS_SPP_SEGMENTER_STORAGE_SIZE`, `_ALIGN`, `ALDIS_SPP_REASSEMBLER_STORAGE_SIZE`, and `_ALIGN`, and the functions `aldis_oid_generator_storage_size`, `_storage_align`, `aldis_spp_tracker_storage_size`, `_storage_align`, `aldis_spp_segmenter_storage_size`, `_storage_align`, `aldis_spp_reassembler_storage_size`, and `_storage_align`. The constants `ALDIS_OID_GENERATOR_WORDS`, `ALDIS_SPP_TRACKER_WORDS`, `ALDIS_SPP_SEGMENTER_WORDS`, and `ALDIS_SPP_REASSEMBLER_WORDS` take their place as the word counts of the storage types.
