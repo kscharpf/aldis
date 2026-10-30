@@ -5,10 +5,9 @@
 
 // req: TIME-030, TIME-034, GEN-020, API-020, VER-022
 
-use aldis_core::DecodeMode;
 use aldis_time::{
     CalendarDate, CcsFormat, CcsVariation, Hour, Minute, Second, TimeAnomaly, TimeCode, TimeFormat,
-    decode_implicit,
+    decode_implicit, decode_implicit_lenient,
 };
 use libfuzzer_sys::fuzz_target;
 
@@ -22,11 +21,13 @@ fuzz_target!(|data: &[u8]| {
         CcsVariation::DayOfYear
     };
     let format = CcsFormat::new(variation, (selector >> 1) % 7).unwrap();
-    let strict = decode_implicit(t, &TimeFormat::Ccs(format), DecodeMode::Strict);
-    let Ok(d) = decode_implicit(t, &TimeFormat::Ccs(format), DecodeMode::Lenient) else {
+    let strict = decode_implicit(t, &TimeFormat::Ccs(format));
+    let Ok(lenient) = decode_implicit_lenient(t, &TimeFormat::Ccs(format)) else {
         assert!(strict.is_err());
         return;
     };
+    let anomalies = lenient.anomalies();
+    let d = lenient.into_view();
     let TimeCode::Ccs(c) = d.code() else {
         panic!("not CCS")
     };
@@ -45,7 +46,7 @@ fuzz_target!(|data: &[u8]| {
     );
     let mut out = [0_u8; 16];
     let n = d.code().encode(false, &mut out).unwrap();
-    if d.anomalies().contains(TimeAnomaly::NonZeroDoyHighNibble) {
+    if anomalies.contains(TimeAnomaly::NonZeroDoyHighNibble) {
         assert!(strict.is_err());
         assert_eq!(out[2], t[2] & 0x0F);
     } else {

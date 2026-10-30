@@ -10,10 +10,10 @@ use aldis_cop1::{
     FARM1_MAX_ACTIONS, Farm1, Farm1Config, Farm1Frame, Farm1Input, Farm1Output, Farm1State,
     Farm1Window, FduKind,
 };
+use aldis_core::ErrorKind;
 use aldis_core::ids::FrameSeqNum;
 use aldis_core::time::Instant;
-use aldis_core::{DecodeMode, ErrorKind};
-use aldis_tc::{ClcwStatus, ControlCommand, FrameType, TcFrame, TcVcId};
+use aldis_tc::{ClcwStatus, ControlCommand, FrameType, TcVcId, validate_frame};
 use aldis_testkit::strategies::common::frame_seq_num;
 use aldis_testkit::strategies::proptest::prelude::*;
 use aldis_testkit::strategies::tc::{control_command, tc_frame};
@@ -217,7 +217,7 @@ proptest! {
     #[test]
     fn tc_frames_map_to_farm1_frames(f in tc_frame()) {
         // req: COP-031, COP-002, VER-023
-        let frame = TcFrame::decode(&f.octets, &f.channels.table, DecodeMode::Strict).unwrap();
+        let frame = validate_frame(&f.octets, &f.channels.table).unwrap();
         match (frame.frame_type(), Farm1Frame::from_tc(&frame)) {
             (FrameType::Ad, Farm1Frame::Ad { sequence_number, data }) => {
                 prop_assert_eq!(sequence_number, frame.sequence_number());

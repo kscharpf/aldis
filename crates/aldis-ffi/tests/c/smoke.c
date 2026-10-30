@@ -189,7 +189,8 @@ int main(void) {
               tm_view.pointer == ALDIS_TM_POINTER_STARTS_AT &&
               tm_view.layout.data.len == 10 && frame[tm_view.layout.data.offset] == 0xD0,
           "decoded TM frame (CABI-012)");
-    check(aldis_tm_validate(frame, len, &mc, &vc, 1, ALDIS_MODE_STRICT, NULL) == ALDIS_OK,
+    uint32_t found = 0;
+    check(aldis_tm_validate(frame, len, &mc, &vc, 1, ALDIS_MODE_STRICT, &found, NULL) == ALDIS_OK,
           "aldis_tm_validate");
     /* An Only Idle Data frame in one call, its data field from the OID generator. */
     aldis_oid_generator_t tm_oid_storage;

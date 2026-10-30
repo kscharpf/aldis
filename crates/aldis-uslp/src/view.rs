@@ -12,7 +12,7 @@ use aldis_core::crc;
 use aldis_core::layout::{FECF_LEN, FrameLayout, LayoutSpec, OCF_LEN};
 use aldis_core::ocf::Ocf;
 use aldis_core::security::SecurityLayout;
-use aldis_core::{AnomalySet, DecodeMode, Error, ErrorKind, FieldId, Result};
+use aldis_core::{AnomalySet, DecodeMode, Error, ErrorKind, FieldId, Lenient, Result};
 
 use crate::anomaly::UslpAnomaly;
 use crate::config::{MapConfig, OcfUse, VcConfig, VcLookup, frame_layout, frame_security};
@@ -121,7 +121,6 @@ pub struct UslpFullFrame<'a> {
     security_trailer: &'a [u8],
     ocf: Option<Ocf>,
     fecf: Option<u16>,
-    anomalies: AnomalySet<UslpAnomaly>,
 }
 
 /// A decoded USLP frame: non-truncated or truncated (732.1 §4.1.2.6; M2 plan D12, USLP-002).
@@ -217,7 +216,7 @@ fn parse_full<'a, L: VcLookup + ?Sized>(
     channels: &L,
     mode: DecodeMode,
     exact: bool,
-) -> core::result::Result<(UslpFullFrame<'a>, VcConfig, Option<MapConfig>), Rejection> {
+) -> core::result::Result<Parsed<UslpFullFrame<'a>>, Rejection> {
     let mut anomalies = AnomalySet::empty();
     let (vc, map, kind) = check_channel(start.channel, rest, channels, mode, &mut anomalies)?;
     let ch = start.channel;
@@ -273,35 +272,45 @@ fn parse_full<'a, L: VcLookup + ?Sized>(
             DecodeMode::Lenient => anomalies.insert(UslpAnomaly::OidHeaderMismatch),
         }
     }
-    Ok((
-        UslpFullFrame {
-            header: UslpPrimaryHeader::new(
-                ch,
-                total,
-                kind,
-                rest.ocf_flag,
-                read_vcf_count(frame, rest.vcf_count_len),
-            ),
-            octets: frame,
-            layout,
-            insert_zone: parts.insert_zone,
-            security_header: parts.security_header,
-            tfdf_header,
-            tfdz,
-            security_trailer: parts.security_trailer,
-            ocf: parts
-                .ocf
-                .first_chunk::<OCF_LEN>()
-                .map(|&octets| Ocf::decode(octets)),
-            fecf: parts
-                .fecf
-                .first_chunk::<FECF_LEN>()
-                .map(|&octets| u16::from_be_bytes(octets)),
-            anomalies,
-        },
+    let frame = UslpFullFrame {
+        header: UslpPrimaryHeader::new(
+            ch,
+            total,
+            kind,
+            rest.ocf_flag,
+            read_vcf_count(frame, rest.vcf_count_len),
+        ),
+        octets: frame,
+        layout,
+        insert_zone: parts.insert_zone,
+        security_header: parts.security_header,
+        tfdf_header,
+        tfdz,
+        security_trailer: parts.security_trailer,
+        ocf: parts
+            .ocf
+            .first_chunk::<OCF_LEN>()
+            .map(|&octets| Ocf::decode(octets)),
+        fecf: parts
+            .fecf
+            .first_chunk::<FECF_LEN>()
+            .map(|&octets| u16::from_be_bytes(octets)),
+    };
+    Ok(Parsed {
+        frame,
+        anomalies,
         vc,
         map,
-    ))
+    })
+}
+
+/// What a decode yields: the frame, the anomalies a lenient mode tolerated, and the matched
+/// channel configurations.
+pub(crate) struct Parsed<F> {
+    pub(crate) frame: F,
+    pub(crate) anomalies: AnomalySet<UslpAnomaly>,
+    pub(crate) vc: VcConfig,
+    pub(crate) map: Option<MapConfig>,
 }
 
 /// The decoder and the USLP Frame Validation Checks, in the order of
@@ -314,7 +323,7 @@ pub(crate) fn parse<'a, L: VcLookup + ?Sized>(
     channels: &L,
     mode: DecodeMode,
     exact: bool,
-) -> core::result::Result<(UslpFrame<'a>, VcConfig, Option<MapConfig>), Rejection> {
+) -> core::result::Result<Parsed<UslpFrame<'a>>, Rejection> {
     let start = RawStart::parse(bytes).ok_or(length(exact, TRUNCATED_HEADER_LEN))?;
     let rest = if start.truncated {
         None
@@ -334,11 +343,21 @@ pub(crate) fn parse<'a, L: VcLookup + ?Sized>(
     match rest {
         None => {
             let (frame, vc, map) = truncated::parse(bytes, start.channel, channels, exact)?;
-            Ok((UslpFrame::Truncated(frame), vc, map))
+            Ok(Parsed {
+                frame: UslpFrame::Truncated(frame),
+                anomalies: AnomalySet::empty(),
+                vc,
+                map,
+            })
         }
         Some(rest) => {
-            let (frame, vc, map) = parse_full(bytes, (start, rest), channels, mode, exact)?;
-            Ok((UslpFrame::Full(frame), vc, map))
+            let p = parse_full(bytes, (start, rest), channels, mode, exact)?;
+            Ok(Parsed {
+                frame: UslpFrame::Full(p.frame),
+                anomalies: p.anomalies,
+                vc: p.vc,
+                map: p.map,
+            })
         }
     }
 }
@@ -351,6 +370,7 @@ impl<'a> UslpFrame<'a> {
     /// so a stream can be parsed frame by frame with [`len`](Self::len) (API-011); on a
     /// fixed-length Physical Channel `bytes` must be exactly one frame (API-012). The checks are
     /// those of [`validate_frame`](crate::validate::validate_frame), in its order.
+    /// A strict decode has no anomalies to report (API-031).
     ///
     /// A receiver of delimited frames must run `validate_frame`, or compare
     /// [`len`](Self::len) with the octets it supplied, because a bit error in the Frame Length
@@ -375,13 +395,24 @@ impl<'a> UslpFrame<'a> {
     ///   `Malformed` (`fhp_lvo_pointer`) for a pointer beyond the TFDZ (USLP-006).
     /// - On VCID 63, `InvalidField` naming the deviating OID header field in strict mode,
     ///   [`UslpAnomaly::OidHeaderMismatch`] in lenient (OI-44 item 1).
-    pub fn decode<L: VcLookup + ?Sized>(
+    pub fn decode<L: VcLookup + ?Sized>(bytes: &'a [u8], channels: &L) -> Result<UslpFrame<'a>> {
+        parse(bytes, channels, DecodeMode::Strict, false)
+            .map(|p| p.frame)
+            .map_err(Error::from)
+    }
+
+    /// Decodes one frame as [`decode`](Self::decode) does, in lenient mode: nonzero Reserve
+    /// Spares and a deviating OID header are accepted and reported as [`UslpAnomaly`] flags
+    /// (USLP-001, API-032). A truncated frame has no such field and never has anomalies.
+    ///
+    /// # Errors
+    /// As for [`decode`](Self::decode), except the deviations that are anomalies.
+    pub fn decode_lenient<L: VcLookup + ?Sized>(
         bytes: &'a [u8],
         channels: &L,
-        mode: DecodeMode,
-    ) -> Result<UslpFrame<'a>> {
-        parse(bytes, channels, mode, false)
-            .map(|(frame, _, _)| frame)
+    ) -> Result<Lenient<UslpFrame<'a>, UslpAnomaly>> {
+        parse(bytes, channels, DecodeMode::Lenient, false)
+            .map(|p| Lenient::new(p.frame, p.anomalies))
             .map_err(Error::from)
     }
 
@@ -555,15 +586,6 @@ impl<'a> UslpFrame<'a> {
     pub const fn is_empty(&self) -> bool {
         false
     }
-
-    /// Lenient-mode anomalies; always empty after a strict decode (API-032, GEN-043).
-    #[must_use]
-    pub const fn anomalies(&self) -> AnomalySet<UslpAnomaly> {
-        match self {
-            UslpFrame::Full(f) => f.anomalies,
-            UslpFrame::Truncated(t) => t.anomalies(),
-        }
-    }
 }
 
 impl<'a> UslpFullFrame<'a> {
@@ -650,12 +672,6 @@ impl<'a> UslpFullFrame<'a> {
     pub const fn is_empty(&self) -> bool {
         false
     }
-
-    /// Lenient-mode anomalies; always empty after a strict decode (API-032, GEN-043).
-    #[must_use]
-    pub const fn anomalies(&self) -> AnomalySet<UslpAnomaly> {
-        self.anomalies
-    }
 }
 
 #[cfg(test)]
@@ -667,13 +683,14 @@ mod tests {
     use crate::config::tests::{fixed, mapid, plain_variable, variable};
     use crate::field;
     use crate::header::{FrameKind, SourceOrDestination};
+    use crate::stream::{DiscardReason, FrameStream, IntakeItem, LenientFrameStream};
     use crate::tfdf::tests::offset;
     use crate::tfdf::{FirstHeaderPointer, LastValidOctet, TfdfHeader, TfdzRule};
     use crate::upid::Upid;
-    use crate::validate::Reason;
+    use crate::validate::{Reason, validate_frame, validate_frame_lenient};
     use aldis_core::crc::crc16;
     use aldis_core::ocf::Ocf;
-    use aldis_core::{DecodeMode, Error, ErrorDetail, ErrorKind, FieldId};
+    use aldis_core::{Error, ErrorDetail, ErrorKind, FieldId, Lenient};
     use std::vec;
     use std::vec::Vec;
 
@@ -711,7 +728,7 @@ mod tests {
         // req: CMN-040, CMN-041, USLP-008
         let t = fixed();
         let bytes = fixed_frame();
-        let f = UslpFrame::decode(&bytes, &t, DecodeMode::Strict).unwrap();
+        let f = UslpFrame::decode(&bytes, &t).unwrap();
         let l = f.layout();
         // Primary Header with a 2-octet VCF Count, Insert Zone, TFDF Header and TFDZ, OCF, FECF.
         assert_eq!(
@@ -730,7 +747,7 @@ mod tests {
         let t = fixed();
         let bytes = fixed_frame();
         assert_eq!(bytes.len(), 64);
-        let f = UslpFrame::decode(&bytes, &t, DecodeMode::Strict).unwrap();
+        let f = UslpFrame::decode(&bytes, &t).unwrap();
         assert!(!f.is_truncated() && f.truncated().is_none() && !f.is_empty());
         assert_eq!(
             (f.spacecraft_id().get(), f.vc_id().get(), f.map_id().get()),
@@ -758,14 +775,19 @@ mod tests {
         assert!(f.security_header().is_empty() && f.security_trailer().is_empty());
         assert_eq!((f.len(), full.len(), full.is_empty()), (64, 64, false));
         assert_eq!((f.octets(), full.octets()), (&bytes[..], &bytes[..]));
-        assert!(f.anomalies().is_empty() && full.anomalies().is_empty());
+        assert!(
+            UslpFrame::decode_lenient(&bytes, &t)
+                .unwrap()
+                .anomalies()
+                .is_empty()
+        );
         let h = full.header();
         assert_eq!(h.octets()[..h.len()], bytes[..9]);
         assert_eq!(UslpFrame::peek_length(&bytes[..4], &t), Ok(64));
         let mut longer = bytes.clone();
         longer.push(0);
         assert_eq!(
-            err_of(UslpFrame::decode(&longer, &t, DecodeMode::Strict)),
+            err_of(UslpFrame::decode(&longer, &t)),
             (ErrorKind::LengthMismatch, Some(field::FRAME_LEN))
         );
     }
@@ -783,7 +805,7 @@ mod tests {
         b[5] = u8::try_from(len - 1).unwrap();
         let mut bytes = with_fecf(&b);
         bytes.extend_from_slice(&[0xEE, 0xEE]);
-        let f = UslpFrame::decode(&bytes, &t, DecodeMode::Strict).unwrap();
+        let f = UslpFrame::decode(&bytes, &t).unwrap();
         assert_eq!(f.len(), len);
         assert_eq!(f.security_header(), [0x51; 6]);
         assert_eq!(f.security_trailer(), [0x52; 16]);
@@ -797,7 +819,7 @@ mod tests {
         b.extend_from_slice(&[9, 8, 7, 6]);
         b[5] = u8::try_from(b.len() + 1).unwrap();
         let bytes = with_fecf(&b);
-        let f = UslpFrame::decode(&bytes, &t, DecodeMode::Strict).unwrap();
+        let f = UslpFrame::decode(&bytes, &t).unwrap();
         let full = f.full().unwrap();
         assert_eq!(full.kind(), FrameKind::ProtocolControl);
         assert_eq!(full.ocf(), Some(Ocf::decode([9, 8, 7, 6])));
@@ -807,7 +829,7 @@ mod tests {
         );
         assert_eq!(full.vcf_count().value(), 7);
         assert_eq!(
-            err_of(UslpFrame::decode(&bytes[..10], &t, DecodeMode::Strict)),
+            err_of(UslpFrame::decode(&bytes[..10], &t)),
             (ErrorKind::Incomplete, None)
         );
         assert_eq!(
@@ -820,7 +842,7 @@ mod tests {
 
     #[test]
     fn header_errors_in_check_order() {
-        // req: USLP-001, USLP-002, USLP-003, USLP-004, USLP-014, GEN-041, CMN-041
+        // req: USLP-001, USLP-002, USLP-003, USLP-004, USLP-014, GEN-041, CMN-041, API-015, API-016, API-030, API-031, API-032
         let t = fixed();
         let good = fixed_frame();
         let with = |at: usize, v: u8| {
@@ -861,24 +883,51 @@ mod tests {
         ];
         for (bytes, expected) in cases {
             assert_eq!(
-                err_of(UslpFrame::decode(&bytes, &t, DecodeMode::Strict)),
+                err_of(UslpFrame::decode(&bytes, &t)),
                 expected,
                 "{bytes:02X?}"
             );
         }
         assert_eq!(
-            err_of(UslpFrame::decode(&with(5, 0x3E), &t, DecodeMode::Strict)),
+            err_of(UslpFrame::decode(&with(5, 0x3E), &t)),
             ic(ErrorKind::LengthMismatch, field::FRAME_LEN)
         );
         let spare_bad_crc = with(6, 0x9A);
-        let f = UslpFrame::decode(&spare_bad_crc, &t, DecodeMode::Lenient);
-        assert_eq!(err_of(f), (ErrorKind::CrcMismatch, None));
+        let f = UslpFrame::decode_lenient(&spare_bad_crc, &t);
+        assert_eq!(
+            err_of(f.map(Lenient::into_view)),
+            (ErrorKind::CrcMismatch, None)
+        );
         let mut spare = with(6, 0x9A);
         let n = spare.len();
         let crc = crc16(&spare[..n - 2]).to_be_bytes();
         spare[n - 2..].copy_from_slice(&crc);
-        let f = UslpFrame::decode(&spare, &t, DecodeMode::Lenient).unwrap();
+        let f = UslpFrame::decode_lenient(&spare, &t).unwrap();
         assert!(f.anomalies().contains(UslpAnomaly::ReserveSparesSet));
+        // The strict entry points reject it; the validated frame and the lenient stream agree
+        // with the decoder (API-016, API-030, API-032).
+        assert_eq!(
+            err_of(UslpFrame::decode(&spare, &t)),
+            ic(ErrorKind::ReservedValue, field::USLP_HEADER_SPARE)
+        );
+        assert_eq!(
+            validate_frame(&spare, &t).unwrap_err().reason(),
+            Reason::ReservedSpare
+        );
+        let v = validate_frame_lenient(&spare, &t).unwrap();
+        assert!(v.anomalies().contains(UslpAnomaly::ReserveSparesSet));
+        assert_eq!(v.into_view().into_frame(), f.into_view());
+        let mut stream = LenientFrameStream::new(&spare, &t);
+        let item = stream.next().unwrap();
+        assert!(matches!(item, IntakeItem::Accepted { ref frame, .. }
+            if frame.anomalies().contains(UslpAnomaly::ReserveSparesSet)));
+        assert!(matches!(
+            FrameStream::new(&spare, &t).next(),
+            Some(IntakeItem::Discarded {
+                reason: DiscardReason::ReservedSpare,
+                ..
+            })
+        ));
         assert!(UslpFrame::peek_length(&[0xC0, 0x15], &t).is_err());
         assert!(UslpFrame::peek_length(&[0x10, 0x15, 0x50, 0x26], &t).is_err());
     }
@@ -890,10 +939,10 @@ mod tests {
         // VC 4 MAP 0, sequence-controlled: Frame Length 600 > 512.
         let long = [0xC0, 0x15, 0x50, 0x80, 0x02, 0x57, 0x00, 0xE0, 0x00];
         assert_eq!(
-            err_of(UslpFrame::decode(&long, &t, DecodeMode::Strict)),
+            err_of(UslpFrame::decode(&long, &t)),
             (ErrorKind::OutOfRange, Some(field::FRAME_LEN))
         );
-        let e = UslpFrame::decode(&long, &t, DecodeMode::Strict).unwrap_err();
+        let e = UslpFrame::decode(&long, &t).unwrap_err();
         assert_eq!(
             e.detail(),
             ErrorDetail::Expected {
@@ -904,18 +953,18 @@ mod tests {
         // Frame Length 9 leaves no TFDZ octet after a 1-octet TFDF Header and the FECF.
         let short = [0xC0, 0x15, 0x50, 0x80, 0x00, 0x08, 0x00, 0xE0, 0x00];
         assert_eq!(
-            err_of(UslpFrame::decode(&short, &t, DecodeMode::Strict)),
+            err_of(UslpFrame::decode(&short, &t)),
             (ErrorKind::InvalidField, Some(field::FRAME_DATA_FIELD))
         );
         // VC 6 (fixed-length TFDZ) with rule 111, and rule 000 with the pointer beyond.
         let rule = with_fecf(&[0xC0, 0x15, 0x50, 0xC0, 0x00, 0x0C, 0x00, 0xE0, 0, 0, 1]);
         assert_eq!(
-            err_of(UslpFrame::decode(&rule, &t, DecodeMode::Strict)),
+            err_of(UslpFrame::decode(&rule, &t)),
             (ErrorKind::InvalidField, Some(field::TFDZ_CONSTRUCTION_RULE))
         );
         let beyond = with_fecf(&[0xC0, 0x15, 0x50, 0xC0, 0x00, 0x0C, 0x00, 0x00, 0, 1, 1]);
         assert_eq!(
-            err_of(UslpFrame::decode(&beyond, &t, DecodeMode::Strict)),
+            err_of(UslpFrame::decode(&beyond, &t)),
             (ErrorKind::Malformed, Some(field::FHP_LVO_POINTER))
         );
     }
@@ -932,16 +981,17 @@ mod tests {
         b.push(u8::try_from(lvo).unwrap());
         b.extend(core::iter::repeat_n(0xA5, lvo + 1));
         let ok = with_fecf(&b);
-        let f = UslpFrame::decode(&ok, &t, DecodeMode::Strict).unwrap();
+        assert!(UslpFrame::decode(&ok, &t).is_ok());
+        let f = UslpFrame::decode_lenient(&ok, &t).unwrap();
         assert!(f.anomalies().is_empty());
         let mut bad = b.clone();
         bad[10] = 0x3E;
         let bad = with_fecf(&bad);
         assert_eq!(
-            err_of(UslpFrame::decode(&bad, &t, DecodeMode::Strict)),
+            err_of(UslpFrame::decode(&bad, &t)),
             (ErrorKind::InvalidField, Some(field::UPID))
         );
-        let f = UslpFrame::decode(&bad, &t, DecodeMode::Lenient).unwrap();
+        let f = UslpFrame::decode_lenient(&bad, &t).unwrap();
         assert!(f.anomalies().contains(UslpAnomaly::OidHeaderMismatch));
         let h = |rule, upid| TfdfHeader { rule, upid };
         let start = TfdzRule::SduStart(LastValidOctet::At(offset(9)));
@@ -993,13 +1043,13 @@ mod tests {
     #[test]
     fn a_vc_with_a_truncated_length_refuses_non_truncated_frames() {
         // req: USLP-002, USLP-014, OI-48
-        use crate::validate::validate_frame;
+        use crate::validate::{validate_frame, validate_frame_lenient};
         // VC 4 MAP 0, sequence-controlled, rule 111, UPID 5, one TFDZ octet, FECF.
         let frame = with_fecf(&[0xC0, 0x15, 0x50, 0x80, 0x00, 0x0A, 0x00, 0xE5, 0xAA]);
         let plain = plain_variable();
         let t = variable();
         // Without a truncated frame length the frame is good.
-        assert!(UslpFrame::decode(&frame, &plain, DecodeMode::Strict).is_ok());
+        assert!(UslpFrame::decode(&frame, &plain).is_ok());
         assert_eq!(UslpFrame::peek_length(&frame, &plain), Ok(11));
         let flag = (
             ErrorKind::InvalidField,
@@ -1007,21 +1057,37 @@ mod tests {
         );
         // With one, it is refused in both modes, by the decoder, the validation, and the length
         // peek, with a reason of its own; the check comes before the FECF and the lengths.
-        for mode in [DecodeMode::Strict, DecodeMode::Lenient] {
-            assert_eq!(err_of(UslpFrame::decode(&frame, &t, mode)), flag);
-            let r = validate_frame(&frame, &t, mode).unwrap_err();
+        let mut bad = frame.clone();
+        bad[10] ^= 1;
+        bad[5] = 0x40;
+        for lenient in [false, true] {
+            fn decode<'a>(
+                b: &'a [u8],
+                t: &impl crate::config::VcLookup,
+                lenient: bool,
+            ) -> aldis_core::Result<UslpFrame<'a>> {
+                if lenient {
+                    UslpFrame::decode_lenient(b, t).map(Lenient::into_view)
+                } else {
+                    UslpFrame::decode(b, t)
+                }
+            }
+            assert_eq!(err_of(decode(&frame, &t, lenient)), flag);
+            let r = if lenient {
+                validate_frame_lenient(&frame, &t).map(drop)
+            } else {
+                validate_frame(&frame, &t).map(drop)
+            }
+            .unwrap_err();
             assert_eq!(r.reason(), Reason::NonTruncatedFrameNotAllowed);
             assert_eq!((r.error().kind(), r.error().field()), flag);
-            let mut bad = frame.clone();
-            bad[10] ^= 1;
-            bad[5] = 0x40;
-            assert_eq!(err_of(UslpFrame::decode(&bad, &t, mode)), flag);
+            assert_eq!(err_of(decode(&bad, &t, lenient)), flag);
         }
         let peek = UslpFrame::peek_length(&frame, &t).unwrap_err();
         assert_eq!((peek.kind(), peek.field()), flag);
         // The flag is checked after the channel: an unknown MAP is reason 6, an unknown VC 5.
         let map3 = with_fecf(&[0xC0, 0x15, 0x50, 0x86, 0x00, 0x0A, 0x00, 0xE5, 0xAA]);
-        let r = validate_frame(&map3, &t, DecodeMode::Strict).unwrap_err();
+        let r = validate_frame(&map3, &t).unwrap_err();
         assert_eq!(r.reason(), Reason::InvalidMapId);
         // The length peek of an unknown VC is not refused.
         let vc9 = [0xC0, 0x15, 0x51, 0x20, 0x00, 0x09];

@@ -319,7 +319,7 @@ mod tests {
         with_length_delta,
     };
     use crate::strategies::config;
-    use aldis_core::{DecodeMode, ErrorKind};
+    use aldis_core::ErrorKind;
     use aldis_spp::{MAX_PACKET_LEN, MIN_PACKET_LEN, SpacePacket};
     use proptest::prelude::*;
 
@@ -334,12 +334,12 @@ mod tests {
         #[test]
         fn packets_decode_strictly(p in space_packet(), idle in idle_packet()) {
             // req: VER-054, SPP-002, SPP-010
-            let d = SpacePacket::decode(&p.octets, DecodeMode::Strict).unwrap();
+            let d = SpacePacket::decode(&p.octets).unwrap();
             prop_assert_eq!(d.header().fields(), p.fields);
             let data_field = p.data_field();
             prop_assert_eq!(d.data_field(), data_field.as_slice());
             prop_assert_eq!(p.data().packet_len(), p.octets.len());
-            prop_assert!(SpacePacket::decode(&idle, DecodeMode::Strict).unwrap().is_idle());
+            prop_assert!(SpacePacket::decode(&idle).unwrap().is_idle());
         }
 
         #[test]
@@ -347,12 +347,12 @@ mod tests {
             // req: VER-054, SPP-002
             let longer = with_length_delta(p.octets.clone(), 1);
             prop_assert_eq!(
-                SpacePacket::decode(&longer, DecodeMode::Strict).unwrap_err().kind(),
+                SpacePacket::decode(&longer).unwrap_err().kind(),
                 ErrorKind::Incomplete
             );
             if p.octets.len() > MIN_PACKET_LEN {
                 let shorter = with_length_delta(p.octets, -1);
-                let d = SpacePacket::decode(&shorter, DecodeMode::Strict).unwrap();
+                let d = SpacePacket::decode(&shorter).unwrap();
                 prop_assert_eq!(d.len() + 1, shorter.len());
             }
         }
@@ -372,8 +372,8 @@ mod tests {
             prop_assert!(events.iter().all(|e| e.apid.get() < 4));
             prop_assert!(!s.sdu.is_empty() && s.max_user >= 1);
             for bytes in [a, b] {
-                let _ = SpacePacket::decode(&bytes, DecodeMode::Strict);
-                let _ = SpacePacket::decode(&bytes, DecodeMode::Lenient);
+                let _ = SpacePacket::decode(&bytes);
+                let _ = SpacePacket::decode_lenient(&bytes);
             }
         }
     }

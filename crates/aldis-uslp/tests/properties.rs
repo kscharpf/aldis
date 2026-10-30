@@ -6,9 +6,9 @@
     reason = "test bookkeeping on lengths the strategies bound (RS-018)"
 )]
 
+use aldis_core::ErrorKind;
 use aldis_core::oid::OidGenerator;
 use aldis_core::security::{FrameCtx, PreFilledSecurity};
-use aldis_core::{DecodeMode, ErrorKind};
 use aldis_testkit::strategies::proptest::prelude::*;
 use aldis_testkit::strategies::uslp::{
     FrameParts, data_unit, uslp_channels, uslp_frame, uslp_frame_decoder_input,
@@ -16,7 +16,7 @@ use aldis_testkit::strategies::uslp::{
 use aldis_testkit::strategies::{self, octets};
 use aldis_uslp::{
     Delimited, FrameContent, FrameDelimiter, UslpAnomaly, UslpFrame, UslpFrameWriter, encode,
-    encode_oid, next_frame, validate_frame,
+    encode_oid, next_frame, validate_frame, validate_frame_lenient,
 };
 
 /// Failing cases are saved here and replayed first.
@@ -32,12 +32,12 @@ proptest! {
     fn encode_then_decode_round_trips(f in uslp_frame()) {
         // req: API-020, API-021, USLP-002, USLP-003, USLP-004, USLP-005, USLP-009, USLP-010, VER-023
         let t = &f.channels.table;
-        let d = UslpFrame::decode(&f.octets, t, DecodeMode::Strict).unwrap();
+        let d = UslpFrame::decode(&f.octets, t).unwrap();
         prop_assert_eq!(d.len(), f.octets.len());
         prop_assert_eq!(d.tfdz(), f.tfdz.as_slice());
         prop_assert_eq!(UslpFrame::peek_length(&f.octets, t), Ok(f.octets.len()));
         prop_assert!(d.security_header().iter().chain(d.security_trailer()).all(|&b| b == 0));
-        prop_assert!(d.anomalies().is_empty());
+        prop_assert!(UslpFrame::decode_lenient(&f.octets, t).unwrap().anomalies().is_empty());
         match &f.parts {
             FrameParts::Full { fields, tfdf, insert_zone, ocf } => {
                 let full = d.full().unwrap();
@@ -64,7 +64,7 @@ proptest! {
             }
         }
         // The same frame passes the USLP Frame Validation Checks (USLP-014).
-        prop_assert_eq!(validate_frame(&f.octets, t, DecodeMode::Strict).map(|v| v.len()), Ok(f.octets.len()));
+        prop_assert_eq!(validate_frame(&f.octets, t).map(|v| v.len()), Ok(f.octets.len()));
     }
 
     #[test]
@@ -104,12 +104,12 @@ proptest! {
     fn decoder_never_panics((c, v) in uslp_frame_decoder_input()) {
         // req: GEN-020, GEN-042, API-030, API-031, API-032, USLP-001, CMN-040, VER-023
         let t = &c.table;
-        let strict = UslpFrame::decode(&v, t, DecodeMode::Strict);
-        let lenient = UslpFrame::decode(&v, t, DecodeMode::Lenient);
+        let strict = UslpFrame::decode(&v, t);
+        let lenient = UslpFrame::decode_lenient(&v, t);
         if let Ok(s) = &strict {
-            // Strict ⊆ lenient, with the same view and no anomaly.
-            prop_assert!(s.anomalies().is_empty());
             let l = lenient.as_ref().unwrap();
+            // Strict ⊆ lenient, with the same view and no anomaly.
+            prop_assert!(l.anomalies().is_empty());
             prop_assert_eq!(s.octets(), l.octets());
             prop_assert_eq!(s.tfdz(), l.tfdz());
         }
@@ -121,13 +121,13 @@ proptest! {
             prop_assert_eq!(&f.octets()[f.layout().security_trailer()], f.security_trailer());
             prop_assert!(f.layout().data().len() > f.tfdz().len());
             prop_assert_eq!(UslpFrame::peek_length(&v, t), Ok(f.len()));
-            prop_assert!(validate_frame(f.octets(), t, DecodeMode::Lenient).is_ok());
+            prop_assert!(validate_frame_lenient(f.octets(), t).is_ok());
             if f.anomalies().contains(UslpAnomaly::OidHeaderMismatch) {
                 prop_assert_eq!(f.vc_id().get(), 63);
             }
         }
-        match (validate_frame(&v, t, DecodeMode::Strict), UslpFrame::decode(&v, t, DecodeMode::Strict)) {
-            (Ok(a), Ok(b)) => prop_assert_eq!(a, b),
+        match (validate_frame(&v, t), UslpFrame::decode(&v, t)) {
+            (Ok(a), Ok(b)) => prop_assert_eq!(a.into_frame(), b),
             (Err(r), Ok(b)) => prop_assert!(b.len() < v.len(), "{:?}", r),
             (Ok(_), Err(e)) => prop_assert!(false, "validated but not decoded: {:?}", e),
             (Err(_), Err(_)) => {}
@@ -164,5 +164,21 @@ proptest! {
             rest = &rest[item.len()..];
         }
         prop_assert_eq!(taken, unit.len());
+    }
+}
+
+proptest! {
+    #![proptest_config(strategies::config(256, REGRESSIONS))]
+
+    #[test]
+    fn strict_equals_lenient_without_anomalies((c, v) in uslp_frame_decoder_input()) {
+        // req: API-030, API-031, API-032, USLP-001
+        let strict = UslpFrame::decode(&v, &c.table);
+        let lenient = UslpFrame::decode_lenient(&v, &c.table);
+        if let Ok(s) = strict {
+            let l = lenient.expect("lenient accepts what strict accepts");
+            prop_assert!(l.anomalies().is_empty());
+            prop_assert_eq!(s, l.into_view());
+        }
     }
 }

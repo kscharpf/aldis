@@ -10,9 +10,8 @@
 
 use aldis_core::layout::{FrameLayout, LayoutSpec};
 use aldis_core::security::SecurityLayout;
-use aldis_core::{AnomalySet, Error, ErrorKind};
+use aldis_core::{Error, ErrorKind};
 
-use crate::anomaly::UslpAnomaly;
 use crate::config::{VcLookup, frame_security};
 use crate::field;
 use crate::header::{ChannelFields, OID_VCID, TRUNCATED_HEADER_LEN, invalid, unknown};
@@ -193,12 +192,6 @@ impl<'a> UslpTruncatedFrame<'a> {
     pub const fn is_empty(&self) -> bool {
         false
     }
-
-    /// Always empty: a truncated frame has no field a lenient decoder tolerates (API-032).
-    #[must_use]
-    pub const fn anomalies(&self) -> AnomalySet<UslpAnomaly> {
-        AnomalySet::empty()
-    }
 }
 
 /// `LengthMismatch` (`frame_data_field`) for a TFDZ that does not fill a truncated frame
@@ -217,7 +210,7 @@ mod tests {
     use crate::tfdf::TfdzRule;
     use crate::upid::Upid;
     use crate::view::UslpFrame;
-    use aldis_core::{DecodeMode, ErrorDetail, ErrorKind};
+    use aldis_core::{ErrorDetail, ErrorKind};
     use std::vec;
 
     #[test]
@@ -226,7 +219,7 @@ mod tests {
         let t = variable();
         let mut bytes = vec![0xC0, 0x15, 0x58, 0x85, 0xE5];
         bytes.extend(1..=7);
-        let f = UslpFrame::decode(&bytes, &t, DecodeMode::Strict).unwrap();
+        let f = UslpFrame::decode(&bytes, &t).unwrap();
         let l = f.layout();
         // The 4-octet header, the 1-octet TFDF Header and the TFDZ; no Insert Zone, OCF, or FECF.
         assert_eq!(
@@ -244,7 +237,7 @@ mod tests {
         let mut bytes = vec![0xC0, 0x15, 0x58, 0x85, 0xE5];
         bytes.extend(1..=7);
         bytes.extend_from_slice(&[0xEE; 3]);
-        let f = UslpFrame::decode(&bytes, &t, DecodeMode::Strict).unwrap();
+        let f = UslpFrame::decode(&bytes, &t).unwrap();
         assert!(f.is_truncated() && f.full().is_none());
         let tr = f.truncated().unwrap();
         assert_eq!((tr.len(), f.len(), tr.is_empty()), (12, 12, false));
@@ -258,12 +251,17 @@ mod tests {
         );
         assert!(tr.security_header().is_empty() && tr.security_trailer().is_empty());
         assert!(f.security_header().is_empty() && f.security_trailer().is_empty());
-        assert!(f.anomalies().is_empty() && tr.anomalies().is_empty());
+        assert!(
+            UslpFrame::decode_lenient(&bytes, &t)
+                .unwrap()
+                .anomalies()
+                .is_empty()
+        );
         assert_eq!(tr.header_octets(), bytes[..4]);
         assert_eq!((tr.octets(), f.octets()), (&bytes[..12], &bytes[..12]));
         assert_eq!(tr.channel(), f.channel());
         assert_eq!(UslpFrame::peek_length(&bytes[..4], &t), Ok(12));
-        let e = UslpFrame::decode(&bytes[..11], &t, DecodeMode::Strict).unwrap_err();
+        let e = UslpFrame::decode(&bytes[..11], &t).unwrap_err();
         assert_eq!(
             (e.kind(), e.detail()),
             (ErrorKind::Incomplete, ErrorDetail::Needed(12))
@@ -277,12 +275,9 @@ mod tests {
         let t = variable();
         let mut bytes = vec![0xC0, 0x15, 0x58, 0x85, 0xE5];
         bytes.extend(1..=7);
-        assert_eq!(
-            validate_frame(&bytes, &t, DecodeMode::Strict).map(|f| f.len()),
-            Ok(12)
-        );
+        assert_eq!(validate_frame(&bytes, &t).map(|f| f.len()), Ok(12));
         bytes.push(0);
-        let r = validate_frame(&bytes, &t, DecodeMode::Strict).unwrap_err();
+        let r = validate_frame(&bytes, &t).unwrap_err();
         assert_eq!(r.reason(), Reason::LengthMismatch);
         assert_eq!(r.error().field(), Some(field::FRAME_LEN));
     }
@@ -296,7 +291,7 @@ mod tests {
         bytes.extend_from_slice(&[0x51; 6]);
         bytes.extend_from_slice(&[0x60, 0x99]);
         bytes.extend_from_slice(&[0x52; 16]);
-        let f = UslpFrame::decode(&bytes, &t, DecodeMode::Strict).unwrap();
+        let f = UslpFrame::decode(&bytes, &t).unwrap();
         assert_eq!(
             (f.security_header(), f.security_trailer()),
             (&[0x51; 6][..], &[0x52; 16][..])
@@ -312,7 +307,7 @@ mod tests {
         // req: USLP-002, USLP-016, USLP-014
         let t = variable();
         let fe = |b: &[u8]| {
-            let e = UslpFrame::decode(b, &t, DecodeMode::Strict).unwrap_err();
+            let e = UslpFrame::decode(b, &t).unwrap_err();
             (e.kind(), e.field())
         };
         let mut rule = vec![0xC0, 0x15, 0x58, 0x85, 0x05];
@@ -346,7 +341,7 @@ mod tests {
         assert_eq!(peek(&[0xC0, 0x16, 0x50, 0x81]), Some(field::SPACECRAFT_ID));
         // VCID 63 has no MAP channel and no truncated frames (USLP-016).
         let f = crate::config::tests::fixed();
-        let e = UslpFrame::decode(&[0xC0, 0x15, 0x57, 0xE1, 0x20, 0], &f, DecodeMode::Strict);
+        let e = UslpFrame::decode(&[0xC0, 0x15, 0x57, 0xE1, 0x20, 0], &f);
         assert_eq!(
             e.map_err(|e| e.field()),
             Err(Some(field::END_OF_FRAME_PRIMARY_HEADER_FLAG))

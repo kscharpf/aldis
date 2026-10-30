@@ -6,7 +6,7 @@
 //! | `Issue5` | First Header Pointer, 16 bits (§4.1.4.2.1.4) | `0xFFFF` (§4.1.4.2.2.4) | `0xFFFE` (§4.1.4.2.2.5) |
 //! | `Issue4Compatible` | Reserved Spare `00000`, 5 bits, then the First Header Pointer, 11 bits (732.0-B-4 §4.1.4.2.1.4) | `0x7FF` | `0x7FE` |
 
-use aldis_core::{AnomalySet, DecodeMode, Error, ErrorKind, Result};
+use aldis_core::{AnomalySet, DecodeMode, Error, ErrorKind, Lenient, Result};
 
 use crate::anomaly::{AosAnomaly, Deviations};
 use crate::config::AosEdition;
@@ -191,11 +191,34 @@ impl<'a> Mpdu<'a> {
     ///   reserved, in both modes (AOS-017);
     /// - in strict mode, `ReservedValue` (`mpdu_spare`) for an Issue 4 Reserved Spare other
     ///   than `00000`; lenient mode reports it as [`AosAnomaly::Issue4SpareSet`] (AOS-003).
-    pub fn decode(field: &'a [u8], edition: AosEdition, mode: DecodeMode) -> Result<Mpdu<'a>> {
+    pub fn decode(field: &'a [u8], edition: AosEdition) -> Result<Mpdu<'a>> {
+        Mpdu::decode_in(field, edition, DecodeMode::Strict).map(|(mpdu, _)| mpdu)
+    }
+
+    /// Decodes an `M_PDU` as [`decode`](Self::decode) does, in lenient mode: an Issue 4 Reserved
+    /// Spare other than `00000` is accepted and reported as [`AosAnomaly::Issue4SpareSet`]
+    /// (AOS-003, API-032).
+    ///
+    /// # Errors
+    /// As for [`decode`](Self::decode), except the spare error.
+    pub fn decode_lenient(
+        field: &'a [u8],
+        edition: AosEdition,
+    ) -> Result<Lenient<Mpdu<'a>, AosAnomaly>> {
+        Mpdu::decode_in(field, edition, DecodeMode::Lenient)
+            .map(|(mpdu, anomalies)| Lenient::new(mpdu, anomalies))
+    }
+
+    /// The decode of both entry points.
+    fn decode_in(
+        field: &'a [u8],
+        edition: AosEdition,
+        mode: DecodeMode,
+    ) -> Result<(Mpdu<'a>, AnomalySet<AosAnomaly>)> {
         let mut deviations = Deviations::new(mode);
         let mpdu = Mpdu::parse(field, edition, &mut deviations)?;
-        deviations.finish()?;
-        Ok(mpdu)
+        let anomalies = deviations.finish()?;
+        Ok((mpdu, anomalies))
     }
 
     /// Decodes the `M_PDU`, noting its deviations in `deviations`.
@@ -260,17 +283,6 @@ impl<'a> Mpdu<'a> {
     pub const fn packet_zone(&self) -> &'a [u8] {
         self.zone
     }
-
-    /// Lenient-mode anomalies of the `M_PDU`; always empty after a strict decode (AOS-003,
-    /// GEN-043).
-    #[must_use]
-    pub fn anomalies(&self) -> AnomalySet<AosAnomaly> {
-        let mut set = AnomalySet::empty();
-        if self.spare != 0 {
-            set.insert(AosAnomaly::Issue4SpareSet);
-        }
-        set
-    }
 }
 
 #[cfg(test)]
@@ -282,10 +294,7 @@ mod tests {
     use crate::config::tests::starts_at;
     use crate::field;
     use crate::header::mismatch;
-    use aldis_core::{AnomalySet, DecodeMode, ErrorDetail, ErrorKind};
-
-    const STRICT: DecodeMode = DecodeMode::Strict;
-    const LENIENT: DecodeMode = DecodeMode::Lenient;
+    use aldis_core::{AnomalySet, ErrorDetail, ErrorKind, Lenient};
 
     #[test]
     fn reserved_values_per_edition() {
@@ -425,21 +434,30 @@ mod tests {
     fn decode_issue_5() {
         // req: AOS-017, GEN-013
         let field = [0x00, 0x02, 0xA0, 0xA1, 0xA2];
-        let m = Mpdu::decode(&field, Issue5, STRICT).unwrap();
+        let m = Mpdu::decode(&field, Issue5).unwrap();
         assert_eq!((m.pointer(), m.first_header_pointer()), (starts_at(2), 2));
         assert_eq!(m.packet_zone(), &field[2..]);
         assert_eq!(m.packet_zone().as_ptr(), field[2..].as_ptr(), "zero-copy");
-        assert_eq!((m.issue4_spare(), m.anomalies()), (0, AnomalySet::empty()));
-        let m = Mpdu::decode(&[0xFF, 0xFE, 0], Issue5, STRICT).unwrap();
+        assert_eq!(m.issue4_spare(), 0);
+        let lenient = Mpdu::decode_lenient(&field, Issue5).unwrap();
+        assert_eq!((*lenient, lenient.anomalies()), (m, AnomalySet::empty()));
+        let m = Mpdu::decode(&[0xFF, 0xFE, 0], Issue5).unwrap();
         assert_eq!(m.pointer(), PacketPointer::OnlyIdleData);
-        for mode in [STRICT, LENIENT] {
-            let e = Mpdu::decode(&[0x00, 0x03, 0, 0, 0], Issue5, mode).unwrap_err();
+        for lenient in [false, true] {
+            let decode = |field: &'static [u8], edition| {
+                if lenient {
+                    Mpdu::decode_lenient(field, edition).map(Lenient::into_view)
+                } else {
+                    Mpdu::decode(field, edition)
+                }
+            };
+            let e = decode(&[0x00, 0x03, 0, 0, 0], Issue5).unwrap_err();
             assert_eq!(
                 (e.kind(), e.field()),
                 (ErrorKind::Malformed, Some(field::FIRST_HEADER_POINTER))
             );
             for short in [&[][..], &[0xFF][..], &[0xFF, 0xFF][..]] {
-                let e = Mpdu::decode(short, Issue5, mode).unwrap_err();
+                let e = decode(short, Issue5).unwrap_err();
                 assert_eq!(
                     (e.kind(), e.field()),
                     (ErrorKind::Malformed, Some(field::FRAME_DATA_FIELD))
@@ -452,13 +470,13 @@ mod tests {
     fn decode_issue_4_spare() {
         // req: AOS-003, API-031, API-032, GEN-043
         // Spare 00000, FHP 0x7FF; and spare 10101, FHP 0x001.
-        let m = Mpdu::decode(&[0x07, 0xFF, 0], Issue4Compatible, STRICT).unwrap();
+        let m = Mpdu::decode(&[0x07, 0xFF, 0], Issue4Compatible).unwrap();
         assert_eq!(
             (m.pointer(), m.first_header_pointer()),
             (PacketPointer::NoPacketStart, 0x7FF)
         );
         let spare = [0xA8, 0x01, 0, 0];
-        let e = Mpdu::decode(&spare, Issue4Compatible, STRICT).unwrap_err();
+        let e = Mpdu::decode(&spare, Issue4Compatible).unwrap_err();
         assert_eq!(
             (e.kind(), e.field(), e.detail()),
             (
@@ -470,18 +488,22 @@ mod tests {
                 }
             )
         );
-        let m = Mpdu::decode(&spare, Issue4Compatible, LENIENT).unwrap();
+        let m = Mpdu::decode_lenient(&spare, Issue4Compatible).unwrap();
         assert_eq!((m.pointer(), m.issue4_spare()), (starts_at(1), 0x15));
         assert_eq!(
             m.anomalies(),
             AnomalySet::from_flags(&[AosAnomaly::Issue4SpareSet])
         );
         // In Issue 5 the same octets are a 16-bit pointer outside the zone.
-        let e = Mpdu::decode(&spare, Issue5, LENIENT).unwrap_err();
+        let e = Mpdu::decode_lenient(&spare, Issue5).unwrap_err();
         assert_eq!(e.kind(), ErrorKind::Malformed);
         // A malformed pointer wins over the spare in both modes.
-        for mode in [STRICT, LENIENT] {
-            let e = Mpdu::decode(&[0xF8, 0x05, 0, 0], Issue4Compatible, mode).unwrap_err();
+        for lenient in [false, true] {
+            let e = if lenient {
+                Mpdu::decode_lenient(&[0xF8, 0x05, 0, 0], Issue4Compatible).unwrap_err()
+            } else {
+                Mpdu::decode(&[0xF8, 0x05, 0, 0], Issue4Compatible).unwrap_err()
+            };
             assert_eq!(
                 (e.kind(), e.field()),
                 (ErrorKind::Malformed, Some(field::FIRST_HEADER_POINTER))

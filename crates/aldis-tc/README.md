@@ -5,7 +5,6 @@ Frame codec for the CCSDS 232.0-B-4 TC Space Data Link Protocol: TC Transfer Fra
 ## Example
 
 ```rust
-use aldis_core::DecodeMode;
 use aldis_core::ids::FrameSeqNum;
 use aldis_core::security::SecurityLayout;
 use aldis_tc::{
@@ -33,7 +32,7 @@ assert_eq!(n, 10);
 // At the receiving end: delimit the data unit, then validate each frame (232.0 §4.4.9).
 let mut frames = FrameDelimiter::new(&unit);
 let frame = frames.next().unwrap();
-let tc = validate_frame(frame.octets(), &channels, DecodeMode::Strict).unwrap();
+let tc = validate_frame(frame.octets(), &channels).unwrap();
 assert_eq!(tc.data_field(), [1, 2, 3]);
 assert_eq!(frames.count(), 1); // the six octets of 0x55 fill
 ```

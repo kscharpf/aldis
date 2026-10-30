@@ -15,7 +15,6 @@ None by default (GEN-005). `alloc` and `std` are strictly additive: no change in
 Encode a Level 1 CUC with its P-field and decode it again:
 
 ```rust
-use aldis_core::DecodeMode;
 use aldis_time::{Cuc, CucEpoch, CucFormat, TimeCode, decode_with_pfield};
 
 fn main() -> Result<(), aldis_core::Error> {
@@ -27,7 +26,7 @@ fn main() -> Result<(), aldis_core::Error> {
     let len = TimeCode::Cuc(cuc).encode(true, &mut buf)?;
 
     // The P-field identifies the code and its layout.
-    let decoded = decode_with_pfield(&buf[..len], DecodeMode::Strict)?;
+    let decoded = decode_with_pfield(&buf[..len])?;
     assert_eq!(decoded.len(), len);
     assert_eq!(decoded.code(), TimeCode::Cuc(cuc));
     assert_eq!(cuc.to_seconds_nanos(), (2_000_000_000, 500_000_000));

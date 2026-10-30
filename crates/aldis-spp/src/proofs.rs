@@ -114,7 +114,10 @@ fn decode_rejects_exactly_per_spec() {
         DecodeMode::Strict
     };
     let bytes = &buf[..len];
-    let result = SpacePacket::decode(bytes, mode);
+    let result = mode.dispatch(
+        || SpacePacket::decode(bytes),
+        || SpacePacket::decode_lenient(bytes),
+    );
     if len < 6 {
         let e = result.unwrap_err();
         assert_eq!(
@@ -139,12 +142,12 @@ fn decode_rejects_exactly_per_spec() {
                 (ErrorKind::InvalidField, Some(field::SECONDARY_HEADER_FLAG))
             );
         }
-        Ok(p) => {
+        Ok((p, anomalies)) => {
             assert!(w.version == 0 && len >= total && !(idle_flag && !lenient));
             assert_eq!(p.len(), total);
             assert_eq!(p.data_field(), &buf[6..total]);
             assert_eq!(
-                p.anomalies().contains(SppAnomaly::IdleWithSecondaryHeader),
+                anomalies.contains(SppAnomaly::IdleWithSecondaryHeader),
                 idle_flag
             );
         }
@@ -237,7 +240,7 @@ fn packet_encode_decode() {
         Ok(n) => {
             assert_eq!(n, total);
             assert_eq!(&out[total..], &original[total..]);
-            let p = SpacePacket::decode(&out[..out_len], DecodeMode::Strict).unwrap();
+            let p = SpacePacket::decode(&out[..out_len]).unwrap();
             assert_eq!(p.header().fields(), fields);
             assert_eq!(p.has_secondary_header(), sec_len > 0);
             assert_eq!(p.len(), total);

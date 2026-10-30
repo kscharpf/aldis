@@ -6,10 +6,10 @@
 //! |---|---|---|---|
 //! | [`config`] | `TmPhysicalChannelConfig`, `TmMasterChannelConfig`, `TmVirtualChannelConfig`, `DataFieldContent`, the `VcLookup` of a frame's security layout, `NoSdls` | 132.0 §5, §6.6 | TM-001, TM-011, API-040, API-041, API-070, GEN-060, GEN-061, RS-012, CMN-041 |
 //! | [`header`] | Owned `TmPrimaryHeader`, `SegmentLengthId`, `FirstHeaderPointer`, `PacketPointer`, `PacketOffset`, `DataFieldStatus`, `FshLen` | 132.0 §4.1.2, §4.1.3.2 | TM-002, TM-003, TM-007, TM-008, API-001, API-014 |
-//! | [`view`] | Zero-copy `TmFrame` decoder, `decode_unchecked`, `peek_length` | 132.0 §4.1, §6.3 | TM-001…TM-008, API-010, API-012…API-014, API-072, GEN-013 |
+//! | [`view`] | Zero-copy `TmFrame` decoder (strict and lenient), `UncheckedTmFrame`, `peek_length` | 132.0 §4.1, §6.3 | TM-001…TM-008, API-010, API-012…API-014, API-015, API-072, GEN-013 |
 //! | [`anomaly`] | `TmAnomaly` lenient-mode flags | 132.0 §4.1.2.7.4–5 | TM-007, API-032, API-033, GEN-043 |
 //! | [`writer`] | One-shot `encode` and `encode_oid`, two-phase `TmFrameWriter`, OID frames | 132.0 §4.1, §4.1.4.6, §6.3 | TM-009, TM-010, API-020…API-023, API-072, GEN-014 |
-//! | [`validate`] | `TmFrame::validate` against the master channel's managed parameters | 132.0 §5 | TM-011 |
+//! | [`validate`] | `TmFrame::validate` against the master channel's managed parameters, returning a `ValidatedTmFrame` | 132.0 §5 | TM-011, API-016 |
 //! | [`field`] | The field codes its errors name, re-exported from `aldis_core::field` | 132.0 §4.1, §5 | API-082, GEN-041 |
 //!
 //! The OCF is returned as an [`Ocf`](aldis_core::ocf::Ocf); a Type-1 Report (CLCW) is decoded
@@ -48,7 +48,8 @@ pub use header::{
     DataFieldStatus, FirstHeaderPointer, FshLen, PacketOffset, PacketPointer, SegmentLengthId,
     TmPrimaryHeader,
 };
-pub use view::TmFrame;
+pub use validate::ValidatedTmFrame;
+pub use view::{TmFrame, UncheckedTmFrame};
 pub use writer::{
     TmFrameContent, TmFrameFields, TmFrameWriter, encode, encode_oid, encode_oid_galois,
 };

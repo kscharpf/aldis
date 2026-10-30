@@ -465,7 +465,7 @@ mod tests {
     use aldis_core::security::{
         FrameCtx, HookLayout, NoSecurity, PreFilledSecurity, SecuredFields, SecurityHook,
     };
-    use aldis_core::{DecodeMode, ErrorDetail, ErrorKind, Result};
+    use aldis_core::{ErrorDetail, ErrorKind, Result};
 
     fn fields(frame_type: FrameType, vc: u8) -> FrameFields {
         FrameFields {
@@ -490,7 +490,7 @@ mod tests {
         let mut out = [0_u8; 32];
         let n = encode(&t, fields(FrameType::Bd, 1), fdu(None, &[7, 8]), &mut out).unwrap();
         assert_eq!(n, 9);
-        let f = TcFrame::decode(&out[..n], &t, DecodeMode::Strict).unwrap();
+        let f = TcFrame::decode(&out[..n], &t).unwrap();
         assert_eq!(
             (f.frame_type(), f.sequence_number().get()),
             (FrameType::Bd, 9)
@@ -504,7 +504,7 @@ mod tests {
             &mut out,
         )
         .unwrap();
-        let f = TcFrame::decode(&out[..n], &t, DecodeMode::Strict).unwrap();
+        let f = TcFrame::decode(&out[..n], &t).unwrap();
         assert_eq!((f.control_command(), f.segment_header()), (Some(set), None));
     }
 
@@ -638,7 +638,7 @@ mod tests {
         let n = done.len();
         assert_eq!((n, done.octets().len()), (5 + 1 + 3 + 2 + 1 + 2, n));
         assert!(!done.is_empty());
-        let f = TcFrame::decode(&out[..n], &t, DecodeMode::Strict).unwrap();
+        let f = TcFrame::decode(&out[..n], &t).unwrap();
         assert_eq!(f.security_header(), [0xA, 0xB, 0xC]);
         assert_eq!(
             (f.data_field(), f.security_trailer()),
@@ -757,7 +757,7 @@ mod tests {
         let e = w.protect(2, &mut Refuse, &ctx).unwrap_err();
         assert_eq!(e.kind(), ErrorKind::Security);
         // The buffer holds the unfinished header again, which no decoder accepts (API-023).
-        let e = TcFrame::decode(&out, &t, DecodeMode::Lenient).unwrap_err();
+        let e = TcFrame::decode_lenient(&out, &t).unwrap_err();
         assert_eq!(e.kind(), ErrorKind::UnsupportedVersion);
     }
 
@@ -785,7 +785,7 @@ mod tests {
             .unwrap()
             .into_octets();
         assert_eq!(syndrome(octets), 0);
-        let f = TcFrame::decode(octets, &t, DecodeMode::Strict).unwrap();
+        let f = TcFrame::decode(octets, &t).unwrap();
         assert_eq!(
             (f.security_header(), f.data_field(), f.security_trailer()),
             (&[0xA5; 3][..], &[1, 2][..], &[0x5A][..])
@@ -823,7 +823,7 @@ mod tests {
             (e.kind(), e.field()),
             (ErrorKind::OutOfRange, Some(field::USER_LEN))
         );
-        let e = TcFrame::decode(&out, &t, DecodeMode::Lenient).unwrap_err();
+        let e = TcFrame::decode_lenient(&out, &t).unwrap_err();
         assert_eq!(e.kind(), ErrorKind::UnsupportedVersion);
         let w = TcFrameWriter::begin(&mut out, &t, fields(FrameType::Ad, 1), None, 4).unwrap();
         let e = w.unsecured(0).unwrap_err();

@@ -14,7 +14,7 @@
 use aldis_core::crc::write_fecf;
 use aldis_core::ids::FrameSeqNum;
 use aldis_core::security::SecurityLayout;
-use aldis_core::{DecodeMode, Error, ErrorDetail, ErrorKind};
+use aldis_core::{Error, ErrorDetail, ErrorKind};
 use aldis_tc::field;
 use aldis_tc::{
     Clcw, ClcwStatus, ControlCommand, CopInEffect, FarmBCounter, FrameData, FrameFields, FrameType,
@@ -94,9 +94,7 @@ fn base_clcw() -> Clcw {
 
 /// The CLCW decoded strictly from its own four octets (232.0 §4.2.1; TC-030).
 fn clcw_round_trip(c: &Clcw) -> Clcw {
-    let (d, anomalies) = Clcw::decode(c.to_octets(), DecodeMode::Strict).unwrap();
-    assert!(anomalies.is_empty());
-    d
+    Clcw::decode(c.to_octets()).unwrap()
 }
 
 /// The Status Field is 3 bits, passed through unchanged: `new` and `TryFrom` accept exactly
@@ -242,7 +240,7 @@ fn frame_type_has_three_flag_combinations() {
                 };
                 let mut out = [0_u8; 64];
                 let n = encode(&t, fields(ty), data, &mut out).unwrap();
-                let f = TcFrame::decode(&out[..n], &t, DecodeMode::Strict).unwrap();
+                let f = TcFrame::decode(&out[..n], &t).unwrap();
                 assert_eq!(f.frame_type(), ty);
             } else {
                 assert!(reserved);
@@ -250,8 +248,10 @@ fn frame_type_has_three_flag_combinations() {
                 let mut frame = frame_of_len(&t, 12, true).unwrap();
                 frame[0] |= 0x10;
                 write_fecf(&mut frame).unwrap();
-                for mode in [DecodeMode::Strict, DecodeMode::Lenient] {
-                    let e = TcFrame::decode(&frame, &t, mode).unwrap_err();
+                for e in [
+                    TcFrame::decode(&frame, &t).unwrap_err(),
+                    TcFrame::decode_lenient(&frame, &t).unwrap_err(),
+                ] {
                     assert_eq!(e.kind(), ErrorKind::ReservedValue);
                     assert_eq!(e.field(), Some(field::CONTROL_COMMAND_FLAG));
                 }
@@ -284,7 +284,7 @@ fn physical_channel_max_frame_len_is_the_spec_range() {
                     assert_eq!((pc.max_frame_len(), pc.fecf()), (len, fecf));
                     let t = table(len, LONGEST, fecf);
                     let frame = frame_of_len(&t, len, fecf).unwrap();
-                    let f = TcFrame::decode(&frame, &t, DecodeMode::Strict).unwrap();
+                    let f = TcFrame::decode(&frame, &t).unwrap();
                     assert_eq!((f.len(), f.fecf().is_some()), (len, fecf));
                     if len < LONGEST {
                         let e = frame_of_len(&t, len + 1, fecf).unwrap_err();
@@ -330,10 +330,7 @@ fn vc_config_max_frame_len_is_the_spec_range() {
                 assert_eq!(vc.max_frame_len(), len);
                 let t = table(LONGEST, len, false);
                 let frame = frame_of_len(&t, len, false).unwrap();
-                assert_eq!(
-                    TcFrame::decode(&frame, &t, DecodeMode::Strict).map(|f| f.len()),
-                    Ok(len)
-                );
+                assert_eq!(TcFrame::decode(&frame, &t).map(|f| f.len()), Ok(len));
                 if len < LONGEST {
                     let e = frame_of_len(&t, len + 1, false).unwrap_err();
                     assert_eq!(
@@ -394,7 +391,7 @@ proptest! {
             farm_b_counter: FarmBCounter::new(farm_b).unwrap(),
             ..c
         };
-        let (d, _) = Clcw::decode(c.to_octets(), DecodeMode::Strict).unwrap();
+        let d = Clcw::decode(c.to_octets()).unwrap();
         prop_assert_eq!(d, c);
     }
 
@@ -406,7 +403,7 @@ proptest! {
         // restricted: FrameType, PhysicalChannelConfig, VcConfig
         // req: TC-001, TC-002, TC-007, VER-023, VER-054
         let t = &f.channels.table;
-        let d = TcFrame::decode(&f.octets, t, DecodeMode::Strict).unwrap();
+        let d = TcFrame::decode(&f.octets, t).unwrap();
         prop_assert_eq!(d.frame_type(), f.fields.frame_type);
         prop_assert!(d.len() <= t.physical().max_frame_len());
         let data = match ty {
@@ -419,7 +416,7 @@ proptest! {
         let fields = FrameFields { frame_type: ty, ..f.channels.plain };
         let mut out = vec![0_u8; 64];
         let n = encode(t, fields, data, &mut out).unwrap();
-        prop_assert_eq!(TcFrame::decode(&out[..n], t, DecodeMode::Strict).map(|d| d.frame_type()), Ok(ty));
+        prop_assert_eq!(TcFrame::decode(&out[..n], t).map(|d| d.frame_type()), Ok(ty));
     }
 }
 
@@ -489,7 +486,7 @@ fn vc_tables_accept_exactly_the_configurable_channels() {
             user_data: &user,
         };
         let n = encode(&t, fields, data, &mut out).unwrap();
-        let f = TcFrame::decode(&out[..n], &t, DecodeMode::Strict).unwrap();
+        let f = TcFrame::decode(&out[..n], &t).unwrap();
         assert_eq!(
             (f.header().vc_id(), f.segment_header()),
             (vc(v), segment_header)
@@ -547,6 +544,6 @@ proptest! {
         let maps: Vec<MapConfig> = t.maps().copied().collect();
         let again = Channels::new(t.physical(), &vcs, &maps).unwrap();
         prop_assert_eq!(&again, t);
-        prop_assert!(TcFrame::decode(&f.octets, &again, DecodeMode::Strict).is_ok());
+        prop_assert!(TcFrame::decode(&f.octets, &again).is_ok());
     }
 }

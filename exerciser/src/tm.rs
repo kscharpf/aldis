@@ -12,8 +12,8 @@ use aldis_tm::{
     DataFieldContent, DataFieldStatus, FirstHeaderPointer, FshLen, NoSdls, PacketOffset,
     PacketPointer, SegmentLengthId, TmAnomaly, TmFrame, TmFrameContent, TmFrameFields,
     TmFrameWriter, TmMasterChannelConfig, TmPhysicalChannelConfig, TmPrimaryHeader,
-    TmVirtualChannelConfig, VcLookup as _, encode, encode_oid as encode_oid_frame,
-    encode_oid_galois,
+    TmVirtualChannelConfig, UncheckedTmFrame, VcLookup as _, encode,
+    encode_oid as encode_oid_frame, encode_oid_galois,
 };
 
 use crate::exercise::Tally;
@@ -160,7 +160,7 @@ fn frames(t: &mut Tally, mc: &TmMasterChannelConfig, vc0: VcId<3>, vc1: VcId<3>,
         }
         Err(_) => t.check(false),
     }
-    match TmFrame::decode_with(bb(&frame), &pc, mc, bb(DecodeMode::Strict)) {
+    match TmFrame::decode_with(bb(&frame), &pc, mc) {
         Ok(f) => {
             t.check(f.scid() == scid && f.vcid() == vc0 && f.mc_frame_count() == 1);
             t.check(f.vc_frame_count() == 2 && f.fsh_len() == Some(fsh));
@@ -168,17 +168,21 @@ fn frames(t: &mut Tally, mc: &TmMasterChannelConfig, vc0: VcId<3>, vc1: VcId<3>,
             t.check(f.security_header() == [0xA5, 0xA5] && f.security_trailer() == [0x5A]);
             t.check(f.data_field().len() == 17 && f.ocf().is_none() && f.fecf().is_some());
             t.check(f.layout().data() == (12..29) && f.as_bytes().len() == 32);
-            t.check(f.len() == 32 && !f.is_empty() && f.anomalies().is_empty());
+            t.check(f.len() == 32 && !f.is_empty());
             t.check(
                 f.data_field_status() == fields.status
                     && f.header().first_header_pointer.get() == 3,
             );
-            t.check(f.validate(bb(mc)).is_ok());
+            t.check(f.validate(bb(mc)).is_ok_and(|v| v.len() == 32));
         }
         Err(_) => t.check(false),
     }
-    t.check(TmFrame::decode(bb(&frame), &pc, DecodeMode::Lenient).is_ok());
-    t.check(TmFrame::decode_unchecked(bb(&frame), &pc, &NoSdls, DecodeMode::Strict).is_ok());
+    t.check(TmFrame::decode_lenient(bb(&frame), &pc).is_ok_and(|l| l.anomalies().is_empty()));
+    t.check(TmFrame::decode_with_lenient(bb(&frame), &pc, mc).is_ok());
+    t.check(
+        TmFrame::decode_unchecked(bb(&frame), &pc, &NoSdls).is_ok_and(|u| u.check_fecf().is_ok()),
+    );
+    t.check(TmFrame::decode_unchecked_lenient(bb(&frame), &pc, &NoSdls).is_ok());
     t.check(TmFrame::peek_length(bb(&frame), &pc) == Ok(32));
     let data = [0x55; 20];
     let content = TmFrameContent {
@@ -331,7 +335,7 @@ const fn report(ocf: Ocf) -> &'static str {
 }
 
 /// Every field the view exposes, as the host suite reports them (TV-002).
-fn decoded(out: &mut Out, f: &TmFrame<'_>) {
+fn decoded(out: &mut Out, f: &UncheckedTmFrame<'_>, anomalies: AnomalySet<TmAnomaly>) {
     let h = f.header();
     out.num("scid", f.scid().get());
     out.num("vcid", f.vcid().get());
@@ -366,7 +370,7 @@ fn decoded(out: &mut Out, f: &TmFrame<'_>) {
     out.opt_text("ocf_report", f.ocf().map(report));
     out.opt_num("fecf", f.fecf());
     out.num("consumed", u64::try_from(f.len()).unwrap_or(u64::MAX));
-    out.names("anomalies", f.anomalies().iter());
+    out.names("anomalies", anomalies.iter());
 }
 
 /// `encode`, checked against the two-phase writer (API-020).
@@ -462,15 +466,38 @@ pub fn vector(case: &Case, out: &mut Out, scratch: &mut Scratch) -> Run {
             "len",
             u64::try_from(TmFrame::peek_length(input, &pc)?).unwrap_or(u64::MAX),
         ),
-        "decode" => decoded(out, &TmFrame::decode(input, &pc, mode)?),
-        "decode_with" => decoded(
-            out,
-            &TmFrame::decode_with(input, &pc, need(mc.as_ref())?, mode)?,
-        ),
-        "decode_unchecked" => decoded(out, &TmFrame::decode_unchecked(input, &pc, &NoSdls, mode)?),
+        "decode" => {
+            let (f, a) = mode.dispatch(
+                || TmFrame::decode(input, &pc).map(UncheckedTmFrame::from),
+                || TmFrame::decode_lenient(input, &pc).map(|l| l.map(UncheckedTmFrame::from)),
+            )?;
+            decoded(out, &f, a);
+        }
+        "decode_with" => {
+            let mc = need(mc.as_ref())?;
+            let (f, a) = mode.dispatch(
+                || TmFrame::decode_with(input, &pc, mc).map(UncheckedTmFrame::from),
+                || {
+                    TmFrame::decode_with_lenient(input, &pc, mc)
+                        .map(|l| l.map(UncheckedTmFrame::from))
+                },
+            )?;
+            decoded(out, &f, a);
+        }
+        "decode_unchecked" => {
+            let (f, a) = mode.dispatch(
+                || TmFrame::decode_unchecked(input, &pc, &NoSdls),
+                || TmFrame::decode_unchecked_lenient(input, &pc, &NoSdls),
+            )?;
+            decoded(out, &f, a);
+        }
         "validate" => {
             let mc = need(mc.as_ref())?;
-            TmFrame::decode_with(input, &pc, mc, mode)?.validate(mc)?;
+            let (f, _) = mode.dispatch(
+                || TmFrame::decode_with(input, &pc, mc),
+                || TmFrame::decode_with_lenient(input, &pc, mc),
+            )?;
+            f.validate(mc)?;
         }
         "encode" => encode_case(case.params, need(mc.as_ref())?, out, scratch)?,
         "encode_oid" => encode_oid(case.params, need(mc.as_ref())?, out, scratch)?,

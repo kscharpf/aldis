@@ -20,7 +20,13 @@ fuzz_target!(|data: &[u8]| {
     };
     let mut at = 0;
     while let Some(rest) = stream.get(at..).filter(|r| !r.is_empty()) {
-        match SpacePacket::decode(rest, mode) {
+        match mode
+            .dispatch(
+                || SpacePacket::decode(rest),
+                || SpacePacket::decode_lenient(rest),
+            )
+            .map(|(p, _)| p)
+        {
             Ok(p) => {
                 assert!(p.len() >= 7 && p.len() <= rest.len());
                 assert_eq!(p.header().packet_len(), p.len());

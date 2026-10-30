@@ -8,12 +8,13 @@
 //! and optional [`MapConfig`]. Corrupted frames, fill data, and truncated headers are yielded as
 //! [`IntakeItem::Discarded`], classified by a unified [`DiscardReason`].
 
-use aldis_core::{AnomalySet, DecodeMode, Error, ErrorKind};
+use aldis_core::{AnomalySet, DecodeMode, Error, ErrorKind, Lenient};
 
+use crate::anomaly::TcAnomaly;
 use crate::config::{MapConfig, VcConfig, VcLookup};
 use crate::header::{MIN_FRAME_LEN, RawHeader};
-use crate::validate::Reason;
-use crate::view::{TcFrame, check_head, parse};
+use crate::validate::{Reason, ValidatedTcFrame};
+use crate::view::{check_head, parse};
 
 /// Why wire octets or a frame were discarded (232.0 §4.4.9.2, §4.4.9.3; TC-020, TC-021).
 ///
@@ -114,13 +115,17 @@ impl From<Reason> for DiscardReason {
     }
 }
 
-/// An item yielded by [`FrameStream`] (232.0 §4.4.9.2, §4.4.9.3; TC-020, TC-021).
+/// An item yielded by [`FrameStream`] or [`LenientFrameStream`] (232.0 §4.4.9.2, §4.4.9.3;
+/// TC-020, TC-021).
+///
+/// `F` is the accepted frame: a [`ValidatedTcFrame`] from the strict stream, and the same in a
+/// [`Lenient`] from the lenient one (API-030).
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum IntakeItem<'a> {
+pub enum IntakeItem<'a, F = ValidatedTcFrame<'a>> {
     /// A validated frame, bundled with its matched Virtual Channel and MAP configurations.
     Accepted {
-        /// The decoded frame view.
-        frame: TcFrame<'a>,
+        /// The validated frame view.
+        frame: F,
         /// The verified Virtual Channel configuration.
         vc: VcConfig,
         /// The verified MAP configuration, if a Segment Header was present.
@@ -137,10 +142,32 @@ pub enum IntakeItem<'a> {
     },
 }
 
-impl<'a> IntakeItem<'a> {
+impl<'a, F> IntakeItem<'a, F> {
+    /// The item with its accepted frame converted by `convert`; a discarded item is unchanged.
+    pub fn map_frame<G>(self, convert: impl FnOnce(F) -> G) -> IntakeItem<'a, G> {
+        match self {
+            IntakeItem::Accepted { frame, vc, map } => IntakeItem::Accepted {
+                frame: convert(frame),
+                vc,
+                map,
+            },
+            IntakeItem::Discarded {
+                reason,
+                octets,
+                error,
+            } => IntakeItem::Discarded {
+                reason,
+                octets,
+                error,
+            },
+        }
+    }
+}
+
+impl<'a> IntakeItem<'a, ValidatedTcFrame<'a>> {
     /// The octets of the item (the accepted frame or discarded octets).
     #[must_use]
-    pub const fn octets(&self) -> &'a [u8] {
+    pub fn octets(&self) -> &'a [u8] {
         match self {
             IntakeItem::Accepted { frame, .. } => frame.octets(),
             IntakeItem::Discarded { octets, .. } => octets,
@@ -149,7 +176,30 @@ impl<'a> IntakeItem<'a> {
 
     /// Length in octets consumed from the input stream.
     #[must_use]
-    pub const fn len(&self) -> usize {
+    pub fn len(&self) -> usize {
+        self.octets().len()
+    }
+
+    /// Always `false`: every intake item consumes at least one octet.
+    #[must_use]
+    pub const fn is_empty(&self) -> bool {
+        false
+    }
+}
+
+impl<'a> IntakeItem<'a, Lenient<ValidatedTcFrame<'a>, TcAnomaly>> {
+    /// The octets of the item (the accepted frame or discarded octets).
+    #[must_use]
+    pub fn octets(&self) -> &'a [u8] {
+        match self {
+            IntakeItem::Accepted { frame, .. } => frame.octets(),
+            IntakeItem::Discarded { octets, .. } => octets,
+        }
+    }
+
+    /// Length in octets consumed from the input stream.
+    #[must_use]
+    pub fn len(&self) -> usize {
         self.octets().len()
     }
 
@@ -162,22 +212,21 @@ impl<'a> IntakeItem<'a> {
 
 /// In-place zero-allocation iterator over a received data unit (232.0 §4.4.9.2, §4.4.9.3; TC-020, TC-021).
 ///
-/// Fuses delimiting, fill removal, and channel validation in a single pass.
+/// Fuses delimiting, fill removal, and channel validation in a single pass, in strict mode.
+/// [`LenientFrameStream`] is its lenient twin (API-030).
 #[derive(Debug, Clone)]
 pub struct FrameStream<'a, 'c, L: VcLookup + ?Sized> {
     rest: &'a [u8],
     channels: &'c L,
-    mode: DecodeMode,
 }
 
 impl<'a, 'c, L: VcLookup + ?Sized> FrameStream<'a, 'c, L> {
     /// Creates a new intake stream over one clean data unit (such as a CLTU's decoded codeblocks).
     #[must_use]
-    pub const fn new(data_unit: &'a [u8], channels: &'c L, mode: DecodeMode) -> Self {
+    pub const fn new(data_unit: &'a [u8], channels: &'c L) -> Self {
         FrameStream {
             rest: data_unit,
             channels,
-            mode,
         }
     }
 
@@ -192,77 +241,125 @@ impl<'a, L: VcLookup + ?Sized> Iterator for FrameStream<'a, '_, L> {
     type Item = IntakeItem<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.rest.is_empty() {
-            return None;
-        }
-
-        if let Some(h) = RawHeader::parse(self.rest)
-            && h.frame_len >= MIN_FRAME_LEN
-        {
-            // If the declared length is available in self.rest, reconstruct and validate the frame.
-            if let Some((frame_bytes, remaining)) = self.rest.split_at_checked(h.frame_len) {
-                self.rest = remaining;
-                return match parse(frame_bytes, self.channels, self.mode, true) {
-                    Ok((frame, vc, map)) => Some(IntakeItem::Accepted { frame, vc, map }),
-                    Err(rejection) => Some(IntakeItem::Discarded {
-                        reason: DiscardReason::from(rejection.reason()),
-                        octets: frame_bytes,
-                        error: rejection.error(),
-                    }),
-                };
-            }
-
-            // If fewer octets remain than declared and TFVN == 0, validate the header first:
-            // Check (a) version, (b) spacecraft, and (c) flags, spares, VCID, FrameTooLong, FrameTooShort
-            // take precedence before the length consistency check (d) (232.0 §4.4.9.3; docs/standards/tc-frame.md §2.1).
-            if h.version == 0 {
-                let mut anomalies = AnomalySet::empty();
-                if let Err(rejection) =
-                    check_head(self.rest, self.channels, self.mode, false, &mut anomalies)
-                {
-                    let octets = self.rest;
-                    self.rest = &[];
-                    return Some(IntakeItem::Discarded {
-                        reason: DiscardReason::from(rejection.reason()),
-                        octets,
-                        error: rejection.error(),
-                    });
-                }
-
-                // A valid header declaring more octets than remain in the data unit is discarded as a
-                // truncated frame (232.0 §4.4.9.2.5; OI-41).
-                let octets = self.rest;
-                self.rest = &[];
-                return Some(IntakeItem::Discarded {
-                    reason: DiscardReason::TruncatedFrame {
-                        declared_len: h.frame_len,
-                    },
-                    octets,
-                    error: Error::incomplete(h.frame_len),
-                });
-            }
-        }
-
-        // Unparseable header, frame_len < MIN_FRAME_LEN, or fill pattern (such as 0x55 with TFVN 01; §4.4.9.2.6 note 2)
-        // is discarded as fill data taking the rest of the unit (232.0 §4.4.9.2.6 b; OI-41).
-        let octets = self.rest;
-        self.rest = &[];
-        Some(IntakeItem::Discarded {
-            reason: DiscardReason::Fill,
-            octets,
-            error: Error::new(ErrorKind::Malformed).with_field(crate::field::FRAME_DATA_FIELD),
-        })
+        step(&mut self.rest, self.channels, DecodeMode::Strict)
+            .map(|item| item.map_frame(|(frame, _)| frame))
     }
 }
 
 impl<L: VcLookup + ?Sized> core::iter::FusedIterator for FrameStream<'_, '_, L> {}
 
+/// The lenient twin of [`FrameStream`]: the frames it accepts are [`Lenient`] and carry the
+/// anomalies of the deviations tolerated (232.0 §4.4.9.2, §4.4.9.3; TC-020, TC-021, API-032).
+#[derive(Debug, Clone)]
+pub struct LenientFrameStream<'a, 'c, L: VcLookup + ?Sized> {
+    rest: &'a [u8],
+    channels: &'c L,
+}
+
+impl<'a, 'c, L: VcLookup + ?Sized> LenientFrameStream<'a, 'c, L> {
+    /// Creates a new lenient intake stream over one clean data unit.
+    #[must_use]
+    pub const fn new(data_unit: &'a [u8], channels: &'c L) -> Self {
+        LenientFrameStream {
+            rest: data_unit,
+            channels,
+        }
+    }
+
+    /// The remaining unconsumed octets of the data unit.
+    #[must_use]
+    pub const fn remaining(&self) -> &'a [u8] {
+        self.rest
+    }
+}
+
+impl<'a, L: VcLookup + ?Sized> Iterator for LenientFrameStream<'a, '_, L> {
+    type Item = IntakeItem<'a, Lenient<ValidatedTcFrame<'a>, TcAnomaly>>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        step(&mut self.rest, self.channels, DecodeMode::Lenient)
+            .map(|item| item.map_frame(|(frame, anomalies)| Lenient::new(frame, anomalies)))
+    }
+}
+
+impl<L: VcLookup + ?Sized> core::iter::FusedIterator for LenientFrameStream<'_, '_, L> {}
+
+/// One step of both streams: the next item of `rest`, which it advances.
+fn step<'a, L: VcLookup + ?Sized>(
+    rest: &mut &'a [u8],
+    channels: &L,
+    mode: DecodeMode,
+) -> Option<IntakeItem<'a, (ValidatedTcFrame<'a>, AnomalySet<TcAnomaly>)>> {
+    if rest.is_empty() {
+        return None;
+    }
+
+    if let Some(h) = RawHeader::parse(rest)
+        && h.frame_len >= MIN_FRAME_LEN
+    {
+        // If the declared length is available in `rest`, reconstruct and validate the frame.
+        if let Some((frame_bytes, remaining)) = rest.split_at_checked(h.frame_len) {
+            *rest = remaining;
+            return match parse(frame_bytes, channels, mode, true) {
+                Ok(p) => Some(IntakeItem::Accepted {
+                    frame: (ValidatedTcFrame::new(p.frame), p.anomalies),
+                    vc: p.vc,
+                    map: p.map,
+                }),
+                Err(rejection) => Some(IntakeItem::Discarded {
+                    reason: DiscardReason::from(rejection.reason()),
+                    octets: frame_bytes,
+                    error: rejection.error(),
+                }),
+            };
+        }
+
+        // If fewer octets remain than declared and TFVN == 0, validate the header first:
+        // Check (a) version, (b) spacecraft, and (c) flags, spares, VCID, FrameTooLong, FrameTooShort
+        // take precedence before the length consistency check (d) (232.0 §4.4.9.3; docs/standards/tc-frame.md §2.1).
+        if h.version == 0 {
+            let mut anomalies = AnomalySet::empty();
+            if let Err(rejection) = check_head(rest, channels, mode, false, &mut anomalies) {
+                let octets = *rest;
+                *rest = &[];
+                return Some(IntakeItem::Discarded {
+                    reason: DiscardReason::from(rejection.reason()),
+                    octets,
+                    error: rejection.error(),
+                });
+            }
+
+            // A valid header declaring more octets than remain in the data unit is discarded as a
+            // truncated frame (232.0 §4.4.9.2.5; OI-41).
+            let octets = *rest;
+            *rest = &[];
+            return Some(IntakeItem::Discarded {
+                reason: DiscardReason::TruncatedFrame {
+                    declared_len: h.frame_len,
+                },
+                octets,
+                error: Error::incomplete(h.frame_len),
+            });
+        }
+    }
+
+    // Unparseable header, frame_len < MIN_FRAME_LEN, or fill pattern (such as 0x55 with TFVN 01; §4.4.9.2.6 note 2)
+    // is discarded as fill data taking the rest of the unit (232.0 §4.4.9.2.6 b; OI-41).
+    let octets = *rest;
+    *rest = &[];
+    Some(IntakeItem::Discarded {
+        reason: DiscardReason::Fill,
+        octets,
+        error: Error::new(ErrorKind::Malformed).with_field(crate::field::FRAME_DATA_FIELD),
+    })
+}
+
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
-    use super::{DiscardReason, FrameStream, IntakeItem};
+    use super::{DiscardReason, FrameStream, IntakeItem, LenientFrameStream};
+    use crate::anomaly::TcAnomaly;
     use crate::config::tests::standard;
-    use aldis_core::DecodeMode;
 
     const UNLOCK: [u8; 6] = [0x31, 0x55, 0x04, 0x05, 0x00, 0x00];
 
@@ -274,7 +371,7 @@ mod tests {
         unit.extend_from_slice(&UNLOCK);
         unit.extend_from_slice(&[0x55, 0x55, 0x55]);
 
-        let mut stream = FrameStream::new(&unit, &table, DecodeMode::Strict);
+        let mut stream = FrameStream::new(&unit, &table);
         let first = stream.next().unwrap();
         assert!(matches!(first, IntakeItem::Accepted { ref frame, .. } if frame.len() == 6));
         let second = stream.next().unwrap();
@@ -293,7 +390,7 @@ mod tests {
         let mut unit = UNLOCK.to_vec();
         unit.extend_from_slice(&[0x01, 0x55, 0x04, 0x09, 0x00, 0xAA]); // claims 10 bytes, has 6
 
-        let mut stream = FrameStream::new(&unit, &table, DecodeMode::Strict);
+        let mut stream = FrameStream::new(&unit, &table);
         let first = stream.next().unwrap();
         assert!(matches!(first, IntakeItem::Accepted { .. }));
 
@@ -323,7 +420,7 @@ mod tests {
             0x31, 0x55, 0x04, 0x07, 0x00, 0x00, 0x00, 0x00, 0x55, 0x55, 0x55,
         ];
 
-        let mut stream = FrameStream::new(&unit, &table, DecodeMode::Strict);
+        let mut stream = FrameStream::new(&unit, &table);
         let first = stream.next().unwrap();
         match first {
             IntakeItem::Discarded { reason, octets, .. } => {
@@ -352,7 +449,7 @@ mod tests {
         unit[..6].copy_from_slice(&[0x71, 0x55, 0x04, 0x05, 0x00, 0x00]);
         unit[6..].copy_from_slice(&UNLOCK);
 
-        let mut stream = FrameStream::new(&unit, &table, DecodeMode::Strict);
+        let mut stream = FrameStream::new(&unit, &table);
         let first = stream.next().unwrap();
         match first {
             IntakeItem::Discarded { reason, octets, .. } => {
@@ -379,7 +476,7 @@ mod tests {
         unit[..6].copy_from_slice(&[0x31, 0x55, 0x04, 0x05, 0x00, 0x00]);
         unit[6..].copy_from_slice(&unlock_fecf);
 
-        let mut stream = FrameStream::new(&unit, &table, DecodeMode::Strict);
+        let mut stream = FrameStream::new(&unit, &table);
         let first = stream.next().unwrap();
         match first {
             IntakeItem::Discarded { reason, octets, .. } => {
@@ -397,7 +494,7 @@ mod tests {
     fn item_accessors_and_remaining() {
         // req: TC-020, TC-021
         let table = standard(false);
-        let mut stream = FrameStream::new(&UNLOCK, &table, DecodeMode::Strict);
+        let mut stream = FrameStream::new(&UNLOCK, &table);
         assert_eq!(stream.remaining(), &UNLOCK);
         let item = stream.next().unwrap();
         assert_eq!(item.octets(), &UNLOCK);
@@ -408,7 +505,7 @@ mod tests {
 
         // Also test discarded item accessors
         let fill = [0x55_u8; 3];
-        let mut stream_fill = FrameStream::new(&fill, &table, DecodeMode::Strict);
+        let mut stream_fill = FrameStream::new(&fill, &table);
         let discarded = stream_fill.next().unwrap();
         assert_eq!(discarded.octets(), &fill);
         assert_eq!(discarded.len(), 3);
@@ -468,7 +565,7 @@ mod tests {
         // Header claiming 10 bytes (h.frame_len == 10), but SCID is 0x000 (UnexpectedSpacecraft)
         // rest has only 6 bytes, so fewer octets remain than declared, and check_head fails on check (b).
         let unit: [u8; 6] = [0x00, 0x00, 0x04, 0x09, 0x00, 0x00];
-        let mut stream = FrameStream::new(&unit, &table, DecodeMode::Strict);
+        let mut stream = FrameStream::new(&unit, &table);
         let item = stream.next().unwrap();
         match item {
             IntakeItem::Discarded { reason, octets, .. } => {
@@ -482,7 +579,7 @@ mod tests {
         // Header with version 1 claiming 10 bytes when only 6 bytes are present.
         // Falls through the if h.version == 0 check to Fill.
         let v1_unit: [u8; 6] = [0x40, 0x55, 0x04, 0x09, 0x00, 0x00];
-        let mut stream_v1 = FrameStream::new(&v1_unit, &table, DecodeMode::Strict);
+        let mut stream_v1 = FrameStream::new(&v1_unit, &table);
         let item_v1 = stream_v1.next().unwrap();
         assert_eq!(item_v1.octets().len(), 6);
         assert!(matches!(
@@ -496,7 +593,7 @@ mod tests {
 
         // Header claiming 5 bytes (< MIN_FRAME_LEN 6).
         let short_hdr: [u8; 6] = [0x00, 0x55, 0x04, 0x04, 0x00, 0x00];
-        let mut stream_short = FrameStream::new(&short_hdr, &table, DecodeMode::Strict);
+        let mut stream_short = FrameStream::new(&short_hdr, &table);
         let item_short = stream_short.next().unwrap();
         assert!(matches!(
             item_short,
@@ -514,7 +611,7 @@ mod tests {
         let table = standard(false);
         // VC 2 (segmented): SCID 0x155, VCID 2, len 7 (8 octets), seq unsegmented (0xC0 = MAP 0)
         let frame: [u8; 8] = [0x01, 0x55, 0x08, 0x07, 0x00, 0xC0, 0x11, 0x22];
-        let mut stream = FrameStream::new(&frame, &table, DecodeMode::Strict);
+        let mut stream = FrameStream::new(&frame, &table);
         let item = stream.next().unwrap();
         match item {
             IntakeItem::Accepted { frame, map, .. } => {
@@ -524,5 +621,37 @@ mod tests {
             IntakeItem::Discarded { .. } => panic!("expected accepted frame"),
         }
         assert_eq!(stream.next(), None);
+    }
+
+    #[test]
+    fn lenient_stream_reports_anomalies() {
+        // req: TC-020, API-030, API-032
+        let table = standard(false);
+        let spare = [0x35, 0x55, 0x04, 0x05, 0x00, 0x00];
+        let mut unit = UNLOCK.to_vec();
+        unit.extend_from_slice(&spare);
+        let mut strict = FrameStream::new(&unit, &table);
+        assert!(matches!(strict.next(), Some(IntakeItem::Accepted { .. })));
+        assert!(matches!(
+            strict.next(),
+            Some(IntakeItem::Discarded {
+                reason: DiscardReason::ReservedSpare,
+                ..
+            })
+        ));
+        let mut lenient = LenientFrameStream::new(&unit, &table);
+        let first = lenient.next().unwrap();
+        assert_eq!((first.len(), first.is_empty()), (6, false));
+        assert!(
+            matches!(first, IntakeItem::Accepted { ref frame, .. } if frame.anomalies().is_empty())
+        );
+        let second = lenient.next().unwrap();
+        assert!(matches!(second, IntakeItem::Accepted { ref frame, .. }
+            if frame.anomalies().contains(TcAnomaly::ReservedSpareSet)));
+        assert_eq!((lenient.next(), lenient.remaining().len()), (None, 0));
+        // A discarded item is the same in both modes, and it reports its octets.
+        let cut = &UNLOCK[..4];
+        let discarded = LenientFrameStream::new(cut, &table).next().unwrap();
+        assert_eq!((discarded.octets(), discarded.len()), (cut, 4));
     }
 }

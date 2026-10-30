@@ -109,7 +109,7 @@ mod tests {
     use crate::config::SppConfig;
     use crate::view::SpacePacket;
     use aldis_core::ids::SeqCount;
-    use aldis_core::{DecodeMode, ErrorDetail, ErrorKind};
+    use aldis_core::{ErrorDetail, ErrorKind};
 
     #[test]
     fn idle_packets() {
@@ -123,7 +123,7 @@ mod tests {
         let mut out = [0_u8; 11];
         assert_eq!(idle.encode(&mut out), Ok(11));
         assert_eq!(out, [0x07, 0xFF, 0xC0, 0x03, 0x00, 0x04, 1, 2, 1, 2, 1]);
-        let p = SpacePacket::decode(&out, DecodeMode::Strict).unwrap();
+        let p = SpacePacket::decode(&out).unwrap();
         assert!(p.is_idle() && !p.has_secondary_header());
         let default = IdlePacket::new(&cfg, 7).unwrap().with_pattern(&[]);
         let mut short = [0xEE_u8; 6];

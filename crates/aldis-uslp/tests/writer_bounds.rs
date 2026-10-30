@@ -13,8 +13,8 @@
     reason = "test fixtures fail loudly, and bookkeeping on lengths the fixtures bound (RS-018)"
 )]
 
+use aldis_core::ErrorKind;
 use aldis_core::security::{FrameCtx, PreFilledSecurity, SecurityLayout};
-use aldis_core::{DecodeMode, ErrorKind};
 use aldis_uslp::{
     FrameContent, FrameFields, FrameKind, MapConfig, PhysicalChannelConfig, SecurityScope,
     SourceOrDestination, TfdfHeader, TfdzRule, TransferFrameType, Upid, UslpFrame, UslpFrameWriter,
@@ -97,7 +97,7 @@ fn encode_writes_only_the_frame() {
         let n = encode(&t, fields(vc), CONTENT, &tfdz, &mut out).unwrap();
         assert!(n < BUFFER);
         assert_eq!(out[n..], before[n..], "vc {vc}");
-        assert!(validate_frame(&out[..n], &t, DecodeMode::Strict).is_ok());
+        assert!(validate_frame(&out[..n], &t).is_ok());
         // One octet short, and an empty TFDZ: nothing is written.
         let mut short = before[..n - 1].to_vec();
         let e = encode(&t, fields(vc), CONTENT, &tfdz, &mut short).unwrap_err();
@@ -140,8 +140,8 @@ fn begin_and_finish_write_only_the_reservation() {
                 .len();
             assert_eq!(n, total - (max_tfdz - tfdz_len));
             assert_eq!(out[total..], before[total..], "vc {vc}, {tfdz_len}");
-            assert!(UslpFrame::decode(&out[..n], &t, DecodeMode::Strict).is_ok());
-            assert!(validate_frame(&out[..n], &t, DecodeMode::Strict).is_ok());
+            assert!(UslpFrame::decode(&out[..n], &t).is_ok());
+            assert!(validate_frame(&out[..n], &t).is_ok());
         }
     }
 }

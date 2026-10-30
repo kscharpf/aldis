@@ -9,7 +9,6 @@
 
 // req: USLP-002, USLP-012, USLP-015, USLP-016, API-075, GEN-020, VER-022
 
-use aldis_core::DecodeMode;
 use aldis_core::security::SecurityLayout;
 use aldis_uslp::{
     Delimited, FrameDelimiter, MapConfig, PhysicalChannelConfig, SecurityScope, TransferFrameType,
@@ -62,7 +61,7 @@ fn run(u: &mut Unstructured<'_>) -> Result<()> {
         frame[..4].copy_from_slice(&word.to_be_bytes());
         let (hlen, tlen) = if sdls { (6, 16) } else { (0, 0) };
         let tfdf = frame[4 + hlen];
-        let decoded = UslpFrame::decode(&frame, &table, DecodeMode::Strict);
+        let decoded = UslpFrame::decode(&frame, &table);
         if tfdf >> 5 < 3 {
             assert!(decoded.is_err(), "rule {:03b} accepted", tfdf >> 5);
             continue;

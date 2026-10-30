@@ -32,14 +32,13 @@ The crate documentation in [`src/lib.rs`](src/lib.rs) gives the standard and the
 With `aldis = { …, features = ["core", "spp"] }` in `Cargo.toml`, decode a Space Packet through the facade:
 
 ```rust
-use aldis::core::DecodeMode;
 use aldis::spp::SpacePacket;
 
 fn main() -> Result<(), aldis::core::Error> {
     // Vector spp-dec-001 of test-vectors/spp/decode_valid.json: a telemetry packet,
     // APID 0x123, unsegmented, sequence count 5, three octets of data.
     let bytes = [0x01, 0x23, 0xC0, 0x05, 0x00, 0x02, 0x01, 0x02, 0x03];
-    let packet = SpacePacket::decode(&bytes, DecodeMode::Strict)?;
+    let packet = SpacePacket::decode(&bytes)?;
     assert_eq!(packet.apid().get(), 0x123);
     assert_eq!(packet.sequence_count().get(), 5);
     assert_eq!(packet.data_field(), [0x01, 0x02, 0x03]);
