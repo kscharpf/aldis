@@ -10,7 +10,7 @@
 //! other path is **process**: `xtask/`, `.github/`, `docs/process/`, `docs/verification/`,
 //! `docs/milestones/`, `changelog.d/`, `AGENTS.md`, and the other files and directories at the
 //! root. A pull request or a commit is product-only, process-only, or mixed by its changed
-//! paths. A commit is **bookkeeping-only** when every path it changes is the decision log, a
+//! paths. A commit is **bookkeeping-only** when every path it changes is a
 //! verification record (`docs/verification/records/`), or a milestone plan in which only rows of
 //! the work-package status table changed.
 
@@ -39,8 +39,6 @@ pub const PRODUCT_DIRS: &[&str] = &[
 /// The parts of `docs/` that are process, not specification.
 pub const PROCESS_DOCS: &[&str] = &["docs/process/", "docs/verification/", "docs/milestones/"];
 
-/// The decision log.
-const DECISIONS: &str = "docs/process/decisions.md";
 /// The verification records.
 const RECORDS: &str = "docs/verification/records/";
 /// The milestone plans.
@@ -53,7 +51,7 @@ const STATUS_HEADER: [&str; 4] = ["WP", "State", "PRs", "Notes"];
 /// to cost half as much verification as the product.
 pub const PROCESS_SHARE_PCT: i64 = 33;
 /// A pull request with at least this many bookkeeping-only commits: one is expected, the commit
-/// of the decision-log lines just before the final verification run (decision of 2026-10-24).
+/// of the records and status rows just before the final verification run.
 pub const BOOKKEEPING_MIN: usize = 2;
 
 /// Whether a changed path is product.
@@ -152,9 +150,7 @@ pub fn status_rows_only(old: &str, new: &str) -> bool {
 pub fn is_bookkeeping(changed: &[Changed]) -> bool {
     !changed.is_empty()
         && changed.iter().all(|c| {
-            c.path == DECISIONS
-                || c.path.starts_with(RECORDS)
-                || (c.path.starts_with(PLANS) && c.status_rows_only)
+            c.path.starts_with(RECORDS) || (c.path.starts_with(PLANS) && c.status_rows_only)
         })
 }
 
@@ -404,7 +400,7 @@ mod tests {
         for path in [
             "xtask/src/main.rs",
             ".github/workflows/nightly.yml",
-            "docs/process/decisions.md",
+            "docs/process/review.md",
             "docs/verification/records/VER-063.md",
             "docs/milestones/m2-frame-codecs.md",
             "AGENTS.md",
@@ -460,7 +456,7 @@ mod tests {
                 .collect()
         };
         assert!(is_bookkeeping(&changed(&[
-            ("docs/process/decisions.md", false),
+            ("docs/verification/records/VER-011.md", false),
             ("docs/verification/records/VER-063.md", false),
             ("docs/milestones/m2-frame-codecs.md", true),
         ])));
@@ -469,7 +465,7 @@ mod tests {
             false
         )])));
         assert!(!is_bookkeeping(&changed(&[
-            ("docs/process/decisions.md", false),
+            ("docs/verification/records/VER-011.md", false),
             ("changelog.d/x.md", false),
         ])));
         assert!(!is_bookkeeping(&changed(&[(
@@ -505,13 +501,16 @@ mod tests {
         ]);
         let mixed = super::super::pr::compute(&raw).unwrap();
         raw.pull["number"] = json!(71);
-        raw.files = ["xtask/src/fields.rs", "docs/process/decisions.md"]
+        raw.files = ["xtask/src/fields.rs", "docs/process/review.md"]
             .iter()
             .map(|f| json!({"filename": f}))
             .collect();
         raw.commit_files = BTreeMap::from([
             ("a".to_owned(), changed(&["xtask/src/fields.rs"])),
-            ("c".to_owned(), changed(&["docs/process/decisions.md"])),
+            (
+                "c".to_owned(),
+                changed(&["docs/verification/records/VER-011.md"]),
+            ),
             (
                 "e".to_owned(),
                 changed(&[

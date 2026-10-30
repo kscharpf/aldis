@@ -50,9 +50,6 @@ pub struct Raw {
     pub conflicts: BTreeMap<String, Vec<String>>,
     /// The maintainer's login: the repository owner's.
     pub maintainer: String,
-    /// The commits of the pull request that added a line naming it to the decision log
-    /// (`git log -S`).
-    pub decision_commits: BTreeSet<String>,
     /// The record that a failed `verify.yml` run left in its artefact, by run ID.
     pub run_records: BTreeMap<u64, Value>,
     /// For each commit other than a merge, the paths it changes against its parent
@@ -526,21 +523,7 @@ fn timeline(
         .filter(|c| stages::is_maintainer_comment(c, &raw.maintainer))
         .filter_map(|c| time_of(c, "created_at"))
         .collect();
-    let recorded = raw
-        .commits
-        .iter()
-        .filter(|c| raw.decision_commits.contains(str_of(c, "sha")))
-        .filter_map(|c| {
-            c.get("commit")?
-                .get("committer")
-                .and_then(|a| time_of(a, "date"))
-        });
-    let decisions: Vec<i64> = comments
-        .iter()
-        .copied()
-        .chain(recorded)
-        .filter(|t| *t <= merged)
-        .collect();
+    let decisions: Vec<i64> = comments.iter().copied().filter(|t| *t <= merged).collect();
     let approved = raw
         .reviews
         .iter()
@@ -948,7 +931,10 @@ pub mod tests {
             "user": {"login": "me"}, "created_at": "2026-10-21T13:52:00Z",
             "body": "agree with the recommendations",
         }));
-        raw.decision_commits.insert("e".to_owned());
+        raw.issue_comments.push(json!({
+            "user": {"login": "me"}, "created_at": "2026-10-21T13:54:12Z",
+            "body": "and keep the rest as it is",
+        }));
         raw.runs.push(json!({
             "id": 898, "head_branch": "m2/wp0b", "head_sha": "c", "status": "completed",
             "conclusion": "failure", "run_started_at": "2026-10-21T12:20:00Z",
@@ -1100,8 +1086,7 @@ pub mod tests {
         // Reviews: the review and the inline finding.
         assert_eq!(s.first_review, Some(t("2026-10-21T13:46:03Z")));
         assert_eq!(s.last_review, Some(t("2026-10-21T13:47:00Z")));
-        // Decisions: the maintainer's comment (not the agent's reply or the inline finding), and
-        // the commit that recorded it.
+        // Decisions: the maintainer's comments (not the agent's reply or the inline finding).
         assert_eq!(s.first_decision, Some(t("2026-10-21T13:52:00Z")));
         assert_eq!(s.last_decision, Some(t("2026-10-21T13:54:12Z")));
         // No commit was authored after the last decision: it is the approval.
@@ -1132,8 +1117,8 @@ pub mod tests {
         assert_eq!(w.failed[0].seconds, Some(1_200));
         assert_eq!(w.cancelled.len(), 1);
         assert_eq!(w.cancelled_s(), 240);
-        // Maintainer events: the two reviews, the comment, the merge.
-        assert_eq!(pr.events.len(), 4);
+        // Maintainer events: the two reviews, the two comments, the merge.
+        assert_eq!(pr.events.len(), 5);
         // Dependencies are read from the commits and their outside parents.
         assert_eq!(pr.head, "e");
         assert_eq!(

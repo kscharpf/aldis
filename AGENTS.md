@@ -28,8 +28,6 @@ The rules and checks below are written for the Rust crates and the reference app
 - **Leave to the maintainer**, through the coordinator, as one question with a recommended option: a reading the Blue Book does not settle (as an OI), scope and plan decisions, C ABI and public API conventions, new dependencies, releases, tags, visibility and anything external, approvals, and merges to `main`. Meanwhile, continue the work the answer does not touch.
 - **Never ask** about what a rule of this file, a checklist, or a check already decides.
 
-Every maintainer decision gets a line in the [decision log](docs/process/decisions.md) (VER-062), which `cargo xtask decisions` checks.
-
 ## Independent review
 
 Detailed protocol: [docs/process/review.md](docs/process/review.md).

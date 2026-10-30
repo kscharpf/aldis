@@ -60,7 +60,7 @@ Read on 2026-10-21 from the repositories, through the GitHub API and the source 
 
 ## 2. Decisions
 
-Plan and scope decisions for the maintainer ([decision rights](../process/decision-rights.md) §2.2, §2.3, §2.7, §2.8; [log](../process/decisions.md)), all accepted 2026-10-21 as recommended. Each row gives the choice first, then the alternatives not chosen.
+Plan and scope decisions for the maintainer ([decision rights](../process/decision-rights.md) §2.2, §2.3, §2.7, §2.8), all accepted 2026-10-21 as recommended. Each row gives the choice first, then the alternatives not chosen.
 
 | # | Decision | Choice (recommended), and alternatives | Status |
 |---|---|---|---|

@@ -52,7 +52,7 @@ Aldis is built to the practices of safety- and mission-critical software. It is 
 - Every requirement cites its CCSDS Blue Book clause; every test names the requirements it covers; `cargo xtask trace` checks that each requirement of a milestone is traced (VER-020).
 - **The merge gate is a reproducible run** of every check in a container image pinned by digest, on the exact commit (VER-056). It produces an **evidence record**, published as a git note, that a pull request must carry to merge (VER-057, VER-058). Every night, every check runs again from scratch on `main` (VER-059).
 - Independent review of every pull request reads the published evidence and audits what no check covers: the Blue Book readings, `unsafe`, the API shape, and every suppression ([AGENTS.md](AGENTS.md)).
-- Every maintainer decision is logged ([decision log](docs/process/decisions.md)), and open questions are tracked as numbered issues ([open issues](docs/09-open-issues.md)).
+- Open questions are tracked as numbered issues ([open issues](docs/09-open-issues.md)).
 - An [assurance case](docs/verification/assurance-case.md) and systematic [hazard analysis](docs/verification/hazards.md) argue fitness against failure modes and claims (VER-065, VER-066).
 
 ## Layout

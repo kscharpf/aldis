@@ -1,17 +1,16 @@
 //! `cargo xtask metrics`: how the project's pull requests went (docs/06-verification.md §9,
 //! VER-063). Cycle time, size, verification runs and their cost, merges from `main` and their
-//! conflicts, review outcomes, follow-ups, the maintainer's decision log, the stages and the
+//! conflicts, review outcomes, follow-ups, the stages and the
 //! process-created waits, and the process overhead (`overhead.rs`).
 //!
 //! It reads GitHub through `gh api` (a tooling dependency, RS-017, as `verify` uses it) and the
 //! local repository: the published records under `refs/notes/verify`, fetched as `verify check`
 //! fetches them, the merge commits, redone with `git merge-tree`, and the paths each commit
 //! changes (`git diff-tree`, and `git show` of a milestone plan). It needs the network, so it is
-//! never part of `cargo xtask ci`. The computation (`pr.rs`, `report.rs`, `decisions.rs`,
+//! never part of `cargo xtask ci`. The computation (`pr.rs`, `report.rs`,
 //! `overhead.rs`) is pure and tested on fixtures.
 
 mod conflicts;
-mod decisions;
 mod overhead;
 mod pr;
 mod report;
@@ -33,7 +32,7 @@ Process metrics (docs/06-verification.md §9, VER-063; needs `gh` and the networ
           [--no-previous]      cycle time, size, verification runs and minutes, merges from main
                                and their conflicts, reviews and fixes, and follow-ups of the pull
                                requests merged since the date (default: the last 30 days), or of
-                               one; maintainer decisions from docs/process/decisions.md; the
+                               one; the
                                stages each waited in, raw and in the maintainer's active time;
                                and the process-created waits (order inversions, verification
                                after approval, failed and cancelled runs, rework after a
@@ -334,10 +333,6 @@ fn complete(
         }
     }
     raw.commit_files = commit_files(&root, number, &raw.commits);
-    raw.decision_commits = decision_commits(&root, number, &head)
-        .into_iter()
-        .filter(|c| shas.contains(c))
-        .collect();
     for r in &raw.runs {
         let (Some(id), Some(sha)) = (
             r.get("id").and_then(Value::as_u64),
@@ -423,29 +418,6 @@ fn changed_paths(root: &Path, sha: &str) -> Result<Vec<overhead::Changed>, Strin
             path: path.to_owned(),
         })
         .collect())
-}
-
-/// The commits reachable from `head` that added or removed a decision-log line naming `#number`
-/// (`git log -S`, which follows no merge).
-fn decision_commits(root: &Path, number: u64, head: &str) -> Vec<String> {
-    let out = Command::new("git")
-        .args([
-            "log",
-            "--format=%H",
-            &format!("-S · #{number} · "),
-            head,
-            "--",
-            decisions::PATH,
-        ])
-        .current_dir(root)
-        .output();
-    match out {
-        Ok(o) if o.status.success() => String::from_utf8_lossy(&o.stdout)
-            .lines()
-            .map(str::to_owned)
-            .collect(),
-        _ => Vec::new(),
-    }
 }
 
 /// The record that the failed `verify.yml` run `id` of `sha` left in its artefact
@@ -599,9 +571,6 @@ pub fn run(args: &[&str]) -> Result<usize, String> {
     prs.sort_by_key(|p| (p.merged, p.number));
     previous.sort_by_key(|p| (p.merged, p.number));
     let events = maintainer_comments(&repo, &maintainer, earliest - 86_400)?;
-    let log = repo::read(&root.join(decisions::PATH))
-        .ok()
-        .map(|t| decisions::parse(&t));
     let report = report::Report {
         maintainer,
         events,
@@ -614,7 +583,6 @@ pub fn run(args: &[&str]) -> Result<usize, String> {
         since: opts.since,
         top: opts.top,
         prs,
-        decisions: log,
     };
     output(&opts, &report)?;
     Ok(0)
@@ -660,7 +628,7 @@ mod tests {
                     "docs/milestones/m9.md",
                     &plan.replace("open | –", "merged | #1"),
                 ),
-                ("docs/process/decisions.md", "- line\n"),
+                ("docs/process/review.md", "- line\n"),
             ],
             "status row and log",
         );
@@ -695,7 +663,7 @@ mod tests {
             of(&rows),
             [
                 ("docs/milestones/m9.md".to_owned(), true),
-                ("docs/process/decisions.md".to_owned(), false),
+                ("docs/process/review.md".to_owned(), false),
             ]
         );
         assert_eq!(of(&text), [("docs/milestones/m9.md".to_owned(), false)]);

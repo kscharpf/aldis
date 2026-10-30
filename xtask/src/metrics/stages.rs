@@ -139,8 +139,7 @@ pub struct Stages {
     pub first_review: Option<i64>,
     /// The last review up to the merge.
     pub last_review: Option<i64>,
-    /// The first maintainer decision on it: a comment of theirs in its conversation, or a commit of
-    /// it that recorded a decision-log line naming it.
+    /// The first maintainer decision on it: a comment of theirs in its conversation.
     pub first_decision: Option<i64>,
     /// The last one, up to the merge.
     pub last_decision: Option<i64>,

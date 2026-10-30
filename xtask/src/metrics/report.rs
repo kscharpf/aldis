@@ -6,7 +6,6 @@ use std::fmt::Write as _;
 
 use serde_json::{Value, json};
 
-use super::decisions::{self, Log};
 use super::overhead::{self, Class};
 use super::pr::{AREAS, Pr};
 use super::stages::{self, ACTIVE_WINDOW, Activity, ApprovalKind};
@@ -42,8 +41,6 @@ pub struct Report {
     pub top: usize,
     /// The merged pull requests, oldest merge first.
     pub prs: Vec<Pr>,
-    /// The maintainer's decision log, if it exists.
-    pub decisions: Option<Log>,
 }
 
 /// The aggregate of a set of pull requests.
@@ -202,7 +199,7 @@ fn count(n: usize, one: &str, many: &str) -> String {
 }
 
 /// The plain-language summary.
-fn prose(r: &Report, s: &Summary, out: &mut String) {
+fn prose(s: &Summary, out: &mut String) {
     let _ = writeln!(
         out,
         "- **{}** merged, {}, {} changed (+{} / −{} lines). Half were merged within **{}** of \
@@ -258,32 +255,6 @@ fn prose(r: &Report, s: &Summary, out: &mut String) {
         pct(s.fixed, s.reviewed),
         count(s.follow_ups, "follow-up issue was", "follow-up issues were"),
     );
-    match (&r.decisions, r.since) {
-        (None, _) => {
-            let _ = writeln!(
-                out,
-                "- **Maintainer decisions:** `{}` does not exist yet, so none are counted.",
-                decisions::PATH
-            );
-        }
-        (Some(log), Some(since)) => {
-            let period = log.entries.iter().filter(|d| d.day >= since).count();
-            let _ = writeln!(
-                out,
-                "- **Maintainer decisions:** {period} in the period, {} logged in all (`{}`).",
-                log.entries.len(),
-                decisions::PATH
-            );
-        }
-        (Some(log), None) => {
-            let _ = writeln!(
-                out,
-                "- **Maintainer decisions:** {} logged in all (`{}`).",
-                log.entries.len(),
-                decisions::PATH
-            );
-        }
-    }
 }
 
 /// The split between product and process of the pull requests, their commits, and their
@@ -343,8 +314,8 @@ fn overhead_section(r: &Report, t: &Totals, out: &mut String) {
     }
     let _ = writeln!(
         out,
-        "Commits that change only `docs/process/decisions.md`, the work-package status rows of a \
-         milestone plan, or `docs/verification/records/`: {} in all.\n",
+        "Commits that change only the work-package status rows of a milestone plan, or \
+         `docs/verification/records/`: {} in all.\n",
         o.bookkeeping.iter().map(|(_, k)| k).sum::<usize>()
     );
     let _ = writeln!(out, "| PR | Bookkeeping-only | Commits |\n|---|---:|---|");
@@ -397,35 +368,6 @@ fn friction(r: &Report, s: &Summary, out: &mut String) {
     for area in AREAS.iter().copied().chain(["other"]) {
         let n = s.areas.get(area).copied().unwrap_or(0);
         let _ = writeln!(out, "| `{area}` | {n} |");
-    }
-    if let Some(log) = &r.decisions {
-        let _ = writeln!(out, "\n### Maintainer decisions by category\n");
-        let counts = decisions::counts(log, r.since.unwrap_or(i64::MIN));
-        if counts.is_empty() {
-            let _ = writeln!(out, "No entries under `## Log` yet.");
-        } else if r.since.is_some() {
-            let _ = writeln!(
-                out,
-                "| Category | In the period | In all |\n|---|---:|---:|"
-            );
-            for (c, (period, all)) in counts {
-                let _ = writeln!(out, "| {c} | {period} | {all} |");
-            }
-        } else {
-            // One pull request has no period.
-            let _ = writeln!(out, "| Category | In all |\n|---|---:|");
-            for (c, (_, all)) in counts {
-                let _ = writeln!(out, "| {c} | {all} |");
-            }
-        }
-        if !log.malformed.is_empty() {
-            let _ = writeln!(
-                out,
-                "\n{} line(s) under `## Log` are not in the form \
-                 `- YYYY-MM-DD · <category> · <ref> · <line>` and are not counted.",
-                log.malformed.len()
-            );
-        }
     }
 }
 
@@ -840,11 +782,9 @@ contain the agent's marker, is no review, has at most {max} characters, and has 
 agent's replies that lack the marker are longer or open in bold.
 - **Stages:** the first commit; opened; the first passing record (`finished` of the earliest \
 published record of any of its commits; only passing records are published); the first review; \
-the last maintainer decision (their last comment in the conversation, or the committer date of the \
-commit of the pull request that added a line naming it to `docs/process/decisions.md`, found with \
-`git log -S`); the approval; the passing record of the merged head; merged.
+the last maintainer decision (their last comment in the conversation); the approval; the passing record of the merged head; merged.
 - **Approval:** the first `APPROVED` review; otherwise the maintainer's last word (the last of \
-their reviews, comments, and recorded decisions up to the merge) if no commit other than a merge \
+their reviews and comments up to the merge) if no commit other than a merge \
 was authored after it; otherwise the merge itself, as the maintainer approves by merging.
 - **Active time:** the union of the windows of {window} before and after each maintainer event: a \
 review or review comment, a maintainer comment on any issue or pull request, and a merge. Pushes \
@@ -874,7 +814,7 @@ documents of `docs/`). Every other path is *process*: `xtask/`, `.github/`, thos
 `docs/`, `changelog.d/`, `AGENTS.md`, and the other root files. A pull request is product-only, \
 process-only, or mixed by the files it changed (`pulls/{{n}}/files`), a commit other than a merge \
 by the paths it changes against its parent (`git diff-tree`); merges are not classified. A \
-*bookkeeping-only* commit changes only `docs/process/decisions.md`, files under \
+*bookkeeping-only* commit changes only files under \
 `docs/verification/records/`, or the rows of a milestone plan's work-package status table (the \
 plan before and after, `git show`).
 - **Thresholds:** every order inversion; verification after approval of {update} or more in one \
@@ -883,7 +823,7 @@ runs of {cancel} or more in one pull request; at least {rework} verification run
 in one pull request; a file in {conflicts} or more conflicted merges in the period; process-only \
 pull requests that took {share} % or more of the period's verification minutes (each of them is \
 then listed); {bookkeeping} or more bookkeeping-only commits in one pull request (one is expected: \
-the commit of its decision-log lines). The previous period has the same length and ends where \
+the commit of its records and status rows). The previous period has the same length and ends where \
 this one starts.
 - Generated by `cargo xtask metrics` (docs/06-verification.md §9, VER-063).
 ",
@@ -912,7 +852,7 @@ pub fn markdown(r: &Report) -> String {
         crate::verify::utc(u64::try_from(r.generated).unwrap_or(0))
     );
     let _ = writeln!(out, "## Summary\n");
-    prose(r, &s, &mut out);
+    prose(&s, &mut out);
     let activity = r.activity();
     let (now, before) = r.totals();
     recommendations(r, &now, before.as_ref(), &mut out);
@@ -986,7 +926,6 @@ pub fn json(r: &Report) -> Value {
             "fixed_after_review": s.fixed,
             "follow_ups": s.follow_ups,
         },
-        "decisions": decisions::to_json(r.decisions.as_ref(), r.since.unwrap_or(i64::MIN)),
         "prs": r.prs.iter().map(|p| p.to_json(&activity)).collect::<Vec<_>>(),
     })
 }
@@ -1081,7 +1020,6 @@ mod tests {
             since: time::parse("2026-10-16"),
             top: 10,
             prs: stacked(),
-            decisions: None,
         };
         let md = markdown(&report);
         for want in [
@@ -1174,7 +1112,6 @@ mod tests {
             since: time::parse("2026-10-16"),
             top: 10,
             prs,
-            decisions: None,
         };
         let md = markdown(&report);
         for want in [
@@ -1217,7 +1154,6 @@ mod tests {
             since: time::parse("2026-10-16"),
             top: 1,
             prs: two(),
-            decisions: None,
         };
         let md = markdown(&report);
         for want in [
@@ -1233,7 +1169,6 @@ mod tests {
             "Commits followed the first review in **1 of 1** (100 %)",
             "2 follow-up issues were opened",
             "a pull request that was verified needed 1 run (medians)",
-            "`docs/process/decisions.md` does not exist yet",
             "| `clippy` | 1.0 | 54 % | 2 |",
             "| `docs/plan.md` | 1 |",
             "| #70 `m2/wp0b` | 3 h 16 min | 3 h 21 min | 3 | +120 −20 | 1 + 2 | 29 min | \
@@ -1247,36 +1182,23 @@ mod tests {
         // --top 1 shows one check group.
         assert!(!md.contains("| `exerciser` |"));
 
-        let with_log = Report {
-            decisions: Some(decisions::parse(
-                "## Log\n\n- 2026-10-20 · scope · #56 · x\n- 2026-10-01 · scope · chat · y\n- bad\n",
-            )),
-            ..report
-        };
-        let md = markdown(&with_log);
-        assert!(md.contains("**Maintainer decisions:** 1 in the period, 2 logged in all"));
-        assert!(md.contains("| scope | 1 | 2 |"));
-        assert!(md.contains("1 line(s) under `## Log` are not in the form"));
         // One pull request has no period.
         let one = Report {
             since: None,
             prs: two().into_iter().take(1).collect(),
-            ..with_log
+            ..report
         };
         let md = markdown(&one);
         assert!(md.contains("Covers pull request #70 in `o/r`."), "{md}");
         assert!(md.contains("- **1 pull request** merged, 5 commits, 3 files changed"));
-        assert!(md.contains("**Maintainer decisions:** 2 logged in all"));
-        assert!(md.contains("| Category | In all |\n|---|---:|\n| scope | 2 |"));
-        let with_log = Report {
+        let both = Report {
             since: time::parse("2026-10-16"),
             prs: two(),
             ..one
         };
-        let j = json(&with_log);
+        let j = json(&both);
         assert_eq!(j["summary"]["prs"], 2);
         assert_eq!(j["summary"]["conflict_files"][0]["path"], "docs/plan.md");
-        assert_eq!(j["decisions"]["categories"]["scope"]["period"], 1);
         assert_eq!(j["prs"][1]["number"], 71);
         assert_eq!(j["since"], "2026-10-16T00:00:00Z");
     }
