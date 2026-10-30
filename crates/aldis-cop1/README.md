@@ -29,7 +29,7 @@ assert_eq!(actions.len(), 1); // Deliver: the FDU is in `out`
 
 ## Status
 
-FARM-1 (M3 WP-3) and FOP-1 (M3 WP-4) are implemented for TC frames; the FOP-1 USLP frame target and the C ABI (WP-6) are not yet built.
+FARM-1 (M3 WP-3) and FOP-1 (M3 WP-4) are implemented for TC frames, and a closed-loop test connects them across a simulated link (M3 WP-5); the FOP-1 USLP frame target and the C ABI (WP-6) are not yet built.
 
 ## Where it sits
 

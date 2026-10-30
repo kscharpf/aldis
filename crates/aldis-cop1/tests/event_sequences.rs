@@ -10,8 +10,8 @@
 #![expect(
     clippy::unwrap_used,
     clippy::arithmetic_side_effects,
-    clippy::cast_possible_truncation,
-    reason = "tests fail loudly by design"
+    clippy::as_conversions,
+    reason = "tests fail loudly by design; the tables are indexed by the discriminant of the state"
 )]
 
 use aldis_cop1::{
@@ -144,7 +144,7 @@ const fn kind(k: u8) -> FrameKind {
     }
 }
 
-fn directive(d: DirectiveOp) -> Directive {
+const fn directive(d: DirectiveOp) -> Directive {
     match d {
         DirectiveOp::InitiateWithout => Directive::InitiateAdWithoutClcwCheck,
         DirectiveOp::InitiateWith => Directive::InitiateAdWithClcwCheck,

@@ -18,12 +18,9 @@
 //! its scenario and seed.
 #![expect(
     clippy::unwrap_used,
-    clippy::expect_used,
+    clippy::panic,
     clippy::arithmetic_side_effects,
     clippy::indexing_slicing,
-    clippy::cast_possible_truncation,
-    clippy::too_many_lines,
-    clippy::struct_excessive_bools,
     reason = "test-only harness: a violated assumption must fail loudly (RS-018)"
 )]
 
@@ -66,7 +63,7 @@ const FDU_LEN: usize = 8;
 struct Rng(u64);
 
 impl Rng {
-    fn next(&mut self) -> u64 {
+    const fn next(&mut self) -> u64 {
         self.0 = self.0.wrapping_add(0x9E37_79B9_7F4A_7C15);
         let mut z = self.0;
         z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
@@ -80,7 +77,7 @@ impl Rng {
     }
 
     /// A number in `0..=max`.
-    fn up_to(&mut self, max: u64) -> u64 {
+    const fn up_to(&mut self, max: u64) -> u64 {
         self.next() % (max + 1)
     }
 }
@@ -144,7 +141,8 @@ impl Channel {
         for _ in 0..copies {
             let mut bytes = item.to_vec();
             if rng.chance(self.link.corrupt) {
-                let bit = rng.up_to(bytes.len() as u64 * 8 - 1) as usize;
+                let bits = u64::try_from(bytes.len() * 8).unwrap();
+                let bit = usize::try_from(rng.up_to(bits - 1)).unwrap();
                 bytes[bit / 8] ^= 1 << (bit % 8);
             }
             let mut due = now + self.link.delay_us + rng.up_to(self.link.jitter_us);
@@ -205,7 +203,7 @@ struct Outcome {
     discarded: usize,
 }
 
-fn fdu(index: u16) -> [u8; FDU_LEN] {
+const fn fdu(index: u16) -> [u8; FDU_LEN] {
     let [hi, lo] = index.to_be_bytes();
     let seed = index.wrapping_mul(0x9E37);
     let [a, b] = seed.to_be_bytes();
@@ -284,7 +282,7 @@ impl World {
         }
     }
 
-    fn instant(&self) -> Instant {
+    const fn instant(&self) -> Instant {
         Instant::from_micros(self.now)
     }
 
@@ -372,22 +370,19 @@ impl World {
 
     /// A frame arrives at the flight end.
     fn frame_arrives(&mut self, bytes: &[u8]) {
-        match validate_frame(bytes, &self.channels) {
-            Ok(valid) => {
-                let input = Farm1Input::Frame {
-                    frame: Farm1Frame::from_tc(&valid),
-                    buffer_available: self.buffer_free,
-                };
-                self.flight_input(input);
-            }
-            Err(_) => {
-                self.outcome.discarded += 1;
-                self.flight_input(Farm1Input::InvalidFrame);
-            }
+        if let Ok(valid) = validate_frame(bytes, &self.channels) {
+            let input = Farm1Input::Frame {
+                frame: Farm1Frame::from_tc(&valid),
+                buffer_available: self.buffer_free,
+            };
+            self.flight_input(input);
+        } else {
+            self.outcome.discarded += 1;
+            self.flight_input(Farm1Input::InvalidFrame);
         }
     }
 
-    fn handle(&mut self) -> u32 {
+    const fn handle(&mut self) -> u32 {
         self.next_handle += 1;
         self.next_handle
     }
@@ -409,7 +404,7 @@ impl World {
             };
             self.ground_input(input);
         }
-        if self.now % self.s.clcw_period_us == 0 {
+        if self.now.is_multiple_of(self.s.clcw_period_us) {
             let word = self.flight.clcw().to_octets();
             self.ret.send(self.now, &word, &mut self.rng);
         }
@@ -733,7 +728,7 @@ fn a_dead_forward_link_ends_in_an_alert_at_the_transmission_limit() {
     };
     for o in run_seeds(s, 4) {
         assert!(!o.alerts.is_empty(), "the Alert of the transmission limit");
-        assert!(o.delivered.is_empty());
+        assert_eq!(o.delivered, Vec::<u16>::new());
     }
 }
 
