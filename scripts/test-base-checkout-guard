@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+# Test .claude/hooks/base-checkout-guard.sh against a scratch repository and a linked worktree.
+#
+# Usage: scripts/test-base-checkout-guard
+# Cases: a path in the base checkout is blocked (exit 2), also when relative to the hook's cwd
+# and for NotebookEdit; a path under .claude/worktrees/, in a linked worktree elsewhere, or
+# outside the repository is allowed (exit 0), from the base or from a worktree session; input
+# without a path is allowed.
+# Exit status: 0 when every case holds, 1 otherwise.
+set -uo pipefail
+
+here="$(cd "$(dirname "$0")" && pwd)"
+hook="$here/../.claude/hooks/base-checkout-guard.sh"
+work="$(mktemp -d "${TMPDIR:-/tmp}/base-checkout-guard-test.XXXXXX")"
+trap 'rm -rf "$work"' EXIT
+repo="$work/repo"
+
+git init -q "$repo"
+git -C "$repo" config user.email test@example.com
+git -C "$repo" config user.name test
+echo init >"$repo/init.txt"
+git -C "$repo" add init.txt
+git -C "$repo" commit -q -m init
+git -C "$repo" worktree add -q -b inner "$repo/.claude/worktrees/inner"
+git -C "$repo" worktree add -q -b outer "$work/outer"
+
+failures=0
+expect() { # expect <exit> <project dir> <json> <case>
+    local got
+    CLAUDE_PROJECT_DIR="$2" bash "$hook" <<<"$3" 2>/dev/null
+    got=$?
+    if [ "$got" = "$1" ]; then
+        echo "ok: $4"
+    else
+        echo "FAIL: $4 (exit $got, expected $1)"
+        failures=$((failures + 1))
+    fi
+}
+edit() { printf '{"tool_name":"Edit","cwd":"%s","tool_input":{"file_path":"%s"}}' "$1" "$2"; }
+
+expect 2 "$repo" "$(edit "$repo" "$repo/init.txt")" "base file from the base session"
+expect 2 "$repo" "$(edit "$repo" "docs/new.md")" "relative base path"
+expect 2 "$work/outer" "$(edit "$work/outer" "$repo/init.txt")" "base file from a worktree session"
+expect 2 "$repo" "$(printf '{"tool_name":"NotebookEdit","cwd":"%s","tool_input":{"notebook_path":"%s/n.ipynb"}}' "$repo" "$repo")" "NotebookEdit in the base"
+expect 0 "$repo" "$(edit "$repo" "$repo/.claude/worktrees/inner/init.txt")" "file under .claude/worktrees"
+expect 0 "$work/outer" "$(edit "$work/outer" "$work/outer/init.txt")" "file in a linked worktree elsewhere"
+expect 0 "$repo" "$(edit "$repo" "$work/scratch.txt")" "file outside the repository"
+expect 0 "$repo" '{"tool_name":"Edit","tool_input":{}}' "no path"
+
+[ "$failures" -eq 0 ] || exit 1
+echo "all cases hold"
