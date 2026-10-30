@@ -26,6 +26,8 @@ pub const CAPACITIES_TOML: &str = "crates/aldis-ffi/capacities.toml";
 pub const CAPACITIES_RS: &str = "crates/aldis-ffi/src/capacities.rs";
 /// The C program of `c-smoke`.
 const SMOKE: &str = "crates/aldis-ffi/tests/c/smoke.c";
+/// Its first `c` block is the usage example that `c-smoke` compiles against the header.
+const README: &str = "crates/aldis-ffi/README.md";
 /// The only headers `aldis.h` may include (CABI-003).
 const INCLUDES: [&str; 3] = ["<stdint.h>", "<stddef.h>", "<stdbool.h>"];
 
@@ -256,6 +258,25 @@ pub fn run(write: bool) -> Result<usize, String> {
     Ok(problems.len())
 }
 
+/// The first fenced `c` block of `readme` as a C translation unit: its `#` lines first, then the other
+/// lines as the body of a function that takes the `bytes` and `len` the example uses. The example
+/// is a fragment, so this is how it compiles (CABI-003).
+fn example_unit(readme: &str) -> Result<String, String> {
+    let mut block = readme
+        .lines()
+        .skip_while(|l| l.trim_end() != "```c")
+        .skip(1)
+        .take_while(|l| l.trim_end() != "```")
+        .peekable();
+    block.peek().ok_or("the README has no fenced c block")?;
+    let (directives, body): (Vec<&str>, Vec<&str>) = block.partition(|l| l.starts_with('#'));
+    Ok(format!(
+        "{}\nint aldis_readme_example(const uint8_t *bytes, size_t len)\n{{\n    (void)bytes;\n    (void)len;\n{}\n    return 0;\n}}\n",
+        directives.join("\n"),
+        body.join("\n")
+    ))
+}
+
 fn run_cmd(cmd: &mut Command) -> Result<String, String> {
     let shown = format!("{cmd:?}");
     let out = cmd.output().map_err(|e| format!("{shown}: {e}"))?;
@@ -337,6 +358,24 @@ pub fn c_smoke(cc: &str, cxx: &str) -> Result<usize, String> {
             .arg("-o")
             .arg(&c_exe),
     )?;
+    // The usage example of the README is C99 that the header accepts: a field it names that the
+    // header lacks fails here.
+    let example = out_dir.join("readme-example.c");
+    let readme = repo::read(&root.join(README))?;
+    std::fs::write(
+        &example,
+        example_unit(&readme).map_err(|e| format!("{README}: {e}"))?,
+    )
+    .map_err(|e| e.to_string())?;
+    run_cmd(
+        Command::new(cc)
+            .args(["-std=c99", "-fsyntax-only"])
+            .args(warnings)
+            .arg("-I")
+            .arg(&include)
+            .arg(&example),
+    )
+    .map_err(|e| format!("{README}: the example does not compile against the header:\n{e}"))?;
     // C23 (`-std=c2x` for the compilers before the spelling `c23`) against the static library.
     let c23_exe = out_dir.join("smoke-c23");
     run_cmd(
@@ -376,6 +415,17 @@ pub fn c_smoke(cc: &str, cxx: &str) -> Result<usize, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // req: CABI-005
+    #[test]
+    fn the_readme_example_becomes_a_function_body() {
+        let readme = "text\n\n```sh\nls\n```\n\n```c\n#include \"aldis/aldis.h\"\n\nuint32_t rc = f(bytes, len);\nif (rc) {\n}\n```\n\n```c\nnot this\n```\n";
+        let unit = example_unit(readme).unwrap();
+        assert!(unit.starts_with("#include \"aldis/aldis.h\"\nint aldis_readme_example("));
+        assert!(unit.contains("{\n    (void)bytes;\n    (void)len;\n\nuint32_t rc = f(bytes, len);\nif (rc) {\n}\n    return 0;\n}\n"));
+        assert!(!unit.contains("not this") && !unit.contains("ls"));
+        assert!(example_unit("no code here\n").is_err());
+    }
 
     // req: CABI-030
     #[test]

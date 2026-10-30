@@ -69,7 +69,9 @@ commands:
   consistency                  the registrations agree: crates with code in coverage, features,
                                mutants, the exerciser, layers, READMEs, and the facade; fuzz
                                targets in fuzz/Cargo.toml and the nightly matrix; every vector
-                               file in test-vectors/README.md, a test, and the exerciser
+                               file in test-vectors/README.md, a test, and the exerciser;
+                               every aldis_ or ALDIS_ name of docs/profiles/c-abi.md and the
+                               ffi README in include/aldis/aldis.h (CABI-002)
   loops [list [<crate>...]]    every while, while let, and loop in a library crate, and every
                                iteration over an open range or endless source, has a `// bound:`
                                comment above it, and every such comment is above a loop
@@ -107,9 +109,11 @@ commands:
   changelog show               print the unreleased changes as the next release will list them
   changelog release <version> <YYYY-MM-DD>
                                move every fragment into a new section of CHANGELOG.md
-  check                        the checks to run while working: fmt, clippy, test, the bare-metal
-                               clippy build, ci, then the extras of each touched directory
-                               (aldis-core, aldis-ffi, refapp/); stops at the first failure
+  check                        the checks to run while working: fmt, clippy, doc, test, the
+                               bare-metal clippy build, ci, then the extras of each touched
+                               directory (aldis-core, aldis-ffi, refapp/, and the fmt of
+                               exerciser/, fuzz/, crosscheck/); the commands of the merge
+                               gate; stops at the first failure
   ci                           the quick checks of the verification run, without a build:
                                spec-lint, links, layers, consistency, rs020, loops,
                                restricted, assurance --strict, refapp-deps, vectors validate,
