@@ -10,7 +10,11 @@
 # run ends; a run that main overtook (STALE) is brought up to date and run again, at most
 # `--stale-retries` times, for a local and for a dispatched run; a failure with main unmoved
 # (FAILED) is never retried; a run that aborts leaves no record of an earlier run; a PR's lock is
-# released at its own final line; a PR number is digits only and `07` is `7`.
+# released at its own final line; a PR number is digits only and `07` is `7`; `--cancel` cancels
+# the PR's own in-flight run of a head that is behind main and no other (not another PR's run, not
+# an older head's, not a current head's), only with the flag, then verifies as usual, and ends a
+# reverify that was watching the cancelled run; a cancelled run is reported `cancelled`, neither
+# FAILED nor STALE, and `--status` shows it (VER-060).
 # Not covered: GitHub itself (dispatch, watch, the real STALE gate of `verify assemble`).
 # VERBOSE=1 prints the output of the script under test after each failed case.
 # Exit status: 0 when every case holds, 1 otherwise.
@@ -65,8 +69,26 @@ cat >"$work/bin/gh" <<'EOF'
 case "$1 $2" in
 "pr view") echo "OPEN $(cat "$STUB/pr-$3")" ;;
 "workflow run") ;;
+"run cancel")
+    echo "$3" >>"$STUB/cancelled"
+    touch "$STUB/release-watch"
+    # A cancelled run is no longer in flight.
+    [ ! -e "$STUB/inflight" ] || { grep -v " $3 " "$STUB/inflight" >"$STUB/inflight.new"; mv "$STUB/inflight.new" "$STUB/inflight"; }
+    ;;
 "run list")
     case "$*" in
+    *"headSha,status --jq"*)
+        # In-flight runs, as `<id> <head>` after the jq filter: $STUB/inflight holds `<branch> <id> <head>`.
+        branch=""
+        prev=""
+        for a in "$@"; do
+            [ "$prev" = --branch ] && branch="$a"
+            prev="$a"
+        done
+        if [ -e "$STUB/inflight" ]; then
+            while read -r b id sha; do [ "$b" = "$branch" ] && echo "$id $sha"; done <"$STUB/inflight"
+        fi
+        ;;
     *createdAt*)
         n="$(($(cat "$STUB/runs" 2>/dev/null || echo 0) + 1))"
         echo "$n" >"$STUB/runs"
@@ -76,18 +98,21 @@ case "$1 $2" in
     esac
     ;;
 "run watch")
-    if [ "$3" = 102 ] && [ -e "$STUB/hold-watch" ]; then
+    if { [ "$3" = 102 ] && [ -e "$STUB/hold-watch" ]; } || [ -e "$STUB/hold-watch-all" ]; then
         # bound: polls until the test releases the watch.
         while [ ! -e "$STUB/release-watch" ]; do /bin/sleep 0.1; done
     fi
     ;;
 "run view")
     id="$3"
-    # $STUB/dispatch-script lists one line per dispatched run, in order: fail-moved, fail, or ok.
+    # $STUB/dispatch-script lists one line per dispatched run, in order: fail-moved, fail, cancelled,
+    # cancelled-moved (also moves main), or ok.
     kind="$(sed -n "$((id - 100))p" "$STUB/dispatch-script")"
     case "$kind" in
     fail-moved) "$STUB_MOVE"; echo failure ;;
     fail) echo failure ;;
+    cancelled) echo cancelled ;;
+    cancelled-moved) "$STUB_MOVE"; echo cancelled ;;
     *) echo success ;;
     esac
     ;;
@@ -171,7 +196,7 @@ bg() { # bg <tag> <args...>
     eval "pid_$tag=$!"
 }
 reset() { # reset <publish-script...>: clean counters, one script line per argument
-    rm -f "$stub/publishes" "$stub/runs" "$stub/release" "$stub/release-watch" "$stub/hold-watch" "$stub/container" "$stub/publish-pids"
+    rm -f "$stub/publishes" "$stub/runs" "$stub/release" "$stub/release-watch" "$stub/hold-watch" "$stub/hold-watch-all" "$stub/container" "$stub/publish-pids" "$stub/inflight" "$stub/cancelled"
     printf '%s\n' "$@" >"$stub/publish-script"
     printf '%s\n' ok >"$stub/dispatch-script"
 }
@@ -382,6 +407,76 @@ reset ok
 run 9 8
 expect "both PRs run" bash -c 'printf "%s\n" "$0" | grep -Fq "#8 pr-8 local success" && printf "%s\n" "$0" | grep -Fq "#9 pr-9 local success"' "$out"
 expect "both locks are released" bash -c "[ ! -e '$repo/.git/reverify/8.lock' ] && [ ! -e '$repo/.git/reverify/9.lock' ]"
+
+tip() { git -C "$work/origin.git" rev-parse "refs/heads/$1"; }
+cancelled_is() { [ "$(cat "$stub/cancelled" 2>/dev/null | tr '\n' ' ')" = "$1" ]; }
+
+echo "# --cancel: the PR's own in-flight run of a head behind main, and no other"
+reset ok
+move_main
+# PR 7 is behind main now. Its run 555 is in flight; so are PR 8's run 556, an older head's run 557
+# of PR 7, and a run of a PR 7 head that is not in flight is not listed at all.
+printf '%s\n' "pr-7 555 $(tip pr-7)" "pr-8 556 $(tip pr-8)" "pr-7 557 0000000000000000000000000000000000000000" >"$stub/inflight"
+run 7
+expect "no flag, no cancel" [ ! -e "$stub/cancelled" ]
+# That run merged main into pr-7; main moves again, so that pr-7's head is behind it once more.
+move_main
+printf '%s\n' "pr-7 555 $(tip pr-7)" "pr-8 556 $(tip pr-8)" "pr-7 557 0000000000000000000000000000000000000000" >"$stub/inflight"
+run --cancel 7
+expect "the run of the PR's head is cancelled" said "#7: cancelled run 555 of"
+expect "only that run is cancelled" cancelled_is "555 "
+expect "then it verifies as usual" said "#7 pr-7 local success"
+expect "exit status 0" status_is 0
+expect "the lock is released" lock_gone 7
+
+echo "# --cancel leaves a current head alone"
+reset ok
+run 8
+printf '%s\n' "pr-8 558 $(tip pr-8)" >"$stub/inflight"
+run --cancel 8
+expect "a head that contains main is not cancelled" [ ! -e "$stub/cancelled" ]
+expect "it still verifies" said "#8 pr-8 local success"
+
+echo "# --cancel and --status do not combine"
+run --status --cancel 7
+expect "usage error" status_is 2
+
+echo "# a cancelled run is reported cancelled, not FAILED or STALE, and not retried"
+reset ok
+touch "$stub/container"
+printf '%s\n' cancelled-moved ok >"$stub/dispatch-script"
+run 7
+expect "the line says cancelled" said "#7 pr-7 101 cancelled (no record, no status"
+expect "it is not labelled STALE" bash -c '! printf "%s\n" "$0" | grep -Fq STALE' "$out"
+expect "it is not labelled FAILED" bash -c '! printf "%s\n" "$0" | grep -Fq FAILED' "$out"
+expect "it is not retried" bash -c '! printf "%s\n" "$0" | grep -Fq retry' "$out"
+expect "exit status 1" status_is 1
+expect "the lock is released" lock_gone 7
+run --status 7
+expect "--status shows cancelled" said "#7 pr-7 101 cancelled"
+expect "--status: exit status 1" status_is 1
+
+echo "# --cancel ends a reverify that is watching the run, then runs a new one"
+reset ok
+touch "$stub/container" "$stub/hold-watch-all"
+printf '%s\n' cancelled ok >"$stub/dispatch-script"
+bg a 7
+wait_for "$stub/runs"
+/bin/sleep 0.3
+move_main
+printf '%s\n' "pr-7 101 $(tip pr-7)" >"$stub/inflight"
+bg b --cancel 7
+wait "$pid_a"
+rc_a=$?
+wait "$pid_b"
+rc_b=$?
+expect "the cancelled run is cancelled" cancelled_is "101 "
+expect "the watcher reports it cancelled" grep -Fq "#7 pr-7 101 cancelled" "$work/bg.a"
+expect "the watcher exits 1" [ "$rc_a" -eq 1 ]
+expect "the canceller dispatched a new run and it succeeded" grep -Fq "#7 pr-7 102 success" "$work/bg.b"
+expect "the canceller exits 0" [ "$rc_b" -eq 0 ]
+expect "the lock is released" lock_gone 7
+rm -f "$stub/container" "$stub/hold-watch-all"
 
 if [ "$failures" -eq 0 ]; then
     echo "reverify: every case holds"
