@@ -70,7 +70,7 @@ The actions of one input, in the order of the table cell (COP-006). A Type-BC fr
 | COP-014 | Suspend/Resume SHALL record and restore states via Suspend_State (SS = 0–4), as specified for E18/E104 and E30–E34. | 232.1 §5.1.11 | V |
 | COP-015 | The Set K directive SHALL be rejected (Reject response) if K ∉ 1..=min(255, SENT_QUEUE capacity). | 232.1 §5.1.12 | T |
 | COP-016 | Systematic retransmission (repetitions) is **outside** FOP-1. The engine SHALL only annotate transmit actions with the configured repetition value. It SHALL NOT duplicate frames itself. | 232.1 §5.1.9.3 note; 232.0 §2.4.2 | T |
-| COP-017 | After an Alert, no further Alert other than Llif SHALL occur until an Initiate AD directive is accepted. This SHALL follow from Table 5-1 (every cell that lists Alert goes to S6, and S6 lists no other Alert), not from a filter: every Alert a cell lists SHALL be returned (API-083). Whether Suspend_State survives an Alert is OI-65. | 232.1 §4.3.2, §5.2.15 | T |
+| COP-017 | After an Alert, no further Alert other than Llif SHALL occur until an Initiate AD directive is accepted or, when Suspend_State survived the Alert, a Resume directive (OI-65). This SHALL follow from Table 5-1 (every cell that lists Alert goes to S6, and S6 lists no other Alert), not from a filter: every Alert a cell lists SHALL be returned (API-083). | 232.1 §4.3.2, §5.2.15 | T |
 
 ## 3. FARM-1 engine
 

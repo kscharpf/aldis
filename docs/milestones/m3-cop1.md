@@ -102,7 +102,7 @@ WP-0 Infra, setup ───▶ WP-1a Spec readings ─┬─▶ WP-1b FARM-1 tab
 - T1 timer state, `next_deadline`, and the `Timeout` input (COP-013, API-053).
 - Suspend/Resume handling with Suspend_State SS = 0..4 (COP-014).
 - Directives (Initiate AD, Terminate, Resume, Set V(S), Set K, etc.) and Set K bound check (COP-015).
-- Repetition metadata annotation (COP-016) and Alert suppression (COP-017).
+- Repetition metadata annotation (COP-016); no Alert after an Alert until Initiate AD or Resume, by Table 5-1 (COP-017, OI-65).
 
 ### WP-5 Closed-loop testing & carry-overs (M) — COP-040, COP-041, OI-47
 - Closed-loop link test harness connecting FOP-1 and FARM-1 across simulated channel with loss, duplication, reordering, delay, and CLCW sampling (COP-040).

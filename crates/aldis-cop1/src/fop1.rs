@@ -917,7 +917,8 @@ impl<const Q: usize, const F: usize, const N: usize> Fop1<Q, F, N> {
     /// classification.
     ///
     /// # Errors
-    /// As [`step`](Self::step).
+    /// As [`step`](Self::step), and `InvalidState` when `input` lacks what the cell of `event`
+    /// needs: its directive, its handle, or a Set V(R) directive for E27.
     pub fn step_event(
         &self,
         event: Fop1Event,
@@ -1037,14 +1038,14 @@ impl<const Q: usize, const F: usize, const N: usize> Fop1<Q, F, N> {
                     *d = *s;
                 }
                 self.wait = Some(Waiting {
-                    handle: ctx.handle.ok_or(Error::new(ErrorKind::InternalError))?,
+                    handle: ctx.handle.ok_or(Error::new(ErrorKind::InvalidState))?,
                     fdu,
                     len: ctx.fdu.len(),
                 });
             }
             Fop1Action::TransmitBd => {
                 // §5.2.6: `BD_Out_Flag`, then the request; no master copy, no timer.
-                let handle = ctx.handle.ok_or(Error::new(ErrorKind::InternalError))?;
+                let handle = ctx.handle.ok_or(Error::new(ErrorKind::InvalidState))?;
                 let mut frame = [0; F];
                 let len = self.target.encode(
                     FrameType::Bd,
@@ -1084,7 +1085,7 @@ impl<const Q: usize, const F: usize, const N: usize> Fop1<Q, F, N> {
             }
             Fop1Action::SetVs => {
                 // Table 5-1 E35 in S6: only while the AD Service is not suspended.
-                let handle = ctx.handle.ok_or(Error::new(ErrorKind::InternalError))?;
+                let handle = ctx.handle.ok_or(Error::new(ErrorKind::InvalidState))?;
                 let Some(Directive::SetVs { v_s }) = ctx.directive else {
                     return Err(Error::new(ErrorKind::InvalidState));
                 };
@@ -1696,18 +1697,18 @@ mod tests {
             inject(&a, Fop1Event::E31, Fop1Input::Timeout),
             Err(ErrorKind::InvalidState)
         );
-        // Inputs without what the cell needs.
+        // Inputs without what the cell needs: an event/input mismatch is InvalidState.
         assert_eq!(
             inject(&a, Fop1Event::E19, Fop1Input::Timeout),
-            Err(ErrorKind::InternalError)
+            Err(ErrorKind::InvalidState)
         );
         assert_eq!(
             inject(&a, Fop1Event::E21, Fop1Input::Timeout),
-            Err(ErrorKind::InternalError)
+            Err(ErrorKind::InvalidState)
         );
         assert_eq!(
             inject(&f, Fop1Event::E35, Fop1Input::Timeout),
-            Err(ErrorKind::InternalError)
+            Err(ErrorKind::InvalidState)
         );
         assert_eq!(
             inject(&f, Fop1Event::E27, Fop1Input::InvalidClcw),
