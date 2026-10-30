@@ -576,7 +576,7 @@ const fn cpp() -> Vec<Check> {
     Vec::new()
 }
 
-const FMT: &str = "\
+pub(crate) const FMT: &str = "\
 cargo fmt --all --check
 # The exerciser, fuzz targets, and cross-checks are separate workspaces.
 cargo fmt --all --check --manifest-path exerciser/Cargo.toml
@@ -588,7 +588,7 @@ cargo fmt --all --check --manifest-path crosscheck/Cargo.toml
 // stale fails instead of being resolved again in the checkout; `verify inside` refuses a checkout
 // that building xtask changed before any check ran (`inside::unchanged`), which is how a stale
 // root `Cargo.lock` shows there, since `cargo xtask` itself does not pass `--locked`.
-const CLIPPY: &str = "\
+pub(crate) const CLIPPY: &str = "\
 cargo clippy --locked --workspace --all-features --all-targets
 cargo doc --locked --workspace --all-features --no-deps
 # Fuzz targets build on stable; only running them needs nightly (RS-002).
@@ -596,7 +596,7 @@ cargo clippy --locked --manifest-path fuzz/Cargo.toml --all-targets
 cargo clippy --locked --manifest-path crosscheck/Cargo.toml --all-targets
 ";
 
-const TEST: &str = "cargo test --locked --workspace --all-features\n";
+pub(crate) const TEST: &str = "cargo test --locked --workspace --all-features\n";
 
 const HEADER: &str = "\
 # The committed C header is a fresh generation by the pinned cbindgen (CABI-002), includes only
