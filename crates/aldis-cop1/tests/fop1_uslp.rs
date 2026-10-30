@@ -1,6 +1,8 @@
 //! FOP-1 with the USLP frame target: Type-AD, Type-BD, and Type-BC (protocol control) frames of
 //! a USLP Virtual Channel and MAP (COP-010, USLP-013), decoded with the USLP codec and the TC
-//! control-command parser, and a closed loop with FARM-1 over such frames.
+//! control-command parser, literal frames worked by hand, and a closed loop with FARM-1 over such
+//! frames. `fop1.rs` holds a unit test of the same target: the library is covered through its own
+//! unit-test build and through this one, and both must cover every line (VER-024).
 #![cfg(feature = "uslp")]
 #![expect(
     clippy::unwrap_used,
@@ -20,8 +22,9 @@ use aldis_core::time::{Duration, Instant};
 use aldis_tc::{Clcw, ClcwStatus, ControlCommand, CopInEffect, FarmBCounter, TcVcId};
 use aldis_uslp::{
     FirstHeaderPointer, FrameKind as UslpKind, MapConfig, OcfUse, PhysicalChannelConfig,
-    SecurityScope, TfdfHeader, TfdzRule, TransferFrameType, TruncatedFrameLen, Upid, UslpFrame,
-    UslpMapId, UslpSpacecraftId, UslpVcId, VcConfig, VcParams, VcTable, VcfCountLen,
+    SecurityScope, SourceOrDestination, TfdfHeader, TfdzRule, TransferFrameType, TruncatedFrameLen,
+    Upid, UslpFrame, UslpMapId, UslpSpacecraftId, UslpVcId, VcConfig, VcParams, VcTable,
+    VcfCountLen,
 };
 use core::num::NonZeroU8;
 
@@ -66,7 +69,7 @@ const fn map() -> MapConfig {
 
 const TFDF: TfdfHeader = TfdfHeader {
     rule: TfdzRule::NoSegmentation,
-    upid: Upid::OnlyIdleData,
+    upid: Upid::OctetStream,
 };
 
 fn target(fecf: bool) -> Fop1Target {
@@ -274,6 +277,39 @@ fn the_target_refuses_what_fop1_cannot_fill() {
             bad(field::TFDZ_CONSTRUCTION_RULE)
         );
     }
+    // A UPID that cannot label user data: idle data (an OID TFDF carries none, §4.1.4.1.11),
+    // and the control commands and SPDUs FOP-1 uses for its own Type-BC frames.
+    for upid in [
+        Upid::OnlyIdleData,
+        Upid::Cop1ControlCommands,
+        Upid::CopPControlCommands,
+        Upid::Proximity1Spdus,
+    ] {
+        assert_eq!(
+            try_target(
+                physical(true),
+                vc(params()),
+                map(),
+                TfdfHeader { upid, ..TFDF }
+            ),
+            bad(field::UPID)
+        );
+    }
+    for upid in [
+        Upid::Packets,
+        Upid::OctetStream,
+        Upid::MissionSpecificInformation1,
+    ] {
+        assert_eq!(
+            try_target(
+                physical(true),
+                vc(params()),
+                map(),
+                TfdfHeader { upid, ..TFDF }
+            ),
+            Ok(())
+        );
+    }
     let short = PhysicalChannelConfig::new(TransferFrameType::Variable, 13, 0, true).unwrap();
     assert_eq!(
         try_target(short, vc(params()), map(), TFDF),
@@ -330,6 +366,9 @@ fn type_ad_and_type_bd_frames_carry_the_fdu_as_the_tfdz() {
     let full = ad.full().unwrap();
     assert_eq!(full.kind(), UslpKind::SequenceControlled);
     assert_eq!(full.vcf_count().value(), 0);
+    // A ground FOP-1 names the destination (732.1 §4.1.2.3.3) and counts in one octet.
+    assert_eq!(ad.source_or_destination(), SourceOrDestination::Destination);
+    assert_eq!(full.vcf_count().len().get(), 1);
     assert_eq!(
         (ad.vc_id(), ad.map_id(), ad.spacecraft_id()),
         (vcid(), mapid(), scid())
@@ -389,10 +428,87 @@ fn type_ad_and_type_bd_frames_carry_the_fdu_as_the_tfdz() {
     let frame = frame.unwrap();
     let bd = UslpFrame::decode(&frame, &t).unwrap();
     assert_eq!(bd.full().unwrap().kind(), UslpKind::Expedited);
+    // The expedited VCF Count is absent, not zero (OI-66): its length field is `000`.
+    assert_eq!(bd.full().unwrap().vcf_count().len().get(), 0);
     assert_eq!(
         (bd.tfdz(), bd.full().unwrap().vcf_count().value()),
         (&fdu[..], 0)
     );
+}
+
+/// The octets of the five frames below, worked by hand from 732.1 and written down before the
+/// test ran (a Python script of the author packed the bits and ran the CRC bitwise; neither the
+/// USLP codec nor the channel table was consulted):
+///
+/// - Primary Header (§4.1.2): TFVN `1100`, SCID `0x155` in 16 bits, Source-or-Destination `1`,
+///   VCID 5 (`000101`), MAP 2 (`0010`), End of Frame Primary Header Flag `0`: `C0 15 58 A4`;
+///   Frame Length (total minus one) in two octets; then Bypass/Sequence Control, Protocol
+///   Control Command, spares `00`, OCF Flag `0`, and the VCF Count Length in three bits.
+/// - Type-AD: flags `00`, count length `001`, so `01`, the count N(S), then the TFDF Header
+///   `111` (no segmentation) with UPID `00100` (octet stream) = `E4`, the FDU `DE AD BE EF`,
+///   and the FECF (CRC-16, polynomial `0x1021`, preset all ones, §4.1.6) over everything before it.
+/// - Type-BD: flags `10`, count length `000` (no count): `80`, then `E4`, the FDU, the FECF.
+/// - Type-BC: flags `11`, `C0`, no count, the TFDF Header `111` with UPID `00001` (COP-1
+///   Control Commands) = `E1`, the command (Unlock `00`, Set V(R) `82 00 17`), the FECF.
+const AD_0: [u8; 15] = [
+    0xC0, 0x15, 0x58, 0xA4, 0x00, 0x0E, 0x01, 0x00, 0xE4, 0xDE, 0xAD, 0xBE, 0xEF, 0x6D, 0xCA,
+];
+const AD_1: [u8; 15] = [
+    0xC0, 0x15, 0x58, 0xA4, 0x00, 0x0E, 0x01, 0x01, 0xE4, 0xDE, 0xAD, 0xBE, 0xEF, 0x28, 0x6A,
+];
+const BD: [u8; 14] = [
+    0xC0, 0x15, 0x58, 0xA4, 0x00, 0x0D, 0x80, 0xE4, 0xDE, 0xAD, 0xBE, 0xEF, 0x4F, 0x3A,
+];
+const BC_UNLOCK: [u8; 11] = [
+    0xC0, 0x15, 0x58, 0xA4, 0x00, 0x0A, 0xC0, 0xE1, 0x00, 0x7E, 0x7F,
+];
+const BC_SET_VR: [u8; 13] = [
+    0xC0, 0x15, 0x58, 0xA4, 0x00, 0x0C, 0xC0, 0xE1, 0x82, 0x00, 0x17, 0x1E, 0x23,
+];
+
+#[test]
+fn the_frames_are_the_octets_worked_by_hand() {
+    // req: COP-010, USLP-013
+    let fdu = [0xDE, 0xAD, 0xBE, 0xEF];
+    let f = active();
+    let (f, ad0, _) = go(
+        &f,
+        Fop1Input::RequestAd {
+            handle: 1,
+            fdu: &fdu,
+        },
+    );
+    let (f, _, _) = go(
+        &f,
+        Fop1Input::TransmitDone {
+            kind: FrameKind::Ad,
+            accepted: true,
+        },
+    );
+    let (_, ad1, _) = go(
+        &f,
+        Fop1Input::RequestAd {
+            handle: 2,
+            fdu: &fdu,
+        },
+    );
+    assert_eq!(ad0.as_deref(), Some(&AD_0[..]));
+    assert_eq!(ad1.as_deref(), Some(&AD_1[..]));
+    let (_, bd, _) = go(
+        &active(),
+        Fop1Input::RequestBd {
+            handle: 3,
+            fdu: &fdu,
+        },
+    );
+    assert_eq!(bd.as_deref(), Some(&BD[..]));
+    let (_, unlock, _) = go(&engine(true), directive(Directive::InitiateAdWithUnlock));
+    assert_eq!(unlock.as_deref(), Some(&BC_UNLOCK[..]));
+    let set_vr = Directive::InitiateAdWithSetVr {
+        v_r: FrameSeqNum::new(0x17),
+    };
+    let (_, set_vr, _) = go(&engine(true), directive(set_vr));
+    assert_eq!(set_vr.as_deref(), Some(&BC_SET_VR[..]));
 }
 
 fn frame_of(f: &UslpFrame<'_>) -> Vec<u8> {

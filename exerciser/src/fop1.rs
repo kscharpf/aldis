@@ -183,7 +183,7 @@ fn uslp_target(t: &mut Tally) -> Option<()> {
     let map = MapConfig::new(scid, vcid, UslpMapId::new(bb(2))?, SecurityLayout::NONE);
     let tfdf = TfdfHeader {
         rule: TfdzRule::NoSegmentation,
-        upid: Upid::OnlyIdleData,
+        upid: Upid::OctetStream,
     };
     let refused = VcConfig::new(
         scid,
@@ -195,6 +195,11 @@ fn uslp_target(t: &mut Tally) -> Option<()> {
     )
     .ok()?;
     t.check(Fop1Target::uslp(physical, refused, map, tfdf).is_err());
+    let idle = TfdfHeader {
+        upid: Upid::OnlyIdleData,
+        ..tfdf
+    };
+    t.check(Fop1Target::uslp(physical, vc, map, idle).is_err());
     let target = Fop1Target::uslp(physical, vc, map, tfdf).ok()?;
     t.check(matches!(target.channel(), Fop1Channel::Uslp { .. }));
     t.check(target.max_frame_len() == F && target.max_fdu_len() == F - 11);

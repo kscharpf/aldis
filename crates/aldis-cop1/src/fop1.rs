@@ -318,6 +318,7 @@ enum Channels {
 
 /// The identifiers of the channel a [`Fop1Target`] builds frames for (232.0 §4.1.2.5, §4.1.2.6;
 /// 732.1 §4.1.2.2–5; COP-010).
+#[non_exhaustive]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Fop1Channel {
     /// A TC Virtual Channel.
@@ -383,30 +384,42 @@ impl Fop1Target {
     }
 
     /// The USLP Virtual Channel `vc` and MAP `map` of the variable-length Physical Channel
-    /// `physical`, whose frames carry the TFDF Header `tfdf` and an FDU as the TFDZ (732.1
-    /// §4.1, §4.2.7.3; COP-010, USLP-013).
+    /// `physical`, whose user-data frames carry the TFDF Header `tfdf` and an FDU as the TFDZ
+    /// (732.1 §4.1, §4.2.7.3; COP-010, USLP-013).
     ///
     /// FOP-1 supplies the Bypass/Sequence Control and Protocol Control Command Flags and the
     /// Frame Sequence Number (732.1 §4.2.7.4): Type-AD frames are sequence-controlled user data
     /// with N(S) in the VCF Count, Type-BD frames expedited user data, and Type-BC frames
-    /// Protocol Control Commands with the UPID "COP-1 Control Commands" and the TFDZ of the
-    /// Unlock or Set V(R) command. A frame has no Insert Zone, OCF, or SDLS fields, since
-    /// FOP-1 has none to give.
+    /// Protocol Control Commands with the UPID "COP-1 Control Commands", the rule `111` (no
+    /// segmentation, which holds "one or more Control Commands", §4.1.4.2.2.2.8 d), and the TFDZ
+    /// of the Unlock or Set V(R) command. A frame has no Insert Zone, OCF, or SDLS fields, since
+    /// FOP-1 has none to give. FOP-1 is the sending end of a ground station: the
+    /// Source-or-Destination Identifier of every frame is Destination (`1`, the Spacecraft ID
+    /// names the destination, §4.1.2.3.3); a spacecraft-side sender is not built.
+    ///
+    /// Two limits are this crate's own readings and not the Blue Book's (OI-66): the VCF Count
+    /// Length of the sequence-controlled service is one octet, so that N(S) keeps the 8-bit
+    /// range of COP-1, and the expedited VCF Count is absent, because FOP-1 keeps no expedited
+    /// counter. A VC that needs another length cannot use this target.
     ///
     /// # Errors
     /// `InvalidConfig`, checked in this order:
-    /// - (`transfer_frame_type`) for a fixed-length Physical Channel or Virtual Channel, whose
-    ///   TFDZ cannot hold a one-octet command (and whose Insert Zone FOP-1 could not fill);
+    /// - (`transfer_frame_type`) for a fixed-length Physical Channel or Virtual Channel: Control
+    ///   Commands need a variable-length TFDZ (rule `111`, §4.1.4.2.2.2.8, Table 4-3), and
+    ///   FOP-1 has no Insert Zone to fill;
     /// - (`truncated_frame_len`) for a VC with a truncated frame length, which carries only
     ///   truncated frames (OI-48);
     /// - (`vcf_count_len`) unless the VCF Count Length is one octet for the sequence-controlled
-    ///   service, which holds N(S) modulo 256 (232.1 §5.1.3), and none for the expedited
-    ///   service, whose counter FOP-1 does not keep;
+    ///   service and none for the expedited service (OI-66);
     /// - (`security_header_len`) for SDLS fields on the VC or the MAP;
-    /// - (`tfdz_construction_rule`) for a rule of a fixed-length TFDZ (`000` to `010`);
+    /// - (`tfdz_construction_rule`) for a rule of a fixed-length TFDZ (`000` to `010`, Table
+    ///   4-3);
+    /// - (`upid`) for a UPID that cannot label user data on this target: "Only Idle Data" (an
+    ///   OID TFDF carries no user data, §4.1.4.1.9, §4.1.4.1.11), and the UPIDs of control
+    ///   commands and SPDUs (COP-1, COP-P, Proximity-1), which FOP-1 uses for its own Type-BC
+    ///   frames;
     /// - (`max_frame_len`) for a frame too short for a Set V(R) command;
-    /// - and those of [`UslpVcTable::new`](aldis_uslp::VcTable::new) (`map_id` when the MAP is
-    ///   not of the VC).
+    /// - and those of [`UslpVcTable::new`](aldis_uslp::VcTable::new).
     #[cfg(feature = "uslp")]
     pub fn uslp(
         physical: UslpPhysical,
@@ -439,6 +452,15 @@ impl Fop1Target {
         );
         if fixed_rule {
             return Err(bad_config(field::TFDZ_CONSTRUCTION_RULE));
+        }
+        if matches!(
+            tfdf.upid,
+            Upid::OnlyIdleData
+                | Upid::Cop1ControlCommands
+                | Upid::CopPControlCommands
+                | Upid::Proximity1Spdus
+        ) {
+            return Err(bad_config(field::UPID));
         }
         let max_frame_len = physical.frame_len();
         let trailer = if physical.fecf() { FECF_LEN } else { 0 };
@@ -550,8 +572,9 @@ impl Fop1Target {
                     FrameType::Bd => UslpKind::Expedited,
                     FrameType::Bc => UslpKind::ProtocolControl,
                 };
-                // N(S) is the VCF Count of a sequence-controlled frame (732.1 §4.2.7.4 note 3);
-                // the expedited counter is absent (the constructor checked it).
+                // N(S) is the VCF Count of a sequence-controlled frame (732.1 §4.2.7.4 note 3); the
+                // expedited counter is absent (the constructor checked it, OI-66). A ground
+                // sender names the destination (§4.1.2.3.3).
                 let fields = UslpFields {
                     spacecraft_id: *spacecraft_id,
                     source_or_destination: SourceOrDestination::Destination,
@@ -1834,7 +1857,7 @@ mod tests {
         let map = MapConfig::new(scid, vcid, UslpMapId::new(2).unwrap(), SecurityLayout::NONE);
         let tfdf = TfdfHeader {
             rule: TfdzRule::NoSegmentation,
-            upid: Upid::OnlyIdleData,
+            upid: Upid::OctetStream,
         };
         let why = |physical, vc, map, tfdf| {
             Fop1Target::uslp(physical, vc, map, tfdf)
@@ -1891,6 +1914,11 @@ mod tests {
                 bad(field::TFDZ_CONSTRUCTION_RULE)
             );
         }
+        let idle = TfdfHeader {
+            upid: Upid::OnlyIdleData,
+            ..tfdf
+        };
+        assert_eq!(why(p64, v, map, idle), bad(field::UPID));
         assert_eq!(
             why(physical(13, true), v, map, tfdf),
             bad(field::MAX_FRAME_LEN)
