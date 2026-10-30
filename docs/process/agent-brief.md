@@ -9,7 +9,7 @@ Name the goal, the base, what done means, and what the agent leaves alone: other
 ## Conventions for the agent
 
 1. **Worktree.** Work in `.claude/worktrees/<branch>`, created from a fresh `git fetch origin`. Run `source scripts/agent-env.sh`. Put temporary files in the session scratchpad.
-2. **Foreground.** Wait for a run in the foreground (`gh run watch <id> --exit-status`, or a loop over `gh run view <id> --json status,conclusion`). End the turn with the final report only: each turn that ends while work is pending notifies the coordinator, who must answer it.
+2. **Foreground.** Wait for a run in bounded foreground calls: `perl -e 'alarm 170; exec @ARGV' gh run watch <id> --exit-status`, repeated until it reports the conclusion. The harness moves a command that runs longer than 180 s to the background and blocks a foreground `sleep`, and a turn that ends while work is pending notifies the coordinator, who must answer it. End the turn with the final report only.
 3. **Gate.** Make the verification run on a head that contains the tip of `origin/main`: merge `origin/main`, re-run `cargo xtask check`, push, then `scripts/reverify <pr>`, and confirm `cargo xtask verify check`. When `main` moves during the work, merge it again before the final run.
 4. **Pushes.** Confirm the pull request is open (`gh pr view <n> --json state`) before every push to its branch.
 5. **Boundaries.** Stop at an open pull request with a published record. Merging is the maintainer's. Leave other pull requests alone, and leave the worktree in place: the coordinator removes it after the merge.
