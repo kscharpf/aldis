@@ -38,32 +38,7 @@ struct Item {
 }
 
 const fn cmd(name: &'static str, program: &'static str, args: &'static [&'static str]) -> Item {
-    Item {
-        name,
-        action: Action::Cmd {
-            program,
-            args,
-            dir: "",
-            env: &[],
-        },
-    }
-}
-
-const fn cmd_env(
-    name: &'static str,
-    program: &'static str,
-    args: &'static [&'static str],
-    env: &'static [(&'static str, &'static str)],
-) -> Item {
-    Item {
-        name,
-        action: Action::Cmd {
-            program,
-            args,
-            dir: "",
-            env,
-        },
-    }
+    cmd_in(name, "", program, args)
 }
 
 const fn cmd_in(
@@ -78,7 +53,7 @@ const fn cmd_in(
             program,
             args,
             dir,
-            env: &[],
+            env: GATE_ENV,
         },
     }
 }
@@ -92,9 +67,15 @@ const SEPARATE_WORKSPACES: [(&str, &str); 3] = [
     ("crosscheck", "crosscheck fmt"),
 ];
 
-/// The environment of the rustdoc step: the gate's `RUSTDOCFLAGS` (`CHECK_ENV` of `verify`), so
-/// that a link to a private item fails here and not only at the gate.
-const DOC_ENV: &[(&str, &str)] = &[("RUSTDOCFLAGS", "-D warnings")];
+/// The environment of every step: the gate's `CHECK_ENV` (`verify`) without `CARGO_TERM_COLOR`,
+/// which only changes how the output looks. `RUSTFLAGS` makes a warning an error, as it is at
+/// the gate, so that an `unexpected cfg` warning in a test module fails here and not only in the
+/// `big-endian` check; `RUSTDOCFLAGS` does the same for a link to a private item. The flags are
+/// part of cargo's cache key: the first run after a change of them rebuilds (VER-068).
+const GATE_ENV: &[(&str, &str)] = &[
+    ("RUSTFLAGS", "-D warnings"),
+    ("RUSTDOCFLAGS", "-D warnings"),
+];
 
 /// Which directories with extra checks a change touches.
 #[derive(Debug, Default, PartialEq, Eq)]
@@ -163,7 +144,7 @@ fn plan(t: &Touched, tools: Tools) -> (Vec<Item>, Vec<String>) {
                 "--all-targets",
             ],
         ),
-        cmd_env(
+        cmd(
             "doc",
             "cargo",
             &[
@@ -173,7 +154,6 @@ fn plan(t: &Touched, tools: Tools) -> (Vec<Item>, Vec<String>) {
                 "--all-features",
                 "--no-deps",
             ],
-            DOC_ENV,
         ),
         cmd(
             "test",
@@ -476,8 +456,8 @@ pub fn run(args: &[&str]) -> Result<usize, String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        Action, DOC_ENV, SEPARATE_WORKSPACES, Tools, Touched, fmt_duration, from_index, parse_args,
-        plan, touched,
+        Action, GATE_ENV, SEPARATE_WORKSPACES, Tools, Touched, fmt_duration, from_index,
+        parse_args, plan, touched,
     };
     use crate::verify::{CHECK_ENV, CLIPPY, FMT, TEST};
     use std::time::Duration;
@@ -647,16 +627,28 @@ mod tests {
     }
 
     #[test]
-    fn the_doc_step_has_the_gates_flags() {
+    fn every_step_runs_under_the_gates_flags() {
         // req: VER-068
-        let (items, _) = plan(&Touched::default(), NONE);
-        let Some(Action::Cmd { env, .. }) =
-            items.iter().find(|i| i.name == "doc").map(|i| &i.action)
-        else {
-            panic!("no doc step");
+        assert!(GATE_ENV.iter().all(|e| CHECK_ENV.contains(e)));
+        let all = Touched {
+            exerciser: true,
+            core: true,
+            fuzz: true,
+            crosscheck: true,
+            ffi: true,
+            refapp: true,
+            separate: SEPARATE_WORKSPACES.to_vec(),
         };
-        assert_eq!(*env, DOC_ENV);
-        assert!(DOC_ENV.iter().all(|e| CHECK_ENV.contains(e)));
+        let (items, _) = plan(&all, ALL);
+        for item in &items {
+            if let Action::Cmd { env, .. } = &item.action {
+                assert_eq!(
+                    *env, GATE_ENV,
+                    "step `{}` lacks the gate's flags",
+                    item.name
+                );
+            }
+        }
     }
 
     /// A command as the directory it runs in and its words, without `--locked` (the steps of
