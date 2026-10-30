@@ -596,7 +596,7 @@ cargo clippy --locked --manifest-path fuzz/Cargo.toml --all-targets
 cargo clippy --locked --manifest-path crosscheck/Cargo.toml --all-targets
 ";
 
-const TEST: &str = "cargo test --locked --workspace --all-features\n";
+pub(crate) const TEST: &str = "cargo test --locked --workspace --all-features\n";
 
 const HEADER: &str = "\
 # The committed C header is a fresh generation by the pinned cbindgen (CABI-002), includes only

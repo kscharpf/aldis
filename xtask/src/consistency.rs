@@ -23,8 +23,11 @@
 //! `crates/aldis-ffi/README.md` mention is declared by `include/aldis/aldis.h` (CABI-002), or is
 //! listed with its reason in [`NOT_IN_HEADER`] (a removed name that a history row recalls, an
 //! illustration, a name of a module not yet built). A name followed by `*` or ending in `_` is a
-//! prefix: some name of the header starts with it. A listed name that the header now declares,
-//! or that no document mentions, is reported too, so the list shrinks when the code catches up.
+//! prefix: some name of the header starts with it. A placeholder (`ALDIS_<STD>_REASON_*`,
+//! `aldis_<module>_<name>_t`, a bare `ALDIS_*`) is not checked, and `consistency` counts them.
+//! The header is read without its comments, so a name that only a comment mentions is not
+//! declared. A listed name that the header now declares, or that no document mentions, is
+//! reported too, so the list shrinks when the code catches up (CABI-005).
 //!
 //! **Vector files.** Every vector file (`test-vectors/<area>/*.json`, except the schemas and the
 //! generated field catalogue, [`crate::vectors::is_vector_file`]) is matched by a path in the
@@ -576,9 +579,22 @@ const NOT_IN_HEADER: &[(&str, &str)] = &[
     ),
 ];
 
-/// The `aldis_` and `ALDIS_` names in `text`, each with whether it is a prefix (it ends in `_` or
-/// is followed by `*`). A name starts where no identifier character precedes it.
-fn c_names(text: &str) -> BTreeSet<(String, bool)> {
+/// How a document writes a name.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+enum Form {
+    /// A whole name: the header declares it.
+    Whole,
+    /// A prefix (it ends in `_` or is followed by `*`): the header declares a name that starts
+    /// with it.
+    Prefix,
+    /// A placeholder (`ALDIS_<STD>_REASON_*`, `aldis_<module>_<name>_t`, a bare `ALDIS_*`): not
+    /// checked.
+    Placeholder,
+}
+
+/// The `aldis_` and `ALDIS_` names in `text`, each with how it is written. A name starts where no
+/// identifier character precedes it.
+fn c_names(text: &str) -> BTreeSet<(String, Form)> {
     let ident = |c: char| c.is_ascii_alphanumeric() || c == '_';
     let mut found = BTreeSet::new();
     for start in ["aldis_", "ALDIS_"] {
@@ -593,11 +609,37 @@ fn c_names(text: &str) -> BTreeSet<(String, bool)> {
             let rest = text.get(at..).unwrap_or_default();
             let end = rest.find(|c| !ident(c)).unwrap_or(rest.len());
             let name = rest.get(..end).unwrap_or_default();
-            let prefix = name.ends_with('_') || rest.get(end..).is_some_and(|r| r.starts_with('*'));
-            found.insert((name.to_owned(), prefix));
+            let after = rest.get(end..).unwrap_or_default();
+            let form = if name == start || after.starts_with('<') {
+                Form::Placeholder
+            } else if name.ends_with('_') || after.starts_with('*') {
+                Form::Prefix
+            } else {
+                Form::Whole
+            };
+            found.insert((name.to_owned(), form));
         }
     }
     found
+}
+
+/// `text` without its `/* */` and `//` comments.
+fn without_c_comments(text: &str) -> String {
+    let mut rest = text;
+    let mut out = String::new();
+    // bound: each pass consumes one block comment of `rest`, which is finite.
+    while let Some(at) = rest.find("/*") {
+        out.push_str(rest.get(..at).unwrap_or_default());
+        let tail = rest.get(at + 2..).unwrap_or_default();
+        rest = tail
+            .find("*/")
+            .map_or("", |end| tail.get(end + 2..).unwrap_or_default());
+    }
+    out.push_str(rest);
+    out.lines()
+        .map(|l| l.find("//").map_or(l, |at| l.get(..at).unwrap_or(l)))
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 /// The names the documents mention (`(path, text)` pairs) that the header does not declare and
@@ -607,19 +649,22 @@ fn header_name_problems(
     header: &str,
     allowed: &[(&str, &str)],
 ) -> Vec<String> {
-    let declared: BTreeSet<String> = c_names(header).into_iter().map(|(n, _)| n).collect();
+    let declared: BTreeSet<String> = c_names(&without_c_comments(header))
+        .into_iter()
+        .map(|(n, _)| n)
+        .collect();
     let mut problems = Vec::new();
     let mut mentioned = BTreeSet::new();
     for (path, text) in docs {
-        for (name, prefix) in c_names(text) {
+        for (name, form) in c_names(text) {
             mentioned.insert(name.clone());
-            let ok = if prefix {
-                declared.iter().any(|d| d.starts_with(&name))
-            } else {
-                declared.contains(&name) || allowed.iter().any(|(a, _)| *a == name)
+            let ok = match form {
+                Form::Placeholder => true,
+                Form::Prefix => declared.iter().any(|d| d.starts_with(&name)),
+                Form::Whole => declared.contains(&name) || allowed.iter().any(|(a, _)| *a == name),
             };
             if !ok {
-                let what = if prefix {
+                let what = if form == Form::Prefix {
                     "no name of the header starts with"
                 } else {
                     "the header does not declare"
@@ -770,9 +815,10 @@ pub fn check() -> Result<usize, String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        Crates, aldis_dependencies, bin_targets, c_names, crate_problems, exerciser_groups,
+        Crates, Form, aldis_dependencies, bin_targets, c_names, crate_problems, exerciser_groups,
         expand_braces, ffi_runner_files, fuzz_problems, glob, has_code, header_name_problems,
         matrix_targets, mutants_crates, named_by_test, names, readme_patterns, vector_problems,
+        without_c_comments,
     };
 
     /// A consistent registration of the M1 crates and `aldis-aos`, with two skeletons.
@@ -1131,22 +1177,55 @@ uint32_t aldis_tc_encode(void);
 
     #[test]
     fn names_are_found_whole_and_prefixes_are_marked() {
-        // req: CABI-002
-        let found =
-            c_names("`aldis_tc_encode` and ALDIS_ERR_*, `ALDIS_TC_DISCARD_` x_aldis_no ALDIS_OK.");
-        let want: Vec<(&str, bool)> = vec![
-            ("ALDIS_ERR_", true),
-            ("ALDIS_OK", false),
-            ("ALDIS_TC_DISCARD_", true),
-            ("aldis_tc_encode", false),
+        // req: CABI-005
+        let found = c_names(
+            "`aldis_tc_encode` and ALDIS_ERR_*, `ALDIS_TC_DISCARD_` x_aldis_no ALDIS_OK, \
+             ALDIS_<STD>_REASON_*, aldis_<module>_<name>_t, and ALDIS_*.",
+        );
+        let want = vec![
+            ("ALDIS_", Form::Placeholder),
+            ("ALDIS_ERR_", Form::Prefix),
+            ("ALDIS_OK", Form::Whole),
+            ("ALDIS_TC_DISCARD_", Form::Prefix),
+            ("aldis_", Form::Placeholder),
+            ("aldis_tc_encode", Form::Whole),
         ];
-        let got: Vec<(&str, bool)> = found.iter().map(|(n, p)| (n.as_str(), *p)).collect();
+        let got: Vec<(&str, Form)> = found.iter().map(|(n, f)| (n.as_str(), *f)).collect();
         assert_eq!(got, want);
     }
 
     #[test]
+    fn comments_of_the_header_declare_nothing() {
+        // req: CABI-005
+        let header = "/* ALDIS_IN_BLOCK and\n   aldis_in_block_too */\nint aldis_f(void); // ALDIS_IN_LINE\n#define ALDIS_X 1 /* ALDIS_AFTER */\n";
+        assert_eq!(
+            without_c_comments(header),
+            "\nint aldis_f(void); \n#define ALDIS_X 1 "
+        );
+        let docs = [(
+            "a.md",
+            "`aldis_f` `ALDIS_X` `ALDIS_IN_BLOCK` `ALDIS_IN_LINE`",
+        )];
+        let problems = header_name_problems(&docs, header, &[]);
+        assert_eq!(problems.len(), 2, "{problems:?}");
+        assert!(
+            problems[0].contains("`ALDIS_IN_BLOCK`") && problems[1].contains("`ALDIS_IN_LINE`")
+        );
+    }
+
+    #[test]
+    fn a_placeholder_is_not_checked() {
+        // req: CABI-005
+        let docs = [(
+            "a.md",
+            "Use ALDIS_<STD>_REASON_* and aldis_<module>_<name>_t.",
+        )];
+        assert_eq!(header_name_problems(&docs, "", &[]), Vec::<String>::new());
+    }
+
+    #[test]
     fn names_the_header_declares_pass() {
-        // req: CABI-002
+        // req: CABI-005
         let docs = [(
             "a.md",
             "Call `aldis_tc_encode`; it returns ALDIS_OK or ALDIS_ERR_*, see ALDIS_TC_DISCARD_*.",
@@ -1159,7 +1238,7 @@ uint32_t aldis_tc_encode(void);
 
     #[test]
     fn a_name_the_header_lacks_is_reported() {
-        // req: CABI-002
+        // req: CABI-005
         let docs = [
             (
                 "a.md",
@@ -1181,7 +1260,7 @@ uint32_t aldis_tc_encode(void);
 
     #[test]
     fn a_listed_name_passes_until_it_is_stale() {
-        // req: CABI-002
+        // req: CABI-005
         let allowed = [("aldis_limits", "removed")];
         let docs = [("a.md", "`aldis_limits` is gone.")];
         assert_eq!(

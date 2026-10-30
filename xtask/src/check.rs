@@ -4,8 +4,12 @@
 //! each directory the change touches (the paths that differ from `origin/main`, committed or
 //! not). Stops at the first failure. An extra whose tool is not installed is skipped and reported.
 //!
-//! Every step that the merge gate (`verify`) also runs is the gate's command: a change that
-//! passes here does not fail the gate on formatting or rustdoc. Tests keep the two in step.
+//! Every command of the gate's `fmt`, `clippy`, and `test` scripts (`verify/checks.rs`) is a step
+//! here, with `--locked` as the gate passes it, so that a change that passes `check` does not fail
+//! the gate on formatting, lints, rustdoc, a stale `Cargo.lock`, or a test (VER-068). The test
+//! `every_gate_line_has_a_step` fails when a line of those scripts has no step. The gate's other
+//! checks (the exerciser and the builds per target on the pinned nightly, coverage, Kani, the
+//! header, `spec`) are not mirrored, except as the extras below.
 
 use std::process::Command;
 
@@ -98,6 +102,10 @@ struct Touched {
     /// A library crate or the exerciser: the exerciser calls every public API (VER-010).
     exerciser: bool,
     core: bool,
+    /// A library crate or `fuzz/`: the fuzz targets call the public API.
+    fuzz: bool,
+    /// `crosscheck/`: the independent cross-checks, a workspace of their own.
+    crosscheck: bool,
     ffi: bool,
     refapp: bool,
     /// The separate workspaces (`SEPARATE_WORKSPACES`) with a changed file: their format check.
@@ -110,6 +118,8 @@ fn touched(changed: &[String]) -> Touched {
     Touched {
         exerciser: any("crates/") || any("exerciser/"),
         core: any("crates/aldis-core/"),
+        fuzz: any("crates/") || any("fuzz/"),
+        crosscheck: any("crosscheck/"),
         ffi: any("crates/aldis-ffi/"),
         refapp: any("refapp/"),
         separate: SEPARATE_WORKSPACES
@@ -141,20 +151,37 @@ fn plan(t: &Touched, tools: Tools) -> (Vec<Item>, Vec<String>) {
         cmd(
             "clippy",
             "cargo",
-            &["clippy", "--workspace", "--all-features", "--all-targets"],
+            &[
+                "clippy",
+                "--locked",
+                "--workspace",
+                "--all-features",
+                "--all-targets",
+            ],
         ),
         cmd_env(
             "doc",
             "cargo",
-            &["doc", "--workspace", "--all-features", "--no-deps"],
+            &[
+                "doc",
+                "--locked",
+                "--workspace",
+                "--all-features",
+                "--no-deps",
+            ],
             DOC_ENV,
         ),
-        cmd("test", "cargo", &["test", "--workspace", "--all-features"]),
+        cmd(
+            "test",
+            "cargo",
+            &["test", "--locked", "--workspace", "--all-features"],
+        ),
         cmd(
             "clippy (thumbv7em)",
             "cargo",
             &[
                 "clippy",
+                "--locked",
                 "-p",
                 "aldis",
                 "--no-default-features",
@@ -175,26 +202,54 @@ fn plan(t: &Touched, tools: Tools) -> (Vec<Item>, Vec<String>) {
             "exerciser clippy",
             "exerciser",
             "cargo",
-            &["clippy", "--release", "--target", "thumbv7em-none-eabihf"],
+            &[
+                "clippy",
+                "--locked",
+                "--release",
+                "--target",
+                "thumbv7em-none-eabihf",
+            ],
         ));
         run.push(cmd_in(
             "exerciser build",
             "exerciser",
             "cargo",
-            &["build", "--release", "--target", "thumbv7em-none-eabihf"],
+            &[
+                "build",
+                "--locked",
+                "--release",
+                "--target",
+                "thumbv7em-none-eabihf",
+            ],
         ));
     }
-    if t.core {
+    if t.fuzz {
         run.push(cmd(
             "fuzz clippy",
             "cargo",
             &[
                 "clippy",
+                "--locked",
                 "--manifest-path",
                 "fuzz/Cargo.toml",
                 "--all-targets",
             ],
         ));
+    }
+    if t.crosscheck {
+        run.push(cmd(
+            "crosscheck clippy",
+            "cargo",
+            &[
+                "clippy",
+                "--locked",
+                "--manifest-path",
+                "crosscheck/Cargo.toml",
+                "--all-targets",
+            ],
+        ));
+    }
+    if t.core {
         if tools.coverage {
             run.push(Item {
                 name: "xtask coverage",
@@ -230,15 +285,21 @@ fn plan(t: &Touched, tools: Tools) -> (Vec<Item>, Vec<String>) {
                 "refapp clippy",
                 "refapp",
                 "cargo",
-                &["clippy", "--workspace", "--all-targets"],
+                &["clippy", "--locked", "--workspace", "--all-targets"],
             ),
-            cmd_in("refapp test", "refapp", "cargo", &["test", "--workspace"]),
+            cmd_in(
+                "refapp test",
+                "refapp",
+                "cargo",
+                &["test", "--locked", "--workspace"],
+            ),
             cmd_in(
                 "refapp flight build",
                 "refapp",
                 "cargo",
                 &[
                     "build",
+                    "--locked",
                     "-p",
                     "refapp-flight",
                     "--target",
@@ -307,6 +368,8 @@ pub fn run() -> Result<usize, String> {
             Touched {
                 exerciser: true,
                 core: true,
+                fuzz: true,
+                crosscheck: true,
                 ffi: true,
                 refapp: true,
                 separate: SEPARATE_WORKSPACES.to_vec(),
@@ -353,7 +416,7 @@ pub fn run() -> Result<usize, String> {
 #[cfg(test)]
 mod tests {
     use super::{Action, DOC_ENV, SEPARATE_WORKSPACES, Tools, Touched, plan, touched};
-    use crate::verify::{CHECK_ENV, CLIPPY, FMT};
+    use crate::verify::{CHECK_ENV, CLIPPY, FMT, TEST};
 
     fn paths(p: &[&str]) -> Vec<String> {
         p.iter().map(|s| (*s).to_owned()).collect()
@@ -380,6 +443,7 @@ mod tests {
             touched(&paths(&["crates/aldis-spp/a.rs"])),
             Touched {
                 exerciser: true,
+                fuzz: true,
                 ..Touched::default()
             }
         );
@@ -388,6 +452,7 @@ mod tests {
             Touched {
                 exerciser: true,
                 core: true,
+                fuzz: true,
                 ..Touched::default()
             }
         );
@@ -398,16 +463,23 @@ mod tests {
             ])),
             Touched {
                 exerciser: true,
+                fuzz: true,
                 ffi: true,
                 refapp: true,
                 ..Touched::default()
             }
         );
+        // `fuzz/` and `crosscheck/` alone select their own steps.
+        let fuzz = touched(&paths(&["fuzz/fuzz_targets/a.rs"]));
+        assert!(fuzz.fuzz && !fuzz.exerciser && !fuzz.crosscheck);
+        let cross = touched(&paths(&["crosscheck/src/main.rs"]));
+        assert!(cross.crosscheck && !cross.fuzz && !cross.exerciser);
         // A sibling whose name only starts alike does not count.
         assert_eq!(
             touched(&paths(&["crates/aldis-core-x/a.rs", "refapp-x/a"])),
             Touched {
                 exerciser: true,
+                fuzz: true,
                 ..Touched::default()
             }
         );
@@ -432,7 +504,7 @@ mod tests {
 
     #[test]
     fn separate_workspaces_are_formatted_when_touched() {
-        // req: VER-004
+        // req: VER-068
         assert_eq!(
             touched(&paths(&["exerciser/src/ffi.rs"])).separate,
             [("exerciser", "exerciser fmt")]
@@ -445,8 +517,8 @@ mod tests {
             .separate,
             [("fuzz", "fuzz fmt"), ("crosscheck", "crosscheck fmt")]
         );
-        // A crate change reaches the exerciser's clippy, not its formatting; a sibling whose
-        // name only starts alike does not count.
+        // A crate change reaches the clippy of the exerciser and the fuzz targets, not their
+        // formatting; a sibling whose name only starts alike does not count.
         let none = touched(&paths(&["crates/aldis-ffi/src/lib.rs", "fuzz-x/a.rs"]));
         assert_eq!(none.separate, Touched::default().separate);
         let t = Touched {
@@ -472,7 +544,7 @@ mod tests {
 
     #[test]
     fn the_formatted_workspaces_are_the_gates() {
-        // req: VER-004
+        // req: VER-068
         let gate: Vec<&str> = FMT
             .lines()
             .filter_map(|l| l.split("--manifest-path ").nth(1))
@@ -485,19 +557,77 @@ mod tests {
     }
 
     #[test]
-    fn the_doc_step_is_the_gates() {
-        // req: VER-001
+    fn the_doc_step_has_the_gates_flags() {
+        // req: VER-068
         let (items, _) = plan(&Touched::default(), NONE);
-        let Some(Action::Cmd { args, env, .. }) =
+        let Some(Action::Cmd { env, .. }) =
             items.iter().find(|i| i.name == "doc").map(|i| &i.action)
         else {
             panic!("no doc step");
         };
-        // The gate adds `--locked` to every cargo call of its checks.
-        let gate = format!("cargo doc --locked {}", args[1..].join(" "));
-        assert!(CLIPPY.lines().any(|l| l == gate), "{gate}");
         assert_eq!(*env, DOC_ENV);
         assert!(DOC_ENV.iter().all(|e| CHECK_ENV.contains(e)));
+    }
+
+    /// A command as the directory it runs in and its words, without `--locked` (the steps of
+    /// `plan` and the lines of the gate both carry it) and with `--manifest-path <dir>/Cargo.toml`
+    /// folded into the directory.
+    fn normal(dir: &str, words: &[&str]) -> (String, String) {
+        let mut dir = dir.to_owned();
+        let mut kept = Vec::new();
+        let mut manifest = false;
+        for w in words {
+            if manifest {
+                dir = w.strip_suffix("/Cargo.toml").unwrap_or(w).to_owned();
+                manifest = false;
+            } else if *w == "--manifest-path" {
+                manifest = true;
+            } else if *w != "--locked" {
+                kept.push(*w);
+            }
+        }
+        (dir, kept.join(" "))
+    }
+
+    /// Lines of the gate's scripts that `check` does not run, with the reason.
+    const NOT_A_STEP: &[(&str, &str)] = &[];
+
+    #[test]
+    fn every_gate_line_has_a_step() {
+        // req: VER-068
+        let all = Touched {
+            exerciser: true,
+            core: true,
+            fuzz: true,
+            crosscheck: true,
+            ffi: true,
+            refapp: true,
+            separate: SEPARATE_WORKSPACES.to_vec(),
+        };
+        let (items, _) = plan(&all, ALL);
+        let steps: Vec<(String, String)> = items
+            .iter()
+            .filter_map(|i| match &i.action {
+                Action::Cmd {
+                    program, args, dir, ..
+                } => {
+                    let mut words = vec![*program];
+                    words.extend(args.iter().copied());
+                    Some(normal(dir, &words))
+                }
+                Action::Xtask(_) => None,
+            })
+            .collect();
+        for script in [FMT, CLIPPY, TEST] {
+            for line in script.lines().filter(|l| l.starts_with("cargo ")) {
+                let words: Vec<&str> = line.split_whitespace().collect();
+                assert!(
+                    steps.contains(&normal("", &words))
+                        || NOT_A_STEP.iter().any(|(l, _)| *l == line),
+                    "no step of `check` runs the gate's `{line}`: add it to `plan`, or list it in NOT_A_STEP with the reason"
+                );
+            }
+        }
     }
 
     #[test]
@@ -505,12 +635,14 @@ mod tests {
         let t = Touched {
             exerciser: true,
             core: true,
+            fuzz: true,
+            crosscheck: true,
             ffi: true,
             refapp: true,
             ..Touched::default()
         };
         let (n, skipped) = names(&t, ALL);
-        assert_eq!(n.len(), 6 + 2 + 2 + 2 + 4);
+        assert_eq!(n.len(), 6 + 2 + 1 + 1 + 1 + 2 + 4);
         assert!(n.contains(&"xtask coverage") && n.contains(&"xtask header c-smoke"));
         assert_eq!(skipped.len(), 0);
     }
@@ -520,6 +652,7 @@ mod tests {
         let t = Touched {
             exerciser: true,
             core: true,
+            fuzz: true,
             ffi: true,
             refapp: false,
             ..Touched::default()

@@ -416,7 +416,7 @@ pub fn c_smoke(cc: &str, cxx: &str) -> Result<usize, String> {
 mod tests {
     use super::*;
 
-    // req: CABI-003
+    // req: CABI-005
     #[test]
     fn the_readme_example_becomes_a_function_body() {
         let readme = "text\n\n```sh\nls\n```\n\n```c\n#include \"aldis/aldis.h\"\n\nuint32_t rc = f(bytes, len);\nif (rc) {\n}\n```\n\n```c\nnot this\n```\n";
