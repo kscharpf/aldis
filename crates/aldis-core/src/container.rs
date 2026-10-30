@@ -2,8 +2,8 @@
 //!
 //! Capacities are const generics, so an engine's memory footprint is known at compile time
 //! (`core::mem::size_of`). Nothing allocates, and no operation panics: a full container
-//! rejects the item (engines report `WouldBlock`, API-052), and a too-small output buffer
-//! leaves the record queued (GEN-042).
+//! rejects the item. Engines use these containers for input-side storage only (API-052,
+//! API-060) and report `WouldBlock` when an input would overflow it; they hold no output.
 
 use crate::error::{Error, ErrorKind, Result};
 use crate::field;
