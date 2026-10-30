@@ -117,5 +117,5 @@ FOP-1 start-up values are OI-59, the effect of a purge on NN(R) is OI-60, and th
 
 | ID | Requirement | Source | Verif. |
 |---|---|---|---|
-| COP-040 | The test suite SHALL include closed-loop scenarios connecting a FOP-1 and a FARM-1 through a simulated link with configurable loss, duplication, reordering, delay, and CLCW sampling rate. It SHALL assert in-order, complete, duplicate-free delivery, or an Alert, in every scenario. | 232.1 §1 (service guarantee) | V/F |
+| COP-040 | The test suite SHALL include closed-loop scenarios connecting a FOP-1 and a FARM-1 through a simulated link with configurable loss, duplication, reordering, delay, and CLCW sampling rate. It SHALL assert in-order, complete, duplicate-free delivery, or an Alert, in every scenario; under Timeout Type 1 a third outcome is allowed, a transfer that is suspended, because Resume starts the Timer and clears Suspend_State but does not reset the Transmission_Count, so a frame lost beyond the limit is not retransmitted and no Alert follows. | 232.1 §1 (service guarantee), §5.1.9.3, §5.2.14 c, §5.2.17 | V/F |
 | COP-041 | A property test SHALL drive FOP-1 and FARM-1 with random event sequences and assert that no state outside the tables is reachable and that GEN-020 holds. | — | F |

@@ -13,9 +13,12 @@
 //!
 //! Every scenario asserts the service guarantee of 232.1 §1: the delivered FDUs are a gap-free,
 //! duplicate-free, in-order prefix of the submitted stream, and either all FDUs are delivered
-//! and confirmed or the FOP-1 raised an Alert. Under Timeout Type 1 the driver answers each
-//! Suspend with a Resume directive (232.1 §5.1.9.3, §5.2.17), and the transfer must still
-//! complete or end in an Alert.
+//! and confirmed or the FOP-1 raised an Alert. Under Timeout Type 1 there is a third outcome,
+//! "suspended" (COP-040): the driver answers each Suspend with a Resume directive (232.1
+//! §5.1.9.3), but Resume only starts the Timer and clears Suspend_State (§5.2.17) and does not
+//! reset the Transmission_Count, which only Initialize sets to 1 (§5.2.14 c). A frame lost
+//! beyond the limit is therefore never retransmitted, and the transfer cycles through Suspend
+//! and Resume without an Alert and without completing. Those runs are asserted as such.
 //!
 //! The simulation is a fixed-step clock with a seeded generator, so a failure reproduces from
 //! its scenario and seed.
@@ -501,6 +504,21 @@ fn assert_guarantee(s: &Scenario, seed: u64, o: &Outcome) {
     }
 }
 
+/// Asserts the outcome COP-040 allows (232.1 §1, §5.2.14 c, §5.2.17): the prefix, and then all
+/// FDUs delivered and confirmed, or an Alert, or, under Timeout Type 1 only, a transfer that has
+/// been suspended and was still unfinished and without Alert when the run ended.
+fn assert_outcome(s: &Scenario, seed: u64, o: &Outcome) {
+    assert_prefix(s, seed, o);
+    let complete = o.confirmed.len() == usize::from(s.fdus);
+    if !complete && o.alerts.is_empty() {
+        assert!(
+            s.timeout_type == TimeoutType::Tt1 && o.suspensions > 0,
+            "neither complete, nor an Alert, nor suspended under Timeout Type 1: {} seed {seed}: {o:?}",
+            s.name
+        );
+    }
+}
+
 const BASE: Scenario = Scenario {
     name: "base",
     forward: Link::IDEAL,
@@ -762,6 +780,43 @@ fn timeout_type_one_suspends_resumes_and_completes() {
 }
 
 #[test]
+fn a_loss_after_a_resume_leaves_the_transfer_suspended_not_alerted() {
+    // req: COP-040, COP-013, COP-014
+    // The scenario above, with a lossy forward link: after a Resume a frame can still be lost,
+    // and Resume does not reset the Transmission_Count (232.1 §5.2.17, §5.2.14 c), so the
+    // frame is not retransmitted and the transfer cycles through Suspend and Resume. The
+    // outcome is "complete" or "suspended" and never an Alert; some seeds end suspended.
+    let slow = Link {
+        delay_us: 60_000,
+        ..Link::IDEAL
+    };
+    let s = Scenario {
+        name: "resume then loss",
+        forward: Link { loss: 200, ..slow },
+        ret: slow,
+        timeout_type: TimeoutType::Tt1,
+        transmission_limit: 2,
+        t1_us: 40_000,
+        horizon_us: 30_000_000,
+        ..BASE
+    };
+    let outcomes: Vec<Outcome> = (0..16)
+        .map(|seed| {
+            let o = World::new(s, seed).run();
+            assert_outcome(&s, seed, &o);
+            o
+        })
+        .collect();
+    assert_no_alert(&s, &outcomes);
+    assert!(
+        outcomes
+            .iter()
+            .any(|o| o.confirmed.len() < usize::from(s.fdus) && o.suspensions > 0),
+        "some seed ends suspended"
+    );
+}
+
+#[test]
 fn reordered_reports_complete_or_alert() {
     // req: COP-040, COP-004, COP-012
     // A report that arrives after a newer one carries an N(R) behind NN(R): E13, the Alert
@@ -799,16 +854,13 @@ proptest! {
         tl in 1u8..=10,
         tt1 in any::<bool>(),
     ) {
-        // Under Timeout Type 1 a frame lost beyond the Transmission_Limit leaves the transfer
-        // suspended until an operator acts (Resume restarts only the timer, 232.1 §5.2.17), so
-        // the forward link of those runs loses and corrupts nothing.
         // req: COP-040, VER-023
         let s = Scenario {
             name: "random link",
             forward: Link {
-                loss: if tt1 { 0 } else { forward.0 },
+                loss: forward.0,
                 duplicate: forward.1,
-                corrupt: if tt1 { 0 } else { forward.2 },
+                corrupt: forward.2,
                 delay_us: forward.3,
                 jitter_us: forward.4,
                 in_order: forward.5,
@@ -833,6 +885,6 @@ proptest! {
             horizon_us: 60_000_000,
         };
         let o = World::new(s, seed).run();
-        assert_guarantee(&s, seed, &o);
+        assert_outcome(&s, seed, &o);
     }
 }
