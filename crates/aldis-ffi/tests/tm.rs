@@ -763,7 +763,7 @@ fn write_all(
     vcs: &[aldis_tm_vc_config_t],
     fields: &aldis_tm_fields_t,
     data_len: usize,
-) -> (i32, aldis_error_detail_t) {
+) -> (u32, aldis_error_detail_t) {
     let data = vec![0xD0_u8; data_len];
     let content = aldis_tm_content_t {
         data: data.as_ptr(),

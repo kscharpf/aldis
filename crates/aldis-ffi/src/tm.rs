@@ -620,7 +620,7 @@ pub(crate) fn view(f: &TmFrame<'_>) -> aldis_tm_frame_t {
 pub unsafe extern "C" fn aldis_tm_config_check(
     pc: *const aldis_tm_config_t,
     err: *mut crate::aldis_error_detail_t,
-) -> i32 {
+) -> u32 {
     // SAFETY: every pointer is valid as `# Safety` states; `abi` checks NULL and alignment.
     unsafe { abi::call(err, || physical(&abi::config(pc)?).map(drop)) }
 }
@@ -653,7 +653,7 @@ pub unsafe extern "C" fn aldis_tm_mc_config_check(
     vcs: *const aldis_tm_vc_config_t,
     vc_count: usize,
     err: *mut crate::aldis_error_detail_t,
-) -> i32 {
+) -> u32 {
     // SAFETY: every pointer is valid as `# Safety` states; `abi` checks NULL and alignment.
     unsafe { abi::call(err, || master_channel_at(mc, vcs, vc_count).map(drop)) }
 }
@@ -682,7 +682,7 @@ pub unsafe extern "C" fn aldis_tm_peek_length(
     cfg: *const aldis_tm_config_t,
     out_len: *mut usize,
     err: *mut crate::aldis_error_detail_t,
-) -> i32 {
+) -> u32 {
     // SAFETY: every pointer is valid as `# Safety` states; `abi` checks NULL and alignment.
     unsafe {
         abi::call(err, || {
@@ -718,7 +718,7 @@ pub unsafe extern "C" fn aldis_tm_header_decode(
     prefix_len: usize,
     out: *mut aldis_tm_header_t,
     err: *mut crate::aldis_error_detail_t,
-) -> i32 {
+) -> u32 {
     // SAFETY: every pointer is valid as `# Safety` states; `abi` checks NULL and alignment.
     unsafe {
         abi::call(err, || {
@@ -762,7 +762,7 @@ pub unsafe extern "C" fn aldis_tm_decode(
     mode: u32,
     out: *mut aldis_tm_frame_t,
     err: *mut crate::aldis_error_detail_t,
-) -> i32 {
+) -> u32 {
     // SAFETY: every pointer is valid as `# Safety` states; `abi` checks NULL and alignment.
     unsafe {
         abi::call(err, || {
@@ -806,7 +806,7 @@ pub unsafe extern "C" fn aldis_tm_decode_with(
     mode: u32,
     out: *mut aldis_tm_frame_t,
     err: *mut crate::aldis_error_detail_t,
-) -> i32 {
+) -> u32 {
     // SAFETY: every pointer is valid as `# Safety` states; `abi` checks NULL and alignment.
     unsafe {
         abi::call(err, || {
@@ -841,7 +841,7 @@ pub unsafe extern "C" fn aldis_tm_decode_unchecked(
     mode: u32,
     out: *mut aldis_tm_frame_t,
     err: *mut crate::aldis_error_detail_t,
-) -> i32 {
+) -> u32 {
     // SAFETY: every pointer is valid as `# Safety` states; `abi` checks NULL and alignment.
     unsafe {
         abi::call(err, || {
@@ -877,7 +877,7 @@ pub unsafe extern "C" fn aldis_tm_decode_unchecked_with(
     mode: u32,
     out: *mut aldis_tm_frame_t,
     err: *mut crate::aldis_error_detail_t,
-) -> i32 {
+) -> u32 {
     // SAFETY: every pointer is valid as `# Safety` states; `abi` checks NULL and alignment.
     unsafe {
         abi::call(err, || {
@@ -920,7 +920,7 @@ pub unsafe extern "C" fn aldis_tm_validate(
     vc_count: usize,
     mode: u32,
     err: *mut crate::aldis_error_detail_t,
-) -> i32 {
+) -> u32 {
     // SAFETY: every pointer is valid as `# Safety` states; `abi` checks NULL and alignment.
     unsafe {
         abi::call(err, || {
@@ -971,7 +971,7 @@ pub unsafe extern "C" fn aldis_tm_encode(
     cap: usize,
     out_len: *mut usize,
     err: *mut crate::aldis_error_detail_t,
-) -> i32 {
+) -> u32 {
     // SAFETY: every pointer is valid as `# Safety` states; `abi` checks NULL, alignment, and
     // overlap.
     unsafe {
@@ -1039,7 +1039,7 @@ pub unsafe extern "C" fn aldis_tm_encode_oid(
     cap: usize,
     out_len: *mut usize,
     err: *mut crate::aldis_error_detail_t,
-) -> i32 {
+) -> u32 {
     // SAFETY: every pointer is valid as `# Safety` states; `abi` and `handle` check them.
     unsafe {
         abi::call(err, || {

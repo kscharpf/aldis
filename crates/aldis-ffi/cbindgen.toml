@@ -31,6 +31,7 @@ include = [
     "aldis_spp_secondary",
     "aldis_spp_sequence_flags",
     "aldis_spp_track",
+    "aldis_status",
     "aldis_tc_control",
     "aldis_tc_discard",
     "aldis_tc_frame",

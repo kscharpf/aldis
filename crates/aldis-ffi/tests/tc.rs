@@ -112,13 +112,13 @@ fn check_mc(
     maps: *const aldis_tc_map_config_t,
     map_count: usize,
     err: &mut aldis_error_detail_t,
-) -> i32 {
+) -> u32 {
     // SAFETY: `mc` and `err` are live; `vcs` and `maps` are NULL or point to their counts of
     // live structs.
     unsafe { aldis_tc_mc_config_check(mc, vcs, vc_count, maps, map_count, err) }
 }
 
-fn decode(bytes: &[u8], mode: u32, out: &mut aldis_tc_frame_t) -> i32 {
+fn decode(bytes: &[u8], mode: u32, out: &mut aldis_tc_frame_t) -> u32 {
     let (mc, vcs, maps) = (mc(), vcs(), maps());
     // SAFETY: every pointer is to a live local, with its length.
     unsafe {

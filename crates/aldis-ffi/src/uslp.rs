@@ -604,8 +604,8 @@ pub struct aldis_uslp_stream_item_t {
     pub frame: aldis_uslp_frame_t,
     /// Discard reason code: `ALDIS_USLP_DISCARD_*` (valid when `kind == ALDIS_USLP_STREAM_DISCARDED`).
     pub discard_reason: u32,
-    /// The error code of the discard (e.g. `ALDIS_ERR_CRC_MISMATCH`, negative integer).
-    pub error_code: i32,
+    /// The error code of the discard (e.g. `ALDIS_ERR_CRC_MISMATCH`).
+    pub error_code: u32,
     /// The field code of the error (0 if none).
     pub error_field: u16,
     /// Reserved padding octets, set to zero.
@@ -972,7 +972,7 @@ fn view(f: &UslpFrame<'_>) -> Result<aldis_uslp_frame_t> {
 pub unsafe extern "C" fn aldis_uslp_config_check(
     pc: *const aldis_uslp_config_t,
     err: *mut crate::aldis_error_detail_t,
-) -> i32 {
+) -> u32 {
     // SAFETY: every pointer is valid as `# Safety` states; `abi` checks NULL and alignment.
     unsafe { abi::call(err, || physical(&abi::config(pc)?).map(drop)) }
 }
@@ -1011,7 +1011,7 @@ pub unsafe extern "C" fn aldis_uslp_vc_table_check(
     maps: *const aldis_uslp_map_config_t,
     map_count: usize,
     err: *mut crate::aldis_error_detail_t,
-) -> i32 {
+) -> u32 {
     // SAFETY: every pointer is valid as `# Safety` states; `abi` checks NULL and alignment.
     unsafe {
         abi::call(err, || {
@@ -1052,7 +1052,7 @@ pub unsafe extern "C" fn aldis_uslp_peek_length(
     vc_count: usize,
     out_len: *mut usize,
     err: *mut crate::aldis_error_detail_t,
-) -> i32 {
+) -> u32 {
     // SAFETY: every pointer is valid as `# Safety` states; `abi` checks NULL and alignment.
     unsafe {
         abi::call(err, || {
@@ -1103,7 +1103,7 @@ pub unsafe extern "C" fn aldis_uslp_decode(
     mode: u32,
     out: *mut aldis_uslp_frame_t,
     err: *mut crate::aldis_error_detail_t,
-) -> i32 {
+) -> u32 {
     // SAFETY: every pointer is valid as `# Safety` states; `abi` checks NULL and alignment.
     unsafe {
         abi::call(err, || {
@@ -1123,7 +1123,7 @@ pub unsafe extern "C" fn aldis_uslp_decode(
 /// Reads from `*offset` and advances `*offset` by the octets consumed for the yielded item.
 /// When `out.kind == ALDIS_USLP_STREAM_ACCEPTED`, `out.frame` holds the validated frame view.
 /// When `out.kind == ALDIS_USLP_STREAM_DISCARDED`, `out.discard_reason` holds the `ALDIS_USLP_DISCARD_*`
-/// code, and `out.error_code` holds the negative error code.
+/// code, and `out.error_code` holds the error status.
 /// When `out.kind == ALDIS_USLP_STREAM_END`, the unit is exhausted.
 ///
 /// # Errors
@@ -1155,7 +1155,7 @@ pub unsafe extern "C" fn aldis_uslp_stream_next(
     mode: u32,
     out: *mut aldis_uslp_stream_item_t,
     err: *mut crate::aldis_error_detail_t,
-) -> i32 {
+) -> u32 {
     // SAFETY: every pointer is valid as `# Safety` states; `abi` checks NULL, alignment, and overlap.
     unsafe {
         abi::call(err, || {
@@ -1305,7 +1305,7 @@ pub unsafe extern "C" fn aldis_uslp_encode(
     cap: usize,
     out_len: *mut usize,
     err: *mut crate::aldis_error_detail_t,
-) -> i32 {
+) -> u32 {
     // SAFETY: every pointer is valid as `# Safety` states; `abi` checks NULL, alignment, and
     // overlap.
     unsafe {
@@ -1360,7 +1360,7 @@ pub unsafe extern "C" fn aldis_uslp_encode_truncated(
     cap: usize,
     out_len: *mut usize,
     err: *mut crate::aldis_error_detail_t,
-) -> i32 {
+) -> u32 {
     // SAFETY: every pointer is valid as `# Safety` states; `abi` checks NULL, alignment, and
     // overlap.
     unsafe {
@@ -1421,7 +1421,7 @@ pub unsafe extern "C" fn aldis_uslp_encode_oid(
     cap: usize,
     out_len: *mut usize,
     err: *mut crate::aldis_error_detail_t,
-) -> i32 {
+) -> u32 {
     // SAFETY: every pointer is valid as `# Safety` states; `abi` and `handle` check them.
     unsafe {
         abi::call(err, || {

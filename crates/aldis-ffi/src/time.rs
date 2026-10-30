@@ -861,7 +861,7 @@ pub unsafe extern "C" fn aldis_time_decode(
     mode: u32,
     out: *mut aldis_time_decoded_t,
     err: *mut crate::aldis_error_detail_t,
-) -> i32 {
+) -> u32 {
     // SAFETY: every pointer is valid as `# Safety` states; `abi` checks NULL and alignment.
     unsafe {
         abi::call(err, || {
@@ -894,7 +894,7 @@ pub unsafe extern "C" fn aldis_time_decode_implicit(
     mode: u32,
     out: *mut aldis_time_decoded_t,
     err: *mut crate::aldis_error_detail_t,
-) -> i32 {
+) -> u32 {
     // SAFETY: every pointer is valid as `# Safety` states; `abi` checks NULL and alignment.
     unsafe {
         abi::call(err, || {
@@ -933,7 +933,7 @@ pub unsafe extern "C" fn aldis_time_encode(
     cap: usize,
     out_len: *mut usize,
     err: *mut crate::aldis_error_detail_t,
-) -> i32 {
+) -> u32 {
     // SAFETY: every pointer is valid as `# Safety` states; `abi` checks NULL and alignment.
     unsafe {
         abi::call(err, || {
@@ -967,7 +967,7 @@ pub unsafe extern "C" fn aldis_time_pfield_parse(
     len: usize,
     out: *mut aldis_time_pfield_t,
     err: *mut crate::aldis_error_detail_t,
-) -> i32 {
+) -> u32 {
     // SAFETY: every pointer is valid as `# Safety` states; `abi` checks NULL and alignment.
     unsafe {
         abi::call(err, || {
@@ -1005,7 +1005,7 @@ pub unsafe extern "C" fn aldis_time_format_pfield(
     cap: usize,
     out_len: *mut usize,
     err: *mut crate::aldis_error_detail_t,
-) -> i32 {
+) -> u32 {
     // SAFETY: every pointer is valid as `# Safety` states; `abi` checks NULL and alignment.
     unsafe {
         abi::call(err, || {
@@ -1039,7 +1039,7 @@ pub unsafe extern "C" fn aldis_time_format_t_len(
     format: *const aldis_time_format_t,
     t_len: *mut usize,
     err: *mut crate::aldis_error_detail_t,
-) -> i32 {
+) -> u32 {
     // SAFETY: every pointer is valid as `# Safety` states; `abi` checks NULL and alignment.
     unsafe {
         abi::call(err, || {
@@ -1072,7 +1072,7 @@ pub unsafe extern "C" fn aldis_time_cuc_to_ns(
     seconds: *mut u64,
     nanoseconds: *mut u32,
     err: *mut crate::aldis_error_detail_t,
-) -> i32 {
+) -> u32 {
     // SAFETY: every pointer is valid as `# Safety` states; `abi` checks NULL and alignment.
     unsafe {
         abi::call(err, || {
@@ -1112,7 +1112,7 @@ pub unsafe extern "C" fn aldis_time_cuc_from_ns(
     nanoseconds: u32,
     out: *mut aldis_time_value_t,
     err: *mut crate::aldis_error_detail_t,
-) -> i32 {
+) -> u32 {
     // SAFETY: every pointer is valid as `# Safety` states; `abi` checks NULL and alignment.
     unsafe {
         abi::call(err, || {
@@ -1150,7 +1150,7 @@ pub unsafe extern "C" fn aldis_time_ascii_parse(
     options: *const aldis_time_ascii_options_t,
     out: *mut aldis_time_ascii_t,
     err: *mut crate::aldis_error_detail_t,
-) -> i32 {
+) -> u32 {
     // SAFETY: every pointer is valid as `# Safety` states; `abi` checks NULL and alignment.
     unsafe {
         abi::call(err, || {
@@ -1184,7 +1184,7 @@ pub unsafe extern "C" fn aldis_time_ascii_format(
     cap: usize,
     out_len: *mut usize,
     err: *mut crate::aldis_error_detail_t,
-) -> i32 {
+) -> u32 {
     // SAFETY: every pointer is valid as `# Safety` states; `abi` checks NULL and alignment.
     unsafe {
         abi::call(err, || {
@@ -1215,7 +1215,7 @@ pub unsafe extern "C" fn aldis_time_ascii_encoded_len(
     time: *const aldis_time_ascii_t,
     out_len: *mut usize,
     err: *mut crate::aldis_error_detail_t,
-) -> i32 {
+) -> u32 {
     // SAFETY: every pointer is valid as `# Safety` states; `abi` checks NULL and alignment.
     unsafe {
         abi::call(err, || {
@@ -1248,7 +1248,7 @@ pub unsafe extern "C" fn aldis_time_ascii_subset_parse(
     options: *const aldis_time_ascii_options_t,
     out: *mut aldis_time_ascii_subset_t,
     err: *mut crate::aldis_error_detail_t,
-) -> i32 {
+) -> u32 {
     // SAFETY: every pointer is valid as `# Safety` states; `abi` checks NULL and alignment.
     unsafe {
         abi::call(err, || {
@@ -1283,7 +1283,7 @@ pub unsafe extern "C" fn aldis_time_convert(
     cfg: *const aldis_time_convert_config_t,
     out: *mut aldis_time_instant_t,
     err: *mut crate::aldis_error_detail_t,
-) -> i32 {
+) -> u32 {
     // SAFETY: every pointer is valid as `# Safety` states; `abi` checks NULL and alignment.
     unsafe {
         abi::call(err, || {

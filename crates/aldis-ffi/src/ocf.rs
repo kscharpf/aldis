@@ -89,7 +89,7 @@ pub unsafe extern "C" fn aldis_ocf_classify(
     ocf_len: usize,
     report: *mut u32,
     err: *mut crate::aldis_error_detail_t,
-) -> i32 {
+) -> u32 {
     // SAFETY: every pointer is valid as `# Safety` states; `abi` checks NULL and alignment.
     unsafe {
         abi::call(err, || {
@@ -123,7 +123,7 @@ pub unsafe extern "C" fn aldis_ocf_check(
     ocf_len: usize,
     report: u32,
     err: *mut crate::aldis_error_detail_t,
-) -> i32 {
+) -> u32 {
     // SAFETY: every pointer is valid as `# Safety` states; `abi` checks NULL and alignment.
     unsafe {
         abi::call(err, || {
@@ -148,7 +148,7 @@ mod tests {
     use crate::error::{ALDIS_DETAIL_EXPECTED, ALDIS_ERR_INVALID_FIELD, ALDIS_OK};
     use crate::field::{ALDIS_FIELD_OCF_REPORT_USE, ALDIS_FIELD_OCF_TYPE_FLAG};
 
-    fn classify(octets: &[u8]) -> (i32, u32) {
+    fn classify(octets: &[u8]) -> (u32, u32) {
         let mut r = u32::MAX;
         // SAFETY: `octets` and `r` are live locals.
         let status = unsafe {
@@ -162,7 +162,7 @@ mod tests {
         (status, r)
     }
 
-    fn check(octets: &[u8], report: u32) -> (i32, aldis_error_detail_t) {
+    fn check(octets: &[u8], report: u32) -> (u32, aldis_error_detail_t) {
         let mut d = aldis_error_detail_t {
             struct_size: u32::try_from(size_of::<aldis_error_detail_t>()).unwrap_or(0),
             ..aldis_error_detail_t::default()

@@ -755,7 +755,7 @@ pub unsafe extern "C" fn aldis_aos_fhec_encode(
     header_len: usize,
     out: *mut u16,
     err: *mut crate::aldis_error_detail_t,
-) -> i32 {
+) -> u32 {
     // SAFETY: every pointer is valid as `# Safety` states; `abi` checks NULL and alignment.
     unsafe {
         abi::call(err, || {
@@ -791,7 +791,7 @@ pub unsafe extern "C" fn aldis_aos_fhec_decode(
     received_len: usize,
     out: *mut aldis_aos_corrected_header_t,
     err: *mut crate::aldis_error_detail_t,
-) -> i32 {
+) -> u32 {
     // SAFETY: every pointer is valid as `# Safety` states; `abi` checks NULL and alignment.
     unsafe {
         abi::call(err, || {
@@ -828,7 +828,7 @@ pub unsafe extern "C" fn aldis_aos_fhec_decode(
 pub unsafe extern "C" fn aldis_aos_config_check(
     pc: *const aldis_aos_config_t,
     err: *mut crate::aldis_error_detail_t,
-) -> i32 {
+) -> u32 {
     // SAFETY: every pointer is valid as `# Safety` states; `abi` checks NULL and alignment.
     unsafe { abi::call(err, || physical(&abi::config(pc)?).map(drop)) }
 }
@@ -865,7 +865,7 @@ pub unsafe extern "C" fn aldis_aos_mc_config_check(
     vcs: *const aldis_aos_vc_config_t,
     vc_count: usize,
     err: *mut crate::aldis_error_detail_t,
-) -> i32 {
+) -> u32 {
     // SAFETY: every pointer is valid as `# Safety` states; `abi` checks NULL and alignment.
     unsafe { abi::call(err, || master_channel_at(mc, vcs, vc_count).map(drop)) }
 }
@@ -896,7 +896,7 @@ pub unsafe extern "C" fn aldis_aos_peek_length(
     cfg: *const aldis_aos_config_t,
     out_len: *mut usize,
     err: *mut crate::aldis_error_detail_t,
-) -> i32 {
+) -> u32 {
     // SAFETY: every pointer is valid as `# Safety` states; `abi` checks NULL and alignment.
     unsafe {
         abi::call(err, || {
@@ -937,7 +937,7 @@ pub unsafe extern "C" fn aldis_aos_header_decode(
     cfg: *const aldis_aos_config_t,
     out: *mut aldis_aos_header_t,
     err: *mut crate::aldis_error_detail_t,
-) -> i32 {
+) -> u32 {
     // SAFETY: every pointer is valid as `# Safety` states; `abi` checks NULL and alignment.
     unsafe {
         abi::call(err, || {
@@ -989,7 +989,7 @@ pub unsafe extern "C" fn aldis_aos_decode(
     mode: u32,
     out: *mut aldis_aos_frame_t,
     err: *mut crate::aldis_error_detail_t,
-) -> i32 {
+) -> u32 {
     // SAFETY: every pointer is valid as `# Safety` states; `abi` checks NULL and alignment.
     unsafe {
         abi::call(err, || {
@@ -1030,7 +1030,7 @@ pub unsafe extern "C" fn aldis_aos_mpdu_decode(
     mode: u32,
     out: *mut aldis_aos_pdu_t,
     err: *mut crate::aldis_error_detail_t,
-) -> i32 {
+) -> u32 {
     // SAFETY: every pointer is valid as `# Safety` states; `abi` checks NULL and alignment.
     unsafe {
         abi::call(err, || {
@@ -1070,7 +1070,7 @@ pub unsafe extern "C" fn aldis_aos_bpdu_decode(
     mode: u32,
     out: *mut aldis_aos_pdu_t,
     err: *mut crate::aldis_error_detail_t,
-) -> i32 {
+) -> u32 {
     // SAFETY: every pointer is valid as `# Safety` states; `abi` checks NULL and alignment.
     unsafe {
         abi::call(err, || {
@@ -1126,7 +1126,7 @@ pub unsafe extern "C" fn aldis_aos_encode(
     cap: usize,
     out_len: *mut usize,
     err: *mut crate::aldis_error_detail_t,
-) -> i32 {
+) -> u32 {
     // SAFETY: every pointer is valid as `# Safety` states; `abi` checks NULL, alignment, and
     // overlap.
     unsafe {
@@ -1200,7 +1200,7 @@ pub unsafe extern "C" fn aldis_aos_encode_oid(
     cap: usize,
     out_len: *mut usize,
     err: *mut crate::aldis_error_detail_t,
-) -> i32 {
+) -> u32 {
     // SAFETY: every pointer is valid as `# Safety` states; `abi` and `handle` check them.
     unsafe {
         abi::call(err, || {

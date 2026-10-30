@@ -814,7 +814,7 @@ fn counts_and_epi_checks() {
 
 /// Calls `aldis_spp_peek_length` on a 3-octet prefix, which fails with `Incomplete`
 /// (`needed` = 6), writing the detail into `words` with the given `struct_size`.
-fn short_peek(words: &mut [u64], struct_size: u32) -> i32 {
+fn short_peek(words: &mut [u64], struct_size: u32) -> u32 {
     words.fill(u64::MAX);
     let detail = words.as_mut_ptr().cast::<aldis_error_detail_t>();
     let mut n = 0;

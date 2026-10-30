@@ -150,7 +150,7 @@ const fn octet_stream() -> aldis_uslp_tfdf_t {
 }
 
 impl Channels {
-    fn check(&self) -> i32 {
+    fn check(&self) -> u32 {
         // SAFETY: every pointer is to a live struct or vector.
         unsafe {
             aldis_uslp_vc_table_check(
@@ -170,7 +170,7 @@ impl Channels {
         ct: &aldis_uslp_content_t,
         out: &mut [u8],
         det: &mut aldis_error_detail_t,
-    ) -> (i32, usize) {
+    ) -> (u32, usize) {
         let mut len = 0;
         // SAFETY: every pointer is to a live local, struct, or vector, with its length.
         let rc = unsafe {
@@ -191,7 +191,7 @@ impl Channels {
         (rc, len)
     }
 
-    fn decode(&self, bytes: &[u8], view: &mut aldis_uslp_frame_t) -> i32 {
+    fn decode(&self, bytes: &[u8], view: &mut aldis_uslp_frame_t) -> u32 {
         // SAFETY: as for `encode`.
         unsafe {
             aldis_uslp_decode(
@@ -701,7 +701,7 @@ fn a_vc_with_a_truncated_length_refuses_non_truncated_frames() {
         ALDIS_ERR_INVALID_FIELD,
         ALDIS_FIELD_END_OF_FRAME_PRIMARY_HEADER_FLAG,
     );
-    let got = |rc: i32, det: &aldis_error_detail_t| (rc, det.field);
+    let got = |rc: u32, det: &aldis_error_detail_t| (rc, det.field);
     // The encoder.
     let mut out = [0_u8; 64];
     let mut det = detail();

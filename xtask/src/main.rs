@@ -29,6 +29,7 @@ mod rs020;
 mod sana;
 mod spec;
 mod stack;
+mod status;
 mod trace;
 mod vectors;
 mod verify;
@@ -50,6 +51,8 @@ commands:
   fields [--write]             check the field catalogue (03-api-model.md §9.1) and that
                                aldis_core::field and test-vectors/core/fields.json match it,
                                or regenerate both (API-082)
+  status [--write]             check the error catalogue (03-api-model.md §9) and that the
+                               aldis-ffi status codes match it, or regenerate them (CABI-020)
   header [--write]             check that include/aldis/aldis.h and the aldis-ffi capacities
                                match a fresh generation with the pinned cbindgen, or
                                regenerate them (CABI-002, CABI-003, CABI-030)
@@ -61,7 +64,7 @@ commands:
   sana import <registry>       download a SANA registry, write its snapshot and its table
   sana check-live              fail when a SANA registry differs from its snapshot (nightly)
   links                        relative Markdown links resolve inside the repository
-  fix                          run the generators (fields, vectors schema, sana, header),
+  fix                          run the generators (fields, status, vectors schema, sana, header),
                                then consistency
   decisions                    the decision log docs/process/decisions.md is well formed (VER-062)
   layers                       crate dependency rules (GEN-001..004)
@@ -126,7 +129,8 @@ type Step = (&'static str, fn() -> Result<usize, String>);
 /// The steps of `cargo xtask ci`, in order: the checks of the verification run that need no
 /// build, so that a stale generated file fails here, in seconds, before any verification run.
 /// The generated files are checked by `fields` (the field codes of `aldis-core`, the vectors,
-/// and `aldis-ffi`, API-082, CABI-021) and `header` (the C header and the `aldis-ffi`
+/// and `aldis-ffi`, API-082, CABI-021), `status` (the status codes of `aldis-ffi`, CABI-020) and
+/// `header` (the C header and the `aldis-ffi`
 /// capacities, CABI-002, CABI-030), which needs the pinned `cbindgen`.
 pub(crate) const CI: &[Step] = &[
     ("spec-lint", spec::lint),
@@ -142,6 +146,7 @@ pub(crate) const CI: &[Step] = &[
     ("vectors validate", vectors::validate),
     ("vectors schema --check", || vectors::schema(true)),
     ("fields", || fields::run(false)),
+    ("status", || status::run(false)),
     ("header", || header::run(false)),
     ("sana", || sana::run(&[])),
     // M0 and M1 are closed: every in-scope requirement must keep an artefact.
@@ -173,6 +178,7 @@ fn run_steps(steps: &[Step]) -> usize {
 /// `xtask fix`: the generators, then `consistency`, which reports what is still missing.
 fn fix() -> Result<usize, String> {
     Ok(fields::run(true)?
+        + status::run(true)?
         + vectors::schema(false)?
         + sana::run(&["--write"])?
         + header::run(true)?
@@ -195,6 +201,8 @@ fn run(args: &[&str]) -> Result<usize, String> {
         ["vectors", "schema", "--check"] => vectors::schema(true),
         ["fields"] => fields::run(false),
         ["fields", "--write"] => fields::run(true),
+        ["status"] => status::run(false),
+        ["status", "--write"] => status::run(true),
         ["header"] => header::run(false),
         ["header", "--write"] => header::run(true),
         ["header", "c-smoke", cc, cxx] => header::c_smoke(cc, cxx),
@@ -263,6 +271,7 @@ mod tests {
     fn ci_checks_the_generated_files() {
         let names: Vec<&str> = CI.iter().map(|(name, _)| *name).collect();
         assert!(names.contains(&"fields"), "{names:?}");
+        assert!(names.contains(&"status"), "{names:?}");
         assert!(names.contains(&"header"), "{names:?}");
         // The help lists every step.
         let help: String = HELP.split_whitespace().collect::<Vec<_>>().join(" ");
@@ -271,6 +280,8 @@ mod tests {
         }
         // `fields` covers the field-code constants of the C ABI.
         assert_eq!(fields::FFI, "crates/aldis-ffi/src/field.rs");
+        // `status` covers the status codes of the C ABI.
+        assert_eq!(status::FFI, "crates/aldis-ffi/src/status.rs");
     }
 
     // req: CABI-002

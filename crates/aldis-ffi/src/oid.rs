@@ -100,7 +100,7 @@ pub unsafe extern "C" fn aldis_oid_generator_init(
     storage: *mut aldis_oid_generator_t,
     form: u32,
     err: *mut crate::aldis_error_detail_t,
-) -> i32 {
+) -> u32 {
     // SAFETY: every pointer is valid as `# Safety` states; `abi` and `handle` check them.
     unsafe {
         abi::call(err, || {
@@ -153,7 +153,7 @@ pub unsafe extern "C" fn aldis_oid_generator_fill(
     out: *mut u8,
     len: usize,
     err: *mut crate::aldis_error_detail_t,
-) -> i32 {
+) -> u32 {
     // SAFETY: every pointer is valid as `# Safety` states; `abi` and `handle` check them.
     unsafe {
         abi::call(err, || {
@@ -195,7 +195,7 @@ mod tests {
         0x3C, 0xBE, 0x7E, 0x00, 0xB1,
     ];
 
-    fn init(g: &mut aldis_oid_generator_t, form: u32) -> i32 {
+    fn init(g: &mut aldis_oid_generator_t, form: u32) -> u32 {
         // SAFETY: `g` is live storage of the published type.
         unsafe { aldis_oid_generator_init(g, form, null_mut()) }
     }

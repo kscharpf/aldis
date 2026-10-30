@@ -279,7 +279,7 @@ pub unsafe extern "C" fn aldis_spp_tracker_init(
     storage: *mut aldis_spp_tracker_t,
     cfg: *const aldis_spp_tracker_config_t,
     err: *mut crate::aldis_error_detail_t,
-) -> i32 {
+) -> u32 {
     // SAFETY: every pointer is valid as `# Safety` states; `abi` and `handle` check them.
     unsafe {
         abi::call(err, || {
@@ -343,7 +343,7 @@ pub unsafe extern "C" fn aldis_spp_tracker_track(
     count: u16,
     out: *mut aldis_spp_tracked_t,
     err: *mut crate::aldis_error_detail_t,
-) -> i32 {
+) -> u32 {
     // SAFETY: every pointer is valid as `# Safety` states; `abi` and `handle` check them.
     unsafe {
         abi::call(err, || {
@@ -376,7 +376,7 @@ pub unsafe extern "C" fn aldis_spp_tracker_forget(
     apid: u16,
     forgot: *mut bool,
     err: *mut crate::aldis_error_detail_t,
-) -> i32 {
+) -> u32 {
     // SAFETY: every pointer is valid as `# Safety` states; `abi` and `handle` check them.
     unsafe {
         abi::call(err, || {
@@ -408,7 +408,7 @@ pub unsafe extern "C" fn aldis_spp_tracker_last(
     known: *mut bool,
     count: *mut u16,
     err: *mut crate::aldis_error_detail_t,
-) -> i32 {
+) -> u32 {
     // SAFETY: every pointer is valid as `# Safety` states; `abi` and `handle` check them.
     unsafe {
         abi::call(err, || {
@@ -440,7 +440,7 @@ pub unsafe extern "C" fn aldis_spp_tracker_len(
     h: *mut aldis_spp_tracker_t,
     len: *mut usize,
     err: *mut crate::aldis_error_detail_t,
-) -> i32 {
+) -> u32 {
     // SAFETY: every pointer is valid as `# Safety` states; `abi` and `handle` check them.
     unsafe {
         abi::call(err, || {
@@ -493,7 +493,7 @@ pub unsafe extern "C" fn aldis_spp_segmenter_init(
     sdu: *const u8,
     sdu_len: usize,
     err: *mut crate::aldis_error_detail_t,
-) -> i32 {
+) -> u32 {
     // SAFETY: every pointer is valid as `# Safety` states; `abi` and `handle` check them.
     unsafe {
         abi::call(err, || {
@@ -553,7 +553,7 @@ pub unsafe extern "C" fn aldis_spp_segmenter_next(
     out_len: *mut usize,
     next_count: *mut u16,
     err: *mut crate::aldis_error_detail_t,
-) -> i32 {
+) -> u32 {
     // SAFETY: every pointer is valid as `# Safety` states; `abi` and `handle` check them.
     unsafe {
         abi::call(err, || {
@@ -594,7 +594,7 @@ pub unsafe extern "C" fn aldis_spp_segmenter_remaining(
     h: *mut aldis_spp_segmenter_t,
     remaining: *mut usize,
     err: *mut crate::aldis_error_detail_t,
-) -> i32 {
+) -> u32 {
     // SAFETY: every pointer is valid as `# Safety` states; `abi` and `handle` check them.
     unsafe {
         abi::call(err, || {
@@ -639,7 +639,7 @@ pub unsafe extern "C" fn aldis_spp_reassembler_init(
     storage: *mut aldis_spp_reassembler_t,
     apid: u16,
     err: *mut crate::aldis_error_detail_t,
-) -> i32 {
+) -> u32 {
     // SAFETY: every pointer is valid as `# Safety` states; `abi` and `handle` check them.
     unsafe {
         abi::call(err, || {
@@ -689,7 +689,7 @@ pub unsafe extern "C" fn aldis_spp_reassembler_push(
     buf_len: usize,
     out: *mut aldis_spp_reassembly_t,
     err: *mut crate::aldis_error_detail_t,
-) -> i32 {
+) -> u32 {
     // SAFETY: every pointer is valid as `# Safety` states; `abi` and `handle` check them.
     unsafe {
         abi::call(err, || {
@@ -733,7 +733,7 @@ pub unsafe extern "C" fn aldis_spp_reassembler_push(
 pub unsafe extern "C" fn aldis_spp_reassembler_reset(
     h: *mut aldis_spp_reassembler_t,
     err: *mut crate::aldis_error_detail_t,
-) -> i32 {
+) -> u32 {
     // SAFETY: every pointer is valid as `# Safety` states; `abi` and `handle` check them.
     unsafe {
         abi::call(err, || {
@@ -762,7 +762,7 @@ pub unsafe extern "C" fn aldis_spp_reassembler_is_assembling(
     h: *mut aldis_spp_reassembler_t,
     assembling: *mut bool,
     err: *mut crate::aldis_error_detail_t,
-) -> i32 {
+) -> u32 {
     // SAFETY: every pointer is valid as `# Safety` states; `abi` and `handle` check them.
     unsafe {
         abi::call(err, || {
