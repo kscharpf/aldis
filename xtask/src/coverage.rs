@@ -109,18 +109,24 @@ pub fn run() -> Result<usize, String> {
     run_selected(&gated()?, REPORTED)
 }
 
-/// `xtask coverage [-p <crate>]...`: the gate for every crate, or for the crates named.
-pub fn main(args: &[&str]) -> Result<usize, String> {
-    let mut named: Vec<&str> = Vec::new();
+/// The crates that `-p <crate>` arguments name, in order.
+fn packages<'a>(args: &[&'a str]) -> Result<Vec<&'a str>, String> {
+    let mut named = Vec::new();
     let mut rest = args;
     // bound: each pass consumes two words of `rest`.
     while let [flag, tail @ ..] = rest {
         let ("-p", [krate, tail @ ..]) = (*flag, tail) else {
             return Err("usage: cargo xtask coverage [-p <crate>]...".into());
         };
-        named.push(krate);
+        named.push(*krate);
         rest = tail;
     }
+    Ok(named)
+}
+
+/// `xtask coverage [-p <crate>]...`: the gate for every crate, or for the crates named.
+pub fn main(args: &[&str]) -> Result<usize, String> {
+    let named = packages(args)?;
     if named.is_empty() {
         return run();
     }
@@ -427,7 +433,7 @@ fn judge(
 
 #[cfg(test)]
 mod tests {
-    use super::{missed, select};
+    use super::{missed, packages, select};
 
     fn names(n: &[&str]) -> Vec<String> {
         n.iter().map(|s| (*s).to_owned()).collect()
@@ -458,8 +464,21 @@ mod tests {
     }
 
     #[test]
+    fn packages_are_named_with_dash_p() {
+        // req: VER-070
+        assert_eq!(packages(&[]), Ok(vec![]));
+        assert_eq!(
+            packages(&["-p", "aldis-spp", "-p", "aldis-tm"]),
+            Ok(vec!["aldis-spp", "aldis-tm"])
+        );
+        assert!(packages(&["-p"]).is_err());
+        assert!(packages(&["aldis-spp"]).is_err());
+        assert!(packages(&["-p", "aldis-spp", "--all"]).is_err());
+    }
+
+    #[test]
     fn missed_lines_and_branches_print_as_ranges() {
-        // req: VER-024
+        // req: VER-070
         let lcov = "\
 SF:crates/aldis-spp/src/view.rs
 DA:10,3
