@@ -15,8 +15,8 @@
 //! duplicate-free, in-order prefix of the submitted stream, and either all FDUs are delivered
 //! and confirmed or the FOP-1 raised an Alert. Under Timeout Type 1 there is a third outcome,
 //! "suspended" (COP-040): the driver answers each Suspend with a Resume directive (232.1
-//! §5.1.9.3), but Resume only starts the Timer and clears Suspend_State (§5.2.17) and does not
-//! reset the Transmission_Count, which only Initialize sets to 1 (§5.2.14 c). A frame lost
+//! §5.1.9.3), but Resume only starts the Timer and clears `Suspend_State` (§5.2.17) and does not
+//! reset the `Transmission_Count`, which only Initialize sets to 1 (§5.2.14 c). A frame lost
 //! beyond the limit is therefore never retransmitted, and the transfer cycles through Suspend
 //! and Resume without an Alert and without completing. Those runs are asserted as such.
 //!
@@ -783,7 +783,7 @@ fn timeout_type_one_suspends_resumes_and_completes() {
 fn a_loss_after_a_resume_leaves_the_transfer_suspended_not_alerted() {
     // req: COP-040, COP-013, COP-014
     // The scenario above, with a lossy forward link: after a Resume a frame can still be lost,
-    // and Resume does not reset the Transmission_Count (232.1 §5.2.17, §5.2.14 c), so the
+    // and Resume does not reset the `Transmission_Count` (232.1 §5.2.17, §5.2.14 c), so the
     // frame is not retransmitted and the transfer cycles through Suspend and Resume. The
     // outcome is "complete" or "suspended" and never an Alert; some seeds end suspended.
     let slow = Link {
