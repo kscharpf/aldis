@@ -1,9 +1,9 @@
 //! `xtask status-table`: the State and PRs columns of the work-package status tables of
 //! `docs/milestones/*.md`, derived from the pull requests of GitHub (OI-63).
 //!
-//! A pull request belongs to a work package when its head branch or its title names it: the
-//! branch prefix or the first segment of the title scope names the plan (`m3/wp-3b-farm1` or
-//! `feat(m3/wp-3b): ...` is milestone `m3`, work package `WP-3b`). The plan is the file
+//! A pull request belongs to a work package when its title scope names it, `feat(m3/wp-3b): ...`
+//! (milestone `m3`, work package `WP-3b`); only a title without such a scope falls back to its
+//! head branch (`m3/wp-3b-farm1`), as older pull requests have. The plan is the file
 //! `docs/milestones/<id>-*.md`. A row `WP-3b ...` collects the pull requests naming `WP-3b`; a
 //! row `WP-3` also collects those naming a sub-part, `WP-3a`, when the plan has no row for it.
 //! The pull requests already listed in a row stay in it (older pull requests carry no token).
@@ -61,14 +61,28 @@ fn parse_prs(json: &str) -> Result<Vec<Pr>, String> {
         .collect()
 }
 
-/// The milestone a pull request names: the branch prefix before `/`, else the first segment of
-/// the title scope (`type(m3/wp-3b)!: ...`), lower case.
-fn milestone(pr: &Pr) -> Option<String> {
-    if let Some((prefix, _)) = pr.branch.split_once('/') {
-        return Some(prefix.to_lowercase());
+/// The plan and work package a title scope names: `m<N>/wp-<n>[letter]` in `type(scope)!: ...`.
+fn title_location(title: &str) -> Option<(String, String)> {
+    let scope = title.split_once('(')?.1.split_once(')')?.0;
+    let (plan, wp) = scope.split_once('/')?;
+    let plan = plan.trim().to_lowercase();
+    let digits_ok = plan
+        .strip_prefix('m')
+        .is_some_and(|d| !d.is_empty() && d.chars().all(|c| c.is_ascii_digit()));
+    if !digits_ok || !wp.trim().to_lowercase().starts_with("wp") {
+        return None;
     }
-    let scope = pr.title.split_once('(')?.1.split_once(')')?.0;
-    Some(scope.split(['/', ',', ' ']).next()?.to_lowercase())
+    Some((plan, wp_token(wp)?))
+}
+
+/// The plan and work package of a pull request: its title scope is authoritative; only a title
+/// without such a scope falls back to the branch name (`m3/wp-3b-farm1`), as older PRs have.
+fn locate(pr: &Pr) -> Option<(String, String)> {
+    if let Some(found) = title_location(&pr.title) {
+        return Some(found);
+    }
+    let (prefix, rest) = pr.branch.split_once('/')?;
+    Some((prefix.to_lowercase(), wp_token(rest)?))
 }
 
 /// The first work-package token in `text`, normalised (`WP-3b`): `wp`, an optional `-` or space,
@@ -99,15 +113,6 @@ fn wp_token(text: &str) -> Option<String> {
         from = start + 2;
     }
     None
-}
-
-/// The token of a pull request: its branch first, then its title.
-fn pr_token(pr: &Pr) -> Option<String> {
-    let branch = pr
-        .branch
-        .split_once('/')
-        .map_or(pr.branch.as_str(), |p| p.1);
-    wp_token(branch).or_else(|| wp_token(&pr.title))
 }
 
 /// The work-package id at the start of a row's first cell (`WP-3b`), if it has one.
@@ -187,8 +192,8 @@ fn derive(plan: &str, id: &str, prs: &[Pr]) -> (String, Vec<String>) {
         .collect();
     let mine: Vec<(&Pr, String)> = prs
         .iter()
-        .filter(|p| (p.open || p.merged) && milestone(p).as_deref() == Some(id))
-        .filter_map(|p| pr_token(p).map(|t| (p, t)))
+        .filter(|p| p.open || p.merged)
+        .filter_map(|p| locate(p).filter(|(m, _)| m == id).map(|(_, t)| (p, t)))
         .collect();
     // The row that takes a token: the row of the token, else the row of its work package.
     let target = |token: &str| -> Option<String> {
@@ -311,7 +316,7 @@ pub fn run(write: bool) -> Result<usize, String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{Pr, cell_numbers, derive, milestone, parse_prs, pr_token, wp_token};
+    use super::{Pr, cell_numbers, derive, locate, parse_prs, wp_token};
 
     fn pr(number: u64, title: &str, branch: &str, state: &str) -> Pr {
         Pr {
@@ -335,14 +340,24 @@ mod tests {
     }
 
     #[test]
-    fn names_the_milestone_and_token() {
-        let p = pr(1, "feat(m3/wp-2): x", "m3/wp-2-vectors", "OPEN");
-        assert_eq!(milestone(&p).as_deref(), Some("m3"));
-        assert_eq!(pr_token(&p).as_deref(), Some("WP-2"));
-        let p = pr(2, "fix(m2/wp-1): x", "fix-it", "OPEN");
-        assert_eq!(milestone(&p).as_deref(), Some("m2"));
-        assert_eq!(pr_token(&p).as_deref(), Some("WP-1"));
-        assert_eq!(milestone(&pr(3, "chore: x", "chore", "OPEN")), None);
+    fn title_scope_is_authoritative_and_the_branch_a_fallback() {
+        let loc = |t: &str, b: &str| locate(&pr(1, t, b, "OPEN"));
+        let some = |m: &str, w: &str| Some((m.to_owned(), w.to_owned()));
+        assert_eq!(
+            loc("feat(m3/wp-2): x", "m3/wp-2-vectors"),
+            some("m3", "WP-2")
+        );
+        // The title wins over a disagreeing branch.
+        assert_eq!(
+            loc("feat(m3/wp-4b): x", "m3/wp-2-vectors"),
+            some("m3", "WP-4b")
+        );
+        assert_eq!(loc("fix(m2/wp-1)!: x", "fix-it"), some("m2", "WP-1"));
+        // No `m<N>/wp-<n>` scope: the branch.
+        assert_eq!(loc("feat: x", "m3/wp-3a-engine"), some("m3", "WP-3a"));
+        assert_eq!(loc("feat(spp): x", "m3/wp-3a-engine"), some("m3", "WP-3a"));
+        assert_eq!(loc("chore: x", "chore"), None);
+        assert_eq!(loc("feat(m3/other): x", "feature"), None);
     }
 
     #[test]

@@ -124,7 +124,8 @@ fn generate(merges: &[Merge]) -> Generated {
             if t.breaking {
                 line.push_str("**Breaking:** ");
             }
-            if let Some(scope) = t.scope {
+            // A milestone scope (`m3/wp-4`) names the plan, not the component: not printed.
+            if let Some(scope) = t.scope.filter(|s| !s.contains('/')) {
                 let _ = write!(line, "{scope}: ");
             }
             let _ = write!(line, "{} (#{})", t.description, m.number);
@@ -334,10 +335,11 @@ mod tests {
             merge(6, "perf: faster"),
             merge(7, "security: close a hole"),
             merge(8, "no form"),
+            merge(9, "feat(m3/wp-4): implement FOP-1"),
         ]);
         assert_eq!(
             render(&g.sections),
-            "### Added\n- spp: add a codec (#1)\n\n\
+            "### Added\n- spp: add a codec (#1)\n- implement FOP-1 (#9)\n\n\
              ### Changed\n- **Breaking:** ffi: rename a call (#5)\n- faster (#6)\n- no form (#8)\n\n\
              ### Fixed\n- wrap the count (#2)\n\n\
              ### Security\n- close a hole (#7)\n\n"
