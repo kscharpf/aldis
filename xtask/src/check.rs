@@ -1,8 +1,11 @@
 //! `xtask check`: the checks to run while working, in one command (AGENTS.md).
 //!
-//! Format, clippy, tests, the bare-metal clippy build, and `xtask ci`, then the extras of each
-//! directory the change touches (the paths that differ from `origin/main`, committed or not).
-//! Stops at the first failure. An extra whose tool is not installed is skipped and reported.
+//! Format, clippy, rustdoc, tests, the bare-metal clippy build, and `xtask ci`, then the extras of
+//! each directory the change touches (the paths that differ from `origin/main`, committed or
+//! not). Stops at the first failure. An extra whose tool is not installed is skipped and reported.
+//!
+//! Every step that the merge gate (`verify`) also runs is the gate's command: a change that
+//! passes here does not fail the gate on formatting or rustdoc. Tests keep the two in step.
 
 use std::process::Command;
 
@@ -15,6 +18,7 @@ enum Action {
         program: &'static str,
         args: &'static [&'static str],
         dir: &'static str,
+        env: &'static [(&'static str, &'static str)],
     },
     /// Run an xtask check in this process.
     Xtask(fn() -> Result<usize, String>),
@@ -32,6 +36,24 @@ const fn cmd(name: &'static str, program: &'static str, args: &'static [&'static
             program,
             args,
             dir: "",
+            env: &[],
+        },
+    }
+}
+
+const fn cmd_env(
+    name: &'static str,
+    program: &'static str,
+    args: &'static [&'static str],
+    env: &'static [(&'static str, &'static str)],
+) -> Item {
+    Item {
+        name,
+        action: Action::Cmd {
+            program,
+            args,
+            dir: "",
+            env,
         },
     }
 }
@@ -44,9 +66,27 @@ const fn cmd_in(
 ) -> Item {
     Item {
         name,
-        action: Action::Cmd { program, args, dir },
+        action: Action::Cmd {
+            program,
+            args,
+            dir,
+            env: &[],
+        },
     }
 }
+
+/// The workspaces that `cargo fmt --all` at the root does not reach, each with its own manifest,
+/// and the name of the step that formats it. The gate formats the same directories (`FMT` of
+/// `verify/checks.rs`).
+const SEPARATE_WORKSPACES: [(&str, &str); 3] = [
+    ("exerciser", "exerciser fmt"),
+    ("fuzz", "fuzz fmt"),
+    ("crosscheck", "crosscheck fmt"),
+];
+
+/// The environment of the rustdoc step: the gate's `RUSTDOCFLAGS` (`CHECK_ENV` of `verify`), so
+/// that a link to a private item fails here and not only at the gate.
+const DOC_ENV: &[(&str, &str)] = &[("RUSTDOCFLAGS", "-D warnings")];
 
 /// Which directories with extra checks a change touches.
 #[derive(Debug, Default, PartialEq, Eq)]
@@ -60,6 +100,8 @@ struct Touched {
     core: bool,
     ffi: bool,
     refapp: bool,
+    /// The separate workspaces (`SEPARATE_WORKSPACES`) with a changed file: their format check.
+    separate: Vec<(&'static str, &'static str)>,
 }
 
 /// The directories among `changed` (repository-relative paths) that have extra checks.
@@ -70,6 +112,10 @@ fn touched(changed: &[String]) -> Touched {
         core: any("crates/aldis-core/"),
         ffi: any("crates/aldis-ffi/"),
         refapp: any("refapp/"),
+        separate: SEPARATE_WORKSPACES
+            .into_iter()
+            .filter(|(dir, _)| any(&format!("{dir}/")))
+            .collect(),
     }
 }
 
@@ -85,12 +131,23 @@ struct Tools {
 /// The steps to run and the extras skipped, each with the reason.
 #[expect(clippy::too_many_lines, reason = "one entry per check step")]
 fn plan(t: &Touched, tools: Tools) -> (Vec<Item>, Vec<String>) {
-    let mut run = vec![
-        cmd("fmt", "cargo", &["fmt", "--all", "--check"]),
+    let mut run = vec![cmd("fmt", "cargo", &["fmt", "--all", "--check"])];
+    run.extend(
+        t.separate
+            .iter()
+            .map(|(dir, name)| cmd_in(name, dir, "cargo", &["fmt", "--all", "--check"])),
+    );
+    run.extend([
         cmd(
             "clippy",
             "cargo",
             &["clippy", "--workspace", "--all-features", "--all-targets"],
+        ),
+        cmd_env(
+            "doc",
+            "cargo",
+            &["doc", "--workspace", "--all-features", "--no-deps"],
+            DOC_ENV,
         ),
         cmd("test", "cargo", &["test", "--workspace", "--all-features"]),
         cmd(
@@ -111,7 +168,7 @@ fn plan(t: &Touched, tools: Tools) -> (Vec<Item>, Vec<String>) {
             name: "xtask ci",
             action: Action::Xtask(|| Ok(crate::run_steps(crate::CI))),
         },
-    ];
+    ]);
     let mut skipped = Vec::new();
     if t.exerciser {
         run.push(cmd_in(
@@ -252,6 +309,7 @@ pub fn run() -> Result<usize, String> {
                 core: true,
                 ffi: true,
                 refapp: true,
+                separate: SEPARATE_WORKSPACES.to_vec(),
             },
             Some("origin/main unknown: running every directory's extras"),
         ),
@@ -265,8 +323,14 @@ pub fn run() -> Result<usize, String> {
     for (i, item) in items.iter().enumerate() {
         println!("check: [{}/{total}] {}", i + 1, item.name);
         let ok = match &item.action {
-            Action::Cmd { program, args, dir } => Command::new(program)
+            Action::Cmd {
+                program,
+                args,
+                dir,
+                env,
+            } => Command::new(program)
                 .args(*args)
+                .envs(env.iter().copied())
                 .current_dir(repo::root().join(dir))
                 .status()
                 .map_err(|e| format!("{program}: {e}"))?
@@ -288,7 +352,8 @@ pub fn run() -> Result<usize, String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{Tools, Touched, plan, touched};
+    use super::{Action, DOC_ENV, SEPARATE_WORKSPACES, Tools, Touched, plan, touched};
+    use crate::verify::{CHECK_ENV, CLIPPY, FMT};
 
     fn paths(p: &[&str]) -> Vec<String> {
         p.iter().map(|s| (*s).to_owned()).collect()
@@ -353,9 +418,86 @@ mod tests {
         let (n, skipped) = names(&Touched::default(), NONE);
         assert_eq!(
             n,
-            ["fmt", "clippy", "test", "clippy (thumbv7em)", "xtask ci"]
+            [
+                "fmt",
+                "clippy",
+                "doc",
+                "test",
+                "clippy (thumbv7em)",
+                "xtask ci"
+            ]
         );
         assert_eq!(skipped.len(), 0);
+    }
+
+    #[test]
+    fn separate_workspaces_are_formatted_when_touched() {
+        // req: VER-004
+        assert_eq!(
+            touched(&paths(&["exerciser/src/ffi.rs"])).separate,
+            [("exerciser", "exerciser fmt")]
+        );
+        assert_eq!(
+            touched(&paths(&[
+                "fuzz/fuzz_targets/a.rs",
+                "crosscheck/src/main.rs"
+            ]))
+            .separate,
+            [("fuzz", "fuzz fmt"), ("crosscheck", "crosscheck fmt")]
+        );
+        // A crate change reaches the exerciser's clippy, not its formatting; a sibling whose
+        // name only starts alike does not count.
+        let none = touched(&paths(&["crates/aldis-ffi/src/lib.rs", "fuzz-x/a.rs"]));
+        assert_eq!(none.separate, Touched::default().separate);
+        let t = Touched {
+            separate: SEPARATE_WORKSPACES.to_vec(),
+            ..Touched::default()
+        };
+        let (n, _) = names(&t, NONE);
+        assert_eq!(
+            n,
+            [
+                "fmt",
+                "exerciser fmt",
+                "fuzz fmt",
+                "crosscheck fmt",
+                "clippy",
+                "doc",
+                "test",
+                "clippy (thumbv7em)",
+                "xtask ci"
+            ]
+        );
+    }
+
+    #[test]
+    fn the_formatted_workspaces_are_the_gates() {
+        // req: VER-004
+        let gate: Vec<&str> = FMT
+            .lines()
+            .filter_map(|l| l.split("--manifest-path ").nth(1))
+            .collect();
+        let ours: Vec<String> = SEPARATE_WORKSPACES
+            .iter()
+            .map(|(dir, _)| format!("{dir}/Cargo.toml"))
+            .collect();
+        assert_eq!(gate, ours);
+    }
+
+    #[test]
+    fn the_doc_step_is_the_gates() {
+        // req: VER-001
+        let (items, _) = plan(&Touched::default(), NONE);
+        let Some(Action::Cmd { args, env, .. }) =
+            items.iter().find(|i| i.name == "doc").map(|i| &i.action)
+        else {
+            panic!("no doc step");
+        };
+        // The gate adds `--locked` to every cargo call of its checks.
+        let gate = format!("cargo doc --locked {}", args[1..].join(" "));
+        assert!(CLIPPY.lines().any(|l| l == gate), "{gate}");
+        assert_eq!(*env, DOC_ENV);
+        assert!(DOC_ENV.iter().all(|e| CHECK_ENV.contains(e)));
     }
 
     #[test]
@@ -365,9 +507,10 @@ mod tests {
             core: true,
             ffi: true,
             refapp: true,
+            ..Touched::default()
         };
         let (n, skipped) = names(&t, ALL);
-        assert_eq!(n.len(), 5 + 2 + 2 + 2 + 4);
+        assert_eq!(n.len(), 6 + 2 + 2 + 2 + 4);
         assert!(n.contains(&"xtask coverage") && n.contains(&"xtask header c-smoke"));
         assert_eq!(skipped.len(), 0);
     }
@@ -379,6 +522,7 @@ mod tests {
             core: true,
             ffi: true,
             refapp: false,
+            ..Touched::default()
         };
         let (n, skipped) = names(&t, NONE);
         assert!(!n.contains(&"xtask coverage") && !n.contains(&"xtask header"));

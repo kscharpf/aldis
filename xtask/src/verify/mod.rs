@@ -38,9 +38,12 @@ pub use publish::{fetch_notes, published};
 pub use record::utc;
 // For `cargo xtask assurance` (VER-066), which resolves `check:` references against the checks.
 pub(crate) use checks::all as all_checks;
+// For the tests of `cargo xtask check`, which run the same format and rustdoc commands.
+#[cfg(test)]
+pub(crate) use checks::{CLIPPY, FMT};
 
 /// Flags shared with the RUSTFLAGS of every check (the former `ci.yml` `env`).
-const CHECK_ENV: &[(&str, &str)] = &[
+pub(crate) const CHECK_ENV: &[(&str, &str)] = &[
     ("CARGO_TERM_COLOR", "never"),
     ("RUSTFLAGS", "-D warnings"),
     ("RUSTDOCFLAGS", "-D warnings"),
