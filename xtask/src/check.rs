@@ -5,7 +5,7 @@
 //! not). Stops at the first failure. An extra whose tool is not installed is skipped and reported.
 //! One run at a time per worktree (`check_lock`). `check --from <step>` skips the steps before the
 //! named one, to go on after a failure without redoing what passed; such a run ends `partial`,
-//! never `passed`.
+//! never `passed` (VER-069).
 //!
 //! Every command of the gate's `fmt`, `clippy`, and `test` scripts (`verify/checks.rs`) is a step
 //! here, with `--locked` as the gate passes it, so that a change that passes `check` does not fail
@@ -511,7 +511,7 @@ mod tests {
 
     #[test]
     fn from_names_a_step_of_the_plan() {
-        // req: VER-068
+        // req: VER-069
         assert_eq!(parse_args(&[]), Ok(None));
         assert_eq!(parse_args(&["--from", "test"]), Ok(Some("test")));
         assert!(parse_args(&["--from"]).is_err());

@@ -14,7 +14,10 @@
 # the PR's own in-flight run of a head that is behind main and no other (not another PR's run, not
 # an older head's, not a current head's), only with the flag, then verifies as usual, and ends a
 # reverify that was watching the cancelled run; a cancelled run is reported `cancelled`, neither
-# FAILED nor STALE, and `--status` shows it (VER-060).
+# FAILED nor STALE, and `--status` shows it (VER-060); the stub feeds gh's JSON through the script's
+# own jq filter (so that a completed run is not cancelled; the cases need `jq` and are skipped
+# without it), and a failing `gh pr view`, a PR that is not open, a failing `git fetch`, a
+# merge-base that exits 128, and a failing `gh run list` each cancel nothing.
 # Not covered: GitHub itself (dispatch, watch, the real STALE gate of `verify assemble`).
 # VERBOSE=1 prints the output of the script under test after each failed case.
 # Exit status: 0 when every case holds, 1 otherwise.
@@ -67,7 +70,10 @@ cat >"$work/bin/gh" <<'EOF'
 #!/usr/bin/env bash
 # Stub of the gh calls of scripts/reverify.
 case "$1 $2" in
-"pr view") echo "OPEN $(cat "$STUB/pr-$3")" ;;
+"pr view")
+    [ ! -e "$STUB/pr-view-fails" ] || exit 1
+    echo "$(cat "$STUB/pr-state" 2>/dev/null || echo OPEN) $(cat "$STUB/pr-$3")"
+    ;;
 "workflow run") ;;
 "run cancel")
     echo "$3" >>"$STUB/cancelled"
@@ -78,16 +84,27 @@ case "$1 $2" in
 "run list")
     case "$*" in
     *"headSha,status --jq"*)
-        # In-flight runs, as `<id> <head>` after the jq filter: $STUB/inflight holds `<branch> <id> <head>`.
+        # The in-flight runs: $STUB/inflight holds `<branch> <id> <head> [<status>]`; the stub
+        # prints them as the JSON that gh does and applies the script's own --jq filter with jq.
+        [ ! -e "$STUB/list-fails" ] || exit 1
         branch=""
+        filter=""
         prev=""
         for a in "$@"; do
             [ "$prev" = --branch ] && branch="$a"
+            [ "$prev" = --jq ] && filter="$a"
             prev="$a"
         done
+        json="["
+        sep=""
         if [ -e "$STUB/inflight" ]; then
-            while read -r b id sha; do [ "$b" = "$branch" ] && echo "$id $sha"; done <"$STUB/inflight"
+            while read -r b id sha st; do
+                [ "$b" = "$branch" ] || continue
+                json+="$sep{\"databaseId\":$id,\"headSha\":\"$sha\",\"status\":\"${st:-in_progress}\"}"
+                sep=","
+            done <"$STUB/inflight"
         fi
+        printf '%s]' "$json" | jq -r "$filter"
         ;;
     *createdAt*)
         n="$(($(cat "$STUB/runs" 2>/dev/null || echo 0) + 1))"
@@ -149,6 +166,13 @@ case "$2 $3" in
 esac
 EOF
 printf '#!/usr/bin/env bash\nexec /bin/sleep 0.05\n' >"$work/bin/sleep"
+# git: passes through, except that `merge-base --is-ancestor` exits 128 while $STUB/mb-fail exists.
+real_git="$(command -v git)"
+cat >"$work/bin/git" <<EOF
+#!/usr/bin/env bash
+if [ -e "\$STUB/mb-fail" ] && [[ "\$*" == *"merge-base --is-ancestor"* ]]; then exit 128; fi
+exec "$real_git" "\$@"
+EOF
 cat >"$work/move-main" <<EOF
 #!/usr/bin/env bash
 $(declare -f move_main)
@@ -196,7 +220,7 @@ bg() { # bg <tag> <args...>
     eval "pid_$tag=$!"
 }
 reset() { # reset <publish-script...>: clean counters, one script line per argument
-    rm -f "$stub/publishes" "$stub/runs" "$stub/release" "$stub/release-watch" "$stub/hold-watch" "$stub/hold-watch-all" "$stub/container" "$stub/publish-pids" "$stub/inflight" "$stub/cancelled"
+    rm -f "$stub/publishes" "$stub/runs" "$stub/release" "$stub/release-watch" "$stub/hold-watch" "$stub/hold-watch-all" "$stub/container" "$stub/publish-pids" "$stub/inflight" "$stub/cancelled" "$stub/pr-view-fails" "$stub/pr-state" "$stub/list-fails" "$stub/mb-fail"
     printf '%s\n' "$@" >"$stub/publish-script"
     printf '%s\n' ok >"$stub/dispatch-script"
 }
@@ -411,6 +435,9 @@ expect "both locks are released" bash -c "[ ! -e '$repo/.git/reverify/8.lock' ] 
 tip() { git -C "$work/origin.git" rev-parse "refs/heads/$1"; }
 cancelled_is() { [ "$(cat "$stub/cancelled" 2>/dev/null | tr '\n' ' ')" = "$1" ]; }
 
+if ! command -v jq >/dev/null 2>&1; then
+    echo "skip the --cancel cases: they need jq"
+else
 echo "# --cancel: the PR's own in-flight run of a head behind main, and no other"
 reset ok
 move_main
@@ -421,10 +448,10 @@ run 7
 expect "no flag, no cancel" [ ! -e "$stub/cancelled" ]
 # That run merged main into pr-7; main moves again, so that pr-7's head is behind it once more.
 move_main
-printf '%s\n' "pr-7 555 $(tip pr-7)" "pr-8 556 $(tip pr-8)" "pr-7 557 0000000000000000000000000000000000000000" >"$stub/inflight"
+printf '%s\n' "pr-7 555 $(tip pr-7)" "pr-8 556 $(tip pr-8)" "pr-7 557 0000000000000000000000000000000000000000" "pr-7 554 $(tip pr-7) completed" >"$stub/inflight"
 run --cancel 7
 expect "the run of the PR's head is cancelled" said "#7: cancelled run 555 of"
-expect "only that run is cancelled" cancelled_is "555 "
+expect "only that run is cancelled (not a completed, another PR's, or an older head's)" cancelled_is "555 "
 expect "then it verifies as usual" said "#7 pr-7 local success"
 expect "exit status 0" status_is 0
 expect "the lock is released" lock_gone 7
@@ -477,6 +504,41 @@ expect "the canceller dispatched a new run and it succeeded" grep -Fq "#7 pr-7 1
 expect "the canceller exits 0" [ "$rc_b" -eq 0 ]
 expect "the lock is released" lock_gone 7
 rm -f "$stub/container" "$stub/hold-watch-all"
+
+echo "# --cancel cancels nothing when a lookup fails or the PR is not open"
+arm() { # a PR 7 head behind main with a run in flight, and a clean slate
+    reset ok
+    move_main
+    printf '%s\n' "pr-7 601 $(tip pr-7)" >"$stub/inflight"
+}
+nothing_cancelled() { [ ! -e "$stub/cancelled" ]; }
+arm
+touch "$stub/pr-view-fails"
+run --cancel 7
+expect "gh pr view fails: said so" said "cannot read the pull request; nothing cancelled"
+expect "gh pr view fails: nothing cancelled" nothing_cancelled
+arm
+echo CLOSED >"$stub/pr-state"
+run --cancel 7
+expect "a PR that is not open: nothing cancelled" nothing_cancelled
+arm
+git -C "$repo" remote set-url origin "$work/missing.git"
+run --cancel 7
+git -C "$repo" remote set-url origin "$work/origin.git"
+expect "git fetch fails: said so" said "cannot fetch origin; nothing cancelled"
+expect "git fetch fails: nothing cancelled" nothing_cancelled
+arm
+touch "$stub/mb-fail"
+run --cancel 7
+expect "merge-base exits 128: said so" said "nothing cancelled"
+expect "merge-base exits 128: nothing cancelled" nothing_cancelled
+arm
+touch "$stub/list-fails"
+run --cancel 7
+expect "gh run list fails: said so" said "cannot list the runs; nothing cancelled"
+expect "gh run list fails: nothing cancelled" nothing_cancelled
+reset ok
+fi
 
 if [ "$failures" -eq 0 ]; then
     echo "reverify: every case holds"

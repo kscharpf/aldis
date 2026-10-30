@@ -1,4 +1,4 @@
-//! The lock of `xtask check`: one run at a time per worktree (VER-068).
+//! The lock of `xtask check`: one run at a time per worktree (VER-069).
 //!
 //! A second run in the same worktree would overlap the first one's builds and mix their output.
 //! The lock is a symlink `xtask-check.lock` in the worktree's own git directory, so that another
@@ -53,7 +53,10 @@ pub fn acquire() -> Result<Guard, String> {
 
 /// The start time of process `pid`, `None` when it is gone: with its pid, the identity of a holder.
 fn proc_start(pid: u32) -> Option<String> {
+    // The locale and zone are fixed, so that the same process always prints the same start time.
     let out = Command::new("ps")
+        .env("TZ", "UTC")
+        .env("LC_ALL", "C")
         .args(["-o", "lstart=", "-p", &pid.to_string()])
         .output()
         .ok()?;
@@ -111,6 +114,11 @@ fn acquire_in(
             ));
         }
         if symlink(&me, &take).is_ok() {
+            // Between this check and the removal a third run could have taken the lock over and
+            // taken it again, and this run would then remove that run's lock. That needs three
+            // runs at once after a crash, and the cost is one more run that proceeds beside
+            // another in the same worktree, as before the lock existed; a lock file or `flock`
+            // would close it, and is not worth a dependency here.
             if target(lock).as_deref() == Some(holder.as_str()) {
                 println!(
                     "check: the lock of pid {} is stale; taking it over",
@@ -155,7 +163,7 @@ mod tests {
 
     #[test]
     fn a_second_run_is_refused_naming_the_holder() {
-        // req: VER-068
+        // req: VER-069
         let l = lock();
         let first = acquire_in(&l, 1, &live).unwrap();
         let err = acquire_in(&l, 2, &live).err().unwrap();
@@ -165,7 +173,7 @@ mod tests {
 
     #[test]
     fn dropping_the_guard_frees_the_lock() {
-        // req: VER-068
+        // req: VER-069
         let l = lock();
         drop(acquire_in(&l, 1, &live).unwrap());
         assert_eq!(target(&l), None);
@@ -174,7 +182,7 @@ mod tests {
 
     #[test]
     fn a_lock_of_a_dead_process_is_taken_over() {
-        // req: VER-068
+        // req: VER-069
         let l = lock();
         // Pid 99 is gone; it left its lock behind.
         std::os::unix::fs::symlink("99|t99", &l).unwrap();
@@ -188,7 +196,7 @@ mod tests {
 
     #[test]
     fn a_guard_does_not_remove_a_lock_it_no_longer_owns() {
-        // req: VER-068
+        // req: VER-069
         let l = lock();
         let g = acquire_in(&l, 1, &live).unwrap();
         std::fs::remove_file(&l).unwrap();
@@ -199,7 +207,7 @@ mod tests {
 
     #[test]
     fn a_malformed_holder_is_not_alive() {
-        // req: VER-068
+        // req: VER-069
         assert!(!alive("", &live));
         assert!(!alive("x|t1", &live));
         assert!(!alive("1", &live));
