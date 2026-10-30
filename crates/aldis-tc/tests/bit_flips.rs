@@ -38,20 +38,41 @@
 
 use core::ops::Range;
 
-use aldis_core::DecodeMode;
 use aldis_core::crc::crc16;
 use aldis_core::ids::FrameSeqNum;
 use aldis_core::security::SecurityLayout;
+use aldis_core::{DecodeMode, Error, Lenient};
 use aldis_tc::delimit::{Delimited, FrameDelimiter, next_frame};
 use aldis_tc::{
     ControlCommand, FrameData, FrameFields, FrameType, MAX_FRAME_LEN, MapConfig,
-    PhysicalChannelConfig, Reason, SegmentHeader, SegmentHeaderUse, SequenceFlags, TcFrame,
-    TcMapId, TcSpacecraftId, TcVcId, VcConfig, VcTable, encode, validate_frame,
+    PhysicalChannelConfig, Reason, Rejection, SegmentHeader, SegmentHeaderUse, SequenceFlags,
+    TcFrame, TcMapId, TcSpacecraftId, TcVcId, ValidatedTcFrame, VcConfig, VcTable, encode,
+    validate_frame, validate_frame_lenient,
 };
 use aldis_testkit::bitflip::{
     CRC16_DOUBLE_BIT_OCTETS, each_double, each_pair, each_single, filler, find_double,
     sampled_pairs,
 };
+
+/// `validate_frame` or `validate_frame_lenient`, as `mode` says (API-030).
+fn validated<'a>(
+    bytes: &'a [u8],
+    t: &Channels,
+    mode: DecodeMode,
+) -> Result<ValidatedTcFrame<'a>, Rejection> {
+    match mode {
+        DecodeMode::Strict => validate_frame(bytes, t),
+        DecodeMode::Lenient => validate_frame_lenient(bytes, t).map(Lenient::into_view),
+    }
+}
+
+/// `TcFrame::decode` or `TcFrame::decode_lenient`, as `mode` says (API-030).
+fn decoded<'a>(bytes: &'a [u8], t: &Channels, mode: DecodeMode) -> Result<TcFrame<'a>, Error> {
+    match mode {
+        DecodeMode::Strict => TcFrame::decode(bytes, t),
+        DecodeMode::Lenient => TcFrame::decode_lenient(bytes, t).map(Lenient::into_view),
+    }
+}
 
 // Every TC frame lies within the double-bit guarantee.
 const _: () = assert!(MAX_FRAME_LEN <= CRC16_DOUBLE_BIT_OCTETS);
@@ -108,7 +129,7 @@ fn frame(t: &Channels, frame_type: FrameType, vc_id: u8, data: FrameData<'_>) ->
     let n = encode(t, fields, data, &mut out).unwrap();
     out.truncate(n);
     for mode in [DecodeMode::Strict, DecodeMode::Lenient] {
-        assert!(validate_frame(&out, t, mode).is_ok());
+        assert!(validated(&out, t, mode).is_ok());
     }
     out
 }
@@ -165,8 +186,8 @@ fn rejected(t: &Channels, bytes: &[u8], bits: &[usize]) -> bool {
     [DecodeMode::Strict, DecodeMode::Lenient]
         .into_iter()
         .all(|mode| {
-            validate_frame(bytes, t, mode).is_err()
-                && match TcFrame::decode(bytes, t, mode) {
+            validated(bytes, t, mode).is_err()
+                && match decoded(bytes, t, mode) {
                     Err(_) => true,
                     Ok(f) => in_length && f.len() < bytes.len(),
                 }
@@ -241,9 +262,9 @@ fn decode_may_accept_a_frame_length_error_as_a_shorter_frame() {
         },
     );
     f[3] ^= 0x20;
-    let short = TcFrame::decode(&f, &t, DecodeMode::Strict).unwrap();
+    let short = TcFrame::decode(&f, &t).unwrap();
     assert_eq!(short.len(), 32);
-    let rejection = validate_frame(&f, &t, DecodeMode::Strict).unwrap_err();
+    let rejection = validate_frame(&f, &t).unwrap_err();
     assert_eq!(rejection.reason(), Reason::LengthMismatch);
 }
 
@@ -304,14 +325,12 @@ fn without_the_fecf_a_shortened_frame_is_delimited_and_accepted() {
         assert_eq!(short.len(), claimed, "bit {k}");
         assert_eq!(short, &bad[..claimed]);
         for mode in [DecodeMode::Strict, DecodeMode::Lenient] {
-            assert!(validate_frame(short, &t, mode).is_ok(), "bit {k}");
-            assert_eq!(TcFrame::decode(short, &t, mode).unwrap().len(), claimed);
+            assert!(validated(short, &t, mode).is_ok(), "bit {k}");
+            assert_eq!(decoded(short, &t, mode).unwrap().len(), claimed);
         }
         // The whole unit as given, bounded by something other than the field, is rejected.
         assert_eq!(
-            validate_frame(&bad, &t, DecodeMode::Strict)
-                .unwrap_err()
-                .reason(),
+            validate_frame(&bad, &t).unwrap_err().reason(),
             Reason::LengthMismatch
         );
         lowered += 1;
@@ -334,7 +353,7 @@ fn with_the_fecf_a_shortened_frame_is_delimited_and_rejected() {
         assert_eq!(short.len(), length_field(&bad) + 1);
         for mode in [DecodeMode::Strict, DecodeMode::Lenient] {
             assert_eq!(
-                validate_frame(short, &t, mode).unwrap_err().reason(),
+                validated(short, &t, mode).unwrap_err().reason(),
                 Reason::FecfMismatch,
                 "bit {k}"
             );
@@ -376,7 +395,7 @@ fn without_the_fecf_a_lengthened_frame_is_delimited_and_accepted() {
         let long = first_frame(&bad).unwrap();
         assert_eq!(long.len(), claimed, "bit {k}");
         for mode in [DecodeMode::Strict, DecodeMode::Lenient] {
-            assert!(validate_frame(long, &t, mode).is_ok(), "bit {k}");
+            assert!(validated(long, &t, mode).is_ok(), "bit {k}");
         }
         raised.push(claimed);
     }
@@ -401,7 +420,7 @@ fn with_the_fecf_a_lengthened_frame_is_delimited_and_rejected() {
         };
         checked += 1;
         for mode in [DecodeMode::Strict, DecodeMode::Lenient] {
-            if validate_frame(long, &t, mode).is_ok() {
+            if validated(long, &t, mode).is_ok() {
                 passed.push((k, mode));
             }
         }

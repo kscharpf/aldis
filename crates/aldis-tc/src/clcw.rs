@@ -6,7 +6,7 @@
 
 use aldis_core::ids::FrameSeqNum;
 use aldis_core::ocf::{OCF_LEN, Ocf, Type1Report};
-use aldis_core::{AnomalySet, DecodeMode, Error, ErrorDetail, ErrorKind, FieldId, Result};
+use aldis_core::{AnomalySet, DecodeMode, Error, ErrorDetail, ErrorKind, FieldId, Lenient, Result};
 
 use crate::anomaly::TcAnomaly;
 use crate::field;
@@ -148,13 +148,26 @@ impl Clcw {
     /// - `InvalidField` (`control_word_type`) for a Control Word Type of `1`, which is not a
     ///   CLCW, and `UnsupportedVersion` (`clcw_version`) for a version other than `00`, in both
     ///   modes (API-032).
-    /// - `ReservedValue` (`clcw_spare_14_15`, `clcw_spare_23`) in strict mode for a Reserved
-    ///   Spare that is not zero; lenient mode reports [`TcAnomaly::ClcwSpareSet`] in the
-    ///   returned set instead.
-    pub fn decode(
-        octets: [u8; OCF_LEN],
-        mode: DecodeMode,
-    ) -> Result<(Clcw, AnomalySet<TcAnomaly>)> {
+    /// - `ReservedValue` (`clcw_spare_14_15`, `clcw_spare_23`) for a Reserved Spare that is
+    ///   not zero; [`decode_lenient`](Self::decode_lenient) reports
+    ///   [`TcAnomaly::ClcwSpareSet`] instead.
+    pub fn decode(octets: [u8; OCF_LEN]) -> Result<Clcw> {
+        Clcw::parse(octets, DecodeMode::Strict).map(|(clcw, _)| clcw)
+    }
+
+    /// Decodes the four CLCW octets as [`decode`](Self::decode) does, in lenient mode: a
+    /// Reserved Spare that is not zero is accepted and reported as [`TcAnomaly::ClcwSpareSet`]
+    /// (TC-030, API-032).
+    ///
+    /// # Errors
+    /// As for [`decode`](Self::decode), except the Reserved Spares.
+    pub fn decode_lenient(octets: [u8; OCF_LEN]) -> Result<Lenient<Clcw, TcAnomaly>> {
+        Clcw::parse(octets, DecodeMode::Lenient)
+            .map(|(clcw, anomalies)| Lenient::new(clcw, anomalies))
+    }
+
+    /// The decode of both modes.
+    fn parse(octets: [u8; OCF_LEN], mode: DecodeMode) -> Result<(Clcw, AnomalySet<TcAnomaly>)> {
         let [b0, b1, b2, b3] = octets;
         if b0 & 0x80 != 0 {
             return Err(fixed(ErrorKind::InvalidField, field::CONTROL_WORD_TYPE, 1));
@@ -203,11 +216,16 @@ impl Clcw {
     ///
     /// # Errors
     /// The errors of [`decode`](Self::decode).
-    pub fn decode_report(
-        report: Type1Report,
-        mode: DecodeMode,
-    ) -> Result<(Clcw, AnomalySet<TcAnomaly>)> {
-        Clcw::decode(report.to_octets(), mode)
+    pub fn decode_report(report: Type1Report) -> Result<Clcw> {
+        Clcw::decode(report.to_octets())
+    }
+
+    /// Decodes the CLCW of a Type-1 Report as [`decode_lenient`](Self::decode_lenient) does.
+    ///
+    /// # Errors
+    /// The errors of [`decode_lenient`](Self::decode_lenient).
+    pub fn decode_report_lenient(report: Type1Report) -> Result<Lenient<Clcw, TcAnomaly>> {
+        Clcw::decode_lenient(report.to_octets())
     }
 
     /// The four CLCW octets: Control Word Type `0`, version `00`, spares zero (232.0 §4.2.1;
@@ -248,9 +266,9 @@ mod tests {
     use crate::anomaly::TcAnomaly;
     use crate::field;
     use crate::header::TcVcId;
+    use aldis_core::ErrorKind;
     use aldis_core::ids::FrameSeqNum;
     use aldis_core::ocf::{Ocf, Type1Report};
-    use aldis_core::{DecodeMode, ErrorKind};
 
     fn example() -> Clcw {
         Clcw {
@@ -276,9 +294,9 @@ mod tests {
         let Ocf::Clcw(report) = c.to_ocf() else {
             panic!("a CLCW is a Type-1 Report")
         };
-        let (d, anomalies) = Clcw::decode_report(report, DecodeMode::Strict).unwrap();
-        assert_eq!(d, c);
-        assert!(anomalies.is_empty());
+        assert_eq!(Clcw::decode_report(report).unwrap(), c);
+        let lenient = Clcw::decode_report_lenient(report).unwrap();
+        assert_eq!((*lenient, lenient.anomalies().is_empty()), (c, true));
         let all = Clcw {
             status: ClcwStatus::new(7).unwrap(),
             cop_in_effect: CopInEffect::new(3).unwrap(),
@@ -292,39 +310,39 @@ mod tests {
             report_value: FrameSeqNum::new(255),
         };
         assert_eq!(all.to_octets(), [0x1F, 0xFC, 0xFE, 0xFF]);
-        assert_eq!(
-            Clcw::decode(all.to_octets(), DecodeMode::Strict).unwrap().0,
-            all
-        );
+        assert_eq!(Clcw::decode(all.to_octets()).unwrap(), all);
     }
 
     #[test]
     fn decode_errors_and_anomalies() {
         // req: TC-030, API-031, API-032, GEN-041
-        for mode in [DecodeMode::Strict, DecodeMode::Lenient] {
-            let e = Clcw::decode([0x81, 0, 0, 0], mode).unwrap_err();
+        for decode in [
+            |o| Clcw::decode(o).map(drop),
+            |o| Clcw::decode_lenient(o).map(drop),
+        ] {
+            let e = decode([0x81, 0, 0, 0]).unwrap_err();
             assert_eq!(
                 (e.kind(), e.field()),
                 (ErrorKind::InvalidField, Some(field::CONTROL_WORD_TYPE))
             );
-            let e = Clcw::decode([0x41, 0, 0, 0], mode).unwrap_err();
+            let e = decode([0x41, 0, 0, 0]).unwrap_err();
             assert_eq!(
                 (e.kind(), e.field()),
                 (ErrorKind::UnsupportedVersion, Some(field::CLCW_VERSION))
             );
         }
-        let e = Clcw::decode([0x01, 0x01, 0, 0], DecodeMode::Strict).unwrap_err();
+        let e = Clcw::decode([0x01, 0x01, 0, 0]).unwrap_err();
         assert_eq!(e.field(), Some(field::CLCW_SPARE_14_15));
-        let e = Clcw::decode([0x01, 0, 0x01, 0], DecodeMode::Strict).unwrap_err();
+        let e = Clcw::decode([0x01, 0, 0x01, 0]).unwrap_err();
         assert_eq!(
             (e.kind(), e.field()),
             (ErrorKind::ReservedValue, Some(field::CLCW_SPARE_23))
         );
-        let (c, a) = Clcw::decode([0x01, 0x03, 0x01, 9], DecodeMode::Lenient).unwrap();
-        assert!(a.iter().eq([TcAnomaly::ClcwSpareSet]));
+        let c = Clcw::decode_lenient([0x01, 0x03, 0x01, 9]).unwrap();
+        assert!(c.anomalies().iter().eq([TcAnomaly::ClcwSpareSet]));
         assert_eq!((c.vc_id.get(), c.report_value.get()), (0, 9));
         let report = Type1Report::new([0x01, 0x14, 0x0C, 0x2A]).unwrap();
-        assert!(Clcw::decode_report(report, DecodeMode::Strict).is_ok());
+        assert!(Clcw::decode_report(report).is_ok());
     }
 
     #[test]

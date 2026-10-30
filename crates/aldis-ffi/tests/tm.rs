@@ -125,10 +125,11 @@ fn vc_arrays_are_c_arrays() {
 #[test]
 #[expect(clippy::too_many_lines, reason = "one check per decoder and lookup")]
 fn the_with_functions_take_the_vc_security_layout() {
-    // req: API-070, API-072, TM-005, TM-011, CABI-012, CABI-021
+    // req: API-070, API-072, API-032, TM-005, TM-011, CABI-012, CABI-021
     let (mc, vcs, frame) = (mc(), vcs(), sdls_frame());
     let mut v = aldis_tm_frame_t::default();
     let mut d = detail();
+    let mut found = 0_u32;
     // SAFETY: every pointer is to a live local.
     unsafe {
         assert_eq!(
@@ -164,10 +165,30 @@ fn the_with_functions_take_the_vc_security_layout() {
                 vcs.as_ptr(),
                 2,
                 ALDIS_MODE_STRICT,
+                &raw mut found,
                 &raw mut d
             ),
             ALDIS_OK
         );
+        // A lenient validate reports the anomalies of the frame it accepted (API-032).
+        let mut order = frame.clone();
+        order[4] |= 0x20;
+        aldis::core::crc::write_fecf(&mut order).unwrap();
+        found = u32::MAX;
+        assert_eq!(
+            aldis_tm_validate(
+                order.as_ptr(),
+                40,
+                &raw const mc,
+                vcs.as_ptr(),
+                2,
+                ALDIS_MODE_LENIENT,
+                &raw mut found,
+                &raw mut d
+            ),
+            ALDIS_OK
+        );
+        assert_eq!(found, ALDIS_TM_ANOMALY_PACKET_ORDER_FLAG_SET);
         // With VC 4 configured for VCA_SDUs, the Synchronization Flag disagrees.
         let mut vca = vcs;
         vca[0].content = ALDIS_TM_CONTENT_VCA_SDU;
@@ -179,6 +200,7 @@ fn the_with_functions_take_the_vc_security_layout() {
                 vca.as_ptr(),
                 2,
                 ALDIS_MODE_STRICT,
+                &raw mut found,
                 &raw mut d
             ),
             ALDIS_ERR_INVALID_FIELD
@@ -751,6 +773,7 @@ fn an_only_idle_data_frame_on_an_sdls_vc_is_refused_or_flagged() {
     aldis::core::crc::write_fecf(&mut frame).unwrap();
     let mut v = aldis_tm_frame_t::default();
     let mut d = detail();
+    let mut found = 0_u32;
     // SAFETY: every pointer is to a live local.
     unsafe {
         for decode in [aldis_tm_decode_with, aldis_tm_decode_unchecked_with] {
@@ -794,6 +817,7 @@ fn an_only_idle_data_frame_on_an_sdls_vc_is_refused_or_flagged() {
                     vcs.as_ptr(),
                     2,
                     mode,
+                    &raw mut found,
                     &raw mut d
                 ),
                 ALDIS_ERR_INVALID_FIELD

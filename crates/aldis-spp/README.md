@@ -11,7 +11,6 @@ Layer 1 (codecs) of the [architecture](../../docs/01-architecture.md) §2. It de
 Encode a telemetry packet and decode it again:
 
 ```rust
-use aldis_core::DecodeMode;
 use aldis_core::ids::{Apid, SeqCount};
 use aldis_spp::{
     PRIMARY_HEADER_LEN, PacketFields, PacketType, SequenceFlags, SpacePacket, SppConfig, encode,
@@ -33,7 +32,7 @@ fn main() -> Result<(), aldis_core::Error> {
     assert_eq!(len, PRIMARY_HEADER_LEN + 5);
 
     // The decoded view borrows `buf`.
-    let decoded = SpacePacket::decode(&buf[..len], DecodeMode::Strict)?;
+    let decoded = SpacePacket::decode(&buf[..len])?;
     assert_eq!(decoded.apid().get(), 0x123);
     assert_eq!(decoded.sequence_count().get(), 42);
     assert!(!decoded.has_secondary_header());

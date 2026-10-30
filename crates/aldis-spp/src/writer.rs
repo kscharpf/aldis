@@ -153,7 +153,7 @@ mod tests {
     use crate::header::{PacketFields, PacketType, SequenceFlags};
     use crate::view::SpacePacket;
     use aldis_core::ids::{Apid, SeqCount};
-    use aldis_core::{DecodeMode, ErrorDetail, ErrorKind};
+    use aldis_core::{ErrorDetail, ErrorKind};
 
     fn fields(apid: u16, count: u16) -> PacketFields {
         PacketFields {
@@ -189,7 +189,7 @@ mod tests {
             SpacePacketWriter::begin(&mut out, &SppConfig::DEFAULT, fields(5, 9), 2, 4).unwrap();
         w.secondary_header_mut().copy_from_slice(&[0xA0, 0xA1]);
         w.user_data_mut()[..2].copy_from_slice(&[1, 2]);
-        let e = SpacePacket::decode(&out, DecodeMode::Lenient).unwrap_err();
+        let e = SpacePacket::decode_lenient(&out).unwrap_err();
         assert_eq!(e.kind(), ErrorKind::UnsupportedVersion);
         // Version 111, the chosen fields and flag, and Packet Data Length 0 (API-023).
         assert_eq!(out[..6], [0xF8, 0x05, 0x40, 0x09, 0x00, 0x00]);
@@ -228,7 +228,7 @@ mod tests {
         assert!(w.user_data_mut().len() == 3 && w.secondary_header_mut().len() == 2);
         w.secondary_header_mut().copy_from_slice(&[7, 8]);
         assert_eq!(w.finish(0), Ok(8));
-        let p = SpacePacket::decode(&out, DecodeMode::Strict).unwrap();
+        let p = SpacePacket::decode(&out).unwrap();
         assert!(p.has_secondary_header() && p.data_field() == [7, 8] && p.len() == 8);
     }
 }

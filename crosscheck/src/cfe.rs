@@ -14,7 +14,6 @@
 //!
 //! What each operation compares, and what cFE does not check, is listed in cross-checks.md §2.
 
-use aldis_core::DecodeMode;
 use aldis_core::ids::{Apid, SeqCount};
 use aldis_spp::{
     PacketFields, PacketType, SecondaryHeaderLayout, SequenceFlags, SpacePacket, SppConfig,
@@ -149,7 +148,7 @@ const fn fields_of(header: &Header) -> Fields {
 fn walk(octets: &[u8]) -> Vec<Vec<u8>> {
     let mut out = Vec::new();
     let mut rest = octets;
-    while let Ok(packet) = SpacePacket::decode(rest, DecodeMode::Lenient) {
+    while let Ok(packet) = SpacePacket::decode_lenient(rest) {
         let (one, tail) = rest.split_at(packet.len());
         out.push(one.to_vec());
         rest = tail;
@@ -190,8 +189,8 @@ fn packets(case: &CodecCase) -> Vec<Vec<u8>> {
 /// cFE and Aldis read the same primary header from `packet`, and cFE builds `packet` again
 /// from Aldis's fields and data field.
 fn packet_agrees(packet: &[u8]) -> Result<(), String> {
-    let aldis = SpacePacket::decode(packet, DecodeMode::Lenient)
-        .map_err(|e| format!("Aldis rejects it: {e}"))?;
+    let aldis =
+        SpacePacket::decode_lenient(packet).map_err(|e| format!("Aldis rejects it: {e}"))?;
     let want = aldis_header(&aldis);
     let got = cfe_msg::read_header(packet).map_err(|e| format!("cFE returns {e}"))?;
     if got != want {
@@ -657,7 +656,7 @@ fn aldis_cuc_value(case: &CodecCase, layout: &Value, packet: &[u8]) -> Option<(u
         .and_then(|n| usize::try_from(n).ok())?;
     let format = CucFormat::new(epoch, 4, 2).ok()?;
     let layout = TimeHeaderLayout::new(TimeFormat::Cuc(format), false, ancillary).ok()?;
-    let view = SpacePacket::decode(packet, DecodeMode::Strict).ok()?;
+    let view = SpacePacket::decode(packet).ok()?;
     let split = view.split(&SecondaryHeaderLayout::Time(layout)).ok()?;
     match split.time_code()?.code() {
         TimeCode::Cuc(cuc) => {

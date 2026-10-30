@@ -8,7 +8,7 @@
     reason = "property helpers outside #[test] fail loudly; test models on bounded values (RS-018)"
 )]
 
-use aldis_core::{DecodeMode, ErrorKind};
+use aldis_core::ErrorKind;
 use aldis_testkit::strategies::proptest::prelude::*;
 use aldis_testkit::strategies::proptest::test_runner::TestCaseError;
 use aldis_testkit::strategies::time::{
@@ -18,7 +18,7 @@ use aldis_testkit::strategies::{self};
 use aldis_time::{
     AsciiFormat, AsciiOptions, AsciiSubset, AsciiTime, Ccs, CcsFormat, CcsVariation, CdsDayLen,
     CdsEpoch, CdsFormat, CdsSubMs, Cuc, MAX_ASCII_LEN, TimeCode, TimeFormat, UtcInstant,
-    decode_implicit, decode_with_pfield,
+    decode_implicit, decode_implicit_lenient, decode_with_pfield, decode_with_pfield_lenient,
 };
 
 /// Failing cases are saved here and replayed first.
@@ -43,10 +43,13 @@ fn ascii_text_property(bytes: &[u8]) -> Result<(), TestCaseError> {
 /// Strict accepts a subset of what lenient accepts, and a lenient decode re-encodes to a code
 /// that decodes the same (GEN-020, API-010, API-020, API-030).
 fn pfield_decode_property(bytes: &[u8]) -> Result<(), TestCaseError> {
-    let strict = decode_with_pfield(bytes, DecodeMode::Strict);
-    let lenient = decode_with_pfield(bytes, DecodeMode::Lenient);
+    let strict = decode_with_pfield(bytes);
+    let lenient = decode_with_pfield_lenient(bytes);
     match (&strict, &lenient) {
-        (Ok(s), Ok(l)) => prop_assert_eq!(s, l),
+        (Ok(s), Ok(l)) => {
+            prop_assert_eq!(s, &**l);
+            prop_assert!(l.anomalies().is_empty());
+        }
         (Ok(_), Err(e)) => prop_assert!(false, "lenient rejected a strict code: {}", e),
         (Err(s), Ok(l)) => {
             prop_assert_eq!(s.kind(), ErrorKind::ReservedValue);
@@ -62,7 +65,7 @@ fn pfield_decode_property(bytes: &[u8]) -> Result<(), TestCaseError> {
         // day-of-year high nibble is written as zero.
         let mut out = [0_u8; 32];
         let n = d.code().encode(true, &mut out).unwrap();
-        let again = decode_with_pfield(&out[..n], DecodeMode::Lenient).unwrap();
+        let again = decode_with_pfield_lenient(&out[..n]).unwrap();
         prop_assert_eq!(again.code(), d.code());
         prop_assert_eq!(again.len(), n);
     }
@@ -133,9 +136,10 @@ proptest! {
         let mut t = [0_u8; 32];
         let n = TimeCode::Ccs(c).encode(false, &mut t).unwrap();
         prop_assert_eq!(n, format.t_len());
-        let d = decode_implicit(&t[..n], &TimeFormat::Ccs(format), DecodeMode::Strict).unwrap();
+        let d = decode_implicit(&t[..n], &TimeFormat::Ccs(format)).unwrap();
         prop_assert_eq!(d.code(), TimeCode::Ccs(c));
-        prop_assert!(d.anomalies().is_empty());
+        let lenient = decode_implicit_lenient(&t[..n], &TimeFormat::Ccs(format)).unwrap();
+        prop_assert!(lenient.anomalies().is_empty());
         prop_assert_eq!(t[2] >> 4 == 0 || format.variation() == CcsVariation::MonthDay, true);
     }
 
@@ -162,4 +166,20 @@ fn saved_regressions() {
     // Shrunk failures of the property tests' earlier unit-test form, replayed with their
     // values: a proptest seed draws a different value once the strategy changes.
     pfield_decode_property(&[144, 128, 0]).unwrap();
+}
+
+proptest! {
+    #![proptest_config(strategies::config(256, REGRESSIONS))]
+
+    #[test]
+    fn strict_equals_lenient_without_anomalies(bytes in time_code_decoder_input()) {
+        // req: API-030, API-031, API-032, TIME-002
+        let strict = decode_with_pfield(&bytes);
+        let lenient = decode_with_pfield_lenient(&bytes);
+        if let Ok(s) = strict {
+            let l = lenient.expect("lenient accepts what strict accepts");
+            prop_assert!(l.anomalies().is_empty());
+            prop_assert_eq!(s, l.into_view());
+        }
+    }
 }

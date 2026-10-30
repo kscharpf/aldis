@@ -19,7 +19,7 @@
 use std::fmt::Debug;
 use std::ops::RangeInclusive;
 
-use aldis_core::{DecodeMode, Error, ErrorDetail, ErrorKind, FieldId};
+use aldis_core::{Error, ErrorDetail, ErrorKind, FieldId};
 use aldis_testkit::strategies::proptest::prelude::*;
 use aldis_testkit::strategies::time::{
     ascii_time, calendar_date, ccs, ccs_format, ccs_subsecond_out_of_range, ccs_value,
@@ -33,7 +33,7 @@ use aldis_time::{
     CcsValue, CcsVariation, Cds, CdsDayLen, CdsEpoch, CdsFormat, CdsSubMs, CdsValue, Cuc, CucEpoch,
     CucFormat, CucValue, Fraction, Hour, MAX_ASCII_LEN, Micros, Minute, Month, MsOfDay, PField,
     PFieldTail, Picos, ReservedPField, Second, SubMillis, TimeCode, TimeFormat, UtcInstant, Year,
-    decode_implicit, decode_with_pfield, field,
+    decode_implicit, decode_with_pfield, decode_with_pfield_lenient, field,
 };
 
 /// Failing cases are saved here and replayed first.
@@ -112,11 +112,11 @@ fn check_bounded<R, T>(
 fn binary_round_trip(code: TimeCode) -> (TimeCode, TimeCode) {
     let mut out = [0_u8; 32];
     let n = code.encode(true, &mut out).unwrap();
-    let explicit = decode_with_pfield(&out[..n], DecodeMode::Strict).unwrap();
+    let explicit = decode_with_pfield(&out[..n]).unwrap();
     assert_eq!(explicit.len(), n);
     let format = code.format().unwrap();
     let n = code.encode(false, &mut out).unwrap();
-    let implicit = decode_implicit(&out[..n], &format, DecodeMode::Strict).unwrap();
+    let implicit = decode_implicit(&out[..n], &format).unwrap();
     assert_eq!(implicit.len(), n);
     (explicit.code(), implicit.code())
 }
@@ -184,7 +184,7 @@ fn ccs_with_segment(index: usize, n: u8) -> Result<TimeCode, Error> {
     let mut t = [bcd(20), bcd(0), bcd(1), bcd(1), bcd(0), bcd(0), bcd(0)];
     t[index] = bcd(n);
     let format = TimeFormat::Ccs(CcsFormat::new(CcsVariation::MonthDay, 0).unwrap());
-    decode_implicit(&t, &format, DecodeMode::Strict).map(|d| d.code())
+    decode_implicit(&t, &format).map(|d| d.code())
 }
 
 /// A calendar field type on the wire: every two-digit BCD value of CCS segment `index` decodes
@@ -227,10 +227,10 @@ fn year_is_exactly_1_to_9999() {
     // Century and year segments 00 00: the one BCD year outside the range.
     let mut t = [0, 0, bcd(1), bcd(1), 0, 0, 0];
     let format = TimeFormat::Ccs(CcsFormat::new(CcsVariation::MonthDay, 0).unwrap());
-    let e = decode_implicit(&t, &format, DecodeMode::Strict).unwrap_err();
+    let e = decode_implicit(&t, &format).unwrap_err();
     assert_eq!(parts(&e), out_of_range(field::YEAR, 1, 0));
     t[1] = bcd(1);
-    assert!(decode_implicit(&t, &format, DecodeMode::Strict).is_ok());
+    assert!(decode_implicit(&t, &format).is_ok());
 }
 
 /// Month of year 1–12 (301.0 Annex A; ASCII MM, §3.5.1.1): every `u8`, every month through a
@@ -413,7 +413,7 @@ fn cds_wire(format: CdsFormat, ms: u32, sub: u32) -> Result<CdsValue, Error> {
         CdsSubMs::Micros => &sub[2..],
         CdsSubMs::Picos => &sub[..],
     });
-    match decode_implicit(&t, &TimeFormat::Cds(format), DecodeMode::Strict)?.code() {
+    match decode_implicit(&t, &TimeFormat::Cds(format))?.code() {
         TimeCode::Cds(c) => Ok(c.value()),
         _ => Err(Error::new(ErrorKind::Malformed)),
     }
@@ -700,8 +700,10 @@ fn ccs_formats_are_exactly_0_to_6_subsecond_octets() {
         );
         let len = code.encode(true, &mut octets).unwrap();
         octets[0] |= 0b111;
-        for mode in [DecodeMode::Strict, DecodeMode::Lenient] {
-            let e = decode_with_pfield(&octets[..len], mode).unwrap_err();
+        for e in [
+            decode_with_pfield(&octets[..len]).unwrap_err(),
+            decode_with_pfield_lenient(&octets[..len]).unwrap_err(),
+        ] {
             assert_eq!(
                 parts(&e),
                 plain(ErrorKind::ReservedValue, field::SUBSECOND_OCTETS)
@@ -779,7 +781,7 @@ fn agency_formats_are_exactly_1_to_16_octets() {
     for bits in 0..=0x0F_u8 {
         let mut octets = vec![0b0110_0000 | bits];
         octets.extend(std::iter::repeat_n(0xA5, usize::from(bits) + 1));
-        let d = decode_with_pfield(&octets, DecodeMode::Strict).unwrap();
+        let d = decode_with_pfield(&octets).unwrap();
         let TimeCode::Agency(a) = d.code() else {
             panic!("not an agency-defined code");
         };
@@ -871,12 +873,12 @@ fn pfield_tails_are_exactly_the_extension_chains() {
                 let mut out = [0_u8; 32];
                 let n = code.encode(true, &mut out).unwrap();
                 assert_eq!(n, 1 + octets.len() + 2);
-                let d = decode_with_pfield(&out[..n], DecodeMode::Lenient).unwrap();
+                let d = decode_with_pfield_lenient(&out[..n]).unwrap();
                 let TimeCode::Agency(a) = d.code() else {
                     panic!("not an agency-defined code");
                 };
                 assert_eq!((a.format().tail(), d.len()), (tail, n));
-                let strict = decode_with_pfield(&out[..n], DecodeMode::Strict);
+                let strict = decode_with_pfield(&out[..n]);
                 assert_eq!(strict.is_ok(), tail.is_empty(), "{octets:x?}");
             }
             Err(e) => {
@@ -915,7 +917,7 @@ fn reserved_pfields_are_exactly_the_reserved_identifications() {
         let r = ReservedPField::new(pfield);
         assert_eq!(r.map(|r| r.pfield()), is_reserved.then_some(pfield));
         if let Some(r) = r {
-            let lenient = decode_with_pfield(octets, DecodeMode::Lenient).unwrap();
+            let lenient = decode_with_pfield_lenient(octets).unwrap();
             assert_eq!(
                 (lenient.code(), lenient.len()),
                 (TimeCode::Unknown(r), octets.len())
@@ -923,7 +925,7 @@ fn reserved_pfields_are_exactly_the_reserved_identifications() {
             let mut out = [0_u8; 8];
             let n = TimeCode::Unknown(r).encode(true, &mut out).unwrap();
             assert_eq!(&out[..n], octets);
-            let e = decode_with_pfield(octets, DecodeMode::Strict).unwrap_err();
+            let e = decode_with_pfield(octets).unwrap_err();
             assert_eq!(
                 parts(&e),
                 plain(ErrorKind::ReservedValue, field::TIME_CODE_ID)

@@ -13,13 +13,13 @@
 //! [`aldis_time_convert`].
 
 use aldis::core::field;
-use aldis::core::{Error, Result};
+use aldis::core::{AnomalySet, Error, Result};
 use aldis::time::{
     Agency, AgencyFormat, AsciiFormat, AsciiOptions, AsciiSubset, AsciiTime, CalendarDate, Ccs,
     CcsFormat, CcsValue, CcsVariation, Cds, CdsDayLen, CdsEpoch, CdsFormat, CdsSubMs, CdsValue,
     Cuc, CucEpoch, CucFormat, CucValue, Decoded, Fraction, Hour, Micros, Minute, Month, MsOfDay,
-    PField, PFieldTail, Picos, Second, SubMillis, TimeCode, TimeFormat, UtcInstant, Year,
-    decode_implicit, decode_with_pfield,
+    PField, PFieldTail, Picos, Second, SubMillis, TimeAnomaly, TimeCode, TimeFormat, UtcInstant,
+    Year, decode_implicit, decode_implicit_lenient, decode_with_pfield, decode_with_pfield_lenient,
 };
 
 use crate::abi::{self, Out, invalid_argument};
@@ -663,7 +663,7 @@ fn pfield_octets(p: &PField) -> ([u8; 8], u8) {
 }
 
 /// The C struct of a decoded time code.
-pub(crate) fn decoded(d: &Decoded) -> aldis_time_decoded_t {
+pub(crate) fn decoded(d: &Decoded, anomalies: AnomalySet<TimeAnomaly>) -> aldis_time_decoded_t {
     let code = d.code();
     let (pfield, pfield_len) = d.pfield().map_or(([0; 8], 0), |p| pfield_octets(&p));
     aldis_time_decoded_t {
@@ -673,7 +673,7 @@ pub(crate) fn decoded(d: &Decoded) -> aldis_time_decoded_t {
         value: value_out(&code),
         pfield,
         pfield_len,
-        anomalies: d.anomalies().bits(),
+        anomalies: anomalies.bits(),
         len: d.len(),
     }
 }
@@ -844,7 +844,11 @@ pub unsafe extern "C" fn aldis_time_decode(
             let bytes = abi::bytes(bytes, len)?;
             let mode = abi::mode(mode)?;
             let out = abi::out(out)?;
-            out.write(decoded(&decode_with_pfield(bytes, mode)?));
+            let (d, anomalies) = mode.dispatch(
+                || decode_with_pfield(bytes),
+                || decode_with_pfield_lenient(bytes),
+            )?;
+            out.write(decoded(&d, anomalies));
             Ok(())
         })
     }
@@ -878,7 +882,11 @@ pub unsafe extern "C" fn aldis_time_decode_implicit(
             let format = time_format(&abi::read(format)?)?;
             let mode = abi::mode(mode)?;
             let out = abi::out(out)?;
-            out.write(decoded(&decode_implicit(bytes, &format, mode)?));
+            let (d, anomalies) = mode.dispatch(
+                || decode_implicit(bytes, &format),
+                || decode_implicit_lenient(bytes, &format),
+            )?;
+            out.write(decoded(&d, anomalies));
             Ok(())
         })
     }

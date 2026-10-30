@@ -1,7 +1,7 @@
 //! Time codes with an explicit or implicit P-field: decode, encode, agency-defined codes
 //! (301.0 §3, §3.6; TIME-001…TIME-006).
 
-use aldis_core::{AnomalySet, DecodeMode, Error, ErrorDetail, ErrorKind, Result};
+use aldis_core::{AnomalySet, DecodeMode, Error, ErrorDetail, ErrorKind, Lenient, Result};
 
 use crate::anomaly::TimeAnomaly;
 use crate::ccs::{Ccs, CcsFormat};
@@ -192,14 +192,13 @@ pub enum TimeCode {
     Unknown(ReservedPField),
 }
 
-/// A successful decode: the code, the octets consumed, and lenient-mode anomalies (301.0 §3.1;
-/// TIME-003, GEN-043).
+/// A successful decode: the code and the octets consumed (301.0 §3.1; TIME-003). A lenient
+/// decode returns it in a [`Lenient`] with its anomalies (API-032, GEN-043).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Decoded {
     code: TimeCode,
     pfield: Option<PField>,
     len: usize,
-    anomalies: AnomalySet<TimeAnomaly>,
 }
 
 impl Decoded {
@@ -229,13 +228,6 @@ impl Decoded {
     pub const fn is_empty(&self) -> bool {
         false
     }
-
-    /// Lenient-mode anomalies; always empty after a strict decode (301.0 §3.1.1, §3.4.1.2; API-032,
-    /// GEN-043).
-    #[must_use]
-    pub const fn anomalies(&self) -> AnomalySet<TimeAnomaly> {
-        self.anomalies
-    }
 }
 
 /// Decodes the T-field `t` (exactly `format.t_len()` octets).
@@ -259,18 +251,33 @@ fn t_field(bytes: &[u8], start: usize, len: usize) -> Result<&[u8]> {
     bytes.get(start..end).ok_or(Error::incomplete(end))
 }
 
-/// Decodes a time code whose P-field is present at the start of `bytes`; octets after the
-/// T-field are ignored (301.0 §3.1; TIME-001…TIME-003, TIME-005, TIME-006).
+/// Decodes a time code whose P-field is present at the start of `bytes`, in strict mode; octets
+/// after the T-field are ignored (301.0 §3.1; TIME-001…TIME-003, TIME-005, TIME-006, API-031).
 ///
 /// # Errors
 /// - `Incomplete` if `bytes` ends inside the P-field or the T-field.
 /// - `Malformed` for a P-field longer than 8 octets (TIME-005).
-/// - `ReservedValue` in strict mode for a reserved time code ID (TIME-002) or undefined
-///   P-field extension octets (TIME-005); lenient mode returns [`TimeCode::Unknown`] or keeps
-///   the octets, with an anomaly flag.
-/// - `ReservedValue` in both modes for CDS submillisecond code `11` or CCS resolution `111`.
+/// - `ReservedValue` for a reserved time code ID (TIME-002) or undefined P-field extension
+///   octets (TIME-005).
+/// - `ReservedValue` for CDS submillisecond code `11` or CCS resolution `111`.
 /// - The range and BCD errors of the code (TIME-021, TIME-030, TIME-034).
-pub fn decode_with_pfield(bytes: &[u8], mode: DecodeMode) -> Result<Decoded> {
+pub fn decode_with_pfield(bytes: &[u8]) -> Result<Decoded> {
+    pfield_in(bytes, DecodeMode::Strict).map(|(decoded, _)| decoded)
+}
+
+/// Decodes a time code as [`decode_with_pfield`] does, in lenient mode (API-032).
+///
+/// A reserved time code ID gives [`TimeCode::Unknown`] and undefined P-field extension octets
+/// are kept, each with an anomaly flag (TIME-002, TIME-005).
+///
+/// # Errors
+/// As for [`decode_with_pfield`], except the deviations that are anomalies.
+pub fn decode_with_pfield_lenient(bytes: &[u8]) -> Result<Lenient<Decoded, TimeAnomaly>> {
+    pfield_in(bytes, DecodeMode::Lenient)
+        .map(|(decoded, anomalies)| Lenient::new(decoded, anomalies))
+}
+
+fn pfield_in(bytes: &[u8], mode: DecodeMode) -> Result<(Decoded, AnomalySet<TimeAnomaly>)> {
     let pfield = PField::parse(bytes)?;
     let mut anomalies = AnomalySet::empty();
     let format = match pfield.id() {
@@ -285,12 +292,14 @@ pub fn decode_with_pfield(bytes: &[u8], mode: DecodeMode) -> Result<Decoded> {
                 DecodeMode::Strict => {
                     Err(Error::new(ErrorKind::ReservedValue).with_field(field::TIME_CODE_ID))
                 }
-                DecodeMode::Lenient => Ok(Decoded {
-                    code: TimeCode::Unknown(ReservedPField::from_reserved(pfield)),
-                    pfield: Some(pfield),
-                    len: pfield.len(),
-                    anomalies: AnomalySet::from_flags(&[TimeAnomaly::ReservedTimeCodeId]),
-                }),
+                DecodeMode::Lenient => Ok((
+                    Decoded {
+                        code: TimeCode::Unknown(ReservedPField::from_reserved(pfield)),
+                        pfield: Some(pfield),
+                        len: pfield.len(),
+                    },
+                    AnomalySet::from_flags(&[TimeAnomaly::ReservedTimeCodeId]),
+                )),
             };
         }
     };
@@ -304,29 +313,49 @@ pub fn decode_with_pfield(bytes: &[u8], mode: DecodeMode) -> Result<Decoded> {
     }
     let t = t_field(bytes, pfield.len(), format.t_len())?;
     let code = decode_t(format, t, mode, &mut anomalies)?;
-    Ok(Decoded {
+    let decoded = Decoded {
         code,
         pfield: Some(pfield),
         len: pfield.len().saturating_add(t.len()),
-        anomalies,
-    })
+    };
+    Ok((decoded, anomalies))
 }
 
 /// Decodes a T-field at the start of `bytes` whose layout is known from management (implicit
-/// P-field, 301.0 §3.1.1); octets after it are ignored (TIME-003).
+/// P-field, 301.0 §3.1.1), in strict mode; octets after it are ignored (TIME-003).
 ///
 /// # Errors
 /// `Incomplete` if `bytes` is shorter than the T-field; the range and BCD errors of the code.
-pub fn decode_implicit(bytes: &[u8], format: &TimeFormat, mode: DecodeMode) -> Result<Decoded> {
+pub fn decode_implicit(bytes: &[u8], format: &TimeFormat) -> Result<Decoded> {
+    implicit_in(bytes, format, DecodeMode::Strict).map(|(decoded, _)| decoded)
+}
+
+/// Decodes a T-field as [`decode_implicit`] does, in lenient mode (API-032).
+///
+/// # Errors
+/// As for [`decode_implicit`], except the deviations that are anomalies.
+pub fn decode_implicit_lenient(
+    bytes: &[u8],
+    format: &TimeFormat,
+) -> Result<Lenient<Decoded, TimeAnomaly>> {
+    implicit_in(bytes, format, DecodeMode::Lenient)
+        .map(|(decoded, anomalies)| Lenient::new(decoded, anomalies))
+}
+
+fn implicit_in(
+    bytes: &[u8],
+    format: &TimeFormat,
+    mode: DecodeMode,
+) -> Result<(Decoded, AnomalySet<TimeAnomaly>)> {
     let t = t_field(bytes, 0, format.t_len())?;
     let mut anomalies = AnomalySet::empty();
     let code = decode_t(*format, t, mode, &mut anomalies)?;
-    Ok(Decoded {
+    let decoded = Decoded {
         code,
         pfield: None,
         len: t.len(),
-        anomalies,
-    })
+    };
+    Ok((decoded, anomalies))
 }
 
 impl TimeCode {
@@ -405,7 +434,8 @@ impl TimeCode {
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::{
-        Agency, AgencyFormat, Decoded, TimeCode, TimeFormat, decode_implicit, decode_with_pfield,
+        Agency, AgencyFormat, TimeCode, TimeFormat, decode_implicit, decode_implicit_lenient,
+        decode_with_pfield, decode_with_pfield_lenient,
     };
     use crate::anomaly::TimeAnomaly;
     use crate::calendar::{CalendarDate, Hour, Minute, Month, Second, Year};
@@ -416,7 +446,7 @@ mod tests {
     use crate::cuc::{Cuc, CucEpoch, CucFormat, CucValue};
     use crate::field;
     use crate::pfield::{PField, PFieldTail};
-    use aldis_core::{DecodeMode, ErrorDetail, ErrorKind};
+    use aldis_core::{ErrorDetail, ErrorKind};
 
     fn samples() -> [TimeCode; 4] {
         let tail = PFieldTail::new(&[0x01]).unwrap();
@@ -514,7 +544,7 @@ mod tests {
             assert_eq!(format.pfield(), code.pfield());
             let mut out = [0_u8; 32];
             let n = code.encode(true, &mut out).unwrap();
-            let lenient = decode_with_pfield(&out[..n], DecodeMode::Lenient).unwrap();
+            let lenient = decode_with_pfield_lenient(&out[..n]).unwrap();
             assert_eq!(
                 (lenient.code(), lenient.len(), lenient.is_empty()),
                 (code, n, false)
@@ -527,7 +557,7 @@ mod tests {
                     .contains(TimeAnomaly::UndefinedPFieldExtension),
                 tail
             );
-            let strict = decode_with_pfield(&out[..n], DecodeMode::Strict);
+            let strict = decode_with_pfield(&out[..n]);
             if tail {
                 let e = strict.unwrap_err();
                 assert_eq!(
@@ -539,7 +569,7 @@ mod tests {
             }
             let m = code.encode(false, &mut out).unwrap();
             assert_eq!(m, format.t_len());
-            let implicit = decode_implicit(&out[..m], &format, DecodeMode::Strict).unwrap();
+            let implicit = decode_implicit(&out[..m], &format).unwrap();
             assert_eq!(
                 (implicit.code(), implicit.len(), implicit.pfield()),
                 (code, m, None)
@@ -555,12 +585,12 @@ mod tests {
     #[test]
     fn reserved_ids_and_unknown_codes() {
         // req: TIME-002, TIME-003, API-032
-        let e = decode_with_pfield(&[0x30, 0], DecodeMode::Strict).unwrap_err();
+        let e = decode_with_pfield(&[0x30, 0]).unwrap_err();
         assert_eq!(
             (e.kind(), e.field()),
             (ErrorKind::ReservedValue, Some(field::TIME_CODE_ID))
         );
-        let d: Decoded = decode_with_pfield(&[0xB0, 0x01, 0xFF], DecodeMode::Lenient).unwrap();
+        let d = decode_with_pfield_lenient(&[0xB0, 0x01, 0xFF]).unwrap();
         assert_eq!(d.len(), 2);
         assert!(d.anomalies().contains(TimeAnomaly::ReservedTimeCodeId));
         let TimeCode::Unknown(reserved) = d.code() else {
@@ -583,21 +613,17 @@ mod tests {
     #[test]
     fn decode_errors() {
         // req: TIME-003, TIME-020, TIME-030
-        let e = decode_with_pfield(&[0x1E, 0, 0], DecodeMode::Strict).unwrap_err();
+        let e = decode_with_pfield(&[0x1E, 0, 0]).unwrap_err();
         assert_eq!(
             (e.kind(), e.detail()),
             (ErrorKind::Incomplete, ErrorDetail::Needed(7))
         );
         assert_eq!(
-            decode_with_pfield(&[0x43], DecodeMode::Lenient)
-                .unwrap_err()
-                .kind(),
+            decode_with_pfield_lenient(&[0x43]).unwrap_err().kind(),
             ErrorKind::ReservedValue
         );
         assert_eq!(
-            decode_with_pfield(&[0x57], DecodeMode::Lenient)
-                .unwrap_err()
-                .kind(),
+            decode_with_pfield_lenient(&[0x57]).unwrap_err().kind(),
             ErrorKind::ReservedValue
         );
         let cds = TimeFormat::Cds(CdsFormat::new(
@@ -605,13 +631,10 @@ mod tests {
             CdsDayLen::Bits16,
             CdsSubMs::None,
         ));
-        let e = decode_implicit(&[0, 0, 0xFF, 0xFF, 0xFF, 0xFF], &cds, DecodeMode::Lenient)
-            .unwrap_err();
+        let e = decode_implicit_lenient(&[0, 0, 0xFF, 0xFF, 0xFF, 0xFF], &cds).unwrap_err();
         assert_eq!(e.kind(), ErrorKind::OutOfRange);
         assert_eq!(
-            decode_implicit(&[0], &cds, DecodeMode::Strict)
-                .unwrap_err()
-                .kind(),
+            decode_implicit(&[0], &cds).unwrap_err().kind(),
             ErrorKind::Incomplete
         );
         assert_eq!(cds.t_len(), 6);

@@ -1,11 +1,11 @@
 //! Lenient-mode anomaly flags (GEN-043, API-032, GEN-081).
 //!
-//! A decoder in [`DecodeMode::Lenient`](crate::mode::DecodeMode::Lenient) returns an
-//! [`AnomalySet`] alongside a successful result. Each codec crate declares its own flag enum
+//! A lenient decoder returns an [`AnomalySet`] alongside a successful result, in a
+//! [`Lenient`](crate::mode::Lenient). Each codec crate declares its own flag enum
 //! with [`anomaly_flags!`](crate::anomaly_flags), which makes the enum `#[non_exhaustive]`
 //! (GEN-081) and implements [`Anomaly`] from one table of bit indices. The indices are listed
 //! in each standard document (API-033) and are shared with the C ABI, so a flag is never
-//! renumbered. A strict decoder always returns [`AnomalySet::empty`].
+//! renumbered. A strict decoder returns the view alone, with no anomaly set (API-031).
 
 use core::fmt;
 use core::hash::Hash;
@@ -146,7 +146,7 @@ pub struct AnomalySet<A> {
 }
 
 impl<A> AnomalySet<A> {
-    /// The empty set, which every strict decode returns.
+    /// The empty set.
     #[must_use]
     pub const fn empty() -> AnomalySet<A> {
         AnomalySet {

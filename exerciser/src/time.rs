@@ -3,14 +3,14 @@
 
 use core::hint::black_box as bb;
 
-use aldis_core::{DecodeMode, ErrorKind};
+use aldis_core::{AnomalySet, DecodeMode, ErrorKind, Lenient};
 use aldis_time::{
     Agency, AgencyFormat, AsciiFormat, AsciiOptions, AsciiSubset, AsciiTime, CalendarDate, Ccs,
     CcsFormat, CcsValue, CcsVariation, Cds, CdsDayLen, CdsEpoch, CdsFormat, CdsSubMs, CdsValue,
     Cuc, CucEpoch, CucFormat, CucValue, Decoded, Fraction, Hour, MAX_ASCII_LEN,
     MAX_FRACTION_DIGITS, Micros, Minute, Month, MsOfDay, PField, PFieldTail, Picos, ReservedPField,
     Second, SubMillis, TimeAnomaly, TimeCode, TimeCodeId, TimeFormat, UtcInstant, Year,
-    decode_implicit, decode_with_pfield,
+    decode_implicit, decode_implicit_lenient, decode_with_pfield, decode_with_pfield_lenient,
 };
 
 use crate::exercise::Tally;
@@ -20,7 +20,8 @@ fn round_trip(t: &mut Tally, code: TimeCode) {
     let mut out = [0_u8; 32];
     match code.encode(bb(true), &mut out) {
         Ok(n) => {
-            let d = decode_with_pfield(bb(out.get(..n).unwrap_or_default()), DecodeMode::Lenient);
+            let d = decode_with_pfield_lenient(bb(out.get(..n).unwrap_or_default()))
+                .map(Lenient::into_view);
             t.check(d.is_ok_and(|d| d.code() == code && d.len() == n && !d.is_empty()));
             t.check(d.is_ok_and(|d| d.pfield() == Some(code.pfield())));
         }
@@ -28,11 +29,7 @@ fn round_trip(t: &mut Tally, code: TimeCode) {
     }
     match (code.encode(bb(false), &mut out), code.format()) {
         (Ok(m), Some(format)) => {
-            let d = decode_implicit(
-                bb(out.get(..m).unwrap_or_default()),
-                &format,
-                DecodeMode::Strict,
-            );
+            let d = decode_implicit(bb(out.get(..m).unwrap_or_default()), &format);
             t.check(
                 m == format.t_len() && d.is_ok_and(|d| d.code() == code && d.pfield().is_none()),
             );
@@ -60,14 +57,14 @@ fn pfield(t: &mut Tally) {
     let tail = PFieldTail::new(bb(&[0x81, 0x02]));
     t.check(tail.is_ok_and(|x| x.as_bytes() == [0x81, 0x02] && x.len() == 2 && !x.is_empty()));
     t.check(PFieldTail::new(bb(&[0x80])).is_err() && PFieldTail::EMPTY.is_empty());
-    let unknown = decode_with_pfield(bb(&[0x30, 0x00]), DecodeMode::Lenient);
+    let unknown = decode_with_pfield_lenient(bb(&[0x30, 0x00]));
     t.check(unknown.is_ok_and(|d| {
         matches!(d.code(), TimeCode::Unknown(r) if r.pfield().id().is_reserved())
             && d.len() == 1
             && d.anomalies().contains(TimeAnomaly::ReservedTimeCodeId)
             && d.code().format().is_none()
     }));
-    t.check(decode_with_pfield(bb(&[0x30]), DecodeMode::Strict).is_err());
+    t.check(decode_with_pfield(bb(&[0x30])).is_err());
 }
 
 fn cuc_codes(t: &mut Tally) {
@@ -243,7 +240,7 @@ fn agency_codes(t: &mut Tally) {
         CdsDayLen::Bits16,
         CdsSubMs::None,
     ));
-    t.check(decode_implicit(bb(&[0; 3]), &fmt, DecodeMode::Strict).is_err());
+    t.check(decode_implicit(bb(&[0; 3]), &fmt).is_err());
 }
 
 fn ascii_codes(t: &mut Tally) {
@@ -681,7 +678,7 @@ fn value_fields(o: &mut Out, key: &str, code: &TimeCode) {
     }
 }
 
-fn decoded(o: &mut Out, d: &Decoded) {
+fn decoded(o: &mut Out, d: &Decoded, anomalies: AnomalySet<TimeAnomaly>) {
     let code = d.code();
     o.text("code", code_name(&code));
     let mut pfield = [0_u8; 8];
@@ -700,7 +697,7 @@ fn decoded(o: &mut Out, d: &Decoded) {
     format_fields(o, "format", &code);
     value_fields(o, "value", &code);
     o.num("consumed", wide(d.len()));
-    o.names("anomalies", d.anomalies().iter());
+    o.names("anomalies", anomalies.iter());
 }
 
 fn options(p: Map) -> Result<AsciiOptions, Fail> {
@@ -826,14 +823,23 @@ fn convert(case: &Case, o: &mut Out) -> Run {
 pub fn vector(case: &Case, o: &mut Out, _: &mut Scratch) -> Run {
     let p = case.params;
     match case.op {
-        "decode" => decoded(o, &decode_with_pfield(bb(case.input), bb(mode(case)))?),
+        "decode" => {
+            let input = bb(case.input);
+            let (code, found) = mode(case).dispatch(
+                || decode_with_pfield(input),
+                || decode_with_pfield_lenient(input),
+            )?;
+            decoded(o, &code, found);
+        }
         "decode_implicit" => {
             let f = p.obj("format")?;
             let format = format_of(f.text("code")?, f)?;
-            decoded(
-                o,
-                &decode_implicit(bb(case.input), &format, bb(mode(case)))?,
-            );
+            let input = bb(case.input);
+            let (code, found) = mode(case).dispatch(
+                || decode_implicit(input, &format),
+                || decode_implicit_lenient(input, &format),
+            )?;
+            decoded(o, &code, found);
         }
         "encode" => {
             let f = p.obj("format")?;

@@ -392,7 +392,6 @@ mod tests {
     use super::{aos_frame, aos_frame_decoder_input, vc_table};
     use crate::strategies::config;
     use aldis_aos::AosFrame;
-    use aldis_core::DecodeMode;
     use proptest::prelude::*;
 
     const REGRESSIONS: &str = concat!(
@@ -407,7 +406,7 @@ mod tests {
         fn frames_decode_strictly(f in aos_frame()) {
             // req: VER-054, AOS-019
             let pc = f.pc();
-            let d = AosFrame::decode(&f.octets, &pc, &f.table, DecodeMode::Strict).unwrap();
+            let d = AosFrame::decode(&f.octets, &pc, &f.table).unwrap();
             prop_assert_eq!(d.vcid(), f.fields.vcid);
             prop_assert_eq!(d.data_unit().zone(), f.zone.as_slice());
         }
@@ -417,9 +416,8 @@ mod tests {
             // req: VER-054, GEN-020
             prop_assert!(t.vcs().next().is_some());
             let pc = table.physical_channel();
-            for mode in [DecodeMode::Strict, DecodeMode::Lenient] {
-                let _ = AosFrame::decode(&bytes, &pc, &table, mode);
-            }
+            let _ = AosFrame::decode(&bytes, &pc, &table);
+            let _ = AosFrame::decode_lenient(&bytes, &pc, &table);
         }
     }
 }

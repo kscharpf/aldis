@@ -84,7 +84,7 @@ A requirement states an obligation, in protocol or API-model terms (OI-63). In t
 - a function or method call: a lowercase name, with dots, followed by `(`;
 - a Rust type or variant: a name that starts with an upper-case letter, has a lower-case letter, and is not an error kind of the catalogue of [03-api-model.md](../03-api-model.md) §9, with or without a `<…>`, `(…)`, or `{…}` group.
 
-A bare lowercase word (`vc_id`, `decode`, `std`) is not told apart from a field, a key, a lint, a feature, or a command, and is not a problem. The requirements of `docs/profiles/` are about the conventions of a language, and name its constructs. Name an anomaly, an action, or an input in plain words; cite a file or a C ABI symbol as `file:` or `sym:`. The rows listed in `PENDING_REWRITE` in `xtask/src/assurance.rs` are exempt until the pull requests that reword them have merged.
+A bare lowercase word (`vc_id`, `decode`, `std`) is not told apart from a field, a key, a lint, a feature, or a command, and is not a problem. The requirements of `docs/profiles/` are about the conventions of a language, and name its constructs. Name an anomaly, an action, or an input in plain words; cite a file or a C ABI symbol as `file:` or `sym:`.
 
 ## 3. The hazard files
 

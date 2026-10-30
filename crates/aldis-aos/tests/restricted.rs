@@ -19,7 +19,7 @@ use aldis_aos::{
     OID_VCID, PacketOffset, PacketPointer, PduHeader, ValidBitCount, VcFrameCount, VcTable, encode,
 };
 use aldis_core::ids::{SpacecraftId, VcId};
-use aldis_core::{DecodeMode, Error, ErrorDetail, ErrorKind, FieldId};
+use aldis_core::{Error, ErrorDetail, ErrorKind, FieldId};
 use aldis_testkit::strategies;
 use aldis_testkit::strategies::aos::{
     EncodedAosFrame, aos_frame, content, cycle, physical_channel, vc_frame_count,
@@ -110,7 +110,7 @@ fn round_trip(
     };
     let mut out = vec![0_u8; pc.frame_len()];
     let n = encode(&pc, t, &fields, &content, &mut out).unwrap();
-    let f = AosFrame::decode(&out[..n], &pc, t, DecodeMode::Strict).unwrap();
+    let f = AosFrame::decode(&out[..n], &pc, t).unwrap();
     (f.vc_frame_count(), f.vc_frame_count_cycle())
 }
 
@@ -225,7 +225,7 @@ fn packet_offset_is_below_the_reserved_pointers() {
                         continue;
                     }
                     field[..2].copy_from_slice(&p.header_octets(edition).unwrap());
-                    let m = Mpdu::decode(&field, edition, DecodeMode::Strict).unwrap();
+                    let m = Mpdu::decode(&field, edition).unwrap();
                     assert_eq!(m.pointer(), p);
                 }
             }
@@ -293,8 +293,7 @@ fn packet_pointer_classifies_every_raw_value() {
                 assert_eq!(got, want, "{edition:?} raw {raw:#x} zone {zone_len}");
                 if raw <= ones(width) {
                     unit[..2].copy_from_slice(&raw.to_be_bytes());
-                    let decoded =
-                        Mpdu::decode(unit, edition, DecodeMode::Strict).map(|m| m.pointer());
+                    let decoded = Mpdu::decode(unit, edition).map(|m| m.pointer());
                     assert_eq!(decoded, want);
                 }
                 if let Ok(p) = got {
@@ -328,7 +327,7 @@ fn valid_bit_count_is_below_the_reserved_pointers() {
                 assert_eq!(count.last_bit(), v - 1);
                 let p = BitstreamPointer::ValidBits(count);
                 unit[..2].copy_from_slice(&p.header_octets());
-                let b = Bpdu::decode(&unit, DecodeMode::Strict).unwrap();
+                let b = Bpdu::decode(&unit).unwrap();
                 assert_eq!(b.pointer(), p);
             }
             Err(e) => {
@@ -406,10 +405,7 @@ fn bitstream_pointer_classifies_every_raw_value() {
             assert_eq!(got, want, "raw {raw:#x} zone {zone_len}");
             if raw <= ones(BDP_BITS) {
                 unit[..2].copy_from_slice(&raw.to_be_bytes());
-                assert_eq!(
-                    Bpdu::decode(unit, DecodeMode::Strict).map(|b| b.pointer()),
-                    want
-                );
+                assert_eq!(Bpdu::decode(unit).map(|b| b.pointer()), want);
             }
             if let Ok(p) = got {
                 assert_eq!(p.to_raw(), raw);
@@ -536,7 +532,7 @@ fn virtual_channel_vcid_is_not_the_oid_vcid() {
                     };
                     let mut out = [0_u8; 40];
                     let n = encode(&pc, &t, &fields, &content, &mut out).unwrap();
-                    let f = AosFrame::decode(&out[..n], &pc, &t, DecodeMode::Strict).unwrap();
+                    let f = AosFrame::decode(&out[..n], &pc, &t).unwrap();
                     assert_eq!((f.vcid(), f.is_oid()), (vcid, false));
                 }
                 Err(e) => {
@@ -570,7 +566,7 @@ fn re_encoded(
     };
     let mut out = vec![0_u8; pc.frame_len()];
     let n = encode(&pc, &f.table, &fields, &f.content(), &mut out).unwrap();
-    let d = AosFrame::decode(&out[..n], &pc, &f.table, DecodeMode::Strict).unwrap();
+    let d = AosFrame::decode(&out[..n], &pc, &f.table).unwrap();
     (d.vc_frame_count(), d.vc_frame_count_cycle())
 }
 
@@ -635,7 +631,7 @@ proptest! {
         let content = AosFrameContent { insert_zone: &iz, security_header: &[], zone: &zone, security_trailer: &[], ocf: None };
         let mut out = vec![0_u8; pc.frame_len()];
         let n = encode(&pc, &t, &fields, &content, &mut out).unwrap();
-        let f = AosFrame::decode(&out[..n], &pc, &t, DecodeMode::Strict).unwrap();
+        let f = AosFrame::decode(&out[..n], &pc, &t).unwrap();
         prop_assert_eq!((f.len(), f.scid(), f.vcid()), (pc.frame_len(), scid, vc.vcid()));
     }
 }
@@ -706,7 +702,7 @@ fn vc_tables_accept_exactly_the_configurable_channels() {
         };
         let mut out = vec![0_u8; wide.frame_len()];
         let n = encode(&wide, &t, &fields, &content, &mut out).unwrap();
-        let f = AosFrame::decode(&out[..n], &wide, &t, DecodeMode::Strict).unwrap();
+        let f = AosFrame::decode(&out[..n], &wide, &t).unwrap();
         assert_eq!((f.vcid().get(), f.data_unit().zone()), (v, zone.as_slice()));
     }
 
@@ -775,6 +771,6 @@ proptest! {
         let vcs: Vec<AosVirtualChannelConfig> = f.table.vcs().copied().collect();
         let again = aldis_testkit::strategies::aos::AosTable::new(f.pc(), &vcs).unwrap();
         prop_assert_eq!(&again, &f.table);
-        prop_assert!(AosFrame::decode(&f.octets, &f.pc(), &again, DecodeMode::Strict).is_ok());
+        prop_assert!(AosFrame::decode(&f.octets, &f.pc(), &again).is_ok());
     }
 }

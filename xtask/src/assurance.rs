@@ -415,12 +415,6 @@ fn requirement_code_name(span: &str, kinds: &BTreeSet<String>) -> Option<&'stati
 /// constructs (§2.5a).
 const PROFILE_DIR: &str = "docs/profiles/";
 
-/// Requirements that the open pull request #184 rewords; rewrite them there and delete this
-/// list when it has merged (OI-63).
-const PENDING_REWRITE: [&str; 8] = [
-    "AOS-010", "API-030", "API-031", "API-032", "EPP-010", "TC-021", "TM-011", "USLP-014",
-];
-
 /// The code-name rule on the requirement tables (§2.5a): a code span of a requirement that is not
 /// a reference of a kind of §2.3 states an obligation, so it names no code item.
 fn requirement_code_names(rep: &mut Report, spec: &Spec) {
@@ -429,7 +423,7 @@ fn requirement_code_names(rep: &mut Report, spec: &Spec) {
             continue;
         }
         let path = format!("docs/{}", r.doc);
-        if path.starts_with(PROFILE_DIR) || PENDING_REWRITE.contains(&r.id.as_str()) {
+        if path.starts_with(PROFILE_DIR) {
             continue;
         }
         for span in spans(&r.text).unwrap_or_default() {

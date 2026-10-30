@@ -5,7 +5,7 @@
 //! | Module | Contents | Clauses | Requirements |
 //! |---|---|---|---|
 //! | [`pfield`] | P-field parsing, `TimeCodeId`, undefined-extension `PFieldTail` | 301.0 §3.1.1 | TIME-001, TIME-002, TIME-005 |
-//! | [`code`] | `decode_with_pfield`, `decode_implicit`, `TimeCode`, `TimeFormat`, agency-defined codes | 301.0 §3.1, §3.6 | TIME-001…TIME-003, TIME-005, TIME-006 |
+//! | [`code`] | `decode_with_pfield`, `decode_implicit` (each with a `_lenient` twin), `TimeCode`, `TimeFormat`, agency-defined codes | 301.0 §3.1, §3.6 | TIME-001…TIME-003, TIME-005, TIME-006 |
 //! | [`cuc`] | CCSDS Unsegmented Code, nanosecond conversions | 301.0 §3.2 | TIME-010…TIME-014 |
 //! | [`cds`] | CCSDS Day Segmented Code | 301.0 §3.3, Annex A | TIME-020…TIME-022 |
 //! | [`calendar`] | Range-checked `Year`, `Month`, `Hour`, `Minute`, `Second`; `CalendarDate` | 301.0 §3.4.1, §3.5.1, Annex A | TIME-030 |
@@ -61,7 +61,8 @@ pub use cds::{
     Cds, CdsDayLen, CdsEpoch, CdsFormat, CdsSubMs, CdsValue, Micros, MsOfDay, Picos, SubMillis,
 };
 pub use code::{
-    Agency, AgencyFormat, Decoded, TimeCode, TimeFormat, decode_implicit, decode_with_pfield,
+    Agency, AgencyFormat, Decoded, TimeCode, TimeFormat, decode_implicit, decode_implicit_lenient,
+    decode_with_pfield, decode_with_pfield_lenient,
 };
 pub use convert::UtcInstant;
 pub use cuc::{Cuc, CucEpoch, CucFormat, CucValue};

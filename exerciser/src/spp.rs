@@ -6,7 +6,7 @@ use core::num::NonZeroUsize;
 
 use aldis_core::counter::Continuity;
 use aldis_core::ids::{Apid, SeqCount};
-use aldis_core::{DecodeMode, ErrorKind};
+use aldis_core::{AnomalySet, DecodeMode, ErrorKind};
 use aldis_spp::{
     Discard, IdlePacket, MAX_PACKET_LEN, MIN_PACKET_LEN, OctetStringEncoder, Outcome,
     PRIMARY_HEADER_LEN, PacketFields, PacketType, Reassembler, ReassemblerState,
@@ -32,13 +32,14 @@ fn fields(apid: u16, count: u16) -> Option<PacketFields> {
 
 fn decode(t: &mut Tally) {
     let bytes = bb([0x18, 0x23, 0x40, 0x07, 0x00, 0x02, 0xA0, 0xB0, 0xB1, 0xEE]);
-    match SpacePacket::decode(&bytes, DecodeMode::Strict) {
+    t.check(SpacePacket::decode_lenient(&bytes).is_ok_and(|l| l.anomalies().is_empty()));
+    match SpacePacket::decode(&bytes) {
         Ok(p) => {
             t.check(p.packet_type() == PacketType::Telecommand && p.apid().get() == 0x023);
             t.check(p.sequence_flags() == SequenceFlags::First && p.sequence_flags().bits() == 1);
             t.check(p.sequence_count().get() == 7 && p.packet_name() == SeqCount::new(7));
             t.check(p.has_secondary_header() && !p.is_idle() && !p.is_empty() && p.len() == 9);
-            t.check(p.data_field() == [0xA0, 0xB0, 0xB1] && p.anomalies().is_empty());
+            t.check(p.data_field() == [0xA0, 0xB0, 0xB1]);
             let h = p.header();
             t.check(h.packet_len() == 9 && h.data_len() == 3 && h.has_secondary_header());
             t.check(h.octets() == [0x18, 0x23, 0x40, 0x07, 0x00, 0x02] && !h.is_idle());
@@ -64,19 +65,13 @@ fn decode(t: &mut Tally) {
             .is_err_and(|e| e.kind() == ErrorKind::UnsupportedVersion),
     );
     let idle = bb([0x0F, 0xFF, 0xC0, 0x00, 0x00, 0x00, 0x00]);
+    t.check(SpacePacket::decode(&idle).is_err_and(|e| e.kind() == ErrorKind::InvalidField));
     t.check(
-        SpacePacket::decode(&idle, DecodeMode::Strict)
-            .is_err_and(|e| e.kind() == ErrorKind::InvalidField),
-    );
-    t.check(
-        SpacePacket::decode(&idle, DecodeMode::Lenient).is_ok_and(|p| {
+        SpacePacket::decode_lenient(&idle).is_ok_and(|p| {
             p.anomalies().contains(SppAnomaly::IdleWithSecondaryHeader) && p.is_idle()
         }),
     );
-    t.check(
-        SpacePacket::decode(bb(&idle[..6]), DecodeMode::Strict)
-            .is_err_and(|e| e.kind() == ErrorKind::Incomplete),
-    );
+    t.check(SpacePacket::decode(bb(&idle[..6])).is_err_and(|e| e.kind() == ErrorKind::Incomplete));
 }
 
 fn encoders(t: &mut Tally) {
@@ -148,12 +143,10 @@ fn idle_and_octets(t: &mut Tally) {
     match OctetStringEncoder::new(&cfg, f.packet_type, f.apid, counter) {
         Ok(mut enc) => {
             t.check(enc.encode(bb(false), bb(&[9, 8]), &mut out) == Ok(8));
-            t.check(
-                SpacePacket::decode(&out, DecodeMode::Strict).is_ok_and(|p| {
-                    p.sequence_flags() == SequenceFlags::Unsegmented
-                        && p.sequence_count().get() == 0x3FFF
-                }),
-            );
+            t.check(SpacePacket::decode(&out).is_ok_and(|p| {
+                p.sequence_flags() == SequenceFlags::Unsegmented
+                    && p.sequence_count().get() == 0x3FFF
+            }));
             t.check(enc.counter().peek().get() == 0 && enc.encode(true, &[], &mut out).is_err());
         }
         Err(_) => t.check(false),
@@ -197,7 +190,7 @@ fn push_one(
     let packet = cfg.packet(fields, &[], user).ok()?;
     let mut out = [0_u8; 16];
     let n = encode(&packet, &mut out).ok()?;
-    let p = SpacePacket::decode(out.get(..n)?, DecodeMode::Strict).ok()?;
+    let p = SpacePacket::decode(out.get(..n)?).ok()?;
     ra.push(&p.header(), p.data_field()).ok()
 }
 
@@ -219,9 +212,7 @@ fn segments(t: &mut Tally) {
             let mut out = [0_u8; 16];
             let mut last = None;
             while let Ok(Some(n)) = seg.next_packet(&mut counter, &[], &mut out) {
-                if let Ok(p) =
-                    SpacePacket::decode(bb(out.get(..n).unwrap_or_default()), DecodeMode::Strict)
-                {
+                if let Ok(p) = SpacePacket::decode(bb(out.get(..n).unwrap_or_default())) {
                     last = ra.push(&p.header(), p.data_field()).ok();
                 }
             }
@@ -274,7 +265,7 @@ fn suspended(t: &mut Tally, cfg: SppConfig, apid: Apid, sdu: &[u8]) {
             break;
         };
         state = seg.suspend();
-        let decoded = SpacePacket::decode(bb(out.get(..n).unwrap_or_default()), DecodeMode::Strict);
+        let decoded = SpacePacket::decode(bb(out.get(..n).unwrap_or_default()));
         match (decoded, ra_state.resume(&mut buf)) {
             (Ok(p), Ok(mut ra)) => {
                 t.check(ra.push(&p.header(), p.data_field()).is_ok());
@@ -303,7 +294,7 @@ fn time_header(t: &mut Tally) {
                 0x08, 0x60, 0xC0, 0x00, 0x00, 0x08, 0x1E, 0x12, 0x34, 0x56, 0x78, 0x80, 0x00, 0xAB,
                 0x01,
             ]);
-            match SpacePacket::decode(&bytes, DecodeMode::Strict) {
+            match SpacePacket::decode(&bytes) {
                 Ok(p) => {
                     let split = p.split(&SecondaryHeaderLayout::Time(layout));
                     t.check(split.is_ok_and(|s| {
@@ -372,7 +363,7 @@ fn packet_fields(p: Map) -> Result<PacketFields, Fail> {
     })
 }
 
-fn decoded(o: &mut Out, p: &SpacePacket<'_>) {
+fn decoded(o: &mut Out, p: &SpacePacket<'_>, anomalies: AnomalySet<SppAnomaly>) {
     o.num(
         "packet_type",
         match p.packet_type() {
@@ -390,7 +381,7 @@ fn decoded(o: &mut Out, p: &SpacePacket<'_>) {
     o.num("packet_len", wide(p.header().packet_len()));
     o.bytes("data_hex", p.data_field());
     o.num("consumed", wide(p.len()));
-    o.names("anomalies", p.anomalies().iter());
+    o.names("anomalies", anomalies.iter());
 }
 
 fn encode_case(case: &Case, out: &mut Out, scratch: &mut Scratch) -> Run {
@@ -426,13 +417,13 @@ fn decode_stream(case: &Case, o: &mut Out) {
     let (mut at, mut stop) = (0_usize, None);
     let mut packets = o.list("packets");
     while let Some(rest) = case.input.get(at..).filter(|r| !r.is_empty()) {
-        match SpacePacket::decode(bb(rest), mode) {
-            Ok(p) => {
+        match packet(bb(rest), mode) {
+            Ok((p, anomalies)) => {
                 packets.obj(|x| {
                     x.num("apid", p.apid().get());
                     x.num("sequence_count", p.sequence_count().get());
                     x.num("consumed", wide(p.len()));
-                    x.names("anomalies", p.anomalies().iter());
+                    x.names("anomalies", anomalies.iter());
                 });
                 at = at.saturating_add(p.len());
             }
@@ -493,8 +484,7 @@ fn reassemble_case(case: &Case, o: &mut Out, s: &mut Scratch) -> Run {
     let mut results = o.list("results");
     for item in p.list("packets_hex")? {
         let bytes = need(item.bytes())?;
-        let packet =
-            SpacePacket::decode(bb(bytes), DecodeMode::Strict).map_err(|_| Fail::Vector)?;
+        let packet = SpacePacket::decode(bb(bytes)).map_err(|_| Fail::Vector)?;
         let pushed = ra.push(&packet.header(), packet.data_field());
         let mut consistent = true;
         results.obj(|x| match pushed {
@@ -610,8 +600,11 @@ fn split_time_case(case: &Case, out: &mut Out) -> Run {
         bb(l.flag("pfield")?),
         bb(l.size("ancillary_len")?),
     )?;
-    let packet = SpacePacket::decode(bb(case.input), mode(case))?;
-    let split = packet.split(bb(&SecondaryHeaderLayout::Time(layout)))?;
+    let (packet, _) = packet(bb(case.input), mode(case))?;
+    let layout = SecondaryHeaderLayout::Time(layout);
+    let layout = bb(&layout);
+    let (split, _) =
+        mode(case).dispatch(|| packet.split(layout), || packet.split_lenient(layout))?;
     let t = need(split.time_code())?;
     let time_code = need(split.secondary_header().get(..t.len()))?;
     // The decoded code re-encodes to the received octets (API-020).
@@ -630,6 +623,17 @@ fn split_time_case(case: &Case, out: &mut Out) -> Run {
     Ok(())
 }
 
+/// Decodes one packet in `mode`, with its anomalies.
+fn packet(
+    bytes: &[u8],
+    mode: DecodeMode,
+) -> Result<(SpacePacket<'_>, AnomalySet<SppAnomaly>), aldis_core::Error> {
+    mode.dispatch(
+        || SpacePacket::decode(bytes),
+        || SpacePacket::decode_lenient(bytes),
+    )
+}
+
 const fn mode(case: &Case) -> DecodeMode {
     if case.lenient {
         DecodeMode::Lenient
@@ -642,7 +646,10 @@ const fn mode(case: &Case) -> DecodeMode {
 pub fn vector(case: &Case, o: &mut Out, s: &mut Scratch) -> Run {
     let p = case.params;
     match case.op {
-        "decode" => decoded(o, &SpacePacket::decode(bb(case.input), bb(mode(case)))?),
+        "decode" => {
+            let (p, a) = packet(bb(case.input), mode(case))?;
+            decoded(o, &p, a);
+        }
         "peek_length" => o.num("len", wide(SpacePacket::peek_length(bb(case.input))?)),
         "encode" => encode_case(case, o, s)?,
         "idle" => {
@@ -687,7 +694,9 @@ pub fn vector(case: &Case, o: &mut Out, s: &mut Scratch) -> Run {
                 let n = need(len.num().and_then(|n| usize::try_from(n).ok()))?;
                 SecondaryHeaderLayout::Opaque(need(NonZeroUsize::new(n))?)
             };
-            let s = SpacePacket::decode(bb(case.input), mode(case))?.split(bb(&layout))?;
+            let (p, _) = packet(bb(case.input), mode(case))?;
+            let layout = bb(&layout);
+            let (s, _) = mode(case).dispatch(|| p.split(layout), || p.split_lenient(layout))?;
             o.bytes("secondary_header_hex", s.secondary_header());
             o.bytes("user_data_hex", s.user_data());
         }

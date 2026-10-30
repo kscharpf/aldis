@@ -7,12 +7,12 @@
 
 // req: TC-001, TC-002, TC-003, TC-004, TC-005, TC-006, TC-021, TC-023, API-020, GEN-020, GEN-042, VER-022
 
+use aldis_core::ErrorKind;
 use aldis_core::crc::crc16;
 use aldis_core::security::{FrameCtx, PreFilledSecurity, SecurityLayout};
-use aldis_core::{DecodeMode, ErrorKind};
 use aldis_tc::{
     FrameData, MapConfig, PhysicalChannelConfig, SegmentHeaderUse, TcFrame, TcFrameWriter, TcMapId,
-    TcSpacecraftId, TcVcId, VcConfig, VcTable, encode, validate_frame,
+    TcSpacecraftId, TcVcId, VcConfig, VcTable, encode, validate_frame_lenient,
 };
 use libfuzzer_sys::arbitrary::{Result, Unstructured};
 use libfuzzer_sys::fuzz_target;
@@ -69,28 +69,25 @@ fn run(u: &mut Unstructured<'_>) -> Result<()> {
         }
     }
     let input = bytes.clone();
-    let strict = TcFrame::decode(&bytes, &table, DecodeMode::Strict);
-    let lenient = TcFrame::decode(&bytes, &table, DecodeMode::Lenient);
+    let strict = TcFrame::decode(&bytes, &table);
+    let lenient = TcFrame::decode_lenient(&bytes, &table);
     assert_eq!(bytes, input, "decode changed its input");
     if let Ok(s) = &strict {
-        assert!(s.anomalies().is_empty());
-        assert_eq!(lenient.as_ref().map(TcFrame::header), Ok(s.header()));
+        assert_eq!(lenient.as_ref().map(|l| l.header()), Ok(s.header()));
+        assert!(lenient.as_ref().is_ok_and(|l| l.anomalies().is_empty()));
     }
     match &lenient {
         Ok(f) => {
             assert_eq!(f.octets(), &bytes[..f.len()]);
             assert_eq!(TcFrame::peek_length(&bytes), Ok(f.len()));
-            let v = validate_frame(f.octets(), &table, DecodeMode::Lenient).unwrap();
-            assert_eq!(&v, f);
+            let v = validate_frame_lenient(f.octets(), &table).unwrap();
+            assert_eq!(&**v, &**f);
             if f.len() < bytes.len() {
-                assert!(validate_frame(&bytes, &table, DecodeMode::Lenient).is_err());
+                assert!(validate_frame_lenient(&bytes, &table).is_err());
             }
         }
         Err(e) => {
-            assert!(
-                validate_frame(&bytes, &table, DecodeMode::Lenient).is_err(),
-                "{e:?}"
-            );
+            assert!(validate_frame_lenient(&bytes, &table).is_err(), "{e:?}");
             if e.kind() == ErrorKind::Incomplete {
                 assert!(bytes.len() < TcFrame::peek_length(&bytes).unwrap_or(usize::MAX));
             }

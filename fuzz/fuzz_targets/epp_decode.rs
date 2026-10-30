@@ -5,7 +5,7 @@
 
 // req: GEN-020, API-010, API-013, API-020, API-030, API-032, EPP-005, GEN-042, VER-022
 
-use aldis_core::{DecodeMode, ErrorKind};
+use aldis_core::ErrorKind;
 use aldis_epp::{
     EncapsulationFields, EncapsulationPacket, Epi, EpiSet, EppConfig, ExtendedEpiSet, HeaderSize,
     config::MAX_DATA_LEN, encode,
@@ -13,11 +13,14 @@ use aldis_epp::{
 use libfuzzer_sys::fuzz_target;
 
 fuzz_target!(|data: &[u8]| {
-    let strict = EncapsulationPacket::decode(data, DecodeMode::Strict);
-    let lenient = EncapsulationPacket::decode(data, DecodeMode::Lenient);
+    let strict = EncapsulationPacket::decode(data);
+    let lenient = EncapsulationPacket::decode_lenient(data);
     let peek = EncapsulationPacket::peek_length(data);
     match (&strict, &lenient) {
-        (Ok(s), Ok(l)) => assert_eq!(s, l),
+        (Ok(s), Ok(l)) => {
+            assert!(l.anomalies().is_empty());
+            assert_eq!(s, &**l);
+        }
         (Ok(_), Err(e)) => panic!("lenient rejected a strict packet: {e}"),
         (Err(s), Ok(l)) => {
             assert_eq!(s.kind(), ErrorKind::ReservedValue);
@@ -43,7 +46,6 @@ fuzz_target!(|data: &[u8]| {
         assert_eq!(start + p.data().len(), p.len());
     }
     if let Ok(p) = strict {
-        assert!(p.anomalies().is_empty());
         let fields = EncapsulationFields::from_parts(
             p.epi(),
             p.extension().unwrap_or_default(),

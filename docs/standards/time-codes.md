@@ -10,8 +10,10 @@ The four standard time codes: CUC, CDS, CCS, and ASCII (A and B). Each binary co
 
 ```
 TimeCode = Cuc(CucFormat, CucValue) | Cds(CdsFormat, CdsValue) | Ccs(CcsFormat, CcsValue) | Ascii(AsciiFormat, AsciiValue)
-decode_with_pfield(bytes)            -> (TimeCode, consumed)     // P-field present in data
-decode_implicit(bytes, &Format)      -> (TimeCode, consumed)     // P-field known from management
+decode_with_pfield(bytes)            -> Decoded (TimeCode, consumed)     // P-field present in data, strict
+decode_with_pfield_lenient(bytes)    -> Lenient<Decoded, TimeAnomaly>    // lenient (API-030, API-032)
+decode_implicit(bytes, &Format)      -> Decoded                          // P-field known from management, strict
+decode_implicit_lenient(bytes, &Format) -> Lenient<Decoded, TimeAnomaly>
 encode(&TimeCode, include_pfield, out) -> len
 ```
 

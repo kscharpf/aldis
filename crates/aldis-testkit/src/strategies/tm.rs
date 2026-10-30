@@ -318,7 +318,6 @@ pub fn tm_frame_decoder_input() -> BoxedStrategy<(TmMasterChannelConfig, Vec<u8>
 mod tests {
     use super::{master_channel, packet_offset, tm_frame, tm_frame_decoder_input};
     use crate::strategies::config;
-    use aldis_core::DecodeMode;
     use aldis_tm::{PacketOffset, TmFrame};
     use proptest::prelude::*;
 
@@ -333,10 +332,10 @@ mod tests {
         #[test]
         fn frames_decode_strictly(f in tm_frame()) {
             // req: VER-054, TM-009
-            let d = TmFrame::decode_with(&f.octets, f.mc.pc(), &f.mc, DecodeMode::Strict).unwrap();
+            let d = TmFrame::decode_with(&f.octets, f.mc.pc(), &f.mc).unwrap();
             prop_assert_eq!(d.vcid(), f.fields.vcid);
             prop_assert_eq!(d.data_field(), f.data.as_slice());
-            prop_assert_eq!(d.validate(&f.mc), Ok(()));
+            prop_assert!(d.validate(&f.mc).is_ok());
         }
 
         #[test]
@@ -344,9 +343,8 @@ mod tests {
             // req: VER-054, GEN-020
             prop_assert!(mc.vcs().next().is_some());
             prop_assert!(o.get() <= PacketOffset::MAX);
-            for mode in [DecodeMode::Strict, DecodeMode::Lenient] {
-                let _ = TmFrame::decode_with(&bytes, m.pc(), &m, mode);
-            }
+            let _ = TmFrame::decode_with(&bytes, m.pc(), &m);
+            let _ = TmFrame::decode_with_lenient(&bytes, m.pc(), &m);
         }
     }
 }

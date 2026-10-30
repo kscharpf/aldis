@@ -8,11 +8,11 @@
     reason = "test-only harness crate: malformed vectors must fail loudly (RS-018)"
 )]
 
-use aldis_core::{DecodeMode, Error, FieldId};
+use aldis_core::{AnomalySet, DecodeMode, Error, FieldId};
 use aldis_epp::{
     EncapsulationFields, EncapsulationHeader, EncapsulationPacket, EncapsulationWriter, Epi,
-    EpiExtension, EpiSet, EppConfig, ExtendedEpiSet, HeaderLen, HeaderSize, UserDefined, encode,
-    idle,
+    EpiExtension, EpiSet, EppAnomaly, EppConfig, ExtendedEpiSet, HeaderLen, HeaderSize,
+    UserDefined, encode, idle,
 };
 use aldis_testkit::{CodecCase, Mode, Outcome, hex, run_codec_file};
 use serde_json::{Map, Value, json};
@@ -109,7 +109,7 @@ fn header_hex(header: &EncapsulationHeader) -> String {
     hex::encode(&buf[..n])
 }
 
-fn decoded(p: &EncapsulationPacket<'_>) -> Value {
+fn decoded(p: &EncapsulationPacket<'_>, found: AnomalySet<EppAnomaly>) -> Value {
     json!({
         "epi": p.epi().get(),
         "user_defined": p.user_defined().map(UserDefined::get),
@@ -119,19 +119,30 @@ fn decoded(p: &EncapsulationPacket<'_>) -> Value {
         "packet_len": p.header().packet_len(),
         "data_hex": hex::encode(p.data()),
         "consumed": p.len(),
-        "anomalies": p.anomalies().iter().map(|a| format!("{a:?}")).collect::<Vec<_>>(),
+        "anomalies": found.iter().map(|a| format!("{a:?}")).collect::<Vec<_>>(),
     })
+}
+
+/// The strict or lenient decode of the case's mode, with its anomalies (API-030).
+fn decode<'a>(
+    case: &CodecCase,
+    bytes: &'a [u8],
+) -> Result<(EncapsulationPacket<'a>, AnomalySet<EppAnomaly>), Error> {
+    mode(case).dispatch(
+        || EncapsulationPacket::decode(bytes),
+        || EncapsulationPacket::decode_lenient(bytes),
+    )
 }
 
 fn run(case: &CodecCase) -> Result<Value, Error> {
     match case.operation.as_str() {
         "decode" => {
             let bytes = input(case);
-            EncapsulationPacket::decode(&bytes, mode(case)).map(|p| decoded(&p))
+            decode(case, &bytes).map(|(p, found)| decoded(&p, found))
         }
         "reencode_header" => {
             let bytes = input(case);
-            let p = EncapsulationPacket::decode(&bytes, mode(case))?;
+            let (p, _) = decode(case, &bytes)?;
             Ok(json!({ "header_hex": header_hex(&p.header()) }))
         }
         "peek_length" => {
@@ -179,8 +190,8 @@ fn run(case: &CodecCase) -> Result<Value, Error> {
         "validate" => {
             let cfg = config(case)?;
             let bytes = input(case);
-            let packet = EncapsulationPacket::decode(&bytes, DecodeMode::Strict)?;
-            packet.validate(&cfg).map(|()| json!({}))
+            let packet = EncapsulationPacket::decode(&bytes)?;
+            packet.validate(&cfg).map(|_| json!({}))
         }
         "config" => config(case).map(|_| json!({})),
         op => panic!("{}: unsupported operation {op}", case.id),

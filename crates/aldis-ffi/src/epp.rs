@@ -6,10 +6,10 @@
 //! [`aldis_epp_idle`], [`aldis_epp_idle_header`], and [`aldis_epp_config_check`]. EPI sets
 //! are bit masks: bit `n` stands for EPI (or extended EPI) `n` (M2 plan D4).
 
-use aldis::core::Result;
+use aldis::core::{AnomalySet, Result};
 use aldis::epp::{
     EncapsulationFields, EncapsulationHeader, EncapsulationPacket, Epi, EpiExtension, EpiSet,
-    EppConfig, ExtendedEpiSet, HeaderLen, HeaderSize, UserDefined, encode, idle,
+    EppAnomaly, EppConfig, ExtendedEpiSet, HeaderLen, HeaderSize, UserDefined, encode, idle,
 };
 
 use crate::abi::{self, Out, invalid_argument};
@@ -120,7 +120,10 @@ const fn header_size(size: u32) -> Result<HeaderSize> {
 }
 
 /// The C view of a decoded packet.
-pub(crate) fn view(p: &EncapsulationPacket<'_>) -> aldis_epp_packet_t {
+pub(crate) fn view(
+    p: &EncapsulationPacket<'_>,
+    anomalies: AnomalySet<EppAnomaly>,
+) -> aldis_epp_packet_t {
     let header_len = p.header_len().octets();
     aldis_epp_packet_t {
         epi: p.epi().get(),
@@ -131,7 +134,7 @@ pub(crate) fn view(p: &EncapsulationPacket<'_>) -> aldis_epp_packet_t {
         has_ccsds_defined: p.ccsds_defined().is_some(),
         ccsds_defined: p.ccsds_defined().unwrap_or(0),
         packet_len: p.header().packet_len(),
-        anomalies: p.anomalies().bits(),
+        anomalies: anomalies.bits(),
         data: aldis_range_t {
             offset: header_len,
             len: p.data().len(),
@@ -174,7 +177,11 @@ pub unsafe extern "C" fn aldis_epp_decode(
             let bytes = abi::bytes(bytes, len)?;
             let mode = abi::mode(mode)?;
             let out = abi::out(out)?;
-            out.write(view(&EncapsulationPacket::decode(bytes, mode)?));
+            let (packet, anomalies) = mode.dispatch(
+                || EncapsulationPacket::decode(bytes),
+                || EncapsulationPacket::decode_lenient(bytes),
+            )?;
+            out.write(view(&packet, anomalies));
             Ok(())
         })
     }
@@ -243,8 +250,11 @@ pub unsafe extern "C" fn aldis_epp_validate(
         abi::call(err, || {
             let config = config(&abi::read(cfg)?)?;
             let bytes = abi::bytes(bytes, len)?;
-            let packet = EncapsulationPacket::decode(bytes, abi::mode(mode)?)?;
-            packet.validate(&config)
+            let (packet, _) = abi::mode(mode)?.dispatch(
+                || EncapsulationPacket::decode(bytes),
+                || EncapsulationPacket::decode_lenient(bytes),
+            )?;
+            packet.validate(&config).map(drop)
         })
     }
 }

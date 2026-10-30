@@ -96,27 +96,23 @@ fn pointer_group(t: &mut Tally) {
     t.check(BitstreamPointer::AllValid.to_raw() == bb(BitstreamPointer::ALL_VALID_RAW));
     t.check(BitstreamPointer::OnlyIdle.header_octets() == [0x3F, 0xFE]);
     let field = [0xA8, 0x01, 0, 0];
-    t.check(Mpdu::decode(bb(&field), four, bb(DecodeMode::Strict)).is_err());
-    t.check(
-        Mpdu::decode(bb(&field), four, bb(DecodeMode::Lenient)).is_ok_and(|m| {
-            matches!(m.pointer(), PacketPointer::StartsAt(n) if n.get() == 1)
-                && m.first_header_pointer() == 1
-                && m.issue4_spare() == 0x15
-                && m.packet_zone().len() == 2
-                && m.anomalies().contains(AosAnomaly::Issue4SpareSet)
-        }),
-    );
+    t.check(Mpdu::decode(bb(&field), four).is_err());
+    t.check(Mpdu::decode_lenient(bb(&field), four).is_ok_and(|m| {
+        matches!(m.pointer(), PacketPointer::StartsAt(n) if n.get() == 1)
+            && m.first_header_pointer() == 1
+            && m.issue4_spare() == 0x15
+            && m.packet_zone().len() == 2
+            && m.anomalies().contains(AosAnomaly::Issue4SpareSet)
+    }));
     let bfield = [0xBF, 0xFF, 0];
-    t.check(Bpdu::decode(bb(&bfield), bb(DecodeMode::Strict)).is_err());
-    t.check(
-        Bpdu::decode(bb(&bfield), bb(DecodeMode::Lenient)).is_ok_and(|b| {
-            b.pointer() == BitstreamPointer::AllValid
-                && b.bitstream_data_pointer() == 0x3FFF
-                && b.spare() == 2
-                && b.data_zone().len() == 1
-                && b.anomalies().contains(AosAnomaly::BpduSpareSet)
-        }),
-    );
+    t.check(Bpdu::decode(bb(&bfield)).is_err());
+    t.check(Bpdu::decode_lenient(bb(&bfield)).is_ok_and(|b| {
+        b.pointer() == BitstreamPointer::AllValid
+            && b.bitstream_data_pointer() == 0x3FFF
+            && b.spare() == 2
+            && b.data_zone().len() == 1
+            && b.anomalies().contains(AosAnomaly::BpduSpareSet)
+    }));
     t.check(
         AosAnomaly::ALL.iter().map(|a| a.bit()).eq([0, 1, 2])
             && AosAnomaly::from_bit(bb(3)).is_none(),
@@ -236,7 +232,7 @@ fn frames(
     }
     let mut bad = frame;
     bad[0] ^= bb(0x10);
-    match AosFrame::decode(bb(&bad), pc, table, bb(DecodeMode::Strict)) {
+    match AosFrame::decode(bb(&bad), pc, table) {
         Ok(f) => {
             t.check(f.scid() == scid && f.vcid() == vc0 && f.vc_frame_count() == count);
             t.check(f.replay_flag() && f.vc_frame_count_cycle() == FrameCountCycle::new(9));
@@ -251,12 +247,7 @@ fn frames(
                     && f.data_unit().zone().len() == 17,
             );
             t.check(matches!(f.data_unit(), DataUnit::Mpdu(m) if m.pointer() == PacketPointer::StartsAt(offset)));
-            t.check(
-                f.as_bytes().len() == 40
-                    && f.len() == 40
-                    && !f.is_empty()
-                    && f.anomalies().is_empty(),
-            );
+            t.check(f.as_bytes().len() == 40 && f.len() == 40 && !f.is_empty());
             let h = f.header();
             t.check(
                 h.edition() == AosEdition::Issue5
@@ -280,8 +271,8 @@ fn frames(
     let vca = AosFrameFields::new(scid, vc1, count, bb(PduHeader::None));
     t.check(encode(pc, table, bb(&vca), bb(&content), bb(&mut frame)) == Ok(40));
     t.check(
-        AosFrame::decode(bb(&frame), pc, table, DecodeMode::Lenient)
-            .is_ok_and(|f| f.data_unit() == DataUnit::VcaSdu(&sdu)),
+        AosFrame::decode_lenient(bb(&frame), pc, table)
+            .is_ok_and(|f| f.data_unit() == DataUnit::VcaSdu(&sdu) && f.anomalies().is_empty()),
     );
     let mut oid = OidGenerator::new();
     let Some(zero) = VcFrameCount::new(bb(0)) else {
@@ -300,7 +291,7 @@ fn frames(
         .is_ok_and(|w| w.finalize().len() == 40),
     );
     t.check(frame.get(12..16) == Some(&[0xFF; 4][..]));
-    t.check(AosFrame::decode(bb(&frame), pc, table, DecodeMode::Strict).is_ok_and(|f| f.is_oid()));
+    t.check(AosFrame::decode(bb(&frame), pc, table).is_ok_and(|f| f.is_oid()));
     // The one-shot encoders give the same frame from either form of the generator.
     let (mut fib, mut gal, mut one) = (OidGenerator::new(), OidGeneratorGalois::new(), [0_u8; 40]);
     let fields = AosFrameFields::oid(scid, zero);
@@ -420,7 +411,7 @@ fn header_fields(out: &mut Out, h: &AosPrimaryHeader) {
 }
 
 /// Every field the view exposes, as the host suite reports them (TV-002).
-fn decoded(out: &mut Out, f: &AosFrame<'_>) {
+fn decoded(out: &mut Out, f: &AosFrame<'_>, anomalies: AnomalySet<AosAnomaly>) {
     header_fields(out, &f.header());
     out.bytes("insert_zone_hex", f.insert_zone());
     out.bytes("security_header_hex", f.security_header());
@@ -471,7 +462,7 @@ fn decoded(out: &mut Out, f: &AosFrame<'_>) {
     out.opt_num("pdu_spare", spare);
     out.bytes("zone_hex", f.data_unit().zone());
     out.num("consumed", u64::try_from(f.len()).unwrap_or(u64::MAX));
-    out.names("anomalies", f.anomalies().iter());
+    out.names("anomalies", anomalies.iter());
 }
 
 fn pdu(p: Map) -> Result<PduHeader, Fail> {
@@ -647,7 +638,13 @@ pub fn vector(case: &Case, out: &mut Out, scratch: &mut Scratch) -> Run {
             u64::try_from(AosFrame::peek_length(input, &pc)?).unwrap_or(u64::MAX),
         ),
         "decode_header" => header_fields(out, &AosPrimaryHeader::decode(input, &pc)?),
-        "decode" => decoded(out, &AosFrame::decode(input, &pc, &table, mode)?),
+        "decode" => {
+            let (f, a) = mode.dispatch(
+                || AosFrame::decode(input, &pc, &table),
+                || AosFrame::decode_lenient(input, &pc, &table),
+            )?;
+            decoded(out, &f, a);
+        }
         "encode" => encode_case(case.params, &pc, &table, out, scratch)?,
         "encode_oid" => encode_oid(case.params, &pc, &table, out, scratch)?,
         _ => return Err(Fail::Vector),

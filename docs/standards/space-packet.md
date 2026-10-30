@@ -45,7 +45,7 @@ These rules fill in what the requirements leave to the implementation. 133.0 is 
 ### 5.1 Decoding (SPP-001…004, SPP-009)
 
 - **Order of checks:** fewer than 6 octets → `Incomplete` (`needed` = 6); version ≠ `000` → `UnsupportedVersion`; fewer than 7 + Packet Data Length octets → `Incomplete` (`needed` = that total); then the idle check of SPP-004.
-- **SPP-004 in strict mode:** `InvalidField` (`secondary_header_flag`).
+- **SPP-004 in strict mode (`decode`):** `InvalidField` (`secondary_header_flag`). `decode_lenient` returns the packet in a `Lenient` with the flag `IdleWithSecondaryHeader` instead (API-030, API-032); a strict view carries no anomaly set.
 - **`peek_length`:** applies every check that needs only the 6-octet primary header and holds in both modes, so it never disagrees with `decode` on a header.
 - **`packet_name()`:** returns the 14-bit field for telecommand packets and nothing for telemetry packets; `sequence_count()` returns it for both (SPP-009).
 
@@ -98,4 +98,4 @@ Both helpers borrow a buffer: the segmenter its SDU, the reassembler its reassem
 - **With a P-field:** the code's characteristics come from the P-field (§4.1.4.2.2.4), but its time code ID must equal the configured code's (§4.1.4.2.2.3); otherwise `InvalidField` (`time_code_id`).
 - **Without a P-field:** the configured format is used.
 - **Ancillary Data Field:** the configured ancillary length follows the time code. With an opaque layout, the whole secondary header counts as ancillary data (§4.1.4.2.1.5 b).
-- **Time code errors:** the other errors of the time code decoder, such as `OutOfRange` for a CDS millisecond of day above 86 400 999, are returned as they are, under the packet's decode mode.
+- **Time code errors:** the other errors of the time code decoder, such as `OutOfRange` for a CDS millisecond of day above 86 400 999, are returned as they are. `split` decodes the time code in strict mode and `split_lenient` (feature `time`) in lenient mode, returning the `Lenient<SplitPacket, TimeAnomaly>` of the time code's anomalies (API-030).

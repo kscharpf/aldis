@@ -7,7 +7,6 @@
     reason = "test-only harness: a failure must fail loudly (RS-018)"
 )]
 
-use aldis_core::DecodeMode;
 use aldis_core::ids::FrameSeqNum;
 use aldis_core::security::SecurityLayout;
 use aldis_tc::ControlCommand;
@@ -60,7 +59,7 @@ fn cop1_commands_round_trip_through_the_tc_decoder() {
         let octets = command.to_octets();
         let mut out = [0_u8; 32];
         let n = encode(&t, fields, content, octets.as_slice(), &mut out).unwrap();
-        let f = UslpFrame::decode(&out[..n], &t, DecodeMode::Strict).unwrap();
+        let f = UslpFrame::decode(&out[..n], &t).unwrap();
         assert!(f.security_header().is_empty() && f.security_trailer().is_empty());
         assert_eq!(f.full().unwrap().kind(), FrameKind::ProtocolControl);
         assert_eq!(ControlCommand::parse(f.tfdz()), Some(command));

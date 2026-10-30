@@ -32,12 +32,12 @@ use aldis::core::ids::{SpacecraftId, VcId};
 use aldis::core::layout::{FrameLayout, OCF_LEN};
 use aldis::core::ocf::Ocf;
 use aldis::core::security::SecurityLayout;
-use aldis::core::{Error, ErrorDetail, ErrorKind, Result};
+use aldis::core::{AnomalySet, Error, ErrorDetail, ErrorKind, Result};
 use aldis::tm::{
     DataFieldContent, DataFieldStatus, FirstHeaderPointer, FshLen, NoSdls, PacketOffset,
-    PacketPointer, SegmentLengthId, TmFrame, TmFrameContent, TmFrameFields, TmMasterChannelConfig,
-    TmPhysicalChannelConfig, TmPrimaryHeader, TmVirtualChannelConfig, encode, encode_oid,
-    encode_oid_galois,
+    PacketPointer, SegmentLengthId, TmAnomaly, TmFrame, TmFrameContent, TmFrameFields,
+    TmMasterChannelConfig, TmPhysicalChannelConfig, TmPrimaryHeader, TmVirtualChannelConfig,
+    UncheckedTmFrame, encode, encode_oid, encode_oid_galois,
 };
 
 use crate::abi::{self, Configs, invalid_argument};
@@ -542,7 +542,11 @@ fn layout(l: &FrameLayout) -> aldis_tm_layout_t {
 }
 
 /// The C view of a decoded frame.
-pub(crate) fn view(f: &TmFrame<'_>) -> aldis_tm_frame_t {
+pub(crate) fn view<'a>(
+    f: impl Into<UncheckedTmFrame<'a>>,
+    anomalies: AnomalySet<TmAnomaly>,
+) -> aldis_tm_frame_t {
+    let f = f.into();
     let (pointer, packet_offset) = match f.data_field_status() {
         DataFieldStatus::Packets(PacketPointer::StartsAt(n)) => {
             (ALDIS_TM_POINTER_STARTS_AT, n.get())
@@ -562,7 +566,7 @@ pub(crate) fn view(f: &TmFrame<'_>) -> aldis_tm_frame_t {
         fsh_len: f.fsh_len().map_or(0, FshLen::get),
         has_fecf: f.fecf().is_some(),
         fecf: f.fecf().unwrap_or(0),
-        anomalies: f.anomalies().bits(),
+        anomalies: anomalies.bits(),
         layout: layout(f.layout()),
     }
 }
@@ -733,7 +737,11 @@ pub unsafe extern "C" fn aldis_tm_decode(
             let bytes = abi::bytes(bytes, len)?;
             let mode = abi::mode(mode)?;
             let out = abi::out(out)?;
-            out.write(view(&TmFrame::decode(bytes, &pc, mode)?));
+            let (frame, anomalies) = mode.dispatch(
+                || TmFrame::decode(bytes, &pc),
+                || TmFrame::decode_lenient(bytes, &pc),
+            )?;
+            out.write(view(frame, anomalies));
             Ok(())
         })
     }
@@ -777,7 +785,11 @@ pub unsafe extern "C" fn aldis_tm_decode_with(
             let bytes = abi::bytes(bytes, len)?;
             let mode = abi::mode(mode)?;
             let out = abi::out(out)?;
-            out.write(view(&TmFrame::decode_with(bytes, mc.pc(), &mc, mode)?));
+            let (frame, anomalies) = mode.dispatch(
+                || TmFrame::decode_with(bytes, mc.pc(), &mc),
+                || TmFrame::decode_with_lenient(bytes, mc.pc(), &mc),
+            )?;
+            out.write(view(frame, anomalies));
             Ok(())
         })
     }
@@ -812,7 +824,11 @@ pub unsafe extern "C" fn aldis_tm_decode_unchecked(
             let bytes = abi::bytes(bytes, len)?;
             let mode = abi::mode(mode)?;
             let out = abi::out(out)?;
-            out.write(view(&TmFrame::decode_unchecked(bytes, &pc, &NoSdls, mode)?));
+            let (frame, anomalies) = mode.dispatch(
+                || TmFrame::decode_unchecked(bytes, &pc, &NoSdls),
+                || TmFrame::decode_unchecked_lenient(bytes, &pc, &NoSdls),
+            )?;
+            out.write(view(frame, anomalies));
             Ok(())
         })
     }
@@ -848,7 +864,11 @@ pub unsafe extern "C" fn aldis_tm_decode_unchecked_with(
             let bytes = abi::bytes(bytes, len)?;
             let mode = abi::mode(mode)?;
             let out = abi::out(out)?;
-            out.write(view(&TmFrame::decode_unchecked(bytes, mc.pc(), &mc, mode)?));
+            let (frame, anomalies) = mode.dispatch(
+                || TmFrame::decode_unchecked(bytes, mc.pc(), &mc),
+                || TmFrame::decode_unchecked_lenient(bytes, mc.pc(), &mc),
+            )?;
+            out.write(view(frame, anomalies));
             Ok(())
         })
     }
@@ -859,7 +879,8 @@ pub unsafe extern "C" fn aldis_tm_decode_unchecked_with(
 ///
 /// The frame is decoded as [`aldis_tm_decode_with`] decodes it, with the security layout of its
 /// virtual channel from `mc`, and checked as `TmFrame::validate` checks it. A call that takes a
-/// master channel always uses its layouts (c-abi.md §11).
+/// master channel always uses its layouts (c-abi.md §11). `*anomalies` receives the
+/// `ALDIS_TM_ANOMALY_*` flags of the frame that passed, `0` in strict mode (API-032).
 ///
 /// # Errors
 /// The errors of [`aldis_tm_decode_with`]; `ALDIS_ERR_INVALID_FIELD` (`vc_id`) for an Only Idle
@@ -869,7 +890,7 @@ pub unsafe extern "C" fn aldis_tm_decode_unchecked_with(
 /// Secondary Header length.
 ///
 /// # Safety
-/// As [`aldis_tm_decode_with`], without `out`.
+/// As [`aldis_tm_decode_with`], with `anomalies` valid for one write instead of `out`.
 #[expect(
     unsafe_code,
     reason = "C ABI entry point: unmangled, takes raw pointers (GEN-071)"
@@ -882,6 +903,7 @@ pub unsafe extern "C" fn aldis_tm_validate(
     vcs: *const aldis_tm_vc_config_t,
     vc_count: usize,
     mode: u32,
+    anomalies: *mut u32,
     err: *mut crate::aldis_error_detail_t,
 ) -> u32 {
     // SAFETY: every pointer is valid as `# Safety` states; `abi` checks NULL and alignment.
@@ -889,8 +911,16 @@ pub unsafe extern "C" fn aldis_tm_validate(
         abi::call(err, || {
             let mc = master_channel_at(mc, vcs, vc_count)?;
             let bytes = abi::bytes(bytes, len)?;
-            let frame = TmFrame::decode_with(bytes, mc.pc(), &mc, abi::mode(mode)?)?;
-            frame.validate(&mc)
+            let anomalies = abi::out(anomalies)?;
+            let (_, found) = abi::mode(mode)?.dispatch(
+                || TmFrame::decode_with(bytes, mc.pc(), &mc).and_then(|f| f.validate(&mc)),
+                || {
+                    TmFrame::decode_with_lenient(bytes, mc.pc(), &mc)
+                        .and_then(|l| l.try_map(|f| f.validate(&mc)))
+                },
+            )?;
+            anomalies.write(found.bits());
+            Ok(())
         })
     }
 }

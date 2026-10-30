@@ -5,7 +5,7 @@ use aldis_core::crc;
 use aldis_core::ids::FrameSeqNum;
 use aldis_core::layout::{FECF_LEN, FrameLayout, LayoutSpec};
 use aldis_core::security::SecurityLayout;
-use aldis_core::{AnomalySet, DecodeMode, Error, Result};
+use aldis_core::{AnomalySet, DecodeMode, Error, Lenient, Result};
 
 use crate::anomaly::TcAnomaly;
 use crate::config::{MapConfig, PhysicalChannelConfig, VcConfig, VcLookup};
@@ -28,7 +28,15 @@ pub struct TcFrame<'a> {
     security_trailer: &'a [u8],
     fecf: Option<u16>,
     control_command: Option<ControlCommand>,
-    anomalies: AnomalySet<TcAnomaly>,
+}
+
+/// What the shared parse of every entry point returns: the frame, the anomalies a lenient mode
+/// tolerated (empty in strict mode), and the matched channel configurations.
+pub(crate) struct Parsed<'a> {
+    pub(crate) frame: TcFrame<'a>,
+    pub(crate) anomalies: AnomalySet<TcAnomaly>,
+    pub(crate) vc: VcConfig,
+    pub(crate) map: Option<MapConfig>,
 }
 
 /// Shorthand for a failed check.
@@ -153,7 +161,7 @@ pub(crate) fn parse<'a, L: VcLookup + ?Sized>(
     channels: &L,
     mode: DecodeMode,
     exact: bool,
-) -> core::result::Result<(TcFrame<'a>, VcConfig, Option<MapConfig>), Rejection> {
+) -> core::result::Result<Parsed<'a>, Rejection> {
     let mut anomalies = AnomalySet::empty();
     let head = check_head(bytes, channels, mode, exact, &mut anomalies)?;
     let (raw, total) = (head.raw, head.raw.frame_len);
@@ -204,8 +212,8 @@ pub(crate) fn parse<'a, L: VcLookup + ?Sized>(
         vc_id: raw.vc_id,
         sequence_number: raw.sequence_number,
     };
-    Ok((
-        TcFrame {
+    Ok(Parsed {
+        frame: TcFrame {
             header: TcFrameHeader::new(fields, total, segment_header),
             octets: frame,
             security_header: frame.get(layout.security_header()).unwrap_or_default(),
@@ -216,16 +224,16 @@ pub(crate) fn parse<'a, L: VcLookup + ?Sized>(
                 .and_then(<[u8]>::first_chunk::<FECF_LEN>)
                 .map(|&octets| u16::from_be_bytes(octets)),
             control_command,
-            anomalies,
         },
-        head.vc,
-        map_config,
-    ))
+        anomalies,
+        vc: head.vc,
+        map: map_config,
+    })
 }
 
 impl<'a> TcFrame<'a> {
-    /// Decodes one frame from the start of `bytes`, with the channels' managed parameters;
-    /// any octets after it are ignored, so a stream can be parsed frame by frame with
+    /// Decodes one frame from the start of `bytes` in strict mode, with the channels' managed
+    /// parameters; any octets after it are ignored, so a stream can be parsed frame by frame with
     /// [`len`](Self::len) (232.0 §4.1; TC-001…TC-006, API-011).
     ///
     /// The checks are those of [`validate_frame`](crate::validate::validate_frame), in its
@@ -243,22 +251,34 @@ impl<'a> TcFrame<'a> {
     ///   Flag `1`, in both modes (TC-002).
     /// - `UnknownChannel` (`spacecraft_id`, `vc_id`, `map_id`) for a Spacecraft ID, VCID, or
     ///   MAP ID the channels do not have (TC-021, TC-022).
-    /// - `ReservedValue` (`tc_header_spare`) in strict mode for a Reserved Spare other than
-    ///   `00`; lenient mode reports [`TcAnomaly::ReservedSpareSet`] (TC-003).
+    /// - `ReservedValue` (`tc_header_spare`) for a Reserved Spare other than `00`
+    ///   ([`decode_lenient`](Self::decode_lenient) reports [`TcAnomaly::ReservedSpareSet`]
+    ///   instead; TC-003).
     /// - `OutOfRange` (`frame_len`) above the channel's Maximum Transfer Frame Length, and
     ///   `InvalidField` (`frame_data_field`) for a Frame Length that leaves no data octet
     ///   (TC-007, CMN-041).
     /// - `CrcMismatch` if the FECF is configured and wrong (TC-006).
-    /// - `ReservedValue` (`control_command`) in strict mode for a Type-C data field that is
-    ///   neither Unlock nor Set V(R); lenient mode reports
-    ///   [`TcAnomaly::UnknownControlCommand`] (TC-005).
-    pub fn decode<L: VcLookup + ?Sized>(
+    /// - `ReservedValue` (`control_command`) for a Type-C data field that is neither Unlock
+    ///   nor Set V(R) ([`decode_lenient`](Self::decode_lenient) reports
+    ///   [`TcAnomaly::UnknownControlCommand`] instead; TC-005).
+    pub fn decode<L: VcLookup + ?Sized>(bytes: &'a [u8], channels: &L) -> Result<TcFrame<'a>> {
+        parse(bytes, channels, DecodeMode::Strict, false)
+            .map(|p| p.frame)
+            .map_err(Error::from)
+    }
+
+    /// Decodes one frame as [`decode`](Self::decode) does, in lenient mode: a Reserved Spare
+    /// other than `00` and a Type-C data field that is no known command are accepted and
+    /// reported as [`TcAnomaly`] flags (TC-003, TC-005, API-032).
+    ///
+    /// # Errors
+    /// As for [`decode`](Self::decode), except the deviations that are anomalies.
+    pub fn decode_lenient<L: VcLookup + ?Sized>(
         bytes: &'a [u8],
         channels: &L,
-        mode: DecodeMode,
-    ) -> Result<TcFrame<'a>> {
-        parse(bytes, channels, mode, false)
-            .map(|(frame, _, _)| frame)
+    ) -> Result<Lenient<TcFrame<'a>, TcAnomaly>> {
+        parse(bytes, channels, DecodeMode::Lenient, false)
+            .map(|p| Lenient::new(p.frame, p.anomalies))
             .map_err(Error::from)
     }
 
@@ -384,12 +404,6 @@ impl<'a> TcFrame<'a> {
     pub const fn is_empty(&self) -> bool {
         false
     }
-
-    /// Lenient-mode anomalies; always empty after a strict decode (API-032, GEN-043).
-    #[must_use]
-    pub const fn anomalies(&self) -> AnomalySet<TcAnomaly> {
-        self.anomalies
-    }
 }
 
 #[cfg(test)]
@@ -402,7 +416,7 @@ mod tests {
     use crate::field;
     use crate::header::{FrameType, SequenceFlags};
     use aldis_core::crc::crc16;
-    use aldis_core::{DecodeMode, ErrorDetail, ErrorKind};
+    use aldis_core::{ErrorDetail, ErrorKind};
 
     /// `body` followed by its FECF, in an `N`-octet array (`N` = body length + 2).
     fn with_fecf<const N: usize>(body: &[u8]) -> [u8; N] {
@@ -419,7 +433,7 @@ mod tests {
         let framed: [u8; 10] = with_fecf(&[0x01, 0x55, 0x04, 0x09, 0x04, 1, 2, 3]);
         let mut bytes = [0xEE; 11];
         bytes[..10].copy_from_slice(&framed);
-        let f = TcFrame::decode(&bytes, &t, DecodeMode::Strict).unwrap();
+        let f = TcFrame::decode(&bytes, &t).unwrap();
         assert_eq!(
             (f.frame_type(), f.spacecraft_id().get(), f.vc_id().get()),
             (FrameType::Ad, 0x155, 1)
@@ -433,7 +447,6 @@ mod tests {
             (None, None, false)
         );
         assert_eq!(f.octets(), &bytes[..10]);
-        assert!(f.anomalies().is_empty());
         assert_eq!(f.header().primary_header_octets(), bytes[..5]);
         assert_eq!(TcFrame::peek_length(&bytes), Ok(10));
     }
@@ -445,7 +458,7 @@ mod tests {
         let bytes = [
             0x01, 0x55, 0x08, 0x0B, 0x00, 0xC9, 0xA, 0xB, 0xC, 0x77, 0x88, 0xD,
         ];
-        let f = TcFrame::decode(&bytes, &t, DecodeMode::Strict).unwrap();
+        let f = TcFrame::decode(&bytes, &t).unwrap();
         let sh = f.segment_header().unwrap();
         assert_eq!(
             (sh.sequence_flags, sh.map_id.get()),
@@ -462,18 +475,18 @@ mod tests {
         // req: TC-004, TC-005, API-031, API-032
         let t = standard(false);
         let unlock = [0x31, 0x55, 0x08, 0x05, 0x00, 0x00];
-        let f = TcFrame::decode(&unlock, &t, DecodeMode::Strict).unwrap();
+        let f = TcFrame::decode(&unlock, &t).unwrap();
         assert_eq!(
             (f.frame_type(), f.control_command(), f.segment_header()),
             (FrameType::Bc, Some(ControlCommand::Unlock), None)
         );
         let odd = [0x31, 0x55, 0x04, 0x05, 0x00, 0x01];
-        let e = TcFrame::decode(&odd, &t, DecodeMode::Strict).unwrap_err();
+        let e = TcFrame::decode(&odd, &t).unwrap_err();
         assert_eq!(
             (e.kind(), e.field()),
             (ErrorKind::ReservedValue, Some(field::CONTROL_COMMAND))
         );
-        let f = TcFrame::decode(&odd, &t, DecodeMode::Lenient).unwrap();
+        let f = TcFrame::decode_lenient(&odd, &t).unwrap();
         assert!(f.anomalies().contains(TcAnomaly::UnknownControlCommand));
         assert_eq!((f.control_command(), f.data_field()), (None, &[1][..]));
     }
@@ -521,17 +534,15 @@ mod tests {
             ),
         ];
         for (bytes, kind, fld) in cases {
-            let e = TcFrame::decode(bytes, &t, DecodeMode::Strict).unwrap_err();
+            let e = TcFrame::decode(bytes, &t).unwrap_err();
             assert_eq!((e.kind(), e.field()), (kind, fld), "{bytes:02X?}");
         }
-        let e =
-            TcFrame::decode(&[0x01, 0x55, 0x04, 0x07, 0, 0], &t, DecodeMode::Strict).unwrap_err();
+        let e = TcFrame::decode(&[0x01, 0x55, 0x04, 0x07, 0, 0], &t).unwrap_err();
         assert_eq!(
             (e.kind(), e.detail()),
             (ErrorKind::Incomplete, ErrorDetail::Needed(8))
         );
-        let lenient =
-            TcFrame::decode(&[0x05, 0x55, 0x04, 0x05, 0, 9], &t, DecodeMode::Lenient).unwrap();
+        let lenient = TcFrame::decode_lenient(&[0x05, 0x55, 0x04, 0x05, 0, 9], &t).unwrap();
         assert!(lenient.anomalies().contains(TcAnomaly::ReservedSpareSet));
         let e = TcFrame::peek_length(&[0x01, 0x55, 0x04]).unwrap_err();
         assert_eq!(e.detail(), ErrorDetail::Needed(5));
@@ -571,16 +582,16 @@ mod tests {
     fn length_limits_and_fecf() {
         // req: TC-006, TC-007, CMN-041
         let t = standard(true);
-        let e = TcFrame::decode(&[0x01, 0x55, 0x07, 0xFF, 0], &t, DecodeMode::Strict);
+        let e = TcFrame::decode(&[0x01, 0x55, 0x07, 0xFF, 0], &t);
         assert!(e.is_err_and(|e| e.kind() == ErrorKind::Incomplete));
         let mut ok: [u8; 8] = with_fecf(&[0x01, 0x55, 0x04, 0x07, 0x00, 0xAB]);
-        assert!(TcFrame::decode(&ok, &t, DecodeMode::Strict).is_ok());
+        assert!(TcFrame::decode(&ok, &t).is_ok());
         ok[5] ^= 1;
-        let e = TcFrame::decode(&ok, &t, DecodeMode::Lenient).unwrap_err();
+        let e = TcFrame::decode_lenient(&ok, &t).unwrap_err();
         assert_eq!(e.kind(), ErrorKind::CrcMismatch);
         // VC 3 has SDLS 4/2: a 13-octet frame leaves no data octet.
         let short: [u8; 13] = with_fecf(&[0x01, 0x55, 0x0C, 0x0C, 0, 0, 0, 0, 0, 0, 0]);
-        let e = TcFrame::decode(&short, &t, DecodeMode::Strict).unwrap_err();
+        let e = TcFrame::decode(&short, &t).unwrap_err();
         assert_eq!(e.field(), Some(field::FRAME_DATA_FIELD));
     }
 }
