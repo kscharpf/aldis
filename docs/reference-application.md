@@ -46,7 +46,7 @@ Not covered: synchronization and channel coding, SDLS, CFDP, and time correlatio
 | APP-003 | For the nominal case, the **packet projection** SHALL be identical at every link level (A1, A2, A3, the A4 variants) and in every implementation. The packet projection is, for each node, record kind (`packet_out`, `packet_in`), and APID, the ordered sequence of packet octets (§7.3). Order across APIDs and instants are not part of it. | — | T |
 | APP-004 | From A3 on, the link-level traces SHALL be frozen: the A4, A5, and A6 implementations SHALL reproduce the golden traces of every `a3-*` case byte for byte. | GEN-030 | T |
 | APP-005 | A later milestone SHALL add cases and SHALL NOT redefine an existing case. A released golden trace SHALL change only through a new trace version (APP-087). | — | I |
-| APP-006 | Link units SHALL be whole Space Packets (A1) or whole Transfer Frames (A2 on), without synchronization or channel coding. Every channel SHALL use a zero-length security layout (`NoSecurity`, API-073). | — | I |
+| APP-006 | Link units SHALL be whole Space Packets (A1) or whole Transfer Frames (A2 on), without synchronization or channel coding. Every channel SHALL use a zero-length security layout (the no-security hook, API-073). | — | I |
 
 ## 2. Roles and applications
 
@@ -307,7 +307,7 @@ Frame layout: primary header 5 ‖ Segment Header 1 ‖ user data ≤ 120 ‖ FE
 | APP-030 | The TM physical channel SHALL use version 1 frames of 223 octets with the FECF present, one master channel with the SCID of §3.4. | 132.0 Table 5-1; 131.0 §11.3, §11.6.3, §11.8.2 | T |
 | APP-031 | The master channel SHALL have valid VCIDs {0, 1, 7}, no MC_FSH, and the MC_OCF present in every frame, OID frames included, carrying the latest CLCW of the uplink VC (LNK-033). | 132.0 Table 5-2, §4.1.5.3; 232.0 §4.2.1.1.1 note 3 | T |
 | APP-032 | VCs 0, 1, and 7 SHALL carry Packets, without VC_FSH or VC_OCF, with the packet-transfer parameters of §4.1. | 132.0 Tables 5-3, 5-4 | T |
-| APP-033 | The downlink SHALL multiplex with `FixedPriority`, VC 0 before VC 1 (LNK-031), release partly filled data fields after the deadlines of §4.1 (LNK-012), and complete them with Idle Packets (LNK-013, SPP-010). | 132.0 §4.2.2.5, §4.2.4.3 | T |
+| APP-033 | The downlink SHALL multiplex with a fixed priority, VC 0 before VC 1 (LNK-031), release partly filled data fields after the deadlines of §4.1 (LNK-012), and complete them with Idle Packets (LNK-013, SPP-010). | 132.0 §4.2.2.5, §4.2.4.3 | T |
 | APP-034 | When no data field is released at a frame slot, the flight node SHALL send an OID frame on VC 7 (LNK-030, LNK-014), with one OID generator for the run (CMN-021, LNK-036). | 132.0 §4.1.4.6, §4.2.4.4 | T |
 | APP-035 | MC and VC frame counts SHALL start at 0 when the run starts (LNK-032). | 132.0 §4.1.2.5–6 | T |
 | APP-036 | The ground node SHALL validate every TM frame (TM-001…TM-011), track frame counts and report gaps (LNK-051), extract packets (LNK-060…064), and feed the CLCW from the OCF to its commanding (LNK-053). | 132.0 §4.3 | T |
@@ -335,7 +335,7 @@ Every on-board time stamp and every execution time in the scenario falls on a mu
 |---|---|---|---|
 | APP-060 | On-board time SHALL be CUC Level 1 with 4 coarse and 2 fractional octets, equal to T0 + `now`, with T0 = 2 100 000 000 s, and SHALL be converted with `aldis-time` (TIME-011). | 301.0 §3.2.1–3.2.2 | T |
 | APP-061 | Every on-board generation instant and every execution time SHALL be a multiple of 125 000 µs. | — | I |
-| APP-062 | The ground node SHALL take the delivery `Instant` as its time and SHALL NOT correct on-board time (no correlation, offset, or drift in scenario version 1). | — | I |
+| APP-062 | The ground node SHALL take the delivery instant as its time and SHALL NOT correct on-board time (no correlation, offset, or drift in scenario version 1). | — | I |
 
 ## 6. Link model and faults
 
@@ -513,7 +513,7 @@ The harness sends one message and waits for its answer; it never reads the wall 
 
 | ID | Requirement | Source | Verif. |
 |---|---|---|---|
-| APP-100 | `refapp/` crates SHALL depend on Aldis only through the `aldis` facade, by path, with default features off and only the features each crate uses. They SHALL NOT depend on any other `aldis-*` crate, on `aldis-testkit`, or on a `test-hooks` feature, also not as dev-dependencies, and SHALL NOT use items hidden from the documentation. From A5 the C++ node SHALL use only `aldis.h` and `aldis.hpp` (CABI-072). | — | A/I |
+| APP-100 | `refapp/` crates SHALL depend on Aldis only through the `aldis` facade, by path, with default features off and only the features each crate uses. They SHALL NOT depend on any other `aldis-*` crate, on `aldis-testkit`, or on a `test-hooks` feature, also not as dev-dependencies, and SHALL NOT use items hidden from the documentation. From A5 the C++ node SHALL use only the C header and the C++ wrapper header (CABI-072). | — | A/I |
 | APP-101 | Every API pain point found in `refapp/` SHALL be filed as a GitHub issue labelled `api-feedback` for track R; the workaround SHALL cite the issue, and each A-milestone plan SHALL list its findings. `refapp/` SHALL NOT ask for an application-specific API. | — | I |
 | APP-102 | `refapp-flight` SHALL be `no_std` without a heap and SHALL pass the flight lint set (VER-001); it SHALL build for `thumbv7em-none-eabihf`. From A6 it SHALL also pass the panic-freedom link check (VER-010 method). | GEN-010, GEN-020 | A |
 | APP-103 | `refapp-ground` SHALL pass the flight lint set's restriction lints, because it parses untrusted downlink; it MAY use `std`. | GEN-020 | A |
@@ -637,7 +637,7 @@ What the trace format needs: nothing in APP-080…APP-088. There are two consequ
 |---|---|---|---|
 | APP-110 | For every case of the link levels its phase covers (§10.4), the cFS flight node SHALL reproduce byte for byte the golden trace that the Rust flight node reproduces, with the Rust ground node and the harness unchanged. | GEN-030 | T |
 | APP-111 | The cFS flight node SHALL run on the cFS release (cFE, OSAL, PSP) that its plan pins, built for the pc-linux PSP with `SIMULATION=native`, without changes to the cFE, OSAL, PSP, or lab-app sources or build files. Mission configuration (defs directory, configuration headers, startup script, tables) is not a change. cFS sources SHALL NOT be committed to this repository. | — | A/I |
-| APP-112 | The cFS apps SHALL call Aldis only through `aldis.h`, linked from the static library `libaldis_ffi.a` built from the same commit (CABI-001) through one cFE library module, and SHALL NOT use other code of `refapp/`, another Aldis crate, or anything the header does not declare. | CABI-001, CABI-002 | A/I |
+| APP-112 | The cFS apps SHALL call Aldis only through the C header, linked from the static library built from the same commit (CABI-001) through one cFE library module, and SHALL NOT use other code of `refapp/`, another Aldis crate, or anything the header does not declare. | CABI-001, CABI-002 | A/I |
 | APP-113 | The telemetry-output app SHALL build every downlink Space Packet with the Aldis SPP and time functions, keeping the per-APID sequence counts of §3.1 and the secondary headers of §3.2, and from phase P2 every TM frame of §4.1 with the Aldis TM functions. It SHALL be the only source of downlink link units. | APP-020…APP-023, APP-030…APP-035 | T |
 | APP-114 | The command-ingest app SHALL decode every delivered link unit with the Aldis strict decoders (API-030): Space Packets in P1, TC frames with MAP demultiplexing and segment reassembly from P2, and FARM-1 through its C ABI handle from P3. It SHALL put each accepted command and table-upload packet on the Software Bus and supply the CLCW to the telemetry-output app. | APP-024, APP-041…APP-044 | T |
 | APP-115 | The flight applications of §2.1 SHALL be cFS apps that exchange Software Bus messages only, and SHALL take scenario time only from the `now` of their WAKE message, never from cFE TIME or an OSAL or PSP clock. | APP-060 | T/I |
