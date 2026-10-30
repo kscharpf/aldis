@@ -178,3 +178,19 @@ proptest! {
         let _ = TmFrame::peek_length(&bytes, mc.pc());
     }
 }
+
+proptest! {
+    #![proptest_config(strategies::config(256, REGRESSIONS))]
+
+    #[test]
+    fn strict_equals_lenient_without_anomalies((mc, bytes) in tm_frame_decoder_input()) {
+        // req: API-030, API-031, API-032, TM-007
+        let strict = TmFrame::decode_with(&bytes, mc.pc(), &mc);
+        let lenient = TmFrame::decode_with_lenient(&bytes, mc.pc(), &mc);
+        if let Ok(s) = strict {
+            let l = lenient.expect("lenient accepts what strict accepts");
+            prop_assert!(l.anomalies().is_empty());
+            prop_assert_eq!(s, l.into_view());
+        }
+    }
+}

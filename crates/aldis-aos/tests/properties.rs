@@ -246,3 +246,20 @@ proptest! {
         let _ = aldis_aos::AosPrimaryHeader::decode(&bytes, &pc);
     }
 }
+
+proptest! {
+    #![proptest_config(strategies::config(256, REGRESSIONS))]
+
+    #[test]
+    fn strict_equals_lenient_without_anomalies((table, bytes) in aos_frame_decoder_input()) {
+        // req: API-030, API-031, API-032, AOS-002
+        let pc = table.physical_channel();
+        let strict = AosFrame::decode(&bytes, &pc, &table);
+        let lenient = AosFrame::decode_lenient(&bytes, &pc, &table);
+        if let Ok(s) = strict {
+            let l = lenient.expect("lenient accepts what strict accepts");
+            prop_assert!(l.anomalies().is_empty());
+            prop_assert_eq!(s, l.into_view());
+        }
+    }
+}

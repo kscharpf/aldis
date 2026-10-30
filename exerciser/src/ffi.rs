@@ -1024,6 +1024,7 @@ fn tm(t: &mut Tally) {
                 && view.has_fecf,
         );
         frame[10] ^= bb(1);
+        let mut found = 0_u32;
         t.check(
             aldis_tm_validate(
                 frame.as_ptr(),
@@ -1032,6 +1033,7 @@ fn tm(t: &mut Tally) {
                 vcs.as_ptr(),
                 bb(2),
                 bb(ALDIS_MODE_STRICT),
+                &raw mut found,
                 &raw mut det,
             ) == ALDIS_OK,
         );

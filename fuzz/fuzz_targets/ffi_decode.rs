@@ -597,6 +597,7 @@ fn tm(data: &[u8], fecf: bool, mode: DecodeMode, c_mode: u32) {
         )?;
         frame.validate(&m).map(drop)
     });
+    let mut found = 0_u32;
     // SAFETY: as above.
     let status = unsafe {
         aldis_tm_validate(
@@ -606,6 +607,7 @@ fn tm(data: &[u8], fecf: bool, mode: DecodeMode, c_mode: u32) {
             vcs.as_ptr(),
             vcs.len(),
             c_mode,
+            &raw mut found,
             &raw mut detail,
         )
     };
@@ -1478,6 +1480,7 @@ fn uslp_table(
 /// (M2 plan D14): `aldis_uslp_vc_table_check`, `aldis_uslp_decode`, `aldis_uslp_peek_length`,
 /// and `aldis_uslp_stream_next` over the whole input (USLP-001…USLP-007, USLP-014…USLP-016, API-070).
 #[expect(unsafe_code, reason = "calls the C ABI with valid pointers")]
+#[expect(clippy::too_many_lines, reason = "one comparison per C function")]
 fn uslp(data: &[u8], selector: u8, mode: DecodeMode, c_mode: u32) {
     let (pc, vc, maps) = uslp_channels(data, selector);
     let rust_table = uslp_table(&pc, &vc, &maps);
@@ -1562,20 +1565,26 @@ fn uslp(data: &[u8], selector: u8, mode: DecodeMode, c_mode: u32) {
         };
         assert_eq!(status, ALDIS_OK);
         let next = match mode {
-            DecodeMode::Strict => strict_stream.next().map(|item| (item, AnomalySet::empty())),
-            DecodeMode::Lenient => lenient_stream.next().map(Lenient::into_parts),
+            DecodeMode::Strict => strict_stream
+                .next()
+                .map(|item| item.map_frame(|frame| (frame, AnomalySet::empty()))),
+            DecodeMode::Lenient => lenient_stream
+                .next()
+                .map(|item| item.map_frame(Lenient::into_parts)),
         };
         match next {
             None => {
                 assert_eq!(item.kind, ALDIS_USLP_STREAM_END);
                 break;
             }
-            Some((UslpIntakeItem::Accepted { frame, .. }, a)) => {
+            Some(UslpIntakeItem::Accepted {
+                frame: (frame, a), ..
+            }) => {
                 assert_eq!(item.kind, ALDIS_USLP_STREAM_ACCEPTED);
                 assert_eq!(item.range.len, frame.len());
                 uslp_same(&item.frame, &frame, a, frame.octets());
             }
-            Some((UslpIntakeItem::Discarded { reason, octets, .. }, _)) => {
+            Some(UslpIntakeItem::Discarded { reason, octets, .. }) => {
                 assert_eq!(item.kind, ALDIS_USLP_STREAM_DISCARDED);
                 assert_eq!(item.range.len, octets.len());
                 assert_eq!(item.discard_reason, u32::from(reason.code()));

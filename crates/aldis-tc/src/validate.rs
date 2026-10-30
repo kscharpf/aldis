@@ -141,6 +141,12 @@ impl<'a> ValidatedTcFrame<'a> {
         self.frame
     }
 
+    /// The frame (232.0 §4.1; TC-021), by reference; usable in a `const fn`, where `Deref` is not.
+    #[must_use]
+    pub const fn as_frame(&self) -> &TcFrame<'a> {
+        &self.frame
+    }
+
     /// The frame that exact-length parsing returned.
     pub(crate) const fn new(frame: TcFrame<'a>) -> ValidatedTcFrame<'a> {
         ValidatedTcFrame { frame }
@@ -237,6 +243,7 @@ mod tests {
         assert!(v.anomalies().contains(TcAnomaly::ReservedSpareSet));
         assert_eq!(v.len(), 6);
         let proof = validate_frame(&[0x31, 0x55, 0x04, 0x05, 0x00, 0x00], &t).unwrap();
+        assert_eq!(proof.as_frame().len(), 6);
         assert_eq!(proof.into_frame().len(), 6);
     }
 }

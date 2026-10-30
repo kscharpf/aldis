@@ -879,7 +879,8 @@ pub unsafe extern "C" fn aldis_tm_decode_unchecked_with(
 ///
 /// The frame is decoded as [`aldis_tm_decode_with`] decodes it, with the security layout of its
 /// virtual channel from `mc`, and checked as `TmFrame::validate` checks it. A call that takes a
-/// master channel always uses its layouts (c-abi.md §11).
+/// master channel always uses its layouts (c-abi.md §11). `*anomalies` receives the
+/// `ALDIS_TM_ANOMALY_*` flags of the frame that passed, `0` in strict mode (API-032).
 ///
 /// # Errors
 /// The errors of [`aldis_tm_decode_with`]; `ALDIS_ERR_INVALID_FIELD` (`vc_id`) for an Only Idle
@@ -889,7 +890,7 @@ pub unsafe extern "C" fn aldis_tm_decode_unchecked_with(
 /// Secondary Header length.
 ///
 /// # Safety
-/// As [`aldis_tm_decode_with`], without `out`.
+/// As [`aldis_tm_decode_with`], with `anomalies` valid for one write instead of `out`.
 #[expect(
     unsafe_code,
     reason = "C ABI entry point: unmangled, takes raw pointers (GEN-071)"
@@ -902,6 +903,7 @@ pub unsafe extern "C" fn aldis_tm_validate(
     vcs: *const aldis_tm_vc_config_t,
     vc_count: usize,
     mode: u32,
+    anomalies: *mut u32,
     err: *mut crate::aldis_error_detail_t,
 ) -> u32 {
     // SAFETY: every pointer is valid as `# Safety` states; `abi` checks NULL and alignment.
@@ -909,11 +911,16 @@ pub unsafe extern "C" fn aldis_tm_validate(
         abi::call(err, || {
             let mc = master_channel_at(mc, vcs, vc_count)?;
             let bytes = abi::bytes(bytes, len)?;
-            let (frame, _) = abi::mode(mode)?.dispatch(
-                || TmFrame::decode_with(bytes, mc.pc(), &mc),
-                || TmFrame::decode_with_lenient(bytes, mc.pc(), &mc),
+            let anomalies = abi::out(anomalies)?;
+            let (_, found) = abi::mode(mode)?.dispatch(
+                || TmFrame::decode_with(bytes, mc.pc(), &mc).and_then(|f| f.validate(&mc)),
+                || {
+                    TmFrame::decode_with_lenient(bytes, mc.pc(), &mc)
+                        .and_then(|l| l.try_map(|f| f.validate(&mc)))
+                },
             )?;
-            frame.validate(&mc).map(drop)
+            anomalies.write(found.bits());
+            Ok(())
         })
     }
 }

@@ -82,6 +82,19 @@ impl<V, A: Anomaly> Lenient<V, A> {
         }
     }
 
+    /// The same anomalies with the view converted by `f`, which may fail: a lenient decode
+    /// followed by a check keeps its anomalies (API-032).
+    ///
+    /// # Errors
+    /// Those of `f`.
+    pub fn try_map<W, E>(
+        self,
+        f: impl FnOnce(V) -> core::result::Result<W, E>,
+    ) -> core::result::Result<Lenient<W, A>, E> {
+        let Lenient { view, anomalies } = self;
+        f(view).map(|view| Lenient { view, anomalies })
+    }
+
     /// The view, without its anomalies.
     #[must_use]
     pub fn into_view(self) -> V {
@@ -137,6 +150,9 @@ mod tests {
         assert_eq!((*l, l.anomalies().len()), (7, 1));
         assert_eq!(l.clone().into_view(), 7);
         assert_eq!(*l.clone().map(u16::from), 7);
+        let kept = l.clone().try_map(|v| v.checked_add(1).ok_or(()));
+        assert_eq!(kept.map(|k| (*k, k.anomalies().len())), Ok((8, 1)));
+        assert!(l.clone().try_map(|_| Err::<u8, ()>(())).is_err());
         let (v, a) = l.into_parts();
         assert_eq!((v, a.contains(Demo::One)), (7, true));
     }

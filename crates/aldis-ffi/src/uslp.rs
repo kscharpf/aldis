@@ -1169,10 +1169,10 @@ pub unsafe extern "C" fn aldis_uslp_stream_next(
             let item = match mode {
                 DecodeMode::Strict => FrameStream::new(rest, &t)
                     .next()
-                    .map(|item| (item, AnomalySet::empty())),
+                    .map(|item| item.map_frame(|frame| (frame, AnomalySet::empty()))),
                 DecodeMode::Lenient => LenientFrameStream::new(rest, &t)
                     .next()
-                    .map(Lenient::into_parts),
+                    .map(|item| item.map_frame(Lenient::into_parts)),
             };
             match item {
                 None => {
@@ -1191,7 +1191,10 @@ pub unsafe extern "C" fn aldis_uslp_stream_next(
                         reserved2: [0; 2],
                     });
                 }
-                Some((IntakeItem::Accepted { frame, .. }, anomalies)) => {
+                Some(IntakeItem::Accepted {
+                    frame: (frame, anomalies),
+                    ..
+                }) => {
                     let len = frame.len();
                     *offset_ref = current_offset
                         .checked_add(len)
@@ -1211,14 +1214,11 @@ pub unsafe extern "C" fn aldis_uslp_stream_next(
                         reserved2: [0; 2],
                     });
                 }
-                Some((
-                    IntakeItem::Discarded {
-                        reason,
-                        octets,
-                        error,
-                    },
-                    _,
-                )) => {
+                Some(IntakeItem::Discarded {
+                    reason,
+                    octets,
+                    error,
+                }) => {
                     let len = octets.len();
                     *offset_ref = current_offset
                         .checked_add(len)

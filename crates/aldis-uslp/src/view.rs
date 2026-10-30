@@ -919,8 +919,8 @@ mod tests {
         assert_eq!(v.into_view().into_frame(), f.into_view());
         let mut stream = LenientFrameStream::new(&spare, &t);
         let item = stream.next().unwrap();
-        assert!(item.anomalies().contains(UslpAnomaly::ReserveSparesSet));
-        assert!(matches!(item.into_view(), IntakeItem::Accepted { .. }));
+        assert!(matches!(item, IntakeItem::Accepted { ref frame, .. }
+            if frame.anomalies().contains(UslpAnomaly::ReserveSparesSet)));
         assert!(matches!(
             FrameStream::new(&spare, &t).next(),
             Some(IntakeItem::Discarded {

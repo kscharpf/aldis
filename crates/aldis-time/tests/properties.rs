@@ -167,3 +167,19 @@ fn saved_regressions() {
     // values: a proptest seed draws a different value once the strategy changes.
     pfield_decode_property(&[144, 128, 0]).unwrap();
 }
+
+proptest! {
+    #![proptest_config(strategies::config(256, REGRESSIONS))]
+
+    #[test]
+    fn strict_equals_lenient_without_anomalies(bytes in time_code_decoder_input()) {
+        // req: API-030, API-031, API-032, TIME-002
+        let strict = decode_with_pfield(&bytes);
+        let lenient = decode_with_pfield_lenient(&bytes);
+        if let Ok(s) = strict {
+            let l = lenient.expect("lenient accepts what strict accepts");
+            prop_assert!(l.anomalies().is_empty());
+            prop_assert_eq!(s, l.into_view());
+        }
+    }
+}

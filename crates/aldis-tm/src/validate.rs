@@ -319,7 +319,7 @@ mod tests {
         let mut bytes = frame(2, false, 0x1F, 0);
         bytes[5] = 0xFE;
         let f = TmFrame::decode_with_lenient(&bytes, &PC, &mc).unwrap();
-        let e = f.into_view().validate(&mc).unwrap_err();
+        let e = f.try_map(|v| v.validate(&mc)).unwrap_err();
         assert_eq!(
             (e.kind(), e.field()),
             (ErrorKind::InvalidField, Some(field::VC_ID))

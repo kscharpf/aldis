@@ -166,3 +166,19 @@ proptest! {
         prop_assert_eq!(taken, unit.len());
     }
 }
+
+proptest! {
+    #![proptest_config(strategies::config(256, REGRESSIONS))]
+
+    #[test]
+    fn strict_equals_lenient_without_anomalies((c, v) in uslp_frame_decoder_input()) {
+        // req: API-030, API-031, API-032, USLP-001
+        let strict = UslpFrame::decode(&v, &c.table);
+        let lenient = UslpFrame::decode_lenient(&v, &c.table);
+        if let Ok(s) = strict {
+            let l = lenient.expect("lenient accepts what strict accepts");
+            prop_assert!(l.anomalies().is_empty());
+            prop_assert_eq!(s, l.into_view());
+        }
+    }
+}

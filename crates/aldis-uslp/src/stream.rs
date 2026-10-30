@@ -15,8 +15,8 @@ use crate::config::{MapConfig, VcConfig, VcLookup};
 use crate::delimit::{Declared, declared_len};
 use crate::field;
 use crate::header::{RawRest, RawStart};
-use crate::validate::Reason;
-use crate::view::{UslpFrame, parse};
+use crate::validate::{Reason, ValidatedUslpFrame};
+use crate::view::parse;
 
 /// Why wire octets or a USLP frame were discarded (732.1 §4.3.11.2, §4.3.11.3; USLP-014, USLP-015).
 #[non_exhaustive]
@@ -155,21 +155,17 @@ impl From<Reason> for DiscardReason {
     }
 }
 
-/// An item yielded by [`FrameStream`] (732.1 §4.3.11.2, §4.3.11.3; USLP-014, USLP-015).
+/// An item yielded by [`FrameStream`] or [`LenientFrameStream`] (732.1 §4.3.11.2, §4.3.11.3;
+/// USLP-014, USLP-015).
+///
+/// `F` is the accepted frame: a [`ValidatedUslpFrame`] from the strict stream, and the same in a
+/// [`Lenient`] from the lenient one (API-016, API-030). A discarded item has no anomalies.
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[cfg_attr(
-    target_pointer_width = "64",
-    expect(
-        clippy::large_enum_variant,
-        reason = "no heap to box the frame with (GEN-010); an accepted frame is the common item; \
-                  the variants differ in size enough to trip the lint only with 64-bit offsets"
-    )
-)]
-pub enum IntakeItem<'a> {
+pub enum IntakeItem<'a, F = ValidatedUslpFrame<'a>> {
     /// A validated USLP Transfer Frame, bundled with its matched Virtual Channel and MAP configurations.
     Accepted {
-        /// The decoded frame view.
-        frame: UslpFrame<'a>,
+        /// The validated frame view.
+        frame: F,
         /// The verified Virtual Channel configuration.
         vc: VcConfig,
         /// The verified MAP configuration, if present.
@@ -186,10 +182,32 @@ pub enum IntakeItem<'a> {
     },
 }
 
-impl<'a> IntakeItem<'a> {
+impl<'a, F> IntakeItem<'a, F> {
+    /// The item with its accepted frame converted by `convert`; a discarded item is unchanged.
+    pub fn map_frame<G>(self, convert: impl FnOnce(F) -> G) -> IntakeItem<'a, G> {
+        match self {
+            IntakeItem::Accepted { frame, vc, map } => IntakeItem::Accepted {
+                frame: convert(frame),
+                vc,
+                map,
+            },
+            IntakeItem::Discarded {
+                reason,
+                octets,
+                error,
+            } => IntakeItem::Discarded {
+                reason,
+                octets,
+                error,
+            },
+        }
+    }
+}
+
+impl<'a> IntakeItem<'a, ValidatedUslpFrame<'a>> {
     /// The octets of the item.
     #[must_use]
-    pub const fn octets(&self) -> &'a [u8] {
+    pub fn octets(&self) -> &'a [u8] {
         match self {
             IntakeItem::Accepted { frame, .. } => frame.octets(),
             IntakeItem::Discarded { octets, .. } => octets,
@@ -198,7 +216,30 @@ impl<'a> IntakeItem<'a> {
 
     /// Length in octets consumed from the input stream.
     #[must_use]
-    pub const fn len(&self) -> usize {
+    pub fn len(&self) -> usize {
+        self.octets().len()
+    }
+
+    /// Always `false`: every intake item consumes at least one octet.
+    #[must_use]
+    pub const fn is_empty(&self) -> bool {
+        false
+    }
+}
+
+impl<'a> IntakeItem<'a, Lenient<ValidatedUslpFrame<'a>, UslpAnomaly>> {
+    /// The octets of the item.
+    #[must_use]
+    pub fn octets(&self) -> &'a [u8] {
+        match self {
+            IntakeItem::Accepted { frame, .. } => frame.octets(),
+            IntakeItem::Discarded { octets, .. } => octets,
+        }
+    }
+
+    /// Length in octets consumed from the input stream.
+    #[must_use]
+    pub fn len(&self) -> usize {
         self.octets().len()
     }
 
@@ -274,29 +315,29 @@ impl<'a, L: VcLookup + ?Sized> Iterator for FrameStream<'a, '_, L> {
     type Item = IntakeItem<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        // A strict decode has no anomalies; the set stays empty and is dropped.
-        let mut anomalies = AnomalySet::empty();
-        self.intake.next_in(DecodeMode::Strict, &mut anomalies)
+        // A strict decode has no anomalies; the empty set is dropped.
+        self.intake
+            .next_in(DecodeMode::Strict)
+            .map(|item| item.map_frame(|(frame, _)| frame))
     }
 }
 
 impl<'a, L: VcLookup + ?Sized> Iterator for LenientFrameStream<'a, '_, L> {
-    type Item = Lenient<IntakeItem<'a>, UslpAnomaly>;
+    type Item = IntakeItem<'a, Lenient<ValidatedUslpFrame<'a>, UslpAnomaly>>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let mut anomalies = AnomalySet::empty();
-        let item = self.intake.next_in(DecodeMode::Lenient, &mut anomalies)?;
-        Some(Lenient::new(item, anomalies))
+        self.intake
+            .next_in(DecodeMode::Lenient)
+            .map(|item| item.map_frame(|(frame, found)| Lenient::new(frame, found)))
     }
 }
 
 impl<'a, L: VcLookup + ?Sized> Intake<'a, '_, L> {
-    /// The next item; `anomalies` receives those of an accepted frame.
+    /// The next item; an accepted frame comes with its anomalies.
     fn next_in(
         &mut self,
         mode: DecodeMode,
-        anomalies: &mut AnomalySet<UslpAnomaly>,
-    ) -> Option<IntakeItem<'a>> {
+    ) -> Option<IntakeItem<'a, (ValidatedUslpFrame<'a>, AnomalySet<UslpAnomaly>)>> {
         if self.rest.is_empty() {
             return None;
         }
@@ -356,14 +397,11 @@ impl<'a, L: VcLookup + ?Sized> Intake<'a, '_, L> {
         if let Some((frame_bytes, remaining)) = self.rest.split_at_checked(len) {
             self.rest = remaining;
             match parse(frame_bytes, self.channels, mode, true) {
-                Ok(p) => {
-                    *anomalies = p.anomalies;
-                    Some(IntakeItem::Accepted {
-                        frame: p.frame,
-                        vc: p.vc,
-                        map: p.map,
-                    })
-                }
+                Ok(p) => Some(IntakeItem::Accepted {
+                    frame: (ValidatedUslpFrame::new(p.frame), p.anomalies),
+                    vc: p.vc,
+                    map: p.map,
+                }),
                 Err(rejection) => Some(IntakeItem::Discarded {
                     reason: DiscardReason::from(rejection.reason()),
                     octets: frame_bytes,
@@ -483,12 +521,18 @@ mod tests {
         // The lenient stream reports what is left too (API-030).
         let mut lenient = LenientFrameStream::new(&TRUNCATED, &table);
         assert_eq!(lenient.remaining(), &TRUNCATED);
-        assert_eq!(lenient.next().map(|l| l.len()), Some(12));
+        let item = lenient.next().unwrap();
+        assert_eq!(
+            (item.octets(), item.len(), item.is_empty()),
+            (&TRUNCATED[..], 12, false)
+        );
         assert_eq!(lenient.remaining(), &[]);
         assert!(lenient.next().is_none());
 
         // Discarded item accessors
         let fill = [0x55_u8; 3];
+        let lenient_fill = LenientFrameStream::new(&fill, &table).next().unwrap();
+        assert_eq!(lenient_fill.octets(), &fill);
         let mut stream_fill = FrameStream::new(&fill, &table);
         let discarded = stream_fill.next().unwrap();
         assert_eq!(discarded.octets(), &fill);

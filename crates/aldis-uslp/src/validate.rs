@@ -168,6 +168,11 @@ pub struct ValidatedUslpFrame<'a> {
 }
 
 impl<'a> ValidatedUslpFrame<'a> {
+    /// The frame that exact-length parsing returned.
+    pub(crate) const fn new(frame: UslpFrame<'a>) -> ValidatedUslpFrame<'a> {
+        ValidatedUslpFrame { frame }
+    }
+
     /// The frame, without the proof.
     #[must_use]
     pub const fn into_frame(self) -> UslpFrame<'a> {
@@ -199,7 +204,7 @@ pub fn validate_frame<'a, L: VcLookup + ?Sized>(
     frame: &'a [u8],
     channels: &L,
 ) -> Result<ValidatedUslpFrame<'a>, Rejection> {
-    parse(frame, channels, DecodeMode::Strict, true).map(|p| ValidatedUslpFrame { frame: p.frame })
+    parse(frame, channels, DecodeMode::Strict, true).map(|p| ValidatedUslpFrame::new(p.frame))
 }
 
 /// Applies the checks of [`validate_frame`] in lenient mode: nonzero Reserve Spares and a
@@ -213,7 +218,7 @@ pub fn validate_frame_lenient<'a, L: VcLookup + ?Sized>(
     channels: &L,
 ) -> Result<Lenient<ValidatedUslpFrame<'a>, UslpAnomaly>, Rejection> {
     parse(frame, channels, DecodeMode::Lenient, true)
-        .map(|p| Lenient::new(ValidatedUslpFrame { frame: p.frame }, p.anomalies))
+        .map(|p| Lenient::new(ValidatedUslpFrame::new(p.frame), p.anomalies))
 }
 
 #[cfg(test)]

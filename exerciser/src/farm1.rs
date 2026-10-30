@@ -13,8 +13,8 @@ use aldis_core::time::Instant;
 use aldis_core::{ErrorKind, field};
 use aldis_tc::{
     ClcwStatus, ControlCommand, CopInEffect, FrameData, FrameFields, FrameType,
-    PhysicalChannelConfig, SegmentHeaderUse, TcFrame, TcSpacecraftId, TcVcId, VcConfig, VcTable,
-    encode,
+    PhysicalChannelConfig, SegmentHeaderUse, TcSpacecraftId, TcVcId, VcConfig, VcTable, encode,
+    validate_frame,
 };
 
 use crate::exercise::Tally;
@@ -70,7 +70,7 @@ fn tc_group(t: &mut Tally) {
             continue;
         };
         let octets = buf.get(..n).unwrap_or_default();
-        let Ok(frame) = TcFrame::decode(bb(octets), &table) else {
+        let Ok(frame) = validate_frame(bb(octets), &table) else {
             t.check(false);
             continue;
         };

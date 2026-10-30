@@ -121,3 +121,19 @@ fn saved_regressions() {
     strict_re_encode_property(&bytes).unwrap();
     lenient_superset_property(&bytes).unwrap();
 }
+
+proptest! {
+    #![proptest_config(strategies::config(256, REGRESSIONS))]
+
+    #[test]
+    fn strict_equals_lenient_without_anomalies(bytes in encapsulation_packet_decoder_input()) {
+        // req: API-030, API-031, API-032, EPP-005
+        let strict = EncapsulationPacket::decode(&bytes);
+        let lenient = EncapsulationPacket::decode_lenient(&bytes);
+        if let Ok(s) = strict {
+            let l = lenient.expect("lenient accepts what strict accepts");
+            prop_assert!(l.anomalies().is_empty());
+            prop_assert_eq!(s, l.into_view());
+        }
+    }
+}
