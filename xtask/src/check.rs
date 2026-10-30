@@ -12,6 +12,7 @@
 //! header, `spec`) are not mirrored, except as the extras below.
 
 use std::process::Command;
+use std::time::{Duration, Instant};
 
 use crate::repo;
 
@@ -360,6 +361,18 @@ fn tools() -> Tools {
     }
 }
 
+/// A step's wall-clock time as `1m42s`, `42s`, or `0.3s` under a second.
+fn fmt_duration(d: Duration) -> String {
+    let secs = d.as_secs();
+    if secs >= 60 {
+        format!("{}m{:02}s", secs / 60, secs % 60)
+    } else if secs > 0 {
+        format!("{secs}s")
+    } else {
+        format!("0.{}s", d.subsec_millis() / 100)
+    }
+}
+
 /// Runs the plan; `Ok(0)` when every step passed.
 pub fn run() -> Result<usize, String> {
     let (touched, note) = match changed_paths() {
@@ -382,9 +395,10 @@ pub fn run() -> Result<usize, String> {
     }
     let (items, skipped) = plan(&touched, tools());
     let total = items.len();
-    let mut ran = Vec::new();
+    let mut ran: Vec<String> = Vec::new();
     for (i, item) in items.iter().enumerate() {
         println!("check: [{}/{total}] {}", i + 1, item.name);
+        let started = Instant::now();
         let ok = match &item.action {
             Action::Cmd {
                 program,
@@ -400,11 +414,17 @@ pub fn run() -> Result<usize, String> {
                 .success(),
             Action::Xtask(f) => f()? == 0,
         };
+        let took = fmt_duration(started.elapsed());
+        println!("check: [{}/{total}] {} ({took})", i + 1, item.name);
         if !ok {
-            println!("check: FAILED at {}; ran: {}", item.name, ran.join(", "));
+            println!(
+                "check: FAILED at {} ({took}); ran: {}",
+                item.name,
+                ran.join(", ")
+            );
             return Ok(1);
         }
-        ran.push(item.name);
+        ran.push(format!("{} ({took})", item.name));
     }
     println!("check: passed: {}", ran.join(", "));
     for s in &skipped {
@@ -415,8 +435,11 @@ pub fn run() -> Result<usize, String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{Action, DOC_ENV, SEPARATE_WORKSPACES, Tools, Touched, plan, touched};
+    use super::{
+        Action, DOC_ENV, SEPARATE_WORKSPACES, Tools, Touched, fmt_duration, plan, touched,
+    };
     use crate::verify::{CHECK_ENV, CLIPPY, FMT, TEST};
+    use std::time::Duration;
 
     fn paths(p: &[&str]) -> Vec<String> {
         p.iter().map(|s| (*s).to_owned()).collect()
@@ -435,6 +458,15 @@ mod tests {
         coverage: false,
         cbindgen: false,
     };
+
+    #[test]
+    fn durations_print_as_minutes_seconds_or_tenths() {
+        // req: VER-068
+        assert_eq!(fmt_duration(Duration::from_secs(102)), "1m42s");
+        assert_eq!(fmt_duration(Duration::from_secs(60)), "1m00s");
+        assert_eq!(fmt_duration(Duration::from_secs(42)), "42s");
+        assert_eq!(fmt_duration(Duration::from_millis(340)), "0.3s");
+    }
 
     #[test]
     fn paths_select_directories() {
