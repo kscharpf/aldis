@@ -10,7 +10,7 @@
 
 use aldis_core::ErrorKind;
 use aldis_core::crc::crc16;
-use aldis_core::security::SecurityLayout;
+use aldis_core::security::{FrameCtx, PreFilledSecurity, SecurityLayout};
 use aldis_uslp::{
     Delimited, FrameContent, FrameFields, MapConfig, OcfUse, PhysicalChannelConfig, SecurityScope,
     TransferFrameType, TruncatedFrameLen, UslpFrame, UslpFrameWriter, UslpMapId, UslpSpacecraftId,
@@ -124,7 +124,17 @@ fn re_encode(table: &VcTable<4, 4>, f: &UslpFrame<'_>) {
             w.security_trailer_mut()
                 .unwrap()
                 .copy_from_slice(full.security_trailer());
-            assert_eq!(w.finish(zone.len()), Ok(f.len()));
+            let ctx = FrameCtx::Uslp {
+                scid: fields.spacecraft_id,
+                vcid: fields.vc_id,
+                map_id: Some(fields.map_id),
+            };
+            let done = w
+                .protect(zone.len(), &mut PreFilledSecurity, &ctx)
+                .unwrap()
+                .finalize()
+                .unwrap();
+            assert_eq!(done.len(), f.len());
             assert_eq!(out, f.octets());
         }
         (_, Some(t)) => {

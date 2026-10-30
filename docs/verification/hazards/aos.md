@@ -220,7 +220,7 @@ Failure modes of `aldis-aos` and its C ABI (the AOS functions), in the format of
 | Mission effect | A frame with FECF zero that the receiver rejects, or, with no FECF configured, a frame with zero Insert Zone, OCF, or Security Header that the receiver accepts; a data unit whose pointer misleads the packet extraction |
 | Requirements | AOS-017, AOS-019, API-021, API-023 |
 | Evidence | `vector:aos-min-enc-003`; `vector:aos-fhecf-enc-001`; `vector:aos-mpdu-enc-003`; `vector:aos-bpdu-enc-004`; `test:crates/aldis-aos/src/writer.rs::unfinished_frame_is_defined`; `test:crates/aldis-aos/src/writer.rs::two_phase_writer_fills_every_field`; `test:crates/aldis-aos/tests/properties.rs::two_phase_writer_matches_encode`; `fuzz:aos_roundtrip` |
-| Residual risk | `finish(self)` consumes the writer (`file:crates/aldis-aos/src/writer.rs`), but nothing forces the call: a dropped writer leaves the buffer in the defined state `unfinished_frame_is_defined` shows. A zero FECF is correct for a frame only with probability 2⁻¹⁶. The agreement of pointer and zone content is the engine's (the multiplexing of M4) and is outside the codec; the one-shot `encode` has the same limit |
+| Residual risk | `finalize(self)` consumes the writer (`file:crates/aldis-aos/src/writer.rs`), but nothing forces the call: a dropped writer leaves the buffer in the defined state `unfinished_frame_is_defined` shows. A zero FECF is correct for a frame only with probability 2⁻¹⁶. The agreement of pointer and zone content is the engine's (the multiplexing of M4) and is outside the codec; the one-shot `encode` has the same limit |
 | Assumptions | — |
 | Proposals | — |
 | Claims | `ac:AC-1.3` |
@@ -283,12 +283,12 @@ Failure modes of `aldis-aos` and its C ABI (the AOS functions), in the format of
 | Category | `abi-misuse` |
 | Status | `residual` |
 | Severity | S1 |
-| Failure mode | Removed by OI-57: the C ABI has no two-phase writers and the Rust writers have no resume, so no call finishes a frame that another call began, with other arguments or on a buffer never begun. A frame is built in one call, or in Rust by `AosFrameWriter`, whose `finish(self)` consumes the writer that `begin` returned and so holds the layout `begin` computed |
+| Failure mode | Removed by OI-57: the C ABI has no two-phase writers and the Rust writers have no resume, so no call finishes a frame that another call began, with other arguments or on a buffer never begun. A frame is built in one call, or in Rust by `AosFrameWriter`, whose typestate steps (`protect` or `unsecured`, then `finalize`; RS-023) consume the writer that `begin` returned and so hold the layout `begin` computed |
 | Cause | Before OI-57, the stateless finish of the C ABI (OI-50) took the arguments again and trusted them; no such call exists |
 | Mission effect | A frame that passes every check of a conformant receiver, with the Insert Zone, the Security Header, the data, and the OCF at places the receiver does not expect |
 | Requirements | API-022, API-023, AOS-019, CABI-022 |
 | Evidence | `test:crates/aldis-aos/src/writer.rs::two_phase_writer_fills_every_field`; `test:crates/aldis-aos/src/writer.rs::unfinished_frame_is_defined`; `test:crates/aldis-ffi/tests/aos.rs::encode_arguments_are_checked`; `test:crates/aldis-aos/tests/writer_bounds.rs::begin_and_finish_write_only_the_frame` |
-| Residual risk | The hazard is removed with the stateless finish (OI-57), so `proposal:P-AOS-06`, which hardened it under OI-50, is superseded and no residual of OI-50 remains. What is left is the Rust typestate: `finish(self)` completes the frame its own `begin` started, and a writer that is dropped leaves the defined buffer of API-023 |
+| Residual risk | The hazard is removed with the stateless finish (OI-57), so `proposal:P-AOS-06`, which hardened it under OI-50, is superseded and no residual of OI-50 remains. What is left is the Rust typestate: `finalize(self)` completes the frame its own `begin` started, and a writer that is dropped leaves the defined buffer of API-023 |
 | Assumptions | `asm:ASM-6` |
 | Proposals | `proposal:P-AOS-06` |
 | Claims | `ac:AC-6.2` |

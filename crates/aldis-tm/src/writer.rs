@@ -1,14 +1,20 @@
-//! Encoders: one-shot [`encode`], the two-phase [`TmFrameWriter`], and OID frames
-//! ([`TmFrameWriter::begin_oid`]) (132.0-B-3 §4.1, §4.1.4.6, §6.3; TM-009, TM-010,
-//! API-020…API-023, API-072, GEN-014, GEN-042, GEN-052).
+//! Encoders: one-shot [`encode`] and the two-phase [`TmFrameWriter`].
+//!
+//! The writer has a finishing typestate and writes OID frames ([`TmFrameWriter::begin_oid`]) (132.0-B-3 §4.1, §4.1.4.6, §6.3; TM-009,
+//! TM-010, API-020…API-023, API-072, API-074, RS-023, GEN-014, GEN-042, GEN-052).
 
+use core::marker::PhantomData;
 use core::ops::Range;
 
 use aldis_core::crc::crc16;
+use aldis_core::finishing::{
+    Finalized, FrameState, Protected, Unprotected, require_layout, require_unsecured,
+};
 use aldis_core::ids::VcId;
 use aldis_core::layout::FrameLayout;
 use aldis_core::ocf::Ocf;
 use aldis_core::oid::{OidGenerator, OidGeneratorGalois};
+use aldis_core::security::{FrameCtx, SecuredFields, SecurityHook};
 use aldis_core::{Error, ErrorKind, Result};
 
 use crate::config::TmMasterChannelConfig;
@@ -163,23 +169,38 @@ fn write_at(buf: &mut [u8], at: usize, src: &[u8]) {
     }
 }
 
-/// Two-phase frame writer (132.0 §4.1; TM-009, API-020…API-023, API-072).
+/// Two-phase frame writer (132.0 §4.1; TM-009, API-020…API-023, API-072, API-074, RS-023).
 ///
 /// [`begin`](Self::begin) writes the Primary Header and the Secondary Header Identification
-/// Field, the caller fills the other fields in place, and [`finish`](Self::finish) computes the
-/// FECF.
+/// Field and returns the writer [`Unprotected`]; the caller fills the other fields in place and
+/// applies SDLS with [`protect`](TmFrameWriter::protect), or
+/// [`unsecured`](TmFrameWriter::unsecured) without it, which gives the writer
+/// [`Protected`]; [`finalize`](TmFrameWriter::finalize) computes the FECF last and gives it
+/// [`Finalized`], the only state that exposes the frame's octets. Each step consumes the
+/// writer, so a step out of order does not compile (RS-023, RS-021).
 ///
-/// `begin` zero-fills every octet after the headers, so until `finish` the frame is defined: its
-/// headers final, the fields the caller has not filled zero, and the FECF, if configured, zero
-/// (API-023). The FECF is computed last, after a security hook has filled the Security Header and
-/// Trailer (API-074).
+/// `begin` zero-fills every octet after the headers, so until `finalize` the frame is defined:
+/// its headers final, the fields the caller has not filled zero, and the FECF, if configured,
+/// zero (API-023).
 #[derive(Debug)]
-pub struct TmFrameWriter<'b> {
+pub struct TmFrameWriter<'b, S: FrameState = Unprotected> {
     frame: &'b mut [u8],
     layout: FrameLayout,
+    state: PhantomData<S>,
 }
 
-impl<'b> TmFrameWriter<'b> {
+impl<'b, S: FrameState> TmFrameWriter<'b, S> {
+    /// The same frame in state `T`: the one place a state changes.
+    const fn into_state<T: FrameState>(self) -> TmFrameWriter<'b, T> {
+        TmFrameWriter {
+            frame: self.frame,
+            layout: self.layout,
+            state: PhantomData,
+        }
+    }
+}
+
+impl<'b> TmFrameWriter<'b, Unprotected> {
     /// Starts a frame of `fields.vcid` in the first frame-length octets of `out` (TM-009).
     ///
     /// # Errors
@@ -196,7 +217,7 @@ impl<'b> TmFrameWriter<'b> {
         out: &'b mut [u8],
         mc: &TmMasterChannelConfig,
         fields: &TmFrameFields,
-    ) -> Result<TmFrameWriter<'b>> {
+    ) -> Result<TmFrameWriter<'b, Unprotected>> {
         let plan = Plan::new(mc, fields)?;
         TmFrameWriter::start(out, plan)
     }
@@ -223,7 +244,7 @@ impl<'b> TmFrameWriter<'b> {
         mc_frame_count: u8,
         vc_frame_count: u8,
         oid: &mut OidGenerator,
-    ) -> Result<TmFrameWriter<'b>> {
+    ) -> Result<TmFrameWriter<'b, Unprotected>> {
         let fields = oid_fields(vcid, mc_frame_count, vc_frame_count);
         let plan = Plan::new(mc, &fields)?;
         let mut writer = TmFrameWriter::start(out, plan)?;
@@ -233,7 +254,7 @@ impl<'b> TmFrameWriter<'b> {
 
     /// Takes up the frame of a checked plan in `out`: zero-fills it and writes the Primary
     /// Header and the Identification Field.
-    fn start(out: &'b mut [u8], plan: Plan) -> Result<TmFrameWriter<'b>> {
+    fn start(out: &'b mut [u8], plan: Plan) -> Result<TmFrameWriter<'b, Unprotected>> {
         let frame_len = plan.layout.frame_len();
         let frame = out
             .get_mut(..frame_len)
@@ -246,6 +267,7 @@ impl<'b> TmFrameWriter<'b> {
         Ok(TmFrameWriter {
             frame,
             layout: plan.layout,
+            state: PhantomData,
         })
     }
 
@@ -296,16 +318,92 @@ impl<'b> TmFrameWriter<'b> {
         &self.layout
     }
 
-    /// Completes the frame: computes the FECF, if configured, over every other octet; returns the
-    /// frame length (132.0 §4.1.6.2; TM-009, API-021).
-    #[must_use = "the frame length"]
-    pub fn finish(self) -> usize {
+    /// Applies `hook` to the Security Header, the data field, and the Security Trailer, after
+    /// every other field except the FECF is final (355.0 §2.3; API-074, RS-023). `ctx`
+    /// identifies the channel for the hook's Security Association.
+    ///
+    /// # Errors
+    /// `InvalidField` (`security_header_len` or `security_trailer_len`) if the hook is for
+    /// another layout than the VC's ([`SecurityHook::layout`]), such as `NoSecurity` on a VC with
+    /// SDLS; the hook's error, `Security`; the frame is then dropped and must not be
+    /// transmitted.
+    pub fn protect<H: SecurityHook + ?Sized>(
+        self,
+        hook: &mut H,
+        ctx: &FrameCtx,
+    ) -> Result<TmFrameWriter<'b, Protected>> {
+        let fields = SecuredFields::from_layout(&self.layout);
+        let result = require_layout(
+            hook.layout(),
+            self.layout.security_header().len(),
+            self.layout.security_trailer().len(),
+        )
+        .and_then(|()| hook.protect(ctx, &mut *self.frame, &fields));
+        self.protected(result)
+    }
+
+    /// The writer [`Protected`] if the hook succeeded; the part of `protect` that does not
+    /// depend on the hook type.
+    fn protected(self, result: Result<()>) -> Result<TmFrameWriter<'b, Protected>> {
+        result.map(|()| self.into_state())
+    }
+
+    /// Moves to [`Protected`] on a channel without SDLS, the `NoSecurity` path (API-073,
+    /// RS-023).
+    ///
+    /// # Errors
+    /// `InvalidField` (`security_header_len` or `security_trailer_len`) if the VC reserves a
+    /// Security Header or Trailer, which need [`protect`](Self::protect).
+    pub fn unsecured(self) -> Result<TmFrameWriter<'b, Protected>> {
+        require_unsecured(
+            self.layout.security_header().len(),
+            self.layout.security_trailer().len(),
+        )?;
+        Ok(self.into_state())
+    }
+}
+
+impl<'b> TmFrameWriter<'b, Protected> {
+    /// Completes the frame: computes the FECF, if configured, over every other octet, last
+    /// (132.0 §4.1.6.2; TM-009, API-021, API-074, RS-023).
+    #[must_use = "the finalized frame"]
+    pub fn finalize(self) -> TmFrameWriter<'b, Finalized> {
         let fecf = self.layout.fecf();
         if !fecf.is_empty() {
             let crc = crc16(self.frame.get(..fecf.start).unwrap_or_default());
             write_at(self.frame, fecf.start, &crc.to_be_bytes());
         }
+        self.into_state()
+    }
+}
+
+impl<'b> TmFrameWriter<'b, Finalized> {
+    /// The frame length (132.0 §4.1; TM-009).
+    #[must_use]
+    pub const fn len(&self) -> usize {
         self.layout.frame_len()
+    }
+
+    /// Always `false`: a frame holds at least its Primary Header.
+    #[must_use]
+    pub const fn is_empty(&self) -> bool {
+        false
+    }
+
+    /// The octets of the finalized frame, for transmission (RS-023).
+    #[must_use]
+    pub fn octets(&self) -> &[u8] {
+        self.frame
+            .get(..self.layout.frame_len())
+            .unwrap_or_default()
+    }
+
+    /// The octets of the finalized frame, borrowed from the buffer `begin` took, for
+    /// transmission (RS-023).
+    #[must_use]
+    pub fn into_octets(self) -> &'b [u8] {
+        let len = self.layout.frame_len();
+        self.frame.get(..len).unwrap_or_default()
     }
 }
 
@@ -388,7 +486,8 @@ pub fn encode(
     if let Some(ocf) = content.ocf {
         write_at(writer.frame, layout.ocf().start, &ocf.to_octets());
     }
-    Ok(writer.finish())
+    // The one-shot encoders take the Security Header and Trailer as given (API-072).
+    Ok(writer.into_state::<Protected>().finalize().len())
 }
 
 /// The fields of an Only Idle Data frame (132.0 §4.1.4.6; TM-010).
@@ -504,7 +603,8 @@ fn oid_frame(
         write_at(writer.frame, layout.ocf().start, &ocf.to_octets());
     }
     fill(writer.data_field_mut());
-    Ok(writer.finish())
+    // The one-shot encoders take the Security Header and Trailer as given (API-072).
+    Ok(writer.into_state::<Protected>().finalize().len())
 }
 
 #[cfg(test)]
@@ -530,6 +630,9 @@ mod tests {
     use aldis_core::ocf::Ocf;
     use aldis_core::oid::{OidGenerator, OidGeneratorGalois};
     use aldis_core::security::SecurityLayout;
+    use aldis_core::security::{
+        FrameCtx, HookLayout, NoSecurity, PreFilledSecurity, SecuredFields, SecurityHook,
+    };
     use aldis_core::{ErrorDetail, ErrorKind};
 
     fn vcid(n: u8) -> VcId<3> {
@@ -576,7 +679,13 @@ mod tests {
         w.data_field_mut().fill(0xD0);
         w.security_trailer_mut().copy_from_slice(&[0x5A]);
         w.set_ocf(Ocf::decode([0x01, 0, 0, 0])).unwrap();
-        assert_eq!(w.finish(), 32);
+        let ctx = FrameCtx::Tm {
+            scid: SpacecraftId::new(0x0AB).unwrap(),
+            vcid: vcid(0),
+        };
+        let done = w.protect(&mut PreFilledSecurity, &ctx).unwrap().finalize();
+        assert_eq!((done.len(), done.octets().len()), (32, 32));
+        assert!(!done.is_empty());
         assert_eq!(out[32..], [0xEE; 8], "nothing written past the frame");
         assert_eq!(syndrome(&out[..32]), 0);
         // SCID 0x0AB, VC 0, OCF 1; FSH 1, sync 0, POF 0, SLID 11, FHP 3; FSH ID 0x03.
@@ -592,6 +701,131 @@ mod tests {
             DataFieldStatus::Packets(starts_at(3))
         );
         f.validate(&mc).unwrap();
+    }
+
+    /// A hook that checks the frame state it is called in, and fills the Security fields.
+    struct OrderHook;
+
+    impl SecurityHook for OrderHook {
+        fn layout(&self) -> HookLayout {
+            HookLayout::Any
+        }
+
+        fn protect(
+            &mut self,
+            _: &FrameCtx,
+            frame: &mut [u8],
+            fields: &SecuredFields,
+        ) -> aldis_core::Result<()> {
+            // The FECF is not yet computed: the last two octets are still zero.
+            assert_eq!(frame.last_chunk::<2>(), Some(&[0, 0]));
+            frame[fields.header()].fill(0xA5);
+            frame[fields.trailer()].fill(0x5A);
+            Ok(())
+        }
+
+        fn verify(
+            &mut self,
+            _: &FrameCtx,
+            _: &mut [u8],
+            fields: &SecuredFields,
+        ) -> aldis_core::Result<core::ops::Range<usize>> {
+            Ok(fields.data())
+        }
+    }
+
+    /// A hook whose protection fails.
+    struct Refuse;
+
+    impl SecurityHook for Refuse {
+        fn layout(&self) -> HookLayout {
+            HookLayout::Any
+        }
+
+        fn protect(
+            &mut self,
+            _: &FrameCtx,
+            _: &mut [u8],
+            _: &SecuredFields,
+        ) -> aldis_core::Result<()> {
+            Err(aldis_core::Error::new(ErrorKind::Security))
+        }
+
+        fn verify(
+            &mut self,
+            _: &FrameCtx,
+            _: &mut [u8],
+            fields: &SecuredFields,
+        ) -> aldis_core::Result<core::ops::Range<usize>> {
+            Ok(fields.data())
+        }
+    }
+
+    #[test]
+    fn no_security_is_rejected_on_a_channel_with_sdls() {
+        // req: RS-023, API-070, API-073
+        let mc = mc();
+        let ctx = FrameCtx::Tm {
+            scid: SpacecraftId::new(0x0AB).unwrap(),
+            vcid: vcid(0),
+        };
+        let mut out = [0xEE_u8; 32];
+        let w = TmFrameWriter::begin(&mut out, &mc, &packets(0, starts_at(3))).unwrap();
+        let e = w.protect(&mut NoSecurity, &ctx).unwrap_err();
+        assert_eq!(
+            (e.kind(), e.field()),
+            (ErrorKind::InvalidField, Some(field::SECURITY_HEADER_LEN))
+        );
+    }
+
+    #[test]
+    fn a_failed_protect_gives_no_frame() {
+        // req: RS-023, API-073
+        let mc = mc();
+        let ctx = FrameCtx::Tm {
+            scid: SpacecraftId::new(0x0AB).unwrap(),
+            vcid: vcid(0),
+        };
+        let mut out = [0xEE_u8; 32];
+        let w = TmFrameWriter::begin(&mut out, &mc, &packets(0, starts_at(3))).unwrap();
+        let e = w.protect(&mut Refuse, &ctx).unwrap_err();
+        assert_eq!(e.kind(), ErrorKind::Security);
+    }
+
+    #[test]
+    fn protect_runs_before_the_fecf_is_computed() {
+        // req: RS-023, API-074, API-073
+        let mc = mc();
+        let ctx = FrameCtx::Tm {
+            scid: SpacecraftId::new(0x0AB).unwrap(),
+            vcid: vcid(0),
+        };
+        let mut out = [0xEE_u8; 32];
+        let w = TmFrameWriter::begin(&mut out, &mc, &packets(0, starts_at(3))).unwrap();
+        let octets = w
+            .protect(&mut OrderHook, &ctx)
+            .unwrap()
+            .finalize()
+            .into_octets();
+        assert_eq!(syndrome(octets), 0);
+        let f = TmFrame::decode_with(octets, mc.pc(), &mc).unwrap();
+        assert_eq!(
+            (f.security_header(), f.security_trailer()),
+            (&[0xA5; 2][..], &[0x5A][..])
+        );
+    }
+
+    #[test]
+    fn unsecured_needs_a_channel_without_sdls() {
+        // req: RS-023, API-070
+        let mc = mc();
+        let mut out = [0xEE_u8; 32];
+        let w = TmFrameWriter::begin(&mut out, &mc, &packets(0, starts_at(3))).unwrap();
+        let e = w.unsecured().unwrap_err();
+        assert_eq!(
+            (e.kind(), e.field()),
+            (ErrorKind::InvalidField, Some(field::SECURITY_HEADER_LEN))
+        );
     }
 
     #[test]
@@ -840,7 +1074,7 @@ mod tests {
             (ErrorKind::InvalidField, Some(field::OCF_FLAG))
         );
         assert_eq!(w.secondary_header_data_mut().len(), 0);
-        assert_eq!(w.finish(), 16);
+        assert_eq!(w.unsecured().unwrap().finalize().len(), 16);
         let f = TmFrame::decode(&out, &pc).unwrap();
         assert_eq!((f.fecf(), f.ocf()), (None, None));
         let mut again = [0_u8; 16];
@@ -862,9 +1096,9 @@ mod tests {
         let mut first = [0_u8; 32];
         let mut second = [0_u8; 32];
         let writer = TmFrameWriter::begin_oid(&mut first, &mc, vcid(5), 1, 1, &mut oid).unwrap();
-        assert_eq!(writer.finish(), 32);
+        assert_eq!(writer.unsecured().unwrap().finalize().len(), 32);
         let writer = TmFrameWriter::begin_oid(&mut second, &mc, vcid(5), 2, 2, &mut oid).unwrap();
-        assert_eq!(writer.finish(), 32);
+        assert_eq!(writer.unsecured().unwrap().finalize().len(), 32);
         let mut reference = OidGenerator::new();
         let mut expected = [0_u8; 32];
         reference.fill(&mut expected);
@@ -960,7 +1194,7 @@ mod tests {
             .secondary_header_data_mut()
             .copy_from_slice(&[1, 2, 3]);
         writer.set_ocf(ocf).unwrap();
-        assert_eq!(writer.finish(), 32);
+        assert_eq!(writer.unsecured().unwrap().finalize().len(), 32);
         assert_eq!(fib_frame[..32], two_frame);
         assert_eq!(gal_frame[..32], two_frame);
         assert_eq!(fib_frame[32..], [0xEE; 8], "nothing written past the frame");

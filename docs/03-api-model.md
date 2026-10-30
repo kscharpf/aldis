@@ -55,10 +55,15 @@ Two encoding styles are required:
 // one-shot: header fields + payload slice → bytes
 encode(header, payload, out_buf) -> Result<usize, Error>
 
-// two-phase, zero-copy: reserve, fill in place, finalize (computes FECF, length fields, FHEC …)
-w = Writer::begin(out_buf, header, config) -> Result<Writer, Error>
+// two-phase, zero-copy: reserve, fill in place, protect, finalize (computes FECF, FHEC …)
+// The writer is a typestate (RS-023): each step consumes it and returns the next state.
+w = Writer::begin(out_buf, header, config) -> Result<Writer<Unprotected>, Error>
 w.payload_mut() -> mutable slice          // caller fills in place
-w.finish(payload_len) -> Result<usize, Error>
+w = w.protect(hook, ctx)  -> Result<Writer<Protected>, Error>   // SDLS (API-074); TC and USLP
+                                                               // take the payload length first
+w = w.unsecured()         -> Result<Writer<Protected>, Error>   // no SDLS: the NoSecurity path
+w = w.finalize()          -> Writer<Finalized>                  // FECF (and FHEC) last
+w.octets() / w.into_octets() / w.len()                          // only a Finalized frame
 ```
 
 | ID | Requirement | Source | Verif. |
@@ -66,7 +71,7 @@ w.finish(payload_len) -> Result<usize, Error>
 | API-020 | Encoders SHALL produce exactly the octets the Blue Book specifies for the given fields. The round trip `decode(encode(x)) == x` SHALL hold for every valid `x`. | — | V/F |
 | API-021 | Encoders SHALL compute derived fields themselves: length fields, FECF, FHEC, Secondary Header Length, Length-of-Length/header size. The caller SHALL NOT be able to supply an inconsistent derived value. | — | T |
 | API-022 | When `out_buf` is too small, encoders SHALL return `BufferTooSmall{needed}` and SHALL NOT write a partial data unit that could be mistaken for a valid one. | — | T |
-| API-023 | Two-phase writers SHALL leave the buffer in a defined state if `finish` is never called. They SHALL NOT have side effects beyond the supplied buffer. The two-phase writers are Rust typestate writers (`begin`/`finish`, RS-021); the C ABI has none and builds a frame or packet with a one-shot encoder, which keeps no state between calls (OI-57; OI-50 is superseded). | — | T |
+| API-023 | Two-phase writers SHALL leave the buffer in a defined state if `finalize` is never called. They SHALL NOT have side effects beyond the supplied buffer. The two-phase writers are Rust typestate writers (`begin`, `protect` or `unsecured`, `finalize`; RS-021, RS-023); the C ABI has none and builds a frame or packet with a one-shot encoder, which keeps no state between calls (OI-57; OI-50 is superseded). | — | T |
 
 ## 3. Strict and lenient decoding
 
@@ -157,6 +162,7 @@ SecurityLayout { header_len: 0..=64, trailer_len: 0..=N }      // per VC (TM/AOS
 
 // A codec-level helper in aldis-core, applied by the caller; engines do not take it.
 trait SecurityHook {
+    fn layout(&self) -> HookLayout;   // mandatory: Exact(SecurityLayout) or Any (API-073)
     fn protect(&mut self, ctx: FrameCtx, frame: &mut [u8], header: Range, data: Range, trailer: Range) -> Result<(), Error>;
     fn verify (&mut self, ctx: FrameCtx, frame: &mut [u8], header: Range, data: Range, trailer: Range) -> Result<Range /*plain data*/, Error>;
 }
@@ -166,11 +172,11 @@ trait SecurityHook {
 
 | ID | Requirement | Source | Verif. |
 |---|---|---|---|
-| API-070 | Every frame codec SHALL accept a `SecurityLayout` per VC (and per MAP where SDLS may be applied per MAP). Data field lengths SHALL be computed accounting for the Security Header and Trailer. | 132.0 §6.3.5.2; 232.0 §6.3; 732.0 §6.3; 732.1 §6.3; 355.0 §4.1.1.1.1 | T/V |
+| API-070 | Every frame codec SHALL accept a `SecurityLayout` per VC (and per MAP where SDLS may be applied per MAP). Data field lengths SHALL be computed accounting for the Security Header and Trailer. A codec writer's `protect` SHALL compare the `layout()` of its hook (API-073) with the channel's lengths and reject a mismatch with `InvalidField`; its `unsecured` SHALL reject a channel that has Security Header or Trailer octets. | 132.0 §6.3.5.2; 232.0 §6.3; 732.0 §6.3; 732.1 §6.3; 355.0 §4.1.1.1.1 | T/V |
 | API-071 | A Security Header length SHALL be limited to ≤ 64 octets. A Security Trailer length SHALL be limited to ≤ 65 535 octets, the capacity of `SecurityLayout` (a project limit; no Blue Book states one). Header and trailer lengths SHALL be fixed for the configuration's lifetime. | 355.0 §4.1.1.1.4, §4.1.1.3.3 | T |
 | API-072 | Views SHALL expose the Security Header and Trailer as opaque slices. Writers SHALL expose them as mutable slices for the caller's SDLS processing to fill. | — | T |
-| API-073 | v1 SHALL ship a `NoSecurity` hook (layout 0/0, identity), plus a test-only `FixedPatternSecurity` hook that writes known patterns into non-zero-length header and trailer. The second one exercises length accounting and field placement and, applied by a test around an engine's `Transmit` action, the order of API-074. | — | T/V |
-| API-074 | A sending-side engine SHALL return the frame with every field final except the Security Header and Trailer contents, the FHEC, and the FECF, and SHALL return the ranges of the Security Header, the data, and the Security Trailer. The caller SHALL apply `protect` after all other frame fields except the FECF are final, and SHALL compute the FHEC (AOS) and the FECF after `protect` returns, with the codec writer. On reception, the caller SHALL check the FECF before `verify` is called, and SHALL give the engine only a frame that has passed both. These rules follow the SDLS processing order. | 355.0 §2.3; 232.0 Cor. 1 §6.5.2 | T |
+| API-073 | Every `SecurityHook` SHALL state the Security Header and Trailer lengths it is for (`layout()`: an exact `SecurityLayout`, or `HookLayout::Any` for a hook that serves any layout); a codec writer's `protect` SHALL reject a hook whose layout differs from the channel's. v1 SHALL ship a `NoSecurity` hook (layout 0/0, identity), plus two test-only hooks (feature `test-hooks`), both `HookLayout::Any`: `FixedPatternSecurity`, which writes known patterns into non-zero-length header and trailer, and `PreFilledSecurity`, which changes nothing, for tests, vector runners, and fuzz targets that fill the Security fields by hand before `protect`. `FixedPatternSecurity` exercises length accounting and field placement and, applied by a test around an engine's `Transmit` action, the order of API-074. | — | T/V |
+| API-074 | A sending-side engine SHALL return the frame with every field final except the Security Header and Trailer contents, the FHEC, and the FECF, and SHALL return the ranges of the Security Header, the data, and the Security Trailer. The caller SHALL apply `protect` (the writer's `protect`, which checks the hook's layout against the channel's, API-070) after all other frame fields except the FECF are final, and SHALL compute the FHEC (AOS) and the FECF after `protect` returns, with the codec writer. On reception, the caller SHALL check the FECF before `verify` is called, and SHALL give the engine only a frame that has passed both. These rules follow the SDLS processing order. | 355.0 §2.3; 232.0 Cor. 1 §6.5.2 | T |
 | API-075 | On USLP truncated frames with SDLS, the layout SHALL be the fixed 6-octet header / 16-octet trailer, and the truncated frame length SHALL be ≥ 28 octets. | 732.1 Annex D1.2.3–D1.2.4 | T |
 
 ## 8. Events
@@ -246,8 +252,8 @@ The table is the registry. `cargo xtask fields --write` generates from it the Ru
 | 5 | `apid` | field | Application Process Identifier | core, spp | 133.0 §4.1.3.3.4 |
 | 6 | `sequence_count` | field | Packet Sequence Count or Packet Name | core | 133.0 §4.1.3.4.3 |
 | 7 | `frame_data_field` | field | Transfer Frame Data Field, as the frame layout places it | core, tm, tc, uslp, aos | 132.0 §4.1.4; 232.0 §4.1.3; 732.0 §4.1.4; 732.1 §4.1.4; CMN-041 |
-| 8 | `security_header_len` | parameter | Length of the Security Header on a Virtual Channel or MAP | core, tm, aos | 355.0 §4.1.1.1.4; API-071 |
-| 9 | `security_trailer_len` | parameter | Length of the Security Trailer on a Virtual Channel or MAP | core, tm, aos | 355.0 §4.1.2; API-071 |
+| 8 | `security_header_len` | parameter | Length of the Security Header on a Virtual Channel or MAP | core, tm, tc, aos, uslp | 355.0 §4.1.1.1.4; API-071 |
+| 9 | `security_trailer_len` | parameter | Length of the Security Trailer on a Virtual Channel or MAP | core, tm, tc, aos, uslp | 355.0 §4.1.2; API-071 |
 | 10 | `secured_fields` | parameter | Octet ranges of the Security Header, the data field, and the Security Trailer | core | 355.0 §4.1; API-070 |
 | 11 | `width` | parameter | Width of a bit field, 1 to 64 bits | core | GEN-050 |
 | 12 | `bit_offset` | parameter | Bit offset of a bit field in its buffer | core | GEN-050 |

@@ -15,7 +15,7 @@ use aldis_aos::{PacketOffset, ValidBitCount};
 use aldis_core::ids::{SpacecraftId, VcId};
 use aldis_core::ocf::Ocf;
 use aldis_core::oid::{OidGenerator, OidGeneratorGalois};
-use aldis_core::security::SecurityLayout;
+use aldis_core::security::{FrameCtx, PreFilledSecurity, SecurityLayout};
 use aldis_core::{Anomaly as _, AnomalySet, DecodeMode, ErrorKind};
 
 use crate::exercise::Tally;
@@ -176,6 +176,10 @@ fn frame_group(t: &mut Tally) {
 
 /// Frames of `table`'s VC 0 (`M_PDUs`, an OCF, SDLS 2/1) and VC 1 (`VCA_SDUs`): the writers, the
 /// decoders, and OID frames.
+#[expect(
+    clippy::too_many_lines,
+    reason = "one call per writer, decoder, and OID encoder"
+)]
 fn frames(
     t: &mut Tally,
     pc: &AosPhysicalChannelConfig,
@@ -211,7 +215,18 @@ fn frames(
             t.check(copy(w.security_trailer_mut(), &[0x5A]));
             t.check(w.set_ocf(Ocf::decode(bb([0x01, 0, 0, 0]))).is_ok());
             t.check(w.layout().frame_len() == 40);
-            t.check(w.finish() == 40);
+            let ctx = FrameCtx::Aos {
+                scid: fields.scid,
+                vcid: fields.vcid,
+            };
+            match w.protect(bb(&mut PreFilledSecurity), bb(&ctx)) {
+                Ok(p) => {
+                    let done = p.finalize();
+                    t.check(done.len() == 40 && !done.is_empty() && done.octets().len() == 40);
+                    t.check(done.into_octets().len() == 40);
+                }
+                Err(_) => t.check(false),
+            }
         }
         Err(_) => t.check(false),
     }
@@ -272,7 +287,8 @@ fn frames(
             &AosFrameFields::oid(scid, zero),
             &mut oid,
         )
-        .is_ok_and(|w| w.finish() == 40),
+        .and_then(AosFrameWriter::unsecured)
+        .is_ok_and(|w| w.finalize().len() == 40),
     );
     t.check(frame.get(12..16) == Some(&[0xFF; 4][..]));
     t.check(AosFrame::decode(bb(&frame), pc, table).is_ok_and(|f| f.is_oid()));
@@ -529,7 +545,11 @@ fn encode_case(
         && copy(w.zone_mut(), content.zone)
         && copy(w.security_trailer_mut(), content.security_trailer)
         && content.ocf.is_none_or(|o| w.set_ocf(o).is_ok());
-    if !ok || w.finish() != n {
+    let ctx = FrameCtx::Aos {
+        scid: fields.scid,
+        vcid: fields.vcid,
+    };
+    if !ok || w.protect(&mut PreFilledSecurity, &ctx)?.finalize().len() != n {
         return Err(Fail::Vector);
     }
     let (written, two) = (need(scratch.a.get(..n))?, need(scratch.b.get(..n))?);
@@ -565,7 +585,7 @@ fn encode_oid(
         {
             return Err(Fail::Vector);
         }
-        let n = w.finish();
+        let n = w.unsecured()?.finalize().len();
         list.bytes(need(scratch.a.get(..n))?);
     }
     out.end(&list);

@@ -6,7 +6,7 @@
 // req: TC-004, TC-005, TC-007, TC-008, API-020, API-021, API-022, API-023, GEN-042, VER-022
 
 use aldis_core::ids::FrameSeqNum;
-use aldis_core::security::SecurityLayout;
+use aldis_core::security::{FrameCtx, PreFilledSecurity, SecurityLayout};
 use aldis_tc::{
     ControlCommand, FrameData, FrameFields, FrameType, MapConfig, PhysicalChannelConfig,
     SegmentHeader, SegmentHeaderUse, SequenceFlags, TcFrame, TcFrameWriter, TcMapId,
@@ -115,7 +115,17 @@ fn two_phase(
     let mut two = vec![0x5A_u8; frame.len()];
     let mut w = TcFrameWriter::begin(&mut two, table, fields, segment_header, user.len()).unwrap();
     w.user_data_mut().copy_from_slice(user);
-    assert_eq!(w.finish(user.len()), Ok(frame.len()));
+    let ctx = FrameCtx::Tc {
+        scid: fields.spacecraft_id,
+        vcid: fields.vc_id,
+        map_id: None,
+    };
+    let done = w
+        .protect(user.len(), &mut PreFilledSecurity, &ctx)
+        .unwrap()
+        .finalize()
+        .unwrap();
+    assert_eq!(done.len(), frame.len());
     assert_eq!(two, frame);
 }
 

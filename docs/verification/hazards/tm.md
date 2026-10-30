@@ -220,7 +220,7 @@ Failure modes of `aldis-tm` and its C ABI (the TM functions), in the format of [
 | Mission effect | A frame of zero data, with correct headers, sent as telemetry |
 | Requirements | API-023, API-022, TM-009 |
 | Evidence | `test:crates/aldis-tm/src/writer.rs::unfinished_frame_is_defined`; `test:crates/aldis-tm/src/writer.rs::two_phase_writer_fills_every_field`; `test:crates/aldis-tm/src/writer.rs::begin_rejects_without_writing`; `test:crates/aldis-tm/tests/properties.rs::two_phase_writer_matches_encode`; `test:crates/aldis-ffi/tests/tm.rs::encode_arguments_are_checked`; `vector:tm-inv-enc-010` |
-| Residual risk | In Rust, `finish(self)` consumes the writer, so a frame cannot be finished twice, and `begin` leaves the buffer unchanged on error (API-022). With the FECF configured, a receiver rejects the unfinished frame unless the CRC of the octets before the zero FECF happens to be zero. With no FECF the unfinished frame is indistinguishable from a valid frame of zero data (`hz:HZ-TM-03`). Whether every begun frame is finished is the caller's; the one-shot `encode` has no such step |
+| Residual risk | In Rust, `finalize(self)` consumes the writer, so a frame cannot be finished twice, and `begin` leaves the buffer unchanged on error (API-022). With the FECF configured, a receiver rejects the unfinished frame unless the CRC of the octets before the zero FECF happens to be zero. With no FECF the unfinished frame is indistinguishable from a valid frame of zero data (`hz:HZ-TM-03`). Whether every begun frame is finished is the caller's; the one-shot `encode` has no such step |
 | Assumptions | `asm:ASM-9` |
 | Proposals | `proposal:P-TM-03` |
 | Claims | `ac:AC-1.6`; `ac:AC-5.4` |
@@ -232,12 +232,12 @@ Failure modes of `aldis-tm` and its C ABI (the TM functions), in the format of [
 | Category | `abi-misuse` |
 | Status | `residual` |
 | Severity | S1 |
-| Failure mode | Removed by OI-57: the C ABI has no two-phase writers and the Rust writers have no resume, so no call finishes a frame that another call began, with other arguments or on a buffer never begun. A frame is built in one call, or in Rust by `TmFrameWriter`, whose `finish(self)` consumes the writer that `begin` returned and so holds the layout `begin` computed |
+| Failure mode | Removed by OI-57: the C ABI has no two-phase writers and the Rust writers have no resume, so no call finishes a frame that another call began, with other arguments or on a buffer never begun. A frame is built in one call, or in Rust by `TmFrameWriter`, whose typestate steps (`protect` or `unsecured`, then `finalize`; RS-023) consume the writer that `begin` returned and so hold the layout `begin` computed |
 | Cause | Before OI-57, the stateless finish of the C ABI (OI-50) took the arguments again and trusted them; no such call exists |
 | Mission effect | A frame with a valid FECF whose header names a VC and layout that the body does not follow: data read from the wrong octets, or an OCF and Secondary Header misplaced, accepted as telemetry |
 | Requirements | API-022, API-023, TM-009, CABI-022 |
 | Evidence | `test:crates/aldis-tm/src/writer.rs::two_phase_writer_fills_every_field`; `test:crates/aldis-tm/src/writer.rs::unfinished_frame_is_defined`; `test:crates/aldis-ffi/tests/tm.rs::encode_arguments_are_checked`; `test:crates/aldis-tm/tests/writer_bounds.rs::begin_and_finish_write_only_the_frame` |
-| Residual risk | The hazard is removed with the stateless finish (OI-57), so `proposal:P-TM-04`, which hardened it under OI-50, is superseded and no residual of OI-50 remains. What is left is the Rust typestate: `finish(self)` completes the frame its own `begin` started, and a writer that is dropped leaves the defined buffer of API-023 |
+| Residual risk | The hazard is removed with the stateless finish (OI-57), so `proposal:P-TM-04`, which hardened it under OI-50, is superseded and no residual of OI-50 remains. What is left is the Rust typestate: `finalize(self)` completes the frame its own `begin` started, and a writer that is dropped leaves the defined buffer of API-023 |
 | Assumptions | `asm:ASM-6` |
 | Proposals | `proposal:P-TM-04` |
 | Claims | `ac:AC-6.2`; `ac:AC-1.6` |

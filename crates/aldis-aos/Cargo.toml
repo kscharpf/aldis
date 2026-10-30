@@ -20,5 +20,7 @@ std = ["alloc", "aldis-core/std"]
 workspace = true
 
 [dev-dependencies]
+# The pre-filled test hook (API-073) for tests that fill the Security fields by hand (RS-023).
+aldis-core = { path = "../aldis-core", default-features = false, features = ["test-hooks"] }
 aldis-testkit = { path = "../aldis-testkit", features = ["strategies-aos"] }
 serde_json = "1.0.154"

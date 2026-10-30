@@ -16,6 +16,7 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 aldis = { path = "../aldis", default-features = false, features = ["full"] }
 
 [dev-dependencies]
+aldis-core = { path = "../aldis-core", default-features = false, features = ["test-hooks"] }
 aldis-testkit = { path = "../aldis-testkit" }
 serde_json = "1.0.154"
 

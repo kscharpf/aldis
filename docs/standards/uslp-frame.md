@@ -126,7 +126,7 @@ The truncated frame has no Bypass/Sequence Control Flag, Reserve Spares, OCF, or
 | a First Header or Last Valid Octet Pointer neither `0xFFFF` nor below the TFDZ length | `OutOfRange` (`fhp_lvo_pointer`) |
 | `out` shorter than the frame | `BufferTooSmall` |
 
-Until `UslpFrameWriter::finish`, the buffer holds a Primary Header whose TFVN is `1111`, which every decoder rejects with `UnsupportedVersion` and the delimiter treats as fill (API-023). `begin` stores the reserved frame length in the Frame Length field of that header.
+Until `UslpFrameWriter::protect` or `unsecured` (which fix the TFDZ length), the buffer holds a Primary Header whose TFVN is `1111`, which every decoder rejects with `UnsupportedVersion` and the delimiter treats as fill (API-023). `begin` stores the reserved frame length in the Frame Length field of that header.
 
 ## 4. Anomaly flags (lenient mode)
 

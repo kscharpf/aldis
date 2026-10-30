@@ -89,7 +89,7 @@ fn begin_and_finish_write_only_the_frame() {
     let before = pattern(BUFFER);
     let mut out = before.clone();
     let w = AosFrameWriter::begin(&mut out, &pc, &table, &fields).unwrap();
-    assert_eq!(w.finish(), FRAME);
+    assert_eq!(w.unsecured().unwrap().finalize().len(), FRAME);
     assert_eq!(out[FRAME..], before[FRAME..]);
     // A rejected `begin` changes nothing.
     let mut short = before[..FRAME - 1].to_vec();

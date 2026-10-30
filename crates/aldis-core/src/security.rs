@@ -218,6 +218,27 @@ impl SecuredFields {
         })
     }
 
+    /// The secured fields of a frame whose Security Header starts at `start`, followed by
+    /// `header_len`, `data_len`, and `trailer_len` octets, adjacent by construction (API-070,
+    /// RS-020).
+    ///
+    /// For a writer that fixes the data length after the layout was reserved (TC, USLP).
+    #[must_use]
+    pub const fn adjacent(
+        start: usize,
+        header_len: usize,
+        data_len: usize,
+        trailer_len: usize,
+    ) -> SecuredFields {
+        let header_end = start.saturating_add(header_len);
+        let data_end = header_end.saturating_add(data_len);
+        SecuredFields {
+            header: start..header_end,
+            data: header_end..data_end,
+            trailer: data_end..data_end.saturating_add(trailer_len),
+        }
+    }
+
     /// The secured fields of a computed frame layout, which are adjacent by construction
     /// (CMN-040, API-070).
     #[must_use]
@@ -248,8 +269,26 @@ impl SecuredFields {
     }
 }
 
+/// The Security Header and Trailer lengths a [`SecurityHook`] is for (API-070, API-073,
+/// RS-023).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum HookLayout {
+    /// Exactly these lengths; a writer's `protect` rejects a channel with other lengths.
+    Exact(SecurityLayout),
+    /// Any lengths: a hook that takes the channel's layout from its configuration, or a test
+    /// hook that works on whatever fields the channel has.
+    Any,
+}
+
 /// Applies and checks link-layer security (API-073, API-074).
 pub trait SecurityHook {
+    /// The Security Header and Trailer lengths this hook is for. Every hook states it: an exact
+    /// [`SecurityLayout`], or [`HookLayout::Any`] for a hook that serves any layout. A codec
+    /// writer's `protect` rejects a hook whose layout differs from the channel's, so the identity
+    /// hook [`NoSecurity`], layout 0/0, cannot be applied to a channel with SDLS fields
+    /// (API-070, API-073, RS-023).
+    fn layout(&self) -> HookLayout;
+
     /// Fills the Security Header and Trailer, and transforms the data field in place.
     ///
     /// # Errors
@@ -274,6 +313,10 @@ pub trait SecurityHook {
 pub struct NoSecurity;
 
 impl SecurityHook for NoSecurity {
+    fn layout(&self) -> HookLayout {
+        HookLayout::Exact(SecurityLayout::NONE)
+    }
+
     fn protect(&mut self, _: &FrameCtx, _: &mut [u8], _: &SecuredFields) -> Result<()> {
         Ok(())
     }
@@ -305,8 +348,43 @@ impl FixedPatternSecurity {
     pub const TRAILER_PATTERN: u8 = 0x5A;
 }
 
+/// Test-only hook that leaves the Security Header, data field, and Security Trailer as the caller
+/// filled them, for any layout (API-073).
+///
+/// For tests, vector runners, and fuzz targets that fill the Security fields by hand and need a
+/// writer's `protect` step to follow. It is not [`NoSecurity`]: that hook is for layout 0/0 and a
+/// writer's `protect` rejects it on a channel with SDLS fields. Never enable feature
+/// `test-hooks` in a flight build.
+#[cfg(any(test, feature = "test-hooks"))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct PreFilledSecurity;
+
+#[cfg(any(test, feature = "test-hooks"))]
+impl SecurityHook for PreFilledSecurity {
+    fn layout(&self) -> HookLayout {
+        HookLayout::Any
+    }
+
+    fn protect(&mut self, _: &FrameCtx, _: &mut [u8], _: &SecuredFields) -> Result<()> {
+        Ok(())
+    }
+
+    fn verify(
+        &mut self,
+        _: &FrameCtx,
+        _: &mut [u8],
+        fields: &SecuredFields,
+    ) -> Result<Range<usize>> {
+        Ok(fields.data())
+    }
+}
+
 #[cfg(any(test, feature = "test-hooks"))]
 impl SecurityHook for FixedPatternSecurity {
+    fn layout(&self) -> HookLayout {
+        HookLayout::Any
+    }
+
     fn protect(&mut self, _: &FrameCtx, frame: &mut [u8], fields: &SecuredFields) -> Result<()> {
         for (range, pattern) in [
             (fields.header(), FixedPatternSecurity::HEADER_PATTERN),
@@ -345,8 +423,8 @@ impl SecurityHook for FixedPatternSecurity {
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::{
-        FixedPatternSecurity, FrameCtx, NoSecurity, Protocol, SecuredFields, SecurityHook,
-        SecurityLayout,
+        FixedPatternSecurity, FrameCtx, HookLayout, NoSecurity, PreFilledSecurity, Protocol,
+        SecuredFields, SecurityHook, SecurityLayout,
     };
     use crate::error::ErrorKind;
     use crate::field;
@@ -453,6 +531,7 @@ mod tests {
         })
         .unwrap();
         let f = SecuredFields::from_layout(&layout);
+        assert_eq!(SecuredFields::adjacent(6, 2, 7, 3), f);
         assert_eq!((f.header(), f.data(), f.trailer()), (6..8, 8..15, 15..18));
     }
 
@@ -501,6 +580,20 @@ mod tests {
         let mut frame = [0_u8; 8];
         NoSecurity.protect(&CTX, &mut frame, &fields).unwrap();
         assert_eq!(frame, [0; 8]);
+        // The identity hook is for layout 0/0; the pre-filled test hook serves any layout.
+        assert_eq!(NoSecurity.layout(), HookLayout::Exact(SecurityLayout::NONE));
+        assert_eq!(PreFilledSecurity.layout(), HookLayout::Any);
+        assert_eq!(FixedPatternSecurity.layout(), HookLayout::Any);
+        frame[1] = 7;
+        PreFilledSecurity
+            .protect(&CTX, &mut frame, &fields)
+            .unwrap();
+        assert_eq!(frame[1], 7);
+        assert_eq!(
+            PreFilledSecurity.verify(&CTX, &mut frame, &fields),
+            Ok(3..5)
+        );
+        frame[1] = 0;
         assert_eq!(NoSecurity.verify(&CTX, &mut frame, &fields), Ok(3..5));
         let mut hook = FixedPatternSecurity;
         hook.protect(&CTX, &mut frame, &fields).unwrap();

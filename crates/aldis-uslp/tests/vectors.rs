@@ -10,7 +10,7 @@
 
 use aldis_core::ocf::Ocf;
 use aldis_core::oid::OidGenerator;
-use aldis_core::security::SecurityLayout;
+use aldis_core::security::{FrameCtx, PreFilledSecurity, SecurityLayout};
 use aldis_core::{AnomalySet, DecodeMode, Error, FieldId};
 use aldis_testkit::{CodecCase, Mode, Outcome, hex, run_codec_file};
 use aldis_uslp::{
@@ -262,7 +262,16 @@ fn encode_case(case: &CodecCase) -> Result<Value, Error> {
     let mut writer =
         UslpFrameWriter::begin(&mut two, &tbl, frame_fields, content, tfdz.len()).unwrap();
     writer.tfdz_mut().unwrap().copy_from_slice(&tfdz);
-    assert_eq!(writer.finish(tfdz.len()), Ok(len), "{}", case.id);
+    let ctx = FrameCtx::Uslp {
+        scid: frame_fields.spacecraft_id,
+        vcid: frame_fields.vc_id,
+        map_id: Some(frame_fields.map_id),
+    };
+    let done = writer
+        .protect(tfdz.len(), &mut PreFilledSecurity, &ctx)?
+        .finalize()
+        .unwrap();
+    assert_eq!(done.len(), len, "{}", case.id);
     assert_eq!(two, out[..len], "{}: two-phase writer differs", case.id);
     Ok(json!({ "output_hex": hex::encode(&out[..len]) }))
 }

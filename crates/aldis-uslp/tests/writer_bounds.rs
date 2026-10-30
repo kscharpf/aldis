@@ -14,7 +14,7 @@
 )]
 
 use aldis_core::ErrorKind;
-use aldis_core::security::SecurityLayout;
+use aldis_core::security::{FrameCtx, PreFilledSecurity, SecurityLayout};
 use aldis_uslp::{
     FrameContent, FrameFields, FrameKind, MapConfig, PhysicalChannelConfig, SecurityScope,
     SourceOrDestination, TfdfHeader, TfdzRule, TransferFrameType, Upid, UslpFrame, UslpFrameWriter,
@@ -76,6 +76,16 @@ const CONTENT: FrameContent<'static> = FrameContent {
     ocf: None,
 };
 
+/// The channel a hook is applied to, for `vc` (API-073).
+const fn ctx(vc: u8) -> FrameCtx {
+    let f = fields(vc);
+    FrameCtx::Uslp {
+        scid: f.spacecraft_id,
+        vcid: f.vc_id,
+        map_id: Some(f.map_id),
+    }
+}
+
 #[test]
 fn encode_writes_only_the_frame() {
     // req: API-022, GEN-014, GEN-020, USLP-010
@@ -121,7 +131,13 @@ fn begin_and_finish_write_only_the_reservation() {
             // The Primary Header (7), the TFDF Header (1), the reservation, and the FECF (2).
             let total = 7 + 1 + security + max_tfdz + 2;
             w.tfdz_mut().unwrap()[..tfdz_len].fill(0x5C);
-            let n = w.finish(tfdz_len).unwrap();
+            let ctx = ctx(vc);
+            let n = w
+                .protect(tfdz_len, &mut PreFilledSecurity, &ctx)
+                .unwrap()
+                .finalize()
+                .unwrap()
+                .len();
             assert_eq!(n, total - (max_tfdz - tfdz_len));
             assert_eq!(out[total..], before[total..], "vc {vc}, {tfdz_len}");
             assert!(UslpFrame::decode(&out[..n], &t).is_ok());
@@ -148,7 +164,8 @@ fn a_failed_begin_or_finish_changes_nothing_of_the_frame() {
     for tfdz_len in [0, 41] {
         let mut out = before.clone();
         let w = UslpFrameWriter::begin(&mut out, &t, fields(1), CONTENT, 40).unwrap();
-        w.finish(tfdz_len).unwrap_err();
+        w.protect(tfdz_len, &mut PreFilledSecurity, &ctx(1))
+            .unwrap_err();
         assert_eq!(out, begun, "tfdz_len {tfdz_len}");
         assert_eq!(out[50..], before[50..]);
     }

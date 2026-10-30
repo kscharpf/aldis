@@ -249,12 +249,12 @@ Integrator obligations, in `asm:ASM-2` and `asm:ASM-4`: delimit with `FrameDelim
 | Category | `state-corruption` |
 | Status | `residual` |
 | Severity | S1 |
-| Failure mode | Removed by OI-57: the C ABI has no two-phase writers and the Rust writers have no resume, so no call finishes a frame that another call began, with other arguments or on a buffer never begun. A frame is built in one call, or in Rust by `TcFrameWriter`, whose `finish(self)` consumes the writer that `begin` returned and so holds the layout `begin` computed |
+| Failure mode | Removed by OI-57: the C ABI has no two-phase writers and the Rust writers have no resume, so no call finishes a frame that another call began, with other arguments or on a buffer never begun. A frame is built in one call, or in Rust by `TcFrameWriter`, whose typestate steps (`protect` or `unsecured`, then `finalize`; RS-023) consume the writer that `begin` returned and so hold the layout `begin` computed |
 | Cause | Before OI-57, the stateless finish of the C ABI (OI-50) took the arguments again and trusted them; no such call exists |
 | Mission effect | A frame sent to another MAP than the one the caller addressed, or with garbage in place of the Frame Data Unit, with a correct FECF so that no receiver check can tell |
 | Requirements | API-022, API-023, TC-004, TC-007, CABI-022 |
 | Evidence | `test:crates/aldis-tc/src/writer.rs::unfinished_and_rejected_finish`; `test:crates/aldis-tc/src/writer.rs::two_phase_writer_with_sdls`; `test:crates/aldis-ffi/tests/tc.rs::encode_arguments_are_checked`; `test:crates/aldis-tc/tests/writer_bounds.rs::begin_and_finish_write_only_the_reservation` |
-| Residual risk | The hazard is removed with the stateless finish (OI-57), so `proposal:P-TC-08`, which hardened it under OI-50, is superseded and no residual of OI-50 remains. What is left is the Rust typestate: `finish(self)` completes the frame its own `begin` started, and a writer that is dropped leaves the defined buffer of API-023 |
+| Residual risk | The hazard is removed with the stateless finish (OI-57), so `proposal:P-TC-08`, which hardened it under OI-50, is superseded and no residual of OI-50 remains. What is left is the Rust typestate: `finalize(self)` completes the frame its own `begin` started, and a writer that is dropped leaves the defined buffer of API-023 |
 | Assumptions | `asm:ASM-6` |
 | Proposals | `proposal:P-TC-08` |
 | Claims | `ac:AC-1.2`; `ac:AC-6.2` |
