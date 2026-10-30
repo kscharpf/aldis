@@ -13,17 +13,19 @@
 # origin/main. Bulk cleanup of leftovers is scripts/prune-agent-branches.
 set -euo pipefail
 
+usage() { awk 'NR == 1 { next } /^#/ { sub(/^# ?/, ""); print; next } { exit }' "$0"; }
+
 apply=0
 branches=()
 for arg in "$@"; do
     case "$arg" in
         --apply) apply=1 ;;
-        -*) echo "unknown option $arg" >&2; sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//'; exit 2 ;;
+        -*) echo "unknown option $arg" >&2; usage; exit 2 ;;
         *) branches+=("$arg") ;;
     esac
 done
 if [ "${#branches[@]}" -eq 0 ]; then
-    sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//'
+    usage
     exit 2
 fi
 
@@ -45,7 +47,7 @@ act() { # act <description> <command...>
     shift
     if [ "$apply" -eq 1 ]; then
         echo "  removing: $what"
-        "$@"
+        "$@" || { echo "  FAILED: $what"; return 1; }
     else
         echo "  would remove: $what"
     fi
@@ -83,14 +85,14 @@ clean_one() {
             echo "  KEEP: the worktree $wt is dirty"
             return 1
         fi
-        act "worktree $wt" g worktree remove "$wt"
+        act "worktree $wt" g worktree remove "$wt" || return 1
     fi
     if [ "$local_branch" -eq 1 ]; then
-        act "local branch $b" g branch -D "$b"
+        act "local branch $b" g branch -D "$b" || return 1
     fi
     if [ "$remote_branch" -eq 1 ]; then
         if g merge-base --is-ancestor "refs/remotes/origin/$b" origin/main; then
-            act "remote branch origin/$b" g push --quiet origin --delete "$b"
+            act "remote branch origin/$b" g push --quiet origin --delete "$b" || return 1
         else
             echo "  KEEP: origin/$b is not an ancestor of origin/main"
             return 1
@@ -98,6 +100,7 @@ clean_one() {
     else
         echo "  the remote branch is already gone"
     fi
+    return 0
 }
 
 kept=0
@@ -105,4 +108,4 @@ for b in "${branches[@]}"; do
     clean_one "$b" || kept=$((kept + 1))
 done
 [ "$apply" -eq 1 ] || echo "dry run; pass --apply to act"
-[ "$kept" -eq 0 ] || { echo "cleanup-merged: kept $kept of ${#branches[@]} branch(es)"; exit 1; }
+[ "$kept" -eq 0 ] || { echo "cleanup-merged: kept or failed $kept of ${#branches[@]} branch(es)"; exit 1; }

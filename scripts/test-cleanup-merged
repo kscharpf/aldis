@@ -1,0 +1,141 @@
+#!/usr/bin/env bash
+# Test scripts/cleanup-merged without a network and without the real gh: a scratch bare origin,
+# a clone of it, and a stub `gh` that reports chosen branches as having a merged pull request.
+#
+# Usage: scripts/test-cleanup-merged
+# Cases: a dry run changes nothing; a merged branch is cleaned (worktree, local branch, remote
+# branch); the branch whose remote is already gone is cleaned; each of these is kept with its
+# reason: a dirty worktree, commits after the merge, no merged pull request, the main checkout;
+# a failed step (a locked worktree) stops the branch and leaves its branches in place.
+# Exit status: 0 when every case holds, 1 otherwise.
+set -uo pipefail
+
+here="$(cd "$(dirname "$0")" && pwd)"
+script="$here/cleanup-merged"
+work="$(mktemp -d "${TMPDIR:-/tmp}/cleanup-merged-test.XXXXXX")"
+trap 'rm -rf "$work"' EXIT
+repo="$work/repo"
+
+git init -q --bare "$work/origin.git"
+git -C "$work/origin.git" symbolic-ref HEAD refs/heads/main
+git clone -q "$work/origin.git" "$repo" 2>/dev/null
+git -C "$repo" symbolic-ref HEAD refs/heads/main
+git -C "$repo" config user.email test@example.com
+git -C "$repo" config user.name test
+echo init >"$repo/init.txt"
+git -C "$repo" add init.txt
+git -C "$repo" commit -q -m init
+git -C "$repo" push -q -u origin main
+
+branch() { # branch <name>: one commit on its own branch, pushed
+    git -C "$repo" checkout -q -b "$1" main
+    echo "$1" >"$repo/$1.txt"
+    git -C "$repo" add "$1.txt"
+    git -C "$repo" commit -q -m "$1"
+    git -C "$repo" push -q -u origin "$1"
+    git -C "$repo" checkout -q main
+}
+for b in merged-clean merged-dirty merged-after not-merged-pr merged-remote-gone merged-locked; do
+    branch "$b"
+    git -C "$repo" merge -q --no-ff "$b" -m "merge $b"
+done
+git -C "$repo" push -q origin main
+
+# merged-after: a commit on the branch after the merge, which origin/main lacks.
+git -C "$repo" checkout -q merged-after
+echo more >"$repo/more.txt"
+git -C "$repo" add more.txt
+git -C "$repo" commit -q -m after
+git -C "$repo" checkout -q main
+git -C "$repo" worktree add -q "$work/wt-clean" merged-clean
+git -C "$repo" worktree add -q "$work/wt-dirty" merged-dirty
+echo untracked >"$work/wt-dirty/untracked.txt"
+git -C "$repo" worktree add -q "$work/wt-locked" merged-locked
+git -C "$repo" worktree lock "$work/wt-locked"
+git -C "$repo" push -q origin --delete merged-remote-gone
+
+mkdir "$work/bin"
+cat >"$work/bin/gh" <<'EOF'
+#!/usr/bin/env bash
+# Stub of `gh pr list --head <branch> --state merged ...`: 42 for the branches in $STUB_MERGED.
+b=""
+while [ $# -gt 0 ]; do
+    [ "$1" = --head ] && b="$2"
+    shift
+done
+case " $STUB_MERGED " in *" $b "*) echo 42 ;; esac
+EOF
+chmod +x "$work/bin/gh"
+
+merged="merged-clean merged-dirty merged-after merged-remote-gone merged-locked main"
+out="" rc=0
+run() {
+    out="$(cd "$repo" && PATH="$work/bin:$PATH" STUB_MERGED="$merged" "$script" "$@" 2>&1)"
+    rc=$?
+}
+
+failures=0
+ok() { echo "ok:   $1"; }
+bad() { echo "FAIL: $1"; failures=$((failures + 1)); }
+expect() { # expect <description> <command...>
+    local what="$1"
+    shift
+    if "$@" >/dev/null 2>&1; then ok "$what"; else bad "$what"; fi
+}
+expect_not() {
+    local what="$1"
+    shift
+    if "$@" >/dev/null 2>&1; then bad "$what"; else ok "$what"; fi
+}
+local_has() { git -C "$repo" show-ref --verify --quiet "refs/heads/$1"; }
+remote_has() { git -C "$repo" ls-remote --exit-code --heads origin "$1" >/dev/null 2>&1; }
+dir_has() { [ -d "$1" ]; }
+said() { printf '%s\n' "$out" | grep -Fq -- "$1"; }
+status_is() { [ "$rc" -eq "$1" ]; }
+
+echo "# dry run"
+run merged-clean merged-remote-gone
+expect "dry run: says what it would remove" said "would remove: local branch merged-clean"
+expect "dry run: the local branch stays" local_has merged-clean
+expect "dry run: the remote branch stays" remote_has merged-clean
+expect "dry run: the worktree stays" dir_has "$work/wt-clean"
+expect "dry run: exit status 0" status_is 0
+
+echo "# apply, merged and clean"
+run --apply merged-clean merged-remote-gone
+expect "the worktree is removed" test ! -d "$work/wt-clean"
+expect_not "the local branch is deleted" local_has merged-clean
+expect_not "the remote branch is deleted" remote_has merged-clean
+expect_not "a branch whose remote is gone: the local branch is deleted" local_has merged-remote-gone
+expect "a branch whose remote is gone: says so" said "the remote branch is already gone"
+expect "exit status 0" status_is 0
+
+echo "# kept, each with its reason"
+run --apply merged-dirty merged-after not-merged-pr nonexistent main
+expect "a dirty worktree is kept" said "wt-dirty is dirty"
+expect "commits after the merge are kept" said "the tip is not an ancestor of origin/main"
+expect "no merged pull request is kept" said "no merged pull request has it"
+expect "a missing branch is nothing to clean" said "nonexistent: nothing to clean"
+expect "the main checkout is kept" said "main is checked out in the main checkout"
+expect "exit status 1" status_is 1
+for b in merged-dirty merged-after not-merged-pr; do
+    expect "$b: the local branch stays" local_has "$b"
+done
+expect "merged-dirty: the remote branch stays" remote_has merged-dirty
+expect "merged-dirty: the worktree stays" dir_has "$work/wt-dirty"
+
+echo "# a failed step stops the branch"
+run --apply merged-locked
+expect "the failed step is reported" said "FAILED: worktree"
+expect "exit status 1" status_is 1
+expect "the summary counts it" said "kept or failed 1 of 1"
+expect "the local branch stays" local_has merged-locked
+expect "the remote branch stays" remote_has merged-locked
+expect "the worktree stays" dir_has "$work/wt-locked"
+
+if [ "$failures" -eq 0 ]; then
+    echo "cleanup-merged: every case holds"
+else
+    echo "cleanup-merged: $failures case(s) failed"
+    exit 1
+fi

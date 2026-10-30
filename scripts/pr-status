@@ -8,12 +8,12 @@
 # verify.yml run on the head branch, whether a record is published for the head, the latest
 # review in full, the PR comments, and one verdict line: `READY`, or `NOT READY: <reasons>`.
 # READY means: open, not a draft, the head contains the tip of origin/<base>, no changes
-# requested, and every required context is success on the head.
+# requested and no review outstanding, and every required context is success on the head.
 # Exit status: 0 once every verdict is printed; 2 on a usage error or when gh fails.
 set -euo pipefail
 
 if [ $# -eq 0 ]; then
-    sed -n '2,11p' "$0" | sed 's/^# \{0,1\}//'
+    awk 'NR == 1 { next } /^#/ { sub(/^# ?/, ""); print; next } { exit }' "$0"
     exit 2
 fi
 
@@ -104,6 +104,7 @@ status_one() {
         reasons="$reasons; behind origin/$base by $behind"
     fi
     [ "$decision" != CHANGES_REQUESTED ] || reasons="$reasons; changes requested"
+    [ "$decision" != REVIEW_REQUIRED ] || reasons="$reasons; review required"
     if [ "$required" = "?" ]; then
         reasons="$reasons; required contexts unreadable"
     elif [ -n "$required" ]; then
