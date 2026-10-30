@@ -1876,6 +1876,35 @@ mod tests {
     }
 
     #[test]
+    fn transmit_actions_carry_the_configured_repetitions() {
+        // req: COP-016
+        let reps = |out: &[Fop1Output]| -> Vec<(FrameKind, u8)> {
+            out.iter()
+                .filter_map(|o| match *o {
+                    Fop1Output::Transmit {
+                        kind, repetitions, ..
+                    } => Some((kind, repetitions)),
+                    _ => None,
+                })
+                .collect()
+        };
+        let a = active();
+        let ad = Fop1Input::RequestAd {
+            handle: 2,
+            fdu: &FDU,
+        };
+        // One Transmit action per frame: the engine annotates, never duplicates.
+        assert_eq!(reps(&go(&a, ad, 1).1), vec![(FrameKind::Ad, 3)]);
+        let bd = Fop1Input::RequestBd {
+            handle: 3,
+            fdu: &FDU,
+        };
+        assert_eq!(reps(&go(&a, bd, 1).1), vec![(FrameKind::Bd, 0)]);
+        let unlock = directive(4, Directive::InitiateAdWithUnlock);
+        assert_eq!(reps(&go(&fresh(), unlock, 1).1), vec![(FrameKind::Bc, 4)]);
+    }
+
+    #[test]
     fn suspension_set_vs_and_alert_suppression() {
         // req: COP-013, COP-014, COP-017
         let f = Engine::new(config(TimeoutType::Tt1, 1)).unwrap();
