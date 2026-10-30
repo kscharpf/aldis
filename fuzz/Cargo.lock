@@ -67,6 +67,7 @@ name = "aldis-fuzz"
 version = "0.0.0"
 dependencies = [
  "aldis-aos",
+ "aldis-cop1",
  "aldis-core",
  "aldis-epp",
  "aldis-ffi",
