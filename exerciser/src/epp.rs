@@ -244,17 +244,19 @@ pub fn vector(case: &Case, out: &mut Out, scratch: &mut Scratch) -> Run {
     };
     match case.op {
         "decode" => {
+            let input = bb(case.input);
             let (packet, found) = mode.dispatch(
-                || EncapsulationPacket::decode(bb(case.input)),
-                || EncapsulationPacket::decode_lenient(bb(case.input)),
+                || EncapsulationPacket::decode(input),
+                || EncapsulationPacket::decode_lenient(input),
             )?;
             decoded(out, &packet, found);
         }
         "reencode_header" => {
+            let input = bb(case.input);
             let packet = mode
                 .dispatch(
-                    || EncapsulationPacket::decode(bb(case.input)),
-                    || EncapsulationPacket::decode_lenient(bb(case.input)),
+                    || EncapsulationPacket::decode(input),
+                    || EncapsulationPacket::decode_lenient(input),
                 )?
                 .0;
             header_hex(out, "header_hex", &packet.header())?;

@@ -483,8 +483,9 @@ fn clcw_case(case: &Case, o: &mut Out) -> Run {
             .filter(|_| case.input.len() == 4)
             .copied(),
     )?;
+    let word = bb(word);
     let (c, anomalies) =
-        mode(case).dispatch(|| Clcw::decode(bb(word)), || Clcw::decode_lenient(bb(word)))?;
+        mode(case).dispatch(|| Clcw::decode(word), || Clcw::decode_lenient(word))?;
     clcw_out(o, &c);
     o.names("anomalies", anomalies.iter());
     Ok(())
@@ -531,9 +532,10 @@ pub fn vector(case: &Case, o: &mut Out, s: &mut Scratch) -> Run {
         }
         "decode" => {
             let t = table(case)?;
+            let input = bb(case.input);
             let (frame, found) = mode(case).dispatch(
-                || TcFrame::decode(bb(case.input), &t),
-                || TcFrame::decode_lenient(bb(case.input), &t),
+                || TcFrame::decode(input, &t),
+                || TcFrame::decode_lenient(input, &t),
             )?;
             decoded(o, &frame, found);
         }

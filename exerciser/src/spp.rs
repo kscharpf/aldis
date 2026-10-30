@@ -602,10 +602,9 @@ fn split_time_case(case: &Case, out: &mut Out) -> Run {
     )?;
     let (packet, _) = packet(bb(case.input), mode(case))?;
     let layout = SecondaryHeaderLayout::Time(layout);
-    let (split, _) = mode(case).dispatch(
-        || packet.split(bb(&layout)),
-        || packet.split_lenient(bb(&layout)),
-    )?;
+    let layout = bb(&layout);
+    let (split, _) =
+        mode(case).dispatch(|| packet.split(layout), || packet.split_lenient(layout))?;
     let t = need(split.time_code())?;
     let time_code = need(split.secondary_header().get(..t.len()))?;
     // The decoded code re-encodes to the received octets (API-020).
@@ -696,8 +695,8 @@ pub fn vector(case: &Case, o: &mut Out, s: &mut Scratch) -> Run {
                 SecondaryHeaderLayout::Opaque(need(NonZeroUsize::new(n))?)
             };
             let (p, _) = packet(bb(case.input), mode(case))?;
-            let (s, _) =
-                mode(case).dispatch(|| p.split(bb(&layout)), || p.split_lenient(bb(&layout)))?;
+            let layout = bb(&layout);
+            let (s, _) = mode(case).dispatch(|| p.split(layout), || p.split_lenient(layout))?;
             o.bytes("secondary_header_hex", s.secondary_header());
             o.bytes("user_data_hex", s.user_data());
         }

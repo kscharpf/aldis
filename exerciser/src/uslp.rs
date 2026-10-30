@@ -734,9 +734,10 @@ pub fn vector(case: &Case, o: &mut Out, scratch: &mut Scratch) -> Run {
         }
         "decode" => {
             let t = table(case)?;
+            let input = bb(case.input);
             let (f, a) = mode(case).dispatch(
-                || UslpFrame::decode(bb(case.input), &t),
-                || UslpFrame::decode_lenient(bb(case.input), &t),
+                || UslpFrame::decode(input, &t),
+                || UslpFrame::decode_lenient(input, &t),
             )?;
             decoded(o, &f, a);
         }

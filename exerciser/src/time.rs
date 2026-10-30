@@ -824,18 +824,20 @@ pub fn vector(case: &Case, o: &mut Out, _: &mut Scratch) -> Run {
     let p = case.params;
     match case.op {
         "decode" => {
+            let input = bb(case.input);
             let (code, found) = mode(case).dispatch(
-                || decode_with_pfield(bb(case.input)),
-                || decode_with_pfield_lenient(bb(case.input)),
+                || decode_with_pfield(input),
+                || decode_with_pfield_lenient(input),
             )?;
             decoded(o, &code, found);
         }
         "decode_implicit" => {
             let f = p.obj("format")?;
             let format = format_of(f.text("code")?, f)?;
+            let input = bb(case.input);
             let (code, found) = mode(case).dispatch(
-                || decode_implicit(bb(case.input), &format),
-                || decode_implicit_lenient(bb(case.input), &format),
+                || decode_implicit(input, &format),
+                || decode_implicit_lenient(input, &format),
             )?;
             decoded(o, &code, found);
         }
