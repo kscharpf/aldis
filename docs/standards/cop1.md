@@ -66,11 +66,11 @@ The actions of one input, in the order of the table cell (COP-006). A Type-BC fr
 | COP-010 | FOP-1 SHALL build Type-AD frames with N(S) = V(S), Type-BD frames with N(S) = 0, and Type-BC frames carrying Unlock or Set V(R) (TC-005). It SHALL use the TC or USLP codec selected by the frame target. | 232.0 §4.1.2.8 note 3; 232.1 §5.2 | V |
 | COP-011 | FOP-1 SHALL keep master copies of all unacknowledged AD frames (Sent_Queue) and SHALL retransmit them in order. On retransmission the frames SHALL be byte-identical to the original transmission. | 232.1 §5.1.7 | V |
 | COP-012 | FOP-1 SHALL compare N(R) arithmetic modulo 256 using NN(R) and V(S) exactly as the "valid N(R)" conditions in Table 5-1 define. | 232.1 §5.1.8, Table 5-1 | V |
-| COP-013 | The T1 timer SHALL be started or restarted on every AD or BC transmission (including retransmissions) and cancelled when the Sent_Queue empties. The timer is state, and `next_deadline` SHALL report its deadline (API-053). BD frames SHALL NOT start the timer. | 232.1 §5.1.9.1 | V |
+| COP-013 | The T1 timer SHALL be started, restarted, and cancelled exactly where the cells of Table 5-1 list it, and SHALL be disarmed when it expires. The timer is state, and `next_deadline` SHALL report its deadline (API-053). BD frames SHALL NOT start the timer. | 232.1 §5.1.9.1 | V |
 | COP-014 | Suspend/Resume SHALL record and restore states via Suspend_State (SS = 0–4), as specified for E18/E104 and E30–E34. | 232.1 §5.1.11 | V |
 | COP-015 | The Set K directive SHALL be rejected (Reject response) if K ∉ 1..=min(255, SENT_QUEUE capacity). | 232.1 §5.1.12 | T |
 | COP-016 | Systematic retransmission (repetitions) is **outside** FOP-1. The engine SHALL only annotate transmit actions with the configured repetition value. It SHALL NOT duplicate frames itself. | 232.1 §5.1.9.3 note; 232.0 §2.4.2 | T |
-| COP-017 | After an Alert, no further Alert other than Llif SHALL be generated until an Initiate AD directive is accepted. | 232.1 §4.3 | V |
+| COP-017 | After an Alert, no further Alert other than Llif SHALL occur until an Initiate AD directive is accepted. This SHALL follow from Table 5-1 (every cell that lists Alert goes to S6, and S6 lists no other Alert), not from a filter: every Alert a cell lists SHALL be returned (API-083). Whether Suspend_State survives an Alert is OI-65. | 232.1 §4.3.2, §5.2.15 | T |
 
 ## 3. FARM-1 engine
 

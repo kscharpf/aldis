@@ -8,6 +8,7 @@
 
 use aldis_core::ids::FrameSeqNum;
 use aldis_core::time::Duration;
+use core::num::NonZeroU8;
 
 use crate::fop1_table::{Fop1Event, Fop1State};
 
@@ -55,7 +56,8 @@ pub enum Directive {
     /// Set Sliding Window Width K (CCSDS 232.1-B-2 Table 4-1, Event E36).
     SetSlidingWindowWidth {
         /// Sliding window width K: 1..=min(255, `Sent_Queue` capacity), else the directive is
-        /// invalid, event E40 (COP-015).
+        /// invalid, event E40 (COP-015). A plain `u8`, because the upper bound depends on the
+        /// `Sent_Queue` capacity of the engine that receives the directive.
         width: u8,
     },
     /// Set `T1_Initial` timeout duration (CCSDS 232.1-B-2 Table 4-1, Event E37).
@@ -66,9 +68,8 @@ pub enum Directive {
     },
     /// Set `Transmission_Limit` (CCSDS 232.1-B-2 Table 4-1, Event E38).
     SetTransmissionLimit {
-        /// Maximum number of transmissions allowed for a frame: at least 1, else the directive
-        /// is invalid, event E40.
-        limit: u8,
+        /// Maximum number of transmissions allowed for a frame; 0 is unrepresentable.
+        limit: NonZeroU8,
     },
     /// Set `Timeout_Type` (CCSDS 232.1-B-2 Table 4-1, Event E39).
     SetTimeoutType {

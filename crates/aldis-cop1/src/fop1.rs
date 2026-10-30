@@ -34,9 +34,9 @@
 //!   directive that awaits its confirmation gets its Negative Confirm from Alert (§5.2.15 d).
 //! - The timer is disarmed when it expires: the cell of E16 to E18 and E104 restarts it only
 //!   where it lists Initiate AD (or BC) Retransmission (§5.2.7 c).
-//! - Alert suppression (COP-017): after an Alert, the Alert notification of a later cell is
-//!   not returned, except `Alert[LLIF]`, until an Initiate AD directive is accepted; the other
-//!   actions of the cell still run.
+//! - No Alert follows an Alert (COP-017) because of the table, not a filter: every cell that
+//!   lists Alert goes to S6, and no cell of S6 lists an Alert other than `Alert[LLIF]`. Every
+//!   Alert a cell lists is returned (API-083).
 //!
 //! # The output area
 //!
@@ -116,8 +116,8 @@ const fn weight(action: Fop1Action, q: usize) -> usize {
 /// derived from the action lists of Table 5-1 (232.1 §5.3; COP-006, API-057).
 #[expect(
     clippy::indexing_slicing,
-    reason = "evaluated at compile time for a Fop1 type: the indices stay below the table \
-              dimensions, and an out-of-range index would fail the build, not run"
+    reason = "every index is bounded by its loop: `state < STATE_COUNT`, `event < EVENT_COUNT`, \
+              and `i < actions.len()` of the row and cell it indexes"
 )]
 #[must_use]
 pub const fn fop1_max_actions(sent_queue: usize) -> usize {
@@ -545,7 +545,6 @@ pub struct Fop1<const Q: usize, const F: usize, const N: usize> {
     deadline: Option<Instant>,
     transmission_count: u8,
     suspend_state: SuspendState,
-    alert_suppressed: bool,
 }
 
 /// The actions of one FOP-1 input (API-057, RS-022).
@@ -593,7 +592,6 @@ impl<const Q: usize, const F: usize, const N: usize> Fop1<Q, F, N> {
             deadline: None,
             transmission_count: 1,
             suspend_state: SuspendState::NotSuspended,
-            alert_suppressed: false,
         })
     }
 
@@ -786,13 +784,7 @@ impl<const Q: usize, const F: usize, const N: usize> Fop1<Q, F, N> {
                     Fop1Event::E37
                 }
             }
-            Directive::SetTransmissionLimit { limit } => {
-                if limit == 0 {
-                    Fop1Event::E40
-                } else {
-                    Fop1Event::E38
-                }
-            }
+            Directive::SetTransmissionLimit { .. } => Fop1Event::E38,
             Directive::SetTimeoutType { .. } => Fop1Event::E39,
         }
     }
@@ -1084,46 +1076,50 @@ impl<const Q: usize, const F: usize, const N: usize> Fop1<Q, F, N> {
                 self.suspend_state = SuspendState::NotSuspended;
             }
             Fop1Action::SetVsFromVr => {
-                if let Some(Directive::InitiateAdWithSetVr { v_r }) = ctx.directive {
-                    self.v_s = v_r;
-                    self.nn_r = v_r;
-                }
+                let Some(Directive::InitiateAdWithSetVr { v_r }) = ctx.directive else {
+                    return Err(Error::new(ErrorKind::InvalidState));
+                };
+                self.v_s = v_r;
+                self.nn_r = v_r;
             }
             Fop1Action::SetVs => {
                 // Table 5-1 E35 in S6: only while the AD Service is not suspended.
                 let handle = ctx.handle.ok_or(Error::new(ErrorKind::InternalError))?;
+                let Some(Directive::SetVs { v_s }) = ctx.directive else {
+                    return Err(Error::new(ErrorKind::InvalidState));
+                };
                 if matches!(self.suspend_state, SuspendState::NotSuspended) {
                     actions.push(directive(handle, DirectiveNotification::Accept))?;
-                    if let Some(Directive::SetVs { v_s }) = ctx.directive {
-                        self.v_s = v_s;
-                        self.nn_r = v_s;
-                    }
+                    self.v_s = v_s;
+                    self.nn_r = v_s;
                     actions.push(directive(handle, DirectiveNotification::PositiveConfirm))?;
                 } else {
                     actions.push(directive(handle, DirectiveNotification::Reject))?;
                 }
             }
             Fop1Action::SetSlidingWindowWidth => {
-                if let Some(Directive::SetSlidingWindowWidth { width }) = ctx.directive {
-                    self.k = width;
-                }
+                let Some(Directive::SetSlidingWindowWidth { width }) = ctx.directive else {
+                    return Err(Error::new(ErrorKind::InvalidState));
+                };
+                self.k = width;
             }
             Fop1Action::SetT1Initial => {
-                if let Some(Directive::SetT1Initial { duration }) = ctx.directive {
-                    self.t1_initial = duration;
-                }
+                let Some(Directive::SetT1Initial { duration }) = ctx.directive else {
+                    return Err(Error::new(ErrorKind::InvalidState));
+                };
+                self.t1_initial = duration;
             }
             Fop1Action::SetTransmissionLimit => {
-                if let Some(Directive::SetTransmissionLimit { limit }) = ctx.directive
-                    && let Some(limit) = NonZeroU8::new(limit)
-                {
-                    self.transmission_limit = limit;
-                }
+                let Some(Directive::SetTransmissionLimit { limit }) = ctx.directive else {
+                    return Err(Error::new(ErrorKind::InvalidState));
+                };
+                self.transmission_limit = limit;
             }
             Fop1Action::SetTimeoutType => {
-                if let Some(Directive::SetTimeoutType { timeout_type }) = ctx.directive {
-                    self.timeout_type = timeout_type;
-                }
+                let Some(Directive::SetTimeoutType { timeout_type }) = ctx.directive else {
+                    return Err(Error::new(ErrorKind::InvalidState));
+                };
+                self.timeout_type = timeout_type;
             }
             Fop1Action::SetSuspendState(ss) => self.suspend_state = ss,
             Fop1Action::Suspend => actions.push(Fop1Output::Suspend)?,
@@ -1145,17 +1141,8 @@ impl<const Q: usize, const F: usize, const N: usize> Fop1<Q, F, N> {
             }
             Fop1Action::DirectiveNotify(status) => {
                 if is_directive(ctx.event) {
-                    if matches!(status, DirectiveNotification::Accept)
-                        && matches!(
-                            ctx.event,
-                            Fop1Event::E23 | Fop1Event::E24 | Fop1Event::E25 | Fop1Event::E27
-                        )
-                    {
-                        self.alert_suppressed = false;
-                    }
-                    if let Some(handle) = ctx.handle {
-                        actions.push(directive(handle, status))?;
-                    }
+                    let handle = ctx.handle.ok_or(Error::new(ErrorKind::InvalidState))?;
+                    actions.push(directive(handle, status))?;
                 } else if let Some(handle) = self.pending_initiate.take() {
                     // The Confirm of S4 and S5 with E1 completes the Initiate AD directive.
                     actions.push(directive(handle, status))?;
@@ -1226,7 +1213,7 @@ impl<const Q: usize, const F: usize, const N: usize> Fop1<Q, F, N> {
     }
 
     /// Alert (232.1 §5.2.15): cancel the timer, purge both queues, complete a pending
-    /// Initiate AD directive with a Negative Confirm, and notify, unless suppressed (COP-017).
+    /// Initiate AD directive with a Negative Confirm, and notify (API-083).
     fn alert(
         &mut self,
         reason: AlertReason,
@@ -1240,14 +1227,11 @@ impl<const Q: usize, const F: usize, const N: usize> Fop1<Q, F, N> {
         if let Some(handle) = self.pending_initiate.take() {
             actions.push(directive(handle, DirectiveNotification::NegativeConfirm))?;
         }
-        if !self.alert_suppressed || matches!(reason, AlertReason::Llif) {
-            actions.push(Fop1Output::Alert(Alert {
-                reason,
-                event,
-                prior_state: prior,
-            }))?;
-        }
-        self.alert_suppressed = true;
+        actions.push(Fop1Output::Alert(Alert {
+            reason,
+            event,
+            prior_state: prior,
+        }))?;
         Ok(())
     }
 
@@ -1343,7 +1327,8 @@ impl<const Q: usize, const F: usize, const N: usize> Fop1<Q, F, N> {
 
     /// Transmit Type-BC Frame (232.1 §5.2.5): the master copy on the `Sent_Queue`,
     /// `Transmission_Count` := 1, the timer, `BC_Out_Flag`, and the request. The frame carries
-    /// Unlock, or Set V(R) with the V*(R) of the directive (232.0 §4.1.3.3).
+    /// Unlock, or Set V(R) with the V*(R) of the directive, which E27 has just put in V(S)
+    /// (232.0 §4.1.3.3).
     fn transmit_bc(
         &mut self,
         command: BcCommand,
@@ -1352,13 +1337,10 @@ impl<const Q: usize, const F: usize, const N: usize> Fop1<Q, F, N> {
         used: &mut usize,
         actions: &mut Fop1Actions<N>,
     ) -> Result<()> {
-        let command = match (command, ctx.directive) {
-            (BcCommand::Unlock, _) => ControlCommand::Unlock,
-            (BcCommand::SetVr, Some(Directive::InitiateAdWithSetVr { v_r })) => {
-                ControlCommand::SetVr(v_r)
-            }
-            // Only `step_event` can run E27 with another input.
-            (BcCommand::SetVr, _) => return Err(Error::new(ErrorKind::InvalidState)),
+        let command = match command {
+            BcCommand::Unlock => ControlCommand::Unlock,
+            // The one cell that lists it (E27) sets V(S) := V*(R) first.
+            BcCommand::SetVr => ControlCommand::SetVr(self.v_s),
         };
         let sequence_number = FrameSeqNum::new(0);
         let mut frame = [0; F];
@@ -1505,12 +1487,12 @@ mod tests {
 
     use super::{
         Context, Fop1, Fop1Actions, Fop1Config, Fop1Input, Fop1Output, Fop1Target, Sent, SentKind,
-        fop1_max_actions,
+        cell, fop1_max_actions,
     };
-    use crate::fop1_table::{EVENT_COUNT, STATE_COUNT};
+    use crate::fop1_table::{EVENT_COUNT, FOP1_TABLE, Fop1Action, STATE_COUNT};
     use crate::fop1_table::{Fop1Event, Fop1State, FrameKind, SuspendState};
     use crate::notify::{
-        AlertReason, Directive, DirectiveNotification, DirectiveNotify, TimeoutType,
+        Alert, AlertReason, Directive, DirectiveNotification, DirectiveNotify, TimeoutType,
         TransferNotification, TransferNotify,
     };
     use aldis_core::ids::FrameSeqNum;
@@ -1598,6 +1580,14 @@ mod tests {
         // req: API-056, COP-006, COP-015, API-040
         assert_eq!(fop1_max_actions(black_box(Q)), N);
         let t = target();
+        let plain = Fop1Target::tc(
+            TcSpacecraftId::new(42).unwrap(),
+            TcVcId::new(1).unwrap(),
+            F,
+            false,
+        )
+        .unwrap();
+        assert_eq!(plain.max_fdu_len(), F - 5);
         assert_eq!(t.spacecraft_id().get(), 42);
         assert_eq!(t.vc_id().get(), 1);
         assert_eq!((t.max_frame_len(), t.max_fdu_len()), (F, F - 7));
@@ -1734,7 +1724,8 @@ mod tests {
             inject(&full, Fop1Event::E19, w),
             Err(ErrorKind::InternalError)
         );
-        // Directive cells with another directive change nothing they do not own.
+        // A directive cell injected with another directive, or with no directive, fails
+        // rather than confirm a directive it did not apply.
         let other = directive(9, Directive::TerminateAd);
         for e in [
             Fop1Event::E35,
@@ -1743,23 +1734,49 @@ mod tests {
             Fop1Event::E38,
             Fop1Event::E39,
         ] {
-            let g = inject(&f, e, other).unwrap();
-            assert_eq!(
-                (g.v_s(), g.sliding_window_k(), g.t1_initial()),
-                (f.v_s(), 2, f.t1_initial())
-            );
-            assert_eq!(
-                (g.transmission_limit(), g.timeout_type()),
-                (f.transmission_limit(), f.timeout_type())
-            );
+            assert_eq!(inject(&f, e, other), Err(ErrorKind::InvalidState));
         }
-        let limit0 = directive(9, Directive::SetTransmissionLimit { limit: 0 });
+        // The same cells with their own directive apply it.
+        let k = inject(
+            &f,
+            Fop1Event::E36,
+            directive(9, Directive::SetSlidingWindowWidth { width: 1 }),
+        )
+        .unwrap();
+        let limit = NonZeroU8::new(3).unwrap();
+        let l = inject(
+            &k,
+            Fop1Event::E38,
+            directive(9, Directive::SetTransmissionLimit { limit }),
+        )
+        .unwrap();
+        let t = inject(
+            &l,
+            Fop1Event::E39,
+            directive(
+                9,
+                Directive::SetTimeoutType {
+                    timeout_type: TimeoutType::Tt1,
+                },
+            ),
+        )
+        .unwrap();
         assert_eq!(
-            inject(&f, Fop1Event::E38, limit0)
-                .unwrap()
-                .transmission_limit()
-                .get(),
-            2
+            (
+                t.sliding_window_k(),
+                t.transmission_limit(),
+                t.timeout_type()
+            ),
+            (1, limit, TimeoutType::Tt1)
+        );
+        let unlock = directive(9, Directive::InitiateAdWithUnlock);
+        assert_eq!(
+            inject(&f, Fop1Event::E27, unlock),
+            Err(ErrorKind::InvalidState)
+        );
+        assert_eq!(
+            inject(&f, Fop1Event::E29, Fop1Input::InvalidClcw),
+            Err(ErrorKind::InvalidState)
         );
         // E27 without Set V(R) still initializes, with V(S) unchanged.
         assert_eq!(
@@ -1785,10 +1802,11 @@ mod tests {
         )
         .unwrap();
         assert!(d.out_flag_ready(FrameKind::Bd));
-        // E24 without a handle leaves no directive to confirm in S4.
-        let s4 = inject(&f, Fop1Event::E24, Fop1Input::Timeout).unwrap();
-        let (s1, out) = go(&s4, clcw(false, false, false, 0), 1);
-        assert_eq!((s1.state(), out), (Fop1State::Active, vec![]));
+        // A directive cell without a directive to answer fails.
+        assert_eq!(
+            inject(&f, Fop1Event::E24, Fop1Input::Timeout),
+            Err(ErrorKind::InvalidState)
+        );
         let set = directive(
             4,
             Directive::SetT1Initial {
@@ -1820,7 +1838,6 @@ mod tests {
             Directive::SetT1Initial {
                 duration: Duration::from_micros(0),
             },
-            Directive::SetTransmissionLimit { limit: 0 },
         ] {
             assert_eq!(go(&f, directive(7, d), 0).1, reject(7));
         }
@@ -1905,8 +1922,8 @@ mod tests {
     }
 
     #[test]
-    fn suspension_set_vs_and_alert_suppression() {
-        // req: COP-013, COP-014, COP-017
+    fn suspension_set_vs_and_alerts() {
+        // req: COP-013, COP-014, API-083
         let f = Engine::new(config(TimeoutType::Tt1, 1)).unwrap();
         let (a, _) = go(&f, directive(1, Directive::InitiateAdWithoutClcwCheck), 0);
         let (a, _) = go(
@@ -1937,7 +1954,7 @@ mod tests {
                 status: DirectiveNotification::Reject
             })]
         );
-        // An LLIF Alert in S6, Resume, then a Lockout CLCW: its Alert is suppressed.
+        // An LLIF Alert in S6, Resume, then a Lockout CLCW: its Alert is returned.
         let (l, out) = go(
             &s,
             Fop1Input::TransmitDone {
@@ -1959,7 +1976,17 @@ mod tests {
             (Fop1State::Active, Some(Instant::from_micros(204)))
         );
         let (g, out) = go(&r, clcw(true, false, false, 1), 105);
-        assert_eq!((g.state(), out), (Fop1State::Initial, vec![]));
+        assert_eq!(
+            (g.state(), out),
+            (
+                Fop1State::Initial,
+                vec![Fop1Output::Alert(Alert {
+                    reason: AlertReason::Lockout,
+                    event: Fop1Event::E14,
+                    prior_state: Fop1State::Active,
+                })]
+            )
+        );
     }
 
     /// Every state the sweep starts from: S6, S1 with frames outstanding and an FDU
@@ -2064,9 +2091,62 @@ mod tests {
         ]
     }
 
+    /// The Alert reasons in `list`, in order.
+    fn alerts(list: &Fop1Actions<N>) -> Vec<AlertReason> {
+        list.iter()
+            .filter_map(|o| match *o {
+                Fop1Output::Alert(a) => Some(a.reason),
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// The Alert reasons the cell of `state` and `event` lists, in order.
+    fn listed_alerts(state: Fop1State, event: Fop1Event) -> Vec<AlertReason> {
+        cell(state, event)
+            .actions
+            .iter()
+            .filter_map(|a| match *a {
+                Fop1Action::Alert(r) => Some(r),
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn no_alert_follows_an_alert_before_an_initiate_ad() {
+        // req: COP-017
+        // Every cell that lists Alert goes to S6, and no cell of S6 lists an Alert other than
+        // Alert[LLIF], so after an Alert only an Initiate AD (E23 to E28) leaves S6.
+        for row in &FOP1_TABLE {
+            for c in row {
+                if c.actions.iter().any(|a| matches!(a, Fop1Action::Alert(_))) {
+                    assert_eq!(c.next_state, Some(Fop1State::Initial));
+                }
+            }
+        }
+        let [.., s6] = &FOP1_TABLE;
+        for c in s6 {
+            for a in c.actions {
+                if let Fop1Action::Alert(r) = a {
+                    assert_eq!(*r, AlertReason::Llif);
+                }
+            }
+            if let Some(next) = c.next_state
+                && next != Fop1State::Initial
+            {
+                assert!(
+                    c.actions
+                        .iter()
+                        .any(|a| matches!(a, Fop1Action::Initialize | Fop1Action::Resume))
+                );
+            }
+        }
+    }
+
     #[test]
     fn every_failure_of_a_cell_leaves_the_state_unchanged() {
-        // req: API-058, API-061, API-083, COP-006
+        // req: API-058, API-061, API-083, COP-006, COP-017
         let events = {
             use Fop1Event as E;
             [
@@ -2162,6 +2242,7 @@ mod tests {
                             // A push without room fails the cell; none is dropped (API-083).
                             if a.run(event, &ctx, &mut big, &mut list).is_ok() {
                                 assert!(list.len() <= N);
+                                assert_eq!(alerts(&list), listed_alerts(state, event));
                             }
                         }
                         // No output area: every transmit fails.

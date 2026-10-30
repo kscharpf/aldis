@@ -5,6 +5,7 @@
 
 use aldis_core::ids::FrameSeqNum;
 use aldis_core::time::Duration;
+use core::num::NonZeroU8;
 
 use aldis_cop1::{
     Alert, AlertReason, Directive, DirectiveNotification, DirectiveNotify, FARM1_EVENT_COUNT,
@@ -460,7 +461,9 @@ fn test_notify_types() {
     let d9 = Directive::SetT1Initial {
         duration: Duration::from_millis(500),
     };
-    let d10 = Directive::SetTransmissionLimit { limit: 5 };
+    let d10 = Directive::SetTransmissionLimit {
+        limit: NonZeroU8::MIN.saturating_add(4),
+    };
     let d11 = Directive::SetTimeoutType {
         timeout_type: TimeoutType::Tt0,
     };
@@ -490,7 +493,12 @@ fn test_notify_types() {
             duration: Duration::from_millis(500)
         }
     );
-    assert_eq!(d10, Directive::SetTransmissionLimit { limit: 5 });
+    assert_eq!(
+        d10,
+        Directive::SetTransmissionLimit {
+            limit: NonZeroU8::MIN.saturating_add(4)
+        }
+    );
     assert_ne!(d11, d12);
 
     // TimeoutType enum values

@@ -103,7 +103,9 @@ fn directive(v: &Map<String, Value>) -> Option<Directive> {
         "set_t1_initial" => Directive::SetT1Initial {
             duration: Duration::from_micros(value?),
         },
-        "set_transmission_limit" => Directive::SetTransmissionLimit { limit: fits(255)? },
+        "set_transmission_limit" => Directive::SetTransmissionLimit {
+            limit: NonZeroU8::new(fits(255)?)?,
+        },
         "set_timeout_type" => Directive::SetTimeoutType {
             timeout_type: match value? {
                 0 => TimeoutType::Tt0,
@@ -370,6 +372,49 @@ fn run_file(name: &str) -> (usize, Vec<String>) {
         }
     }
     (resolved.len(), failures)
+}
+
+#[test]
+fn the_action_bound_target_and_classification_at_run_time() {
+    // req: COP-006, COP-010, API-058
+    assert_eq!(fop1_max_actions(core::hint::black_box(Q)), N);
+    let plain = Fop1Target::tc(
+        TcSpacecraftId::new(1).unwrap(),
+        TcVcId::new(0).unwrap(),
+        F,
+        core::hint::black_box(false),
+    )
+    .unwrap();
+    assert_eq!(plain.max_fdu_len(), F - 5);
+    let f = Engine::new(Fop1Config {
+        target: plain,
+        t1_initial: Duration::from_micros(10),
+        transmission_limit: NonZeroU8::MIN,
+        timeout_type: TimeoutType::Tt0,
+        sliding_window_k: 1,
+        ad_repetitions: 0,
+        bc_repetitions: 0,
+    })
+    .unwrap();
+    let mut out = [0; F];
+    let at = Instant::from_micros(0);
+    // No timer: a Timeout is no event.
+    let (g, actions) = f.step(Fop1Input::Timeout, at, &mut out).unwrap();
+    assert_eq!((g, actions.len()), (f.clone(), 0));
+    // An FDU longer than the frame allows is refused before any cell runs.
+    let long = [0; F];
+    for input in [
+        Fop1Input::RequestAd {
+            handle: 1,
+            fdu: &long,
+        },
+        Fop1Input::RequestBd {
+            handle: 1,
+            fdu: &long,
+        },
+    ] {
+        assert!(f.step(input, at, &mut out).is_err());
+    }
 }
 
 #[test]

@@ -137,6 +137,28 @@ fn inputs(t: &mut Tally, f: &Engine) -> Option<()> {
         &mut out,
     );
     t.check(na.is_err());
+    // Cells through `step_event` with an event and input `step` does not pair.
+    let limit = Fop1Input::Directive {
+        handle: bb(6),
+        directive: Directive::SetTransmissionLimit {
+            limit: NonZeroU8::new(bb(3))?,
+        },
+    };
+    let (g, _) = f
+        .step_event(bb(Fop1Event::E38), limit, Instant::from_micros(9), &mut out)
+        .ok()?;
+    t.check(g.transmission_limit().get() == 3);
+    let bd_done = Fop1Input::TransmitDone {
+        kind: FrameKind::Ad,
+        accepted: bb(true),
+    };
+    let bd = f.step_event(
+        bb(Fop1Event::E45),
+        bd_done,
+        Instant::from_micros(10),
+        &mut out,
+    );
+    t.check(bd.is_ok_and(|(g, _)| g.out_flag_ready(FrameKind::Bd)));
     Some(())
 }
 
