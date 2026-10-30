@@ -5980,7 +5980,9 @@ uint32_t aldis_tc_decode(const uint8_t *bytes,
  * `max_fill` is the longest fill the coding sublayer appends (six octets for the BCH codeblock,
  * 232.0 §4.4.9.2.6 note 2): a rest that starts no valid header is discarded as
  * `ALDIS_TC_DISCARD_FILL` up to `max_fill` octets and as `ALDIS_TC_DISCARD_LEFTOVER_FILL` above
- * (OI-47).
+ * (OI-47). `max_fill == SIZE_MAX` means no bound, as before the argument existed; `0` reports every octet
+ * of fill as leftover. The Fill item names the Frame Data Field in `error_field`, the leftover item the
+ * Frame Length.
  *
  * # Errors
  * The errors of [`aldis_tc_mc_config_check`]; `ALDIS_ERR_INVALID_ARGUMENT` if `*offset > unit_len`;
@@ -6750,7 +6752,9 @@ uint32_t aldis_uslp_decode(const uint8_t *bytes,
  * `max_fill` is the longest fill the coding sublayer appends (six octets for the BCH codeblock,
  * seven or 31 for the LDPC codeblocks, 732.1 §4.3.11.2.4 note 2): a rest that starts no valid
  * header is discarded as `ALDIS_USLP_DISCARD_FILL` up to `max_fill` octets and as
- * `ALDIS_USLP_DISCARD_LEFTOVER_FILL` above (OI-47).
+ * `ALDIS_USLP_DISCARD_LEFTOVER_FILL` above (OI-47). `max_fill == SIZE_MAX` means no bound, as before the argument existed; `0` reports every octet
+ * of fill as leftover. The Fill item names the Frame Data Field in `error_field`, the leftover item the
+ * Frame Length.
  *
  * # Errors
  * The errors of [`aldis_uslp_vc_table_check`]; `ALDIS_ERR_INVALID_ARGUMENT` if `*offset > unit_len`;

@@ -6,13 +6,16 @@
 //! The forward link carries the Type-AD frames the FOP-1 transmits, and the return link the
 //! CLCWs the FARM-1 reports at a fixed sampling period. Each link loses, duplicates, delays,
 //! and (forward only) corrupts what it carries; a delay that varies from item to item reorders
-//! the items. A corrupted frame fails the FECF, so the flight end feeds E9 (`InvalidFrame`); a
-//! corrupted CLCW never reaches the FOP-1, because the frame that carries it fails its own
-//! check on the return link.
+//! the items. A corrupted frame fails the FECF, so the flight end feeds E9 (`InvalidFrame`). The
+//! return link never corrupts: a corrupted CLCW would fail the check of the frame that carries
+//! it and never reach the FOP-1, so this harness does not model it, and `Fop1Input::InvalidClcw`
+//! is driven by `event_sequences.rs`, not here.
 //!
 //! Every scenario asserts the service guarantee of 232.1 §1: the delivered FDUs are a gap-free,
 //! duplicate-free, in-order prefix of the submitted stream, and either all FDUs are delivered
-//! and confirmed or the FOP-1 raised an Alert.
+//! and confirmed or the FOP-1 raised an Alert. Under Timeout Type 1 the driver answers each
+//! Suspend with a Resume directive (232.1 §5.1.9.3, §5.2.17), and the transfer must still
+//! complete or end in an Alert.
 //!
 //! The simulation is a fixed-step clock with a seeded generator, so a failure reproduces from
 //! its scenario and seed.
@@ -733,33 +736,29 @@ fn a_dead_forward_link_ends_in_an_alert_at_the_transmission_limit() {
 }
 
 #[test]
-fn timeout_type_one_suspends_instead_of_alerting() {
+fn timeout_type_one_suspends_resumes_and_completes() {
     // req: COP-040, COP-013, COP-014
-    // Under Timeout Type 1 the FOP-1 suspends at the transmission limit and raises no Alert.
-    // A Resume directive does not restart the retransmission (Table 5-1, E31 to E34), so a
-    // transfer may stay suspended for an operator to act on; the delivery stays an in-order
-    // prefix throughout.
+    // The use 232.1 §5.1.9.3 names: the round trip is longer than T1_Initial times the
+    // Transmission_Limit, so the FOP-1 retransmits, reaches the limit, and suspends before the
+    // first CLCW arrives. The driver resumes it (§5.2.17 restarts the timer), the CLCWs in
+    // flight acknowledge the frames, and the transfer completes without an Alert.
+    let slow = Link {
+        delay_us: 60_000,
+        ..Link::IDEAL
+    };
     let s = Scenario {
-        name: "suspend",
-        forward: Link {
-            loss: 400,
-            ..Link::IDEAL
-        },
+        name: "suspend and resume",
+        forward: slow,
+        ret: slow,
         timeout_type: TimeoutType::Tt1,
         transmission_limit: 2,
         t1_us: 40_000,
-        horizon_us: 2_000_000,
+        horizon_us: 30_000_000,
         ..BASE
     };
-    let outcomes: Vec<Outcome> = (0..16)
-        .map(|seed| {
-            let o = World::new(s, seed).run();
-            assert_prefix(&s, seed, &o);
-            o
-        })
-        .collect();
+    let outcomes = run_seeds(s, 8);
     assert_no_alert(&s, &outcomes);
-    assert!(outcomes.iter().any(|o| o.suspensions > 0));
+    assert!(outcomes.iter().all(|o| o.suspensions > 0));
 }
 
 #[test]
@@ -800,13 +799,16 @@ proptest! {
         tl in 1u8..=10,
         tt1 in any::<bool>(),
     ) {
+        // Under Timeout Type 1 a frame lost beyond the Transmission_Limit leaves the transfer
+        // suspended until an operator acts (Resume restarts only the timer, 232.1 §5.2.17), so
+        // the forward link of those runs loses and corrupts nothing.
         // req: COP-040, VER-023
         let s = Scenario {
             name: "random link",
             forward: Link {
-                loss: forward.0,
+                loss: if tt1 { 0 } else { forward.0 },
                 duplicate: forward.1,
-                corrupt: forward.2,
+                corrupt: if tt1 { 0 } else { forward.2 },
                 delay_us: forward.3,
                 jitter_us: forward.4,
                 in_order: forward.5,
@@ -828,14 +830,9 @@ proptest! {
             timeout_type: if tt1 { TimeoutType::Tt1 } else { TimeoutType::Tt0 },
             stall,
             release: 120,
-            horizon_us: 6_000_000,
+            horizon_us: 60_000_000,
         };
         let o = World::new(s, seed).run();
-        // The horizon may end a slow run early: the guarantee is on what was delivered, and
-        // completeness is asserted only when the run ended by itself.
-        let at = format!("seed {seed}: {o:?}");
-        let delivered: Vec<u16> = (0..u16::try_from(o.delivered.len()).unwrap()).collect();
-        prop_assert_eq!(&o.delivered, &delivered, "{}", at);
-        prop_assert!(o.confirmed.len() <= o.delivered.len(), "{}", at);
+        assert_guarantee(&s, seed, &o);
     }
 }

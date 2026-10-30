@@ -1,8 +1,10 @@
-//! Arbitrary event sequences for FOP-1 and FARM-1 (COP-041): after every input the engine is in
-//! a state that Table 5-1 or Table 6-1 reaches from the state before it, the step is a pure
-//! function (the same state and input give the same result), a refused step leaves the engine
-//! as it was, and the engines hold their own bounds (the `Sent_Queue` capacity, the action
-//! bound, the flags of FARM-1 as functions of its state; COP-006, COP-017, OI-64). No input
+//! Arbitrary event sequences for FOP-1 and FARM-1 (COP-041): after every accepted input the
+//! engine is in a state that Table 5-1 or Table 6-1 reaches from the state before it by an event
+//! of the class of the input (the cells that event class selects in the row of the old state),
+//! the step is a pure function (the same state and input give the same result, also for an
+//! error), and the engines hold their own bounds (the `Sent_Queue` capacity, the action bound,
+//! the flags of FARM-1 as functions of its state; COP-006, COP-017, OI-64). A refused step
+//! returns no engine, so the caller's engine is untouched by construction (API-058). No input
 //! panics (GEN-020).
 #![no_main]
 
@@ -59,6 +61,37 @@ fn directive(u: &mut Unstructured<'_>) -> Result<Directive> {
     })
 }
 
+/// The event indices of Table 5-1 (E1 to E46 are 0 to 45, E101 to E104 are 46 to 49) that the
+/// class of the input can select; a Timeout before the deadline selects none.
+fn fop1_events(class: u8) -> Vec<usize> {
+    match class {
+        0 => (0..=14).chain(46..=48).collect(),
+        1 => vec![14],
+        2 => (15..=17).chain([49]).collect(),
+        3 => vec![18, 19],
+        4 => vec![20, 21],
+        5 => (22..=39).collect(),
+        6 => vec![39],
+        _ => (40..=45).collect(),
+    }
+}
+
+/// A CLCW with N(R) `n_r`, perhaps of another Virtual Channel or COP in Effect.
+fn clcw(u: &mut Unstructured<'_>, n_r: u8) -> Result<Fop1Input<'static>> {
+    Ok(Fop1Input::Clcw(Clcw {
+        status: ClcwStatus::new(0).unwrap(),
+        cop_in_effect: CopInEffect::new(u.int_in_range(0..=3)?).unwrap(),
+        vc_id: TcVcId::new(if u.ratio(1, 16)? { VCID + 1 } else { VCID }).unwrap(),
+        no_rf_available: u.arbitrary()?,
+        no_bit_lock: u.arbitrary()?,
+        lockout: u.arbitrary()?,
+        wait: u.arbitrary()?,
+        retransmit: u.arbitrary()?,
+        farm_b_counter: FarmBCounter::default(),
+        report_value: FrameSeqNum::new(n_r),
+    }))
+}
+
 fn fop1(u: &mut Unstructured<'_>) -> Result<()> {
     let target = Fop1Target::tc(
         TcSpacecraftId::new(7).unwrap(),
@@ -93,19 +126,9 @@ fn fop1(u: &mut Unstructured<'_>) -> Result<()> {
         } else {
             u.arbitrary()?
         };
-        let input = match u.int_in_range(0..=7)? {
-            0 => Fop1Input::Clcw(Clcw {
-                status: ClcwStatus::new(0).unwrap(),
-                cop_in_effect: CopInEffect::new(u.int_in_range(0..=3)?).unwrap(),
-                vc_id: TcVcId::new(if u.ratio(1, 16)? { VCID + 1 } else { VCID }).unwrap(),
-                no_rf_available: u.arbitrary()?,
-                no_bit_lock: u.arbitrary()?,
-                lockout: u.arbitrary()?,
-                wait: u.arbitrary()?,
-                retransmit: u.arbitrary()?,
-                farm_b_counter: FarmBCounter::default(),
-                report_value: FrameSeqNum::new(n_r),
-            }),
+        let class: u8 = u.int_in_range(0..=7)?;
+        let input = match class {
+            0 => clcw(u, n_r)?,
             1 => Fop1Input::InvalidClcw,
             2 => Fop1Input::Timeout,
             3 => Fop1Input::RequestAd {
@@ -141,10 +164,13 @@ fn fop1(u: &mut Unstructured<'_>) -> Result<()> {
         };
         assert_eq!(area, again);
         assert!(actions.len() <= N);
+        let events = fop1_events(class);
+        let row = &FOP1_TABLE[before as usize];
         assert!(
-            FOP1_TABLE[before as usize]
-                .iter()
-                .any(|cell| cell.next_state == Some(after.state()))
+            (class == 2 && after.state() == before)
+                || events
+                    .iter()
+                    .any(|e| row[*e].next_state == Some(after.state()))
         );
         assert!(after.sent_queue_len() <= Q);
         for a in actions.iter() {
@@ -153,7 +179,11 @@ fn fop1(u: &mut Unstructured<'_>) -> Result<()> {
                     assert_eq!(alert.reason, AlertReason::Llif);
                 }
                 Fop1Output::Transmit { frame, .. } => {
-                    assert!(frame.slice(&area).is_some_and(|b| !b.is_empty() && b.len() <= F));
+                    assert!(
+                        frame
+                            .slice(&area)
+                            .is_some_and(|b| !b.is_empty() && b.len() <= F)
+                    );
                 }
                 _ => {}
             }
@@ -183,7 +213,9 @@ fn farm1(u: &mut Unstructured<'_>) -> Result<()> {
             u.arbitrary()?
         };
         let buffer_available = u.arbitrary()?;
-        let input = match u.int_in_range(0..=6)? {
+        let class: u8 = u.int_in_range(0..=6)?;
+        let mut bc_known = false;
+        let input = match class {
             0 | 1 => Farm1Input::Frame {
                 frame: Farm1Frame::Ad {
                     sequence_number: FrameSeqNum::new(n_s),
@@ -201,7 +233,8 @@ fn farm1(u: &mut Unstructured<'_>) -> Result<()> {
                         0 => Some(ControlCommand::Unlock),
                         1 => Some(ControlCommand::SetVr(FrameSeqNum::new(u.arbitrary()?))),
                         _ => None,
-                    },
+                    }
+                    .inspect(|_| bc_known = true),
                 },
                 buffer_available,
             },
@@ -223,11 +256,21 @@ fn farm1(u: &mut Unstructured<'_>) -> Result<()> {
         };
         assert_eq!(area, again);
         assert!(actions.len() <= FARM1_MAX_ACTIONS);
+        // The event indices of Table 6-1 (E1 to E11 are 0 to 10) that the class can select.
+        let events: &[usize] = match (class, bc_known) {
+            (0 | 1, _) => &[0, 1, 2, 3, 4],
+            (2, _) => &[5],
+            (3, true) => &[6, 7],
+            (3, false) | (4, _) => &[8],
+            (5, _) => &[9],
+            _ => &[],
+        };
+        let row = &FARM1_TABLE[before as usize];
         assert!(
-            after.state() == before
-                || FARM1_TABLE[before as usize]
+            (class == 6 && after.state() == before)
+                || events
                     .iter()
-                    .any(|cell| cell.next_state == Some(after.state()))
+                    .any(|e| row[*e].next_state == Some(after.state()))
         );
         assert_eq!(after.lockout_flag(), after.state() == Farm1State::Lockout);
         assert_eq!(after.wait_flag(), after.state() == Farm1State::Wait);

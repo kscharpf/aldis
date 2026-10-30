@@ -75,6 +75,7 @@ impl<'a> Delimited<'a> {
 /// [`LeftoverFill`] takes all of `rest`. `max_fill` is the longest fill the coding sublayer
 /// appends (six octets for the BCH codeblock, 232.0 §4.4.9.2.6 note 2): a rest that does not
 /// start a valid header is [`Fill`] up to `max_fill` octets and [`LeftoverFill`] above (OI-47).
+/// `usize::MAX` is no bound, and `0` makes every octet of fill leftover.
 ///
 /// [`TruncatedFrame`]: Delimited::TruncatedFrame
 /// [`Fill`]: Delimited::Fill

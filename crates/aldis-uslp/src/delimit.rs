@@ -126,7 +126,8 @@ pub(crate) fn declared_len<L: VcLookup + ?Sized>(rest: &[u8], channels: &L) -> O
 /// `rest`. `max_fill` is the longest fill the coding sublayer appends (six octets for the BCH
 /// codeblock, seven or 31 for the LDPC codeblocks, 732.1 §4.3.11.2.4 note 2): a rest that does
 /// not start a valid header is [`Delimited::Fill`] up to `max_fill` octets and
-/// [`Delimited::LeftoverFill`] above (OI-47).
+/// [`Delimited::LeftoverFill`] above (OI-47). `usize::MAX` is no bound, and `0` makes every
+/// octet of fill leftover.
 #[must_use]
 pub fn next_frame<'a, L: VcLookup + ?Sized>(
     rest: &'a [u8],

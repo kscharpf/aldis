@@ -1,8 +1,13 @@
 //! Property tests that drive FOP-1 and FARM-1 with random event sequences (COP-041, VER-023).
 //!
 //! After every input the engine is in a state that Tables 5-1 and 6-1 reach from the state
-//! before it: an `Ok` step goes to the `next_state` of some cell of the row of the state before,
-//! and an `Err` step changes nothing (API-058). The tests also hold the engines to the
+//! before it by an event of the class of the input: an `Ok` step goes to the `next_state` of one
+//! of the cells that the input's events select in the row of the state before (a CLCW selects
+//! E1 to E15 and E101 to E103, a Timeout E16 to E18 and E104, and so on), and no cell the tests
+//! reach is "Not applicable", since the step would then be an `Err`. A Timeout before the
+//! deadline is no event and leaves the state. An `Err` step returns no engine (`step` takes
+//! `&self`), so the caller's engine is untouched by construction (API-058); the test checks that
+//! the error is one of the kinds the engines document. The tests also hold the engines to the
 //! invariants the tables imply: no Alert other than `Llif` in State S6 (COP-017), the
 //! `Sent_Queue` within its capacity (COP-011), the output within its bound (COP-006), and the
 //! flags of FARM-1 as functions of its state (OI-64). A step that panics fails the test
@@ -19,6 +24,7 @@ use aldis_cop1::{
     Farm1Input, Farm1State, Farm1Window, Fop1, Fop1Config, Fop1Input, Fop1Output, Fop1Target,
     FrameKind, TimeoutType, fop1_max_actions,
 };
+use aldis_core::ErrorKind;
 use aldis_core::ids::FrameSeqNum;
 use aldis_core::time::{Duration, Instant};
 use aldis_tc::{
@@ -174,6 +180,21 @@ const fn directive(d: DirectiveOp) -> Directive {
     }
 }
 
+/// The indices in the event order of Table 5-1 (E1 to E46 are 0 to 45, E101 to E104 are 46 to 49)
+/// of the events that the input of `op` can select.
+fn fop_events(op: &FopOp) -> Vec<usize> {
+    match op {
+        FopOp::Clcw { .. } => (0..=14).chain(46..=48).collect(),
+        FopOp::InvalidClcw => vec![14],
+        FopOp::Timeout => (15..=17).chain([49]).collect(),
+        FopOp::RequestAd(_) => vec![18, 19],
+        FopOp::RequestBd(_) => vec![20, 21],
+        FopOp::Directive(_) => (22..=39).collect(),
+        FopOp::InvalidDirective => vec![39],
+        FopOp::TransmitDone(..) => (40..=45).collect(),
+    }
+}
+
 proptest! {
     #![proptest_config(strategies::config(256, REGRESSIONS))]
 
@@ -219,16 +240,28 @@ proptest! {
                 FopOp::TransmitDone(k, accepted) => Fop1Input::TransmitDone { kind: kind(*k), accepted: *accepted },
             };
             let before = f.state();
-            let Ok((after, actions)) = f.step(input, at, &mut area) else {
-                // An Err step returns no engine: the caller keeps `f`, which is unchanged.
-                continue;
+            let (after, actions) = match f.step(input, at, &mut area) {
+                Ok(ok) => ok,
+                Err(e) => {
+                    // No engine is returned: the caller keeps `f` (API-058).
+                    prop_assert!(matches!(
+                        e.kind(),
+                        ErrorKind::UnknownChannel
+                            | ErrorKind::InvalidField
+                            | ErrorKind::OutOfRange
+                            | ErrorKind::InvalidState
+                    ), "{e:?}");
+                    continue;
+                }
             };
             prop_assert!(actions.len() <= N);
-            // The new state is the `next_state` of a cell of the row of the old one.
+            // The new state is the `next_state` of a cell that the input's events select in
+            // the row of the old state; a Timeout before the deadline selects none.
             let row = &FOP1_TABLE[before as usize];
+            let idle = matches!(op, FopOp::Timeout) && after.state() == before;
             prop_assert!(
-                row.iter().any(|cell| cell.next_state == Some(after.state())),
-                "{before:?} -> {:?} is in no cell of Table 5-1", after.state()
+                idle || fop_events(op).iter().any(|e| row[*e].next_state == Some(after.state())),
+                "{before:?} -> {:?} by {op:?} is in no selected cell of Table 5-1", after.state()
             );
             prop_assert!(after.sent_queue_len() <= Q);
             prop_assert!(after.sliding_window_k() >= 1 && usize::from(after.sliding_window_k()) <= Q);
@@ -278,6 +311,19 @@ fn farm_op() -> impl Strategy<Value = FarmOp> {
     ]
 }
 
+/// The indices in the event order of Table 6-1 (E1 to E11 are 0 to 10) of the events the input of
+/// `op` can select; a physical-flag input selects none.
+fn farm_events(op: &FarmOp) -> Vec<usize> {
+    match op {
+        FarmOp::Ad(..) => (0..=4).collect(),
+        FarmOp::Bd(_) => vec![5],
+        FarmOp::Bc(Some(_)) => vec![6, 7],
+        FarmOp::Bc(None) | FarmOp::Invalid => vec![8],
+        FarmOp::Release => vec![9],
+        FarmOp::Physical(..) => vec![],
+    }
+}
+
 proptest! {
     #![proptest_config(strategies::config(256, REGRESSIONS))]
 
@@ -316,16 +362,23 @@ proptest! {
                 FarmOp::Physical(a, b) => Farm1Input::SetPhysicalFlags { no_rf_available: *a, no_bit_lock: *b },
             };
             let before = f.state();
-            let Ok((after, actions)) = f.step(input, Instant::from_micros(0), &mut area) else {
-                continue;
+            let (after, actions) = match f.step(input, Instant::from_micros(0), &mut area) {
+                Ok(ok) => ok,
+                Err(e) => {
+                    // The cell "Not applicable" (S2 with E1), or an FDU longer than the area.
+                    prop_assert!(matches!(e.kind(), ErrorKind::InvalidState | ErrorKind::BufferTooSmall), "{e:?}");
+                    continue;
+                }
             };
             prop_assert!(actions.len() <= FARM1_MAX_ACTIONS);
             // A physical-flag input takes no cell and leaves the state; every other input goes
-            // to the `next_state` of a cell of the row of the old state.
+            // to the `next_state` of a cell that its events select in the row of the old state.
             let row = &FARM1_TABLE[before as usize];
+            let physical = matches!(op, FarmOp::Physical(..));
             prop_assert!(
-                after.state() == before || row.iter().any(|cell| cell.next_state == Some(after.state())),
-                "{before:?} -> {:?} is in no cell of Table 6-1", after.state()
+                (physical && after.state() == before)
+                    || farm_events(op).iter().any(|e| row[*e].next_state == Some(after.state())),
+                "{before:?} -> {:?} by {op:?} is in no selected cell of Table 6-1", after.state()
             );
             prop_assert_eq!(after.lockout_flag(), after.state() == Farm1State::Lockout);
             prop_assert_eq!(after.wait_flag(), after.state() == Farm1State::Wait);

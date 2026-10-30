@@ -588,6 +588,17 @@ mod tests {
             );
             assert_eq!((strict.next(), lenient.next()), (None, None));
         }
+        // The two items name different fields: Fill the Frame Data Field, LeftoverFill the
+        // Frame Length (OI-47).
+        for (max_fill, field) in [
+            (6, crate::field::FRAME_LEN),
+            (7, crate::field::FRAME_DATA_FIELD),
+        ] {
+            let item = FrameStream::new(&fill, &table, max_fill).next().unwrap();
+            assert!(
+                matches!(item, IntakeItem::Discarded { error, .. } if error.field() == Some(field))
+            );
+        }
     }
 
     #[test]
