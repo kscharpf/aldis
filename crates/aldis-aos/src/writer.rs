@@ -736,7 +736,8 @@ mod tests {
     use aldis_core::ocf::Ocf;
     use aldis_core::oid::{OidGenerator, OidGeneratorGalois};
     use aldis_core::security::{
-        FrameCtx, NoSecurity, PreFilledSecurity, SecuredFields, SecurityHook, SecurityLayout,
+        FrameCtx, HookLayout, NoSecurity, PreFilledSecurity, SecuredFields, SecurityHook,
+        SecurityLayout,
     };
     use aldis_core::{DecodeMode, ErrorDetail, ErrorKind, FieldId};
 
@@ -789,6 +790,10 @@ mod tests {
     struct OrderHook;
 
     impl SecurityHook for OrderHook {
+        fn layout(&self) -> HookLayout {
+            HookLayout::Any
+        }
+
         fn protect(
             &mut self,
             _: &FrameCtx,
@@ -817,6 +822,10 @@ mod tests {
     struct Refuse;
 
     impl SecurityHook for Refuse {
+        fn layout(&self) -> HookLayout {
+            HookLayout::Any
+        }
+
         fn protect(
             &mut self,
             _: &FrameCtx,

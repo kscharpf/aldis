@@ -313,10 +313,9 @@ impl<'b> TcFrameWriter<'b, Unprotected> {
         )
         .and_then(|()| self.fix_length(user_len))
         .and_then(|mut w| {
-            let result = {
-                let (frame, fields) = w.secured(user_len);
-                hook.protect(ctx, frame, &fields)
-            };
+            let result = w
+                .secured(user_len)
+                .and_then(|(frame, fields)| hook.protect(ctx, frame, &fields));
             w.checked(result)
         })
     }
@@ -373,7 +372,7 @@ impl<'b> TcFrameWriter<'b, Unprotected> {
 
 impl<'b> TcFrameWriter<'b, Protected> {
     /// The frame and the ranges of its secured fields, for the hook of `protect`.
-    fn secured(&mut self, user_len: usize) -> (&mut [u8], SecuredFields) {
+    fn secured(&mut self, user_len: usize) -> Result<(&mut [u8], SecuredFields)> {
         let fields = SecuredFields::adjacent(
             self.plan
                 .data_start
@@ -382,7 +381,10 @@ impl<'b> TcFrameWriter<'b, Protected> {
             user_len,
             self.plan.security_trailer_len,
         );
-        (self.out.get_mut(..self.total).unwrap_or_default(), fields)
+        self.out
+            .get_mut(..self.total)
+            .map(|frame| (frame, fields))
+            .ok_or(Error::new(ErrorKind::InternalError).with_field(field::FRAME_LEN))
     }
 
     /// The writer if the hook succeeded; the part of `protect` that does not depend on the
@@ -408,7 +410,6 @@ impl<'b> TcFrameWriter<'b, Protected> {
     /// `InternalError` (`frame_len`) if the frame lies outside the buffer or is shorter than its
     /// FECF, which `begin` and the length step rule out; the error is returned rather than
     /// assumed away, and no frame is then finalized.
-    #[must_use = "the finalized frame"]
     pub fn finalize(self) -> Result<TcFrameWriter<'b, Finalized>> {
         let written = if self.plan.fecf {
             self.out
@@ -462,7 +463,7 @@ mod tests {
     use aldis_core::crc::syndrome;
     use aldis_core::ids::FrameSeqNum;
     use aldis_core::security::{
-        FrameCtx, NoSecurity, PreFilledSecurity, SecuredFields, SecurityHook,
+        FrameCtx, HookLayout, NoSecurity, PreFilledSecurity, SecuredFields, SecurityHook,
     };
     use aldis_core::{DecodeMode, ErrorDetail, ErrorKind, Result};
 
@@ -649,6 +650,10 @@ mod tests {
     struct OrderHook;
 
     impl SecurityHook for OrderHook {
+        fn layout(&self) -> HookLayout {
+            HookLayout::Any
+        }
+
         fn protect(
             &mut self,
             _: &FrameCtx,
@@ -682,6 +687,10 @@ mod tests {
     struct Refuse;
 
     impl SecurityHook for Refuse {
+        fn layout(&self) -> HookLayout {
+            HookLayout::Any
+        }
+
         fn protect(&mut self, _: &FrameCtx, _: &mut [u8], _: &SecuredFields) -> Result<()> {
             Err(aldis_core::Error::new(ErrorKind::Security))
         }

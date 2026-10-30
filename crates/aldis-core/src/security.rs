@@ -269,16 +269,25 @@ impl SecuredFields {
     }
 }
 
+/// The Security Header and Trailer lengths a [`SecurityHook`] is for (API-070, API-073,
+/// RS-023).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum HookLayout {
+    /// Exactly these lengths; a writer's `protect` rejects a channel with other lengths.
+    Exact(SecurityLayout),
+    /// Any lengths: a hook that takes the channel's layout from its configuration, or a test
+    /// hook that works on whatever fields the channel has.
+    Any,
+}
+
 /// Applies and checks link-layer security (API-073, API-074).
 pub trait SecurityHook {
-    /// The Security Header and Trailer lengths this hook is for, or `None` for a hook that
-    /// serves any layout (a real SDLS implementation configured per channel). A codec writer's
-    /// `protect` rejects a hook whose layout differs from the channel's, so the identity hook
-    /// [`NoSecurity`], layout 0/0, cannot be applied to a channel with SDLS fields (API-070,
-    /// API-073, RS-023).
-    fn layout(&self) -> Option<SecurityLayout> {
-        None
-    }
+    /// The Security Header and Trailer lengths this hook is for. Every hook states it: an exact
+    /// [`SecurityLayout`], or [`HookLayout::Any`] for a hook that serves any layout. A codec
+    /// writer's `protect` rejects a hook whose layout differs from the channel's, so the identity
+    /// hook [`NoSecurity`], layout 0/0, cannot be applied to a channel with SDLS fields
+    /// (API-070, API-073, RS-023).
+    fn layout(&self) -> HookLayout;
 
     /// Fills the Security Header and Trailer, and transforms the data field in place.
     ///
@@ -304,8 +313,8 @@ pub trait SecurityHook {
 pub struct NoSecurity;
 
 impl SecurityHook for NoSecurity {
-    fn layout(&self) -> Option<SecurityLayout> {
-        Some(SecurityLayout::NONE)
+    fn layout(&self) -> HookLayout {
+        HookLayout::Exact(SecurityLayout::NONE)
     }
 
     fn protect(&mut self, _: &FrameCtx, _: &mut [u8], _: &SecuredFields) -> Result<()> {
@@ -352,6 +361,10 @@ pub struct PreFilledSecurity;
 
 #[cfg(any(test, feature = "test-hooks"))]
 impl SecurityHook for PreFilledSecurity {
+    fn layout(&self) -> HookLayout {
+        HookLayout::Any
+    }
+
     fn protect(&mut self, _: &FrameCtx, _: &mut [u8], _: &SecuredFields) -> Result<()> {
         Ok(())
     }
@@ -368,6 +381,10 @@ impl SecurityHook for PreFilledSecurity {
 
 #[cfg(any(test, feature = "test-hooks"))]
 impl SecurityHook for FixedPatternSecurity {
+    fn layout(&self) -> HookLayout {
+        HookLayout::Any
+    }
+
     fn protect(&mut self, _: &FrameCtx, frame: &mut [u8], fields: &SecuredFields) -> Result<()> {
         for (range, pattern) in [
             (fields.header(), FixedPatternSecurity::HEADER_PATTERN),
@@ -406,8 +423,8 @@ impl SecurityHook for FixedPatternSecurity {
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::{
-        FixedPatternSecurity, FrameCtx, NoSecurity, PreFilledSecurity, Protocol, SecuredFields,
-        SecurityHook, SecurityLayout,
+        FixedPatternSecurity, FrameCtx, HookLayout, NoSecurity, PreFilledSecurity, Protocol,
+        SecuredFields, SecurityHook, SecurityLayout,
     };
     use crate::error::ErrorKind;
     use crate::field;
@@ -564,8 +581,9 @@ mod tests {
         NoSecurity.protect(&CTX, &mut frame, &fields).unwrap();
         assert_eq!(frame, [0; 8]);
         // The identity hook is for layout 0/0; the pre-filled test hook serves any layout.
-        assert_eq!(NoSecurity.layout(), Some(SecurityLayout::NONE));
-        assert_eq!(PreFilledSecurity.layout(), None);
+        assert_eq!(NoSecurity.layout(), HookLayout::Exact(SecurityLayout::NONE));
+        assert_eq!(PreFilledSecurity.layout(), HookLayout::Any);
+        assert_eq!(FixedPatternSecurity.layout(), HookLayout::Any);
         frame[1] = 7;
         PreFilledSecurity
             .protect(&CTX, &mut frame, &fields)

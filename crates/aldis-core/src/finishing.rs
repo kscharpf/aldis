@@ -18,7 +18,7 @@
 
 use crate::error::{Error, ErrorKind, Result};
 use crate::field;
-use crate::security::SecurityLayout;
+use crate::security::{HookLayout, SecurityLayout};
 
 mod sealed {
     /// Keeps [`FrameState`](super::FrameState) closed to the three states of this module.
@@ -29,19 +29,14 @@ mod sealed {
 /// [`Finalized`] implement it.
 pub trait FrameState: sealed::Sealed {}
 
-/// Checks that a channel's Security Header and Trailer lengths are those a hook is for (`None`:
-/// any), for a writer's `protect` (API-070, API-073, RS-023).
+/// Checks that a channel's Security Header and Trailer lengths are those a hook is for ([`HookLayout::Any`]: any), for a writer's `protect` (API-070, API-073, RS-023).
 ///
 /// # Errors
 /// `InvalidField` (`security_header_len`, or `security_trailer_len`) if the hook's layout
 /// differs from the channel's, such as `NoSecurity` on a channel that reserves Security Header
 /// or Trailer octets: they need a hook that fills them (API-074).
-pub const fn require_layout(
-    hook: Option<SecurityLayout>,
-    header_len: usize,
-    trailer_len: usize,
-) -> Result<()> {
-    let Some(layout) = hook else {
+pub const fn require_layout(hook: HookLayout, header_len: usize, trailer_len: usize) -> Result<()> {
+    let HookLayout::Exact(layout) = hook else {
         return Ok(());
     };
     if layout.header_len() != header_len {
@@ -59,7 +54,11 @@ pub const fn require_layout(
 /// # Errors
 /// As [`require_layout`] with the layout 0/0.
 pub const fn require_unsecured(header_len: usize, trailer_len: usize) -> Result<()> {
-    require_layout(Some(SecurityLayout::NONE), header_len, trailer_len)
+    require_layout(
+        HookLayout::Exact(SecurityLayout::NONE),
+        header_len,
+        trailer_len,
+    )
 }
 
 /// Every field is final except the Security Header and Trailer contents, the FHEC, and the FECF
@@ -89,7 +88,7 @@ mod tests {
     use super::{Finalized, FrameState, Protected, Unprotected, require_layout, require_unsecured};
     use crate::error::ErrorKind;
     use crate::field;
-    use crate::security::SecurityLayout;
+    use crate::security::{HookLayout, SecurityLayout};
 
     fn is_state<S: FrameState>() -> usize {
         core::mem::size_of::<core::marker::PhantomData<S>>()
@@ -109,14 +108,18 @@ mod tests {
         assert_eq!(require_unsecured(0, 0), Ok(()));
         // A hook for any layout fits every channel; one for a layout fits only that layout.
         let l = SecurityLayout::new(2, 1).unwrap();
-        assert_eq!(require_layout(None, 5, 9), Ok(()));
-        assert_eq!(require_layout(Some(l), 2, 1), Ok(()));
+        assert_eq!(require_layout(HookLayout::Any, 5, 9), Ok(()));
+        assert_eq!(require_layout(HookLayout::Exact(l), 2, 1), Ok(()));
         assert_eq!(
-            require_layout(Some(l), 3, 1).unwrap_err().field(),
+            require_layout(HookLayout::Exact(l), 3, 1)
+                .unwrap_err()
+                .field(),
             Some(field::SECURITY_HEADER_LEN)
         );
         assert_eq!(
-            require_layout(Some(l), 2, 0).unwrap_err().field(),
+            require_layout(HookLayout::Exact(l), 2, 0)
+                .unwrap_err()
+                .field(),
             Some(field::SECURITY_TRAILER_LEN)
         );
         let e = require_unsecured(2, 0).unwrap_err();

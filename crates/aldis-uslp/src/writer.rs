@@ -625,10 +625,9 @@ impl<'b> UslpFrameWriter<'b, Unprotected> {
         )
         .and_then(|()| self.fix_length(tfdz_len))
         .and_then(|mut w| {
-            let result = {
-                let (frame, fields) = w.secured(tfdz_len);
-                hook.protect(ctx, frame, &fields)
-            };
+            let result = w
+                .secured(tfdz_len)
+                .and_then(|(frame, fields)| hook.protect(ctx, frame, &fields));
             w.checked(result)
         })
     }
@@ -712,7 +711,7 @@ impl<'b> UslpFrameWriter<'b, Unprotected> {
 
 impl<'b> UslpFrameWriter<'b, Protected> {
     /// The frame and the ranges of its secured fields, for the hook of `protect`.
-    fn secured(&mut self, tfdz_len: usize) -> (&mut [u8], SecuredFields) {
+    fn secured(&mut self, tfdz_len: usize) -> Result<(&mut [u8], SecuredFields)> {
         let header = self.plan.layout.security_header();
         let data_len = self
             .plan
@@ -725,7 +724,10 @@ impl<'b> UslpFrameWriter<'b, Protected> {
             data_len,
             self.plan.layout.security_trailer().len(),
         );
-        (self.out.get_mut(..self.total).unwrap_or_default(), fields)
+        self.out
+            .get_mut(..self.total)
+            .map(|frame| (frame, fields))
+            .ok_or(Error::new(ErrorKind::InternalError).with_field(field::FRAME_LEN))
     }
 
     /// The writer if the hook succeeded; the part of `protect` that does not depend on the
@@ -760,7 +762,6 @@ impl<'b> UslpFrameWriter<'b, Protected> {
     /// `InternalError` (`frame_len`) if the frame lies outside the buffer or is shorter than its
     /// FECF, which `begin` and the length step rule out; the error is returned rather than
     /// assumed away, and no frame is then finalized.
-    #[must_use = "the finalized frame"]
     pub fn finalize(self) -> Result<UslpFrameWriter<'b, Finalized>> {
         let written = if self.plan.layout.fecf().is_empty() {
             Ok(())
@@ -818,7 +819,7 @@ mod tests {
     use aldis_core::ocf::Ocf;
     use aldis_core::oid::{OidGenerator, OidGeneratorGalois};
     use aldis_core::security::{
-        FrameCtx, NoSecurity, PreFilledSecurity, SecuredFields, SecurityHook,
+        FrameCtx, HookLayout, NoSecurity, PreFilledSecurity, SecuredFields, SecurityHook,
     };
     use aldis_core::{DecodeMode, Error, ErrorKind, FieldId};
     use std::vec::Vec;
@@ -947,6 +948,10 @@ mod tests {
     struct OrderHook;
 
     impl SecurityHook for OrderHook {
+        fn layout(&self) -> HookLayout {
+            HookLayout::Any
+        }
+
         fn protect(
             &mut self,
             _: &FrameCtx,
@@ -976,6 +981,10 @@ mod tests {
     struct Refuse;
 
     impl SecurityHook for Refuse {
+        fn layout(&self) -> HookLayout {
+            HookLayout::Any
+        }
+
         fn protect(
             &mut self,
             _: &FrameCtx,
