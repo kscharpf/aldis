@@ -417,7 +417,11 @@ fn vector_ids() -> Result<BTreeMap<String, bool>, String> {
                     add(&c.id, c.superseded.is_some());
                 }
             }
-            Ok(VectorFile::EngineScenario(s)) => add(&s.id, s.superseded.is_some()),
+            Ok(VectorFile::EngineScenario(f)) => {
+                for s in &f.scenarios {
+                    add(&s.id, s.superseded.is_some());
+                }
+            }
             Err(e) => return Err(format!("{rel}: {e} (run `cargo xtask vectors validate`)")),
         }
     }
