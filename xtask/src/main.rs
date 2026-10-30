@@ -116,12 +116,16 @@ commands:
   status-table [--write]       derive the State and PRs columns of the work-package status
                                tables of docs/milestones/ from the pull requests of GitHub
                                (needs gh; a coordinator tool, no check of the gate)
-  check                        the checks to run while working: fmt, clippy, doc, test, the
-                               bare-metal clippy build, ci, then the extras of each touched
-                               directory (aldis-core, aldis-ffi, refapp/, and the fmt of
-                               exerciser/, fuzz/, crosscheck/); the commands of the merge
-                               gate; stops at the first failure; one run at a time per
-                               worktree; `check --from <step>` skips the steps before the
+  check [--quick | --full] [--from <step>]
+                               the checks to run while working, in three tiers (VER-068); the
+                               gate decides a merge, not this. --quick: format and `cargo check`
+                               of the four workspaces, every error at once (edit loop). Default:
+                               fmt, clippy, doc, test, the bare-metal clippy build, ci, then the
+                               extras of each touched directory; stops at the first failure.
+                               --full: the default tier plus coverage of the touched crates,
+                               stack, and big-endian (once, before the final commit). The last
+                               line names the gate checks the tier did not run. One run at a
+                               time per worktree; --from <step> skips the steps before the
                                named one and ends `partial`, which is not a pass
   ci                           the quick checks of the verification run, without a build:
                                spec-lint, links, layers, consistency, rs020, loops,

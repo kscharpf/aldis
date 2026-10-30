@@ -40,7 +40,7 @@ pub use record::utc;
 pub(crate) use checks::all as all_checks;
 // For the tests of `cargo xtask check`, which run the same format and rustdoc commands.
 #[cfg(test)]
-pub(crate) use checks::{CLIPPY, FMT, TEST};
+pub(crate) use checks::{BIG_ENDIAN, CLIPPY, FMT, TEST};
 
 /// Flags shared with the RUSTFLAGS of every check (the former `ci.yml` `env`).
 pub(crate) const CHECK_ENV: &[(&str, &str)] = &[

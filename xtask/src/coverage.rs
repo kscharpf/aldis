@@ -106,16 +106,53 @@ fn count(summary: &Value, metric: &str, key: &str) -> u64 {
 /// `xtask coverage`: runs the gate for every crate in [`gated`] and writes
 /// `target/spec/coverage-<crate>.md`.
 pub fn run() -> Result<usize, String> {
+    run_selected(&gated()?, REPORTED)
+}
+
+/// `xtask check --full`: the gate for the gated crates among `names` (directories of `crates/`),
+/// and the report of the reported ones; every crate when `aldis-core` is among them, since
+/// every crate builds on it ([`select`]).
+pub fn run_for(names: &[String]) -> Result<usize, String> {
+    let (gated, reported) = select(names, &gated()?, REPORTED);
+    if gated.is_empty() && reported.is_empty() {
+        println!(
+            "coverage: no gated crate among the changed ones: {}",
+            names.join(", ")
+        );
+        return Ok(0);
+    }
+    run_selected(&gated, &reported)
+}
+
+/// The gated and the reported crates that a change to the crates `names` can affect: the ones
+/// named, or all of them when `aldis-core` is named.
+fn select<'a>(
+    names: &[String],
+    gated: &[&'a str],
+    reported: &[&'a str],
+) -> (Vec<&'a str>, Vec<&'a str>) {
+    let all = names.iter().any(|n| n == "aldis-core");
+    let pick = |crates: &[&'a str]| -> Vec<&'a str> {
+        crates
+            .iter()
+            .copied()
+            .filter(|c| all || names.iter().any(|n| n == c))
+            .collect()
+    };
+    (pick(gated), pick(reported))
+}
+
+fn run_selected(gated: &[&str], reported: &[&str]) -> Result<usize, String> {
     let nightly = repo::tooling_nightly()?;
     let out_dir = repo::root().join("target/spec");
     std::fs::create_dir_all(&out_dir).map_err(|e| e.to_string())?;
     let cov_dir = repo::root().join("target/llvm-cov-target");
 
     let mut problems = 0;
-    for krate in gated()? {
+    for krate in gated {
         problems += check_crate(krate, &nightly, &out_dir, &cov_dir, true)?;
     }
-    for krate in REPORTED {
+    for krate in reported {
         check_crate(krate, &nightly, &out_dir, &cov_dir, false)?;
     }
     Ok(problems)
@@ -254,4 +291,37 @@ fn judge(
         }
     }
     (problems, line)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::select;
+
+    fn names(n: &[&str]) -> Vec<String> {
+        n.iter().map(|s| (*s).to_owned()).collect()
+    }
+
+    #[test]
+    fn a_change_selects_its_own_crates() {
+        // req: VER-068
+        let gated = ["aldis-core", "aldis-spp", "aldis-tm"];
+        let (g, r) = select(
+            &names(&["aldis-spp", "aldis-testkit"]),
+            &gated,
+            &["aldis-ffi"],
+        );
+        assert_eq!((g, r), (vec!["aldis-spp"], vec![]));
+        let (g, r) = select(&names(&["aldis-ffi"]), &gated, &["aldis-ffi"]);
+        assert_eq!((g, r), (vec![], vec!["aldis-ffi"]));
+        let (g, r) = select(&names(&["aldis-testkit"]), &gated, &["aldis-ffi"]);
+        assert_eq!((g, r), (vec![], vec![]));
+    }
+
+    #[test]
+    fn aldis_core_selects_every_crate() {
+        // req: VER-068
+        let gated = ["aldis-core", "aldis-spp", "aldis-tm"];
+        let (g, r) = select(&names(&["aldis-core"]), &gated, &["aldis-ffi"]);
+        assert_eq!((g, r), (gated.to_vec(), vec!["aldis-ffi"]));
+    }
 }
