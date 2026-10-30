@@ -830,10 +830,10 @@ pub fn check() -> Result<usize, String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        Crates, Form, aldis_dependencies, bin_targets, c_names, crate_problems, exerciser_groups,
-        expand_braces, ffi_runner_files, fuzz_problems, glob, has_code, header_name_problems,
-        matrix_targets, mutants_crates, named_by_test, names, readme_patterns, vector_problems,
-        without_c_comments,
+        Crates, Form, aldis_dependencies, awaiting_runner, bin_targets, c_names, crate_problems,
+        exerciser_groups, expand_braces, ffi_runner_files, fuzz_problems, glob, has_code,
+        header_name_problems, matrix_targets, mutants_crates, named_by_test, names,
+        readme_patterns, vector_problems, without_c_comments,
     };
 
     /// A consistent registration of the M1 crates and `aldis-aos`, with two skeletons.
