@@ -102,8 +102,10 @@ commands:
   features                     `alloc` and `std` are additive: no API gated on them, and every
                                test passes alike without them, with `alloc`, and with `std`
                                (GEN-006)
-  coverage                     100 % region/function/line/branch gate for aldis-core (VER-024;
-                               tooling nightly + cargo-llvm-cov >= 0.9)
+  coverage [-p <crate>]...     100 % region/function/line/branch gate for the crates of Layers
+                               0-2 (VER-024; tooling nightly + cargo-llvm-cov >= 0.9); -p
+                               runs only the named crates; a failure lists the missed lines
+                               and branches as path:line ranges
   fuzz smoke [<target>...]     run a smoke pass (-runs=1 -max_total_time=2) on all fuzz targets
                                (or those named) to catch broken assertions before merge (VER-022)
   kani                         run the Kani proof harnesses and print each one's result and
@@ -116,12 +118,16 @@ commands:
   status-table [--write]       derive the State and PRs columns of the work-package status
                                tables of docs/milestones/ from the pull requests of GitHub
                                (needs gh; a coordinator tool, no check of the gate)
-  check                        the checks to run while working: fmt, clippy, doc, test, the
-                               bare-metal clippy build, ci, then the extras of each touched
-                               directory (aldis-core, aldis-ffi, refapp/, and the fmt of
-                               exerciser/, fuzz/, crosscheck/); the commands of the merge
-                               gate; stops at the first failure; one run at a time per
-                               worktree; `check --from <step>` skips the steps before the
+  check [--quick | --full] [--from <step>]
+                               the checks to run while working, in three tiers (VER-068); the
+                               gate decides a merge, not this. --quick: format and `cargo check`
+                               of the four workspaces, every error at once (edit loop). Default:
+                               fmt, clippy, doc, test, the bare-metal clippy build, ci, then the
+                               extras of each touched directory; stops at the first failure.
+                               --full: the default tier plus coverage of the touched crates,
+                               stack, and big-endian (once, before the final commit). The last
+                               line names the gate checks the tier did not run. One run at a
+                               time per worktree; --from <step> skips the steps before the
                                named one and ends `partial`, which is not a pass
   ci                           the quick checks of the verification run, without a build:
                                spec-lint, links, layers, consistency, rs020, loops,
@@ -227,7 +233,7 @@ fn run(args: &[&str]) -> Result<usize, String> {
         ["symbols"] => binaries::symbols(),
         ["ffi-imports", target] => binaries::ffi_imports(target),
         ["stack", rest @ ..] => stack::run(rest),
-        ["coverage"] => coverage::run(),
+        ["coverage", rest @ ..] => coverage::main(rest),
         ["fuzz", "smoke", rest @ ..] => fuzz::smoke(rest),
         ["kani"] => kani::run(),
         ["features"] => features::check(),
