@@ -4194,7 +4194,8 @@ typedef struct {
 } aldis_time_convert_config_t;
 
 /**
- * Managed parameters of a physical channel (132.0 §5.1 Table 5-1; TM-001, API-041). The configuration `aldis_tm_peek_length` takes (M2 plan D14).
+ * Managed parameters of a physical channel (132.0 §5.1 Table 5-1; TM-001, API-041). The
+ * configuration `aldis_tm_peek_length` takes (M2 plan D14).
  */
 typedef struct {
   /**
@@ -4323,7 +4324,8 @@ typedef struct {
    */
   size_t frame_len;
   /**
-   * The range of the Secondary Header Data Field, after the Identification Field; length 0 without a Secondary Header (§4.1.3.3).
+   * The range of the Secondary Header Data Field, after the Identification Field; length 0
+   * without a Secondary Header (§4.1.3.3).
    */
   aldis_range_t fsh_data;
   /**
@@ -6347,7 +6349,8 @@ uint32_t aldis_tm_config_check(const aldis_tm_config_t *pc, aldis_error_detail_t
  * configured twice (132.0 §4.1.3.1.4, §4.1.5.2); CABI-022 violations.
  *
  * # Safety
- * `mc` is valid for a read; `vcs` is valid for reads of `vc_count` structs (or `NULL` with 0); `err` is `NULL` or valid for one write.
+ * `mc` is valid for a read; `vcs` is valid for reads of `vc_count` structs (or `NULL` with 0);
+ * `err` is `NULL` or valid for one write.
  */
 uint32_t aldis_tm_mc_config_check(const aldis_tm_mc_config_t *mc,
                                   const aldis_tm_vc_config_t *vcs,
