@@ -109,6 +109,46 @@ pub fn run() -> Result<usize, String> {
     run_selected(&gated()?, REPORTED)
 }
 
+/// `xtask coverage [-p <crate>]...`: the gate for every crate, or for the crates named.
+pub fn main(args: &[&str]) -> Result<usize, String> {
+    let mut named: Vec<&str> = Vec::new();
+    let mut rest = args;
+    // bound: each pass consumes two words of `rest`.
+    while let [flag, tail @ ..] = rest {
+        let ("-p", [krate, tail @ ..]) = (*flag, tail) else {
+            return Err("usage: cargo xtask coverage [-p <crate>]...".into());
+        };
+        named.push(krate);
+        rest = tail;
+    }
+    if named.is_empty() {
+        return run();
+    }
+    let gated = gated()?;
+    if let Some(bad) = named
+        .iter()
+        .find(|n| !gated.contains(n) && !REPORTED.contains(n))
+    {
+        return Err(format!(
+            "coverage: `{bad}` is not measured; the crates are: {}",
+            gated
+                .iter()
+                .chain(REPORTED)
+                .copied()
+                .collect::<Vec<_>>()
+                .join(", ")
+        ));
+    }
+    let pick = |crates: &[&str]| -> Vec<&str> {
+        named
+            .iter()
+            .copied()
+            .filter(|n| crates.contains(n))
+            .collect()
+    };
+    run_selected(&pick(&gated), &pick(REPORTED))
+}
+
 /// `xtask check --full`: the gate for the gated crates among `names` (directories of `crates/`),
 /// and the report of the reported ones; every crate when `aldis-core` is among them, since
 /// every crate builds on it ([`select`]).
@@ -245,10 +285,102 @@ fn check_crate(
         problems += 1;
     }
     println!("{line}");
+    if gated && problems > 0 {
+        // The profile data of this crate's run is still in `cov_dir`: the next crate wipes it.
+        match uncovered(krate, nightly, out_dir) {
+            Ok(ranges) if ranges.is_empty() => println!(
+                "uncovered {krate}: no missed line or branch; the misses are regions or \
+                 functions (see the report)"
+            ),
+            Ok(ranges) => {
+                println!("uncovered {krate} (includes misses that coverage-waivers.toml waives):");
+                for r in ranges {
+                    println!("  {r}");
+                }
+            }
+            Err(e) => println!("uncovered {krate}: cannot list: {e}"),
+        }
+    }
     let file = out_dir.join(format!("coverage-{krate}.md"));
     std::fs::write(&file, md).map_err(|e| e.to_string())?;
     println!("coverage report: {}", repo::rel(&file));
     Ok(problems)
+}
+
+/// The lines and branches of `krate` that its tests missed, as `path:first-last (lines)` and
+/// `path:line (branch)`, from the LCOV report of the profile data its run just left.
+fn uncovered(krate: &str, nightly: &str, out_dir: &std::path::Path) -> Result<Vec<String>, String> {
+    let lcov = out_dir.join(format!("coverage-{krate}.lcov"));
+    let status = Command::new("rustup")
+        .args([
+            "run", nightly, "cargo", "llvm-cov", "report", "--branch", "--lcov",
+        ])
+        .arg("--output-path")
+        .arg(&lcov)
+        .current_dir(repo::root())
+        .status()
+        .map_err(|e| format!("cargo llvm-cov report: {e}"))?;
+    if !status.success() {
+        return Err("cargo llvm-cov report failed".into());
+    }
+    Ok(missed(&repo::read(&lcov)?, &format!("crates/{krate}/")))
+}
+
+/// The missed lines and branches in the LCOV text `lcov` for the files under `prefix`
+/// (repository-relative), consecutive lines joined into ranges, in file and line order.
+fn missed(lcov: &str, prefix: &str) -> Vec<String> {
+    fn ranges(path: &str, lines: &[u32], what: &str, out: &mut Vec<String>) {
+        let mut lines = lines.to_vec();
+        lines.sort_unstable();
+        lines.dedup();
+        let mut i = 0;
+        // bound: `i` grows by at least one per pass and `lines` is finite.
+        while let Some(&first) = lines.get(i) {
+            let mut last = first;
+            i += 1;
+            // bound: `i` grows by one per pass and stops at the end of `lines`.
+            while lines.get(i) == Some(&(last + 1)) {
+                last += 1;
+                i += 1;
+            }
+            out.push(if last == first {
+                format!("{path}:{first} ({what})")
+            } else {
+                format!("{path}:{first}-{last} ({what})")
+            });
+        }
+    }
+    let mut out = Vec::new();
+    let mut file: Option<String> = None;
+    let mut lines: Vec<u32> = Vec::new();
+    let mut branches: Vec<u32> = Vec::new();
+    for rec in lcov.lines() {
+        if let Some(sf) = rec.strip_prefix("SF:") {
+            let name = repo::rel(std::path::Path::new(sf));
+            file = name.starts_with(prefix).then_some(name);
+        } else if rec == "end_of_record" {
+            if let Some(path) = file.take() {
+                ranges(&path, &lines, "lines", &mut out);
+                ranges(&path, &branches, "branch", &mut out);
+            }
+            lines.clear();
+            branches.clear();
+        } else if file.is_some() {
+            if let Some(da) = rec.strip_prefix("DA:") {
+                let mut f = da.split(',');
+                if let (Some(n), Some("0")) = (f.next(), f.next()) {
+                    lines.extend(n.parse::<u32>());
+                }
+            } else if let Some(br) = rec.strip_prefix("BRDA:") {
+                // BRDA:<line>,<block>,<branch>,<taken>; `-` is a branch never reached.
+                let f: Vec<&str> = br.split(',').collect();
+                if let (Some(n), Some(&("-" | "0"))) = (f.first(), f.get(3)) {
+                    branches.extend(n.parse::<u32>());
+                }
+            }
+        }
+    }
+    out
 }
 
 /// The summary line of a crate and, when it is `gated`, the number of metrics whose misses
@@ -295,7 +427,7 @@ fn judge(
 
 #[cfg(test)]
 mod tests {
-    use super::select;
+    use super::{missed, select};
 
     fn names(n: &[&str]) -> Vec<String> {
         n.iter().map(|s| (*s).to_owned()).collect()
@@ -323,5 +455,38 @@ mod tests {
         let gated = ["aldis-core", "aldis-spp", "aldis-tm"];
         let (g, r) = select(&names(&["aldis-core"]), &gated, &["aldis-ffi"]);
         assert_eq!((g, r), (gated.to_vec(), vec!["aldis-ffi"]));
+    }
+
+    #[test]
+    fn missed_lines_and_branches_print_as_ranges() {
+        // req: VER-024
+        let lcov = "\
+SF:crates/aldis-spp/src/view.rs
+DA:10,3
+DA:11,0
+DA:12,0
+DA:13,0
+DA:20,0
+DA:21,5
+BRDA:30,0,0,2
+BRDA:30,0,1,-
+BRDA:31,0,0,0
+end_of_record
+SF:crates/aldis-tm/src/view.rs
+DA:1,0
+end_of_record
+SF:crates/aldis-spp/src/secondary.rs
+DA:5,1
+end_of_record
+";
+        assert_eq!(
+            missed(lcov, "crates/aldis-spp/"),
+            [
+                "crates/aldis-spp/src/view.rs:11-13 (lines)",
+                "crates/aldis-spp/src/view.rs:20 (lines)",
+                "crates/aldis-spp/src/view.rs:30-31 (branch)",
+            ]
+        );
+        assert_eq!(missed(lcov, "crates/aldis-core/"), <[String; 0]>::default());
     }
 }

@@ -102,8 +102,10 @@ commands:
   features                     `alloc` and `std` are additive: no API gated on them, and every
                                test passes alike without them, with `alloc`, and with `std`
                                (GEN-006)
-  coverage                     100 % region/function/line/branch gate for aldis-core (VER-024;
-                               tooling nightly + cargo-llvm-cov >= 0.9)
+  coverage [-p <crate>]...     100 % region/function/line/branch gate for the crates of Layers
+                               0-2 (VER-024; tooling nightly + cargo-llvm-cov >= 0.9); -p
+                               runs only the named crates; a failure lists the missed lines
+                               and branches as path:line ranges
   fuzz smoke [<target>...]     run a smoke pass (-runs=1 -max_total_time=2) on all fuzz targets
                                (or those named) to catch broken assertions before merge (VER-022)
   kani                         run the Kani proof harnesses and print each one's result and
@@ -231,7 +233,7 @@ fn run(args: &[&str]) -> Result<usize, String> {
         ["symbols"] => binaries::symbols(),
         ["ffi-imports", target] => binaries::ffi_imports(target),
         ["stack", rest @ ..] => stack::run(rest),
-        ["coverage"] => coverage::run(),
+        ["coverage", rest @ ..] => coverage::main(rest),
         ["fuzz", "smoke", rest @ ..] => fuzz::smoke(rest),
         ["kani"] => kani::run(),
         ["features"] => features::check(),
