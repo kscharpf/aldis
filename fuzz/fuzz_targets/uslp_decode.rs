@@ -9,7 +9,7 @@
 // req: USLP-001, USLP-002, USLP-003, USLP-004, USLP-005, USLP-006, USLP-014, USLP-015, USLP-016, API-020, GEN-020, GEN-042, VER-022
 
 use aldis_core::crc::crc16;
-use aldis_core::security::{FrameCtx, NoSecurity, SecurityLayout};
+use aldis_core::security::{FrameCtx, PreFilledSecurity, SecurityLayout};
 use aldis_core::{DecodeMode, ErrorKind};
 use aldis_uslp::{
     Delimited, FrameContent, FrameFields, MapConfig, OcfUse, PhysicalChannelConfig, SecurityScope,
@@ -130,9 +130,10 @@ fn re_encode(table: &VcTable<4, 4>, f: &UslpFrame<'_>) {
                 map_id: Some(fields.map_id),
             };
             let done = w
-                .protect(zone.len(), &mut NoSecurity, &ctx)
+                .protect(zone.len(), &mut PreFilledSecurity, &ctx)
                 .unwrap()
-                .finalize();
+                .finalize()
+                .unwrap();
             assert_eq!(done.len(), f.len());
             assert_eq!(out, f.octets());
         }

@@ -248,8 +248,8 @@ The table is the registry. `cargo xtask fields --write` generates from it the Ru
 | 5 | `apid` | field | Application Process Identifier | core, spp | 133.0 §4.1.3.3.4 |
 | 6 | `sequence_count` | field | Packet Sequence Count or Packet Name | core | 133.0 §4.1.3.4.3 |
 | 7 | `frame_data_field` | field | Transfer Frame Data Field, as the frame layout places it | core, tm, tc, uslp, aos | 132.0 §4.1.4; 232.0 §4.1.3; 732.0 §4.1.4; 732.1 §4.1.4; CMN-041 |
-| 8 | `security_header_len` | parameter | Length of the Security Header on a Virtual Channel or MAP | core, tm, aos | 355.0 §4.1.1.1.4; API-071 |
-| 9 | `security_trailer_len` | parameter | Length of the Security Trailer on a Virtual Channel or MAP | core, tm, aos | 355.0 §4.1.2; API-071 |
+| 8 | `security_header_len` | parameter | Length of the Security Header on a Virtual Channel or MAP | core, tm, tc, aos, uslp | 355.0 §4.1.1.1.4; API-071 |
+| 9 | `security_trailer_len` | parameter | Length of the Security Trailer on a Virtual Channel or MAP | core, tm, tc, aos, uslp | 355.0 §4.1.2; API-071 |
 | 10 | `secured_fields` | parameter | Octet ranges of the Security Header, the data field, and the Security Trailer | core | 355.0 §4.1; API-070 |
 | 11 | `width` | parameter | Width of a bit field, 1 to 64 bits | core | GEN-050 |
 | 12 | `bit_offset` | parameter | Bit offset of a bit field in its buffer | core | GEN-050 |

@@ -6,10 +6,12 @@
 use core::marker::PhantomData;
 
 use aldis_core::crc;
-use aldis_core::finishing::{Finalized, FrameState, Protected, Unprotected, require_unsecured};
+use aldis_core::finishing::{
+    Finalized, FrameState, Protected, Unprotected, require_layout, require_unsecured,
+};
 use aldis_core::layout::{FECF_LEN, FrameLayout, LayoutSpec};
 use aldis_core::security::{FrameCtx, SecuredFields, SecurityHook, SecurityLayout};
-use aldis_core::{Error, Result};
+use aldis_core::{Error, ErrorKind, Result};
 
 use crate::config::VcLookup;
 use crate::control::{ControlCommand, ControlOctets};
@@ -170,7 +172,9 @@ pub fn encode<L: VcLookup + ?Sized>(
     for (d, s) in w.user_data_mut().iter_mut().zip(payload) {
         *d = *s;
     }
-    w.fix_length(payload.len()).map(|w| w.finalize().len())
+    w.fix_length(payload.len())
+        .and_then(TcFrameWriter::finalize)
+        .map(|w| w.len())
 }
 
 /// Two-phase writer of a Type-D frame (232.0 §4.1, §6.3; API-020…API-023, API-072, API-074,
@@ -302,7 +306,13 @@ impl<'b> TcFrameWriter<'b, Unprotected> {
         hook: &mut H,
         ctx: &FrameCtx,
     ) -> Result<TcFrameWriter<'b, Protected>> {
-        self.fix_length(user_len).and_then(|mut w| {
+        require_layout(
+            hook.layout(),
+            self.plan.security_header_len,
+            self.plan.security_trailer_len,
+        )
+        .and_then(|()| self.fix_length(user_len))
+        .and_then(|mut w| {
             let result = {
                 let (frame, fields) = w.secured(user_len);
                 hook.protect(ctx, frame, &fields)
@@ -376,21 +386,39 @@ impl<'b> TcFrameWriter<'b, Protected> {
     }
 
     /// The writer if the hook succeeded; the part of `protect` that does not depend on the
-    /// hook type.
+    /// hook type. After a failure the buffer holds the unfinished header again, which every
+    /// decoder rejects (API-023), not a final-looking frame.
     fn checked(self, result: Result<()>) -> Result<Self> {
-        result.map(|()| self)
+        match result {
+            Ok(()) => Ok(self),
+            Err(e) => {
+                let header = primary_octets(UNFINISHED_VERSION, self.plan.fields, self.plan.total);
+                for (d, s) in self.out.iter_mut().zip(header) {
+                    *d = s;
+                }
+                Err(e)
+            }
+        }
     }
 
     /// Completes the frame: computes the FECF, if configured, over every other octet, last
     /// (232.0 §4.1.4; TC-007, API-021, API-074, RS-023).
+    ///
+    /// # Errors
+    /// `InternalError` (`frame_len`) if the frame lies outside the buffer or is shorter than its
+    /// FECF, which `begin` and the length step rule out; the error is returned rather than
+    /// assumed away, and no frame is then finalized.
     #[must_use = "the finalized frame"]
-    pub fn finalize(self) -> TcFrameWriter<'b, Finalized> {
-        if self.plan.fecf {
-            let frame = self.out.get_mut(..self.total).unwrap_or_default();
-            // The frame holds at least the Primary Header and the FECF, so this cannot fail.
-            let _ = crc::write_fecf(frame);
-        }
-        self.into_state()
+    pub fn finalize(self) -> Result<TcFrameWriter<'b, Finalized>> {
+        let written = if self.plan.fecf {
+            self.out
+                .get_mut(..self.total)
+                .ok_or(Error::new(ErrorKind::InternalError).with_field(field::FRAME_LEN))
+                .and_then(crc::write_fecf)
+        } else {
+            Ok(())
+        };
+        written.map(|()| self.into_state())
     }
 }
 
@@ -433,7 +461,9 @@ mod tests {
     use crate::view::TcFrame;
     use aldis_core::crc::syndrome;
     use aldis_core::ids::FrameSeqNum;
-    use aldis_core::security::{FrameCtx, NoSecurity, SecuredFields, SecurityHook};
+    use aldis_core::security::{
+        FrameCtx, NoSecurity, PreFilledSecurity, SecuredFields, SecurityHook,
+    };
     use aldis_core::{DecodeMode, ErrorDetail, ErrorKind, Result};
 
     fn fields(frame_type: FrameType, vc: u8) -> FrameFields {
@@ -599,7 +629,11 @@ mod tests {
             vcid: vcid(2),
             map_id: None,
         };
-        let done = w.protect(2, &mut NoSecurity, &ctx).unwrap().finalize();
+        let done = w
+            .protect(2, &mut PreFilledSecurity, &ctx)
+            .unwrap()
+            .finalize()
+            .unwrap();
         let n = done.len();
         assert_eq!((n, done.octets().len()), (5 + 1 + 3 + 2 + 1 + 2, n));
         assert!(!done.is_empty());
@@ -663,6 +697,40 @@ mod tests {
     }
 
     #[test]
+    fn no_security_is_rejected_on_a_channel_with_sdls() {
+        // req: RS-023, API-070, API-073
+        let t = standard(true);
+        let ctx = FrameCtx::Tc {
+            scid: scid(0x155),
+            vcid: vcid(2),
+            map_id: None,
+        };
+        let sh = SegmentHeader {
+            sequence_flags: SequenceFlags::Unsegmented,
+            map_id: mapid(9),
+        };
+        let mut out = [0xEE_u8; 32];
+        let w = TcFrameWriter::begin(&mut out, &t, fields(FrameType::Ad, 2), Some(sh), 5).unwrap();
+        let e = w.protect(2, &mut NoSecurity, &ctx).unwrap_err();
+        assert_eq!(
+            (e.kind(), e.field()),
+            (
+                ErrorKind::InvalidField,
+                Some(aldis_core::field::SECURITY_HEADER_LEN)
+            )
+        );
+        // Nothing was written: the buffer is as `begin` left it.
+        let begun = out;
+        let mut again = [0xEE_u8; 32];
+        {
+            let _begun =
+                TcFrameWriter::begin(&mut again, &t, fields(FrameType::Ad, 2), Some(sh), 5)
+                    .unwrap();
+        }
+        assert_eq!(begun, again);
+    }
+
+    #[test]
     fn a_failed_protect_gives_no_frame() {
         // req: RS-023, API-073
         let t = standard(true);
@@ -679,6 +747,9 @@ mod tests {
         let w = TcFrameWriter::begin(&mut out, &t, fields(FrameType::Ad, 2), Some(sh), 5).unwrap();
         let e = w.protect(2, &mut Refuse, &ctx).unwrap_err();
         assert_eq!(e.kind(), ErrorKind::Security);
+        // The buffer holds the unfinished header again, which no decoder accepts (API-023).
+        let e = TcFrame::decode(&out, &t, DecodeMode::Lenient).unwrap_err();
+        assert_eq!(e.kind(), ErrorKind::UnsupportedVersion);
     }
 
     #[test]
@@ -702,6 +773,7 @@ mod tests {
             .protect(2, &mut OrderHook, &ctx)
             .unwrap()
             .finalize()
+            .unwrap()
             .into_octets();
         assert_eq!(syndrome(octets), 0);
         let f = TcFrame::decode(octets, &t, DecodeMode::Strict).unwrap();
@@ -751,7 +823,7 @@ mod tests {
         assert_eq!(e.field(), Some(field::CONTROL_COMMAND_FLAG));
         let mut w = TcFrameWriter::begin(&mut out, &t, fields(FrameType::Ad, 1), None, 4).unwrap();
         w.user_data_mut()[0] = 0x42;
-        assert_eq!(w.unsecured(1).unwrap().finalize().len(), 6);
+        assert_eq!(w.unsecured(1).unwrap().finalize().unwrap().len(), 6);
         assert_eq!(TcFrame::peek_length(&out), Ok(6));
     }
 }

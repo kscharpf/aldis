@@ -9,7 +9,9 @@ use core::marker::PhantomData;
 use core::ops::Range;
 
 use aldis_core::crc::crc16;
-use aldis_core::finishing::{Finalized, FrameState, Protected, Unprotected, require_unsecured};
+use aldis_core::finishing::{
+    Finalized, FrameState, Protected, Unprotected, require_layout, require_unsecured,
+};
 use aldis_core::ids::{SpacecraftId, VcId};
 use aldis_core::layout::FrameLayout;
 use aldis_core::ocf::Ocf;
@@ -467,14 +469,22 @@ impl<'b> AosFrameWriter<'b, Unprotected> {
     /// `ctx` identifies the channel for the hook's Security Association.
     ///
     /// # Errors
-    /// The hook's error, `Security`; the frame is then dropped and must not be transmitted.
+    /// `InvalidField` (`security_header_len` or `security_trailer_len`) if the hook is for
+    /// another layout than the VC's ([`SecurityHook::layout`]), such as `NoSecurity` on a VC with
+    /// SDLS; the hook's error, `Security`; the frame is then dropped and must not be
+    /// transmitted.
     pub fn protect<H: SecurityHook + ?Sized>(
         self,
         hook: &mut H,
         ctx: &FrameCtx,
     ) -> Result<AosFrameWriter<'b, Protected>> {
         let fields = SecuredFields::from_layout(&self.layout);
-        let result = hook.protect(ctx, &mut *self.frame, &fields);
+        let result = require_layout(
+            hook.layout(),
+            self.layout.security_header().len(),
+            self.layout.security_trailer().len(),
+        )
+        .and_then(|()| hook.protect(ctx, &mut *self.frame, &fields));
         self.protected(result)
     }
 
@@ -725,7 +735,9 @@ mod tests {
     use aldis_core::ids::{SpacecraftId, VcId};
     use aldis_core::ocf::Ocf;
     use aldis_core::oid::{OidGenerator, OidGeneratorGalois};
-    use aldis_core::security::{FrameCtx, NoSecurity, SecuredFields, SecurityHook, SecurityLayout};
+    use aldis_core::security::{
+        FrameCtx, NoSecurity, PreFilledSecurity, SecuredFields, SecurityHook, SecurityLayout,
+    };
     use aldis_core::{DecodeMode, ErrorDetail, ErrorKind, FieldId};
 
     const STRICT: DecodeMode = DecodeMode::Strict;
@@ -825,6 +837,24 @@ mod tests {
     }
 
     #[test]
+    fn no_security_is_rejected_on_a_channel_with_sdls() {
+        // req: RS-023, API-070, API-073
+        let t = table();
+        let phy = t.physical_channel();
+        let ctx = FrameCtx::Aos {
+            scid: scid(0xAB),
+            vcid: vcid(0),
+        };
+        let mut out = [0xEE_u8; 40];
+        let w = AosFrameWriter::begin(&mut out, &phy, &t, &mpdu(starts_at(3))).unwrap();
+        let e = w.protect(&mut NoSecurity, &ctx).unwrap_err();
+        assert_eq!(
+            (e.kind(), e.field()),
+            (ErrorKind::InvalidField, Some(field::SECURITY_HEADER_LEN))
+        );
+    }
+
+    #[test]
     fn a_failed_protect_gives_no_frame() {
         // req: RS-023, API-073
         let t = table();
@@ -901,7 +931,7 @@ mod tests {
             scid: scid(0xAB),
             vcid: vcid(0),
         };
-        let done = w.protect(&mut NoSecurity, &ctx).unwrap().finalize();
+        let done = w.protect(&mut PreFilledSecurity, &ctx).unwrap().finalize();
         assert_eq!((done.len(), done.octets().len()), (40, 40));
         assert!(!done.is_empty());
         assert_eq!(out[40..], [0xEE; 8], "nothing written past the frame");
@@ -946,6 +976,11 @@ mod tests {
         );
         assert!(AosFrameWriter::begin(&mut out, &t.physical_channel(), &t, &fields).is_ok());
         assert_eq!(out[..6], [0x6A, 0xC1, 0, 0, 0, 0]);
+        assert_eq!(
+            out[6..8],
+            [0, 0],
+            "the FHEC is computed by `finalize` (RS-023)"
+        );
         assert_eq!(out[12..14], [0x3F, 0xFE], "the B_PDU Header");
         assert!(out[14..].iter().all(|&b| b == 0));
     }

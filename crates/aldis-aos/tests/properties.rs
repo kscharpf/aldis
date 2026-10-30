@@ -12,7 +12,7 @@ use aldis_aos::{
     PduHeader, VcLookup, encode,
 };
 use aldis_core::oid::OidGenerator;
-use aldis_core::security::{FrameCtx, NoSecurity};
+use aldis_core::security::{FrameCtx, PreFilledSecurity};
 use aldis_core::{DecodeMode, ErrorKind};
 use aldis_testkit::strategies::aos::{
     AosTable, aos_frame, aos_frame_decoder_input, vc_frame_count, vc_table,
@@ -163,7 +163,7 @@ proptest! {
             w.set_ocf(ocf).unwrap();
         }
         let ctx = FrameCtx::Aos { scid: f.fields.scid, vcid: f.fields.vcid };
-        prop_assert_eq!(w.protect(&mut NoSecurity, &ctx).unwrap().finalize().len(), f.octets.len());
+        prop_assert_eq!(w.protect(&mut PreFilledSecurity, &ctx).unwrap().finalize().len(), f.octets.len());
         prop_assert_eq!(out, f.octets);
     }
 

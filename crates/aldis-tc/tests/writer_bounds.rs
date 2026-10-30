@@ -14,7 +14,7 @@
 )]
 
 use aldis_core::ids::FrameSeqNum;
-use aldis_core::security::{FrameCtx, NoSecurity, SecurityLayout};
+use aldis_core::security::{FrameCtx, PreFilledSecurity, SecurityLayout};
 use aldis_core::{DecodeMode, ErrorKind};
 use aldis_tc::{
     ControlCommand, FrameData, FrameFields, FrameType, MapConfig, PhysicalChannelConfig,
@@ -206,9 +206,10 @@ fn begin_and_finish_write_only_the_reservation() {
                 map_id: None,
             };
             let n = w
-                .protect(user_len, &mut NoSecurity, &ctx)
+                .protect(user_len, &mut PreFilledSecurity, &ctx)
                 .unwrap()
                 .finalize()
+                .unwrap()
                 .len();
             assert_eq!(n, total - (max_user - user_len));
             // Beyond the reservation nothing changes; inside it, the frame is a valid frame.
@@ -257,7 +258,8 @@ fn a_failed_begin_or_finish_changes_nothing_of_the_frame() {
                 vcid: f.vc_id,
                 map_id: None,
             };
-            w.protect(user_len, &mut NoSecurity, &ctx).unwrap_err();
+            w.protect(user_len, &mut PreFilledSecurity, &ctx)
+                .unwrap_err();
             out.clone()
         };
         let mut again = before.clone();

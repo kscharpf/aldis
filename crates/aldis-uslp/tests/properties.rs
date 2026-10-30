@@ -7,7 +7,7 @@
 )]
 
 use aldis_core::oid::OidGenerator;
-use aldis_core::security::{FrameCtx, NoSecurity};
+use aldis_core::security::{FrameCtx, PreFilledSecurity};
 use aldis_core::{DecodeMode, ErrorKind};
 use aldis_testkit::strategies::proptest::prelude::*;
 use aldis_testkit::strategies::uslp::{
@@ -78,7 +78,7 @@ proptest! {
                 let mut w = UslpFrameWriter::begin(&mut two, t, *fields, content, f.tfdz.len()).unwrap();
                 w.tfdz_mut().unwrap().copy_from_slice(&f.tfdz);
                 let ctx = FrameCtx::Uslp { scid: fields.spacecraft_id, vcid: fields.vc_id, map_id: Some(fields.map_id) };
-                let done = w.protect(f.tfdz.len(), &mut NoSecurity, &ctx).unwrap().finalize();
+                let done = w.protect(f.tfdz.len(), &mut PreFilledSecurity, &ctx).unwrap().finalize().unwrap();
                 prop_assert_eq!(done.len(), f.octets.len());
                 prop_assert_eq!(&two, &f.octets);
                 // One octet short: nothing is written (API-022).

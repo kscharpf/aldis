@@ -11,7 +11,7 @@
 use aldis_core::DecodeMode;
 use aldis_core::ocf::Ocf;
 use aldis_core::oid::OidGenerator;
-use aldis_core::security::{FrameCtx, NoSecurity, SecurityLayout};
+use aldis_core::security::{FrameCtx, PreFilledSecurity, SecurityLayout};
 use aldis_uslp::{
     ConstructionRule, FrameContent, FrameFields, FrameKind, MapConfig, OcfUse,
     PhysicalChannelConfig, SecurityScope, SourceOrDestination, TfdfHeader, TfdzRule,
@@ -67,9 +67,10 @@ fn check_frame(
                 map_id: Some(map),
             };
             let done = writer
-                .protect(zone.len(), &mut NoSecurity, &ctx)
+                .protect(zone.len(), &mut PreFilledSecurity, &ctx)
                 .unwrap()
-                .finalize();
+                .finalize()
+                .unwrap();
             assert_eq!(done.len(), frame_len_out);
             assert_eq!(two, frame);
         }

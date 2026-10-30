@@ -16,7 +16,7 @@ use aldis_core::DecodeMode;
 use aldis_core::ids::{SpacecraftId, VcId};
 use aldis_core::ocf::Ocf;
 use aldis_core::oid::OidGenerator;
-use aldis_core::security::{FrameCtx, NoSecurity, SecurityLayout};
+use aldis_core::security::{FrameCtx, PreFilledSecurity, SecurityLayout};
 use libfuzzer_sys::arbitrary::{Result, Unstructured};
 use libfuzzer_sys::fuzz_target;
 
@@ -199,7 +199,10 @@ fn run(u: &mut Unstructured<'_>) -> Result<()> {
                 vcid: fields.vcid,
             };
             assert_eq!(
-                w.protect(&mut NoSecurity, &ctx).unwrap().finalize().len(),
+                w.protect(&mut PreFilledSecurity, &ctx)
+                    .unwrap()
+                    .finalize()
+                    .len(),
                 n
             );
             assert_eq!(two[..n], out[..n]);

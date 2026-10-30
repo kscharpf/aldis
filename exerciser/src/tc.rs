@@ -6,7 +6,7 @@ use core::hint::black_box as bb;
 
 use aldis_core::ids::FrameSeqNum;
 use aldis_core::ocf::{Ocf, Type1Report};
-use aldis_core::security::{FrameCtx, NoSecurity, SecurityLayout};
+use aldis_core::security::{FrameCtx, PreFilledSecurity, SecurityLayout};
 use aldis_core::{Anomaly, DecodeMode, Error, ErrorKind};
 use aldis_tc::{
     Clcw, ClcwStatus, ControlCommand, CopInEffect, Delimited, FarmBCounter, FrameData,
@@ -176,9 +176,12 @@ fn frame_group(t: &mut Tally) {
             w.security_header_mut().fill(0xA5);
             w.security_trailer_mut().fill(0x5A);
             w.user_data_mut().fill(0x11);
-            match ctx.map(|c| w.protect(bb(2), bb(&mut NoSecurity), bb(&c))) {
+            match ctx.map(|c| w.protect(bb(2), bb(&mut PreFilledSecurity), bb(&c))) {
                 Some(Ok(p)) => {
-                    let done = p.finalize();
+                    let Ok(done) = p.finalize() else {
+                        t.check(false);
+                        return;
+                    };
                     t.check(done.len() == 14 && !done.is_empty() && done.octets().len() == 14);
                     t.check(done.into_octets().len() == 14);
                 }
@@ -440,8 +443,8 @@ fn encode_case(case: &Case, o: &mut Out, scratch: &mut Scratch) -> Run {
             vcid: fields.vc_id,
             map_id: segment.map(|s| s.map_id),
         };
-        if w.protect(user.len(), &mut NoSecurity, &ctx)?
-            .finalize()
+        if w.protect(user.len(), &mut PreFilledSecurity, &ctx)?
+            .finalize()?
             .len()
             != n
         {

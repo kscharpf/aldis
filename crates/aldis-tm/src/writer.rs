@@ -7,7 +7,9 @@ use core::marker::PhantomData;
 use core::ops::Range;
 
 use aldis_core::crc::crc16;
-use aldis_core::finishing::{Finalized, FrameState, Protected, Unprotected, require_unsecured};
+use aldis_core::finishing::{
+    Finalized, FrameState, Protected, Unprotected, require_layout, require_unsecured,
+};
 use aldis_core::ids::VcId;
 use aldis_core::layout::FrameLayout;
 use aldis_core::ocf::Ocf;
@@ -321,14 +323,22 @@ impl<'b> TmFrameWriter<'b, Unprotected> {
     /// identifies the channel for the hook's Security Association.
     ///
     /// # Errors
-    /// The hook's error, `Security`; the frame is then dropped and must not be transmitted.
+    /// `InvalidField` (`security_header_len` or `security_trailer_len`) if the hook is for
+    /// another layout than the VC's ([`SecurityHook::layout`]), such as `NoSecurity` on a VC with
+    /// SDLS; the hook's error, `Security`; the frame is then dropped and must not be
+    /// transmitted.
     pub fn protect<H: SecurityHook + ?Sized>(
         self,
         hook: &mut H,
         ctx: &FrameCtx,
     ) -> Result<TmFrameWriter<'b, Protected>> {
         let fields = SecuredFields::from_layout(&self.layout);
-        let result = hook.protect(ctx, &mut *self.frame, &fields);
+        let result = require_layout(
+            hook.layout(),
+            self.layout.security_header().len(),
+            self.layout.security_trailer().len(),
+        )
+        .and_then(|()| hook.protect(ctx, &mut *self.frame, &fields));
         self.protected(result)
     }
 
@@ -620,7 +630,9 @@ mod tests {
     use aldis_core::ocf::Ocf;
     use aldis_core::oid::{OidGenerator, OidGeneratorGalois};
     use aldis_core::security::SecurityLayout;
-    use aldis_core::security::{FrameCtx, NoSecurity, SecuredFields, SecurityHook};
+    use aldis_core::security::{
+        FrameCtx, NoSecurity, PreFilledSecurity, SecuredFields, SecurityHook,
+    };
     use aldis_core::{DecodeMode, ErrorDetail, ErrorKind};
 
     fn vcid(n: u8) -> VcId<3> {
@@ -671,7 +683,7 @@ mod tests {
             scid: SpacecraftId::new(0x0AB).unwrap(),
             vcid: vcid(0),
         };
-        let done = w.protect(&mut NoSecurity, &ctx).unwrap().finalize();
+        let done = w.protect(&mut PreFilledSecurity, &ctx).unwrap().finalize();
         assert_eq!((done.len(), done.octets().len()), (32, 32));
         assert!(!done.is_empty());
         assert_eq!(out[32..], [0xEE; 8], "nothing written past the frame");
@@ -739,6 +751,23 @@ mod tests {
         ) -> aldis_core::Result<core::ops::Range<usize>> {
             Ok(fields.data())
         }
+    }
+
+    #[test]
+    fn no_security_is_rejected_on_a_channel_with_sdls() {
+        // req: RS-023, API-070, API-073
+        let mc = mc();
+        let ctx = FrameCtx::Tm {
+            scid: SpacecraftId::new(0x0AB).unwrap(),
+            vcid: vcid(0),
+        };
+        let mut out = [0xEE_u8; 32];
+        let w = TmFrameWriter::begin(&mut out, &mc, &packets(0, starts_at(3))).unwrap();
+        let e = w.protect(&mut NoSecurity, &ctx).unwrap_err();
+        assert_eq!(
+            (e.kind(), e.field()),
+            (ErrorKind::InvalidField, Some(field::SECURITY_HEADER_LEN))
+        );
     }
 
     #[test]

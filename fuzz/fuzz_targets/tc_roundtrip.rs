@@ -7,7 +7,7 @@
 
 use aldis_core::DecodeMode;
 use aldis_core::ids::FrameSeqNum;
-use aldis_core::security::{FrameCtx, NoSecurity, SecurityLayout};
+use aldis_core::security::{FrameCtx, PreFilledSecurity, SecurityLayout};
 use aldis_tc::{
     ControlCommand, FrameData, FrameFields, FrameType, MapConfig, PhysicalChannelConfig,
     SegmentHeader, SegmentHeaderUse, SequenceFlags, TcFrame, TcFrameWriter, TcMapId,
@@ -122,9 +122,10 @@ fn two_phase(
         map_id: None,
     };
     let done = w
-        .protect(user.len(), &mut NoSecurity, &ctx)
+        .protect(user.len(), &mut PreFilledSecurity, &ctx)
         .unwrap()
-        .finalize();
+        .finalize()
+        .unwrap();
     assert_eq!(done.len(), frame.len());
     assert_eq!(two, frame);
 }

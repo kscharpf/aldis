@@ -6,7 +6,7 @@ use core::hint::black_box as bb;
 
 use aldis_core::ocf::Ocf;
 use aldis_core::oid::{OidGenerator, OidGeneratorGalois};
-use aldis_core::security::{FrameCtx, NoSecurity, SecurityLayout};
+use aldis_core::security::{FrameCtx, PreFilledSecurity, SecurityLayout};
 use aldis_core::{Anomaly, DecodeMode};
 use aldis_uslp::{
     ChannelFields, ConstructionRule, Delimited, FirstHeaderPointer, FrameContent, FrameDelimiter,
@@ -268,7 +268,10 @@ fn frame_group(t: &mut Tally) {
             t.check(ok);
             match w.unsecured(bb(3)) {
                 Ok(p) => {
-                    let done = p.finalize();
+                    let Ok(done) = p.finalize() else {
+                        t.check(false);
+                        return;
+                    };
                     t.check(done.len() == 18 && !done.is_empty() && done.octets().len() == 18);
                     t.check(done.into_octets().len() == 18);
                 }
@@ -652,8 +655,8 @@ fn encode_case(case: &Case, o: &mut Out, scratch: &mut Scratch) -> Run {
         vcid: fields.vc_id,
         map_id: Some(fields.map_id),
     };
-    if w.protect(zone.len(), &mut NoSecurity, &ctx)?
-        .finalize()
+    if w.protect(zone.len(), &mut PreFilledSecurity, &ctx)?
+        .finalize()?
         .len()
         != n
     {

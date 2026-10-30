@@ -17,7 +17,7 @@ use aldis_aos::{PacketOffset, ValidBitCount};
 use aldis_core::ids::{SpacecraftId, VcId};
 use aldis_core::ocf::Ocf;
 use aldis_core::oid::OidGenerator;
-use aldis_core::security::{FrameCtx, NoSecurity, SecurityLayout};
+use aldis_core::security::{FrameCtx, PreFilledSecurity, SecurityLayout};
 use aldis_core::{DecodeMode, Error, FieldId};
 use aldis_testkit::{CodecCase, Mode, Outcome, hex, run_codec_file};
 use serde_json::{Map, Value, json};
@@ -264,7 +264,7 @@ fn encode_case(case: &CodecCase, pc: &AosPhysicalChannelConfig, t: &Table) -> Re
         scid: fields.scid,
         vcid: fields.vcid,
     };
-    let done = w.protect(&mut NoSecurity, &ctx).unwrap().finalize();
+    let done = w.protect(&mut PreFilledSecurity, &ctx).unwrap().finalize();
     assert_eq!(done.len(), n, "{}", case.id);
     assert_eq!(two, out[..n], "{}: two-phase writer differs", case.id);
     Ok(json!({ "output_hex": hex::encode(&out[..n]) }))

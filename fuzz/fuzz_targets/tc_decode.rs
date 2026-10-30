@@ -8,7 +8,7 @@
 // req: TC-001, TC-002, TC-003, TC-004, TC-005, TC-006, TC-021, TC-023, API-020, GEN-020, GEN-042, VER-022
 
 use aldis_core::crc::crc16;
-use aldis_core::security::{FrameCtx, NoSecurity, SecurityLayout};
+use aldis_core::security::{FrameCtx, PreFilledSecurity, SecurityLayout};
 use aldis_core::{DecodeMode, ErrorKind};
 use aldis_tc::{
     FrameData, MapConfig, PhysicalChannelConfig, SegmentHeaderUse, TcFrame, TcFrameWriter, TcMapId,
@@ -126,8 +126,9 @@ fn run(u: &mut Unstructured<'_>) -> Result<()> {
                 vcid: fields.vc_id,
                 map_id: f.segment_header().map(|s| s.map_id),
             };
-            w.protect(data.len(), &mut NoSecurity, &ctx)
-                .map(|w| w.finalize().len())
+            w.protect(data.len(), &mut PreFilledSecurity, &ctx)
+                .and_then(TcFrameWriter::finalize)
+                .map(|w| w.len())
         };
         assert_eq!(n, Ok(f.len()));
         assert_eq!(out, f.octets());

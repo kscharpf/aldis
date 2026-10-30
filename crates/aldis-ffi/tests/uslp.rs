@@ -335,9 +335,10 @@ fn the_encoder_leaves_the_sdls_fields_zero() {
         map_id: Some(rf.map_id),
     };
     let done = w
-        .protect(3, &mut aldis::core::security::NoSecurity, &ctx)
+        .protect(3, &mut aldis::core::security::PreFilledSecurity, &ctx)
         .unwrap()
-        .finalize();
+        .finalize()
+        .unwrap();
     assert_eq!(done.len(), 35);
     assert_eq!(rust[..35], buf[..35]);
     // Too small an output: nothing written.

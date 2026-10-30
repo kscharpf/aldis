@@ -13,7 +13,7 @@
     reason = "test fixtures fail loudly, and bookkeeping on lengths the fixtures bound (RS-018)"
 )]
 
-use aldis_core::security::{FrameCtx, NoSecurity, SecurityLayout};
+use aldis_core::security::{FrameCtx, PreFilledSecurity, SecurityLayout};
 use aldis_core::{DecodeMode, ErrorKind};
 use aldis_uslp::{
     FrameContent, FrameFields, FrameKind, MapConfig, PhysicalChannelConfig, SecurityScope,
@@ -133,9 +133,10 @@ fn begin_and_finish_write_only_the_reservation() {
             w.tfdz_mut().unwrap()[..tfdz_len].fill(0x5C);
             let ctx = ctx(vc);
             let n = w
-                .protect(tfdz_len, &mut NoSecurity, &ctx)
+                .protect(tfdz_len, &mut PreFilledSecurity, &ctx)
                 .unwrap()
                 .finalize()
+                .unwrap()
                 .len();
             assert_eq!(n, total - (max_tfdz - tfdz_len));
             assert_eq!(out[total..], before[total..], "vc {vc}, {tfdz_len}");
@@ -163,7 +164,8 @@ fn a_failed_begin_or_finish_changes_nothing_of_the_frame() {
     for tfdz_len in [0, 41] {
         let mut out = before.clone();
         let w = UslpFrameWriter::begin(&mut out, &t, fields(1), CONTENT, 40).unwrap();
-        w.protect(tfdz_len, &mut NoSecurity, &ctx(1)).unwrap_err();
+        w.protect(tfdz_len, &mut PreFilledSecurity, &ctx(1))
+            .unwrap_err();
         assert_eq!(out, begun, "tfdz_len {tfdz_len}");
         assert_eq!(out[50..], before[50..]);
     }

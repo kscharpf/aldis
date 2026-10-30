@@ -17,7 +17,9 @@
 use core::marker::PhantomData;
 
 use aldis_core::crc;
-use aldis_core::finishing::{Finalized, FrameState, Protected, Unprotected, require_unsecured};
+use aldis_core::finishing::{
+    Finalized, FrameState, Protected, Unprotected, require_layout, require_unsecured,
+};
 use aldis_core::layout::{FrameLayout, LayoutSpec, OCF_LEN};
 use aldis_core::ocf::Ocf;
 use aldis_core::oid::{OidGenerator, OidGeneratorGalois};
@@ -319,7 +321,9 @@ pub fn encode<L: VcLookup + ?Sized>(
     for (d, s) in w.tfdz_mut()?.iter_mut().zip(tfdz) {
         *d = *s;
     }
-    w.fix_length(tfdz.len()).map(|w| w.finalize().len())
+    w.fix_length(tfdz.len())
+        .and_then(UslpFrameWriter::finalize)
+        .map(|w| w.len())
 }
 
 /// Encodes an OID frame into the start of `out` and fills its TFDZ with the next octets of
@@ -389,7 +393,9 @@ fn oid_frame<L: VcLookup + ?Sized>(
     let tfdz_len = plan.tfdz_len;
     let mut w = UslpFrameWriter::start(out, plan, insert_zone)?;
     fill(w.tfdz_mut()?);
-    w.fix_length(tfdz_len).map(|w| w.finalize().len())
+    w.fix_length(tfdz_len)
+        .and_then(UslpFrameWriter::finalize)
+        .map(|w| w.len())
 }
 
 /// Encodes a truncated frame into the start of `out`; returns its length, the VC's truncated
@@ -612,7 +618,13 @@ impl<'b> UslpFrameWriter<'b, Unprotected> {
         hook: &mut H,
         ctx: &FrameCtx,
     ) -> Result<UslpFrameWriter<'b, Protected>> {
-        self.fix_length(tfdz_len).and_then(|mut w| {
+        require_layout(
+            hook.layout(),
+            self.plan.layout.security_header().len(),
+            self.plan.layout.security_trailer().len(),
+        )
+        .and_then(|()| self.fix_length(tfdz_len))
+        .and_then(|mut w| {
             let result = {
                 let (frame, fields) = w.secured(tfdz_len);
                 hook.protect(ctx, frame, &fields)
@@ -717,21 +729,45 @@ impl<'b> UslpFrameWriter<'b, Protected> {
     }
 
     /// The writer if the hook succeeded; the part of `protect` that does not depend on the
-    /// hook type.
+    /// hook type. After a failure the buffer holds the unfinished header again, which every
+    /// decoder rejects (API-023), not a final-looking frame.
     fn checked(self, result: Result<()>) -> Result<Self> {
-        result.map(|()| self)
+        match result {
+            Ok(()) => Ok(self),
+            Err(e) => {
+                let plan = &self.plan;
+                let header = primary_octets(
+                    UNFINISHED_VERSION,
+                    plan.channel,
+                    plan.layout.frame_len(),
+                    plan.kind,
+                    plan.ocf.is_some(),
+                    plan.count,
+                );
+                let len = plan.layout.primary_header().len();
+                for (d, s) in self.out.iter_mut().zip(header.iter().take(len)) {
+                    *d = *s;
+                }
+                Err(e)
+            }
+        }
     }
 
     /// Completes the frame: computes the FECF, if configured, over every other octet, last
     /// (732.1 §4.1.6; USLP-010, API-021, API-074, RS-023).
+    ///
+    /// # Errors
+    /// `InternalError` (`frame_len`) if the frame lies outside the buffer or is shorter than its
+    /// FECF, which `begin` and the length step rule out; the error is returned rather than
+    /// assumed away, and no frame is then finalized.
     #[must_use = "the finalized frame"]
-    pub fn finalize(self) -> UslpFrameWriter<'b, Finalized> {
-        if !self.plan.layout.fecf().is_empty() {
-            let frame = self.out.get_mut(..self.total).unwrap_or_default();
-            // The frame holds at least the Primary Header and the FECF, so this cannot fail.
-            let _ = crc::write_fecf(frame);
-        }
-        self.into_state()
+    pub fn finalize(self) -> Result<UslpFrameWriter<'b, Finalized>> {
+        let written = if self.plan.layout.fecf().is_empty() {
+            Ok(())
+        } else {
+            slot(self.out, ..self.total).and_then(crc::write_fecf)
+        };
+        written.map(|()| self.into_state())
     }
 }
 
@@ -781,7 +817,9 @@ mod tests {
     use aldis_core::crc::syndrome;
     use aldis_core::ocf::Ocf;
     use aldis_core::oid::{OidGenerator, OidGeneratorGalois};
-    use aldis_core::security::{FrameCtx, NoSecurity, SecuredFields, SecurityHook};
+    use aldis_core::security::{
+        FrameCtx, NoSecurity, PreFilledSecurity, SecuredFields, SecurityHook,
+    };
     use aldis_core::{DecodeMode, Error, ErrorKind, FieldId};
     use std::vec::Vec;
 
@@ -836,7 +874,7 @@ mod tests {
                 && w.security_trailer_mut().unwrap().is_empty()
         );
         w.tfdz_mut().unwrap().copy_from_slice(&tfdz);
-        assert_eq!(w.unsecured(44).unwrap().finalize().len(), 64);
+        assert_eq!(w.unsecured(44).unwrap().finalize().unwrap().len(), 64);
         assert_eq!(two, out[..64]);
     }
 
@@ -886,7 +924,7 @@ mod tests {
             let mut buf = [0_u8; 32];
             let mut writer = UslpFrameWriter::begin(&mut buf, &tbl, f, c, 4).unwrap();
             writer.tfdz_mut().unwrap()[..2].copy_from_slice(&[1, 2]);
-            let len = writer.unsecured(2).unwrap().finalize().len();
+            let len = writer.unsecured(2).unwrap().finalize().unwrap().len();
             assert_eq!(len, 10 + if ocf.is_some() { 4 } else { 0 });
             let dec = UslpFrame::decode(&buf[..len], &tbl, DecodeMode::Strict).unwrap();
             let full = dec.full().unwrap();
@@ -958,6 +996,24 @@ mod tests {
     }
 
     #[test]
+    fn no_security_is_rejected_on_a_channel_with_sdls() {
+        // req: RS-023, API-070, API-073
+        let tbl = plain_variable();
+        let c = content(TfdzRule::NoSegmentation, Upid::OctetStream, &[], None);
+        let f = fields(5, 1, FrameKind::SequenceControlled, 0);
+        let mut buf = [0xEE_u8; 64];
+        let w = UslpFrameWriter::begin(&mut buf, &tbl, f, c, 10).unwrap();
+        let e = w.protect(3, &mut NoSecurity, &ctx(5)).unwrap_err();
+        assert_eq!(
+            (e.kind(), e.field()),
+            (
+                ErrorKind::InvalidField,
+                Some(aldis_core::field::SECURITY_HEADER_LEN)
+            )
+        );
+    }
+
+    #[test]
     fn a_failed_protect_gives_no_frame() {
         // req: RS-023, API-073
         let tbl = plain_variable();
@@ -967,6 +1023,9 @@ mod tests {
         let w = UslpFrameWriter::begin(&mut buf, &tbl, f, c, 10).unwrap();
         let e = w.protect(3, &mut Refuse, &ctx(5)).unwrap_err();
         assert_eq!(e.kind(), ErrorKind::Security);
+        // The buffer holds the unfinished header again, which no decoder accepts (API-023).
+        let e = UslpFrame::decode(&buf, &tbl, DecodeMode::Lenient).unwrap_err();
+        assert_eq!(e.kind(), ErrorKind::UnsupportedVersion);
     }
 
     #[test]
@@ -978,7 +1037,11 @@ mod tests {
         let mut buf = [0xEE_u8; 64];
         let mut w = UslpFrameWriter::begin(&mut buf, &tbl, f, c, 10).unwrap();
         w.tfdz_mut().unwrap()[..3].copy_from_slice(&[7, 8, 9]);
-        let done = w.protect(3, &mut OrderHook, &ctx(5)).unwrap().finalize();
+        let done = w
+            .protect(3, &mut OrderHook, &ctx(5))
+            .unwrap()
+            .finalize()
+            .unwrap();
         assert!(!done.is_empty());
         assert_eq!(done.octets().len(), done.len());
         let octets = done.into_octets();
@@ -1002,9 +1065,10 @@ mod tests {
         w.security_trailer_mut().unwrap().fill(0x52);
         w.tfdz_mut().unwrap()[..3].copy_from_slice(&[7, 8, 9]);
         let len = w
-            .protect(3, &mut NoSecurity, &ctx(5))
+            .protect(3, &mut PreFilledSecurity, &ctx(5))
             .unwrap()
             .finalize()
+            .unwrap()
             .len();
         let dec = UslpFrame::decode(&buf[..len], &tbl, DecodeMode::Strict).unwrap();
         assert_eq!(
@@ -1024,12 +1088,12 @@ mod tests {
         assert_eq!(e.kind(), ErrorKind::UnsupportedVersion);
         let w = UslpFrameWriter::begin(&mut raw, &tbl, f, c, 10).unwrap();
         assert_eq!(
-            kf(w.protect(11, &mut NoSecurity, &ctx(5))),
+            kf(w.protect(11, &mut PreFilledSecurity, &ctx(5))),
             (ErrorKind::OutOfRange, Some(field::USER_LEN))
         );
         let w = UslpFrameWriter::begin(&mut raw, &tbl, f, c, 10).unwrap();
         assert_eq!(
-            kf(w.protect(0, &mut NoSecurity, &ctx(5))),
+            kf(w.protect(0, &mut PreFilledSecurity, &ctx(5))),
             (ErrorKind::InvalidField, Some(field::FRAME_DATA_FIELD))
         );
         let w = UslpFrameWriter::begin(&mut raw, &tbl, f, c, 10).unwrap();

@@ -10,7 +10,7 @@
 use aldis_core::ids::{SpacecraftId, VcId};
 use aldis_core::ocf::Ocf;
 use aldis_core::oid::OidGenerator;
-use aldis_core::security::{FrameCtx, NoSecurity, SecurityLayout};
+use aldis_core::security::{FrameCtx, PreFilledSecurity, SecurityLayout};
 use aldis_core::{DecodeMode, Error, FieldId};
 use aldis_testkit::{CodecCase, Mode, Outcome, hex, run_codec_file};
 use aldis_tm::{
@@ -213,7 +213,7 @@ fn encode_case(case: &CodecCase, mc: &TmMasterChannelConfig) -> Result<Value, Er
         scid: mc.scid(),
         vcid: fields.vcid,
     };
-    let done = w.protect(&mut NoSecurity, &ctx).unwrap().finalize();
+    let done = w.protect(&mut PreFilledSecurity, &ctx).unwrap().finalize();
     assert_eq!(done.len(), n, "{}", case.id);
     assert_eq!(two, out[..n], "{}: two-phase writer differs", case.id);
     Ok(json!({ "output_hex": hex::encode(&out[..n]) }))

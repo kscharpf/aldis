@@ -6,7 +6,7 @@ use core::hint::black_box as bb;
 use aldis_core::ids::{SpacecraftId, VcId};
 use aldis_core::ocf::Ocf;
 use aldis_core::oid::{OidGenerator, OidGeneratorGalois};
-use aldis_core::security::{FrameCtx, NoSecurity, SecurityLayout};
+use aldis_core::security::{FrameCtx, PreFilledSecurity, SecurityLayout};
 use aldis_core::{Anomaly as _, AnomalySet, DecodeMode, ErrorKind};
 use aldis_tm::{
     DataFieldContent, DataFieldStatus, FirstHeaderPointer, FshLen, NoSdls, PacketOffset,
@@ -149,7 +149,7 @@ fn frames(t: &mut Tally, mc: &TmMasterChannelConfig, vc0: VcId<3>, vc1: VcId<3>,
             t.check(w.set_ocf(Ocf::decode([0; 4])).is_err());
             t.check(w.layout().frame_len() == 32);
             let ctx = FrameCtx::Tm { scid, vcid: vc0 };
-            match w.protect(bb(&mut NoSecurity), bb(&ctx)) {
+            match w.protect(bb(&mut PreFilledSecurity), bb(&ctx)) {
                 Ok(p) => {
                     let done = p.finalize();
                     t.check(done.len() == 32 && !done.is_empty() && done.octets().len() == 32);
@@ -405,7 +405,7 @@ fn encode_case(p: Map, mc: &TmMasterChannelConfig, out: &mut Out, scratch: &mut 
         scid: mc.scid(),
         vcid: fields.vcid,
     };
-    if !ok || w.protect(&mut NoSecurity, &ctx)?.finalize().len() != n {
+    if !ok || w.protect(&mut PreFilledSecurity, &ctx)?.finalize().len() != n {
         return Err(Fail::Vector);
     }
     let (written, two) = (need(scratch.a.get(..n))?, need(scratch.b.get(..n))?);

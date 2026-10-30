@@ -15,7 +15,7 @@ use aldis_aos::{PacketOffset, ValidBitCount};
 use aldis_core::ids::{SpacecraftId, VcId};
 use aldis_core::ocf::Ocf;
 use aldis_core::oid::{OidGenerator, OidGeneratorGalois};
-use aldis_core::security::{FrameCtx, NoSecurity, SecurityLayout};
+use aldis_core::security::{FrameCtx, PreFilledSecurity, SecurityLayout};
 use aldis_core::{Anomaly as _, AnomalySet, DecodeMode, ErrorKind};
 
 use crate::exercise::Tally;
@@ -223,7 +223,7 @@ fn frames(
                 scid: fields.scid,
                 vcid: fields.vcid,
             };
-            match w.protect(bb(&mut NoSecurity), bb(&ctx)) {
+            match w.protect(bb(&mut PreFilledSecurity), bb(&ctx)) {
                 Ok(p) => {
                     let done = p.finalize();
                     t.check(done.len() == 40 && !done.is_empty() && done.octets().len() == 40);
@@ -558,7 +558,7 @@ fn encode_case(
         scid: fields.scid,
         vcid: fields.vcid,
     };
-    if !ok || w.protect(&mut NoSecurity, &ctx)?.finalize().len() != n {
+    if !ok || w.protect(&mut PreFilledSecurity, &ctx)?.finalize().len() != n {
         return Err(Fail::Vector);
     }
     let (written, two) = (need(scratch.a.get(..n))?, need(scratch.b.get(..n))?);

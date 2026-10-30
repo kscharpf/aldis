@@ -3,3 +3,7 @@
 
 ### Added
 - `aldis-core`: module `finishing` with the sealed `FrameState` and its states `Unprotected`, `Protected`, and `Finalized`, and `require_unsecured` (RS-023).
+- `aldis-core`: `SecurityHook::layout` (default `None`; `NoSecurity` is `Some(NONE)`), `finishing::require_layout`, and the test-only `PreFilledSecurity`. A writer's `protect` rejects a hook whose layout differs from the channel's, so `NoSecurity` cannot be applied to a channel with SDLS fields.
+
+### Changed
+- `aldis-tc`, `aldis-uslp`: `finalize` returns a `Result` (`InternalError` instead of an ignored CRC result), and a failed `protect` restores the unfinished header.
