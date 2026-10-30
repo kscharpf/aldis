@@ -1,5 +1,5 @@
 //! The contract of the USLP part of the C ABI, called as a C caller calls it: the virtual
-//! channel and MAP arrays and their capacities (CABI-030, CABI-033, M2 plan D14), the full and
+//! channel and MAP arrays and their capacities (CABI-030, M2 plan D14), the full and
 //! truncated views and their layouts (CABI-012, M2 plan D12), the one-shot encoders and the SDLS
 //! fields they leave zero (API-023, API-072), the validation reasons (USLP-014), the
 //! stateless delimiter (USLP-015), the OID generator handle (CMN-022), and the argument checks
@@ -20,13 +20,8 @@ use aldis_ffi::oid::*;
 use aldis_ffi::uslp::*;
 use aldis_ffi::{ALDIS_MODE_STRICT, aldis_error_detail_t};
 
-fn size<T>() -> u32 {
-    u32::try_from(size_of::<T>()).unwrap()
-}
-
 fn detail() -> aldis_error_detail_t {
     aldis_error_detail_t {
-        struct_size: size::<aldis_error_detail_t>(),
         ..aldis_error_detail_t::default()
     }
 }
@@ -40,7 +35,6 @@ struct Channels {
 
 fn vc(vcid: u8, frame_type: u8) -> aldis_uslp_vc_config_t {
     aldis_uslp_vc_config_t {
-        struct_size: size::<aldis_uslp_vc_config_t>(),
         scid: 0x155,
         vcid,
         frame_type,
@@ -48,9 +42,8 @@ fn vc(vcid: u8, frame_type: u8) -> aldis_uslp_vc_config_t {
     }
 }
 
-fn map(vcid: u8, map_id: u8, header: u8, trailer: u32) -> aldis_uslp_map_config_t {
+const fn map(vcid: u8, map_id: u8, header: u8, trailer: u32) -> aldis_uslp_map_config_t {
     aldis_uslp_map_config_t {
-        struct_size: size::<aldis_uslp_map_config_t>(),
         scid: 0x155,
         vcid,
         map_id,
@@ -75,7 +68,6 @@ fn variable_truncated() -> Channels {
 
 fn variable_with(truncated4: u8, truncated5: u8) -> Channels {
     let pc = aldis_uslp_config_t {
-        struct_size: size::<aldis_uslp_config_t>(),
         frame_type: ALDIS_USLP_FRAME_VARIABLE,
         fecf: 1,
         frame_len: 512,
@@ -104,7 +96,6 @@ fn variable_with(truncated4: u8, truncated5: u8) -> Channels {
 /// MAPs 1/0, 1/3, and 2/1.
 fn fixed() -> Channels {
     let pc = aldis_uslp_config_t {
-        struct_size: size::<aldis_uslp_config_t>(),
         frame_type: ALDIS_USLP_FRAME_FIXED,
         fecf: 1,
         frame_len: 64,
@@ -210,25 +201,9 @@ impl Channels {
     }
 }
 
-/// A virtual channel struct of a later header, with a member this library does not know.
-#[repr(C)]
-#[derive(Clone, Copy)]
-struct LaterVc {
-    vc: aldis_uslp_vc_config_t,
-    later: u64,
-}
-
-/// A MAP struct of a later header.
-#[repr(C)]
-#[derive(Clone, Copy)]
-struct LaterMap {
-    map: aldis_uslp_map_config_t,
-    later: u64,
-}
-
 #[test]
-fn vc_and_map_arrays_step_by_their_struct_size() {
-    // req: CABI-033, CABI-022, CABI-030, API-040, USLP-017
+fn vc_and_map_arrays_are_c_arrays() {
+    // req: CABI-022, CABI-030, API-040, USLP-017
     let ch = variable();
     let check = |vcs: *const aldis_uslp_vc_config_t,
                  len: usize,
@@ -243,47 +218,6 @@ fn vc_and_map_arrays_step_by_their_struct_size() {
     assert_eq!(check(null(), 0, null(), 0), ALDIS_ERR_INVALID_CONFIG);
     assert_eq!(check(null(), 1, null(), 0), ALDIS_ERR_INVALID_FIELD);
     assert_eq!(check(null(), 0, null(), 1), ALDIS_ERR_INVALID_FIELD);
-    // Longer structs of a later header: each array's stride is its struct_size.
-    let vcs: [LaterVc; 2] = [ch.vcs[0], ch.vcs[1]].map(|vc| LaterVc {
-        vc: aldis_uslp_vc_config_t {
-            struct_size: size::<LaterVc>(),
-            ..vc
-        },
-        later: u64::MAX,
-    });
-    let maps: [LaterMap; 3] = [ch.maps[0], ch.maps[1], ch.maps[2]].map(|map| LaterMap {
-        map: aldis_uslp_map_config_t {
-            struct_size: size::<LaterMap>(),
-            ..map
-        },
-        later: u64::MAX,
-    });
-    let (vp, mp) = (vcs.as_ptr().cast(), maps.as_ptr().cast());
-    assert_eq!(check(vp, 2, mp, 3), ALDIS_OK);
-    // Every struct repeats its array's stride.
-    let mut mixed = maps;
-    mixed[2].map.struct_size = size::<aldis_uslp_map_config_t>();
-    assert_eq!(
-        check(vp, 2, mixed.as_ptr().cast(), 3),
-        ALDIS_ERR_INVALID_FIELD
-    );
-    let mut mixed = vcs;
-    mixed[1].vc.struct_size = size::<aldis_uslp_vc_config_t>();
-    assert_eq!(
-        check(mixed.as_ptr().cast(), 2, mp, 3),
-        ALDIS_ERR_INVALID_FIELD
-    );
-    // Shorter than the struct this library knows, or not a multiple of its alignment.
-    for struct_size in [8, size::<aldis_uslp_vc_config_t>() + 2] {
-        let mut short = ch.vcs.clone();
-        for e in &mut short {
-            e.struct_size = struct_size;
-        }
-        assert_eq!(
-            check(short.as_ptr(), 2, ch.maps.as_ptr(), 3),
-            ALDIS_ERR_INVALID_FIELD
-        );
-    }
     // A misaligned array, and a count whose array would wrap the address space.
     let words = [0_u64; 8];
     let misaligned = words.as_ptr().cast::<u8>().wrapping_add(1).cast();
@@ -292,14 +226,6 @@ fn vc_and_map_arrays_step_by_their_struct_size() {
         check(ch.vcs.as_ptr(), usize::MAX / 4, null(), 0),
         ALDIS_ERR_INVALID_FIELD
     );
-    // The physical channel's struct_size (CABI-033).
-    let small = aldis_uslp_config_t {
-        struct_size: 4,
-        ..ch.pc
-    };
-    // SAFETY: every pointer is to a live struct or vector.
-    let rc = unsafe { aldis_uslp_config_check(&raw const small, null_mut()) };
-    assert_eq!(rc, ALDIS_ERR_INVALID_FIELD);
 }
 
 #[test]
@@ -370,18 +296,18 @@ fn the_encoder_leaves_the_sdls_fields_zero() {
     assert_eq!(ch.decode(&buf[..len], &mut view), ALDIS_OK);
     let lv = view.layout;
     assert_eq!(
-        (lv.security_header_offset, lv.security_header_len),
+        (lv.security_header.offset, lv.security_header.len),
         (7, 6),
         "SDLS 6/16 on VC 5"
     );
     assert_eq!(buf[7..13], [0; 6], "the Security Header is zero");
-    assert_eq!(buf[lv.tfdz_offset..][..lv.tfdz_len], [7, 8, 9]);
+    assert_eq!(buf[lv.tfdz.offset..][..lv.tfdz.len], [7, 8, 9]);
     assert_eq!(
-        (lv.security_trailer_offset, lv.security_trailer_len),
+        (lv.security_trailer.offset, lv.security_trailer.len),
         (17, 16)
     );
     assert_eq!(buf[17..33], [0; 16], "and the Security Trailer");
-    assert_eq!((lv.fecf_offset, lv.fecf_len), (33, 2));
+    assert_eq!((lv.fecf.offset, lv.fecf.len), (33, 2));
     // The same octets as the Rust two-phase writer (typestate) without filling the security fields.
     let tbl = rust_variable();
     let rf = aldis::uslp::FrameFields {
@@ -485,13 +411,13 @@ fn full_and_truncated_frames_cross_as_one_tagged_view() {
     let lay = view.layout;
     assert_eq!(
         [
-            (lay.insert_zone_offset, lay.insert_zone_len),
-            (lay.security_header_offset, lay.security_header_len),
-            (lay.tfdf_header_offset, lay.tfdf_header_len),
-            (lay.tfdz_offset, lay.tfdz_len),
-            (lay.security_trailer_offset, lay.security_trailer_len),
-            (lay.ocf_offset, lay.ocf_len),
-            (lay.fecf_offset, lay.fecf_len),
+            (lay.insert_zone.offset, lay.insert_zone.len),
+            (lay.security_header.offset, lay.security_header.len),
+            (lay.tfdf_header.offset, lay.tfdf_header.len),
+            (lay.tfdz.offset, lay.tfdz.len),
+            (lay.security_trailer.offset, lay.security_trailer.len),
+            (lay.ocf.offset, lay.ocf.len),
+            (lay.fecf.offset, lay.fecf.len),
         ],
         [
             (9, 2),
@@ -503,7 +429,7 @@ fn full_and_truncated_frames_cross_as_one_tagged_view() {
             (62, 2)
         ]
     );
-    assert_eq!(frame[lay.ocf_offset..][..4], ocf);
+    assert_eq!(frame[lay.ocf.offset..][..4], ocf);
     assert_eq!(view.fecf.to_be_bytes(), frame[62..64]);
     // A truncated frame of VC 4 MAP 2: the full frame's members are 0, except the kind, which is
     // expedited (Annex D1.3.1 note 3; OI-52).
@@ -560,14 +486,14 @@ fn full_and_truncated_frames_cross_as_one_tagged_view() {
     assert_eq!(
         (
             lay.frame_len,
-            lay.insert_zone_offset,
-            lay.tfdf_header_offset,
-            lay.tfdz_offset
+            lay.insert_zone.offset,
+            lay.tfdf_header.offset,
+            lay.tfdz.offset
         ),
         (12, 4, 4, 5)
     );
     assert_eq!(
-        (lay.ocf_offset, lay.ocf_len, lay.fecf_offset, lay.fecf_len),
+        (lay.ocf.offset, lay.ocf.len, lay.fecf.offset, lay.fecf.len),
         (12, 0, 12, 0)
     );
     let mut len = 0;
@@ -664,7 +590,7 @@ fn stream_reports_the_discard_reason() {
     assert_eq!(rc, ALDIS_OK);
     assert_eq!(item.kind, ALDIS_USLP_STREAM_ACCEPTED);
     assert_eq!(item.discard_reason, ALDIS_USLP_DISCARD_NONE);
-    assert_eq!(item.len, len);
+    assert_eq!(item.range.len, len);
     assert_eq!(offset, len);
 
     // Test (e): a wrong FECF discards the frame.
@@ -751,8 +677,8 @@ fn a_vc_with_a_truncated_length_refuses_non_truncated_frames() {
         (
             item.kind,
             item.discard_reason,
-            item.offset,
-            item.len,
+            item.range.offset,
+            item.range.len,
             offset
         ),
         (
@@ -916,7 +842,7 @@ fn encode_oid_takes_a_generator_handle() {
         (
             ALDIS_USLP_UPID_ONLY_IDLE_DATA,
             ALDIS_USLP_RULE_SDU_START,
-            view.layout.tfdz_len - 1
+            view.layout.tfdz.len - 1
         )
     );
     // SAFETY: the handles are those of the live storage.
@@ -1065,7 +991,7 @@ fn content_and_fields_are_checked_as_arguments() {
         aldis::uslp::UslpFrame::decode(&out[..len], &rust_variable(), DecodeMode::Strict).unwrap();
     let mut view = aldis_uslp_frame_t::default();
     assert_eq!(ch.decode(&out[..len], &mut view), ALDIS_OK);
-    assert_eq!(view.layout.tfdz_len, rust.tfdz().len());
+    assert_eq!(view.layout.tfdz.len, rust.tfdz().len());
     assert_eq!(
         view.vcf_count_len, 1,
         "the expedited VCF Count Length of VC 4"
@@ -1116,7 +1042,7 @@ fn the_uslp_stream_intake_pipeline() {
         )
     };
     assert_eq!(
-        (rc, item.kind, item.offset, item.len, offset),
+        (rc, item.kind, item.range.offset, item.range.len, offset),
         (ALDIS_OK, ALDIS_USLP_STREAM_ACCEPTED, 0, len, len)
     );
     assert_eq!(item.frame.channel.scid, 0x155);
@@ -1138,7 +1064,7 @@ fn the_uslp_stream_intake_pipeline() {
         )
     };
     assert_eq!(
-        (rc, item.kind, item.offset, item.len, offset),
+        (rc, item.kind, item.range.offset, item.range.len, offset),
         (ALDIS_OK, ALDIS_USLP_STREAM_ACCEPTED, len, len, len * 2)
     );
 
@@ -1162,8 +1088,8 @@ fn the_uslp_stream_intake_pipeline() {
         (
             rc,
             item.kind,
-            item.offset,
-            item.len,
+            item.range.offset,
+            item.range.len,
             item.discard_reason,
             offset
         ),
@@ -1194,7 +1120,7 @@ fn the_uslp_stream_intake_pipeline() {
         )
     };
     assert_eq!(
-        (rc, item.kind, item.len, offset),
+        (rc, item.kind, item.range.len, offset),
         (ALDIS_OK, ALDIS_USLP_STREAM_END, 0, unit.len())
     );
 }
@@ -1234,7 +1160,7 @@ fn stream_rejects_overlapping_pointers() {
         aldis_uslp_stream_next(
             unit.as_ptr(),
             unit.len(),
-            &raw mut item.offset,
+            &raw mut item.range.offset,
             &raw const ch.pc,
             ch.vcs.as_ptr(),
             ch.vcs.len(),

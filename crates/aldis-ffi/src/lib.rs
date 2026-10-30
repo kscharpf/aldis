@@ -19,8 +19,8 @@
 //!   empty buffer and for the detail; a violation is `ALDIS_ERR_INVALID_FIELD` naming no
 //!   field.
 //! - Buffers are `(const uint8_t *, size_t)` inputs and `(uint8_t *, size_t cap, size_t
-//!   *out_len)` outputs (CABI-011); views are POD structs with offset/length pairs into the
-//!   input (CABI-012); configuration structs start with `uint32_t struct_size` (CABI-033).
+//!   *out_len)` outputs (CABI-011); views are POD structs with `aldis_range_t` offset/length
+//!   ranges into the input (CABI-012).
 //! - The decode mode is a `uint32_t` (`ALDIS_MODE_STRICT`, `ALDIS_MODE_LENIENT`), and
 //!   anomalies a `uint32_t` mask whose bit `n` is the flag with the `Anomaly` index `n`.
 //! - No call keeps a pointer it is given (API-060); the stateful helpers keep their state in
@@ -40,10 +40,10 @@ pub mod epp;
 pub mod error;
 pub mod field;
 pub mod handle;
-pub mod limits;
 mod mirror;
 pub mod ocf;
 pub mod oid;
+pub mod range;
 pub mod spp;
 pub mod spp_state;
 pub mod status;
@@ -60,9 +60,33 @@ pub use error::{ALDIS_OK, aldis_error_detail_t};
 /// ABI major version; changes on any ABI-breaking change (CABI-060).
 pub const ALDIS_ABI_VERSION_MAJOR: u32 = 0;
 /// ABI minor version (CABI-060).
-pub const ALDIS_ABI_VERSION_MINOR: u32 = 5;
+pub const ALDIS_ABI_VERSION_MINOR: u32 = 6;
 /// ABI patch version (CABI-060).
 pub const ALDIS_ABI_VERSION_PATCH: u32 = 0;
+/// The ABI version in one word (CABI-060).
+///
+/// Major in bits 31 to 16, minor in bits 15 to 8, patch in bits 7 to 0. The value
+/// `aldis_abi_version` returns for the library the header was generated for.
+pub const ALDIS_ABI_VERSION: u32 =
+    (ALDIS_ABI_VERSION_MAJOR << 16) | (ALDIS_ABI_VERSION_MINOR << 8) | ALDIS_ABI_VERSION_PATCH;
+
+// The minor version has 8 bits in the packed word; the major (16 bits) and the patch (8 bits)
+// are 0 and cannot overflow yet.
+const _: () = assert!(
+    ALDIS_ABI_VERSION_MINOR <= 0xFF,
+    "the packed ABI version has 8 bits for the minor"
+);
+
+/// The version of the library's C ABI, packed as [`ALDIS_ABI_VERSION`] is (CABI-060).
+///
+/// A caller compares it with `ALDIS_ABI_VERSION` at start-up: a header and a library of different
+/// versions disagree on the layout of the structs the calls pass (OI-57 convention 5), and no call
+/// can detect that (HZ-X-05). It cannot fail and takes no argument.
+#[expect(unsafe_code, reason = "C ABI entry point: unmangled export (GEN-071)")]
+#[unsafe(no_mangle)]
+pub const extern "C" fn aldis_abi_version() -> u32 {
+    ALDIS_ABI_VERSION
+}
 
 #[cfg(all(
     not(feature = "std"),

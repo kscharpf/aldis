@@ -1,5 +1,5 @@
 //! C ABI of the AOS Transfer Frame codec `aldis-aos` (CCSDS 732.0-B-5, and the wire format of
-//! 732.0-B-4; M2 plan D4, D14; CABI-010…012, CABI-020…022, CABI-033).
+//! 732.0-B-4; M2 plan D4, D14; CABI-010…012, CABI-020…022).
 //!
 //! Calls: the Frame Header Error Control, [`aldis_aos_fhec_encode`] and
 //! [`aldis_aos_fhec_decode`]; [`aldis_aos_config_check`] and [`aldis_aos_mc_config_check`];
@@ -14,8 +14,8 @@
 //! (D14). A master channel is an [`aldis_aos_mc_config_t`], which holds its physical channel
 //! and its Spacecraft ID, with an array of [`aldis_aos_vc_config_t`] and its count (Tables 5-2,
 //! 5-3, 6-1; D14): the C form of a `VcTable` whose virtual channels all have that SCID, built
-//! and checked on every call. The array's stride is the `struct_size` of its structs, which
-//! must all be the same (`abi::configs`; c-abi.md §11). A physical channel that carries several
+//! and checked on every call. The array is a C array of the struct
+//! (`abi::configs`; c-abi.md §11). A physical channel that carries several
 //! master channels is decoded by reading the SCID first with [`aldis_aos_header_decode`]; the
 //! Valid Spacecraft IDs of a call are those of its master channel's virtual channels, as for
 //! `VcTable` (Table 5-1).
@@ -28,8 +28,6 @@
 //! **Encoders.** A frame is built in one call, with no state between calls (API-023, API-060):
 //! [`aldis_aos_encode`] and [`aldis_aos_encode_oid`] take the frame's variable fields and write
 //! the headers, the FHEC, and the FECF. The C ABI has no two-phase writer (OI-57).
-
-use core::ops::Range;
 
 use aldis::aos::bpdu::BPDU_HEADER_LEN;
 use aldis::aos::fhec;
@@ -50,6 +48,7 @@ use aldis::core::security::SecurityLayout;
 use crate::abi::{self, Configs, invalid_argument};
 use crate::mirror::{mirror, parse};
 use crate::oid::{GeneratorState, aldis_oid_generator_t, generator};
+use crate::range::aldis_range_t;
 
 /// Length of the AOS Transfer Frame Primary Header without the FHEC, in octets (732.0
 /// §4.1.2.1).
@@ -174,13 +173,10 @@ pub const ALDIS_AOS_ANOMALY_BPDU_SPARE_SET: u32 = 1 << 1;
 /// (bit 2; 732.0-B-4 §4.1.2.5.4, §4.1.4.2.2; AOS-002, AOS-003, API-032).
 pub const ALDIS_AOS_ANOMALY_ISSUE4_SPARE_SET: u32 = 1 << 2;
 
-/// Managed parameters of a physical channel (732.0 §5.2 Table 5-1; AOS-001, AOS-015, API-041,
-/// CABI-033). The configuration `aldis_aos_peek_length` takes (M2 plan D14).
+/// Managed parameters of a physical channel (732.0 §5.2 Table 5-1; AOS-001, AOS-015, API-041). The configuration `aldis_aos_peek_length` takes (M2 plan D14).
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct aldis_aos_config_t {
-    /// `sizeof(aldis_aos_config_t)`, set by the caller (CABI-033).
-    pub struct_size: u32,
     /// 1 if every Primary Header ends with the Frame Header Error Control, else 0 (732.0
     /// §4.1.2.6.2; AOS-013).
     pub fhec: u8,
@@ -196,30 +192,25 @@ pub struct aldis_aos_config_t {
 }
 
 /// A master channel: the Spacecraft ID of the virtual channels passed beside it, and its
-/// physical channel (732.0 §5.3 Table 5-2; API-040, CABI-033; c-abi.md §11).
+/// physical channel (732.0 §5.3 Table 5-2; API-040; c-abi.md §11).
 ///
 /// Its virtual channels are passed beside it, as an array of [`aldis_aos_vc_config_t`] and its
 /// count (M2 plan D14).
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct aldis_aos_mc_config_t {
-    /// `sizeof(aldis_aos_mc_config_t)`, set by the caller (CABI-033).
-    pub struct_size: u32,
     /// Spacecraft Identifier, 0 to 1023; at most 255 for a virtual channel in Issue 4 (732.0
     /// §4.1.2.2.3; AOS-002).
     pub scid: u16,
-    /// The physical channel, with its own `struct_size` (CABI-033).
+    /// The physical channel.
     pub pc: aldis_aos_config_t,
 }
 
 /// Managed parameters of a virtual channel (732.0 §5.4 Table 5-3, §6.6.2 Table 6-1; API-040,
-/// API-070, CABI-033).
+/// API-070).
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct aldis_aos_vc_config_t {
-    /// `sizeof(aldis_aos_vc_config_t)`, set by the caller, the same for every struct of an
-    /// array (CABI-033).
-    pub struct_size: u32,
     /// Virtual Channel Identifier, 0 to 62; 63 is reserved for OID frames (732.0 §4.1.2.3,
     /// Table 5-3 note 2).
     pub vcid: u8,
@@ -407,34 +398,20 @@ pub struct aldis_aos_pdu_t {
 pub struct aldis_aos_layout_t {
     /// Transfer Frame Length: the octets the frame takes (732.0 §4.1.1.2; API-012).
     pub frame_len: usize,
-    /// Offset of the Insert Zone.
-    pub insert_zone_offset: usize,
-    /// Length of the Insert Zone; 0 without one (§4.1.3; AOS-015).
-    pub insert_zone_len: usize,
-    /// Offset of the Security Header.
-    pub security_header_offset: usize,
-    /// Length of the Security Header; 0 without SDLS (§6.3.4).
-    pub security_header_len: usize,
-    /// Offset of the Transfer Frame Data Field.
-    pub data_offset: usize,
-    /// Length of the Transfer Frame Data Field, never 0 (§4.1.4).
-    pub data_len: usize,
-    /// Offset of the zone after the `M_PDU` or `B_PDU` Header, or of the data field.
-    pub zone_offset: usize,
-    /// Length of that zone, never 0 (§4.1.4.2.3, §4.1.4.3.4).
-    pub zone_len: usize,
-    /// Offset of the Security Trailer.
-    pub security_trailer_offset: usize,
-    /// Length of the Security Trailer; 0 without SDLS (§6.3.6).
-    pub security_trailer_len: usize,
-    /// Offset of the Operational Control Field.
-    pub ocf_offset: usize,
-    /// Length of the Operational Control Field: `ALDIS_OCF_LEN` or 0 (§4.1.5).
-    pub ocf_len: usize,
-    /// Offset of the Frame Error Control Field.
-    pub fecf_offset: usize,
-    /// Length of the Frame Error Control Field: 2 or 0 (§4.1.6).
-    pub fecf_len: usize,
+    /// The range of the Insert Zone; length 0 without one (§4.1.3; AOS-015).
+    pub insert_zone: aldis_range_t,
+    /// The range of the Security Header; length 0 without SDLS (§6.3.4).
+    pub security_header: aldis_range_t,
+    /// The range of the Transfer Frame Data Field; length never 0 (§4.1.4).
+    pub data: aldis_range_t,
+    /// The range of the zone after the `M_PDU` or `B_PDU` Header, or of the data field; length never 0 (§4.1.4.2.3, §4.1.4.3.4).
+    pub zone: aldis_range_t,
+    /// The range of the Security Trailer; length 0 without SDLS (§6.3.6).
+    pub security_trailer: aldis_range_t,
+    /// The range of the Operational Control Field; its length is `ALDIS_OCF_LEN` or 0 (§4.1.5).
+    pub ocf: aldis_range_t,
+    /// The range of the Frame Error Control Field; its length is 2 or 0 (§4.1.6).
+    pub fecf: aldis_range_t,
 }
 
 /// A decoded AOS Transfer Frame: its fields and where they lie in the input (732.0 §4.1, §6.3;
@@ -466,12 +443,8 @@ fn edition(value: u8) -> Result<AosEdition> {
     }
 }
 
-/// The physical channel of a C struct, with its `struct_size` checked as an embedded struct's
-/// (732.0 §5.2; CABI-033).
+/// The physical channel of a C struct (732.0 §5.2).
 fn physical(c: &aldis_aos_config_t) -> Result<AosPhysicalChannelConfig> {
-    if usize::try_from(c.struct_size).map_or(true, |n| n < size_of::<aldis_aos_config_t>()) {
-        return Err(invalid_argument());
-    }
     AosPhysicalChannelConfig::new(
         c.frame_len,
         abi::flag(c.fhec)?,
@@ -485,7 +458,7 @@ fn physical(c: &aldis_aos_config_t) -> Result<AosPhysicalChannelConfig> {
 /// type (Table 5-3, Table 6-1; RS-020).
 fn virtual_channel(
     scid: SpacecraftId<10>,
-    v: &aldis_aos_vc_config_t,
+    v: aldis_aos_vc_config_t,
 ) -> Result<AosVirtualChannelConfig> {
     let vcid = VcId::try_from(v.vcid)?;
     let content = match parse::<aldis_aos_content>(v.content)? {
@@ -528,7 +501,7 @@ fn master_channel(
     let scid = SpacecraftId::try_from(mc.scid)?;
     let mut list = [None; TABLE];
     for i in 0..vcs.len() {
-        let vc = virtual_channel(scid, &vcs.get(i)?)?;
+        let vc = virtual_channel(scid, vcs.get(i)?)?;
         if let Some(slot) = list.get_mut(i) {
             *slot = Some(vc);
         }
@@ -545,11 +518,10 @@ fn master_channel(
     Ok(Master { pc, scid, vcs })
 }
 
-/// The master channel at `mc` with the `vc_count` virtual channels at `vcs` (CABI-022,
-/// CABI-033).
+/// The master channel at `mc` with the `vc_count` virtual channels at `vcs` (CABI-022).
 ///
 /// # Safety
-/// As for `abi::config` and `abi::configs`.
+/// As for `abi::read` and `abi::configs`.
 #[expect(unsafe_code, reason = "checked access to caller memory (CABI-022)")]
 unsafe fn master_channel_at(
     mc: *const aldis_aos_mc_config_t,
@@ -557,7 +529,7 @@ unsafe fn master_channel_at(
     vc_count: usize,
 ) -> Result<Master> {
     // SAFETY: forwarded from the caller.
-    let (mc, vcs) = unsafe { (abi::config(mc)?, abi::configs(vcs, vc_count)?) };
+    let (mc, vcs) = unsafe { (abi::read(mc)?, abi::configs(vcs, vc_count)?) };
     master_channel(&mc, &vcs)
 }
 
@@ -680,39 +652,27 @@ const fn plain(content: u8) -> aldis_aos_pdu_t {
     }
 }
 
-/// The offset and length of a range.
-fn span(r: &Range<usize>) -> (usize, usize) {
-    (r.start, r.len())
-}
-
 /// The C form of a frame layout, whose zone follows `pdu_header_len` octets of the data field
 /// (732.0 §4.1, §4.1.4; CMN-040).
 fn layout(l: &FrameLayout, pdu_header_len: usize) -> aldis_aos_layout_t {
     let data = l.data();
     let zone = data.start.saturating_add(pdu_header_len).min(data.end)..data.end;
-    let (insert_zone_offset, insert_zone_len) = span(&l.secondary());
-    let (security_header_offset, security_header_len) = span(&l.security_header());
-    let (data_offset, data_len) = span(&data);
-    let (zone_offset, zone_len) = span(&zone);
-    let (security_trailer_offset, security_trailer_len) = span(&l.security_trailer());
-    let (ocf_offset, ocf_len) = span(&l.ocf());
-    let (fecf_offset, fecf_len) = span(&l.fecf());
+    let insert_zone = aldis_range_t::from(&l.secondary());
+    let security_header = aldis_range_t::from(&l.security_header());
+    let data = aldis_range_t::from(&data);
+    let zone = aldis_range_t::from(&zone);
+    let security_trailer = aldis_range_t::from(&l.security_trailer());
+    let ocf = aldis_range_t::from(&l.ocf());
+    let fecf = aldis_range_t::from(&l.fecf());
     aldis_aos_layout_t {
         frame_len: l.frame_len(),
-        insert_zone_offset,
-        insert_zone_len,
-        security_header_offset,
-        security_header_len,
-        data_offset,
-        data_len,
-        zone_offset,
-        zone_len,
-        security_trailer_offset,
-        security_trailer_len,
-        ocf_offset,
-        ocf_len,
-        fecf_offset,
-        fecf_len,
+        insert_zone,
+        security_header,
+        data,
+        zone,
+        security_trailer,
+        ocf,
+        fecf,
     }
 }
 
@@ -830,7 +790,7 @@ pub unsafe extern "C" fn aldis_aos_config_check(
     err: *mut crate::aldis_error_detail_t,
 ) -> u32 {
     // SAFETY: every pointer is valid as `# Safety` states; `abi` checks NULL and alignment.
-    unsafe { abi::call(err, || physical(&abi::config(pc)?).map(drop)) }
+    unsafe { abi::call(err, || physical(&abi::read(pc)?).map(drop)) }
 }
 
 /// Checks a master channel configuration and its virtual channels (732.0 §5 Tables 5-1 to 5-3,
@@ -850,11 +810,10 @@ pub unsafe extern "C" fn aldis_aos_config_check(
 /// for a VC left no data octet or, for an `M_PDU` or `B_PDU`, no octet after its header, and
 /// for a VC that carries `B_PDUs` (`frame_len`) for frames longer than 2 048 octets in Issue 5
 /// and (`frame_data_field`) for a Bitstream Data Zone longer than 2 047 octets (AOS-018);
-/// CABI-022 violations, including a VC struct whose `struct_size` differs from the first one's.
+/// CABI-022 violations.
 ///
 /// # Safety
-/// `mc` is valid for a read; `vcs` is valid for reads of `vc_count` structs of the first one's
-/// `struct_size` (or `NULL` with 0); `err` is `NULL` or valid for one write.
+/// `mc` is valid for a read; `vcs` is valid for reads of `vc_count` structs (or `NULL` with 0); `err` is `NULL` or valid for one write.
 #[expect(
     unsafe_code,
     reason = "C ABI entry point: unmangled, takes raw pointers (GEN-071)"
@@ -900,7 +859,7 @@ pub unsafe extern "C" fn aldis_aos_peek_length(
     // SAFETY: every pointer is valid as `# Safety` states; `abi` checks NULL and alignment.
     unsafe {
         abi::call(err, || {
-            let pc = physical(&abi::config(cfg)?)?;
+            let pc = physical(&abi::read(cfg)?)?;
             let prefix = abi::bytes(prefix, prefix_len)?;
             let out_len = abi::out(out_len)?;
             out_len.write(AosFrame::peek_length(prefix, &pc)?);
@@ -941,7 +900,7 @@ pub unsafe extern "C" fn aldis_aos_header_decode(
     // SAFETY: every pointer is valid as `# Safety` states; `abi` checks NULL and alignment.
     unsafe {
         abi::call(err, || {
-            let pc = physical(&abi::config(cfg)?)?;
+            let pc = physical(&abi::read(cfg)?)?;
             let prefix = abi::bytes(prefix, prefix_len)?;
             let out = abi::out(out)?;
             out.write(header(&AosPrimaryHeader::decode(prefix, &pc)?));
@@ -1272,9 +1231,6 @@ mod tests {
             (ALDIS_AOS_VALID_BITS_MIN, ALDIS_AOS_VALID_BITS_MAX),
             (ValidBitCount::MIN, ValidBitCount::MAX)
         );
-        assert_eq!(core::mem::offset_of!(aldis_aos_config_t, struct_size), 0);
-        assert_eq!(core::mem::offset_of!(aldis_aos_mc_config_t, struct_size), 0);
-        assert_eq!(core::mem::offset_of!(aldis_aos_vc_config_t, struct_size), 0);
     }
 
     #[test]
@@ -1305,19 +1261,12 @@ mod tests {
         };
         assert_eq!(fields(scid, f).map(|f| f.cycle), Ok(None));
         let vc = aldis_aos_vc_config_t {
-            struct_size: 12,
             content: 4,
             ..aldis_aos_vc_config_t::default()
         };
-        assert_eq!(virtual_channel(scid, &vc), Err(invalid_argument()));
+        assert_eq!(virtual_channel(scid, vc), Err(invalid_argument()));
         assert_eq!(edition(2), Err(invalid_argument()));
         assert_eq!(ocf(&[1, 2, 3]), Err(invalid_argument()));
         assert_eq!(ocf(&[]), Ok(None));
-        let pc = aldis_aos_config_t {
-            struct_size: 4,
-            frame_len: 16,
-            ..aldis_aos_config_t::default()
-        };
-        assert_eq!(physical(&pc), Err(invalid_argument()));
     }
 }

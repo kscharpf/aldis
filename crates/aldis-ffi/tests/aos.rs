@@ -1,8 +1,7 @@
 //! The contract of the AOS part of the C ABI, called as a C caller calls it: the virtual
-//! channel arrays of one master channel (CABI-033, M2 plan D14, c-abi.md §11), the frame
+//! channel arrays of one master channel (M2 plan D14, c-abi.md §11), the frame
 //! decoder with the master channel's layouts (API-070), the FHEC and data unit decoders, the
 //! one-shot encoders (API-023), and the argument checks (CABI-022) the vectors do not reach.
-#![expect(clippy::unwrap_used, reason = "test-only harness (RS-018)")]
 #![expect(unsafe_code, reason = "the tests call the C ABI")]
 
 use core::ptr::{null, null_mut};
@@ -18,24 +17,17 @@ use aldis_ffi::field::{
 use aldis_ffi::oid::*;
 use aldis_ffi::{ALDIS_MODE_LENIENT, ALDIS_MODE_STRICT, aldis_error_detail_t};
 
-fn size<T>() -> u32 {
-    u32::try_from(size_of::<T>()).unwrap()
-}
-
 fn detail() -> aldis_error_detail_t {
     aldis_error_detail_t {
-        struct_size: size::<aldis_error_detail_t>(),
         ..aldis_error_detail_t::default()
     }
 }
 
 /// 40-octet frames with the FHEC, a 4-octet Insert Zone, and an FECF, on SCID 0x0AB.
-fn mc() -> aldis_aos_mc_config_t {
+const fn mc() -> aldis_aos_mc_config_t {
     aldis_aos_mc_config_t {
-        struct_size: size::<aldis_aos_mc_config_t>(),
         scid: 0x0AB,
         pc: aldis_aos_config_t {
-            struct_size: size::<aldis_aos_config_t>(),
             fhec: 1,
             fecf: 1,
             edition: ALDIS_AOS_EDITION_ISSUE5,
@@ -46,9 +38,8 @@ fn mc() -> aldis_aos_mc_config_t {
 }
 
 /// VC 0 carries `M_PDUs` with an OCF and SDLS 2/1, VC 1 `B_PDUs`, VC 2 `VCA_SDUs`.
-fn vcs() -> [aldis_aos_vc_config_t; 3] {
+const fn vcs() -> [aldis_aos_vc_config_t; 3] {
     let vc = aldis_aos_vc_config_t {
-        struct_size: size::<aldis_aos_vc_config_t>(),
         vcid: 0,
         content: ALDIS_AOS_CONTENT_MPDU,
         ocf: 1,
@@ -135,17 +126,9 @@ fn sdls_frame() -> Vec<u8> {
     frame
 }
 
-/// A VC struct of a later header, with a member this library does not know.
-#[repr(C)]
-#[derive(Clone, Copy)]
-struct LaterVc {
-    vc: aldis_aos_vc_config_t,
-    later: u32,
-}
-
 #[test]
-fn vc_arrays_step_by_their_struct_size() {
-    // req: CABI-033, CABI-022, API-040, AOS-020
+fn vc_arrays_are_c_arrays() {
+    // req: CABI-022, API-040, AOS-020
     let mc = mc();
     let check = |vcs: *const aldis_aos_vc_config_t, n: usize| {
         // SAFETY: `mc` is live; `vcs` is NULL or points to `n` live structs.
@@ -156,27 +139,6 @@ fn vc_arrays_step_by_their_struct_size() {
     // A master channel with no virtual channel receives nothing (OI-55).
     assert_eq!(check(null(), 0), ALDIS_ERR_INVALID_CONFIG);
     assert_eq!(check(null(), 1), ALDIS_ERR_INVALID_FIELD);
-    // A longer struct of a later header: the stride is its struct_size.
-    let later = base.map(|vc| LaterVc {
-        vc: aldis_aos_vc_config_t {
-            struct_size: size::<LaterVc>(),
-            ..vc
-        },
-        later: u32::MAX,
-    });
-    assert_eq!(check(later.as_ptr().cast(), 3), ALDIS_OK);
-    // Every struct repeats the stride.
-    let mut mixed = later;
-    mixed[2].vc.struct_size = size::<aldis_aos_vc_config_t>();
-    assert_eq!(check(mixed.as_ptr().cast(), 3), ALDIS_ERR_INVALID_FIELD);
-    // Shorter than the struct this library knows, or not a multiple of its alignment.
-    for struct_size in [4, size::<aldis_aos_vc_config_t>() + 2] {
-        let mut v = later;
-        for e in &mut v {
-            e.vc.struct_size = struct_size;
-        }
-        assert_eq!(check(v.as_ptr().cast(), 3), ALDIS_ERR_INVALID_FIELD);
-    }
     // A misaligned array, and a count whose array would wrap the address space.
     let words = [0_u32; 8];
     let misaligned = words.as_ptr().cast::<u8>().wrapping_add(1).cast();
@@ -185,20 +147,8 @@ fn vc_arrays_step_by_their_struct_size() {
         check(base.as_ptr(), usize::MAX / 4),
         ALDIS_ERR_INVALID_FIELD
     );
-    // The embedded physical channel carries its own struct_size (CABI-033), and its edition
-    // and flags take only their constants (CABI-010).
+    // The embedded physical channel's edition and flags take only their constants (CABI-010).
     for small in [
-        aldis_aos_mc_config_t {
-            struct_size: 4,
-            ..mc
-        },
-        aldis_aos_mc_config_t {
-            pc: aldis_aos_config_t {
-                struct_size: 4,
-                ..mc.pc
-            },
-            ..mc
-        },
         aldis_aos_mc_config_t {
             pc: aldis_aos_config_t {
                 edition: 2,
@@ -226,7 +176,6 @@ fn a_master_channel_holds_vcids_0_to_62() {
     mc.pc.insert_zone_len = 0;
     let mc = mc;
     let one = aldis_aos_vc_config_t {
-        struct_size: size::<aldis_aos_vc_config_t>(),
         content: ALDIS_AOS_CONTENT_VCA_SDU,
         ..aldis_aos_vc_config_t::default()
     };
@@ -341,9 +290,9 @@ fn the_decoder_takes_the_master_channels_vcs() {
     );
     assert_eq!(
         (
-            view.layout.security_header_len,
-            view.layout.zone_offset,
-            view.layout.ocf_len
+            view.layout.security_header.len,
+            view.layout.zone.offset,
+            view.layout.ocf.len
         ),
         (2, 16, 4)
     );
@@ -375,9 +324,9 @@ fn the_decoder_takes_the_master_channels_vcs() {
     assert_eq!(status, ALDIS_OK);
     assert_eq!(
         (
-            again.layout.data_offset,
-            again.layout.data_len,
-            again.layout.zone_offset,
+            again.layout.data.offset,
+            again.layout.data.len,
+            again.layout.zone.offset,
             again.pdu.pointer
         ),
         (12, 22, 12, ALDIS_AOS_POINTER_NONE)
@@ -439,9 +388,9 @@ fn the_decoder_takes_the_master_channels_vcs() {
     );
     assert_eq!(
         (
-            again.layout.data_offset,
-            again.layout.zone_offset,
-            again.layout.ocf_len
+            again.layout.data.offset,
+            again.layout.zone.offset,
+            again.layout.ocf.len
         ),
         (12, 12, 0)
     );

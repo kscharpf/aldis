@@ -164,7 +164,6 @@ mod tests {
 
     fn check(octets: &[u8], report: u32) -> (u32, aldis_error_detail_t) {
         let mut d = aldis_error_detail_t {
-            struct_size: u32::try_from(size_of::<aldis_error_detail_t>()).unwrap_or(0),
             ..aldis_error_detail_t::default()
         };
         // SAFETY: `octets` and `d` are live locals.

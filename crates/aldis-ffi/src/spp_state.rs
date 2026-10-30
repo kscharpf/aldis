@@ -170,12 +170,10 @@ impl Storage for aldis_spp_reassembler_t {
     const MAGIC: u32 = 0x414C_5352; // "ALSR"
 }
 
-/// Configuration of a tracker (SPP-011, CABI-033).
+/// Configuration of a tracker (SPP-011).
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct aldis_spp_tracker_config_t {
-    /// `sizeof(aldis_spp_tracker_config_t)`, set by the caller (CABI-033).
-    pub struct_size: u32,
     /// APIDs to track, 1 to `ALDIS_SPP_TRACKER_MAX_APIDS`.
     pub capacity: u32,
 }
@@ -190,12 +188,10 @@ pub struct aldis_spp_tracked_t {
     pub missing: u64,
 }
 
-/// Configuration of a segmenter (133.0 §4.1.3.4.2; SPP-013, CABI-033).
+/// Configuration of a segmenter (133.0 §4.1.3.4.2; SPP-013).
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct aldis_spp_segmenter_config_t {
-    /// `sizeof(aldis_spp_segmenter_config_t)`, set by the caller (CABI-033).
-    pub struct_size: u32,
     /// `ALDIS_SPP_TELEMETRY` or `ALDIS_SPP_TELECOMMAND`.
     pub packet_type: u8,
     /// APID of every segment; not 2047.
@@ -283,7 +279,7 @@ pub unsafe extern "C" fn aldis_spp_tracker_init(
     // SAFETY: every pointer is valid as `# Safety` states; `abi` and `handle` check them.
     unsafe {
         abi::call(err, || {
-            let cfg = abi::config(cfg)?;
+            let cfg = abi::read(cfg)?;
             let limit = usize::try_from(cfg.capacity).map_err(|_| invalid_argument())?;
             let wide = |n: usize| u64::try_from(n).unwrap_or(u64::MAX);
             if limit == 0 {
@@ -497,8 +493,8 @@ pub unsafe extern "C" fn aldis_spp_segmenter_init(
     // SAFETY: every pointer is valid as `# Safety` states; `abi` and `handle` check them.
     unsafe {
         abi::call(err, || {
-            let spp = config(abi::config(spp)?)?;
-            let cfg = abi::config(cfg)?;
+            let spp = config(abi::read(spp)?)?;
+            let cfg = abi::read(cfg)?;
             let sdu = abi::bytes(sdu, sdu_len)?;
             let packet_type = packet_type(cfg.packet_type)?;
             let apid = Apid::try_from(cfg.apid)?;
@@ -695,7 +691,7 @@ pub unsafe extern "C" fn aldis_spp_reassembler_push(
         abi::call(err, || {
             let h = reassembler(h)?;
             let bytes = abi::bytes(packet, packet_len)?;
-            let layout = secondary_layout(&abi::config(layout)?)?;
+            let layout = secondary_layout(&abi::read(layout)?)?;
             let buf = abi::bytes_mut(buf, buf_len, &[(packet, packet_len), h.range()])?;
             let p = SpacePacket::decode(bytes, abi::mode(mode)?)?;
             let user_data = p.split(&layout)?.user_data();

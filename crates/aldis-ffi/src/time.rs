@@ -1,5 +1,5 @@
 //! C ABI of the time code codec `aldis-time` (CCSDS 301.0-B-4; M2 plan D4; CABI-010…012,
-//! CABI-020…022, CABI-033).
+//! CABI-020…022).
 //!
 //! A time code format is one flat struct, [`aldis_time_format_t`], whose `code` selects the
 //! fields that apply; a value is one flat struct, [`aldis_time_value_t`], read the same way. CUC
@@ -157,15 +157,12 @@ pub const ALDIS_TIME_SUBSET_SECOND: u32 = 1 << 7;
 /// [`aldis_time_ascii_subset_t::present`]: `fraction` and `fraction_digits` are present.
 pub const ALDIS_TIME_SUBSET_FRACTION: u32 = 1 << 8;
 
-/// A time code format: what a P-field carries, or an implicit format (301.0 §3; TIME-001…006,
-/// CABI-033).
+/// A time code format: what a P-field carries, or an implicit format (301.0 §3; TIME-001…006).
 ///
 /// `code` selects the fields that apply; the others are ignored on input and 0 on output.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct aldis_time_format_t {
-    /// `sizeof(aldis_time_format_t)`, set by the caller (CABI-033).
-    pub struct_size: u32,
     /// `ALDIS_TIME_CUC`, `_CDS`, `_CCS`, or `_AGENCY` (`_UNKNOWN` on output only).
     pub code: u32,
     /// CUC and CDS: 1 for an agency-defined epoch (CUC Level 2), 0 for 1958 January 1 (CUC
@@ -340,12 +337,10 @@ pub struct aldis_time_ascii_subset_t {
     pub utc: bool,
 }
 
-/// Options of the ASCII parsers (301.0 §3.5.1; TIME-031, CABI-033).
+/// Options of the ASCII parsers (301.0 §3.5.1; TIME-031).
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct aldis_time_ascii_options_t {
-    /// `sizeof(aldis_time_ascii_options_t)`, set by the caller (CABI-033).
-    pub struct_size: u32,
     /// Largest number of fraction digits accepted, 0 to 12.
     pub max_fraction_digits: u8,
 }
@@ -375,12 +370,10 @@ pub struct aldis_time_instant_t {
     pub ascii: aldis_time_ascii_t,
 }
 
-/// What [`aldis_time_convert`] produces (TIME-033, CABI-033).
+/// What [`aldis_time_convert`] produces (TIME-033).
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct aldis_time_convert_config_t {
-    /// `sizeof(aldis_time_convert_config_t)`, set by the caller (CABI-033).
-    pub struct_size: u32,
     /// The target: a CDS or CCS format, or `code` = `ALDIS_TIME_ASCII`.
     pub to: aldis_time_format_t,
     /// For an ASCII target: its layout.
@@ -415,9 +408,6 @@ fn tail(f: &aldis_time_format_t) -> Result<PFieldTail> {
 
 /// The time format of a C struct, each characteristic parsed into its type (RS-020).
 pub(crate) fn time_format(f: &aldis_time_format_t) -> Result<TimeFormat> {
-    if usize::try_from(f.struct_size).map_or(true, |n| n < size_of::<aldis_time_format_t>()) {
-        return Err(invalid_argument());
-    }
     let epoch = abi::flag(f.agency_epoch)?;
     Ok(match parse::<aldis_time_code>(f.code)? {
         aldis_time_code::ALDIS_TIME_CUC => {
@@ -479,7 +469,6 @@ fn tail_out(t: PFieldTail, out: &mut aldis_time_format_t) {
 
 const fn base_format(code: u32) -> aldis_time_format_t {
     aldis_time_format_t {
-        struct_size: FORMAT_SIZE,
         code,
         agency_epoch: 0,
         coarse_octets: 0,
@@ -495,19 +484,6 @@ const fn base_format(code: u32) -> aldis_time_format_t {
         tail: [0; 7],
     }
 }
-
-/// `sizeof(aldis_time_format_t)`, which every written format carries.
-const FORMAT_SIZE: u32 = {
-    let n = size_of::<aldis_time_format_t>();
-    assert!(n <= 0xFFFF, "a format struct fits its struct_size");
-    #[expect(
-        clippy::as_conversions,
-        clippy::cast_possible_truncation,
-        reason = "checked above to fit"
-    )]
-    let size = n as u32;
-    size
-};
 
 /// The C struct of a time format.
 pub(crate) fn format_out(f: &TimeFormat) -> aldis_time_format_t {
@@ -899,7 +875,7 @@ pub unsafe extern "C" fn aldis_time_decode_implicit(
     unsafe {
         abi::call(err, || {
             let bytes = abi::bytes(bytes, len)?;
-            let format = time_format(&abi::config(format)?)?;
+            let format = time_format(&abi::read(format)?)?;
             let mode = abi::mode(mode)?;
             let out = abi::out(out)?;
             out.write(decoded(&decode_implicit(bytes, &format, mode)?));
@@ -937,7 +913,7 @@ pub unsafe extern "C" fn aldis_time_encode(
     // SAFETY: every pointer is valid as `# Safety` states; `abi` checks NULL and alignment.
     unsafe {
         abi::call(err, || {
-            let format = time_format(&abi::config(format)?)?;
+            let format = time_format(&abi::read(format)?)?;
             let value = abi::read(value)?;
             let out = abi::bytes_mut(out, cap, &[])?;
             let out_len = abi::out(out_len)?;
@@ -1009,7 +985,7 @@ pub unsafe extern "C" fn aldis_time_format_pfield(
     // SAFETY: every pointer is valid as `# Safety` states; `abi` checks NULL and alignment.
     unsafe {
         abi::call(err, || {
-            let format = time_format(&abi::config(format)?)?;
+            let format = time_format(&abi::read(format)?)?;
             let out = abi::bytes_mut(out, cap, &[])?;
             let out_len = abi::out(out_len)?;
             let (octets, n) = pfield_octets(&format.pfield());
@@ -1043,7 +1019,7 @@ pub unsafe extern "C" fn aldis_time_format_t_len(
     // SAFETY: every pointer is valid as `# Safety` states; `abi` checks NULL and alignment.
     unsafe {
         abi::call(err, || {
-            let format = time_format(&abi::config(format)?)?;
+            let format = time_format(&abi::read(format)?)?;
             abi::out(t_len)?.write(format.t_len());
             Ok(())
         })
@@ -1116,7 +1092,7 @@ pub unsafe extern "C" fn aldis_time_cuc_from_ns(
     // SAFETY: every pointer is valid as `# Safety` states; `abi` checks NULL and alignment.
     unsafe {
         abi::call(err, || {
-            let TimeFormat::Cuc(format) = time_format(&abi::config(format)?)? else {
+            let TimeFormat::Cuc(format) = time_format(&abi::read(format)?)? else {
                 return Err(invalid_argument());
             };
             let out = abi::out(out)?;
@@ -1155,7 +1131,7 @@ pub unsafe extern "C" fn aldis_time_ascii_parse(
     unsafe {
         abi::call(err, || {
             let text = abi::bytes(text, len)?;
-            let options = self::options(abi::config(options)?)?;
+            let options = self::options(abi::read(options)?)?;
             let out = abi::out(out)?;
             out.write(ascii_out(&AsciiTime::parse(text, &options)?));
             Ok(())
@@ -1253,7 +1229,7 @@ pub unsafe extern "C" fn aldis_time_ascii_subset_parse(
     unsafe {
         abi::call(err, || {
             let text = abi::bytes(text, len)?;
-            let options = self::options(abi::config(options)?)?;
+            let options = self::options(abi::read(options)?)?;
             let out = abi::out(out)?;
             out.write(subset_out(&AsciiSubset::parse(text, &options)?));
             Ok(())
@@ -1288,7 +1264,7 @@ pub unsafe extern "C" fn aldis_time_convert(
     unsafe {
         abi::call(err, || {
             let from = abi::read(from)?;
-            let cfg = abi::config(cfg)?;
+            let cfg = abi::read(cfg)?;
             let out = abi::out(out)?;
             out.write(convert(&from, &cfg)?);
             Ok(())
@@ -1340,29 +1316,6 @@ mod tests {
             u32::from(aldis::time::code::MAX_AGENCY_LEN),
             ALDIS_TIME_MAX_AGENCY_LEN
         );
-        assert_eq!(
-            usize::try_from(FORMAT_SIZE).ok(),
-            Some(size_of::<aldis_time_format_t>())
-        );
-    }
-
-    #[test]
-    fn configurations_start_with_struct_size() {
-        // req: CABI-033
-        assert_eq!(core::mem::offset_of!(aldis_time_format_t, struct_size), 0);
-        assert_eq!(
-            core::mem::offset_of!(aldis_time_ascii_options_t, struct_size),
-            0
-        );
-        assert_eq!(
-            core::mem::offset_of!(aldis_time_convert_config_t, struct_size),
-            0
-        );
-        let small = aldis_time_format_t {
-            struct_size: 4,
-            ..base_format(ALDIS_TIME_CDS)
-        };
-        assert_eq!(time_format(&small), Err(ARG));
     }
 
     #[test]

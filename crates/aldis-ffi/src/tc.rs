@@ -1,5 +1,5 @@
 //! C ABI of the TC Space Data Link Protocol codec `aldis-tc` and the CLCW (CCSDS 232.0-B-4;
-//! M2 plan D4, D14; CABI-010…012, CABI-020…022, CABI-033).
+//! M2 plan D4, D14; CABI-010…012, CABI-020…022).
 //!
 //! Calls: [`aldis_tc_config_check`] and [`aldis_tc_mc_config_check`]; [`aldis_tc_peek_length`]
 //! and [`aldis_tc_header_decode`]; the decoder [`aldis_tc_decode`]; the unified Frame Intake
@@ -12,8 +12,7 @@
 //! channel and its Spacecraft ID (Table 5-2), with an array of [`aldis_tc_vc_config_t`] (Tables
 //! 5-3, 6-2) and an array of [`aldis_tc_map_config_t`] (Tables 5-4, 6-3), each with its count:
 //! the C form of the `VcTable` of one Spacecraft ID, built and checked on every call. Each
-//! array's stride is the `struct_size` of its structs, which must all be the same
-//! (`abi::configs`). A physical channel that carries several master channels is decoded by
+//! array is a C array of the struct (`abi::configs`). A physical channel that carries several master channels is decoded by
 //! reading the Spacecraft ID first with [`aldis_tc_header_decode`].
 //!
 //! **Security layouts** (API-070, c-abi.md §11). `TcFrame::decode` always takes the layouts of
@@ -40,6 +39,7 @@ use aldis::tc::{
 use crate::abi::{self, Configs, invalid_argument};
 use crate::capacities::ALDIS_TC_MAX_MAPS;
 use crate::mirror::{mirror, parse};
+use crate::range::aldis_range_t;
 
 /// Length of the TC Transfer Frame Primary Header in octets (232.0 §4.1.2).
 pub const ALDIS_TC_PRIMARY_HEADER_LEN: u32 = 5;
@@ -205,12 +205,10 @@ pub const ALDIS_TC_DISCARD_UNEXPECTED_VERSION: u32 = 1;
 /// COP in Effect `01`: COP-1 (232.0 §4.2.1.5).
 pub const ALDIS_CLCW_COP_1: u8 = 0b01;
 
-/// Managed parameters of a physical channel (232.0 §5.1 Table 5-1; GEN-060, CABI-033).
+/// Managed parameters of a physical channel (232.0 §5.1 Table 5-1; GEN-060).
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct aldis_tc_config_t {
-    /// `sizeof(aldis_tc_config_t)`, set by the caller (CABI-033).
-    pub struct_size: u32,
     /// 1 if every frame ends with a Frame Error Control Field, else 0 (232.0 §4.1.4.1).
     pub fecf: u8,
     /// Maximum Transfer Frame Length in octets: at most `ALDIS_TC_MAX_FRAME_LEN`, and at least
@@ -218,29 +216,24 @@ pub struct aldis_tc_config_t {
     pub max_frame_len: usize,
 }
 
-/// Managed parameters of a master channel (232.0 §5.2 Table 5-2; GEN-060, CABI-033).
+/// Managed parameters of a master channel (232.0 §5.2 Table 5-2; GEN-060).
 ///
 /// Its virtual channels and MAPs are passed beside it, each as an array and its count (M2 plan
 /// D14).
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct aldis_tc_mc_config_t {
-    /// `sizeof(aldis_tc_mc_config_t)`, set by the caller (CABI-033).
-    pub struct_size: u32,
     /// Spacecraft ID, 0 to 1023 (232.0 §4.1.2, Table 5-2).
     pub scid: u16,
-    /// The physical channel, with its own `struct_size` (CABI-033).
+    /// The physical channel.
     pub pc: aldis_tc_config_t,
 }
 
 /// Managed parameters of a virtual channel (232.0 §5.3 Table 5-3, §6.6.1 Table 6-2; TC-004,
-/// API-070, CABI-033).
+/// API-070).
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct aldis_tc_vc_config_t {
-    /// `sizeof(aldis_tc_vc_config_t)`, set by the caller, the same for every struct of an
-    /// array (CABI-033).
-    pub struct_size: u32,
     /// Virtual Channel Identifier, 0 to 63 (232.0 §4.1.2).
     pub vcid: u8,
     /// 1 if the VC's Type-D frames carry a Segment Header, else 0 (232.0 §4.1.3.2.2.1.2;
@@ -257,13 +250,10 @@ pub struct aldis_tc_vc_config_t {
 }
 
 /// Managed parameters of a MAP channel (232.0 §5.4 Table 5-4, §6.6.2 Table 6-3; TC-022,
-/// API-070, CABI-033).
+/// API-070).
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct aldis_tc_map_config_t {
-    /// `sizeof(aldis_tc_map_config_t)`, set by the caller, the same for every struct of an
-    /// array (CABI-033).
-    pub struct_size: u32,
     /// The VCID of its virtual channel, which must have Segment Headers (232.0
     /// §4.1.3.2.2.1.2).
     pub vcid: u8,
@@ -368,26 +358,16 @@ pub struct aldis_tc_header_t {
 pub struct aldis_tc_layout_t {
     /// The octets the frame takes (232.0 §4.1.2.7; API-012).
     pub frame_len: usize,
-    /// Offset of the Segment Header.
-    pub segment_header_offset: usize,
-    /// Length of the Segment Header: `ALDIS_TC_SEGMENT_HEADER_LEN` or 0 (232.0 §4.1.3.2.2).
-    pub segment_header_len: usize,
-    /// Offset of the Security Header.
-    pub security_header_offset: usize,
-    /// Length of the Security Header; 0 without SDLS (232.0 §6.3.4).
-    pub security_header_len: usize,
-    /// Offset of the data field: the User Data or the Control Command.
-    pub data_offset: usize,
-    /// Length of the data field (232.0 §4.1.3).
-    pub data_len: usize,
-    /// Offset of the Security Trailer.
-    pub security_trailer_offset: usize,
-    /// Length of the Security Trailer; 0 without SDLS (232.0 §6.3.6).
-    pub security_trailer_len: usize,
-    /// Offset of the Frame Error Control Field.
-    pub fecf_offset: usize,
-    /// Length of the Frame Error Control Field: 2 or 0 (232.0 §4.1.4).
-    pub fecf_len: usize,
+    /// The range of the Segment Header; its length is `ALDIS_TC_SEGMENT_HEADER_LEN` or 0 (232.0 §4.1.3.2.2).
+    pub segment_header: aldis_range_t,
+    /// The range of the Security Header; length 0 without SDLS (232.0 §6.3.4).
+    pub security_header: aldis_range_t,
+    /// The range of the data field: the User Data or the Control Command.
+    pub data: aldis_range_t,
+    /// The range of the Security Trailer; length 0 without SDLS (232.0 §6.3.6).
+    pub security_trailer: aldis_range_t,
+    /// The range of the Frame Error Control Field; its length is 2 or 0 (232.0 §4.1.4).
+    pub fecf: aldis_range_t,
 }
 
 /// A decoded TC Transfer Frame: its fields and where they lie in the input (232.0 §4.1, §6.3;
@@ -424,10 +404,9 @@ pub struct aldis_tc_stream_item_t {
     pub kind: u8,
     /// Reserved padding octets, set to zero.
     pub reserved: [u8; 3],
-    /// Starting offset of this item in the caller's unit buffer.
-    pub offset: usize,
-    /// Length of this item in octets consumed from the unit buffer.
-    pub len: usize,
+    /// The range of this item in the caller's unit buffer: where it starts and the octets it
+    /// consumes.
+    pub range: aldis_range_t,
     /// The frame length declared in the header (valid when accepted or truncated).
     pub declared_len: usize,
     /// The decoded frame view (valid when `kind == ALDIS_TC_STREAM_ACCEPTED`).
@@ -447,8 +426,7 @@ impl Default for aldis_tc_stream_item_t {
         Self {
             kind: ALDIS_TC_STREAM_END,
             reserved: [0; 3],
-            offset: 0,
-            len: 0,
+            range: aldis_range_t { offset: 0, len: 0 },
             declared_len: 0,
             frame: aldis_tc_frame_t::default(),
             discard_reason: 0,
@@ -495,12 +473,8 @@ pub struct aldis_clcw_t {
 /// and up to `ALDIS_TC_MAX_MAPS` MAPs (CABI-030).
 type Table = VcTable<ALDIS_TC_MAX_VCS, ALDIS_TC_MAX_MAPS>;
 
-/// The physical channel of a C struct, with its `struct_size` checked as an embedded struct's
-/// (232.0 §5.1; CABI-033).
+/// The physical channel of a C struct (232.0 §5.1).
 fn physical(c: &aldis_tc_config_t) -> Result<PhysicalChannelConfig> {
-    if usize::try_from(c.struct_size).map_or(true, |n| n < size_of::<aldis_tc_config_t>()) {
-        return Err(invalid_argument());
-    }
     PhysicalChannelConfig::new(c.max_frame_len, abi::flag(c.fecf)?)
 }
 
@@ -526,7 +500,7 @@ fn virtual_channel(scid: TcSpacecraftId, v: &aldis_tc_vc_config_t) -> Result<VcC
 }
 
 /// The MAP of a C struct on `scid` (Table 5-4, Table 6-3; RS-020).
-fn map_channel(scid: TcSpacecraftId, m: &aldis_tc_map_config_t) -> Result<MapConfig> {
+fn map_channel(scid: TcSpacecraftId, m: aldis_tc_map_config_t) -> Result<MapConfig> {
     let vcid = TcVcId::try_from(m.vcid)?;
     let map_id = TcMapId::try_from(m.map_id)?;
     let security = security(m.security_header_len, m.security_trailer_len)?;
@@ -581,15 +555,15 @@ fn master_channel(
     let vc_full = Error::new(ErrorKind::CapacityExceeded).with_field(field::VC_ID);
     let vcs = parse_all::<_, _, ALDIS_TC_MAX_VCS>(vcs, vc_full, |v| virtual_channel(scid, v))?;
     let map_full = Error::new(ErrorKind::CapacityExceeded).with_field(field::MAP_ID);
-    let maps = parse_all::<_, _, ALDIS_TC_MAX_MAPS>(maps, map_full, |m| map_channel(scid, m))?;
+    let maps = parse_all::<_, _, ALDIS_TC_MAX_MAPS>(maps, map_full, |m| map_channel(scid, *m))?;
     Table::new(pc, slice(vcs.as_ref()), slice(maps.as_ref()))
 }
 
 /// The master channel at `mc` with the `vc_count` virtual channels at `vcs` and the
-/// `map_count` MAPs at `maps` (CABI-022, CABI-033).
+/// `map_count` MAPs at `maps` (CABI-022).
 ///
 /// # Safety
-/// As for `abi::config` and `abi::configs`.
+/// As for `abi::read` and `abi::configs`.
 #[expect(unsafe_code, reason = "checked access to caller memory (CABI-022)")]
 unsafe fn master_channel_at(
     mc: *const aldis_tc_mc_config_t,
@@ -601,7 +575,7 @@ unsafe fn master_channel_at(
     // SAFETY: forwarded from the caller.
     let (mc, vcs, maps) = unsafe {
         (
-            abi::config(mc)?,
+            abi::read(mc)?,
             abi::configs(vcs, vc_count)?,
             abi::configs(maps, map_count)?,
         )
@@ -695,25 +669,34 @@ fn layout(
     security_trailer_len: usize,
     fecf: bool,
 ) -> aldis_tc_layout_t {
-    let segment_header_offset = PRIMARY_HEADER_LEN;
-    let segment_header_len = usize::from(segment_header);
-    let security_header_offset = segment_header_offset.saturating_add(segment_header_len);
+    let segment_len = usize::from(segment_header);
+    let security_header_offset = PRIMARY_HEADER_LEN.saturating_add(segment_len);
     let data_offset = security_header_offset.saturating_add(security_header_len);
     let security_trailer_offset = data_offset.saturating_add(data_len);
     let fecf_offset = security_trailer_offset.saturating_add(security_trailer_len);
     let fecf_len = if fecf { FECF_LEN } else { 0 };
     aldis_tc_layout_t {
         frame_len: fecf_offset.saturating_add(fecf_len),
-        segment_header_offset,
-        segment_header_len,
-        security_header_offset,
-        security_header_len,
-        data_offset,
-        data_len,
-        security_trailer_offset,
-        security_trailer_len,
-        fecf_offset,
-        fecf_len,
+        segment_header: aldis_range_t {
+            offset: PRIMARY_HEADER_LEN,
+            len: segment_len,
+        },
+        security_header: aldis_range_t {
+            offset: security_header_offset,
+            len: security_header_len,
+        },
+        data: aldis_range_t {
+            offset: data_offset,
+            len: data_len,
+        },
+        security_trailer: aldis_range_t {
+            offset: security_trailer_offset,
+            len: security_trailer_len,
+        },
+        fecf: aldis_range_t {
+            offset: fecf_offset,
+            len: fecf_len,
+        },
     }
 }
 
@@ -789,7 +772,7 @@ pub unsafe extern "C" fn aldis_tc_config_check(
     err: *mut crate::aldis_error_detail_t,
 ) -> u32 {
     // SAFETY: every pointer is valid as `# Safety` states; `abi` checks NULL and alignment.
-    unsafe { abi::call(err, || physical(&abi::config(pc)?).map(drop)) }
+    unsafe { abi::call(err, || physical(&abi::read(pc)?).map(drop)) }
 }
 
 /// Checks a master channel configuration with its virtual channels and MAPs (232.0 §5 Tables
@@ -808,12 +791,12 @@ pub unsafe extern "C" fn aldis_tc_config_check(
 /// octets, (`max_frame_len`) for a VC maximum outside 6 to 1024 octets, (`vc_id`) for
 /// `vc_count` 0 (OI-55) or a VCID given twice, (`map_id`) for a MAP given twice or on a VC that is not given or has no Segment
 /// Header, and (`frame_data_field`) for a VC or MAP whose fields leave no data octet; CABI-022
-/// violations, including a struct whose `struct_size` differs from its array's first, and a VC
+/// violations, including a VC
 /// with Segment Headers whose security lengths are not 0.
 ///
 /// # Safety
 /// `mc` is valid for a read; `vcs` and `maps` are valid for reads of `vc_count` and
-/// `map_count` structs of their first one's `struct_size` (or `NULL` with 0); `err` is `NULL`
+/// `map_count` structs (or `NULL` with 0); `err` is `NULL`
 /// or valid for one write.
 #[expect(
     unsafe_code,
@@ -977,6 +960,10 @@ pub unsafe extern "C" fn aldis_tc_decode(
     unsafe_code,
     reason = "C ABI entry point: unmangled, takes raw pointers (GEN-071)"
 )]
+#[expect(
+    clippy::too_many_lines,
+    reason = "C ABI stream intake dispatch with channel table and item population"
+)]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn aldis_tc_stream_next(
     unit: *const u8,
@@ -1014,8 +1001,10 @@ pub unsafe extern "C" fn aldis_tc_stream_next(
                 out.write(aldis_tc_stream_item_t {
                     kind: ALDIS_TC_STREAM_END,
                     reserved: [0; 3],
-                    offset: current_offset,
-                    len: 0,
+                    range: aldis_range_t {
+                        offset: current_offset,
+                        len: 0,
+                    },
                     declared_len: 0,
                     frame: aldis_tc_frame_t::default(),
                     discard_reason: 0,
@@ -1035,8 +1024,10 @@ pub unsafe extern "C" fn aldis_tc_stream_next(
                     out.write(aldis_tc_stream_item_t {
                         kind: ALDIS_TC_STREAM_END,
                         reserved: [0; 3],
-                        offset: current_offset,
-                        len: 0,
+                        range: aldis_range_t {
+                            offset: current_offset,
+                            len: 0,
+                        },
                         declared_len: 0,
                         frame: aldis_tc_frame_t::default(),
                         discard_reason: 0,
@@ -1053,8 +1044,10 @@ pub unsafe extern "C" fn aldis_tc_stream_next(
                     out.write(aldis_tc_stream_item_t {
                         kind: ALDIS_TC_STREAM_ACCEPTED,
                         reserved: [0; 3],
-                        offset: current_offset,
-                        len,
+                        range: aldis_range_t {
+                            offset: current_offset,
+                            len,
+                        },
                         declared_len: len,
                         frame: view(&frame),
                         discard_reason: 0,
@@ -1079,8 +1072,10 @@ pub unsafe extern "C" fn aldis_tc_stream_next(
                     out.write(aldis_tc_stream_item_t {
                         kind: ALDIS_TC_STREAM_DISCARDED,
                         reserved: [0; 3],
-                        offset: current_offset,
-                        len,
+                        range: aldis_range_t {
+                            offset: current_offset,
+                            len,
+                        },
                         declared_len,
                         frame: aldis_tc_frame_t::default(),
                         discard_reason: u32::from(reason.code()),
@@ -1374,10 +1369,6 @@ mod tests {
             assert_eq!(c, s.bits());
         }
         assert_eq!(ALDIS_CLCW_COP_1, CopInEffect::COP_1.get());
-        assert_eq!(core::mem::offset_of!(aldis_tc_config_t, struct_size), 0);
-        assert_eq!(core::mem::offset_of!(aldis_tc_mc_config_t, struct_size), 0);
-        assert_eq!(core::mem::offset_of!(aldis_tc_vc_config_t, struct_size), 0);
-        assert_eq!(core::mem::offset_of!(aldis_tc_map_config_t, struct_size), 0);
     }
 
     #[test]
@@ -1414,12 +1405,6 @@ mod tests {
             virtual_channel(TcSpacecraftId::new(0).unwrap(), &vc),
             Err(invalid_argument())
         );
-        let pc = aldis_tc_config_t {
-            struct_size: 4,
-            fecf: 0,
-            max_frame_len: 16,
-        };
-        assert_eq!(physical(&pc), Err(invalid_argument()));
         let flag = aldis_clcw_t {
             wait: 2,
             ..aldis_clcw_t::default()
@@ -1433,17 +1418,17 @@ mod tests {
         let l = layout(true, 3, 7, 2, true);
         assert_eq!(
             (
-                l.segment_header_offset,
-                l.security_header_offset,
-                l.data_offset
+                l.segment_header.offset,
+                l.security_header.offset,
+                l.data.offset
             ),
             (5, 6, 9)
         );
         assert_eq!(
-            (l.security_trailer_offset, l.fecf_offset, l.frame_len),
+            (l.security_trailer.offset, l.fecf.offset, l.frame_len),
             (16, 18, 20)
         );
         let l = layout(false, 0, 1, 0, false);
-        assert_eq!((l.segment_header_len, l.fecf_len, l.frame_len), (0, 0, 6));
+        assert_eq!((l.segment_header.len, l.fecf.len, l.frame_len), (0, 0, 6));
     }
 }

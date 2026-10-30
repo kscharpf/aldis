@@ -1,5 +1,5 @@
 //! The contract of the TC part of the C ABI, called as a C caller calls it: the virtual channel
-//! and MAP arrays (CABI-033, M2 plan D14), the security layouts of a VC or a MAP (API-070), the
+//! and MAP arrays (M2 plan D14), the security layouts of a VC or a MAP (API-070), the
 //! one-shot encoder and delimiter (API-023, TC-020), the validation reasons (TC-021), the
 //! Control Commands and the CLCW (TC-005, TC-030), and the argument checks (CABI-022) the
 //! vectors do not reach.
@@ -21,24 +21,17 @@ use aldis_ffi::field::{
 use aldis_ffi::tc::*;
 use aldis_ffi::{ALDIS_MODE_LENIENT, ALDIS_MODE_STRICT, aldis_error_detail_t};
 
-fn size<T>() -> u32 {
-    u32::try_from(size_of::<T>()).unwrap()
-}
-
 fn detail() -> aldis_error_detail_t {
     aldis_error_detail_t {
-        struct_size: size::<aldis_error_detail_t>(),
         ..aldis_error_detail_t::default()
     }
 }
 
 /// Frames of at most 64 octets with an FECF on SCID 0x155.
-fn mc() -> aldis_tc_mc_config_t {
+const fn mc() -> aldis_tc_mc_config_t {
     aldis_tc_mc_config_t {
-        struct_size: size::<aldis_tc_mc_config_t>(),
         scid: 0x155,
         pc: aldis_tc_config_t {
-            struct_size: size::<aldis_tc_config_t>(),
             fecf: 1,
             max_frame_len: 64,
         },
@@ -47,9 +40,8 @@ fn mc() -> aldis_tc_mc_config_t {
 
 /// VC 1 without SDLS, VC 2 with Segment Headers, VC 3 with a Security Header of 4 octets and a
 /// Trailer of 2.
-fn vcs() -> [aldis_tc_vc_config_t; 3] {
+const fn vcs() -> [aldis_tc_vc_config_t; 3] {
     let vc = aldis_tc_vc_config_t {
-        struct_size: size::<aldis_tc_vc_config_t>(),
         vcid: 1,
         segment_header: 0,
         security_header_len: 0,
@@ -73,9 +65,8 @@ fn vcs() -> [aldis_tc_vc_config_t; 3] {
 }
 
 /// MAP 0 of VC 2 without SDLS, MAP 9 with a Security Header of 3 octets and a Trailer of 1.
-fn maps() -> [aldis_tc_map_config_t; 2] {
+const fn maps() -> [aldis_tc_map_config_t; 2] {
     let map = aldis_tc_map_config_t {
-        struct_size: size::<aldis_tc_map_config_t>(),
         vcid: 2,
         map_id: 0,
         security_header_len: 0,
@@ -171,37 +162,21 @@ fn written(fields: &aldis_tc_fields_t, user: &[u8]) -> (Vec<u8>, aldis_tc_layout
     assert_eq!(decode(&frame, ALDIS_MODE_STRICT, &mut view), ALDIS_OK);
     let l = view.layout;
     assert!(
-        frame[l.security_header_offset..][..l.security_header_len]
+        frame[l.security_header.offset..][..l.security_header.len]
             .iter()
-            .chain(&frame[l.security_trailer_offset..][..l.security_trailer_len])
+            .chain(&frame[l.security_trailer.offset..][..l.security_trailer.len])
             .all(|&b| b == 0),
         "the encoder leaves the security fields zero"
     );
-    frame[l.security_header_offset..][..l.security_header_len].fill(0xA5);
-    frame[l.security_trailer_offset..][..l.security_trailer_len].fill(0x5A);
+    frame[l.security_header.offset..][..l.security_header.len].fill(0xA5);
+    frame[l.security_trailer.offset..][..l.security_trailer.len].fill(0x5A);
     aldis::core::crc::write_fecf(&mut frame).unwrap();
     (frame, l)
 }
 
-/// A VC struct of a later header, with a member this library does not know.
-#[repr(C)]
-#[derive(Clone, Copy)]
-struct LaterVc {
-    vc: aldis_tc_vc_config_t,
-    later: u64,
-}
-
-/// A MAP struct of a later header.
-#[repr(C)]
-#[derive(Clone, Copy)]
-struct LaterMap {
-    map: aldis_tc_map_config_t,
-    later: u32,
-}
-
 #[test]
-fn channel_arrays_step_by_their_struct_size() {
-    // req: CABI-033, CABI-022, CABI-030, GEN-011, API-040, TC-024
+fn channel_arrays_are_c_arrays() {
+    // req: CABI-022, CABI-030, GEN-011, API-040, TC-024
     let mc = mc();
     let (base, base_maps) = (vcs(), maps());
     let mut e = detail();
@@ -217,37 +192,6 @@ fn channel_arrays_step_by_their_struct_size() {
     assert_eq!(e.field, ALDIS_FIELD_VC_ID);
     assert_eq!(
         check_mc(&mc, null(), 1, null(), 0, &mut e),
-        ALDIS_ERR_INVALID_FIELD
-    );
-    // Longer structs of a later header: each array's stride is its own struct_size.
-    let later = base.map(|vc| LaterVc {
-        vc: aldis_tc_vc_config_t {
-            struct_size: size::<LaterVc>(),
-            ..vc
-        },
-        later: u64::MAX,
-    });
-    let later_maps = base_maps.map(|map| LaterMap {
-        map: aldis_tc_map_config_t {
-            struct_size: size::<LaterMap>(),
-            ..map
-        },
-        later: u32::MAX,
-    });
-    let (v, m) = (later.as_ptr().cast(), later_maps.as_ptr().cast());
-    assert_eq!(check_mc(&mc, v, 3, m, 2, &mut e), ALDIS_OK);
-    // Every struct repeats its array's stride.
-    let mut mixed = later_maps;
-    mixed[1].map.struct_size = size::<aldis_tc_map_config_t>();
-    assert_eq!(
-        check_mc(&mc, v, 3, mixed.as_ptr().cast(), 2, &mut e),
-        ALDIS_ERR_INVALID_FIELD
-    );
-    // The embedded physical channel carries its own struct_size.
-    let mut small = mc;
-    small.pc.struct_size = 4;
-    assert_eq!(
-        check_mc(&small, base.as_ptr(), 3, null(), 0, &mut e),
         ALDIS_ERR_INVALID_FIELD
     );
     // A VC with Segment Headers takes its SDLS lengths from its MAPs (232.0 Table 6-3).
@@ -308,28 +252,28 @@ fn security_layouts_come_from_the_vc_or_its_map() {
     // VC 3: Security Header 4, Trailer 2; two octets of User Data.
     let (frame, l) = written(&ad(3, None), &[1, 2]);
     assert_eq!(
-        (l.security_header_offset, l.data_offset, l.data_len),
+        (l.security_header.offset, l.data.offset, l.data.len),
         (5, 9, 2)
     );
-    assert_eq!((l.security_trailer_offset, l.frame_len), (11, 15));
+    assert_eq!((l.security_trailer.offset, l.frame_len), (11, 15));
     assert_eq!(frame.len(), 5 + 4 + 2 + 2 + 2);
     let mut view = aldis_tc_frame_t::default();
     assert_eq!(decode(&frame, ALDIS_MODE_STRICT, &mut view), ALDIS_OK);
     let v = view.layout;
     assert_eq!(
-        &frame[v.security_header_offset..][..v.security_header_len],
+        &frame[v.security_header.offset..][..v.security_header.len],
         [0xA5; 4]
     );
-    assert_eq!(&frame[v.data_offset..][..v.data_len], [1, 2]);
+    assert_eq!(&frame[v.data.offset..][..v.data.len], [1, 2]);
     assert_eq!(
-        &frame[v.security_trailer_offset..][..v.security_trailer_len],
+        &frame[v.security_trailer.offset..][..v.security_trailer.len],
         [0x5A; 2]
     );
-    assert!(!view.has_segment_header && view.has_fecf && v.fecf_len == 2);
+    assert!(!view.has_segment_header && view.has_fecf && v.fecf.len == 2);
     // VC 2, MAP 9: the Segment Header, then the MAP's Security Header 3 and Trailer 1.
     let (frame, l) = written(&ad(2, Some(9)), &[7, 8, 9]);
-    assert_eq!((l.segment_header_offset, l.segment_header_len), (5, 1));
-    assert_eq!((l.security_header_offset, l.security_header_len), (6, 3));
+    assert_eq!((l.segment_header.offset, l.segment_header.len), (5, 1));
+    assert_eq!((l.security_header.offset, l.security_header.len), (6, 3));
     assert_eq!(frame[5], 0xC9, "Sequence Flags 11, MAP 9");
     assert_eq!(decode(&frame, ALDIS_MODE_STRICT, &mut view), ALDIS_OK);
     assert!(view.has_segment_header);
@@ -342,7 +286,7 @@ fn security_layouts_come_from_the_vc_or_its_map() {
     let (frame, _) = written(&ad(2, Some(0)), &[7, 8, 9]);
     assert_eq!(decode(&frame, ALDIS_MODE_STRICT, &mut view), ALDIS_OK);
     assert_eq!(
-        (view.layout.security_header_len, view.layout.data_offset),
+        (view.layout.security_header.len, view.layout.data.offset),
         (0, 6)
     );
 }
@@ -418,7 +362,7 @@ fn stream_reports_the_discard_reason() {
     assert_eq!(status, ALDIS_OK);
     assert_eq!(item.kind, ALDIS_TC_STREAM_ACCEPTED);
     assert_eq!(item.discard_reason, ALDIS_TC_DISCARD_NONE);
-    assert_eq!(item.len, frame.len());
+    assert_eq!(item.range.len, frame.len());
     assert_eq!(item.frame.layout.frame_len, frame.len());
     assert_eq!(offset, frame.len());
 
@@ -429,7 +373,7 @@ fn stream_reports_the_discard_reason() {
     assert_eq!(item.kind, ALDIS_TC_STREAM_DISCARDED);
     assert_eq!(item.discard_reason, ALDIS_TC_DISCARD_UNEXPECTED_SPACECRAFT);
     assert_eq!(item.error_field, ALDIS_FIELD_SPACECRAFT_ID);
-    assert_eq!(item.len, frame.len());
+    assert_eq!(item.range.len, frame.len());
     assert_eq!(offset, frame.len());
 
     // A configuration error fails the call with an error code and writes no item.
@@ -730,7 +674,7 @@ fn the_stream_intake_pipeline() {
         )
     };
     assert_eq!(
-        (status, item.kind, item.offset, item.len, offset),
+        (status, item.kind, item.range.offset, item.range.len, offset),
         (
             ALDIS_OK,
             ALDIS_TC_STREAM_ACCEPTED,
@@ -758,7 +702,7 @@ fn the_stream_intake_pipeline() {
         )
     };
     assert_eq!(
-        (status, item.kind, item.offset, item.len, offset),
+        (status, item.kind, item.range.offset, item.range.len, offset),
         (
             ALDIS_OK,
             ALDIS_TC_STREAM_ACCEPTED,
@@ -788,8 +732,8 @@ fn the_stream_intake_pipeline() {
         (
             status,
             item.kind,
-            item.offset,
-            item.len,
+            item.range.offset,
+            item.range.len,
             item.discard_reason,
             offset
         ),
@@ -820,7 +764,7 @@ fn the_stream_intake_pipeline() {
         )
     };
     assert_eq!(
-        (status, item.kind, item.len, offset),
+        (status, item.kind, item.range.len, offset),
         (ALDIS_OK, ALDIS_TC_STREAM_END, 0, unit.len())
     );
 }
@@ -860,7 +804,7 @@ fn stream_rejects_overlapping_pointers() {
         aldis_tc_stream_next(
             unit.as_ptr(),
             unit.len(),
-            &raw mut item.offset,
+            &raw mut item.range.offset,
             &raw const mc,
             vcs.as_ptr(),
             vcs.len(),

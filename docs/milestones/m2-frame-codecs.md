@@ -122,7 +122,7 @@ Each codec module is done when:
 | 4 | `writer` | One-shot and two-phase writers: FSH ID octet, OCF flag from the configuration, FECF; counts, sync flag, and FHP from the caller | TM-009, API-020…023, GEN-052 |
 | 5 | OID writer | FHP `0x7FE`, data field from a caller's `OidGenerator`, VC configured for packets | TM-010 |
 | 6 | `validate` | Frame against the master channel configuration: SCID, VCID, OCF flag, FSH presence and length, Sync Flag against data field content | TM-011 |
-| 7 | C ABI | `aldis_tm_*` (D14) | CABI-010…012, CABI-033 |
+| 7 | C ABI | `aldis_tm_*` (D14) | CABI-010…012 |
 
 **Done when:** every TM requirement is traced, and `tm/minimal`, `fsh_ocf_fecf`, `fhp_values`, `oid_sequence`, `security_layout`, and `invalid` pass through the Rust API and the C ABI.
 
@@ -137,7 +137,7 @@ Each codec module is done when:
 | 5 | `clcw` | `Clcw` encode and decode, all fields; strict checks type, version, and spares; any COP in Effect value exposed; Status Field passed through | TC-030, TC-031 |
 | 6 | `delimit` | Frame Delimiting and Fill Removal over one clean decoded data unit (232.0 §4.4.9.2; Cor. 1 adds that a decoding failure discards every frame of the CLTU, which the caller enforces by passing only clean units) | TC-020 |
 | 7 | `validate` | Frame Validation Checks a–e, each with a distinct reason; invalid VCID and MAP ID; identical for Type-A and Type-B | TC-021…023 |
-| 8 | C ABI | `aldis_tc_*`, `aldis_clcw_*`, the delimiter as a stateless call (D14) | CABI-010…012, CABI-033 |
+| 8 | C ABI | `aldis_tc_*`, `aldis_clcw_*`, the delimiter as a stateless call (D14) | CABI-010…012 |
 
 **Done when:** every TC requirement is traced, and `tc/ad`, `bd`, `bc_unlock`, `bc_setvr`, `segment_header`, `max_length`, `delimit_multiple_frames_with_fill`, `validation_failures`, and `clcw` pass through the Rust API and the C ABI.
 
@@ -152,7 +152,7 @@ Each codec module is done when:
 | 5 | `mpdu`, `bpdu` | First Header Pointer and Bitstream Data Pointer classification; the Issue ≤4 M_PDU header (D11); B_PDU zone limit (OI-35) | AOS-003, AOS-017, AOS-018 |
 | 6 | `writer` | FHEC and FECF computed; counts, cycle, replay flag, and data field from the caller; OID frames on VCID 63 from the `OidGenerator` | AOS-016, AOS-019, API-020…023 |
 | 7 | `anomaly` | The flag list as D9 settles it | API-032, API-033 |
-| 8 | C ABI | `aldis_aos_*` (D14) | CABI-010…012, CABI-033 |
+| 8 | C ABI | `aldis_aos_*` (D14) | CABI-010…012 |
 
 **Done when:** every AOS requirement is traced, and `aos/minimal`, `fhec_encode`, `fhec_correct_1_symbol`, `fhec_correct_2_symbols`, `fhec_miscorrection`, `fhec_uncorrectable`, `insert_zone`, `mpdu_pointers`, `bpdu_pointers`, `oid`, `issue4_compat`, and `scid_10bit` pass through the Rust API and the C ABI.
 
@@ -168,7 +168,7 @@ Each codec module is done when:
 | 6 | `writer` | Frame Length, VCF Count Length, TFDF header, FECF; OID frames on VCID 63, MAP 0, rule `001`, UPID "Only Idle Data", LVO at the last TFDZ octet, fixed-length channels only | USLP-009, USLP-010 (as D8 settles it), API-020…023 |
 | 7 | `anomaly` | The flag list as D9 settles it | API-032, API-033 |
 | 8 | `delimit`, `validate` | Frame Delimiting and Fill Data Removal, and the USLP Frame Validation Checks a–e, for a physical channel over TC Synchronization and Channel Coding (D17) | USLP-014, USLP-015 |
-| 9 | C ABI | `aldis_uslp_*`, the delimiter as a stateless call (D14) | CABI-010…012, CABI-033 |
+| 9 | C ABI | `aldis_uslp_*`, the delimiter as a stateless call (D14) | CABI-010…012 |
 
 USLP-011 (no mixing of truncated and full frames in one C&S data unit) belongs to the multiplexing engine and is traced in M4; the codec documents it.
 

@@ -47,7 +47,7 @@ use aldis_ffi::aos::{
 };
 use aldis_ffi::crc::aldis_crc16;
 use aldis_ffi::epp::{aldis_epp_decode, aldis_epp_packet_t, aldis_epp_peek_length};
-use aldis_ffi::error::{ALDIS_ERR_INVALID_FIELD, ALDIS_ERROR_DETAIL_MIN_SIZE};
+use aldis_ffi::error::ALDIS_ERR_INVALID_FIELD;
 use aldis_ffi::ocf::{
     ALDIS_OCF_CLCW, ALDIS_OCF_PROJECT_SPECIFIC, ALDIS_OCF_SDLS_FSR, aldis_ocf_check,
     aldis_ocf_classify,
@@ -120,31 +120,6 @@ fn spp(data: &[u8], mode: DecodeMode, c_mode: u32) {
         )
     };
     expect(&rust, status, &detail);
-    // With only the fixed prefix of the detail, the same status and prefix, nothing after it.
-    let mut short = aldis_error_detail_t {
-        struct_size: ALDIS_ERROR_DETAIL_MIN_SIZE,
-        needed: u64::MAX,
-        ..aldis_error_detail_t::default()
-    };
-    // SAFETY: as above.
-    let again = unsafe {
-        aldis_spp_decode(
-            data.as_ptr(),
-            data.len(),
-            c_mode,
-            &raw mut view,
-            &raw mut short,
-        )
-    };
-    assert_eq!(again, status);
-    assert_eq!(
-        (short.kind, short.field, short.detail),
-        (detail.kind, detail.field, detail.detail)
-    );
-    assert_eq!(
-        (short.struct_size, short.needed),
-        (ALDIS_ERROR_DETAIL_MIN_SIZE, u64::MAX)
-    );
     if let Ok(p) = rust {
         assert_eq!(
             (
@@ -162,7 +137,7 @@ fn spp(data: &[u8], mode: DecodeMode, c_mode: u32) {
             (view.secondary_header_flag, view.idle, view.anomalies),
             (p.has_secondary_header(), p.is_idle(), p.anomalies().bits())
         );
-        assert_eq!(&data[view.data_offset..][..view.data_len], p.data_field());
+        assert_eq!(&data[view.data.offset..][..view.data.len], p.data_field());
         assert_eq!(view.packet_len, p.len());
     }
     let rust = SpacePacket::peek_length(data);
@@ -209,7 +184,7 @@ fn epp(data: &[u8], mode: DecodeMode, c_mode: u32) {
             (view.packet_len, view.anomalies),
             (p.header().packet_len(), p.anomalies().bits())
         );
-        assert_eq!(&data[view.data_offset..][..view.data_len], p.data());
+        assert_eq!(&data[view.data.offset..][..view.data.len], p.data());
     }
     let rust = EncapsulationPacket::peek_length(data);
     let mut len = 0;
@@ -281,7 +256,6 @@ fn time(data: &[u8], mode: DecodeMode, c_mode: u32) {
     }
     let rust = AsciiTime::parse(data, &AsciiOptions::DEFAULT);
     let options = aldis_time_ascii_options_t {
-        struct_size: u32::try_from(size_of::<aldis_time_ascii_options_t>()).unwrap(),
         max_fraction_digits: 12,
     };
     let mut a = aldis_time_ascii_t::default();
@@ -446,26 +420,26 @@ fn tm_same(view: &aldis_tm_frame_t, frame: &TmFrame<'_>) {
     assert_eq!(c_layout.frame_len, frame.len());
     let fsh = ranges.secondary();
     assert_eq!(
-        span(c_layout.fsh_data_offset, c_layout.fsh_data_len),
+        span(c_layout.fsh_data.offset, c_layout.fsh_data.len),
         (fsh.start + 1).min(fsh.end)..fsh.end
     );
     assert_eq!(
         span(
-            c_layout.security_header_offset,
-            c_layout.security_header_len
+            c_layout.security_header.offset,
+            c_layout.security_header.len
         ),
         ranges.security_header()
     );
-    assert_eq!(span(c_layout.data_offset, c_layout.data_len), ranges.data());
+    assert_eq!(span(c_layout.data.offset, c_layout.data.len), ranges.data());
     assert_eq!(
         span(
-            c_layout.security_trailer_offset,
-            c_layout.security_trailer_len
+            c_layout.security_trailer.offset,
+            c_layout.security_trailer.len
         ),
         ranges.security_trailer()
     );
-    assert_eq!(span(c_layout.ocf_offset, c_layout.ocf_len), ranges.ocf());
-    assert_eq!(span(c_layout.fecf_offset, c_layout.fecf_len), ranges.fecf());
+    assert_eq!(span(c_layout.ocf.offset, c_layout.ocf.len), ranges.ocf());
+    assert_eq!(span(c_layout.fecf.offset, c_layout.fecf.len), ranges.fecf());
 }
 
 /// The C ABI of `aldis-tm` agrees with `aldis-tm` on a frame of the input's length (M2 plan
@@ -477,7 +451,6 @@ fn tm_same(view: &aldis_tm_frame_t, frame: &TmFrame<'_>) {
 #[expect(clippy::too_many_lines, reason = "one comparison per C function")]
 fn tm(data: &[u8], fecf: bool, mode: DecodeMode, c_mode: u32) {
     let pc = aldis_tm_config_t {
-        struct_size: u32::try_from(size_of::<aldis_tm_config_t>()).unwrap(),
         fecf: u8::from(fecf),
         frame_len: data.len(),
     };
@@ -546,14 +519,12 @@ fn tm(data: &[u8], fecf: bool, mode: DecodeMode, c_mode: u32) {
     // A master channel of the frame's SCID; VC n has a Security Header of n % 3 octets and a
     // Trailer of n % 2.
     let mc = aldis_tm_mc_config_t {
-        struct_size: u32::try_from(size_of::<aldis_tm_mc_config_t>()).unwrap(),
         scid: h.scid.get(),
         fsh_len: 0,
         ocf: 0,
         pc,
     };
     let vcs: [aldis_tm_vc_config_t; 8] = core::array::from_fn(|n| aldis_tm_vc_config_t {
-        struct_size: u32::try_from(size_of::<aldis_tm_vc_config_t>()).unwrap(),
         vcid: u8::try_from(n).unwrap(),
         content: ALDIS_TM_CONTENT_PACKETS,
         fsh_len: 0,
@@ -639,10 +610,6 @@ mod tc_ffi {
 
     use super::expect;
 
-    fn size<T>() -> u32 {
-        u32::try_from(size_of::<T>()).unwrap()
-    }
-
     /// The master channel of `scid` as C structs: VC `n` of 0 to 7, VC 0 with frames of at most
     /// 32 octets; MAPs 0 to 3 on each odd VC, MAP `m` with SDLS `m % 3` / `(m + 1) % 2`.
     fn c_channels(
@@ -654,17 +621,14 @@ mod tc_ffi {
         Vec<aldis_tc_map_config_t>,
     ) {
         let mc = aldis_tc_mc_config_t {
-            struct_size: size::<aldis_tc_mc_config_t>(),
             scid,
             pc: aldis_tc_config_t {
-                struct_size: size::<aldis_tc_config_t>(),
                 fecf: u8::from(fecf),
                 max_frame_len: 1024,
             },
         };
         let vcs = (0..8_u8)
             .map(|n| aldis_tc_vc_config_t {
-                struct_size: size::<aldis_tc_vc_config_t>(),
                 vcid: n,
                 segment_header: n % 2,
                 security_header_len: if n % 2 == 0 { n % 5 } else { 0 },
@@ -676,7 +640,6 @@ mod tc_ffi {
             .filter(|n| n % 2 == 1)
             .flat_map(|vcid| {
                 (0..4_u8).map(move |m| aldis_tc_map_config_t {
-                    struct_size: size::<aldis_tc_map_config_t>(),
                     vcid,
                     map_id: m,
                     security_header_len: m % 3,
@@ -762,20 +725,20 @@ mod tc_ffi {
         assert_eq!(view.anomalies, f.anomalies().bits());
         let l = &view.layout;
         assert_eq!(l.frame_len, f.len());
-        assert_eq!(l.segment_header_len, usize::from(sh.is_some()));
+        assert_eq!(l.segment_header.len, usize::from(sh.is_some()));
         assert_eq!(
-            (l.security_header_offset, l.security_header_len),
+            (l.security_header.offset, l.security_header.len),
             (at(data, f.security_header()), f.security_header().len())
         );
         assert_eq!(
-            (l.data_offset, l.data_len),
+            (l.data.offset, l.data.len),
             (at(data, f.data_field()), f.data_field().len())
         );
         assert_eq!(
-            (l.security_trailer_offset, l.security_trailer_len),
+            (l.security_trailer.offset, l.security_trailer.len),
             (at(data, f.security_trailer()), f.security_trailer().len())
         );
-        assert_eq!(l.fecf_offset + l.fecf_len, f.len());
+        assert_eq!(l.fecf.offset + l.fecf.len, f.len());
     }
 
     #[expect(unsafe_code, reason = "calls the C ABI with valid pointers")]
@@ -869,12 +832,12 @@ mod tc_ffi {
                 }
                 Some(IntakeItem::Accepted { frame, .. }) => {
                     assert_eq!(item.kind, ALDIS_TC_STREAM_ACCEPTED);
-                    assert_eq!(item.len, frame.len());
+                    assert_eq!(item.range.len, frame.len());
                     same(&item.frame, frame.octets(), &frame);
                 }
                 Some(IntakeItem::Discarded { reason, octets, .. }) => {
                     assert_eq!(item.kind, ALDIS_TC_STREAM_DISCARDED);
-                    assert_eq!(item.len, octets.len());
+                    assert_eq!(item.range.len, octets.len());
                     assert_eq!(item.discard_reason, u32::from(reason.code()));
                 }
             }
@@ -1019,26 +982,26 @@ fn aos_same(view: &aldis_aos_frame_t, frame: &AosFrame<'_>) {
     let span = |at: usize, len: usize| at..at + len;
     assert_eq!(c.frame_len, frame.len());
     assert_eq!(
-        span(c.insert_zone_offset, c.insert_zone_len),
+        span(c.insert_zone.offset, c.insert_zone.len),
         ranges.secondary()
     );
     assert_eq!(
-        span(c.security_header_offset, c.security_header_len),
+        span(c.security_header.offset, c.security_header.len),
         ranges.security_header()
     );
-    assert_eq!(span(c.data_offset, c.data_len), ranges.data());
+    assert_eq!(span(c.data.offset, c.data.len), ranges.data());
     let zone = frame.data_unit().zone();
     let zone_start = zone.as_ptr().addr() - frame.as_bytes().as_ptr().addr();
     assert_eq!(
-        span(c.zone_offset, c.zone_len),
+        span(c.zone.offset, c.zone.len),
         span(zone_start, zone.len())
     );
     assert_eq!(
-        span(c.security_trailer_offset, c.security_trailer_len),
+        span(c.security_trailer.offset, c.security_trailer.len),
         ranges.security_trailer()
     );
-    assert_eq!(span(c.ocf_offset, c.ocf_len), ranges.ocf());
-    assert_eq!(span(c.fecf_offset, c.fecf_len), ranges.fecf());
+    assert_eq!(span(c.ocf.offset, c.ocf.len), ranges.ocf());
+    assert_eq!(span(c.fecf.offset, c.fecf.len), ranges.fecf());
 }
 
 /// The C ABI of `aldis-aos` agrees with `aldis-aos` on a frame of the input's length, on a
@@ -1117,7 +1080,6 @@ fn aos(data: &[u8], selector: u8, mode: DecodeMode, c_mode: u32) {
         aos_pdu_same(&pdu, &DataUnit::Bpdu(b));
     }
     let pc = aldis_aos_config_t {
-        struct_size: u32::try_from(size_of::<aldis_aos_config_t>()).unwrap(),
         fhec: u8::from(fhec),
         fecf: u8::from(fecf),
         edition: c_edition,
@@ -1160,7 +1122,6 @@ fn aos(data: &[u8], selector: u8, mode: DecodeMode, c_mode: u32) {
     aos_header_same(&header, &h);
     // A master channel of the frame's SCID with every data VCID.
     let mc = aldis_aos_mc_config_t {
-        struct_size: u32::try_from(size_of::<aldis_aos_mc_config_t>()).unwrap(),
         scid: h.scid().get(),
         pc,
     };
@@ -1177,7 +1138,6 @@ fn aos(data: &[u8], selector: u8, mode: DecodeMode, c_mode: u32) {
         ),
     ];
     let vcs: [aldis_aos_vc_config_t; 63] = core::array::from_fn(|n| aldis_aos_vc_config_t {
-        struct_size: u32::try_from(size_of::<aldis_aos_vc_config_t>()).unwrap(),
         vcid: u8::try_from(n).unwrap(),
         content: contents[n % 4].0,
         ocf: u8::from(n % 2 == 1),
@@ -1264,20 +1224,20 @@ fn uslp_same(view: &aldis_uslp_frame_t, frame: &UslpFrame<'_>, data: &[u8]) {
     let of = |s: &[u8]| span(uslp_offset(data, s), s.len());
     assert_eq!(l.frame_len, frame.len());
     assert_eq!(
-        span(l.security_header_offset, l.security_header_len),
+        span(l.security_header.offset, l.security_header.len),
         of(frame.security_header())
     );
-    assert_eq!(span(l.tfdz_offset, l.tfdz_len), of(frame.tfdz()));
-    assert_eq!(l.tfdf_header_offset + tfdf.len(), l.tfdz_offset);
+    assert_eq!(span(l.tfdz.offset, l.tfdz.len), of(frame.tfdz()));
+    assert_eq!(l.tfdf_header.offset + tfdf.len(), l.tfdz.offset);
     assert_eq!(
-        span(l.security_trailer_offset, l.security_trailer_len),
+        span(l.security_trailer.offset, l.security_trailer.len),
         of(frame.security_trailer())
     );
     assert_eq!(
-        l.ocf_offset,
-        l.security_trailer_offset + l.security_trailer_len
+        l.ocf.offset,
+        l.security_trailer.offset + l.security_trailer.len
     );
-    assert_eq!(l.fecf_offset + l.fecf_len, l.frame_len);
+    assert_eq!(l.fecf.offset + l.fecf.len, l.frame_len);
     if let Some(full) = frame.full() {
         let h = full.header();
         assert_eq!(
@@ -1295,17 +1255,17 @@ fn uslp_same(view: &aldis_uslp_frame_t, frame: &UslpFrame<'_>, data: &[u8]) {
         };
         assert_eq!(view.kind, kind);
         assert_eq!(
-            span(l.insert_zone_offset, l.insert_zone_len),
+            span(l.insert_zone.offset, l.insert_zone.len),
             of(full.insert_zone())
         );
-        assert_eq!(l.ocf_len, if full.ocf().is_some() { OCF_LEN } else { 0 });
+        assert_eq!(l.ocf.len, if full.ocf().is_some() { OCF_LEN } else { 0 });
         assert_eq!(view.has_fecf.then_some(view.fecf), full.fecf());
     } else {
         assert_eq!(
             (view.kind, view.ocf_flag, view.vcf_count_len, view.vcf_count),
             (ALDIS_USLP_KIND_EXPEDITED, false, 0, 0)
         );
-        assert_eq!((l.insert_zone_len, l.ocf_len, l.fecf_len), (0, 0, 0));
+        assert_eq!((l.insert_zone.len, l.ocf.len, l.fecf.len), (0, 0, 0));
         assert!(!view.has_fecf);
     }
 }
@@ -1339,7 +1299,6 @@ fn uslp_channels(
         ALDIS_USLP_FRAME_VARIABLE
     };
     let pc = aldis_uslp_config_t {
-        struct_size: u32::try_from(size_of::<aldis_uslp_config_t>()).unwrap(),
         frame_type,
         fecf: u8::from(fecf),
         frame_len: if fixed { data.len() } else { 1024 },
@@ -1350,7 +1309,6 @@ fn uslp_channels(
         },
     };
     let vc = aldis_uslp_vc_config_t {
-        struct_size: u32::try_from(size_of::<aldis_uslp_vc_config_t>()).unwrap(),
         scid,
         vcid,
         frame_type,
@@ -1377,7 +1335,6 @@ fn uslp_channels(
     let maps = core::array::from_fn(|m| {
         let m = u8::try_from(m).unwrap();
         aldis_uslp_map_config_t {
-            struct_size: u32::try_from(size_of::<aldis_uslp_map_config_t>()).unwrap(),
             scid,
             vcid,
             map_id: m,
@@ -1537,12 +1494,12 @@ fn uslp(data: &[u8], selector: u8, mode: DecodeMode, c_mode: u32) {
             }
             Some(UslpIntakeItem::Accepted { frame, .. }) => {
                 assert_eq!(item.kind, ALDIS_USLP_STREAM_ACCEPTED);
-                assert_eq!(item.len, frame.len());
+                assert_eq!(item.range.len, frame.len());
                 uslp_same(&item.frame, &frame, frame.octets());
             }
             Some(UslpIntakeItem::Discarded { reason, octets, .. }) => {
                 assert_eq!(item.kind, ALDIS_USLP_STREAM_DISCARDED);
-                assert_eq!(item.len, octets.len());
+                assert_eq!(item.range.len, octets.len());
                 assert_eq!(item.discard_reason, u32::from(reason.code()));
             }
         }

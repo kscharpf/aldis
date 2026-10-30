@@ -166,13 +166,13 @@ Each codec file has:
 | Category | `abi-misuse` |
 | Status | `residual` |
 | Severity | S1 |
-| Failure mode | A C caller passes a null pointer, an inconsistent length, a struct of the wrong size, misaligned or uninitialised helper storage, or a stale handle, and the library does anything but return an error |
+| Failure mode | A C caller passes a null pointer, an inconsistent length, a struct of another layout (a header and a library of different versions), misaligned or uninitialised helper storage, or a stale handle, and the library does anything but return an error |
 | Cause | A defect in the caller |
 | Mission effect | Undefined behaviour in the caller's process |
-| Requirements | CABI-022, CABI-021, CABI-031, CABI-032, CABI-033, GEN-071 |
-| Evidence | `test:crates/aldis-ffi/tests/tc.rs::encode_arguments_are_checked`; `test:crates/aldis-ffi/tests/tm.rs::vc_arrays_step_by_their_struct_size`; `test:crates/aldis-ffi/tests/uslp.rs::content_and_fields_are_checked_as_arguments`; `test:crates/aldis-ffi/tests/tc.rs::the_stream_intake_pipeline`; `fuzz:ffi_decode`; `record:CABI-010`; `record:CABI-030` |
-| Residual risk | C cannot tell a valid pointer from a wrong non-null one, or a length from the true size of the buffer behind it: CABI-022 checks null pointers and the consistency of lengths, and a wrong non-null pointer or an overstated length stays undefined behaviour the library cannot detect. No check runs the C ABI under Miri (GEN-071; `gh:#71`, `df:DF-7`), and the C harness with sanitizers is M5's (VER-026) |
-| Assumptions | `asm:ASM-6` |
+| Requirements | CABI-022, CABI-021, CABI-031, CABI-032, CABI-060, GEN-071 |
+| Evidence | `test:crates/aldis-ffi/tests/tc.rs::encode_arguments_are_checked`; `test:crates/aldis-ffi/tests/tm.rs::vc_arrays_are_c_arrays`; `test:crates/aldis-ffi/tests/uslp.rs::content_and_fields_are_checked_as_arguments`; `test:crates/aldis-ffi/tests/tc.rs::the_stream_intake_pipeline`; `fuzz:ffi_decode`; `record:CABI-010`; `record:CABI-030` |
+| Residual risk | C cannot tell a valid pointer from a wrong non-null one, or a length from the true size of the buffer behind it: CABI-022 checks null pointers and the consistency of lengths, and a wrong non-null pointer or an overstated length stays undefined behaviour the library cannot detect. No check runs the C ABI under Miri (GEN-071; `gh:#71`, `df:DF-7`), and the C harness with sanitizers is M5's (VER-026). Configuration and detail structs carry no size member (OI-57 convention 5), so a header and a library of different versions are not detected by any call: a library whose `sym:aldis_error_detail_t` is larger than the caller's writes past the caller's struct, and an array of configuration structs of another size is stepped with the wrong stride. `sym:aldis_abi_version` (CABI-060, `test:crates/aldis-ffi/tests/abi.rs::the_library_reports_its_abi_version`) lets the caller detect it, but only if it compares the result with `ALDIS_ABI_VERSION` at start-up |
+| Assumptions | `asm:ASM-6`, `asm:ASM-13` |
 | Proposals | — |
 | Claims | `ac:AC-6.2` |
 

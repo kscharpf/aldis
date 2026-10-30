@@ -4,8 +4,8 @@
 //! catalogue (03-api-model.md §9), one `ALDIS_ERR_*` constant per kind, declared by
 //! [`aldis_status`], which `cargo xtask status --write` generates from that table (the module
 //! `status`, re-exported here). A code is `ErrorKind::code()` and is never renumbered; the build
-//! checks each constant against its `ErrorKind`. An optional [`aldis_error_detail_t`] receives the kind, the field code,
-//! and the detail of the error.
+//! checks each constant against its `ErrorKind`. An optional [`aldis_error_detail_t`] receives the
+//! kind, the field code, and the detail of the error.
 
 use aldis::core::{Error, ErrorDetail};
 
@@ -19,70 +19,31 @@ pub const ALDIS_DETAIL_NEEDED: u16 = 1;
 /// (GEN-041, CABI-021).
 pub const ALDIS_DETAIL_EXPECTED: u16 = 2;
 
-/// The smallest `struct_size` of an [`aldis_error_detail_t`]: `struct_size`, `kind`, `field`,
-/// and `detail`, 12 octets (CABI-021, CABI-033).
-pub const ALDIS_ERROR_DETAIL_MIN_SIZE: u32 = 12;
-
 /// Detail of a failed call, written only when the call fails (CABI-021, GEN-041).
 ///
 /// Every function takes an optional `aldis_error_detail_t *` as its last parameter; `NULL`
-/// is allowed. The caller sets `struct_size`, at least `ALDIS_ERROR_DETAIL_MIN_SIZE`; the
-/// library writes only the members that lie wholly inside it, never `struct_size` itself, so
-/// a later ABI version can append members (CABI-033). A smaller `struct_size`, or a
-/// misaligned pointer, fails the call with `ALDIS_ERR_INVALID_FIELD` before it does anything,
-/// and the detail is not written.
+/// is allowed. The library writes the whole struct when the call fails. A misaligned pointer
+/// fails the call with `ALDIS_ERR_INVALID_FIELD` before it does anything, and the detail is not
+/// written.
 ///
 /// A violation of CABI-022 (a `NULL` or misaligned pointer, an inconsistent length,
-/// overlapping buffers, a `struct_size` too small, or an enumeration value with no constant)
-/// is `ALDIS_ERR_INVALID_FIELD` with field 0 and no detail.
+/// overlapping buffers, or an enumeration value with no constant) is
+/// `ALDIS_ERR_INVALID_FIELD` with field 0 and no detail.
 #[repr(C)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct aldis_error_detail_t {
-    /// `sizeof(aldis_error_detail_t)`, set by the caller before the call (CABI-033).
-    pub struct_size: u32,
     /// The error kind: its catalogue code, the returned status (03 §9).
     pub kind: u32,
     /// The field code of the field catalogue (03 §9.1, API-082), 0 for none.
     pub field: u16,
     /// `ALDIS_DETAIL_NONE`, `ALDIS_DETAIL_NEEDED`, or `ALDIS_DETAIL_EXPECTED`.
     pub detail: u16,
-    /// Reserved, written as 0.
-    pub reserved: u32,
     /// Octets (or bits, where documented) required, for `ALDIS_DETAIL_NEEDED`.
     pub needed: u64,
     /// The value or limit the standard or configuration requires, for `ALDIS_DETAIL_EXPECTED`.
     pub expected: u64,
     /// The value found, for `ALDIS_DETAIL_EXPECTED`.
     pub found: u64,
-}
-
-/// `sizeof(aldis_error_detail_t)`.
-const DETAIL_SIZE: u32 = {
-    let n = size_of::<aldis_error_detail_t>();
-    assert!(n <= 0xFFFF, "the detail fits its struct_size");
-    #[expect(
-        clippy::as_conversions,
-        clippy::cast_possible_truncation,
-        reason = "checked above to fit"
-    )]
-    let size = n as u32;
-    size
-};
-
-impl Default for aldis_error_detail_t {
-    /// An empty detail whose `struct_size` is the size of this struct.
-    fn default() -> aldis_error_detail_t {
-        aldis_error_detail_t {
-            struct_size: DETAIL_SIZE,
-            kind: 0,
-            field: 0,
-            detail: ALDIS_DETAIL_NONE,
-            reserved: 0,
-            needed: 0,
-            expected: 0,
-            found: 0,
-        }
-    }
 }
 
 impl From<Error> for aldis_error_detail_t {
@@ -153,8 +114,6 @@ mod tests {
         assert_eq!(
             d,
             aldis_error_detail_t {
-                struct_size: 40,
-                reserved: 0,
                 kind: 5,
                 field: 5,
                 detail: ALDIS_DETAIL_EXPECTED,
@@ -174,16 +133,13 @@ mod tests {
 
     #[test]
     fn the_detail_layout_is_fixed() {
-        // req: CABI-021, CABI-033
+        // req: CABI-021
         use core::mem::offset_of;
-        assert_eq!(size_of::<aldis_error_detail_t>(), 40);
-        assert_eq!(offset_of!(aldis_error_detail_t, struct_size), 0);
-        let min = usize::try_from(ALDIS_ERROR_DETAIL_MIN_SIZE).unwrap();
-        assert_eq!(
-            offset_of!(aldis_error_detail_t, detail).checked_add(2),
-            Some(min)
-        );
-        assert_eq!(offset_of!(aldis_error_detail_t, needed), 16);
-        assert_eq!(aldis_error_detail_t::default().struct_size, 40);
+        assert_eq!(size_of::<aldis_error_detail_t>(), 32);
+        assert_eq!(offset_of!(aldis_error_detail_t, kind), 0);
+        assert_eq!(offset_of!(aldis_error_detail_t, field), 4);
+        assert_eq!(offset_of!(aldis_error_detail_t, detail), 6);
+        assert_eq!(offset_of!(aldis_error_detail_t, needed), 8);
+        assert_eq!(aldis_error_detail_t::default().detail, ALDIS_DETAIL_NONE);
     }
 }

@@ -110,7 +110,7 @@ WP-0 Infra, setup ───▶ WP-1a Spec readings ─┬─▶ WP-1b FARM-1 tab
 ### WP-6 C ABI handles & capacities (M) — CABI-030…033, CABI-040, API-082
 - C ABI exported functions `aldis_fop1_*` and `aldis_farm1_*` in `crates/aldis-ffi`.
 - Opaque storage with size/alignment validation and magic generation tags (CABI-031, CABI-032).
-- Build-time engine capacities from `capacities.toml` (`[fop1]`, `[farm1]`) reported via `aldis_limits` (CABI-030).
+- Build-time engine capacities from `capacities.toml` (`[fop1]`, `[farm1]`) published as `ALDIS_*_MAX_*` constants of the header (CABI-030).
 - Step-call APIs that return the actions of an input (CABI-040).
 - Regenerate `include/aldis/aldis.h`; exerciser link check covers FOP-1 and FARM-1 handles.
 - C ABI runner executing `cop1/` vectors through C interface.

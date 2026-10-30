@@ -2,7 +2,7 @@
 // Do not edit: change capacities.toml and regenerate.
 
 //! Build-time capacities of the C ABI (CABI-030, GEN-011): the `ALDIS_*_MAX_*` constants
-//! of the header, which `aldis_limits` reports at run time.
+//! of the header.
 
 /// APIDs that one `aldis_spp_tracker_t` tracks (SPP-011; M2 plan D5).
 ///

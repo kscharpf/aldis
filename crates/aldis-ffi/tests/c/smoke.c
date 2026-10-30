@@ -22,19 +22,15 @@ static void check(int ok, const char *what) {
  * the one-shot encoder and the decoder after a corrected header hit. */
 static void aos_smoke(void) {
     aldis_error_detail_t err;
-    err.struct_size = (uint32_t)sizeof err;
     aldis_aos_mc_config_t mc;
     memset(&mc, 0, sizeof mc);
-    mc.struct_size = (uint32_t)sizeof mc;
     mc.scid = 0x2A5;
-    mc.pc.struct_size = (uint32_t)sizeof mc.pc;
     mc.pc.fhec = 1;
     mc.pc.fecf = 1;
     mc.pc.edition = ALDIS_AOS_EDITION_ISSUE5;
     mc.pc.frame_len = 16;
     aldis_aos_vc_config_t vc;
     memset(&vc, 0, sizeof vc);
-    vc.struct_size = (uint32_t)sizeof vc;
     vc.vcid = 1;
     vc.content = ALDIS_AOS_CONTENT_MPDU;
     check(aldis_aos_mc_config_check(&mc, &vc, 1, &err) == ALDIS_OK, "aldis_aos_mc_config_check");
@@ -65,23 +61,18 @@ static void aos_smoke(void) {
           "aldis_aos_decode");
     check(view.header.scid == 0x2A5 && view.header.vcid == 1 &&
               view.header.corrected_symbols == 1 && view.pdu.pointer == ALDIS_AOS_POINTER_STARTS_AT &&
-              view.pdu.pointer_value == 0 && frame[view.layout.zone_offset] == 0x5A,
+              view.pdu.pointer_value == 0 && frame[view.layout.zone.offset] == 0x5A,
           "decoded AOS frame (CABI-012)");
 }
 
 int main(void) {
-    /* CABI-030: aldis_limits reports the build capacities. */
-    aldis_limits_t limits;
-    memset(&limits, 0, sizeof limits);
-    limits.struct_size = (uint32_t)sizeof limits;
-    check(aldis_limits(&limits) == ALDIS_OK, "aldis_limits");
-    check(limits.spp_tracker_max_apids == ALDIS_SPP_TRACKER_MAX_APIDS, "tracker capacity");
+    /* CABI-030: the build capacities are constants of the header. */
+    check(ALDIS_SPP_TRACKER_MAX_APIDS > 0, "tracker capacity");
 
     aos_smoke();
 
     /* A telemetry packet, APID 0x0A0, one octet of data, through encode and decode. */
     aldis_spp_config_t cfg;
-    cfg.struct_size = (uint32_t)sizeof cfg;
     cfg.max_packet_len = ALDIS_SPP_MAX_PACKET_LEN;
     aldis_spp_fields_t fields;
     memset(&fields, 0, sizeof fields);
@@ -94,7 +85,6 @@ int main(void) {
     size_t len = 0;
     aldis_error_detail_t err;
     memset(&err, 0, sizeof err);
-    err.struct_size = (uint32_t)sizeof err; /* CABI-021: the caller sets it */
     check(aldis_spp_encode(&cfg, &fields, NULL, 0, user, sizeof user, packet, sizeof packet,
                            &len, &err) == ALDIS_OK,
           "aldis_spp_encode");
@@ -104,7 +94,7 @@ int main(void) {
     check(aldis_spp_decode(packet, len, ALDIS_MODE_STRICT, &view, NULL) == ALDIS_OK,
           "aldis_spp_decode");
     check(view.fields.apid == 0x0A0 && view.fields.sequence_count == 5, "decoded fields");
-    check(view.data_offset == 6 && view.data_len == 1 && packet[view.data_offset] == 0x42,
+    check(view.data.offset == 6 && view.data.len == 1 && packet[view.data.offset] == 0x42,
           "data field offset and length (CABI-012)");
 
     /* D14: a prefix too short gives ALDIS_ERR_INCOMPLETE with `needed`. */
@@ -113,17 +103,6 @@ int main(void) {
           "peek_length of a short prefix");
     check(err.kind == 2 && err.detail == ALDIS_DETAIL_NEEDED && err.needed == 6,
           "Incomplete detail");
-
-    /* CABI-021: a struct_size below the fixed prefix is rejected; the prefix alone is enough. */
-    aldis_error_detail_t small;
-    memset(&small, 0xFF, sizeof small);
-    small.struct_size = ALDIS_ERROR_DETAIL_MIN_SIZE - 1;
-    check(aldis_spp_peek_length(packet, 3, &total, &small) == ALDIS_ERR_INVALID_FIELD,
-          "detail struct_size too small");
-    small.struct_size = ALDIS_ERROR_DETAIL_MIN_SIZE;
-    check(aldis_spp_peek_length(packet, 3, &total, &small) == ALDIS_ERR_INCOMPLETE &&
-              small.kind == 2 && small.needed == UINT64_MAX,
-          "detail written within its struct_size");
 
     /* CABI-022: a NULL output is rejected, and NULL detail is allowed. */
     check(aldis_spp_peek_length(packet, len, NULL, NULL) == ALDIS_ERR_INVALID_FIELD,
@@ -143,6 +122,13 @@ int main(void) {
     uint8_t idle[1];
     check(aldis_epp_idle(1, 0, idle, sizeof idle, &len, NULL) == ALDIS_OK && idle[0] == 0xE0,
           "aldis_epp_idle");
+
+    /* The library and the header are of one ABI version (CABI-060). */
+    check(aldis_abi_version() == ALDIS_ABI_VERSION &&
+              (aldis_abi_version() >> 16) == ALDIS_ABI_VERSION_MAJOR &&
+              ((aldis_abi_version() >> 8) & 0xFFu) == ALDIS_ABI_VERSION_MINOR &&
+              (aldis_abi_version() & 0xFFu) == ALDIS_ABI_VERSION_PATCH,
+          "aldis_abi_version matches the header (CABI-060)");
 
     /* The CRC-16, the OCF, and the OID generator of aldis-core (M2 plan D5, D14). */
     uint16_t crc = 0;
@@ -173,13 +159,10 @@ int main(void) {
      * decoder (M2 plan D14): the master channel and an array of one virtual channel. */
     aldis_tm_mc_config_t mc;
     memset(&mc, 0, sizeof mc);
-    mc.struct_size = (uint32_t)sizeof mc;
     mc.scid = 677;
-    mc.pc.struct_size = (uint32_t)sizeof mc.pc;
     mc.pc.frame_len = 16;
     aldis_tm_vc_config_t vc;
     memset(&vc, 0, sizeof vc);
-    vc.struct_size = (uint32_t)sizeof vc;
     vc.vcid = 5;
     vc.content = ALDIS_TM_CONTENT_PACKETS;
     aldis_tm_fields_t tm;
@@ -204,7 +187,7 @@ int main(void) {
           "aldis_tm_decode");
     check(tm_view.header.scid == 677 && tm_view.header.vcid == 5 &&
               tm_view.pointer == ALDIS_TM_POINTER_STARTS_AT &&
-              tm_view.layout.data_len == 10 && frame[tm_view.layout.data_offset] == 0xD0,
+              tm_view.layout.data.len == 10 && frame[tm_view.layout.data.offset] == 0xD0,
           "decoded TM frame (CABI-012)");
     check(aldis_tm_validate(frame, len, &mc, &vc, 1, ALDIS_MODE_STRICT, NULL) == ALDIS_OK,
           "aldis_tm_validate");
@@ -223,17 +206,14 @@ int main(void) {
     /* --- TC (M2 WP-3 module 8) ---
      * A Type-AD frame of VC 1 on SCID 0x155 through the one-shot encoder, followed by fill in
      * one data unit, delimited and validated (M2 plan D14); then a CLCW as a word. */
-    check(limits.tc_max_maps == ALDIS_TC_MAX_MAPS, "TC MAP capacity");
+    check(ALDIS_TC_MAX_MAPS > 0, "TC MAP capacity");
     aldis_tc_mc_config_t tc_mc;
     memset(&tc_mc, 0, sizeof tc_mc);
-    tc_mc.struct_size = (uint32_t)sizeof tc_mc;
     tc_mc.scid = 0x155;
-    tc_mc.pc.struct_size = (uint32_t)sizeof tc_mc.pc;
     tc_mc.pc.fecf = 1;
     tc_mc.pc.max_frame_len = 64;
     aldis_tc_vc_config_t tc_vc;
     memset(&tc_vc, 0, sizeof tc_vc);
-    tc_vc.struct_size = (uint32_t)sizeof tc_vc;
     tc_vc.vcid = 1;
     tc_vc.max_frame_len = 64;
     aldis_tc_fields_t tc;
@@ -263,8 +243,8 @@ int main(void) {
                                 ALDIS_MODE_STRICT, &s_item, &err) == ALDIS_OK &&
            s_item.kind != ALDIS_TC_STREAM_END) {
         if (s_item.kind == ALDIS_TC_STREAM_ACCEPTED) {
-            check(s_item.frame.header.sequence_number == 4 && s_item.frame.layout.data_len == 3 &&
-                      unit[s_item.offset + s_item.frame.layout.data_offset] == 1,
+            check(s_item.frame.header.sequence_number == 4 && s_item.frame.layout.data.len == 3 &&
+                      unit[s_item.range.offset + s_item.frame.layout.data.offset] == 1,
                   "stream TC frame (CABI-012)");
             stream_frames++;
         } else if (s_item.kind == ALDIS_TC_STREAM_DISCARDED) {
@@ -291,20 +271,17 @@ int main(void) {
      * the physical channel and arrays of one virtual channel and one MAP. */
     aldis_uslp_config_t upc;
     memset(&upc, 0, sizeof upc);
-    upc.struct_size = (uint32_t)sizeof upc;
     upc.frame_type = ALDIS_USLP_FRAME_VARIABLE;
     upc.fecf = 1;
     upc.frame_len = 64;
     aldis_uslp_vc_config_t uvc;
     memset(&uvc, 0, sizeof uvc);
-    uvc.struct_size = (uint32_t)sizeof uvc;
     uvc.scid = 0x155;
     uvc.vcid = 4;
     uvc.frame_type = ALDIS_USLP_FRAME_VARIABLE;
     uvc.security = ALDIS_USLP_SECURITY_VC;
     aldis_uslp_map_config_t umap;
     memset(&umap, 0, sizeof umap);
-    umap.struct_size = (uint32_t)sizeof umap;
     umap.scid = 0x155;
     umap.vcid = 4;
     check(aldis_uslp_vc_table_check(&upc, &uvc, 1, &umap, 1, &err) == ALDIS_OK,
@@ -335,7 +312,7 @@ int main(void) {
           "aldis_uslp_decode");
     check(!uview.truncated && uview.channel.scid == 0x155 && uview.channel.vcid == 4 &&
               uview.tfdf.rule == ALDIS_USLP_RULE_OCTET_STREAM && uview.upid_assigned &&
-              uview.layout.tfdz_len == 4 && uframe[uview.layout.tfdz_offset] == 0xD0,
+              uview.layout.tfdz.len == 4 && uframe[uview.layout.tfdz.offset] == 0xD0,
           "decoded USLP frame (CABI-012)");
     uframe[ulen - 1] ^= 1;
     size_t ustream_offset = 0;
@@ -352,10 +329,10 @@ int main(void) {
     check(aldis_uslp_stream_next(uframe, ulen, &ustream_offset, &upc, &uvc, 1, &umap, 1,
                                  ALDIS_MODE_STRICT, &us_item, NULL) == ALDIS_OK &&
               us_item.kind == ALDIS_USLP_STREAM_ACCEPTED &&
-              us_item.len == ulen &&
+              us_item.range.len == ulen &&
               ustream_offset == ulen,
           "aldis_uslp_stream_next accepts valid frame");
-    check(limits.uslp_max_vcs == ALDIS_USLP_MAX_VCS && limits.uslp_max_maps == ALDIS_USLP_MAX_MAPS,
+    check(ALDIS_USLP_MAX_VCS > 0 && ALDIS_USLP_MAX_MAPS > 0,
           "USLP channel table capacities");
     /* ---- end USLP ---- */
 

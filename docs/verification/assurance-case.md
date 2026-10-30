@@ -389,7 +389,7 @@ graph TD
 
 | Evidence | Shows | Requirements |
 |---|---|---|
-| `test:crates/aldis-ffi/tests/tc.rs::encode_arguments_are_checked`; `test:crates/aldis-ffi/tests/tm.rs::encode_arguments_are_checked`; `test:crates/aldis-ffi/tests/uslp.rs::content_and_fields_are_checked_as_arguments`; `test:crates/aldis-ffi/tests/tm.rs::vc_arrays_step_by_their_struct_size`; `test:crates/aldis-ffi/tests/uslp.rs::vc_and_map_arrays_step_by_their_struct_size` | Pointer, length, and struct-size checks of the frame functions | CABI-022, CABI-033 |
+| `test:crates/aldis-ffi/tests/tc.rs::encode_arguments_are_checked`; `test:crates/aldis-ffi/tests/tm.rs::encode_arguments_are_checked`; `test:crates/aldis-ffi/tests/uslp.rs::content_and_fields_are_checked_as_arguments`; `test:crates/aldis-ffi/tests/tm.rs::vc_arrays_are_c_arrays`; `test:crates/aldis-ffi/tests/uslp.rs::vc_and_map_arrays_are_c_arrays` | Pointer and length checks of the frame functions | CABI-022 |
 | `record:CABI-030` | The capacities of the helper storage, generated and checked | CABI-030 |
 
 ### AC-6.3 The C ABI library is freestanding
@@ -478,6 +478,7 @@ graph TD
 | ASM-10 | A consumer of a decoded CLCW checks that COP in Effect is COP-1 before it uses the Report Value or the flags, until FOP-1 exists (M3) | TC-030, API-031 (the listed exception); 232.0 §4.2.1.5.2; `proposal:P-TC-04` | Check `cop_in_effect` against the COP-1 value of COP in Effect after the CLCW decoder, the CLCW report decoder, and `sym:aldis_clcw_decode` (`hz:HZ-TC-11`) |
 | ASM-11 | A truncated USLP frame has no FECF, so the integrator protects it by other means | 732.1 Annex D1.2; `proposal:P-USLP-09` | Rely on the SDLS Security Trailer, or accept the residual of `hz:HZ-USLP-04` |
 | ASM-12 | Fill is added before randomization on a link that randomizes, or a truncated frame length of 6 octets is not configured on such a link | 732.1 §4.3.11.2.4 note 2; `proposal:P-USLP-08` | Choose one of the two for each link: the sending end adds Fill Data before randomization, so that the receiver sees `01010101`, or the mission gives no VC a truncated frame length of 6 (`hz:HZ-USLP-05`) |
+| ASM-13 | A C integrator compares `sym:aldis_abi_version` with the header's `ALDIS_ABI_VERSION` at start-up, and does not use a library whose version differs | CABI-060, CABI-021 | Refuse to start on a difference. A header and a library of different versions disagree on struct layouts (`sym:aldis_error_detail_t`, the configuration structs and their arrays), which no call can detect (`hz:HZ-X-05`, `hz:HZ-TC-14`) |
 
 ## Defeaters
 

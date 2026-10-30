@@ -151,7 +151,7 @@ Integrator obligations, in `asm:ASM-2` and `asm:ASM-4`: delimit with `FrameDelim
 | Cause | The receiver's managed parameters differ from the sender's (232.0 §5, §6.6), by a configuration or version error |
 | Mission effect | A command whose data is shifted by the Security Header's length, or that includes the CRC, is passed up as valid: a packet that does not parse, or an SDLS check run on the wrong octets |
 | Requirements | TC-004, TC-021, TC-022, API-070, API-072 |
-| Evidence | `vector:tc-ad-dec-005`; `vector:tc-seg-dec-005`; `vector:tc-bc-unlock-dec-003`; `vector:tc-bc-unlock-dec-007`; `vector:tc-bc-setvr-dec-012`; `vector:tc-dec-err-009`; `vector:tc-dec-err-010`; `vector:tc-seg-dec-err-001`; `vector:tc-val-009`; `test:crates/aldis-tc/src/view.rs::segment_header_and_sdls_slices`; `test:crates/aldis-ffi/tests/tc.rs::security_layouts_come_from_the_vc_or_its_map`; `test:crates/aldis-ffi/tests/tc.rs::channel_arrays_step_by_their_struct_size` |
+| Evidence | `vector:tc-ad-dec-005`; `vector:tc-seg-dec-005`; `vector:tc-bc-unlock-dec-003`; `vector:tc-bc-unlock-dec-007`; `vector:tc-bc-setvr-dec-012`; `vector:tc-dec-err-009`; `vector:tc-dec-err-010`; `vector:tc-seg-dec-err-001`; `vector:tc-val-009`; `test:crates/aldis-tc/src/view.rs::segment_header_and_sdls_slices`; `test:crates/aldis-ffi/tests/tc.rs::security_layouts_come_from_the_vc_or_its_map`; `test:crates/aldis-ffi/tests/tc.rs::channel_arrays_are_c_arrays` |
 | Residual risk | The tests show that the decoder applies the configuration it is given; nothing can show that the configuration is the sender's, because the FECF covers all octets of the frame and so cannot see a difference in how they are partitioned. The decoder does reject an unconfigured channel and a frame above the channel's maximum. The obligation of the integrator that the receiver's managed parameters are the sender's is `asm:ASM-8` |
 | Assumptions | `asm:ASM-8` |
 | Proposals | `proposal:P-TC-05` |
@@ -266,13 +266,13 @@ Integrator obligations, in `asm:ASM-2` and `asm:ASM-4`: delimit with `FrameDelim
 | Category | `abi-misuse` |
 | Status | `residual` |
 | Severity | S1 |
-| Failure mode | A C caller passes a frame type, decode mode, flag, Control Command, Sequence Flags value, struct size, or an offset into the data unit that is outside what the function accepts, and gets a frame or a CLCW instead of an error: for example a flag of 2 read as true, a frame type of 3 read as BC, or a `struct_size` too small for the members the library reads |
-| Cause | A defect in the C caller, or a header and library of different versions (CABI-033) |
+| Failure mode | A C caller passes a frame type, decode mode, flag, Control Command, Sequence Flags value, or an offset into the data unit that is outside what the function accepts, and gets a frame or a CLCW instead of an error: for example a flag of 2 read as true, or a frame type of 3 read as BC |
+| Cause | A defect in the C caller, or a header and library of different versions (CABI-060) |
 | Mission effect | A frame built or decoded under values the caller did not mean |
-| Requirements | CABI-021, CABI-022, CABI-033, RS-020 |
-| Evidence | `test:crates/aldis-ffi/tests/tc.rs::the_clcw_crosses_as_a_word`; `test:crates/aldis-ffi/tests/tc.rs::control_commands`; `test:crates/aldis-ffi/tests/tc.rs::encode_arguments_are_checked`; `test:crates/aldis-ffi/tests/tc.rs::channel_arrays_step_by_their_struct_size`; `test:crates/aldis-ffi/tests/tc.rs::the_stream_intake_pipeline`; `test:crates/aldis-ffi/src/abi.rs::modes_and_flags_take_only_their_constants`; `fuzz:ffi_decode` |
-| Residual risk | `fields` parses a frame type, a flag, and the Sequence Flags into their types and answers anything else with `InvalidField` (`file:crates/aldis-ffi/src/tc.rs`), `command` does the same for the Control Command, and the C ABI parsers of the mode and the flag accept only their constants. The tests above show each rejection. What no check can see is a wrong non-null pointer or an overstated length, which is `hz:HZ-X-05`; a stale buffer between `begin` and `finish` is `hz:HZ-TC-13` |
-| Assumptions | `asm:ASM-6` |
+| Requirements | CABI-021, CABI-022, CABI-060, RS-020 |
+| Evidence | `test:crates/aldis-ffi/tests/tc.rs::the_clcw_crosses_as_a_word`; `test:crates/aldis-ffi/tests/tc.rs::control_commands`; `test:crates/aldis-ffi/tests/tc.rs::encode_arguments_are_checked`; `test:crates/aldis-ffi/tests/tc.rs::channel_arrays_are_c_arrays`; `test:crates/aldis-ffi/tests/tc.rs::the_stream_intake_pipeline`; `test:crates/aldis-ffi/src/abi.rs::modes_and_flags_take_only_their_constants`; `fuzz:ffi_decode` |
+| Residual risk | `fields` parses a frame type, a flag, and the Sequence Flags into their types and answers anything else with `InvalidField` (`file:crates/aldis-ffi/src/tc.rs`), `command` does the same for the Control Command, and the C ABI parsers of the mode and the flag accept only their constants. The tests above show each rejection. What no check can see is a wrong non-null pointer or an overstated length, or a header and a library of different versions (the structs carry no size, so a configuration array is stepped with the wrong stride; the caller compares `sym:aldis_abi_version` with `ALDIS_ABI_VERSION`, `asm:ASM-13`), which are `hz:HZ-X-05`; a stale buffer between `begin` and `finish` is `hz:HZ-TC-13` |
+| Assumptions | `asm:ASM-6`, `asm:ASM-13` |
 | Proposals | — |
 | Claims | `ac:AC-6.2` |
 

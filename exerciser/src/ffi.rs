@@ -7,7 +7,6 @@
 use core::hint::black_box as bb;
 use core::ptr::null;
 
-use aldis_ffi::aldis_error_detail_t;
 use aldis_ffi::aos::{
     ALDIS_AOS_CONTENT_BPDU, ALDIS_AOS_CONTENT_MPDU, ALDIS_AOS_EDITION_ISSUE5, ALDIS_AOS_OID_VCID,
     ALDIS_AOS_POINTER_NONE, ALDIS_AOS_POINTER_STARTS_AT, ALDIS_AOS_POINTER_VALID_BITS,
@@ -27,7 +26,6 @@ use aldis_ffi::epp::{
 use aldis_ffi::error::{
     ALDIS_ERR_INCOMPLETE, ALDIS_ERR_INVALID_FIELD, ALDIS_ERR_INVALID_HANDLE, ALDIS_OK,
 };
-use aldis_ffi::limits::{aldis_limits, aldis_limits_t};
 use aldis_ffi::ocf::{ALDIS_OCF_CLCW, ALDIS_OCF_SDLS_FSR, aldis_ocf_check, aldis_ocf_classify};
 use aldis_ffi::oid::{
     ALDIS_OID_FIBONACCI, ALDIS_OID_GALOIS, ALDIS_OID_GENERATOR_WORDS, aldis_oid_generator_deinit,
@@ -68,6 +66,7 @@ use aldis_ffi::tm::{
     aldis_tm_header_decode, aldis_tm_header_t, aldis_tm_mc_config_check, aldis_tm_mc_config_t,
     aldis_tm_peek_length, aldis_tm_validate, aldis_tm_vc_config_t,
 };
+use aldis_ffi::{ALDIS_ABI_VERSION, aldis_abi_version, aldis_error_detail_t};
 // ---- USLP (M2 WP-5 module 9)
 use aldis_ffi::uslp::{
     ALDIS_USLP_FRAME_FIXED, ALDIS_USLP_FRAME_VARIABLE, ALDIS_USLP_KIND_EXPEDITED,
@@ -83,25 +82,17 @@ use aldis_ffi::{ALDIS_MODE_LENIENT, ALDIS_MODE_STRICT};
 
 use crate::exercise::Tally;
 
-/// `size_of::<T>()` as the `struct_size` of a configuration (CABI-033).
-fn size<T>() -> u32 {
-    u32::try_from(size_of::<T>()).unwrap_or(0)
-}
-
 /// A detail to pass to every call.
-/// Its `struct_size` is the size of the struct (CABI-021).
 fn detail() -> aldis_error_detail_t {
     aldis_error_detail_t {
-        struct_size: size::<aldis_error_detail_t>(),
         ..aldis_error_detail_t::default()
     }
 }
 
 const PACKET: [u8; 10] = [0x18, 0x23, 0xC0, 0x07, 0x00, 0x03, 0xA0, 0xB0, 0xB1, 0xEE];
 
-fn spp_cfg() -> aldis_spp_config_t {
+const fn spp_cfg() -> aldis_spp_config_t {
     aldis_spp_config_t {
-        struct_size: size::<aldis_spp_config_t>(),
         max_packet_len: ALDIS_SPP_MAX_PACKET_LEN,
     }
 }
@@ -117,7 +108,6 @@ const fn spp_fields() -> aldis_spp_fields_t {
 
 fn format(code: u32) -> aldis_time_format_t {
     aldis_time_format_t {
-        struct_size: size::<aldis_time_format_t>(),
         code,
         coarse_octets: bb(2),
         fine_octets: bb(1),
@@ -127,7 +117,6 @@ fn format(code: u32) -> aldis_time_format_t {
 
 fn absent_layout() -> aldis_spp_secondary_layout_t {
     aldis_spp_secondary_layout_t {
-        struct_size: size::<aldis_spp_secondary_layout_t>(),
         kind: ALDIS_SPP_SECONDARY_ABSENT,
         time_format: format(ALDIS_TIME_CUC),
         ..aldis_spp_secondary_layout_t::default()
@@ -151,7 +140,7 @@ fn spp(t: &mut Tally) {
                 &raw mut view,
                 &raw mut det,
             ) == ALDIS_OK
-                && view.data_len == 4,
+                && view.data.len == 4,
         );
         t.check(
             aldis_spp_peek_length(packet.as_ptr(), bb(3), &raw mut written, &raw mut det)
@@ -224,14 +213,9 @@ fn spp(t: &mut Tally) {
                 &raw mut split,
                 &raw mut det,
             ) == ALDIS_OK
-                && split.user_data_len == 3
-                && split.user_data_offset == 7,
+                && split.user_data.len == 3
+                && split.user_data.offset == 7,
         );
-        let mut limits = aldis_limits_t {
-            struct_size: size::<aldis_limits_t>(),
-            ..aldis_limits_t::default()
-        };
-        t.check(aldis_limits(&raw mut limits) == ALDIS_OK && limits.spp_tracker_max_apids > 0);
     }
 }
 
@@ -253,10 +237,7 @@ fn spp_state(t: &mut Tally) {
         words: [0; ALDIS_SPP_TRACKER_WORDS],
     };
     let h = &raw mut tracker_storage;
-    let cfg = aldis_spp_tracker_config_t {
-        struct_size: size::<aldis_spp_tracker_config_t>(),
-        capacity: bb(2),
-    };
+    let cfg = aldis_spp_tracker_config_t { capacity: bb(2) };
     let mut tracked = aldis_spp_tracked_t::default();
     let (mut flag, mut count, mut len) = (false, 0_u16, 0_usize);
     // SAFETY: the storage is a live local of the published type, and the handle is a pointer
@@ -285,7 +266,6 @@ fn spp_state(t: &mut Tally) {
     }
     let spp = spp_cfg();
     let seg_cfg = aldis_spp_segmenter_config_t {
-        struct_size: size::<aldis_spp_segmenter_config_t>(),
         packet_type: ALDIS_SPP_TELEMETRY,
         apid: bb(9),
         max_user_len: bb(2),
@@ -373,7 +353,6 @@ fn time(t: &mut Tally) {
     let mut written = 0_usize;
     let cuc_format = format(ALDIS_TIME_CUC);
     let options = aldis_time_ascii_options_t {
-        struct_size: size::<aldis_time_ascii_options_t>(),
         max_fraction_digits: bb(12),
     };
     let text = bb(*b"2021-05-01T17:20:43.5Z");
@@ -493,7 +472,6 @@ fn time(t: &mut Tally) {
             ..aldis_time_instant_t::default()
         };
         let cfg = aldis_time_convert_config_t {
-            struct_size: size::<aldis_time_convert_config_t>(),
             to: aldis_time_format_t {
                 subms: bb(1),
                 ..format(ALDIS_TIME_CDS)
@@ -532,7 +510,6 @@ fn time(t: &mut Tally) {
 fn epp(t: &mut Tally) {
     let mut det = detail();
     let cfg = aldis_epp_config_t {
-        struct_size: size::<aldis_epp_config_t>(),
         min_data_len: 0,
         max_data_len: bb(64),
         valid_epis: bb(0xFF),
@@ -571,7 +548,7 @@ fn epp(t: &mut Tally) {
                 &raw mut view,
                 &raw mut det,
             ) == ALDIS_OK
-                && view.data_len == 3,
+                && view.data.len == 3,
         );
         t.check(
             aldis_epp_peek_length(out.as_ptr(), bb(2), &raw mut written, &raw mut det) == ALDIS_OK
@@ -644,6 +621,7 @@ fn core(t: &mut Tally) {
     let (mut a, mut b) = ([0_u8; 6], [0_u8; 6]);
     // SAFETY: every pointer is to a live local; the handles point to the storage locals.
     unsafe {
+        t.check(aldis_abi_version() == ALDIS_ABI_VERSION);
         t.check(
             aldis_crc16(check_string.as_ptr(), bb(9), &raw mut crc, &raw mut det) == ALDIS_OK
                 && crc == 0x29B1,
@@ -676,12 +654,10 @@ fn core(t: &mut Tally) {
 
 /// A 40-octet AOS master channel with the FHEC, a 4-octet Insert Zone, and an FECF on SCID
 /// 0x0AB: VC 0 carries `M_PDUs` with an OCF and SDLS 2/1, VC 1 `B_PDUs` (732.0 §5; M2 plan D14).
-fn aos_channels() -> (aldis_aos_mc_config_t, [aldis_aos_vc_config_t; 2]) {
+const fn aos_channels() -> (aldis_aos_mc_config_t, [aldis_aos_vc_config_t; 2]) {
     let mc = aldis_aos_mc_config_t {
-        struct_size: size::<aldis_aos_mc_config_t>(),
         scid: bb(0x0AB),
         pc: aldis_aos_config_t {
-            struct_size: size::<aldis_aos_config_t>(),
             fhec: bb(1),
             fecf: bb(1),
             edition: bb(ALDIS_AOS_EDITION_ISSUE5),
@@ -690,7 +666,6 @@ fn aos_channels() -> (aldis_aos_mc_config_t, [aldis_aos_vc_config_t; 2]) {
         },
     };
     let vc = aldis_aos_vc_config_t {
-        struct_size: size::<aldis_aos_vc_config_t>(),
         vcid: 0,
         content: bb(ALDIS_AOS_CONTENT_MPDU),
         ocf: bb(1),
@@ -703,7 +678,6 @@ fn aos_channels() -> (aldis_aos_mc_config_t, [aldis_aos_vc_config_t; 2]) {
         ocf: 0,
         security_header_len: 0,
         security_trailer_len: 0,
-        ..vc
     };
     (mc, [vc, bpdu])
 }
@@ -827,7 +801,7 @@ fn aos(t: &mut Tally) {
                 &raw mut det,
             ) == ALDIS_OK
                 && view.pdu.pointer == ALDIS_AOS_POINTER_STARTS_AT
-                && view.layout.zone_len == 17,
+                && view.layout.zone.len == 17,
         );
         t.check(
             aldis_aos_mpdu_decode(
@@ -902,20 +876,17 @@ fn aos(t: &mut Tally) {
 
 /// A 32-octet TM master channel with an FECF on SCID 0x0AB: VC 0 carries packets with SDLS 2/1,
 /// VC 1 `VCA_SDUs` (132.0 §5; M2 plan D14).
-fn tm_channels() -> (aldis_tm_mc_config_t, [aldis_tm_vc_config_t; 2]) {
+const fn tm_channels() -> (aldis_tm_mc_config_t, [aldis_tm_vc_config_t; 2]) {
     let mc = aldis_tm_mc_config_t {
-        struct_size: size::<aldis_tm_mc_config_t>(),
         scid: bb(0x0AB),
         fsh_len: 0,
         ocf: 0,
         pc: aldis_tm_config_t {
-            struct_size: size::<aldis_tm_config_t>(),
             fecf: bb(1),
             frame_len: bb(32),
         },
     };
     let vc = aldis_tm_vc_config_t {
-        struct_size: size::<aldis_tm_vc_config_t>(),
         vcid: 0,
         content: ALDIS_TM_CONTENT_PACKETS,
         fsh_len: 0,
@@ -1012,7 +983,7 @@ fn tm(t: &mut Tally) {
                 &raw mut view,
                 &raw mut det,
             ) == ALDIS_OK
-                && view.layout.data_len == 24,
+                && view.layout.data.len == 24,
         );
         t.check(
             aldis_tm_decode_with(
@@ -1025,7 +996,7 @@ fn tm(t: &mut Tally) {
                 &raw mut view,
                 &raw mut det,
             ) == ALDIS_OK
-                && view.layout.data_len == 21
+                && view.layout.data.len == 21
                 && view.pointer == ALDIS_TM_POINTER_STARTS_AT,
         );
         frame[10] ^= bb(1);
@@ -1123,7 +1094,7 @@ fn tm(t: &mut Tally) {
 
 /// A TC master channel of SCID 0x155 with frames of at most 64 octets and an FECF: VC 1 without
 /// SDLS, VC 2 with Segment Headers, whose MAP 9 has SDLS 3/1 (232.0 §5; M2 plan D14).
-fn tc_channels() -> (
+const fn tc_channels() -> (
     aldis_ffi::tc::aldis_tc_mc_config_t,
     [aldis_ffi::tc::aldis_tc_vc_config_t; 2],
     [aldis_ffi::tc::aldis_tc_map_config_t; 1],
@@ -1132,16 +1103,13 @@ fn tc_channels() -> (
         aldis_tc_config_t, aldis_tc_map_config_t, aldis_tc_mc_config_t, aldis_tc_vc_config_t,
     };
     let mc = aldis_tc_mc_config_t {
-        struct_size: size::<aldis_tc_mc_config_t>(),
         scid: bb(0x155),
         pc: aldis_tc_config_t {
-            struct_size: size::<aldis_tc_config_t>(),
             fecf: bb(1),
             max_frame_len: bb(64),
         },
     };
     let plain = aldis_tc_vc_config_t {
-        struct_size: size::<aldis_tc_vc_config_t>(),
         vcid: bb(1),
         segment_header: 0,
         security_header_len: 0,
@@ -1154,7 +1122,6 @@ fn tc_channels() -> (
         ..plain
     };
     let map = aldis_tc_map_config_t {
-        struct_size: size::<aldis_tc_map_config_t>(),
         vcid: bb(2),
         map_id: bb(9),
         security_header_len: bb(3),
@@ -1311,7 +1278,7 @@ fn tc(t: &mut Tally) {
                 &raw mut det,
             ) == ALDIS_OK
                 && view.has_segment_header
-                && view.layout.security_header_len == 3,
+                && view.layout.security_header.len == 3,
         );
         let mut s_offset = bb(0);
         let mut s_item = aldis_tc_stream_item_t::default();
@@ -1330,7 +1297,7 @@ fn tc(t: &mut Tally) {
                 &raw mut det,
             ) == ALDIS_OK
                 && s_item.kind == ALDIS_TC_STREAM_ACCEPTED
-                && s_item.len == 10
+                && s_item.range.len == 10
                 && s_offset == 10,
         );
         unit[7] ^= bb(1);
@@ -1421,14 +1388,12 @@ fn uslp_channels() -> (
     aldis_uslp_vc_config_t,
 ) {
     let pc = aldis_uslp_config_t {
-        struct_size: size::<aldis_uslp_config_t>(),
         frame_type: ALDIS_USLP_FRAME_VARIABLE,
         fecf: bb(1),
         frame_len: bb(64),
         insert_zone_len: 0,
     };
     let vc = aldis_uslp_vc_config_t {
-        struct_size: size::<aldis_uslp_vc_config_t>(),
         scid: bb(0x155),
         vcid: bb(4),
         frame_type: ALDIS_USLP_FRAME_VARIABLE,
@@ -1436,7 +1401,6 @@ fn uslp_channels() -> (
         ..aldis_uslp_vc_config_t::default()
     };
     let map = aldis_uslp_map_config_t {
-        struct_size: size::<aldis_uslp_map_config_t>(),
         scid: bb(0x155),
         vcid: bb(4),
         ..aldis_uslp_map_config_t::default()
@@ -1589,7 +1553,7 @@ fn uslp(t: &mut Tally) {
                 &raw mut view,
                 &raw mut det,
             ) == ALDIS_OK
-                && view.layout.tfdz_len == 3
+                && view.layout.tfdz.len == 3
                 && !view.truncated,
         );
         let mut us_offset = bb(0);

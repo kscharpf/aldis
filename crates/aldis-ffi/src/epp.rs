@@ -1,5 +1,5 @@
 //! C ABI of the Encapsulation Packet codec `aldis-epp` (CCSDS 133.1-B-3; M2 plan D4;
-//! CABI-010…012, CABI-020…022, CABI-033).
+//! CABI-010…012, CABI-020…022).
 //!
 //! Calls: [`aldis_epp_decode`], [`aldis_epp_peek_length`], [`aldis_epp_validate`],
 //! [`aldis_epp_check`], [`aldis_epp_encode`], [`aldis_epp_header_encode`],
@@ -13,6 +13,7 @@ use aldis::epp::{
 };
 
 use crate::abi::{self, Out, invalid_argument};
+use crate::range::aldis_range_t;
 
 /// Header size argument: the smallest header that holds the fields and the length
 /// (133.1 §4.1.2.4; EPP-008).
@@ -34,12 +35,10 @@ pub const ALDIS_EPP_ANOMALY_NON_ZERO_EPI_EXTENSION: u32 = 1 << 0;
 pub const ALDIS_EPP_ANOMALY_NON_ZERO_CCSDS_DEFINED: u32 = 1 << 1;
 
 /// Managed parameters of the Encapsulation Packet Protocol (133.1 §5 Table 5-1; EPP-009,
-/// EPP-010, CABI-033).
+/// EPP-010).
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct aldis_epp_config_t {
-    /// `sizeof(aldis_epp_config_t)`, set by the caller (CABI-033).
-    pub struct_size: u32,
     /// Minimum Data Unit Length, octets.
     pub min_data_len: u32,
     /// Maximum Data Unit Length, octets, at most `ALDIS_EPP_MAX_DATA_LEN`.
@@ -85,10 +84,8 @@ pub struct aldis_epp_packet_t {
     pub packet_len: u32,
     /// Lenient-mode anomaly flags, `ALDIS_EPP_ANOMALY_*`; 0 in strict mode (API-032).
     pub anomalies: u32,
-    /// Offset of the Encapsulated Data Field in the input: the header length.
-    pub data_offset: usize,
-    /// Length of the Encapsulated Data Field.
-    pub data_len: usize,
+    /// The range of the Encapsulated Data Field in the input: the header length.
+    pub data: aldis_range_t,
 }
 
 /// The configuration of a C struct (133.1 §5; EPP-009, EPP-010, API-040).
@@ -135,8 +132,10 @@ pub(crate) fn view(p: &EncapsulationPacket<'_>) -> aldis_epp_packet_t {
         ccsds_defined: p.ccsds_defined().unwrap_or(0),
         packet_len: p.header().packet_len(),
         anomalies: p.anomalies().bits(),
-        data_offset: header_len,
-        data_len: p.data().len(),
+        data: aldis_range_t {
+            offset: header_len,
+            len: p.data().len(),
+        },
     }
 }
 
@@ -242,7 +241,7 @@ pub unsafe extern "C" fn aldis_epp_validate(
     // SAFETY: every pointer is valid as `# Safety` states; `abi` checks NULL and alignment.
     unsafe {
         abi::call(err, || {
-            let config = config(&abi::config(cfg)?)?;
+            let config = config(&abi::read(cfg)?)?;
             let bytes = abi::bytes(bytes, len)?;
             let packet = EncapsulationPacket::decode(bytes, abi::mode(mode)?)?;
             packet.validate(&config)
@@ -276,7 +275,7 @@ pub unsafe extern "C" fn aldis_epp_check(
     // SAFETY: every pointer is valid as `# Safety` states; `abi` checks NULL and alignment.
     unsafe {
         abi::call(err, || {
-            let config = config(&abi::config(cfg)?)?;
+            let config = config(&abi::read(cfg)?)?;
             let epi = Epi::try_from(epi)?;
             let extension = if has_extension {
                 Some(EpiExtension::try_from(epi_extension)?)
@@ -322,7 +321,7 @@ pub unsafe extern "C" fn aldis_epp_encode(
     // overlap.
     unsafe {
         abi::call(err, || {
-            let config = config(&abi::config(cfg)?)?;
+            let config = config(&abi::read(cfg)?)?;
             let fields = self::fields(abi::read(fields)?)?;
             let size = self::header_size(header_size)?;
             let data_bytes = abi::bytes(data, data_len)?;
@@ -364,7 +363,7 @@ pub unsafe extern "C" fn aldis_epp_header_encode(
     // SAFETY: every pointer is valid as `# Safety` states; `abi` checks NULL and alignment.
     unsafe {
         abi::call(err, || {
-            let config = config(&abi::config(cfg)?)?;
+            let config = config(&abi::read(cfg)?)?;
             let fields = self::fields(abi::read(fields)?)?;
             let size = self::header_size(header_size)?;
             let out = abi::bytes_mut(out, cap, &[])?;
@@ -466,7 +465,7 @@ pub unsafe extern "C" fn aldis_epp_config_check(
     err: *mut crate::aldis_error_detail_t,
 ) -> u32 {
     // SAFETY: every pointer is valid as `# Safety` states; `abi` checks NULL and alignment.
-    unsafe { abi::call(err, || config(&abi::config(cfg)?).map(|_| ())) }
+    unsafe { abi::call(err, || config(&abi::read(cfg)?).map(|_| ())) }
 }
 
 #[cfg(test)]
@@ -491,7 +490,6 @@ mod tests {
         assert_eq!(ALDIS_EPP_EPI_IDLE, Epi::IDLE.get());
         assert_eq!(ALDIS_EPP_EPI_EXTENDED, Epi::EXTENDED.get());
         assert_eq!(ALDIS_EPP_EPI_MISSION_SPECIFIC, Epi::MISSION_SPECIFIC.get());
-        assert_eq!(core::mem::offset_of!(aldis_epp_config_t, struct_size), 0);
     }
 
     #[test]
