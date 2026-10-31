@@ -34,8 +34,8 @@
 mod common;
 
 use aldis_cop1::{
-    Alert, Directive, Farm1, Farm1Config, Farm1Frame, Farm1Input, Farm1Output, Farm1Window,
-    FduKind, Fop1Config, Fop1Input, Fop1Output, Fop1State, Fop1Target, FrameKind, TimeoutType,
+    Alert, Directive, Farm1, Farm1Config, Farm1Input, Farm1Output, Farm1Window, FduKind,
+    Fop1Config, Fop1Input, Fop1Output, Fop1State, Fop1Target, FrameKind, TimeoutType,
     TransferNotification, fop1_max_actions,
 };
 use aldis_core::ids::FrameSeqNum;
@@ -382,10 +382,7 @@ impl World {
     /// A frame arrives at the flight end.
     fn frame_arrives(&mut self, bytes: &[u8]) {
         if let Ok(valid) = validate_frame(bytes, &self.channels) {
-            let input = Farm1Input::Frame {
-                frame: Farm1Frame::from_tc(&valid),
-                buffer_available: self.buffer_free,
-            };
+            let input = Farm1Input::from_tc(&valid, self.buffer_free);
             self.flight_input(input);
         } else {
             self.outcome.discarded += 1;

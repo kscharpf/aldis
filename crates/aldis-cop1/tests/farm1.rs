@@ -45,6 +45,7 @@ fn fresh(v_r: u8) -> Farm1 {
 
 const fn ad(n_s: u8, buffer_available: bool) -> Farm1Input<'static> {
     Farm1Input::Frame {
+        vc_id: TcVcId::new(5).unwrap(),
         frame: Farm1Frame::Ad {
             sequence_number: seq(n_s),
             data: &DATA,
@@ -55,6 +56,7 @@ const fn ad(n_s: u8, buffer_available: bool) -> Farm1Input<'static> {
 
 const fn bd() -> Farm1Input<'static> {
     Farm1Input::Frame {
+        vc_id: TcVcId::new(5).unwrap(),
         frame: Farm1Frame::Bd { data: &DATA },
         buffer_available: true,
     }
@@ -62,6 +64,7 @@ const fn bd() -> Farm1Input<'static> {
 
 const fn bc(command: Option<ControlCommand>) -> Farm1Input<'static> {
     Farm1Input::Frame {
+        vc_id: TcVcId::new(5).unwrap(),
         frame: Farm1Frame::Bc { command },
         buffer_available: true,
     }
@@ -381,6 +384,43 @@ fn every_cell_of_table_6_1_through_step() {
     }
     // Ten events from every reachable start of S1 (2), S2 (1), and S3 (3).
     assert_eq!(cells, 10 * (2 + 1 + 3));
+}
+
+#[test]
+fn a_frame_of_another_virtual_channel_is_refused_and_changes_nothing() {
+    // req: COP-037, API-058
+    let other = TcVcId::new(6).unwrap();
+    for state in STATES {
+        for f in starts(state) {
+            // E1 to E8, and E9 with a Type-BC frame of an unknown command, are the frames.
+            let frames = EVENTS[..8]
+                .iter()
+                .map(|event| input_for(&f, *event))
+                .chain([bc(None)]);
+            for input in frames {
+                let Farm1Input::Frame {
+                    frame,
+                    buffer_available,
+                    ..
+                } = input
+                else {
+                    panic!("E1 to E9 here are frames");
+                };
+                let foreign = Farm1Input::Frame {
+                    vc_id: other,
+                    frame,
+                    buffer_available,
+                };
+                let mut out = [0u8; 16];
+                let err = f.step(foreign, NOW, &mut out).unwrap_err();
+                assert_eq!(
+                    (err.kind(), err.field()),
+                    (ErrorKind::UnknownChannel, Some(field::VC_ID))
+                );
+                assert_eq!(out, [0u8; 16], "nothing is written");
+            }
+        }
+    }
 }
 
 #[test]
@@ -712,6 +752,40 @@ fn set_vr_sets_the_expected_sequence_number() {
     let (g, _) = go(&f, bc(Some(ControlCommand::SetVr(seq(200)))));
     assert_eq!((g.v_r(), g.retransmit_flag()), (seq(200), false));
     assert_eq!(go(&g, ad(200, true)).0.v_r(), seq(201));
+}
+
+/// Whether `actions` deliver a Type-AD FDU with sequence number `n`.
+fn delivers_ad(actions: &[Farm1Output], n: u8) -> bool {
+    actions.iter().any(|a| {
+        matches!(a, Farm1Output::Deliver { kind: FduKind::Ad, sequence_number, .. } if *sequence_number == seq(n))
+    })
+}
+
+#[test]
+fn a_stale_set_vr_sets_v_r_back_and_accepts_a_delivered_frame_again() {
+    // req: COP-002 (hz:HZ-COP1-18)
+    // FARM-1 has no sequence number on a Type-BC frame, so a Set V(R) that arrives after the
+    // Type-AD frames sent after it is executed like a current one (Table 6-1, E8).
+    let f = apply(&fresh(0), &[ad(0, true), ad(1, true), ad(2, true)]);
+    assert_eq!(f.v_r(), seq(3));
+    let (g, _) = go(&f, bc(Some(ControlCommand::SetVr(seq(1)))));
+    assert_eq!((g.state(), g.v_r()), (Farm1State::Open, seq(1)));
+    let (h, a) = go(&g, ad(1, true));
+    assert!(delivers_ad(&a, 1));
+    assert_eq!(h.v_r(), seq(2));
+}
+
+#[test]
+fn a_stale_unlock_reports_unlocked_and_clears_wait_after_frames_were_accepted() {
+    // req: COP-002, COP-036 (hz:HZ-COP1-18)
+    // The Unlocked action makes the caller purge its buffers (ASM-17), and E7 clears Wait, so an
+    // Unlock that arrives after the Type-AD frames sent after it acts on frames already accepted.
+    let f = apply(&fresh(0), &[ad(0, true), ad(1, true), ad(2, false)]);
+    assert_eq!((f.state(), f.v_r()), (Farm1State::Wait, seq(2)));
+    let (g, a) = go(&f, bc(Some(ControlCommand::Unlock)));
+    assert!(a.contains(&Farm1Output::Notify(Farm1Notify::Unlocked)));
+    assert_eq!((g.state(), g.v_r()), (Farm1State::Open, seq(2)));
+    assert!(!g.wait_flag());
 }
 
 #[test]

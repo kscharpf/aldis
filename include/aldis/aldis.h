@@ -15,7 +15,7 @@
 /**
  * ABI minor version (CABI-060).
  */
-#define ALDIS_ABI_VERSION_MINOR 9
+#define ALDIS_ABI_VERSION_MINOR 10
 
 /**
  * ABI patch version (CABI-060).
@@ -3794,6 +3794,12 @@ typedef struct {
    */
   uint8_t v_star;
   /**
+   * The Virtual Channel Identifier of a frame input (`FRAME_*`), 0 to 63; a value other than
+   * the `vc_id` of the configuration is refused with `ALDIS_ERR_UNKNOWN_CHANNEL` (232.1
+   * §3.3.1; COP-037). Not read by the other kinds.
+   */
+  uint8_t vc_id;
+  /**
    * 1 when the caller has a buffer for the FDU of a Type-AD frame, 0 when not; it selects E1
    * or E2 for N(S) = V(R) (232.1 §6.3.2.3; COP-033).
    */
@@ -6277,6 +6283,8 @@ uint32_t aldis_farm1_init(aldis_farm1_t *storage,
  * `ALDIS_ERR_INVALID_STATE` for the one cell Table 6-1 marks "Not applicable" (a Type-AD frame
  * with N(S) = V(R) and a buffer available in S2: feed `BUFFER_RELEASED` first, COP-033);
  * `ALDIS_ERR_BUFFER_TOO_SMALL` (with `needed`) if the FDU does not fit `out_cap`;
+ * `ALDIS_ERR_UNKNOWN_CHANNEL` (`vc_id`) for a frame input of another VC than the configured one
+ * (COP-037); `ALDIS_ERR_OUT_OF_RANGE` (`vc_id`) for a frame input with a `vc_id` above 63;
  * `ALDIS_ERR_INVALID_HANDLE`; `ALDIS_ERR_INVALID_FIELD` for an input `kind` with no constant, a
  * flag that is not 0 or 1, or a CABI-022 violation (`NULL`, misalignment, a wrapping range, or
  * `out` or `actions` overlapping the storage, `input->data`, or each other). On an error the state

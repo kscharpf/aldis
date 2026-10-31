@@ -114,6 +114,7 @@ fn accept_group(t: &mut Tally, f: &Farm1) {
     let data = bb([0xA1_u8, 0xB2, 0xC3]);
     let mut out = [0_u8; 8];
     let input = Farm1Input::Frame {
+        vc_id: f.config().vc_id,
         frame: Farm1Frame::Ad {
             sequence_number: FrameSeqNum::new(bb(10)),
             data: &data,
@@ -146,6 +147,7 @@ fn window_events(t: &mut Tally, f: &Farm1) {
     let data = bb([1_u8]);
     let mut out = [0_u8; 8];
     let ad = |n: u8, buffer_available: bool| Farm1Input::Frame {
+        vc_id: f.config().vc_id,
         frame: Farm1Frame::Ad {
             sequence_number: FrameSeqNum::new(n),
             data: &data,
@@ -186,6 +188,7 @@ fn window_events(t: &mut Tally, f: &Farm1) {
         }))
     ));
     let unlock = Farm1Input::Frame {
+        vc_id: f.config().vc_id,
         frame: Farm1Frame::Bc {
             command: Some(ControlCommand::Unlock),
         },
@@ -203,11 +206,13 @@ fn other_events(t: &mut Tally, f: &Farm1) {
     let data = bb([1_u8]);
     let mut out = [0_u8; 8];
     let bd = Farm1Input::Frame {
+        vc_id: f.config().vc_id,
         frame: Farm1Frame::Bd { data: &data },
         buffer_available: true,
     };
     t.check(step(f, bd, &mut out).is_some_and(|(g, _)| g.farm_b_counter().get() == 1));
     let set = Farm1Input::Frame {
+        vc_id: f.config().vc_id,
         frame: Farm1Frame::Bc {
             command: Some(ControlCommand::SetVr(FrameSeqNum::new(bb(77)))),
         },
@@ -215,11 +220,23 @@ fn other_events(t: &mut Tally, f: &Farm1) {
     };
     t.check(step(f, set, &mut out).is_some_and(|(g, _)| g.v_r().get() == 77));
     let unknown = Farm1Input::Frame {
+        vc_id: f.config().vc_id,
         frame: Farm1Frame::Bc { command: None },
         buffer_available: true,
     };
     t.check(step(f, unknown, &mut out).is_some_and(|(g, a)| g == *f && a.len() == 1));
     t.check(step(f, Farm1Input::InvalidFrame, &mut out).is_some_and(|(_, a)| a.len() == 1));
+    // A frame of another Virtual Channel is refused (COP-037).
+    let other = TcVcId::new(bb(6));
+    t.check(other.is_some_and(|vc_id| {
+        let foreign = Farm1Input::Frame {
+            vc_id,
+            frame: Farm1Frame::Bc { command: None },
+            buffer_available: true,
+        };
+        f.step(bb(foreign), NOW, &mut out)
+            .is_err_and(|e| e.kind() == ErrorKind::UnknownChannel)
+    }));
     let flags = Farm1Input::SetPhysicalFlags {
         no_rf_available: bb(true),
         no_bit_lock: bb(false),

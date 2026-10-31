@@ -16,6 +16,7 @@ use core::ptr::{null, null_mut};
 use aldis_ffi::capacities::{ALDIS_FOP1_MAX_FRAME_OCTETS, ALDIS_FOP1_SENT_QUEUE_FRAMES};
 use aldis_ffi::error::*;
 use aldis_ffi::farm1::*;
+use aldis_ffi::field::ALDIS_FIELD_VC_ID;
 use aldis_ffi::fop1::*;
 
 /// A detail that a failed call must overwrite.
@@ -71,6 +72,7 @@ const fn farm1_ad(n_s: u8, data: &[u8]) -> aldis_farm1_input_t {
         kind: ALDIS_FARM1_INPUT_FRAME_AD,
         sequence_number: n_s,
         v_star: 0,
+        vc_id: 1,
         buffer_available: 1,
         no_rf_available: 0,
         no_bit_lock: 0,
@@ -356,6 +358,89 @@ fn a_farm1_step_returns_its_actions_and_leaves_the_state_on_error() {
             0
         );
         assert_eq!(status.clcw, 0x0104_8002);
+    }
+}
+
+#[test]
+fn a_farm1_step_refuses_a_frame_of_another_virtual_channel() {
+    // req: COP-037, API-058, CABI-040
+    let mut s = farm1_storage();
+    let cfg = farm1_config();
+    let mut d = detail();
+    let mut out = [0_u8; 8];
+    let data = [9_u8, 8, 7];
+    let mut actions = aldis_farm1_actions_t::default();
+    let mut status = aldis_farm1_status_t::default();
+    // SAFETY: every pointer is to a live local; `data` is valid for its length.
+    unsafe {
+        assert_eq!(aldis_farm1_init(&raw mut *s, &raw const cfg, null_mut()), 0);
+        let step = |s: &mut aldis_farm1_t,
+                    input: aldis_farm1_input_t,
+                    out: &mut [u8; 8],
+                    actions: &mut aldis_farm1_actions_t,
+                    d: &mut aldis_error_detail_t| {
+            aldis_farm1_step(
+                s,
+                &raw const input,
+                0,
+                out.as_mut_ptr(),
+                out.len(),
+                actions,
+                d,
+            )
+        };
+        // Every frame kind of VC 2 is refused, with the field named, and nothing happens.
+        for kind in [
+            ALDIS_FARM1_INPUT_FRAME_AD,
+            ALDIS_FARM1_INPUT_FRAME_BD,
+            ALDIS_FARM1_INPUT_FRAME_BC_UNLOCK,
+            ALDIS_FARM1_INPUT_FRAME_BC_SET_VR,
+            ALDIS_FARM1_INPUT_FRAME_BC_OTHER,
+        ] {
+            let input = aldis_farm1_input_t {
+                kind,
+                vc_id: 2,
+                ..farm1_ad(0, &data)
+            };
+            assert_eq!(
+                step(&mut s, input, &mut out, &mut actions, &mut d),
+                ALDIS_ERR_UNKNOWN_CHANNEL
+            );
+            assert_eq!(
+                (d.kind, d.field),
+                (ALDIS_ERR_UNKNOWN_CHANNEL, ALDIS_FIELD_VC_ID)
+            );
+        }
+        // A VCID above 63 is out of range.
+        let wide = aldis_farm1_input_t {
+            vc_id: 64,
+            ..farm1_ad(0, &data)
+        };
+        assert_eq!(
+            step(&mut s, wide, &mut out, &mut actions, &mut d),
+            ALDIS_ERR_OUT_OF_RANGE
+        );
+        assert_eq!(
+            (d.kind, d.field),
+            (ALDIS_ERR_OUT_OF_RANGE, ALDIS_FIELD_VC_ID)
+        );
+        // The other kinds do not read the field.
+        let release = aldis_farm1_input_t {
+            kind: ALDIS_FARM1_INPUT_BUFFER_RELEASED,
+            vc_id: 99,
+            ..farm1_ad(0, &data)
+        };
+        assert_eq!(step(&mut s, release, &mut out, &mut actions, &mut d), 0);
+        // The state is unchanged: V(R) 0, FARM-B Counter 0, and the frame of VC 1 is accepted.
+        assert_eq!(
+            aldis_farm1_status(&raw mut *s, &raw mut status, null_mut()),
+            0
+        );
+        assert_eq!((status.v_r, status.farm_b_counter), (0, 0));
+        assert_eq!(
+            step(&mut s, farm1_ad(0, &data), &mut out, &mut actions, &mut d),
+            0
+        );
     }
 }
 

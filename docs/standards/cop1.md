@@ -86,7 +86,7 @@ The engine holds no delivery buffer: the buffers of 232.1 §3.3.2 belong to the 
 
 | Input | Events |
 |---|---|
-| `Frame(ValidatedTcFrame \| ValidatedUslpFrame, buffer_available: bool)` | E1–E9 (frames must already have passed Frame Validation Checks, TC-021). `buffer_available` selects E1 or E2 for a Type-AD frame with N(S) = V(R) (COP-033). E1 in S2 is the cell Table 6-1 marks "Not applicable": the step fails with `InvalidState` (COP-005), and the caller feeds `BufferReleased` first |
+| `Frame { vc_id: TcVcId, frame: Farm1Frame, buffer_available: bool }`, built from a validated TC frame by `Farm1Input::from_tc` | E1–E9, or `UnknownChannel` when `vc_id` is not the configured VCID (COP-037; frames must already have passed Frame Validation Checks, TC-021). `buffer_available` selects E1 or E2 for a Type-AD frame with N(S) = V(R) (COP-033). E1 in S2 is the cell Table 6-1 marks "Not applicable": the step fails with `InvalidState` (COP-005), and the caller feeds `BufferReleased` first |
 | `InvalidFrame` | E9: a frame the Lower Procedures rejected. A Type-BC frame carrying neither Unlock nor Set V(R) is `Frame` with no command and is E9 too (COP-031) |
 | `BufferReleased` | E10 (COP-033) |
 | `clcw(state) -> Clcw` | E11 (a pure query of the state, any time; not an input) |
@@ -112,6 +112,7 @@ The engine holds no delivery buffer: the buffers of 232.1 §3.3.2 belong to the 
 | COP-034 | The FARM-B Counter SHALL increment modulo 4 for every accepted Type-B frame. | 232.0 §4.2.1.9 | V |
 | COP-035 | The CLCW built from the state SHALL reflect the state after the most recent input. The CLCW SHALL carry COP in Effect = `01`, the configured VCID and Status Field, and the current flags. | 232.0 §4.2.1; 232.1 E11 | V |
 | COP-036 | The Unlock command SHALL reset only FARM-1. The engine SHALL return an unlocked notification action so that higher procedures can purge their buffers. | 232.1 §6.3.2.2 note | T |
+| COP-037 | The frame input of FARM-1 SHALL carry the frame's Virtual Channel Identifier. FARM-1 serves one Virtual Channel, the one of its configuration (COP-035), and SHALL refuse a frame of another VCID with `UnknownChannel` (field `vc_id`), as a routing error that is no event of Table 6-1: the state is unchanged, no action is produced, and the FARM-B Counter is not incremented (API-058). The Lower Procedures demultiplex frames to the FARM-1 of their VC; the engine does not rely on it. | 232.1 §3.3.1, §6.1.1 | T |
 
 FOP-1 start-up values are OI-59, the effect of a purge on NN(R) is OI-60, and the two Accepts of E21 and E45 are OI-61.
 

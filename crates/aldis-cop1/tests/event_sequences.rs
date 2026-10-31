@@ -351,7 +351,7 @@ proptest! {
         for op in &ops {
             let mut area = [0u8; 8];
             let input = match op {
-                FarmOp::Ad(n, buffer_available, data) => Farm1Input::Frame {
+                FarmOp::Ad(n, buffer_available, data) => Farm1Input::Frame { vc_id: TcVcId::new(VCID).unwrap(),
                     frame: Farm1Frame::Ad {
                         sequence_number: match n {
                             Ok(o) => FrameSeqNum::new(f.v_r().get().wrapping_add(*o)),
@@ -361,8 +361,8 @@ proptest! {
                     },
                     buffer_available: *buffer_available,
                 },
-                FarmOp::Bd(data) => Farm1Input::Frame { frame: Farm1Frame::Bd { data }, buffer_available: true },
-                FarmOp::Bc(command) => Farm1Input::Frame { frame: Farm1Frame::Bc { command: *command }, buffer_available: true },
+                FarmOp::Bd(data) => Farm1Input::Frame { vc_id: TcVcId::new(VCID).unwrap(), frame: Farm1Frame::Bd { data }, buffer_available: true },
+                FarmOp::Bc(command) => Farm1Input::Frame { vc_id: TcVcId::new(VCID).unwrap(), frame: Farm1Frame::Bc { command: *command }, buffer_available: true },
                 FarmOp::Invalid => Farm1Input::InvalidFrame,
                 FarmOp::Release => Farm1Input::BufferReleased,
                 FarmOp::Physical(a, b) => Farm1Input::SetPhysicalFlags { no_rf_available: *a, no_bit_lock: *b },

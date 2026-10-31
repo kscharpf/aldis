@@ -698,6 +698,7 @@ fn fop1_and_farm1_deliver_over_uslp_frames_through_a_loss() {
             let (after, actions) = farm
                 .step(
                     Farm1Input::Frame {
+                        vc_id: TcVcId::new(vcid().get()).unwrap(),
                         frame: farm_frame(&decoded),
                         buffer_available: true,
                     },
