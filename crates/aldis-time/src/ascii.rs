@@ -1162,6 +1162,9 @@ mod tests {
             "17:20:43.",
             "17:20:43.1Z2",
             "1988-01-18T17:20.5",
+            // The `T` is needed: without it the text is read as a time, not a calendar. With
+            // it, the 5-octet calendar half matches no shape (the `?` of `shape_of`).
+            "12-34T10:20:30",
         ] {
             assert_eq!(
                 subset(text).unwrap_err().kind(),

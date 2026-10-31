@@ -854,3 +854,64 @@ fn delivered_range_addresses_the_output_area() {
     assert_eq!((kind, sequence_number), (FduKind::Ad, seq(0)));
     assert_eq!(data.slice(&out), Some(&DATA[..]));
 }
+
+#[test]
+fn the_input_of_a_validated_frame_carries_its_type_vcid_and_data() {
+    // req: COP-002, COP-037, TC-021, API-016
+    use aldis_core::security::SecurityLayout;
+    use aldis_tc::{
+        FrameData, FrameFields, FrameType, PhysicalChannelConfig, SegmentHeaderUse, TcSpacecraftId,
+        VcConfig, VcTable, encode, validate_frame,
+    };
+
+    const F: usize = 32;
+    let scid = TcSpacecraftId::new(0x2A5).unwrap();
+    let vc = TcVcId::new(5).unwrap();
+    let physical = PhysicalChannelConfig::new(F, true).unwrap();
+    let channel =
+        VcConfig::new(scid, vc, F, SegmentHeaderUse::Absent(SecurityLayout::NONE)).unwrap();
+    let channels = VcTable::<1, 0>::new(physical, &[channel], &[]).unwrap();
+    let fields = |frame_type| FrameFields {
+        frame_type,
+        spacecraft_id: scid,
+        vc_id: vc,
+        // N(S) is all zeros in a Type-B frame (232.0 §4.1.2.8 note 3).
+        sequence_number: seq(if frame_type == FrameType::Ad { 4 } else { 0 }),
+    };
+    let check = |frame_type, data: FrameData<'_>, buffer_available, expected: Farm1Frame<'_>| {
+        let mut bytes = [0_u8; F];
+        let n = encode(&channels, fields(frame_type), data, &mut bytes).unwrap();
+        let valid = validate_frame(&bytes[..n], &channels).unwrap();
+        // The frame borrows `bytes`, so it is compared inside the closure.
+        assert_eq!(
+            Farm1Input::from_tc(&valid, buffer_available),
+            Farm1Input::Frame {
+                vc_id: vc,
+                frame: expected,
+                buffer_available
+            }
+        );
+    };
+    let fdu = FrameData::Fdu {
+        segment_header: None,
+        user_data: &DATA,
+    };
+    check(
+        FrameType::Ad,
+        fdu,
+        true,
+        Farm1Frame::Ad {
+            sequence_number: seq(4),
+            data: &DATA,
+        },
+    );
+    check(FrameType::Bd, fdu, false, Farm1Frame::Bd { data: &DATA });
+    check(
+        FrameType::Bc,
+        FrameData::Control(ControlCommand::SetVr(seq(9))),
+        true,
+        Farm1Frame::Bc {
+            command: Some(ControlCommand::SetVr(seq(9))),
+        },
+    );
+}
