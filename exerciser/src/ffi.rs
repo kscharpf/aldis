@@ -24,7 +24,8 @@ use aldis_ffi::epp::{
     aldis_epp_validate,
 };
 use aldis_ffi::error::{
-    ALDIS_ERR_INCOMPLETE, ALDIS_ERR_INVALID_FIELD, ALDIS_ERR_INVALID_HANDLE, ALDIS_OK,
+    ALDIS_ERR_BUFFER_TOO_SMALL, ALDIS_ERR_INCOMPLETE, ALDIS_ERR_INVALID_FIELD,
+    ALDIS_ERR_INVALID_HANDLE, ALDIS_OK,
 };
 use aldis_ffi::farm1::{
     ALDIS_FARM1_ACTION_DELIVER, ALDIS_FARM1_INPUT_BUFFER_RELEASED, ALDIS_FARM1_INPUT_FRAME_AD,
@@ -1797,8 +1798,10 @@ fn fop1_handle(t: &mut Tally) {
             aldis_fop1_step(h, input, now, out_ptr, cap, actions_ptr, det_ptr)
         };
         t.check(step(&initiate, bb(1), 64) == ALDIS_OK);
+        // A frame buffer too short for the frame fails and changes nothing; only while the Type-AD
+        // Out flag is Ready is a frame built, so this comes before the request that is sent.
+        t.check(step(&request, bb(2), bb(4)) == ALDIS_ERR_BUFFER_TOO_SMALL);
         t.check(step(&request, bb(2), 64) == ALDIS_OK);
-        t.check(step(&request, bb(2), bb(4)) != ALDIS_OK);
         t.check(step(&done, bb(3), 64) == ALDIS_OK);
         t.check(
             aldis_fop1_next_deadline(h, &raw mut armed, &raw mut deadline, &raw mut det)
