@@ -10,9 +10,12 @@
     reason = "test-only harness: a violated assumption must fail loudly (RS-018)"
 )]
 
+#[path = "common/mod.rs"]
+mod common;
+
 use aldis_cop1::{
-    Directive, Farm1, Farm1Config, Farm1Frame, Farm1Input, Farm1Output, Farm1Window, Fop1,
-    Fop1Channel, Fop1Config, Fop1Input, Fop1Output, Fop1State, Fop1Target, FrameKind, TimeoutType,
+    Directive, Farm1, Farm1Config, Farm1Frame, Farm1Input, Farm1Output, Farm1Window, Fop1Channel,
+    Fop1Config, Fop1Input, Fop1Output, Fop1State, Fop1Target, FrameKind, TimeoutType,
     TransferNotification, fop1_max_actions,
 };
 use aldis_core::ErrorKind;
@@ -28,10 +31,12 @@ use aldis_uslp::{
 };
 use core::num::NonZeroU8;
 
+use common::Rig;
+
 const Q: usize = 4;
 const F: usize = 64;
 const N: usize = fop1_max_actions(Q);
-type Engine = Fop1<Q, F, N>;
+type Engine = Rig<Q, F, N>;
 const NOW: Instant = Instant::from_micros(0);
 
 const fn scid() -> UslpSpacecraftId {
@@ -112,7 +117,9 @@ fn clcw(n_r: u8) -> Clcw {
 /// Steps `f` and returns the next engine, the frame it transmits (if any), and the actions.
 fn go(f: &Engine, input: Fop1Input<'_>) -> (Engine, Option<Vec<u8>>, Vec<Fop1Output>) {
     let mut out = [0u8; F];
-    let (next, actions) = f.step(input, NOW, &mut out).unwrap();
+    let mut next = f.clone();
+    let decision = next.decide(input, NOW, &mut out).unwrap();
+    let actions = next.commit(decision);
     let actions: Vec<Fop1Output> = actions.iter().copied().collect();
     let frame = actions.iter().find_map(|a| match a {
         Fop1Output::Transmit { frame, .. } => Some(frame.slice(&out).unwrap().to_vec()),
@@ -170,7 +177,7 @@ fn the_target_names_its_channel_and_sizes_its_frames() {
     let long = vec![0xAB; t.max_fdu_len() + 1];
     let mut out = [0u8; F];
     let e = f
-        .step(
+        .decide(
             Fop1Input::RequestAd {
                 handle: 7,
                 fdu: &long,
@@ -558,8 +565,9 @@ fn type_bc_frames_carry_the_control_commands_as_protocol_control() {
     );
     let mut out = [0u8; F];
     let late = Instant::from_micros(1_000);
-    let (_, actions) = g.step(Fop1Input::Timeout, late, &mut out).unwrap();
-    let again = actions
+    let decision = g.decide(Fop1Input::Timeout, late, &mut out).unwrap();
+    let again = decision
+        .actions()
         .iter()
         .find_map(|a| match a {
             Fop1Output::Transmit { frame, .. } => frame.slice(&out),
@@ -578,9 +586,9 @@ fn a_clcw_of_another_virtual_channel_is_refused() {
         vc_id: TcVcId::new(vcid().get() + 1).unwrap(),
         ..clcw(0)
     };
-    let e = f.step(Fop1Input::Clcw(other), NOW, &mut out).unwrap_err();
+    let e = f.decide(Fop1Input::Clcw(other), NOW, &mut out).unwrap_err();
     assert_eq!(e.kind(), ErrorKind::UnknownChannel);
-    assert!(f.step(Fop1Input::Clcw(clcw(0)), NOW, &mut out).is_ok());
+    assert!(f.decide(Fop1Input::Clcw(clcw(0)), NOW, &mut out).is_ok());
 }
 
 /// The frame FARM-1 reads from a USLP frame: the TFDZ, and N(S) from the VCF Count.
@@ -610,8 +618,8 @@ fn feed(
     // bound: each response transmits at most one frame, and K and Q bound the chain
     while let Some(input) = work.pop() {
         let mut area = [0u8; F];
-        let (next, actions) = ground.step(input, NOW, &mut area).unwrap();
-        *ground = next;
+        let decision = ground.decide(input, NOW, &mut area).unwrap();
+        let actions = ground.commit(decision);
         for a in actions.iter() {
             match *a {
                 Fop1Output::Transmit { kind, frame, .. } => {

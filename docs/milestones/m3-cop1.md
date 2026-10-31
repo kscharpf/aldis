@@ -14,7 +14,7 @@
 | WP-1c FOP-1 table as data | merged | #149 | FOP-1 S1–S6 × E1–E46/E101–E104 const table data, Cor. 1 verification, cell tests (COP-001, COP-004, RS-021) |
 | WP-2 Blind vectors & model | merged | #183 | Python blind oracle model `test-vectors/models/cop1.py` (TV-023) and one scenario per cell of Tables 5-1 and 6-1 in `test-vectors/cop1/` (COP-005, TV-011); the testkit loader and the runners follow in WP-3 and WP-4 |
 | WP-3 `aldis-cop1`: FARM-1 | merged | #162 | `Farm1::step` and `clcw` over `FARM1_TABLE`, window check, FARM-B counter, exerciser calls; `FARM1_MAX_ACTIONS` derived from the table (COP-030…036); OI-58 opened |
-| WP-4 `aldis-cop1`: FOP-1 | planned | — | `Fop1::step` and `step_event` over `FOP1_TABLE` for TC frames, Sent_Queue master copies, Wait_Queue, T1, Suspend/Resume, COP-017 by the table (no Alert filter); `fop1_max_actions(Q)` derived from the table; all 317 FOP-1 scenarios of `test-vectors/cop1/` pass (COP-001, COP-010…017). USLP frame target not built |
+| WP-4 `aldis-cop1`: FOP-1 | planned | — | `Fop1::decide` and `decide_event`, with the infallible `Fop1::commit`, over `FOP1_TABLE` for TC frames, Sent_Queue master copies, Wait_Queue, T1, Suspend/Resume, COP-017 by the table (no Alert filter); `fop1_max_actions(Q)` derived from the table; all 317 FOP-1 scenarios of `test-vectors/cop1/` pass (COP-001, COP-010…017). USLP frame target not built |
 | WP-5 Closed loop & carry-overs | planned | — | Closed-loop simulated link harness `tests/closed_loop.rs` (COP-040), event-sequence properties and the `cop1_events` fuzz target source (COP-041; its `fuzz/Cargo.toml` and nightly matrix entries wait for the process freeze to end), OI-47 `max_fill` in the TC and USLP delimiters (ABI 0.8; tested in Rust, FFI, and exerciser code, no vector case, maintainer 2026-10-30), D13 closed: `VcTable::new` already enforces USLP-012 and released vector `uslp-cfg-055` pins its order. WP-5b: the FOP-1 USLP frame target (COP-010, USLP-013) |
 | WP-6 C ABI handles | planned | — | `aldis-ffi`: `aldis_fop1_*`, `aldis_farm1_*`, opaque handles (CABI-030…033, CABI-040), limits, exerciser group, header |
 | WP-7 Verification gates & hazards | planned | — | 100 % coverage, mutants, 4 fuzz targets (`cop1_events` is the one of WP-5, registered by the maintainer once the process freeze ends), stack bounds, QEMU ×3 exerciser, COP-1 hazard analysis, assurance case |
@@ -95,7 +95,7 @@ WP-0 Infra, setup ───▶ WP-1a Spec readings ─┬─▶ WP-1b FARM-1 tab
 
 ### WP-4 `aldis-cop1`: FOP-1 engine (L) — COP-001, COP-010…017
 - Protocol states S1 (Active), S2 (Retransmit without wait), S3 (Retransmit with wait), S4 (Initial), S5 (Uninitialized), S6 (Suspended); events E1–E46, E101–E104.
-- `Fop1::step` bound (COP-006): `N` is the longest cell's action list, in which the Abort Request of Initiate AD (or BC) Retransmission counts, plus the Sent_Queue capacity, because a purge emits one Negative Confirm per queued frame.
+- `Fop1Actions<N>` bound (COP-006), the actions of a `decide`: `N` is the longest cell's action list, in which the Abort Request of Initiate AD (or BC) Retransmission counts, plus the Sent_Queue capacity, because a purge emits one Negative Confirm per queued frame.
 - Frame building: Type-AD with N(S) = V(S), Type-BD with N(S) = 0, Type-BC carrying Unlock / Set V(R), for TC and USLP targets (COP-010).
 - Sent_Queue master copy and ordered retransmission (COP-011).
 - Modulo-256 N(R) validity check against NN(R) and V(S) (COP-012).
