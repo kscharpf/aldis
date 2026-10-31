@@ -8,7 +8,7 @@ The engines are sans-I/O (GEN-030): they read no clock, send no frame, and hold 
 
 | Category | Hazards | State |
 |---|---|---|
-| `corrupt-accepted` | HZ-COP1-01, HZ-COP1-02 | done |
+| `corrupt-accepted` | HZ-COP1-01, HZ-COP1-02, HZ-COP1-18 | done |
 | `valid-rejected` | HZ-COP1-03 | done |
 | `misrouting` | HZ-COP1-04 | done |
 | `truncation` | HZ-COP1-05 | done |
@@ -311,6 +311,23 @@ The engines are sans-I/O (GEN-030): they read no clock, send no frame, and hold 
 | Assumptions | `asm:ASM-8` |
 | Proposals | — |
 | Claims | `ac:AC-1.8`; `ac:AC-5.1` |
+
+### HZ-COP1-18 A late Type-BC directive acts on frames accepted after it was sent
+
+| | |
+|---|---|
+| Category | `corrupt-accepted` |
+| Status | `residual` |
+| Severity | S1 |
+| Failure mode | A Type-BC frame (an Unlock or a Set V(R) Control Command; a duplicate of one already executed, or the first copy delayed) reaches FARM-1 after Type-AD frames that FOP-1 sent after it were accepted. FARM-1 executes it as a current one (232.1 Table 6-1, E7 and E8). A Set V(R) sets V(R) back to V*(R): the frames between V*(R) and the old V(R) are in the negative window, the next CLCW reports an N(R) that moved backwards, and a retransmission of FDUs already delivered is accepted a second time. An Unlock emits the Unlocked action in every state, so a caller that purges its buffers on it (`asm:ASM-17`) drops FDUs that V(R) counted and the CLCW acknowledged to FOP-1, and it clears Wait and Lockout, which the operators are to clear |
+| Cause | A Type-BC frame carries no Frame Sequence Number, so FARM-1 cannot tell a stale command from a current one, and the Blue Book names no check on a repeated command (232.1 §6.3.2.2 describes only the execution). COP-1 relies on the link to keep the order of the frames of a Virtual Channel. 232.0 §2.3.3 states the job of the COP as repairing the errors and discontinuities of the space link, and the clause names no reordering or creation of frames by the link; the only repeats 232.1 admits are those the sending end makes: a FOP-1 retransmission, or the systematic retransmission below COP-1 (232.1 §5.1.9.3, note 2 of that clause, which says FARM-1 rejects a duplicate Type-AD frame and names nothing for a Type-BC frame). On a link that keeps the order such a copy is no later than the first Type-AD frame sent after the directive: FOP-1 leaves the Initiate AD states (S4, S5) for Open only after the Type-BC frame was transmitted and a clean CLCW followed (232.1 §5.1.2, Table 5-1), so Type-AD frames follow every copy of the directive; where Set V(R) is sent without waiting for its acceptance (232.1 §5.1.9.3, the first paragraph, then an Alert and an Initiate AD Service without CLCW check) the Type-AD frames still follow all the copies |
+| Mission effect | Telecommands executed twice, a gap of telecommands after a re-accepted retransmission, or buffered FDUs purged, with a CLCW that tells FOP-1 the opposite of what FARM-1 holds: the loss of the Sequence-Controlled Service guarantee without an Alert, on a link that reorders (several paths, a replay) |
+| Requirements | COP-002, COP-003, COP-005, COP-036 |
+| Evidence | `test:crates/aldis-cop1/tests/farm1.rs::a_stale_set_vr_sets_v_r_back_and_accepts_a_delivered_frame_again`; `test:crates/aldis-cop1/tests/farm1.rs::a_stale_unlock_reports_unlocked_and_clears_wait_after_frames_were_accepted`; `test:crates/aldis-cop1/tests/farm1.rs::lockout_is_left_only_by_unlock`; `test:crates/aldis-cop1/tests/farm1.rs::set_vr_sets_the_expected_sequence_number`; `test:crates/aldis-cop1/tests/farm1_table.rs::test_exhaustive_33_cells` |
+| Residual risk | The category is the nearest slug of [hazards.md](../hazards.md) §1.2 (a stale frame that is valid is accepted, as in `hz:HZ-COP1-02`). The tests show that the engine executes a late Unlock and a late Set V(R) as Table 6-1 says. It cannot do otherwise: a check that refused a repeated command would deviate from E7 and E8, and nothing in the frame tells a repeat from a legitimate re-initialization (V*(R) may repeat). The reading is that the standard assumes a link that keeps the order of a Virtual Channel's frames and creates none (an inference from 232.0 §2.3.3 and 232.1 §2.2.1; the Blue Book does not state it and does not address a stale directive). Type-AD frames are repaired by their sequence number (`hz:HZ-COP1-01`); only the Type-BC commands are exposed. The closed-loop tests (`file:crates/aldis-cop1/tests/closed_loop.rs`) send no Type-BC frame, so they do not cover this hazard, and the service guarantee of `ac:AC-5.6` is qualified by `asm:ASM-18`. The maintainer decided on 2026-10-31 that `asm:ASM-18` stays an obligation on the integrator: no engine guard and no question to CCSDS (whether a FARM-1 should guard a repeated command), which is not an open issue of Aldis, which has no reading to choose between |
+| Assumptions | `asm:ASM-17`; `asm:ASM-18` |
+| Proposals | — |
+| Claims | `ac:AC-5.6` |
 
 ## Proposals
 

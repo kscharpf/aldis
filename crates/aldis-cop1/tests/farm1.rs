@@ -714,6 +714,40 @@ fn set_vr_sets_the_expected_sequence_number() {
     assert_eq!(go(&g, ad(200, true)).0.v_r(), seq(201));
 }
 
+/// Whether `actions` deliver a Type-AD FDU with sequence number `n`.
+fn delivers_ad(actions: &[Farm1Output], n: u8) -> bool {
+    actions.iter().any(|a| {
+        matches!(a, Farm1Output::Deliver { kind: FduKind::Ad, sequence_number, .. } if *sequence_number == seq(n))
+    })
+}
+
+#[test]
+fn a_stale_set_vr_sets_v_r_back_and_accepts_a_delivered_frame_again() {
+    // req: COP-002 (hz:HZ-COP1-18)
+    // FARM-1 has no sequence number on a Type-BC frame, so a Set V(R) that arrives after the
+    // Type-AD frames sent after it is executed like a current one (Table 6-1, E8).
+    let f = apply(&fresh(0), &[ad(0, true), ad(1, true), ad(2, true)]);
+    assert_eq!(f.v_r(), seq(3));
+    let (g, _) = go(&f, bc(Some(ControlCommand::SetVr(seq(1)))));
+    assert_eq!((g.state(), g.v_r()), (Farm1State::Open, seq(1)));
+    let (h, a) = go(&g, ad(1, true));
+    assert!(delivers_ad(&a, 1));
+    assert_eq!(h.v_r(), seq(2));
+}
+
+#[test]
+fn a_stale_unlock_reports_unlocked_and_clears_wait_after_frames_were_accepted() {
+    // req: COP-002, COP-036 (hz:HZ-COP1-18)
+    // The Unlocked action makes the caller purge its buffers (ASM-17), and E7 clears Wait, so an
+    // Unlock that arrives after the Type-AD frames sent after it acts on frames already accepted.
+    let f = apply(&fresh(0), &[ad(0, true), ad(1, true), ad(2, false)]);
+    assert_eq!((f.state(), f.v_r()), (Farm1State::Wait, seq(2)));
+    let (g, a) = go(&f, bc(Some(ControlCommand::Unlock)));
+    assert!(a.contains(&Farm1Output::Notify(Farm1Notify::Unlocked)));
+    assert_eq!((g.state(), g.v_r()), (Farm1State::Open, seq(2)));
+    assert!(!g.wait_flag());
+}
+
 #[test]
 fn errors_leave_the_state_unchanged_and_write_nothing() {
     // req: API-058, API-061, COP-005
