@@ -878,15 +878,6 @@ mod tests {
     }
 
     #[test]
-    fn subset_with_an_unknown_calendar_shape_is_malformed() {
-        // req: TIME-032
-        assert_eq!(
-            subset("ab-cdT10:20:30").unwrap_err().kind(),
-            ErrorKind::Malformed
-        );
-    }
-
-    #[test]
     fn fractions_hold_only_valid_values() {
         // req: TIME-031, RS-020
         let f = Fraction::new(1234, 4).unwrap();
@@ -1171,6 +1162,9 @@ mod tests {
             "17:20:43.",
             "17:20:43.1Z2",
             "1988-01-18T17:20.5",
+            // The `T` is needed: without it the text is read as a time, not a calendar. With
+            // it, the 5-octet calendar half matches no shape (the `?` of `shape_of`).
+            "12-34T10:20:30",
         ] {
             assert_eq!(
                 subset(text).unwrap_err().kind(),

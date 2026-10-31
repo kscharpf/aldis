@@ -637,7 +637,9 @@ mod tests {
             decode_implicit(&[0], &cds).unwrap_err().kind(),
             ErrorKind::Incomplete
         );
-        let ok = decode_implicit_lenient(&[0, 1, 0, 0, 0, 0, 0xEE], &cds).unwrap();
+        let clean = [0, 1, 0, 0, 0, 0, 0xEE];
+        let ok = decode_implicit_lenient(&clean, &cds).unwrap();
+        assert_eq!(*ok, decode_implicit(&clean, &cds).unwrap());
         assert!(ok.anomalies().is_empty());
         assert_eq!(ok.len(), 6);
         assert_eq!(cds.t_len(), 6);

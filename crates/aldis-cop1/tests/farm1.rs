@@ -857,7 +857,7 @@ fn delivered_range_addresses_the_output_area() {
 
 #[test]
 fn the_input_of_a_validated_frame_carries_its_type_vcid_and_data() {
-    // req: COP-031, COP-037, API-016
+    // req: COP-002, COP-037, TC-021, API-016
     use aldis_core::security::SecurityLayout;
     use aldis_tc::{
         FrameData, FrameFields, FrameType, PhysicalChannelConfig, SegmentHeaderUse, TcSpacecraftId,
@@ -875,55 +875,43 @@ fn the_input_of_a_validated_frame_carries_its_type_vcid_and_data() {
         frame_type,
         spacecraft_id: scid,
         vc_id: vc,
-        sequence_number: seq(4),
+        // N(S) is all zeros in a Type-B frame (232.0 §4.1.2.8 note 3).
+        sequence_number: seq(if frame_type == FrameType::Ad { 4 } else { 0 }),
     };
-    let input_of = |frame_type, data: FrameData<'_>, buffer_available| {
+    let check = |frame_type, data: FrameData<'_>, buffer_available, expected: Farm1Frame<'_>| {
         let mut bytes = [0_u8; F];
         let n = encode(&channels, fields(frame_type), data, &mut bytes).unwrap();
         let valid = validate_frame(&bytes[..n], &channels).unwrap();
-        let input = Farm1Input::from_tc(&valid, buffer_available);
-        let Farm1Input::Frame {
-            vc_id,
-            frame,
-            buffer_available,
-        } = input
-        else {
-            panic!("not a frame input");
-        };
-        // The frame borrows `bytes`; compare in place.
-        (vc_id, buffer_available, format!("{frame:?}"))
+        // The frame borrows `bytes`, so it is compared inside the closure.
+        assert_eq!(
+            Farm1Input::from_tc(&valid, buffer_available),
+            Farm1Input::Frame {
+                vc_id: vc,
+                frame: expected,
+                buffer_available
+            }
+        );
     };
     let fdu = FrameData::Fdu {
         segment_header: None,
         user_data: &DATA,
     };
-    let (v, b, ad) = input_of(FrameType::Ad, fdu, true);
-    assert_eq!((v, b), (vc, true));
-    assert_eq!(
-        ad,
-        format!(
-            "{:?}",
-            Farm1Frame::Ad {
-                sequence_number: seq(4),
-                data: &DATA
-            }
-        )
+    check(
+        FrameType::Ad,
+        fdu,
+        true,
+        Farm1Frame::Ad {
+            sequence_number: seq(4),
+            data: &DATA,
+        },
     );
-    let (v, b, bd) = input_of(FrameType::Bd, fdu, false);
-    assert_eq!((v, b), (vc, false));
-    assert_eq!(bd, format!("{:?}", Farm1Frame::Bd { data: &DATA }));
-    let (_, _, bc) = input_of(
+    check(FrameType::Bd, fdu, false, Farm1Frame::Bd { data: &DATA });
+    check(
         FrameType::Bc,
         FrameData::Control(ControlCommand::SetVr(seq(9))),
         true,
-    );
-    assert_eq!(
-        bc,
-        format!(
-            "{:?}",
-            Farm1Frame::Bc {
-                command: Some(ControlCommand::SetVr(seq(9)))
-            }
-        )
+        Farm1Frame::Bc {
+            command: Some(ControlCommand::SetVr(seq(9))),
+        },
     );
 }
