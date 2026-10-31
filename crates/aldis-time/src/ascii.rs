@@ -878,6 +878,15 @@ mod tests {
     }
 
     #[test]
+    fn subset_with_an_unknown_calendar_shape_is_malformed() {
+        // req: TIME-032
+        assert_eq!(
+            subset("ab-cdT10:20:30").unwrap_err().kind(),
+            ErrorKind::Malformed
+        );
+    }
+
+    #[test]
     fn fractions_hold_only_valid_values() {
         // req: TIME-031, RS-020
         let f = Fraction::new(1234, 4).unwrap();

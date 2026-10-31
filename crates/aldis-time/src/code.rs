@@ -612,7 +612,7 @@ mod tests {
 
     #[test]
     fn decode_errors() {
-        // req: TIME-003, TIME-020, TIME-030
+        // req: TIME-003, TIME-020, TIME-030, API-032
         let e = decode_with_pfield(&[0x1E, 0, 0]).unwrap_err();
         assert_eq!(
             (e.kind(), e.detail()),
@@ -637,6 +637,9 @@ mod tests {
             decode_implicit(&[0], &cds).unwrap_err().kind(),
             ErrorKind::Incomplete
         );
+        let ok = decode_implicit_lenient(&[0, 1, 0, 0, 0, 0, 0xEE], &cds).unwrap();
+        assert!(ok.anomalies().is_empty());
+        assert_eq!(ok.len(), 6);
         assert_eq!(cds.t_len(), 6);
     }
 }
