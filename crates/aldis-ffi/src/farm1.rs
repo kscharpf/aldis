@@ -33,7 +33,7 @@ pub const ALDIS_FARM1_MAX_ACTIONS: usize = 3;
 
 const _: () = assert!(ALDIS_FARM1_MAX_ACTIONS == FARM1_MAX_ACTIONS);
 
-/// 64-bit words of one `aldis_farm1_t` (CABI-031).
+/// 64-bit words of one `aldis_farm1_t` (CABI-031; 232.1 §6).
 ///
 /// The tag and the engine state; the build fails when the state outgrows it.
 pub const ALDIS_FARM1_WORDS: usize = 8;
@@ -134,7 +134,7 @@ pub enum aldis_farm1_fdu {
 mirror!(pub aldis_farm1_fdu: u32 { ALDIS_FARM1_FDU_AD, ALDIS_FARM1_FDU_BD });
 
 /// FARM-1 in caller storage: the caller declares an object of this type, and the pointer to it is
-/// the handle (COP-002, CABI-031, CABI-032).
+/// the handle (232.1 §6; COP-002, CABI-031, CABI-032).
 ///
 /// The words are the library's: a C caller never reads or writes them.
 #[repr(C)]
@@ -169,7 +169,8 @@ pub struct aldis_farm1_config_t {
     pub v_r: u8,
 }
 
-/// One input of FARM-1 (API-057). A field that the kind does not use is ignored.
+/// One input of FARM-1 (232.1 §6.3, Table 6-1 events; API-057, CABI-040). A field that the
+/// kind does not use is ignored.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct aldis_farm1_input_t {
@@ -197,7 +198,8 @@ pub struct aldis_farm1_input_t {
     pub data_len: usize,
 }
 
-/// One action of FARM-1 (API-057, API-061). A field that the kind does not use is 0.
+/// One action of FARM-1 (232.1 §6.2, Table 6-1 actions; API-057, API-061, CABI-040). A field
+/// that the kind does not use is 0.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct aldis_farm1_action_t {
@@ -218,7 +220,8 @@ pub struct aldis_farm1_action_t {
     pub to_state: u8,
 }
 
-/// The actions of one input, in the order of the cell (API-057, COP-006).
+/// The actions of one input, in the order of the cell (232.1 Table 6-1; API-057, COP-006,
+/// CABI-040).
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct aldis_farm1_actions_t {
@@ -525,8 +528,8 @@ pub unsafe extern "C" fn aldis_farm1_status(
     }
 }
 
-/// Releases the storage: later calls on it fail with `ALDIS_ERR_INVALID_HANDLE` (CABI-032). An
-/// invalid handle is ignored.
+/// Releases the storage: later calls on it fail with `ALDIS_ERR_INVALID_HANDLE` (CABI-032; no
+/// clause of 232.1, a library lifecycle call). An invalid handle is ignored.
 ///
 /// # Safety
 /// As for [`aldis_farm1_step`].

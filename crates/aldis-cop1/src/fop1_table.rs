@@ -172,7 +172,8 @@ pub enum SuspendState {
     InitializingWithoutBcFrame,
 }
 
-/// Target frame kind for lower-procedure ready flags (CCSDS 232.1-B-2 Table 5-1, Events E41, E43, E45).
+/// Target frame kind for lower-procedure ready flags (CCSDS 232.1-B-2 Table 5-1, Events E41, E43,
+/// E45; COP-001, COP-010).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum FrameKind {
     /// Type-AD Sequence-Controlled frame (Event E41).
@@ -183,7 +184,8 @@ pub enum FrameKind {
     Bd,
 }
 
-/// Type-BC frame command payload (CCSDS 232.1-B-2 §5.2.5, Table 5-1, Events E25, E27).
+/// Type-BC frame command payload (CCSDS 232.1-B-2 §5.2.5, Table 5-1, Events E25, E27; COP-001,
+/// COP-010).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum BcCommand {
     /// Unlock command (CCSDS 232.0-B-4 §4.1.3.3.2, Event E25).
@@ -270,67 +272,68 @@ pub const NOT_APPLICABLE: Fop1Cell = Fop1Cell {
     next_state: None,
 };
 
-/// Ignore event and remain in State S6 (`Initial`).
+/// Ignore event and remain in State S6 (`Initial`) (232.1 Table 5-1; COP-001).
 pub const IGNORE_INITIAL: Fop1Cell = Fop1Cell {
     actions: &[],
     next_state: Some(Fop1State::Initial),
 };
 
-/// Ignore event and remain in State S2 (`RetransmitWithoutWait`).
+/// Ignore event and remain in State S2 (`RetransmitWithoutWait`) (232.1 Table 5-1; COP-001).
 pub const IGNORE_RETR_NO_WAIT: Fop1Cell = Fop1Cell {
     actions: &[],
     next_state: Some(Fop1State::RetransmitWithoutWait),
 };
 
-/// Ignore event and remain in State S3 (`RetransmitWithWait`).
+/// Ignore event and remain in State S3 (`RetransmitWithWait`) (232.1 Table 5-1; COP-001).
 pub const IGNORE_RETR_WAIT: Fop1Cell = Fop1Cell {
     actions: &[],
     next_state: Some(Fop1State::RetransmitWithWait),
 };
 
-/// Emit `Alert[synch]` and transition to State S6 (`Initial`).
+/// Emit `Alert[synch]` and transition to State S6 (`Initial`) (232.1 Table 5-1; COP-001).
 pub const ALERT_SYNCH: Fop1Cell = Fop1Cell {
     actions: &[Fop1Action::Alert(AlertReason::Synch)],
     next_state: Some(Fop1State::Initial),
 };
 
-/// Emit `Alert[CLCW]` and transition to State S6 (`Initial`).
+/// Emit `Alert[CLCW]` and transition to State S6 (`Initial`) (232.1 Table 5-1; COP-001).
 pub const ALERT_CLCW: Fop1Cell = Fop1Cell {
     actions: &[Fop1Action::Alert(AlertReason::Clcw)],
     next_state: Some(Fop1State::Initial),
 };
 
-/// Emit `Alert[Lockout]` and transition to State S6 (`Initial`).
+/// Emit `Alert[Lockout]` and transition to State S6 (`Initial`) (232.1 Table 5-1; COP-001).
 pub const ALERT_LOCKOUT: Fop1Cell = Fop1Cell {
     actions: &[Fop1Action::Alert(AlertReason::Lockout)],
     next_state: Some(Fop1State::Initial),
 };
 
-/// Emit `Alert[NN(R)]` and transition to State S6 (`Initial`).
+/// Emit `Alert[NN(R)]` and transition to State S6 (`Initial`) (232.1 Table 5-1; COP-001).
 pub const ALERT_NNR: Fop1Cell = Fop1Cell {
     actions: &[Fop1Action::Alert(AlertReason::NnR)],
     next_state: Some(Fop1State::Initial),
 };
 
-/// Emit `Alert[Limit]` and transition to State S6 (`Initial`).
+/// Emit `Alert[Limit]` and transition to State S6 (`Initial`) (232.1 Table 5-1; COP-001).
 pub const ALERT_LIMIT: Fop1Cell = Fop1Cell {
     actions: &[Fop1Action::Alert(AlertReason::Limit)],
     next_state: Some(Fop1State::Initial),
 };
 
-/// Emit `Alert[T1]` and transition to State S6 (`Initial`).
+/// Emit `Alert[T1]` and transition to State S6 (`Initial`) (232.1 Table 5-1; COP-001).
 pub const ALERT_T1: Fop1Cell = Fop1Cell {
     actions: &[Fop1Action::Alert(AlertReason::T1)],
     next_state: Some(Fop1State::Initial),
 };
 
-/// Emit `Alert[LLIF]` and transition to State S6 (`Initial`).
+/// Emit `Alert[LLIF]` and transition to State S6 (`Initial`) (232.1 Table 5-1; COP-001).
 pub const ALERT_LLIF: Fop1Cell = Fop1Cell {
     actions: &[Fop1Action::Alert(AlertReason::Llif)],
     next_state: Some(Fop1State::Initial),
 };
 
-/// E2 in S1..S3: Remove acknowledged frames from `Sent_Queue`, cancel timer, look for FDU.
+/// E2 in S1..S3: Remove acknowledged frames from `Sent_Queue`, cancel timer, look for FDU (232.1
+/// Table 5-1; COP-001).
 pub const CELL_E2: Fop1Cell = Fop1Cell {
     actions: &[
         Fop1Action::RemoveAckedFrames,
@@ -340,13 +343,15 @@ pub const CELL_E2: Fop1Cell = Fop1Cell {
     next_state: Some(Fop1State::Active),
 };
 
-/// E6 in S1..S3: Remove acknowledged frames from `Sent_Queue`, look for FDU.
+/// E6 in S1..S3: Remove acknowledged frames from `Sent_Queue`, look for FDU (232.1 Table 5-1;
+/// COP-001).
 pub const CELL_E6: Fop1Cell = Fop1Cell {
     actions: &[Fop1Action::RemoveAckedFrames, Fop1Action::LookForFdu],
     next_state: Some(Fop1State::Active),
 };
 
-/// E8 in S1..S3: Remove acked, initiate AD retransmission, look for FDU -> S2.
+/// E8 in S1..S3: Remove acked, initiate AD retransmission, look for FDU -> S2 (232.1 Table 5-1;
+/// COP-001).
 pub const CELL_E8: Fop1Cell = Fop1Cell {
     actions: &[
         Fop1Action::RemoveAckedFrames,
@@ -356,19 +361,19 @@ pub const CELL_E8: Fop1Cell = Fop1Cell {
     next_state: Some(Fop1State::RetransmitWithoutWait),
 };
 
-/// E9 in S1..S3: Remove acknowledged frames from `Sent_Queue` -> S3.
+/// E9 in S1..S3: Remove acknowledged frames from `Sent_Queue` -> S3 (232.1 Table 5-1; COP-001).
 pub const CELL_E9: Fop1Cell = Fop1Cell {
     actions: &[Fop1Action::RemoveAckedFrames],
     next_state: Some(Fop1State::RetransmitWithWait),
 };
 
-/// E10 in S1, S3: Initiate AD retransmission, look for FDU -> S2.
+/// E10 in S1, S3: Initiate AD retransmission, look for FDU -> S2 (232.1 Table 5-1; COP-001).
 pub const CELL_E10: Fop1Cell = Fop1Cell {
     actions: &[Fop1Action::InitiateAdRetransmission, Fop1Action::LookForFdu],
     next_state: Some(Fop1State::RetransmitWithoutWait),
 };
 
-/// E101 in S1..S3: Remove acked frames, emit `Alert[Limit]` -> S6.
+/// E101 in S1..S3: Remove acked frames, emit `Alert[Limit]` -> S6 (232.1 Table 5-1; COP-001).
 pub const CELL_E101: Fop1Cell = Fop1Cell {
     actions: &[
         Fop1Action::RemoveAckedFrames,
@@ -377,73 +382,78 @@ pub const CELL_E101: Fop1Cell = Fop1Cell {
     next_state: Some(Fop1State::Initial),
 };
 
-/// Reject directive and remain in State S1 (`Active`).
+/// Reject directive and remain in State S1 (`Active`) (232.1 Table 5-1; COP-001).
 pub const DIRECTIVE_REJECT_S1: Fop1Cell = Fop1Cell {
     actions: &[Fop1Action::DirectiveNotify(DirectiveNotification::Reject)],
     next_state: Some(Fop1State::Active),
 };
 
-/// Reject directive and remain in State S2 (`RetransmitWithoutWait`).
+/// Reject directive and remain in State S2 (`RetransmitWithoutWait`) (232.1 Table 5-1; COP-001).
 pub const DIRECTIVE_REJECT_S2: Fop1Cell = Fop1Cell {
     actions: &[Fop1Action::DirectiveNotify(DirectiveNotification::Reject)],
     next_state: Some(Fop1State::RetransmitWithoutWait),
 };
 
-/// Reject directive and remain in State S3 (`RetransmitWithWait`).
+/// Reject directive and remain in State S3 (`RetransmitWithWait`) (232.1 Table 5-1; COP-001).
 pub const DIRECTIVE_REJECT_S3: Fop1Cell = Fop1Cell {
     actions: &[Fop1Action::DirectiveNotify(DirectiveNotification::Reject)],
     next_state: Some(Fop1State::RetransmitWithWait),
 };
 
-/// Reject directive and remain in State S4 (`InitializingWithoutBcFrame`).
+/// Reject directive and remain in State S4 (`InitializingWithoutBcFrame`) (232.1 Table 5-1;
+/// COP-001).
 pub const DIRECTIVE_REJECT_S4: Fop1Cell = Fop1Cell {
     actions: &[Fop1Action::DirectiveNotify(DirectiveNotification::Reject)],
     next_state: Some(Fop1State::InitializingWithoutBcFrame),
 };
 
-/// Reject directive and remain in State S5 (`InitializingWithBcFrame`).
+/// Reject directive and remain in State S5 (`InitializingWithBcFrame`) (232.1 Table 5-1; COP-001).
 pub const DIRECTIVE_REJECT_S5: Fop1Cell = Fop1Cell {
     actions: &[Fop1Action::DirectiveNotify(DirectiveNotification::Reject)],
     next_state: Some(Fop1State::InitializingWithBcFrame),
 };
 
-/// Reject directive and remain in State S6 (`Initial`).
+/// Reject directive and remain in State S6 (`Initial`) (232.1 Table 5-1; COP-001).
 pub const DIRECTIVE_REJECT_S6: Fop1Cell = Fop1Cell {
     actions: &[Fop1Action::DirectiveNotify(DirectiveNotification::Reject)],
     next_state: Some(Fop1State::Initial),
 };
 
-/// Reject transfer request and remain in State S1 (`Active`).
+/// Reject transfer request and remain in State S1 (`Active`) (232.1 Table 5-1; COP-001).
 pub const TRANSFER_REJECT_S1: Fop1Cell = Fop1Cell {
     actions: &[Fop1Action::TransferNotify(TransferNotification::Reject)],
     next_state: Some(Fop1State::Active),
 };
 
-/// Reject transfer request and remain in State S2 (`RetransmitWithoutWait`).
+/// Reject transfer request and remain in State S2 (`RetransmitWithoutWait`) (232.1 Table 5-1;
+/// COP-001).
 pub const TRANSFER_REJECT_S2: Fop1Cell = Fop1Cell {
     actions: &[Fop1Action::TransferNotify(TransferNotification::Reject)],
     next_state: Some(Fop1State::RetransmitWithoutWait),
 };
 
-/// Reject transfer request and remain in State S3 (`RetransmitWithWait`).
+/// Reject transfer request and remain in State S3 (`RetransmitWithWait`) (232.1 Table 5-1;
+/// COP-001).
 pub const TRANSFER_REJECT_S3: Fop1Cell = Fop1Cell {
     actions: &[Fop1Action::TransferNotify(TransferNotification::Reject)],
     next_state: Some(Fop1State::RetransmitWithWait),
 };
 
-/// Reject transfer request and remain in State S4 (`InitializingWithoutBcFrame`).
+/// Reject transfer request and remain in State S4 (`InitializingWithoutBcFrame`) (232.1 Table 5-1;
+/// COP-001).
 pub const TRANSFER_REJECT_S4: Fop1Cell = Fop1Cell {
     actions: &[Fop1Action::TransferNotify(TransferNotification::Reject)],
     next_state: Some(Fop1State::InitializingWithoutBcFrame),
 };
 
-/// Reject transfer request and remain in State S5 (`InitializingWithBcFrame`).
+/// Reject transfer request and remain in State S5 (`InitializingWithBcFrame`) (232.1 Table 5-1;
+/// COP-001).
 pub const TRANSFER_REJECT_S5: Fop1Cell = Fop1Cell {
     actions: &[Fop1Action::TransferNotify(TransferNotification::Reject)],
     next_state: Some(Fop1State::InitializingWithBcFrame),
 };
 
-/// Reject transfer request and remain in State S6 (`Initial`).
+/// Reject transfer request and remain in State S6 (`Initial`) (232.1 Table 5-1; COP-001).
 pub const TRANSFER_REJECT_S6: Fop1Cell = Fop1Cell {
     actions: &[Fop1Action::TransferNotify(TransferNotification::Reject)],
     next_state: Some(Fop1State::Initial),

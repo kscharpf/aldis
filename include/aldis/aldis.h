@@ -210,7 +210,7 @@
 #define ALDIS_FARM1_MAX_ACTIONS 3
 
 /**
- * 64-bit words of one `aldis_farm1_t` (CABI-031).
+ * 64-bit words of one `aldis_farm1_t` (CABI-031; 232.1 §6).
  *
  * The tag and the engine state; the build fails when the state outgrows it.
  */
@@ -1095,7 +1095,7 @@
 #define ALDIS_FOP1_MAX_ACTIONS 35
 
 /**
- * 64-bit words of one `aldis_fop1_t` (CABI-031).
+ * 64-bit words of one `aldis_fop1_t` (CABI-031; 232.1 §5).
  *
  * The tag and the engine state at `ALDIS_FOP1_SENT_QUEUE_FRAMES` frames of
  * `ALDIS_FOP1_MAX_FRAME_OCTETS` octets; the build fails when the state outgrows it.
@@ -3733,7 +3733,7 @@ typedef struct {
 
 /**
  * FARM-1 in caller storage: the caller declares an object of this type, and the pointer to it is
- * the handle (COP-002, CABI-031, CABI-032).
+ * the handle (232.1 §6; COP-002, CABI-031, CABI-032).
  *
  * The words are the library's: a C caller never reads or writes them.
  */
@@ -3778,7 +3778,8 @@ typedef struct {
 } aldis_farm1_config_t;
 
 /**
- * One input of FARM-1 (API-057). A field that the kind does not use is ignored.
+ * One input of FARM-1 (232.1 §6.3, Table 6-1 events; API-057, CABI-040). A field that the
+ * kind does not use is ignored.
  */
 typedef struct {
   /**
@@ -3824,7 +3825,8 @@ typedef struct {
 } aldis_farm1_input_t;
 
 /**
- * One action of FARM-1 (API-057, API-061). A field that the kind does not use is 0.
+ * One action of FARM-1 (232.1 §6.2, Table 6-1 actions; API-057, API-061, CABI-040). A field
+ * that the kind does not use is 0.
  */
 typedef struct {
   /**
@@ -3859,7 +3861,8 @@ typedef struct {
 } aldis_farm1_action_t;
 
 /**
- * The actions of one input, in the order of the cell (API-057, COP-006).
+ * The actions of one input, in the order of the cell (232.1 Table 6-1; API-057, COP-006,
+ * CABI-040).
  */
 typedef struct {
   /**
@@ -3908,7 +3911,7 @@ typedef struct {
 
 /**
  * FOP-1 in caller storage: the caller declares an object of this type, and the pointer to it is
- * the handle (COP-001, CABI-031, CABI-032).
+ * the handle (232.1 §5; COP-001, CABI-031, CABI-032).
  *
  * The words are the library's: a C caller never reads or writes them.
  */
@@ -3969,7 +3972,8 @@ typedef struct {
 } aldis_fop1_config_t;
 
 /**
- * One input of FOP-1 (API-057). A field that the kind does not use is ignored.
+ * One input of FOP-1 (232.1 §5.3.3, Table 5-1 events; API-057, CABI-040). A field that the
+ * kind does not use is ignored.
  */
 typedef struct {
   /**
@@ -4014,7 +4018,8 @@ typedef struct {
 } aldis_fop1_input_t;
 
 /**
- * One action of FOP-1 (API-057, API-061). A field that the kind does not use is 0.
+ * One action of FOP-1 (232.1 §5.2, Table 5-1 actions; API-057, API-061, CABI-040). A field
+ * that the kind does not use is 0.
  */
 typedef struct {
   /**
@@ -4064,7 +4069,8 @@ typedef struct {
 } aldis_fop1_action_t;
 
 /**
- * The actions of one input, in the order of the cell (API-057, COP-006).
+ * The actions of one input, in the order of the cell (232.1 Table 5-1; API-057, COP-006,
+ * CABI-040).
  */
 typedef struct {
   /**
@@ -6319,8 +6325,8 @@ uint32_t aldis_farm1_status(aldis_farm1_t *h,
                             aldis_error_detail_t *err);
 
 /**
- * Releases the storage: later calls on it fail with `ALDIS_ERR_INVALID_HANDLE` (CABI-032). An
- * invalid handle is ignored.
+ * Releases the storage: later calls on it fail with `ALDIS_ERR_INVALID_HANDLE` (CABI-032; no
+ * clause of 232.1, a library lifecycle call). An invalid handle is ignored.
  *
  * # Safety
  * As for [`aldis_farm1_step`].
@@ -6408,8 +6414,8 @@ uint32_t aldis_fop1_next_deadline(aldis_fop1_t *h,
 uint32_t aldis_fop1_status(aldis_fop1_t *h, aldis_fop1_status_t *status, aldis_error_detail_t *err);
 
 /**
- * Releases the storage: later calls on it fail with `ALDIS_ERR_INVALID_HANDLE` (CABI-032). An
- * invalid handle is ignored.
+ * Releases the storage: later calls on it fail with `ALDIS_ERR_INVALID_HANDLE` (CABI-032; no
+ * clause of 232.1, a library lifecycle call). An invalid handle is ignored.
  *
  * # Safety
  * As for [`aldis_fop1_step`].

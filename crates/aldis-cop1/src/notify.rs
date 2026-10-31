@@ -12,7 +12,7 @@ use core::num::NonZeroU8;
 
 use crate::fop1_table::{Fop1Event, Fop1State};
 
-/// FOP-1 Timeout Type parameter (CCSDS 232.1-B-2 §5.1.10.3, Table 7-1).
+/// FOP-1 Timeout Type parameter (CCSDS 232.1-B-2 §5.1.10.3, Table 7-1; COP-001, COP-013).
 ///
 /// Determines the behavior when timer T1 expires and the transmission limit
 /// has been reached:
@@ -27,7 +27,7 @@ pub enum TimeoutType {
     Tt1 = 1,
 }
 
-/// FOP-1 Management Directives (CCSDS 232.1-B-2 §4.2, Table 4-1).
+/// FOP-1 Management Directives (CCSDS 232.1-B-2 §4.2, Table 4-1; COP-001, COP-015).
 ///
 /// Management directives control the lifecycle and configuration of the
 /// Frame Operation Procedure-1 (FOP-1) state machine.
@@ -115,7 +115,8 @@ pub struct Alert {
     pub prior_state: Fop1State,
 }
 
-/// Transfer service notifications for Type-AD and Type-BD requests (CCSDS 232.1-B-2 §4.4, Table 4-5).
+/// Transfer service notifications for Type-AD and Type-BD requests (CCSDS 232.1-B-2 §4.4, Table
+/// 4-5; COP-001, API-083).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum TransferNotification {
     /// Transfer request accepted by FOP-1 for processing.
@@ -128,7 +129,8 @@ pub enum TransferNotification {
     NegativeConfirm,
 }
 
-/// A transfer notification event associating a request handle with its status (CCSDS 232.1-B-2 §4.4, Table 4-5).
+/// A transfer notification event associating a request handle with its status (CCSDS 232.1-B-2
+/// §4.4, Table 4-5; COP-001, API-083).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct TransferNotify<H> {
     /// Handle of the transfer request being acknowledged.
@@ -137,7 +139,7 @@ pub struct TransferNotify<H> {
     pub status: TransferNotification,
 }
 
-/// Directive service notifications (CCSDS 232.1-B-2 §4.2, Table 4-2).
+/// Directive service notifications (CCSDS 232.1-B-2 §4.2, Table 4-2; COP-001, API-083).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum DirectiveNotification {
     /// Directive accepted by FOP-1.
@@ -150,7 +152,8 @@ pub enum DirectiveNotification {
     NegativeConfirm,
 }
 
-/// A directive notification event associating a directive handle with its status (CCSDS 232.1-B-2 §4.2, Table 4-2).
+/// A directive notification event associating a directive handle with its status (CCSDS 232.1-B-2
+/// §4.2, Table 4-2; COP-001, API-083).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct DirectiveNotify<H> {
     /// Handle of the directive being acknowledged.

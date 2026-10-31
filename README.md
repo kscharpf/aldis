@@ -21,7 +21,8 @@ Libraries that add CCSDS protocol support to spacecraft flight software and grou
 | M0 Foundations (`v0.1.0-m0`) | Released: the specification, the verification tooling, and `aldis-core` (Layer 0) |
 | M1 Packets and time (`v0.2.0-m1`) | Released: the Layer 1 codecs for time codes, Space Packets, and Encapsulation Packets (`aldis-time`, `aldis-spp`, `aldis-epp`) |
 | M2 Frame codecs (`v0.3.0-m2`) | Released: the Layer 1 codecs for TM, TC, AOS, and USLP Transfer Frames (`aldis-tm`, `aldis-tc`, `aldis-aos`, `aldis-uslp`), each with its C ABI functions, the hazard analysis, and the assurance case |
-| M3–M6 | Not started: the Layer 2–3 crates (COP-1, link engines, framework) are skeletons |
+| M3 COP-1 | Exit in review: `aldis-cop1` (FOP-1 and FARM-1 as step functions over their state tables), their C ABI handles, the closed-loop tests, and the hazard analysis are merged; one exit criterion is open (every fuzz target run one CPU-hour, [plan §4](docs/milestones/m3-cop1.md)); not yet released |
+| M4–M6 | Not started: the Layer 2–3 crates (link engines, framework) are skeletons |
 | A0 reference application scenario | In progress |
 
 See the [roadmap](docs/08-roadmap.md) for every milestone and track.

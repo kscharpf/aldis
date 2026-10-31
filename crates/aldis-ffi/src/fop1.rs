@@ -42,7 +42,7 @@ pub const ALDIS_FOP1_MAX_ACTIONS: usize = 35;
 
 const _: () = assert!(ALDIS_FOP1_MAX_ACTIONS == fop1_max_actions(ALDIS_FOP1_SENT_QUEUE_FRAMES));
 
-/// 64-bit words of one `aldis_fop1_t` (CABI-031).
+/// 64-bit words of one `aldis_fop1_t` (CABI-031; 232.1 §5).
 ///
 /// The tag and the engine state at `ALDIS_FOP1_SENT_QUEUE_FRAMES` frames of
 /// `ALDIS_FOP1_MAX_FRAME_OCTETS` octets; the build fails when the state outgrows it.
@@ -319,7 +319,7 @@ mirror!(pub aldis_fop1_alert: u32 {
 });
 
 /// FOP-1 in caller storage: the caller declares an object of this type, and the pointer to it is
-/// the handle (COP-001, CABI-031, CABI-032).
+/// the handle (232.1 §5; COP-001, CABI-031, CABI-032).
 ///
 /// The words are the library's: a C caller never reads or writes them.
 #[repr(C)]
@@ -362,7 +362,8 @@ pub struct aldis_fop1_config_t {
     pub bc_repetitions: u8,
 }
 
-/// One input of FOP-1 (API-057). A field that the kind does not use is ignored.
+/// One input of FOP-1 (232.1 §5.3.3, Table 5-1 events; API-057, CABI-040). A field that the
+/// kind does not use is ignored.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct aldis_fop1_input_t {
@@ -389,7 +390,8 @@ pub struct aldis_fop1_input_t {
     pub data_len: usize,
 }
 
-/// One action of FOP-1 (API-057, API-061). A field that the kind does not use is 0.
+/// One action of FOP-1 (232.1 §5.2, Table 5-1 actions; API-057, API-061, CABI-040). A field
+/// that the kind does not use is 0.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct aldis_fop1_action_t {
@@ -417,7 +419,8 @@ pub struct aldis_fop1_action_t {
     pub state: u8,
 }
 
-/// The actions of one input, in the order of the cell (API-057, COP-006).
+/// The actions of one input, in the order of the cell (232.1 Table 5-1; API-057, COP-006,
+/// CABI-040).
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct aldis_fop1_actions_t {
@@ -1000,8 +1003,8 @@ pub unsafe extern "C" fn aldis_fop1_status(
     }
 }
 
-/// Releases the storage: later calls on it fail with `ALDIS_ERR_INVALID_HANDLE` (CABI-032). An
-/// invalid handle is ignored.
+/// Releases the storage: later calls on it fail with `ALDIS_ERR_INVALID_HANDLE` (CABI-032; no
+/// clause of 232.1, a library lifecycle call). An invalid handle is ignored.
 ///
 /// # Safety
 /// As for [`aldis_fop1_step`].

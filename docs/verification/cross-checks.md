@@ -331,3 +331,7 @@ No sender-side segmentation was found: libraries expose the Sequence Flags but d
 ### 4.11 Not available
 
 ESA SCOS-2000, EGOS, and libgcs are not published as open source. OpenC3 COSMOS is not under an OSI license and has only day, millisecond, and microsecond helpers. `satrs` and `tmtccmd` share authors with `spacepackets`. NASA cFE's `MSG` module is run (§1, §2); its `CFE_TIME` module, which converts and formats times, is not examined. Not examined either: AMMOS MMTC, SpacePy, astropy, libCSP, and Go or JavaScript packages.
+
+## 5. COP-1 (M3)
+
+No independent implementation of COP-1 (232.1) was searched for or run. By maintainer decision of 2026-10-31, the blind Python model `test-vectors/models/cop1.py`, written without sight of the Rust engines (TV-023), is the independent check for M3 and counts as the VER-040 search record for the milestone: one scenario per cell of Tables 5-1 and 6-1 (M3 WP-2, #183, #190). It also counts as the second review of the hand-derived vectors.

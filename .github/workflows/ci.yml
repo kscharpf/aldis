@@ -264,8 +264,8 @@ jobs:
       - run: cargo xtask trace --scope m1 --strict
       # M2 is closed: every in-scope requirement must keep an artefact (VER-020, m2 plan D1).
       - run: cargo xtask trace --scope m2 --strict
-      # M3 is open: its trace is reported, and becomes --strict at the M3 exit (m3 plan D1).
-      - run: cargo xtask trace --scope m3
+      # M3 is closed: every in-scope requirement must keep an artefact (VER-020, m3 plan D1).
+      - run: cargo xtask trace --scope m3 --strict
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: trace-m0
