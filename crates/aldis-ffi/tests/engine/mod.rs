@@ -509,6 +509,7 @@ mod farm1_runner {
             kind: ALDIS_FARM1_INPUT_BUFFER_RELEASED,
             sequence_number: 0,
             v_star: 0,
+            vc_id: 0,
             buffer_available: 0,
             no_rf_available: 0,
             no_bit_lock: 0,
@@ -533,6 +534,7 @@ mod farm1_runner {
         let data = octets[5..octets.len() - trailer].to_vec();
         let (bypass, control) = (octets[0] & 0x20 != 0, octets[0] & 0x10 != 0);
         let mut input = aldis_farm1_input_t {
+            vc_id: (octets[2] >> 2) & 0x3F,
             buffer_available: u8::from(buffer_available),
             ..blank()
         };

@@ -20,6 +20,7 @@ use aldis_cop1::{
     Farm1Frame, Farm1Input, Farm1State, Farm1Window, Fop1Config, Fop1Decision, Fop1Input, Fop1Output,
     Fop1State, Fop1Target, FrameKind, TimeoutType, fop1_max_actions,
 };
+use aldis_core::ErrorKind;
 use aldis_core::ids::FrameSeqNum;
 use aldis_core::time::{Duration, Instant};
 use aldis_tc::{
@@ -225,19 +226,22 @@ fn farm1(u: &mut Unstructured<'_>) -> Result<()> {
         let buffer_available = u.arbitrary()?;
         let class: u8 = u.int_in_range(0..=6)?;
         let mut bc_known = false;
+        // One frame in eight comes from another Virtual Channel (COP-037).
+        let foreign = u.ratio(1, 8)?;
+        let vc = TcVcId::new(if foreign { VCID + 1 } else { VCID }).unwrap();
         let input = match class {
-            0 | 1 => Farm1Input::Frame {
+            0 | 1 => Farm1Input::Frame { vc_id: vc,
                 frame: Farm1Frame::Ad {
                     sequence_number: FrameSeqNum::new(n_s),
                     data: &data,
                 },
                 buffer_available,
             },
-            2 => Farm1Input::Frame {
+            2 => Farm1Input::Frame { vc_id: vc,
                 frame: Farm1Frame::Bd { data: &data },
                 buffer_available,
             },
-            3 => Farm1Input::Frame {
+            3 => Farm1Input::Frame { vc_id: vc,
                 frame: Farm1Frame::Bc {
                     command: match u.int_in_range(0..=2)? {
                         0 => Some(ControlCommand::Unlock),
@@ -261,6 +265,11 @@ fn farm1(u: &mut Unstructured<'_>) -> Result<()> {
         let at = Instant::from_micros(0);
         let first = f.step(input, at, &mut area);
         assert_eq!(first, f.step(input, at, &mut again));
+        if foreign && class <= 3 {
+            assert_eq!(first.map(|_| ()).unwrap_err().kind(), ErrorKind::UnknownChannel);
+            assert_eq!(area, [0_u8; 8]);
+            continue;
+        }
         let Ok((after, actions)) = first else {
             continue;
         };
