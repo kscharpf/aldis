@@ -12,7 +12,7 @@
 //!
 //! | Event | Input |
 //! |---|---|
-//! | E1–E14, E101–E103 | [`Fop1Input::Clcw`], classified by the Lockout Flag (after the invalid pattern, E15), then N(R) against NN(R) and V(S) modulo 256, then the Retransmit and Wait Flags (232.1 §5.3.2.1; COP-012) |
+//! | E1–E14, E101–E103 | [`Fop1Input::Clcw`], classified after the invalid-pattern check (E15) by the Lockout Flag, then N(R) against NN(R) and V(S) modulo 256, then the Retransmit and Wait Flags (232.1 §5.3.2.1; COP-012) |
 //! | E15 | [`Fop1Input::Clcw`] with a COP in Effect other than `01`, and [`Fop1Input::InvalidClcw`] (232.1 §5.3.2.1 a; OI-62, which ranks it first) |
 //! | E16–E18, E104 | [`Fop1Input::Timeout`] once `now` reaches [`Fop1::next_deadline`] (API-053) |
 //! | E19–E22 | [`Fop1Input::RequestAd`], [`Fop1Input::RequestBd`] |
@@ -2334,12 +2334,13 @@ mod tests {
             })
         };
         let word = |lockout: bool, n_r: u8, pattern_ok: bool| -> Fop1Input<'static> {
-            let mut c = Clcw::decode([0, 0, 0, 0]).unwrap();
-            c.vc_id = TcVcId::new(1).unwrap();
-            c.cop_in_effect = CopInEffect::new(if pattern_ok { 1 } else { 2 }).unwrap();
-            c.lockout = lockout;
-            c.report_value = FrameSeqNum::new(n_r);
-            Fop1Input::Clcw(c)
+            match clcw(lockout, false, false, n_r) {
+                Fop1Input::Clcw(c) if !pattern_ok => Fop1Input::Clcw(Clcw {
+                    cop_in_effect: CopInEffect::new(2).unwrap(),
+                    ..c
+                }),
+                other => other,
+            }
         };
         assert_eq!(event_of(word(true, 5, false)), Some(Fop1Event::E15));
         assert_eq!(event_of(word(false, 5, false)), Some(Fop1Event::E15));
