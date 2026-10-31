@@ -295,7 +295,7 @@ fn flip_length_bit(bytes: &[u8], k: usize) -> Vec<u8> {
 
 /// The first item of `unit` as a frame, or `None` when it is fill or a truncated frame.
 fn first_frame(unit: &[u8]) -> Option<&[u8]> {
-    match next_frame(unit) {
+    match next_frame(unit, 6) {
         Some(Delimited::Frame(f)) => Some(f),
         _ => None,
     }
@@ -318,7 +318,7 @@ fn without_the_fecf_a_shortened_frame_is_delimited_and_accepted() {
         let bad = flip_length_bit(&f, k);
         let claimed = length_field(&bad) + 1;
         assert!(claimed < f.len());
-        let unit = FrameDelimiter::new(&bad).next().unwrap();
+        let unit = FrameDelimiter::new(&bad, 6).next().unwrap();
         let Delimited::Frame(short) = unit else {
             panic!("bit {k}: {unit:?}");
         };
@@ -337,6 +337,45 @@ fn without_the_fecf_a_shortened_frame_is_delimited_and_accepted() {
     }
     // Bits of value 32, 16, 8, 4, 2, and 1.
     assert_eq!(lowered, 6);
+}
+
+#[test]
+fn the_octets_a_shortened_frame_leaves_are_leftover_fill_above_the_bound() {
+    // req: TC-020, API-011, VER-064
+    // hazard: HZ-TC-01 (P-TC-01, OI-47). A Frame Length error that lowers the length leaves the
+    // octets of the frame after the shortened one. When they start no valid header (which
+    // depends on the data of this frame), the delimiter reports them as fill up to the bound of
+    // six and as leftover fill above it: a shortening by 7 octets or more is reported, one by 1,
+    // 2, or 4 is not.
+    let t = channels_with(false);
+    let f = segmented(&t, 64, 1);
+    let (mut reported, mut silent) = (Vec::new(), Vec::new());
+    for k in (0..10).filter(|k| length_field(&f) & (1 << k) != 0) {
+        let bad = flip_length_bit(&f, k);
+        let lowered = f.len() - (length_field(&bad) + 1);
+        let mut d = FrameDelimiter::new(&bad, 6);
+        assert!(matches!(d.next(), Some(Delimited::Frame(_))));
+        match d.next().unwrap() {
+            Delimited::LeftoverFill(rest) => {
+                assert_eq!(rest.len(), lowered);
+                reported.push(lowered);
+            }
+            Delimited::Fill(rest) => {
+                assert_eq!(rest.len(), lowered);
+                silent.push(lowered);
+            }
+            // The octets happen to start a valid header.
+            Delimited::Frame(_) | Delimited::TruncatedFrame { .. } => {}
+        }
+    }
+    assert!(
+        reported.iter().all(|n| *n > 6) && !reported.is_empty(),
+        "{reported:?}"
+    );
+    assert!(
+        silent.iter().all(|n| *n <= 6) && !silent.is_empty(),
+        "{silent:?}"
+    );
 }
 
 #[test]
@@ -387,7 +426,7 @@ fn without_the_fecf_a_lengthened_frame_is_delimited_and_accepted() {
         if claimed > unit.len() {
             // The unit cannot complete it: a truncated frame (hz:HZ-TC-05).
             assert!(matches!(
-                next_frame(&bad),
+                next_frame(&bad, 6),
                 Some(Delimited::TruncatedFrame { .. })
             ));
             continue;

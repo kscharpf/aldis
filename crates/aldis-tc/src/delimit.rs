@@ -7,6 +7,12 @@
 //! returns the next item, whose length the caller skips, so the C ABI can wrap it without
 //! keeping a pointer (M2 plan D14). [`FrameDelimiter`] iterates over a unit with it.
 //!
+//! The Fill Data that the Channel Coding Sublayer appends is short: at most six octets with the
+//! BCH codeblock (§4.4.9.2.6 note 2). The caller passes that longest fill as `max_fill`. Octets
+//! that do not start a valid header and number no more than `max_fill` are [`Delimited::Fill`];
+//! a longer rest is [`Delimited::LeftoverFill`], discarded all the same, so that a Frame Length
+//! error that shortens a frame cannot pass as fill unreported (OI-47, P-TC-01).
+//!
 //! A *valid header* starts with five octets whose Transfer Frame Version Number is `00` and
 //! whose Frame Length declares a frame of at least six octets (232.0 §4.1.1, §4.1.2.2.2,
 //! §4.1.2.7). Fill Data of `01010101` octets (§4.4.9.2.6 note 2) has version `01`, so it is
@@ -28,9 +34,13 @@ pub enum Delimited<'a> {
         /// The frame length the header declares.
         declared_len: usize,
     },
-    /// The rest of the unit, discarded as Fill Data: it does not start with a valid header
-    /// (§4.4.9.2.6 a–b).
+    /// The rest of the unit, discarded as Fill Data: it does not start with a valid header and
+    /// is no longer than the longest fill the coding sublayer appends (§4.4.9.2.6 a–b).
     Fill(&'a [u8]),
+    /// The rest of the unit, discarded: it does not start with a valid header, and it is longer
+    /// than the longest fill the coding sublayer appends, so it is more than Fill Data. A Frame
+    /// Length error that shortens a frame leaves such a rest (§4.4.9.2.6 note 2; OI-47).
+    LeftoverFill(&'a [u8]),
 }
 
 impl<'a> Delimited<'a> {
@@ -40,7 +50,8 @@ impl<'a> Delimited<'a> {
         match *self {
             Delimited::Frame(octets)
             | Delimited::TruncatedFrame { octets, .. }
-            | Delimited::Fill(octets) => octets,
+            | Delimited::Fill(octets)
+            | Delimited::LeftoverFill(octets) => octets,
         }
     }
 
@@ -60,13 +71,17 @@ impl<'a> Delimited<'a> {
 /// The next item of the octets `rest` of a data unit that are not yet delimited, or `None` when
 /// none remain (232.0 §4.4.9.2.4–6; TC-020, M2 plan D14).
 ///
-/// A [`Delimited::Frame`] is followed by the octets after it; a [`TruncatedFrame`] or
-/// [`Fill`] takes all of `rest`.
+/// A [`Delimited::Frame`] is followed by the octets after it; a [`TruncatedFrame`], [`Fill`], or
+/// [`LeftoverFill`] takes all of `rest`. `max_fill` is the longest fill the coding sublayer
+/// appends (six octets for the BCH codeblock, 232.0 §4.4.9.2.6 note 2): a rest that does not
+/// start a valid header is [`Fill`] up to `max_fill` octets and [`LeftoverFill`] above (OI-47).
+/// `usize::MAX` is no bound, and `0` makes every octet of fill leftover.
 ///
 /// [`TruncatedFrame`]: Delimited::TruncatedFrame
 /// [`Fill`]: Delimited::Fill
+/// [`LeftoverFill`]: Delimited::LeftoverFill
 #[must_use]
-pub fn next_frame(rest: &[u8]) -> Option<Delimited<'_>> {
+pub fn next_frame(rest: &[u8], max_fill: usize) -> Option<Delimited<'_>> {
     if rest.is_empty() {
         return None;
     }
@@ -80,7 +95,8 @@ pub fn next_frame(rest: &[u8]) -> Option<Delimited<'_>> {
                 },
             }
         }
-        _ => Delimited::Fill(rest),
+        _ if rest.len() <= max_fill => Delimited::Fill(rest),
+        _ => Delimited::LeftoverFill(rest),
     };
     Some(item)
 }
@@ -90,21 +106,26 @@ pub fn next_frame(rest: &[u8]) -> Option<Delimited<'_>> {
 /// ```
 /// use aldis_tc::delimit::{Delimited, FrameDelimiter};
 ///
-/// // An Unlock frame without FECF, then three octets of fill.
+/// // An Unlock frame without FECF, then three octets of fill, at most six allowed.
 /// let unit = [0x31, 0x55, 0x04, 0x05, 0x00, 0x00, 0x55, 0x55, 0x55];
-/// let items: Vec<_> = FrameDelimiter::new(&unit).collect();
+/// let items: Vec<_> = FrameDelimiter::new(&unit, 6).collect();
 /// assert_eq!(items, [Delimited::Frame(&unit[..6]), Delimited::Fill(&unit[6..])]);
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FrameDelimiter<'a> {
     rest: &'a [u8],
+    max_fill: usize,
 }
 
 impl<'a> FrameDelimiter<'a> {
-    /// A delimiter over the octets of one clean data unit (232.0 §4.4.9.2.3; TC-020).
+    /// A delimiter over the octets of one clean data unit (232.0 §4.4.9.2.3), where `max_fill`
+    /// is the longest fill the coding sublayer appends (TC-020, OI-47).
     #[must_use]
-    pub const fn new(unit: &'a [u8]) -> FrameDelimiter<'a> {
-        FrameDelimiter { rest: unit }
+    pub const fn new(unit: &'a [u8], max_fill: usize) -> FrameDelimiter<'a> {
+        FrameDelimiter {
+            rest: unit,
+            max_fill,
+        }
     }
 
     /// The octets not yet delimited (TC-020).
@@ -118,7 +139,7 @@ impl<'a> Iterator for FrameDelimiter<'a> {
     type Item = Delimited<'a>;
 
     fn next(&mut self) -> Option<Delimited<'a>> {
-        let item = next_frame(self.rest)?;
+        let item = next_frame(self.rest, self.max_fill)?;
         self.rest = self.rest.get(item.len()..).unwrap_or_default();
         Some(item)
     }
@@ -136,11 +157,11 @@ mod tests {
     #[test]
     fn frames_truncation_and_fill() {
         // req: TC-020
-        assert_eq!(next_frame(&[]), None);
+        assert_eq!(next_frame(&[], 6), None);
         let mut unit = UNLOCK.to_vec();
         unit.extend_from_slice(&UNLOCK);
         unit.extend_from_slice(&[0x01, 0x55, 0x04, 0x09, 0x00, 0xAA]);
-        let mut d = FrameDelimiter::new(&unit);
+        let mut d = FrameDelimiter::new(&unit, 6);
         assert_eq!(d.next(), Some(Delimited::Frame(&UNLOCK)));
         assert_eq!(d.remaining().len(), 12);
         let second = d.next().unwrap();
@@ -169,7 +190,49 @@ mod tests {
             &[0x00; 5],
             &[0xC1, 0x55, 0x04, 0x05, 0x00, 0x00],
         ] {
-            assert_eq!(next_frame(fill), Some(Delimited::Fill(fill)), "{fill:02X?}");
+            assert_eq!(
+                next_frame(fill, 6),
+                Some(Delimited::Fill(fill)),
+                "{fill:02X?}"
+            );
         }
+    }
+
+    #[test]
+    fn fill_above_the_bound_is_leftover_fill() {
+        // req: TC-020
+        // OI-47: the rest that starts no valid header is Fill up to `max_fill` octets, and
+        // LeftoverFill above; both are discarded whole.
+        let fill = [0x55_u8; 7];
+        assert_eq!(next_frame(&fill, 6), Some(Delimited::LeftoverFill(&fill)));
+        assert_eq!(next_frame(&fill, 7), Some(Delimited::Fill(&fill)));
+        assert_eq!(next_frame(&fill[..6], 6), Some(Delimited::Fill(&fill[..6])));
+        // A bound of 0 reports every octet of fill.
+        assert_eq!(
+            next_frame(&fill[..1], 0),
+            Some(Delimited::LeftoverFill(&fill[..1]))
+        );
+        // A frame and a truncated frame do not depend on the bound.
+        assert_eq!(next_frame(&UNLOCK, 0), Some(Delimited::Frame(&UNLOCK)));
+        let cut = [0x01, 0x55, 0x04, 0x09, 0x00, 0xAA];
+        assert_eq!(
+            next_frame(&cut, 0),
+            Some(Delimited::TruncatedFrame {
+                octets: &cut,
+                declared_len: 10
+            })
+        );
+        // An iterator reports the frame, then the leftover.
+        let mut unit = UNLOCK.to_vec();
+        unit.extend_from_slice(&fill);
+        let mut d = FrameDelimiter::new(&unit, 6);
+        assert_eq!(d.next(), Some(Delimited::Frame(&UNLOCK)));
+        let item = d.next().unwrap();
+        assert_eq!(item, Delimited::LeftoverFill(&fill));
+        assert_eq!(d.next(), None);
+        assert_eq!(
+            (item.octets(), item.len(), item.is_empty()),
+            (&fill[..], 7, false)
+        );
     }
 }

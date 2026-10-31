@@ -643,7 +643,7 @@ mod tc_ffi {
         TcSpacecraftId, TcVcId, VcConfig, VcTable,
     };
 
-    use super::expect;
+    use super::{expect, fill_bound};
 
     /// The master channel of `scid` as C structs: VC `n` of 0 to 7, VC 0 with frames of at most
     /// 32 octets; MAPs 0 to 3 on each odd VC, MAP `m` with SDLS `m % 3` / `(m + 1) % 2`.
@@ -848,8 +848,10 @@ mod tc_ffi {
         }
 
         let mut stream_offset = 0;
-        let mut strict_stream = FrameStream::new(data, &table);
-        let mut lenient_stream = LenientFrameStream::new(data, &table);
+        // The longest fill (OI-47): unbounded for a third of the inputs, else drawn from the length.
+        let max_fill = fill_bound(data);
+        let mut strict_stream = FrameStream::new(data, &table, max_fill);
+        let mut lenient_stream = LenientFrameStream::new(data, &table, max_fill);
         loop {
             let mut item = aldis_tc_stream_item_t::default();
             // SAFETY: as above.
@@ -863,6 +865,7 @@ mod tc_ffi {
                     vcs.len(),
                     maps.as_ptr(),
                     maps.len(),
+                    max_fill,
                     c_mode,
                     &raw mut item,
                     null_mut(),
@@ -1543,8 +1546,9 @@ fn uslp(data: &[u8], selector: u8, mode: DecodeMode, c_mode: u32) {
         assert_eq!(len, n);
     }
     let mut stream_at = 0;
-    let mut strict_stream = UslpFrameStream::new(data, &table);
-    let mut lenient_stream = UslpLenientFrameStream::new(data, &table);
+    let max_fill = fill_bound(data);
+    let mut strict_stream = UslpFrameStream::new(data, &table, max_fill);
+    let mut lenient_stream = UslpLenientFrameStream::new(data, &table, max_fill);
     loop {
         let mut item = aldis_uslp_stream_item_t::default();
         // SAFETY: as above.
@@ -1558,6 +1562,7 @@ fn uslp(data: &[u8], selector: u8, mode: DecodeMode, c_mode: u32) {
                 1,
                 maps.as_ptr(),
                 maps.len(),
+                max_fill,
                 c_mode,
                 &raw mut item,
                 null_mut(),
@@ -1595,6 +1600,16 @@ fn uslp(data: &[u8], selector: u8, mode: DecodeMode, c_mode: u32) {
 }
 
 // ---- end USLP
+
+/// The longest fill the stream functions are given (OI-47): unbounded for a third of the inputs,
+/// otherwise a bound of 0 to 39 octets drawn from the length of the input.
+const fn fill_bound(data: &[u8]) -> usize {
+    if data.len().is_multiple_of(3) {
+        usize::MAX
+    } else {
+        data.len() % 40
+    }
+}
 
 fuzz_target!(|input: &[u8]| {
     let Some((&selector, data)) = input.split_first() else {

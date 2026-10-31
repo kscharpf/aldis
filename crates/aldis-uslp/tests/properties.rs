@@ -138,7 +138,7 @@ proptest! {
     fn delimiter_returns_the_frames(u in data_unit()) {
         // req: USLP-015, VER-023
         let t = &u.channels.table;
-        let items: Vec<Delimited<'_>> = FrameDelimiter::new(&u.octets, t).collect();
+        let items: Vec<Delimited<'_>> = FrameDelimiter::new(&u.octets, t, 31).collect();
         let frames: Vec<&[u8]> = items
             .iter()
             .filter_map(|i| match i { Delimited::Frame(f) => Some(*f), _ => None })
@@ -155,7 +155,7 @@ proptest! {
         // req: USLP-015, GEN-020, GEN-022
         let mut rest = unit.as_slice();
         let mut taken = 0;
-        while let Some(item) = next_frame(rest, &c.table) {
+        while let Some(item) = next_frame(rest, &c.table, 31) {
             prop_assert!(!item.is_empty() && item.octets() == &rest[..item.len()]);
             if let Delimited::Frame(f) = item {
                 prop_assert_eq!(f[0] >> 4, 0b1100);

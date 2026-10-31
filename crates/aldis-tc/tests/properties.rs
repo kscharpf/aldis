@@ -98,7 +98,7 @@ proptest! {
     #[test]
     fn delimiter_returns_the_frames(u in data_unit()) {
         // req: TC-020, VER-023
-        let items: Vec<Delimited<'_>> = FrameDelimiter::new(&u.octets).collect();
+        let items: Vec<Delimited<'_>> = FrameDelimiter::new(&u.octets, 6).collect();
         let frames: Vec<&[u8]> = items
             .iter()
             .filter_map(|i| match i { Delimited::Frame(f) => Some(*f), _ => None })
@@ -114,7 +114,7 @@ proptest! {
         // req: TC-020, GEN-020, GEN-022
         let mut rest = unit.as_slice();
         let mut taken = 0;
-        while let Some(item) = next_frame(rest) {
+        while let Some(item) = next_frame(rest, 6) {
             prop_assert!(!item.is_empty() && item.octets() == &rest[..item.len()]);
             if let Delimited::Frame(f) = item {
                 // Version 00 and the length its Frame Length field declares (232.0 §4.1.2.7).

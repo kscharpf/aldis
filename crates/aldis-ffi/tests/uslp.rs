@@ -12,12 +12,12 @@ use core::ptr::{null, null_mut};
 use aldis_ffi::capacities::{ALDIS_USLP_MAX_MAPS, ALDIS_USLP_MAX_VCS};
 use aldis_ffi::error::*;
 use aldis_ffi::field::{
-    ALDIS_FIELD_END_OF_FRAME_PRIMARY_HEADER_FLAG, ALDIS_FIELD_MAP_ID, ALDIS_FIELD_UPID,
-    ALDIS_FIELD_VC_ID,
+    ALDIS_FIELD_END_OF_FRAME_PRIMARY_HEADER_FLAG, ALDIS_FIELD_FRAME_DATA_FIELD,
+    ALDIS_FIELD_FRAME_LEN, ALDIS_FIELD_MAP_ID, ALDIS_FIELD_UPID, ALDIS_FIELD_VC_ID,
 };
 use aldis_ffi::oid::*;
 use aldis_ffi::uslp::*;
-use aldis_ffi::{ALDIS_MODE_STRICT, aldis_error_detail_t};
+use aldis_ffi::{ALDIS_MODE_LENIENT, ALDIS_MODE_STRICT, aldis_error_detail_t};
 
 fn detail() -> aldis_error_detail_t {
     aldis_error_detail_t {
@@ -588,6 +588,7 @@ fn stream_reports_the_discard_reason() {
                 2,
                 ch.maps.as_ptr(),
                 3,
+                usize::MAX,
                 ALDIS_MODE_STRICT,
                 &raw mut item,
                 det,
@@ -676,6 +677,7 @@ fn a_vc_with_a_truncated_length_refuses_non_truncated_frames() {
             2,
             ch.maps.as_ptr(),
             3,
+            usize::MAX,
             ALDIS_MODE_STRICT,
             &raw mut item,
             &raw mut det,
@@ -1044,6 +1046,7 @@ fn the_uslp_stream_intake_pipeline() {
             ch.vcs.len(),
             ch.maps.as_ptr(),
             ch.maps.len(),
+            usize::MAX,
             ALDIS_MODE_STRICT,
             &raw mut item,
             null_mut(),
@@ -1066,6 +1069,7 @@ fn the_uslp_stream_intake_pipeline() {
             ch.vcs.len(),
             ch.maps.as_ptr(),
             ch.maps.len(),
+            usize::MAX,
             ALDIS_MODE_STRICT,
             &raw mut item,
             null_mut(),
@@ -1087,6 +1091,7 @@ fn the_uslp_stream_intake_pipeline() {
             ch.vcs.len(),
             ch.maps.as_ptr(),
             ch.maps.len(),
+            usize::MAX,
             ALDIS_MODE_STRICT,
             &raw mut item,
             null_mut(),
@@ -1122,6 +1127,7 @@ fn the_uslp_stream_intake_pipeline() {
             ch.vcs.len(),
             ch.maps.as_ptr(),
             ch.maps.len(),
+            usize::MAX,
             ALDIS_MODE_STRICT,
             &raw mut item,
             null_mut(),
@@ -1155,6 +1161,7 @@ fn stream_rejects_overlapping_pointers() {
             ch.vcs.len(),
             ch.maps.as_ptr(),
             ch.maps.len(),
+            usize::MAX,
             ALDIS_MODE_STRICT,
             &raw mut item,
             null_mut(),
@@ -1174,10 +1181,74 @@ fn stream_rejects_overlapping_pointers() {
             ch.vcs.len(),
             ch.maps.as_ptr(),
             ch.maps.len(),
+            usize::MAX,
             ALDIS_MODE_STRICT,
             &raw mut item,
             null_mut(),
         )
     };
     assert_eq!(rc, ALDIS_ERR_INVALID_FIELD);
+}
+
+#[test]
+fn fill_above_max_fill_is_reported_as_leftover_fill() {
+    // req: USLP-015, CABI-012, CABI-022
+    // OI-47: the rest that starts no valid header is ALDIS_USLP_DISCARD_FILL up to `max_fill`
+    // octets and ALDIS_USLP_DISCARD_LEFTOVER_FILL above it; both take all of the rest, in both
+    // modes. `usize::MAX` is no bound, and 0 reports every octet of fill as leftover. The two
+    // items name different fields: Fill the Frame Data Field, LeftoverFill the Frame Length.
+    let ch = variable();
+    let unit = [0x55_u8; 7];
+    for mode in [ALDIS_MODE_STRICT, ALDIS_MODE_LENIENT] {
+        for (max_fill, want, field) in [
+            (6, ALDIS_USLP_DISCARD_LEFTOVER_FILL, ALDIS_FIELD_FRAME_LEN),
+            (7, ALDIS_USLP_DISCARD_FILL, ALDIS_FIELD_FRAME_DATA_FIELD),
+            (
+                usize::MAX,
+                ALDIS_USLP_DISCARD_FILL,
+                ALDIS_FIELD_FRAME_DATA_FIELD,
+            ),
+            (0, ALDIS_USLP_DISCARD_LEFTOVER_FILL, ALDIS_FIELD_FRAME_LEN),
+        ] {
+            let mut offset = 0;
+            let mut item = aldis_uslp_stream_item_t::default();
+            // SAFETY: pointers point to valid stack and slice buffers and counts match.
+            let rc = unsafe {
+                aldis_uslp_stream_next(
+                    unit.as_ptr(),
+                    unit.len(),
+                    &raw mut offset,
+                    &raw const ch.pc,
+                    ch.vcs.as_ptr(),
+                    ch.vcs.len(),
+                    ch.maps.as_ptr(),
+                    ch.maps.len(),
+                    max_fill,
+                    mode,
+                    &raw mut item,
+                    null_mut(),
+                )
+            };
+            assert_eq!(
+                (
+                    rc,
+                    item.kind,
+                    item.range.len,
+                    item.discard_reason,
+                    item.error_field,
+                    offset
+                ),
+                (
+                    ALDIS_OK,
+                    ALDIS_USLP_STREAM_DISCARDED,
+                    7,
+                    want,
+                    field,
+                    unit.len()
+                ),
+                "mode {mode} max_fill {max_fill}"
+            );
+        }
+    }
+    assert_eq!(ALDIS_USLP_DISCARD_LEFTOVER_FILL, 23);
 }

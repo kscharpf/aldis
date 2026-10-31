@@ -197,8 +197,11 @@ pub enum aldis_tc_discard {
     ALDIS_TC_DISCARD_FILL = 20,
     /// Discard reason: truncated frame whose declared length exceeds remaining octets (232.0 §4.4.9.2.5; TC-020).
     ALDIS_TC_DISCARD_TRUNCATED_FRAME = 21,
+    /// Discard reason: leftover fill, more octets than the longest fill the coding sublayer appends
+    /// that start no valid header, perhaps after a Frame Length error (232.0 §4.4.9.2.6 note 2; TC-020, OI-47).
+    ALDIS_TC_DISCARD_LEFTOVER_FILL = 22,
 }
-mirror!(pub aldis_tc_discard: u32 { ALDIS_TC_DISCARD_NONE, ALDIS_TC_DISCARD_UNEXPECTED_SPACECRAFT, ALDIS_TC_DISCARD_RESERVED_FLAGS, ALDIS_TC_DISCARD_RESERVED_SPARE, ALDIS_TC_DISCARD_INVALID_VCID, ALDIS_TC_DISCARD_FRAME_TOO_LONG, ALDIS_TC_DISCARD_FRAME_TOO_SHORT, ALDIS_TC_DISCARD_LENGTH_MISMATCH, ALDIS_TC_DISCARD_FECF_MISMATCH, ALDIS_TC_DISCARD_INVALID_MAP_ID, ALDIS_TC_DISCARD_RESERVED_CONTROL_COMMAND, ALDIS_TC_DISCARD_FILL, ALDIS_TC_DISCARD_TRUNCATED_FRAME });
+mirror!(pub aldis_tc_discard: u32 { ALDIS_TC_DISCARD_NONE, ALDIS_TC_DISCARD_UNEXPECTED_SPACECRAFT, ALDIS_TC_DISCARD_RESERVED_FLAGS, ALDIS_TC_DISCARD_RESERVED_SPARE, ALDIS_TC_DISCARD_INVALID_VCID, ALDIS_TC_DISCARD_FRAME_TOO_LONG, ALDIS_TC_DISCARD_FRAME_TOO_SHORT, ALDIS_TC_DISCARD_LENGTH_MISMATCH, ALDIS_TC_DISCARD_FECF_MISMATCH, ALDIS_TC_DISCARD_INVALID_MAP_ID, ALDIS_TC_DISCARD_RESERVED_CONTROL_COMMAND, ALDIS_TC_DISCARD_FILL, ALDIS_TC_DISCARD_TRUNCATED_FRAME, ALDIS_TC_DISCARD_LEFTOVER_FILL });
 /// Discard reason: check (a), Transfer Frame Version Number is not `00` (232.0 §4.4.9.3.3; TC-021).
 pub const ALDIS_TC_DISCARD_UNEXPECTED_VERSION: u32 = 1;
 
@@ -952,6 +955,13 @@ pub unsafe extern "C" fn aldis_tc_decode(
 /// code, and `out.error_code` holds the error status.
 /// When `out.kind == ALDIS_TC_STREAM_END`, the unit is exhausted.
 ///
+/// `max_fill` is the longest fill the coding sublayer appends (six octets for the BCH codeblock,
+/// 232.0 §4.4.9.2.6 note 2): a rest that starts no valid header is discarded as
+/// `ALDIS_TC_DISCARD_FILL` up to `max_fill` octets and as `ALDIS_TC_DISCARD_LEFTOVER_FILL` above
+/// (OI-47). `max_fill == SIZE_MAX` means no bound, as before the argument existed; `0` reports
+/// every octet of fill as leftover. The Fill item names the Frame Data Field in `error_field`,
+/// the leftover item the Frame Length.
+///
 /// # Errors
 /// The errors of [`aldis_tc_mc_config_check`]; `ALDIS_ERR_INVALID_ARGUMENT` if `*offset > unit_len`;
 /// CABI-022 violations.
@@ -978,6 +988,7 @@ pub unsafe extern "C" fn aldis_tc_stream_next(
     vc_count: usize,
     maps: *const aldis_tc_map_config_t,
     map_count: usize,
+    max_fill: usize,
     mode: u32,
     out: *mut aldis_tc_stream_item_t,
     err: *mut crate::aldis_error_detail_t,
@@ -1023,10 +1034,10 @@ pub unsafe extern "C" fn aldis_tc_stream_next(
                 return Err(invalid_argument());
             };
             let item = match mode {
-                DecodeMode::Strict => FrameStream::new(rest, &table)
+                DecodeMode::Strict => FrameStream::new(rest, &table, max_fill)
                     .next()
                     .map(|item| item.map_frame(|frame| (frame, AnomalySet::empty()))),
-                DecodeMode::Lenient => LenientFrameStream::new(rest, &table)
+                DecodeMode::Lenient => LenientFrameStream::new(rest, &table, max_fill)
                     .next()
                     .map(|item| item.map_frame(Lenient::into_parts)),
             };

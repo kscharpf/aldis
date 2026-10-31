@@ -15,6 +15,7 @@ cargo-fuzz = true
 
 [dependencies]
 aldis-aos = { path = "../crates/aldis-aos" }
+aldis-cop1 = { path = "../crates/aldis-cop1" }
 aldis-core = { path = "../crates/aldis-core", features = ["crc-table", "test-hooks"] }
 aldis-epp = { path = "../crates/aldis-epp" }
 aldis-ffi = { path = "../crates/aldis-ffi" }

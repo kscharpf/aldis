@@ -199,7 +199,7 @@ fn run(u: &mut Unstructured<'_>) -> Result<()> {
                 assert!(validate_frame_lenient(&bytes, &table).is_err());
             }
             assert!(
-                matches!(next_frame(&bytes, &table), Some(Delimited::Frame(d)) if d == f.octets())
+                matches!(next_frame(&bytes, &table, usize::MAX), Some(Delimited::Frame(d)) if d == f.octets())
             );
         }
         Err(e) => {

@@ -16,7 +16,8 @@ use aldis_ffi::capacities::ALDIS_TC_MAX_MAPS;
 use aldis_ffi::error::*;
 use aldis_ffi::field::{
     ALDIS_FIELD_CONTROL_COMMAND, ALDIS_FIELD_CONTROL_COMMAND_FLAG, ALDIS_FIELD_FRAME_DATA_FIELD,
-    ALDIS_FIELD_MAP_ID, ALDIS_FIELD_SEGMENT_HEADER, ALDIS_FIELD_SPACECRAFT_ID, ALDIS_FIELD_VC_ID,
+    ALDIS_FIELD_FRAME_LEN, ALDIS_FIELD_MAP_ID, ALDIS_FIELD_SEGMENT_HEADER,
+    ALDIS_FIELD_SPACECRAFT_ID, ALDIS_FIELD_VC_ID,
 };
 use aldis_ffi::tc::*;
 use aldis_ffi::{ALDIS_MODE_LENIENT, ALDIS_MODE_STRICT, aldis_error_detail_t};
@@ -350,6 +351,7 @@ fn stream_reports_the_discard_reason() {
                 vcs.len(),
                 maps.as_ptr(),
                 maps.len(),
+                usize::MAX,
                 ALDIS_MODE_STRICT,
                 &raw mut item,
                 &raw mut e,
@@ -668,6 +670,7 @@ fn the_stream_intake_pipeline() {
             vcs.len(),
             maps.as_ptr(),
             maps.len(),
+            usize::MAX,
             ALDIS_MODE_STRICT,
             &raw mut item,
             null_mut(),
@@ -696,6 +699,7 @@ fn the_stream_intake_pipeline() {
             vcs.len(),
             maps.as_ptr(),
             maps.len(),
+            usize::MAX,
             ALDIS_MODE_STRICT,
             &raw mut item,
             null_mut(),
@@ -723,6 +727,7 @@ fn the_stream_intake_pipeline() {
             vcs.len(),
             maps.as_ptr(),
             maps.len(),
+            usize::MAX,
             ALDIS_MODE_STRICT,
             &raw mut item,
             null_mut(),
@@ -758,6 +763,7 @@ fn the_stream_intake_pipeline() {
             vcs.len(),
             maps.as_ptr(),
             maps.len(),
+            usize::MAX,
             ALDIS_MODE_STRICT,
             &raw mut item,
             null_mut(),
@@ -791,6 +797,7 @@ fn stream_rejects_overlapping_pointers() {
             vcs.len(),
             maps.as_ptr(),
             maps.len(),
+            usize::MAX,
             ALDIS_MODE_STRICT,
             &raw mut item,
             null_mut(),
@@ -810,10 +817,76 @@ fn stream_rejects_overlapping_pointers() {
             vcs.len(),
             maps.as_ptr(),
             maps.len(),
+            usize::MAX,
             ALDIS_MODE_STRICT,
             &raw mut item,
             null_mut(),
         )
     };
     assert_eq!(status, ALDIS_ERR_INVALID_FIELD);
+}
+
+#[test]
+fn fill_above_max_fill_is_reported_as_leftover_fill() {
+    // req: TC-020, CABI-012, CABI-022
+    // OI-47: the rest that starts no valid header is ALDIS_TC_DISCARD_FILL up to `max_fill`
+    // octets and ALDIS_TC_DISCARD_LEFTOVER_FILL above it; both take all of the rest, in both
+    // modes. `usize::MAX` is no bound, and 0 reports every octet of fill as leftover. The two
+    // items name different fields: Fill the Frame Data Field, LeftoverFill the Frame Length.
+    let (mc, vcs, maps) = (mc(), vcs(), maps());
+    let (frame, _) = written(&ad(1, None), &[1, 2]);
+    let mut unit = frame.clone();
+    unit.extend_from_slice(&[0x55; 7]);
+    for mode in [ALDIS_MODE_STRICT, ALDIS_MODE_LENIENT] {
+        for (max_fill, want, field) in [
+            (6, ALDIS_TC_DISCARD_LEFTOVER_FILL, ALDIS_FIELD_FRAME_LEN),
+            (7, ALDIS_TC_DISCARD_FILL, ALDIS_FIELD_FRAME_DATA_FIELD),
+            (
+                usize::MAX,
+                ALDIS_TC_DISCARD_FILL,
+                ALDIS_FIELD_FRAME_DATA_FIELD,
+            ),
+            (0, ALDIS_TC_DISCARD_LEFTOVER_FILL, ALDIS_FIELD_FRAME_LEN),
+        ] {
+            let mut offset = frame.len();
+            let mut item = aldis_tc_stream_item_t::default();
+            // SAFETY: pointers point to valid stack and slice buffers and counts match.
+            let status = unsafe {
+                aldis_tc_stream_next(
+                    unit.as_ptr(),
+                    unit.len(),
+                    &raw mut offset,
+                    &raw const mc,
+                    vcs.as_ptr(),
+                    vcs.len(),
+                    maps.as_ptr(),
+                    maps.len(),
+                    max_fill,
+                    mode,
+                    &raw mut item,
+                    null_mut(),
+                )
+            };
+            assert_eq!(
+                (
+                    status,
+                    item.kind,
+                    item.range.len,
+                    item.discard_reason,
+                    item.error_field,
+                    offset
+                ),
+                (
+                    ALDIS_OK,
+                    ALDIS_TC_STREAM_DISCARDED,
+                    7,
+                    want,
+                    field,
+                    unit.len()
+                ),
+                "mode {mode} max_fill {max_fill}"
+            );
+        }
+    }
+    assert_eq!(ALDIS_TC_DISCARD_LEFTOVER_FILL, 22);
 }

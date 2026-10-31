@@ -240,7 +240,7 @@ int main(void) {
     int stream_frames = 0;
     int stream_fill = 0;
     aldis_tc_stream_item_t s_item;
-    while (aldis_tc_stream_next(unit, sizeof unit, &stream_offset, &tc_mc, &tc_vc, 1, NULL, 0,
+    while (aldis_tc_stream_next(unit, sizeof unit, &stream_offset, &tc_mc, &tc_vc, 1, NULL, 0, 6,
                                 ALDIS_MODE_STRICT, &s_item, &err) == ALDIS_OK &&
            s_item.kind != ALDIS_TC_STREAM_END) {
         if (s_item.kind == ALDIS_TC_STREAM_ACCEPTED) {
@@ -318,7 +318,7 @@ int main(void) {
     uframe[ulen - 1] ^= 1;
     size_t ustream_offset = 0;
     aldis_uslp_stream_item_t us_item;
-    check(aldis_uslp_stream_next(uframe, ulen, &ustream_offset, &upc, &uvc, 1, &umap, 1,
+    check(aldis_uslp_stream_next(uframe, ulen, &ustream_offset, &upc, &uvc, 1, &umap, 1, 6,
                                  ALDIS_MODE_STRICT, &us_item, NULL) == ALDIS_OK &&
               us_item.kind == ALDIS_USLP_STREAM_DISCARDED &&
               us_item.discard_reason == ALDIS_USLP_DISCARD_FECF_MISMATCH &&
@@ -327,7 +327,7 @@ int main(void) {
           "aldis_uslp_stream_next discards frame with bad FECF (USLP-014)");
     uframe[ulen - 1] ^= 1;
     ustream_offset = 0;
-    check(aldis_uslp_stream_next(uframe, ulen, &ustream_offset, &upc, &uvc, 1, &umap, 1,
+    check(aldis_uslp_stream_next(uframe, ulen, &ustream_offset, &upc, &uvc, 1, &umap, 1, 6,
                                  ALDIS_MODE_STRICT, &us_item, NULL) == ALDIS_OK &&
               us_item.kind == ALDIS_USLP_STREAM_ACCEPTED &&
               us_item.range.len == ulen &&

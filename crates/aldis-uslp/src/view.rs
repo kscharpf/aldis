@@ -917,12 +917,12 @@ mod tests {
         let v = validate_frame_lenient(&spare, &t).unwrap();
         assert!(v.anomalies().contains(UslpAnomaly::ReserveSparesSet));
         assert_eq!(v.into_view().into_frame(), f.into_view());
-        let mut stream = LenientFrameStream::new(&spare, &t);
+        let mut stream = LenientFrameStream::new(&spare, &t, 31);
         let item = stream.next().unwrap();
         assert!(matches!(item, IntakeItem::Accepted { ref frame, .. }
             if frame.anomalies().contains(UslpAnomaly::ReserveSparesSet)));
         assert!(matches!(
-            FrameStream::new(&spare, &t).next(),
+            FrameStream::new(&spare, &t, 31).next(),
             Some(IntakeItem::Discarded {
                 reason: DiscardReason::ReservedSpare,
                 ..

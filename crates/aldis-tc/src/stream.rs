@@ -23,8 +23,13 @@ use crate::view::{check_head, parse};
 #[non_exhaustive]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum DiscardReason {
-    /// Discarded as fill data (232.0 §4.4.9.2.6).
+    /// Discarded as fill data, no longer than the longest fill the coding sublayer appends
+    /// (232.0 §4.4.9.2.6).
     Fill,
+    /// Discarded: it does not start a valid header and is longer than the longest fill the
+    /// coding sublayer appends, so a Frame Length error may have shortened a frame before it
+    /// (232.0 §4.4.9.2.6 note 2; OI-47).
+    LeftoverFill,
     /// Discarded as a truncated frame whose declared length exceeds remaining octets (232.0 §4.4.9.2.5).
     TruncatedFrame {
         /// The frame length declared in the header.
@@ -57,7 +62,7 @@ pub enum DiscardReason {
 impl DiscardReason {
     /// Stable numeric code for C ABI and telemetry classification.
     ///
-    /// Codes 1–11 match the CCSDS Frame Validation Check reasons; 20 is Fill and 21 is `TruncatedFrame`.
+    /// Codes 1–11 match the CCSDS Frame Validation Check reasons; 20 is Fill, 21 is `TruncatedFrame`, and 22 is `LeftoverFill`.
     #[must_use]
     pub const fn code(self) -> u8 {
         match self {
@@ -74,6 +79,7 @@ impl DiscardReason {
             DiscardReason::ReservedControlCommand => 11,
             DiscardReason::Fill => 20,
             DiscardReason::TruncatedFrame { .. } => 21,
+            DiscardReason::LeftoverFill => 22,
         }
     }
 
@@ -92,7 +98,9 @@ impl DiscardReason {
             DiscardReason::FecfMismatch => Some(Reason::FecfMismatch),
             DiscardReason::InvalidMapId => Some(Reason::InvalidMapId),
             DiscardReason::ReservedControlCommand => Some(Reason::ReservedControlCommand),
-            DiscardReason::TruncatedFrame { .. } | DiscardReason::Fill => None,
+            DiscardReason::TruncatedFrame { .. }
+            | DiscardReason::Fill
+            | DiscardReason::LeftoverFill => None,
         }
     }
 }
@@ -218,15 +226,19 @@ impl<'a> IntakeItem<'a, Lenient<ValidatedTcFrame<'a>, TcAnomaly>> {
 pub struct FrameStream<'a, 'c, L: VcLookup + ?Sized> {
     rest: &'a [u8],
     channels: &'c L,
+    max_fill: usize,
 }
 
 impl<'a, 'c, L: VcLookup + ?Sized> FrameStream<'a, 'c, L> {
-    /// Creates a new intake stream over one clean data unit (such as a CLTU's decoded codeblocks).
+    /// Creates a new intake stream over one clean data unit (such as a CLTU's decoded
+    /// codeblocks), where `max_fill` is the longest fill the coding sublayer appends (six
+    /// octets for the BCH codeblock, 232.0 §4.4.9.2.6 note 2; OI-47).
     #[must_use]
-    pub const fn new(data_unit: &'a [u8], channels: &'c L) -> Self {
+    pub const fn new(data_unit: &'a [u8], channels: &'c L, max_fill: usize) -> Self {
         FrameStream {
             rest: data_unit,
             channels,
+            max_fill,
         }
     }
 
@@ -241,8 +253,13 @@ impl<'a, L: VcLookup + ?Sized> Iterator for FrameStream<'a, '_, L> {
     type Item = IntakeItem<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        step(&mut self.rest, self.channels, DecodeMode::Strict)
-            .map(|item| item.map_frame(|(frame, _)| frame))
+        step(
+            &mut self.rest,
+            self.channels,
+            self.max_fill,
+            DecodeMode::Strict,
+        )
+        .map(|item| item.map_frame(|(frame, _)| frame))
     }
 }
 
@@ -254,15 +271,18 @@ impl<L: VcLookup + ?Sized> core::iter::FusedIterator for FrameStream<'_, '_, L> 
 pub struct LenientFrameStream<'a, 'c, L: VcLookup + ?Sized> {
     rest: &'a [u8],
     channels: &'c L,
+    max_fill: usize,
 }
 
 impl<'a, 'c, L: VcLookup + ?Sized> LenientFrameStream<'a, 'c, L> {
-    /// Creates a new lenient intake stream over one clean data unit.
+    /// Creates a new lenient intake stream over one clean data unit, where `max_fill` is the
+    /// longest fill the coding sublayer appends (OI-47).
     #[must_use]
-    pub const fn new(data_unit: &'a [u8], channels: &'c L) -> Self {
+    pub const fn new(data_unit: &'a [u8], channels: &'c L, max_fill: usize) -> Self {
         LenientFrameStream {
             rest: data_unit,
             channels,
+            max_fill,
         }
     }
 
@@ -277,8 +297,13 @@ impl<'a, L: VcLookup + ?Sized> Iterator for LenientFrameStream<'a, '_, L> {
     type Item = IntakeItem<'a, Lenient<ValidatedTcFrame<'a>, TcAnomaly>>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        step(&mut self.rest, self.channels, DecodeMode::Lenient)
-            .map(|item| item.map_frame(|(frame, anomalies)| Lenient::new(frame, anomalies)))
+        step(
+            &mut self.rest,
+            self.channels,
+            self.max_fill,
+            DecodeMode::Lenient,
+        )
+        .map(|item| item.map_frame(|(frame, anomalies)| Lenient::new(frame, anomalies)))
     }
 }
 
@@ -288,6 +313,7 @@ impl<L: VcLookup + ?Sized> core::iter::FusedIterator for LenientFrameStream<'_, 
 fn step<'a, L: VcLookup + ?Sized>(
     rest: &mut &'a [u8],
     channels: &L,
+    max_fill: usize,
     mode: DecodeMode,
 ) -> Option<IntakeItem<'a, (ValidatedTcFrame<'a>, AnomalySet<TcAnomaly>)>> {
     if rest.is_empty() {
@@ -347,6 +373,15 @@ fn step<'a, L: VcLookup + ?Sized>(
     // is discarded as fill data taking the rest of the unit (232.0 §4.4.9.2.6 b; OI-41).
     let octets = *rest;
     *rest = &[];
+    if octets.len() > max_fill {
+        // More than the coding sublayer appends: a Frame Length error may have shortened a frame
+        // (232.0 §4.4.9.2.6 note 2; OI-47).
+        return Some(IntakeItem::Discarded {
+            reason: DiscardReason::LeftoverFill,
+            octets,
+            error: Error::new(ErrorKind::Malformed).with_field(crate::field::FRAME_LEN),
+        });
+    }
     Some(IntakeItem::Discarded {
         reason: DiscardReason::Fill,
         octets,
@@ -371,7 +406,7 @@ mod tests {
         unit.extend_from_slice(&UNLOCK);
         unit.extend_from_slice(&[0x55, 0x55, 0x55]);
 
-        let mut stream = FrameStream::new(&unit, &table);
+        let mut stream = FrameStream::new(&unit, &table, 6);
         let first = stream.next().unwrap();
         assert!(matches!(first, IntakeItem::Accepted { ref frame, .. } if frame.len() == 6));
         let second = stream.next().unwrap();
@@ -390,7 +425,7 @@ mod tests {
         let mut unit = UNLOCK.to_vec();
         unit.extend_from_slice(&[0x01, 0x55, 0x04, 0x09, 0x00, 0xAA]); // claims 10 bytes, has 6
 
-        let mut stream = FrameStream::new(&unit, &table);
+        let mut stream = FrameStream::new(&unit, &table, 6);
         let first = stream.next().unwrap();
         assert!(matches!(first, IntakeItem::Accepted { .. }));
 
@@ -420,7 +455,7 @@ mod tests {
             0x31, 0x55, 0x04, 0x07, 0x00, 0x00, 0x00, 0x00, 0x55, 0x55, 0x55,
         ];
 
-        let mut stream = FrameStream::new(&unit, &table);
+        let mut stream = FrameStream::new(&unit, &table, 6);
         let first = stream.next().unwrap();
         match first {
             IntakeItem::Discarded { reason, octets, .. } => {
@@ -449,7 +484,7 @@ mod tests {
         unit[..6].copy_from_slice(&[0x71, 0x55, 0x04, 0x05, 0x00, 0x00]);
         unit[6..].copy_from_slice(&UNLOCK);
 
-        let mut stream = FrameStream::new(&unit, &table);
+        let mut stream = FrameStream::new(&unit, &table, 6);
         let first = stream.next().unwrap();
         match first {
             IntakeItem::Discarded { reason, octets, .. } => {
@@ -476,7 +511,7 @@ mod tests {
         unit[..6].copy_from_slice(&[0x31, 0x55, 0x04, 0x05, 0x00, 0x00]);
         unit[6..].copy_from_slice(&unlock_fecf);
 
-        let mut stream = FrameStream::new(&unit, &table);
+        let mut stream = FrameStream::new(&unit, &table, 6);
         let first = stream.next().unwrap();
         match first {
             IntakeItem::Discarded { reason, octets, .. } => {
@@ -494,7 +529,7 @@ mod tests {
     fn item_accessors_and_remaining() {
         // req: TC-020, TC-021
         let table = standard(false);
-        let mut stream = FrameStream::new(&UNLOCK, &table);
+        let mut stream = FrameStream::new(&UNLOCK, &table, 6);
         assert_eq!(stream.remaining(), &UNLOCK);
         let item = stream.next().unwrap();
         assert_eq!(item.octets(), &UNLOCK);
@@ -505,11 +540,51 @@ mod tests {
 
         // Also test discarded item accessors
         let fill = [0x55_u8; 3];
-        let mut stream_fill = FrameStream::new(&fill, &table);
+        let mut stream_fill = FrameStream::new(&fill, &table, 6);
         let discarded = stream_fill.next().unwrap();
         assert_eq!(discarded.octets(), &fill);
         assert_eq!(discarded.len(), 3);
         assert!(!discarded.is_empty());
+    }
+
+    #[test]
+    fn fill_above_the_bound_is_discarded_as_leftover_fill() {
+        // req: TC-020
+        // OI-47: the rest that starts no valid header is Fill up to `max_fill` octets and
+        // LeftoverFill above, in the strict and the lenient stream.
+        let table = standard(false);
+        let mut unit = UNLOCK.to_vec();
+        unit.extend_from_slice(&[0x55; 7]);
+        for max_fill in [6, 7] {
+            let mut strict = FrameStream::new(&unit, &table, max_fill);
+            let mut lenient = LenientFrameStream::new(&unit, &table, max_fill);
+            assert!(matches!(strict.next(), Some(IntakeItem::Accepted { .. })));
+            assert!(matches!(lenient.next(), Some(IntakeItem::Accepted { .. })));
+            let want = if max_fill == 6 {
+                DiscardReason::LeftoverFill
+            } else {
+                DiscardReason::Fill
+            };
+            assert!(
+                matches!(strict.next(), Some(IntakeItem::Discarded { reason, octets, .. })
+                    if reason == want && octets.len() == 7)
+            );
+            assert!(
+                matches!(lenient.next(), Some(IntakeItem::Discarded { reason, .. }) if reason == want)
+            );
+            assert_eq!((strict.next(), lenient.next()), (None, None));
+        }
+        // The two items name different fields: Fill the Frame Data Field, LeftoverFill the
+        // Frame Length (OI-47).
+        for (max_fill, field) in [
+            (6, crate::field::FRAME_LEN),
+            (7, crate::field::FRAME_DATA_FIELD),
+        ] {
+            let item = FrameStream::new(&unit, &table, max_fill).nth(1).unwrap();
+            assert!(
+                matches!(item, IntakeItem::Discarded { error, .. } if error.field() == Some(field))
+            );
+        }
     }
 
     #[test]
@@ -547,6 +622,7 @@ mod tests {
             ),
             (DiscardReason::Fill, 20, None),
             (DiscardReason::TruncatedFrame { declared_len: 10 }, 21, None),
+            (DiscardReason::LeftoverFill, 22, None),
         ];
 
         for (reason, code, val) in pairs {
@@ -565,7 +641,7 @@ mod tests {
         // Header claiming 10 bytes (h.frame_len == 10), but SCID is 0x000 (UnexpectedSpacecraft)
         // rest has only 6 bytes, so fewer octets remain than declared, and check_head fails on check (b).
         let unit: [u8; 6] = [0x00, 0x00, 0x04, 0x09, 0x00, 0x00];
-        let mut stream = FrameStream::new(&unit, &table);
+        let mut stream = FrameStream::new(&unit, &table, 6);
         let item = stream.next().unwrap();
         match item {
             IntakeItem::Discarded { reason, octets, .. } => {
@@ -579,7 +655,7 @@ mod tests {
         // Header with version 1 claiming 10 bytes when only 6 bytes are present.
         // Falls through the if h.version == 0 check to Fill.
         let v1_unit: [u8; 6] = [0x40, 0x55, 0x04, 0x09, 0x00, 0x00];
-        let mut stream_v1 = FrameStream::new(&v1_unit, &table);
+        let mut stream_v1 = FrameStream::new(&v1_unit, &table, 6);
         let item_v1 = stream_v1.next().unwrap();
         assert_eq!(item_v1.octets().len(), 6);
         assert!(matches!(
@@ -593,7 +669,7 @@ mod tests {
 
         // Header claiming 5 bytes (< MIN_FRAME_LEN 6).
         let short_hdr: [u8; 6] = [0x00, 0x55, 0x04, 0x04, 0x00, 0x00];
-        let mut stream_short = FrameStream::new(&short_hdr, &table);
+        let mut stream_short = FrameStream::new(&short_hdr, &table, 6);
         let item_short = stream_short.next().unwrap();
         assert!(matches!(
             item_short,
@@ -611,7 +687,7 @@ mod tests {
         let table = standard(false);
         // VC 2 (segmented): SCID 0x155, VCID 2, len 7 (8 octets), seq unsegmented (0xC0 = MAP 0)
         let frame: [u8; 8] = [0x01, 0x55, 0x08, 0x07, 0x00, 0xC0, 0x11, 0x22];
-        let mut stream = FrameStream::new(&frame, &table);
+        let mut stream = FrameStream::new(&frame, &table, 6);
         let item = stream.next().unwrap();
         match item {
             IntakeItem::Accepted { frame, map, .. } => {
@@ -630,7 +706,7 @@ mod tests {
         let spare = [0x35, 0x55, 0x04, 0x05, 0x00, 0x00];
         let mut unit = UNLOCK.to_vec();
         unit.extend_from_slice(&spare);
-        let mut strict = FrameStream::new(&unit, &table);
+        let mut strict = FrameStream::new(&unit, &table, 6);
         assert!(matches!(strict.next(), Some(IntakeItem::Accepted { .. })));
         assert!(matches!(
             strict.next(),
@@ -639,7 +715,7 @@ mod tests {
                 ..
             })
         ));
-        let mut lenient = LenientFrameStream::new(&unit, &table);
+        let mut lenient = LenientFrameStream::new(&unit, &table, 6);
         let first = lenient.next().unwrap();
         assert_eq!((first.len(), first.is_empty()), (6, false));
         assert!(
@@ -651,7 +727,7 @@ mod tests {
         assert_eq!((lenient.next(), lenient.remaining().len()), (None, 0));
         // A discarded item is the same in both modes, and it reports its octets.
         let cut = &UNLOCK[..4];
-        let discarded = LenientFrameStream::new(cut, &table).next().unwrap();
+        let discarded = LenientFrameStream::new(cut, &table, 6).next().unwrap();
         assert_eq!((discarded.octets(), discarded.len()), (cut, 4));
     }
 }

@@ -52,7 +52,7 @@ let n = encode(&channels, fields, content, &[1, 2, 3], &mut unit).unwrap();
 assert_eq!(n, 13);
 
 // At the receiving end: delimit the data unit, then validate each frame (732.1 §4.3.11).
-let mut frames = FrameDelimiter::new(&unit, &channels);
+let mut frames = FrameDelimiter::new(&unit, &channels, 6);
 let frame = frames.next().unwrap();
 let uslp = validate_frame(frame.octets(), &channels).unwrap();
 assert_eq!(uslp.tfdz(), [1, 2, 3]);
