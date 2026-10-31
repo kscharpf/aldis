@@ -25,9 +25,11 @@ FARM-1 protocol states (232.1 §6.2): S1 (`Open`), S2 (`Wait`), S3 (`Lockout`).
 
 ### 2.1 Configuration (managed parameters, §7.2)
 
-`Fop1Config { target: Fop1Target (a TC Virtual Channel without Segment Header or SDLS; USLP VC+MAP not yet built), t1_initial: Duration ≥ 1 µs, transmission_limit: 1..=255, timeout_type: TT0 | TT1, sliding_window_k: 1..=min(255, Q) (≤ PW of the peer FARM), bc_repetitions, ad_repetitions }`
+`Fop1Config { target: Fop1Target (a TC Virtual Channel without Segment Header or SDLS, or, with the feature `uslp`, a USLP VC and MAP of a variable-length Physical Channel with a one-octet sequence-controlled VCF Count, no expedited count, and no SDLS fields; COP-010, USLP-013), t1_initial: Duration ≥ 1 µs, transmission_limit: 1..=255, timeout_type: TT0 | TT1, sliding_window_k: 1..=min(255, Q) (≤ PW of the peer FARM), bc_repetitions, ad_repetitions }`
 
 Capacities (compile-time): `Fop1<Q, F, N>` holds a Sent_Queue of `Q ≥ K` frames of at most `F` octets (`F` ≥ the Maximum Transfer Frame Length, at most 1024 for TC), and returns at most `N ≥ fop1_max_actions(Q)` actions per input, checked when the type is built (COP-006). One input writes at most one frame to the output area (API-062).
+
+**The USLP target** (feature `uslp`; `Fop1Target::uslp(physical, vc, map, tfdf)`, COP-010, USLP-013). FOP-1 supplies what 732.1 §4.2.7.4 gives it: the Bypass/Sequence Control and Protocol Control Command Flags and the Frame Sequence Number. A Type-AD frame is `00` with N(S) in the VCF Count, a Type-BD frame `10`, and a Type-BC frame `11` with the UPID "COP-1 Control Commands", rule `111` ("one or more Control Commands", §4.1.4.2.2.2.8 d), and the Unlock or Set V(R) command as its TFDZ (decodable with the TC parser, USLP-013). The FDU of a Type-AD or Type-BD request is the TFDZ, under the TFDF Header `tfdf` of the target, whose UPID cannot be "Only Idle Data" (§4.1.4.1.9, §4.1.4.1.11) or a control-command or SPDU UPID. The Source-or-Destination Identifier is Destination (`1`, §4.1.2.3.3): FOP-1 sends from the ground to the spacecraft. The constructor refuses, once, a channel that FOP-1 could not fill: a fixed-length Physical Channel or VC (Control Commands need the variable-length rule `111`, Table 4-3, and there is no Insert Zone to fill), a VC with a truncated frame length (OI-48), SDLS fields on the VC or the MAP, a rule of a fixed-length TFDZ, and a frame too short for Set V(R). Two of its limits are this crate's own readings, not the Blue Book's ([OI-66](../09-open-issues.md)): a sequence-controlled VCF Count Length other than one octet, and an expedited VCF Count of any length, are refused. A frame has no Insert Zone and no OCF; the OCF of the return link is the CLCW that FOP-1 reads.
 
 ### 2.2 Inputs
 
@@ -63,7 +65,7 @@ The actions of one input, in the order of the table cell (COP-006). A Type-BC fr
 
 | ID | Requirement | Source | Verif. |
 |---|---|---|---|
-| COP-010 | FOP-1 SHALL build Type-AD frames with N(S) = V(S), Type-BD frames with N(S) = 0, and Type-BC frames carrying Unlock or Set V(R) (TC-005). It SHALL use the TC or USLP codec selected by the frame target. | 232.0 §4.1.2.8 note 3; 232.1 §5.2 | V |
+| COP-010 | FOP-1 SHALL build Type-AD frames with N(S) = V(S), Type-BD frames with N(S) = 0 (a TC header field; a USLP Type-BD frame has no VCF Count, OI-66), and Type-BC frames carrying Unlock or Set V(R) (TC-005, USLP-013). It SHALL use the TC or USLP codec selected by the frame target. | 232.0 §4.1.2.8 note 3; 232.1 §5.2; 732.1 §4.1.2.8 Table 4-1, §4.2.7.4 | V |
 | COP-011 | FOP-1 SHALL keep master copies of all unacknowledged AD frames (Sent_Queue) and SHALL retransmit them in order. On retransmission the frames SHALL be byte-identical to the original transmission. | 232.1 §5.1.7 | V |
 | COP-012 | FOP-1 SHALL compare N(R) arithmetic modulo 256 using NN(R) and V(S) exactly as the "valid N(R)" conditions in Table 5-1 define. | 232.1 §5.1.8, Table 5-1 | V |
 | COP-013 | The T1 timer SHALL be started, restarted, and cancelled exactly where the cells of Table 5-1 list it, and SHALL be disarmed when it expires. The timer is state, and `next_deadline` SHALL report its deadline (API-053). BD frames SHALL NOT start the timer. | 232.1 §5.1.9.1 | V |
