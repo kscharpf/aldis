@@ -7,9 +7,12 @@
     reason = "test-only harness: malformed vectors must fail loudly (RS-018)"
 )]
 
+#[path = "common/mod.rs"]
+mod common;
+
 use aldis_cop1::{
-    Directive, Fop1, Fop1Config, Fop1Event, Fop1Input, Fop1Output, Fop1State, Fop1Target,
-    FrameKind, TimeoutType, fop1_max_actions,
+    Directive, Fop1Config, Fop1Event, Fop1Input, Fop1Output, Fop1State, Fop1Target, FrameKind,
+    TimeoutType, fop1_max_actions,
 };
 use aldis_core::ids::FrameSeqNum;
 use aldis_core::time::{Duration, Instant};
@@ -20,10 +23,12 @@ use serde_json::{Map, Value, json};
 
 /// Four frames of at most 64 octets: room for every scenario (K is at most 3), and the same
 /// instance as the unit tests, so that coverage counts one instantiation (VER-024).
+use common::Rig;
+
 const Q: usize = 4;
 const F: usize = 64;
 const N: usize = fop1_max_actions(Q);
-type Engine = Fop1<Q, F, N>;
+type Engine = Rig<Q, F, N>;
 
 const FILES: [&str; 5] = [
     "fop1_table.json",
@@ -328,7 +333,9 @@ fn run_file(name: &str) -> (usize, Vec<String>) {
                 let e = event(num(&t["event"]));
                 let inner = t.get("input").and_then(Value::as_object);
                 let given = inner.map_or(Fop1Input::Timeout, |m| input(m, vcid, &mut data));
-                engine.decide_event(e, given, now, &mut area)
+                engine
+                    .fop
+                    .decide_event(&engine.store, e, given, now, &mut area)
             } else {
                 let given = input(&step.input, vcid, &mut data);
                 engine.decide(given, now, &mut area)

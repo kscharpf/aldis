@@ -1,11 +1,14 @@
 //! Calls every public `aldis-cop1` FOP-1 API (VER-010; M3 WP-4). Inputs pass through
 //! `black_box`.
 
+#[path = "../../crates/aldis-cop1/tests/common/mod.rs"]
+mod rig;
+
 use core::hint::black_box as bb;
 use core::num::NonZeroU8;
 
 use aldis_cop1::{
-    Directive, Fop1, Fop1Channel, Fop1Config, Fop1Event, Fop1Input, Fop1Output, Fop1State,
+    Directive, Fop1Channel, Fop1Config, Fop1Event, Fop1Input, Fop1Output, Fop1State, Fop1Store,
     Fop1Target, FrameKind, SuspendState, TimeoutType, fop1_max_actions,
 };
 use aldis_core::ids::FrameSeqNum;
@@ -23,7 +26,7 @@ use crate::exercise::Tally;
 const Q: usize = 4;
 const F: usize = 64;
 const N: usize = fop1_max_actions(Q);
-type Engine = Fop1<Q, F, N>;
+type Engine = rig::Rig<Q, F, N>;
 
 /// Steps `f` in place by `decide` and `commit`; `None` if the input failed.
 fn step(f: &mut Engine, input: Fop1Input<'_>, at: u64, out: &mut [u8]) -> Option<()> {
@@ -79,6 +82,7 @@ fn fresh(t: &mut Tally) -> Option<Engine> {
         .is_err(),
     );
     let f = Engine::new(config).ok()?;
+    t.check(Fop1Store::<Q, F>::default() == f.store);
     t.check(f.state() == Fop1State::Initial && f.v_s().get() == 0 && f.nn_r().get() == 0);
     t.check(f.sliding_window_k() == 2 && f.t1_initial().as_micros() == 1000);
     t.check(f.transmission_limit().get() == 2 && f.timeout_type() == TimeoutType::Tt0);
@@ -142,7 +146,8 @@ fn inputs(t: &mut Tally, mut f: Engine) -> Option<()> {
         &mut out,
     )?;
     t.check(f == before);
-    let na = f.decide_event(
+    let na = f.fop.decide_event(
+        &f.store,
         Fop1Event::E31,
         Fop1Input::Timeout,
         Instant::from_micros(8),
@@ -157,7 +162,14 @@ fn inputs(t: &mut Tally, mut f: Engine) -> Option<()> {
         },
     };
     let decision = f
-        .decide_event(bb(Fop1Event::E38), limit, Instant::from_micros(9), &mut out)
+        .fop
+        .decide_event(
+            &f.store,
+            bb(Fop1Event::E38),
+            limit,
+            Instant::from_micros(9),
+            &mut out,
+        )
         .ok()?;
     let _ = f.commit(decision);
     t.check(f.transmission_limit().get() == 3);
@@ -166,7 +178,9 @@ fn inputs(t: &mut Tally, mut f: Engine) -> Option<()> {
         accepted: bb(true),
     };
     let decision = f
+        .fop
         .decide_event(
+            &f.store,
             bb(Fop1Event::E45),
             bd_done,
             Instant::from_micros(10),

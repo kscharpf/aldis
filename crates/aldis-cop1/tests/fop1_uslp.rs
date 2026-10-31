@@ -10,9 +10,12 @@
     reason = "test-only harness: a violated assumption must fail loudly (RS-018)"
 )]
 
+#[path = "common/mod.rs"]
+mod common;
+
 use aldis_cop1::{
-    Directive, Farm1, Farm1Config, Farm1Frame, Farm1Input, Farm1Output, Farm1Window, Fop1,
-    Fop1Channel, Fop1Config, Fop1Input, Fop1Output, Fop1State, Fop1Target, FrameKind, TimeoutType,
+    Directive, Farm1, Farm1Config, Farm1Frame, Farm1Input, Farm1Output, Farm1Window, Fop1Channel,
+    Fop1Config, Fop1Input, Fop1Output, Fop1State, Fop1Target, FrameKind, TimeoutType,
     TransferNotification, fop1_max_actions,
 };
 use aldis_core::ErrorKind;
@@ -28,10 +31,12 @@ use aldis_uslp::{
 };
 use core::num::NonZeroU8;
 
+use common::Rig;
+
 const Q: usize = 4;
 const F: usize = 64;
 const N: usize = fop1_max_actions(Q);
-type Engine = Fop1<Q, F, N>;
+type Engine = Rig<Q, F, N>;
 const NOW: Instant = Instant::from_micros(0);
 
 const fn scid() -> UslpSpacecraftId {

@@ -1,11 +1,13 @@
 //! FOP-1 engine (CCSDS 232.1-B-2 §5; COP-001, COP-004, COP-006, COP-010…COP-017).
 //!
-//! [`Fop1`] is plain data: the State, V(S), NN(R), the `Sent_Queue` with the master copies of
-//! the Type-AD and Type-BC frames, the `Wait_Queue`, the three Out flags, the timer T1, the
-//! `Transmission_Count`, `Suspend_State`, and the managed parameters (232.1 §5.1, §7.2).
+//! [`Fop1`] is plain data: the State, V(S), NN(R), the `Sent_Queue` entries, the `Wait_Queue`
+//! entry, the three Out flags, the timer T1, the `Transmission_Count`, `Suspend_State`, and the
+//! managed parameters (232.1 §5.1, §7.2). The octets of the master copies of the Type-AD and
+//! Type-BC frames and of the queued FDU are in a [`Fop1Store`] that the caller owns and passes
+//! with the engine.
 //! The step of API-057 is the pair [`Fop1::decide`] and [`Fop1::commit`] (API-058, RS-022),
 //! because copying the master copies for every input is too costly (OI-45): `decide` takes the
-//! state by `&self`, one [`Fop1Input`], and `now`, and returns a [`Fop1Decision`] with the
+//! state by `&self`, the store, one [`Fop1Input`], and `now`, and returns a [`Fop1Decision`] with the
 //! [`Fop1Actions`] of the cell of Table 5-1 ([`FOP1_TABLE`]), in the order the cell lists them,
 //! and the change to the small part of the state; `commit` applies it in place and cannot fail.
 //! The transition reads the table with an exhaustive `match` and no wildcard arm (COP-003,
@@ -870,12 +872,48 @@ struct Core<const Q: usize> {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Fop1<const Q: usize, const F: usize, const N: usize> {
     target: Fop1Target,
+    core: Core<Q>,
+}
+
+/// The octets of the engine's queues: the master copies of the `Sent_Queue` and the FDU of the
+/// `Wait_Queue` (232.1 §5.1.4, §5.1.7; COP-011, API-060).
+///
+/// The one large part of a FOP-1 (`Q × F` octets and one more `F`), kept apart from [`Fop1`] so
+/// that the engine is a few hundred octets and is built by value, while the store is a plain
+/// array type that is valid when zeroed: the caller places it in its own storage (a static, or
+/// memory that a C caller zeroes), and passes it to [`Fop1::decide`] and [`Fop1::commit`] with
+/// the engine. A store belongs to one engine from [`Fop1::new`] on, and starts zeroed (a
+/// store used with another engine, or with the engine in another state, gives frames that no
+/// input produces, and never a panic).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Fop1Store<const Q: usize, const F: usize> {
     /// The master copies of the `Sent_Queue`, by position in the queue; a position without an
     /// entry is zero.
     frames: [[u8; F]; Q],
     /// The FDU of the `Wait_Queue`; zero while it is empty.
     wait_fdu: [u8; F],
-    core: Core<Q>,
+}
+
+impl<const Q: usize, const F: usize> Fop1Store<Q, F> {
+    /// An empty store: every octet zero.
+    pub const fn new() -> Fop1Store<Q, F> {
+        Fop1Store {
+            frames: [[0; F]; Q],
+            wait_fdu: [0; F],
+        }
+    }
+}
+
+impl<const Q: usize, const F: usize> Default for Fop1Store<Q, F> {
+    fn default() -> Fop1Store<Q, F> {
+        Fop1Store::new()
+    }
+}
+
+/// What a decision reads of the engine besides its small state: the target and the store.
+struct Base<'b, const Q: usize, const F: usize> {
+    target: &'b Fop1Target,
+    store: &'b Fop1Store<Q, F>,
 }
 
 /// The actions of one FOP-1 input (API-057, RS-022).
@@ -909,8 +947,8 @@ impl<const Q: usize, const F: usize, const N: usize> Fop1<Q, F, N> {
     /// A FOP-1 in State S6 (Initial) with V(S) = NN(R) = 0, every Out flag Ready, no timer,
     /// and `Suspend_State` 0 (232.1 §5.1; OI-59).
     ///
-    /// The value is built in the caller's frame and returned by value, so a state of `Q` frames
-    /// of `F` octets needs that much stack in the caller (OI-45).
+    /// The engine is small and built by value; its [`Fop1Store`] is the caller's
+    /// ([`Fop1Store::new`]), and starts empty (OI-45).
     ///
     /// # Errors
     /// `InvalidConfig` naming `sliding_window_k` for a K outside 1..=min(255, `Q`) (COP-015),
@@ -918,12 +956,7 @@ impl<const Q: usize, const F: usize, const N: usize> Fop1<Q, F, N> {
     /// not fit `F` octets (API-040).
     pub fn new(config: Fop1Config) -> Result<Fop1<Q, F, N>> {
         let (target, core) = Self::start(config)?;
-        Ok(Fop1 {
-            target,
-            frames: [[0; F]; Q],
-            wait_fdu: [0; F],
-            core,
-        })
+        Ok(Fop1 { target, core })
     }
 
     /// The target and the small state of a new engine, once `config` is checked.
@@ -1267,14 +1300,15 @@ impl<const Q: usize, const F: usize, const N: usize> Fop1<Q, F, N> {
     /// An error leaves the state unchanged and produces no action (API-058).
     pub fn decide<'a>(
         &self,
+        store: &Fop1Store<Q, F>,
         input: Fop1Input<'a>,
         now: Instant,
         out: &mut [u8],
     ) -> Result<Fop1Decision<'a, Q, F, N>> {
         let Some((event, ctx)) = self.classify(input, now)? else {
-            return Ok(Fop1Decision::start(self, &[]));
+            return Ok(Fop1Decision::start(&self.core, &[]));
         };
-        self.decide_cell(event, &ctx, out)
+        self.decide_cell(store, event, &ctx, out)
     }
 
     /// Decides the cell of `event` in the current state with the parameters of `input` (the
@@ -1289,6 +1323,7 @@ impl<const Q: usize, const F: usize, const N: usize> Fop1<Q, F, N> {
     /// `event` needs: its directive, its handle, or a Set V(R) directive for E27.
     pub fn decide_event<'a>(
         &self,
+        store: &Fop1Store<Q, F>,
         event: Fop1Event,
         input: Fop1Input<'a>,
         now: Instant,
@@ -1317,18 +1352,23 @@ impl<const Q: usize, const F: usize, const N: usize> Fop1<Q, F, N> {
             Fop1Input::TransmitDone { .. } => ctx.handle = self.core.bd_out,
             Fop1Input::InvalidClcw | Fop1Input::Timeout => {}
         }
-        self.decide_cell(event, &ctx, out)
+        self.decide_cell(store, event, &ctx, out)
     }
 
     /// The decision of `event` (API-057, API-058).
     fn decide_cell<'a>(
         &self,
+        store: &Fop1Store<Q, F>,
         event: Fop1Event,
         ctx: &Context<'a>,
         out: &mut [u8],
     ) -> Result<Fop1Decision<'a, Q, F, N>> {
-        let mut decision = Fop1Decision::start(self, ctx.fdu);
-        decision.run(self, event, ctx, out)?;
+        let base = Base {
+            target: &self.target,
+            store,
+        };
+        let mut decision = Fop1Decision::start(&self.core, ctx.fdu);
+        decision.run(&base, event, ctx, out)?;
         Ok(decision)
     }
 
@@ -1336,12 +1376,16 @@ impl<const Q: usize, const F: usize, const N: usize> Fop1<Q, F, N> {
     ///
     /// It cannot fail: [`decide`](Self::decide) did every check. The decision must be one of
     /// this engine in its current state (see [`Fop1Decision`]).
-    pub fn commit(&mut self, decision: Fop1Decision<'_, Q, F, N>) -> Fop1Actions<N> {
+    pub fn commit(
+        &mut self,
+        store: &mut Fop1Store<Q, F>,
+        decision: Fop1Decision<'_, Q, F, N>,
+    ) -> Fop1Actions<N> {
         let Fop1Decision { core, actions, fdu } = decision;
         // The queue keeps its order, so an entry never moves to a later position, and the
         // positions in ascending order read each master copy before its position is written.
         for (p, sent) in core.sent.iter().enumerate() {
-            let (_, rest) = self.frames.split_at_mut(p);
+            let (_, rest) = store.frames.split_at_mut(p);
             let Some((slot, later)) = rest.split_first_mut() else {
                 continue;
             };
@@ -1358,7 +1402,7 @@ impl<const Q: usize, const F: usize, const N: usize> Fop1<Q, F, N> {
                     continue;
                 }
                 Origin::FreshAd(FduSource::Input) => Some(fdu),
-                Origin::FreshAd(FduSource::Wait(len)) => self.wait_fdu.get(..len),
+                Origin::FreshAd(FduSource::Wait(len)) => store.wait_fdu.get(..len),
                 Origin::FreshBc(_) => None,
             };
             slot.fill(0);
@@ -1373,10 +1417,10 @@ impl<const Q: usize, const F: usize, const N: usize> Fop1<Q, F, N> {
                 .ok();
         }
         match core.wait {
-            None => self.wait_fdu.fill(0),
+            None => store.wait_fdu.fill(0),
             Some(Waiting { fresh: true, .. }) => {
-                self.wait_fdu.fill(0);
-                for (d, s) in self.wait_fdu.iter_mut().zip(fdu) {
+                store.wait_fdu.fill(0);
+                for (d, s) in store.wait_fdu.iter_mut().zip(fdu) {
                     *d = *s;
                 }
             }
@@ -1399,10 +1443,10 @@ impl<const Q: usize, const F: usize, const N: usize> Fop1<Q, F, N> {
 }
 
 impl<'a, const Q: usize, const F: usize, const N: usize> Fop1Decision<'a, Q, F, N> {
-    /// The decision that changes nothing: the small state of `base`, no action.
-    fn start(base: &Fop1<Q, F, N>, fdu: &'a [u8]) -> Fop1Decision<'a, Q, F, N> {
+    /// The decision that changes nothing: the small state `core`, no action.
+    fn start(core: &Core<Q>, fdu: &'a [u8]) -> Fop1Decision<'a, Q, F, N> {
         Fop1Decision {
-            core: base.core.clone(),
+            core: core.clone(),
             actions: Actions::new(),
             fdu,
         }
@@ -1419,7 +1463,7 @@ impl<'a, const Q: usize, const F: usize, const N: usize> Fop1Decision<'a, Q, F, 
     /// COP-003, COP-004).
     fn run(
         &mut self,
-        base: &Fop1<Q, F, N>,
+        base: &Base<'_, Q, F>,
         event: Fop1Event,
         ctx: &Context<'_>,
         out: &mut [u8],
@@ -1452,7 +1496,7 @@ impl<'a, const Q: usize, const F: usize, const N: usize> Fop1Decision<'a, Q, F, 
     #[expect(clippy::too_many_lines, reason = "one arm per action token of §5.2")]
     fn act(
         &mut self,
-        base: &Fop1<Q, F, N>,
+        base: &Base<'_, Q, F>,
         action: Fop1Action,
         prior: Fop1State,
         ctx: &Context<'_>,
@@ -1687,7 +1731,7 @@ impl<'a, const Q: usize, const F: usize, const N: usize> Fop1Decision<'a, Q, F, 
     /// `To_Be_Retransmitted`, else the FDU of the `Wait_Queue` if V(S) < NN(R) + K.
     fn look_for_fdu(
         &mut self,
-        base: &Fop1<Q, F, N>,
+        base: &Base<'_, Q, F>,
         now: Instant,
         out: &mut [u8],
         used: &mut usize,
@@ -1734,7 +1778,7 @@ impl<'a, const Q: usize, const F: usize, const N: usize> Fop1Decision<'a, Q, F, 
     /// again into the master copy.
     fn transmit_ad(
         &mut self,
-        base: &Fop1<Q, F, N>,
+        base: &Base<'_, Q, F>,
         waiting: Waiting,
         now: Instant,
         out: &mut [u8],
@@ -1776,7 +1820,7 @@ impl<'a, const Q: usize, const F: usize, const N: usize> Fop1Decision<'a, Q, F, 
     /// (232.0 §4.1.3.3).
     fn transmit_bc(
         &mut self,
-        base: &Fop1<Q, F, N>,
+        base: &Base<'_, Q, F>,
         command: BcCommand,
         ctx: &Context<'_>,
         out: &mut [u8],
@@ -1818,7 +1862,7 @@ impl<'a, const Q: usize, const F: usize, const N: usize> Fop1Decision<'a, Q, F, 
     /// marked `To_Be_Retransmitted`.
     fn look_for_directive(
         &mut self,
-        base: &Fop1<Q, F, N>,
+        base: &Base<'_, Q, F>,
         out: &mut [u8],
         used: &mut usize,
     ) -> Result<()> {
@@ -1865,10 +1909,11 @@ impl<'a, const Q: usize, const F: usize, const N: usize> Fop1Decision<'a, Q, F, 
     }
 
     /// The octets of an FDU a decision builds a frame from.
-    fn fdu_of<'s>(&'s self, base: &'s Fop1<Q, F, N>, source: FduSource) -> Result<&'s [u8]> {
+    fn fdu_of<'s>(&'s self, base: &'s Base<'_, Q, F>, source: FduSource) -> Result<&'s [u8]> {
         match source {
             FduSource::Input => Ok(self.fdu),
             FduSource::Wait(len) => base
+                .store
                 .wait_fdu
                 .get(..len)
                 .ok_or(Error::new(ErrorKind::InternalError)),
@@ -1880,7 +1925,7 @@ impl<'a, const Q: usize, const F: usize, const N: usize> Fop1Decision<'a, Q, F, 
     /// the frame encoded again.
     fn emit_sent(
         &self,
-        base: &Fop1<Q, F, N>,
+        base: &Base<'_, Q, F>,
         sent: &Sent,
         out: &mut [u8],
         used: &mut usize,
@@ -1888,6 +1933,7 @@ impl<'a, const Q: usize, const F: usize, const N: usize> Fop1Decision<'a, Q, F, 
         let (frame_type, payload) = match sent.origin {
             Origin::Base(i) => {
                 let frame = base
+                    .store
                     .frames
                     .get(i)
                     .and_then(|f| f.get(..sent.len))
@@ -1968,7 +2014,7 @@ mod tests {
     use std::vec::Vec;
 
     use super::{
-        Context, FduSource, Fop1, Fop1Actions, Fop1Channel, Fop1Config, Fop1Decision, Fop1Input,
+        Base, Context, FduSource, Fop1Actions, Fop1Channel, Fop1Config, Fop1Decision, Fop1Input,
         Fop1Output, Fop1Target, Origin, Sent, SentKind, cell, fop1_max_actions,
     };
     use crate::fop1_table::{EVENT_COUNT, FOP1_TABLE, Fop1Action, STATE_COUNT};
@@ -1977,6 +2023,7 @@ mod tests {
         Alert, AlertReason, Directive, DirectiveNotification, DirectiveNotify, TimeoutType,
         TransferNotification, TransferNotify,
     };
+    use crate::rig::Rig;
     use aldis_core::ids::FrameSeqNum;
     use aldis_core::time::{Duration, Instant};
     use aldis_core::{ErrorKind, field};
@@ -1987,7 +2034,7 @@ mod tests {
     const Q: usize = 4;
     const F: usize = 64;
     const N: usize = fop1_max_actions(Q);
-    type Engine = Fop1<Q, F, N>;
+    type Engine = Rig<Q, F, N>;
     const FDU: [u8; 2] = [0xA0, 0x01];
 
     fn target() -> Fop1Target {
@@ -2045,10 +2092,18 @@ mod tests {
         (next, actions.iter().copied().collect())
     }
 
+    fn view(r: &Engine) -> Base<'_, Q, F> {
+        Base {
+            target: &r.fop.target,
+            store: &r.store,
+        }
+    }
+
     fn inject(f: &Engine, event: Fop1Event, input: Fop1Input<'_>) -> Result<Engine, ErrorKind> {
         let mut out = [0u8; F];
         let decision = f
-            .decide_event(event, input, Instant::from_micros(0), &mut out)
+            .fop
+            .decide_event(&f.store, event, input, Instant::from_micros(0), &mut out)
             .map_err(|e| e.kind())?;
         let mut next = f.clone();
         let _ = next.commit(decision);
@@ -2132,14 +2187,19 @@ mod tests {
         let mut g = f.clone();
         let _ = frames_of(&mut g, clcw(false, false, false, 3), 10);
         assert_eq!(g.sent_queue_len(), 0);
-        assert!(g.frames.iter().all(|frame| frame.iter().all(|b| *b == 0)));
+        assert!(
+            g.store
+                .frames
+                .iter()
+                .all(|frame| frame.iter().all(|b| *b == 0))
+        );
     }
 
     #[test]
     fn a_frame_a_decision_added_is_emitted_again_by_encoding_it() {
         // req: COP-011, API-061
         let f = active();
-        let d = Fop1Decision::start(&f, &FDU);
+        let d: Fop1Decision<'_, Q, F, N> = Fop1Decision::start(&f.fop.core, &FDU);
         let mut out = [0u8; 2 * F];
         let mut used = 0;
         let entry = |origin| Sent {
@@ -2151,17 +2211,21 @@ mod tests {
         };
         let ad = entry(Origin::FreshAd(FduSource::Input));
         let bc = entry(Origin::FreshBc(aldis_tc::ControlCommand::Unlock));
-        let first = d.emit_sent(&f, &ad, &mut out, &mut used).unwrap();
-        let second = d.emit_sent(&f, &bc, &mut out, &mut used).unwrap();
+        let first = d.emit_sent(&view(&f), &ad, &mut out, &mut used).unwrap();
+        let second = d.emit_sent(&view(&f), &bc, &mut out, &mut used).unwrap();
         assert_eq!((first.start(), second.start()), (0, first.len()));
         assert_eq!(used, first.len() + second.len());
         // The area is too short for the next frame: the octets already used count in `Needed`.
         let mut short = [0u8; 10];
         used = 4;
-        let e = d.emit_sent(&f, &ad, &mut short, &mut used).unwrap_err();
+        let e = d
+            .emit_sent(&view(&f), &ad, &mut short, &mut used)
+            .unwrap_err();
         assert_eq!(e.kind(), ErrorKind::BufferTooSmall);
         let wait = entry(Origin::FreshAd(FduSource::Wait(F + 1)));
-        let e = d.emit_sent(&f, &wait, &mut out, &mut used).unwrap_err();
+        let e = d
+            .emit_sent(&view(&f), &wait, &mut out, &mut used)
+            .unwrap_err();
         assert_eq!(e.kind(), ErrorKind::InternalError);
     }
 
@@ -2427,7 +2491,8 @@ mod tests {
             ErrorKind::OutOfRange
         );
         assert_eq!(
-            f.decide_event(Fop1Event::E21, long, now, &mut out)
+            f.fop
+                .decide_event(&f.store, Fop1Event::E21, long, now, &mut out)
                 .unwrap_err()
                 .kind(),
             ErrorKind::OutOfRange
@@ -2827,8 +2892,8 @@ mod tests {
         let (s4, _) = go(&f, directive(6, Directive::InitiateAdWithClcwCheck), 0);
         let (s5, _) = go(&f, directive(7, Directive::InitiateAdWithUnlock), 0);
         let mut mixed = s5.clone();
-        let ad = a2.core.sent.iter().flatten().next().copied().unwrap();
-        let mut slots = mixed.core.sent.iter_mut().filter(|s| s.is_none());
+        let ad = a2.fop.core.sent.iter().flatten().next().copied().unwrap();
+        let mut slots = mixed.fop.core.sent.iter_mut().filter(|s| s.is_none());
         *slots.next().unwrap() = Some(Sent {
             kind: SentKind::Ad(9),
             ..ad
@@ -2844,14 +2909,14 @@ mod tests {
         );
         let (s5r, _) = go(&s5r, Fop1Input::Timeout, 100);
         let mut s5r = s5r;
-        s5r.core.bc_out_ready = true;
+        s5r.fop.core.bc_out_ready = true;
         // A Sent_Queue full beyond what K admits: a broken invariant (InternalError).
         let mut jammed = a2.clone();
-        jammed.core.sent.fill(Some(ad));
-        jammed.core.ad_out_ready = true;
-        jammed.core.nn_r = jammed.core.v_s;
+        jammed.fop.core.sent.fill(Some(ad));
+        jammed.fop.core.ad_out_ready = true;
+        jammed.fop.core.nn_r = jammed.fop.core.v_s;
         let mut suspended = fresh();
-        suspended.core.suspend_state = SuspendState::RetransmitWithWait;
+        suspended.fop.core.suspend_state = SuspendState::RetransmitWithWait;
         vec![f, a, a1, a2, s2, s3, s4, s5, mixed, s5r, jammed, suspended]
     }
 
@@ -3004,7 +3069,7 @@ mod tests {
                 Fop1State::Initial,
             ] {
                 let mut start = base.clone();
-                start.core.state = state;
+                start.fop.core.state = state;
                 for event in events {
                     for input in inputs() {
                         let mut ctx = Context {
@@ -3013,7 +3078,7 @@ mod tests {
                             handle: Some(20),
                             fdu: &FDU,
                             directive: None,
-                            n_r: start.core.nn_r,
+                            n_r: start.fop.core.nn_r,
                         };
                         match input {
                             Fop1Input::Directive { directive, .. } => {
@@ -3029,17 +3094,18 @@ mod tests {
                                 list.push(Fop1Output::Abort).unwrap();
                             }
                             let mut big = [0u8; F];
-                            let mut a = Fop1Decision::start(&start, &FDU);
+                            let mut a = Fop1Decision::start(&start.fop.core, &FDU);
                             a.actions = list;
                             // A push without room fails the cell; none is dropped (API-083).
-                            if a.run(&start, event, &ctx, &mut big).is_ok() {
+                            if a.run(&view(&start), event, &ctx, &mut big).is_ok() {
                                 assert!(a.actions.len() <= N);
                                 assert_eq!(alerts(&a.actions), listed_alerts(state, event));
                             }
                         }
                         // No output area: every transmit fails.
-                        let mut b = Fop1Decision::start(&start, &FDU);
-                        if b.run(&start, event, &ctx, &mut []).is_ok() {
+                        let mut b: Fop1Decision<'_, Q, F, N> =
+                            Fop1Decision::start(&start.fop.core, &FDU);
+                        if b.run(&view(&start), event, &ctx, &mut []).is_ok() {
                             assert!(
                                 b.actions
                                     .iter()

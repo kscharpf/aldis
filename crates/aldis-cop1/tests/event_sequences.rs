@@ -19,10 +19,13 @@
     reason = "tests fail loudly by design; the tables are indexed by the discriminant of the state"
 )]
 
+#[path = "common/mod.rs"]
+mod common;
+
 use aldis_cop1::{
     Directive, FARM1_MAX_ACTIONS, FARM1_TABLE, FOP1_TABLE, Farm1, Farm1Config, Farm1Frame,
-    Farm1Input, Farm1State, Farm1Window, Fop1, Fop1Config, Fop1Input, Fop1Output, Fop1Target,
-    FrameKind, TimeoutType, fop1_max_actions,
+    Farm1Input, Farm1State, Farm1Window, Fop1Config, Fop1Input, Fop1Output, Fop1Target, FrameKind,
+    TimeoutType, fop1_max_actions,
 };
 use aldis_core::ErrorKind;
 use aldis_core::ids::FrameSeqNum;
@@ -42,10 +45,12 @@ const REGRESSIONS: &str = concat!(
     "/proptest-regressions/event_sequences.txt"
 );
 
+use common::Rig;
+
 const Q: usize = 4;
 const F: usize = 32;
 const N: usize = fop1_max_actions(Q);
-type Engine = Fop1<Q, F, N>;
+type Engine = Rig<Q, F, N>;
 const VCID: u8 = 5;
 
 /// One input of the FOP-1, owned, with the microseconds the clock advances before it.

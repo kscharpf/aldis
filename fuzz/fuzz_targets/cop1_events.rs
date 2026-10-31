@@ -8,11 +8,16 @@
 //! panics (GEN-020).
 #![no_main]
 
+#[path = "../../crates/aldis-cop1/tests/common/mod.rs"]
+mod common;
+
+use common::Rig;
+
 // req: COP-041, COP-001, COP-002, COP-005, COP-006, COP-017, API-058, GEN-020, VER-022
 
 use aldis_cop1::{
     AlertReason, Directive, FARM1_MAX_ACTIONS, FARM1_TABLE, FOP1_TABLE, Farm1, Farm1Config,
-    Farm1Frame, Farm1Input, Farm1State, Farm1Window, Fop1, Fop1Config, Fop1Decision, Fop1Input, Fop1Output,
+    Farm1Frame, Farm1Input, Farm1State, Farm1Window, Fop1Config, Fop1Decision, Fop1Input, Fop1Output,
     Fop1State, Fop1Target, FrameKind, TimeoutType, fop1_max_actions,
 };
 use aldis_core::ids::FrameSeqNum;
@@ -100,7 +105,7 @@ fn fop1(u: &mut Unstructured<'_>) -> Result<()> {
         u.arbitrary()?,
     )
     .unwrap();
-    let mut f = Fop1::<Q, F, N>::new(Fop1Config {
+    let mut f = Rig::<Q, F, N>::new(Fop1Config {
         target,
         t1_initial: Duration::from_micros(u.int_in_range(1..=2_000)?),
         transmission_limit: NonZeroU8::new(u.int_in_range(1..=5)?).unwrap(),

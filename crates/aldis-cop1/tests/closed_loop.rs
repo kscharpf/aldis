@@ -30,10 +30,13 @@
     reason = "test-only harness: a violated assumption must fail loudly (RS-018)"
 )]
 
+#[path = "common/mod.rs"]
+mod common;
+
 use aldis_cop1::{
     Alert, Directive, Farm1, Farm1Config, Farm1Frame, Farm1Input, Farm1Output, Farm1Window,
-    FduKind, Fop1, Fop1Config, Fop1Input, Fop1Output, Fop1State, Fop1Target, FrameKind,
-    TimeoutType, TransferNotification, fop1_max_actions,
+    FduKind, Fop1Config, Fop1Input, Fop1Output, Fop1State, Fop1Target, FrameKind, TimeoutType,
+    TransferNotification, fop1_max_actions,
 };
 use aldis_core::ids::FrameSeqNum;
 use aldis_core::security::SecurityLayout;
@@ -53,10 +56,12 @@ const REGRESSIONS: &str = concat!(
 );
 
 /// A `Sent_Queue` of 16 frames of at most 64 octets.
+use common::Rig;
+
 const Q: usize = 16;
 const F: usize = 64;
 const N: usize = fop1_max_actions(Q);
-type Ground = Fop1<Q, F, N>;
+type Ground = Rig<Q, F, N>;
 
 const SCID: u16 = 0x155;
 const VCID: u8 = 3;
