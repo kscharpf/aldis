@@ -315,11 +315,11 @@ impl World {
 
     fn ground_once(&mut self, input: Fop1Input<'_>, responses: &mut Vec<FrameKind>) {
         let now = self.instant();
-        let (next, actions) = self
+        let decision = self
             .ground
-            .step(input, now, &mut self.out)
+            .decide(input, now, &mut self.out)
             .unwrap_or_else(|e| panic!("{}: FOP-1 refused {input:?}: {e:?}", self.s.name));
-        self.ground = next;
+        let actions = self.ground.commit(decision);
         for action in actions.iter() {
             match *action {
                 Fop1Output::Transmit {

@@ -156,12 +156,14 @@ fn fop1(u: &mut Unstructured<'_>) -> Result<()> {
         let before = f.state();
         let mut area = [0_u8; F];
         let mut again = [0_u8; F];
-        let first = f.step(input, at, &mut area);
-        // The step is a pure function of the state, the input, and the time.
-        assert_eq!(first, f.step(input, at, &mut again));
-        let Ok((after, actions)) = first else {
+        let first = f.decide(input, at, &mut area);
+        // The decision is a pure function of the state, the input, and the time.
+        assert_eq!(first, f.decide(input, at, &mut again));
+        let Ok(decision) = first else {
             continue;
         };
+        let mut after = f.clone();
+        let actions = after.commit(decision);
         assert_eq!(area, again);
         assert!(actions.len() <= N);
         let events = fop1_events(class);

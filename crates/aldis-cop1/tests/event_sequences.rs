@@ -240,8 +240,9 @@ proptest! {
                 FopOp::TransmitDone(k, accepted) => Fop1Input::TransmitDone { kind: kind(*k), accepted: *accepted },
             };
             let before = f.state();
-            let (after, actions) = match f.step(input, at, &mut area) {
-                Ok(ok) => ok,
+            let mut after = f.clone();
+            let actions = match f.decide(input, at, &mut area) {
+                Ok(decision) => after.commit(decision),
                 Err(e) => {
                     // No engine is returned: the caller keeps `f` (API-058).
                     prop_assert!(matches!(

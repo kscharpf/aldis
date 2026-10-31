@@ -25,11 +25,12 @@ const F: usize = 64;
 const N: usize = fop1_max_actions(Q);
 type Engine = Fop1<Q, F, N>;
 
-/// The result of a step that succeeded, or `None`.
+/// The engine after an input that succeeded, by `decide` and `commit`, or `None`.
 fn step(f: &Engine, input: Fop1Input<'_>, at: u64, out: &mut [u8]) -> Option<Engine> {
-    f.step(bb(input), Instant::from_micros(at), out)
-        .ok()
-        .map(|(next, _)| next)
+    let decision = f.decide(bb(input), Instant::from_micros(at), out).ok()?;
+    let mut next = f.clone();
+    let _ = next.commit(decision);
+    Some(next)
 }
 
 /// A CLCW of VCID 1 with the given flags and N(R).
@@ -102,7 +103,9 @@ fn inputs(t: &mut Tally, f: &Engine) -> Option<()> {
         handle: bb(2),
         fdu: &fdu,
     };
-    let (f, actions) = f.step(request, Instant::from_micros(1), &mut out).ok()?;
+    let mut f = f;
+    let decision = f.decide(request, Instant::from_micros(1), &mut out).ok()?;
+    let actions = f.commit(decision);
     t.check(matches!(
         actions.get(1),
         Some(Fop1Output::Transmit {
@@ -138,7 +141,7 @@ fn inputs(t: &mut Tally, f: &Engine) -> Option<()> {
         step(&f, Fop1Input::InvalidClcw, 7, &mut out)
             .is_some_and(|g| g.state() == Fop1State::Initial),
     );
-    let na = f.step_event(
+    let na = f.decide_event(
         Fop1Event::E31,
         Fop1Input::Timeout,
         Instant::from_micros(8),
@@ -152,21 +155,27 @@ fn inputs(t: &mut Tally, f: &Engine) -> Option<()> {
             limit: NonZeroU8::new(bb(3))?,
         },
     };
-    let (g, _) = f
-        .step_event(bb(Fop1Event::E38), limit, Instant::from_micros(9), &mut out)
+    let decision = f
+        .decide_event(bb(Fop1Event::E38), limit, Instant::from_micros(9), &mut out)
         .ok()?;
+    let mut g = f.clone();
+    let _ = g.commit(decision);
     t.check(g.transmission_limit().get() == 3);
     let bd_done = Fop1Input::TransmitDone {
         kind: FrameKind::Ad,
         accepted: bb(true),
     };
-    let bd = f.step_event(
+    let bd = f.decide_event(
         bb(Fop1Event::E45),
         bd_done,
         Instant::from_micros(10),
         &mut out,
     );
-    t.check(bd.is_ok_and(|(g, _)| g.out_flag_ready(FrameKind::Bd)));
+    t.check(bd.is_ok_and(|d| {
+        let mut g = f.clone();
+        let _ = g.commit(d);
+        g.out_flag_ready(FrameKind::Bd)
+    }));
     Some(())
 }
 
@@ -220,8 +229,9 @@ fn uslp_target(t: &mut Tally) -> Option<()> {
 fn uslp_frames(t: &mut Tally, f: &Engine) -> Option<()> {
     let mut out = [0_u8; F];
     // A Type-BC frame with the Unlock command, then a Type-AD and a Type-BD frame.
-    let (f, actions) = f
-        .step(
+    let mut f = f.clone();
+    let decision = f
+        .decide(
             bb(Fop1Input::Directive {
                 handle: bb(1),
                 directive: Directive::InitiateAdWithUnlock,
@@ -230,6 +240,7 @@ fn uslp_frames(t: &mut Tally, f: &Engine) -> Option<()> {
             &mut out,
         )
         .ok()?;
+    let actions = f.commit(decision);
     t.check(actions.iter().any(|a| {
         matches!(
             a,
@@ -250,8 +261,9 @@ fn uslp_frames(t: &mut Tally, f: &Engine) -> Option<()> {
     )?;
     let f = step(&f, clcw(false, false, false, 0)?, 2, &mut out)?;
     let fdu = bb([0xA0_u8, 1]);
-    let (f, actions) = f
-        .step(
+    let mut f = f;
+    let decision = f
+        .decide(
             bb(Fop1Input::RequestAd {
                 handle: bb(2),
                 fdu: &fdu,
@@ -260,6 +272,7 @@ fn uslp_frames(t: &mut Tally, f: &Engine) -> Option<()> {
             &mut out,
         )
         .ok()?;
+    let actions = f.commit(decision);
     t.check(actions.iter().any(|a| {
         matches!(
             a,
@@ -269,8 +282,8 @@ fn uslp_frames(t: &mut Tally, f: &Engine) -> Option<()> {
             }
         )
     }));
-    let (_, actions) = f
-        .step(
+    let decision = f
+        .decide(
             bb(Fop1Input::RequestBd {
                 handle: bb(3),
                 fdu: &fdu,
@@ -279,7 +292,7 @@ fn uslp_frames(t: &mut Tally, f: &Engine) -> Option<()> {
             &mut out,
         )
         .ok()?;
-    t.check(actions.iter().any(|a| {
+    t.check(decision.actions().iter().any(|a| {
         matches!(
             a,
             Fop1Output::Transmit {

@@ -27,13 +27,13 @@ FARM-1 protocol states (232.1 §6.2): S1 (`Open`), S2 (`Wait`), S3 (`Lockout`).
 
 `Fop1Config { target: Fop1Target (a TC Virtual Channel without Segment Header or SDLS, or, with the feature `uslp`, a USLP VC and MAP of a variable-length Physical Channel with a one-octet sequence-controlled VCF Count, no expedited count, and no SDLS fields; COP-010, USLP-013), t1_initial: Duration ≥ 1 µs, transmission_limit: 1..=255, timeout_type: TT0 | TT1, sliding_window_k: 1..=min(255, Q) (≤ PW of the peer FARM), bc_repetitions, ad_repetitions }`
 
-Capacities (compile-time): `Fop1<Q, F, N>` holds a Sent_Queue of `Q ≥ K` frames of at most `F` octets (`F` ≥ the Maximum Transfer Frame Length, at most 1024 for TC), and returns at most `N ≥ fop1_max_actions(Q)` actions per input, checked when the type is built (COP-006). One input writes at most one frame to the output area (API-062).
+Capacities (compile-time): `Fop1<Q, F, N>` holds a Sent_Queue of `Q ≥ K` frames of at most `F` octets (`F` ≥ the Maximum Transfer Frame Length, at most 1024 for TC), and returns at most `N ≥ fop1_max_actions(Q)` actions per input, checked when the type is built (COP-006). One input writes at most one frame to the output area (API-062). `Fop1::new` returns the engine by value, so the caller's frame holds the whole state (`Q × F` octets and a little more); `decide` and `commit` copy none of it (#197, OI-45).
 
 **The USLP target** (feature `uslp`; `Fop1Target::uslp(physical, vc, map, tfdf)`, COP-010, USLP-013). FOP-1 supplies what 732.1 §4.2.7.4 gives it: the Bypass/Sequence Control and Protocol Control Command Flags and the Frame Sequence Number. A Type-AD frame is `00` with N(S) in the VCF Count, a Type-BD frame `10`, and a Type-BC frame `11` with the UPID "COP-1 Control Commands", rule `111` ("one or more Control Commands", §4.1.4.2.2.2.8 d), and the Unlock or Set V(R) command as its TFDZ (decodable with the TC parser, USLP-013). The FDU of a Type-AD or Type-BD request is the TFDZ, under the TFDF Header `tfdf` of the target, whose UPID cannot be "Only Idle Data" (§4.1.4.1.9, §4.1.4.1.11) or a control-command or SPDU UPID. The Source-or-Destination Identifier is Destination (`1`, §4.1.2.3.3): FOP-1 sends from the ground to the spacecraft. The constructor refuses, once, a channel that FOP-1 could not fill: a fixed-length Physical Channel or VC (Control Commands need the variable-length rule `111`, Table 4-3, and there is no Insert Zone to fill), a VC with a truncated frame length (OI-48), SDLS fields on the VC or the MAP, a rule of a fixed-length TFDZ, and a frame too short for Set V(R). Two of its limits are this crate's own readings, not the Blue Book's ([OI-66](../09-open-issues.md)): a sequence-controlled VCF Count Length other than one octet, and an expedited VCF Count of any length, are refused. A frame has no Insert Zone and no OCF; the OCF of the return link is the CLCW that FOP-1 reads.
 
 ### 2.2 Inputs
 
-The inputs are the variants of `Fop1Input`; every one is fed to `step(state, input, now, out)` (API-057) and returns the next state and the actions of §2.3.
+The inputs are the variants of `Fop1Input`; every one is fed to `Fop1::decide(&self, input, now, out)`, which returns the actions of §2.3 and the change to the state without copying the Sent_Queue, and `Fop1::commit(&mut self, decision)` applies it in place and cannot fail (API-057, API-058, RS-022). The pure function of API-057 is their composition; an input that fails in `decide` changes nothing.
 
 | Input | Maps to events | Notes |
 |---|---|---|
@@ -46,7 +46,7 @@ The inputs are the variants of `Fop1Input`; every one is fed to `step(state, inp
 | `InvalidClcw` | E15 | A word `Clcw::decode` refuses, such as Control Word Type `1` |
 | `InvalidDirective(handle)` | E40 | A directive the caller could not parse; a parsed directive with a value outside its range is also E40 |
 
-`Fop1::step_event(event, input)` runs the cell of `event` with the parameters of `input` and no classification: the table function of API-058 that the conformance vectors use for the cells no input reaches (COP-005).
+`Fop1::decide_event(event, input)` decides the cell of `event` with the parameters of `input` and no classification: the table function of API-058 that the conformance vectors use for the cells no input reaches (COP-005).
 
 ### 2.3 Actions
 

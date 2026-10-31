@@ -328,16 +328,15 @@ fn run_file(name: &str) -> (usize, Vec<String>) {
                 let e = event(num(&t["event"]));
                 let inner = t.get("input").and_then(Value::as_object);
                 let given = inner.map_or(Fop1Input::Timeout, |m| input(m, vcid, &mut data));
-                engine.step_event(e, given, now, &mut area)
+                engine.decide_event(e, given, now, &mut area)
             } else {
                 let given = input(&step.input, vcid, &mut data);
-                engine.step(given, now, &mut area)
+                engine.decide(given, now, &mut area)
             };
             let got: Vec<Value> = match result {
-                Ok((next, actions)) => {
-                    let got = actions.iter().map(|o| output(o, &area)).collect();
-                    engine = next;
-                    got
+                Ok(decision) => {
+                    let actions = engine.commit(decision);
+                    actions.iter().map(|o| output(o, &area)).collect()
                 }
                 Err(e) => vec![json!({"error": e.kind().name()})],
             };
@@ -403,7 +402,9 @@ fn the_action_bound_target_and_classification_at_run_time() {
     let mut out = [0; F];
     let at = Instant::from_micros(0);
     // No timer: a Timeout is no event.
-    let (g, actions) = f.step(Fop1Input::Timeout, at, &mut out).unwrap();
+    let mut g = f.clone();
+    let decision = g.decide(Fop1Input::Timeout, at, &mut out).unwrap();
+    let actions = g.commit(decision);
     assert_eq!((g, actions.len()), (f.clone(), 0));
     // An FDU longer than the frame allows is refused before any cell runs.
     let long = [0; F];
@@ -417,7 +418,7 @@ fn the_action_bound_target_and_classification_at_run_time() {
             fdu: &long,
         },
     ] {
-        assert!(f.step(input, at, &mut out).is_err());
+        assert!(f.decide(input, at, &mut out).is_err());
     }
 }
 
