@@ -4,7 +4,7 @@ version = 4
 
 [[package]]
 name = "aldis-core"
-version = "0.3.0"
+version = "0.4.0"
 
 [[package]]
 name = "aldis-crosscheck"
@@ -23,7 +23,7 @@ dependencies = [
 
 [[package]]
 name = "aldis-spp"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "aldis-core",
  "aldis-time",
@@ -31,7 +31,7 @@ dependencies = [
 
 [[package]]
 name = "aldis-testkit"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "aldis-core",
  "aldis-spp",
@@ -42,7 +42,7 @@ dependencies = [
 
 [[package]]
 name = "aldis-time"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "aldis-core",
 ]
