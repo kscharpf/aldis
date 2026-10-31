@@ -8,7 +8,7 @@ The engines are sans-I/O (GEN-030): they read no clock, send no frame, and hold 
 
 | Category | Hazards | State |
 |---|---|---|
-| `corrupt-accepted` | HZ-COP1-01, HZ-COP1-02 | done |
+| `corrupt-accepted` | HZ-COP1-01, HZ-COP1-02, HZ-COP1-18 | done |
 | `valid-rejected` | HZ-COP1-03 | done |
 | `misrouting` | HZ-COP1-04 | done |
 | `truncation` | HZ-COP1-05 | done |
@@ -311,6 +311,23 @@ The engines are sans-I/O (GEN-030): they read no clock, send no frame, and hold 
 | Assumptions | `asm:ASM-8` |
 | Proposals | — |
 | Claims | `ac:AC-1.8`; `ac:AC-5.1` |
+
+### HZ-COP1-18 A late Set V(R) directive resets V(R) after frames were delivered
+
+| | |
+|---|---|
+| Category | `corrupt-accepted` |
+| Status | `residual` |
+| Severity | S1 |
+| Failure mode | A Type-BC frame with the Set V(R) Control Command (a retransmission or a duplicate of one already executed, or the first copy delayed past its retransmission) reaches FARM-1 in the Open or Wait state after later Type-AD frames were accepted. FARM-1 executes it again and sets V(R) back to V*(R) (232.1 Table 6-1, E8). The Type-AD frames between V*(R) and the old V(R) fall into the negative window, the next CLCW reports an N(R) that moved backwards, and a retransmission of FDUs already delivered is accepted a second time (observed by the fuzz target `cop1_closed_loop`: delivery of N(S) 1 at position 3 with V(R) 2, after V(R) was 3) |
+| Cause | A Type-BC frame carries no Frame Sequence Number, so FARM-1 cannot tell a stale Set V(R) from a current one (232.1 §6.3.2.2 describes only the execution), and the Blue Book names no check on a repeated command. COP-1 relies on the link to keep the order of the frames of a Virtual Channel: 232.0 §2.4.1 describes the loss that COP-1 repairs as "errors or discontinuities" of a link that, if perfect, would deliver "the exact duplicate of the series" of data units, and neither 232.0 nor 232.1 mentions reordering or the creation of a frame by the link. The only duplicates 232.1 admits are those the sending end makes, by a FOP-1 retransmission or by the systematic retransmission of 232.1 §5.1.9.3 (note 2 to that clause, which says FARM-1 rejects a duplicate Type-AD frame and names no rule for a Type-BC frame). On an in-order link such a copy is adjacent to its original: FOP-1 sends no Type-AD frame after the directive until a CLCW acknowledges it (232.1 §5.2, Transmit Type-BC Frame), so every copy of the directive is on the link before the first Type-AD frame |
+| Mission effect | Telecommands executed twice, or a gap of telecommands after a re-accepted retransmission, with a CLCW that tells FOP-1 the opposite of what FARM-1 delivered: the loss of the Sequence-Controlled Service guarantee without an Alert, on a link that reorders (a relay with several paths, a ground network that routes the two directions differently, a replay) |
+| Requirements | COP-002, COP-003, COP-005, COP-040, COP-041 |
+| Evidence | `test:crates/aldis-cop1/tests/closed_loop.rs::any_link_gives_the_service_guarantee_or_an_alert`; `test:crates/aldis-cop1/tests/closed_loop.rs::duplicated_frames_and_reports_deliver_once`; `test:crates/aldis-cop1/tests/farm1_table.rs::test_exhaustive_33_cells` |
+| Residual risk | The engine executes Table 6-1 as written and cannot do otherwise: a check that refused a repeated Set V(R) would deviate from E8, and the Blue Book gives FARM-1 nothing to tell a repeat from a new command (the V*(R) is the only datum, and a legitimate re-initialization may repeat it). The reading is that the standard assumes a link that keeps the order of the frames of a Virtual Channel and creates no frames (an inference from the quoted text; the Blue Book does not state it, and does not address a stale directive), so the Type-AD guarantee holds under a link that loses, corrupts, and (by the sender) repeats frames, and the Set V(R) directive is outside it on a link that reorders. The Type-AD sequence number still repairs the reordering and duplication of Type-AD frames (`hz:HZ-COP1-01`); only the Type-BC command is exposed. The closed-loop tests and the fuzz target therefore leave the Set V(R) directive out of a re-initiation over a link that reorders, and the Unlock directive stays (its late execution leaves V(R) as it is and clears Lockout and Retransmit). The obligation is on the integrator (`asm:ASM-18`): reordering and duplication by the link are excluded or confined to Type-AD frames. The question to CCSDS, whether a FARM-1 should guard a repeated Set V(R), is not an open issue of Aldis, which has no reading to choose between: the table is unambiguous |
+| Assumptions | `asm:ASM-18` |
+| Proposals | — |
+| Claims | `ac:AC-5.6` |
 
 ## Proposals
 
