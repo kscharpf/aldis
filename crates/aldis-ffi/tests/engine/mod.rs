@@ -137,6 +137,10 @@ mod fop1_runner {
                 ad_repetitions: 1,
                 bc_repetitions: 1,
             };
+            #[expect(
+                clippy::large_stack_arrays,
+                reason = "the 18 KB storage a C caller declares; test threads have 2 MB"
+            )]
             let mut storage = Box::new(aldis_fop1_t {
                 words: [0; ALDIS_FOP1_WORDS],
             });
@@ -205,12 +209,16 @@ mod fop1_runner {
         }
     }
 
+    #[expect(
+        clippy::large_enum_variant,
+        reason = "test-only; the actions struct is the result"
+    )]
     enum Step {
         Ok(aldis_fop1_actions_t),
         Err(String),
     }
 
-    fn blank() -> aldis_fop1_input_t {
+    const fn blank() -> aldis_fop1_input_t {
         aldis_fop1_input_t {
             kind: ALDIS_FOP1_INPUT_TIMEOUT,
             handle: 0,
@@ -496,7 +504,7 @@ mod farm1_runner {
         }
     }
 
-    fn blank() -> aldis_farm1_input_t {
+    const fn blank() -> aldis_farm1_input_t {
         aldis_farm1_input_t {
             kind: ALDIS_FARM1_INPUT_BUFFER_RELEASED,
             sequence_number: 0,

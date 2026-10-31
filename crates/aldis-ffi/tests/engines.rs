@@ -2,8 +2,14 @@
 //! tags (CABI-031, CABI-032), argument checks (CABI-022), the step call and the read-only calls
 //! (CABI-040), and the capacities of the header (CABI-030). The engines' behaviour is checked by
 //! the scenarios of `test-vectors/cop1/` (`vectors.rs`).
-#![expect(clippy::unwrap_used, reason = "test-only harness (RS-018)")]
 #![expect(unsafe_code, reason = "the tests call the C ABI")]
+#![expect(
+    clippy::too_many_lines,
+    clippy::large_stack_arrays,
+    clippy::unnecessary_box_returns,
+    clippy::many_single_char_names,
+    reason = "test-only harness: one long call sequence per contract, and the 18 KB storage a C caller declares (RS-018)"
+)]
 
 use core::ptr::{null, null_mut};
 
@@ -281,7 +287,11 @@ fn a_farm1_step_returns_its_actions_and_leaves_the_state_on_error() {
         );
         assert_eq!((a.data.offset, a.data.len), (0, 3));
         assert_eq!(out[..3], data);
-        assert!(actions.items[1..].iter().all(|x| *x == Default::default()));
+        assert!(
+            actions.items[1..]
+                .iter()
+                .all(|x| *x == aldis_farm1_action_t::default())
+        );
         // A buffer too small: nothing written, the state unchanged.
         actions = aldis_farm1_actions_t {
             count: 77,
@@ -442,7 +452,7 @@ fn a_farm1_step_checks_every_argument() {
         // A misaligned detail fails before anything happens.
         let odd = (&raw mut d).wrapping_byte_add(1);
         assert_eq!(
-            aldis_farm1_step(&mut *s, &raw const good, 0, o, n, a, odd),
+            aldis_farm1_step(&raw mut *s, &raw const good, 0, o, n, a, odd),
             ALDIS_ERR_INVALID_FIELD
         );
         // None of it changed the engine.
@@ -463,7 +473,7 @@ fn a_farm1_step_checks_every_argument() {
         };
         assert_eq!(call(&mut s, &raw const wait, o, n, a), 0);
         assert_eq!(
-            aldis_farm1_step(&mut *s, &raw const good, 0, o, n, a, &raw mut d),
+            aldis_farm1_step(&raw mut *s, &raw const good, 0, o, n, a, &raw mut d),
             ALDIS_ERR_INVALID_STATE
         );
         assert_eq!(d.kind, ALDIS_ERR_INVALID_STATE);
@@ -679,7 +689,7 @@ fn a_fop1_step_checks_every_argument() {
         let inside_mut = (&raw mut *s).cast::<u8>().wrapping_add(64);
         assert_eq!(
             aldis_fop1_step(
-                &mut *s,
+                &raw mut *s,
                 &raw const request,
                 0,
                 inside_mut,
