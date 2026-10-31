@@ -288,3 +288,24 @@ path = "fuzz_targets/uslp_roundtrip.rs"
 test = false
 doc = false
 bench = false
+
+[[bin]]
+name = "cop1_events"
+path = "fuzz_targets/cop1_events.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "cop1_closed_loop"
+path = "fuzz_targets/cop1_closed_loop.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "fop1_clcw"
+path = "fuzz_targets/fop1_clcw.rs"
+test = false
+doc = false
+bench = false

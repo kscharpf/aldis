@@ -17,8 +17,8 @@ use common::Rig;
 
 use aldis_cop1::{
     AlertReason, Directive, FARM1_MAX_ACTIONS, FARM1_TABLE, FOP1_TABLE, Farm1, Farm1Config,
-    Farm1Frame, Farm1Input, Farm1State, Farm1Window, Fop1Config, Fop1Decision, Fop1Input, Fop1Output,
-    Fop1State, Fop1Target, FrameKind, TimeoutType, fop1_max_actions,
+    Farm1Frame, Farm1Input, Farm1State, Farm1Window, Fop1Config, Fop1Decision, Fop1Input,
+    Fop1Output, Fop1State, Fop1Target, FrameKind, TimeoutType, fop1_max_actions,
 };
 use aldis_core::ErrorKind;
 use aldis_core::ids::FrameSeqNum;
@@ -98,6 +98,10 @@ fn clcw(u: &mut Unstructured<'_>, n_r: u8) -> Result<Fop1Input<'static>> {
     }))
 }
 
+#[expect(
+    clippy::too_many_lines,
+    reason = "one pass of the loop draws the configuration, the input, and its checks"
+)]
 fn fop1(u: &mut Unstructured<'_>) -> Result<()> {
     let target = Fop1Target::tc(
         TcSpacecraftId::new(7).unwrap(),
@@ -166,7 +170,9 @@ fn fop1(u: &mut Unstructured<'_>) -> Result<()> {
         // The decision is a pure function of the state, the input, and the time.
         assert_eq!(
             first.as_ref().map(Fop1Decision::actions),
-            f.decide(input, at, &mut again).as_ref().map(Fop1Decision::actions)
+            f.decide(input, at, &mut again)
+                .as_ref()
+                .map(Fop1Decision::actions)
         );
         let Ok(decision) = first else {
             continue;
@@ -230,18 +236,21 @@ fn farm1(u: &mut Unstructured<'_>) -> Result<()> {
         let foreign = u.ratio(1, 8)?;
         let vc = TcVcId::new(if foreign { VCID + 1 } else { VCID }).unwrap();
         let input = match class {
-            0 | 1 => Farm1Input::Frame { vc_id: vc,
+            0 | 1 => Farm1Input::Frame {
+                vc_id: vc,
                 frame: Farm1Frame::Ad {
                     sequence_number: FrameSeqNum::new(n_s),
                     data: &data,
                 },
                 buffer_available,
             },
-            2 => Farm1Input::Frame { vc_id: vc,
+            2 => Farm1Input::Frame {
+                vc_id: vc,
                 frame: Farm1Frame::Bd { data: &data },
                 buffer_available,
             },
-            3 => Farm1Input::Frame { vc_id: vc,
+            3 => Farm1Input::Frame {
+                vc_id: vc,
                 frame: Farm1Frame::Bc {
                     command: match u.int_in_range(0..=2)? {
                         0 => Some(ControlCommand::Unlock),
@@ -266,7 +275,10 @@ fn farm1(u: &mut Unstructured<'_>) -> Result<()> {
         let first = f.step(input, at, &mut area);
         assert_eq!(first, f.step(input, at, &mut again));
         if foreign && class <= 3 {
-            assert_eq!(first.map(|_| ()).unwrap_err().kind(), ErrorKind::UnknownChannel);
+            assert_eq!(
+                first.map(|_| ()).unwrap_err().kind(),
+                ErrorKind::UnknownChannel
+            );
             assert_eq!(area, [0_u8; 8]);
             continue;
         }
