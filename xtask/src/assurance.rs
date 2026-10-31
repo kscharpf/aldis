@@ -25,12 +25,13 @@ const PROSE_FILES: [&str; 2] = [
     "docs/verification/formal-proofs.md",
 ];
 const HEADER: &str = "include/aldis/aldis.h";
-const CODECS: [&str; 5] = ["X", "TM", "TC", "AOS", "USLP"];
-const FILE_CODECS: [(&str, &str); 4] = [
+const CODECS: [&str; 6] = ["X", "TM", "TC", "AOS", "USLP", "COP1"];
+const FILE_CODECS: [(&str, &str); 5] = [
     ("tm.md", "TM"),
     ("tc.md", "TC"),
     ("aos.md", "AOS"),
     ("uslp.md", "USLP"),
+    ("cop1.md", "COP1"),
 ];
 const SLUGS: [&str; 12] = [
     "corrupt-accepted",
