@@ -860,14 +860,15 @@ struct Core<const Q: usize> {
     suspend_state: SuspendState,
 }
 
-/// The FOP-1 state of one Virtual Channel, with a `Sent_Queue` of `Q` frames of at most `F`
-/// octets and an action list of `N` entries (232.1 §5.1; COP-001, API-060).
+/// The FOP-1 state of one Virtual Channel, with a `Sent_Queue` of `Q` entries for frames of at
+/// most `F` octets and an action list of `N` entries (232.1 §5.1; COP-001, API-060).
 ///
 /// Plain data without an output queue (API-059). `N` must be at least
 /// [`fop1_max_actions`]`(Q)`, and `F` at least the Maximum Transfer Frame Length of the target.
 ///
-/// The master copies and the `Wait_Queue` octets are the only large part of the state. An input
-/// is decided without copying them ([`decide`](Self::decide)) and then applied in place
+/// The octets of the master copies and of the `Wait_Queue` FDU, the only large part of the
+/// state, are in the caller's [`Fop1Store`], which `decide` and `commit` take with the engine. An
+/// input is decided without copying them ([`decide`](Self::decide)) and then applied in place
 /// ([`commit`](Self::commit)).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Fop1<const Q: usize, const F: usize, const N: usize> {
@@ -2194,6 +2195,60 @@ mod tests {
                 .iter()
                 .all(|frame| frame.iter().all(|b| *b == 0))
         );
+    }
+
+    #[test]
+    fn a_store_of_another_engine_gives_wrong_frames_and_no_failure() {
+        // req: COP-011, API-058, GEN-020
+        let mut f = active();
+        let fdu = [0xA0u8, 7];
+        let sent = frames_of(
+            &mut f,
+            Fop1Input::RequestAd {
+                handle: 1,
+                fdu: &fdu,
+            },
+            1,
+        );
+        frames_of(
+            &mut f,
+            Fop1Input::TransmitDone {
+                kind: FrameKind::Ad,
+                accepted: true,
+            },
+            2,
+        );
+        let mut out = [0u8; F];
+        let retransmit = clcw(false, false, true, 0);
+        // Deciding with an empty store transmits the right length of zeros.
+        let decision = f
+            .fop
+            .decide(
+                &Fop1Store::new(),
+                retransmit,
+                Instant::from_micros(3),
+                &mut out,
+            )
+            .unwrap();
+        assert_eq!(decision.actions().len(), 2);
+        let frame = out.get(..sent[0].2.len()).unwrap();
+        assert!(frame.iter().all(|b| *b == 0));
+        // Committing it to a store that missed the earlier commit keeps no master copy of
+        // the frame, and a later retransmission is zeros too.
+        let mut stale = Fop1Store::new();
+        let mut g = f.clone();
+        let _ = g.fop.commit(&mut stale, decision);
+        assert!(stale.frames.iter().flatten().all(|b| *b == 0));
+        let again = g
+            .fop
+            .decide(
+                &stale,
+                clcw(false, false, true, 0),
+                Instant::from_micros(4),
+                &mut out,
+            )
+            .map(|d| d.actions().len());
+        assert!(again.is_ok());
     }
 
     #[test]

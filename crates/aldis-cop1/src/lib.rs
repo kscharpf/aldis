@@ -20,6 +20,7 @@ pub mod fop1;
 pub mod fop1_table;
 pub mod notify;
 #[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
 #[path = "../tests/common/mod.rs"]
 mod rig;
 

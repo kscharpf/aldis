@@ -1,5 +1,7 @@
-//! A FOP-1 engine together with its store, so that the tests, the exerciser, and the fuzz
-//! target keep one value per engine. Not part of the API (shared by `#[path]`).
+//! A FOP-1 engine together with its store, so that the tests keep one value per engine. Not part
+//! of the API: it is included by `#[path]` into the unit tests of `src/lib.rs` (as `rig`), the
+//! integration tests of this directory, `exerciser/src/fop1.rs`, and
+//! `fuzz/fuzz_targets/cop1_events.rs`, so an edit here touches all of them.
 
 use core::ops::Deref;
 
