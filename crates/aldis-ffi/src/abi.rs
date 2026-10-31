@@ -67,6 +67,12 @@ pub(crate) struct Out<'a, T> {
 }
 
 impl<T> Out<'_, T> {
+    /// The checked location, for a caller that builds a large value in place instead of on the
+    /// stack (CABI-040): non-null, aligned for `T`, valid for writes of one `T`.
+    pub(crate) const fn as_ptr(&self) -> *mut T {
+        self.ptr.as_ptr()
+    }
+
     /// Writes `value`.
     #[expect(
         unsafe_code,

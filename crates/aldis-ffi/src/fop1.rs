@@ -18,8 +18,8 @@ use core::num::NonZeroU8;
 
 use aldis::cop1::{
     Alert, AlertReason, Directive, DirectiveNotification, Fop1, Fop1Config, Fop1Event, Fop1Input,
-    Fop1Output, Fop1State, Fop1Target, FrameKind, SuspendState, TimeoutType, TransferNotification,
-    fop1_max_actions,
+    Fop1Output, Fop1State as EngineState, Fop1Store, Fop1Target, FrameKind, SuspendState,
+    TimeoutType, TransferNotification, fop1_max_actions,
 };
 use aldis::core::ids::FrameSeqNum;
 use aldis::core::time::{Duration, Instant};
@@ -46,7 +46,7 @@ const _: () = assert!(ALDIS_FOP1_MAX_ACTIONS == fop1_max_actions(ALDIS_FOP1_SENT
 ///
 /// The tag and the engine state at `ALDIS_FOP1_SENT_QUEUE_FRAMES` frames of
 /// `ALDIS_FOP1_MAX_FRAME_OCTETS` octets; the build fails when the state outgrows it.
-pub const ALDIS_FOP1_WORDS: usize = 2252;
+pub const ALDIS_FOP1_WORDS: usize = 2283;
 
 /// The engine at the build capacities (CABI-030).
 type Engine = Fop1<
@@ -54,6 +54,19 @@ type Engine = Fop1<
     { ALDIS_FOP1_MAX_FRAME_OCTETS },
     { ALDIS_FOP1_MAX_ACTIONS },
 >;
+
+/// The octets of the queues at the build capacities: valid when zeroed, and never built by
+/// value here (CABI-040).
+type Store = Fop1Store<{ ALDIS_FOP1_SENT_QUEUE_FRAMES }, { ALDIS_FOP1_MAX_FRAME_OCTETS }>;
+
+/// What `aldis_fop1_t` holds after its tag: the small engine and the store of its queues
+/// (D11, API-058). `aldis_fop1_init` writes both in place, and `aldis_fop1_step` decides and
+/// commits in place, so the 18 KB of the store are never copied (CABI-040).
+#[repr(C)]
+pub(crate) struct Fop1State {
+    engine: Engine,
+    store: Store,
+}
 
 /// The kind of an `aldis_fop1_input_t` (232.1 §5.3.2, Table 5-1; API-057).
 ///
@@ -316,7 +329,7 @@ pub struct aldis_fop1_t {
 }
 
 impl Storage for aldis_fop1_t {
-    type State = Engine;
+    type State = Fop1State;
     const MAGIC: u32 = 0x414C_4650; // "ALFP"
 }
 
@@ -458,30 +471,73 @@ pub struct aldis_fop1_status_t {
 }
 
 /// The number of a FOP-1 state: 1 to 6 for S1 to S6 (Table 5-1).
-const fn state_number(s: Fop1State) -> u8 {
+const fn state_number(s: EngineState) -> u8 {
     match s {
-        Fop1State::Active => 1,
-        Fop1State::RetransmitWithoutWait => 2,
-        Fop1State::RetransmitWithWait => 3,
-        Fop1State::InitializingWithoutBcFrame => 4,
-        Fop1State::InitializingWithBcFrame => 5,
-        Fop1State::Initial => 6,
+        EngineState::Active => 1,
+        EngineState::RetransmitWithoutWait => 2,
+        EngineState::RetransmitWithWait => 3,
+        EngineState::InitializingWithoutBcFrame => 4,
+        EngineState::InitializingWithBcFrame => 5,
+        EngineState::Initial => 6,
     }
 }
 
-/// The number of a FOP-1 event: 1 to 46 or 101 to 104 (Table 5-1). The events are declared in
-/// the order of the table, so the number follows from the position.
-#[expect(
-    clippy::as_conversions,
-    reason = "the discriminant of a fieldless `repr(usize)` enum, its position in Table 5-1"
-)]
-fn event_number(e: Fop1Event) -> u16 {
-    let position = u16::try_from(e as usize).unwrap_or(u16::MAX);
-    // E1 to E46 are positions 0 to 45; E101 to E104 are positions 46 to 49.
-    if position < 46 {
-        position.saturating_add(1)
-    } else {
-        position.saturating_add(55)
+/// The number of a FOP-1 event: 1 to 46 or 101 to 104 (Table 5-1). An exhaustive `match`, so a
+/// new event cannot be forgotten and no discriminant is converted: the numbers E101 to E104
+/// continue after E46 with a gap, which the engine's enum hides in its positions 46 to 49
+/// (101 - 46 = 55).
+const fn event_number(e: Fop1Event) -> u16 {
+    match e {
+        Fop1Event::E1 => 1,
+        Fop1Event::E2 => 2,
+        Fop1Event::E3 => 3,
+        Fop1Event::E4 => 4,
+        Fop1Event::E5 => 5,
+        Fop1Event::E6 => 6,
+        Fop1Event::E7 => 7,
+        Fop1Event::E8 => 8,
+        Fop1Event::E9 => 9,
+        Fop1Event::E10 => 10,
+        Fop1Event::E11 => 11,
+        Fop1Event::E12 => 12,
+        Fop1Event::E13 => 13,
+        Fop1Event::E14 => 14,
+        Fop1Event::E15 => 15,
+        Fop1Event::E16 => 16,
+        Fop1Event::E17 => 17,
+        Fop1Event::E18 => 18,
+        Fop1Event::E19 => 19,
+        Fop1Event::E20 => 20,
+        Fop1Event::E21 => 21,
+        Fop1Event::E22 => 22,
+        Fop1Event::E23 => 23,
+        Fop1Event::E24 => 24,
+        Fop1Event::E25 => 25,
+        Fop1Event::E26 => 26,
+        Fop1Event::E27 => 27,
+        Fop1Event::E28 => 28,
+        Fop1Event::E29 => 29,
+        Fop1Event::E30 => 30,
+        Fop1Event::E31 => 31,
+        Fop1Event::E32 => 32,
+        Fop1Event::E33 => 33,
+        Fop1Event::E34 => 34,
+        Fop1Event::E35 => 35,
+        Fop1Event::E36 => 36,
+        Fop1Event::E37 => 37,
+        Fop1Event::E38 => 38,
+        Fop1Event::E39 => 39,
+        Fop1Event::E40 => 40,
+        Fop1Event::E41 => 41,
+        Fop1Event::E42 => 42,
+        Fop1Event::E43 => 43,
+        Fop1Event::E44 => 44,
+        Fop1Event::E45 => 45,
+        Fop1Event::E46 => 46,
+        Fop1Event::E101 => 101,
+        Fop1Event::E102 => 102,
+        Fop1Event::E103 => 103,
+        Fop1Event::E104 => 104,
     }
 }
 
@@ -744,7 +800,19 @@ pub unsafe extern "C" fn aldis_fop1_init(
         abi::call(err, || {
             let cfg = abi::read(cfg)?;
             let engine = Engine::new(config(&cfg)?)?;
-            handle::init(storage, engine)
+            handle::init_with(storage, |state: *mut Fop1State| {
+                // SAFETY: `init_with` passes a pointer to the state in the slot: non-null,
+                // aligned, and valid for writes of one `Fop1State`. The store is plain arrays of
+                // octets, valid when zeroed (`Fop1Store`), so zeroing its octets initializes
+                // it; the engine is a small value moved in. Both go through raw field
+                // pointers, so no reference to uninitialized memory is made.
+                {
+                    (&raw mut (*state).store)
+                        .cast::<u8>()
+                        .write_bytes(0, size_of::<Store>());
+                    (&raw mut (*state).engine).write(engine);
+                }
+            })
         })
     }
 }
@@ -754,7 +822,7 @@ pub unsafe extern "C" fn aldis_fop1_init(
 /// # Safety
 /// As for `handle::get`.
 #[expect(unsafe_code, reason = "checks a caller handle (CABI-032, GEN-071)")]
-unsafe fn engine(h: *mut aldis_fop1_t) -> Result<handle::Handle<Engine>> {
+unsafe fn engine(h: *mut aldis_fop1_t) -> Result<handle::Handle<Fop1State>> {
     // SAFETY: forwarded from the caller.
     unsafe { handle::get(h) }
 }
@@ -814,18 +882,33 @@ pub unsafe extern "C" fn aldis_fop1_step(
                 ],
             )?;
             let input = engine_input(&value, data)?;
-            let list = h.update(|engine| {
-                let (next, list) = engine.step(input, Instant::from_micros(now_us), area)?;
-                *engine = next;
-                Ok::<_, Error>(list)
+            // Decide, then commit, in place: an error of `decide` leaves the state as it was, and
+            // `commit` cannot fail (API-058, CABI-040).
+            let list = h.update(|state| {
+                let decision =
+                    state
+                        .engine
+                        .decide(&state.store, input, Instant::from_micros(now_us), area)?;
+                Ok::<_, Error>(state.engine.commit(&mut state.store, decision))
             })?;
-            let mut result = aldis_fop1_actions_t::default();
-            for (slot, output) in result.items.iter_mut().zip(list.iter()) {
-                *slot = action(output);
+            // Written in place: the struct is 1.7 KB, too much for the stack budget twice
+            // (CABI-040). Items from `count` on are zero.
+            let dest = actions.as_ptr();
+            // SAFETY: `abi::out_disjoint` checked that `dest` is non-null, aligned, and not
+            // overlapping any buffer of the call; the caller made it valid for a write of one
+            // `aldis_fop1_actions_t`. Only raw field pointers are used, and each item is written
+            // once, within the array, so no reference to uninitialized memory is made.
+            {
+                (&raw mut (*dest).count).write(list.len());
+                let items = (&raw mut (*dest).items).cast::<aldis_fop1_action_t>();
+                // `list` holds at most `ALDIS_FOP1_MAX_ACTIONS` actions, the length of `items`.
+                for i in 0..ALDIS_FOP1_MAX_ACTIONS {
+                    items.add(i).write(
+                        list.get(i)
+                            .map_or_else(aldis_fop1_action_t::default, action),
+                    );
+                }
             }
-            // `list` holds at most `ALDIS_FOP1_MAX_ACTIONS` actions, the length of `items`.
-            result.count = list.len();
-            actions.write(result);
             Ok(())
         })
     }
@@ -859,7 +942,7 @@ pub unsafe extern "C" fn aldis_fop1_next_deadline(
             let range = h.range();
             let armed = abi::out_disjoint(armed, &[range])?;
             let deadline_us = abi::out_disjoint(deadline_us, &[range])?;
-            let deadline = h.read(Engine::next_deadline);
+            let deadline = h.read(|state| state.engine.next_deadline());
             armed.write(u8::from(deadline.is_some()));
             deadline_us.write(deadline.map_or(0, Instant::as_micros));
             Ok(())
@@ -889,24 +972,27 @@ pub unsafe extern "C" fn aldis_fop1_status(
         abi::call(err, || {
             let h = engine(h)?;
             let status = abi::out_disjoint(status, &[h.range()])?;
-            let snapshot = h.read(|engine| aldis_fop1_status_t {
-                state: state_number(engine.state()),
-                v_s: engine.v_s().get(),
-                nn_r: engine.nn_r().get(),
-                sliding_window_k: engine.sliding_window_k(),
-                transmission_limit: engine.transmission_limit().get(),
-                transmission_count: engine.transmission_count(),
-                suspend_state: suspend_number(engine.suspend_state()),
-                ad_out_ready: u8::from(engine.out_flag_ready(FrameKind::Ad)),
-                bc_out_ready: u8::from(engine.out_flag_ready(FrameKind::Bc)),
-                bd_out_ready: u8::from(engine.out_flag_ready(FrameKind::Bd)),
-                wait_queue_occupied: u8::from(engine.wait_queue_occupied()),
-                timeout_type: match engine.timeout_type() {
-                    TimeoutType::Tt0 => ALDIS_FOP1_TIMEOUT_TT0,
-                    TimeoutType::Tt1 => ALDIS_FOP1_TIMEOUT_TT1,
-                },
-                sent_queue_len: engine.sent_queue_len(),
-                t1_initial_us: engine.t1_initial().as_micros(),
+            let snapshot = h.read(|state| {
+                let engine = &state.engine;
+                aldis_fop1_status_t {
+                    state: state_number(engine.state()),
+                    v_s: engine.v_s().get(),
+                    nn_r: engine.nn_r().get(),
+                    sliding_window_k: engine.sliding_window_k(),
+                    transmission_limit: engine.transmission_limit().get(),
+                    transmission_count: engine.transmission_count(),
+                    suspend_state: suspend_number(engine.suspend_state()),
+                    ad_out_ready: u8::from(engine.out_flag_ready(FrameKind::Ad)),
+                    bc_out_ready: u8::from(engine.out_flag_ready(FrameKind::Bc)),
+                    bd_out_ready: u8::from(engine.out_flag_ready(FrameKind::Bd)),
+                    wait_queue_occupied: u8::from(engine.wait_queue_occupied()),
+                    timeout_type: match engine.timeout_type() {
+                        TimeoutType::Tt0 => ALDIS_FOP1_TIMEOUT_TT0,
+                        TimeoutType::Tt1 => ALDIS_FOP1_TIMEOUT_TT1,
+                    },
+                    sent_queue_len: engine.sent_queue_len(),
+                    t1_initial_us: engine.t1_initial().as_micros(),
+                }
             });
             status.write(snapshot);
             Ok(())

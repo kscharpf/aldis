@@ -157,6 +157,44 @@ pub(crate) unsafe fn init<S: Storage>(storage: *mut S, state: S::State) -> Resul
     Ok(())
 }
 
+/// Places a helper in `storage` and builds its state in place, without a copy of the state on the
+/// stack (CABI-031, CABI-040; the state of FOP-1 is about 18 KB).
+///
+/// `build` writes the whole state into the slot it is given, after the tag. As for [`init`], a
+/// live helper in `storage` is overwritten.
+///
+/// # Errors
+/// `InvalidField` (no field) when `storage` is `NULL` or misaligned for `S` (CABI-022).
+///
+/// # Safety
+/// A non-null, aligned `storage` must be valid for writes of one `S`. `build` must initialize
+/// every octet of the state it is given.
+#[expect(
+    unsafe_code,
+    reason = "initializes caller storage in place (CABI-031, CABI-040, GEN-071)"
+)]
+pub(crate) unsafe fn init_with<S: Storage>(
+    storage: *mut S,
+    build: impl FnOnce(*mut S::State),
+) -> Result<()> {
+    const { assert!(fits::<S, S::State>()) };
+    if storage.is_null() || !storage.is_aligned() {
+        return Err(invalid_argument());
+    }
+    let slot = storage.cast::<Slot<S::State>>();
+    // SAFETY: non-null and aligned for `S`, hence for `Slot<T>`, and valid for
+    // `size_of::<Slot<T>>()` ≤ `size_of::<S>()` octets (the caller's contract and `fits`). The
+    // tag fields are written through raw field pointers, so no reference to the not yet
+    // initialized state exists.
+    unsafe {
+        (&raw mut (*slot).magic).write(S::MAGIC);
+        (&raw mut (*slot).generation).write(GENERATION);
+        (&raw mut (*slot).addr).write(storage.addr());
+        build(&raw mut (*slot).state);
+    }
+    Ok(())
+}
+
 /// The handle `storage` checked against the magic of `S` (CABI-032).
 ///
 /// # Errors

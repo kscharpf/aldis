@@ -1100,7 +1100,7 @@
  * The tag and the engine state at `ALDIS_FOP1_SENT_QUEUE_FRAMES` frames of
  * `ALDIS_FOP1_MAX_FRAME_OCTETS` octets; the build fails when the state outgrows it.
  */
-#define ALDIS_FOP1_WORDS 2252
+#define ALDIS_FOP1_WORDS 2283
 
 /**
  * Length of the Operational Control Field in octets (132.0 §4.1.5.1, 732.0 §4.1.5.1,
