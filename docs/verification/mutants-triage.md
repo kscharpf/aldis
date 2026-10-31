@@ -1,6 +1,17 @@
 # Mutation testing triage (VER-025)
 
-Surviving mutants from `cargo mutants` (`-p aldis-core -p aldis-time -p aldis-epp -p aldis-spp -p aldis-aos -p aldis-tm -p aldis-tc -p aldis-uslp --all-features`) (cargo-mutants 27.1.0), triaged per VER-025. The nightly job `mutants` publishes the full report. Update this file when a new survivor appears.
+Surviving mutants from `cargo mutants` (`-p aldis-core -p aldis-time -p aldis-epp -p aldis-spp -p aldis-aos -p aldis-tm -p aldis-tc -p aldis-uslp -p aldis-cop1 --all-features`) (cargo-mutants 27.1.0), triaged per VER-025. The nightly job `mutants` publishes the full report. Update this file when a new survivor appears.
+
+## 2026-10-31, branch `m3/wp-7b-gates` (M3 WP-7, `aldis-cop1`)
+
+`cargo mutants -p aldis-cop1 --all-features` (cargo-mutants 27.1.0, the whole crate, local run): 243 mutants: 169 caught, 67 unviable, 7 missed, 0 timeouts. Two survivors were a test gap, fixed and re-run (`cargo mutants -p aldis-cop1 --all-features -F encode_at -F transmission_count`: both caught): `fop1.rs` `Fop1Target::encode_at` without the match arm that adds the octets already used to `Needed` (`a_frame_a_decision_added_is_emitted_again_by_encoding_it` of `fop1::tests` now asserts the `Needed` detail), and `Fop1::transmission_count` replaced by 1 (`a_timeout_counts_the_transmission_of_the_retransmitted_frames`). The other five are equivalent:
+
+| Mutant | Verdict | Action |
+|---|---|---|
+| `actions.rs:61` `Actions::get` `<` → `<=` | Equivalent: the slots from `len` on are `None` by construction (`push` fills the slot of index `len` only), so `items.get(len)` gives `None` as the `else` arm does | None possible |
+| `farm1.rs:89` `longest_cell` and `fop1.rs:154` `fop1_max_actions` `>` → `>=` | Equivalent: the comparison replaces `longest` by a value equal to it | None possible |
+| `farm1.rs:511` delete `kind` of the `Context` of a Type-AD frame in `Farm1::step` | Equivalent: the struct update `..idle` supplies `kind: FduKind::Ad`, the value that was deleted | None possible |
+| `farm1.rs:512` delete `sequence_number` of the same `Context` | Equivalent: `..idle` supplies V(R), and the only cell of a Type-AD frame that reads the field is E1 (`DeliverFdu` in `Farm1Output::Deliver`), whose event requires N(S) = V(R) (`ad_event`) | None possible |
 
 ## 2026-10-27, Nightly run 40437244324 on main 01e380f (M2 release triage)
 

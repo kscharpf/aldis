@@ -17,8 +17,8 @@ use common::Rig;
 
 use aldis_cop1::{
     AlertReason, Directive, FARM1_MAX_ACTIONS, FARM1_TABLE, FOP1_TABLE, Farm1, Farm1Config,
-    Farm1Frame, Farm1Input, Farm1State, Farm1Window, Fop1Config, Fop1Decision, Fop1Input, Fop1Output,
-    Fop1State, Fop1Target, FrameKind, TimeoutType, fop1_max_actions,
+    Farm1Frame, Farm1Input, Farm1State, Farm1Window, Fop1Config, Fop1Decision, Fop1Input,
+    Fop1Output, Fop1State, Fop1Target, FrameKind, TimeoutType, fop1_max_actions,
 };
 use aldis_core::ids::FrameSeqNum;
 use aldis_core::time::{Duration, Instant};
@@ -97,6 +97,10 @@ fn clcw(u: &mut Unstructured<'_>, n_r: u8) -> Result<Fop1Input<'static>> {
     }))
 }
 
+#[expect(
+    clippy::too_many_lines,
+    reason = "one pass of the loop draws the configuration, the input, and its checks"
+)]
 fn fop1(u: &mut Unstructured<'_>) -> Result<()> {
     let target = Fop1Target::tc(
         TcSpacecraftId::new(7).unwrap(),
@@ -165,7 +169,9 @@ fn fop1(u: &mut Unstructured<'_>) -> Result<()> {
         // The decision is a pure function of the state, the input, and the time.
         assert_eq!(
             first.as_ref().map(Fop1Decision::actions),
-            f.decide(input, at, &mut again).as_ref().map(Fop1Decision::actions)
+            f.decide(input, at, &mut again)
+                .as_ref()
+                .map(Fop1Decision::actions)
         );
         let Ok(decision) = first else {
             continue;
