@@ -574,10 +574,6 @@ const NOT_IN_HEADER: &[(&str, &str)] = &[
     ("ALDIS_KIND_T_ALPHA", "scratch enum of spike 1"),
     ("aldis_action_t", "scratch type of spike 2b"),
     (
-        "aldis_fop1_handle_clcw",
-        "FOP-1 C module (M3), not yet built",
-    ),
-    (
         "aldis_instant_t",
         "illustrative type of the engine call of CABI-040",
     ),
