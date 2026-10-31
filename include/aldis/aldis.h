@@ -15,7 +15,7 @@
 /**
  * ABI minor version (CABI-060).
  */
-#define ALDIS_ABI_VERSION_MINOR 8
+#define ALDIS_ABI_VERSION_MINOR 9
 
 /**
  * ABI patch version (CABI-060).
@@ -131,6 +131,20 @@
 #define ALDIS_USLP_MAX_MAPS 32
 
 /**
+ * Frames on the `Sent_Queue` of one `aldis_fop1_t`, the largest FOP Sliding Window Width K (232.1 §5.1.7, §5.1.12; COP-011, COP-015).
+ *
+ * `[fop1] sent_queue_frames` of `capacities.toml` (CABI-030).
+ */
+#define ALDIS_FOP1_SENT_QUEUE_FRAMES 16
+
+/**
+ * Octets of the largest TC Transfer Frame one `aldis_fop1_t` builds (232.0 §4.1.2.7; COP-010).
+ *
+ * `[fop1] max_frame_octets` of `capacities.toml` (CABI-030).
+ */
+#define ALDIS_FOP1_MAX_FRAME_OCTETS 1024
+
+/**
  * Header size argument: the smallest header that holds the fields and the length
  * (133.1 §4.1.2.4; EPP-008).
  */
@@ -184,6 +198,23 @@
  * (GEN-041, CABI-021).
  */
 #define ALDIS_DETAIL_EXPECTED 2
+
+/**
+ * The most actions one `aldis_farm1_step` returns (COP-006): `FARM1_MAX_ACTIONS` of the engine,
+ * computed from Table 6-1.
+ *
+ * The header publishes the literal because the array length of
+ * `aldis_farm1_actions_t::items` must be one constant; the assertion below fails the build when
+ * it differs from the engine's.
+ */
+#define ALDIS_FARM1_MAX_ACTIONS 3
+
+/**
+ * 64-bit words of one `aldis_farm1_t` (CABI-031).
+ *
+ * The tag and the engine state; the build fails when the state outgrows it.
+ */
+#define ALDIS_FARM1_WORDS 8
 
 /**
  * Spacecraft Identifier.
@@ -1054,6 +1085,24 @@
 #define ALDIS_FIELD_REQUEST_ID 164
 
 /**
+ * The most actions one `aldis_fop1_step` returns (COP-006): `fop1_max_actions` of the
+ * `Sent_Queue` capacity, computed from Table 5-1.
+ *
+ * The header publishes the literal because the array length of
+ * `aldis_fop1_actions_t::items` must be one constant; the assertion below fails the build when
+ * it differs from the engine's bound.
+ */
+#define ALDIS_FOP1_MAX_ACTIONS 35
+
+/**
+ * 64-bit words of one `aldis_fop1_t` (CABI-031).
+ *
+ * The tag and the engine state at `ALDIS_FOP1_SENT_QUEUE_FRAMES` frames of
+ * `ALDIS_FOP1_MAX_FRAME_OCTETS` octets; the build fails when the state outgrows it.
+ */
+#define ALDIS_FOP1_WORDS 2283
+
+/**
  * Length of the Operational Control Field in octets (132.0 §4.1.5.1, 732.0 §4.1.5.1,
  * 732.1 §4.1.5.2; CMN-010).
  */
@@ -1532,6 +1581,442 @@ enum aldis_aos_pointer
 typedef enum aldis_aos_pointer aldis_aos_pointer;
 #else
 typedef uint8_t aldis_aos_pointer;
+#endif // __STDC_VERSION__ >= 202311L
+#endif // __cplusplus
+
+/**
+ * The kind of an `aldis_farm1_action_t` (232.1 §6.2, §6.3; API-057, API-083).
+ *
+ * A `uint32_t` field is one of the enumerators below; the type itself is not a field type of the
+ * header (OI-57 convention 2; CABI-010).
+ *
+ */
+enum aldis_farm1_action
+#if defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+  : uint32_t
+#endif // defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+ {
+  /**
+   * The Accept action: the FDU is at `data` in `out` (`fdu_kind`, `sequence_number`).
+   */
+  ALDIS_FARM1_ACTION_DELIVER = 0,
+  /**
+   * The Discard action: a frame was discarded (`event` and `state`, the state before).
+   */
+  ALDIS_FARM1_ACTION_FRAME_DISCARDED = 1,
+  /**
+   * The State variable changed (`event`, `state` before, `to_state` after).
+   */
+  ALDIS_FARM1_ACTION_STATE_CHANGED = 2,
+  /**
+   * An Unlock command was executed (E7): the Higher Procedures purge their buffers as they
+   * need (232.1 §6.3.2.2).
+   */
+  ALDIS_FARM1_ACTION_UNLOCKED = 3,
+};
+#ifndef __cplusplus
+#if __STDC_VERSION__ >= 202311L
+typedef enum aldis_farm1_action aldis_farm1_action;
+#else
+typedef uint32_t aldis_farm1_action;
+#endif // __STDC_VERSION__ >= 202311L
+#endif // __cplusplus
+
+/**
+ * The kind of FDU a `DELIVER` action carries (232.1 §6.2.2).
+ *
+ * A `uint32_t` field is one of the enumerators below; the type itself is not a field type of the
+ * header (OI-57 convention 2; CABI-010).
+ *
+ */
+enum aldis_farm1_fdu
+#if defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+  : uint32_t
+#endif // defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+ {
+  /**
+   * The FDU of an accepted Type-AD frame (Sequence-Controlled Service).
+   */
+  ALDIS_FARM1_FDU_AD = 0,
+  /**
+   * The FDU of an accepted Type-BD frame (Expedited Service).
+   */
+  ALDIS_FARM1_FDU_BD = 1,
+};
+#ifndef __cplusplus
+#if __STDC_VERSION__ >= 202311L
+typedef enum aldis_farm1_fdu aldis_farm1_fdu;
+#else
+typedef uint32_t aldis_farm1_fdu;
+#endif // __STDC_VERSION__ >= 202311L
+#endif // __cplusplus
+
+/**
+ * The kind of an `aldis_farm1_input_t` (232.1 §6.3.2, Table 6-1; COP-033, COP-035).
+ *
+ * A `uint32_t` argument or field is one of the enumerators below; the type itself is not a
+ * field type of the header (OI-57 convention 2; CABI-010).
+ *
+ */
+enum aldis_farm1_input
+#if defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+  : uint32_t
+#endif // defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+ {
+  /**
+   * A valid Type-AD frame: E1 to E5 (`sequence_number`, `data`, `buffer_available`).
+   */
+  ALDIS_FARM1_INPUT_FRAME_AD = 0,
+  /**
+   * A valid Type-BD frame: E6 (`data`).
+   */
+  ALDIS_FARM1_INPUT_FRAME_BD = 1,
+  /**
+   * A valid Type-BC frame carrying the Unlock command: E7.
+   */
+  ALDIS_FARM1_INPUT_FRAME_BC_UNLOCK = 2,
+  /**
+   * A valid Type-BC frame carrying the Set V(R) command: E8 (`v_star`).
+   */
+  ALDIS_FARM1_INPUT_FRAME_BC_SET_VR = 3,
+  /**
+   * A valid Type-BC frame whose data field is neither Unlock nor Set V(R): E9.
+   */
+  ALDIS_FARM1_INPUT_FRAME_BC_OTHER = 4,
+  /**
+   * A frame that failed the Frame Validation Checks: E9.
+   */
+  ALDIS_FARM1_INPUT_INVALID_FRAME = 5,
+  /**
+   * The Buffer Release Signal: E10.
+   */
+  ALDIS_FARM1_INPUT_BUFFER_RELEASED = 6,
+  /**
+   * Sets the No RF Available and No Bit Lock Flags of the CLCW (`no_rf_available`,
+   * `no_bit_lock`); not a COP-1 event (232.0 §4.2.1.8).
+   */
+  ALDIS_FARM1_INPUT_SET_PHYSICAL_FLAGS = 7,
+};
+#ifndef __cplusplus
+#if __STDC_VERSION__ >= 202311L
+typedef enum aldis_farm1_input aldis_farm1_input;
+#else
+typedef uint32_t aldis_farm1_input;
+#endif // __STDC_VERSION__ >= 202311L
+#endif // __cplusplus
+
+/**
+ * The kind of an `aldis_fop1_action_t` (232.1 §4, §5.2; API-057, API-083).
+ *
+ * A `uint32_t` field is one of the enumerators below; the type itself is not a field type of the
+ * header (OI-57 convention 2; CABI-010).
+ *
+ */
+enum aldis_fop1_action
+#if defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+  : uint32_t
+#endif // defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+ {
+  /**
+   * A Transmit Request for Frame: the frame is at `frame` in `out` (`frame_kind`,
+   * `sequence_number`, `retransmission`, `repetitions`).
+   */
+  ALDIS_FOP1_ACTION_TRANSMIT = 0,
+  /**
+   * An Abort Request to the Lower Procedures (232.1 §5.2.7 a).
+   */
+  ALDIS_FOP1_ACTION_ABORT = 1,
+  /**
+   * A notification of a transfer request (`handle`, `status`).
+   */
+  ALDIS_FOP1_ACTION_TRANSFER_NOTIFY = 2,
+  /**
+   * A notification of a directive (`handle`, `status`).
+   */
+  ALDIS_FOP1_ACTION_DIRECTIVE_NOTIFY = 3,
+  /**
+   * An Alert (`reason`, `event`, `state`, the state before the event).
+   */
+  ALDIS_FOP1_ACTION_ALERT = 4,
+  /**
+   * The Suspend notification (232.1 §4.3.3).
+   */
+  ALDIS_FOP1_ACTION_SUSPEND = 5,
+};
+#ifndef __cplusplus
+#if __STDC_VERSION__ >= 202311L
+typedef enum aldis_fop1_action aldis_fop1_action;
+#else
+typedef uint32_t aldis_fop1_action;
+#endif // __STDC_VERSION__ >= 202311L
+#endif // __cplusplus
+
+/**
+ * The reason of an Alert (232.1 §4.3, Table 4-4; COP-004).
+ *
+ * A `uint32_t` field is one of the enumerators below; the type itself is not a field type of the
+ * header (OI-57 convention 2; CABI-010).
+ *
+ */
+enum aldis_fop1_alert
+#if defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+  : uint32_t
+#endif // defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+ {
+  /**
+   * The transmission limit is reached for a Type-AD or Type-BC frame.
+   */
+  ALDIS_FOP1_ALERT_LIMIT = 0,
+  /**
+   * Timer T1 expired with the transmission limit reached, or in S4 or S5.
+   */
+  ALDIS_FOP1_ALERT_T1 = 1,
+  /**
+   * The Lockout Flag is set in the CLCW.
+   */
+  ALDIS_FOP1_ALERT_LOCKOUT = 2,
+  /**
+   * Synchronization lost between transmitter and receiver.
+   */
+  ALDIS_FOP1_ALERT_SYNCH = 3,
+  /**
+   * An invalid N(R) in the CLCW.
+   */
+  ALDIS_FOP1_ALERT_NN_R = 4,
+  /**
+   * An invalid CLCW.
+   */
+  ALDIS_FOP1_ALERT_CLCW = 5,
+  /**
+   * A Lower-Layer Interface failure.
+   */
+  ALDIS_FOP1_ALERT_LLIF = 6,
+  /**
+   * The AD Service was terminated by the Terminate AD directive.
+   */
+  ALDIS_FOP1_ALERT_TERM = 7,
+};
+#ifndef __cplusplus
+#if __STDC_VERSION__ >= 202311L
+typedef enum aldis_fop1_alert aldis_fop1_alert;
+#else
+typedef uint32_t aldis_fop1_alert;
+#endif // __STDC_VERSION__ >= 202311L
+#endif // __cplusplus
+
+/**
+ * The directive of an `ALDIS_FOP1_INPUT_DIRECTIVE` (232.1 §4.2, Table 4-1; COP-015).
+ *
+ * A `uint32_t` argument or field is one of the enumerators below; the type itself is not a
+ * field type of the header (OI-57 convention 2; CABI-010).
+ *
+ */
+enum aldis_fop1_directive
+#if defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+  : uint32_t
+#endif // defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+ {
+  /**
+   * Initiate AD Service without CLCW Check: E23.
+   */
+  ALDIS_FOP1_DIRECTIVE_INITIATE_AD_WITHOUT_CLCW_CHECK = 0,
+  /**
+   * Initiate AD Service with CLCW Check: E24.
+   */
+  ALDIS_FOP1_DIRECTIVE_INITIATE_AD_WITH_CLCW_CHECK = 1,
+  /**
+   * Initiate AD Service with Unlock: E25, E26.
+   */
+  ALDIS_FOP1_DIRECTIVE_INITIATE_AD_WITH_UNLOCK = 2,
+  /**
+   * Initiate AD Service with Set V(R) (`value` is V*(R), 0 to 255): E27, E28.
+   */
+  ALDIS_FOP1_DIRECTIVE_INITIATE_AD_WITH_SET_VR = 3,
+  /**
+   * Terminate AD Service: E29.
+   */
+  ALDIS_FOP1_DIRECTIVE_TERMINATE_AD = 4,
+  /**
+   * Resume AD Service: E30 to E34.
+   */
+  ALDIS_FOP1_DIRECTIVE_RESUME_AD = 5,
+  /**
+   * Set V(S) (`value` is V*(S), 0 to 255): E35.
+   */
+  ALDIS_FOP1_DIRECTIVE_SET_VS = 6,
+  /**
+   * Set the FOP Sliding Window Width K (`value`, 1 to the `Sent_Queue` capacity): E36.
+   */
+  ALDIS_FOP1_DIRECTIVE_SET_K = 7,
+  /**
+   * Set `T1_Initial` (`value` in microseconds, at least 1): E37.
+   */
+  ALDIS_FOP1_DIRECTIVE_SET_T1_INITIAL = 8,
+  /**
+   * Set `Transmission_Limit` (`value`, 1 to 255): E38.
+   */
+  ALDIS_FOP1_DIRECTIVE_SET_TRANSMISSION_LIMIT = 9,
+  /**
+   * Set `Timeout_Type` (`value` is 0 for TT0 or 1 for TT1): E39.
+   */
+  ALDIS_FOP1_DIRECTIVE_SET_TIMEOUT_TYPE = 10,
+};
+#ifndef __cplusplus
+#if __STDC_VERSION__ >= 202311L
+typedef enum aldis_fop1_directive aldis_fop1_directive;
+#else
+typedef uint32_t aldis_fop1_directive;
+#endif // __STDC_VERSION__ >= 202311L
+#endif // __cplusplus
+
+/**
+ * The kind of frame a transmit request or response names (232.1 §5.1.6).
+ *
+ * A `uint32_t` argument or field is one of the enumerators below; the type itself is not a
+ * field type of the header (OI-57 convention 2; CABI-010).
+ *
+ */
+enum aldis_fop1_frame
+#if defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+  : uint32_t
+#endif // defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+ {
+  /**
+   * A Type-AD frame (Sequence-Controlled Service).
+   */
+  ALDIS_FOP1_FRAME_AD = 0,
+  /**
+   * A Type-BC frame (Control Command).
+   */
+  ALDIS_FOP1_FRAME_BC = 1,
+  /**
+   * A Type-BD frame (Expedited Service).
+   */
+  ALDIS_FOP1_FRAME_BD = 2,
+};
+#ifndef __cplusplus
+#if __STDC_VERSION__ >= 202311L
+typedef enum aldis_fop1_frame aldis_fop1_frame;
+#else
+typedef uint32_t aldis_fop1_frame;
+#endif // __STDC_VERSION__ >= 202311L
+#endif // __cplusplus
+
+/**
+ * The kind of an `aldis_fop1_input_t` (232.1 §5.3.2, Table 5-1; API-057).
+ *
+ * A `uint32_t` argument or field is one of the enumerators below; the type itself is not a
+ * field type of the header (OI-57 convention 2; CABI-010).
+ *
+ */
+enum aldis_fop1_input
+#if defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+  : uint32_t
+#endif // defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+ {
+  /**
+   * A CLCW arrives (`clcw`): E1 to E15, E101 to E103. A word whose Control Word Type is 1 is
+   * E15 (232.1 §5.3.2.1).
+   */
+  ALDIS_FOP1_INPUT_CLCW = 0,
+  /**
+   * Timer T1 may have expired: E16 to E18 and E104 once `now_us` reaches the deadline,
+   * otherwise nothing (API-053).
+   */
+  ALDIS_FOP1_INPUT_TIMEOUT = 1,
+  /**
+   * A Request to Transfer FDU of the Sequence-Controlled Service (`handle`, `data`): E19, E20.
+   */
+  ALDIS_FOP1_INPUT_REQUEST_AD = 2,
+  /**
+   * A Request to Transfer FDU of the Expedited Service (`handle`, `data`): E21, E22.
+   */
+  ALDIS_FOP1_INPUT_REQUEST_BD = 3,
+  /**
+   * A directive (`handle`, `directive`, `value`): E23 to E40.
+   */
+  ALDIS_FOP1_INPUT_DIRECTIVE = 4,
+  /**
+   * A directive the caller could not parse (`handle`): E40.
+   */
+  ALDIS_FOP1_INPUT_INVALID_DIRECTIVE = 5,
+  /**
+   * The response of the Lower Procedures to the outstanding Transmit Request (`frame_kind`,
+   * `accepted`): E41 to E46.
+   */
+  ALDIS_FOP1_INPUT_TRANSMIT_DONE = 6,
+};
+#ifndef __cplusplus
+#if __STDC_VERSION__ >= 202311L
+typedef enum aldis_fop1_input aldis_fop1_input;
+#else
+typedef uint32_t aldis_fop1_input;
+#endif // __STDC_VERSION__ >= 202311L
+#endif // __cplusplus
+
+/**
+ * The status of a transfer or directive notification (232.1 §4.2 Table 4-2, §4.4 Table 4-5).
+ *
+ * A `uint32_t` field is one of the enumerators below; the type itself is not a field type of the
+ * header (OI-57 convention 2; CABI-010).
+ *
+ */
+enum aldis_fop1_notice
+#if defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+  : uint32_t
+#endif // defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+ {
+  /**
+   * The request or directive is accepted.
+   */
+  ALDIS_FOP1_NOTICE_ACCEPT = 0,
+  /**
+   * The request or directive is rejected.
+   */
+  ALDIS_FOP1_NOTICE_REJECT = 1,
+  /**
+   * Positive confirmation.
+   */
+  ALDIS_FOP1_NOTICE_POSITIVE_CONFIRM = 2,
+  /**
+   * Negative confirmation.
+   */
+  ALDIS_FOP1_NOTICE_NEGATIVE_CONFIRM = 3,
+};
+#ifndef __cplusplus
+#if __STDC_VERSION__ >= 202311L
+typedef enum aldis_fop1_notice aldis_fop1_notice;
+#else
+typedef uint32_t aldis_fop1_notice;
+#endif // __STDC_VERSION__ >= 202311L
+#endif // __cplusplus
+
+/**
+ * The `Timeout_Type` parameter (232.1 §5.1.10.3, Table 7-1).
+ *
+ * A `uint32_t` argument or field is one of the enumerators below; the type itself is not a
+ * field type of the header (OI-57 convention 2; CABI-010).
+ *
+ */
+enum aldis_fop1_timeout
+#if defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+  : uint32_t
+#endif // defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+ {
+  /**
+   * TT0: an Alert when the transmission limit is reached.
+   */
+  ALDIS_FOP1_TIMEOUT_TT0 = 0,
+  /**
+   * TT1: the AD Service is suspended when the transmission limit is reached.
+   */
+  ALDIS_FOP1_TIMEOUT_TT1 = 1,
+};
+#ifndef __cplusplus
+#if __STDC_VERSION__ >= 202311L
+typedef enum aldis_fop1_timeout aldis_fop1_timeout;
+#else
+typedef uint32_t aldis_fop1_timeout;
 #endif // __STDC_VERSION__ >= 202311L
 #endif // __cplusplus
 
@@ -3245,6 +3730,408 @@ typedef struct {
    */
   uint8_t user_defined;
 } aldis_epp_fields_t;
+
+/**
+ * FARM-1 in caller storage: the caller declares an object of this type, and the pointer to it is
+ * the handle (COP-002, CABI-031, CABI-032).
+ *
+ * The words are the library's: a C caller never reads or writes them.
+ */
+typedef struct {
+  /**
+   * The slot of [`handle`]: the tag, then the state.
+   */
+  uint64_t words[ALDIS_FARM1_WORDS];
+} aldis_farm1_t;
+
+/**
+ * The managed parameters of one FARM-1 and its start (232.1 §6.1, §7.3 Table 7-2; COP-030,
+ * COP-035).
+ */
+typedef struct {
+  /**
+   * The Virtual Channel Identifier the CLCW reports, 0 to 63 (232.0 §4.2.1.6).
+   */
+  uint8_t vc_id;
+  /**
+   * The Status Field of the CLCW, 0 to 7, passed through (232.0 §4.2.1.4).
+   */
+  uint8_t status;
+  /**
+   * 1 when Type-AD retransmission is allowed (PW = NW = `window` / 2, `window` even from 2 to
+   * 254), 0 when it is not (`window` is W from 1 to 256, `positive_window` is PW) (232.1
+   * §6.1.8.3).
+   */
+  uint8_t retransmission_allowed;
+  /**
+   * The FARM Sliding Window Width W (232.1 §6.1.8.2).
+   */
+  uint16_t window;
+  /**
+   * The Positive Window Width PW, read only when `retransmission_allowed` is 0.
+   */
+  uint16_t positive_window;
+  /**
+   * The initial V(R), 0 to 255 (232.1 §6.1.7).
+   */
+  uint8_t v_r;
+} aldis_farm1_config_t;
+
+/**
+ * One input of FARM-1 (API-057). A field that the kind does not use is ignored.
+ */
+typedef struct {
+  /**
+   * `ALDIS_FARM1_INPUT_*`.
+   */
+  uint32_t kind;
+  /**
+   * N(S) of the Type-AD frame (232.0 §4.1.2.8).
+   */
+  uint8_t sequence_number;
+  /**
+   * V*(R) of the Set V(R) command (232.0 §4.1.3.3).
+   */
+  uint8_t v_star;
+  /**
+   * 1 when the caller has a buffer for the FDU of a Type-AD frame, 0 when not; it selects E1
+   * or E2 for N(S) = V(R) (232.1 §6.3.2.3; COP-033).
+   */
+  uint8_t buffer_available;
+  /**
+   * The No RF Available Flag, 0 or 1.
+   */
+  uint8_t no_rf_available;
+  /**
+   * The No Bit Lock Flag, 0 or 1.
+   */
+  uint8_t no_bit_lock;
+  /**
+   * The data field of a Type-AD or Type-BD frame, read once and copied to `out` when accepted
+   * (API-060); `NULL` only with `data_len` 0.
+   */
+  const uint8_t *data;
+  /**
+   * The octets at `data`.
+   */
+  size_t data_len;
+} aldis_farm1_input_t;
+
+/**
+ * One action of FARM-1 (API-057, API-061). A field that the kind does not use is 0.
+ */
+typedef struct {
+  /**
+   * `ALDIS_FARM1_ACTION_*`.
+   */
+  uint32_t kind;
+  /**
+   * For `DELIVER`: `ALDIS_FARM1_FDU_*`.
+   */
+  uint32_t fdu_kind;
+  /**
+   * For `DELIVER`: N(S) of the frame, 0 for a Type-BD frame.
+   */
+  uint8_t sequence_number;
+  /**
+   * For `DELIVER`: where the FDU is in `out`.
+   */
+  aldis_range_t data;
+  /**
+   * For `FRAME_DISCARDED` and `STATE_CHANGED`: the number of the event, 1 to 11 (Table 6-1).
+   */
+  uint8_t event;
+  /**
+   * For `FRAME_DISCARDED`: the state before the event; for `STATE_CHANGED`: the state before.
+   * 1 to 3 for S1 to S3.
+   */
+  uint8_t state;
+  /**
+   * For `STATE_CHANGED`: the state after, 1 to 3.
+   */
+  uint8_t to_state;
+} aldis_farm1_action_t;
+
+/**
+ * The actions of one input, in the order of the cell (API-057, COP-006).
+ */
+typedef struct {
+  /**
+   * The number of actions in `items`, at most `ALDIS_FARM1_MAX_ACTIONS`.
+   */
+  size_t count;
+  /**
+   * The actions; those from `count` on are zero.
+   */
+  aldis_farm1_action_t items[ALDIS_FARM1_MAX_ACTIONS];
+} aldis_farm1_actions_t;
+
+/**
+ * A read-only snapshot of FARM-1 (232.1 §6.1, §6.3.2.4; API-056, COP-035).
+ */
+typedef struct {
+  /**
+   * The State variable, 1 to 3 for S1 to S3.
+   */
+  uint8_t state;
+  /**
+   * V(R).
+   */
+  uint8_t v_r;
+  /**
+   * The Lockout Flag, 0 or 1.
+   */
+  uint8_t lockout;
+  /**
+   * The Wait Flag, 0 or 1.
+   */
+  uint8_t wait;
+  /**
+   * The Retransmit Flag, 0 or 1.
+   */
+  uint8_t retransmit;
+  /**
+   * The FARM-B Counter, 0 to 3.
+   */
+  uint8_t farm_b_counter;
+  /**
+   * The CLCW of event E11, "Report", as the 32-bit Operational Control Field word.
+   */
+  uint32_t clcw;
+} aldis_farm1_status_t;
+
+/**
+ * FOP-1 in caller storage: the caller declares an object of this type, and the pointer to it is
+ * the handle (COP-001, CABI-031, CABI-032).
+ *
+ * The words are the library's: a C caller never reads or writes them.
+ */
+typedef struct {
+  /**
+   * The slot of [`handle`]: the tag, then the state.
+   */
+  uint64_t words[ALDIS_FOP1_WORDS];
+} aldis_fop1_t;
+
+/**
+ * The managed parameters of one FOP-1 at start-up (232.1 §7.2 Table 7-1; COP-010, COP-015,
+ * COP-016). FOP-1 starts in S6 (Initial).
+ */
+typedef struct {
+  /**
+   * The Spacecraft Identifier, 0 to 1023 (232.0 §4.1.2.5).
+   */
+  uint16_t scid;
+  /**
+   * The Virtual Channel Identifier, 0 to 63 (232.0 §4.1.2.6).
+   */
+  uint8_t vc_id;
+  /**
+   * 1 when the frames carry the Frame Error Control Field, 0 when not (232.0 §4.1.4).
+   */
+  uint8_t fecf;
+  /**
+   * The Maximum Transfer Frame Length, 6 to `ALDIS_FOP1_MAX_FRAME_OCTETS` octets, the most
+   * that one input writes to `out`.
+   */
+  size_t max_frame_len;
+  /**
+   * `T1_Initial` in microseconds, at least 1 (232.1 §5.1.9).
+   */
+  uint64_t t1_initial_us;
+  /**
+   * `Transmission_Limit`, 1 to 255 (232.1 §5.1.10.2).
+   */
+  uint8_t transmission_limit;
+  /**
+   * `ALDIS_FOP1_TIMEOUT_*` (232.1 §5.1.10.3).
+   */
+  uint32_t timeout_type;
+  /**
+   * The FOP Sliding Window Width K, 1 to `ALDIS_FOP1_SENT_QUEUE_FRAMES` (232.1 §5.1.12).
+   */
+  uint8_t sliding_window_k;
+  /**
+   * The systematic retransmission value of Type-AD frames, passed through on `TRANSMIT`
+   * actions (232.1 §5.1.9.3 note 1; COP-016).
+   */
+  uint8_t ad_repetitions;
+  /**
+   * The systematic retransmission value of Type-BC frames (COP-016).
+   */
+  uint8_t bc_repetitions;
+} aldis_fop1_config_t;
+
+/**
+ * One input of FOP-1 (API-057). A field that the kind does not use is ignored.
+ */
+typedef struct {
+  /**
+   * `ALDIS_FOP1_INPUT_*`.
+   */
+  uint32_t kind;
+  /**
+   * The handle of a request or directive, chosen by the caller and returned in its
+   * notifications (API-054).
+   */
+  uint32_t handle;
+  /**
+   * For `CLCW`: the 32-bit CLCW as received (232.0 §4.2), the most significant octet first.
+   */
+  uint32_t clcw;
+  /**
+   * For `DIRECTIVE`: `ALDIS_FOP1_DIRECTIVE_*`.
+   */
+  uint32_t directive;
+  /**
+   * For `DIRECTIVE`: the qualifier of the directive. A value outside the range of the
+   * directive makes it E40 (232.1 Table 5-1).
+   */
+  uint64_t value;
+  /**
+   * For `TRANSMIT_DONE`: `ALDIS_FOP1_FRAME_*`, the kind of frame the response answers.
+   */
+  uint32_t frame_kind;
+  /**
+   * For `TRANSMIT_DONE`: 1 for an Accept Response, 0 for a Reject Response.
+   */
+  uint8_t accepted;
+  /**
+   * For `REQUEST_AD` and `REQUEST_BD`: the FDU, 1 to the Maximum Transfer Frame Length less
+   * the frame overhead octets, read once and copied (API-060); `NULL` only with `data_len` 0.
+   */
+  const uint8_t *data;
+  /**
+   * The octets at `data`.
+   */
+  size_t data_len;
+} aldis_fop1_input_t;
+
+/**
+ * One action of FOP-1 (API-057, API-061). A field that the kind does not use is 0.
+ */
+typedef struct {
+  /**
+   * `ALDIS_FOP1_ACTION_*`.
+   */
+  uint32_t kind;
+  /**
+   * For `TRANSMIT`: `ALDIS_FOP1_FRAME_*`.
+   */
+  uint32_t frame_kind;
+  /**
+   * For `TRANSMIT`: N(S), V(S) for a Type-AD frame and 0 for the others.
+   */
+  uint8_t sequence_number;
+  /**
+   * For `TRANSMIT`: 1 for a retransmission of a master copy, else 0.
+   */
+  uint8_t retransmission;
+  /**
+   * For `TRANSMIT`: the configured systematic retransmission value, 0 for a Type-BD frame.
+   */
+  uint8_t repetitions;
+  /**
+   * For `TRANSMIT`: where the frame is in `out`.
+   */
+  aldis_range_t frame;
+  /**
+   * For `TRANSFER_NOTIFY` and `DIRECTIVE_NOTIFY`: the handle of the request or directive.
+   */
+  uint32_t handle;
+  /**
+   * For `TRANSFER_NOTIFY` and `DIRECTIVE_NOTIFY`: `ALDIS_FOP1_NOTICE_*`.
+   */
+  uint32_t status;
+  /**
+   * For `ALERT`: `ALDIS_FOP1_ALERT_*`.
+   */
+  uint32_t reason;
+  /**
+   * For `ALERT`: the number of the event that caused it, 1 to 46 or 101 to 104.
+   */
+  uint16_t event;
+  /**
+   * For `ALERT`: the state before the event, 1 to 6 for S1 to S6.
+   */
+  uint8_t state;
+} aldis_fop1_action_t;
+
+/**
+ * The actions of one input, in the order of the cell (API-057, COP-006).
+ */
+typedef struct {
+  /**
+   * The number of actions in `items`, at most `ALDIS_FOP1_MAX_ACTIONS`.
+   */
+  size_t count;
+  /**
+   * The actions; those from `count` on are zero.
+   */
+  aldis_fop1_action_t items[ALDIS_FOP1_MAX_ACTIONS];
+} aldis_fop1_actions_t;
+
+/**
+ * A read-only snapshot of FOP-1 (232.1 §5.1; API-056).
+ */
+typedef struct {
+  /**
+   * The State variable, 1 to 6 for S1 to S6.
+   */
+  uint8_t state;
+  /**
+   * V(S).
+   */
+  uint8_t v_s;
+  /**
+   * NN(R).
+   */
+  uint8_t nn_r;
+  /**
+   * The FOP Sliding Window Width K.
+   */
+  uint8_t sliding_window_k;
+  /**
+   * `Transmission_Limit`.
+   */
+  uint8_t transmission_limit;
+  /**
+   * `Transmission_Count`.
+   */
+  uint8_t transmission_count;
+  /**
+   * `Suspend_State` SS, 0 to 4.
+   */
+  uint8_t suspend_state;
+  /**
+   * 1 when the Type-AD Out flag is Ready, else 0.
+   */
+  uint8_t ad_out_ready;
+  /**
+   * 1 when the Type-BC Out flag is Ready, else 0.
+   */
+  uint8_t bc_out_ready;
+  /**
+   * 1 when the Type-BD Out flag is Ready, else 0.
+   */
+  uint8_t bd_out_ready;
+  /**
+   * 1 when the `Wait_Queue` holds a request, else 0.
+   */
+  uint8_t wait_queue_occupied;
+  /**
+   * `ALDIS_FOP1_TIMEOUT_*`.
+   */
+  uint32_t timeout_type;
+  /**
+   * The number of frames on the `Sent_Queue`.
+   */
+  size_t sent_queue_len;
+  /**
+   * `T1_Initial` in microseconds.
+   */
+  uint64_t t1_initial_us;
+} aldis_fop1_status_t;
 
 /**
  * The sender-chosen Primary Header fields of a packet (133.0 §4.1.3; SPP-001…003).
@@ -5360,6 +6247,166 @@ uint32_t aldis_epp_idle_header(size_t total_len,
  * `cfg` is valid for a read; `err` is `NULL` or valid for one write.
  */
 uint32_t aldis_epp_config_check(const aldis_epp_config_t *cfg, aldis_error_detail_t *err);
+
+/**
+ * Places a FARM-1 in State S1 (Open) in `storage` (232.1 §6.1; COP-002; CABI-031, CABI-032).
+ *
+ * # Errors
+ * `ALDIS_ERR_INVALID_FIELD` for `NULL` or misaligned `storage` or `cfg`, or a flag that is not 0
+ * or 1; `ALDIS_ERR_OUT_OF_RANGE` (`vc_id`, `clcw_status`); `ALDIS_ERR_INVALID_CONFIG`
+ * (`farm_sliding_window_w`, `farm_positive_window_pw`, `farm_negative_window_nw`) for a window
+ * that 232.1 §6.1.8.3 and Table 7-2 do not allow.
+ *
+ * # Safety
+ * `storage` is valid for writes of one `aldis_farm1_t` and outlives its use; `cfg` is valid for
+ * a read; `err` is `NULL` or valid for one write.
+ */
+uint32_t aldis_farm1_init(aldis_farm1_t *storage,
+                          const aldis_farm1_config_t *cfg,
+                          aldis_error_detail_t *err);
+
+/**
+ * Applies one input to FARM-1 and returns the actions of its cell (232.1 §6.3, Table 6-1; COP-002,
+ * COP-006, COP-033, COP-035, CABI-040).
+ *
+ * The FDU of an accepted frame is written to `out` from offset 0 and named by the `DELIVER`
+ * action (API-061). `now_us` is the caller's clock in microseconds; FARM-1 has no timer and
+ * ignores it.
+ *
+ * # Errors
+ * `ALDIS_ERR_INVALID_STATE` for the one cell Table 6-1 marks "Not applicable" (a Type-AD frame
+ * with N(S) = V(R) and a buffer available in S2: feed `BUFFER_RELEASED` first, COP-033);
+ * `ALDIS_ERR_BUFFER_TOO_SMALL` (with `needed`) if the FDU does not fit `out_cap`;
+ * `ALDIS_ERR_INVALID_HANDLE`; `ALDIS_ERR_INVALID_FIELD` for an input `kind` with no constant, a
+ * flag that is not 0 or 1, or a CABI-022 violation (`NULL`, misalignment, a wrapping range, or
+ * `out` or `actions` overlapping the storage, `input->data`, or each other). On an error the state
+ * is unchanged and `actions` is not written (API-058).
+ *
+ * # Safety
+ * `h` is a handle from `aldis_farm1_init` whose storage is still valid, or detectably invalid
+ * storage; `input` is valid for a read, and its `data` for `data_len` octets; `out` is valid for
+ * `out_cap` octets of writes (it may be `NULL` when `out_cap` is 0); `actions` is valid for one
+ * write; `err` is `NULL` or valid for one write. No other thread uses the storage (CABI-050).
+ */
+uint32_t aldis_farm1_step(aldis_farm1_t *h,
+                          const aldis_farm1_input_t *input,
+                          uint64_t now_us,
+                          uint8_t *out,
+                          size_t out_cap,
+                          aldis_farm1_actions_t *actions,
+                          aldis_error_detail_t *err);
+
+/**
+ * Reads the state of FARM-1 and its CLCW (232.1 §6.1, §6.3.2.4, E11; API-056, COP-035,
+ * CABI-040). It changes nothing.
+ *
+ * # Errors
+ * `ALDIS_ERR_INVALID_HANDLE`; `ALDIS_ERR_INVALID_FIELD` for a CABI-022 violation.
+ *
+ * # Safety
+ * As for [`aldis_farm1_step`]; `status` is valid for one write.
+ */
+uint32_t aldis_farm1_status(aldis_farm1_t *h,
+                            aldis_farm1_status_t *status,
+                            aldis_error_detail_t *err);
+
+/**
+ * Releases the storage: later calls on it fail with `ALDIS_ERR_INVALID_HANDLE` (CABI-032). An
+ * invalid handle is ignored.
+ *
+ * # Safety
+ * As for [`aldis_farm1_step`].
+ */
+void aldis_farm1_deinit(aldis_farm1_t *h);
+
+/**
+ * Places a FOP-1 in State S6 (Initial) in `storage`, with V(S) = NN(R) = 0, every Out flag
+ * Ready, and no timer (232.1 §5.1; COP-001, OI-59; CABI-031, CABI-032).
+ *
+ * # Errors
+ * `ALDIS_ERR_INVALID_FIELD` for `NULL` or misaligned `storage` or `cfg`, a flag that is not 0 or
+ * 1, or a `timeout_type` with no constant; `ALDIS_ERR_OUT_OF_RANGE` (`spacecraft_id`, `vc_id`);
+ * `ALDIS_ERR_INVALID_CONFIG` (`max_frame_len`, `sliding_window_k`, `t1_initial`,
+ * `transmission_limit`) for a value outside its range or a frame length above
+ * `ALDIS_FOP1_MAX_FRAME_OCTETS`.
+ *
+ * # Safety
+ * `storage` is valid for writes of one `aldis_fop1_t` and outlives its use; `cfg` is valid for a
+ * read; `err` is `NULL` or valid for one write.
+ */
+uint32_t aldis_fop1_init(aldis_fop1_t *storage,
+                         const aldis_fop1_config_t *cfg,
+                         aldis_error_detail_t *err);
+
+/**
+ * Applies one input to FOP-1 and returns the actions of its cell (232.1 §5.3, Table 5-1;
+ * COP-001, COP-005, COP-006, COP-010…017, CABI-040).
+ *
+ * A frame to transmit is written to `out` from offset 0 and named by a `TRANSMIT` action
+ * (API-061); `out_cap` should be the Maximum Transfer Frame Length of the configuration at
+ * least. `now_us` is the caller's monotonic clock in microseconds (API-003).
+ *
+ * # Errors
+ * `ALDIS_ERR_UNKNOWN_CHANNEL` (`vc_id`) for a CLCW of another Virtual Channel;
+ * `ALDIS_ERR_INVALID_FIELD` (`frame_data_field`) for an empty FDU and `ALDIS_ERR_OUT_OF_RANGE`
+ * (`frame_len`) for one longer than the frame allows; `ALDIS_ERR_INVALID_STATE` for an input
+ * whose cell Table 5-1 marks "Not applicable" (COP-005); `ALDIS_ERR_BUFFER_TOO_SMALL` (with
+ * `needed`) if `out_cap` is shorter than the frame to transmit; `ALDIS_ERR_INVALID_HANDLE`;
+ * `ALDIS_ERR_INVALID_FIELD` for an input `kind`, directive, or frame kind with no constant, a
+ * flag that is not 0 or 1, a CLCW that does not decode, or a CABI-022 violation (`NULL`,
+ * misalignment, a wrapping range, or `out` or `actions` overlapping the storage, `input->data`,
+ * or each other). On an error the state is unchanged and `actions` is not written (API-058).
+ *
+ * # Safety
+ * `h` is a handle from `aldis_fop1_init` whose storage is still valid, or detectably invalid
+ * storage; `input` is valid for a read, and its `data` for `data_len` octets; `out` is valid for
+ * `out_cap` octets of writes (it may be `NULL` when `out_cap` is 0); `actions` is valid for one
+ * write; `err` is `NULL` or valid for one write. No other thread uses the storage (CABI-050).
+ */
+uint32_t aldis_fop1_step(aldis_fop1_t *h,
+                         const aldis_fop1_input_t *input,
+                         uint64_t now_us,
+                         uint8_t *out,
+                         size_t out_cap,
+                         aldis_fop1_actions_t *actions,
+                         aldis_error_detail_t *err);
+
+/**
+ * Reads the deadline of timer T1 (232.1 §5.1.9; COP-013, API-053, CABI-040).
+ *
+ * While the timer runs, `armed` is 1 and `deadline_us` the instant in microseconds at which the
+ * caller is to feed the `TIMEOUT` input; otherwise both are 0. It changes nothing.
+ *
+ * # Errors
+ * `ALDIS_ERR_INVALID_HANDLE`; `ALDIS_ERR_INVALID_FIELD` for a CABI-022 violation.
+ *
+ * # Safety
+ * As for [`aldis_fop1_step`]; `armed` and `deadline_us` are valid for one write each.
+ */
+uint32_t aldis_fop1_next_deadline(aldis_fop1_t *h,
+                                  uint8_t *armed,
+                                  uint64_t *deadline_us,
+                                  aldis_error_detail_t *err);
+
+/**
+ * Reads the state of FOP-1 (232.1 §5.1; API-056, CABI-040). It changes nothing.
+ *
+ * # Errors
+ * `ALDIS_ERR_INVALID_HANDLE`; `ALDIS_ERR_INVALID_FIELD` for a CABI-022 violation.
+ *
+ * # Safety
+ * As for [`aldis_fop1_step`]; `status` is valid for one write.
+ */
+uint32_t aldis_fop1_status(aldis_fop1_t *h, aldis_fop1_status_t *status, aldis_error_detail_t *err);
+
+/**
+ * Releases the storage: later calls on it fail with `ALDIS_ERR_INVALID_HANDLE` (CABI-032). An
+ * invalid handle is ignored.
+ *
+ * # Safety
+ * As for [`aldis_fop1_step`].
+ */
+void aldis_fop1_deinit(aldis_fop1_t *h);
 
 /**
  * Classifies the four OCF octets at `ocf` by bits 0–1 (CMN-010).

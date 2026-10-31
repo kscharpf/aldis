@@ -314,9 +314,9 @@ mod tests {
     }
 
     #[test]
-    fn vectors_awaiting_a_runner_are_no_evidence() {
+    fn vectors_with_a_runner_are_evidence() {
         // req: VER-020
-        assert!(crate::consistency::awaiting_runner(
+        assert!(!crate::consistency::awaiting_runner(
             "cop1/scenarios/fop1_table.json"
         ));
         assert!(!crate::consistency::awaiting_runner("tc/ad.json"));

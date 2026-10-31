@@ -77,6 +77,11 @@ mod tests {
     use crate::abi::aldis_mode;
     use crate::aos::{aldis_aos_content, aldis_aos_edition, aldis_aos_pointer};
     use crate::error::aldis_status;
+    use crate::farm1::{aldis_farm1_action, aldis_farm1_fdu, aldis_farm1_input};
+    use crate::fop1::{
+        aldis_fop1_action, aldis_fop1_alert, aldis_fop1_directive, aldis_fop1_frame,
+        aldis_fop1_input, aldis_fop1_notice, aldis_fop1_timeout,
+    };
     use crate::ocf::aldis_ocf_report;
     use crate::oid::aldis_oid_form;
     use crate::spp::{aldis_spp_packet_type, aldis_spp_secondary, aldis_spp_sequence_flags};
@@ -174,6 +179,16 @@ mod tests {
         check::<aldis_aos_content>("aldis_aos_content", header, &mut seen);
         check::<aldis_aos_edition>("aldis_aos_edition", header, &mut seen);
         check::<aldis_aos_pointer>("aldis_aos_pointer", header, &mut seen);
+        check::<aldis_farm1_action>("aldis_farm1_action", header, &mut seen);
+        check::<aldis_farm1_fdu>("aldis_farm1_fdu", header, &mut seen);
+        check::<aldis_farm1_input>("aldis_farm1_input", header, &mut seen);
+        check::<aldis_fop1_action>("aldis_fop1_action", header, &mut seen);
+        check::<aldis_fop1_alert>("aldis_fop1_alert", header, &mut seen);
+        check::<aldis_fop1_directive>("aldis_fop1_directive", header, &mut seen);
+        check::<aldis_fop1_frame>("aldis_fop1_frame", header, &mut seen);
+        check::<aldis_fop1_input>("aldis_fop1_input", header, &mut seen);
+        check::<aldis_fop1_notice>("aldis_fop1_notice", header, &mut seen);
+        check::<aldis_fop1_timeout>("aldis_fop1_timeout", header, &mut seen);
         check::<aldis_mode>("aldis_mode", header, &mut seen);
         check::<aldis_ocf_report>("aldis_ocf_report", header, &mut seen);
         check::<aldis_oid_form>("aldis_oid_form", header, &mut seen);
