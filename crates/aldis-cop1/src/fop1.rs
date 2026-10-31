@@ -1967,8 +1967,8 @@ mod tests {
     use std::vec::Vec;
 
     use super::{
-        Context, Decision, Fop1, Fop1Actions, Fop1Channel, Fop1Config, Fop1Input, Fop1Output,
-        Fop1Target, Sent, SentKind, cell, fop1_max_actions,
+        Context, Decision, FduSource, Fop1, Fop1Actions, Fop1Channel, Fop1Config, Fop1Input,
+        Fop1Output, Fop1Target, Origin, Sent, SentKind, cell, fop1_max_actions,
     };
     use crate::fop1_table::{EVENT_COUNT, FOP1_TABLE, Fop1Action, STATE_COUNT};
     use crate::fop1_table::{Fop1Event, Fop1State, FrameKind, SuspendState};
@@ -2132,6 +2132,36 @@ mod tests {
         let _ = frames_of(&mut g, clcw(false, false, false, 3), 10);
         assert_eq!(g.sent_queue_len(), 0);
         assert!(g.frames.iter().all(|frame| frame.iter().all(|b| *b == 0)));
+    }
+
+    #[test]
+    fn a_frame_a_decision_added_is_emitted_again_by_encoding_it() {
+        // req: COP-011, API-061
+        let f = active();
+        let mut d = Decision::start(&f, &FDU);
+        let mut out = [0u8; 2 * F];
+        let mut used = 0;
+        let entry = |origin| Sent {
+            origin,
+            len: 0,
+            sequence_number: FrameSeqNum::new(0),
+            kind: SentKind::Bc,
+            to_be_retransmitted: false,
+        };
+        let ad = entry(Origin::FreshAd(FduSource::Input));
+        let bc = entry(Origin::FreshBc(aldis_tc::ControlCommand::Unlock));
+        let first = d.emit_sent(&f, &ad, &mut out, &mut used).unwrap();
+        let second = d.emit_sent(&f, &bc, &mut out, &mut used).unwrap();
+        assert_eq!((first.start(), second.start()), (0, first.len()));
+        assert_eq!(used, first.len() + second.len());
+        // The area is too short for the next frame: the octets already used count in `Needed`.
+        let mut short = [0u8; 10];
+        used = 4;
+        let e = d.emit_sent(&f, &ad, &mut short, &mut used).unwrap_err();
+        assert_eq!(e.kind(), ErrorKind::BufferTooSmall);
+        let wait = entry(Origin::FreshAd(FduSource::Wait(F + 1)));
+        let e = d.emit_sent(&f, &wait, &mut out, &mut used).unwrap_err();
+        assert_eq!(e.kind(), ErrorKind::InternalError);
     }
 
     /// The USLP target, as the integration tests of `tests/fop1_uslp.rs` use it; the unit tests

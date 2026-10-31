@@ -22,6 +22,18 @@ justification = "src/view.rs (6), src/truncated.rs (3), src/writer.rs (9) — th
 [[waiver]]
 crate = "aldis-cop1"
 metric = "regions"
-count = 7
-justification = "src/fop1.rs — the error return of `?` at seven sites whose callee cannot fail once its input has passed an earlier check: in `Fop1Target::tc`, `VcConfig::new` and `VcTable::new` (after `PhysicalChannelConfig::new` accepted the same length and FECF); the `encode` calls of TransmitBd in `act`, of `transmit_ad`, and of `transmit_bc` (the FDU was checked against `max_fdu_len` by `check_fdu` in `classify`, and a Control Command always fits); the `ok_or` on the Wait_Queue FDU in `transmit_ad` (its length is at most F by construction); and `push_sent` in `transmit_bc` (the cells that transmit a Type-BC frame run Initialize first, which empties the Sent_Queue). Each is an explicit `InternalError` or the callee's error, not a default (GEN-020); the sweep test `every_failure_of_a_cell_leaves_the_state_unchanged` reaches every other failure of a cell."
+count = 9
+justification = "src/fop1.rs — arms and error returns that no input reaches, each an explicit error or a skipped step and not a default (GEN-020): in `Fop1Target::tc`, `VcConfig::new` and `VcTable::new` (after `PhysicalChannelConfig::new` accepted the same length and FECF), the `?` of the `encode` calls (the FDU was checked against `max_fdu_len` by `check_fdu`, and a Control Command always fits); in `encode_at` the arm for an error of `encode` other than BufferTooSmall (which `encode` does not return for a checked input); in `Fop1::commit` the `split_first_mut` of a position that is below `Q` by the loop bound, and the arm for a new Type-AD entry whose FDU is missing (its decision encoded the same frame); and `push_sent` in `transmit_bc` (the cells that transmit a Type-BC frame run Initialize first, which empties the Sent_Queue). The sweep test `every_failure_of_a_cell_leaves_the_state_unchanged` reaches every other failure of a cell."
+
+[[waiver]]
+crate = "aldis-cop1"
+metric = "lines"
+count = 3
+justification = "src/fop1.rs:556 (the arm of `encode_at` for an error of `encode` other than BufferTooSmall), :1345 (`commit`, `split_first_mut` of a position below `Q`), :1367 (`commit`, a new Type-AD entry without its FDU): each is a branch that the loop bound or the decision's own earlier encode of the same frame excludes, and that is left as a skip and not a default (GEN-020)."
+
+[[waiver]]
+crate = "aldis-cop1"
+metric = "branches"
+count = 1
+justification = "src/fop1.rs:1344 — `commit`: the `split_first_mut` of the slice from position `p`, which is below `Q` by the loop bound, has no `None` case."
 
