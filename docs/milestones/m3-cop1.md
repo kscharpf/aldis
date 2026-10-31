@@ -12,12 +12,12 @@
 | WP-1a Spec readings & cell review | merged | #145 | CCSDS 232.1 Table 5-1 and Table 6-1 cell review `cop1-tables.md`, field codes 150–199 (COP-003, VER-041, API-082) |
 | WP-1b Common types & FARM-1 table | merged | #147 | Directives, alerts, notifications, FARM-1 S1–S3 × E1–E11 const table data, cell tests (COP-002, COP-004, RS-021) |
 | WP-1c FOP-1 table as data | merged | #149 | FOP-1 S1–S6 × E1–E46/E101–E104 const table data, Cor. 1 verification, cell tests (COP-001, COP-004, RS-021) |
-| WP-2 Blind vectors & model | merged | #183 | Python blind oracle model `test-vectors/models/cop1.py` (TV-023) and one scenario per cell of Tables 5-1 and 6-1 in `test-vectors/cop1/` (COP-005, TV-011); the testkit loader and the runners follow in WP-3 and WP-4 |
-| WP-3 `aldis-cop1`: FARM-1 | merged | #162 | `Farm1::step` and `clcw` over `FARM1_TABLE`, window check, FARM-B counter, exerciser calls; `FARM1_MAX_ACTIONS` derived from the table (COP-030…036); OI-58 opened |
-| WP-4 `aldis-cop1`: FOP-1 | planned | — | `Fop1::decide` and `decide_event`, with the infallible `Fop1::commit`, over `FOP1_TABLE` for TC frames, Sent_Queue master copies, Wait_Queue, T1, Suspend/Resume, COP-017 by the table (no Alert filter); `fop1_max_actions(Q)` derived from the table; all 317 FOP-1 scenarios of `test-vectors/cop1/` pass (COP-001, COP-010…017). USLP frame target not built |
-| WP-5 Closed loop & carry-overs | planned | — | Closed-loop simulated link harness `tests/closed_loop.rs` (COP-040), event-sequence properties and the `cop1_events` fuzz target source (COP-041; its `fuzz/Cargo.toml` and nightly matrix entries wait for the process freeze to end), OI-47 `max_fill` in the TC and USLP delimiters (ABI 0.8; tested in Rust, FFI, and exerciser code, no vector case, maintainer 2026-10-30), D13 closed: `VcTable::new` already enforces USLP-012 and released vector `uslp-cfg-055` pins its order. WP-5b: the FOP-1 USLP frame target (COP-010, USLP-013) |
-| WP-6 C ABI handles | planned | — | `aldis-ffi`: `aldis_fop1_*`, `aldis_farm1_*`, opaque handles (CABI-030…033, CABI-040), limits, exerciser group, header |
-| WP-7 Verification gates & hazards | planned | — | 100 % coverage, mutants, 4 fuzz targets (`cop1_events` is the one of WP-5, registered by the maintainer once the process freeze ends), stack bounds, QEMU ×3 exerciser, COP-1 hazard analysis, assurance case |
+| WP-2 Blind vectors & model | merged | #183, #190 | Python blind oracle model `test-vectors/models/cop1.py` (TV-023) and one scenario per cell of Tables 5-1 and 6-1 in `test-vectors/cop1/` (COP-005, TV-011); the testkit loader and the runners follow in WP-3 and WP-4 |
+| WP-3 `aldis-cop1`: FARM-1 | merged | #162, #189 | `Farm1::step` and `clcw` over `FARM1_TABLE`, window check, FARM-B counter, exerciser calls; `FARM1_MAX_ACTIONS` derived from the table (COP-030…036); OI-58 opened |
+| WP-4 `aldis-cop1`: FOP-1 | merged | #193, #202 | `Fop1::decide` and `decide_event`, with the infallible `Fop1::commit`, over `FOP1_TABLE` for TC frames, Sent_Queue master copies, Wait_Queue, T1, Suspend/Resume, COP-017 by the table (no Alert filter); `fop1_max_actions(Q)` derived from the table; all 317 FOP-1 scenarios of `test-vectors/cop1/` pass (COP-001, COP-010…017). USLP frame target not built |
+| WP-5 Closed loop & carry-overs | merged | #195, #196 | Closed-loop simulated link harness `tests/closed_loop.rs` (COP-040), event-sequence properties and the `cop1_events` fuzz target source (COP-041; registered in `fuzz/Cargo.toml` and the nightly matrix by WP-7), OI-47 `max_fill` in the TC and USLP delimiters (ABI 0.8; tested in Rust, FFI, and exerciser code, no vector case, maintainer 2026-10-30), D13 closed: `VcTable::new` already enforces USLP-012 and released vector `uslp-cfg-055` pins its order. WP-5b: the FOP-1 USLP frame target (COP-010, USLP-013) |
+| WP-6 C ABI handles | merged | #201 | `aldis-ffi`: `aldis_fop1_*`, `aldis_farm1_*`, opaque handles (CABI-030…033, CABI-040), limits, exerciser group, header |
+| WP-7 Verification gates & hazards | planned | — | 100 % coverage, mutants, 3 fuzz targets (`cop1_events` of WP-5 covers `fop1_events` and `farm1_events`, a judgement call of the WP-7 agent; all three registered), stack bounds, QEMU ×3 exerciser, COP-1 hazard analysis, assurance case |
 | WP-8 Docs, trace, release | planned | — | `--scope m3 --strict`, docs, RS-015 citations, changelog release `v0.4.0-m3` |
 
 A pull request that starts or merges a work package changes only its row (roadmap §6 rule 1).
@@ -121,7 +121,7 @@ WP-0 Infra, setup ───▶ WP-1a Spec readings ─┬─▶ WP-1b FARM-1 tab
 ### WP-7 Verification gates, hazards & assurance (M) — VER-010, VER-011, VER-022…025, VER-065, VER-066
 - 100 % statement, branch, and line coverage for `aldis-cop1` (VER-024).
 - Mutation testing across `aldis-cop1`; all survivors triaged (VER-025).
-- Fuzz targets: `fop1_events`, `farm1_events`, `cop1_closed_loop`, `fop1_clcw` (VER-022).
+- Fuzz targets: `cop1_events` (WP-5; it covers the planned `fop1_events` and `farm1_events`, a judgement call of the WP-7 agent), `cop1_closed_loop`, `fop1_clcw` (VER-022); registered in `fuzz/Cargo.toml` and the nightly matrix.
 - Worst-case stack analysis under budgets (VER-011).
 - Bare-metal exerciser on thumbv7em, armv7r, riscv32imac under QEMU (VER-010).
 - COP-1 hazard analysis in `docs/verification/hazards/cop1.md` (VER-065).

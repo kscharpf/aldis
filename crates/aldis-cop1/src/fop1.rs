@@ -2044,7 +2044,7 @@ mod tests {
     use crate::rig::Rig;
     use aldis_core::ids::FrameSeqNum;
     use aldis_core::time::{Duration, Instant};
-    use aldis_core::{ErrorKind, field};
+    use aldis_core::{ErrorDetail, ErrorKind, field};
     use aldis_tc::{Clcw, ClcwStatus, CopInEffect, FarmBCounter, TcSpacecraftId, TcVcId};
     use core::hint::black_box;
     use core::num::NonZeroU8;
@@ -2313,6 +2313,33 @@ mod tests {
     }
 
     #[test]
+    fn a_timeout_counts_the_transmission_of_the_retransmitted_frames() {
+        // req: COP-011, COP-013, API-056
+        let mut f = active();
+        let fdu = [0xA0u8, 9];
+        let request = Fop1Input::RequestAd {
+            handle: 1,
+            fdu: &fdu,
+        };
+        frames_of(&mut f, request, 1);
+        // The retransmission waits for the lower layer to have taken the first transmission.
+        frames_of(
+            &mut f,
+            Fop1Input::TransmitDone {
+                kind: FrameKind::Ad,
+                accepted: true,
+            },
+            2,
+        );
+        assert_eq!(f.transmission_count(), 1);
+        let late = f.next_deadline().unwrap().as_micros();
+        let sent = frames_of(&mut f, Fop1Input::Timeout, late);
+        assert_eq!(sent.len(), 1);
+        assert!(sent.iter().all(|(_, retransmission, _)| *retransmission));
+        assert_eq!(f.transmission_count(), 2);
+    }
+
+    #[test]
     fn a_new_store_is_zero() {
         // req: COP-011, API-058
         let store = Fop1Store::<Q, F>::default();
@@ -2347,6 +2374,7 @@ mod tests {
         short.used = 4;
         let e = d.emit_sent(&view(&f), &ad, &mut short).unwrap_err();
         assert_eq!(e.kind(), ErrorKind::BufferTooSmall);
+        assert_eq!(e.detail(), ErrorDetail::Needed(4 + first.len()));
         let wait = entry(Origin::FreshAd(FduSource::Wait(F + 1)));
         let e = d.emit_sent(&view(&f), &wait, &mut out).unwrap_err();
         assert_eq!(e.kind(), ErrorKind::InternalError);
