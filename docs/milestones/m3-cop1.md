@@ -3,7 +3,7 @@
 **Goal:** a complete, verified implementation of CCSDS 232.1-B-2 COP-1 in `aldis-cop1` (FOP-1 and FARM-1 engines as deterministic sans-I/O state machines with state tables represented as data), closed-loop testing across simulated links, blind conformance vectors covering every cell, C ABI handles in `aldis-ffi`, and resolution of long-lived engine state SEU hardening. Verified to the project standard: 100 % coverage, bare-metal panic-freedom, fuzzing, mutation testing, worst-case stack measurement, and hazard analysis.
 **Roadmap entry:** [08-roadmap.md](../08-roadmap.md) §1 · **Builds on:** [M2](m2-frame-codecs.md) (`v0.3.0-m2`) · **Release:** `v0.4.0-m3`
 
-**Status: planned.** Entry gate: M2 (roadmap §1), met by PR #138 (release `v0.3.0-m2`). Decisions D1–D13; each one's status is in §2.
+**Status: exit in review.** Entry gate: M2 (roadmap §1), met by PR #138 (release `v0.3.0-m2`). Decisions D1–D13; each one's status is in §2. WP-0 to WP-7 are merged; WP-8 (the exit pull request) switches the M3 trace to `--strict`. One exit criterion is **not met**: every fuzz target one CPU-hour (VER-022), see §4. Release `v0.4.0-m3` waits for it and for the maintainer.
 
 | WP | State | PRs | Notes |
 |---|---|---|---|
@@ -26,6 +26,7 @@ A pull request that starts or merges a work package changes only its row (roadma
 
 History:
 - 2026-10-27: plan drafted following M2 exit and Track C retirement.
+- 2026-10-31: M3 exit review (WP-8); §4 carries the results.
 
 ## 1. Starting point
 
@@ -135,22 +136,24 @@ WP-0 Infra, setup ───▶ WP-1a Spec readings ─┬─▶ WP-1b FARM-1 tab
 
 ## 4. Exit criteria
 
-Milestone 3 is complete when every item below is green on `main`:
+Milestone 3 is complete when every item below is green on `main`. The results column is the state at the WP-8 exit pull request; **Not met** marks what is open and what it needs.
 
 | Area | Criteria | Results / evidence |
 |---|---|---|
-| COP-1 state tables | COP-001…005, RS-021 | Traced (`trace --scope m3 --strict`). Table 5-1 and Table 6-1 transcribed as `const` data; cell review approved in `docs/verification/reviews/cop1-tables.md`; one vector per table cell in `test-vectors/cop1/` |
-| FOP-1 engine | COP-010…017 | Traced. Complete FOP-1 state machine, sliding window, T1 timer, Suspend/Resume, AD/BD/BC frame building for TC and USLP |
-| FARM-1 engine | COP-030…036 | Traced. Complete FARM-1 state machine, window classification, buffer models, FARM-B counter, CLCW generation |
-| Closed-loop testing | COP-040, COP-041 | Traced. Simulated link harness tests loss, duplication, reordering, and delay; property tests assert no unreachable states and GEN-020 |
-| Engine contract & sans-I/O | GEN-011, GEN-015, GEN-030…032, API-050, API-056, API-060, RS-020 | Traced. Pure sans-I/O engines; SEU platform protection confirmed (GEN-015); step functions with returned actions (API-057) and no output queues; compile-time generic capacities |
-| C ABI handles | CABI-030…033, CABI-040, API-082 | Traced. `aldis_fop1_*` and `aldis_farm1_*` handles with opaque storage and magic checks; step-call functions; generated header `aldis.h`; vector runner passes scenarios through C ABI |
-| Panic freedom & resources | VER-010, VER-011, GEN-020…024 | Gating check `stack` passes within budget; exerciser runs with `aldis-cop1` on Cortex-M4F, Cortex-R5F, and RISC-V under QEMU with 0 panics; link check succeeds |
-| Portability | GEN-005…007, VER-030, VER-031 | Gating checks `no-std-*`, `features`, `big-endian` (s390x), and `layers` clean |
-| Verification gates | VER-022…025, VER-054 | 100 % coverage across `aldis-cop1`; full mutation testing with survivors triaged; fuzz targets run ≥ 1 CPU-hour each |
-| Vectors and trace | TV-001…003, TV-010…012, TV-020, TV-021, TV-023, VER-020, VER-021 | 100 % in-scope requirements traced (`trace --scope m3 --strict`); scenarios validated against `engine-scenario.schema.json`; blind Python model cross-check |
-| Hazards & assurance case | VER-065, VER-066 | COP-1 hazard analysis approved in `docs/verification/hazards/cop1.md`; `cargo xtask assurance --strict` passes with 0 problems |
-| Delimiter fill & USLP checks | OI-47, USLP-002, TC-020, USLP-015 | Delimiter fill bound implemented in TC and USLP; USLP truncated frame check with SDLS enforced |
+| COP-1 state tables | COP-001…005, RS-021 | **Met.** All traced (`trace --scope m3 --strict` passes in `cargo xtask ci`). Tables 5-1 and 6-1 are `const` data (#147, #149); cell review approved in [cop1-tables.md](../verification/reviews/cop1-tables.md) (#145); one vector per cell in `test-vectors/cop1/` from the blind model (#183, #190); the Rust runners pass all of them (#189, #193, #202) |
+| FOP-1 engine | COP-010…017 | **Met.** Traced. `Fop1::decide`/`commit` (#193, #202); the USLP frame target behind the feature `uslp` (#196) |
+| FARM-1 engine | COP-030…036 | **Met.** Traced (#162, #189; COP-037 by #207) |
+| Closed-loop testing | COP-040, COP-041 | **Met.** Traced. `tests/closed_loop.rs` and the event-sequence properties (#195); fuzz target `cop1_closed_loop` (#205) |
+| Engine contract & sans-I/O | GEN-011, GEN-015, GEN-030…032, API-050, API-056, API-060, RS-020 | **Met.** Traced; API-050 by the inspection record [API-050](../verification/records/API-050.md) (WP-8); GEN-015 by [GEN-015](../verification/records/GEN-015.md) |
+| C ABI handles | CABI-030…033, CABI-040, API-082 | **Met.** Traced (#201); `aldis_fop1_*` and `aldis_farm1_*` in the generated header; the C ABI scenarios of the exerciser |
+| Panic freedom & resources | VER-010, VER-011, GEN-020…024 | **Met on the verify record of #205's head** (`7eda831`, run 41229142183): gating checks `stack`, the three exerciser targets, and the link check passed. The record must be read again on the head of the exit pull request |
+| Portability | GEN-005…007, VER-030, VER-031 | **Met on the same record**: `no-std-*`, `features`, `big-endian`, `layers` |
+| Verification gates | VER-022…025, VER-054 | **Partly met.** Coverage at 100 % for `aldis-cop1` (VER-024) and the mutants triaged ([mutants-triage.md](../verification/mutants-triage.md), VER-025) in #205. **Not met: every fuzz target one CPU-hour (VER-022).** The targets `cop1_events`, `cop1_closed_loop`, and `fop1_clcw` were registered in the nightly matrix on 2026-10-31 (#205, `72bcb50`), after the last nightly run (2026-10-31 09:45 UTC); they have 0 nightly hours, and a night runs each for 600 s. Needs six nightly runs, or one `workflow_dispatch` of `nightly.yml` with `fuzz-seconds` = 3600 (maintainer or coordinator), then their results recorded here |
+| Vectors and trace | TV-001…003, TV-010…012, TV-020, TV-021, TV-023, VER-020, VER-021 | **Met.** `trace --scope m3 --strict` passes: 69 of 69 requirements traced (WP-8); the scenarios validate against `engine-scenario.schema.json`; the blind Python model `test-vectors/models/cop1.py` is the cross-check (#183, #190) |
+| Hazards & assurance case | VER-065, VER-066 | **Met.** [hazards/cop1.md](../verification/hazards/cop1.md) (#204, #206, #207); the assurance case update (#204); `assurance --strict` runs in `cargo xtask ci` |
+| Delimiter fill & USLP checks | OI-47, USLP-002, TC-020, USLP-015 | **Met.** Fill bound `max_fill` in the TC and USLP delimiters, ABI 0.8 (#195, #196); OI-47 resolved |
+
+Also open at the exit, from [checklists.md](checklists.md) "Milestone exit": the second review of hand-derived vectors, and the cross-check search of [cross-checks.md](../verification/cross-checks.md) (VER-040), were not part of M3 work packages; the COP-1 vectors have the blind model instead (TV-023). The release (`v0.4.0-m3`) is the maintainer's. The release notes and the version bump are not in this pull request (see the pull request body).
 
 Not in M3: Link layer multiplexing and packet generator/extractor engines (M4); full C ABI versioning and C++ wrapper `aldis.hpp` (M5); framework runtime stacks (M6); sync and channel coding (v1.1, OI-12).
 

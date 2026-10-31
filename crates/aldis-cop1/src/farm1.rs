@@ -179,19 +179,19 @@ impl Farm1Window {
         Ok(Farm1Window { pw, nw })
     }
 
-    /// The Sliding Window Width W = PW + NW (232.1 §6.1.8.2).
+    /// The Sliding Window Width W = PW + NW (232.1 §6.1.8.2; COP-030).
     #[must_use]
     pub const fn width(self) -> u16 {
         self.pw.saturating_add(self.nw)
     }
 
-    /// The Positive Window Width PW (232.1 §6.1.8.3).
+    /// The Positive Window Width PW (232.1 §6.1.8.3; COP-030).
     #[must_use]
     pub const fn positive(self) -> u16 {
         self.pw
     }
 
-    /// The Negative Window Width NW (232.1 §6.1.8.3).
+    /// The Negative Window Width NW (232.1 §6.1.8.3; COP-030).
     #[must_use]
     pub const fn negative(self) -> u16 {
         self.nw
@@ -213,7 +213,7 @@ pub struct Farm1Config {
     pub window: Farm1Window,
 }
 
-/// The kind of FDU a [`Farm1Output::Deliver`] action carries (232.1 §6.2.2).
+/// The kind of FDU a [`Farm1Output::Deliver`] action carries (232.1 §6.2.2; COP-030, COP-033).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum FduKind {
     /// The FDU of an accepted Type-AD frame, E1 (Sequence-Controlled Service).
@@ -390,7 +390,7 @@ pub struct Farm1 {
 
 impl Farm1 {
     /// A FARM-1 in State S1 (Open) with the Retransmit Flag and the FARM-B Counter at 0, expecting
-    /// `v_r` as the next N(S) (232.1 §6.1; OI-58).
+    /// `v_r` as the next N(S) (232.1 §6.1; COP-002, COP-030, OI-58).
     #[must_use]
     pub fn new(config: Farm1Config, v_r: FrameSeqNum) -> Farm1 {
         Farm1 {
@@ -404,7 +404,7 @@ impl Farm1 {
         }
     }
 
-    /// The managed parameters (232.1 §7.3).
+    /// The managed parameters (232.1 §7.3; COP-030).
     #[must_use]
     pub const fn config(&self) -> Farm1Config {
         self.config

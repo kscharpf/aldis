@@ -904,7 +904,7 @@ pub struct Fop1Store<const Q: usize, const F: usize> {
 }
 
 impl<const Q: usize, const F: usize> Fop1Store<Q, F> {
-    /// An empty store: every octet zero.
+    /// An empty store: every octet zero (232.1 §5.1; COP-001, GEN-011).
     #[must_use]
     pub const fn new() -> Fop1Store<Q, F> {
         Fop1Store {
