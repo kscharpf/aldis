@@ -383,6 +383,7 @@ impl World {
     fn frame_arrives(&mut self, bytes: &[u8]) {
         if let Ok(valid) = validate_frame(bytes, &self.channels) {
             let input = Farm1Input::Frame {
+                vc_id: valid.as_frame().vc_id(),
                 frame: Farm1Frame::from_tc(&valid),
                 buffer_available: self.buffer_free,
             };

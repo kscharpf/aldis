@@ -25,7 +25,7 @@ use aldis_ffi::epp::{
 };
 use aldis_ffi::error::{
     ALDIS_ERR_BUFFER_TOO_SMALL, ALDIS_ERR_INCOMPLETE, ALDIS_ERR_INVALID_FIELD,
-    ALDIS_ERR_INVALID_HANDLE, ALDIS_OK,
+    ALDIS_ERR_INVALID_HANDLE, ALDIS_ERR_UNKNOWN_CHANNEL, ALDIS_OK,
 };
 use aldis_ffi::farm1::{
     ALDIS_FARM1_ACTION_DELIVER, ALDIS_FARM1_INPUT_BUFFER_RELEASED, ALDIS_FARM1_INPUT_FRAME_AD,
@@ -1659,12 +1659,14 @@ fn farm1_handle(t: &mut Tally) {
         kind: ALDIS_FARM1_INPUT_FRAME_AD,
         sequence_number: 0,
         v_star: 0,
+        vc_id: bb(1),
         buffer_available: 1,
         no_rf_available: 0,
         no_bit_lock: 0,
         data: fdu.as_ptr(),
         data_len: fdu.len(),
     };
+    let foreign = aldis_farm1_input_t { vc_id: bb(2), ..ad };
     let release = aldis_farm1_input_t {
         kind: ALDIS_FARM1_INPUT_BUFFER_RELEASED,
         data: null(),
@@ -1682,6 +1684,18 @@ fn farm1_handle(t: &mut Tally) {
     // it; every other pointer is to a live local, and the input's data to a live array.
     unsafe {
         t.check(aldis_farm1_init(h, &raw const cfg, &raw mut det) == ALDIS_OK);
+        // A frame of another Virtual Channel is refused and changes nothing (COP-037).
+        t.check(
+            aldis_farm1_step(
+                h,
+                &raw const foreign,
+                bb(0),
+                out.as_mut_ptr(),
+                out.len(),
+                &raw mut actions,
+                &raw mut det,
+            ) == ALDIS_ERR_UNKNOWN_CHANNEL,
+        );
         t.check(
             aldis_farm1_step(
                 h,

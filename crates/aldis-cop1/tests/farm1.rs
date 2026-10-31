@@ -45,6 +45,7 @@ fn fresh(v_r: u8) -> Farm1 {
 
 const fn ad(n_s: u8, buffer_available: bool) -> Farm1Input<'static> {
     Farm1Input::Frame {
+        vc_id: TcVcId::new(5).unwrap(),
         frame: Farm1Frame::Ad {
             sequence_number: seq(n_s),
             data: &DATA,
@@ -55,6 +56,7 @@ const fn ad(n_s: u8, buffer_available: bool) -> Farm1Input<'static> {
 
 const fn bd() -> Farm1Input<'static> {
     Farm1Input::Frame {
+        vc_id: TcVcId::new(5).unwrap(),
         frame: Farm1Frame::Bd { data: &DATA },
         buffer_available: true,
     }
@@ -62,6 +64,7 @@ const fn bd() -> Farm1Input<'static> {
 
 const fn bc(command: Option<ControlCommand>) -> Farm1Input<'static> {
     Farm1Input::Frame {
+        vc_id: TcVcId::new(5).unwrap(),
         frame: Farm1Frame::Bc { command },
         buffer_available: true,
     }
@@ -381,6 +384,39 @@ fn every_cell_of_table_6_1_through_step() {
     }
     // Ten events from every reachable start of S1 (2), S2 (1), and S3 (3).
     assert_eq!(cells, 10 * (2 + 1 + 3));
+}
+
+#[test]
+fn a_frame_of_another_virtual_channel_is_refused_and_changes_nothing() {
+    // req: COP-037, API-058
+    let other = TcVcId::new(6).unwrap();
+    for state in STATES {
+        for f in starts(state) {
+            // E1 to E8, and E9 with a Type-BC frame of an unknown command, are the frames.
+            for event in &EVENTS[..8] {
+                let Farm1Input::Frame {
+                    frame,
+                    buffer_available,
+                    ..
+                } = input_for(&f, *event)
+                else {
+                    panic!("E1 to E8 are frames");
+                };
+                let foreign = Farm1Input::Frame {
+                    vc_id: other,
+                    frame,
+                    buffer_available,
+                };
+                let mut out = [0u8; 16];
+                let err = f.step(foreign, NOW, &mut out).unwrap_err();
+                assert_eq!(
+                    (err.kind(), err.field()),
+                    (ErrorKind::UnknownChannel, Some(field::VC_ID))
+                );
+                assert_eq!(out, [0u8; 16], "nothing is written");
+            }
+        }
+    }
 }
 
 #[test]

@@ -226,18 +226,18 @@ fn farm1(u: &mut Unstructured<'_>) -> Result<()> {
         let class: u8 = u.int_in_range(0..=6)?;
         let mut bc_known = false;
         let input = match class {
-            0 | 1 => Farm1Input::Frame {
+            0 | 1 => Farm1Input::Frame { vc_id: TcVcId::new(VCID).unwrap(),
                 frame: Farm1Frame::Ad {
                     sequence_number: FrameSeqNum::new(n_s),
                     data: &data,
                 },
                 buffer_available,
             },
-            2 => Farm1Input::Frame {
+            2 => Farm1Input::Frame { vc_id: TcVcId::new(VCID).unwrap(),
                 frame: Farm1Frame::Bd { data: &data },
                 buffer_available,
             },
-            3 => Farm1Input::Frame {
+            3 => Farm1Input::Frame { vc_id: TcVcId::new(VCID).unwrap(),
                 frame: Farm1Frame::Bc {
                     command: match u.int_in_range(0..=2)? {
                         0 => Some(ControlCommand::Unlock),

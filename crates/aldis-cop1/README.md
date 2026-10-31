@@ -16,6 +16,7 @@ let config = Farm1Config {
 let farm = Farm1::new(config, FrameSeqNum::new(0));
 let fdu = [0xA1, 0xB2];
 let input = Farm1Input::Frame {
+    vc_id: TcVcId::new(1).expect("VCID 1"),
     frame: Farm1Frame::Ad { sequence_number: FrameSeqNum::new(0), data: &fdu },
     buffer_available: true,
 };

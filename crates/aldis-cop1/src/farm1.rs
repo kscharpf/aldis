@@ -277,6 +277,9 @@ impl<'a> Farm1Frame<'a> {
 pub enum Farm1Input<'a> {
     /// A valid frame arrives: E1 to E8, or E9 for a Type-BC frame with an unknown command.
     Frame {
+        /// The Virtual Channel Identifier of the frame; FARM-1 refuses a frame whose VCID is not
+        /// that of its [`Farm1Config::vc_id`] (232.1 §3.3.1, §6.1.1; COP-037).
+        vc_id: TcVcId,
         /// The frame.
         frame: Farm1Frame<'a>,
         /// Whether the caller has a buffer for the FDU of an accepted Type-AD frame; it
@@ -481,6 +484,9 @@ impl Farm1 {
     ///   N(S) = V(R) and a buffer available while the state is S2 (Wait), because the caller
     ///   is to feed [`Farm1Input::BufferReleased`] before it offers a buffer again (COP-005,
     ///   COP-033).
+    /// - `UnknownChannel` (`vc_id`) for a frame of another Virtual Channel than the configured
+    ///   one: one FARM-1 serves one VC, so it neither accepts nor discards the frame, and no event
+    ///   of Table 6-1 applies (232.1 §3.3.1, §6.1.1; COP-037).
     /// - `BufferTooSmall` (detail `Needed`) if the input delivers an FDU longer than `out`
     ///   (API-061).
     ///
@@ -498,7 +504,11 @@ impl Farm1 {
             fdu: &[],
         };
         match input {
+            Farm1Input::Frame { vc_id, .. } if vc_id != self.config.vc_id => {
+                Err(Error::new(ErrorKind::UnknownChannel).with_field(field::VC_ID))
+            }
             Farm1Input::Frame {
+                vc_id: _,
                 frame,
                 buffer_available,
             } => match frame {
