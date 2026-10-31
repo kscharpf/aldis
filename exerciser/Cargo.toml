@@ -20,7 +20,7 @@ bench = false
 
 [dependencies]
 aldis-aos = { path = "../crates/aldis-aos", default-features = false }
-aldis-cop1 = { path = "../crates/aldis-cop1", default-features = false }
+aldis-cop1 = { path = "../crates/aldis-cop1", default-features = false, features = ["uslp"] }
 aldis-core = { path = "../crates/aldis-core", default-features = false, features = ["crc-table", "test-hooks"] }
 aldis-epp = { path = "../crates/aldis-epp", default-features = false }
 # The C ABI (M2 plan D16), with its panic handler for the link check: it calls the undefined
