@@ -2138,7 +2138,7 @@ mod tests {
     fn a_frame_a_decision_added_is_emitted_again_by_encoding_it() {
         // req: COP-011, API-061
         let f = active();
-        let mut d = Decision::start(&f, &FDU);
+        let d = Decision::start(&f, &FDU);
         let mut out = [0u8; 2 * F];
         let mut used = 0;
         let entry = |origin| Sent {
