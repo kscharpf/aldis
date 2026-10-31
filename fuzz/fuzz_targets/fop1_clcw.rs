@@ -1,4 +1,4 @@
-//! Arbitrary CLCW words fed to an active FOP-1 (COP-010, COP-012, COP-041): each 32-bit word is
+//! Arbitrary CLCW words fed to a FOP-1 in every state (COP-010, COP-012, COP-041): each 32-bit word is
 //! decoded by `Clcw::decode` and, when it decodes, enters the FOP-1 as `Fop1Input::Clcw`, else as
 //! `Fop1Input::InvalidClcw` (E1 to E15, E101 to E103 of Table 5-1). A CLCW of another Virtual
 //! Channel is refused with `UnknownChannel` and nothing else; every accepted word leaves a state

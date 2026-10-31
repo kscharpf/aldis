@@ -123,6 +123,7 @@ fn run(u: &mut Unstructured<'_>) -> Result<()> {
     let mut confirmed: Vec<u32> = Vec::new();
     let (mut now, mut next, mut handle, mut suspended) = (0_u64, 0_u8, 1_000_u32, false);
     let mut buffer_free = true;
+    let mut reinitiated = false;
     ground(
         &mut g,
         Fop1Input::Directive {
@@ -256,10 +257,26 @@ fn run(u: &mut Unstructured<'_>) -> Result<()> {
                 }
                 if g.state() == Fop1State::Initial && !suspended {
                     // After an Alert: initiate again, with an Unlock when the FARM-1 is in
-                    // Lockout, and resubmit from the first FDU not delivered. Initiate AD with
-                    // Set V(R) is not used: a Type-BC frame the link duplicates can arrive after
-                    // later deliveries and set V(R) back, which the harness cannot tell from a
-                    // fault of the engines.
+                    // Lockout, and resubmit from the first FDU not delivered. V(S) is first set to
+                    // the V(R) of the FARM-1 by the Set V(S) directive (E35, no frame on the
+                    // link). Initiate AD with Set V(R) is not used: a Type-BC frame the link
+                    // duplicates can arrive after later deliveries and set V(R) back, which the
+                    // harness cannot tell from a fault of the engines.
+                    handle += 1;
+                    reinitiated = true;
+                    forward.clear();
+                    ret.clear();
+                    ground(
+                        &mut g,
+                        Fop1Input::Directive {
+                            handle,
+                            directive: Directive::SetVs { v_s: flight.v_r() },
+                        },
+                        now,
+                        &mut forward,
+                        &mut confirmed,
+                        &mut suspended,
+                    );
                     handle += 1;
                     let directive = if flight.lockout_flag() {
                         Directive::InitiateAdWithUnlock
@@ -305,7 +322,17 @@ fn run(u: &mut Unstructured<'_>) -> Result<()> {
         );
         // The FDUs confirmed are in order, and each was delivered (an Alert purges the FDUs it
         // leaves unconfirmed, so a delivered FDU may never be confirmed).
-        assert!(confirmed.windows(2).all(|w| w[0] < w[1]));
+        if reinitiated {
+            assert!(confirmed.windows(2).all(|w| w[0] < w[1]));
+        } else {
+            // Until the first Alert, exactly the FDUs 0, 1, 2, ... are confirmed.
+            assert!(
+                confirmed
+                    .iter()
+                    .enumerate()
+                    .all(|(i, h)| usize::try_from(*h) == Ok(i))
+            );
+        }
         assert!(
             confirmed
                 .last()
