@@ -29,11 +29,11 @@ justification = "src/fop1.rs — arms and error returns that no input reaches, e
 crate = "aldis-cop1"
 metric = "lines"
 count = 3
-justification = "src/fop1.rs:556 (the arm of `encode_at` for an error of `encode` other than BufferTooSmall), :1345 (`commit`, `split_first_mut` of a position below `Q`), :1367 (`commit`, a new Type-AD entry without its FDU): each is a branch that the loop bound or the decision's own earlier encode of the same frame excludes, and that is left as a skip and not a default (GEN-020)."
+justification = "`encode_at` (the arm of `Fop1Target::encode_at` for an error of `encode` other than BufferTooSmall), `Fop1::commit` (the `else` of `split_first_mut` for a position below `Q`, and the arm for a new Type-AD entry without its FDU): each is a branch that the loop bound or the decision's own earlier encode of the same frame excludes, and that is left as a skip and not a default (GEN-020)."
 
 [[waiver]]
 crate = "aldis-cop1"
 metric = "branches"
 count = 1
-justification = "src/fop1.rs:1344 — `commit`: the `split_first_mut` of the slice from position `p`, which is below `Q` by the loop bound, has no `None` case."
+justification = "`Fop1::commit` in src/fop1.rs: the `split_first_mut` of the slice from position `p`, which is below `Q` by the loop bound, has no `None` case."
 

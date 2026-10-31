@@ -5,7 +5,7 @@
 //! `Transmission_Count`, `Suspend_State`, and the managed parameters (232.1 §5.1, §7.2).
 //! The step of API-057 is the pair [`Fop1::decide`] and [`Fop1::commit`] (API-058, RS-022),
 //! because copying the master copies for every input is too costly (OI-45): `decide` takes the
-//! state by `&self`, one [`Fop1Input`], and `now`, and returns a [`Decision`] with the
+//! state by `&self`, one [`Fop1Input`], and `now`, and returns a [`Fop1Decision`] with the
 //! [`Fop1Actions`] of the cell of Table 5-1 ([`FOP1_TABLE`]), in the order the cell lists them,
 //! and the change to the small part of the state; `commit` applies it in place and cannot fail.
 //! The transition reads the table with an exhaustive `match` and no wildcard arm (COP-003,
@@ -889,13 +889,14 @@ pub type Fop1Actions<const N: usize> = Actions<Fop1Output, N>;
 /// the input, which [`Fop1::commit`] copies to the `Wait_Queue` or into a new master copy, so
 /// that the input outlives the decision.
 ///
-/// A decision is made for one state of one engine and consumed once: committing it to another
-/// engine, or after the engine has changed, gives a state that no input produces. The engine's
-/// own methods never do that, and the borrow of the input keeps the decision from outliving the
-/// FDU it refers to.
+/// A decision is not `Clone`, and [`Fop1::commit`] takes it by value, so it is applied at most
+/// once. It is made for one state of one engine: committing it to another engine, or after the
+/// engine has changed, gives a state that no input produces. The type does not stop that (the
+/// borrow of the input keeps the decision from outliving the FDU it refers to, not from
+/// outliving the state).
 #[must_use]
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Decision<'a, const Q: usize, const F: usize, const N: usize> {
+#[derive(Debug)]
+pub struct Fop1Decision<'a, const Q: usize, const F: usize, const N: usize> {
     core: Core<Q>,
     actions: Fop1Actions<N>,
     fdu: &'a [u8],
@@ -1269,9 +1270,9 @@ impl<const Q: usize, const F: usize, const N: usize> Fop1<Q, F, N> {
         input: Fop1Input<'a>,
         now: Instant,
         out: &mut [u8],
-    ) -> Result<Decision<'a, Q, F, N>> {
+    ) -> Result<Fop1Decision<'a, Q, F, N>> {
         let Some((event, ctx)) = self.classify(input, now)? else {
-            return Ok(Decision::start(self, &[]));
+            return Ok(Fop1Decision::start(self, &[]));
         };
         self.decide_cell(event, &ctx, out)
     }
@@ -1292,7 +1293,7 @@ impl<const Q: usize, const F: usize, const N: usize> Fop1<Q, F, N> {
         input: Fop1Input<'a>,
         now: Instant,
         out: &mut [u8],
-    ) -> Result<Decision<'a, Q, F, N>> {
+    ) -> Result<Fop1Decision<'a, Q, F, N>> {
         let mut ctx = Context {
             event,
             now,
@@ -1325,8 +1326,8 @@ impl<const Q: usize, const F: usize, const N: usize> Fop1<Q, F, N> {
         event: Fop1Event,
         ctx: &Context<'a>,
         out: &mut [u8],
-    ) -> Result<Decision<'a, Q, F, N>> {
-        let mut decision = Decision::start(self, ctx.fdu);
+    ) -> Result<Fop1Decision<'a, Q, F, N>> {
+        let mut decision = Fop1Decision::start(self, ctx.fdu);
         decision.run(self, event, ctx, out)?;
         Ok(decision)
     }
@@ -1334,9 +1335,9 @@ impl<const Q: usize, const F: usize, const N: usize> Fop1<Q, F, N> {
     /// Applies `decision` to the state in place and returns its actions (API-058, RS-022).
     ///
     /// It cannot fail: [`decide`](Self::decide) did every check. The decision must be one of
-    /// this engine in its current state (see [`Decision`]).
-    pub fn commit(&mut self, decision: Decision<'_, Q, F, N>) -> Fop1Actions<N> {
-        let Decision { core, actions, fdu } = decision;
+    /// this engine in its current state (see [`Fop1Decision`]).
+    pub fn commit(&mut self, decision: Fop1Decision<'_, Q, F, N>) -> Fop1Actions<N> {
+        let Fop1Decision { core, actions, fdu } = decision;
         // The queue keeps its order, so an entry never moves to a later position, and the
         // positions in ascending order read each master copy before its position is written.
         for (p, sent) in core.sent.iter().enumerate() {
@@ -1397,10 +1398,10 @@ impl<const Q: usize, const F: usize, const N: usize> Fop1<Q, F, N> {
     }
 }
 
-impl<'a, const Q: usize, const F: usize, const N: usize> Decision<'a, Q, F, N> {
+impl<'a, const Q: usize, const F: usize, const N: usize> Fop1Decision<'a, Q, F, N> {
     /// The decision that changes nothing: the small state of `base`, no action.
-    fn start(base: &Fop1<Q, F, N>, fdu: &'a [u8]) -> Decision<'a, Q, F, N> {
-        Decision {
+    fn start(base: &Fop1<Q, F, N>, fdu: &'a [u8]) -> Fop1Decision<'a, Q, F, N> {
+        Fop1Decision {
             core: base.core.clone(),
             actions: Actions::new(),
             fdu,
@@ -1967,7 +1968,7 @@ mod tests {
     use std::vec::Vec;
 
     use super::{
-        Context, Decision, FduSource, Fop1, Fop1Actions, Fop1Channel, Fop1Config, Fop1Input,
+        Context, FduSource, Fop1, Fop1Actions, Fop1Channel, Fop1Config, Fop1Decision, Fop1Input,
         Fop1Output, Fop1Target, Origin, Sent, SentKind, cell, fop1_max_actions,
     };
     use crate::fop1_table::{EVENT_COUNT, FOP1_TABLE, Fop1Action, STATE_COUNT};
@@ -2138,7 +2139,7 @@ mod tests {
     fn a_frame_a_decision_added_is_emitted_again_by_encoding_it() {
         // req: COP-011, API-061
         let f = active();
-        let d = Decision::start(&f, &FDU);
+        let d = Fop1Decision::start(&f, &FDU);
         let mut out = [0u8; 2 * F];
         let mut used = 0;
         let entry = |origin| Sent {
@@ -3000,7 +3001,7 @@ mod tests {
                                 list.push(Fop1Output::Abort).unwrap();
                             }
                             let mut big = [0u8; F];
-                            let mut a = Decision::start(&start, &FDU);
+                            let mut a = Fop1Decision::start(&start, &FDU);
                             a.actions = list;
                             // A push without room fails the cell; none is dropped (API-083).
                             if a.run(&start, event, &ctx, &mut big).is_ok() {
@@ -3009,7 +3010,7 @@ mod tests {
                             }
                         }
                         // No output area: every transmit fails.
-                        let mut b = Decision::start(&start, &FDU);
+                        let mut b = Fop1Decision::start(&start, &FDU);
                         if b.run(&start, event, &ctx, &mut []).is_ok() {
                             assert!(
                                 b.actions

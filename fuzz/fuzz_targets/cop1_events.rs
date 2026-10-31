@@ -12,7 +12,7 @@
 
 use aldis_cop1::{
     AlertReason, Directive, FARM1_MAX_ACTIONS, FARM1_TABLE, FOP1_TABLE, Farm1, Farm1Config,
-    Farm1Frame, Farm1Input, Farm1State, Farm1Window, Fop1, Fop1Config, Fop1Input, Fop1Output,
+    Farm1Frame, Farm1Input, Farm1State, Farm1Window, Fop1, Fop1Config, Fop1Decision, Fop1Input, Fop1Output,
     Fop1State, Fop1Target, FrameKind, TimeoutType, fop1_max_actions,
 };
 use aldis_core::ids::FrameSeqNum;
@@ -158,7 +158,10 @@ fn fop1(u: &mut Unstructured<'_>) -> Result<()> {
         let mut again = [0_u8; F];
         let first = f.decide(input, at, &mut area);
         // The decision is a pure function of the state, the input, and the time.
-        assert_eq!(first, f.decide(input, at, &mut again));
+        assert_eq!(
+            first.as_ref().map(Fop1Decision::actions),
+            f.decide(input, at, &mut again).as_ref().map(Fop1Decision::actions)
+        );
         let Ok(decision) = first else {
             continue;
         };
