@@ -1,6 +1,6 @@
 //! Arbitrary CLCW words fed to an active FOP-1 (COP-010, COP-012, COP-041): each 32-bit word is
 //! decoded by `Clcw::decode` and, when it decodes, enters the FOP-1 as `Fop1Input::Clcw`, else as
-//! `Fop1Input::InvalidClcw` (E1 to E14, E101 to E103 of Table 5-1). A CLCW of another Virtual
+//! `Fop1Input::InvalidClcw` (E1 to E15, E101 to E103 of Table 5-1). A CLCW of another Virtual
 //! Channel is refused with `UnknownChannel` and nothing else; every accepted word leaves a state
 //! that Table 5-1 reaches by a CLCW event from the state before; the decision is a pure function
 //! of the state, the input, and the time; the `Sent_Queue` never grows on a CLCW, and N(R) moves
@@ -21,6 +21,7 @@ use aldis_cop1::{
     FrameKind, TimeoutType, fop1_max_actions,
 };
 use aldis_core::ErrorKind;
+use aldis_core::ids::FrameSeqNum;
 use aldis_core::time::{Duration, Instant};
 use aldis_tc::{Clcw, TcSpacecraftId, TcVcId};
 use core::num::NonZeroU8;
@@ -33,7 +34,7 @@ const N: usize = fop1_max_actions(Q);
 const VCID: u8 = 5;
 
 /// Applies `input` as the harness of a lower layer would: decides, commits, and answers each
-/// Transmit with an accepted Transmit Response. Returns whether the first decision succeeded.
+/// Transmit with an accepted Transmit Response. A refused input changes nothing (API-058).
 fn drive(f: &mut Rig<Q, F, N>, input: Fop1Input<'_>, at: Instant) {
     let mut area = [0_u8; F];
     let Ok(decision) = f.decide(input, at, &mut area) else {
@@ -110,12 +111,17 @@ fn run(u: &mut Unstructured<'_>) -> Result<()> {
             2 => {
                 drive(&mut f, Fop1Input::Timeout, at(now));
             }
-            3 if f.state() == Fop1State::Initial => {
+            3 => {
                 handle += 1;
-                let directive = if u.arbitrary()? {
-                    Directive::InitiateAdWithoutClcwCheck
-                } else {
-                    Directive::ResumeAd
+                // Initiate AD with and without the CLCW check and with Set V(R) reach S4 and S5
+                // as well as S1; the cells refused in the current state change nothing.
+                let directive = match u.int_in_range(0..=3)? {
+                    0 => Directive::InitiateAdWithoutClcwCheck,
+                    1 => Directive::InitiateAdWithClcwCheck,
+                    2 => Directive::InitiateAdWithSetVr {
+                        v_r: FrameSeqNum::new(u.arbitrary()?),
+                    },
+                    _ => Directive::ResumeAd,
                 };
                 drive(&mut f, Fop1Input::Directive { handle, directive }, at(now));
             }
@@ -148,7 +154,7 @@ fn run(u: &mut Unstructured<'_>) -> Result<()> {
                 let actions = after.commit(decision);
                 assert!(actions.len() <= N);
                 let events: &[usize] = if decoded.is_some() {
-                    &[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 46, 47, 48]
+                    &[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 46, 47, 48]
                 } else {
                     &[14]
                 };

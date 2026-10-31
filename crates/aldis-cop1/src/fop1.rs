@@ -2314,7 +2314,7 @@ mod tests {
 
     #[test]
     fn a_timeout_counts_the_transmission_of_the_retransmitted_frames() {
-        // req: COP-012, API-056
+        // req: COP-011, COP-013, API-056
         let mut f = active();
         let fdu = [0xA0u8, 9];
         let request = Fop1Input::RequestAd {
@@ -2325,6 +2325,7 @@ mod tests {
         assert_eq!(f.transmission_count(), 1);
         let late = f.next_deadline().unwrap().as_micros();
         let sent = frames_of(&mut f, Fop1Input::Timeout, late);
+        assert_eq!(sent.len(), 1);
         assert!(sent.iter().all(|(_, retransmission, _)| *retransmission));
         assert_eq!(f.transmission_count(), 2);
     }

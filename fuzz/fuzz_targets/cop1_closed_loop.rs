@@ -60,9 +60,9 @@ fn ground(
             return;
         };
         let mut area = [0_u8; F];
-        let Ok(decision) = f.decide(input, Instant::from_micros(now), &mut area) else {
-            continue;
-        };
+        let decision = f
+            .decide(input, Instant::from_micros(now), &mut area)
+            .unwrap();
         for a in f.commit(decision).iter() {
             match a {
                 Fop1Output::Transmit { kind, frame, .. } => {
@@ -139,7 +139,7 @@ fn run(u: &mut Unstructured<'_>) -> Result<()> {
         now += u.int_in_range(0..=1_500)?;
         match u.int_in_range(0..=7)? {
             // Submit the next FDU.
-            0 if g.state() != Fop1State::Initial && !g.wait_queue_occupied() => {
+            0 if g.state() < Fop1State::InitializingWithoutBcFrame && !g.wait_queue_occupied() => {
                 let data = fdu(next);
                 ground(
                     &mut g,
@@ -254,6 +254,31 @@ fn run(u: &mut Unstructured<'_>) -> Result<()> {
                         &mut suspended,
                     );
                 }
+                if g.state() == Fop1State::Initial && !suspended {
+                    // After an Alert: initiate again, with an Unlock when the FARM-1 is in
+                    // Lockout, and resubmit from the first FDU not delivered. Initiate AD with
+                    // Set V(R) is not used: a Type-BC frame the link duplicates can arrive after
+                    // later deliveries and set V(R) back, which the harness cannot tell from a
+                    // fault of the engines.
+                    handle += 1;
+                    let directive = if flight.lockout_flag() {
+                        Directive::InitiateAdWithUnlock
+                    } else {
+                        Directive::InitiateAdWithoutClcwCheck
+                    };
+                    next = u8::try_from(delivered.len()).unwrap();
+                    // What the links still carry belongs to the stream before the Alert.
+                    forward.clear();
+                    ret.clear();
+                    ground(
+                        &mut g,
+                        Fop1Input::Directive { handle, directive },
+                        now,
+                        &mut forward,
+                        &mut confirmed,
+                        &mut suspended,
+                    );
+                }
                 if suspended && g.state() == Fop1State::Initial {
                     suspended = false;
                     handle += 1;
@@ -278,13 +303,14 @@ fn run(u: &mut Unstructured<'_>) -> Result<()> {
                 .enumerate()
                 .all(|(i, d)| usize::from(*d) == i)
         );
+        // The FDUs confirmed are in order, and each was delivered (an Alert purges the FDUs it
+        // leaves unconfirmed, so a delivered FDU may never be confirmed).
+        assert!(confirmed.windows(2).all(|w| w[0] < w[1]));
         assert!(
             confirmed
-                .iter()
-                .enumerate()
-                .all(|(i, h)| usize::try_from(*h) == Ok(i))
+                .last()
+                .is_none_or(|h| usize::try_from(*h).is_ok_and(|h| h < delivered.len()))
         );
-        assert!(confirmed.len() <= delivered.len());
         assert!(delivered.len() <= usize::from(next));
     }
     Ok(())
