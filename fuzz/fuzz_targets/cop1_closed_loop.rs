@@ -4,7 +4,9 @@
 //! return link carries the CLCWs the FARM-1 reports. At every instant the FDUs the FARM-1
 //! delivered are a gap-free, duplicate-free, in-order prefix of the stream submitted, with their
 //! octets intact, and the FDUs the FOP-1 confirmed are an in-order part of what was delivered
-//! (232.1 §1). Neither engine refuses an input the harness may make, and none panics (GEN-020).
+//! (232.1 §1). The link reorders and duplicates Type-AD frames only (ASM-18: no Type-BC frame
+//! arrives after a Type-AD frame sent after it, and none twice), so an Unlock that the harness
+//! sends after an Alert is valid. Neither engine refuses an input the harness may make, and none panics (GEN-020).
 #![no_main]
 
 #[path = "../../crates/aldis-cop1/tests/common/mod.rs"]
@@ -16,8 +18,8 @@ use common::Rig;
 
 use aldis_cop1::{
     Directive, Farm1, Farm1Config, Farm1Frame, Farm1Input, Farm1Output, Farm1Window, FduKind,
-    Fop1Config, Fop1Input, Fop1Output, Fop1State, Fop1Target, TimeoutType, TransferNotification,
-    fop1_max_actions,
+    Fop1Config, Fop1Input, Fop1Output, Fop1State, Fop1Target, FrameKind, TimeoutType,
+    TransferNotification, fop1_max_actions,
 };
 use aldis_core::ids::FrameSeqNum;
 use aldis_core::security::SecurityLayout;
@@ -48,7 +50,7 @@ fn ground(
     f: &mut Rig<Q, F, N>,
     input: Fop1Input<'_>,
     now: u64,
-    forward: &mut Vec<Vec<u8>>,
+    forward: &mut Vec<(bool, Vec<u8>)>,
     confirmed: &mut Vec<u32>,
     suspended: &mut bool,
 ) {
@@ -66,7 +68,7 @@ fn ground(
         for a in f.commit(decision).iter() {
             match a {
                 Fop1Output::Transmit { kind, frame, .. } => {
-                    forward.push(frame.slice(&area).unwrap().to_vec());
+                    forward.push((*kind == FrameKind::Bc, frame.slice(&area).unwrap().to_vec()));
                     pending.push(Fop1Input::TransmitDone {
                         kind: *kind,
                         accepted: true,
@@ -117,7 +119,7 @@ fn run(u: &mut Unstructured<'_>) -> Result<()> {
         &[],
     )
     .unwrap();
-    let mut forward: Vec<Vec<u8>> = Vec::new();
+    let mut forward: Vec<(bool, Vec<u8>)> = Vec::new();
     let mut ret: Vec<[u8; 4]> = Vec::new();
     let mut delivered: Vec<u8> = Vec::new();
     let mut confirmed: Vec<u32> = Vec::new();
@@ -159,14 +161,17 @@ fn run(u: &mut Unstructured<'_>) -> Result<()> {
                     return Ok(());
                 }
             }
-            // A frame of the forward link arrives (any one: the link reorders), is lost,
-            // duplicated, or corrupted.
+            // A frame of the forward link arrives, is lost, duplicated, or corrupted. The link
+            // reorders and duplicates Type-AD frames only: no Type-BC frame arrives after a
+            // Type-AD frame sent after it, and none arrives twice (ASM-18), so the Type-AD
+            // frames wait for the Type-BC frame sent before them, which may still be lost.
             1 | 2 if !forward.is_empty() => {
-                let i = u.int_in_range(0..=forward.len() - 1)?;
-                let mut bytes = if u.ratio(1, 4)? {
-                    forward[i].clone()
+                let first_bc = forward.iter().position(|(bc, _)| *bc);
+                let i = u.int_in_range(0..=first_bc.unwrap_or(forward.len() - 1))?;
+                let mut bytes = if !forward[i].0 && u.ratio(1, 4)? {
+                    forward[i].1.clone()
                 } else {
-                    forward.remove(i)
+                    forward.remove(i).1
                 };
                 if u.ratio(1, 8)? {
                     continue;
@@ -259,9 +264,7 @@ fn run(u: &mut Unstructured<'_>) -> Result<()> {
                     // After an Alert: initiate again, with an Unlock when the FARM-1 is in
                     // Lockout, and resubmit from the first FDU not delivered. V(S) is first set to
                     // the V(R) of the FARM-1 by the Set V(S) directive (E35, no frame on the
-                    // link). Initiate AD with Set V(R) is not used: a Type-BC frame the link
-                    // duplicates can arrive after later deliveries and set V(R) back, which the
-                    // harness cannot tell from a fault of the engines.
+                    // link), so that Initiate AD with Set V(R) is not needed.
                     handle += 1;
                     reinitiated = true;
                     forward.clear();
