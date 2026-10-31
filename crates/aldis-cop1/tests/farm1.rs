@@ -393,14 +393,18 @@ fn a_frame_of_another_virtual_channel_is_refused_and_changes_nothing() {
     for state in STATES {
         for f in starts(state) {
             // E1 to E8, and E9 with a Type-BC frame of an unknown command, are the frames.
-            for event in &EVENTS[..8] {
+            let frames = EVENTS[..8]
+                .iter()
+                .map(|event| input_for(&f, *event))
+                .chain([bc(None)]);
+            for input in frames {
                 let Farm1Input::Frame {
                     frame,
                     buffer_available,
                     ..
-                } = input_for(&f, *event)
+                } = input
                 else {
-                    panic!("E1 to E8 are frames");
+                    panic!("E1 to E9 here are frames");
                 };
                 let foreign = Farm1Input::Frame {
                     vc_id: other,

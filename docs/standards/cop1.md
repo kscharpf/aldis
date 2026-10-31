@@ -86,7 +86,7 @@ The engine holds no delivery buffer: the buffers of 232.1 §3.3.2 belong to the 
 
 | Input | Events |
 |---|---|
-| `Frame(vc_id, ValidatedTcFrame \| ValidatedUslpFrame, buffer_available: bool)` | E1–E9, or `UnknownChannel` when `vc_id` is not the configured VCID (COP-037; frames must already have passed Frame Validation Checks, TC-021). `buffer_available` selects E1 or E2 for a Type-AD frame with N(S) = V(R) (COP-033). E1 in S2 is the cell Table 6-1 marks "Not applicable": the step fails with `InvalidState` (COP-005), and the caller feeds `BufferReleased` first |
+| `Frame { vc_id: TcVcId, frame: Farm1Frame, buffer_available: bool }`, built from a validated TC frame by `Farm1Input::from_tc` | E1–E9, or `UnknownChannel` when `vc_id` is not the configured VCID (COP-037; frames must already have passed Frame Validation Checks, TC-021). `buffer_available` selects E1 or E2 for a Type-AD frame with N(S) = V(R) (COP-033). E1 in S2 is the cell Table 6-1 marks "Not applicable": the step fails with `InvalidState` (COP-005), and the caller feeds `BufferReleased` first |
 | `InvalidFrame` | E9: a frame the Lower Procedures rejected. A Type-BC frame carrying neither Unlock nor Set V(R) is `Frame` with no command and is E9 too (COP-031) |
 | `BufferReleased` | E10 (COP-033) |
 | `clcw(state) -> Clcw` | E11 (a pure query of the state, any time; not an input) |

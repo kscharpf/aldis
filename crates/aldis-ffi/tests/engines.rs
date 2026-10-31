@@ -16,6 +16,7 @@ use core::ptr::{null, null_mut};
 use aldis_ffi::capacities::{ALDIS_FOP1_MAX_FRAME_OCTETS, ALDIS_FOP1_SENT_QUEUE_FRAMES};
 use aldis_ffi::error::*;
 use aldis_ffi::farm1::*;
+use aldis_ffi::field::ALDIS_FIELD_VC_ID;
 use aldis_ffi::fop1::*;
 
 /// A detail that a failed call must overwrite.
@@ -405,7 +406,10 @@ fn a_farm1_step_refuses_a_frame_of_another_virtual_channel() {
                 step(&mut s, input, &mut out, &mut actions, &mut d),
                 ALDIS_ERR_UNKNOWN_CHANNEL
             );
-            assert_eq!(d.kind, ALDIS_ERR_UNKNOWN_CHANNEL);
+            assert_eq!(
+                (d.kind, d.field),
+                (ALDIS_ERR_UNKNOWN_CHANNEL, ALDIS_FIELD_VC_ID)
+            );
         }
         // A VCID above 63 is out of range.
         let wide = aldis_farm1_input_t {
@@ -415,6 +419,10 @@ fn a_farm1_step_refuses_a_frame_of_another_virtual_channel() {
         assert_eq!(
             step(&mut s, wide, &mut out, &mut actions, &mut d),
             ALDIS_ERR_OUT_OF_RANGE
+        );
+        assert_eq!(
+            (d.kind, d.field),
+            (ALDIS_ERR_OUT_OF_RANGE, ALDIS_FIELD_VC_ID)
         );
         // The other kinds do not read the field.
         let release = aldis_farm1_input_t {

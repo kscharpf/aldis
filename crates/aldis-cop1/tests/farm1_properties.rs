@@ -218,6 +218,23 @@ proptest! {
     }
 
     #[test]
+    fn a_tc_frame_is_refused_by_the_farm1_of_another_vc(f in tc_frame(), w in window()) {
+        // req: COP-037, COP-002, API-058, VER-023
+        let frame = validate_frame(&f.octets, &f.channels.table).unwrap();
+        let input = Farm1Input::from_tc(&frame, true);
+        let vc = frame.as_frame().vc_id();
+        let mut out = [0u8; 4096];
+        let other = TcVcId::new((vc.get() + 1) % 64).unwrap();
+        let farm = |vc_id| Farm1::new(Farm1Config { vc_id, ..config(w) }, FrameSeqNum::new(0));
+        let err = farm(other).step(input, NOW, &mut out).unwrap_err();
+        prop_assert_eq!(err.kind(), ErrorKind::UnknownChannel);
+        prop_assert!(out.iter().all(|b| *b == 0));
+        // Its own channel's FARM-1 does not refuse it for the channel.
+        let own = farm(vc).step(input, NOW, &mut out);
+        prop_assert!(own.map_or_else(|e| e.kind() != ErrorKind::UnknownChannel, |_| true));
+    }
+
+    #[test]
     fn tc_frames_map_to_farm1_frames(f in tc_frame()) {
         // req: COP-031, COP-002, VER-023
         let frame = validate_frame(&f.octets, &f.channels.table).unwrap();

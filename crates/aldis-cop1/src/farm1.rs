@@ -302,6 +302,25 @@ pub enum Farm1Input<'a> {
     },
 }
 
+impl<'a> Farm1Input<'a> {
+    /// The frame input of a validated TC frame: its Virtual Channel Identifier, the frame
+    /// FARM-1 reads from it ([`Farm1Frame::from_tc`]), and `buffer_available` (232.0 §4.1.2.5;
+    /// COP-037, COP-033, API-016).
+    ///
+    /// Taking the VCID from the validated frame keeps it from being supplied by hand.
+    #[must_use]
+    pub const fn from_tc(
+        validated: &ValidatedTcFrame<'a>,
+        buffer_available: bool,
+    ) -> Farm1Input<'a> {
+        Farm1Input::Frame {
+            vc_id: validated.as_frame().vc_id(),
+            frame: Farm1Frame::from_tc(validated),
+            buffer_available,
+        }
+    }
+}
+
 /// A notification of FARM-1 to the caller (API-083, COP-004, COP-036).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Farm1Notify {
