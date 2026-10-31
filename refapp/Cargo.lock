@@ -4,14 +4,14 @@ version = 4
 
 [[package]]
 name = "aldis"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "aldis-core",
 ]
 
 [[package]]
 name = "aldis-core"
-version = "0.3.0"
+version = "0.4.0"
 
 [[package]]
 name = "dyn-clone"

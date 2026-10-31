@@ -3,7 +3,7 @@
 **Goal:** a complete, verified implementation of CCSDS 232.1-B-2 COP-1 in `aldis-cop1` (FOP-1 and FARM-1 engines as deterministic sans-I/O state machines with state tables represented as data), closed-loop testing across simulated links, blind conformance vectors covering every cell, C ABI handles in `aldis-ffi`, and resolution of long-lived engine state SEU hardening. Verified to the project standard: 100 % coverage, bare-metal panic-freedom, fuzzing, mutation testing, worst-case stack measurement, and hazard analysis.
 **Roadmap entry:** [08-roadmap.md](../08-roadmap.md) §1 · **Builds on:** [M2](m2-frame-codecs.md) (`v0.3.0-m2`) · **Release:** `v0.4.0-m3`
 
-**Status: exit in review.** Entry gate: M2 (roadmap §1), met by PR #138; decisions D1–D13 (§2); one exit criterion is not met (§4).
+**Status: complete.** Entry gate: M2 (roadmap §1), met by PR #138; decisions D1–D13 (§2); every exit criterion met (§4); released as `v0.4.0-m3`.
 
 | WP | State | PRs | Notes |
 |---|---|---|---|
@@ -18,7 +18,7 @@
 | WP-5 Closed loop & carry-overs | merged | #195, #196 | Closed-loop simulated link harness `tests/closed_loop.rs` (COP-040), event-sequence properties and the `cop1_events` fuzz target source (COP-041; registered in `fuzz/Cargo.toml` and the nightly matrix by WP-7), OI-47 `max_fill` in the TC and USLP delimiters (ABI 0.8; tested in Rust, FFI, and exerciser code, no vector case, maintainer 2026-10-30), D13 closed: `VcTable::new` already enforces USLP-012 and released vector `uslp-cfg-055` pins its order. WP-5b: the FOP-1 USLP frame target (COP-010, USLP-013) |
 | WP-6 C ABI handles | merged | #201 | `aldis-ffi`: `aldis_fop1_*`, `aldis_farm1_*`, opaque handles (CABI-030…033, CABI-040), limits, exerciser group, header |
 | WP-7 Verification gates & hazards | merged | #204, #205, #206 | 100 % coverage, mutants, 3 fuzz targets (`cop1_events` of WP-5 covers `fop1_events` and `farm1_events`, a judgement call of the WP-7 agent; all three registered), stack bounds, QEMU ×3 exerciser, COP-1 hazard analysis, assurance case |
-| WP-8 Docs, trace, release | in progress | #211 | `--scope m3 --strict`, docs, RS-015 citations; the release `v0.4.0-m3` is the maintainer's, after the open criteria of §4 |
+| WP-8 Docs, trace, release | merged | #211 | `--scope m3 --strict`, docs, RS-015 citations; the release `v0.4.0-m3` is the maintainer's, after the open criteria of §4 |
 
 A pull request that starts or merges a work package changes only its row (roadmap §6 rule 1).
 
@@ -148,7 +148,7 @@ Milestone 3 is complete when every item below is green on `main`. The results co
 | C ABI handles | CABI-030…033, CABI-040, API-082 | **Met.** Traced (#201); `aldis_fop1_*` and `aldis_farm1_*` in the generated header; the C ABI scenarios of the exerciser |
 | Panic freedom & resources | VER-010, VER-011, GEN-020…024 | **Met on the verify record of #205's head** (`7eda831`, run 41229142183): gating checks `stack`, the three exerciser targets, and the link check passed. The record must be read again on the head of the exit pull request |
 | Portability | GEN-005…007, VER-030, VER-031 | **Met on the same record**: `no-std-*`, `features`, `big-endian`, `layers` |
-| Verification gates | VER-022…025, VER-054 | **Partly met.** Coverage at 100 % for `aldis-cop1` (VER-024) and the mutants triaged ([mutants-triage.md](../verification/mutants-triage.md), VER-025) in #205. **Not met: every fuzz target one CPU-hour (VER-022).** The targets `cop1_events`, `cop1_closed_loop`, and `fop1_clcw` were registered in the nightly matrix on 2026-10-31 (#205, `72bcb50`), after the last nightly run (2026-10-31 09:45 UTC); they have 0 nightly hours, and a night runs each for 600 s. Needs six nightly runs, or one `workflow_dispatch` of `nightly.yml` with `fuzz-seconds` = 3600 (maintainer or coordinator), then their results recorded here |
+| Verification gates | VER-022…025, VER-054 | **Met.** Coverage at 100 % for `aldis-cop1` (VER-024) and the mutants triaged ([mutants-triage.md](../verification/mutants-triage.md), VER-025) in #205. Every fuzz target ran one CPU-hour without a crash (VER-022): `cop1_events`, `cop1_closed_loop`, and `fop1_clcw` in the `nightly.yml` run 41233541592 with `fuzz-seconds` = 3600 (2026-10-31) |
 | Vectors and trace | TV-001…003, TV-010…012, TV-020, TV-021, TV-023, VER-020, VER-021 | **Met.** `trace --scope m3 --strict` passes (WP-8); the scenarios validate against `engine-scenario.schema.json`; the blind Python model `test-vectors/models/cop1.py` is the cross-check (#183, #190) |
 | Hazards & assurance case | VER-065, VER-066 | **Met.** [hazards/cop1.md](../verification/hazards/cop1.md) (#204, #206, #207); the assurance case update (#204); `assurance --strict` runs in `cargo xtask ci` |
 | Delimiter fill & USLP checks | OI-47, USLP-002, TC-020, USLP-015 | **Met.** Fill bound `max_fill` in the TC and USLP delimiters, ABI 0.8 (#195, #196); OI-47 resolved |

@@ -4,9 +4,13 @@ All notable changes to Aldis are recorded here. The format follows [Keep a Chang
 
 ## [Unreleased]
 
-Generated at release: `cargo xtask changelog` lists the pull requests merged after the base commit below, from their titles (conventional commits: `feat` is Added, `fix` is Fixed, `perf`, `refactor`, and any `!` are Changed, with **Breaking:** for `!`; `docs`, `chore`, `test`, `ci`, and `build` are not listed); `cargo xtask changelog release <version> <YYYY-MM-DD>` writes the section. The entries below were folded from the per-pull-request fragments that preceded the generator.
+Generated at release: `cargo xtask changelog` lists the pull requests merged after the base commit below, from their titles (conventional commits: `feat` is Added, `fix` is Fixed, `perf`, `refactor`, and any `!` are Changed, with **Breaking:** for `!`; `docs`, `chore`, `test`, `ci`, and `build` are not listed); `cargo xtask changelog release <version> <YYYY-MM-DD>` writes the section.
 
-<!-- changelog-base: 678afe18e939720643714dba5e88e16d2de4064e -->
+<!-- changelog-base: 945701a978603ce01530fe034f7676d48fba5745 -->
+
+## [0.4.0-m3] — 2026-10-31
+
+Milestone 3: COP-1 (FOP-1 and FARM-1 engines, their C ABI, hazard analysis).
 
 ### Added
 - `cargo xtask check`: format, clippy, tests, the bare-metal clippy build, and `cargo xtask ci`, plus the extras of each touched directory, in one command.
@@ -140,6 +144,38 @@ Generated at release: `cargo xtask changelog` lists the pull requests merged aft
 - `docs/profiles/c-abi.md`: two names of the USLP non-truncated discard that the header no longer declares (`ALDIS_USLP_REASON_NON_TRUNCATED_FRAME_NOT_ALLOWED`, `ALDIS_USLP_DELIMITED_NON_TRUNCATED_NOT_ALLOWED`) are now the discard reason `ALDIS_USLP_DISCARD_NON_TRUNCATED_FRAME_NOT_ALLOWED`, and the naming example `aldis_spp_header_t` is `aldis_spp_packet_t`.
 - Dangling names in the hazard analysis, the assurance evidence rules, and the USLP standard (`aldis_tc_stream_next`, `truncated_frame_len`), and mentions of the removed `resume` and C two-phase writers.
 - `cargo xtask sana check-live` and `sana import` follow the pager of a SANA registry page (25 rows a page; the `per_page` query is ignored), sort the rows by value, and drop duplicates. The nightly job `sana-registries` failed on the 32 records of `uslp_protocol_id` (#155). Fetching fails only without data; the comparison with the snapshot is the check.
+
+### Added
+- intake: unified frame intake stream for TC and USLP (#151)
+- cop1: FARM-1 engine as a pure step function (M3 WP-3) (#162)
+- ffi: lend engine state in place from caller storage (#168)
+- codecs: frame finishing typestate in the codec writers (RS-023) (#180)
+- typed decode results (H2, H3, RS-023 receiving half) (#184)
+- Implement FOP-1 as a step function (#193)
+- FOP-1 USLP frame target (Type-AD, BD, and protocol control BC frames) (#196)
+- Closed-loop COP-1 harness, event fuzzing, and TC/USLP carry-overs (#195)
+- FOP-1 decide and commit in place (#202)
+- C ABI handles for FOP-1 and FARM-1 (#201)
+- m3: FARM-1 refuses a frame of another virtual channel (#207)
+
+### Changed
+- Agent tooling: guard against runaway searches and unstructured gh queries (#139) (#140)
+- Add fuzz-smoke check to cargo xtask verify (#135) (#142)
+- M3 plan: COP-1 detailed milestone plan and --scope m3 trace gate (#143)
+- COP-1 spec readings, cell review record, and field codes 150–164 (WP-1a) (#145)
+- COP-1 common types & FARM-1 Table 6-1 as const data (WP-1b) (#147)
+- COP-1 FOP-1 Table 5-1 as const data (WP-1c) (#149)
+- uslp: back the frame views, writer, and C ABI with FrameLayout (#153)
+- **Breaking:** ffi: one-shot encoders only; remove the two-phase writers and resume (OI-57 item 1) (#161)
+- **Breaking:** ffi: typed caller storage for the stateful helpers (OI-57 convention 4) (#165)
+- **Breaking:** ffi: mirror enums for the C ABI's enumerations (PR C, OI-57 convention 2) (#172)
+- **Breaking:** ffi: status codes are the ErrorKind code (OI-57 convention 3) (#174)
+- **Breaking:** ffi: aldis_range_t in views; drop struct_size and aldis_limits (OI-57 conventions 7 and 5) (#176)
+- test-vectors(cop1): blind model and one scenario per table cell (M3 WP-2) (#183)
+- Implement FARM-1 flags derived from the protocol state (#189)
+
+### Fixed
+- m3: Rank invalid CLCW pattern before Lockout and N(R) (OI-62) (#200)
 
 ## [0.3.0-m2] — 2026-10-27
 
