@@ -496,8 +496,9 @@ fn vector_problems(
 
 /// Vector directories whose files exist before the engines that run them (M3 plan WP-2 before
 /// WP-3 and WP-4): the test requirement is waived until the runner lands, and the entry is
-/// removed in the pull request that adds it.
-const AWAITING_RUNNER: &[&str] = &["cop1/scenarios/"];
+/// removed in the pull request that adds it. Empty since the C ABI runner of M3 WP-6 runs
+/// `cop1/scenarios/`.
+const AWAITING_RUNNER: &[&str] = &[];
 
 /// Whether `f`, relative to `test-vectors/`, is a vector file that no runner runs yet. Such a
 /// file is no evidence for `cargo xtask trace` either (`trace.rs`).
@@ -572,10 +573,6 @@ const NOT_IN_HEADER: &[(&str, &str)] = &[
     ("aldis_kind_t", "scratch enum of spike 1"),
     ("ALDIS_KIND_T_ALPHA", "scratch enum of spike 1"),
     ("aldis_action_t", "scratch type of spike 2b"),
-    ("aldis_fop1_t", "FOP-1 C module (M3), not yet built"),
-    ("aldis_fop1_input_t", "FOP-1 C module (M3), not yet built"),
-    ("aldis_fop1_actions_t", "FOP-1 C module (M3), not yet built"),
-    ("aldis_fop1_step", "FOP-1 C module (M3), not yet built"),
     (
         "aldis_fop1_handle_clcw",
         "FOP-1 C module (M3), not yet built",
@@ -1013,22 +1010,22 @@ mod tests {
         "vector_test!(t, \"time\", \"cuc\", r);\nvector_test!(c, \"core\", \"crc16\", r);";
 
     #[test]
-    fn an_exempt_vector_file_that_a_test_runs_is_a_stale_entry() {
+    fn a_vector_file_needs_a_test_that_runs_it() {
         // req: VER-021
         let file = ["cop1/scenarios/fop1_table.json".to_owned()];
         let readme = "| File |\n|---|\n| `cop1/scenarios/*.json` |\n";
         let c = consistent();
-        assert!(awaiting_runner(&file[0]));
+        assert!(!awaiting_runner(&file[0]));
         assert_eq!(
             vector_problems(&file, readme, &[], "", "", &c),
-            Vec::<String>::new()
+            ["test-vectors/cop1/scenarios/fop1_table.json: no test in crates/*/tests/ runs it"]
         );
-        let tests = ["run_scenario_file(\"cop1/scenarios/fop1_table.json\")".to_owned()];
+        let tests = [
+            "run_scenario_file(concat!(\"cop1/\", \"scenarios/fop1_table\", \".json\"))".to_owned(),
+        ];
         assert_eq!(
             vector_problems(&file, readme, &tests, "", "", &c),
-            [
-                "test-vectors/cop1/scenarios/fop1_table.json: a test runs it, so `AWAITING_RUNNER` must not cover it any more"
-            ]
+            Vec::<String>::new()
         );
     }
 

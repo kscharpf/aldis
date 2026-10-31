@@ -285,6 +285,41 @@ pub(crate) unsafe fn bytes<'a>(ptr: *const u8, len: usize) -> Result<&'a [u8]> {
     Ok(unsafe { core::slice::from_raw_parts(ptr, len) })
 }
 
+/// `ptr` and `len` as an input buffer that overlaps none of `others` (CABI-022).
+///
+/// An engine lends its state in the caller's storage as `&mut` for the call, so an input buffer
+/// must not lie in that storage (c-abi.md §12.2 item 3; GEN-071).
+///
+/// # Errors
+/// As [`bytes`], and `InvalidField` (no field) when the range overlaps one of `others`.
+///
+/// # Safety
+/// As for [`bytes`].
+#[expect(
+    unsafe_code,
+    reason = "checked access to caller memory (CABI-022, GEN-071)"
+)]
+pub(crate) unsafe fn bytes_disjoint<'a>(
+    ptr: *const u8,
+    len: usize,
+    others: &[(*const u8, usize)],
+) -> Result<&'a [u8]> {
+    // SAFETY: forwarded from the caller.
+    let slice = unsafe { bytes(ptr, len) }?;
+    if len != 0 {
+        let Some((start, end)) = range(ptr, len) else {
+            return Err(invalid_argument());
+        };
+        let overlaps = others
+            .iter()
+            .any(|&(p, n)| n != 0 && range(p, n).is_none_or(|(s, e)| s < end && start < e));
+        if overlaps {
+            return Err(invalid_argument());
+        }
+    }
+    Ok(slice)
+}
+
 /// `cap` octets at `ptr` as an output buffer: `(uint8_t *ptr, size_t cap)` (CABI-011,
 /// CABI-022). `NULL` is allowed for an empty buffer. `inputs` are the call's input buffers,
 /// which it must not overlap.

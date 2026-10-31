@@ -5,9 +5,6 @@
 sent_queue_frames = 16     # >= FOP sliding window K (COP-015)
 max_frame_octets = 1024    # TC maximum (232.0 §4.1.2.7)
 
-[farm1]
-delivery_queue_depth = 4
-
 [link]
 max_virtual_channels = 8
 max_map_channels = 16

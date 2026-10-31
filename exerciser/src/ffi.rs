@@ -26,6 +26,20 @@ use aldis_ffi::epp::{
 use aldis_ffi::error::{
     ALDIS_ERR_INCOMPLETE, ALDIS_ERR_INVALID_FIELD, ALDIS_ERR_INVALID_HANDLE, ALDIS_OK,
 };
+use aldis_ffi::farm1::{
+    ALDIS_FARM1_ACTION_DELIVER, ALDIS_FARM1_INPUT_BUFFER_RELEASED, ALDIS_FARM1_INPUT_FRAME_AD,
+    ALDIS_FARM1_WORDS, aldis_farm1_actions_t, aldis_farm1_config_t, aldis_farm1_deinit,
+    aldis_farm1_init, aldis_farm1_input_t, aldis_farm1_status, aldis_farm1_status_t,
+    aldis_farm1_step, aldis_farm1_t,
+};
+use aldis_ffi::fop1::{
+    ALDIS_FOP1_ACTION_TRANSMIT, ALDIS_FOP1_DIRECTIVE_INITIATE_AD_WITHOUT_CLCW_CHECK,
+    ALDIS_FOP1_FRAME_AD, ALDIS_FOP1_INPUT_DIRECTIVE, ALDIS_FOP1_INPUT_REQUEST_AD,
+    ALDIS_FOP1_INPUT_TIMEOUT, ALDIS_FOP1_INPUT_TRANSMIT_DONE, ALDIS_FOP1_TIMEOUT_TT0,
+    ALDIS_FOP1_WORDS, aldis_fop1_actions_t, aldis_fop1_config_t, aldis_fop1_deinit,
+    aldis_fop1_init, aldis_fop1_input_t, aldis_fop1_next_deadline, aldis_fop1_status,
+    aldis_fop1_status_t, aldis_fop1_step, aldis_fop1_t,
+};
 use aldis_ffi::ocf::{ALDIS_OCF_CLCW, ALDIS_OCF_SDLS_FSR, aldis_ocf_check, aldis_ocf_classify};
 use aldis_ffi::oid::{
     ALDIS_OID_FIBONACCI, ALDIS_OID_GALOIS, ALDIS_OID_GENERATOR_WORDS, aldis_oid_generator_deinit,
@@ -1622,6 +1636,193 @@ fn uslp(t: &mut Tally) {
 
 // ---- end USLP
 
+/// The FARM-1 handle (M3 WP-6): init, a step that delivers an FDU, a step that refuses, the
+/// read-only status, and deinit.
+#[expect(unsafe_code, reason = "calls the C ABI with valid pointers")]
+fn farm1_handle(t: &mut Tally) {
+    let mut det = detail();
+    let mut storage = aldis_farm1_t {
+        words: [0; ALDIS_FARM1_WORDS],
+    };
+    let h = &raw mut storage;
+    let cfg = aldis_farm1_config_t {
+        vc_id: bb(1),
+        status: 0,
+        retransmission_allowed: 1,
+        window: bb(8),
+        positive_window: 0,
+        v_r: 0,
+    };
+    let fdu = bb([1_u8, 2, 3]);
+    let ad = aldis_farm1_input_t {
+        kind: ALDIS_FARM1_INPUT_FRAME_AD,
+        sequence_number: 0,
+        v_star: 0,
+        buffer_available: 1,
+        no_rf_available: 0,
+        no_bit_lock: 0,
+        data: fdu.as_ptr(),
+        data_len: fdu.len(),
+    };
+    let release = aldis_farm1_input_t {
+        kind: ALDIS_FARM1_INPUT_BUFFER_RELEASED,
+        data: null(),
+        data_len: 0,
+        ..ad
+    };
+    let ahead = aldis_farm1_input_t {
+        sequence_number: bb(5),
+        ..ad
+    };
+    let mut out = [0_u8; 8];
+    let mut actions = aldis_farm1_actions_t::default();
+    let mut status = aldis_farm1_status_t::default();
+    // SAFETY: the storage is a live local of the published type, and the handle is a pointer to
+    // it; every other pointer is to a live local, and the input's data to a live array.
+    unsafe {
+        t.check(aldis_farm1_init(h, &raw const cfg, &raw mut det) == ALDIS_OK);
+        t.check(
+            aldis_farm1_step(
+                h,
+                &raw const ad,
+                bb(0),
+                out.as_mut_ptr(),
+                out.len(),
+                &raw mut actions,
+                &raw mut det,
+            ) == ALDIS_OK
+                && actions.count == 1
+                && actions.items[0].kind == ALDIS_FARM1_ACTION_DELIVER
+                && out[..3] == fdu,
+        );
+        t.check(
+            aldis_farm1_step(
+                h,
+                &raw const release,
+                bb(1),
+                out.as_mut_ptr(),
+                bb(0),
+                &raw mut actions,
+                &raw mut det,
+            ) == ALDIS_OK
+                && actions.count == 0,
+        );
+        // N(S) 5 is outside the window of 8: Discard and Lockout, with no octet to write.
+        t.check(
+            aldis_farm1_step(
+                h,
+                &raw const ahead,
+                bb(2),
+                out.as_mut_ptr(),
+                bb(0),
+                &raw mut actions,
+                &raw mut det,
+            ) == ALDIS_OK
+                && actions.count == 2,
+        );
+        t.check(
+            aldis_farm1_status(h, &raw mut status, &raw mut det) == ALDIS_OK
+                && status.state == 3
+                && status.v_r == 1,
+        );
+        aldis_farm1_deinit(h);
+        t.check(aldis_farm1_status(h, &raw mut status, &raw mut det) == ALDIS_ERR_INVALID_HANDLE);
+    }
+}
+
+/// The FOP-1 handle (M3 WP-6): init, directive, request, transmit response, timeout, the
+/// read-only deadline and status, and deinit.
+#[expect(unsafe_code, reason = "calls the C ABI with valid pointers")]
+#[expect(
+    clippy::large_stack_arrays,
+    reason = "a C caller declares the 18 KB storage of the handle as a local too (CABI-031); \
+              the exerciser has 256 KB of stack"
+)]
+fn fop1_handle(t: &mut Tally) {
+    let mut det = detail();
+    let mut storage = aldis_fop1_t {
+        words: [0; ALDIS_FOP1_WORDS],
+    };
+    let h = &raw mut storage;
+    let cfg = aldis_fop1_config_t {
+        scid: bb(42),
+        vc_id: bb(1),
+        fecf: 1,
+        max_frame_len: bb(64),
+        t1_initial_us: bb(1000),
+        transmission_limit: 2,
+        timeout_type: ALDIS_FOP1_TIMEOUT_TT0,
+        sliding_window_k: bb(3),
+        ad_repetitions: 1,
+        bc_repetitions: 1,
+    };
+    let fdu = bb([0xDE_u8, 0xAD]);
+    let base = aldis_fop1_input_t {
+        kind: ALDIS_FOP1_INPUT_TIMEOUT,
+        handle: 1,
+        clcw: 0,
+        directive: 0,
+        value: 0,
+        frame_kind: 0,
+        accepted: 0,
+        data: null(),
+        data_len: 0,
+    };
+    let initiate = aldis_fop1_input_t {
+        kind: ALDIS_FOP1_INPUT_DIRECTIVE,
+        directive: ALDIS_FOP1_DIRECTIVE_INITIATE_AD_WITHOUT_CLCW_CHECK,
+        ..base
+    };
+    let request = aldis_fop1_input_t {
+        kind: ALDIS_FOP1_INPUT_REQUEST_AD,
+        data: fdu.as_ptr(),
+        data_len: fdu.len(),
+        ..base
+    };
+    let done = aldis_fop1_input_t {
+        kind: ALDIS_FOP1_INPUT_TRANSMIT_DONE,
+        frame_kind: ALDIS_FOP1_FRAME_AD,
+        accepted: 1,
+        ..base
+    };
+    let mut out = [0_u8; 64];
+    let mut actions = aldis_fop1_actions_t::default();
+    let mut status = aldis_fop1_status_t::default();
+    let (mut armed, mut deadline) = (0_u8, 0_u64);
+    let (out_ptr, actions_ptr, det_ptr) = (out.as_mut_ptr(), &raw mut actions, &raw mut det);
+    // SAFETY: as for the FARM-1 handle.
+    unsafe {
+        t.check(aldis_fop1_init(h, &raw const cfg, det_ptr) == ALDIS_OK);
+        let step = |input: &aldis_fop1_input_t, now: u64, cap: usize| {
+            aldis_fop1_step(h, input, now, out_ptr, cap, actions_ptr, det_ptr)
+        };
+        t.check(step(&initiate, bb(1), 64) == ALDIS_OK);
+        t.check(step(&request, bb(2), 64) == ALDIS_OK);
+        t.check(step(&request, bb(2), bb(4)) != ALDIS_OK);
+        t.check(step(&done, bb(3), 64) == ALDIS_OK);
+        t.check(
+            aldis_fop1_next_deadline(h, &raw mut armed, &raw mut deadline, &raw mut det)
+                == ALDIS_OK
+                && armed == 1
+                && deadline == 1002,
+        );
+        t.check(step(&base, bb(1002), 64) == ALDIS_OK);
+        t.check(
+            actions
+                .items
+                .get(..actions.count)
+                .is_some_and(|list| list.iter().any(|a| a.kind == ALDIS_FOP1_ACTION_TRANSMIT)),
+        );
+        t.check(
+            aldis_fop1_status(h, &raw mut status, &raw mut det) == ALDIS_OK
+                && status.state == 1
+                && status.sent_queue_len == 1,
+        );
+        aldis_fop1_deinit(h);
+        t.check(aldis_fop1_status(h, &raw mut status, &raw mut det) == ALDIS_ERR_INVALID_HANDLE);
+    }
+}
+
 /// Calls every exported function of `aldis-ffi`.
 pub fn run(t: &mut Tally) {
     core(t);
@@ -1633,4 +1834,6 @@ pub fn run(t: &mut Tally) {
     tm(t);
     tc(t);
     uslp(t);
+    farm1_handle(t);
+    fop1_handle(t);
 }

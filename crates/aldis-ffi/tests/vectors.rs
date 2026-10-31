@@ -3423,3 +3423,33 @@ vector_test!(
 );
 vector_test!(uslp_invalid, "uslp", "invalid", uslp_run);
 // ---- end USLP
+
+// ---- COP-1 engines (M3 WP-6): the scenarios of `test-vectors/cop1/scenarios/` through the C ABI
+// of the FOP-1 and FARM-1 handles.
+mod engine;
+
+mod cop1 {
+    macro_rules! vector_test {
+        ($name:ident, "cop1", $file:literal) => {
+            #[test]
+            fn $name() {
+                // req: VER-021, TV-010, TV-011, TV-012, CABI-030, CABI-031, CABI-032, CABI-040
+                super::engine::run_scenario_file(concat!("cop1/", $file, ".json"));
+            }
+        };
+    }
+
+    vector_test!(fop1_table, "cop1", "scenarios/fop1_table");
+    vector_test!(fop1_ad_service, "cop1", "scenarios/fop1_ad_service");
+    vector_test!(fop1_window_timer, "cop1", "scenarios/fop1_window_timer");
+    vector_test!(
+        fop1_wrap_directives,
+        "cop1",
+        "scenarios/fop1_wrap_directives"
+    );
+    vector_test!(fop1_clcw, "cop1", "scenarios/fop1_clcw");
+    vector_test!(farm1_table, "cop1", "scenarios/farm1_table");
+    vector_test!(farm1_window, "cop1", "scenarios/farm1_window");
+    vector_test!(farm1_flow_clcw, "cop1", "scenarios/farm1_flow_clcw");
+}
+// ---- end COP-1

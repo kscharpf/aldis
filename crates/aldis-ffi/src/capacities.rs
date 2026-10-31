@@ -23,3 +23,13 @@ pub const ALDIS_USLP_MAX_VCS: usize = 16;
 ///
 /// `[uslp] max_maps` of `capacities.toml` (CABI-030).
 pub const ALDIS_USLP_MAX_MAPS: usize = 32;
+
+/// Frames on the `Sent_Queue` of one `aldis_fop1_t`, the largest FOP Sliding Window Width K (232.1 §5.1.7, §5.1.12; COP-011, COP-015).
+///
+/// `[fop1] sent_queue_frames` of `capacities.toml` (CABI-030).
+pub const ALDIS_FOP1_SENT_QUEUE_FRAMES: usize = 16;
+
+/// Octets of the largest TC Transfer Frame one `aldis_fop1_t` builds (232.0 §4.1.2.7; COP-010).
+///
+/// `[fop1] max_frame_octets` of `capacities.toml` (CABI-030).
+pub const ALDIS_FOP1_MAX_FRAME_OCTETS: usize = 1024;

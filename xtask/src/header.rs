@@ -41,8 +41,8 @@ struct Capacity {
     range: (u64, u64),
 }
 
-/// The capacities of the engines that have a C ABI. The sections of later engines
-/// (`[fop1]`, `[farm1]`, `[link]`) join when their handles do (M3, M4).
+/// The capacities of the engines that have a C ABI. The section of the link engines (`[link]`)
+/// joins when their handles do (M4). FARM-1 has no capacity: it holds no queue (M3 plan D6).
 const CAPACITIES: &[Capacity] = &[
     Capacity {
         section: "spp",
@@ -72,6 +72,20 @@ const CAPACITIES: &[Capacity] = &[
         range: (1, 4096),
     },
     // ---- end USLP
+    // FOP-1 (M3 WP-6): the Sent_Queue and the frame size of one `aldis_fop1_t`,
+    // `Fop1<ALDIS_FOP1_SENT_QUEUE_FRAMES, ALDIS_FOP1_MAX_FRAME_OCTETS, _>` (M3 plan D10).
+    Capacity {
+        section: "fop1",
+        key: "sent_queue_frames",
+        doc: "Frames on the `Sent_Queue` of one `aldis_fop1_t`, the largest FOP Sliding Window Width K (232.1 §5.1.7, §5.1.12; COP-011, COP-015)",
+        range: (1, 255),
+    },
+    Capacity {
+        section: "fop1",
+        key: "max_frame_octets",
+        doc: "Octets of the largest TC Transfer Frame one `aldis_fop1_t` builds (232.0 §4.1.2.7; COP-010)",
+        range: (6, 1024),
+    },
 ];
 
 /// Parses `capacities.toml`: `[section]` lines and `key = integer` lines with optional
