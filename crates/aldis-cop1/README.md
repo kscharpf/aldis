@@ -15,6 +15,9 @@ let config = Farm1Config {
 };
 let farm = Farm1::new(config, FrameSeqNum::new(0));
 let fdu = [0xA1, 0xB2];
+// A frame that passed `validate_frame` becomes the input with `Farm1Input::from_tc(&valid, true)`,
+// which takes its VCID; from raw fields the caller names the VCID, and FARM-1 refuses another
+// Virtual Channel than its own with `UnknownChannel`.
 let input = Farm1Input::Frame {
     vc_id: TcVcId::new(1).expect("VCID 1"),
     frame: Farm1Frame::Ad { sequence_number: FrameSeqNum::new(0), data: &fdu },
