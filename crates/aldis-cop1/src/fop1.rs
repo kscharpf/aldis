@@ -534,21 +534,23 @@ impl Fop1Target {
         self.max_fdu_len
     }
 
-    /// Encodes a frame as [`encode`](Self::encode) into `out` after the `used` octets, and
+    /// Encodes a frame as [`encode`](Self::encode) into `out` after the octets it holds, and
     /// returns its range (API-061).
     ///
     /// # Errors
-    /// Those of [`encode`](Self::encode); `BufferTooSmall` counts the `used` octets in `Needed`.
+    /// Those of [`encode`](Self::encode); `BufferTooSmall` counts the octets `out` holds in `Needed`.
     fn encode_at(
         &self,
         frame_type: FrameType,
         sequence_number: FrameSeqNum,
         payload: Payload<'_>,
-        out: &mut [u8],
-        used: &mut usize,
+        out: &mut OutArea<'_>,
     ) -> Result<OutRange> {
-        let start = *used;
-        let area = out.get_mut(start..).ok_or(Error::buffer_too_small(start))?;
+        let start = out.used;
+        let area = out
+            .area
+            .get_mut(start..)
+            .ok_or(Error::buffer_too_small(start))?;
         let len = self
             .encode(frame_type, sequence_number, payload, area)
             .map_err(|e| match (e.kind(), e.detail()) {
@@ -557,7 +559,7 @@ impl Fop1Target {
                 }
                 _ => e,
             })?;
-        *used = start.saturating_add(len);
+        out.used = start.saturating_add(len);
         Ok(OutRange::new(start, len))
     }
 
@@ -837,7 +839,8 @@ struct Context<'a> {
     n_r: FrameSeqNum,
 }
 
-/// The FOP-1 state without the octets of the queues: everything that is small (232.1 §5.1).
+/// The FOP-1 state without the octets of the queues: everything that is small (232.1 §5.1), for
+/// a `Sent_Queue` of `Q` entries.
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct Core<const Q: usize> {
     t1_initial: Duration,
@@ -863,8 +866,12 @@ struct Core<const Q: usize> {
 /// The FOP-1 state of one Virtual Channel, with a `Sent_Queue` of `Q` entries for frames of at
 /// most `F` octets and an action list of `N` entries (232.1 §5.1; COP-001, API-060).
 ///
-/// Plain data without an output queue (API-059). `N` must be at least
-/// [`fop1_max_actions`]`(Q)`, and `F` at least the Maximum Transfer Frame Length of the target.
+/// Plain data without an output queue (API-059). The const parameters are capacities:
+/// - `Q`, the number of entries of the `Sent_Queue` (master copies of Type-AD and Type-BC
+///   frames), at least the sliding window width K (COP-015);
+/// - `F`, the most octets of a frame or an FDU the engine keeps, at least the Maximum Transfer
+///   Frame Length of the target;
+/// - `N`, the most actions one input returns, at least [`fop1_max_actions`]`(Q)` (COP-006).
 ///
 /// The octets of the master copies and of the `Wait_Queue` FDU, the only large part of the
 /// state, are in the caller's [`Fop1Store`], which `decide` and `commit` take with the engine. An
@@ -879,7 +886,8 @@ pub struct Fop1<const Q: usize, const F: usize, const N: usize> {
 /// The octets of the engine's queues: the master copies of the `Sent_Queue` and the FDU of the
 /// `Wait_Queue` (232.1 §5.1.4, §5.1.7; COP-011, API-060).
 ///
-/// The one large part of a FOP-1 (`Q × F` octets and one more `F`), kept apart from [`Fop1`] so
+/// The one large part of a FOP-1 (`Q × F` octets and one more `F`), for the capacities `Q`
+/// (entries of the `Sent_Queue`) and `F` (octets of a frame or an FDU) of [`Fop1`], kept apart from [`Fop1`] so
 /// that the engine is a few hundred octets and is built by value, while the store is a plain
 /// array type that is valid when zeroed: the caller places it in its own storage (a static, or
 /// memory that a C caller zeroes), and passes it to [`Fop1::decide`] and [`Fop1::commit`] with
@@ -927,7 +935,12 @@ pub type Fop1Actions<const N: usize> = Actions<Fop1Output, N>;
 /// It holds the small part of the next state and the entries of the `Sent_Queue` by reference
 /// to the engine's master copies, not the octets of the master copies. It borrows the FDU of
 /// the input, which [`Fop1::commit`] copies to the `Wait_Queue` or into a new master copy, so
-/// that the input outlives the decision.
+/// that the input outlives the decision. `Q`, `F`, and `N` are those of the [`Fop1`] that made
+/// it (`N`: the most actions, the capacity of [`Fop1Actions`]); `'a` is the lifetime of the input.
+///
+/// The decision is built apart from the engine and the store, which `decide` only reads, so an
+/// input that fails drops the decision and leaves the engine and the store as they were
+/// (API-058).
 ///
 /// A decision is not `Clone`, and [`Fop1::commit`] takes it by value, so it is applied at most
 /// once. It is made for one state of one engine: committing it to another engine, or after the
@@ -1482,9 +1495,9 @@ impl<'a, const Q: usize, const F: usize, const N: usize> Fop1Decision<'a, Q, F, 
             // The timer has expired (§5.1.9.1).
             self.core.deadline = None;
         }
-        let mut used = 0;
+        let mut out = OutArea::new(out);
         for action in cell.actions {
-            self.act(base, *action, prior, ctx, out, &mut used)?;
+            self.act(base, *action, prior, ctx, &mut out)?;
         }
         if matches!(event, Fop1Event::E24 | Fop1Event::E25 | Fop1Event::E27) {
             // The directive completes on a later CLCW (S4, S5 with E1) or by Alert.
@@ -1502,16 +1515,15 @@ impl<'a, const Q: usize, const F: usize, const N: usize> Fop1Decision<'a, Q, F, 
         action: Fop1Action,
         prior: Fop1State,
         ctx: &Context<'_>,
-        out: &mut [u8],
-        used: &mut usize,
+        out: &mut OutArea<'_>,
     ) -> Result<()> {
         match action {
             Fop1Action::CancelTimer => self.core.deadline = None,
             Fop1Action::StartTimer => self.start_timer(ctx.now),
             Fop1Action::ReleaseBcCopy => self.remove_sent(|s| matches!(s.kind, SentKind::Bc)),
             Fop1Action::RemoveAckedFrames => self.remove_acked(ctx.n_r)?,
-            Fop1Action::LookForFdu => self.look_for_fdu(base, ctx.now, out, used)?,
-            Fop1Action::LookForDirective => self.look_for_directive(base, out, used)?,
+            Fop1Action::LookForFdu => self.look_for_fdu(base, ctx.now, out)?,
+            Fop1Action::LookForDirective => self.look_for_directive(base, out)?,
             Fop1Action::InitiateAdRetransmission | Fop1Action::InitiateBcRetransmission => {
                 // §5.2.7: Abort, count, timer, then the marks.
                 self.actions.push(Fop1Output::Abort)?;
@@ -1542,7 +1554,6 @@ impl<'a, const Q: usize, const F: usize, const N: usize> Fop1Decision<'a, Q, F, 
                     FrameSeqNum::new(0),
                     Payload::Fdu(ctx.fdu),
                     out,
-                    used,
                 )?;
                 self.core.bd_out = Some(handle);
                 self.actions.push(Fop1Output::Transmit {
@@ -1554,7 +1565,7 @@ impl<'a, const Q: usize, const F: usize, const N: usize> Fop1Decision<'a, Q, F, 
                 })?;
             }
             Fop1Action::TransmitBc(command) => {
-                self.transmit_bc(base, command, ctx, out, used)?;
+                self.transmit_bc(base, command, ctx, out)?;
             }
             Fop1Action::Initialize => {
                 // §5.2.14.
@@ -1735,8 +1746,7 @@ impl<'a, const Q: usize, const F: usize, const N: usize> Fop1Decision<'a, Q, F, 
         &mut self,
         base: &Base<'_, Q, F>,
         now: Instant,
-        out: &mut [u8],
-        used: &mut usize,
+        out: &mut OutArea<'_>,
     ) -> Result<()> {
         if !self.core.ad_out_ready {
             return Ok(());
@@ -1751,7 +1761,7 @@ impl<'a, const Q: usize, const F: usize, const N: usize> Fop1Decision<'a, Q, F, 
         {
             sent.to_be_retransmitted = false;
             let sent = *sent;
-            let range = self.emit_sent(base, &sent, out, used)?;
+            let range = self.emit_sent(base, &sent, out)?;
             self.core.ad_out_ready = false;
             self.actions.push(Fop1Output::Transmit {
                 kind: FrameKind::Ad,
@@ -1771,7 +1781,7 @@ impl<'a, const Q: usize, const F: usize, const N: usize> Fop1Decision<'a, Q, F, 
         };
         self.actions
             .push(transfer(waiting.handle, TransferNotification::Accept))?;
-        self.transmit_ad(base, waiting, now, out, used)
+        self.transmit_ad(base, waiting, now, out)
     }
 
     /// Transmit Type-AD Frame (232.1 §5.2.4): N(S) := V(S), V(S) + 1, the master copy on the
@@ -1783,8 +1793,7 @@ impl<'a, const Q: usize, const F: usize, const N: usize> Fop1Decision<'a, Q, F, 
         base: &Base<'_, Q, F>,
         waiting: Waiting,
         now: Instant,
-        out: &mut [u8],
-        used: &mut usize,
+        out: &mut OutArea<'_>,
     ) -> Result<()> {
         let sequence_number = self.core.v_s;
         let source = if waiting.fresh {
@@ -1795,7 +1804,7 @@ impl<'a, const Q: usize, const F: usize, const N: usize> Fop1Decision<'a, Q, F, 
         let range = {
             let fdu = self.fdu_of(base, source)?;
             base.target
-                .encode_at(FrameType::Ad, sequence_number, Payload::Fdu(fdu), out, used)?
+                .encode_at(FrameType::Ad, sequence_number, Payload::Fdu(fdu), out)?
         };
         self.push_sent(Sent {
             origin: Origin::FreshAd(source),
@@ -1825,8 +1834,7 @@ impl<'a, const Q: usize, const F: usize, const N: usize> Fop1Decision<'a, Q, F, 
         base: &Base<'_, Q, F>,
         command: BcCommand,
         ctx: &Context<'_>,
-        out: &mut [u8],
-        used: &mut usize,
+        out: &mut OutArea<'_>,
     ) -> Result<()> {
         let command = match command {
             BcCommand::Unlock => ControlCommand::Unlock,
@@ -1839,7 +1847,6 @@ impl<'a, const Q: usize, const F: usize, const N: usize> Fop1Decision<'a, Q, F, 
             sequence_number,
             Payload::Control(command),
             out,
-            used,
         )?;
         self.push_sent(Sent {
             origin: Origin::FreshBc(command),
@@ -1862,12 +1869,7 @@ impl<'a, const Q: usize, const F: usize, const N: usize> Fop1Decision<'a, Q, F, 
 
     /// Look for Directive (232.1 §5.2.9): with `BC_Out_Flag` Ready, the Type-BC frame if it is
     /// marked `To_Be_Retransmitted`.
-    fn look_for_directive(
-        &mut self,
-        base: &Base<'_, Q, F>,
-        out: &mut [u8],
-        used: &mut usize,
-    ) -> Result<()> {
+    fn look_for_directive(&mut self, base: &Base<'_, Q, F>, out: &mut OutArea<'_>) -> Result<()> {
         if !self.core.bc_out_ready {
             return Ok(());
         }
@@ -1881,7 +1883,7 @@ impl<'a, const Q: usize, const F: usize, const N: usize> Fop1Decision<'a, Q, F, 
         {
             sent.to_be_retransmitted = false;
             let sent = *sent;
-            let range = self.emit_sent(base, &sent, out, used)?;
+            let range = self.emit_sent(base, &sent, out)?;
             self.core.bc_out_ready = false;
             self.actions.push(Fop1Output::Transmit {
                 kind: FrameKind::Bc,
@@ -1922,15 +1924,14 @@ impl<'a, const Q: usize, const F: usize, const N: usize> Fop1Decision<'a, Q, F, 
         }
     }
 
-    /// Writes the frame of `sent` into the output area after the `used` octets and returns its
+    /// Writes the frame of `sent` into the output area after the octets it holds and returns its
     /// range (API-061): the master copy of the engine, or, for an entry this decision added,
     /// the frame encoded again.
     fn emit_sent(
         &self,
         base: &Base<'_, Q, F>,
         sent: &Sent,
-        out: &mut [u8],
-        used: &mut usize,
+        out: &mut OutArea<'_>,
     ) -> Result<OutRange> {
         let (frame_type, payload) = match sent.origin {
             Origin::Base(i) => {
@@ -1940,13 +1941,13 @@ impl<'a, const Q: usize, const F: usize, const N: usize> Fop1Decision<'a, Q, F, 
                     .get(i)
                     .and_then(|f| f.get(..sent.len))
                     .ok_or(Error::new(ErrorKind::InternalError))?;
-                return emit(out, used, frame);
+                return out.emit(frame);
             }
             Origin::FreshAd(source) => (FrameType::Ad, Payload::Fdu(self.fdu_of(base, source)?)),
             Origin::FreshBc(command) => (FrameType::Bc, Payload::Control(command)),
         };
         base.target
-            .encode_at(frame_type, sent.sequence_number, payload, out, used)
+            .encode_at(frame_type, sent.sequence_number, payload, out)
     }
 }
 
@@ -1985,22 +1986,37 @@ const fn directive(handle: Handle, status: DirectiveNotification) -> Fop1Output 
     Fop1Output::Directive(DirectiveNotify { handle, status })
 }
 
-/// Copies `frame` into `out` after the `used` octets and returns their range (API-061).
-///
-/// # Errors
-/// `BufferTooSmall` (detail `Needed`) if `out` is too short.
-fn emit(out: &mut [u8], used: &mut usize, frame: &[u8]) -> Result<OutRange> {
-    let start = *used;
-    let len = frame.len();
-    let end = start.saturating_add(len);
-    let area = out
-        .get_mut(start..end)
-        .ok_or(Error::buffer_too_small(end))?;
-    for (d, s) in area.iter_mut().zip(frame) {
-        *d = *s;
+/// The caller's output area and the octets of it that the actions of this input have taken, so
+/// that the ranges of one input do not overlap (API-061).
+struct OutArea<'o> {
+    area: &'o mut [u8],
+    used: usize,
+}
+
+impl<'o> OutArea<'o> {
+    /// An output area with nothing written.
+    const fn new(area: &'o mut [u8]) -> OutArea<'o> {
+        OutArea { area, used: 0 }
     }
-    *used = end;
-    Ok(OutRange::new(start, len))
+
+    /// Copies `frame` after the octets already used and returns their range (API-061).
+    ///
+    /// # Errors
+    /// `BufferTooSmall` (detail `Needed`) if the area is too short.
+    fn emit(&mut self, frame: &[u8]) -> Result<OutRange> {
+        let start = self.used;
+        let len = frame.len();
+        let end = start.saturating_add(len);
+        let area = self
+            .area
+            .get_mut(start..end)
+            .ok_or(Error::buffer_too_small(end))?;
+        for (d, s) in area.iter_mut().zip(frame) {
+            *d = *s;
+        }
+        self.used = end;
+        Ok(OutRange::new(start, len))
+    }
 }
 
 #[cfg(test)]
@@ -2017,7 +2033,7 @@ mod tests {
 
     use super::{
         Base, Context, FduSource, Fop1Actions, Fop1Channel, Fop1Config, Fop1Decision, Fop1Input,
-        Fop1Output, Fop1Store, Fop1Target, Origin, Sent, SentKind, cell, fop1_max_actions,
+        Fop1Output, Fop1Store, Fop1Target, Origin, OutArea, Sent, SentKind, cell, fop1_max_actions,
     };
     use crate::fop1_table::{EVENT_COUNT, FOP1_TABLE, Fop1Action, STATE_COUNT};
     use crate::fop1_table::{Fop1Event, Fop1State, FrameKind, SuspendState};
@@ -2252,6 +2268,51 @@ mod tests {
     }
 
     #[test]
+    fn an_input_that_fails_leaves_the_engine_and_the_store_unchanged() {
+        // req: API-058, API-061, COP-011
+        let mut f = active();
+        let fdu = [0xA0u8, 9];
+        let request = Fop1Input::RequestAd {
+            handle: 1,
+            fdu: &fdu,
+        };
+        frames_of(&mut f, request, 1);
+        frames_of(
+            &mut f,
+            Fop1Input::TransmitDone {
+                kind: FrameKind::Ad,
+                accepted: true,
+            },
+            2,
+        );
+        let before = f.clone();
+        // The output area is too short for the retransmission that the cell would make, after
+        // the cell has already changed its copy of the state.
+        let mut tiny = [0u8; 2];
+        let e = f
+            .decide(
+                clcw(false, false, true, 0),
+                Instant::from_micros(2),
+                &mut tiny,
+            )
+            .unwrap_err();
+        assert_eq!(e.kind(), ErrorKind::BufferTooSmall);
+        assert_eq!(f, before);
+        let e = f
+            .fop
+            .decide_event(
+                &f.store,
+                Fop1Event::E31,
+                Fop1Input::Timeout,
+                Instant::from_micros(2),
+                &mut tiny,
+            )
+            .unwrap_err();
+        assert_eq!(e.kind(), ErrorKind::InvalidState);
+        assert_eq!(f, before);
+    }
+
+    #[test]
     fn a_new_store_is_zero() {
         // req: COP-011, API-058
         let store = Fop1Store::<Q, F>::default();
@@ -2265,8 +2326,8 @@ mod tests {
         // req: COP-011, API-061
         let f = active();
         let d: Fop1Decision<'_, Q, F, N> = Fop1Decision::start(&f.fop.core, &FDU);
-        let mut out = [0u8; 2 * F];
-        let mut used = 0;
+        let mut area = [0u8; 2 * F];
+        let mut out = OutArea::new(&mut area);
         let entry = |origin| Sent {
             origin,
             len: 0,
@@ -2276,21 +2337,18 @@ mod tests {
         };
         let ad = entry(Origin::FreshAd(FduSource::Input));
         let bc = entry(Origin::FreshBc(aldis_tc::ControlCommand::Unlock));
-        let first = d.emit_sent(&view(&f), &ad, &mut out, &mut used).unwrap();
-        let second = d.emit_sent(&view(&f), &bc, &mut out, &mut used).unwrap();
+        let first = d.emit_sent(&view(&f), &ad, &mut out).unwrap();
+        let second = d.emit_sent(&view(&f), &bc, &mut out).unwrap();
         assert_eq!((first.start(), second.start()), (0, first.len()));
-        assert_eq!(used, first.len() + second.len());
+        assert_eq!(out.used, first.len() + second.len());
         // The area is too short for the next frame: the octets already used count in `Needed`.
         let mut short = [0u8; 10];
-        used = 4;
-        let e = d
-            .emit_sent(&view(&f), &ad, &mut short, &mut used)
-            .unwrap_err();
+        let mut short = OutArea::new(&mut short);
+        short.used = 4;
+        let e = d.emit_sent(&view(&f), &ad, &mut short).unwrap_err();
         assert_eq!(e.kind(), ErrorKind::BufferTooSmall);
         let wait = entry(Origin::FreshAd(FduSource::Wait(F + 1)));
-        let e = d
-            .emit_sent(&view(&f), &wait, &mut out, &mut used)
-            .unwrap_err();
+        let e = d.emit_sent(&view(&f), &wait, &mut out).unwrap_err();
         assert_eq!(e.kind(), ErrorKind::InternalError);
     }
 
