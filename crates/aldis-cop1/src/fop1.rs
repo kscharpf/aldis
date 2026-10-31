@@ -2016,7 +2016,7 @@ mod tests {
 
     use super::{
         Base, Context, FduSource, Fop1Actions, Fop1Channel, Fop1Config, Fop1Decision, Fop1Input,
-        Fop1Output, Fop1Target, Origin, Sent, SentKind, cell, fop1_max_actions,
+        Fop1Output, Fop1Store, Fop1Target, Origin, Sent, SentKind, cell, fop1_max_actions,
     };
     use crate::fop1_table::{EVENT_COUNT, FOP1_TABLE, Fop1Action, STATE_COUNT};
     use crate::fop1_table::{Fop1Event, Fop1State, FrameKind, SuspendState};
@@ -2194,6 +2194,15 @@ mod tests {
                 .iter()
                 .all(|frame| frame.iter().all(|b| *b == 0))
         );
+    }
+
+    #[test]
+    fn a_new_store_is_zero() {
+        // req: COP-011, API-058
+        let store = Fop1Store::<Q, F>::default();
+        assert_eq!(store, Fop1Store::new());
+        assert!(store.frames.iter().flatten().all(|b| *b == 0));
+        assert!(store.wait_fdu.iter().all(|b| *b == 0));
     }
 
     #[test]
