@@ -723,7 +723,7 @@ fn delivers_ad(actions: &[Farm1Output], n: u8) -> bool {
 
 #[test]
 fn a_stale_set_vr_sets_v_r_back_and_accepts_a_delivered_frame_again() {
-    // req: COP-002, COP-036 (hz:HZ-COP1-18)
+    // req: COP-002 (hz:HZ-COP1-18)
     // FARM-1 has no sequence number on a Type-BC frame, so a Set V(R) that arrives after the
     // Type-AD frames sent after it is executed like a current one (Table 6-1, E8).
     let f = apply(&fresh(0), &[ad(0, true), ad(1, true), ad(2, true)]);
