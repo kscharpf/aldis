@@ -153,6 +153,9 @@ jobs:
           - uslp_decode
           - uslp_truncated
           - uslp_roundtrip
+          - cop1_events
+          - cop1_closed_loop
+          - fop1_clcw
     runs-on: ubuntu-24.04
     permissions:
       contents: read
