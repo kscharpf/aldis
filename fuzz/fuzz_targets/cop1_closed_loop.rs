@@ -4,9 +4,10 @@
 //! return link carries the CLCWs the FARM-1 reports. At every instant the FDUs the FARM-1
 //! delivered are a gap-free, duplicate-free, in-order prefix of the stream submitted, with their
 //! octets intact, and the FDUs the FOP-1 confirmed are an in-order part of what was delivered
-//! (232.1 §1). The link reorders and duplicates Type-AD frames only (ASM-18: no Type-BC frame
-//! arrives after a Type-AD frame sent after it, and none twice), so an Unlock that the harness
-//! sends after an Alert is valid. Neither engine refuses an input the harness may make, and none panics (GEN-020).
+//! (232.1 §1). The link reorders and duplicates Type-AD frames only: no Type-BC frame arrives
+//! after a Type-AD frame sent after it (ASM-18), and, stricter than ASM-18, none arrives twice, so
+//! an Unlock that the harness sends after an Alert is valid. Neither engine refuses an input the
+//! harness may make, and none panics (GEN-020).
 #![no_main]
 
 #[path = "../../crates/aldis-cop1/tests/common/mod.rs"]
@@ -17,9 +18,9 @@ use common::Rig;
 // req: COP-040, COP-041, COP-010, COP-030, COP-035, GEN-020, VER-022
 
 use aldis_cop1::{
-    Directive, Farm1, Farm1Config, Farm1Frame, Farm1Input, Farm1Output, Farm1Window, FduKind,
-    Fop1Config, Fop1Input, Fop1Output, Fop1State, Fop1Target, FrameKind, TimeoutType,
-    TransferNotification, fop1_max_actions,
+    Directive, DirectiveNotification, DirectiveNotify, Farm1, Farm1Config, Farm1Frame, Farm1Input,
+    Farm1Output, Farm1Window, FduKind, Fop1Config, Fop1Input, Fop1Output, Fop1State, Fop1Target,
+    FrameKind, TimeoutType, TransferNotification, fop1_max_actions,
 };
 use aldis_core::ids::FrameSeqNum;
 use aldis_core::security::SecurityLayout;
@@ -53,13 +54,14 @@ fn ground(
     forward: &mut Vec<(bool, Vec<u8>)>,
     confirmed: &mut Vec<u32>,
     suspended: &mut bool,
-) {
+) -> Vec<DirectiveNotify<u32>> {
+    let mut notified = Vec::new();
     let mut pending = vec![input];
     // bound: each Transmit Response transmits at most one frame, so the chain ends within K + 2
     // responses; the loop ends at 100 passes in any case
     for _ in 0..100 {
         let Some(input) = pending.pop() else {
-            return;
+            return notified;
         };
         let mut area = [0_u8; F];
         let decision = f
@@ -77,11 +79,13 @@ fn ground(
                 Fop1Output::Transfer(n) if n.status == TransferNotification::PositiveConfirm => {
                     confirmed.push(n.handle);
                 }
+                Fop1Output::Directive(d) => notified.push(*d),
                 Fop1Output::Suspend => *suspended = true,
                 _ => {}
             }
         }
     }
+    notified
 }
 
 #[expect(
@@ -163,7 +167,7 @@ fn run(u: &mut Unstructured<'_>) -> Result<()> {
             }
             // A frame of the forward link arrives, is lost, duplicated, or corrupted. The link
             // reorders and duplicates Type-AD frames only: no Type-BC frame arrives after a
-            // Type-AD frame sent after it, and none arrives twice (ASM-18), so the Type-AD
+            // Type-AD frame sent after it, and none arrives twice (stricter than ASM-18), so the Type-AD
             // frames wait for the Type-BC frame sent before them, which may still be lost.
             1 | 2 if !forward.is_empty() => {
                 let first_bc = forward.iter().position(|(bc, _)| *bc);
@@ -267,9 +271,10 @@ fn run(u: &mut Unstructured<'_>) -> Result<()> {
                     // link), so that Initiate AD with Set V(R) is not needed.
                     handle += 1;
                     reinitiated = true;
+                    // What the links still carry belongs to the stream before the Alert.
                     forward.clear();
                     ret.clear();
-                    ground(
+                    let notified = ground(
                         &mut g,
                         Fop1Input::Directive {
                             handle,
@@ -280,6 +285,11 @@ fn run(u: &mut Unstructured<'_>) -> Result<()> {
                         &mut confirmed,
                         &mut suspended,
                     );
+                    assert!(notified.contains(&DirectiveNotify {
+                        handle,
+                        status: DirectiveNotification::PositiveConfirm,
+                    }));
+                    assert_eq!(g.v_s(), flight.v_r());
                     handle += 1;
                     let directive = if flight.lockout_flag() {
                         Directive::InitiateAdWithUnlock
@@ -287,9 +297,6 @@ fn run(u: &mut Unstructured<'_>) -> Result<()> {
                         Directive::InitiateAdWithoutClcwCheck
                     };
                     next = u8::try_from(delivered.len()).unwrap();
-                    // What the links still carry belongs to the stream before the Alert.
-                    forward.clear();
-                    ret.clear();
                     ground(
                         &mut g,
                         Fop1Input::Directive { handle, directive },
