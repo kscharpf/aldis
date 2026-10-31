@@ -18,9 +18,9 @@ use common::Rig;
 // req: COP-040, COP-041, COP-010, COP-030, COP-035, GEN-020, VER-022
 
 use aldis_cop1::{
-    Directive, DirectiveNotification, DirectiveNotify, Farm1, Farm1Config, Farm1Frame, Farm1Input,
-    Farm1Output, Farm1Window, FduKind, Fop1Config, Fop1Input, Fop1Output, Fop1State, Fop1Target,
-    FrameKind, TimeoutType, TransferNotification, fop1_max_actions,
+    Directive, DirectiveNotification, DirectiveNotify, Farm1, Farm1Config, Farm1Input, Farm1Output,
+    Farm1Window, FduKind, Fop1Config, Fop1Input, Fop1Output, Fop1State, Fop1Target, FrameKind,
+    TimeoutType, TransferNotification, fop1_max_actions,
 };
 use aldis_core::ids::FrameSeqNum;
 use aldis_core::security::SecurityLayout;
@@ -185,10 +185,7 @@ fn run(u: &mut Unstructured<'_>) -> Result<()> {
                     bytes[bit / 8] ^= 1 << (bit % 8);
                 }
                 let input = match validate_frame(&bytes, &channels) {
-                    Ok(valid) => Farm1Input::Frame {
-                        frame: Farm1Frame::from_tc(&valid),
-                        buffer_available: buffer_free,
-                    },
+                    Ok(valid) => Farm1Input::from_tc(&valid, buffer_free),
                     Err(_) => Farm1Input::InvalidFrame,
                 };
                 let mut area = [0_u8; F];

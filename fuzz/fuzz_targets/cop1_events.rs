@@ -236,18 +236,21 @@ fn farm1(u: &mut Unstructured<'_>) -> Result<()> {
         let foreign = u.ratio(1, 8)?;
         let vc = TcVcId::new(if foreign { VCID + 1 } else { VCID }).unwrap();
         let input = match class {
-            0 | 1 => Farm1Input::Frame { vc_id: vc,
+            0 | 1 => Farm1Input::Frame {
+                vc_id: vc,
                 frame: Farm1Frame::Ad {
                     sequence_number: FrameSeqNum::new(n_s),
                     data: &data,
                 },
                 buffer_available,
             },
-            2 => Farm1Input::Frame { vc_id: vc,
+            2 => Farm1Input::Frame {
+                vc_id: vc,
                 frame: Farm1Frame::Bd { data: &data },
                 buffer_available,
             },
-            3 => Farm1Input::Frame { vc_id: vc,
+            3 => Farm1Input::Frame {
+                vc_id: vc,
                 frame: Farm1Frame::Bc {
                     command: match u.int_in_range(0..=2)? {
                         0 => Some(ControlCommand::Unlock),
@@ -272,7 +275,10 @@ fn farm1(u: &mut Unstructured<'_>) -> Result<()> {
         let first = f.step(input, at, &mut area);
         assert_eq!(first, f.step(input, at, &mut again));
         if foreign && class <= 3 {
-            assert_eq!(first.map(|_| ()).unwrap_err().kind(), ErrorKind::UnknownChannel);
+            assert_eq!(
+                first.map(|_| ()).unwrap_err().kind(),
+                ErrorKind::UnknownChannel
+            );
             assert_eq!(area, [0_u8; 8]);
             continue;
         }
