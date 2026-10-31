@@ -12,8 +12,8 @@
 //!
 //! | Event | Input |
 //! |---|---|
-//! | E1–E14, E101–E103 | [`Fop1Input::Clcw`], classified by the Lockout Flag, then N(R) against NN(R) and V(S) modulo 256, then the Retransmit and Wait Flags (232.1 §5.3.2.1; COP-012) |
-//! | E15 | [`Fop1Input::Clcw`] with a COP in Effect other than `01`, and [`Fop1Input::InvalidClcw`] (232.1 §5.3.2.1 a; OI-62) |
+//! | E1–E14, E101–E103 | [`Fop1Input::Clcw`], classified by the Lockout Flag (after the invalid pattern, E15), then N(R) against NN(R) and V(S) modulo 256, then the Retransmit and Wait Flags (232.1 §5.3.2.1; COP-012) |
+//! | E15 | [`Fop1Input::Clcw`] with a COP in Effect other than `01`, and [`Fop1Input::InvalidClcw`] (232.1 §5.3.2.1 a; OI-62, which ranks it first) |
 //! | E16–E18, E104 | [`Fop1Input::Timeout`] once `now` reaches [`Fop1::next_deadline`] (API-053) |
 //! | E19–E22 | [`Fop1Input::RequestAd`], [`Fop1Input::RequestBd`] |
 //! | E23–E39 | [`Fop1Input::Directive`] with a valid value |
@@ -2318,6 +2318,33 @@ mod tests {
                 .kind(),
             ErrorKind::UnknownChannel
         );
+    }
+
+    #[test]
+    fn a_clcw_that_matches_several_events_gets_the_highest_ranked() {
+        // req: COP-001, COP-012
+        // 232.1 §5.3.2.1 with OI-62 (a): the invalid pattern (E15), then Lockout (E14),
+        // then an invalid N(R) (E13). V(S) = NN(R) = 0 here, so N(R) = 5 is invalid.
+        let a = active();
+        let event_of = |input: Fop1Input<'static>| -> Option<Fop1Event> {
+            let (_, out) = go(&a, input, 1);
+            out.iter().find_map(|o| match o {
+                Fop1Output::Alert(alert) => Some(alert.event),
+                _ => None,
+            })
+        };
+        let word = |lockout: bool, n_r: u8, pattern_ok: bool| -> Fop1Input<'static> {
+            let mut c = Clcw::decode([0, 0, 0, 0]).unwrap();
+            c.vc_id = TcVcId::new(1).unwrap();
+            c.cop_in_effect = CopInEffect::new(if pattern_ok { 1 } else { 2 }).unwrap();
+            c.lockout = lockout;
+            c.report_value = FrameSeqNum::new(n_r);
+            Fop1Input::Clcw(c)
+        };
+        assert_eq!(event_of(word(true, 5, false)), Some(Fop1Event::E15));
+        assert_eq!(event_of(word(false, 5, false)), Some(Fop1Event::E15));
+        assert_eq!(event_of(word(true, 5, true)), Some(Fop1Event::E14));
+        assert_eq!(event_of(word(false, 5, true)), Some(Fop1Event::E13));
     }
 
     #[test]
