@@ -15,7 +15,7 @@
 /**
  * ABI minor version (CABI-060).
  */
-#define ALDIS_ABI_VERSION_MINOR 8
+#define ALDIS_ABI_VERSION_MINOR 9
 
 /**
  * ABI patch version (CABI-060).
