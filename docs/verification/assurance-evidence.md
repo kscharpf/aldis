@@ -5,7 +5,7 @@ What `cargo xtask assurance` checks in the [hazard analysis](hazards.md) and the
 ## 1. What it reads
 
 - `docs/verification/hazards.md`, the **cross-codec file**, codec `X`;
-- every `.md` file of `docs/verification/hazards/`, the **codec files**: `tm.md` (codec `TM`), `tc.md` (`TC`), `aos.md` (`AOS`), `uslp.md` (`USLP`); any other file there is a problem;
+- every `.md` file of `docs/verification/hazards/`, the **codec files**: `tm.md` (codec `TM`), `tc.md` (`TC`), `aos.md` (`AOS`), `uslp.md` (`USLP`), `cop1.md` (`COP1`); any other file there is a problem;
 - `docs/verification/assurance-case.md`, the **case**;
 - the **prose files**, which only the references (§2) and the code-name rule (§2.5) apply to: every `.md` file of `docs/verification/records/`, `docs/verification/cross-checks.md`, and `docs/verification/formal-proofs.md`.
 
@@ -90,7 +90,7 @@ A bare lowercase word (`vc_id`, `decode`, `std`) is not told apart from a field,
 
 ### 3.1 Hazard sections
 
-A hazard is a heading line matching `^### (HZ-(X|TM|TC|AOS|USLP)-[0-9]{2}) (.+)$`. Its codec must be the file's codec (§1). IDs are unique across the analysed files, and within a file their numbers strictly increase in file order (a gap is allowed: an ID is never reused).
+A hazard is a heading line matching `^### (HZ-(X|TM|TC|AOS|USLP|COP1)-[0-9]{2}) (.+)$`. Its codec must be the file's codec (§1). IDs are unique across the analysed files, and within a file their numbers strictly increase in file order (a gap is allowed: an ID is never reused).
 
 The first table after the heading, before the next heading, is the **hazard table**. Its header row has two empty cells (`| | |`, as the records of [analysis-records.md](analysis-records.md) have) and its rows are exactly, in this order: `Category`, `Status`, `Severity`, `Failure mode`, `Cause`, `Mission effect`, `Requirements`, `Evidence`, `Residual risk`, `Assumptions`, `Proposals`, `Claims`. A missing, extra, or misplaced row is a problem naming it.
 
@@ -122,7 +122,7 @@ Each codec file (not the cross-codec file) has a heading `## Coverage` followed 
 
 Every hazard file has a heading `## Proposals` followed by a table with the header `| ID | Kind | Proposal | Status |`, which may have no rows.
 
-- `ID` matches `^P-(X|TM|TC|AOS|USLP)-[0-9]{2}$` with the file's codec; unique across the analysed files.
+- `ID` matches `^P-(X|TM|TC|AOS|USLP|COP1)-[0-9]{2}$` with the file's codec; unique across the analysed files.
 - `Kind` is one code span: `requirement`, `oi`, `test`, `doc`, or `tooling`.
 - `Proposal` is not empty.
 - `Status` begins with one code span, `proposed`, `accepted`, or `rejected`; after `accepted` or `rejected` the cell must hold more text (where it was written, or why).
