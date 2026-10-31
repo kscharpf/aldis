@@ -115,7 +115,8 @@ pub struct Alert {
     pub prior_state: Fop1State,
 }
 
-/// Transfer service notifications for Type-AD and Type-BD requests (CCSDS 232.1-B-2 §4.4, Table 4-5; COP-001, API-083).
+/// Transfer service notifications for Type-AD and Type-BD requests (CCSDS 232.1-B-2 §4.4, Table
+/// 4-5; COP-001, API-083).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum TransferNotification {
     /// Transfer request accepted by FOP-1 for processing.
@@ -128,7 +129,8 @@ pub enum TransferNotification {
     NegativeConfirm,
 }
 
-/// A transfer notification event associating a request handle with its status (CCSDS 232.1-B-2 §4.4, Table 4-5; COP-001, API-083).
+/// A transfer notification event associating a request handle with its status (CCSDS 232.1-B-2
+/// §4.4, Table 4-5; COP-001, API-083).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct TransferNotify<H> {
     /// Handle of the transfer request being acknowledged.
@@ -150,7 +152,8 @@ pub enum DirectiveNotification {
     NegativeConfirm,
 }
 
-/// A directive notification event associating a directive handle with its status (CCSDS 232.1-B-2 §4.2, Table 4-2; COP-001, API-083).
+/// A directive notification event associating a directive handle with its status (CCSDS 232.1-B-2
+/// §4.2, Table 4-2; COP-001, API-083).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct DirectiveNotify<H> {
     /// Handle of the directive being acknowledged.

@@ -362,7 +362,8 @@ pub struct aldis_fop1_config_t {
     pub bc_repetitions: u8,
 }
 
-/// One input of FOP-1 (232.1 §5.3.2, Table 5-1 events; API-057, CABI-040). A field that the kind does not use is ignored.
+/// One input of FOP-1 (232.1 §5.3.3, Table 5-1 events; API-057, CABI-040). A field that the
+/// kind does not use is ignored.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct aldis_fop1_input_t {
@@ -389,7 +390,8 @@ pub struct aldis_fop1_input_t {
     pub data_len: usize,
 }
 
-/// One action of FOP-1 (232.1 §5.3.2, Table 5-1 actions; API-057, API-061, CABI-040). A field that the kind does not use is 0.
+/// One action of FOP-1 (232.1 §5.2, Table 5-1 actions; API-057, API-061, CABI-040). A field
+/// that the kind does not use is 0.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct aldis_fop1_action_t {
@@ -417,7 +419,8 @@ pub struct aldis_fop1_action_t {
     pub state: u8,
 }
 
-/// The actions of one input, in the order of the cell (232.1 Table 5-1; API-057, COP-006, CABI-040).
+/// The actions of one input, in the order of the cell (232.1 Table 5-1; API-057, COP-006,
+/// CABI-040).
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct aldis_fop1_actions_t {
@@ -1001,8 +1004,7 @@ pub unsafe extern "C" fn aldis_fop1_status(
 }
 
 /// Releases the storage: later calls on it fail with `ALDIS_ERR_INVALID_HANDLE` (CABI-032; no
-/// clause of 232.1, a library lifecycle call). An
-/// invalid handle is ignored.
+/// clause of 232.1, a library lifecycle call). An invalid handle is ignored.
 ///
 /// # Safety
 /// As for [`aldis_fop1_step`].
