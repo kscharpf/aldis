@@ -2322,6 +2322,15 @@ mod tests {
             fdu: &fdu,
         };
         frames_of(&mut f, request, 1);
+        // The retransmission waits for the lower layer to have taken the first transmission.
+        frames_of(
+            &mut f,
+            Fop1Input::TransmitDone {
+                kind: FrameKind::Ad,
+                accepted: true,
+            },
+            2,
+        );
         assert_eq!(f.transmission_count(), 1);
         let late = f.next_deadline().unwrap().as_micros();
         let sent = frames_of(&mut f, Fop1Input::Timeout, late);
