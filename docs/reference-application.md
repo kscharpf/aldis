@@ -20,7 +20,7 @@
 | Code rules | `aldis` facade only; flight node `no_std`, no heap, flight lint set; `forbid(unsafe_code)` everywhere | §9 |
 | cFS flight side | A second flight node: cFS apps on cFE, OSAL, and the pc-linux PSP calling Aldis through `aldis.h`, in lockstep with the harness, reproducing the A1–A3 golden traces in four phases; plan [ACFS](milestones/acfs-flight-side.md), decisions accepted 2026-10-21 | §10 |
 
-**Open items that affect this document:** OI-11 (OID frames, §4.1). Resolved 2026-10-19: OI-23 (golden traces and vectors, §7.5), OI-24 (out-of-process nodes, §8.2), OI-25 (framework trace, §7.5), OI-26 (spacecraft ID, §3.4), OI-06 (SANA registries, §3.1, §4.3). Every protocol value below cites the Blue Book clause it was read from.
+**Open items that affect this document:** none. Resolved: OI-11 (OID frames, §4.1; 2026-11-01), OI-23 (golden traces and vectors, §7.5), OI-24 (out-of-process nodes, §8.2), OI-25 (framework trace, §7.5), OI-26 (spacecraft ID, §3.4), OI-06 (SANA registries, §3.1, §4.3). Every protocol value below cites the Blue Book clause it was read from.
 
 **How to read the requirements.** Requirement IDs follow [00 §5](00-introduction.md#5-requirement-conventions), grouped in decades per section. **T** means a golden-trace reproduction test or a harness test in `refapp/` annotated `// req:`, and the header of each golden trace lists the IDs its case verifies (§7.2). **I** means review of this document or of `refapp/`. **A** means a CI check. Requirements name the library requirements they exercise.
 
@@ -249,7 +249,7 @@ Frame layout: primary header 6 ‖ data field **211** ‖ OCF 4 ‖ FECF 2 (CMN-
 | Release deadline after the first octet is written (LNK-012) | 250 000 µs | 1 000 000 µs | — |
 | Idle fill on deadline release (LNK-013) | Space Packet Idle Packet (APID 2047), idle data octets `0x00` (SPP-010), continuing into the next data field if fewer than 7 octets remain | same | — |
 
-If OI-11 is resolved differently, the scenario follows it with a new trace version (APP-087).
+OI-11 is resolved as this default (2026-11-01); a later change of it would be a new trace version (APP-087).
 
 ### 4.2 TC uplink (A2 on) and COP-1 (A3 on)
 

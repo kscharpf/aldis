@@ -266,6 +266,8 @@ jobs:
       - run: cargo xtask trace --scope m2 --strict
       # M3 is closed: every in-scope requirement must keep an artefact (VER-020, m3 plan D1).
       - run: cargo xtask trace --scope m3 --strict
+      # M4 is in progress: measured from the start, strict at the exit (VER-020, m4 plan D1).
+      - run: cargo xtask trace --scope m4
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: trace-m0
