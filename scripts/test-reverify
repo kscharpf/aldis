@@ -21,9 +21,10 @@
 # Every wait times out (`--timeout <min>`, exit 5, with a TIMEOUT line, the lock released, and the
 # line shown by `--status`): the hosted run, the `--wait` queue, `--cancel`, and `--status --wait`;
 # a bad `--timeout` or REVERIFY_SECONDS_PER_MIN is a usage error; a waiter behind another reverify
-# follows the deadline the holder records in its lock and gives up only when it is overdue by 15
-# minutes (or, with no deadline, after its own --timeout plus 15), and not while the holder renews
-# it; a FAILED PR decides the exit status of several; the background watcher is gone after a
+# follows the deadline the holder records in the sidecar `<n>.deadline` and gives up only when it
+# is overdue by 15 minutes (or, with no sidecar, after its own --timeout plus 15), and not while the
+# holder renews it; the holder renews its own deadlines while it queues; the copy of main before
+# #213 reads a new holder's lock (`running`, no takeover); a FAILED PR decides the exit status of several; the background watcher is gone after a
 # timeout. The cases run a minute as a second (REVERIFY_SECONDS_PER_MIN)
 # against stubs that never finish; the test kills its stubs on exit.
 # Not covered: GitHub itself (dispatch, watch, the real STALE gate of `verify assemble`).
@@ -591,18 +592,19 @@ bg a 7
 wait_for "$stub/publish-pids"
 expect "the holder's lock is <pid>|<start>" bash -c "readlink '$repo/.git/reverify/7.lock' | grep -Eq '^[0-9]+[|][^|]+\$'"
 expect "the holder's sidecar carries a deadline" bash -c "grep -Eq '^$pid_a[|][^|]+[|][0-9]+\$' '$repo/.git/reverify/7.deadline'"
-if git -C "$here" show origin/main:scripts/reverify >"$work/old-reverify" 2>/dev/null; then
+# This case guards the transition from the pre-#213 lock: 9aea5e9 is the last main before it.
+if git -C "$here" show 9aea5e9:scripts/reverify >"$work/old-reverify" 2>/dev/null; then
     chmod +x "$work/old-reverify"
-    out="$(cd "$repo" && PATH="$work/bin:$PATH" "$work/old-reverify" --status 7 2>&1)"
+    out="$(cd "$repo" && PATH="$work/bin:$PATH" perl -e 'alarm 60; exec @ARGV' "$work/old-reverify" --status 7 2>&1)"
     rc=$?
     expect "the copy of main reads the new holder's lock: running" said "#7 running: reverify pid $pid_a"
     expect "the copy of main: exit status 3" status_is 3
-    out="$(cd "$repo" && PATH="$work/bin:$PATH" "$work/old-reverify" 7 2>&1)"
+    out="$(cd "$repo" && PATH="$work/bin:$PATH" perl -e 'alarm 60; exec @ARGV' "$work/old-reverify" 7 2>&1)"
     rc=$?
     expect "the copy of main does not take over the new holder's lock" bash -c '! printf "%s\n" "$0" | grep -Fq "stale"' "$out"
     expect "the copy of main: refused, exit status 3" status_is 3
 else
-    echo "skip the copy of main: origin/main is not available"
+    echo "skip the pre-#213 copy: commit 9aea5e9 is not available"
 fi
 touch "$stub/release"
 wait "$pid_a"

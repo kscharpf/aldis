@@ -239,7 +239,7 @@ release_locks() {
     [ -z "$watcher" ] || kill "$watcher" 2>/dev/null || true
     for pr in ${held[@]+"${held[@]}"}; do
         if mine "$pr"; then
-            rm -f "$state_dir/$pr.lock" "$state_dir/$pr.deadline"
+            rm -f "$state_dir/$pr.deadline" "$state_dir/$pr.lock"
         fi
     done
     held=()
@@ -530,7 +530,7 @@ finish() {
     echo "$3"
     record_final "$1" "$2" "$3" "$4"
     if mine "$1"; then
-        rm -f "$state_dir/$1.lock" "$state_dir/$1.deadline"
+        rm -f "$state_dir/$1.deadline" "$state_dir/$1.lock"
     fi
 }
 
