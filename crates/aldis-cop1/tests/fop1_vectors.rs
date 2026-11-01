@@ -322,6 +322,10 @@ fn run_file(name: &str) -> (usize, Vec<String>) {
     let mut failures = Vec::new();
     let resolved = file.resolve().unwrap();
     for scenario in &resolved {
+        if scenario.scenario.superseded.is_some() {
+            // A superseded case is kept for the record and not run (TV-021).
+            continue;
+        }
         let vcid = byte(&scenario.config["vcid"]);
         let mut engine = config(scenario.config);
         let mut area = vec![0u8; F];

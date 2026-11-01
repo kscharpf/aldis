@@ -1702,12 +1702,12 @@
       ]
     },
     {
-      "id": "cop1-fop1-s3-e16",
-      "description": "FOP-1 Table 5-1, S3 x E16: Timer T1 expires, Transmission_Count < limit, Timeout_Type 0. setup of 3 step(s), then the trigger.",
+      "id": "cop1-fop1-s3-e16-t1-rearm",
+      "description": "FOP-1 Table 5-1, S3 x E16: Timer T1 expires, Transmission_Count < limit, Timeout_Type 0. setup of 3 step(s), then the trigger. T1 is re-armed for another T1_Initial (the deadline is the expiry plus T1_Initial), no output, state S3 (OI-67, COP-013).",
       "requirements": ["COP-001", "COP-005", "COP-013"],
       "setup": "S3-beb6faef",
       "steps": [
-        {"at_us": 2002000, "input": {"timeout": {}}, "expect": [], "expect_state": "S3", "expect_no_timeout": true}
+        {"at_us": 2002000, "input": {"timeout": {}}, "expect": [], "expect_state": "S3", "expect_timeout_us": 4002000}
       ]
     },
     {
@@ -1755,12 +1755,12 @@
       ]
     },
     {
-      "id": "cop1-fop1-s3-e104",
-      "description": "FOP-1 Table 5-1, S3 x E104: Timer T1 expires, Transmission_Count < limit, Timeout_Type 1. setup of 4 step(s), then the trigger.",
+      "id": "cop1-fop1-s3-e104-t1-rearm",
+      "description": "FOP-1 Table 5-1, S3 x E104: Timer T1 expires, Transmission_Count < limit, Timeout_Type 1. setup of 4 step(s), then the trigger. T1 is re-armed for another T1_Initial (the deadline is the expiry plus T1_Initial), no output, state S3 (OI-67, COP-013).",
       "requirements": ["COP-001", "COP-005", "COP-013"],
       "setup": "S3-f4524a32",
       "steps": [
-        {"at_us": 2003000, "input": {"timeout": {}}, "expect": [], "expect_state": "S3", "expect_no_timeout": true}
+        {"at_us": 2003000, "input": {"timeout": {}}, "expect": [], "expect_state": "S3", "expect_timeout_us": 4003000}
       ]
     },
     {
@@ -3392,6 +3392,26 @@
       "steps": [
         {"at_us": 2000, "input": {"transmit_done": {"kind": "BD", "response": "reject"}}, "expect": [{"event": "alert", "reason": "llif", "event_number": 46, "prior_state": "S6"}], "expect_state": "S6", "expect_no_timeout": true}
       ]
+    },
+    {
+      "id": "cop1-fop1-s3-e16",
+      "description": "FOP-1 Table 5-1, S3 x E16: Timer T1 expires, Transmission_Count < limit, Timeout_Type 0. setup of 3 step(s), then the trigger.",
+      "requirements": ["COP-001", "COP-005", "COP-013"],
+      "setup": "S3-beb6faef",
+      "steps": [
+        {"at_us": 2002000, "input": {"timeout": {}}, "expect": [], "expect_state": "S3", "expect_no_timeout": true}
+      ],
+      "superseded": {"by": "cop1-fop1-s3-e16-t1-rearm", "reason": "OI-67: in S3, E16 and E104 re-arm T1 for another T1_Initial (COP-013); this case expects no timer, which read the Ignore cell literally."}
+    },
+    {
+      "id": "cop1-fop1-s3-e104",
+      "description": "FOP-1 Table 5-1, S3 x E104: Timer T1 expires, Transmission_Count < limit, Timeout_Type 1. setup of 4 step(s), then the trigger.",
+      "requirements": ["COP-001", "COP-005", "COP-013"],
+      "setup": "S3-f4524a32",
+      "steps": [
+        {"at_us": 2003000, "input": {"timeout": {}}, "expect": [], "expect_state": "S3", "expect_no_timeout": true}
+      ],
+      "superseded": {"by": "cop1-fop1-s3-e104-t1-rearm", "reason": "OI-67: in S3, E16 and E104 re-arm T1 for another T1_Initial (COP-013); this case expects no timer, which read the Ignore cell literally."}
     }
   ]
 }

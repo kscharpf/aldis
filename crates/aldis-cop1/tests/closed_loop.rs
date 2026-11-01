@@ -212,6 +212,8 @@ struct Outcome {
     retransmissions: usize,
     stalls: usize,
     discarded: usize,
+    /// Expiries of T1 while FOP-1 is in S3 (E16, E104; OI-67).
+    s3_expiries: usize,
 }
 
 const fn fdu(index: u16) -> [u8; FDU_LEN] {
@@ -421,6 +423,9 @@ impl World {
             .next_deadline()
             .is_some_and(|d| d.as_micros() <= self.now)
         {
+            if self.ground.state() == Fop1State::RetransmitWithWait {
+                self.outcome.s3_expiries += 1;
+            }
             self.ground_input(Fop1Input::Timeout);
         }
         if self.resume_due && self.ground.state() == Fop1State::Initial {
@@ -889,4 +894,51 @@ proptest! {
         let o = World::new(s, seed).run();
         assert_outcome(&s, seed, &o);
     }
+}
+
+/// The case behind the seed `5edf89f7…` of `proptest-regressions/closed_loop.txt`, run directly.
+///
+/// A stale CLCW moves FOP-1 from S2 to S3 while T1 runs, T1 expires in S3 (E16), and a later
+/// event takes FOP-1 to S1. With the literal "Ignore" cell, which also disarmed the timer, S1
+/// then had frames on the `Sent_Queue` and no timer, and the transfer neither completed nor
+/// raised an Alert (OI-67; 232.1 §5.1.9.1).
+#[test]
+fn a_timer_that_expires_in_s3_is_rearmed_so_that_the_transfer_ends() {
+    // req: COP-013, COP-040
+    let s = Scenario {
+        name: "t1 expires in s3",
+        forward: Link {
+            loss: 240,
+            duplicate: 355,
+            corrupt: 98,
+            delay_us: 7105,
+            jitter_us: 5908,
+            in_order: true,
+        },
+        ret: Link {
+            loss: 197,
+            duplicate: 122,
+            corrupt: 0,
+            delay_us: 17524,
+            jitter_us: 25200,
+            in_order: false,
+        },
+        clcw_period_us: 40 * 1_000,
+        fdus: 24,
+        k: 8,
+        w: 16,
+        t1_us: 120_000,
+        transmission_limit: 5,
+        timeout_type: TimeoutType::Tt0,
+        stall: 184,
+        release: 120,
+        horizon_us: 60_000_000,
+    };
+    let seed = 5_298_483_145_364_017_037;
+    let o = World::new(s, seed).run();
+    assert!(
+        o.s3_expiries > 0,
+        "the seed no longer reaches an expiry of T1 in S3; find another: {o:?}"
+    );
+    assert_outcome(&s, seed, &o);
 }

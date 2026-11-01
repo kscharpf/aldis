@@ -6,7 +6,7 @@ The files are in `scenarios/`, below the area directory, so that the exerciser's
 
 | File | Content | Requirements |
 |---|---|---|
-| `fop1_table.json` | One scenario per cell of Table 5-1: S1 to S6 by E1 to E46 and E101 to E104 (300 cells) | COP-001, COP-005, TV-011 |
+| `fop1_table.json` | One scenario per cell of Table 5-1: S1 to S6 by E1 to E46 and E101 to E104 (300 cells); S3 x E16 and S3 x E104 are `cop1-fop1-s3-e16-t1-rearm` and `cop1-fop1-s3-e104-t1-rearm` (T1 re-armed, OI-67), the released `cop1-fop1-s3-e16` and `-e104` are `superseded` | COP-001, COP-005, TV-011 |
 | `farm1_table.json` | One scenario per cell of Table 6-1: S1 to S3 by E1 to E11 (33 cells) | COP-002, COP-005, TV-011 |
 | `fop1_ad_service.json`, `fop1_window_timer.json`, `fop1_wrap_directives.json`, `fop1_clcw.json` | FOP-1 behaviour around the cells, by topic: a normal run, retransmission order, Initiate AD with Unlock and Set V(R), BD service, purge; the sliding window, the Wait_Queue, the timer and the limit, suspension; modulo-256 wrap and directive values; CLCW patterns, another VCID, alert suppression | COP-010…COP-017 |
 | `farm1_window.json`, `farm1_flow_clcw.json` | FARM-1 behaviour around the cells: window edges, V(R) wrap, retransmission not allowed; FARM-B wrap, buffer flow control, Wait to Lockout, Set V(R) in Lockout, commands that are not commands, the CLCW fields | COP-030…COP-036 |
