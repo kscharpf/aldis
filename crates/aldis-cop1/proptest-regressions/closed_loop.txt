@@ -1,0 +1,7 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 5edf89f773b118a6c2ce023814684e466e717a39ce69ff4219e2c4ee19647f5f # T1 expires in S3 and is left disarmed (OI-67); also run as a_timer_that_expires_in_s3_is_rearmed_so_that_the_transfer_ends

@@ -38,7 +38,10 @@
 //! - A Type-BC frame on the `Sent_Queue` is purged without a notification; an Initiate AD
 //!   directive that awaits its confirmation gets its Negative Confirm from Alert (§5.2.15 d).
 //! - The timer is disarmed when it expires: the cell of E16 to E18 and E104 restarts it only
-//!   where it lists Initiate AD (or BC) Retransmission (§5.2.7 c).
+//!   where it lists Initiate AD (or BC) Retransmission (§5.2.7 c). The one exception is S3,
+//!   where the cells of E16 and E104 say "Ignore": T1 is re-armed for another `T1_Initial`
+//!   without a change of the `Transmission_Count`, so that a lost frame is still discovered
+//!   once the Wait Flag clears (§5.1.9.1; COP-013; OI-67). The table data keeps the literal cell.
 //! - No Alert follows an Alert (COP-017) because of the table, not a filter: every cell that
 //!   lists Alert goes to S6, and no cell of S6 lists an Alert other than `Alert[LLIF]`. Every
 //!   Alert a cell lists is returned (API-083).
@@ -1494,6 +1497,16 @@ impl<'a, const Q: usize, const F: usize, const N: usize> Fop1Decision<'a, Q, F, 
         ) {
             // The timer has expired (§5.1.9.1).
             self.core.deadline = None;
+            if prior == Fop1State::RetransmitWithWait
+                && matches!(event, Fop1Event::E16 | Fop1Event::E104)
+            {
+                // The one departure from Table 5-1 (OI-67): the cell says "Ignore", but a
+                // disarmed timer would leave the frames of the Sent_Queue unrecovered when a
+                // later CLCW takes FOP-1 to S1 with none running, and §5.1.9.1 has the Timer so
+                // that a lost frame is always discovered. T1 runs for another T1_Initial and
+                // the Transmission_Count stays (COP-013).
+                self.start_timer(ctx.now);
+            }
         }
         let mut out = OutArea::new(out);
         for action in cell.actions {
@@ -2994,6 +3007,38 @@ mod tests {
                 })]
             )
         );
+    }
+
+    /// OI-67: T1 expires in S3 (E16, E104), where Table 5-1 says "Ignore". The timer runs for
+    /// another `T1_Initial` and nothing else changes, so that the frames on the `Sent_Queue` are
+    /// recovered when the Wait Flag clears (232.1 §5.1.9.1).
+    #[test]
+    fn t1_is_rearmed_when_it_expires_in_s3() {
+        // req: COP-013, COP-040
+        for tt in [TimeoutType::Tt0, TimeoutType::Tt1] {
+            let f = Engine::new(config(tt, 3)).unwrap();
+            let (a, _) = go(&f, directive(1, Directive::InitiateAdWithoutClcwCheck), 0);
+            let req = |handle| Fop1Input::RequestAd { handle, fdu: &FDU };
+            let done = Fop1Input::TransmitDone {
+                kind: FrameKind::Ad,
+                accepted: true,
+            };
+            let (a, _) = go(&a, req(2), 1);
+            let (a, _) = go(&a, done, 2);
+            let (a, _) = go(&a, req(3), 3);
+            let (s3, _) = go(&a, clcw(false, true, true, 1), 6);
+            assert_eq!(s3.state(), Fop1State::RetransmitWithWait);
+            let count = s3.transmission_count();
+            let due = s3.next_deadline().unwrap();
+            let (after, out) = go(&s3, Fop1Input::Timeout, due.as_micros());
+            assert_eq!(out, vec![]);
+            assert_eq!(after.state(), Fop1State::RetransmitWithWait);
+            assert_eq!(after.transmission_count(), count);
+            assert_eq!(
+                after.next_deadline(),
+                Some(due.saturating_add(Duration::from_micros(100)))
+            );
+        }
     }
 
     /// Every state the sweep starts from: S6, S1 with frames outstanding and an FDU
