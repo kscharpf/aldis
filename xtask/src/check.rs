@@ -533,7 +533,8 @@ fn full_steps(t: &Touched, tools: Tools, run: &mut Vec<Item>, skipped: &mut Vec<
         if tools.qemu_arm {
             // The runner of `exerciser/.cargo/config.toml` starts QEMU. The gate bounds the run
             // with `timeout 120` and retries it once; the host may have no `timeout`, so the
-            // step carries the same limit and `run_item` enforces it. A timeout fails the step.
+            // step carries the same limit and `run_item` enforces it. A timeout fails the step; a
+            // Ctrl-C leaves cargo and QEMU running (see `run_item`).
             let mut item = cmd_in(
                 "exerciser run",
                 "exerciser",
@@ -659,7 +660,7 @@ const GATE_ONLY: &[(&str, &str)] = &[
     ),
     (
         "exerciser-thumbv7em-none-eabihf",
-        "partly: check runs the exerciser's clippy and release build, and with --full the QEMU run (without the gate's time limit and retry), not the canary",
+        "partly: check runs the exerciser's clippy and release build, and with --full the QEMU run (with the gate's time limit of 120 s but not its retry; a Ctrl-C leaves cargo and QEMU running), not the canary",
     ),
     (
         "exerciser-armv7r-none-eabihf",
@@ -868,7 +869,9 @@ const EXERCISER_RUN_LIMIT: Duration = Duration::from_secs(120);
 const POLL: Duration = Duration::from_millis(200);
 
 /// Runs `item`; whether it succeeded. A step with a limit runs in a process group of its own and
-/// is killed with its children (QEMU) when the limit passes, which fails the step.
+/// is killed with its children (QEMU) when the limit passes, which fails the step. A Ctrl-C ends
+/// this process, not the group: cargo and QEMU keep running without a limit (forwarding the
+/// signal needs a signal handler, which takes a dependency).
 fn run_item(item: &Item) -> Result<bool, String> {
     let mut command = command(item)?;
     let Some(limit) = item.limit else {
@@ -1214,7 +1217,6 @@ mod tests {
 
     #[test]
     fn a_step_over_its_limit_is_killed_and_fails() {
-        // req: VER-068
         let mut slow = super::cmd("slow", "sleep", &["30"]);
         slow.limit = Some(Duration::from_millis(300));
         let started = std::time::Instant::now();

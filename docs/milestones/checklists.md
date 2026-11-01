@@ -34,7 +34,7 @@ A crate *has code* once its `src/` declares a function. In the change that gives
 
 An engine is a stateful type with const-generic capacities (the COP-1 `Fop1` and `Farm1`, the link-layer engines of M4).
 
-- [ ] The engine is built at the `capacities.toml` sizes of `crates/aldis-ffi` in its first PR, so that `stack` measures its entry points at the sizes a C integrator gets (VER-011; the C ABI entry point of the FOP-1 engine needed 41,656 bytes at the sizes of #202 against a 4,096-byte budget, which only building it at those sizes showed). Mechanically this could be checked by `consistency` (every engine type of `aldis-link` and `aldis-cop1` has an entry in `capacities.toml`); it is not built.
+- [ ] The engine is built at the `capacities.toml` sizes of `crates/aldis-ffi` in its first PR, so that `stack` measures its entry points at the sizes a C integrator gets (VER-011; `Fop1::step` needed 41,656 bytes at 16x1024 against the 4,096-byte `rust` budget, which only building it at those sizes showed, #202).
 
 ## Adding a vector file
 

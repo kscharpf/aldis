@@ -217,6 +217,9 @@ pub fn run(args: &[&str]) -> Result<usize, String> {
 /// unless `--fail-fast` says otherwise.
 fn run_options(args: &[&str]) -> Result<(Options, scope::Force, bool), String> {
     let (mut opts, flags) = parse_options(args)?;
+    if opts.log_download.is_some() {
+        return Err("--log-download is set by `verify part` for the container".to_owned());
+    }
     let force = scope::Force {
         all: flags.contains(&"--all"),
         cpp: flags.contains(&"--all-cpp"),
@@ -244,7 +247,9 @@ fn check_names(list: Option<&&str>, flag: &str) -> Result<Vec<String>, String> {
 }
 
 /// Parses `--only a,b`, `--fail-fast`, `--no-fail-fast`, `--push-image <repository>`, and, for
-/// `verify inside`, `--skip a,b --base <commit>`; returns the other flags.
+/// `verify inside`, `--skip a,b --base <commit> --log-download <command>`; returns the other
+/// flags. `--log-download` is the hosted part's way to reach the container (`run_options` refuses
+/// it on the command line of a user).
 fn parse_options<'a>(args: &[&'a str]) -> Result<(Options, Vec<&'a str>), String> {
     let mut opts = Options::default();
     let mut flags = Vec::new();
@@ -1118,6 +1123,16 @@ mod tests {
         assert_eq!(shown.len(), 80 + 1 + 10);
         assert!(shown[80].contains("more line(s)"));
         assert_eq!(failure_excerpt(&[]), <[String; 0]>::default());
+    }
+
+    #[test]
+    fn a_user_cannot_set_the_log_download_command() {
+        assert!(
+            run(&["--log-download", "x"])
+                .unwrap_err()
+                .contains("set by `verify part`")
+        );
+        assert!(run(&["part", "host", "--log-download", "x"]).is_err());
     }
 
     #[test]
