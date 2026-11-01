@@ -66,7 +66,7 @@ A file name is a promise about its contents: a case that does not fit its file's
 |---|---|---|
 | A finding whose fix changes behaviour the specification defines, a requirement, the public API or C ABI, or a released vector; rejecting a finding the reviewer still holds after the reply | Whether a finding is blocking; fixing a finding that changes none of those and re-verifying; moving a non-blocking finding to a follow-up issue named in the reply; the point-by-point reply | Fixing such findings on its own branch |
 
-**Blocking** means a failing check, a broken rule of AGENTS.md, or a defect against a requirement or the Blue Book; anything else is non-blocking. Fixing code to meet the existing specification is not a behaviour change. Example: the OID and CRC check fix in `cpp/vectors/` (e73db7d, #66), and the follow-up issues #65, #67, #69, are routine. Instead of asking: fix or defer, and say which and why in the reply.
+**Blocking** means a failing check, a broken rule of AGENTS.md, or a defect against a requirement or the Blue Book; anything else is non-blocking. Fixing code to meet the existing specification is not a behaviour change. Example: the OID and CRC check fix in `cpp/vectors/` (e73db7d, #66), and the follow-up issues #65, #67, #69, are routine. Instead of asking: fix or defer, and say which and why in the reply. A finding of an architecture review (a design review outside a pull request) that is not fixed in the same pull request is opened as a GitHub issue; a finding that exists only in chat is lost.
 
 ### 2.7 Process and tooling
 
