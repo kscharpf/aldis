@@ -1215,12 +1215,12 @@ mod tests {
     #[test]
     fn a_step_over_its_limit_is_killed_and_fails() {
         // req: VER-068
-        let mut slow = cmd("slow", "sleep", &["30"]);
+        let mut slow = super::cmd("slow", "sleep", &["30"]);
         slow.limit = Some(Duration::from_millis(300));
         let started = std::time::Instant::now();
         assert_eq!(super::run_item(&slow), Ok(false));
         assert!(started.elapsed() < Duration::from_secs(10));
-        let mut quick = cmd("quick", "true", &[]);
+        let mut quick = super::cmd("quick", "true", &[]);
         quick.limit = Some(Duration::from_secs(30));
         assert_eq!(super::run_item(&quick), Ok(true));
         let item = plan(&everything(), ALL, Mode::Full)
