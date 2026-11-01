@@ -66,8 +66,9 @@ export STUB="$work/stub"
 echo '{"required_status_checks":{"contexts":["aldis/verify"]}}' >"$STUB/protection.json"
 echo '[]' >"$STUB/inline.json"
 
-review='{"author":{"login":"rev"},"state":"COMMENTED","submittedAt":"2026-01-02T00:00:00Z","body":"ok"}'
-later_review='{"author":{"login":"rev"},"state":"COMMENTED","submittedAt":"2026-01-04T00:00:00Z","body":"ok"}'
+rev='"author":{"login":"rev"},"state":"COMMENTED","body":"ok"'
+review='{'"$rev"',"submittedAt":"2026-01-02T00:00:00Z"}'
+later_review='{'"$rev"',"submittedAt":"2026-01-04T00:00:00Z"}'
 comment() { # comment <time> <body>
     jq -nc --arg t "$1" --arg b "$2" '{author: {login: "me"}, createdAt: $t, body: $b}'
 }
@@ -84,7 +85,8 @@ failures=0
 expect() { # expect <verdict prefix> <case> [text the output must contain]
     local out
     out="$(cd "$repo" && PATH="$work/bin:$PATH" "$script" 7 2>&1)"
-    if printf '%s\n' "$out" | grep -Fq "#7: $1" && { [ -z "${3:-}" ] || grep -Fq -- "$3" <<<"$out"; }; then
+    if grep -Fq "#7: $1" <<<"$out" &&
+        { [ -z "${3:-}" ] || grep -Fq -- "$3" <<<"$out"; }; then
         echo "ok: $2"
     else
         echo "FAIL: $2"
@@ -101,7 +103,8 @@ pr "$current" "[]" "[]"
 expect "READY" "no review"
 pr "$current" "[$review]" "[$reply]"
 expect "READY" "the newest review has a later reply ending with the marker"
-pr "$current" "[$review]" "[$(comment 2026-01-03T00:00:00Z "$(printf 'Done.\n\n%s\n\n' "$marker")")]"
+padded="$(printf 'Done.\n\n%s\n\n' "$marker")"
+pr "$current" "[$review]" "[$(comment 2026-01-03T00:00:00Z "$padded")]"
 expect "READY" "trailing blank lines after the marker"
 pr "$current" "[$review]" "[]"
 expect "NOT READY" "a review with no reply" "review unanswered (rev COMMENTED"
