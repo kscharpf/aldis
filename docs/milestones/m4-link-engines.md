@@ -7,7 +7,7 @@
 
 | WP | State | PRs | Notes |
 |---|---|---|---|
-| Plan | in progress | | This plan, D1–D5, and `--scope m4` trace gate |
+| WP-0 Plan | in progress | | This plan, D1–D5, and `--scope m4` trace gate |
 | WP-1 Spec readings | planned | | LNK rows checked clause by clause against the Blue Books; per-engine action bound and output-area bound; field codes 200–249 (API-057, API-062). No engine code |
 | WP-2a Blind model & vectors: sending | planned | | Python model written blind (TV-023) and engine-scenario vectors for FHP placement, mux, segmentation |
 | WP-2b Blind model & vectors: receiving | planned | | The same for the receiver, extraction, and reassembly |
@@ -15,7 +15,7 @@
 | WP-4 ChannelMux, policies, Access/Bitstream generators | planned | | |
 | WP-5 FrameReceiver | planned | | |
 | WP-6 MapSegmenter, MapReassembler, CLTU packer | planned | | FDUs fed to FOP-1 through `aldis-cop1` |
-| WP-7 C ABI handles | planned | | One handle per engine; absorbs issue #217 |
+| WP-7 C ABI handles | planned | | One handle per engine; #217 is its own PR (D5) |
 | WP-8 Gates & hazards | planned | | |
 | WP-9 Exit | planned | | |
 
@@ -42,7 +42,7 @@ History:
 | # | Decision | Choice | Status |
 |---|---|---|---|
 | D1 | Trace scope | Add `--scope m4` from §4 to `cargo xtask ci`, the `spec` check of `cargo xtask verify`, and `ci.yml`, without `--strict`, in the plan PR, so progress is measured from the start; `--strict` at the M4 exit | Accepted (maintainer, 2026-11-01) |
-| D2 | TM idle strategy (LNK-014, LNK-030; [OI-11](../09-open-issues.md)) | OI-11 is closed as written: a per-VC policy, defaulting to an OID frame on the dedicated idle VC (132.0 note 2). The reference scenario keeps its golden traces | Accepted (maintainer, 2026-11-01) |
+| D2 | TM idle strategy (LNK-014, LNK-030; [OI-11](../09-open-issues.md)) | OI-11 is closed as written: a per-VC policy, defaulting to an OID frame on the dedicated idle VC (132.0 §4.1.4.6.3 and its note 2); that VC is one of the VCs configured for Packets (§4.1.4.6.3). The reference scenario keeps its golden traces | Accepted (maintainer, 2026-11-01) |
 | D3 | Protocol genericity (LNK-001) | Each engine is generic over a protocol trait with one implementation each for TM, TC, AOS, and USLP, not one type per protocol; protocol differences are configuration | Accepted (maintainer, 2026-11-01) |
 | D4 | C ABI shape (CABI-030…033, CABI-040) | One opaque handle per engine type, the protocol chosen in its configuration, on the pattern of D10 of the [M3 plan](m3-cop1.md): caller-owned storage with magic tags, one step call per input, read-only queries | Accepted (maintainer, 2026-11-01) |
 | D5 | Process freeze | None for M4 (unlike M3): a process fix is its own pull request | Accepted (maintainer, 2026-11-01) |
@@ -63,7 +63,7 @@ WP-6 needs more than WP-1 and `aldis-cop1`: its segmentation scenarios (LNK-040�
 - This plan, D1–D5, and the `--scope m4` trace gate (D1); OI-11 resolved (D2).
 
 ### WP-1 Spec readings (M) — LNK-001…073, API-057, API-062
-- Each LNK row checked clause by clause against 132.0, 232.0, 732.0, and 732.1; readings cite the clause.
+- Each LNK row checked clause by clause against the documents it cites: 132.0, 133.0, 133.1, 232.0, 355.0, 732.0, and 732.1; readings cite the clause.
 - Per-engine action bound `N` and output-area bound (API-057, API-062); field codes from block 200–249 allocated in `docs/03-api-model.md` §9.1 and generated with `cargo xtask fields --write`.
 - Checklist: "A spec-readings pull request before a codec". No engine code.
 
@@ -74,32 +74,38 @@ WP-6 needs more than WP-1 and `aldis-cop1`: its segmentation scenarios (LNK-040�
 ### WP-2b Blind model & vectors: receiving (M) — LNK-050…054, 060…064, 070…072
 - The same method for the receiver, extraction, and reassembly.
 
-### WP-3 PacketGenerator & PacketExtractor (L) — LNK-010…015, 060…064, VER-023
+### WP-3 PacketGenerator & PacketExtractor (L) — LNK-002, 003, 010…015, 060…064, VER-023
 - TM, AOS, and USLP fixed-length frames; release deadline, idle packets, gap resynchronisation.
 - FHP placement and extraction round-trip property test (VER-023).
 - Defines the shared link configuration, action, and status types, and the protocol trait (D3).
+- Owns the tests of LNK-002 (housekeeping counters, API-056) and LNK-003 (reconfiguration between data units) on the shared types; later engine WPs wire their engine to them.
+- Checklist: "Adding an engine to a new or an existing crate".
 - Absorbs issue #154 (a `FrameLayout` constructor for a given data length).
 
 ### WP-4 ChannelMux, policies, Access and Bitstream generators (L) — LNK-020, 021, 030…036
+- Checklist: "Adding an engine to a new or an existing crate".
 - Fixed-priority, round-robin, and weighted policies; MC and VC counters; OID frames (D2); OCF and Insert Zone source slots.
 - VC Access (VCA) and AOS Bitstream generators.
 
 ### WP-5 FrameReceiver (M) — LNK-050…054
 - Validation, routing, gap events, OCF, Insert Zone, and FSH delivery; CLCW delivery for FOP-1.
+- Checklist: "Adding an engine to a new or an existing crate".
 
 ### WP-6 MapSegmenter, MapReassembler, CLTU packer (L) — LNK-040…044, 070…073
 - TC Segment Header and USLP variable-length rules; FDUs fed to FOP-1 (integration test through `aldis-cop1`).
 - Reassembly round-trip property test.
+- Checklist: "Adding an engine to a new or an existing crate".
 
 ### WP-7 C ABI handles (M) — CABI-030…033, CABI-040
 - One opaque handle per engine (D4), the exerciser group, and the generated header.
-- Absorbs issue #217 (consistency check: a `capacities.toml` entry for every engine).
+- Issue #217 (a `capacities.toml` entry for every engine, checked by `consistency`) is its own pull request (D5).
 
 ### WP-8 Gates & hazards (M) — VER-010, VER-011, VER-022…025, VER-065, VER-066
 - 100 % coverage, mutants triaged, fuzz targets, stack bounds at the `capacities.toml` sizes, QEMU on three targets.
 - Hazard analysis `docs/verification/hazards/link.md` and the assurance case.
 
-### WP-9 Exit (S) — VER-020, RS-015
+### WP-9 Exit (S) — LNK-001, VER-020, RS-015
+- The inspection record of LNK-001 (one frame protocol per engine, method I) in `docs/verification/records/`, in the format of [analysis-records.md](../verification/analysis-records.md).
 - `cargo xtask trace --scope m4 --strict` replaces the non-strict run (VER-020); rustdoc citations (RS-015); roadmap, README, and open issues.
 - The release `v0.5.0-m4` is the maintainer's.
 
@@ -117,7 +123,7 @@ Milestone 4 is complete when every item below is green on `main`. The results co
 | FrameReceiver | LNK-050…054 | |
 | PacketExtractor | LNK-060…064 | |
 | Reassembler | LNK-070…073 | |
-| Engine contract & sans-I/O | GEN-011, GEN-015, GEN-030…032, API-050, API-056, API-057, API-062, RS-020 | |
+| Engine contract & sans-I/O | GEN-011, GEN-015, GEN-030…032, API-050, API-052, API-053, API-056, API-057, API-060, API-062, API-074, RS-020, RS-023 | |
 | C ABI handles | CABI-030…033, CABI-040, API-082 | |
 | Panic freedom & resources | VER-010, VER-011, GEN-020…024 | |
 | Portability | GEN-005…007, VER-030, VER-031 | |
