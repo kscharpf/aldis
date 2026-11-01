@@ -1726,7 +1726,7 @@ mod tests {
         let lines = describe(&p, &checks);
         assert!(
             lines[0].ends_with(&format!(
-                "1 of {} checks run, 0 skipped, {} reused, 1 nightly only",
+                "1 of {} checks run, 1 skipped, {} reused, 1 nightly only",
                 checks.len(),
                 rust.len()
             )),
