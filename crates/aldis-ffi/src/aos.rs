@@ -39,11 +39,12 @@ use aldis::aos::{
     FrameCountCycle, Mpdu, PacketOffset, PacketPointer, PduHeader, ValidBitCount, VcFrameCount,
     VcTable, encode, encode_oid, encode_oid_galois,
 };
+use aldis::core::field;
 use aldis::core::ids::{SpacecraftId, VcId};
 use aldis::core::layout::{FrameLayout, OCF_LEN};
 use aldis::core::ocf::Ocf;
 use aldis::core::security::SecurityLayout;
-use aldis::core::{AnomalySet, Result};
+use aldis::core::{AnomalySet, Error, ErrorKind, Result};
 
 use crate::abi::{self, Configs, invalid_argument};
 use crate::mirror::{mirror, parse};
@@ -662,9 +663,19 @@ const fn plain(content: u8) -> aldis_aos_pdu_t {
 
 /// The C form of a frame layout, whose zone follows `pdu_header_len` octets of the data field
 /// (732.0 §4.1, §4.1.4; CMN-040).
-fn layout(l: &FrameLayout, pdu_header_len: usize) -> aldis_aos_layout_t {
+///
+/// # Errors
+/// `InternalError` if the PDU Header is longer than the data field, which the callers' frames
+/// rule out: the PDU parse rejects a data field without an octet after its header (`Mpdu::parse`
+/// at `aldis-aos` `mpdu.rs:230-235`, `Bpdu::parse` at `bpdu.rs:218-219`; GEN-020).
+fn layout(l: &FrameLayout, pdu_header_len: usize) -> Result<aldis_aos_layout_t> {
     let data = l.data();
-    let zone = data.start.saturating_add(pdu_header_len).min(data.end)..data.end;
+    let zone_start = data
+        .start
+        .checked_add(pdu_header_len)
+        .filter(|&start| start <= data.end)
+        .ok_or(Error::new(ErrorKind::InternalError).with_field(field::FRAME_DATA_FIELD))?;
+    let zone = zone_start..data.end;
     let insert_zone = aldis_range_t::from(&l.secondary());
     let security_header = aldis_range_t::from(&l.security_header());
     let data = aldis_range_t::from(&data);
@@ -672,7 +683,7 @@ fn layout(l: &FrameLayout, pdu_header_len: usize) -> aldis_aos_layout_t {
     let security_trailer = aldis_range_t::from(&l.security_trailer());
     let ocf = aldis_range_t::from(&l.ocf());
     let fecf = aldis_range_t::from(&l.fecf());
-    aldis_aos_layout_t {
+    Ok(aldis_aos_layout_t {
         frame_len: l.frame_len(),
         insert_zone,
         security_header,
@@ -681,25 +692,31 @@ fn layout(l: &FrameLayout, pdu_header_len: usize) -> aldis_aos_layout_t {
         security_trailer,
         ocf,
         fecf,
-    }
+    })
 }
 
 /// The C view of a decoded frame.
-pub(crate) fn view(f: &AosFrame<'_>, anomalies: AnomalySet<AosAnomaly>) -> aldis_aos_frame_t {
+///
+/// # Errors
+/// `InternalError` from [`layout`].
+pub(crate) fn view(
+    f: &AosFrame<'_>,
+    anomalies: AnomalySet<AosAnomaly>,
+) -> Result<aldis_aos_frame_t> {
     let (pdu, header_len) = match f.data_unit() {
         DataUnit::Mpdu(m) => (mpdu(&m), MPDU_HEADER_LEN),
         DataUnit::Bpdu(b) => (bpdu(&b), BPDU_HEADER_LEN),
         DataUnit::VcaSdu(_) => (plain(ALDIS_AOS_CONTENT_VCA_SDU), 0),
         DataUnit::IdleData(_) => (plain(ALDIS_AOS_CONTENT_IDLE_DATA), 0),
     };
-    aldis_aos_frame_t {
+    Ok(aldis_aos_frame_t {
         header: header(&f.header()),
         pdu,
         has_fecf: f.fecf().is_some(),
         fecf: f.fecf().unwrap_or(0),
         anomalies: anomalies.bits(),
-        layout: layout(f.layout(), header_len),
-    }
+        layout: layout(f.layout(), header_len)?,
+    })
 }
 
 /// Computes the FHEC of the six octets of a Primary Header: the four parity symbols, which form
@@ -936,7 +953,9 @@ pub unsafe extern "C" fn aldis_aos_header_decode(
 /// both modes (AOS-017); in strict mode, for the first deviation: `ALDIS_ERR_INVALID_FIELD`
 /// (`vc_frame_count_cycle`) for a cycle other than `0000` with its Use Flag `0` (AOS-012),
 /// `ALDIS_ERR_RESERVED_VALUE` (`aos_header_spare`) for Issue 4 bits 42–43 other than `00`
-/// (AOS-002), and the spare errors of the data unit; CABI-022 violations.
+/// (AOS-002), and the spare errors of the data unit; `ALDIS_ERR_INTERNAL_ERROR` if the layout of
+/// a decoded frame does not fit its data field, which a decoded frame rules out; CABI-022
+/// violations.
 ///
 /// # Safety
 /// `bytes` is valid for `len` octets (or `NULL` with 0); `mc` and `vcs` as for
@@ -968,7 +987,7 @@ pub unsafe extern "C" fn aldis_aos_decode(
                 || AosFrame::decode(bytes, &m.pc, &m.vcs),
                 || AosFrame::decode_lenient(bytes, &m.pc, &m.vcs),
             )?;
-            out.write(view(&frame, anomalies));
+            out.write(view(&frame, anomalies)?);
             Ok(())
         })
     }
@@ -1216,6 +1235,33 @@ mod tests {
     use aldis::aos::AosAnomaly;
     use aldis::aos::header::OID_VCID;
     use aldis::core::Anomaly as _;
+    use aldis::core::layout::LayoutSpec;
+
+    #[test]
+    fn layout_zone_follows_the_pdu_header() {
+        // req: CMN-040, GEN-020
+        let spec = LayoutSpec {
+            frame_len: 20,
+            primary_header_len: 6,
+            secondary_len: 0,
+            security: SecurityLayout::NONE,
+            ocf: false,
+            fecf: false,
+        };
+        let l = FrameLayout::compute(&spec).unwrap();
+        let c = layout(&l, MPDU_HEADER_LEN).unwrap();
+        assert_eq!((c.data.offset, c.data.len), (6, 14));
+        assert_eq!((c.zone.offset, c.zone.len), (8, 12));
+        let c = layout(&l, 0).unwrap();
+        assert_eq!((c.zone.offset, c.zone.len), (6, 14));
+        let e = layout(&l, 15).unwrap_err();
+        assert_eq!(
+            (e.kind(), e.field()),
+            (ErrorKind::InternalError, Some(field::FRAME_DATA_FIELD))
+        );
+        let e = layout(&l, usize::MAX).unwrap_err();
+        assert_eq!(e.kind(), ErrorKind::InternalError);
+    }
 
     #[test]
     fn constants_are_the_crate_values() {

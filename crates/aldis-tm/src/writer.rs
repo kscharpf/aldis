@@ -280,8 +280,11 @@ impl<'b> TmFrameWriter<'b, Unprotected> {
     /// without a Secondary Header (132.0 §4.1.3.3; TM-009).
     pub fn secondary_header_data_mut(&mut self) -> &mut [u8] {
         let fsh = self.layout.secondary();
-        let start = fsh.start.saturating_add(1).min(fsh.end);
-        self.field_mut(start..fsh.end)
+        // The first octet is the Identification Field; an absent Secondary Header is empty.
+        match self.field_mut(fsh).split_first_mut() {
+            Some((_, data)) => data,
+            None => &mut [],
+        }
     }
 
     /// The Security Header to fill in place; empty without SDLS (132.0 §6.3.4; API-072).
@@ -664,6 +667,29 @@ mod tests {
 
     fn packets(vc: u8, pointer: PacketPointer) -> TmFrameFields {
         TmFrameFields::new(vcid(vc), 7, 9, DataFieldStatus::Packets(pointer))
+    }
+
+    #[test]
+    fn secondary_header_data_excludes_the_identification_field() {
+        // req: TM-009, GEN-020
+        let mc = mc();
+        let mut out = [0_u8; 40];
+        let sdu = TmFrameFields::new(
+            vcid(1),
+            0,
+            0,
+            DataFieldStatus::VcaSdu {
+                packet_order_flag: false,
+                segment_length_id: SegmentLengthId::NO_SEGMENTS,
+                first_header_pointer: FirstHeaderPointer::NO_PACKET_START,
+            },
+        );
+        let mut w = TmFrameWriter::begin(&mut out, &mc, &sdu).unwrap();
+        assert_eq!(w.layout().secondary().len(), 0);
+        assert_eq!(w.secondary_header_data_mut().len(), 0);
+        let mut w = TmFrameWriter::begin(&mut out, &mc, &packets(5, starts_at(0))).unwrap();
+        assert_eq!(w.layout().secondary().len(), 4);
+        assert_eq!(w.secondary_header_data_mut().len(), 3);
     }
 
     #[test]
