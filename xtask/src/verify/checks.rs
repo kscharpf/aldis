@@ -435,7 +435,7 @@ fn rust() -> Vec<Check> {
             ),
         ),
         grouped(Group::Cross, check("layers", c, false, 1, LAYERS)),
-        // The shell scripts: shellcheck, 100 columns, and their own tests (VER-071). The
+        // The shell scripts: shellcheck, 100 bytes a line, and their own tests (VER-071). The
         // duration is the local one until the hosted runs measure it.
         grouped(
             Group::Cross,
@@ -626,7 +626,7 @@ cargo xtask refapp-deps
 ";
 
 const SHELL: &str = "\
-# shellcheck, at most 100 columns, and every scripts/test-* (VER-071).
+# shellcheck, at most 100 bytes a line, and every scripts/test-* (VER-071).
 scripts/check-shell
 ";
 
