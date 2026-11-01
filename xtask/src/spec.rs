@@ -361,7 +361,10 @@ mod tests {
         let doc = table(&["| OI-07 | **A.** x | Open |", "| OI-07 | **B.** y | Open |"]);
         let p = oi_problems(&doc);
         assert_eq!(p.len(), 1, "{p:?}");
-        assert!(p[0].contains("duplicate OI-07") && p[0].contains("first at line 3"), "{p:?}");
+        assert!(
+            p[0].contains("duplicate OI-07") && p[0].contains("first at line 3"),
+            "{p:?}"
+        );
     }
 
     #[test]
