@@ -359,8 +359,9 @@ pub fn release(version: &str, date: &str) -> Result<usize, String> {
     let missing = untagged_releases(&repo::read(&path)?, &tags.lines().collect::<Vec<_>>());
     if !missing.is_empty() {
         return Err(format!(
-            "CHANGELOG.md has released versions without a git tag: {}; ask the maintainer to tag \
-             them (tags are the maintainer's) before the next release",
+            "CHANGELOG.md has released versions without a git tag in this clone: {}; run \
+             `git fetch --tags origin` first, and if they are still missing ask the maintainer \
+             to tag them (tags are the maintainer's) before the next release",
             missing.join(", ")
         ));
     }
@@ -492,7 +493,6 @@ mod tests {
 
     #[test]
     fn every_released_version_but_the_exempt_one_needs_a_tag() {
-        // req: GEN-080
         let log = "# Changelog\n\n## [Unreleased]\n\n## [0.3.0-m2] — 2026-10-27\n\n\
                    ## [0.2.0-m1] — 2026-10-20\n\n## [0.1.0-spec] — 2026-10-16\n";
         assert_eq!(untagged_releases(log, &["v0.2.0-m1"]), ["v0.3.0-m2"]);

@@ -139,7 +139,14 @@ pub fn run(out: &Path, opts: &Options) -> Result<usize, String> {
             ));
         }
         let temp = Path::new("/tmp/verify").join(&check.name);
-        run_check(check, &root, &temp, &logs, &[])
+        run_check(
+            check,
+            &root,
+            &temp,
+            &logs,
+            &[],
+            opts.log_download.as_deref(),
+        )
     })?;
     let failed = order
         .iter()

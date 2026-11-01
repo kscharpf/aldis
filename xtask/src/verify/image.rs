@@ -276,13 +276,6 @@ impl Engine {
             "-v".to_owned(),
             format!("{}:/out", out.display()),
         ];
-        // The id of a hosted run, for the command that fetches a failed check's whole log.
-        if let Some(run) = std::env::var("GITHUB_RUN_ID")
-            .ok()
-            .filter(|r| !r.is_empty())
-        {
-            args.extend(["-e".to_owned(), format!("ALDIS_VERIFY_RUN={run}")]);
-        }
         args.extend([
             tag.to_owned(),
             commit.to_owned(),
@@ -299,6 +292,9 @@ impl Engine {
         }
         if let Some(only) = &opts.only {
             args.extend(["--only".to_owned(), only.join(",")]);
+        }
+        if let Some(command) = &opts.log_download {
+            args.extend(["--log-download".to_owned(), command.clone()]);
         }
         if opts.fails_fast() {
             args.push("--fail-fast".to_owned());

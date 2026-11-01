@@ -54,6 +54,8 @@ struct Item {
     env: Vec<(String, String)>,
     /// How the step differs from the whole of its gate check, shown in the last line.
     note: Option<String>,
+    /// The time after which the step is killed and fails, where the gate bounds the command.
+    limit: Option<Duration>,
 }
 
 const fn cmd_in(
@@ -67,6 +69,7 @@ const fn cmd_in(
         action: Action::Cmd { program, args, dir },
         env: Vec::new(),
         note: None,
+        limit: None,
     }
 }
 
@@ -80,6 +83,7 @@ fn xtask(name: &'static str, args: &[&str]) -> Item {
         action: Action::Xtask(args.iter().map(|a| (*a).to_owned()).collect()),
         env: Vec::new(),
         note: None,
+        limit: None,
     }
 }
 
@@ -299,8 +303,8 @@ fn exports(script: &str) -> Vec<(String, String)> {
 /// The steps to run for `t` and the ones skipped, each with the reason.
 ///
 /// The base steps run for every change. The others run when the verification run would run the
-/// check they mirror for the change (`Touched::gate_runs`); `--full` adds coverage, `stack`, and
-/// `big-endian` on the same rule.
+/// check they mirror for the change (`Touched::gate_runs`); `--full` adds coverage, `stack`,
+/// `big-endian`, and the exerciser's QEMU run on the same rule.
 #[expect(clippy::too_many_lines, reason = "one entry per check step")]
 fn plan(t: &Touched, tools: Tools, mode: Mode) -> Plan {
     if mode == Mode::Quick {
@@ -491,9 +495,8 @@ fn plan(t: &Touched, tools: Tools, mode: Mode) -> Plan {
 }
 
 /// The steps that only `--full` runs: coverage, `stack`, `big-endian`, and the exerciser's run
-/// under QEMU, each when the
-/// verification run would run its check for the change, and skipped with the reason when its tool
-/// is missing.
+/// under QEMU, each when the verification run would run its check for the change, and skipped
+/// with the reason when its tool is missing.
 fn full_steps(t: &Touched, tools: Tools, run: &mut Vec<Item>, skipped: &mut Vec<Skip>) {
     if t.gate_runs("coverage") {
         if tools.coverage {
@@ -528,9 +531,10 @@ fn full_steps(t: &Touched, tools: Tools, run: &mut Vec<Item>, skipped: &mut Vec<
     }
     if t.gate_runs("exerciser-thumbv7em-none-eabihf") {
         if tools.qemu_arm {
-            // The runner of `exerciser/.cargo/config.toml` starts QEMU. The gate also bounds the
-            // run with `timeout 120` and retries it once; the host may have no `timeout`.
-            run.push(cmd_in(
+            // The runner of `exerciser/.cargo/config.toml` starts QEMU. The gate bounds the run
+            // with `timeout 120` and retries it once; the host may have no `timeout`, so the
+            // step carries the same limit and `run_item` enforces it. A timeout fails the step.
+            let mut item = cmd_in(
                 "exerciser run",
                 "exerciser",
                 "cargo",
@@ -541,7 +545,9 @@ fn full_steps(t: &Touched, tools: Tools, run: &mut Vec<Item>, skipped: &mut Vec<
                     "--target",
                     "thumbv7em-none-eabihf",
                 ],
-            ));
+            );
+            item.limit = Some(EXERCISER_RUN_LIMIT);
+            run.push(item);
         } else {
             skipped.push(Skip {
                 step: "exerciser run",
@@ -855,6 +861,51 @@ fn from_index(names: &[&str], from: &str) -> Result<usize, String> {
     })
 }
 
+/// The time limit of the gate's `timeout 120` around the exerciser's QEMU run.
+const EXERCISER_RUN_LIMIT: Duration = Duration::from_secs(120);
+
+/// How often a step with a limit is looked at.
+const POLL: Duration = Duration::from_millis(200);
+
+/// Runs `item`; whether it succeeded. A step with a limit runs in a process group of its own and
+/// is killed with its children (QEMU) when the limit passes, which fails the step.
+fn run_item(item: &Item) -> Result<bool, String> {
+    let mut command = command(item)?;
+    let Some(limit) = item.limit else {
+        return Ok(command
+            .status()
+            .map_err(|e| format!("{}: {e}", item.name))?
+            .success());
+    };
+    std::os::unix::process::CommandExt::process_group(&mut command, 0);
+    let mut child = command.spawn().map_err(|e| format!("{}: {e}", item.name))?;
+    let deadline = Instant::now() + limit;
+    // bound: the loop leaves when the child exits or at the deadline, `limit` after the spawn,
+    // which kills it.
+    loop {
+        if let Some(status) = child
+            .try_wait()
+            .map_err(|e| format!("{}: {e}", item.name))?
+        {
+            return Ok(status.success());
+        }
+        if Instant::now() >= deadline {
+            let _ = Command::new("kill")
+                .args(["-KILL", &format!("-{}", child.id())])
+                .status();
+            let _ = child.kill();
+            let _ = child.wait();
+            println!(
+                "check: {} timed out after {} s and was killed",
+                item.name,
+                limit.as_secs()
+            );
+            return Ok(false);
+        }
+        std::thread::sleep(POLL);
+    }
+}
+
 /// Runs the plan; `Ok(0)` when every step passed.
 pub fn run(args: &[&str]) -> Result<usize, String> {
     let Options { mode, from } = parse_args(args)?;
@@ -888,10 +939,7 @@ pub fn run(args: &[&str]) -> Result<usize, String> {
     for (i, item) in items.iter().enumerate().skip(first) {
         println!("check: [{}/{total}] {}", i + 1, item.name);
         let started = Instant::now();
-        let ok = command(item)?
-            .status()
-            .map_err(|e| format!("{}: {e}", item.name))?
-            .success();
+        let ok = run_item(item)?;
         let took = fmt_duration(started.elapsed());
         println!("check: [{}/{total}] {} ({took})", i + 1, item.name);
         let label = item
@@ -1162,6 +1210,28 @@ mod tests {
         // Every step of the default tier is in the full tier, in the same order.
         let mut rest = full.iter();
         assert!(default.iter().all(|d| rest.any(|f| f == d)));
+    }
+
+    #[test]
+    fn a_step_over_its_limit_is_killed_and_fails() {
+        // req: VER-068
+        let mut slow = cmd("slow", "sleep", &["30"]);
+        slow.limit = Some(Duration::from_millis(300));
+        let started = std::time::Instant::now();
+        assert_eq!(super::run_item(&slow), Ok(false));
+        assert!(started.elapsed() < Duration::from_secs(10));
+        let mut quick = cmd("quick", "true", &[]);
+        quick.limit = Some(Duration::from_secs(30));
+        assert_eq!(super::run_item(&quick), Ok(true));
+        let item = plan(&everything(), ALL, Mode::Full)
+            .items
+            .into_iter()
+            .find(|i| i.name == "exerciser run");
+        assert_eq!(
+            item.and_then(|i| i.limit),
+            Some(Duration::from_secs(120)),
+            "the gate's timeout 120"
+        );
     }
 
     #[test]
