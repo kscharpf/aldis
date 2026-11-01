@@ -385,16 +385,18 @@ impl RawRest {
     }
 }
 
-/// The VCF Count of `len` octets at octet 7 of `frame`; 0 when absent or out of `frame`
-/// (732.1 §4.1.2.12.2).
-pub(crate) fn read_vcf_count(frame: &[u8], len: VcfCountLen) -> VcfCount {
+/// The VCF Count of `len` octets at octet 7 of `frame`; 0 when `len` is 0, the field absent
+/// (732.1 §4.1.2.12.2; USLP-004, GEN-020).
+///
+/// # Errors
+/// `Incomplete` (`needed` = 7 plus `len`) if `frame` ends inside the field.
+pub(crate) fn read_vcf_count(frame: &[u8], len: VcfCountLen) -> Result<VcfCount, Error> {
     let end = PRIMARY_HEADER_LEN.saturating_add(len.octets());
-    let value = frame
+    let octets = frame
         .get(PRIMARY_HEADER_LEN..end)
-        .unwrap_or_default()
-        .iter()
-        .fold(0_u64, |v, &o| (v << 8) | u64::from(o));
-    VcfCount { len, value }
+        .ok_or(Error::incomplete(end))?;
+    let value = octets.iter().fold(0_u64, |v, &o| (v << 8) | u64::from(o));
+    Ok(VcfCount { len, value })
 }
 
 /// The first four octets of a header (732.1 §4.1.2.2–6, Annex D1.3.1).
@@ -560,8 +562,17 @@ mod tests {
             (rest.spare, rest.ocf_flag, rest.vcf_count_len, rest.kind()),
             (0, true, len, Ok(FrameKind::Expedited))
         );
-        assert_eq!(read_vcf_count(&o, len), count);
-        assert_eq!(read_vcf_count(&o[..8], len).value(), 0);
+        assert_eq!(read_vcf_count(&o, len), Ok(count));
+        // req: GEN-020, USLP-004
+        let short = read_vcf_count(&o[..8], len).unwrap_err();
+        assert_eq!(
+            (short.kind(), short.detail()),
+            (ErrorKind::Incomplete, ErrorDetail::Needed(10))
+        );
+        assert_eq!(
+            read_vcf_count(&o[..7], VcfCountLen::NONE).map(VcfCount::value),
+            Ok(0)
+        );
         let h = UslpPrimaryHeader::new(channel(), 300, FrameKind::Expedited, true, count);
         assert_eq!(h.octets(), o);
         assert_eq!((h.len(), h.is_empty(), h.frame_len()), (10, false, 300));

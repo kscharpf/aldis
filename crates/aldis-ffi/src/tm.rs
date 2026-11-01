@@ -28,6 +28,7 @@
 //! [`aldis_tm_encode`] and [`aldis_tm_encode_oid`] take the frame's variable fields and write
 //! the headers and the FECF. The C ABI has no two-phase writer (OI-57).
 
+use aldis::core::field;
 use aldis::core::ids::{SpacecraftId, VcId};
 use aldis::core::layout::{FrameLayout, OCF_LEN};
 use aldis::core::ocf::Ocf;
@@ -521,16 +522,27 @@ const fn header(h: &TmPrimaryHeader) -> aldis_tm_header_t {
 
 /// The C form of a frame layout; the Secondary Header Data Field follows its Identification
 /// Field (132.0 §4.1.3; CMN-040).
-fn layout(l: &FrameLayout) -> aldis_tm_layout_t {
+///
+/// # Errors
+/// `InternalError` if the offset after the Identification Field of a non-empty Secondary Header
+/// overflows `usize`, which a layout rules out. Without a Secondary Header the Data Field range is empty.
+fn layout(l: &FrameLayout) -> Result<aldis_tm_layout_t> {
     let fsh = l.secondary();
-    let fsh_data = fsh.start.saturating_add(1).min(fsh.end)..fsh.end;
+    let fsh_data = if fsh.is_empty() {
+        fsh.end..fsh.end
+    } else {
+        fsh.start
+            .checked_add(1)
+            .ok_or(Error::new(ErrorKind::InternalError).with_field(field::SECONDARY_HEADER))?
+            ..fsh.end
+    };
     let fsh_data = aldis_range_t::from(&fsh_data);
     let security_header = aldis_range_t::from(&l.security_header());
     let data = aldis_range_t::from(&l.data());
     let security_trailer = aldis_range_t::from(&l.security_trailer());
     let ocf = aldis_range_t::from(&l.ocf());
     let fecf = aldis_range_t::from(&l.fecf());
-    aldis_tm_layout_t {
+    Ok(aldis_tm_layout_t {
         frame_len: l.frame_len(),
         fsh_data,
         security_header,
@@ -538,14 +550,17 @@ fn layout(l: &FrameLayout) -> aldis_tm_layout_t {
         security_trailer,
         ocf,
         fecf,
-    }
+    })
 }
 
 /// The C view of a decoded frame.
+///
+/// # Errors
+/// `InternalError` from [`layout`].
 pub(crate) fn view<'a>(
     f: impl Into<UncheckedTmFrame<'a>>,
     anomalies: AnomalySet<TmAnomaly>,
-) -> aldis_tm_frame_t {
+) -> Result<aldis_tm_frame_t> {
     let f = f.into();
     let (pointer, packet_offset) = match f.data_field_status() {
         DataFieldStatus::Packets(PacketPointer::StartsAt(n)) => {
@@ -559,7 +574,7 @@ pub(crate) fn view<'a>(
         }
         DataFieldStatus::VcaSdu { .. } => (ALDIS_TM_POINTER_NONE, 0),
     };
-    aldis_tm_frame_t {
+    Ok(aldis_tm_frame_t {
         header: header(&f.header()),
         pointer,
         packet_offset,
@@ -567,8 +582,8 @@ pub(crate) fn view<'a>(
         has_fecf: f.fecf().is_some(),
         fecf: f.fecf().unwrap_or(0),
         anomalies: anomalies.bits(),
-        layout: layout(f.layout()),
-    }
+        layout: layout(f.layout())?,
+    })
 }
 
 /// Checks a physical channel configuration (132.0 §5.1 Table 5-1; TM-001, API-040, CMN-041).
@@ -741,7 +756,7 @@ pub unsafe extern "C" fn aldis_tm_decode(
                 || TmFrame::decode(bytes, &pc),
                 || TmFrame::decode_lenient(bytes, &pc),
             )?;
-            out.write(view(frame, anomalies));
+            out.write(view(frame, anomalies)?);
             Ok(())
         })
     }
@@ -789,7 +804,7 @@ pub unsafe extern "C" fn aldis_tm_decode_with(
                 || TmFrame::decode_with(bytes, mc.pc(), &mc),
                 || TmFrame::decode_with_lenient(bytes, mc.pc(), &mc),
             )?;
-            out.write(view(frame, anomalies));
+            out.write(view(frame, anomalies)?);
             Ok(())
         })
     }
@@ -828,7 +843,7 @@ pub unsafe extern "C" fn aldis_tm_decode_unchecked(
                 || TmFrame::decode_unchecked(bytes, &pc, &NoSdls),
                 || TmFrame::decode_unchecked_lenient(bytes, &pc, &NoSdls),
             )?;
-            out.write(view(frame, anomalies));
+            out.write(view(frame, anomalies)?);
             Ok(())
         })
     }
@@ -868,7 +883,7 @@ pub unsafe extern "C" fn aldis_tm_decode_unchecked_with(
                 || TmFrame::decode_unchecked(bytes, mc.pc(), &mc),
                 || TmFrame::decode_unchecked_lenient(bytes, mc.pc(), &mc),
             )?;
-            out.write(view(frame, anomalies));
+            out.write(view(frame, anomalies)?);
             Ok(())
         })
     }
@@ -1083,7 +1098,26 @@ pub unsafe extern "C" fn aldis_tm_encode_oid(
 mod tests {
     use super::*;
     use aldis::core::Anomaly as _;
+    use aldis::core::layout::LayoutSpec;
     use aldis::tm::TmAnomaly;
+
+    #[test]
+    fn layout_fsh_data_follows_the_identification_field() {
+        // req: CMN-040, GEN-020
+        let mut spec = LayoutSpec {
+            frame_len: 20,
+            primary_header_len: 6,
+            secondary_len: 0,
+            security: SecurityLayout::NONE,
+            ocf: false,
+            fecf: false,
+        };
+        let c = layout(&FrameLayout::compute(&spec).unwrap()).unwrap();
+        assert_eq!((c.fsh_data.offset, c.fsh_data.len), (6, 0));
+        spec.secondary_len = 4;
+        let c = layout(&FrameLayout::compute(&spec).unwrap()).unwrap();
+        assert_eq!((c.fsh_data.offset, c.fsh_data.len), (7, 3));
+    }
 
     #[test]
     fn constants_are_the_crate_values() {
