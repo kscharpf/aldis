@@ -83,7 +83,7 @@ stale_retries=2
 timeout_min=60
 # Seconds per minute of --timeout: a test knob, so that the tests need not wait minutes.
 secs_per_min="${REVERIFY_SECONDS_PER_MIN:-60}"
-[[ "$secs_per_min" =~ ^[0-9]+$ ]] && [ "$((10#$secs_per_min))" -ge 1 ] || { usage; exit 2; }
+{ [[ "$secs_per_min" =~ ^[0-9]+$ ]] && [ "$((10#$secs_per_min))" -ge 1 ]; } || { usage; exit 2; }
 secs_per_min=$((10#$secs_per_min))
 status_mode=0
 all_behind=0
@@ -98,12 +98,12 @@ while [ $# -gt 0 ]; do
         wait_lock=1
         ;;
     --stale-retries)
-        [ $# -ge 2 ] && [[ "$2" =~ ^[0-9]+$ ]] || { usage; exit 2; }
+        { [ $# -ge 2 ] && [[ "$2" =~ ^[0-9]+$ ]]; } || { usage; exit 2; }
         stale_retries="$2"
         shift
         ;;
     --timeout)
-        [ $# -ge 2 ] && [[ "$2" =~ ^[0-9]+$ ]] && [ "$((10#$2))" -ge 1 ] || { usage; exit 2; }
+        { [ $# -ge 2 ] && [[ "$2" =~ ^[0-9]+$ ]] && [ "$((10#$2))" -ge 1 ]; } || { usage; exit 2; }
         timeout_min="$((10#$2))"
         shift
         ;;
@@ -387,7 +387,7 @@ cancel_inflight() {
         --jq '.[] | select(.status != "completed") | "\(.databaseId) \(.headSha)"')" ||
         { echo "#$pr: cannot list the runs; nothing cancelled"; return 0; }
     while read -r id sha; do
-        [ -n "$id" ] && [ "$sha" = "$head" ] || continue
+        { [ -n "$id" ] && [ "$sha" = "$head" ]; } || continue
         if gh run cancel "$id" >/dev/null; then
             echo "#$pr: cancelled run $id of ${head:0:7}, which is behind main" \
                 "(no record, no status)"

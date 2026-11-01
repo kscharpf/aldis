@@ -206,7 +206,7 @@ struct Tools {
     big_endian: bool,
     /// `cbindgen` is installed.
     cbindgen: bool,
-    /// `shellcheck` is installed (`shell`).
+    /// `shellcheck` is installed at the version of the image (`scripts/check-shell --check-tool`).
     shellcheck: bool,
 }
 
@@ -415,9 +415,10 @@ fn plan(t: &Touched, tools: Tools, mode: Mode) -> Plan {
             skipped.push(Skip {
                 step: "shell",
                 check: "shell",
-                short: "shellcheck not installed",
-                reason: "shellcheck not installed (brew install shellcheck; Debian: apt install \
-                         shellcheck)"
+                short: "shellcheck 0.11.0 not installed",
+                reason: "shellcheck 0.11.0 not installed (the version of the image; \
+                         scripts/check-shell --check-tool says what is installed; release \
+                         binaries: github.com/koalaman/shellcheck)"
                     .into(),
             });
         }
@@ -741,7 +742,7 @@ fn tools() -> Tools {
             && works("qemu-s390x", &["--version"])
             && works("s390x-linux-gnu-gcc-14", &["--version"]),
         cbindgen: works("cbindgen", &["--version"]),
-        shellcheck: works("shellcheck", &["--version"]),
+        shellcheck: works("scripts/check-shell", &["--check-tool"]),
     }
 }
 

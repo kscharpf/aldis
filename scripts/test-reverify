@@ -482,7 +482,7 @@ expect "both locks are released" \
     bash -c "[ ! -e '$repo/.git/reverify/8.lock' ] && [ ! -e '$repo/.git/reverify/9.lock' ]"
 
 tip() { git -C "$work/origin.git" rev-parse "refs/heads/$1"; }
-cancelled_is() { [ "$(cat "$stub/cancelled" 2>/dev/null | tr '\n' ' ')" = "$1" ]; }
+cancelled_is() { [ "$(tr '\n' ' ' <"$stub/cancelled" 2>/dev/null)" = "$1" ]; }
 
 if ! command -v jq >/dev/null 2>&1; then
     echo "skip the --cancel cases: they need jq"
