@@ -44,6 +44,7 @@ CCSDS 732.0-B-4 is a superseded issue, published with the other historical docum
 
 ## Rules
 
+- To read a clause as text, run `pdftotext -layout -f <page> -l <page> specs/pdf/<file> -` (poppler; `brew install poppler`).
 - Never commit CCSDS PDFs or extracted text from them. CI SHALL NOT require them: tests use the [test vectors](../test-vectors/README.md).
 - Quote the standards by document number and clause (e.g. `133.0 §4.1.3.5.2`), not by copying text.
 
