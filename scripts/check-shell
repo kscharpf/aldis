@@ -1,0 +1,68 @@
+#!/usr/bin/env bash
+# The `shell` check of the verification run (VER-071): lint, line width, and tests of the shell
+# scripts. No network, no gh, no container engine.
+#
+# Usage: scripts/check-shell [--check-tool]
+#   --check-tool only checks that the installed shellcheck is the pinned version.
+# Checks, in order, all of them run and every failure is printed:
+#   1. shellcheck (severity: style, the default) on every tracked shell file: a file whose first
+#      line is a shell shebang, or whose name ends in `.sh`.
+#   2. No line of those files is longer than 100 bytes.
+#   3. Every scripts/test-* runs and exits 0.
+# A shell file outside scripts/, .claude/hooks/, specs/fetch.sh and xtask/ fails the check: the
+# paths of those are the inputs of the check (SHELL_INPUTS in xtask/src/verify/checks.rs), and a
+# change elsewhere would not run it. Add the path to the inputs, or move the file.
+# Exit status: 0 when all hold, 1 otherwise, 2 when shellcheck is not installed or is not the
+# pinned version.
+set -uo pipefail
+
+# The version of shellcheck that the verification image installs (xtask/verify/Containerfile):
+# another version reports other findings, so the check refuses it.
+pinned=0.11.0
+
+cd "$(dirname "$0")/.." || exit 2
+if ! command -v shellcheck >/dev/null 2>&1; then
+    echo "shellcheck $pinned is not installed" >&2
+    exit 2
+fi
+have="$(shellcheck --version | sed -n 's/^version: //p')"
+if [ "$have" != "$pinned" ]; then
+    echo "shellcheck $have is installed, but this check needs $pinned (the version of the" \
+        "verification image): install that release from github.com/koalaman/shellcheck" >&2
+    exit 2
+fi
+[ "${1:-}" != --check-tool ] || exit 0
+
+files=()
+status=0
+while IFS= read -r -d '' f; do
+    if [[ $f == *.sh ]] ||
+        head -n 1 -- "$f" 2>/dev/null | grep -aqE '^#!.*[/ ](ba|da)?sh( |$)'; then
+        files+=("$f")
+        case $f in
+        scripts/* | .claude/hooks/* | specs/fetch.sh | xtask/*) ;;
+        *)
+            echo "$f: a shell file outside the inputs of this check (scripts/, .claude/hooks/," \
+                "specs/fetch.sh, xtask/): add its path to SHELL_INPUTS and here" >&2
+            status=1
+            ;;
+        esac
+    fi
+done < <(git ls-files -z)
+
+echo "shellcheck: ${#files[@]} files"
+shellcheck --severity=style -- "${files[@]}" || status=1
+
+# Bytes, not characters: with LC_ALL=C every awk counts the same, and a multibyte character counts
+# more than once, which is the stricter limit.
+for f in "${files[@]}"; do
+    LC_ALL=C awk -v f="$f" '
+        length($0) > 100 { printf "%s:%d: %d bytes (max 100)\n", f, NR, length($0); bad = 1 }
+        END { exit bad }' "$f" || status=1
+done
+
+for t in scripts/test-*; do
+    echo "== $t"
+    "$t" || { echo "FAILED: $t" >&2; status=1; }
+done
+exit "$status"

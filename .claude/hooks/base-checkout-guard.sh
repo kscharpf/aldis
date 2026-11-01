@@ -27,6 +27,10 @@ path = os.path.realpath(os.path.join(data.get("cwd") or os.getcwd(), path))
 worktrees = os.path.join(base, ".claude", "worktrees")
 inside = lambda root: path == root or path.startswith(root + os.sep)
 if inside(base) and not inside(worktrees):
-    print(f"BLOCKED: {path} is in the base checkout; work in .claude/worktrees/<branch> (docs/process/agent-brief.md item 1).", file=sys.stderr)
+    print(
+        f"BLOCKED: {path} is in the base checkout; work in .claude/worktrees/<branch> "
+        "(docs/process/agent-brief.md item 1).",
+        file=sys.stderr,
+    )
     sys.exit(2)
 ' "$base" "$input"

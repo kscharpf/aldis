@@ -35,14 +35,16 @@ elif command -v shasum >/dev/null 2>&1; then
 else
     echo "error: need sha256sum or shasum" >&2; exit 2
 fi
-if { [ "$verify_only" -eq 0 ] || [ "$check_urls" -eq 1 ]; } && ! command -v curl >/dev/null 2>&1; then
+if { [ "$verify_only" -eq 0 ] || [ "$check_urls" -eq 1 ]; } &&
+    ! command -v curl >/dev/null 2>&1; then
     echo "error: need curl" >&2; exit 2
 fi
 
 # A worktree starts without the git-ignored PDFs: link them from the main checkout when it
 # has them (a symlink; a copy if linking fails) instead of downloading them again.
 if [ "$check_urls" -eq 0 ] && [ "$verify_only" -eq 0 ] && [ ! -e "$dest" ] \
-    && common="$(git -C "$here" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)"; then
+    && common="$(git -C "$here" rev-parse --path-format=absolute --git-common-dir \
+        2>/dev/null)"; then
     main_pdf="$(dirname "$common")/specs/pdf"
     if [ "$main_pdf" != "$dest" ] && ls "$main_pdf"/*.pdf >/dev/null 2>&1; then
         if ln -s "$main_pdf" "$dest" 2>/dev/null; then
@@ -71,11 +73,13 @@ while IFS=$'\t' read -r g doc file sum url title; do
         continue
     fi
 
-    if [ "$verify_only" -eq 0 ] && { [ ! -f "$target" ] || [ "$(sha256 "$target")" != "$sum" ]; }; then
+    if [ "$verify_only" -eq 0 ] &&
+        { [ ! -f "$target" ] || [ "$(sha256 "$target")" != "$sum" ]; }; then
         printf 'fetch   %-24s %s\n' "$doc" "$file"
         if ! curl -fsSL --retry 3 -o "$target.part" "$url"; then
             rm -f "$target.part"
-            printf 'FAILED  %-24s download failed; get "%s" manually (see specs/README.md)\n' "$doc" "$title"
+            printf 'FAILED  %-24s download failed; get "%s" manually (see specs/README.md)\n' \
+                "$doc" "$title"
             failed=$((failed + 1)); continue
         fi
         mv "$target.part" "$target"
@@ -86,7 +90,8 @@ while IFS=$'\t' read -r g doc file sum url title; do
     elif [ "$(sha256 "$target")" = "$sum" ]; then
         printf 'ok      %-24s %s\n' "$doc" "$file"; ok=$((ok + 1))
     else
-        printf 'CHANGED %-24s %s: checksum differs from manifest (CCSDS may have issued an editorial update)\n' "$doc" "$file"
+        printf 'CHANGED %-24s %s: checksum differs from manifest' "$doc" "$file"
+        printf ' (CCSDS may have issued an editorial update)\n'
         mismatched=$((mismatched + 1))
     fi
 done < "$manifest"

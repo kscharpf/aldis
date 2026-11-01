@@ -5,8 +5,10 @@
 # and setup_cpp.py, so a change to any pin builds a new image. The base image is pinned by
 # digest, the shared tools come from toolchains.lock through setup_cpp.py, and Rust
 # from rust-toolchain.toml and tooling-nightly (RS-001, RS-002). The LEON3 linker and QEMU
-# machine are Ubuntu packages whose upstream versions are asserted where they are installed. The
-# other Ubuntu packages are utilities (git, Python, archivers); their versions are listed in
+# machine are Ubuntu packages whose upstream versions are asserted where they are installed;
+# shellcheck (the `shell` check, VER-071) is a pinned release binary. The other Ubuntu packages
+# are utilities (git, Python,
+# archivers, jq and procps for the tests of scripts/); their versions are listed in
 # every evidence record.
 FROM docker.io/library/ubuntu:24.04@sha256:68ee22004a9109b44973313b02ff7b1de250f1de0f5ecb628d73f579aaff33ac
 
@@ -15,7 +17,7 @@ ENV DEBIAN_FRONTEND=noninteractive LANG=C.UTF-8
 
 RUN apt-get update -q \
  && apt-get install -y -q --no-install-recommends \
-      ca-certificates curl git python3 xz-utils zstd unzip \
+      ca-certificates curl git python3 xz-utils zstd unzip jq procps \
  && rm -rf /var/lib/apt/lists/* \
  && git config --system --add safe.directory '*'
 
@@ -71,6 +73,24 @@ RUN apt-get update -q \
  && sparc64-linux-gnu-ld --version | head -n 1 | grep -q ' 2\.42$' \
  && qemu="$(sed -n 's/^QEMU_VERSION=//p' /opt/aldis/toolchains.lock)" \
  && qemu-system-sparc --version | head -n 1 | grep -q "version $qemu "
+
+# shellcheck 0.11.0 for the check shell (VER-071; GPL-3.0, a tool, not linked), the upstream
+# release binary checked against its published SHA-256: the Ubuntu 24.04 package is 0.9.0 and
+# reports other findings than the version that contributors run, so the version is pinned here
+# and in scripts/check-shell, which refuses another. The tests of scripts/ also use bash, perl
+# (perl-base), awk, and sed from the base image, and git, python3, jq, and procps from above.
+RUN case "$TARGETARCH" in \
+      amd64) arch=x86_64; sha=8c3be12b05d5c177a04c29e3c78ce89ac86f1595681cab149b65b97c4e227198 ;; \
+      arm64) arch=aarch64; sha=12b331c1d2db6b9eb13cfca64306b1b157a86eb69db83023e261eaa7e7c14588 ;; \
+      *) echo "unsupported architecture $TARGETARCH" >&2; exit 1 ;; \
+    esac \
+ && curl -fsSL -o /tmp/shellcheck.tar.xz \
+      "https://github.com/koalaman/shellcheck/releases/download/v0.11.0/shellcheck-v0.11.0.linux.$arch.tar.xz" \
+ && echo "$sha  /tmp/shellcheck.tar.xz" | sha256sum -c - \
+ && tar -xJf /tmp/shellcheck.tar.xz -C /tmp \
+ && install -m 0755 /tmp/shellcheck-v0.11.0/shellcheck /usr/local/bin/shellcheck \
+ && rm -rf /tmp/shellcheck.tar.xz /tmp/shellcheck-v0.11.0 \
+ && shellcheck --version | grep -q '^version: 0\.11\.0$'
 
 # Kani for the non-gating check kani (OI-42, docs/verification/formal-proofs.md §7). The release
 # bundle (kani-compiler and CBMC) is checked against the SHA-256 that GitHub records for the

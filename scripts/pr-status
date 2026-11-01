@@ -7,10 +7,18 @@
 # protection with their state on the head, the other checks (not required), the newest
 # verify.yml run on the head branch, whether a record is published for the head, the latest
 # review in full, the PR comments, and one verdict line: `READY`, or `NOT READY: <reasons>`.
-# READY means: open, not a draft, the head contains the tip of origin/<base>, no changes
-# requested and no review outstanding, and every required context is success on the head.
+# READY means: open, not a draft, the head contains the tip of origin/<base> (otherwise `behind
+# origin/<base> by <n>`), no changes requested and no review outstanding, the review to answer
+# has a reply, and every required context is success on the head.
+# A reply: a PR comment (`gh pr comment`) posted after the newest submitted review whose last
+# non-empty line is the marker `🤖 Generated with [Claude Code](https://claude.com/claude-code)`
+# (AGENTS.md, `MARKER` in xtask/src/metrics/pr.rs). Every review needs one, also a review without
+# findings and a review that itself ends in the marker; a later review is not a reply. Reviews
+# not yet submitted and inline comments do not count.
 # Exit status: 0 once every verdict is printed; 2 on a usage error or when gh fails.
 set -euo pipefail
+
+marker='🤖 Generated with [Claude Code](https://claude.com/claude-code)'
 
 if [ $# -eq 0 ]; then
     awk 'NR == 1 { next } /^#/ { sub(/^# ?/, ""); print; next } { exit }' "$0"
@@ -29,9 +37,11 @@ fi
 
 status_one() {
     local n="$1" info state draft head branch base decision behind checks required ctx s
-    local run run_id run_status run_conclusion run_sha record reasons="" inline
+    local run run_id run_status run_conclusion run_sha record reasons="" inline unanswered of
     info="$(gh pr view "$n" --json state,isDraft,headRefOid,headRefName,baseRefName,reviewDecision \
-        --jq '[.state,(.isDraft|tostring),.headRefOid,.headRefName,.baseRefName,(if (.reviewDecision // "") == "" then "none" else .reviewDecision end)]|@tsv')" \
+        --jq '[.state, (.isDraft|tostring), .headRefOid, .headRefName, .baseRefName,
+               (if (.reviewDecision // "") == "" then "none" else .reviewDecision end)]
+              | @tsv')" \
         || { echo "#$n: gh could not read the pull request" >&2; return 1; }
     IFS=$'\t' read -r state draft head branch base decision <<<"$info"
 
@@ -46,22 +56,31 @@ status_one() {
            ((if (.state // "") != "" then .state
              elif (.conclusion // "") != "" then .conclusion
              else (.status // "unknown") end) | ascii_upcase)] | @tsv')"
-    required="$(gh api "repos/{owner}/{repo}/branches/$base/protection" --jq '[(.required_status_checks.contexts // [])[],
-        ((.required_status_checks.checks // [])[] | .context)] | unique | .[]' 2>/dev/null)" || required="?"
+    required="$(gh api "repos/{owner}/{repo}/branches/$base/protection" \
+        --jq '[(.required_status_checks.contexts // [])[],
+               ((.required_status_checks.checks // [])[] | .context)] | unique | .[]' \
+        2>/dev/null)" || required="?"
 
     state_of() { printf '%s\n' "$checks" | awk -F'\t' -v c="$1" '$1 == c { print $2; exit }'; }
 
     run="$(gh run list --workflow verify.yml --branch "$branch" -L 1 \
         --json databaseId,status,conclusion,headSha \
-        --jq '.[0] // empty | [.databaseId, .status, ((.conclusion // "") | if . == "" then "-" else . end), .headSha] | @tsv')"
+        --jq '.[0] // empty | [.databaseId, .status,
+              ((.conclusion // "") | if . == "" then "-" else . end), .headSha] | @tsv')"
     run_id="" run_status="" run_conclusion="" run_sha=""
     if [ -n "$run" ]; then
         IFS=$'\t' read -r run_id run_status run_conclusion run_sha <<<"$run"
     fi
-    if g notes --ref=refs/notes/verify-origin show "$head" >/dev/null 2>&1; then record=yes; else record=no; fi
-    inline="$(gh api "repos/{owner}/{repo}/pulls/$n/comments" --jq 'length' 2>/dev/null || echo "?")"
+    if g notes --ref=refs/notes/verify-origin show "$head" >/dev/null 2>&1; then
+        record=yes
+    else
+        record=no
+    fi
+    inline="$(gh api "repos/{owner}/{repo}/pulls/$n/comments" --jq 'length' 2>/dev/null ||
+        echo "?")"
 
-    echo "== #$n $state$([ "$draft" = true ] && echo ' (draft)') ${head:0:7} -> $base, $behind commit(s) behind origin/$base"
+    echo "== #$n $state$([ "$draft" = true ] && echo ' (draft)') ${head:0:7} -> $base," \
+        "$behind commit(s) behind origin/$base"
     echo "required contexts:"
     if [ "$required" = "?" ]; then
         echo "  (unreadable: branch protection of $base)"
@@ -81,7 +100,8 @@ status_one() {
         fi
     done <<<"$checks"
     if [ -n "$run_id" ]; then
-        echo "newest verify run: $run_id $run_status/$run_conclusion on ${run_sha:0:7} ($([ "$run_sha" = "$head" ] && echo "the PR head" || echo "NOT the PR head"))"
+        if [ "$run_sha" = "$head" ]; then of="the PR head"; else of="NOT the PR head"; fi
+        echo "newest verify run: $run_id $run_status/$run_conclusion on ${run_sha:0:7} ($of)"
     else
         echo "newest verify run: none"
     fi
@@ -90,9 +110,22 @@ status_one() {
     echo "latest review:"
     gh pr view "$n" --json reviews --jq '.reviews | if length == 0 then "  (none)"
         else .[-1] | "  \(.author.login) \(.state) \(.submittedAt)\n\(.body)" end'
+    # The newest submitted review, unless a later PR comment ends with the marker line. A later
+    # review is not a reply.
+    # shellcheck disable=SC2016  # $r is a jq variable
+    reply_filter='
+        ([.reviews[] | select(.submittedAt != null)] | max_by(.submittedAt)) as $r
+        | if $r == null then empty
+          elif any(.comments[];
+                   .createdAt > $r.submittedAt
+                   and ((.body // "") | gsub("\\s+$"; "") | split("\n") | last) == "@MARKER@")
+          then empty
+          else "\($r.author.login) \($r.state) \($r.submittedAt)" end'
+    unanswered="$(gh pr view "$n" --json reviews,comments --jq "${reply_filter//@MARKER@/$marker}")"
     echo "comments:"
     gh pr view "$n" --json comments --jq 'if (.comments | length) == 0 then "  (none)"
-        else .comments[] | "  \(.author.login) \(.createdAt): \(.body[0:300] | gsub("\n"; " "))" end'
+        else .comments[]
+          | "  \(.author.login) \(.createdAt): \(.body[0:300] | gsub("\n"; " "))" end'
 
     [ "$state" = OPEN ] || reasons="$reasons; PR is $state"
     [ "$draft" != true ] || reasons="$reasons; draft"
@@ -103,6 +136,8 @@ status_one() {
     elif [ "$behind" -gt 0 ]; then
         reasons="$reasons; behind origin/$base by $behind"
     fi
+    [ -z "$unanswered" ] ||
+        reasons="$reasons; review unanswered ($unanswered): no later reply ends in the marker"
     [ "$decision" != CHANGES_REQUESTED ] || reasons="$reasons; changes requested"
     [ "$decision" != REVIEW_REQUIRED ] || reasons="$reasons; review required"
     if [ "$required" = "?" ]; then
@@ -112,7 +147,8 @@ status_one() {
             s="$(state_of "$ctx")"
             if [ -z "$s" ]; then
                 reasons="$reasons; $ctx missing"
-                if [ "$run_sha" = "$head" ] && { [ "$run_status" = in_progress ] || [ "$run_status" = queued ]; }; then
+                if [ "$run_sha" = "$head" ] &&
+                    { [ "$run_status" = in_progress ] || [ "$run_status" = queued ]; }; then
                     reasons="$reasons (run $run_id $run_status)"
                 fi
             elif [ "$s" != SUCCESS ]; then

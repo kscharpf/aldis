@@ -1,0 +1,105 @@
+#!/usr/bin/env bash
+# Test .claude/hooks/detach-guard.sh with commands as the Bash tool sends them.
+#
+# Usage: scripts/test-detach-guard
+# Cases: a background &, nohup, disown, and setsid are refused (exit 2) wherever a command can
+# start; &&, 2>&1, &>, |&, quoted or commented text, here-document bodies, other tools, and
+# input without a command are allowed (exit 0).
+# Exit status: 0 when every case holds, 1 otherwise.
+# shellcheck disable=SC2016  # the commands under test are single-quoted on purpose
+set -uo pipefail
+
+here="$(cd "$(dirname "$0")" && pwd)"
+hook="$here/../.claude/hooks/detach-guard.sh"
+
+failures=0
+expect() { # expect <exit> <command> <case>
+    local got json
+    json="$(python3 -I -c 'import json, sys
+print(json.dumps({"tool_name": "Bash", "tool_input": {"command": sys.argv[1]}}))' "$2")"
+    bash "$hook" <<<"$json" >/dev/null 2>&1
+    got=$?
+    if [ "$got" = "$1" ]; then
+        echo "ok: $3"
+    else
+        echo "FAIL: $3 (exit $got, expected $1)"
+        failures=$((failures + 1))
+    fi
+}
+
+expect 2 'scripts/reverify 12 &' "trailing &"
+expect 2 'sleep 1 & echo hi' "& between commands"
+expect 2 '( scripts/reverify 12 &)' "& in a subshell"
+expect 2 $'echo a\nsleep 9 &\necho b' "& on its own line"
+expect 2 'nohup scripts/reverify 12' "nohup"
+expect 2 'cd x && nohup cargo build' "nohup after &&"
+expect 2 'FOO=1 setsid cargo build' "setsid after an assignment"
+expect 2 'sleep 5; disown' "disown"
+expect 2 'env X=1 nohup cargo build' "nohup after env"
+expect 2 $'cat <<EOF\nhello\nEOF\nsleep 1 &' "& after a here-document"
+expect 0 'echo $((x & 1))' "& inside arithmetic expansion"
+expect 0 'echo $(( 1<<2 ))' $'<< inside arithmetic is not a here-document'
+expect 2 $'echo $((1<<2))\nsleep 9 &' "& after an arithmetic <<"
+expect 0 '(( x & 1 )) && echo odd' "& inside an arithmetic command"
+expect 0 $'case $x in a) echo a ;&\n b) echo b ;;& esac' "the ;& and ;;& terminators"
+expect 2 'echo ${#a[@]}; nohup x' 'nohup after ${#a[@]}'
+expect 2 'echo $#; setsid x' 'setsid after $#'
+expect 0 'echo ${a#x} # fine' "# inside an expansion, then a comment"
+expect 2 'timeout 5 nohup y' "nohup after timeout and a number"
+expect 2 'timeout -k 3 5s setsid y' "setsid after timeout options"
+expect 2 'nice -n 10 nohup y' "nohup after nice"
+expect 2 'time nohup y' "nohup after time"
+expect 2 'env -i X=1 nohup y' "nohup after env options"
+expect 0 'timeout 5 cargo test' "timeout around a plain command"
+expect 2 'echo "$(sleep 9 &)"' "& in a command substitution inside double quotes"
+expect 0 'echo "$(echo a && echo b) & c"' "& in double-quoted text next to a substitution"
+expect 2 'x=$(sleep 9 &)' "& in a command substitution"
+expect 0 'echo $x # nohup' "comment after a variable"
+expect 2 'for p in 1 2; do nohup x; done' "nohup after do"
+expect 2 'if true; then nohup x; fi' "nohup after then"
+expect 2 'if false; then :; else setsid x; fi' "setsid after else"
+expect 2 'if false; then :; elif true; then disown; fi' "disown after then of an elif"
+expect 2 'while true; do setsid y; done' "setsid after while's do"
+expect 2 'if nohup x; then :; fi' "nohup after if"
+expect 2 'while nohup x; do :; done' "nohup after while"
+expect 2 'until setsid x; do :; done' "setsid after until"
+expect 2 '! nohup x' "nohup after !"
+expect 2 'case a in a) nohup x;; esac' "nohup after a case pattern"
+expect 2 'for p in 1; do sleep 9 & done' "& in a loop body"
+expect 0 'for p in 1 2; do echo $p; done' "a plain loop"
+expect 0 'case a in a) echo hi;; esac' "a plain case"
+expect 0 'echo $(date) nohup' "nohup as an argument after a substitution"
+expect 0 'if true; then echo setsid; fi' "setsid as an argument in a then branch"
+expect 0 'cargo build && cargo test' "&&"
+expect 0 'cargo test 2>&1 | tail' "2>&1"
+expect 0 'cargo test >&2' ">&2"
+expect 0 'cargo test &> out.log' "&>"
+expect 0 'cargo test |& tail' "|&"
+expect 0 'echo "a & b; nohup" '"'"'setsid &'"'" "quoted text"
+expect 0 'echo hi # run & nohup it' "comment"
+expect 0 $'cat <<\'EOF\'\nnohup x &\nEOF\necho done' "here-document body"
+expect 0 'grep -rn nohup docs' "nohup as an argument"
+expect 0 'git commit -m "no nohup here"' "nohup in a message"
+expect 0 'scripts/reverify --status --wait 12' "plain command"
+expect 0 '' "empty command"
+if bash "$hook" <<<'{"tool_name":"Edit","tool_input":{"file_path":"x"}}' >/dev/null 2>&1; then
+    echo "ok: input without a command"
+else
+    echo "FAIL: input without a command"
+    failures=$((failures + 1))
+fi
+if bash "$hook" <<<'not json' >/dev/null 2>&1; then
+    echo "ok: unparsable input"
+else
+    echo "FAIL: unparsable input"
+    failures=$((failures + 1))
+fi
+msg="$(bash "$hook" <<<'{"tool_input":{"command":"sleep 1 &"}}' 2>&1 >/dev/null)"
+case $msg in
+    *"run_in_background and wait for its notification (docs/process/agent-brief.md item 2)"*)
+        echo "ok: the refusal message" ;;
+    *) echo "FAIL: the refusal message: $msg"; failures=$((failures + 1)) ;;
+esac
+
+[ "$failures" -eq 0 ] || exit 1
+echo "all cases hold"

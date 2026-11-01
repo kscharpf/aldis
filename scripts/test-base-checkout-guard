@@ -41,9 +41,13 @@ edit() { printf '{"tool_name":"Edit","cwd":"%s","tool_input":{"file_path":"%s"}}
 expect 2 "$repo" "$(edit "$repo" "$repo/init.txt")" "base file from the base session"
 expect 2 "$repo" "$(edit "$repo" "docs/new.md")" "relative base path"
 expect 2 "$work/outer" "$(edit "$work/outer" "$repo/init.txt")" "base file from a worktree session"
-expect 2 "$repo" "$(printf '{"tool_name":"NotebookEdit","cwd":"%s","tool_input":{"notebook_path":"%s/n.ipynb"}}' "$repo" "$repo")" "NotebookEdit in the base"
-expect 0 "$repo" "$(edit "$repo" "$repo/.claude/worktrees/inner/init.txt")" "file under .claude/worktrees"
-expect 0 "$work/outer" "$(edit "$work/outer" "$work/outer/init.txt")" "file in a linked worktree elsewhere"
+notebook='{"tool_name":"NotebookEdit","cwd":"@R@","tool_input":{"notebook_path":"@R@/n.ipynb"}}'
+notebook="${notebook//@R@/$repo}"
+expect 2 "$repo" "$notebook" "NotebookEdit in the base"
+expect 0 "$repo" "$(edit "$repo" "$repo/.claude/worktrees/inner/init.txt")" \
+    "file under .claude/worktrees"
+expect 0 "$work/outer" "$(edit "$work/outer" "$work/outer/init.txt")" \
+    "file in a linked worktree elsewhere"
 expect 0 "$repo" "$(edit "$repo" "$work/scratch.txt")" "file outside the repository"
 expect 0 "$repo" '{"tool_name":"Edit","tool_input":{}}' "no path"
 

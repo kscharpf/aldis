@@ -26,15 +26,19 @@ branch="$(git symbolic-ref --quiet --short HEAD 2>/dev/null || true)"
 behind="$(git rev-list --count HEAD..origin/main 2>/dev/null || echo 0)"
 
 if [ "$behind" -gt 0 ]; then
-    echo "WARNING: this checkout is $behind commit(s) behind origin/main. Review against origin/main, or run: git switch main && git pull"
+    echo "WARNING: this checkout is $behind commit(s) behind origin/main." \
+        "Review against origin/main, or run: git switch main && git pull"
 fi
 
 if [ -n "$branch" ] && [ "$branch" != "main" ]; then
-    track="$(git for-each-ref --format='%(upstream:track)' "refs/heads/$branch" 2>/dev/null || true)"
+    track="$(git for-each-ref --format='%(upstream:track)' "refs/heads/$branch" 2>/dev/null ||
+        true)"
     if [ "$track" = "[gone]" ]; then
-        echo "WARNING: the upstream of branch $branch is gone (its PR merged?). Start new work from origin/main: git switch -c <branch> origin/main"
+        echo "WARNING: the upstream of branch $branch is gone (its PR merged?)." \
+            "Start new work from origin/main: git switch -c <branch> origin/main"
     elif [ "$behind" -gt 0 ] && git merge-base --is-ancestor HEAD origin/main 2>/dev/null; then
-        echo "WARNING: branch $branch is already merged into origin/main. Start new work from origin/main: git switch -c <branch> origin/main"
+        echo "WARNING: branch $branch is already merged into origin/main." \
+            "Start new work from origin/main: git switch -c <branch> origin/main"
     fi
 fi
 exit 0

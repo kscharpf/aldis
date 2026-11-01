@@ -1,4 +1,9 @@
 {
+  "env": {
+    "NO_COLOR": "1",
+    "GH_FORCE_TTY": "0",
+    "GH_NO_UPDATE_NOTIFIER": "1"
+  },
   "hooks": {
     "SessionStart": [
       {
@@ -17,6 +22,15 @@
           {
             "type": "command",
             "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/base-checkout-guard.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/detach-guard.sh"
           }
         ]
       }

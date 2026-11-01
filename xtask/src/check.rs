@@ -206,6 +206,8 @@ struct Tools {
     big_endian: bool,
     /// `cbindgen` is installed.
     cbindgen: bool,
+    /// `shellcheck` is installed at the version of the image (`scripts/check-shell --check-tool`).
+    shellcheck: bool,
 }
 
 /// A step left out because its tool is not installed.
@@ -406,6 +408,21 @@ fn plan(t: &Touched, tools: Tools, mode: Mode) -> Plan {
             ],
         ));
     }
+    if t.gate_runs("shell") {
+        if tools.shellcheck {
+            run.push(cmd("shell", "scripts/check-shell", &[]));
+        } else {
+            skipped.push(Skip {
+                step: "shell",
+                check: "shell",
+                short: "shellcheck 0.11.0 not installed",
+                reason: "shellcheck 0.11.0 not installed (the version of the image; \
+                         scripts/check-shell --check-tool says what is installed; release \
+                         binaries: github.com/koalaman/shellcheck)"
+                    .into(),
+            });
+        }
+    }
     if t.gate_runs("header") {
         if tools.cbindgen {
             run.push(xtask("xtask header", &["header"]));
@@ -554,6 +571,7 @@ const COVERED: &[(&str, &[&str], Mode)] = &[
         Mode::Default,
     ),
     ("test", &["test"], Mode::Default),
+    ("shell", &["shell"], Mode::Default),
     ("coverage", &["xtask coverage"], Mode::Full),
     ("stack", &["xtask stack"], Mode::Full),
     ("big-endian", &["big-endian"], Mode::Full),
@@ -724,6 +742,10 @@ fn tools() -> Tools {
             && works("qemu-s390x", &["--version"])
             && works("s390x-linux-gnu-gcc-14", &["--version"]),
         cbindgen: works("cbindgen", &["--version"]),
+        shellcheck: works(
+            &repo::root().join("scripts/check-shell").to_string_lossy(),
+            &["--check-tool"],
+        ),
     }
 }
 
@@ -940,12 +962,14 @@ mod tests {
         coverage: true,
         big_endian: true,
         cbindgen: true,
+        shellcheck: true,
     };
     const NONE: Tools = Tools {
         nightly: false,
         coverage: false,
         big_endian: false,
         cbindgen: false,
+        shellcheck: false,
     };
 
     /// A change that makes the verification run run every check.
@@ -1195,6 +1219,7 @@ mod tests {
             "xtask stack",
             "big-endian",
             "xtask header",
+            "shell",
         ] {
             assert!(!n.contains(&step), "{step}");
         }
@@ -1202,6 +1227,7 @@ mod tests {
         assert_eq!(
             skipped,
             [
+                "shell",
                 "xtask header",
                 "xtask coverage",
                 "xtask stack",
@@ -1539,7 +1565,8 @@ mod tests {
         let n: Vec<&str> = p.items.iter().map(|i| i.name).collect();
         assert!(!n.contains(&"xtask header"));
         assert!(n.contains(&"exerciser clippy") && n.contains(&"fuzz clippy"));
-        assert_eq!(p.skipped.len(), 1);
-        assert_eq!(p.skipped[0].check, "header");
+        assert!(!n.contains(&"shell"));
+        let checks: Vec<&str> = p.skipped.iter().map(|s| s.check).collect();
+        assert_eq!(checks, ["shell", "header"]);
     }
 }

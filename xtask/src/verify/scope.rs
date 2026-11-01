@@ -16,7 +16,7 @@
 //! no published passing record covers the base or an earlier commit of the branch. A record is
 //! not used for any check when a path that differs from its commit is an input of no check and
 //! in none of the lists that `spec` alone reads (`SPEC_ONLY`: documentation, the GitHub
-//! configuration, the root configuration, and the scripts that no other check reads).
+//! configuration, and the root configuration).
 
 use std::collections::{BTreeMap, HashMap};
 use std::path::Path;
@@ -1013,16 +1013,29 @@ mod tests {
 
     // req: VER-056
     #[test]
-    fn scripts_run_spec_only() {
+    fn scripts_run_shell_and_spec_only() {
+        let shell_spec = || names(|c| c.name == "shell" || c.name == "spec");
         assert_eq!(
             running(&changed(&["scripts/pr-status"]), Force::default()),
-            ["spec"]
+            shell_spec()
+        );
+        assert_eq!(
+            running(
+                &changed(&[".claude/hooks/detach-guard.sh"]),
+                Force::default()
+            ),
+            shell_spec()
         );
         assert_eq!(
             running(
                 &changed(&["scripts/reverify", "docs/a.md", ".gitignore"]),
                 Force::default()
             ),
+            shell_spec()
+        );
+        // Documentation alone does not run `shell`.
+        assert_eq!(
+            running(&changed(&["docs/a.md"]), Force::default()),
             ["spec"]
         );
         // A file next to the scripts is in no list, so every check runs.
@@ -1037,7 +1050,7 @@ mod tests {
                 Force::default()
             )
             .len()
-                > 1
+                > 2
         );
     }
 
@@ -1076,7 +1089,7 @@ mod tests {
     #[test]
     fn code_runs_its_checks() {
         // kani is nightly-only: no change runs it without --all.
-        let rust = names(|c| !c.nightly);
+        let rust = names(|c| !c.nightly && c.name != "shell");
         let everything = names(|c| !c.nightly);
         // A crate README is a doctest.
         assert_eq!(
@@ -1110,14 +1123,14 @@ mod tests {
         // The vectors are read by tests, not by the header check.
         assert_eq!(
             running(&changed(&["test-vectors/README.md"]), Force::default()),
-            names(|c| c.name != "header" && !c.nightly)
+            names(|c| !matches!(c.name.as_str(), "header" | "shell") && !c.nightly)
         );
         // The committed header is read by the header check and spec, and by a test of `aldis-ffi`
         // that compares it with the mirror enums, so by every Rust check but `stack`, which builds
         // the libraries and runs no test.
         assert_eq!(
             running(&changed(&["include/aldis/aldis.h"]), Force::default()),
-            names(|c| c.name != "stack" && !c.nightly)
+            names(|c| !matches!(c.name.as_str(), "stack" | "shell") && !c.nightly)
         );
         // xtask and the image run everything.
         for path in [
@@ -1150,7 +1163,7 @@ mod tests {
         // An unlisted path, alone or with documentation: no record that differs in it is used.
         for paths in [
             &[".gitattributes"][..],
-            &["docs/a.md", "specs/fetch.sh"],
+            &["docs/a.md", "specs/x.txt"],
             &[".github/ISSUE_TEMPLATE/bug.md"],
         ] {
             let change = changed(paths);
@@ -1238,9 +1251,9 @@ mod tests {
         };
         assert_eq!(
             of(Some(Outcome::Reused)),
-            names(|c| !matches!(c.name.as_str(), "spec" | "kani"))
+            names(|c| !matches!(c.name.as_str(), "spec" | "kani" | "shell"))
         );
-        assert_eq!(of(Some(Outcome::Skipped)), Vec::<String>::new());
+        assert_eq!(of(Some(Outcome::Skipped)), ["shell"]);
         // kani is nightly-only: neither skipped nor reused, whatever the records say.
         assert_eq!(of(Some(Outcome::NotRun)), ["kani"]);
         let kani = p.checks.iter().find(|d| d.name == "kani").unwrap();
@@ -1700,22 +1713,20 @@ mod tests {
         assert_eq!(p.base_record.as_deref(), Some(r.head1.as_str()));
         assert_eq!(p.branch, std::slice::from_ref(&r.p1));
         // The Rust checks: their inputs are those of the branch's verified head.
-        let rust = names(|c| !matches!(c.name.as_str(), "spec" | "kani"));
+        let rust = names(|c| !matches!(c.name.as_str(), "spec" | "kani" | "shell"));
         assert_eq!(
             decided(&p, Some(Outcome::Reused)),
             (rust.clone(), vec![r.p1.clone()])
         );
-        assert_eq!(
-            decided(&p, Some(Outcome::Skipped)),
-            (Vec::<String>::new(), Vec::<String>::new())
-        );
+        // `shell` reads no changed path either.
+        assert_eq!(decided(&p, Some(Outcome::Skipped)).0, ["shell"]);
         assert_eq!(decided(&p, Some(Outcome::NotRun)).0, ["kani"]);
         // spec reads docs/b.md.
         assert_eq!(decided(&p, None).0, ["spec"]);
         let lines = describe(&p, &checks);
         assert!(
             lines[0].ends_with(&format!(
-                "1 of {} checks run, 0 skipped, {} reused, 1 nightly only",
+                "1 of {} checks run, 1 skipped, {} reused, 1 nightly only",
                 checks.len(),
                 rust.len()
             )),
@@ -1842,11 +1853,11 @@ mod tests {
     fn a_main_merge_that_changes_a_rust_input_runs_the_rust_checks() {
         let r = reverify("rust-input", "crates/y/src/lib.rs");
         let p = plan_of(&r);
-        assert_eq!(decided(&p, None).0, names(|c| !c.nightly));
         assert_eq!(
-            decided(&p, Some(Outcome::Skipped)),
-            (Vec::<String>::new(), Vec::<String>::new())
+            decided(&p, None).0,
+            names(|c| !c.nightly && c.name != "shell")
         );
+        assert_eq!(decided(&p, Some(Outcome::Skipped)).0, ["shell"]);
         assert_eq!(decided(&p, Some(Outcome::Reused)).0, Vec::<String>::new());
         let clippy = p.checks.iter().find(|d| d.name == "clippy").unwrap();
         assert_eq!(clippy.why, "changes crates/x/src/lib.rs");
@@ -1875,7 +1886,7 @@ mod tests {
         // The record that reused it no longer passes.
         let problems = recheck(&r.clone.0, &rec, &checks);
         // One problem per reused check: the Rust checks outside spec.
-        let reused = names(|c| !matches!(c.name.as_str(), "spec" | "kani"));
+        let reused = names(|c| !matches!(c.name.as_str(), "spec" | "kani" | "shell"));
         assert_eq!(problems.len(), reused.len(), "{problems:?}");
         assert!(
             problems[0].ends_with(&format!(
