@@ -1,4 +1,9 @@
 {
+  "env": {
+    "NO_COLOR": "1",
+    "GH_FORCE_TTY": "0",
+    "GH_NO_UPDATE_NOTIFIER": "1"
+  },
   "hooks": {
     "SessionStart": [
       {

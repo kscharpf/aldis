@@ -18,6 +18,7 @@ set -uo pipefail
 input="$(cat)"
 command -v python3 >/dev/null 2>&1 || exit 0
 
+# shellcheck disable=SC2016  # the Python program is single-quoted on purpose
 python3 -I -c '
 import json, re, sys
 try:
