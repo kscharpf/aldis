@@ -96,7 +96,18 @@ case "$1 $2" in
     [ ! -e "$STUB/pr-view-fails" ] || exit 1
     echo "$(cat "$STUB/pr-state" 2>/dev/null || echo OPEN) $(cat "$STUB/pr-$3")"
     ;;
-"pr list") cat "$STUB/open-prs" ;;
+"pr list")
+    # $STUB/open-prs holds `<number> <branch>` lines; the stub prints them as the JSON that gh
+    # does and applies the script's own --jq filter with jq.
+    filter=""
+    prev=""
+    for a in "$@"; do
+        [ "$prev" = --jq ] && filter="$a"
+        prev="$a"
+    done
+    jq -Rn '[inputs | split(" ") | {number: (.[0] | tonumber), headRefName: .[1]}]' \
+        <"$STUB/open-prs" | jq -r "$filter"
+    ;;
 "workflow run") ;;
 "run cancel")
     echo "$3" >>"$STUB/cancelled"

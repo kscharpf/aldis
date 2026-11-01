@@ -235,8 +235,10 @@ pub const ROOT_CONFIG: PathList = PathList {
 /// and `specs/fetch.sh`. Only `shell` reads them (VER-071): it lints, measures, and tests them;
 /// the other checks run `cargo xtask` and the commands of their own scripts, and the image does
 /// not contain them. `spec` reads every path, so a script that names a requirement or a link is
-/// still checked. `xtask/verify/entrypoint.sh` is in `RUN`. A tracked shell file elsewhere is in
-/// no list, so it runs every check.
+/// still checked. `xtask/verify/entrypoint.sh` is in `RUN`. A tracked shell file anywhere else
+/// would be outside the inputs of `shell` (under `crates/` or `.github/workflows/` it is in the
+/// lists of other checks, or of `spec` only), so `scripts/check-shell` fails on it until its
+/// path is added here.
 pub const SCRIPTS: PathList = PathList {
     name: "scripts",
     patterns: &["scripts/**", ".claude/hooks/**", "specs/fetch.sh"],

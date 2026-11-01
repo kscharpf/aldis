@@ -6,6 +6,7 @@
 # start; &&, 2>&1, &>, |&, quoted or commented text, here-document bodies, other tools, and
 # input without a command are allowed (exit 0).
 # Exit status: 0 when every case holds, 1 otherwise.
+# shellcheck disable=SC2016  # the commands under test are single-quoted on purpose
 set -uo pipefail
 
 here="$(cd "$(dirname "$0")" && pwd)"
@@ -36,6 +37,24 @@ expect 2 'FOO=1 setsid cargo build' "setsid after an assignment"
 expect 2 'sleep 5; disown' "disown"
 expect 2 'env X=1 nohup cargo build' "nohup after env"
 expect 2 $'cat <<EOF\nhello\nEOF\nsleep 1 &' "& after a here-document"
+expect 0 'echo $((x & 1))' "& inside arithmetic expansion"
+expect 0 'echo $(( 1<<2 ))' $'<< inside arithmetic is not a here-document'
+expect 2 $'echo $((1<<2))\nsleep 9 &' "& after an arithmetic <<"
+expect 0 '(( x & 1 )) && echo odd' "& inside an arithmetic command"
+expect 0 $'case $x in a) echo a ;&\n b) echo b ;;& esac' "the ;& and ;;& terminators"
+expect 2 'echo ${#a[@]}; nohup x' 'nohup after ${#a[@]}'
+expect 2 'echo $#; setsid x' 'setsid after $#'
+expect 0 'echo ${a#x} # fine' "# inside an expansion, then a comment"
+expect 2 'timeout 5 nohup y' "nohup after timeout and a number"
+expect 2 'timeout -k 3 5s setsid y' "setsid after timeout options"
+expect 2 'nice -n 10 nohup y' "nohup after nice"
+expect 2 'time nohup y' "nohup after time"
+expect 2 'env -i X=1 nohup y' "nohup after env options"
+expect 0 'timeout 5 cargo test' "timeout around a plain command"
+expect 2 'echo "$(sleep 9 &)"' "& in a command substitution inside double quotes"
+expect 0 'echo "$(echo a && echo b) & c"' "& in double-quoted text next to a substitution"
+expect 2 'x=$(sleep 9 &)' "& in a command substitution"
+expect 0 'echo $x # nohup' "comment after a variable"
 expect 0 'cargo build && cargo test' "&&"
 expect 0 'cargo test 2>&1 | tail' "2>&1"
 expect 0 'cargo test >&2' ">&2"

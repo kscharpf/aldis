@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# The `shell` check of the verification run (VER-069): lint, line width, and tests of the shell
+# The `shell` check of the verification run (VER-071): lint, line width, and tests of the shell
 # scripts. No network, no gh, no container engine.
 #
 # Usage: scripts/check-shell
@@ -8,6 +8,9 @@
 #      line is a shell shebang, or whose name ends in `.sh`.
 #   2. No line of those files is longer than 100 columns.
 #   3. Every scripts/test-* runs and exits 0.
+# A shell file outside scripts/, .claude/hooks/, specs/fetch.sh and xtask/ fails the check: the
+# paths of those are the inputs of the check (SHELL_INPUTS in xtask/src/verify/checks.rs), and a
+# change elsewhere would not run it. Add the path to the inputs, or move the file.
 # Exit status: 0 when all hold, 1 otherwise, 2 when shellcheck is not installed.
 set -uo pipefail
 
@@ -15,14 +18,22 @@ cd "$(dirname "$0")/.." || exit 2
 command -v shellcheck >/dev/null 2>&1 || { echo "shellcheck is not installed" >&2; exit 2; }
 
 files=()
+status=0
 while IFS= read -r -d '' f; do
     if [[ $f == *.sh ]] ||
         head -n 1 -- "$f" 2>/dev/null | grep -aqE '^#!.*[/ ](ba|da)?sh( |$)'; then
         files+=("$f")
+        case $f in
+        scripts/* | .claude/hooks/* | specs/fetch.sh | xtask/*) ;;
+        *)
+            echo "$f: a shell file outside the inputs of this check (scripts/, .claude/hooks/," \
+                "specs/fetch.sh, xtask/): add its path to SHELL_INPUTS and here" >&2
+            status=1
+            ;;
+        esac
     fi
 done < <(git ls-files -z)
 
-status=0
 echo "shellcheck: ${#files[@]} files"
 shellcheck --severity=style -- "${files[@]}" || status=1
 

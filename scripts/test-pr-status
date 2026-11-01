@@ -124,6 +124,18 @@ $marker")]"
 expect "READY" "a reply to the newest review"
 pr "$current" "[$review,$(jq -c '.body = "" | .state = "APPROVED"' <<<"$later_review")]" "[$reply]"
 expect "NOT READY" "an approval with no findings still needs a reply" "APPROVED"
+# A later review ending in the marker is a reply; a review that ends in the marker is not
+# itself a review to answer.
+marked="$(jq -c --arg m "$marker" '.body = "Round 2 ok.\n\n" + $m
+    | .submittedAt = "2026-01-05T00:00:00Z"' <<<"$later_review")"
+pr "$current" "[$review]" "[]"
+expect "NOT READY" "a review alone, before the later-review cases" "review unanswered"
+pr "$current" "[$review,$marked]" "[]"
+expect "READY" "a later review ending with the marker is a reply"
+pr "$current" "[$review,$later_review,$marked]" "[]"
+expect "READY" "the marker review answers the newest review before it"
+pr "$current" "[$marked]" "[]"
+expect "READY" "a review that ends with the marker needs no reply"
 pr "$old" "[]" "[]"
 expect "NOT READY" "a head behind origin/main" "behind origin/main by 1"
 
