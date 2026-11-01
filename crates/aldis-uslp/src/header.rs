@@ -387,7 +387,7 @@ impl RawRest {
 }
 
 /// The VCF Count of `len` octets at octet 7 of `frame`; 0 when `len` is 0, the field absent
-/// (732.1 §4.1.2.12.2; USLP-004, GEN-020).
+/// (732.1 §4.1.2.12.1; USLP-004, GEN-020).
 ///
 /// # Errors
 /// A `LengthMismatch` rejection (USLP-014 check d) carrying `Incomplete` (`needed` = 7 plus

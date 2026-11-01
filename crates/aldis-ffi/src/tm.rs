@@ -727,7 +727,8 @@ pub unsafe extern "C" fn aldis_tm_header_decode(
 /// (TM-006) and (`first_header_pointer`) for a pointer outside the data field (TM-008); in
 /// strict mode `ALDIS_ERR_RESERVED_VALUE` (`packet_order_flag`) and `ALDIS_ERR_INVALID_FIELD`
 /// (`segment_length_id`) with the Synchronization Flag `0` (TM-007); the errors of
-/// [`aldis_tm_config_check`]; CABI-022 violations.
+/// [`aldis_tm_config_check`]; `ALDIS_ERR_INTERNAL_ERROR` if the layout of a decoded frame does
+/// not fit it, which a decoded frame rules out; CABI-022 violations.
 ///
 /// # Safety
 /// `bytes` is valid for `len` octets (or `NULL` with 0); `cfg` is valid for a read; `out` is
@@ -772,7 +773,8 @@ pub unsafe extern "C" fn aldis_tm_decode(
 /// As [`aldis_tm_decode`], with, after the version check, `ALDIS_ERR_UNKNOWN_CHANNEL`
 /// (`spacecraft_id`, with the configured and found SCID, or `vc_id`) for a channel `mc` does not
 /// configure; in strict mode, `ALDIS_ERR_INVALID_FIELD` (`vc_id`) for an Only Idle Data frame on
-/// an SDLS VC (OI-54); the errors of [`aldis_tm_mc_config_check`].
+/// an SDLS VC (OI-54); the errors of [`aldis_tm_mc_config_check`]; `ALDIS_ERR_INTERNAL_ERROR`
+/// as for [`aldis_tm_decode`].
 ///
 /// # Safety
 /// `bytes` is valid for `len` octets (or `NULL` with 0); `mc` and `vcs` as for
@@ -815,7 +817,7 @@ pub unsafe extern "C" fn aldis_tm_decode_with(
 /// `NoSdls`.
 ///
 /// # Errors
-/// As [`aldis_tm_decode`], except `ALDIS_ERR_CRC_MISMATCH`.
+/// As [`aldis_tm_decode`], except `ALDIS_ERR_CRC_MISMATCH`; `ALDIS_ERR_INTERNAL_ERROR` as there.
 ///
 /// # Safety
 /// As [`aldis_tm_decode`].
@@ -853,7 +855,7 @@ pub unsafe extern "C" fn aldis_tm_decode_unchecked(
 /// as `TmFrame::decode_unchecked` does with a `TmMasterChannelConfig`.
 ///
 /// # Errors
-/// As [`aldis_tm_decode_with`], except `ALDIS_ERR_CRC_MISMATCH`.
+/// As [`aldis_tm_decode_with`], except `ALDIS_ERR_CRC_MISMATCH`; `ALDIS_ERR_INTERNAL_ERROR` as there.
 ///
 /// # Safety
 /// As [`aldis_tm_decode_with`].

@@ -665,8 +665,9 @@ const fn plain(content: u8) -> aldis_aos_pdu_t {
 /// (732.0 §4.1, §4.1.4; CMN-040).
 ///
 /// # Errors
-/// `InternalError` if the PDU Header is longer than the data field, which a configuration that
-/// passed `aldis_aos_validate` rules out (GEN-020).
+/// `InternalError` if the PDU Header is longer than the data field, which the callers' frames
+/// rule out: the PDU parse rejects a data field without an octet after its header (`Mpdu::parse`
+/// at `aldis-aos` `mpdu.rs:230-235`, `Bpdu::parse` at `bpdu.rs:218-219`; GEN-020).
 fn layout(l: &FrameLayout, pdu_header_len: usize) -> Result<aldis_aos_layout_t> {
     let data = l.data();
     let zone_start = data
@@ -952,7 +953,9 @@ pub unsafe extern "C" fn aldis_aos_header_decode(
 /// both modes (AOS-017); in strict mode, for the first deviation: `ALDIS_ERR_INVALID_FIELD`
 /// (`vc_frame_count_cycle`) for a cycle other than `0000` with its Use Flag `0` (AOS-012),
 /// `ALDIS_ERR_RESERVED_VALUE` (`aos_header_spare`) for Issue 4 bits 42–43 other than `00`
-/// (AOS-002), and the spare errors of the data unit; CABI-022 violations.
+/// (AOS-002), and the spare errors of the data unit; `ALDIS_ERR_INTERNAL_ERROR` if the layout of
+/// a decoded frame does not fit its data field, which a decoded frame rules out; CABI-022
+/// violations.
 ///
 /// # Safety
 /// `bytes` is valid for `len` octets (or `NULL` with 0); `mc` and `vcs` as for
