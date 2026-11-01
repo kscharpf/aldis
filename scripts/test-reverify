@@ -28,6 +28,9 @@
 # several; the background watcher is gone after a
 # timeout. The cases run a minute as a second (REVERIFY_SECONDS_PER_MIN)
 # against stubs that never finish; the test kills its stubs on exit.
+# A merge whose only conflict is rows of the open-issue table in docs/09-open-issues.md (two PRs
+# that append a row) is finished by keeping both sides in number order, with a line saying so; a
+# conflict in the prose of docs/09 or in another file aborts the merge and pushes nothing.
 # Not covered: GitHub itself (dispatch, watch, the real STALE gate of `verify assemble`).
 # VERBOSE=1 prints the output of the script under test after each failed case.
 # Exit status: 0 when every case holds, 1 otherwise.
@@ -60,7 +63,11 @@ git -C "$repo" symbolic-ref HEAD refs/heads/main
 git -C "$repo" config user.email test@example.com
 git -C "$repo" config user.name test
 echo init >"$repo/init.txt"
-git -C "$repo" add init.txt
+# The open-issue table (docs/09-open-issues.md).
+mkdir -p "$repo/docs"
+printf '%s\n' "# 09 - Open issues" "" "| ID | Issue | Status |" "|---|---|---|" \
+    "| OI-01 | **first** | Open |" "| OI-02 | **second** | Open |" >"$repo/docs/09-open-issues.md"
+git -C "$repo" add init.txt docs
 git -C "$repo" commit -q -m init
 git -C "$repo" push -q -u origin main
 
@@ -790,6 +797,108 @@ run --all-behind 7
 expect "--all-behind with a PR number is a usage error" status_is 2
 run --all-behind --status
 expect "--all-behind with --status is a usage error" status_is 2
+
+echo "# a conflict in docs/09-open-issues.md"
+oi_doc=docs/09-open-issues.md
+oi_branch() { # oi_branch <pr> <branch> <text> [<file>]: a PR from main; docs/09 gets $3
+    git -C "$work/other" fetch -q origin
+    git -C "$work/other" checkout -q -B "$2" origin/main
+    printf '%s\n' "$3" >>"$work/other/$oi_doc"
+    [ -z "${4:-}" ] || echo "branch" >"$work/other/$4"
+    git -C "$work/other" add -A
+    git -C "$work/other" commit -q -m "$2"
+    git -C "$work/other" push -q -f origin "$2" >/dev/null 2>&1
+    git -C "$work/other" checkout -q main
+    echo "$2" >"$stub/pr-$1"
+}
+oi_main() { # oi_main <text> [<file>]: main gets $1 appended to docs/09, or $2 rewritten
+    git -C "$work/other" fetch -q origin
+    git -C "$work/other" checkout -q -B main origin/main
+    printf '%s\n' "$1" >>"$work/other/$oi_doc"
+    [ -z "${2:-}" ] || echo "main" >"$work/other/$2"
+    git -C "$work/other" commit -q -am "main"
+    git -C "$work/other" push -q origin main >/dev/null 2>&1
+}
+oi_show() { git -C "$work/other" fetch -q origin && git -C "$work/other" show "origin/$1:$2"; }
+oi_head() { git -C "$work/other" rev-parse "origin/$1"; }
+oi_rows() { oi_show "$1" "$oi_doc" | grep -oE '^\| OI-[0-9]+' | tr -d '| \n'; echo; }
+rows_are() { [ "$(oi_rows "$1")" = "$2" ]; } # rows_are <branch> <ids joined by nothing>
+
+# Two PRs append a row: the first merged, the second keeps both, in number order.
+oi_branch 31 oi-a "| OI-03 | **alpha** | Open |"
+oi_main "| OI-04 | **beta** | Open |"
+reset ok
+run 31
+expect "two appended rows: success" said "#31 oi-a local success"
+expect "the resolution is announced" \
+    said "#31: kept both sides of an OI table conflict; check for duplicate IDs"
+expect "both rows are kept, in number order" rows_are oi-a OI-01OI-02OI-03OI-04
+expect "no conflict marker is left" \
+    bash -c '! git -C "$0" show "origin/oi-a:$1" | grep -q "^[<=>]\{7\}"' \
+    "$work/other" "$oi_doc"
+
+# Order by number, whichever side holds the lower one.
+oi_branch 32 oi-b "| OI-06 | **gamma** | Open |"
+oi_main "| OI-05 | **delta** | Open |"
+reset ok
+run 32
+expect "the lower number goes first" rows_are oi-b OI-01OI-02OI-04OI-05OI-06
+
+# The same number on both sides: both are kept; spec-lint names the duplicate at the gate.
+oi_branch 33 oi-c "| OI-07 | **eps** | Open |"
+oi_main "| OI-07 | **zeta** | Open |"
+reset ok
+run 33
+expect "equal numbers: both rows are kept" rows_are oi-c OI-01OI-02OI-04OI-05OI-07OI-07
+
+# A conflict in the prose of docs/09 aborts, and pushes nothing.
+git -C "$work/other" fetch -q origin
+git -C "$work/other" checkout -q -B oi-p origin/main
+perl -pi -e '$. == 1 and $_ = "# 09 - Open issues (branch)\n"' "$work/other/$oi_doc"
+git -C "$work/other" commit -q -am "oi-p"
+git -C "$work/other" push -q -f origin oi-p >/dev/null 2>&1
+echo oi-p >"$stub/pr-34"
+git -C "$work/other" checkout -q -B main origin/main
+perl -pi -e '$. == 1 and $_ = "# 09 - Open issues (main)\n"' "$work/other/$oi_doc"
+git -C "$work/other" commit -q -am "main edits the title"
+git -C "$work/other" push -q origin main >/dev/null 2>&1
+head_p="$(oi_head oi-p)"
+reset ok
+run 34
+expect "a prose conflict aborts" said "merge conflict with origin/main"
+expect "a prose conflict pushes nothing" test "$(oi_head oi-p)" = "$head_p"
+
+# A conflict in another file aborts, though docs/09 also conflicts on rows.
+oi_branch 35 oi-e "| OI-08 | **eta** | Open |" init.txt
+oi_main "| OI-09 | **theta** | Open |" init.txt
+head_e="$(oi_head oi-e)"
+reset ok
+run 35
+expect "a conflict in another file aborts" said "merge conflict with origin/main"
+expect "it pushes nothing" test "$(oi_head oi-e)" = "$head_e"
+expect "it does not announce a resolution" \
+    bash -c '! printf "%s\n" "$0" | grep -Fq "kept both"' "$out"
+
+# One side edits the last row, the other appends: not a pure append, so it aborts.
+git -C "$work/other" fetch -q origin
+git -C "$work/other" checkout -q -B oi-f origin/main
+printf '%s\n' "| OI-10 | **iota** | Open |" >>"$work/other/$oi_doc"
+git -C "$work/other" commit -q -am "oi-f appends"
+git -C "$work/other" push -q -f origin oi-f >/dev/null 2>&1
+echo oi-f >"$stub/pr-36"
+git -C "$work/other" checkout -q -B main origin/main
+perl -pi -e 's/^(\| OI-01 \| \*\*first\*\* \| )Open/$1Resolved/' "$work/other/$oi_doc"
+oi_last="$(grep -n '^| OI-' "$work/other/$oi_doc" | tail -n 1 | cut -d: -f1)"
+perl -pi -e "s/Open \\|\$/Resolved |/ if \$. == $oi_last" "$work/other/$oi_doc"
+git -C "$work/other" commit -q -am "main resolves the last row"
+git -C "$work/other" push -q origin main >/dev/null 2>&1
+head_f="$(oi_head oi-f)"
+reset ok
+run 36
+expect "an edit against an append aborts" said "merge conflict with origin/main"
+expect "it pushes nothing, too" test "$(oi_head oi-f)" = "$head_f"
+expect "it does not announce a resolution either" \
+    bash -c '! printf "%s\n" "$0" | grep -Fq "kept both"' "$out"
 
 if [ "$failures" -eq 0 ]; then
     echo "reverify: every case holds"

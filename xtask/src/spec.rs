@@ -212,6 +212,55 @@ fn check_verif(cell: &str) -> bool {
             .all(|t| matches!(t, "T" | "V" | "F" | "A" | "I"))
 }
 
+/// Problems with the open-issue table of `oi_doc` (the table headed `ID`, `Issue`): a row ID that
+/// is not `OI-<digits>`, an ID used by two rows, and two rows with the same bold title at the
+/// start of the Issue cell. Two pull requests that took the same number or wrote the same issue
+/// meet here; the one that merges second renumbers its own row and its references.
+fn oi_problems(oi_doc: &str) -> Vec<String> {
+    let at = "docs/09-open-issues.md";
+    let mut problems = Vec::new();
+    let mut ids: BTreeMap<String, usize> = BTreeMap::new();
+    let mut titles: BTreeMap<String, (usize, String)> = BTreeMap::new();
+    for table in tables(oi_doc) {
+        if table.header.first().map(String::as_str) != Some("ID")
+            || table.header.get(1).map(String::as_str) != Some("Issue")
+        {
+            continue;
+        }
+        for (line, row) in table.rows {
+            let Some(id) = row.first() else {
+                continue;
+            };
+            let well_formed = id
+                .strip_prefix("OI-")
+                .is_some_and(|d| !d.is_empty() && d.bytes().all(|b| b.is_ascii_digit()));
+            if !well_formed {
+                problems.push(format!("{at}:{line}: row ID {id:?} is not OI-<number>"));
+            }
+            if let Some(first) = ids.insert(id.clone(), line) {
+                problems.push(format!(
+                    "{at}:{line}: duplicate {id} (first at line {first}); the pull request that \
+                     merges second renumbers its own row and its references"
+                ));
+            }
+            let title = row
+                .get(1)
+                .and_then(|c| c.strip_prefix("**"))
+                .and_then(|c| c.split_once("**"))
+                .map(|(t, _)| t.trim().to_owned());
+            if let Some(title) = title.filter(|t| !t.is_empty())
+                && let Some((first, first_id)) = titles.insert(title.clone(), (line, id.clone()))
+            {
+                problems.push(format!(
+                    "{at}:{line}: {id} repeats the title {title:?} of {first_id} (line {first}); \
+                     keep one row"
+                ));
+            }
+        }
+    }
+    problems
+}
+
 /// `xtask spec-lint`: structure of requirement tables and validity of every ID reference.
 pub fn lint() -> Result<usize, String> {
     let spec = Spec::load()?;
@@ -244,6 +293,10 @@ pub fn lint() -> Result<usize, String> {
             ));
         }
     }
+
+    problems.extend(oi_problems(&repo::read(
+        &repo::root().join("docs/09-open-issues.md"),
+    )?));
 
     for path in referencing_files() {
         let text = repo::read(&path)?;
@@ -286,7 +339,55 @@ pub fn lint() -> Result<usize, String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{is_withdrawn, withdrawal_problem};
+    use super::{is_withdrawn, oi_problems, withdrawal_problem};
+
+    fn table(rows: &[&str]) -> String {
+        let mut t = "| ID | Issue | Status |\n|---|---|---|\n".to_owned();
+        for r in rows {
+            t.push_str(r);
+            t.push('\n');
+        }
+        t
+    }
+
+    #[test]
+    fn oi_table_passes() {
+        let doc = table(&["| OI-01 | **A.** x | Open |", "| OI-02 | **B.** y | Open |"]);
+        assert_eq!(oi_problems(&doc), Vec::<String>::new());
+    }
+
+    #[test]
+    fn oi_duplicate_id_names_both_rows() {
+        let doc = table(&["| OI-07 | **A.** x | Open |", "| OI-07 | **B.** y | Open |"]);
+        let p = oi_problems(&doc);
+        assert_eq!(p.len(), 1, "{p:?}");
+        assert!(
+            p[0].contains("duplicate OI-07") && p[0].contains("first at line 3"),
+            "{p:?}"
+        );
+    }
+
+    #[test]
+    fn oi_same_title_names_both_rows() {
+        let doc = table(&["| OI-07 | **A.** x | Open |", "| OI-08 | **A.** y | Open |"]);
+        let p = oi_problems(&doc);
+        assert_eq!(p.len(), 1, "{p:?}");
+        assert!(p[0].contains("OI-08") && p[0].contains("OI-07"), "{p:?}");
+    }
+
+    #[test]
+    fn oi_malformed_id_fails() {
+        for id in ["OI-6x", "0I-67", "OI 67", "OI-", "OI-a1"] {
+            let doc = table(&[&format!("| {id} | **A.** x | Open |")]);
+            assert_eq!(oi_problems(&doc).len(), 1, "{id}");
+        }
+    }
+
+    #[test]
+    fn other_tables_are_ignored() {
+        let doc = "| X | Y |\n|---|---|\n| a | **T** |\n| b | **T** |\n";
+        assert_eq!(oi_problems(doc), Vec::<String>::new());
+    }
 
     #[test]
     fn one_withdrawn_form() {

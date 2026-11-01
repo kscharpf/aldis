@@ -2,6 +2,8 @@
 
 Decisions and verifications that are still pending. Each item names its owner (to be assigned) and the requirements it affects.
 
+**Adding an open issue.** Take the next free number (one above the highest in the table) and append the row at the end of the table. If another pull request merges the same number first, `cargo xtask spec-lint` fails and names the rows (it fails as well on a row ID that is not `OI-<number>`): renumber your own row and every reference to it, and rerun. If it reports two rows with the same title, the same issue was written twice: keep one row. When two pull requests append a row, git reports a conflict in this file; `scripts/reverify` finishes it, keeping both sides in number order, only when this file is the sole conflicted file and every hunk is a pure append (the base side of the hunk, with `merge.conflictStyle=diff3`, is empty and every line of both sides is a table row). Any other conflict (an edit of a row, prose, another file) is yours to resolve. A requirement takes the next free ID of its area the same way ([roadmap](08-roadmap.md) §6 rule 7).
+
 | ID | Issue | Affects | Proposed resolution / default | Status |
 |---|---|---|---|---|
 | OI-01 | **License.** | all crates | **MIT** for all crates, test vectors, and documentation (resolved 2026-10-16, initial commit). **Changed 2026-10-24 (maintainer):** dual **MIT OR Apache-2.0**, at the user's option (`LICENSE-MIT`, `LICENSE-APACHE`), for the explicit patent grant and contribution terms of Apache-2.0 while keeping MIT's GPLv2 compatibility; made while the maintainer holds all the copyright and no outside contribution has been accepted | Resolved |
