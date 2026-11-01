@@ -19,7 +19,13 @@
 # placeholders: when the merge-base still holds a placeholder row, `number` gives it the number
 # recorded in the `OI-Assigned: <placeholder> <OI-nn>` trailer of a number commit between the
 # merge-base and origin/main, and only such a placeholder (one that was already in the merge-base)
-# takes a number from a trailer. `resolve` finishes a merge whose only conflict is in the table
+# takes a number from a trailer. A placeholder whose row is also in the merge-base with another open
+# pull request (a parent this branch is stacked on, still open) stays unnumbered, with a line naming
+# that pull request: numbering it now would give it a second number when the parent merges.
+# scripts/reverify passes the other open pull requests as the file OI_OPEN_PRS (`<number> <sha>`
+# lines) and its own number as OI_PR; a pull request that descends from this branch is no parent.
+# The gate refuses the placeholder until the parent has merged and the branch is reverified.
+# `resolve` finishes a merge whose only conflict is in the table
 # of docs/09-open-issues.md, when every line on both sides of every hunk is a table row
 # (`| OI-`), by keeping both sides; any other conflict is left alone and the exit status is 1.
 # `tidy` puts the rows of the table in number order again after the merge, and commits.
@@ -124,6 +130,19 @@ for p in $placeholders; do
     fi
     if [ -n "$given" ]; then
         printf '%s %s\n' "$p" "$given" >>"$map"
+        continue
+    fi
+    # Held by an open parent: leave it until the parent has merged.
+    waits=""
+    if [ -n "${OI_OPEN_PRS:-}" ] && [ -s "$OI_OPEN_PRS" ]; then
+        while read -r num sha; do
+            ! git merge-base --is-ancestor HEAD "$sha" || continue
+            mb="$(git merge-base HEAD "$sha")" || continue
+            if git show "$mb:$doc" 2>/dev/null | grep -qF "| $p |"; then waits="$num"; break; fi
+        done <"$OI_OPEN_PRS"
+    fi
+    if [ -n "$waits" ]; then
+        echo "${OI_PR:+#$OI_PR: }OI placeholder $p waits for #$waits to merge"
         continue
     fi
     next=$((next + 1))

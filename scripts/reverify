@@ -22,7 +22,8 @@
 # the PR failed and goes on.
 # Open-issue IDs are assigned here, not by the author (docs/09-open-issues.md): before the merge,
 # scripts/assign-oi-ids replaces each `OI-NEW-<slug>` placeholder of the branch by the next free OI
-# number, renumbers an open issue the branch added whose number origin/main has since taken, and
+# number (but leaves a placeholder whose row an open parent PR also holds until that PR has merged),
+# renumbers an open issue the branch added whose number origin/main has since taken, and
 # commits; a merge whose only conflict is rows of the open-issue table is finished by keeping both
 # sides (any other conflict fails as below); after the merge it puts the table in number order and
 # commits. A run with nothing to
@@ -459,7 +460,8 @@ fail() {
 
 # Prepare one PR. Sets `branch`, `run_id` (dispatched or reused) and, on failure, `reason`.
 prepare_one() {
-    local pr="$1" info state dir head before_oi dispatched before found plan
+    local pr="$1" info state dir head before_oi oi_prs others num br sha
+    local dispatched before found plan
     reason=""
     branch=""
     run_id=""
@@ -495,8 +497,26 @@ prepare_one() {
         fail "cannot fast-forward to origin/$branch" || return 1
 
     before_oi="$(git -C "$dir" rev-parse HEAD)"
-    "$script_dir/assign-oi-ids" number "$dir" ||
+    # The heads of the other open PRs, for a placeholder whose row an open parent PR holds.
+    oi_prs=""
+    if grep -qE '^\| OI-NEW-' "$dir/docs/09-open-issues.md" 2>/dev/null; then
+        oi_prs="$(mktemp "${TMPDIR:-/tmp}/reverify-oi.XXXXXX")"
+        others="$(gh pr list --state open --base main --limit 200 --json number,headRefName \
+            --jq '.[] | "\(.number) \(.headRefName)"')" || {
+            rm -f "$oi_prs"
+            fail "cannot list the open pull requests" || return 1
+        }
+        while read -r num br; do
+            [ -n "$num" ] && [ "$num" != "$pr" ] || continue
+            sha="$(git -C "$dir" rev-parse --verify --quiet "origin/$br")" || continue
+            echo "$num $sha" >>"$oi_prs"
+        done <<<"$others"
+    fi
+    OI_PR="$pr" OI_OPEN_PRS="$oi_prs" "$script_dir/assign-oi-ids" number "$dir" || {
+        rm -f "$oi_prs"
         fail "cannot number the open issues in $dir" || return 1
+    }
+    rm -f "$oi_prs"
     if ! git -C "$dir" merge --no-edit origin/main &&
         ! "$script_dir/assign-oi-ids" resolve "$dir"; then
         git -C "$dir" merge --abort || true

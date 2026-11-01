@@ -35,7 +35,8 @@
 # keeps no number commit; a conflict that is only table rows is resolved by keeping both sides, a
 # conflict in prose of docs/09 or in another file fails; a branch stacked on a merged PR that added
 # an open issue takes the number of its parent (the OI-Assigned trailer), and a fresh placeholder
-# with the same slug does not.
+# with the same slug does not; while the parent is still open the child's copy of its placeholder
+# is left unnumbered (it waits for the parent), and the parent does not wait for its child.
 # Not covered: GitHub itself (dispatch, watch, the real STALE gate of `verify assemble`).
 # VERBOSE=1 prints the output of the script under test after each failed case.
 # Exit status: 0 when every case holds, 1 otherwise.
@@ -920,9 +921,21 @@ git -C "$work/other" commit -q -m oi-s2
 git -C "$work/other" push -q -f origin oi-s2 >/dev/null 2>&1
 git -C "$work/other" checkout -q main
 echo oi-s2 >"$stub/pr-23"
+printf '%s\n' "21 oi-s1" "22 oi-s3" "23 oi-s2" >"$stub/open-prs"
+reset ok
+run 23
+expect "the child of an open parent waits: said so" \
+    said "#23: OI placeholder $sa waits for #21 to merge"
+expect "the child still succeeds" said "#23 oi-s2 local success"
+expect "the parent's placeholder is not numbered" oi_has oi-s2 sb.md "B refs $sa and OI-06"
+expect "the parent's row stays a placeholder" oi_has oi-s2 $oi_doc "| $sa | parent | Open |"
+expect "the equal slug of an unrelated PR does not make the parent wait" bash -c \
+    '! printf "%s\n" "$0" | grep -Fq "waits for #22"' "$out"
 reset ok
 run 21
-expect "the parent is numbered" said "assign-oi-ids: $sa as OI-06"
+expect "the parent is numbered, though a child holds its row" \
+    said "assign-oi-ids: $sa as OI-06"
+expect "the parent does not wait for its child" bash -c '! printf "%s\n" "$0" | grep -Fq waits' "$out" said "assign-oi-ids: $sa as OI-06"
 git -C "$work/other" fetch -q origin
 expect "the number is recorded as a trailer" bash -c \
     'git -C "$0" log --format=%B origin/oi-s1 | grep -Fxq "OI-Assigned: $1 OI-06"' \
