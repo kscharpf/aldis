@@ -28,6 +28,11 @@
 # several; the background watcher is gone after a
 # timeout. The cases run a minute as a second (REVERIFY_SECONDS_PER_MIN)
 # against stubs that never finish; the test kills its stubs on exit.
+# Open-issue IDs are assigned at merge (scripts/assign-oi-ids): a placeholder in the branch is
+# numbered in the row and in every reference, a second run changes nothing, two PRs that append a
+# row at the end of the table merge without a conflict and get consecutive numbers, a number the
+# branch added that main has taken since is renumbered with its references, and a failed merge
+# keeps no number commit.
 # Not covered: GitHub itself (dispatch, watch, the real STALE gate of `verify assemble`).
 # VERBOSE=1 prints the output of the script under test after each failed case.
 # Exit status: 0 when every case holds, 1 otherwise.
@@ -60,7 +65,12 @@ git -C "$repo" symbolic-ref HEAD refs/heads/main
 git -C "$repo" config user.email test@example.com
 git -C "$repo" config user.name test
 echo init >"$repo/init.txt"
-git -C "$repo" add init.txt
+# The open-issue table (docs/09-open-issues.md) and the union merge that keeps both sides' rows.
+mkdir -p "$repo/docs"
+printf '%s\n' "# 09 - Open issues" "" "| ID | Issue | Status |" "|---|---|---|" \
+    "| OI-01 | first | Open |" "| OI-02 | second | Open |" >"$repo/docs/09-open-issues.md"
+echo "docs/09-open-issues.md merge=union" >"$repo/.gitattributes"
+git -C "$repo" add init.txt docs .gitattributes
 git -C "$repo" commit -q -m init
 git -C "$repo" push -q -u origin main
 
@@ -790,6 +800,90 @@ run --all-behind 7
 expect "--all-behind with a PR number is a usage error" status_is 2
 run --all-behind --status
 expect "--all-behind with --status is a usage error" status_is 2
+
+echo "# open-issue IDs are assigned at merge (scripts/assign-oi-ids)"
+oi_doc=docs/09-open-issues.md
+oi_branch() { # oi_branch <pr> <branch> <row> <file> <text>: a PR from origin/main with a new row
+    git -C "$work/other" fetch -q origin
+    git -C "$work/other" checkout -q -B "$2" origin/main
+    printf '%s\n' "$3" >>"$work/other/$oi_doc"
+    printf '%s\n' "$5" >"$work/other/$4"
+    git -C "$work/other" add -A
+    git -C "$work/other" commit -q -m "$2"
+    git -C "$work/other" push -q -f origin "$2" >/dev/null 2>&1
+    git -C "$work/other" checkout -q main
+    echo "$2" >"$stub/pr-$1"
+}
+oi_merge() { # oi_merge <branch>: merge it into origin/main, as the maintainer would
+    git -C "$work/other" fetch -q origin
+    git -C "$work/other" checkout -q -B main origin/main
+    git -C "$work/other" merge -q --no-edit "origin/$1" >/dev/null
+    git -C "$work/other" push -q origin main >/dev/null 2>&1
+}
+oi_show() { git -C "$work/other" fetch -q origin && git -C "$work/other" show "origin/$1:$2"; }
+oi_has() { oi_show "$1" "$2" | grep -Fq -- "$3"; } # oi_has <branch> <file> <text>
+oi_rows() { oi_show "$1" "$oi_doc" | grep -oE '^\| OI[-A-Za-z0-9]+' | tr -d '| \n'; echo; }
+oi_head() { git -C "$work/other" rev-parse "origin/$1"; }
+rows_are() { [ "$(oi_rows "$1")" = "$2" ]; } # rows_are <branch> <ids joined by nothing>
+new_a=OI-NEW-alpha
+new_b=OI-NEW-beta
+oi_branch 11 oi-a "| $new_a | alpha | Open |" a.md "see $new_a, not $new_a-x or OI-01"
+oi_branch 12 oi-b "| $new_b | beta | Open |" b.md "see $new_b"
+printf '%s\n' "11 oi-a" "12 oi-b" >"$stub/open-prs"
+
+reset ok
+run 11
+expect "a placeholder is numbered: success" said "#11 oi-a local success"
+expect "the number commit is announced" said "assign-oi-ids: $new_a as OI-03"
+expect "the row has the number" oi_has oi-a $oi_doc "| OI-03 | alpha | Open |"
+expect "every reference has it" oi_has oi-a a.md "see OI-03, not $new_a-x or OI-01"
+expect "no placeholder is left in the table" rows_are oi-a OI-01OI-02OI-03
+head_a="$(oi_head oi-a)"
+reset ok
+run 11
+expect "a second run changes nothing" test "$(oi_head oi-a)" = "$head_a"
+expect "a second run succeeds" said "#11 oi-a local success"
+
+oi_merge oi-a
+reset ok
+run 12
+expect "both rows were appended at the end: no conflict" said "#12 oi-b local success"
+expect "the second PR gets the next number, after the first" rows_are oi-b OI-01OI-02OI-03OI-04
+expect "its reference follows" oi_has oi-b b.md "see OI-04"
+expect "the merged row keeps its number" oi_has oi-b $oi_doc "| OI-03 | alpha | Open |"
+expect "its own row has the number" oi_has oi-b $oi_doc "| OI-04 | beta | Open |"
+expect "the union merge left the rows out of order, and they are put in order" \
+    said "assign-oi-ids: open issues put in number order"
+
+echo "# an open issue numbered before another PR merged is renumbered when its number is taken"
+oi_merge oi-b
+oi_branch 13 oi-c "| OI-05 | gamma | Open |" c.md "see OI-05 and OI-01; OI-50 is not ours"
+oi_branch 14 oi-d "| OI-05 | delta | Open |" d.md "see OI-05 and OI-01; OI-50 is not ours"
+oi_merge oi-c
+reset ok
+run 14
+expect "the clash is renumbered: success" said "#14 oi-d local success"
+expect "the renumbering is announced" said "assign-oi-ids: OI-05 as OI-06"
+expect "the other PR's row stays" oi_has oi-d $oi_doc "| OI-05 | gamma | Open |"
+expect "the branch's row moves to the next number" oi_has oi-d $oi_doc "| OI-06 | delta | Open |"
+expect "rows are in order" rows_are oi-d OI-01OI-02OI-03OI-04OI-05OI-06
+expect "its references follow" oi_has oi-d d.md "see OI-06 and OI-01; OI-50 is not ours"
+expect "the merged PR's file is not rewritten" oi_has oi-d c.md "see OI-05 and OI-01"
+
+echo "# a failed merge leaves no number commit behind"
+oi_branch 15 oi-e "| OI-NEW-eps | epsilon | Open |" init.txt "branch side"
+git -C "$work/other" checkout -q -B main origin/main
+echo "main side" >"$work/other/init.txt"
+git -C "$work/other" commit -q -am "main edits init.txt"
+git -C "$work/other" push -q origin main >/dev/null 2>&1
+head_e="$(oi_head oi-e)"
+reset ok
+run 15
+expect "a conflicting merge fails as before" said "merge conflict with origin/main"
+expect "the number commit is not kept" bash -c \
+    '[ "$(git -C "$0" rev-parse oi-e 2>/dev/null || git -C "$0" rev-parse HEAD)" = "$1" ]' \
+    "$repo/.claude/worktrees/reverify-15" "$head_e"
+expect "nothing was pushed" test "$(oi_head oi-e)" = "$head_e"
 
 if [ "$failures" -eq 0 ]; then
     echo "reverify: every case holds"

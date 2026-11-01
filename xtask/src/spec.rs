@@ -212,8 +212,94 @@ fn check_verif(cell: &str) -> bool {
             .all(|t| matches!(t, "T" | "V" | "F" | "A" | "I"))
 }
 
-/// `xtask spec-lint`: structure of requirement tables and validity of every ID reference.
+/// Prefix of the placeholder that a pull request writes for a new open issue until
+/// `scripts/reverify` numbers it (docs/09-open-issues.md). The placeholder is the prefix and a slug
+/// of lowercase letters, digits, and inner hyphens.
+const OI_PLACEHOLDER: &str = "OI-NEW-";
+
+/// The placeholders of one line of text, in order.
+fn placeholders(line: &str) -> Vec<&str> {
+    let mut out = Vec::new();
+    for (at, _) in line.match_indices(OI_PLACEHOLDER) {
+        let start = at + OI_PLACEHOLDER.len();
+        let rest = line.get(start..).unwrap_or_default();
+        let len = rest
+            .bytes()
+            .take_while(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || *b == b'-')
+            .count();
+        let slug = rest.get(..len).unwrap_or_default().trim_end_matches('-');
+        if slug.starts_with(|c: char| c.is_ascii_lowercase() || c.is_ascii_digit())
+            && let Some(token) = line.get(at..start + slug.len())
+        {
+            out.push(token);
+        }
+    }
+    out
+}
+
+/// Problems with the open-issue IDs: an ID used by two rows of the table of `oi_doc`, a row whose
+/// ID is neither `OI-<digits>` nor a placeholder, a placeholder with no row, and, with `numbered`
+/// (the verification run), any placeholder at all. `files` are the (path, text) pairs to scan for
+/// placeholders.
+fn oi_problems(oi_doc: &str, files: &[(String, String)], numbered: bool) -> Vec<String> {
+    let at = "docs/09-open-issues.md";
+    let mut problems = Vec::new();
+    let mut rows: BTreeMap<String, usize> = BTreeMap::new();
+    for table in tables(oi_doc) {
+        for (line, row) in table.rows {
+            let Some(id) = row.first().filter(|c| c.starts_with("OI-")) else {
+                continue;
+            };
+            let digits = id
+                .strip_prefix("OI-")
+                .is_some_and(|d| !d.is_empty() && d.bytes().all(|b| b.is_ascii_digit()));
+            if !digits && placeholders(id) != [id.as_str()] {
+                problems.push(format!(
+                    "{at}:{line}: {id:?} is neither OI-<number> nor an {OI_PLACEHOLDER}<slug> placeholder"
+                ));
+            }
+            if let Some(first) = rows.insert(id.clone(), line) {
+                problems.push(format!(
+                    "{at}:{line}: duplicate {id} (first at line {first}); if two pull requests took \
+                     the same number, run scripts/reverify, which renumbers the open issues the \
+                     branch added; if a merge kept two versions of one row, keep one"
+                ));
+            }
+        }
+    }
+    for (path, text) in files {
+        for (n, line) in text.lines().enumerate() {
+            for token in placeholders(line) {
+                let here = format!("{path}:{}", n + 1);
+                if numbered {
+                    problems.push(format!(
+                        "{here}: {token} is not numbered yet: scripts/reverify assigns the next \
+                         free OI number when it brings the branch up to date with main"
+                    ));
+                } else if !rows.contains_key(token) {
+                    problems.push(format!(
+                        "{here}: {token} has no row in {at}: add the row, or fix the slug"
+                    ));
+                }
+            }
+        }
+    }
+    problems
+}
+
+/// `xtask spec-lint`: structure of requirement tables and validity of every ID reference. A
+/// placeholder for a new open issue is allowed, so that a branch can pass its own checks.
 pub fn lint() -> Result<usize, String> {
+    run_lint(false)
+}
+
+/// `xtask spec-lint --numbered`, the check of the verification run: also refuses a placeholder
+/// of an open issue, so that a pull request cannot merge before `scripts/reverify` numbers it.
+pub fn lint_numbered() -> Result<usize, String> {
+    run_lint(true)
+}
+
+fn run_lint(numbered: bool) -> Result<usize, String> {
     let spec = Spec::load()?;
     let mut problems = spec.problems.clone();
     let areas = spec.area_set();
@@ -245,13 +331,18 @@ pub fn lint() -> Result<usize, String> {
         }
     }
 
+    let mut texts = Vec::new();
     for path in referencing_files() {
-        let text = repo::read(&path)?;
-        for id in scan_ids(&text, &areas) {
+        texts.push((repo::rel(&path), repo::read(&path)?));
+    }
+    let oi_doc = repo::read(&repo::root().join("docs/09-open-issues.md"))?;
+    problems.extend(oi_problems(&oi_doc, &texts, numbered));
+
+    for (path, text) in &texts {
+        for id in scan_ids(text, &areas) {
             if !spec.requirements.contains_key(&id.id()) {
                 problems.push(format!(
-                    "{}:{}: reference to undefined requirement {}",
-                    repo::rel(&path),
+                    "{path}:{}: reference to undefined requirement {}",
                     id.line,
                     id.id()
                 ));
@@ -286,7 +377,71 @@ pub fn lint() -> Result<usize, String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{is_withdrawn, withdrawal_problem};
+    use super::{is_withdrawn, oi_problems, placeholders, withdrawal_problem};
+
+    /// A placeholder, built here so that spec-lint does not see one in this file.
+    fn ph(slug: &str) -> String {
+        format!("OI-{}-{slug}", "NEW")
+    }
+
+    fn table(rows: &[String]) -> String {
+        let mut t =
+            "| ID | Issue | Affects | Proposed resolution | Status |\n|---|---|---|---|---|\n"
+                .to_owned();
+        for r in rows {
+            t += &format!("| {r} | x | y | z | Open |\n");
+        }
+        t
+    }
+
+    fn file(text: &str) -> Vec<(String, String)> {
+        vec![("docs/x.md".to_owned(), text.to_owned())]
+    }
+
+    #[test]
+    fn placeholder_syntax_is_exact() {
+        let a = ph("cpp-std");
+        assert_eq!(
+            placeholders(&format!("see {a}, and {a}.")),
+            [a.as_str(), a.as_str()]
+        );
+        assert_eq!(placeholders(&format!("({a}-)")), [a.as_str()]);
+        assert!(placeholders(&format!("OI-{}-<slug>", "NEW")).is_empty());
+        assert!(placeholders(&format!("OI-{}-Upper", "NEW")).is_empty());
+        assert!(placeholders("OI-67 and OI-01").is_empty());
+    }
+
+    #[test]
+    fn the_gate_refuses_a_placeholder_and_a_branch_may_carry_one() {
+        let a = ph("a");
+        let doc = table(&["OI-01".to_owned(), a.clone()]);
+        let refs = file(&format!("see {a}"));
+        assert_eq!(oi_problems(&doc, &refs, false), Vec::<String>::new());
+        let numbered = oi_problems(&doc, &refs, true);
+        assert_eq!(numbered.len(), 1, "{numbered:?}");
+        assert!(numbered[0].starts_with("docs/x.md:1:"), "{numbered:?}");
+        assert!(numbered[0].contains("scripts/reverify"), "{numbered:?}");
+        assert!(oi_problems(&table(&["OI-01".to_owned()]), &[], true).is_empty());
+    }
+
+    #[test]
+    fn a_placeholder_needs_a_row_and_an_id_is_used_once() {
+        let a = ph("a");
+        let no_row = oi_problems(&table(&["OI-01".to_owned()]), &file(&a), false);
+        assert_eq!(no_row.len(), 1, "{no_row:?}");
+        assert!(no_row[0].contains("has no row"), "{no_row:?}");
+        let dup = oi_problems(
+            &table(&["OI-67".to_owned(), "OI-67".to_owned()]),
+            &[],
+            false,
+        );
+        assert_eq!(dup.len(), 1, "{dup:?}");
+        assert!(dup[0].contains("duplicate OI-67"), "{dup:?}");
+        let dup_ph = oi_problems(&table(&[a.clone(), a]), &[], false);
+        assert_eq!(dup_ph.len(), 1, "{dup_ph:?}");
+        let bad = oi_problems(&table(&["OI-6x".to_owned()]), &[], false);
+        assert_eq!(bad.len(), 1, "{bad:?}");
+    }
 
     #[test]
     fn one_withdrawn_form() {
