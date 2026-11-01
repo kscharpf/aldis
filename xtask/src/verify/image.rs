@@ -275,11 +275,20 @@ impl Engine {
             format!("{CACHE_VOLUME}:/cache"),
             "-v".to_owned(),
             format!("{}:/out", out.display()),
+        ];
+        // The id of a hosted run, for the command that fetches a failed check's whole log.
+        if let Some(run) = std::env::var("GITHUB_RUN_ID")
+            .ok()
+            .filter(|r| !r.is_empty())
+        {
+            args.extend(["-e".to_owned(), format!("ALDIS_VERIFY_RUN={run}")]);
+        }
+        args.extend([
             tag.to_owned(),
             commit.to_owned(),
             "--out".to_owned(),
             "/out".to_owned(),
-        ];
+        ]);
         if let (false, Some(base)) = (opts.skip.is_empty(), &opts.base) {
             args.extend([
                 "--skip".to_owned(),

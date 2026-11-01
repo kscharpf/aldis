@@ -534,10 +534,16 @@ fn run_check(
     if result == Outcome::Fail {
         let text = String::from_utf8_lossy(&bytes);
         let lines: Vec<&str> = text.lines().collect();
-        for line in &lines[lines.len().saturating_sub(30)..] {
+        for line in failure_excerpt(&lines) {
             println!("    | {line}");
         }
-        println!("    (full log: {})", log_path.display());
+        let run = ["ALDIS_VERIFY_RUN", "GITHUB_RUN_ID"]
+            .iter()
+            .find_map(|k| std::env::var(k).ok().filter(|v| !v.is_empty()));
+        println!(
+            "    (full log: {})",
+            log_hint(&check.name, check.group, run.as_deref(), &log_path)
+        );
     }
     Ok(json!({
         "name": check.name,
@@ -546,6 +552,81 @@ fn run_check(
         "duration_ms": ms,
         "log_sha256": record::sha256_hex(&bytes),
     }))
+}
+
+/// The most lines of a failed check's log that the run prints.
+const EXCERPT_MAX: usize = 80;
+/// The lines of a log printed when none reports a problem: its end.
+const EXCERPT_TAIL: usize = 30;
+/// The lines shown before and after a line that reports a problem.
+const EXCERPT_BEFORE: usize = 1;
+const EXCERPT_AFTER: usize = 3;
+
+/// Whether `line` of a check's log reports the problem: a compiler or tool error, a failed or
+/// panicked test, or a coverage miss (`missed`, `uncovered`, below the threshold).
+fn reports_problem(line: &str) -> bool {
+    let t = line.trim_start();
+    t.starts_with("error")
+        || t.starts_with("uncovered")
+        || ["FAILED", "panicked", "missed", "below"]
+            .iter()
+            .any(|w| line.contains(w))
+}
+
+/// The lines of a failed check's log to print: those that report the problem, each with a line
+/// before and three after, joined by `...` where lines were left out, at most [`EXCERPT_MAX`]
+/// lines; the end of the log when no line reports a problem. A flood (thousands of lint lines)
+/// stays readable: the first lines that report, then the count of those left out.
+fn failure_excerpt(lines: &[&str]) -> Vec<String> {
+    let hits: Vec<usize> = (0..lines.len())
+        .filter(|&i| lines.get(i).is_some_and(|l| reports_problem(l)))
+        .collect();
+    if hits.is_empty() {
+        let start = lines.len().saturating_sub(EXCERPT_TAIL);
+        return lines.iter().skip(start).map(|l| (*l).to_owned()).collect();
+    }
+    let mut shown = vec![false; lines.len()];
+    for &h in &hits {
+        let from = h.saturating_sub(EXCERPT_BEFORE);
+        for mark in shown
+            .iter_mut()
+            .skip(from)
+            .take(EXCERPT_BEFORE + 1 + EXCERPT_AFTER)
+        {
+            *mark = true;
+        }
+    }
+    let total = shown.iter().filter(|m| **m).count();
+    let mut out = Vec::new();
+    let mut gap = false;
+    for (line, mark) in lines.iter().zip(&shown) {
+        if !mark {
+            gap = true;
+        } else if out.len() < EXCERPT_MAX {
+            if gap && !out.is_empty() {
+                out.push("...".to_owned());
+            }
+            gap = false;
+            out.push((*line).to_owned());
+        }
+    }
+    let left_out = total.saturating_sub(out.iter().filter(|l| *l != "...").count());
+    if left_out > 0 {
+        out.push(format!("... {left_out} more line(s) in the full log"));
+    }
+    out
+}
+
+/// How to get the whole log of a failed check: in a hosted run (`run` is its id) the artifact of
+/// the check's group (`part-<group>` of `verify.yml`), else the file.
+fn log_hint(name: &str, group: Option<Group>, run: Option<&str>, path: &Path) -> String {
+    match (run, group) {
+        (Some(run), Some(group)) => format!(
+            "gh run download {run} -n part-{}; then */logs/{name}.log",
+            group.name()
+        ),
+        _ => path.display().to_string(),
+    }
 }
 
 /// Milliseconds shown as seconds with one decimal.
@@ -941,6 +1022,59 @@ fn merge_results(container: &Value, host: Vec<Value>) -> Result<Vec<Value>, Stri
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // req: VER-057
+    #[test]
+    fn a_failed_check_shows_the_lines_that_report_and_a_bounded_tail_otherwise() {
+        let mut log: Vec<String> = (0..200).map(|i| format!("noise {i}")).collect();
+        log[50] = "error[E0308]: mismatched types".to_owned();
+        log[120] = "VER-024 aldis-cop1 lines 3/100 missed".to_owned();
+        let refs: Vec<&str> = log.iter().map(String::as_str).collect();
+        let shown = failure_excerpt(&refs);
+        // Each hit with a line before and three after, and `...` between the two places.
+        assert_eq!(
+            shown[..6],
+            [
+                "noise 49",
+                "error[E0308]: mismatched types",
+                "noise 51",
+                "noise 52",
+                "noise 53",
+                "..."
+            ]
+        );
+        assert!(shown.contains(&"VER-024 aldis-cop1 lines 3/100 missed".to_owned()));
+        assert!(shown.len() < 15, "{shown:?}");
+        // No line reports: the end of the log, not the start.
+        let quiet = &refs[..100];
+        let tail = failure_excerpt(quiet);
+        assert_eq!((tail.len(), tail[0].as_str()), (30, "noise 70"));
+        // A flood is capped, and the count of the lines left out is said.
+        let flood: Vec<String> = (0..5000).map(|i| format!("error: lint {i}")).collect();
+        let refs: Vec<&str> = flood.iter().map(String::as_str).collect();
+        let shown = failure_excerpt(&refs);
+        assert_eq!(shown.len(), super::EXCERPT_MAX + 1);
+        assert!(shown[super::EXCERPT_MAX].contains("more line(s)"));
+        assert_eq!(failure_excerpt(&[]), <[String; 0]>::default());
+    }
+
+    // req: VER-057
+    #[test]
+    fn the_log_hint_names_the_artifact_of_a_hosted_run_and_the_file_otherwise() {
+        let path = Path::new("target/verify/abc/logs/clippy.log");
+        assert_eq!(
+            log_hint("clippy", Some(Group::Host), Some("42"), path),
+            "gh run download 42 -n part-host; then */logs/clippy.log"
+        );
+        assert_eq!(
+            log_hint("clippy", Some(Group::Host), None, path),
+            "target/verify/abc/logs/clippy.log"
+        );
+        assert_eq!(
+            log_hint("kani", None, Some("42"), path),
+            path.display().to_string()
+        );
+    }
 
     // req: VER-067
     #[test]

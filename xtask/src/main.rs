@@ -120,12 +120,14 @@ commands:
                                (needs gh; a coordinator tool, no check of the gate)
   check [--quick | --full] [--from <step>]
                                the checks to run while working, in three tiers (VER-068); the
-                               gate decides a merge, not this. --quick: format and `cargo check`
-                               of the four workspaces, every error at once (edit loop). Default:
+                               gate decides a merge, not this. --quick: format and clippy
+                               (the gate's lints) of the four workspaces, every error at once
+                               (edit loop). Default:
                                fmt, clippy, doc, test, the bare-metal clippy build, ci, then the
                                extras of each touched directory; stops at the first failure.
                                --full: the default tier plus coverage of the touched crates,
-                               stack, and big-endian (once, before the final commit). The last
+                               stack, big-endian, and the exerciser's QEMU run (once, before the
+                               final commit). The last
                                line names the gate checks the tier did not run. One run at a
                                time per worktree; --from <step> skips the steps before the
                                named one and ends `partial`, which is not a pass

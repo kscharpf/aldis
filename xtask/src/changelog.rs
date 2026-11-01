@@ -244,6 +244,33 @@ fn insert_release(
     ))
 }
 
+/// Released versions that predate the rule that a release has a tag, each with the reason.
+const UNTAGGED_EXEMPT: &[(&str, &str)] = &[(
+    "0.1.0-spec",
+    "a spec-only release of 2026-10-16, from before tags were made",
+)];
+
+/// The versions of the `## [x.y.z]` headings of `changelog`, other than `[Unreleased]`.
+fn released_versions(changelog: &str) -> Vec<&str> {
+    changelog
+        .lines()
+        .filter_map(|l| l.strip_prefix("## [")?.split_once(']'))
+        .map(|(version, _)| version)
+        .filter(|v| *v != "Unreleased")
+        .collect()
+}
+
+/// The tags `v<version>` that a released version lacks in `tags`, apart from the versions of
+/// [`UNTAGGED_EXEMPT`].
+fn untagged_releases(changelog: &str, tags: &[&str]) -> Vec<String> {
+    released_versions(changelog)
+        .into_iter()
+        .filter(|v| !UNTAGGED_EXEMPT.iter().any(|(e, _)| e == v))
+        .map(|v| format!("v{v}"))
+        .filter(|t| !tags.contains(&t.as_str()))
+        .collect()
+}
+
 /// Runs git in the repository; returns its standard output.
 fn git(args: &[&str]) -> Result<String, String> {
     let out = Command::new("git")
@@ -325,9 +352,20 @@ pub fn release(version: &str, date: &str) -> Result<usize, String> {
     if version.is_empty() || version.contains(char::is_whitespace) || !date_ok {
         return Err("usage: cargo xtask changelog release <version> <YYYY-MM-DD>".to_owned());
     }
+    let path = repo::root().join("CHANGELOG.md");
+    // Before a new section: every version already released has its tag. The tag of the section
+    // written here is made after the release pull request merges, so it is not asked for.
+    let tags = git(&["tag", "--list", "v*"])?;
+    let missing = untagged_releases(&repo::read(&path)?, &tags.lines().collect::<Vec<_>>());
+    if !missing.is_empty() {
+        return Err(format!(
+            "CHANGELOG.md has released versions without a git tag: {}; ask the maintainer to tag \
+             them (tags are the maintainer's) before the next release",
+            missing.join(", ")
+        ));
+    }
     let (merges, base, head) = merges_since_base()?;
     let g = generate(&merges.prs);
-    let path = repo::root().join("CHANGELOG.md");
     let updated = insert_release(
         &repo::read(&path)?,
         version,
@@ -345,7 +383,10 @@ pub fn release(version: &str, date: &str) -> Result<usize, String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{Merge, generate, insert_release, marker, parse_merges, parse_title, render};
+    use super::{
+        Merge, generate, insert_release, marker, parse_merges, parse_title, render,
+        untagged_releases,
+    };
 
     fn merge(number: u64, title: &str) -> Merge {
         Merge {
@@ -447,5 +488,22 @@ mod tests {
         );
         assert!(insert_release(&out, "0.2.0", "2026-02-01", "", "c").is_err());
         assert!(insert_release("# Changelog\n", "0.2.0", "2026-02-01", "", "c").is_err());
+    }
+
+    #[test]
+    fn every_released_version_but_the_exempt_one_needs_a_tag() {
+        // req: GEN-080
+        let log = "# Changelog\n\n## [Unreleased]\n\n## [0.3.0-m2] — 2026-10-27\n\n\
+                   ## [0.2.0-m1] — 2026-10-20\n\n## [0.1.0-spec] — 2026-10-16\n";
+        assert_eq!(untagged_releases(log, &["v0.2.0-m1"]), ["v0.3.0-m2"]);
+        assert_eq!(
+            untagged_releases(log, &["v0.2.0-m1", "v0.3.0-m2"]),
+            <[String; 0]>::default()
+        );
+        // [Unreleased] never needs a tag; neither does the spec-only release.
+        assert_eq!(
+            untagged_releases("## [Unreleased]\n## [0.1.0-spec] — x\n", &[]),
+            <[String; 0]>::default()
+        );
     }
 }
