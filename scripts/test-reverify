@@ -20,7 +20,7 @@
 # merge-base that exits 128, and a failing `gh run list` each cancel nothing.
 # Every wait times out (`--timeout <min>`, exit 5, with a TIMEOUT line, the lock released, and the
 # line shown by `--status`): the hosted run, the `--wait` queue, `--cancel`, and `--status --wait`;
-# a bad `--timeout` is a usage error. The cases run a minute as a second (REVERIFY_SECONDS_PER_MIN)
+# a bad `--timeout` or REVERIFY_SECONDS_PER_MIN is a usage error; the waiters behind another reverify last (stale-retries + 1) x timeout + 15 min; a FAILED PR decides the exit status of several; the background watcher is gone after a timeout. The cases run a minute as a second (REVERIFY_SECONDS_PER_MIN)
 # against stubs that never finish; the test kills its stubs on exit.
 # Not covered: GitHub itself (dispatch, watch, the real STALE gate of `verify assemble`).
 # VERBOSE=1 prints the output of the script under test after each failed case.
@@ -562,29 +562,53 @@ run --timeout 1 7
 expect "the hosted run: TIMEOUT line with PR, run id and short head" said_re "^#7 TIMEOUT: pr-7 run 101 head [0-9a-f]{7} still running after 1 min"
 expect "the hosted run: exit status 5" status_is 5
 expect "the hosted run: the lock is released" lock_gone 7
+/bin/sleep 1
+# Before the exit trap's cleanup: a leaked watcher would show here.
+watcher_gone() { ! ps -axo command= | grep -F "$work/bin/gh run watch" | grep -vq grep; }
+expect "the hosted run: the background gh run watch is gone" watcher_gone
 run --status 7
 expect "--status shows the recorded TIMEOUT" said_re "^#7 TIMEOUT: pr-7 run 101 head [0-9a-f]{7}.*\\(head [0-9a-f]{7}, finished"
 expect "--status: exit status 5" status_is 5
 rm -f "$stub/container" "$stub/hold-watch-all"
 
+# The waits behind another reverify last (stale-retries + 1) x timeout + 15 min: 16 here.
 reset block
 bg a 7
 wait_for "$stub/publish-pids"
-run --wait --timeout 1 7
-expect "--wait queue: TIMEOUT line with the PR" said_re "^#7 TIMEOUT: still queued after 1 min behind the reverify of pid $pid_a"
-expect "--wait queue: exit status 5" status_is 5
+bg q --wait --stale-retries 0 --timeout 1 7
+bg c --cancel --stale-retries 0 --timeout 1 7
+bg s --status --wait --stale-retries 0 --timeout 1 7
+/bin/sleep 5
+expect "the waiters are still waiting before the holder's budget has passed" kill -0 "$pid_q" "$pid_c" "$pid_s"
+wait "$pid_q"
+rc_q=$?
+wait "$pid_c"
+rc_c=$?
+wait "$pid_s"
+rc_s=$?
+expect "--wait queue: TIMEOUT line with the PR and the holder's budget" grep -Eq "^#7 TIMEOUT: still queued after 16 min behind the reverify of pid $pid_a" "$work/bg.q"
+expect "--wait queue: exit status 5" [ "$rc_q" -eq 5 ]
+expect "--cancel (implies --wait): TIMEOUT" grep -Fq "#7 TIMEOUT: still queued after 16 min" "$work/bg.c"
+expect "--cancel: exit status 5" [ "$rc_c" -eq 5 ]
+expect "--status --wait: TIMEOUT line" grep -Eq "^#7 TIMEOUT: still running after 16 min \\(reverify pid $pid_a" "$work/bg.s"
+expect "--status --wait: exit status 5" [ "$rc_s" -eq 5 ]
 expect "--wait queue: the holder is untouched" kill -0 "$pid_a"
-run --cancel --timeout 1 7
-expect "--cancel (implies --wait): TIMEOUT" said "#7 TIMEOUT: still queued"
-expect "--cancel: exit status 5" status_is 5
-run --status --wait --timeout 1 7
-expect "--status --wait: TIMEOUT line" said_re "^#7 TIMEOUT: still running after 1 min \\(reverify pid $pid_a"
-expect "--status --wait: exit status 5" status_is 5
 run --status 7
 expect "a timeout of the waiter records nothing: --status still says running" status_is 3
 touch "$stub/release"
 wait "$pid_a"
 expect "the holder finishes" grep -Fq "#7 pr-7 local success" "$work/bg.a"
+
+# A failed PR decides the exit status of a call with several PRs.
+reset ok
+touch "$stub/container" "$stub/hold-watch"
+printf '%s\n' fail ok >"$stub/dispatch-script"
+run --timeout 1 7 8
+expect "several PRs: the failed PR is printed" said "#7 pr-7 101 FAILED (failure)"
+expect "several PRs: the timed-out PR is printed" said_re "^#8 TIMEOUT: pr-8 run 102 head"
+expect "several PRs: both summaries are printed" bash -c 'printf "%s\n" "$0" | grep -Fq "1 of 2 PR(s) timed out" && printf "%s\n" "$0" | grep -Fq "1 of 2 PR(s) not verified"' "$out"
+expect "several PRs: FAILED decides, exit status 1" status_is 1
+rm -f "$stub/container" "$stub/hold-watch"
 
 reset ok
 run --timeout 0 7
@@ -593,6 +617,11 @@ run --timeout x 7
 expect "--timeout x is a usage error" status_is 2
 run --timeout
 expect "--timeout without a value is a usage error" status_is 2
+for bad in 0 x '$(touch /nonexistent-x)'; do
+    out="$(cd "$repo" && REVERIFY_SECONDS_PER_MIN="$bad" PATH="$work/bin:$PATH" "$script" 7 2>&1)"
+    rc=$?
+    expect "REVERIFY_SECONDS_PER_MIN='$bad' is a usage error" status_is 2
+done
 unset REVERIFY_SECONDS_PER_MIN
 
 if [ "$failures" -eq 0 ]; then

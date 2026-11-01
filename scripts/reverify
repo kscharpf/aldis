@@ -39,19 +39,22 @@
 # `#<n> <branch> <run> cancelled (...)`, neither FAILED nor STALE, and `--status` shows that line
 # (exit 1) until the next run starts.
 #
-# Every wait has a timeout, `--timeout <min>` (default 60): the wait for the hosted run of a PR, the
-# `--wait` queue behind another reverify (so also `--cancel`, which implies it), and `--status
-# --wait`. Each wait has its own budget, counted from its start. When one expires the script prints
+# Every wait has a timeout. `--timeout <min>` (default 60) bounds the wait for the hosted run of a
+# PR. The waits behind another reverify, the `--wait` queue (so also `--cancel`, which implies it)
+# and `--status --wait`, wait for the holder's whole call: (stale-retries + 1) x timeout plus 15
+# minutes, from the values in effect (195 min by default), so that a holder on a STALE retry is
+# not given up on. Each wait has its own budget, counted from its start. When one expires the script prints
 # a final `#<n> TIMEOUT: ...` line naming the PR, the short head and the run id (when there are
 # any), releases the PR's lock, and exits 5 (0, 1, 3 and 4 are taken; 2 is usage). The hosted run
 # is left running, and a timed-out run is not cancelled. A timeout while queued or in `--status
 # --wait` is not recorded, since another reverify owns the result; a timed-out wait for a run is,
-# and `--status` shows it (exit 5). A run made here (`verify --publish`) has no timeout.
+# and `--status` shows it (exit 5). With several PRs, a failed PR decides: exit 1 if any PR failed,
+# else 5 if any timed out. A run made here (`verify --publish`) has no timeout.
 #
 # `--status <n>` reads, with no network, one line: `#<n> running: ...` (exit 3) while a reverify
 # holds the lock, else the final line of the last reverify run on this machine with the head it is
-# about (exit 0 when it succeeded, 1 when it did not, 5 when it timed out), else `#<n> no reverify recorded` (exit 4):
-# a run that aborts before its final line leaves no record. With `--wait` it first waits until no
+# about (exit 0 when it succeeded, 1 when it did not, 5 when it timed out), else
+# `#<n> no reverify recorded` (exit 4): a run that aborts before its final line leaves no record. With `--wait` it first waits until no
 # reverify holds the lock, so that the line is the final one.
 set -euo pipefail
 
@@ -63,6 +66,8 @@ stale_retries=2
 timeout_min=60
 # Seconds per minute of --timeout: a test knob, so that the tests need not wait minutes.
 secs_per_min="${REVERIFY_SECONDS_PER_MIN:-60}"
+[[ "$secs_per_min" =~ ^[0-9]+$ ]] && [ "$((10#$secs_per_min))" -ge 1 ] || { usage; exit 2; }
+secs_per_min=$((10#$secs_per_min))
 status_mode=0
 args=()
 while [ $# -gt 0 ]; do
@@ -105,6 +110,9 @@ if [ "${#args[@]}" -eq 0 ] || { [ "$status_mode" -eq 1 ] && [ "${#args[@]}" -ne 
 fi
 
 timeout_s=$((timeout_min * secs_per_min))
+# The waits behind another reverify last as long as the holder's whole call can.
+queue_min=$(((stale_retries + 1) * timeout_min + 15))
+queue_s=$((queue_min * secs_per_min))
 
 export NO_COLOR=1 GH_FORCE_TTY=0 GH_NO_UPDATE_NOTIFIER=1
 
@@ -117,8 +125,8 @@ mkdir -p "$state_dir"
 # The locale and zone are fixed, so that the same process always prints the same start time.
 proc_start() { TZ=UTC LC_ALL=C ps -o lstart= -p "$1" 2>/dev/null | sed 's/^ *//; s/ *$//' || true; }
 
-# The final line of a PR, kept for `--status`; $1 pr, $2 ok or fail, $3 the line, $4 the head
-# commit it is about (empty when the run never got one).
+# The final line of a PR, kept for `--status`; $1 pr, $2 ok, fail, cancelled or timeout,
+# $3 the line, $4 the head commit it is about (empty when the run never got one).
 record_final() {
     local head=""
     [ -z "$4" ] || head="head ${4:0:7}, "
@@ -138,8 +146,8 @@ if [ "$status_mode" -eq 1 ]; then
         wait_start=$SECONDS
         # bound: ends when the holder's reverify ends or the wait has lasted --timeout.
         while lock_held "$pr"; do
-            if [ $((SECONDS - wait_start)) -ge "$timeout_s" ]; then
-                echo "#$pr TIMEOUT: still running after $timeout_min min (reverify pid ${holder%%|*} since ${holder#*|})"
+            if [ $((SECONDS - wait_start)) -ge "$queue_s" ]; then
+                echo "#$pr TIMEOUT: still running after $queue_min min (reverify pid ${holder%%|*} since ${holder#*|})"
                 exit 5
             fi
             sleep 5
@@ -193,7 +201,7 @@ holder_alive() {
 lock_acquire() {
     local pr="$1" lock="$state_dir/$1.lock" holder taker announced=0 wait_start=$SECONDS
     # bound: each pass takes the lock, returns, or waits for a live holder (--wait only, at most
-    # --timeout); a stale lock is removed by the one taker, and a crashed taker's mutex is removed
+    # queue_min); a stale lock is removed by the one taker, and a crashed taker's mutex is removed
     # as stale.
     while true; do
         if ln -s "$me" "$lock" 2>/dev/null; then
@@ -210,8 +218,8 @@ lock_acquire() {
                 echo "#$pr: waiting for the reverify of pid ${holder%%|*}"
                 announced=1
             fi
-            if [ $((SECONDS - wait_start)) -ge "$timeout_s" ]; then
-                echo "#$pr TIMEOUT: still queued after $timeout_min min behind the reverify of pid ${holder%%|*} (no run, no head)"
+            if [ $((SECONDS - wait_start)) -ge "$queue_s" ]; then
+                echo "#$pr TIMEOUT: still queued after $queue_min min behind the reverify of pid ${holder%%|*} (no run, no head)"
                 return 5
             fi
             sleep 5
@@ -450,7 +458,7 @@ for pr in "${args[@]}"; do
     reasons+=("$reason")
 done
 
-# Print and record the final line of PR $1: $2 ok or fail, $3 the line, $4 the head commit; then
+# Print and record the final line of PR $1: $2 ok, fail, cancelled or timeout, $3 the line, $4 the head commit; then
 # release its lock, so that a waiter for this PR does not wait for the PRs that follow it.
 finish() {
     echo "$3"
@@ -531,5 +539,6 @@ for i in "${!prs[@]}"; do
         failed=$((failed + 1))
     fi
 done
-[ "$timed_out" -eq 0 ] || { echo "reverify: $timed_out of ${#prs[@]} PR(s) timed out"; exit 5; }
+[ "$timed_out" -eq 0 ] || echo "reverify: $timed_out of ${#prs[@]} PR(s) timed out"
 [ "$failed" -eq 0 ] || { echo "reverify: $failed of ${#prs[@]} PR(s) not verified"; exit 1; }
+[ "$timed_out" -eq 0 ] || exit 5
