@@ -20,7 +20,11 @@
 # merge-base that exits 128, and a failing `gh run list` each cancel nothing.
 # Every wait times out (`--timeout <min>`, exit 5, with a TIMEOUT line, the lock released, and the
 # line shown by `--status`): the hosted run, the `--wait` queue, `--cancel`, and `--status --wait`;
-# a bad `--timeout` or REVERIFY_SECONDS_PER_MIN is a usage error; the waiters behind another reverify last (stale-retries + 1) x timeout + 15 min; a FAILED PR decides the exit status of several; the background watcher is gone after a timeout. The cases run a minute as a second (REVERIFY_SECONDS_PER_MIN)
+# a bad `--timeout` or REVERIFY_SECONDS_PER_MIN is a usage error; a waiter behind another reverify
+# follows the deadline the holder records in its lock and gives up only when it is overdue by 15
+# minutes (or, with no deadline, after its own --timeout plus 15), and not while the holder renews
+# it; a FAILED PR decides the exit status of several; the background watcher is gone after a
+# timeout. The cases run a minute as a second (REVERIFY_SECONDS_PER_MIN)
 # against stubs that never finish; the test kills its stubs on exit.
 # Not covered: GitHub itself (dispatch, watch, the real STALE gate of `verify assemble`).
 # VERBOSE=1 prints the output of the script under test after each failed case.
@@ -571,33 +575,75 @@ expect "--status shows the recorded TIMEOUT" said_re "^#7 TIMEOUT: pr-7 run 101 
 expect "--status: exit status 5" status_is 5
 rm -f "$stub/container" "$stub/hold-watch-all"
 
-# The waits behind another reverify last (stale-retries + 1) x timeout + 15 min: 16 here.
+# A running reverify writes a deadline into its lock, `<pid>|<start>|<epoch seconds>`.
 reset block
 bg a 7
 wait_for "$stub/publish-pids"
-bg q --wait --stale-retries 0 --timeout 1 7
-bg c --cancel --stale-retries 0 --timeout 1 7
-bg s --status --wait --stale-retries 0 --timeout 1 7
-/bin/sleep 5
-expect "the waiters are still waiting before the holder's budget has passed" kill -0 "$pid_q" "$pid_c" "$pid_s"
+expect "the holder's lock carries a deadline" bash -c "readlink '$repo/.git/reverify/7.lock' | grep -Eq '^[0-9]+[|].+[|][0-9]+\$'"
+touch "$stub/release"
+wait "$pid_a"
+
+# Waiters follow the recorded deadline of the holder: a stub holder (a live process) whose lock
+# says when it is due. The margin is 15 s here. Lock 7: due in 2 s, never renewed. Lock 8: due in
+# 2 s, renewed every second for 20 s. Lock 9: no deadline (older format).
+reset block
+lock_of() { # lock_of <pid> <deadline-or-empty>
+    local st
+    st="$(TZ=UTC LC_ALL=C ps -o lstart= -p "$1" | sed 's/^ *//; s/ *$//')"
+    printf '%s|%s%s' "$1" "$st" "${2:+|$2}"
+}
+mkdir -p "$repo/.git/reverify"
+/bin/sleep 300 &
+h7=$!
+/bin/sleep 300 &
+h8=$!
+/bin/sleep 300 &
+h9=$!
+ln -s "$(lock_of "$h7" "$(($(date +%s) + 2))")" "$repo/.git/reverify/7.lock"
+ln -s "$(lock_of "$h8" "$(($(date +%s) + 2))")" "$repo/.git/reverify/8.lock"
+ln -s "$(lock_of "$h9" "")" "$repo/.git/reverify/9.lock"
+(
+    for _ in $(seq 1 20); do
+        ln -sf "$(lock_of "$h8" "$(($(date +%s) + 2))")" "$repo/.git/reverify/8.lock.new"
+        mv -f "$repo/.git/reverify/8.lock.new" "$repo/.git/reverify/8.lock"
+        /bin/sleep 1
+    done
+) &
+t0=$SECONDS
+bg q --wait 7
+bg c --cancel 7
+bg s --status --wait 7
+bg r --wait 8
+bg n --wait --timeout 1 9
+/bin/sleep 10
+expect "before the deadline plus the margin the waiters still wait" kill -0 "$pid_q" "$pid_c" "$pid_s"
+/bin/sleep 8
+expect "a renewed deadline keeps its waiter waiting past where an unrenewed one ends" kill -0 "$pid_r"
 wait "$pid_q"
 rc_q=$?
+t_q=$((SECONDS - t0))
 wait "$pid_c"
 rc_c=$?
 wait "$pid_s"
 rc_s=$?
-expect "--wait queue: TIMEOUT line with the PR and the holder's budget" grep -Eq "^#7 TIMEOUT: still queued after 16 min behind the reverify of pid $pid_a" "$work/bg.q"
+wait "$pid_n"
+rc_n=$?
+t_n=$SECONDS
+expect "--wait queue: TIMEOUT line says the holder is stalled" grep -Eq "^#7 TIMEOUT: still queued behind the stalled reverify of pid $h7, whose deadline passed" "$work/bg.q"
 expect "--wait queue: exit status 5" [ "$rc_q" -eq 5 ]
-expect "--cancel (implies --wait): TIMEOUT" grep -Fq "#7 TIMEOUT: still queued after 16 min" "$work/bg.c"
-expect "--cancel: exit status 5" [ "$rc_c" -eq 5 ]
-expect "--status --wait: TIMEOUT line" grep -Eq "^#7 TIMEOUT: still running after 16 min \\(reverify pid $pid_a" "$work/bg.s"
-expect "--status --wait: exit status 5" [ "$rc_s" -eq 5 ]
-expect "--wait queue: the holder is untouched" kill -0 "$pid_a"
-run --status 7
-expect "a timeout of the waiter records nothing: --status still says running" status_is 3
-touch "$stub/release"
-wait "$pid_a"
-expect "the holder finishes" grep -Fq "#7 pr-7 local success" "$work/bg.a"
+expect "the waiter gave up after the deadline plus the margin (17 s), not before" [ "$t_q" -ge 17 ]
+expect "and soon after it" [ "$t_q" -le 24 ]
+expect "--cancel (implies --wait): TIMEOUT, exit status 5" bash -c 'grep -Fq "#7 TIMEOUT: still queued" "$0" && [ "$1" -eq 5 ]' "$work/bg.c" "$rc_c"
+expect "--status --wait: TIMEOUT, exit status 5" bash -c 'grep -Eq "^#7 TIMEOUT: still running; the reverify of pid $2 is stalled" "$0" && [ "$1" -eq 5 ]' "$work/bg.s" "$rc_s" "$h7"
+expect "no deadline recorded: the waiter's own --timeout plus the margin (16 s)" grep -Fq "which recorded no deadline, after 16 min" "$work/bg.n"
+expect "no deadline recorded: exit status 5" [ "$rc_n" -eq 5 ]
+wait "$pid_r"
+rc_r=$?
+expect "the renewing holder's waiter ends only after the renewals stop" grep -Fq "#8 TIMEOUT: still queued behind the stalled reverify" "$work/bg.r"
+expect "that waiter: exit status 5" [ "$rc_r" -eq 5 ]
+expect "the waiter's timeout leaves the holder's lock" bash -c "[ -L '$repo/.git/reverify/7.lock' ]"
+kill "$h7" "$h8" "$h9" 2>/dev/null
+rm -f "$repo/.git/reverify/7.lock" "$repo/.git/reverify/8.lock" "$repo/.git/reverify/9.lock"
 
 # A failed PR decides the exit status of a call with several PRs.
 reset ok
