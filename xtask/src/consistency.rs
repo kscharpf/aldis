@@ -17,7 +17,9 @@
 //! feature in `crates/aldis` that enables it, forwards `alloc` and `std`, and is part of `full`.
 //!
 //! **Fuzz targets.** The `[[bin]]` targets of `fuzz/Cargo.toml` and the matrix of the nightly
-//! `fuzz` job are the same set (VER-022).
+//! `fuzz` job are the same set (VER-022). Every `fuzz/fuzz_targets/*.rs` is the `path` of a
+//! `[[bin]]` (a file with no entry is never compiled, and so never linted or run), and every
+//! `[[bin]]` path exists.
 //!
 //! **C names.** Every `aldis_` or `ALDIS_` name that `docs/profiles/c-abi.md` and
 //! `crates/aldis-ffi/README.md` mention is declared by `include/aldis/aldis.h` (CABI-002), or is
@@ -175,6 +177,60 @@ pub(crate) fn bin_targets(manifest: &str) -> BTreeSet<String> {
         }
     }
     out
+}
+
+/// The `[[bin]]` entries of a manifest as (name, path), the path relative to the manifest's
+/// directory; a `[[bin]]` without `path` has cargo's default, `src/bin/<name>.rs`.
+fn bin_paths(manifest: &str) -> Vec<(String, String)> {
+    let value = |line: &str, key: &str| {
+        line.strip_prefix(key)
+            .and_then(|v| v.trim_start().strip_prefix('='))
+            .map(|v| v.trim().trim_matches('"').to_owned())
+    };
+    let mut out: Vec<(String, Option<String>)> = Vec::new();
+    let mut in_bin = false;
+    for line in manifest.lines().map(str::trim) {
+        if line.starts_with('[') {
+            in_bin = line == "[[bin]]";
+            if in_bin {
+                out.push((String::new(), None));
+            }
+        } else if in_bin && let Some(last) = out.last_mut() {
+            if let Some(n) = value(line, "name") {
+                last.0 = n;
+            } else if let Some(p) = value(line, "path") {
+                last.1 = Some(p);
+            }
+        }
+    }
+    out.into_iter()
+        .map(|(n, p)| {
+            let path = p.unwrap_or_else(|| format!("src/bin/{n}.rs"));
+            (n, path)
+        })
+        .collect()
+}
+
+/// Problems between the `[[bin]]` entries of `fuzz/Cargo.toml` and the files of
+/// the `.rs` files of `fuzz/` (`files`, relative to `fuzz/`): a file of `fuzz_targets/` that no
+/// entry names is never compiled, and an entry whose file is missing does not build.
+fn fuzz_source_problems(bins: &[(String, String)], files: &BTreeSet<String>) -> Vec<String> {
+    let mut p = Vec::new();
+    for f in files.iter().filter(|f| f.starts_with("fuzz_targets/")) {
+        if !bins.iter().any(|(_, path)| path == f) {
+            p.push(format!(
+                "fuzz/{f}: no `[[bin]]` of fuzz/Cargo.toml has this path, so it is never compiled"
+            ));
+        }
+    }
+    for (name, path) in bins {
+        if !files.contains(path) {
+            p.push(format!(
+                "fuzz target {name}: the `[[bin]]` path fuzz/{path} does not exist"
+            ));
+        }
+    }
+    p
 }
 
 /// The `aldis-*` names in the `[dependencies]` table of a manifest.
@@ -777,6 +833,14 @@ pub fn check() -> Result<usize, String> {
         .map_err(|e| format!(".github/workflows/nightly.yml: {e}"))?;
     let bins = bin_targets(&read("fuzz/Cargo.toml")?);
     problems.extend(fuzz_problems(&bins, &matrix));
+    let target_files = repo::files("fuzz", &["rs"])
+        .iter()
+        .filter_map(|p| repo::rel(p).strip_prefix("fuzz/").map(str::to_owned))
+        .collect();
+    problems.extend(fuzz_source_problems(
+        &bin_paths(&read("fuzz/Cargo.toml")?),
+        &target_files,
+    ));
 
     let files: Vec<String> = repo::files("test-vectors", &["json"])
         .iter()
@@ -823,10 +887,10 @@ pub fn check() -> Result<usize, String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        Crates, Form, aldis_dependencies, awaiting_runner, bin_targets, c_names, crate_problems,
-        exerciser_groups, expand_braces, ffi_runner_files, fuzz_problems, glob, has_code,
-        header_name_problems, matrix_targets, mutants_crates, named_by_test, names,
-        readme_patterns, vector_problems, without_c_comments,
+        Crates, Form, aldis_dependencies, awaiting_runner, bin_paths, bin_targets, c_names,
+        crate_problems, exerciser_groups, expand_braces, ffi_runner_files, fuzz_problems,
+        fuzz_source_problems, glob, has_code, header_name_problems, matrix_targets, mutants_crates,
+        named_by_test, names, readme_patterns, vector_problems, without_c_comments,
     };
 
     /// A consistent registration of the M1 crates and `aldis-aos`, with two skeletons.
@@ -961,6 +1025,27 @@ mod tests {
             [
                 "fuzz target a: in fuzz/Cargo.toml but not in the nightly fuzz matrix",
                 "fuzz target c: in the nightly fuzz matrix but not in fuzz/Cargo.toml"
+            ]
+        );
+        // A target file with no `[[bin]]` is reported (it was never compiled), and so is an entry
+        // whose file is missing; `b_roundtrip` has no `path` and takes cargo's default.
+        let bins = bin_paths(toml);
+        assert_eq!(
+            bins,
+            [
+                ("a_decode".to_owned(), "a.rs".to_owned()),
+                (
+                    "b_roundtrip".to_owned(),
+                    "src/bin/b_roundtrip.rs".to_owned()
+                )
+            ]
+        );
+        let files = names(&["a.rs", "fuzz_targets/orphan.rs", "src/lib.rs"]);
+        assert_eq!(
+            fuzz_source_problems(&bins, &files),
+            [
+                "fuzz/fuzz_targets/orphan.rs: no `[[bin]]` of fuzz/Cargo.toml has this path, so it is never compiled",
+                "fuzz target b_roundtrip: the `[[bin]]` path fuzz/src/bin/b_roundtrip.rs does not exist"
             ]
         );
         let build = "    for (group, variant) in [\n        (\"time\", \"Time\"),\n        (\"aos\", \"Aos\"),\n    ] {\n";

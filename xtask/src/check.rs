@@ -2,14 +2,15 @@
 //!
 //! Three tiers (VER-068); the gate (`cargo xtask verify`) stays the only authority on a merge.
 //!
-//! - `check --quick`: format of the four workspaces and `cargo check --all-targets` of each, which
-//!   runs every step and prints every error, for the edit loop (about a minute).
+//! - `check --quick`: format of the four workspaces and clippy of each, with the lints of the gate,
+//!   which runs every step and prints every error, for the edit loop (about a minute).
 //! - `check` (default): format, clippy, rustdoc, tests, the bare-metal clippy build, and
 //!   `xtask ci`, then the extras that the verification run would run for the change. Stops at the
 //!   first failure. An extra whose tool is not installed is skipped and reported. It does not
 //!   promise the gate.
-//! - `check --full`: the default tier plus coverage, `stack`, and `big-endian` when the
-//!   verification run would run them for the change, once before the final commit.
+//! - `check --full`: the default tier plus coverage, `stack`, `big-endian`, and the exerciser's run
+//!   under QEMU when the verification run would run them for the change, once before the final
+//!   commit.
 //!
 //! Which extras and which of the `--full` steps run is decided by the gate's own data, not by a
 //! list of directories here: a step runs when `verify::inputs_differ` (the rule of VER-056) says
@@ -53,6 +54,8 @@ struct Item {
     env: Vec<(String, String)>,
     /// How the step differs from the whole of its gate check, shown in the last line.
     note: Option<String>,
+    /// The time after which the step is killed and fails, where the gate bounds the command.
+    limit: Option<Duration>,
 }
 
 const fn cmd_in(
@@ -66,6 +69,7 @@ const fn cmd_in(
         action: Action::Cmd { program, args, dir },
         env: Vec::new(),
         note: None,
+        limit: None,
     }
 }
 
@@ -79,6 +83,7 @@ fn xtask(name: &'static str, args: &[&str]) -> Item {
         action: Action::Xtask(args.iter().map(|a| (*a).to_owned()).collect()),
         env: Vec::new(),
         note: None,
+        limit: None,
     }
 }
 
@@ -124,12 +129,12 @@ fn command(item: &Item) -> Result<Command, String> {
 /// How much of the gate a run covers, from the least to the most (VER-068).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 enum Mode {
-    /// Format and compile of the four workspaces, every error at once.
+    /// Format and clippy of the four workspaces, every error at once.
     Quick,
     /// Format, lints, rustdoc, tests, the bare-metal build, `xtask ci`, and the extras that the
     /// verification run would run for the change.
     Default,
-    /// The default tier plus coverage, `stack`, and `big-endian`.
+    /// The default tier plus coverage, `stack`, `big-endian`, and the exerciser's QEMU run.
     Full,
 }
 
@@ -204,6 +209,8 @@ struct Tools {
     coverage: bool,
     /// The s390x target, its cross linker, and QEMU user mode are installed (`big-endian`).
     big_endian: bool,
+    /// The thumbv7em target and QEMU system mode for Arm are installed (the exerciser's run).
+    qemu_arm: bool,
     /// `cbindgen` is installed.
     cbindgen: bool,
     /// `shellcheck` is installed at the version of the image (`scripts/check-shell --check-tool`).
@@ -228,10 +235,12 @@ struct Plan {
     skipped: Vec<Skip>,
 }
 
-/// What `check --quick` runs: the format of the four workspaces and `cargo check` of each,
-/// whatever the change touches. The compile steps keep going after an error (`--keep-going`),
-/// and the run goes on after a failed step, so that one run lists every error. The exerciser is
-/// a `no_std` binary: it is checked for the target it is linked for, as its clippy step is.
+/// What `check --quick` runs: the format of the four workspaces and clippy of each, whatever the
+/// change touches. Clippy compiles everything `cargo check` does and runs the lints of the gate
+/// (the same `RUSTFLAGS`, the lint tables of the manifests), so a finding that the gate reports
+/// is found here. The steps keep going after an error (`--keep-going`), and the run goes on
+/// after a failed step, so that one run lists every error. The exerciser is a `no_std` binary:
+/// it is linted for the target it is linked for, as its clippy step of the default tier is.
 /// `refapp/` is a workspace of its own that the quick tier does not check (`run` says so).
 fn quick_plan() -> Vec<Item> {
     let mut run = vec![cmd("fmt", "cargo", &["fmt", "--all", "--check"])];
@@ -242,10 +251,10 @@ fn quick_plan() -> Vec<Item> {
     );
     run.extend([
         cmd(
-            "check",
+            "clippy",
             "cargo",
             &[
-                "check",
+                "clippy",
                 "--locked",
                 "--workspace",
                 "--all-features",
@@ -254,11 +263,11 @@ fn quick_plan() -> Vec<Item> {
             ],
         ),
         cmd_in(
-            "exerciser check",
+            "exerciser clippy",
             "exerciser",
             "cargo",
             &[
-                "check",
+                "clippy",
                 "--locked",
                 "--release",
                 "--target",
@@ -267,16 +276,16 @@ fn quick_plan() -> Vec<Item> {
             ],
         ),
         cmd_in(
-            "fuzz check",
+            "fuzz clippy",
             "fuzz",
             "cargo",
-            &["check", "--locked", "--all-targets", "--keep-going"],
+            &["clippy", "--locked", "--all-targets", "--keep-going"],
         ),
         cmd_in(
-            "crosscheck check",
+            "crosscheck clippy",
             "crosscheck",
             "cargo",
-            &["check", "--locked", "--all-targets", "--keep-going"],
+            &["clippy", "--locked", "--all-targets", "--keep-going"],
         ),
     ]);
     run
@@ -294,8 +303,8 @@ fn exports(script: &str) -> Vec<(String, String)> {
 /// The steps to run for `t` and the ones skipped, each with the reason.
 ///
 /// The base steps run for every change. The others run when the verification run would run the
-/// check they mirror for the change (`Touched::gate_runs`); `--full` adds coverage, `stack`, and
-/// `big-endian` on the same rule.
+/// check they mirror for the change (`Touched::gate_runs`); `--full` adds coverage, `stack`,
+/// `big-endian`, and the exerciser's QEMU run on the same rule.
 #[expect(clippy::too_many_lines, reason = "one entry per check step")]
 fn plan(t: &Touched, tools: Tools, mode: Mode) -> Plan {
     if mode == Mode::Quick {
@@ -485,9 +494,9 @@ fn plan(t: &Touched, tools: Tools, mode: Mode) -> Plan {
     }
 }
 
-/// The steps that only `--full` runs: coverage, `stack`, and `big-endian`, each when the
-/// verification run would run its check for the change, and skipped with the reason when its tool
-/// is missing.
+/// The steps that only `--full` runs: coverage, `stack`, `big-endian`, and the exerciser's run
+/// under QEMU, each when the verification run would run its check for the change, and skipped
+/// with the reason when its tool is missing.
 fn full_steps(t: &Touched, tools: Tools, run: &mut Vec<Item>, skipped: &mut Vec<Skip>) {
     if t.gate_runs("coverage") {
         if tools.coverage {
@@ -517,6 +526,38 @@ fn full_steps(t: &Touched, tools: Tools, run: &mut Vec<Item>, skipped: &mut Vec<
                 check: "stack",
                 short: "tooling nightly not installed",
                 reason: "tooling nightly not installed".into(),
+            });
+        }
+    }
+    if t.gate_runs("exerciser-thumbv7em-none-eabihf") {
+        if tools.qemu_arm {
+            // The runner of `exerciser/.cargo/config.toml` starts QEMU. The gate bounds the run
+            // with `timeout 120` and retries it once; the host may have no `timeout`, so the
+            // step carries the same limit and `run_item` enforces it. A timeout fails the step; a
+            // Ctrl-C leaves cargo and QEMU running (see `run_item`).
+            let mut item = cmd_in(
+                "exerciser run",
+                "exerciser",
+                "cargo",
+                &[
+                    "run",
+                    "--release",
+                    "--locked",
+                    "--target",
+                    "thumbv7em-none-eabihf",
+                ],
+            );
+            item.limit = Some(EXERCISER_RUN_LIMIT);
+            run.push(item);
+        } else {
+            skipped.push(Skip {
+                step: "exerciser run",
+                check: "exerciser-thumbv7em-none-eabihf",
+                short: "qemu-system-arm not installed",
+                reason: "needs the thumbv7em-none-eabihf target and qemu-system-arm \
+                         (rustup target add thumbv7em-none-eabihf; Debian: apt install \
+                         qemu-system-arm; macOS: brew install qemu)"
+                    .into(),
             });
         }
     }
@@ -619,7 +660,7 @@ const GATE_ONLY: &[(&str, &str)] = &[
     ),
     (
         "exerciser-thumbv7em-none-eabihf",
-        "partly: check runs the exerciser's clippy and release build, not the canary or the QEMU run",
+        "partly: check runs the exerciser's clippy and release build, and with --full the QEMU run (with the gate's time limit of 120 s but not its retry; a Ctrl-C leaves cargo and QEMU running), not the canary",
     ),
     (
         "exerciser-armv7r-none-eabihf",
@@ -741,6 +782,8 @@ fn tools() -> Tools {
         big_endian: target_installed("s390x-unknown-linux-gnu")
             && works("qemu-s390x", &["--version"])
             && works("s390x-linux-gnu-gcc-14", &["--version"]),
+        qemu_arm: target_installed("thumbv7em-none-eabihf")
+            && works("qemu-system-arm", &["--version"]),
         cbindgen: works("cbindgen", &["--version"]),
         shellcheck: works(
             &repo::root().join("scripts/check-shell").to_string_lossy(),
@@ -819,6 +862,53 @@ fn from_index(names: &[&str], from: &str) -> Result<usize, String> {
     })
 }
 
+/// The time limit of the gate's `timeout 120` around the exerciser's QEMU run.
+const EXERCISER_RUN_LIMIT: Duration = Duration::from_secs(120);
+
+/// How often a step with a limit is looked at.
+const POLL: Duration = Duration::from_millis(200);
+
+/// Runs `item`; whether it succeeded. A step with a limit runs in a process group of its own and
+/// is killed with its children (QEMU) when the limit passes, which fails the step. A Ctrl-C ends
+/// this process, not the group: cargo and QEMU keep running without a limit (forwarding the
+/// signal needs a signal handler, which takes a dependency).
+fn run_item(item: &Item) -> Result<bool, String> {
+    let mut command = command(item)?;
+    let Some(limit) = item.limit else {
+        return Ok(command
+            .status()
+            .map_err(|e| format!("{}: {e}", item.name))?
+            .success());
+    };
+    std::os::unix::process::CommandExt::process_group(&mut command, 0);
+    let mut child = command.spawn().map_err(|e| format!("{}: {e}", item.name))?;
+    let deadline = Instant::now() + limit;
+    // bound: the loop leaves when the child exits or at the deadline, `limit` after the spawn,
+    // which kills it.
+    loop {
+        if let Some(status) = child
+            .try_wait()
+            .map_err(|e| format!("{}: {e}", item.name))?
+        {
+            return Ok(status.success());
+        }
+        if Instant::now() >= deadline {
+            let _ = Command::new("kill")
+                .args(["-KILL", &format!("-{}", child.id())])
+                .status();
+            let _ = child.kill();
+            let _ = child.wait();
+            println!(
+                "check: {} timed out after {} s and was killed",
+                item.name,
+                limit.as_secs()
+            );
+            return Ok(false);
+        }
+        std::thread::sleep(POLL);
+    }
+}
+
 /// Runs the plan; `Ok(0)` when every step passed.
 pub fn run(args: &[&str]) -> Result<usize, String> {
     let Options { mode, from } = parse_args(args)?;
@@ -852,10 +942,7 @@ pub fn run(args: &[&str]) -> Result<usize, String> {
     for (i, item) in items.iter().enumerate().skip(first) {
         println!("check: [{}/{total}] {}", i + 1, item.name);
         let started = Instant::now();
-        let ok = command(item)?
-            .status()
-            .map_err(|e| format!("{}: {e}", item.name))?
-            .success();
+        let ok = run_item(item)?;
         let took = fmt_duration(started.elapsed());
         println!("check: [{}/{total}] {} ({took})", i + 1, item.name);
         let label = item
@@ -961,6 +1048,7 @@ mod tests {
         nightly: true,
         coverage: true,
         big_endian: true,
+        qemu_arm: true,
         cbindgen: true,
         shellcheck: true,
     };
@@ -968,6 +1056,7 @@ mod tests {
         nightly: false,
         coverage: false,
         big_endian: false,
+        qemu_arm: false,
         cbindgen: false,
         shellcheck: false,
     };
@@ -1046,7 +1135,7 @@ mod tests {
         // A step of another tier is not a step of this plan.
         let quick = names(&Touched::default(), NONE, Mode::Quick);
         assert!(from_index(&quick, "test").is_err());
-        assert_eq!(from_index(&quick, "check"), Ok(4));
+        assert_eq!(from_index(&quick, "clippy"), Ok(4));
     }
 
     #[test]
@@ -1069,7 +1158,7 @@ mod tests {
     }
 
     #[test]
-    fn the_quick_tier_formats_and_compiles_the_four_workspaces() {
+    fn the_quick_tier_formats_and_lints_the_four_workspaces() {
         // req: VER-068
         // The same steps whatever the change touches, and whatever tools are installed.
         let n = names(&everything(), ALL, Mode::Quick);
@@ -1080,10 +1169,10 @@ mod tests {
                 "exerciser fmt",
                 "fuzz fmt",
                 "crosscheck fmt",
-                "check",
-                "exerciser check",
-                "fuzz check",
-                "crosscheck check"
+                "clippy",
+                "exerciser clippy",
+                "fuzz clippy",
+                "crosscheck clippy"
             ]
         );
         assert_eq!(names(&Touched::default(), NONE, Mode::Quick), n);
@@ -1091,7 +1180,7 @@ mod tests {
         assert_eq!(p.skipped.len(), 0);
         for item in &p.items {
             if let Action::Cmd { args, .. } = &item.action
-                && args.first() == Some(&"check")
+                && args.first() == Some(&"clippy")
             {
                 // One run lists every error of the workspace.
                 assert!(args.contains(&"--keep-going") && args.contains(&"--locked"));
@@ -1103,17 +1192,68 @@ mod tests {
     fn only_the_full_tier_runs_coverage_stack_and_big_endian() {
         // req: VER-068
         let default = names(&everything(), ALL, Mode::Default);
-        for step in ["xtask coverage", "xtask stack", "big-endian"] {
+        for step in [
+            "xtask coverage",
+            "xtask stack",
+            "big-endian",
+            "exerciser run",
+        ] {
             assert!(!default.contains(&step), "{step}");
         }
         let full = names(&everything(), ALL, Mode::Full);
-        for step in ["xtask coverage", "xtask stack", "big-endian"] {
+        for step in [
+            "xtask coverage",
+            "xtask stack",
+            "big-endian",
+            "exerciser run",
+        ] {
             assert!(full.contains(&step), "{step}");
         }
         assert_eq!(plan(&everything(), ALL, Mode::Full).skipped.len(), 0);
         // Every step of the default tier is in the full tier, in the same order.
         let mut rest = full.iter();
         assert!(default.iter().all(|d| rest.any(|f| f == d)));
+    }
+
+    #[test]
+    fn a_step_over_its_limit_is_killed_and_fails() {
+        let mut slow = super::cmd("slow", "sleep", &["30"]);
+        slow.limit = Some(Duration::from_millis(300));
+        let started = std::time::Instant::now();
+        assert_eq!(super::run_item(&slow), Ok(false));
+        assert!(started.elapsed() < Duration::from_secs(10));
+        let mut quick = super::cmd("quick", "true", &[]);
+        quick.limit = Some(Duration::from_secs(30));
+        assert_eq!(super::run_item(&quick), Ok(true));
+        let item = plan(&everything(), ALL, Mode::Full)
+            .items
+            .into_iter()
+            .find(|i| i.name == "exerciser run");
+        assert_eq!(
+            item.and_then(|i| i.limit),
+            Some(Duration::from_secs(120)),
+            "the gate's timeout 120"
+        );
+    }
+
+    #[test]
+    fn the_exerciser_run_follows_the_exerciser_checks_inputs() {
+        // req: VER-068
+        let step_for = |file: &str| steps_for(&[file], ALL, Mode::Full).contains(&"exerciser run");
+        assert!(step_for("exerciser/src/main.rs"));
+        assert!(step_for("crates/aldis-core/src/crc.rs"));
+        assert!(!step_for("docs/06-verification.md"));
+        // Without QEMU the step is skipped with the way to install it, never passed.
+        let p = plan(&everything(), NONE, Mode::Full);
+        let skip = p
+            .skipped
+            .iter()
+            .find(|s| s.step == "exerciser run")
+            .unwrap();
+        assert!(skip.reason.contains("apt install qemu-system-arm"));
+        assert!(
+            !steps_for(&["exerciser/src/main.rs"], ALL, Mode::Default).contains(&"exerciser run")
+        );
     }
 
     #[test]
@@ -1218,6 +1358,7 @@ mod tests {
             "xtask coverage",
             "xtask stack",
             "big-endian",
+            "exerciser run",
             "xtask header",
             "shell",
         ] {
@@ -1231,6 +1372,7 @@ mod tests {
                 "xtask header",
                 "xtask coverage",
                 "xtask stack",
+                "exerciser run",
                 "big-endian"
             ]
         );
@@ -1242,6 +1384,7 @@ mod tests {
         );
         let also = gate_also_runs(Mode::Full, &everything(), &p);
         for entry in [
+            "exerciser-thumbv7em-none-eabihf (skipped: qemu-system-arm not installed)",
             "coverage (skipped: tooling nightly or cargo-llvm-cov not installed)",
             "stack (skipped: tooling nightly not installed)",
             "big-endian (skipped: s390x tools not installed)",
