@@ -469,6 +469,11 @@ class Fop:
         ctx = {"event": event, "now": now, "arg": arg, "out": []}
         if name == "timeout":
             self.timer = None  # the timer has expired; a cell may start it again
+        if self.prior == "S3" and event in (16, 104):
+            # OI-67, COP-013 (232.1-B-2 5.1.9.1, Table 5-1): the cell says Ignore, but T1 is
+            # re-armed for another T1_Initial; Transmission_Count is not changed and nothing
+            # else happens. S3 x E17 and E18 are not affected.
+            self.timer = ctx["now"] + self.t1
         if name == "request_ad":
             ctx["handle"], ctx["data"] = arg["handle"], bytes.fromhex(arg["data_hex"])
         elif name == "request_bd":
@@ -1662,6 +1667,57 @@ def compile_file(engine, file_cfg, raws, how):
     doc["scenarios"] = scenarios
     return doc
 
+# OI-67 (resolved 2026-11-01): the released cases of S3 x E16 and S3 x E104 expect no timer after
+# the expiry. They are kept as released (TV-021), marked superseded, and new cases (id + the
+# suffix) expect T1 re-armed. Each entry is the released case, verbatim, except `superseded`.
+REARM_SUFFIX = "-t1-rearm"
+REARM_REASON = ("OI-67: in S3, E16 and E104 re-arm T1 for another T1_Initial (COP-013); this "
+                "case expects no timer, which read the Ignore cell literally.")
+RELEASED_S3_TIMER_CASES = {
+    "cop1-fop1-s3-e16": {
+        "id": "cop1-fop1-s3-e16",
+        "description": "FOP-1 Table 5-1, S3 x E16: Timer T1 expires, Transmission_Count < limit, Timeout_Type 0. setup of 3 step(s), then the trigger.",
+        "requirements": [
+            "COP-001",
+            "COP-005",
+            "COP-013"
+        ],
+        "setup": "S3-beb6faef",
+        "steps": [
+            {
+                "at_us": 2002000,
+                "input": {
+                    "timeout": {}
+                },
+                "expect": [],
+                "expect_state": "S3",
+                "expect_no_timeout": True
+            }
+        ]
+    },
+    "cop1-fop1-s3-e104": {
+        "id": "cop1-fop1-s3-e104",
+        "description": "FOP-1 Table 5-1, S3 x E104: Timer T1 expires, Transmission_Count < limit, Timeout_Type 1. setup of 4 step(s), then the trigger.",
+        "requirements": [
+            "COP-001",
+            "COP-005",
+            "COP-013"
+        ],
+        "setup": "S3-f4524a32",
+        "steps": [
+            {
+                "at_us": 2003000,
+                "input": {
+                    "timeout": {}
+                },
+                "expect": [],
+                "expect_state": "S3",
+                "expect_no_timeout": True
+            }
+        ]
+    }
+}
+
 
 def all_files():
     """Every file as {relative name: document}, and the cells found."""
@@ -1674,8 +1730,18 @@ def all_files():
             if (state, event) in fop_found:
                 path, trigger = fop_found[(state, event)]
                 sid, desc, inputs, split = cell_scenario("fop1", state, event, path, trigger)
+                if sid in RELEASED_S3_TIMER_CASES:
+                    sid += REARM_SUFFIX
                 raws.append((sid, desc, FOP_CFG, inputs, split, True, ()))
-    files["scenarios/fop1_table.json"] = compile_file("fop1", FOP_CFG, raws, SETUP_HOW)
+    fop_doc = compile_file("fop1", FOP_CFG, raws, SETUP_HOW)
+    for i, sc in enumerate(fop_doc["scenarios"]):
+        if sc["id"].endswith(REARM_SUFFIX):
+            sc["description"] += (" T1 is re-armed for another T1_Initial and the "
+                                  "Transmission_Count is unchanged (OI-67, COP-013).")
+    for sid, released in RELEASED_S3_TIMER_CASES.items():
+        released = dict(released, superseded={"by": sid + REARM_SUFFIX, "reason": REARM_REASON})
+        fop_doc["scenarios"].append(released)
+    files["scenarios/fop1_table.json"] = fop_doc
     farm_found, _ = search_farm(FARM_CFG)
     raws = []
     for event in FARM_EVENTS:
@@ -1765,6 +1831,8 @@ def write_all(outdir=None):
 def parse_id(sid):
     """('fop1', 'S3', 10) for the id of a table cell, else None."""
     parts = sid.split("-")
+    if sid.endswith(REARM_SUFFIX):
+        parts = parts[:-2]  # the replacement of a superseded cell case (OI-67) names its cell
     if len(parts) == 4 and parts[0] == "cop1" and parts[1] in ("fop1", "farm1") and \
             parts[2].startswith("s") and parts[3].startswith("e"):
         return parts[1], parts[2].upper(), int(parts[3][1:])
