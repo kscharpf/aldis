@@ -275,11 +275,13 @@ impl Engine {
             format!("{CACHE_VOLUME}:/cache"),
             "-v".to_owned(),
             format!("{}:/out", out.display()),
+        ];
+        args.extend([
             tag.to_owned(),
             commit.to_owned(),
             "--out".to_owned(),
             "/out".to_owned(),
-        ];
+        ]);
         if let (false, Some(base)) = (opts.skip.is_empty(), &opts.base) {
             args.extend([
                 "--skip".to_owned(),
@@ -290,6 +292,9 @@ impl Engine {
         }
         if let Some(only) = &opts.only {
             args.extend(["--only".to_owned(), only.join(",")]);
+        }
+        if let Some(command) = &opts.log_download {
+            args.extend(["--log-download".to_owned(), command.clone()]);
         }
         if opts.fails_fast() {
             args.push("--fail-fast".to_owned());
