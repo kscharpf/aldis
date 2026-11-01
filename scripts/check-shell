@@ -7,7 +7,7 @@
 # Checks, in order, all of them run and every failure is printed:
 #   1. shellcheck (severity: style, the default) on every tracked shell file: a file whose first
 #      line is a shell shebang, or whose name ends in `.sh`.
-#   2. No line of those files is longer than 100 columns.
+#   2. No line of those files is longer than 100 bytes.
 #   3. Every scripts/test-* runs and exits 0.
 # A shell file outside scripts/, .claude/hooks/, specs/fetch.sh and xtask/ fails the check: the
 # paths of those are the inputs of the check (SHELL_INPUTS in xtask/src/verify/checks.rs), and a
@@ -53,10 +53,11 @@ done < <(git ls-files -z)
 echo "shellcheck: ${#files[@]} files"
 shellcheck --severity=style -- "${files[@]}" || status=1
 
-# Columns, not bytes: a multibyte character counts once.
+# Bytes, not characters: with LC_ALL=C every awk counts the same, and a multibyte character counts
+# more than once, which is the stricter limit.
 for f in "${files[@]}"; do
-    LC_ALL=C.UTF-8 awk -v f="$f" '
-        length($0) > 100 { printf "%s:%d: %d columns (max 100)\n", f, NR, length($0); bad = 1 }
+    LC_ALL=C awk -v f="$f" '
+        length($0) > 100 { printf "%s:%d: %d bytes (max 100)\n", f, NR, length($0); bad = 1 }
         END { exit bad }' "$f" || status=1
 done
 

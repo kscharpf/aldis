@@ -7,8 +7,10 @@
 # here-document bodies are not scanned, except `$( )` inside double quotes. The words are
 # refused at the start of a command (after `;`, `|`, `&&`, `||`, `(`, `{`, a newline, or the
 # prefixes `env`, `exec`, `command`, `sudo`, `time`, `timeout`, `nice`, `ionice`, `stdbuf`, their
-# options and numbers, and variable assignments).
-# Known limits: this is a guard against accidents, not a shell parser. It does not follow
+# options and numbers, variable assignments, the keywords `do`, `then`, `else`, `elif`, `if`,
+# `while`, `until`, `!`, and the `)` that ends a case pattern).
+# Known limits: this is a guard against accidents, not a shell parser. A case pattern that opens
+# with `(` is missed. It does not follow
 # backticks, `eval`, `bash -c '...'`, `xargs`, `$[ ]` arithmetic, or a word built by expansion
 # (`n=no; ${n}hup x`), and it reads a here-document only when its delimiter follows `<<`
 # directly.
@@ -30,6 +32,7 @@ if not isinstance(cmd, str):
     sys.exit(0)
 
 WORDS = {"nohup", "disown", "setsid"}
+KEYWORDS = {"do", "then", "else", "elif", "if", "while", "until", "!"}
 PREFIX = {"env", "exec", "command", "sudo", "time", "builtin", "timeout", "nice", "ionice",
           "stdbuf"}
 OPTION = re.compile(r"-[^\s]*|[0-9][0-9.]*[smhd]?")
@@ -57,6 +60,7 @@ def refusal(cmd):
     at_start = True      # next word is in command position
     in_prefix = False    # the words before it were prefixes (env, timeout, ...)
     heredocs = []        # delimiters waiting for the end of the line
+    depth = 0            # open `(` and `$(`: a `)` that closes none ends a case pattern
 
     def word_done():
         nonlocal at_start, in_prefix
@@ -113,6 +117,7 @@ def refusal(cmd):
             # `$(`: the command substitution is scanned as part of the line; `$#`, `$$`, `$x`.
             if cmd.startswith("$(", i):
                 i += 2
+                depth += 1
                 at_start, in_prefix = True, False
             else:
                 i += 2 if i + 1 < n and cmd[i + 1] in "#$?!@*-0123456789" else 1
@@ -131,8 +136,16 @@ def refusal(cmd):
                 i += 1   # the `;&` and `;;&` case terminators
             else:
                 return "a background &"
+        elif c == ")":
+            i += 1
+            if depth > 0:
+                depth -= 1
+                word_done()
+            else:
+                at_start, in_prefix = True, False   # the end of a case pattern
         elif c in ";|({":
             i += 1
+            depth += 1 if c == "(" else 0
             at_start, in_prefix = True, False
         elif c == "<" and cmd.startswith("<<", i) and not cmd.startswith("<<<", i):
             m = re.match(r"<<-?\s*([\x27\"]?)([A-Za-z0-9_]+)\1", cmd[i:])
@@ -151,7 +164,9 @@ def refusal(cmd):
             i = m.end()
             if at_start and word in WORDS:
                 return word
-            if at_start and word in PREFIX:
+            if at_start and word in KEYWORDS:
+                in_prefix = False
+            elif at_start and word in PREFIX:
                 in_prefix = True
             elif at_start and ASSIGNMENT.fullmatch(word):
                 pass

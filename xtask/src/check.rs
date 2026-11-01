@@ -742,7 +742,10 @@ fn tools() -> Tools {
             && works("qemu-s390x", &["--version"])
             && works("s390x-linux-gnu-gcc-14", &["--version"]),
         cbindgen: works("cbindgen", &["--version"]),
-        shellcheck: works("scripts/check-shell", &["--check-tool"]),
+        shellcheck: works(
+            &repo::root().join("scripts/check-shell").to_string_lossy(),
+            &["--check-tool"],
+        ),
     }
 }
 
