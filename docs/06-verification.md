@@ -45,6 +45,8 @@
 | `riscv32imac-unknown-none-elf` | RISC-V MCU | no features | exerciser + vectors under QEMU |
 | `sparc-unknown-none-elf` | LEON3/4 (tier 3; `-C target-cpu=leon3`) | no features (tooling nightly, `-Z build-std=core`) | exerciser link check + vectors under QEMU `leon3_generic`; non-gating check `rust-sparc-leon3` ([open issues](09-open-issues.md) OI-08) |
 
+The check `big-endian` runs `cargo test --workspace --all-features` on `s390x-unknown-linux-gnu` under QEMU user mode (`BIG_ENDIAN` in `xtask/src/verify/checks.rs`). `xtask` is a member of the workspace, so its tests run on a big-endian target too.
+
 | ID | Requirement | Source | Verif. |
 |---|---|---|---|
 | VER-030 | At least one big-endian target SHALL run the full vector suite (GEN-007). | GEN-007 | V |
