@@ -377,6 +377,8 @@ fn run_lint(numbered: bool) -> Result<usize, String> {
 
 #[cfg(test)]
 mod tests {
+    use std::fmt::Write as _;
+
     use super::{is_withdrawn, oi_problems, placeholders, withdrawal_problem};
 
     /// A placeholder, built here so that spec-lint does not see one in this file.
@@ -389,7 +391,7 @@ mod tests {
             "| ID | Issue | Affects | Proposed resolution | Status |\n|---|---|---|---|---|\n"
                 .to_owned();
         for r in rows {
-            t += &format!("| {r} | x | y | z | Open |\n");
+            let _ = writeln!(t, "| {r} | x | y | z | Open |");
         }
         t
     }
@@ -406,9 +408,15 @@ mod tests {
             [a.as_str(), a.as_str()]
         );
         assert_eq!(placeholders(&format!("({a}-)")), [a.as_str()]);
-        assert!(placeholders(&format!("OI-{}-<slug>", "NEW")).is_empty());
-        assert!(placeholders(&format!("OI-{}-Upper", "NEW")).is_empty());
-        assert!(placeholders("OI-67 and OI-01").is_empty());
+        assert_eq!(
+            placeholders(&format!("OI-{}-<slug>", "NEW")),
+            Vec::<&str>::new()
+        );
+        assert_eq!(
+            placeholders(&format!("OI-{}-Upper", "NEW")),
+            Vec::<&str>::new()
+        );
+        assert_eq!(placeholders("OI-67 and OI-01"), Vec::<&str>::new());
     }
 
     #[test]
@@ -421,7 +429,10 @@ mod tests {
         assert_eq!(numbered.len(), 1, "{numbered:?}");
         assert!(numbered[0].starts_with("docs/x.md:1:"), "{numbered:?}");
         assert!(numbered[0].contains("scripts/reverify"), "{numbered:?}");
-        assert!(oi_problems(&table(&["OI-01".to_owned()]), &[], true).is_empty());
+        assert_eq!(
+            oi_problems(&table(&["OI-01".to_owned()]), &[], true),
+            Vec::<String>::new()
+        );
     }
 
     #[test]
