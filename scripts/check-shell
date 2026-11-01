@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+# The `shell` check of the verification run (VER-069): lint, line width, and tests of the shell
+# scripts. No network, no gh, no container engine.
+#
+# Usage: scripts/check-shell
+# Checks, in order, all of them run and every failure is printed:
+#   1. shellcheck (severity: style, the default) on every tracked shell file: a file whose first
+#      line is a shell shebang, or whose name ends in `.sh`.
+#   2. No line of those files is longer than 100 columns.
+#   3. Every scripts/test-* runs and exits 0.
+# Exit status: 0 when all hold, 1 otherwise, 2 when shellcheck is not installed.
+set -uo pipefail
+
+cd "$(dirname "$0")/.." || exit 2
+command -v shellcheck >/dev/null 2>&1 || { echo "shellcheck is not installed" >&2; exit 2; }
+
+files=()
+while IFS= read -r -d '' f; do
+    if [[ $f == *.sh ]] ||
+        head -n 1 -- "$f" 2>/dev/null | grep -aqE '^#!.*[/ ](ba|da)?sh( |$)'; then
+        files+=("$f")
+    fi
+done < <(git ls-files -z)
+
+status=0
+echo "shellcheck: ${#files[@]} files"
+shellcheck --severity=style -- "${files[@]}" || status=1
+
+# Columns, not bytes: a multibyte character counts once.
+for f in "${files[@]}"; do
+    LC_ALL=C.UTF-8 awk -v f="$f" '
+        length($0) > 100 { printf "%s:%d: %d columns (max 100)\n", f, NR, length($0); bad = 1 }
+        END { exit bad }' "$f" || status=1
+done
+
+for t in scripts/test-*; do
+    echo "== $t"
+    "$t" || { echo "FAILED: $t" >&2; status=1; }
+done
+exit "$status"

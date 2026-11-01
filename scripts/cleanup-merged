@@ -70,7 +70,8 @@ clean_one() {
     fi
 
     if [ "$local_branch" -eq 1 ] && ! g merge-base --is-ancestor "refs/heads/$b" origin/main; then
-        echo "$b: KEEP (PR #$pr merged, but the tip is not an ancestor of origin/main: commits after the merge, or a squash merge)"
+        echo "$b: KEEP (PR #$pr merged, but the tip is not an ancestor of origin/main:" \
+            "commits after the merge, or a squash merge)"
         return 1
     fi
 
@@ -108,4 +109,7 @@ for b in "${branches[@]}"; do
     clean_one "$b" || kept=$((kept + 1))
 done
 [ "$apply" -eq 1 ] || echo "dry run; pass --apply to act"
-[ "$kept" -eq 0 ] || { echo "cleanup-merged: kept or failed $kept of ${#branches[@]} branch(es)"; exit 1; }
+if [ "$kept" -ne 0 ]; then
+    echo "cleanup-merged: kept or failed $kept of ${#branches[@]} branch(es)"
+    exit 1
+fi

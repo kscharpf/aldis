@@ -3,7 +3,12 @@
 #
 # Usage: scripts/reverify [--wait] [--cancel] [--stale-retries <n>] [--timeout <min>]
 #                         <pr-number>...
+#        scripts/reverify [options] --all-behind
 #        scripts/reverify --status [--wait] [--timeout <min>] <pr-number>
+#
+# `--all-behind` takes the place of the PR numbers: it lists the open pull requests (against
+# main) whose head does not contain origin/main and reverifies them as one call; with none behind
+# it prints that and exits 0. It cannot be combined with PR numbers or `--status`.
 #
 # Phase 1, per PR in order: check it is open; use the worktree of its head branch (or add one
 # under .claude/worktrees/reverify-<n>); refuse when that worktree is dirty or holds commits the
@@ -81,11 +86,13 @@ secs_per_min="${REVERIFY_SECONDS_PER_MIN:-60}"
 [[ "$secs_per_min" =~ ^[0-9]+$ ]] && [ "$((10#$secs_per_min))" -ge 1 ] || { usage; exit 2; }
 secs_per_min=$((10#$secs_per_min))
 status_mode=0
+all_behind=0
 args=()
 while [ $# -gt 0 ]; do
     case "$1" in
     --wait) wait_lock=1 ;;
     --status) status_mode=1 ;;
+    --all-behind) all_behind=1 ;;
     --cancel)
         cancel=1
         wait_lock=1
@@ -115,7 +122,9 @@ while [ $# -gt 0 ]; do
     esac
     shift
 done
-if [ "${#args[@]}" -eq 0 ] || { [ "$status_mode" -eq 1 ] && [ "${#args[@]}" -ne 1 ]; } ||
+if [ "$all_behind" -eq 1 ]; then
+    if [ "${#args[@]}" -ne 0 ] || [ "$status_mode" -eq 1 ]; then usage; exit 2; fi
+elif [ "${#args[@]}" -eq 0 ] || { [ "$status_mode" -eq 1 ] && [ "${#args[@]}" -ne 1 ]; } ||
     { [ "$status_mode" -eq 1 ] && [ "$cancel" -eq 1 ]; }; then
     usage
     exit 2
@@ -130,6 +139,26 @@ main_checkout="$(dirname "$(git rev-parse --path-format=absolute --git-common-di
 state_dir="$(git rev-parse --path-format=absolute --git-common-dir)/reverify"
 mkdir -p "$state_dir"
 
+# --all-behind: the open PRs whose head does not contain origin/main.
+if [ "$all_behind" -eq 1 ]; then
+    git -C "$main_checkout" fetch --quiet origin || { echo "cannot fetch origin" >&2; exit 2; }
+    open_prs="$(gh pr list --state open --base main --limit 200 --json number,headRefName \
+        --jq '.[] | "\(.number) \(.headRefName)"')" || { echo "gh pr list failed" >&2; exit 2; }
+    while read -r num branch; do
+        [ -n "$num" ] || continue
+        head="$(git -C "$main_checkout" rev-parse --verify --quiet "origin/$branch")" || continue
+        # Only exit status 1 says "main is not in the head's history".
+        rc=0
+        git -C "$main_checkout" merge-base --is-ancestor origin/main "$head" || rc=$?
+        [ "$rc" -ne 1 ] || args+=("$num")
+    done <<<"$open_prs"
+    if [ "${#args[@]}" -eq 0 ]; then
+        echo "no open pull request is behind origin/main"
+        exit 0
+    fi
+    echo "behind origin/main: ${args[*]}"
+fi
+
 # The start time of process $1, empty when it is gone: with its pid, the identity of a lock holder
 # (a reused pid has another start time).
 # The locale and zone are fixed, so that the same process always prints the same start time.
@@ -140,7 +169,8 @@ proc_start() { TZ=UTC LC_ALL=C ps -o lstart= -p "$1" 2>/dev/null | sed 's/^ *//;
 record_final() {
     local head=""
     [ -z "$4" ] || head="head ${4:0:7}, "
-    printf '%s\n%s (%sfinished %s)\n' "$2" "$3" "$head" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >"$state_dir/$1.last"
+    printf '%s\n%s (%sfinished %s)\n' "$2" "$3" "$head" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+        >"$state_dir/$1.last"
 }
 
 # The start time of the holder named by the lock target `<pid>|<start>`.
@@ -185,7 +215,8 @@ if [ "$status_mode" -eq 1 ]; then
         # margin.
         while lock_held "$pr"; do
             if holder_stalled "$holder" "$wait_start" "$pr"; then
-                echo "#$pr TIMEOUT: still running; the reverify of pid ${holder%%|*} is stalled, $stall_note"
+                echo "#$pr TIMEOUT: still running; the reverify of pid ${holder%%|*} is stalled," \
+                    "$stall_note"
                 exit 5
             fi
             sleep 5
@@ -271,7 +302,9 @@ lock_acquire() {
         holder="$(readlink "$lock" 2>/dev/null)" || continue
         if holder_alive "$holder"; then
             if [ "$wait_lock" -eq 0 ]; then
-                echo "#$pr: a reverify is running (pid ${holder%%|*}, since $(lock_start "$holder")); wait for its final line (scripts/reverify --status $pr), or run with --wait" >&2
+                echo "#$pr: a reverify is running (pid ${holder%%|*}," \
+                    "since $(lock_start "$holder")); wait for its final line" \
+                    "(scripts/reverify --status $pr), or run with --wait" >&2
                 return 3
             fi
             if [ "$announced" -eq 0 ]; then
@@ -279,7 +312,9 @@ lock_acquire() {
                 announced=1
             fi
             if holder_stalled "$holder" "$wait_start" "$pr"; then
-                echo "#$pr TIMEOUT: still queued behind the stalled reverify of pid ${holder%%|*}, $stall_note (no run, no head)"
+                echo "#$pr TIMEOUT: still queued behind the stalled reverify of pid" \
+                    "${holder%%|*}," \
+                    "$stall_note (no run, no head)"
                 return 5
             fi
             # Waiting for this lock is progress of this call: its other locks stay alive.
@@ -339,20 +374,23 @@ cancel_inflight() {
     git -C "$main_checkout" fetch --quiet origin ||
         { echo "#$pr: cannot fetch origin; nothing cancelled"; return 0; }
     head="$(git -C "$main_checkout" rev-parse "origin/$branch")" || return 0
-    # Only exit status 1 says "main is not in the head's history"; 0 is a current head, more is an error.
+    # Only exit status 1 says "main is not in the head's history"; 0 is a current head, more is
+    # an error.
     git -C "$main_checkout" merge-base --is-ancestor origin/main "$head" || rc=$?
     if [ "$rc" -gt 1 ]; then
         echo "#$pr: cannot compare ${head:0:7} with origin/main; nothing cancelled"
         return 0
     fi
     [ "$rc" -eq 1 ] || return 0
-    runs="$(gh run list --workflow=verify.yml --branch "$branch" -L 20 --json databaseId,headSha,status \
+    runs="$(gh run list --workflow=verify.yml --branch "$branch" -L 20 \
+        --json databaseId,headSha,status \
         --jq '.[] | select(.status != "completed") | "\(.databaseId) \(.headSha)"')" ||
         { echo "#$pr: cannot list the runs; nothing cancelled"; return 0; }
     while read -r id sha; do
         [ -n "$id" ] && [ "$sha" = "$head" ] || continue
         if gh run cancel "$id" >/dev/null; then
-            echo "#$pr: cancelled run $id of ${head:0:7}, which is behind main (no record, no status)"
+            echo "#$pr: cancelled run $id of ${head:0:7}, which is behind main" \
+                "(no record, no status)"
         else
             echo "#$pr: could not cancel run $id"
         fi
@@ -459,7 +497,9 @@ prepare_one() {
     if [ "$head" = "$(git -C "$dir" rev-parse "origin/$branch")" ]; then
         found="$(gh run list --workflow=verify.yml --branch "$branch" -L 20 \
             --json databaseId,headSha,status,conclusion \
-            --jq "[.[] | select(.headSha == \"$head\" and (.status != \"completed\" or .conclusion == \"success\"))][0].databaseId // empty")" ||
+            --jq "[.[] | select(.headSha == \"$head\" and
+                (.status != \"completed\" or .conclusion == \"success\"))][0].databaseId
+                // empty")" ||
             found=""
         if [ -n "$found" ]; then
             run_id="$found"
@@ -490,13 +530,16 @@ prepare_one() {
     fi
 
     dispatched="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-    before="$(gh run list --workflow=verify.yml --branch "$branch" -L 1 --json databaseId --jq '.[0].databaseId // 0')" ||
+    before="$(gh run list --workflow=verify.yml --branch "$branch" -L 1 --json databaseId \
+        --jq '.[0].databaseId // 0')" ||
         before=0
     gh workflow run verify.yml --ref "$branch" || fail "dispatch failed" || return 1
     for _ in $(seq 1 20); do
         sleep 5
-        found="$(gh run list --workflow=verify.yml --branch "$branch" -L 1 --json databaseId,createdAt \
-            --jq ".[0] | select(.createdAt >= \"$dispatched\" and .databaseId != $before) | .databaseId")" ||
+        found="$(gh run list --workflow=verify.yml --branch "$branch" -L 1 \
+            --json databaseId,createdAt \
+            --jq ".[0] | select(.createdAt >= \"$dispatched\" and .databaseId != $before)
+                | .databaseId")" ||
             found=""
         if [ -n "$found" ]; then
             run_id="$found"
@@ -562,7 +605,9 @@ for i in "${!prs[@]}"; do
                     conclusion="unknown"
             fi
             if [ "$watch_rc" -ne 0 ]; then
-                line="#$pr TIMEOUT: ${branches[$i]} run ${runs[$i]} head ${heads[$i]:0:7} still running after $timeout_min min; stopped waiting, the run goes on (scripts/reverify $pr again, or gh run watch ${runs[$i]})"
+                line="#$pr TIMEOUT: ${branches[$i]} run ${runs[$i]} head ${heads[$i]:0:7}"
+                line+=" still running after $timeout_min min; stopped waiting, the run goes on"
+                line+=" (scripts/reverify $pr again, or gh run watch ${runs[$i]})"
                 verdict=timeout
             elif [ "$conclusion" = "success" ]; then
                 line="#$pr ${branches[$i]} ${runs[$i]} $conclusion"
@@ -570,7 +615,8 @@ for i in "${!prs[@]}"; do
             elif [ "$conclusion" = "cancelled" ]; then
                 # By `reverify --cancel`, by a newer dispatch, or by hand: the run published no
                 # record and set no status. Neither FAILED nor STALE, and not retried here.
-                line="#$pr ${branches[$i]} ${runs[$i]} cancelled (no record, no status; run scripts/reverify $pr again)"
+                line="#$pr ${branches[$i]} ${runs[$i]} cancelled"
+                line+=" (no record, no status; run scripts/reverify $pr again)"
                 verdict=cancelled
             else
                 label="$(failure_label "${dirs[$i]}" "${heads[$i]}")"
@@ -581,13 +627,14 @@ for i in "${!prs[@]}"; do
         if [ "$verdict" = stale ] && [ "$tries" -lt "$stale_retries" ]; then
             tries=$((tries + 1))
             echo "$line"
-            echo "#$pr: main moved during the run; retry $tries of $stale_retries (merge origin/main, push, verify again)"
+            echo "#$pr: main moved during the run; retry $tries of $stale_retries" \
+                "(merge origin/main, push, verify again)"
             prepare_one "$pr" || true
-            dirs[$i]="$work_dir"
-            heads[$i]="$work_head"
-            branches[$i]="$branch"
-            runs[$i]="$run_id"
-            reasons[$i]="$reason"
+            dirs[i]="$work_dir"
+            heads[i]="$work_head"
+            branches[i]="$branch"
+            runs[i]="$run_id"
+            reasons[i]="$reason"
             continue
         fi
         break

@@ -230,21 +230,21 @@ pub const ROOT_CONFIG: PathList = PathList {
     patterns: &[".gitignore"],
 };
 
-/// The scripts of `scripts/`, which a coordinator or an agent runs on a contributor's machine
-/// (`reverify`, `pr-status`, `cleanup-merged`, `prune-agent-branches`, `agent-env.sh`). No check
-/// runs or reads them: the checks run `cargo xtask` and the commands of their own scripts here,
-/// the image does not contain them (`RUN` lists what it is built from), and the workflows call
-/// none (`verify.yml` names `reverify` in a comment). `spec` reads every path, so a script that
-/// names a requirement or a link is still checked. A change to these paths alone runs only
-/// `spec`, as documentation does.
+/// The shell scripts that a coordinator or an agent runs on a contributor's machine: `scripts/`
+/// (`reverify`, `pr-status`, `cleanup-merged`, their tests, ...), the hooks of `.claude/hooks/`,
+/// and `specs/fetch.sh`. Only `shell` reads them (VER-071): it lints, measures, and tests them;
+/// the other checks run `cargo xtask` and the commands of their own scripts, and the image does
+/// not contain them. `spec` reads every path, so a script that names a requirement or a link is
+/// still checked. `xtask/verify/entrypoint.sh` is in `RUN`. A tracked shell file elsewhere is in
+/// no list, so it runs every check.
 pub const SCRIPTS: PathList = PathList {
     name: "scripts",
-    patterns: &["scripts/**"],
+    patterns: &["scripts/**", ".claude/hooks/**", "specs/fetch.sh"],
 };
 
-/// The lists that `spec` alone reads (VER-056): documentation, the GitHub configuration, the
-/// root configuration, and the scripts that no other check reads.
-pub const SPEC_ONLY: [&PathList; 4] = [&DOCS, &GITHUB, &ROOT_CONFIG, &SCRIPTS];
+/// The lists that `spec` alone reads (VER-056): documentation, the GitHub configuration, and the
+/// root configuration.
+pub const SPEC_ONLY: [&PathList; 3] = [&DOCS, &GITHUB, &ROOT_CONFIG];
 
 /// What a check reads (VER-056).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -297,6 +297,7 @@ const CPP_INPUTS: Inputs = Inputs::Paths(&[&RUN, &CPP]);
 const FFI_INPUTS: Inputs = Inputs::Paths(&[&RUN, &FFI]);
 const KANI_INPUTS: Inputs = Inputs::Paths(&[&RUN, &KANI]);
 const STACK_INPUTS: Inputs = Inputs::Paths(&[&RUN, &STACK]);
+const SHELL_INPUTS: Inputs = Inputs::Paths(&[&RUN, &SCRIPTS]);
 
 /// One check of the verification run.
 #[derive(Clone, Debug)]
@@ -432,6 +433,12 @@ fn rust() -> Vec<Check> {
             ),
         ),
         grouped(Group::Cross, check("layers", c, false, 1, LAYERS)),
+        // The shell scripts: shellcheck, 100 columns, and their own tests (VER-071). The
+        // duration is the local one until the hosted runs measure it.
+        grouped(
+            Group::Cross,
+            reading(SHELL_INPUTS, check("shell", c, false, 90, SHELL)),
+        ),
         grouped(Group::Coverage, check("refapp", c, false, 11, REFAPP)),
         grouped(
             Group::Coverage,
@@ -614,6 +621,11 @@ cargo xtask layers
 cargo xtask symbols
 # refapp/ uses Aldis only through the facade and forbids unsafe (APP-100, APP-105).
 cargo xtask refapp-deps
+";
+
+const SHELL: &str = "\
+# shellcheck, at most 100 columns, and every scripts/test-* (VER-071).
+scripts/check-shell
 ";
 
 const REFAPP: &str = "\
@@ -834,6 +846,10 @@ mod tests {
             }
             if c.name == "stack" {
                 assert_eq!(lists, [&RUN, &STACK]);
+                continue;
+            }
+            if c.name == "shell" {
+                assert_eq!(lists, [&RUN, &SCRIPTS]);
                 continue;
             }
             assert_eq!(lists.contains(&&CPP), c.cpp, "{}", c.name);

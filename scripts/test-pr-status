@@ -1,0 +1,128 @@
+#!/usr/bin/env bash
+# Test scripts/pr-status without a network and without the real gh: a scratch bare origin, a
+# clone of it, and a stub `gh` that answers from JSON files with jq.
+#
+# Usage: scripts/test-pr-status
+# Cases: a PR whose head contains origin/main and whose newest review has a reply ending with
+# the marker line is READY; no review is READY; a review with no reply, a reply without the
+# marker, a reply with text after the marker, a reply older than the review, and a review
+# without findings left unanswered are each NOT READY, and the newest review decides; a head
+# behind origin/main is NOT READY.
+# Exit status: 0 when every case holds, 1 otherwise.
+set -uo pipefail
+
+here="$(cd "$(dirname "$0")" && pwd)"
+script="$here/pr-status"
+work="$(mktemp -d "${TMPDIR:-/tmp}/pr-status-test.XXXXXX")"
+trap 'rm -rf "$work"' EXIT
+repo="$work/repo"
+marker='🤖 Generated with [Claude Code](https://claude.com/claude-code)'
+
+git init -q --bare "$work/origin.git"
+git -C "$work/origin.git" symbolic-ref HEAD refs/heads/main
+git clone -q "$work/origin.git" "$repo" 2>/dev/null
+git -C "$repo" symbolic-ref HEAD refs/heads/main
+git -C "$repo" config user.email test@example.com
+git -C "$repo" config user.name test
+commit() { # commit <file>: one commit with a new file
+    echo "$1" >"$repo/$1"
+    git -C "$repo" add "$1"
+    git -C "$repo" commit -q -m "$1"
+}
+commit base
+old="$(git -C "$repo" rev-parse HEAD)"
+commit tip
+git -C "$repo" push -q -u origin main
+git -C "$repo" checkout -q -b feature
+commit feature
+current="$(git -C "$repo" rev-parse HEAD)"
+git -C "$repo" checkout -q main
+
+# The stub gh answers `pr view`, `api`, and `run list` from $STUB/pr.json, protection.json and
+# inline.json, applying the --jq filter with jq.
+mkdir "$work/bin" "$work/stub"
+cat >"$work/bin/gh" <<'STUB'
+#!/usr/bin/env bash
+filter=""
+args=("$@")
+for ((i = 0; i < ${#args[@]}; i++)); do
+    [ "${args[i]}" = --jq ] && filter="${args[i + 1]}"
+done
+case "$1" in
+pr) file=pr.json ;;
+run) exit 0 ;;
+api)
+    case "$2" in
+    */protection) file=protection.json ;;
+    *) file=inline.json ;;
+    esac
+    ;;
+*) exit 1 ;;
+esac
+jq -r "$filter" "$STUB/$file"
+STUB
+chmod +x "$work/bin/gh"
+export STUB="$work/stub"
+echo '{"required_status_checks":{"contexts":["aldis/verify"]}}' >"$STUB/protection.json"
+echo '[]' >"$STUB/inline.json"
+
+review='{"author":{"login":"rev"},"state":"COMMENTED","submittedAt":"2026-01-02T00:00:00Z","body":"ok"}'
+later_review='{"author":{"login":"rev"},"state":"COMMENTED","submittedAt":"2026-01-04T00:00:00Z","body":"ok"}'
+comment() { # comment <time> <body>
+    jq -nc --arg t "$1" --arg b "$2" '{author: {login: "me"}, createdAt: $t, body: $b}'
+}
+
+pr() { # pr <head> <reviews json array> <comments json array>
+    jq -nc --arg head "$1" --argjson reviews "$2" --argjson comments "$3" '{
+        state: "OPEN", isDraft: false, headRefOid: $head, headRefName: "feature",
+        baseRefName: "main", reviewDecision: "",
+        statusCheckRollup: [{context: "aldis/verify", state: "SUCCESS"}],
+        reviews: $reviews, comments: $comments}' >"$STUB/pr.json"
+}
+
+failures=0
+expect() { # expect <verdict prefix> <case> [text the output must contain]
+    local out
+    out="$(cd "$repo" && PATH="$work/bin:$PATH" "$script" 7 2>&1)"
+    if printf '%s\n' "$out" | grep -Fq "#7: $1" && { [ -z "${3:-}" ] || grep -Fq -- "$3" <<<"$out"; }; then
+        echo "ok: $2"
+    else
+        echo "FAIL: $2"
+        printf '%s\n' "$out" | tail -n 5
+        failures=$((failures + 1))
+    fi
+}
+
+reply="$(comment 2026-01-03T00:00:00Z "Fixed in abc123, point by point.
+
+$marker")"
+
+pr "$current" "[]" "[]"
+expect "READY" "no review"
+pr "$current" "[$review]" "[$reply]"
+expect "READY" "the newest review has a later reply ending with the marker"
+pr "$current" "[$review]" "[$(comment 2026-01-03T00:00:00Z "$(printf 'Done.\n\n%s\n\n' "$marker")")]"
+expect "READY" "trailing blank lines after the marker"
+pr "$current" "[$review]" "[]"
+expect "NOT READY" "a review with no reply" "review unanswered (rev COMMENTED"
+pr "$current" "[$review]" "[$(comment 2026-01-03T00:00:00Z "Looks fine, thanks.")]"
+expect "NOT READY" "a reply without the marker" "review unanswered"
+pr "$current" "[$review]" "[$(comment 2026-01-03T00:00:00Z "$(printf '%s\nPS: more.' "$marker")")]"
+expect "NOT READY" "text after the marker line" "review unanswered"
+pr "$current" "[$review]" "[$(comment 2026-01-01T00:00:00Z "Early.
+
+$marker")]"
+expect "NOT READY" "a reply older than the review" "review unanswered"
+pr "$current" "[$review,$later_review]" "[$reply]"
+expect "NOT READY" "the newest review decides, not an earlier one" "2026-01-04"
+pr "$current" "[$review,$later_review]" "[$reply,$(comment 2026-01-05T00:00:00Z "Round 2.
+
+$marker")]"
+expect "READY" "a reply to the newest review"
+pr "$current" "[$review,$(jq -c '.body = "" | .state = "APPROVED"' <<<"$later_review")]" "[$reply]"
+expect "NOT READY" "an approval with no findings still needs a reply" "APPROVED"
+pr "$old" "[]" "[]"
+expect "NOT READY" "a head behind origin/main" "behind origin/main by 1"
+
+[ "$failures" -eq 0 ] || exit 1
+echo "all cases hold"

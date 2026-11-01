@@ -24,12 +24,14 @@
 # follows the deadline the holder records in the sidecar `<n>.deadline` and gives up only when it
 # is overdue by 15 minutes (or, with no sidecar, after its own --timeout plus 15), and not while the
 # holder renews it; the holder renews its own deadlines while it queues; the copy of main before
-# #213 reads a new holder's lock (`running`, no takeover); a FAILED PR decides the exit status of several; the background watcher is gone after a
+# #213 reads a new holder's lock (`running`, no takeover); a FAILED PR decides the exit status of
+# several; the background watcher is gone after a
 # timeout. The cases run a minute as a second (REVERIFY_SECONDS_PER_MIN)
 # against stubs that never finish; the test kills its stubs on exit.
 # Not covered: GitHub itself (dispatch, watch, the real STALE gate of `verify assemble`).
 # VERBOSE=1 prints the output of the script under test after each failed case.
 # Exit status: 0 when every case holds, 1 otherwise.
+# shellcheck disable=SC2016  # the bash -c scripts are single-quoted on purpose: $0, $1 are theirs
 set -uo pipefail
 
 here="$(cd "$(dirname "$0")" && pwd)"
@@ -39,7 +41,8 @@ work="$(mktemp -d "${TMPDIR:-/tmp}/reverify-test.XXXXXX")"
 # command lines hold $work/bin), so that a run of the test leaves no process holding a lock.
 cleanup() {
     jobs -p | xargs kill 2>/dev/null
-    ps -axo pid=,command= | awk -v dir="$work/bin/" 'index($0, dir) { print $1 }' | xargs kill 2>/dev/null
+    ps -axo pid=,command= | awk -v dir="$work/bin/" 'index($0, dir) { print $1 }' |
+        xargs kill 2>/dev/null
     rm -rf "$work"
 }
 trap cleanup EXIT
@@ -93,12 +96,16 @@ case "$1 $2" in
     [ ! -e "$STUB/pr-view-fails" ] || exit 1
     echo "$(cat "$STUB/pr-state" 2>/dev/null || echo OPEN) $(cat "$STUB/pr-$3")"
     ;;
+"pr list") cat "$STUB/open-prs" ;;
 "workflow run") ;;
 "run cancel")
     echo "$3" >>"$STUB/cancelled"
     touch "$STUB/release-watch"
     # A cancelled run is no longer in flight.
-    [ ! -e "$STUB/inflight" ] || { grep -v " $3 " "$STUB/inflight" >"$STUB/inflight.new"; mv "$STUB/inflight.new" "$STUB/inflight"; }
+    if [ -e "$STUB/inflight" ]; then
+        grep -v " $3 " "$STUB/inflight" >"$STUB/inflight.new"
+        mv "$STUB/inflight.new" "$STUB/inflight"
+    fi
     ;;
 "run list")
     case "$*" in
@@ -119,7 +126,8 @@ case "$1 $2" in
         if [ -e "$STUB/inflight" ]; then
             while read -r b id sha st; do
                 [ "$b" = "$branch" ] || continue
-                json+="$sep{\"databaseId\":$id,\"headSha\":\"$sha\",\"status\":\"${st:-in_progress}\"}"
+                json+="$sep{\"databaseId\":$id,\"headSha\":\"$sha\","
+                json+="\"status\":\"${st:-in_progress}\"}"
                 sep=","
             done <"$STUB/inflight"
         fi
@@ -141,8 +149,8 @@ case "$1 $2" in
     ;;
 "run view")
     id="$3"
-    # $STUB/dispatch-script lists one line per dispatched run, in order: fail-moved, fail, cancelled,
-    # cancelled-moved (also moves main), or ok.
+    # $STUB/dispatch-script lists one line per dispatched run, in order: fail-moved, fail,
+    # cancelled, cancelled-moved (also moves main), or ok.
     kind="$(sed -n "$((id - 100))p" "$STUB/dispatch-script")"
     case "$kind" in
     fail-moved) "$STUB_MOVE"; echo failure ;;
@@ -162,7 +170,11 @@ cat >"$work/bin/cargo" <<'EOF'
 case "$2 $3" in
 "ci ") exit 0 ;;
 "verify list")
-    if [ -e "$STUB/container" ]; then echo "the run would start a container"; else echo "no container would be started"; fi
+    if [ -e "$STUB/container" ]; then
+        echo "the run would start a container"
+    else
+        echo "no container would be started"
+    fi
     exit 0
     ;;
 "verify --publish")
@@ -236,10 +248,12 @@ bg() { # bg <tag> <args...>
     local tag="$1"
     shift
     (cd "$repo" && PATH="$work/bin:$PATH" exec "$script" "$@") >"$work/bg.$tag" 2>&1 &
-    eval "pid_$tag=$!"
+    echo $! >"$work/pid.$tag"
 }
+pid_of() { cat "$work/pid.$1"; } # pid_of <tag>: the pid bg started
 reset() { # reset <publish-script...>: clean counters, one script line per argument
-    rm -f "$stub/publishes" "$stub/runs" "$stub/release" "$stub/release-watch" "$stub/hold-watch" "$stub/hold-watch-all" "$stub/container" "$stub/publish-pids" "$stub/inflight" "$stub/cancelled" "$stub/pr-view-fails" "$stub/pr-state" "$stub/list-fails" "$stub/mb-fail"
+    (cd "$stub" && rm -f publishes runs release release-watch hold-watch hold-watch-all container \
+        publish-pids inflight cancelled pr-view-fails pr-state list-fails mb-fail)
     printf '%s\n' "$@" >"$stub/publish-script"
     printf '%s\n' ok >"$stub/dispatch-script"
 }
@@ -282,17 +296,17 @@ reset block
 bg a 7
 wait_for "$stub/publish-pids"
 run 7
-expect "the second run is refused" said "a reverify is running (pid $pid_a"
+expect "the second run is refused" said "a reverify is running (pid $(pid_of a)"
 expect "exit status 3" status_is 3
 expect "the second run did not start" publishes_are 1
 run --status 7
-expect "--status: running" said "#7 running: reverify pid $pid_a"
+expect "--status: running" said "#7 running: reverify pid $(pid_of a)"
 expect "--status: exit status 3" status_is 3
 printf '%s\n' block ok >"$stub/publish-script"
 run 8
 expect "another PR runs beside it" said "#8 pr-8 local success"
 touch "$stub/release"
-wait "$pid_a"
+wait "$(pid_of a)"
 expect "the holder finishes" grep -Fq "#7 pr-7 local success" "$work/bg.a"
 expect "the lock is released" lock_gone 7
 
@@ -303,11 +317,12 @@ wait_for "$stub/publish-pids"
 printf '%s\n' block ok >"$stub/publish-script"
 bg b --wait 7
 /bin/sleep 1
-expect "the waiter says it waits" grep -Fq "waiting for the reverify of pid $pid_a" "$work/bg.b"
+expect "the waiter says it waits" \
+    grep -Fq "waiting for the reverify of pid $(pid_of a)" "$work/bg.b"
 expect "the waiter has not run" publishes_are 1
 touch "$stub/release"
-wait "$pid_a"
-wait "$pid_b"
+wait "$(pid_of a)"
+wait "$(pid_of b)"
 rc_b=$?
 expect "the waiter ran after the holder" publishes_are 2
 expect "the waiter succeeded" grep -Fq "#7 pr-7 local success" "$work/bg.b"
@@ -320,12 +335,13 @@ bg a 7
 wait_for "$stub/publish-pids"
 bg b --status --wait 7
 /bin/sleep 1
-expect "--status --wait has not returned while the run holds the lock" kill -0 "$pid_b"
+expect "--status --wait has not returned while the run holds the lock" kill -0 "$(pid_of b)"
 touch "$stub/release"
-wait "$pid_a"
-wait "$pid_b"
+wait "$(pid_of a)"
+wait "$(pid_of b)"
 rc_b=$?
-expect "--status --wait prints the final line" grep -Eq "#7 pr-7 local success \(head [0-9a-f]{7}, finished" "$work/bg.b"
+expect "--status --wait prints the final line" \
+    grep -Eq "#7 pr-7 local success \(head [0-9a-f]{7}, finished" "$work/bg.b"
 expect "--status --wait: exit status 0" [ "$rc_b" -eq 0 ]
 
 echo "# a lock whose process is gone is taken over"
@@ -349,9 +365,9 @@ echo "# the lock is released when the script is terminated"
 reset block
 bg a 7
 wait_for "$stub/publish-pids"
-kill -TERM "$pid_a"
+kill -TERM "$(pid_of a)"
 touch "$stub/release"
-wait "$pid_a"
+wait "$(pid_of a)"
 expect "the terminated run left no lock" lock_gone 7
 
 echo "# STALE (main moved) is run again, a local run"
@@ -427,7 +443,7 @@ expect_not "PR 8's lock is still held" lock_gone 8
 run --status 7
 expect "--status 7 has its final line already" said "#7 pr-7 101 success"
 touch "$stub/release-watch"
-wait "$pid_a"
+wait "$(pid_of a)"
 expect "both locks are released at the end" bash -c "[ ! -e '$repo/.git/reverify/8.lock' ]"
 rm -f "$stub/container"
 
@@ -440,16 +456,19 @@ expect "--status: a non-number is a usage error" status_is 2
 bg a 7
 wait_for "$stub/publish-pids"
 run 07
-expect "07 is refused while 7 runs" said "a reverify is running (pid $pid_a"
+expect "07 is refused while 7 runs" said "a reverify is running (pid $(pid_of a)"
 expect "07: exit status 3" status_is 3
 touch "$stub/release"
-wait "$pid_a"
+wait "$(pid_of a)"
 
 echo "# several PRs, one invocation"
 reset ok
 run 9 8
-expect "both PRs run" bash -c 'printf "%s\n" "$0" | grep -Fq "#8 pr-8 local success" && printf "%s\n" "$0" | grep -Fq "#9 pr-9 local success"' "$out"
-expect "both locks are released" bash -c "[ ! -e '$repo/.git/reverify/8.lock' ] && [ ! -e '$repo/.git/reverify/9.lock' ]"
+expect "both PRs run" \
+    bash -c 'printf "%s\n" "$0" | grep -Fq "#8 pr-8 local success" &&
+        printf "%s\n" "$0" | grep -Fq "#9 pr-9 local success"' "$out"
+expect "both locks are released" \
+    bash -c "[ ! -e '$repo/.git/reverify/8.lock' ] && [ ! -e '$repo/.git/reverify/9.lock' ]"
 
 tip() { git -C "$work/origin.git" rev-parse "refs/heads/$1"; }
 cancelled_is() { [ "$(cat "$stub/cancelled" 2>/dev/null | tr '\n' ' ')" = "$1" ]; }
@@ -462,15 +481,19 @@ reset ok
 move_main
 # PR 7 is behind main now. Its run 555 is in flight; so are PR 8's run 556, an older head's run 557
 # of PR 7, and a run of a PR 7 head that is not in flight is not listed at all.
-printf '%s\n' "pr-7 555 $(tip pr-7)" "pr-8 556 $(tip pr-8)" "pr-7 557 0000000000000000000000000000000000000000" >"$stub/inflight"
+printf '%s\n' "pr-7 555 $(tip pr-7)" "pr-8 556 $(tip pr-8)" \
+    "pr-7 557 0000000000000000000000000000000000000000" >"$stub/inflight"
 run 7
 expect "no flag, no cancel" [ ! -e "$stub/cancelled" ]
 # That run merged main into pr-7; main moves again, so that pr-7's head is behind it once more.
 move_main
-printf '%s\n' "pr-7 555 $(tip pr-7)" "pr-8 556 $(tip pr-8)" "pr-7 557 0000000000000000000000000000000000000000" "pr-7 554 $(tip pr-7) completed" >"$stub/inflight"
+printf '%s\n' "pr-7 555 $(tip pr-7)" "pr-8 556 $(tip pr-8)" \
+    "pr-7 557 0000000000000000000000000000000000000000" "pr-7 554 $(tip pr-7) completed" \
+    >"$stub/inflight"
 run --cancel 7
 expect "the run of the PR's head is cancelled" said "#7: cancelled run 555 of"
-expect "only that run is cancelled (not a completed, another PR's, or an older head's)" cancelled_is "555 "
+expect "only that run is cancelled (not a completed, another PR's, or an older head's)" \
+    cancelled_is "555 "
 expect "then it verifies as usual" said "#7 pr-7 local success"
 expect "exit status 0" status_is 0
 expect "the lock is released" lock_gone 7
@@ -512,14 +535,15 @@ wait_for "$stub/runs"
 move_main
 printf '%s\n' "pr-7 101 $(tip pr-7)" >"$stub/inflight"
 bg b --cancel 7
-wait "$pid_a"
+wait "$(pid_of a)"
 rc_a=$?
-wait "$pid_b"
+wait "$(pid_of b)"
 rc_b=$?
 expect "the cancelled run is cancelled" cancelled_is "101 "
 expect "the watcher reports it cancelled" grep -Fq "#7 pr-7 101 cancelled" "$work/bg.a"
 expect "the watcher exits 1" [ "$rc_a" -eq 1 ]
-expect "the canceller dispatched a new run and it succeeded" grep -Fq "#7 pr-7 102 success" "$work/bg.b"
+expect "the canceller dispatched a new run and it succeeded" \
+    grep -Fq "#7 pr-7 102 success" "$work/bg.b"
 expect "the canceller exits 0" [ "$rc_b" -eq 0 ]
 expect "the lock is released" lock_gone 7
 rm -f "$stub/container" "$stub/hold-watch-all"
@@ -564,15 +588,17 @@ export REVERIFY_SECONDS_PER_MIN=1
 reset ok
 touch "$stub/container" "$stub/hold-watch-all"
 run --timeout 1 7
-expect "the hosted run: TIMEOUT line with PR, run id and short head" said_re "^#7 TIMEOUT: pr-7 run 101 head [0-9a-f]{7} still running after 1 min"
+expect "the hosted run: TIMEOUT line with PR, run id and short head" \
+    said_re "^#7 TIMEOUT: pr-7 run 101 head [0-9a-f]{7} still running after 1 min"
 expect "the hosted run: exit status 5" status_is 5
 expect "the hosted run: the lock is released" lock_gone 7
 /bin/sleep 1
 # Before the exit trap's cleanup: a leaked watcher would show here.
-watcher_gone() { ! ps -axo command= | grep -F "$work/bin/gh run watch" | grep -vq grep; }
+watcher_gone() { ! pgrep -f -- "$work/bin/gh run watch" >/dev/null; }
 expect "the hosted run: the background gh run watch is gone" watcher_gone
 run --status 7
-expect "--status shows the recorded TIMEOUT" said_re "^#7 TIMEOUT: pr-7 run 101 head [0-9a-f]{7}.*\\(head [0-9a-f]{7}, finished"
+expect "--status shows the recorded TIMEOUT" \
+    said_re "^#7 TIMEOUT: pr-7 run 101 head [0-9a-f]{7}.*\\(head [0-9a-f]{7}, finished"
 expect "--status: exit status 5" status_is 5
 rm -f "$stub/container" "$stub/hold-watch-all"
 
@@ -581,7 +607,8 @@ lock_of() { # lock_of <pid>
     printf '%s|%s' "$1" "$(TZ=UTC LC_ALL=C ps -o lstart= -p "$1" | sed 's/^ *//; s/ *$//')"
 }
 put_deadline() { # put_deadline <pr> <pid> <seconds from now>
-    printf '%s|%s\n' "$(lock_of "$2")" "$(($(date +%s) + $3))" >"$repo/.git/reverify/$1.deadline.new"
+    printf '%s|%s\n' "$(lock_of "$2")" "$(($(date +%s) + $3))" \
+        >"$repo/.git/reverify/$1.deadline.new"
     mv -f "$repo/.git/reverify/$1.deadline.new" "$repo/.git/reverify/$1.deadline"
 }
 
@@ -590,24 +617,30 @@ put_deadline() { # put_deadline <pr> <pid> <seconds from now>
 reset block
 bg a 7
 wait_for "$stub/publish-pids"
-expect "the holder's lock is <pid>|<start>" bash -c "readlink '$repo/.git/reverify/7.lock' | grep -Eq '^[0-9]+[|][^|]+\$'"
-expect "the holder's sidecar carries a deadline" bash -c "grep -Eq '^$pid_a[|][^|]+[|][0-9]+\$' '$repo/.git/reverify/7.deadline'"
+expect "the holder's lock is <pid>|<start>" \
+    bash -c "readlink '$repo/.git/reverify/7.lock' | grep -Eq '^[0-9]+[|][^|]+\$'"
+expect "the holder's sidecar carries a deadline" \
+    bash -c "grep -Eq '^$(pid_of a)[|][^|]+[|][0-9]+\$' '$repo/.git/reverify/7.deadline'"
 # This case guards the transition from the pre-#213 lock: 9aea5e9 is the last main before it.
 if git -C "$here" show 9aea5e9:scripts/reverify >"$work/old-reverify" 2>/dev/null; then
     chmod +x "$work/old-reverify"
-    out="$(cd "$repo" && PATH="$work/bin:$PATH" perl -e 'alarm 60; exec @ARGV' "$work/old-reverify" --status 7 2>&1)"
+    out="$(cd "$repo" && PATH="$work/bin:$PATH" perl -e 'alarm 60; exec @ARGV' \
+        "$work/old-reverify" --status 7 2>&1)"
     rc=$?
-    expect "the copy of main reads the new holder's lock: running" said "#7 running: reverify pid $pid_a"
+    expect "the copy of main reads the new holder's lock: running" \
+        said "#7 running: reverify pid $(pid_of a)"
     expect "the copy of main: exit status 3" status_is 3
-    out="$(cd "$repo" && PATH="$work/bin:$PATH" perl -e 'alarm 60; exec @ARGV' "$work/old-reverify" 7 2>&1)"
+    out="$(cd "$repo" && PATH="$work/bin:$PATH" perl -e 'alarm 60; exec @ARGV' \
+        "$work/old-reverify" 7 2>&1)"
     rc=$?
-    expect "the copy of main does not take over the new holder's lock" bash -c '! printf "%s\n" "$0" | grep -Fq "stale"' "$out"
+    expect "the copy of main does not take over the new holder's lock" \
+        bash -c '! printf "%s\n" "$0" | grep -Fq "stale"' "$out"
     expect "the copy of main: refused, exit status 3" status_is 3
 else
     echo "skip the pre-#213 copy: commit 9aea5e9 is not available"
 fi
 touch "$stub/release"
-wait "$pid_a"
+wait "$(pid_of a)"
 expect "the sidecar is removed with the lock" bash -c "[ ! -e '$repo/.git/reverify/7.deadline' ]"
 
 # The holder renews: `--wait 7 8` takes 7 and queues behind a stub holder of 8; the deadline of 7
@@ -623,8 +656,8 @@ d1="$(sed 's/.*|//' "$repo/.git/reverify/7.deadline")"
 /bin/sleep 3
 d2="$(sed 's/.*|//' "$repo/.git/reverify/7.deadline")"
 expect "the deadline of 7 grows while the holder queues for 8" [ "$d2" -gt "$d1" ]
-kill -TERM "$pid_w"
-wait "$pid_w"
+kill -TERM "$(pid_of w)"
+wait "$(pid_of w)"
 kill "$hq" 2>/dev/null
 rm -f "$repo/.git/reverify/8.lock"
 
@@ -655,34 +688,44 @@ bg s --status --wait 7
 bg r --wait 8
 bg n --wait --timeout 1 9
 /bin/sleep 10
-expect "before the deadline plus the margin the waiters still wait" kill -0 "$pid_q" "$pid_c" "$pid_s"
+expect "before the deadline plus the margin the waiters still wait" \
+    kill -0 "$(pid_of q)" "$(pid_of c)" "$(pid_of s)"
 /bin/sleep 8
-expect "a renewed deadline keeps its waiter waiting past where an unrenewed one ends" kill -0 "$pid_r"
-wait "$pid_q"
+expect "a renewed deadline keeps its waiter waiting past where an unrenewed one ends" \
+    kill -0 "$(pid_of r)"
+wait "$(pid_of q)"
 rc_q=$?
 t_q=$((SECONDS - t0))
-wait "$pid_c"
+wait "$(pid_of c)"
 rc_c=$?
-wait "$pid_s"
+wait "$(pid_of s)"
 rc_s=$?
-wait "$pid_n"
+wait "$(pid_of n)"
 rc_n=$?
-t_n=$SECONDS
-expect "--wait queue: TIMEOUT line says the holder is stalled" grep -Eq "^#7 TIMEOUT: still queued behind the stalled reverify of pid $h7, whose deadline passed" "$work/bg.q"
+expect "--wait queue: TIMEOUT line says the holder is stalled" \
+    grep -Eq \
+    "^#7 TIMEOUT: still queued behind the stalled reverify of pid $h7, whose deadline passed" \
+    "$work/bg.q"
 expect "--wait queue: exit status 5" [ "$rc_q" -eq 5 ]
 expect "the waiter gave up after the deadline plus the margin (17 s), not before" [ "$t_q" -ge 17 ]
 expect "and not much later (the renewal case below runs past 37 s)" [ "$t_q" -le 30 ]
-expect "--cancel (implies --wait): TIMEOUT, exit status 5" bash -c 'grep -Fq "#7 TIMEOUT: still queued" "$0" && [ "$1" -eq 5 ]' "$work/bg.c" "$rc_c"
-expect "--status --wait: TIMEOUT, exit status 5" bash -c 'grep -Eq "^#7 TIMEOUT: still running; the reverify of pid $2 is stalled" "$0" && [ "$1" -eq 5 ]' "$work/bg.s" "$rc_s" "$h7"
-expect "no sidecar (lock 9): the waiter's own --timeout plus the margin (16 s)" grep -Fq "which recorded no deadline, after 16 min" "$work/bg.n"
+expect "--cancel (implies --wait): TIMEOUT, exit status 5" \
+    bash -c 'grep -Fq "#7 TIMEOUT: still queued" "$0" && [ "$1" -eq 5 ]' "$work/bg.c" "$rc_c"
+expect "--status --wait: TIMEOUT, exit status 5" \
+    bash -c 'grep -Eq "^#7 TIMEOUT: still running; the reverify of pid $2 is stalled" "$0" &&
+        [ "$1" -eq 5 ]' "$work/bg.s" "$rc_s" "$h7"
+expect "no sidecar (lock 9): the waiter's own --timeout plus the margin (16 s)" \
+    grep -Fq "which recorded no deadline, after 16 min" "$work/bg.n"
 expect "no deadline recorded: exit status 5" [ "$rc_n" -eq 5 ]
-wait "$pid_r"
+wait "$(pid_of r)"
 rc_r=$?
-expect "the renewing holder's waiter ends only after the renewals stop" grep -Fq "#8 TIMEOUT: still queued behind the stalled reverify" "$work/bg.r"
+expect "the renewing holder's waiter ends only after the renewals stop" \
+    grep -Fq "#8 TIMEOUT: still queued behind the stalled reverify" "$work/bg.r"
 expect "that waiter: exit status 5" [ "$rc_r" -eq 5 ]
 expect "the waiter's timeout leaves the holder's lock" bash -c "[ -L '$repo/.git/reverify/7.lock' ]"
 kill "$h7" "$h8" "$h9" 2>/dev/null
-rm -f "$repo/.git/reverify/7.lock" "$repo/.git/reverify/8.lock" "$repo/.git/reverify/9.lock" "$repo/.git/reverify"/*.deadline
+rm -f "$repo/.git/reverify/7.lock" "$repo/.git/reverify/8.lock" "$repo/.git/reverify/9.lock" \
+    "$repo/.git/reverify"/*.deadline
 
 # A failed PR decides the exit status of a call with several PRs.
 reset ok
@@ -691,7 +734,9 @@ printf '%s\n' fail ok >"$stub/dispatch-script"
 run --timeout 1 7 8
 expect "several PRs: the failed PR is printed" said "#7 pr-7 101 FAILED (failure)"
 expect "several PRs: the timed-out PR is printed" said_re "^#8 TIMEOUT: pr-8 run 102 head"
-expect "several PRs: both summaries are printed" bash -c 'printf "%s\n" "$0" | grep -Fq "1 of 2 PR(s) timed out" && printf "%s\n" "$0" | grep -Fq "1 of 2 PR(s) not verified"' "$out"
+expect "several PRs: both summaries are printed" \
+    bash -c 'printf "%s\n" "$0" | grep -Fq "1 of 2 PR(s) timed out" &&
+        printf "%s\n" "$0" | grep -Fq "1 of 2 PR(s) not verified"' "$out"
 expect "several PRs: FAILED decides, exit status 1" status_is 1
 rm -f "$stub/container" "$stub/hold-watch"
 
@@ -708,6 +753,32 @@ for bad in 0 x '$(touch /nonexistent-x)'; do
     expect "REVERIFY_SECONDS_PER_MIN='$bad' is a usage error" status_is 2
 done
 unset REVERIFY_SECONDS_PER_MIN
+
+echo "# --all-behind: the open PRs whose head lacks origin/main, as one call"
+printf '%s\n' "7 pr-7" "8 pr-8" "9 pr-9" >"$stub/open-prs"
+reset ok
+move_main
+git -C "$work/other" fetch -q origin
+git -C "$work/other" checkout -q -B pr-9 origin/pr-9
+git -C "$work/other" merge -q --no-edit origin/main >/dev/null
+git -C "$work/other" push -q origin pr-9 >/dev/null 2>&1
+git -C "$work/other" checkout -q main
+run --all-behind
+expect "the PRs behind main are listed" said "behind origin/main: 7 8"
+expect "PR 7 is reverified" said "#7 pr-7 local success"
+expect "PR 8 is reverified" said "#8 pr-8 local success"
+expect "PR 9 contains main and is left alone" bash -c '! printf "%s\n" "$0" | grep -Fq "#9"' "$out"
+expect "--all-behind: exit status 0" status_is 0
+expect "--all-behind: one run per PR behind" publishes_are 2
+reset ok
+run --all-behind
+expect "none behind: said so" said "no open pull request is behind origin/main"
+expect "none behind: exit status 0" status_is 0
+expect "none behind: nothing verified" publishes_are 0
+run --all-behind 7
+expect "--all-behind with a PR number is a usage error" status_is 2
+run --all-behind --status
+expect "--all-behind with --status is a usage error" status_is 2
 
 if [ "$failures" -eq 0 ]; then
     echo "reverify: every case holds"
