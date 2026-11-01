@@ -1736,8 +1736,9 @@ def all_files():
     fop_doc = compile_file("fop1", FOP_CFG, raws, SETUP_HOW)
     for i, sc in enumerate(fop_doc["scenarios"]):
         if sc["id"].endswith(REARM_SUFFIX):
-            sc["description"] += (" T1 is re-armed for another T1_Initial and the "
-                                  "Transmission_Count is unchanged (OI-67, COP-013).")
+            sc["description"] += (" T1 is re-armed for another T1_Initial (the "
+                                  "deadline is the expiry plus T1_Initial), no output, state "
+                                  "S3 (OI-67, COP-013).")
     for sid, released in RELEASED_S3_TIMER_CASES.items():
         released = dict(released, superseded={"by": sid + REARM_SUFFIX, "reason": REARM_REASON})
         fop_doc["scenarios"].append(released)
