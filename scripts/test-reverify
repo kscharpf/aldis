@@ -935,7 +935,7 @@ reset ok
 run 21
 expect "the parent is numbered, though a child holds its row" \
     said "assign-oi-ids: $sa as OI-06"
-expect "the parent does not wait for its child" bash -c '! printf "%s\n" "$0" | grep -Fq waits' "$out" said "assign-oi-ids: $sa as OI-06"
+expect "the parent does not wait for its child" bash -c '! printf "%s\n" "$0" | grep -Fq waits' "$out"
 git -C "$work/other" fetch -q origin
 expect "the number is recorded as a trailer" bash -c \
     'git -C "$0" log --format=%B origin/oi-s1 | grep -Fxq "OI-Assigned: $1 OI-06"' \
