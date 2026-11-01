@@ -879,6 +879,27 @@ expect "it pushes nothing" test "$(oi_head oi-e)" = "$head_e"
 expect "it does not announce a resolution" \
     bash -c '! printf "%s\n" "$0" | grep -Fq "kept both"' "$out"
 
+# One side edits the last row, the other appends: not a pure append, so it aborts.
+git -C "$work/other" fetch -q origin
+git -C "$work/other" checkout -q -B oi-f origin/main
+printf '%s\n' "| OI-10 | **iota** | Open |" >>"$work/other/$oi_doc"
+git -C "$work/other" commit -q -am "oi-f appends"
+git -C "$work/other" push -q -f origin oi-f >/dev/null 2>&1
+echo oi-f >"$stub/pr-36"
+git -C "$work/other" checkout -q -B main origin/main
+perl -pi -e 's/^(\| OI-01 \| \*\*first\*\* \| )Open/$1Resolved/' "$work/other/$oi_doc"
+oi_last="$(grep -n '^| OI-' "$work/other/$oi_doc" | tail -n 1 | cut -d: -f1)"
+perl -pi -e "s/Open \\|\$/Resolved |/ if \$. == $oi_last" "$work/other/$oi_doc"
+git -C "$work/other" commit -q -am "main resolves the last row"
+git -C "$work/other" push -q origin main >/dev/null 2>&1
+head_f="$(oi_head oi-f)"
+reset ok
+run 36
+expect "an edit against an append aborts" said "merge conflict with origin/main"
+expect "it pushes nothing, too" test "$(oi_head oi-f)" = "$head_f"
+expect "it does not announce a resolution either" \
+    bash -c '! printf "%s\n" "$0" | grep -Fq "kept both"' "$out"
+
 if [ "$failures" -eq 0 ]; then
     echo "reverify: every case holds"
 else

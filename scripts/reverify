@@ -12,11 +12,10 @@
 #
 # Phase 1, per PR in order: check it is open; use the worktree of its head branch (or add one
 # under .claude/worktrees/reverify-<n>); refuse when that worktree is dirty or holds commits the
-# remote lacks; merge origin/main (a conflict that is only open-issue table rows is resolved by
-# keeping both sides, see resolve_oi_table; any other conflict fails); run `cargo xtask ci`; push;
-# then, if the merged head needs no
-# container (`cargo xtask verify list`: every gating check skipped or reused, as for a stacked
-# PR whose base has merged, VER-056), run `cargo xtask verify --publish` here (no image, no
+# remote lacks; merge origin/main (a conflict that is only open-issue table rows, both sides pure
+# appends, is resolved by keeping both sides, see resolve_oi_table; any other conflict fails); run
+# `cargo xtask ci`; push; then, if the merged head needs no container (`cargo xtask verify list`:
+# every gating check skipped or reused, as for a stacked PR whose base has merged, VER-056), run `cargo xtask verify --publish` here (no image, no
 # engine; on macOS it also runs the host-bound test-macos, about two minutes); otherwise
 # dispatch verify.yml on the branch and note the new run. A branch already up to date with
 # origin/main whose head has a successful or in-progress run reuses that run. A failure marks
@@ -452,7 +451,8 @@ fail() {
 
 # Finish a conflicted merge of origin/main by keeping both sides, ordered by number, when
 # docs/09-open-issues.md is the only conflicted file and every line on both sides of every hunk is
-# a table row (`| OI-`): two PRs that append a row. Anything else returns 1 and touches nothing.
+# a table row (`| OI-`) and the base section (merge.conflictStyle=diff3) is empty: both sides are
+# pure appends. Anything else, such as an edit of a row against an append, returns 1.
 resolve_oi_table() {
     local dir="$1" doc=docs/09-open-issues.md
     [ "$(git -C "$dir" diff --name-only --diff-filter=U)" = "$doc" ] || return 1
@@ -464,14 +464,14 @@ resolve_oi_table() {
         while (my $l = <$in>) {
             if ($l =~ /^<<<<<<< / && $state eq "text") { $state = "ours"; @rows = (); next; }
             if ($l =~ /^\|\|\|\|\|\|\| / && $state eq "ours") { $state = "base"; next; }
-            if ($l =~ /^=======$/ && ($state eq "ours" || $state eq "base")) {
+            if ($l =~ /^=======$/ && $state eq "base") {
                 $state = "theirs"; next;
             }
             if ($l =~ /^>>>>>>> / && $state eq "theirs") {
                 push @out, sort { num($a) <=> num($b) } @rows;
                 $state = "text"; next;
             }
-            if ($state eq "base") { exit 1 if $l !~ /^\| OI-/; next; }
+            if ($state eq "base") { exit 1; }
             if ($state ne "text") { exit 1 if $l !~ /^\| OI-/; push @rows, $l; next; }
             push @out, $l;
         }
@@ -521,7 +521,7 @@ prepare_one() {
     git -C "$dir" merge --ff-only --quiet "origin/$branch" ||
         fail "cannot fast-forward to origin/$branch" || return 1
 
-    if ! git -C "$dir" merge --no-edit origin/main; then
+    if ! git -C "$dir" -c merge.conflictStyle=diff3 merge --no-edit origin/main; then
         if resolve_oi_table "$dir"; then
             echo "#$pr: kept both sides of an OI table conflict; check for duplicate IDs"
         else
