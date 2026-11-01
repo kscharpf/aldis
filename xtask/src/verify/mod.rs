@@ -1046,9 +1046,9 @@ mod tests {
         assert!(shown.contains(&"VER-024 aldis-cop1 lines 3/100 missed".to_owned()));
         assert!(shown.len() < 15, "{shown:?}");
         // No line reports: the end of the log, not the start.
-        let quiet = &refs[..100];
+        let quiet = &refs[60..110];
         let tail = failure_excerpt(quiet);
-        assert_eq!((tail.len(), tail[0].as_str()), (30, "noise 70"));
+        assert_eq!((tail.len(), tail[0].as_str()), (30, "noise 80"));
         // A flood is capped, and the count of the lines left out is said.
         let flood: Vec<String> = (0..5000).map(|i| format!("error: lint {i}")).collect();
         let refs: Vec<&str> = flood.iter().map(String::as_str).collect();
