@@ -48,17 +48,20 @@
 # 1 if any PR failed, else 5 if any timed out.
 #
 # A waiter behind another reverify (`--wait`, `--cancel`, which implies it, and `--status --wait`)
-# follows the holder's progress. The holder writes a deadline into each lock it holds, as
-# `<pid>|<start>|<epoch seconds>`, and renews it at each step: the start of a PR's preparation, of
-# its local `verify --publish` or hosted watch, of each STALE retry, and on each pass while it
-# queues for another PR's lock. A renewal sets the deadline of every lock the holder still has, so
-# a PR that waits behind others in the same call is kept alive while the holder works on them.
-# Each deadline is now plus the holder's own `--timeout`. The waiter rereads the lock and prints
-# `#<n> TIMEOUT: ...` (no run, no head) and exits 5 when the recorded deadline passed more than 15
-# minutes ago, so a TIMEOUT means a stalled holder, whatever options either side used. Its own
-# lock is released, the holder's is untouched, and nothing is recorded, since the holder owns the
-# result. A lock without a deadline (older format) is waited for for the waiter's own `--timeout`
-# plus 15 minutes.
+# follows the holder's progress. The lock itself stays `<pid>|<start>`, so that older copies of this
+# script read it; the holder writes a deadline into a sidecar file, `<n>.deadline`
+# (`<pid>|<start>|<epoch seconds>`, by temp file and rename, removed with the lock), and renews it
+# at each step: the start of a PR's preparation, of its local `verify --publish` or hosted watch,
+# of each STALE retry, and on each pass while it queues for another PR's lock. A renewal sets the
+# deadline of every lock the holder still has, so a PR that waits behind others in the same call is
+# kept alive while the holder works on them. Each deadline is now plus the holder's own
+# `--timeout`. The waiter rereads the sidecar and prints `#<n> TIMEOUT: ...` (no run, no head) and
+# exits 5 when the deadline passed more than 15 minutes ago. That means the holder has gone more
+# than 15 minutes past its own deadline without renewing it: stalled, or in a step that has no bound
+# (`cargo xtask ci`, the local `verify --publish`), so check the holder's pid before treating it as
+# a stall. Its own lock is released, the holder's is untouched, and nothing is recorded, since the
+# holder owns the result. A lock without a sidecar of its holder (an older script) is waited for
+# for the waiter's own `--timeout` plus 15 minutes.
 #
 # `--status <n>` reads, with no network, one line: `#<n> running: ...` (exit 3) while a reverify
 # holds the lock, else the final line of the last reverify run on this machine with the head it is
@@ -140,23 +143,23 @@ record_final() {
     printf '%s\n%s (%sfinished %s)\n' "$2" "$3" "$head" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >"$state_dir/$1.last"
 }
 
-# The fields of a lock target `<pid>|<start>[|<deadline>]`.
-lock_pid() { echo "${1%%|*}"; }
-lock_start() {
-    local rest="${1#*|}"
-    echo "${rest%%|*}"
-}
+# The start time of the holder named by the lock target `<pid>|<start>`.
+lock_start() { echo "${1#*|}"; }
+
+# The deadline (epoch seconds) that the holder $1 (a lock target) recorded for PR $2 in the sidecar
+# `<n>.deadline`, empty when there is none or it is another holder's (a lock taken over).
 lock_deadline() {
-    local rest="${1#*|}"
-    case "$rest" in *'|'*) echo "${rest#*|}" ;; esac
+    local content
+    content="$(cat "$state_dir/$2.deadline" 2>/dev/null || true)"
+    [ "${content#"$1|"}" = "$content" ] || echo "${content#"$1|"}"
 }
 
-# True when a waiter that began waiting at SECONDS=$2 should give up on the lock target $1: the
-# deadline the holder recorded passed more than the margin ago, or, with no deadline, the waiter
-# waited its own --timeout plus the margin. Sets `stall_note`.
+# True when a waiter on PR $3 that began waiting at SECONDS=$2 should give up on the lock target
+# $1: the deadline the holder recorded passed more than the margin ago, or, with no deadline, the
+# waiter waited its own --timeout plus the margin. Sets `stall_note`.
 holder_stalled() {
     local dl now
-    dl="$(lock_deadline "$1")"
+    dl="$(lock_deadline "$1" "$3")"
     now="$(date +%s)"
     if [[ "$dl" =~ ^[0-9]+$ ]]; then
         [ "$now" -gt $((dl + margin_s)) ] || return 1
@@ -181,7 +184,7 @@ if [ "$status_mode" -eq 1 ]; then
         # bound: ends when the holder's reverify ends or its recorded deadline is overdue by the
         # margin.
         while lock_held "$pr"; do
-            if holder_stalled "$holder" "$wait_start"; then
+            if holder_stalled "$holder" "$wait_start" "$pr"; then
                 echo "#$pr TIMEOUT: still running; the reverify of pid ${holder%%|*} is stalled, $stall_note"
                 exit 5
             fi
@@ -205,27 +208,29 @@ fi
 
 # Locks. A lock is a symlink `<n>.lock` whose target is `<pid>|<start time>` of the holder: creating
 # it is one atomic step, so there is no moment with a lock and no owner. Taking over a stale one
-# goes through a second symlink, `<n>.lock.take`, so that two takers cannot both win.
+# goes through a second symlink, `<n>.lock.take`, so that two takers cannot both win. The deadline
+# of the holder is in the file `<n>.deadline`, next to the lock.
 me="$$|$(proc_start $$)"
 held=()
 watcher=""
 
-# True when the lock of PR $1 is ours, with or without a deadline.
-mine() {
-    local target
-    target="$(readlink "$state_dir/$1.lock" 2>/dev/null || true)"
-    [ "$target" = "$me" ] || [ "${target#"$me|"}" != "$target" ]
+# True when the lock of PR $1 is ours.
+mine() { [ "$(readlink "$state_dir/$1.lock" 2>/dev/null || true)" = "$me" ]; }
+
+# Record the deadline of PR $1, now plus the --timeout: one bound for the step that starts. The file
+# is replaced by a rename, so a reader never sees half of it.
+write_deadline() {
+    local new="$state_dir/$1.deadline.new.$$"
+    if printf '%s|%s\n' "$me" "$(($(date +%s) + timeout_s))" >"$new" 2>/dev/null; then
+        mv -f "$new" "$state_dir/$1.deadline" 2>/dev/null || rm -f "$new"
+    fi
 }
 
-# Renew the deadline of every lock this call still holds: now plus the --timeout, one bound for
-# the step that starts. The new target replaces the lock by a rename, so the lock is never absent.
+# Renew the deadline of every lock this call still holds.
 renew_deadlines() {
-    local pr new
+    local pr
     for pr in ${held[@]+"${held[@]}"}; do
-        new="$state_dir/$pr.lock.renew.$$"
-        if mine "$pr" && ln -sf "$me|$(($(date +%s) + timeout_s))" "$new" 2>/dev/null; then
-            mv -f "$new" "$state_dir/$pr.lock" 2>/dev/null || rm -f "$new"
-        fi
+        if mine "$pr"; then write_deadline "$pr"; fi
     done
 }
 
@@ -234,7 +239,7 @@ release_locks() {
     [ -z "$watcher" ] || kill "$watcher" 2>/dev/null || true
     for pr in ${held[@]+"${held[@]}"}; do
         if mine "$pr"; then
-            rm -f "$state_dir/$pr.lock"
+            rm -f "$state_dir/$pr.lock" "$state_dir/$pr.deadline"
         fi
     done
     held=()
@@ -255,11 +260,12 @@ holder_alive() {
 lock_acquire() {
     local pr="$1" lock="$state_dir/$1.lock" holder taker announced=0 wait_start=$SECONDS
     # bound: each pass takes the lock, returns, or waits for a live holder (--wait only, until its
-    # recorded deadline passes by the margin); a stale lock is removed by the one taker, and a crashed taker's mutex is removed
-    # as stale.
+    # recorded deadline passes by the margin); a stale lock is removed by the one taker, and a
+    # crashed taker's mutex is removed as stale.
     while true; do
-        if ln -s "$me|$(($(date +%s) + timeout_s))" "$lock" 2>/dev/null; then
+        if ln -s "$me" "$lock" 2>/dev/null; then
             held+=("$pr")
+            write_deadline "$pr"
             return 0
         fi
         holder="$(readlink "$lock" 2>/dev/null)" || continue
@@ -272,7 +278,7 @@ lock_acquire() {
                 echo "#$pr: waiting for the reverify of pid ${holder%%|*}"
                 announced=1
             fi
-            if holder_stalled "$holder" "$wait_start"; then
+            if holder_stalled "$holder" "$wait_start" "$pr"; then
                 echo "#$pr TIMEOUT: still queued behind the stalled reverify of pid ${holder%%|*}, $stall_note (no run, no head)"
                 return 5
             fi
@@ -518,12 +524,13 @@ for pr in "${args[@]}"; do
 done
 
 # Print and record the final line of PR $1: $2 ok, fail, cancelled or timeout, $3 the line, $4 the
-# head commit; then release its lock, so that a waiter for this PR does not wait for the PRs that follow it.
+# head commit; then release its lock, so that a waiter for this PR does not wait for the PRs that
+# follow it.
 finish() {
     echo "$3"
     record_final "$1" "$2" "$3" "$4"
     if mine "$1"; then
-        rm -f "$state_dir/$1.lock"
+        rm -f "$state_dir/$1.lock" "$state_dir/$1.deadline"
     fi
 }
 
