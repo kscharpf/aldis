@@ -217,17 +217,31 @@ fn check_verif(cell: &str) -> bool {
 /// of lowercase letters, digits, and inner hyphens.
 const OI_PLACEHOLDER: &str = "OI-NEW-";
 
-/// The placeholders of one line of text, in order.
+/// The placeholders of one line of text, in order. The grammar is that of the Perl rewrite of
+/// `scripts/assign-oi-ids`: no letter or digit before the token, and a slug of runs of lowercase
+/// letters and digits joined by single hyphens.
 fn placeholders(line: &str) -> Vec<&str> {
     let mut out = Vec::new();
     for (at, _) in line.match_indices(OI_PLACEHOLDER) {
+        if line
+            .get(..at)
+            .and_then(|before| before.chars().next_back())
+            .is_some_and(|c| c.is_ascii_alphanumeric())
+        {
+            continue;
+        }
         let start = at + OI_PLACEHOLDER.len();
         let rest = line.get(start..).unwrap_or_default();
         let len = rest
             .bytes()
             .take_while(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || *b == b'-')
             .count();
-        let slug = rest.get(..len).unwrap_or_default().trim_end_matches('-');
+        let run = rest.get(..len).unwrap_or_default();
+        let slug = run
+            .split("--")
+            .next()
+            .unwrap_or_default()
+            .trim_end_matches('-');
         if slug.starts_with(|c: char| c.is_ascii_lowercase() || c.is_ascii_digit())
             && let Some(token) = line.get(at..start + slug.len())
         {
@@ -238,7 +252,8 @@ fn placeholders(line: &str) -> Vec<&str> {
 }
 
 /// Problems with the open-issue IDs: an ID used by two rows of the table of `oi_doc`, a row whose
-/// ID is neither `OI-<digits>` nor a placeholder, a placeholder with no row, and, with `numbered`
+/// ID is neither `OI-<digits>` nor a placeholder (every row of the table headed `ID`, `Issue`), a
+/// placeholder with no row, and, with `numbered`
 /// (the verification run), any placeholder at all. `files` are the (path, text) pairs to scan for
 /// placeholders.
 fn oi_problems(oi_doc: &str, files: &[(String, String)], numbered: bool) -> Vec<String> {
@@ -246,8 +261,13 @@ fn oi_problems(oi_doc: &str, files: &[(String, String)], numbered: bool) -> Vec<
     let mut problems = Vec::new();
     let mut rows: BTreeMap<String, usize> = BTreeMap::new();
     for table in tables(oi_doc) {
+        if table.header.first().map(String::as_str) != Some("ID")
+            || table.header.get(1).map(String::as_str) != Some("Issue")
+        {
+            continue;
+        }
         for (line, row) in table.rows {
-            let Some(id) = row.first().filter(|c| c.starts_with("OI-")) else {
+            let Some(id) = row.first() else {
                 continue;
             };
             let digits = id
@@ -331,13 +351,18 @@ fn run_lint(numbered: bool) -> Result<usize, String> {
         }
     }
 
+    // Every text file, as scripts/assign-oi-ids rewrites every text file the branch changed.
+    let all_texts: Vec<(String, String)> = repo::all_files(".")
+        .iter()
+        .filter_map(|p| Some((repo::rel(p), std::fs::read_to_string(p).ok()?)))
+        .collect();
+    let oi_doc = repo::read(&repo::root().join("docs/09-open-issues.md"))?;
+    problems.extend(oi_problems(&oi_doc, &all_texts, numbered));
+
     let mut texts = Vec::new();
     for path in referencing_files() {
         texts.push((repo::rel(&path), repo::read(&path)?));
     }
-    let oi_doc = repo::read(&repo::root().join("docs/09-open-issues.md"))?;
-    problems.extend(oi_problems(&oi_doc, &texts, numbered));
-
     for (path, text) in &texts {
         for id in scan_ids(text, &areas) {
             if !spec.requirements.contains_key(&id.id()) {
@@ -417,6 +442,10 @@ mod tests {
             Vec::<&str>::new()
         );
         assert_eq!(placeholders("OI-67 and OI-01"), Vec::<&str>::new());
+        // The same boundaries as the Perl rewrite: no letter or digit before, single hyphens.
+        assert_eq!(placeholders(&format!("X{a}")), Vec::<&str>::new());
+        assert_eq!(placeholders(&format!("{a}--b")), [a.as_str()]);
+        assert_eq!(placeholders(&format!("\"{a}\"")), [a.as_str()]);
     }
 
     #[test]
@@ -450,8 +479,10 @@ mod tests {
         assert!(dup[0].contains("duplicate OI-67"), "{dup:?}");
         let dup_ph = oi_problems(&table(&[a.clone(), a]), &[], false);
         assert_eq!(dup_ph.len(), 1, "{dup_ph:?}");
-        let bad = oi_problems(&table(&["OI-6x".to_owned()]), &[], false);
-        assert_eq!(bad.len(), 1, "{bad:?}");
+        for id in ["OI-6x", "0I-67", "OI 67", "OI-"] {
+            let bad = oi_problems(&table(&[id.to_owned()]), &[], false);
+            assert_eq!(bad.len(), 1, "{id}: {bad:?}");
+        }
     }
 
     #[test]

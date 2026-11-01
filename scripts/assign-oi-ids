@@ -2,9 +2,11 @@
 # Number the open issues that a branch adds, when the branch is brought up to date with main
 # (docs/09-open-issues.md). scripts/reverify runs both steps; running either again is a no-op.
 #
-# Usage: scripts/assign-oi-ids number [<dir>]   before the merge of origin/main
-#        scripts/assign-oi-ids tidy [<dir>]     after it
-# <dir> is a worktree of the branch (default: the current directory), clean and on the branch.
+# Usage: scripts/assign-oi-ids number [<dir>]    before the merge of origin/main
+#        scripts/assign-oi-ids resolve [<dir>]   in a merge of origin/main that conflicted
+#        scripts/assign-oi-ids tidy [<dir>]      after the merge
+# <dir> is a worktree of the branch (default: the current directory; any directory of it), clean
+# and on the branch, except for `resolve`, which runs in the conflicted merge.
 #
 # A branch writes `OI-NEW-<slug>` (slug: lowercase letters, digits, inner hyphens) for each new
 # open issue, in its table row and in every reference. `number` replaces each placeholder, in the
@@ -13,19 +15,55 @@
 # commits the result. It also renumbers an open issue that the branch added with a number that
 # origin/main has taken since (the branch was numbered while another pull request was not yet
 # merged), with the same rewrite of the references. An open issue of the merge-base is never
-# renumbered. `tidy` puts the rows of the table in number order again after the merge, which
-# the union merge of .gitattributes leaves unordered when both sides appended rows, and commits.
+# renumbered. A branch stacked on a pull request that has merged inherits that pull request's
+# placeholders: when the merge-base still holds a placeholder row, `number` gives it the number
+# recorded in the `OI-Assigned: <placeholder> <OI-nn>` trailer of a number commit between the
+# merge-base and origin/main, and only such a placeholder (one that was already in the merge-base)
+# takes a number from a trailer. `resolve` finishes a merge whose only conflict is in the table
+# of docs/09-open-issues.md, when every line on both sides of every hunk is a table row
+# (`| OI-`), by keeping both sides; any other conflict is left alone and the exit status is 1.
+# `tidy` puts the rows of the table in number order again after the merge, and commits.
 # Exit status: 0 on success (also when nothing changed), 1 on a failure, 2 on a usage error.
 set -euo pipefail
 
 doc=docs/09-open-issues.md
 mode="${1:-}"
 dir="${2:-.}"
-{ [ "$mode" = number ] || [ "$mode" = tidy ]; } || {
+{ [ "$mode" = number ] || [ "$mode" = tidy ] || [ "$mode" = resolve ]; } || {
     awk 'NR == 1 { next } /^#/ { sub(/^# ?/, ""); print; next } { exit }' "$0"
     exit 2
 }
 cd "$dir"
+cd "$(git rev-parse --show-toplevel)"
+
+if [ "$mode" = resolve ]; then
+    [ "$(git diff --name-only --diff-filter=U)" = "$doc" ] || exit 1
+    perl -e '
+        my $file = shift;
+        open my $in, "<", $file or die "$file: $!";
+        my ($state, @out) = ("text");
+        while (my $l = <$in>) {
+            if ($l =~ /^<<<<<<< / && $state eq "text") { $state = "ours"; next; }
+            if ($l =~ /^\|\|\|\|\|\|\| / && $state eq "ours") { $state = "base"; next; }
+            if ($l =~ /^=======$/ && ($state eq "ours" || $state eq "base")) {
+                $state = "theirs"; next;
+            }
+            if ($l =~ /^>>>>>>> / && $state eq "theirs") { $state = "text"; next; }
+            exit 1 if $state ne "text" && $state ne "base" && $l !~ /^\| OI-/;
+            push @out, $l unless $state eq "base";
+        }
+        exit 1 if $state ne "text";
+        close $in;
+        open my $o, ">", $file or die "$file: $!";
+        print $o @out;
+        close $o or die "$file: $!";
+    ' "$doc" || exit 1
+    git add -- "$doc"
+    git commit -q --no-edit
+    echo "assign-oi-ids: kept both sides of the open-issue rows that conflicted"
+    exit 0
+fi
+
 [ -z "$(git status --porcelain)" ] || { echo "assign-oi-ids: $dir is dirty" >&2; exit 1; }
 [ -f "$doc" ] || exit 0
 
@@ -74,11 +112,23 @@ done
 # The placeholders, in the order of the rows of the table.
 placeholders="$(grep -oE '^\| OI-NEW-[a-z0-9]+(-[a-z0-9]+)* \|' "$doc" | sed 's/^| //; s/ |$//' ||
     true)"
+assigned=""
+base_doc="$(git show "$base:$doc" 2>/dev/null || true)"
 for p in $placeholders; do
-    grep -q "^$p " "$map" || {
-        next=$((next + 1))
-        printf '%s OI-%02d\n' "$p" "$next" >>"$map"
-    }
+    grep -q "^$p " "$map" && continue
+    # Inherited from a pull request this branch is stacked on, which has merged since.
+    given=""
+    if grep -qF "| $p |" <<<"$base_doc"; then
+        given="$(git log --format=%B "$base..origin/main" |
+            sed -n "s/^OI-Assigned: $p \(OI-[0-9][0-9]*\)$/\1/p" | head -n 1)"
+    fi
+    if [ -n "$given" ]; then
+        printf '%s %s\n' "$p" "$given" >>"$map"
+        continue
+    fi
+    next=$((next + 1))
+    printf '%s OI-%02d\n' "$p" "$next" >>"$map"
+    assigned+="OI-Assigned: $p OI-$(printf %02d "$next")"$'\n'
 done
 [ -s "$map" ] || exit 0
 
@@ -96,5 +146,5 @@ MAP="$map" perl -i -pe '
 [ -n "$(git status --porcelain)" ] || exit 0
 git add -- "${changed[@]}"
 summary="$(awk '{ printf "%s%s as %s", sep, $1, $2; sep = ", " }' "$map")"
-git commit -q -m "chore(oi): Number open issues $summary"
+git commit -q -m "chore(oi): Number open issues $summary" ${assigned:+-m "${assigned%$'\n'}"}
 echo "assign-oi-ids: $summary"

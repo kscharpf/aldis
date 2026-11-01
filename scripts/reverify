@@ -23,7 +23,9 @@
 # Open-issue IDs are assigned here, not by the author (docs/09-open-issues.md): before the merge,
 # scripts/assign-oi-ids replaces each `OI-NEW-<slug>` placeholder of the branch by the next free OI
 # number, renumbers an open issue the branch added whose number origin/main has since taken, and
-# commits; after the merge it puts the table in number order and commits. A run with nothing to
+# commits; a merge whose only conflict is rows of the open-issue table is finished by keeping both
+# sides (any other conflict fails as below); after the merge it puts the table in number order and
+# commits. A run with nothing to
 # number changes nothing. The gate (`spec-lint --numbered`) refuses a branch with a placeholder.
 # Phase 2: wait for the dispatched runs (they run concurrently on GitHub) and print one line per
 # PR: `#<n> <branch> <run-id> <conclusion>` (`local` for a run made here) or
@@ -495,7 +497,8 @@ prepare_one() {
     before_oi="$(git -C "$dir" rev-parse HEAD)"
     "$script_dir/assign-oi-ids" number "$dir" ||
         fail "cannot number the open issues in $dir" || return 1
-    if ! git -C "$dir" merge --no-edit origin/main; then
+    if ! git -C "$dir" merge --no-edit origin/main &&
+        ! "$script_dir/assign-oi-ids" resolve "$dir"; then
         git -C "$dir" merge --abort || true
         git -C "$dir" reset --hard --quiet "$before_oi"
         fail "merge conflict with origin/main; resolve by hand in $dir" || return 1
