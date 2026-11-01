@@ -800,7 +800,7 @@ expect "--all-behind with --status is a usage error" status_is 2
 
 echo "# a conflict in docs/09-open-issues.md"
 oi_doc=docs/09-open-issues.md
-oi_branch() { # oi_branch <pr> <branch> <text> <file>: a PR from origin/main; $3 is appended to docs/09
+oi_branch() { # oi_branch <pr> <branch> <text> [<file>]: a PR from main; docs/09 gets $3
     git -C "$work/other" fetch -q origin
     git -C "$work/other" checkout -q -B "$2" origin/main
     printf '%s\n' "$3" >>"$work/other/$oi_doc"
@@ -833,7 +833,8 @@ expect "two appended rows: success" said "#31 oi-a local success"
 expect "the resolution is announced" \
     said "#31: kept both sides of an OI table conflict; check for duplicate IDs"
 expect "both rows are kept, in number order" rows_are oi-a OI-01OI-02OI-03OI-04
-expect "no conflict marker is left" bash -c '! git -C "$0" show "origin/oi-a:$1" | grep -q "^[<=>]\{7\}"' \
+expect "no conflict marker is left" \
+    bash -c '! git -C "$0" show "origin/oi-a:$1" | grep -q "^[<=>]\{7\}"' \
     "$work/other" "$oi_doc"
 
 # Order by number, whichever side holds the lower one.
@@ -843,7 +844,7 @@ reset ok
 run 32
 expect "the lower number goes first" rows_are oi-b OI-01OI-02OI-04OI-05OI-06
 
-# The same number on both sides: both are kept, and spec-lint names the duplicate at the gate.
+# The same number on both sides: both are kept; spec-lint names the duplicate at the gate.
 oi_branch 33 oi-c "| OI-07 | **eps** | Open |"
 oi_main "| OI-07 | **zeta** | Open |"
 reset ok
@@ -875,7 +876,8 @@ reset ok
 run 35
 expect "a conflict in another file aborts" said "merge conflict with origin/main"
 expect "it pushes nothing" test "$(oi_head oi-e)" = "$head_e"
-expect "it does not announce a resolution" bash -c '! printf "%s\n" "$0" | grep -Fq "kept both"' "$out"
+expect "it does not announce a resolution" \
+    bash -c '! printf "%s\n" "$0" | grep -Fq "kept both"' "$out"
 
 if [ "$failures" -eq 0 ]; then
     echo "reverify: every case holds"
