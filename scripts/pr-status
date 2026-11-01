@@ -10,12 +10,11 @@
 # READY means: open, not a draft, the head contains the tip of origin/<base> (otherwise `behind
 # origin/<base> by <n>`), no changes requested and no review outstanding, the review to answer
 # has a reply, and every required context is success on the head.
-# A reply: a review or PR comment whose last non-empty line is the marker
-# `🤖 Generated with [Claude Code](https://claude.com/claude-code)` (AGENTS.md, `MARKER` in
-# xtask/src/metrics/pr.rs). The review to answer is the newest submitted review that is not
-# itself a reply (its last line is not the marker); it needs a reply submitted after it, also
-# when it has no findings. A review that ends in the marker is a reply, not a review to answer.
-# Reviews not yet submitted do not count, and neither do inline comments.
+# A reply: a PR comment (`gh pr comment`) posted after the newest submitted review whose last
+# non-empty line is the marker `🤖 Generated with [Claude Code](https://claude.com/claude-code)`
+# (AGENTS.md, `MARKER` in xtask/src/metrics/pr.rs). Every review needs one, also a review without
+# findings and a review that itself ends in the marker; a later review is not a reply. Reviews
+# not yet submitted and inline comments do not count.
 # Exit status: 0 once every verdict is printed; 2 on a usage error or when gh fails.
 set -euo pipefail
 
@@ -111,17 +110,15 @@ status_one() {
     echo "latest review:"
     gh pr view "$n" --json reviews --jq '.reviews | if length == 0 then "  (none)"
         else .[-1] | "  \(.author.login) \(.state) \(.submittedAt)\n\(.body)" end'
-    # The newest submitted review that is not itself a reply (its last line is not the marker),
-    # unless a later review or comment ends with the marker line.
+    # The newest submitted review, unless a later PR comment ends with the marker line. A later
+    # review is not a reply.
     # shellcheck disable=SC2016  # $r is a jq variable
     reply_filter='
-        def replies: ((.body // "") | gsub("\\s+$"; "") | split("\n") | last) == "@MARKER@";
-        ([.reviews[] | select(.submittedAt != null and (replies | not))]
-         | max_by(.submittedAt)) as $r
+        ([.reviews[] | select(.submittedAt != null)] | max_by(.submittedAt)) as $r
         | if $r == null then empty
-          elif any((.reviews[] | select(.submittedAt != null) | {t: .submittedAt, r: replies}),
-                   (.comments[] | {t: .createdAt, r: replies});
-                   .t > $r.submittedAt and .r)
+          elif any(.comments[];
+                   .createdAt > $r.submittedAt
+                   and ((.body // "") | gsub("\\s+$"; "") | split("\n") | last) == "@MARKER@")
           then empty
           else "\($r.author.login) \($r.state) \($r.submittedAt)" end'
     unanswered="$(gh pr view "$n" --json reviews,comments --jq "${reply_filter//@MARKER@/$marker}")"

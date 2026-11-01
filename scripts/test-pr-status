@@ -6,8 +6,9 @@
 # Cases: a PR whose head contains origin/main and whose newest review has a reply ending with
 # the marker line is READY; no review is READY; a review with no reply, a reply without the
 # marker, a reply with text after the marker, a reply older than the review, and a review
-# without findings left unanswered are each NOT READY, and the newest review decides; a head
-# behind origin/main is NOT READY.
+# without findings left unanswered are each NOT READY, and the newest review decides; a later
+# review, or an agent review ending in the marker, is not a reply; a head behind origin/main is
+# NOT READY.
 # Exit status: 0 when every case holds, 1 otherwise.
 set -uo pipefail
 
@@ -124,18 +125,19 @@ $marker")]"
 expect "READY" "a reply to the newest review"
 pr "$current" "[$review,$(jq -c '.body = "" | .state = "APPROVED"' <<<"$later_review")]" "[$reply]"
 expect "NOT READY" "an approval with no findings still needs a reply" "APPROVED"
-# A later review ending in the marker is a reply; a review that ends in the marker is not
-# itself a review to answer.
+# A review is answered by a later PR comment only: a later review, also one that ends in the
+# marker (an agent's review), is not a reply.
 marked="$(jq -c --arg m "$marker" '.body = "Round 2 ok.\n\n" + $m
     | .submittedAt = "2026-01-05T00:00:00Z"' <<<"$later_review")"
-pr "$current" "[$review]" "[]"
-expect "NOT READY" "a review alone, before the later-review cases" "review unanswered"
 pr "$current" "[$review,$marked]" "[]"
-expect "READY" "a later review ending with the marker is a reply"
-pr "$current" "[$review,$later_review,$marked]" "[]"
-expect "READY" "the marker review answers the newest review before it"
+expect "NOT READY" "a later review ending with the marker is not a reply" "review unanswered"
 pr "$current" "[$marked]" "[]"
-expect "READY" "a review that ends with the marker needs no reply"
+expect "NOT READY" "an agent review ending with the marker, no later comment" \
+    "review unanswered (rev COMMENTED 2026-01-05"
+pr "$current" "[$marked]" "[$(comment 2026-01-06T00:00:00Z "Fixed in abc123.
+
+$marker")]"
+expect "READY" "an agent review answered by a later comment"
 pr "$old" "[]" "[]"
 expect "NOT READY" "a head behind origin/main" "behind origin/main by 1"
 
