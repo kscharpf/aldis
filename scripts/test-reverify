@@ -18,6 +18,10 @@
 # own jq filter (so that a completed run is not cancelled; the cases need `jq` and are skipped
 # without it), and a failing `gh pr view`, a PR that is not open, a failing `git fetch`, a
 # merge-base that exits 128, and a failing `gh run list` each cancel nothing.
+# Every wait times out (`--timeout <min>`, exit 5, with a TIMEOUT line, the lock released, and the
+# line shown by `--status`): the hosted run, the `--wait` queue, `--cancel`, and `--status --wait`;
+# a bad `--timeout` is a usage error. The cases run a minute as a second (REVERIFY_SECONDS_PER_MIN)
+# against stubs that never finish; the test kills its stubs on exit.
 # Not covered: GitHub itself (dispatch, watch, the real STALE gate of `verify assemble`).
 # VERBOSE=1 prints the output of the script under test after each failed case.
 # Exit status: 0 when every case holds, 1 otherwise.
@@ -26,7 +30,17 @@ set -uo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
 script="$here/reverify"
 work="$(mktemp -d "${TMPDIR:-/tmp}/reverify-test.XXXXXX")"
-trap 'jobs -p | xargs kill 2>/dev/null; rm -rf "$work"' EXIT
+# On exit, kill every child of the test: the background runs and, below them, the stubs (their
+# command lines hold $work/bin), so that a run of the test leaves no process holding a lock.
+cleanup() {
+    jobs -p | xargs kill 2>/dev/null
+    ps -axo pid=,command= | awk -v dir="$work/bin/" 'index($0, dir) { print $1 }' | xargs kill 2>/dev/null
+    rm -rf "$work"
+}
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+trap 'exit 129' HUP
 repo="$work/repo"
 stub="$work/stub"
 mkdir -p "$stub" "$work/bin"
@@ -539,6 +553,47 @@ expect "gh run list fails: said so" said "cannot list the runs; nothing cancelle
 expect "gh run list fails: nothing cancelled" nothing_cancelled
 reset ok
 fi
+
+echo "# --timeout: every wait ends with a TIMEOUT line and exit 5 (a minute is a second here)"
+export REVERIFY_SECONDS_PER_MIN=1
+reset ok
+touch "$stub/container" "$stub/hold-watch-all"
+run --timeout 1 7
+expect "the hosted run: TIMEOUT line with PR, run id and short head" said_re "^#7 TIMEOUT: pr-7 run 101 head [0-9a-f]{7} still running after 1 min"
+expect "the hosted run: exit status 5" status_is 5
+expect "the hosted run: the lock is released" lock_gone 7
+run --status 7
+expect "--status shows the recorded TIMEOUT" said_re "^#7 TIMEOUT: pr-7 run 101 head [0-9a-f]{7}.*\\(head [0-9a-f]{7}, finished"
+expect "--status: exit status 5" status_is 5
+rm -f "$stub/container" "$stub/hold-watch-all"
+
+reset block
+bg a 7
+wait_for "$stub/publish-pids"
+run --wait --timeout 1 7
+expect "--wait queue: TIMEOUT line with the PR" said_re "^#7 TIMEOUT: still queued after 1 min behind the reverify of pid $pid_a"
+expect "--wait queue: exit status 5" status_is 5
+expect "--wait queue: the holder is untouched" kill -0 "$pid_a"
+run --cancel --timeout 1 7
+expect "--cancel (implies --wait): TIMEOUT" said "#7 TIMEOUT: still queued"
+expect "--cancel: exit status 5" status_is 5
+run --status --wait --timeout 1 7
+expect "--status --wait: TIMEOUT line" said_re "^#7 TIMEOUT: still running after 1 min \\(reverify pid $pid_a"
+expect "--status --wait: exit status 5" status_is 5
+run --status 7
+expect "a timeout of the waiter records nothing: --status still says running" status_is 3
+touch "$stub/release"
+wait "$pid_a"
+expect "the holder finishes" grep -Fq "#7 pr-7 local success" "$work/bg.a"
+
+reset ok
+run --timeout 0 7
+expect "--timeout 0 is a usage error" status_is 2
+run --timeout x 7
+expect "--timeout x is a usage error" status_is 2
+run --timeout
+expect "--timeout without a value is a usage error" status_is 2
+unset REVERIFY_SECONDS_PER_MIN
 
 if [ "$failures" -eq 0 ]; then
     echo "reverify: every case holds"
