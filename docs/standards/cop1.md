@@ -14,7 +14,7 @@ FARM-1 protocol states (232.1 §6.2): S1 (`Open`), S2 (`Wait`), S3 (`Lockout`).
 
 | ID | Requirement | Source | Verif. |
 |---|---|---|---|
-| COP-001 | FOP-1 SHALL implement **every cell** of Table 5-1: states S1–S6, events E1–E46 **and E101–E104** (added in Rev. B), with the exact actions and next states, including the Cor. 1 changes. | 232.1 §5.3, Table 5-1; Cor. 1 | V |
+| COP-001 | FOP-1 SHALL implement **every cell** of Table 5-1: states S1–S6, events E1–E46 **and E101–E104** (added in Rev. B), with the exact actions and next states, including the Cor. 1 changes, except for the timer in S3 under E16 and E104, which COP-013 sets (OI-67). | 232.1 §5.3, Table 5-1; Cor. 1 | V |
 | COP-002 | FARM-1 SHALL implement every cell of Table 6-1: states S1–S3, events E1–E11. | 232.1 §6.3, Table 6-1 | V |
 | COP-003 | Each state table SHALL be represented in the implementation as **data** (a table of state × event → actions + next state), not as scattered conditionals. The table SHALL be reviewed cell by cell against the Blue Book (inspection record kept). | — | I |
 | COP-004 | Every engine transition SHALL be attributable to an event number. Status snapshots and alert events SHALL include the event number and prior state that caused them. | 232.1 §4.3 note (Alert) | T |

@@ -212,6 +212,8 @@ struct Outcome {
     retransmissions: usize,
     stalls: usize,
     discarded: usize,
+    /// Expiries of T1 while FOP-1 is in S3 (E16, E104; OI-67).
+    s3_expiries: usize,
 }
 
 const fn fdu(index: u16) -> [u8; FDU_LEN] {
@@ -421,6 +423,9 @@ impl World {
             .next_deadline()
             .is_some_and(|d| d.as_micros() <= self.now)
         {
+            if self.ground.state() == Fop1State::RetransmitWithWait {
+                self.outcome.s3_expiries += 1;
+            }
             self.ground_input(Fop1Input::Timeout);
         }
         if self.resume_due && self.ground.state() == Fop1State::Initial {
@@ -931,5 +936,9 @@ fn a_timer_that_expires_in_s3_is_rearmed_so_that_the_transfer_ends() {
     };
     let seed = 5_298_483_145_364_017_037;
     let o = World::new(s, seed).run();
+    assert!(
+        o.s3_expiries > 0,
+        "the seed no longer reaches an expiry of T1 in S3; find another: {o:?}"
+    );
     assert_outcome(&s, seed, &o);
 }

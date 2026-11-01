@@ -367,7 +367,7 @@ mod fop1_runner {
     }
 
     /// Runs every scenario of `name`; returns the number run, the number skipped, and the
-    /// failures.
+    /// failures. A superseded scenario (TV-021) is in none of the counts.
     pub(super) fn run_file(name: &str) -> (usize, usize, Vec<String>) {
         let file = load(name, "fop1");
         let (mut run, mut skipped, mut failures) = (0, 0, Vec::new());

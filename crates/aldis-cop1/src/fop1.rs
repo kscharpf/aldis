@@ -3014,7 +3014,7 @@ mod tests {
     /// recovered when the Wait Flag clears (232.1 §5.1.9.1).
     #[test]
     fn t1_is_rearmed_when_it_expires_in_s3() {
-        // req: COP-013, COP-040
+        // req: COP-013
         for tt in [TimeoutType::Tt0, TimeoutType::Tt1] {
             let f = Engine::new(config(tt, 3)).unwrap();
             let (a, _) = go(&f, directive(1, Directive::InitiateAdWithoutClcwCheck), 0);
