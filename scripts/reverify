@@ -12,22 +12,15 @@
 #
 # Phase 1, per PR in order: check it is open; use the worktree of its head branch (or add one
 # under .claude/worktrees/reverify-<n>); refuse when that worktree is dirty or holds commits the
-# remote lacks; number the open issues the branch adds and merge origin/main (below); run
-# `cargo xtask ci`; push; then, if the merged head needs no
+# remote lacks; merge origin/main (a conflict that is only open-issue table rows is resolved by
+# keeping both sides, see resolve_oi_table; any other conflict fails); run `cargo xtask ci`; push;
+# then, if the merged head needs no
 # container (`cargo xtask verify list`: every gating check skipped or reused, as for a stacked
 # PR whose base has merged, VER-056), run `cargo xtask verify --publish` here (no image, no
 # engine; on macOS it also runs the host-bound test-macos, about two minutes); otherwise
 # dispatch verify.yml on the branch and note the new run. A branch already up to date with
 # origin/main whose head has a successful or in-progress run reuses that run. A failure marks
 # the PR failed and goes on.
-# Open-issue IDs are assigned here, not by the author (docs/09-open-issues.md): before the merge,
-# scripts/assign-oi-ids replaces each `OI-NEW-<slug>` placeholder of the branch by the next free OI
-# number (but leaves a placeholder whose row an open parent PR also holds until that PR has merged),
-# renumbers an open issue the branch added whose number origin/main has since taken, and
-# commits; a merge whose only conflict is rows of the open-issue table is finished by keeping both
-# sides (any other conflict fails as below); after the merge it puts the table in number order and
-# commits. A run with nothing to
-# number changes nothing. The gate (`spec-lint --numbered`) refuses a branch with a placeholder.
 # Phase 2: wait for the dispatched runs (they run concurrently on GitHub) and print one line per
 # PR: `#<n> <branch> <run-id> <conclusion>` (`local` for a run made here) or
 # `#<n> failed: <reason>`. A run that did not succeed is labelled STALE when its head does not
@@ -144,7 +137,6 @@ margin_s=$((15 * secs_per_min))
 
 export NO_COLOR=1 GH_FORCE_TTY=0 GH_NO_UPDATE_NOTIFIER=1
 
-script_dir="$(cd "$(dirname "$0")" && pwd)"
 main_checkout="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")"
 state_dir="$(git rev-parse --path-format=absolute --git-common-dir)/reverify"
 mkdir -p "$state_dir"
@@ -458,10 +450,43 @@ fail() {
     return 1
 }
 
+# Finish a conflicted merge of origin/main by keeping both sides, ordered by number, when
+# docs/09-open-issues.md is the only conflicted file and every line on both sides of every hunk is
+# a table row (`| OI-`): two PRs that append a row. Anything else returns 1 and touches nothing.
+resolve_oi_table() {
+    local dir="$1" doc=docs/09-open-issues.md
+    [ "$(git -C "$dir" diff --name-only --diff-filter=U)" = "$doc" ] || return 1
+    perl -e '
+        my ($file) = @ARGV;
+        open my $in, "<", $file or die "$file: $!";
+        my ($state, @out, @rows) = ("text");
+        sub num { $_[0] =~ /^\| OI-(\d+)/ ? $1 : 0 }
+        while (my $l = <$in>) {
+            if ($l =~ /^<<<<<<< / && $state eq "text") { $state = "ours"; @rows = (); next; }
+            if ($l =~ /^\|\|\|\|\|\|\| / && $state eq "ours") { $state = "base"; next; }
+            if ($l =~ /^=======$/ && ($state eq "ours" || $state eq "base")) {
+                $state = "theirs"; next;
+            }
+            if ($l =~ /^>>>>>>> / && $state eq "theirs") {
+                push @out, sort { num($a) <=> num($b) } @rows;
+                $state = "text"; next;
+            }
+            if ($state eq "base") { exit 1 if $l !~ /^\| OI-/; next; }
+            if ($state ne "text") { exit 1 if $l !~ /^\| OI-/; push @rows, $l; next; }
+            push @out, $l;
+        }
+        exit 1 if $state ne "text";
+        close $in;
+        open my $o, ">", $file or die "$file: $!";
+        print $o @out;
+        close $o or die "$file: $!";
+    ' "$dir/$doc" || return 1
+    git -C "$dir" add -- "$doc" && git -C "$dir" commit -q --no-edit
+}
+
 # Prepare one PR. Sets `branch`, `run_id` (dispatched or reused) and, on failure, `reason`.
 prepare_one() {
-    local pr="$1" info state dir head before_oi oi_prs others num br sha
-    local dispatched before found plan
+    local pr="$1" info state dir head dispatched before found plan
     reason=""
     branch=""
     run_id=""
@@ -496,35 +521,14 @@ prepare_one() {
     git -C "$dir" merge --ff-only --quiet "origin/$branch" ||
         fail "cannot fast-forward to origin/$branch" || return 1
 
-    before_oi="$(git -C "$dir" rev-parse HEAD)"
-    # The heads of the other open PRs, for a placeholder whose row an open parent PR holds.
-    oi_prs=""
-    if grep -qE '^\| OI-NEW-' "$dir/docs/09-open-issues.md" 2>/dev/null; then
-        oi_prs="$(mktemp "${TMPDIR:-/tmp}/reverify-oi.XXXXXX")"
-        others="$(gh pr list --state open --base main --limit 200 --json number,headRefName \
-            --jq '.[] | "\(.number) \(.headRefName)"')" || {
-            rm -f "$oi_prs"
-            fail "cannot list the open pull requests" || return 1
-        }
-        while read -r num br; do
-            [ -n "$num" ] && [ "$num" != "$pr" ] || continue
-            sha="$(git -C "$dir" rev-parse --verify --quiet "origin/$br")" || continue
-            echo "$num $sha" >>"$oi_prs"
-        done <<<"$others"
+    if ! git -C "$dir" merge --no-edit origin/main; then
+        if resolve_oi_table "$dir"; then
+            echo "#$pr: kept both sides of an OI table conflict; check for duplicate IDs"
+        else
+            git -C "$dir" merge --abort || true
+            fail "merge conflict with origin/main; resolve by hand in $dir" || return 1
+        fi
     fi
-    OI_PR="$pr" OI_OPEN_PRS="$oi_prs" "$script_dir/assign-oi-ids" number "$dir" || {
-        rm -f "$oi_prs"
-        fail "cannot number the open issues in $dir" || return 1
-    }
-    rm -f "$oi_prs"
-    if ! git -C "$dir" merge --no-edit origin/main &&
-        ! "$script_dir/assign-oi-ids" resolve "$dir"; then
-        git -C "$dir" merge --abort || true
-        git -C "$dir" reset --hard --quiet "$before_oi"
-        fail "merge conflict with origin/main; resolve by hand in $dir" || return 1
-    fi
-    "$script_dir/assign-oi-ids" tidy "$dir" ||
-        fail "cannot put the open issues in order in $dir" || return 1
     head="$(git -C "$dir" rev-parse HEAD)"
     work_dir="$dir"
     work_head="$head"

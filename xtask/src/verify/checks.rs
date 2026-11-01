@@ -647,8 +647,7 @@ cargo run -p refapp-harness --locked -- compare
 ";
 
 const SPEC: &str = "\
-# --numbered: a placeholder of an open issue not yet numbered by scripts/reverify fails.
-cargo xtask spec-lint --numbered
+cargo xtask spec-lint
 cargo xtask links
 cargo xtask vectors validate
 # The files of test-vectors/cop1/ are what the independent model writes (TV-023).

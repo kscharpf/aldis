@@ -28,15 +28,9 @@
 # several; the background watcher is gone after a
 # timeout. The cases run a minute as a second (REVERIFY_SECONDS_PER_MIN)
 # against stubs that never finish; the test kills its stubs on exit.
-# Open-issue IDs are assigned at merge (scripts/assign-oi-ids): a placeholder in the branch is
-# numbered in the row and in every reference, a second run changes nothing, two PRs that append a
-# row at the end of the table merge without a conflict and get consecutive numbers, a number the
-# branch added that main has taken since is renumbered with its references, and a failed merge
-# keeps no number commit; a conflict that is only table rows is resolved by keeping both sides, a
-# conflict in prose of docs/09 or in another file fails; a branch stacked on a merged PR that added
-# an open issue takes the number of its parent (the OI-Assigned trailer), and a fresh placeholder
-# with the same slug does not; while the parent is still open the child's copy of its placeholder
-# is left unnumbered (it waits for the parent), and the parent does not wait for its child.
+# A merge whose only conflict is rows of the open-issue table in docs/09-open-issues.md (two PRs
+# that append a row) is finished by keeping both sides in number order, with a line saying so; a
+# conflict in the prose of docs/09 or in another file aborts the merge and pushes nothing.
 # Not covered: GitHub itself (dispatch, watch, the real STALE gate of `verify assemble`).
 # VERBOSE=1 prints the output of the script under test after each failed case.
 # Exit status: 0 when every case holds, 1 otherwise.
@@ -72,7 +66,7 @@ echo init >"$repo/init.txt"
 # The open-issue table (docs/09-open-issues.md).
 mkdir -p "$repo/docs"
 printf '%s\n' "# 09 - Open issues" "" "| ID | Issue | Status |" "|---|---|---|" \
-    "| OI-01 | first | Open |" "| OI-02 | second | Open |" >"$repo/docs/09-open-issues.md"
+    "| OI-01 | **first** | Open |" "| OI-02 | **second** | Open |" >"$repo/docs/09-open-issues.md"
 git -C "$repo" add init.txt docs
 git -C "$repo" commit -q -m init
 git -C "$repo" push -q -u origin main
@@ -804,157 +798,84 @@ expect "--all-behind with a PR number is a usage error" status_is 2
 run --all-behind --status
 expect "--all-behind with --status is a usage error" status_is 2
 
-echo "# open-issue IDs are assigned at merge (scripts/assign-oi-ids)"
+echo "# a conflict in docs/09-open-issues.md"
 oi_doc=docs/09-open-issues.md
-oi_branch() { # oi_branch <pr> <branch> <row> <file> <text>: a PR from origin/main with a new row
+oi_branch() { # oi_branch <pr> <branch> <text> <file>: a PR from origin/main; $3 is appended to docs/09
     git -C "$work/other" fetch -q origin
     git -C "$work/other" checkout -q -B "$2" origin/main
     printf '%s\n' "$3" >>"$work/other/$oi_doc"
-    printf '%s\n' "$5" >"$work/other/$4"
+    [ -z "${4:-}" ] || echo "branch" >"$work/other/$4"
     git -C "$work/other" add -A
     git -C "$work/other" commit -q -m "$2"
     git -C "$work/other" push -q -f origin "$2" >/dev/null 2>&1
     git -C "$work/other" checkout -q main
     echo "$2" >"$stub/pr-$1"
 }
-oi_merge() { # oi_merge <branch>: merge it into origin/main, as the maintainer would
+oi_main() { # oi_main <text> [<file>]: main gets $1 appended to docs/09, or $2 rewritten
     git -C "$work/other" fetch -q origin
     git -C "$work/other" checkout -q -B main origin/main
-    git -C "$work/other" merge -q --no-edit "origin/$1" >/dev/null
+    printf '%s\n' "$1" >>"$work/other/$oi_doc"
+    [ -z "${2:-}" ] || echo "main" >"$work/other/$2"
+    git -C "$work/other" commit -q -am "main"
     git -C "$work/other" push -q origin main >/dev/null 2>&1
 }
 oi_show() { git -C "$work/other" fetch -q origin && git -C "$work/other" show "origin/$1:$2"; }
-oi_has() { oi_show "$1" "$2" | grep -Fq -- "$3"; } # oi_has <branch> <file> <text>
-oi_rows() { oi_show "$1" "$oi_doc" | grep -oE '^\| OI[-A-Za-z0-9]+' | tr -d '| \n'; echo; }
 oi_head() { git -C "$work/other" rev-parse "origin/$1"; }
+oi_rows() { oi_show "$1" "$oi_doc" | grep -oE '^\| OI-[0-9]+' | tr -d '| \n'; echo; }
 rows_are() { [ "$(oi_rows "$1")" = "$2" ]; } # rows_are <branch> <ids joined by nothing>
-new=NEW # the placeholders are built here: the gate refuses one in a tracked file
-new_a="OI-$new-alpha"
-new_b="OI-$new-beta"
-oi_branch 11 oi-a "| $new_a | alpha | Open |" a.md "see $new_a, not $new_a-x or OI-01"
-oi_branch 12 oi-b "| $new_b | beta | Open |" b.md "see $new_b"
-printf '%s\n' "11 oi-a" "12 oi-b" >"$stub/open-prs"
 
+# Two PRs append a row: the first merged, the second keeps both, in number order.
+oi_branch 31 oi-a "| OI-03 | **alpha** | Open |"
+oi_main "| OI-04 | **beta** | Open |"
 reset ok
-run 11
-expect "a placeholder is numbered: success" said "#11 oi-a local success"
-expect "the number commit is announced" said "assign-oi-ids: $new_a as OI-03"
-expect "the row has the number" oi_has oi-a $oi_doc "| OI-03 | alpha | Open |"
-expect "every reference has it" oi_has oi-a a.md "see OI-03, not $new_a-x or OI-01"
-expect "no placeholder is left in the table" rows_are oi-a OI-01OI-02OI-03
-head_a="$(oi_head oi-a)"
-reset ok
-run 11
-expect "a second run changes nothing" test "$(oi_head oi-a)" = "$head_a"
-expect "a second run succeeds" said "#11 oi-a local success"
+run 31
+expect "two appended rows: success" said "#31 oi-a local success"
+expect "the resolution is announced" \
+    said "#31: kept both sides of an OI table conflict; check for duplicate IDs"
+expect "both rows are kept, in number order" rows_are oi-a OI-01OI-02OI-03OI-04
+expect "no conflict marker is left" bash -c '! git -C "$0" show "origin/oi-a:$1" | grep -q "^[<=>]\{7\}"' \
+    "$work/other" "$oi_doc"
 
-oi_merge oi-a
+# Order by number, whichever side holds the lower one.
+oi_branch 32 oi-b "| OI-06 | **gamma** | Open |"
+oi_main "| OI-05 | **delta** | Open |"
 reset ok
-run 12
-expect "both rows were appended at the end: no conflict" said "#12 oi-b local success"
-expect "the second PR gets the next number, after the first" rows_are oi-b OI-01OI-02OI-03OI-04
-expect "its reference follows" oi_has oi-b b.md "see OI-04"
-expect "the merged row keeps its number" oi_has oi-b $oi_doc "| OI-03 | alpha | Open |"
-expect "its own row has the number" oi_has oi-b $oi_doc "| OI-04 | beta | Open |"
-expect "the conflict of the two appended rows is resolved by keeping both" \
-    said "assign-oi-ids: kept both sides of the open-issue rows that conflicted"
-expect "the rows are put in order afterwards" said "assign-oi-ids: open issues put in number order"
+run 32
+expect "the lower number goes first" rows_are oi-b OI-01OI-02OI-04OI-05OI-06
 
-echo "# an open issue numbered before another PR merged is renumbered when its number is taken"
-oi_merge oi-b
-oi_branch 13 oi-c "| OI-05 | gamma | Open |" c.md "see OI-05 and OI-01; OI-50 is not ours"
-oi_branch 14 oi-d "| OI-05 | delta | Open |" d.md "see OI-05 and OI-01; OI-50 is not ours"
-oi_merge oi-c
+# The same number on both sides: both are kept, and spec-lint names the duplicate at the gate.
+oi_branch 33 oi-c "| OI-07 | **eps** | Open |"
+oi_main "| OI-07 | **zeta** | Open |"
 reset ok
-run 14
-expect "the clash is renumbered: success" said "#14 oi-d local success"
-expect "the renumbering is announced" said "assign-oi-ids: OI-05 as OI-06"
-expect "the other PR's row stays" oi_has oi-d $oi_doc "| OI-05 | gamma | Open |"
-expect "the branch's row moves to the next number" oi_has oi-d $oi_doc "| OI-06 | delta | Open |"
-expect "rows are in order" rows_are oi-d OI-01OI-02OI-03OI-04OI-05OI-06
-expect "its references follow" oi_has oi-d d.md "see OI-06 and OI-01; OI-50 is not ours"
-expect "the merged PR's file is not rewritten" oi_has oi-d c.md "see OI-05 and OI-01"
+run 33
+expect "equal numbers: both rows are kept" rows_are oi-c OI-01OI-02OI-04OI-05OI-07OI-07
 
-echo "# a failed merge leaves no number commit behind"
-oi_branch 15 oi-e "| OI-$new-eps | epsilon | Open |" init.txt "branch side"
-git -C "$work/other" checkout -q -B main origin/main
-echo "main side" >"$work/other/init.txt"
-git -C "$work/other" commit -q -am "main edits init.txt"
-git -C "$work/other" push -q origin main >/dev/null 2>&1
-head_e="$(oi_head oi-e)"
-reset ok
-run 15
-expect "a conflicting merge fails as before" said "merge conflict with origin/main"
-expect "the number commit is not kept" bash -c \
-    '[ "$(git -C "$0" rev-parse oi-e 2>/dev/null || git -C "$0" rev-parse HEAD)" = "$1" ]' \
-    "$repo/.claude/worktrees/reverify-15" "$head_e"
-expect "nothing was pushed" test "$(oi_head oi-e)" = "$head_e"
-
-echo "# a conflict in the prose of docs/09 is not resolved"
+# A conflict in the prose of docs/09 aborts, and pushes nothing.
 git -C "$work/other" fetch -q origin
 git -C "$work/other" checkout -q -B oi-p origin/main
 perl -pi -e '$. == 1 and $_ = "# 09 - Open issues (branch)\n"' "$work/other/$oi_doc"
 git -C "$work/other" commit -q -am "oi-p"
 git -C "$work/other" push -q -f origin oi-p >/dev/null 2>&1
-echo oi-p >"$stub/pr-16"
+echo oi-p >"$stub/pr-34"
 git -C "$work/other" checkout -q -B main origin/main
 perl -pi -e '$. == 1 and $_ = "# 09 - Open issues (main)\n"' "$work/other/$oi_doc"
 git -C "$work/other" commit -q -am "main edits the title"
 git -C "$work/other" push -q origin main >/dev/null 2>&1
 head_p="$(oi_head oi-p)"
 reset ok
-run 16
-expect "a prose conflict fails" said "merge conflict with origin/main"
+run 34
+expect "a prose conflict aborts" said "merge conflict with origin/main"
 expect "a prose conflict pushes nothing" test "$(oi_head oi-p)" = "$head_p"
 
-echo "# a PR stacked on a merged PR takes its parent's number; an equal slug elsewhere does not"
-sa="OI-$new-stack"
-sb="OI-$new-child"
-oi_branch 21 oi-s1 "| $sa | parent | Open |" sa.md "A $sa"
-orig_a="$(oi_head oi-s1)"
-oi_branch 22 oi-s3 "| $sa | coincidence | Open |" sc.md "C $sa"
-git -C "$work/other" checkout -q -B oi-s2 "$orig_a"
-printf '%s\n' "| $sb | child | Open |" >>"$work/other/$oi_doc"
-printf '%s\n' "B refs $sa and $sb" >"$work/other/sb.md"
-git -C "$work/other" add -A
-git -C "$work/other" commit -q -m oi-s2
-git -C "$work/other" push -q -f origin oi-s2 >/dev/null 2>&1
-git -C "$work/other" checkout -q main
-echo oi-s2 >"$stub/pr-23"
-printf '%s\n' "21 oi-s1" "22 oi-s3" "23 oi-s2" >"$stub/open-prs"
+# A conflict in another file aborts, though docs/09 also conflicts on rows.
+oi_branch 35 oi-e "| OI-08 | **eta** | Open |" init.txt
+oi_main "| OI-09 | **theta** | Open |" init.txt
+head_e="$(oi_head oi-e)"
 reset ok
-run 23
-expect "the child of an open parent waits: said so" \
-    said "#23: OI placeholder $sa waits for #21 to merge"
-expect "the child still succeeds" said "#23 oi-s2 local success"
-expect "the parent's placeholder is not numbered" oi_has oi-s2 sb.md "B refs $sa and OI-06"
-expect "the parent's row stays a placeholder" oi_has oi-s2 $oi_doc "| $sa | parent | Open |"
-expect "the equal slug of an unrelated PR does not make the parent wait" bash -c \
-    '! printf "%s\n" "$0" | grep -Fq "waits for #22"' "$out"
-reset ok
-run 21
-expect "the parent is numbered, though a child holds its row" \
-    said "assign-oi-ids: $sa as OI-06"
-expect "the parent does not wait for its child" \
-    bash -c '! printf "%s\n" "$0" | grep -Fq waits' "$out"
-git -C "$work/other" fetch -q origin
-expect "the number is recorded as a trailer" bash -c \
-    'git -C "$0" log --format=%B origin/oi-s1 | grep -Fxq "OI-Assigned: $1 OI-06"' \
-    "$work/other" "$sa"
-oi_merge oi-s1
-reset ok
-run 23
-expect "the child succeeds" said "#23 oi-s2 local success"
-expect "the child inherits its parent's number: one row each" \
-    rows_are oi-s2 OI-01OI-02OI-03OI-04OI-05OI-06OI-07
-expect "its references have both numbers" oi_has oi-s2 sb.md "B refs OI-06 and OI-07"
-oi_merge oi-s2
-reset ok
-run 22
-expect "the equal slug is fresh: success" said "#22 oi-s3 local success"
-expect "it gets its own number" rows_are oi-s3 OI-01OI-02OI-03OI-04OI-05OI-06OI-07OI-08
-expect "its reference follows" oi_has oi-s3 sc.md "C OI-08"
-expect "the parent's row is untouched" oi_has oi-s3 $oi_doc "| OI-06 | parent | Open |"
+run 35
+expect "a conflict in another file aborts" said "merge conflict with origin/main"
+expect "it pushes nothing" test "$(oi_head oi-e)" = "$head_e"
+expect "it does not announce a resolution" bash -c '! printf "%s\n" "$0" | grep -Fq "kept both"' "$out"
 
 if [ "$failures" -eq 0 ]; then
     echo "reverify: every case holds"

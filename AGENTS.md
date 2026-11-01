@@ -79,7 +79,7 @@ Clippy runs with the `all` and `pedantic` groups denied, plus restriction lints 
 - **Agent comments:** end every comment or review an agent posts on GitHub with the line `🤖 Generated with [Claude Code](https://claude.com/claude-code)`. Agents post under the maintainer's account, and `cargo xtask metrics` tells their words apart by this marker.
 - **Search boundaries:** confine all file and text searches strictly to the active repository workspace; prefer git-aware search tools (`git grep`, `git ls-files`) over recursive filesystem walks (`grep -r`, `find .`). Never inspect external application or cache directories (e.g. `~/.gemini/`, `~/.cache`), `.git/`, or internal session worktrees (`.claude/`).
 - **GitHub CLI queries:** always query GitHub CLI commands with structured output flags (`--json` or `-q`), never raw interactive commands (e.g. use `gh run view --json status,conclusion,jobs` or `gh run list --workflow= -L 1`).
-- **Spec changes:** when behavior changes, update the requirement table in the same change. New requirements get the next free ID in their area; IDs are never reused. **Open issues are the exception:** write the placeholder `OI-NEW-<slug>` in the row and in every reference, never a number; `scripts/reverify` assigns the number when it brings the branch up to date with `main` ([09](docs/09-open-issues.md)).
+- **Spec changes:** when behavior changes, update the requirement table in the same change. New requirements get the next free ID in their area; IDs are never reused. Open issues follow the same rule: take the next free `OI-<number>`; if `spec-lint` reports a collision after a merge of `main`, renumber your own row and its references ([09](docs/09-open-issues.md)).
 
 ## Where things go
 

@@ -41,9 +41,7 @@ const HELP: &str = "\
 usage: cargo xtask <command>
 
 commands:
-  spec-lint [--numbered]       check requirement tables and every requirement-ID reference, and
-                               the open-issue IDs; --numbered (the gate) refuses an unnumbered
-                               OI placeholder
+  spec-lint                    check requirement tables and every requirement-ID reference
   trace [--scope <m>] [--strict]
                                requirement -> artefact matrix in target/spec/ (VER-020);
                                --strict fails on in-scope requirements without artefacts
@@ -208,7 +206,6 @@ fn fix() -> Result<usize, String> {
 fn run(args: &[&str]) -> Result<usize, String> {
     match args {
         ["spec-lint"] => spec::lint(),
-        ["spec-lint", "--numbered"] => spec::lint_numbered(),
         ["trace", rest @ ..] => {
             let scope = rest
                 .iter()
