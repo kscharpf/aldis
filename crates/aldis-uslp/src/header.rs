@@ -5,6 +5,7 @@ use aldis_core::ids::{MapId, SpacecraftId, VcId};
 use aldis_core::{Error, ErrorDetail, ErrorKind, FieldId};
 
 use crate::field;
+use crate::validate::{Reason, Rejection};
 
 /// The Spacecraft Identifier of a USLP frame: 16 bits (732.1 §4.1.2.2.3; API-002).
 pub type UslpSpacecraftId = SpacecraftId<16>;
@@ -389,12 +390,14 @@ impl RawRest {
 /// (732.1 §4.1.2.12.2; USLP-004, GEN-020).
 ///
 /// # Errors
-/// `Incomplete` (`needed` = 7 plus `len`) if `frame` ends inside the field.
-pub(crate) fn read_vcf_count(frame: &[u8], len: VcfCountLen) -> Result<VcfCount, Error> {
+/// A `LengthMismatch` rejection (USLP-014 check d) carrying `Incomplete` (`needed` = 7 plus
+/// `len`) if `frame` ends inside the field.
+pub(crate) fn read_vcf_count(frame: &[u8], len: VcfCountLen) -> Result<VcfCount, Rejection> {
     let end = PRIMARY_HEADER_LEN.saturating_add(len.octets());
-    let octets = frame
-        .get(PRIMARY_HEADER_LEN..end)
-        .ok_or(Error::incomplete(end))?;
+    let octets = frame.get(PRIMARY_HEADER_LEN..end).ok_or(Rejection::new(
+        Reason::LengthMismatch,
+        Error::incomplete(end),
+    ))?;
     let value = octets.iter().fold(0_u64, |v, &o| (v << 8) | u64::from(o));
     Ok(VcfCount { len, value })
 }
@@ -471,6 +474,7 @@ mod tests {
         read_vcf_count, start_octets,
     };
     use crate::field;
+    use crate::validate::Reason;
     use aldis_core::{ErrorDetail, ErrorKind};
 
     fn channel() -> ChannelFields {
@@ -562,11 +566,12 @@ mod tests {
             (rest.spare, rest.ocf_flag, rest.vcf_count_len, rest.kind()),
             (0, true, len, Ok(FrameKind::Expedited))
         );
-        assert_eq!(read_vcf_count(&o, len), Ok(count));
+        assert_eq!(read_vcf_count(&o, len).unwrap(), count);
         // req: GEN-020, USLP-004
         let short = read_vcf_count(&o[..8], len).unwrap_err();
+        assert_eq!(short.reason(), Reason::LengthMismatch);
         assert_eq!(
-            (short.kind(), short.detail()),
+            (short.error().kind(), short.error().detail()),
             (ErrorKind::Incomplete, ErrorDetail::Needed(10))
         );
         assert_eq!(

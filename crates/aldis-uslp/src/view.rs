@@ -278,8 +278,7 @@ fn parse_full<'a, L: VcLookup + ?Sized>(
             total,
             kind,
             rest.ocf_flag,
-            read_vcf_count(frame, rest.vcf_count_len)
-                .map_err(|e| fail(Reason::LengthMismatch, e))?,
+            read_vcf_count(frame, rest.vcf_count_len)?,
         ),
         octets: frame,
         layout,
