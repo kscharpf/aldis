@@ -6,10 +6,8 @@
 //! two share (Annex D1.3.1 note 2). The checks, their order, and their errors are those of
 //! `docs/standards/uslp-frame.md` §3.1.
 
-use core::ops::Range;
-
 use aldis_core::crc;
-use aldis_core::layout::{FECF_LEN, FrameLayout, LayoutSpec, OCF_LEN};
+use aldis_core::layout::{FECF_LEN, FrameLayout, FramedBytes, LayoutSpec, OCF_LEN};
 use aldis_core::ocf::Ocf;
 use aldis_core::security::SecurityLayout;
 use aldis_core::{AnomalySet, DecodeMode, Error, ErrorKind, FieldId, Lenient, Result};
@@ -43,48 +41,27 @@ pub(crate) const fn length(exact: bool, len: usize) -> Rejection {
     fail(Reason::LengthMismatch, error)
 }
 
-/// The fields of a non-truncated frame, cut at its layout.
-struct FullParts<'a> {
-    insert_zone: &'a [u8],
-    security_header: &'a [u8],
-    tfdf_header: TfdfHeader,
-    tfdz: &'a [u8],
-    security_trailer: &'a [u8],
-    ocf: &'a [u8],
-    fecf: &'a [u8],
-}
-
-/// Cuts `frame` at `layout` and parses the TFDF Header of the data field.
+/// Checks `frame` against `layout` and parses the TFDF Header of the data field.
 ///
-/// A layout computed for the frame's length always lies inside the frame, so a missing range is
-/// a broken invariant, reported as `InternalError` instead of a silently empty field (GEN-020).
-fn split_full<'a>(
-    frame: &'a [u8],
-    layout: &FrameLayout,
+/// A layout computed for the frame's length is as long as the frame, so a frame of another
+/// length is a broken invariant, reported as `InternalError` (GEN-020).
+fn split_full(
+    frame: &[u8],
+    layout: FrameLayout,
     fixed_tfdz: bool,
-) -> core::result::Result<FullParts<'a>, Rejection> {
-    let insert_zone = cut(frame, layout.secondary())?;
-    let security_header = cut(frame, layout.security_header())?;
-    let data = cut(frame, layout.data())?;
-    let security_trailer = cut(frame, layout.security_trailer())?;
-    let ocf = cut(frame, layout.ocf())?;
-    let fecf = cut(frame, layout.fecf())?;
-    let (tfdf_header, tfdz) = TfdfHeader::parse(data, fixed_tfdz).map_err(tfdf_rejection)?;
-    Ok(FullParts {
-        insert_zone,
-        security_header,
-        tfdf_header,
-        tfdz,
-        security_trailer,
-        ocf,
-        fecf,
-    })
+) -> core::result::Result<(FramedBytes<'_>, TfdfHeader), Rejection> {
+    let framed = framed(frame, layout)?;
+    let (tfdf_header, _) = TfdfHeader::parse(framed.data(), fixed_tfdz).map_err(tfdf_rejection)?;
+    Ok((framed, tfdf_header))
 }
 
-/// The octets of `frame` in `range`; a range outside the frame is a broken invariant, since
-/// every range comes from a layout computed for the frame's length (GEN-020).
-pub(crate) fn cut(frame: &[u8], range: Range<usize>) -> core::result::Result<&[u8], Rejection> {
-    frame.get(range).ok_or(internal())
+/// `frame` checked against `layout`; one of another length is a broken invariant, since every
+/// layout is computed for the length of the frame it is applied to (GEN-020).
+pub(crate) fn framed(
+    frame: &[u8],
+    layout: FrameLayout,
+) -> core::result::Result<FramedBytes<'_>, Rejection> {
+    FramedBytes::new(frame, layout).map_err(|_| internal())
 }
 
 /// The rejection for a layout that does not lie inside its frame: a broken invariant.
@@ -112,13 +89,8 @@ pub(crate) fn tfdf_rejection(e: Error) -> Rejection {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UslpFullFrame<'a> {
     header: UslpPrimaryHeader,
-    octets: &'a [u8],
-    layout: FrameLayout,
-    insert_zone: &'a [u8],
-    security_header: &'a [u8],
+    framed: FramedBytes<'a>,
     tfdf_header: TfdfHeader,
-    tfdz: &'a [u8],
-    security_trailer: &'a [u8],
     ocf: Option<Ocf>,
     fecf: Option<u16>,
 }
@@ -264,9 +236,8 @@ fn parse_full<'a, L: VcLookup + ?Sized>(
     if physical.fecf() {
         crc::verify_fecf(frame).map_err(|e| fail(Reason::FecfMismatch, e))?;
     }
-    let parts = split_full(frame, &layout, vc.fixed_tfdz())?;
-    let (tfdf_header, tfdz) = (parts.tfdf_header, parts.tfdz);
-    if oid && let Some(f) = oid_deviation(ch.map_id, tfdf_header, tfdz.len()) {
+    let (framed, tfdf_header) = split_full(frame, layout, vc.fixed_tfdz())?;
+    if oid && let Some(f) = oid_deviation(ch.map_id, tfdf_header, framed.data_zone().len()) {
         match mode {
             DecodeMode::Strict => return Err(fail(Reason::OidHeaderMismatch, invalid(f))),
             DecodeMode::Lenient => anomalies.insert(UslpAnomaly::OidHeaderMismatch),
@@ -280,21 +251,16 @@ fn parse_full<'a, L: VcLookup + ?Sized>(
             rest.ocf_flag,
             read_vcf_count(frame, rest.vcf_count_len)?,
         ),
-        octets: frame,
-        layout,
-        insert_zone: parts.insert_zone,
-        security_header: parts.security_header,
         tfdf_header,
-        tfdz,
-        security_trailer: parts.security_trailer,
-        ocf: parts
-            .ocf
+        ocf: framed
+            .ocf()
             .first_chunk::<OCF_LEN>()
             .map(|&octets| Ocf::decode(octets)),
-        fecf: parts
-            .fecf
+        fecf: framed
+            .fecf()
             .first_chunk::<FECF_LEN>()
             .map(|&octets| u16::from_be_bytes(octets)),
+        framed,
     };
     Ok(Parsed {
         frame,
@@ -529,27 +495,27 @@ impl<'a> UslpFrame<'a> {
 
     /// The Transfer Frame Data Zone, never empty (732.1 §4.1.4.3; GEN-013).
     #[must_use]
-    pub const fn tfdz(&self) -> &'a [u8] {
+    pub fn tfdz(&self) -> &'a [u8] {
         match self {
-            UslpFrame::Full(f) => f.tfdz,
+            UslpFrame::Full(f) => f.tfdz(),
             UslpFrame::Truncated(t) => t.tfdz(),
         }
     }
 
     /// The Security Header, empty without SDLS (732.1 §6.3.4, Annex D1.2.3; API-072).
     #[must_use]
-    pub const fn security_header(&self) -> &'a [u8] {
+    pub fn security_header(&self) -> &'a [u8] {
         match self {
-            UslpFrame::Full(f) => f.security_header,
+            UslpFrame::Full(f) => f.security_header(),
             UslpFrame::Truncated(t) => t.security_header(),
         }
     }
 
     /// The Security Trailer, empty without one (732.1 §6.3.6, Annex D1.2.3; API-072).
     #[must_use]
-    pub const fn security_trailer(&self) -> &'a [u8] {
+    pub fn security_trailer(&self) -> &'a [u8] {
         match self {
-            UslpFrame::Full(f) => f.security_trailer,
+            UslpFrame::Full(f) => f.security_trailer(),
             UslpFrame::Truncated(t) => t.security_trailer(),
         }
     }
@@ -560,7 +526,7 @@ impl<'a> UslpFrame<'a> {
     #[must_use]
     pub const fn layout(&self) -> &FrameLayout {
         match self {
-            UslpFrame::Full(f) => &f.layout,
+            UslpFrame::Full(f) => f.framed.layout(),
             UslpFrame::Truncated(t) => t.layout(),
         }
     }
@@ -569,7 +535,7 @@ impl<'a> UslpFrame<'a> {
     #[must_use]
     pub const fn octets(&self) -> &'a [u8] {
         match self {
-            UslpFrame::Full(f) => f.octets,
+            UslpFrame::Full(f) => f.framed.frame(),
             UslpFrame::Truncated(t) => t.octets(),
         }
     }
@@ -609,14 +575,14 @@ impl<'a> UslpFullFrame<'a> {
 
     /// The Insert Zone, empty without one (§4.1.3; USLP-008).
     #[must_use]
-    pub const fn insert_zone(&self) -> &'a [u8] {
-        self.insert_zone
+    pub fn insert_zone(&self) -> &'a [u8] {
+        self.framed.secondary()
     }
 
     /// The Security Header, empty without SDLS (§6.3.4; API-072).
     #[must_use]
-    pub const fn security_header(&self) -> &'a [u8] {
-        self.security_header
+    pub fn security_header(&self) -> &'a [u8] {
+        self.framed.security_header()
     }
 
     /// The TFDF Header (§4.1.4.2; USLP-005…USLP-007).
@@ -627,14 +593,14 @@ impl<'a> UslpFullFrame<'a> {
 
     /// The Transfer Frame Data Zone, never empty (§4.1.4.3; GEN-013).
     #[must_use]
-    pub const fn tfdz(&self) -> &'a [u8] {
-        self.tfdz
+    pub fn tfdz(&self) -> &'a [u8] {
+        self.framed.data_zone()
     }
 
     /// The Security Trailer, empty without one (§6.3.6; API-072).
     #[must_use]
-    pub const fn security_trailer(&self) -> &'a [u8] {
-        self.security_trailer
+    pub fn security_trailer(&self) -> &'a [u8] {
+        self.framed.security_trailer()
     }
 
     /// The Operational Control Field, when the OCF Flag is set (§4.1.5; CMN-010).
@@ -652,19 +618,19 @@ impl<'a> UslpFullFrame<'a> {
     /// Where the fields lie in [`octets`](Self::octets) (CMN-040).
     #[must_use]
     pub const fn layout(&self) -> &FrameLayout {
-        &self.layout
+        self.framed.layout()
     }
 
     /// The octets of the whole frame, borrowed from the input (GEN-013).
     #[must_use]
     pub const fn octets(&self) -> &'a [u8] {
-        self.octets
+        self.framed.frame()
     }
 
     /// Octets consumed from the input: the frame length (§4.1.2.7; API-011).
     #[must_use]
     pub const fn len(&self) -> usize {
-        self.octets.len()
+        self.framed.frame().len()
     }
 
     /// Always `false`: a frame has at least nine octets.
@@ -678,7 +644,7 @@ impl<'a> UslpFullFrame<'a> {
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     extern crate std;
-    use super::{UslpFrame, cut, oid_deviation, tfdf_rejection};
+    use super::{UslpFrame, framed, oid_deviation, split_full, tfdf_rejection};
     use crate::anomaly::UslpAnomaly;
     use crate::config::tests::{fixed, mapid, plain_variable, variable};
     use crate::field;
@@ -689,6 +655,7 @@ mod tests {
     use crate::upid::Upid;
     use crate::validate::{Reason, validate_frame, validate_frame_lenient};
     use aldis_core::crc::crc16;
+    use aldis_core::layout::FrameLayout;
     use aldis_core::ocf::Ocf;
     use aldis_core::{Error, ErrorDetail, ErrorKind, FieldId, Lenient};
     use std::vec;
@@ -1095,11 +1062,29 @@ mod tests {
     }
 
     #[test]
-    fn a_range_outside_the_frame_is_an_internal_error() {
+    fn a_layout_of_another_length_is_an_internal_error() {
         // req: GEN-020
-        let frame = [0_u8; 4];
-        assert_eq!(cut(&frame, 1..3).ok(), Some(&frame[1..3]));
-        let e = cut(&frame, 2..5).err().map(|r| r.error().kind());
+        let spec = aldis_core::layout::LayoutSpec {
+            frame_len: 12,
+            primary_header_len: 4,
+            secondary_len: 0,
+            security: aldis_core::security::SecurityLayout::NONE,
+            ocf: false,
+            fecf: false,
+        };
+        let layout = FrameLayout::compute(&spec).unwrap();
+        let frame = [0_u8; 12];
+        assert_eq!(
+            framed(&frame, layout.clone()).map(|f| f.frame().len()).ok(),
+            Some(12)
+        );
+        let e = framed(&frame[..11], layout.clone())
+            .err()
+            .map(|r| r.error().kind());
+        assert_eq!(e, Some(aldis_core::ErrorKind::InternalError));
+        let e = split_full(&frame[..11], layout, false)
+            .err()
+            .map(|r| r.error().kind());
         assert_eq!(e, Some(aldis_core::ErrorKind::InternalError));
     }
 }

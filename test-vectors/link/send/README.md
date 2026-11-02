@@ -4,7 +4,7 @@ Engine scenarios for the sending engines of [docs/04-engines.md](../../../docs/0
 
 **The JSON is never edited by hand.** `link_send.py --write` writes every file here in a fixed order and format; change the model, then regenerate. A file that is not released yet changes by regeneration; a released file only by new cases and `superseded` marks (TV-021).
 
-The files are awaiting their runner (`AWAITING_RUNNER` in `xtask/src/consistency.rs`, as `cop1/scenarios/` was): the engines are WP-3 (PacketGenerator), WP-4 (ChannelMux, Access and Bitstream generators), and WP-6 (MapSegmenter), and each of them removes its files from the exemption when its host test runs them. Until then the files are no evidence for `cargo xtask trace`.
+The `packet_generator_*.json` files are run by `crates/aldis-link/tests/packet_generator_vectors.rs` (M4 WP-3). The others are awaiting their runner (`AWAITING_RUNNER` in `xtask/src/consistency.rs`, as `cop1/scenarios/` was): the engines are WP-4 (ChannelMux, Access and Bitstream generators) and WP-6 (MapSegmenter), and each of them removes its files from the exemption when its host test runs them. Until then those files are no evidence for `cargo xtask trace`.
 
 | File | Engine | Content | Requirements |
 |---|---|---|---|

@@ -82,7 +82,6 @@ use {
     aldis_uslp::{PRIMARY_HEADER_LEN as USLP_HEADER_LEN, PhysicalChannelConfig as UslpPhysical},
 };
 
-use crate::actions::{Actions, OutRange};
 use crate::fop1_table::{
     BcCommand, EVENT_COUNT, FOP1_TABLE, Fop1Action, Fop1Cell, Fop1Event, Fop1State, FrameKind,
     STATE_COUNT, SuspendState,
@@ -91,6 +90,7 @@ use crate::notify::{
     Alert, AlertReason, Directive, DirectiveNotification, DirectiveNotify, TimeoutType,
     TransferNotification, TransferNotify,
 };
+use aldis_core::engine::{Actions, OutRange};
 
 /// The handle of a transfer request or a directive, chosen by the caller and returned in its
 /// notifications (232.1 §4.2, §4.4; API-054).

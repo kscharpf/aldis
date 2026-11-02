@@ -1,12 +1,12 @@
 //! Fixed-capacity action lists and output-area ranges of the engine step (API-057, API-061,
-//! RS-022).
+//! RS-022), shared by `aldis-cop1` and `aldis-link`.
 //!
 //! An engine returns the actions of one input as an [`Actions`] list of at most `N` entries, in
 //! the order in which the procedure produces them. The octets of an action (an SDU to deliver,
 //! a frame to transmit) are written into the caller's output area, and the action holds an
 //! [`OutRange`] of it.
 
-use aldis_core::{Error, ErrorKind, Result};
+use crate::{Error, ErrorKind, Result};
 
 /// The actions of one input, in order: a list of at most `N` entries (API-057, API-083,
 /// RS-022).
@@ -130,7 +130,7 @@ impl OutRange {
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::{Actions, OutRange};
-    use aldis_core::ErrorKind;
+    use crate::ErrorKind;
 
     #[test]
     fn list_keeps_order_and_refuses_overflow() {

@@ -14,7 +14,6 @@ extern crate std;
 #[cfg(test)]
 extern crate self as aldis_cop1;
 
-pub mod actions;
 pub mod farm1;
 pub mod farm1_table;
 pub mod fop1;
@@ -25,7 +24,7 @@ pub mod notify;
 #[path = "../tests/common/mod.rs"]
 mod rig;
 
-pub use actions::{Actions, OutRange};
+pub use aldis_core::engine::{Actions, OutRange};
 pub use farm1::{
     FARM1_MAX_ACTIONS, Farm1, Farm1Actions, Farm1Config, Farm1Frame, Farm1Input, Farm1Notify,
     Farm1Output, Farm1Window, FduKind,

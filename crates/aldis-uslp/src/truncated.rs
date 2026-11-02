@@ -8,7 +8,7 @@
 //! Security Trailer (D1.2.3; USLP-012). It is processed as expedited user data (D1.3.1 note 3).
 //! Its rule and UPID are exposed and not checked beyond USLP-016 (OI-35 item 1).
 
-use aldis_core::layout::{FrameLayout, LayoutSpec};
+use aldis_core::layout::{FrameLayout, FramedBytes, LayoutSpec};
 use aldis_core::security::SecurityLayout;
 use aldis_core::{Error, ErrorKind};
 
@@ -17,19 +17,15 @@ use crate::field;
 use crate::header::{ChannelFields, OID_VCID, TRUNCATED_HEADER_LEN, invalid, unknown};
 use crate::tfdf::TfdfHeader;
 use crate::validate::{Reason, Rejection};
-use crate::view::{cut, fail, length, tfdf_rejection};
+use crate::view::{fail, framed, length, tfdf_rejection};
 
 /// A decoded truncated USLP Transfer Frame borrowing its fields from the input (732.1 Annex
 /// D; USLP-002, USLP-012, API-010, GEN-013).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UslpTruncatedFrame<'a> {
     channel: ChannelFields,
-    octets: &'a [u8],
-    layout: FrameLayout,
-    security_header: &'a [u8],
+    framed: FramedBytes<'a>,
     tfdf_header: TfdfHeader,
-    tfdz: &'a [u8],
-    security_trailer: &'a [u8],
 }
 
 /// The Security Header and Trailer of a truncated frame on a VC or MAP whose layout is
@@ -83,30 +79,20 @@ pub(crate) fn parse<'a, L: VcLookup + ?Sized>(
     Ok((
         UslpTruncatedFrame {
             channel,
-            octets: frame,
-            layout: parts.layout,
-            security_header: parts.security_header,
-            tfdf_header: parts.tfdf_header,
-            tfdz: parts.tfdz,
-            security_trailer: parts.security_trailer,
+            framed: parts.0,
+            tfdf_header: parts.1,
         },
         vc,
         map,
     ))
 }
 
-/// A truncated frame cut at its layout.
-struct Parts<'a> {
-    layout: FrameLayout,
-    security_header: &'a [u8],
-    tfdf_header: TfdfHeader,
-    tfdz: &'a [u8],
-    security_trailer: &'a [u8],
-}
-
-/// Cuts a truncated `frame` with the SDLS lengths `security` at its layout and parses the TFDF
-/// Header; an octet range outside the frame is a broken invariant (GEN-020).
-fn split(frame: &[u8], security: SecurityLayout) -> Result<Parts<'_>, Rejection> {
+/// Checks a truncated `frame` with the SDLS lengths `security` against its layout and parses the
+/// TFDF Header; a frame that is not as long as its layout is a broken invariant (GEN-020).
+fn split(
+    frame: &[u8],
+    security: SecurityLayout,
+) -> Result<(FramedBytes<'_>, TfdfHeader), Rejection> {
     let layout = FrameLayout::compute(&LayoutSpec {
         frame_len: frame.len(),
         primary_header_len: TRUNCATED_HEADER_LEN,
@@ -115,18 +101,11 @@ fn split(frame: &[u8], security: SecurityLayout) -> Result<Parts<'_>, Rejection>
         ocf: false,
         fecf: false,
     })
+    .and_then(|layout| layout.with_data_header(crate::tfdf::header_len(false)))
     .map_err(|_| fail(Reason::FrameTooShort, invalid(field::FRAME_DATA_FIELD)))?;
-    let security_header = cut(frame, layout.security_header())?;
-    let data = cut(frame, layout.data())?;
-    let security_trailer = cut(frame, layout.security_trailer())?;
-    let (tfdf_header, tfdz) = TfdfHeader::parse(data, false).map_err(tfdf_rejection)?;
-    Ok(Parts {
-        layout,
-        security_header,
-        tfdf_header,
-        tfdz,
-        security_trailer,
-    })
+    let framed = framed(frame, layout)?;
+    let (tfdf_header, _) = TfdfHeader::parse(framed.data(), false).map_err(tfdf_rejection)?;
+    Ok((framed, tfdf_header))
 }
 
 impl<'a> UslpTruncatedFrame<'a> {
@@ -144,8 +123,8 @@ impl<'a> UslpTruncatedFrame<'a> {
 
     /// The Security Header: empty, or 6 octets with SDLS (Annex D1.2.3; API-072, API-075).
     #[must_use]
-    pub const fn security_header(&self) -> &'a [u8] {
-        self.security_header
+    pub fn security_header(&self) -> &'a [u8] {
+        self.framed.security_header()
     }
 
     /// The 1-octet TFDF Header, whose rule is `011`–`111` (Annex D1.4.1.2; USLP-016).
@@ -156,14 +135,14 @@ impl<'a> UslpTruncatedFrame<'a> {
 
     /// The Transfer Frame Data Zone, 1–27 octets (Annex D1.4.2.4).
     #[must_use]
-    pub const fn tfdz(&self) -> &'a [u8] {
-        self.tfdz
+    pub fn tfdz(&self) -> &'a [u8] {
+        self.framed.data_zone()
     }
 
     /// The Security Trailer: empty, or 16 octets with SDLS (Annex D1.2.3; API-072, API-075).
     #[must_use]
-    pub const fn security_trailer(&self) -> &'a [u8] {
-        self.security_trailer
+    pub fn security_trailer(&self) -> &'a [u8] {
+        self.framed.security_trailer()
     }
 
     /// Where the fields lie in [`octets`](Self::octets): the 4-octet header, the Security Header,
@@ -171,20 +150,20 @@ impl<'a> UslpTruncatedFrame<'a> {
     /// CMN-040).
     #[must_use]
     pub const fn layout(&self) -> &FrameLayout {
-        &self.layout
+        self.framed.layout()
     }
 
     /// The octets of the whole frame, borrowed from the input (GEN-013).
     #[must_use]
     pub const fn octets(&self) -> &'a [u8] {
-        self.octets
+        self.framed.frame()
     }
 
     /// Octets consumed from the input: the VC's truncated frame length (Annex D1.3.2;
     /// API-011).
     #[must_use]
     pub const fn len(&self) -> usize {
-        self.octets.len()
+        self.framed.frame().len()
     }
 
     /// Always `false`: a truncated frame has at least six octets (Annex D1.3.2 note 2).

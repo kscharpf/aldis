@@ -418,8 +418,8 @@ pub trait VcLookup {
 /// octet (CMN-041; OI-44 item 2).
 pub(crate) fn frame_layout(spec: &LayoutSpec, fixed_tfdz: bool) -> Option<FrameLayout> {
     FrameLayout::compute(spec)
+        .and_then(|layout| layout.with_data_header(crate::tfdf::header_len(fixed_tfdz)))
         .ok()
-        .filter(|layout| layout.data().len() > crate::tfdf::header_len(fixed_tfdz))
 }
 
 /// `InvalidConfig` (`frame_data_field`) unless the longest non-truncated frame of `vc` with
