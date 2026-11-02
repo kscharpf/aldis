@@ -301,13 +301,13 @@ fn uslp(t: &mut Tally) {
         oid_vcf_len: VcfCountLen::NONE,
         mc_ocf: Some([bb(7); 4]),
     };
-    let params = UslpVc {
-        map,
-        qos: Qos::SequenceControlled,
-        vcf_len_sc: sc,
-        vcf_len_exp: exp,
-        cop: bb(true),
+    let Ok(params) = UslpVc::new(map, Qos::SequenceControlled, sc, exp, bb(true)) else {
+        t.check(false);
+        return;
     };
+    t.check(params.map() == map && params.qos() == Qos::SequenceControlled && params.cop());
+    t.check(params.vcf_len_sc() == sc && params.vcf_len_exp() == exp);
+    t.check(UslpVc::new(map, Qos::Expedited, VcfCountLen::NONE, exp, bb(true)).is_err());
     let vcs = [VcConfig::<Uslp>::new(v1, params)];
     let Ok(config) =
         ChannelMuxConfig::<Uslp, 2>::new(channel, F, true, MuxPolicy::FixedPriority, &vcs)

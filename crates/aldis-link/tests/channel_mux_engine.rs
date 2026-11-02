@@ -89,13 +89,14 @@ fn aos_config() -> ChannelMuxConfig<Aos, V> {
 fn uslp_vc(id: u8, cop: bool) -> VcConfig<Uslp> {
     VcConfig::<Uslp>::new(
         VcId::<6>::new(id).unwrap(),
-        UslpVc {
-            map: MapId::<4>::new(3).unwrap(),
-            qos: Qos::SequenceControlled,
-            vcf_len_sc: VcfCountLen::new(2).unwrap(),
-            vcf_len_exp: VcfCountLen::new(1).unwrap(),
+        UslpVc::new(
+            MapId::<4>::new(3).unwrap(),
+            Qos::SequenceControlled,
+            VcfCountLen::new(2).unwrap(),
+            VcfCountLen::new(1).unwrap(),
             cop,
-        },
+        )
+        .unwrap(),
     )
     .with_priority(id)
 }
@@ -229,7 +230,7 @@ fn a_configuration_the_blue_books_forbid_is_refused() {
     .with_priority(1);
     assert_eq!(
         failure(tm(&vcs, both_fsh, 24, fixed)),
-        invalid(field::FSH_FLAG)
+        invalid(field::FSH_LEN)
     );
     // A frame that leaves no data field to some VC: 6 header + 2 FECF + 4 + 2 security.
     let mut secured = tm_vcs();
@@ -907,4 +908,29 @@ fn an_issue_4_aos_frame_has_an_8_bit_scid_and_zero_spare_bits() {
         .unwrap();
     mux.step(MuxInput::Opportunity, &mut out).unwrap();
     assert_eq!(&out[..6], [0x7F, 0xC1, 0, 0, 0, 0]);
+}
+
+#[test]
+fn a_uslp_vc_with_cop_needs_a_count_field_for_the_frame_sequence_number() {
+    // req: LNK-078, LNK-076, RS-020, OI-78
+    let make = |sc, cop| {
+        UslpVc::new(
+            MapId::<4>::new(3).unwrap(),
+            Qos::Expedited,
+            VcfCountLen::new(sc).unwrap(),
+            VcfCountLen::new(0).unwrap(),
+            cop,
+        )
+    };
+    assert_eq!(
+        failure(make(0, true)),
+        named(ErrorKind::InvalidConfig, field::VCF_COUNT_LEN)
+    );
+    assert!(make(0, false).is_ok());
+    let vc = make(1, true).unwrap();
+    assert_eq!(
+        (vc.map().get(), vc.qos(), vc.cop()),
+        (3, Qos::Expedited, true)
+    );
+    assert_eq!((vc.vcf_len_sc().get(), vc.vcf_len_exp().get()), (1, 0));
 }

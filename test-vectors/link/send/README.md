@@ -94,6 +94,6 @@ Decided by the work packages under [OI-78](../../../docs/09-open-issues.md); the
 
 * The configuration errors of the `MapSegmenter` and the CLTU packer (LNK-078, WP-6); those of the `ChannelMux` and the generators, the API-071 limits included, are tested in `channel_mux_engine.rs` and `generators_engine.rs`.
 
-The vector cases for the `ChannelMux` items of OI-78 go to the one blind-model round after WP-6.
+The vector cases for the `ChannelMux` items of OI-78 go to the blind-model round of [#231](https://github.com/kscharpf/aldis/issues/231).
 
 Several master channels on one physical channel are deferred by OI-75.

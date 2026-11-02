@@ -143,7 +143,8 @@ pub enum Cop {
 }
 
 impl Cop {
-    /// The block of the two flags and the count FOP-1 gives.
+    /// The block of the two flags and the count FOP-1 gives. With `bypass` the count is dropped:
+    /// the mux uses its own expedited count (LNK-032).
     ///
     /// # Errors
     /// `InvalidField` (`protocol_control_command_flag`) for Bypass 0 with Protocol Control
@@ -493,7 +494,7 @@ impl<P: MuxProtocol, const V: usize> ChannelMuxConfig<P, V> {
     /// - `CapacityExceeded` (`capacity`) for more than `V` VCs;
     /// - `InvalidConfig` (`vc_id`) for a VCID twice or the OID VCID of the protocol where it is
     ///   not dedicated; (`vc_priority`) for equal priorities under fixed priority; (`frame_len`)
-    ///   for a frame that leaves no data field to some VC; (`ocf_flag`, `fsh_flag`) for an MC
+    ///   for a frame that leaves no data field to some VC; (`ocf_flag`, `fsh_len`) for an MC
     ///   and a VC that both have an OCF or a Secondary Header (132.0 §2.2.4 b, c); and the
     ///   protocol's own checks (LNK-078).
     pub fn new(
@@ -562,7 +563,7 @@ impl<P: MuxProtocol, const V: usize> ChannelMuxConfig<P, V> {
             return Err(bad(field::OCF_FLAG));
         }
         if self.vcs().any(|v| mc_fsh && P::vc_fsh(&v.params).is_some()) {
-            return Err(bad(field::FSH_FLAG));
+            return Err(bad(field::FSH_LEN));
         }
         for bypass in [false, true] {
             if self.frame_len <= self.overhead(None, bypass)
@@ -1623,19 +1624,77 @@ mod uslp_impl {
     }
 
     /// The parameters of a USLP VC (732.1 §5.4 Table 5-3; LNK-032, LNK-076).
+    ///
+    /// Built only by [`new`](Self::new), which relates COP-1 to the VCF Count Length (RS-020).
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub struct UslpVc {
+        map: MapId<4>,
+        qos: Qos,
+        vcf_len_sc: VcfCountLen,
+        vcf_len_exp: VcfCountLen,
+        cop: bool,
+    }
+
+    impl UslpVc {
+        /// A VC whose frames have the MAP ID `map`, and `qos` for an offered field that names
+        /// none, the VCF Count Lengths `vcf_len_sc` for sequence-controlled and `vcf_len_exp`
+        /// for expedited frames, and COP-1 in effect if `cop`, so that an offer may carry the
+        /// `cop` block (LNK-076).
+        ///
+        /// # Errors
+        /// `InvalidConfig` (`vcf_count_len`) for COP-1 in effect with a sequence-controlled
+        /// VCF Count Length of 0: FOP-1 puts the Frame Sequence Number of a Type-AD frame in
+        /// the VCF Count field, which a length of `000` leaves out (732.1 §4.1.2.12.1,
+        /// §4.2.7.4 note 3; WP-4's reading, OI-78).
+        pub const fn new(
+            map: MapId<4>,
+            qos: Qos,
+            vcf_len_sc: VcfCountLen,
+            vcf_len_exp: VcfCountLen,
+            cop: bool,
+        ) -> Result<UslpVc> {
+            if cop && vcf_len_sc.get() == 0 {
+                Err(Error::new(ErrorKind::InvalidConfig).with_field(field::VCF_COUNT_LEN))
+            } else {
+                Ok(UslpVc {
+                    map,
+                    qos,
+                    vcf_len_sc,
+                    vcf_len_exp,
+                    cop,
+                })
+            }
+        }
+
         /// The MAP ID of the VC's frames.
-        pub map: MapId<4>,
+        #[must_use]
+        pub const fn map(&self) -> MapId<4> {
+            self.map
+        }
+
         /// The quality of service of an offered field that names none.
-        pub qos: Qos,
+        #[must_use]
+        pub const fn qos(&self) -> Qos {
+            self.qos
+        }
+
         /// The VCF Count Length for sequence-controlled frames.
-        pub vcf_len_sc: VcfCountLen,
+        #[must_use]
+        pub const fn vcf_len_sc(&self) -> VcfCountLen {
+            self.vcf_len_sc
+        }
+
         /// The VCF Count Length for expedited frames.
-        pub vcf_len_exp: VcfCountLen,
-        /// Whether COP-1 is in effect on the VC, so that an offer may carry the `cop` block
-        /// (LNK-076).
-        pub cop: bool,
+        #[must_use]
+        pub const fn vcf_len_exp(&self) -> VcfCountLen {
+            self.vcf_len_exp
+        }
+
+        /// Whether COP-1 is in effect on the VC.
+        #[must_use]
+        pub const fn cop(&self) -> bool {
+            self.cop
+        }
     }
 
     impl UslpVc {
@@ -1773,15 +1832,11 @@ pub use uslp_impl::{UslpChannel, UslpVc};
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[expect(
     clippy::unwrap_used,
-    clippy::arithmetic_side_effects,
     reason = "test helpers fail loudly by design (RS-018)"
 )]
 mod tests {
     use aldis_aos::AosEdition;
     use aldis_core::ids::{SpacecraftId, VcId};
-
-    use aldis_testkit::strategies;
-    use aldis_testkit::strategies::proptest::prelude::*;
 
     use super::{
         AosChannel, AosVc, ChannelMux, ChannelMuxConfig, MuxInput, Offer, VcConfig, VcCounts,
@@ -1867,33 +1922,36 @@ mod tests {
         assert_eq!(got, [(0x00FF_FFFF, 0x5F), (0, 0x50)]);
     }
 
-    /// Failing cases are saved here and replayed first.
-    const REGRESSIONS: &str = concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/proptest-regressions/mux_counts.txt"
-    );
-
-    proptest! {
-        #![proptest_config(strategies::config(256, REGRESSIONS))]
-
-        /// Whatever the count a VC has reached, the next frames carry its low 24 bits, and with
-        /// the cycle in use its next 4 bits, which wrap after 16 cycles (732.0 §4.1.2.4,
-        /// §4.1.2.5.5).
-        #[test]
-        fn the_vc_frame_count_and_cycle_follow_the_number_of_frames(
-            start in 0_u64..(1 << 28),
-            frames in 1_usize..6,
-            cycle_in_use in any::<bool>(),
-        ) {
-            // req: LNK-032
-            let mut m = mux(cycle_in_use);
-            m.counts[1] = VcCounts { sequence_controlled: start, expedited: 0 };
-            for i in 0..frames {
-                let total = start + u64::try_from(i).unwrap();
-                let (count, signaling) = next(&mut m);
-                prop_assert_eq!(u64::from(count), total & 0x00FF_FFFF);
-                let cycle = if cycle_in_use { 0x40 | u8::try_from((total >> 24) & 0xF).unwrap() } else { 0 };
-                prop_assert_eq!(signaling, 0x10 | cycle);
+    /// Whatever the count a VC has reached, the next frames carry its low 24 bits, and with the
+    /// cycle in use its next 4 bits, which wrap after 16 cycles (732.0 §4.1.2.4, §4.1.2.5.5).
+    /// The sweep takes every start next to each wrap of the 24 bits and of the cycle, and runs
+    /// frames across it, in both modes (LNK-032).
+    #[test]
+    fn the_vc_frame_count_and_cycle_follow_the_number_of_frames() {
+        // req: LNK-032
+        for cycle_in_use in [false, true] {
+            for k in 1_u64..=16 {
+                for off in 0_u64..6 {
+                    for frames in 1_u64..6 {
+                        let start = (k << 24) - off;
+                        let mut m = mux(cycle_in_use);
+                        m.counts[1] = VcCounts {
+                            sequence_controlled: start,
+                            expedited: 0,
+                        };
+                        for i in 0..frames {
+                            let total = start + i;
+                            let (count, signaling) = next(&mut m);
+                            assert_eq!(u64::from(count), total & 0x00FF_FFFF);
+                            let cycle = if cycle_in_use {
+                                0x40 | u8::try_from((total >> 24) & 0xF).unwrap()
+                            } else {
+                                0
+                            };
+                            assert_eq!(signaling, 0x10 | cycle);
+                        }
+                    }
+                }
             }
         }
     }

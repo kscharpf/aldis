@@ -188,13 +188,14 @@ impl Proto for Uslp {
             .iter()
             .map(|v| {
                 let o = v.as_object().unwrap();
-                let params = UslpVc {
-                    map: MapId::<4>::new(small(&o["map_id"])).unwrap(),
-                    qos: qos(o["qos"].as_str().unwrap()),
-                    vcf_len_sc: VcfCountLen::new(small(&o["vcf_len_sc"])).unwrap(),
-                    vcf_len_exp: VcfCountLen::new(small(&o["vcf_len_exp"])).unwrap(),
-                    cop: cop_vcs.contains(&small(&o["vcid"])),
-                };
+                let params = UslpVc::new(
+                    MapId::<4>::new(small(&o["map_id"])).unwrap(),
+                    qos(o["qos"].as_str().unwrap()),
+                    VcfCountLen::new(small(&o["vcf_len_sc"])).unwrap(),
+                    VcfCountLen::new(small(&o["vcf_len_exp"])).unwrap(),
+                    cop_vcs.contains(&small(&o["vcid"])),
+                )
+                .unwrap();
                 vc::<Uslp>(v, params)
             })
             .collect();

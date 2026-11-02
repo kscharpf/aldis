@@ -22,7 +22,7 @@
 
 #[cfg(feature = "alloc")]
 extern crate alloc;
-#[cfg(any(feature = "std", test))]
+#[cfg(feature = "std")]
 extern crate std;
 
 pub mod access;
