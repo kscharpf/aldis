@@ -13,7 +13,7 @@ mod common;
 use aldis_link::common::ValidPvns;
 use aldis_link::extractor::{
     ExtractionError, ExtractorInput, ExtractorOutput, FieldIn, PacketExtractor,
-    PacketExtractorConfig, extractor_max_actions,
+    PacketExtractorConfig, PacketRun,
 };
 use aldis_link::protocol::{Aos, Tm, Uslp};
 use aldis_testkit::{ScenarioFile, VectorFile, hex};
@@ -30,11 +30,8 @@ const FILES: [&str; 3] = [
 const M: usize = 100;
 /// The packet zone: the longest of the files is 24 octets.
 const D: usize = 32;
-/// The bound on the actions of one input, for the shortest packet delivered (idle packets of
-/// 1 octet are delivered by one file).
-const N: usize = extractor_max_actions(D, 1);
 
-type Engine<P> = PacketExtractor<P, M, D, N>;
+type Engine<P> = PacketExtractor<P, M, D>;
 
 fn config<P: Proto>(c: &Map<String, Value>) -> PacketExtractorConfig<P> {
     PacketExtractorConfig::<P>::new(
@@ -49,26 +46,36 @@ fn config<P: Proto>(c: &Map<String, Value>) -> PacketExtractorConfig<P> {
     )
 }
 
-fn output(o: &ExtractorOutput, area: &[u8]) -> Value {
+fn packet(octets: &[u8], incomplete: bool) -> Value {
+    json!({"deliver": {
+        "kind": "Packet",
+        "pvn": octets.first().map_or(9, |b| b >> 5),
+        "data_hex": hex::encode(octets),
+        "incomplete": incomplete,
+    }})
+}
+
+/// The outputs of the vectors for an action: a run of packets is one output for each packet.
+fn outputs(o: &ExtractorOutput, area: &[u8]) -> Vec<Value> {
     match o {
-        ExtractorOutput::Packet {
-            pvn,
-            packet,
-            incomplete,
-        } => json!({"deliver": {
-            "kind": "Packet",
-            "pvn": pvn,
-            "data_hex": hex::encode(packet.slice(area).unwrap()),
-            "incomplete": incomplete,
-        }}),
-        ExtractorOutput::Discarded { octets } => {
-            json!({"notify": {"kind": "Discarded", "octets": octets}})
+        ExtractorOutput::Packets { run, count } => {
+            let packets: Vec<Value> = PacketRun::new(*run, area)
+                .map(|p| packet(p, false))
+                .collect();
+            assert_eq!(packets.len(), *count);
+            packets
         }
-        ExtractorOutput::Error(e) => json!({"extraction_error": {"kind": match e {
+        ExtractorOutput::IncompletePacket { packet: p, .. } => {
+            vec![packet(p.slice(area).unwrap(), true)]
+        }
+        ExtractorOutput::Discarded { octets } => {
+            vec![json!({"notify": {"kind": "Discarded", "octets": octets}})]
+        }
+        ExtractorOutput::Error(e) => vec![json!({"extraction_error": {"kind": match e {
             ExtractionError::PacketTooLong => "PacketTooLong",
             ExtractionError::InvalidPvn => "InvalidPvn",
             ExtractionError::LengthInconsistent => "LengthInconsistent",
-        }}}),
+        }}})],
     }
 }
 
@@ -99,7 +106,7 @@ fn run_scenario<P: Proto>(scenario: &aldis_testkit::ResolvedScenario<'_>) -> Opt
                     gap: v["gap"].as_bool().unwrap(),
                 });
                 match engine.step(input, &mut area) {
-                    Ok(actions) => actions.iter().map(|o| output(o, &area)).collect(),
+                    Ok(actions) => actions.iter().flat_map(|o| outputs(o, &area)).collect(),
                     Err(e) => vec![json!({"error": e.kind().name()})],
                 }
             }
@@ -108,7 +115,7 @@ fn run_scenario<P: Proto>(scenario: &aldis_testkit::ResolvedScenario<'_>) -> Opt
                 let actions = engine
                     .step(ExtractorInput::Reconfigure(same), &mut area)
                     .unwrap();
-                actions.iter().map(|o| output(o, &area)).collect()
+                actions.iter().flat_map(|o| outputs(o, &area)).collect()
             }
             "query" => {
                 let name = v["counter"].as_str().unwrap();

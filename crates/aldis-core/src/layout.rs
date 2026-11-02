@@ -260,10 +260,10 @@ impl<'a> FramedBytes<'a> {
         &self.layout
     }
 
-    /// The octets in `range`, which lies inside the frame because every range of the layout does
-    /// (see [`new`](Self::new)); a range of another layout gives no octet.
-    #[must_use]
-    pub fn cut(&self, range: Range<usize>) -> &'a [u8] {
+    /// The octets in `range`, a range of the layout, which lies inside the frame because
+    /// [`new`](Self::new) checked the frame against the layout. Private, so that no other range
+    /// reaches it.
+    fn cut(&self, range: Range<usize>) -> &'a [u8] {
         self.frame.get(range).unwrap_or_default()
     }
 
@@ -468,8 +468,6 @@ mod tests {
         assert_eq!(f.security_trailer(), &frame[21..25]);
         assert_eq!(f.ocf(), &frame[25..29]);
         assert_eq!(f.fecf(), &frame[29..31]);
-        // A range of another layout lies outside the frame and gives no octet.
-        assert_eq!(f.cut(30..40), &[0u8; 0][..]);
         let long = [0u8; 32];
         let e = FramedBytes::new(&long, l.clone()).unwrap_err();
         assert_eq!(

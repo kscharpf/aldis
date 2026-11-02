@@ -16,8 +16,8 @@ use aldis_core::ids::{MapId, VcId};
 use aldis_core::time::{Duration, Instant};
 use aldis_link::common::{IdlePacketKind, IdlePolicy, Qos, ValidPvns};
 use aldis_link::extractor::{
-    ExtractionError, ExtractorInput, ExtractorOutput, FieldIn, PacketExtractor,
-    PacketExtractorConfig, extractor_max_actions,
+    EXTRACTOR_MAX_ACTIONS, ExtractionError, ExtractorInput, ExtractorOutput, FieldIn,
+    PacketExtractor, PacketExtractorConfig, PacketRun,
 };
 use aldis_link::generator::{
     GeneratorInput, GeneratorOutput, PACKET_GENERATOR_MAX_ACTIONS, PacketGenerator,
@@ -32,7 +32,7 @@ use aldis_uslp::Upid;
 const T0: Instant = Instant::from_micros(0);
 
 type TmGen = PacketGenerator<Tm, 24, 64>;
-type TmExt = PacketExtractor<Tm, 100, 24, 40>;
+type TmExt = PacketExtractor<Tm, 100, 24>;
 
 /// A Space Packet of `total` octets (at least 7), APID 1, count 0, data `fill`.
 fn spp(total: usize, fill: u8) -> Vec<u8> {
@@ -363,13 +363,9 @@ fn the_extractor_refuses_what_it_cannot_take() {
 fn the_extractor_capacities_are_checked() {
     // req: LNK-074, GEN-011
     let c = ext_config();
-    assert!(PacketExtractor::<Tm, 7, 24, 40>::new(c).is_err());
-    assert!(PacketExtractor::<Tm, 39, 24, 40>::new(c).is_err());
-    assert!(PacketExtractor::<Tm, 100, 24, 3>::new(c).is_err());
-    assert_eq!(extractor_max_actions(24, 3), 1 + 23 / 3 + 3);
-    assert_eq!(extractor_max_actions(24, 7), 1 + 23 / 7 + 3);
-    assert_eq!(extractor_max_actions(24, 0), 4);
-    assert_eq!(extractor_max_actions(0, 7), 4);
+    assert!(PacketExtractor::<Tm, 7, 24>::new(c).is_err());
+    assert!(PacketExtractor::<Tm, 39, 24>::new(c).is_err());
+    assert_eq!(EXTRACTOR_MAX_ACTIONS, 8);
     assert_eq!(c.min_packet_len(), 3);
     assert_eq!(
         PacketExtractorConfig::<Tm>::new(TmParams, ValidPvns::SPACE, 40)
@@ -527,7 +523,7 @@ fn the_protocol_trait_has_one_implementation_per_protocol() {
     let aos4 = AosParams {
         edition: AosEdition::Issue4Compatible,
     };
-    let uslp = UslpParams::new(Upid::Packets, MapId::<4>::new(3).unwrap(), Qos::Expedited);
+    let uslp = UslpParams::new(Upid::Packets, MapId::<4>::new(3).unwrap(), Qos::Expedited).unwrap();
     assert_eq!(Tm::encode_pointer(&TmParams, NoStart).unwrap(), 0x7FF);
     assert_eq!(Tm::encode_pointer(&TmParams, OnlyIdle).unwrap(), 0x7FE);
     assert_eq!(Tm::encode_pointer(&TmParams, StartsAt(5)).unwrap(), 5);
@@ -581,7 +577,8 @@ fn the_codec_errors_of_the_data_fields_pass_through() {
         Upid::Packets,
         MapId::<4>::new(0).unwrap(),
         Qos::SequenceControlled,
-    );
+    )
+    .unwrap();
     let ok = Uslp::parse(&uslp, None, &[0x00, 0x00, 0x01, 1, 2]).unwrap();
     assert_eq!((ok.pointer, ok.zone), (Pointer::StartsAt(1), &[1u8, 2][..]));
     assert_eq!(
@@ -707,10 +704,7 @@ fn the_extractor_resynchronises_in_the_cases_the_vectors_leave_open() {
     );
     assert!(matches!(
         a.get(1),
-        Some(ExtractorOutput::Packet {
-            incomplete: false,
-            ..
-        })
+        Some(ExtractorOutput::Packets { count: 1, .. })
     ));
     // A gap with no packet in progress discards nothing.
     let mut e = TmExt::new(ext_config()).unwrap();
@@ -720,7 +714,7 @@ fn the_extractor_resynchronises_in_the_cases_the_vectors_leave_open() {
         gap: true,
     });
     let a = e.step(gap, &mut out).unwrap();
-    assert!(matches!(a.get(0), Some(ExtractorOutput::Packet { .. })));
+    assert!(matches!(a.get(0), Some(ExtractorOutput::Packets { .. })));
     assert_eq!(e.status().discarded_octets.get(), 0);
     // A partial packet with a known length is delivered incomplete on a gap.
     let mut e = TmExt::new(ext_config().with_delivery(true, false)).unwrap();
@@ -735,11 +729,7 @@ fn the_extractor_resynchronises_in_the_cases_the_vectors_leave_open() {
     let a = e.step(gap, &mut out).unwrap();
     assert!(matches!(
         a.get(0),
-        Some(ExtractorOutput::Packet {
-            incomplete: true,
-            pvn: 0,
-            ..
-        })
+        Some(ExtractorOutput::IncompletePacket { pvn: 0, .. })
     ));
     assert_eq!(
         (
@@ -748,4 +738,108 @@ fn the_extractor_resynchronises_in_the_cases_the_vectors_leave_open() {
         ),
         (1, 2)
     );
+}
+
+#[test]
+fn an_encapsulation_packet_with_a_four_octet_length_field_is_delimited() {
+    // req: LNK-060, LNK-062, LNK-010
+    // Length of length `11`: an 8-octet header with a 4-octet Packet Length (133.1 §4.1.2.8).
+    let mut p = vec![
+        0xE0 | (1 << 2) | 0b11,
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+        20,
+    ];
+    p.resize(20, 0x5A);
+    let mut g = TmGen::new(tm_config(24)).unwrap();
+    let mut out = [0u8; 24];
+    g.step(GeneratorInput::SubmitPacket(&p), T0, &mut out)
+        .unwrap();
+    // A second packet fills the field, so that the first ends inside it.
+    g.step(GeneratorInput::SubmitPacket(&spp(10, 1)), T0, &mut out)
+        .unwrap();
+    let field = release(&mut g, T0);
+    let mut e = TmExt::new(ext_config()).unwrap();
+    let mut area = [0u8; 100];
+    let a = e.step(field_in(&field, 0), &mut area).unwrap();
+    let Some(ExtractorOutput::Packets { run, count }) = a.get(0) else {
+        panic!("{a:?}")
+    };
+    assert_eq!(*count, 1);
+    assert_eq!(PacketRun::new(*run, &area).next(), Some(&p[..]));
+    // The header is split across two fields (3 and 5 octets), and the length is known at the
+    // eighth.
+    let mut e = TmExt::new(ext_config()).unwrap();
+    let mut first = p[..3].to_vec();
+    first.insert(0, 0);
+    let a = e.step(field_in(&first, 1), &mut area).unwrap();
+    assert!(a.is_empty());
+    assert_eq!(e.status().assembly.current(), 3);
+    let rest = p[3..].to_vec();
+    let a = e.step(field_in(&rest, 0x7FF), &mut area).unwrap();
+    assert!(matches!(
+        a.get(0),
+        Some(ExtractorOutput::Packets { count: 1, .. })
+    ));
+    // Longer than the Maximum Packet Length: refused as soon as the eighth octet is in.
+    let mut e =
+        TmExt::new(PacketExtractorConfig::<Tm>::new(TmParams, ValidPvns::BOTH, 16).unwrap())
+            .unwrap();
+    let a = e.step(field_in(&field, 0), &mut area).unwrap();
+    assert_eq!(
+        a.get(0),
+        Some(&ExtractorOutput::Error(ExtractionError::PacketTooLong))
+    );
+}
+
+#[test]
+fn a_configuration_with_a_short_zone_can_use_encapsulation_idle_packets() {
+    // req: LNK-013, LNK-078
+    let c = PacketGeneratorConfig::<Tm>::new(
+        VcId::<3>::new(1).unwrap(),
+        TmParams,
+        6,
+        ValidPvns::BOTH,
+        64,
+    )
+    .unwrap();
+    assert_eq!(c.idle_packet_kind(), IdlePacketKind::Encapsulation);
+    // A Space Packet idle packet needs 7 octets of zone, whatever the set holds.
+    let e = c
+        .with_idle(IdlePolicy::Oid, IdlePacketKind::SpacePacket, 0)
+        .unwrap_err();
+    assert_eq!(e.field(), Some(field::IDLE_PACKET_KIND));
+    let c = PacketGeneratorConfig::<Tm>::new(
+        VcId::<3>::new(1).unwrap(),
+        TmParams,
+        7,
+        ValidPvns::BOTH,
+        64,
+    )
+    .unwrap();
+    assert_eq!(c.idle_packet_kind(), IdlePacketKind::SpacePacket);
+}
+
+#[test]
+fn the_idle_upid_is_refused_for_packets() {
+    // req: LNK-078, RS-020
+    let map = MapId::<4>::new(0).unwrap();
+    let e = UslpParams::new(Upid::OnlyIdleData, map, Qos::default()).unwrap_err();
+    assert_eq!(
+        (e.kind(), e.field()),
+        (ErrorKind::InvalidConfig, Some(field::UPID))
+    );
+}
+
+#[test]
+fn a_release_checks_the_area_even_with_nothing_to_give() {
+    // req: LNK-075, API-058
+    let mut g = tm_gen();
+    let mut short = [0u8; 23];
+    let e = g.step(GeneratorInput::Release, T0, &mut short).unwrap_err();
+    assert_eq!(e.detail(), aldis_core::ErrorDetail::Needed(24));
 }

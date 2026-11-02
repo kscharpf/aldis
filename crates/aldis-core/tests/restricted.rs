@@ -679,15 +679,10 @@ proptest! {
         // A frame of another length is refused with the documented error.
         for other in [frame.len() + 1, frame.len().saturating_sub(1)] {
             let longer: Vec<u8> = frame.iter().copied().cycle().take(other).collect();
-            let e = FramedBytes::new(&longer, layout.clone());
-            if other == frame.len() {
-                prop_assert!(e.is_ok());
-            } else {
-                prop_assert_eq!(
-                    e,
-                    Err(Error::new(ErrorKind::LengthMismatch).with_field(field::FRAME_LEN))
-                );
-            }
+            prop_assert_eq!(
+                FramedBytes::new(&longer, layout.clone()),
+                Err(Error::new(ErrorKind::LengthMismatch).with_field(field::FRAME_LEN))
+            );
         }
     }
 }

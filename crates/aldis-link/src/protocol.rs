@@ -352,9 +352,16 @@ mod uslp_impl {
 
     impl UslpParams {
         /// The parameters of a USLP VC or MAP (732.1 §4.1.4.2.3, §4.1.2.8).
-        #[must_use]
-        pub const fn new(upid: Upid, map: MapId<4>, qos: Qos) -> UslpParams {
-            UslpParams { upid, map, qos }
+        ///
+        /// # Errors
+        /// `InvalidConfig` (`upid`) for "Only Idle Data": a rule `000` TFDF with that UPID is
+        /// idle data (732.1 §4.1.4.2.3), so no packet could be carried in it.
+        pub fn new(upid: Upid, map: MapId<4>, qos: Qos) -> Result<UslpParams> {
+            if upid == Upid::OnlyIdleData {
+                Err(Error::new(ErrorKind::InvalidConfig).with_field(field::UPID))
+            } else {
+                Ok(UslpParams { upid, map, qos })
+            }
         }
     }
 
@@ -405,7 +412,7 @@ mod uslp_impl {
                 .filter(|(_, z)| !z.is_empty())
                 .ok_or(invalid(field::FRAME_DATA_FIELD))?;
             // The TFDZ of an OID frame is idle data whatever its rule (rule `001` there, 732.1
-            // §4.1.4.1.10; LNK-030, LNK-064), so the UPID is read before the rule.
+            // §4.1.4.1.9; LNK-030, LNK-064), so the UPID is read before the rule.
             if Upid::from_bits(first & 0x1F) == Some(Upid::OnlyIdleData) {
                 return Ok(ParsedField {
                     pointer: Pointer::OnlyIdle,

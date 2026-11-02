@@ -78,7 +78,8 @@ impl<P: PacketProtocol> PacketGeneratorConfig<P> {
         if max_packet_len == 0 {
             return Err(Error::new(ErrorKind::InvalidConfig).with_field(field::MAX_PACKET_LEN));
         }
-        let kind = P::IDLE_KIND.unwrap_or(if valid_pvns.space() {
+        let zone = field_len.saturating_sub(P::HEADER_LEN);
+        let kind = P::IDLE_KIND.unwrap_or(if valid_pvns.space() && zone >= MIN_SPACE_IDLE {
             IdlePacketKind::SpacePacket
         } else {
             IdlePacketKind::Encapsulation
@@ -237,7 +238,7 @@ pub enum GeneratorOutput {
     DataField(DataField),
     /// `Reconfigure` discarded this many octets: the started field and the queue (LNK-003).
     Discarded {
-        /// The user octets held, an idle residue included.
+        /// The octets held, an idle residue included.
         octets: usize,
     },
 }
@@ -494,6 +495,9 @@ impl<P: PacketProtocol, const D: usize, const Q: usize> PacketGenerator<P, D, Q>
     /// `Release` (LNK-011…LNK-014).
     fn release(&mut self, now: Instant, out: &mut [u8]) -> Result<Option<DataField>> {
         let field_len = self.config.field_len;
+        if out.len() < field_len {
+            return Err(Error::buffer_too_small(field_len));
+        }
         if self.releasable {
             let mut spill = [0_u8; MIN_SPACE_IDLE];
             let (field, spill_len) = self.write_field(out, &mut spill)?;
@@ -509,9 +513,6 @@ impl<P: PacketProtocol, const D: usize, const Q: usize> PacketGenerator<P, D, Q>
             self.refresh_occupancy();
             Ok(Some(field))
         } else if self.config.idle_policy == IdlePolicy::IdleField && !self.continues_a_packet() {
-            if out.len() < field_len {
-                return Err(Error::buffer_too_small(field_len));
-            }
             let field = self.write_idle_field(out)?;
             self.status.idle_fields.incr();
             self.status.fields_out.incr();
@@ -523,7 +524,7 @@ impl<P: PacketProtocol, const D: usize, const Q: usize> PacketGenerator<P, D, Q>
 
     /// Whether the field being assembled starts with the continuation of a packet that began in
     /// an earlier field: the next field of the VC must carry it, so an idle field in between
-    /// would split the packet (132.0 §4.2.2.2, §4.1.2.7.6.2; LNK-011, LNK-014).
+    /// would split the packet (132.0 §4.2.2.2, §4.1.2.7.6.2; 732.0 §4.2.2.2; 732.1 §4.2.2.1.2; LNK-011, LNK-014).
     const fn continues_a_packet(&self) -> bool {
         self.fill > 0
             && match self.first_start {

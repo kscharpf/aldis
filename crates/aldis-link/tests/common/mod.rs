@@ -53,6 +53,7 @@ impl Proto for Uslp {
                 Some(other) => panic!("unknown qos {other}"),
             },
         )
+        .unwrap()
     }
 }
 

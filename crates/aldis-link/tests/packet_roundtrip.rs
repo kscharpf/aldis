@@ -23,8 +23,7 @@ use aldis_core::ids::MapId;
 use aldis_core::time::{Duration, Instant};
 use aldis_link::common::{IdlePacketKind, IdlePolicy, Qos, ValidPvns};
 use aldis_link::extractor::{
-    ExtractorInput, ExtractorOutput, FieldIn, PacketExtractor, PacketExtractorConfig,
-    extractor_max_actions,
+    ExtractorInput, ExtractorOutput, FieldIn, PacketExtractor, PacketExtractorConfig, PacketRun,
 };
 use aldis_link::generator::{
     GeneratorInput, GeneratorOutput, PacketGenerator, PacketGeneratorConfig,
@@ -44,7 +43,6 @@ const REGRESSIONS: &str = concat!(
 const D: usize = 80;
 const Q: usize = 256;
 const M: usize = 96;
-const N: usize = extractor_max_actions(D, 1);
 const MAX_PACKET: usize = 64;
 const DEADLINE: Duration = Duration::from_micros(10);
 
@@ -132,8 +130,8 @@ struct Trip {
 }
 
 /// Feeds the field of a `DataField` action to the extractor, as the `FrameReceiver` would.
-fn extract<P: PacketProtocol, const EM: usize, const ED: usize, const EN: usize>(
-    extractor: &mut PacketExtractor<P, EM, ED, EN>,
+fn extract<P: PacketProtocol, const EM: usize, const ED: usize>(
+    extractor: &mut PacketExtractor<P, EM, ED>,
     field: &[u8],
     pointer: u16,
     trip: &mut Trip,
@@ -148,11 +146,9 @@ fn extract<P: PacketProtocol, const EM: usize, const ED: usize, const EN: usize>
         Ok(actions) => {
             for a in actions.iter() {
                 match a {
-                    ExtractorOutput::Packet {
-                        packet,
-                        incomplete: false,
-                        ..
-                    } => trip.received.push(packet.slice(&area).unwrap().to_vec()),
+                    ExtractorOutput::Packets { run, .. } => trip
+                        .received
+                        .extend(PacketRun::new(*run, &area).map(<[u8]>::to_vec)),
                     other => trip.problems.push(format!("{other:?}")),
                 }
             }
@@ -165,7 +161,7 @@ fn extract<P: PacketProtocol, const EM: usize, const ED: usize, const EN: usize>
 /// a field, which the extractor takes. Returns whether a field came out.
 fn flush<P: PacketProtocol>(
     generator: &mut PacketGenerator<P, D, Q>,
-    extractor: &mut PacketExtractor<P, M, D, N>,
+    extractor: &mut PacketExtractor<P, M, D>,
     now: &mut u64,
     trip: &mut Trip,
 ) -> bool {
@@ -212,7 +208,7 @@ fn round_trip<P: common::Proto>(
     .with_release_deadline(DEADLINE);
     let mut generator = PacketGenerator::<P, D, Q>::new(config).unwrap();
     let ext_config = PacketExtractorConfig::<P>::new(params, pvns, MAX_PACKET).unwrap();
-    let mut extractor = PacketExtractor::<P, M, D, N>::new(ext_config).unwrap();
+    let mut extractor = PacketExtractor::<P, M, D>::new(ext_config).unwrap();
     let mut trip = Trip {
         sent: Vec::new(),
         received: Vec::new(),
@@ -324,7 +320,8 @@ proptest! {
         pattern in any::<u8>(),
     ) {
         // req: VER-023, LNK-011, LNK-013, LNK-060, LNK-063, LNK-064
-        let params = UslpParams::new(Upid::Packets, MapId::<4>::new(2).unwrap(), Qos::Expedited);
+        let params = UslpParams::new(Upid::Packets, MapId::<4>::new(2).unwrap(), Qos::Expedited)
+            .unwrap();
         check(&round_trip::<Uslp>(
             params, field_len, p, IdlePolicy::Oid, IdlePacketKind::Encapsulation, pattern, &list,
         ))?;

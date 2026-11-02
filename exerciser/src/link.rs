@@ -12,8 +12,8 @@ use aldis_core::ids::MapId;
 use aldis_core::time::{Duration, Instant};
 use aldis_link::common::{Counter, IdlePacketKind, IdlePolicy, Occupancy, Qos, ValidPvns};
 use aldis_link::extractor::{
-    ExtractionError, ExtractorInput, ExtractorOutput, FieldIn, MIN_ASSEMBLY, PacketExtractor,
-    PacketExtractorConfig, extractor_max_actions,
+    EXTRACTOR_MAX_ACTIONS, ExtractionError, ExtractorInput, ExtractorOutput, FieldIn, MIN_ASSEMBLY,
+    PacketExtractor, PacketExtractorConfig, PacketRun,
 };
 use aldis_link::generator::{
     GeneratorInput, GeneratorOutput, PACKET_GENERATOR_MAX_ACTIONS, PacketGenerator,
@@ -32,7 +32,6 @@ use crate::vectors::{Case, Fail, Run};
 const D: usize = 40;
 const Q: usize = 96;
 const M: usize = 64;
-const N: usize = extractor_max_actions(D, 1);
 
 /// A packet in a fixed buffer.
 #[derive(Clone, Copy)]
@@ -114,7 +113,7 @@ fn trip<P: PacketProtocol>(
     t.check(ext_config.valid_pvns() == ValidPvns::BOTH && ext_config.max_packet_len() == 48);
     t.check(ext_config.deliver_incomplete() && !ext_config.deliver_idle());
     t.check(ext_config.min_packet_len() == 3);
-    let Ok(mut extractor) = PacketExtractor::<P, M, D, N>::new(ext_config) else {
+    let Ok(mut extractor) = PacketExtractor::<P, M, D>::new(ext_config) else {
         t.check(false);
         return;
     };
@@ -142,7 +141,7 @@ fn trip<P: PacketProtocol>(
 fn flow<P: PacketProtocol>(
     t: &mut Tally,
     generator: &mut PacketGenerator<P, D, Q>,
-    extractor: &mut PacketExtractor<P, M, D, N>,
+    extractor: &mut PacketExtractor<P, M, D>,
     packets: &[Packet; 3],
     params: P::Params,
 ) {
@@ -181,23 +180,15 @@ fn flow<P: PacketProtocol>(
                 continue;
             };
             for output in got.iter() {
-                if let ExtractorOutput::Packet {
-                    pvn,
-                    packet,
-                    incomplete,
-                } = output
-                {
-                    let same = packets
-                        .get(delivered)
-                        .is_some_and(|p| packet.slice(&area) == Some(p.octets()));
-                    t.check(
-                        same && !incomplete
-                            && *pvn
-                                == packet
-                                    .slice(&area)
-                                    .map_or(9, |p| p.first().map_or(9, |b| b >> 5)),
-                    );
-                    delivered = delivered.saturating_add(1);
+                if let ExtractorOutput::Packets { run, count } = output {
+                    let mut n = 0usize;
+                    for one in PacketRun::new(*run, &area) {
+                        let same = packets.get(delivered).is_some_and(|p| one == p.octets());
+                        t.check(same);
+                        delivered = delivered.saturating_add(1);
+                        n = n.saturating_add(1);
+                    }
+                    t.check(n == *count);
                 }
             }
         }
@@ -278,7 +269,7 @@ fn refusals<P: PacketProtocol>(
 /// The extractor takes a gap, refuses an area that is too small, counts, and reconfigures.
 fn extractor_refusals<P: PacketProtocol>(
     t: &mut Tally,
-    extractor: &mut PacketExtractor<P, M, D, N>,
+    extractor: &mut PacketExtractor<P, M, D>,
     ext_config: PacketExtractorConfig<P>,
 ) {
     let mut area = [0u8; M + D];
@@ -312,7 +303,7 @@ fn extractor_refusals<P: PacketProtocol>(
             .step(ExtractorInput::Reconfigure(ext_config), &mut area)
             .is_ok(),
     );
-    t.check(extractor_max_actions(D, 1) == N && MIN_ASSEMBLY == 8);
+    t.check(EXTRACTOR_MAX_ACTIONS == 8 && MIN_ASSEMBLY == 8);
 }
 
 /// The pointer values and the data field headers of `P` (docs/04-engines.md §2.1).
@@ -373,8 +364,8 @@ fn common(t: &mut Tally) {
 
 pub fn run(t: &mut Tally) {
     common(t);
-    let uslp =
-        MapId::<4>::new(bb(2)).map(|map| UslpParams::new(Upid::Packets, map, Qos::Expedited));
+    let uslp = MapId::<4>::new(bb(2))
+        .and_then(|map| UslpParams::new(Upid::Packets, map, Qos::Expedited).ok());
     let aos4 = AosParams {
         edition: AosEdition::Issue4Compatible,
     };
