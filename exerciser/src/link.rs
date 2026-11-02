@@ -130,7 +130,8 @@ fn trip<P: PacketProtocol>(
                 .is_ok(),
         );
     }
-    t.check(generator.next_deadline() == Some(Instant::from_micros(100)));
+    // The first field is full, so no deadline runs.
+    t.check(generator.next_deadline().is_none());
     flow(t, &mut generator, &mut extractor, &packets, params);
 
     refusals(t, &mut generator, config);
@@ -150,7 +151,7 @@ fn flow<P: PacketProtocol>(
     let mut delivered = 0usize;
     let mut fields = 0usize;
     for round in 0..6_u64 {
-        let at = Instant::from_micros(bb(1_000_u64.saturating_add(round)));
+        let at = Instant::from_micros(bb(1_000_u64.saturating_add(round.saturating_mul(1_000))));
         t.check(
             generator
                 .step(GeneratorInput::Timeout, at, &mut out)
