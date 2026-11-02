@@ -252,8 +252,8 @@ The table is the registry. `cargo xtask fields --write` generates from it the Ru
 | 5 | `apid` | field | Application Process Identifier | core, spp | 133.0 §4.1.3.3.4 |
 | 6 | `sequence_count` | field | Packet Sequence Count or Packet Name | core | 133.0 §4.1.3.4.3 |
 | 7 | `frame_data_field` | field | Transfer Frame Data Field, as the frame layout places it | core, tm, tc, uslp, aos | 132.0 §4.1.4; 232.0 §4.1.3; 732.0 §4.1.4; 732.1 §4.1.4; CMN-041 |
-| 8 | `security_header_len` | parameter | Length of the Security Header on a Virtual Channel or MAP | core, tm, tc, aos, uslp | 355.0 §4.1.1.1.4; API-071 |
-| 9 | `security_trailer_len` | parameter | Length of the Security Trailer on a Virtual Channel or MAP | core, tm, tc, aos, uslp | 355.0 §4.1.2; API-071 |
+| 8 | `security_header_len` | parameter | Length of the Security Header on a Virtual Channel or MAP | core, tm, tc, aos, uslp, link | 355.0 §4.1.1.1.4; API-071 |
+| 9 | `security_trailer_len` | parameter | Length of the Security Trailer on a Virtual Channel or MAP | core, tm, tc, aos, uslp, link | 355.0 §4.1.2; API-071 |
 | 10 | `secured_fields` | parameter | Octet ranges of the Security Header, the data field, and the Security Trailer | core | 355.0 §4.1; API-070 |
 | 11 | `width` | parameter | Width of a bit field, 1 to 64 bits | core | GEN-050 |
 | 12 | `bit_offset` | parameter | Bit offset of a bit field in its buffer | core | GEN-050 |
@@ -323,7 +323,7 @@ The table is the registry. `cargo xtask fields --write` generates from it the Ru
 | 76 | `fsh_len` | field | Total length of the Transfer Frame Secondary Header in octets: its Length field plus one, and the `MC_FSH` or `VC_FSH` Length managed parameter | tm, link | 132.0 §4.1.3.2.3, §5.2 Table 5-2, §5.3 Table 5-3 |
 | 77 | `control_command_flag` | field | Control Command Flag, read with the Bypass Flag as the frame type of Table 4-1 | tc | 232.0 §4.1.2.3, Table 4-1 |
 | 78 | `tc_header_spare` | field | Reserved Spare of the TC Transfer Frame Primary Header, bits 4–5 | tc | 232.0 §4.1.2.4 |
-| 79 | `max_frame_len` | parameter | Maximum Transfer Frame Length, a managed parameter of a Physical or Virtual Channel | tc, uslp | 232.0 §5 Tables 5-1, 5-3; 732.1 §5.2 Table 5-1 note 2 |
+| 79 | `max_frame_len` | parameter | Maximum Transfer Frame Length, a managed parameter of a Physical or Virtual Channel | tc, uslp, link | 232.0 §5 Tables 5-1, 5-3; 732.1 §5.2 Table 5-1 note 2 |
 | 80 | `segment_header` | field | Segment Header of a TC Frame Data Unit | tc | 232.0 §4.1.3.2.2 |
 | 81 | `control_command` | field | Control Command in the data field of a Type-C TC frame | tc | 232.0 §4.1.3.3 |
 | 82 | `control_word_type` | field | Control Word Type of the CLCW, bit 0 | tc | 232.0 §4.2.1.2 |
@@ -336,7 +336,7 @@ The table is the registry. `cargo xtask fields --write` generates from it the Ru
 | 89 | `protocol_control_command_flag` | field | Protocol Control Command Flag of the USLP Primary Header, read with the Bypass/Sequence Control Flag as Table 4-1 | uslp | 732.1 §4.1.2.8.2, Table 4-1 |
 | 90 | `uslp_header_spare` | field | Reserve Spares of the USLP Primary Header, bits 50–51 | uslp | 732.1 §4.1.2.9 |
 | 91 | `end_of_frame_primary_header_flag` | field | End of Frame Primary Header Flag: a truncated Primary Header | uslp | 732.1 §4.1.2.6; Annex D1.3 |
-| 92 | `vcf_count_len` | field | Virtual Channel Frame Count Length, and the VC Count Length managed parameters for each quality of service | uslp | 732.1 §4.1.2.11; §5.4 Table 5-3 |
+| 92 | `vcf_count_len` | field | Virtual Channel Frame Count Length, and the VC Count Length managed parameters for each quality of service | uslp, link | 732.1 §4.1.2.11; §5.4 Table 5-3 |
 | 93 | `vcf_count` | field | Virtual Channel Frame Count: of a USLP frame, of the length its VCF Count Length gives; of an AOS frame, 24 bits | uslp, aos | 732.1 §4.1.2.12; 732.0 §4.1.2.4 |
 | 94 | `tfdz_construction_rule` | field | TFDZ Construction Rule of the TFDF Header | uslp | 732.1 §4.1.4.2.2 |
 | 95 | `upid` | field | USLP Protocol Identifier of the TFDF Header | uslp | 732.1 §4.1.4.2.3 |

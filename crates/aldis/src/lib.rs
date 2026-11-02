@@ -18,7 +18,7 @@
 //! | `tc` | `aldis::tc` (`aldis-tc`): TC Transfer Frames, CLCW | 232.0 | TC-001…TC-031 |
 //! | `aos` | `aldis::aos` (`aldis-aos`): AOS Transfer Frames | 732.0 | AOS-001…AOS-020 |
 //! | `uslp` | `aldis::uslp` (`aldis-uslp`): USLP Transfer Frames, truncated frames, delimiting, validation | 732.1 | USLP-001…USLP-017 |
-//! | `link` | `aldis::link` (`aldis-link`): sending and receiving engines | `docs/04-engines.md` | LNK-001…LNK-073 |
+//! | `link` | `aldis::link` (`aldis-link`): sending and receiving engines | `docs/04-engines.md` | LNK-001…LNK-079 |
 //! | `cop1` | `aldis::cop1` (`aldis-cop1`): FOP-1 and FARM-1 | 232.1 | COP-001…COP-041 |
 //! | `framework` | `aldis::framework` (`aldis-framework`): transports, clocks, stacks | `docs/05-framework.md` | FW-001…FW-021 |
 //! | `alloc`, `std` | The same feature of every enabled crate; strictly additive | — | GEN-006 |
@@ -46,7 +46,7 @@ pub use aldis_epp as epp;
 /// `framework`.
 #[cfg(feature = "framework")]
 pub use aldis_framework as framework;
-/// Sending and receiving engines (`docs/04-engines.md`; LNK-001…LNK-073). Feature `link`.
+/// Sending and receiving engines (`docs/04-engines.md`; LNK-001…LNK-079). Feature `link`.
 #[cfg(feature = "link")]
 pub use aldis_link as link;
 /// Space Packet Protocol (133.0 §3.4, §4.1–4.3, §5.2; SPP-001…SPP-013). Feature `spp`; the
