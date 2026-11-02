@@ -241,10 +241,10 @@ pub enum ReceiverOutput<P: ReceiveProtocol> {
 /// A frame the caller has checked: its FECF is correct (the AOS FHEC corrected), and its SDLS
 /// processing is verified (LNK-050, API-074, RS-023).
 ///
-/// A codec view (`TmFrame`, `AosFrame`, `UslpFrame`, `TcFrame`) exists only for a frame of a
-/// configured channel, and the receiver must also take the frames of channels it does not serve
-/// (OI-77), so [`new`](Self::new) takes the octets (the view's `as_bytes` or `octets`) on the
-/// caller's word.
+/// **Temporary exception to RS-023.** [`new`](Self::new) wraps any octets on the caller's word,
+/// so the typestate is not enforced. The maintainer accepted this for the merge of M4 WP-5
+/// (2026-11-02); the codec's `Plain` frame replaces this type under issue #232, before the C ABI
+/// handles (WP-7) are built.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CheckedFrame<'a> {
     octets: &'a [u8],
