@@ -21,9 +21,9 @@ Expected: the previous frame was MC 30/VC 3 of VC 0 and the VC 7 expectation is 
 
 ## 2. AOS B_PDU, `link-recv-aos-bitstream`, step 2 (732.0 §4.1.2, §4.1.4.3, §4.3.3.2; LNK-077)
 
-Configuration: 48-octet frames with FECF, Insert Zone 4 octets, VC 3 bitstream. Input `6943 000002 20 DEADBEEF 0013 FF…FF 94 4E`.
+Configuration: 48-octet frames with FECF, Insert Zone 4 octets, VC 3 bitstream. Input `6943 000002 20 DEADBEEF 0013 FF…FF F9 4E`.
 
-`6943` = `01 01001001 000011`: TFVN `01`, SCID LSBs `0xA5`, VCID 3 (§4.1.2.2–3); with SCID MSBs `10` in octet 5 (`20` = `0010 0000`: replay 0, cycle-use 0, SCID MSB `10`, cycle 0) SCID = `10 10100101` = 677. `000002` is VC Frame Count 2. The Insert Zone is `DEADBEEF`. The B_PDU header `0013`: spare `00`, Bitstream Data Pointer 19 = the last valid bit (§4.1.4.3.3.2), so 20 bits are valid (not all ones: some idle, §4.1.4.3.3.3). The zone is `FF` octets; the valid bits are 20: `FF FF F` and the 4 unused bits of the third octet zero: `FFFFF0`. Expected: Insert SDU, then DataField with `bit_count` 20 and `FFFFF0`.
+`6943` = `01 10100101 000011`: TFVN `01`, SCID LSBs `0xA5`, VCID 3 (§4.1.2.2–3); with SCID MSBs `10` in octet 5 (`20` = `0010 0000`: replay 0, cycle-use 0, SCID MSB `10`, cycle 0) SCID = `10 10100101` = 677. `000002` is VC Frame Count 2. The Insert Zone is `DEADBEEF`. The B_PDU header `0013`: spare `00`, Bitstream Data Pointer 19 = the last valid bit (§4.1.4.3.3.2), so 20 bits are valid (not all ones: some idle, §4.1.4.3.3.3). The zone is `FF` octets; the valid bits are 20: `FF FF F` and the 4 unused bits of the third octet zero: `FFFFF0`. Expected: Insert SDU, then DataField with `bit_count` 20 and `FFFFF0`.
 
 ## 3. USLP frame, `link-recv-uslp-vcf-gap`, step 5 (732.1 §4.1.2, §4.3.8.3; LNK-051)
 

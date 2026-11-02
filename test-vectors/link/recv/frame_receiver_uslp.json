@@ -25,6 +25,18 @@
       ]
     },
     {
+      "id": "link-recv-uslp-unknown-map-counts",
+      "description": "A frame for a known VC and an unknown MAP goes through VC Reception before MAP demultiplexing discards it (732.1 4.3.7.4 before 4.3.5.3): its VCF Count is checked, so the frame of MAP 0 after it sees no gap. A second unknown-MAP frame that skips two counts returns the FrameGap first, then the Insert Zone, then FrameDiscarded; the field delivered next carries gap = true.",
+      "requirements": ["LNK-050", "LNK-051"],
+      "steps": [
+        {"at_us": 1000, "input": {"frame": {"frame_hex": "CC0DE020002F02000AA1A2A300000000000000000000000000000000000000000000000000000000000000000000DE02"}}, "expect": [{"deliver": {"kind": "InsertSdu", "data_hex": "A1A2A3"}}, {"deliver": {"kind": "DataField", "vc": 1, "data_hex": "00000000000000000000000000000000000000000000000000000000000000000000", "gap": false}}]},
+        {"at_us": 2000, "input": {"frame": {"frame_hex": "CC0DE02E002F02000BA1A2A30000000000000000000000000000000000000000000000000000000000000000000031B7"}}, "expect": [{"deliver": {"kind": "InsertSdu", "data_hex": "A1A2A3"}}, {"frame_discarded": {"reason": "UnknownChannel", "vc": 1, "map": 7}}]},
+        {"at_us": 3000, "input": {"frame": {"frame_hex": "CC0DE020002F02000CA1A2A300000000000000000000000000000000000000000000000000000000000000000000A51A"}}, "expect": [{"deliver": {"kind": "InsertSdu", "data_hex": "A1A2A3"}}, {"deliver": {"kind": "DataField", "vc": 1, "data_hex": "00000000000000000000000000000000000000000000000000000000000000000000", "gap": false}}]},
+        {"at_us": 4000, "input": {"frame": {"frame_hex": "CC0DE02E002F02000FA1A2A30000000000000000000000000000000000000000000000000000000000000000000093B8"}}, "expect": [{"notify": {"kind": "FrameGap", "scope": "vc", "vc": 1, "missing": 2}}, {"deliver": {"kind": "InsertSdu", "data_hex": "A1A2A3"}}, {"frame_discarded": {"reason": "UnknownChannel", "vc": 1, "map": 7}}]},
+        {"at_us": 5000, "input": {"frame": {"frame_hex": "CC0DE020002F020010A1A2A300000000000000000000000000000000000000000000000000000000000000000000FB54"}}, "expect": [{"deliver": {"kind": "InsertSdu", "data_hex": "A1A2A3"}}, {"deliver": {"kind": "DataField", "vc": 1, "data_hex": "00000000000000000000000000000000000000000000000000000000000000000000", "gap": true}}]}
+      ]
+    },
+    {
       "id": "link-recv-uslp-vcf-gap",
       "description": "The VCF Count is tracked per VC for the QoS of the Bypass/Sequence Control Flag: sequence-controlled and expedited frames have separate counts; a gap of two on the sequence-controlled count does not disturb the expedited one (732.1 4.1.2.12.4-5).",
       "requirements": ["LNK-051", "LNK-061"],
@@ -80,12 +92,13 @@
     },
     {
       "id": "link-recv-uslp-not-served",
-      "description": "A frame for a configured VC whose service this engine does not provide: Insert Zone, OCF, FrameDiscarded (NotServed); its VCF Count is updated.",
+      "description": "A frame for a configured VC whose service this engine does not provide: Insert Zone, OCF, FrameDiscarded (NotServed); its VCF Count is checked first (the second frame shows a gap of two).",
       "requirements": ["LNK-050"],
       "config": {"protocol": "uslp", "scid": 49374, "frame_len": 48, "fecf": true, "insert_zone_len": 3, "ocf_service": "mc", "accept_rejected_frame_insert_zone": false, "vcs": [{"vcid": 1, "maps": [0, 2], "cop": false}, {"vcid": 2, "maps": [0], "cop": true}, {"vcid": 3, "maps": [0], "cop": false, "role": "unserved"}]},
       "steps": [
         {"at_us": 1000, "input": {"frame": {"frame_hex": "CC0DE060002F0A0001A1A2A300000000000000000000000000000000000000000000000000000000000001040805D0F5"}}, "expect": [{"deliver": {"kind": "InsertSdu", "data_hex": "A1A2A3"}}, {"deliver": {"kind": "Ocf", "scope": "mc", "report": "Type1", "ocf_hex": "01040805"}}, {"frame_discarded": {"reason": "NotServed", "vc": 3, "map": 0}}]},
-        {"at_us": 2000, "input": {"query": {"counter": "NotServed"}}, "expect": [{"counter": {"name": "NotServed", "value": 1}}]}
+        {"at_us": 2000, "input": {"frame": {"frame_hex": "CC0DE060002F0A0004A1A2A3000000000000000000000000000000000000000000000000000000000000010408059661"}}, "expect": [{"notify": {"kind": "FrameGap", "scope": "vc", "vc": 3, "missing": 2}}, {"deliver": {"kind": "InsertSdu", "data_hex": "A1A2A3"}}, {"deliver": {"kind": "Ocf", "scope": "mc", "report": "Type1", "ocf_hex": "01040805"}}, {"frame_discarded": {"reason": "NotServed", "vc": 3, "map": 0}}]},
+        {"at_us": 3000, "input": {"query": {"counter": "NotServed"}}, "expect": [{"counter": {"name": "NotServed", "value": 2}}]}
       ]
     },
     {
@@ -116,20 +129,24 @@
       ]
     },
     {
-      "id": "link-recv-uslp-raw-frame-errors",
-      "description": "While the option is off RawFrame fails with InvalidConfig (raw_frames).",
+      "id": "link-recv-uslp-raw-frame-option-off",
+      "description": "While the option is off RawFrame fails with InvalidConfig (raw_frames) and changes no state: the counts before and after it are in sequence.",
       "requirements": ["LNK-079"],
       "steps": [
-        {"at_us": 1000, "input": {"raw_frame": {"frame_hex": "CC0DE020002F00A1A2A3000000000000000000000000000000000000000000000000000000000000000000000000E2A6"}}, "expect": [{"error": "InvalidConfig", "field": "raw_frames"}]}
+        {"at_us": 1000, "input": {"frame": {"frame_hex": "CC0DE020002F02000AA1A2A300000000000000000000000000000000000000000000000000000000000000000000DE02"}}, "expect": [{"deliver": {"kind": "InsertSdu", "data_hex": "A1A2A3"}}, {"deliver": {"kind": "DataField", "vc": 1, "data_hex": "00000000000000000000000000000000000000000000000000000000000000000000", "gap": false}}]},
+        {"at_us": 2000, "input": {"raw_frame": {"frame_hex": "CC0DE020002F02000BA1A2A3000000000000000000000000000000000000000000000000000000000000000000003A99"}}, "expect": [{"error": "InvalidConfig", "field": "raw_frames"}]},
+        {"at_us": 3000, "input": {"frame": {"frame_hex": "CC0DE020002F02000BA1A2A3000000000000000000000000000000000000000000000000000000000000000000003A99"}}, "expect": [{"deliver": {"kind": "InsertSdu", "data_hex": "A1A2A3"}}, {"deliver": {"kind": "DataField", "vc": 1, "data_hex": "00000000000000000000000000000000000000000000000000000000000000000000", "gap": false}}]}
       ]
     },
     {
       "id": "link-recv-uslp-raw-frame-length",
-      "description": "With the option on, octets of another length than the frame length fail with LengthMismatch (frame_len).",
+      "description": "With the option on, octets of another length than the frame length fail with LengthMismatch (frame_len) and change no state.",
       "requirements": ["LNK-079"],
       "config": {"protocol": "uslp", "scid": 49374, "frame_len": 48, "fecf": true, "insert_zone_len": 3, "ocf_service": "mc", "accept_rejected_frame_insert_zone": true, "vcs": [{"vcid": 1, "maps": [0, 2], "cop": false}, {"vcid": 2, "maps": [0], "cop": true}]},
       "steps": [
-        {"at_us": 1000, "input": {"raw_frame": {"frame_hex": "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"}}, "expect": [{"error": "LengthMismatch", "field": "frame_len"}]}
+        {"at_us": 1000, "input": {"frame": {"frame_hex": "CC0DE020002F02000AA1A2A300000000000000000000000000000000000000000000000000000000000000000000DE02"}}, "expect": [{"deliver": {"kind": "InsertSdu", "data_hex": "A1A2A3"}}, {"deliver": {"kind": "DataField", "vc": 1, "data_hex": "00000000000000000000000000000000000000000000000000000000000000000000", "gap": false}}]},
+        {"at_us": 2000, "input": {"raw_frame": {"frame_hex": "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"}}, "expect": [{"error": "LengthMismatch", "field": "frame_len"}]},
+        {"at_us": 3000, "input": {"frame": {"frame_hex": "CC0DE020002F02000BA1A2A3000000000000000000000000000000000000000000000000000000000000000000003A99"}}, "expect": [{"deliver": {"kind": "InsertSdu", "data_hex": "A1A2A3"}}, {"deliver": {"kind": "DataField", "vc": 1, "data_hex": "00000000000000000000000000000000000000000000000000000000000000000000", "gap": false}}]}
       ]
     },
     {

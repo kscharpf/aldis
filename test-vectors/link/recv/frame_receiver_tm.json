@@ -3,7 +3,7 @@
   "engine": "frame-receiver",
   "provenance": "hand-derived",
   "provenance_note": "Hand-derived from 132.0-B-3 4.1.2, 4.1.3, 4.1.4.6, 4.3.3 to 4.3.7 and 04-engines LNK-050 to LNK-053, LNK-077, OI-68. Model test-vectors/models/link_recv.py, written blind (TV-023) by a Claude agent from the Blue Books and docs/ only, without reading any implementation; for format only it read the COP-1 model and scenario files (cop1.py, the cop1 directory). The input scripts were chosen by hand; the expected outputs are the model's. Where the documents are silent the model refuses the case (see the README of test-vectors/link/recv/), so no scenario pins a behavior that 04 or the Blue Books leave open. The file is written by the model (--write) and never edited by hand.",
-  "config": {"protocol": "tm", "scid": 291, "frame_len": 48, "fecf": true, "ocf_service": "vc", "fsh_service": "vc", "vcs": [{"vcid": 0, "role": "packets"}, {"vcid": 1, "role": "vca"}, {"vcid": 7, "role": "packets"}]},
+  "config": {"protocol": "tm", "scid": 291, "frame_len": 48, "fecf": true, "ocf_service": "vc", "fsh_service": "vc", "vcs": [{"vcid": 0, "role": "packets", "ocf": false, "fsh_len": 0}, {"vcid": 1, "role": "vca", "ocf": false, "fsh_len": 0}, {"vcid": 7, "role": "packets", "ocf": false, "fsh_len": 0}]},
   "scenarios": [
     {
       "id": "link-recv-tm-routing",
@@ -38,11 +38,21 @@
       "id": "link-recv-tm-unknown-vc-mc-functions",
       "description": "A frame for an unknown VC still goes through the MC functions (OI-77): its MC gap action, then, with the MC services configured, the FSH SDU and the OCF, then FrameDiscarded (UnknownChannel) last; the VC count is untouched.",
       "requirements": ["LNK-050", "LNK-051"],
-      "config": {"protocol": "tm", "scid": 291, "frame_len": 48, "fecf": true, "ocf_service": "mc", "fsh_service": "mc", "vcs": [{"vcid": 0, "role": "packets"}, {"vcid": 1, "role": "vca"}, {"vcid": 7, "role": "packets"}]},
+      "config": {"protocol": "tm", "scid": 291, "frame_len": 48, "fecf": true, "ocf_service": "mc", "fsh_service": "mc", "vcs": [{"vcid": 0, "role": "packets", "ocf": true, "fsh_len": 2}, {"vcid": 1, "role": "vca", "ocf": false, "fsh_len": 0}, {"vcid": 7, "role": "packets", "ocf": false, "fsh_len": 0}]},
+      "steps": [
+        {"at_us": 1000, "input": {"frame": {"frame_hex": "12310A14980001660102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F20212201040805F937"}}, "expect": [{"deliver": {"kind": "FshSdu", "scope": "mc", "data_hex": "0166"}}, {"deliver": {"kind": "Ocf", "scope": "mc", "report": "Type1", "ocf_hex": "01040805"}}, {"deliver": {"kind": "DataField", "vc": 0, "data_hex": "0102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F202122", "fhp": 0, "gap": false}}]},
+        {"at_us": 2000, "input": {"frame": {"frame_hex": "12370C099800017702030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F2021222301040805597A"}}, "expect": [{"notify": {"kind": "FrameGap", "scope": "mc", "missing": 1}}, {"deliver": {"kind": "FshSdu", "scope": "mc", "data_hex": "0177"}}, {"deliver": {"kind": "Ocf", "scope": "mc", "report": "Type1", "ocf_hex": "01040805"}}, {"frame_discarded": {"reason": "UnknownChannel", "vc": 3}}]},
+        {"at_us": 3000, "input": {"frame": {"frame_hex": "12310D1598000188030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F202122232401040805F5B4"}}, "expect": [{"deliver": {"kind": "FshSdu", "scope": "mc", "data_hex": "0188"}}, {"deliver": {"kind": "Ocf", "scope": "mc", "report": "Type1", "ocf_hex": "01040805"}}, {"deliver": {"kind": "DataField", "vc": 0, "data_hex": "030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F2021222324", "fhp": 0, "gap": false}}]}
+      ]
+    },
+    {
+      "id": "link-recv-tm-unknown-vc-count-discontinuity",
+      "description": "A repeated MC Frame Count on a frame for an unknown VC raises CountDiscontinuity (scope mc) before FrameDiscarded (OI-77, CMN-031); the expectation is the received count plus one.",
+      "requirements": ["LNK-050", "LNK-051"],
       "steps": [
         {"at_us": 1000, "input": {"frame": {"frame_hex": "12300A1418000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F2021222324252627285084"}}, "expect": [{"deliver": {"kind": "DataField", "vc": 0, "data_hex": "0102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F202122232425262728", "fhp": 0, "gap": false}}]},
-        {"at_us": 2000, "input": {"frame": {"frame_hex": "12370C099800017702030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F2021222301040805597A"}}, "expect": [{"notify": {"kind": "FrameGap", "scope": "mc", "missing": 1}}, {"deliver": {"kind": "FshSdu", "scope": "mc", "data_hex": "0177"}}, {"deliver": {"kind": "Ocf", "scope": "mc", "report": "Type1", "ocf_hex": "01040805"}}, {"frame_discarded": {"reason": "UnknownChannel", "vc": 3}}]},
-        {"at_us": 3000, "input": {"frame": {"frame_hex": "12300D151800030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F202122232425262728292AC641"}}, "expect": [{"deliver": {"kind": "DataField", "vc": 0, "data_hex": "030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F202122232425262728292A", "fhp": 0, "gap": false}}]}
+        {"at_us": 2000, "input": {"frame": {"frame_hex": "12360A09180002030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F202122232425262728299151"}}, "expect": [{"notify": {"kind": "CountDiscontinuity", "scope": "mc"}}, {"frame_discarded": {"reason": "UnknownChannel", "vc": 3}}]},
+        {"at_us": 3000, "input": {"frame": {"frame_hex": "12300B151800030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F202122232425262728292A4608"}}, "expect": [{"deliver": {"kind": "DataField", "vc": 0, "data_hex": "030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F202122232425262728292A", "fhp": 0, "gap": false}}]}
       ]
     },
     {
@@ -67,12 +77,12 @@
     },
     {
       "id": "link-recv-tm-not-served",
-      "description": "A frame for a configured VC whose service this engine does not provide is discarded as NotServed after its MC and VC counts, FSH and OCF (OI-73, OI-77): the counts are updated, so the next frame of VC 0 sees no MC gap.",
+      "description": "A frame for a configured VC whose service this engine does not provide is discarded as NotServed after its MC and VC counts and its FSH and OCF (the VC's own, LNK-050, OI-73, OI-77): the counts are updated, so the next frame of VC 0 sees no MC gap.",
       "requirements": ["LNK-050", "LNK-051"],
-      "config": {"protocol": "tm", "scid": 291, "frame_len": 48, "fecf": true, "ocf_service": "vc", "fsh_service": "vc", "vcs": [{"vcid": 0, "role": "packets"}, {"vcid": 1, "role": "vca"}, {"vcid": 7, "role": "packets"}, {"vcid": 5, "role": "unserved"}]},
+      "config": {"protocol": "tm", "scid": 291, "frame_len": 48, "fecf": true, "ocf_service": "vc", "fsh_service": "vc", "vcs": [{"vcid": 0, "role": "packets", "ocf": false, "fsh_len": 0}, {"vcid": 1, "role": "vca", "ocf": false, "fsh_len": 0}, {"vcid": 7, "role": "packets", "ocf": false, "fsh_len": 0}, {"vcid": 5, "role": "unserved", "ocf": true, "fsh_len": 2}]},
       "steps": [
         {"at_us": 1000, "input": {"frame": {"frame_hex": "12300A1418000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F2021222324252627285084"}}, "expect": [{"deliver": {"kind": "DataField", "vc": 0, "data_hex": "0102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F202122232425262728", "fhp": 0, "gap": false}}]},
-        {"at_us": 2000, "input": {"frame": {"frame_hex": "123A0B01180002030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F2021222324252627282913BF"}}, "expect": [{"frame_discarded": {"reason": "NotServed", "vc": 5}}]},
+        {"at_us": 2000, "input": {"frame": {"frame_hex": "123B0B019800015402030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F2021222301040805A5E7"}}, "expect": [{"deliver": {"kind": "FshSdu", "scope": "vc", "vc": 5, "data_hex": "0154"}}, {"deliver": {"kind": "Ocf", "scope": "vc", "vc": 5, "report": "Type1", "ocf_hex": "01040805"}}, {"frame_discarded": {"reason": "NotServed", "vc": 5}}]},
         {"at_us": 3000, "input": {"frame": {"frame_hex": "123B0D0398000155030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F202122232401040805B41C"}}, "expect": [{"notify": {"kind": "FrameGap", "scope": "mc", "missing": 1}}, {"notify": {"kind": "FrameGap", "scope": "vc", "vc": 5, "missing": 1}}, {"deliver": {"kind": "FshSdu", "scope": "vc", "vc": 5, "data_hex": "0155"}}, {"deliver": {"kind": "Ocf", "scope": "vc", "vc": 5, "report": "Type1", "ocf_hex": "01040805"}}, {"frame_discarded": {"reason": "NotServed", "vc": 5}}]},
         {"at_us": 4000, "input": {"frame": {"frame_hex": "12300E1518000405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F202122232425262728292A2B7C8F"}}, "expect": [{"deliver": {"kind": "DataField", "vc": 0, "data_hex": "0405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F202122232425262728292A2B", "fhp": 0, "gap": false}}]},
         {"at_us": 5000, "input": {"query": {"counter": "NotServed"}}, "expect": [{"counter": {"name": "NotServed", "value": 2}}]}
@@ -133,13 +143,14 @@
     },
     {
       "id": "link-recv-tm-oid-frame",
-      "description": "An OID frame (FHP 0x7FE) on the dedicated VC 7 carries a Secondary Header and an OCF: both are delivered, the data is dropped, no FrameDiscarded; it counts in the MC and VC Frame Counts of its channel (the next frame of VC 0 follows the MC count without a gap), and the OID frame counter is 2.",
+      "description": "An OID frame (FHP 0x7FE) on the dedicated VC 7 carries a Secondary Header and an OCF: both are delivered, the data is dropped, no FrameDiscarded; it counts in the MC and VC Frame Counts of its channel (the next frame of VC 0 follows the MC count without a gap), and the OID frame counter is 2. Every frame of VC 7 carries both, as the channel's configuration says.",
       "requirements": ["LNK-052", "LNK-051"],
+      "config": {"protocol": "tm", "scid": 291, "frame_len": 48, "fecf": true, "ocf_service": "vc", "fsh_service": "vc", "vcs": [{"vcid": 0, "role": "packets", "ocf": false, "fsh_len": 0}, {"vcid": 1, "role": "vca", "ocf": false, "fsh_len": 0}, {"vcid": 7, "role": "packets", "ocf": true, "fsh_len": 2}]},
       "steps": [
         {"at_us": 1000, "input": {"frame": {"frame_hex": "12301E0318000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F202122232425262728ACA0"}}, "expect": [{"deliver": {"kind": "DataField", "vc": 0, "data_hex": "0102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F202122232425262728", "fhp": 0, "gap": false}}]},
         {"at_us": 2000, "input": {"frame": {"frame_hex": "123F1F649FFE01AAFFFFFFFF6DB6D861451F11F19716723CBE7E00B1DE90B262107AF83494CEE3323F0301040805BF9E"}}, "expect": [{"deliver": {"kind": "FshSdu", "scope": "vc", "vc": 7, "data_hex": "01AA"}}, {"deliver": {"kind": "Ocf", "scope": "vc", "vc": 7, "report": "Type1", "ocf_hex": "01040805"}}]},
         {"at_us": 3000, "input": {"frame": {"frame_hex": "12302004180002030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F20212223242526272829111B"}}, "expect": [{"deliver": {"kind": "DataField", "vc": 0, "data_hex": "02030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F20212223242526272829", "fhp": 0, "gap": false}}]},
-        {"at_us": 4000, "input": {"frame": {"frame_hex": "123E21651FFE54BEF5C1528C9BB9ED35FDBC23D9BC2F07576D987881BDF84845CBCC7F38959BA73E4F69C80256BAB0DD"}}, "expect": []},
+        {"at_us": 4000, "input": {"frame": {"frame_hex": "123F21659FFE01AB54BEF5C1528C9BB9ED35FDBC23D9BC2F07576D987881BDF84845CBCC7F38959BA73E0104080590E1"}}, "expect": [{"deliver": {"kind": "FshSdu", "scope": "vc", "vc": 7, "data_hex": "01AB"}}, {"deliver": {"kind": "Ocf", "scope": "vc", "vc": 7, "report": "Type1", "ocf_hex": "01040805"}}]},
         {"at_us": 5000, "input": {"query": {"counter": "oid_frames"}}, "expect": [{"counter": {"name": "oid_frames", "value": 2}}]},
         {"at_us": 6000, "input": {"query": {"counter": "gaps"}}, "expect": [{"counter": {"name": "gaps", "value": 0}}]}
       ]
@@ -157,17 +168,18 @@
       "id": "link-recv-tm-fsh-ocf-delivery",
       "description": "The whole Secondary Header (ID octet included) is delivered as an FSH SDU and the OCF as an Ocf action naming the VC, Type-1 for a CLCW, Type-2 otherwise (project specific or SDLS FSR); the data field follows (132.0 4.3.3.3).",
       "requirements": ["LNK-053"],
+      "config": {"protocol": "tm", "scid": 291, "frame_len": 48, "fecf": true, "ocf_service": "vc", "fsh_service": "vc", "vcs": [{"vcid": 0, "role": "packets", "ocf": true, "fsh_len": 3}, {"vcid": 1, "role": "vca", "ocf": false, "fsh_len": 0}, {"vcid": 7, "role": "packets", "ocf": false, "fsh_len": 0}]},
       "steps": [
         {"at_us": 1000, "input": {"frame": {"frame_hex": "1231010198000211220102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F2021010408055CF7"}}, "expect": [{"deliver": {"kind": "FshSdu", "scope": "vc", "vc": 0, "data_hex": "021122"}}, {"deliver": {"kind": "Ocf", "scope": "vc", "vc": 0, "report": "Type1", "ocf_hex": "01040805"}}, {"deliver": {"kind": "DataField", "vc": 0, "data_hex": "0102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F2021", "fhp": 0, "gap": false}}]},
-        {"at_us": 2000, "input": {"frame": {"frame_hex": "12310202180002030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F20212223242580112233BF2F"}}, "expect": [{"deliver": {"kind": "Ocf", "scope": "vc", "vc": 0, "report": "Type2", "ocf_hex": "80112233"}}, {"deliver": {"kind": "DataField", "vc": 0, "data_hex": "02030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F202122232425", "fhp": 0, "gap": false}}]},
-        {"at_us": 3000, "input": {"frame": {"frame_hex": "123103031800030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F20212223242526C0445566D5C3"}}, "expect": [{"deliver": {"kind": "Ocf", "scope": "vc", "vc": 0, "report": "Type2", "ocf_hex": "C0445566"}}, {"deliver": {"kind": "DataField", "vc": 0, "data_hex": "030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F20212223242526", "fhp": 0, "gap": false}}]}
+        {"at_us": 2000, "input": {"frame": {"frame_hex": "12310202980002122302030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F2021228011223339E9"}}, "expect": [{"deliver": {"kind": "FshSdu", "scope": "vc", "vc": 0, "data_hex": "021223"}}, {"deliver": {"kind": "Ocf", "scope": "vc", "vc": 0, "report": "Type2", "ocf_hex": "80112233"}}, {"deliver": {"kind": "DataField", "vc": 0, "data_hex": "02030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F202122", "fhp": 0, "gap": false}}]},
+        {"at_us": 3000, "input": {"frame": {"frame_hex": "123103039800021324030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F20212223C04455663804"}}, "expect": [{"deliver": {"kind": "FshSdu", "scope": "vc", "vc": 0, "data_hex": "021324"}}, {"deliver": {"kind": "Ocf", "scope": "vc", "vc": 0, "report": "Type2", "ocf_hex": "C0445566"}}, {"deliver": {"kind": "DataField", "vc": 0, "data_hex": "030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F20212223", "fhp": 0, "gap": false}}]}
       ]
     },
     {
       "id": "link-recv-tm-mc-services",
       "description": "With the MC services configured the FSH SDU and the OCF name the master channel and not the VC.",
       "requirements": ["LNK-053"],
-      "config": {"protocol": "tm", "scid": 291, "frame_len": 48, "fecf": true, "ocf_service": "mc", "fsh_service": "mc", "vcs": [{"vcid": 0, "role": "packets"}, {"vcid": 1, "role": "vca"}, {"vcid": 7, "role": "packets"}]},
+      "config": {"protocol": "tm", "scid": 291, "frame_len": 48, "fecf": true, "ocf_service": "mc", "fsh_service": "mc", "vcs": [{"vcid": 0, "role": "packets", "ocf": true, "fsh_len": 2}, {"vcid": 1, "role": "vca", "ocf": false, "fsh_len": 0}, {"vcid": 7, "role": "packets", "ocf": false, "fsh_len": 0}]},
       "steps": [
         {"at_us": 1000, "input": {"frame": {"frame_hex": "12310101980001110102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F20212201040805231D"}}, "expect": [{"deliver": {"kind": "FshSdu", "scope": "mc", "data_hex": "0111"}}, {"deliver": {"kind": "Ocf", "scope": "mc", "report": "Type1", "ocf_hex": "01040805"}}, {"deliver": {"kind": "DataField", "vc": 0, "data_hex": "0102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F202122", "fhp": 0, "gap": false}}]}
       ]
@@ -176,7 +188,7 @@
       "id": "link-recv-tm-no-fsh-service",
       "description": "With no FSH service configured a Secondary Header is not delivered.",
       "requirements": ["LNK-053"],
-      "config": {"protocol": "tm", "scid": 291, "frame_len": 48, "fecf": true, "ocf_service": "vc", "fsh_service": "none", "vcs": [{"vcid": 0, "role": "packets"}, {"vcid": 1, "role": "vca"}, {"vcid": 7, "role": "packets"}]},
+      "config": {"protocol": "tm", "scid": 291, "frame_len": 48, "fecf": true, "ocf_service": "vc", "fsh_service": "none", "vcs": [{"vcid": 0, "role": "packets", "ocf": false, "fsh_len": 3}, {"vcid": 1, "role": "vca", "ocf": false, "fsh_len": 0}, {"vcid": 7, "role": "packets", "ocf": false, "fsh_len": 0}]},
       "steps": [
         {"at_us": 1000, "input": {"frame": {"frame_hex": "1230010198000211220102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F20212223242540F9"}}, "expect": [{"deliver": {"kind": "DataField", "vc": 0, "data_hex": "0102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F202122232425", "fhp": 0, "gap": false}}]}
       ]
