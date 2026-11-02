@@ -90,7 +90,7 @@ const CAPACITIES: &[Capacity] = &[
 
 /// Parses `capacities.toml`: `[section]` lines and `key = integer` lines with optional
 /// comments; returns `(section, key, value)` in file order.
-fn parse_toml(text: &str) -> Result<Vec<(String, String, u64)>, String> {
+pub(crate) fn parse_toml(text: &str) -> Result<Vec<(String, String, u64)>, String> {
     let mut section = None;
     let mut out = Vec::new();
     for (n, raw) in text.lines().enumerate() {

@@ -2,6 +2,9 @@
 //! check; part of `cargo xtask ci`). The definition of done it supports is
 //! `docs/milestones/checklists.md`.
 //!
+//! **Engines.** Every stateful engine of `aldis-cop1` and `aldis-link` has a section in
+//! `crates/aldis-ffi/capacities.toml` or a recorded exemption ([`ENGINES`]).
+//!
 //! **Crates.** A library crate of Layers 0–2 *has code* when a non-comment line of its `src/`
 //! declares a function (`fn `); the skeletons declare modules only. Every crate with code is in
 //! the coverage gate and the `features` check ([`crate::layers::gated`], VER-024, GEN-006),
@@ -823,6 +826,88 @@ fn crates() -> Result<Crates, String> {
     Ok(c)
 }
 
+/// The stateful engines of `aldis-cop1` and `aldis-link`: a type `X` next to its configuration
+/// type `XConfig` (API-057), and how each is sized in the C ABI. `Sized("fop1")` names the
+/// section of `crates/aldis-ffi/capacities.toml` (CABI-030) whose sizes the engine is built at,
+/// so that `stack` measures it as a C integrator gets it (checklists, "Adding an engine"; `Fop1::step`
+/// exceeded its stack budget only at those sizes, #202). `Exempt` marks an engine with none, with the reason in a comment.
+const ENGINES: &[(&str, Sizing)] = &[
+    ("Fop1", Sizing::Sized("fop1")),
+    // FARM-1 has no const generics: it holds no queue (M3 plan D6); the C ABI builds it unsized.
+    ("Farm1", Sizing::Exempt),
+];
+
+/// How an engine is sized in the C ABI.
+enum Sizing {
+    /// The `[section]` of `capacities.toml` that sizes it.
+    Sized(&'static str),
+    /// It has no capacities; the reason is the comment of its entry.
+    Exempt,
+}
+
+/// The engines in `sources` (the text of the `src/` files of the crates): every `pub struct X`
+/// that has a `pub struct XConfig`.
+fn engines_in(sources: &[String]) -> BTreeSet<String> {
+    let structs: BTreeSet<&str> = sources
+        .iter()
+        .flat_map(|s| s.lines())
+        .filter_map(|l| l.strip_prefix("pub struct "))
+        .filter_map(|r| r.split(['<', ' ', '{', '(', ';']).next())
+        .collect();
+    structs
+        .iter()
+        .filter(|n| structs.contains(format!("{n}Config").as_str()))
+        .map(|n| (*n).to_owned())
+        .collect()
+}
+
+/// Every engine in `ENGINES` form is found and has a section of `capacities.toml` or an
+/// exemption, and no listed engine or section is missing.
+fn engine_problems(
+    found: &BTreeSet<String>,
+    sections: &BTreeSet<String>,
+    table: &[(&str, Sizing)],
+) -> Vec<String> {
+    let mut problems = Vec::new();
+    for name in found {
+        match table.iter().find(|(n, _)| n == name) {
+            None => problems.push(format!(
+                "engine {name} has no entry in ENGINES (xtask/src/consistency.rs): add a [section] to crates/aldis-ffi/capacities.toml and build the engine at those sizes, or record why it has none"
+            )),
+            Some((_, Sizing::Sized(s))) if !sections.contains(*s) => problems.push(format!(
+                "engine {name}: {CAPACITIES} has no [{s}] section"
+            )),
+            Some(_) => {}
+        }
+    }
+    for (name, _) in table {
+        if !found.contains(*name) {
+            problems.push(format!(
+                "ENGINES lists {name}, which is no engine of aldis-cop1 or aldis-link"
+            ));
+        }
+    }
+    problems
+}
+
+/// The sections of `capacities.toml`, the sources of the engine crates, and the problems.
+fn engine_check() -> Result<Vec<String>, String> {
+    let sections = crate::header::parse_toml(&read(CAPACITIES)?)?
+        .into_iter()
+        .map(|(section, _, _)| section)
+        .collect();
+    let mut sources = Vec::new();
+    for dir in ["crates/aldis-cop1/src", "crates/aldis-link/src"] {
+        for path in repo::files(dir, &["rs"]) {
+            sources.push(repo::read(&path)?);
+        }
+    }
+    Ok(engine_problems(&engines_in(&sources), &sections, ENGINES))
+}
+
+/// The capacities of the C ABI (CABI-030).
+const CAPACITIES: &str = crate::header::CAPACITIES_TOML;
+
 /// Runs every check; returns the number of problems.
 pub fn check() -> Result<usize, String> {
     let c = crates()?;
@@ -869,6 +954,7 @@ pub fn check() -> Result<usize, String> {
         .collect::<Result<Vec<_>, _>>()?;
     let docs: Vec<(&str, &str)> = docs.iter().map(|(d, t)| (*d, t.as_str())).collect();
     problems.extend(header_name_problems(&docs, &read(C_HEADER)?, NOT_IN_HEADER));
+    problems.extend(engine_check()?);
 
     for p in &problems {
         println!("error: {p}");
@@ -887,10 +973,11 @@ pub fn check() -> Result<usize, String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        Crates, Form, aldis_dependencies, awaiting_runner, bin_paths, bin_targets, c_names,
-        crate_problems, exerciser_groups, expand_braces, ffi_runner_files, fuzz_problems,
-        fuzz_source_problems, glob, has_code, header_name_problems, matrix_targets, mutants_crates,
-        named_by_test, names, readme_patterns, vector_problems, without_c_comments,
+        Crates, Form, Sizing, aldis_dependencies, awaiting_runner, bin_paths, bin_targets, c_names,
+        crate_problems, engine_problems, engines_in, exerciser_groups, expand_braces,
+        ffi_runner_files, fuzz_problems, fuzz_source_problems, glob, has_code,
+        header_name_problems, matrix_targets, mutants_crates, named_by_test, names,
+        readme_patterns, vector_problems, without_c_comments,
     };
 
     /// A consistent registration of the M1 crates and `aldis-aos`, with two skeletons.
@@ -985,6 +1072,28 @@ mod tests {
         let mut c = consistent();
         c.members.remove("aldis-link");
         assert!(crate_problems(&c)[0].contains("not a workspace member"));
+    }
+
+    // req: VER-011, CABI-030
+    #[test]
+    fn every_engine_needs_a_capacities_section_or_an_exemption() {
+        let src = "pub struct Fop1Config {}\npub struct Fop1<const Q: usize> {}\n\
+                   pub struct Farm1Config {}\npub struct Farm1 {}\n\
+                   pub struct Orphan {}\npub struct LoneConfig {}\n";
+        let found = engines_in(&[src.to_owned()]);
+        assert_eq!(found, names(&["Fop1", "Farm1"]));
+        let table = [("Fop1", Sizing::Sized("fop1")), ("Farm1", Sizing::Exempt)];
+        let p = engine_problems(&found, &names(&["fop1"]), &table);
+        assert!(p.is_empty(), "{p:?}");
+        // The section is missing.
+        let p = engine_problems(&found, &names(&["link"]), &table);
+        assert!(p.len() == 1 && p[0].contains("no [fop1] section"), "{p:?}");
+        // An engine without an entry.
+        let p = engine_problems(&found, &names(&["fop1"]), &table[..1]);
+        assert!(p.len() == 1 && p[0].contains("Farm1 has no entry"), "{p:?}");
+        // A stale entry.
+        let p = engine_problems(&names(&["Fop1"]), &names(&["fop1"]), &table);
+        assert!(p.len() == 1 && p[0].contains("lists Farm1"), "{p:?}");
     }
 
     #[test]
