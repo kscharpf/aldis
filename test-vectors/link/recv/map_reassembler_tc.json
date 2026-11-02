@@ -42,6 +42,15 @@
       ]
     },
     {
+      "id": "link-recv-reassemble-tc-whole-while-partial",
+      "description": "A complete SDU (flags 11) while another is part-built discards the partial SDU with a SequenceViolation event, then delivers the complete one (OI-73).",
+      "requirements": ["LNK-070"],
+      "steps": [
+        {"at_us": 1000, "input": {"fdu": {"vc": 1, "data_hex": "411011121314151617"}}, "expect": []},
+        {"at_us": 2000, "input": {"fdu": {"vc": 1, "data_hex": "C15051525354"}}, "expect": [{"reassembly_event": {"kind": "SequenceViolation", "vc": 1, "map": 1}}, {"deliver": {"kind": "Sdu", "vc": 1, "map": 1, "data_hex": "5051525354"}}]}
+      ]
+    },
+    {
       "id": "link-recv-reassemble-tc-unknown-map",
       "description": "A FDU for a MAP ID that is not configured is discarded with the event UnknownMap (232.0 4.4.3.3); an SDU in progress on a known MAP is not disturbed.",
       "requirements": ["LNK-070"],

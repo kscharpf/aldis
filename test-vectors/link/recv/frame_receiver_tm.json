@@ -35,6 +35,63 @@
       ]
     },
     {
+      "id": "link-recv-tm-unknown-vc-mc-functions",
+      "description": "A frame for an unknown VC still goes through the MC functions (OI-77): its MC gap action, then, with the MC services configured, the FSH SDU and the OCF, then FrameDiscarded (UnknownChannel) last; the VC count is untouched.",
+      "requirements": ["LNK-050", "LNK-051"],
+      "config": {"protocol": "tm", "scid": 291, "frame_len": 48, "fecf": true, "ocf_service": "mc", "fsh_service": "mc", "vcs": [{"vcid": 0, "role": "packets"}, {"vcid": 1, "role": "vca"}, {"vcid": 7, "role": "packets"}]},
+      "steps": [
+        {"at_us": 1000, "input": {"frame": {"frame_hex": "12300A1418000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F2021222324252627285084"}}, "expect": [{"deliver": {"kind": "DataField", "vc": 0, "data_hex": "0102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F202122232425262728", "fhp": 0, "gap": false}}]},
+        {"at_us": 2000, "input": {"frame": {"frame_hex": "12370C099800017702030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F2021222301040805597A"}}, "expect": [{"notify": {"kind": "FrameGap", "scope": "mc", "missing": 1}}, {"deliver": {"kind": "FshSdu", "scope": "mc", "data_hex": "0177"}}, {"deliver": {"kind": "Ocf", "scope": "mc", "report": "Type1", "ocf_hex": "01040805"}}, {"frame_discarded": {"reason": "UnknownChannel", "vc": 3}}]},
+        {"at_us": 3000, "input": {"frame": {"frame_hex": "12300D151800030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F202122232425262728292AC641"}}, "expect": [{"deliver": {"kind": "DataField", "vc": 0, "data_hex": "030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F202122232425262728292A", "fhp": 0, "gap": false}}]}
+      ]
+    },
+    {
+      "id": "link-recv-tm-unknown-vc-vc-services",
+      "description": "With the VC services configured (default), an FSH and an OCF of a frame for an unknown VC belong to no master channel service and are not delivered; only FrameDiscarded is returned.",
+      "requirements": ["LNK-050"],
+      "steps": [
+        {"at_us": 1000, "input": {"frame": {"frame_hex": "12370C099800017702030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F2021222301040805597A"}}, "expect": [{"frame_discarded": {"reason": "UnknownChannel", "vc": 3}}]}
+      ]
+    },
+    {
+      "id": "link-recv-tm-count-discontinuity",
+      "description": "A count that repeats (distance 0) or goes backwards raises CountDiscontinuity, naming the MC or the VC, with no missing number; the expectation becomes the received count plus one and the data field is flagged like for a gap (OI-73, CMN-031).",
+      "requirements": ["LNK-051"],
+      "steps": [
+        {"at_us": 1000, "input": {"frame": {"frame_hex": "12300A1418000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F2021222324252627285084"}}, "expect": [{"deliver": {"kind": "DataField", "vc": 0, "data_hex": "0102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F202122232425262728", "fhp": 0, "gap": false}}]},
+        {"at_us": 2000, "input": {"frame": {"frame_hex": "12300A14180002030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F20212223242526272829350F"}}, "expect": [{"notify": {"kind": "CountDiscontinuity", "scope": "mc"}}, {"notify": {"kind": "CountDiscontinuity", "scope": "vc", "vc": 0}}, {"deliver": {"kind": "DataField", "vc": 0, "data_hex": "02030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F20212223242526272829", "fhp": 0, "gap": true}}]},
+        {"at_us": 3000, "input": {"frame": {"frame_hex": "12300B151800030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F202122232425262728292A4608"}}, "expect": [{"deliver": {"kind": "DataField", "vc": 0, "data_hex": "030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F202122232425262728292A", "fhp": 0, "gap": false}}]},
+        {"at_us": 4000, "input": {"frame": {"frame_hex": "1230030718000405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F202122232425262728292A2B36A2"}}, "expect": [{"notify": {"kind": "CountDiscontinuity", "scope": "mc"}}, {"notify": {"kind": "CountDiscontinuity", "scope": "vc", "vc": 0}}, {"deliver": {"kind": "DataField", "vc": 0, "data_hex": "0405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F202122232425262728292A2B", "fhp": 0, "gap": true}}]},
+        {"at_us": 5000, "input": {"frame": {"frame_hex": "12300408180005060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F202122232425262728292A2B2C5E52"}}, "expect": [{"deliver": {"kind": "DataField", "vc": 0, "data_hex": "05060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F202122232425262728292A2B2C", "fhp": 0, "gap": false}}]}
+      ]
+    },
+    {
+      "id": "link-recv-tm-not-served",
+      "description": "A frame for a configured VC whose service this engine does not provide is discarded as NotServed after its MC and VC counts, FSH and OCF (OI-73, OI-77): the counts are updated, so the next frame of VC 0 sees no MC gap.",
+      "requirements": ["LNK-050", "LNK-051"],
+      "config": {"protocol": "tm", "scid": 291, "frame_len": 48, "fecf": true, "ocf_service": "vc", "fsh_service": "vc", "vcs": [{"vcid": 0, "role": "packets"}, {"vcid": 1, "role": "vca"}, {"vcid": 7, "role": "packets"}, {"vcid": 5, "role": "unserved"}]},
+      "steps": [
+        {"at_us": 1000, "input": {"frame": {"frame_hex": "12300A1418000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F2021222324252627285084"}}, "expect": [{"deliver": {"kind": "DataField", "vc": 0, "data_hex": "0102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F202122232425262728", "fhp": 0, "gap": false}}]},
+        {"at_us": 2000, "input": {"frame": {"frame_hex": "123A0B01180002030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F2021222324252627282913BF"}}, "expect": [{"frame_discarded": {"reason": "NotServed", "vc": 5}}]},
+        {"at_us": 3000, "input": {"frame": {"frame_hex": "123B0D0398000155030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F202122232401040805B41C"}}, "expect": [{"notify": {"kind": "FrameGap", "scope": "mc", "missing": 1}}, {"notify": {"kind": "FrameGap", "scope": "vc", "vc": 5, "missing": 1}}, {"deliver": {"kind": "FshSdu", "scope": "vc", "vc": 5, "data_hex": "0155"}}, {"deliver": {"kind": "Ocf", "scope": "vc", "vc": 5, "report": "Type1", "ocf_hex": "01040805"}}, {"frame_discarded": {"reason": "NotServed", "vc": 5}}]},
+        {"at_us": 4000, "input": {"frame": {"frame_hex": "12300E1518000405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F202122232425262728292A2B7C8F"}}, "expect": [{"deliver": {"kind": "DataField", "vc": 0, "data_hex": "0405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F202122232425262728292A2B", "fhp": 0, "gap": false}}]},
+        {"at_us": 5000, "input": {"query": {"counter": "NotServed"}}, "expect": [{"counter": {"name": "NotServed", "value": 2}}]}
+      ]
+    },
+    {
+      "id": "link-recv-tm-caller-discard",
+      "description": "CallerDiscard counts a frame the caller discarded before the engine under its reason and returns one FrameDiscarded; the counts of the engine are untouched.",
+      "requirements": ["LNK-080", "LNK-050"],
+      "steps": [
+        {"at_us": 1000, "input": {"frame": {"frame_hex": "12300A1418000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F2021222324252627285084"}}, "expect": [{"deliver": {"kind": "DataField", "vc": 0, "data_hex": "0102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F202122232425262728", "fhp": 0, "gap": false}}]},
+        {"at_us": 2000, "input": {"caller_discard": {"reason": "CrcMismatch"}}, "expect": [{"frame_discarded": {"reason": "CrcMismatch"}}]},
+        {"at_us": 3000, "input": {"caller_discard": {"reason": "Security"}}, "expect": [{"frame_discarded": {"reason": "Security"}}]},
+        {"at_us": 4000, "input": {"frame": {"frame_hex": "12300B15180002030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F202122232425262728291869"}}, "expect": [{"deliver": {"kind": "DataField", "vc": 0, "data_hex": "02030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F20212223242526272829", "fhp": 0, "gap": false}}]},
+        {"at_us": 5000, "input": {"query": {"counter": "CrcMismatch"}}, "expect": [{"counter": {"name": "CrcMismatch", "value": 1}}]},
+        {"at_us": 6000, "input": {"query": {"counter": "Security"}}, "expect": [{"counter": {"name": "Security", "value": 1}}]}
+      ]
+    },
+    {
       "id": "link-recv-tm-counts-in-sequence",
       "description": "The first frame sets both expectations; consecutive counts, including the wrap 255 to 0 of both counters, raise no gap action (132.0 4.1.2.5.2, 4.1.2.6.2).",
       "requirements": ["LNK-051"],

@@ -283,13 +283,17 @@ OCF_T2_FSR = bytes([0xC0, 0x44, 0x55, 0x66])      # Type Flag 1, bit 1 = 1: SDLS
 # Counters: modular frame counts (CMN-030, CMN-031, LNK-051)
 # --------------------------------------------------------------------------------------------
 
-def missing(count, expected, modulus):
-    """Frames missing, (count - expected) modulo the range (LNK-051). A forward distance beyond
-    half the range is a backwards or reset count (CMN-031) that the documents leave open."""
-    d = (count - expected) % modulus
-    if d + 1 > modulus // 2:     # CMN-031: a forward distance (d + 1) of 2..=modulus/2 is a gap
-        raise Unspecified("count goes backwards or resets: LNK-051 and CMN-031 differ")
-    return d
+def classify(count, expected, modulus):
+    """CMN-031 against the previous count (expected - 1): a forward distance of 1 is in
+    sequence, 2..=modulus/2 is a gap with distance - 1 frames missing (LNK-051), and 0 (a repeat)
+    or anything beyond half the range (backwards) is a discontinuity (OI-73)."""
+    d = (count - expected) % modulus        # missing frames
+    dist = (d + 1) % modulus
+    if dist == 1:
+        return ("ok", 0)
+    if 2 <= dist <= modulus // 2:
+        return ("gap", d)
+    return ("disc", 0)
 
 
 class Counters:
@@ -338,6 +342,8 @@ class FrameReceiver:
             return self.frame(unhx(inp["frame"]["frame_hex"]))
         if "frame_loss" in inp:
             return self.frame_loss()
+        if "caller_discard" in inp:
+            return self.caller_discard(inp["caller_discard"]["reason"])
         if "raw_frame" in inp:
             return self.raw_frame(unhx(inp["raw_frame"]["frame_hex"]))
         if "reconfigure" in inp:
@@ -363,17 +369,22 @@ class FrameReceiver:
         return [{"frame_discarded": d}]
 
     def gap(self, key, count, modulus, outs, notify):
-        """Compare `count` with the expectation of `key`; raise the gap action (LNK-051)."""
+        """Compare `count` with the expectation of `key`; raise FrameGap or CountDiscontinuity
+        (LNK-051, OI-73) and set the expectation to count + 1. True when one was raised."""
         exp = self.vc_expect.get(key)
+        raised = False
         if exp is not None:
-            m = missing(count, exp, modulus)
-            if m:
+            kind, m = classify(count, exp, modulus)
+            if kind == "gap":
                 self.counters.add("gaps")
-                outs.append({"notify": dict(notify, missing=m)})
-                self.vc_expect[key] = (count + 1) % modulus
-                return True
+                outs.append({"notify": {"kind": "FrameGap", **notify, "missing": m}})
+                raised = True
+            elif kind == "disc":
+                self.counters.add("count_discontinuities")
+                outs.append({"notify": {"kind": "CountDiscontinuity", **notify}})
+                raised = True
         self.vc_expect[key] = (count + 1) % modulus
-        return False
+        return raised
 
     def ocf_out(self, ocf, scope, vc, extra):
         d = {"kind": "Ocf", "scope": scope}
@@ -405,14 +416,8 @@ class FrameReceiver:
         w2 = int.from_bytes(f[4:6], "big")
         shf, sync, fhp = w2 >> 15, (w2 >> 14) & 1, w2 & 0x7FF
         vcmap = self.vcs()
-        if vcid not in vcmap:
-            # The MC Frame Count counts every frame of the master channel (132.0 4.1.2.5), and
-            # MC reception runs before VC demultiplexing discards the frame (4.3.5, 4.3.4.3).
-            if self.mc_expect is not None and missing(mc, self.mc_expect, 256):
-                raise Unspecified("an MC gap on a frame that is then discarded for its VC")
-            self.mc_expect = (mc + 1) % 256
-            return self.discard("UnknownChannel", vcid)          # LNK-050: alone
-        role = vcmap[vcid]["role"]
+        known = vcid in vcmap
+        role = vcmap[vcid]["role"] if known else None
         end = len(f) - (2 if cfg["fecf"] else 0) - (4 if ocf_flag else 0)
         start = 6
         fsh = None
@@ -423,27 +428,29 @@ class FrameReceiver:
         data = f[start:end]
         ocf = f[end:end + 4] if ocf_flag else None
         outs = []
-        # Master Channel and Virtual Channel Frame Counts, 8 bits each (132.0 4.1.2.5-6); an OID
-        # frame counts in both (LNK-051).
-        mc_gap = False
-        if self.mc_expect is not None:
-            m = missing(mc, self.mc_expect, 256)
-            if m:
-                self.counters.add("gaps")
-                outs.append({"notify": {"kind": "FrameGap", "scope": "mc", "missing": m}})
-                mc_gap = True
-        self.mc_expect = (mc + 1) % 256
-        vc_gap = self.gap(vcid, vcc, 256, outs,
-                          {"kind": "FrameGap", "scope": "vc", "vc": vcid})
-        if vc_gap:
-            self.pending_gap[vcid] = True
-        oid = role == "packets" and sync == 0 and fhp == 0x7FE
-        if fsh is not None and cfg["fsh_service"] != "none":
+        # The MC functions run for every frame of the master channel, also one that VC
+        # demultiplexing then discards (132.0 4.1.2.5, 4.3.5.2; LNK-050, LNK-051, OI-77); an OID
+        # frame counts in the MC and VC counts (LNK-051). A repeat or a backwards count is a
+        # CountDiscontinuity (OI-73).
+        mc_flag = self.gap("mc", mc, 256, outs, {"scope": "mc"})
+        vc_flag = False
+        if known:
+            vc_flag = self.gap(vcid, vcc, 256, outs, {"scope": "vc", "vc": vcid})
+            if vc_flag and role != "unserved":
+                self.pending_gap[vcid] = True
+        # Services: the MC services for an unknown VC, all of them once the VC is known.
+        if fsh is not None and cfg["fsh_service"] != "none" and \
+                (known or cfg["fsh_service"] == "mc"):
             outs.append({"deliver": {"kind": "FshSdu", "scope": cfg["fsh_service"],
                                      **({"vc": vcid} if cfg["fsh_service"] == "vc" else {}),
                                      "data_hex": hx(fsh)}})
-        if ocf is not None:
+        if ocf is not None and (known or cfg["ocf_service"] == "mc"):
             outs.append(self.ocf_out(ocf, cfg["ocf_service"], vcid, {}))
+        if not known:
+            return outs + self.discard("UnknownChannel", vcid)
+        if role == "unserved":
+            return outs + self.discard("NotServed", vcid)
+        oid = role == "packets" and sync == 0 and fhp == 0x7FE
         if oid:
             self.counters.add("oid_frames")
             return outs
@@ -463,8 +470,7 @@ class FrameReceiver:
         replay, cycle_use, cycle = sig >> 7, (sig >> 6) & 1, sig & 0xF
         vcmap = self.vcs()
         oid = vcid == 63                       # 732.0 4.1.4.1.5.1
-        if not oid and vcid not in vcmap:
-            return self.discard("UnknownChannel", vcid)
+        known = oid or vcid in vcmap
         vcd = vcmap.get(vcid, {"role": None, "ocf": False})
         izl = cfg["insert_zone_len"]
         end = len(f) - (2 if cfg["fecf"] else 0) - (4 if vcd["ocf"] else 0)
@@ -473,23 +479,29 @@ class FrameReceiver:
         ocf = f[end:end + 4] if vcd["ocf"] else None
         outs = []
         rp = {"replay": bool(replay)}
-        if not oid:
-            if replay:
-                pass       # OI-70: replay frames are excluded from counting and gaps
+        iz_out = [{"deliver": {"kind": "InsertSdu", "data_hex": hx(iz), **rp}}] if izl else []
+        if not known:
+            # The Insert Zone is extracted whatever the GVCID (732.0 4.3.7.4; LNK-050, OI-73).
+            return iz_out + self.discard("UnknownChannel", vcid)
+        flagged = False
+        if not oid and not replay:           # OI-70: replay frames take no part in counting
+            if cycle_use:
+                value, modulus = (cycle << 24) | count, 1 << 28
             else:
-                if cycle_use:
-                    value, modulus = (cycle << 24) | count, 1 << 28
-                else:
-                    value, modulus = count, 1 << 24
-                mode = self.vc_expect.get(("mode", vcid))
-                if mode is not None and mode != cycle_use:
-                    raise Unspecified("the Cycle Use Flag changes on a VC")
-                self.vc_expect[("mode", vcid)] = cycle_use
-                if self.gap(vcid, value, modulus, outs,
-                            {"kind": "FrameGap", "scope": "vc", "vc": vcid}):
-                    self.pending_gap[vcid] = True
-        if izl:
-            outs.append({"deliver": {"kind": "InsertSdu", "data_hex": hx(iz), **rp}})
+                value, modulus = count, 1 << 24
+            mode = self.vc_expect.get(("mode", vcid))
+            if mode is not None and mode != cycle_use:
+                raise Unspecified("the Cycle Use Flag changes on a VC")
+            self.vc_expect[("mode", vcid)] = cycle_use
+            flagged = self.gap(vcid, value, modulus, outs,
+                               {"scope": "vc", "vc": vcid})
+        if vcd["role"] == "unserved":
+            if flagged:
+                raise Unspecified("a gap on a frame discarded as NotServed (AOS, bound of 2)")
+            return iz_out + self.discard("NotServed", vcid)
+        if flagged:
+            self.pending_gap[vcid] = True
+        outs += iz_out
         if ocf is not None:
             outs.append(self.ocf_out(ocf, "vc", vcid, rp))
         if oid:
@@ -528,31 +540,43 @@ class FrameReceiver:
         count = int.from_bytes(f[7:7 + vlen], "big") if vlen else None
         oid = vcid == 63                       # 732.1 4.1.4.1.6
         vcmap = {v["vcid"]: v for v in cfg["vcs"]}
-        if not oid:
-            if vcid not in vcmap:
-                return self.discard("UnknownChannel", vcid, mapid)
-            if mapid not in vcmap[vcid]["maps"]:
-                return self.discard("UnknownChannel", vcid, mapid)
-        if pcc:
-            raise Unspecified("Protocol Control Command frames are not specified for the receiver")
+        known = oid or (vcid in vcmap and mapid in vcmap[vcid]["maps"])
         izl = cfg["insert_zone_len"]
         hl = 7 + vlen
         end = len(f) - (2 if cfg["fecf"] else 0) - (4 if ocf_flag else 0)
         iz = f[hl:hl + izl]
         tf = f[hl + izl:end]
         ocf = f[end:end + 4] if ocf_flag else None
+        tail = []
+        if izl:
+            tail.append({"deliver": {"kind": "InsertSdu", "data_hex": hx(iz)}})
+        if ocf is not None:
+            tail.append(self.ocf_out(ocf, cfg["ocf_service"], vcid, {}))
+        if not known:
+            # The Insert Zone and the OCF are extracted before the frame is discarded
+            # (732.1 4.3.11.1.4, 4.3.9.2-3, 4.3.8 note 2; LNK-050, OI-77).
+            return tail + self.discard("UnknownChannel", vcid, mapid)
+        if bypass == 0 and pcc:
+            raise Unspecified("the reserved flag combination 01 (732.1 Table 4-1)")
         outs = []
+        flagged = False
         if not oid and count is not None and not vcmap[vcid]["cop"]:
             # The VCF Count of the VC for the QoS; with COP-1 FARM-1 decides (LNK-051).
-            if self.gap((vcid, bypass), count, 1 << (8 * vlen), outs,
-                        {"kind": "FrameGap", "scope": "vc", "vc": vcid}):
-                self.pending_gap[vcid] = True
-        if izl:
-            outs.append({"deliver": {"kind": "InsertSdu", "data_hex": hx(iz)}})
-        if ocf is not None:
-            outs.append(self.ocf_out(ocf, cfg["ocf_service"], vcid, {}))
+            flagged = self.gap((vcid, bypass), count, 1 << (8 * vlen), outs,
+                               {"scope": "vc", "vc": vcid})
+        if not oid and vcmap[vcid].get("role") == "unserved":
+            if flagged:
+                raise Unspecified("a gap on a frame discarded as NotServed (USLP, bound of 3)")
+            return tail + self.discard("NotServed", vcid, mapid)
+        if flagged:
+            self.pending_gap[vcid] = True
+        outs += tail
         if oid:
             self.counters.add("oid_frames")
+            return outs
+        if pcc:
+            # Protocol control commands go to the COP, never to an extractor (LNK-081).
+            outs.append({"deliver": {"kind": "ProtocolControl", "vc": vcid, "data_hex": hx(f)}})
             return outs
         outs.append({"deliver": {"kind": "DataField", "vc": vcid, "data_hex": hx(tf),
                                  "gap": self.pending_gap.pop(vcid, False)}})
@@ -561,17 +585,27 @@ class FrameReceiver:
     def tc(self, f):
         w1 = int.from_bytes(f[2:4], "big")
         vcid = w1 >> 10
-        if vcid not in {v["vcid"] for v in self.cfg["vcs"]}:
+        vcs = {v["vcid"]: v for v in self.cfg["vcs"]}
+        if vcid not in vcs:
             return self.discard("UnknownChannel", vcid)
-        raise Unspecified("what the engine returns for a TC frame it routes to FARM-1")
+        if vcs[vcid].get("role") == "unserved":
+            return self.discard("NotServed", vcid)
+        return [{"deliver": {"kind": "TcFrame", "vc": vcid, "data_hex": hx(f)}}]    # LNK-081
+
+    # -- CallerDiscard (LNK-080) --
+    def caller_discard(self, reason):
+        if reason not in ("CrcMismatch", "HeaderUncorrectable", "Security"):
+            raise AssertionError(reason)
+        self.counters.add(reason)
+        return [{"frame_discarded": {"reason": reason}}]
 
     # -- RawFrame (LNK-079) --
     def raw_frame(self, f):
         cfg = self.cfg
         if not cfg.get("accept_rejected_frame_insert_zone"):
-            raise Unspecified("RawFrame while the option is off")
+            return [{"error": "InvalidConfig", "field": "raw_frames"}]
         if len(f) != cfg["frame_len"]:
-            raise Unspecified("the error for a wrong frame length")
+            return [{"error": "LengthMismatch", "field": "frame_len"}]
         if cfg["protocol"] == "aos":
             raise Unspecified("replay metadata of an AOS frame whose header is not validated")
         vlen = f[6] & 7
@@ -707,12 +741,13 @@ class PacketExtractor:
         self.counters.add(kind)
         outs.append({"extraction_error": {"kind": kind}})
 
-    def run(self, zone, lo, hi, outs, ends_at_hi=False):
+    def run(self, zone, lo, hi, outs, ends_at_hi=False, early_ok=False):
         """Feed zone[lo:hi] to the packet in progress and the packets that follow. Returns True
         when an extraction error stopped the run (the rest is discarded, LNK-062). With
         `ends_at_hi` the octets are the continuation before an FHP (or a whole field in which
-        no packet starts): a packet that completes before the last of them is not specified,
-        since the FHP and the length field would disagree in a way 04 does not settle."""
+        no packet starts). A packet that completes before the last of them: with `early_ok`
+        (the octets before an FHP) it is discarded and "early" is returned, for the caller to
+        raise LengthInconsistent (LNK-061, OI-73); in a field with no FHP it is not specified."""
         for i in range(lo, hi):
             self.partial.append(zone[i])
             st, val = self.status(self.partial)
@@ -721,6 +756,9 @@ class PacketExtractor:
                 self.partial = bytearray()
                 return True
             if st == "done":
+                if ends_at_hi and i != hi - 1 and early_ok:
+                    self.partial = bytearray()
+                    return "early"
                 if ends_at_hi and i != hi - 1:
                     raise Unspecified("a packet ends before the FHP, or inside a field in which "
                                       "no packet starts")
@@ -756,9 +794,13 @@ class PacketExtractor:
         if not self.partial:
             if off != 0:
                 self.error("LengthInconsistent", outs)       # FHP wins (LNK-060)
-        elif not self.run(zone, 0, off, outs, ends_at_hi=True) and self.partial:
-            self.abandon(outs)
-            self.error("LengthInconsistent", outs)           # LNK-061: FHP is correct
+        else:
+            r = self.run(zone, 0, off, outs, ends_at_hi=True, early_ok=True)
+            if r == "early":
+                self.error("LengthInconsistent", outs)       # ends before the FHP: no outcome
+            elif not r and self.partial:
+                self.abandon(outs)
+                self.error("LengthInconsistent", outs)       # LNK-061: FHP is correct
         # An error before the FHP ends the continuation only; the packets from the FHP follow.
         self.sync = not self.run(zone, off, len(zone), outs)
         return outs
@@ -883,7 +925,8 @@ class MapReassembler:
             return outs
         if seq == "whole":
             if have:
-                raise Unspecified("a complete SDU while one is in progress")
+                outs.append(self.event("SequenceViolation", vc, mp))   # OI-73: then deliver
+                del self.partial[key]
             return outs + self.deliver_sdu(m, vc, mp, body, True)
         if seq == "first":
             if have:
@@ -993,6 +1036,58 @@ def fr_tm_scenarios():
     s.add(frame_in(tm_frame(c, 0, 10, 20, 0, 1)))
     s.add(frame_in(tm_frame(c, 3, 11, 9, 0, 2)))
     s.add(frame_in(tm_frame(c, 0, 12, 21, 0, 3)))
+    out.append(s)
+
+    mcsvc = dict(c, ocf_service="mc", fsh_service="mc")
+    s = Scn("link-recv-tm-unknown-vc-mc-functions", ["LNK-050", "LNK-051"],
+            "A frame for an unknown VC still goes through the MC functions (OI-77): its MC gap "
+            "action, then, with the MC services configured, the FSH SDU and the OCF, then "
+            "FrameDiscarded (UnknownChannel) last; the VC count is untouched.", config=mcsvc)
+    s.add(frame_in(tm_frame(c, 0, 10, 20, 0, 1)))
+    s.add(frame_in(tm_frame(c, 3, 12, 9, 0, 2, fsh=tm_fsh(0x77), ocf=OCF_CLCW)))
+    s.add(frame_in(tm_frame(c, 0, 13, 21, 0, 3)))
+    out.append(s)
+
+    s = Scn("link-recv-tm-unknown-vc-vc-services", ["LNK-050"],
+            "With the VC services configured (default), an FSH and an OCF of a frame for an "
+            "unknown VC belong to no master channel service and are not delivered; only "
+            "FrameDiscarded is returned.")
+    s.add(frame_in(tm_frame(c, 3, 12, 9, 0, 2, fsh=tm_fsh(0x77), ocf=OCF_CLCW)))
+    out.append(s)
+
+    s = Scn("link-recv-tm-count-discontinuity", ["LNK-051"],
+            "A count that repeats (distance 0) or goes backwards raises CountDiscontinuity, "
+            "naming the MC or the VC, with no missing number; the expectation becomes the "
+            "received count plus one and the data field is flagged like for a gap (OI-73, "
+            "CMN-031).")
+    s.add(frame_in(tm_frame(c, 0, 10, 20, 0, 1)))
+    s.add(frame_in(tm_frame(c, 0, 10, 20, 0, 2)))
+    s.add(frame_in(tm_frame(c, 0, 11, 21, 0, 3)))
+    s.add(frame_in(tm_frame(c, 0, 3, 7, 0, 4)))
+    s.add(frame_in(tm_frame(c, 0, 4, 8, 0, 5)))
+    out.append(s)
+
+    unserved = dict(c, vcs=c["vcs"] + [{"vcid": 5, "role": "unserved"}])
+    s = Scn("link-recv-tm-not-served", ["LNK-050", "LNK-051"],
+            "A frame for a configured VC whose service this engine does not provide is "
+            "discarded as NotServed after its MC and VC counts, FSH and OCF (OI-73, OI-77): the "
+            "counts are updated, so the next frame of VC 0 sees no MC gap.", config=unserved)
+    s.add(frame_in(tm_frame(c, 0, 10, 20, 0, 1)))
+    s.add(frame_in(tm_frame(c, 5, 11, 1, 0, 2)))
+    s.add(frame_in(tm_frame(c, 5, 13, 3, 0, 3, fsh=tm_fsh(0x55), ocf=OCF_CLCW)))
+    s.add(frame_in(tm_frame(c, 0, 14, 21, 0, 4)))
+    s.counter("NotServed")
+    out.append(s)
+
+    s = Scn("link-recv-tm-caller-discard", ["LNK-080", "LNK-050"],
+            "CallerDiscard counts a frame the caller discarded before the engine under its "
+            "reason and returns one FrameDiscarded; the counts of the engine are untouched.")
+    s.add(frame_in(tm_frame(c, 0, 10, 20, 0, 1)))
+    s.add({"caller_discard": {"reason": "CrcMismatch"}})
+    s.add({"caller_discard": {"reason": "Security"}})
+    s.add(frame_in(tm_frame(c, 0, 11, 21, 0, 2)))
+    s.counter("CrcMismatch")
+    s.counter("Security")
     out.append(s)
 
     s = Scn("link-recv-tm-counts-in-sequence", ["LNK-051"],
@@ -1136,6 +1231,46 @@ def fr_aos_scenarios():
     s.add(frame_in(aos_frame(c, 1, 103, mpdu(0, zl - 6), iz=IZ1, ocf=OCF_CLCW)))
     s.add(frame_in(aos_frame(c, 2, 51, 2, iz=IZ1)))
     s.add(frame_in(aos_frame(c, 1, 104, mpdu(0, zl - 6), iz=IZ1, ocf=OCF_CLCW)))
+    out.append(s)
+
+    s = Scn("link-recv-aos-count-discontinuity", ["LNK-051"],
+            "A repeated or backwards VC Frame Count raises CountDiscontinuity (no missing "
+            "number), sets the expectation to the received count plus one, and flags the data "
+            "field (OI-73, CMN-031).")
+    s.add(frame_in(aos_frame(c, 2, 100, 1, iz=IZ1)))
+    s.add(frame_in(aos_frame(c, 2, 100, 2, iz=IZ1)))
+    s.add(frame_in(aos_frame(c, 2, 50, 3, iz=IZ1)))
+    s.add(frame_in(aos_frame(c, 2, 51, 4, iz=IZ1)))
+    out.append(s)
+
+    unserved = dict(c, vcs=c["vcs"] + [{"vcid": 5, "role": "unserved", "ocf": False}])
+    s = Scn("link-recv-aos-not-served", ["LNK-050"],
+            "A frame for a configured VC whose service this engine does not provide: its Insert "
+            "Zone is delivered, then FrameDiscarded (NotServed); its VC count is updated.",
+            config=unserved)
+    s.add(frame_in(aos_frame(c, 5, 7, 1, iz=IZ1)))
+    s.add(frame_in(aos_frame(c, 5, 8, 2, iz=IZ2)))
+    s.counter("NotServed")
+    out.append(s)
+
+    s = Scn("link-recv-aos-caller-discard", ["LNK-080", "LNK-050"],
+            "CallerDiscard for an FHEC that cannot be corrected and for a wrong FECF.")
+    s.add({"caller_discard": {"reason": "HeaderUncorrectable"}})
+    s.add({"caller_discard": {"reason": "CrcMismatch"}})
+    s.counter("HeaderUncorrectable")
+    out.append(s)
+
+    s = Scn("link-recv-aos-raw-frame-errors", ["LNK-079"],
+            "While the option is off, RawFrame fails with InvalidConfig (raw_frames); with the "
+            "option on, octets of another length than the frame fail with LengthMismatch "
+            "(frame_len); neither changes state (OI-73).")
+    s.add({"raw_frame": {"frame_hex": hx(aos_frame(c, 1, 1, mpdu(0, zl - 6), iz=IZ1, ocf=OCF_CLCW))}})
+    out.append(s)
+    on = dict(c, accept_rejected_frame_insert_zone=True)
+    s = Scn("link-recv-aos-raw-frame-length", ["LNK-079"],
+            "With the option on, a raw frame of another length than the frame length fails "
+            "with LengthMismatch (frame_len).", config=on)
+    s.add({"raw_frame": {"frame_hex": hx(bytes(47))}})
     out.append(s)
 
     s = Scn("link-recv-aos-count-wrap", ["LNK-051"],
@@ -1310,6 +1445,52 @@ def fr_uslp_scenarios():
     s.counter("gaps")
     out.append(s)
 
+    s = Scn("link-recv-uslp-unknown-vc-iz-ocf", ["LNK-050"],
+            "A frame for an unknown VC still has its Insert Zone and its OCF extracted, in that "
+            "order, before FrameDiscarded (732.1 4.3.11.1.4, 4.3.9.2-3; OI-77).")
+    s.add(frame_in(uslp_frame(c, 9, 0, td(2, True), vcf=(2, 1), iz=UIZ, ocf=OCF_CLCW)))
+    out.append(s)
+
+    unserved = dict(c, vcs=c["vcs"] + [{"vcid": 3, "maps": [0], "cop": False, "role": "unserved"}])
+    s = Scn("link-recv-uslp-not-served", ["LNK-050"],
+            "A frame for a configured VC whose service this engine does not provide: Insert "
+            "Zone, OCF, FrameDiscarded (NotServed); its VCF Count is updated.", config=unserved)
+    s.add(frame_in(uslp_frame(c, 3, 0, td(2, True), vcf=(2, 1), iz=UIZ, ocf=OCF_CLCW)))
+    s.counter("NotServed")
+    out.append(s)
+
+    s = Scn("link-recv-uslp-count-discontinuity", ["LNK-051"],
+            "A repeated or backwards VCF Count raises CountDiscontinuity; the data field is "
+            "flagged (OI-73).")
+    s.add(frame_in(uslp_frame(c, 1, 0, td(2), vcf=(2, 10), iz=UIZ)))
+    s.add(frame_in(uslp_frame(c, 1, 0, td(2), vcf=(2, 10), iz=UIZ)))
+    s.add(frame_in(uslp_frame(c, 1, 0, td(2), vcf=(2, 3), iz=UIZ)))
+    out.append(s)
+
+    s = Scn("link-recv-uslp-protocol-control", ["LNK-081"],
+            "A frame with the Protocol Control Command Flag set (Bypass 1, Table 4-1) is "
+            "delivered whole as ProtocolControl for the COP and never as a data field; its "
+            "Insert Zone is still delivered first.")
+    s.add(frame_in(uslp_frame(c, 1, 0, td(2), vcf=(2, 1), bypass=1, pcc=1, iz=UIZ)))
+    out.append(s)
+
+    s = Scn("link-recv-uslp-caller-discard", ["LNK-080"],
+            "CallerDiscard for an SDLS verification failure.")
+    s.add({"caller_discard": {"reason": "Security"}})
+    s.counter("Security")
+    out.append(s)
+
+    off = uslp_frame(c, 1, 0, td(0), vcf=(0, 0), iz=UIZ)
+    s = Scn("link-recv-uslp-raw-frame-errors", ["LNK-079"],
+            "While the option is off RawFrame fails with InvalidConfig (raw_frames).")
+    s.add({"raw_frame": {"frame_hex": hx(off)}})
+    out.append(s)
+    s = Scn("link-recv-uslp-raw-frame-length", ["LNK-079"],
+            "With the option on, octets of another length than the frame length fail with "
+            "LengthMismatch (frame_len).", config=dict(c, accept_rejected_frame_insert_zone=True))
+    s.add({"raw_frame": {"frame_hex": hx(bytes(47))}})
+    out.append(s)
+
     s = Scn("link-recv-uslp-ocf-types", ["LNK-053"],
             "The OCF is delivered as an Ocf action: Type-1 for a CLCW or PLCW, Type-2 otherwise.")
     s.add(frame_in(uslp_frame(c, 1, 0, td(0, True), vcf=(0, 0), iz=UIZ, ocf=OCF_CLCW)))
@@ -1356,6 +1537,20 @@ def fr_tc_scenarios():
             "(UnknownChannel) alone (232.0 4.4.7.3).")
     s.add(frame_in(tc_frame(c, 5, 0, ramp(1, 9))))
     s.counter("UnknownChannel")
+    out.append(s)
+
+    s = Scn("link-recv-tc-frame-delivered", ["LNK-081", "LNK-050"],
+            "A TC frame for a configured VC is delivered whole as TcFrame for the caller to "
+            "pass to FARM-1 (232.0 4.4.5-6); on a VC whose service the engine does not provide "
+            "it is discarded as NotServed.",
+            config=dict(c, vcs=[{"vcid": 1}, {"vcid": 2, "role": "unserved"}]))
+    s.add(frame_in(tc_frame(c, 1, 0, ramp(1, 9))))
+    s.add(frame_in(tc_frame(c, 2, 1, ramp(2, 9))))
+    out.append(s)
+
+    s = Scn("link-recv-tc-caller-discard", ["LNK-080"],
+            "CallerDiscard for a wrong FECF on a TC frame.")
+    s.add({"caller_discard": {"reason": "CrcMismatch"}})
     out.append(s)
     return out
 
@@ -1498,6 +1693,16 @@ def ext_scenarios(proto):
     s.add(F(e1, 0))
     s.add(F(ramp(0xE0, 24), "none"))
     s.add(F(bytes(5) + q3 + q1[:9], 5))
+    out.append(s)
+
+    q6 = spp_total(20, 21, 0x15)
+    s = Scn(tag + "ends-before-fhp", ["LNK-061", "LNK-060"],
+            "The packet in progress needs 6 more octets but the FHP of the next field is 10: it "
+            "ends before the point the FHP gives. The extractor raises LengthInconsistent in "
+            "place of a discard outcome, discards the octets up to the FHP, and delivers the "
+            "packet that starts there (OI-73).")
+    s.add(F(p10 + q6[:14], 0))
+    s.add(F(q6[14:] + ramp(0x30, 4) + p14, 10))
     out.append(s)
 
     # Gap: discard.
@@ -1679,6 +1884,13 @@ def re_tc_scenarios():
     s.counter("SequenceViolation")
     out.append(s)
 
+    s = Scn("link-recv-reassemble-tc-whole-while-partial", ["LNK-070"],
+            "A complete SDU (flags 11) while another is part-built discards the partial SDU "
+            "with a SequenceViolation event, then delivers the complete one (OI-73).")
+    s.add(F(FIRST, 1, sdu[:8]))
+    s.add(F(WHOLE, 1, ramp(0x50, 5)))
+    out.append(s)
+
     s = Scn("link-recv-reassemble-tc-unknown-map", ["LNK-070"],
             "A FDU for a MAP ID that is not configured is discarded with the event UnknownMap "
             "(232.0 4.4.3.3); an SDU in progress on a known MAP is not disturbed.")
@@ -1809,6 +2021,13 @@ def re_uslp_scenarios():
     s.add(I(2, 0, var(4, big[:11])))
     s.add(I(2, 0, var(5, big[11:22])))
     s.add(I(2, 0, var(6, big[22:])))
+    out.append(s)
+
+    s = Scn("link-recv-reassemble-uslp-variable-whole-while-partial", ["LNK-070"],
+            "A complete SDU (rule 111) while another is part-built: SequenceViolation, then the "
+            "complete SDU is delivered (OI-73).")
+    s.add(I(1, 0, var(4, ramp(1, 8), UPID_MISSION_1)))
+    s.add(I(1, 0, var(7, ramp(2, 6), UPID_MISSION_1)))
     out.append(s)
 
     s = Scn("link-recv-reassemble-uslp-variable-gap", ["LNK-070", "LNK-051"],

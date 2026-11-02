@@ -68,17 +68,31 @@ Each is a reading the Blue Book or 04 settles, or a choice for something they le
 4. **A gap is sticky** until a data field is delivered for the VC (LNK-051, and 732.0 4.3.3.3 note for bitstreams).
 5. **MC gap and VC gap are separate actions;** only a VC gap flags the data field.
 6. **USLP:** VCF Count per QoS, tracked unless the count length is 0 or COP-1 is in effect on the VC (LNK-051); a gap in the reassembler discards the partial SDUs of the VC (`GapDiscard`), and a continuation that follows is a second event (`SequenceViolation`).
-7. **Counts:** the first frame after start-up or Reconfigure sets the expectation; a count more than half the range ahead is not specified (below).
+7. **Counts:** the first frame after start-up or Reconfigure sets the expectation; a repeat or a backwards count is a CountDiscontinuity (OI-73).
 
 ## Cases the model refuses
 
-The model raises `Unspecified` for these, so none is in a vector. They are for the maintainer (see the report of the pull request).
+The model raises `Unspecified` for these, so none is in a vector. The cases WP-1b decided ([OI-73](../../../docs/09-open-issues.md), [OI-77](../../../docs/09-open-issues.md); LNK-050, LNK-051, LNK-061, LNK-070, LNK-079, LNK-080, LNK-081 of 04) are covered and no longer refused. Still undecided:
 
-* A frame count that goes backwards or repeats (LNK-051 "missing = count − expected, modulo" against CMN-031's "backwards or reset").
-* `CrcMismatch`, `HeaderUncorrectable`, and `Security` discards: 04 §4 gives the engine no input that reports them, so they cannot be scenario steps.
-* The `NotServed` reason, and the output for a TC frame that the receiver routes to FARM-1 (04 §4 says "one item" and §5 lists no Deliver kind for it).
-* The Insert Zone of a frame for an unknown VC: 732.0 §4.3.7.4 and 732.1 §4.3.11.1.4 extract the IN_SDU whatever the VC, while 04 LNK-050 and §4 return FrameDiscarded alone. The unknown-VC scenarios follow 04.
-* An MC gap found on a TM frame that is then discarded for its VC.
-* USLP frames with the Protocol Control Command Flag set; a `raw_frame` while the option is off, of a wrong length, on AOS (replay metadata of an unvalidated header), or on USLP with a VCF Count Length other than 0 (the offset of the Insert Zone depends on it); what `frame_loss` does to the actions that follow (OI-68 says it sets the optional loss flags on them; 04 §4 lists only the Notify actions, so no frame follows a `frame_loss` in a scenario).
-* Packets: an FHP beyond the zone; a packet that ends before the FHP, or inside a field that says no packet starts; a partial idle packet; a valid PVN other than 0 and 7; an Encapsulation length field of four octets, or a length shorter than the header; a gap flag on a field of only idle data.
-* Reassembly: a complete SDU (flags `11`, rule `111`) while an SDU is in progress; a gap on TC or on an octet stream; two SDUs in progress on one USLP VC; a blocked FDU whose packets do not fit it; a Last Valid Octet Pointer beyond the zone; a rule on a MAP of another service; the maximum SDU size.
+* A frame whose length is not the frame length passed to `frame` (the caller validated it, LNK-050).
+* The reserved flag combination of USLP Table 4-1 (Bypass 0, Protocol Control Command 1).
+* A `raw_frame` on AOS that is accepted (the Replay Flag of an unvalidated header: whether the IN_SDU carries `replay`), and on USLP with a VCF Count Length other than 0 (the offset of the Insert Zone depends on it). OI-73 decides the two error cases only.
+* A gap or discontinuity found on a frame discarded as NotServed on AOS or USLP (04 §4 bounds the output of such a frame at 2 and 3 items).
+* What `frame_loss` does to the actions that follow (OI-68 says it sets the optional loss flags on them; 04 §4 lists only the Notify actions), so no frame follows a `frame_loss` in a scenario.
+* Packets: an FHP beyond the zone; a packet that ends inside a field that has the "no packet starts" FHP; a partial idle packet discarded; a valid PVN other than 0 and 7; an Encapsulation length field of four octets, or a length shorter than the header; a gap flag on a field of only idle data.
+* Reassembly: a gap on TC or on an octet stream; two SDUs in progress on one USLP VC; a blocked FDU whose packets do not fit it; a Last Valid Octet Pointer beyond the zone; a rule on a MAP of another service; the maximum SDU size.
+* Other: the Cycle Use Flag changing on a VC; a Bitstream Data Pointer beyond the zone; a change of AOS Cycle Use between frames.
+
+Config additions of WP-1b cases: a VC entry with `"role": "unserved"` is a configured VC whose service the engine does not provide (NotServed); the vocabulary is below.
+
+## Added by WP-1b
+
+| Input or output | Meaning |
+|---|---|
+| `{"caller_discard": {"reason"}}` | CallerDiscard (LNK-080): `CrcMismatch`, `HeaderUncorrectable`, or `Security`; returns `{"frame_discarded": {"reason"}}` (no VC: the frame was not parsed) |
+| `{"notify": {"kind": "CountDiscontinuity", "scope", "vc"?}}` | a repeated or backwards count (LNK-051, OI-73); the data field is flagged with `gap` like for a gap |
+| `{"deliver": {"kind": "TcFrame", "vc", "data_hex"}}` | the whole TC frame for FARM-1 (LNK-081) |
+| `{"deliver": {"kind": "ProtocolControl", "vc", "data_hex"}}` | the whole USLP frame with the Protocol Control Command Flag set (LNK-081) |
+| `{"error": kind, "field": name}` | a refused `raw_frame` (LNK-079): `InvalidConfig` `raw_frames`, `LengthMismatch` `frame_len` |
+
+For a frame discarded as `UnknownChannel` or `NotServed`, the items that precede VC demultiplexing come first and `frame_discarded` last (LNK-050, OI-77): on TM the MC count result, the VC count result (NotServed), the FSH and OCF (for an unknown VC only those of the MC services); on AOS the Insert SDU; on USLP the Insert SDU and the OCF.

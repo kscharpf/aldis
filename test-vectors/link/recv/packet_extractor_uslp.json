@@ -83,6 +83,15 @@
       ]
     },
     {
+      "id": "link-recv-extract-uslp-ends-before-fhp",
+      "description": "The packet in progress needs 6 more octets but the FHP of the next field is 10: it ends before the point the FHP gives. The extractor raises LengthInconsistent in place of a discard outcome, discards the octets up to the FHP, and delivers the packet that starts there (OI-73).",
+      "requirements": ["LNK-061", "LNK-060"],
+      "steps": [
+        {"at_us": 1000, "input": {"data_field": {"data_hex": "0000000001C0000003101112130015C000000D15161718191A1B1C", "gap": false}}, "expect": [{"deliver": {"kind": "Packet", "pvn": 0, "data_hex": "0001C000000310111213", "incomplete": false}}]},
+        {"at_us": 2000, "input": {"data_field": {"data_hex": "00000A1D1E1F202122303132330002C00000072021222324252627", "gap": false}}, "expect": [{"extraction_error": {"kind": "LengthInconsistent"}}, {"deliver": {"kind": "Packet", "pvn": 0, "data_hex": "0002C00000072021222324252627", "incomplete": false}}]}
+      ]
+    },
+    {
       "id": "link-recv-extract-uslp-gap-discard",
       "description": "After a frame gap the partial packet (14 octets) is discarded with a Discarded notification; the octets before the FHP are skipped and the extraction continues at the FHP of the field that carries the gap flag.",
       "requirements": ["LNK-061", "LNK-051"],
