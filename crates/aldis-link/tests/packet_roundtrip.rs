@@ -23,8 +23,7 @@ use aldis_core::ids::MapId;
 use aldis_core::time::{Duration, Instant};
 use aldis_link::common::{IdlePacketKind, IdlePolicy, Qos, ValidPvns};
 use aldis_link::extractor::{
-    EXTRACTOR_MAX_ACTIONS, ExtractorInput, ExtractorOutput, FieldIn, PacketExtractor,
-    PacketExtractorConfig, PacketRun,
+    ExtractorInput, ExtractorOutput, FieldIn, PacketExtractor, PacketExtractorConfig, PacketRun,
 };
 use aldis_link::generator::{
     GeneratorInput, GeneratorOutput, PacketGenerator, PacketGeneratorConfig,
