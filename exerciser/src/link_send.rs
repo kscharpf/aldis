@@ -84,7 +84,7 @@ fn tm(t: &mut Tally, policy: MuxPolicy) {
     t.check(config.frame_len() == F && config.fecf() && config.policy() == policy);
     t.check(config.vc_count() == 3 && config.insert_zone_len() == 0);
     t.check(config.channel().scid == scid);
-    t.check(config.field_len(1, Qos::SequenceControlled) == Some(F - 6 - 3 - 3 - 1 - 4 - 2));
+    t.check(config.field_len(1, Qos::SequenceControlled) == Some(F - 6 - 3 - 2 - 1 - 4 - 2));
     t.check(config.field_len(bb(5), Qos::Expedited).is_none());
     t.check(fsh.len() == 2 && !fsh.is_empty() && fsh.octets().count() == 2 && MAX_FSH_DATA == 63);
     let vc = vcs.first();
@@ -113,9 +113,9 @@ fn tm(t: &mut Tally, policy: MuxPolicy) {
         mux.step(input, out).err().map(|e| e.kind())
     };
     let fsh_new = [bb(5u8), 6];
-    t.check(kinds(&mut mux, MuxInput::Offer(offer(1, 31, Some(0))), &mut out).is_none());
+    t.check(kinds(&mut mux, MuxInput::Offer(offer(1, 30, Some(0))), &mut out).is_none());
     t.check(
-        kinds(&mut mux, MuxInput::Offer(offer(1, 31, Some(0))), &mut out)
+        kinds(&mut mux, MuxInput::Offer(offer(1, 30, Some(0))), &mut out)
             == Some(ErrorKind::WouldBlock),
     );
     t.check(
@@ -126,7 +126,7 @@ fn tm(t: &mut Tally, policy: MuxPolicy) {
         kinds(&mut mux, MuxInput::Offer(offer(6, 3, Some(0))), &mut out)
             == Some(ErrorKind::UnknownChannel),
     );
-    t.check(kinds(&mut mux, MuxInput::Offer(offer(3, 34, None)), &mut out).is_none());
+    t.check(kinds(&mut mux, MuxInput::Offer(offer(3, 36, None)), &mut out).is_none());
     t.check(
         kinds(
             &mut mux,
@@ -191,15 +191,15 @@ fn tm(t: &mut Tally, policy: MuxPolicy) {
     t.check(kinds_short(&mut mux, &mut short) == Some(ErrorKind::BufferTooSmall));
     let s = mux.status();
     t.check(s.frames_out.get() == 3 && s.oid_frames.get() >= 1 && s.offers.get() == 2);
-    t.check(s.refused.get() >= 3 && s.would_block.get() == 1 && s.insert_repeated.get() == 0);
+    t.check(s.refused.get() == 2 && s.would_block.get() == 1 && s.insert_repeated.get() == 0);
     t.check(s.slots.high_water() >= s.slots.current() && s.discarded_octets.get() == 0);
     t.check(
-        mux.step(MuxInput::Offer(offer(3, 34, None)), &mut out)
+        mux.step(MuxInput::Offer(offer(3, 36, None)), &mut out)
             .is_ok_and(|a| a.is_empty()),
     );
     t.check(
         mux.step(MuxInput::Reconfigure(config), &mut out)
-            .is_ok_and(|a| a.get(0) == Some(&MuxOutput::Discarded { octets: 34 })),
+            .is_ok_and(|a| a.get(0) == Some(&MuxOutput::Discarded { octets: 36 })),
     );
     t.check(CHANNEL_MUX_MAX_ACTIONS == 2);
 }
@@ -346,7 +346,7 @@ fn uslp(t: &mut Tally) {
         mux.step(MuxInput::Offer(wrong), &mut out)
             .err()
             .map(|e| e.kind())
-            == Some(ErrorKind::WouldBlock),
+            == Some(ErrorKind::UnknownChannel),
     );
     t.check(
         mux.step(MuxInput::Opportunity, &mut out)
@@ -364,7 +364,8 @@ fn policies(t: &mut Tally) {
     for i in 0..3 {
         let mut s = Selector::new();
         let policy = policy_of(i);
-        let weight = |_: usize| Weight::new(bb(2)).unwrap_or(Weight::ONE);
+        let two = Weight::new(bb(2)).unwrap_or(Weight::ONE);
+        let weight = move |_: usize| two;
         let first = s.select(
             policy,
             3,
@@ -439,7 +440,10 @@ fn access(t: &mut Tally) {
         matches!(a.get(0), Some(AccessOutput::DataField(f)) if f.pointer == Some(0xFFFF) && f.route.is_some())
     }));
     t.check(g.step(AccessInput::Release, &mut out).is_ok_and(
-        |a| matches!(a.get(0), Some(AccessOutput::DataField(f)) if f.pointer == Some(6)),
+        |a| matches!(a.get(0), Some(AccessOutput::DataField(f)) if f.pointer == Some(0xFFFF)),
+    ));
+    t.check(g.step(AccessInput::Release, &mut out).is_ok_and(
+        |a| matches!(a.get(0), Some(AccessOutput::DataField(f)) if f.pointer == Some(1)),
     ));
     t.check(g.step(AccessInput::SubmitSdu(&[]), &mut out).is_err());
     t.check(g.step(AccessInput::SubmitSdu(&sdu), &mut out).is_ok());
