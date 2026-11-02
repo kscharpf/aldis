@@ -2156,6 +2156,19 @@ FILES = [
 ]
 
 
+# Released scenarios that the maintainer's decision of 2026-11-02 replaces (TV-021): LNK-053 and
+# the FrameLoss row of 04 section 4 now return ONE LossFlag for the physical channel and every VC
+# (an action bound that does not depend on the VC capacity, API-057), where these scenarios
+# expect one Notify per configured VC and one for the channel. Only this marker is added; the
+# steps are the released ones, and a new case follows in the blind-model round after M4 WP-6.
+FRAME_LOSS_REASON = ("Superseded by the decision of 2026-11-02 (M4 WP-5, LNK-053, 04 section 4): "
+                     "FrameLoss returns a single LossFlag for the physical channel and every VC, "
+                     "not one Notify per VC and one for the channel.")
+SUPERSEDED = {"link-recv-tm-frame-loss": FRAME_LOSS_REASON,
+              "link-recv-aos-frame-loss": FRAME_LOSS_REASON,
+              "link-recv-uslp-frame-loss": FRAME_LOSS_REASON}
+
+
 def build_file(engine, base_cfg, scenarios, source):
     scs = []
     for s in scenarios:
@@ -2168,6 +2181,8 @@ def build_file(engine, base_cfg, scenarios, source):
         if s.config is not None:
             d["config"] = s.config
         d["steps"] = steps
+        if s.sid in SUPERSEDED:
+            d["superseded"] = {"reason": SUPERSEDED[s.sid]}
         scs.append(d)
     return {"kind": "engine-scenario", "engine": engine, "provenance": "hand-derived",
             "provenance_note": NOTE % source, "config": base_cfg, "scenarios": scs}

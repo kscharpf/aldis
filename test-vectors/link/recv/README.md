@@ -74,7 +74,7 @@ Each is a reading the Blue Book or 04 settles, or a choice for something they le
 
 The model raises `Unspecified` for these, so none is in a vector. The cases decided by [OI-73](../../../docs/09-open-issues.md) and [OI-77](../../../docs/09-open-issues.md) (LNK-050, LNK-051, LNK-061, LNK-070, LNK-079, LNK-080, LNK-081 of 04) are covered. The rest is **deferred to the engine work packages by [OI-78](../../../docs/09-open-issues.md)**, which lists each case; a vector case is added when the work package decides it:
 
-* a `frame` whose length is not the frame length; the reserved USLP flag combination (Bypass 0, Protocol Control Command 1); an accepted AOS `raw_frame`, and a USLP `raw_frame` with a VCF Count Length other than 0; what `frame_loss` does to the actions that follow; a change of the AOS Cycle Use Flag on a VC; a Bitstream Data Pointer beyond the zone;
+* decided by M4 WP-5 ([OI-78](../../../docs/09-open-issues.md)), pinned by Rust tests, with vector cases to come in one blind-model round after WP-6: a `frame` whose length is not the frame length; the reserved USLP flag combination (Bypass 0, Protocol Control Command 1); an accepted AOS `raw_frame`, and a USLP `raw_frame` with a VCF Count Length other than 0; what `frame_loss` does to the actions that follow; a change of the AOS Cycle Use Flag on a VC; a Bitstream Data Pointer beyond the zone;
 * extractors: an FHP beyond the zone; a packet that ends inside a field whose FHP is "no packet starts"; a partial idle packet discarded; a valid PVN other than 0 and 7; an Encapsulation length field of four octets, or a length shorter than the header; a gap flag on a field of only idle data;
 * reassemblers: a gap on TC or on an octet stream; two SDUs in progress on one USLP VC; a blocked FDU whose packets do not fit it; a Last Valid Octet Pointer beyond the zone; a rule on a MAP of another service; the maximum SDU size;
 * a TM frame whose OCF or Secondary Header presence differs from the configuration of its VC (not a validated frame, TM-011).
@@ -92,3 +92,7 @@ Config additions of WP-1b cases: a VC entry with `"role": "unserved"` is a confi
 | `{"error": kind, "field": name}` | a refused `raw_frame` (LNK-079): `InvalidConfig` `raw_frames`, `LengthMismatch` `frame_len` |
 
 For a frame discarded as `UnknownChannel` or `NotServed`, the items that precede VC demultiplexing come first and `frame_discarded` last (LNK-050, OI-77): on TM the MC count result, the VC count result (NotServed), the FSH and OCF (for an unknown VC only those of the MC services; for NotServed also those of the VC); on AOS the VC count result (NotServed) and the Insert SDU; on USLP the VC count result (NotServed, or a known VC with an unknown MAP, which VC Reception precedes, 732.1 §4.3.7.4 before §4.3.5.3), the Insert SDU, and the OCF.
+
+## Superseded
+
+The three `frame-loss` scenarios (`link-recv-{tm,aos,uslp}-frame-loss`) are marked `superseded` (TV-021): by the decision of 2026-11-02 (LNK-053, 04 §4) `frame_loss` returns one `LossFlag` for the physical channel and every VC, where they expect one `Notify(LossFlag)` for each VC and one for the channel. The steps are the released ones, and a replacing case comes with the blind-model round after M4 WP-6.

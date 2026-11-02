@@ -307,18 +307,6 @@ where
                     }],
                 }
             }
-            "frame_loss" => {
-                let actions = engine.step(ReceiverInput::FrameLoss, &mut area).unwrap();
-                assert!(matches!(actions.get(0), Some(ReceiverOutput::LossFlag)));
-                // One LossFlag for each configured VC in configuration order, then one for the
-                // physical channel (LNK-053).
-                let mut flags: Vec<Value> = engine
-                    .vcs()
-                    .map(|vc| json!({"notify": {"kind": "LossFlag", "scope": "vc", "vc": vc.into()}}))
-                    .collect();
-                flags.push(json!({"notify": {"kind": "LossFlag", "scope": "physical_channel"}}));
-                flags
-            }
             "caller_discard" => {
                 let reason = match v["reason"].as_str().unwrap() {
                     "CrcMismatch" => CallerDiscardReason::CrcMismatch,
@@ -367,11 +355,13 @@ fn run_file(name: &str) -> (usize, Vec<String>) {
     assert_eq!(file.engine, "frame-receiver");
     let resolved = file.resolve().unwrap();
     let mut failures = Vec::new();
+    let mut compared = 0;
     for scenario in &resolved {
         if scenario.scenario.superseded.is_some() {
             // A superseded case is kept for the record and not run (TV-021).
             continue;
         }
+        compared = usize::saturating_add(compared, 1);
         failures.extend(match scenario.config["protocol"].as_str().unwrap() {
             p if p == Tm::NAME => run_scenario::<Tm>(scenario),
             p if p == Tc::NAME => run_scenario::<Tc>(scenario),
@@ -380,7 +370,7 @@ fn run_file(name: &str) -> (usize, Vec<String>) {
             other => panic!("no engine for {other}"),
         });
     }
-    (resolved.len(), failures)
+    (compared, failures)
 }
 
 #[test]
@@ -393,7 +383,8 @@ fn the_frame_receiver_scenarios_match_exactly() {
         run += n;
         failures.extend(f);
     }
-    assert!(run >= 59, "only {run} scenarios ran");
+    // 59 scenarios, 3 of them (FrameLoss) superseded by the decision of 2026-11-02.
+    assert!(run >= 56, "only {run} scenarios ran");
     assert!(
         failures.is_empty(),
         "{} failed:\n{}",

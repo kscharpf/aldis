@@ -172,7 +172,8 @@
       "requirements": ["LNK-053"],
       "steps": [
         {"at_us": 1000, "input": {"frame_loss": {}}, "expect": [{"notify": {"kind": "LossFlag", "scope": "vc", "vc": 1}}, {"notify": {"kind": "LossFlag", "scope": "vc", "vc": 2}}, {"notify": {"kind": "LossFlag", "scope": "vc", "vc": 3}}, {"notify": {"kind": "LossFlag", "scope": "physical_channel"}}]}
-      ]
+      ],
+      "superseded": {"reason": "Superseded by the decision of 2026-11-02 (M4 WP-5, LNK-053, 04 section 4): FrameLoss returns a single LossFlag for the physical channel and every VC, not one Notify per VC and one for the channel."}
     },
     {
       "id": "link-recv-aos-reconfigure",

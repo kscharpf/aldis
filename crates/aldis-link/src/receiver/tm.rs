@@ -128,8 +128,12 @@ impl ReceiveProtocol for Tm {
         frame_len >= fixed.saturating_add(own)
     }
 
-    fn raw_insert_zone_offset(_: &TmChannel, _: &[u8]) -> Option<usize> {
-        None
+    fn variable_length(_: &TmChannel) -> bool {
+        false
+    }
+
+    fn raw_insert_zone_offset(_: &TmChannel, _: &[u8]) -> Result<usize> {
+        Err(Error::new(ErrorKind::InvalidConfig).with_field(field::RAW_FRAMES))
     }
 
     fn receive<const V: usize>(cx: &mut FrameContext<'_, Tm, V>, frame: &[u8]) -> Result<()> {

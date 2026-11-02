@@ -276,7 +276,7 @@ pub enum ReceiverInput<'a, P: ReceiveProtocol, const V: usize> {
     CallerDiscard(CallerDiscardReason),
     /// The coding sublayer reports that frames were lost (LNK-053, OI-68).
     FrameLoss,
-    /// Replace the configuration (LNK-003, GEN-061): the expected counts restart.
+    /// Replace the configuration (LNK-003, GEN-061): the expected counts restart; no action.
     Reconfigure(FrameReceiverConfig<P, V>),
 }
 
@@ -364,9 +364,18 @@ pub trait ReceiveProtocol: Protocol {
         vc: Option<&Self::VcParams>,
     ) -> bool;
 
-    /// Where the Insert Zone starts in the octets of a raw frame, or `None` for a protocol
-    /// without one (LNK-079).
-    fn raw_insert_zone_offset(channel: &Self::Channel, frame: &[u8]) -> Option<usize>;
+    /// Whether the frames of the channel vary in length, so that the configured frame length is
+    /// the maximum (TC, 232.0 §2.3.1; variable-length USLP, 732.1 §4.1.2.7) and not the length
+    /// of every frame (LNK-050).
+    fn variable_length(channel: &Self::Channel) -> bool;
+
+    /// Where the Insert Zone starts in the octets of a raw frame (LNK-079).
+    ///
+    /// # Errors
+    /// `InvalidConfig` (`raw_frames`) for a protocol without an Insert Zone; `InvalidField`
+    /// (`vcf_count_len`) for a USLP frame whose VCF Count Length is not 0: the offset would
+    /// follow a field of a header the caller rejected (OI-78).
+    fn raw_insert_zone_offset(channel: &Self::Channel, frame: &[u8]) -> Result<usize>;
 
     /// The procedure of one frame of exactly the frame length (LNK-050…LNK-054).
     ///
@@ -391,7 +400,8 @@ pub struct FrameReceiverConfig<P: ReceiveProtocol, const V: usize> {
 }
 
 impl<P: ReceiveProtocol, const V: usize> FrameReceiverConfig<P, V> {
-    /// The configuration of a physical channel whose frames are `frame_len` octets, with a FECF
+    /// The configuration of a physical channel whose frames are `frame_len` octets (at most
+    /// `frame_len` where the channel's frames vary in length), with a FECF
     /// if `fecf`, serving `vcs`. It does not take raw frames (LNK-079).
     ///
     /// # Errors
@@ -474,14 +484,12 @@ impl<P: ReceiveProtocol, const V: usize> FrameReceiverConfig<P, V> {
         self.raw_frames
     }
 
-    /// The output area a `Frame` needs, which is the most it writes (LNK-075): the parts of a
-    /// frame are disjoint, so the frame length is enough, except for a USLP frame with the
-    /// Protocol Control Command Flag, which is delivered whole after its Insert Zone, so the
-    /// Insert Zone is counted twice.
+    /// The output area a `Frame` needs, which is the most it writes (LNK-075): the frame
+    /// length. The parts of a frame are disjoint, and a frame delivered whole (TC, USLP
+    /// protocol control) is copied once, its Insert Zone being a range of that copy.
     #[must_use]
-    pub fn area_len(&self) -> usize {
+    pub const fn area_len(&self) -> usize {
         self.frame_len
-            .saturating_add(P::insert_zone_len(&self.channel))
     }
 }
 
@@ -576,6 +584,7 @@ impl<P: ReceiveProtocol, const V: usize> FrameContext<'_, P, V> {
         self.put_with(octets, octets.len(), |_, s| s)
     }
 
+    #[cfg(feature = "aos")]
     /// Copies the first `bits` bits of `octets` (LNK-077): the unused bits of the last octet
     /// are zero.
     pub(crate) fn put_bits(&mut self, octets: &[u8], bits: usize) -> Result<OutRange> {
@@ -665,12 +674,14 @@ impl<P: ReceiveProtocol, const V: usize> FrameContext<'_, P, V> {
         self.report(track, ChannelScope::VirtualChannel(vc))
     }
 
+    #[cfg(feature = "aos")]
     /// Reports a `CountDiscontinuity` of the VC without a count (LNK-051).
     pub(crate) fn discontinuity(&mut self, vc: P::Vc) -> Result<()> {
         self.report(Track::Discontinuity, ChannelScope::VirtualChannel(vc))
             .map(|_| ())
     }
 
+    #[cfg(feature = "aos")]
     /// Records that the Cycle Use Flag of the AOS frame is `flag`, and whether it differs from
     /// the last frame of the VC counted (OI-78). The first frame sets it.
     pub(crate) fn change_cycle_use(&mut self, vc: P::Vc, flag: bool) -> bool {
@@ -738,6 +749,20 @@ impl<P: ReceiveProtocol, const V: usize> FrameContext<'_, P, V> {
             self.push(ReceiverOutput::InsertSdu { sdu, replay })?;
         }
         Ok(())
+    }
+
+    /// Delivers an Insert Zone that is already in the output area (a range of the whole frame,
+    /// LNK-075); nothing for a channel without one.
+    pub(crate) fn deliver_insert_range(
+        &mut self,
+        sdu: OutRange,
+        replay: Option<bool>,
+    ) -> Result<()> {
+        if sdu.is_empty() {
+            Ok(())
+        } else {
+            self.push(ReceiverOutput::InsertSdu { sdu, replay })
+        }
     }
 
     /// Delivers the OCF (LNK-053, LNK-054).
@@ -891,15 +916,18 @@ impl<P: ReceiveProtocol, const V: usize> FrameReceiver<P, V> {
     ///
     /// # Errors
     /// - `Frame`: `LengthMismatch` (`frame_len`) for a frame of another length than the
-    ///   channel's; `BufferTooSmall` if `out` is shorter than the frame length (LNK-075);
-    ///   `Malformed` (`frame_data_field`, `bitstream_data_pointer`, or `first_header_pointer`)
-    ///   for a frame whose fields leave no data field or point beyond it; `ReservedValue`
+    ///   channel's (above the maximum, or below the shortest frame, or not the length its
+    ///   header gives, where frames vary in length); `BufferTooSmall` if `out` is shorter than
+    ///   the frame length (LNK-075); `Malformed` (`frame_data_field`, `bitstream_data_pointer`)
+    ///   for a frame whose fields leave no data field or point beyond it; `InvalidField`
+    ///   (`bitstream_data_pointer`) for a pointer at the last bit of the zone; `ReservedValue`
     ///   (`protocol_control_command_flag`) for a USLP frame with Bypass 0 and Protocol Control
     ///   Command 1 (732.1 Table 4-1); `InvalidField` (`ocf_flag`, `fsh_flag`) or
     ///   `LengthMismatch` (`fsh_len`) for a TM frame whose OCF or Secondary Header differs from
     ///   the configuration of its VC (132.0 §4.1.2.4.3, §4.1.2.7.2.3).
     /// - `RawFrame`: `InvalidConfig` (`raw_frames`) while the option is off; `LengthMismatch`
-    ///   (`frame_len`) for another length than the channel's; `BufferTooSmall`.
+    ///   (`frame_len`) for another length than the channel's; `InvalidField` (`vcf_count_len`)
+    ///   for a USLP frame whose VCF Count Length is not 0; `BufferTooSmall`.
     /// - `Reconfigure`: none.
     pub fn step(
         &mut self,
@@ -949,7 +977,14 @@ impl<P: ReceiveProtocol, const V: usize> FrameReceiver<P, V> {
 
     /// The frame length and the output area are checked before the frame is read (API-058).
     fn check_frame(&self, octets: &[u8], out: &[u8]) -> Result<()> {
-        if octets.len() != self.config.frame_len {
+        let config = &self.config;
+        let len = octets.len();
+        let ok = if P::variable_length(&config.channel) {
+            len <= config.frame_len && P::fits(len, config.fecf, &config.channel, None)
+        } else {
+            len == config.frame_len
+        };
+        if !ok {
             return Err(Error::new(ErrorKind::LengthMismatch).with_field(field::FRAME_LEN));
         }
         let needed = self.config.area_len();
@@ -983,8 +1018,9 @@ impl<P: ReceiveProtocol, const V: usize> FrameReceiver<P, V> {
         }
         self.check_frame(octets, out)?;
         let len = P::insert_zone_len(&self.config.channel);
-        let sdu = P::raw_insert_zone_offset(&self.config.channel, octets)
-            .and_then(|start| octets.get(start..start.saturating_add(len)))
+        let start = P::raw_insert_zone_offset(&self.config.channel, octets)?;
+        let sdu = octets
+            .get(start..start.saturating_add(len))
             .ok_or(Error::new(ErrorKind::LengthMismatch).with_field(field::INSERT_ZONE_LEN))?;
         let range = OutRange::new(0, len);
         for (d, s) in out.iter_mut().zip(sdu) {
@@ -1071,6 +1107,7 @@ mod tests {
         };
         let other = vc_of::<Tc>(2).unwrap();
         assert_eq!(cx.count_vc(other, false, 5, 8), Ok(false));
+        #[cfg(feature = "aos")]
         assert!(!cx.change_cycle_use(other, true));
         cx.mark_gap(other);
         assert!(!cx.take_gap(other));

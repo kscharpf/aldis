@@ -1,6 +1,7 @@
 //! The `FrameReceiver` procedure for USLP frames of a fixed-length physical channel (732.1
 //! §4.3.5–§4.3.11; LNK-050…LNK-053, LNK-079…LNK-081; OI-77, OI-78).
 
+use aldis_core::engine::OutRange;
 use aldis_core::ids::{MapId, VcId};
 use aldis_core::{Error, ErrorKind, Result, field};
 
@@ -20,6 +21,7 @@ const OID_VC: u8 = 63;
 pub struct UslpChannel {
     insert_zone_len: usize,
     ocf: Service,
+    variable: bool,
 }
 
 impl UslpChannel {
@@ -30,7 +32,25 @@ impl UslpChannel {
         UslpChannel {
             insert_zone_len,
             ocf,
+            variable: false,
         }
+    }
+
+    /// A variable-length channel, whose frames are of any length up to the configured maximum
+    /// and have no Insert Zone (732.1 §4.1.2.7, §4.1.3.2). Its OCF is delivered by `ocf`.
+    #[must_use]
+    pub const fn variable(ocf: Service) -> UslpChannel {
+        UslpChannel {
+            insert_zone_len: 0,
+            ocf,
+            variable: true,
+        }
+    }
+
+    /// Whether the frames vary in length.
+    #[must_use]
+    pub const fn is_variable(&self) -> bool {
+        self.variable
     }
 
     /// The octets of the Insert Zone.
@@ -118,16 +138,28 @@ impl ReceiveProtocol for Uslp {
         frame_len >= needed
     }
 
-    fn raw_insert_zone_offset(_: &UslpChannel, frame: &[u8]) -> Option<usize> {
-        // The VCF Count Length is the low three bits of the flags octet, read from a header
-        // the caller did not validate (OI-78).
-        frame
-            .get(PRIMARY_HEADER_LEN.saturating_sub(1))
-            .map(|flags| PRIMARY_HEADER_LEN.saturating_add(usize::from(flags & 0x07)))
+    fn variable_length(channel: &UslpChannel) -> bool {
+        channel.variable
+    }
+
+    fn raw_insert_zone_offset(_: &UslpChannel, frame: &[u8]) -> Result<usize> {
+        // The Insert Zone follows a header of 7 octets only when the VCF Count Length (the low
+        // three bits of the flags octet) is 0. That field belongs to the header the caller
+        // rejected, so a frame that has a count is refused (OI-78).
+        let [.., flags] = header::<PRIMARY_HEADER_LEN>(frame)?;
+        if flags.trailing_zeros() >= 3 {
+            Ok(PRIMARY_HEADER_LEN)
+        } else {
+            Err(Error::new(ErrorKind::InvalidField).with_field(field::VCF_COUNT_LEN))
+        }
     }
 
     fn receive<const V: usize>(cx: &mut FrameContext<'_, Uslp, V>, frame: &[u8]) -> Result<()> {
-        let [_, _, t2, t3, _, _, flags] = header::<PRIMARY_HEADER_LEN>(frame)?;
+        let [_, _, t2, t3, l0, l1, flags] = header::<PRIMARY_HEADER_LEN>(frame)?;
+        // The Frame Length field is one less than the length of this frame (732.1 §4.1.2.7).
+        if usize::from(u16::from_be_bytes([l0, l1])).saturating_add(1) != frame.len() {
+            return Err(Error::new(ErrorKind::LengthMismatch).with_field(field::FRAME_LEN));
+        }
         // TFVN (4 bits), SCID (16), Source or Destination (1), VCID (6), MAP ID (4), End of
         // Frame Primary Header Flag (1), from the most significant bit (732.1 §4.1.2).
         let vc: VcId<6> = vc_of::<Uslp>(((t2 & 0x07) << 3) | (t3 >> 5))?;
@@ -188,15 +220,24 @@ impl ReceiveProtocol for Uslp {
             deliver_tail(cx, iz, ocf_scope, ocf)?;
             return cx.discard(DiscardReason::NotServed, Some(vc), Some(map));
         }
+        if control && !oid {
+            // Protocol control commands go to the COP, never to an extractor (LNK-081). The
+            // frame is copied once, and the Insert SDU is a range of that copy.
+            let whole = cx.put(frame)?;
+            let insert = OutRange::new(
+                whole
+                    .start()
+                    .saturating_add(PRIMARY_HEADER_LEN.saturating_add(usize::from(count_len))),
+                iz.len(),
+            );
+            cx.deliver_insert_range(insert, None)?;
+            cx.deliver_ocf(ocf_scope, ocf, None)?;
+            return cx.push(ReceiverOutput::ProtocolControl { vc, frame: whole });
+        }
         deliver_tail(cx, iz, ocf_scope, ocf)?;
         if oid {
             cx.count_oid();
             return Ok(());
-        }
-        if control {
-            // Protocol control commands go to the COP, never to an extractor (LNK-081).
-            let frame = cx.put(frame)?;
-            return cx.push(ReceiverOutput::ProtocolControl { vc, frame });
         }
         let data = cx.put(framed.data())?;
         let gap = cx.take_gap(vc);

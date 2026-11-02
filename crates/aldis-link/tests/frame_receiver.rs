@@ -100,11 +100,26 @@ fn uslp_frame(
 }
 
 fn tc_frame(vc: u8) -> Vec<u8> {
-    let w1 = (u16::from(vc) << 10) | (LEN as u16 - 1);
-    let mut f = vec![0x00, 0x2A];
+    tc_frame_of(vc, LEN, false, false)
+}
+
+/// A TC frame of `len` octets (232.0 §4.1.2): Type-AD (`bypass` false), Type-BD, or Type-BC.
+fn tc_frame_of(vc: u8, len: usize, bypass: bool, control: bool) -> Vec<u8> {
+    let w1 = (u16::from(vc) << 10) | (len as u16 - 1);
+    let mut f = vec![(u8::from(bypass) << 5) | (u8::from(control) << 4), 0x2A];
     f.extend(w1.to_be_bytes());
     f.push(0);
-    f.resize(LEN, 0x11);
+    f.resize(len, 0x11);
+    f
+}
+
+/// A variable-length USLP frame of `len` octets, VCF Count Length 1.
+fn uslp_variable_frame(vc: u8, map: u8, len: usize, count: u8) -> Vec<u8> {
+    let top = (0b1100u32 << 28) | (0x1234 << 12) | (u32::from(vc) << 5) | (u32::from(map) << 1) | 1;
+    let mut f = top.to_be_bytes().to_vec();
+    f.extend((len as u16 - 1).to_be_bytes());
+    f.extend([0x01, count]);
+    f.resize(len, 0x44);
     f
 }
 
@@ -374,10 +389,10 @@ fn an_area_shorter_than_the_bound_fails_before_any_change() {
 }
 
 #[test]
-fn the_area_of_a_protocol_control_frame_holds_the_frame_and_the_insert_zone() {
+fn a_protocol_control_frame_is_copied_once_with_its_insert_zone_inside() {
     // req: LNK-075, LNK-081
     let mut rx = uslp();
-    let mut area = vec![0u8; LEN + 2];
+    let mut area = vec![0u8; LEN];
     let frame = uslp_frame(1, 0, true, true, Some((1, 4)), None);
     let out = rx
         .step(ReceiverInput::Frame(CheckedFrame::new(&frame)), &mut area)
@@ -385,8 +400,12 @@ fn the_area_of_a_protocol_control_frame_holds_the_frame_and_the_insert_zone() {
     assert_eq!(out.len(), 2);
     assert!(matches!(
         out.get(1),
-        Some(ReceiverOutput::ProtocolControl { frame: r, .. }) if r.end() == LEN + 2
+        Some(ReceiverOutput::ProtocolControl { frame: r, .. }) if r.end() == LEN
     ));
+    let Some(ReceiverOutput::InsertSdu { sdu, .. }) = out.get(0) else {
+        panic!()
+    };
+    assert_eq!(sdu.slice(&area).unwrap(), &[0xB1, 0xB2]);
 }
 
 #[test]
@@ -607,27 +626,34 @@ fn a_raw_frame_gives_its_insert_zone_at_the_fixed_offset() {
         panic!()
     };
     assert_eq!(sdu.slice(&area).unwrap(), &[0xA1, 0xA2]);
-    // USLP: the offset follows the VCF Count Length of the frame, which the caller did not
-    // validate.
-    for len in [0u8, 3] {
-        let mut rx = UslpRx::new(uslp_config().with_raw_frames(true).unwrap());
-        let frame = uslp_frame(1, 0, false, false, Some((len, 5)), None);
-        let mut area = vec![0u8; rx.config().area_len()];
-        let out = rx.step(ReceiverInput::RawFrame(&frame), &mut area).unwrap();
-        let Some(ReceiverOutput::InsertSdu { sdu, replay }) = out.get(0) else {
-            panic!()
-        };
-        assert_eq!(
-            (sdu.slice(&area).unwrap(), *replay),
-            (&[0xB1, 0xB2][..], None)
-        );
-    }
+    // USLP: the Insert Zone follows a header of 7 octets; a frame that has a VCF Count is
+    // refused, because its offset would follow a field of the rejected header (OI-78).
+    let mut rx = UslpRx::new(uslp_config().with_raw_frames(true).unwrap());
+    let frame = uslp_frame(1, 0, false, false, None, None);
+    let mut area = vec![0u8; rx.config().area_len()];
+    let out = rx.step(ReceiverInput::RawFrame(&frame), &mut area).unwrap();
+    let Some(ReceiverOutput::InsertSdu { sdu, replay }) = out.get(0) else {
+        panic!()
+    };
+    assert_eq!(
+        (sdu.slice(&area).unwrap(), *replay),
+        (&[0xB1, 0xB2][..], None)
+    );
+    let counted = uslp_frame(1, 0, false, false, Some((3, 5)), None);
+    let e = rx
+        .step(ReceiverInput::RawFrame(&counted), &mut area)
+        .unwrap_err();
+    assert_eq!(
+        (e.kind(), e.field()),
+        (ErrorKind::InvalidField, Some(field::VCF_COUNT_LEN))
+    );
+    assert_eq!(rx.status().raw_frames_in.get(), 1);
 }
 
 #[test]
 fn a_raw_frame_is_refused_when_the_option_is_off_or_the_length_is_wrong() {
     // req: LNK-079; OI-73
-    let mut area = vec![0u8; LEN + 2];
+    let mut area = vec![0u8; LEN];
     let mut rx = aos();
     let frame = aos_frame(1, 0, None, false, None, &[]);
     let e = rx
@@ -669,16 +695,109 @@ fn a_channel_without_an_insert_zone_delivers_none() {
     assert!(matches!(out[..], [ReceiverOutput::DataField { .. }]));
     assert!(config.with_raw_frames(true).is_err());
     // Only a protocol with an Insert Zone has an offset for a raw frame.
-    assert_eq!(
-        Tm::raw_insert_zone_offset(&TmChannel::new(Service::None, Service::None), &[]),
-        None
-    );
-    assert_eq!(Tc::raw_insert_zone_offset(&TcChannel, &[]), None);
+    let tm_channel = TmChannel::new(Service::None, Service::None);
+    for e in [
+        Tm::raw_insert_zone_offset(&tm_channel, &[]).unwrap_err(),
+        Tc::raw_insert_zone_offset(&TcChannel, &[]).unwrap_err(),
+    ] {
+        assert_eq!(e.field(), Some(field::RAW_FRAMES));
+    }
+    assert!(!Tm::variable_length(&tm_channel) && Tc::variable_length(&TcChannel));
     assert_eq!(
         Tm::insert_zone_len(&TmChannel::new(Service::None, Service::None)),
         0
     );
     assert_eq!(Tc::insert_zone_len(&TcChannel), 0);
+}
+
+// ---- LNK-050: frames of varying length ----
+
+#[test]
+fn tc_frames_vary_in_length_up_to_the_maximum() {
+    // req: LNK-050, LNK-081; 232.0 §2.3.1
+    let mut rx = tc();
+    let mut area = vec![0u8; rx.config().area_len()];
+    // Type-AD, Type-BD, and a Type-BC control command of 7 octets (a Control Command of 1 octet
+    // after the 5-octet header and no FECF here), shorter than the maximum.
+    for (len, bypass, control) in [
+        (12, false, false),
+        (9, true, false),
+        (6, true, true),
+        (5, false, false),
+    ] {
+        let frame = tc_frame_of(1, len, bypass, control);
+        let out = rx
+            .step(ReceiverInput::Frame(CheckedFrame::new(&frame)), &mut area)
+            .unwrap();
+        let Some(ReceiverOutput::TcFrame { frame: r, .. }) = out.get(0) else {
+            panic!("{out:?}")
+        };
+        assert_eq!(r.slice(&area).unwrap(), &frame[..]);
+    }
+    // Above the maximum, below the header, or not the length the header gives.
+    for frame in [tc_frame_of(1, LEN + 1, false, false), vec![0, 0, 4], {
+        let mut f = tc_frame_of(1, 12, false, false);
+        f.pop();
+        f
+    }] {
+        let e = refused(&mut rx, &frame);
+        assert_eq!(
+            (e.kind(), e.field()),
+            (ErrorKind::LengthMismatch, Some(field::FRAME_LEN))
+        );
+    }
+}
+
+#[test]
+fn variable_length_uslp_frames_are_routed_by_their_own_length() {
+    // req: LNK-050, LNK-051; 732.1 §4.1.2.7
+    let maps = MapSet::new(&[MapId::<4>::new(0).unwrap()]);
+    let config = FrameReceiverConfig::<Uslp, 4>::new(
+        LEN,
+        false,
+        UslpChannel::variable(Service::Mc),
+        &[VcEntry::new(vc(1), UslpVc::new(maps, false, true))],
+    )
+    .unwrap();
+    assert!(config.channel().is_variable() && config.channel().insert_zone_len() == 0);
+    assert!(config.with_raw_frames(true).is_err());
+    let mut rx = FrameReceiver::<Uslp, 4>::new(config);
+    let out = feed(&mut rx, &uslp_variable_frame(1, 0, 12, 4));
+    let Some(ReceiverOutput::DataField { data, .. }) = out.first() else {
+        panic!("{out:?}")
+    };
+    assert_eq!(data.len(), 4);
+    let out = feed(&mut rx, &uslp_variable_frame(1, 0, 20, 6));
+    assert!(is_gap(&out[0], 1));
+    // A protocol control frame of a channel without an Insert Zone is delivered whole alone.
+    let mut control = uslp_variable_frame(1, 0, 12, 8);
+    control[6] = 0xC1;
+    let out = feed(&mut rx, &control);
+    assert!(matches!(out[..], [ReceiverOutput::ProtocolControl { .. }]));
+    // The flag on an OID frame does not make it a protocol control frame.
+    let mut oid = uslp_frame(63, 0, true, true, Some((1, 9)), None);
+    let mut other = uslp();
+    assert!(matches!(
+        feed(&mut other, &oid)[..],
+        [ReceiverOutput::InsertSdu { .. }]
+    ));
+    oid[6] = 0;
+    // A frame with a count and no data octet is malformed.
+    assert_eq!(
+        refused(&mut rx, &uslp_variable_frame(1, 0, 8, 7)).kind(),
+        ErrorKind::Malformed
+    );
+    for bad in [
+        uslp_variable_frame(1, 0, LEN + 1, 7),
+        uslp_variable_frame(1, 0, 6, 7),
+        {
+            let mut f = uslp_variable_frame(1, 0, 12, 7);
+            f.pop();
+            f
+        },
+    ] {
+        assert_eq!(refused(&mut rx, &bad).kind(), ErrorKind::LengthMismatch);
+    }
 }
 
 // ---- LNK-050…LNK-054 beyond the vectors ----
@@ -925,7 +1044,7 @@ fn a_configuration_is_checked_where_it_is_built() {
     // Accessors.
     let config = aos_config(true).with_raw_frames(true).unwrap();
     assert!(config.raw_frames() && !config.fecf());
-    assert_eq!((config.frame_len(), config.area_len()), (LEN, LEN + 2));
+    assert_eq!((config.frame_len(), config.area_len()), (LEN, LEN));
     assert_eq!(
         (config.channel().insert_zone_len(), config.channel().fhec()),
         (2, true)
@@ -976,28 +1095,17 @@ fn check_out<P: ReceiveProtocol, const V: usize>(
         }
         Err(e) => {
             prop_assert_ne!(e.kind(), ErrorKind::InternalError);
-            // The refusal leaves the engine as it was but for its counter: both take the same
-            // next frames to the same actions.
+            // The refusal leaves the engine as it was but for its counter: a twin that
+            // refused another input (too short for any protocol) equals it (API-058).
             let mut twin = before;
-            let next = tm_like(frame);
-            let a = twin.step(ReceiverInput::Frame(CheckedFrame::new(&next)), &mut area);
-            let b = rx.step(ReceiverInput::Frame(CheckedFrame::new(&next)), &mut area);
-            prop_assert_eq!(a.is_ok(), b.is_ok());
-            if let (Ok(a), Ok(b)) = (a, b) {
-                prop_assert_eq!(a, b);
-            }
+            prop_assert!(
+                twin.step(ReceiverInput::Frame(CheckedFrame::new(&[0])), &mut area)
+                    .is_err()
+            );
+            prop_assert!(twin == *rx);
         }
     }
     Ok(())
-}
-
-/// A frame that is acceptable to every protocol's header reading, of the same length.
-fn tm_like(frame: &[u8]) -> Vec<u8> {
-    let mut f = frame.to_vec();
-    if let Some(b) = f.get_mut(4) {
-        *b &= 0x3F;
-    }
-    f
 }
 
 fn frames() -> impl Strategy<Value = Vec<Vec<u8>>> {

@@ -116,8 +116,12 @@ impl ReceiveProtocol for Aos {
         frame_len >= needed
     }
 
-    fn raw_insert_zone_offset(channel: &AosChannel, _: &[u8]) -> Option<usize> {
-        Some(channel.header_len())
+    fn variable_length(_: &AosChannel) -> bool {
+        false
+    }
+
+    fn raw_insert_zone_offset(channel: &AosChannel, _: &[u8]) -> Result<usize> {
+        Ok(channel.header_len())
     }
 
     fn receive<const V: usize>(cx: &mut FrameContext<'_, Aos, V>, frame: &[u8]) -> Result<()> {
