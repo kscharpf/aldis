@@ -1,6 +1,6 @@
 # Derivation: sending-side link engine scenarios
 
-The worked derivation that [07-test-vectors.md](../../07-test-vectors.md) TV-020 asks for a `hand-derived` vector file, for `test-vectors/link/send/*.json` (LNK-011…LNK-015, LNK-020, LNK-021, LNK-030…LNK-036, LNK-040…LNK-042; [M4 plan](../../milestones/m4-link-engines.md) WP-2a). The Blue Books print no example of a generated frame, only the first octets of the OID pattern (132.0-B-3 Annex D, 732.1-B-3 Annex H), so four cases are worked from the clauses with no program. The expected octets are the ones in the files; the model `test-vectors/models/link_send.py` computes them by another route (it assembles bit strings and runs the engines as steps).
+The worked derivation that [07-test-vectors.md](../../07-test-vectors.md) TV-020 asks for a `hand-derived` vector file, for `test-vectors/link/send/*.json` (LNK-003, LNK-010…LNK-015, LNK-020, LNK-021, LNK-030…LNK-036, LNK-040…LNK-042, LNK-076; [M4 plan](../../milestones/m4-link-engines.md) WP-2a). The Blue Books print no example of a generated frame, only the first octets of the OID pattern (132.0-B-3 Annex D, 732.1-B-3 Annex H), so four cases are worked from the clauses with no program. The expected octets are the ones in the files; the model `test-vectors/models/link_send.py` computes them by another route (it assembles bit strings and runs the engines as steps).
 
 ## 1. A Space Packet Idle Packet that spills (`link-send-pg-tm-lnk-013-spp-idle-spill`)
 

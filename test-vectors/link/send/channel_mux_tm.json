@@ -477,7 +477,7 @@
     },
     {
       "id": "link-send-mux-tm-lnk-076-offer-slot",
-      "description": "At most one offered field per VC: a second Offer for the same VC is refused with WouldBlock and no state change; an Offer for an unknown VC is refused; Opportunity consumes the slot of the VC it selects; SetOcf, SetFsh and SetInsert give no action.",
+      "description": "At most one offered field per VC: a second Offer for the same VC is refused with WouldBlock and no state change; an Offer for an unknown VC is refused; Opportunity consumes the slot of the VC it selects; SetOcf gives no action.",
       "requirements": ["LNK-076", "LNK-030"],
       "config": {"protocol": "tm", "scid": 165, "frame_len": 24, "fecf": true, "policy": {"kind": "fixed_priority"}, "oid_vc": 7, "vcs": [{"vcid": 1, "role": "packets", "priority": 1, "weight": 1, "ocf_init_hex": "01020304"}, {"vcid": 2, "role": "packets", "priority": 3, "weight": 1}, {"vcid": 3, "role": "packets", "priority": 2, "weight": 1}, {"vcid": 7, "role": "packets", "priority": 0, "weight": 1}]},
       "steps": [

@@ -565,13 +565,13 @@
     },
     {
       "id": "link-send-mux-uslp-lnk-032-map-id",
-      "description": "The MAP ID of a frame is the one the offer names (or the VC's); VC 2 carries MAP 3; the VC Frame Count is per VC, not per MAP.",
+      "description": "The MAP ID of a frame is the one the offer names, or the VC's configured MAP (3) when it names none; the VC Frame Count is per VC, not per MAP.",
       "requirements": ["LNK-032", "LNK-030"],
       "steps": [
         {"at_us": 0, "input": {"offer": {"vc": 2, "field_hex": "25FFFF101112131415161718191A1B1C1D1E1F2021", "map": 3}}, "expect": []},
         {"at_us": 1, "input": {"opportunity": {}}, "expect": [{"transmit": {"kind": "data", "vc": 2, "frame_hex": "C1234046001F02000025FFFF101112131415161718191A1B1C1D1E1F20210000", "security_header": [9, 9], "data": [9, 30], "security_trailer": [30, 30]}}]},
-        {"at_us": 10, "input": {"offer": {"vc": 2, "field_hex": "450004202122232425262728292A2B2C2D2E2F3031", "map": 4}}, "expect": []},
-        {"at_us": 11, "input": {"opportunity": {}}, "expect": [{"transmit": {"kind": "data", "vc": 2, "frame_hex": "C1234048001F020001450004202122232425262728292A2B2C2D2E2F30310000", "security_header": [9, 9], "data": [9, 30], "security_trailer": [30, 30]}}]}
+        {"at_us": 10, "input": {"offer": {"vc": 2, "field_hex": "250004202122232425262728292A2B2C2D2E2F3031"}}, "expect": []},
+        {"at_us": 11, "input": {"opportunity": {}}, "expect": [{"transmit": {"kind": "data", "vc": 2, "frame_hex": "C1234046001F020001250004202122232425262728292A2B2C2D2E2F30310000", "security_header": [9, 9], "data": [9, 30], "security_trailer": [30, 30]}}]}
       ]
     },
     {

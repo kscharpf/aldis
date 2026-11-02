@@ -174,7 +174,7 @@
     },
     {
       "id": "link-send-pg-uslp-lnk-014-idle-field-policy",
-      "description": "With the IdleField policy the VC always has a field to offer: a releasable field is offered first, then an idle field each time; the idle field does not disturb a the data field.",
+      "description": "With the IdleField policy the VC always has a field to offer: a releasable field is offered first, then an idle field each time; the idle field does not disturb the data field.",
       "requirements": ["LNK-014", "LNK-013"],
       "config": {"protocol": "uslp", "vc": 1, "valid_pvns": [0, 7], "max_packet_len": 64, "queue_capacity": 64, "idle_policy": "idle_field", "idle_pattern_hex": "C3", "field_len": 27},
       "steps": [

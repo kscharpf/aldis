@@ -1221,9 +1221,11 @@ def pg_common(proto, fl, sc_prefix, deadline=1000):
         out.append(s)
         s = Sc(sc_prefix + "lnk-013-spp-idle-spill-1", ["LNK-013"],
                "A remainder of 6 octets: the 7-octet idle packet spills 1 octet; a remainder of 1 "
-               "octet spills 6 (a field holding only a residue and the next idle completion).")
+               "octet spills 6, the most (the next field starts with those 6 octets and an idle completion).")
         s.do(submit_packet(spp_packet(11, z - 6, 0, 0x71)), 0).do(timeout(), 1000).do(release(), 1000)
         s.do(timeout(), 2000).do(release(), 2000)
+        s.do(submit_packet(spp_packet(11, z - 1, 1, 0x72)), 3000).do(timeout(), 4000)
+        s.do(release(), 4000).do(timeout(), 5000).do(release(), 5000)
         out.append(s)
     # LNK-015 WouldBlock
     s = Sc(sc_prefix + "lnk-015-would-block", ["LNK-015"],
@@ -1261,8 +1263,8 @@ def idle_policy_scenarios(proto, fl, prefix):
     out.append(s)
     s = Sc(prefix + "lnk-014-idle-field-policy", ["LNK-014", "LNK-013"],
            "With the IdleField policy the VC always has a field to offer: a releasable field is "
-           "offered first, then an idle field each time; the idle field does not disturb a "
-           "the data field.", cfg=pg_cfg(proto, field_len=fl, idle_policy="idle_field",
+           "offered first, then an idle field each time; the idle field does not disturb the "
+           "data field.", cfg=pg_cfg(proto, field_len=fl, idle_policy="idle_field",
                                           idle_pattern_hex="C3"))
     s.do(release(), 0).do(submit_packet(spp_packet(1, z, 0, 0x21)), 10).do(release(), 20)
     s.do(release(), 30).do(release(), 40)
@@ -1585,8 +1587,7 @@ def mux_tm():
     s = MuxSc("link-send-mux-tm-lnk-076-offer-slot", ["LNK-076", "LNK-030"],
               "At most one offered field per VC: a second Offer for the same VC is refused with "
               "WouldBlock and no state change; an Offer for an unknown VC is refused; Opportunity "
-              "consumes the slot of the VC it selects; SetOcf, SetFsh and SetInsert give no "
-              "action.", tm_cfg(vcs=vc_with(TM_VCS, 1, ocf_init_hex="01020304")))
+              "consumes the slot of the VC it selects; SetOcf gives no action.", tm_cfg(vcs=vc_with(TM_VCS, 1, ocf_init_hex="01020304")))
     s.do(offer(2, fld(16, 0x10), 3), 0).do(offer(2, fld(16, 0x20), 4), 1)
     s.do(offer(9, fld(16, 0x30), 0), 2)
     s.do({"set_ocf": {"scope": "vc", "vc": 1, "ocf_hex": "0A0B0C0D"}}, 3)
@@ -1739,10 +1740,10 @@ def mux_uslp():
         s.do(offer(1, tfdf(0, 0, 0, fld(19, k & 0xFF)), 0), 10 * k).do(opp(), 10 * k + 1)
     out.append(s)
     s = MuxSc("link-send-mux-uslp-lnk-032-map-id", ["LNK-032", "LNK-030"],
-              "The MAP ID of a frame is the one the offer names (or the VC's); VC 2 carries MAP "
-              "3; the VC Frame Count is per VC, not per MAP.", cfg)
+              "The MAP ID of a frame is the one the offer names, or the VC's configured MAP (3) "
+              "when it names none; the VC Frame Count is per VC, not per MAP.", cfg)
     s.do(offer(2, tfdf(1, 5, 0xFFFF, fld(18, 0x10)), map=3), 0).do(opp(), 1)
-    s.do(offer(2, tfdf(2, 5, 4, fld(18, 0x20)), map=4), 10).do(opp(), 11)
+    s.do(offer(2, tfdf(1, 5, 4, fld(18, 0x20))), 10).do(opp(), 11)
     out.append(s)
     c = uslp_cfg(vcs=vc_with(USLP_VCS, 1, ocf_init_hex="C1020304"),
                  oid={"qos": EXP, "vcf_len": 0, "ocf_init_hex": "01020304"})
@@ -1979,7 +1980,8 @@ def seg_uslp():
 
 REQUIREMENTS_SCOPE = (["LNK-011", "LNK-012", "LNK-013", "LNK-014", "LNK-020", "LNK-021",
                        "LNK-030", "LNK-031", "LNK-032", "LNK-033", "LNK-034", "LNK-035",
-                       "LNK-036", "LNK-040", "LNK-041", "LNK-042", "LNK-015", "LNK-076"])
+                       "LNK-036", "LNK-040", "LNK-041", "LNK-042", "LNK-015", "LNK-076", "LNK-003",
+                       "LNK-010"])
 
 PROV = {
     "pg_tm": "Hand-derived from 132.0-B-3 §4.1.2.7.6, §4.1.4, §4.2.2 (FHP 0x7FF none, 0x7FE idle "

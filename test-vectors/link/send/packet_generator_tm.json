@@ -155,14 +155,19 @@
     },
     {
       "id": "link-send-pg-tm-lnk-013-spp-idle-spill-1",
-      "description": "A remainder of 6 octets: the 7-octet idle packet spills 1 octet; a remainder of 1 octet spills 6 (a field holding only a residue and the next idle completion).",
+      "description": "A remainder of 6 octets: the 7-octet idle packet spills 1 octet; a remainder of 1 octet spills 6, the most (the next field starts with those 6 octets and an idle completion).",
       "requirements": ["LNK-013"],
       "steps": [
         {"at_us": 0, "input": {"submit_packet": {"packet_hex": "000BC000000B7172737475767778797A7B7C"}}, "expect": [], "expect_timeout_us": 1000},
         {"at_us": 1000, "input": {"timeout": {}}, "expect": [], "expect_no_timeout": true},
         {"at_us": 1000, "input": {"release": {}}, "expect": [{"data_field": {"vc": 1, "field_hex": "000BC000000B7172737475767778797A7B7C07FFC0000000", "fhp": 0}}], "expect_timeout_us": 2000},
         {"at_us": 2000, "input": {"timeout": {}}, "expect": [], "expect_no_timeout": true},
-        {"at_us": 2000, "input": {"release": {}}, "expect": [{"data_field": {"vc": 1, "field_hex": "0007FFC00000100000000000000000000000000000000000", "fhp": 1}}], "expect_no_timeout": true}
+        {"at_us": 2000, "input": {"release": {}}, "expect": [{"data_field": {"vc": 1, "field_hex": "0007FFC00000100000000000000000000000000000000000", "fhp": 1}}], "expect_no_timeout": true},
+        {"at_us": 3000, "input": {"submit_packet": {"packet_hex": "000BC001001072737475767778797A7B7C7D7E7F808182"}}, "expect": [], "expect_timeout_us": 4000},
+        {"at_us": 4000, "input": {"timeout": {}}, "expect": [], "expect_no_timeout": true},
+        {"at_us": 4000, "input": {"release": {}}, "expect": [{"data_field": {"vc": 1, "field_hex": "000BC001001072737475767778797A7B7C7D7E7F80818207", "fhp": 0}}], "expect_timeout_us": 5000},
+        {"at_us": 5000, "input": {"timeout": {}}, "expect": [], "expect_no_timeout": true},
+        {"at_us": 5000, "input": {"release": {}}, "expect": [{"data_field": {"vc": 1, "field_hex": "FFC00000000007FFC000000B000000000000000000000000", "fhp": 6}}], "expect_no_timeout": true}
       ]
     },
     {
@@ -208,7 +213,7 @@
     },
     {
       "id": "link-send-pg-tm-lnk-014-idle-field-policy",
-      "description": "With the IdleField policy the VC always has a field to offer: a releasable field is offered first, then an idle field each time; the idle field does not disturb a the data field.",
+      "description": "With the IdleField policy the VC always has a field to offer: a releasable field is offered first, then an idle field each time; the idle field does not disturb the data field.",
       "requirements": ["LNK-014", "LNK-013"],
       "config": {"protocol": "tm", "vc": 1, "valid_pvns": [0, 7], "max_packet_len": 64, "queue_capacity": 64, "idle_policy": "idle_field", "idle_pattern_hex": "C3", "idle_packet_kind": "space_packet", "field_len": 24},
       "steps": [
