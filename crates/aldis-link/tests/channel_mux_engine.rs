@@ -755,7 +755,7 @@ fn a_reconfiguration_keeps_the_counts_and_the_oid_generator_and_starts_the_walk_
         .unwrap();
     mux.step(MuxInput::Opportunity, &mut out).unwrap();
     assert_eq!((out[1] >> 1) & 7, 1);
-    // The MC count and the VC count continued (2 frames before, now the third of VC 1: 1).
+    // The MC count and the VC count continued (one frame before, now the second frame, and the second of VC 1).
     assert_eq!((out[2], out[3]), (1, 1));
     // OID frames continue the generator across a reconfiguration.
     mux.step(MuxInput::Opportunity, &mut out).unwrap();
@@ -933,4 +933,41 @@ fn a_uslp_vc_with_cop_needs_a_count_field_for_the_frame_sequence_number() {
         (3, Qos::Expedited, true)
     );
     assert_eq!((vc.vcf_len_sc().get(), vc.vcf_len_exp().get()), (1, 0));
+}
+
+#[test]
+fn a_reconfiguration_puts_the_slots_back_to_the_configured_values() {
+    // req: LNK-003, LNK-033
+    let config = || {
+        let mut channel = tm_channel();
+        channel.mc_ocf = Some([0xA1; 4]);
+        ChannelMuxConfig::<Tm, V>::new(channel, 24, true, MuxPolicy::FixedPriority, &tm_vcs())
+            .unwrap()
+    };
+    let mut mux = TmMux::new(config()).unwrap();
+    let mut out = [0; F];
+    mux.step(
+        MuxInput::SetOcf {
+            scope: Scope::Mc,
+            ocf: [0xB2; 4],
+        },
+        &mut out,
+    )
+    .unwrap();
+    mux.step(MuxInput::Opportunity, &mut out).unwrap();
+    assert_eq!(&out[18..22], [0xB2; 4]);
+    // The new configuration's value is in the next frame, until the caller sets the OCF again.
+    mux.step(MuxInput::Reconfigure(config()), &mut out).unwrap();
+    mux.step(MuxInput::Opportunity, &mut out).unwrap();
+    assert_eq!(&out[18..22], [0xA1; 4]);
+    mux.step(
+        MuxInput::SetOcf {
+            scope: Scope::Mc,
+            ocf: [0xC3; 4],
+        },
+        &mut out,
+    )
+    .unwrap();
+    mux.step(MuxInput::Opportunity, &mut out).unwrap();
+    assert_eq!(&out[18..22], [0xC3; 4]);
 }
