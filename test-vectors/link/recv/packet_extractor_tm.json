@@ -64,7 +64,7 @@
     },
     {
       "id": "link-recv-extract-tm-fhp-wins-over-length",
-      "description": "The packet in progress needs 14 more octets but the FHP of the next field is 8: the FHP is correct (132.0 4.3.2.4); the partial packet is discarded with its 6 octets, an extraction error LengthInconsistent is raised before the FHP, and the extraction continues from the FHP.",
+      "description": "The packet in progress needs 14 more octets but the FHP of the next field is 8: the FHP is correct (132.0 4.3.2.4); the partial packet is discarded with its 14 octets (6 held plus the 8 before the FHP), an extraction error LengthInconsistent is raised before the FHP, and the extraction continues from the FHP.",
       "requirements": ["LNK-060", "LNK-061"],
       "steps": [
         {"at_us": 1000, "input": {"data_field": {"data_hex": "000FC000000B55565758595A5B5C5D5E5F600010C000000D", "fhp": 0, "gap": false}}, "expect": [{"deliver": {"kind": "Packet", "pvn": 0, "data_hex": "000FC000000B55565758595A5B5C5D5E5F60", "incomplete": false}}]},
@@ -84,7 +84,7 @@
     },
     {
       "id": "link-recv-extract-tm-gap-discard",
-      "description": "After a frame gap the partial packet (10 octets) is discarded with a Discarded notification; the octets before the FHP are skipped and the extraction continues at the FHP of the field that carries the gap flag.",
+      "description": "After a frame gap the partial packet (14 octets) is discarded with a Discarded notification; the octets before the FHP are skipped and the extraction continues at the FHP of the field that carries the gap flag.",
       "requirements": ["LNK-061", "LNK-051"],
       "steps": [
         {"at_us": 1000, "input": {"data_field": {"data_hex": "0001C0000003101112130012C000000D1011121314151617", "fhp": 0, "gap": false}}, "expect": [{"deliver": {"kind": "Packet", "pvn": 0, "data_hex": "0001C000000310111213", "incomplete": false}}]},
@@ -171,7 +171,7 @@
     },
     {
       "id": "link-recv-extract-tm-idle-encapsulation-valid-set",
-      "description": "A VC whose valid-PVN set holds only Space Packets receives an Encapsulation Idle Packet in its field. On TM and AOS it is a packet of a PVN that is not valid. On USLP rule 000 the extractor delimits an Encapsulation Idle Packet whatever the set (the sender fills with it, 133.1 4.1.4.3.4): it is dropped and counted.",
+      "description": "A VC whose valid-PVN set holds only Space Packets receives an Encapsulation Idle Packet in its field. On TM and AOS it is a packet of a PVN that is not valid. On USLP rule 000 the extractor delimits an Encapsulation Idle Packet whatever the set (the sender fills with it, 732.1 4.1.4.3.4): it is dropped and counted.",
       "requirements": ["LNK-063"],
       "config": {"protocol": "tm", "valid_pvns": [0], "max_packet_len": 40, "deliver_incomplete": false, "deliver_idle": false},
       "steps": [
