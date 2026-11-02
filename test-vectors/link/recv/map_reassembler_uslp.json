@@ -1,0 +1,112 @@
+{
+  "kind": "engine-scenario",
+  "engine": "map-reassembler",
+  "provenance": "hand-derived",
+  "provenance_note": "Hand-derived from 732.1-B-3 4.1.4.2, 4.3.2 to 4.3.5 and 04-engines LNK-070 to LNK-072, OI-72. Model test-vectors/models/link_recv.py, written blind (TV-023) by a Claude agent from the Blue Books and docs/ only, without reading any implementation; for format only it read the COP-1 model and scenario files (cop1.py, the cop1 directory). The input scripts were chosen by hand; the expected outputs are the model's. Where the documents are silent the model refuses the case (see the README of test-vectors/link/recv/), so no scenario pins a behavior that 04 or the Blue Books leave open. The file is written by the model (--write) and never edited by hand.",
+  "config": {"protocol": "uslp", "maps": [{"vc": 1, "map": 0, "service": "sdu"}, {"vc": 1, "map": 1, "service": "octet_stream"}, {"vc": 2, "map": 0, "service": "packets"}, {"vc": 2, "map": 3, "service": "sdu"}]},
+  "scenarios": [
+    {
+      "id": "link-recv-reassemble-uslp-fixed-sdu",
+      "description": "Rules 001 and 010 of fixed-length TFDZs: the Last Valid Octet Pointer delimits the SDU and the octets after it are idle and discarded (732.1 4.1.4.2.4.5-6, 4.3.3.2.4). Case 1: an SDU that ends inside its first TFDZ. Case 2: an SDU that fills its TFDZ to the last octet (pointer 19). Case 3: an SDU over three TFDZs, pointer all ones while it continues.",
+      "requirements": ["LNK-072", "LNK-070"],
+      "steps": [
+        {"at_us": 1000, "input": {"fdu": {"vc": 1, "data_hex": "2500060102030405060700000000000000000000000000", "map": 0, "gap": false}}, "expect": [{"deliver": {"kind": "Sdu", "vc": 1, "map": 0, "data_hex": "01020304050607"}}]},
+        {"at_us": 2000, "input": {"fdu": {"vc": 1, "data_hex": "25001302030405060708090A0B0C0D0E0F101112131415", "map": 0, "gap": false}}, "expect": [{"deliver": {"kind": "Sdu", "vc": 1, "map": 0, "data_hex": "02030405060708090A0B0C0D0E0F101112131415"}}]},
+        {"at_us": 3000, "input": {"fdu": {"vc": 1, "data_hex": "25FFFF101112131415161718191A1B1C1D1E1F20212223", "map": 0, "gap": false}}, "expect": []},
+        {"at_us": 4000, "input": {"fdu": {"vc": 1, "data_hex": "45FFFF2425262728292A2B2C2D2E2F3031323334353637", "map": 0, "gap": false}}, "expect": []},
+        {"at_us": 5000, "input": {"fdu": {"vc": 1, "data_hex": "45000438393A3B3CEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE", "map": 0, "gap": false}}, "expect": [{"deliver": {"kind": "Sdu", "vc": 1, "map": 0, "data_hex": "101112131415161718191A1B1C1D1E1F202122232425262728292A2B2C2D2E2F303132333435363738393A3B3C"}}]}
+      ]
+    },
+    {
+      "id": "link-recv-reassemble-uslp-fixed-violations",
+      "description": "A rule 010 TFDZ without a preceding rule 001 is a sequence violation, and so is a rule 001 while an SDU is in progress (the partial SDU is discarded and the new one begins, OI-72).",
+      "requirements": ["LNK-072", "LNK-070"],
+      "steps": [
+        {"at_us": 1000, "input": {"fdu": {"vc": 1, "data_hex": "45FFFF0102030405060708090A0B0C0D0E0F1011121314", "map": 0, "gap": false}}, "expect": [{"reassembly_event": {"kind": "SequenceViolation", "vc": 1, "map": 0}}]},
+        {"at_us": 2000, "input": {"fdu": {"vc": 1, "data_hex": "25FFFF02030405060708090A0B0C0D0E0F101112131415", "map": 0, "gap": false}}, "expect": []},
+        {"at_us": 3000, "input": {"fdu": {"vc": 1, "data_hex": "250003030405060708090A0B0C0D0E0F10111213141516", "map": 0, "gap": false}}, "expect": [{"reassembly_event": {"kind": "SequenceViolation", "vc": 1, "map": 0}}, {"deliver": {"kind": "Sdu", "vc": 1, "map": 0, "data_hex": "03040506"}}]},
+        {"at_us": 4000, "input": {"fdu": {"vc": 1, "data_hex": "4500050405060708090A0B0C0D0E0F1011121314151617", "map": 0, "gap": false}}, "expect": [{"reassembly_event": {"kind": "SequenceViolation", "vc": 1, "map": 0}}]},
+        {"at_us": 5000, "input": {"query": {"counter": "SequenceViolation"}}, "expect": [{"counter": {"name": "SequenceViolation", "value": 3}}]}
+      ]
+    },
+    {
+      "id": "link-recv-reassemble-uslp-gap",
+      "description": "A gap in the VCF Count while an SDU is in progress discards it with the event GapDiscard (the frame carries gap = true); if the same TFDZ is a continuation there is nothing to continue, which is also a SequenceViolation (two events); a gap with no SDU in progress raises no GapDiscard.",
+      "requirements": ["LNK-070", "LNK-051"],
+      "steps": [
+        {"at_us": 1000, "input": {"fdu": {"vc": 1, "data_hex": "25FFFF0102030405060708090A0B0C0D0E0F1011121314", "map": 0, "gap": false}}, "expect": []},
+        {"at_us": 2000, "input": {"fdu": {"vc": 1, "data_hex": "45000402030405060708090A0B0C0D0E0F101112131415", "map": 0, "gap": true}}, "expect": [{"reassembly_event": {"kind": "GapDiscard", "vc": 1, "map": 0}}, {"reassembly_event": {"kind": "SequenceViolation", "vc": 1, "map": 0}}]},
+        {"at_us": 3000, "input": {"fdu": {"vc": 1, "data_hex": "25FFFF030405060708090A0B0C0D0E0F10111213141516", "map": 0, "gap": false}}, "expect": []},
+        {"at_us": 4000, "input": {"fdu": {"vc": 1, "data_hex": "2500060405060708090A0B0C0D0E0F1011121314151617", "map": 0, "gap": true}}, "expect": [{"reassembly_event": {"kind": "GapDiscard", "vc": 1, "map": 0}}, {"deliver": {"kind": "Sdu", "vc": 1, "map": 0, "data_hex": "0405060708090A"}}]},
+        {"at_us": 5000, "input": {"fdu": {"vc": 1, "data_hex": "25000205060708090A0B0C0D0E0F101112131415161718", "map": 0, "gap": true}}, "expect": [{"deliver": {"kind": "Sdu", "vc": 1, "map": 0, "data_hex": "050607"}}]},
+        {"at_us": 6000, "input": {"fdu": {"vc": 1, "data_hex": "450002060708090A0B0C0D0E0F10111213141516171819", "map": 0, "gap": true}}, "expect": [{"reassembly_event": {"kind": "SequenceViolation", "vc": 1, "map": 0}}]},
+        {"at_us": 7000, "input": {"query": {"counter": "GapDiscard"}}, "expect": [{"counter": {"name": "GapDiscard", "value": 2}}]}
+      ]
+    },
+    {
+      "id": "link-recv-reassemble-uslp-unknown-map",
+      "description": "A TFDF for a MAP ID that is not configured on the VC is discarded with UnknownMap (732.1 4.3.3.2.6).",
+      "requirements": ["LNK-070"],
+      "steps": [
+        {"at_us": 1000, "input": {"fdu": {"vc": 1, "data_hex": "2500030102030405060708090A0B0C0D0E0F1011121314", "map": 9, "gap": false}}, "expect": [{"reassembly_event": {"kind": "UnknownMap", "vc": 1, "map": 9}}]},
+        {"at_us": 2000, "input": {"fdu": {"vc": 1, "data_hex": "25000302030405060708090A0B0C0D0E0F101112131415", "map": 0, "gap": false}}, "expect": [{"deliver": {"kind": "Sdu", "vc": 1, "map": 0, "data_hex": "02030405"}}]}
+      ]
+    },
+    {
+      "id": "link-recv-reassemble-uslp-octet-stream",
+      "description": "Rule 011 (octet stream) is delivered as it arrives, one delivery per TFDZ (732.1 4.3.4.2-3).",
+      "requirements": ["LNK-072"],
+      "steps": [
+        {"at_us": 1000, "input": {"fdu": {"vc": 1, "data_hex": "64010203040506070809", "map": 1, "gap": false}}, "expect": [{"deliver": {"kind": "Sdu", "vc": 1, "map": 1, "data_hex": "010203040506070809", "octet_stream": true}}]},
+        {"at_us": 2000, "input": {"fdu": {"vc": 1, "data_hex": "641415161718191A1B1C1D1E1F2021", "map": 1, "gap": false}}, "expect": [{"deliver": {"kind": "Sdu", "vc": 1, "map": 1, "data_hex": "1415161718191A1B1C1D1E1F2021", "octet_stream": true}}]}
+      ]
+    },
+    {
+      "id": "link-recv-reassemble-uslp-variable-sdu",
+      "description": "Variable-length TFDZs of a MAPA_SDU: rules 100, 101, 110 rebuild one SDU; rule 111 is one complete SDU (732.1 4.3.3.3.3-4); a continuation or a last segment without a start is a sequence violation, and a start in progress is replaced (OI-72).",
+      "requirements": ["LNK-070"],
+      "steps": [
+        {"at_us": 1000, "input": {"fdu": {"vc": 1, "data_hex": "85101112131415161718191A1B1C1D1E", "map": 0, "gap": false}}, "expect": []},
+        {"at_us": 2000, "input": {"fdu": {"vc": 1, "data_hex": "A51F202122232425262728292A2B2C2D", "map": 0, "gap": false}}, "expect": []},
+        {"at_us": 3000, "input": {"fdu": {"vc": 1, "data_hex": "C52E2F303132333435363738393A3B3C", "map": 0, "gap": false}}, "expect": [{"deliver": {"kind": "Sdu", "vc": 1, "map": 0, "data_hex": "101112131415161718191A1B1C1D1E1F202122232425262728292A2B2C2D2E2F303132333435363738393A3B3C"}}]},
+        {"at_us": 4000, "input": {"fdu": {"vc": 1, "data_hex": "E5707172737475767778797A", "map": 0, "gap": false}}, "expect": [{"deliver": {"kind": "Sdu", "vc": 1, "map": 0, "data_hex": "707172737475767778797A"}}]},
+        {"at_us": 5000, "input": {"fdu": {"vc": 1, "data_hex": "A50102030405", "map": 0, "gap": false}}, "expect": [{"reassembly_event": {"kind": "SequenceViolation", "vc": 1, "map": 0}}]},
+        {"at_us": 6000, "input": {"fdu": {"vc": 1, "data_hex": "C50203040506", "map": 0, "gap": false}}, "expect": [{"reassembly_event": {"kind": "SequenceViolation", "vc": 1, "map": 0}}]},
+        {"at_us": 7000, "input": {"fdu": {"vc": 1, "data_hex": "850304050607", "map": 0, "gap": false}}, "expect": []},
+        {"at_us": 8000, "input": {"fdu": {"vc": 1, "data_hex": "850405060708", "map": 0, "gap": false}}, "expect": [{"reassembly_event": {"kind": "SequenceViolation", "vc": 1, "map": 0}}]},
+        {"at_us": 9000, "input": {"fdu": {"vc": 1, "data_hex": "C50506070809", "map": 0, "gap": false}}, "expect": [{"deliver": {"kind": "Sdu", "vc": 1, "map": 0, "data_hex": "04050607080506070809"}}]}
+      ]
+    },
+    {
+      "id": "link-recv-reassemble-uslp-variable-packets",
+      "description": "Packet MAP, variable-length TFDZs: rule 111 holds one or more complete packets and is split into individual packets by the length field of each (732.1 4.3.2.3.3); a packet in segments (100, 101, 110) is delivered once, whole.",
+      "requirements": ["LNK-071", "LNK-070"],
+      "steps": [
+        {"at_us": 1000, "input": {"fdu": {"vc": 2, "data_hex": "E00001C0000002010203FD070708090A0B0002C0000005020304050607", "map": 0, "gap": false}}, "expect": [{"deliver": {"kind": "Packet", "vc": 2, "map": 0, "pvn": 0, "data_hex": "0001C0000002010203", "incomplete": false}}, {"deliver": {"kind": "Packet", "vc": 2, "map": 0, "pvn": 7, "data_hex": "FD070708090A0B", "incomplete": false}}, {"deliver": {"kind": "Packet", "vc": 2, "map": 0, "pvn": 0, "data_hex": "0002C0000005020304050607", "incomplete": false}}]},
+        {"at_us": 2000, "input": {"fdu": {"vc": 2, "data_hex": "800003C000001A0304050607", "map": 0, "gap": false}}, "expect": []},
+        {"at_us": 3000, "input": {"fdu": {"vc": 2, "data_hex": "A008090A0B0C0D0E0F101112", "map": 0, "gap": false}}, "expect": []},
+        {"at_us": 4000, "input": {"fdu": {"vc": 2, "data_hex": "C0131415161718191A1B1C1D", "map": 0, "gap": false}}, "expect": [{"deliver": {"kind": "Packet", "vc": 2, "map": 0, "pvn": 0, "data_hex": "0003C000001A030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D", "incomplete": false}}]}
+      ]
+    },
+    {
+      "id": "link-recv-reassemble-uslp-variable-gap",
+      "description": "A gap while a variable-length segmented SDU is in progress discards it (GapDiscard); the continuation that follows is a SequenceViolation.",
+      "requirements": ["LNK-070", "LNK-051"],
+      "steps": [
+        {"at_us": 1000, "input": {"fdu": {"vc": 2, "data_hex": "850102030405060708", "map": 3, "gap": false}}, "expect": []},
+        {"at_us": 2000, "input": {"fdu": {"vc": 2, "data_hex": "A50203040506070809", "map": 3, "gap": true}}, "expect": [{"reassembly_event": {"kind": "GapDiscard", "vc": 2, "map": 3}}, {"reassembly_event": {"kind": "SequenceViolation", "vc": 2, "map": 3}}]},
+        {"at_us": 3000, "input": {"fdu": {"vc": 2, "data_hex": "E5030405060708", "map": 3, "gap": false}}, "expect": [{"deliver": {"kind": "Sdu", "vc": 2, "map": 3, "data_hex": "030405060708"}}]}
+      ]
+    },
+    {
+      "id": "link-recv-reassemble-uslp-reconfigure",
+      "description": "Reconfigure discards the SDU in progress with one Discarded notification and its octets.",
+      "requirements": ["LNK-003", "LNK-070"],
+      "steps": [
+        {"at_us": 1000, "input": {"fdu": {"vc": 1, "data_hex": "25FFFF0102030405060708090A0B0C0D0E0F1011121314", "map": 0, "gap": false}}, "expect": []},
+        {"at_us": 2000, "input": {"reconfigure": {}}, "expect": [{"notify": {"kind": "Discarded", "octets": 20}}]},
+        {"at_us": 3000, "input": {"fdu": {"vc": 1, "data_hex": "45000402030405060708090A0B0C0D0E0F101112131415", "map": 0, "gap": false}}, "expect": [{"reassembly_event": {"kind": "SequenceViolation", "vc": 1, "map": 0}}]}
+      ]
+    }
+  ]
+}
