@@ -8,8 +8,9 @@
 //! | [`protocol`] | The protocol trait with `Tm`, `Tc`, `Aos`, `Uslp` | LNK-001 |
 //! | `generator` | The `PacketGenerator` (features `spp`, `epp`) | LNK-010…LNK-015, LNK-074, LNK-075 |
 //! | `extractor` | The `PacketExtractor` (features `spp`, `epp`) | LNK-060…LNK-064, LNK-074, LNK-075 |
+//! | `receiver` | The `FrameReceiver` | LNK-050…LNK-054, LNK-077, LNK-079…LNK-081 |
 //!
-//! **Status:** the `PacketGenerator` and the `PacketExtractor` are implemented (M4 WP-3); the other
+//! **Status:** the `PacketGenerator`, the `PacketExtractor` (M4 WP-3), and the `FrameReceiver` (M4 WP-5) are implemented; the other
 //! modules are declared but not yet implemented. Requirements are traced by ID in each module's
 //! documentation.
 #![no_std]

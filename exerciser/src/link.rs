@@ -1,6 +1,7 @@
-//! Calls every public `aldis-link` API of the packet engines (VER-010; M4 WP-3): the
-//! `PacketGenerator` and the `PacketExtractor` for TM, AOS (both editions), and USLP, with their
-//! configurations, inputs, refusals, and status. Inputs pass through `black_box`. The
+//! Calls every public `aldis-link` API of the packet engines and the `FrameReceiver` (VER-010;
+//! M4 WP-3, WP-5): the `PacketGenerator` and the `PacketExtractor` for TM, AOS (both editions),
+//! and USLP, and the `FrameReceiver` for TM, TC, AOS, and USLP, with their configurations,
+//! inputs, refusals, and status. Inputs pass through `black_box`. The
 //! `link/` vector files are engine scenarios, which the host suites run; the group embeds no
 //! case (as `cop1/` does).
 
@@ -22,6 +23,12 @@ use aldis_link::generator::{
 use aldis_link::protocol::{
     Aos, AosParams, IdleField, LinkProtocol, PacketProtocol, Pointer, Protocol, Tc, Tm, TmParams,
     Uslp, UslpParams,
+};
+use aldis_link::receiver::{
+    AosChannel, AosContent, AosVc, CallerDiscardReason, CheckedFrame, DiscardReason,
+    FRAME_RECEIVER_MAX_ACTIONS, FrameReceiver, FrameReceiverConfig, MapSet, ReceiveProtocol,
+    ReceiverInput, ReceiverOutput, Service, TcChannel, TcVc, TmChannel, TmContent, TmVc,
+    UslpChannel, UslpVc, VcEntry,
 };
 use aldis_uslp::Upid;
 
@@ -362,8 +369,283 @@ fn common(t: &mut Tally) {
     t.check(ExtractionError::PacketTooLong != ExtractionError::InvalidPvn);
 }
 
+/// A frame of `len` octets: `head` first, then `fill`.
+fn frame(len: usize, head: &[u8], fill: u8) -> [u8; 40] {
+    let mut octets = [fill; 40];
+    for (d, s) in octets.iter_mut().zip(head).take(len) {
+        *d = *s;
+    }
+    octets
+}
+
+/// A frame input.
+fn input<P: ReceiveProtocol, const V: usize>(octets: &[u8]) -> ReceiverInput<'_, P, V> {
+    ReceiverInput::Frame(CheckedFrame::new(bb(octets)))
+}
+
+/// The `FrameReceiver` for each protocol: a frame of a served VC, one of an unknown VC, a gap,
+/// the other inputs, and the refusals (LNK-050…LNK-054, LNK-079…LNK-081).
+fn receivers(t: &mut Tally) {
+    const LEN: usize = 40;
+    let mut area = [0u8; LEN + 4];
+    // TM: VC 1 with an OCF and a Secondary Header of 2 octets.
+    let tm_vc = TmVc::new(bb(TmContent::Packets), bb(true), Some(bb(2)));
+    let config = tm_vc.and_then(|vc| {
+        let vcid = <Tm as Protocol>::Vc::try_from(bb(1))?;
+        FrameReceiverConfig::<Tm, 4>::new(
+            bb(LEN),
+            bb(false),
+            TmChannel::new(Service::Vc, Service::Mc),
+            &[VcEntry::new(vcid, vc)],
+        )
+    });
+    let Ok(config) = config else {
+        t.check(false);
+        return;
+    };
+    t.check(config.frame_len() == LEN && !config.fecf() && !config.raw_frames());
+    t.check(config.area_len() == LEN && config.vcs().count() == 1);
+    t.check(config.channel().ocf() == Service::Vc && config.channel().fsh() == Service::Mc);
+    let mut tm = FrameReceiver::<Tm, 4>::new(config);
+    // VC 1, OCF flag, Secondary Header flag, the FHP 0, then the header 0x01 0xAA, the data, the
+    // OCF.
+    let mut head = [0u8; LEN];
+    for (d, s) in head
+        .iter_mut()
+        .zip([0x00, 0x13, 0, 0, 0x80, 0x00, 0x01, 0xAA])
+    {
+        *d = s;
+    }
+    for d in head.iter_mut().skip(LEN - 4) {
+        *d = 0x01;
+    }
+    let first = frame(LEN, &head, 0x42);
+    let mut next = first;
+    for (i, d) in [(2, 3), (3, 3)] {
+        if let Some(b) = next.get_mut(i) {
+            *b = d;
+        }
+    }
+    t.check(
+        tm.step(input(&first), &mut area)
+            .is_ok_and(|a| a.len() == 3),
+    );
+    let gapped = tm.step(input(&next), &mut area);
+    t.check(gapped.is_ok_and(|a| {
+        a.len() == FRAME_RECEIVER_MAX_ACTIONS
+            && matches!(a.get(0), Some(ReceiverOutput::FrameGap { missing: 2, .. }))
+    }));
+    let mut unknown = first;
+    if let Some(b) = unknown.get_mut(1) {
+        *b = 0x1B;
+    }
+    t.check(tm.step(input(&unknown), &mut area).is_ok_and(|a| {
+        matches!(
+            a.iter().last(),
+            Some(ReceiverOutput::FrameDiscarded {
+                reason: DiscardReason::UnknownChannel,
+                ..
+            })
+        )
+    }));
+    t.check(tm.step(input(&first[1..]), &mut area).is_err());
+    t.check(tm.step(ReceiverInput::FrameLoss, &mut area).is_ok());
+    t.check(
+        tm.step(
+            ReceiverInput::CallerDiscard(bb(CallerDiscardReason::CrcMismatch)),
+            &mut area,
+        )
+        .is_ok(),
+    );
+    t.check(tm.step(ReceiverInput::RawFrame(&first), &mut area).is_err());
+    t.check(
+        tm.step(ReceiverInput::Reconfigure(config), &mut area)
+            .is_ok_and(|a| a.is_empty()),
+    );
+    let status = tm.status();
+    t.check(
+        status.frames_in.get() == 3
+            && status.unknown_channel.get() == 1
+            && status.refused.get() == 2,
+    );
+    t.check(
+        status.gaps.get() == 2 && status.crc_mismatch.get() == 1 && status.frame_loss.get() == 1,
+    );
+    t.check(status.not_served.get() == 0 && status.oid_frames.get() == 0);
+    t.check(status.raw_frames_in.get() == 0);
+    t.check(status.count_discontinuities.get() == 1 && status.header_uncorrectable.get() == 0);
+    t.check(status.security.get() == 0);
+    t.check(tm.vcs().count() == 1 && tm.config() == &config);
+}
+
+/// AOS receiver: an Insert Zone, a bitstream VC, raw frames.
+fn receiver_aos(t: &mut Tally) {
+    const LEN: usize = 40;
+    let mut area = [0u8; LEN + 4];
+    // AOS: an Insert Zone of 2 octets, VC 1 of bitstream, raw frames accepted.
+    let aos_config = <Aos as Protocol>::Vc::try_from(bb(1)).and_then(|vcid| {
+        FrameReceiverConfig::<Aos, 4>::new(
+            bb(LEN),
+            bb(true),
+            AosChannel::new(bb(2), bb(false)),
+            &[VcEntry::new(
+                vcid,
+                AosVc::new(bb(AosContent::Bitstream), bb(false)),
+            )],
+        )
+        .and_then(|c| c.with_raw_frames(bb(true)))
+    });
+    let Ok(aos_config) = aos_config else {
+        t.check(false);
+        return;
+    };
+    let mut aos = FrameReceiver::<Aos, 4>::new(aos_config);
+    let aos_in = frame(
+        LEN,
+        &[0x40, 0x01, 0, 0, 0, 0x00, 0xC1, 0xC2, 0x00, 0x13],
+        0x00,
+    );
+    t.check(
+        aos.step(input(&aos_in), &mut area)
+            .is_ok_and(|o| o.len() == 2),
+    );
+    t.check(
+        aos.step(ReceiverInput::RawFrame(&aos_in), &mut area)
+            .is_ok_and(|o| {
+                matches!(
+                    o.get(0),
+                    Some(ReceiverOutput::InsertSdu { replay: None, .. })
+                )
+            }),
+    );
+    t.check(aos_config.raw_frames() && aos_config.channel().insert_zone_len() == 2);
+    let beyond = frame(
+        LEN,
+        &[0x40, 0x01, 0, 0, 1, 0x00, 0xC1, 0xC2, 0x3F, 0x00],
+        0x00,
+    );
+    t.check(aos.step(input(&beyond), &mut area).is_err());
+    let content = aos_config.vcs().next().map(|e| e.params().content());
+    t.check(content == Some(AosContent::Bitstream));
+}
+
+/// USLP receiver.
+fn receiver_uslp(t: &mut Tally) {
+    const LEN: usize = 40;
+    let mut area = [0u8; LEN + 4];
+    // USLP: an unserved VC 3 and a COP VC 2, MAP 0 only.
+    let uslp_config = MapId::<4>::new(bb(0)).and_then(|map| {
+        let maps = MapSet::new(&[map]);
+        let one = <Uslp as Protocol>::Vc::try_from(bb(1)).ok()?;
+        let two = <Uslp as Protocol>::Vc::try_from(bb(3)).ok()?;
+        FrameReceiverConfig::<Uslp, 4>::new(
+            bb(LEN),
+            bb(false),
+            UslpChannel::new(bb(2), Service::Mc),
+            &[
+                VcEntry::new(one, UslpVc::new(maps, bb(false), bb(true))),
+                VcEntry::new(two, UslpVc::new(maps, bb(true), bb(false))),
+            ],
+        )
+        .ok()
+    });
+    let Some(uslp_config) = uslp_config else {
+        t.check(false);
+        return;
+    };
+    let mut uslp = FrameReceiver::<Uslp, 4>::new(uslp_config);
+    // VC 1, MAP 0, a VCF Count of one octet, then the Insert Zone and the TFDF.
+    let uslp_in = frame(
+        LEN,
+        &[0xC0, 0x00, 0x00, 0x20, 0x00, 0x27, 0x01, 0x05, 0xD1, 0xD2],
+        0x00,
+    );
+    t.check(
+        uslp.step(input(&uslp_in), &mut area)
+            .is_ok_and(|o| o.len() == 2),
+    );
+    t.check(
+        uslp.step(input(&uslp_in), &mut area)
+            .is_ok_and(|o| matches!(o.get(0), Some(ReceiverOutput::CountDiscontinuity { .. }))),
+    );
+    let control = frame(LEN, &[0xC0, 0x00, 0x00, 0x20, 0x00, 0x27, 0xC0, 0x01], 0x00);
+    let mut protocol_control = control;
+    if let Some(b) = protocol_control.get_mut(6) {
+        *b = 0xC1;
+    }
+    t.check(uslp.step(input(&protocol_control), &mut area).is_ok());
+    let mut reserved = control;
+    if let Some(b) = reserved.get_mut(6) {
+        *b = 0x41;
+    }
+    t.check(uslp.step(input(&reserved), &mut area).is_err());
+    let mut wrong_map = control;
+    if let Some(b) = wrong_map.get_mut(3) {
+        *b = 0x22;
+    }
+    t.check(uslp.step(input(&wrong_map), &mut area).is_ok_and(|o| {
+        matches!(
+            o.iter().last(),
+            Some(ReceiverOutput::FrameDiscarded { map: Some(_), .. })
+        )
+    }));
+    t.check(uslp_config.channel().ocf() == Service::Mc && uslp_config.vcs().count() == 2);
+    t.check(uslp.status().count_discontinuities.get() == 1);
+    t.check(uslp_config.vcs().any(|e| {
+        let p = e.params();
+        p.cop() && !p.served() && MapId::<4>::new(bb(0)).is_some_and(|m| p.maps().contains(m))
+    }));
+}
+
+/// TC receiver.
+fn receiver_tc(t: &mut Tally) {
+    const LEN: usize = 40;
+    let mut area = [0u8; LEN + 4];
+    // TC: VC 1 is served, VC 2 is not.
+    let tc_config = <Tc as Protocol>::Vc::try_from(bb(1)).and_then(|one| {
+        let two = <Tc as Protocol>::Vc::try_from(bb(2))?;
+        FrameReceiverConfig::<Tc, 4>::new(
+            bb(LEN),
+            bb(false),
+            TcChannel,
+            &[
+                VcEntry::new(one, TcVc::SERVED),
+                VcEntry::new(two, TcVc::UNSERVED),
+            ],
+        )
+    });
+    let Ok(tc_config) = tc_config else {
+        t.check(false);
+        return;
+    };
+    let mut tc = FrameReceiver::<Tc, 4>::new(tc_config);
+    let tc_in = frame(LEN, &[0x00, 0x2A, 0x04, 0x27, 0x00], 0x00);
+    t.check(
+        tc.step(input(&tc_in), &mut area)
+            .is_ok_and(|o| matches!(o.get(0), Some(ReceiverOutput::TcFrame { .. }))),
+    );
+    let mut served_not = tc_in;
+    if let Some(b) = served_not.get_mut(2) {
+        *b = 0x08;
+    }
+    t.check(tc.step(input(&served_not), &mut area).is_ok_and(|o| {
+        matches!(
+            o.get(0),
+            Some(ReceiverOutput::FrameDiscarded {
+                reason: DiscardReason::NotServed,
+                ..
+            })
+        )
+    }));
+    t.check(tc.status().not_served.get() == 1 && TcVc::SERVED.served());
+}
+
 pub fn run(t: &mut Tally) {
     common(t);
+    receivers(t);
+    receiver_aos(t);
+    receiver_uslp(t);
+    receiver_tc(t);
     let uslp = MapId::<4>::new(bb(2))
         .and_then(|map| UslpParams::new(Upid::Packets, map, Qos::Expedited).ok());
     let aos4 = AosParams {

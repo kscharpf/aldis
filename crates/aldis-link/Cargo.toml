@@ -68,3 +68,11 @@ required-features = ["spp", "epp", "tm", "aos", "uslp"]
 [[test]]
 name = "engine_housekeeping"
 required-features = ["spp", "epp", "tm", "aos", "uslp"]
+
+[[test]]
+name = "frame_receiver_vectors"
+required-features = ["spp", "epp", "tm", "tc", "aos", "uslp"]
+
+[[test]]
+name = "frame_receiver"
+required-features = ["spp", "epp", "tm", "tc", "aos", "uslp"]
