@@ -23,7 +23,8 @@ use aldis_core::ids::MapId;
 use aldis_core::time::{Duration, Instant};
 use aldis_link::common::{IdlePacketKind, IdlePolicy, Qos, ValidPvns};
 use aldis_link::extractor::{
-    ExtractorInput, ExtractorOutput, FieldIn, PacketExtractor, PacketExtractorConfig, PacketRun,
+    EXTRACTOR_MAX_ACTIONS, ExtractorInput, ExtractorOutput, FieldIn, PacketExtractor,
+    PacketExtractorConfig, PacketRun,
 };
 use aldis_link::generator::{
     GeneratorInput, GeneratorOutput, PacketGenerator, PacketGeneratorConfig,
@@ -148,7 +149,7 @@ fn extract<P: PacketProtocol, const EM: usize, const ED: usize>(
                 match a {
                     ExtractorOutput::Packets { run, .. } => trip
                         .received
-                        .extend(PacketRun::new(*run, &area).map(<[u8]>::to_vec)),
+                        .extend(PacketRun::new(*run, &area).unwrap().map(<[u8]>::to_vec)),
                     other => trip.problems.push(format!("{other:?}")),
                 }
             }
@@ -325,5 +326,40 @@ proptest! {
         check(&round_trip::<Uslp>(
             params, field_len, p, IdlePolicy::Oid, IdlePacketKind::Encapsulation, pattern, &list,
         ))?;
+    }
+
+    /// Whatever the fields, the gap flags, and the pointers, one input of the extractor returns
+    /// at most `EXTRACTOR_MAX_ACTIONS` actions and never an internal error, so that
+    /// `Actions::push` cannot fail after the state has changed (LNK-074, API-057, API-058).
+    #[test]
+    fn extractor_actions_stay_within_the_bound(
+        fields in prop::collection::vec(
+            (
+                strategies::octets(1..=24),
+                prop_oneof![0u16..24, Just(0x7FFu16), Just(0x7FEu16)],
+                any::<bool>(),
+            ),
+            1..30,
+        ),
+        deliver_incomplete in any::<bool>(),
+        deliver_idle in any::<bool>(),
+    ) {
+        // req: LNK-074, API-057, API-058, VER-023
+        let config = PacketExtractorConfig::<Tm>::new(TmParams, ValidPvns::BOTH, 40)
+            .unwrap()
+            .with_delivery(deliver_incomplete, deliver_idle);
+        let mut extractor = PacketExtractor::<Tm, M, 24>::new(config).unwrap();
+        let mut area = vec![0u8; M + 24];
+        for (field, pointer, gap) in &fields {
+            let input = ExtractorInput::DataField(FieldIn {
+                field,
+                header_pointer: Some(*pointer),
+                gap: *gap,
+            });
+            match extractor.step(input, &mut area) {
+                Ok(actions) => prop_assert!(actions.len() <= EXTRACTOR_MAX_ACTIONS),
+                Err(e) => prop_assert_ne!(e.kind(), aldis_core::ErrorKind::InternalError),
+            }
+        }
     }
 }

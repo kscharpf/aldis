@@ -342,26 +342,44 @@ mod uslp_impl {
     /// the MAP and `QoS` they are sent on (732.1 §4.1.4.2.3, §4.1.2.8; LNK-043).
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
     pub struct UslpParams {
-        /// The USLP Protocol Identifier of the TFDFs (732.1 §4.1.4.2.3).
-        pub upid: Upid,
-        /// The MAP ID the fields are sent on (732.1 §4.1.2.7).
-        pub map: MapId<4>,
-        /// The quality of service of the fields.
-        pub qos: Qos,
+        upid: Upid,
+        map: MapId<4>,
+        qos: Qos,
     }
 
     impl UslpParams {
         /// The parameters of a USLP VC or MAP (732.1 §4.1.4.2.3, §4.1.2.8).
         ///
         /// # Errors
-        /// `InvalidConfig` (`upid`) for "Only Idle Data": a rule `000` TFDF with that UPID is
-        /// idle data (732.1 §4.1.4.2.3), so no packet could be carried in it.
+        /// `InvalidConfig` (`upid`) for "Only Idle Data": that UPID of the SANA registry marks a
+        /// TFDZ of idle data (732.1 §4.1.4.2.3, §4.1.4.1.9), so no packet could be carried in
+        /// it.
         pub fn new(upid: Upid, map: MapId<4>, qos: Qos) -> Result<UslpParams> {
             if upid == Upid::OnlyIdleData {
                 Err(Error::new(ErrorKind::InvalidConfig).with_field(field::UPID))
             } else {
                 Ok(UslpParams { upid, map, qos })
             }
+        }
+    }
+
+    impl UslpParams {
+        /// The USLP Protocol Identifier of the TFDFs (732.1 §4.1.4.2.3); never "Only Idle Data".
+        #[must_use]
+        pub const fn upid(&self) -> Upid {
+            self.upid
+        }
+
+        /// The MAP ID the fields are sent on (732.1 §4.1.2.7).
+        #[must_use]
+        pub const fn map(&self) -> MapId<4> {
+            self.map
+        }
+
+        /// The quality of service of the fields.
+        #[must_use]
+        pub const fn qos(&self) -> Qos {
+            self.qos
         }
     }
 
@@ -402,6 +420,11 @@ mod uslp_impl {
             }
         }
 
+        // The UPID of the field is not compared with the configured one: the UPID names the
+        // service of the TFDZ (732.1 §4.1.4.2.3), and the FrameReceiver routes a TFDF to this
+        // extractor by VC and MAP and by that service (LNK-050, LNK-081, WP-5), so a TFDF of
+        // another service never reaches it. Only the idle UPID is read here, because an OID
+        // frame carries it on a VC that has packets (732.1 §4.1.4.1.9).
         fn parse<'a>(_: &UslpParams, _: Option<u16>, field: &'a [u8]) -> Result<ParsedField<'a>> {
             let invalid = |f| Error::new(ErrorKind::InvalidField).with_field(f);
             let (&first, rest) = field

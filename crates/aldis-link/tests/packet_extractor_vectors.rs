@@ -60,6 +60,7 @@ fn outputs(o: &ExtractorOutput, area: &[u8]) -> Vec<Value> {
     match o {
         ExtractorOutput::Packets { run, count } => {
             let packets: Vec<Value> = PacketRun::new(*run, area)
+                .unwrap()
                 .map(|p| packet(p, false))
                 .collect();
             assert_eq!(packets.len(), *count);

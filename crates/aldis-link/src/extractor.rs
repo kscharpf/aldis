@@ -10,8 +10,8 @@
 //!
 //! **Bounds (LNK-074, LNK-075).** One `DataField` returns at most
 //! [`EXTRACTOR_MAX_ACTIONS`] actions, whatever the length of the field: the packets between two
-//! events are one `Packets` run. It writes at most `max_packet_len − 1 + z` octets to the output area, `z` being the octets of
-//! the packet zone it is given: the packet in progress (at most `max_packet_len − 1` octets)
+//! events are one `Packets` run. It writes at most `max_packet_len − 1 + z` octets to the
+//! output area, `z` being the octets of the packet zone it is given: the packet in progress (at most `max_packet_len − 1` octets)
 //! and the zone. An area shorter than that fails the input with `BufferTooSmall`, so that the
 //! caller sizes the area once. `Reconfigure` writes nothing.
 
@@ -31,10 +31,13 @@ pub const MIN_ASSEMBLY: usize = 8;
 ///
 /// It does not grow with the field: the complete packets of a field that follow each other
 /// without an event between them are one [`ExtractorOutput::Packets`] action, a run of
-/// self-delimiting packets in the output area. One `DataField` has at most three events (the
-/// outcome for the packet in progress or an error before the pointer, one more before it, and
-/// an error after it), and so at most four runs between them: 7 actions; 8 leave room.
-pub const EXTRACTOR_MAX_ACTIONS: usize = 8;
+/// self-delimiting packets in the output area. One `DataField` has at most four actions, on
+/// four paths: the outcome for the packet in progress and the error that the pointer disagrees
+/// (`Discarded` or `IncompletePacket`, `LengthInconsistent`), then a run, then an error after
+/// the pointer; or, after a gap, the outcome, a run, and an error; or an error that ends the
+/// continuation, then a run and an error after the pointer, with the run of the continuation
+/// before it. No path has more than two events and two runs.
+pub const EXTRACTOR_MAX_ACTIONS: usize = 4;
 
 /// The actions of one input of a `PacketExtractor` (LNK-074).
 pub type ExtractorActions = Actions<ExtractorOutput, EXTRACTOR_MAX_ACTIONS>;
@@ -47,12 +50,11 @@ pub struct PacketRun<'a> {
 }
 
 impl<'a> PacketRun<'a> {
-    /// The packets in `run`, a range of `area` that a `Packets` action named.
+    /// The packets in `run`, a range of `area` that a `Packets` action named; `None` if `run`
+    /// does not lie inside `area`, which is the wrong area.
     #[must_use]
-    pub fn new(run: OutRange, area: &'a [u8]) -> PacketRun<'a> {
-        PacketRun {
-            rest: run.slice(area).unwrap_or_default(),
-        }
+    pub fn new(run: OutRange, area: &'a [u8]) -> Option<PacketRun<'a>> {
+        run.slice(area).map(|rest| PacketRun { rest })
     }
 }
 
@@ -155,8 +157,8 @@ impl<P: PacketProtocol> PacketExtractorConfig<P> {
         self.deliver_idle
     }
 
-    /// The octets of the shortest packet the extractor delivers (the `m` of
-    /// docs/04-engines.md §4): 1 when idle packets are delivered, else 3 where Encapsulation
+    /// The octets of the shortest packet the extractor delivers: 1 when idle packets are
+    /// delivered, else 3 where Encapsulation
     /// Packets are valid (a 2-octet header and one data octet) and 7 for Space Packets.
     #[must_use]
     pub const fn min_packet_len(&self) -> usize {

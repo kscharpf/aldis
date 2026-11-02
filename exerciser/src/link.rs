@@ -182,7 +182,7 @@ fn flow<P: PacketProtocol>(
             for output in got.iter() {
                 if let ExtractorOutput::Packets { run, count } = output {
                     let mut n = 0usize;
-                    for one in PacketRun::new(*run, &area) {
+                    for one in PacketRun::new(*run, &area).into_iter().flatten() {
                         let same = packets.get(delivered).is_some_and(|p| one == p.octets());
                         t.check(same);
                         delivered = delivered.saturating_add(1);
@@ -303,7 +303,7 @@ fn extractor_refusals<P: PacketProtocol>(
             .step(ExtractorInput::Reconfigure(ext_config), &mut area)
             .is_ok(),
     );
-    t.check(EXTRACTOR_MAX_ACTIONS == 8 && MIN_ASSEMBLY == 8);
+    t.check(EXTRACTOR_MAX_ACTIONS == 4 && MIN_ASSEMBLY == 8);
 }
 
 /// The pointer values and the data field headers of `P` (docs/04-engines.md §2.1).

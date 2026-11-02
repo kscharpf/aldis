@@ -365,7 +365,7 @@ fn the_extractor_capacities_are_checked() {
     let c = ext_config();
     assert!(PacketExtractor::<Tm, 7, 24>::new(c).is_err());
     assert!(PacketExtractor::<Tm, 39, 24>::new(c).is_err());
-    assert_eq!(EXTRACTOR_MAX_ACTIONS, 8);
+    assert_eq!(EXTRACTOR_MAX_ACTIONS, 4);
     assert_eq!(c.min_packet_len(), 3);
     assert_eq!(
         PacketExtractorConfig::<Tm>::new(TmParams, ValidPvns::SPACE, 40)
@@ -551,6 +551,10 @@ fn the_protocol_trait_has_one_implementation_per_protocol() {
         (0x7FE, 0xFFFE, 0x7FE, 0xFFFF)
     );
     assert_eq!(Uslp::route(&uslp).unwrap().map.get(), 3);
+    assert_eq!(
+        (uslp.upid(), uslp.map().get(), uslp.qos()),
+        (Upid::Packets, 3, Qos::Expedited)
+    );
     assert!(Tm::route(&TmParams).is_none() && Aos::route(&aos5).is_none());
     let mut h = [0u8; 3];
     Uslp::write_header(&uslp, 4, &mut h);
@@ -770,7 +774,7 @@ fn an_encapsulation_packet_with_a_four_octet_length_field_is_delimited() {
         panic!("{a:?}")
     };
     assert_eq!(*count, 1);
-    assert_eq!(PacketRun::new(*run, &area).next(), Some(&p[..]));
+    assert_eq!(PacketRun::new(*run, &area).unwrap().next(), Some(&p[..]));
     // The header is split across two fields (3 and 5 octets), and the length is known at the
     // eighth.
     let mut e = TmExt::new(ext_config()).unwrap();
@@ -842,4 +846,38 @@ fn a_release_checks_the_area_even_with_nothing_to_give() {
     let mut short = [0u8; 23];
     let e = g.step(GeneratorInput::Release, T0, &mut short).unwrap_err();
     assert_eq!(e.detail(), aldis_core::ErrorDetail::Needed(24));
+}
+
+#[test]
+fn the_worst_case_of_the_extractor_has_four_actions() {
+    // req: LNK-074, API-057
+    let mut out = [0u8; 100];
+    let mut e = TmExt::new(ext_config().with_delivery(true, false)).unwrap();
+    let mut first = spp(16, 1);
+    first.extend_from_slice(&spp(30, 2)[..8]);
+    e.step(field_in(&first, 0), &mut out).unwrap();
+    // The packet in progress needs more than the 4 octets before the pointer: an outcome and
+    // `LengthInconsistent`; then a packet, then a packet with an invalid PVN.
+    let mut second = vec![0xAA; 4];
+    second.extend_from_slice(&spp(7, 3));
+    second.resize(24, 0x20);
+    let a = e.step(field_in(&second, 4), &mut out).unwrap();
+    assert_eq!(a.len(), 4);
+    assert_eq!(a.len(), EXTRACTOR_MAX_ACTIONS);
+    assert!(matches!(
+        a.get(0),
+        Some(ExtractorOutput::IncompletePacket { .. })
+    ));
+    assert_eq!(
+        a.get(1),
+        Some(&ExtractorOutput::Error(ExtractionError::LengthInconsistent))
+    );
+    assert!(matches!(
+        a.get(2),
+        Some(ExtractorOutput::Packets { count: 1, .. })
+    ));
+    assert_eq!(
+        a.get(3),
+        Some(&ExtractorOutput::Error(ExtractionError::InvalidPvn))
+    );
 }
