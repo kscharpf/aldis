@@ -1,0 +1,104 @@
+{
+  "kind": "engine-scenario",
+  "engine": "channel-mux",
+  "provenance": "hand-derived",
+  "provenance_note": "Hand-derived from 732.0-B-5 EC1 \u00a74.1.2 (the Primary Header, the split SCID), \u00a74.1.3 (the Insert Zone), \u00a74.1.4.1.5, \u00a74.1.5, \u00a74.2.5-4.2.7 and docs/04-engines.md \u00a72.3 (LNK-030\u2026LNK-036, LNK-076), OI-68. Model test-vectors/models/link_send.py, written blind (TV-023) by a Claude agent from the Blue Books and docs/ only, without reading any implementation. The input scripts were chosen by hand; the expected outputs are the model's. The file is written by the model (--write) and never edited by hand.",
+  "config": {"protocol": "aos", "scid": 421, "frame_len": 28, "fecf": true, "fhec": false, "cycle_in_use": false, "insert_zone_len": 0, "policy": {"kind": "fixed_priority"}, "vcs": [{"vcid": 1, "role": "packets", "priority": 1, "weight": 1}, {"vcid": 2, "role": "vca", "priority": 2, "weight": 1}, {"vcid": 3, "role": "bitstream", "priority": 3, "weight": 1}]},
+  "scenarios": [
+    {
+      "id": "link-send-mux-aos-lnk-030-oid-frames",
+      "description": "With no VC offering, an OID frame on VCID 63 (the MCID of the channel): data from the OID generator, which continues; the VC Frame Count of VCID 63 counts them like any VC; the 10-bit SCID is split over the header.",
+      "requirements": ["LNK-030", "LNK-032", "LNK-036"],
+      "steps": [
+        {"at_us": 0, "input": {"opportunity": {}}, "expect": [{"transmit": {"kind": "oid", "vc": 63, "frame_hex": "697F00000010FFFFFFFF6DB6D861451F11F19716723CBE7E00B10000", "security_header": [6, 6], "data": [6, 26], "security_trailer": [26, 26]}}]},
+        {"at_us": 10, "input": {"opportunity": {}}, "expect": [{"transmit": {"kind": "oid", "vc": 63, "frame_hex": "697F00000110DE90B262107AF83494CEE3323F0354BEF5C1528C0000", "security_header": [6, 6], "data": [6, 26], "security_trailer": [26, 26]}}]},
+        {"at_us": 20, "input": {"opportunity": {}}, "expect": [{"transmit": {"kind": "oid", "vc": 63, "frame_hex": "697F000002109BB9ED35FDBC23D9BC2F07576D987881BDF848450000", "security_header": [6, 6], "data": [6, 26], "security_trailer": [26, 26]}}]}
+      ]
+    },
+    {
+      "id": "link-send-mux-aos-lnk-032-vc-counts",
+      "description": "The VC Frame Count (24 bits) is kept per VC; VCs 1, 2 and 3 carry an M_PDU, a VCA_SDU and a B_PDU; the OID frame has its own count.",
+      "requirements": ["LNK-032", "LNK-030"],
+      "steps": [
+        {"at_us": 0, "input": {"offer": {"vc": 1, "field_hex": "0000101112131415161718191A1B1C1D1E1F2021", "fhp": 0}}, "expect": []},
+        {"at_us": 1, "input": {"opportunity": {}}, "expect": [{"transmit": {"kind": "data", "vc": 1, "frame_hex": "6941000000100000101112131415161718191A1B1C1D1E1F20210000", "security_header": [6, 6], "data": [6, 26], "security_trailer": [26, 26]}}]},
+        {"at_us": 10, "input": {"offer": {"vc": 2, "field_hex": "202122232425262728292A2B2C2D2E2F30313233"}}, "expect": []},
+        {"at_us": 11, "input": {"opportunity": {}}, "expect": [{"transmit": {"kind": "data", "vc": 2, "frame_hex": "694200000010202122232425262728292A2B2C2D2E2F303132330000", "security_header": [6, 6], "data": [6, 26], "security_trailer": [26, 26]}}]},
+        {"at_us": 20, "input": {"offer": {"vc": 3, "field_hex": "3FFF303132333435363738393A3B3C3D3E3F4041"}}, "expect": []},
+        {"at_us": 21, "input": {"opportunity": {}}, "expect": [{"transmit": {"kind": "data", "vc": 3, "frame_hex": "6943000000103FFF303132333435363738393A3B3C3D3E3F40410000", "security_header": [6, 6], "data": [6, 26], "security_trailer": [26, 26]}}]},
+        {"at_us": 30, "input": {"offer": {"vc": 1, "field_hex": "FFFF404142434445464748494A4B4C4D4E4F5051", "fhp": 65535}}, "expect": []},
+        {"at_us": 31, "input": {"opportunity": {}}, "expect": [{"transmit": {"kind": "data", "vc": 1, "frame_hex": "694100000110FFFF404142434445464748494A4B4C4D4E4F50510000", "security_header": [6, 6], "data": [6, 26], "security_trailer": [26, 26]}}]},
+        {"at_us": 40, "input": {"opportunity": {}}, "expect": [{"transmit": {"kind": "oid", "vc": 63, "frame_hex": "697F00000010FFFFFFFF6DB6D861451F11F19716723CBE7E00B10000", "security_header": [6, 6], "data": [6, 26], "security_trailer": [26, 26]}}]}
+      ]
+    },
+    {
+      "id": "link-send-mux-aos-lnk-035-fhec-reserved",
+      "description": "With the Frame Header Error Control configured, its two octets are in the frame, not yet computed (zero); with the VC Frame Count Cycle in use the Use Flag is set and the cycle (4 bits) is 0 before the first wrap.",
+      "requirements": ["LNK-035", "LNK-032"],
+      "config": {"protocol": "aos", "scid": 421, "frame_len": 28, "fecf": true, "fhec": true, "cycle_in_use": true, "insert_zone_len": 0, "policy": {"kind": "fixed_priority"}, "vcs": [{"vcid": 1, "role": "packets", "priority": 1, "weight": 1}, {"vcid": 2, "role": "vca", "priority": 2, "weight": 1}, {"vcid": 3, "role": "bitstream", "priority": 3, "weight": 1}]},
+      "steps": [
+        {"at_us": 0, "input": {"offer": {"vc": 2, "field_hex": "202122232425262728292A2B2C2D2E2F3031"}}, "expect": []},
+        {"at_us": 1, "input": {"opportunity": {}}, "expect": [{"transmit": {"kind": "data", "vc": 2, "frame_hex": "6942000000500000202122232425262728292A2B2C2D2E2F30310000", "security_header": [8, 8], "data": [8, 26], "security_trailer": [26, 26]}}]},
+        {"at_us": 10, "input": {"opportunity": {}}, "expect": [{"transmit": {"kind": "oid", "vc": 63, "frame_hex": "697F000000500000FFFFFFFF6DB6D861451F11F19716723CBE7E0000", "security_header": [8, 8], "data": [8, 26], "security_trailer": [26, 26]}}]}
+      ]
+    },
+    {
+      "id": "link-send-mux-aos-lnk-034-insert-zone",
+      "description": "An Insert Zone of one IN_SDU of 3 octets in every frame, the OID frame included: the slot is replaced by SetInsert; a frame with no new IN_SDU since the last one repeats the slot's value and the action is followed by Notify(InsertSduRepeated) (OI-68); SetInsert of another length is refused with LengthMismatch.",
+      "requirements": ["LNK-034", "LNK-030"],
+      "config": {"protocol": "aos", "scid": 421, "frame_len": 28, "fecf": true, "fhec": false, "cycle_in_use": false, "insert_zone_len": 3, "policy": {"kind": "fixed_priority"}, "vcs": [{"vcid": 1, "role": "packets", "priority": 1, "weight": 1}, {"vcid": 2, "role": "vca", "priority": 2, "weight": 1}, {"vcid": 3, "role": "bitstream", "priority": 3, "weight": 1}], "insert_init_hex": "000000"},
+      "steps": [
+        {"at_us": 0, "input": {"set_insert": {"data_hex": "010203"}}, "expect": []},
+        {"at_us": 1, "input": {"offer": {"vc": 2, "field_hex": "101112131415161718191A1B1C1D1E1F20"}}, "expect": []},
+        {"at_us": 10, "input": {"opportunity": {}}, "expect": [{"transmit": {"kind": "data", "vc": 2, "frame_hex": "694200000010010203101112131415161718191A1B1C1D1E1F200000", "security_header": [9, 9], "data": [9, 26], "security_trailer": [26, 26]}}]},
+        {"at_us": 20, "input": {"opportunity": {}}, "expect": [{"transmit": {"kind": "oid", "vc": 63, "frame_hex": "697F00000010010203FFFFFFFF6DB6D861451F11F19716723CBE0000", "security_header": [9, 9], "data": [9, 26], "security_trailer": [26, 26]}}, {"notify": {"kind": "InsertSduRepeated"}}]},
+        {"at_us": 25, "input": {"set_insert": {"data_hex": "0405"}}, "expect": [{"error": "LengthMismatch", "field": "insert_zone_len"}]},
+        {"at_us": 30, "input": {"set_insert": {"data_hex": "040506"}}, "expect": []},
+        {"at_us": 40, "input": {"opportunity": {}}, "expect": [{"transmit": {"kind": "oid", "vc": 63, "frame_hex": "697F000001100405067E00B1DE90B262107AF83494CEE3323F030000", "security_header": [9, 9], "data": [9, 26], "security_trailer": [26, 26]}}]},
+        {"at_us": 50, "input": {"set_insert": {"data_hex": "070809"}}, "expect": []},
+        {"at_us": 51, "input": {"offer": {"vc": 2, "field_hex": "202122232425262728292A2B2C2D2E2F30"}}, "expect": []},
+        {"at_us": 60, "input": {"opportunity": {}}, "expect": [{"transmit": {"kind": "data", "vc": 2, "frame_hex": "694200000110070809202122232425262728292A2B2C2D2E2F300000", "security_header": [9, 9], "data": [9, 26], "security_trailer": [26, 26]}}]},
+        {"at_us": 61, "input": {"offer": {"vc": 2, "field_hex": "303132333435363738393A3B3C3D3E3F40"}}, "expect": []},
+        {"at_us": 70, "input": {"opportunity": {}}, "expect": [{"transmit": {"kind": "data", "vc": 2, "frame_hex": "694200000210070809303132333435363738393A3B3C3D3E3F400000", "security_header": [9, 9], "data": [9, 26], "security_trailer": [26, 26]}}, {"notify": {"kind": "InsertSduRepeated"}}]}
+      ]
+    },
+    {
+      "id": "link-send-mux-aos-lnk-033-vc-ocf",
+      "description": "A VC_OCF in every frame of its VC (VC 2); VC 1 has none and its data field is 4 octets longer; the OID frame (VCID 63) has none.",
+      "requirements": ["LNK-033"],
+      "config": {"protocol": "aos", "scid": 421, "frame_len": 28, "fecf": true, "fhec": false, "cycle_in_use": false, "insert_zone_len": 0, "policy": {"kind": "fixed_priority"}, "vcs": [{"vcid": 1, "role": "packets", "priority": 1, "weight": 1}, {"vcid": 2, "role": "vca", "priority": 2, "weight": 1, "ocf_init_hex": "01FF00AA"}, {"vcid": 3, "role": "bitstream", "priority": 3, "weight": 1}]},
+      "steps": [
+        {"at_us": 0, "input": {"offer": {"vc": 2, "field_hex": "202122232425262728292A2B2C2D2E2F"}}, "expect": []},
+        {"at_us": 1, "input": {"opportunity": {}}, "expect": [{"transmit": {"kind": "data", "vc": 2, "frame_hex": "694200000010202122232425262728292A2B2C2D2E2F01FF00AA0000", "security_header": [6, 6], "data": [6, 22], "security_trailer": [22, 22]}}]},
+        {"at_us": 10, "input": {"offer": {"vc": 1, "field_hex": "0000101112131415161718191A1B1C1D1E1F2021", "fhp": 0}}, "expect": []},
+        {"at_us": 11, "input": {"opportunity": {}}, "expect": [{"transmit": {"kind": "data", "vc": 1, "frame_hex": "6941000000100000101112131415161718191A1B1C1D1E1F20210000", "security_header": [6, 6], "data": [6, 26], "security_trailer": [26, 26]}}]},
+        {"at_us": 20, "input": {"set_ocf": {"scope": "vc", "vc": 2, "ocf_hex": "81000000"}}, "expect": []},
+        {"at_us": 21, "input": {"offer": {"vc": 2, "field_hex": "303132333435363738393A3B3C3D3E3F"}}, "expect": []},
+        {"at_us": 22, "input": {"opportunity": {}}, "expect": [{"transmit": {"kind": "data", "vc": 2, "frame_hex": "694200000110303132333435363738393A3B3C3D3E3F810000000000", "security_header": [6, 6], "data": [6, 22], "security_trailer": [22, 22]}}]},
+        {"at_us": 30, "input": {"opportunity": {}}, "expect": [{"transmit": {"kind": "oid", "vc": 63, "frame_hex": "697F00000010FFFFFFFF6DB6D861451F11F19716723CBE7E00B10000", "security_header": [6, 6], "data": [6, 26], "security_trailer": [26, 26]}}]}
+      ]
+    },
+    {
+      "id": "link-send-mux-aos-lnk-035-security-ranges",
+      "description": "A 2-octet Security Header and a 3-octet Security Trailer on VC 1: zero octets in the frame and their ranges in the action.",
+      "requirements": ["LNK-035"],
+      "config": {"protocol": "aos", "scid": 421, "frame_len": 28, "fecf": true, "fhec": false, "cycle_in_use": false, "insert_zone_len": 0, "policy": {"kind": "fixed_priority"}, "vcs": [{"vcid": 1, "role": "packets", "priority": 1, "weight": 1, "sec_header_len": 2, "sec_trailer_len": 3}, {"vcid": 2, "role": "vca", "priority": 2, "weight": 1}, {"vcid": 3, "role": "bitstream", "priority": 3, "weight": 1}]},
+      "steps": [
+        {"at_us": 0, "input": {"offer": {"vc": 1, "field_hex": "0000101112131415161718191A1B1C", "fhp": 0}}, "expect": []},
+        {"at_us": 1, "input": {"opportunity": {}}, "expect": [{"transmit": {"kind": "data", "vc": 1, "frame_hex": "69410000001000000000101112131415161718191A1B1C0000000000", "security_header": [6, 8], "data": [8, 23], "security_trailer": [23, 26]}}]}
+      ]
+    },
+    {
+      "id": "link-send-mux-aos-lnk-076-offer-slot",
+      "description": "A second Offer for a VC whose slot is occupied is refused with WouldBlock; another VC accepts its own.",
+      "requirements": ["LNK-076"],
+      "steps": [
+        {"at_us": 0, "input": {"offer": {"vc": 2, "field_hex": "101112131415161718191A1B1C1D1E1F20212223"}}, "expect": []},
+        {"at_us": 1, "input": {"offer": {"vc": 2, "field_hex": "202122232425262728292A2B2C2D2E2F30313233"}}, "expect": [{"error": "WouldBlock"}]},
+        {"at_us": 2, "input": {"offer": {"vc": 1, "field_hex": "0000000102030405060708090A0B0C0D0E0F1011", "fhp": 2}}, "expect": []},
+        {"at_us": 10, "input": {"opportunity": {}}, "expect": [{"transmit": {"kind": "data", "vc": 2, "frame_hex": "694200000010101112131415161718191A1B1C1D1E1F202122230000", "security_header": [6, 6], "data": [6, 26], "security_trailer": [26, 26]}}]},
+        {"at_us": 20, "input": {"opportunity": {}}, "expect": [{"transmit": {"kind": "data", "vc": 1, "frame_hex": "6941000000100000000102030405060708090A0B0C0D0E0F10110000", "security_header": [6, 6], "data": [6, 26], "security_trailer": [26, 26]}}]}
+      ]
+    }
+  ]
+}

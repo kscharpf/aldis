@@ -1,0 +1,55 @@
+{
+  "kind": "engine-scenario",
+  "engine": "bitstream-generator",
+  "provenance": "hand-derived",
+  "provenance_note": "Hand-derived from 732.0-B-5 EC1 \u00a74.1.4.3, \u00a74.2.3 (B_PDU, the Bitstream Data Pointer) and docs/04-engines.md \u00a72.2 (LNK-021). Model test-vectors/models/link_send.py, written blind (TV-023) by a Claude agent from the Blue Books and docs/ only, without reading any implementation. The input scripts were chosen by hand; the expected outputs are the model's. The file is written by the model (--write) and never edited by hand.",
+  "config": {"protocol": "aos", "vc": 3, "field_len": 6, "idle_pattern_hex": "00"},
+  "scenarios": [
+    {
+      "id": "link-send-bg-aos-lnk-021-full-and-partial",
+      "description": "Bits fill the zone in order and unchanged: a full zone has pointer all ones; a partial zone has the pointer at the last valid bit and the idle pattern after it; the bits that did not fit start the next B_PDU.",
+      "requirements": ["LNK-021"],
+      "steps": [
+        {"at_us": 0, "input": {"submit_bits": {"bits_hex": "0123456789", "bit_len": 40}}, "expect": []},
+        {"at_us": 10, "input": {"release": {}}, "expect": [{"data_field": {"vc": 3, "field_hex": "3FFF01234567", "bdp": 16383}}]},
+        {"at_us": 20, "input": {"release": {}}, "expect": [{"data_field": {"vc": 3, "field_hex": "000789000000", "bdp": 7}}]}
+      ]
+    },
+    {
+      "id": "link-send-bg-aos-lnk-021-idle-bpdu",
+      "description": "With no bits at release time an idle B_PDU is generated: pointer all ones minus one, the zone the idle pattern.",
+      "requirements": ["LNK-021"],
+      "config": {"protocol": "aos", "vc": 3, "field_len": 6, "idle_pattern_hex": "FF"},
+      "steps": [
+        {"at_us": 0, "input": {"release": {}}, "expect": [{"data_field": {"vc": 3, "field_hex": "3FFEFFFFFFFF", "bdp": 16382}}]},
+        {"at_us": 5, "input": {"submit_bits": {"bits_hex": "A0", "bit_len": 3}}, "expect": []},
+        {"at_us": 10, "input": {"release": {}}, "expect": [{"data_field": {"vc": 3, "field_hex": "0002BFFFFFFF", "bdp": 2}}]},
+        {"at_us": 20, "input": {"release": {}}, "expect": [{"data_field": {"vc": 3, "field_hex": "3FFEFFFFFFFF", "bdp": 16382}}]}
+      ]
+    },
+    {
+      "id": "link-send-bg-aos-lnk-021-bit-granularity",
+      "description": "Bits that are not a multiple of 8: 1 valid bit (pointer 0), 31 valid bits (pointer 30, the last bit before the end of the zone), then 33 bits: the zone is full with pointer all ones and 1 bit remains.",
+      "requirements": ["LNK-021"],
+      "steps": [
+        {"at_us": 0, "input": {"submit_bits": {"bits_hex": "80", "bit_len": 1}}, "expect": []},
+        {"at_us": 10, "input": {"release": {}}, "expect": [{"data_field": {"vc": 3, "field_hex": "000080000000", "bdp": 0}}]},
+        {"at_us": 20, "input": {"submit_bits": {"bits_hex": "FFFFFFFE", "bit_len": 31}}, "expect": []},
+        {"at_us": 30, "input": {"release": {}}, "expect": [{"data_field": {"vc": 3, "field_hex": "001EFFFFFFFE", "bdp": 30}}]},
+        {"at_us": 40, "input": {"submit_bits": {"bits_hex": "00000000FF", "bit_len": 33}}, "expect": []},
+        {"at_us": 50, "input": {"release": {}}, "expect": [{"data_field": {"vc": 3, "field_hex": "3FFF00000000", "bdp": 16383}}]},
+        {"at_us": 60, "input": {"release": {}}, "expect": [{"data_field": {"vc": 3, "field_hex": "000080000000", "bdp": 0}}]}
+      ]
+    },
+    {
+      "id": "link-send-bg-aos-lnk-003-reconfigure",
+      "description": "Reconfigure discards the queued bits and returns the octets that held them.",
+      "requirements": ["LNK-003", "LNK-021"],
+      "steps": [
+        {"at_us": 0, "input": {"submit_bits": {"bits_hex": "FFFFFFFFFF", "bit_len": 40}}, "expect": []},
+        {"at_us": 5, "input": {"reconfigure": {"config": {"protocol": "aos", "vc": 3, "field_len": 6, "idle_pattern_hex": "00"}}}, "expect": [{"notify": {"kind": "Discarded", "octets": 5}}]},
+        {"at_us": 10, "input": {"release": {}}, "expect": [{"data_field": {"vc": 3, "field_hex": "3FFE00000000", "bdp": 16382}}]}
+      ]
+    }
+  ]
+}

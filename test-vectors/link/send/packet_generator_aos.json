@@ -1,0 +1,223 @@
+{
+  "kind": "engine-scenario",
+  "engine": "packet-generator",
+  "provenance": "hand-derived",
+  "provenance_note": "Hand-derived from 732.0-B-5 EC1 \u00a74.1.4.2, \u00a74.2.2 (M_PDU, FHP all ones / all ones minus one) and 732.0-B-4 \u00a74.1.4.2 (Issue 4: 5 spare bits and an 11-bit FHP), 133.0-B-2 \u00a74.1.3, 133.1-B-3 \u00a74.1.2, docs/04-engines.md \u00a72.1 (LNK-010\u2026LNK-015). Model test-vectors/models/link_send.py, written blind (TV-023) by a Claude agent from the Blue Books and docs/ only, without reading any implementation. The input scripts were chosen by hand; the expected outputs are the model's. The file is written by the model (--write) and never edited by hand.",
+  "config": {"protocol": "aos", "vc": 1, "valid_pvns": [0, 7], "max_packet_len": 64, "queue_capacity": 64, "idle_policy": "oid", "idle_pattern_hex": "00", "idle_packet_kind": "space_packet", "field_len": 26, "release_deadline_us": 1000},
+  "scenarios": [
+    {
+      "id": "link-send-pg-aos-lnk-011-contiguous-exact-fit",
+      "description": "Two packets fill the zone exactly and the next packet starts the next field: FHP 0 in both; a field that was released is not offered again.",
+      "requirements": ["LNK-011"],
+      "steps": [
+        {"at_us": 0, "input": {"submit_packet": {"packet_hex": "0001C0000002101112"}}, "expect": [], "expect_timeout_us": 1000},
+        {"at_us": 10, "input": {"submit_packet": {"packet_hex": "0001C0010008202122232425262728"}}, "expect": [], "expect_no_timeout": true},
+        {"at_us": 20, "input": {"release": {}}, "expect": [{"data_field": {"vc": 1, "field_hex": "00000001C00000021011120001C0010008202122232425262728", "fhp": 0}}], "expect_no_timeout": true},
+        {"at_us": 30, "input": {"submit_packet": {"packet_hex": "0002C0000011303132333435363738393A3B3C3D3E3F4041"}}, "expect": [], "expect_no_timeout": true},
+        {"at_us": 40, "input": {"release": {}}, "expect": [{"data_field": {"vc": 1, "field_hex": "00000002C0000011303132333435363738393A3B3C3D3E3F4041", "fhp": 0}}], "expect_no_timeout": true},
+        {"at_us": 50, "input": {"release": {}}, "expect": [], "expect_no_timeout": true}
+      ]
+    },
+    {
+      "id": "link-send-pg-aos-lnk-011-spanning-no-start",
+      "description": "A packet of 2 zones + 3 octets: FHP 0, then no packet starts, then the 3-octet residue and a packet that starts after it (the residue is not a start).",
+      "requirements": ["LNK-011"],
+      "steps": [
+        {"at_us": 0, "input": {"submit_packet": {"packet_hex": "0003C000002C404142434445464748494A4B4C4D4E4F505152535455565758595A5B5C5D5E5F606162636465666768696A6B6C"}}, "expect": [], "expect_no_timeout": true},
+        {"at_us": 10, "input": {"submit_packet": {"packet_hex": "0004C000000E505152535455565758595A5B5C5D5E"}}, "expect": [], "expect_no_timeout": true},
+        {"at_us": 20, "input": {"release": {}}, "expect": [{"data_field": {"vc": 1, "field_hex": "00000003C000002C404142434445464748494A4B4C4D4E4F5051", "fhp": 0}}], "expect_no_timeout": true},
+        {"at_us": 30, "input": {"release": {}}, "expect": [{"data_field": {"vc": 1, "field_hex": "FFFF52535455565758595A5B5C5D5E5F60616263646566676869", "fhp": 65535}}], "expect_no_timeout": true},
+        {"at_us": 40, "input": {"release": {}}, "expect": [{"data_field": {"vc": 1, "field_hex": "00036A6B6C0004C000000E505152535455565758595A5B5C5D5E", "fhp": 3}}], "expect_no_timeout": true},
+        {"at_us": 50, "input": {"release": {}}, "expect": [], "expect_no_timeout": true}
+      ]
+    },
+    {
+      "id": "link-send-pg-aos-lnk-011-oi69-tail-ends-at-zone-end",
+      "description": "A packet of exactly 2 zones: the second field holds only its tail, which ends at the last octet and starts no packet: the 'no packet starts' value, not 0 (OI-69); the next packet starts the next field at 0.",
+      "requirements": ["LNK-011"],
+      "steps": [
+        {"at_us": 0, "input": {"submit_packet": {"packet_hex": "0005C0000029606162636465666768696A6B6C6D6E6F707172737475767778797A7B7C7D7E7F80818283848586878889"}}, "expect": [], "expect_no_timeout": true},
+        {"at_us": 10, "input": {"submit_packet": {"packet_hex": "0006C0000011707172737475767778797A7B7C7D7E7F8081"}}, "expect": [], "expect_no_timeout": true},
+        {"at_us": 20, "input": {"release": {}}, "expect": [{"data_field": {"vc": 1, "field_hex": "00000005C0000029606162636465666768696A6B6C6D6E6F7071", "fhp": 0}}], "expect_no_timeout": true},
+        {"at_us": 30, "input": {"release": {}}, "expect": [{"data_field": {"vc": 1, "field_hex": "FFFF72737475767778797A7B7C7D7E7F80818283848586878889", "fhp": 65535}}], "expect_no_timeout": true},
+        {"at_us": 40, "input": {"release": {}}, "expect": [{"data_field": {"vc": 1, "field_hex": "00000006C0000011707172737475767778797A7B7C7D7E7F8081", "fhp": 0}}], "expect_no_timeout": true}
+      ]
+    },
+    {
+      "id": "link-send-pg-aos-lnk-011-start-after-tail",
+      "description": "The tail of a spanning packet, then two packets: FHP is the offset of the first packet that starts, not of the second.",
+      "requirements": ["LNK-011"],
+      "steps": [
+        {"at_us": 0, "input": {"submit_packet": {"packet_hex": "0007C00000160102030405060708090A0B0C0D0E0F1011121314151617"}}, "expect": [], "expect_no_timeout": true},
+        {"at_us": 5, "input": {"submit_packet": {"packet_hex": "0007C001000002"}}, "expect": [], "expect_no_timeout": true},
+        {"at_us": 6, "input": {"submit_packet": {"packet_hex": "0007C0020005030405060708"}}, "expect": [], "expect_no_timeout": true},
+        {"at_us": 10, "input": {"release": {}}, "expect": [{"data_field": {"vc": 1, "field_hex": "00000007C00000160102030405060708090A0B0C0D0E0F101112", "fhp": 0}}], "expect_no_timeout": true},
+        {"at_us": 20, "input": {"release": {}}, "expect": [{"data_field": {"vc": 1, "field_hex": "000513141516170007C0010000020007C0020005030405060708", "fhp": 5}}], "expect_no_timeout": true},
+        {"at_us": 30, "input": {"release": {}}, "expect": [], "expect_no_timeout": true}
+      ]
+    },
+    {
+      "id": "link-send-pg-aos-lnk-010-mixed-pvn-one-stream",
+      "description": "A Space Packet, an Encapsulation Packet, and a Space Packet join one stream in submission order.",
+      "requirements": ["LNK-010", "LNK-011"],
+      "steps": [
+        {"at_us": 0, "input": {"submit_packet": {"packet_hex": "0008C00000011112"}}, "expect": [], "expect_timeout_us": 1000},
+        {"at_us": 1, "input": {"submit_packet": {"packet_hex": "FD072122232425"}}, "expect": [], "expect_timeout_us": 1000},
+        {"at_us": 2, "input": {"submit_packet": {"packet_hex": "0008C0010002313233"}}, "expect": [], "expect_no_timeout": true},
+        {"at_us": 10, "input": {"release": {}}, "expect": [{"data_field": {"vc": 1, "field_hex": "00000008C00000011112FD0721222324250008C0010002313233", "fhp": 0}}], "expect_no_timeout": true}
+      ]
+    },
+    {
+      "id": "link-send-pg-aos-lnk-010-submit-errors",
+      "description": "A PVN outside the valid set, a packet longer than the maximum, and a length field that disagrees with the octets given are refused with no state change.",
+      "requirements": ["LNK-010"],
+      "steps": [
+        {"at_us": 0, "input": {"submit_packet": {"packet_hex": "2001C00000010001"}}, "expect": [{"error": "InvalidField", "field": "packet_version"}], "expect_no_timeout": true},
+        {"at_us": 1, "input": {"submit_packet": {"packet_hex": "0001C000003A000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F202122232425262728292A2B2C2D2E2F303132333435363738393A"}}, "expect": [{"error": "OutOfRange", "field": "max_packet_len"}], "expect_no_timeout": true},
+        {"at_us": 2, "input": {"submit_packet": {"packet_hex": "0001C00000050001020304"}}, "expect": [{"error": "LengthMismatch", "field": "packet_len"}], "expect_no_timeout": true},
+        {"at_us": 3, "input": {"release": {}}, "expect": [], "expect_no_timeout": true}
+      ]
+    },
+    {
+      "id": "link-send-pg-aos-lnk-012-deadline-release",
+      "description": "A started field is releasable only at its deadline: an early Timeout and an early Release change nothing; at the deadline Timeout marks it and Release returns it completed with an idle packet; the next field starts when its first octet is written.",
+      "requirements": ["LNK-012", "LNK-013"],
+      "steps": [
+        {"at_us": 100, "input": {"submit_packet": {"packet_hex": "0009C00000014142"}}, "expect": [], "expect_timeout_us": 1100},
+        {"at_us": 600, "input": {"timeout": {}}, "expect": [], "expect_timeout_us": 1100},
+        {"at_us": 700, "input": {"release": {}}, "expect": [], "expect_timeout_us": 1100},
+        {"at_us": 1098, "input": {"timeout": {}}, "expect": [], "expect_timeout_us": 1100},
+        {"at_us": 1099, "input": {"release": {}}, "expect": [], "expect_timeout_us": 1100},
+        {"at_us": 1100, "input": {"timeout": {}}, "expect": [], "expect_no_timeout": true},
+        {"at_us": 1100, "input": {"release": {}}, "expect": [{"data_field": {"vc": 1, "field_hex": "00000009C0000001414207FFC000000900000000000000000000", "fhp": 0}}], "expect_no_timeout": true},
+        {"at_us": 1200, "input": {"submit_packet": {"packet_hex": "0009C00100015152"}}, "expect": [], "expect_timeout_us": 2200},
+        {"at_us": 2200, "input": {"timeout": {}}, "expect": [], "expect_no_timeout": true},
+        {"at_us": 2200, "input": {"release": {}}, "expect": [{"data_field": {"vc": 1, "field_hex": "00000009C0010001515207FFC000000900000000000000000000", "fhp": 0}}], "expect_no_timeout": true}
+      ]
+    },
+    {
+      "id": "link-send-pg-aos-lnk-012-no-deadline-only-when-full",
+      "description": "Without a release deadline a started field is released only when full; Timeout is harmless.",
+      "requirements": ["LNK-012"],
+      "config": {"protocol": "aos", "vc": 1, "valid_pvns": [0, 7], "max_packet_len": 64, "queue_capacity": 64, "idle_policy": "oid", "idle_pattern_hex": "00", "idle_packet_kind": "space_packet", "field_len": 26},
+      "steps": [
+        {"at_us": 0, "input": {"submit_packet": {"packet_hex": "0009C00000014142"}}, "expect": [], "expect_no_timeout": true},
+        {"at_us": 1000000000, "input": {"timeout": {}}, "expect": [], "expect_no_timeout": true},
+        {"at_us": 1000000000, "input": {"release": {}}, "expect": [], "expect_no_timeout": true},
+        {"at_us": 1000000001, "input": {"submit_packet": {"packet_hex": "0009C00100095152535455565758595A"}}, "expect": [], "expect_no_timeout": true},
+        {"at_us": 1000000002, "input": {"release": {}}, "expect": [{"data_field": {"vc": 1, "field_hex": "00000009C000000141420009C00100095152535455565758595A", "fhp": 0}}], "expect_no_timeout": true}
+      ]
+    },
+    {
+      "id": "link-send-pg-aos-lnk-013-encapsulation-idle",
+      "description": "Idle completion with Encapsulation Idle Packets of exactly the remainder: 1 octet (the 1-octet header), 2 octets, and a longer remainder.",
+      "requirements": ["LNK-013"],
+      "config": {"protocol": "aos", "vc": 1, "valid_pvns": [0, 7], "max_packet_len": 64, "queue_capacity": 64, "idle_policy": "oid", "idle_pattern_hex": "A5", "idle_packet_kind": "encapsulation", "field_len": 26, "release_deadline_us": 100},
+      "steps": [
+        {"at_us": 0, "input": {"submit_packet": {"packet_hex": "000AC00000106162636465666768696A6B6C6D6E6F7071"}}, "expect": [], "expect_timeout_us": 100},
+        {"at_us": 100, "input": {"timeout": {}}, "expect": [], "expect_no_timeout": true},
+        {"at_us": 100, "input": {"release": {}}, "expect": [{"data_field": {"vc": 1, "field_hex": "0000000AC00000106162636465666768696A6B6C6D6E6F7071E0", "fhp": 0}}], "expect_no_timeout": true},
+        {"at_us": 1000, "input": {"submit_packet": {"packet_hex": "000AC001000F6162636465666768696A6B6C6D6E6F70"}}, "expect": [], "expect_timeout_us": 1100},
+        {"at_us": 1100, "input": {"timeout": {}}, "expect": [], "expect_no_timeout": true},
+        {"at_us": 1100, "input": {"release": {}}, "expect": [{"data_field": {"vc": 1, "field_hex": "0000000AC001000F6162636465666768696A6B6C6D6E6F70E102", "fhp": 0}}], "expect_no_timeout": true},
+        {"at_us": 2000, "input": {"submit_packet": {"packet_hex": "000AC002000C6162636465666768696A6B6C6D"}}, "expect": [], "expect_timeout_us": 2100},
+        {"at_us": 2100, "input": {"timeout": {}}, "expect": [], "expect_no_timeout": true},
+        {"at_us": 2100, "input": {"release": {}}, "expect": [{"data_field": {"vc": 1, "field_hex": "0000000AC002000C6162636465666768696A6B6C6DE105A5A5A5", "fhp": 0}}], "expect_no_timeout": true}
+      ]
+    },
+    {
+      "id": "link-send-pg-aos-lnk-013-spp-idle-sizes",
+      "description": "Idle completion with a Space Packet Idle Packet: a remainder of 7 octets is the shortest idle packet (no spill); 8 is one packet of 8 octets.",
+      "requirements": ["LNK-013"],
+      "config": {"protocol": "aos", "vc": 1, "valid_pvns": [0, 7], "max_packet_len": 64, "queue_capacity": 64, "idle_policy": "oid", "idle_pattern_hex": "5A", "idle_packet_kind": "space_packet", "field_len": 26, "release_deadline_us": 100},
+      "steps": [
+        {"at_us": 0, "input": {"submit_packet": {"packet_hex": "000AC000000A6162636465666768696A6B"}}, "expect": [], "expect_timeout_us": 100},
+        {"at_us": 100, "input": {"timeout": {}}, "expect": [], "expect_no_timeout": true},
+        {"at_us": 100, "input": {"release": {}}, "expect": [{"data_field": {"vc": 1, "field_hex": "0000000AC000000A6162636465666768696A6B07FFC00000005A", "fhp": 0}}], "expect_no_timeout": true},
+        {"at_us": 1000, "input": {"submit_packet": {"packet_hex": "000AC00100096162636465666768696A"}}, "expect": [], "expect_timeout_us": 1100},
+        {"at_us": 1100, "input": {"timeout": {}}, "expect": [], "expect_no_timeout": true},
+        {"at_us": 1100, "input": {"release": {}}, "expect": [{"data_field": {"vc": 1, "field_hex": "0000000AC00100096162636465666768696A07FFC00000015A5A", "fhp": 0}}], "expect_no_timeout": true}
+      ]
+    },
+    {
+      "id": "link-send-pg-aos-lnk-013-spp-idle-spill",
+      "description": "A remainder of 3 octets (below 7): a 7-octet idle packet is begun, its last 4 octets are the first octets of the next field (before any packet) and are not a start; that field is started when they are written, so its deadline runs from the Release.",
+      "requirements": ["LNK-012", "LNK-013"],
+      "steps": [
+        {"at_us": 0, "input": {"submit_packet": {"packet_hex": "000BC000000E7172737475767778797A7B7C7D7E7F"}}, "expect": [], "expect_timeout_us": 1000},
+        {"at_us": 1000, "input": {"timeout": {}}, "expect": [], "expect_no_timeout": true},
+        {"at_us": 1000, "input": {"release": {}}, "expect": [{"data_field": {"vc": 1, "field_hex": "0000000BC000000E7172737475767778797A7B7C7D7E7F07FFC0", "fhp": 0}}], "expect_timeout_us": 2000},
+        {"at_us": 1500, "input": {"submit_packet": {"packet_hex": "000BC0010002727374"}}, "expect": [], "expect_timeout_us": 2000},
+        {"at_us": 1600, "input": {"release": {}}, "expect": [], "expect_timeout_us": 2000},
+        {"at_us": 2000, "input": {"timeout": {}}, "expect": [], "expect_no_timeout": true},
+        {"at_us": 2000, "input": {"release": {}}, "expect": [{"data_field": {"vc": 1, "field_hex": "000400000000000BC001000272737407FFC00000040000000000", "fhp": 4}}], "expect_no_timeout": true}
+      ]
+    },
+    {
+      "id": "link-send-pg-aos-lnk-013-spp-idle-spill-1",
+      "description": "A remainder of 6 octets: the 7-octet idle packet spills 1 octet; a remainder of 1 octet spills 6 (a field holding only a residue and the next idle completion).",
+      "requirements": ["LNK-013"],
+      "steps": [
+        {"at_us": 0, "input": {"submit_packet": {"packet_hex": "000BC000000B7172737475767778797A7B7C"}}, "expect": [], "expect_timeout_us": 1000},
+        {"at_us": 1000, "input": {"timeout": {}}, "expect": [], "expect_no_timeout": true},
+        {"at_us": 1000, "input": {"release": {}}, "expect": [{"data_field": {"vc": 1, "field_hex": "0000000BC000000B7172737475767778797A7B7C07FFC0000000", "fhp": 0}}], "expect_timeout_us": 2000},
+        {"at_us": 2000, "input": {"timeout": {}}, "expect": [], "expect_no_timeout": true},
+        {"at_us": 2000, "input": {"release": {}}, "expect": [{"data_field": {"vc": 1, "field_hex": "00010007FFC00000100000000000000000000000000000000000", "fhp": 1}}], "expect_no_timeout": true}
+      ]
+    },
+    {
+      "id": "link-send-pg-aos-lnk-015-would-block",
+      "description": "A packet is taken whole or refused with WouldBlock and no state change: a full field waits for Release, the queue fills to its capacity, and the next packet is refused; after a Release it is taken.",
+      "requirements": ["LNK-015"],
+      "config": {"protocol": "aos", "vc": 1, "valid_pvns": [0, 7], "max_packet_len": 64, "queue_capacity": 48, "idle_policy": "oid", "idle_pattern_hex": "00", "idle_packet_kind": "space_packet", "field_len": 26},
+      "steps": [
+        {"at_us": 0, "input": {"submit_packet": {"packet_hex": "000CC00000110102030405060708090A0B0C0D0E0F101112"}}, "expect": [], "expect_no_timeout": true},
+        {"at_us": 1, "input": {"submit_packet": {"packet_hex": "000CC001001102030405060708090A0B0C0D0E0F10111213"}}, "expect": [], "expect_no_timeout": true},
+        {"at_us": 2, "input": {"submit_packet": {"packet_hex": "000CC0020011030405060708090A0B0C0D0E0F1011121314"}}, "expect": [], "expect_no_timeout": true},
+        {"at_us": 3, "input": {"submit_packet": {"packet_hex": "000CC003000004"}}, "expect": [{"error": "WouldBlock"}], "expect_no_timeout": true},
+        {"at_us": 4, "input": {"release": {}}, "expect": [{"data_field": {"vc": 1, "field_hex": "0000000CC00000110102030405060708090A0B0C0D0E0F101112", "fhp": 0}}], "expect_no_timeout": true},
+        {"at_us": 5, "input": {"submit_packet": {"packet_hex": "000CC003000004"}}, "expect": [], "expect_no_timeout": true},
+        {"at_us": 6, "input": {"release": {}}, "expect": [{"data_field": {"vc": 1, "field_hex": "0000000CC001001102030405060708090A0B0C0D0E0F10111213", "fhp": 0}}], "expect_no_timeout": true},
+        {"at_us": 7, "input": {"release": {}}, "expect": [{"data_field": {"vc": 1, "field_hex": "0000000CC0020011030405060708090A0B0C0D0E0F1011121314", "fhp": 0}}], "expect_no_timeout": true},
+        {"at_us": 8, "input": {"release": {}}, "expect": [], "expect_no_timeout": true}
+      ]
+    },
+    {
+      "id": "link-send-pg-aos-lnk-003-reconfigure-discards",
+      "description": "Reconfigure discards the started field and the queue and returns one Discarded with the octets; a second Reconfigure discards nothing and returns nothing.",
+      "requirements": ["LNK-003", "LNK-011"],
+      "steps": [
+        {"at_us": 0, "input": {"submit_packet": {"packet_hex": "000DC00000150102030405060708090A0B0C0D0E0F10111213141516"}}, "expect": [], "expect_no_timeout": true},
+        {"at_us": 1, "input": {"submit_packet": {"packet_hex": "000DC0010002020304"}}, "expect": [], "expect_no_timeout": true},
+        {"at_us": 2, "input": {"reconfigure": {"config": {"protocol": "aos", "vc": 1, "valid_pvns": [0, 7], "max_packet_len": 64, "queue_capacity": 64, "idle_policy": "oid", "idle_pattern_hex": "FF", "idle_packet_kind": "space_packet", "field_len": 26, "release_deadline_us": 1000}}}, "expect": [{"notify": {"kind": "Discarded", "octets": 37}}], "expect_no_timeout": true},
+        {"at_us": 3, "input": {"reconfigure": {"config": {"protocol": "aos", "vc": 1, "valid_pvns": [0, 7], "max_packet_len": 64, "queue_capacity": 64, "idle_policy": "oid", "idle_pattern_hex": "FF", "idle_packet_kind": "space_packet", "field_len": 26, "release_deadline_us": 1000}}}, "expect": [], "expect_no_timeout": true},
+        {"at_us": 4, "input": {"submit_packet": {"packet_hex": "000DC00000010304"}}, "expect": [], "expect_timeout_us": 1004},
+        {"at_us": 1004, "input": {"timeout": {}}, "expect": [], "expect_no_timeout": true},
+        {"at_us": 1004, "input": {"release": {}}, "expect": [{"data_field": {"vc": 1, "field_hex": "0000000DC0000001030407FFC0000009FFFFFFFFFFFFFFFFFFFF", "fhp": 0}}], "expect_no_timeout": true}
+      ]
+    },
+    {
+      "id": "link-send-pg-aos-lnk-014-oid-policy-offers-nothing",
+      "description": "With the Oid policy (default) the VC offers no field when none is releasable: Release returns nothing, with a field started or not.",
+      "requirements": ["LNK-014"],
+      "steps": [
+        {"at_us": 0, "input": {"release": {}}, "expect": [], "expect_no_timeout": true},
+        {"at_us": 10, "input": {"submit_packet": {"packet_hex": "0001C0000002000102"}}, "expect": [], "expect_timeout_us": 1010},
+        {"at_us": 20, "input": {"release": {}}, "expect": [], "expect_timeout_us": 1010}
+      ]
+    },
+    {
+      "id": "link-send-pg-aos-lnk-014-idle-field-policy",
+      "description": "With the IdleField policy the VC always has a field to offer: a releasable field is offered first, then an idle field each time; the idle field does not disturb a the data field.",
+      "requirements": ["LNK-014", "LNK-013"],
+      "config": {"protocol": "aos", "vc": 1, "valid_pvns": [0, 7], "max_packet_len": 64, "queue_capacity": 64, "idle_policy": "idle_field", "idle_pattern_hex": "C3", "idle_packet_kind": "space_packet", "field_len": 26},
+      "steps": [
+        {"at_us": 0, "input": {"release": {}}, "expect": [{"data_field": {"vc": 1, "field_hex": "FFFEC3C3C3C3C3C3C3C3C3C3C3C3C3C3C3C3C3C3C3C3C3C3C3C3", "fhp": 65534}}], "expect_no_timeout": true},
+        {"at_us": 10, "input": {"submit_packet": {"packet_hex": "0001C00000112122232425262728292A2B2C2D2E2F303132"}}, "expect": [], "expect_no_timeout": true},
+        {"at_us": 20, "input": {"release": {}}, "expect": [{"data_field": {"vc": 1, "field_hex": "00000001C00000112122232425262728292A2B2C2D2E2F303132", "fhp": 0}}], "expect_no_timeout": true},
+        {"at_us": 30, "input": {"release": {}}, "expect": [{"data_field": {"vc": 1, "field_hex": "FFFEC3C3C3C3C3C3C3C3C3C3C3C3C3C3C3C3C3C3C3C3C3C3C3C3", "fhp": 65534}}], "expect_no_timeout": true},
+        {"at_us": 40, "input": {"release": {}}, "expect": [{"data_field": {"vc": 1, "field_hex": "FFFEC3C3C3C3C3C3C3C3C3C3C3C3C3C3C3C3C3C3C3C3C3C3C3C3", "fhp": 65534}}], "expect_no_timeout": true}
+      ]
+    }
+  ]
+}
