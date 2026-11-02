@@ -642,6 +642,7 @@ fn receiver_tc(t: &mut Tally) {
 
 pub fn run(t: &mut Tally) {
     common(t);
+    crate::link_send::run(t);
     receivers(t);
     receiver_aos(t);
     receiver_uslp(t);
