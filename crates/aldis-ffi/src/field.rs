@@ -726,6 +726,24 @@ pub const ALDIS_FIELD_QOS: u16 = 215;
 /// Code 216, a parameter (LNK-001; API-082, CABI-021).
 pub const ALDIS_FIELD_LINK_PROTOCOL: u16 = 216;
 
+/// Length of a VCA SDU a generator is given, which a TM or AOS data field fixes.
+///
+/// Code 217, a field (132.0 §3.2.3, §4.1.4.3; 732.0 §3.2.4, §4.1.4.1.3; LNK-020; API-082,
+/// CABI-021).
+pub const ALDIS_FIELD_SDU_LEN: u16 = 217;
+
+/// Length of a data field offered to the multiplexer, which the VC's data field length fixes.
+///
+/// Code 218, a field (132.0 §4.1.4; 732.0 §4.1.4; 732.1 §4.1.4.2, §4.2.2.1; LNK-076; API-082,
+/// CABI-021).
+pub const ALDIS_FIELD_FIELD_LEN: u16 = 218;
+
+/// Whether the receiver accepts the raw octets of a frame the caller rejected, to return its Insert
+/// Zone.
+///
+/// Code 219, a parameter (732.0 §4.3.7.4; 732.1 §4.3.11.1.4–5; LNK-079; API-082, CABI-021).
+pub const ALDIS_FIELD_RAW_FRAMES: u16 = 219;
+
 // Each code is the code of its `aldis_core::field` constant (API-082).
 const _: () = {
     assert!(ALDIS_FIELD_SPACECRAFT_ID == field::SPACECRAFT_ID.code().get());
@@ -872,4 +890,7 @@ const _: () = {
     assert!(ALDIS_FIELD_MAX_UNIT_LEN == field::MAX_UNIT_LEN.code().get());
     assert!(ALDIS_FIELD_QOS == field::QOS.code().get());
     assert!(ALDIS_FIELD_LINK_PROTOCOL == field::LINK_PROTOCOL.code().get());
+    assert!(ALDIS_FIELD_SDU_LEN == field::SDU_LEN.code().get());
+    assert!(ALDIS_FIELD_FIELD_LEN == field::FIELD_LEN.code().get());
+    assert!(ALDIS_FIELD_RAW_FRAMES == field::RAW_FRAMES.code().get());
 };
