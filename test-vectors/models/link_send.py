@@ -611,8 +611,6 @@ class ChannelMux:
                 self.fsh[("vc", v["vcid"])] = unhx(v["fsh_init_hex"])
         if cfg.get("mc_ocf_init_hex"):
             self.ocf[("mc",)] = unhx(cfg["mc_ocf_init_hex"])
-        if cfg.get("oid", {}).get("ocf_init_hex"):  # USLP: the OCF of VCID 63
-            self.ocf[("vc", 63)] = unhx(cfg["oid"]["ocf_init_hex"])
         if cfg.get("mc_fsh_init_hex"):
             self.fsh[("mc",)] = unhx(cfg["mc_fsh_init_hex"])
         self.izl = cfg.get("insert_zone_len", 0)
@@ -629,9 +627,8 @@ class ChannelMux:
             return bool(c.get("mc_ocf_init_hex")) or bool(self.vcs[vcid].get("ocf_init_hex"))
         if self.proto == "aos":
             return False if oid else bool(self.vcs[vcid].get("ocf_init_hex"))
-        if oid:  # the entry for VCID 63 (LNK-033)
-            return bool(c.get("oid", {}).get("ocf_init_hex"))
-        return bool(c.get("mc_ocf_init_hex"))  # OI-76: the MC parameter governs
+        # OI-76, LNK-033: the MC parameter governs every frame of the MC, the OID frame included
+        return bool(c.get("mc_ocf_init_hex"))
 
     def vcf_len(self, vcid, qos, oid):
         if oid:
@@ -714,7 +711,9 @@ class ChannelMux:
             data = unhx(offer["field_hex"])
             assert len(data) == data_len, (vcid, len(data), data_len)
         cop = offer.get("cop") if offer else None
-        if cop:  # LNK-076, LNK-032: FOP-1 supplies the count and the flags; the mux counts nothing
+        # LNK-076, LNK-032: with Bypass 0 FOP-1 supplies the count and the mux counts nothing;
+        # with Bypass 1 only the flags are taken and the mux uses its own expedited count
+        if cop and not cop["bypass"]:
             mc, vc, cycle = None, cop["vcf_count"], 0
         else:
             mc, vc, cycle = self.counts(vcid, qos, oid)
@@ -1824,17 +1823,23 @@ def mux_uslp():
     s.do(offer(2, tfdf(1, 5, 0xFFFF, fld(18, 0x10)), map=3), 0).do(opp(), 1)
     s.do(offer(2, tfdf(1, 5, 4, fld(18, 0x20))), 10).do(opp(), 11)
     out.append(s)
-    c = uslp_cfg(mc_ocf_init_hex="C1020304", oid={"vcf_len": 0, "ocf_init_hex": "01020304"})
+    c = uslp_cfg(mc_ocf_init_hex="C1020304")
     s = MuxSc("link-send-mux-uslp-lnk-033-mc-ocf", ["LNK-033"],
               "The MC parameter 'Inclusion of OCF Required' governs (OI-76): every frame of the "
               "master channel, of VC 1 and of VC 2, has the MC_OCF slot's value and the OCF Flag "
-              "set; the OID frame has an OCF only because the entry for VCID 63 says so, from its "
-              "own slot.", c)
+              "set; so has the OID frame, from the same slot (there is no separate source for "
+              "VCID 63).", c)
     s.do(offer(1, tfdf(0, 0, 0, fld(14, 0x10)), 0), 0).do(opp(), 1)
     s.do(offer(2, tfdf(1, 5, 3, fld(14, 0x20))), 10).do(opp(), 11)
     s.do({"set_ocf": {"scope": "mc", "ocf_hex": "81828384"}}, 20)
     s.do(offer(1, tfdf(0, 0, 0, fld(14, 0x30)), 0), 21).do(opp(), 22)
-    s.do({"set_ocf": {"scope": "vc", "vc": 63, "ocf_hex": "05060708"}}, 30).do(opp(), 31)
+    s.do(opp(), 30)
+    out.append(s)
+    s = MuxSc("link-send-mux-uslp-lnk-033-oid-frame-mc-ocf", ["LNK-033", "LNK-030"],
+              "With only the MC parameter set, an OID frame carries the MC's OCF (OCF Flag set, "
+              "data field 4 octets shorter) and follows SetOcf.",
+              uslp_cfg(mc_ocf_init_hex="C1020304"))
+    s.do(opp(), 0).do({"set_ocf": {"scope": "mc", "ocf_hex": "81828384"}}, 5).do(opp(), 10)
     out.append(s)
     s = MuxSc("link-send-mux-uslp-lnk-033-no-ocf-without-mc-parameter", ["LNK-033"],
               "Without the MC parameter no frame of a data VC has an OCF (the VC-level parameter "
@@ -1843,22 +1848,23 @@ def mux_uslp():
     s.do(offer(1, tfdf(0, 0, 0, fld(18, 0x10)), 0), 0).do(opp(), 1).do(opp(), 10)
     out.append(s)
     s = MuxSc("link-send-mux-uslp-lnk-076-cop-block", ["LNK-076", "LNK-032"],
-              "On a VC with COP-1 the Offer carries a cop block: the mux takes the VCF Count, the "
-              "Bypass/Sequence Control Flag and the Protocol Control Command Flag as given (a "
-              "Type-BC frame: bypass 1, protocol control 1) and counts nothing for that frame; "
-              "the count of the next frame without a cop block is not advanced by it; the "
-              "expedited count is separate.", cfg)
+              "On a VC with COP-1 the Offer carries a cop block: the mux takes the "
+              "Bypass/Sequence Control Flag and the Protocol Control Command Flag from it (a "
+              "Type-BC frame: bypass 1, protocol control 1); with bypass 0 it takes the VCF "
+              "Count as given and counts nothing, so the next frame without a cop block is not "
+              "advanced by it; with bypass 1 it ignores vcf_count and uses and increments its "
+              "own expedited count (OI-74).", cfg)
     s.do(offer(1, tfdf(0, 0, 0, fld(18, 0x10)), 0, cop={"vcf_count": 7, "bypass": 0,
                                                        "protocol_control": 0}), 0).do(opp(), 1)
     s.do(offer(1, tfdf(0, 0, 0, fld(18, 0x20)), 0), 10).do(opp(), 11)
-    s.do(offer(1, tfdf(1, 1, 3, fld(19, 0x30)), 0, cop={"vcf_count": 3, "bypass": 1,
+    s.do(offer(1, tfdf(1, 1, 3, fld(19, 0x30)), 0, cop={"vcf_count": 9, "bypass": 1,
                                                        "protocol_control": 1}), 20).do(opp(), 21)
     s.do(offer(1, tfdf(0, 0, 0, fld(19, 0x40)), 0, qos=EXP), 30).do(opp(), 31)
     out.append(s)
     s = MuxSc("link-send-mux-uslp-lnk-076-field-len", ["LNK-076"],
               "A field whose length differs from the VC's data field length for its QoS is refused "
               "with LengthMismatch (field_len) and no state change: the sequence-controlled length "
-              "is 1 octet shorter than the expedited one on VC 1; an unconfigured VC is refused.",
+              "is 1 octet shorter than the expedited one on VC 1.",
               cfg)
     s.do(offer(1, tfdf(0, 0, 0, fld(19, 0x10)), 0), 0)
     s.do(offer(1, tfdf(0, 0, 0, fld(18, 0x10)), 0, qos=EXP), 1)
