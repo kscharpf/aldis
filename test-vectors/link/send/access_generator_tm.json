@@ -1,0 +1,22 @@
+{
+  "kind": "engine-scenario",
+  "engine": "access-generator",
+  "provenance": "hand-derived",
+  "provenance_note": "Hand-derived from 132.0-B-3 \u00a74.1.4, \u00a74.2.3.1, 732.0-B-5 EC1 \u00a74.1.4.1, \u00a74.2.4.1 (a VCA_SDU is the data field) and docs/04-engines.md \u00a72.2 (LNK-020). Model test-vectors/models/link_send.py, written blind (TV-023) by a Claude agent from the Blue Books and docs/ only, without reading any implementation. The input scripts were chosen by hand; the expected outputs are the model's. The file is written by the model (--write) and never edited by hand.",
+  "config": {"protocol": "tm", "vc": 2, "field_len": 12},
+  "scenarios": [
+    {
+      "id": "link-send-ag-tm-lnk-020-one-sdu-per-field",
+      "description": "SDUs of exactly the data field length, one per field and unchanged; with nothing queued Release returns nothing.",
+      "requirements": ["LNK-020"],
+      "steps": [
+        {"at_us": 0, "input": {"release": {}}, "expect": []},
+        {"at_us": 10, "input": {"submit_sdu": {"sdu_hex": "101112131415161718191A1B"}}, "expect": []},
+        {"at_us": 11, "input": {"submit_sdu": {"sdu_hex": "202122232425262728292A2B"}}, "expect": []},
+        {"at_us": 20, "input": {"release": {}}, "expect": [{"data_field": {"vc": 2, "field_hex": "101112131415161718191A1B"}}]},
+        {"at_us": 30, "input": {"release": {}}, "expect": [{"data_field": {"vc": 2, "field_hex": "202122232425262728292A2B"}}]},
+        {"at_us": 40, "input": {"release": {}}, "expect": []}
+      ]
+    }
+  ]
+}

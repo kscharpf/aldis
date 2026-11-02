@@ -1,0 +1,138 @@
+{
+  "kind": "engine-scenario",
+  "engine": "map-segmenter",
+  "provenance": "hand-derived",
+  "provenance_note": "Hand-derived from 232.0-B-4 Cor. 1 \u00a74.1.3 (the FDU, the Segment Header, Table 4-2), \u00a74.3.1-4.3.3 and docs/04-engines.md \u00a72.4 (LNK-040, LNK-041), OI-71. Model test-vectors/models/link_send.py, written blind (TV-023) by a Claude agent from the Blue Books and docs/ only, without reading any implementation. The input scripts were chosen by hand; the expected outputs are the model's. The file is written by the model (--write) and never edited by hand.",
+  "config": {"protocol": "tc", "segment_header": true, "fecf": true, "max_fdu_len": 16, "maps": [{"map_id": 1, "segmentation": true, "blocking": false, "max_sdu_len": 60}, {"map_id": 2, "segmentation": false, "blocking": true}, {"map_id": 3, "segmentation": true, "blocking": true, "max_sdu_len": 100}]},
+  "scenarios": [
+    {
+      "id": "link-send-seg-tc-lnk-040-whole-sdu",
+      "description": "An SDU that fits one FDU is sent as one FDU with sequence flags 11 and the Segment Header (flags, MAP ID); with nothing queued NextFdu gives nothing; the QoS is the request's.",
+      "requirements": ["LNK-040"],
+      "steps": [
+        {"at_us": 0, "input": {"next_fdu": {"handle": 1, "qos": "sequence_controlled"}}, "expect": [], "expect_no_timeout": true},
+        {"at_us": 1, "input": {"submit_sdu": {"sdu_hex": "10111213141516171819", "map": 1}}, "expect": [], "expect_no_timeout": true},
+        {"at_us": 2, "input": {"submit_sdu": {"sdu_hex": "202122232425262728292A2B2C2D2E", "map": 1}}, "expect": [], "expect_no_timeout": true},
+        {"at_us": 3, "input": {"next_fdu": {"handle": 2, "qos": "sequence_controlled"}}, "expect": [{"fdu": {"handle": 2, "map": 1, "flags": "11", "qos": "sequence_controlled", "fdu_hex": "C110111213141516171819"}}], "expect_no_timeout": true},
+        {"at_us": 4, "input": {"next_fdu": {"handle": 3, "qos": "expedited"}}, "expect": [{"fdu": {"handle": 3, "map": 1, "flags": "11", "qos": "expedited", "fdu_hex": "C1202122232425262728292A2B2C2D2E"}}], "expect_no_timeout": true},
+        {"at_us": 5, "input": {"next_fdu": {"handle": 4, "qos": "sequence_controlled"}}, "expect": [], "expect_no_timeout": true}
+      ]
+    },
+    {
+      "id": "link-send-seg-tc-lnk-040-segmented-sdu",
+      "description": "A longer SDU on a MAP that permits segmentation: FDUs of the maximum length, flags 01 first, 00 continuing, 10 last; an SDU of exactly two FDUs has no 00 and a last FDU that is full.",
+      "requirements": ["LNK-040"],
+      "steps": [
+        {"at_us": 0, "input": {"submit_sdu": {"sdu_hex": "101112131415161718191A1B1C1D1E1F202122232425262728292A2B2C2D2E2F3031323334353637", "map": 1}}, "expect": [], "expect_no_timeout": true},
+        {"at_us": 1, "input": {"submit_sdu": {"sdu_hex": "505152535455565758595A5B5C5D5E5F606162636465666768696A6B6C6D", "map": 1}}, "expect": [], "expect_no_timeout": true},
+        {"at_us": 10, "input": {"next_fdu": {"handle": 1, "qos": "sequence_controlled"}}, "expect": [{"fdu": {"handle": 1, "map": 1, "flags": "01", "qos": "sequence_controlled", "fdu_hex": "41101112131415161718191A1B1C1D1E"}}], "expect_no_timeout": true},
+        {"at_us": 11, "input": {"next_fdu": {"handle": 2, "qos": "sequence_controlled"}}, "expect": [{"fdu": {"handle": 2, "map": 1, "flags": "00", "qos": "sequence_controlled", "fdu_hex": "011F202122232425262728292A2B2C2D"}}], "expect_no_timeout": true},
+        {"at_us": 12, "input": {"next_fdu": {"handle": 3, "qos": "sequence_controlled"}}, "expect": [{"fdu": {"handle": 3, "map": 1, "flags": "10", "qos": "sequence_controlled", "fdu_hex": "812E2F3031323334353637"}}], "expect_no_timeout": true},
+        {"at_us": 13, "input": {"next_fdu": {"handle": 4, "qos": "sequence_controlled"}}, "expect": [{"fdu": {"handle": 4, "map": 1, "flags": "01", "qos": "sequence_controlled", "fdu_hex": "41505152535455565758595A5B5C5D5E"}}], "expect_no_timeout": true},
+        {"at_us": 14, "input": {"next_fdu": {"handle": 5, "qos": "sequence_controlled"}}, "expect": [{"fdu": {"handle": 5, "map": 1, "flags": "10", "qos": "sequence_controlled", "fdu_hex": "815F606162636465666768696A6B6C6D"}}], "expect_no_timeout": true},
+        {"at_us": 15, "input": {"next_fdu": {"handle": 6, "qos": "sequence_controlled"}}, "expect": [], "expect_no_timeout": true}
+      ]
+    },
+    {
+      "id": "link-send-seg-tc-lnk-040-segmented-packet",
+      "description": "A packet longer than the FDU is segmented like an SDU; the segments of a MAP are contiguous in the output, and a packet submitted meanwhile on another MAP waits.",
+      "requirements": ["LNK-040", "LNK-041"],
+      "steps": [
+        {"at_us": 0, "input": {"submit_packet": {"packet_hex": "0005C000001A101112131415161718191A1B1C1D1E1F202122232425262728292A", "map": 1}}, "expect": [], "expect_no_timeout": true},
+        {"at_us": 1, "input": {"submit_packet": {"packet_hex": "0006C00000016061", "map": 3}}, "expect": [], "expect_no_timeout": true},
+        {"at_us": 10, "input": {"next_fdu": {"handle": 1, "qos": "sequence_controlled"}}, "expect": [{"fdu": {"handle": 1, "map": 1, "flags": "01", "qos": "sequence_controlled", "fdu_hex": "410005C000001A101112131415161718"}}], "expect_no_timeout": true},
+        {"at_us": 11, "input": {"next_fdu": {"handle": 2, "qos": "sequence_controlled"}}, "expect": [{"fdu": {"handle": 2, "map": 1, "flags": "00", "qos": "sequence_controlled", "fdu_hex": "01191A1B1C1D1E1F2021222324252627"}}], "expect_no_timeout": true},
+        {"at_us": 12, "input": {"next_fdu": {"handle": 3, "qos": "sequence_controlled"}}, "expect": [{"fdu": {"handle": 3, "map": 1, "flags": "10", "qos": "sequence_controlled", "fdu_hex": "8128292A"}}], "expect_no_timeout": true},
+        {"at_us": 13, "input": {"next_fdu": {"handle": 4, "qos": "sequence_controlled"}}, "expect": [{"fdu": {"handle": 4, "map": 3, "flags": "11", "qos": "sequence_controlled", "fdu_hex": "C30006C00000016061"}}], "expect_no_timeout": true}
+      ]
+    },
+    {
+      "id": "link-send-seg-tc-lnk-040-blocking",
+      "description": "Where blocking is permitted several complete packets share one FDU (flags 11, one Segment Header) as long as they fit: here 4 + 5 octets, and the 7-octet packet that would make 16 octets of user data starts the next FDU; a MAP that does not permit blocking sends one packet per FDU.",
+      "requirements": ["LNK-040"],
+      "steps": [
+        {"at_us": 0, "input": {"submit_packet": {"packet_hex": "FD041011", "map": 2}}, "expect": [], "expect_no_timeout": true},
+        {"at_us": 1, "input": {"submit_packet": {"packet_hex": "FD05202122", "map": 2}}, "expect": [], "expect_no_timeout": true},
+        {"at_us": 2, "input": {"submit_packet": {"packet_hex": "0001C000000030", "map": 2}}, "expect": [], "expect_no_timeout": true},
+        {"at_us": 3, "input": {"submit_packet": {"packet_hex": "FD044041", "map": 1}}, "expect": [], "expect_no_timeout": true},
+        {"at_us": 4, "input": {"submit_packet": {"packet_hex": "FD05505152", "map": 1}}, "expect": [], "expect_no_timeout": true},
+        {"at_us": 10, "input": {"next_fdu": {"handle": 1, "qos": "sequence_controlled"}}, "expect": [{"fdu": {"handle": 1, "map": 2, "flags": "11", "qos": "sequence_controlled", "fdu_hex": "C2FD041011FD05202122"}}], "expect_no_timeout": true},
+        {"at_us": 11, "input": {"next_fdu": {"handle": 2, "qos": "sequence_controlled"}}, "expect": [{"fdu": {"handle": 2, "map": 2, "flags": "11", "qos": "sequence_controlled", "fdu_hex": "C20001C000000030"}}], "expect_no_timeout": true},
+        {"at_us": 12, "input": {"next_fdu": {"handle": 3, "qos": "sequence_controlled"}}, "expect": [{"fdu": {"handle": 3, "map": 1, "flags": "11", "qos": "sequence_controlled", "fdu_hex": "C1FD044041"}}], "expect_no_timeout": true},
+        {"at_us": 13, "input": {"next_fdu": {"handle": 4, "qos": "sequence_controlled"}}, "expect": [{"fdu": {"handle": 4, "map": 1, "flags": "11", "qos": "sequence_controlled", "fdu_hex": "C1FD05505152"}}], "expect_no_timeout": true},
+        {"at_us": 14, "input": {"next_fdu": {"handle": 5, "qos": "sequence_controlled"}}, "expect": [], "expect_no_timeout": true}
+      ]
+    },
+    {
+      "id": "link-send-seg-tc-lnk-040-blocking-not-with-segments",
+      "description": "A packet that needs segmentation is not blocked with the packets before it: the 6-octet packet goes alone, then the 20-octet packet is segmented.",
+      "requirements": ["LNK-040", "LNK-041"],
+      "steps": [
+        {"at_us": 0, "input": {"submit_packet": {"packet_hex": "FD0610111213", "map": 3}}, "expect": [], "expect_no_timeout": true},
+        {"at_us": 1, "input": {"submit_packet": {"packet_hex": "0002C000000D202122232425262728292A2B2C2D", "map": 3}}, "expect": [], "expect_no_timeout": true},
+        {"at_us": 10, "input": {"next_fdu": {"handle": 1, "qos": "sequence_controlled"}}, "expect": [{"fdu": {"handle": 1, "map": 3, "flags": "11", "qos": "sequence_controlled", "fdu_hex": "C3FD0610111213"}}], "expect_no_timeout": true},
+        {"at_us": 11, "input": {"next_fdu": {"handle": 2, "qos": "sequence_controlled"}}, "expect": [{"fdu": {"handle": 2, "map": 3, "flags": "01", "qos": "sequence_controlled", "fdu_hex": "430002C000000D202122232425262728"}}], "expect_no_timeout": true},
+        {"at_us": 12, "input": {"next_fdu": {"handle": 3, "qos": "sequence_controlled"}}, "expect": [{"fdu": {"handle": 3, "map": 3, "flags": "10", "qos": "sequence_controlled", "fdu_hex": "83292A2B2C2D"}}], "expect_no_timeout": true},
+        {"at_us": 13, "input": {"next_fdu": {"handle": 4, "qos": "sequence_controlled"}}, "expect": [], "expect_no_timeout": true}
+      ]
+    },
+    {
+      "id": "link-send-seg-tc-lnk-040-refused",
+      "description": "An SDU longer than the maximum MAP_SDU length of its MAP is refused with OutOfRange (max_sdu_len); an SDU longer than one FDU on a MAP that does not permit segmentation is refused with OutOfRange (max_fdu_len); an unknown MAP is refused; nothing changes.",
+      "requirements": ["LNK-040"],
+      "steps": [
+        {"at_us": 0, "input": {"submit_sdu": {"sdu_hex": "000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F202122232425262728292A2B2C2D2E2F303132333435363738393A3B3C", "map": 1}}, "expect": [{"error": "OutOfRange", "field": "max_sdu_len"}], "expect_no_timeout": true},
+        {"at_us": 1, "input": {"submit_sdu": {"sdu_hex": "000102030405060708090A0B0C0D0E0F", "map": 2}}, "expect": [{"error": "OutOfRange", "field": "max_fdu_len"}], "expect_no_timeout": true},
+        {"at_us": 2, "input": {"submit_sdu": {"sdu_hex": "00010203", "map": 9}}, "expect": [{"error": "UnknownChannel"}], "expect_no_timeout": true},
+        {"at_us": 3, "input": {"submit_sdu": {"sdu_hex": "101112131415161718191A1B1C1D1E1F202122232425262728292A2B2C2D2E2F303132333435363738393A3B3C3D3E3F404142434445464748494A4B", "map": 1}}, "expect": [], "expect_no_timeout": true},
+        {"at_us": 4, "input": {"next_fdu": {"handle": 1, "qos": "sequence_controlled"}}, "expect": [{"fdu": {"handle": 1, "map": 1, "flags": "01", "qos": "sequence_controlled", "fdu_hex": "41101112131415161718191A1B1C1D1E"}}], "expect_no_timeout": true}
+      ]
+    },
+    {
+      "id": "link-send-seg-tc-lnk-041-no-interleave",
+      "description": "The portions of two SDUs of the same MAP are never interleaved, and an SDU is completed before an SDU of another MAP is started, although the other SDU was submitted while the first was in progress.",
+      "requirements": ["LNK-041", "LNK-040"],
+      "steps": [
+        {"at_us": 0, "input": {"submit_sdu": {"sdu_hex": "101112131415161718191A1B1C1D1E1F202122232425262728292A2B2C2D2E2F303132", "map": 1}}, "expect": [], "expect_no_timeout": true},
+        {"at_us": 1, "input": {"submit_sdu": {"sdu_hex": "8081828384", "map": 3}}, "expect": [], "expect_no_timeout": true},
+        {"at_us": 10, "input": {"next_fdu": {"handle": 1, "qos": "sequence_controlled"}}, "expect": [{"fdu": {"handle": 1, "map": 1, "flags": "01", "qos": "sequence_controlled", "fdu_hex": "41101112131415161718191A1B1C1D1E"}}], "expect_no_timeout": true},
+        {"at_us": 11, "input": {"submit_sdu": {"sdu_hex": "9091929394", "map": 1}}, "expect": [], "expect_no_timeout": true},
+        {"at_us": 12, "input": {"submit_sdu": {"sdu_hex": "A0A1A2", "map": 3}}, "expect": [], "expect_no_timeout": true},
+        {"at_us": 20, "input": {"next_fdu": {"handle": 2, "qos": "sequence_controlled"}}, "expect": [{"fdu": {"handle": 2, "map": 1, "flags": "00", "qos": "sequence_controlled", "fdu_hex": "011F202122232425262728292A2B2C2D"}}], "expect_no_timeout": true},
+        {"at_us": 21, "input": {"next_fdu": {"handle": 3, "qos": "sequence_controlled"}}, "expect": [{"fdu": {"handle": 3, "map": 1, "flags": "10", "qos": "sequence_controlled", "fdu_hex": "812E2F303132"}}], "expect_no_timeout": true},
+        {"at_us": 22, "input": {"next_fdu": {"handle": 4, "qos": "sequence_controlled"}}, "expect": [{"fdu": {"handle": 4, "map": 3, "flags": "11", "qos": "sequence_controlled", "fdu_hex": "C38081828384"}}], "expect_no_timeout": true},
+        {"at_us": 23, "input": {"next_fdu": {"handle": 5, "qos": "sequence_controlled"}}, "expect": [{"fdu": {"handle": 5, "map": 1, "flags": "11", "qos": "sequence_controlled", "fdu_hex": "C19091929394"}}], "expect_no_timeout": true}
+      ]
+    },
+    {
+      "id": "link-send-seg-tc-lnk-003-reconfigure",
+      "description": "Reconfigure discards the SDU in progress and the queue, with the octets left; the next SDU starts afresh with flags 01 or 11.",
+      "requirements": ["LNK-003", "LNK-041"],
+      "steps": [
+        {"at_us": 0, "input": {"submit_sdu": {"sdu_hex": "101112131415161718191A1B1C1D1E1F202122232425262728292A2B2C2D2E2F3031323334353637", "map": 1}}, "expect": [], "expect_no_timeout": true},
+        {"at_us": 1, "input": {"submit_sdu": {"sdu_hex": "8081828384", "map": 3}}, "expect": [], "expect_no_timeout": true},
+        {"at_us": 10, "input": {"next_fdu": {"handle": 1, "qos": "sequence_controlled"}}, "expect": [{"fdu": {"handle": 1, "map": 1, "flags": "01", "qos": "sequence_controlled", "fdu_hex": "41101112131415161718191A1B1C1D1E"}}], "expect_no_timeout": true},
+        {"at_us": 20, "input": {"reconfigure": {"config": {"protocol": "tc", "segment_header": true, "fecf": true, "max_fdu_len": 16, "maps": [{"map_id": 1, "segmentation": true, "blocking": false, "max_sdu_len": 60}, {"map_id": 2, "segmentation": false, "blocking": true}, {"map_id": 3, "segmentation": true, "blocking": true, "max_sdu_len": 100}]}}}, "expect": [{"notify": {"kind": "Discarded", "octets": 30}}], "expect_no_timeout": true},
+        {"at_us": 30, "input": {"submit_sdu": {"sdu_hex": "3031323334", "map": 1}}, "expect": [], "expect_no_timeout": true},
+        {"at_us": 40, "input": {"next_fdu": {"handle": 2, "qos": "sequence_controlled"}}, "expect": [{"fdu": {"handle": 2, "map": 1, "flags": "11", "qos": "sequence_controlled", "fdu_hex": "C13031323334"}}], "expect_no_timeout": true}
+      ]
+    },
+    {
+      "id": "link-send-seg-tc-lnk-040-no-segment-header",
+      "description": "Without a Segment Header a packet, packets, or a VCA_SDU are one FDU of user data only (no flags, no MAP); a longer SDU is refused with OutOfRange (max_fdu_len).",
+      "requirements": ["LNK-040"],
+      "config": {"protocol": "tc", "segment_header": false, "fecf": true, "max_fdu_len": 16, "blocking": true},
+      "steps": [
+        {"at_us": 0, "input": {"submit_packet": {"packet_hex": "FD041011"}}, "expect": [], "expect_no_timeout": true},
+        {"at_us": 1, "input": {"submit_packet": {"packet_hex": "FD05202122"}}, "expect": [], "expect_no_timeout": true},
+        {"at_us": 2, "input": {"submit_packet": {"packet_hex": "0001C0000005303132333435"}}, "expect": [], "expect_no_timeout": true},
+        {"at_us": 3, "input": {"submit_sdu": {"sdu_hex": "404142434445464748494A4B4C4D4E4F"}}, "expect": [], "expect_no_timeout": true},
+        {"at_us": 4, "input": {"submit_sdu": {"sdu_hex": "000102030405060708090A0B0C0D0E0F10"}}, "expect": [{"error": "OutOfRange", "field": "max_fdu_len"}], "expect_no_timeout": true},
+        {"at_us": 10, "input": {"next_fdu": {"handle": 1, "qos": "sequence_controlled"}}, "expect": [{"fdu": {"handle": 1, "qos": "sequence_controlled", "fdu_hex": "FD041011FD05202122"}}], "expect_no_timeout": true},
+        {"at_us": 11, "input": {"next_fdu": {"handle": 2, "qos": "sequence_controlled"}}, "expect": [{"fdu": {"handle": 2, "qos": "sequence_controlled", "fdu_hex": "0001C0000005303132333435"}}], "expect_no_timeout": true},
+        {"at_us": 12, "input": {"next_fdu": {"handle": 3, "qos": "sequence_controlled"}}, "expect": [{"fdu": {"handle": 3, "qos": "sequence_controlled", "fdu_hex": "404142434445464748494A4B4C4D4E4F"}}], "expect_no_timeout": true},
+        {"at_us": 13, "input": {"next_fdu": {"handle": 4, "qos": "sequence_controlled"}}, "expect": [], "expect_no_timeout": true}
+      ]
+    }
+  ]
+}
