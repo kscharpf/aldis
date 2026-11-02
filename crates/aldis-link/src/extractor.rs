@@ -11,8 +11,8 @@
 //! **Bounds (LNK-074, LNK-075).** One `DataField` returns at most
 //! [`EXTRACTOR_MAX_ACTIONS`] actions, whatever the length of the field: the packets between two
 //! events are one `Packets` run. It writes at most `max_packet_len − 1 + z` octets to the
-//! output area, `z` being the octets of the packet zone it is given: the packet in progress (at most `max_packet_len − 1` octets)
-//! and the zone. An area shorter than that fails the input with `BufferTooSmall`, so that the
+//! output area, `z` being the octets of the packet zone it is given: the packet in progress
+//! (at most `max_packet_len − 1` octets) and the zone. An area shorter than that fails the input with `BufferTooSmall`, so that the
 //! caller sizes the area once. `Reconfigure` writes nothing.
 
 use aldis_core::engine::{Actions, OutRange};
@@ -31,12 +31,11 @@ pub const MIN_ASSEMBLY: usize = 8;
 ///
 /// It does not grow with the field: the complete packets of a field that follow each other
 /// without an event between them are one [`ExtractorOutput::Packets`] action, a run of
-/// self-delimiting packets in the output area. One `DataField` has at most four actions, on
-/// four paths: the outcome for the packet in progress and the error that the pointer disagrees
-/// (`Discarded` or `IncompletePacket`, `LengthInconsistent`), then a run, then an error after
-/// the pointer; or, after a gap, the outcome, a run, and an error; or an error that ends the
-/// continuation, then a run and an error after the pointer, with the run of the continuation
-/// before it. No path has more than two events and two runs.
+/// self-delimiting packets in the output area. One `DataField` has at most three events and one
+/// run: the outcome for the packet in progress and `LengthInconsistent` because the pointer
+/// disagrees with it, then the packets from the pointer on as one run, then one error after
+/// them. A continuation that ends early emits nothing, so its packet and those after the
+/// pointer never make two runs.
 pub const EXTRACTOR_MAX_ACTIONS: usize = 4;
 
 /// The actions of one input of a `PacketExtractor` (LNK-074).
@@ -164,8 +163,8 @@ impl<P: PacketProtocol> PacketExtractorConfig<P> {
     }
 
     /// The octets of the shortest packet the extractor delivers: 1 when idle packets are
-    /// delivered, else 3 where Encapsulation
-    /// Packets are valid (a 2-octet header and one data octet) and 7 for Space Packets.
+    /// delivered, else 3 where Encapsulation Packets are valid (a 2-octet header and one data
+    /// octet), else 7 for Space Packets.
     #[must_use]
     pub const fn min_packet_len(&self) -> usize {
         if self.deliver_idle {

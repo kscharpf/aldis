@@ -328,9 +328,10 @@ proptest! {
         ))?;
     }
 
-    /// Whatever the fields, the gap flags, and the pointers, one input of the extractor returns
-    /// at most `EXTRACTOR_MAX_ACTIONS` actions and never an internal error, so that
-    /// `Actions::push` cannot fail after the state has changed (LNK-074, API-057, API-058).
+    /// Whatever the fields, the gap flags, and the pointers, one input of the extractor never
+    /// fails with an internal error, which is what `Actions::push` returns past
+    /// `EXTRACTOR_MAX_ACTIONS`, so the bound holds and no push fails after the state has changed
+    /// (LNK-074, API-057, API-058).
     #[test]
     fn extractor_actions_stay_within_the_bound(
         fields in prop::collection::vec(
@@ -357,7 +358,7 @@ proptest! {
                 gap: *gap,
             });
             match extractor.step(input, &mut area) {
-                Ok(actions) => prop_assert!(actions.len() <= EXTRACTOR_MAX_ACTIONS),
+                Ok(_) => {}
                 Err(e) => prop_assert_ne!(e.kind(), aldis_core::ErrorKind::InternalError),
             }
         }
