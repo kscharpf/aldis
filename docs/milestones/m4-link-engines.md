@@ -105,9 +105,11 @@ WP-6 needs more than WP-1 and `aldis-cop1`: its segmentation scenarios (LNK-040�
 ### WP-7 C ABI handles (M) — CABI-030…033, CABI-040
 - One opaque handle per engine (D4), the exerciser group, and the generated header.
 - Issue #217 (a `capacities.toml` entry for every engine, checked by `consistency`) is its own pull request (D5).
+- Builds the engine handles at the `[link]` sizes of `capacities.toml`, deferred from WP-3 to WP-6 by the maintainer, 2026-11-02 (an exception to the checklist "Adding an engine").
 
 ### WP-8 Gates & hazards (M) — VER-010, VER-011, VER-022…025, VER-065, VER-066
 - 100 % coverage, mutants triaged, fuzz targets, stack bounds at the `capacities.toml` sizes, QEMU on three targets.
+- The `stack` check measures the engines at those sizes (the engines of WP-3 to WP-6 are built at them in WP-7).
 - Hazard analysis `docs/verification/hazards/link.md` and the assurance case.
 
 ### WP-9 Exit (S) — LNK-001, VER-020, RS-015

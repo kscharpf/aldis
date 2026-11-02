@@ -4,7 +4,7 @@ Engine scenarios for the sending engines of [docs/04-engines.md](../../../docs/0
 
 **The JSON is never edited by hand.** `link_send.py --write` writes every file here in a fixed order and format; change the model, then regenerate. A file that is not released yet changes by regeneration; a released file only by new cases and `superseded` marks (TV-021).
 
-The `packet_generator_*.json` files are run by `crates/aldis-link/tests/packet_generator_vectors.rs` (M4 WP-3). The others are awaiting their runner (`AWAITING_RUNNER` in `xtask/src/consistency.rs`, as `cop1/scenarios/` was): the engines are WP-4 (ChannelMux, Access and Bitstream generators) and WP-6 (MapSegmenter), and each of them removes its files from the exemption when its host test runs them. Until then those files are no evidence for `cargo xtask trace`.
+The `packet_generator_*.json` files are run by `crates/aldis-link/tests/packet_generator_vectors.rs` (M4 WP-3), the `channel_mux_*.json` files by `channel_mux_vectors.rs`, the `access_generator_*.json` files by `access_generator_vectors.rs`, and `bitstream_generator_aos.json` by `bitstream_generator_vectors.rs` (M4 WP-4). The `map_segmenter_*.json` files are awaiting their runner (`AWAITING_RUNNER` in `xtask/src/consistency.rs`, as `cop1/scenarios/` was): the engine is WP-6, which removes its files from the exemption when its host test runs them. Until then those files are no evidence for `cargo xtask trace`.
 
 | File | Engine | Content | Requirements |
 |---|---|---|---|
@@ -90,11 +90,10 @@ Cases the first version of this directory left out are covered since [OI-74](../
 
 ## Not covered
 
-Deferred to the work packages by [OI-78](../../../docs/09-open-issues.md) (sending, `ChannelMux`, WP-4); each is decided there and its case added:
+Decided by the work packages under [OI-78](../../../docs/09-open-issues.md); the sending-side cases of `ChannelMux` (WP-4) are pinned by Rust tests (`channel_mux_engine.rs`), with no case in this directory:
 
-* Whether Offer accepts a field whose MAP is not configured on the VC (the scenarios use the VC's MAP only).
-* The mux's handling of a `cop` block on TM, on AOS, or on a USLP VC without COP-1 (the scenarios use it on USLP VCs only).
-* The AOS VC Frame Count wrap and cycle (a property test; the mux has no start count, OI-74 (2)).
-* The header and trailer sizes above the limits of API-071 and the other configuration errors (LNK-078, WP-3 to WP-6).
+* The configuration errors of the `MapSegmenter` and the CLTU packer (LNK-078, WP-6); those of the `ChannelMux` and the generators, the API-071 limits included, are tested in `channel_mux_engine.rs` and `generators_engine.rs`.
+
+The vector cases for the `ChannelMux` items of OI-78 go to the blind-model round of [#231](https://github.com/kscharpf/aldis/issues/231).
 
 Several master channels on one physical channel are deferred by OI-75.

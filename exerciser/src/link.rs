@@ -364,6 +364,7 @@ fn common(t: &mut Tally) {
 
 pub fn run(t: &mut Tally) {
     common(t);
+    crate::link_send::run(t);
     let uslp = MapId::<4>::new(bb(2))
         .and_then(|map| UslpParams::new(Upid::Packets, map, Qos::Expedited).ok());
     let aos4 = AosParams {

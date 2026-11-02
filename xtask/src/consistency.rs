@@ -557,17 +557,10 @@ fn vector_problems(
 /// them (M3 plan WP-2 before WP-3 and WP-4; M4 plan WP-2a/2b before WP-3 to WP-6): the test
 /// requirement is waived until the runner lands, and the entry is removed in the pull request
 /// that adds it. `cop1/scenarios/` left it when the C ABI runner of M3 WP-6 landed. The `link/`
-/// files go one by one: the `PacketGenerator` and `PacketExtractor` files left with M4 WP-3; the
-/// rest wait for WP-4 (`ChannelMux`, Access and Bitstream generators), WP-5 (`FrameReceiver`) and
-/// WP-6 (`MapSegmenter`, `MapReassembler`).
+/// files go one by one: the `PacketGenerator` and `PacketExtractor` files left with M4 WP-3, and
+/// the `ChannelMux`, Access, and Bitstream generator files with WP-4; the rest wait for WP-5
+/// (`FrameReceiver`) and WP-6 (`MapSegmenter`, `MapReassembler`).
 const AWAITING_RUNNER: &[&str] = &[
-    "link/send/access_generator_aos.json",
-    "link/send/access_generator_tm.json",
-    "link/send/access_generator_uslp.json",
-    "link/send/bitstream_generator_aos.json",
-    "link/send/channel_mux_aos.json",
-    "link/send/channel_mux_tm.json",
-    "link/send/channel_mux_uslp.json",
     "link/send/map_segmenter_tc.json",
     "link/send/map_segmenter_uslp.json",
     "link/recv/frame_receiver_aos.json",
@@ -858,10 +851,15 @@ const ENGINES: &[(&str, Sizing)] = &[
     // FARM-1 has no const generics: it holds no queue (M3 plan D6); the C ABI builds it unsized.
     ("Farm1", Sizing::Exempt),
     // The link engines share [link]: the packet queue (`packet_queue_octets`) sizes the
-    // PacketGenerator's queue and the PacketExtractor's assembly buffer, `max_frame_octets` the
-    // data field (M4 WP-3; the C ABI handles follow in WP-7).
+    // PacketGenerator's queue, the PacketExtractor's assembly buffer, the AccessGenerator's SDU
+    // queue, and the BitstreamGenerator's bit queue, `max_frame_octets` the data field and the
+    // frame of the ChannelMux, and `max_virtual_channels` its VCs (M4 WP-3, WP-4; the C ABI
+    // handles follow in WP-7).
     ("PacketGenerator", Sizing::Sized("link")),
     ("PacketExtractor", Sizing::Sized("link")),
+    ("AccessGenerator", Sizing::Sized("link")),
+    ("BitstreamGenerator", Sizing::Sized("link")),
+    ("ChannelMux", Sizing::Sized("link")),
 ];
 
 /// How an engine is sized in the C ABI.
@@ -1245,7 +1243,8 @@ mod tests {
         assert!(!awaiting_runner(&file[0]));
         assert!(!awaiting_runner("link/send/packet_generator_tm.json"));
         assert!(!awaiting_runner("link/recv/packet_extractor_uslp.json"));
-        assert!(awaiting_runner("link/send/channel_mux_tm.json"));
+        assert!(!awaiting_runner("link/send/channel_mux_tm.json"));
+        assert!(awaiting_runner("link/send/map_segmenter_tc.json"));
         assert!(awaiting_runner("link/recv/frame_receiver_aos.json"));
         assert_eq!(
             vector_problems(&file, readme, &[], "", "", &c),

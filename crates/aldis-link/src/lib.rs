@@ -8,8 +8,12 @@
 //! | [`protocol`] | The protocol trait with `Tm`, `Tc`, `Aos`, `Uslp` | LNK-001 |
 //! | `generator` | The `PacketGenerator` (features `spp`, `epp`) | LNK-010…LNK-015, LNK-074, LNK-075 |
 //! | `extractor` | The `PacketExtractor` (features `spp`, `epp`) | LNK-060…LNK-064, LNK-074, LNK-075 |
+//! | [`access`] | The `AccessGenerator` (VC and MAP Access) | LNK-020, LNK-074, LNK-075 |
+//! | [`bitstream`] | The `BitstreamGenerator` (AOS `B_PDU`) | LNK-021, LNK-074, LNK-075 |
+//! | [`mux`], [`policy`] | The `ChannelMux` and its multiplexing policies | LNK-030…LNK-036, LNK-076, LNK-082 |
 //!
-//! **Status:** the `PacketGenerator` and the `PacketExtractor` are implemented (M4 WP-3); the other
+//! **Status:** the `PacketGenerator` and the `PacketExtractor` (M4 WP-3), and the `ChannelMux`, the
+//! `AccessGenerator`, and the `BitstreamGenerator` (M4 WP-4) are implemented; the other
 //! modules are declared but not yet implemented. Requirements are traced by ID in each module's
 //! documentation.
 #![no_std]
@@ -21,6 +25,8 @@ extern crate alloc;
 #[cfg(feature = "std")]
 extern crate std;
 
+pub mod access;
+pub mod bitstream;
 pub mod common;
 #[cfg(all(feature = "spp", feature = "epp"))]
 pub mod extractor;
