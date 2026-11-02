@@ -62,19 +62,19 @@ WP-6 needs more than WP-1 and `aldis-cop1`: its segmentation scenarios (LNK-040�
 ### WP-0 Plan (S)
 - This plan, D1–D5, and the `--scope m4` trace gate (D1); OI-11 resolved (D2).
 
-### WP-1 Spec readings (M) — LNK-001…073, API-057, API-062
+### WP-1 Spec readings (M) — LNK-001…079, API-057, API-062
 - Each LNK row checked clause by clause against the documents it cites: 132.0, 133.0, 133.1, 232.0, 355.0, 732.0, and 732.1; readings cite the clause.
 - Per-engine action bound `N` and output-area bound (API-057, API-062); field codes from block 200–249 allocated in `docs/03-api-model.md` §9.1 and generated with `cargo xtask fields --write`.
 - Checklist: "A spec-readings pull request before a codec". No engine code.
 
-### WP-2a Blind model & vectors: sending (L) — LNK-011…014, 020, 021, 030…036, 040…042
+### WP-2a Blind model & vectors: sending (L) — LNK-011…014, 020, 021, 030…036, 040…042, 076
 - Python model written blind (TV-023) from the Blue Books and `docs/` only, with no implementation path given to its author.
 - Engine-scenario vectors in `test-vectors/link/` for FHP placement, multiplexing, and segmentation.
 
-### WP-2b Blind model & vectors: receiving (M) — LNK-050…054, 060…064, 070…072
+### WP-2b Blind model & vectors: receiving (M) — LNK-050…054, 060…064, 070…072, 077, 079
 - The same method for the receiver, extraction, and reassembly.
 
-### WP-3 PacketGenerator & PacketExtractor (L) — LNK-002, 003, 010…015, 060…064, VER-023
+### WP-3 PacketGenerator & PacketExtractor (L) — LNK-002, 003, 010…015, 060…064, 074, 075, 078, VER-023
 - TM, AOS, and USLP fixed-length frames; release deadline, idle packets, gap resynchronisation.
 - FHP placement and extraction round-trip property test (VER-023).
 - Defines the shared link configuration, action, and status types, and the protocol trait (D3).
@@ -82,12 +82,12 @@ WP-6 needs more than WP-1 and `aldis-cop1`: its segmentation scenarios (LNK-040�
 - Checklist: "Adding an engine to a new or an existing crate".
 - Absorbs issue #154 (a `FrameLayout` constructor for a given data length).
 
-### WP-4 ChannelMux, policies, Access and Bitstream generators (L) — LNK-020, 021, 030…036
+### WP-4 ChannelMux, policies, Access and Bitstream generators (L) — LNK-020, 021, 030…036, 076
 - Checklist: "Adding an engine to a new or an existing crate".
 - Fixed-priority, round-robin, and weighted policies; MC and VC counters; OID frames (D2); OCF and Insert Zone source slots.
 - VC Access (VCA) and AOS Bitstream generators.
 
-### WP-5 FrameReceiver (M) — LNK-050…054
+### WP-5 FrameReceiver (M) — LNK-050…054, 077, 079
 - Validation, routing, gap events, OCF, Insert Zone, and FSH delivery; CLCW delivery for FOP-1.
 - Checklist: "Adding an engine to a new or an existing crate".
 
@@ -115,12 +115,12 @@ Milestone 4 is complete when every item below is green on `main`. The results co
 
 | Area | Criteria | Results / evidence |
 |---|---|---|
-| Common engine behavior | LNK-001…003, RS-021 | |
+| Common engine behavior | LNK-001…003, LNK-074, LNK-075, LNK-078, RS-021 | |
 | PacketGenerator | LNK-010…015 | |
 | Access and Bitstream generators | LNK-020, LNK-021 | |
-| ChannelMux | LNK-030…036 | |
+| ChannelMux | LNK-030…036, LNK-076 | |
 | Segmenter and CLTU packer | LNK-040…044 | |
-| FrameReceiver | LNK-050…054 | |
+| FrameReceiver | LNK-050…054, LNK-077, LNK-079 | |
 | PacketExtractor | LNK-060…064 | |
 | Reassembler | LNK-070…073 | |
 | Engine contract & sans-I/O | GEN-011, GEN-015, GEN-030…032, API-050, API-052, API-053, API-056, API-057, API-060, API-062, API-074, RS-020, RS-023 | |

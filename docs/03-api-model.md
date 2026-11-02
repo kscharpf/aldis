@@ -246,9 +246,9 @@ The table is the registry. `cargo xtask fields --write` generates from it the Ru
 | Code | Name | Kind | Meaning | Used by | Defined by |
 |---|---|---|---|---|---|
 | 1 | `spacecraft_id` | field | Spacecraft Identifier | core, tm, tc, uslp, aos | 132.0 §4.1.2.2.3; 232.0 §4.1.2.5; 732.0 §4.1.2.2.3; 732.1 §4.1.2.2.3 |
-| 2 | `vc_id` | field | Virtual Channel Identifier | core, tm, tc, uslp, aos, cop1 | 132.0 §4.1.2.3; 232.0 §4.1.2.6; 732.0 §4.1.2.3; 732.1 §4.1.2.4 |
-| 3 | `map_id` | field | Multiplexer Access Point Identifier | core, tc, uslp | 232.0 §4.1.3.2.2.3; 732.1 §4.1.2.5 |
-| 4 | `packet_version` | field | Packet Version Number | core, spp, epp | 133.0 §4.1.3.2; 133.1 §4.1.2.2 |
+| 2 | `vc_id` | field | Virtual Channel Identifier | core, tm, tc, uslp, aos, cop1, link | 132.0 §4.1.2.3; 232.0 §4.1.2.6; 732.0 §4.1.2.3; 732.1 §4.1.2.4 |
+| 3 | `map_id` | field | Multiplexer Access Point Identifier | core, tc, uslp, link | 232.0 §4.1.3.2.2.3; 732.1 §4.1.2.5 |
+| 4 | `packet_version` | field | Packet Version Number | core, spp, epp, link | 133.0 §4.1.3.2; 133.1 §4.1.2.2 |
 | 5 | `apid` | field | Application Process Identifier | core, spp | 133.0 §4.1.3.3.4 |
 | 6 | `sequence_count` | field | Packet Sequence Count or Packet Name | core | 133.0 §4.1.3.4.3 |
 | 7 | `frame_data_field` | field | Transfer Frame Data Field, as the frame layout places it | core, tm, tc, uslp, aos | 132.0 §4.1.4; 232.0 §4.1.3; 732.0 §4.1.4; 732.1 §4.1.4; CMN-041 |
@@ -296,8 +296,8 @@ The table is the registry. `cargo xtask fields --write` generates from it the Ru
 | 49 | `data_field` | field | Packet Data Field | spp | 133.0 §4.1.4.1 |
 | 50 | `secondary_header` | field | Packet Secondary Header | spp | 133.0 §4.1.4.2 |
 | 51 | `time_code` | parameter | Time code of a time secondary header layout | spp | 133.0 §4.1.4.2.2; SPP-008 |
-| 52 | `packet_len` | field | Total length of a packet in octets: the Encapsulation Packet's Packet Length field, or a Space Packet's primary header and Packet Data Field | spp, epp | 133.0 §4.1.2.2, §4.1.3.5; 133.1 §4.1.2.8 |
-| 53 | `max_packet_len` | parameter | Maximum Packet Length, a managed parameter | spp | 133.0 §5.2 Table 5-1 |
+| 52 | `packet_len` | field | Total length of a packet in octets: the Encapsulation Packet's Packet Length field, or a Space Packet's primary header and Packet Data Field | spp, epp, link | 133.0 §4.1.2.2, §4.1.3.5; 133.1 §4.1.2.8 |
+| 53 | `max_packet_len` | parameter | Maximum Packet Length, a managed parameter | spp, link | 133.0 §5.2 Table 5-1; 132.0 §5.4 Table 5-4; 732.0 §5.5 Table 5-4; 732.1 §5.6 Table 5-5 |
 | 54 | `user_len` | parameter | Length of the user data a two-phase writer is finished with: the User Data Field of a Space Packet, the User Data of a TC Frame Data Unit, or the Transfer Frame Data Zone of a USLP frame | spp, tc, uslp | 133.0 §4.1.4.3; 232.0 §4.1.3.2.1; 732.1 §4.1.4.3; API-023 |
 | 55 | `sdu` | parameter | SDU that the segmenter splits across packets | spp | 133.0 §4.1.3.4.2; SPP-013 |
 | 56 | `max_user_len` | parameter | Largest User Data Field of one segment | spp | 133.0 §4.1.3.4.2; SPP-013 |
@@ -320,7 +320,7 @@ The table is the registry. `cargo xtask fields --write` generates from it the Ru
 | 73 | `segment_length_id` | field | Segment Length Identifier | tm | 132.0 §4.1.2.7.5 |
 | 74 | `first_header_pointer` | field | First Header Pointer: of the TM Transfer Frame Data Field Status, or of the AOS `M_PDU` Header | tm, aos | 132.0 §4.1.2.7.6; 732.0 §4.1.4.2.2; 732.0-B-4 §4.1.4.2.3 |
 | 75 | `fsh_version` | field | Transfer Frame Secondary Header Version Number | tm | 132.0 §4.1.3.2.2 |
-| 76 | `fsh_len` | field | Total length of the Transfer Frame Secondary Header in octets: its Length field plus one, and the `MC_FSH` or `VC_FSH` Length managed parameter | tm | 132.0 §4.1.3.2.3, §5.2 Table 5-2, §5.3 Table 5-3 |
+| 76 | `fsh_len` | field | Total length of the Transfer Frame Secondary Header in octets: its Length field plus one, and the `MC_FSH` or `VC_FSH` Length managed parameter | tm, link | 132.0 §4.1.3.2.3, §5.2 Table 5-2, §5.3 Table 5-3 |
 | 77 | `control_command_flag` | field | Control Command Flag, read with the Bypass Flag as the frame type of Table 4-1 | tc | 232.0 §4.1.2.3, Table 4-1 |
 | 78 | `tc_header_spare` | field | Reserved Spare of the TC Transfer Frame Primary Header, bits 4–5 | tc | 232.0 §4.1.2.4 |
 | 79 | `max_frame_len` | parameter | Maximum Transfer Frame Length, a managed parameter of a Physical or Virtual Channel | tc, uslp | 232.0 §5 Tables 5-1, 5-3; 732.1 §5.2 Table 5-1 note 2 |
@@ -341,7 +341,7 @@ The table is the registry. `cargo xtask fields --write` generates from it the Ru
 | 94 | `tfdz_construction_rule` | field | TFDZ Construction Rule of the TFDF Header | uslp | 732.1 §4.1.4.2.2 |
 | 95 | `upid` | field | USLP Protocol Identifier of the TFDF Header | uslp | 732.1 §4.1.4.2.3 |
 | 96 | `fhp_lvo_pointer` | field | First Header/Last Valid Octet Pointer of the TFDF Header | uslp | 732.1 §4.1.4.2.4 |
-| 97 | `insert_zone_len` | parameter | Insert Zone Length, a managed parameter of a USLP or AOS Physical Channel, and the Insert Zone a writer is given | uslp, aos | 732.1 §4.1.3; §5.2 Table 5-1 note 5; 732.0 §4.1.3.4.1, §5.2 Table 5-1 |
+| 97 | `insert_zone_len` | parameter | Insert Zone Length, a managed parameter of a USLP or AOS Physical Channel, and the Insert Zone a writer is given | uslp, aos, link | 732.1 §4.1.3; §5.2 Table 5-1 note 5; 732.0 §4.1.3.4.1, §5.2 Table 5-1 |
 | 98 | `truncated_frame_len` | parameter | Truncated Transfer Frame Length, a managed parameter of a Virtual Channel | uslp | 732.1 §5.4 Table 5-3 note 5; Annex D1.2.1, D1.2.4, D1.3.2 |
 | 99 | `transfer_frame_type` | parameter | Transfer Frame Type of a Physical or Virtual Channel: fixed or variable length | uslp | 732.1 §5.2 Table 5-1, §5.4 Table 5-3 note 2; §4.1.4.2.2.1.1 |
 | 100 | `aos_header_spare` | field | Reserved Spare of the AOS Transfer Frame Primary Header, bits 42–43, in Issue 4 and earlier (the two most significant SCID bits in Issue 5) | aos | 732.0-B-4 §4.1.2.5.4; 732.0 §4.1.2.5.4 |
@@ -366,3 +366,20 @@ The table is the registry. `cargo xtask fields --write` generates from it the Ru
 | 162 | `bc_repetitions` | parameter | FOP-1 BC Repetitions | cop1 | 232.1 §5.1.9.3, §7.2 Table 7-1 |
 | 163 | `directive_id` | parameter | Identifier of a FOP-1 directive | cop1 | 232.1 §4.2 |
 | 164 | `request_id` | parameter | Identifier of a FOP-1 transfer request | cop1 | 232.1 §4.4 |
+| 200 | `release_deadline` | parameter | Maximum delay between the first octet written to a data field and its release | link | 732.1 §5.4 Table 5-3 and note 4; LNK-012 |
+| 201 | `idle_policy` | parameter | Idle policy of a Virtual Channel that carries Packets: `Oid` or `IdleField` | link | 132.0 §4.1.4.6.3 note 2; 732.0 §4.1.4.2.3.4; 732.1 §4.1.4.1.5–7, §4.2.2.1.5; LNK-014, OI-11 |
+| 202 | `idle_packet_kind` | parameter | Idle packet that completes a data field: Space Packet Idle Packet or Encapsulation Idle Packet | link | 132.0 §4.2.2.5; 732.0 §4.2.2.5; 732.1 §4.2.2.1.5; LNK-013 |
+| 203 | `idle_pattern` | parameter | Idle data pattern of the octets of idle packets and idle data, and of an Insert Zone fill | link | 732.0 §4.1.4.2.3.2, §4.1.4.3.4.2; 732.1 §4.1.4.3.3 note 1; 133.1 §4.1.3.1.3 note 3; LNK-013, LNK-034 |
+| 204 | `valid_pvns` | parameter | Valid Packet Version Numbers of a Virtual Channel or MAP used for Packet Transfer | link | 132.0 §5.4 Table 5-4; 732.0 §5.5 Table 5-4; 732.1 §5.6 Table 5-5; LNK-010 |
+| 205 | `deliver_incomplete` | parameter | Whether incomplete Packets are required to be delivered at the receiving end | link | 132.0 §5.4 Table 5-4; 732.0 §5.5 Table 5-4; 732.1 §5.6 Table 5-5; LNK-061 |
+| 206 | `mux_policy` | parameter | VC or MC Multiplexing Scheme: fixed priority, round robin, or weighted round robin | link | 132.0 §5.1–5.2 Tables 5-1, 5-2; 732.0 §5.2–5.3 Tables 5-1, 5-2; 732.1 §5.2–5.3 Tables 5-1, 5-2; LNK-031 |
+| 207 | `vc_priority` | parameter | Priority of a VC under the fixed-priority multiplexing policy | link | LNK-031 |
+| 208 | `vc_weight` | parameter | Weight of a VC under the weighted round-robin multiplexing policy | link | LNK-031 |
+| 209 | `blocking` | parameter | Whether several complete Packets may share one Frame Data Unit or TFDF | link | 232.0 §5.3–5.4 Tables 5-3, 5-4; 732.1 §4.2.2.2.8; LNK-040, LNK-042 |
+| 210 | `segmentation` | parameter | Whether a MAP permits segmentation of its SDUs | link | 232.0 §5.4 Table 5-4; LNK-040 |
+| 211 | `max_fdu_len` | parameter | Maximum Frame Data Unit Length of a MAP (TC), or the maximum TFDF length of a MAP or VC (USLP) | link | 232.0 §4.1.3.1.2, §5.4 Table 5-4; 732.1 §4.1.4.1.4; LNK-040, LNK-042 |
+| 212 | `max_sdu_len` | parameter | Maximum `MAP_SDU` Length of a MAP that permits segmentation | link | 232.0 §5.4 Table 5-4; LNK-073 |
+| 213 | `max_frames_per_unit` | parameter | Maximum Number of Transfer Frames given to the coding sublayer as a single data unit | link | 232.0 §5.1 Table 5-1; 732.1 §5.2 Table 5-1; LNK-044 |
+| 214 | `max_unit_len` | parameter | Maximum Length of Data Unit given to the coding sublayer | link | 232.0 §5.1 Table 5-1; LNK-044 |
+| 215 | `qos` | parameter | Quality of service chosen for a transfer request: sequence-controlled or expedited | link | 232.0 §4.1.2.3.1; 732.1 §4.1.2.8; LNK-043 |
+| 216 | `link_protocol` | parameter | Frame protocol (TM, TC, AOS, USLP) a link engine is configured for | link | LNK-001 |

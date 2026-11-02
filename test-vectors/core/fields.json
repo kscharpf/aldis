@@ -605,6 +605,91 @@
       "code": 164,
       "name": "request_id",
       "kind": "parameter"
+    },
+    {
+      "code": 200,
+      "name": "release_deadline",
+      "kind": "parameter"
+    },
+    {
+      "code": 201,
+      "name": "idle_policy",
+      "kind": "parameter"
+    },
+    {
+      "code": 202,
+      "name": "idle_packet_kind",
+      "kind": "parameter"
+    },
+    {
+      "code": 203,
+      "name": "idle_pattern",
+      "kind": "parameter"
+    },
+    {
+      "code": 204,
+      "name": "valid_pvns",
+      "kind": "parameter"
+    },
+    {
+      "code": 205,
+      "name": "deliver_incomplete",
+      "kind": "parameter"
+    },
+    {
+      "code": 206,
+      "name": "mux_policy",
+      "kind": "parameter"
+    },
+    {
+      "code": 207,
+      "name": "vc_priority",
+      "kind": "parameter"
+    },
+    {
+      "code": 208,
+      "name": "vc_weight",
+      "kind": "parameter"
+    },
+    {
+      "code": 209,
+      "name": "blocking",
+      "kind": "parameter"
+    },
+    {
+      "code": 210,
+      "name": "segmentation",
+      "kind": "parameter"
+    },
+    {
+      "code": 211,
+      "name": "max_fdu_len",
+      "kind": "parameter"
+    },
+    {
+      "code": 212,
+      "name": "max_sdu_len",
+      "kind": "parameter"
+    },
+    {
+      "code": 213,
+      "name": "max_frames_per_unit",
+      "kind": "parameter"
+    },
+    {
+      "code": 214,
+      "name": "max_unit_len",
+      "kind": "parameter"
+    },
+    {
+      "code": 215,
+      "name": "qos",
+      "kind": "parameter"
+    },
+    {
+      "code": 216,
+      "name": "link_protocol",
+      "kind": "parameter"
     }
   ]
 }

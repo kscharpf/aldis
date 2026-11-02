@@ -272,7 +272,8 @@ pub const ALDIS_FIELD_PACKET_LEN: u16 = 52;
 
 /// Maximum Packet Length, a managed parameter.
 ///
-/// Code 53, a parameter (133.0 §5.2 Table 5-1; API-082, CABI-021).
+/// Code 53, a parameter (133.0 §5.2 Table 5-1; 132.0 §5.4 Table 5-4; 732.0 §5.5 Table 5-4; 732.1
+/// §5.6 Table 5-5; API-082, CABI-021).
 pub const ALDIS_FIELD_MAX_PACKET_LEN: u16 = 53;
 
 /// Length of the user data a two-phase writer is finished with: the User Data Field of a Space
@@ -632,6 +633,99 @@ pub const ALDIS_FIELD_DIRECTIVE_ID: u16 = 163;
 /// Code 164, a parameter (232.1 §4.4; API-082, CABI-021).
 pub const ALDIS_FIELD_REQUEST_ID: u16 = 164;
 
+/// Maximum delay between the first octet written to a data field and its release.
+///
+/// Code 200, a parameter (732.1 §5.4 Table 5-3 and note 4; LNK-012; API-082, CABI-021).
+pub const ALDIS_FIELD_RELEASE_DEADLINE: u16 = 200;
+
+/// Idle policy of a Virtual Channel that carries Packets: `Oid` or `IdleField`.
+///
+/// Code 201, a parameter (132.0 §4.1.4.6.3 note 2; 732.0 §4.1.4.2.3.4; 732.1 §4.1.4.1.5–7,
+/// §4.2.2.1.5; LNK-014, OI-11; API-082, CABI-021).
+pub const ALDIS_FIELD_IDLE_POLICY: u16 = 201;
+
+/// Idle packet that completes a data field: Space Packet Idle Packet or Encapsulation Idle Packet.
+///
+/// Code 202, a parameter (132.0 §4.2.2.5; 732.0 §4.2.2.5; 732.1 §4.2.2.1.5; LNK-013; API-082,
+/// CABI-021).
+pub const ALDIS_FIELD_IDLE_PACKET_KIND: u16 = 202;
+
+/// Idle data pattern of the octets of idle packets and idle data, and of an Insert Zone fill.
+///
+/// Code 203, a parameter (732.0 §4.1.4.2.3.2, §4.1.4.3.4.2; 732.1 §4.1.4.3.3 note 1; 133.1
+/// §4.1.3.1.3 note 3; LNK-013, LNK-034; API-082, CABI-021).
+pub const ALDIS_FIELD_IDLE_PATTERN: u16 = 203;
+
+/// Valid Packet Version Numbers of a Virtual Channel or MAP used for Packet Transfer.
+///
+/// Code 204, a parameter (132.0 §5.4 Table 5-4; 732.0 §5.5 Table 5-4; 732.1 §5.6 Table 5-5;
+/// LNK-010; API-082, CABI-021).
+pub const ALDIS_FIELD_VALID_PVNS: u16 = 204;
+
+/// Whether incomplete Packets are required to be delivered at the receiving end.
+///
+/// Code 205, a parameter (132.0 §5.4 Table 5-4; 732.0 §5.5 Table 5-4; 732.1 §5.6 Table 5-5;
+/// LNK-061; API-082, CABI-021).
+pub const ALDIS_FIELD_DELIVER_INCOMPLETE: u16 = 205;
+
+/// VC or MC Multiplexing Scheme: fixed priority, round robin, or weighted round robin.
+///
+/// Code 206, a parameter (132.0 §5.1–5.2 Tables 5-1, 5-2; 732.0 §5.2–5.3 Tables 5-1, 5-2; 732.1
+/// §5.2–5.3 Tables 5-1, 5-2; LNK-031; API-082, CABI-021).
+pub const ALDIS_FIELD_MUX_POLICY: u16 = 206;
+
+/// Priority of a VC under the fixed-priority multiplexing policy.
+///
+/// Code 207, a parameter (LNK-031; API-082, CABI-021).
+pub const ALDIS_FIELD_VC_PRIORITY: u16 = 207;
+
+/// Weight of a VC under the weighted round-robin multiplexing policy.
+///
+/// Code 208, a parameter (LNK-031; API-082, CABI-021).
+pub const ALDIS_FIELD_VC_WEIGHT: u16 = 208;
+
+/// Whether several complete Packets may share one Frame Data Unit or TFDF.
+///
+/// Code 209, a parameter (232.0 §5.3–5.4 Tables 5-3, 5-4; 732.1 §4.2.2.2.8; LNK-040, LNK-042;
+/// API-082, CABI-021).
+pub const ALDIS_FIELD_BLOCKING: u16 = 209;
+
+/// Whether a MAP permits segmentation of its SDUs.
+///
+/// Code 210, a parameter (232.0 §5.4 Table 5-4; LNK-040; API-082, CABI-021).
+pub const ALDIS_FIELD_SEGMENTATION: u16 = 210;
+
+/// Maximum Frame Data Unit Length of a MAP (TC), or the maximum TFDF length of a MAP or VC (USLP).
+///
+/// Code 211, a parameter (232.0 §4.1.3.1.2, §5.4 Table 5-4; 732.1 §4.1.4.1.4; LNK-040, LNK-042;
+/// API-082, CABI-021).
+pub const ALDIS_FIELD_MAX_FDU_LEN: u16 = 211;
+
+/// Maximum `MAP_SDU` Length of a MAP that permits segmentation.
+///
+/// Code 212, a parameter (232.0 §5.4 Table 5-4; LNK-073; API-082, CABI-021).
+pub const ALDIS_FIELD_MAX_SDU_LEN: u16 = 212;
+
+/// Maximum Number of Transfer Frames given to the coding sublayer as a single data unit.
+///
+/// Code 213, a parameter (232.0 §5.1 Table 5-1; 732.1 §5.2 Table 5-1; LNK-044; API-082, CABI-021).
+pub const ALDIS_FIELD_MAX_FRAMES_PER_UNIT: u16 = 213;
+
+/// Maximum Length of Data Unit given to the coding sublayer.
+///
+/// Code 214, a parameter (232.0 §5.1 Table 5-1; LNK-044; API-082, CABI-021).
+pub const ALDIS_FIELD_MAX_UNIT_LEN: u16 = 214;
+
+/// Quality of service chosen for a transfer request: sequence-controlled or expedited.
+///
+/// Code 215, a parameter (232.0 §4.1.2.3.1; 732.1 §4.1.2.8; LNK-043; API-082, CABI-021).
+pub const ALDIS_FIELD_QOS: u16 = 215;
+
+/// Frame protocol (TM, TC, AOS, USLP) a link engine is configured for.
+///
+/// Code 216, a parameter (LNK-001; API-082, CABI-021).
+pub const ALDIS_FIELD_LINK_PROTOCOL: u16 = 216;
+
 // Each code is the code of its `aldis_core::field` constant (API-082).
 const _: () = {
     assert!(ALDIS_FIELD_SPACECRAFT_ID == field::SPACECRAFT_ID.code().get());
@@ -761,4 +855,21 @@ const _: () = {
     assert!(ALDIS_FIELD_BC_REPETITIONS == field::BC_REPETITIONS.code().get());
     assert!(ALDIS_FIELD_DIRECTIVE_ID == field::DIRECTIVE_ID.code().get());
     assert!(ALDIS_FIELD_REQUEST_ID == field::REQUEST_ID.code().get());
+    assert!(ALDIS_FIELD_RELEASE_DEADLINE == field::RELEASE_DEADLINE.code().get());
+    assert!(ALDIS_FIELD_IDLE_POLICY == field::IDLE_POLICY.code().get());
+    assert!(ALDIS_FIELD_IDLE_PACKET_KIND == field::IDLE_PACKET_KIND.code().get());
+    assert!(ALDIS_FIELD_IDLE_PATTERN == field::IDLE_PATTERN.code().get());
+    assert!(ALDIS_FIELD_VALID_PVNS == field::VALID_PVNS.code().get());
+    assert!(ALDIS_FIELD_DELIVER_INCOMPLETE == field::DELIVER_INCOMPLETE.code().get());
+    assert!(ALDIS_FIELD_MUX_POLICY == field::MUX_POLICY.code().get());
+    assert!(ALDIS_FIELD_VC_PRIORITY == field::VC_PRIORITY.code().get());
+    assert!(ALDIS_FIELD_VC_WEIGHT == field::VC_WEIGHT.code().get());
+    assert!(ALDIS_FIELD_BLOCKING == field::BLOCKING.code().get());
+    assert!(ALDIS_FIELD_SEGMENTATION == field::SEGMENTATION.code().get());
+    assert!(ALDIS_FIELD_MAX_FDU_LEN == field::MAX_FDU_LEN.code().get());
+    assert!(ALDIS_FIELD_MAX_SDU_LEN == field::MAX_SDU_LEN.code().get());
+    assert!(ALDIS_FIELD_MAX_FRAMES_PER_UNIT == field::MAX_FRAMES_PER_UNIT.code().get());
+    assert!(ALDIS_FIELD_MAX_UNIT_LEN == field::MAX_UNIT_LEN.code().get());
+    assert!(ALDIS_FIELD_QOS == field::QOS.code().get());
+    assert!(ALDIS_FIELD_LINK_PROTOCOL == field::LINK_PROTOCOL.code().get());
 };

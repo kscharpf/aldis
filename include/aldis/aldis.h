@@ -587,7 +587,8 @@
 /**
  * Maximum Packet Length, a managed parameter.
  *
- * Code 53, a parameter (133.0 §5.2 Table 5-1; API-082, CABI-021).
+ * Code 53, a parameter (133.0 §5.2 Table 5-1; 132.0 §5.4 Table 5-4; 732.0 §5.5 Table 5-4; 732.1
+ * §5.6 Table 5-5; API-082, CABI-021).
  */
 #define ALDIS_FIELD_MAX_PACKET_LEN 53
 
@@ -1083,6 +1084,133 @@
  * Code 164, a parameter (232.1 §4.4; API-082, CABI-021).
  */
 #define ALDIS_FIELD_REQUEST_ID 164
+
+/**
+ * Maximum delay between the first octet written to a data field and its release.
+ *
+ * Code 200, a parameter (732.1 §5.4 Table 5-3 and note 4; LNK-012; API-082, CABI-021).
+ */
+#define ALDIS_FIELD_RELEASE_DEADLINE 200
+
+/**
+ * Idle policy of a Virtual Channel that carries Packets: `Oid` or `IdleField`.
+ *
+ * Code 201, a parameter (132.0 §4.1.4.6.3 note 2; 732.0 §4.1.4.2.3.4; 732.1 §4.1.4.1.5–7,
+ * §4.2.2.1.5; LNK-014, OI-11; API-082, CABI-021).
+ */
+#define ALDIS_FIELD_IDLE_POLICY 201
+
+/**
+ * Idle packet that completes a data field: Space Packet Idle Packet or Encapsulation Idle Packet.
+ *
+ * Code 202, a parameter (132.0 §4.2.2.5; 732.0 §4.2.2.5; 732.1 §4.2.2.1.5; LNK-013; API-082,
+ * CABI-021).
+ */
+#define ALDIS_FIELD_IDLE_PACKET_KIND 202
+
+/**
+ * Idle data pattern of the octets of idle packets and idle data, and of an Insert Zone fill.
+ *
+ * Code 203, a parameter (732.0 §4.1.4.2.3.2, §4.1.4.3.4.2; 732.1 §4.1.4.3.3 note 1; 133.1
+ * §4.1.3.1.3 note 3; LNK-013, LNK-034; API-082, CABI-021).
+ */
+#define ALDIS_FIELD_IDLE_PATTERN 203
+
+/**
+ * Valid Packet Version Numbers of a Virtual Channel or MAP used for Packet Transfer.
+ *
+ * Code 204, a parameter (132.0 §5.4 Table 5-4; 732.0 §5.5 Table 5-4; 732.1 §5.6 Table 5-5;
+ * LNK-010; API-082, CABI-021).
+ */
+#define ALDIS_FIELD_VALID_PVNS 204
+
+/**
+ * Whether incomplete Packets are required to be delivered at the receiving end.
+ *
+ * Code 205, a parameter (132.0 §5.4 Table 5-4; 732.0 §5.5 Table 5-4; 732.1 §5.6 Table 5-5;
+ * LNK-061; API-082, CABI-021).
+ */
+#define ALDIS_FIELD_DELIVER_INCOMPLETE 205
+
+/**
+ * VC or MC Multiplexing Scheme: fixed priority, round robin, or weighted round robin.
+ *
+ * Code 206, a parameter (132.0 §5.1–5.2 Tables 5-1, 5-2; 732.0 §5.2–5.3 Tables 5-1, 5-2; 732.1
+ * §5.2–5.3 Tables 5-1, 5-2; LNK-031; API-082, CABI-021).
+ */
+#define ALDIS_FIELD_MUX_POLICY 206
+
+/**
+ * Priority of a VC under the fixed-priority multiplexing policy.
+ *
+ * Code 207, a parameter (LNK-031; API-082, CABI-021).
+ */
+#define ALDIS_FIELD_VC_PRIORITY 207
+
+/**
+ * Weight of a VC under the weighted round-robin multiplexing policy.
+ *
+ * Code 208, a parameter (LNK-031; API-082, CABI-021).
+ */
+#define ALDIS_FIELD_VC_WEIGHT 208
+
+/**
+ * Whether several complete Packets may share one Frame Data Unit or TFDF.
+ *
+ * Code 209, a parameter (232.0 §5.3–5.4 Tables 5-3, 5-4; 732.1 §4.2.2.2.8; LNK-040, LNK-042;
+ * API-082, CABI-021).
+ */
+#define ALDIS_FIELD_BLOCKING 209
+
+/**
+ * Whether a MAP permits segmentation of its SDUs.
+ *
+ * Code 210, a parameter (232.0 §5.4 Table 5-4; LNK-040; API-082, CABI-021).
+ */
+#define ALDIS_FIELD_SEGMENTATION 210
+
+/**
+ * Maximum Frame Data Unit Length of a MAP (TC), or the maximum TFDF length of a MAP or VC (USLP).
+ *
+ * Code 211, a parameter (232.0 §4.1.3.1.2, §5.4 Table 5-4; 732.1 §4.1.4.1.4; LNK-040, LNK-042;
+ * API-082, CABI-021).
+ */
+#define ALDIS_FIELD_MAX_FDU_LEN 211
+
+/**
+ * Maximum `MAP_SDU` Length of a MAP that permits segmentation.
+ *
+ * Code 212, a parameter (232.0 §5.4 Table 5-4; LNK-073; API-082, CABI-021).
+ */
+#define ALDIS_FIELD_MAX_SDU_LEN 212
+
+/**
+ * Maximum Number of Transfer Frames given to the coding sublayer as a single data unit.
+ *
+ * Code 213, a parameter (232.0 §5.1 Table 5-1; 732.1 §5.2 Table 5-1; LNK-044; API-082, CABI-021).
+ */
+#define ALDIS_FIELD_MAX_FRAMES_PER_UNIT 213
+
+/**
+ * Maximum Length of Data Unit given to the coding sublayer.
+ *
+ * Code 214, a parameter (232.0 §5.1 Table 5-1; LNK-044; API-082, CABI-021).
+ */
+#define ALDIS_FIELD_MAX_UNIT_LEN 214
+
+/**
+ * Quality of service chosen for a transfer request: sequence-controlled or expedited.
+ *
+ * Code 215, a parameter (232.0 §4.1.2.3.1; 732.1 §4.1.2.8; LNK-043; API-082, CABI-021).
+ */
+#define ALDIS_FIELD_QOS 215
+
+/**
+ * Frame protocol (TM, TC, AOS, USLP) a link engine is configured for.
+ *
+ * Code 216, a parameter (LNK-001; API-082, CABI-021).
+ */
+#define ALDIS_FIELD_LINK_PROTOCOL 216
 
 /**
  * The most actions one `aldis_fop1_step` returns (COP-006): `fop1_max_actions` of the
