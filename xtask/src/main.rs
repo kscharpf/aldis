@@ -75,7 +75,8 @@ commands:
                                targets in fuzz/Cargo.toml and the nightly matrix; every vector
                                file in test-vectors/README.md, a test, and the exerciser;
                                every aldis_ or ALDIS_ name of docs/profiles/c-abi.md and the
-                               ffi README in include/aldis/aldis.h (CABI-002)
+                               ffi README in include/aldis/aldis.h (CABI-002); every engine
+                               of aldis-cop1/aldis-link in capacities.toml or exempted
   loops [list [<crate>...]]    every while, while let, and loop in a library crate, and every
                                iteration over an open range or endless source, has a `// bound:`
                                comment above it, and every such comment is above a loop
