@@ -61,13 +61,14 @@ fn tm_config(policy: MuxPolicy) -> ChannelMuxConfig<Tm, V> {
     ChannelMuxConfig::new(tm_channel(), 24, true, policy, &tm_vcs()).unwrap()
 }
 
-const fn aos_channel() -> AosChannel {
-    AosChannel {
-        scid: SpacecraftId::<10>::new(421).unwrap(),
-        edition: AosEdition::Issue5,
-        fhec: false,
-        cycle_in_use: false,
-    }
+fn aos_channel() -> AosChannel {
+    AosChannel::new(
+        SpacecraftId::<10>::new(421).unwrap(),
+        AosEdition::Issue5,
+        false,
+        false,
+    )
+    .unwrap()
 }
 
 fn aos_vc(id: u8, priority: u8) -> VcConfig<Aos> {
@@ -278,14 +279,20 @@ fn a_configuration_the_blue_books_forbid_is_refused() {
         failure(aos(&[aos_vc(63, 1)], aos_channel())),
         invalid(field::VC_ID)
     );
-    let mut issue4 = aos_channel();
-    issue4.edition = AosEdition::Issue4Compatible;
-    assert_eq!(
-        failure(aos(&[aos_vc(1, 1)], issue4)),
-        invalid(field::SPACECRAFT_ID)
-    );
-    issue4.scid = SpacecraftId::<10>::new(255).unwrap();
-    assert!(aos(&[aos_vc(1, 1)], issue4).is_ok());
+    let issue4 = |scid| {
+        AosChannel::new(
+            SpacecraftId::<10>::new(scid).unwrap(),
+            AosEdition::Issue4Compatible,
+            false,
+            false,
+        )
+    };
+    assert_eq!(failure(issue4(256)), invalid(field::SPACECRAFT_ID));
+    assert!(aos(&[aos_vc(1, 1)], issue4(255).unwrap()).is_ok());
+    // A TM frame is at most 4 095 octets (TM-001, OI-51, HZ-TM-04).
+    let long = |len| ChannelMuxConfig::<Tm, V>::new(tm_channel(), len, true, fixed, &tm_vcs());
+    assert!(long(4095).is_ok());
+    assert_eq!(failure(long(4096)), invalid(field::FRAME_LEN));
     let uslp = |vcs: &[VcConfig<Uslp>], frame_len| {
         ChannelMuxConfig::<Uslp, V>::new(uslp_channel(), frame_len, true, fixed, vcs)
     };
@@ -333,6 +340,10 @@ fn the_configuration_reports_what_it_holds() {
         ChannelMuxConfig::<Tm, V>::new(tm_channel(), 24, true, MuxPolicy::FixedPriority, &shuffled)
             .unwrap();
     assert_eq!(again, tm_config(MuxPolicy::FixedPriority));
+    let channel = aos_channel();
+    assert_eq!(channel.scid().get(), 421);
+    assert_eq!(channel.edition(), AosEdition::Issue5);
+    assert!(!channel.fhec() && !channel.cycle_in_use());
     let aos = aos_config().with_insert_zone(3, 0xA5).unwrap();
     assert_eq!(aos.insert_zone_len(), 3);
 }
@@ -406,11 +417,7 @@ fn an_offer_the_vc_cannot_have_is_refused_and_changes_nothing() {
         ),
         invalid(field::MAP_ID)
     );
-    let cop = Cop {
-        vcf_count: 0,
-        bypass: false,
-        protocol_control: false,
-    };
+    let cop = Cop::TypeAd { vcf_count: 0 };
     assert_eq!(
         step(
             &mut mux,
@@ -461,10 +468,8 @@ fn a_uslp_offer_is_checked_against_the_vc_and_its_cop() {
     let field22 = [0x22; 22];
     let mut out = [0; F];
     let invalid = |f| named(ErrorKind::InvalidField, f);
-    let cop = |vcf_count, bypass, protocol_control| Cop {
-        vcf_count,
-        bypass,
-        protocol_control,
+    let cop = |vcf_count, bypass, protocol_control| {
+        Cop::new(vcf_count, bypass, protocol_control).unwrap()
     };
     let route = |map, qos| Route {
         map: MapId::<4>::new(map).unwrap(),
@@ -492,13 +497,33 @@ fn a_uslp_offer_is_checked_against_the_vc_and_its_cop() {
     // With COP-1 in effect.
     let mut mux = UslpMux::new(uslp_config(true)).unwrap();
     let mut refused = |o: Offer<'_>| failure(mux.step(MuxInput::Offer(o), &mut out));
-    // The reserved flag combination of Table 4-1 (Bypass 0, Protocol Control Command 1).
+    // The reserved flag combination of Table 4-1 (Bypass 0, Protocol Control Command 1) cannot
+    // be built, and the others are the variants.
     assert_eq!(
-        refused(Offer {
-            cop: Some(cop(0, false, true)),
-            ..offer(1, &field21, None)
-        }),
+        failure(Cop::new(0, false, true)),
         invalid(field::PROTOCOL_CONTROL_COMMAND_FLAG)
+    );
+    let (ad, bd, bc) = (
+        cop(5, false, false),
+        cop(5, true, false),
+        cop(5, true, true),
+    );
+    assert_eq!(
+        (ad, bd, bc),
+        (Cop::TypeAd { vcf_count: 5 }, Cop::TypeBd, Cop::TypeBc)
+    );
+    assert_eq!((ad.bypass(), bd.bypass(), bc.bypass()), (false, true, true));
+    assert_eq!(
+        (
+            ad.protocol_control(),
+            bd.protocol_control(),
+            bc.protocol_control()
+        ),
+        (false, false, true)
+    );
+    assert_eq!(
+        (ad.vcf_count(), bd.vcf_count(), bc.vcf_count()),
+        (Some(5), None, None)
     );
     // The route's QoS and the block's Bypass Flag must agree.
     assert_eq!(
@@ -742,12 +767,8 @@ fn a_reconfiguration_keeps_the_counts_and_the_oid_generator_and_starts_the_walk_
 }
 
 #[test]
-fn the_aos_vc_frame_count_wraps_and_counts_cycles() {
-    // req: LNK-032, OI-74
-    // The mux has no start count (OI-74), so the wrap is reached by frames: 2^24 + 2 of them on
-    // VC 1 would take long in a debug build, so the property is checked at the wrap of the
-    // 8-bit counts of TM and of the 1- and 2-octet counts of USLP in the vectors, and here on
-    // the AOS counter by the engine's own test (`mux::tests`).
+fn the_aos_vc_frame_count_counts_up_by_one_per_frame() {
+    // req: LNK-032
     let mut mux = AosMux::new(aos_config()).unwrap();
     let mut out = [0; F];
     for n in 0..300_u32 {
@@ -865,9 +886,13 @@ fn the_protocols_without_cop_have_no_vcf_count_to_take() {
 #[test]
 fn an_issue_4_aos_frame_has_an_8_bit_scid_and_zero_spare_bits() {
     // req: LNK-032, AOS-002
-    let mut channel = aos_channel();
-    channel.edition = AosEdition::Issue4Compatible;
-    channel.scid = SpacecraftId::<10>::new(255).unwrap();
+    let channel = AosChannel::new(
+        SpacecraftId::<10>::new(255).unwrap(),
+        AosEdition::Issue4Compatible,
+        false,
+        false,
+    )
+    .unwrap();
     let config = ChannelMuxConfig::<Aos, V>::new(
         channel,
         28,

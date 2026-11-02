@@ -27,6 +27,9 @@ pub const ACCESS_GENERATOR_MAX_ACTIONS: usize = 1;
 /// The octets that hold the length of a queued SDU.
 const PREFIX: usize = 2;
 
+/// The longest SDU, and zone, that the 16-bit length of a queued SDU can count.
+const MAX_SDU: usize = 0xFFFF;
+
 /// The Last Valid Octet Pointer of a TFDZ in which the SDU does not end: all ones (732.1
 /// §4.1.4.2.4.6).
 const LVO_SDU_CONTINUES: u16 = 0xFFFF;
@@ -71,10 +74,13 @@ impl<P: AccessProtocol> AccessGeneratorConfig<P> {
     ///
     /// # Errors
     /// `InvalidConfig` (`field_len`) unless the field holds the header and at least one octet of
-    /// zone, and the pointer of the protocol can address the last octet of the zone.
+    /// zone, the zone has at most 65 535 octets (the length of a queued SDU has 16 bits), and
+    /// the pointer of the protocol can address the last octet of the zone.
     pub fn new(vc: P::Vc, params: P::Params, field_len: usize) -> Result<AccessGeneratorConfig<P>> {
         let zone = field_len.saturating_sub(P::HEADER_LEN);
-        if zone == 0 || zone > P::max_zone_len(&params) {
+        // The queue holds the length of an SDU in 16 bits, so a zone above 65 535 octets could
+        // take an SDU it cannot count (LNK-020: unchanged).
+        if zone == 0 || zone > P::max_zone_len(&params).min(MAX_SDU) {
             return Err(Error::new(ErrorKind::InvalidConfig).with_field(field::FIELD_LEN));
         }
         Ok(AccessGeneratorConfig {
@@ -93,7 +99,7 @@ impl<P: AccessProtocol> AccessGeneratorConfig<P> {
     /// whose SDU is exactly one field (TM, AOS) unless it is the zone.
     pub const fn with_max_sdu_len(self, max_sdu_len: usize) -> Result<AccessGeneratorConfig<P>> {
         let zone = self.zone_len();
-        if max_sdu_len == 0 || max_sdu_len > 0xFFFF || (!P::SPANNING && max_sdu_len != zone) {
+        if max_sdu_len == 0 || max_sdu_len > MAX_SDU || (!P::SPANNING && max_sdu_len != zone) {
             Err(Error::new(ErrorKind::InvalidConfig).with_field(field::MAX_SDU_LEN))
         } else {
             Ok(AccessGeneratorConfig {
@@ -300,7 +306,8 @@ impl<P: AccessProtocol, const Q: usize> AccessGenerator<P, Q> {
             self.status.would_block.incr();
             return Err(Error::new(ErrorKind::WouldBlock));
         }
-        // The length fits 16 bits: `with_max_sdu_len` limits it.
+        // The length fits 16 bits: `new` limits the zone and `with_max_sdu_len` the SDU to
+        // `MAX_SDU`, and `check_sdu` has refused a longer one.
         let [.., a, b] = sdu.len().to_be_bytes();
         let queued = [a, b].into_iter().chain(sdu.iter().copied());
         for (d, s) in self.queue.iter_mut().skip(self.queue_len).zip(queued) {

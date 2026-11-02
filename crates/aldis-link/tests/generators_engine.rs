@@ -56,6 +56,12 @@ fn an_access_configuration_the_blue_books_forbid_is_refused() {
     let tm = |len| AccessGeneratorConfig::<Tm>::new(VcId::<3>::new(1).unwrap(), (), len);
     assert_eq!(named(tm(0)), invalid(field::FIELD_LEN.name()));
     assert!(tm(1).is_ok());
+    // A field above 65 535 octets would queue the length of its SDU modulo 65 536 (LNK-020).
+    assert!(tm(65_535).is_ok());
+    assert_eq!(named(tm(65_536)), invalid(field::FIELD_LEN.name()));
+    let aos = |len| AccessGeneratorConfig::<Aos>::new(VcId::<6>::new(1).unwrap(), (), len);
+    assert!(aos(65_535).is_ok());
+    assert_eq!(named(aos(70_000)), invalid(field::FIELD_LEN.name()));
     // The header and at least one octet of zone; the zone's last octet needs a pointer value.
     let uslp =
         |len| AccessGeneratorConfig::<Uslp>::new(VcId::<6>::new(2).unwrap(), uslp_params(), len);

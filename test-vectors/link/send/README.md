@@ -92,6 +92,8 @@ Cases the first version of this directory left out are covered since [OI-74](../
 
 Decided by the work packages under [OI-78](../../../docs/09-open-issues.md); the sending-side cases of `ChannelMux` (WP-4) are pinned by Rust tests (`channel_mux_engine.rs`), with no case in this directory:
 
-* The header and trailer sizes above the limits of API-071 and the other configuration errors (LNK-078, WP-6).
+* The configuration errors of the `MapSegmenter` and the CLTU packer (LNK-078, WP-6); those of the `ChannelMux` and the generators, the API-071 limits included, are tested in `channel_mux_engine.rs` and `generators_engine.rs`.
+
+The vector cases for the `ChannelMux` items of OI-78 go to the one blind-model round after WP-6.
 
 Several master channels on one physical channel are deferred by OI-75.

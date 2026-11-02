@@ -70,7 +70,8 @@ fn vc<P: MuxProtocol>(v: &Value, params: P::VcParams) -> VcConfig<P> {
 
 /// A protocol of the scenarios, with its configuration from a scenario's `config`.
 trait Proto: MuxProtocol {
-    fn config(c: &Map<String, Value>) -> ChannelMuxConfig<Self, V>;
+    /// The configuration; COP-1 is in effect on the VCs `cop_vcs` only (USLP).
+    fn config(c: &Map<String, Value>, cop_vcs: &[u8]) -> ChannelMuxConfig<Self, V>;
     /// The default MAP and `QoS` of VC `vcid` (USLP).
     fn route(_: &Map<String, Value>, _: u8) -> Option<Route> {
         None
@@ -102,7 +103,7 @@ fn finish<P: MuxProtocol>(
 }
 
 impl Proto for Tm {
-    fn config(c: &Map<String, Value>) -> ChannelMuxConfig<Tm, V> {
+    fn config(c: &Map<String, Value>, _: &[u8]) -> ChannelMuxConfig<Tm, V> {
         let mut channel = TmChannel::new(
             SpacecraftId::<10>::new(u16::try_from(num(&c["scid"])).unwrap()).unwrap(),
             VcId::<3>::new(small(&c["oid_vc"])).unwrap(),
@@ -130,13 +131,14 @@ impl Proto for Tm {
 }
 
 impl Proto for Aos {
-    fn config(c: &Map<String, Value>) -> ChannelMuxConfig<Aos, V> {
-        let channel = AosChannel {
-            scid: SpacecraftId::<10>::new(u16::try_from(num(&c["scid"])).unwrap()).unwrap(),
-            edition: AosEdition::Issue5,
-            fhec: c["fhec"].as_bool().unwrap(),
-            cycle_in_use: c["cycle_in_use"].as_bool().unwrap(),
-        };
+    fn config(c: &Map<String, Value>, _: &[u8]) -> ChannelMuxConfig<Aos, V> {
+        let channel = AosChannel::new(
+            SpacecraftId::<10>::new(u16::try_from(num(&c["scid"])).unwrap()).unwrap(),
+            AosEdition::Issue5,
+            c["fhec"].as_bool().unwrap(),
+            c["cycle_in_use"].as_bool().unwrap(),
+        )
+        .unwrap();
         let vcs: Vec<_> = c["vcs"]
             .as_array()
             .unwrap()
@@ -171,7 +173,7 @@ fn qos(name: &str) -> Qos {
 }
 
 impl Proto for Uslp {
-    fn config(c: &Map<String, Value>) -> ChannelMuxConfig<Uslp, V> {
+    fn config(c: &Map<String, Value>, cop_vcs: &[u8]) -> ChannelMuxConfig<Uslp, V> {
         let channel = UslpChannel {
             scid: SpacecraftId::<16>::new(u16::try_from(num(&c["scid"])).unwrap()).unwrap(),
             source_or_destination: SourceOrDestination::from_bit(
@@ -191,8 +193,7 @@ impl Proto for Uslp {
                     qos: qos(o["qos"].as_str().unwrap()),
                     vcf_len_sc: VcfCountLen::new(small(&o["vcf_len_sc"])).unwrap(),
                     vcf_len_exp: VcfCountLen::new(small(&o["vcf_len_exp"])).unwrap(),
-                    // The scenarios offer a `cop` block on VC 1.
-                    cop: true,
+                    cop: cop_vcs.contains(&small(&o["vcid"])),
                 };
                 vc::<Uslp>(v, params)
             })
@@ -238,8 +239,20 @@ fn output(o: &MuxOutput, area: &[u8]) -> Value {
     }
 }
 
+/// The VCs a scenario offers a `cop` block to: COP-1 is in effect on those only.
+fn cop_vcs(scenario: &aldis_testkit::ResolvedScenario<'_>) -> Vec<u8> {
+    scenario
+        .steps
+        .iter()
+        .filter_map(|s| s.input.get("offer"))
+        .filter(|o| o.get("cop").is_some())
+        .map(|o| small(&o["vc"]))
+        .collect()
+}
+
 fn run_scenario<P: Proto>(scenario: &aldis_testkit::ResolvedScenario<'_>) -> Vec<String> {
-    let mut engine = ChannelMux::<P, V, F>::new(P::config(scenario.config)).unwrap();
+    let cop_vcs = cop_vcs(scenario);
+    let mut engine = ChannelMux::<P, V, F>::new(P::config(scenario.config, &cop_vcs)).unwrap();
     let mut config = scenario.config.clone();
     let mut area = vec![0xEE_u8; F];
     for (i, step) in scenario.steps.iter().enumerate() {
@@ -260,10 +273,13 @@ fn run_scenario<P: Proto>(scenario: &aldis_testkit::ResolvedScenario<'_>) -> Vec
                             .map_or(d.map, |m| MapId::<4>::new(small(m)).unwrap()),
                         qos: v.get("qos").map_or(d.qos, |q| qos(q.as_str().unwrap())),
                     });
-                let cop = v.get("cop").map(|c| Cop {
-                    vcf_count: num(&c["vcf_count"]),
-                    bypass: num(&c["bypass"]) == 1,
-                    protocol_control: num(&c["protocol_control"]) == 1,
+                let cop = v.get("cop").map(|c| {
+                    Cop::new(
+                        num(&c["vcf_count"]),
+                        num(&c["bypass"]) == 1,
+                        num(&c["protocol_control"]) == 1,
+                    )
+                    .unwrap()
                 });
                 MuxInput::Offer(Offer {
                     vc: vcid,
@@ -294,7 +310,7 @@ fn run_scenario<P: Proto>(scenario: &aldis_testkit::ResolvedScenario<'_>) -> Vec
             }
             "reconfigure" => {
                 config.clone_from(v["config"].as_object().unwrap());
-                MuxInput::Reconfigure(P::config(&config))
+                MuxInput::Reconfigure(P::config(&config, &cop_vcs))
             }
             other => panic!("unknown input {other}"),
         };
@@ -334,11 +350,13 @@ fn run_file(name: &str) -> (usize, Vec<String>) {
     assert_eq!(file.engine, "channel-mux");
     let resolved = file.resolve().unwrap();
     let mut failures = Vec::new();
+    let mut run = 0;
     for scenario in &resolved {
         if scenario.scenario.superseded.is_some() {
             // A superseded case is kept for the record and not run (TV-021).
             continue;
         }
+        run = usize::saturating_add(run, 1);
         failures.extend(match scenario.config["protocol"].as_str().unwrap() {
             "tm" => run_scenario::<Tm>(scenario),
             "aos" => run_scenario::<Aos>(scenario),
@@ -346,7 +364,7 @@ fn run_file(name: &str) -> (usize, Vec<String>) {
             other => panic!("no engine for {other}"),
         });
     }
-    (resolved.len(), failures)
+    (run, failures)
 }
 
 #[test]
@@ -365,5 +383,42 @@ fn the_channel_mux_scenarios_match_exactly() {
         "{} failed:\n{}",
         failures.len(),
         failures.join("\n")
+    );
+}
+
+/// A `cop` block is refused on a VC that has no COP-1 in effect (LNK-076, OI-78): the runner
+/// turns COP-1 on only for the VCs a scenario offers a block to, so this reaches the refusal.
+#[test]
+fn a_cop_block_needs_cop_in_effect() {
+    // req: LNK-076
+    let path = aldis_testkit::vectors_dir().join("link/send/channel_mux_uslp.json");
+    let text = std::fs::read_to_string(&path).unwrap();
+    let Ok(VectorFile::EngineScenario(file)) = VectorFile::from_json(&text) else {
+        panic!("not an engine scenario file");
+    };
+    let resolved = file.resolve().unwrap();
+    let scenario = resolved
+        .iter()
+        .find(|s| s.scenario.id.contains("cop-block"))
+        .unwrap();
+    assert_eq!(cop_vcs(scenario), [1, 1]);
+    let mut engine = ChannelMux::<Uslp, V, F>::new(Uslp::config(scenario.config, &[])).unwrap();
+    let field = vec![0_u8; 21];
+    let offer = Offer {
+        vc: 1,
+        field: &field,
+        pointer: Some(0),
+        route: None,
+        cop: Some(Cop::TypeAd { vcf_count: 7 }),
+    };
+    let e = engine
+        .step(MuxInput::Offer(offer), &mut [0_u8; F])
+        .unwrap_err();
+    assert_eq!(
+        (e.kind(), e.field()),
+        (
+            aldis_core::ErrorKind::InvalidField,
+            Some(aldis_core::field::COP_IN_EFFECT)
+        )
     );
 }

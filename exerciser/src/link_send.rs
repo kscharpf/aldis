@@ -216,12 +216,15 @@ fn aos(t: &mut Tally) {
         t.check(false);
         return;
     };
-    let channel = AosChannel {
-        scid,
-        edition: AosEdition::Issue5,
-        fhec: bb(true),
-        cycle_in_use: bb(true),
+    let Ok(channel) = AosChannel::new(scid, AosEdition::Issue5, bb(true), bb(true)) else {
+        t.check(false);
+        return;
     };
+    t.check(channel.scid() == scid && channel.edition() == AosEdition::Issue5);
+    t.check(channel.fhec() && channel.cycle_in_use());
+    t.check(SpacecraftId::<10>::new(bb(256)).is_some_and(|big| {
+        AosChannel::new(big, AosEdition::Issue4Compatible, false, false).is_err()
+    }));
     let vcs = [VcConfig::<Aos>::new(
         v1,
         AosVc {
@@ -275,7 +278,7 @@ fn aos(t: &mut Tally) {
             .is_ok_and(|a| a.len() == 2 && a.get(1) == Some(&MuxOutput::InsertSduRepeated)),
     );
     t.check(mux.status().insert_repeated.get() == 1);
-    t.check(mux.config().channel().cycle_in_use);
+    t.check(mux.config().channel().cycle_in_use());
 }
 
 /// A USLP mux with COP-1 on a VC: the `cop` block, routes, and the OID frame with the MC's OCF.
@@ -327,12 +330,12 @@ fn uslp(t: &mut Tally) {
             map,
             qos: Qos::Expedited,
         }),
-        cop: Some(Cop {
-            vcf_count: bb(0),
-            bypass: true,
-            protocol_control: bb(true),
-        }),
+        cop: Cop::new(bb(0), true, bb(true)).ok(),
     };
+    t.check(Cop::new(bb(0), false, bb(true)).is_err());
+    t.check(
+        Cop::TypeAd { vcf_count: bb(4) }.vcf_count() == Some(4) && !Cop::TypeBd.protocol_control(),
+    );
     t.check(mux.step(MuxInput::Offer(offer), &mut out).is_ok());
     let bad_map = MapId::<4>::new(bb(2)).map(|m| Route {
         map: m,

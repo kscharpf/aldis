@@ -124,16 +124,60 @@ pub enum Scope {
 
 /// The block that COP-1 gives with a field (LNK-032, LNK-076; 732.1 §4.1.2.12.5, §4.2.7.4
 /// notes 2–3).
+///
+/// One variant for each frame kind of 732.1 Table 4-1 that COP-1 sends, so the reserved flag
+/// combination (Bypass 0, Protocol Control Command 1) cannot be represented (RS-020).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct Cop {
-    /// The VCF Count to put in the frame. With `bypass` false (Type-AD) it is the Frame
-    /// Sequence Number, which the mux takes as given and counts nothing for; with `bypass`
-    /// true it is ignored, and the mux uses its own expedited count.
-    pub vcf_count: u64,
+pub enum Cop {
+    /// A Type-AD frame (Bypass 0, Protocol Control Command 0): `vcf_count` is the Frame
+    /// Sequence Number, which the mux takes as given and counts nothing for.
+    TypeAd {
+        /// The VCF Count to put in the frame.
+        vcf_count: u64,
+    },
+    /// A Type-BD frame (Bypass 1, Protocol Control Command 0): the mux uses and increments its
+    /// own expedited VCF Count.
+    TypeBd,
+    /// A Type-BC frame (Bypass 1, Protocol Control Command 1): as Type-BD.
+    TypeBc,
+}
+
+impl Cop {
+    /// The block of the two flags and the count FOP-1 gives.
+    ///
+    /// # Errors
+    /// `InvalidField` (`protocol_control_command_flag`) for Bypass 0 with Protocol Control
+    /// Command 1, the reserved combination of 732.1 Table 4-1.
+    pub const fn new(vcf_count: u64, bypass: bool, protocol_control: bool) -> Result<Cop> {
+        match (bypass, protocol_control) {
+            (false, false) => Ok(Cop::TypeAd { vcf_count }),
+            (true, false) => Ok(Cop::TypeBd),
+            (true, true) => Ok(Cop::TypeBc),
+            (false, true) => Err(Error::new(ErrorKind::InvalidField)
+                .with_field(field::PROTOCOL_CONTROL_COMMAND_FLAG)),
+        }
+    }
+
     /// The Bypass/Sequence Control Flag.
-    pub bypass: bool,
-    /// The Protocol Control Command Flag (a Type-BC frame).
-    pub protocol_control: bool,
+    #[must_use]
+    pub const fn bypass(self) -> bool {
+        !matches!(self, Cop::TypeAd { .. })
+    }
+
+    /// The Protocol Control Command Flag.
+    #[must_use]
+    pub const fn protocol_control(self) -> bool {
+        matches!(self, Cop::TypeBc)
+    }
+
+    /// The VCF Count the mux takes as given: the Frame Sequence Number of a Type-AD frame.
+    #[must_use]
+    pub const fn vcf_count(self) -> Option<u64> {
+        match self {
+            Cop::TypeAd { vcf_count } => Some(vcf_count),
+            Cop::TypeBd | Cop::TypeBc => None,
+        }
+    }
 }
 
 /// A data field offered for a VC (LNK-076): what a generator returns with its octets.
@@ -774,7 +818,7 @@ impl<P: MuxProtocol, const V: usize, const F: usize> ChannelMux<P, V, F> {
     /// # Errors
     /// - `Offer`: `UnknownChannel` for a VCID not configured, (`map_id`) for a MAP
     ///   the VC does not have; `InvalidField` (`first_header_pointer`, `map_id`,
-    ///   `cop_in_effect`, `protocol_control_command_flag`, `qos`) for a pointer, route, or COP
+    ///   `cop_in_effect`, `qos`) for a pointer, route, or COP
     ///   block the VC cannot have; `OutOfRange` (`vcf_count`); `LengthMismatch` (`field_len`);
     ///   `WouldBlock` when the VC's slot is occupied (LNK-076).
     /// - `SetOcf`, `SetFsh`: `UnknownChannel`; `InvalidField` (`ocf_flag`,
@@ -848,24 +892,19 @@ impl<P: MuxProtocol, const V: usize, const F: usize> ChannelMux<P, V, F> {
         let (bypass, protocol_control, given_count) = match offer.cop {
             None => (route_qos == Some(Qos::Expedited), false, None),
             Some(_) if !P::vc_cop(&vc.params) => return Err(invalid(field::COP_IN_EFFECT)),
-            Some(c) if !c.bypass && c.protocol_control => {
-                return Err(invalid(field::PROTOCOL_CONTROL_COMMAND_FLAG));
-            }
-            Some(c) if offer.route.is_some() && (route_qos == Some(Qos::Expedited)) != c.bypass => {
+            Some(c)
+                if offer.route.is_some() && (route_qos == Some(Qos::Expedited)) != c.bypass() =>
+            {
                 return Err(invalid(field::QOS));
             }
-            Some(c) if !c.bypass && c.vcf_count > P::vcf_max(&vc.params, false) => {
+            Some(Cop::TypeAd { vcf_count }) if vcf_count > P::vcf_max(&vc.params, false) => {
                 return Err(Error::out_of_range(
                     field::VCF_COUNT,
                     P::vcf_max(&vc.params, false),
-                    c.vcf_count,
+                    vcf_count,
                 ));
             }
-            Some(c) => (
-                c.bypass,
-                c.protocol_control,
-                (!c.bypass).then_some(c.vcf_count),
-            ),
+            Some(c) => (c.bypass(), c.protocol_control(), c.vcf_count()),
         };
         let pointer = P::check_pointer(&vc.params, offer.pointer)?;
         if offer.field.len() != self.config.data_len(Some(vc), bypass) {
@@ -1087,23 +1126,26 @@ impl<P: MuxProtocol, const V: usize, const F: usize> ChannelMux<P, V, F> {
         pick: &Pick<P>,
         fields: &FrameFields,
     ) -> Result<()> {
-        let internal = || Error::new(ErrorKind::InternalError);
         let header = frame
             .get_mut(layout.primary_header())
-            .ok_or_else(internal)?;
+            .ok_or(Error::new(ErrorKind::InternalError))?;
         P::write_header(
             &self.config.channel,
             pick.vc.as_ref().map(|v| &v.params),
             fields,
             header,
         );
-        let secondary = frame.get_mut(layout.secondary()).ok_or_else(internal)?;
+        let secondary = frame
+            .get_mut(layout.secondary())
+            .ok_or(Error::new(ErrorKind::InternalError))?;
         let fsh = pick
             .vc_pos
             .and_then(|p| self.vc_fsh.get(p).copied().flatten())
             .or(self.mc_fsh);
         if let Some(fsh) = fsh {
-            let (id, rest) = secondary.split_first_mut().ok_or_else(internal)?;
+            let (id, rest) = secondary
+                .split_first_mut()
+                .ok_or(Error::new(ErrorKind::InternalError))?;
             *id = fsh.id_octet();
             for (d, s) in rest.iter_mut().zip(fsh.octets()) {
                 *d = s;
@@ -1113,18 +1155,20 @@ impl<P: MuxProtocol, const V: usize, const F: usize> ChannelMux<P, V, F> {
                 *d = *s;
             }
         }
-        let data = frame.get_mut(layout.data()).ok_or_else(internal)?;
+        let data = frame
+            .get_mut(layout.data())
+            .ok_or(Error::new(ErrorKind::InternalError))?;
         if fields.oid {
             let (head, zone) = data
                 .split_at_mut_checked(P::OID_DATA_HEADER)
-                .ok_or_else(internal)?;
+                .ok_or(Error::new(ErrorKind::InternalError))?;
             P::write_oid_data_header(layout.data().len(), head);
             self.oid.fill(zone);
         } else {
             let slot = pick
                 .vc_pos
                 .and_then(|p| self.slots.get(p))
-                .ok_or_else(internal)?;
+                .ok_or(Error::new(ErrorKind::InternalError))?;
             for (d, s) in data.iter_mut().zip(slot) {
                 *d = *s;
             }
@@ -1134,7 +1178,9 @@ impl<P: MuxProtocol, const V: usize, const F: usize> ChannelMux<P, V, F> {
             .and_then(|p| self.vc_ocf.get(p).copied().flatten())
             .or(self.mc_ocf);
         if let Some(ocf) = ocf {
-            let dst = frame.get_mut(layout.ocf()).ok_or_else(internal)?;
+            let dst = frame
+                .get_mut(layout.ocf())
+                .ok_or(Error::new(ErrorKind::InternalError))?;
             for (d, s) in dst.iter_mut().zip(ocf) {
                 *d = s;
             }
@@ -1166,6 +1212,7 @@ mod tm_impl {
     use aldis_core::layout::OCF_LEN;
     use aldis_core::{Error, ErrorKind, Result, field};
     use aldis_tm::FirstHeaderPointer;
+    use aldis_tm::config::TmPhysicalChannelConfig;
 
     use super::{FrameFields, Fsh, MuxProtocol, VcConfig};
     use crate::protocol::{Route, Tm};
@@ -1296,10 +1343,13 @@ mod tm_impl {
 
         fn check_channel(
             channel: &TmChannel,
-            _: usize,
+            frame_len: usize,
             vcs: &[Option<VcConfig<Tm>>],
         ) -> Result<()> {
             let bad = |f| Error::new(ErrorKind::InvalidConfig).with_field(f);
+            // The physical channel checks of the codec: the longest frame for which the CRC-16
+            // detects every double-bit error (TM-001, OI-51, HZ-TM-04).
+            TmPhysicalChannelConfig::new(frame_len, false)?;
             let oid = vcs
                 .iter()
                 .flatten()
@@ -1365,18 +1415,66 @@ mod aos_impl {
 
     /// The parameters of the physical channel of an AOS mux (732.0 §5.2 Table 5-1; LNK-030,
     /// LNK-032, LNK-035).
+    ///
+    /// Built only by [`new`](Self::new), which relates the edition to the SCID (RS-020).
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub struct AosChannel {
+        scid: SpacecraftId<10>,
+        edition: AosEdition,
+        fhec: bool,
+        cycle_in_use: bool,
+    }
+
+    impl AosChannel {
+        /// A channel of the Spacecraft Identifier `scid` in the `edition` of the standard, with
+        /// a Frame Header Error Control field if `fhec` (which the caller computes, LNK-035),
+        /// and the VC Frame Count Cycle in use if `cycle_in_use`: the Use Flag is set and the
+        /// cycle counts the wraps of the VC Frame Count (LNK-032; 732.0 §4.1.2.5.5).
+        ///
+        /// # Errors
+        /// `InvalidConfig` (`spacecraft_id`) for a SCID above 255 in the Issue 4 edition, whose
+        /// SCID has 8 bits (732.0 §4.1.2.2.3 and its note 1; AOS-002).
+        pub fn new(
+            scid: SpacecraftId<10>,
+            edition: AosEdition,
+            fhec: bool,
+            cycle_in_use: bool,
+        ) -> Result<AosChannel> {
+            if edition == AosEdition::Issue4Compatible && scid.get() > 0xFF {
+                Err(Error::new(ErrorKind::InvalidConfig).with_field(field::SPACECRAFT_ID))
+            } else {
+                Ok(AosChannel {
+                    scid,
+                    edition,
+                    fhec,
+                    cycle_in_use,
+                })
+            }
+        }
+
         /// The Spacecraft Identifier, 10 bits (8 bits in the Issue 4 edition).
-        pub scid: SpacecraftId<10>,
+        #[must_use]
+        pub const fn scid(&self) -> SpacecraftId<10> {
+            self.scid
+        }
+
         /// The edition of the standard, which sets the SCID width (AOS-002).
-        pub edition: AosEdition,
-        /// Whether frames have a Frame Header Error Control field, which the caller computes
-        /// (LNK-035).
-        pub fhec: bool,
-        /// Whether the VC Frame Count Cycle is in use: the Use Flag is set and the cycle counts
-        /// the wraps of the VC Frame Count (LNK-032; 732.0 §4.1.2.5.5).
-        pub cycle_in_use: bool,
+        #[must_use]
+        pub const fn edition(&self) -> AosEdition {
+            self.edition
+        }
+
+        /// Whether frames have a Frame Header Error Control field.
+        #[must_use]
+        pub const fn fhec(&self) -> bool {
+            self.fhec
+        }
+
+        /// Whether the VC Frame Count Cycle is in use.
+        #[must_use]
+        pub const fn cycle_in_use(&self) -> bool {
+            self.cycle_in_use
+        }
     }
 
     /// The parameters of an AOS VC (732.0 §5.4 Table 5-3; LNK-033).
@@ -1435,20 +1533,13 @@ mod aos_impl {
             Ok(0)
         }
 
-        fn check_channel(
-            channel: &AosChannel,
-            _: usize,
-            vcs: &[Option<VcConfig<Aos>>],
-        ) -> Result<()> {
-            let bad = |f| Error::new(ErrorKind::InvalidConfig).with_field(f);
+        fn check_channel(_: &AosChannel, _: usize, vcs: &[Option<VcConfig<Aos>>]) -> Result<()> {
             if vcs
                 .iter()
                 .flatten()
                 .any(|v| v.id() == aldis_aos::OID_VCID.get())
             {
-                Err(bad(field::VC_ID))
-            } else if channel.edition == AosEdition::Issue4Compatible && channel.scid.get() > 0xFF {
-                Err(bad(field::SPACECRAFT_ID))
+                Err(Error::new(ErrorKind::InvalidConfig).with_field(field::VC_ID))
             } else {
                 Ok(())
             }
@@ -1682,11 +1773,15 @@ pub use uslp_impl::{UslpChannel, UslpVc};
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[expect(
     clippy::unwrap_used,
+    clippy::arithmetic_side_effects,
     reason = "test helpers fail loudly by design (RS-018)"
 )]
 mod tests {
     use aldis_aos::AosEdition;
     use aldis_core::ids::{SpacecraftId, VcId};
+
+    use aldis_testkit::strategies;
+    use aldis_testkit::strategies::proptest::prelude::*;
 
     use super::{
         AosChannel, AosVc, ChannelMux, ChannelMuxConfig, MuxInput, Offer, VcConfig, VcCounts,
@@ -1695,12 +1790,13 @@ mod tests {
     use crate::protocol::Aos;
 
     fn mux(cycle_in_use: bool) -> ChannelMux<Aos, 2, 32> {
-        let channel = AosChannel {
-            scid: SpacecraftId::<10>::new(421).unwrap(),
-            edition: AosEdition::Issue5,
-            fhec: false,
+        let channel = AosChannel::new(
+            SpacecraftId::<10>::new(421).unwrap(),
+            AosEdition::Issue5,
+            false,
             cycle_in_use,
-        };
+        )
+        .unwrap();
         let vc = VcConfig::<Aos>::new(VcId::<6>::new(1).unwrap(), AosVc::default());
         ChannelMux::new(
             ChannelMuxConfig::new(channel, 28, true, MuxPolicy::RoundRobin, &[vc]).unwrap(),
@@ -1769,5 +1865,36 @@ mod tests {
         };
         let got = [(); 2].map(|()| next(&mut m));
         assert_eq!(got, [(0x00FF_FFFF, 0x5F), (0, 0x50)]);
+    }
+
+    /// Failing cases are saved here and replayed first.
+    const REGRESSIONS: &str = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/proptest-regressions/mux_counts.txt"
+    );
+
+    proptest! {
+        #![proptest_config(strategies::config(256, REGRESSIONS))]
+
+        /// Whatever the count a VC has reached, the next frames carry its low 24 bits, and with
+        /// the cycle in use its next 4 bits, which wrap after 16 cycles (732.0 §4.1.2.4,
+        /// §4.1.2.5.5).
+        #[test]
+        fn the_vc_frame_count_and_cycle_follow_the_number_of_frames(
+            start in 0_u64..(1 << 28),
+            frames in 1_usize..6,
+            cycle_in_use in any::<bool>(),
+        ) {
+            // req: LNK-032
+            let mut m = mux(cycle_in_use);
+            m.counts[1] = VcCounts { sequence_controlled: start, expedited: 0 };
+            for i in 0..frames {
+                let total = start + u64::try_from(i).unwrap();
+                let (count, signaling) = next(&mut m);
+                prop_assert_eq!(u64::from(count), total & 0x00FF_FFFF);
+                let cycle = if cycle_in_use { 0x40 | u8::try_from((total >> 24) & 0xF).unwrap() } else { 0 };
+                prop_assert_eq!(signaling, 0x10 | cycle);
+            }
+        }
     }
 }

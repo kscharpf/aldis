@@ -557,9 +557,9 @@ fn vector_problems(
 /// them (M3 plan WP-2 before WP-3 and WP-4; M4 plan WP-2a/2b before WP-3 to WP-6): the test
 /// requirement is waived until the runner lands, and the entry is removed in the pull request
 /// that adds it. `cop1/scenarios/` left it when the C ABI runner of M3 WP-6 landed. The `link/`
-/// files go one by one: the `PacketGenerator` and `PacketExtractor` files left with M4 WP-3; the
-/// rest wait for WP-4 (`ChannelMux`, Access and Bitstream generators), WP-5 (`FrameReceiver`) and
-/// WP-6 (`MapSegmenter`, `MapReassembler`).
+/// files go one by one: the `PacketGenerator` and `PacketExtractor` files left with M4 WP-3, and
+/// the `ChannelMux`, Access, and Bitstream generator files with WP-4; the rest wait for WP-5
+/// (`FrameReceiver`) and WP-6 (`MapSegmenter`, `MapReassembler`).
 const AWAITING_RUNNER: &[&str] = &[
     "link/send/map_segmenter_tc.json",
     "link/send/map_segmenter_uslp.json",
