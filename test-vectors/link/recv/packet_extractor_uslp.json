@@ -1,0 +1,205 @@
+{
+  "kind": "engine-scenario",
+  "engine": "packet-extractor",
+  "provenance": "hand-derived",
+  "provenance_note": "Hand-derived from 732.1-B-3 4.1.4.2, 4.3.2.2, 133.0-B-2 4.1.3, 133.1-B-3 4.1.2 and 04-engines LNK-060 to LNK-064, OI-69, OI-72. Model test-vectors/models/link_recv.py, written blind (TV-023) by a Claude agent from the Blue Books and docs/ only, without reading any implementation; for format only it read the COP-1 model and scenario files (cop1.py, the cop1 directory). The input scripts were chosen by hand; the expected outputs are the model's. Where the documents are silent the model refuses the case (see the README of test-vectors/link/recv/), so no scenario pins a behavior that 04 or the Blue Books leave open. The file is written by the model (--write) and never edited by hand.",
+  "config": {"protocol": "uslp", "valid_pvns": [0, 7], "max_packet_len": 40, "deliver_incomplete": false, "deliver_idle": false},
+  "scenarios": [
+    {
+      "id": "link-recv-extract-uslp-whole-packets",
+      "description": "Two Space Packets fill a field exactly from FHP 0: each is delivered once, by its PVN (USLP rule 000, FHP 0xFFFF, UPID Only Idle Data).",
+      "requirements": ["LNK-060"],
+      "steps": [
+        {"at_us": 1000, "input": {"data_field": {"data_hex": "0000000001C0000003101112130002C00000072021222324252627", "gap": false}}, "expect": [{"deliver": {"kind": "Packet", "pvn": 0, "data_hex": "0001C000000310111213", "incomplete": false}}, {"deliver": {"kind": "Packet", "pvn": 0, "data_hex": "0002C00000072021222324252627", "incomplete": false}}]}
+      ]
+    },
+    {
+      "id": "link-recv-extract-uslp-packet-spans-fields",
+      "description": "A 30-octet packet starts at FHP 0 and ends 6 octets into the next field, whose FHP is 6 (the residue does not count as a start); the packet is delivered when it completes, then the packet that starts at the FHP.",
+      "requirements": ["LNK-060"],
+      "steps": [
+        {"at_us": 1000, "input": {"data_field": {"data_hex": "0000000003C0000017303132333435363738393A3B3C3D3E3F4041", "gap": false}}, "expect": []},
+        {"at_us": 2000, "input": {"data_field": {"data_hex": "0000064243444546470004C000000B404142434445464748494A4B", "gap": false}}, "expect": [{"deliver": {"kind": "Packet", "pvn": 0, "data_hex": "0003C0000017303132333435363738393A3B3C3D3E3F4041424344454647", "incomplete": false}}, {"deliver": {"kind": "Packet", "pvn": 0, "data_hex": "0004C000000B404142434445464748494A4B", "incomplete": false}}]}
+      ]
+    },
+    {
+      "id": "link-recv-extract-uslp-header-split",
+      "description": "The primary header of a packet is split across two fields (3 octets in each): the length is known only when the second field arrives, and the packet is delivered there, followed by the packet at the FHP.",
+      "requirements": ["LNK-060"],
+      "steps": [
+        {"at_us": 1000, "input": {"data_field": {"data_hex": "0000000005C000000E505152535455565758595A5B5C5D5E0006C0", "gap": false}}, "expect": [{"deliver": {"kind": "Packet", "pvn": 0, "data_hex": "0005C000000E505152535455565758595A5B5C5D5E", "incomplete": false}}]},
+        {"at_us": 2000, "input": {"data_field": {"data_hex": "0000090000056061626364650007C0000008707172737475767778", "gap": false}}, "expect": [{"deliver": {"kind": "Packet", "pvn": 0, "data_hex": "0006C0000005606162636465", "incomplete": false}}, {"deliver": {"kind": "Packet", "pvn": 0, "data_hex": "0007C0000008707172737475767778", "incomplete": false}}]}
+      ]
+    },
+    {
+      "id": "link-recv-extract-uslp-no-packet-starts",
+      "description": "A 60-octet packet spans three fields; the middle field has the FHP value of 'no packet starts' and is taken whole as the continuation; the packet is delivered when it ends, then the packet that starts at the FHP of the last field.",
+      "requirements": ["LNK-060", "LNK-061"],
+      "config": {"protocol": "uslp", "valid_pvns": [0, 7], "max_packet_len": 100, "deliver_incomplete": false, "deliver_idle": false},
+      "steps": [
+        {"at_us": 1000, "input": {"data_field": {"data_hex": "0000000008C0000035808182838485868788898A8B8C8D8E8F9091", "gap": false}}, "expect": []},
+        {"at_us": 2000, "input": {"data_field": {"data_hex": "00FFFF92939495969798999A9B9C9D9E9FA0A1A2A3A4A5A6A7A8A9", "gap": false}}, "expect": []},
+        {"at_us": 3000, "input": {"data_field": {"data_hex": "00000CAAABACADAEAFB0B1B2B3B4B50009C0000005909192939495", "gap": false}}, "expect": [{"deliver": {"kind": "Packet", "pvn": 0, "data_hex": "0008C0000035808182838485868788898A8B8C8D8E8F909192939495969798999A9B9C9D9E9FA0A1A2A3A4A5A6A7A8A9AAABACADAEAFB0B1B2B3B4B5", "incomplete": false}}, {"deliver": {"kind": "Packet", "pvn": 0, "data_hex": "0009C0000005909192939495", "incomplete": false}}]}
+      ]
+    },
+    {
+      "id": "link-recv-extract-uslp-packet-ends-at-field-end",
+      "description": "A packet ends at the last octet of a field and the next field starts a packet at FHP 0. A 48-octet packet then spans two fields: the second has the 'no packet starts' value, ends the packet exactly at its last octet, and the extractor takes the end from the length field (OI-69).",
+      "requirements": ["LNK-060", "LNK-061"],
+      "config": {"protocol": "uslp", "valid_pvns": [0, 7], "max_packet_len": 100, "deliver_incomplete": false, "deliver_idle": false},
+      "steps": [
+        {"at_us": 1000, "input": {"data_field": {"data_hex": "000000000AC0000011A0A1A2A3A4A5A6A7A8A9AAABACADAEAFB0B1", "gap": false}}, "expect": [{"deliver": {"kind": "Packet", "pvn": 0, "data_hex": "000AC0000011A0A1A2A3A4A5A6A7A8A9AAABACADAEAFB0B1", "incomplete": false}}]},
+        {"at_us": 2000, "input": {"data_field": {"data_hex": "000000000CC0000029C0C1C2C3C4C5C6C7C8C9CACBCCCDCECFD0D1", "gap": false}}, "expect": []},
+        {"at_us": 3000, "input": {"data_field": {"data_hex": "00FFFFD2D3D4D5D6D7D8D9DADBDCDDDEDFE0E1E2E3E4E5E6E7E8E9", "gap": false}}, "expect": [{"deliver": {"kind": "Packet", "pvn": 0, "data_hex": "000CC0000029C0C1C2C3C4C5C6C7C8C9CACBCCCDCECFD0D1D2D3D4D5D6D7D8D9DADBDCDDDEDFE0E1E2E3E4E5E6E7E8E9", "incomplete": false}}]},
+        {"at_us": 4000, "input": {"data_field": {"data_hex": "0000000001C0000003101112130002C00000072021222324252627", "gap": false}}, "expect": [{"deliver": {"kind": "Packet", "pvn": 0, "data_hex": "0001C000000310111213", "incomplete": false}}, {"deliver": {"kind": "Packet", "pvn": 0, "data_hex": "0002C00000072021222324252627", "incomplete": false}}]}
+      ]
+    },
+    {
+      "id": "link-recv-extract-uslp-space-and-encapsulation",
+      "description": "Space Packets and Encapsulation Packets (one-octet and two-octet length fields) in one field are delimited by their own length fields (133.0 4.1.3.5, 133.1 4.1.2.8) and delivered by the PVN in their header (0 and 7).",
+      "requirements": ["LNK-060"],
+      "steps": [
+        {"at_us": 1000, "input": {"data_field": {"data_hex": "000000FD08111213141516FE00000822232425000DC00000013334", "gap": false}}, "expect": [{"deliver": {"kind": "Packet", "pvn": 7, "data_hex": "FD08111213141516", "incomplete": false}}, {"deliver": {"kind": "Packet", "pvn": 7, "data_hex": "FE00000822232425", "incomplete": false}}, {"deliver": {"kind": "Packet", "pvn": 0, "data_hex": "000DC00000013334", "incomplete": false}}]}
+      ]
+    },
+    {
+      "id": "link-recv-extract-uslp-fhp-wins-over-length",
+      "description": "The packet in progress needs 14 more octets but the FHP of the next field is 8: the FHP is correct (132.0 4.3.2.4); the partial packet is discarded with its 14 octets (6 held plus the 8 before the FHP), an extraction error LengthInconsistent is raised before the FHP, and the extraction continues from the FHP.",
+      "requirements": ["LNK-060", "LNK-061"],
+      "steps": [
+        {"at_us": 1000, "input": {"data_field": {"data_hex": "000000000FC000000B55565758595A5B5C5D5E5F600010C000000D", "gap": false}}, "expect": [{"deliver": {"kind": "Packet", "pvn": 0, "data_hex": "000FC000000B55565758595A5B5C5D5E5F60", "incomplete": false}}]},
+        {"at_us": 2000, "input": {"data_field": {"data_hex": "00000800000000000000000011C00000037778797A000FC000000B", "gap": false}}, "expect": [{"notify": {"kind": "Discarded", "octets": 14}}, {"extraction_error": {"kind": "LengthInconsistent"}}, {"deliver": {"kind": "Packet", "pvn": 0, "data_hex": "0011C00000037778797A", "incomplete": false}}]},
+        {"at_us": 3000, "input": {"query": {"counter": "LengthInconsistent"}}, "expect": [{"counter": {"name": "LengthInconsistent", "value": 1}}]}
+      ]
+    },
+    {
+      "id": "link-recv-extract-uslp-fhp-none-without-packet-in-progress",
+      "description": "The previous packet ended exactly at the end of its field, so the next octet must start a packet, but the field says that no packet starts: the length fields disagree with the FHP, which is correct. LengthInconsistent is raised, the field is skipped, and the extractor resynchronises at the next FHP.",
+      "requirements": ["LNK-060", "LNK-061"],
+      "steps": [
+        {"at_us": 1000, "input": {"data_field": {"data_hex": "000000000AC0000011A0A1A2A3A4A5A6A7A8A9AAABACADAEAFB0B1", "gap": false}}, "expect": [{"deliver": {"kind": "Packet", "pvn": 0, "data_hex": "000AC0000011A0A1A2A3A4A5A6A7A8A9AAABACADAEAFB0B1", "incomplete": false}}]},
+        {"at_us": 2000, "input": {"data_field": {"data_hex": "00FFFFE0E1E2E3E4E5E6E7E8E9EAEBECEDEEEFF0F1F2F3F4F5F6F7", "gap": false}}, "expect": [{"extraction_error": {"kind": "LengthInconsistent"}}]},
+        {"at_us": 3000, "input": {"data_field": {"data_hex": "00000500000000000011C00000037778797A000FC000000B555657", "gap": false}}, "expect": [{"deliver": {"kind": "Packet", "pvn": 0, "data_hex": "0011C00000037778797A", "incomplete": false}}]}
+      ]
+    },
+    {
+      "id": "link-recv-extract-uslp-gap-discard",
+      "description": "After a frame gap the partial packet (14 octets) is discarded with a Discarded notification; the octets before the FHP are skipped and the extraction continues at the FHP of the field that carries the gap flag.",
+      "requirements": ["LNK-061", "LNK-051"],
+      "steps": [
+        {"at_us": 1000, "input": {"data_field": {"data_hex": "0000000001C0000003101112130012C000000D1011121314151617", "gap": false}}, "expect": [{"deliver": {"kind": "Packet", "pvn": 0, "data_hex": "0001C000000310111213", "incomplete": false}}]},
+        {"at_us": 2000, "input": {"data_field": {"data_hex": "000006C0C1C2C3C4C50013C000000720212223242526270001C000", "gap": true}}, "expect": [{"notify": {"kind": "Discarded", "octets": 14}}, {"deliver": {"kind": "Packet", "pvn": 0, "data_hex": "0013C00000072021222324252627", "incomplete": false}}]}
+      ]
+    },
+    {
+      "id": "link-recv-extract-uslp-gap-deliver-incomplete",
+      "description": "With 'deliver incomplete packets' configured, the partial packet is delivered flagged Incomplete (the Packet Quality Indicator) instead of discarded.",
+      "requirements": ["LNK-061", "LNK-051"],
+      "config": {"protocol": "uslp", "valid_pvns": [0, 7], "max_packet_len": 40, "deliver_incomplete": true, "deliver_idle": false},
+      "steps": [
+        {"at_us": 1000, "input": {"data_field": {"data_hex": "0000000001C0000003101112130012C000000D1011121314151617", "gap": false}}, "expect": [{"deliver": {"kind": "Packet", "pvn": 0, "data_hex": "0001C000000310111213", "incomplete": false}}]},
+        {"at_us": 2000, "input": {"data_field": {"data_hex": "000006C0C1C2C3C4C50013C000000720212223242526270001C000", "gap": true}}, "expect": [{"deliver": {"kind": "Packet", "pvn": 0, "data_hex": "0012C000000D1011121314151617", "incomplete": true}}, {"deliver": {"kind": "Packet", "pvn": 0, "data_hex": "0013C00000072021222324252627", "incomplete": false}}]}
+      ]
+    },
+    {
+      "id": "link-recv-extract-uslp-gap-no-start-then-resync",
+      "description": "A gap on a field in which no packet starts: the partial packet is discarded, the whole field is skipped, and the extractor stays out of synchronisation until a field has an FHP; the field after it is skipped as well, then a field with an FHP resumes.",
+      "requirements": ["LNK-061", "LNK-051"],
+      "steps": [
+        {"at_us": 1000, "input": {"data_field": {"data_hex": "0000000001C0000003101112130012C000000D1011121314151617", "gap": false}}, "expect": [{"deliver": {"kind": "Packet", "pvn": 0, "data_hex": "0001C000000310111213", "incomplete": false}}]},
+        {"at_us": 2000, "input": {"data_field": {"data_hex": "00FFFF909192939495969798999A9B9C9D9E9FA0A1A2A3A4A5A6A7", "gap": true}}, "expect": [{"notify": {"kind": "Discarded", "octets": 14}}]},
+        {"at_us": 3000, "input": {"data_field": {"data_hex": "00FFFF9192939495969798999A9B9C9D9E9FA0A1A2A3A4A5A6A7A8", "gap": false}}, "expect": []},
+        {"at_us": 4000, "input": {"data_field": {"data_hex": "000007929394959697980001C0000003101112130013C000000720", "gap": false}}, "expect": [{"deliver": {"kind": "Packet", "pvn": 0, "data_hex": "0001C000000310111213", "incomplete": false}}]}
+      ]
+    },
+    {
+      "id": "link-recv-extract-uslp-start-up",
+      "description": "At start-up the extractor ignores the octets before the first FHP: a field with no packet start is skipped, the octets before the FHP of the next one are skipped, and the packets from the FHP are delivered; nothing is reported.",
+      "requirements": ["LNK-061"],
+      "steps": [
+        {"at_us": 1000, "input": {"data_field": {"data_hex": "00FFFF0102030405060708090A0B0C0D0E0F101112131415161718", "gap": false}}, "expect": []},
+        {"at_us": 2000, "input": {"data_field": {"data_hex": "00000502030405060001C0000003101112130001C0000003101112", "gap": false}}, "expect": [{"deliver": {"kind": "Packet", "pvn": 0, "data_hex": "0001C000000310111213", "incomplete": false}}]}
+      ]
+    },
+    {
+      "id": "link-recv-extract-uslp-packet-too-long",
+      "description": "A packet whose length (90) exceeds the Maximum Packet Length (40) raises the extraction error PacketTooLong as soon as its length field is known; the rest of the field is discarded, and the extraction resumes at the next FHP (OI-72).",
+      "requirements": ["LNK-062"],
+      "steps": [
+        {"at_us": 1000, "input": {"data_field": {"data_hex": "0000000014C0000053303132333435363738393A3B3C3D3E3F4041", "gap": false}}, "expect": [{"extraction_error": {"kind": "PacketTooLong"}}]},
+        {"at_us": 2000, "input": {"data_field": {"data_hex": "000008D0D1D2D3D4D5D6D70002C000000720212223242526270001", "gap": false}}, "expect": [{"deliver": {"kind": "Packet", "pvn": 0, "data_hex": "0002C00000072021222324252627", "incomplete": false}}]},
+        {"at_us": 3000, "input": {"query": {"counter": "PacketTooLong"}}, "expect": [{"counter": {"name": "PacketTooLong", "value": 1}}]}
+      ]
+    },
+    {
+      "id": "link-recv-extract-uslp-invalid-pvn",
+      "description": "A packet whose PVN is not in the valid set (PVN 1, here the octet 0x20) raises the extraction error InvalidPvn; the rest of the field is discarded, and the extraction resumes at the next FHP (OI-72).",
+      "requirements": ["LNK-062"],
+      "steps": [
+        {"at_us": 1000, "input": {"data_field": {"data_hex": "0000000001C000000310111213201112131415161718191A1B1C1D", "gap": false}}, "expect": [{"deliver": {"kind": "Packet", "pvn": 0, "data_hex": "0001C000000310111213", "incomplete": false}}, {"extraction_error": {"kind": "InvalidPvn"}}]},
+        {"at_us": 2000, "input": {"data_field": {"data_hex": "000003D0D1D20002C000000720212223242526270001C000000310", "gap": false}}, "expect": [{"deliver": {"kind": "Packet", "pvn": 0, "data_hex": "0002C00000072021222324252627", "incomplete": false}}]},
+        {"at_us": 3000, "input": {"query": {"counter": "InvalidPvn"}}, "expect": [{"counter": {"name": "InvalidPvn", "value": 1}}]}
+      ]
+    },
+    {
+      "id": "link-recv-extract-uslp-pvn-not-in-set",
+      "description": "A VC configured for Space Packets only: an Encapsulation Packet (PVN 7) is not in the valid set, whichever kind it is, unless it is an idle packet on USLP (LNK-063).",
+      "requirements": ["LNK-062"],
+      "config": {"protocol": "uslp", "valid_pvns": [0], "max_packet_len": 40, "deliver_incomplete": false, "deliver_idle": false},
+      "steps": [
+        {"at_us": 1000, "input": {"data_field": {"data_hex": "0000000001C000000310111213FD08111213141516555555555555", "gap": false}}, "expect": [{"deliver": {"kind": "Packet", "pvn": 0, "data_hex": "0001C000000310111213", "incomplete": false}}, {"extraction_error": {"kind": "InvalidPvn"}}]},
+        {"at_us": 2000, "input": {"data_field": {"data_hex": "000002D0D10001C0000003101112130002C0000007202122232425", "gap": false}}, "expect": [{"deliver": {"kind": "Packet", "pvn": 0, "data_hex": "0001C000000310111213", "incomplete": false}}]}
+      ]
+    },
+    {
+      "id": "link-recv-extract-uslp-idle-dropped",
+      "description": "Idle packets (a Space Packet with APID 2047, Encapsulation Idle Packets of one and of five octets) are dropped by default and counted; the other packets are delivered (132.0 4.3.2.5 note 1).",
+      "requirements": ["LNK-063"],
+      "steps": [
+        {"at_us": 1000, "input": {"data_field": {"data_hex": "0000000001C00000031011121307FFC00000010000E0E105000000", "gap": false}}, "expect": [{"deliver": {"kind": "Packet", "pvn": 0, "data_hex": "0001C000000310111213", "incomplete": false}}]},
+        {"at_us": 2000, "input": {"query": {"counter": "idle_packets"}}, "expect": [{"counter": {"name": "idle_packets", "value": 3}}]}
+      ]
+    },
+    {
+      "id": "link-recv-extract-uslp-idle-delivered",
+      "description": "With delivery of idle packets enabled for diagnostics they are delivered like other packets, in order.",
+      "requirements": ["LNK-063"],
+      "config": {"protocol": "uslp", "valid_pvns": [0, 7], "max_packet_len": 40, "deliver_incomplete": false, "deliver_idle": true},
+      "steps": [
+        {"at_us": 1000, "input": {"data_field": {"data_hex": "0000000001C00000031011121307FFC00000010000E0E105000000", "gap": false}}, "expect": [{"deliver": {"kind": "Packet", "pvn": 0, "data_hex": "0001C000000310111213", "incomplete": false}}, {"deliver": {"kind": "Packet", "pvn": 0, "data_hex": "07FFC00000010000", "incomplete": false}}, {"deliver": {"kind": "Packet", "pvn": 7, "data_hex": "E0", "incomplete": false}}, {"deliver": {"kind": "Packet", "pvn": 7, "data_hex": "E105000000", "incomplete": false}}]}
+      ]
+    },
+    {
+      "id": "link-recv-extract-uslp-idle-encapsulation-valid-set",
+      "description": "A VC whose valid-PVN set holds only Space Packets receives an Encapsulation Idle Packet in its field. On TM and AOS it is a packet of a PVN that is not valid. On USLP rule 000 the extractor delimits an Encapsulation Idle Packet whatever the set (the sender fills with it, 732.1 4.1.4.3.4): it is dropped and counted.",
+      "requirements": ["LNK-063"],
+      "config": {"protocol": "uslp", "valid_pvns": [0], "max_packet_len": 40, "deliver_incomplete": false, "deliver_idle": false},
+      "steps": [
+        {"at_us": 1000, "input": {"data_field": {"data_hex": "0000000001C000000310111213E1080000000000000001C0000003", "gap": false}}, "expect": [{"deliver": {"kind": "Packet", "pvn": 0, "data_hex": "0001C000000310111213", "incomplete": false}}]},
+        {"at_us": 2000, "input": {"query": {"counter": "idle_packets"}}, "expect": [{"counter": {"name": "idle_packets", "value": 1}}]},
+        {"at_us": 3000, "input": {"query": {"counter": "InvalidPvn"}}, "expect": [{"counter": {"name": "InvalidPvn", "value": 0}}]}
+      ]
+    },
+    {
+      "id": "link-recv-extract-uslp-only-idle-data-keeps-packet",
+      "description": "A field with the FHP of 'only idle data' (USLP rule 000, FHP 0xFFFF, UPID Only Idle Data) is ignored and the packet being assembled is kept: the packet that started in the first field is delivered when the third field completes it.",
+      "requirements": ["LNK-064"],
+      "steps": [
+        {"at_us": 1000, "input": {"data_field": {"data_hex": "0000000001C0000003101112130012C000000D1011121314151617", "gap": false}}, "expect": [{"deliver": {"kind": "Packet", "pvn": 0, "data_hex": "0001C000000310111213", "incomplete": false}}]},
+        {"at_us": 2000, "input": {"data_field": {"data_hex": "3F0017000102030405060708090A0B0C0D0E0F1011121314151617", "gap": false}}, "expect": []},
+        {"at_us": 3000, "input": {"data_field": {"data_hex": "00000618191A1B1C1D0002C000000720212223242526270001C000", "gap": false}}, "expect": [{"deliver": {"kind": "Packet", "pvn": 0, "data_hex": "0012C000000D101112131415161718191A1B1C1D", "incomplete": false}}, {"deliver": {"kind": "Packet", "pvn": 0, "data_hex": "0002C00000072021222324252627", "incomplete": false}}]}
+      ]
+    },
+    {
+      "id": "link-recv-extract-uslp-reconfigure-discards",
+      "description": "Reconfigure discards the partial packet (one Discarded notification with its 14 octets) and the extractor restarts: the next field is skipped up to its FHP; a second Reconfigure discards the 10 octets of the packet then in progress (04 LNK-003).",
+      "requirements": ["LNK-003", "LNK-061"],
+      "steps": [
+        {"at_us": 1000, "input": {"data_field": {"data_hex": "0000000001C0000003101112130012C000000D1011121314151617", "gap": false}}, "expect": [{"deliver": {"kind": "Packet", "pvn": 0, "data_hex": "0001C000000310111213", "incomplete": false}}]},
+        {"at_us": 2000, "input": {"reconfigure": {}}, "expect": [{"notify": {"kind": "Discarded", "octets": 14}}]},
+        {"at_us": 3000, "input": {"data_field": {"data_hex": "000004202122230001C0000003101112130002C000000720212223", "gap": false}}, "expect": [{"deliver": {"kind": "Packet", "pvn": 0, "data_hex": "0001C000000310111213", "incomplete": false}}]},
+        {"at_us": 4000, "input": {"reconfigure": {}}, "expect": [{"notify": {"kind": "Discarded", "octets": 10}}]}
+      ]
+    }
+  ]
+}

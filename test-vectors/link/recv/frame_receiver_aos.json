@@ -1,0 +1,134 @@
+{
+  "kind": "engine-scenario",
+  "engine": "frame-receiver",
+  "provenance": "hand-derived",
+  "provenance_note": "Hand-derived from 732.0-B-5 4.1.2 to 4.1.5, 4.3.3 to 4.3.7 and 04-engines LNK-050 to LNK-054, LNK-077, OI-68, OI-70. Model test-vectors/models/link_recv.py, written blind (TV-023) by a Claude agent from the Blue Books and docs/ only, without reading any implementation; for format only it read the COP-1 model and scenario files (cop1.py, the cop1 directory). The input scripts were chosen by hand; the expected outputs are the model's. Where the documents are silent the model refuses the case (see the README of test-vectors/link/recv/), so no scenario pins a behavior that 04 or the Blue Books leave open. The file is written by the model (--write) and never edited by hand.",
+  "config": {"protocol": "aos", "scid": 677, "frame_len": 48, "fecf": true, "insert_zone_len": 4, "accept_rejected_frame_insert_zone": false, "vcs": [{"vcid": 1, "role": "packets", "ocf": true}, {"vcid": 2, "role": "vca", "ocf": false}, {"vcid": 3, "role": "bitstream", "ocf": false}]},
+  "scenarios": [
+    {
+      "id": "link-recv-aos-routing",
+      "description": "A frame of a packets VC delivers its Insert Zone, the OCF (VC_OCF), and the M_PDU (header and packet zone); a VCA VC delivers the whole data field as one VCA_SDU. The SCID uses its two MSBs (732.0 4.1.2.5.4).",
+      "requirements": ["LNK-050", "LNK-077", "LNK-053"],
+      "steps": [
+        {"at_us": 1000, "input": {"frame": {"frame_hex": "694100006420DEADBEEF00000102030405060708090A0B0C0D0E0F101112131400000000000000000000010408050211"}}, "expect": [{"deliver": {"kind": "InsertSdu", "data_hex": "DEADBEEF", "replay": false}}, {"deliver": {"kind": "Ocf", "scope": "vc", "vc": 1, "report": "Type1", "ocf_hex": "01040805", "replay": false}}, {"deliver": {"kind": "DataField", "vc": 1, "data_hex": "00000102030405060708090A0B0C0D0E0F101112131400000000000000000000", "gap": false, "replay": false}}]},
+        {"at_us": 2000, "input": {"frame": {"frame_hex": "69420000072001020304404142434445464748494A4B4C4D4E4F505152535455565758595A5B5C5D5E5F60616263A05B"}}, "expect": [{"deliver": {"kind": "InsertSdu", "data_hex": "01020304", "replay": false}}, {"deliver": {"kind": "DataField", "vc": 2, "data_hex": "404142434445464748494A4B4C4D4E4F505152535455565758595A5B5C5D5E5F60616263", "gap": false, "replay": false}}]}
+      ]
+    },
+    {
+      "id": "link-recv-aos-unknown-vc",
+      "description": "A frame for a VC that is not configured is discarded and counted; FrameDiscarded (UnknownChannel) alone (732.0 4.3.5.4).",
+      "requirements": ["LNK-050"],
+      "steps": [
+        {"at_us": 1000, "input": {"frame": {"frame_hex": "694900000120DEADBEEF0102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F2021222324E21F"}}, "expect": [{"frame_discarded": {"reason": "UnknownChannel", "vc": 9}}]},
+        {"at_us": 2000, "input": {"query": {"counter": "UnknownChannel"}}, "expect": [{"counter": {"name": "UnknownChannel", "value": 1}}]}
+      ]
+    },
+    {
+      "id": "link-recv-aos-vc-gap",
+      "description": "The VC Frame Count is tracked per VC; a jump of three is a gap of two frames, and the field delivered carries gap = true. Another VC keeps its own expectation.",
+      "requirements": ["LNK-051", "LNK-061"],
+      "steps": [
+        {"at_us": 1000, "input": {"frame": {"frame_hex": "694100006420DEADBEEF000000000000000000000000000000000000000000000000000000000000000001040805C8D7"}}, "expect": [{"deliver": {"kind": "InsertSdu", "data_hex": "DEADBEEF", "replay": false}}, {"deliver": {"kind": "Ocf", "scope": "vc", "vc": 1, "report": "Type1", "ocf_hex": "01040805", "replay": false}}, {"deliver": {"kind": "DataField", "vc": 1, "data_hex": "0000000000000000000000000000000000000000000000000000000000000000", "gap": false, "replay": false}}]},
+        {"at_us": 2000, "input": {"frame": {"frame_hex": "694200003220DEADBEEF0102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F2021222324F134"}}, "expect": [{"deliver": {"kind": "InsertSdu", "data_hex": "DEADBEEF", "replay": false}}, {"deliver": {"kind": "DataField", "vc": 2, "data_hex": "0102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F2021222324", "gap": false, "replay": false}}]},
+        {"at_us": 3000, "input": {"frame": {"frame_hex": "694100006720DEADBEEF0000000000000000000000000000000000000000000000000000000000000000010408059383"}}, "expect": [{"notify": {"kind": "FrameGap", "scope": "vc", "vc": 1, "missing": 2}}, {"deliver": {"kind": "InsertSdu", "data_hex": "DEADBEEF", "replay": false}}, {"deliver": {"kind": "Ocf", "scope": "vc", "vc": 1, "report": "Type1", "ocf_hex": "01040805", "replay": false}}, {"deliver": {"kind": "DataField", "vc": 1, "data_hex": "0000000000000000000000000000000000000000000000000000000000000000", "gap": true, "replay": false}}]},
+        {"at_us": 4000, "input": {"frame": {"frame_hex": "694200003320DEADBEEF02030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F2021222324253436"}}, "expect": [{"deliver": {"kind": "InsertSdu", "data_hex": "DEADBEEF", "replay": false}}, {"deliver": {"kind": "DataField", "vc": 2, "data_hex": "02030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F202122232425", "gap": false, "replay": false}}]},
+        {"at_us": 5000, "input": {"frame": {"frame_hex": "694100006820DEADBEEF000000000000000000000000000000000000000000000000000000000000000001040805B5A6"}}, "expect": [{"deliver": {"kind": "InsertSdu", "data_hex": "DEADBEEF", "replay": false}}, {"deliver": {"kind": "Ocf", "scope": "vc", "vc": 1, "report": "Type1", "ocf_hex": "01040805", "replay": false}}, {"deliver": {"kind": "DataField", "vc": 1, "data_hex": "0000000000000000000000000000000000000000000000000000000000000000", "gap": false, "replay": false}}]}
+      ]
+    },
+    {
+      "id": "link-recv-aos-count-wrap",
+      "description": "The 24-bit VC Frame Count wraps from 16777215 to 0 without a gap, and a gap is counted modulo 2^24 (732.0 4.1.2.4.2).",
+      "requirements": ["LNK-051"],
+      "steps": [
+        {"at_us": 1000, "input": {"frame": {"frame_hex": "6942FFFFFF20DEADBEEF0102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F20212223247719"}}, "expect": [{"deliver": {"kind": "InsertSdu", "data_hex": "DEADBEEF", "replay": false}}, {"deliver": {"kind": "DataField", "vc": 2, "data_hex": "0102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F2021222324", "gap": false, "replay": false}}]},
+        {"at_us": 2000, "input": {"frame": {"frame_hex": "694200000020DEADBEEF02030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F2021222324258A87"}}, "expect": [{"deliver": {"kind": "InsertSdu", "data_hex": "DEADBEEF", "replay": false}}, {"deliver": {"kind": "DataField", "vc": 2, "data_hex": "02030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F202122232425", "gap": false, "replay": false}}]},
+        {"at_us": 3000, "input": {"frame": {"frame_hex": "694200000320DEADBEEF030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F202122232425260C2F"}}, "expect": [{"notify": {"kind": "FrameGap", "scope": "vc", "vc": 2, "missing": 2}}, {"deliver": {"kind": "InsertSdu", "data_hex": "DEADBEEF", "replay": false}}, {"deliver": {"kind": "DataField", "vc": 2, "data_hex": "030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F20212223242526", "gap": true, "replay": false}}]}
+      ]
+    },
+    {
+      "id": "link-recv-aos-cycle-extension",
+      "description": "With the VC Frame Count Cycle in use the count is the 28-bit value cycle:count (732.0 4.1.2.5.5): 0xFFFFFF in cycle 3 followed by 0 in cycle 4 is in sequence; count 4 after count 1 in cycle 4 is a gap of two; count 4 in cycle 5 after count 4 in cycle 4 is a gap of 2^24 - 1 frames, which a 24-bit comparison would miss.",
+      "requirements": ["LNK-051"],
+      "steps": [
+        {"at_us": 1000, "input": {"frame": {"frame_hex": "6942FFFFFF63DEADBEEF0102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F202122232453B4"}}, "expect": [{"deliver": {"kind": "InsertSdu", "data_hex": "DEADBEEF", "replay": false}}, {"deliver": {"kind": "DataField", "vc": 2, "data_hex": "0102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F2021222324", "gap": false, "replay": false}}]},
+        {"at_us": 2000, "input": {"frame": {"frame_hex": "694200000064DEADBEEF02030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F202122232425B4E9"}}, "expect": [{"deliver": {"kind": "InsertSdu", "data_hex": "DEADBEEF", "replay": false}}, {"deliver": {"kind": "DataField", "vc": 2, "data_hex": "02030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F202122232425", "gap": false, "replay": false}}]},
+        {"at_us": 3000, "input": {"frame": {"frame_hex": "694200000164DEADBEEF030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F20212223242526AFC6"}}, "expect": [{"deliver": {"kind": "InsertSdu", "data_hex": "DEADBEEF", "replay": false}}, {"deliver": {"kind": "DataField", "vc": 2, "data_hex": "030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F20212223242526", "gap": false, "replay": false}}]},
+        {"at_us": 4000, "input": {"frame": {"frame_hex": "694200000464DEADBEEF0405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F20212223242526274080"}}, "expect": [{"notify": {"kind": "FrameGap", "scope": "vc", "vc": 2, "missing": 2}}, {"deliver": {"kind": "InsertSdu", "data_hex": "DEADBEEF", "replay": false}}, {"deliver": {"kind": "DataField", "vc": 2, "data_hex": "0405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F2021222324252627", "gap": true, "replay": false}}]},
+        {"at_us": 5000, "input": {"frame": {"frame_hex": "694200000465DEADBEEF05060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F2021222324252627287E7E"}}, "expect": [{"notify": {"kind": "FrameGap", "scope": "vc", "vc": 2, "missing": 16777215}}, {"deliver": {"kind": "InsertSdu", "data_hex": "DEADBEEF", "replay": false}}, {"deliver": {"kind": "DataField", "vc": 2, "data_hex": "05060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F202122232425262728", "gap": true, "replay": false}}]}
+      ]
+    },
+    {
+      "id": "link-recv-aos-oid-frame",
+      "description": "An OID frame (VCID 63) delivers its Insert Zone, then its data is dropped; it returns no FrameDiscarded and its VC Frame Count is not tracked, so counts that jump raise no gap action; the OID frame counter is 3.",
+      "requirements": ["LNK-052", "LNK-051"],
+      "steps": [
+        {"at_us": 1000, "input": {"frame": {"frame_hex": "697F00000520DEADBEEFFFFFFFFF6DB6D861451F11F19716723CBE7E00B1DE90B262107AF83494CEE3323F0354BE2174"}}, "expect": [{"deliver": {"kind": "InsertSdu", "data_hex": "DEADBEEF", "replay": false}}]},
+        {"at_us": 2000, "input": {"frame": {"frame_hex": "697F0000052001020304F5C1528C9BB9ED35FDBC23D9BC2F07576D987881BDF84845CBCC7F38959BA73E4F69C802C7AF"}}, "expect": [{"deliver": {"kind": "InsertSdu", "data_hex": "01020304", "replay": false}}]},
+        {"at_us": 3000, "input": {"frame": {"frame_hex": "697F00038420DEADBEEF56BA6C7B92D4D82D01468B56CF391B3839C7F912E834F5434FEC969091451D1CDC2C533D52B0"}}, "expect": [{"deliver": {"kind": "InsertSdu", "data_hex": "DEADBEEF", "replay": false}}]},
+        {"at_us": 4000, "input": {"query": {"counter": "oid_frames"}}, "expect": [{"counter": {"name": "oid_frames", "value": 3}}]},
+        {"at_us": 5000, "input": {"query": {"counter": "gaps"}}, "expect": [{"counter": {"name": "gaps", "value": 0}}]}
+      ]
+    },
+    {
+      "id": "link-recv-aos-replay-flag",
+      "description": "Replay frames (Replay Flag 1) are delivered with replay = true on every delivered SDU, take no part in counting, and raise no gap even when the count decreases; the real-time frame after them is compared with the last real-time frame (OI-70).",
+      "requirements": ["LNK-054", "LNK-051"],
+      "steps": [
+        {"at_us": 1000, "input": {"frame": {"frame_hex": "694100006420DEADBEEF000000000000000000000000000000000000000000000000000000000000000001040805C8D7"}}, "expect": [{"deliver": {"kind": "InsertSdu", "data_hex": "DEADBEEF", "replay": false}}, {"deliver": {"kind": "Ocf", "scope": "vc", "vc": 1, "report": "Type1", "ocf_hex": "01040805", "replay": false}}, {"deliver": {"kind": "DataField", "vc": 1, "data_hex": "0000000000000000000000000000000000000000000000000000000000000000", "gap": false, "replay": false}}]},
+        {"at_us": 2000, "input": {"frame": {"frame_hex": "6941000028A0010203040000000000000000000000000000000000000000000000000000000000000000010408056D01"}}, "expect": [{"deliver": {"kind": "InsertSdu", "data_hex": "01020304", "replay": true}}, {"deliver": {"kind": "Ocf", "scope": "vc", "vc": 1, "report": "Type1", "ocf_hex": "01040805", "replay": true}}, {"deliver": {"kind": "DataField", "vc": 1, "data_hex": "0000000000000000000000000000000000000000000000000000000000000000", "gap": false, "replay": true}}]},
+        {"at_us": 3000, "input": {"frame": {"frame_hex": "6941000029A0010203040000000000000000000000000000000000000000000000000000000000000000801122331775"}}, "expect": [{"deliver": {"kind": "InsertSdu", "data_hex": "01020304", "replay": true}}, {"deliver": {"kind": "Ocf", "scope": "vc", "vc": 1, "report": "Type2", "ocf_hex": "80112233", "replay": true}}, {"deliver": {"kind": "DataField", "vc": 1, "data_hex": "0000000000000000000000000000000000000000000000000000000000000000", "gap": false, "replay": true}}]},
+        {"at_us": 4000, "input": {"frame": {"frame_hex": "694100006520DEADBEEF0000000000000000000000000000000000000000000000000000000000000000010408050E04"}}, "expect": [{"deliver": {"kind": "InsertSdu", "data_hex": "DEADBEEF", "replay": false}}, {"deliver": {"kind": "Ocf", "scope": "vc", "vc": 1, "report": "Type1", "ocf_hex": "01040805", "replay": false}}, {"deliver": {"kind": "DataField", "vc": 1, "data_hex": "0000000000000000000000000000000000000000000000000000000000000000", "gap": false, "replay": false}}]},
+        {"at_us": 5000, "input": {"frame": {"frame_hex": "694100006720DEADBEEF0000000000000000000000000000000000000000000000000000000000000000010408059383"}}, "expect": [{"notify": {"kind": "FrameGap", "scope": "vc", "vc": 1, "missing": 1}}, {"deliver": {"kind": "InsertSdu", "data_hex": "DEADBEEF", "replay": false}}, {"deliver": {"kind": "Ocf", "scope": "vc", "vc": 1, "report": "Type1", "ocf_hex": "01040805", "replay": false}}, {"deliver": {"kind": "DataField", "vc": 1, "data_hex": "0000000000000000000000000000000000000000000000000000000000000000", "gap": true, "replay": false}}]}
+      ]
+    },
+    {
+      "id": "link-recv-aos-bitstream",
+      "description": "A B_PDU delivers its valid bits as a bit count: pointer all ones, every bit of the zone is valid; pointer 19, 20 bits (the unused bits of the last octet are zero); pointer all ones minus one, no valid bit, nothing is delivered (732.0 4.3.3.2).",
+      "requirements": ["LNK-077"],
+      "steps": [
+        {"at_us": 1000, "input": {"frame": {"frame_hex": "694300000120DEADBEEF3FFF808182838485868788898A8B8C8D8E8F909192939495969798999A9B9C9D9E9FA0A1DAEC"}}, "expect": [{"deliver": {"kind": "InsertSdu", "data_hex": "DEADBEEF", "replay": false}}, {"deliver": {"kind": "DataField", "vc": 3, "data_hex": "808182838485868788898A8B8C8D8E8F909192939495969798999A9B9C9D9E9FA0A1", "bit_count": 272, "gap": false, "replay": false}}]},
+        {"at_us": 2000, "input": {"frame": {"frame_hex": "694300000220DEADBEEF0013FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF94E"}}, "expect": [{"deliver": {"kind": "InsertSdu", "data_hex": "DEADBEEF", "replay": false}}, {"deliver": {"kind": "DataField", "vc": 3, "data_hex": "FFFFF0", "bit_count": 20, "gap": false, "replay": false}}]},
+        {"at_us": 3000, "input": {"frame": {"frame_hex": "694300000320DEADBEEF3FFE55555555555555555555555555555555555555555555555555555555555555555555A67C"}}, "expect": [{"deliver": {"kind": "InsertSdu", "data_hex": "DEADBEEF", "replay": false}}]}
+      ]
+    },
+    {
+      "id": "link-recv-aos-bitstream-gap",
+      "description": "A gap on a bitstream VC stays flagged until the next valid bitstream data is delivered: the B_PDU of only idle data that follows the gap is dropped, and the next one carries gap = true (732.0 4.3.3.3 note).",
+      "requirements": ["LNK-077", "LNK-051"],
+      "steps": [
+        {"at_us": 1000, "input": {"frame": {"frame_hex": "694300000120DEADBEEF3FFF0102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F20212208EF"}}, "expect": [{"deliver": {"kind": "InsertSdu", "data_hex": "DEADBEEF", "replay": false}}, {"deliver": {"kind": "DataField", "vc": 3, "data_hex": "0102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F202122", "bit_count": 272, "gap": false, "replay": false}}]},
+        {"at_us": 2000, "input": {"frame": {"frame_hex": "694300000420DEADBEEF3FFE02030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F20212223221C"}}, "expect": [{"notify": {"kind": "FrameGap", "scope": "vc", "vc": 3, "missing": 2}}, {"deliver": {"kind": "InsertSdu", "data_hex": "DEADBEEF", "replay": false}}]},
+        {"at_us": 3000, "input": {"frame": {"frame_hex": "694300000520DEADBEEF0007030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F20212223247208"}}, "expect": [{"deliver": {"kind": "InsertSdu", "data_hex": "DEADBEEF", "replay": false}}, {"deliver": {"kind": "DataField", "vc": 3, "data_hex": "03", "bit_count": 8, "gap": true, "replay": false}}]},
+        {"at_us": 4000, "input": {"frame": {"frame_hex": "694300000620DEADBEEF3FFF0405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F20212223242591DB"}}, "expect": [{"deliver": {"kind": "InsertSdu", "data_hex": "DEADBEEF", "replay": false}}, {"deliver": {"kind": "DataField", "vc": 3, "data_hex": "0405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F202122232425", "bit_count": 272, "gap": false, "replay": false}}]}
+      ]
+    },
+    {
+      "id": "link-recv-aos-ocf-types",
+      "description": "The OCF is delivered as an Ocf action naming the VC: Type-1 for a CLCW, Type-2 for a project-specific report and for an SDLS FSR.",
+      "requirements": ["LNK-053"],
+      "steps": [
+        {"at_us": 1000, "input": {"frame": {"frame_hex": "694100000120DEADBEEF000000000000000000000000000000000000000000000000000000000000000001040805FEC0"}}, "expect": [{"deliver": {"kind": "InsertSdu", "data_hex": "DEADBEEF", "replay": false}}, {"deliver": {"kind": "Ocf", "scope": "vc", "vc": 1, "report": "Type1", "ocf_hex": "01040805", "replay": false}}, {"deliver": {"kind": "DataField", "vc": 1, "data_hex": "0000000000000000000000000000000000000000000000000000000000000000", "gap": false, "replay": false}}]},
+        {"at_us": 2000, "input": {"frame": {"frame_hex": "694100000220DEADBEEF0000000000000000000000000000000000000000000000000000000000000000801122331933"}}, "expect": [{"deliver": {"kind": "InsertSdu", "data_hex": "DEADBEEF", "replay": false}}, {"deliver": {"kind": "Ocf", "scope": "vc", "vc": 1, "report": "Type2", "ocf_hex": "80112233", "replay": false}}, {"deliver": {"kind": "DataField", "vc": 1, "data_hex": "0000000000000000000000000000000000000000000000000000000000000000", "gap": false, "replay": false}}]},
+        {"at_us": 3000, "input": {"frame": {"frame_hex": "694100000320DEADBEEF0000000000000000000000000000000000000000000000000000000000000000C04455669FDC"}}, "expect": [{"deliver": {"kind": "InsertSdu", "data_hex": "DEADBEEF", "replay": false}}, {"deliver": {"kind": "Ocf", "scope": "vc", "vc": 1, "report": "Type2", "ocf_hex": "C0445566", "replay": false}}, {"deliver": {"kind": "DataField", "vc": 1, "data_hex": "0000000000000000000000000000000000000000000000000000000000000000", "gap": false, "replay": false}}]}
+      ]
+    },
+    {
+      "id": "link-recv-aos-frame-loss",
+      "description": "FrameLoss: one Notify(LossFlag) for each configured VC in configuration order, then one for the physical channel; the OID VC 63 has no configuration entry.",
+      "requirements": ["LNK-053"],
+      "steps": [
+        {"at_us": 1000, "input": {"frame_loss": {}}, "expect": [{"notify": {"kind": "LossFlag", "scope": "vc", "vc": 1}}, {"notify": {"kind": "LossFlag", "scope": "vc", "vc": 2}}, {"notify": {"kind": "LossFlag", "scope": "vc", "vc": 3}}, {"notify": {"kind": "LossFlag", "scope": "physical_channel"}}]}
+      ]
+    },
+    {
+      "id": "link-recv-aos-reconfigure",
+      "description": "Reconfigure restarts the expected counts.",
+      "requirements": ["LNK-051", "LNK-003"],
+      "steps": [
+        {"at_us": 1000, "input": {"frame": {"frame_hex": "694200000A20DEADBEEF0102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F2021222324428F"}}, "expect": [{"deliver": {"kind": "InsertSdu", "data_hex": "DEADBEEF", "replay": false}}, {"deliver": {"kind": "DataField", "vc": 2, "data_hex": "0102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F2021222324", "gap": false, "replay": false}}]},
+        {"at_us": 2000, "input": {"reconfigure": {}}, "expect": []},
+        {"at_us": 3000, "input": {"frame": {"frame_hex": "69420001F420DEADBEEF02030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F2021222324258930"}}, "expect": [{"deliver": {"kind": "InsertSdu", "data_hex": "DEADBEEF", "replay": false}}, {"deliver": {"kind": "DataField", "vc": 2, "data_hex": "02030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F202122232425", "gap": false, "replay": false}}]}
+      ]
+    }
+  ]
+}

@@ -555,9 +555,10 @@ fn vector_problems(
 
 /// Vector directories whose files exist before the engines that run them (M3 plan WP-2 before
 /// WP-3 and WP-4): the test requirement is waived until the runner lands, and the entry is
-/// removed in the pull request that adds it. Empty since the C ABI runner of M3 WP-6 runs
-/// `cop1/scenarios/`.
-const AWAITING_RUNNER: &[&str] = &[];
+/// removed in the pull request that adds it. `cop1/scenarios/` left it when the C ABI runner of
+/// M3 WP-6 landed; `link/` (send and recv models) waits for the engines of M4 WP-3, WP-5 and
+/// WP-6 (M4 plan: WP-2a/2b before them).
+const AWAITING_RUNNER: &[&str] = &["link/"];
 
 /// Whether `f`, relative to `test-vectors/`, is a vector file that no runner runs yet. Such a
 /// file is no evidence for `cargo xtask trace` either (`trace.rs`).

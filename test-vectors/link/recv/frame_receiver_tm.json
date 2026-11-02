@@ -1,0 +1,156 @@
+{
+  "kind": "engine-scenario",
+  "engine": "frame-receiver",
+  "provenance": "hand-derived",
+  "provenance_note": "Hand-derived from 132.0-B-3 4.1.2, 4.1.3, 4.1.4.6, 4.3.3 to 4.3.7 and 04-engines LNK-050 to LNK-053, LNK-077, OI-68. Model test-vectors/models/link_recv.py, written blind (TV-023) by a Claude agent from the Blue Books and docs/ only, without reading any implementation; for format only it read the COP-1 model and scenario files (cop1.py, the cop1 directory). The input scripts were chosen by hand; the expected outputs are the model's. Where the documents are silent the model refuses the case (see the README of test-vectors/link/recv/), so no scenario pins a behavior that 04 or the Blue Books leave open. The file is written by the model (--write) and never edited by hand.",
+  "config": {"protocol": "tm", "scid": 291, "frame_len": 48, "fecf": true, "ocf_service": "vc", "fsh_service": "vc", "vcs": [{"vcid": 0, "role": "packets"}, {"vcid": 1, "role": "vca"}, {"vcid": 7, "role": "packets"}]},
+  "scenarios": [
+    {
+      "id": "link-recv-tm-routing",
+      "description": "A frame of a packets VC is delivered with its FHP, a frame of a VCA VC (sync flag 1) as one VCA_SDU; each data field is the whole TM data field (132.0 4.3.3.2).",
+      "requirements": ["LNK-050", "LNK-077"],
+      "steps": [
+        {"at_us": 1000, "input": {"frame": {"frame_hex": "12300A141800101112131415161718191A1B1C1D1E1F202122232425262728292A2B2C2D2E2F30313233343536374C31"}}, "expect": [{"deliver": {"kind": "DataField", "vc": 0, "data_hex": "101112131415161718191A1B1C1D1E1F202122232425262728292A2B2C2D2E2F3031323334353637", "fhp": 0, "gap": false}}]},
+        {"at_us": 2000, "input": {"frame": {"frame_hex": "12320B055FFF404142434445464748494A4B4C4D4E4F505152535455565758595A5B5C5D5E5F6061626364656667700B"}}, "expect": [{"deliver": {"kind": "DataField", "vc": 1, "data_hex": "404142434445464748494A4B4C4D4E4F505152535455565758595A5B5C5D5E5F6061626364656667", "gap": false}}]},
+        {"at_us": 3000, "input": {"frame": {"frame_hex": "12300C151FFF707172737475767778797A7B7C7D7E7F808182838485868788898A8B8C8D8E8F9091929394959697D0D6"}}, "expect": [{"deliver": {"kind": "DataField", "vc": 0, "data_hex": "707172737475767778797A7B7C7D7E7F808182838485868788898A8B8C8D8E8F9091929394959697", "fhp": 2047, "gap": false}}]}
+      ]
+    },
+    {
+      "id": "link-recv-tm-unknown-vc",
+      "description": "A frame for a VC that is not configured is discarded and counted: FrameDiscarded (UnknownChannel) alone, no gap action and no delivery (132.0 4.3.4.3, LNK-050).",
+      "requirements": ["LNK-050"],
+      "steps": [
+        {"at_us": 1000, "input": {"frame": {"frame_hex": "1236280918000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F202122232425262728078A"}}, "expect": [{"frame_discarded": {"reason": "UnknownChannel", "vc": 3}}]},
+        {"at_us": 2000, "input": {"query": {"counter": "UnknownChannel"}}, "expect": [{"counter": {"name": "UnknownChannel", "value": 1}}]}
+      ]
+    },
+    {
+      "id": "link-recv-tm-unknown-vc-counts-mc",
+      "description": "A frame for an unknown VC still counts in the MC Frame Count (132.0 4.1.2.5, 4.3.5 before 4.3.4.3): the frame of VC 0 after it raises no MC gap.",
+      "requirements": ["LNK-050", "LNK-051"],
+      "steps": [
+        {"at_us": 1000, "input": {"frame": {"frame_hex": "12300A1418000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F2021222324252627285084"}}, "expect": [{"deliver": {"kind": "DataField", "vc": 0, "data_hex": "0102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F202122232425262728", "fhp": 0, "gap": false}}]},
+        {"at_us": 2000, "input": {"frame": {"frame_hex": "12360B09180002030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F20212223242526272829D6BD"}}, "expect": [{"frame_discarded": {"reason": "UnknownChannel", "vc": 3}}]},
+        {"at_us": 3000, "input": {"frame": {"frame_hex": "12300C151800030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F202122232425262728292A81AD"}}, "expect": [{"deliver": {"kind": "DataField", "vc": 0, "data_hex": "030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F202122232425262728292A", "fhp": 0, "gap": false}}]}
+      ]
+    },
+    {
+      "id": "link-recv-tm-counts-in-sequence",
+      "description": "The first frame sets both expectations; consecutive counts, including the wrap 255 to 0 of both counters, raise no gap action (132.0 4.1.2.5.2, 4.1.2.6.2).",
+      "requirements": ["LNK-051"],
+      "steps": [
+        {"at_us": 1000, "input": {"frame": {"frame_hex": "1230FEFA18000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F202122232425262728BF06"}}, "expect": [{"deliver": {"kind": "DataField", "vc": 0, "data_hex": "0102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F202122232425262728", "fhp": 0, "gap": false}}]},
+        {"at_us": 2000, "input": {"frame": {"frame_hex": "1230FFFB180002030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F20212223242526272829F7EB"}}, "expect": [{"deliver": {"kind": "DataField", "vc": 0, "data_hex": "02030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F20212223242526272829", "fhp": 0, "gap": false}}]},
+        {"at_us": 3000, "input": {"frame": {"frame_hex": "123000FC1800030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F202122232425262728292A2D47"}}, "expect": [{"deliver": {"kind": "DataField", "vc": 0, "data_hex": "030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F202122232425262728292A", "fhp": 0, "gap": false}}]},
+        {"at_us": 4000, "input": {"query": {"counter": "gaps"}}, "expect": [{"counter": {"name": "gaps", "value": 0}}]}
+      ]
+    },
+    {
+      "id": "link-recv-tm-vc-and-mc-gap",
+      "description": "Two frames of a VC lost: the MC gap action first, then the VC gap action, each with the number missing; the data field delivered carries gap = true (LNK-051).",
+      "requirements": ["LNK-051", "LNK-061"],
+      "steps": [
+        {"at_us": 1000, "input": {"frame": {"frame_hex": "12300A1418000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F2021222324252627285084"}}, "expect": [{"deliver": {"kind": "DataField", "vc": 0, "data_hex": "0102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F202122232425262728", "fhp": 0, "gap": false}}]},
+        {"at_us": 2000, "input": {"frame": {"frame_hex": "12300D17180002030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F202122232425262728294D34"}}, "expect": [{"notify": {"kind": "FrameGap", "scope": "mc", "missing": 2}}, {"notify": {"kind": "FrameGap", "scope": "vc", "vc": 0, "missing": 2}}, {"deliver": {"kind": "DataField", "vc": 0, "data_hex": "02030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F20212223242526272829", "fhp": 0, "gap": true}}]},
+        {"at_us": 3000, "input": {"frame": {"frame_hex": "12300E181800030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F202122232425262728292ABAC5"}}, "expect": [{"deliver": {"kind": "DataField", "vc": 0, "data_hex": "030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F202122232425262728292A", "fhp": 0, "gap": false}}]},
+        {"at_us": 4000, "input": {"query": {"counter": "gaps"}}, "expect": [{"counter": {"name": "gaps", "value": 2}}]}
+      ]
+    },
+    {
+      "id": "link-recv-tm-mc-gap-only",
+      "description": "A frame of another VC is lost: the MC Frame Count jumps by one, the VC Frame Counts stay in sequence; only the MC gap action is raised and the data field carries gap = false.",
+      "requirements": ["LNK-051"],
+      "steps": [
+        {"at_us": 1000, "input": {"frame": {"frame_hex": "12300A1418000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F2021222324252627285084"}}, "expect": [{"deliver": {"kind": "DataField", "vc": 0, "data_hex": "0102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F202122232425262728", "fhp": 0, "gap": false}}]},
+        {"at_us": 2000, "input": {"frame": {"frame_hex": "12300C15180002030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F20212223242526272829DFCC"}}, "expect": [{"notify": {"kind": "FrameGap", "scope": "mc", "missing": 1}}, {"deliver": {"kind": "DataField", "vc": 0, "data_hex": "02030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F20212223242526272829", "fhp": 0, "gap": false}}]}
+      ]
+    },
+    {
+      "id": "link-recv-tm-gap-across-wrap",
+      "description": "The missing count is computed modulo the range: 254 then 2 is three frames lost on the MC and on the VC.",
+      "requirements": ["LNK-051"],
+      "steps": [
+        {"at_us": 1000, "input": {"frame": {"frame_hex": "1230FEFE18000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F202122232425262728050F"}}, "expect": [{"deliver": {"kind": "DataField", "vc": 0, "data_hex": "0102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F202122232425262728", "fhp": 0, "gap": false}}]},
+        {"at_us": 2000, "input": {"frame": {"frame_hex": "12300202180002030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F202122232425262728298D56"}}, "expect": [{"notify": {"kind": "FrameGap", "scope": "mc", "missing": 3}}, {"notify": {"kind": "FrameGap", "scope": "vc", "vc": 0, "missing": 3}}, {"deliver": {"kind": "DataField", "vc": 0, "data_hex": "02030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F20212223242526272829", "fhp": 0, "gap": true}}]}
+      ]
+    },
+    {
+      "id": "link-recv-tm-oid-frame",
+      "description": "An OID frame (FHP 0x7FE) on the dedicated VC 7 carries a Secondary Header and an OCF: both are delivered, the data is dropped, no FrameDiscarded; it counts in the MC and VC Frame Counts of its channel (the next frame of VC 0 follows the MC count without a gap), and the OID frame counter is 2.",
+      "requirements": ["LNK-052", "LNK-051"],
+      "steps": [
+        {"at_us": 1000, "input": {"frame": {"frame_hex": "12301E0318000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F202122232425262728ACA0"}}, "expect": [{"deliver": {"kind": "DataField", "vc": 0, "data_hex": "0102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F202122232425262728", "fhp": 0, "gap": false}}]},
+        {"at_us": 2000, "input": {"frame": {"frame_hex": "123F1F649FFE01AAFFFFFFFF6DB6D861451F11F19716723CBE7E00B1DE90B262107AF83494CEE3323F0301040805BF9E"}}, "expect": [{"deliver": {"kind": "FshSdu", "scope": "vc", "vc": 7, "data_hex": "01AA"}}, {"deliver": {"kind": "Ocf", "scope": "vc", "vc": 7, "report": "Type1", "ocf_hex": "01040805"}}]},
+        {"at_us": 3000, "input": {"frame": {"frame_hex": "12302004180002030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F20212223242526272829111B"}}, "expect": [{"deliver": {"kind": "DataField", "vc": 0, "data_hex": "02030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F20212223242526272829", "fhp": 0, "gap": false}}]},
+        {"at_us": 4000, "input": {"frame": {"frame_hex": "123E21651FFE54BEF5C1528C9BB9ED35FDBC23D9BC2F07576D987881BDF84845CBCC7F38959BA73E4F69C80256BAB0DD"}}, "expect": []},
+        {"at_us": 5000, "input": {"query": {"counter": "oid_frames"}}, "expect": [{"counter": {"name": "oid_frames", "value": 2}}]},
+        {"at_us": 6000, "input": {"query": {"counter": "gaps"}}, "expect": [{"counter": {"name": "gaps", "value": 0}}]}
+      ]
+    },
+    {
+      "id": "link-recv-tm-oid-frame-gap",
+      "description": "A lost OID frame is a gap in the MC Frame Count and in the VC Frame Count of the dedicated VC: both gap actions, then no delivery of the OID data.",
+      "requirements": ["LNK-052", "LNK-051"],
+      "steps": [
+        {"at_us": 1000, "input": {"frame": {"frame_hex": "123E1E641FFEFFFFFFFF6DB6D861451F11F19716723CBE7E00B1DE90B262107AF83494CEE3323F0354BEF5C1528C6A80"}}, "expect": []},
+        {"at_us": 2000, "input": {"frame": {"frame_hex": "123E20661FFE9BB9ED35FDBC23D9BC2F07576D987881BDF84845CBCC7F38959BA73E4F69C80256BA6C7B92D4D82D7D80"}}, "expect": [{"notify": {"kind": "FrameGap", "scope": "mc", "missing": 1}}, {"notify": {"kind": "FrameGap", "scope": "vc", "vc": 7, "missing": 1}}]}
+      ]
+    },
+    {
+      "id": "link-recv-tm-fsh-ocf-delivery",
+      "description": "The whole Secondary Header (ID octet included) is delivered as an FSH SDU and the OCF as an Ocf action naming the VC, Type-1 for a CLCW, Type-2 otherwise (project specific or SDLS FSR); the data field follows (132.0 4.3.3.3).",
+      "requirements": ["LNK-053"],
+      "steps": [
+        {"at_us": 1000, "input": {"frame": {"frame_hex": "1231010198000211220102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F2021010408055CF7"}}, "expect": [{"deliver": {"kind": "FshSdu", "scope": "vc", "vc": 0, "data_hex": "021122"}}, {"deliver": {"kind": "Ocf", "scope": "vc", "vc": 0, "report": "Type1", "ocf_hex": "01040805"}}, {"deliver": {"kind": "DataField", "vc": 0, "data_hex": "0102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F2021", "fhp": 0, "gap": false}}]},
+        {"at_us": 2000, "input": {"frame": {"frame_hex": "12310202180002030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F20212223242580112233BF2F"}}, "expect": [{"deliver": {"kind": "Ocf", "scope": "vc", "vc": 0, "report": "Type2", "ocf_hex": "80112233"}}, {"deliver": {"kind": "DataField", "vc": 0, "data_hex": "02030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F202122232425", "fhp": 0, "gap": false}}]},
+        {"at_us": 3000, "input": {"frame": {"frame_hex": "123103031800030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F20212223242526C0445566D5C3"}}, "expect": [{"deliver": {"kind": "Ocf", "scope": "vc", "vc": 0, "report": "Type2", "ocf_hex": "C0445566"}}, {"deliver": {"kind": "DataField", "vc": 0, "data_hex": "030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F20212223242526", "fhp": 0, "gap": false}}]}
+      ]
+    },
+    {
+      "id": "link-recv-tm-mc-services",
+      "description": "With the MC services configured the FSH SDU and the OCF name the master channel and not the VC.",
+      "requirements": ["LNK-053"],
+      "config": {"protocol": "tm", "scid": 291, "frame_len": 48, "fecf": true, "ocf_service": "mc", "fsh_service": "mc", "vcs": [{"vcid": 0, "role": "packets"}, {"vcid": 1, "role": "vca"}, {"vcid": 7, "role": "packets"}]},
+      "steps": [
+        {"at_us": 1000, "input": {"frame": {"frame_hex": "12310101980001110102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F20212201040805231D"}}, "expect": [{"deliver": {"kind": "FshSdu", "scope": "mc", "data_hex": "0111"}}, {"deliver": {"kind": "Ocf", "scope": "mc", "report": "Type1", "ocf_hex": "01040805"}}, {"deliver": {"kind": "DataField", "vc": 0, "data_hex": "0102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F202122", "fhp": 0, "gap": false}}]}
+      ]
+    },
+    {
+      "id": "link-recv-tm-no-fsh-service",
+      "description": "With no FSH service configured a Secondary Header is not delivered.",
+      "requirements": ["LNK-053"],
+      "config": {"protocol": "tm", "scid": 291, "frame_len": 48, "fecf": true, "ocf_service": "vc", "fsh_service": "none", "vcs": [{"vcid": 0, "role": "packets"}, {"vcid": 1, "role": "vca"}, {"vcid": 7, "role": "packets"}]},
+      "steps": [
+        {"at_us": 1000, "input": {"frame": {"frame_hex": "1230010198000211220102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F20212223242540F9"}}, "expect": [{"deliver": {"kind": "DataField", "vc": 0, "data_hex": "0102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F202122232425", "fhp": 0, "gap": false}}]}
+      ]
+    },
+    {
+      "id": "link-recv-tm-frame-loss",
+      "description": "The loss signal of the coding sublayer is the FrameLoss input: one Notify(LossFlag) for each configured VC, then one for the physical channel (OI-68, 04 section 4).",
+      "requirements": ["LNK-053"],
+      "steps": [
+        {"at_us": 1000, "input": {"frame_loss": {}}, "expect": [{"notify": {"kind": "LossFlag", "scope": "vc", "vc": 0}}, {"notify": {"kind": "LossFlag", "scope": "vc", "vc": 1}}, {"notify": {"kind": "LossFlag", "scope": "vc", "vc": 7}}, {"notify": {"kind": "LossFlag", "scope": "physical_channel"}}]}
+      ]
+    },
+    {
+      "id": "link-recv-tm-reconfigure",
+      "description": "Reconfigure restarts the expected counts: the frame after it sets a new expectation and raises no gap; a receiver retains no octets, so nothing is discarded.",
+      "requirements": ["LNK-051", "LNK-003"],
+      "steps": [
+        {"at_us": 1000, "input": {"frame": {"frame_hex": "12300A1418000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F2021222324252627285084"}}, "expect": [{"deliver": {"kind": "DataField", "vc": 0, "data_hex": "0102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F202122232425262728", "fhp": 0, "gap": false}}]},
+        {"at_us": 2000, "input": {"reconfigure": {}}, "expect": []},
+        {"at_us": 3000, "input": {"frame": {"frame_hex": "12305A50180002030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F2021222324252627282959A9"}}, "expect": [{"deliver": {"kind": "DataField", "vc": 0, "data_hex": "02030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F20212223242526272829", "fhp": 0, "gap": false}}]}
+      ]
+    },
+    {
+      "id": "link-recv-tm-gap-kept-for-delivery",
+      "description": "A gap is flagged on the data field delivered after it: the VCA VC loses a frame, and the field delivered with the new count carries gap = true; the next one does not.",
+      "requirements": ["LNK-051", "LNK-061"],
+      "steps": [
+        {"at_us": 1000, "input": {"frame": {"frame_hex": "1232050758000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F202122232425262728D52E"}}, "expect": [{"deliver": {"kind": "DataField", "vc": 1, "data_hex": "0102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F202122232425262728", "gap": false}}]},
+        {"at_us": 2000, "input": {"frame": {"frame_hex": "12320709580002030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F202122232425262728293453"}}, "expect": [{"notify": {"kind": "FrameGap", "scope": "mc", "missing": 1}}, {"notify": {"kind": "FrameGap", "scope": "vc", "vc": 1, "missing": 1}}, {"deliver": {"kind": "DataField", "vc": 1, "data_hex": "02030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F20212223242526272829", "gap": true}}]},
+        {"at_us": 3000, "input": {"frame": {"frame_hex": "1232080A5800030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F202122232425262728292A0D2B"}}, "expect": [{"deliver": {"kind": "DataField", "vc": 1, "data_hex": "030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F202122232425262728292A", "gap": false}}]}
+      ]
+    }
+  ]
+}

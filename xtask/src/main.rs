@@ -48,8 +48,8 @@ commands:
   vectors validate             check test-vectors/ against the model and the spec (TV-*), and run
                                the independent model each provenance_note names
                                (python3 -I test-vectors/models/<m>.py --check, TV-023)
-  vectors generated [--write]  check that test-vectors/cop1/ is what the independent model writes
-                               (python3 -I test-vectors/models/cop1.py --write), or rewrite it
+  vectors generated [--write]  check that test-vectors/cop1/ and link/recv/ are what their models write
+                               (python3 -I test-vectors/models/<m>.py --write), or rewrite them
   vectors schema [--check]     (re)generate test-vectors/schema/, or check it is current
   fields [--write]             check the field catalogue (03-api-model.md §9.1) and that
                                aldis_core::field and test-vectors/core/fields.json match it,

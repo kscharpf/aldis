@@ -1,0 +1,18 @@
+{
+  "kind": "engine-scenario",
+  "engine": "frame-receiver",
+  "provenance": "hand-derived",
+  "provenance_note": "Hand-derived from 232.0-B-4 4.1.2, 4.4.7 and 04-engines LNK-050. Model test-vectors/models/link_recv.py, written blind (TV-023) by a Claude agent from the Blue Books and docs/ only, without reading any implementation; for format only it read the COP-1 model and scenario files (cop1.py, the cop1 directory). The input scripts were chosen by hand; the expected outputs are the model's. Where the documents are silent the model refuses the case (see the README of test-vectors/link/recv/), so no scenario pins a behavior that 04 or the Blue Books leave open. The file is written by the model (--write) and never edited by hand.",
+  "config": {"protocol": "tc", "scid": 42, "frame_len": 16, "fecf": true, "vcs": [{"vcid": 1}]},
+  "scenarios": [
+    {
+      "id": "link-recv-tc-unknown-vc",
+      "description": "A TC frame for a VC that is not configured is discarded and counted: FrameDiscarded (UnknownChannel) alone (232.0 4.4.7.3).",
+      "requirements": ["LNK-050"],
+      "steps": [
+        {"at_us": 1000, "input": {"frame": {"frame_hex": "002A140F000102030405060708099751"}}, "expect": [{"frame_discarded": {"reason": "UnknownChannel", "vc": 5}}]},
+        {"at_us": 2000, "input": {"query": {"counter": "UnknownChannel"}}, "expect": [{"counter": {"name": "UnknownChannel", "value": 1}}]}
+      ]
+    }
+  ]
+}
