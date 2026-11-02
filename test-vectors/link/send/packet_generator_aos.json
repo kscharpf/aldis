@@ -223,6 +223,20 @@
         {"at_us": 30, "input": {"release": {}}, "expect": [{"data_field": {"vc": 1, "field_hex": "FFFEC3C3C3C3C3C3C3C3C3C3C3C3C3C3C3C3C3C3C3C3C3C3C3C3", "fhp": 65534}}], "expect_no_timeout": true},
         {"at_us": 40, "input": {"release": {}}, "expect": [{"data_field": {"vc": 1, "field_hex": "FFFEC3C3C3C3C3C3C3C3C3C3C3C3C3C3C3C3C3C3C3C3C3C3C3C3", "fhp": 65534}}], "expect_no_timeout": true}
       ]
+    },
+    {
+      "id": "link-send-pg-aos-lnk-014-idle-field-keeps-started-field",
+      "description": "With the IdleField policy and a field started but not releasable, Release returns the idle field and keeps the started field and its deadline (OI-74); at the deadline the started field is returned completed, then idle fields again.",
+      "requirements": ["LNK-014", "LNK-012"],
+      "config": {"protocol": "aos", "vc": 1, "valid_pvns": [0, 7], "max_packet_len": 64, "queue_capacity": 64, "idle_policy": "idle_field", "idle_pattern_hex": "C3", "idle_packet_kind": "space_packet", "field_len": 26, "release_deadline_us": 1000},
+      "steps": [
+        {"at_us": 100, "input": {"submit_packet": {"packet_hex": "0001C0000002212223"}}, "expect": [], "expect_timeout_us": 1100},
+        {"at_us": 200, "input": {"release": {}}, "expect": [{"data_field": {"vc": 1, "field_hex": "FFFEC3C3C3C3C3C3C3C3C3C3C3C3C3C3C3C3C3C3C3C3C3C3C3C3", "fhp": 65534}}], "expect_timeout_us": 1100},
+        {"at_us": 300, "input": {"release": {}}, "expect": [{"data_field": {"vc": 1, "field_hex": "FFFEC3C3C3C3C3C3C3C3C3C3C3C3C3C3C3C3C3C3C3C3C3C3C3C3", "fhp": 65534}}], "expect_timeout_us": 1100},
+        {"at_us": 1100, "input": {"timeout": {}}, "expect": [], "expect_no_timeout": true},
+        {"at_us": 1100, "input": {"release": {}}, "expect": [{"data_field": {"vc": 1, "field_hex": "00000001C000000221222307FFC0000008C3C3C3C3C3C3C3C3C3", "fhp": 0}}], "expect_no_timeout": true},
+        {"at_us": 1200, "input": {"release": {}}, "expect": [{"data_field": {"vc": 1, "field_hex": "FFFEC3C3C3C3C3C3C3C3C3C3C3C3C3C3C3C3C3C3C3C3C3C3C3C3", "fhp": 65534}}], "expect_no_timeout": true}
+      ]
     }
   ]
 }

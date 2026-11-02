@@ -438,6 +438,8 @@ class AccessGen:
         (name, arg), = inp.items()
         if name == "submit_sdu":
             s = unhx(arg["sdu_hex"])
+            if not self.uslp and len(s) != self.cfg["field_len"]:
+                raise Err("LengthMismatch", "sdu_len")  # LNK-020
             if self.uslp and len(s) > self.cfg["max_sdu_len"]:
                 raise Err("OutOfRange", "max_sdu_len")
             self.queue.append(s)
@@ -627,9 +629,9 @@ class ChannelMux:
             return bool(c.get("mc_ocf_init_hex")) or bool(self.vcs[vcid].get("ocf_init_hex"))
         if self.proto == "aos":
             return False if oid else bool(self.vcs[vcid].get("ocf_init_hex"))
-        if oid:
+        if oid:  # the entry for VCID 63 (LNK-033)
             return bool(c.get("oid", {}).get("ocf_init_hex"))
-        return bool(self.vcs[vcid].get("ocf_init_hex"))
+        return bool(c.get("mc_ocf_init_hex"))  # OI-76: the MC parameter governs
 
     def vcf_len(self, vcid, qos, oid):
         if oid:
@@ -695,7 +697,12 @@ class ChannelMux:
         qos = SC
         mapid = 0
         if self.proto == "uslp":
-            qos = (c.get("oid", {}).get("qos", SC)) if oid else offer.get("qos", self.vcs[vcid].get("qos", SC))
+            if oid:
+                qos = EXP  # Bypass/Sequence Control Flag 1 (LNK-030, OI-74)
+            elif offer.get("cop"):
+                qos = EXP if offer["cop"]["bypass"] else SC
+            else:
+                qos = offer.get("qos", self.vcs[vcid].get("qos", SC))
             mapid = 0 if oid else offer.get("map", self.vcs[vcid].get("map_id", 0))
         data_len = self.data_len(vcid, qos, oid)
         if oid and self.proto == "uslp":
@@ -706,7 +713,11 @@ class ChannelMux:
         else:
             data = unhx(offer["field_hex"])
             assert len(data) == data_len, (vcid, len(data), data_len)
-        mc, vc, cycle = self.counts(vcid, qos, oid)
+        cop = offer.get("cop") if offer else None
+        if cop:  # LNK-076, LNK-032: FOP-1 supplies the count and the flags; the mux counts nothing
+            mc, vc, cycle = None, cop["vcf_count"], 0
+        else:
+            mc, vc, cycle = self.counts(vcid, qos, oid)
         ocf_present = self.has_ocf(vcid, oid)
         sh, st = self.sec(vcid, oid)
         parts = []
@@ -715,9 +726,13 @@ class ChannelMux:
             if self.fsh_len(vcid):
                 d = self.fsh.get(("vc", vcid), self.fsh.get(("mc",)))
                 fsh = bytes([len(d)]) + d  # version 00, length - 1 in 6 bits (132.0 4.1.3.2)
-            fhp = TM_OID_FHP if oid else offer["fhp"]
+            sync = 0
+            if not oid and self.vcs[vcid].get("role") == "vca":
+                sync, fhp = 1, 0  # LNK-082: Sync 1, Packet Order 0, SLI 11, FHP 0
+            else:
+                fhp = TM_OID_FHP if oid else offer["fhp"]
             hdr = ((0 << 46) | (c["scid"] << 36) | (vcid << 33) | (int(ocf_present) << 32) |
-                   (mc << 24) | (vc << 16) | (int(bool(fsh)) << 15) | (0 << 14) | (0 << 13) |
+                   (mc << 24) | (vc << 16) | (int(bool(fsh)) << 15) | (sync << 14) | (0 << 13) |
                    (3 << 11) | fhp)
             parts.append(("hdr", hdr.to_bytes(6, "big")))
             parts.append(("fsh", fsh))
@@ -733,7 +748,8 @@ class ChannelMux:
             n = self.vcf_len(vcid, qos, oid)
             h1 = (0b1100 << 28) | (c["scid"] << 12) | (c.get("source_or_destination", 0) << 11) | \
                  (vcid << 5) | (mapid << 1) | 0
-            flags = (int(qos == EXP) << 7) | (0 << 6) | (int(ocf_present) << 3) | n
+            pcc = cop["protocol_control"] if cop else 0
+            flags = (int(qos == EXP) << 7) | (pcc << 6) | (int(ocf_present) << 3) | n
             hdr = h1.to_bytes(4, "big") + u16(self.F - 1) + bytes([flags])
             if n:
                 hdr += vc.to_bytes(n, "big")
@@ -769,6 +785,12 @@ class ChannelMux:
                 raise Err("UnknownChannel")
             if self.slots[v] is not None:
                 raise Err("WouldBlock")  # LNK-076
+            q = SC
+            if self.proto == "uslp":
+                q = (EXP if arg["cop"]["bypass"] else SC) if arg.get("cop") else \
+                    arg.get("qos", self.vcs[v].get("qos", SC))
+            if len(unhx(arg["field_hex"])) != self.data_len(v, q):
+                raise Err("LengthMismatch", "field_len")  # LNK-076
             self.slots[v] = dict(arg)
             return []
         if name == "set_ocf":
@@ -798,6 +820,10 @@ class ChannelMux:
                 frame, rng = self.build(vcid, "data", offer, None)
                 kind = "data"
             else:
+                p = self.policy
+                if p.kind == "weighted_round_robin" and \
+                        p.credit < p.weight[p.vcids[p.cur]]:
+                    p.advance()  # the VC in mid-turn loses the rest of its turn (LNK-031)
                 vcid = self.oid_vcid()
                 frame, rng = self.build(vcid, "oid", None, self.oid.take)
                 kind = "oid"
@@ -844,6 +870,7 @@ class MapSegmenter:
         self.maps = {m["map_id"]: m for m in cfg.get("maps", [])}
         self.queue = []  # {"map", "data", "packet"}
         self.cur = None  # [item, pos] while an SDU is segmented
+        self.cur_qos = None
         # octet stream (USLP rule 011)
         self.buf = bytearray()
         self.backlog = bytearray()
@@ -972,8 +999,14 @@ class MapSegmenter:
             return []
         if name == "next_fdu":
             h, qos = arg["handle"], arg["qos"]
+            if self.cur is not None and qos != self.cur_qos:
+                raise Err("InvalidField", "qos")  # LNK-041
             if self.cur is not None or self.queue:
-                return [self.fdu_tc(h, qos) if self.proto == "tc" else self.fdu_uslp(h, qos)]
+                was_idle = self.cur is None
+                out = [self.fdu_tc(h, qos) if self.proto == "tc" else self.fdu_uslp(h, qos)]
+                if was_idle and self.cur is not None:
+                    self.cur_qos = qos
+                return out
             if self.releasable:
                 mc = self.maps[self.buf_map]
                 body = bytes(self.buf)
@@ -1269,6 +1302,15 @@ def idle_policy_scenarios(proto, fl, prefix):
     s.do(release(), 0).do(submit_packet(spp_packet(1, z, 0, 0x21)), 10).do(release(), 20)
     s.do(release(), 30).do(release(), 40)
     out.append(s)
+    s = Sc(prefix + "lnk-014-idle-field-keeps-started-field", ["LNK-014", "LNK-012"],
+           "With the IdleField policy and a field started but not releasable, Release returns "
+           "the idle field and keeps the started field and its deadline (OI-74); at the deadline "
+           "the started field is returned completed, then idle fields again.",
+           cfg=pg_cfg(proto, field_len=fl, release_deadline_us=1000, idle_policy="idle_field",
+                      idle_pattern_hex="C3"))
+    s.do(submit_packet(spp_packet(1, 9, 0, 0x21)), 100).do(release(), 200).do(release(), 300)
+    s.do(timeout(), 1100).do(release(), 1100).do(release(), 1200)
+    out.append(s)
     return cfg, out
 
 
@@ -1302,6 +1344,12 @@ def access_tm_aos(proto):
            "queued Release returns nothing.")
     s.do(release(), 0).do(sdu(fld(12, 0x10)), 10).do(sdu(fld(12, 0x20)), 11)
     s.do(release(), 20).do(release(), 30).do(release(), 40)
+    out.append(s)
+    s = Sc(pre + "lnk-020-sdu-length", ["LNK-020"],
+           "An SDU shorter or longer than the data field is refused with LengthMismatch "
+           "(sdu_len) and no state change.")
+    s.do(sdu(fld(11, 0x10)), 0).do(sdu(fld(13, 0x10)), 1).do(sdu(fld(12, 0x10)), 2)
+    s.do(release(), 3).do(release(), 4)
     out.append(s)
     return cfg, out
 
@@ -1600,6 +1648,30 @@ def mux_tm():
     s.do(opp(), 0).do(opp(), 10).do(offer(1, fld(D, 0x10), 0), 20)
     s.do({"reconfigure": {"config": cfg}}, 30).do(opp(), 40)
     out.append(s)
+    c = tm_cfg(vcs=TM_VCS + [{"vcid": 4, "role": "vca", "priority": 4, "weight": 1}])
+    s = MuxSc("link-send-mux-tm-lnk-082-vca-frame", ["LNK-082", "LNK-032"],
+              "A VC that carries VCA_SDUs: Synchronization Flag 1, Packet Order Flag 0, Segment "
+              "Length Identifier 11, FHP 0 (the project's values for the undefined fields); a "
+              "packet VC's frame after it has Synchronization Flag 0.", c)
+    s.do(offer(4, fld(16, 0x10)), 0).do(opp(), 1)
+    s.do(offer(1, fld(16, 0x20), 0), 10).do(opp(), 11)
+    out.append(s)
+    s = MuxSc("link-send-mux-tm-lnk-076-field-len", ["LNK-076"],
+              "A field of another length than the VC's data field is refused with LengthMismatch "
+              "(field_len) and no state change; the right length is then accepted.", cfg)
+    s.do(offer(1, fld(15, 0x10), 0), 0).do(offer(1, fld(17, 0x10), 0), 1)
+    s.do(offer(1, fld(16, 0x10), 0), 2).do(opp(), 3)
+    out.append(s)
+    wv2 = vc_with(vc_with(vc_with(TM_VCS, 1, weight=2), 2, weight=1), 3, weight=3)
+    w2 = tm_cfg(policy={"kind": "weighted_round_robin"}, vcs=wv2)
+    s = MuxSc("link-send-mux-tm-lnk-031-weighted-oid-loses-turn", ["LNK-031", "LNK-030"],
+              "A VC in the middle of its turn loses the rest of it when an Opportunity finds no "
+              "VC with a field and sends an OID frame (OI-74): VC 1 (weight 2) is served once; "
+              "the OID frame ends its turn; VC 2 is served before VC 1 although both offer.", w2)
+    s.do(offer(1, fld(16, 0x10), 0), 0).do(opp(), 10).do(opp(), 20)
+    s.do(offer(1, fld(16, 0x20), 0), 21).do(offer(2, fld(16, 0x30), 0), 22)
+    s.do(opp(), 30).do(opp(), 40)
+    out.append(s)
     return cfg, out
 
 
@@ -1659,6 +1731,13 @@ def mux_aos():
     s.do({"set_insert": {"data_hex": "070809"}}, 50).do(offer(2, fld(D2, 0x20)), 51).do(opp(), 60)
     s.do(offer(2, fld(D2, 0x30)), 61).do(opp(), 70)
     out.append(s)
+    s = MuxSc("link-send-mux-aos-lnk-034-first-frame-repeats", ["LNK-034"],
+              "The slot holds the configured fill until the caller sets it: the first frame, with "
+              "no SetInsert before it, inserts the fill and is followed by "
+              "Notify(InsertSduRepeated) (OI-74).",
+              aos_cfg(insert_zone_len=3, insert_init_hex="A5A5A5"))
+    s.do(opp(), 0).do({"set_insert": {"data_hex": "010203"}}, 5).do(opp(), 10)
+    out.append(s)
     c = aos_cfg(vcs=vc_with(AOS_VCS, 2, ocf_init_hex="01FF00AA"))
     s = MuxSc("link-send-mux-aos-lnk-033-vc-ocf", ["LNK-033"],
               "A VC_OCF in every frame of its VC (VC 2); VC 1 has none and its data field is 4 "
@@ -1695,7 +1774,7 @@ def uslp_cfg(**kw):
     c = {"protocol": "uslp", "scid": 0x1234, "frame_len": 32, "fecf": True,
          "source_or_destination": 0, "insert_zone_len": 0,
          "policy": {"kind": "fixed_priority"},
-         "oid": {"qos": SC, "vcf_len": 0},
+         "oid": {"vcf_len": 0},
          "vcs": copy.deepcopy(USLP_VCS)}
     c.update(kw)
     return c
@@ -1716,7 +1795,7 @@ def mux_uslp():
     for k in range(3):
         s.do(opp(), 10 * k)
     out.append(s)
-    c = uslp_cfg(oid={"qos": SC, "vcf_len": 2})
+    c = uslp_cfg(oid={"vcf_len": 2})
     s = MuxSc("link-send-mux-uslp-lnk-030-oid-with-count", ["LNK-030", "LNK-032"],
               "An OID frame with a VCF Count Length of 2 for VCID 63: the mux counts OID frames "
               "like any VC; the count has the configured length.", c)
@@ -1745,17 +1824,52 @@ def mux_uslp():
     s.do(offer(2, tfdf(1, 5, 0xFFFF, fld(18, 0x10)), map=3), 0).do(opp(), 1)
     s.do(offer(2, tfdf(1, 5, 4, fld(18, 0x20))), 10).do(opp(), 11)
     out.append(s)
-    c = uslp_cfg(vcs=vc_with(USLP_VCS, 1, ocf_init_hex="C1020304"),
-                 oid={"qos": EXP, "vcf_len": 0, "ocf_init_hex": "01020304"})
-    s = MuxSc("link-send-mux-uslp-lnk-033-ocf", ["LNK-033"],
-              "VC 1 requires an OCF in every frame (the OCF Flag is set); VC 2 has none; the OID "
-              "frame has one because the entry for VCID 63 says so, and it is a expedited-QoS "
-              "frame.", c)
+    c = uslp_cfg(mc_ocf_init_hex="C1020304", oid={"vcf_len": 0, "ocf_init_hex": "01020304"})
+    s = MuxSc("link-send-mux-uslp-lnk-033-mc-ocf", ["LNK-033"],
+              "The MC parameter 'Inclusion of OCF Required' governs (OI-76): every frame of the "
+              "master channel, of VC 1 and of VC 2, has the MC_OCF slot's value and the OCF Flag "
+              "set; the OID frame has an OCF only because the entry for VCID 63 says so, from its "
+              "own slot.", c)
     s.do(offer(1, tfdf(0, 0, 0, fld(14, 0x10)), 0), 0).do(opp(), 1)
-    s.do(offer(2, tfdf(1, 5, 3, fld(18, 0x20))), 10).do(opp(), 11)
-    s.do({"set_ocf": {"scope": "vc", "vc": 1, "ocf_hex": "81828384"}}, 20)
+    s.do(offer(2, tfdf(1, 5, 3, fld(14, 0x20))), 10).do(opp(), 11)
+    s.do({"set_ocf": {"scope": "mc", "ocf_hex": "81828384"}}, 20)
     s.do(offer(1, tfdf(0, 0, 0, fld(14, 0x30)), 0), 21).do(opp(), 22)
     s.do({"set_ocf": {"scope": "vc", "vc": 63, "ocf_hex": "05060708"}}, 30).do(opp(), 31)
+    out.append(s)
+    s = MuxSc("link-send-mux-uslp-lnk-033-no-ocf-without-mc-parameter", ["LNK-033"],
+              "Without the MC parameter no frame of a data VC has an OCF (the VC-level parameter "
+              "of Table 5-3 is not a mux parameter, OI-76); the OID frame has none unless its "
+              "entry says so.", cfg)
+    s.do(offer(1, tfdf(0, 0, 0, fld(18, 0x10)), 0), 0).do(opp(), 1).do(opp(), 10)
+    out.append(s)
+    s = MuxSc("link-send-mux-uslp-lnk-076-cop-block", ["LNK-076", "LNK-032"],
+              "On a VC with COP-1 the Offer carries a cop block: the mux takes the VCF Count, the "
+              "Bypass/Sequence Control Flag and the Protocol Control Command Flag as given (a "
+              "Type-BC frame: bypass 1, protocol control 1) and counts nothing for that frame; "
+              "the count of the next frame without a cop block is not advanced by it; the "
+              "expedited count is separate.", cfg)
+    s.do(offer(1, tfdf(0, 0, 0, fld(18, 0x10)), 0, cop={"vcf_count": 7, "bypass": 0,
+                                                       "protocol_control": 0}), 0).do(opp(), 1)
+    s.do(offer(1, tfdf(0, 0, 0, fld(18, 0x20)), 0), 10).do(opp(), 11)
+    s.do(offer(1, tfdf(1, 1, 3, fld(19, 0x30)), 0, cop={"vcf_count": 3, "bypass": 1,
+                                                       "protocol_control": 1}), 20).do(opp(), 21)
+    s.do(offer(1, tfdf(0, 0, 0, fld(19, 0x40)), 0, qos=EXP), 30).do(opp(), 31)
+    out.append(s)
+    s = MuxSc("link-send-mux-uslp-lnk-076-field-len", ["LNK-076"],
+              "A field whose length differs from the VC's data field length for its QoS is refused "
+              "with LengthMismatch (field_len) and no state change: the sequence-controlled length "
+              "is 1 octet shorter than the expedited one on VC 1; an unconfigured VC is refused.",
+              cfg)
+    s.do(offer(1, tfdf(0, 0, 0, fld(19, 0x10)), 0), 0)
+    s.do(offer(1, tfdf(0, 0, 0, fld(18, 0x10)), 0, qos=EXP), 1)
+    s.do(offer(1, tfdf(0, 0, 0, fld(18, 0x10)), 0), 2).do(opp(), 3)
+    out.append(s)
+    s = MuxSc("link-send-mux-uslp-lnk-034-first-frame-repeats", ["LNK-034"],
+              "The slot holds the configured fill until the caller sets it: the first frame, with "
+              "no SetInsert before it, inserts the fill and is followed by "
+              "Notify(InsertSduRepeated) (OI-74).",
+              uslp_cfg(insert_zone_len=2, insert_init_hex="5A5A"))
+    s.do(opp(), 0).do({"set_insert": {"data_hex": "0102"}}, 5).do(opp(), 10)
     out.append(s)
     c = uslp_cfg(insert_zone_len=2, insert_init_hex="0000")
     s = MuxSc("link-send-mux-uslp-lnk-034-insert-zone", ["LNK-034"],
@@ -1884,6 +1998,13 @@ def seg_tc():
     s.do(sub_s(1, fld(40, 0x10)), 0).do(sub_s(3, fld(5, 0x80)), 1).do(nxt(1), 10)
     s.do({"reconfigure": {"config": cfg}}, 20).do(sub_s(1, fld(5, 0x30)), 30).do(nxt(2), 40)
     out.append(s)
+    s = Sc("link-send-seg-tc-lnk-041-qos-change", ["LNK-041"],
+           "A request whose QoS differs from that of the SDU in progress is refused with "
+           "InvalidField (qos) and no state change; the same QoS continues the SDU; the next "
+           "SDU may use another QoS.")
+    s.do(sub_s(1, fld(35, 0x10)), 0).do(sub_s(1, fld(4, 0x50)), 1).do(nxt(1), 10)
+    s.do(nxt(2, EXP), 11).do(nxt(3), 12).do(nxt(4), 13).do(nxt(5, EXP), 14)
+    out.append(s)
     # no Segment Header
     c2 = {"protocol": "tc", "segment_header": False, "fecf": True, "max_fdu_len": 16,
           "blocking": True}
@@ -1964,6 +2085,13 @@ def seg_uslp():
     s.do({"submit_octets": {"map": 4, "data_hex": hx(fld(25, 0x20))}}, 1000).do(nxt(5), 1010)
     s.do(nxt(6), 1011).do(timeout(), 1511).do(nxt(7), 1511).do(nxt(8), 1512)
     out.append(s)
+    s = Sc("link-send-seg-uslp-lnk-041-qos-change", ["LNK-041"],
+           "A request whose QoS differs from that of the SDU in progress is refused with "
+           "InvalidField (qos) and no state change; the same QoS continues the SDU; the next "
+           "SDU may use another QoS.")
+    s.do(sub_s(2, fld(25, 0x10)), 0).do(sub_s(2, fld(4, 0x50)), 1).do(nxt(1), 10)
+    s.do(nxt(2, EXP), 11).do(nxt(3), 12).do(nxt(4), 13).do(nxt(5, EXP), 14)
+    out.append(s)
     s = Sc("link-send-seg-uslp-lnk-003-reconfigure", ["LNK-003", "LNK-042"],
            "Reconfigure discards the SDU in progress, the queue, and the octets of a started "
            "TFDZ, with the number of octets.")
@@ -1981,7 +2109,7 @@ def seg_uslp():
 REQUIREMENTS_SCOPE = (["LNK-011", "LNK-012", "LNK-013", "LNK-014", "LNK-020", "LNK-021",
                        "LNK-030", "LNK-031", "LNK-032", "LNK-033", "LNK-034", "LNK-035",
                        "LNK-036", "LNK-040", "LNK-041", "LNK-042", "LNK-015", "LNK-076", "LNK-003",
-                       "LNK-010"])
+                       "LNK-010", "LNK-082"])
 
 PROV = {
     "pg_tm": "Hand-derived from 132.0-B-3 §4.1.2.7.6, §4.1.4, §4.2.2 (FHP 0x7FF none, 0x7FE idle "

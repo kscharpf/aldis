@@ -502,6 +502,44 @@
         {"at_us": 30, "input": {"reconfigure": {"config": {"protocol": "tm", "scid": 165, "frame_len": 24, "fecf": true, "policy": {"kind": "fixed_priority"}, "oid_vc": 7, "vcs": [{"vcid": 1, "role": "packets", "priority": 1, "weight": 1}, {"vcid": 2, "role": "packets", "priority": 3, "weight": 1}, {"vcid": 3, "role": "packets", "priority": 2, "weight": 1}, {"vcid": 7, "role": "packets", "priority": 0, "weight": 1}]}}}, "expect": [{"notify": {"kind": "Discarded", "octets": 16}}]},
         {"at_us": 40, "input": {"opportunity": {}}, "expect": [{"transmit": {"kind": "oid", "vc": 7, "frame_hex": "0A5E02021FFE3F0354BEF5C1528C9BB9ED35FDBC23D90000", "security_header": [6, 6], "data": [6, 22], "security_trailer": [22, 22]}}]}
       ]
+    },
+    {
+      "id": "link-send-mux-tm-lnk-082-vca-frame",
+      "description": "A VC that carries VCA_SDUs: Synchronization Flag 1, Packet Order Flag 0, Segment Length Identifier 11, FHP 0 (the project's values for the undefined fields); a packet VC's frame after it has Synchronization Flag 0.",
+      "requirements": ["LNK-082", "LNK-032"],
+      "config": {"protocol": "tm", "scid": 165, "frame_len": 24, "fecf": true, "policy": {"kind": "fixed_priority"}, "oid_vc": 7, "vcs": [{"vcid": 1, "role": "packets", "priority": 1, "weight": 1}, {"vcid": 2, "role": "packets", "priority": 3, "weight": 1}, {"vcid": 3, "role": "packets", "priority": 2, "weight": 1}, {"vcid": 7, "role": "packets", "priority": 0, "weight": 1}, {"vcid": 4, "role": "vca", "priority": 4, "weight": 1}]},
+      "steps": [
+        {"at_us": 0, "input": {"offer": {"vc": 4, "field_hex": "101112131415161718191A1B1C1D1E1F"}}, "expect": []},
+        {"at_us": 1, "input": {"opportunity": {}}, "expect": [{"transmit": {"kind": "data", "vc": 4, "frame_hex": "0A5800005800101112131415161718191A1B1C1D1E1F0000", "security_header": [6, 6], "data": [6, 22], "security_trailer": [22, 22]}}]},
+        {"at_us": 10, "input": {"offer": {"vc": 1, "field_hex": "202122232425262728292A2B2C2D2E2F", "fhp": 0}}, "expect": []},
+        {"at_us": 11, "input": {"opportunity": {}}, "expect": [{"transmit": {"kind": "data", "vc": 1, "frame_hex": "0A5201001800202122232425262728292A2B2C2D2E2F0000", "security_header": [6, 6], "data": [6, 22], "security_trailer": [22, 22]}}]}
+      ]
+    },
+    {
+      "id": "link-send-mux-tm-lnk-076-field-len",
+      "description": "A field of another length than the VC's data field is refused with LengthMismatch (field_len) and no state change; the right length is then accepted.",
+      "requirements": ["LNK-076"],
+      "steps": [
+        {"at_us": 0, "input": {"offer": {"vc": 1, "field_hex": "101112131415161718191A1B1C1D1E", "fhp": 0}}, "expect": [{"error": "LengthMismatch", "field": "field_len"}]},
+        {"at_us": 1, "input": {"offer": {"vc": 1, "field_hex": "101112131415161718191A1B1C1D1E1F20", "fhp": 0}}, "expect": [{"error": "LengthMismatch", "field": "field_len"}]},
+        {"at_us": 2, "input": {"offer": {"vc": 1, "field_hex": "101112131415161718191A1B1C1D1E1F", "fhp": 0}}, "expect": []},
+        {"at_us": 3, "input": {"opportunity": {}}, "expect": [{"transmit": {"kind": "data", "vc": 1, "frame_hex": "0A5200001800101112131415161718191A1B1C1D1E1F0000", "security_header": [6, 6], "data": [6, 22], "security_trailer": [22, 22]}}]}
+      ]
+    },
+    {
+      "id": "link-send-mux-tm-lnk-031-weighted-oid-loses-turn",
+      "description": "A VC in the middle of its turn loses the rest of it when an Opportunity finds no VC with a field and sends an OID frame (OI-74): VC 1 (weight 2) is served once; the OID frame ends its turn; VC 2 is served before VC 1 although both offer.",
+      "requirements": ["LNK-031", "LNK-030"],
+      "config": {"protocol": "tm", "scid": 165, "frame_len": 24, "fecf": true, "policy": {"kind": "weighted_round_robin"}, "oid_vc": 7, "vcs": [{"vcid": 1, "role": "packets", "priority": 1, "weight": 2}, {"vcid": 2, "role": "packets", "priority": 3, "weight": 1}, {"vcid": 3, "role": "packets", "priority": 2, "weight": 3}, {"vcid": 7, "role": "packets", "priority": 0, "weight": 1}]},
+      "steps": [
+        {"at_us": 0, "input": {"offer": {"vc": 1, "field_hex": "101112131415161718191A1B1C1D1E1F", "fhp": 0}}, "expect": []},
+        {"at_us": 10, "input": {"opportunity": {}}, "expect": [{"transmit": {"kind": "data", "vc": 1, "frame_hex": "0A5200001800101112131415161718191A1B1C1D1E1F0000", "security_header": [6, 6], "data": [6, 22], "security_trailer": [22, 22]}}]},
+        {"at_us": 20, "input": {"opportunity": {}}, "expect": [{"transmit": {"kind": "oid", "vc": 7, "frame_hex": "0A5E01001FFEFFFFFFFF6DB6D861451F11F19716723C0000", "security_header": [6, 6], "data": [6, 22], "security_trailer": [22, 22]}}]},
+        {"at_us": 21, "input": {"offer": {"vc": 1, "field_hex": "202122232425262728292A2B2C2D2E2F", "fhp": 0}}, "expect": []},
+        {"at_us": 22, "input": {"offer": {"vc": 2, "field_hex": "303132333435363738393A3B3C3D3E3F", "fhp": 0}}, "expect": []},
+        {"at_us": 30, "input": {"opportunity": {}}, "expect": [{"transmit": {"kind": "data", "vc": 2, "frame_hex": "0A5402001800303132333435363738393A3B3C3D3E3F0000", "security_header": [6, 6], "data": [6, 22], "security_trailer": [22, 22]}}]},
+        {"at_us": 40, "input": {"opportunity": {}}, "expect": [{"transmit": {"kind": "data", "vc": 1, "frame_hex": "0A5203011800202122232425262728292A2B2C2D2E2F0000", "security_header": [6, 6], "data": [6, 22], "security_trailer": [22, 22]}}]}
+      ]
     }
   ]
 }

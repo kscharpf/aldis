@@ -39,7 +39,7 @@ Configuration: SCID `0x1234`, 32-octet frames with the FECF, no Insert Zone, no 
 
 - Bits 0–3 TFVN `1100`; bits 4–19 SCID `0001 0010 0011 0100`; bit 20 Source-or-Destination `0`; bits 21–26 VCID `111111`; bits 27–30 MAP ID `0000` (§4.1.4.1.8); bit 31 End of Frame Primary Header Flag `0`: `1100 0001 | 0010 0011 | 0100 0111 | 1110 0000` = `C1 23 47 E0`.
 - Bits 32–47: Frame Length = 32 − 1 = 31: `00 1F`.
-- Bits 48–55: Bypass/Sequence Control Flag `0` (the configured QoS of the OID frame, which the Blue Book does not state), Protocol Control Command Flag `0`, spares `00`, OCF Flag `0`, VCF Count Length `000`: `00`. No VCF Count follows.
+- Bits 48–55: Bypass/Sequence Control Flag `1` (expedited; the Blue Book assigns none to an OID frame and LNK-030 chooses 1, OI-74), Protocol Control Command Flag `0`, spares `00`, OCF Flag `0`, VCF Count Length `000`: `1000 0000` = `80`. No VCF Count follows.
 - The header is 7 octets; the TFDF is 32 − 7 − 2 = 23 octets: the TFDF Header `0011 1111` = `3F` (rule `001`, UPID `11111` Only Idle Data, 732.1-B-3 §4.1.4.1.9 and the SANA registry), the pointer to the last octet of the TFDZ, 20 − 1 = 19 = `00 13`, and the TFDZ of 20 octets of the pattern `FF FF FF FF 6D B6 D8 61 45 1F 11 F1 97 16 72 3C BE 7E 00 B1`, then the FECF `00 00`.
 
-The frame is `C12347E0 001F 00 3F 0013 FFFFFFFF6DB6D861451F11F19716723CBE7E00B1 0000`.
+The frame is `C12347E0 001F 80 3F 0013 FFFFFFFF6DB6D861451F11F19716723CBE7E00B1 0000`.

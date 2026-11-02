@@ -107,6 +107,20 @@
       ]
     },
     {
+      "id": "link-send-seg-uslp-lnk-041-qos-change",
+      "description": "A request whose QoS differs from that of the SDU in progress is refused with InvalidField (qos) and no state change; the same QoS continues the SDU; the next SDU may use another QoS.",
+      "requirements": ["LNK-041"],
+      "steps": [
+        {"at_us": 0, "input": {"submit_sdu": {"sdu_hex": "101112131415161718191A1B1C1D1E1F202122232425262728", "map": 2}}, "expect": [], "expect_no_timeout": true},
+        {"at_us": 1, "input": {"submit_sdu": {"sdu_hex": "50515253", "map": 2}}, "expect": [], "expect_no_timeout": true},
+        {"at_us": 10, "input": {"next_fdu": {"handle": 1, "qos": "sequence_controlled"}}, "expect": [{"fdu": {"handle": 1, "map": 2, "rule": "100", "upid": 5, "qos": "sequence_controlled", "fdu_hex": "85101112131415161718191A"}}], "expect_no_timeout": true},
+        {"at_us": 11, "input": {"next_fdu": {"handle": 2, "qos": "expedited"}}, "expect": [{"error": "InvalidField", "field": "qos"}], "expect_no_timeout": true},
+        {"at_us": 12, "input": {"next_fdu": {"handle": 3, "qos": "sequence_controlled"}}, "expect": [{"fdu": {"handle": 3, "map": 2, "rule": "101", "upid": 5, "qos": "sequence_controlled", "fdu_hex": "A51B1C1D1E1F202122232425"}}], "expect_no_timeout": true},
+        {"at_us": 13, "input": {"next_fdu": {"handle": 4, "qos": "sequence_controlled"}}, "expect": [{"fdu": {"handle": 4, "map": 2, "rule": "110", "upid": 5, "qos": "sequence_controlled", "fdu_hex": "C5262728"}}], "expect_no_timeout": true},
+        {"at_us": 14, "input": {"next_fdu": {"handle": 5, "qos": "expedited"}}, "expect": [{"fdu": {"handle": 5, "map": 2, "rule": "111", "upid": 5, "qos": "expedited", "fdu_hex": "E550515253"}}], "expect_no_timeout": true}
+      ]
+    },
+    {
       "id": "link-send-seg-uslp-lnk-003-reconfigure",
       "description": "Reconfigure discards the SDU in progress, the queue, and the octets of a started TFDZ, with the number of octets.",
       "requirements": ["LNK-003", "LNK-042"],

@@ -3,27 +3,27 @@
   "engine": "channel-mux",
   "provenance": "hand-derived",
   "provenance_note": "Hand-derived from 732.1-B-3 \u00a74.1.2 (the Primary Header), \u00a74.1.3, \u00a74.1.4.1.5-12 (OID frames), \u00a74.1.5, \u00a76.3, \u00a74.2.8-4.2.11 and docs/04-engines.md \u00a72.3 (LNK-030\u2026LNK-036), OI-68; UPIDs from specs/sana/uslp_protocol_id.tsv. Model test-vectors/models/link_send.py, written blind (TV-023) by a Claude agent from the Blue Books and docs/ only, without reading any implementation. The input scripts were chosen by hand; the expected outputs are the model's. The file is written by the model (--write) and never edited by hand.",
-  "config": {"protocol": "uslp", "scid": 4660, "frame_len": 32, "fecf": true, "source_or_destination": 0, "insert_zone_len": 0, "policy": {"kind": "fixed_priority"}, "oid": {"qos": "sequence_controlled", "vcf_len": 0}, "vcs": [{"vcid": 1, "role": "packets", "priority": 1, "weight": 1, "map_id": 0, "qos": "sequence_controlled", "vcf_len_sc": 2, "vcf_len_exp": 1}, {"vcid": 2, "role": "mapa", "priority": 2, "weight": 1, "map_id": 3, "qos": "sequence_controlled", "vcf_len_sc": 2, "vcf_len_exp": 2}]},
+  "config": {"protocol": "uslp", "scid": 4660, "frame_len": 32, "fecf": true, "source_or_destination": 0, "insert_zone_len": 0, "policy": {"kind": "fixed_priority"}, "oid": {"vcf_len": 0}, "vcs": [{"vcid": 1, "role": "packets", "priority": 1, "weight": 1, "map_id": 0, "qos": "sequence_controlled", "vcf_len_sc": 2, "vcf_len_exp": 1}, {"vcid": 2, "role": "mapa", "priority": 2, "weight": 1, "map_id": 3, "qos": "sequence_controlled", "vcf_len_sc": 2, "vcf_len_exp": 2}]},
   "scenarios": [
     {
       "id": "link-send-mux-uslp-lnk-030-oid-frames",
       "description": "With no VC offering, an OID frame: VCID 63, MAP ID 0, rule 001, UPID Only Idle Data, Last Valid Octet Pointer at the last TFDZ octet, the TFDZ from the OID generator, which continues; no VCF Count by default on VCID 63.",
       "requirements": ["LNK-030", "LNK-036"],
       "steps": [
-        {"at_us": 0, "input": {"opportunity": {}}, "expect": [{"transmit": {"kind": "oid", "vc": 63, "frame_hex": "C12347E0001F003F0013FFFFFFFF6DB6D861451F11F19716723CBE7E00B10000", "security_header": [7, 7], "data": [7, 30], "security_trailer": [30, 30]}}]},
-        {"at_us": 10, "input": {"opportunity": {}}, "expect": [{"transmit": {"kind": "oid", "vc": 63, "frame_hex": "C12347E0001F003F0013DE90B262107AF83494CEE3323F0354BEF5C1528C0000", "security_header": [7, 7], "data": [7, 30], "security_trailer": [30, 30]}}]},
-        {"at_us": 20, "input": {"opportunity": {}}, "expect": [{"transmit": {"kind": "oid", "vc": 63, "frame_hex": "C12347E0001F003F00139BB9ED35FDBC23D9BC2F07576D987881BDF848450000", "security_header": [7, 7], "data": [7, 30], "security_trailer": [30, 30]}}]}
+        {"at_us": 0, "input": {"opportunity": {}}, "expect": [{"transmit": {"kind": "oid", "vc": 63, "frame_hex": "C12347E0001F803F0013FFFFFFFF6DB6D861451F11F19716723CBE7E00B10000", "security_header": [7, 7], "data": [7, 30], "security_trailer": [30, 30]}}]},
+        {"at_us": 10, "input": {"opportunity": {}}, "expect": [{"transmit": {"kind": "oid", "vc": 63, "frame_hex": "C12347E0001F803F0013DE90B262107AF83494CEE3323F0354BEF5C1528C0000", "security_header": [7, 7], "data": [7, 30], "security_trailer": [30, 30]}}]},
+        {"at_us": 20, "input": {"opportunity": {}}, "expect": [{"transmit": {"kind": "oid", "vc": 63, "frame_hex": "C12347E0001F803F00139BB9ED35FDBC23D9BC2F07576D987881BDF848450000", "security_header": [7, 7], "data": [7, 30], "security_trailer": [30, 30]}}]}
       ]
     },
     {
       "id": "link-send-mux-uslp-lnk-030-oid-with-count",
       "description": "An OID frame with a VCF Count Length of 2 for VCID 63: the mux counts OID frames like any VC; the count has the configured length.",
       "requirements": ["LNK-030", "LNK-032"],
-      "config": {"protocol": "uslp", "scid": 4660, "frame_len": 32, "fecf": true, "source_or_destination": 0, "insert_zone_len": 0, "policy": {"kind": "fixed_priority"}, "oid": {"qos": "sequence_controlled", "vcf_len": 2}, "vcs": [{"vcid": 1, "role": "packets", "priority": 1, "weight": 1, "map_id": 0, "qos": "sequence_controlled", "vcf_len_sc": 2, "vcf_len_exp": 1}, {"vcid": 2, "role": "mapa", "priority": 2, "weight": 1, "map_id": 3, "qos": "sequence_controlled", "vcf_len_sc": 2, "vcf_len_exp": 2}]},
+      "config": {"protocol": "uslp", "scid": 4660, "frame_len": 32, "fecf": true, "source_or_destination": 0, "insert_zone_len": 0, "policy": {"kind": "fixed_priority"}, "oid": {"vcf_len": 2}, "vcs": [{"vcid": 1, "role": "packets", "priority": 1, "weight": 1, "map_id": 0, "qos": "sequence_controlled", "vcf_len_sc": 2, "vcf_len_exp": 1}, {"vcid": 2, "role": "mapa", "priority": 2, "weight": 1, "map_id": 3, "qos": "sequence_controlled", "vcf_len_sc": 2, "vcf_len_exp": 2}]},
       "steps": [
-        {"at_us": 0, "input": {"opportunity": {}}, "expect": [{"transmit": {"kind": "oid", "vc": 63, "frame_hex": "C12347E0001F0200003F0011FFFFFFFF6DB6D861451F11F19716723CBE7E0000", "security_header": [9, 9], "data": [9, 30], "security_trailer": [30, 30]}}]},
-        {"at_us": 10, "input": {"opportunity": {}}, "expect": [{"transmit": {"kind": "oid", "vc": 63, "frame_hex": "C12347E0001F0200013F001100B1DE90B262107AF83494CEE3323F0354BE0000", "security_header": [9, 9], "data": [9, 30], "security_trailer": [30, 30]}}]},
-        {"at_us": 20, "input": {"opportunity": {}}, "expect": [{"transmit": {"kind": "oid", "vc": 63, "frame_hex": "C12347E0001F0200023F0011F5C1528C9BB9ED35FDBC23D9BC2F07576D980000", "security_header": [9, 9], "data": [9, 30], "security_trailer": [30, 30]}}]}
+        {"at_us": 0, "input": {"opportunity": {}}, "expect": [{"transmit": {"kind": "oid", "vc": 63, "frame_hex": "C12347E0001F8200003F0011FFFFFFFF6DB6D861451F11F19716723CBE7E0000", "security_header": [9, 9], "data": [9, 30], "security_trailer": [30, 30]}}]},
+        {"at_us": 10, "input": {"opportunity": {}}, "expect": [{"transmit": {"kind": "oid", "vc": 63, "frame_hex": "C12347E0001F8200013F001100B1DE90B262107AF83494CEE3323F0354BE0000", "security_header": [9, 9], "data": [9, 30], "security_trailer": [30, 30]}}]},
+        {"at_us": 20, "input": {"opportunity": {}}, "expect": [{"transmit": {"kind": "oid", "vc": 63, "frame_hex": "C12347E0001F8200023F0011F5C1528C9BB9ED35FDBC23D9BC2F07576D980000", "security_header": [9, 9], "data": [9, 30], "security_trailer": [30, 30]}}]}
       ]
     },
     {
@@ -45,7 +45,7 @@
       "id": "link-send-mux-uslp-lnk-032-vcf-wrap",
       "description": "A VCF Count Length of 1 octet: the count wraps modulo 256 after 255 (257 frames of VC 1).",
       "requirements": ["LNK-032"],
-      "config": {"protocol": "uslp", "scid": 4660, "frame_len": 32, "fecf": true, "source_or_destination": 0, "insert_zone_len": 0, "policy": {"kind": "fixed_priority"}, "oid": {"qos": "sequence_controlled", "vcf_len": 0}, "vcs": [{"vcid": 1, "role": "packets", "priority": 1, "weight": 1, "map_id": 0, "qos": "sequence_controlled", "vcf_len_sc": 1, "vcf_len_exp": 1}, {"vcid": 2, "role": "mapa", "priority": 2, "weight": 1, "map_id": 3, "qos": "sequence_controlled", "vcf_len_sc": 2, "vcf_len_exp": 2}]},
+      "config": {"protocol": "uslp", "scid": 4660, "frame_len": 32, "fecf": true, "source_or_destination": 0, "insert_zone_len": 0, "policy": {"kind": "fixed_priority"}, "oid": {"vcf_len": 0}, "vcs": [{"vcid": 1, "role": "packets", "priority": 1, "weight": 1, "map_id": 0, "qos": "sequence_controlled", "vcf_len_sc": 1, "vcf_len_exp": 1}, {"vcid": 2, "role": "mapa", "priority": 2, "weight": 1, "map_id": 3, "qos": "sequence_controlled", "vcf_len_sc": 2, "vcf_len_exp": 2}]},
       "steps": [
         {"at_us": 0, "input": {"offer": {"vc": 1, "field_hex": "000000000102030405060708090A0B0C0D0E0F101112", "fhp": 0}}, "expect": []},
         {"at_us": 1, "input": {"opportunity": {}}, "expect": [{"transmit": {"kind": "data", "vc": 1, "frame_hex": "C1234020001F0100000000000102030405060708090A0B0C0D0E0F1011120000", "security_header": [8, 8], "data": [8, 30], "security_trailer": [30, 30]}}]},
@@ -575,16 +575,16 @@
       ]
     },
     {
-      "id": "link-send-mux-uslp-lnk-033-ocf",
-      "description": "VC 1 requires an OCF in every frame (the OCF Flag is set); VC 2 has none; the OID frame has one because the entry for VCID 63 says so, and it is a expedited-QoS frame.",
+      "id": "link-send-mux-uslp-lnk-033-mc-ocf",
+      "description": "The MC parameter 'Inclusion of OCF Required' governs (OI-76): every frame of the master channel, of VC 1 and of VC 2, has the MC_OCF slot's value and the OCF Flag set; the OID frame has an OCF only because the entry for VCID 63 says so, from its own slot.",
       "requirements": ["LNK-033"],
-      "config": {"protocol": "uslp", "scid": 4660, "frame_len": 32, "fecf": true, "source_or_destination": 0, "insert_zone_len": 0, "policy": {"kind": "fixed_priority"}, "oid": {"qos": "expedited", "vcf_len": 0, "ocf_init_hex": "01020304"}, "vcs": [{"vcid": 1, "role": "packets", "priority": 1, "weight": 1, "map_id": 0, "qos": "sequence_controlled", "vcf_len_sc": 2, "vcf_len_exp": 1, "ocf_init_hex": "C1020304"}, {"vcid": 2, "role": "mapa", "priority": 2, "weight": 1, "map_id": 3, "qos": "sequence_controlled", "vcf_len_sc": 2, "vcf_len_exp": 2}]},
+      "config": {"protocol": "uslp", "scid": 4660, "frame_len": 32, "fecf": true, "source_or_destination": 0, "insert_zone_len": 0, "policy": {"kind": "fixed_priority"}, "oid": {"vcf_len": 0, "ocf_init_hex": "01020304"}, "vcs": [{"vcid": 1, "role": "packets", "priority": 1, "weight": 1, "map_id": 0, "qos": "sequence_controlled", "vcf_len_sc": 2, "vcf_len_exp": 1}, {"vcid": 2, "role": "mapa", "priority": 2, "weight": 1, "map_id": 3, "qos": "sequence_controlled", "vcf_len_sc": 2, "vcf_len_exp": 2}], "mc_ocf_init_hex": "C1020304"},
       "steps": [
         {"at_us": 0, "input": {"offer": {"vc": 1, "field_hex": "000000101112131415161718191A1B1C1D", "fhp": 0}}, "expect": []},
         {"at_us": 1, "input": {"opportunity": {}}, "expect": [{"transmit": {"kind": "data", "vc": 1, "frame_hex": "C1234020001F0A0000000000101112131415161718191A1B1C1DC10203040000", "security_header": [9, 9], "data": [9, 26], "security_trailer": [26, 26]}}]},
-        {"at_us": 10, "input": {"offer": {"vc": 2, "field_hex": "250003202122232425262728292A2B2C2D2E2F3031"}}, "expect": []},
-        {"at_us": 11, "input": {"opportunity": {}}, "expect": [{"transmit": {"kind": "data", "vc": 2, "frame_hex": "C1234046001F020000250003202122232425262728292A2B2C2D2E2F30310000", "security_header": [9, 9], "data": [9, 30], "security_trailer": [30, 30]}}]},
-        {"at_us": 20, "input": {"set_ocf": {"scope": "vc", "vc": 1, "ocf_hex": "81828384"}}, "expect": []},
+        {"at_us": 10, "input": {"offer": {"vc": 2, "field_hex": "250003202122232425262728292A2B2C2D"}}, "expect": []},
+        {"at_us": 11, "input": {"opportunity": {}}, "expect": [{"transmit": {"kind": "data", "vc": 2, "frame_hex": "C1234046001F0A0000250003202122232425262728292A2B2C2DC10203040000", "security_header": [9, 9], "data": [9, 26], "security_trailer": [26, 26]}}]},
+        {"at_us": 20, "input": {"set_ocf": {"scope": "mc", "ocf_hex": "81828384"}}, "expect": []},
         {"at_us": 21, "input": {"offer": {"vc": 1, "field_hex": "000000303132333435363738393A3B3C3D", "fhp": 0}}, "expect": []},
         {"at_us": 22, "input": {"opportunity": {}}, "expect": [{"transmit": {"kind": "data", "vc": 1, "frame_hex": "C1234020001F0A0001000000303132333435363738393A3B3C3D818283840000", "security_header": [9, 9], "data": [9, 26], "security_trailer": [26, 26]}}]},
         {"at_us": 30, "input": {"set_ocf": {"scope": "vc", "vc": 63, "ocf_hex": "05060708"}}, "expect": []},
@@ -592,24 +592,71 @@
       ]
     },
     {
+      "id": "link-send-mux-uslp-lnk-033-no-ocf-without-mc-parameter",
+      "description": "Without the MC parameter no frame of a data VC has an OCF (the VC-level parameter of Table 5-3 is not a mux parameter, OI-76); the OID frame has none unless its entry says so.",
+      "requirements": ["LNK-033"],
+      "steps": [
+        {"at_us": 0, "input": {"offer": {"vc": 1, "field_hex": "000000101112131415161718191A1B1C1D1E1F2021", "fhp": 0}}, "expect": []},
+        {"at_us": 1, "input": {"opportunity": {}}, "expect": [{"transmit": {"kind": "data", "vc": 1, "frame_hex": "C1234020001F020000000000101112131415161718191A1B1C1D1E1F20210000", "security_header": [9, 9], "data": [9, 30], "security_trailer": [30, 30]}}]},
+        {"at_us": 10, "input": {"opportunity": {}}, "expect": [{"transmit": {"kind": "oid", "vc": 63, "frame_hex": "C12347E0001F803F0013FFFFFFFF6DB6D861451F11F19716723CBE7E00B10000", "security_header": [7, 7], "data": [7, 30], "security_trailer": [30, 30]}}]}
+      ]
+    },
+    {
+      "id": "link-send-mux-uslp-lnk-076-cop-block",
+      "description": "On a VC with COP-1 the Offer carries a cop block: the mux takes the VCF Count, the Bypass/Sequence Control Flag and the Protocol Control Command Flag as given (a Type-BC frame: bypass 1, protocol control 1) and counts nothing for that frame; the count of the next frame without a cop block is not advanced by it; the expedited count is separate.",
+      "requirements": ["LNK-076", "LNK-032"],
+      "steps": [
+        {"at_us": 0, "input": {"offer": {"vc": 1, "field_hex": "000000101112131415161718191A1B1C1D1E1F2021", "fhp": 0, "cop": {"vcf_count": 7, "bypass": 0, "protocol_control": 0}}}, "expect": []},
+        {"at_us": 1, "input": {"opportunity": {}}, "expect": [{"transmit": {"kind": "data", "vc": 1, "frame_hex": "C1234020001F020007000000101112131415161718191A1B1C1D1E1F20210000", "security_header": [9, 9], "data": [9, 30], "security_trailer": [30, 30]}}]},
+        {"at_us": 10, "input": {"offer": {"vc": 1, "field_hex": "000000202122232425262728292A2B2C2D2E2F3031", "fhp": 0}}, "expect": []},
+        {"at_us": 11, "input": {"opportunity": {}}, "expect": [{"transmit": {"kind": "data", "vc": 1, "frame_hex": "C1234020001F020000000000202122232425262728292A2B2C2D2E2F30310000", "security_header": [9, 9], "data": [9, 30], "security_trailer": [30, 30]}}]},
+        {"at_us": 20, "input": {"offer": {"vc": 1, "field_hex": "210003303132333435363738393A3B3C3D3E3F404142", "fhp": 0, "cop": {"vcf_count": 3, "bypass": 1, "protocol_control": 1}}}, "expect": []},
+        {"at_us": 21, "input": {"opportunity": {}}, "expect": [{"transmit": {"kind": "data", "vc": 1, "frame_hex": "C1234020001FC103210003303132333435363738393A3B3C3D3E3F4041420000", "security_header": [8, 8], "data": [8, 30], "security_trailer": [30, 30]}}]},
+        {"at_us": 30, "input": {"offer": {"vc": 1, "field_hex": "000000404142434445464748494A4B4C4D4E4F505152", "fhp": 0, "qos": "expedited"}}, "expect": []},
+        {"at_us": 31, "input": {"opportunity": {}}, "expect": [{"transmit": {"kind": "data", "vc": 1, "frame_hex": "C1234020001F8100000000404142434445464748494A4B4C4D4E4F5051520000", "security_header": [8, 8], "data": [8, 30], "security_trailer": [30, 30]}}]}
+      ]
+    },
+    {
+      "id": "link-send-mux-uslp-lnk-076-field-len",
+      "description": "A field whose length differs from the VC's data field length for its QoS is refused with LengthMismatch (field_len) and no state change: the sequence-controlled length is 1 octet shorter than the expedited one on VC 1; an unconfigured VC is refused.",
+      "requirements": ["LNK-076"],
+      "steps": [
+        {"at_us": 0, "input": {"offer": {"vc": 1, "field_hex": "000000101112131415161718191A1B1C1D1E1F202122", "fhp": 0}}, "expect": [{"error": "LengthMismatch", "field": "field_len"}]},
+        {"at_us": 1, "input": {"offer": {"vc": 1, "field_hex": "000000101112131415161718191A1B1C1D1E1F2021", "fhp": 0, "qos": "expedited"}}, "expect": [{"error": "LengthMismatch", "field": "field_len"}]},
+        {"at_us": 2, "input": {"offer": {"vc": 1, "field_hex": "000000101112131415161718191A1B1C1D1E1F2021", "fhp": 0}}, "expect": []},
+        {"at_us": 3, "input": {"opportunity": {}}, "expect": [{"transmit": {"kind": "data", "vc": 1, "frame_hex": "C1234020001F020000000000101112131415161718191A1B1C1D1E1F20210000", "security_header": [9, 9], "data": [9, 30], "security_trailer": [30, 30]}}]}
+      ]
+    },
+    {
+      "id": "link-send-mux-uslp-lnk-034-first-frame-repeats",
+      "description": "The slot holds the configured fill until the caller sets it: the first frame, with no SetInsert before it, inserts the fill and is followed by Notify(InsertSduRepeated) (OI-74).",
+      "requirements": ["LNK-034"],
+      "config": {"protocol": "uslp", "scid": 4660, "frame_len": 32, "fecf": true, "source_or_destination": 0, "insert_zone_len": 2, "policy": {"kind": "fixed_priority"}, "oid": {"vcf_len": 0}, "vcs": [{"vcid": 1, "role": "packets", "priority": 1, "weight": 1, "map_id": 0, "qos": "sequence_controlled", "vcf_len_sc": 2, "vcf_len_exp": 1}, {"vcid": 2, "role": "mapa", "priority": 2, "weight": 1, "map_id": 3, "qos": "sequence_controlled", "vcf_len_sc": 2, "vcf_len_exp": 2}], "insert_init_hex": "5A5A"},
+      "steps": [
+        {"at_us": 0, "input": {"opportunity": {}}, "expect": [{"transmit": {"kind": "oid", "vc": 63, "frame_hex": "C12347E0001F805A5A3F0011FFFFFFFF6DB6D861451F11F19716723CBE7E0000", "security_header": [9, 9], "data": [9, 30], "security_trailer": [30, 30]}}, {"notify": {"kind": "InsertSduRepeated"}}]},
+        {"at_us": 5, "input": {"set_insert": {"data_hex": "0102"}}, "expect": []},
+        {"at_us": 10, "input": {"opportunity": {}}, "expect": [{"transmit": {"kind": "oid", "vc": 63, "frame_hex": "C12347E0001F8001023F001100B1DE90B262107AF83494CEE3323F0354BE0000", "security_header": [9, 9], "data": [9, 30], "security_trailer": [30, 30]}}]}
+      ]
+    },
+    {
       "id": "link-send-mux-uslp-lnk-034-insert-zone",
       "description": "An Insert Zone of 2 octets in every frame, the OID frame included; a frame with no new IN_SDU repeats the slot and is followed by Notify(InsertSduRepeated) (OI-68).",
       "requirements": ["LNK-034"],
-      "config": {"protocol": "uslp", "scid": 4660, "frame_len": 32, "fecf": true, "source_or_destination": 0, "insert_zone_len": 2, "policy": {"kind": "fixed_priority"}, "oid": {"qos": "sequence_controlled", "vcf_len": 0}, "vcs": [{"vcid": 1, "role": "packets", "priority": 1, "weight": 1, "map_id": 0, "qos": "sequence_controlled", "vcf_len_sc": 2, "vcf_len_exp": 1}, {"vcid": 2, "role": "mapa", "priority": 2, "weight": 1, "map_id": 3, "qos": "sequence_controlled", "vcf_len_sc": 2, "vcf_len_exp": 2}], "insert_init_hex": "0000"},
+      "config": {"protocol": "uslp", "scid": 4660, "frame_len": 32, "fecf": true, "source_or_destination": 0, "insert_zone_len": 2, "policy": {"kind": "fixed_priority"}, "oid": {"vcf_len": 0}, "vcs": [{"vcid": 1, "role": "packets", "priority": 1, "weight": 1, "map_id": 0, "qos": "sequence_controlled", "vcf_len_sc": 2, "vcf_len_exp": 1}, {"vcid": 2, "role": "mapa", "priority": 2, "weight": 1, "map_id": 3, "qos": "sequence_controlled", "vcf_len_sc": 2, "vcf_len_exp": 2}], "insert_init_hex": "0000"},
       "steps": [
         {"at_us": 0, "input": {"set_insert": {"data_hex": "A1A2"}}, "expect": []},
         {"at_us": 1, "input": {"offer": {"vc": 1, "field_hex": "000000101112131415161718191A1B1C1D1E1F", "fhp": 0}}, "expect": []},
         {"at_us": 10, "input": {"opportunity": {}}, "expect": [{"transmit": {"kind": "data", "vc": 1, "frame_hex": "C1234020001F020000A1A2000000101112131415161718191A1B1C1D1E1F0000", "security_header": [11, 11], "data": [11, 30], "security_trailer": [30, 30]}}]},
-        {"at_us": 20, "input": {"opportunity": {}}, "expect": [{"transmit": {"kind": "oid", "vc": 63, "frame_hex": "C12347E0001F00A1A23F0011FFFFFFFF6DB6D861451F11F19716723CBE7E0000", "security_header": [9, 9], "data": [9, 30], "security_trailer": [30, 30]}}, {"notify": {"kind": "InsertSduRepeated"}}]},
+        {"at_us": 20, "input": {"opportunity": {}}, "expect": [{"transmit": {"kind": "oid", "vc": 63, "frame_hex": "C12347E0001F80A1A23F0011FFFFFFFF6DB6D861451F11F19716723CBE7E0000", "security_header": [9, 9], "data": [9, 30], "security_trailer": [30, 30]}}, {"notify": {"kind": "InsertSduRepeated"}}]},
         {"at_us": 25, "input": {"set_insert": {"data_hex": "B1B2"}}, "expect": []},
-        {"at_us": 30, "input": {"opportunity": {}}, "expect": [{"transmit": {"kind": "oid", "vc": 63, "frame_hex": "C12347E0001F00B1B23F001100B1DE90B262107AF83494CEE3323F0354BE0000", "security_header": [9, 9], "data": [9, 30], "security_trailer": [30, 30]}}]}
+        {"at_us": 30, "input": {"opportunity": {}}, "expect": [{"transmit": {"kind": "oid", "vc": 63, "frame_hex": "C12347E0001F80B1B23F001100B1DE90B262107AF83494CEE3323F0354BE0000", "security_header": [9, 9], "data": [9, 30], "security_trailer": [30, 30]}}]}
       ]
     },
     {
       "id": "link-send-mux-uslp-lnk-035-security-ranges",
       "description": "A 3-octet Security Header and a 2-octet Security Trailer on VC 1: they surround the TFDF (6.3.5); the action gives their ranges and the range of the TFDF.",
       "requirements": ["LNK-035"],
-      "config": {"protocol": "uslp", "scid": 4660, "frame_len": 32, "fecf": true, "source_or_destination": 0, "insert_zone_len": 0, "policy": {"kind": "fixed_priority"}, "oid": {"qos": "sequence_controlled", "vcf_len": 0}, "vcs": [{"vcid": 1, "role": "packets", "priority": 1, "weight": 1, "map_id": 0, "qos": "sequence_controlled", "vcf_len_sc": 2, "vcf_len_exp": 1, "sec_header_len": 3, "sec_trailer_len": 2}, {"vcid": 2, "role": "mapa", "priority": 2, "weight": 1, "map_id": 3, "qos": "sequence_controlled", "vcf_len_sc": 2, "vcf_len_exp": 2}]},
+      "config": {"protocol": "uslp", "scid": 4660, "frame_len": 32, "fecf": true, "source_or_destination": 0, "insert_zone_len": 0, "policy": {"kind": "fixed_priority"}, "oid": {"vcf_len": 0}, "vcs": [{"vcid": 1, "role": "packets", "priority": 1, "weight": 1, "map_id": 0, "qos": "sequence_controlled", "vcf_len_sc": 2, "vcf_len_exp": 1, "sec_header_len": 3, "sec_trailer_len": 2}, {"vcid": 2, "role": "mapa", "priority": 2, "weight": 1, "map_id": 3, "qos": "sequence_controlled", "vcf_len_sc": 2, "vcf_len_exp": 2}]},
       "steps": [
         {"at_us": 0, "input": {"offer": {"vc": 1, "field_hex": "000000101112131415161718191A1B1C", "fhp": 0}}, "expect": []},
         {"at_us": 1, "input": {"opportunity": {}}, "expect": [{"transmit": {"kind": "data", "vc": 1, "frame_hex": "C1234020001F020000000000000000101112131415161718191A1B1C00000000", "security_header": [9, 12], "data": [12, 28], "security_trailer": [28, 30]}}]}
@@ -619,7 +666,7 @@
       "id": "link-send-mux-uslp-lnk-031-round-robin",
       "description": "Round robin applies to a USLP channel as to the others: VC 1 and VC 2 alternate.",
       "requirements": ["LNK-031"],
-      "config": {"protocol": "uslp", "scid": 4660, "frame_len": 32, "fecf": true, "source_or_destination": 0, "insert_zone_len": 0, "policy": {"kind": "round_robin"}, "oid": {"qos": "sequence_controlled", "vcf_len": 0}, "vcs": [{"vcid": 1, "role": "packets", "priority": 1, "weight": 1, "map_id": 0, "qos": "sequence_controlled", "vcf_len_sc": 2, "vcf_len_exp": 1}, {"vcid": 2, "role": "mapa", "priority": 2, "weight": 1, "map_id": 3, "qos": "sequence_controlled", "vcf_len_sc": 2, "vcf_len_exp": 2}]},
+      "config": {"protocol": "uslp", "scid": 4660, "frame_len": 32, "fecf": true, "source_or_destination": 0, "insert_zone_len": 0, "policy": {"kind": "round_robin"}, "oid": {"vcf_len": 0}, "vcs": [{"vcid": 1, "role": "packets", "priority": 1, "weight": 1, "map_id": 0, "qos": "sequence_controlled", "vcf_len_sc": 2, "vcf_len_exp": 1}, {"vcid": 2, "role": "mapa", "priority": 2, "weight": 1, "map_id": 3, "qos": "sequence_controlled", "vcf_len_sc": 2, "vcf_len_exp": 2}]},
       "steps": [
         {"at_us": 0, "input": {"offer": {"vc": 1, "field_hex": "000000101112131415161718191A1B1C1D1E1F2021", "fhp": 0}}, "expect": []},
         {"at_us": 0, "input": {"offer": {"vc": 2, "field_hex": "000000202122232425262728292A2B2C2D2E2F3031", "fhp": 0}}, "expect": []},

@@ -118,6 +118,20 @@
       ]
     },
     {
+      "id": "link-send-seg-tc-lnk-041-qos-change",
+      "description": "A request whose QoS differs from that of the SDU in progress is refused with InvalidField (qos) and no state change; the same QoS continues the SDU; the next SDU may use another QoS.",
+      "requirements": ["LNK-041"],
+      "steps": [
+        {"at_us": 0, "input": {"submit_sdu": {"sdu_hex": "101112131415161718191A1B1C1D1E1F202122232425262728292A2B2C2D2E2F303132", "map": 1}}, "expect": [], "expect_no_timeout": true},
+        {"at_us": 1, "input": {"submit_sdu": {"sdu_hex": "50515253", "map": 1}}, "expect": [], "expect_no_timeout": true},
+        {"at_us": 10, "input": {"next_fdu": {"handle": 1, "qos": "sequence_controlled"}}, "expect": [{"fdu": {"handle": 1, "map": 1, "flags": "01", "qos": "sequence_controlled", "fdu_hex": "41101112131415161718191A1B1C1D1E"}}], "expect_no_timeout": true},
+        {"at_us": 11, "input": {"next_fdu": {"handle": 2, "qos": "expedited"}}, "expect": [{"error": "InvalidField", "field": "qos"}], "expect_no_timeout": true},
+        {"at_us": 12, "input": {"next_fdu": {"handle": 3, "qos": "sequence_controlled"}}, "expect": [{"fdu": {"handle": 3, "map": 1, "flags": "00", "qos": "sequence_controlled", "fdu_hex": "011F202122232425262728292A2B2C2D"}}], "expect_no_timeout": true},
+        {"at_us": 13, "input": {"next_fdu": {"handle": 4, "qos": "sequence_controlled"}}, "expect": [{"fdu": {"handle": 4, "map": 1, "flags": "10", "qos": "sequence_controlled", "fdu_hex": "812E2F303132"}}], "expect_no_timeout": true},
+        {"at_us": 14, "input": {"next_fdu": {"handle": 5, "qos": "expedited"}}, "expect": [{"fdu": {"handle": 5, "map": 1, "flags": "11", "qos": "expedited", "fdu_hex": "C150515253"}}], "expect_no_timeout": true}
+      ]
+    },
+    {
       "id": "link-send-seg-tc-lnk-040-no-segment-header",
       "description": "Without a Segment Header a packet, packets, or a VCA_SDU are one FDU of user data only (no flags, no MAP); a longer SDU is refused with OutOfRange (max_fdu_len).",
       "requirements": ["LNK-040"],

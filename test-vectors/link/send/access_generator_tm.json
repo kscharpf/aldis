@@ -17,6 +17,18 @@
         {"at_us": 30, "input": {"release": {}}, "expect": [{"data_field": {"vc": 2, "field_hex": "202122232425262728292A2B"}}]},
         {"at_us": 40, "input": {"release": {}}, "expect": []}
       ]
+    },
+    {
+      "id": "link-send-ag-tm-lnk-020-sdu-length",
+      "description": "An SDU shorter or longer than the data field is refused with LengthMismatch (sdu_len) and no state change.",
+      "requirements": ["LNK-020"],
+      "steps": [
+        {"at_us": 0, "input": {"submit_sdu": {"sdu_hex": "101112131415161718191A"}}, "expect": [{"error": "LengthMismatch", "field": "sdu_len"}]},
+        {"at_us": 1, "input": {"submit_sdu": {"sdu_hex": "101112131415161718191A1B1C"}}, "expect": [{"error": "LengthMismatch", "field": "sdu_len"}]},
+        {"at_us": 2, "input": {"submit_sdu": {"sdu_hex": "101112131415161718191A1B"}}, "expect": []},
+        {"at_us": 3, "input": {"release": {}}, "expect": [{"data_field": {"vc": 2, "field_hex": "101112131415161718191A1B"}}]},
+        {"at_us": 4, "input": {"release": {}}, "expect": []}
+      ]
     }
   ]
 }
