@@ -68,3 +68,24 @@ required-features = ["spp", "epp", "tm", "aos", "uslp"]
 [[test]]
 name = "engine_housekeeping"
 required-features = ["spp", "epp", "tm", "aos", "uslp"]
+
+# The ChannelMux, the VC Access generator, and the AOS Bitstream generator (M4 WP-4).
+[[test]]
+name = "channel_mux_vectors"
+required-features = ["tm", "aos", "uslp"]
+
+[[test]]
+name = "channel_mux_engine"
+required-features = ["tm", "aos", "uslp"]
+
+[[test]]
+name = "generators_engine"
+required-features = ["tm", "aos", "uslp"]
+
+[[test]]
+name = "access_generator_vectors"
+required-features = ["tm", "aos", "uslp"]
+
+[[test]]
+name = "bitstream_generator_vectors"
+required-features = ["aos"]

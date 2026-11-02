@@ -148,7 +148,7 @@ The bound `N` is the most actions one input can return (LNK-074); the area is th
 | | `Timeout` | none | 0 | 0 | It marks the started field releasable (LNK-012). |
 | | `Reconfigure` | `Discarded` (at most one) | 1 | 0 | LNK-003. |
 | ChannelMux | `Offer`, `SetOcf`, `SetFsh`, `SetInsert` | none | 0 | 0 | They replace a slot (LNK-076). |
-| | `Opportunity` | `Transmit` (exactly one on a fixed-length channel), `Notify(InsertSduRepeated)` (at most one) | 2 | *F* | One frame per opportunity; every field is written once, with room for the Security Header and Trailer, FHEC, and FECF the caller fills. |
+| | `Opportunity` | `Transmit` (exactly one on a fixed-length channel), `Notify(InsertSduRepeated)` (at most one) | 2 | *F* | One frame per opportunity, whatever the frame length, the number of VCs, or the policy: the mux selects one VC and builds one frame, and a physical channel has one Insert Zone of one IN_SDU, so at most one notification follows it; the other inputs return none, and `Reconfigure` one. Every field is written once, with room for the Security Header and Trailer, FHEC, and FECF the caller fills. |
 | | `Reconfigure` | `Discarded` | 1 | 0 | |
 | MapSegmenter | `Submit…` | none | 0 | 0 | |
 | | `Timeout` | none | 0 | 0 | It marks a started octet-stream TFDZ (rule `011`) releasable at the deadline of LNK-012 (732.1 Table 5-3 note 4); the segmenter reports `next_deadline`, and `NextFdu` returns the TFDZ. |
