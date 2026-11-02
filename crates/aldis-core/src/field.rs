@@ -737,11 +737,17 @@ pub const SDU_LEN: FieldId = FieldId::catalogued::<217>("sdu_len");
 
 /// Length of a data field offered to the multiplexer, which the VC's data field length fixes.
 ///
-/// Code 218, a field (132.0 §4.1.4; 732.0 §4.1.4; LNK-076; API-082).
+/// Code 218, a field (132.0 §4.1.4; 732.0 §4.1.4; 732.1 §4.1.4.2, §4.2.2.1; LNK-076; API-082).
 pub const FIELD_LEN: FieldId = FieldId::catalogued::<218>("field_len");
 
+/// Whether the receiver accepts the raw octets of a frame the caller rejected, to return its Insert
+/// Zone.
+///
+/// Code 219, a parameter (732.0 §4.3.7.4; 732.1 §4.3.11.1.4–5; LNK-079; API-082).
+pub const RAW_FRAMES: FieldId = FieldId::catalogued::<219>("raw_frames");
+
 /// Every field code, in code order from 1 (API-082).
-pub const ALL: [FieldId; 140] = [
+pub const ALL: [FieldId; 141] = [
     SPACECRAFT_ID,
     VC_ID,
     MAP_ID,
@@ -882,4 +888,5 @@ pub const ALL: [FieldId; 140] = [
     LINK_PROTOCOL,
     SDU_LEN,
     FIELD_LEN,
+    RAW_FRAMES,
 ];

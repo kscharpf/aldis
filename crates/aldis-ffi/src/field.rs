@@ -734,8 +734,15 @@ pub const ALDIS_FIELD_SDU_LEN: u16 = 217;
 
 /// Length of a data field offered to the multiplexer, which the VC's data field length fixes.
 ///
-/// Code 218, a field (132.0 §4.1.4; 732.0 §4.1.4; LNK-076; API-082, CABI-021).
+/// Code 218, a field (132.0 §4.1.4; 732.0 §4.1.4; 732.1 §4.1.4.2, §4.2.2.1; LNK-076; API-082,
+/// CABI-021).
 pub const ALDIS_FIELD_FIELD_LEN: u16 = 218;
+
+/// Whether the receiver accepts the raw octets of a frame the caller rejected, to return its Insert
+/// Zone.
+///
+/// Code 219, a parameter (732.0 §4.3.7.4; 732.1 §4.3.11.1.4–5; LNK-079; API-082, CABI-021).
+pub const ALDIS_FIELD_RAW_FRAMES: u16 = 219;
 
 // Each code is the code of its `aldis_core::field` constant (API-082).
 const _: () = {
@@ -885,4 +892,5 @@ const _: () = {
     assert!(ALDIS_FIELD_LINK_PROTOCOL == field::LINK_PROTOCOL.code().get());
     assert!(ALDIS_FIELD_SDU_LEN == field::SDU_LEN.code().get());
     assert!(ALDIS_FIELD_FIELD_LEN == field::FIELD_LEN.code().get());
+    assert!(ALDIS_FIELD_RAW_FRAMES == field::RAW_FRAMES.code().get());
 };

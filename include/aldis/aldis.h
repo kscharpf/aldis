@@ -1223,9 +1223,18 @@
 /**
  * Length of a data field offered to the multiplexer, which the VC's data field length fixes.
  *
- * Code 218, a field (132.0 §4.1.4; 732.0 §4.1.4; LNK-076; API-082, CABI-021).
+ * Code 218, a field (132.0 §4.1.4; 732.0 §4.1.4; 732.1 §4.1.4.2, §4.2.2.1; LNK-076; API-082,
+ * CABI-021).
  */
 #define ALDIS_FIELD_FIELD_LEN 218
+
+/**
+ * Whether the receiver accepts the raw octets of a frame the caller rejected, to return its Insert
+ * Zone.
+ *
+ * Code 219, a parameter (732.0 §4.3.7.4; 732.1 §4.3.11.1.4–5; LNK-079; API-082, CABI-021).
+ */
+#define ALDIS_FIELD_RAW_FRAMES 219
 
 /**
  * The most actions one `aldis_fop1_step` returns (COP-006): `fop1_max_actions` of the

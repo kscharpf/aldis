@@ -8,10 +8,10 @@
 | WP | State | PRs | Notes |
 |---|---|---|---|
 | WP-0 Plan | in progress | | This plan, D1–D5, and `--scope m4` trace gate |
-| WP-1 Spec readings | merged | #223 | LNK rows checked clause by clause against the Blue Books; per-engine action bound and output-area bound; field codes 200–249 (API-057, API-062). No engine code |
+| WP-1 Spec readings | planned | | LNK rows checked clause by clause against the Blue Books; per-engine action bound and output-area bound; field codes 200–249 (API-057, API-062). No engine code |
 | WP-1b Spec follow-up | planned | | The 20 cases in which the blind models of WP-2a and WP-2b found [04](../04-engines.md) silent or in conflict with the Blue Books, decided by the maintainer (OI-73…75); LNK-080…082. Docs and field codes 217, 218 only |
 | WP-2a Blind model & vectors: sending | planned | | Python model written blind (TV-023) and engine-scenario vectors for FHP placement, mux, segmentation |
-| WP-2b Blind model & vectors: receiving | in progress | #224 | The same for the receiver, extraction, and reassembly |
+| WP-2b Blind model & vectors: receiving | planned | | The same for the receiver, extraction, and reassembly |
 | WP-3 PacketGenerator & PacketExtractor | planned | | Shared link config, action, and status types; absorbs issue #154 |
 | WP-4 ChannelMux, policies, Access/Bitstream generators | planned | | |
 | WP-5 FrameReceiver | planned | | |
@@ -69,7 +69,7 @@ WP-6 needs more than WP-1 and `aldis-cop1`: its segmentation scenarios (LNK-040�
 - Per-engine action bound `N` and output-area bound (API-057, API-062); field codes from block 200–249 allocated in `docs/03-api-model.md` §9.1 and generated with `cargo xtask fields --write`.
 - Checklist: "A spec-readings pull request before a codec". No engine code.
 
-### WP-1b Spec follow-up (S) — LNK-050, 051, 060, 061, 070, 079…082, 014, 020, 030…032, 034, 041, 076
+### WP-1b Spec follow-up (S) — LNK-050, 051, 061, 070, 079…082, 014, 020, 030…032, 034, 041, 076
 - The maintainer's decisions (2026-11-02) on the 20 cases the blind models of WP-2a and WP-2b raised, recorded in [04](../04-engines.md) and as OI-73 (receiving), OI-74 (sending), and OI-75 (several master channels, deferred); field codes `sdu_len` and `field_len`.
 - WP-2a and WP-2b extend their models for these cases after WP-1b merges. Checklist: "A spec-readings pull request before a codec". No code.
 
