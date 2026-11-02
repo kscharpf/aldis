@@ -8,9 +8,10 @@
 | WP | State | PRs | Notes |
 |---|---|---|---|
 | WP-0 Plan | in progress | | This plan, D1–D5, and `--scope m4` trace gate |
-| WP-1 Spec readings | planned | | LNK rows checked clause by clause against the Blue Books; per-engine action bound and output-area bound; field codes 200–249 (API-057, API-062). No engine code |
+| WP-1 Spec readings | merged | #223 | LNK rows checked clause by clause against the Blue Books; per-engine action bound and output-area bound; field codes 200–249 (API-057, API-062). No engine code |
+| WP-1b Spec follow-up | planned | | The 20 cases in which the blind models of WP-2a and WP-2b found [04](../04-engines.md) silent or in conflict with the Blue Books, decided by the maintainer (OI-73…75); LNK-080…082. Docs and field codes 217, 218 only |
 | WP-2a Blind model & vectors: sending | planned | | Python model written blind (TV-023) and engine-scenario vectors for FHP placement, mux, segmentation |
-| WP-2b Blind model & vectors: receiving | planned | | The same for the receiver, extraction, and reassembly |
+| WP-2b Blind model & vectors: receiving | in progress | #224 | The same for the receiver, extraction, and reassembly |
 | WP-3 PacketGenerator & PacketExtractor | planned | | Shared link config, action, and status types; absorbs issue #154 |
 | WP-4 ChannelMux, policies, Access/Bitstream generators | planned | | |
 | WP-5 FrameReceiver | planned | | |
@@ -23,6 +24,7 @@ A pull request that starts or merges a work package changes only its row (roadma
 
 History:
 - 2026-11-01: plan drafted following the M3 release.
+- 2026-11-02: WP-1b added for the maintainer's decisions on the blind models' open cases.
 
 ## 1. Starting point
 
@@ -67,11 +69,15 @@ WP-6 needs more than WP-1 and `aldis-cop1`: its segmentation scenarios (LNK-040�
 - Per-engine action bound `N` and output-area bound (API-057, API-062); field codes from block 200–249 allocated in `docs/03-api-model.md` §9.1 and generated with `cargo xtask fields --write`.
 - Checklist: "A spec-readings pull request before a codec". No engine code.
 
-### WP-2a Blind model & vectors: sending (L) — LNK-011…014, 020, 021, 030…036, 040…042, 076
+### WP-1b Spec follow-up (S) — LNK-050, 051, 060, 061, 070, 079…082, 014, 020, 030…032, 034, 041, 076
+- The maintainer's decisions (2026-11-02) on the 20 cases the blind models of WP-2a and WP-2b raised, recorded in [04](../04-engines.md) and as OI-73 (receiving), OI-74 (sending), and OI-75 (several master channels, deferred); field codes `sdu_len` and `field_len`.
+- WP-2a and WP-2b extend their models for these cases after WP-1b merges. Checklist: "A spec-readings pull request before a codec". No code.
+
+### WP-2a Blind model & vectors: sending (L) — LNK-011…014, 020, 021, 030…036, 040…042, 076, 082
 - Python model written blind (TV-023) from the Blue Books and `docs/` only, with no implementation path given to its author.
 - Engine-scenario vectors in `test-vectors/link/` for FHP placement, multiplexing, and segmentation.
 
-### WP-2b Blind model & vectors: receiving (M) — LNK-050…054, 060…064, 070…072, 077, 079
+### WP-2b Blind model & vectors: receiving (M) — LNK-050…054, 060…064, 070…072, 077, 079…081
 - The same method for the receiver, extraction, and reassembly.
 
 ### WP-3 PacketGenerator & PacketExtractor (L) — LNK-002, 003, 010…015, 060…064, 074, 075, 078, VER-023
@@ -82,12 +88,12 @@ WP-6 needs more than WP-1 and `aldis-cop1`: its segmentation scenarios (LNK-040�
 - Checklist: "Adding an engine to a new or an existing crate".
 - Absorbs issue #154 (a `FrameLayout` constructor for a given data length).
 
-### WP-4 ChannelMux, policies, Access and Bitstream generators (L) — LNK-020, 021, 030…036, 076
+### WP-4 ChannelMux, policies, Access and Bitstream generators (L) — LNK-020, 021, 030…036, 076, 082
 - Checklist: "Adding an engine to a new or an existing crate".
 - Fixed-priority, round-robin, and weighted policies; MC and VC counters; OID frames (D2); OCF and Insert Zone source slots.
 - VC Access (VCA) and AOS Bitstream generators.
 
-### WP-5 FrameReceiver (M) — LNK-050…054, 077, 079
+### WP-5 FrameReceiver (M) — LNK-050…054, 077, 079…081
 - Validation, routing, gap events, OCF, Insert Zone, and FSH delivery; CLCW delivery for FOP-1.
 - Checklist: "Adding an engine to a new or an existing crate".
 
@@ -118,9 +124,9 @@ Milestone 4 is complete when every item below is green on `main`. The results co
 | Common engine behavior | LNK-001…003, LNK-074, LNK-075, LNK-078, RS-021 | |
 | PacketGenerator | LNK-010…015 | |
 | Access and Bitstream generators | LNK-020, LNK-021 | |
-| ChannelMux | LNK-030…036, LNK-076 | |
+| ChannelMux | LNK-030…036, LNK-076, LNK-082 | |
 | Segmenter and CLTU packer | LNK-040…044 | |
-| FrameReceiver | LNK-050…054, LNK-077, LNK-079 | |
+| FrameReceiver | LNK-050…054, LNK-077, LNK-079…081 | |
 | PacketExtractor | LNK-060…064 | |
 | Reassembler | LNK-070…073 | |
 | Engine contract & sans-I/O | GEN-011, GEN-015, GEN-030…032, API-050, API-052, API-053, API-056, API-057, API-060, API-062, API-074, RS-020, RS-023 | |

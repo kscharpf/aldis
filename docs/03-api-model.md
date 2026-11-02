@@ -383,3 +383,5 @@ The table is the registry. `cargo xtask fields --write` generates from it the Ru
 | 214 | `max_unit_len` | parameter | Maximum Length of Data Unit given to the coding sublayer | link | 232.0 §5.1 Table 5-1; LNK-044 |
 | 215 | `qos` | parameter | Quality of service chosen for a transfer request: sequence-controlled or expedited | link | 232.0 §4.1.2.3.1; 732.1 §4.1.2.8; LNK-043 |
 | 216 | `link_protocol` | parameter | Frame protocol (TM, TC, AOS, USLP) a link engine is configured for | link | LNK-001 |
+| 217 | `sdu_len` | field | Length of a VCA SDU a generator is given, which a TM or AOS data field fixes | link | 132.0 §3.2.3, §4.1.4.3; 732.0 §3.2.4, §4.1.4.1.3; LNK-020 |
+| 218 | `field_len` | field | Length of a data field offered to the multiplexer, which the VC's data field length fixes | link | 132.0 §4.1.4; 732.0 §4.1.4; LNK-076 |
