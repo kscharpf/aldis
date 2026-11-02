@@ -1,0 +1,111 @@
+{
+  "kind": "engine-scenario",
+  "engine": "frame-receiver",
+  "provenance": "hand-derived",
+  "provenance_note": "Hand-derived from 732.1-B-3 4.1.2, 4.1.3, 4.1.4.1, 4.1.5, 4.3.7 to 4.3.11 and 04-engines LNK-050 to LNK-053, LNK-079, OI-68. Model test-vectors/models/link_recv.py, written blind (TV-023) by a Claude agent from the Blue Books and docs/ only, without reading any implementation; for format only it read the COP-1 model and scenario files (cop1.py, the cop1 directory). The input scripts were chosen by hand; the expected outputs are the model's. Where the documents are silent the model refuses the case (see the README of test-vectors/link/recv/), so no scenario pins a behavior that 04 or the Blue Books leave open. The file is written by the model (--write) and never edited by hand.",
+  "config": {"protocol": "uslp", "scid": 49374, "frame_len": 48, "fecf": true, "insert_zone_len": 3, "ocf_service": "mc", "accept_rejected_frame_insert_zone": false, "vcs": [{"vcid": 1, "maps": [0, 2], "cop": false}, {"vcid": 2, "maps": [0], "cop": true}]},
+  "scenarios": [
+    {
+      "id": "link-recv-uslp-routing",
+      "description": "A frame of a configured VC and MAP delivers its Insert Zone, then the TFDF (header and zone) as the data field; the OCF is an MC_OCF Ocf action (732.1 4.3.9.2).",
+      "requirements": ["LNK-050", "LNK-053"],
+      "steps": [
+        {"at_us": 1000, "input": {"frame": {"frame_hex": "CC0DE020002F0A0001A1A2A300000001020304050607080000000000000000000000000000000000000001040805378D"}}, "expect": [{"deliver": {"kind": "InsertSdu", "data_hex": "A1A2A3"}}, {"deliver": {"kind": "Ocf", "scope": "mc", "report": "Type1", "ocf_hex": "01040805"}}, {"deliver": {"kind": "DataField", "vc": 1, "data_hex": "000000010203040506070800000000000000000000000000000000000000", "gap": false}}]},
+        {"at_us": 2000, "input": {"frame": {"frame_hex": "CC0DE024002F020002B1B2B325FFFF090A0B0C0D0E0F100000000000000000000000000000000000000000000000CA64"}}, "expect": [{"deliver": {"kind": "InsertSdu", "data_hex": "B1B2B3"}}, {"deliver": {"kind": "DataField", "vc": 1, "data_hex": "25FFFF090A0B0C0D0E0F100000000000000000000000000000000000000000000000", "gap": false}}]}
+      ]
+    },
+    {
+      "id": "link-recv-uslp-unknown-vc-and-map",
+      "description": "A frame for a VC that is not configured, and a frame for a configured VC with a MAP ID that is not configured, are discarded and counted: FrameDiscarded (UnknownChannel) alone, naming the VC and, for USLP, the MAP (732.1 4.3.8.3 note 2).",
+      "requirements": ["LNK-050"],
+      "steps": [
+        {"at_us": 1000, "input": {"frame": {"frame_hex": "CC0DE120002F00A1A2A3000000000000000000000000000000000000000000000000000000000000000000000000A54A"}}, "expect": [{"frame_discarded": {"reason": "UnknownChannel", "vc": 9, "map": 0}}]},
+        {"at_us": 2000, "input": {"frame": {"frame_hex": "CC0DE02E002F020001A1A2A300000000000000000000000000000000000000000000000000000000000000000000BC9F"}}, "expect": [{"frame_discarded": {"reason": "UnknownChannel", "vc": 1, "map": 7}}]},
+        {"at_us": 3000, "input": {"query": {"counter": "UnknownChannel"}}, "expect": [{"counter": {"name": "UnknownChannel", "value": 2}}]}
+      ]
+    },
+    {
+      "id": "link-recv-uslp-vcf-gap",
+      "description": "The VCF Count is tracked per VC for the QoS of the Bypass/Sequence Control Flag: sequence-controlled and expedited frames have separate counts; a gap of two on the sequence-controlled count does not disturb the expedited one (732.1 4.1.2.12.4-5).",
+      "requirements": ["LNK-051", "LNK-061"],
+      "steps": [
+        {"at_us": 1000, "input": {"frame": {"frame_hex": "CC0DE020002F02000AA1A2A300000000000000000000000000000000000000000000000000000000000000000000DE02"}}, "expect": [{"deliver": {"kind": "InsertSdu", "data_hex": "A1A2A3"}}, {"deliver": {"kind": "DataField", "vc": 1, "data_hex": "00000000000000000000000000000000000000000000000000000000000000000000", "gap": false}}]},
+        {"at_us": 2000, "input": {"frame": {"frame_hex": "CC0DE020002F8200C8A1A2A300000000000000000000000000000000000000000000000000000000000000000000C98A"}}, "expect": [{"deliver": {"kind": "InsertSdu", "data_hex": "A1A2A3"}}, {"deliver": {"kind": "DataField", "vc": 1, "data_hex": "00000000000000000000000000000000000000000000000000000000000000000000", "gap": false}}]},
+        {"at_us": 3000, "input": {"frame": {"frame_hex": "CC0DE020002F02000BA1A2A3000000000000000000000000000000000000000000000000000000000000000000003A99"}}, "expect": [{"deliver": {"kind": "InsertSdu", "data_hex": "A1A2A3"}}, {"deliver": {"kind": "DataField", "vc": 1, "data_hex": "00000000000000000000000000000000000000000000000000000000000000000000", "gap": false}}]},
+        {"at_us": 4000, "input": {"frame": {"frame_hex": "CC0DE020002F8200C9A1A2A3000000000000000000000000000000000000000000000000000000000000000000002D11"}}, "expect": [{"deliver": {"kind": "InsertSdu", "data_hex": "A1A2A3"}}, {"deliver": {"kind": "DataField", "vc": 1, "data_hex": "00000000000000000000000000000000000000000000000000000000000000000000", "gap": false}}]},
+        {"at_us": 5000, "input": {"frame": {"frame_hex": "CC0DE020002F02000EA1A2A3000000000000000000000000000000000000000000000000000000000000000000007C0D"}}, "expect": [{"notify": {"kind": "FrameGap", "scope": "vc", "vc": 1, "missing": 2}}, {"deliver": {"kind": "InsertSdu", "data_hex": "A1A2A3"}}, {"deliver": {"kind": "DataField", "vc": 1, "data_hex": "00000000000000000000000000000000000000000000000000000000000000000000", "gap": true}}]},
+        {"at_us": 6000, "input": {"frame": {"frame_hex": "CC0DE020002F8200CAA1A2A300000000000000000000000000000000000000000000000000000000000000000000109D"}}, "expect": [{"deliver": {"kind": "InsertSdu", "data_hex": "A1A2A3"}}, {"deliver": {"kind": "DataField", "vc": 1, "data_hex": "00000000000000000000000000000000000000000000000000000000000000000000", "gap": false}}]}
+      ]
+    },
+    {
+      "id": "link-recv-uslp-count-wrap",
+      "description": "A one-octet VCF Count wraps from 255 to 0 in sequence, and a gap is counted modulo 256.",
+      "requirements": ["LNK-051"],
+      "steps": [
+        {"at_us": 1000, "input": {"frame": {"frame_hex": "CC0DE020002F01FFA1A2A30000000000000000000000000000000000000000000000000000000000000000000000B770"}}, "expect": [{"deliver": {"kind": "InsertSdu", "data_hex": "A1A2A3"}}, {"deliver": {"kind": "DataField", "vc": 1, "data_hex": "0000000000000000000000000000000000000000000000000000000000000000000000", "gap": false}}]},
+        {"at_us": 2000, "input": {"frame": {"frame_hex": "CC0DE020002F0100A1A2A30000000000000000000000000000000000000000000000000000000000000000000000F08A"}}, "expect": [{"deliver": {"kind": "InsertSdu", "data_hex": "A1A2A3"}}, {"deliver": {"kind": "DataField", "vc": 1, "data_hex": "0000000000000000000000000000000000000000000000000000000000000000000000", "gap": false}}]},
+        {"at_us": 3000, "input": {"frame": {"frame_hex": "CC0DE020002F0103A1A2A300000000000000000000000000000000000000000000000000000000000000000000009B74"}}, "expect": [{"notify": {"kind": "FrameGap", "scope": "vc", "vc": 1, "missing": 2}}, {"deliver": {"kind": "InsertSdu", "data_hex": "A1A2A3"}}, {"deliver": {"kind": "DataField", "vc": 1, "data_hex": "0000000000000000000000000000000000000000000000000000000000000000000000", "gap": true}}]}
+      ]
+    },
+    {
+      "id": "link-recv-uslp-no-count-no-gap",
+      "description": "A VCF Count Length of 0 has no count: nothing is tracked; with COP-1 in effect on the VC the FARM-1 checks decide and the engine raises no gap action either.",
+      "requirements": ["LNK-051"],
+      "steps": [
+        {"at_us": 1000, "input": {"frame": {"frame_hex": "CC0DE020002F00A1A2A3000000000000000000000000000000000000000000000000000000000000000000000000E2A6"}}, "expect": [{"deliver": {"kind": "InsertSdu", "data_hex": "A1A2A3"}}, {"deliver": {"kind": "DataField", "vc": 1, "data_hex": "000000000000000000000000000000000000000000000000000000000000000000000000", "gap": false}}]},
+        {"at_us": 2000, "input": {"frame": {"frame_hex": "CC0DE020002F00A1A2A3000000000000000000000000000000000000000000000000000000000000000000000000E2A6"}}, "expect": [{"deliver": {"kind": "InsertSdu", "data_hex": "A1A2A3"}}, {"deliver": {"kind": "DataField", "vc": 1, "data_hex": "000000000000000000000000000000000000000000000000000000000000000000000000", "gap": false}}]},
+        {"at_us": 3000, "input": {"frame": {"frame_hex": "CC0DE040002F020005A1A2A30000000000000000000000000000000000000000000000000000000000000000000084A8"}}, "expect": [{"deliver": {"kind": "InsertSdu", "data_hex": "A1A2A3"}}, {"deliver": {"kind": "DataField", "vc": 2, "data_hex": "00000000000000000000000000000000000000000000000000000000000000000000", "gap": false}}]},
+        {"at_us": 4000, "input": {"frame": {"frame_hex": "CC0DE040002F020009A1A2A3000000000000000000000000000000000000000000000000000000000000000000007298"}}, "expect": [{"deliver": {"kind": "InsertSdu", "data_hex": "A1A2A3"}}, {"deliver": {"kind": "DataField", "vc": 2, "data_hex": "00000000000000000000000000000000000000000000000000000000000000000000", "gap": false}}]}
+      ]
+    },
+    {
+      "id": "link-recv-uslp-oid-frame",
+      "description": "An OID frame (VCID 63, MAP 0, rule 001, UPID Only Idle Data) delivers its Insert Zone and, when its OCF flag is set, the OCF; then its data is dropped; no FrameDiscarded; its VCF Count, when present, is not tracked, so a jump raises no gap action (732.1 4.3.8.3 note 1, 4.1.4.1.10 note 4).",
+      "requirements": ["LNK-052", "LNK-051"],
+      "steps": [
+        {"at_us": 1000, "input": {"frame": {"frame_hex": "CC0DE7E0002F00A1A2A33F0020FFFFFFFF6DB6D861451F11F19716723CBE7E00B1DE90B262107AF83494CEE3323F1C0C"}}, "expect": [{"deliver": {"kind": "InsertSdu", "data_hex": "A1A2A3"}}]},
+        {"at_us": 2000, "input": {"frame": {"frame_hex": "CC0DE7E0002F0A0028B1B2B33F001A0354BEF5C1528C9BB9ED35FDBC23D9BC2F07576D987881BDF8484501040805F963"}}, "expect": [{"deliver": {"kind": "InsertSdu", "data_hex": "B1B2B3"}}, {"deliver": {"kind": "Ocf", "scope": "mc", "report": "Type1", "ocf_hex": "01040805"}}]},
+        {"at_us": 3000, "input": {"frame": {"frame_hex": "CC0DE7E0002F02005AA1A2A33F001ECBCC7F38959BA73E4F69C80256BA6C7B92D4D82D01468B56CF391B3839C7F9CC46"}}, "expect": [{"deliver": {"kind": "InsertSdu", "data_hex": "A1A2A3"}}]},
+        {"at_us": 4000, "input": {"query": {"counter": "oid_frames"}}, "expect": [{"counter": {"name": "oid_frames", "value": 3}}]},
+        {"at_us": 5000, "input": {"query": {"counter": "gaps"}}, "expect": [{"counter": {"name": "gaps", "value": 0}}]}
+      ]
+    },
+    {
+      "id": "link-recv-uslp-ocf-types",
+      "description": "The OCF is delivered as an Ocf action: Type-1 for a CLCW or PLCW, Type-2 otherwise.",
+      "requirements": ["LNK-053"],
+      "steps": [
+        {"at_us": 1000, "input": {"frame": {"frame_hex": "CC0DE020002F08A1A2A30000000000000000000000000000000000000000000000000000000000000000010408059419"}}, "expect": [{"deliver": {"kind": "InsertSdu", "data_hex": "A1A2A3"}}, {"deliver": {"kind": "Ocf", "scope": "mc", "report": "Type1", "ocf_hex": "01040805"}}, {"deliver": {"kind": "DataField", "vc": 1, "data_hex": "0000000000000000000000000000000000000000000000000000000000000000", "gap": false}}]},
+        {"at_us": 2000, "input": {"frame": {"frame_hex": "CC0DE020002F08A1A2A300000000000000000000000000000000000000000000000000000000000000008011223328BE"}}, "expect": [{"deliver": {"kind": "InsertSdu", "data_hex": "A1A2A3"}}, {"deliver": {"kind": "Ocf", "scope": "mc", "report": "Type2", "ocf_hex": "80112233"}}, {"deliver": {"kind": "DataField", "vc": 1, "data_hex": "0000000000000000000000000000000000000000000000000000000000000000", "gap": false}}]},
+        {"at_us": 3000, "input": {"frame": {"frame_hex": "CC0DE020002F08A1A2A30000000000000000000000000000000000000000000000000000000000000000C04455666882"}}, "expect": [{"deliver": {"kind": "InsertSdu", "data_hex": "A1A2A3"}}, {"deliver": {"kind": "Ocf", "scope": "mc", "report": "Type2", "ocf_hex": "C0445566"}}, {"deliver": {"kind": "DataField", "vc": 1, "data_hex": "0000000000000000000000000000000000000000000000000000000000000000", "gap": false}}]}
+      ]
+    },
+    {
+      "id": "link-recv-uslp-frame-loss",
+      "description": "FrameLoss: one Notify(LossFlag) per configured VC, then one for the physical channel.",
+      "requirements": ["LNK-053"],
+      "steps": [
+        {"at_us": 1000, "input": {"frame_loss": {}}, "expect": [{"notify": {"kind": "LossFlag", "scope": "vc", "vc": 1}}, {"notify": {"kind": "LossFlag", "scope": "vc", "vc": 2}}, {"notify": {"kind": "LossFlag", "scope": "physical_channel"}}]}
+      ]
+    },
+    {
+      "id": "link-recv-uslp-reconfigure",
+      "description": "Reconfigure restarts the expected counts.",
+      "requirements": ["LNK-051", "LNK-003"],
+      "steps": [
+        {"at_us": 1000, "input": {"frame": {"frame_hex": "CC0DE020002F02000AA1A2A300000000000000000000000000000000000000000000000000000000000000000000DE02"}}, "expect": [{"deliver": {"kind": "InsertSdu", "data_hex": "A1A2A3"}}, {"deliver": {"kind": "DataField", "vc": 1, "data_hex": "00000000000000000000000000000000000000000000000000000000000000000000", "gap": false}}]},
+        {"at_us": 2000, "input": {"reconfigure": {}}, "expect": []},
+        {"at_us": 3000, "input": {"frame": {"frame_hex": "CC0DE020002F0202BCA1A2A30000000000000000000000000000000000000000000000000000000000000000000013B8"}}, "expect": [{"deliver": {"kind": "InsertSdu", "data_hex": "A1A2A3"}}, {"deliver": {"kind": "DataField", "vc": 1, "data_hex": "00000000000000000000000000000000000000000000000000000000000000000000", "gap": false}}]}
+      ]
+    },
+    {
+      "id": "link-recv-uslp-raw-frame-insert-zone",
+      "description": "With the option on, the octets of a frame the caller rejected (a wrong FECF here) give the Insert Zone IN_SDU at its fixed offset after the 7-octet header (VCF Count Length 0), after the frame length check (732.1 4.3.11.1.4-5).",
+      "requirements": ["LNK-079"],
+      "config": {"protocol": "uslp", "scid": 49374, "frame_len": 48, "fecf": true, "insert_zone_len": 3, "ocf_service": "mc", "accept_rejected_frame_insert_zone": true, "vcs": [{"vcid": 1, "maps": [0, 2], "cop": false}, {"vcid": 2, "maps": [0], "cop": true}]},
+      "steps": [
+        {"at_us": 1000, "input": {"raw_frame": {"frame_hex": "CC0DE020002F00A1A2A3000000000000000000000000000000000000000000000000000000000000000000000000E259"}}, "expect": [{"deliver": {"kind": "InsertSdu", "data_hex": "A1A2A3"}}]}
+      ]
+    }
+  ]
+}
