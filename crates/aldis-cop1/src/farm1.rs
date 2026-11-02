@@ -46,10 +46,10 @@ use aldis_tc::{
     ValidatedTcFrame,
 };
 
-use crate::actions::{Actions, OutRange};
 use crate::farm1_table::{
     EVENT_COUNT, FARM1_TABLE, Farm1Action, Farm1Cell, Farm1Event, Farm1State, STATE_COUNT,
 };
+use aldis_core::engine::{Actions, OutRange};
 
 /// The most actions one [`Farm1::step`] can produce, derived from the action lists of Table 6-1
 /// (232.1 §6.3.3; COP-006, API-057).

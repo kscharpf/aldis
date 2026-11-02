@@ -159,20 +159,17 @@ fn reserve(
     base: LayoutSpec,
     tfdz_len: Option<usize>,
 ) -> Result<(FrameLayout, usize)> {
-    // The longest frame of the channel shows what surrounds the TFDZ.
+    // The longest frame of the channel shows how long the TFDZ may be.
     frame_layout(&base, vc.fixed_tfdz())
         .ok_or(invalid(field::FRAME_DATA_FIELD))
         .and_then(|longest| {
-            let overhead = physical
-                .frame_len()
-                .saturating_sub(longest.data().len())
-                .saturating_add(crate::tfdf::header_len(vc.fixed_tfdz()));
-            let tfdz_len =
-                tfdz_len.unwrap_or_else(|| physical.frame_len().saturating_sub(overhead));
+            let tfdz_len = tfdz_len.unwrap_or_else(|| longest.data_zone().len());
             if tfdz_len == 0 {
                 return Err(invalid(field::FRAME_DATA_FIELD));
             }
-            let total = overhead.saturating_add(tfdz_len);
+            let spec = base
+                .with_data_len(crate::tfdf::header_len(vc.fixed_tfdz()).saturating_add(tfdz_len));
+            let total = spec.frame_len;
             if physical.is_fixed() && total != physical.frame_len() {
                 return Err(mismatch(field::FRAME_DATA_FIELD));
             }
@@ -183,10 +180,6 @@ fn reserve(
                     len_u64(total),
                 ));
             }
-            let spec = LayoutSpec {
-                frame_len: total,
-                ..base
-            };
             frame_layout(&spec, vc.fixed_tfdz())
                 .map(|layout| (layout, tfdz_len))
                 .ok_or(invalid(field::FRAME_DATA_FIELD))

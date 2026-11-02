@@ -553,17 +553,37 @@ fn vector_problems(
     p
 }
 
-/// Vector directories whose files exist before the engines that run them (M3 plan WP-2 before
-/// WP-3 and WP-4): the test requirement is waived until the runner lands, and the entry is
-/// removed in the pull request that adds it. `cop1/scenarios/` left it when the C ABI runner of
-/// M3 WP-6 landed; `link/` (send and recv models) waits for the engines of M4 WP-3, WP-5 and
-/// WP-6 (M4 plan: WP-2a/2b before them).
-const AWAITING_RUNNER: &[&str] = &["link/"];
+/// Vector files (or, with a trailing `/`, directories) that exist before the engines that run
+/// them (M3 plan WP-2 before WP-3 and WP-4; M4 plan WP-2a/2b before WP-3 to WP-6): the test
+/// requirement is waived until the runner lands, and the entry is removed in the pull request
+/// that adds it. `cop1/scenarios/` left it when the C ABI runner of M3 WP-6 landed. The `link/`
+/// files go one by one: the `PacketGenerator` and `PacketExtractor` files left with M4 WP-3; the
+/// rest wait for WP-4 (`ChannelMux`, Access and Bitstream generators), WP-5 (`FrameReceiver`) and
+/// WP-6 (`MapSegmenter`, `MapReassembler`).
+const AWAITING_RUNNER: &[&str] = &[
+    "link/send/access_generator_aos.json",
+    "link/send/access_generator_tm.json",
+    "link/send/access_generator_uslp.json",
+    "link/send/bitstream_generator_aos.json",
+    "link/send/channel_mux_aos.json",
+    "link/send/channel_mux_tm.json",
+    "link/send/channel_mux_uslp.json",
+    "link/send/map_segmenter_tc.json",
+    "link/send/map_segmenter_uslp.json",
+    "link/recv/frame_receiver_aos.json",
+    "link/recv/frame_receiver_tc.json",
+    "link/recv/frame_receiver_tm.json",
+    "link/recv/frame_receiver_uslp.json",
+    "link/recv/map_reassembler_tc.json",
+    "link/recv/map_reassembler_uslp.json",
+];
 
 /// Whether `f`, relative to `test-vectors/`, is a vector file that no runner runs yet. Such a
 /// file is no evidence for `cargo xtask trace` either (`trace.rs`).
 pub fn awaiting_runner(f: &str) -> bool {
-    AWAITING_RUNNER.iter().any(|dir| f.starts_with(dir))
+    AWAITING_RUNNER
+        .iter()
+        .any(|entry| f == *entry || (entry.ends_with('/') && f.starts_with(entry)))
 }
 
 /// The vector runner through the C ABI (M2 plan D4).
@@ -837,6 +857,11 @@ const ENGINES: &[(&str, Sizing)] = &[
     ("Fop1", Sizing::Sized("fop1")),
     // FARM-1 has no const generics: it holds no queue (M3 plan D6); the C ABI builds it unsized.
     ("Farm1", Sizing::Exempt),
+    // The link engines share [link]: the packet queue (`packet_queue_octets`) sizes the
+    // PacketGenerator's queue and the PacketExtractor's assembly buffer, `max_frame_octets` the
+    // data field (M4 WP-3; the C ABI handles follow in WP-7).
+    ("PacketGenerator", Sizing::Sized("link")),
+    ("PacketExtractor", Sizing::Sized("link")),
 ];
 
 /// How an engine is sized in the C ABI.
@@ -1218,6 +1243,10 @@ mod tests {
         let readme = "| File |\n|---|\n| `cop1/scenarios/*.json` |\n";
         let c = consistent();
         assert!(!awaiting_runner(&file[0]));
+        assert!(!awaiting_runner("link/send/packet_generator_tm.json"));
+        assert!(!awaiting_runner("link/recv/packet_extractor_uslp.json"));
+        assert!(awaiting_runner("link/send/channel_mux_tm.json"));
+        assert!(awaiting_runner("link/recv/frame_receiver_aos.json"));
         assert_eq!(
             vector_problems(&file, readme, &[], "", "", &c),
             ["test-vectors/cop1/scenarios/fop1_table.json: no test in crates/*/tests/ runs it"]

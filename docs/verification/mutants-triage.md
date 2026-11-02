@@ -8,7 +8,7 @@ Surviving mutants from `cargo mutants` (`-p aldis-core -p aldis-time -p aldis-ep
 
 | Mutant | Verdict | Action |
 |---|---|---|
-| `actions.rs:61` `Actions::get` `<` → `<=` | Equivalent: the slots from `len` on are `None` by construction (`push` fills the slot of index `len` only), so `items.get(len)` gives `None` as the `else` arm does | None possible |
+| `engine.rs:61` `Actions::get` `<` → `<=` | Equivalent: the slots from `len` on are `None` by construction (`push` fills the slot of index `len` only), so `items.get(len)` gives `None` as the `else` arm does | None possible |
 | `farm1.rs:89` `longest_cell` and `fop1.rs:154` `fop1_max_actions` `>` → `>=` | Equivalent: the comparison replaces `longest` by a value equal to it | None possible |
 | `farm1.rs:511` delete `kind` of the `Context` of a Type-AD frame in `Farm1::step` | Equivalent: the struct update `..idle` supplies `kind: FduKind::Ad`, the value that was deleted | None possible |
 | `farm1.rs:512` delete `sequence_number` of the same `Context` | Equivalent: `..idle` supplies V(R), and the only cell of a Type-AD frame that reads the field is E1 (`DeliverFdu` in `Farm1Output::Deliver`), whose event requires N(S) = V(R) (`ad_event`) | None possible |

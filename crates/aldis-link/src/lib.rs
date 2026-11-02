@@ -2,9 +2,18 @@
 //!
 //! Layer 2 of Aldis. Specification: `docs/04-engines.md`.
 //!
-//! **Status:** skeleton. Modules are declared but not yet implemented.
-//! Requirements are traced by ID in each module's documentation.
+//! | Module | Contents | Requirements |
+//! |---|---|---|
+//! | [`common`] | Counters, occupancy, `QoS`, the valid-PVN set, idle parameters | LNK-002, LNK-014, LNK-078 |
+//! | [`protocol`] | The protocol trait with `Tm`, `Tc`, `Aos`, `Uslp` | LNK-001 |
+//! | `generator` | The `PacketGenerator` (features `spp`, `epp`) | LNK-010…LNK-015, LNK-074, LNK-075 |
+//! | `extractor` | The `PacketExtractor` (features `spp`, `epp`) | LNK-060…LNK-064, LNK-074, LNK-075 |
+//!
+//! **Status:** the `PacketGenerator` and the `PacketExtractor` are implemented (M4 WP-3); the other
+//! modules are declared but not yet implemented. Requirements are traced by ID in each module's
+//! documentation.
 #![no_std]
+#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 #![cfg_attr(docsrs, feature(doc_auto_cfg))]
 
 #[cfg(feature = "alloc")]
@@ -12,10 +21,16 @@ extern crate alloc;
 #[cfg(feature = "std")]
 extern crate std;
 
+pub mod common;
+#[cfg(all(feature = "spp", feature = "epp"))]
 pub mod extractor;
+#[cfg(all(feature = "spp", feature = "epp"))]
 pub mod generator;
 pub mod mux;
+#[cfg(all(feature = "spp", feature = "epp"))]
+mod packet;
 pub mod policy;
+pub mod protocol;
 pub mod reassembler;
 pub mod receiver;
 pub mod segmenter;

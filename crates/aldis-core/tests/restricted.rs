@@ -26,7 +26,7 @@ use aldis_core::counter::ModCounter;
 use aldis_core::error::{Error, ErrorDetail, ErrorKind, FieldId};
 use aldis_core::field;
 use aldis_core::ids::{Apid, MapId, PacketVersion, SeqCount, SpacecraftId, VcId};
-use aldis_core::layout::FrameLayout;
+use aldis_core::layout::{FrameLayout, FramedBytes};
 use aldis_core::ocf::{FsrReport, Ocf, ProjectSpecificReport, Type1Report};
 use aldis_core::security::{SecuredFields, SecurityLayout};
 use aldis_testkit::strategies::common::{
@@ -637,6 +637,52 @@ proptest! {
         if let Ok(layout) = FrameLayout::compute(&spec) {
             prop_assert_eq!(layout.security_header().len(), s.header_len());
             prop_assert_eq!(layout.security_trailer().len(), s.trailer_len());
+        }
+    }
+
+    /// Framed bytes accept exactly a frame as long as its layout, and cut it into the fields of
+    /// the layout, which together are the frame again (CMN-040, RS-020, issue #154).
+    #[test]
+    fn framed_bytes_hold_exactly_a_frame_of_the_layout_length(
+        spec in layout_spec(),
+        header in 0usize..8,
+        octets in strategies::octets(0..64),
+    ) {
+        // restricted: FramedBytes
+        // req: CMN-040, RS-020, VER-023, VER-054
+        let Ok(layout) = FrameLayout::compute(&spec) else {
+            return Ok(());
+        };
+        let layout = layout.with_data_header(header).unwrap_or_else(|_| {
+            FrameLayout::compute(&spec).unwrap()
+        });
+        let frame: Vec<u8> = (0..layout.frame_len())
+            .map(|i| octets.get(i % octets.len().max(1)).copied().unwrap_or(0) ^ u8::try_from(i % 251).unwrap())
+            .collect();
+        let framed = FramedBytes::new(&frame, layout.clone()).unwrap();
+        prop_assert_eq!(framed.frame(), &frame[..]);
+        let parts = [
+            framed.primary_header(),
+            framed.secondary(),
+            framed.security_header(),
+            framed.data(),
+            framed.security_trailer(),
+            framed.ocf(),
+            framed.fecf(),
+        ];
+        prop_assert_eq!(parts.concat(), frame.clone());
+        for (part, range) in parts.iter().zip(layout.ranges()) {
+            prop_assert_eq!(part.len(), range.len());
+        }
+        prop_assert_eq!([framed.data_header(), framed.data_zone()].concat(), framed.data());
+        prop_assert_eq!(framed.data_header().len(), layout.data_header().len());
+        // A frame of another length is refused with the documented error.
+        for other in [frame.len() + 1, frame.len().saturating_sub(1)] {
+            let longer: Vec<u8> = frame.iter().copied().cycle().take(other).collect();
+            prop_assert_eq!(
+                FramedBytes::new(&longer, layout.clone()),
+                Err(Error::new(ErrorKind::LengthMismatch).with_field(field::FRAME_LEN))
+            );
         }
     }
 }
