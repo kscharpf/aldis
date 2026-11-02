@@ -50,6 +50,12 @@ pub struct PacketRun<'a> {
 }
 
 impl<'a> PacketRun<'a> {
+    /// The Packet Version Number of a packet of a run, read from its header (API-061, LNK-060).
+    #[must_use]
+    pub fn pvn(packet: &[u8]) -> Option<u8> {
+        packet.first().map(|&b| packet::pvn(b))
+    }
+
     /// The packets in `run`, a range of `area` that a `Packets` action named; `None` if `run`
     /// does not lie inside `area`, which is the wrong area.
     #[must_use]

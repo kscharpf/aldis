@@ -775,6 +775,7 @@ fn an_encapsulation_packet_with_a_four_octet_length_field_is_delimited() {
     };
     assert_eq!(*count, 1);
     assert_eq!(PacketRun::new(*run, &area).unwrap().next(), Some(&p[..]));
+    assert_eq!((PacketRun::pvn(&p), PacketRun::pvn(&[])), (Some(7), None));
     // The header is split across two fields (3 and 5 octets), and the length is known at the
     // eighth.
     let mut e = TmExt::new(ext_config()).unwrap();
