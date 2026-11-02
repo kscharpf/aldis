@@ -648,11 +648,12 @@ pub fn validate() -> Result<usize, String> {
     Ok(problems.len())
 }
 
-/// The directory of the vector files that `test-vectors/models/cop1.py` writes.
-const GENERATED_DIR: &str = "test-vectors/cop1";
-
-/// The model that writes [`GENERATED_DIR`].
-const GENERATED_BY: &str = "test-vectors/models/cop1.py";
+/// The generated vector directories and the independent model that writes each (TV-023). A new
+/// model adds one row.
+const GENERATORS: &[(&str, &str)] = &[
+    ("test-vectors/cop1", "test-vectors/models/cop1.py"),
+    ("test-vectors/link/recv", "test-vectors/models/link_recv.py"),
+];
 
 /// The `.json` files under `dir`, as paths relative to it.
 fn json_files(dir: &Path) -> Result<BTreeMap<String, String>, String> {
@@ -682,65 +683,64 @@ fn json_files(dir: &Path) -> Result<BTreeMap<String, String>, String> {
     Ok(out)
 }
 
-/// Runs the model with `--write [dir]`.
-fn run_generator(dir: Option<&Path>) -> Result<(), String> {
+/// Runs `model` with `--write [dir]`.
+fn run_generator(model: &str, dir: Option<&Path>) -> Result<(), String> {
     let mut cmd = Command::new("python3");
-    cmd.args(["-I", GENERATED_BY, "--write"])
-        .current_dir(repo::root());
+    cmd.args(["-I", model, "--write"]).current_dir(repo::root());
     if let Some(dir) = dir {
         cmd.arg(dir);
     }
     let out = cmd
         .output()
-        .map_err(|e| format!("python3 -I {GENERATED_BY}: {e} (the models need python3, TV-023)"))?;
+        .map_err(|e| format!("python3 -I {model}: {e} (the models need python3, TV-023)"))?;
     if out.status.success() {
         Ok(())
     } else {
         Err(format!(
-            "{GENERATED_BY} --write failed:\n{}{}",
+            "{model} --write failed:\n{}{}",
             String::from_utf8_lossy(&out.stdout),
             String::from_utf8_lossy(&out.stderr)
         ))
     }
 }
 
-/// `vectors generated`: the files of `test-vectors/cop1/` are written by the independent model
-/// and never edited by hand (TV-023). With `write` they are regenerated; otherwise the model
-/// writes them to a scratch directory and any difference from the committed files is a problem.
+/// `vectors generated`: the files of the [`GENERATORS`] directories are written by the
+/// independent models and never edited by hand (TV-023). With `write` they are regenerated;
+/// otherwise each model writes to a scratch directory and any difference from the committed
+/// files is a problem.
 pub fn generated(write: bool) -> Result<usize, String> {
-    if write {
-        run_generator(None)?;
-        println!("wrote {GENERATED_DIR}/ with {GENERATED_BY}");
-        return Ok(0);
-    }
-    let scratch = std::env::temp_dir().join(format!("aldis-cop1-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&scratch);
-    std::fs::create_dir_all(&scratch).map_err(|e| e.to_string())?;
-    let result = run_generator(Some(&scratch)).and_then(|()| {
-        Ok((
-            json_files(&scratch)?,
-            json_files(&repo::root().join(GENERATED_DIR))?,
-        ))
-    });
-    let _ = std::fs::remove_dir_all(&scratch);
-    let (fresh, committed) = result?;
     let mut problems = 0;
-    for (rel, text) in &fresh {
-        if committed.get(rel) != Some(text) {
-            println!(
-                "error: {GENERATED_DIR}/{rel} differs from what {GENERATED_BY} writes; run `cargo xtask vectors generated --write`"
-            );
+    let mut files = 0;
+    for (n, (dir, model)) in GENERATORS.iter().enumerate() {
+        if write {
+            run_generator(model, None)?;
+            println!("wrote {dir}/ with {model}");
+            continue;
+        }
+        let scratch = std::env::temp_dir().join(format!("aldis-gen{n}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&scratch);
+        std::fs::create_dir_all(&scratch).map_err(|e| e.to_string())?;
+        let result = run_generator(model, Some(&scratch))
+            .and_then(|()| Ok((json_files(&scratch)?, json_files(&repo::root().join(dir))?)));
+        let _ = std::fs::remove_dir_all(&scratch);
+        let (fresh, committed) = result?;
+        for (rel, text) in &fresh {
+            if committed.get(rel) != Some(text) {
+                println!(
+                    "error: {dir}/{rel} differs from what {model} writes; run `cargo xtask vectors generated --write`"
+                );
+                problems += 1;
+            }
+        }
+        for rel in committed.keys().filter(|r| !fresh.contains_key(*r)) {
+            println!("error: {dir}/{rel} is not written by {model}; delete it");
             problems += 1;
         }
+        files += fresh.len();
     }
-    for rel in committed.keys().filter(|r| !fresh.contains_key(*r)) {
-        println!("error: {GENERATED_DIR}/{rel} is not written by {GENERATED_BY}; delete it");
-        problems += 1;
+    if !write {
+        println!("vectors generated: {files} file(s), {problems} problem(s)");
     }
-    println!(
-        "vectors generated: {} file(s), {problems} problem(s)",
-        fresh.len()
-    );
     Ok(problems)
 }
 

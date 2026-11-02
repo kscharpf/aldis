@@ -13,7 +13,7 @@ test-vectors/
   time/              cuc.json, cds.json, ccs.json, ascii.json, convert.json
   spp/  epp/  tm/  tc/  aos/  uslp/
   cop1/              scenarios/fop1_table.json, scenarios/farm1_table.json, and scenario files by topic (all under scenarios/) (README.md: vocabulary); written by test-vectors/models/cop1.py, never edited by hand
-  link/              packet_generator/*.json, extractor/*.json, mux/*.json, segmenter/*.json
+  link/              send/*.json (sending side), recv/*.json (receiving side; written by test-vectors/models/link_recv.py, never edited by hand)
 ```
 
 ## 2. Codec vectors
