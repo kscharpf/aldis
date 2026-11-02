@@ -154,8 +154,8 @@ The bound `N` is the most actions one input can return (LNK-074); the area is th
 | CLTU packer | `AddFrame` | `DataUnit` for the pending unit that the frame did not fit, then `DataUnit` for the new unit if the frame fills it | 2 | 2 *U* | At most two units are complete after one frame. |
 | | `Flush` | `DataUnit` (at most one) | 1 | *U* | |
 | | `Reconfigure` | `Discarded` | 1 | 0 | LNK-003. |
-| FrameReceiver | `Frame` | `FrameDiscarded` alone for a rejected frame; otherwise (an OID frame included, without `FrameDiscarded`): MC gap, VC gap, FSH SDU, Insert SDU, OCF, `DataField` (VCA_SDU or B_PDU valid bits included) | 5 | *F* | TM has the most items: two gaps, FSH, OCF, field (5); AOS and USLP have gap, IN_SDU, OCF, field (4); TC routes one frame (1). Each item is a disjoint part of the frame, so the octets written do not exceed *F*. |
-| | `FrameLoss` (LNK-053, OI-68) | `Notify(LossFlag)` for each configured VC and one for the physical channel | *V* + 1 | 0 | *V* is the number of configured VCs; OI-68 recommends this input. |
+| FrameReceiver | `Frame` | `FrameDiscarded` alone for a rejected frame; otherwise (an OID frame included, without `FrameDiscarded`): MC gap, VC gap, FSH, Insert SDU, OCF (Deliver actions), `DataField` (VCA_SDU or B_PDU valid bits included) | 5 | *F* | TM has the most items: two gaps, FSH, OCF, field (5); AOS and USLP have gap, IN_SDU, OCF, field (4); TC routes one frame (1). Each item is a disjoint part of the frame, so the octets written do not exceed *F*. |
+| | `FrameLoss` (LNK-053, OI-68) | `Notify(LossFlag)` for each configured VC, then one for the physical channel | *V*max + 1 | 0 | *V*max is the VC capacity of the receiver's type (a const generic), not the configured count (LNK-074). |
 | | `Reconfigure` | `Discarded` | 1 | 0 | LNK-003; the expected counts restart. |
 | | `RawFrame` (LNK-079) | `Deliver` of the IN_SDU (at most one) | 1 | Insert Zone length | |
 | PacketExtractor | `DataField` | at most one outcome for the packet in progress before the FHP (`Deliver` flagged `Incomplete`, or `Discarded`); then `Deliver` of each complete packet; extraction errors (at most two: one before the FHP, one after) | 1 + ⌊(*D* − 1) / *m*⌋ + 3 | *P* − 1 + *D* | The first packet delivered ends in the field after at least 1 octet; the rest are at least *m* each. A packet started in an earlier field has at most *P* − 1 octets in the assembly buffer; they are written with the delivery. |
@@ -175,9 +175,10 @@ Shared by the engines, so that the counters of LNK-002 and the actions agree (AP
 
 | Kind | Values | Used by |
 |---|---|---|
-| `FrameDiscarded` reason (LNK-050); also the discard-by-reason counters | `UnknownChannel` (VC or MAP not configured), `NotServed` (frame type the engine does not serve) | FrameReceiver |
+| `FrameDiscarded` reason (LNK-050); also the discard-by-reason counters | `UnknownChannel` (VC or MAP not configured), `NotServed` (frame type the engine does not serve); and, reported by the caller or framework stage with the same event, `CrcMismatch` (FECF), `HeaderUncorrectable` (AOS FHEC), `Security` (SDLS) — names and codes 8, 9, 14 of [03 §9](03-api-model.md#9-error-catalogue) | FrameReceiver |
 | Rejection of an input (the `Result` error) | `InvalidField` (`packet_version`, `qos`), `OutOfRange` (`max_packet_len`, `max_sdu_len`, `max_fdu_len`), `LengthMismatch` (`packet_len`, `insert_zone_len`, `fsh_len`), `WouldBlock`, `BufferTooSmall`, `InvalidConfig`, `UnknownChannel` | all |
 | Extraction error (LNK-062) | `PacketTooLong`, `InvalidPvn`, `LengthInconsistent` (length fields disagree with the FHP) | PacketExtractor |
 | Reassembly event (LNK-070) | `GapDiscard`, `SequenceViolation`, `UnknownMap` | MapReassembler |
-| `Notify` kinds | `Discarded` (LNK-003), `InsertSduRepeated` (LNK-034), `LossFlag` (LNK-053), gap (LNK-051, with the count missing), `Ocf`, `FshSdu`, `InsertSdu` | per §4 |
-| Counters (LNK-002) | one per `FrameDiscarded` reason, extraction error, and reassembly event, plus frames in/out, idle packets, OID frames, gaps | all |
+| `Notify` kinds (events, no octets) | `Discarded` (LNK-003), `InsertSduRepeated` (LNK-034), `LossFlag` (LNK-053), `FrameGap` (LNK-051: VC or MC, count missing), `FrameDiscarded` (LNK-050) | per §4 |
+| `Deliver` kinds (octets in the output area, counted in §4) | `DataField` (including VCA_SDU and B_PDU bits), `Ocf`, `FshSdu`, `InsertSdu`, packet, SDU | FrameReceiver, extractor, reassembler |
+| Counters (LNK-002) | one per `FrameDiscarded` reason, extraction error, and reassembly event; frames and SDUs in and out; idle packets; OID frames; gaps; sending-side discards (`Discarded` by `Reconfigure`, `WouldBlock` rejections, refused SDUs); occupancy and high-water mark of the packet queue, assembly buffers, and field slots | all |
