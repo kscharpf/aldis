@@ -690,6 +690,21 @@
       "code": 216,
       "name": "link_protocol",
       "kind": "parameter"
+    },
+    {
+      "code": 217,
+      "name": "sdu_len",
+      "kind": "field"
+    },
+    {
+      "code": 218,
+      "name": "field_len",
+      "kind": "field"
+    },
+    {
+      "code": 219,
+      "name": "raw_frames",
+      "kind": "parameter"
     }
   ]
 }
