@@ -48,13 +48,14 @@
     },
     {
       "id": "link-recv-aos-not-served",
-      "description": "A frame for a configured VC whose service this engine does not provide: its Insert Zone is delivered, then FrameDiscarded (NotServed); its VC count is updated.",
+      "description": "A frame for a configured VC whose service this engine does not provide: its Insert Zone is delivered, then FrameDiscarded (NotServed); VC Reception runs for the known VC, so its count is checked and a gap (the third frame) comes first (LNK-050, OI-77).",
       "requirements": ["LNK-050"],
       "config": {"protocol": "aos", "scid": 677, "frame_len": 48, "fecf": true, "insert_zone_len": 4, "accept_rejected_frame_insert_zone": false, "vcs": [{"vcid": 1, "role": "packets", "ocf": true}, {"vcid": 2, "role": "vca", "ocf": false}, {"vcid": 3, "role": "bitstream", "ocf": false}, {"vcid": 5, "role": "unserved", "ocf": false}]},
       "steps": [
         {"at_us": 1000, "input": {"frame": {"frame_hex": "694500000720DEADBEEF0102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F2021222324F586"}}, "expect": [{"deliver": {"kind": "InsertSdu", "data_hex": "DEADBEEF", "replay": false}}, {"frame_discarded": {"reason": "NotServed", "vc": 5}}]},
         {"at_us": 2000, "input": {"frame": {"frame_hex": "6945000008200102030402030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F202122232425711E"}}, "expect": [{"deliver": {"kind": "InsertSdu", "data_hex": "01020304", "replay": false}}, {"frame_discarded": {"reason": "NotServed", "vc": 5}}]},
-        {"at_us": 3000, "input": {"query": {"counter": "NotServed"}}, "expect": [{"counter": {"name": "NotServed", "value": 2}}]}
+        {"at_us": 3000, "input": {"frame": {"frame_hex": "694500000B20DEADBEEF030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F2021222324252656DA"}}, "expect": [{"notify": {"kind": "FrameGap", "scope": "vc", "vc": 5, "missing": 2}}, {"deliver": {"kind": "InsertSdu", "data_hex": "DEADBEEF", "replay": false}}, {"frame_discarded": {"reason": "NotServed", "vc": 5}}]},
+        {"at_us": 4000, "input": {"query": {"counter": "NotServed"}}, "expect": [{"counter": {"name": "NotServed", "value": 3}}]}
       ]
     },
     {
@@ -68,20 +69,24 @@
       ]
     },
     {
-      "id": "link-recv-aos-raw-frame-errors",
-      "description": "While the option is off, RawFrame fails with InvalidConfig (raw_frames); with the option on, octets of another length than the frame fail with LengthMismatch (frame_len); neither changes state (OI-73).",
+      "id": "link-recv-aos-raw-frame-option-off",
+      "description": "While the option is off, RawFrame fails with InvalidConfig (raw_frames) and changes no state: the frame counts before and after it are in sequence (OI-73).",
       "requirements": ["LNK-079"],
       "steps": [
-        {"at_us": 1000, "input": {"raw_frame": {"frame_hex": "694100000120DEADBEEF000000000000000000000000000000000000000000000000000000000000000001040805FEC0"}}, "expect": [{"error": "InvalidConfig", "field": "raw_frames"}]}
+        {"at_us": 1000, "input": {"frame": {"frame_hex": "694200000A20DEADBEEF0102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F2021222324428F"}}, "expect": [{"deliver": {"kind": "InsertSdu", "data_hex": "DEADBEEF", "replay": false}}, {"deliver": {"kind": "DataField", "vc": 2, "data_hex": "0102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F2021222324", "gap": false, "replay": false}}]},
+        {"at_us": 2000, "input": {"raw_frame": {"frame_hex": "694100006320DEADBEEF000000000000000000000000000000000000000000000000000000000000000001040805B8AC"}}, "expect": [{"error": "InvalidConfig", "field": "raw_frames"}]},
+        {"at_us": 3000, "input": {"frame": {"frame_hex": "694200000B20DEADBEEF02030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F202122232425878D"}}, "expect": [{"deliver": {"kind": "InsertSdu", "data_hex": "DEADBEEF", "replay": false}}, {"deliver": {"kind": "DataField", "vc": 2, "data_hex": "02030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F202122232425", "gap": false, "replay": false}}]}
       ]
     },
     {
       "id": "link-recv-aos-raw-frame-length",
-      "description": "With the option on, a raw frame of another length than the frame length fails with LengthMismatch (frame_len).",
+      "description": "With the option on, a raw frame of another length than the frame length fails with LengthMismatch (frame_len) and changes no state.",
       "requirements": ["LNK-079"],
       "config": {"protocol": "aos", "scid": 677, "frame_len": 48, "fecf": true, "insert_zone_len": 4, "accept_rejected_frame_insert_zone": true, "vcs": [{"vcid": 1, "role": "packets", "ocf": true}, {"vcid": 2, "role": "vca", "ocf": false}, {"vcid": 3, "role": "bitstream", "ocf": false}]},
       "steps": [
-        {"at_us": 1000, "input": {"raw_frame": {"frame_hex": "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"}}, "expect": [{"error": "LengthMismatch", "field": "frame_len"}]}
+        {"at_us": 1000, "input": {"frame": {"frame_hex": "694200000A20DEADBEEF0102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F2021222324428F"}}, "expect": [{"deliver": {"kind": "InsertSdu", "data_hex": "DEADBEEF", "replay": false}}, {"deliver": {"kind": "DataField", "vc": 2, "data_hex": "0102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F2021222324", "gap": false, "replay": false}}]},
+        {"at_us": 2000, "input": {"raw_frame": {"frame_hex": "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"}}, "expect": [{"error": "LengthMismatch", "field": "frame_len"}]},
+        {"at_us": 3000, "input": {"frame": {"frame_hex": "694200000B20DEADBEEF02030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F202122232425878D"}}, "expect": [{"deliver": {"kind": "InsertSdu", "data_hex": "DEADBEEF", "replay": false}}, {"deliver": {"kind": "DataField", "vc": 2, "data_hex": "02030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F202122232425", "gap": false, "replay": false}}]}
       ]
     },
     {
