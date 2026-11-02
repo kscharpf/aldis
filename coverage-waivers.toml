@@ -40,17 +40,17 @@ justification = "`Fop1::commit` in src/fop1.rs: the `split_first_mut` of the sli
 [[waiver]]
 crate = "aldis-link"
 metric = "regions"
-count = 57
+count = 58
 justification = "src/generator.rs, src/extractor.rs, src/protocol.rs — error returns and arms that no input reaches, each an explicit error and not a default (GEN-020): the `?` on `Actions::push` (the bound `N` is 1 for the generator and is checked against `extractor_max_actions` by `PacketExtractor::new`, so a list never overflows), on `Cx::write` (`data_field` checks the area against `max_packet_len − 1 + z` before any octet is written), on `P::encode_pointer` (the configuration checks the zone against `max_zone_len`), on the idle packet builders of `aldis-spp` and `aldis-epp` (the configuration checks the lengths they need), on `write_idle_field` and `pull_from_queue` (their checks come before), and the `ok_or(InternalError)` on a split or a `kind_of` of octets that the code built or checked itself (the queue head of an accepted packet, an octet that `accepts` accepted, `fill` within the buffer); in `protocol.rs` the arm of `Uslp::parse` for a header slice that is not 2 octets after `split_at_checked(2)`. The sweep tests of `tests/engine_housekeeping.rs` and the round trip of `tests/packet_roundtrip.rs` reach every other failure."
 
 [[waiver]]
 crate = "aldis-link"
 metric = "lines"
-count = 9
+count = 10
 justification = "src/generator.rs, src/extractor.rs, src/protocol.rs — the lines of the error returns of the regions above that have a line of their own: `Look::More` for an empty buffer (`look` runs after a push), the `else` of `emit` for an empty buffer (`emit` runs on a complete packet), the `let ... else` on `packet::length` of a queued packet, and the `_` arm of `Uslp::parse`. None is reachable (GEN-020)."
 
 [[waiver]]
 crate = "aldis-link"
 metric = "branches"
-count = 9
-justification = "src/generator.rs, src/extractor.rs — the branches of the same unreachable error returns: the `else` of `let Some(&first) = held.first()` in `look` and `emit`, the `let Length::Total(total) = packet::length(..) else` of `pull_from_queue`, and the `?` of `Actions::push` and `Cx::write`. None is reachable (GEN-020)."
+count = 10
+justification = "src/generator.rs, src/extractor.rs — the branches of the same unreachable error returns: the `else` of `let Some(&first) = held.first()` in `look` and `emit`, the `let Length::Total(total) = packet::length(..) else` of `pull_from_queue`, the `?` of `Actions::push` and `Cx::write`, and the `get` of the octet-by-octet shift of the queue (an index below the queue length). None is reachable (GEN-020)."

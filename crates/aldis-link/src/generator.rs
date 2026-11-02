@@ -684,8 +684,13 @@ impl<P: PacketProtocol, const D: usize, const Q: usize> PacketGenerator<P, D, Q>
         }
         self.fill = self.fill.saturating_add(moved);
         let left = self.queue_len.saturating_sub(moved);
-        // `moved <= queue_len <= Q`, so the range is inside the queue.
-        self.queue.copy_within(moved..self.queue_len, 0);
+        // Close the gap octet by octet: a slice method that moves a range could panic.
+        for i in 0..left {
+            let octet = self.queue.get(moved.saturating_add(i)).copied();
+            if let (Some(octet), Some(dst)) = (octet, self.queue.get_mut(i)) {
+                *dst = octet;
+            }
+        }
         self.queue_len = left;
     }
 }
