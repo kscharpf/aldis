@@ -827,10 +827,11 @@ fn crates() -> Result<Crates, String> {
 }
 
 /// The stateful engines of `aldis-cop1` and `aldis-link`: a type `X` next to its configuration
-/// type `XConfig` (API-057), and how each is sized in the C ABI. `Sized("fop1")` names the
-/// section of `crates/aldis-ffi/capacities.toml` (CABI-030) whose sizes the engine is built at,
-/// so that `stack` measures it as a C integrator gets it (checklists, "Adding an engine"; `Fop1::step`
-/// exceeded its stack budget only at those sizes, #202). `Exempt` marks an engine with none, with the reason in a comment.
+/// type `XConfig` (the convention of the checklist "Adding an engine"), and how each is sized
+/// in the C ABI. `Sized("fop1")` names the section of `crates/aldis-ffi/capacities.toml`
+/// (CABI-030) whose sizes the engine is built at, so that `stack` measures it as a C integrator
+/// gets it (`Fop1::step` exceeded its stack budget only at those sizes, #202). `Exempt` marks
+/// an engine with none, with the reason in a comment.
 const ENGINES: &[(&str, Sizing)] = &[
     ("Fop1", Sizing::Sized("fop1")),
     // FARM-1 has no const generics: it holds no queue (M3 plan D6); the C ABI builds it unsized.
@@ -851,7 +852,7 @@ fn engines_in(sources: &[String]) -> BTreeSet<String> {
     let structs: BTreeSet<&str> = sources
         .iter()
         .flat_map(|s| s.lines())
-        .filter_map(|l| l.strip_prefix("pub struct "))
+        .filter_map(|l| l.trim_start().strip_prefix("pub struct "))
         .filter_map(|r| r.split(['<', ' ', '{', '(', ';']).next())
         .collect();
     structs
@@ -861,7 +862,7 @@ fn engines_in(sources: &[String]) -> BTreeSet<String> {
         .collect()
 }
 
-/// Every engine in `ENGINES` form is found and has a section of `capacities.toml` or an
+/// Every engine found is listed in `ENGINES` and has a section and has a section of `capacities.toml` or an
 /// exemption, and no listed engine or section is missing.
 fn engine_problems(
     found: &BTreeSet<String>,
@@ -897,12 +898,21 @@ fn engine_check() -> Result<Vec<String>, String> {
         .map(|(section, _, _)| section)
         .collect();
     let mut sources = Vec::new();
+    let mut unread = Vec::new();
     for dir in ["crates/aldis-cop1/src", "crates/aldis-link/src"] {
-        for path in repo::files(dir, &["rs"]) {
+        let files = repo::files(dir, &["rs"]);
+        if files.is_empty() {
+            unread.push(format!(
+                "{dir}: no source file found, so its engines are not checked"
+            ));
+        }
+        for path in files {
             sources.push(repo::read(&path)?);
         }
     }
-    Ok(engine_problems(&engines_in(&sources), &sections, ENGINES))
+    let mut problems = unread;
+    problems.extend(engine_problems(&engines_in(&sources), &sections, ENGINES));
+    Ok(problems)
 }
 
 /// The capacities of the C ABI (CABI-030).
@@ -1074,14 +1084,15 @@ mod tests {
         assert!(crate_problems(&c)[0].contains("not a workspace member"));
     }
 
-    // req: VER-011, CABI-030
     #[test]
     fn every_engine_needs_a_capacities_section_or_an_exemption() {
+        // req: VER-011, CABI-030
         let src = "pub struct Fop1Config {}\npub struct Fop1<const Q: usize> {}\n\
                    pub struct Farm1Config {}\npub struct Farm1 {}\n\
-                   pub struct Orphan {}\npub struct LoneConfig {}\n";
+                   pub struct Orphan {}\npub struct LoneConfig {}\n\n    pub struct Indented {}\n    pub struct IndentedConfig {}\n";
         let found = engines_in(&[src.to_owned()]);
-        assert_eq!(found, names(&["Fop1", "Farm1"]));
+        assert_eq!(found, names(&["Fop1", "Farm1", "Indented"]));
+        let found = names(&["Fop1", "Farm1"]);
         let table = [("Fop1", Sizing::Sized("fop1")), ("Farm1", Sizing::Exempt)];
         let p = engine_problems(&found, &names(&["fop1"]), &table);
         assert!(p.is_empty(), "{p:?}");

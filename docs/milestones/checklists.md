@@ -32,9 +32,9 @@ A crate *has code* once its `src/` declares a function. In the change that gives
 
 ## Adding an engine to a new or an existing crate
 
-An engine is a stateful type with const-generic capacities (the COP-1 `Fop1` and `Farm1`, the link-layer engines of M4).
+An engine is a stateful type `X` of `aldis-cop1` or `aldis-link` with its own configuration type `XConfig` (the COP-1 `Fop1` and `Farm1`, the link-layer engines of M4); `cargo xtask consistency` finds engines by that pairing. An engine usually has const-generic capacities (`Fop1`); `Farm1` has none.
 
-- [ ] The engine is built at the `capacities.toml` sizes of `crates/aldis-ffi` in its first PR, so that `stack` measures its entry points at the sizes a C integrator gets (VER-011; `Fop1::step` needed 41,656 bytes at 16x1024 against the 4,096-byte `rust` budget, which only building it at those sizes showed, #202). A section of `capacities.toml` for the engine, or an exemption with its reason in `ENGINES` of `xtask/src/consistency.rs`, for every `X` with an `XConfig` in `aldis-cop1` or `aldis-link` (`cargo xtask consistency`, **(ci)**); that it is built at those sizes is review.
+- [ ] The engine is built at the `capacities.toml` sizes of `crates/aldis-ffi` in its first PR, so that `stack` measures its entry points at the sizes a C integrator gets (VER-011; `Fop1::step` needed 41,656 bytes at 16x1024 against the 4,096-byte `rust` budget, which only building it at those sizes showed, #202). A section of `capacities.toml` for the engine, or an exemption with its reason in `ENGINES` of `xtask/src/consistency.rs`, for every engine (`cargo xtask consistency`, **(ci)**); that it is built at those sizes is review.
 
 ## Adding a vector file
 
