@@ -781,16 +781,24 @@ fn a_truncated_uslp_frame_is_not_served() {
     )
     .unwrap();
     let mut rx = FrameReceiver::<Uslp, 4>::new(config);
-    let mut frame = uslp_variable_frame(1, 0, 12, 4);
-    frame[3] |= 1;
-    let e = refused(&mut rx, &frame);
-    assert_eq!(
-        (e.kind(), e.field()),
-        (
-            ErrorKind::InvalidField,
-            Some(field::END_OF_FRAME_PRIMARY_HEADER_FLAG)
-        )
-    );
+    // Any length, from the 6 octets of the shortest truncated frame (Table 5-3).
+    for len in [6, 12] {
+        let mut frame = uslp_variable_frame(1, 0, len, 4);
+        frame[3] |= 1;
+        let mut twin = rx.clone();
+        let e = refused(&mut rx, &frame);
+        assert_eq!(
+            (e.kind(), e.field()),
+            (
+                ErrorKind::InvalidField,
+                Some(field::END_OF_FRAME_PRIMARY_HEADER_FLAG)
+            )
+        );
+        // The refusal changed nothing but its counter: a twin that refused another input is
+        // equal (API-058).
+        assert_eq!(refused(&mut twin, &[0]).kind(), ErrorKind::LengthMismatch);
+        assert_eq!(twin, rx);
+    }
 }
 
 #[test]

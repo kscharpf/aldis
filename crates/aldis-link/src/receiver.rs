@@ -369,6 +369,15 @@ pub trait ReceiveProtocol: Protocol {
     /// of every frame (LNK-050).
     fn variable_length(channel: &Self::Channel) -> bool;
 
+    /// Refuses a frame that the receiver does not serve, before its length is checked (USLP: a
+    /// truncated frame, Annex D, whose header has no Frame Length).
+    ///
+    /// # Errors
+    /// `InvalidField` (`end_of_frame_primary_header_flag`) for a truncated USLP frame.
+    fn refuse_unserved(_: &Self::Channel, _: &[u8]) -> Result<()> {
+        Ok(())
+    }
+
     /// Where the Insert Zone starts in the octets of a raw frame (LNK-079).
     ///
     /// # Errors
@@ -407,7 +416,9 @@ impl<P: ReceiveProtocol, const V: usize> FrameReceiverConfig<P, V> {
     ///
     /// # Errors
     /// `InvalidConfig` (`frame_len`) if a frame of that length would have no data field octet
-    /// on the channel, or with the OCF and Secondary Header of a VC; `InvalidConfig` (`vc_id`)
+    /// on the channel, or with the OCF and Secondary Header of a VC, or (TC) more than the 1 024
+    /// octets of the Maximum Transfer Frame Length (232.0 Tables 5-1 to 5-3); `InvalidConfig`
+    /// (`vc_id`)
     /// for a VC given twice; `CapacityExceeded` (`vc_id`) for more than `V` VCs.
     pub fn new(
         frame_len: usize,
@@ -979,6 +990,7 @@ impl<P: ReceiveProtocol, const V: usize> FrameReceiver<P, V> {
     /// The frame length and the output area are checked before the frame is read (API-058).
     fn check_frame(&self, octets: &[u8], out: &[u8]) -> Result<()> {
         let config = &self.config;
+        P::refuse_unserved(&config.channel, octets)?;
         let len = octets.len();
         let ok = if P::variable_length(&config.channel) {
             len <= config.frame_len && P::fits(len, config.fecf, &config.channel, None)

@@ -139,6 +139,16 @@ impl ReceiveProtocol for Uslp {
         frame_len >= needed
     }
 
+    fn refuse_unserved(_: &UslpChannel, frame: &[u8]) -> Result<()> {
+        // A truncated frame (Annex D, End of Frame Primary Header Flag 1, bit 0 of the fourth
+        // octet) has a 4-octet header and no Frame Length: not served, whatever its length.
+        match frame.get(3) {
+            Some(octet) if octet & 0x01 != 0 => Err(Error::new(ErrorKind::InvalidField)
+                .with_field(field::END_OF_FRAME_PRIMARY_HEADER_FLAG)),
+            _ => Ok(()),
+        }
+    }
+
     fn variable_length(channel: &UslpChannel) -> bool {
         channel.variable
     }
@@ -157,11 +167,6 @@ impl ReceiveProtocol for Uslp {
 
     fn receive<const V: usize>(cx: &mut FrameContext<'_, Uslp, V>, frame: &[u8]) -> Result<()> {
         let [_, _, t2, t3, l0, l1, flags] = header::<PRIMARY_HEADER_LEN>(frame)?;
-        // A truncated frame (Annex D) has a 4-octet header and no Frame Length: not served.
-        if t3 & 0x01 != 0 {
-            return Err(Error::new(ErrorKind::InvalidField)
-                .with_field(field::END_OF_FRAME_PRIMARY_HEADER_FLAG));
-        }
         // The Frame Length field is one less than the length of this frame (732.1 §4.1.2.7).
         if usize::from(u16::from_be_bytes([l0, l1])).saturating_add(1) != frame.len() {
             return Err(Error::new(ErrorKind::LengthMismatch).with_field(field::FRAME_LEN));
