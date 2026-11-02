@@ -115,7 +115,7 @@ fn tc_frame_of(vc: u8, len: usize, bypass: bool, control: bool) -> Vec<u8> {
 
 /// A variable-length USLP frame of `len` octets, VCF Count Length 1.
 fn uslp_variable_frame(vc: u8, map: u8, len: usize, count: u8) -> Vec<u8> {
-    let top = (0b1100u32 << 28) | (0x1234 << 12) | (u32::from(vc) << 5) | (u32::from(map) << 1) | 1;
+    let top = (0b1100u32 << 28) | (0x1234 << 12) | (u32::from(vc) << 5) | (u32::from(map) << 1);
     let mut f = top.to_be_bytes().to_vec();
     f.extend((len as u16 - 1).to_be_bytes());
     f.extend([0x01, count]);
@@ -717,14 +717,9 @@ fn tc_frames_vary_in_length_up_to_the_maximum() {
     // req: LNK-050, LNK-081; 232.0 §2.3.1
     let mut rx = tc();
     let mut area = vec![0u8; rx.config().area_len()];
-    // Type-AD, Type-BD, and a Type-BC control command of 7 octets (a Control Command of 1 octet
-    // after the 5-octet header and no FECF here), shorter than the maximum.
-    for (len, bypass, control) in [
-        (12, false, false),
-        (9, true, false),
-        (6, true, true),
-        (5, false, false),
-    ] {
+    // Type-AD, Type-BD, and a Type-BC control command of 6 octets (a Control Command of 1 octet
+    // after the 5-octet header; no FECF here), shorter than the maximum.
+    for (len, bypass, control) in [(12, false, false), (9, true, false), (6, true, true)] {
         let frame = tc_frame_of(1, len, bypass, control);
         let out = rx
             .step(ReceiverInput::Frame(CheckedFrame::new(&frame)), &mut area)
@@ -735,17 +730,67 @@ fn tc_frames_vary_in_length_up_to_the_maximum() {
         assert_eq!(r.slice(&area).unwrap(), &frame[..]);
     }
     // Above the maximum, below the header, or not the length the header gives.
-    for frame in [tc_frame_of(1, LEN + 1, false, false), vec![0, 0, 4], {
-        let mut f = tc_frame_of(1, 12, false, false);
-        f.pop();
-        f
-    }] {
+    for frame in [
+        tc_frame_of(1, LEN + 1, false, false),
+        tc_frame_of(1, 5, false, false),
+        vec![0, 0, 4],
+        {
+            let mut f = tc_frame_of(1, 12, false, false);
+            f.pop();
+            f
+        },
+    ] {
         let e = refused(&mut rx, &frame);
         assert_eq!(
             (e.kind(), e.field()),
             (ErrorKind::LengthMismatch, Some(field::FRAME_LEN))
         );
     }
+}
+
+#[test]
+fn a_tc_configuration_needs_a_data_field_and_stays_within_the_maximum() {
+    // req: LNK-050, API-040; 232.0 Tables 5-1 to 5-3, CMN-041
+    let build = |len: usize, fecf: bool| {
+        FrameReceiverConfig::<Tc, 2>::new(
+            len,
+            fecf,
+            TcChannel,
+            &[VcEntry::new(vc(1), TcVc::SERVED)],
+        )
+    };
+    assert_eq!(build(5, false).unwrap_err().field(), Some(field::FRAME_LEN));
+    assert!(build(6, false).is_ok());
+    assert!(build(8, true).is_ok() && build(7, true).is_err());
+    assert!(build(1024, false).is_ok());
+    assert_eq!(
+        build(1025, false).unwrap_err().kind(),
+        ErrorKind::InvalidConfig
+    );
+}
+
+#[test]
+fn a_truncated_uslp_frame_is_not_served() {
+    // req: LNK-050, API-058; 732.1 §4.1.2.6, Annex D; OI-48
+    let maps = MapSet::new(&[MapId::<4>::new(0).unwrap()]);
+    let config = FrameReceiverConfig::<Uslp, 4>::new(
+        LEN,
+        false,
+        UslpChannel::variable(Service::Mc),
+        &[VcEntry::new(vc(1), UslpVc::new(maps, false, true))],
+    )
+    .unwrap();
+    let mut rx = FrameReceiver::<Uslp, 4>::new(config);
+    let mut frame = uslp_variable_frame(1, 0, 12, 4);
+    frame[3] |= 1;
+    let e = refused(&mut rx, &frame);
+    assert_eq!(
+        (e.kind(), e.field()),
+        (
+            ErrorKind::InvalidField,
+            Some(field::END_OF_FRAME_PRIMARY_HEADER_FLAG)
+        )
+    );
 }
 
 #[test]
@@ -775,13 +820,12 @@ fn variable_length_uslp_frames_are_routed_by_their_own_length() {
     let out = feed(&mut rx, &control);
     assert!(matches!(out[..], [ReceiverOutput::ProtocolControl { .. }]));
     // The flag on an OID frame does not make it a protocol control frame.
-    let mut oid = uslp_frame(63, 0, true, true, Some((1, 9)), None);
+    let oid = uslp_frame(63, 0, true, true, Some((1, 9)), None);
     let mut other = uslp();
     assert!(matches!(
         feed(&mut other, &oid)[..],
         [ReceiverOutput::InsertSdu { .. }]
     ));
-    oid[6] = 0;
     // A frame with a count and no data octet is malformed.
     assert_eq!(
         refused(&mut rx, &uslp_variable_frame(1, 0, 8, 7)).kind(),

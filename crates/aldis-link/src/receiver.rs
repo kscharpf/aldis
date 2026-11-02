@@ -377,7 +377,8 @@ pub trait ReceiveProtocol: Protocol {
     /// follow a field of a header the caller rejected (OI-78).
     fn raw_insert_zone_offset(channel: &Self::Channel, frame: &[u8]) -> Result<usize>;
 
-    /// The procedure of one frame of exactly the frame length (LNK-050…LNK-054).
+    /// The procedure of one frame, of the frame length or, where frames vary in length, of a
+    /// length up to it (LNK-050…LNK-054).
     ///
     /// # Errors
     /// The frame is parsed before any state changes: `Malformed`, `ReservedValue`,

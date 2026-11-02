@@ -7,6 +7,8 @@ use crate::protocol::Tc;
 
 /// The octets of the TC Primary Header and the Frame Sequence Number (232.0 §4.1.2).
 const HEADER_LEN: usize = 5;
+/// The largest Maximum Transfer Frame Length (232.0 Tables 5-1 to 5-3).
+const MAX_FRAME_LEN: usize = 1024;
 
 /// The parameters of a TC physical channel that the receiver needs: none.
 ///
@@ -43,7 +45,13 @@ impl ReceiveProtocol for Tc {
     }
 
     fn fits(frame_len: usize, fecf: bool, _: &TcChannel, _: Option<&TcVc>) -> bool {
-        frame_len >= HEADER_LEN.saturating_add(if fecf { 2 } else { 0 })
+        // At least one data octet (CMN-041, OI-41), and at most the Maximum Transfer Frame Length
+        // (232.0 Tables 5-1 to 5-3).
+        frame_len
+            >= HEADER_LEN
+                .saturating_add(if fecf { 2 } else { 0 })
+                .saturating_add(1)
+            && frame_len <= MAX_FRAME_LEN
     }
 
     fn variable_length(_: &TcChannel) -> bool {
