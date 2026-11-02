@@ -25,6 +25,16 @@
       ]
     },
     {
+      "id": "link-recv-tm-unknown-vc-counts-mc",
+      "description": "A frame for an unknown VC still counts in the MC Frame Count (132.0 4.1.2.5, 4.3.5 before 4.3.4.3): the frame of VC 0 after it raises no MC gap.",
+      "requirements": ["LNK-050", "LNK-051"],
+      "steps": [
+        {"at_us": 1000, "input": {"frame": {"frame_hex": "12300A1418000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F2021222324252627285084"}}, "expect": [{"deliver": {"kind": "DataField", "vc": 0, "data_hex": "0102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F202122232425262728", "fhp": 0, "gap": false}}]},
+        {"at_us": 2000, "input": {"frame": {"frame_hex": "12360B09180002030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F20212223242526272829D6BD"}}, "expect": [{"frame_discarded": {"reason": "UnknownChannel", "vc": 3}}]},
+        {"at_us": 3000, "input": {"frame": {"frame_hex": "12300C151800030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F202122232425262728292A81AD"}}, "expect": [{"deliver": {"kind": "DataField", "vc": 0, "data_hex": "030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F202122232425262728292A", "fhp": 0, "gap": false}}]}
+      ]
+    },
+    {
       "id": "link-recv-tm-counts-in-sequence",
       "description": "The first frame sets both expectations; consecutive counts, including the wrap 255 to 0 of both counters, raise no gap action (132.0 4.1.2.5.2, 4.1.2.6.2).",
       "requirements": ["LNK-051"],

@@ -287,7 +287,7 @@ def missing(count, expected, modulus):
     """Frames missing, (count - expected) modulo the range (LNK-051). A forward distance beyond
     half the range is a backwards or reset count (CMN-031) that the documents leave open."""
     d = (count - expected) % modulus
-    if d > modulus // 2:
+    if d + 1 > modulus // 2:     # CMN-031: a forward distance (d + 1) of 2..=modulus/2 is a gap
         raise Unspecified("count goes backwards or resets: LNK-051 and CMN-031 differ")
     return d
 
@@ -406,6 +406,11 @@ class FrameReceiver:
         shf, sync, fhp = w2 >> 15, (w2 >> 14) & 1, w2 & 0x7FF
         vcmap = self.vcs()
         if vcid not in vcmap:
+            # The MC Frame Count counts every frame of the master channel (132.0 4.1.2.5), and
+            # MC reception runs before VC demultiplexing discards the frame (4.3.5, 4.3.4.3).
+            if self.mc_expect is not None and missing(mc, self.mc_expect, 256):
+                raise Unspecified("an MC gap on a frame that is then discarded for its VC")
+            self.mc_expect = (mc + 1) % 256
             return self.discard("UnknownChannel", vcid)          # LNK-050: alone
         role = vcmap[vcid]["role"]
         end = len(f) - (2 if cfg["fecf"] else 0) - (4 if ocf_flag else 0)
@@ -865,7 +870,7 @@ class MapReassembler:
             if lost:
                 for k in lost:
                     del self.partial[k]
-                outs.append(self.event("GapDiscard", vc, mp))
+                outs.append(self.event("GapDiscard", vc, lost[0][1]))   # the MAP whose SDU was lost
         if len([k for k in self.partial if k[0] == vc and k != key]) and p == "uslp":
             raise Unspecified("two SDUs in progress on one VC")
         have = key in self.partial
@@ -980,6 +985,14 @@ def fr_tm_scenarios():
             "(UnknownChannel) alone, no gap action and no delivery (132.0 4.3.4.3, LNK-050).")
     s.add(frame_in(tm_frame(c, 3, 40, 9, 0, 1)))
     s.counter("UnknownChannel")
+    out.append(s)
+
+    s = Scn("link-recv-tm-unknown-vc-counts-mc", ["LNK-050", "LNK-051"],
+            "A frame for an unknown VC still counts in the MC Frame Count (132.0 4.1.2.5, 4.3.5 "
+            "before 4.3.4.3): the frame of VC 0 after it raises no MC gap.")
+    s.add(frame_in(tm_frame(c, 0, 10, 20, 0, 1)))
+    s.add(frame_in(tm_frame(c, 3, 11, 9, 0, 2)))
+    s.add(frame_in(tm_frame(c, 0, 12, 21, 0, 3)))
     out.append(s)
 
     s = Scn("link-recv-tm-counts-in-sequence", ["LNK-051"],
@@ -1469,8 +1482,8 @@ def ext_scenarios(proto):
     q3 = spp_total(10, 17, 0x77)
     s = Scn(tag + "fhp-wins-over-length", ["LNK-060", "LNK-061"],
             "The packet in progress needs 14 more octets but the FHP of the next field is 8: "
-            "the FHP is correct (132.0 4.3.2.4); the partial packet is discarded with its 6 "
-            "octets, an extraction error LengthInconsistent is raised before the FHP, and the "
+            "the FHP is correct (132.0 4.3.2.4); the partial packet is discarded with its 14 "
+            "octets (6 held plus the 8 before the FHP), an extraction error LengthInconsistent is raised before the FHP, and the "
             "extraction continues from the FHP.")
     s.add(F(q1 + q2[:6], 0))
     s.add(F(bytes(8) + q3 + q1[:6], 8))
@@ -1491,7 +1504,7 @@ def ext_scenarios(proto):
     r1 = spp_total(20, 18, 0x10)
     r2 = spp_total(14, 19, 0x20)
     s = Scn(tag + "gap-discard", ["LNK-061", "LNK-051"],
-            "After a frame gap the partial packet (10 octets) is discarded with a Discarded "
+            "After a frame gap the partial packet (14 octets) is discarded with a Discarded "
             "notification; the octets before the FHP are skipped and the extraction continues at "
             "the FHP of the field that carries the gap flag.")
     s.add(F(p10 + r1[:14], 0))
@@ -1575,7 +1588,7 @@ def ext_scenarios(proto):
             "A VC whose valid-PVN set holds only Space Packets receives an Encapsulation Idle "
             "Packet in its field. On TM and AOS it is a packet of a PVN that is not valid. On "
             "USLP rule 000 the extractor delimits an Encapsulation Idle Packet whatever the set "
-            "(the sender fills with it, 133.1 4.1.4.3.4): it is dropped and counted.",
+            "(the sender fills with it, 732.1 4.1.4.3.4): it is dropped and counted.",
             config=ext_cfg(proto, valid_pvns=[0]))
     s.add(F(p10 + epp_idle(8) + p10[:6], 0))
     s.counter("idle_packets")
