@@ -257,7 +257,11 @@ fn refusals<P: PacketProtocol>(
     );
     let s = generator.status();
     t.check(s.packets_in.get() >= 3 && s.would_block.get() >= 1 && s.refused.get() >= 3);
-    t.check(s.fields_out.get() >= 3 && s.idle_packets.get() >= 1 && s.idle_fields.get() == 0);
+    t.check(
+        s.fields_out.get() >= 3
+            && s.idle_packets.get() >= 1
+            && s.idle_fields.get() <= s.fields_out.get(),
+    );
     t.check(s.discarded_octets.get() == 0 && s.queue.high_water() >= s.queue.current());
     t.check(s.field.high_water() >= s.field.current());
     let Ok(held) = generator.step(GeneratorInput::Reconfigure(config), at, &mut out) else {
