@@ -1,0 +1,79 @@
+{
+  "kind": "engine-scenario",
+  "engine": "access-generator",
+  "provenance": "hand-derived",
+  "provenance_note": "Hand-derived from 732.1-B-3 \u00a74.1.4.2.2.2.2-3, \u00a74.1.4.2.4.5-6, \u00a74.2.3.1 (rules 001 and 010, the Last Valid Octet Pointer) and docs/04-engines.md \u00a72.2 (LNK-020). Model test-vectors/models/link_send.py, written blind (TV-023) by a Claude agent from the Blue Books and docs/ only, without reading any implementation. The input scripts were chosen by hand; the expected outputs are the model's. The file is written by the model (--write) and never edited by hand.",
+  "config": {"protocol": "uslp", "vc": 2, "field_len": 11, "upid": 5, "map_id": 0, "qos": "sequence_controlled", "max_sdu_len": 40, "idle_pattern_hex": "00"},
+  "scenarios": [
+    {
+      "id": "link-send-ag-uslp-lnk-020-sdu-fits-one-tfdz",
+      "description": "An SDU shorter than the TFDZ: rule 001, the Last Valid Octet Pointer is the offset of its last octet, the rest of the TFDZ is the idle pattern; a second SDU does not share the TFDZ.",
+      "requirements": ["LNK-020"],
+      "config": {"protocol": "uslp", "vc": 2, "field_len": 11, "upid": 5, "map_id": 0, "qos": "sequence_controlled", "max_sdu_len": 40, "idle_pattern_hex": "A5"},
+      "steps": [
+        {"at_us": 0, "input": {"submit_sdu": {"sdu_hex": "1011121314"}}, "expect": []},
+        {"at_us": 1, "input": {"submit_sdu": {"sdu_hex": "202122"}}, "expect": []},
+        {"at_us": 10, "input": {"release": {}}, "expect": [{"data_field": {"vc": 2, "field_hex": "2500041011121314A5A5A5", "lvo": 4, "map": 0, "qos": "sequence_controlled"}}]},
+        {"at_us": 20, "input": {"release": {}}, "expect": [{"data_field": {"vc": 2, "field_hex": "250002202122A5A5A5A5A5", "lvo": 2, "map": 0, "qos": "sequence_controlled"}}]},
+        {"at_us": 30, "input": {"release": {}}, "expect": []}
+      ]
+    },
+    {
+      "id": "link-send-ag-uslp-lnk-020-sdu-ends-at-zone-end",
+      "description": "An SDU of exactly the TFDZ length: rule 001 and the pointer is the last octet of the TFDZ (not all ones).",
+      "requirements": ["LNK-020"],
+      "steps": [
+        {"at_us": 0, "input": {"submit_sdu": {"sdu_hex": "3031323334353637"}}, "expect": []},
+        {"at_us": 10, "input": {"release": {}}, "expect": [{"data_field": {"vc": 2, "field_hex": "2500073031323334353637", "lvo": 7, "map": 0, "qos": "sequence_controlled"}}]}
+      ]
+    },
+    {
+      "id": "link-send-ag-uslp-lnk-020-sdu-spans-frames",
+      "description": "An SDU of 2 zones + 3 octets: rule 001 with all ones, rule 010 with all ones, rule 010 with the pointer at its last octet; the next SDU starts with rule 001.",
+      "requirements": ["LNK-020"],
+      "steps": [
+        {"at_us": 0, "input": {"submit_sdu": {"sdu_hex": "404142434445464748494A4B4C4D4E4F505152"}}, "expect": []},
+        {"at_us": 1, "input": {"submit_sdu": {"sdu_hex": "5051"}}, "expect": []},
+        {"at_us": 10, "input": {"release": {}}, "expect": [{"data_field": {"vc": 2, "field_hex": "25FFFF4041424344454647", "lvo": 65535, "map": 0, "qos": "sequence_controlled"}}]},
+        {"at_us": 20, "input": {"release": {}}, "expect": [{"data_field": {"vc": 2, "field_hex": "45FFFF48494A4B4C4D4E4F", "lvo": 65535, "map": 0, "qos": "sequence_controlled"}}]},
+        {"at_us": 30, "input": {"release": {}}, "expect": [{"data_field": {"vc": 2, "field_hex": "4500025051520000000000", "lvo": 2, "map": 0, "qos": "sequence_controlled"}}]},
+        {"at_us": 40, "input": {"release": {}}, "expect": [{"data_field": {"vc": 2, "field_hex": "2500015051000000000000", "lvo": 1, "map": 0, "qos": "sequence_controlled"}}]}
+      ]
+    },
+    {
+      "id": "link-send-ag-uslp-lnk-020-sdu-spans-exact",
+      "description": "An SDU of exactly 2 zones: rule 001 with all ones, then rule 010 with the pointer at the last octet of the TFDZ, the end of the SDU being the end of the zone.",
+      "requirements": ["LNK-020"],
+      "steps": [
+        {"at_us": 0, "input": {"submit_sdu": {"sdu_hex": "606162636465666768696A6B6C6D6E6F"}}, "expect": []},
+        {"at_us": 10, "input": {"release": {}}, "expect": [{"data_field": {"vc": 2, "field_hex": "25FFFF6061626364656667", "lvo": 65535, "map": 0, "qos": "sequence_controlled"}}]},
+        {"at_us": 20, "input": {"release": {}}, "expect": [{"data_field": {"vc": 2, "field_hex": "45000768696A6B6C6D6E6F", "lvo": 7, "map": 0, "qos": "sequence_controlled"}}]},
+        {"at_us": 30, "input": {"release": {}}, "expect": []}
+      ]
+    },
+    {
+      "id": "link-send-ag-uslp-lnk-020-mapa-expedited",
+      "description": "A MAPA service on MAP 3, expedited: the MAP ID and the QoS are in the action; the SDU longer than the maximum is refused with no state change.",
+      "requirements": ["LNK-020"],
+      "config": {"protocol": "uslp", "vc": 2, "field_len": 11, "upid": 5, "map_id": 3, "qos": "expedited", "max_sdu_len": 40, "idle_pattern_hex": "00"},
+      "steps": [
+        {"at_us": 0, "input": {"submit_sdu": {"sdu_hex": "000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F202122232425262728"}}, "expect": [{"error": "OutOfRange", "field": "max_sdu_len"}]},
+        {"at_us": 1, "input": {"submit_sdu": {"sdu_hex": "707172737475"}}, "expect": []},
+        {"at_us": 10, "input": {"release": {}}, "expect": [{"data_field": {"vc": 2, "field_hex": "2500057071727374750000", "lvo": 5, "map": 3, "qos": "expedited"}}]}
+      ]
+    },
+    {
+      "id": "link-send-ag-uslp-lnk-003-reconfigure",
+      "description": "Reconfigure discards the SDU in progress and the queue, with the octets left; the next SDU starts afresh with rule 001.",
+      "requirements": ["LNK-003", "LNK-020"],
+      "steps": [
+        {"at_us": 0, "input": {"submit_sdu": {"sdu_hex": "101112131415161718191A1B1C1D1E1F20212223"}}, "expect": []},
+        {"at_us": 1, "input": {"submit_sdu": {"sdu_hex": "20212223"}}, "expect": []},
+        {"at_us": 10, "input": {"release": {}}, "expect": [{"data_field": {"vc": 2, "field_hex": "25FFFF1011121314151617", "lvo": 65535, "map": 0, "qos": "sequence_controlled"}}]},
+        {"at_us": 20, "input": {"reconfigure": {"config": {"protocol": "uslp", "vc": 2, "field_len": 11, "upid": 5, "map_id": 0, "qos": "sequence_controlled", "max_sdu_len": 40, "idle_pattern_hex": "00"}}}, "expect": [{"notify": {"kind": "Discarded", "octets": 16}}]},
+        {"at_us": 30, "input": {"submit_sdu": {"sdu_hex": "30313233"}}, "expect": []},
+        {"at_us": 40, "input": {"release": {}}, "expect": [{"data_field": {"vc": 2, "field_hex": "2500033031323300000000", "lvo": 3, "map": 0, "qos": "sequence_controlled"}}]}
+      ]
+    }
+  ]
+}
