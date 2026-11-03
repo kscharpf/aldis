@@ -42,6 +42,28 @@ use aldis_ffi::fop1::{
     aldis_fop1_init, aldis_fop1_input_t, aldis_fop1_next_deadline, aldis_fop1_status,
     aldis_fop1_status_t, aldis_fop1_step, aldis_fop1_t,
 };
+use aldis_ffi::link::{
+    ALDIS_LINK_IDLE_PACKET_ENCAPSULATION, ALDIS_LINK_IDLE_POLICY_OID, ALDIS_LINK_PROTOCOL_AOS,
+    ALDIS_LINK_PROTOCOL_TM, ALDIS_LINK_QOS_SEQUENCE_CONTROLLED, aldis_link_channel_t,
+};
+use aldis_ffi::link_gen::{
+    ALDIS_ACCESS_GENERATOR_INPUT_RELEASE, ALDIS_ACCESS_GENERATOR_INPUT_SUBMIT_SDU,
+    ALDIS_ACCESS_GENERATOR_WORDS, ALDIS_BITSTREAM_GENERATOR_INPUT_RELEASE,
+    ALDIS_BITSTREAM_GENERATOR_INPUT_SUBMIT_BITS, ALDIS_BITSTREAM_GENERATOR_WORDS,
+    ALDIS_PACKET_GENERATOR_INPUT_RELEASE, ALDIS_PACKET_GENERATOR_INPUT_SUBMIT_PACKET,
+    ALDIS_PACKET_GENERATOR_WORDS, aldis_access_generator_actions_t,
+    aldis_access_generator_config_t, aldis_access_generator_deinit, aldis_access_generator_init,
+    aldis_access_generator_input_t, aldis_access_generator_status, aldis_access_generator_status_t,
+    aldis_access_generator_step, aldis_access_generator_t, aldis_bitstream_generator_actions_t,
+    aldis_bitstream_generator_config_t, aldis_bitstream_generator_deinit,
+    aldis_bitstream_generator_init, aldis_bitstream_generator_input_t,
+    aldis_bitstream_generator_status, aldis_bitstream_generator_status_t,
+    aldis_bitstream_generator_step, aldis_bitstream_generator_t, aldis_packet_generator_actions_t,
+    aldis_packet_generator_config_t, aldis_packet_generator_deinit, aldis_packet_generator_init,
+    aldis_packet_generator_input_t, aldis_packet_generator_next_deadline,
+    aldis_packet_generator_status, aldis_packet_generator_status_t, aldis_packet_generator_step,
+    aldis_packet_generator_t,
+};
 use aldis_ffi::ocf::{ALDIS_OCF_CLCW, ALDIS_OCF_SDLS_FSR, aldis_ocf_check, aldis_ocf_classify};
 use aldis_ffi::oid::{
     ALDIS_OID_FIBONACCI, ALDIS_OID_GALOIS, ALDIS_OID_GENERATOR_WORDS, aldis_oid_generator_deinit,
@@ -1854,6 +1876,201 @@ fn fop1_handle(t: &mut Tally) {
     }
 }
 
+/// The generation engine handles of the link engines (M4 WP-7a; CABI-030…032, CABI-040).
+#[expect(unsafe_code, reason = "calls the C ABI with valid pointers")]
+#[expect(
+    clippy::too_many_lines,
+    reason = "one call sequence per engine, as the other handle groups"
+)]
+fn link_generation_handles(t: &mut Tally) {
+    let mut det = detail();
+    let channel = |protocol, vc_id| aldis_link_channel_t {
+        protocol,
+        vc_id,
+        aos_edition: 0,
+        uslp_upid: 0,
+        uslp_map: 0,
+        uslp_qos: ALDIS_LINK_QOS_SEQUENCE_CONTROLLED,
+    };
+    let mut out = [0_u8; 64];
+    let det_ptr = &raw mut det;
+
+    // PacketGenerator, TM.
+    let mut pg = aldis_packet_generator_t {
+        words: [0; ALDIS_PACKET_GENERATOR_WORDS],
+    };
+    let h = &raw mut pg;
+    let cfg = aldis_packet_generator_config_t {
+        channel: channel(ALDIS_LINK_PROTOCOL_TM, bb(1)),
+        field_len: bb(16),
+        space_packets: 1,
+        encapsulation_packets: 1,
+        max_packet_len: 64,
+        idle_policy: ALDIS_LINK_IDLE_POLICY_OID,
+        idle_packet_kind: ALDIS_LINK_IDLE_PACKET_ENCAPSULATION,
+        idle_pattern: 0,
+        release_deadline_us: bb(500),
+    };
+    let packet = bb([
+        0x00_u8, 0x05, 0xC0, 0x00, 0x00, 0x09, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10,
+    ]);
+    let submit = aldis_packet_generator_input_t {
+        kind: ALDIS_PACKET_GENERATOR_INPUT_SUBMIT_PACKET,
+        data: packet.as_ptr(),
+        data_len: packet.len(),
+        config: cfg,
+    };
+    let release = aldis_packet_generator_input_t {
+        kind: ALDIS_PACKET_GENERATOR_INPUT_RELEASE,
+        data: null(),
+        data_len: 0,
+        config: cfg,
+    };
+    let mut actions = aldis_packet_generator_actions_t::default();
+    let mut status = aldis_packet_generator_status_t::default();
+    let (mut armed, mut deadline) = (0_u8, 0_u64);
+    // SAFETY: every pointer is to a live local; the storage is a zeroed object of its type.
+    unsafe {
+        t.check(aldis_packet_generator_init(h, &raw const cfg, det_ptr) == ALDIS_OK);
+        let a = &raw mut actions;
+        t.check(
+            aldis_packet_generator_step(
+                h,
+                &raw const submit,
+                bb(1),
+                out.as_mut_ptr(),
+                64,
+                a,
+                det_ptr,
+            ) == ALDIS_OK,
+        );
+        t.check(
+            aldis_packet_generator_next_deadline(h, &raw mut armed, &raw mut deadline, det_ptr)
+                == ALDIS_OK,
+        );
+        t.check(
+            aldis_packet_generator_step(
+                h,
+                &raw const release,
+                bb(2),
+                out.as_mut_ptr(),
+                64,
+                a,
+                det_ptr,
+            ) == ALDIS_OK
+                && actions.count == 1,
+        );
+        t.check(
+            aldis_packet_generator_status(h, &raw mut status, det_ptr) == ALDIS_OK
+                && status.fields_out == 1,
+        );
+        aldis_packet_generator_deinit(h);
+        t.check(
+            aldis_packet_generator_status(h, &raw mut status, det_ptr) == ALDIS_ERR_INVALID_HANDLE,
+        );
+    }
+
+    // AccessGenerator, TM.
+    let mut ag = aldis_access_generator_t {
+        words: [0; ALDIS_ACCESS_GENERATOR_WORDS],
+    };
+    let h = &raw mut ag;
+    let cfg = aldis_access_generator_config_t {
+        channel: channel(ALDIS_LINK_PROTOCOL_TM, bb(2)),
+        field_len: bb(4),
+        max_sdu_len: 0,
+        idle_pattern: 0x55,
+    };
+    let sdu = bb([1_u8, 2, 3, 4]);
+    let submit = aldis_access_generator_input_t {
+        kind: ALDIS_ACCESS_GENERATOR_INPUT_SUBMIT_SDU,
+        data: sdu.as_ptr(),
+        data_len: sdu.len(),
+        config: cfg,
+    };
+    let release = aldis_access_generator_input_t {
+        kind: ALDIS_ACCESS_GENERATOR_INPUT_RELEASE,
+        data: null(),
+        data_len: 0,
+        config: cfg,
+    };
+    let mut actions = aldis_access_generator_actions_t::default();
+    let mut status = aldis_access_generator_status_t::default();
+    // SAFETY: as above.
+    unsafe {
+        t.check(aldis_access_generator_init(h, &raw const cfg, det_ptr) == ALDIS_OK);
+        let a = &raw mut actions;
+        t.check(
+            aldis_access_generator_step(h, &raw const submit, out.as_mut_ptr(), 64, a, det_ptr)
+                == ALDIS_OK,
+        );
+        t.check(
+            aldis_access_generator_step(h, &raw const release, out.as_mut_ptr(), 64, a, det_ptr)
+                == ALDIS_OK
+                && actions.count == 1,
+        );
+        t.check(
+            aldis_access_generator_status(h, &raw mut status, det_ptr) == ALDIS_OK
+                && status.fields_out == 1,
+        );
+        aldis_access_generator_deinit(h);
+        t.check(
+            aldis_access_generator_status(h, &raw mut status, det_ptr) == ALDIS_ERR_INVALID_HANDLE,
+        );
+    }
+
+    // BitstreamGenerator, AOS.
+    let mut bg = aldis_bitstream_generator_t {
+        words: [0; ALDIS_BITSTREAM_GENERATOR_WORDS],
+    };
+    let h = &raw mut bg;
+    let cfg = aldis_bitstream_generator_config_t {
+        channel: channel(ALDIS_LINK_PROTOCOL_AOS, bb(3)),
+        field_len: bb(6),
+        idle_pattern: 0,
+    };
+    let bits = bb([0x01_u8, 0x23, 0x45, 0x67]);
+    let submit = aldis_bitstream_generator_input_t {
+        kind: ALDIS_BITSTREAM_GENERATOR_INPUT_SUBMIT_BITS,
+        data: bits.as_ptr(),
+        data_len: bits.len(),
+        bit_len: 32,
+        config: cfg,
+    };
+    let release = aldis_bitstream_generator_input_t {
+        kind: ALDIS_BITSTREAM_GENERATOR_INPUT_RELEASE,
+        data: null(),
+        data_len: 0,
+        bit_len: 0,
+        config: cfg,
+    };
+    let mut actions = aldis_bitstream_generator_actions_t::default();
+    let mut status = aldis_bitstream_generator_status_t::default();
+    // SAFETY: as above.
+    unsafe {
+        t.check(aldis_bitstream_generator_init(h, &raw const cfg, det_ptr) == ALDIS_OK);
+        let a = &raw mut actions;
+        t.check(
+            aldis_bitstream_generator_step(h, &raw const submit, out.as_mut_ptr(), 64, a, det_ptr)
+                == ALDIS_OK,
+        );
+        t.check(
+            aldis_bitstream_generator_step(h, &raw const release, out.as_mut_ptr(), 64, a, det_ptr)
+                == ALDIS_OK
+                && actions.count == 1,
+        );
+        t.check(
+            aldis_bitstream_generator_status(h, &raw mut status, det_ptr) == ALDIS_OK
+                && status.fields_out == 1,
+        );
+        aldis_bitstream_generator_deinit(h);
+        t.check(
+            aldis_bitstream_generator_status(h, &raw mut status, det_ptr)
+                == ALDIS_ERR_INVALID_HANDLE,
+        );
+    }
+}
+
 /// Calls every exported function of `aldis-ffi`.
 pub fn run(t: &mut Tally) {
     core(t);
@@ -1867,4 +2084,5 @@ pub fn run(t: &mut Tally) {
     uslp(t);
     farm1_handle(t);
     fop1_handle(t);
+    link_generation_handles(t);
 }

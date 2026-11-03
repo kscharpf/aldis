@@ -6,8 +6,8 @@
 #![expect(unsafe_code, reason = "the tests call the C ABI")]
 #![expect(
     clippy::too_many_lines,
-    clippy::large_stack_arrays,
-    clippy::unnecessary_box_returns,
+    clippy::unwrap_used,
+    clippy::arithmetic_side_effects,
     reason = "test-only harness: one long call sequence per contract, and the storage a C caller declares (RS-018)"
 )]
 
@@ -442,7 +442,7 @@ fn buffers_must_not_overlap_the_storage() {
         assert_eq!(
             aldis_packet_generator_step(
                 &raw mut *s,
-                &release,
+                &raw const release,
                 0,
                 inside,
                 16,
@@ -460,7 +460,7 @@ fn buffers_must_not_overlap_the_storage() {
         assert_eq!(
             aldis_packet_generator_step(
                 &raw mut *s,
-                &submit,
+                &raw const submit,
                 0,
                 null_mut(),
                 0,
@@ -472,7 +472,7 @@ fn buffers_must_not_overlap_the_storage() {
         assert_eq!(
             aldis_packet_generator_step(
                 &raw mut *s,
-                &release,
+                &raw const release,
                 0,
                 null_mut(),
                 0,
@@ -624,7 +624,7 @@ fn the_release_deadline_is_a_read_only_query() {
     }
 }
 
-fn ag_config(protocol: u32, field_len: usize) -> aldis_access_generator_config_t {
+const fn ag_config(protocol: u32, field_len: usize) -> aldis_access_generator_config_t {
     aldis_access_generator_config_t {
         channel: channel(protocol, 2),
         field_len,
@@ -633,7 +633,7 @@ fn ag_config(protocol: u32, field_len: usize) -> aldis_access_generator_config_t
     }
 }
 
-fn ag_input(kind: u32) -> aldis_access_generator_input_t {
+const fn ag_input(kind: u32) -> aldis_access_generator_input_t {
     aldis_access_generator_input_t {
         kind,
         data: null(),
@@ -846,7 +846,7 @@ fn the_access_generator_checks_its_input_and_configuration() {
     }
 }
 
-fn bg_config(field_len: usize) -> aldis_bitstream_generator_config_t {
+const fn bg_config(field_len: usize) -> aldis_bitstream_generator_config_t {
     aldis_bitstream_generator_config_t {
         channel: channel(ALDIS_LINK_PROTOCOL_AOS, 3),
         field_len,
@@ -854,7 +854,7 @@ fn bg_config(field_len: usize) -> aldis_bitstream_generator_config_t {
     }
 }
 
-fn bg_input(kind: u32) -> aldis_bitstream_generator_input_t {
+const fn bg_input(kind: u32) -> aldis_bitstream_generator_input_t {
     aldis_bitstream_generator_input_t {
         kind,
         data: null(),

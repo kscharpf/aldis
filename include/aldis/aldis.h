@@ -163,14 +163,14 @@
  *
  * `[link] packet_queue_octets` of `capacities.toml` (CABI-030).
  */
-#define ALDIS_LINK_PACKET_QUEUE_OCTETS 8192
+#define ALDIS_LINK_PACKET_QUEUE_OCTETS 2048
 
 /**
  * Octets of the largest data field or frame of one link engine (LNK-075; M4 plan D4).
  *
  * `[link] max_frame_octets` of `capacities.toml` (CABI-030).
  */
-#define ALDIS_LINK_MAX_FRAME_OCTETS 2048
+#define ALDIS_LINK_MAX_FRAME_OCTETS 1024
 
 /**
  * Header size argument: the smallest header that holds the fields and the length
@@ -4811,7 +4811,7 @@ typedef struct {
    */
   uint16_t pointer;
   /**
-   * For `DATA_FIELD`: 1 when the field has a MAP and QoS (USLP), else 0.
+   * For `DATA_FIELD`: 1 when the field has a MAP and `QoS` (USLP), else 0.
    */
   uint8_t route_present;
   /**
@@ -4983,7 +4983,7 @@ typedef struct {
    */
   uint16_t pointer;
   /**
-   * For `DATA_FIELD`: 1 when the field has a MAP and QoS (USLP), else 0.
+   * For `DATA_FIELD`: 1 when the field has a MAP and `QoS` (USLP), else 0.
    */
   uint8_t route_present;
   /**

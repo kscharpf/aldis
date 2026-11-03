@@ -64,9 +64,9 @@ pub const ALDIS_ACCESS_GENERATOR_WORDS: usize = ACCESS_WORDS;
 /// 64-bit words of one `aldis_bitstream_generator_t` (CABI-031).
 pub const ALDIS_BITSTREAM_GENERATOR_WORDS: usize = BITSTREAM_WORDS;
 
-const PACKET_WORDS: usize = 1307;
-const ACCESS_WORDS: usize = 1040;
-const BITSTREAM_WORDS: usize = 1037;
+const PACKET_WORDS: usize = 411;
+const ACCESS_WORDS: usize = 272;
+const BITSTREAM_WORDS: usize = 269;
 
 // ---- PacketGenerator ----
 
