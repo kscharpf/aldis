@@ -64,6 +64,18 @@ use aldis_ffi::link_gen::{
     aldis_packet_generator_status, aldis_packet_generator_status_t, aldis_packet_generator_step,
     aldis_packet_generator_t,
 };
+use aldis_ffi::link_rx::{
+    ALDIS_FRAME_RECEIVER_INPUT_FRAME, ALDIS_FRAME_RECEIVER_INPUT_FRAME_LOSS,
+    ALDIS_FRAME_RECEIVER_WORDS, ALDIS_LINK_CONTENT_PACKETS,
+    ALDIS_PACKET_EXTRACTOR_INPUT_DATA_FIELD, ALDIS_PACKET_EXTRACTOR_WORDS,
+    aldis_frame_receiver_actions_t, aldis_frame_receiver_config_t, aldis_frame_receiver_deinit,
+    aldis_frame_receiver_init, aldis_frame_receiver_input_t, aldis_frame_receiver_status,
+    aldis_frame_receiver_status_t, aldis_frame_receiver_step, aldis_frame_receiver_t,
+    aldis_frame_receiver_vc_t, aldis_packet_extractor_actions_t, aldis_packet_extractor_config_t,
+    aldis_packet_extractor_deinit, aldis_packet_extractor_init, aldis_packet_extractor_input_t,
+    aldis_packet_extractor_status, aldis_packet_extractor_status_t, aldis_packet_extractor_step,
+    aldis_packet_extractor_t,
+};
 use aldis_ffi::ocf::{ALDIS_OCF_CLCW, ALDIS_OCF_SDLS_FSR, aldis_ocf_check, aldis_ocf_classify};
 use aldis_ffi::oid::{
     ALDIS_OID_FIBONACCI, ALDIS_OID_GALOIS, ALDIS_OID_GENERATOR_WORDS, aldis_oid_generator_deinit,
@@ -2071,6 +2083,135 @@ fn link_generation_handles(t: &mut Tally) {
     }
 }
 
+#[expect(unsafe_code, reason = "calls the C ABI with valid pointers")]
+#[expect(
+    clippy::too_many_lines,
+    reason = "one call sequence per engine, as the other handle groups"
+)]
+fn link_receiving_handles(t: &mut Tally) {
+    let mut det = detail();
+    let mut out = [0_u8; 128];
+    let det_ptr = &raw mut det;
+
+    // PacketExtractor, TM.
+    let mut pe = aldis_packet_extractor_t {
+        words: [0; ALDIS_PACKET_EXTRACTOR_WORDS],
+    };
+    let h = &raw mut pe;
+    let cfg = aldis_packet_extractor_config_t {
+        channel: aldis_link_channel_t {
+            protocol: ALDIS_LINK_PROTOCOL_TM,
+            vc_id: 0,
+            aos_edition: 0,
+            uslp_upid: 0,
+            uslp_map: 0,
+            uslp_qos: ALDIS_LINK_QOS_SEQUENCE_CONTROLLED,
+        },
+        space_packets: 1,
+        encapsulation_packets: 1,
+        max_packet_len: bb(64),
+        deliver_incomplete: 0,
+        deliver_idle: 0,
+    };
+    let field = bb([
+        0x00_u8, 0x05, 0xC0, 0x00, 0x00, 0x09, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10,
+    ]);
+    let input = aldis_packet_extractor_input_t {
+        kind: ALDIS_PACKET_EXTRACTOR_INPUT_DATA_FIELD,
+        data: field.as_ptr(),
+        data_len: field.len(),
+        header_pointer_present: 1,
+        header_pointer: 0,
+        gap: 0,
+        config: cfg,
+    };
+    let mut actions = aldis_packet_extractor_actions_t::default();
+    let mut status = aldis_packet_extractor_status_t::default();
+    // SAFETY: every pointer is to a live local; the storage is a zeroed object of its type.
+    unsafe {
+        t.check(aldis_packet_extractor_init(h, &raw const cfg, det_ptr) == ALDIS_OK);
+        t.check(
+            aldis_packet_extractor_step(
+                h,
+                &raw const input,
+                out.as_mut_ptr(),
+                128,
+                &raw mut actions,
+                det_ptr,
+            ) == ALDIS_OK
+                && actions.count == 1,
+        );
+        t.check(
+            aldis_packet_extractor_status(h, &raw mut status, det_ptr) == ALDIS_OK
+                && status.packets_out == 1,
+        );
+        aldis_packet_extractor_deinit(h);
+        t.check(
+            aldis_packet_extractor_status(h, &raw mut status, det_ptr) == ALDIS_ERR_INVALID_HANDLE,
+        );
+    }
+
+    // FrameReceiver, TM: a frame of 16 octets on VC 1 (132.0 §4.1.2), then a Frame Loss signal.
+    let mut fr = aldis_frame_receiver_t {
+        words: [0; ALDIS_FRAME_RECEIVER_WORDS],
+    };
+    let h = &raw mut fr;
+    let mut cfg = aldis_frame_receiver_config_t {
+        frame_len: bb(16),
+        vc_count: 1,
+        ..aldis_frame_receiver_config_t::default()
+    };
+    cfg.protocol = ALDIS_LINK_PROTOCOL_TM;
+    cfg.vcs[0] = aldis_frame_receiver_vc_t {
+        vc_id: 1,
+        content: ALDIS_LINK_CONTENT_PACKETS,
+        ..aldis_frame_receiver_vc_t::default()
+    };
+    let frame = bb([
+        0x12_u8, 0x32, 0x00, 0x00, 0x18, 0x00, 0x00, 0x05, 0xC0, 0x00, 0x00, 0x09, 1, 2, 3, 4,
+    ]);
+    let frame_input = aldis_frame_receiver_input_t {
+        kind: ALDIS_FRAME_RECEIVER_INPUT_FRAME,
+        data: frame.as_ptr(),
+        data_len: frame.len(),
+        reason: 0,
+        config: cfg,
+    };
+    let loss_input = aldis_frame_receiver_input_t {
+        kind: ALDIS_FRAME_RECEIVER_INPUT_FRAME_LOSS,
+        data: null(),
+        data_len: 0,
+        reason: 0,
+        config: cfg,
+    };
+    let mut actions = aldis_frame_receiver_actions_t::default();
+    let mut status = aldis_frame_receiver_status_t::default();
+    // SAFETY: as above.
+    unsafe {
+        t.check(aldis_frame_receiver_init(h, &raw const cfg, det_ptr) == ALDIS_OK);
+        let a = &raw mut actions;
+        t.check(
+            aldis_frame_receiver_step(h, &raw const frame_input, out.as_mut_ptr(), 64, a, det_ptr)
+                == ALDIS_OK
+                && actions.count == 1,
+        );
+        t.check(
+            aldis_frame_receiver_step(h, &raw const loss_input, out.as_mut_ptr(), 64, a, det_ptr)
+                == ALDIS_OK
+                && actions.count == 1,
+        );
+        t.check(
+            aldis_frame_receiver_status(h, &raw mut status, det_ptr) == ALDIS_OK
+                && status.frames_in == 1
+                && status.frame_loss == 1,
+        );
+        aldis_frame_receiver_deinit(h);
+        t.check(
+            aldis_frame_receiver_status(h, &raw mut status, det_ptr) == ALDIS_ERR_INVALID_HANDLE,
+        );
+    }
+}
+
 /// Calls every exported function of `aldis-ffi`.
 pub fn run(t: &mut Tally) {
     core(t);
@@ -2085,4 +2226,5 @@ pub fn run(t: &mut Tally) {
     farm1_handle(t);
     fop1_handle(t);
     link_generation_handles(t);
+    link_receiving_handles(t);
 }

@@ -354,14 +354,40 @@ impl Cx<'_> {
 /// `M` is the capacity of the assembly buffer in octets, which is the longest packet it can
 /// assemble (at least [`MIN_ASSEMBLY`]); and `D` the longest data field it is given,
 /// header included (GEN-011).
+///
+/// The engine is its [`PacketExtractorHead`] (everything but the octets) followed by its
+/// [`PacketExtractorBuffers`] (the assembly buffer), in that order (`repr(C)`), so that a caller
+/// can build it in place with [`Self::HEAD_OFFSET`] and [`Self::BUFFERS_OFFSET`] without a
+/// by-value engine on the stack (see [`crate::inplace`]).
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[repr(C)]
 pub struct PacketExtractor<P: PacketProtocol, const M: usize, const D: usize> {
+    head: PacketExtractorHead<P>,
+    bufs: PacketExtractorBuffers<M>,
+}
+
+/// Everything of a [`PacketExtractor`] but its octet buffer: the part that is built from the
+/// configuration (LNK-060…LNK-064; see [`crate::inplace`]).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PacketExtractorHead<P: PacketProtocol> {
     config: PacketExtractorConfig<P>,
-    buf: [u8; M],
     fill: usize,
     total: usize,
     sync: bool,
     status: ExtractorStatus,
+}
+
+/// The octet buffer of a [`PacketExtractor`]: the assembly buffer (`M` octets). A plain array of
+/// octets, valid when all zero, which is the empty state (see [`crate::inplace`]).
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[repr(C)]
+pub struct PacketExtractorBuffers<const M: usize> {
+    buf: [u8; M],
+}
+
+impl<const M: usize> PacketExtractorBuffers<M> {
+    /// Empty buffers.
+    pub const ZERO: Self = Self { buf: [0; M] };
 }
 
 impl<P: PacketProtocol, const M: usize, const D: usize> PacketExtractor<P, M, D> {
@@ -372,10 +398,26 @@ impl<P: PacketProtocol, const M: usize, const D: usize> PacketExtractor<P, M, D>
     /// `CapacityExceeded` (`max_packet_len`) if `M` is below [`MIN_ASSEMBLY`] or below the
     /// Maximum Packet Length (GEN-011).
     pub fn new(config: PacketExtractorConfig<P>) -> Result<PacketExtractor<P, M, D>> {
-        PacketExtractor::<P, M, D>::check_capacity(&config)?;
         Ok(PacketExtractor {
+            head: Self::new_head(config)?,
+            bufs: PacketExtractorBuffers::ZERO,
+        })
+    }
+
+    /// The offset of the head in the engine, for an in-place build (see [`crate::inplace`]).
+    pub const HEAD_OFFSET: usize = core::mem::offset_of!(Self, head);
+    /// The offset of the buffers in the engine, for an in-place build (see [`crate::inplace`]).
+    pub const BUFFERS_OFFSET: usize = core::mem::offset_of!(Self, bufs);
+
+    /// The head of an extractor that has not yet synchronised: the part of [`Self::new`] that is
+    /// built from the configuration (see [`crate::inplace`]).
+    ///
+    /// # Errors
+    /// As [`Self::new`].
+    pub fn new_head(config: PacketExtractorConfig<P>) -> Result<PacketExtractorHead<P>> {
+        PacketExtractor::<P, M, D>::check_capacity(&config)?;
+        Ok(PacketExtractorHead {
             config,
-            buf: [0; M],
             fill: 0,
             total: 0,
             sync: false,
@@ -394,13 +436,13 @@ impl<P: PacketProtocol, const M: usize, const D: usize> PacketExtractor<P, M, D>
     /// The configuration in force.
     #[must_use]
     pub const fn config(&self) -> &PacketExtractorConfig<P> {
-        &self.config
+        &self.head.config
     }
 
     /// The status snapshot: counters and occupancy (API-056, LNK-002).
     #[must_use]
     pub const fn status(&self) -> &ExtractorStatus {
-        &self.status
+        &self.head.status
     }
 
     /// Runs one input (API-057). The extractor has no timer (API-053).
@@ -425,12 +467,12 @@ impl<P: PacketProtocol, const M: usize, const D: usize> PacketExtractor<P, M, D>
             ExtractorInput::Reconfigure(config) => {
                 PacketExtractor::<P, M, D>::check_capacity(&config)?;
                 let mut actions = Actions::new();
-                let octets = self.fill;
-                self.config = config;
+                let octets = self.head.fill;
+                self.head.config = config;
                 self.clear();
-                self.sync = false;
+                self.head.sync = false;
                 if octets > 0 {
-                    self.status.discarded_octets.add(octets);
+                    self.head.status.discarded_octets.add(octets);
                     actions.push(ExtractorOutput::Discarded { octets })?;
                 }
                 Ok(actions)
@@ -439,19 +481,23 @@ impl<P: PacketProtocol, const M: usize, const D: usize> PacketExtractor<P, M, D>
     }
 
     const fn clear(&mut self) {
-        self.fill = 0;
-        self.total = 0;
-        self.status.assembly.set(0);
+        self.head.fill = 0;
+        self.head.total = 0;
+        self.head.status.assembly.set(0);
     }
 
     /// `DataField` (LNK-060…LNK-064).
     fn data_field(&mut self, input: FieldIn<'_>, out: &mut [u8]) -> Result<ExtractorActions> {
-        let ParsedField { pointer, zone } =
-            P::parse(&self.config.protocol, input.header_pointer, input.field)?;
+        let ParsedField { pointer, zone } = P::parse(
+            &self.head.config.protocol,
+            input.header_pointer,
+            input.field,
+        )?;
         if input.field.len() > D {
             return Err(Error::new(ErrorKind::CapacityExceeded).with_field(field::FIELD_LEN));
         }
         let needed = self
+            .head
             .config
             .max_packet_len
             .saturating_sub(1)
@@ -466,11 +512,11 @@ impl<P: PacketProtocol, const M: usize, const D: usize> PacketExtractor<P, M, D>
             run_start: 0,
             run_count: 0,
         };
-        self.status.fields_in.incr();
+        self.head.status.fields_in.incr();
         if input.gap {
-            self.status.gaps.incr();
+            self.head.status.gaps.incr();
             self.abandon(&mut cx)?;
-            self.sync = false;
+            self.head.sync = false;
         }
         self.place(pointer, zone, &mut cx)?;
         cx.close_run()?;
@@ -482,12 +528,12 @@ impl<P: PacketProtocol, const M: usize, const D: usize> PacketExtractor<P, M, D>
         match pointer {
             // LNK-064: the field is ignored and the packet in progress is kept.
             Pointer::OnlyIdle => Ok(()),
-            Pointer::NoStart if !self.sync => Ok(()),
-            Pointer::NoStart if self.fill == 0 => {
+            Pointer::NoStart if !self.head.sync => Ok(()),
+            Pointer::NoStart if self.head.fill == 0 => {
                 // Nothing is in progress, so the next octet must start a packet, but the field
                 // says that none starts: the pointer is correct (LNK-060).
                 self.raise(ExtractionError::LengthInconsistent, cx)?;
-                self.sync = false;
+                self.head.sync = false;
                 Ok(())
             }
             Pointer::NoStart => {
@@ -497,17 +543,17 @@ impl<P: PacketProtocol, const M: usize, const D: usize> PacketExtractor<P, M, D>
                 if run == Run::Early {
                     self.raise(ExtractionError::LengthInconsistent, cx)?;
                 }
-                self.sync = run == Run::Complete;
+                self.head.sync = run == Run::Complete;
                 Ok(())
             }
             Pointer::StartsAt(offset) => {
                 let (before, from) = zone
                     .split_at_checked(offset)
                     .ok_or(Error::new(ErrorKind::InternalError))?;
-                if self.sync {
+                if self.head.sync {
                     self.continue_to_pointer(before, cx)?;
                 }
-                self.sync = self.run(from, Mode::Packets, cx)? != Run::Stopped;
+                self.head.sync = self.run(from, Mode::Packets, cx)? != Run::Stopped;
                 Ok(())
             }
         }
@@ -516,7 +562,7 @@ impl<P: PacketProtocol, const M: usize, const D: usize> PacketExtractor<P, M, D>
     /// The octets before the First Header Pointer belong to the packet in progress; the pointer
     /// is correct where they disagree with the length fields (LNK-060, LNK-061).
     fn continue_to_pointer(&mut self, before: &[u8], cx: &mut Cx<'_>) -> Result<()> {
-        if self.fill == 0 {
+        if self.head.fill == 0 {
             if !before.is_empty() {
                 self.raise(ExtractionError::LengthInconsistent, cx)?;
             }
@@ -524,7 +570,7 @@ impl<P: PacketProtocol, const M: usize, const D: usize> PacketExtractor<P, M, D>
         }
         match self.run(before, Mode::Continuation, cx)? {
             Run::Early => self.raise(ExtractionError::LengthInconsistent, cx),
-            Run::Complete if self.fill > 0 => {
+            Run::Complete if self.head.fill > 0 => {
                 self.abandon(cx)?;
                 self.raise(ExtractionError::LengthInconsistent, cx)
             }
@@ -538,8 +584,8 @@ impl<P: PacketProtocol, const M: usize, const D: usize> PacketExtractor<P, M, D>
         let mut rest = octets;
         // bound: every pass takes at least one octet of `rest` or returns.
         while !rest.is_empty() {
-            let want = if self.total > 0 {
-                self.total.saturating_sub(self.fill).max(1)
+            let want = if self.head.total > 0 {
+                self.head.total.saturating_sub(self.head.fill).max(1)
             } else {
                 1
             };
@@ -570,40 +616,41 @@ impl<P: PacketProtocol, const M: usize, const D: usize> PacketExtractor<P, M, D>
 
     /// Appends octets to the packet in progress.
     fn push(&mut self, octets: &[u8]) -> Result<()> {
-        let end = self.fill.saturating_add(octets.len());
+        let end = self.head.fill.saturating_add(octets.len());
         let dst = self
+            .bufs
             .buf
-            .get_mut(self.fill..end)
+            .get_mut(self.head.fill..end)
             .ok_or(Error::new(ErrorKind::InternalError))?;
         for (d, s) in dst.iter_mut().zip(octets) {
             *d = *s;
         }
-        self.fill = end;
-        self.status.assembly.set(end);
+        self.head.fill = end;
+        self.head.status.assembly.set(end);
         Ok(())
     }
 
     /// What the octets of the packet in progress say: its PVN as soon as the first octet is
     /// there, its length as soon as the length field is complete (LNK-062).
     fn look(&mut self) -> Look {
-        let held = self.buf.get(..self.fill).unwrap_or(&[]);
+        let held = self.bufs.buf.get(..self.head.fill).unwrap_or(&[]);
         let Some(&first) = held.first() else {
             return Look::More;
         };
-        let Some(kind) = self.config.accepts(first) else {
+        let Some(kind) = self.head.config.accepts(first) else {
             return Look::Fail(ExtractionError::InvalidPvn);
         };
-        if self.total == 0 {
+        if self.head.total == 0 {
             match packet::length(kind, held) {
                 Length::More => return Look::More,
                 Length::Invalid => return Look::Fail(ExtractionError::LengthInconsistent),
-                Length::Total(total) if total > self.config.max_packet_len => {
+                Length::Total(total) if total > self.head.config.max_packet_len => {
                     return Look::Fail(ExtractionError::PacketTooLong);
                 }
-                Length::Total(total) => self.total = total,
+                Length::Total(total) => self.head.total = total,
             }
         }
-        if self.fill >= self.total {
+        if self.head.fill >= self.head.total {
             Look::Done
         } else {
             Look::More
@@ -613,43 +660,43 @@ impl<P: PacketProtocol, const M: usize, const D: usize> PacketExtractor<P, M, D>
     /// Returns the complete packet in progress, unless it is an idle packet to drop
     /// (LNK-063).
     fn emit(&mut self, cx: &mut Cx<'_>) -> Result<()> {
-        let held = self.buf.get(..self.fill).unwrap_or(&[]);
+        let held = self.bufs.buf.get(..self.head.fill).unwrap_or(&[]);
         let Some(&first) = held.first() else {
             return Ok(());
         };
         let kind = packet::kind_of(first).ok_or(Error::new(ErrorKind::InternalError))?;
         if packet::is_idle(kind, held) {
-            self.status.idle_packets.incr();
-            if !self.config.deliver_idle {
+            self.head.status.idle_packets.incr();
+            if !self.head.config.deliver_idle {
                 return Ok(());
             }
         }
         cx.deliver(held)?;
-        self.status.packets_out.incr();
+        self.head.status.packets_out.incr();
         Ok(())
     }
 
     /// The outcome for the packet in progress that cannot be completed: it is delivered flagged
     /// incomplete if so configured and its header says what it is, else discarded (LNK-061).
     fn abandon(&mut self, cx: &mut Cx<'_>) -> Result<()> {
-        if self.fill == 0 {
+        if self.head.fill == 0 {
             return Ok(());
         }
-        let held = self.buf.get(..self.fill).unwrap_or(&[]);
+        let held = self.bufs.buf.get(..self.head.fill).unwrap_or(&[]);
         let first = held.first().copied().unwrap_or(0);
         let idle = packet::kind_of(first).is_some_and(|k| packet::is_idle(k, held));
-        if self.config.deliver_incomplete && self.total > 0 && !idle {
+        if self.head.config.deliver_incomplete && self.head.total > 0 && !idle {
             cx.close_run()?;
             let range = cx.write(held)?;
             cx.actions.push(ExtractorOutput::IncompletePacket {
                 pvn: packet::pvn(first),
                 packet: range,
             })?;
-            self.status.packets_out.incr();
-            self.status.incomplete_out.incr();
+            self.head.status.packets_out.incr();
+            self.head.status.incomplete_out.incr();
         } else {
-            let octets = self.fill;
-            self.status.discarded_octets.add(octets);
+            let octets = self.head.fill;
+            self.head.status.discarded_octets.add(octets);
             cx.push(ExtractorOutput::Discarded { octets })?;
         }
         self.clear();
@@ -659,9 +706,9 @@ impl<P: PacketProtocol, const M: usize, const D: usize> PacketExtractor<P, M, D>
     /// Counts and returns an extraction error.
     fn raise(&mut self, kind: ExtractionError, cx: &mut Cx<'_>) -> Result<()> {
         match kind {
-            ExtractionError::PacketTooLong => self.status.packet_too_long.incr(),
-            ExtractionError::InvalidPvn => self.status.invalid_pvn.incr(),
-            ExtractionError::LengthInconsistent => self.status.length_inconsistent.incr(),
+            ExtractionError::PacketTooLong => self.head.status.packet_too_long.incr(),
+            ExtractionError::InvalidPvn => self.head.status.invalid_pvn.incr(),
+            ExtractionError::LengthInconsistent => self.head.status.length_inconsistent.incr(),
         }
         cx.push(ExtractorOutput::Error(kind))
     }

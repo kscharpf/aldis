@@ -3500,3 +3500,26 @@ mod link_send {
     );
 }
 // ---- end link generation engines
+
+// ---- Link receiving engines (M4 WP-7b): the scenarios of `test-vectors/link/recv/` for the
+// PacketExtractor and the FrameReceiver through the C ABI handles.
+mod link_recv {
+    macro_rules! vector_test {
+        ($name:ident, "link", $file:literal) => {
+            #[test]
+            fn $name() {
+                // req: VER-021, TV-010, TV-011, TV-012, CABI-030, CABI-031, CABI-032, CABI-040
+                super::link_engine::run_scenario_file(concat!("link/", $file, ".json"));
+            }
+        };
+    }
+
+    vector_test!(packet_extractor_tm, "link", "recv/packet_extractor_tm");
+    vector_test!(packet_extractor_aos, "link", "recv/packet_extractor_aos");
+    vector_test!(packet_extractor_uslp, "link", "recv/packet_extractor_uslp");
+    vector_test!(frame_receiver_tm, "link", "recv/frame_receiver_tm");
+    vector_test!(frame_receiver_tc, "link", "recv/frame_receiver_tc");
+    vector_test!(frame_receiver_aos, "link", "recv/frame_receiver_aos");
+    vector_test!(frame_receiver_uslp, "link", "recv/frame_receiver_uslp");
+}
+// ---- end link receiving engines
