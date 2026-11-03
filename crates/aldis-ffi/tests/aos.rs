@@ -330,18 +330,15 @@ fn the_decoder_takes_the_master_channels_vcs() {
         ),
         (12, 22, 12, ALDIS_AOS_POINTER_NONE)
     );
-    // Another SCID, an unknown VC.
+    // Another SCID, an unknown VC: the decoder reads the frame as opaque octets with no OCF and
+    // no SDLS fields, and does not reject it (RS-023).
     let other = aldis_aos_mc_config_t { scid: 0x0AC, ..mc };
-    let (status, field, _) = decode(&frame, &other, &vcs, ALDIS_MODE_STRICT);
-    assert_eq!(
-        (status, field),
-        (ALDIS_ERR_UNKNOWN_CHANNEL, ALDIS_FIELD_SPACECRAFT_ID)
-    );
-    let (status, field, _) = decode(&frame, &mc, &vcs[1..], ALDIS_MODE_STRICT);
-    assert_eq!(
-        (status, field),
-        (ALDIS_ERR_UNKNOWN_CHANNEL, ALDIS_FIELD_VC_ID)
-    );
+    let (status, _, unknown) = decode(&frame, &other, &vcs, ALDIS_MODE_STRICT);
+    assert_eq!(status, ALDIS_OK);
+    assert_eq!(unknown.pdu.pointer, ALDIS_AOS_POINTER_NONE);
+    let (status, _, unknown) = decode(&frame, &mc, &vcs[1..], ALDIS_MODE_STRICT);
+    assert_eq!(status, ALDIS_OK);
+    assert_eq!(unknown.pdu.pointer, ALDIS_AOS_POINTER_NONE);
     // An OID frame needs a master channel with a VC, as a `VcTable` does (Table 5-1).
     let mut oid = [0_u8; 40];
     let oid_fields = fields(ALDIS_AOS_OID_VCID, ALDIS_AOS_POINTER_NONE, 0);

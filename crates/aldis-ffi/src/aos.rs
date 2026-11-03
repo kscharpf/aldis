@@ -943,13 +943,16 @@ pub unsafe extern "C" fn aldis_aos_header_decode(
 /// corrected header (§4.3.7.2–3; AOS-014). An OID frame (VCID 63) needs only the SCID of `mc`
 /// with at least one virtual channel: it has no OCF and no SDLS fields (§4.1.4.1.5).
 ///
+/// A frame of a Spacecraft ID or VC that `vcs` does not hold is decoded, as opaque octets with no
+/// OCF and no SDLS fields, and not rejected (API-017, RS-023): the C ABI has no AOS validation
+/// step yet, so a caller checks the SCID and VCID of `out->header` against its channels.
+///
 /// # Errors
 /// The errors of [`aldis_aos_mc_config_check`]; then, in this order:
 /// `ALDIS_ERR_LENGTH_MISMATCH` (`frame_len`) if `len` is not the frame length (API-012);
 /// `ALDIS_ERR_HEADER_UNCORRECTABLE` (AOS-014); `ALDIS_ERR_CRC_MISMATCH` for a wrong FECF;
 /// `ALDIS_ERR_UNSUPPORTED_VERSION` (`frame_version`) for a version other than `01` (AOS-011);
-/// `ALDIS_ERR_UNKNOWN_CHANNEL` (`spacecraft_id` for another SCID, `vc_id` for a VC `vcs` does not
-/// hold); the pointer errors of [`aldis_aos_mpdu_decode`] and [`aldis_aos_bpdu_decode`], in
+/// the pointer errors of [`aldis_aos_mpdu_decode`] and [`aldis_aos_bpdu_decode`], in
 /// both modes (AOS-017); in strict mode, for the first deviation: `ALDIS_ERR_INVALID_FIELD`
 /// (`vc_frame_count_cycle`) for a cycle other than `0000` with its Use Flag `0` (AOS-012),
 /// `ALDIS_ERR_RESERVED_VALUE` (`aos_header_spare`) for Issue 4 bits 42–43 other than `00`

@@ -1,0 +1,7 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc b4e25106f48282416dfabf1084606b49d7e51e701d4fc43953ef387e88757ffc # shrinks to (c, v) = (TcChannels { table: VcTable { physical: PhysicalChannelConfig { max_frame_len: 64, fecf: false }, vcs: [Some(VcConfig { spacecraft_id: SpacecraftId(0), vc_id: VcId(0), max_frame_len: 1024, segment_header: Absent(SecurityLayout { header_len: 0, trailer_len: 0 }) }), Some(VcConfig { spacecraft_id: SpacecraftId(0), vc_id: VcId(5), max_frame_len: 1024, segment_header: Present })], maps: [Some(MapConfig { spacecraft_id: SpacecraftId(0), vc_id: VcId(5), map_id: MapId(0), security: SecurityLayout { header_len: 0, trailer_len: 0 } }), None, None, None] }, plain: FrameFields { frame_type: Ad, spacecraft_id: SpacecraftId(0), vc_id: VcId(0), sequence_number: FrameSeqNum(0) }, segmented: FrameFields { frame_type: Ad, spacecraft_id: SpacecraftId(0), vc_id: VcId(5), sequence_number: FrameSeqNum(0) }, maps: [MapId(0)] }, [0, 1, 0, 14, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])

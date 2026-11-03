@@ -116,6 +116,22 @@ impl VcConfig {
         })
     }
 
+    /// The stand-in for a Virtual Channel that is not configured, which a decode reads as the
+    /// Physical Channel allows: frames up to its length, no Segment Header, no SDLS fields
+    /// (RS-023; the Frame Validation Checks reject such a frame, TC-022).
+    pub(crate) const fn unconfigured(
+        spacecraft_id: TcSpacecraftId,
+        vc_id: TcVcId,
+        physical: &PhysicalChannelConfig,
+    ) -> VcConfig {
+        VcConfig {
+            spacecraft_id,
+            vc_id,
+            max_frame_len: physical.max_frame_len,
+            segment_header: SegmentHeaderUse::Absent(SecurityLayout::NONE),
+        }
+    }
+
     /// Spacecraft ID of the Virtual Channel's Master Channel (232.0 Table 5-3).
     #[must_use]
     pub const fn spacecraft_id(&self) -> TcSpacecraftId {

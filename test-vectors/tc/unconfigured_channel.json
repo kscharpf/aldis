@@ -1,0 +1,245 @@
+{
+  "kind": "codec",
+  "standard": "232.0-B-4 Cor. 1 §4.1, §4.4.7.3, §4.4.3.3 — frames of channels the configuration does not hold",
+  "provenance": "hand-derived",
+  "provenance_note": "Hand-derived from 232.0-B-4 with Cor. 1: §4.1.2 (Primary Header: TFVN 00 bits 0-1, Bypass bit 2, Control Command bit 3, spare 4-5, SCID 6-15, VCID 16-21, Frame Length 22-31 = total - 1, N(S) 32-39), §4.1.3 (Segment Header: Sequence Flags 2 bits, MAP ID 6 bits), §4.1.4 (FECF), and §4.4.7.3 and §4.4.3.3 (a frame of an invalid VCID or MAP ID is discarded by the receiving end). The inputs and configurations are those of the cases they replace (tc-dec-err-009 and -010, tc-seg-dec-err-001, marked superseded by RS-023 / issue #232). A decode of a frame of a Spacecraft ID, VCID, or MAP ID that the configuration does not hold reads it as the physical channel allows: no Segment Header and no Security Header or Trailer on an unknown VC, and no Security Header or Trailer on an unknown MAP; `validate_frame` rejects it with the reason of tc-val-* (docs/standards/tc-frame.md §4.1). Expected values read off the octets by the field widths above. The independent model of the other vector files of this codec (TV-023) does not cover this file: it was written before the change and is not touched by it; a blind-model round is the maintainer's decision (issue #232). Author: an AI agent, Claude Sonnet 5.5.",
+  "cases": [
+    {
+      "id": "tc-open-dec-001",
+      "requirements": [
+        "TC-001",
+        "TC-021",
+        "TC-022",
+        "API-011",
+        "RS-023"
+      ],
+      "description": "SCID 0x156 is not configured: decoded, no Segment Header and no SDLS fields known (RS-023: validate_frame rejects it)",
+      "operation": "decode",
+      "mode": "strict",
+      "config": {
+        "max_frame_len": 1024,
+        "fecf": true,
+        "vcs": [
+          {
+            "scid": 341,
+            "vcid": 1,
+            "max_frame_len": 1024,
+            "segment_header": false
+          },
+          {
+            "scid": 341,
+            "vcid": 2,
+            "max_frame_len": 1024,
+            "segment_header": true
+          },
+          {
+            "scid": 341,
+            "vcid": 3,
+            "max_frame_len": 1024,
+            "segment_header": false,
+            "security_header_len": 4,
+            "security_trailer_len": 2
+          }
+        ],
+        "maps": [
+          {
+            "scid": 341,
+            "vcid": 2,
+            "map_id": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 2,
+            "map_id": 5
+          },
+          {
+            "scid": 341,
+            "vcid": 2,
+            "map_id": 9,
+            "security_header_len": 3,
+            "security_trailer_len": 1
+          }
+        ]
+      },
+      "input_hex": "0156040900010203F2B3",
+      "expect": {
+        "ok": true,
+        "frame_type": "AD",
+        "bypass_flag": 0,
+        "control_command_flag": 0,
+        "spacecraft_id": 342,
+        "vc_id": 1,
+        "frame_len": 10,
+        "sequence_number": 0,
+        "segment_header": null,
+        "security_header_hex": "",
+        "data_hex": "010203",
+        "security_trailer_hex": "",
+        "fecf_hex": "F2B3",
+        "control_command": null,
+        "set_vr_value": null,
+        "consumed": 10,
+        "anomalies": []
+      }
+    },
+    {
+      "id": "tc-open-dec-002",
+      "requirements": [
+        "TC-001",
+        "TC-021",
+        "TC-022",
+        "API-011",
+        "RS-023"
+      ],
+      "description": "VCID 63 is not configured: decoded, no Segment Header and no SDLS fields known (RS-023: validate_frame rejects it)",
+      "operation": "decode",
+      "mode": "strict",
+      "config": {
+        "max_frame_len": 1024,
+        "fecf": true,
+        "vcs": [
+          {
+            "scid": 341,
+            "vcid": 1,
+            "max_frame_len": 1024,
+            "segment_header": false
+          },
+          {
+            "scid": 341,
+            "vcid": 2,
+            "max_frame_len": 1024,
+            "segment_header": true
+          },
+          {
+            "scid": 341,
+            "vcid": 3,
+            "max_frame_len": 1024,
+            "segment_header": false,
+            "security_header_len": 4,
+            "security_trailer_len": 2
+          }
+        ],
+        "maps": [
+          {
+            "scid": 341,
+            "vcid": 2,
+            "map_id": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 2,
+            "map_id": 5
+          },
+          {
+            "scid": 341,
+            "vcid": 2,
+            "map_id": 9,
+            "security_header_len": 3,
+            "security_trailer_len": 1
+          }
+        ]
+      },
+      "input_hex": "0155FC0900010203B6CF",
+      "expect": {
+        "ok": true,
+        "frame_type": "AD",
+        "bypass_flag": 0,
+        "control_command_flag": 0,
+        "spacecraft_id": 341,
+        "vc_id": 63,
+        "frame_len": 10,
+        "sequence_number": 0,
+        "segment_header": null,
+        "security_header_hex": "",
+        "data_hex": "010203",
+        "security_trailer_hex": "",
+        "fecf_hex": "B6CF",
+        "control_command": null,
+        "set_vr_value": null,
+        "consumed": 10,
+        "anomalies": []
+      }
+    },
+    {
+      "id": "tc-open-dec-003",
+      "requirements": [
+        "TC-001",
+        "TC-021",
+        "TC-022",
+        "API-011",
+        "RS-023"
+      ],
+      "description": "MAP 7 is not configured on VC 2: decoded with its Segment Header and no SDLS fields (RS-023: validate_frame rejects it, tc-val-* for the reason)",
+      "operation": "decode",
+      "mode": "strict",
+      "config": {
+        "max_frame_len": 1024,
+        "fecf": true,
+        "vcs": [
+          {
+            "scid": 341,
+            "vcid": 1,
+            "max_frame_len": 1024,
+            "segment_header": false
+          },
+          {
+            "scid": 341,
+            "vcid": 2,
+            "max_frame_len": 1024,
+            "segment_header": true
+          },
+          {
+            "scid": 341,
+            "vcid": 3,
+            "max_frame_len": 1024,
+            "segment_header": false,
+            "security_header_len": 4,
+            "security_trailer_len": 2
+          }
+        ],
+        "maps": [
+          {
+            "scid": 341,
+            "vcid": 2,
+            "map_id": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 2,
+            "map_id": 5
+          },
+          {
+            "scid": 341,
+            "vcid": 2,
+            "map_id": 9,
+            "security_header_len": 3,
+            "security_trailer_len": 1
+          }
+        ]
+      },
+      "input_hex": "0155080900C70102F0F7",
+      "expect": {
+        "ok": true,
+        "frame_type": "AD",
+        "bypass_flag": 0,
+        "control_command_flag": 0,
+        "spacecraft_id": 341,
+        "vc_id": 2,
+        "frame_len": 10,
+        "sequence_number": 0,
+        "segment_header": {
+          "sequence_flags": 3,
+          "map_id": 7
+        },
+        "security_header_hex": "",
+        "data_hex": "0102",
+        "security_trailer_hex": "",
+        "fecf_hex": "F0F7",
+        "control_command": null,
+        "set_vr_value": null,
+        "consumed": 10,
+        "anomalies": []
+      }
+    }
+  ]
+}

@@ -14,7 +14,7 @@ use aldis_core::{DecodeMode, Error, Lenient};
 
 use crate::anomaly::TcAnomaly;
 use crate::config::VcLookup;
-use crate::view::{TcFrame, parse};
+use crate::view::{Channels, TcFrame, parse};
 
 /// Why a frame failed the Frame Validation Checks (232.0 §4.4.9.3.3; TC-021, TC-022, M2 plan
 /// D14). Listed in check order; the codes are stable and shared with the C ABI.
@@ -177,7 +177,14 @@ pub fn validate_frame<'a, L: VcLookup + ?Sized>(
     frame: &'a [u8],
     channels: &L,
 ) -> Result<ValidatedTcFrame<'a>, Rejection> {
-    parse(frame, channels, DecodeMode::Strict, true).map(|p| ValidatedTcFrame::new(p.frame))
+    parse(
+        frame,
+        channels,
+        Channels::Required,
+        DecodeMode::Strict,
+        true,
+    )
+    .map(|p| ValidatedTcFrame::new(p.frame))
 }
 
 /// Applies the Frame Validation Checks as [`validate_frame`] does, in lenient mode.
@@ -191,8 +198,14 @@ pub fn validate_frame_lenient<'a, L: VcLookup + ?Sized>(
     frame: &'a [u8],
     channels: &L,
 ) -> Result<Lenient<ValidatedTcFrame<'a>, TcAnomaly>, Rejection> {
-    parse(frame, channels, DecodeMode::Lenient, true)
-        .map(|p| Lenient::new(ValidatedTcFrame::new(p.frame), p.anomalies))
+    parse(
+        frame,
+        channels,
+        Channels::Required,
+        DecodeMode::Lenient,
+        true,
+    )
+    .map(|p| Lenient::new(ValidatedTcFrame::new(p.frame), p.anomalies))
 }
 
 #[cfg(test)]

@@ -13,7 +13,7 @@ use aldis_core::{DecodeMode, Error, Lenient};
 
 use crate::anomaly::UslpAnomaly;
 use crate::config::VcLookup;
-use crate::view::{UslpFrame, parse};
+use crate::view::{Channels, UslpFrame, parse};
 
 /// Why a frame failed the USLP Frame Validation Checks or the decoder (USLP-014).
 ///
@@ -204,7 +204,14 @@ pub fn validate_frame<'a, L: VcLookup + ?Sized>(
     frame: &'a [u8],
     channels: &L,
 ) -> Result<ValidatedUslpFrame<'a>, Rejection> {
-    parse(frame, channels, DecodeMode::Strict, true).map(|p| ValidatedUslpFrame::new(p.frame))
+    parse(
+        frame,
+        channels,
+        Channels::Required,
+        DecodeMode::Strict,
+        true,
+    )
+    .map(|p| ValidatedUslpFrame::new(p.frame))
 }
 
 /// Applies the checks of [`validate_frame`] in lenient mode: nonzero Reserve Spares and a
@@ -217,8 +224,14 @@ pub fn validate_frame_lenient<'a, L: VcLookup + ?Sized>(
     frame: &'a [u8],
     channels: &L,
 ) -> Result<Lenient<ValidatedUslpFrame<'a>, UslpAnomaly>, Rejection> {
-    parse(frame, channels, DecodeMode::Lenient, true)
-        .map(|p| Lenient::new(ValidatedUslpFrame::new(p.frame), p.anomalies))
+    parse(
+        frame,
+        channels,
+        Channels::Required,
+        DecodeMode::Lenient,
+        true,
+    )
+    .map(|p| Lenient::new(ValidatedUslpFrame::new(p.frame), p.anomalies))
 }
 
 #[cfg(test)]

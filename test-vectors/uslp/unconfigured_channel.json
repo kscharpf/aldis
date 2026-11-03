@@ -1,0 +1,592 @@
+{
+  "kind": "codec",
+  "standard": "732.1-B-3 §4.1, §4.3.11.3.4 — frames of channels the configuration does not hold",
+  "provenance": "hand-derived",
+  "provenance_note": "Hand-derived from 732.1-B-3 §4.1.2 (Primary Header: TFVN 1100 bits 0-3, SCID bits 4-19, Source-or-Destination bit 20, VCID bits 21-26, MAP ID bits 27-30, End of Frame Primary Header Flag bit 31, Frame Length bits 32-47 = total - 1, Bypass/Sequence Control Flag, Protocol Control Command Flag, OCF Flag, VCF Count Length), §4.1.4.2 (TFDF Header: rule 3 bits, UPID 5 bits, First Header or Last Valid Octet Pointer 16 bits for a fixed-length TFDZ), §4.1.4.1.8-9 (OID frames), §4.1.6 (FECF), §4.3.11.3.4 b and c (a frame of a Spacecraft ID, VCID, or MAP ID that is not valid is discarded), and Annex D1.3 (a truncated frame needs its VC's length, so it is not read without the VC). The inputs and configurations are those of the cases they replace (uslp-inv-005, -009, -010, uslp-oid-050, uslp-trunc-049, marked superseded by RS-023 / issue #232). A decode of a non-truncated frame of a Spacecraft ID, VCID, or MAP ID that the configuration does not hold reads it as its own fields say: the VCF Count Length and OCF Flag of the frame, no Security Header or Trailer; `validate_frame` rejects it. The truncated cases uslp-trunc-022, -023 keep UnknownChannel. Expected values read off the octets by the field widths above. The independent model of the other vector files of this codec (TV-023) does not cover this file: it was written before the change and is not touched by it; a blind-model round is the maintainer's decision (issue #232). Author: an AI agent, Claude Sonnet 5.5.",
+  "cases": [
+    {
+      "id": "uslp-open-dec-001",
+      "requirements": [
+        "USLP-014",
+        "API-010",
+        "RS-023"
+      ],
+      "description": "SCID 0x0001: decoded with no SDLS fields (RS-023: validate_frame rejects it)",
+      "operation": "decode",
+      "mode": "strict",
+      "config": {
+        "frame_type": "variable",
+        "frame_len": 300,
+        "insert_zone_len": 0,
+        "fecf": true,
+        "vcs": [
+          {
+            "scid": 341,
+            "vcid": 1,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "allowed",
+            "truncated_frame_len": null,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 4,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 2,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": null,
+            "security": {
+              "header_len": 6,
+              "trailer_len": 4
+            }
+          },
+          {
+            "scid": 61605,
+            "vcid": 9,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 3,
+            "vcf_count_len_expedited": 2,
+            "ocf": "allowed",
+            "truncated_frame_len": null,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          }
+        ],
+        "maps": [
+          {
+            "scid": 341,
+            "vcid": 1,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 1,
+            "map_id": 7,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 4,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 61605,
+            "vcid": 9,
+            "map_id": 15,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "input_hex": "C0001020000F0101E51011121314A781",
+      "expect": {
+        "ok": true,
+        "truncated": false,
+        "spacecraft_id": 1,
+        "source_or_destination": "source",
+        "vc_id": 1,
+        "map_id": 0,
+        "kind": "sequence_controlled",
+        "frame_len": 16,
+        "ocf_flag": false,
+        "vcf_count_len": 1,
+        "vcf_count": 1,
+        "insert_zone_hex": "",
+        "security_header_hex": "",
+        "tfdz_construction_rule": 7,
+        "upid": 5,
+        "upid_assigned": true,
+        "pointer": null,
+        "pointer_kind": null,
+        "tfdz_hex": "1011121314",
+        "security_trailer_hex": "",
+        "ocf_hex": null,
+        "fecf_hex": "A781",
+        "consumed": 16,
+        "anomalies": []
+      }
+    },
+    {
+      "id": "uslp-open-dec-002",
+      "requirements": [
+        "USLP-014",
+        "API-010",
+        "RS-023"
+      ],
+      "description": "VCID 2: decoded with no SDLS fields (RS-023: validate_frame rejects it)",
+      "operation": "decode",
+      "mode": "strict",
+      "config": {
+        "frame_type": "variable",
+        "frame_len": 300,
+        "insert_zone_len": 0,
+        "fecf": true,
+        "vcs": [
+          {
+            "scid": 341,
+            "vcid": 1,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "allowed",
+            "truncated_frame_len": null,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 4,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 2,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": null,
+            "security": {
+              "header_len": 6,
+              "trailer_len": 4
+            }
+          },
+          {
+            "scid": 61605,
+            "vcid": 9,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 3,
+            "vcf_count_len_expedited": 2,
+            "ocf": "allowed",
+            "truncated_frame_len": null,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          }
+        ],
+        "maps": [
+          {
+            "scid": 341,
+            "vcid": 1,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 1,
+            "map_id": 7,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 4,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 61605,
+            "vcid": 9,
+            "map_id": 15,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "input_hex": "C0155040000F0101E51011121314C214",
+      "expect": {
+        "ok": true,
+        "truncated": false,
+        "spacecraft_id": 341,
+        "source_or_destination": "source",
+        "vc_id": 2,
+        "map_id": 0,
+        "kind": "sequence_controlled",
+        "frame_len": 16,
+        "ocf_flag": false,
+        "vcf_count_len": 1,
+        "vcf_count": 1,
+        "insert_zone_hex": "",
+        "security_header_hex": "",
+        "tfdz_construction_rule": 7,
+        "upid": 5,
+        "upid_assigned": true,
+        "pointer": null,
+        "pointer_kind": null,
+        "tfdz_hex": "1011121314",
+        "security_trailer_hex": "",
+        "ocf_hex": null,
+        "fecf_hex": "C214",
+        "consumed": 16,
+        "anomalies": []
+      }
+    },
+    {
+      "id": "uslp-open-dec-003",
+      "requirements": [
+        "USLP-014",
+        "API-010",
+        "RS-023"
+      ],
+      "description": "MAP 1 on VC 1: decoded with no SDLS fields (RS-023: validate_frame rejects it)",
+      "operation": "decode",
+      "mode": "strict",
+      "config": {
+        "frame_type": "variable",
+        "frame_len": 300,
+        "insert_zone_len": 0,
+        "fecf": true,
+        "vcs": [
+          {
+            "scid": 341,
+            "vcid": 1,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "allowed",
+            "truncated_frame_len": null,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 4,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 2,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": null,
+            "security": {
+              "header_len": 6,
+              "trailer_len": 4
+            }
+          },
+          {
+            "scid": 61605,
+            "vcid": 9,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 3,
+            "vcf_count_len_expedited": 2,
+            "ocf": "allowed",
+            "truncated_frame_len": null,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          }
+        ],
+        "maps": [
+          {
+            "scid": 341,
+            "vcid": 1,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 1,
+            "map_id": 7,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 4,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 61605,
+            "vcid": 9,
+            "map_id": 15,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "input_hex": "C0155022000F0101E510111213148C08",
+      "expect": {
+        "ok": true,
+        "truncated": false,
+        "spacecraft_id": 341,
+        "source_or_destination": "source",
+        "vc_id": 1,
+        "map_id": 1,
+        "kind": "sequence_controlled",
+        "frame_len": 16,
+        "ocf_flag": false,
+        "vcf_count_len": 1,
+        "vcf_count": 1,
+        "insert_zone_hex": "",
+        "security_header_hex": "",
+        "tfdz_construction_rule": 7,
+        "upid": 5,
+        "upid_assigned": true,
+        "pointer": null,
+        "pointer_kind": null,
+        "tfdz_hex": "1011121314",
+        "security_trailer_hex": "",
+        "ocf_hex": null,
+        "fecf_hex": "8C08",
+        "consumed": 16,
+        "anomalies": []
+      }
+    },
+    {
+      "id": "uslp-open-dec-004",
+      "requirements": [
+        "USLP-014",
+        "API-010",
+        "RS-023"
+      ],
+      "description": "An OID frame of SCID 0x0001, which has no VC: decoded with no SDLS fields (RS-023: validate_frame rejects it)",
+      "operation": "decode",
+      "mode": "strict",
+      "config": {
+        "frame_type": "fixed",
+        "frame_len": 24,
+        "insert_zone_len": 3,
+        "fecf": true,
+        "vcs": [
+          {
+            "scid": 341,
+            "vcid": 1,
+            "frame_type": "fixed",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": null,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          }
+        ],
+        "maps": [
+          {
+            "scid": 341,
+            "vcid": 1,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "input_hex": "C00017E0001700A1A2A33F0008FFFFFFFF6DB6D86145AB38",
+      "expect": {
+        "ok": true,
+        "truncated": false,
+        "spacecraft_id": 1,
+        "source_or_destination": "source",
+        "vc_id": 63,
+        "map_id": 0,
+        "kind": "sequence_controlled",
+        "frame_len": 24,
+        "ocf_flag": false,
+        "vcf_count_len": 0,
+        "vcf_count": 0,
+        "insert_zone_hex": "A1A2A3",
+        "security_header_hex": "",
+        "tfdz_construction_rule": 1,
+        "upid": 31,
+        "upid_assigned": true,
+        "pointer": 8,
+        "pointer_kind": "last_valid_octet",
+        "tfdz_hex": "FFFFFFFF6DB6D86145",
+        "security_trailer_hex": "",
+        "ocf_hex": null,
+        "fecf_hex": "AB38",
+        "consumed": 24,
+        "anomalies": []
+      }
+    },
+    {
+      "id": "uslp-open-dec-005",
+      "requirements": [
+        "USLP-002",
+        "USLP-014",
+        "RS-023"
+      ],
+      "description": "OI-48: a non-truncated frame on VC 5, which carries truncated frames only, with MAP 3, not configured: the unknown MAP is no longer an error of the decoder (RS-023), so the refusal comes: InvalidField (end_of_frame_primary_header_flag)",
+      "operation": "decode",
+      "mode": "strict",
+      "config": {
+        "frame_type": "variable",
+        "frame_len": 128,
+        "insert_zone_len": 0,
+        "fecf": true,
+        "vcs": [
+          {
+            "scid": 341,
+            "vcid": 1,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": null,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 5,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": 12,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 8,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": 6,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 10,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": 32,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 61605,
+            "vcid": 11,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": 9,
+            "security": {
+              "header_len": 0,
+              "trailer_len": 0
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 6,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": 32,
+            "security": {
+              "header_len": 8,
+              "trailer_len": 8
+            }
+          },
+          {
+            "scid": 341,
+            "vcid": 7,
+            "frame_type": "variable",
+            "vcf_count_len_sequence": 1,
+            "vcf_count_len_expedited": 1,
+            "ocf": "absent",
+            "truncated_frame_len": 28,
+            "security": "per_map"
+          }
+        ],
+        "maps": [
+          {
+            "scid": 341,
+            "vcid": 1,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 5,
+            "map_id": 2,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 8,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 10,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 61605,
+            "vcid": 11,
+            "map_id": 4,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 6,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 7,
+            "map_id": 0,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 7,
+            "map_id": 1,
+            "security_header_len": 4,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "input_hex": "C01550A6000E0101E571727374DBD8",
+      "expect": {
+        "ok": false,
+        "error": "InvalidField",
+        "field": 91
+      }
+    }
+  ]
+}

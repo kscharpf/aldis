@@ -217,6 +217,35 @@ pub struct VcConfig {
 }
 
 impl VcConfig {
+    /// The stand-in for a VC that is not configured, which a decode reads as its own frame says:
+    /// the VCF Count Length and the OCF Flag of the frame, no truncated frames, no SDLS fields,
+    /// and the TFDZ type of the Physical Channel (RS-023; the USLP Frame Validation Checks
+    /// reject such a frame, §4.3.11.3.4 c).
+    pub(crate) const fn unconfigured(
+        spacecraft_id: UslpSpacecraftId,
+        vc_id: UslpVcId,
+        physical: &PhysicalChannelConfig,
+        vcf_count_len: VcfCountLen,
+        ocf_flag: bool,
+    ) -> VcConfig {
+        VcConfig {
+            spacecraft_id,
+            vc_id,
+            params: VcParams {
+                frame_type: physical.frame_type,
+                vcf_count_len_sequence: vcf_count_len,
+                vcf_count_len_expedited: vcf_count_len,
+                ocf: if ocf_flag {
+                    OcfUse::Allowed
+                } else {
+                    OcfUse::Absent
+                },
+                truncated_frame_len: None,
+                security: SecurityScope::Vc(SecurityLayout::NONE),
+            },
+        }
+    }
+
     /// A Virtual Channel (732.1 Table 5-3; GEN-060, API-040).
     ///
     /// # Errors

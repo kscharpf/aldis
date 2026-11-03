@@ -14,7 +14,7 @@ use crate::anomaly::TcAnomaly;
 use crate::config::{MapConfig, VcConfig, VcLookup};
 use crate::header::{MIN_FRAME_LEN, RawHeader};
 use crate::validate::{Reason, ValidatedTcFrame};
-use crate::view::{check_head, parse};
+use crate::view::{Channels, check_head, parse};
 
 /// Why wire octets or a frame were discarded (232.0 §4.4.9.2, §4.4.9.3; TC-020, TC-021).
 ///
@@ -326,7 +326,7 @@ fn step<'a, L: VcLookup + ?Sized>(
         // If the declared length is available in `rest`, reconstruct and validate the frame.
         if let Some((frame_bytes, remaining)) = rest.split_at_checked(h.frame_len) {
             *rest = remaining;
-            return match parse(frame_bytes, channels, mode, true) {
+            return match parse(frame_bytes, channels, Channels::Required, mode, true) {
                 Ok(p) => Some(IntakeItem::Accepted {
                     frame: (ValidatedTcFrame::new(p.frame), p.anomalies),
                     vc: p.vc,
@@ -345,7 +345,14 @@ fn step<'a, L: VcLookup + ?Sized>(
         // take precedence before the length consistency check (d) (232.0 §4.4.9.3; docs/standards/tc-frame.md §2.1).
         if h.version == 0 {
             let mut anomalies = AnomalySet::empty();
-            if let Err(rejection) = check_head(rest, channels, mode, false, &mut anomalies) {
+            if let Err(rejection) = check_head(
+                rest,
+                channels,
+                Channels::Required,
+                mode,
+                false,
+                &mut anomalies,
+            ) {
                 let octets = *rest;
                 *rest = &[];
                 return Some(IntakeItem::Discarded {

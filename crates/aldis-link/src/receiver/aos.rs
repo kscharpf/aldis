@@ -101,6 +101,11 @@ impl AosVc {
 impl ReceiveProtocol for Aos {
     type Channel = AosChannel;
     type VcParams = AosVc;
+    type Plain<'a> = aldis_aos::PlainAosFrame<'a>;
+
+    fn plain_octets<'a>(frame: &Self::Plain<'a>) -> &'a [u8] {
+        frame.as_bytes()
+    }
 
     fn insert_zone_len(channel: &AosChannel) -> usize {
         channel.insert_zone_len

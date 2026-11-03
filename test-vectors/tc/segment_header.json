@@ -1274,6 +1274,10 @@
         "ok": false,
         "error": "UnknownChannel",
         "field": 3
+      },
+      "superseded": {
+        "by": "tc-open-dec-003",
+        "reason": "RS-023 / issue #232: the decoder no longer rejects a frame of a channel the configuration does not hold; it reads the frame as the physical channel allows and leaves the rejection to `validate_frame`."
       }
     },
     {

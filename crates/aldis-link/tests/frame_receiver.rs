@@ -18,14 +18,17 @@ use aldis_core::ids::{MapId, VcId};
 use aldis_core::ocf::Ocf;
 use aldis_link::protocol::{Aos, Tc, Tm, Uslp};
 use aldis_link::receiver::{
-    AosChannel, AosContent, AosVc, CallerDiscardReason, ChannelScope, CheckedFrame, DiscardReason,
+    AosChannel, AosContent, AosVc, CallerDiscardReason, ChannelScope, DiscardReason,
     FRAME_RECEIVER_MAX_ACTIONS, FrameReceiver, FrameReceiverConfig, MapSet, ReceiveProtocol,
     ReceiverInput, ReceiverOutput, Service, TcChannel, TcVc, TmChannel, TmContent, TmVc,
     UslpChannel, UslpVc, VcEntry,
 };
+mod support;
+
 use aldis_testkit::strategies;
 use aldis_testkit::strategies::proptest::prelude::*;
 use aldis_testkit::strategies::proptest::test_runner::RngSeed;
+use support::Plained;
 
 /// Failing cases are saved here and replayed first.
 const REGRESSIONS: &str = concat!(
@@ -37,7 +40,7 @@ const LEN: usize = 40;
 const CLCW: [u8; 4] = [0x01, 0x04, 0x08, 0x05];
 const REPORT2: [u8; 4] = [0x80, 0x11, 0x22, 0x33];
 
-// ---- frame builders (no FECF: the receiver trusts the caller's check) ----
+// ---- frame builders (no FECF: the receivers of these tests configure none) ----
 
 fn tm_frame(
     vc: u8,
@@ -93,8 +96,18 @@ fn uslp_frame(
     f.extend((LEN as u16 - 1).to_be_bytes());
     f.push(flags);
     f.extend(&value.to_be_bytes()[8 - usize::from(len)..]);
+    // The Insert Zone, then the TFDF Header of a fixed-length TFDZ: rule 000, UPID 0, First
+    // Header Pointer 0; of an OID frame, rule 001, Only Idle Data, and a Last Valid Octet
+    // Pointer to the last octet of the TFDZ (732.1 §4.1.4.1.8–9).
     f.extend([0xB1, 0xB2]);
+    let header_at = f.len();
+    f.extend([0x00, 0x00, 0x00]);
     f.resize(LEN - ocf.map_or(0, |_| 4), 0x33);
+    if vc == 63 {
+        let last = u16::try_from(f.len() - header_at - 3 - 1).unwrap();
+        f[header_at] = 0x3F;
+        f[header_at + 1..header_at + 3].copy_from_slice(&last.to_be_bytes());
+    }
     f.extend(ocf.into_iter().flatten());
     f
 }
@@ -109,7 +122,8 @@ fn tc_frame_of(vc: u8, len: usize, bypass: bool, control: bool) -> Vec<u8> {
     let mut f = vec![(u8::from(bypass) << 5) | (u8::from(control) << 4), 0x2A];
     f.extend(w1.to_be_bytes());
     f.push(0);
-    f.resize(len, 0x11);
+    // A Control Command of 00 is Unlock (232.0 §4.1.3.3.4); the data of a Type-D frame is 0x11.
+    f.resize(len, if control { 0x00 } else { 0x11 });
     f
 }
 
@@ -118,9 +132,38 @@ fn uslp_variable_frame(vc: u8, map: u8, len: usize, count: u8) -> Vec<u8> {
     let top = (0b1100u32 << 28) | (0x1234 << 12) | (u32::from(vc) << 5) | (u32::from(map) << 1);
     let mut f = top.to_be_bytes().to_vec();
     f.extend((len as u16 - 1).to_be_bytes());
-    f.extend([0x01, count]);
+    // The TFDF Header: rule 111 (no segmentation), UPID 5.
+    f.extend([0x01, count, 0xE5]);
     f.resize(len, 0x44);
     f
+}
+
+/// A truncated USLP frame (Annex D) on VC 1, MAP 0, which the codec holds with a truncated frame
+/// length of the octets given (6 to 32), as a caller that serves truncated frames on that VC has.
+///
+/// # Errors
+/// The codec's error for a frame it refuses.
+fn truncated_uslp(octets: &[u8]) -> aldis_core::Result<aldis_uslp::PlainUslpFrame<'_>> {
+    use aldis_core::security::{NoSecurity, SecurityLayout};
+    use aldis_uslp::{
+        MapConfig, PhysicalChannelConfig as UslpPhysical, TransferFrameType, TruncatedFrameLen,
+        UslpFrame, UslpMapId, UslpSpacecraftId, UslpVcId, VcConfig, VcParams, VcTable,
+    };
+
+    let pc = UslpPhysical::new(TransferFrameType::Variable, 40, 0, false)?;
+    let mut params = VcParams::new(TransferFrameType::Variable);
+    params.truncated_frame_len = Some(TruncatedFrameLen::new(octets.len())?);
+    let (scid, vc, map) = (
+        UslpSpacecraftId::try_from(0x1234)?,
+        UslpVcId::try_from(1)?,
+        UslpMapId::try_from(0)?,
+    );
+    let table = VcTable::<1, 1>::new(
+        pc,
+        &[VcConfig::new(scid, vc, params)?],
+        &[MapConfig::new(scid, vc, map, SecurityLayout::NONE)],
+    )?;
+    UslpFrame::decode(octets, &table)?.into_plain(NoSecurity)
 }
 
 // ---- receivers ----
@@ -216,20 +259,30 @@ fn tc() -> TcRx {
 
 type Out<P> = Vec<ReceiverOutput<P>>;
 
-fn feed<P: ReceiveProtocol, const V: usize>(rx: &mut FrameReceiver<P, V>, frame: &[u8]) -> Out<P> {
+/// The `Plain` frame of `octets` for `rx`: the codec decodes it first (RS-023).
+fn plain_of<'a, P: Plained, const V: usize>(
+    rx: &FrameReceiver<P, V>,
+    octets: &'a [u8],
+) -> ReceiverInput<'a, P, V> {
+    ReceiverInput::Frame(P::plain(rx.config(), octets).unwrap())
+}
+
+fn feed<P: Plained, const V: usize>(rx: &mut FrameReceiver<P, V>, frame: &[u8]) -> Out<P> {
     try_feed(rx, frame).unwrap()
 }
 
-fn try_feed<P: ReceiveProtocol, const V: usize>(
+/// The outputs of the frame, or the error of the codec or of the receiver.
+fn try_feed<P: Plained, const V: usize>(
     rx: &mut FrameReceiver<P, V>,
     frame: &[u8],
 ) -> Result<Out<P>, aldis_core::Error> {
     let mut area = vec![0u8; rx.config().area_len()];
-    rx.step(ReceiverInput::Frame(CheckedFrame::new(frame)), &mut area)
+    let plain = P::plain(rx.config(), frame)?;
+    rx.step(ReceiverInput::Frame(plain), &mut area)
         .map(|a| a.iter().copied().collect())
 }
 
-fn refused<P: ReceiveProtocol, const V: usize>(
+fn refused<P: Plained, const V: usize>(
     rx: &mut FrameReceiver<P, V>,
     frame: &[u8],
 ) -> aldis_core::Error {
@@ -373,18 +426,21 @@ fn an_area_shorter_than_the_bound_fails_before_any_change() {
     let before = rx.clone();
     let mut area = vec![0u8; rx.config().area_len() - 1];
     let frame = uslp_frame(1, 0, false, false, Some((1, 4)), None);
-    let e = rx
-        .step(ReceiverInput::Frame(CheckedFrame::new(&frame)), &mut area)
-        .unwrap_err();
+    let e = {
+        let input = plain_of(&rx, &frame);
+        rx.step(input, &mut area)
+    }
+    .unwrap_err();
     assert_eq!(e.kind(), ErrorKind::BufferTooSmall);
     assert_eq!(rx.status().refused.get(), 1);
     // The engine is as it was but for the refusal counter.
     let mut area = vec![0u8; rx.config().area_len()];
     let mut twin = before;
-    let input = || ReceiverInput::Frame(CheckedFrame::new(&frame));
+    let input = || plain_of(&rx, &frame);
+    let (a, b) = (input(), input());
     assert_eq!(
-        rx.step(input(), &mut area).unwrap(),
-        twin.step(input(), &mut area).unwrap()
+        rx.step(a, &mut area).unwrap(),
+        twin.step(b, &mut area).unwrap()
     );
 }
 
@@ -394,9 +450,11 @@ fn a_protocol_control_frame_is_copied_once_with_its_insert_zone_inside() {
     let mut rx = uslp();
     let mut area = vec![0u8; LEN];
     let frame = uslp_frame(1, 0, true, true, Some((1, 4)), None);
-    let out = rx
-        .step(ReceiverInput::Frame(CheckedFrame::new(&frame)), &mut area)
-        .unwrap();
+    let out = {
+        let input = plain_of(&rx, &frame);
+        rx.step(input, &mut area)
+    }
+    .unwrap();
     assert_eq!(out.len(), 2);
     assert!(matches!(
         out.get(1),
@@ -426,8 +484,9 @@ fn a_frame_of_another_length_is_refused() {
 }
 
 #[test]
-fn the_reserved_flag_combination_of_uslp_is_refused() {
+fn the_reserved_flag_combination_of_uslp_has_no_plain_frame() {
     // req: LNK-050, API-058; OI-78 (732.1 Table 4-1)
+    // The codec refuses it, so no `Plain` frame reaches the receiver (RS-023).
     let mut rx = uslp();
     let e = refused(&mut rx, &uslp_frame(1, 0, false, true, Some((1, 4)), None));
     assert_eq!(
@@ -458,7 +517,8 @@ fn a_tm_frame_that_contradicts_its_vc_is_refused() {
         (e.kind(), e.field()),
         (ErrorKind::LengthMismatch, Some(field::FSH_LEN))
     );
-    // A frame whose Secondary Header leaves no data octet is malformed.
+    // A frame whose Secondary Header leaves no data octet is malformed, and the codec says so:
+    // no `Plain` frame reaches the receiver.
     let e = refused(&mut rx, &{
         let mut f = tm_frame(2, 0, 0, 0, false, &[], None);
         f[4] |= 0x80;
@@ -467,7 +527,7 @@ fn a_tm_frame_that_contradicts_its_vc_is_refused() {
     });
     assert_eq!(
         (e.kind(), e.field()),
-        (ErrorKind::Malformed, Some(field::FRAME_DATA_FIELD))
+        (ErrorKind::Malformed, Some(field::FSH_LEN))
     );
     // None of them counted.
     assert_eq!(rx.status().frames_in.get(), 0);
@@ -504,9 +564,11 @@ fn the_valid_bits_of_a_bpdu_are_delivered_and_the_idle_bits_dropped() {
         ([0x00, 0x00], 1, 0x77),
     ] {
         let frame = aos_frame(3, 0, None, false, None, &pointer);
-        let out = rx
-            .step(ReceiverInput::Frame(CheckedFrame::new(&frame)), &mut area)
-            .unwrap();
+        let out = {
+            let input = plain_of(&rx, &frame);
+            rx.step(input, &mut area)
+        }
+        .unwrap();
         let Some(ReceiverOutput::DataField {
             data, bit_count, ..
         }) = out.get(1)
@@ -535,9 +597,11 @@ fn the_valid_bits_of_a_bpdu_are_delivered_and_the_idle_bits_dropped() {
         let config = *rx.config();
         rx.step(ReceiverInput::Reconfigure(config), &mut area)
             .unwrap();
-        let out = rx
-            .step(ReceiverInput::Frame(CheckedFrame::new(&frame)), &mut area)
-            .unwrap();
+        let out = {
+            let input = plain_of(&rx, &frame);
+            rx.step(input, &mut area)
+        }
+        .unwrap();
         let Some(ReceiverOutput::DataField {
             data, bit_count, ..
         }) = out.get(1)
@@ -721,30 +785,30 @@ fn tc_frames_vary_in_length_up_to_the_maximum() {
     // after the 5-octet header; no FECF here), shorter than the maximum.
     for (len, bypass, control) in [(12, false, false), (9, true, false), (6, true, true)] {
         let frame = tc_frame_of(1, len, bypass, control);
-        let out = rx
-            .step(ReceiverInput::Frame(CheckedFrame::new(&frame)), &mut area)
-            .unwrap();
+        let out = {
+            let input = plain_of(&rx, &frame);
+            rx.step(input, &mut area)
+        }
+        .unwrap();
         let Some(ReceiverOutput::TcFrame { frame: r, .. }) = out.get(0) else {
             panic!("{out:?}")
         };
         assert_eq!(r.slice(&area).unwrap(), &frame[..]);
     }
-    // Above the maximum, below the header, or not the length the header gives.
-    for frame in [
-        tc_frame_of(1, LEN + 1, false, false),
-        tc_frame_of(1, 5, false, false),
-        vec![0, 0, 4],
-        {
-            let mut f = tc_frame_of(1, 12, false, false);
-            f.pop();
-            f
-        },
-    ] {
-        let e = refused(&mut rx, &frame);
-        assert_eq!(
-            (e.kind(), e.field()),
-            (ErrorKind::LengthMismatch, Some(field::FRAME_LEN))
-        );
+    // Above the maximum of the receiver's configuration (the codec's maximum is the frame's).
+    let e = refused(&mut rx, &tc_frame_of(1, LEN + 1, false, false));
+    assert_eq!(
+        (e.kind(), e.field()),
+        (ErrorKind::LengthMismatch, Some(field::FRAME_LEN))
+    );
+    // Below the header, or not the length the header gives: the codec refuses, and no `Plain`
+    // frame reaches the receiver (RS-023).
+    for frame in [tc_frame_of(1, 5, false, false), vec![0, 0, 4], {
+        let mut f = tc_frame_of(1, 12, false, false);
+        f.pop();
+        f
+    }] {
+        assert!(Tc::plain(rx.config(), &frame).is_err());
     }
 }
 
@@ -783,10 +847,17 @@ fn a_truncated_uslp_frame_is_not_served() {
     let mut rx = FrameReceiver::<Uslp, 4>::new(config);
     // Any length, from the 6 octets of the shortest truncated frame (Table 5-3).
     for len in [6, 12] {
-        let mut frame = uslp_variable_frame(1, 0, len, 4);
+        // The 4-octet header with the End of Frame Primary Header Flag, then the TFDF Header
+        // (rule 111, UPID 5) and data.
+        let mut frame = uslp_variable_frame(1, 0, len, 4)[..4].to_vec();
         frame[3] |= 1;
+        frame.push(0xE5);
+        frame.resize(len, 0x44);
         let mut twin = rx.clone();
-        let e = refused(&mut rx, &frame);
+        // The codec decodes it on a VC with a truncated frame length of its own.
+        let plain = truncated_uslp(&frame).unwrap();
+        let mut area = vec![0u8; rx.config().area_len()];
+        let e = rx.step(ReceiverInput::Frame(plain), &mut area).unwrap_err();
         assert_eq!(
             (e.kind(), e.field()),
             (
@@ -796,7 +867,8 @@ fn a_truncated_uslp_frame_is_not_served() {
         );
         // The refusal changed nothing but its counter: a twin that refused another input is
         // equal (API-058).
-        assert_eq!(refused(&mut twin, &[0]).kind(), ErrorKind::LengthMismatch);
+        let again = ReceiverInput::Frame(truncated_uslp(&frame).unwrap());
+        assert!(twin.step(again, &mut []).is_err());
         assert_eq!(twin, rx);
     }
 }
@@ -834,13 +906,16 @@ fn variable_length_uslp_frames_are_routed_by_their_own_length() {
         feed(&mut other, &oid)[..],
         [ReceiverOutput::InsertSdu { .. }]
     ));
-    // A frame with a count and no data octet is malformed.
+    // A frame above the maximum of the receiver's configuration (the codec's maximum is the
+    // frame's own length).
     assert_eq!(
-        refused(&mut rx, &uslp_variable_frame(1, 0, 8, 7)).kind(),
-        ErrorKind::Malformed
+        refused(&mut rx, &uslp_variable_frame(1, 0, LEN + 1, 7)).kind(),
+        ErrorKind::LengthMismatch
     );
+    // A frame with a count and no data octet, one shorter than its header, and one not the
+    // length its header gives: the codec refuses them (RS-023).
     for bad in [
-        uslp_variable_frame(1, 0, LEN + 1, 7),
+        uslp_variable_frame(1, 0, 8, 7),
         uslp_variable_frame(1, 0, 6, 7),
         {
             let mut f = uslp_variable_frame(1, 0, 12, 7);
@@ -848,7 +923,7 @@ fn variable_length_uslp_frames_are_routed_by_their_own_length() {
             f
         },
     ] {
-        assert_eq!(refused(&mut rx, &bad).kind(), ErrorKind::LengthMismatch);
+        assert!(Uslp::plain(rx.config(), &bad).is_err());
     }
 }
 
@@ -959,9 +1034,11 @@ fn a_tc_frame_is_delivered_whole() {
     let mut rx = tc();
     let frame = tc_frame(1);
     let mut area = vec![0u8; LEN];
-    let out = rx
-        .step(ReceiverInput::Frame(CheckedFrame::new(&frame)), &mut area)
-        .unwrap();
+    let out = {
+        let input = plain_of(&rx, &frame);
+        rx.step(input, &mut area)
+    }
+    .unwrap();
     let Some(ReceiverOutput::TcFrame { vc: v, frame: r }) = out.get(0) else {
         panic!()
     };
@@ -1121,13 +1198,17 @@ fn a_configuration_is_checked_where_it_is_built() {
 
 // ---- API-058, API-053, GEN-020: any input, no panic, no InternalError ----
 
-fn check_out<P: ReceiveProtocol, const V: usize>(
+fn check_out<P: Plained, const V: usize>(
     rx: &mut FrameReceiver<P, V>,
     frame: &[u8],
 ) -> Result<(), TestCaseError> {
+    // A frame the codec refuses never reaches the engine (RS-023).
+    let Ok(plain) = P::plain(rx.config(), frame) else {
+        return Ok(());
+    };
     let before = rx.clone();
     let mut area = vec![0u8; rx.config().area_len()];
-    match rx.step(ReceiverInput::Frame(CheckedFrame::new(frame)), &mut area) {
+    match rx.step(ReceiverInput::Frame(plain), &mut area) {
         Ok(actions) => {
             prop_assert!(actions.len() <= FRAME_RECEIVER_MAX_ACTIONS);
             for o in actions.iter() {
@@ -1148,12 +1229,10 @@ fn check_out<P: ReceiveProtocol, const V: usize>(
         Err(e) => {
             prop_assert_ne!(e.kind(), ErrorKind::InternalError);
             // The refusal leaves the engine as it was but for its counter: a twin that
-            // refused another input (too short for any protocol) equals it (API-058).
+            // refused the frame for an output area of no octet equals it (API-058).
             let mut twin = before;
-            prop_assert!(
-                twin.step(ReceiverInput::Frame(CheckedFrame::new(&[0])), &mut area)
-                    .is_err()
-            );
+            let again = ReceiverInput::Frame(P::plain(twin.config(), frame).unwrap());
+            prop_assert!(twin.step(again, &mut []).is_err());
             prop_assert!(twin == *rx);
         }
     }

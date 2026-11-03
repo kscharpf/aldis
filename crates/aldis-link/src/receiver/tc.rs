@@ -39,6 +39,11 @@ impl TcVc {
 impl ReceiveProtocol for Tc {
     type Channel = TcChannel;
     type VcParams = TcVc;
+    type Plain<'a> = aldis_tc::PlainTcFrame<'a>;
+
+    fn plain_octets<'a>(frame: &Self::Plain<'a>) -> &'a [u8] {
+        frame.octets()
+    }
 
     fn insert_zone_len(_: &TcChannel) -> usize {
         0
@@ -63,13 +68,10 @@ impl ReceiveProtocol for Tc {
     }
 
     fn receive<const V: usize>(cx: &mut FrameContext<'_, Tc, V>, frame: &[u8]) -> Result<()> {
-        let [_, _, b2, b3, _] = header::<HEADER_LEN>(frame)?;
         // The Frame Length field gives the length of this frame, which varies up to the
-        // channel's maximum (232.0 §2.3.1, §4.1.2.7).
-        let declared = usize::from(u16::from_be_bytes([b2 & 0x03, b3])).saturating_add(1);
-        if declared != frame.len() {
-            return Err(Error::new(ErrorKind::LengthMismatch).with_field(field::FRAME_LEN));
-        }
+        // channel's maximum (232.0 §2.3.1, §4.1.2.7); the codec has checked that it is the
+        // length of the octets, a property of a `PlainTcFrame` (RS-023).
+        let [_, _, b2, _, _] = header::<HEADER_LEN>(frame)?;
         // The VCID is the six bits above the 10-bit Frame Length (232.0 §4.1.2.7).
         let vc = vc_of::<Tc>(b2 >> 2)?;
         match cx.params(vc) {
