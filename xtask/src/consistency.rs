@@ -557,15 +557,11 @@ fn vector_problems(
 /// them (M3 plan WP-2 before WP-3 and WP-4; M4 plan WP-2a/2b before WP-3 to WP-6): the test
 /// requirement is waived until the runner lands, and the entry is removed in the pull request
 /// that adds it. `cop1/scenarios/` left it when the C ABI runner of M3 WP-6 landed. The `link/`
-/// files go one by one: the `PacketGenerator` and `PacketExtractor` files left with M4 WP-3, and
-/// the `ChannelMux`, Access, and Bitstream generator files with WP-4; the rest wait for WP-5
-/// (`FrameReceiver`) and WP-6 (`MapSegmenter`, `MapReassembler`).
-const AWAITING_RUNNER: &[&str] = &[
-    "link/send/map_segmenter_tc.json",
-    "link/send/map_segmenter_uslp.json",
-    "link/recv/map_reassembler_tc.json",
-    "link/recv/map_reassembler_uslp.json",
-];
+/// files went one by one: the `PacketGenerator` and `PacketExtractor` files left with M4 WP-3, the
+/// `ChannelMux`, Access, and Bitstream generator files with WP-4, the `FrameReceiver` files with
+/// WP-5, and the `MapSegmenter` and `MapReassembler` files with WP-6. No file waits for a runner
+/// now; the list stays for the next engine that gets its vectors first.
+const AWAITING_RUNNER: &[&str] = &[];
 
 /// Whether `f`, relative to `test-vectors/`, is a vector file that no runner runs yet. Such a
 /// file is no evidence for `cargo xtask trace` either (`trace.rs`).
@@ -858,6 +854,12 @@ const ENGINES: &[(&str, Sizing)] = &[
     ("ChannelMux", Sizing::Sized("link")),
     // The FrameReceiver's VC capacity is `max_virtual_channels` (M4 WP-5).
     ("FrameReceiver", Sizing::Sized("link")),
+    // The MapSegmenter's queue is `packet_queue_octets`, the MapReassembler holds
+    // `max_map_channels` assembly buffers, and the CltuPacker's unit holds frames of
+    // `max_frame_octets` (M4 WP-6; the C ABI handles follow in WP-7).
+    ("MapSegmenter", Sizing::Sized("link")),
+    ("MapReassembler", Sizing::Sized("link")),
+    ("CltuPacker", Sizing::Sized("link")),
 ];
 
 /// How an engine is sized in the C ABI.
@@ -1242,9 +1244,9 @@ mod tests {
         assert!(!awaiting_runner("link/send/packet_generator_tm.json"));
         assert!(!awaiting_runner("link/recv/packet_extractor_uslp.json"));
         assert!(!awaiting_runner("link/send/channel_mux_tm.json"));
-        assert!(awaiting_runner("link/send/map_segmenter_tc.json"));
+        assert!(!awaiting_runner("link/send/map_segmenter_tc.json"));
         assert!(!awaiting_runner("link/recv/frame_receiver_aos.json"));
-        assert!(awaiting_runner("link/recv/map_reassembler_tc.json"));
+        assert!(!awaiting_runner("link/recv/map_reassembler_tc.json"));
         assert_eq!(
             vector_problems(&file, readme, &[], "", "", &c),
             ["test-vectors/cop1/scenarios/fop1_table.json: no test in crates/*/tests/ runs it"]
