@@ -104,6 +104,7 @@ WP-6 needs more than WP-1 and `aldis-cop1`: its segmentation scenarios (LNK-040�
 
 ### WP-7 C ABI handles (M) — CABI-030…033, CABI-040
 - One opaque handle per engine (D4), the exerciser group, and the generated header.
+- The FOP-1 hand-off of Segment Header FDUs (OI-71 (a)) and of per-FDU TFDF headers, with the `Fop1Target` change it needs, done together with this work package (maintainer, 2026-11-02; [#235](https://github.com/kscharpf/aldis/issues/235)); LNK-043 is partly met by WP-6.
 - Issue #217 (a `capacities.toml` entry for every engine, checked by `consistency`) is its own pull request (D5).
 - Builds the engine handles at the `[link]` sizes of `capacities.toml`, deferred from WP-3 to WP-6 by the maintainer, 2026-11-02 (an exception to the checklist "Adding an engine").
 

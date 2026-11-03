@@ -560,7 +560,11 @@ impl<P: SegmenterProtocol, const M: usize, const Q: usize> MapSegmenter<P, M, Q>
         for map in config.maps() {
             let (longest, f) = match map.service {
                 MapService::OctetStream { .. } => (zone, field::MAX_FDU_LEN),
-                _ => (map.max_sdu_len.unwrap_or(zone), field::MAX_SDU_LEN),
+                _ => match map.max_sdu_len {
+                    Some(max) => (max, field::MAX_SDU_LEN),
+                    // No segmentation: one FDU holds the longest SDU.
+                    None => (zone, field::MAX_SDU_LEN),
+                },
             };
             if longest.saturating_add(PREFIX) > Q {
                 return Err(Error::new(ErrorKind::CapacityExceeded).with_field(f));

@@ -575,11 +575,13 @@ impl<P: ReassemblerProtocol, const M: usize, const S: usize> MapReassembler<P, M
                 data
             }
         };
-        let needed = map
-            .max_sdu_len()
-            .unwrap_or(1)
-            .saturating_sub(1)
-            .saturating_add(data.len());
+        // An octet stream assembles nothing: it needs the octets of the FDU only.
+        let held_max = match map.max_sdu_len() {
+            Some(max) => max.saturating_sub(1),
+            None if map.service == Service::OctetStream => 0,
+            None => return Err(Error::new(ErrorKind::InternalError)),
+        };
+        let needed = held_max.saturating_add(data.len());
         if area < needed {
             return Err(Error::buffer_too_small(needed));
         }
@@ -597,7 +599,7 @@ impl<P: ReassemblerProtocol, const M: usize, const S: usize> MapReassembler<P, M
                         .bufs
                         .get(index)
                         .and_then(|b| b.get(..held))
-                        .unwrap_or(&[]);
+                        .ok_or(Error::new(ErrorKind::InternalError))?;
                     // A packet that is too long is the event `SduTooLong`, not an error.
                     if held.saturating_add(data.len()) <= map.max_sdu_len && held > 0 {
                         single_packet(buf, data)?;
@@ -674,7 +676,12 @@ impl<P: ReassemblerProtocol, const M: usize, const S: usize> MapReassembler<P, M
             .flatten()
             .ok_or(Error::new(ErrorKind::InternalError))?;
         let id = parsed.map;
-        let max = map.max_sdu_len().unwrap_or(0);
+        // Only an octet stream (and an idle TFDF) has no maximum, and uses none.
+        let max = match (parsed.unit, map.max_sdu_len()) {
+            (Unit::Stream(_) | Unit::Idle, _) => 0,
+            (_, Some(max)) => max,
+            (_, None) => return Err(Error::new(ErrorKind::InternalError)),
+        };
         let in_progress = self.held(index) > 0;
         let violation = ReassemblyEvent::SequenceViolation;
         let too_long = ReassemblyEvent::SduTooLong;
@@ -847,7 +854,9 @@ fn single_packet(head: &[u8], tail: &[u8]) -> Result<()> {
         *d = *s;
         seen = seen.saturating_add(1);
     }
-    let start = prefix.get(..seen).unwrap_or(&[]);
+    let start = prefix
+        .get(..seen)
+        .ok_or(Error::new(ErrorKind::InternalError))?;
     let kind = start
         .first()
         .and_then(|&b| packet::kind_of(b))
