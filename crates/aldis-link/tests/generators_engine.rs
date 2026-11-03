@@ -96,6 +96,17 @@ fn an_access_configuration_the_blue_books_forbid_is_refused() {
         (ErrorKind::CapacityExceeded, Some(field::MAX_SDU_LEN.name()))
     );
     assert!(AccessGenerator::<Uslp, 42>::new(long).is_ok());
+    // The in-place head makes the same check (#240).
+    assert_eq!(
+        named(AccessGenerator::<Uslp, 41>::new_head(long)),
+        (ErrorKind::CapacityExceeded, Some(field::MAX_SDU_LEN.name()))
+    );
+    assert!(AccessGenerator::<Uslp, 42>::new_head(long).is_ok());
+    let offsets = (
+        AccessGenerator::<Uslp, 42>::HEAD_OFFSET,
+        AccessGenerator::<Uslp, 42>::BUFFERS_OFFSET,
+    );
+    assert!(offsets.0 < offsets.1);
 }
 
 fn field_of(a: &aldis_link::access::AccessActions, out: &[u8]) -> Option<Vec<u8>> {
