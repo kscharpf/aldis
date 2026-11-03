@@ -37,6 +37,8 @@ pub mod common;
 pub mod extractor;
 #[cfg(all(feature = "spp", feature = "epp"))]
 pub mod generator;
+#[cfg(doc)]
+pub mod inplace;
 pub mod mux;
 #[cfg(all(feature = "spp", feature = "epp"))]
 mod packet;

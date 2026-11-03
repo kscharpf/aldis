@@ -163,14 +163,14 @@
  *
  * `[link] packet_queue_octets` of `capacities.toml` (CABI-030).
  */
-#define ALDIS_LINK_PACKET_QUEUE_OCTETS 2048
+#define ALDIS_LINK_PACKET_QUEUE_OCTETS 8192
 
 /**
  * Octets of the largest data field or frame of one link engine (LNK-075; M4 plan D4).
  *
  * `[link] max_frame_octets` of `capacities.toml` (CABI-030).
  */
-#define ALDIS_LINK_MAX_FRAME_OCTETS 1024
+#define ALDIS_LINK_MAX_FRAME_OCTETS 2048
 
 /**
  * Header size argument: the smallest header that holds the fields and the length
@@ -1302,17 +1302,17 @@
  * 64-bit words of one `aldis_packet_generator_t` (CABI-031): the tag and the largest of the
  * engines of TM, AOS, and USLP at the build capacities; the build fails when it outgrows it.
  */
-#define ALDIS_PACKET_GENERATOR_WORDS 411
+#define ALDIS_PACKET_GENERATOR_WORDS 1308
 
 /**
  * 64-bit words of one `aldis_access_generator_t` (CABI-031).
  */
-#define ALDIS_ACCESS_GENERATOR_WORDS 272
+#define ALDIS_ACCESS_GENERATOR_WORDS 1040
 
 /**
  * 64-bit words of one `aldis_bitstream_generator_t` (CABI-031).
  */
-#define ALDIS_BITSTREAM_GENERATOR_WORDS 269
+#define ALDIS_BITSTREAM_GENERATOR_WORDS 1037
 
 /**
  * Length of the Operational Control Field in octets (132.0 §4.1.5.1, 732.0 §4.1.5.1,

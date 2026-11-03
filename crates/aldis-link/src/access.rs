@@ -211,14 +211,37 @@ pub struct AccessStatus {
 /// `Q` is the capacity of the SDU queue in octets, two octets of length for each SDU included
 /// (GEN-011); a configuration whose longest SDU does not fit is refused with
 /// `CapacityExceeded`.
+///
+/// The engine is its [`AccessGeneratorHead`] followed by its [`AccessGeneratorBuffers`]
+/// (`repr(C)`), so that a caller can build it in place (see [`crate::inplace`]).
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[repr(C)]
 pub struct AccessGenerator<P: AccessProtocol, const Q: usize> {
+    head: AccessGeneratorHead<P>,
+    bufs: AccessGeneratorBuffers<Q>,
+}
+
+/// Everything of an [`AccessGenerator`] but its queue (see [`crate::inplace`]).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AccessGeneratorHead<P: AccessProtocol> {
     config: AccessGeneratorConfig<P>,
-    queue: [u8; Q],
     queue_len: usize,
     sent: usize,
     octets: usize,
     status: AccessStatus,
+}
+
+/// The SDU queue of an [`AccessGenerator`]: `Q` octets, valid when all zero, which is the empty
+/// state (see [`crate::inplace`]).
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[repr(C)]
+pub struct AccessGeneratorBuffers<const Q: usize> {
+    queue: [u8; Q],
+}
+
+impl<const Q: usize> AccessGeneratorBuffers<Q> {
+    /// An empty queue.
+    pub const ZERO: Self = Self { queue: [0; Q] };
 }
 
 impl<P: AccessProtocol, const Q: usize> AccessGenerator<P, Q> {
@@ -227,10 +250,26 @@ impl<P: AccessProtocol, const Q: usize> AccessGenerator<P, Q> {
     /// # Errors
     /// `CapacityExceeded` (`max_sdu_len`) if the longest SDU and its length do not fit the queue.
     pub fn new(config: AccessGeneratorConfig<P>) -> Result<AccessGenerator<P, Q>> {
-        AccessGenerator::<P, Q>::check_capacity(&config)?;
         Ok(AccessGenerator {
+            head: Self::new_head(config)?,
+            bufs: AccessGeneratorBuffers::ZERO,
+        })
+    }
+
+    /// The offset of the head in the engine, for an in-place build (see [`crate::inplace`]).
+    pub const HEAD_OFFSET: usize = core::mem::offset_of!(Self, head);
+    /// The offset of the buffers in the engine, for an in-place build (see [`crate::inplace`]).
+    pub const BUFFERS_OFFSET: usize = core::mem::offset_of!(Self, bufs);
+
+    /// The head of a generator with an empty queue: the part of [`Self::new`] that is built from
+    /// the configuration (see [`crate::inplace`]).
+    ///
+    /// # Errors
+    /// As [`Self::new`].
+    pub fn new_head(config: AccessGeneratorConfig<P>) -> Result<AccessGeneratorHead<P>> {
+        AccessGenerator::<P, Q>::check_capacity(&config)?;
+        Ok(AccessGeneratorHead {
             config,
-            queue: [0; Q],
             queue_len: 0,
             sent: 0,
             octets: 0,
@@ -249,13 +288,13 @@ impl<P: AccessProtocol, const Q: usize> AccessGenerator<P, Q> {
     /// The configuration in force.
     #[must_use]
     pub const fn config(&self) -> &AccessGeneratorConfig<P> {
-        &self.config
+        &self.head.config
     }
 
     /// The status snapshot: counters and occupancy (API-056, LNK-002).
     #[must_use]
     pub const fn status(&self) -> &AccessStatus {
-        &self.status
+        &self.head.status
     }
 
     /// Runs one input (API-057).
@@ -280,13 +319,13 @@ impl<P: AccessProtocol, const Q: usize> AccessGenerator<P, Q> {
             }
             AccessInput::Reconfigure(config) => {
                 AccessGenerator::<P, Q>::check_capacity(&config)?;
-                let octets = self.octets;
-                self.config = config;
-                self.queue_len = 0;
-                self.sent = 0;
-                self.octets = 0;
-                self.status.discarded_octets.add(octets);
-                self.status.queue.set(0);
+                let octets = self.head.octets;
+                self.head.config = config;
+                self.head.queue_len = 0;
+                self.head.sent = 0;
+                self.head.octets = 0;
+                self.head.status.discarded_octets.add(octets);
+                self.head.status.queue.set(0);
                 if octets > 0 {
                     actions.push(AccessOutput::Discarded { octets })?;
                 }
@@ -298,25 +337,31 @@ impl<P: AccessProtocol, const Q: usize> AccessGenerator<P, Q> {
     /// `SubmitSdu` (LNK-020).
     fn submit(&mut self, sdu: &[u8]) -> Result<()> {
         if let Err(e) = self.check_sdu(sdu) {
-            self.status.refused.incr();
+            self.head.status.refused.incr();
             return Err(e);
         }
         let needed = sdu.len().saturating_add(PREFIX);
-        if needed > Q.saturating_sub(self.queue_len) {
-            self.status.would_block.incr();
+        if needed > Q.saturating_sub(self.head.queue_len) {
+            self.head.status.would_block.incr();
             return Err(Error::new(ErrorKind::WouldBlock));
         }
         // The length fits 16 bits: `new` limits the zone and `with_max_sdu_len` the SDU to
         // `MAX_SDU`, and `check_sdu` has refused a longer one.
         let [.., a, b] = sdu.len().to_be_bytes();
         let queued = [a, b].into_iter().chain(sdu.iter().copied());
-        for (d, s) in self.queue.iter_mut().skip(self.queue_len).zip(queued) {
+        for (d, s) in self
+            .bufs
+            .queue
+            .iter_mut()
+            .skip(self.head.queue_len)
+            .zip(queued)
+        {
             *d = s;
         }
-        self.queue_len = self.queue_len.saturating_add(needed);
-        self.octets = self.octets.saturating_add(sdu.len());
-        self.status.sdus_in.incr();
-        self.status.queue.set(self.octets);
+        self.head.queue_len = self.head.queue_len.saturating_add(needed);
+        self.head.octets = self.head.octets.saturating_add(sdu.len());
+        self.head.status.sdus_in.incr();
+        self.head.status.queue.set(self.head.octets);
         Ok(())
     }
 
@@ -327,13 +372,13 @@ impl<P: AccessProtocol, const Q: usize> AccessGenerator<P, Q> {
             if sdu.is_empty() {
                 return Err(mismatch);
             }
-        } else if sdu.len() != self.config.field_len {
+        } else if sdu.len() != self.head.config.field_len {
             return Err(mismatch);
         }
-        if sdu.len() > self.config.max_sdu_len {
+        if sdu.len() > self.head.config.max_sdu_len {
             return Err(Error::out_of_range(
                 field::MAX_SDU_LEN,
-                u64::try_from(self.config.max_sdu_len).unwrap_or(u64::MAX),
+                u64::try_from(self.head.config.max_sdu_len).unwrap_or(u64::MAX),
                 u64::try_from(sdu.len()).unwrap_or(u64::MAX),
             ));
         }
@@ -342,10 +387,11 @@ impl<P: AccessProtocol, const Q: usize> AccessGenerator<P, Q> {
 
     /// The length of the SDU at the head of the queue (LNK-020).
     fn head_len(&self) -> Result<Option<usize>> {
-        if self.queue_len == 0 {
+        if self.head.queue_len == 0 {
             return Ok(None);
         }
         let prefix = self
+            .bufs
             .queue
             .first_chunk::<PREFIX>()
             .ok_or(Error::new(ErrorKind::InternalError))?;
@@ -354,15 +400,15 @@ impl<P: AccessProtocol, const Q: usize> AccessGenerator<P, Q> {
 
     /// `Release` (LNK-020).
     fn release(&mut self, out: &mut [u8]) -> Result<Option<AccessField>> {
-        let field_len = self.config.field_len;
+        let field_len = self.head.config.field_len;
         let area = out
             .get_mut(..field_len)
             .ok_or(Error::buffer_too_small(field_len))?;
         let Some(len) = self.head_len()? else {
             return Ok(None);
         };
-        let zone_len = self.config.zone_len();
-        let remaining = len.saturating_sub(self.sent);
+        let zone_len = self.head.config.zone_len();
+        let remaining = len.saturating_sub(self.head.sent);
         let done = remaining <= zone_len;
         let take = remaining.min(zone_len);
         // The offset of the last octet of the SDU in the zone; it fits 16 bits where a pointer
@@ -376,15 +422,21 @@ impl<P: AccessProtocol, const Q: usize> AccessGenerator<P, Q> {
         let (header, zone) = area
             .split_at_mut_checked(P::HEADER_LEN)
             .ok_or(Error::new(ErrorKind::InternalError))?;
-        P::write_header(&self.config.params, self.sent > 0, pointer, header);
-        let from = PREFIX.saturating_add(self.sent);
+        P::write_header(
+            &self.head.config.params,
+            self.head.sent > 0,
+            pointer,
+            header,
+        );
+        let from = PREFIX.saturating_add(self.head.sent);
         let sdu = self
+            .bufs
             .queue
             .iter()
             .skip(from)
             .take(take)
             .copied()
-            .chain(core::iter::repeat(self.config.idle_pattern));
+            .chain(core::iter::repeat(self.head.config.idle_pattern));
         // bound: the zone has `zone_len` octets, and `zip` stops at its end.
         for (d, s) in zone.iter_mut().zip(sdu) {
             *d = s;
@@ -392,32 +444,32 @@ impl<P: AccessProtocol, const Q: usize> AccessGenerator<P, Q> {
         if done {
             self.pop(len);
         } else {
-            self.sent = self.sent.saturating_add(take);
+            self.head.sent = self.head.sent.saturating_add(take);
         }
-        self.octets = self.octets.saturating_sub(take);
-        self.status.fields_out.incr();
-        self.status.queue.set(self.octets);
+        self.head.octets = self.head.octets.saturating_sub(take);
+        self.head.status.fields_out.incr();
+        self.head.status.queue.set(self.head.octets);
         Ok(Some(AccessField {
-            vc: self.config.vc.into(),
+            vc: self.head.config.vc.into(),
             field: OutRange::new(0, field_len),
             pointer: P::SPANNING.then_some(pointer),
-            route: P::route(&self.config.params),
+            route: P::route(&self.head.config.params),
         }))
     }
 
     /// Removes the SDU of `len` octets at the head of the queue and closes the gap.
     fn pop(&mut self, len: usize) {
         let gone = len.saturating_add(PREFIX);
-        let left = self.queue_len.saturating_sub(gone);
+        let left = self.head.queue_len.saturating_sub(gone);
         // Close the gap octet by octet: a slice method that moves a range could panic.
         for i in 0..left {
-            let octet = self.queue.get(gone.saturating_add(i)).copied();
-            if let (Some(octet), Some(dst)) = (octet, self.queue.get_mut(i)) {
+            let octet = self.bufs.queue.get(gone.saturating_add(i)).copied();
+            if let (Some(octet), Some(dst)) = (octet, self.bufs.queue.get_mut(i)) {
                 *dst = octet;
             }
         }
-        self.queue_len = left;
-        self.sent = 0;
+        self.head.queue_len = left;
+        self.head.sent = 0;
     }
 }
 

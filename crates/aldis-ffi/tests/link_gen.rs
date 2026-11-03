@@ -113,8 +113,8 @@ fn capacities_are_published_and_match_the_engines() {
         ALDIS_BITSTREAM_GENERATOR_MAX_ACTIONS,
         aldis::link::bitstream::BITSTREAM_GENERATOR_MAX_ACTIONS
     );
-    assert_eq!(ALDIS_LINK_MAX_FRAME_OCTETS, 1024);
-    assert_eq!(ALDIS_LINK_PACKET_QUEUE_OCTETS, 2048);
+    assert_eq!(ALDIS_LINK_MAX_FRAME_OCTETS, 2048);
+    assert_eq!(ALDIS_LINK_PACKET_QUEUE_OCTETS, 8192);
     assert_eq!(
         size_of::<aldis_packet_generator_t>(),
         ALDIS_PACKET_GENERATOR_WORDS * 8
