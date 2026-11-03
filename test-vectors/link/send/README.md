@@ -64,7 +64,7 @@ Each file gives the engine's `config` once; a scenario that needs another gives 
 * **packet-generator**: `protocol` (`tm`, `aos`, `uslp`), `aos_issue` (5, or 4), `vc`, `field_len` (the octets of the `data_field`, header included), `valid_pvns` (`0` Space Packet, `7` Encapsulation Packet), `max_packet_len`, `queue_capacity` (octets), `release_deadline_us` (absent: release only when full), `idle_policy` (`oid`, `idle_field`), `idle_packet_kind` (`space_packet`, `encapsulation`; TM and AOS), `idle_pattern_hex`, and for USLP `upid`, `map_id`, `qos`.
 * **access-generator**: `protocol`, `vc`, `field_len`, and for USLP `upid`, `map_id`, `qos`, `max_sdu_len`, `idle_pattern_hex`.
 * **bitstream-generator**: `protocol` (`aos`), `vc`, `field_len` (the B_PDU), `idle_pattern_hex` (`00` or `FF`).
-* **channel-mux**: `protocol`, `scid`, `frame_len`, `fecf`, `policy.kind` (`fixed_priority`, `round_robin`, `weighted_round_robin`), `vcs` (each: `vcid`, `role`, `priority`, `weight`, `ocf_init_hex` (present: the VC has a VC_OCF; TM and AOS only), `fsh_init_hex` (TM), `sec_header_len`, `sec_trailer_len`; USLP also `map_id`, `qos`, `vcf_len_sc`, `vcf_len_exp`), TM: `oid_vc` (the dedicated VC, which is one of `vcs`), `mc_ocf_init_hex`, `mc_fsh_init_hex`; AOS: `fhec`, `cycle_in_use`; AOS and USLP: `insert_zone_len`, `insert_init_hex`; USLP: `source_or_destination`, `mc_ocf_init_hex` (the MC parameter "Inclusion of OCF Required": every frame of the MC has the OCF, OI-76), `oid` (`vcf_len`). A TM VC with `role: vca` carries VCA_SDUs (LNK-082). The data field a VC gives the multiplexer is the frame length minus the other fields of its frame; the model computes it and the scenarios offer exactly that many octets.
+* **channel-mux**: `protocol`, `scid`, `frame_len`, `fecf`, `policy.kind` (`fixed_priority`, `round_robin`, `weighted_round_robin`), `vcs` (each: `vcid`, `role`, `priority`, `weight`, `ocf_init_hex` (present: the VC has a VC_OCF; TM and AOS only), `fsh_init_hex` (TM), `sec_header_len`, `sec_trailer_len`; USLP also `map_id`, `qos`, `vcf_len_sc`, `vcf_len_exp`, `cop` (COP-1 in effect on the VC, 732.1 Table 5-3; absent means false)), TM: `oid_vc` (the dedicated VC, which is one of `vcs`), `mc_ocf_init_hex`, `mc_fsh_init_hex`; AOS: `fhec`, `cycle_in_use`; AOS and USLP: `insert_zone_len`, `insert_init_hex`; USLP: `source_or_destination`, `mc_ocf_init_hex` (the MC parameter "Inclusion of OCF Required": every frame of the MC has the OCF, OI-76), `oid` (`vcf_len`). A TM VC with `role: vca` carries VCA_SDUs (LNK-082). The data field a VC gives the multiplexer is the frame length minus the other fields of its frame; the model computes it and the scenarios offer exactly that many octets.
 * **map-segmenter**: `protocol` (`tc`, `uslp`); TC: `segment_header`, `fecf`, `max_fdu_len` (Segment Header included), `blocking` (VC without a Segment Header), `maps` (`map_id`, `segmentation`, `blocking`, `max_sdu_len`); USLP: `max_tfdf_len` (TFDF Header included), `maps` (`map_id`, `service`, `upid`, `blocking`, `max_sdu_len`, `release_deadline_us`).
 
 ## Readings the model makes
@@ -88,12 +88,21 @@ Each is either settled by a Blue Book clause or a resolved open issue, or a judg
 
 Cases the first version of this directory left out are covered since [OI-74](../../../docs/09-open-issues.md), OI-75, and OI-76: the TM VCA frame header (LNK-082), the `cop` block of Offer (LNK-076, LNK-032; with `bypass` 1 the mux takes only the flags and counts itself), the first-frame Insert Zone repeat (LNK-034), a weighted turn lost at an OID frame (LNK-031), IdleField with a started field (LNK-014), `sdu_len` and `field_len` (LNK-020, LNK-076), `InvalidField (qos)` (LNK-041), the expedited OID frame (LNK-030), and the USLP OCF by MC (OI-76, LNK-033).
 
+## Added by the blind-model round of #231
+
+The decisions of [OI-78](../../../docs/09-open-issues.md) that an input can show, modelled from the text of OI-78 and 04 (each refusal is the only output of its step and changes nothing, API-058):
+
+* `ChannelMux` (M4 WP-4): an Offer that names a MAP on TM or AOS is `InvalidField` (`map_id`); on USLP a MAP other than the VC's `map_id` is `UnknownChannel` (`map_id`); a `cop` block on TM, AOS, or a USLP VC without `cop` is `InvalidField` (`cop_in_effect`); `bypass` 0 with `protocol_control` 1 (732.1 Table 4-1) is `InvalidField` (`protocol_control_command_flag`); a Type-AD `vcf_count` the sequence-controlled count field cannot hold is `OutOfRange` (`vcf_count`); a `qos` that disagrees with the block's `bypass` is `InvalidField` (`qos`). Scenarios `link-send-mux-{tm,aos,uslp}-lnk-076-*-refused`.
+* `MapSegmenter` (M4 WP-6): a submission to a USLP MAP of another service (`submit_packet` to a MAP that is not `packets`, `submit_sdu` to one that is not `mapa`, `submit_octets` to one that is not `octet_stream`) is `InvalidField` (`data_field_content`).
+
+## Superseded
+
+`link-send-mux-uslp-lnk-076-cop-block` (TV-021): its VC gives no `cop`, and by the decision of M4 WP-4 a `cop` block is accepted only on a VC with COP-1 in effect. Its steps are the released ones; `link-send-mux-uslp-lnk-076-cop-block-cop-vc` repeats them with `"cop": true` on the VC.
+
 ## Not covered
 
-Decided by the work packages under [OI-78](../../../docs/09-open-issues.md); the sending-side cases of `ChannelMux` (WP-4) are pinned by Rust tests (`channel_mux_engine.rs`), with no case in this directory:
-
-* The configuration errors of the `MapSegmenter` and the CLTU packer (LNK-078) are tested in `map_segmenter_engine.rs` and `cltu_packer.rs` (M4 WP-6); those of the `ChannelMux` and the generators, the API-071 limits included, are tested in `channel_mux_engine.rs` and `generators_engine.rs`. The segmenter decisions of OI-78 (a stream TFDZ that waits does not hold the SDUs behind it, a submission to a MAP of another service, the VCF Count of a QoS) are pinned by `map_segmenter_engine.rs`; their vector cases go to the same round.
-
-The vector cases for the `ChannelMux` items of OI-78 go to the blind-model round of [#231](https://github.com/kscharpf/aldis/issues/231).
+* Construction errors (`InvalidConfig`, LNK-078; the API-071 limits; a TM frame above 4 095 octets; an Issue 4 AOS SCID above 255; an MC and a VC that both have an OCF or a Secondary Header; a USLP VC with COP-1 and a sequence-controlled VCF Count Length of 0; a frame with no data field): a scenario file has no input for a configuration that the engine refuses. They are tested in `channel_mux_engine.rs`, `generators_engine.rs`, `map_segmenter_engine.rs`, and `cltu_packer.rs`.
+* The AOS VC Frame Count wrap with the Cycle in use: the mux has no start count (OI-74 (2)), so a scenario would need 2^24 frames; a unit test covers it.
+* The other segmenter decisions of OI-78 are not in this round: a PVN other than 0 and 7 (OI-78 names no error), a TC VC without a Segment Header and its FDU limit, the VCF Count of a QoS for a VC that segments (the segmenter configuration has no count length), the order of a waiting stream TFDZ and the SDUs behind it, and the CLTU packer (no vector file).
 
 Several master channels on one physical channel are deferred by OI-75.

@@ -83,6 +83,29 @@
         {"at_us": 4000, "input": {"fdu": {"vc": 1, "data_hex": "8118191A1B1C1D1E1F2021222324"}}, "expect": [{"reassembly_event": {"kind": "SequenceViolation", "vc": 1, "map": 1}}]},
         {"at_us": 5000, "input": {"reconfigure": {}}, "expect": []}
       ]
+    },
+    {
+      "id": "link-recv-reassemble-tc-blocked-refused",
+      "description": "A blocked FDU whose packets do not fit it is refused whole, with no state change (133.0 4.1.3.5; OI-78, decided by the maintainer, 2026-11-02): a length that runs past the end and an incomplete header are LengthMismatch (packet_len), a PVN other than 0 and 7 InvalidField (packet_version); then a valid FDU is split.",
+      "requirements": ["LNK-071"],
+      "steps": [
+        {"at_us": 1000, "input": {"fdu": {"vc": 1, "data_hex": "C00001C00000020102030002C00000050203040506"}}, "expect": [{"error": "LengthMismatch", "field": "packet_len"}]},
+        {"at_us": 2000, "input": {"fdu": {"vc": 1, "data_hex": "C00001C00000020102030002C000"}}, "expect": [{"error": "LengthMismatch", "field": "packet_len"}]},
+        {"at_us": 3000, "input": {"fdu": {"vc": 1, "data_hex": "C00001C00000020102032002C0000005020304050607"}}, "expect": [{"error": "InvalidField", "field": "packet_version"}]},
+        {"at_us": 4000, "input": {"fdu": {"vc": 1, "data_hex": "C00001C00000020102030002C0000005020304050607"}}, "expect": [{"deliver": {"kind": "Packet", "vc": 1, "map": 0, "pvn": 0, "data_hex": "0001C0000002010203", "incomplete": false}}, {"deliver": {"kind": "Packet", "vc": 1, "map": 0, "pvn": 0, "data_hex": "0002C0000005020304050607", "incomplete": false}}]}
+      ]
+    },
+    {
+      "id": "link-recv-reassemble-tc-sdu-too-long",
+      "description": "An SDU longer than the maximum SDU length of its MAP (12 here) is discarded with SduTooLong and nothing is delivered, whole or as it grows past the maximum (OI-78, decided by the maintainer, 2026-11-02); an SDU of exactly the maximum is delivered.",
+      "requirements": ["LNK-073", "LNK-070"],
+      "config": {"protocol": "tc", "vc": 1, "maps": [{"map": 0, "service": "packets"}, {"map": 1, "service": "sdu", "max_sdu_len": 12}]},
+      "steps": [
+        {"at_us": 1000, "input": {"fdu": {"vc": 1, "data_hex": "C10102030405060708090A0B0C0D"}}, "expect": [{"reassembly_event": {"kind": "SduTooLong", "vc": 1, "map": 1}}]},
+        {"at_us": 2000, "input": {"fdu": {"vc": 1, "data_hex": "C102030405060708090A0B0C0D"}}, "expect": [{"deliver": {"kind": "Sdu", "vc": 1, "map": 1, "data_hex": "02030405060708090A0B0C0D"}}]},
+        {"at_us": 3000, "input": {"fdu": {"vc": 1, "data_hex": "41030405060708090A"}}, "expect": []},
+        {"at_us": 4000, "input": {"fdu": {"vc": 1, "data_hex": "810405060708"}}, "expect": [{"reassembly_event": {"kind": "SduTooLong", "vc": 1, "map": 1}}]}
+      ]
     }
   ]
 }

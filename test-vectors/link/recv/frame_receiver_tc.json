@@ -31,6 +31,15 @@
       "steps": [
         {"at_us": 1000, "input": {"caller_discard": {"reason": "CrcMismatch"}}, "expect": [{"frame_discarded": {"reason": "CrcMismatch"}}]}
       ]
+    },
+    {
+      "id": "link-recv-tc-frame-length",
+      "description": "On TC the configured frame length is the maximum: a shorter frame, whose Frame Length field gives its length, is delivered; a longer one is refused with LengthMismatch (frame_len) (OI-78, M4 WP-5).",
+      "requirements": ["LNK-050", "LNK-081"],
+      "steps": [
+        {"at_us": 1000, "input": {"frame": {"frame_hex": "002A040A0001020304B8A1"}}, "expect": [{"deliver": {"kind": "TcFrame", "vc": 1, "data_hex": "002A040A0001020304B8A1"}}]},
+        {"at_us": 2000, "input": {"frame": {"frame_hex": "002A04100102030405060708090A0B0ED2"}}, "expect": [{"error": "LengthMismatch", "field": "frame_len"}]}
+      ]
     }
   ]
 }

@@ -7,7 +7,8 @@ Cor. 1 (TC), 133.0-B-2 (Space Packet), 133.1-B-3 (Encapsulation Packet); the eng
 of docs/03-api-model.md sections 5 to 8; the engines of docs/04-engines.md sections 1, 2, 4,
 and 5 after M4 WP-1; docs/standards/common-link-features.md (the OID pattern, the counters);
 docs/milestones/m4-link-engines.md (decisions D2 and D3); the resolved OI-11, OI-34, OI-53,
-OI-68, OI-69, OI-71 of docs/09-open-issues.md; and specs/sana/uslp_protocol_id.tsv for the
+OI-68, OI-69, OI-71 of docs/09-open-issues.md; for the round of #231 the text of OI-78 (the
+ChannelMux and MapSegmenter decisions of M4 WP-4 and WP-6); and specs/sana/uslp_protocol_id.tsv for the
 UPIDs. Each function and table below names the clause or the LNK row it implements.
 
 This program was written blind (TV-023): by an agent that had not read any implementation
@@ -587,6 +588,11 @@ class Policy:
 
 
 class ChannelMux:
+    # The released cop-block scenario names no `cop` parameter on its VC; it is replayed with
+    # COP-1 in effect by default and is superseded (SUPERSEDED below). Every other scenario
+    # reads an absent `cop` as no COP-1 (732.1 Table 5-3, OI-78).
+    cop_default = False
+
     def __init__(self, cfg, carry=None):
         self.cfg = cfg
         self.proto = cfg["protocol"]
@@ -782,6 +788,7 @@ class ChannelMux:
             v = arg["vc"]
             if v not in self.vcs:
                 raise Err("UnknownChannel")
+            self.check_route(v, arg)
             if self.slots[v] is not None:
                 raise Err("WouldBlock")  # LNK-076
             q = SC
@@ -842,6 +849,32 @@ class ChannelMux:
             return [{"notify": {"kind": "Discarded", "octets": held}}] if held else []
         raise AssertionError(name)
 
+    def check_route(self, v, arg):
+        """The checks of an Offer decided in M4 WP-4 (OI-78), each with no state change."""
+        vcd = self.vcs[v]
+        if "map" in arg:
+            if self.proto != "uslp":
+                raise Err("InvalidField", "map_id")  # TM and AOS have no MAP
+            if arg["map"] != vcd.get("map_id", 0):
+                raise Err("UnknownChannel", "map_id")
+        cop = arg.get("cop")
+        if cop is None:
+            return
+        # 732.1 Table 4-1: Bypass 0 with Protocol Control Command 1 is reserved (the Cop value
+        # cannot be built).
+        if not cop["bypass"] and cop["protocol_control"]:
+            raise Err("InvalidField", "protocol_control_command_flag")
+        # the cop block belongs to a USLP VC with COP-1 in effect (a VC parameter, 732.1
+        # Table 5-3)
+        if self.proto != "uslp" or not vcd.get("cop", self.cop_default):
+            raise Err("InvalidField", "cop_in_effect")
+        q = EXP if cop["bypass"] else SC
+        if "qos" in arg and arg["qos"] != q:
+            raise Err("InvalidField", "qos")  # the block's Bypass Flag selects the QoS
+        n = vcd["vcf_len_sc"]
+        if not cop["bypass"] and cop["vcf_count"] >= 1 << (8 * n):
+            raise Err("OutOfRange", "vcf_count")  # the count field cannot hold it
+
     def deadline(self):
         return None
 
@@ -885,6 +918,11 @@ class MapSegmenter:
         if m not in self.maps:
             raise Err("UnknownChannel")
         return self.maps[m]
+
+    def check_service(self, m, service):
+        """A submission to a MAP of another service is refused (OI-78, M4 WP-6)."""
+        if self.mapcfg(m)["service"] != service:
+            raise Err("InvalidField", "data_field_content")
 
     def submit(self, m, data, packet):
         cfg = self.cfg
@@ -980,13 +1018,15 @@ class MapSegmenter:
         if name in ("submit_packet", "submit_sdu"):
             data = unhx(arg["packet_hex" if name == "submit_packet" else "sdu_hex"])
             m = arg.get("map")
+            if self.proto == "uslp":
+                self.check_service(m, "packets" if name == "submit_packet" else "mapa")
             if name == "submit_packet":
                 check_packet(data, self.cfg.get("valid_pvns", [0, 7]), 1 << 30)
             self.submit(m, data, name == "submit_packet")
             return []
         if name == "submit_octets":
             m = arg["map"]
-            self.mapcfg(m)
+            self.check_service(m, "octet_stream")
             self.buf_map = m
             self.backlog += unhx(arg["data_hex"])
             self.pump_stream(now)
@@ -1051,9 +1091,9 @@ HAS_TIMER = ("packet-generator", "map-segmenter")
 # --------------------------------------------------------------------------------------------
 
 
-def replay(engine, cfg, inputs):
+def replay(engine, cfg, inputs, cls=None):
     """Steps (as stored in a file) for a list of (at_us, input)."""
-    eng = ENGINES[engine](copy.deepcopy(cfg))
+    eng = (cls or ENGINES[engine])(copy.deepcopy(cfg))
     steps = []
     last = 0
     for at, inp in inputs:
@@ -1671,6 +1711,15 @@ def mux_tm():
     s.do(offer(1, fld(16, 0x20), 0), 21).do(offer(2, fld(16, 0x30), 0), 22)
     s.do(opp(), 30).do(opp(), 40)
     out.append(s)
+    # OI-78, the Offer checks decided in M4 WP-4 (blind-model round, #231)
+    s = MuxSc("link-send-mux-tm-lnk-076-route-refused", ["LNK-076"],
+              "TM has no MAP and no COP-1 on the mux: an Offer that names a MAP is refused with "
+              "InvalidField (map_id), one with a cop block with InvalidField (cop_in_effect), "
+              "each with no state change; the same field without them is then sent (OI-78).", cfg)
+    s.do(offer(1, fld(16, 0x10), 0, map=0), 0)
+    s.do(offer(1, fld(16, 0x10), 0, cop={"vcf_count": 0, "bypass": 1, "protocol_control": 0}), 1)
+    s.do(offer(1, fld(16, 0x10), 0), 2).do(opp(), 3)
+    out.append(s)
     return cfg, out
 
 
@@ -1757,6 +1806,15 @@ def mux_aos():
               "another VC accepts its own.", cfg)
     s.do(offer(2, fld(D, 0x10)), 0).do(offer(2, fld(D, 0x20)), 1).do(offer(1, u16(0) + fld(D - 2), 2), 2)
     s.do(opp(), 10).do(opp(), 20)
+    out.append(s)
+    # OI-78, the Offer checks decided in M4 WP-4 (blind-model round, #231)
+    s = MuxSc("link-send-mux-aos-lnk-076-route-refused", ["LNK-076"],
+              "AOS has no MAP and no COP-1 on the mux: an Offer that names a MAP is refused with "
+              "InvalidField (map_id), one with a cop block with InvalidField (cop_in_effect), "
+              "each with no state change; the same field without them is then sent (OI-78).", cfg)
+    s.do(offer(2, fld(D, 0x10), map=0), 0)
+    s.do(offer(2, fld(D, 0x10), cop={"vcf_count": 0, "bypass": 1, "protocol_control": 0}), 1)
+    s.do(offer(2, fld(D, 0x10)), 2).do(opp(), 3)
     out.append(s)
     return cfg, out
 
@@ -1902,6 +1960,46 @@ def mux_uslp():
         vc, _k = s.served()
         s.do(offer(vc, tfdf(0, 0, 0, fld(18, t & 0xFF)), 0), t + 1)
         t += 10
+    out.append(s)
+    # OI-78, the Offer checks decided in M4 WP-4 (blind-model round, #231)
+    cop_cfg = uslp_cfg(vcs=vc_with(USLP_VCS, 1, cop=True))
+    s = MuxSc("link-send-mux-uslp-lnk-076-cop-block-cop-vc", ["LNK-076", "LNK-032"],
+              "The steps of the superseded link-send-mux-uslp-lnk-076-cop-block on a VC whose "
+              "configuration says COP-1 is in effect (732.1 Table 5-3, OI-78): the mux takes the "
+              "flags from the cop block; with bypass 0 the VCF Count as given, counting nothing; "
+              "with bypass 1 its own expedited count (OI-74).", cop_cfg)
+    s.do(offer(1, tfdf(0, 0, 0, fld(18, 0x10)), 0, cop={"vcf_count": 7, "bypass": 0,
+                                                       "protocol_control": 0}), 0).do(opp(), 1)
+    s.do(offer(1, tfdf(0, 0, 0, fld(18, 0x20)), 0), 10).do(opp(), 11)
+    s.do(offer(1, tfdf(1, 1, 3, fld(19, 0x30)), 0, cop={"vcf_count": 9, "bypass": 1,
+                                                       "protocol_control": 1}), 20).do(opp(), 21)
+    s.do(offer(1, tfdf(0, 0, 0, fld(19, 0x40)), 0, qos=EXP), 30).do(opp(), 31)
+    out.append(s)
+    s = MuxSc("link-send-mux-uslp-lnk-076-cop-refused", ["LNK-076"],
+              "The cop block refusals, each with no state change (OI-78): on a VC without COP-1 "
+              "InvalidField (cop_in_effect); on the VC with COP-1 the reserved combination "
+              "Bypass 0 with Protocol Control Command 1 (732.1 Table 4-1) InvalidField "
+              "(protocol_control_command_flag), a Type-AD count that the 2-octet count field "
+              "cannot hold OutOfRange (vcf_count), and a route QoS that disagrees with the "
+              "block's Bypass Flag InvalidField (qos); then a valid Type-AD offer is sent.",
+              uslp_cfg(vcs=vc_with(USLP_VCS, 1, cop=True)))
+    s.do(offer(2, tfdf(1, 5, 0, fld(18, 0x10)), cop={"vcf_count": 1, "bypass": 0,
+                                                     "protocol_control": 0}), 0)
+    s.do(offer(1, tfdf(0, 0, 0, fld(18, 0x10)), 0, cop={"vcf_count": 1, "bypass": 0,
+                                                       "protocol_control": 1}), 1)
+    s.do(offer(1, tfdf(0, 0, 0, fld(18, 0x10)), 0, cop={"vcf_count": 0x10000, "bypass": 0,
+                                                       "protocol_control": 0}), 2)
+    s.do(offer(1, tfdf(0, 0, 0, fld(18, 0x10)), 0, qos=EXP,
+               cop={"vcf_count": 1, "bypass": 0, "protocol_control": 0}), 3)
+    s.do(offer(1, tfdf(0, 0, 0, fld(18, 0x10)), 0, cop={"vcf_count": 0xFFFF, "bypass": 0,
+                                                       "protocol_control": 0}), 4).do(opp(), 5)
+    out.append(s)
+    s = MuxSc("link-send-mux-uslp-lnk-076-map-refused", ["LNK-076"],
+              "An Offer that names a MAP other than the one of its VC is refused with "
+              "UnknownChannel (map_id) and no state change; with the VC's MAP it is sent (OI-78).",
+              cfg)
+    s.do(offer(2, tfdf(1, 5, 0, fld(18, 0x10)), map=1), 0)
+    s.do(offer(2, tfdf(1, 5, 0, fld(18, 0x10)), map=3), 1).do(opp(), 2)
     out.append(s)
     return cfg, out
 
@@ -2105,6 +2203,16 @@ def seg_uslp():
     s.do({"submit_octets": {"map": 4, "data_hex": hx(fld(3, 0x40))}}, 6)
     s.do({"reconfigure": {"config": cfg}}, 10).do(timeout(), 700).do(nxt(2), 701)
     out.append(s)
+    # OI-78, decided in M4 WP-6 (blind-model round, #231)
+    s = Sc("link-send-seg-uslp-lnk-040-service-refused", ["LNK-040"],
+           "A submission to a MAP of another service is refused with InvalidField "
+           "(data_field_content) and no state change (OI-78): an SDU to a packets MAP, a packet "
+           "to a MAPA MAP, octets to a MAPA MAP, an SDU to the octet-stream MAP; the queue stays "
+           "empty.")
+    s.do(sub_s(1, fld(8, 0x10)), 0).do(sub_p(2, spp_packet(1, 8, 0, 0x10)), 1)
+    s.do({"submit_octets": {"map": 2, "data_hex": hx(fld(4, 0x20))}}, 2)
+    s.do(sub_s(4, fld(4, 0x30)), 3).do(nxt(1), 10)
+    out.append(s)
     return cfg, out
 
 
@@ -2187,6 +2295,21 @@ def aos_issue4():
     return cfg, out
 
 
+class ReleasedCopMux(ChannelMux):
+    """The released cop-block scenario, replayed as it was written: its VC has COP-1 in effect
+    without saying so. Only superseded scenarios are written with it (TV-021)."""
+    cop_default = True
+
+
+# Released scenarios that a later decision replaces (TV-021); the steps stay the released ones.
+SUPERSEDED = {
+    "link-send-mux-uslp-lnk-076-cop-block": (
+        "Superseded by the decision of M4 WP-4 (OI-78): a cop block is accepted only on a USLP "
+        "VC with COP-1 in effect, a VC parameter (732.1 Table 5-3), which this scenario's "
+        "configuration does not give; replaced by link-send-mux-uslp-lnk-076-cop-block-cop-vc."),
+}
+
+
 def make_doc(path, engine, provkey, built):
     fcfg, scs = built
     doc = {
@@ -2199,11 +2322,13 @@ def make_doc(path, engine, provkey, built):
     }
     for sc in scs:
         cfg = sc.cfg if sc.cfg is not None else fcfg
-        steps = replay(engine, cfg, sc.inputs)
+        steps = replay(engine, cfg, sc.inputs, ReleasedCopMux if sc.id in SUPERSEDED else None)
         d = {"id": sc.id, "description": sc.desc, "requirements": sc.reqs}
         if cfg != fcfg:
             d["config"] = cfg
         d["steps"] = steps
+        if sc.id in SUPERSEDED:
+            d["superseded"] = {"reason": SUPERSEDED[sc.id]}
         doc["scenarios"].append(d)
     return doc
 
