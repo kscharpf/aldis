@@ -186,6 +186,35 @@
       "steps": [
         {"at_us": 1000, "input": {"raw_frame": {"frame_hex": "CC0DE020002F00A1A2A3000000000000000000000000000000000000000000000000000000000000000000000000E259"}}, "expect": [{"deliver": {"kind": "InsertSdu", "data_hex": "A1A2A3"}}]}
       ]
+    },
+    {
+      "id": "link-recv-uslp-frame-length-mismatch",
+      "description": "A frame of another length than the fixed frame length is refused with LengthMismatch (frame_len) and changes nothing: the next frame's VCF Count is in sequence (OI-78).",
+      "requirements": ["LNK-050"],
+      "steps": [
+        {"at_us": 1000, "input": {"frame": {"frame_hex": "CC0DE020002F020001A1A2A3000000010203040506070800000000000000000000000000000000000000000000004132"}}, "expect": [{"deliver": {"kind": "InsertSdu", "data_hex": "A1A2A3"}}, {"deliver": {"kind": "DataField", "vc": 1, "data_hex": "00000001020304050607080000000000000000000000000000000000000000000000", "gap": false}}]},
+        {"at_us": 2000, "input": {"frame": {"frame_hex": "CC0DE020002F020002A1A2A3000000010203040506070800000000000000000000000000000000000000000000007C"}}, "expect": [{"error": "LengthMismatch", "field": "frame_len"}]},
+        {"at_us": 3000, "input": {"frame": {"frame_hex": "CC0DE020002F020002A1A2A3000000010203040506070800000000000000000000000000000000000000000000007CBE"}}, "expect": [{"deliver": {"kind": "InsertSdu", "data_hex": "A1A2A3"}}, {"deliver": {"kind": "DataField", "vc": 1, "data_hex": "00000001020304050607080000000000000000000000000000000000000000000000", "gap": false}}]}
+      ]
+    },
+    {
+      "id": "link-recv-uslp-raw-frame-vcf-count",
+      "description": "With the option on, RawFrame of a frame whose VCF Count Length is not 0 is refused with InvalidField (vcf_count_len): the Insert Zone offset would follow a field of the header the caller rejected (OI-78, decided by the maintainer, 2026-11-02).",
+      "requirements": ["LNK-079"],
+      "config": {"protocol": "uslp", "scid": 49374, "frame_len": 48, "fecf": true, "insert_zone_len": 3, "ocf_service": "mc", "accept_rejected_frame_insert_zone": true, "vcs": [{"vcid": 1, "maps": [0, 2], "cop": false}, {"vcid": 2, "maps": [0], "cop": true}]},
+      "steps": [
+        {"at_us": 1000, "input": {"raw_frame": {"frame_hex": "CC0DE020002F020001A1A2A3000000010203040506070800000000000000000000000000000000000000000000004132"}}, "expect": [{"error": "InvalidField", "field": "vcf_count_len"}]}
+      ]
+    },
+    {
+      "id": "link-recv-uslp-frame-loss-single",
+      "description": "FrameLoss returns one LossFlag and changes no count: the next frame shows the gap by its own VCF Count. Replaces link-recv-uslp-frame-loss.",
+      "requirements": ["LNK-053", "LNK-051"],
+      "steps": [
+        {"at_us": 1000, "input": {"frame": {"frame_hex": "CC0DE020002F020001A1A2A3000000010203040506070800000000000000000000000000000000000000000000004132"}}, "expect": [{"deliver": {"kind": "InsertSdu", "data_hex": "A1A2A3"}}, {"deliver": {"kind": "DataField", "vc": 1, "data_hex": "00000001020304050607080000000000000000000000000000000000000000000000", "gap": false}}]},
+        {"at_us": 2000, "input": {"frame_loss": {}}, "expect": [{"notify": {"kind": "LossFlag"}}]},
+        {"at_us": 3000, "input": {"frame": {"frame_hex": "CC0DE020002F020003A1A2A3000000010203040506070800000000000000000000000000000000000000000000009825"}}, "expect": [{"notify": {"kind": "FrameGap", "scope": "vc", "vc": 1, "missing": 1}}, {"deliver": {"kind": "InsertSdu", "data_hex": "A1A2A3"}}, {"deliver": {"kind": "DataField", "vc": 1, "data_hex": "00000001020304050607080000000000000000000000000000000000000000000000", "gap": true}}]}
+      ]
     }
   ]
 }

@@ -624,7 +624,8 @@
         {"at_us": 21, "input": {"opportunity": {}}, "expect": [{"transmit": {"kind": "data", "vc": 1, "frame_hex": "C1234020001FC100210003303132333435363738393A3B3C3D3E3F4041420000", "security_header": [8, 8], "data": [8, 30], "security_trailer": [30, 30]}}]},
         {"at_us": 30, "input": {"offer": {"vc": 1, "field_hex": "000000404142434445464748494A4B4C4D4E4F505152", "fhp": 0, "qos": "expedited"}}, "expect": []},
         {"at_us": 31, "input": {"opportunity": {}}, "expect": [{"transmit": {"kind": "data", "vc": 1, "frame_hex": "C1234020001F8101000000404142434445464748494A4B4C4D4E4F5051520000", "security_header": [8, 8], "data": [8, 30], "security_trailer": [30, 30]}}]}
-      ]
+      ],
+      "superseded": {"reason": "Superseded by the decision of M4 WP-4 (OI-78): a cop block is accepted only on a USLP VC with COP-1 in effect, a VC parameter (732.1 Table 5-3), which this scenario's configuration does not give; replaced by link-send-mux-uslp-lnk-076-cop-block-cop-vc."}
     },
     {
       "id": "link-send-mux-uslp-lnk-076-field-len",
@@ -688,6 +689,46 @@
         {"at_us": 31, "input": {"offer": {"vc": 1, "field_hex": "0000001E1F202122232425262728292A2B2C2D2E2F", "fhp": 0}}, "expect": []},
         {"at_us": 40, "input": {"opportunity": {}}, "expect": [{"transmit": {"kind": "data", "vc": 2, "frame_hex": "C1234046001F0200010000001415161718191A1B1C1D1E1F2021222324250000", "security_header": [9, 9], "data": [9, 30], "security_trailer": [30, 30]}}]},
         {"at_us": 41, "input": {"offer": {"vc": 2, "field_hex": "00000028292A2B2C2D2E2F30313233343536373839", "fhp": 0}}, "expect": []}
+      ]
+    },
+    {
+      "id": "link-send-mux-uslp-lnk-076-cop-block-cop-vc",
+      "description": "The steps of the superseded link-send-mux-uslp-lnk-076-cop-block on a VC whose configuration says COP-1 is in effect (732.1 Table 5-3, OI-78): the mux takes the flags from the cop block; with bypass 0 the VCF Count as given, counting nothing; with bypass 1 its own expedited count (OI-74).",
+      "requirements": ["LNK-076", "LNK-032"],
+      "config": {"protocol": "uslp", "scid": 4660, "frame_len": 32, "fecf": true, "source_or_destination": 0, "insert_zone_len": 0, "policy": {"kind": "fixed_priority"}, "oid": {"vcf_len": 0}, "vcs": [{"vcid": 1, "role": "packets", "priority": 1, "weight": 1, "map_id": 0, "qos": "sequence_controlled", "vcf_len_sc": 2, "vcf_len_exp": 1, "cop": true}, {"vcid": 2, "role": "mapa", "priority": 2, "weight": 1, "map_id": 3, "qos": "sequence_controlled", "vcf_len_sc": 2, "vcf_len_exp": 2}]},
+      "steps": [
+        {"at_us": 0, "input": {"offer": {"vc": 1, "field_hex": "000000101112131415161718191A1B1C1D1E1F2021", "fhp": 0, "cop": {"vcf_count": 7, "bypass": 0, "protocol_control": 0}}}, "expect": []},
+        {"at_us": 1, "input": {"opportunity": {}}, "expect": [{"transmit": {"kind": "data", "vc": 1, "frame_hex": "C1234020001F020007000000101112131415161718191A1B1C1D1E1F20210000", "security_header": [9, 9], "data": [9, 30], "security_trailer": [30, 30]}}]},
+        {"at_us": 10, "input": {"offer": {"vc": 1, "field_hex": "000000202122232425262728292A2B2C2D2E2F3031", "fhp": 0}}, "expect": []},
+        {"at_us": 11, "input": {"opportunity": {}}, "expect": [{"transmit": {"kind": "data", "vc": 1, "frame_hex": "C1234020001F020000000000202122232425262728292A2B2C2D2E2F30310000", "security_header": [9, 9], "data": [9, 30], "security_trailer": [30, 30]}}]},
+        {"at_us": 20, "input": {"offer": {"vc": 1, "field_hex": "210003303132333435363738393A3B3C3D3E3F404142", "fhp": 0, "cop": {"vcf_count": 9, "bypass": 1, "protocol_control": 1}}}, "expect": []},
+        {"at_us": 21, "input": {"opportunity": {}}, "expect": [{"transmit": {"kind": "data", "vc": 1, "frame_hex": "C1234020001FC100210003303132333435363738393A3B3C3D3E3F4041420000", "security_header": [8, 8], "data": [8, 30], "security_trailer": [30, 30]}}]},
+        {"at_us": 30, "input": {"offer": {"vc": 1, "field_hex": "000000404142434445464748494A4B4C4D4E4F505152", "fhp": 0, "qos": "expedited"}}, "expect": []},
+        {"at_us": 31, "input": {"opportunity": {}}, "expect": [{"transmit": {"kind": "data", "vc": 1, "frame_hex": "C1234020001F8101000000404142434445464748494A4B4C4D4E4F5051520000", "security_header": [8, 8], "data": [8, 30], "security_trailer": [30, 30]}}]}
+      ]
+    },
+    {
+      "id": "link-send-mux-uslp-lnk-076-cop-refused",
+      "description": "The cop block refusals, each with no state change (OI-78): on a VC without COP-1 InvalidField (cop_in_effect); on the VC with COP-1 the reserved combination Bypass 0 with Protocol Control Command 1 (732.1 Table 4-1) InvalidField (protocol_control_command_flag), a Type-AD count that the 2-octet count field cannot hold OutOfRange (vcf_count), and a route QoS that disagrees with the block's Bypass Flag InvalidField (qos); then a valid Type-AD offer is sent.",
+      "requirements": ["LNK-076"],
+      "config": {"protocol": "uslp", "scid": 4660, "frame_len": 32, "fecf": true, "source_or_destination": 0, "insert_zone_len": 0, "policy": {"kind": "fixed_priority"}, "oid": {"vcf_len": 0}, "vcs": [{"vcid": 1, "role": "packets", "priority": 1, "weight": 1, "map_id": 0, "qos": "sequence_controlled", "vcf_len_sc": 2, "vcf_len_exp": 1, "cop": true}, {"vcid": 2, "role": "mapa", "priority": 2, "weight": 1, "map_id": 3, "qos": "sequence_controlled", "vcf_len_sc": 2, "vcf_len_exp": 2}]},
+      "steps": [
+        {"at_us": 0, "input": {"offer": {"vc": 2, "field_hex": "250000101112131415161718191A1B1C1D1E1F2021", "cop": {"vcf_count": 1, "bypass": 0, "protocol_control": 0}}}, "expect": [{"error": "InvalidField", "field": "cop_in_effect"}]},
+        {"at_us": 1, "input": {"offer": {"vc": 1, "field_hex": "000000101112131415161718191A1B1C1D1E1F2021", "fhp": 0, "cop": {"vcf_count": 1, "bypass": 0, "protocol_control": 1}}}, "expect": [{"error": "InvalidField", "field": "protocol_control_command_flag"}]},
+        {"at_us": 2, "input": {"offer": {"vc": 1, "field_hex": "000000101112131415161718191A1B1C1D1E1F2021", "fhp": 0, "cop": {"vcf_count": 65536, "bypass": 0, "protocol_control": 0}}}, "expect": [{"error": "OutOfRange", "field": "vcf_count"}]},
+        {"at_us": 3, "input": {"offer": {"vc": 1, "field_hex": "000000101112131415161718191A1B1C1D1E1F2021", "fhp": 0, "qos": "expedited", "cop": {"vcf_count": 1, "bypass": 0, "protocol_control": 0}}}, "expect": [{"error": "InvalidField", "field": "qos"}]},
+        {"at_us": 4, "input": {"offer": {"vc": 1, "field_hex": "000000101112131415161718191A1B1C1D1E1F2021", "fhp": 0, "cop": {"vcf_count": 65535, "bypass": 0, "protocol_control": 0}}}, "expect": []},
+        {"at_us": 5, "input": {"opportunity": {}}, "expect": [{"transmit": {"kind": "data", "vc": 1, "frame_hex": "C1234020001F02FFFF000000101112131415161718191A1B1C1D1E1F20210000", "security_header": [9, 9], "data": [9, 30], "security_trailer": [30, 30]}}]}
+      ]
+    },
+    {
+      "id": "link-send-mux-uslp-lnk-076-map-refused",
+      "description": "An Offer that names a MAP other than the one of its VC is refused with UnknownChannel (map_id) and no state change; with the VC's MAP it is sent (OI-78).",
+      "requirements": ["LNK-076"],
+      "steps": [
+        {"at_us": 0, "input": {"offer": {"vc": 2, "field_hex": "250000101112131415161718191A1B1C1D1E1F2021", "map": 1}}, "expect": [{"error": "UnknownChannel", "field": "map_id"}]},
+        {"at_us": 1, "input": {"offer": {"vc": 2, "field_hex": "250000101112131415161718191A1B1C1D1E1F2021", "map": 3}}, "expect": []},
+        {"at_us": 2, "input": {"opportunity": {}}, "expect": [{"transmit": {"kind": "data", "vc": 2, "frame_hex": "C1234046001F020000250000101112131415161718191A1B1C1D1E1F20210000", "security_header": [9, 9], "data": [9, 30], "security_trailer": [30, 30]}}]}
       ]
     }
   ]

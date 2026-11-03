@@ -30,15 +30,29 @@ pub(crate) trait Plained: ReceiveProtocol {
     fn plain<'a, const V: usize>(
         config: &FrameReceiverConfig<Self, V>,
         octets: &'a [u8],
+    ) -> Result<Self::Plain<'a>> {
+        Self::plain_len(config, octets, octets.len())
+    }
+
+    /// As [`plain`](Self::plain), for a physical channel whose frame length is `frame_len`: a
+    /// frame of another length is the codec's `LengthMismatch` (`frame_len`), before its FECF.
+    ///
+    /// # Errors
+    /// The codec's error for a frame it refuses.
+    fn plain_len<'a, const V: usize>(
+        config: &FrameReceiverConfig<Self, V>,
+        octets: &'a [u8],
+        frame_len: usize,
     ) -> Result<Self::Plain<'a>>;
 }
 
 impl Plained for Tm {
-    fn plain<'a, const V: usize>(
+    fn plain_len<'a, const V: usize>(
         config: &FrameReceiverConfig<Tm, V>,
         octets: &'a [u8],
+        frame_len: usize,
     ) -> Result<Self::Plain<'a>> {
-        let pc = TmPhysicalChannelConfig::new(octets.len(), config.fecf())?;
+        let pc = TmPhysicalChannelConfig::new(frame_len, config.fecf())?;
         TmFrame::decode(octets, &pc)?.into_plain(NoSecurity)
     }
 }
@@ -57,13 +71,14 @@ impl aldis_aos::VcLookup for NoAosVcs {
 }
 
 impl Plained for Aos {
-    fn plain<'a, const V: usize>(
+    fn plain_len<'a, const V: usize>(
         config: &FrameReceiverConfig<Aos, V>,
         octets: &'a [u8],
+        frame_len: usize,
     ) -> Result<Self::Plain<'a>> {
         let channel = config.channel();
         let pc = AosPhysicalChannelConfig::new(
-            octets.len(),
+            frame_len,
             channel.fhec(),
             channel.insert_zone_len(),
             config.fecf(),
@@ -95,11 +110,12 @@ impl aldis_tc::VcLookup for NoTcChannels {
 }
 
 impl Plained for Tc {
-    fn plain<'a, const V: usize>(
+    fn plain_len<'a, const V: usize>(
         config: &FrameReceiverConfig<Tc, V>,
         octets: &'a [u8],
+        frame_len: usize,
     ) -> Result<Self::Plain<'a>> {
-        let channels = NoTcChannels(TcPhysical::new(octets.len(), config.fecf())?);
+        let channels = NoTcChannels(TcPhysical::new(frame_len, config.fecf())?);
         TcFrame::decode(octets, &channels)?.into_plain(NoSecurity)
     }
 }
@@ -126,9 +142,10 @@ impl aldis_uslp::VcLookup for NoUslpChannels {
 }
 
 impl Plained for Uslp {
-    fn plain<'a, const V: usize>(
+    fn plain_len<'a, const V: usize>(
         config: &FrameReceiverConfig<Uslp, V>,
         octets: &'a [u8],
+        frame_len: usize,
     ) -> Result<Self::Plain<'a>> {
         let channel = config.channel();
         let (frame_type, iz) = if channel.is_variable() {
@@ -136,7 +153,7 @@ impl Plained for Uslp {
         } else {
             (TransferFrameType::Fixed, channel.insert_zone_len())
         };
-        let pc = UslpPhysical::new(frame_type, octets.len(), iz, config.fecf())?;
+        let pc = UslpPhysical::new(frame_type, frame_len, iz, config.fecf())?;
         UslpFrame::decode(octets, &NoUslpChannels(pc))?.into_plain(NoSecurity)
     }
 }

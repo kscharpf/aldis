@@ -70,8 +70,8 @@ fn vc<P: MuxProtocol>(v: &Value, params: P::VcParams) -> VcConfig<P> {
 
 /// A protocol of the scenarios, with its configuration from a scenario's `config`.
 trait Proto: MuxProtocol {
-    /// The configuration; COP-1 is in effect on the VCs `cop_vcs` only (USLP).
-    fn config(c: &Map<String, Value>, cop_vcs: &[u8]) -> ChannelMuxConfig<Self, V>;
+    /// The configuration; COP-1 is in effect on the USLP VCs whose entry has `"cop": true`.
+    fn config(c: &Map<String, Value>) -> ChannelMuxConfig<Self, V>;
     /// The default MAP and `QoS` of VC `vcid` (USLP).
     fn route(_: &Map<String, Value>, _: u8) -> Option<Route> {
         None
@@ -103,7 +103,7 @@ fn finish<P: MuxProtocol>(
 }
 
 impl Proto for Tm {
-    fn config(c: &Map<String, Value>, _: &[u8]) -> ChannelMuxConfig<Tm, V> {
+    fn config(c: &Map<String, Value>) -> ChannelMuxConfig<Tm, V> {
         let mut channel = TmChannel::new(
             SpacecraftId::<10>::new(u16::try_from(num(&c["scid"])).unwrap()).unwrap(),
             VcId::<3>::new(small(&c["oid_vc"])).unwrap(),
@@ -131,7 +131,7 @@ impl Proto for Tm {
 }
 
 impl Proto for Aos {
-    fn config(c: &Map<String, Value>, _: &[u8]) -> ChannelMuxConfig<Aos, V> {
+    fn config(c: &Map<String, Value>) -> ChannelMuxConfig<Aos, V> {
         let channel = AosChannel::new(
             SpacecraftId::<10>::new(u16::try_from(num(&c["scid"])).unwrap()).unwrap(),
             AosEdition::Issue5,
@@ -173,7 +173,7 @@ fn qos(name: &str) -> Qos {
 }
 
 impl Proto for Uslp {
-    fn config(c: &Map<String, Value>, cop_vcs: &[u8]) -> ChannelMuxConfig<Uslp, V> {
+    fn config(c: &Map<String, Value>) -> ChannelMuxConfig<Uslp, V> {
         let channel = UslpChannel {
             scid: SpacecraftId::<16>::new(u16::try_from(num(&c["scid"])).unwrap()).unwrap(),
             source_or_destination: SourceOrDestination::from_bit(
@@ -193,7 +193,7 @@ impl Proto for Uslp {
                     qos(o["qos"].as_str().unwrap()),
                     VcfCountLen::new(small(&o["vcf_len_sc"])).unwrap(),
                     VcfCountLen::new(small(&o["vcf_len_exp"])).unwrap(),
-                    cop_vcs.contains(&small(&o["vcid"])),
+                    o.get("cop").and_then(Value::as_bool).unwrap_or(false),
                 )
                 .unwrap();
                 vc::<Uslp>(v, params)
@@ -240,47 +240,42 @@ fn output(o: &MuxOutput, area: &[u8]) -> Value {
     }
 }
 
-/// The VCs a scenario offers a `cop` block to: COP-1 is in effect on those only.
-fn cop_vcs(scenario: &aldis_testkit::ResolvedScenario<'_>) -> Vec<u8> {
-    scenario
-        .steps
-        .iter()
-        .filter_map(|s| s.input.get("offer"))
-        .filter(|o| o.get("cop").is_some())
-        .map(|o| small(&o["vc"]))
-        .collect()
-}
-
 fn run_scenario<P: Proto>(scenario: &aldis_testkit::ResolvedScenario<'_>) -> Vec<String> {
-    let cop_vcs = cop_vcs(scenario);
-    let mut engine = ChannelMux::<P, V, F>::new(P::config(scenario.config, &cop_vcs)).unwrap();
+    let mut engine = ChannelMux::<P, V, F>::new(P::config(scenario.config)).unwrap();
     let mut config = scenario.config.clone();
     let mut area = vec![0xEE_u8; F];
     for (i, step) in scenario.steps.iter().enumerate() {
         let (key, v) = step.input.iter().next().unwrap();
         let field;
         let data;
+        let mut early = None;
         let input = match key.as_str() {
             "offer" => {
                 field = hex::decode(v["field_hex"].as_str().unwrap()).unwrap();
                 let vcid = small(&v["vc"]);
                 let named = v.get("map").is_some() || v.get("qos").is_some();
-                let route = named
-                    .then(|| P::route(&config, vcid))
-                    .flatten()
-                    .map(|d| Route {
+                // TM and AOS have no default route: a `map` key is a route they refuse.
+                let route = named.then(|| {
+                    let d = P::route(&config, vcid);
+                    Route {
                         map: v
                             .get("map")
-                            .map_or(d.map, |m| MapId::<4>::new(small(m)).unwrap()),
-                        qos: v.get("qos").map_or(d.qos, |q| qos(q.as_str().unwrap())),
-                    });
-                let cop = v.get("cop").map(|c| {
+                            .map_or_else(|| d.unwrap().map, |m| MapId::<4>::new(small(m)).unwrap()),
+                        qos: v.get("qos").map_or_else(
+                            || d.map_or(Qos::SequenceControlled, |d| d.qos),
+                            |q| qos(q.as_str().unwrap()),
+                        ),
+                    }
+                });
+                // A combination `Cop::new` refuses (732.1 Table 4-1) is the step's error.
+                let cop = v.get("cop").and_then(|c| {
                     Cop::new(
                         num(&c["vcf_count"]),
                         num(&c["bypass"]) == 1,
                         num(&c["protocol_control"]) == 1,
                     )
-                    .unwrap()
+                    .map_err(|e| early = Some(e))
+                    .ok()
                 });
                 MuxInput::Offer(Offer {
                     vc: vcid,
@@ -311,12 +306,13 @@ fn run_scenario<P: Proto>(scenario: &aldis_testkit::ResolvedScenario<'_>) -> Vec
             }
             "reconfigure" => {
                 config.clone_from(v["config"].as_object().unwrap());
-                MuxInput::Reconfigure(P::config(&config, &cop_vcs))
+                MuxInput::Reconfigure(P::config(&config))
             }
             other => panic!("unknown input {other}"),
         };
         area.fill(0xEE);
-        let got: Vec<Value> = match engine.step(input, &mut area) {
+        let stepped = early.map_or_else(|| engine.step(input, &mut area), Err);
+        let got: Vec<Value> = match stepped {
             Ok(actions) => actions.iter().map(|o| output(o, &area)).collect(),
             Err(e) => {
                 let mut v = Map::new();
@@ -384,42 +380,5 @@ fn the_channel_mux_scenarios_match_exactly() {
         "{} failed:\n{}",
         failures.len(),
         failures.join("\n")
-    );
-}
-
-/// A `cop` block is refused on a VC that has no COP-1 in effect (LNK-076, OI-78): the runner
-/// turns COP-1 on only for the VCs a scenario offers a block to, so this reaches the refusal.
-#[test]
-fn a_cop_block_needs_cop_in_effect() {
-    // req: LNK-076
-    let path = aldis_testkit::vectors_dir().join("link/send/channel_mux_uslp.json");
-    let text = std::fs::read_to_string(&path).unwrap();
-    let Ok(VectorFile::EngineScenario(file)) = VectorFile::from_json(&text) else {
-        panic!("not an engine scenario file");
-    };
-    let resolved = file.resolve().unwrap();
-    let scenario = resolved
-        .iter()
-        .find(|s| s.scenario.id.contains("cop-block"))
-        .unwrap();
-    assert_eq!(cop_vcs(scenario), [1, 1]);
-    let mut engine = ChannelMux::<Uslp, V, F>::new(Uslp::config(scenario.config, &[])).unwrap();
-    let field = vec![0_u8; 21];
-    let offer = Offer {
-        vc: 1,
-        field: &field,
-        pointer: Some(0),
-        route: None,
-        cop: Some(Cop::TypeAd { vcf_count: 7 }),
-    };
-    let e = engine
-        .step(MuxInput::Offer(offer), &mut [0_u8; F])
-        .unwrap_err();
-    assert_eq!(
-        (e.kind(), e.field()),
-        (
-            aldis_core::ErrorKind::InvalidField,
-            Some(aldis_core::field::COP_IN_EFFECT)
-        )
     );
 }

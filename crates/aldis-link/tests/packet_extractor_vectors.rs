@@ -108,7 +108,14 @@ fn run_scenario<P: Proto>(scenario: &aldis_testkit::ResolvedScenario<'_>) -> Opt
                 });
                 match engine.step(input, &mut area) {
                     Ok(actions) => actions.iter().flat_map(|o| outputs(o, &area)).collect(),
-                    Err(e) => vec![json!({"error": e.kind().name()})],
+                    Err(e) => {
+                        let mut v = Map::new();
+                        v.insert("error".to_owned(), json!(e.kind().name()));
+                        if let Some(f) = e.field() {
+                            v.insert("field".to_owned(), json!(f.name()));
+                        }
+                        vec![Value::Object(v)]
+                    }
                 }
             }
             "reconfigure" => {
