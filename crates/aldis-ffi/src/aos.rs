@@ -4,8 +4,8 @@
 //! Calls: the Frame Header Error Control, [`aldis_aos_fhec_encode`] and
 //! [`aldis_aos_fhec_decode`]; [`aldis_aos_config_check`] and [`aldis_aos_mc_config_check`];
 //! [`aldis_aos_peek_length`] and [`aldis_aos_header_decode`]; the frame decoder
-//! [`aldis_aos_decode`]; the data unit decoders [`aldis_aos_mpdu_decode`] and
-//! [`aldis_aos_bpdu_decode`]; the one-shot [`aldis_aos_encode`], which takes the frame's variable
+//! [`aldis_aos_decode`] and its channel check [`aldis_aos_validate`]; the data unit decoders
+//! [`aldis_aos_mpdu_decode`] and [`aldis_aos_bpdu_decode`]; the one-shot [`aldis_aos_encode`], which takes the frame's variable
 //! fields in an [`aldis_aos_content_t`]; and the one-shot OID frame encoder on VCID 63,
 //! [`aldis_aos_encode_oid`], which takes an `aldis_oid_generator_t`.
 //!
@@ -944,8 +944,7 @@ pub unsafe extern "C" fn aldis_aos_header_decode(
 /// with at least one virtual channel: it has no OCF and no SDLS fields (§4.1.4.1.5).
 ///
 /// A frame of a Spacecraft ID or VC that `vcs` does not hold is decoded, as opaque octets with no
-/// OCF and no SDLS fields, and not rejected (API-017, RS-023): the C ABI has no AOS validation
-/// step yet, so a caller checks the SCID and VCID of `out->header` against its channels.
+/// OCF and no SDLS fields, and not rejected (API-017, RS-023): [`aldis_aos_validate`] rejects it.
 ///
 /// # Errors
 /// The errors of [`aldis_aos_mc_config_check`]; then, in this order:
@@ -991,6 +990,54 @@ pub unsafe extern "C" fn aldis_aos_decode(
                 || AosFrame::decode_lenient(bytes, &m.pc, &m.vcs),
             )?;
             out.write(view(&frame, anomalies)?);
+            Ok(())
+        })
+    }
+}
+
+/// Checks that the channel of a frame is one of the managed parameters of a master channel
+/// (732.0 §4.3.5.4, §4.3.6.3; AOS-010, AOS-016, API-016, API-017, API-070, RS-023).
+///
+/// The frame is decoded as [`aldis_aos_decode`] decodes it, and checked as `AosFrame::validate`
+/// checks it. `*anomalies` receives the `ALDIS_AOS_ANOMALY_*` flags of the frame that passed, `0`
+/// in strict mode (API-032).
+///
+/// # Errors
+/// The errors of [`aldis_aos_decode`]; then `ALDIS_ERR_UNKNOWN_CHANNEL` (`spacecraft_id`) for a
+/// Spacecraft ID that is not the one of `mc`, and (`vc_id`) for a VCID of `mc` that `vcs` does
+/// not hold.
+///
+/// # Safety
+/// As [`aldis_aos_decode`], with `anomalies` valid for one write instead of `out`.
+#[expect(
+    unsafe_code,
+    reason = "C ABI entry point: unmangled, takes raw pointers (GEN-071)"
+)]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn aldis_aos_validate(
+    bytes: *const u8,
+    len: usize,
+    mc: *const aldis_aos_mc_config_t,
+    vcs: *const aldis_aos_vc_config_t,
+    vc_count: usize,
+    mode: u32,
+    anomalies: *mut u32,
+    err: *mut crate::aldis_error_detail_t,
+) -> u32 {
+    // SAFETY: every pointer is valid as `# Safety` states; `abi` checks NULL and alignment.
+    unsafe {
+        abi::call(err, || {
+            let m = master_channel_at(mc, vcs, vc_count)?;
+            let bytes = abi::bytes(bytes, len)?;
+            let anomalies = abi::out(anomalies)?;
+            let (_, found) = abi::mode(mode)?.dispatch(
+                || AosFrame::decode(bytes, &m.pc, &m.vcs).and_then(AosFrame::validate),
+                || {
+                    AosFrame::decode_lenient(bytes, &m.pc, &m.vcs)
+                        .and_then(|l| l.try_map(AosFrame::validate))
+                },
+            )?;
+            anomalies.write(found.bits());
             Ok(())
         })
     }

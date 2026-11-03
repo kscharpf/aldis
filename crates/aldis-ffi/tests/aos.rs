@@ -975,3 +975,63 @@ fn encode_oid_forms_give_the_same_frame() {
         aldis_oid_generator_deinit(handles[1]);
     }
 }
+
+#[test]
+fn validate_rejects_a_frame_of_an_unconfigured_channel() {
+    // req: AOS-010, AOS-016, API-016, API-017, API-070, RS-023
+    let (mc, vcs) = (mc(), vcs());
+    let frame = sdls_frame();
+    let validate = |mc: &aldis_aos_mc_config_t, vcs: &[aldis_aos_vc_config_t], mode: u32| {
+        let mut found = u32::MAX;
+        let mut d = detail();
+        // SAFETY: every pointer is to a live local or slice.
+        let status = unsafe {
+            aldis_aos_validate(
+                frame.as_ptr(),
+                frame.len(),
+                mc,
+                vcs.as_ptr(),
+                vcs.len(),
+                mode,
+                &raw mut found,
+                &raw mut d,
+            )
+        };
+        (status, d.field, found)
+    };
+    for mode in [ALDIS_MODE_STRICT, ALDIS_MODE_LENIENT] {
+        let (status, _, found) = validate(&mc, &vcs, mode);
+        assert_eq!((status, found), (ALDIS_OK, 0));
+    }
+    // The decoder accepts what validate rejects: another SCID, and a VC the table lacks.
+    let other = aldis_aos_mc_config_t { scid: 0x0AC, ..mc };
+    let (status, field, _) = validate(&other, &vcs, ALDIS_MODE_STRICT);
+    assert_eq!(
+        (status, field),
+        (ALDIS_ERR_UNKNOWN_CHANNEL, ALDIS_FIELD_SPACECRAFT_ID)
+    );
+    let (status, field, _) = validate(&mc, &vcs[1..], ALDIS_MODE_LENIENT);
+    assert_eq!(
+        (status, field),
+        (ALDIS_ERR_UNKNOWN_CHANNEL, ALDIS_FIELD_VC_ID)
+    );
+    // A frame that does not decode fails with the decoder's error.
+    let mut bad = frame.clone();
+    bad[1] ^= 0x40;
+    let mut found = 0_u32;
+    let mut d = detail();
+    // SAFETY: as above.
+    let status = unsafe {
+        aldis_aos_validate(
+            bad.as_ptr(),
+            bad.len() - 1,
+            &raw const mc,
+            vcs.as_ptr(),
+            vcs.len(),
+            ALDIS_MODE_STRICT,
+            &raw mut found,
+            &raw mut d,
+        )
+    };
+    assert_eq!(status, ALDIS_ERR_LENGTH_MISMATCH);
+}

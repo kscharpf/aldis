@@ -6069,8 +6069,7 @@ uint32_t aldis_aos_header_decode(const uint8_t *prefix,
  * with at least one virtual channel: it has no OCF and no SDLS fields (§4.1.4.1.5).
  *
  * A frame of a Spacecraft ID or VC that `vcs` does not hold is decoded, as opaque octets with no
- * OCF and no SDLS fields, and not rejected (API-017, RS-023): the C ABI has no AOS validation
- * step yet, so a caller checks the SCID and VCID of `out->header` against its channels.
+ * OCF and no SDLS fields, and not rejected (API-017, RS-023): [`aldis_aos_validate`] rejects it.
  *
  * # Errors
  * The errors of [`aldis_aos_mc_config_check`]; then, in this order:
@@ -6098,6 +6097,31 @@ uint32_t aldis_aos_decode(const uint8_t *bytes,
                           uint32_t mode,
                           aldis_aos_frame_t *out,
                           aldis_error_detail_t *err);
+
+/**
+ * Checks that the channel of a frame is one of the managed parameters of a master channel
+ * (732.0 §4.3.5.4, §4.3.6.3; AOS-010, AOS-016, API-016, API-017, API-070, RS-023).
+ *
+ * The frame is decoded as [`aldis_aos_decode`] decodes it, and checked as `AosFrame::validate`
+ * checks it. `*anomalies` receives the `ALDIS_AOS_ANOMALY_*` flags of the frame that passed, `0`
+ * in strict mode (API-032).
+ *
+ * # Errors
+ * The errors of [`aldis_aos_decode`]; then `ALDIS_ERR_UNKNOWN_CHANNEL` (`spacecraft_id`) for a
+ * Spacecraft ID that is not the one of `mc`, and (`vc_id`) for a VCID of `mc` that `vcs` does
+ * not hold.
+ *
+ * # Safety
+ * As [`aldis_aos_decode`], with `anomalies` valid for one write instead of `out`.
+ */
+uint32_t aldis_aos_validate(const uint8_t *bytes,
+                            size_t len,
+                            const aldis_aos_mc_config_t *mc,
+                            const aldis_aos_vc_config_t *vcs,
+                            size_t vc_count,
+                            uint32_t mode,
+                            uint32_t *anomalies,
+                            aldis_error_detail_t *err);
 
 /**
  * Decodes an `M_PDU` that fills `field`, the data field of a frame of a VC that carries

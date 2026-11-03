@@ -43,7 +43,8 @@ use aldis_ffi::aos::{
     ALDIS_AOS_POINTER_VALID_BITS, aldis_aos_bpdu_decode, aldis_aos_config_t,
     aldis_aos_corrected_header_t, aldis_aos_decode, aldis_aos_fhec_decode, aldis_aos_fhec_encode,
     aldis_aos_frame_t, aldis_aos_header_decode, aldis_aos_header_t, aldis_aos_mc_config_t,
-    aldis_aos_mpdu_decode, aldis_aos_pdu_t, aldis_aos_peek_length, aldis_aos_vc_config_t,
+    aldis_aos_mpdu_decode, aldis_aos_pdu_t, aldis_aos_peek_length, aldis_aos_validate,
+    aldis_aos_vc_config_t,
 };
 use aldis_ffi::crc::aldis_crc16;
 use aldis_ffi::epp::{aldis_epp_decode, aldis_epp_packet_t, aldis_epp_peek_length};
@@ -1248,6 +1249,31 @@ fn aos(data: &[u8], selector: u8, mode: DecodeMode, c_mode: u32) {
     expect(&rust, status, &detail);
     if let Ok((f, a)) = &rust {
         aos_same(&view, f, *a);
+    }
+    let rust_validated = rust_table.as_ref().map_err(|e| *e).and_then(|(p, t)| {
+        let (frame, found) = mode.dispatch(
+            || AosFrame::decode(data, p, t),
+            || AosFrame::decode_lenient(data, p, t),
+        )?;
+        frame.validate().map(|_| found)
+    });
+    let mut found = 0_u32;
+    // SAFETY: as above.
+    let status = unsafe {
+        aldis_aos_validate(
+            data.as_ptr(),
+            data.len(),
+            &raw const mc,
+            vcs.as_ptr(),
+            vcs.len(),
+            c_mode,
+            &raw mut found,
+            &raw mut detail,
+        )
+    };
+    expect(&rust_validated.map(|a| ((), a)), status, &detail);
+    if let Ok(a) = &rust_validated {
+        assert_eq!(found, a.bits());
     }
 }
 
