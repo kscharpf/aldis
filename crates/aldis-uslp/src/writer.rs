@@ -945,10 +945,6 @@ mod tests {
             HookLayout::Any
         }
 
-        #[expect(
-            clippy::panic_in_result_fn,
-            reason = "test helper may fail loudly (RS-018)"
-        )]
         fn protect(
             &mut self,
             _: &FrameCtx,
@@ -957,8 +953,11 @@ mod tests {
         ) -> aldis_core::Result<()> {
             // The frame has its final length and the Security Trailer follows the TFDF; the FECF
             // is not yet computed (zero).
-            assert_eq!(fields.trailer().end.saturating_add(2), frame.len());
-            assert_eq!(frame.last_chunk::<2>(), Some(&[0, 0]));
+            if fields.trailer().end.saturating_add(2) != frame.len()
+                || frame.last_chunk::<2>() != Some(&[0, 0])
+            {
+                return Err(aldis_core::Error::new(aldis_core::ErrorKind::Security));
+            }
             frame[fields.header()].fill(0xA5);
             frame[fields.trailer()].fill(0x5A);
             Ok(())

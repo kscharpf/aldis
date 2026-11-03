@@ -792,10 +792,6 @@ mod tests {
             HookLayout::Any
         }
 
-        #[expect(
-            clippy::panic_in_result_fn,
-            reason = "test helper may fail loudly (RS-018)"
-        )]
         fn protect(
             &mut self,
             _: &FrameCtx,
@@ -803,8 +799,9 @@ mod tests {
             fields: &SecuredFields,
         ) -> aldis_core::Result<()> {
             // Neither the FHEC nor the FECF is computed yet.
-            assert_eq!(frame[6..8], [0, 0]);
-            assert_eq!(frame.last_chunk::<2>(), Some(&[0, 0]));
+            if frame.get(6..8) != Some(&[0, 0][..]) || frame.last_chunk::<2>() != Some(&[0, 0]) {
+                return Err(aldis_core::Error::new(aldis_core::ErrorKind::Security));
+            }
             frame[fields.header()].fill(0xA5);
             frame[fields.trailer()].fill(0x5A);
             Ok(())
