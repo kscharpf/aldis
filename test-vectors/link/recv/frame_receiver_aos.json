@@ -224,7 +224,16 @@
       "steps": [
         {"at_us": 1000, "input": {"frame": {"frame_hex": "694300000120DEADBEEF3FFF0102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F20212208EF"}}, "expect": [{"deliver": {"kind": "InsertSdu", "data_hex": "DEADBEEF", "replay": false}}, {"deliver": {"kind": "DataField", "vc": 3, "data_hex": "0102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F202122", "bit_count": 272, "gap": false, "replay": false}}]},
         {"at_us": 2000, "input": {"frame": {"frame_hex": "694300000220DEADBEEF011002030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F202122234B5C"}}, "expect": [{"error": "Malformed", "field": "bitstream_data_pointer"}]},
-        {"at_us": 3000, "input": {"frame": {"frame_hex": "694300000320DEADBEEF010F030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F2021222324E42A"}}, "expect": [{"notify": {"kind": "FrameGap", "scope": "vc", "vc": 3, "missing": 1}}, {"deliver": {"kind": "InsertSdu", "data_hex": "DEADBEEF", "replay": false}}, {"deliver": {"kind": "DataField", "vc": 3, "data_hex": "030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F2021222324", "bit_count": 272, "gap": true, "replay": false}}]}
+        {"at_us": 3000, "input": {"frame": {"frame_hex": "694300000320DEADBEEF010E030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F2021222324831F"}}, "expect": [{"notify": {"kind": "FrameGap", "scope": "vc", "vc": 3, "missing": 1}}, {"deliver": {"kind": "InsertSdu", "data_hex": "DEADBEEF", "replay": false}}, {"deliver": {"kind": "DataField", "vc": 3, "data_hex": "030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F2021222324", "bit_count": 271, "gap": true, "replay": false}}]}
+      ]
+    },
+    {
+      "id": "link-recv-aos-bdp-last-bit",
+      "description": "A Bitstream Data Pointer equal to the index of the zone's last bit (271) is refused with InvalidField (bitstream_data_pointer) and no state change: a zone with no idle data has the pointer all ones (732.0 4.1.4.3.3.3; AOS-017, OI-53); the frame with the pointer all ones then delivers the whole zone.",
+      "requirements": ["LNK-077"],
+      "steps": [
+        {"at_us": 1000, "input": {"frame": {"frame_hex": "694300000120DEADBEEF010F0102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F2021228FC5"}}, "expect": [{"error": "InvalidField", "field": "bitstream_data_pointer"}]},
+        {"at_us": 2000, "input": {"frame": {"frame_hex": "694300000120DEADBEEF3FFF0102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F20212208EF"}}, "expect": [{"deliver": {"kind": "InsertSdu", "data_hex": "DEADBEEF", "replay": false}}, {"deliver": {"kind": "DataField", "vc": 3, "data_hex": "0102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F202122", "bit_count": 272, "gap": false, "replay": false}}]}
       ]
     },
     {

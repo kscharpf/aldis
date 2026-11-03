@@ -520,6 +520,10 @@ class FrameReceiver:
                 # OI-78 (M4 WP-5, OI-33): a pointer beyond the zone is malformed and refused
                 # before any count is touched.
                 raise Refuse("Malformed", "bitstream_data_pointer")
+            if bdp == (len(data) - 2) * 8 - 1:
+                # 732.0 4.1.4.3.3.3: a zone with no idle data has the pointer all ones; the index
+                # of the last bit is refused (AOS-017, OI-53).
+                raise Refuse("InvalidField", "bitstream_data_pointer")
         flagged = False
         if not oid and not replay:           # OI-70: replay frames take no part in counting
             if cycle_use:
@@ -2323,7 +2327,16 @@ def fr_aos_231():
             % (bz * 8))
     s.add(frame_in(aos_frame(c, 3, 1, bpdu(0x3FFF, ramp(1, bz)), iz=IZ1)))
     s.add(frame_in(aos_frame(c, 3, 2, bpdu(bz * 8, ramp(2, bz)), iz=IZ1)))
-    s.add(frame_in(aos_frame(c, 3, 3, bpdu(bz * 8 - 1, ramp(3, bz)), iz=IZ1)))
+    s.add(frame_in(aos_frame(c, 3, 3, bpdu(bz * 8 - 2, ramp(3, bz)), iz=IZ1)))
+    out.append(s)
+
+    s = Scn("link-recv-aos-bdp-last-bit", ["LNK-077"],
+            "A Bitstream Data Pointer equal to the index of the zone's last bit (%d) is refused "
+            "with InvalidField (bitstream_data_pointer) and no state change: a zone with no idle "
+            "data has the pointer all ones (732.0 4.1.4.3.3.3; AOS-017, OI-53); the frame with "
+            "the pointer all ones then delivers the whole zone." % (bz * 8 - 1))
+    s.add(frame_in(aos_frame(c, 3, 1, bpdu(bz * 8 - 1, ramp(1, bz)), iz=IZ1)))
+    s.add(frame_in(aos_frame(c, 3, 1, bpdu(0x3FFF, ramp(1, bz)), iz=IZ1)))
     out.append(s)
 
     s = Scn("link-recv-aos-frame-loss-single", ["LNK-053", "LNK-051"],
