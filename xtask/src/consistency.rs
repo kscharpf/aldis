@@ -586,8 +586,9 @@ const FFI_FILES: &[&str] = &[
     "core/crc16.json",
     "core/ocf.json",
     "core/oid.json",
-    // The link areas of M4 WP-7a and WP-7b: the generation engines, the PacketExtractor, and the
-    // FrameReceiver. The files of the other engines join with their handles (WP-7c, WP-7d), and
+    // The link areas of M4 WP-7a to WP-7c: the generation engines, the PacketExtractor, the
+    // FrameReceiver, and the ChannelMux. The files of the other engines join with their handles
+    // (WP-7d), and
     // the list gives way to the whole `link/` area.
     "link/recv/frame_receiver_aos.json",
     "link/recv/frame_receiver_tc.json",
@@ -600,6 +601,9 @@ const FFI_FILES: &[&str] = &[
     "link/send/access_generator_tm.json",
     "link/send/access_generator_uslp.json",
     "link/send/bitstream_generator_aos.json",
+    "link/send/channel_mux_aos.json",
+    "link/send/channel_mux_tm.json",
+    "link/send/channel_mux_uslp.json",
     "link/send/packet_generator_aos.json",
     "link/send/packet_generator_aos_issue4.json",
     "link/send/packet_generator_tm.json",
@@ -1400,10 +1404,10 @@ mod tests {
         let readme = "| File |\n|---|\n| `link/send/*.json` |\n";
         let files = [
             "link/send/packet_generator_tm.json".to_owned(),
-            "link/send/channel_mux_tm.json".to_owned(),
+            "link/send/map_segmenter_tc.json".to_owned(),
         ];
         let tests = [
-            "(\"link/send/packet_generator_tm.json\") (\"link/send/channel_mux_tm.json\")"
+            "(\"link/send/packet_generator_tm.json\") (\"link/send/map_segmenter_tc.json\")"
                 .to_owned(),
         ];
         let mut c = consistent();

@@ -90,6 +90,10 @@ mod tests {
         aldis_bitstream_generator_action, aldis_bitstream_generator_input,
         aldis_packet_generator_action, aldis_packet_generator_input,
     };
+    use crate::link_mux::{
+        aldis_channel_mux_action, aldis_channel_mux_input, aldis_link_frame_class,
+        aldis_link_mux_policy,
+    };
     use crate::link_rx::{
         aldis_frame_receiver_action, aldis_frame_receiver_input, aldis_link_content,
         aldis_link_discard, aldis_link_scope, aldis_link_service, aldis_packet_extractor_action,
@@ -218,6 +222,10 @@ mod tests {
             header,
             &mut seen,
         );
+        check::<aldis_channel_mux_action>("aldis_channel_mux_action", header, &mut seen);
+        check::<aldis_channel_mux_input>("aldis_channel_mux_input", header, &mut seen);
+        check::<aldis_link_frame_class>("aldis_link_frame_class", header, &mut seen);
+        check::<aldis_link_mux_policy>("aldis_link_mux_policy", header, &mut seen);
         check::<aldis_frame_receiver_action>("aldis_frame_receiver_action", header, &mut seen);
         check::<aldis_frame_receiver_input>("aldis_frame_receiver_input", header, &mut seen);
         check::<aldis_link_content>("aldis_link_content", header, &mut seen);

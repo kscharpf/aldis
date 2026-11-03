@@ -44,6 +44,7 @@ pub mod fop1;
 pub mod handle;
 pub mod link;
 pub mod link_gen;
+pub mod link_mux;
 pub mod link_rx;
 mod mirror;
 pub mod ocf;

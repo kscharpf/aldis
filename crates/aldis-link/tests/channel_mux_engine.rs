@@ -364,6 +364,13 @@ fn an_engine_refuses_a_frame_longer_than_its_capacity() {
         failure(TmMux::new(long)),
         named(ErrorKind::CapacityExceeded, field::FRAME_LEN)
     );
+    // The in-place head makes the same check (#240).
+    assert_eq!(
+        failure(TmMux::new_head(long)),
+        named(ErrorKind::CapacityExceeded, field::FRAME_LEN)
+    );
+    assert!(TmMux::new_head(tm_config(MuxPolicy::FixedPriority)).is_ok());
+    const { assert!(TmMux::HEAD_OFFSET < TmMux::BUFFERS_OFFSET) };
     let mut mux = TmMux::new(tm_config(MuxPolicy::FixedPriority)).unwrap();
     let mut out = [0; F];
     assert_eq!(
