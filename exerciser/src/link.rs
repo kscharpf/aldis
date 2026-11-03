@@ -542,7 +542,7 @@ fn receivers(t: &mut Tally) {
     let mut head = [0u8; LEN];
     for (d, s) in head
         .iter_mut()
-        .zip([0x00, 0x13, 0, 0, 0x80, 0x00, 0x01, 0xAA])
+        .zip([0x00, 0x13, 0, 0, 0x98, 0x00, 0x01, 0xAA])
     {
         *d = s;
     }
@@ -593,7 +593,7 @@ fn receivers(t: &mut Tally) {
     t.check(
         status.frames_in.get() == 3
             && status.unknown_channel.get() == 1
-            && status.refused.get() == 2,
+            && status.refused.get() == 1,
     );
     t.check(
         status.gaps.get() == 2 && status.crc_mismatch.get() == 1 && status.frame_loss.get() == 1,

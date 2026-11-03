@@ -1035,7 +1035,7 @@ impl<P: ReceiveProtocol, const V: usize> FrameReceiver<P, V> {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "tm", feature = "tc"))]
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::{
