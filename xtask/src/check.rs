@@ -494,13 +494,18 @@ fn plan(t: &Touched, tools: Tools, mode: Mode) -> Plan {
     }
 }
 
-/// The steps that only `--full` runs: coverage, `stack`, `big-endian`, and the exerciser's run
-/// under QEMU, each when the verification run would run its check for the change, and skipped
-/// with the reason when its tool is missing.
+/// The steps that only `--full` runs: coverage (which shrinks a waiver that exceeds the
+/// misses), `features`, `stack`, `big-endian`, and the exerciser's run under QEMU, each when
+/// the verification run would run its check for the change, and skipped with the reason when
+/// its tool is missing.
 fn full_steps(t: &Touched, tools: Tools, run: &mut Vec<Item>, skipped: &mut Vec<Skip>) {
     if t.gate_runs("coverage") {
         if tools.coverage {
             let mut item = xtask("xtask coverage", &["coverage"]);
+            // The gate runs the plain command and fails on any mismatch; here a waiver that
+            // exceeds the misses is lowered, to be committed.
+            item.env
+                .push(("ALDIS_COVERAGE_SHRINK".to_owned(), "1".to_owned()));
             if let (Some(crates), Action::Xtask(args)) = (&t.coverage, &mut item.action) {
                 for c in crates {
                     args.extend(["-p".to_owned(), c.clone()]);
@@ -516,6 +521,9 @@ fn full_steps(t: &Touched, tools: Tools, run: &mut Vec<Item>, skipped: &mut Vec<
                 reason: "tooling nightly or cargo-llvm-cov not installed".into(),
             });
         }
+    }
+    if t.gate_runs("features") {
+        run.push(xtask("xtask features", &["features"]));
     }
     if t.gate_runs("stack") {
         if tools.nightly {
@@ -614,6 +622,7 @@ const COVERED: &[(&str, &[&str], Mode)] = &[
     ("test", &["test"], Mode::Default),
     ("shell", &["shell"], Mode::Default),
     ("coverage", &["xtask coverage"], Mode::Full),
+    ("features", &["xtask features"], Mode::Full),
     ("stack", &["xtask stack"], Mode::Full),
     ("big-endian", &["big-endian"], Mode::Full),
 ];
@@ -625,10 +634,6 @@ const GATE_ONLY: &[(&str, &str)] = &[
     (
         "test-macos",
         "host-bound: needs a macOS host, where `test` is the same command",
-    ),
-    (
-        "features",
-        "`cargo xtask features` builds the feature combinations, about 150 s; not mirrored",
     ),
     (
         "header",
