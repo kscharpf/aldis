@@ -4,7 +4,7 @@ Engine scenarios for the sending engines of [docs/04-engines.md](../../../docs/0
 
 **The JSON is never edited by hand.** `link_send.py --write` writes every file here in a fixed order and format; change the model, then regenerate. A file that is not released yet changes by regeneration; a released file only by new cases and `superseded` marks (TV-021).
 
-The `packet_generator_*.json` files are run by `crates/aldis-link/tests/packet_generator_vectors.rs` (M4 WP-3), the `channel_mux_*.json` files by `channel_mux_vectors.rs`, the `access_generator_*.json` files by `access_generator_vectors.rs`, and `bitstream_generator_aos.json` by `bitstream_generator_vectors.rs` (M4 WP-4). The `map_segmenter_*.json` files are awaiting their runner (`AWAITING_RUNNER` in `xtask/src/consistency.rs`, as `cop1/scenarios/` was): the engine is WP-6, which removes its files from the exemption when its host test runs them. Until then those files are no evidence for `cargo xtask trace`.
+The `packet_generator_*.json` files are run by `crates/aldis-link/tests/packet_generator_vectors.rs` (M4 WP-3), the `channel_mux_*.json` files by `channel_mux_vectors.rs`, the `access_generator_*.json` files by `access_generator_vectors.rs`, and `bitstream_generator_aos.json` by `bitstream_generator_vectors.rs` (M4 WP-4). The `map_segmenter_*.json` files by `map_segmenter_vectors.rs` (M4 WP-6).
 
 | File | Engine | Content | Requirements |
 |---|---|---|---|
@@ -92,7 +92,7 @@ Cases the first version of this directory left out are covered since [OI-74](../
 
 Decided by the work packages under [OI-78](../../../docs/09-open-issues.md); the sending-side cases of `ChannelMux` (WP-4) are pinned by Rust tests (`channel_mux_engine.rs`), with no case in this directory:
 
-* The configuration errors of the `MapSegmenter` and the CLTU packer (LNK-078, WP-6); those of the `ChannelMux` and the generators, the API-071 limits included, are tested in `channel_mux_engine.rs` and `generators_engine.rs`.
+* The configuration errors of the `MapSegmenter` and the CLTU packer (LNK-078) are tested in `map_segmenter_engine.rs` and `cltu_packer.rs` (M4 WP-6); those of the `ChannelMux` and the generators, the API-071 limits included, are tested in `channel_mux_engine.rs` and `generators_engine.rs`. The segmenter decisions of OI-78 (a stream TFDZ that waits does not hold the SDUs behind it, a submission to a MAP of another service, the VCF Count of a QoS) are pinned by `map_segmenter_engine.rs`; their vector cases go to the same round.
 
 The vector cases for the `ChannelMux` items of OI-78 go to the blind-model round of [#231](https://github.com/kscharpf/aldis/issues/231).
 

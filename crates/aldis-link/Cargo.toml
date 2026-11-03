@@ -49,6 +49,7 @@ std = [
 workspace = true
 
 [dev-dependencies]
+aldis-cop1 = { path = "../aldis-cop1", default-features = false, features = ["tc", "uslp"] }
 aldis-testkit = { path = "../aldis-testkit", features = ["strategies"] }
 serde_json = "1.0.154"
 
@@ -97,3 +98,32 @@ required-features = ["spp", "epp", "tm", "tc", "aos", "uslp"]
 [[test]]
 name = "frame_receiver"
 required-features = ["spp", "epp", "tm", "tc", "aos", "uslp"]
+
+# The MapSegmenter, the MapReassembler, and the CLTU packer (M4 WP-6).
+[[test]]
+name = "map_segmenter_vectors"
+required-features = ["spp", "epp", "tc", "uslp"]
+
+[[test]]
+name = "map_reassembler_vectors"
+required-features = ["spp", "epp", "tc", "uslp"]
+
+[[test]]
+name = "map_segmenter_engine"
+required-features = ["spp", "epp", "tc", "uslp"]
+
+[[test]]
+name = "map_reassembler_engine"
+required-features = ["spp", "epp", "tc", "uslp"]
+
+[[test]]
+name = "cltu_packer"
+
+[[test]]
+name = "map_roundtrip"
+required-features = ["spp", "epp", "tc", "uslp"]
+
+# LNK-043: the FDUs of the segmenter are requests of FOP-1.
+[[test]]
+name = "segmenter_fop1"
+required-features = ["spp", "epp", "tc", "uslp"]
