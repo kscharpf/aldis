@@ -3466,3 +3466,37 @@ mod cop1 {
     vector_test!(farm1_flow_clcw, "cop1", "scenarios/farm1_flow_clcw");
 }
 // ---- end COP-1
+
+// ---- Link generation engines (M4 WP-7a): the scenarios of `test-vectors/link/send/` for the
+// PacketGenerator, the AccessGenerator, and the BitstreamGenerator through the C ABI handles.
+mod link_engine;
+
+mod link_send {
+    macro_rules! vector_test {
+        ($name:ident, "link", $file:literal) => {
+            #[test]
+            fn $name() {
+                // req: VER-021, TV-010, TV-011, TV-012, CABI-030, CABI-031, CABI-032, CABI-040
+                super::link_engine::run_scenario_file(concat!("link/", $file, ".json"));
+            }
+        };
+    }
+
+    vector_test!(packet_generator_tm, "link", "send/packet_generator_tm");
+    vector_test!(packet_generator_aos, "link", "send/packet_generator_aos");
+    vector_test!(
+        packet_generator_aos_issue4,
+        "link",
+        "send/packet_generator_aos_issue4"
+    );
+    vector_test!(packet_generator_uslp, "link", "send/packet_generator_uslp");
+    vector_test!(access_generator_tm, "link", "send/access_generator_tm");
+    vector_test!(access_generator_aos, "link", "send/access_generator_aos");
+    vector_test!(access_generator_uslp, "link", "send/access_generator_uslp");
+    vector_test!(
+        bitstream_generator_aos,
+        "link",
+        "send/bitstream_generator_aos"
+    );
+}
+// ---- end link generation engines

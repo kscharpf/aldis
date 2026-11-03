@@ -492,7 +492,12 @@ fn vector_problems(
         .filter_map(|f| f.split('/').next())
         .filter(|area| !partial.contains(area))
         .collect();
-    ffi_areas.extend(c.ffi_areas.iter().map(String::as_str));
+    ffi_areas.extend(
+        c.ffi_areas
+            .iter()
+            .map(String::as_str)
+            .filter(|area| !partial.contains(area)),
+    );
     for f in &ffi {
         if !files.contains(f) {
             p.push(format!(
@@ -577,7 +582,21 @@ const FFI_RUNNER: &str = "crates/aldis-ffi/tests/vectors.rs";
 /// The vector files of an area whose crate has a C ABI for some of its modules only: each runs
 /// through [`FFI_RUNNER`], and the rest of the area need not (M2 plan D14, WP-1: the CRC-16,
 /// the OCF, and the OID generator of `aldis-core`).
-const FFI_FILES: &[&str] = &["core/crc16.json", "core/ocf.json", "core/oid.json"];
+const FFI_FILES: &[&str] = &[
+    "core/crc16.json",
+    "core/ocf.json",
+    "core/oid.json",
+    // The link areas of M4 WP-7a: the generation engines. The files of the other engines join
+    // with their handles (WP-7b to WP-7d), and the list gives way to the whole `link/` area.
+    "link/send/access_generator_aos.json",
+    "link/send/access_generator_tm.json",
+    "link/send/access_generator_uslp.json",
+    "link/send/bitstream_generator_aos.json",
+    "link/send/packet_generator_aos.json",
+    "link/send/packet_generator_aos_issue4.json",
+    "link/send/packet_generator_tm.json",
+    "link/send/packet_generator_uslp.json",
+];
 
 fn metadata() -> Result<Value, String> {
     let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".to_owned());
@@ -1361,6 +1380,37 @@ mod tests {
             ),
             [
                 "test-vectors/demo/other.json: the C ABI runner crates/aldis-ffi/tests/vectors.rs covers `demo/` but not this file"
+            ]
+        );
+    }
+
+    #[test]
+    fn a_partial_area_needs_only_its_listed_files() {
+        // req: CABI-011, VER-021
+        // `link/` has files in FFI_FILES, so the runner need not name the others, even though
+        // `crates/aldis-ffi/src/link.rs` makes `link` a C ABI area.
+        let readme = "| File |\n|---|\n| `link/send/*.json` |\n";
+        let files = [
+            "link/send/packet_generator_tm.json".to_owned(),
+            "link/send/channel_mux_tm.json".to_owned(),
+        ];
+        let tests = [
+            "(\"link/send/packet_generator_tm.json\") (\"link/send/channel_mux_tm.json\")"
+                .to_owned(),
+        ];
+        let mut c = consistent();
+        c.exerciser.clear();
+        c.ffi_areas = names(&["link"]);
+        let runner = "vector_test!(a, \"link\", \"send/packet_generator_tm\", r);";
+        assert_eq!(
+            vector_problems(&files, readme, &tests, "", runner, &c),
+            Vec::<String>::new()
+        );
+        // A listed file the runner does not name is still reported.
+        assert_eq!(
+            vector_problems(&files, readme, &tests, "", "", &c),
+            [
+                "test-vectors/link/send/packet_generator_tm.json: has C ABI functions (`FFI_FILES`), but the C ABI runner crates/aldis-ffi/tests/vectors.rs does not run it"
             ]
         );
     }

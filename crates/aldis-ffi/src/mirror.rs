@@ -82,6 +82,14 @@ mod tests {
         aldis_fop1_action, aldis_fop1_alert, aldis_fop1_directive, aldis_fop1_frame,
         aldis_fop1_input, aldis_fop1_notice, aldis_fop1_timeout,
     };
+    use crate::link::{
+        aldis_link_idle_packet, aldis_link_idle_policy, aldis_link_protocol, aldis_link_qos,
+    };
+    use crate::link_gen::{
+        aldis_access_generator_action, aldis_access_generator_input,
+        aldis_bitstream_generator_action, aldis_bitstream_generator_input,
+        aldis_packet_generator_action, aldis_packet_generator_input,
+    };
     use crate::ocf::aldis_ocf_report;
     use crate::oid::aldis_oid_form;
     use crate::spp::{aldis_spp_packet_type, aldis_spp_secondary, aldis_spp_sequence_flags};
@@ -143,6 +151,10 @@ mod tests {
     }
     // req: CABI-010, CABI-002
     #[test]
+    #[expect(
+        clippy::too_many_lines,
+        reason = "one check line per mirror enum of the header"
+    )]
     fn every_mirror_enum_is_in_the_header_with_the_same_values() {
         // Each variant of a mirror enum, by `Debug` name and value, is an enumerator of the `enum` of
         // the same name in the generated header, and the header has no other enumerator.
@@ -189,6 +201,24 @@ mod tests {
         check::<aldis_fop1_input>("aldis_fop1_input", header, &mut seen);
         check::<aldis_fop1_notice>("aldis_fop1_notice", header, &mut seen);
         check::<aldis_fop1_timeout>("aldis_fop1_timeout", header, &mut seen);
+        check::<aldis_access_generator_action>("aldis_access_generator_action", header, &mut seen);
+        check::<aldis_access_generator_input>("aldis_access_generator_input", header, &mut seen);
+        check::<aldis_bitstream_generator_action>(
+            "aldis_bitstream_generator_action",
+            header,
+            &mut seen,
+        );
+        check::<aldis_bitstream_generator_input>(
+            "aldis_bitstream_generator_input",
+            header,
+            &mut seen,
+        );
+        check::<aldis_link_idle_packet>("aldis_link_idle_packet", header, &mut seen);
+        check::<aldis_link_idle_policy>("aldis_link_idle_policy", header, &mut seen);
+        check::<aldis_link_protocol>("aldis_link_protocol", header, &mut seen);
+        check::<aldis_link_qos>("aldis_link_qos", header, &mut seen);
+        check::<aldis_packet_generator_action>("aldis_packet_generator_action", header, &mut seen);
+        check::<aldis_packet_generator_input>("aldis_packet_generator_input", header, &mut seen);
         check::<aldis_mode>("aldis_mode", header, &mut seen);
         check::<aldis_ocf_report>("aldis_ocf_report", header, &mut seen);
         check::<aldis_oid_form>("aldis_oid_form", header, &mut seen);
