@@ -106,8 +106,9 @@ commands:
                                (GEN-006)
   coverage [-p <crate>]...     100 % region/function/line/branch gate for the crates of Layers
                                0-2 (VER-024; tooling nightly + cargo-llvm-cov >= 0.9); -p
-                               runs only the named crates; a failure lists the missed lines
-                               and branches as path:line ranges
+                               runs only the named crates; `check --full` lowers waivers above
+                               the misses; a failure lists the missed lines and branches as
+                               path:line ranges
   fuzz smoke [<target>...]     run a smoke pass (-runs=1 -max_total_time=2) on all fuzz targets
                                (or those named) to catch broken assertions before merge (VER-022)
   kani                         run the Kani proof harnesses and print each one's result and
