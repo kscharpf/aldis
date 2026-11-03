@@ -47,9 +47,9 @@ pub const ALDIS_LINK_MAX_MAP_CHANNELS: usize = 16;
 /// Octets of the packet, SDU, and bit queues of the generators, and of the segmenter's queue (LNK-015; M4 plan D4).
 ///
 /// `[link] packet_queue_octets` of `capacities.toml` (CABI-030).
-pub const ALDIS_LINK_PACKET_QUEUE_OCTETS: usize = 2048;
+pub const ALDIS_LINK_PACKET_QUEUE_OCTETS: usize = 8192;
 
 /// Octets of the largest data field or frame of one link engine (LNK-075; M4 plan D4).
 ///
 /// `[link] max_frame_octets` of `capacities.toml` (CABI-030).
-pub const ALDIS_LINK_MAX_FRAME_OCTETS: usize = 1024;
+pub const ALDIS_LINK_MAX_FRAME_OCTETS: usize = 2048;

@@ -192,12 +192,35 @@ fn set_bit(octets: &mut [u8], i: usize, value: bool) {
 /// The `BitstreamGenerator` of one VC (LNK-021).
 ///
 /// `Q` is the capacity of the bit queue in octets (GEN-011).
+///
+/// The engine is its [`BitstreamGeneratorHead`] followed by its [`BitstreamGeneratorBuffers`]
+/// (`repr(C)`), so that a caller can build it in place (see [`crate::inplace`]).
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[repr(C)]
 pub struct BitstreamGenerator<P: BitstreamProtocol, const Q: usize> {
+    head: BitstreamGeneratorHead<P>,
+    bufs: BitstreamGeneratorBuffers<Q>,
+}
+
+/// Everything of a [`BitstreamGenerator`] but its queue (see [`crate::inplace`]).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BitstreamGeneratorHead<P: BitstreamProtocol> {
     config: BitstreamGeneratorConfig<P>,
-    queue: [u8; Q],
     bits: usize,
     status: BitstreamStatus,
+}
+
+/// The bit queue of a [`BitstreamGenerator`]: `Q` octets, valid when all zero, which is the empty
+/// state (see [`crate::inplace`]).
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[repr(C)]
+pub struct BitstreamGeneratorBuffers<const Q: usize> {
+    queue: [u8; Q],
+}
+
+impl<const Q: usize> BitstreamGeneratorBuffers<Q> {
+    /// An empty queue.
+    pub const ZERO: Self = Self { queue: [0; Q] };
 }
 
 impl<P: BitstreamProtocol, const Q: usize> BitstreamGenerator<P, Q> {
@@ -205,8 +228,22 @@ impl<P: BitstreamProtocol, const Q: usize> BitstreamGenerator<P, Q> {
     #[must_use]
     pub const fn new(config: BitstreamGeneratorConfig<P>) -> BitstreamGenerator<P, Q> {
         BitstreamGenerator {
+            head: Self::new_head(config),
+            bufs: BitstreamGeneratorBuffers::ZERO,
+        }
+    }
+
+    /// The offset of the head in the engine, for an in-place build (see [`crate::inplace`]).
+    pub const HEAD_OFFSET: usize = core::mem::offset_of!(Self, head);
+    /// The offset of the buffers in the engine, for an in-place build (see [`crate::inplace`]).
+    pub const BUFFERS_OFFSET: usize = core::mem::offset_of!(Self, bufs);
+
+    /// The head of a generator with an empty queue: the part of [`Self::new`] that is built from
+    /// the configuration (see [`crate::inplace`]).
+    #[must_use]
+    pub const fn new_head(config: BitstreamGeneratorConfig<P>) -> BitstreamGeneratorHead<P> {
+        BitstreamGeneratorHead {
             config,
-            queue: [0; Q],
             bits: 0,
             status: BitstreamStatus {
                 submissions: Counter::new(),
@@ -223,13 +260,13 @@ impl<P: BitstreamProtocol, const Q: usize> BitstreamGenerator<P, Q> {
     /// The configuration in force.
     #[must_use]
     pub const fn config(&self) -> &BitstreamGeneratorConfig<P> {
-        &self.config
+        &self.head.config
     }
 
     /// The status snapshot: counters and occupancy (API-056, LNK-002).
     #[must_use]
     pub const fn status(&self) -> &BitstreamStatus {
-        &self.status
+        &self.head.status
     }
 
     /// Runs one input (API-057).
@@ -254,12 +291,12 @@ impl<P: BitstreamProtocol, const Q: usize> BitstreamGenerator<P, Q> {
                 actions.push(BitstreamOutput::DataField(field))?;
             }
             BitstreamInput::Reconfigure(config) => {
-                let octets = self.bits.div_ceil(8);
-                self.config = config;
-                self.bits = 0;
-                self.queue.fill(0);
-                self.status.discarded_octets.add(octets);
-                self.status.queue.set(0);
+                let octets = self.head.bits.div_ceil(8);
+                self.head.config = config;
+                self.head.bits = 0;
+                self.bufs.queue.fill(0);
+                self.head.status.discarded_octets.add(octets);
+                self.head.status.queue.set(0);
                 if octets > 0 {
                     actions.push(BitstreamOutput::Discarded { octets })?;
                 }
@@ -271,37 +308,41 @@ impl<P: BitstreamProtocol, const Q: usize> BitstreamGenerator<P, Q> {
     /// `SubmitBits` (LNK-021).
     fn submit(&mut self, bits: &[u8], bit_len: usize) -> Result<()> {
         if bit_len == 0 || bit_len > bits.len().saturating_mul(8) {
-            self.status.refused.incr();
+            self.head.status.refused.incr();
             return Err(Error::new(ErrorKind::LengthMismatch).with_field(field::SDU_LEN));
         }
-        if bit_len > Q.saturating_mul(8).saturating_sub(self.bits) {
-            self.status.would_block.incr();
+        if bit_len > Q.saturating_mul(8).saturating_sub(self.head.bits) {
+            self.head.status.would_block.incr();
             return Err(Error::new(ErrorKind::WouldBlock));
         }
         for i in 0..bit_len {
-            set_bit(&mut self.queue, self.bits.saturating_add(i), bit(bits, i));
+            set_bit(
+                &mut self.bufs.queue,
+                self.head.bits.saturating_add(i),
+                bit(bits, i),
+            );
         }
-        self.bits = self.bits.saturating_add(bit_len);
-        self.status.submissions.incr();
-        self.status.queue.set(self.bits.div_ceil(8));
+        self.head.bits = self.head.bits.saturating_add(bit_len);
+        self.head.status.submissions.incr();
+        self.head.status.queue.set(self.head.bits.div_ceil(8));
         Ok(())
     }
 
     /// `Release` (LNK-021).
     fn release(&mut self, out: &mut [u8]) -> Result<BitstreamField> {
-        let field_len = self.config.field_len;
+        let field_len = self.head.config.field_len;
         let area = out
             .get_mut(..field_len)
             .ok_or(Error::buffer_too_small(field_len))?;
         let (header, zone) = area
             .split_at_mut_checked(P::HEADER_LEN)
             .ok_or(Error::new(ErrorKind::InternalError))?;
-        let zone_bits = self.config.zone_bits();
-        let take = self.bits.min(zone_bits);
-        let pointer = if self.bits >= zone_bits {
+        let zone_bits = self.head.config.zone_bits();
+        let take = self.head.bits.min(zone_bits);
+        let pointer = if self.head.bits >= zone_bits {
             ALL_VALID
-        } else if self.bits == 0 {
-            self.status.idle_fields.incr();
+        } else if self.head.bits == 0 {
+            self.head.status.idle_fields.incr();
             ONLY_IDLE
         } else {
             // The index of the last valid bit; it is below the zone, which has fewer than
@@ -314,19 +355,19 @@ impl<P: BitstreamProtocol, const Q: usize> BitstreamGenerator<P, Q> {
         for (d, s) in header.iter_mut().zip([hi & 0x3F, lo]) {
             *d = s;
         }
-        let idle = self.config.idle_pattern;
+        let idle = self.head.config.idle_pattern;
         for i in 0..zone_bits {
             let value = if i < take {
-                bit(&self.queue, i)
+                bit(&self.bufs.queue, i)
             } else {
                 idle & mask(i) != 0
             };
             set_bit(zone, i, value);
         }
         self.consume(take);
-        self.status.fields_out.incr();
+        self.head.status.fields_out.incr();
         Ok(BitstreamField {
-            vc: self.config.vc.into(),
+            vc: self.head.config.vc.into(),
             field: OutRange::new(0, field_len),
             pointer,
         })
@@ -335,16 +376,16 @@ impl<P: BitstreamProtocol, const Q: usize> BitstreamGenerator<P, Q> {
     /// Removes the first `n` bits of the queue (at most the queue holds) and shifts the rest to
     /// the front.
     fn consume(&mut self, n: usize) {
-        let left = self.bits.saturating_sub(n);
+        let left = self.head.bits.saturating_sub(n);
         for i in 0..left {
-            let value = bit(&self.queue, n.saturating_add(i));
-            set_bit(&mut self.queue, i, value);
+            let value = bit(&self.bufs.queue, n.saturating_add(i));
+            set_bit(&mut self.bufs.queue, i, value);
         }
-        for i in left..self.bits {
-            set_bit(&mut self.queue, i, false);
+        for i in left..self.head.bits {
+            set_bit(&mut self.bufs.queue, i, false);
         }
-        self.bits = left;
-        self.status.queue.set(left.div_ceil(8));
+        self.head.bits = left;
+        self.head.status.queue.set(left.div_ceil(8));
     }
 }
 

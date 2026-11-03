@@ -12,14 +12,13 @@ max_frame_octets = 1024    # TC maximum (232.0 §4.1.2.7)
 # BitstreamGenerator hold `packet_queue_octets`. The MapSegmenter's queue is `packet_queue_octets`
 # too, the MapReassembler holds `max_map_channels` assembly buffers of `max_frame_octets`, and the
 # CltuPacker's unit holds `max_frame_octets` (M4 WP-6).
-# The sizes keep the by-value constructors of the engines within the stack budgets
-# (`xtask/stack-budgets.toml`). Accepted for WP-7a only (decided by the maintainer, 2026-11-03,
-# #240): #240 adds in-place construction of the link engines and restores 8192 and 2048 before
-# WP-7c, with the budgets unchanged, and drops the WouldBlock cut-off in the C ABI runner.
+# The engines are built in place in the caller's storage (`aldis::link::inplace`, #240), so these
+# sizes do not pass through the stack: 8192 octets of queue and 2048 of data field (a 1115-octet
+# TM or AOS frame fits).
 max_virtual_channels = 8
 max_map_channels = 16
-packet_queue_octets = 2048
-max_frame_octets = 1024
+packet_queue_octets = 8192
+max_frame_octets = 2048
 
 [spp]
 tracker_max_apids = 16     # APIDs one aldis_spp_tracker_t tracks (SPP-011, M2 plan D5)

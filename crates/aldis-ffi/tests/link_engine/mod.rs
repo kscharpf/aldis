@@ -7,9 +7,10 @@
 //! and the deadline with the expected values, as the Rust runners of `aldis-link` do against the
 //! Rust API. The engines of the C ABI have the capacities of `capacities.toml`, not those of the
 //! scenarios and ignore their `queue_capacity`. A `PacketGenerator` scenario that expects
-//! `WouldBlock` (LNK-015) depends on the capacity of its queue (48 or 64 octets): its steps run
-//! up to the first such step, the scenario is counted as cut off there, and the Rust runner
-//! covers the refusal. Issue #240 drops this cut-off.
+//! `WouldBlock` (LNK-015) depends on the capacity of its queue (48 or 64 octets), which the
+//! handle fixes at `ALDIS_LINK_PACKET_QUEUE_OCTETS` (8 192 since #240) and no configuration
+//! lowers: its steps run up to the first such step, the scenario is counted as cut off there, and
+//! the Rust runner covers the refusal. The cut-off stays; restoring the sizes does not remove it.
 
 #![expect(
     clippy::borrow_as_ptr,
@@ -193,7 +194,7 @@ mod packet {
             for (i, step) in scenario.steps.iter().enumerate() {
                 if expects_would_block(step) {
                     // The refusal depends on the 48 or 64 octets of the scenario's queue, which
-                    // the handle cannot be built with (LNK-015; #240 drops this cut-off): the
+                    // the handle cannot be built with (LNK-015; the queue is the build constant): the
                     // steps before it ran, the rest is covered by the Rust runner.
                     skipped += 1;
                     break;

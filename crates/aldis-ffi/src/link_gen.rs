@@ -16,16 +16,18 @@ use aldis::core::Result;
 use aldis::core::engine::OutRange;
 use aldis::core::time::{Duration, Instant};
 use aldis::link::access::{
-    ACCESS_GENERATOR_MAX_ACTIONS, AccessActions, AccessGenerator, AccessGeneratorConfig,
-    AccessInput, AccessOutput, AccessProtocol,
+    ACCESS_GENERATOR_MAX_ACTIONS, AccessActions, AccessGenerator, AccessGeneratorBuffers,
+    AccessGeneratorConfig, AccessGeneratorHead, AccessInput, AccessOutput, AccessProtocol,
 };
 use aldis::link::bitstream::{
     BITSTREAM_GENERATOR_MAX_ACTIONS, BitstreamActions, BitstreamGenerator,
-    BitstreamGeneratorConfig, BitstreamInput, BitstreamOutput, BitstreamStatus,
+    BitstreamGeneratorBuffers, BitstreamGeneratorConfig, BitstreamGeneratorHead, BitstreamInput,
+    BitstreamOutput, BitstreamStatus,
 };
 use aldis::link::generator::{
     GeneratorActions, GeneratorInput, GeneratorOutput, GeneratorStatus,
-    PACKET_GENERATOR_MAX_ACTIONS, PacketGenerator, PacketGeneratorConfig,
+    PACKET_GENERATOR_MAX_ACTIONS, PacketGenerator, PacketGeneratorBuffers, PacketGeneratorConfig,
+    PacketGeneratorHead,
 };
 use aldis::link::protocol::{Aos, PacketProtocol, Tm, TmParams, Uslp};
 
@@ -58,11 +60,11 @@ const _: () = assert!(ALDIS_BITSTREAM_GENERATOR_MAX_ACTIONS == BITSTREAM_GENERAT
 
 /// 64-bit words of one `aldis_packet_generator_t` (CABI-031): the tag and the largest of the
 /// engines of TM, AOS, and USLP at the build capacities; the build fails when it outgrows it.
-pub const ALDIS_PACKET_GENERATOR_WORDS: usize = 411;
+pub const ALDIS_PACKET_GENERATOR_WORDS: usize = 1308;
 /// 64-bit words of one `aldis_access_generator_t` (CABI-031).
-pub const ALDIS_ACCESS_GENERATOR_WORDS: usize = 272;
+pub const ALDIS_ACCESS_GENERATOR_WORDS: usize = 1040;
 /// 64-bit words of one `aldis_bitstream_generator_t` (CABI-031).
-pub const ALDIS_BITSTREAM_GENERATOR_WORDS: usize = 269;
+pub const ALDIS_BITSTREAM_GENERATOR_WORDS: usize = 1037;
 
 const _: () = assert!(
     size_of::<crate::handle::Slot<PacketGeneratorState>>() <= ALDIS_PACKET_GENERATOR_WORDS * 8
@@ -75,18 +77,83 @@ const _: () = assert!(
         <= ALDIS_BITSTREAM_GENERATOR_WORDS * 8
 );
 
+// ---- Building in place ----
+
+/// Builds an engine at `engine` from its head, without an engine on the stack (CABI-040, #240;
+/// the pattern of `aldis::link::inplace`): the head is written at the offset of its field and the
+/// octet buffers are zeroed at theirs, which is their empty state. Every field of the engine is
+/// then initialized. The arguments are the engine type `$e`, its head type `$h` and buffers type
+/// `$b`, the pointer, and the head.
+macro_rules! engine_in_place {
+    ($e:ty, $h:ty, $b:ty, $ptr:expr, $head:expr) => {{
+        const {
+            assert!(
+                <$e>::HEAD_OFFSET + size_of::<$h>() <= <$e>::BUFFERS_OFFSET
+                    && <$e>::BUFFERS_OFFSET + size_of::<$b>() <= size_of::<$e>()
+            );
+        };
+        let engine: *mut $e = $ptr;
+        // SAFETY: `$ptr` is valid for writes of one `$e` (the macro's caller). `$e` is
+        // `repr(C)` with the fields head (`$h`) and buffers (`$b`) in that order, at the
+        // offsets `HEAD_OFFSET` and `BUFFERS_OFFSET` (`offset_of!`), and the assertion above
+        // keeps both in the engine and apart. The buffers are plain arrays of octets, valid
+        // when zeroed. The writes go through raw pointers, so no reference to uninitialized
+        // memory is made.
+        unsafe {
+            engine.byte_add(<$e>::HEAD_OFFSET).cast::<$h>().write($head);
+            engine
+                .byte_add(<$e>::BUFFERS_OFFSET)
+                .cast::<u8>()
+                .write_bytes(0, size_of::<$b>());
+        }
+    }};
+}
+
+/// The `repr(u8)` layout of an enum variant with one field (RFC 2195): the tag, then the field.
+#[repr(C)]
+struct Tagged<T> {
+    tag: u8,
+    payload: T,
+}
+
+/// Writes the tag `tag` of the variant of the `repr(u8)` enum `S` whose field is a `T`, and
+/// returns a pointer to the field, which the caller then initializes in place (#240).
+///
+/// # Safety
+/// `state` is valid for writes of one `S`; `S` is a `repr(u8)` enum, `tag` the discriminant of
+/// the variant, and `T` the type of that variant's only field.
+#[expect(unsafe_code, reason = "initializes an enum variant in place (GEN-071)")]
+unsafe fn variant_payload<S, T>(state: *mut S, tag: u8) -> *mut T {
+    const { assert!(size_of::<Tagged<T>>() <= size_of::<S>()) };
+    let tagged = state.cast::<Tagged<T>>();
+    // SAFETY: by the contract, `S` has the layout of a union of `repr(C)` structs of tag and
+    // field, so `Tagged<T>` is the layout of this variant and in bounds. The writes are through
+    // raw field pointers.
+    unsafe {
+        (&raw mut (*tagged).tag).write(tag);
+        &raw mut (*tagged).payload
+    }
+}
+
 // ---- PacketGenerator ----
 
 type Pg<P> = PacketGenerator<P, D, Q>;
 
 /// The `PacketGenerator` of the protocol chosen at `aldis_packet_generator_init` (LNK-001).
+///
+/// `repr(u8)`: `aldis_packet_generator_init` writes a variant in place (`variant_payload`).
+#[repr(u8)]
+#[expect(
+    dead_code,
+    reason = "the variants are written in place by the init function, not constructed"
+)]
 pub(crate) enum PacketGeneratorState {
     /// TM.
-    Tm(Pg<Tm>),
+    Tm(Pg<Tm>) = 0,
     /// AOS.
-    Aos(Pg<Aos>),
+    Aos(Pg<Aos>) = 1,
     /// USLP.
-    Uslp(Pg<Uslp>),
+    Uslp(Pg<Uslp>) = 2,
 }
 
 /// The kind of an `aldis_packet_generator_input_t` (LNK-010…LNK-015, LNK-003; API-057).
@@ -282,19 +349,52 @@ fn pg_config<P: PacketProtocol>(
     Ok(config)
 }
 
-/// The engine of `c`; the protocol of the engine is fixed here (LNK-001).
-fn pg_new(c: &aldis_packet_generator_config_t) -> Result<PacketGeneratorState> {
+/// The head of the engine of `c`; the protocol of the engine is fixed here (LNK-001).
+enum PgHead {
+    Tm(PacketGeneratorHead<Tm>),
+    Aos(PacketGeneratorHead<Aos>),
+    Uslp(PacketGeneratorHead<Uslp>),
+}
+
+fn pg_head(c: &aldis_packet_generator_config_t) -> Result<PgHead> {
     match protocol(&c.channel)? {
         aldis_link_protocol::ALDIS_LINK_PROTOCOL_TM => {
-            Ok(PacketGeneratorState::Tm(Pg::new(pg_config(c, TmParams)?)?))
+            Ok(PgHead::Tm(Pg::new_head(pg_config(c, TmParams)?)?))
         }
-        aldis_link_protocol::ALDIS_LINK_PROTOCOL_AOS => Ok(PacketGeneratorState::Aos(Pg::new(
-            pg_config(c, aos_params(&c.channel)?)?,
-        )?)),
-        aldis_link_protocol::ALDIS_LINK_PROTOCOL_USLP => Ok(PacketGeneratorState::Uslp(Pg::new(
+        aldis_link_protocol::ALDIS_LINK_PROTOCOL_AOS => Ok(PgHead::Aos(Pg::new_head(pg_config(
+            c,
+            aos_params(&c.channel)?,
+        )?)?)),
+        aldis_link_protocol::ALDIS_LINK_PROTOCOL_USLP => Ok(PgHead::Uslp(Pg::new_head(
             pg_config(c, uslp_params(&c.channel)?)?,
         )?)),
         aldis_link_protocol::ALDIS_LINK_PROTOCOL_TC => Err(unsupported_protocol()),
+    }
+}
+
+/// Builds the engine of `head` at `state`, in place (#240).
+///
+/// # Safety
+/// `state` is valid for writes of one `PacketGeneratorState`.
+#[expect(unsafe_code, reason = "initializes the engine in place (GEN-071)")]
+unsafe fn pg_place(state: *mut PacketGeneratorState, head: PgHead) {
+    type B = PacketGeneratorBuffers<D, Q>;
+    match head {
+        PgHead::Tm(h) => {
+            // SAFETY: as the contract says; the tag 0 is the discriminant of the variant.
+            let p = unsafe { variant_payload::<_, Pg<Tm>>(state, 0) };
+            engine_in_place!(Pg<Tm>, PacketGeneratorHead<Tm>, B, p, h);
+        }
+        PgHead::Aos(h) => {
+            // SAFETY: as the contract says; the tag 1 is the discriminant of the variant.
+            let p = unsafe { variant_payload::<_, Pg<Aos>>(state, 1) };
+            engine_in_place!(Pg<Aos>, PacketGeneratorHead<Aos>, B, p, h);
+        }
+        PgHead::Uslp(h) => {
+            // SAFETY: as the contract says; the tag 2 is the discriminant of the variant.
+            let p = unsafe { variant_payload::<_, Pg<Uslp>>(state, 2) };
+            engine_in_place!(Pg<Uslp>, PacketGeneratorHead<Uslp>, B, p, h);
+        }
     }
 }
 
@@ -436,7 +536,9 @@ pub unsafe extern "C" fn aldis_packet_generator_init(
     unsafe {
         abi::call(err, || {
             let cfg = abi::read(cfg)?;
-            handle::init(storage, pg_new(&cfg)?)
+            let head = pg_head(&cfg)?;
+            // `init_with` passes a pointer to the state in the slot, valid for writes.
+            handle::init_with(storage, |state| pg_place(state, head))
         })
     }
 }
@@ -610,13 +712,20 @@ pub unsafe extern "C" fn aldis_packet_generator_deinit(h: *mut aldis_packet_gene
 type Ag<P> = AccessGenerator<P, Q>;
 
 /// The `AccessGenerator` of the protocol chosen at `aldis_access_generator_init` (LNK-001).
+///
+/// `repr(u8)`: `aldis_access_generator_init` writes a variant in place (`variant_payload`).
+#[repr(u8)]
+#[expect(
+    dead_code,
+    reason = "the variants are written in place by the init function, not constructed"
+)]
 pub(crate) enum AccessGeneratorState {
     /// TM.
-    Tm(Ag<Tm>),
+    Tm(Ag<Tm>) = 0,
     /// AOS.
-    Aos(Ag<Aos>),
+    Aos(Ag<Aos>) = 1,
     /// USLP.
-    Uslp(Ag<Uslp>),
+    Uslp(Ag<Uslp>) = 2,
 }
 
 /// The kind of an `aldis_access_generator_input_t` (LNK-020, LNK-003; API-057).
@@ -781,19 +890,51 @@ fn ag_config<P: AccessProtocol>(
     Ok(config.with_idle_pattern(c.idle_pattern))
 }
 
-/// The engine of `c`; the protocol of the engine is fixed here (LNK-001).
-fn ag_new(c: &aldis_access_generator_config_t) -> Result<AccessGeneratorState> {
+/// The head of the engine of `c`; the protocol of the engine is fixed here (LNK-001).
+enum AgHead {
+    Tm(AccessGeneratorHead<Tm>),
+    Aos(AccessGeneratorHead<Aos>),
+    Uslp(AccessGeneratorHead<Uslp>),
+}
+
+fn ag_head(c: &aldis_access_generator_config_t) -> Result<AgHead> {
     match protocol(&c.channel)? {
         aldis_link_protocol::ALDIS_LINK_PROTOCOL_TM => {
-            Ok(AccessGeneratorState::Tm(Ag::new(ag_config(c, ())?)?))
+            Ok(AgHead::Tm(Ag::new_head(ag_config(c, ())?)?))
         }
         aldis_link_protocol::ALDIS_LINK_PROTOCOL_AOS => {
-            Ok(AccessGeneratorState::Aos(Ag::new(ag_config(c, ())?)?))
+            Ok(AgHead::Aos(Ag::new_head(ag_config(c, ())?)?))
         }
-        aldis_link_protocol::ALDIS_LINK_PROTOCOL_USLP => Ok(AccessGeneratorState::Uslp(Ag::new(
+        aldis_link_protocol::ALDIS_LINK_PROTOCOL_USLP => Ok(AgHead::Uslp(Ag::new_head(
             ag_config(c, uslp_params(&c.channel)?)?,
         )?)),
         aldis_link_protocol::ALDIS_LINK_PROTOCOL_TC => Err(unsupported_protocol()),
+    }
+}
+
+/// Builds the engine of `head` at `state`, in place (#240).
+///
+/// # Safety
+/// `state` is valid for writes of one `AccessGeneratorState`.
+#[expect(unsafe_code, reason = "initializes the engine in place (GEN-071)")]
+unsafe fn ag_place(state: *mut AccessGeneratorState, head: AgHead) {
+    type B = AccessGeneratorBuffers<Q>;
+    match head {
+        AgHead::Tm(h) => {
+            // SAFETY: as the contract says; the tag 0 is the discriminant of the variant.
+            let p = unsafe { variant_payload::<_, Ag<Tm>>(state, 0) };
+            engine_in_place!(Ag<Tm>, AccessGeneratorHead<Tm>, B, p, h);
+        }
+        AgHead::Aos(h) => {
+            // SAFETY: as the contract says; the tag 1 is the discriminant of the variant.
+            let p = unsafe { variant_payload::<_, Ag<Aos>>(state, 1) };
+            engine_in_place!(Ag<Aos>, AccessGeneratorHead<Aos>, B, p, h);
+        }
+        AgHead::Uslp(h) => {
+            // SAFETY: as the contract says; the tag 2 is the discriminant of the variant.
+            let p = unsafe { variant_payload::<_, Ag<Uslp>>(state, 2) };
+            engine_in_place!(Ag<Uslp>, AccessGeneratorHead<Uslp>, B, p, h);
+        }
     }
 }
 
@@ -919,7 +1060,9 @@ pub unsafe extern "C" fn aldis_access_generator_init(
     unsafe {
         abi::call(err, || {
             let cfg = abi::read(cfg)?;
-            handle::init(storage, ag_new(&cfg)?)
+            let head = ag_head(&cfg)?;
+            // `init_with` passes a pointer to the state in the slot, valid for writes.
+            handle::init_with(storage, |state| ag_place(state, head))
         })
     }
 }
@@ -1248,6 +1391,21 @@ fn bg_status(engine: &BitstreamGeneratorState) -> aldis_bitstream_generator_stat
     }
 }
 
+/// Builds the engine of `head` at `state`, in place (#240).
+///
+/// # Safety
+/// `state` is valid for writes of one `BitstreamGeneratorState`.
+#[expect(unsafe_code, reason = "initializes the engine in place (GEN-071)")]
+const unsafe fn bg_place(state: *mut BitstreamGeneratorState, head: BitstreamGeneratorHead<Aos>) {
+    engine_in_place!(
+        BitstreamGeneratorState,
+        BitstreamGeneratorHead<Aos>,
+        BitstreamGeneratorBuffers<Q>,
+        state,
+        head
+    );
+}
+
 /// Places a `BitstreamGenerator` with an empty queue in `storage` (LNK-021; CABI-031,
 /// CABI-032).
 ///
@@ -1273,7 +1431,8 @@ pub unsafe extern "C" fn aldis_bitstream_generator_init(
     unsafe {
         abi::call(err, || {
             let cfg = abi::read(cfg)?;
-            handle::init(storage, BitstreamGenerator::new(bg_config(&cfg)?))
+            let head = BitstreamGenerator::<Aos, Q>::new_head(bg_config(&cfg)?);
+            handle::init_with(storage, |state| bg_place(state, head))
         })
     }
 }

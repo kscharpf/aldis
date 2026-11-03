@@ -274,18 +274,48 @@ pub struct GeneratorStatus {
 /// `D` is the capacity of the data field in octets and `Q` the capacity of the packet queue in
 /// octets (LNK-015, GEN-011); a configuration that needs more is refused with
 /// `CapacityExceeded`.
+///
+/// The engine is its [`PacketGeneratorHead`] (everything but the octets) followed by its
+/// [`PacketGeneratorBuffers`] (the field zone and the queue), in that order (`repr(C)`), so that a
+/// caller can build it in place with [`Self::HEAD_OFFSET`] and [`Self::BUFFERS_OFFSET`] without a
+/// by-value engine on the stack (see [`crate::inplace`]).
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[repr(C)]
 pub struct PacketGenerator<P: PacketProtocol, const D: usize, const Q: usize> {
+    head: PacketGeneratorHead<P>,
+    bufs: PacketGeneratorBuffers<D, Q>,
+}
+
+/// Everything of a [`PacketGenerator`] but its octet buffers: the part that is built from the
+/// configuration (LNK-010…LNK-015; see [`crate::inplace`]).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PacketGeneratorHead<P: PacketProtocol> {
     config: PacketGeneratorConfig<P>,
-    zone: [u8; D],
     fill: usize,
     first_start: Option<usize>,
     started: Option<Instant>,
     releasable: bool,
-    queue: [u8; Q],
     queue_len: usize,
     tail: usize,
     status: GeneratorStatus,
+}
+
+/// The octet buffers of a [`PacketGenerator`]: the data field zone (`D` octets) and the packet
+/// queue (`Q` octets). Plain arrays of octets, valid when all zero, which is the empty state
+/// (see [`crate::inplace`]).
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[repr(C)]
+pub struct PacketGeneratorBuffers<const D: usize, const Q: usize> {
+    zone: [u8; D],
+    queue: [u8; Q],
+}
+
+impl<const D: usize, const Q: usize> PacketGeneratorBuffers<D, Q> {
+    /// Empty buffers.
+    pub const ZERO: Self = Self {
+        zone: [0; D],
+        queue: [0; Q],
+    };
 }
 
 impl<P: PacketProtocol, const D: usize, const Q: usize> PacketGenerator<P, D, Q> {
@@ -296,15 +326,30 @@ impl<P: PacketProtocol, const D: usize, const Q: usize> PacketGenerator<P, D, Q>
     /// than `D` octets of data field, or a Maximum Packet Length above the octets of the packet zone
     /// and the queue together, which no empty generator could take (GEN-011, LNK-015).
     pub fn new(config: PacketGeneratorConfig<P>) -> Result<PacketGenerator<P, D, Q>> {
-        PacketGenerator::<P, D, Q>::check_capacity(&config)?;
         Ok(PacketGenerator {
+            head: Self::new_head(config)?,
+            bufs: PacketGeneratorBuffers::ZERO,
+        })
+    }
+
+    /// The offset of the head in the engine, for an in-place build (see [`crate::inplace`]).
+    pub const HEAD_OFFSET: usize = core::mem::offset_of!(Self, head);
+    /// The offset of the buffers in the engine, for an in-place build (see [`crate::inplace`]).
+    pub const BUFFERS_OFFSET: usize = core::mem::offset_of!(Self, bufs);
+
+    /// The head of a generator with an empty field and queue: the part of [`Self::new`] that is
+    /// built from the configuration (see [`crate::inplace`]).
+    ///
+    /// # Errors
+    /// As [`Self::new`].
+    pub fn new_head(config: PacketGeneratorConfig<P>) -> Result<PacketGeneratorHead<P>> {
+        PacketGenerator::<P, D, Q>::check_capacity(&config)?;
+        Ok(PacketGeneratorHead {
             config,
-            zone: [0; D],
             fill: 0,
             first_start: None,
             started: None,
             releasable: false,
-            queue: [0; Q],
             queue_len: 0,
             tail: 0,
             status: GeneratorStatus::default(),
@@ -325,21 +370,21 @@ impl<P: PacketProtocol, const D: usize, const Q: usize> PacketGenerator<P, D, Q>
     /// The configuration in force.
     #[must_use]
     pub const fn config(&self) -> &PacketGeneratorConfig<P> {
-        &self.config
+        &self.head.config
     }
 
     /// The status snapshot: counters and occupancy (API-056, LNK-002).
     #[must_use]
     pub const fn status(&self) -> &GeneratorStatus {
-        &self.status
+        &self.head.status
     }
 
     /// The earliest instant at which `Timeout` must be fed: when the started field that is not
     /// yet releasable reaches its release deadline; none without a deadline (API-053, LNK-012).
     #[must_use]
     pub fn next_deadline(&self) -> Option<Instant> {
-        let deadline = self.config.release_deadline?;
-        match (self.started, self.releasable) {
+        let deadline = self.head.config.release_deadline?;
+        match (self.head.started, self.head.releasable) {
             (Some(at), false) => Some(at.saturating_add(deadline)),
             _ => None,
         }
@@ -374,12 +419,12 @@ impl<P: PacketProtocol, const D: usize, const Q: usize> PacketGenerator<P, D, Q>
             GeneratorInput::Timeout => self.timeout(now),
             GeneratorInput::Reconfigure(config) => {
                 PacketGenerator::<P, D, Q>::check_capacity(&config)?;
-                let octets = self.fill.saturating_add(self.queue_len);
-                self.config = config;
+                let octets = self.head.fill.saturating_add(self.head.queue_len);
+                self.head.config = config;
                 self.reset_field();
-                self.queue_len = 0;
-                self.tail = 0;
-                self.status.discarded_octets.add(octets);
+                self.head.queue_len = 0;
+                self.head.tail = 0;
+                self.head.status.discarded_octets.add(octets);
                 self.refresh_occupancy();
                 if octets > 0 {
                     actions.push(GeneratorOutput::Discarded { octets })?;
@@ -390,54 +435,54 @@ impl<P: PacketProtocol, const D: usize, const Q: usize> PacketGenerator<P, D, Q>
     }
 
     const fn zone_len(&self) -> usize {
-        self.config.zone_len()
+        self.head.config.zone_len()
     }
 
     const fn refresh_occupancy(&mut self) {
-        self.status.queue.set(self.queue_len);
-        self.status.field.set(self.fill);
+        self.head.status.queue.set(self.head.queue_len);
+        self.head.status.field.set(self.head.fill);
     }
 
     const fn reset_field(&mut self) {
-        self.fill = 0;
-        self.first_start = None;
-        self.started = None;
-        self.releasable = false;
+        self.head.fill = 0;
+        self.head.first_start = None;
+        self.head.started = None;
+        self.head.releasable = false;
     }
 
     /// `SubmitPacket` (LNK-010, LNK-011, LNK-015).
     fn submit(&mut self, packet: &[u8], now: Instant) -> Result<()> {
         if let Err(e) = self.check_packet(packet) {
-            self.status.refused.incr();
+            self.head.status.refused.incr();
             return Err(e);
         }
-        let room = if self.releasable {
+        let room = if self.head.releasable {
             0
         } else {
-            self.zone_len().saturating_sub(self.fill)
+            self.zone_len().saturating_sub(self.head.fill)
         };
-        let free = room.saturating_add(Q.saturating_sub(self.queue_len));
+        let free = room.saturating_add(Q.saturating_sub(self.head.queue_len));
         if packet.len() > free {
-            self.status.would_block.incr();
+            self.head.status.would_block.incr();
             return Err(Error::new(ErrorKind::WouldBlock));
         }
         let into_field = room.min(packet.len());
         let (head, rest) = packet.split_at_checked(into_field).unwrap_or((&[], packet));
         if !head.is_empty() {
-            self.first_start.get_or_insert(self.fill);
+            self.head.first_start.get_or_insert(self.head.fill);
             self.append_to_zone(head);
-            self.started.get_or_insert(now);
-            self.releasable = self.fill >= self.zone_len();
+            self.head.started.get_or_insert(now);
+            self.head.releasable = self.head.fill >= self.zone_len();
         }
         if !rest.is_empty() {
             if !head.is_empty() {
                 // The rest of a packet that began in the field is a continuation: it is the
                 // only content of the queue, because a field with room takes the whole packet.
-                self.tail = rest.len();
+                self.head.tail = rest.len();
             }
             self.append_to_queue(rest);
         }
-        self.status.packets_in.incr();
+        self.head.status.packets_in.incr();
         self.refresh_occupancy();
         Ok(())
     }
@@ -448,18 +493,18 @@ impl<P: PacketProtocol, const D: usize, const Q: usize> PacketGenerator<P, D, Q>
             .first()
             .and_then(|&b| packet::kind_of(b))
             .filter(|k| match k {
-                Kind::Space => self.config.valid_pvns.space(),
-                Kind::Encapsulation => self.config.valid_pvns.encapsulation(),
+                Kind::Space => self.head.config.valid_pvns.space(),
+                Kind::Encapsulation => self.head.config.valid_pvns.encapsulation(),
             })
             .ok_or(Error::new(ErrorKind::InvalidField).with_field(field::PACKET_VERSION))?;
         match packet::length(kind, packet) {
             Length::Total(n) if n == packet.len() => {}
             _ => return Err(Error::new(ErrorKind::LengthMismatch).with_field(field::PACKET_LEN)),
         }
-        if packet.len() > self.config.max_packet_len {
+        if packet.len() > self.head.config.max_packet_len {
             return Err(Error::out_of_range(
                 field::MAX_PACKET_LEN,
-                u64::try_from(self.config.max_packet_len).unwrap_or(u64::MAX),
+                u64::try_from(self.head.config.max_packet_len).unwrap_or(u64::MAX),
                 u64::try_from(packet.len()).unwrap_or(u64::MAX),
             ));
         }
@@ -468,18 +513,24 @@ impl<P: PacketProtocol, const D: usize, const Q: usize> PacketGenerator<P, D, Q>
 
     /// Appends octets that fit the packet zone (the caller checked the room).
     fn append_to_zone(&mut self, octets: &[u8]) {
-        for (d, s) in self.zone.iter_mut().skip(self.fill).zip(octets) {
+        for (d, s) in self.bufs.zone.iter_mut().skip(self.head.fill).zip(octets) {
             *d = *s;
         }
-        self.fill = self.fill.saturating_add(octets.len());
+        self.head.fill = self.head.fill.saturating_add(octets.len());
     }
 
     /// Appends octets that fit the queue (the caller checked the room).
     fn append_to_queue(&mut self, octets: &[u8]) {
-        for (d, s) in self.queue.iter_mut().skip(self.queue_len).zip(octets) {
+        for (d, s) in self
+            .bufs
+            .queue
+            .iter_mut()
+            .skip(self.head.queue_len)
+            .zip(octets)
+        {
             *d = *s;
         }
-        self.queue_len = self.queue_len.saturating_add(octets.len());
+        self.head.queue_len = self.head.queue_len.saturating_add(octets.len());
     }
 
     /// `Timeout` (LNK-012, API-053): marks the started field releasable at its deadline and
@@ -488,34 +539,36 @@ impl<P: PacketProtocol, const D: usize, const Q: usize> PacketGenerator<P, D, Q>
         if let Some(due) = self.next_deadline()
             && now >= due
         {
-            self.releasable = true;
+            self.head.releasable = true;
         }
     }
 
     /// `Release` (LNK-011…LNK-014).
     fn release(&mut self, now: Instant, out: &mut [u8]) -> Result<Option<DataField>> {
-        let field_len = self.config.field_len;
+        let field_len = self.head.config.field_len;
         if out.len() < field_len {
             return Err(Error::buffer_too_small(field_len));
         }
-        if self.releasable {
+        if self.head.releasable {
             let mut spill = [0_u8; MIN_SPACE_IDLE];
             let (field, spill_len) = self.write_field(out, &mut spill)?;
-            self.status.fields_out.incr();
+            self.head.status.fields_out.incr();
             self.reset_field();
             let spilled = spill.get(..spill_len).unwrap_or(&[]);
             self.append_to_zone(spilled);
             self.pull_from_queue()?;
-            if self.fill > 0 {
-                self.started = Some(now);
+            if self.head.fill > 0 {
+                self.head.started = Some(now);
             }
-            self.releasable = self.fill >= self.zone_len();
+            self.head.releasable = self.head.fill >= self.zone_len();
             self.refresh_occupancy();
             Ok(Some(field))
-        } else if self.config.idle_policy == IdlePolicy::IdleField && !self.continues_a_packet() {
+        } else if self.head.config.idle_policy == IdlePolicy::IdleField
+            && !self.continues_a_packet()
+        {
             let field = self.write_idle_field(out)?;
-            self.status.idle_fields.incr();
-            self.status.fields_out.incr();
+            self.head.status.idle_fields.incr();
+            self.head.status.fields_out.incr();
             Ok(Some(field))
         } else {
             Ok(None)
@@ -526,8 +579,8 @@ impl<P: PacketProtocol, const D: usize, const Q: usize> PacketGenerator<P, D, Q>
     /// an earlier field: the next field of the VC must carry it, so an idle field in between
     /// would split the packet (132.0 §4.2.2.2, §4.1.2.7.6.2; 732.0 §4.2.2.2; 732.1 §4.2.2.1.2; LNK-011, LNK-014).
     const fn continues_a_packet(&self) -> bool {
-        self.fill > 0
-            && match self.first_start {
+        self.head.fill > 0
+            && match self.head.first_start {
                 Some(offset) => offset > 0,
                 None => true,
             }
@@ -537,7 +590,7 @@ impl<P: PacketProtocol, const D: usize, const Q: usize> PacketGenerator<P, D, Q>
     /// octets of an idle packet that did not fit go to `spill` (LNK-013). Changes no state but
     /// the idle counter.
     fn write_field(&mut self, out: &mut [u8], spill: &mut [u8]) -> Result<(DataField, usize)> {
-        let field_len = self.config.field_len;
+        let field_len = self.head.config.field_len;
         let area = out
             .get_mut(..field_len)
             .ok_or(Error::buffer_too_small(field_len))?;
@@ -545,33 +598,33 @@ impl<P: PacketProtocol, const D: usize, const Q: usize> PacketGenerator<P, D, Q>
             .split_at_mut_checked(P::HEADER_LEN)
             .ok_or(Error::new(ErrorKind::InternalError))?;
         let (held, completion) = zone
-            .split_at_mut_checked(self.fill)
+            .split_at_mut_checked(self.head.fill)
             .ok_or(Error::new(ErrorKind::InternalError))?;
-        let pointer = match self.first_start {
+        let pointer = match self.head.first_start {
             Some(n) => Pointer::StartsAt(n),
             None if completion.is_empty() => Pointer::NoStart,
-            None => Pointer::StartsAt(self.fill),
+            None => Pointer::StartsAt(self.head.fill),
         };
-        let raw = P::encode_pointer(&self.config.protocol, pointer)?;
+        let raw = P::encode_pointer(&self.head.config.protocol, pointer)?;
         let mut spill_len = 0;
         if !completion.is_empty() {
             spill_len = self.write_idle(completion, spill)?;
-            self.status.idle_packets.incr();
+            self.head.status.idle_packets.incr();
         }
-        for (d, s) in held.iter_mut().zip(&self.zone) {
+        for (d, s) in held.iter_mut().zip(&self.bufs.zone) {
             *d = *s;
         }
-        P::write_header(&self.config.protocol, raw, header);
+        P::write_header(&self.head.config.protocol, raw, header);
         Ok((self.data_field(raw), spill_len))
     }
 
     /// The `DataField` action for the field at the start of the output area.
     fn data_field(&self, raw: u16) -> DataField {
         DataField {
-            vc: self.config.vc.into(),
-            field: OutRange::new(0, self.config.field_len),
+            vc: self.head.config.vc.into(),
+            field: OutRange::new(0, self.head.config.field_len),
             pointer: raw,
-            route: P::route(&self.config.protocol),
+            route: P::route(&self.head.config.protocol),
         }
     }
 
@@ -579,8 +632,8 @@ impl<P: PacketProtocol, const D: usize, const Q: usize> PacketGenerator<P, D, Q>
     /// shorter than a Space Packet Idle Packet, as many octets as it holds of one of 7 octets,
     /// whose rest goes to `spill`. Returns the octets spilled (LNK-013).
     fn write_idle(&self, completion: &mut [u8], spill: &mut [u8]) -> Result<usize> {
-        let pattern = self.config.idle_pattern;
-        match self.config.idle_packet_kind {
+        let pattern = self.head.config.idle_pattern;
+        match self.head.config.idle_packet_kind {
             IdlePacketKind::Encapsulation => {
                 aldis_epp::idle(completion.len(), pattern, completion)?;
                 Ok(0)
@@ -614,7 +667,7 @@ impl<P: PacketProtocol, const D: usize, const Q: usize> PacketGenerator<P, D, Q>
     /// Writes the field of only idle data of the `IdleField` policy to `out` (LNK-014). The
     /// started field and the queue stay as they are.
     fn write_idle_field(&self, out: &mut [u8]) -> Result<DataField> {
-        let field_len = self.config.field_len;
+        let field_len = self.head.config.field_len;
         let area = out
             .get_mut(..field_len)
             .ok_or(Error::buffer_too_small(field_len))?;
@@ -625,15 +678,15 @@ impl<P: PacketProtocol, const D: usize, const Q: usize> PacketGenerator<P, D, Q>
             IdleField::Packets => Pointer::StartsAt(0),
             IdleField::Pattern => Pointer::OnlyIdle,
         };
-        let raw = P::encode_pointer(&self.config.protocol, pointer)?;
+        let raw = P::encode_pointer(&self.head.config.protocol, pointer)?;
         match P::IDLE_FIELD {
             IdleField::Packets => {
                 let mut none = [0_u8; MIN_SPACE_IDLE];
                 self.write_idle(zone, &mut none)?;
             }
-            IdleField::Pattern => zone.fill(self.config.idle_pattern),
+            IdleField::Pattern => zone.fill(self.head.config.idle_pattern),
         }
-        P::write_header(&self.config.protocol, raw, header);
+        P::write_header(&self.head.config.protocol, raw, header);
         Ok(self.data_field(raw))
     }
 
@@ -643,16 +696,17 @@ impl<P: PacketProtocol, const D: usize, const Q: usize> PacketGenerator<P, D, Q>
         let zone_len = self.zone_len();
         // bound: every pass moves at least one octet from the queue or ends the loop, and the
         // queue holds at most Q octets.
-        while self.fill < zone_len && self.queue_len > 0 {
-            let room = zone_len.saturating_sub(self.fill);
-            let moved = if self.tail > 0 {
-                let n = self.tail.min(room);
-                self.tail = self.tail.saturating_sub(n);
+        while self.head.fill < zone_len && self.head.queue_len > 0 {
+            let room = zone_len.saturating_sub(self.head.fill);
+            let moved = if self.head.tail > 0 {
+                let n = self.head.tail.min(room);
+                self.head.tail = self.head.tail.saturating_sub(n);
                 n
             } else {
                 let head = self
+                    .bufs
                     .queue
-                    .get(..self.queue_len)
+                    .get(..self.head.queue_len)
                     .ok_or(Error::new(ErrorKind::InternalError))?;
                 let kind = head
                     .first()
@@ -662,8 +716,8 @@ impl<P: PacketProtocol, const D: usize, const Q: usize> PacketGenerator<P, D, Q>
                     return Err(Error::new(ErrorKind::InternalError));
                 };
                 let n = total.min(room);
-                self.first_start.get_or_insert(self.fill);
-                self.tail = total.saturating_sub(n);
+                self.head.first_start.get_or_insert(self.head.fill);
+                self.head.tail = total.saturating_sub(n);
                 n
             };
             self.move_queue_to_zone(moved);
@@ -674,24 +728,25 @@ impl<P: PacketProtocol, const D: usize, const Q: usize> PacketGenerator<P, D, Q>
     /// Moves the first `n` octets of the queue (at most the queue holds) to the end of the
     /// packet zone, and closes the gap.
     fn move_queue_to_zone(&mut self, n: usize) {
-        let moved = n.min(self.queue_len);
+        let moved = n.min(self.head.queue_len);
         for (d, s) in self
+            .bufs
             .zone
             .iter_mut()
-            .skip(self.fill)
-            .zip(self.queue.iter().take(moved))
+            .skip(self.head.fill)
+            .zip(self.bufs.queue.iter().take(moved))
         {
             *d = *s;
         }
-        self.fill = self.fill.saturating_add(moved);
-        let left = self.queue_len.saturating_sub(moved);
+        self.head.fill = self.head.fill.saturating_add(moved);
+        let left = self.head.queue_len.saturating_sub(moved);
         // Close the gap octet by octet: a slice method that moves a range could panic.
         for i in 0..left {
-            let octet = self.queue.get(moved.saturating_add(i)).copied();
-            if let (Some(octet), Some(dst)) = (octet, self.queue.get_mut(i)) {
+            let octet = self.bufs.queue.get(moved.saturating_add(i)).copied();
+            if let (Some(octet), Some(dst)) = (octet, self.bufs.queue.get_mut(i)) {
                 *dst = octet;
             }
         }
-        self.queue_len = left;
+        self.head.queue_len = left;
     }
 }
