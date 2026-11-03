@@ -48,12 +48,16 @@ fn service(v: &Value) -> Service {
 /// A protocol of the receiver whose configuration a scenario's `config` gives.
 trait Proto: ReceiveProtocol + Plained {
     const NAME: &'static str;
+    /// Whether every frame of the channel has the configured length (TM, AOS), so a frame of
+    /// another length is the codec's `LengthMismatch` before its FECF is read.
+    const FIXED: bool;
     fn channel(c: &Map<String, Value>) -> Self::Channel;
     fn vc_params(vc: &Value, c: &Map<String, Value>) -> Self::VcParams;
 }
 
 impl Proto for Tm {
     const NAME: &'static str = "tm";
+    const FIXED: bool = true;
     fn channel(c: &Map<String, Value>) -> TmChannel {
         TmChannel::new(service(&c["ocf_service"]), service(&c["fsh_service"]))
     }
@@ -76,6 +80,7 @@ impl Proto for Tm {
 
 impl Proto for Aos {
     const NAME: &'static str = "aos";
+    const FIXED: bool = true;
     fn channel(c: &Map<String, Value>) -> AosChannel {
         AosChannel::new(num(&c["insert_zone_len"]), false)
     }
@@ -93,6 +98,7 @@ impl Proto for Aos {
 
 impl Proto for Uslp {
     const NAME: &'static str = "uslp";
+    const FIXED: bool = false;
     fn channel(c: &Map<String, Value>) -> UslpChannel {
         UslpChannel::new(num(&c["insert_zone_len"]), service(&c["ocf_service"]))
     }
@@ -113,6 +119,7 @@ impl Proto for Uslp {
 
 impl Proto for Tc {
     const NAME: &'static str = "tc";
+    const FIXED: bool = false;
     fn channel(_: &Map<String, Value>) -> TcChannel {
         TcChannel
     }
@@ -206,7 +213,7 @@ where
             let m = with(m, "map", map.map(|v| json!(v.get())));
             json!({"frame_discarded": m})
         }
-        ReceiverOutput::LossFlag => panic!("expanded by the caller"),
+        ReceiverOutput::LossFlag => json!({"notify": {"kind": "LossFlag"}}),
         ReceiverOutput::DataField {
             vc,
             data,
@@ -300,8 +307,12 @@ where
                 // A frame reaches the receiver as the codec's `Plain` frame (RS-023); a frame the
                 // codec refuses is the step's error.
                 let result = if key == "frame" {
-                    P::plain(&config, &data)
-                        .and_then(|plain| engine.step(ReceiverInput::Frame(plain), &mut area))
+                    if P::FIXED {
+                        P::plain_len(&config, &data, config.frame_len())
+                    } else {
+                        P::plain(&config, &data)
+                    }
+                    .and_then(|plain| engine.step(ReceiverInput::Frame(plain), &mut area))
                 } else {
                     engine.step(ReceiverInput::RawFrame(&data), &mut area)
                 };
@@ -323,6 +334,10 @@ where
                 let actions = engine
                     .step(ReceiverInput::CallerDiscard(reason), &mut area)
                     .unwrap();
+                actions.iter().flat_map(|o| output(o, &area)).collect()
+            }
+            "frame_loss" => {
+                let actions = engine.step(ReceiverInput::FrameLoss, &mut area).unwrap();
                 actions.iter().flat_map(|o| output(o, &area)).collect()
             }
             "reconfigure" => {
