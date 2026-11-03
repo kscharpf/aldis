@@ -9,7 +9,9 @@ max_frame_octets = 1024    # TC maximum (232.0 §4.1.2.7)
 # The link engines of aldis-link share this section (M4 WP-3, WP-4; the handles follow in WP-7):
 # the ChannelMux holds `max_virtual_channels` VC slots of `max_frame_octets` each; the packet,
 # SDU, and bit queues of the PacketGenerator, the PacketExtractor, the AccessGenerator, and the
-# BitstreamGenerator hold `packet_queue_octets`.
+# BitstreamGenerator hold `packet_queue_octets`. The MapSegmenter's queue is `packet_queue_octets`
+# too, the MapReassembler holds `max_map_channels` assembly buffers of `max_frame_octets`, and the
+# CltuPacker's unit holds `max_frame_octets` (M4 WP-6; WP-7 builds the handles at these sizes).
 max_virtual_channels = 8
 max_map_channels = 16
 packet_queue_octets = 8192

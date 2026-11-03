@@ -12,11 +12,14 @@
 //! | [`bitstream`] | The `BitstreamGenerator` (AOS `B_PDU`) | LNK-021, LNK-074, LNK-075 |
 //! | [`mux`], [`policy`] | The `ChannelMux` and its multiplexing policies | LNK-030…LNK-036, LNK-076, LNK-082 |
 //! | `receiver` | The `FrameReceiver` | LNK-050…LNK-054, LNK-077, LNK-079…LNK-081 |
+//! | `segmenter` | The `MapSegmenter` (features `spp`, `epp`) | LNK-040…LNK-043, LNK-074, LNK-075, LNK-078 |
+//! | `reassembler` | The `MapReassembler` (features `spp`, `epp`) | LNK-070…LNK-073, LNK-074, LNK-075 |
+//! | [`cltu`] | The `CltuPacker` | LNK-044, LNK-074, LNK-075, LNK-078 |
 //!
 //! **Status:** the `PacketGenerator` and the `PacketExtractor` (M4 WP-3), the `ChannelMux`, the
-//! `AccessGenerator`, and the `BitstreamGenerator` (M4 WP-4), and the `FrameReceiver` (M4 WP-5)
-//! are implemented; the other modules are declared but not yet implemented. Requirements are traced by ID in each module's
-//! documentation.
+//! `AccessGenerator`, and the `BitstreamGenerator` (M4 WP-4), the `FrameReceiver` (M4 WP-5), and the
+//! `MapSegmenter`, the `MapReassembler`, and the `CltuPacker` (M4 WP-6) are implemented. Requirements
+//! are traced by ID in each module's documentation.
 #![no_std]
 #![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 #![cfg_attr(docsrs, feature(doc_auto_cfg))]
@@ -28,6 +31,7 @@ extern crate std;
 
 pub mod access;
 pub mod bitstream;
+pub mod cltu;
 pub mod common;
 #[cfg(all(feature = "spp", feature = "epp"))]
 pub mod extractor;
@@ -38,6 +42,8 @@ pub mod mux;
 mod packet;
 pub mod policy;
 pub mod protocol;
+#[cfg(all(feature = "spp", feature = "epp"))]
 pub mod reassembler;
 pub mod receiver;
+#[cfg(all(feature = "spp", feature = "epp"))]
 pub mod segmenter;
