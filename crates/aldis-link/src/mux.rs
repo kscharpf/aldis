@@ -750,11 +750,11 @@ pub struct ChannelMuxHead<P: MuxProtocol, const V: usize> {
     status: MuxStatus,
 }
 
-/// The buffers of a [`ChannelMux`]: the field slots, the Insert Zone slot, and the frame counts, valid when
-/// all zero, which is the empty state (see [`crate::inplace`]).
+/// The buffers of a [`ChannelMux`]: the field slots, the Insert Zone slot, and the frame counts.
 ///
-/// The Insert Zone slot holds its octets XOR the configured idle pattern, so that all zero is a
-/// slot at its idle pattern (LNK-034).
+/// All zero is the empty state of the slots and the counts; the Insert Zone slot starts at the
+/// configured idle pattern, which [`ChannelMux::reset_insert`] writes after an in-place build
+/// (see [`crate::inplace`]).
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[repr(C)]
 pub struct ChannelMuxBuffers<const V: usize, const F: usize> {
@@ -778,8 +778,7 @@ impl<const V: usize, const F: usize> ChannelMuxBuffers<V, F> {
 }
 
 impl<P: MuxProtocol, const V: usize> ChannelMuxHead<P, V> {
-    /// Sets the OCF and Secondary Header slots to their configured values and the Insert Zone
-    /// slot to its idle pattern.
+    /// Sets the OCF and Secondary Header slots to their configured values.
     fn init_slots(&mut self) {
         self.mc_ocf = P::mc_ocf(&self.config.channel);
         self.mc_fsh = P::mc_fsh(&self.config.channel);
@@ -805,10 +804,13 @@ impl<P: MuxProtocol, const V: usize, const F: usize> ChannelMux<P, V, F> {
     /// # Errors
     /// `CapacityExceeded` (`frame_len`) if the frame is longer than `F` octets.
     pub fn new(config: ChannelMuxConfig<P, V>) -> Result<ChannelMux<P, V, F>> {
-        Self::new_head(config).map(|head| ChannelMux {
+        let head = Self::new_head(config)?;
+        let mut mux = ChannelMux {
             head,
             bufs: ChannelMuxBuffers::ZERO,
-        })
+        };
+        mux.init_slots();
+        Ok(mux)
     }
 
     /// The offset of the head in the engine, for an in-place build (see [`crate::inplace`]).
@@ -838,6 +840,19 @@ impl<P: MuxProtocol, const V: usize, const F: usize> ChannelMux<P, V, F> {
         };
         head.init_slots();
         Ok(head)
+    }
+
+    /// Puts every slot at its configured value (LNK-033, LNK-034): the head's OCF and Secondary
+    /// Header slots, and the Insert Zone slot at the idle pattern.
+    fn init_slots(&mut self) {
+        self.head.init_slots();
+        self.reset_insert();
+    }
+
+    /// Fills the Insert Zone slot with the configured idle pattern (LNK-034). An in-place build
+    /// calls it after zeroing the buffers (see [`crate::inplace`]).
+    pub fn reset_insert(&mut self) {
+        self.bufs.insert.fill(self.head.config.idle_pattern);
     }
 
     const fn check_capacity(config: &ChannelMuxConfig<P, V>) -> Result<()> {
@@ -897,8 +912,7 @@ impl<P: MuxProtocol, const V: usize, const F: usize> ChannelMux<P, V, F> {
                 self.head.config = config;
                 self.head.held = [None; V];
                 self.head.selector = Selector::new();
-                self.head.init_slots();
-                self.bufs.insert.fill(0);
+                self.init_slots();
                 self.head.status.discarded_octets.add(octets);
                 self.head.status.slots.set(0);
                 if octets > 0 {
@@ -1053,9 +1067,8 @@ impl<P: MuxProtocol, const V: usize, const F: usize> ChannelMux<P, V, F> {
         if data.len() != len {
             return Err(Error::new(ErrorKind::LengthMismatch).with_field(field::INSERT_ZONE_LEN));
         }
-        let idle = self.head.config.idle_pattern;
         for (d, s) in self.bufs.insert.iter_mut().zip(data) {
-            *d = *s ^ idle;
+            *d = *s;
         }
         self.head.insert_fresh = true;
         Ok(())
@@ -1215,9 +1228,8 @@ impl<P: MuxProtocol, const V: usize, const F: usize> ChannelMux<P, V, F> {
                 *d = s;
             }
         } else {
-            let idle = self.head.config.idle_pattern;
             for (d, s) in secondary.iter_mut().zip(self.bufs.insert.iter()) {
-                *d = *s ^ idle;
+                *d = *s;
             }
         }
         let data = frame

@@ -23,7 +23,7 @@
 //!
 //! Engines that follow the pattern: the `PacketGenerator`, the `AccessGenerator`, the
 //! `BitstreamGenerator`, the `PacketExtractor`, and the `ChannelMux` (whose Insert Zone slot is
-//! stored XOR its idle pattern, and whose frame counts, zero at the start, move to the buffers
+//! filled with its idle pattern by `reset_insert` after the build, and whose frame counts, zero at the start, move to the buffers
 //! to keep the head small). The `FrameReceiver` holds no octet buffer
 //! (its state is the configuration, the counts, and the counters), so it needs no split. The
 //! others (MapSegmenter, MapReassembler, CltuPacker) take the same split when their C handles

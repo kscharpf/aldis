@@ -287,6 +287,14 @@ fn every_member_of_the_configuration_is_read_and_checked() {
         invalid(&|c| c.frame_len = 2048 + 1),
         (ALDIS_ERR_CAPACITY_EXCEEDED, ALDIS_FIELD_FRAME_LEN)
     );
+    // The capacity is the engine's, whatever the protocol (LNK-075).
+    for mut c in [aos_config(), uslp_config()] {
+        c.frame_len = 2048 + 1;
+        assert_eq!(
+            refused(&c),
+            (ALDIS_ERR_CAPACITY_EXCEEDED, ALDIS_FIELD_FRAME_LEN)
+        );
+    }
     assert_eq!(
         invalid(&|c| c.frame_len = 8),
         (ALDIS_ERR_INVALID_CONFIG, ALDIS_FIELD_FRAME_LEN)
@@ -768,6 +776,19 @@ fn a_reconfiguration_keeps_the_protocol_and_reports_what_it_discards() {
             step(&mut s, &re, &mut out, &mut actions, &mut d),
             ALDIS_ERR_INVALID_FIELD
         );
+    }
+    // A reconfiguration is checked against the capacity too, and changes nothing.
+    for cfg in [tm_config(), aos_config(), uslp_config()] {
+        let mut s = storage();
+        assert_eq!(init(&mut s, &cfg, &mut d), 0);
+        let mut re = input(ALDIS_CHANNEL_MUX_INPUT_RECONFIGURE);
+        re.config = cfg;
+        re.config.frame_len = 2048 + 1;
+        assert_eq!(
+            step(&mut s, &re, &mut out, &mut actions, &mut d),
+            ALDIS_ERR_CAPACITY_EXCEEDED
+        );
+        assert_eq!(d.field, ALDIS_FIELD_FRAME_LEN);
     }
     // The offered fields a reconfiguration drops are reported in octets.
     let mut s = storage();

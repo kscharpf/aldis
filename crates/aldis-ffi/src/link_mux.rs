@@ -830,6 +830,14 @@ impl ChannelMuxState {
         }
     }
 
+    fn reset_insert(&mut self) {
+        match self {
+            ChannelMuxState::Tm(e) => e.reset_insert(),
+            ChannelMuxState::Aos(e) => e.reset_insert(),
+            ChannelMuxState::Uslp(e) => e.reset_insert(),
+        }
+    }
+
     const fn status(&self) -> MuxStatus {
         match self {
             ChannelMuxState::Tm(e) => *e.status(),
@@ -875,7 +883,11 @@ pub unsafe extern "C" fn aldis_channel_mux_init(
             let cfg = abi::read(cfg)?;
             let head = mx_head(&cfg)?;
             // `init_with` passes a pointer to the state in the slot, valid for writes.
-            handle::init_with(storage, |state| mx_place(state, head))
+            handle::init_with(storage, |state| mx_place(state, head))?;
+            // The Insert Zone slot starts at the idle pattern; the buffers were zeroed.
+            // `storage` was just initialized by `init_with`, so the handle is valid.
+            mx_engine(storage)?.update(ChannelMuxState::reset_insert);
+            Ok(())
         })
     }
 }
