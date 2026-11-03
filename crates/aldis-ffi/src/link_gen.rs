@@ -919,7 +919,6 @@ fn ag_head(c: &aldis_access_generator_config_t) -> Result<AgHead> {
 #[expect(unsafe_code, reason = "initializes the engine in place (GEN-071)")]
 unsafe fn ag_place(state: *mut AccessGeneratorState, head: AgHead) {
     type B = AccessGeneratorBuffers<Q>;
-    // SAFETY: as for `pg_place`.
     match head {
         AgHead::Tm(h) => {
             // SAFETY: as the contract says; the tag 0 is the discriminant of the variant.

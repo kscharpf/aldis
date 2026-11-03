@@ -102,6 +102,16 @@ fn an_access_configuration_the_blue_books_forbid_is_refused() {
         (ErrorKind::CapacityExceeded, Some(field::MAX_SDU_LEN.name()))
     );
     assert!(AccessGenerator::<Uslp, 42>::new_head(long).is_ok());
+    // One instantiation both refuses and accepts, through `new` and through `new_head`.
+    let too_long = uslp_config(11).with_max_sdu_len(41).unwrap();
+    assert_eq!(
+        named(AccessGenerator::<Uslp, 42>::new(too_long)),
+        (ErrorKind::CapacityExceeded, Some(field::MAX_SDU_LEN.name()))
+    );
+    assert_eq!(
+        named(AccessGenerator::<Uslp, 42>::new_head(too_long)),
+        (ErrorKind::CapacityExceeded, Some(field::MAX_SDU_LEN.name()))
+    );
     let offsets = (
         AccessGenerator::<Uslp, 42>::HEAD_OFFSET,
         AccessGenerator::<Uslp, 42>::BUFFERS_OFFSET,
