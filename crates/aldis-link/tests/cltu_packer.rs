@@ -12,6 +12,7 @@
 #![expect(
     clippy::unwrap_used,
     clippy::panic,
+    clippy::panic_in_result_fn,
     unused_must_use,
     reason = "tests fail loudly by design, and many steps are run for their effect on the state"
 )]
