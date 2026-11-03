@@ -11,10 +11,11 @@
 //! | [`access`] | The `AccessGenerator` (VC and MAP Access) | LNK-020, LNK-074, LNK-075 |
 //! | [`bitstream`] | The `BitstreamGenerator` (AOS `B_PDU`) | LNK-021, LNK-074, LNK-075 |
 //! | [`mux`], [`policy`] | The `ChannelMux` and its multiplexing policies | LNK-030…LNK-036, LNK-076, LNK-082 |
+//! | `receiver` | The `FrameReceiver` | LNK-050…LNK-054, LNK-077, LNK-079…LNK-081 |
 //!
-//! **Status:** the `PacketGenerator` and the `PacketExtractor` (M4 WP-3), and the `ChannelMux`, the
-//! `AccessGenerator`, and the `BitstreamGenerator` (M4 WP-4) are implemented; the other
-//! modules are declared but not yet implemented. Requirements are traced by ID in each module's
+//! **Status:** the `PacketGenerator` and the `PacketExtractor` (M4 WP-3), the `ChannelMux`, the
+//! `AccessGenerator`, and the `BitstreamGenerator` (M4 WP-4), and the `FrameReceiver` (M4 WP-5)
+//! are implemented; the other modules are declared but not yet implemented. Requirements are traced by ID in each module's
 //! documentation.
 #![no_std]
 #![cfg_attr(coverage_nightly, feature(coverage_attribute))]

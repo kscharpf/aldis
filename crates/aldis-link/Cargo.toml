@@ -89,3 +89,11 @@ required-features = ["tm", "aos", "uslp"]
 [[test]]
 name = "bitstream_generator_vectors"
 required-features = ["aos"]
+
+[[test]]
+name = "frame_receiver_vectors"
+required-features = ["spp", "epp", "tm", "tc", "aos", "uslp"]
+
+[[test]]
+name = "frame_receiver"
+required-features = ["spp", "epp", "tm", "tc", "aos", "uslp"]

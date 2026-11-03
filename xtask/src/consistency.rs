@@ -563,10 +563,6 @@ fn vector_problems(
 const AWAITING_RUNNER: &[&str] = &[
     "link/send/map_segmenter_tc.json",
     "link/send/map_segmenter_uslp.json",
-    "link/recv/frame_receiver_aos.json",
-    "link/recv/frame_receiver_tc.json",
-    "link/recv/frame_receiver_tm.json",
-    "link/recv/frame_receiver_uslp.json",
     "link/recv/map_reassembler_tc.json",
     "link/recv/map_reassembler_uslp.json",
 ];
@@ -860,6 +856,8 @@ const ENGINES: &[(&str, Sizing)] = &[
     ("AccessGenerator", Sizing::Sized("link")),
     ("BitstreamGenerator", Sizing::Sized("link")),
     ("ChannelMux", Sizing::Sized("link")),
+    // The FrameReceiver's VC capacity is `max_virtual_channels` (M4 WP-5).
+    ("FrameReceiver", Sizing::Sized("link")),
 ];
 
 /// How an engine is sized in the C ABI.
@@ -1245,7 +1243,8 @@ mod tests {
         assert!(!awaiting_runner("link/recv/packet_extractor_uslp.json"));
         assert!(!awaiting_runner("link/send/channel_mux_tm.json"));
         assert!(awaiting_runner("link/send/map_segmenter_tc.json"));
-        assert!(awaiting_runner("link/recv/frame_receiver_aos.json"));
+        assert!(!awaiting_runner("link/recv/frame_receiver_aos.json"));
+        assert!(awaiting_runner("link/recv/map_reassembler_tc.json"));
         assert_eq!(
             vector_problems(&file, readme, &[], "", "", &c),
             ["test-vectors/cop1/scenarios/fop1_table.json: no test in crates/*/tests/ runs it"]
