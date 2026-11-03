@@ -8443,6 +8443,10 @@
         "ok": false,
         "error": "UnknownChannel",
         "field": 3
+      },
+      "superseded": {
+        "by": "uslp-open-dec-005",
+        "reason": "RS-023 / issue #232: the decoder no longer rejects a frame of a channel the configuration does not hold; it reads the frame as the physical channel allows and leaves the rejection to `validate_frame`, so the refusal of a non-truncated frame on a VC with a truncated frame length (OI-48) comes first in the decoder."
       }
     },
     {

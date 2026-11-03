@@ -65,11 +65,24 @@ pub(crate) struct Head {
     segmented: bool,
 }
 
+/// Whether a Spacecraft ID, VCID, and MAP ID that the channels do not hold fail the checks
+/// (232.0 §4.4.7.3, §4.4.3.3; TC-022, RS-023).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Channels {
+    /// The Frame Validation Checks: an unknown channel is discarded.
+    Required,
+    /// The decoder: a frame of an unknown channel is read as the Physical Channel allows, with no
+    /// Segment Header and no SDLS fields; [`validate_frame`](crate::validate::validate_frame)
+    /// rejects it.
+    Open,
+}
+
 /// Checks (a)–(c), which need only the header and the channels (232.0 §4.4.9.3.3 a–c;
 /// TC-002, TC-003, TC-007, TC-021, TC-022).
 pub(crate) fn check_head<L: VcLookup + ?Sized>(
     bytes: &[u8],
     channels: &L,
+    known: Channels,
     mode: DecodeMode,
     exact: bool,
     anomalies: &mut AnomalySet<TcAnomaly>,
@@ -77,7 +90,7 @@ pub(crate) fn check_head<L: VcLookup + ?Sized>(
     let raw = RawHeader::parse(bytes).ok_or(length(exact, PRIMARY_HEADER_LEN))?;
     raw.check_version()
         .map_err(|e| fail(Reason::UnexpectedVersion, e))?;
-    if !channels.has_spacecraft(raw.spacecraft_id) {
+    if known == Channels::Required && !channels.has_spacecraft(raw.spacecraft_id) {
         return Err(fail(
             Reason::UnexpectedSpacecraft,
             unknown(field::SPACECRAFT_ID),
@@ -97,10 +110,14 @@ pub(crate) fn check_head<L: VcLookup + ?Sized>(
             DecodeMode::Lenient => anomalies.insert(TcAnomaly::ReservedSpareSet),
         }
     }
-    let vc = channels
-        .vc(raw.spacecraft_id, raw.vc_id)
-        .ok_or(fail(Reason::InvalidVcid, unknown(field::VC_ID)))?;
     let physical = channels.physical_channel();
+    let vc = match channels.vc(raw.spacecraft_id, raw.vc_id) {
+        Some(vc) => vc,
+        None if known == Channels::Open => {
+            VcConfig::unconfigured(raw.spacecraft_id, raw.vc_id, &physical)
+        }
+        None => return Err(fail(Reason::InvalidVcid, unknown(field::VC_ID))),
+    };
     let limit = vc.max_frame_len().min(physical.max_frame_len());
     if raw.frame_len > limit {
         return Err(fail(
@@ -159,11 +176,12 @@ fn control_command(
 pub(crate) fn parse<'a, L: VcLookup + ?Sized>(
     bytes: &'a [u8],
     channels: &L,
+    known: Channels,
     mode: DecodeMode,
     exact: bool,
 ) -> core::result::Result<Parsed<'a>, Rejection> {
     let mut anomalies = AnomalySet::empty();
-    let head = check_head(bytes, channels, mode, exact, &mut anomalies)?;
+    let head = check_head(bytes, channels, known, mode, exact, &mut anomalies)?;
     let (raw, total) = (head.raw, head.raw.frame_len);
     let frame = match bytes.get(..total) {
         Some(frame) if !exact || bytes.len() == total => frame,
@@ -182,12 +200,11 @@ pub(crate) fn parse<'a, L: VcLookup + ?Sized>(
     };
     let control = head.frame_type.control_command_flag();
     let (security, map_config) = match segment_header {
-        Some(sh) => {
-            let m = channels
-                .map(raw.spacecraft_id, raw.vc_id, sh.map_id)
-                .ok_or(fail(Reason::InvalidMapId, unknown(field::MAP_ID)))?;
-            (m.security(), Some(m))
-        }
+        Some(sh) => match channels.map(raw.spacecraft_id, raw.vc_id, sh.map_id) {
+            Some(m) => (m.security(), Some(m)),
+            None if known == Channels::Open => (SecurityLayout::NONE, None),
+            None => return Err(fail(Reason::InvalidMapId, unknown(field::MAP_ID))),
+        },
         None if control => (SecurityLayout::NONE, None),
         None => (head.vc.security(), None),
     };
@@ -237,7 +254,10 @@ impl<'a> TcFrame<'a> {
     /// [`len`](Self::len) (232.0 §4.1; TC-001…TC-006, API-011).
     ///
     /// The checks are those of [`validate_frame`](crate::validate::validate_frame), in its
-    /// order, except that the input may be longer than the frame.
+    /// order, except that the input may be longer than the frame and that a Spacecraft ID,
+    /// VCID, or MAP ID the channels do not hold is not an error: the frame is read as the
+    /// Physical Channel allows (no Segment Header, no SDLS fields) so that an engine can count
+    /// it, and `validate_frame` rejects it (RS-023, TC-022).
     ///
     /// A receiver of delimited frames must run `validate_frame`, or compare
     /// [`len`](Self::len) with the octets it supplied, because a bit error in the Frame Length
@@ -249,8 +269,6 @@ impl<'a> TcFrame<'a> {
     /// - `UnsupportedVersion` (`frame_version`) for a version other than `00`, and
     ///   `ReservedValue` (`control_command_flag`) for Bypass Flag `0` with Control Command
     ///   Flag `1`, in both modes (TC-002).
-    /// - `UnknownChannel` (`spacecraft_id`, `vc_id`, `map_id`) for a Spacecraft ID, VCID, or
-    ///   MAP ID the channels do not have (TC-021, TC-022).
     /// - `ReservedValue` (`tc_header_spare`) for a Reserved Spare other than `00`
     ///   ([`decode_lenient`](Self::decode_lenient) reports [`TcAnomaly::ReservedSpareSet`]
     ///   instead; TC-003).
@@ -262,7 +280,7 @@ impl<'a> TcFrame<'a> {
     ///   nor Set V(R) ([`decode_lenient`](Self::decode_lenient) reports
     ///   [`TcAnomaly::UnknownControlCommand`] instead; TC-005).
     pub fn decode<L: VcLookup + ?Sized>(bytes: &'a [u8], channels: &L) -> Result<TcFrame<'a>> {
-        parse(bytes, channels, DecodeMode::Strict, false)
+        parse(bytes, channels, Channels::Open, DecodeMode::Strict, false)
             .map(|p| p.frame)
             .map_err(Error::from)
     }
@@ -277,7 +295,7 @@ impl<'a> TcFrame<'a> {
         bytes: &'a [u8],
         channels: &L,
     ) -> Result<Lenient<TcFrame<'a>, TcAnomaly>> {
-        parse(bytes, channels, DecodeMode::Lenient, false)
+        parse(bytes, channels, Channels::Open, DecodeMode::Lenient, false)
             .map(|p| Lenient::new(p.frame, p.anomalies))
             .map_err(Error::from)
     }
@@ -495,17 +513,12 @@ mod tests {
     fn header_errors_in_check_order() {
         // req: TC-001, TC-002, TC-003, TC-021, TC-022, GEN-041
         let t = standard(false);
-        let cases: [(&[u8], ErrorKind, Option<aldis_core::FieldId>); 8] = [
+        let cases: [(&[u8], ErrorKind, Option<aldis_core::FieldId>); 5] = [
             (&[0x01, 0x55, 0x04, 0x05], ErrorKind::Incomplete, None),
             (
                 &[0x41, 0x55, 0x04, 0x05, 0, 0],
                 ErrorKind::UnsupportedVersion,
                 Some(field::FRAME_VERSION),
-            ),
-            (
-                &[0x01, 0x56, 0x04, 0x05, 0, 0],
-                ErrorKind::UnknownChannel,
-                Some(field::SPACECRAFT_ID),
             ),
             (
                 &[0x11, 0x55, 0x04, 0x05, 0, 0],
@@ -518,19 +531,9 @@ mod tests {
                 Some(field::TC_HEADER_SPARE),
             ),
             (
-                &[0x01, 0x55, 0x10, 0x05, 0, 0],
-                ErrorKind::UnknownChannel,
-                Some(field::VC_ID),
-            ),
-            (
                 &[0x01, 0x55, 0x04, 0x04, 0, 0],
                 ErrorKind::InvalidField,
                 Some(field::FRAME_DATA_FIELD),
-            ),
-            (
-                &[0x01, 0x55, 0x08, 0x06, 0, 0xC7, 0],
-                ErrorKind::UnknownChannel,
-                Some(field::MAP_ID),
             ),
         ];
         for (bytes, kind, fld) in cases {
@@ -548,6 +551,33 @@ mod tests {
         assert_eq!(e.detail(), ErrorDetail::Needed(5));
         assert!(TcFrame::peek_length(&[0x81, 0x55, 0x04, 0x05, 0]).is_err());
         assert!(TcFrame::peek_length(&[0x11, 0x55, 0x04, 0x05, 0]).is_err());
+    }
+
+    #[test]
+    fn a_frame_of_an_unconfigured_channel_decodes() {
+        // req: TC-021, TC-022, RS-023, API-017
+        let t = standard(false);
+        // An SCID, a VCID, and a MAP ID the channels do not hold. The decoder reads the frame as
+        // the Physical Channel allows; the Frame Validation Checks reject it.
+        let cases: [(&[u8], Option<aldis_core::FieldId>); 3] = [
+            (&[0x01, 0x56, 0x04, 0x05, 0, 0], Some(field::SPACECRAFT_ID)),
+            (&[0x01, 0x55, 0x10, 0x05, 0, 0], Some(field::VC_ID)),
+            (&[0x01, 0x55, 0x08, 0x06, 0, 0xC7, 0], Some(field::MAP_ID)),
+        ];
+        for (bytes, fld) in cases {
+            let f = TcFrame::decode(bytes, &t).unwrap();
+            assert_eq!(f.octets(), bytes, "{bytes:02X?}");
+            let e = crate::validate::validate_frame(bytes, &t).unwrap_err();
+            assert_eq!(
+                (e.error().kind(), e.error().field()),
+                (ErrorKind::UnknownChannel, fld),
+                "{bytes:02X?}"
+            );
+        }
+        // On a VC that is not configured there is no Segment Header: its octet is data.
+        let f = TcFrame::decode(&[0x01, 0x55, 0x14, 0x06, 0, 0xC7, 0], &t).unwrap();
+        assert_eq!((f.segment_header(), f.data_field().len()), (None, 2));
+        assert!(TcFrame::decode_lenient(&[0x01, 0x56, 0x04, 0x05, 0, 0], &t).is_ok());
     }
 
     #[test]

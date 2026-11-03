@@ -25,6 +25,18 @@ use crate::truncated::{self, UslpTruncatedFrame};
 use crate::upid::Upid;
 use crate::validate::{Reason, Rejection};
 
+/// Whether a Spacecraft ID, VCID, and MAP ID that the channels do not hold fail the checks
+/// (732.1 §4.3.11.3.4 b, c; USLP-014, RS-023).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Channels {
+    /// The Frame Validation Checks: a frame of an unknown channel is discarded.
+    Required,
+    /// The decoder: a non-truncated frame of an unknown channel is read as it says itself, with
+    /// no SDLS fields; `validate_frame` rejects it. A truncated frame has no Frame Length, so
+    /// its channel must be known.
+    Open,
+}
+
 /// Shorthand for a failed check.
 pub(crate) const fn fail(reason: Reason, error: Error) -> Rejection {
     Rejection::new(reason, error)
@@ -137,6 +149,7 @@ fn check_channel<L: VcLookup + ?Sized>(
     ch: ChannelFields,
     rest: RawRest,
     channels: &L,
+    known: Channels,
     mode: DecodeMode,
     anomalies: &mut AnomalySet<UslpAnomaly>,
 ) -> core::result::Result<(VcConfig, Option<MapConfig>, FrameKind), Rejection> {
@@ -152,16 +165,30 @@ fn check_channel<L: VcLookup + ?Sized>(
             DecodeMode::Lenient => anomalies.insert(UslpAnomaly::ReserveSparesSet),
         }
     }
-    let vc = channels
-        .vc(ch.spacecraft_id, ch.vc_id)
-        .ok_or(fail(Reason::InvalidVcid, unknown(field::VC_ID)))?;
+    let vc = match channels.vc(ch.spacecraft_id, ch.vc_id) {
+        Some(vc) => vc,
+        None if known == Channels::Open => VcConfig::unconfigured(
+            ch.spacecraft_id,
+            ch.vc_id,
+            &channels.physical_channel(),
+            rest.vcf_count_len,
+            rest.ocf_flag,
+        ),
+        None => return Err(fail(Reason::InvalidVcid, unknown(field::VC_ID))),
+    };
     let map = if ch.vc_id.get() == OID_VCID {
         None
     } else {
-        let m = channels
-            .map(ch.spacecraft_id, ch.vc_id, ch.map_id)
-            .ok_or(fail(Reason::InvalidMapId, unknown(field::MAP_ID)))?;
-        Some(m)
+        match channels.map(ch.spacecraft_id, ch.vc_id, ch.map_id) {
+            Some(m) => Some(m),
+            None if known == Channels::Open => Some(MapConfig::new(
+                ch.spacecraft_id,
+                ch.vc_id,
+                ch.map_id,
+                SecurityLayout::NONE,
+            )),
+            None => return Err(fail(Reason::InvalidMapId, unknown(field::MAP_ID))),
+        }
     };
     if vc.truncated_frame_len().is_some() {
         return Err(fail(
@@ -186,11 +213,13 @@ fn parse_full<'a, L: VcLookup + ?Sized>(
     bytes: &'a [u8],
     (start, rest): (RawStart, RawRest),
     channels: &L,
+    known: Channels,
     mode: DecodeMode,
     exact: bool,
 ) -> core::result::Result<Parsed<UslpFullFrame<'a>>, Rejection> {
     let mut anomalies = AnomalySet::empty();
-    let (vc, map, kind) = check_channel(start.channel, rest, channels, mode, &mut anomalies)?;
+    let (vc, map, kind) =
+        check_channel(start.channel, rest, channels, known, mode, &mut anomalies)?;
     let ch = start.channel;
     let oid = map.is_none();
     let physical = channels.physical_channel();
@@ -287,6 +316,7 @@ pub(crate) struct Parsed<F> {
 pub(crate) fn parse<'a, L: VcLookup + ?Sized>(
     bytes: &'a [u8],
     channels: &L,
+    known: Channels,
     mode: DecodeMode,
     exact: bool,
 ) -> core::result::Result<Parsed<UslpFrame<'a>>, Rejection> {
@@ -300,7 +330,9 @@ pub(crate) fn parse<'a, L: VcLookup + ?Sized>(
     start
         .check_version()
         .map_err(|e| fail(Reason::UnexpectedVersion, e))?;
-    if !channels.has_spacecraft(start.channel.spacecraft_id) {
+    if (known == Channels::Required || start.truncated)
+        && !channels.has_spacecraft(start.channel.spacecraft_id)
+    {
         return Err(fail(
             Reason::UnexpectedSpacecraft,
             unknown(field::SPACECRAFT_ID),
@@ -317,7 +349,7 @@ pub(crate) fn parse<'a, L: VcLookup + ?Sized>(
             })
         }
         Some(rest) => {
-            let p = parse_full(bytes, (start, rest), channels, mode, exact)?;
+            let p = parse_full(bytes, (start, rest), channels, known, mode, exact)?;
             Ok(Parsed {
                 frame: UslpFrame::Full(p.frame),
                 anomalies: p.anomalies,
@@ -335,7 +367,11 @@ impl<'a> UslpFrame<'a> {
     /// A variable-length or truncated frame may be followed by other octets, which are ignored,
     /// so a stream can be parsed frame by frame with [`len`](Self::len) (API-011); on a
     /// fixed-length Physical Channel `bytes` must be exactly one frame (API-012). The checks are
-    /// those of [`validate_frame`](crate::validate::validate_frame), in its order.
+    /// those of [`validate_frame`](crate::validate::validate_frame), in its order, except that a
+    /// non-truncated frame of a Spacecraft ID, VCID, or MAP ID the channels do not hold is not an
+    /// error: it is read as its own fields say, with no SDLS fields, so that an engine can count
+    /// it, and `validate_frame` rejects it (RS-023, USLP-014). A truncated frame has no Frame
+    /// Length, which is a parameter of its VC, so it needs its channel (Annex D1.3.2).
     /// A strict decode has no anomalies to report (API-031).
     ///
     /// A receiver of delimited frames must run `validate_frame`, or compare
@@ -350,7 +386,8 @@ impl<'a> UslpFrame<'a> {
     /// - `UnsupportedVersion` (`frame_version`) and `ReservedValue`
     ///   (`protocol_control_command_flag`) in both modes (USLP-001); `ReservedValue`
     ///   (`uslp_header_spare`) in strict mode, [`UslpAnomaly::ReserveSparesSet`] in lenient.
-    /// - `UnknownChannel` (`spacecraft_id`, `vc_id`, `map_id`); `InvalidField`
+    /// - `UnknownChannel` (`spacecraft_id`, `vc_id`, `map_id`) for a truncated frame only;
+    ///   `InvalidField`
     ///   (`end_of_frame_primary_header_flag`) for a truncated frame on a VC without a truncated
     ///   frame length, and for a non-truncated frame on a VC with one (USLP-002; OI-48).
     /// - `LengthMismatch` (`vcf_count_len`) in both modes (USLP-004); `InvalidField`
@@ -362,7 +399,7 @@ impl<'a> UslpFrame<'a> {
     /// - On VCID 63, `InvalidField` naming the deviating OID header field in strict mode,
     ///   [`UslpAnomaly::OidHeaderMismatch`] in lenient (OI-44 item 1).
     pub fn decode<L: VcLookup + ?Sized>(bytes: &'a [u8], channels: &L) -> Result<UslpFrame<'a>> {
-        parse(bytes, channels, DecodeMode::Strict, false)
+        parse(bytes, channels, Channels::Open, DecodeMode::Strict, false)
             .map(|p| p.frame)
             .map_err(Error::from)
     }
@@ -377,7 +414,7 @@ impl<'a> UslpFrame<'a> {
         bytes: &'a [u8],
         channels: &L,
     ) -> Result<Lenient<UslpFrame<'a>, UslpAnomaly>> {
-        parse(bytes, channels, DecodeMode::Lenient, false)
+        parse(bytes, channels, Channels::Open, DecodeMode::Lenient, false)
             .map(|p| Lenient::new(p.frame, p.anomalies))
             .map_err(Error::from)
     }
@@ -809,7 +846,7 @@ mod tests {
 
     #[test]
     fn header_errors_in_check_order() {
-        // req: USLP-001, USLP-002, USLP-003, USLP-004, USLP-014, GEN-041, CMN-041, API-015, API-016, API-030, API-031, API-032
+        // req: USLP-001, USLP-002, USLP-003, USLP-004, USLP-014, GEN-041, CMN-041, API-015, API-016, API-017, API-030, API-031, API-032
         let t = fixed();
         let good = fixed_frame();
         let with = |at: usize, v: u8| {
@@ -818,16 +855,12 @@ mod tests {
             b
         };
         let ic = |k, f| (k, Some(f));
-        let cases: [(Vec<u8>, Outcome); 10] = [
+        let cases: [(Vec<u8>, Outcome); 7] = [
             (good[..3].to_vec(), (ErrorKind::Incomplete, None)),
             (good[..6].to_vec(), (ErrorKind::Incomplete, None)),
             (
                 with(0, 0xD0),
                 ic(ErrorKind::UnsupportedVersion, field::FRAME_VERSION),
-            ),
-            (
-                with(1, 0x16),
-                ic(ErrorKind::UnknownChannel, field::SPACECRAFT_ID),
             ),
             (
                 with(6, 0x4A),
@@ -840,8 +873,6 @@ mod tests {
                 with(6, 0x9A),
                 ic(ErrorKind::ReservedValue, field::USLP_HEADER_SPARE),
             ),
-            (with(3, 0x86), ic(ErrorKind::UnknownChannel, field::VC_ID)),
-            (with(3, 0x24), ic(ErrorKind::UnknownChannel, field::MAP_ID)),
             (
                 with(6, 0x89),
                 ic(ErrorKind::LengthMismatch, field::VCF_COUNT_LEN),
@@ -859,6 +890,29 @@ mod tests {
             err_of(UslpFrame::decode(&with(5, 0x3E), &t)),
             ic(ErrorKind::LengthMismatch, field::FRAME_LEN)
         );
+        // An SCID, a VCID, and a MAP ID that the channels do not hold: the decoder reads the
+        // frame (its FECF is made right here), the Frame Validation Checks reject it (RS-023).
+        let refixed = |mut b: Vec<u8>| {
+            let n = b.len();
+            let crc = crc16(&b[..n - 2]).to_be_bytes();
+            b[n - 2..].copy_from_slice(&crc);
+            b
+        };
+        for (b, fld) in [
+            (with(1, 0x16), field::SPACECRAFT_ID),
+            (with(3, 0x86), field::VC_ID),
+            (with(3, 0x24), field::MAP_ID),
+        ] {
+            let b = refixed(b);
+            let f = UslpFrame::decode(&b, &t).unwrap();
+            assert_eq!(f.len(), b.len(), "{b:02X?}");
+            let r = validate_frame(&b, &t).unwrap_err();
+            assert_eq!(
+                (r.error().kind(), r.error().field()),
+                (ErrorKind::UnknownChannel, Some(fld)),
+                "{b:02X?}"
+            );
+        }
         let spare_bad_crc = with(6, 0x9A);
         let f = UslpFrame::decode_lenient(&spare_bad_crc, &t);
         assert_eq!(

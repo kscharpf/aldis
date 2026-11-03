@@ -44,6 +44,7 @@ pub mod policy;
 pub mod protocol;
 #[cfg(all(feature = "spp", feature = "epp"))]
 pub mod reassembler;
+#[cfg(any(feature = "tm", feature = "tc", feature = "aos", feature = "uslp"))]
 pub mod receiver;
 #[cfg(all(feature = "spp", feature = "epp"))]
 pub mod segmenter;

@@ -4,12 +4,14 @@
 //! It routes each frame to its VC, checks the frame counts, and delivers the frame's parts.
 //!
 //! The engine serves one master channel of one protocol (TM, TC, AOS, or USLP; LNK-001, v1 has
-//! one master channel per receiver, OI-75). It takes a frame whose FECF the caller has checked
-//! (correcting the AOS FHEC) and whose SDLS processing the caller has verified
-//! ([`CheckedFrame`], LNK-050, API-074). It does not decode the frame again: the codec views
-//! reject a frame for a VC or MAP that is not configured, and the receiver must still count such
-//! a frame and extract its Insert Zone, FSH, and OCF (OI-77), so it reads the fields it needs
-//! from the octets itself.
+//! one master channel per receiver, OI-75). It takes only the codec's `Plain` frame
+//! ([`ReceiveProtocol::Plain`]: `PlainTmFrame`, `PlainTcFrame`, `PlainAosFrame`,
+//! `PlainUslpFrame`), a frame whose FECF the codec has checked (correcting the AOS FHEC) and whose
+//! SDLS processing is done: `Received`, `Checked`, `Plain` are types, so a frame that skipped a
+//! step does not compile (RS-023, LNK-050, API-074). The codec decodes a frame of a VC or MAP
+//! that is not configured too, because the receiver must count such a frame and extract its
+//! Insert Zone, FSH, and OCF (OI-77). It does not read the codec's view: it reads the fields it
+//! needs from the frame's octets itself, since the view of an unconfigured channel is opaque.
 //!
 //! **What it returns.** In the order of the procedure of the protocol (docs/04-engines.md §4):
 //! the gap or discontinuity of the MC and VC counts, the FSH, the Insert SDU, the OCF, then the
@@ -42,14 +44,20 @@ use crate::protocol::Protocol;
 
 #[cfg(feature = "aos")]
 mod aos;
+#[cfg(feature = "tc")]
 mod tc;
+#[cfg(feature = "tm")]
 mod tm;
+#[cfg(feature = "uslp")]
 mod uslp;
 
 #[cfg(feature = "aos")]
 pub use aos::{AosChannel, AosContent, AosVc};
+#[cfg(feature = "tc")]
 pub use tc::{TcChannel, TcVc};
+#[cfg(feature = "tm")]
 pub use tm::{TmChannel, TmContent, TmVc};
+#[cfg(feature = "uslp")]
 pub use uslp::{MapSet, UslpChannel, UslpVc};
 
 /// The most actions one input of a `FrameReceiver` returns (LNK-074, API-057).
@@ -238,38 +246,11 @@ pub enum ReceiverOutput<P: ReceiveProtocol> {
     },
 }
 
-/// A frame the caller has checked: its FECF is correct (the AOS FHEC corrected), and its SDLS
-/// processing is verified (LNK-050, API-074, RS-023).
-///
-/// **Temporary exception to RS-023.** [`new`](Self::new) wraps any octets on the caller's word,
-/// so the typestate is not enforced. The maintainer accepted this for the merge of M4 WP-5
-/// (2026-11-02); the codec's `Plain` frame replaces this type under issue #232, before the C ABI
-/// handles (WP-7) are built.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct CheckedFrame<'a> {
-    octets: &'a [u8],
-}
-
-impl<'a> CheckedFrame<'a> {
-    /// The octets of a frame whose FECF the caller has checked and whose SDLS processing it
-    /// has verified (LNK-050, API-074).
-    #[must_use]
-    pub const fn new(octets: &'a [u8]) -> CheckedFrame<'a> {
-        CheckedFrame { octets }
-    }
-
-    /// The octets.
-    #[must_use]
-    pub const fn octets(&self) -> &'a [u8] {
-        self.octets
-    }
-}
-
 /// An input of the `FrameReceiver` (docs/04-engines.md §4).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ReceiverInput<'a, P: ReceiveProtocol, const V: usize> {
-    /// A frame the caller has checked (LNK-050).
-    Frame(CheckedFrame<'a>),
+    /// A frame the codec has checked and whose SDLS processing is done (LNK-050, RS-023).
+    Frame(P::Plain<'a>),
     /// The octets of a frame the caller rejected, for the Insert Zone only (LNK-079).
     RawFrame(&'a [u8]),
     /// A frame the caller discarded before the engine (LNK-080).
@@ -350,6 +331,11 @@ pub trait ReceiveProtocol: Protocol {
     type Channel: Copy + Debug + Eq;
     /// The parameters of one VC that the receiver needs: plain data (API-041).
     type VcParams: Copy + Debug + Eq;
+    /// The codec's `Plain` frame, the only frame the receiver takes (RS-023, LNK-050).
+    type Plain<'a>: Debug + Clone + PartialEq + Eq;
+
+    /// The octets of a `Plain` frame.
+    fn plain_octets<'a>(frame: &Self::Plain<'a>) -> &'a [u8];
 
     /// The octets of the Insert Zone, 0 for a protocol or a channel without one.
     fn insert_zone_len(channel: &Self::Channel) -> usize;
@@ -959,7 +945,7 @@ impl<P: ReceiveProtocol, const V: usize> FrameReceiver<P, V> {
         out: &mut [u8],
     ) -> Result<ReceiverActions<P>> {
         match input {
-            ReceiverInput::Frame(frame) => self.frame(frame.octets(), out),
+            ReceiverInput::Frame(frame) => self.frame(P::plain_octets(&frame), out),
             ReceiverInput::RawFrame(octets) => self.raw_frame(octets, out),
             ReceiverInput::CallerDiscard(reason) => {
                 let reason = DiscardReason::from(reason);
@@ -1049,7 +1035,7 @@ impl<P: ReceiveProtocol, const V: usize> FrameReceiver<P, V> {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "tm", feature = "tc"))]
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::{

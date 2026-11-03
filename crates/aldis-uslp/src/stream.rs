@@ -16,7 +16,7 @@ use crate::delimit::{Declared, declared_len};
 use crate::field;
 use crate::header::{RawRest, RawStart};
 use crate::validate::{Reason, ValidatedUslpFrame};
-use crate::view::parse;
+use crate::view::{Channels, parse};
 
 /// Why wire octets or a USLP frame were discarded (732.1 §4.3.11.2, §4.3.11.3; USLP-014, USLP-015).
 #[non_exhaustive]
@@ -420,7 +420,7 @@ impl<'a, L: VcLookup + ?Sized> Intake<'a, '_, L> {
 
         if let Some((frame_bytes, remaining)) = self.rest.split_at_checked(len) {
             self.rest = remaining;
-            match parse(frame_bytes, self.channels, mode, true) {
+            match parse(frame_bytes, self.channels, Channels::Required, mode, true) {
                 Ok(p) => Some(IntakeItem::Accepted {
                     frame: (ValidatedUslpFrame::new(p.frame), p.anomalies),
                     vc: p.vc,
@@ -435,7 +435,7 @@ impl<'a, L: VcLookup + ?Sized> Intake<'a, '_, L> {
         } else {
             let octets = self.rest;
             self.rest = &[];
-            match parse(octets, self.channels, mode, true) {
+            match parse(octets, self.channels, Channels::Required, mode, true) {
                 Err(rejection) if rejection.reason() != Reason::LengthMismatch => {
                     Some(IntakeItem::Discarded {
                         reason: DiscardReason::from(rejection.reason()),

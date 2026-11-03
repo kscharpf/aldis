@@ -21,7 +21,7 @@
 use aldis_core::ids::{SpacecraftId, VcId};
 use aldis_core::layout::{FECF_LEN, FrameLayout, LayoutSpec};
 use aldis_core::security::SecurityLayout;
-use aldis_core::{Error, ErrorKind, Result};
+use aldis_core::{Error, ErrorKind, FieldId, Result};
 
 use crate::bpdu::{BPDU_HEADER_LEN, MAX_BITSTREAM_FRAME_LEN, MAX_BITSTREAM_ZONE_LEN};
 use crate::field;
@@ -289,15 +289,24 @@ pub(crate) const fn pdu_header_len(content: DataFieldContent) -> usize {
     }
 }
 
-/// `UnknownChannel` for a frame of (`scid`, a VCID not configured): naming the Spacecraft ID if
-/// it is not valid on the physical channel, else the VCID (732.0 §4.3.5.4, §4.3.6.3).
-pub(crate) fn unknown_channel<L: VcLookup + ?Sized>(vcs: &L, scid: SpacecraftId<10>) -> Error {
-    let field = if vcs.has_spacecraft(scid) {
+/// The field an `UnknownChannel` names for a frame of (`scid`, a VCID not configured): the
+/// Spacecraft ID if it is not valid on the physical channel, else the VCID (732.0 §4.3.5.4,
+/// §4.3.6.3).
+pub(crate) fn unknown_channel_field<L: VcLookup + ?Sized>(
+    vcs: &L,
+    scid: SpacecraftId<10>,
+) -> FieldId {
+    if vcs.has_spacecraft(scid) {
         field::VC_ID
     } else {
         field::SPACECRAFT_ID
-    };
-    Error::new(ErrorKind::UnknownChannel).with_field(field)
+    }
+}
+
+/// `UnknownChannel` for a frame of (`scid`, a VCID not configured), as
+/// [`unknown_channel_field`] names it.
+pub(crate) fn unknown_channel<L: VcLookup + ?Sized>(vcs: &L, scid: SpacecraftId<10>) -> Error {
+    Error::new(ErrorKind::UnknownChannel).with_field(unknown_channel_field(vcs, scid))
 }
 
 /// Looks up the managed parameters of the virtual channels a frame may belong to (M2 plan D14;

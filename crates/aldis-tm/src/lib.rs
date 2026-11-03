@@ -9,6 +9,7 @@
 //! | [`view`] | Zero-copy `TmFrame` decoder (strict and lenient), `UncheckedTmFrame`, `peek_length` | 132.0 §4.1, §6.3 | TM-001…TM-008, API-010, API-012…API-014, API-015, API-072, GEN-013 |
 //! | [`anomaly`] | `TmAnomaly` lenient-mode flags | 132.0 §4.1.2.7.4–5 | TM-007, API-032, API-033, GEN-043 |
 //! | [`writer`] | One-shot `encode` and `encode_oid`, two-phase `TmFrameWriter`, OID frames | 132.0 §4.1, §4.1.4.6, §6.3 | TM-009, TM-010, API-020…API-023, API-072, GEN-014 |
+//! | [`plain`] | `TmFrame::into_plain` through `NoSecurity`, returning a `PlainTmFrame`, the frame input of an engine | 355.0 §2.3 | RS-023, API-070, API-074 |
 //! | [`validate`] | `TmFrame::validate` against the master channel's managed parameters, returning a `ValidatedTmFrame` | 132.0 §5 | TM-011, API-016 |
 //! | [`field`] | The field codes its errors name, re-exported from `aldis_core::field` | 132.0 §4.1, §5 | API-082, GEN-041 |
 //!
@@ -35,6 +36,7 @@ pub mod anomaly;
 pub mod config;
 pub mod field;
 pub mod header;
+pub mod plain;
 pub mod validate;
 pub mod view;
 pub mod writer;
@@ -48,6 +50,7 @@ pub use header::{
     DataFieldStatus, FirstHeaderPointer, FshLen, PacketOffset, PacketPointer, SegmentLengthId,
     TmPrimaryHeader,
 };
+pub use plain::PlainTmFrame;
 pub use validate::ValidatedTmFrame;
 pub use view::{TmFrame, UncheckedTmFrame};
 pub use writer::{

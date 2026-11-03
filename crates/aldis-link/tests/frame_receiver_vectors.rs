@@ -7,17 +7,20 @@
     reason = "test-only harness: malformed vectors must fail loudly (RS-018)"
 )]
 
+mod support;
+
 use aldis_core::engine::OutRange;
 use aldis_core::ids::MapId;
 use aldis_core::ocf::Ocf;
 use aldis_link::protocol::{Aos, Tc, Tm, Uslp};
 use aldis_link::receiver::{
-    AosChannel, AosContent, AosVc, CallerDiscardReason, ChannelScope, CheckedFrame, DiscardReason,
-    FrameReceiver, FrameReceiverConfig, MapSet, ReceiveProtocol, ReceiverInput, ReceiverOutput,
-    Service, TcChannel, TcVc, TmChannel, TmContent, TmVc, UslpChannel, UslpVc, VcEntry,
+    AosChannel, AosContent, AosVc, CallerDiscardReason, ChannelScope, DiscardReason, FrameReceiver,
+    FrameReceiverConfig, MapSet, ReceiveProtocol, ReceiverInput, ReceiverOutput, Service,
+    TcChannel, TcVc, TmChannel, TmContent, TmVc, UslpChannel, UslpVc, VcEntry,
 };
 use aldis_testkit::{ScenarioFile, VectorFile, hex};
 use serde_json::{Map, Value, json};
+use support::Plained;
 
 const FILES: [&str; 4] = [
     "link/recv/frame_receiver_tm.json",
@@ -43,7 +46,7 @@ fn service(v: &Value) -> Service {
 }
 
 /// A protocol of the receiver whose configuration a scenario's `config` gives.
-trait Proto: ReceiveProtocol {
+trait Proto: ReceiveProtocol + Plained {
     const NAME: &'static str;
     fn channel(c: &Map<String, Value>) -> Self::Channel;
     fn vc_params(vc: &Value, c: &Map<String, Value>) -> Self::VcParams;
@@ -294,12 +297,15 @@ where
         let got: Vec<Value> = match key.as_str() {
             "frame" | "raw_frame" => {
                 let data = hex::decode(v["frame_hex"].as_str().unwrap()).unwrap();
-                let input = if key == "frame" {
-                    ReceiverInput::Frame(CheckedFrame::new(&data))
+                // A frame reaches the receiver as the codec's `Plain` frame (RS-023); a frame the
+                // codec refuses is the step's error.
+                let result = if key == "frame" {
+                    P::plain(&config, &data)
+                        .and_then(|plain| engine.step(ReceiverInput::Frame(plain), &mut area))
                 } else {
-                    ReceiverInput::RawFrame(&data)
+                    engine.step(ReceiverInput::RawFrame(&data), &mut area)
                 };
-                match engine.step(input, &mut area) {
+                match result {
                     Ok(actions) => actions.iter().flat_map(|o| output(o, &area)).collect(),
                     Err(e) => vec![match e.field() {
                         Some(f) => json!({"error": e.kind().name(), "field": f.name()}),

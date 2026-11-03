@@ -1,0 +1,280 @@
+{
+  "kind": "codec",
+  "standard": "732.0-B-5 EC1 §4.1, §4.3.5.4, §4.3.6.3 — frames of channels the configuration does not hold",
+  "provenance": "hand-derived",
+  "provenance_note": "Hand-derived from 732.0-B-5 EC1 §4.1.2 (Primary Header: version 01, SCID bits 2-9 and 42-43, VCID bits 10-15, VC Frame Count bits 16-39, Replay Flag bit 40, VC Frame Count Usage Flag bit 41, Cycle bits 44-47), §4.1.4 (the Transfer Frame Data Field), §4.1.6 (FECF), and §4.3.5.4 and §4.3.6.3 (a frame of a VCID or SCID that is not valid is discarded by the receiving end). The inputs are those of the cases they replace (aos-inv-dec-007 and -008, aos-oid-dec-002, aos-scid-dec-004, marked superseded by RS-023 / issue #232). A decode of a frame of a channel the configuration does not hold reads it as opaque octets: no M_PDU or B_PDU Header, no OCF, no Security Header or Trailer; `AosFrame::validate` rejects it with UnknownChannel (docs/standards/aos-frame.md, Order of the decoder's checks). Expected values read off the octets by the field widths above. The independent model of the other vector files of this codec (TV-023) does not cover this file: it was written before the change and is not touched by it; a blind-model round is the maintainer's decision (issue #232). Author: an AI agent, Claude Sonnet 5.5.",
+  "cases": [
+    {
+      "id": "aos-open-dec-001",
+      "requirements": [
+        "AOS-010",
+        "AOS-016",
+        "API-010",
+        "API-016",
+        "RS-023"
+      ],
+      "description": "VC 3 is not configured: decoded, opaque (RS-023: read as opaque octets with no OCF and no SDLS fields; `validate` rejects it)",
+      "operation": "decode",
+      "config": {
+        "frame_len": 20,
+        "fhec": false,
+        "insert_zone_len": 0,
+        "fecf": true,
+        "edition": "issue5",
+        "vcs": [
+          {
+            "scid": 85,
+            "vcid": 1,
+            "content": "mpdu",
+            "ocf": true,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 85,
+            "vcid": 2,
+            "content": "vca_sdu",
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "input_hex": "554300000000000000000000000000000000057F",
+      "expect": {
+        "ok": true,
+        "scid": 85,
+        "vcid": 3,
+        "vc_frame_count": 0,
+        "replay_flag": false,
+        "cycle_use_flag": false,
+        "cycle_field": 0,
+        "vc_frame_count_cycle": null,
+        "issue4_spare": 0,
+        "fhec": null,
+        "corrected_symbols": 0,
+        "header_hex": "554300000000",
+        "is_oid": false,
+        "insert_zone_hex": "",
+        "security_header_hex": "",
+        "data_field_hex": "000000000000000000000000",
+        "security_trailer_hex": "",
+        "ocf_hex": null,
+        "ocf_report": null,
+        "fecf": 1407,
+        "data_unit": "vca_sdu",
+        "pdu_pointer_raw": null,
+        "pointer": null,
+        "pointer_value": null,
+        "pdu_spare": null,
+        "zone_hex": "000000000000000000000000",
+        "consumed": 20,
+        "anomalies": []
+      }
+    },
+    {
+      "id": "aos-open-dec-002",
+      "requirements": [
+        "AOS-010",
+        "AOS-016",
+        "API-010",
+        "API-016",
+        "RS-023"
+      ],
+      "description": "SCID 0x56 has no VC: decoded, opaque (RS-023: read as opaque octets with no OCF and no SDLS fields; `validate` rejects it)",
+      "operation": "decode",
+      "config": {
+        "frame_len": 20,
+        "fhec": false,
+        "insert_zone_len": 0,
+        "fecf": true,
+        "edition": "issue5",
+        "vcs": [
+          {
+            "scid": 85,
+            "vcid": 1,
+            "content": "mpdu",
+            "ocf": true,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 85,
+            "vcid": 2,
+            "content": "vca_sdu",
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "input_hex": "558100000000000000000000000001140C2A85E5",
+      "expect": {
+        "ok": true,
+        "scid": 86,
+        "vcid": 1,
+        "vc_frame_count": 0,
+        "replay_flag": false,
+        "cycle_use_flag": false,
+        "cycle_field": 0,
+        "vc_frame_count_cycle": null,
+        "issue4_spare": 0,
+        "fhec": null,
+        "corrected_symbols": 0,
+        "header_hex": "558100000000",
+        "is_oid": false,
+        "insert_zone_hex": "",
+        "security_header_hex": "",
+        "data_field_hex": "000000000000000001140C2A",
+        "security_trailer_hex": "",
+        "ocf_hex": null,
+        "ocf_report": null,
+        "fecf": 34277,
+        "data_unit": "vca_sdu",
+        "pdu_pointer_raw": null,
+        "pointer": null,
+        "pointer_value": null,
+        "pdu_spare": null,
+        "zone_hex": "000000000000000001140C2A",
+        "consumed": 20,
+        "anomalies": []
+      }
+    },
+    {
+      "id": "aos-open-dec-003",
+      "requirements": [
+        "AOS-010",
+        "AOS-016",
+        "API-010",
+        "API-016",
+        "RS-023"
+      ],
+      "description": "An OID frame of an SCID with no VC: decoded, opaque (RS-023: read as opaque octets with no OCF and no SDLS fields; `validate` rejects it)",
+      "operation": "decode",
+      "config": {
+        "frame_len": 16,
+        "fhec": false,
+        "insert_zone_len": 0,
+        "fecf": true,
+        "edition": "issue5",
+        "vcs": [
+          {
+            "scid": 85,
+            "vcid": 0,
+            "content": "mpdu",
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "input_hex": "55BF0000000000000000000000008DC8",
+      "expect": {
+        "ok": true,
+        "scid": 86,
+        "vcid": 63,
+        "vc_frame_count": 0,
+        "replay_flag": false,
+        "cycle_use_flag": false,
+        "cycle_field": 0,
+        "vc_frame_count_cycle": null,
+        "issue4_spare": 0,
+        "fhec": null,
+        "corrected_symbols": 0,
+        "header_hex": "55BF00000000",
+        "is_oid": true,
+        "insert_zone_hex": "",
+        "security_header_hex": "",
+        "data_field_hex": "0000000000000000",
+        "security_trailer_hex": "",
+        "ocf_hex": null,
+        "ocf_report": null,
+        "fecf": 36296,
+        "data_unit": "idle_data",
+        "pdu_pointer_raw": null,
+        "pointer": null,
+        "pointer_value": null,
+        "pdu_spare": null,
+        "zone_hex": "0000000000000000",
+        "consumed": 16,
+        "anomalies": []
+      }
+    },
+    {
+      "id": "aos-open-dec-004",
+      "requirements": [
+        "AOS-010",
+        "AOS-016",
+        "API-010",
+        "API-016",
+        "RS-023"
+      ],
+      "description": "SCID 0x0A5 (the same LSBs, MSBs 00) has no VC: decoded, opaque (RS-023: read as opaque octets with no OCF and no SDLS fields; `validate` rejects it)",
+      "operation": "decode",
+      "config": {
+        "frame_len": 12,
+        "fhec": false,
+        "insert_zone_len": 0,
+        "fecf": false,
+        "edition": "issue5",
+        "vcs": [
+          {
+            "scid": 1023,
+            "vcid": 1,
+            "content": "vca_sdu",
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 677,
+            "vcid": 2,
+            "content": "vca_sdu",
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          },
+          {
+            "scid": 256,
+            "vcid": 3,
+            "content": "vca_sdu",
+            "ocf": false,
+            "security_header_len": 0,
+            "security_trailer_len": 0
+          }
+        ]
+      },
+      "input_hex": "694200000000000000000000",
+      "expect": {
+        "ok": true,
+        "scid": 165,
+        "vcid": 2,
+        "vc_frame_count": 0,
+        "replay_flag": false,
+        "cycle_use_flag": false,
+        "cycle_field": 0,
+        "vc_frame_count_cycle": null,
+        "issue4_spare": 0,
+        "fhec": null,
+        "corrected_symbols": 0,
+        "header_hex": "694200000000",
+        "is_oid": false,
+        "insert_zone_hex": "",
+        "security_header_hex": "",
+        "data_field_hex": "000000000000",
+        "security_trailer_hex": "",
+        "ocf_hex": null,
+        "ocf_report": null,
+        "fecf": null,
+        "data_unit": "vca_sdu",
+        "pdu_pointer_raw": null,
+        "pointer": null,
+        "pointer_value": null,
+        "pdu_spare": null,
+        "zone_hex": "000000000000",
+        "consumed": 12,
+        "anomalies": []
+      }
+    }
+  ]
+}

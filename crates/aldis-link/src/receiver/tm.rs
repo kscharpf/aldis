@@ -111,6 +111,11 @@ impl TmVc {
 impl ReceiveProtocol for Tm {
     type Channel = TmChannel;
     type VcParams = TmVc;
+    type Plain<'a> = aldis_tm::PlainTmFrame<'a>;
+
+    fn plain_octets<'a>(frame: &Self::Plain<'a>) -> &'a [u8] {
+        frame.as_bytes()
+    }
 
     fn insert_zone_len(_: &TmChannel) -> usize {
         0

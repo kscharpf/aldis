@@ -126,6 +126,11 @@ impl UslpVc {
 impl ReceiveProtocol for Uslp {
     type Channel = UslpChannel;
     type VcParams = UslpVc;
+    type Plain<'a> = aldis_uslp::PlainUslpFrame<'a>;
+
+    fn plain_octets<'a>(frame: &Self::Plain<'a>) -> &'a [u8] {
+        frame.octets()
+    }
 
     fn insert_zone_len(channel: &UslpChannel) -> usize {
         channel.insert_zone_len
@@ -166,11 +171,11 @@ impl ReceiveProtocol for Uslp {
     }
 
     fn receive<const V: usize>(cx: &mut FrameContext<'_, Uslp, V>, frame: &[u8]) -> Result<()> {
-        let [_, _, t2, t3, l0, l1, flags] = header::<PRIMARY_HEADER_LEN>(frame)?;
-        // The Frame Length field is one less than the length of this frame (732.1 §4.1.2.7).
-        if usize::from(u16::from_be_bytes([l0, l1])).saturating_add(1) != frame.len() {
-            return Err(Error::new(ErrorKind::LengthMismatch).with_field(field::FRAME_LEN));
-        }
+        // The codec has checked that the Frame Length field (one less than the length of the
+        // frame, 732.1 §4.1.2.7) and the Protocol Control Command Flag (Bypass 0 with Protocol
+        // Control Command 1 is reserved, Table 4-1) are valid: they are properties of a
+        // `PlainUslpFrame` (RS-023).
+        let [_, _, t2, t3, _, _, flags] = header::<PRIMARY_HEADER_LEN>(frame)?;
         // TFVN (4 bits), SCID (16), Source or Destination (1), VCID (6), MAP ID (4), End of
         // Frame Primary Header Flag (1), from the most significant bit (732.1 §4.1.2).
         let vc: VcId<6> = vc_of::<Uslp>(((t2 & 0x07) << 3) | (t3 >> 5))?;
@@ -179,11 +184,6 @@ impl ReceiveProtocol for Uslp {
         let control = flags & 0x40 != 0;
         let ocf_flag = flags & 0x08 != 0;
         let count_len = flags & 0x07;
-        if !bypass && control {
-            // Bypass 0 with Protocol Control Command 1 is reserved (732.1 Table 4-1).
-            return Err(Error::new(ErrorKind::ReservedValue)
-                .with_field(field::PROTOCOL_CONTROL_COMMAND_FLAG));
-        }
         let channel = *cx.cfg().channel();
         let framed = lay_out(
             frame,

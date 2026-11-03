@@ -325,10 +325,12 @@ fn the_header_and_length_peek_alone() {
         (ALDIS_TC_FRAME_BD, 0x2AA, 2, 3, 6)
     );
     assert_eq!(n, 6);
+    // The decoder no longer rejects a channel it does not hold (RS-023): the first error of this
+    // frame is its length, 6 octets, which cannot hold the FECF of the physical channel.
     let mut view = aldis_tc_frame_t::default();
     assert_eq!(
         decode(&frame, ALDIS_MODE_STRICT, &mut view),
-        ALDIS_ERR_UNKNOWN_CHANNEL
+        ALDIS_ERR_INVALID_FIELD
     );
 }
 

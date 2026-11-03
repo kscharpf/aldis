@@ -6068,13 +6068,16 @@ uint32_t aldis_aos_header_decode(const uint8_t *prefix,
  * corrected header (§4.3.7.2–3; AOS-014). An OID frame (VCID 63) needs only the SCID of `mc`
  * with at least one virtual channel: it has no OCF and no SDLS fields (§4.1.4.1.5).
  *
+ * A frame of a Spacecraft ID or VC that `vcs` does not hold is decoded, as opaque octets with no
+ * OCF and no SDLS fields, and not rejected (API-017, RS-023): the C ABI has no AOS validation
+ * step yet, so a caller checks the SCID and VCID of `out->header` against its channels.
+ *
  * # Errors
  * The errors of [`aldis_aos_mc_config_check`]; then, in this order:
  * `ALDIS_ERR_LENGTH_MISMATCH` (`frame_len`) if `len` is not the frame length (API-012);
  * `ALDIS_ERR_HEADER_UNCORRECTABLE` (AOS-014); `ALDIS_ERR_CRC_MISMATCH` for a wrong FECF;
  * `ALDIS_ERR_UNSUPPORTED_VERSION` (`frame_version`) for a version other than `01` (AOS-011);
- * `ALDIS_ERR_UNKNOWN_CHANNEL` (`spacecraft_id` for another SCID, `vc_id` for a VC `vcs` does not
- * hold); the pointer errors of [`aldis_aos_mpdu_decode`] and [`aldis_aos_bpdu_decode`], in
+ * the pointer errors of [`aldis_aos_mpdu_decode`] and [`aldis_aos_bpdu_decode`], in
  * both modes (AOS-017); in strict mode, for the first deviation: `ALDIS_ERR_INVALID_FIELD`
  * (`vc_frame_count_cycle`) for a cycle other than `0000` with its Use Flag `0` (AOS-012),
  * `ALDIS_ERR_RESERVED_VALUE` (`aos_header_spare`) for Issue 4 bits 42–43 other than `00`
@@ -7155,14 +7158,16 @@ uint32_t aldis_tc_header_decode(const uint8_t *prefix,
  * octets after it are not read. The Security Header and Trailer lengths are those of the
  * frame's virtual channel, or of its MAP when it has a Segment Header.
  *
+ * A frame of a Spacecraft ID, VCID, or MAP ID that the channels do not hold is decoded, read as the
+ * Physical Channel allows, and not rejected (API-017, RS-023); `aldis_tc_stream_next` rejects it.
+ *
  * # Errors
  * The errors of [`aldis_tc_mc_config_check`]; then, in this order: `ALDIS_ERR_INCOMPLETE`
  * (`needed`) for fewer octets than the Primary Header or the frame; `ALDIS_ERR_UNSUPPORTED_VERSION`
- * (`frame_version`); `ALDIS_ERR_UNKNOWN_CHANNEL` (`spacecraft_id`) for another Spacecraft ID;
- * `ALDIS_ERR_RESERVED_VALUE` (`control_command_flag`) (TC-002) and, in strict mode,
- * (`tc_header_spare`) (TC-003); `ALDIS_ERR_UNKNOWN_CHANNEL` (`vc_id`); `ALDIS_ERR_OUT_OF_RANGE`
+ * (`frame_version`); `ALDIS_ERR_RESERVED_VALUE` (`control_command_flag`) (TC-002) and, in strict mode,
+ * (`tc_header_spare`) (TC-003); `ALDIS_ERR_OUT_OF_RANGE`
  * (`frame_len`) above the channel's maximum and `ALDIS_ERR_INVALID_FIELD` (`frame_data_field`)
- * for no data octet; `ALDIS_ERR_CRC_MISMATCH` (TC-006); `ALDIS_ERR_UNKNOWN_CHANNEL` (`map_id`);
+ * for no data octet; `ALDIS_ERR_CRC_MISMATCH` (TC-006);
  * in strict mode `ALDIS_ERR_RESERVED_VALUE` (`control_command`) for a Type-C data field that
  * is neither command (TC-005); CABI-022 violations.
  *
@@ -7930,10 +7935,14 @@ uint32_t aldis_uslp_peek_length(const uint8_t *prefix,
  * (`out->layout.frame_len` is the frame's length; API-011); on a fixed-length channel `len`
  * must be the frame length (API-012).
  *
+ * A non-truncated frame of a Spacecraft ID, VCID, or MAP ID that the channels do not hold is decoded
+ * as its own fields say and not rejected (API-017, RS-023); `aldis_uslp_stream_next` rejects it. A
+ * truncated frame needs its VC, so it fails with `ALDIS_ERR_UNKNOWN_CHANNEL`.
+ *
  * # Errors
  * The decoder errors of `docs/standards/uslp-frame.md` §3.1, in its order: among them
  * `ALDIS_ERR_INCOMPLETE` (`needed`), `ALDIS_ERR_UNSUPPORTED_VERSION` (`frame_version`),
- * `ALDIS_ERR_UNKNOWN_CHANNEL` (`spacecraft_id`, `vc_id`, `map_id`), `ALDIS_ERR_RESERVED_VALUE`
+ * `ALDIS_ERR_RESERVED_VALUE`
  * (`protocol_control_command_flag`, and `uslp_header_spare` in strict mode),
  * `ALDIS_ERR_LENGTH_MISMATCH` (`vcf_count_len`, `frame_len`), `ALDIS_ERR_CRC_MISMATCH`,
  * `ALDIS_ERR_INVALID_FIELD` (`end_of_frame_primary_header_flag`, `tfdz_construction_rule`,

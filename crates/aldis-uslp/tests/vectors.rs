@@ -463,3 +463,9 @@ fn config() {
     // req: GEN-060, API-040, USLP-002, USLP-008, USLP-012, VER-021
     run_codec_file("uslp/config.json", handler).assert_passed();
 }
+
+#[test]
+fn unconfigured_channel() {
+    // req: USLP-002, USLP-014, RS-023, API-017, VER-021
+    run_codec_file("uslp/unconfigured_channel.json", handler).assert_passed();
+}
