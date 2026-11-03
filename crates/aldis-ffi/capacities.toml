@@ -14,8 +14,8 @@ max_frame_octets = 1024    # TC maximum (232.0 §4.1.2.7)
 # CltuPacker's unit holds `max_frame_octets` (M4 WP-6; WP-7 builds the handles at these sizes).
 max_virtual_channels = 8
 max_map_channels = 16
-packet_queue_octets = 8192
-max_frame_octets = 2048
+packet_queue_octets = 2048
+max_frame_octets = 1024
 
 [spp]
 tracker_max_apids = 16     # APIDs one aldis_spp_tracker_t tracks (SPP-011, M2 plan D5)

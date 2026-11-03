@@ -145,6 +145,34 @@
 #define ALDIS_FOP1_MAX_FRAME_OCTETS 1024
 
 /**
+ * Virtual channels of one `aldis_channel_mux_t` and of one `aldis_frame_receiver_t` (LNK-030, LNK-050; M4 plan D4).
+ *
+ * `[link] max_virtual_channels` of `capacities.toml` (CABI-030).
+ */
+#define ALDIS_LINK_MAX_VIRTUAL_CHANNELS 8
+
+/**
+ * MAP channels of one `aldis_map_reassembler_t` (LNK-070; M4 plan D4).
+ *
+ * `[link] max_map_channels` of `capacities.toml` (CABI-030).
+ */
+#define ALDIS_LINK_MAX_MAP_CHANNELS 16
+
+/**
+ * Octets of the packet, SDU, and bit queues of the generators, and of the segmenter's queue (LNK-015; M4 plan D4).
+ *
+ * `[link] packet_queue_octets` of `capacities.toml` (CABI-030).
+ */
+#define ALDIS_LINK_PACKET_QUEUE_OCTETS 8192
+
+/**
+ * Octets of the largest data field or frame of one link engine (LNK-075; M4 plan D4).
+ *
+ * `[link] max_frame_octets` of `capacities.toml` (CABI-030).
+ */
+#define ALDIS_LINK_MAX_FRAME_OCTETS 2048
+
+/**
  * Header size argument: the smallest header that holds the fields and the length
  * (133.1 §4.1.2.4; EPP-008).
  */
@@ -1255,6 +1283,38 @@
 #define ALDIS_FOP1_WORDS 2283
 
 /**
+ * The most actions one `aldis_packet_generator_step` returns (LNK-074): a data field or the
+ * octets a reconfiguration discarded.
+ */
+#define ALDIS_PACKET_GENERATOR_MAX_ACTIONS 1
+
+/**
+ * The most actions one `aldis_access_generator_step` returns (LNK-074).
+ */
+#define ALDIS_ACCESS_GENERATOR_MAX_ACTIONS 1
+
+/**
+ * The most actions one `aldis_bitstream_generator_step` returns (LNK-074).
+ */
+#define ALDIS_BITSTREAM_GENERATOR_MAX_ACTIONS 1
+
+/**
+ * 64-bit words of one `aldis_packet_generator_t` (CABI-031): the tag and the largest of the
+ * engines of TM, AOS, and USLP at the build capacities; the build fails when it outgrows it.
+ */
+#define ALDIS_PACKET_GENERATOR_WORDS PACKET_WORDS
+
+/**
+ * 64-bit words of one `aldis_access_generator_t` (CABI-031).
+ */
+#define ALDIS_ACCESS_GENERATOR_WORDS ACCESS_WORDS
+
+/**
+ * 64-bit words of one `aldis_bitstream_generator_t` (CABI-031).
+ */
+#define ALDIS_BITSTREAM_GENERATOR_WORDS BITSTREAM_WORDS
+
+/**
  * Length of the Operational Control Field in octets (132.0 §4.1.5.1, 732.0 §4.1.5.1,
  * 732.1 §4.1.5.2; CMN-010).
  */
@@ -1611,6 +1671,69 @@
 #define ALDIS_USLP_DISCARD_NON_TRUNCATED_NOT_ALLOWED ALDIS_USLP_DISCARD_NON_TRUNCATED_FRAME_NOT_ALLOWED
 
 /**
+ * The kind of an `aldis_access_generator_action_t` (API-057).
+ *
+ * A `uint32_t` field is one of the enumerators below; the type itself is not a field type of
+ * the header (OI-57 convention 2; CABI-010).
+ *
+ */
+enum aldis_access_generator_action
+#if defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+  : uint32_t
+#endif // defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+ {
+  /**
+   * A data field, in `out` (LNK-020).
+   */
+  ALDIS_ACCESS_GENERATOR_ACTION_DATA_FIELD = 0,
+  /**
+   * A reconfiguration discarded `octets` (LNK-003).
+   */
+  ALDIS_ACCESS_GENERATOR_ACTION_DISCARDED = 1,
+};
+#ifndef __cplusplus
+#if __STDC_VERSION__ >= 202311L
+typedef enum aldis_access_generator_action aldis_access_generator_action;
+#else
+typedef uint32_t aldis_access_generator_action;
+#endif // __STDC_VERSION__ >= 202311L
+#endif // __cplusplus
+
+/**
+ * The kind of an `aldis_access_generator_input_t` (LNK-020, LNK-003; API-057).
+ *
+ * A `uint32_t` field is one of the enumerators below; the type itself is not a field type of
+ * the header (OI-57 convention 2; CABI-010).
+ *
+ */
+enum aldis_access_generator_input
+#if defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+  : uint32_t
+#endif // defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+ {
+  /**
+   * A whole SDU (`data`): LNK-020.
+   */
+  ALDIS_ACCESS_GENERATOR_INPUT_SUBMIT_SDU = 0,
+  /**
+   * Give out the next field (LNK-020).
+   */
+  ALDIS_ACCESS_GENERATOR_INPUT_RELEASE = 1,
+  /**
+   * Replace the configuration (`config`) between data units, discarding the queue
+   * (LNK-003). The protocol cannot change.
+   */
+  ALDIS_ACCESS_GENERATOR_INPUT_RECONFIGURE = 2,
+};
+#ifndef __cplusplus
+#if __STDC_VERSION__ >= 202311L
+typedef enum aldis_access_generator_input aldis_access_generator_input;
+#else
+typedef uint32_t aldis_access_generator_input;
+#endif // __STDC_VERSION__ >= 202311L
+#endif // __cplusplus
+
+/**
  * The Data Field Content of a virtual channel (732.0 Table 5-3).
  *
  * A `uint8_t` argument or field is one of the enumerators below; the type itself is not a
@@ -1733,6 +1856,69 @@ enum aldis_aos_pointer
 typedef enum aldis_aos_pointer aldis_aos_pointer;
 #else
 typedef uint8_t aldis_aos_pointer;
+#endif // __STDC_VERSION__ >= 202311L
+#endif // __cplusplus
+
+/**
+ * The kind of an `aldis_bitstream_generator_action_t` (API-057).
+ *
+ * A `uint32_t` field is one of the enumerators below; the type itself is not a field type of
+ * the header (OI-57 convention 2; CABI-010).
+ *
+ */
+enum aldis_bitstream_generator_action
+#if defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+  : uint32_t
+#endif // defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+ {
+  /**
+   * A `B_PDU`, in `out` (LNK-021).
+   */
+  ALDIS_BITSTREAM_GENERATOR_ACTION_DATA_FIELD = 0,
+  /**
+   * A reconfiguration discarded `octets` (LNK-003).
+   */
+  ALDIS_BITSTREAM_GENERATOR_ACTION_DISCARDED = 1,
+};
+#ifndef __cplusplus
+#if __STDC_VERSION__ >= 202311L
+typedef enum aldis_bitstream_generator_action aldis_bitstream_generator_action;
+#else
+typedef uint32_t aldis_bitstream_generator_action;
+#endif // __STDC_VERSION__ >= 202311L
+#endif // __cplusplus
+
+/**
+ * The kind of an `aldis_bitstream_generator_input_t` (LNK-021, LNK-003; API-057).
+ *
+ * A `uint32_t` field is one of the enumerators below; the type itself is not a field type of
+ * the header (OI-57 convention 2; CABI-010).
+ *
+ */
+enum aldis_bitstream_generator_input
+#if defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+  : uint32_t
+#endif // defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+ {
+  /**
+   * Bits for the stream (`data`, `bit_len`): LNK-021.
+   */
+  ALDIS_BITSTREAM_GENERATOR_INPUT_SUBMIT_BITS = 0,
+  /**
+   * Give out the next `B_PDU` (LNK-021).
+   */
+  ALDIS_BITSTREAM_GENERATOR_INPUT_RELEASE = 1,
+  /**
+   * Replace the configuration (`config`) between data units, discarding the queued bits
+   * (LNK-003).
+   */
+  ALDIS_BITSTREAM_GENERATOR_INPUT_RECONFIGURE = 2,
+};
+#ifndef __cplusplus
+#if __STDC_VERSION__ >= 202311L
+typedef enum aldis_bitstream_generator_input aldis_bitstream_generator_input;
+#else
+typedef uint32_t aldis_bitstream_generator_input;
 #endif // __STDC_VERSION__ >= 202311L
 #endif // __cplusplus
 
@@ -2173,6 +2359,130 @@ typedef uint32_t aldis_fop1_timeout;
 #endif // __cplusplus
 
 /**
+ * The kind of idle packet that completes a field (LNK-013).
+ *
+ * A `uint32_t` field is one of the enumerators below; the type itself is not a field type of
+ * the header (OI-57 convention 2; CABI-010).
+ *
+ */
+enum aldis_link_idle_packet
+#if defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+  : uint32_t
+#endif // defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+ {
+  /**
+   * A Space Packet Idle Packet (133.0 §4.1.3.3.4.4).
+   */
+  ALDIS_LINK_IDLE_PACKET_SPACE_PACKET = 0,
+  /**
+   * An Encapsulation Idle Packet (133.1).
+   */
+  ALDIS_LINK_IDLE_PACKET_ENCAPSULATION = 1,
+};
+#ifndef __cplusplus
+#if __STDC_VERSION__ >= 202311L
+typedef enum aldis_link_idle_packet aldis_link_idle_packet;
+#else
+typedef uint32_t aldis_link_idle_packet;
+#endif // __STDC_VERSION__ >= 202311L
+#endif // __cplusplus
+
+/**
+ * What a generator does when it has nothing to release (LNK-014).
+ *
+ * A `uint32_t` field is one of the enumerators below; the type itself is not a field type of
+ * the header (OI-57 convention 2; CABI-010).
+ *
+ */
+enum aldis_link_idle_policy
+#if defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+  : uint32_t
+#endif // defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+ {
+  /**
+   * The caller sends an Only Idle Data frame (OID); the generator releases nothing.
+   */
+  ALDIS_LINK_IDLE_POLICY_OID = 0,
+  /**
+   * The generator releases a field of idle data.
+   */
+  ALDIS_LINK_IDLE_POLICY_IDLE_FIELD = 1,
+};
+#ifndef __cplusplus
+#if __STDC_VERSION__ >= 202311L
+typedef enum aldis_link_idle_policy aldis_link_idle_policy;
+#else
+typedef uint32_t aldis_link_idle_policy;
+#endif // __STDC_VERSION__ >= 202311L
+#endif // __cplusplus
+
+/**
+ * The frame protocol of a link engine (LNK-001).
+ *
+ * A `uint32_t` field is one of the enumerators below; the type itself is not a field type of
+ * the header (OI-57 convention 2; CABI-010).
+ *
+ */
+enum aldis_link_protocol
+#if defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+  : uint32_t
+#endif // defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+ {
+  /**
+   * TM Space Data Link Protocol (132.0-B-3).
+   */
+  ALDIS_LINK_PROTOCOL_TM = 0,
+  /**
+   * TC Space Data Link Protocol (232.0-B-4).
+   */
+  ALDIS_LINK_PROTOCOL_TC = 1,
+  /**
+   * AOS Space Data Link Protocol (732.0-B-5).
+   */
+  ALDIS_LINK_PROTOCOL_AOS = 2,
+  /**
+   * Unified Space Data Link Protocol (732.1-B-3).
+   */
+  ALDIS_LINK_PROTOCOL_USLP = 3,
+};
+#ifndef __cplusplus
+#if __STDC_VERSION__ >= 202311L
+typedef enum aldis_link_protocol aldis_link_protocol;
+#else
+typedef uint32_t aldis_link_protocol;
+#endif // __STDC_VERSION__ >= 202311L
+#endif // __cplusplus
+
+/**
+ * The quality of service of a USLP MAP (732.1 §4.1.2.8; LNK-043).
+ *
+ * A `uint32_t` field is one of the enumerators below; the type itself is not a field type of
+ * the header (OI-57 convention 2; CABI-010).
+ *
+ */
+enum aldis_link_qos
+#if defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+  : uint32_t
+#endif // defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+ {
+  /**
+   * Sequence-Controlled Service (Type-AD).
+   */
+  ALDIS_LINK_QOS_SEQUENCE_CONTROLLED = 0,
+  /**
+   * Expedited Service (Type-BD).
+   */
+  ALDIS_LINK_QOS_EXPEDITED = 1,
+};
+#ifndef __cplusplus
+#if __STDC_VERSION__ >= 202311L
+typedef enum aldis_link_qos aldis_link_qos;
+#else
+typedef uint32_t aldis_link_qos;
+#endif // __STDC_VERSION__ >= 202311L
+#endif // __cplusplus
+
+/**
  * The decode mode argument (API-030; OI-57 convention 2). The argument is a `uint32_t`: an
  * enumerator of this type, which no field of the header uses (CABI-010).
  *
@@ -2263,6 +2573,74 @@ enum aldis_oid_form
 typedef enum aldis_oid_form aldis_oid_form;
 #else
 typedef uint32_t aldis_oid_form;
+#endif // __STDC_VERSION__ >= 202311L
+#endif // __cplusplus
+
+/**
+ * The kind of an `aldis_packet_generator_action_t` (API-057).
+ *
+ * A `uint32_t` field is one of the enumerators below; the type itself is not a field type of
+ * the header (OI-57 convention 2; CABI-010).
+ *
+ */
+enum aldis_packet_generator_action
+#if defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+  : uint32_t
+#endif // defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+ {
+  /**
+   * A data field, in `out` (LNK-011).
+   */
+  ALDIS_PACKET_GENERATOR_ACTION_DATA_FIELD = 0,
+  /**
+   * A reconfiguration discarded `octets` (LNK-003).
+   */
+  ALDIS_PACKET_GENERATOR_ACTION_DISCARDED = 1,
+};
+#ifndef __cplusplus
+#if __STDC_VERSION__ >= 202311L
+typedef enum aldis_packet_generator_action aldis_packet_generator_action;
+#else
+typedef uint32_t aldis_packet_generator_action;
+#endif // __STDC_VERSION__ >= 202311L
+#endif // __cplusplus
+
+/**
+ * The kind of an `aldis_packet_generator_input_t` (LNK-010…LNK-015, LNK-003; API-057).
+ *
+ * A `uint32_t` field is one of the enumerators below; the type itself is not a field type of
+ * the header (OI-57 convention 2; CABI-010).
+ *
+ */
+enum aldis_packet_generator_input
+#if defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+  : uint32_t
+#endif // defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+ {
+  /**
+   * A whole packet (`data`): LNK-010, LNK-015.
+   */
+  ALDIS_PACKET_GENERATOR_INPUT_SUBMIT_PACKET = 0,
+  /**
+   * Give out the next releasable field, or the idle field of the idle policy (LNK-012,
+   * LNK-014).
+   */
+  ALDIS_PACKET_GENERATOR_INPUT_RELEASE = 1,
+  /**
+   * The release deadline of the started field may have passed (API-053, LNK-012).
+   */
+  ALDIS_PACKET_GENERATOR_INPUT_TIMEOUT = 2,
+  /**
+   * Replace the configuration (`config`) between data units, discarding the field and the
+   * queue (LNK-003). The protocol cannot change.
+   */
+  ALDIS_PACKET_GENERATOR_INPUT_RECONFIGURE = 3,
+};
+#ifndef __cplusplus
+#if __STDC_VERSION__ >= 202311L
+typedef enum aldis_packet_generator_input aldis_packet_generator_input;
+#else
+typedef uint32_t aldis_packet_generator_input;
 #endif // __STDC_VERSION__ >= 202311L
 #endif // __cplusplus
 
@@ -4296,6 +4674,507 @@ typedef struct {
    */
   uint64_t t1_initial_us;
 } aldis_fop1_status_t;
+
+/**
+ * A `PacketGenerator` in caller storage: the caller declares an object of this type, and the
+ * pointer to it is the handle (LNK-010, CABI-031, CABI-032). The words are the library's.
+ */
+typedef struct {
+  /**
+   * The slot of [`handle`]: the tag, then the state.
+   */
+  uint64_t words[ALDIS_PACKET_GENERATOR_WORDS];
+} aldis_packet_generator_t;
+
+/**
+ * The channel a link engine serves, and the protocol it is built for (LNK-001). It is the
+ * first member of every link engine configuration.
+ *
+ * `aos_edition` is read for AOS only, and `uslp_upid`, `uslp_map`, and `uslp_qos` for USLP
+ * only; the others ignore them.
+ */
+typedef struct {
+  /**
+   * `ALDIS_LINK_PROTOCOL_*`.
+   */
+  uint32_t protocol;
+  /**
+   * The Virtual Channel Identifier: 0 to 7 for TM, 0 to 63 for TC, AOS, and USLP.
+   */
+  uint8_t vc_id;
+  /**
+   * AOS: `ALDIS_AOS_EDITION_*` (AOS-001); 0 is Issue 5.
+   */
+  uint8_t aos_edition;
+  /**
+   * USLP: the UPID of the TFDFs, 0 to 31 but not "Only Idle Data" (732.1 §4.1.4.2.3).
+   */
+  uint8_t uslp_upid;
+  /**
+   * USLP: the MAP ID, 0 to 15 (732.1 §4.1.2.7).
+   */
+  uint8_t uslp_map;
+  /**
+   * USLP: `ALDIS_LINK_QOS_*`.
+   */
+  uint32_t uslp_qos;
+} aldis_link_channel_t;
+
+/**
+ * The managed parameters of a `PacketGenerator` (132.0 §5.4 Table 5-4; 732.0 §5.5 Table 5-4;
+ * 732.1 §5.6 Table 5-5; LNK-010, LNK-012…LNK-014, LNK-078).
+ */
+typedef struct {
+  /**
+   * The protocol and the channel (TM, AOS, or USLP).
+   */
+  aldis_link_channel_t channel;
+  /**
+   * The octets of the data field, header included (TM data field, AOS `M_PDU`, USLP TFDF),
+   * at most `ALDIS_LINK_MAX_FRAME_OCTETS` and what the pointer of the protocol addresses.
+   */
+  size_t field_len;
+  /**
+   * 1 when Space Packets (PVN 0) are valid, else 0.
+   */
+  uint8_t space_packets;
+  /**
+   * 1 when Encapsulation Packets (PVN 7) are valid, else 0. At least one of the two is 1.
+   */
+  uint8_t encapsulation_packets;
+  /**
+   * The longest packet in octets, at least 1.
+   */
+  size_t max_packet_len;
+  /**
+   * `ALDIS_LINK_IDLE_POLICY_*` (LNK-014).
+   */
+  uint32_t idle_policy;
+  /**
+   * `ALDIS_LINK_IDLE_PACKET_*`; ignored for USLP, which fixes the Encapsulation Idle Packet
+   * (LNK-013).
+   */
+  uint32_t idle_packet_kind;
+  /**
+   * The idle data octet.
+   */
+  uint8_t idle_pattern;
+  /**
+   * The release deadline in microseconds, 0 for none (732.1 §5.4 Table 5-3; LNK-012).
+   */
+  uint64_t release_deadline_us;
+} aldis_packet_generator_config_t;
+
+/**
+ * One input of a `PacketGenerator` (API-057, CABI-040). A field that the kind does not use is
+ * ignored.
+ */
+typedef struct {
+  /**
+   * `ALDIS_PACKET_GENERATOR_INPUT_*`.
+   */
+  uint32_t kind;
+  /**
+   * For `SUBMIT_PACKET`: the packet, read once and copied (API-060); `NULL` only with
+   * `data_len` 0.
+   */
+  const uint8_t *data;
+  /**
+   * The octets at `data`.
+   */
+  size_t data_len;
+  /**
+   * For `RECONFIGURE`: the new configuration.
+   */
+  aldis_packet_generator_config_t config;
+} aldis_packet_generator_input_t;
+
+/**
+ * One action of a `PacketGenerator` (API-057, API-061). A field that the kind does not use is
+ * 0.
+ */
+typedef struct {
+  /**
+   * `ALDIS_PACKET_GENERATOR_ACTION_*`.
+   */
+  uint32_t kind;
+  /**
+   * For `DATA_FIELD`: the VCID.
+   */
+  uint8_t vc_id;
+  /**
+   * For `DATA_FIELD`: where the field is in `out`.
+   */
+  aldis_range_t field;
+  /**
+   * For `DATA_FIELD`: the raw First Header Pointer of the field.
+   */
+  uint16_t pointer;
+  /**
+   * For `DATA_FIELD`: 1 when the field has a MAP and QoS (USLP), else 0.
+   */
+  uint8_t route_present;
+  /**
+   * For `DATA_FIELD` with a route: the MAP ID.
+   */
+  uint8_t map_id;
+  /**
+   * For `DATA_FIELD` with a route: `ALDIS_LINK_QOS_*`.
+   */
+  uint32_t qos;
+  /**
+   * For `DISCARDED`: the octets discarded.
+   */
+  size_t octets;
+} aldis_packet_generator_action_t;
+
+/**
+ * The actions of one input of a `PacketGenerator`.
+ */
+typedef struct {
+  /**
+   * The number of actions in `items`, at most `ALDIS_PACKET_GENERATOR_MAX_ACTIONS`.
+   */
+  size_t count;
+  /**
+   * The actions; those from `count` on are zero.
+   */
+  aldis_packet_generator_action_t items[ALDIS_PACKET_GENERATOR_MAX_ACTIONS];
+} aldis_packet_generator_actions_t;
+
+/**
+ * A queue or buffer in octets: the current fill and the highest it has been (API-056,
+ * API-060).
+ */
+typedef struct {
+  /**
+   * The octets held now.
+   */
+  size_t current;
+  /**
+   * The most octets held since the engine was initialized.
+   */
+  size_t high_water;
+} aldis_link_occupancy_t;
+
+/**
+ * A read-only snapshot of a `PacketGenerator` (API-056, LNK-002).
+ */
+typedef struct {
+  /**
+   * Packets taken.
+   */
+  uint64_t packets_in;
+  /**
+   * Data fields given out, idle fields included.
+   */
+  uint64_t fields_out;
+  /**
+   * Idle packets generated to complete a field (LNK-013).
+   */
+  uint64_t idle_packets;
+  /**
+   * Idle fields given out under the idle-field policy (LNK-014).
+   */
+  uint64_t idle_fields;
+  /**
+   * Packets refused as invalid (LNK-010).
+   */
+  uint64_t refused;
+  /**
+   * Packets refused with `ALDIS_ERR_WOULD_BLOCK` (LNK-015).
+   */
+  uint64_t would_block;
+  /**
+   * Octets discarded by a reconfiguration (LNK-003).
+   */
+  uint64_t discarded_octets;
+  /**
+   * The packet queue.
+   */
+  aldis_link_occupancy_t queue;
+  /**
+   * The field being assembled.
+   */
+  aldis_link_occupancy_t field;
+} aldis_packet_generator_status_t;
+
+/**
+ * An `AccessGenerator` in caller storage: the caller declares an object of this type, and the
+ * pointer to it is the handle (LNK-020, CABI-031, CABI-032). The words are the library's.
+ */
+typedef struct {
+  /**
+   * The slot of [`handle`]: the tag, then the state.
+   */
+  uint64_t words[ALDIS_ACCESS_GENERATOR_WORDS];
+} aldis_access_generator_t;
+
+/**
+ * The managed parameters of an `AccessGenerator` (LNK-020, LNK-078).
+ */
+typedef struct {
+  /**
+   * The protocol and the channel (TM, AOS, or USLP).
+   */
+  aldis_link_channel_t channel;
+  /**
+   * The octets of the data field, header included (TM data field, AOS `VCA_SDU`, USLP
+   * TFDF), whose zone holds 1 to 65 535 octets, and which fits `ALDIS_LINK_PACKET_QUEUE_OCTETS`
+   * with the length of an SDU.
+   */
+  size_t field_len;
+  /**
+   * The longest SDU: 0 for the zone of the field; TM and AOS take exactly the zone (LNK-020).
+   */
+  size_t max_sdu_len;
+  /**
+   * The octet that fills the zone after the end of an SDU.
+   */
+  uint8_t idle_pattern;
+} aldis_access_generator_config_t;
+
+/**
+ * One input of an `AccessGenerator` (API-057, CABI-040). A field that the kind does not use is
+ * ignored.
+ */
+typedef struct {
+  /**
+   * `ALDIS_ACCESS_GENERATOR_INPUT_*`.
+   */
+  uint32_t kind;
+  /**
+   * For `SUBMIT_SDU`: the SDU, read once and copied (API-060); `NULL` only with `data_len` 0.
+   */
+  const uint8_t *data;
+  /**
+   * The octets at `data`.
+   */
+  size_t data_len;
+  /**
+   * For `RECONFIGURE`: the new configuration.
+   */
+  aldis_access_generator_config_t config;
+} aldis_access_generator_input_t;
+
+/**
+ * One action of an `AccessGenerator` (API-057, API-061). A field that the kind does not use is
+ * 0.
+ */
+typedef struct {
+  /**
+   * `ALDIS_ACCESS_GENERATOR_ACTION_*`.
+   */
+  uint32_t kind;
+  /**
+   * For `DATA_FIELD`: the VCID.
+   */
+  uint8_t vc_id;
+  /**
+   * For `DATA_FIELD`: where the field is in `out`.
+   */
+  aldis_range_t field;
+  /**
+   * For `DATA_FIELD`: 1 when the field has a Last Valid Octet Pointer (USLP), else 0.
+   */
+  uint8_t pointer_present;
+  /**
+   * For `DATA_FIELD` with a pointer: the raw Last Valid Octet Pointer.
+   */
+  uint16_t pointer;
+  /**
+   * For `DATA_FIELD`: 1 when the field has a MAP and QoS (USLP), else 0.
+   */
+  uint8_t route_present;
+  /**
+   * For `DATA_FIELD` with a route: the MAP ID.
+   */
+  uint8_t map_id;
+  /**
+   * For `DATA_FIELD` with a route: `ALDIS_LINK_QOS_*`.
+   */
+  uint32_t qos;
+  /**
+   * For `DISCARDED`: the octets discarded.
+   */
+  size_t octets;
+} aldis_access_generator_action_t;
+
+/**
+ * The actions of one input of an `AccessGenerator`.
+ */
+typedef struct {
+  /**
+   * The number of actions in `items`, at most `ALDIS_ACCESS_GENERATOR_MAX_ACTIONS`.
+   */
+  size_t count;
+  /**
+   * The actions; those from `count` on are zero.
+   */
+  aldis_access_generator_action_t items[ALDIS_ACCESS_GENERATOR_MAX_ACTIONS];
+} aldis_access_generator_actions_t;
+
+/**
+ * A read-only snapshot of an `AccessGenerator` (API-056, LNK-002).
+ */
+typedef struct {
+  /**
+   * SDUs taken.
+   */
+  uint64_t sdus_in;
+  /**
+   * Data fields given out.
+   */
+  uint64_t fields_out;
+  /**
+   * SDUs refused as invalid (LNK-020).
+   */
+  uint64_t refused;
+  /**
+   * SDUs refused with `ALDIS_ERR_WOULD_BLOCK`.
+   */
+  uint64_t would_block;
+  /**
+   * Octets discarded by a reconfiguration (LNK-003).
+   */
+  uint64_t discarded_octets;
+  /**
+   * The SDU queue.
+   */
+  aldis_link_occupancy_t queue;
+} aldis_access_generator_status_t;
+
+/**
+ * A `BitstreamGenerator` in caller storage: the caller declares an object of this type, and the
+ * pointer to it is the handle (LNK-021, CABI-031, CABI-032). The words are the library's.
+ */
+typedef struct {
+  /**
+   * The slot of [`handle`]: the tag, then the state.
+   */
+  uint64_t words[ALDIS_BITSTREAM_GENERATOR_WORDS];
+} aldis_bitstream_generator_t;
+
+/**
+ * The managed parameters of a `BitstreamGenerator` (732.0 §4.1.4.3, §5.5; LNK-021, LNK-078).
+ */
+typedef struct {
+  /**
+   * The protocol (AOS) and the channel.
+   */
+  aldis_link_channel_t channel;
+  /**
+   * The octets of the `B_PDU`, header included; its zone holds 1 to 2 047 octets.
+   */
+  size_t field_len;
+  /**
+   * The octet whose bits complete a zone that is not full.
+   */
+  uint8_t idle_pattern;
+} aldis_bitstream_generator_config_t;
+
+/**
+ * One input of a `BitstreamGenerator` (API-057, CABI-040). A field that the kind does not use
+ * is ignored.
+ */
+typedef struct {
+  /**
+   * `ALDIS_BITSTREAM_GENERATOR_INPUT_*`.
+   */
+  uint32_t kind;
+  /**
+   * For `SUBMIT_BITS`: the bits, most significant first and left-aligned, read once and
+   * copied (API-060); `NULL` only with `data_len` 0.
+   */
+  const uint8_t *data;
+  /**
+   * The octets at `data`.
+   */
+  size_t data_len;
+  /**
+   * For `SUBMIT_BITS`: how many bits of `data` to take, at least 1.
+   */
+  size_t bit_len;
+  /**
+   * For `RECONFIGURE`: the new configuration.
+   */
+  aldis_bitstream_generator_config_t config;
+} aldis_bitstream_generator_input_t;
+
+/**
+ * One action of a `BitstreamGenerator` (API-057, API-061). A field that the kind does not use
+ * is 0.
+ */
+typedef struct {
+  /**
+   * `ALDIS_BITSTREAM_GENERATOR_ACTION_*`.
+   */
+  uint32_t kind;
+  /**
+   * For `DATA_FIELD`: the VCID.
+   */
+  uint8_t vc_id;
+  /**
+   * For `DATA_FIELD`: where the `B_PDU` is in `out`.
+   */
+  aldis_range_t field;
+  /**
+   * For `DATA_FIELD`: the raw Bitstream Data Pointer.
+   */
+  uint16_t pointer;
+  /**
+   * For `DISCARDED`: the octets discarded.
+   */
+  size_t octets;
+} aldis_bitstream_generator_action_t;
+
+/**
+ * The actions of one input of a `BitstreamGenerator`.
+ */
+typedef struct {
+  /**
+   * The number of actions in `items`, at most `ALDIS_BITSTREAM_GENERATOR_MAX_ACTIONS`.
+   */
+  size_t count;
+  /**
+   * The actions; those from `count` on are zero.
+   */
+  aldis_bitstream_generator_action_t items[ALDIS_BITSTREAM_GENERATOR_MAX_ACTIONS];
+} aldis_bitstream_generator_actions_t;
+
+/**
+ * A read-only snapshot of a `BitstreamGenerator` (API-056, LNK-002).
+ */
+typedef struct {
+  /**
+   * Submissions taken.
+   */
+  uint64_t submissions;
+  /**
+   * `B_PDUs` given out, idle ones included.
+   */
+  uint64_t fields_out;
+  /**
+   * Idle `B_PDUs` given out: no bit was queued.
+   */
+  uint64_t idle_fields;
+  /**
+   * Submissions refused as invalid.
+   */
+  uint64_t refused;
+  /**
+   * Submissions refused with `ALDIS_ERR_WOULD_BLOCK`.
+   */
+  uint64_t would_block;
+  /**
+   * Octets discarded by a reconfiguration (LNK-003).
+   */
+  uint64_t discarded_octets;
+  /**
+   * The bit queue, in octets.
+   */
+  aldis_link_occupancy_t queue;
+} aldis_bitstream_generator_status_t;
 
 /**
  * The sender-chosen Primary Header fields of a packet (133.0 §4.1.3; SPP-001…003).
@@ -6578,6 +7457,226 @@ uint32_t aldis_fop1_status(aldis_fop1_t *h, aldis_fop1_status_t *status, aldis_e
  * As for [`aldis_fop1_step`].
  */
 void aldis_fop1_deinit(aldis_fop1_t *h);
+
+/**
+ * Places a `PacketGenerator` with an empty field and queue in `storage` (LNK-010; CABI-031,
+ * CABI-032).
+ *
+ * # Errors
+ * `ALDIS_ERR_INVALID_FIELD` for `NULL` or misaligned `storage` or `cfg`, a flag that is not 0
+ * or 1, or a constant that is none; `ALDIS_ERR_INVALID_CONFIG` (`link_protocol`) for TC,
+ * (`valid_pvns`, `max_packet_len`, `field_len`, `idle_packet_kind`) for a value the
+ * configuration relations of LNK-078 refuse; `ALDIS_ERR_OUT_OF_RANGE` (`vc_id`, `upid`,
+ * `map_id`); `ALDIS_ERR_CAPACITY_EXCEEDED` for a field or packet length above the build
+ * capacities (LNK-015).
+ *
+ * # Safety
+ * `storage` is valid for writes of one `aldis_packet_generator_t` and outlives its use; `cfg`
+ * is valid for a read; `err` is `NULL` or valid for one write.
+ */
+uint32_t aldis_packet_generator_init(aldis_packet_generator_t *storage,
+                                     const aldis_packet_generator_config_t *cfg,
+                                     aldis_error_detail_t *err);
+
+/**
+ * Runs one input of the `PacketGenerator` (API-057, CABI-040).
+ *
+ * `now_us` is the time in microseconds (API-003). The octets of a data field go to `out`.
+ *
+ * # Errors
+ * `ALDIS_ERR_INVALID_HANDLE`; `ALDIS_ERR_INVALID_FIELD` for a CABI-022 violation or a
+ * constant that is none; for `SUBMIT_PACKET`: `ALDIS_ERR_INVALID_FIELD` (`packet_version`),
+ * `ALDIS_ERR_LENGTH_MISMATCH` (`packet_len`), `ALDIS_ERR_OUT_OF_RANGE` (`max_packet_len`),
+ * `ALDIS_ERR_WOULD_BLOCK`; for `RELEASE`: `ALDIS_ERR_BUFFER_TOO_SMALL`; for `RECONFIGURE`: as
+ * `aldis_packet_generator_init`, and `ALDIS_ERR_INVALID_CONFIG` (`link_protocol`) for another
+ * protocol. The engine is unchanged and `actions` is not written.
+ *
+ * # Safety
+ * `h` is a handle from `aldis_packet_generator_init` whose storage is still valid, or
+ * detectably invalid storage; `input` is valid for a read, and its `data` for `data_len`
+ * octets; `out` is valid for `out_cap` octets of writes (it may be `NULL` when `out_cap` is 0);
+ * `actions` is valid for one write; `err` is `NULL` or valid for one write. No other thread
+ * uses the storage (CABI-050).
+ */
+uint32_t aldis_packet_generator_step(aldis_packet_generator_t *h,
+                                     const aldis_packet_generator_input_t *input,
+                                     uint64_t now_us,
+                                     uint8_t *out,
+                                     size_t out_cap,
+                                     aldis_packet_generator_actions_t *actions,
+                                     aldis_error_detail_t *err);
+
+/**
+ * Reads the release deadline of the started field (LNK-012, API-053, CABI-040).
+ *
+ * While a deadline is pending, `armed` is 1 and `deadline_us` the instant in microseconds at
+ * which the caller is to feed the `TIMEOUT` input; otherwise both are 0. It changes nothing.
+ *
+ * # Errors
+ * `ALDIS_ERR_INVALID_HANDLE`; `ALDIS_ERR_INVALID_FIELD` for a CABI-022 violation.
+ *
+ * # Safety
+ * As for [`aldis_packet_generator_step`]; `armed` and `deadline_us` are valid for one write
+ * each.
+ */
+uint32_t aldis_packet_generator_next_deadline(aldis_packet_generator_t *h,
+                                              uint8_t *armed,
+                                              uint64_t *deadline_us,
+                                              aldis_error_detail_t *err);
+
+/**
+ * Reads the counters and the occupancy of the `PacketGenerator` (API-056, LNK-002). It changes
+ * nothing.
+ *
+ * # Errors
+ * `ALDIS_ERR_INVALID_HANDLE`; `ALDIS_ERR_INVALID_FIELD` for a CABI-022 violation.
+ *
+ * # Safety
+ * As for [`aldis_packet_generator_step`]; `status` is valid for one write.
+ */
+uint32_t aldis_packet_generator_status(aldis_packet_generator_t *h,
+                                       aldis_packet_generator_status_t *status,
+                                       aldis_error_detail_t *err);
+
+/**
+ * Releases the storage: later calls on it fail with `ALDIS_ERR_INVALID_HANDLE` (CABI-032). An
+ * invalid handle is ignored.
+ *
+ * # Safety
+ * As for [`aldis_packet_generator_step`].
+ */
+void aldis_packet_generator_deinit(aldis_packet_generator_t *h);
+
+/**
+ * Places an `AccessGenerator` with an empty queue in `storage` (LNK-020; CABI-031, CABI-032).
+ *
+ * # Errors
+ * `ALDIS_ERR_INVALID_FIELD` for `NULL` or misaligned `storage` or `cfg`, or a constant that is
+ * none; `ALDIS_ERR_INVALID_CONFIG` (`link_protocol`) for TC, (`field_len`, `max_sdu_len`) for a
+ * value LNK-078 refuses; `ALDIS_ERR_OUT_OF_RANGE` (`vc_id`, `upid`, `map_id`);
+ * `ALDIS_ERR_CAPACITY_EXCEEDED` (`max_sdu_len`) when the longest SDU and its length do not fit
+ * `ALDIS_LINK_PACKET_QUEUE_OCTETS`.
+ *
+ * # Safety
+ * `storage` is valid for writes of one `aldis_access_generator_t` and outlives its use; `cfg`
+ * is valid for a read; `err` is `NULL` or valid for one write.
+ */
+uint32_t aldis_access_generator_init(aldis_access_generator_t *storage,
+                                     const aldis_access_generator_config_t *cfg,
+                                     aldis_error_detail_t *err);
+
+/**
+ * Runs one input of the `AccessGenerator` (API-057, CABI-040). The octets of a data field go
+ * to `out`; the generator has no clock.
+ *
+ * # Errors
+ * `ALDIS_ERR_INVALID_HANDLE`; `ALDIS_ERR_INVALID_FIELD` for a CABI-022 violation or a constant
+ * that is none; for `SUBMIT_SDU` and `RELEASE`: the errors of `AccessGenerator::step`
+ * (`ALDIS_ERR_LENGTH_MISMATCH`, `ALDIS_ERR_OUT_OF_RANGE`, `ALDIS_ERR_WOULD_BLOCK`,
+ * `ALDIS_ERR_BUFFER_TOO_SMALL`); for `RECONFIGURE`: as `aldis_access_generator_init`, and
+ * `ALDIS_ERR_INVALID_CONFIG` (`link_protocol`) for another protocol. The engine is unchanged
+ * and `actions` is not written.
+ *
+ * # Safety
+ * `h` is a handle from `aldis_access_generator_init` whose storage is still valid, or
+ * detectably invalid storage; `input` is valid for a read, and its `data` for `data_len`
+ * octets; `out` is valid for `out_cap` octets of writes (it may be `NULL` when `out_cap` is 0);
+ * `actions` is valid for one write; `err` is `NULL` or valid for one write. No other thread
+ * uses the storage (CABI-050).
+ */
+uint32_t aldis_access_generator_step(aldis_access_generator_t *h,
+                                     const aldis_access_generator_input_t *input,
+                                     uint8_t *out,
+                                     size_t out_cap,
+                                     aldis_access_generator_actions_t *actions,
+                                     aldis_error_detail_t *err);
+
+/**
+ * Reads the counters and the occupancy of the `AccessGenerator` (API-056, LNK-002). It changes
+ * nothing.
+ *
+ * # Errors
+ * `ALDIS_ERR_INVALID_HANDLE`; `ALDIS_ERR_INVALID_FIELD` for a CABI-022 violation.
+ *
+ * # Safety
+ * As for [`aldis_access_generator_step`]; `status` is valid for one write.
+ */
+uint32_t aldis_access_generator_status(aldis_access_generator_t *h,
+                                       aldis_access_generator_status_t *status,
+                                       aldis_error_detail_t *err);
+
+/**
+ * Releases the storage: later calls on it fail with `ALDIS_ERR_INVALID_HANDLE` (CABI-032). An
+ * invalid handle is ignored.
+ *
+ * # Safety
+ * As for [`aldis_access_generator_step`].
+ */
+void aldis_access_generator_deinit(aldis_access_generator_t *h);
+
+/**
+ * Places a `BitstreamGenerator` with an empty queue in `storage` (LNK-021; CABI-031,
+ * CABI-032).
+ *
+ * # Errors
+ * `ALDIS_ERR_INVALID_FIELD` for `NULL` or misaligned `storage` or `cfg`; `ALDIS_ERR_INVALID_CONFIG`
+ * (`link_protocol`) for a protocol other than AOS, (`field_len`) for a zone outside 1 to 2 047
+ * octets; `ALDIS_ERR_OUT_OF_RANGE` (`vc_id`).
+ *
+ * # Safety
+ * `storage` is valid for writes of one `aldis_bitstream_generator_t` and outlives its use;
+ * `cfg` is valid for a read; `err` is `NULL` or valid for one write.
+ */
+uint32_t aldis_bitstream_generator_init(aldis_bitstream_generator_t *storage,
+                                        const aldis_bitstream_generator_config_t *cfg,
+                                        aldis_error_detail_t *err);
+
+/**
+ * Runs one input of the `BitstreamGenerator` (API-057, CABI-040). The octets of a `B_PDU` go
+ * to `out`; the generator has no clock.
+ *
+ * # Errors
+ * `ALDIS_ERR_INVALID_HANDLE`; `ALDIS_ERR_INVALID_FIELD` for a CABI-022 violation or a constant
+ * that is none; for `SUBMIT_BITS` `ALDIS_ERR_LENGTH_MISMATCH` (`sdu_len`) and
+ * `ALDIS_ERR_WOULD_BLOCK`; for `RELEASE` `ALDIS_ERR_BUFFER_TOO_SMALL`; for `RECONFIGURE` as
+ * `aldis_bitstream_generator_init`. The engine is unchanged and `actions` is not written.
+ *
+ * # Safety
+ * `h` is a handle from `aldis_bitstream_generator_init` whose storage is still valid, or
+ * detectably invalid storage; `input` is valid for a read, and its `data` for `data_len`
+ * octets; `out` is valid for `out_cap` octets of writes (it may be `NULL` when `out_cap` is 0);
+ * `actions` is valid for one write; `err` is `NULL` or valid for one write. No other thread
+ * uses the storage (CABI-050).
+ */
+uint32_t aldis_bitstream_generator_step(aldis_bitstream_generator_t *h,
+                                        const aldis_bitstream_generator_input_t *input,
+                                        uint8_t *out,
+                                        size_t out_cap,
+                                        aldis_bitstream_generator_actions_t *actions,
+                                        aldis_error_detail_t *err);
+
+/**
+ * Reads the counters and the occupancy of the `BitstreamGenerator` (API-056, LNK-002). It
+ * changes nothing.
+ *
+ * # Errors
+ * `ALDIS_ERR_INVALID_HANDLE`; `ALDIS_ERR_INVALID_FIELD` for a CABI-022 violation.
+ *
+ * # Safety
+ * As for [`aldis_bitstream_generator_step`]; `status` is valid for one write.
+ */
+uint32_t aldis_bitstream_generator_status(aldis_bitstream_generator_t *h,
+                                          aldis_bitstream_generator_status_t *status,
+                                          aldis_error_detail_t *err);
+
+/**
+ * Releases the storage: later calls on it fail with `ALDIS_ERR_INVALID_HANDLE` (CABI-032). An
+ * invalid handle is ignored.
+ *
+ * # Safety
+ * As for [`aldis_bitstream_generator_step`].
+ */
+void aldis_bitstream_generator_deinit(aldis_bitstream_generator_t *h);
 
 /**
  * Classifies the four OCF octets at `ocf` by bits 0–1 (CMN-010).
