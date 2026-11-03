@@ -88,8 +88,8 @@ macro_rules! engine_in_place {
     ($e:ty, $h:ty, $b:ty, $ptr:expr, $head:expr) => {{
         const {
             assert!(
-                <$e>::HEAD_OFFSET + size_of::<$h>() <= <$e>::BUFFERS_OFFSET
-                    && <$e>::BUFFERS_OFFSET + size_of::<$b>() <= size_of::<$e>()
+                <$e>::HEAD_OFFSET.saturating_add(size_of::<$h>()) <= <$e>::BUFFERS_OFFSET
+                    && <$e>::BUFFERS_OFFSET.saturating_add(size_of::<$b>()) <= size_of::<$e>()
             );
         };
         let engine: *mut $e = $ptr;

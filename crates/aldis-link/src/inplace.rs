@@ -22,8 +22,13 @@
 //! Only the head is ever a by-value temporary, and it is small.
 //!
 //! Engines that follow the pattern: the `PacketGenerator`, the `AccessGenerator`, the
-//! `BitstreamGenerator`, and the `PacketExtractor`. The `FrameReceiver` holds no octet buffer
-//! (its state is the configuration, the counts, and the counters), so it needs no split. The
-//! others (ChannelMux, MapSegmenter, MapReassembler, CltuPacker) take the same split when their C
-//! handles are built (M4 WP-7c, WP-7d): the rule is to move the octet arrays, and only those, into
-//! `EngineBuffers`.
+//! `BitstreamGenerator`, the `PacketExtractor`, and the `ChannelMux`. The `ChannelMux` buffers
+//! also hold its frame counts (plain integers, zero at the start, moved there to keep the head
+//! small), and its Insert Zone slot starts at the configured idle pattern, which the builder
+//! writes at `ChannelMuxBuffers::INSERT_OFFSET` after zeroing (`ChannelMuxBuffers::with_idle`
+//! is the by-value form). The `FrameReceiver` holds no octet buffer (its state is the
+//! configuration, the counts, and the counters), so it needs no split. The others
+//! (MapSegmenter, MapReassembler, CltuPacker) take the same split when their C handles are built
+//! (M4 WP-7d): the rule is to move the octet arrays, and any zero-valued plain data that keeps
+//! the head small, into `EngineBuffers`; a slot whose empty state is not zero (the Insert Zone's
+//! idle pattern) is written after the zeroing.
