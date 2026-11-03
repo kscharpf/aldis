@@ -839,3 +839,16 @@ fn a_stream_entry_cannot_outgrow_its_length_or_the_queue() {
         .is_ok()
     );
 }
+
+#[test]
+fn the_accessors_report_the_configuration() {
+    // req: API-056, LNK-078
+    let tc = TcSeg::new(tc_config()).unwrap();
+    let c = tc.config();
+    assert_eq!((c.vc(), c.max_fdu_len()), (vc(), 16));
+    assert!(c.channel().segment_header() && c.channel().fecf());
+    assert_eq!(c.map(1).map(MapEntry::service), Some(MapService::Any));
+    let uslp = UslpSeg::new(uslp_config()).unwrap();
+    let ch = uslp.config().channel();
+    assert_eq!((ch.vcf_len_sc().get(), ch.vcf_len_exp().get()), (2, 2));
+}

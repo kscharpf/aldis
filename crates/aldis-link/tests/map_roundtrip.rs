@@ -27,6 +27,7 @@ use aldis_link::segmenter::{
 };
 use aldis_testkit::strategies;
 use aldis_testkit::strategies::proptest::prelude::*;
+use aldis_testkit::strategies::proptest::test_runner::{Config, RngSeed};
 use aldis_uslp::{Upid, VcfCountLen};
 
 /// Failing cases are saved here and replayed first.
@@ -347,8 +348,17 @@ fn check(d: &Delivered, want: &Delivered) -> Result<(), TestCaseError> {
     Ok(())
 }
 
+/// The configuration of the properties with a fixed seed, so that the regions they reach, and the
+/// coverage waivers that count the regions they do not, are the same on every run (VER-024).
+fn seeded() -> Config {
+    Config {
+        rng_seed: RngSeed::Fixed(0x4D41_5036),
+        ..strategies::config(256, REGRESSIONS)
+    }
+}
+
 proptest! {
-    #![proptest_config(strategies::config(256, REGRESSIONS))]
+    #![proptest_config(seeded())]
 
     #[test]
     fn tc_round_trip(

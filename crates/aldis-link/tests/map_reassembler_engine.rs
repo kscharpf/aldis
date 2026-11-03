@@ -191,6 +191,7 @@ fn configurations_are_checked() {
         None
     );
     assert_eq!((first.vc(), first.id()), (vc(1), tc_map(1)));
+    assert_eq!(first.service(), aldis_link::reassembler::Service::Sdu);
     let engine = tc_engine();
     assert_eq!(engine.config().maps().count(), 3);
     assert_eq!(*engine.config().channel(), tcp);

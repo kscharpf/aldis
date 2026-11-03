@@ -746,7 +746,8 @@ impl<P: SegmenterProtocol, const M: usize, const Q: usize> MapSegmenter<P, M, Q>
             self.set_len(e.at, merged)?;
         } else {
             let [hi, lo] = u16::try_from(data.len())
-                .map_err(|_| Error::new(ErrorKind::InternalError))?
+                .ok()
+                .ok_or(Error::new(ErrorKind::InternalError))?
                 .to_be_bytes();
             self.insert_at(self.queue_len, &[kind.tag(), map, hi, lo]);
             self.insert_at(self.queue_len, data);
@@ -1038,7 +1039,8 @@ impl<P: SegmenterProtocol, const M: usize, const Q: usize> MapSegmenter<P, M, Q>
     /// Writes the length of the entry at `at`.
     fn set_len(&mut self, at: usize, len: usize) -> Result<()> {
         let [hi, lo] = u16::try_from(len)
-            .map_err(|_| Error::new(ErrorKind::InternalError))?
+            .ok()
+            .ok_or(Error::new(ErrorKind::InternalError))?
             .to_be_bytes();
         let slots = self
             .queue
