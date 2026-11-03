@@ -58,15 +58,18 @@ const _: () = assert!(ALDIS_BITSTREAM_GENERATOR_MAX_ACTIONS == BITSTREAM_GENERAT
 
 /// 64-bit words of one `aldis_packet_generator_t` (CABI-031): the tag and the largest of the
 /// engines of TM, AOS, and USLP at the build capacities; the build fails when it outgrows it.
-pub const ALDIS_PACKET_GENERATOR_WORDS: usize = PACKET_WORDS;
+pub const ALDIS_PACKET_GENERATOR_WORDS: usize = 411;
 /// 64-bit words of one `aldis_access_generator_t` (CABI-031).
-pub const ALDIS_ACCESS_GENERATOR_WORDS: usize = ACCESS_WORDS;
+pub const ALDIS_ACCESS_GENERATOR_WORDS: usize = 272;
 /// 64-bit words of one `aldis_bitstream_generator_t` (CABI-031).
-pub const ALDIS_BITSTREAM_GENERATOR_WORDS: usize = BITSTREAM_WORDS;
+pub const ALDIS_BITSTREAM_GENERATOR_WORDS: usize = 269;
 
-const PACKET_WORDS: usize = 411;
-const ACCESS_WORDS: usize = 272;
-const BITSTREAM_WORDS: usize = 269;
+const _: () = assert!(
+    size_of::<crate::handle::Slot<PacketGeneratorState>>() <= ALDIS_PACKET_GENERATOR_WORDS * 8
+);
+const _: () = assert!(
+    size_of::<crate::handle::Slot<AccessGeneratorState>>() <= ALDIS_ACCESS_GENERATOR_WORDS * 8
+);
 
 // ---- PacketGenerator ----
 

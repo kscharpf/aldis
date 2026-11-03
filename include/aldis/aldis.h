@@ -1302,17 +1302,17 @@
  * 64-bit words of one `aldis_packet_generator_t` (CABI-031): the tag and the largest of the
  * engines of TM, AOS, and USLP at the build capacities; the build fails when it outgrows it.
  */
-#define ALDIS_PACKET_GENERATOR_WORDS PACKET_WORDS
+#define ALDIS_PACKET_GENERATOR_WORDS 411
 
 /**
  * 64-bit words of one `aldis_access_generator_t` (CABI-031).
  */
-#define ALDIS_ACCESS_GENERATOR_WORDS ACCESS_WORDS
+#define ALDIS_ACCESS_GENERATOR_WORDS 272
 
 /**
  * 64-bit words of one `aldis_bitstream_generator_t` (CABI-031).
  */
-#define ALDIS_BITSTREAM_GENERATOR_WORDS BITSTREAM_WORDS
+#define ALDIS_BITSTREAM_GENERATOR_WORDS 269
 
 /**
  * Length of the Operational Control Field in octets (132.0 §4.1.5.1, 732.0 §4.1.5.1,
