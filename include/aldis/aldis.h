@@ -5769,7 +5769,7 @@ typedef struct {
    */
   uint8_t fsh_init[ALDIS_CHANNEL_MUX_MAX_FSH_DATA];
   /**
-   * USLP: the MAP ID of the frames, 0 to 15 (732.1 §4.1.2.7).
+   * USLP: the MAP ID of the frames, 0 to 15 (732.1 §4.1.2.5).
    */
   uint8_t uslp_map;
   /**

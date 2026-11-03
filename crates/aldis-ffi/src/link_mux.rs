@@ -13,8 +13,10 @@
 //!
 //! **Protocol.** The first member of the configuration names the protocol (`protocol`, an
 //! `ALDIS_LINK_PROTOCOL_*` constant): TM, AOS, or USLP with fixed-length frames. TC is
-//! `ALDIS_ERR_INVALID_CONFIG` on `link_protocol`. A member that the protocol does not use is
-//! ignored, but a flag or constant in it must still be valid.
+//! `ALDIS_ERR_INVALID_CONFIG` on `link_protocol`. Every member is read whatever the protocol
+//! (`check_members`): a flag or constant that is invalid in a member the protocol does not use
+//! is `ALDIS_ERR_INVALID_FIELD` all the same, and a range-limited member of another protocol is
+//! range-checked.
 //!
 //! **Capacities.** The engine serves `ALDIS_LINK_MAX_VIRTUAL_CHANNELS` VCs of frames of at most
 //! `ALDIS_LINK_MAX_FRAME_OCTETS` octets (CABI-030); it is built in place (`aldis::link::inplace`,
@@ -247,7 +249,7 @@ pub struct aldis_channel_mux_vc_t {
     pub fsh_len: u8,
     /// TM: the initial Secondary Header data; the first `fsh_len` octets.
     pub fsh_init: [u8; ALDIS_CHANNEL_MUX_MAX_FSH_DATA],
-    /// USLP: the MAP ID of the frames, 0 to 15 (732.1 §4.1.2.7).
+    /// USLP: the MAP ID of the frames, 0 to 15 (732.1 §4.1.2.5).
     pub uslp_map: u8,
     /// USLP: `ALDIS_LINK_QOS_*` of an offered field that names no route (732.1 §4.1.2.8).
     pub uslp_qos: u32,
@@ -589,7 +591,7 @@ impl MxProtocol for Uslp {
 
 /// The VC `vc` in the protocol `P` (LNK-031, LNK-035).
 fn mx_vc<P: MxProtocol>(vc: &aldis_channel_mux_vc_t) -> Result<VcConfig<P>> {
-    // Every member is parsed once, whatever the protocol (CABI-040).
+    // The members were read by `check_members`; these are the protocol's conversions.
     let params = P::vc_params(vc)?;
     Ok(VcConfig::<P>::new(P::Vc::try_from(vc.vc_id)?, params)
         .with_priority(vc.priority)
@@ -597,8 +599,37 @@ fn mx_vc<P: MxProtocol>(vc: &aldis_channel_mux_vc_t) -> Result<VcConfig<P>> {
         .with_security(SecurityLayout::new(vc.sec_header_len, vc.sec_trailer_len)?))
 }
 
+/// Reads every member of `c` and of its `vc_count` entries whatever the protocol (CABI-040): a
+/// flag that is not 0 or 1, or a constant that is none, is `InvalidField` in any member, and a
+/// member of another protocol that has a range (a VCID, a MAP ID, a count length, a Secondary
+/// Header length) is range-checked too. The protocol's own conversions follow in `mx_config`.
+fn check_members(c: &aldis_channel_mux_config_t) -> Result<()> {
+    flag(c.fecf)?;
+    policy(c.policy)?;
+    flag(c.mc_ocf)?;
+    flag(c.aos_fhec)?;
+    flag(c.aos_cycle_in_use)?;
+    flag(c.uslp_destination)?;
+    aos_edition(c)?;
+    VcId::<3>::try_from(c.tm_oid_vc)?;
+    VcfCountLen::new(c.uslp_oid_vcf_len)?;
+    initial_fsh(c.mc_fsh_len, &c.mc_fsh_init)?;
+    for vc in c.vcs.iter().take(c.vc_count) {
+        flag(vc.ocf)?;
+        flag(vc.uslp_cop)?;
+        parse::<aldis_link_content>(vc.role)?;
+        qos(vc.uslp_qos)?;
+        MapId::<4>::try_from(vc.uslp_map)?;
+        VcfCountLen::new(vc.uslp_vcf_len_sc)?;
+        VcfCountLen::new(vc.uslp_vcf_len_exp)?;
+        initial_fsh(vc.fsh_len, &vc.fsh_init)?;
+    }
+    Ok(())
+}
+
 /// The mux configuration of `c` for the protocol `P`.
 fn mx_config<P: MxProtocol>(c: &aldis_channel_mux_config_t) -> Result<ChannelMuxConfig<P, V>> {
+    check_members(c)?;
     // The first entry fills the array; only the first `vc_count` of it are given on. Without an
     // entry there is nothing to list.
     let first = c
@@ -655,28 +686,58 @@ fn mx_head(c: &aldis_channel_mux_config_t) -> Result<MxHead> {
     }
 }
 
-/// Builds the engine of `head` at `state`, in place (#240).
+/// Writes the idle pattern `idle` into the Insert Zone slot of the buffers at `buffers`, which
+/// the in-place build has just zeroed (LNK-034; `ChannelMuxBuffers::with_idle` is the by-value
+/// form).
+///
+/// # Safety
+/// `buffers` is valid for writes of one `ChannelMuxBuffers<V, F>`.
+#[expect(unsafe_code, reason = "initializes the engine in place (GEN-071)")]
+const unsafe fn fill_insert(buffers: *mut u8, idle: u8) {
+    const {
+        assert!(
+            ChannelMuxBuffers::<V, F>::INSERT_OFFSET.saturating_add(F)
+                <= size_of::<ChannelMuxBuffers<V, F>>()
+        );
+    };
+    // SAFETY: by the contract and the assertion above, the `F` octets at the Insert Zone slot
+    // lie within the buffers; they are plain octets.
+    unsafe {
+        buffers
+            .byte_add(ChannelMuxBuffers::<V, F>::INSERT_OFFSET)
+            .write_bytes(idle, F);
+    }
+}
+
+/// Builds the engine of `head` at `state`, in place (#240), with the Insert Zone slot at the idle
+/// pattern `idle`.
 ///
 /// # Safety
 /// `state` is valid for writes of one `ChannelMuxState`.
 #[expect(unsafe_code, reason = "initializes the engine in place (GEN-071)")]
-unsafe fn mx_place(state: *mut ChannelMuxState, head: MxHead) {
+unsafe fn mx_place(state: *mut ChannelMuxState, head: MxHead, idle: u8) {
     type B = ChannelMuxBuffers<V, F>;
     match head {
         MxHead::Tm(h) => {
             // SAFETY: as the contract says; the tag 0 is the discriminant of the variant.
             let p = unsafe { variant_payload::<_, Mx<Tm>>(state, 0) };
             engine_in_place!(Mx<Tm>, ChannelMuxHead<Tm, V>, B, p, h);
+            // SAFETY: `engine_in_place!` has just built the engine at `p`.
+            unsafe { fill_insert(p.byte_add(Mx::<Tm>::BUFFERS_OFFSET).cast::<u8>(), idle) };
         }
         MxHead::Aos(h) => {
             // SAFETY: as the contract says; the tag 1 is the discriminant of the variant.
             let p = unsafe { variant_payload::<_, Mx<Aos>>(state, 1) };
             engine_in_place!(Mx<Aos>, ChannelMuxHead<Aos, V>, B, p, h);
+            // SAFETY: `engine_in_place!` has just built the engine at `p`.
+            unsafe { fill_insert(p.byte_add(Mx::<Aos>::BUFFERS_OFFSET).cast::<u8>(), idle) };
         }
         MxHead::Uslp(h) => {
             // SAFETY: as the contract says; the tag 2 is the discriminant of the variant.
             let p = unsafe { variant_payload::<_, Mx<Uslp>>(state, 2) };
             engine_in_place!(Mx<Uslp>, ChannelMuxHead<Uslp, V>, B, p, h);
+            // SAFETY: `engine_in_place!` has just built the engine at `p`.
+            unsafe { fill_insert(p.byte_add(Mx::<Uslp>::BUFFERS_OFFSET).cast::<u8>(), idle) };
         }
     }
 }
@@ -830,14 +891,6 @@ impl ChannelMuxState {
         }
     }
 
-    fn reset_insert(&mut self) {
-        match self {
-            ChannelMuxState::Tm(e) => e.reset_insert(),
-            ChannelMuxState::Aos(e) => e.reset_insert(),
-            ChannelMuxState::Uslp(e) => e.reset_insert(),
-        }
-    }
-
     const fn status(&self) -> MuxStatus {
         match self {
             ChannelMuxState::Tm(e) => *e.status(),
@@ -883,11 +936,9 @@ pub unsafe extern "C" fn aldis_channel_mux_init(
             let cfg = abi::read(cfg)?;
             let head = mx_head(&cfg)?;
             // `init_with` passes a pointer to the state in the slot, valid for writes.
-            handle::init_with(storage, |state| mx_place(state, head))?;
-            // The Insert Zone slot starts at the idle pattern; the buffers were zeroed.
-            // `storage` was just initialized by `init_with`, so the handle is valid.
-            mx_engine(storage)?.update(ChannelMuxState::reset_insert);
-            Ok(())
+            handle::init_with(storage, |state| {
+                mx_place(state, head, cfg.insert_idle_pattern);
+            })
         })
     }
 }

@@ -752,8 +752,9 @@ pub struct ChannelMuxHead<P: MuxProtocol, const V: usize> {
 
 /// The buffers of a [`ChannelMux`]: the field slots, the Insert Zone slot, and the frame counts.
 ///
-/// All zero is the empty state of the slots and the counts; the Insert Zone slot starts at the
-/// configured idle pattern, which [`ChannelMux::reset_insert`] writes after an in-place build
+/// All zero is the empty state of the slots and the counts. The Insert Zone slot starts at the
+/// configured idle pattern (LNK-034): [`with_idle`](Self::with_idle) builds the buffers that
+/// way, and an in-place build writes that pattern at [`INSERT_OFFSET`](Self::INSERT_OFFSET)
 /// (see [`crate::inplace`]).
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[repr(C)]
@@ -766,15 +767,22 @@ pub struct ChannelMuxBuffers<const V: usize, const F: usize> {
 }
 
 impl<const V: usize, const F: usize> ChannelMuxBuffers<V, F> {
-    /// Empty slots.
-    pub const ZERO: Self = Self {
-        slots: [[0; F]; V],
-        insert: [0; F],
-        counts: [VcCounts {
-            sequence_controlled: 0,
-            expedited: 0,
-        }; VCID_SPACE],
-    };
+    /// The offset of the Insert Zone slot in the buffers, for an in-place build (see
+    /// [`crate::inplace`]).
+    pub const INSERT_OFFSET: usize = core::mem::offset_of!(Self, insert);
+
+    /// Empty slots, and the Insert Zone slot filled with the idle pattern `idle` (LNK-034).
+    #[must_use]
+    pub const fn with_idle(idle: u8) -> Self {
+        Self {
+            slots: [[0; F]; V],
+            insert: [idle; F],
+            counts: [VcCounts {
+                sequence_controlled: 0,
+                expedited: 0,
+            }; VCID_SPACE],
+        }
+    }
 }
 
 impl<P: MuxProtocol, const V: usize> ChannelMuxHead<P, V> {
@@ -804,13 +812,12 @@ impl<P: MuxProtocol, const V: usize, const F: usize> ChannelMux<P, V, F> {
     /// # Errors
     /// `CapacityExceeded` (`frame_len`) if the frame is longer than `F` octets.
     pub fn new(config: ChannelMuxConfig<P, V>) -> Result<ChannelMux<P, V, F>> {
+        let idle = config.idle_pattern;
         let head = Self::new_head(config)?;
-        let mut mux = ChannelMux {
+        Ok(ChannelMux {
             head,
-            bufs: ChannelMuxBuffers::ZERO,
-        };
-        mux.init_slots();
-        Ok(mux)
+            bufs: ChannelMuxBuffers::with_idle(idle),
+        })
     }
 
     /// The offset of the head in the engine, for an in-place build (see [`crate::inplace`]).
@@ -846,12 +853,6 @@ impl<P: MuxProtocol, const V: usize, const F: usize> ChannelMux<P, V, F> {
     /// Header slots, and the Insert Zone slot at the idle pattern.
     fn init_slots(&mut self) {
         self.head.init_slots();
-        self.reset_insert();
-    }
-
-    /// Fills the Insert Zone slot with the configured idle pattern (LNK-034). An in-place build
-    /// calls it after zeroing the buffers (see [`crate::inplace`]).
-    pub fn reset_insert(&mut self) {
         self.bufs.insert.fill(self.head.config.idle_pattern);
     }
 

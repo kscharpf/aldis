@@ -871,3 +871,100 @@ fn the_step_checks_its_pointers() {
         );
     }
 }
+
+#[test]
+fn a_member_of_another_protocol_is_read_and_refused_when_invalid() {
+    // req: CABI-040, CABI-022
+    type Edit = fn(&mut aldis_channel_mux_config_t);
+    // Flags and constants: InvalidField from any base configuration.
+    let invalid_field: [Edit; 12] = [
+        |c| c.fecf = 7,
+        |c| c.policy = 7,
+        |c| c.mc_ocf = 7,
+        |c| c.aos_edition = 7,
+        |c| c.aos_fhec = 7,
+        |c| c.aos_cycle_in_use = 7,
+        |c| c.uslp_destination = 7,
+        |c| c.vcs[0].ocf = 7,
+        |c| c.vcs[0].role = 7,
+        |c| c.vcs[0].uslp_qos = 7,
+        |c| c.vcs[0].uslp_cop = 7,
+        |c| c.vcs[1].uslp_cop = 7,
+    ];
+    // Ranges of the members of another protocol: refused with their own kind.
+    let ranges: [(Edit, u32, u16); 6] = [
+        (
+            |c| c.tm_oid_vc = 8,
+            ALDIS_ERR_OUT_OF_RANGE,
+            ALDIS_FIELD_VC_ID,
+        ),
+        (
+            |c| c.uslp_oid_vcf_len = 8,
+            ALDIS_ERR_INVALID_CONFIG,
+            ALDIS_FIELD_VCF_COUNT_LEN,
+        ),
+        (
+            |c| c.mc_fsh_len = 64,
+            ALDIS_ERR_INVALID_CONFIG,
+            ALDIS_FIELD_FSH_LEN,
+        ),
+        (
+            |c| c.vcs[0].fsh_len = 64,
+            ALDIS_ERR_INVALID_CONFIG,
+            ALDIS_FIELD_FSH_LEN,
+        ),
+        (
+            |c| c.vcs[0].uslp_vcf_len_sc = 8,
+            ALDIS_ERR_INVALID_CONFIG,
+            ALDIS_FIELD_VCF_COUNT_LEN,
+        ),
+        (
+            |c| c.vcs[0].uslp_map = 16,
+            ALDIS_ERR_OUT_OF_RANGE,
+            ALDIS_FIELD_MAP_ID,
+        ),
+    ];
+    for base in [tm_config(), aos_config(), uslp_config()] {
+        let mut s = storage();
+        let mut d = detail();
+        assert_eq!(init(&mut s, &base, &mut d), 0);
+        for (i, edit) in invalid_field.iter().enumerate() {
+            let mut c = base;
+            c.vc_count = 2;
+            c.vcs[1] = vc(2, 2);
+            edit(&mut c);
+            assert_eq!(
+                refused(&c).0,
+                ALDIS_ERR_INVALID_FIELD,
+                "protocol {} edit {i}",
+                base.protocol
+            );
+            // The same through a reconfiguration, which changes nothing.
+            let mut s = storage();
+            assert_eq!(init(&mut s, &base, &mut d), 0);
+            let mut re = input(ALDIS_CHANNEL_MUX_INPUT_RECONFIGURE);
+            re.config = c;
+            let mut actions = aldis_channel_mux_actions_t::default();
+            assert_eq!(
+                step(&mut s, &re, &mut [0; 64], &mut actions, &mut d),
+                ALDIS_ERR_INVALID_FIELD
+            );
+        }
+        for (i, (edit, kind, field)) in ranges.iter().enumerate() {
+            let mut c = base;
+            edit(&mut c);
+            assert_eq!(
+                refused(&c),
+                (*kind, *field),
+                "protocol {} range {i}",
+                base.protocol
+            );
+        }
+    }
+    // An entry past `vc_count` is not read.
+    let mut c = tm_config();
+    c.vcs[5].ocf = 7;
+    let mut s = storage();
+    let mut d = detail();
+    assert_eq!(init(&mut s, &c, &mut d), 0);
+}
