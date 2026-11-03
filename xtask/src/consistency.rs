@@ -586,8 +586,16 @@ const FFI_FILES: &[&str] = &[
     "core/crc16.json",
     "core/ocf.json",
     "core/oid.json",
-    // The link areas of M4 WP-7a: the generation engines. The files of the other engines join
-    // with their handles (WP-7b to WP-7d), and the list gives way to the whole `link/` area.
+    // The link areas of M4 WP-7a and WP-7b: the generation engines, the PacketExtractor, and the
+    // FrameReceiver. The files of the other engines join with their handles (WP-7c, WP-7d), and
+    // the list gives way to the whole `link/` area.
+    "link/recv/frame_receiver_aos.json",
+    "link/recv/frame_receiver_tc.json",
+    "link/recv/frame_receiver_tm.json",
+    "link/recv/frame_receiver_uslp.json",
+    "link/recv/packet_extractor_aos.json",
+    "link/recv/packet_extractor_tm.json",
+    "link/recv/packet_extractor_uslp.json",
     "link/send/access_generator_aos.json",
     "link/send/access_generator_tm.json",
     "link/send/access_generator_uslp.json",

@@ -109,6 +109,8 @@ macro_rules! engine_in_place {
     }};
 }
 
+pub(crate) use engine_in_place;
+
 /// The `repr(u8)` layout of an enum variant with one field (RFC 2195): the tag, then the field.
 #[repr(C)]
 struct Tagged<T> {
@@ -123,7 +125,7 @@ struct Tagged<T> {
 /// `state` is valid for writes of one `S`; `S` is a `repr(u8)` enum, `tag` the discriminant of
 /// the variant, and `T` the type of that variant's only field.
 #[expect(unsafe_code, reason = "initializes an enum variant in place (GEN-071)")]
-unsafe fn variant_payload<S, T>(state: *mut S, tag: u8) -> *mut T {
+pub(crate) unsafe fn variant_payload<S, T>(state: *mut S, tag: u8) -> *mut T {
     const { assert!(size_of::<Tagged<T>>() <= size_of::<S>()) };
     let tagged = state.cast::<Tagged<T>>();
     // SAFETY: by the contract, `S` has the layout of a union of `repr(C)` structs of tag and
@@ -478,7 +480,7 @@ impl PacketGeneratorState {
 }
 
 /// The C form of a range of `out`.
-const fn range(r: OutRange) -> aldis_range_t {
+pub(crate) const fn range(r: OutRange) -> aldis_range_t {
     aldis_range_t {
         offset: r.start(),
         len: r.len(),

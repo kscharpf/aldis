@@ -365,6 +365,21 @@ fn the_extractor_capacities_are_checked() {
     let c = ext_config();
     assert!(PacketExtractor::<Tm, 7, 24>::new(c).is_err());
     assert!(PacketExtractor::<Tm, 39, 24>::new(c).is_err());
+    // The in-place head makes the same check (#240), and one instantiation both refuses and
+    // accepts, through `new` and through `new_head`.
+    assert!(PacketExtractor::<Tm, 39, 24>::new_head(c).is_err());
+    assert!(PacketExtractor::<Tm, 7, 24>::new_head(c).is_err());
+    assert!(PacketExtractor::<Tm, 40, 24>::new_head(c).is_ok());
+    assert!(PacketExtractor::<Tm, 40, 24>::new(c).is_ok());
+    let over = PacketExtractorConfig::<Tm>::new(TmParams, ValidPvns::SPACE, 41).unwrap();
+    assert!(PacketExtractor::<Tm, 40, 24>::new(over).is_err());
+    assert!(PacketExtractor::<Tm, 40, 24>::new_head(over).is_err());
+    const {
+        assert!(
+            PacketExtractor::<Tm, 40, 24>::HEAD_OFFSET
+                < PacketExtractor::<Tm, 40, 24>::BUFFERS_OFFSET
+        );
+    };
     assert_eq!(EXTRACTOR_MAX_ACTIONS, 4);
     assert_eq!(c.min_packet_len(), 3);
     assert_eq!(

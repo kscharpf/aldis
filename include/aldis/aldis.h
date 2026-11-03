@@ -1315,6 +1315,29 @@
 #define ALDIS_BITSTREAM_GENERATOR_WORDS 1037
 
 /**
+ * The most actions one `aldis_packet_extractor_step` returns (LNK-074): a run of packets, an
+ * incomplete packet, a discard, and an error.
+ */
+#define ALDIS_PACKET_EXTRACTOR_MAX_ACTIONS 4
+
+/**
+ * The most actions one `aldis_frame_receiver_step` returns (LNK-074).
+ */
+#define ALDIS_FRAME_RECEIVER_MAX_ACTIONS 5
+
+/**
+ * 64-bit words of one `aldis_packet_extractor_t` (CABI-031): the tag and the largest of the
+ * engines of TM, AOS, and USLP at the build capacities; the build fails when it outgrows it.
+ */
+#define ALDIS_PACKET_EXTRACTOR_WORDS 1043
+
+/**
+ * 64-bit words of one `aldis_frame_receiver_t` (CABI-031): the tag and the largest of the
+ * engines of TM, TC, AOS, and USLP at the build capacities.
+ */
+#define ALDIS_FRAME_RECEIVER_WORDS 66
+
+/**
  * Length of the Operational Control Field in octets (132.0 §4.1.5.1, 732.0 §4.1.5.1,
  * 732.1 §4.1.5.2; CMN-010).
  */
@@ -2359,6 +2382,192 @@ typedef uint32_t aldis_fop1_timeout;
 #endif // __cplusplus
 
 /**
+ * The kind of an `aldis_frame_receiver_action_t` (API-057; docs/04-engines.md §4–§5).
+ *
+ * A `uint32_t` field is one of the enumerators below; the type itself is not a field type of
+ * the header (OI-57 convention 2; CABI-010).
+ *
+ */
+enum aldis_frame_receiver_action
+#if defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+  : uint32_t
+#endif // defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+ {
+  /**
+   * Frames are missing before this one (`scope`, `vc_id`, `missing`; LNK-051).
+   */
+  ALDIS_FRAME_RECEIVER_ACTION_FRAME_GAP = 0,
+  /**
+   * A count that repeats or goes backwards (`scope`, `vc_id`; LNK-051).
+   */
+  ALDIS_FRAME_RECEIVER_ACTION_COUNT_DISCONTINUITY = 1,
+  /**
+   * The frame was rejected (`reason`, `vc_present`, `vc_id`, `map_present`, `map_id`;
+   * LNK-050, LNK-080). It is the last action of the frame.
+   */
+  ALDIS_FRAME_RECEIVER_ACTION_FRAME_DISCARDED = 2,
+  /**
+   * The coding sublayer lost frames: the Frame Loss signal applies to every VC (LNK-053).
+   */
+  ALDIS_FRAME_RECEIVER_ACTION_LOSS_FLAG = 3,
+  /**
+   * The data field of a frame for a VC (`vc_id`, `data`, `bit_count_present`, `bit_count`,
+   * `pointer_present`, `pointer`, `gap`, `replay_present`, `replay`; LNK-050, LNK-077).
+   */
+  ALDIS_FRAME_RECEIVER_ACTION_DATA_FIELD = 4,
+  /**
+   * The OCF of a frame (`scope`, `vc_id`, `ocf`, `replay_present`, `replay`; LNK-053).
+   */
+  ALDIS_FRAME_RECEIVER_ACTION_OCF = 5,
+  /**
+   * The Secondary Header of a TM frame, with its ID octet (`scope`, `vc_id`, `data`;
+   * LNK-053).
+   */
+  ALDIS_FRAME_RECEIVER_ACTION_FSH_SDU = 6,
+  /**
+   * The Insert Zone of an AOS or USLP frame (`data`, `replay_present`, `replay`; LNK-053).
+   */
+  ALDIS_FRAME_RECEIVER_ACTION_INSERT_SDU = 7,
+  /**
+   * A TC frame, whole, for FARM-1 (`vc_id`, `data`; LNK-081).
+   */
+  ALDIS_FRAME_RECEIVER_ACTION_TC_FRAME = 8,
+  /**
+   * A USLP frame with the Protocol Control Command Flag set, whole, for the COP (`vc_id`,
+   * `data`; LNK-081).
+   */
+  ALDIS_FRAME_RECEIVER_ACTION_PROTOCOL_CONTROL = 9,
+};
+#ifndef __cplusplus
+#if __STDC_VERSION__ >= 202311L
+typedef enum aldis_frame_receiver_action aldis_frame_receiver_action;
+#else
+typedef uint32_t aldis_frame_receiver_action;
+#endif // __STDC_VERSION__ >= 202311L
+#endif // __cplusplus
+
+/**
+ * The kind of an `aldis_frame_receiver_input_t` (LNK-050, LNK-053, LNK-079, LNK-080, LNK-003;
+ * API-057).
+ *
+ * A `uint32_t` field is one of the enumerators below; the type itself is not a field type of
+ * the header (OI-57 convention 2; CABI-010).
+ *
+ */
+enum aldis_frame_receiver_input
+#if defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+  : uint32_t
+#endif // defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+ {
+  /**
+   * A frame (`data`): the handle decodes it with the codec of the protocol (LNK-050).
+   */
+  ALDIS_FRAME_RECEIVER_INPUT_FRAME = 0,
+  /**
+   * The octets of a frame the caller rejected, for the Insert Zone only (`data`; LNK-079).
+   */
+  ALDIS_FRAME_RECEIVER_INPUT_RAW_FRAME = 1,
+  /**
+   * A frame the caller discarded before the engine (`reason`; LNK-080).
+   */
+  ALDIS_FRAME_RECEIVER_INPUT_CALLER_DISCARD = 2,
+  /**
+   * The coding sublayer reports that frames were lost (LNK-053).
+   */
+  ALDIS_FRAME_RECEIVER_INPUT_FRAME_LOSS = 3,
+  /**
+   * Replace the configuration (`config`; LNK-003): the expected counts restart. The protocol
+   * cannot change.
+   */
+  ALDIS_FRAME_RECEIVER_INPUT_RECONFIGURE = 4,
+};
+#ifndef __cplusplus
+#if __STDC_VERSION__ >= 202311L
+typedef enum aldis_frame_receiver_input aldis_frame_receiver_input;
+#else
+typedef uint32_t aldis_frame_receiver_input;
+#endif // __STDC_VERSION__ >= 202311L
+#endif // __cplusplus
+
+/**
+ * What a virtual channel of a `FrameReceiver` carries (LNK-050, LNK-077).
+ *
+ * A `uint32_t` field is one of the enumerators below; the type itself is not a field type of
+ * the header (OI-57 convention 2; CABI-010).
+ *
+ */
+enum aldis_link_content
+#if defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+  : uint32_t
+#endif // defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+ {
+  /**
+   * Packets (TM, AOS): the data field goes to a `PacketExtractor`.
+   */
+  ALDIS_LINK_CONTENT_PACKETS = 0,
+  /**
+   * `VCA_SDU`s (TM, AOS): each data field is one SDU. USLP and TC use this for a served VC.
+   */
+  ALDIS_LINK_CONTENT_VCA = 1,
+  /**
+   * `B_PDU`s (AOS): the valid bits of each are delivered.
+   */
+  ALDIS_LINK_CONTENT_BITSTREAM = 2,
+  /**
+   * A VC whose service the receiver does not provide: its frames are `NotServed`.
+   */
+  ALDIS_LINK_CONTENT_UNSERVED = 3,
+};
+#ifndef __cplusplus
+#if __STDC_VERSION__ >= 202311L
+typedef enum aldis_link_content aldis_link_content;
+#else
+typedef uint32_t aldis_link_content;
+#endif // __STDC_VERSION__ >= 202311L
+#endif // __cplusplus
+
+/**
+ * Why a frame was discarded (LNK-050, LNK-080; docs/04-engines.md §5).
+ *
+ * A `uint32_t` field is one of the enumerators below; the type itself is not a field type of
+ * the header (OI-57 convention 2; CABI-010).
+ *
+ */
+enum aldis_link_discard
+#if defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+  : uint32_t
+#endif // defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+ {
+  /**
+   * The VC (or, for USLP, the MAP) is not configured.
+   */
+  ALDIS_LINK_DISCARD_UNKNOWN_CHANNEL = 0,
+  /**
+   * The VC is configured, but the receiver does not provide its service.
+   */
+  ALDIS_LINK_DISCARD_NOT_SERVED = 1,
+  /**
+   * The FECF did not match (a reason a caller reports).
+   */
+  ALDIS_LINK_DISCARD_CRC_MISMATCH = 2,
+  /**
+   * The AOS FHEC could not be corrected (a reason a caller reports).
+   */
+  ALDIS_LINK_DISCARD_HEADER_UNCORRECTABLE = 3,
+  /**
+   * SDLS verification failed (a reason a caller reports).
+   */
+  ALDIS_LINK_DISCARD_SECURITY = 4,
+};
+#ifndef __cplusplus
+#if __STDC_VERSION__ >= 202311L
+typedef enum aldis_link_discard aldis_link_discard;
+#else
+typedef uint32_t aldis_link_discard;
+#endif // __STDC_VERSION__ >= 202311L
+#endif // __cplusplus
+
+/**
  * The kind of idle packet that completes a field (LNK-013).
  *
  * A `uint32_t` field is one of the enumerators below; the type itself is not a field type of
@@ -2483,6 +2692,69 @@ typedef uint32_t aldis_link_qos;
 #endif // __cplusplus
 
 /**
+ * The channel an action of a `FrameReceiver` is about (LNK-051, LNK-053).
+ *
+ * A `uint32_t` field is one of the enumerators below; the type itself is not a field type of
+ * the header (OI-57 convention 2; CABI-010).
+ *
+ */
+enum aldis_link_scope
+#if defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+  : uint32_t
+#endif // defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+ {
+  /**
+   * The master channel.
+   */
+  ALDIS_LINK_SCOPE_MASTER_CHANNEL = 0,
+  /**
+   * A virtual channel (`vc_id`).
+   */
+  ALDIS_LINK_SCOPE_VIRTUAL_CHANNEL = 1,
+};
+#ifndef __cplusplus
+#if __STDC_VERSION__ >= 202311L
+typedef enum aldis_link_scope aldis_link_scope;
+#else
+typedef uint32_t aldis_link_scope;
+#endif // __STDC_VERSION__ >= 202311L
+#endif // __cplusplus
+
+/**
+ * Where the OCF or the Secondary Header of a frame is delivered (132.0 §3.5–3.9, 732.1
+ * §3.11.2.4; LNK-053).
+ *
+ * A `uint32_t` field is one of the enumerators below; the type itself is not a field type of
+ * the header (OI-57 convention 2; CABI-010).
+ *
+ */
+enum aldis_link_service
+#if defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+  : uint32_t
+#endif // defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+ {
+  /**
+   * The part is not delivered.
+   */
+  ALDIS_LINK_SERVICE_NONE = 0,
+  /**
+   * The part is delivered for the virtual channel of the frame (`VC_OCF`, `VC_FSH`).
+   */
+  ALDIS_LINK_SERVICE_VC = 1,
+  /**
+   * The part is delivered for the master channel (`MC_OCF`, `MC_FSH`).
+   */
+  ALDIS_LINK_SERVICE_MC = 2,
+};
+#ifndef __cplusplus
+#if __STDC_VERSION__ >= 202311L
+typedef enum aldis_link_service aldis_link_service;
+#else
+typedef uint32_t aldis_link_service;
+#endif // __STDC_VERSION__ >= 202311L
+#endif // __cplusplus
+
+/**
  * The decode mode argument (API-030; OI-57 convention 2). The argument is a `uint32_t`: an
  * enumerator of this type, which no field of the header uses (CABI-010).
  *
@@ -2573,6 +2845,106 @@ enum aldis_oid_form
 typedef enum aldis_oid_form aldis_oid_form;
 #else
 typedef uint32_t aldis_oid_form;
+#endif // __STDC_VERSION__ >= 202311L
+#endif // __cplusplus
+
+/**
+ * The kind of an `aldis_packet_extractor_action_t` (API-057).
+ *
+ * A `uint32_t` field is one of the enumerators below; the type itself is not a field type of
+ * the header (OI-57 convention 2; CABI-010).
+ *
+ */
+enum aldis_packet_extractor_action
+#if defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+  : uint32_t
+#endif // defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+ {
+  /**
+   * Complete packets, one after the other in `out` (LNK-060).
+   */
+  ALDIS_PACKET_EXTRACTOR_ACTION_PACKETS = 0,
+  /**
+   * A partial packet flagged incomplete, in `out` (LNK-061).
+   */
+  ALDIS_PACKET_EXTRACTOR_ACTION_INCOMPLETE_PACKET = 1,
+  /**
+   * The partial packet was discarded: `octets` (LNK-061, LNK-003).
+   */
+  ALDIS_PACKET_EXTRACTOR_ACTION_DISCARDED = 2,
+  /**
+   * An extraction error (`error`; LNK-061, LNK-062).
+   */
+  ALDIS_PACKET_EXTRACTOR_ACTION_ERROR = 3,
+};
+#ifndef __cplusplus
+#if __STDC_VERSION__ >= 202311L
+typedef enum aldis_packet_extractor_action aldis_packet_extractor_action;
+#else
+typedef uint32_t aldis_packet_extractor_action;
+#endif // __STDC_VERSION__ >= 202311L
+#endif // __cplusplus
+
+/**
+ * An extraction error of a `PacketExtractor` (LNK-061, LNK-062; docs/04-engines.md §5).
+ *
+ * A `uint32_t` field is one of the enumerators below; the type itself is not a field type of
+ * the header (OI-57 convention 2; CABI-010).
+ *
+ */
+enum aldis_packet_extractor_error
+#if defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+  : uint32_t
+#endif // defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+ {
+  /**
+   * A packet is longer than the Maximum Packet Length.
+   */
+  ALDIS_PACKET_EXTRACTOR_ERROR_PACKET_TOO_LONG = 0,
+  /**
+   * A packet's PVN is not in the valid set.
+   */
+  ALDIS_PACKET_EXTRACTOR_ERROR_INVALID_PVN = 1,
+  /**
+   * The length fields disagree with the First Header Pointer, or a length field is invalid.
+   */
+  ALDIS_PACKET_EXTRACTOR_ERROR_LENGTH_INCONSISTENT = 2,
+};
+#ifndef __cplusplus
+#if __STDC_VERSION__ >= 202311L
+typedef enum aldis_packet_extractor_error aldis_packet_extractor_error;
+#else
+typedef uint32_t aldis_packet_extractor_error;
+#endif // __STDC_VERSION__ >= 202311L
+#endif // __cplusplus
+
+/**
+ * The kind of an `aldis_packet_extractor_input_t` (LNK-060…LNK-064, LNK-003; API-057).
+ *
+ * A `uint32_t` field is one of the enumerators below; the type itself is not a field type of
+ * the header (OI-57 convention 2; CABI-010).
+ *
+ */
+enum aldis_packet_extractor_input
+#if defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+  : uint32_t
+#endif // defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+ {
+  /**
+   * A data field of the VC (`data`, `header_pointer`, `gap`): LNK-060.
+   */
+  ALDIS_PACKET_EXTRACTOR_INPUT_DATA_FIELD = 0,
+  /**
+   * Replace the configuration (`config`) between data units, discarding the packet in
+   * progress (LNK-003). The protocol cannot change.
+   */
+  ALDIS_PACKET_EXTRACTOR_INPUT_RECONFIGURE = 1,
+};
+#ifndef __cplusplus
+#if __STDC_VERSION__ >= 202311L
+typedef enum aldis_packet_extractor_input aldis_packet_extractor_input;
+#else
+typedef uint32_t aldis_packet_extractor_input;
 #endif // __STDC_VERSION__ >= 202311L
 #endif // __cplusplus
 
@@ -5179,6 +5551,450 @@ typedef struct {
 } aldis_bitstream_generator_status_t;
 
 /**
+ * A `PacketExtractor` in caller storage: the caller declares an object of this type, and the
+ * pointer to it is the handle (LNK-060, CABI-031, CABI-032). The words are the library's.
+ */
+typedef struct {
+  /**
+   * The slot of [`handle`]: the tag, then the state.
+   */
+  uint64_t words[ALDIS_PACKET_EXTRACTOR_WORDS];
+} aldis_packet_extractor_t;
+
+/**
+ * The managed parameters of a `PacketExtractor` (132.0 §5.4 Table 5-4; 732.0 §5.5 Table 5-4;
+ * 732.1 §5.6 Table 5-5; LNK-060…LNK-063).
+ */
+typedef struct {
+  /**
+   * The protocol (TM, AOS, or USLP) and its parameters; `vc_id` is not read.
+   */
+  aldis_link_channel_t channel;
+  /**
+   * 1 when Space Packets (PVN 0) are valid, else 0.
+   */
+  uint8_t space_packets;
+  /**
+   * 1 when Encapsulation Packets (PVN 7) are valid, else 0. At least one of the two is 1.
+   */
+  uint8_t encapsulation_packets;
+  /**
+   * The longest packet in octets, at least 1 and at most `ALDIS_LINK_PACKET_QUEUE_OCTETS`.
+   */
+  size_t max_packet_len;
+  /**
+   * 1 to deliver partial packets flagged incomplete (LNK-061), else 0.
+   */
+  uint8_t deliver_incomplete;
+  /**
+   * 1 to deliver idle packets (LNK-063), else 0.
+   */
+  uint8_t deliver_idle;
+} aldis_packet_extractor_config_t;
+
+/**
+ * One input of a `PacketExtractor` (API-057, CABI-040). A field that the kind does not use is
+ * ignored.
+ */
+typedef struct {
+  /**
+   * `ALDIS_PACKET_EXTRACTOR_INPUT_*`.
+   */
+  uint32_t kind;
+  /**
+   * For `DATA_FIELD`: the data field as the `FrameReceiver` delivers it, read once and copied
+   * (API-060). `data` is checked on every kind and must not overlap the storage or `out`:
+   * `NULL` only with `data_len` 0.
+   */
+  const uint8_t *data;
+  /**
+   * The octets at `data`.
+   */
+  size_t data_len;
+  /**
+   * For `DATA_FIELD`: 1 when `header_pointer` is the First Header Pointer of the TM frame
+   * header (TM only; AOS and USLP carry it in `data`), else 0.
+   */
+  uint8_t header_pointer_present;
+  /**
+   * For `DATA_FIELD`: the First Header Pointer of the TM frame header.
+   */
+  uint16_t header_pointer;
+  /**
+   * For `DATA_FIELD`: 1 when a frame gap was flagged on this field (LNK-051, LNK-061).
+   */
+  uint8_t gap;
+  /**
+   * For `RECONFIGURE`: the new configuration.
+   */
+  aldis_packet_extractor_config_t config;
+} aldis_packet_extractor_input_t;
+
+/**
+ * One action of a `PacketExtractor` (API-057, API-061). A field that the kind does not use is
+ * 0.
+ */
+typedef struct {
+  /**
+   * `ALDIS_PACKET_EXTRACTOR_ACTION_*`.
+   */
+  uint32_t kind;
+  /**
+   * For `PACKETS`: where the run of complete packets is in `out`, each as long as its own
+   * length field says; for `INCOMPLETE_PACKET`: where the packet is.
+   */
+  aldis_range_t packets;
+  /**
+   * For `PACKETS`: how many packets the run holds.
+   */
+  size_t count;
+  /**
+   * For `INCOMPLETE_PACKET`: the Packet Version Number in the header.
+   */
+  uint8_t pvn;
+  /**
+   * For `DISCARDED`: the octets of the partial packet.
+   */
+  size_t octets;
+  /**
+   * For `ERROR`: `ALDIS_PACKET_EXTRACTOR_ERROR_*`.
+   */
+  uint32_t error;
+} aldis_packet_extractor_action_t;
+
+/**
+ * The actions of one input of a `PacketExtractor`.
+ */
+typedef struct {
+  /**
+   * The number of actions in `items`, at most `ALDIS_PACKET_EXTRACTOR_MAX_ACTIONS`.
+   */
+  size_t count;
+  /**
+   * The actions; those from `count` on are zero.
+   */
+  aldis_packet_extractor_action_t items[ALDIS_PACKET_EXTRACTOR_MAX_ACTIONS];
+} aldis_packet_extractor_actions_t;
+
+/**
+ * A read-only snapshot of a `PacketExtractor` (API-056, LNK-002).
+ */
+typedef struct {
+  /**
+   * Data fields taken.
+   */
+  uint64_t fields_in;
+  /**
+   * Packets returned, incomplete ones included.
+   */
+  uint64_t packets_out;
+  /**
+   * Packets returned flagged incomplete.
+   */
+  uint64_t incomplete_out;
+  /**
+   * Idle packets seen, whether delivered or dropped (LNK-063).
+   */
+  uint64_t idle_packets;
+  /**
+   * Octets of partial packets discarded (LNK-061).
+   */
+  uint64_t discarded_octets;
+  /**
+   * Fields flagged with a frame gap (LNK-051).
+   */
+  uint64_t gaps;
+  /**
+   * Extraction errors `PacketTooLong` (LNK-062).
+   */
+  uint64_t packet_too_long;
+  /**
+   * Extraction errors `InvalidPvn` (LNK-062).
+   */
+  uint64_t invalid_pvn;
+  /**
+   * Extraction errors `LengthInconsistent` (LNK-061).
+   */
+  uint64_t length_inconsistent;
+  /**
+   * The assembly buffer: the octets of the packet in progress.
+   */
+  aldis_link_occupancy_t assembly;
+} aldis_packet_extractor_status_t;
+
+/**
+ * A `FrameReceiver` in caller storage: the caller declares an object of this type, and the
+ * pointer to it is the handle (LNK-050, CABI-031, CABI-032). The words are the library's.
+ */
+typedef struct {
+  /**
+   * The slot of [`handle`]: the tag, then the state.
+   */
+  uint64_t words[ALDIS_FRAME_RECEIVER_WORDS];
+} aldis_frame_receiver_t;
+
+/**
+ * One virtual channel of a `FrameReceiver` (132.0 §5 Table 5-2; 232.0 §5; 732.0 §5 Table 5-2;
+ * 732.1 §5 Table 5-2; LNK-050).
+ */
+typedef struct {
+  /**
+   * The VCID: 0 to 7 for TM, 0 to 63 for TC, AOS, and USLP. A VC is listed once.
+   */
+  uint8_t vc_id;
+  /**
+   * `ALDIS_LINK_CONTENT_*`. TM: `PACKETS`, `VCA`, `UNSERVED`; AOS: all four; TC and USLP:
+   * `UNSERVED`, else served.
+   */
+  uint32_t content;
+  /**
+   * TM and AOS: 1 when the frames of the VC carry an OCF, else 0.
+   */
+  uint8_t ocf;
+  /**
+   * TM: the octets of the Secondary Header with its ID octet (2 to 64), 0 for none.
+   */
+  uint8_t fsh_len;
+  /**
+   * USLP: 1 when the COP is in effect on the VC (732.1 §4.3.7.2), else 0.
+   */
+  uint8_t cop;
+  /**
+   * USLP: the MAP IDs of the VC as a bit mask, bit `n` for MAP `n`.
+   */
+  uint16_t maps;
+} aldis_frame_receiver_vc_t;
+
+/**
+ * The configuration of a `FrameReceiver` (LNK-050, LNK-079; docs/04-engines.md §3.1).
+ *
+ * A member that the protocol does not use is ignored.
+ */
+typedef struct {
+  /**
+   * `ALDIS_LINK_PROTOCOL_*`: TM, TC, AOS, or USLP.
+   */
+  uint32_t protocol;
+  /**
+   * The octets of a frame of the physical channel; the most, where frames vary in length (TC,
+   * variable-length USLP).
+   */
+  size_t frame_len;
+  /**
+   * 1 when frames carry a FECF, else 0.
+   */
+  uint8_t fecf;
+  /**
+   * 1 to accept raw frames (LNK-079), else 0; only with an Insert Zone.
+   */
+  uint8_t raw_frames;
+  /**
+   * TM, USLP: `ALDIS_LINK_SERVICE_*` of the OCF (132.0 §3.5–3.9, 732.1 §3.11.2.4).
+   */
+  uint32_t ocf_service;
+  /**
+   * TM: `ALDIS_LINK_SERVICE_*` of the Secondary Header.
+   */
+  uint32_t fsh_service;
+  /**
+   * AOS, USLP: the octets of the Insert Zone, 0 for none.
+   */
+  size_t insert_zone_len;
+  /**
+   * AOS: 1 when frames have an FHEC, else 0.
+   */
+  uint8_t aos_fhec;
+  /**
+   * AOS: `ALDIS_AOS_EDITION_*` (AOS-001); 0 is Issue 5.
+   */
+  uint8_t aos_edition;
+  /**
+   * USLP: 1 for a variable-length channel (no Insert Zone), else 0.
+   */
+  uint8_t uslp_variable;
+  /**
+   * The number of entries of `vcs`, at most `ALDIS_LINK_MAX_VIRTUAL_CHANNELS`.
+   */
+  size_t vc_count;
+  /**
+   * The virtual channels; those from `vc_count` on are not read.
+   */
+  aldis_frame_receiver_vc_t vcs[ALDIS_LINK_MAX_VIRTUAL_CHANNELS];
+} aldis_frame_receiver_config_t;
+
+/**
+ * One input of a `FrameReceiver` (API-057, CABI-040). A field that the kind does not use is
+ * ignored.
+ */
+typedef struct {
+  /**
+   * `ALDIS_FRAME_RECEIVER_INPUT_*`.
+   */
+  uint32_t kind;
+  /**
+   * For `FRAME` and `RAW_FRAME`: the frame, read once and copied (API-060). `data` is checked
+   * on every kind and must not overlap the storage or `out`: `NULL` only with `data_len` 0.
+   */
+  const uint8_t *data;
+  /**
+   * The octets at `data`.
+   */
+  size_t data_len;
+  /**
+   * For `CALLER_DISCARD`: `ALDIS_LINK_DISCARD_CRC_MISMATCH`, `_HEADER_UNCORRECTABLE`, or
+   * `_SECURITY`.
+   */
+  uint32_t reason;
+  /**
+   * For `RECONFIGURE`: the new configuration.
+   */
+  aldis_frame_receiver_config_t config;
+} aldis_frame_receiver_input_t;
+
+/**
+ * One action of a `FrameReceiver` (API-057, API-061). A field that the kind does not use is 0.
+ */
+typedef struct {
+  /**
+   * `ALDIS_FRAME_RECEIVER_ACTION_*`.
+   */
+  uint32_t kind;
+  /**
+   * For the actions about a channel: `ALDIS_LINK_SCOPE_*`.
+   */
+  uint32_t scope;
+  /**
+   * For `FRAME_DISCARDED`: `ALDIS_LINK_DISCARD_*`.
+   */
+  uint32_t reason;
+  /**
+   * For `FRAME_DISCARDED`: 1 when `vc_id` is the VC the engine read from the frame.
+   */
+  uint8_t vc_present;
+  /**
+   * The VCID of the scope, of the frame, or of the delivered part.
+   */
+  uint8_t vc_id;
+  /**
+   * For `FRAME_DISCARDED`: 1 when `map_id` is the MAP of the frame (USLP).
+   */
+  uint8_t map_present;
+  /**
+   * For `FRAME_DISCARDED`: the MAP ID.
+   */
+  uint8_t map_id;
+  /**
+   * 1 when `replay` is the Replay Flag of an AOS frame (LNK-054).
+   */
+  uint8_t replay_present;
+  /**
+   * The Replay Flag, 0 or 1.
+   */
+  uint8_t replay;
+  /**
+   * For `DATA_FIELD`: 1 when `pointer` is the First Header Pointer of a TM frame header.
+   */
+  uint8_t pointer_present;
+  /**
+   * For `DATA_FIELD`: the First Header Pointer.
+   */
+  uint16_t pointer;
+  /**
+   * For `DATA_FIELD`: 1 when a gap or discontinuity was detected for the VC since the last
+   * data field delivered for it (LNK-051, LNK-061).
+   */
+  uint8_t gap;
+  /**
+   * For `DATA_FIELD` of a `B_PDU`: 1 when `bit_count` is the number of valid bits.
+   */
+  uint8_t bit_count_present;
+  /**
+   * For `DATA_FIELD` of a `B_PDU`: the valid bits of `data` (LNK-077).
+   */
+  size_t bit_count;
+  /**
+   * For `OCF`: the 32 bits of the OCF as a big-endian word; `aldis_ocf_*` classifies it.
+   */
+  uint32_t ocf;
+  /**
+   * For `FRAME_GAP`: the number of frames missing.
+   */
+  uint64_t missing;
+  /**
+   * The delivered octets in `out`: the data field, the FSH, the Insert Zone, or the frame.
+   */
+  aldis_range_t data;
+} aldis_frame_receiver_action_t;
+
+/**
+ * The actions of one input of a `FrameReceiver`.
+ */
+typedef struct {
+  /**
+   * The number of actions in `items`, at most `ALDIS_FRAME_RECEIVER_MAX_ACTIONS`.
+   */
+  size_t count;
+  /**
+   * The actions; those from `count` on are zero.
+   */
+  aldis_frame_receiver_action_t items[ALDIS_FRAME_RECEIVER_MAX_ACTIONS];
+} aldis_frame_receiver_actions_t;
+
+/**
+ * A read-only snapshot of a `FrameReceiver` (API-056, LNK-002).
+ */
+typedef struct {
+  /**
+   * Frames taken and processed, discarded ones included.
+   */
+  uint64_t frames_in;
+  /**
+   * Raw frames taken (LNK-079).
+   */
+  uint64_t raw_frames_in;
+  /**
+   * Inputs the receiver refused with an error (API-058).
+   */
+  uint64_t refused;
+  /**
+   * `FRAME_LOSS` inputs (LNK-053).
+   */
+  uint64_t frame_loss;
+  /**
+   * Frames discarded as unknown channel (LNK-050).
+   */
+  uint64_t unknown_channel;
+  /**
+   * Frames discarded as not served (LNK-050).
+   */
+  uint64_t not_served;
+  /**
+   * Frames the caller discarded for a wrong FECF (LNK-080).
+   */
+  uint64_t crc_mismatch;
+  /**
+   * Frames the caller discarded for an AOS FHEC it could not correct (LNK-080).
+   */
+  uint64_t header_uncorrectable;
+  /**
+   * Frames the caller discarded for a failed SDLS verification (LNK-080).
+   */
+  uint64_t security;
+  /**
+   * OID frames (LNK-052).
+   */
+  uint64_t oid_frames;
+  /**
+   * `FRAME_GAP` actions (LNK-051).
+   */
+  uint64_t gaps;
+  /**
+   * `COUNT_DISCONTINUITY` actions (LNK-051).
+   */
+  uint64_t count_discontinuities;
+} aldis_frame_receiver_status_t;
+
+/**
  * The sender-chosen Primary Header fields of a packet (133.0 §4.1.3; SPP-001…003).
  */
 typedef struct {
@@ -7703,6 +8519,150 @@ uint32_t aldis_bitstream_generator_status(aldis_bitstream_generator_t *h,
  * As for [`aldis_bitstream_generator_step`].
  */
 void aldis_bitstream_generator_deinit(aldis_bitstream_generator_t *h);
+
+/**
+ * Places a `PacketExtractor` that has not yet synchronised in `storage` (LNK-060, LNK-061;
+ * CABI-031, CABI-032).
+ *
+ * # Errors
+ * `ALDIS_ERR_INVALID_FIELD` for `NULL` or misaligned `storage` or `cfg`, a flag that is not 0
+ * or 1, or a constant that is none; `ALDIS_ERR_INVALID_CONFIG` (`link_protocol`) for TC,
+ * (`valid_pvns`, `max_packet_len`) for a value the configuration relations refuse;
+ * `ALDIS_ERR_OUT_OF_RANGE` (`upid`, `map_id`); `ALDIS_ERR_CAPACITY_EXCEEDED`
+ * (`max_packet_len`) above the assembly buffer or below the longest packet header.
+ *
+ * # Safety
+ * `storage` is valid for writes of one `aldis_packet_extractor_t` and outlives its use; `cfg`
+ * is valid for a read; `err` is `NULL` or valid for one write.
+ */
+uint32_t aldis_packet_extractor_init(aldis_packet_extractor_t *storage,
+                                     const aldis_packet_extractor_config_t *cfg,
+                                     aldis_error_detail_t *err);
+
+/**
+ * Runs one input of the `PacketExtractor` (API-057, CABI-040).
+ *
+ * The octets of the packets go to `out`, which must hold at least `max_packet_len − 1` plus
+ * the octets of the packet zone of the data field (LNK-075).
+ *
+ * # Errors
+ * `ALDIS_ERR_INVALID_HANDLE`; `ALDIS_ERR_INVALID_FIELD` for a CABI-022 violation, a flag that
+ * is not 0 or 1, a constant that is none, a TM field without a pointer
+ * (`first_header_pointer`); `ALDIS_ERR_MALFORMED` (`first_header_pointer`,
+ * `fhp_lvo_pointer`) for a pointer outside the zone; `ALDIS_ERR_CAPACITY_EXCEEDED`
+ * (`field_len`) for a data field above `ALDIS_LINK_MAX_FRAME_OCTETS`;
+ * `ALDIS_ERR_BUFFER_TOO_SMALL` for a short `out`; for `RECONFIGURE`: as
+ * `aldis_packet_extractor_init`, and `ALDIS_ERR_INVALID_CONFIG` (`link_protocol`) for another
+ * protocol. The engine is unchanged and `actions` is not written.
+ *
+ * # Safety
+ * `h` is a handle from `aldis_packet_extractor_init` whose storage is still valid, or
+ * detectably invalid storage; `input` is valid for a read, and its `data` for `data_len`
+ * octets; `out` is valid for `out_cap` octets of writes (it may be `NULL` when `out_cap` is 0);
+ * `actions` is valid for one write; `err` is `NULL` or valid for one write. No other thread
+ * uses the storage (CABI-050).
+ */
+uint32_t aldis_packet_extractor_step(aldis_packet_extractor_t *h,
+                                     const aldis_packet_extractor_input_t *input,
+                                     uint8_t *out,
+                                     size_t out_cap,
+                                     aldis_packet_extractor_actions_t *actions,
+                                     aldis_error_detail_t *err);
+
+/**
+ * Reads the counters and the occupancy of the `PacketExtractor` (API-056, LNK-002). It changes
+ * nothing.
+ *
+ * # Errors
+ * `ALDIS_ERR_INVALID_HANDLE`; `ALDIS_ERR_INVALID_FIELD` for a CABI-022 violation.
+ *
+ * # Safety
+ * As for [`aldis_packet_extractor_step`]; `status` is valid for one write.
+ */
+uint32_t aldis_packet_extractor_status(aldis_packet_extractor_t *h,
+                                       aldis_packet_extractor_status_t *status,
+                                       aldis_error_detail_t *err);
+
+/**
+ * Releases the storage: later calls on it fail with `ALDIS_ERR_INVALID_HANDLE` (CABI-032). An
+ * invalid handle is ignored.
+ *
+ * # Safety
+ * As for [`aldis_packet_extractor_step`].
+ */
+void aldis_packet_extractor_deinit(aldis_packet_extractor_t *h);
+
+/**
+ * Places a `FrameReceiver` that has seen no frame in `storage` (LNK-050, LNK-051; CABI-031,
+ * CABI-032).
+ *
+ * # Errors
+ * `ALDIS_ERR_INVALID_FIELD` for `NULL` or misaligned `storage` or `cfg`, a flag that is not 0
+ * or 1, or a constant that is none; `ALDIS_ERR_INVALID_CONFIG` (`frame_len`) for a frame length
+ * that leaves no data field octet, (`vc_id`) for a VC listed twice, (`fsh_len`) outside 2 to 64,
+ * (`data_field_content`) for `BITSTREAM` on TM, (`raw_frames`) without an Insert Zone;
+ * `ALDIS_ERR_OUT_OF_RANGE` (`vc_id`, `map_id`); `ALDIS_ERR_CAPACITY_EXCEEDED` (`vc_id`) for
+ * more than `ALDIS_LINK_MAX_VIRTUAL_CHANNELS` VCs.
+ *
+ * # Safety
+ * `storage` is valid for writes of one `aldis_frame_receiver_t` and outlives its use; `cfg` is
+ * valid for a read; `err` is `NULL` or valid for one write.
+ */
+uint32_t aldis_frame_receiver_init(aldis_frame_receiver_t *storage,
+                                   const aldis_frame_receiver_config_t *cfg,
+                                   aldis_error_detail_t *err);
+
+/**
+ * Runs one input of the `FrameReceiver` (API-057, CABI-040).
+ *
+ * The octets of the delivered parts go to `out`, which must hold at least the frame length of
+ * the configuration (LNK-075).
+ *
+ * # Errors
+ * `ALDIS_ERR_INVALID_HANDLE`; `ALDIS_ERR_INVALID_FIELD` for a CABI-022 violation or a constant
+ * that is none; for `FRAME`: the error of the codec for a frame it refuses (`LengthMismatch`
+ * (`frame_len`), `Malformed`, `ReservedValue`, a failed FECF), then `LengthMismatch`
+ * (`frame_len`), `BufferTooSmall`, `Malformed`, `InvalidField`, `ReservedValue` of the engine
+ * (API-058); for `RAW_FRAME`: `ALDIS_ERR_INVALID_CONFIG` (`raw_frames`) while the option is
+ * off; for `RECONFIGURE`: as `aldis_frame_receiver_init`, and `ALDIS_ERR_INVALID_CONFIG`
+ * (`link_protocol`) for another protocol. The engine is unchanged (an engine error counts as
+ * `refused`) and `actions` is not written.
+ *
+ * # Safety
+ * `h` is a handle from `aldis_frame_receiver_init` whose storage is still valid, or detectably
+ * invalid storage; `input` is valid for a read, and its `data` for `data_len` octets; `out` is
+ * valid for `out_cap` octets of writes (it may be `NULL` when `out_cap` is 0); `actions` is
+ * valid for one write; `err` is `NULL` or valid for one write. No other thread uses the
+ * storage (CABI-050).
+ */
+uint32_t aldis_frame_receiver_step(aldis_frame_receiver_t *h,
+                                   const aldis_frame_receiver_input_t *input,
+                                   uint8_t *out,
+                                   size_t out_cap,
+                                   aldis_frame_receiver_actions_t *actions,
+                                   aldis_error_detail_t *err);
+
+/**
+ * Reads the counters of the `FrameReceiver` (API-056, LNK-002). It changes nothing.
+ *
+ * # Errors
+ * `ALDIS_ERR_INVALID_HANDLE`; `ALDIS_ERR_INVALID_FIELD` for a CABI-022 violation.
+ *
+ * # Safety
+ * As for [`aldis_frame_receiver_step`]; `status` is valid for one write.
+ */
+uint32_t aldis_frame_receiver_status(aldis_frame_receiver_t *h,
+                                     aldis_frame_receiver_status_t *status,
+                                     aldis_error_detail_t *err);
+
+/**
+ * Releases the storage: later calls on it fail with `ALDIS_ERR_INVALID_HANDLE` (CABI-032). An
+ * invalid handle is ignored.
+ *
+ * # Safety
+ * As for [`aldis_frame_receiver_step`].
+ */
+void aldis_frame_receiver_deinit(aldis_frame_receiver_t *h);
 
 /**
  * Classifies the four OCF octets at `ocf` by bits 0–1 (CMN-010).

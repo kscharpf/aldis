@@ -90,6 +90,11 @@ mod tests {
         aldis_bitstream_generator_action, aldis_bitstream_generator_input,
         aldis_packet_generator_action, aldis_packet_generator_input,
     };
+    use crate::link_rx::{
+        aldis_frame_receiver_action, aldis_frame_receiver_input, aldis_link_content,
+        aldis_link_discard, aldis_link_scope, aldis_link_service, aldis_packet_extractor_action,
+        aldis_packet_extractor_error, aldis_packet_extractor_input,
+    };
     use crate::ocf::aldis_ocf_report;
     use crate::oid::aldis_oid_form;
     use crate::spp::{aldis_spp_packet_type, aldis_spp_secondary, aldis_spp_sequence_flags};
@@ -213,6 +218,15 @@ mod tests {
             header,
             &mut seen,
         );
+        check::<aldis_frame_receiver_action>("aldis_frame_receiver_action", header, &mut seen);
+        check::<aldis_frame_receiver_input>("aldis_frame_receiver_input", header, &mut seen);
+        check::<aldis_link_content>("aldis_link_content", header, &mut seen);
+        check::<aldis_link_discard>("aldis_link_discard", header, &mut seen);
+        check::<aldis_link_scope>("aldis_link_scope", header, &mut seen);
+        check::<aldis_link_service>("aldis_link_service", header, &mut seen);
+        check::<aldis_packet_extractor_action>("aldis_packet_extractor_action", header, &mut seen);
+        check::<aldis_packet_extractor_error>("aldis_packet_extractor_error", header, &mut seen);
+        check::<aldis_packet_extractor_input>("aldis_packet_extractor_input", header, &mut seen);
         check::<aldis_link_idle_packet>("aldis_link_idle_packet", header, &mut seen);
         check::<aldis_link_idle_policy>("aldis_link_idle_policy", header, &mut seen);
         check::<aldis_link_protocol>("aldis_link_protocol", header, &mut seen);
