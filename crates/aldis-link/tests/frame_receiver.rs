@@ -1046,6 +1046,44 @@ fn a_tc_frame_is_delivered_whole() {
     assert_eq!(*r, OutRange::new(0, LEN));
 }
 
+// ---- LNK-050, API-017: a frame of a channel the codec does not hold reaches the counter ----
+
+#[test]
+fn a_frame_of_an_unconfigured_channel_is_decoded_and_counted() {
+    // req: LNK-050, API-017, RS-023
+    fn last_is_unknown<P: Plained, const V: usize>(
+        rx: &mut FrameReceiver<P, V>,
+        frame: &[u8],
+    ) -> bool {
+        matches!(
+            feed(rx, frame).last(),
+            Some(ReceiverOutput::FrameDiscarded {
+                reason: DiscardReason::UnknownChannel,
+                ..
+            })
+        )
+    }
+    let mut aos = aos();
+    assert!(last_is_unknown(
+        &mut aos,
+        &aos_frame(20, 0, None, false, None, &[0, 0])
+    ));
+    let mut tc = tc();
+    assert!(last_is_unknown(&mut tc, &tc_frame(9)));
+    let mut uslp = uslp();
+    assert!(last_is_unknown(
+        &mut uslp,
+        &uslp_frame(9, 0, false, false, Some((1, 4)), None)
+    ));
+    for n in [
+        aos.status().unknown_channel.get(),
+        tc.status().unknown_channel.get(),
+        uslp.status().unknown_channel.get(),
+    ] {
+        assert_eq!(n, 1);
+    }
+}
+
 // ---- LNK-002, LNK-003, API-056: housekeeping ----
 
 #[test]
