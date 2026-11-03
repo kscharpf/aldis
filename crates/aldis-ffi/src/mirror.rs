@@ -151,6 +151,10 @@ mod tests {
     }
     // req: CABI-010, CABI-002
     #[test]
+    #[expect(
+        clippy::too_many_lines,
+        reason = "one check line per mirror enum of the header"
+    )]
     fn every_mirror_enum_is_in_the_header_with_the_same_values() {
         // Each variant of a mirror enum, by `Debug` name and value, is an enumerator of the `enum` of
         // the same name in the generated header, and the header has no other enumerator.
