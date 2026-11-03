@@ -4775,8 +4775,8 @@ typedef struct {
    */
   uint32_t kind;
   /**
-   * For `SUBMIT_PACKET`: the packet, read once and copied (API-060); `NULL` only with
-   * `data_len` 0.
+   * For `SUBMIT_PACKET`: the packet, read once and copied (API-060). `data` is checked on
+   * every kind and must not overlap the storage or `out`: `NULL` only with `data_len` 0.
    */
   const uint8_t *data;
   /**
@@ -4944,7 +4944,8 @@ typedef struct {
    */
   uint32_t kind;
   /**
-   * For `SUBMIT_SDU`: the SDU, read once and copied (API-060); `NULL` only with `data_len` 0.
+   * For `SUBMIT_SDU`: the SDU, read once and copied (API-060). `data` is checked on every kind and must not overlap
+   * the storage or `out`: `NULL` only with `data_len` 0.
    */
   const uint8_t *data;
   /**
@@ -5084,7 +5085,8 @@ typedef struct {
   uint32_t kind;
   /**
    * For `SUBMIT_BITS`: the bits, most significant first and left-aligned, read once and
-   * copied (API-060); `NULL` only with `data_len` 0.
+   * copied (API-060). `data` is checked on every kind and must not overlap the storage or
+   * `out`: `NULL` only with `data_len` 0.
    */
   const uint8_t *data;
   /**

@@ -1385,6 +1385,37 @@ mod tests {
     }
 
     #[test]
+    fn a_partial_area_needs_only_its_listed_files() {
+        // req: CABI-011, VER-021
+        // `link/` has files in FFI_FILES, so the runner need not name the others, even though
+        // `crates/aldis-ffi/src/link.rs` makes `link` a C ABI area.
+        let readme = "| File |\n|---|\n| `link/send/*.json` |\n";
+        let files = [
+            "link/send/packet_generator_tm.json".to_owned(),
+            "link/send/channel_mux_tm.json".to_owned(),
+        ];
+        let tests = [
+            "(\"link/send/packet_generator_tm.json\") (\"link/send/channel_mux_tm.json\")"
+                .to_owned(),
+        ];
+        let mut c = consistent();
+        c.exerciser.clear();
+        c.ffi_areas = names(&["link"]);
+        let runner = "vector_test!(a, \"link\", \"send/packet_generator_tm\", r);";
+        assert_eq!(
+            vector_problems(&files, readme, &tests, "", runner, &c),
+            Vec::<String>::new()
+        );
+        // A listed file the runner does not name is still reported.
+        assert_eq!(
+            vector_problems(&files, readme, &tests, "", "", &c),
+            [
+                "test-vectors/link/send/packet_generator_tm.json: has C ABI functions (`FFI_FILES`), but the C ABI runner crates/aldis-ffi/tests/vectors.rs does not run it"
+            ]
+        );
+    }
+
+    #[test]
     fn the_c_abi_runner_covers_the_core_files_with_a_c_abi() {
         // req: CABI-011, VER-021
         let readme = "| File |\n|---|\n| `core/*.json` |\n";

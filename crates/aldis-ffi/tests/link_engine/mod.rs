@@ -6,8 +6,10 @@
 //! of the scenario, and compares the complete, ordered actions, or the error with its field,
 //! and the deadline with the expected values, as the Rust runners of `aldis-link` do against the
 //! Rust API. The engines of the C ABI have the capacities of `capacities.toml`, not those of the
-//! scenarios; a `PacketGenerator` scenario that expects `WouldBlock` depends on the capacity of its
-//! queue (48 or 64 octets), so it is counted and skipped, and the Rust runner covers it.
+//! scenarios and ignore their `queue_capacity`. A `PacketGenerator` scenario that expects
+//! `WouldBlock` (LNK-015) depends on the capacity of its queue (48 or 64 octets): its steps run
+//! up to the first such step, the scenario is counted as cut off there, and the Rust runner
+//! covers the refusal. Issue #240 drops this cut-off.
 
 #![expect(
     clippy::borrow_as_ptr,
@@ -108,13 +110,11 @@ fn field(vc: u8, area: &[u8], r: &aldis_ffi::range::aldis_range_t) -> Map<String
     v
 }
 
-/// Whether a scenario expects `WouldBlock`.
-fn blocks(steps: &[&aldis_testkit::Step]) -> bool {
-    steps.iter().any(|s| {
-        s.expect
-            .iter()
-            .any(|e| e.get("error") == Some(&json!("WouldBlock")))
-    })
+/// Whether a step expects `WouldBlock` (LNK-015).
+fn expects_would_block(step: &aldis_testkit::Step) -> bool {
+    step.expect
+        .iter()
+        .any(|e| e.get("error") == Some(&json!("WouldBlock")))
 }
 
 fn load(name: &str, engine: &str) -> ScenarioFile {
@@ -129,6 +129,8 @@ fn load(name: &str, engine: &str) -> ScenarioFile {
 mod packet {
     use super::*;
 
+    /// The configuration of a scenario; it ignores the scenario's `queue_capacity`, which the
+    /// handle fixes at build time (CABI-030).
     fn config(c: &Map<String, Value>) -> aldis_packet_generator_config_t {
         let pvns: Vec<u8> = c["valid_pvns"]
             .as_array()
@@ -179,10 +181,6 @@ mod packet {
             if scenario.scenario.superseded.is_some() {
                 continue;
             }
-            if blocks(&scenario.steps) {
-                skipped += 1;
-                continue;
-            }
             run += 1;
             let mut storage = Box::new(aldis_packet_generator_t {
                 words: [0xA5A5_A5A5_A5A5_A5A5; ALDIS_PACKET_GENERATOR_WORDS],
@@ -193,6 +191,13 @@ mod packet {
             let status = unsafe { aldis_packet_generator_init(&raw mut *storage, &cfg, &mut det) };
             assert_eq!(status, ALDIS_OK, "{}", scenario.scenario.id);
             for (i, step) in scenario.steps.iter().enumerate() {
+                if expects_would_block(step) {
+                    // The refusal depends on the 48 or 64 octets of the scenario's queue, which
+                    // the handle cannot be built with (LNK-015; #240 drops this cut-off): the
+                    // steps before it ran, the rest is covered by the Rust runner.
+                    skipped += 1;
+                    break;
+                }
                 let (key, v) = step.input.iter().next().unwrap();
                 let data: Vec<u8>;
                 let mut input = aldis_packet_generator_input_t {

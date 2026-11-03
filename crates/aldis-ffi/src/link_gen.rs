@@ -70,6 +70,10 @@ const _: () = assert!(
 const _: () = assert!(
     size_of::<crate::handle::Slot<AccessGeneratorState>>() <= ALDIS_ACCESS_GENERATOR_WORDS * 8
 );
+const _: () = assert!(
+    size_of::<crate::handle::Slot<BitstreamGeneratorState>>()
+        <= ALDIS_BITSTREAM_GENERATOR_WORDS * 8
+);
 
 // ---- PacketGenerator ----
 
@@ -188,8 +192,8 @@ pub struct aldis_packet_generator_config_t {
 pub struct aldis_packet_generator_input_t {
     /// `ALDIS_PACKET_GENERATOR_INPUT_*`.
     pub kind: u32,
-    /// For `SUBMIT_PACKET`: the packet, read once and copied (API-060); `NULL` only with
-    /// `data_len` 0.
+    /// For `SUBMIT_PACKET`: the packet, read once and copied (API-060). `data` is checked on
+    /// every kind and must not overlap the storage or `out`: `NULL` only with `data_len` 0.
     pub data: *const u8,
     /// The octets at `data`.
     pub data_len: usize,
@@ -703,7 +707,8 @@ pub struct aldis_access_generator_config_t {
 pub struct aldis_access_generator_input_t {
     /// `ALDIS_ACCESS_GENERATOR_INPUT_*`.
     pub kind: u32,
-    /// For `SUBMIT_SDU`: the SDU, read once and copied (API-060); `NULL` only with `data_len` 0.
+    /// For `SUBMIT_SDU`: the SDU, read once and copied (API-060). `data` is checked on every kind and must not overlap
+    /// the storage or `out`: `NULL` only with `data_len` 0.
     pub data: *const u8,
     /// The octets at `data`.
     pub data_len: usize,
@@ -1123,7 +1128,8 @@ pub struct aldis_bitstream_generator_input_t {
     /// `ALDIS_BITSTREAM_GENERATOR_INPUT_*`.
     pub kind: u32,
     /// For `SUBMIT_BITS`: the bits, most significant first and left-aligned, read once and
-    /// copied (API-060); `NULL` only with `data_len` 0.
+    /// copied (API-060). `data` is checked on every kind and must not overlap the storage or
+    /// `out`: `NULL` only with `data_len` 0.
     pub data: *const u8,
     /// The octets at `data`.
     pub data_len: usize,
