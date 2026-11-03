@@ -12,7 +12,7 @@
 //!   makes the same checks as `Engine::new` and returns the same error.
 //! - the **buffers** (`EngineBuffers<..>`): plain arrays of octets. All-zero octets are the empty
 //!   state, so a caller that has no `MaybeUninit` can zero them. `EngineBuffers::ZERO` is the
-//!   value that [`Engine::new`] uses.
+//!   value that `Engine::new` uses.
 //!
 //! `Engine::HEAD_OFFSET` and `Engine::BUFFERS_OFFSET` are the offsets of the two fields
 //! (`offset_of!`). To build the engine at `p: *mut Engine`, write the head at
