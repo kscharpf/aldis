@@ -654,6 +654,10 @@ mod tests {
             HookLayout::Any
         }
 
+        #[expect(
+            clippy::panic_in_result_fn,
+            reason = "test helper may fail loudly (RS-018)"
+        )]
         fn protect(
             &mut self,
             _: &FrameCtx,

@@ -63,6 +63,7 @@ pedantic = { level = "deny", priority = -1 }
 unwrap_used = "deny"
 expect_used = "deny"
 panic = "deny"
+panic_in_result_fn = "deny"  # catches assert!/debug_assert! too, which `panic` does not
 indexing_slicing = "deny"
 arithmetic_side_effects = "deny"
 cast_possible_truncation = "deny"
