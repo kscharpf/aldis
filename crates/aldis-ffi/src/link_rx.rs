@@ -773,7 +773,8 @@ pub(crate) enum FrameReceiverState {
     /// TC.
     Tc(Fr<Tc>),
     /// AOS.
-    Aos(Fr<Aos>),
+    /// AOS, with the edition of its frames (AOS-001).
+    Aos(Fr<Aos>, AosEdition),
     /// USLP.
     Uslp(Fr<Uslp>),
 }
@@ -1031,6 +1032,18 @@ pub struct aldis_frame_receiver_status_t {
     pub count_discontinuities: u64,
 }
 
+/// The AOS edition of the configuration `c` (AOS-001).
+///
+/// # Errors
+/// `InvalidField` for an `aos_edition` that is no `ALDIS_AOS_EDITION_*` constant.
+fn aos_edition(c: &aldis_frame_receiver_config_t) -> Result<AosEdition> {
+    let channel = aldis_link_channel_t {
+        aos_edition: c.aos_edition,
+        ..aldis_link_channel_t::default()
+    };
+    Ok(aos_params(&channel)?.edition)
+}
+
 fn service(value: u32) -> Result<Service> {
     Ok(match parse::<aldis_link_service>(value)? {
         aldis_link_service::ALDIS_LINK_SERVICE_NONE => Service::None,
@@ -1057,10 +1070,11 @@ where
 
     /// The `Plain` frame of `octets` for `config`: the codec decodes it, and it takes the `Plain`
     /// step through `NoSecurity`. The codec knows no VC, as the receiver counts frames of
-    /// channels that are not configured too (OI-77).
+    /// channels that are not configured too (OI-77). `edition` is read for AOS only.
     fn plain<'a>(
         config: &FrameReceiverConfig<Self, V>,
         octets: &'a [u8],
+        edition: AosEdition,
     ) -> Result<Self::Plain<'a>>;
 }
 
@@ -1112,13 +1126,18 @@ impl RxProtocol for Tm {
         TmVc::new(content, flag(vc.ocf)?, (fsh_len > 0).then_some(fsh_len))
     }
 
-    fn plain<'a>(config: &FrameReceiverConfig<Tm, V>, octets: &'a [u8]) -> Result<Self::Plain<'a>> {
+    fn plain<'a>(
+        config: &FrameReceiverConfig<Tm, V>,
+        octets: &'a [u8],
+        _: AosEdition,
+    ) -> Result<Self::Plain<'a>> {
         let pc = TmPhysicalChannelConfig::new(config.frame_len(), config.fecf())?;
         TmFrame::decode(octets, &pc)?.into_plain(NoSecurity)
     }
 }
 
-/// A lookup that holds no AOS virtual channel.
+/// A lookup that holds no AOS virtual channel. Correct because the receiver lays the frame out
+/// itself from its own configuration (`plain_octets`); the codec only checks FECF, FHEC, and length.
 struct NoAosVcs;
 
 impl AosVcLookup for NoAosVcs {
@@ -1149,6 +1168,7 @@ impl RxProtocol for Aos {
     fn plain<'a>(
         config: &FrameReceiverConfig<Aos, V>,
         octets: &'a [u8],
+        edition: AosEdition,
     ) -> Result<Self::Plain<'a>> {
         let channel = config.channel();
         let pc = AosPhysicalChannelConfig::new(
@@ -1156,13 +1176,13 @@ impl RxProtocol for Aos {
             channel.fhec(),
             channel.insert_zone_len(),
             config.fecf(),
-            AosEdition::Issue5,
+            edition,
         )?;
         AosFrame::decode(octets, &pc, &NoAosVcs)?.into_plain(NoSecurity)
     }
 }
 
-/// A lookup that holds no TC channel.
+/// A lookup that holds no TC channel: as for AOS, the receiver reads the octets itself.
 struct NoTcChannels(TcPhysical);
 
 impl TcVcLookup for NoTcChannels {
@@ -1197,14 +1217,18 @@ impl RxProtocol for Tc {
         })
     }
 
-    fn plain<'a>(config: &FrameReceiverConfig<Tc, V>, octets: &'a [u8]) -> Result<Self::Plain<'a>> {
+    fn plain<'a>(
+        config: &FrameReceiverConfig<Tc, V>,
+        octets: &'a [u8],
+        _: AosEdition,
+    ) -> Result<Self::Plain<'a>> {
         // TC frames vary in length: the codec takes the length of the frame it is given.
         let channels = NoTcChannels(TcPhysical::new(octets.len(), config.fecf())?);
         TcFrame::decode(octets, &channels)?.into_plain(NoSecurity)
     }
 }
 
-/// A lookup that holds no USLP channel.
+/// A lookup that holds no USLP channel: as for AOS, the receiver reads the octets itself.
 struct NoUslpChannels(UslpPhysical);
 
 impl UslpVcLookup for NoUslpChannels {
@@ -1258,6 +1282,7 @@ impl RxProtocol for Uslp {
     fn plain<'a>(
         config: &FrameReceiverConfig<Uslp, V>,
         octets: &'a [u8],
+        _: AosEdition,
     ) -> Result<Self::Plain<'a>> {
         // The codec takes the length of the frame it is given; the receiver refuses a frame of
         // another length than the channel's (LNK-050).
@@ -1426,6 +1451,7 @@ fn rx_run<P: RxProtocol>(
     engine: &mut Fr<P>,
     input: &aldis_frame_receiver_input_t,
     data: &[u8],
+    edition: AosEdition,
     area: &mut [u8],
 ) -> Result<aldis_frame_receiver_actions_t>
 where
@@ -1434,7 +1460,7 @@ where
     let list = match parse::<aldis_frame_receiver_input>(input.kind)? {
         aldis_frame_receiver_input::ALDIS_FRAME_RECEIVER_INPUT_FRAME => {
             // A frame the codec refuses is the error of the call (RS-023).
-            let plain = P::plain(engine.config(), data)?;
+            let plain = P::plain(engine.config(), data, edition)?;
             engine.step(ReceiverInput::Frame(plain), area)?
         }
         aldis_frame_receiver_input::ALDIS_FRAME_RECEIVER_INPUT_RAW_FRAME => {
@@ -1470,7 +1496,7 @@ fn rx_state(c: &aldis_frame_receiver_config_t) -> Result<FrameReceiverState> {
             FrameReceiverState::Tc(Fr::new(rx_config::<Tc>(c)?))
         }
         aldis_link_protocol::ALDIS_LINK_PROTOCOL_AOS => {
-            FrameReceiverState::Aos(Fr::new(rx_config::<Aos>(c)?))
+            FrameReceiverState::Aos(Fr::new(rx_config::<Aos>(c)?), aos_edition(c)?)
         }
         aldis_link_protocol::ALDIS_LINK_PROTOCOL_USLP => {
             FrameReceiverState::Uslp(Fr::new(rx_config::<Uslp>(c)?))
@@ -1497,25 +1523,34 @@ impl FrameReceiverState {
                 if reconfigure && !same(aldis_link_protocol::ALDIS_LINK_PROTOCOL_TM)? {
                     return Err(unsupported_protocol());
                 }
-                rx_run(e, input, data, area)
+                rx_run(e, input, data, AosEdition::Issue5, area)
             }
             FrameReceiverState::Tc(e) => {
                 if reconfigure && !same(aldis_link_protocol::ALDIS_LINK_PROTOCOL_TC)? {
                     return Err(unsupported_protocol());
                 }
-                rx_run(e, input, data, area)
+                rx_run(e, input, data, AosEdition::Issue5, area)
             }
-            FrameReceiverState::Aos(e) => {
+            FrameReceiverState::Aos(e, edition) => {
                 if reconfigure && !same(aldis_link_protocol::ALDIS_LINK_PROTOCOL_AOS)? {
                     return Err(unsupported_protocol());
                 }
-                rx_run(e, input, data, area)
+                // A reconfiguration brings the edition of the new configuration, checked before
+                // anything changes.
+                let next = if reconfigure {
+                    aos_edition(&input.config)?
+                } else {
+                    *edition
+                };
+                let actions = rx_run(e, input, data, *edition, area)?;
+                *edition = next;
+                Ok(actions)
             }
             FrameReceiverState::Uslp(e) => {
                 if reconfigure && !same(aldis_link_protocol::ALDIS_LINK_PROTOCOL_USLP)? {
                     return Err(unsupported_protocol());
                 }
-                rx_run(e, input, data, area)
+                rx_run(e, input, data, AosEdition::Issue5, area)
             }
         }
     }
@@ -1524,7 +1559,7 @@ impl FrameReceiverState {
         match self {
             FrameReceiverState::Tm(e) => *e.status(),
             FrameReceiverState::Tc(e) => *e.status(),
-            FrameReceiverState::Aos(e) => *e.status(),
+            FrameReceiverState::Aos(e, _) => *e.status(),
             FrameReceiverState::Uslp(e) => *e.status(),
         }
     }

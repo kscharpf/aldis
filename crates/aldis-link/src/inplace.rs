@@ -23,6 +23,7 @@
 //!
 //! Engines that follow the pattern: the `PacketGenerator`, the `AccessGenerator`, the
 //! `BitstreamGenerator`, and the `PacketExtractor`. The `FrameReceiver` holds no octet buffer
-//! (its state is the configuration, the counts, and the counters), so it needs no split. The others
-//! (ChannelMux, MapSegmenter, MapReassembler, CltuPacker) take the same split when their C handles
-//! are built (M4 WP-7c, WP-7d): the rule is to move the octet arrays, and only those, into `EngineBuffers`.
+//! (its state is the configuration, the counts, and the counters), so it needs no split. The
+//! others (ChannelMux, MapSegmenter, MapReassembler, CltuPacker) take the same split when their C
+//! handles are built (M4 WP-7c, WP-7d): the rule is to move the octet arrays, and only those, into
+//! `EngineBuffers`.

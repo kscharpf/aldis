@@ -536,6 +536,22 @@ fn the_receiver_configuration_is_checked() {
     c.fsh_service = ALDIS_LINK_SERVICE_MC;
     c.frame_len = 40;
     assert_eq!(fr_init(&mut s, &c, &mut d), 0);
+    // AOS: an edition that is none is refused, at init and at a reconfiguration.
+    c = fr_config(ALDIS_LINK_PROTOCOL_AOS);
+    c.aos_edition = 7;
+    assert_eq!(fr_init(&mut s, &c, &mut d), ALDIS_ERR_INVALID_FIELD);
+    c.aos_edition = 1;
+    assert_eq!(fr_init(&mut s, &c, &mut d), 0);
+    let mut re = fr_input(ALDIS_FRAME_RECEIVER_INPUT_RECONFIGURE);
+    re.config = c;
+    let mut actions = aldis_frame_receiver_actions_t::default();
+    let mut out = [0_u8; 64];
+    assert_eq!(fr_step(&mut s, &re, &mut out, &mut actions, &mut d), 0);
+    re.config.aos_edition = 7;
+    assert_eq!(
+        fr_step(&mut s, &re, &mut out, &mut actions, &mut d),
+        ALDIS_ERR_INVALID_FIELD
+    );
     // Raw frames need an Insert Zone.
     c = fr_config(ALDIS_LINK_PROTOCOL_TM);
     c.raw_frames = 1;
