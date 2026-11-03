@@ -221,6 +221,49 @@
         {"at_us": 2000, "input": {"frame": {"frame_hex": "12320709580002030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F202122232425262728293453"}}, "expect": [{"notify": {"kind": "FrameGap", "scope": "mc", "missing": 1}}, {"notify": {"kind": "FrameGap", "scope": "vc", "vc": 1, "missing": 1}}, {"deliver": {"kind": "DataField", "vc": 1, "data_hex": "02030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F20212223242526272829", "gap": true}}]},
         {"at_us": 3000, "input": {"frame": {"frame_hex": "1232080A5800030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F202122232425262728292A0D2B"}}, "expect": [{"deliver": {"kind": "DataField", "vc": 1, "data_hex": "030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F202122232425262728292A", "gap": false}}]}
       ]
+    },
+    {
+      "id": "link-recv-tm-frame-length-mismatch",
+      "description": "A frame one octet shorter, and one octet longer, than the frame length is refused with LengthMismatch (frame_len) and changes nothing: the next frame continues the MC and VC counts without a gap (OI-78, M4 WP-5).",
+      "requirements": ["LNK-050"],
+      "steps": [
+        {"at_us": 1000, "input": {"frame": {"frame_hex": "1230010118000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F2021222324252627289F77"}}, "expect": [{"deliver": {"kind": "DataField", "vc": 0, "data_hex": "0102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F202122232425262728", "fhp": 0, "gap": false}}]},
+        {"at_us": 2000, "input": {"frame": {"frame_hex": "12300202180002030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F202122232425262728298D"}}, "expect": [{"error": "LengthMismatch", "field": "frame_len"}]},
+        {"at_us": 3000, "input": {"frame": {"frame_hex": "12300202180002030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F202122232425262728298D5600"}}, "expect": [{"error": "LengthMismatch", "field": "frame_len"}]},
+        {"at_us": 4000, "input": {"frame": {"frame_hex": "123002021800030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F202122232425262728292AD337"}}, "expect": [{"deliver": {"kind": "DataField", "vc": 0, "data_hex": "030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F202122232425262728292A", "fhp": 0, "gap": false}}]}
+      ]
+    },
+    {
+      "id": "link-recv-tm-ocf-fsh-disagree",
+      "description": "A frame whose OCF Flag or Secondary Header Flag disagrees with the configuration of its VC is refused with InvalidField (ocf_flag, fsh_flag) and changes nothing (132.0 4.1.2.4.3, 4.1.2.7.2.3; OI-78, M4 WP-5): the next frame continues the counts.",
+      "requirements": ["LNK-050", "LNK-053"],
+      "steps": [
+        {"at_us": 1000, "input": {"frame": {"frame_hex": "1230010118000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F2021222324252627289F77"}}, "expect": [{"deliver": {"kind": "DataField", "vc": 0, "data_hex": "0102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F202122232425262728", "fhp": 0, "gap": false}}]},
+        {"at_us": 2000, "input": {"frame": {"frame_hex": "12310202180002030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F202122232425010408050388"}}, "expect": [{"error": "InvalidField", "field": "ocf_flag"}]},
+        {"at_us": 3000, "input": {"frame": {"frame_hex": "12300202980002112202030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F20212223242526E653"}}, "expect": [{"error": "InvalidField", "field": "fsh_flag"}]},
+        {"at_us": 4000, "input": {"frame": {"frame_hex": "123002021800030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F202122232425262728292AD337"}}, "expect": [{"deliver": {"kind": "DataField", "vc": 0, "data_hex": "030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F202122232425262728292A", "fhp": 0, "gap": false}}]}
+      ]
+    },
+    {
+      "id": "link-recv-tm-fsh-length-disagree",
+      "description": "A Secondary Header whose length differs from the length configured for its VC is refused with LengthMismatch (fsh_len) and changes nothing (132.0 4.1.2.7.2.3, 4.1.3.2; OI-78, M4 WP-5).",
+      "requirements": ["LNK-050", "LNK-053"],
+      "config": {"protocol": "tm", "scid": 291, "frame_len": 48, "fecf": true, "ocf_service": "vc", "fsh_service": "vc", "vcs": [{"vcid": 0, "role": "packets", "ocf": false, "fsh_len": 3}, {"vcid": 1, "role": "vca", "ocf": false, "fsh_len": 0}, {"vcid": 7, "role": "packets", "ocf": false, "fsh_len": 0}]},
+      "steps": [
+        {"at_us": 1000, "input": {"frame": {"frame_hex": "1230010198000211220102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F20212223242540F9"}}, "expect": [{"deliver": {"kind": "FshSdu", "scope": "vc", "vc": 0, "data_hex": "021122"}}, {"deliver": {"kind": "DataField", "vc": 0, "data_hex": "0102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F202122232425", "fhp": 0, "gap": false}}]},
+        {"at_us": 2000, "input": {"frame": {"frame_hex": "123002029800011102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F202122232425262773B2"}}, "expect": [{"error": "LengthMismatch", "field": "fsh_len"}]},
+        {"at_us": 3000, "input": {"frame": {"frame_hex": "123002029800021223030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F20212223242526279FC7"}}, "expect": [{"deliver": {"kind": "FshSdu", "scope": "vc", "vc": 0, "data_hex": "021223"}}, {"deliver": {"kind": "DataField", "vc": 0, "data_hex": "030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F2021222324252627", "fhp": 0, "gap": false}}]}
+      ]
+    },
+    {
+      "id": "link-recv-tm-frame-loss-single",
+      "description": "FrameLoss returns one LossFlag, for the physical channel and every VC (LNK-053 as amended on 2026-11-02), and changes no count: the next frame shows the gap of the lost frame by its own MC and VC counts. Replaces link-recv-tm-frame-loss.",
+      "requirements": ["LNK-053", "LNK-051"],
+      "steps": [
+        {"at_us": 1000, "input": {"frame": {"frame_hex": "1230010118000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F2021222324252627289F77"}}, "expect": [{"deliver": {"kind": "DataField", "vc": 0, "data_hex": "0102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F202122232425262728", "fhp": 0, "gap": false}}]},
+        {"at_us": 2000, "input": {"frame_loss": {}}, "expect": [{"notify": {"kind": "LossFlag"}}]},
+        {"at_us": 3000, "input": {"frame": {"frame_hex": "123003031800030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F202122232425262728292AFE51"}}, "expect": [{"notify": {"kind": "FrameGap", "scope": "mc", "missing": 1}}, {"notify": {"kind": "FrameGap", "scope": "vc", "vc": 0, "missing": 1}}, {"deliver": {"kind": "DataField", "vc": 0, "data_hex": "030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F202122232425262728292A", "fhp": 0, "gap": true}}]}
+      ]
     }
   ]
 }

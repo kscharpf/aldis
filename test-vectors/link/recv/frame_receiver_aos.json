@@ -184,6 +184,58 @@
         {"at_us": 2000, "input": {"reconfigure": {}}, "expect": []},
         {"at_us": 3000, "input": {"frame": {"frame_hex": "69420001F420DEADBEEF02030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F2021222324258930"}}, "expect": [{"deliver": {"kind": "InsertSdu", "data_hex": "DEADBEEF", "replay": false}}, {"deliver": {"kind": "DataField", "vc": 2, "data_hex": "02030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F202122232425", "gap": false, "replay": false}}]}
       ]
+    },
+    {
+      "id": "link-recv-aos-frame-length-mismatch",
+      "description": "A frame of another length than the frame length is refused with LengthMismatch (frame_len) and changes nothing: the next frame of the VC is in sequence (OI-78).",
+      "requirements": ["LNK-050"],
+      "steps": [
+        {"at_us": 1000, "input": {"frame": {"frame_hex": "694200000720DEADBEEF0102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F2021222324F92D"}}, "expect": [{"deliver": {"kind": "InsertSdu", "data_hex": "DEADBEEF", "replay": false}}, {"deliver": {"kind": "DataField", "vc": 2, "data_hex": "0102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F2021222324", "gap": false, "replay": false}}]},
+        {"at_us": 2000, "input": {"frame": {"frame_hex": "694200000820DEADBEEF02030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F202122232425DC"}}, "expect": [{"error": "LengthMismatch", "field": "frame_len"}]},
+        {"at_us": 3000, "input": {"frame": {"frame_hex": "694200000820DEADBEEF030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F202122232425260125"}}, "expect": [{"deliver": {"kind": "InsertSdu", "data_hex": "DEADBEEF", "replay": false}}, {"deliver": {"kind": "DataField", "vc": 2, "data_hex": "030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F20212223242526", "gap": false, "replay": false}}]}
+      ]
+    },
+    {
+      "id": "link-recv-aos-raw-frame-accepted",
+      "description": "With the option on, RawFrame of an AOS frame returns its Insert Zone, the octets after the 6-octet header (no FHEC), as an InsertSdu without a Replay Flag, since the header is the one the caller rejected (732.0 4.3.7.4; OI-78, M4 WP-5).",
+      "requirements": ["LNK-079"],
+      "config": {"protocol": "aos", "scid": 677, "frame_len": 48, "fecf": true, "insert_zone_len": 4, "accept_rejected_frame_insert_zone": true, "vcs": [{"vcid": 1, "role": "packets", "ocf": true}, {"vcid": 2, "role": "vca", "ocf": false}, {"vcid": 3, "role": "bitstream", "ocf": false}]},
+      "steps": [
+        {"at_us": 1000, "input": {"raw_frame": {"frame_hex": "6942000005A0010203040102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F20212223242EBF"}}, "expect": [{"deliver": {"kind": "InsertSdu", "data_hex": "01020304"}}]}
+      ]
+    },
+    {
+      "id": "link-recv-aos-cycle-use-change",
+      "description": "A change of the VC Frame Count Cycle Use Flag on a VC between frames is a CountDiscontinuity, and the count restarts in the new mode: the data field is flagged, the next frame in the new mode is in sequence (732.0 4.1.2.5.5 does not say; OI-78, accepted by the maintainer, 2026-11-02).",
+      "requirements": ["LNK-051"],
+      "steps": [
+        {"at_us": 1000, "input": {"frame": {"frame_hex": "694200000520DEADBEEF0102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F202122232464AA"}}, "expect": [{"deliver": {"kind": "InsertSdu", "data_hex": "DEADBEEF", "replay": false}}, {"deliver": {"kind": "DataField", "vc": 2, "data_hex": "0102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F2021222324", "gap": false, "replay": false}}]},
+        {"at_us": 2000, "input": {"frame": {"frame_hex": "694200000660DEADBEEF02030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F202122232425C183"}}, "expect": [{"notify": {"kind": "CountDiscontinuity", "scope": "vc", "vc": 2}}, {"deliver": {"kind": "InsertSdu", "data_hex": "DEADBEEF", "replay": false}}, {"deliver": {"kind": "DataField", "vc": 2, "data_hex": "02030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F202122232425", "gap": true, "replay": false}}]},
+        {"at_us": 3000, "input": {"frame": {"frame_hex": "694200000760DEADBEEF030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F20212223242526DAAC"}}, "expect": [{"deliver": {"kind": "InsertSdu", "data_hex": "DEADBEEF", "replay": false}}, {"deliver": {"kind": "DataField", "vc": 2, "data_hex": "030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F20212223242526", "gap": false, "replay": false}}]},
+        {"at_us": 4000, "input": {"frame": {"frame_hex": "694200002820DEADBEEF0405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F20212223242526274AC6"}}, "expect": [{"notify": {"kind": "CountDiscontinuity", "scope": "vc", "vc": 2}}, {"deliver": {"kind": "InsertSdu", "data_hex": "DEADBEEF", "replay": false}}, {"deliver": {"kind": "DataField", "vc": 2, "data_hex": "0405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F2021222324252627", "gap": true, "replay": false}}]},
+        {"at_us": 5000, "input": {"frame": {"frame_hex": "694200002920DEADBEEF05060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F2021222324252627280A0B"}}, "expect": [{"deliver": {"kind": "InsertSdu", "data_hex": "DEADBEEF", "replay": false}}, {"deliver": {"kind": "DataField", "vc": 2, "data_hex": "05060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F202122232425262728", "gap": false, "replay": false}}]},
+        {"at_us": 6000, "input": {"query": {"counter": "count_discontinuities"}}, "expect": [{"counter": {"name": "count_discontinuities", "value": 2}}]}
+      ]
+    },
+    {
+      "id": "link-recv-aos-bdp-beyond-zone",
+      "description": "A Bitstream Data Pointer beyond the B_PDU zone (the pointer is the last valid bit, 272 bits here) is Malformed (bitstream_data_pointer) and refused with no state change (OI-33, OI-78): its count is not taken, so the next frame shows one missing.",
+      "requirements": ["LNK-077"],
+      "steps": [
+        {"at_us": 1000, "input": {"frame": {"frame_hex": "694300000120DEADBEEF3FFF0102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F20212208EF"}}, "expect": [{"deliver": {"kind": "InsertSdu", "data_hex": "DEADBEEF", "replay": false}}, {"deliver": {"kind": "DataField", "vc": 3, "data_hex": "0102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F202122", "bit_count": 272, "gap": false, "replay": false}}]},
+        {"at_us": 2000, "input": {"frame": {"frame_hex": "694300000220DEADBEEF011002030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F202122234B5C"}}, "expect": [{"error": "Malformed", "field": "bitstream_data_pointer"}]},
+        {"at_us": 3000, "input": {"frame": {"frame_hex": "694300000320DEADBEEF010F030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F2021222324E42A"}}, "expect": [{"notify": {"kind": "FrameGap", "scope": "vc", "vc": 3, "missing": 1}}, {"deliver": {"kind": "InsertSdu", "data_hex": "DEADBEEF", "replay": false}}, {"deliver": {"kind": "DataField", "vc": 3, "data_hex": "030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F2021222324", "bit_count": 272, "gap": true, "replay": false}}]}
+      ]
+    },
+    {
+      "id": "link-recv-aos-frame-loss-single",
+      "description": "FrameLoss returns one LossFlag and changes no count: the next frame of the VC shows the gap by its own count. Replaces link-recv-aos-frame-loss.",
+      "requirements": ["LNK-053", "LNK-051"],
+      "steps": [
+        {"at_us": 1000, "input": {"frame": {"frame_hex": "694200000A20DEADBEEF0102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F2021222324428F"}}, "expect": [{"deliver": {"kind": "InsertSdu", "data_hex": "DEADBEEF", "replay": false}}, {"deliver": {"kind": "DataField", "vc": 2, "data_hex": "0102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F2021222324", "gap": false, "replay": false}}]},
+        {"at_us": 2000, "input": {"frame_loss": {}}, "expect": [{"notify": {"kind": "LossFlag"}}]},
+        {"at_us": 3000, "input": {"frame": {"frame_hex": "694200000C20DEADBEEF02030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F202122232425F7F6"}}, "expect": [{"notify": {"kind": "FrameGap", "scope": "vc", "vc": 2, "missing": 1}}, {"deliver": {"kind": "InsertSdu", "data_hex": "DEADBEEF", "replay": false}}, {"deliver": {"kind": "DataField", "vc": 2, "data_hex": "02030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F202122232425", "gap": true, "replay": false}}]}
+      ]
     }
   ]
 }

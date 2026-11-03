@@ -38,16 +38,17 @@ Outputs are in the order the procedure produces them (API-057): for a frame, MC 
 |---|---|
 | `{"frame_discarded": {"reason", "vc", "map"?}}` | FrameDiscarded (LNK-050) with the reason of 04 §5: `UnknownChannel`. It is the only output for the frame |
 | `{"notify": {"kind": "FrameGap", "scope": "mc" or "vc", "vc"?, "missing"}}` | LNK-051; `missing` = count − expected, modulo the range |
-| `{"notify": {"kind": "LossFlag", "scope": "vc", "vc"}}`, `{"notify": {"kind": "LossFlag", "scope": "physical_channel"}}` | the answer to `frame_loss`: one per configured VC in configuration order, then one for the channel |
+| `{"notify": {"kind": "LossFlag"}}` | the answer to `frame_loss`: one action, which applies to the physical channel and every configured VC (LNK-053 as amended on 2026-11-02); it changes no count. The superseded scenarios use the released form `{"notify": {"kind": "LossFlag", "scope": "vc", "vc"}}` per VC, then `"scope": "physical_channel"` |
 | `{"notify": {"kind": "Discarded", "octets"}}` | partial packet or SDUs discarded (LNK-061, LNK-003) |
 | `{"deliver": {"kind": "DataField", "vc", "data_hex", "gap", "fhp"?, "bit_count"?, "replay"?}}` | the data field for the VC's extractor, reassembler, or VCA user: TM the data field and `fhp` (packets VCs); AOS the M_PDU, the data field, or the valid bits of a B_PDU (`bit_count` bits, left aligned, the unused bits of the last octet zero); USLP the TFDF. `gap` is true when a gap was detected since the last data field delivered for the VC (the flag stays set across frames that deliver none, 732.0 4.3.3.3 note). `replay` on AOS only (LNK-054) |
 | `{"deliver": {"kind": "FshSdu", "scope", "vc"?, "data_hex"}}` | the whole Secondary Header, ID octet included (132.0 3.2.4 note: 2 to 64 octets); `scope` `vc` or `mc` by the configured service |
 | `{"deliver": {"kind": "InsertSdu", "data_hex", "replay"?}}` | the Insert Zone (AOS, USLP) |
 | `{"deliver": {"kind": "Ocf", "scope", "vc"?, "report", "ocf_hex", "replay"?}}` | the OCF; `report` is `Type1` (bit 0 = 0: a CLCW, or a PLCW on USLP) or `Type2` |
 | `{"deliver": {"kind": "Packet", "pvn", "data_hex", "incomplete", "vc"?, "map"?}}` | an extracted packet (`vc`, `map` from the reassembler); `incomplete` is the Packet Quality Indicator |
-| `{"deliver": {"kind": "Sdu", "vc", "map", "data_hex", "octet_stream"?}}` | a MAP_SDU; `octet_stream` true for a chunk of rule `011` |
+| `{"deliver": {"kind": "Sdu", "vc", "map", "data_hex", "octet_stream"?, "after_gap"?}}` | a MAP_SDU; `octet_stream` true for a chunk of rule `011`; `after_gap` true on the first chunk after a gap (OI-78), absent otherwise |
 | `{"extraction_error": {"kind"}}` | `PacketTooLong`, `InvalidPvn`, `LengthInconsistent` (04 §5) |
-| `{"reassembly_event": {"kind", "vc", "map"}}` | `GapDiscard`, `SequenceViolation`, `UnknownMap` (04 §5) |
+| `{"reassembly_event": {"kind", "vc", "map"}}` | `GapDiscard`, `SequenceViolation`, `UnknownMap`, `SduTooLong` (04 §5) |
+| `{"error": kind, "field": name}` | an input the engine refuses (OI-78), with no state change: `LengthMismatch` (`frame_len`, `fsh_len`, `packet_len`), `InvalidField` (`ocf_flag`, `fsh_flag`, `vcf_count_len`, `packet_version`, `tfdz_construction_rule`), `Malformed` (`bitstream_data_pointer`, `first_header_pointer`, `fhp_lvo_pointer`) |
 | `{"counter": {"name", "value"}}` | the answer to `query` |
 
 Counters (LNK-002): one per FrameDiscarded reason, extraction error, and reassembly event, named as in 04 §5; `oid_frames`, `gaps` (gap actions raised), `idle_packets` (idle packets seen by the extractor). The names other than 04 §5's are the vocabulary of these files.
@@ -56,7 +57,7 @@ Counters (LNK-002): one per FrameDiscarded reason, extraction error, and reassem
 
 * **FrameReceiver:** `protocol`, `scid`, `frame_len`, `fecf`, `vcs` (`vcid`; TM and AOS `role` `packets`, `vca`, or `bitstream` (AOS only), or `unserved` (NotServed); TM `ocf` and `fsh_len` (presence of the OCF and length of the Secondary Header of the VC, fixed for the channel, 132.0 4.1.2.4.3, 4.1.2.7.2.3); AOS `ocf` (the VC has an OCF); USLP `maps` and `cop` (COP-1 in effect)); TM `ocf_service` and `fsh_service` (`vc`, `mc`, `none`); USLP `ocf_service`; AOS and USLP `insert_zone_len`; `accept_rejected_frame_insert_zone` (LNK-079, default off). VCID 63 of AOS and USLP is valid without an entry (732.0 Table 5-2 note; 732.1 Table 5-2 note 2).
 * **PacketExtractor:** `protocol`, `valid_pvns`, `max_packet_len`, `deliver_incomplete`, `deliver_idle` (LNK-061, LNK-063).
-* **MapReassembler:** `protocol`; TC `vc` and `maps`; USLP `maps` with `vc`; each map has `map` and `service` (`packets`, `sdu`, or `octet_stream`).
+* **MapReassembler:** `protocol`; TC `vc` and `maps`; USLP `maps` with `vc`; each map has `map` and `service` (`packets`, `sdu`, or `octet_stream`), and optionally `max_sdu_len` (the maximum SDU length of the MAP, 232.0 Table 5-4, 732.1 Table 5-4; absent: no limit in the scenario).
 
 ## Readings the model makes
 
@@ -72,12 +73,18 @@ Each is a reading the Blue Book or 04 settles, or a choice for something they le
 
 ## Cases the model refuses
 
-The model raises `Unspecified` for these, so none is in a vector. The cases decided by [OI-73](../../../docs/09-open-issues.md) and [OI-77](../../../docs/09-open-issues.md) (LNK-050, LNK-051, LNK-061, LNK-070, LNK-079, LNK-080, LNK-081 of 04) are covered. The rest is **deferred to the engine work packages by [OI-78](../../../docs/09-open-issues.md)**, which lists each case; a vector case is added when the work package decides it:
+The model raises `Unspecified` for these, so none is in a vector. The cases decided by [OI-73](../../../docs/09-open-issues.md), [OI-77](../../../docs/09-open-issues.md), and [OI-78](../../../docs/09-open-issues.md) are covered; the OI-78 cases were added by the blind-model round of [#231](https://github.com/kscharpf/aldis/issues/231) (below). Still refused:
 
-* decided by M4 WP-5 ([OI-78](../../../docs/09-open-issues.md)), pinned by Rust tests, with vector cases to come in one blind-model round after WP-6: a `frame` whose length is not the frame length; the reserved USLP flag combination (Bypass 0, Protocol Control Command 1); an accepted AOS `raw_frame`, and a USLP `raw_frame` with a VCF Count Length other than 0; what `frame_loss` does to the actions that follow; a change of the AOS Cycle Use Flag on a VC; a Bitstream Data Pointer beyond the zone;
-* extractors: an FHP beyond the zone; a packet that ends inside a field whose FHP is "no packet starts"; a partial idle packet discarded; a valid PVN other than 0 and 7; an Encapsulation length field of four octets, or a length shorter than the header; a gap flag on a field of only idle data;
-* reassemblers, decided by M4 WP-6 ([OI-78](../../../docs/09-open-issues.md)) and pinned by Rust tests (`map_reassembler_engine.rs`), with vector cases to come in the same round: a gap on an octet stream (`after_gap`; TC has no gap input); two SDUs in progress on one USLP VC (one `GapDiscard` for the VC); a blocked FDU whose packets do not fit it; a Last Valid Octet Pointer beyond the zone; a rule on a MAP of another service; the maximum SDU size (`SduTooLong`);
-* a TM frame whose OCF or Secondary Header presence differs from the configuration of its VC (not a validated frame, TM-011).
+* the reserved USLP flag combination (Bypass 0, Protocol Control Command 1): the USLP codec refuses it, so no `Plain` frame reaches the receiver and there is no engine output to state (OI-78);
+* a valid-PVN set other than {0, 7} (`InvalidConfig`, `valid_pvns`): a construction error, for which a scenario file has no input; a TC or variable-length USLP frame other than the shorter TC frame (the model's USLP channel has a fixed length);
+* a gap flagged on a USLP TFDF of only idle data for the reassembler, and a gap discard when the field's MAP had no SDU in progress and several other MAPs had one ("the first MAP that had one", OI-78, does not say first by what order);
+* an Encapsulation length shorter than its header inside a blocked FDU (OI-78 names the errors of a blocked FDU for a length past the end, an incomplete header, and a PVN, not this one);
+* rule `000` on the reassembler, and the state after a refused last segment (the scenarios end there);
+* a gap on TC: the TC `Fdu` input has no gap flag (OI-78).
+
+## Added by the blind-model round of #231
+
+Scenarios for the OI-78 decisions of M4 WP-3, WP-5, WP-6 and the maintainer, written from the text of OI-78, 04, and the Blue Books: `frame_receiver_*`: `*-frame-length-mismatch`, `link-recv-tc-frame-length`, `link-recv-tm-ocf-fsh-disagree`, `link-recv-tm-fsh-length-disagree`, `link-recv-aos-raw-frame-accepted`, `link-recv-uslp-raw-frame-vcf-count`, `link-recv-aos-cycle-use-change`, `link-recv-aos-bdp-beyond-zone`, and `*-frame-loss-single` (which replace the superseded FrameLoss scenarios); `packet_extractor_*`: `fhp-beyond-zone`, `ends-in-no-start-field`, `partial-idle-discarded`, `partial-header-discarded`, `epp-four-octet-length`, `epp-length-below-header`, `gap-on-idle-field`; `map_reassembler_*`: blocked FDUs refused, `sdu-too-long`, two MAPs in progress, the gap on every MAP of the VC (also before `UnknownMap`, 04 §4), the gap on an octet stream, a segmented packet whose length disagrees, a Last Valid Octet Pointer beyond the zone, a rule of another service, and an idle TFDF. A refused input changes nothing: a refused frame's count is not taken, so the next frame of the VC may show it missing.
 
 Config additions of WP-1b cases: a VC entry with `"role": "unserved"` is a configured VC whose service the engine does not provide (NotServed); the vocabulary is below.
 
@@ -95,4 +102,4 @@ For a frame discarded as `UnknownChannel` or `NotServed`, the items that precede
 
 ## Superseded
 
-The three `frame-loss` scenarios (`link-recv-{tm,aos,uslp}-frame-loss`) are marked `superseded` (TV-021): by the decision of 2026-11-02 (LNK-053, 04 §4) `frame_loss` returns one `LossFlag` for the physical channel and every VC, where they expect one `Notify(LossFlag)` for each VC and one for the channel. The steps are the released ones, and a replacing case comes with the blind-model round after M4 WP-6.
+The three `frame-loss` scenarios (`link-recv-{tm,aos,uslp}-frame-loss`) are marked `superseded` (TV-021): by the decision of 2026-11-02 (LNK-053, 04 §4) `frame_loss` returns one `LossFlag` for the physical channel and every VC, where they expect one `Notify(LossFlag)` for each VC and one for the channel. The steps are the released ones; `link-recv-{tm,aos,uslp}-frame-loss-single` replace them.
