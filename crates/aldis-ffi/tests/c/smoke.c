@@ -59,6 +59,10 @@ static void aos_smoke(void) {
     aldis_aos_frame_t view;
     check(aldis_aos_decode(frame, len, &mc, &vc, 1, ALDIS_MODE_STRICT, &view, NULL) == ALDIS_OK,
           "aldis_aos_decode");
+    uint32_t found = 1;
+    check(aldis_aos_validate(frame, len, &mc, &vc, 1, ALDIS_MODE_STRICT, &found, NULL) == ALDIS_OK &&
+              found == 0,
+          "aldis_aos_validate");
     check(view.header.scid == 0x2A5 && view.header.vcid == 1 &&
               view.header.corrected_symbols == 1 && view.pdu.pointer == ALDIS_AOS_POINTER_STARTS_AT &&
               view.pdu.pointer_value == 0 && frame[view.layout.zone.offset] == 0x5A,

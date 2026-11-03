@@ -14,7 +14,8 @@ use aldis_ffi::aos::{
     aldis_aos_corrected_header_t, aldis_aos_decode, aldis_aos_encode, aldis_aos_encode_oid,
     aldis_aos_fhec_decode, aldis_aos_fhec_encode, aldis_aos_fields_t, aldis_aos_frame_t,
     aldis_aos_header_decode, aldis_aos_header_t, aldis_aos_mc_config_check, aldis_aos_mc_config_t,
-    aldis_aos_mpdu_decode, aldis_aos_pdu_t, aldis_aos_peek_length, aldis_aos_vc_config_t,
+    aldis_aos_mpdu_decode, aldis_aos_pdu_t, aldis_aos_peek_length, aldis_aos_validate,
+    aldis_aos_vc_config_t,
 };
 use aldis_ffi::crc::aldis_crc16;
 use aldis_ffi::epp::{
@@ -817,6 +818,19 @@ fn aos(t: &mut Tally) {
             ) == ALDIS_OK
                 && view.pdu.pointer == ALDIS_AOS_POINTER_STARTS_AT
                 && view.layout.zone.len == 17,
+        );
+        let mut found = 1_u32;
+        t.check(
+            aldis_aos_validate(
+                two.as_ptr(),
+                bb(40),
+                &raw const mc,
+                vcs.as_ptr(),
+                bb(2),
+                bb(ALDIS_MODE_LENIENT),
+                &raw mut found,
+                &raw mut det,
+            ) == ALDIS_OK,
         );
         t.check(
             aldis_aos_mpdu_decode(

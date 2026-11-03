@@ -43,7 +43,8 @@ use aldis_ffi::aos::{
     ALDIS_AOS_POINTER_VALID_BITS, aldis_aos_bpdu_decode, aldis_aos_config_t,
     aldis_aos_corrected_header_t, aldis_aos_decode, aldis_aos_fhec_decode, aldis_aos_fhec_encode,
     aldis_aos_frame_t, aldis_aos_header_decode, aldis_aos_header_t, aldis_aos_mc_config_t,
-    aldis_aos_mpdu_decode, aldis_aos_pdu_t, aldis_aos_peek_length, aldis_aos_vc_config_t,
+    aldis_aos_mpdu_decode, aldis_aos_pdu_t, aldis_aos_peek_length, aldis_aos_validate,
+    aldis_aos_vc_config_t,
 };
 use aldis_ffi::crc::aldis_crc16;
 use aldis_ffi::epp::{aldis_epp_decode, aldis_epp_packet_t, aldis_epp_peek_length};
@@ -1212,19 +1213,22 @@ fn aos(data: &[u8], selector: u8, mode: DecodeMode, c_mode: u32) {
         security_header_len: u8::try_from(n % 3).unwrap(),
         security_trailer_len: u16::try_from(n % 2).unwrap(),
     });
-    let rust_table = rust_pc.and_then(|p| {
-        let mut list = Vec::new();
-        for n in 0..63_u8 {
-            let i = usize::from(n);
-            let mut vc =
-                AosVirtualChannelConfig::new(h.scid(), VcId::new(n).unwrap(), contents[i % 4].1)?;
-            if n % 2 == 1 {
-                vc = vc.with_ocf();
+    let table_for = |scid: aldis_core::ids::SpacecraftId<10>| {
+        rust_pc.and_then(|p| {
+            let mut list = Vec::new();
+            for n in 0..63_u8 {
+                let i = usize::from(n);
+                let mut vc =
+                    AosVirtualChannelConfig::new(scid, VcId::new(n).unwrap(), contents[i % 4].1)?;
+                if n % 2 == 1 {
+                    vc = vc.with_ocf();
+                }
+                list.push(vc.with_security(SecurityLayout::new(i % 3, i % 2)?));
             }
-            list.push(vc.with_security(SecurityLayout::new(i % 3, i % 2)?));
-        }
-        VcTable::<63>::new(p, &list).map(|t| (p, t))
-    });
+            VcTable::<63>::new(p, &list).map(|t| (p, t))
+        })
+    };
+    let rust_table = table_for(h.scid());
     let rust = rust_table.as_ref().map_err(|e| *e).and_then(|(p, t)| {
         mode.dispatch(
             || AosFrame::decode(data, p, t),
@@ -1248,6 +1252,38 @@ fn aos(data: &[u8], selector: u8, mode: DecodeMode, c_mode: u32) {
     expect(&rust, status, &detail);
     if let Ok((f, a)) = &rust {
         aos_same(&view, f, *a);
+    }
+    // Validation sometimes runs on a master channel of another Spacecraft ID, so that the
+    // `spacecraft_id` rejection is fuzzed too (AOS-010, API-017).
+    let other = data.len().is_multiple_of(4);
+    let v_scid = h.scid().get() ^ u16::from(other);
+    let v_mc = aldis_aos_mc_config_t { scid: v_scid, pc };
+    // Flipping bit 0 of a 10-bit value stays in range.
+    let v_table = table_for(aldis_core::ids::SpacecraftId::<10>::new(v_scid).unwrap());
+    let rust_validated = v_table.as_ref().map_err(|e| *e).and_then(|(p, t)| {
+        let (frame, found) = mode.dispatch(
+            || AosFrame::decode(data, p, t),
+            || AosFrame::decode_lenient(data, p, t),
+        )?;
+        frame.validate().map(|_| found)
+    });
+    let mut found = u32::MAX;
+    // SAFETY: as above.
+    let status = unsafe {
+        aldis_aos_validate(
+            data.as_ptr(),
+            data.len(),
+            &raw const v_mc,
+            vcs.as_ptr(),
+            vcs.len(),
+            c_mode,
+            &raw mut found,
+            &raw mut detail,
+        )
+    };
+    expect(&rust_validated.map(|a| ((), a)), status, &detail);
+    if let Ok(a) = &rust_validated {
+        assert_eq!(found, a.bits());
     }
 }
 
