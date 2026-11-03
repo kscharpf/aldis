@@ -209,6 +209,74 @@
         {"at_us": 3000, "input": {"data_field": {"data_hex": "0004202122230001C0000003101112130002C000000720212223", "gap": false}}, "expect": [{"deliver": {"kind": "Packet", "pvn": 0, "data_hex": "0001C000000310111213", "incomplete": false}}]},
         {"at_us": 4000, "input": {"reconfigure": {}}, "expect": [{"notify": {"kind": "Discarded", "octets": 10}}]}
       ]
+    },
+    {
+      "id": "link-recv-extract-aos-fhp-beyond-zone",
+      "description": "A First Header Pointer beyond the zone (24, the zone has 24 octets) is Malformed (first_header_pointer) and refused with no state change (OI-33, OI-78, M4 WP-3): the packet in progress then completes in the next field.",
+      "requirements": ["LNK-060"],
+      "steps": [
+        {"at_us": 1000, "input": {"data_field": {"data_hex": "00000003C0000017303132333435363738393A3B3C3D3E3F4041", "gap": false}}, "expect": []},
+        {"at_us": 2000, "input": {"data_field": {"data_hex": "00184243444546470004C000000B404142434445464748494A4B", "gap": false}}, "expect": [{"error": "Malformed", "field": "first_header_pointer"}]},
+        {"at_us": 3000, "input": {"data_field": {"data_hex": "00064243444546470004C000000B404142434445464748494A4B", "gap": false}}, "expect": [{"deliver": {"kind": "Packet", "pvn": 0, "data_hex": "0003C0000017303132333435363738393A3B3C3D3E3F4041424344454647", "incomplete": false}}, {"deliver": {"kind": "Packet", "pvn": 0, "data_hex": "0004C000000B404142434445464748494A4B", "incomplete": false}}]}
+      ]
+    },
+    {
+      "id": "link-recv-extract-aos-ends-in-no-start-field",
+      "description": "A packet in progress that ends inside a field whose FHP says no packet starts is not delivered: LengthInconsistent, the rest of the field is skipped, and the extractor resynchronises at the next FHP (132.0 4.3.2.4, 732.0 4.3.2.4, 732.1 4.3.2.2.5; OI-78, M4 WP-3).",
+      "requirements": ["LNK-061"],
+      "steps": [
+        {"at_us": 1000, "input": {"data_field": {"data_hex": "00000003C0000017303132333435363738393A3B3C3D3E3F4041", "gap": false}}, "expect": []},
+        {"at_us": 2000, "input": {"data_field": {"data_hex": "FFFF424344454647000102030405060708090A0B0C0D0E0F1011", "gap": false}}, "expect": [{"extraction_error": {"kind": "LengthInconsistent"}}]},
+        {"at_us": 3000, "input": {"data_field": {"data_hex": "FFFF000102030405060708090A0B0C0D0E0F1011121314151617", "gap": false}}, "expect": []},
+        {"at_us": 4000, "input": {"data_field": {"data_hex": "00000001C0000003101112130002C00000072021222324252627", "gap": false}}, "expect": [{"deliver": {"kind": "Packet", "pvn": 0, "data_hex": "0001C000000310111213", "incomplete": false}}, {"deliver": {"kind": "Packet", "pvn": 0, "data_hex": "0002C00000072021222324252627", "incomplete": false}}]}
+      ]
+    },
+    {
+      "id": "link-recv-extract-aos-partial-idle-discarded",
+      "description": "With deliver incomplete configured, a partial Idle Packet cut by a gap is Discarded, never delivered Incomplete (OI-78, M4 WP-3); the packets at the FHP of the gap field follow.",
+      "requirements": ["LNK-061"],
+      "config": {"protocol": "aos", "valid_pvns": [0, 7], "max_packet_len": 40, "deliver_incomplete": true, "deliver_idle": false},
+      "steps": [
+        {"at_us": 1000, "input": {"data_field": {"data_hex": "000007FFC0000017000000000000000000000000000000000000", "gap": false}}, "expect": []},
+        {"at_us": 2000, "input": {"data_field": {"data_hex": "00000001C0000003101112130002C00000072021222324252627", "gap": true}}, "expect": [{"notify": {"kind": "Discarded", "octets": 24}}, {"deliver": {"kind": "Packet", "pvn": 0, "data_hex": "0001C000000310111213", "incomplete": false}}, {"deliver": {"kind": "Packet", "pvn": 0, "data_hex": "0002C00000072021222324252627", "incomplete": false}}]}
+      ]
+    },
+    {
+      "id": "link-recv-extract-aos-partial-header-discarded",
+      "description": "With deliver incomplete configured, a partial packet whose length field is not complete (3 of the 6 header octets) is Discarded, not delivered Incomplete (OI-78, M4 WP-3).",
+      "requirements": ["LNK-061"],
+      "config": {"protocol": "aos", "valid_pvns": [0, 7], "max_packet_len": 40, "deliver_incomplete": true, "deliver_idle": false},
+      "steps": [
+        {"at_us": 1000, "input": {"data_field": {"data_hex": "00000005C000000E505152535455565758595A5B5C5D5E0004C0", "gap": false}}, "expect": [{"deliver": {"kind": "Packet", "pvn": 0, "data_hex": "0005C000000E505152535455565758595A5B5C5D5E", "incomplete": false}}]},
+        {"at_us": 2000, "input": {"data_field": {"data_hex": "00000001C0000003101112130002C00000072021222324252627", "gap": true}}, "expect": [{"notify": {"kind": "Discarded", "octets": 3}}, {"deliver": {"kind": "Packet", "pvn": 0, "data_hex": "0001C000000310111213", "incomplete": false}}, {"deliver": {"kind": "Packet", "pvn": 0, "data_hex": "0002C00000072021222324252627", "incomplete": false}}]}
+      ]
+    },
+    {
+      "id": "link-recv-extract-aos-epp-four-octet-length",
+      "description": "An Encapsulation Packet with a 4-octet Packet Length (Length of Length 11, an 8-octet header, 133.1 Table 4-1, 4.1.2.8) is delimited by its length (OI-78, M4 WP-3), here 12 octets, then a Space Packet.",
+      "requirements": ["LNK-060"],
+      "steps": [
+        {"at_us": 1000, "input": {"data_field": {"data_hex": "0000FF0000000000000C222324250006C0000005606162636465", "gap": false}}, "expect": [{"deliver": {"kind": "Packet", "pvn": 7, "data_hex": "FF0000000000000C22232425", "incomplete": false}}, {"deliver": {"kind": "Packet", "pvn": 0, "data_hex": "0006C0000005606162636465", "incomplete": false}}]}
+      ]
+    },
+    {
+      "id": "link-recv-extract-aos-epp-length-below-header",
+      "description": "An Encapsulation Packet whose Packet Length (3) is shorter than its 4-octet header is LengthInconsistent (133.1 4.1.2.8, EPP-003; OI-78, M4 WP-3): the rest of the field is discarded and the extractor resynchronises at the next FHP.",
+      "requirements": ["LNK-062"],
+      "steps": [
+        {"at_us": 1000, "input": {"data_field": {"data_hex": "0000FE0000030000000000000000000000000000000000000000", "gap": false}}, "expect": [{"extraction_error": {"kind": "LengthInconsistent"}}]},
+        {"at_us": 2000, "input": {"data_field": {"data_hex": "00000001C0000003101112130002C00000072021222324252627", "gap": false}}, "expect": [{"deliver": {"kind": "Packet", "pvn": 0, "data_hex": "0001C000000310111213", "incomplete": false}}, {"deliver": {"kind": "Packet", "pvn": 0, "data_hex": "0002C00000072021222324252627", "incomplete": false}}]}
+      ]
+    },
+    {
+      "id": "link-recv-extract-aos-gap-on-idle-field",
+      "description": "A gap flagged on a field of only idle data takes precedence over LNK-064: the packet in progress is discarded and the extractor resynchronises at the next FHP (OI-78, decided by the maintainer, 2026-11-02).",
+      "requirements": ["LNK-061", "LNK-064"],
+      "steps": [
+        {"at_us": 1000, "input": {"data_field": {"data_hex": "00000003C0000017303132333435363738393A3B3C3D3E3F4041", "gap": false}}, "expect": []},
+        {"at_us": 2000, "input": {"data_field": {"data_hex": "FFFE000000000000000000000000000000000000000000000000", "gap": true}}, "expect": [{"notify": {"kind": "Discarded", "octets": 24}}]},
+        {"at_us": 3000, "input": {"data_field": {"data_hex": "00064243444546470004C000000B404142434445464748494A4B", "gap": false}}, "expect": [{"deliver": {"kind": "Packet", "pvn": 0, "data_hex": "0004C000000B404142434445464748494A4B", "incomplete": false}}]}
+      ]
     }
   ]
 }

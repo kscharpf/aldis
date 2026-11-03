@@ -540,6 +540,17 @@
         {"at_us": 30, "input": {"opportunity": {}}, "expect": [{"transmit": {"kind": "data", "vc": 2, "frame_hex": "0A5402001800303132333435363738393A3B3C3D3E3F0000", "security_header": [6, 6], "data": [6, 22], "security_trailer": [22, 22]}}]},
         {"at_us": 40, "input": {"opportunity": {}}, "expect": [{"transmit": {"kind": "data", "vc": 1, "frame_hex": "0A5203011800202122232425262728292A2B2C2D2E2F0000", "security_header": [6, 6], "data": [6, 22], "security_trailer": [22, 22]}}]}
       ]
+    },
+    {
+      "id": "link-send-mux-tm-lnk-076-route-refused",
+      "description": "TM has no MAP and no COP-1 on the mux: an Offer that names a MAP is refused with InvalidField (map_id), one with a cop block with InvalidField (cop_in_effect), each with no state change; the same field without them is then sent (OI-78).",
+      "requirements": ["LNK-076"],
+      "steps": [
+        {"at_us": 0, "input": {"offer": {"vc": 1, "field_hex": "101112131415161718191A1B1C1D1E1F", "fhp": 0, "map": 0}}, "expect": [{"error": "InvalidField", "field": "map_id"}]},
+        {"at_us": 1, "input": {"offer": {"vc": 1, "field_hex": "101112131415161718191A1B1C1D1E1F", "fhp": 0, "cop": {"vcf_count": 0, "bypass": 1, "protocol_control": 0}}}, "expect": [{"error": "InvalidField", "field": "cop_in_effect"}]},
+        {"at_us": 2, "input": {"offer": {"vc": 1, "field_hex": "101112131415161718191A1B1C1D1E1F", "fhp": 0}}, "expect": []},
+        {"at_us": 3, "input": {"opportunity": {}}, "expect": [{"transmit": {"kind": "data", "vc": 1, "frame_hex": "0A5200001800101112131415161718191A1B1C1D1E1F0000", "security_header": [6, 6], "data": [6, 22], "security_trailer": [22, 22]}}]}
+      ]
     }
   ]
 }

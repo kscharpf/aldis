@@ -9,7 +9,9 @@ layouts of 133.0-B-2 (4.1.3) and 133.1-B-3 (4.1.2, Table 4-1); the SANA UPID val
 Data" (specs/sana/uslp_protocol_id.tsv, 0b11111); and, for the contract of an engine (a pure step
 returning an ordered list of actions), the requirements LNK-001 to LNK-079 of docs/04-engines.md,
 API-050 to API-059 of docs/03-api-model.md, CMN-001, CMN-020, CMN-030, CMN-031 of
-docs/standards/common-link-features.md, and the decisions OI-68 to OI-72 of docs/09-open-issues.md.
+docs/standards/common-link-features.md, the decisions OI-68 to OI-72 of docs/09-open-issues.md,
+and, for the blind-model round of #231, the text of OI-78 (the decisions of M4 WP-3 to WP-6 and
+the maintainer, 2026-11-02) and the amended LNK-053.
 
 This program was written blind (TV-023): by an agent that had not read any implementation under
 test (crates/, exerciser/, fuzz/, crosscheck/, refapp/, include/, the Rust source of xtask/). It
@@ -41,6 +43,7 @@ Usage, from the repository root:
 --check replays every live scenario through the model and compares inputs and expected outputs,
 compares the file's metadata with the generator's, and exits 1 on any difference.
 """
+import copy
 import json
 import os
 import sys
@@ -48,6 +51,15 @@ import sys
 
 class Unspecified(Exception):
     """The documents do not say what the engine does; no vector may contain this case."""
+
+
+class Refuse(Exception):
+    """The engine refuses the input: `{"error": kind, "field": field}` is the only output and the
+    state does not change (API-058; the decisions of OI-78)."""
+
+    def __init__(self, kind, field):
+        Exception.__init__(self, kind, field)
+        self.kind, self.field = kind, field
 
 
 # --------------------------------------------------------------------------------------------
@@ -164,7 +176,10 @@ def epp(epi, payload, lol=1, ud=0):
     if lol == 2:
         total = 4 + len(payload)
         return bytes([first, ud & 0xF0]) + total.to_bytes(2, "big") + bytes(payload)
-    raise AssertionError(lol)
+    # lol 3: the 8-octet header, with the CCSDS Defined field (2 octets, zero) before the 4-octet
+    # Packet Length (133.1 4.1.2.1.1, 4.1.2.7, 4.1.2.8)
+    total = 8 + len(payload)
+    return bytes([first, ud & 0xF0, 0, 0]) + total.to_bytes(4, "big") + bytes(payload)
 
 
 def epp_idle(n):
@@ -353,12 +368,13 @@ class FrameReceiver:
             return query_out(self.counters, inp)
         raise AssertionError(inp)
 
-    # -- FrameLoss (LNK-053, OI-68) --
+    # -- FrameLoss (LNK-053, OI-68, OI-78) --
     def frame_loss(self):
-        outs = [{"notify": {"kind": "LossFlag", "scope": "vc", "vc": v["vcid"]}}
-                for v in self.cfg["vcs"]]
-        outs.append({"notify": {"kind": "LossFlag", "scope": "physical_channel"}})
-        return outs
+        """One LossFlag, which applies to the physical channel and to every configured VC
+        (LNK-053 as amended on 2026-11-02, 04 section 4 FrameLoss row: one action, so that the
+        bound does not depend on the VC capacity). The engine derives nothing from it: no count
+        changes, and the next frame's count shows a gap by itself (OI-78)."""
+        return [{"notify": {"kind": "LossFlag"}}]
 
     # -- helpers --
     def discard(self, reason, vc, map_id=None):
@@ -403,8 +419,11 @@ class FrameReceiver:
     # -- the frame --
     def frame(self, f):
         p = self.cfg["protocol"]
-        if len(f) != self.cfg["frame_len"]:
-            raise Unspecified("the caller validates the frame length (LNK-050)")
+        # OI-78 (M4 WP-5): a frame of another length than the frame length is refused, as the
+        # codecs refuse it; on TC the configured length is the maximum and a shorter frame,
+        # whose own Frame Length field gives its length, is accepted (LNK-050).
+        if len(f) > self.cfg["frame_len"] or (p != "tc" and len(f) != self.cfg["frame_len"]):
+            raise Refuse("LengthMismatch", "frame_len")
         return {"tm": self.tm, "aos": self.aos, "uslp": self.uslp, "tc": self.tc}[p](f)
 
     def tm(self, f):
@@ -422,11 +441,14 @@ class FrameReceiver:
             # The OCF Flag and the Secondary Header Flag are static for a channel (132.0
             # 4.1.2.4.3, 4.1.2.7.2.3, 4.1.3.1.5, 4.1.5.3; TM-011): a validated frame agrees with
             # the configuration.
+            # OI-78 (M4 WP-5): a frame that disagrees is refused, with no state change.
             vcd = vcmap[vcid]
-            if bool(ocf_flag) != vcd["ocf"] or bool(shf) != (vcd["fsh_len"] > 0) or \
-                    (shf and (f[6] & 0x3F) + 1 != vcd["fsh_len"]):
-                raise Unspecified("a TM frame whose OCF or Secondary Header differs from the "
-                                  "configuration of its VC (not a validated frame)")
+            if bool(ocf_flag) != vcd["ocf"]:
+                raise Refuse("InvalidField", "ocf_flag")
+            if bool(shf) != (vcd["fsh_len"] > 0):
+                raise Refuse("InvalidField", "fsh_flag")
+            if shf and (f[6] & 0x3F) + 1 != vcd["fsh_len"]:
+                raise Refuse("LengthMismatch", "fsh_len")
         end = len(f) - (2 if cfg["fecf"] else 0) - (4 if ocf_flag else 0)
         start = 6
         fsh = None
@@ -492,6 +514,16 @@ class FrameReceiver:
         if not known:
             # The Insert Zone is extracted whatever the GVCID (732.0 4.3.7.4; LNK-050, OI-73).
             return iz_out + self.discard("UnknownChannel", vcid)
+        if not oid and vcd["role"] == "bitstream":
+            bdp = int.from_bytes(data[0:2], "big") & 0x3FFF
+            if bdp not in (0x3FFE, 0x3FFF) and bdp + 1 > (len(data) - 2) * 8:
+                # OI-78 (M4 WP-5, OI-33): a pointer beyond the zone is malformed and refused
+                # before any count is touched.
+                raise Refuse("Malformed", "bitstream_data_pointer")
+            if bdp == (len(data) - 2) * 8 - 1:
+                # 732.0 4.1.4.3.3.3: a zone with no idle data has the pointer all ones; the index
+                # of the last bit is refused (AOS-017, OI-53).
+                raise Refuse("InvalidField", "bitstream_data_pointer")
         flagged = False
         if not oid and not replay:           # OI-70: replay frames take no part in counting
             if cycle_use:
@@ -499,11 +531,17 @@ class FrameReceiver:
             else:
                 value, modulus = count, 1 << 24
             mode = self.vc_expect.get(("mode", vcid))
-            if mode is not None and mode != cycle_use:
-                raise Unspecified("the Cycle Use Flag changes on a VC")
             self.vc_expect[("mode", vcid)] = cycle_use
-            flagged = self.gap(vcid, value, modulus, outs,
-                               {"scope": "vc", "vc": vcid})
+            if mode is not None and mode != cycle_use:
+                # OI-78 (accepted by the maintainer, 2026-11-02): a change of the Cycle Use Flag
+                # is a CountDiscontinuity, and the count restarts in the new mode.
+                self.counters.add("count_discontinuities")
+                outs.append({"notify": {"kind": "CountDiscontinuity", "scope": "vc", "vc": vcid}})
+                self.vc_expect[vcid] = (value + 1) % modulus
+                flagged = True
+            else:
+                flagged = self.gap(vcid, value, modulus, outs,
+                                   {"scope": "vc", "vc": vcid})
         if vcd["role"] == "unserved":
             # VC Reception runs for the known VC: its count result comes first (LNK-050).
             return outs + iz_out + self.discard("NotServed", vcid)
@@ -523,8 +561,6 @@ class FrameReceiver:
             if bdp == 0x3FFE:
                 return outs            # no valid bit: the idle B_PDU is dropped (LNK-077)
             n = len(zone) * 8 if bdp == 0x3FFF else bdp + 1
-            if n > len(zone) * 8:
-                raise Unspecified("Bitstream Data Pointer beyond the zone")
             nb = (n + 7) // 8
             valid = bytearray(zone[:nb])
             if n % 8:
@@ -566,6 +602,8 @@ class FrameReceiver:
             # (732.1 4.3.11.1.4, 4.3.9.2-3, 4.3.8 note 2; LNK-050, OI-77).
             return tail + self.discard("UnknownChannel", vcid, mapid)
         if bypass == 0 and pcc:
+            # OI-78: the USLP codec refuses it (ReservedValue), so no Plain frame reaches the
+            # receiver; what a vector input of it expects is not an engine behaviour.
             raise Unspecified("the reserved flag combination 01 (732.1 Table 4-1)")
         outs = []
         flagged = False
@@ -619,10 +657,17 @@ class FrameReceiver:
         if len(f) != cfg["frame_len"]:
             return [{"error": "LengthMismatch", "field": "frame_len"}]
         if cfg["protocol"] == "aos":
-            raise Unspecified("replay metadata of an AOS frame whose header is not validated")
+            # OI-78 (M4 WP-5): the Insert Zone at the offset after the header (6 octets, 8 with
+            # an FHEC) and no Replay Flag, since the header is the one the caller rejected
+            # (732.0 4.3.7.4).
+            off = 6 + (2 if cfg.get("fhec") else 0)
+            return [{"deliver": {"kind": "InsertSdu",
+                                 "data_hex": hx(f[off:off + cfg["insert_zone_len"]])}}]
         vlen = f[6] & 7
         if vlen != 0:
-            raise Unspecified("Insert Zone offset when the VCF Count Length is not 0")
+            # OI-78 (decided by the maintainer, 2026-11-02): the offset would follow a field of
+            # the rejected header.
+            raise Refuse("InvalidField", "vcf_count_len")
         izl = cfg["insert_zone_len"]
         return [{"deliver": {"kind": "InsertSdu", "data_hex": hx(f[7:7 + izl])}}]
 
@@ -667,7 +712,8 @@ class PacketExtractor:
         if fhp == FHP_NONE[p]:
             return zone, "none", 0, gap
         if fhp >= len(zone):
-            raise Unspecified("FHP beyond the zone (a codec error)")
+            # OI-78 (M4 WP-3, OI-33): malformed, refused with no state change.
+            raise Refuse("Malformed", "fhp_lvo_pointer" if p == "uslp" else "first_header_pointer")
         return zone, "offset", fhp, gap
 
     def step(self, inp):
@@ -708,19 +754,26 @@ class PacketExtractor:
             elif lol == 2:
                 if len(b) >= 4:
                     total = (b[2] << 8) | b[3]
-            else:
-                raise Unspecified("four-octet Encapsulation length field")
+            elif len(b) >= 8:
+                total = int.from_bytes(b[4:8], "big")        # 133.1 4.1.2.1.1, 4.1.2.8
         else:
             raise Unspecified("a valid PVN that is neither a Space Packet nor an Encapsulation Packet")
         if total is None:
             return ("more", None)
         if total > self.cfg["max_packet_len"]:
             return ("error", "PacketTooLong")
-        if pvn == 7 and total < (1 if (b[0] & 3) == 0 else (2 if (b[0] & 3) == 1 else 4)):
-            raise Unspecified("Packet Length shorter than the header")
+        if pvn == 7 and total < (1, 2, 4, 8)[b[0] & 3]:
+            # OI-78 (M4 WP-3; 133.1 4.1.2.8, EPP-003): a length shorter than its header.
+            return ("error", "LengthInconsistent")
         if len(b) == total:
             return ("done", total)
         return ("more", None)
+
+    def length_known(self, b):
+        pvn = b[0] >> 5
+        if pvn == 0:
+            return len(b) >= 6
+        return len(b) >= (1, 2, 4, 8)[b[0] & 3]
 
     def is_idle(self, b):
         pvn = b[0] >> 5
@@ -740,9 +793,11 @@ class PacketExtractor:
         """The outcome for the packet in progress: Incomplete or Discarded (LNK-061)."""
         if not self.partial:
             return
-        if len(self.partial) >= 2 and self.is_idle(self.partial):
-            raise Unspecified("a partial idle packet is discarded")
-        if self.cfg["deliver_incomplete"]:
+        # OI-78 (M4 WP-3): a partial idle packet, and a partial packet whose length field is
+        # not complete, are discarded, never delivered Incomplete.
+        length_known = self.length_known(self.partial)
+        idle = len(self.partial) >= 2 and self.is_idle(self.partial)
+        if self.cfg["deliver_incomplete"] and length_known and not idle:
             outs.append({"deliver": {"kind": "Packet", "pvn": self.partial[0] >> 5,
                                      "data_hex": hx(self.partial), "incomplete": True}})
         else:
@@ -753,13 +808,13 @@ class PacketExtractor:
         self.counters.add(kind)
         outs.append({"extraction_error": {"kind": kind}})
 
-    def run(self, zone, lo, hi, outs, ends_at_hi=False, early_ok=False):
+    def run(self, zone, lo, hi, outs, ends_at_hi=False):
         """Feed zone[lo:hi] to the packet in progress and the packets that follow. Returns True
         when an extraction error stopped the run (the rest is discarded, LNK-062). With
         `ends_at_hi` the octets are the continuation before an FHP (or a whole field in which
-        no packet starts). A packet that completes before the last of them: with `early_ok`
-        (the octets before an FHP) it is discarded and "early" is returned, for the caller to
-        raise LengthInconsistent (LNK-061, OI-73); in a field with no FHP it is not specified."""
+        no packet starts). A packet that completes before the last of them is discarded and "early"
+        is returned, for the caller to raise LengthInconsistent (LNK-061, OI-73; in a field in
+        which no packet starts, OI-78)."""
         for i in range(lo, hi):
             self.partial.append(zone[i])
             st, val = self.status(self.partial)
@@ -768,12 +823,9 @@ class PacketExtractor:
                 self.partial = bytearray()
                 return True
             if st == "done":
-                if ends_at_hi and i != hi - 1 and early_ok:
+                if ends_at_hi and i != hi - 1:
                     self.partial = bytearray()
                     return "early"
-                if ends_at_hi and i != hi - 1:
-                    raise Unspecified("a packet ends before the FHP, or inside a field in which "
-                                      "no packet starts")
                 self.emit(bytes(self.partial), outs)
                 self.partial = bytearray()
         return False
@@ -783,7 +835,9 @@ class PacketExtractor:
         outs = []
         if kind == "idle":
             if gap:
-                raise Unspecified("gap flagged on a field of only idle data")
+                # OI-78 (maintainer, 2026-11-02; LNK-061): the gap wins over LNK-064.
+                self.abandon(outs)
+                self.sync = False
             return outs        # LNK-064: ignored, a packet in progress is kept
         if gap:
             self.abandon(outs)          # LNK-061
@@ -801,13 +855,21 @@ class PacketExtractor:
                 self.error("LengthInconsistent", outs)       # nothing in progress, nothing starts
                 self.sync = False
                 return outs
-            self.sync = not self.run(zone, 0, len(zone), outs, ends_at_hi=True)
+            r = self.run(zone, 0, len(zone), outs, ends_at_hi=True)
+            if r == "early":
+                # OI-78 (M4 WP-3; 132.0 4.3.2.4, 732.0 4.3.2.4, 732.1 4.3.2.2.5): the packet ends
+                # inside a field in which no packet starts: not delivered, LengthInconsistent,
+                # the field is skipped, and the extractor resynchronises at the next FHP.
+                self.error("LengthInconsistent", outs)
+                self.sync = False
+            else:
+                self.sync = not r
             return outs
         if not self.partial:
             if off != 0:
                 self.error("LengthInconsistent", outs)       # FHP wins (LNK-060)
         else:
-            r = self.run(zone, 0, off, outs, ends_at_hi=True, early_ok=True)
+            r = self.run(zone, 0, off, outs, ends_at_hi=True)
             if r == "early":
                 self.error("LengthInconsistent", outs)       # ends before the FHP: no outcome
             elif not r and self.partial:
@@ -822,33 +884,49 @@ class PacketExtractor:
 # MapReassembler (04 3.3; LNK-070 to LNK-072, LNK-071)
 # --------------------------------------------------------------------------------------------
 
-def split_packets(data, valid_pvns=(0, 7)):
+def packet_total(b):
+    """The total length of the packet at the start of `b` from its own length field, or a
+    refusal: a PVN other than 0 and 7 (InvalidField `packet_version`), a header that is not
+    complete (LengthMismatch `packet_len`); 133.0 4.1.3.5.2, 133.1 4.1.2.8 (OI-78)."""
+    pvn = b[0] >> 5
+    if pvn == 0:
+        if len(b) < 6:
+            raise Refuse("LengthMismatch", "packet_len")
+        return ((b[4] << 8) | b[5]) + 7
+    if pvn != 7:
+        raise Refuse("InvalidField", "packet_version")
+    lol = b[0] & 3
+    hl = (1, 2, 4, 8)[lol]
+    if len(b) < hl:
+        raise Refuse("LengthMismatch", "packet_len")
+    total = (1, b[1] if len(b) > 1 else 0, int.from_bytes(b[2:4], "big"),
+             int.from_bytes(b[4:8], "big"))[lol]
+    if total < hl:
+        raise Unspecified("an Encapsulation length shorter than its header in a blocked FDU")
+    return total
+
+
+def split_packets(data):
     """Blocked packets split by the length field of each (LNK-071; 232.0 4.4.1.3, 4.4.4.3;
-    732.1 4.3.2.3.3). A leftover or a packet that does not fit is not specified."""
+    732.1 4.3.2.3.3). A packet that does not fit the FDU refuses the whole FDU (OI-78, decided
+    by the maintainer, 2026-11-02): LengthMismatch `packet_len` or InvalidField `packet_version`."""
     pkts = []
     i = 0
     while i < len(data):
         b = data[i:]
-        pvn = b[0] >> 5
-        if pvn == 0 and len(b) >= 6:
-            total = ((b[4] << 8) | b[5]) + 7
-        elif pvn == 7:
-            lol = b[0] & 3
-            if lol == 0:
-                total = 1
-            elif lol == 1 and len(b) >= 2:
-                total = b[1]
-            elif lol == 2 and len(b) >= 4:
-                total = (b[2] << 8) | b[3]
-            else:
-                raise Unspecified("Encapsulation header split")
-        else:
-            raise Unspecified("blocked packets of another PVN or a header split")
+        total = packet_total(b)
         if total > len(b):
-            raise Unspecified("a blocked packet that does not fit its FDU")
+            raise Refuse("LengthMismatch", "packet_len")
         pkts.append(bytes(b[:total]))
         i += total
     return pkts
+
+
+# The MAP service each TFDZ Construction Rule may carry (732.1 Table 4-3; OI-78): rules 001 and
+# 010 a MAPA_SDU or VCA_SDU (4.1.4.2.2.2.2-3), 011 an octet stream (4.3.4.2), 100 to 111 an SDU
+# or packets.
+RULE_SERVICES = {1: ("sdu",), 2: ("sdu",), 3: ("octet_stream",), 4: ("sdu", "packets"),
+                 5: ("sdu", "packets"), 6: ("sdu", "packets"), 7: ("sdu", "packets")}
 
 
 class MapReassembler:
@@ -858,7 +936,7 @@ class MapReassembler:
         self.reset()
 
     def reset(self):
-        self.partial = {}            # (vc, map) -> bytearray: the SDU in progress
+        self.partial = {}            # (vc, map) -> bytearray: the SDU in progress, per GMAP ID
 
     def maps(self):
         if self.cfg["protocol"] == "tc":
@@ -880,15 +958,25 @@ class MapReassembler:
         self.counters.add(kind)
         return {"reassembly_event": {"kind": kind, "vc": vc, "map": mp}}
 
+    def too_long(self, m, n):
+        """OI-78 (maintainer, 2026-11-02): an SDU longer than the maximum SDU length of its MAP,
+        partial or whole, is discarded with SduTooLong (232.0 Table 5-4, 732.1 Table 5-4)."""
+        return "max_sdu_len" in m and n > m["max_sdu_len"]
+
     def deliver_sdu(self, m, vc, mp, sdu, whole):
         """One complete SDU, segment sequence, or blocked FDU (LNK-070, LNK-071)."""
         if m["service"] == "sdu":
             return [{"deliver": {"kind": "Sdu", "vc": vc, "map": mp, "data_hex": hx(sdu)}}]
         pkts = split_packets(sdu) if whole else [bytes(sdu)]
-        if not whole and split_packets(sdu) != pkts:
-            raise Unspecified("a segmented packet whose length field disagrees")
         return [{"deliver": {"kind": "Packet", "vc": vc, "map": mp, "pvn": p[0] >> 5,
                              "data_hex": hx(p), "incomplete": False}} for p in pkts]
+
+    def check_segmented(self, m, sdu):
+        """A segmented packet whose reassembled octets disagree with its own length field
+        refuses the FDU that completes it (OI-78, maintainer, 2026-11-02; 133.0 4.1.3.5,
+        133.1 4.1.2.8)."""
+        if m["service"] == "packets" and packet_total(sdu) != len(sdu):
+            raise Refuse("LengthMismatch", "packet_len")
 
     def fdu(self, d):
         p = self.cfg["protocol"]
@@ -896,6 +984,8 @@ class MapReassembler:
         vc = d["vc"]
         gap = d.get("gap", False)
         outs = []
+        rule = None
+        ptr = None
         if p == "tc":
             # Segment Header (232.0 4.1.3.2.2): sequence flags (2 bits), MAP ID (6 bits).
             flags, mp, body = data[0] >> 6, data[0] & 0x3F, data[1:]
@@ -906,82 +996,110 @@ class MapReassembler:
             if rule <= 2:
                 ptr, body = int.from_bytes(data[1:3], "big"), data[3:]
             else:
-                ptr, body = None, data[1:]
+                body = data[1:]
             seq = {1: "first", 2: "cont", 4: "first", 5: "cont", 6: "last", 7: "whole",
                    3: "stream"}.get(rule)
             if rule == 0:
                 raise Unspecified("rule 000 belongs to the PacketExtractor")
+            if upid == UPID_IDLE:
+                if gap:
+                    raise Unspecified("a gap flagged on a TFDF of only idle data")
+                return outs              # 732.1 4.3.2.2.5 note 1 (OI-78): ignored
         key = (vc, mp)
         m = self.maps().get(key)
-        if m is None:
-            return [self.event("UnknownMap", vc, mp)]      # LNK-070
+        if m is not None and p == "uslp":
+            # Refusals, with no state change (OI-78, maintainer, 2026-11-02).
+            if m["service"] not in RULE_SERVICES[rule]:
+                raise Refuse("InvalidField", "tfdz_construction_rule")
+            if ptr is not None and ptr != 0xFFFF and ptr >= len(body):
+                raise Refuse("Malformed", "fhp_lvo_pointer")      # 732.1 4.1.4.2.4.5, OI-33
+        if m is not None and seq == "whole" and m["service"] == "packets":
+            split_packets(body)                                     # refuses the whole FDU
         if gap:
             if p == "tc":
                 raise Unspecified("TC has no frame gap signal")
-            if seq == "stream":
-                raise Unspecified("a gap on an octet stream")
-            lost = [k for k, v in self.partial.items() if k[0] == vc]
+            # OI-78 (maintainer, 2026-11-02): the VCF Count is the count of the VC, so a gap
+            # discards the SDUs in progress of every MAP of the VC, with one GapDiscard naming
+            # the MAP of the field if an SDU of it was in progress, else the first MAP that had
+            # one (732.1 4.1.4.2.2.1.6).
+            lost = [k for k in self.partial if k[0] == vc]
             if lost:
+                if key in lost:
+                    named = mp
+                elif len(lost) == 1:
+                    named = lost[0][1]
+                else:
+                    raise Unspecified("which of several other MAPs is the first to have an SDU")
                 for k in lost:
                     del self.partial[k]
-                outs.append(self.event("GapDiscard", vc, lost[0][1]))   # the MAP whose SDU was lost
-        if len([k for k in self.partial if k[0] == vc and k != key]) and p == "uslp":
-            raise Unspecified("two SDUs in progress on one VC")
+                outs.append(self.event("GapDiscard", vc, named))
+        if m is None:
+            return outs + [self.event("UnknownMap", vc, mp)]      # LNK-070, 04 section 4
         have = key in self.partial
         usl_fixed = p == "uslp" and rule in (1, 2)
         if seq == "stream":
-            if m["service"] != "octet_stream":
-                raise Unspecified("octet stream rule on another MAP service")
-            outs.append({"deliver": {"kind": "Sdu", "vc": vc, "map": mp, "data_hex": hx(body),
-                                     "octet_stream": True}})
+            dl = {"kind": "Sdu", "vc": vc, "map": mp, "data_hex": hx(body), "octet_stream": True}
+            if gap:
+                dl["after_gap"] = True   # OI-78: rule 011 keeps no SDU (732.1 4.1.4.2.2.2.4)
+            outs.append({"deliver": dl})
             return outs
         if seq == "whole":
             if have:
                 outs.append(self.event("SequenceViolation", vc, mp))   # OI-73: then deliver
                 del self.partial[key]
+            if self.too_long(m, len(body)):
+                return outs + [self.event("SduTooLong", vc, mp)]
             return outs + self.deliver_sdu(m, vc, mp, body, True)
         if seq == "first":
             if have:
                 outs.append(self.event("SequenceViolation", vc, mp))     # OI-72
                 del self.partial[key]
-            if usl_fixed:
-                if ptr != 0xFFFF:
-                    if ptr >= len(body):
-                        raise Unspecified("Last Valid Octet Pointer beyond the zone")
-                    return outs + self.deliver_sdu(m, vc, mp, body[:ptr + 1], False)
+            if usl_fixed and ptr != 0xFFFF:
+                sdu = body[:ptr + 1]
+                if self.too_long(m, len(sdu)):
+                    return outs + [self.event("SduTooLong", vc, mp)]
+                return outs + self.deliver_sdu(m, vc, mp, sdu, False)
+            if self.too_long(m, len(body)):
+                return outs + [self.event("SduTooLong", vc, mp)]
             self.partial[key] = bytearray(body)
             return outs
         # a continuation or the last segment
         if not have:
             outs.append(self.event("SequenceViolation", vc, mp))
             return outs
-        buf = self.partial[key]
-        if usl_fixed:
-            if ptr == 0xFFFF:
-                buf += body
-                return outs
-            if ptr >= len(body):
-                raise Unspecified("Last Valid Octet Pointer beyond the zone")
-            buf += body[:ptr + 1]
+        buf = bytes(self.partial[key])
+        ends = (ptr != 0xFFFF) if usl_fixed else (seq == "last")
+        part = body[:ptr + 1] if usl_fixed and ends else body
+        buf += part
+        if self.too_long(m, len(buf)):
             del self.partial[key]
-            return outs + self.deliver_sdu(m, vc, mp, bytes(buf), False)
-        buf += body
-        if seq == "last":
-            del self.partial[key]
-            return outs + self.deliver_sdu(m, vc, mp, bytes(buf), False)
-        return outs
+            return outs + [self.event("SduTooLong", vc, mp)]
+        if not ends:
+            self.partial[key] = bytearray(buf)
+            return outs
+        self.check_segmented(m, buf)
+        del self.partial[key]
+        return outs + self.deliver_sdu(m, vc, mp, buf, False)
 
 
 ENGINES = {"frame-receiver": FrameReceiver, "packet-extractor": PacketExtractor,
            "map-reassembler": MapReassembler}
 
 
-def replay(engine, cfg, inputs):
-    """Run the inputs through a fresh engine; returns the steps with their expected outputs."""
-    eng = ENGINES[engine](cfg)
+def replay(engine, cfg, inputs, eng=None):
+    """Run the inputs through a fresh engine; returns the steps with their expected outputs. A
+    refused input returns its error and leaves the state as it was (API-058)."""
+    eng = eng or ENGINES[engine](cfg)
     steps = []
     for at, inp in inputs:
-        steps.append({"at_us": at, "input": inp, "expect": eng.step(inp)})
+        saved = copy.deepcopy(eng.__dict__)
+        try:
+            out = eng.step(inp)
+        except Refuse as e:
+            eng.__dict__.clear()
+            eng.__dict__.update(saved)
+            out = [{"error": e.kind, "field": e.field}]
+        steps.append({"at_us": at, "input": inp, "expect": out})
     return steps
 
 
@@ -2117,6 +2235,402 @@ def re_uslp_scenarios():
 # The files
 # --------------------------------------------------------------------------------------------
 
+
+# --------------------------------------------------------------------------------------------
+# The blind-model round of #231: the OI-78 decisions of M4 WP-3 to WP-6 and the maintainer
+# (2026-11-02), and the single LossFlag of the amended LNK-053
+# --------------------------------------------------------------------------------------------
+
+def fr_tm_231():
+    c = TM_CFG
+    out = []
+    good = tm_frame(c, 0, 1, 1, 0, 1)
+    s = Scn("link-recv-tm-frame-length-mismatch", ["LNK-050"],
+            "A frame one octet shorter, and one octet longer, than the frame length is refused "
+            "with LengthMismatch (frame_len) and changes nothing: the next frame continues the "
+            "MC and VC counts without a gap (OI-78, M4 WP-5).")
+    s.add(frame_in(good))
+    s.add(frame_in(tm_frame(c, 0, 2, 2, 0, 2)[:-1]))
+    s.add(frame_in(tm_frame(c, 0, 2, 2, 0, 2) + b"\x00"))
+    s.add(frame_in(tm_frame(c, 0, 2, 2, 0, 3)))
+    out.append(s)
+
+    s = Scn("link-recv-tm-ocf-fsh-disagree", ["LNK-050", "LNK-053"],
+            "A frame whose OCF Flag or Secondary Header Flag disagrees with the configuration of "
+            "its VC is refused with InvalidField (ocf_flag, fsh_flag) and changes nothing (132.0 "
+            "4.1.2.4.3, 4.1.2.7.2.3; OI-78, M4 WP-5): the next frame continues the counts.")
+    s.add(frame_in(good))
+    s.add(frame_in(tm_frame(c, 0, 2, 2, 0, 2, ocf=OCF_CLCW)))
+    s.add(frame_in(tm_frame(c, 0, 2, 2, 0, 2, fsh=tm_fsh(0x11, 0x22))))
+    s.add(frame_in(tm_frame(c, 0, 2, 2, 0, 3)))
+    out.append(s)
+
+    s = Scn("link-recv-tm-fsh-length-disagree", ["LNK-050", "LNK-053"],
+            "A Secondary Header whose length differs from the length configured for its VC is "
+            "refused with LengthMismatch (fsh_len) and changes nothing (132.0 4.1.2.7.2.3, "
+            "4.1.3.2; OI-78, M4 WP-5).",
+            config=tm_with(c, 0, fsh_len=3))
+    s.add(frame_in(tm_frame(c, 0, 1, 1, 0, 1, fsh=tm_fsh(0x11, 0x22))))
+    s.add(frame_in(tm_frame(c, 0, 2, 2, 0, 2, fsh=tm_fsh(0x11))))
+    s.add(frame_in(tm_frame(c, 0, 2, 2, 0, 3, fsh=tm_fsh(0x12, 0x23))))
+    out.append(s)
+
+    s = Scn("link-recv-tm-frame-loss-single", ["LNK-053", "LNK-051"],
+            "FrameLoss returns one LossFlag, for the physical channel and every VC (LNK-053 as "
+            "amended on 2026-11-02), and changes no count: the next frame shows the gap of the "
+            "lost frame by its own MC and VC counts. Replaces link-recv-tm-frame-loss.")
+    s.add(frame_in(good))
+    s.add({"frame_loss": {}})
+    s.add(frame_in(tm_frame(c, 0, 3, 3, 0, 3)))
+    out.append(s)
+    return out
+
+
+def fr_aos_231():
+    c = AOS_CFG
+    zl = AOS_ZONE
+    bz = zl - 2
+    out = []
+    s = Scn("link-recv-aos-frame-length-mismatch", ["LNK-050"],
+            "A frame of another length than the frame length is refused with LengthMismatch "
+            "(frame_len) and changes nothing: the next frame of the VC is in sequence (OI-78).")
+    s.add(frame_in(aos_frame(c, 2, 7, 1, iz=IZ1)))
+    s.add(frame_in(aos_frame(c, 2, 8, 2, iz=IZ1)[:-1]))
+    s.add(frame_in(aos_frame(c, 2, 8, 3, iz=IZ1)))
+    out.append(s)
+
+    s = Scn("link-recv-aos-raw-frame-accepted", ["LNK-079"],
+            "With the option on, RawFrame of an AOS frame returns its Insert Zone, the octets "
+            "after the 6-octet header (no FHEC), as an InsertSdu without a Replay Flag, since "
+            "the header is the one the caller rejected (732.0 4.3.7.4; OI-78, M4 WP-5).",
+            config=dict(c, accept_rejected_frame_insert_zone=True))
+    s.add({"raw_frame": {"frame_hex": hx(aos_frame(c, 2, 5, 1, replay=1, iz=IZ2))}})
+    out.append(s)
+
+    s = Scn("link-recv-aos-cycle-use-change", ["LNK-051"],
+            "A change of the VC Frame Count Cycle Use Flag on a VC between frames is a "
+            "CountDiscontinuity, and the count restarts in the new mode: the data field is "
+            "flagged, the next frame in the new mode is in sequence (732.0 4.1.2.5.5 does not "
+            "say; OI-78, accepted by the maintainer, 2026-11-02).")
+    s.add(frame_in(aos_frame(c, 2, 5, 1, iz=IZ1)))
+    s.add(frame_in(aos_frame(c, 2, 6, 2, iz=IZ1, cycle=0)))
+    s.add(frame_in(aos_frame(c, 2, 7, 3, iz=IZ1, cycle=0)))
+    s.add(frame_in(aos_frame(c, 2, 40, 4, iz=IZ1)))
+    s.add(frame_in(aos_frame(c, 2, 41, 5, iz=IZ1)))
+    s.add(q("count_discontinuities"))
+    out.append(s)
+
+    s = Scn("link-recv-aos-bdp-beyond-zone", ["LNK-077"],
+            "A Bitstream Data Pointer beyond the B_PDU zone (the pointer is the last valid bit, "
+            "%d bits here) is Malformed (bitstream_data_pointer) and refused with no state "
+            "change (OI-33, OI-78): its count is not taken, so the next frame shows one missing."
+            % (bz * 8))
+    s.add(frame_in(aos_frame(c, 3, 1, bpdu(0x3FFF, ramp(1, bz)), iz=IZ1)))
+    s.add(frame_in(aos_frame(c, 3, 2, bpdu(bz * 8, ramp(2, bz)), iz=IZ1)))
+    s.add(frame_in(aos_frame(c, 3, 3, bpdu(bz * 8 - 2, ramp(3, bz)), iz=IZ1)))
+    out.append(s)
+
+    s = Scn("link-recv-aos-bdp-last-bit", ["LNK-077"],
+            "A Bitstream Data Pointer equal to the index of the zone's last bit (%d) is refused "
+            "with InvalidField (bitstream_data_pointer) and no state change: a zone with no idle "
+            "data has the pointer all ones (732.0 4.1.4.3.3.3; AOS-017, OI-53); the frame with "
+            "the pointer all ones then delivers the whole zone." % (bz * 8 - 1))
+    s.add(frame_in(aos_frame(c, 3, 1, bpdu(bz * 8 - 1, ramp(1, bz)), iz=IZ1)))
+    s.add(frame_in(aos_frame(c, 3, 1, bpdu(0x3FFF, ramp(1, bz)), iz=IZ1)))
+    out.append(s)
+
+    s = Scn("link-recv-aos-frame-loss-single", ["LNK-053", "LNK-051"],
+            "FrameLoss returns one LossFlag and changes no count: the next frame of the VC "
+            "shows the gap by its own count. Replaces link-recv-aos-frame-loss.")
+    s.add(frame_in(aos_frame(c, 2, 10, 1, iz=IZ1)))
+    s.add({"frame_loss": {}})
+    s.add(frame_in(aos_frame(c, 2, 12, 2, iz=IZ1)))
+    out.append(s)
+    return out
+
+
+def fr_uslp_231():
+    c = USLP_CFG
+    out = []
+
+    def td(vlen):
+        return tfdf(0, 0, 0, uz(c, vlen) - 3, ramp(1, 8))
+
+    s = Scn("link-recv-uslp-frame-length-mismatch", ["LNK-050"],
+            "A frame of another length than the fixed frame length is refused with "
+            "LengthMismatch (frame_len) and changes nothing: the next frame's VCF Count is in "
+            "sequence (OI-78).")
+    s.add(frame_in(uslp_frame(c, 1, 0, td(2), vcf=(2, 1), iz=UIZ)))
+    s.add(frame_in(uslp_frame(c, 1, 0, td(2), vcf=(2, 2), iz=UIZ)[:-1]))
+    s.add(frame_in(uslp_frame(c, 1, 0, td(2), vcf=(2, 2), iz=UIZ)))
+    out.append(s)
+
+    s = Scn("link-recv-uslp-raw-frame-vcf-count", ["LNK-079"],
+            "With the option on, RawFrame of a frame whose VCF Count Length is not 0 is refused "
+            "with InvalidField (vcf_count_len): the Insert Zone offset would follow a field of "
+            "the header the caller rejected (OI-78, decided by the maintainer, 2026-11-02).",
+            config=dict(c, accept_rejected_frame_insert_zone=True))
+    s.add({"raw_frame": {"frame_hex": hx(uslp_frame(c, 1, 0, td(2), vcf=(2, 1), iz=UIZ))}})
+    out.append(s)
+
+    s = Scn("link-recv-uslp-frame-loss-single", ["LNK-053", "LNK-051"],
+            "FrameLoss returns one LossFlag and changes no count: the next frame shows the gap "
+            "by its own VCF Count. Replaces link-recv-uslp-frame-loss.")
+    s.add(frame_in(uslp_frame(c, 1, 0, td(2), vcf=(2, 1), iz=UIZ)))
+    s.add({"frame_loss": {}})
+    s.add(frame_in(uslp_frame(c, 1, 0, td(2), vcf=(2, 3), iz=UIZ)))
+    out.append(s)
+    return out
+
+
+def fr_tc_231():
+    c = TC_CFG
+    out = []
+    s = Scn("link-recv-tc-frame-length", ["LNK-050", "LNK-081"],
+            "On TC the configured frame length is the maximum: a shorter frame, whose Frame "
+            "Length field gives its length, is delivered; a longer one is refused with "
+            "LengthMismatch (frame_len) (OI-78, M4 WP-5).")
+    s.add(frame_in(tc_frame(c, 1, 0, ramp(1, 4))))
+    s.add(frame_in(tc_frame(c, 1, 1, ramp(2, 10))))
+    out.append(s)
+    return out
+
+
+def ext_231(proto):
+    c = ext_cfg(proto)
+    out = []
+    F = lambda zone, fhp, gap=False: ext_field(proto, zone, fhp, gap)
+    tag = "link-recv-extract-%s-" % proto
+    big = spp_total(30, 3, 0x30)
+    nxt = spp_total(18, 4, 0x40)
+    p10 = spp_total(10, 1, 0x10)
+    p14 = spp_total(14, 2, 0x20)
+    field = {"tm": "first_header_pointer", "aos": "first_header_pointer",
+             "uslp": "fhp_lvo_pointer"}[proto]
+
+    s = Scn(tag + "fhp-beyond-zone", ["LNK-060"],
+            "A First Header Pointer beyond the zone (%d, the zone has 24 octets) is Malformed "
+            "(%s) and refused with no state change (OI-33, OI-78, M4 WP-3): the packet in "
+            "progress then completes in the next field." % (EXT_ZONE, field))
+    s.add(F(big[:24], 0))
+    s.add(F(big[24:] + nxt, EXT_ZONE))
+    s.add(F(big[24:] + nxt, 6))
+    out.append(s)
+
+    s = Scn(tag + "ends-in-no-start-field", ["LNK-061"],
+            "A packet in progress that ends inside a field whose FHP says no packet starts is "
+            "not delivered: LengthInconsistent, the rest of the field is skipped, and the "
+            "extractor resynchronises at the next FHP (132.0 4.3.2.4, 732.0 4.3.2.4, 732.1 "
+            "4.3.2.2.5; OI-78, M4 WP-3).")
+    s.add(F(big[:24], 0))
+    s.add(F(big[24:] + bytes(range(18)), "none"))
+    s.add(F(bytes(range(24)), "none"))
+    s.add(F(p10 + p14, 0))
+    out.append(s)
+
+    s = Scn(tag + "partial-idle-discarded", ["LNK-061"],
+            "With deliver incomplete configured, a partial Idle Packet cut by a gap is "
+            "Discarded, never delivered Incomplete (OI-78, M4 WP-3); the packets at the FHP of "
+            "the gap field follow.",
+            config=ext_cfg(proto, deliver_incomplete=True))
+    s.add(F(spp_idle(30)[:24], 0))
+    s.add(F(p10 + p14, 0, gap=True))
+    out.append(s)
+
+    s = Scn(tag + "partial-header-discarded", ["LNK-061"],
+            "With deliver incomplete configured, a partial packet whose length field is not "
+            "complete (3 of the 6 header octets) is Discarded, not delivered Incomplete (OI-78, "
+            "M4 WP-3).",
+            config=ext_cfg(proto, deliver_incomplete=True))
+    s.add(F(spp_total(21, 5, 0x50) + nxt[:3], 0))
+    s.add(F(p10 + p14, 0, gap=True))
+    out.append(s)
+
+    e8 = epp(0b111, ramp(0x22, 4), 3)
+    s = Scn(tag + "epp-four-octet-length", ["LNK-060"],
+            "An Encapsulation Packet with a 4-octet Packet Length (Length of Length 11, an "
+            "8-octet header, 133.1 Table 4-1, 4.1.2.8) is delimited by its length (OI-78, "
+            "M4 WP-3), here 12 octets, then a Space Packet.")
+    s.add(F(e8 + spp_total(12, 6, 0x60), 0))
+    out.append(s)
+
+    short = bytes([(7 << 5) | (0b111 << 2) | 2, 0, 0, 3])
+    s = Scn(tag + "epp-length-below-header", ["LNK-062"],
+            "An Encapsulation Packet whose Packet Length (3) is shorter than its 4-octet header "
+            "is LengthInconsistent (133.1 4.1.2.8, EPP-003; OI-78, M4 WP-3): the rest of the "
+            "field is discarded and the extractor resynchronises at the next FHP.")
+    s.add(F(short + bytes(20), 0))
+    s.add(F(p10 + p14, 0))
+    out.append(s)
+
+    s = Scn(tag + "gap-on-idle-field", ["LNK-061", "LNK-064"],
+            "A gap flagged on a field of only idle data takes precedence over LNK-064: the "
+            "packet in progress is discarded and the extractor resynchronises at the next FHP "
+            "(OI-78, decided by the maintainer, 2026-11-02).")
+    s.add(F(big[:24], 0))
+    s.add(F(bytes(24), "idle", gap=True))
+    s.add(F(big[24:] + nxt, 6))
+    out.append(s)
+    return out
+
+
+def re_tc_231():
+    out = []
+    F = lambda flags, mp, body: fdu_in(1, tc_fdu(flags, mp, body))
+    p1, p2 = spp_total(9, 1, 1), spp_total(12, 2, 2)
+    s = Scn("link-recv-reassemble-tc-blocked-refused", ["LNK-071"],
+            "A blocked FDU whose packets do not fit it is refused whole, with no state change "
+            "(133.0 4.1.3.5; OI-78, decided by the maintainer, 2026-11-02): a length that runs "
+            "past the end and an incomplete header are LengthMismatch (packet_len), a PVN "
+            "other than 0 and 7 InvalidField (packet_version); then a valid FDU is split.")
+    s.add(F(3, 0, p1 + p2[:-1]))
+    s.add(F(3, 0, p1 + p2[:4]))
+    s.add(F(3, 0, p1 + bytes([0x20]) + p2[1:]))
+    s.add(F(3, 0, p1 + p2))
+    out.append(s)
+
+    s = Scn("link-recv-reassemble-tc-sdu-too-long", ["LNK-073", "LNK-070"],
+            "An SDU longer than the maximum SDU length of its MAP (12 here) is discarded with "
+            "SduTooLong and nothing is delivered, whole or as it grows past the maximum (OI-78, "
+            "decided by the maintainer, 2026-11-02); an SDU of exactly the maximum is delivered.",
+            config={"protocol": "tc", "vc": 1,
+                    "maps": [{"map": 0, "service": "packets"},
+                             {"map": 1, "service": "sdu", "max_sdu_len": 12}]})
+    s.add(F(3, 1, ramp(1, 13)))
+    s.add(F(3, 1, ramp(2, 12)))
+    s.add(F(1, 1, ramp(3, 8)))
+    s.add(F(2, 1, ramp(4, 5)))
+    out.append(s)
+    return out
+
+
+def re_uslp_231():
+    out = []
+
+    def fx(rule, ptr, payload, upid=UPID_MISSION_1):
+        return tfdf(rule, upid, ptr, UZ, payload)
+
+    def var(rule, payload, upid=UPID_PACKETS):
+        return tfdf_var(rule, upid, payload)
+
+    I = lambda vc, mp, data, gap=False: fdu_in(vc, data, mp, gap)
+    pk = spp_total(16, 9, 0x90)
+    sa = ramp(0x30, 14)
+
+    s = Scn("link-recv-reassemble-uslp-two-maps", ["LNK-070"],
+            "Each GMAP ID has its own SDU in progress (732.1 4.3.3.1 note; OI-78, M4 WP-6): a "
+            "packet segmented on MAP 0 and an SDU segmented on MAP 3 of VC 2, interleaved, are "
+            "both delivered.")
+    s.add(I(2, 0, var(4, pk[:8])))
+    s.add(I(2, 3, var(4, sa[:6], UPID_MISSION_1)))
+    s.add(I(2, 3, var(6, sa[6:], UPID_MISSION_1)))
+    s.add(I(2, 0, var(6, pk[8:])))
+    out.append(s)
+
+    s = Scn("link-recv-reassemble-uslp-gap-every-map", ["LNK-070", "LNK-051"],
+            "A gap flagged on a field discards the SDUs in progress of every MAP of the VC with "
+            "one GapDiscard naming the MAP of the field, which had one (OI-78, decided by the "
+            "maintainer, 2026-11-02): the field then starts a new SDU, and the last segment of "
+            "the other MAP is a sequence violation.")
+    s.add(I(2, 0, var(4, pk[:8])))
+    s.add(I(2, 3, var(4, sa[:6], UPID_MISSION_1)))
+    s.add(I(2, 3, var(4, sa[:6], UPID_MISSION_1), gap=True))
+    s.add(I(2, 3, var(6, sa[6:], UPID_MISSION_1)))
+    s.add(I(2, 0, var(6, pk[8:])))
+    out.append(s)
+
+    s = Scn("link-recv-reassemble-uslp-gap-other-map", ["LNK-070", "LNK-051"],
+            "A gap flagged on a whole SDU of MAP 3 while only MAP 0 has an SDU in progress: one "
+            "GapDiscard naming MAP 0, then the SDU of MAP 3 is delivered (OI-78).")
+    s.add(I(2, 0, var(4, pk[:8])))
+    s.add(I(2, 3, var(7, sa, UPID_MISSION_1), gap=True))
+    out.append(s)
+
+    s = Scn("link-recv-reassemble-uslp-gap-unknown-map", ["LNK-070", "LNK-051"],
+            "A gap flagged on a field of an unknown MAP still discards the SDU in progress of "
+            "the VC: GapDiscard, then UnknownMap (04 section 4, MapReassembler row; OI-78).")
+    s.add(I(1, 0, fx(1, 0xFFFF, ramp(1, UZ))))
+    s.add(I(1, 5, var(7, ramp(2, 6)), gap=True))
+    out.append(s)
+
+    s = Scn("link-recv-reassemble-uslp-stream-gap", ["LNK-072", "LNK-070"],
+            "A gap on an octet stream: rule 011 keeps no SDU (732.1 4.1.4.2.2.2.4), so nothing "
+            "of the stream is discarded and the chunk after the gap says so (after_gap); the "
+            "gap discards the SDU in progress of the other MAP of the VC (OI-78, M4 WP-6).")
+    s.add(I(1, 0, fx(1, 0xFFFF, ramp(1, UZ))))
+    s.add(I(1, 1, var(3, ramp(0x40, 9), UPID_OCTET_STREAM), gap=True))
+    s.add(I(1, 1, var(3, ramp(0x50, 9), UPID_OCTET_STREAM)))
+    out.append(s)
+
+    p1, p2 = spp_total(9, 1, 1), spp_total(12, 2, 2)
+    s = Scn("link-recv-reassemble-uslp-blocked-refused", ["LNK-071"],
+            "A blocked TFDZ (rule 111) whose packets do not fit it is refused whole with no "
+            "state change (OI-78, decided by the maintainer, 2026-11-02): a length past the end "
+            "and an incomplete header LengthMismatch (packet_len), PVN 1 InvalidField "
+            "(packet_version); then a valid TFDZ is split.")
+    s.add(I(2, 0, var(7, p1 + p2[:-1])))
+    s.add(I(2, 0, var(7, p1 + p2[:5])))
+    s.add(I(2, 0, var(7, p1 + bytes([0x20]) + p2[1:])))
+    s.add(I(2, 0, var(7, p1 + p2)))
+    out.append(s)
+
+    s = Scn("link-recv-reassemble-uslp-segmented-packet-length", ["LNK-070", "LNK-071"],
+            "A segmented packet whose reassembled octets are one more than its own length field "
+            "gives is refused at the last segment with LengthMismatch (packet_len) (133.0 "
+            "4.1.3.5; OI-78, decided by the maintainer, 2026-11-02).")
+    s.add(I(2, 0, var(4, pk[:8])))
+    s.add(I(2, 0, var(6, pk[8:] + b"\x00")))
+    out.append(s)
+
+    s = Scn("link-recv-reassemble-uslp-lvo-beyond-zone", ["LNK-072"],
+            "A Last Valid Octet Pointer beyond the TFDZ (20 octets, pointer 20) is Malformed "
+            "(fhp_lvo_pointer) and refused with no state change (732.1 4.1.4.2.4.5, OI-33; "
+            "OI-78): the SDU in progress is then completed.")
+    s.add(I(1, 0, fx(1, UZ, ramp(1, UZ))))
+    s.add(I(1, 0, fx(1, 0xFFFF, ramp(2, UZ))))
+    s.add(I(1, 0, fx(2, UZ + 5, ramp(3, UZ))))
+    s.add(I(1, 0, fx(2, 3, ramp(4, UZ))))
+    out.append(s)
+
+    s = Scn("link-recv-reassemble-uslp-rule-of-other-service", ["LNK-070", "LNK-072"],
+            "A TFDZ Construction Rule that the service of its MAP does not carry is refused with "
+            "InvalidField (tfdz_construction_rule) and no state change (732.1 4.1.4.2.2.2.2-4, "
+            "4.3.4.2; OI-78, decided by the maintainer, 2026-11-02): rule 011 on an SDU MAP, "
+            "rule 111 on the octet-stream MAP, rule 001 on a packets MAP; the SDU in progress on "
+            "MAP 0 of VC 1 then completes.")
+    s.add(I(1, 0, fx(1, 0xFFFF, ramp(1, UZ))))
+    s.add(I(1, 0, var(3, ramp(2, 5), UPID_OCTET_STREAM)))
+    s.add(I(1, 1, var(7, ramp(3, 5), UPID_MISSION_1)))
+    s.add(I(2, 0, fx(1, 4, ramp(4, UZ), UPID_PACKETS)))
+    s.add(I(1, 0, fx(2, 2, ramp(5, UZ))))
+    out.append(s)
+
+    cfg = {"protocol": "uslp",
+           "maps": [{"vc": 1, "map": 0, "service": "sdu"},
+                    {"vc": 1, "map": 1, "service": "octet_stream"},
+                    {"vc": 2, "map": 0, "service": "packets"},
+                    {"vc": 2, "map": 3, "service": "sdu", "max_sdu_len": 12}]}
+    s = Scn("link-recv-reassemble-uslp-sdu-too-long", ["LNK-073", "LNK-070"],
+            "An SDU that would exceed the maximum SDU length of its MAP (12 here), whole or as "
+            "its segments grow, is discarded with SduTooLong and nothing is delivered (OI-78, "
+            "decided by the maintainer, 2026-11-02); the last segment of the discarded SDU is "
+            "then a sequence violation; an SDU of exactly 12 octets is delivered.", config=cfg)
+    s.add(I(2, 3, var(7, ramp(1, 13), UPID_MISSION_1)))
+    s.add(I(2, 3, var(4, ramp(2, 8), UPID_MISSION_1)))
+    s.add(I(2, 3, var(5, ramp(3, 8), UPID_MISSION_1)))
+    s.add(I(2, 3, var(6, ramp(4, 2), UPID_MISSION_1)))
+    s.add(I(2, 3, var(7, ramp(5, 12), UPID_MISSION_1)))
+    out.append(s)
+
+    s = Scn("link-recv-reassemble-uslp-idle-tfdf", ["LNK-070"],
+            "A TFDF of only idle data (UPID Only Idle Data) is ignored (732.1 4.3.2.2.5 note 1; "
+            "OI-78): the SDU in progress on the MAP is kept and completes.")
+    s.add(I(2, 3, var(4, sa[:6], UPID_MISSION_1)))
+    s.add(I(2, 3, fx(1, UZ - 1, bytes(UZ), UPID_IDLE)))
+    s.add(I(2, 3, var(6, sa[6:], UPID_MISSION_1)))
+    out.append(s)
+    return out
+
 NOTE = ("Hand-derived from %s. Model test-vectors/models/link_recv.py, written blind (TV-023) by "
         "a Claude agent from the Blue Books and docs/ only, without reading any implementation; "
         "for format only it read the COP-1 model and scenario files (cop1.py, the cop1 directory). The input "
@@ -2126,32 +2640,32 @@ NOTE = ("Hand-derived from %s. Model test-vectors/models/link_recv.py, written b
         "by the model (--write) and never edited by hand.")
 
 FILES = [
-    ("frame_receiver_tm.json", "frame-receiver", TM_CFG, fr_tm_scenarios,
+    ("frame_receiver_tm.json", "frame-receiver", TM_CFG, lambda: fr_tm_scenarios() + fr_tm_231(),
      "132.0-B-3 4.1.2, 4.1.3, 4.1.4.6, 4.3.3 to 4.3.7 and 04-engines LNK-050 to LNK-053, "
      "LNK-077, OI-68"),
-    ("frame_receiver_aos.json", "frame-receiver", AOS_CFG, fr_aos_scenarios,
+    ("frame_receiver_aos.json", "frame-receiver", AOS_CFG, lambda: fr_aos_scenarios() + fr_aos_231(),
      "732.0-B-5 4.1.2 to 4.1.5, 4.3.3 to 4.3.7 and 04-engines LNK-050 to LNK-054, LNK-077, "
      "OI-68, OI-70"),
-    ("frame_receiver_uslp.json", "frame-receiver", USLP_CFG, fr_uslp_scenarios,
+    ("frame_receiver_uslp.json", "frame-receiver", USLP_CFG, lambda: fr_uslp_scenarios() + fr_uslp_231(),
      "732.1-B-3 4.1.2, 4.1.3, 4.1.4.1, 4.1.5, 4.3.7 to 4.3.11 and 04-engines LNK-050 to LNK-053, "
      "LNK-079, OI-68"),
-    ("frame_receiver_tc.json", "frame-receiver", TC_CFG, fr_tc_scenarios,
+    ("frame_receiver_tc.json", "frame-receiver", TC_CFG, lambda: fr_tc_scenarios() + fr_tc_231(),
      "232.0-B-4 4.1.2, 4.4.7 and 04-engines LNK-050"),
     ("packet_extractor_tm.json", "packet-extractor", ext_cfg("tm"),
-     lambda: ext_scenarios("tm"),
+     lambda: ext_scenarios("tm") + ext_231("tm"),
      "132.0-B-3 4.1.2.7.6, 4.3.2, 133.0-B-2 4.1.3, 133.1-B-3 4.1.2 and 04-engines LNK-060 to "
      "LNK-064, OI-69, OI-72"),
     ("packet_extractor_aos.json", "packet-extractor", ext_cfg("aos"),
-     lambda: ext_scenarios("aos"),
+     lambda: ext_scenarios("aos") + ext_231("aos"),
      "732.0-B-5 4.1.4.2, 4.3.2, 133.0-B-2 4.1.3, 133.1-B-3 4.1.2 and 04-engines LNK-060 to "
      "LNK-064, OI-69, OI-72"),
     ("packet_extractor_uslp.json", "packet-extractor", ext_cfg("uslp"),
-     lambda: ext_scenarios("uslp"),
+     lambda: ext_scenarios("uslp") + ext_231("uslp"),
      "732.1-B-3 4.1.4.2, 4.3.2.2, 133.0-B-2 4.1.3, 133.1-B-3 4.1.2 and 04-engines LNK-060 to "
      "LNK-064, OI-69, OI-72"),
-    ("map_reassembler_tc.json", "map-reassembler", TC_MAP_CFG, re_tc_scenarios,
+    ("map_reassembler_tc.json", "map-reassembler", TC_MAP_CFG, lambda: re_tc_scenarios() + re_tc_231(),
      "232.0-B-4 4.1.3.2, 4.4.1 to 4.4.4 and 04-engines LNK-070, LNK-071, OI-72"),
-    ("map_reassembler_uslp.json", "map-reassembler", US_MAP_CFG, re_uslp_scenarios,
+    ("map_reassembler_uslp.json", "map-reassembler", US_MAP_CFG, lambda: re_uslp_scenarios() + re_uslp_231(),
      "732.1-B-3 4.1.4.2, 4.3.2 to 4.3.5 and 04-engines LNK-070 to LNK-072, OI-72"),
 ]
 
@@ -2169,12 +2683,25 @@ SUPERSEDED = {"link-recv-tm-frame-loss": FRAME_LOSS_REASON,
               "link-recv-uslp-frame-loss": FRAME_LOSS_REASON}
 
 
+class ReleasedFrameLoss(FrameReceiver):
+    """The FrameLoss answer of the released scenarios: one LossFlag per configured VC, then one
+    for the physical channel. Only the superseded scenarios are written with it, so that their
+    released steps stay as they are (TV-021)."""
+
+    def frame_loss(self):
+        outs = [{"notify": {"kind": "LossFlag", "scope": "vc", "vc": v["vcid"]}}
+                for v in self.cfg["vcs"]]
+        outs.append({"notify": {"kind": "LossFlag", "scope": "physical_channel"}})
+        return outs
+
+
 def build_file(engine, base_cfg, scenarios, source):
     scs = []
     for s in scenarios:
         cfg = s.config if s.config is not None else base_cfg
         try:
-            steps = replay(engine, cfg, s.inputs)
+            eng = ReleasedFrameLoss(cfg) if s.sid in SUPERSEDED else None
+            steps = replay(engine, cfg, s.inputs, eng)
         except (Unspecified, AssertionError) as e:
             raise SystemExit("%s: %s: %r" % (s.sid, type(e).__name__, e))
         d = {"id": s.sid, "description": s.description, "requirements": s.reqs}

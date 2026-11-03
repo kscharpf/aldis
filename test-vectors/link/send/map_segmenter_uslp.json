@@ -132,6 +132,18 @@
         {"at_us": 700, "input": {"timeout": {}}, "expect": [], "expect_no_timeout": true},
         {"at_us": 701, "input": {"next_fdu": {"handle": 2, "qos": "sequence_controlled"}}, "expect": [], "expect_no_timeout": true}
       ]
+    },
+    {
+      "id": "link-send-seg-uslp-lnk-040-service-refused",
+      "description": "A submission to a MAP of another service is refused with InvalidField (data_field_content) and no state change (OI-78): an SDU to a packets MAP, a packet to a MAPA MAP, octets to a MAPA MAP, an SDU to the octet-stream MAP; the queue stays empty.",
+      "requirements": ["LNK-040"],
+      "steps": [
+        {"at_us": 0, "input": {"submit_sdu": {"sdu_hex": "1011121314151617", "map": 1}}, "expect": [{"error": "InvalidField", "field": "data_field_content"}], "expect_no_timeout": true},
+        {"at_us": 1, "input": {"submit_packet": {"packet_hex": "0001C00000011011", "map": 2}}, "expect": [{"error": "InvalidField", "field": "data_field_content"}], "expect_no_timeout": true},
+        {"at_us": 2, "input": {"submit_octets": {"map": 2, "data_hex": "20212223"}}, "expect": [{"error": "InvalidField", "field": "data_field_content"}], "expect_no_timeout": true},
+        {"at_us": 3, "input": {"submit_sdu": {"sdu_hex": "30313233", "map": 4}}, "expect": [{"error": "InvalidField", "field": "data_field_content"}], "expect_no_timeout": true},
+        {"at_us": 10, "input": {"next_fdu": {"handle": 1, "qos": "sequence_controlled"}}, "expect": [], "expect_no_timeout": true}
+      ]
     }
   ]
 }

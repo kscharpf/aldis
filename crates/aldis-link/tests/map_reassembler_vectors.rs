@@ -36,6 +36,12 @@ fn small(v: &Value) -> u8 {
     u8::try_from(num(v)).unwrap()
 }
 
+/// The `max_sdu_len` of a MAP of a configuration (LNK-073): the engine's capacity when absent.
+fn max_sdu_len(m: &Value) -> usize {
+    m.get("max_sdu_len")
+        .map_or(S, |n| usize::try_from(num(n)).unwrap())
+}
+
 /// A protocol of the scenarios, with its configuration and inputs from a scenario.
 trait Proto: ReassemblerProtocol<Vc = VcId<6>> {
     fn config(c: &Map<String, Value>) -> MapReassemblerConfig<Self, M>;
@@ -54,7 +60,7 @@ impl Proto for Tc {
                 let id = aldis_tc::TcMapId::new(small(&m["map"])).unwrap();
                 match m["service"].as_str().unwrap() {
                     "packets" => ReassemblerMap::<Tc>::packets(vc, id, S).unwrap(),
-                    "sdu" => ReassemblerMap::<Tc>::sdu(vc, id, S).unwrap(),
+                    "sdu" => ReassemblerMap::<Tc>::sdu(vc, id, max_sdu_len(m)).unwrap(),
                     other => panic!("unknown service {other}"),
                 }
             })
@@ -76,7 +82,7 @@ impl Proto for Uslp {
                 let id = MapId::<4>::new(small(&m["map"])).unwrap();
                 match m["service"].as_str().unwrap() {
                     "packets" => ReassemblerMap::<Uslp>::packets(vc, id, S).unwrap(),
-                    "sdu" => ReassemblerMap::<Uslp>::sdu(vc, id, S).unwrap(),
+                    "sdu" => ReassemblerMap::<Uslp>::sdu(vc, id, max_sdu_len(m)).unwrap(),
                     "octet_stream" => ReassemblerMap::<Uslp>::octet_stream(vc, id),
                     other => panic!("unknown service {other}"),
                 }
@@ -121,10 +127,26 @@ fn outputs(o: &ReassemblerOutput, area: &[u8]) -> Vec<Value> {
         ReassemblerOutput::Sdu { vc, map, sdu } => vec![json!({"deliver": {
             "kind": "Sdu", "vc": vc, "map": map, "data_hex": hex::encode(sdu.slice(area).unwrap()),
         }})],
-        ReassemblerOutput::StreamData { vc, map, data, .. } => vec![json!({"deliver": {
-            "kind": "Sdu", "vc": vc, "map": map, "octet_stream": true,
-            "data_hex": hex::encode(data.slice(area).unwrap()),
-        }})],
+        ReassemblerOutput::StreamData {
+            vc,
+            map,
+            data,
+            after_gap,
+        } => {
+            let mut d = Map::new();
+            d.insert("kind".to_owned(), json!("Sdu"));
+            d.insert("vc".to_owned(), json!(vc));
+            d.insert("map".to_owned(), json!(map));
+            d.insert("octet_stream".to_owned(), json!(true));
+            d.insert(
+                "data_hex".to_owned(),
+                json!(hex::encode(data.slice(area).unwrap())),
+            );
+            if after_gap {
+                d.insert("after_gap".to_owned(), json!(true));
+            }
+            vec![json!({"deliver": d})]
+        }
         ReassemblerOutput::Packets {
             vc,
             map,
