@@ -30,4 +30,5 @@
 //! configuration, the counts, and the counters), so it needs no split. The others
 //! (MapSegmenter, MapReassembler, CltuPacker) take the same split when their C handles are built
 //! (M4 WP-7d): the rule is to move the octet arrays, and any zero-valued plain data that keeps
-//! the head small, into `EngineBuffers`.
+//! the head small, into `EngineBuffers`; a slot whose empty state is not zero (the Insert Zone's
+//! idle pattern) is written after the zeroing.

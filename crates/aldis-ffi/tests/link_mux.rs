@@ -892,7 +892,7 @@ fn a_member_of_another_protocol_is_read_and_refused_when_invalid() {
         |c| c.vcs[1].uslp_cop = 7,
     ];
     // Ranges of the members of another protocol: refused with their own kind.
-    let ranges: [(Edit, u32, u16); 6] = [
+    let ranges: [(Edit, u32, u16); 8] = [
         (
             |c| c.tm_oid_vc = 8,
             ALDIS_ERR_OUT_OF_RANGE,
@@ -917,6 +917,20 @@ fn a_member_of_another_protocol_is_read_and_refused_when_invalid() {
             |c| c.vcs[0].uslp_vcf_len_sc = 8,
             ALDIS_ERR_INVALID_CONFIG,
             ALDIS_FIELD_VCF_COUNT_LEN,
+        ),
+        (
+            |c| c.vcs[0].uslp_vcf_len_exp = 8,
+            ALDIS_ERR_INVALID_CONFIG,
+            ALDIS_FIELD_VCF_COUNT_LEN,
+        ),
+        (
+            |c| {
+                c.vc_count = 2;
+                c.vcs[1] = vc(2, 2);
+                c.vcs[1].uslp_map = 16;
+            },
+            ALDIS_ERR_OUT_OF_RANGE,
+            ALDIS_FIELD_MAP_ID,
         ),
         (
             |c| c.vcs[0].uslp_map = 16,

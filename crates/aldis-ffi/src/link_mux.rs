@@ -16,7 +16,7 @@
 //! `ALDIS_ERR_INVALID_CONFIG` on `link_protocol`. Every member is read whatever the protocol
 //! (`check_members`): a flag or constant that is invalid in a member the protocol does not use
 //! is `ALDIS_ERR_INVALID_FIELD` all the same, and a range-limited member of another protocol is
-//! range-checked.
+//! range-checked. Only the first `vc_count` entries of `vcs` are read.
 //!
 //! **Capacities.** The engine serves `ALDIS_LINK_MAX_VIRTUAL_CHANNELS` VCs of frames of at most
 //! `ALDIS_LINK_MAX_FRAME_OCTETS` octets (CABI-030); it is built in place (`aldis::link::inplace`,
@@ -722,21 +722,27 @@ unsafe fn mx_place(state: *mut ChannelMuxState, head: MxHead, idle: u8) {
             // SAFETY: as the contract says; the tag 0 is the discriminant of the variant.
             let p = unsafe { variant_payload::<_, Mx<Tm>>(state, 0) };
             engine_in_place!(Mx<Tm>, ChannelMuxHead<Tm, V>, B, p, h);
-            // SAFETY: `engine_in_place!` has just built the engine at `p`.
+            // SAFETY: `engine_in_place!` has just built the engine at `p`; its const assertion
+            // (link_gen.rs) puts the buffers within the engine, so `p` is valid for writes of one
+            // `ChannelMuxBuffers`, and the Insert Zone slot lies within them (`fill_insert`).
             unsafe { fill_insert(p.byte_add(Mx::<Tm>::BUFFERS_OFFSET).cast::<u8>(), idle) };
         }
         MxHead::Aos(h) => {
             // SAFETY: as the contract says; the tag 1 is the discriminant of the variant.
             let p = unsafe { variant_payload::<_, Mx<Aos>>(state, 1) };
             engine_in_place!(Mx<Aos>, ChannelMuxHead<Aos, V>, B, p, h);
-            // SAFETY: `engine_in_place!` has just built the engine at `p`.
+            // SAFETY: `engine_in_place!` has just built the engine at `p`; its const assertion
+            // (link_gen.rs) puts the buffers within the engine, so `p` is valid for writes of one
+            // `ChannelMuxBuffers`, and the Insert Zone slot lies within them (`fill_insert`).
             unsafe { fill_insert(p.byte_add(Mx::<Aos>::BUFFERS_OFFSET).cast::<u8>(), idle) };
         }
         MxHead::Uslp(h) => {
             // SAFETY: as the contract says; the tag 2 is the discriminant of the variant.
             let p = unsafe { variant_payload::<_, Mx<Uslp>>(state, 2) };
             engine_in_place!(Mx<Uslp>, ChannelMuxHead<Uslp, V>, B, p, h);
-            // SAFETY: `engine_in_place!` has just built the engine at `p`.
+            // SAFETY: `engine_in_place!` has just built the engine at `p`; its const assertion
+            // (link_gen.rs) puts the buffers within the engine, so `p` is valid for writes of one
+            // `ChannelMuxBuffers`, and the Insert Zone slot lies within them (`fill_insert`).
             unsafe { fill_insert(p.byte_add(Mx::<Uslp>::BUFFERS_OFFSET).cast::<u8>(), idle) };
         }
     }
