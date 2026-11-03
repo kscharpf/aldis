@@ -152,10 +152,10 @@ fn measured<'a>(
 }
 
 /// `xtask coverage [-p <crate>]...`: the gate for every crate, or for the crates named. With
-/// `ALDIS_COVERAGE_SHRINK` set (`xtask check --full` sets it) it lowers a waiver count to the measured misses when those are fewer
-/// ([`shrink_waiver`]); it never raises one.
+/// `ALDIS_COVERAGE_SHRINK=1` (`xtask check --full` sets it) it lowers a waiver count to the
+/// measured misses when those are fewer ([`shrink_waiver`]); it never raises one.
 pub fn main(args: &[&str]) -> Result<usize, String> {
-    let shrink = std::env::var_os("ALDIS_COVERAGE_SHRINK").is_some();
+    let shrink = std::env::var("ALDIS_COVERAGE_SHRINK").is_ok_and(|v| v == "1");
     let named = packages(args)?;
     if named.is_empty() {
         return run_selected(&gated()?, REPORTED, shrink);
@@ -214,31 +214,59 @@ fn shrink_waiver(text: &str, krate: &str, metric: &str, missed: u64) -> Option<(
     Some((joined, old))
 }
 
-/// With `--shrink`, lowers in `coverage-waivers.toml` the waivers of `krate` that exceed the
-/// measured misses, and returns the waivers as they now stand. Writes nothing when a metric
-/// misses more than it waives: that stays a failure and a reviewed edit.
-fn shrink_file(krate: &str, missed: [u64; 4], mut waived: [u64; 4]) -> Result<[u64; 4], String> {
+/// `text` (`coverage-waivers.toml`) with every waiver of `krate` that exceeds the measured
+/// `missed` lowered, the waivers as they now stand, and what to print. Changes nothing when a
+/// metric misses more than it waives: that stays a failure and a reviewed edit.
+fn shrink_text(
+    text: &str,
+    krate: &str,
+    missed: [u64; 4],
+    mut waived: [u64; 4],
+) -> (String, [u64; 4], Vec<String>) {
+    let mut text = text.to_owned();
+    let mut notes = Vec::new();
     if missed.iter().zip(waived).any(|(m, w)| *m > w) {
-        return Ok(waived);
+        return (text, waived, notes);
     }
-    let path = repo::root().join("coverage-waivers.toml");
-    let mut text = repo::read(&path)?;
-    let mut changed = false;
+    let before = waived;
     for (i, metric) in METRICS.iter().enumerate() {
-        let (Some(&m), Some(slot)) = (missed.get(i), waived.get_mut(i)) else {
+        let (Some(&m), Some(&w), Some(slot)) = (missed.get(i), before.get(i), waived.get_mut(i))
+        else {
             continue;
         };
         if let Some((new, old)) = shrink_waiver(&text, krate, metric, m) {
-            println!(
-                "shrunk: coverage-waivers.toml {krate} {metric} count {old} -> {m}; commit it"
-            );
+            let more = if m == 0 {
+                "remove the entry or rewrite its justification"
+            } else {
+                "update its justification if its prose sums"
+            };
+            notes.push(format!(
+                "shrunk: coverage-waivers.toml {krate} {metric} count {old} -> {m}; {more}; \
+                 commit it"
+            ));
             text = new;
             *slot = m;
-            changed = true;
+        } else if m < w {
+            notes.push(format!(
+                "not shrunk: {krate} {metric} has {w} waived and {m} missed but not exactly \
+                 one waiver entry; lower the count by hand"
+            ));
         }
     }
-    if changed {
-        std::fs::write(&path, text).map_err(|e| format!("{}: {e}", repo::rel(&path)))?;
+    (text, waived, notes)
+}
+
+/// With `ALDIS_COVERAGE_SHRINK=1`, applies [`shrink_text`] to `coverage-waivers.toml`, prints
+/// the notes, and returns the waivers as they now stand.
+fn shrink_file(krate: &str, missed: [u64; 4], waived: [u64; 4]) -> Result<[u64; 4], String> {
+    let path = repo::root().join("coverage-waivers.toml");
+    let text = repo::read(&path)?;
+    let (new, waived, notes) = shrink_text(&text, krate, missed, waived);
+    for n in &notes {
+        println!("{n}");
+    }
+    if new != text {
+        std::fs::write(&path, new).map_err(|e| format!("{}: {e}", repo::rel(&path)))?;
     }
     Ok(waived)
 }
@@ -515,7 +543,7 @@ fn judge(
 
 #[cfg(test)]
 mod tests {
-    use super::{measured, missed, packages, select, shrink_waiver};
+    use super::{measured, missed, packages, select, shrink_text, shrink_waiver};
 
     fn names(n: &[&str]) -> Vec<String> {
         n.iter().map(|s| (*s).to_owned()).collect()
@@ -634,5 +662,33 @@ end_of_record
         assert_eq!(shrink_waiver(WAIVERS, "aldis-a", "regions", 6), None);
         assert_eq!(shrink_waiver(WAIVERS, "aldis-a", "branches", 0), None);
         assert_eq!(shrink_waiver(WAIVERS, "aldis-b", "regions", 0), None);
+    }
+
+    #[test]
+    fn nothing_is_written_while_any_metric_of_the_crate_is_over_its_waiver() {
+        // req: VER-024
+        // regions 3 < 5 would shrink, but lines 3 > 2 does not: the text stays as it is.
+        let (text, waived, notes) = shrink_text(WAIVERS, "aldis-a", [3, 0, 3, 0], [5, 0, 2, 0]);
+        assert_eq!(
+            (text.as_str(), waived, notes.len()),
+            (WAIVERS, [5, 0, 2, 0], 0)
+        );
+        let (text, waived, notes) = shrink_text(WAIVERS, "aldis-a", [3, 0, 2, 0], [5, 0, 2, 0]);
+        assert_eq!(waived, [3, 0, 2, 0]);
+        assert_ne!(text, WAIVERS);
+        assert!(notes[0].contains("update its justification"), "{notes:?}");
+        let (_, _, notes) = shrink_text(WAIVERS, "aldis-a", [5, 0, 0, 0], [5, 0, 2, 0]);
+        assert!(notes[0].contains("remove the entry"), "{notes:?}");
+    }
+
+    #[test]
+    fn several_entries_for_a_metric_are_reported_and_left_alone() {
+        // req: VER-024
+        let two = format!(
+            "{WAIVERS}\n[[waiver]]\ncrate = \"aldis-a\"\nmetric = \"regions\"\ncount = 1\njustification = \"y\"\n"
+        );
+        let (text, _, notes) = shrink_text(&two, "aldis-a", [0, 0, 2, 0], [6, 0, 2, 0]);
+        assert_eq!(text, two);
+        assert!(notes[0].contains("by hand"), "{notes:?}");
     }
 }

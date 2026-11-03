@@ -494,9 +494,10 @@ fn plan(t: &Touched, tools: Tools, mode: Mode) -> Plan {
     }
 }
 
-/// The steps that only `--full` runs: coverage (which shrinks a waiver that exceeds the misses), `features`, `stack`, `big-endian`, and the exerciser's run
-/// under QEMU, each when the verification run would run its check for the change, and skipped
-/// with the reason when its tool is missing.
+/// The steps that only `--full` runs: coverage (which shrinks a waiver that exceeds the
+/// misses), `features`, `stack`, `big-endian`, and the exerciser's run under QEMU, each when
+/// the verification run would run its check for the change, and skipped with the reason when
+/// its tool is missing.
 fn full_steps(t: &Touched, tools: Tools, run: &mut Vec<Item>, skipped: &mut Vec<Skip>) {
     if t.gate_runs("coverage") {
         if tools.coverage {
