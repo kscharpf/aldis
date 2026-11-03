@@ -39,5 +39,6 @@ mod packet;
 pub mod policy;
 pub mod protocol;
 pub mod reassembler;
+#[cfg(any(feature = "tm", feature = "tc", feature = "aos", feature = "uslp"))]
 pub mod receiver;
 pub mod segmenter;

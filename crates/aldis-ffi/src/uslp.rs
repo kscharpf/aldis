@@ -1023,10 +1023,14 @@ pub unsafe extern "C" fn aldis_uslp_peek_length(
 /// (`out->layout.frame_len` is the frame's length; API-011); on a fixed-length channel `len`
 /// must be the frame length (API-012).
 ///
+/// A non-truncated frame of a Spacecraft ID, VCID, or MAP ID that the channels do not hold is decoded
+/// as its own fields say and not rejected (API-017, RS-023); `aldis_uslp_stream_next` rejects it. A
+/// truncated frame needs its VC, so it fails with `ALDIS_ERR_UNKNOWN_CHANNEL`.
+///
 /// # Errors
 /// The decoder errors of `docs/standards/uslp-frame.md` §3.1, in its order: among them
 /// `ALDIS_ERR_INCOMPLETE` (`needed`), `ALDIS_ERR_UNSUPPORTED_VERSION` (`frame_version`),
-/// `ALDIS_ERR_UNKNOWN_CHANNEL` (`spacecraft_id`, `vc_id`, `map_id`), `ALDIS_ERR_RESERVED_VALUE`
+/// `ALDIS_ERR_RESERVED_VALUE`
 /// (`protocol_control_command_flag`, and `uslp_header_spare` in strict mode),
 /// `ALDIS_ERR_LENGTH_MISMATCH` (`vcf_count_len`, `frame_len`), `ALDIS_ERR_CRC_MISMATCH`,
 /// `ALDIS_ERR_INVALID_FIELD` (`end_of_frame_primary_header_flag`, `tfdz_construction_rule`,

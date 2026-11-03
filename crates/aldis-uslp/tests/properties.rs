@@ -15,8 +15,8 @@ use aldis_testkit::strategies::uslp::{
 };
 use aldis_testkit::strategies::{self, octets};
 use aldis_uslp::{
-    Delimited, FrameContent, FrameDelimiter, UslpAnomaly, UslpFrame, UslpFrameWriter, encode,
-    encode_oid, next_frame, validate_frame, validate_frame_lenient,
+    Delimited, FrameContent, FrameDelimiter, Reason, UslpAnomaly, UslpFrame, UslpFrameWriter,
+    encode, encode_oid, next_frame, validate_frame, validate_frame_lenient,
 };
 
 /// Failing cases are saved here and replayed first.
@@ -24,6 +24,14 @@ const REGRESSIONS: &str = concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/proptest-regressions/properties.txt"
 );
+
+/// Whether the reason is a channel the configuration does not hold (API-017).
+const fn unknown_channel(reason: Reason) -> bool {
+    matches!(
+        reason,
+        Reason::UnexpectedSpacecraft | Reason::InvalidVcid | Reason::InvalidMapId
+    )
+}
 
 proptest! {
     #![proptest_config(strategies::config(256, REGRESSIONS))]
@@ -121,14 +129,17 @@ proptest! {
             prop_assert_eq!(&f.octets()[f.layout().security_trailer()], f.security_trailer());
             prop_assert!(f.layout().data().len() > f.tfdz().len());
             prop_assert_eq!(UslpFrame::peek_length(&v, t), Ok(f.len()));
-            prop_assert!(validate_frame_lenient(f.octets(), t).is_ok());
+            // Unless its channel is not configured: the decoder reads such a frame (API-017).
+            if let Err(r) = validate_frame_lenient(f.octets(), t) {
+                prop_assert!(unknown_channel(r.reason()), "{:?}", r);
+            }
             if f.anomalies().contains(UslpAnomaly::OidHeaderMismatch) {
                 prop_assert_eq!(f.vc_id().get(), 63);
             }
         }
         match (validate_frame(&v, t), UslpFrame::decode(&v, t)) {
             (Ok(a), Ok(b)) => prop_assert_eq!(a.into_frame(), b),
-            (Err(r), Ok(b)) => prop_assert!(b.len() < v.len(), "{:?}", r),
+            (Err(r), Ok(b)) => prop_assert!(b.len() < v.len() || unknown_channel(r.reason()), "{:?}", r),
             (Ok(_), Err(e)) => prop_assert!(false, "validated but not decoded: {:?}", e),
             (Err(_), Err(_)) => {}
         }

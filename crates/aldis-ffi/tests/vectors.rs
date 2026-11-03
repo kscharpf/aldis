@@ -2811,6 +2811,12 @@ vector_test!(aos_issue4_compat, "aos", "issue4_compat", aos_run);
 vector_test!(aos_scid_10bit, "aos", "scid_10bit", aos_run);
 vector_test!(aos_config, "aos", "config", aos_run);
 vector_test!(aos_invalid, "aos", "invalid", aos_run);
+vector_test!(
+    aos_unconfigured_channel,
+    "aos",
+    "unconfigured_channel",
+    aos_run
+);
 vector_test!(tm_minimal, "tm", "minimal", tm_run);
 vector_test!(tm_fsh_ocf_fecf, "tm", "fsh_ocf_fecf", tm_run);
 vector_test!(tm_fhp_values, "tm", "fhp_values", tm_run);
@@ -3364,6 +3370,7 @@ mod tc {
     );
     vector_test!(tc_validation_failures, "tc", "validation_failures", run);
     vector_test!(tc_decode_errors, "tc", "decode_errors", run);
+    vector_test!(tc_unconfigured_channel, "tc", "unconfigured_channel", run);
     vector_test!(tc_config, "tc", "config", run);
     vector_test!(tc_clcw, "tc", "clcw", run);
 }
@@ -3422,6 +3429,12 @@ vector_test!(
     uslp_run
 );
 vector_test!(uslp_invalid, "uslp", "invalid", uslp_run);
+vector_test!(
+    uslp_unconfigured_channel,
+    "uslp",
+    "unconfigured_channel",
+    uslp_run
+);
 // ---- end USLP
 
 // ---- COP-1 engines (M3 WP-6): the scenarios of `test-vectors/cop1/scenarios/` through the C ABI

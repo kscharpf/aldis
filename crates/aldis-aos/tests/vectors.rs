@@ -465,3 +465,9 @@ fn invalid() {
     // req: AOS-010, AOS-011, API-012, API-022, GEN-041, VER-021
     run_codec_file("aos/invalid.json", handle).assert_passed();
 }
+
+#[test]
+fn unconfigured_channel() {
+    // req: AOS-010, AOS-016, API-016, RS-023, API-017, VER-021
+    run_codec_file("aos/unconfigured_channel.json", handle).assert_passed();
+}

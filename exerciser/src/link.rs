@@ -8,9 +8,10 @@
 use core::hint::black_box as bb;
 
 use aldis_aos::AosEdition;
-use aldis_core::ErrorKind;
-use aldis_core::ids::MapId;
+use aldis_core::ids::{MapId, SpacecraftId, VcId};
+use aldis_core::security::NoSecurity;
 use aldis_core::time::{Duration, Instant};
+use aldis_core::{Error, ErrorKind};
 use aldis_link::common::{Counter, IdlePacketKind, IdlePolicy, Occupancy, Qos, ValidPvns};
 use aldis_link::extractor::{
     EXTRACTOR_MAX_ACTIONS, ExtractionError, ExtractorInput, ExtractorOutput, FieldIn, MIN_ASSEMBLY,
@@ -25,10 +26,10 @@ use aldis_link::protocol::{
     Uslp, UslpParams,
 };
 use aldis_link::receiver::{
-    AosChannel, AosContent, AosVc, CallerDiscardReason, CheckedFrame, DiscardReason,
-    FRAME_RECEIVER_MAX_ACTIONS, FrameReceiver, FrameReceiverConfig, MapSet, ReceiveProtocol,
-    ReceiverInput, ReceiverOutput, Service, TcChannel, TcVc, TmChannel, TmContent, TmVc,
-    UslpChannel, UslpVc, VcEntry,
+    AosChannel, AosContent, AosVc, CallerDiscardReason, DiscardReason, FRAME_RECEIVER_MAX_ACTIONS,
+    FrameReceiver, FrameReceiverConfig, MapSet, ReceiveProtocol, ReceiverActions, ReceiverInput,
+    ReceiverOutput, Service, TcChannel, TcVc, TmChannel, TmContent, TmVc, UslpChannel, UslpVc,
+    VcEntry,
 };
 use aldis_uslp::Upid;
 
@@ -378,9 +379,138 @@ fn frame(len: usize, head: &[u8], fill: u8) -> [u8; 40] {
     octets
 }
 
-/// A frame input.
-fn input<P: ReceiveProtocol, const V: usize>(octets: &[u8]) -> ReceiverInput<'_, P, V> {
-    ReceiverInput::Frame(CheckedFrame::new(bb(octets)))
+/// A protocol whose `Plain` frame the exerciser builds from octets (RS-023): the codec decodes
+/// them as the one frame of a physical channel of their length, knows no virtual channel, checks
+/// no FECF, and takes the `NoSecurity` step.
+trait PlainOf: ReceiveProtocol {
+    /// The `Plain` frame, or the codec's refusal.
+    fn plain(octets: &[u8]) -> Result<Self::Plain<'_>, Error>;
+}
+
+impl PlainOf for Tm {
+    fn plain(octets: &[u8]) -> Result<Self::Plain<'_>, Error> {
+        let pc = aldis_tm::TmPhysicalChannelConfig::new(octets.len(), false)?;
+        aldis_tm::TmFrame::decode(octets, &pc)?.into_plain(NoSecurity)
+    }
+}
+
+/// A lookup that holds no AOS virtual channel.
+struct NoAosVcs;
+
+impl aldis_aos::VcLookup for NoAosVcs {
+    fn has_spacecraft(&self, _: SpacecraftId<10>) -> bool {
+        false
+    }
+
+    fn vc(&self, _: SpacecraftId<10>, _: VcId<6>) -> Option<aldis_aos::AosVirtualChannelConfig> {
+        None
+    }
+}
+
+impl PlainOf for Aos {
+    fn plain(octets: &[u8]) -> Result<Self::Plain<'_>, Error> {
+        let pc = aldis_aos::AosPhysicalChannelConfig::new(
+            octets.len(),
+            false,
+            2,
+            false,
+            AosEdition::Issue5,
+        )?;
+        let frame = aldis_aos::AosFrame::decode(octets, &pc, &NoAosVcs)?;
+        // The step a caller takes to reject the frame of a channel it does not hold.
+        t_validate(&frame);
+        frame.into_plain(NoSecurity)
+    }
+}
+
+/// Calls `validate`, which rejects a frame of a channel the lookup does not hold.
+fn t_validate(frame: &aldis_aos::AosFrame<'_>) -> bool {
+    bb(frame.clone()).validate().is_err()
+}
+
+/// A lookup that holds no TC channel.
+struct NoTcChannels(aldis_tc::PhysicalChannelConfig);
+
+impl aldis_tc::VcLookup for NoTcChannels {
+    fn physical_channel(&self) -> aldis_tc::PhysicalChannelConfig {
+        self.0
+    }
+
+    fn has_spacecraft(&self, _: aldis_tc::TcSpacecraftId) -> bool {
+        false
+    }
+
+    fn vc(&self, _: aldis_tc::TcSpacecraftId, _: aldis_tc::TcVcId) -> Option<aldis_tc::VcConfig> {
+        None
+    }
+
+    fn map(
+        &self,
+        _: aldis_tc::TcSpacecraftId,
+        _: aldis_tc::TcVcId,
+        _: aldis_tc::TcMapId,
+    ) -> Option<aldis_tc::MapConfig> {
+        None
+    }
+}
+
+impl PlainOf for Tc {
+    fn plain(octets: &[u8]) -> Result<Self::Plain<'_>, Error> {
+        let channels = NoTcChannels(aldis_tc::PhysicalChannelConfig::new(octets.len(), false)?);
+        aldis_tc::TcFrame::decode(octets, &channels)?.into_plain(NoSecurity)
+    }
+}
+
+/// A lookup that holds no USLP channel.
+struct NoUslpChannels(aldis_uslp::PhysicalChannelConfig);
+
+impl aldis_uslp::VcLookup for NoUslpChannels {
+    fn physical_channel(&self) -> aldis_uslp::PhysicalChannelConfig {
+        self.0
+    }
+
+    fn has_spacecraft(&self, _: aldis_uslp::UslpSpacecraftId) -> bool {
+        false
+    }
+
+    fn vc(
+        &self,
+        _: aldis_uslp::UslpSpacecraftId,
+        _: aldis_uslp::UslpVcId,
+    ) -> Option<aldis_uslp::VcConfig> {
+        None
+    }
+
+    fn map(
+        &self,
+        _: aldis_uslp::UslpSpacecraftId,
+        _: aldis_uslp::UslpVcId,
+        _: aldis_uslp::UslpMapId,
+    ) -> Option<aldis_uslp::MapConfig> {
+        None
+    }
+}
+
+impl PlainOf for Uslp {
+    fn plain(octets: &[u8]) -> Result<Self::Plain<'_>, Error> {
+        let pc = aldis_uslp::PhysicalChannelConfig::new(
+            aldis_uslp::TransferFrameType::Fixed,
+            octets.len(),
+            2,
+            false,
+        )?;
+        aldis_uslp::UslpFrame::decode(octets, &NoUslpChannels(pc))?.into_plain(NoSecurity)
+    }
+}
+
+/// One frame into a receiver: the codec decodes it first, and its refusal is the error.
+fn feed<P: PlainOf, const V: usize>(
+    rx: &mut FrameReceiver<P, V>,
+    octets: &[u8],
+    area: &mut [u8],
+) -> Result<ReceiverActions<P>, Error> {
+    let plain = P::plain(bb(octets))?;
+    rx.step(ReceiverInput::Frame(plain), area)
 }
 
 /// The `FrameReceiver` for each protocol: a frame of a served VC, one of an unknown VC, a gap,
@@ -412,7 +542,7 @@ fn receivers(t: &mut Tally) {
     let mut head = [0u8; LEN];
     for (d, s) in head
         .iter_mut()
-        .zip([0x00, 0x13, 0, 0, 0x80, 0x00, 0x01, 0xAA])
+        .zip([0x00, 0x13, 0, 0, 0x98, 0x00, 0x01, 0xAA])
     {
         *d = s;
     }
@@ -426,11 +556,8 @@ fn receivers(t: &mut Tally) {
             *b = d;
         }
     }
-    t.check(
-        tm.step(input(&first), &mut area)
-            .is_ok_and(|a| a.len() == 3),
-    );
-    let gapped = tm.step(input(&next), &mut area);
+    t.check(feed(&mut tm, &first, &mut area).is_ok_and(|a| a.len() == 3));
+    let gapped = feed(&mut tm, &next, &mut area);
     t.check(gapped.is_ok_and(|a| {
         a.len() == FRAME_RECEIVER_MAX_ACTIONS
             && matches!(a.get(0), Some(ReceiverOutput::FrameGap { missing: 2, .. }))
@@ -439,7 +566,7 @@ fn receivers(t: &mut Tally) {
     if let Some(b) = unknown.get_mut(1) {
         *b = 0x1B;
     }
-    t.check(tm.step(input(&unknown), &mut area).is_ok_and(|a| {
+    t.check(feed(&mut tm, &unknown, &mut area).is_ok_and(|a| {
         matches!(
             a.iter().last(),
             Some(ReceiverOutput::FrameDiscarded {
@@ -448,7 +575,7 @@ fn receivers(t: &mut Tally) {
             })
         )
     }));
-    t.check(tm.step(input(&first[1..]), &mut area).is_err());
+    t.check(feed(&mut tm, &first[1..], &mut area).is_err());
     t.check(tm.step(ReceiverInput::FrameLoss, &mut area).is_ok());
     t.check(
         tm.step(
@@ -466,7 +593,7 @@ fn receivers(t: &mut Tally) {
     t.check(
         status.frames_in.get() == 3
             && status.unknown_channel.get() == 1
-            && status.refused.get() == 2,
+            && status.refused.get() == 1,
     );
     t.check(
         status.gaps.get() == 2 && status.crc_mismatch.get() == 1 && status.frame_loss.get() == 1,
@@ -505,10 +632,7 @@ fn receiver_aos(t: &mut Tally) {
         &[0x40, 0x01, 0, 0, 0, 0x00, 0xC1, 0xC2, 0x00, 0x13],
         0x00,
     );
-    t.check(
-        aos.step(input(&aos_in), &mut area)
-            .is_ok_and(|o| o.len() == 2),
-    );
+    t.check(feed(&mut aos, &aos_in, &mut area).is_ok_and(|o| o.len() == 2));
     t.check(
         aos.step(ReceiverInput::RawFrame(&aos_in), &mut area)
             .is_ok_and(|o| {
@@ -524,7 +648,7 @@ fn receiver_aos(t: &mut Tally) {
         &[0x40, 0x01, 0, 0, 1, 0x00, 0xC1, 0xC2, 0x3F, 0x00],
         0x00,
     );
-    t.check(aos.step(input(&beyond), &mut area).is_err());
+    t.check(feed(&mut aos, &beyond, &mut area).is_err());
     let content = aos_config.vcs().next().map(|e| e.params().content());
     t.check(content == Some(AosContent::Bitstream));
 }
@@ -560,12 +684,9 @@ fn receiver_uslp(t: &mut Tally) {
         &[0xC0, 0x00, 0x00, 0x20, 0x00, 0x27, 0x01, 0x05, 0xD1, 0xD2],
         0x00,
     );
+    t.check(feed(&mut uslp, &uslp_in, &mut area).is_ok_and(|o| o.len() == 2));
     t.check(
-        uslp.step(input(&uslp_in), &mut area)
-            .is_ok_and(|o| o.len() == 2),
-    );
-    t.check(
-        uslp.step(input(&uslp_in), &mut area)
+        feed(&mut uslp, &uslp_in, &mut area)
             .is_ok_and(|o| matches!(o.get(0), Some(ReceiverOutput::CountDiscontinuity { .. }))),
     );
     let control = frame(LEN, &[0xC0, 0x00, 0x00, 0x20, 0x00, 0x27, 0xC0, 0x01], 0x00);
@@ -573,17 +694,17 @@ fn receiver_uslp(t: &mut Tally) {
     if let Some(b) = protocol_control.get_mut(6) {
         *b = 0xC1;
     }
-    t.check(uslp.step(input(&protocol_control), &mut area).is_ok());
+    t.check(feed(&mut uslp, &protocol_control, &mut area).is_ok());
     let mut reserved = control;
     if let Some(b) = reserved.get_mut(6) {
         *b = 0x41;
     }
-    t.check(uslp.step(input(&reserved), &mut area).is_err());
+    t.check(feed(&mut uslp, &reserved, &mut area).is_err());
     let mut wrong_map = control;
     if let Some(b) = wrong_map.get_mut(3) {
         *b = 0x22;
     }
-    t.check(uslp.step(input(&wrong_map), &mut area).is_ok_and(|o| {
+    t.check(feed(&mut uslp, &wrong_map, &mut area).is_ok_and(|o| {
         matches!(
             o.iter().last(),
             Some(ReceiverOutput::FrameDiscarded { map: Some(_), .. })
@@ -621,14 +742,14 @@ fn receiver_tc(t: &mut Tally) {
     let mut tc = FrameReceiver::<Tc, 4>::new(tc_config);
     let tc_in = frame(LEN, &[0x00, 0x2A, 0x04, 0x27, 0x00], 0x00);
     t.check(
-        tc.step(input(&tc_in), &mut area)
+        feed(&mut tc, &tc_in, &mut area)
             .is_ok_and(|o| matches!(o.get(0), Some(ReceiverOutput::TcFrame { .. }))),
     );
     let mut served_not = tc_in;
     if let Some(b) = served_not.get_mut(2) {
         *b = 0x08;
     }
-    t.check(tc.step(input(&served_not), &mut area).is_ok_and(|o| {
+    t.check(feed(&mut tc, &served_not, &mut area).is_ok_and(|o| {
         matches!(
             o.get(0),
             Some(ReceiverOutput::FrameDiscarded {

@@ -40,9 +40,12 @@ const fn pdu_of(unit: DataUnit<'_>) -> PduHeader {
 /// decoded, and lenient decodes it the same (API-020, API-010, GEN-020).
 fn strict_re_encode_property(table: &AosTable, bytes: &[u8]) -> Result<(), TestCaseError> {
     let pc = table.physical_channel();
-    let Ok(f) = AosFrame::decode(bytes, &pc, table) else {
+    // Only a frame of a configured channel is re-encoded: the decoder reads any other as opaque
+    // octets (API-017).
+    let Ok(f) = AosFrame::decode(bytes, &pc, table).and_then(AosFrame::validate) else {
         return Ok(());
     };
+    let f = f.into_frame();
     let lenient = AosFrame::decode_lenient(bytes, &pc, table).unwrap();
     prop_assert!(lenient.anomalies().is_empty());
     prop_assert_eq!(&*lenient, &f);

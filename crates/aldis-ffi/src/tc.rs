@@ -897,14 +897,16 @@ pub unsafe extern "C" fn aldis_tc_header_decode(
 /// octets after it are not read. The Security Header and Trailer lengths are those of the
 /// frame's virtual channel, or of its MAP when it has a Segment Header.
 ///
+/// A frame of a Spacecraft ID, VCID, or MAP ID that the channels do not hold is decoded, read as the
+/// Physical Channel allows, and not rejected (API-017, RS-023); `aldis_tc_stream_next` rejects it.
+///
 /// # Errors
 /// The errors of [`aldis_tc_mc_config_check`]; then, in this order: `ALDIS_ERR_INCOMPLETE`
 /// (`needed`) for fewer octets than the Primary Header or the frame; `ALDIS_ERR_UNSUPPORTED_VERSION`
-/// (`frame_version`); `ALDIS_ERR_UNKNOWN_CHANNEL` (`spacecraft_id`) for another Spacecraft ID;
-/// `ALDIS_ERR_RESERVED_VALUE` (`control_command_flag`) (TC-002) and, in strict mode,
-/// (`tc_header_spare`) (TC-003); `ALDIS_ERR_UNKNOWN_CHANNEL` (`vc_id`); `ALDIS_ERR_OUT_OF_RANGE`
+/// (`frame_version`); `ALDIS_ERR_RESERVED_VALUE` (`control_command_flag`) (TC-002) and, in strict mode,
+/// (`tc_header_spare`) (TC-003); `ALDIS_ERR_OUT_OF_RANGE`
 /// (`frame_len`) above the channel's maximum and `ALDIS_ERR_INVALID_FIELD` (`frame_data_field`)
-/// for no data octet; `ALDIS_ERR_CRC_MISMATCH` (TC-006); `ALDIS_ERR_UNKNOWN_CHANNEL` (`map_id`);
+/// for no data octet; `ALDIS_ERR_CRC_MISMATCH` (TC-006);
 /// in strict mode `ALDIS_ERR_RESERVED_VALUE` (`control_command`) for a Type-C data field that
 /// is neither command (TC-005); CABI-022 violations.
 ///

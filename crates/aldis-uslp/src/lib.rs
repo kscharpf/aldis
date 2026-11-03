@@ -13,6 +13,7 @@
 //! | [`writer`] | One-shot `encode`, two-phase `UslpFrameWriter`, `encode_truncated`, `encode_oid` and `encode_oid_galois` | 732.1 §4.1, §6.3, Annex D | USLP-009, USLP-010, API-020…API-023 |
 //! | [`anomaly`] | `UslpAnomaly` lenient-mode flags | 732.1 §4.1.2.9, §4.1.4.1.8–9 | API-032, API-033 |
 //! | [`delimit`] | Frame Delimiting and Fill Data Removal: stateless `next_frame`, `FrameDelimiter` | 732.1 §4.3.11.2 | USLP-015 |
+//! | [`plain`] | `UslpFrame::into_plain` through `NoSecurity`, returning a `PlainUslpFrame`, the frame input of an engine | 355.0 §2.3 | RS-023, API-070, API-074 |
 //! | [`validate`] | USLP Frame Validation Checks: `validate_frame` (strict and lenient), `ValidatedUslpFrame`, `Reason`, `Rejection` | 732.1 §4.3.11.3 | USLP-014, API-016 |
 //! | [`field`] | The field codes its errors name, re-exported from `aldis_core::field` | 732.1 §4.1, §5 | API-082, GEN-041 |
 //!
@@ -44,6 +45,7 @@ pub mod config;
 pub mod delimit;
 pub mod field;
 pub mod header;
+pub mod plain;
 pub mod stream;
 pub mod tfdf;
 pub mod truncated;
@@ -63,6 +65,7 @@ pub use header::{
     TRUNCATED_HEADER_LEN, UslpMapId, UslpPrimaryHeader, UslpSpacecraftId, UslpVcId, VcfCount,
     VcfCountLen,
 };
+pub use plain::PlainUslpFrame;
 pub use stream::{DiscardReason, FrameStream, IntakeItem, LenientFrameStream};
 pub use tfdf::{
     ConstructionRule, FirstHeaderPointer, LastValidOctet, POINTER_NONE, TfdfHeader, TfdzOffset,

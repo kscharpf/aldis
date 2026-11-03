@@ -388,3 +388,9 @@ fn clcw() {
     // req: TC-030, TC-031, VER-021
     run_codec_file("tc/clcw.json", handler).assert_passed();
 }
+
+#[test]
+fn unconfigured_channel() {
+    // req: TC-021, TC-022, RS-023, API-017, VER-021
+    run_codec_file("tc/unconfigured_channel.json", handler).assert_passed();
+}
