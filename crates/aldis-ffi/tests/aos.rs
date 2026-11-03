@@ -11,7 +11,8 @@ use aldis_ffi::aos::*;
 use aldis_ffi::error::*;
 use aldis_ffi::field::{
     ALDIS_FIELD_BITSTREAM_DATA_POINTER, ALDIS_FIELD_DATA_FIELD_CONTENT,
-    ALDIS_FIELD_FIRST_HEADER_POINTER, ALDIS_FIELD_SPACECRAFT_ID, ALDIS_FIELD_VC_ID,
+    ALDIS_FIELD_FIRST_HEADER_POINTER, ALDIS_FIELD_FRAME_LEN, ALDIS_FIELD_SPACECRAFT_ID,
+    ALDIS_FIELD_VC_ID,
 };
 use aldis_ffi::oid::*;
 use aldis_ffi::{ALDIS_MODE_LENIENT, ALDIS_MODE_STRICT, aldis_error_detail_t};
@@ -1018,7 +1019,7 @@ fn validate_rejects_a_frame_of_an_unconfigured_channel() {
     // A frame that does not decode fails with the decoder's error.
     let mut bad = frame.clone();
     bad[1] ^= 0x40;
-    let mut found = 0_u32;
+    let mut found = u32::MAX;
     let mut d = detail();
     // SAFETY: as above.
     let status = unsafe {
@@ -1034,4 +1035,6 @@ fn validate_rejects_a_frame_of_an_unconfigured_channel() {
         )
     };
     assert_eq!(status, ALDIS_ERR_LENGTH_MISMATCH);
+    assert_eq!(d.field, ALDIS_FIELD_FRAME_LEN);
+    assert_eq!(found, u32::MAX, "an error leaves anomalies unwritten");
 }
