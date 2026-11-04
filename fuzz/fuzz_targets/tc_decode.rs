@@ -2,8 +2,7 @@
 //! drawn from the input: no panic; strict ⊆ lenient; `peek_length` agrees with `decode`; the
 //! Frame Validation Checks accept the decoded frame of a configured channel and reject that of an
 //! unknown one; and a strict decode of a configured channel re-encodes, with its Security Header
-//! and Trailer, to the same octets (TC-001…TC-006, TC-021, TC-023, GEN-020,
-//! GEN-042).
+//! and Trailer, to the same octets (TC-001…TC-006, TC-021, TC-023, GEN-020, GEN-042).
 #![no_main]
 
 // req: TC-001, TC-002, TC-003, TC-004, TC-005, TC-006, TC-021, TC-023, API-020, GEN-020, GEN-042, VER-022
@@ -104,6 +103,8 @@ fn run(u: &mut Unstructured<'_>) -> Result<()> {
         }
     }
     // A strict decode of a frame of a configured channel re-encodes to the same octets (API-020).
+    // The Err arms above fail on any rejection but an unknown channel, so "validates Ok" here
+    // means "a configured channel".
     if let Ok(f) = strict
         && validate_frame_lenient(f.octets(), &table).is_ok()
     {

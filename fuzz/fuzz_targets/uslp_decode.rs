@@ -2,9 +2,9 @@
 //! delimiter on channels drawn from the input: no panic; the input unchanged; strict ⊆ lenient;
 //! `peek_length` agrees with `decode`; the USLP Frame Validation Checks accept the decoded frame
 //! of a configured channel and reject that of an unknown one; the delimiter's first frame is the
-//! decoded one; and a strict decode of a configured channel re-encodes,
-//! with its Security Header and Trailer, to the same octets (USLP-001…USLP-007, USLP-014…USLP-016,
-//! API-020, GEN-020, GEN-042).
+//! decoded one for every non-truncated frame; and a strict decode of a configured channel
+//! re-encodes, with its Security Header and Trailer, to the same octets (USLP-001…USLP-007,
+//! USLP-014…USLP-016, API-020, GEN-020, GEN-042).
 #![no_main]
 
 // req: USLP-001, USLP-002, USLP-003, USLP-004, USLP-005, USLP-006, USLP-014, USLP-015, USLP-016, API-020, GEN-020, GEN-042, VER-022
@@ -196,12 +196,7 @@ fn run(u: &mut Unstructured<'_>) -> Result<()> {
             assert_eq!(UslpFrame::peek_length(&bytes, &table), Ok(f.len()));
             // The decoder reads a frame of an unknown channel; the checks reject it (RS-023).
             match validate_frame_lenient(f.octets(), &table) {
-                Ok(v) => {
-                    assert_eq!(&**v, &**f);
-                    assert!(
-                        matches!(next_frame(&bytes, &table, usize::MAX), Some(Delimited::Frame(d)) if d == f.octets())
-                    );
-                }
+                Ok(v) => assert_eq!(&**v, &**f),
                 Err(r) => assert!(
                     matches!(
                         r.reason(),
@@ -213,6 +208,13 @@ fn run(u: &mut Unstructured<'_>) -> Result<()> {
             if f.len() < bytes.len() {
                 assert!(validate_frame_lenient(&bytes, &table).is_err());
             }
+            // The delimiter needs the channels only for truncated frames, so it finds every
+            // decoded non-truncated frame, of a configured channel or not.
+            if !f.is_truncated() {
+                assert!(
+                    matches!(next_frame(&bytes, &table, usize::MAX), Some(Delimited::Frame(d)) if d == f.octets())
+                );
+            }
         }
         Err(e) => {
             assert!(validate_frame_lenient(&bytes, &table).is_err(), "{e:?}");
@@ -223,6 +225,8 @@ fn run(u: &mut Unstructured<'_>) -> Result<()> {
             }
         }
     }
+    // The Err arms above fail on any rejection but an unknown channel, so "validates Ok" here
+    // means "a configured channel".
     if let Ok(f) = strict
         && validate_frame_lenient(f.octets(), &table).is_ok()
     {
