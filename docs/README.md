@@ -18,7 +18,7 @@ This directory holds the specification for a family of libraries that add CCSDS 
 | 05 | [Framework](05-framework.md) | Optional layer: transport/clock traits, run loop, reference adapters |
 | 06 | [Verification](06-verification.md) | Mission-grade assurance: lints, panic-freedom, fuzzing, coverage, traceability |
 | 07 | [Test vectors](07-test-vectors.md) | Shared, language-neutral conformance vector format |
-| 08 | [Roadmap](08-roadmap.md) | The three v1 tracks (Rust reference, native C++, reference application): milestones, entry gates, releases, rules for parallel work; later standards; language rollout |
+| 08 | [Roadmap](08-roadmap.md) | The three v1 tracks (Rust reference, native C++, reference application): milestones, entry gates, releases, rules for parallel work; later standards; language rollout; which CCSDS documents and sections each milestone covers (§9) |
 | 09 | [Open issues](09-open-issues.md) | Decisions and verifications still pending |
 
 ### Verification records

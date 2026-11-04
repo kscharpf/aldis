@@ -14,6 +14,10 @@
 
 Libraries that add CCSDS protocol support to spacecraft flight software and ground systems. The reference implementation is in Rust (`no_std`, no heap, panic-free), with a C ABI for C and C++ applications. Other languages are planned on top of that ABI.
 
+## About the name
+
+Aldis is named after the Aldis lamp, the signal lamp that ships use to send Morse code by light.
+
 ## Status
 
 | Milestone or track | State |
@@ -25,7 +29,7 @@ Libraries that add CCSDS protocol support to spacecraft flight software and grou
 | M4–M6 | Not started: the Layer 2–3 crates (link engines, framework) are skeletons |
 | A0 reference application scenario | In progress |
 
-See the [roadmap](docs/08-roadmap.md) for every milestone and track.
+See the [roadmap](docs/08-roadmap.md) for every milestone and track, and its [coverage table](docs/08-roadmap.md#9-ccsds-document-coverage) for the CCSDS documents and sections each milestone covers.
 
 ## How Aldis is verified
 
