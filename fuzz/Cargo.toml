@@ -18,6 +18,7 @@ aldis-aos = { path = "../crates/aldis-aos" }
 aldis-cop1 = { path = "../crates/aldis-cop1" }
 aldis-core = { path = "../crates/aldis-core", features = ["crc-table", "test-hooks"] }
 aldis-epp = { path = "../crates/aldis-epp" }
+aldis-link = { path = "../crates/aldis-link", features = ["spp", "epp", "tm", "tc", "aos", "uslp"] }
 aldis-ffi = { path = "../crates/aldis-ffi" }
 aldis-spp = { path = "../crates/aldis-spp", features = ["time"] }
 aldis-tc = { path = "../crates/aldis-tc" }
@@ -306,6 +307,41 @@ bench = false
 [[bin]]
 name = "fop1_clcw"
 path = "fuzz_targets/fop1_clcw.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "link_packet_roundtrip"
+path = "fuzz_targets/link_packet_roundtrip.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "link_map_roundtrip"
+path = "fuzz_targets/link_map_roundtrip.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "link_map_inputs"
+path = "fuzz_targets/link_map_inputs.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "link_mux"
+path = "fuzz_targets/link_mux.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "link_frame_receiver"
+path = "fuzz_targets/link_frame_receiver.rs"
 test = false
 doc = false
 bench = false

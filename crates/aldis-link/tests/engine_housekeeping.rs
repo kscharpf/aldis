@@ -371,6 +371,8 @@ fn the_extractor_capacities_are_checked() {
     assert!(PacketExtractor::<Tm, 7, 24>::new_head(c).is_err());
     assert!(PacketExtractor::<Tm, 40, 24>::new_head(c).is_ok());
     assert!(PacketExtractor::<Tm, 40, 24>::new(c).is_ok());
+    let eight = PacketExtractorConfig::<Tm>::new(TmParams, ValidPvns::SPACE, 8).unwrap();
+    assert!(PacketExtractor::<Tm, 8, 24>::new(eight).is_ok());
     let over = PacketExtractorConfig::<Tm>::new(TmParams, ValidPvns::SPACE, 41).unwrap();
     assert!(PacketExtractor::<Tm, 40, 24>::new(over).is_err());
     assert!(PacketExtractor::<Tm, 40, 24>::new_head(over).is_err());

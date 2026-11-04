@@ -1,6 +1,17 @@
 # Mutation testing triage (VER-025)
 
-Surviving mutants from `cargo mutants` (`-p aldis-core -p aldis-time -p aldis-epp -p aldis-spp -p aldis-aos -p aldis-tm -p aldis-tc -p aldis-uslp -p aldis-cop1 --all-features`) (cargo-mutants 27.1.0), triaged per VER-025. The nightly job `mutants` publishes the full report. Update this file when a new survivor appears.
+Surviving mutants from `cargo mutants` (`-p aldis-core -p aldis-time -p aldis-epp -p aldis-spp -p aldis-aos -p aldis-tm -p aldis-tc -p aldis-uslp -p aldis-cop1 -p aldis-link --all-features`) (cargo-mutants 27.1.0), triaged per VER-025. The nightly job `mutants` publishes the full report. Update this file when a new survivor appears.
+
+## 2026-11-04, branch `m4/wp-8-gates` (M4 WP-8, `aldis-link`)
+
+`cargo mutants -p aldis-link --all-features -j 4` (cargo-mutants 27.1.0, local run on a loaded machine, 20 s test timeout): 1 517 mutants: 459 caught, 317 unviable, 4 missed, 737 timeouts. The timeouts are mostly the machine's load (the build took 100 s or more and the suite hit the 20 s limit), not hung engines; they were re-run with `--iterate --timeout 90` and `PROPTEST_CASES=32` and their result is **not triaged** in WP-8: the maintainer decided (2026-11-04) that WP-8 closes with the timeouts untriaged and that they are triaged at WP-9 from the nightly `mutants` report, which is the reference (the nightly job runs the crate with the same flags as the other crates). The four survivors:
+
+| Mutant | Verdict | Action |
+|---|---|---|
+| `access.rs:102` `with_max_sdu_len` `>` → `>=` (the 65 535 limit) | Test gap | Fixed: `generators_engine.rs` accepts 65 535 |
+| `extractor.rs:429` `check_capacity` `<` → `<=` (`M` against `MIN_ASSEMBLY`) | Test gap | Fixed: `engine_housekeeping.rs` accepts `M` = 8 |
+| `cltu.rs:347` `add_frame` `frames < max_frames` → `<=` | Equivalent: an open unit with `max_frames` frames is closed when its last frame is added, so no open unit holds that many | None possible |
+| `common.rs:73` `Occupancy::set` `>` → `>=` | Equivalent: the branch assigns the value it compares equal to | None possible |
 
 ## 2026-10-31, branch `m3/wp-7b-gates` (M3 WP-7, `aldis-cop1`)
 

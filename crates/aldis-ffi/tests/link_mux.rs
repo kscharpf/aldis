@@ -982,3 +982,23 @@ fn a_member_of_another_protocol_is_read_and_refused_when_invalid() {
     let mut d = detail();
     assert_eq!(init(&mut s, &c, &mut d), 0);
 }
+
+#[test]
+fn every_protocol_refuses_a_bad_member_and_reports_its_status() {
+    // req: CABI-022, CABI-040, LNK-001, LNK-002, API-056
+    for cfg in [tm_config(), aos_config(), uslp_config()] {
+        // A VC of no valid identifier, whatever the protocol.
+        let mut bad = cfg;
+        bad.vcs[0].vc_id = 200;
+        let (code, field) = refused(&bad);
+        assert_eq!((code, field), (ALDIS_ERR_OUT_OF_RANGE, ALDIS_FIELD_VC_ID));
+        // More VCs than the array holds.
+        let mut bad = cfg;
+        bad.vc_count = aldis_ffi::capacities::ALDIS_LINK_MAX_VIRTUAL_CHANNELS + 1;
+        assert_eq!(refused(&bad).0, ALDIS_ERR_CAPACITY_EXCEEDED);
+        // A fresh engine reports an empty status.
+        let mut s = storage();
+        assert_eq!(init(&mut s, &cfg, &mut detail()), 0);
+        assert_eq!(status(&mut s), aldis_channel_mux_status_t::default());
+    }
+}
