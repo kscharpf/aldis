@@ -797,6 +797,36 @@ mod tests {
     }
 
     #[test]
+    fn a_frame_of_an_unconfigured_channel_decodes_and_fails_validation() {
+        // req: USLP-014, RS-023, API-017, GEN-020
+        // Fuzz regression (fuzz_targets/uslp_decode.rs): a VCID or MAP ID the channels do not
+        // hold is read as the frame says itself; the Frame Validation Checks reject it.
+        let t = fixed();
+        let good = fixed_frame();
+        for (octet, reason, fld) in [
+            (0xA6, Reason::InvalidVcid, field::VC_ID),
+            (0x28, Reason::InvalidMapId, field::MAP_ID),
+        ] {
+            let mut body = good[..good.len() - 2].to_vec();
+            body[3] = octet;
+            let bytes = with_fecf(&body);
+            assert!(UslpFrame::decode(&bytes, &t).is_ok(), "{octet:02X}");
+            assert!(UslpFrame::decode_lenient(&bytes, &t).is_ok(), "{octet:02X}");
+            for r in [
+                validate_frame(&bytes, &t).map(|_| ()),
+                validate_frame_lenient(&bytes, &t).map(|_| ()),
+            ] {
+                let r = r.unwrap_err();
+                assert_eq!(r.reason(), reason);
+                assert_eq!(
+                    (r.error().kind(), r.error().field()),
+                    (ErrorKind::UnknownChannel, Some(fld))
+                );
+            }
+        }
+    }
+
+    #[test]
     fn decodes_variable_frames_with_sdls_and_ocf() {
         // req: USLP-003, USLP-004, USLP-016, API-011, API-070, API-072
         let t = plain_variable();
