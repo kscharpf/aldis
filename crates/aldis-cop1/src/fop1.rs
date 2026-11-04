@@ -2032,6 +2032,10 @@ impl<'o> OutArea<'o> {
     }
 }
 
+// Kani proof harnesses, compiled only by `cargo kani` (docs/verification/formal-proofs.md).
+#[cfg(kani)]
+mod proofs;
+
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[expect(

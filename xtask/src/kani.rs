@@ -46,6 +46,11 @@ const RUNS: &[Run] = &[
         features: &[],
         harness: None,
     },
+    Run {
+        krate: "aldis-cop1",
+        features: &[],
+        harness: None,
+    },
 ];
 
 /// The result of one harness, as Kani reports it.

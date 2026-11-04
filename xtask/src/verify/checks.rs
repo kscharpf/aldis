@@ -171,6 +171,8 @@ pub const KANI: PathList = PathList {
         "crates/aldis-core/**",
         "crates/aldis-spp/**",
         "crates/aldis-time/**",
+        "crates/aldis-tc/**",
+        "crates/aldis-cop1/**",
     ],
 };
 
