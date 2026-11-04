@@ -905,8 +905,6 @@ impl<P: SegmenterProtocol, const M: usize, const Q: usize> MapSegmenter<P, M, Q>
         }))
     }
 
-    /// The FDU of the SDU or packets of `head`, written into `zone`; returns its framing and the
-    /// octets written (LNK-040, LNK-041, LNK-042).
     /// The octets and the count of the packets of the queue that block with `head` into one
     /// Whole FDU of at most `capacity` octets: `head` and the packets of its MAP behind it.
     fn blocked_run(&self, head: &Entry, capacity: usize) -> (usize, usize) {
@@ -925,6 +923,8 @@ impl<P: SegmenterProtocol, const M: usize, const Q: usize> MapSegmenter<P, M, Q>
         (total, blocked)
     }
 
+    /// The FDU of the SDU or packets of `head`, written into `zone`; returns its framing and the
+    /// octets written (LNK-040, LNK-041, LNK-042).
     fn sdu_fdu(
         &mut self,
         head: &Entry,
